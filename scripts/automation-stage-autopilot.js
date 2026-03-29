@@ -55,8 +55,10 @@ const FRESHNESS_HOURS = Object.freeze({
   wait: Math.max(24, Number(process.env.STAGE_AUTOPILOT_WAIT_MAX_AGE_HOURS || 144)),
   change: Math.max(12, Number(process.env.STAGE_AUTOPILOT_CHANGE_MAX_AGE_HOURS || 48)),
   canary: Math.max(4, Number(process.env.STAGE_AUTOPILOT_CANARY_MAX_AGE_HOURS || 12)),
+  selfEvolutionCanary: Math.max(4, Number(process.env.STAGE_AUTOPILOT_SELF_EVOLUTION_CANARY_MAX_AGE_HOURS || 12)),
   codex: Math.max(12, Number(process.env.STAGE_AUTOPILOT_CODEX_MAX_AGE_HOURS || 48)),
 });
+const SELF_EVOLUTION_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json");
 const AI_SNAPSHOT_KEYS = Object.freeze([
   "ai_missing_policy",
   "ai_missing_reduce_pct",
@@ -260,6 +262,7 @@ function renderMarkdown(report = {}) {
     `- provider: ${report.provider || "N/A"}`,
     `- objective: ${report.objective_verdict || "N/A"}`,
     `- canary: ${report.canary_pass ? "PASS" : "BLOCK"}`,
+    `- self_evolution_canary: ${report.self_evolution_canary && report.self_evolution_canary.apply_pass ? "PASS" : "BLOCK"} / rollback_ready ${report.self_evolution_canary && report.self_evolution_canary.rollback_ready_n != null ? report.self_evolution_canary.rollback_ready_n : "N/A"}`,
     `- BEST/FEBT contract: ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.mode || "N/A"} / tightening ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.tightening_allowed ? "ALLOW" : "BLOCK"} / recovery ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.recovery_priority ? "FIRST" : "NORMAL"} / replacement ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_replacement_ratio != null ? Number(report.best_febt_tuning_contract.projected_replacement_ratio).toFixed(2) : "N/A"} / count ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_count_ratio_global != null ? Number(report.best_febt_tuning_contract.projected_count_ratio_global).toFixed(2) : "N/A"}x`,
     "",
     "## Stages",
@@ -367,7 +370,7 @@ function runWeeklyPinePreparation() {
   };
 }
 
-async function applyStageCandidate({ stage, candidate, stageState, history, nowMeta, nowMs, canaryPass, objectiveArtifact, currentSys, snapshotKeys }) {
+async function applyStageCandidate({ stage, candidate, stageState, history, nowMeta, nowMs, canaryPass, objectiveArtifact, currentSys, snapshotKeys, selfEvolutionRollbackReady = false }) {
   const snapshot = pickSettingsSnapshot(currentSys, snapshotKeys);
   const changeBudgetOk = stageChangeBudgetOk(history, nowMs, stage);
   const nextHistory = candidate.signature
@@ -444,6 +447,7 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
     stageState,
     objectiveSupervisor: objectiveArtifact && objectiveArtifact.data ? objectiveArtifact.data : {},
     canaryPass,
+    selfEvolutionRollbackReady,
   });
   if (rollback.rollback && stageState.pre_apply_snapshot && Object.keys(stageState.pre_apply_snapshot).length) {
     await updateProviderSettings({
@@ -499,7 +503,7 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
   };
 }
 
-async function processObservedStage({ stage, artifact, stateData, currentSys, objectiveArtifact, canaryPass, nowMeta, nowMs }) {
+async function processObservedStage({ stage, artifact, stateData, currentSys, objectiveArtifact, canaryPass, nowMeta, nowMs, selfEvolutionRollbackReady = false }) {
   const currentObjective = objectiveArtifact && objectiveArtifact.data ? objectiveArtifact.data.objective : null;
   const stageState = getStageState(stateData, stage);
   const candidate = buildObservedStageCandidate(stage, artifact, currentObjective);
@@ -551,6 +555,7 @@ async function processObservedStage({ stage, artifact, stateData, currentSys, ob
     stageState,
     objectiveSupervisor: objectiveArtifact && objectiveArtifact.data ? objectiveArtifact.data : {},
     canaryPass,
+    selfEvolutionRollbackReady,
   });
   if (rollback.rollback && stageState.pre_apply_snapshot && Object.keys(stageState.pre_apply_snapshot).length) {
     await updateProviderSettings({
@@ -599,7 +604,17 @@ async function processObservedStage({ stage, artifact, stateData, currentSys, ob
   };
 }
 
-async function processPineStage({ objectiveArtifact, codexArtifact, changeArtifact, stateData, canaryPass, nowMeta, nowMs, candidateOverride = null }) {
+async function processPineStage({
+  objectiveArtifact,
+  codexArtifact,
+  changeArtifact,
+  stateData,
+  canaryPass,
+  canaryReason = null,
+  nowMeta,
+  nowMs,
+  candidateOverride = null,
+}) {
   const candidate = candidateOverride || buildPineCandidate(objectiveArtifact, codexArtifact, changeArtifact);
   const stage = "PINE";
   const stageState = getStageState(stateData, stage);
@@ -615,6 +630,9 @@ async function processPineStage({ objectiveArtifact, codexArtifact, changeArtifa
     });
   }
   if (!candidate.actionable || !canaryPass) {
+    const resolvedCanaryReason = !canaryPass
+      ? (String(canaryReason || "").trim() || "CANARY_DRIFT")
+      : null;
     return {
       stageState: {
         ...stageState,
@@ -622,9 +640,9 @@ async function processPineStage({ objectiveArtifact, codexArtifact, changeArtifa
         machine_state: STATE_MACHINE.HOLD,
         last_signature: candidate.signature,
         last_action: candidate.kind,
-        last_reason: !canaryPass ? "CANARY_DRIFT" : candidate.reason,
+        last_reason: resolvedCanaryReason || candidate.reason,
         streak_current: candidate.signature ? computeSignatureStreak(history, stage, candidate.signature) : 0,
-        blockers: canaryPass ? [] : ["CANARY_DRIFT"],
+        blockers: canaryPass ? [] : [resolvedCanaryReason],
       },
       history,
       action: null,
@@ -682,6 +700,7 @@ async function main() {
   const evArtifact = readArtifact("ev_tp1_threshold_tune", path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json"), FRESHNESS_HOURS.ev);
   const waitArtifact = readArtifact("wait_one_bar_tune", path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json"), FRESHNESS_HOURS.wait);
   const canaryArtifact = readArtifact("filter_shadow_canary", path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json"), FRESHNESS_HOURS.canary);
+  const selfEvolutionCanaryArtifact = readArtifact("best_self_evolution_canary", SELF_EVOLUTION_CANARY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCanary);
   const changeArtifact = readArtifact("pine_quality_change_control", path.join(OPS_DAILY_DIR, "pine_quality_change_control_latest.json"), FRESHNESS_HOURS.change);
   const codexArtifact = readArtifact("codex_weekly_patch_engine", path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.json"), FRESHNESS_HOURS.codex);
   const currentSysRes = await getSystemSettingsForProvider(PROVIDER, 0);
@@ -689,11 +708,19 @@ async function main() {
   const autopilotStore = readAutopilotState();
   const stateData = autopilotStore.data || { stages: {}, history: [] };
   let history = Array.isArray(stateData.history) ? stateData.history : [];
-  const canaryPass = Boolean(
+  const shadowCanaryPass = Boolean(
     canaryArtifact && canaryArtifact.data
     && canaryArtifact.data.golden && canaryArtifact.data.golden.summary && Number(canaryArtifact.data.golden.summary.drift || 0) === 0
     && canaryArtifact.data.shadow && canaryArtifact.data.shadow.summary && Number(canaryArtifact.data.shadow.summary.drift || 0) === 0
   );
+  const selfEvolutionCanary = selfEvolutionCanaryArtifact && selfEvolutionCanaryArtifact.data && selfEvolutionCanaryArtifact.data.summary
+    ? selfEvolutionCanaryArtifact.data.summary
+    : {};
+  const canaryPass = shadowCanaryPass && Boolean(selfEvolutionCanary.apply_pass === true);
+  const canaryReason = !shadowCanaryPass
+    ? "CANARY_DRIFT"
+    : (selfEvolutionCanary.apply_pass === true ? null : "SELF_EVOLUTION_CANARY_BLOCK");
+  const selfEvolutionRollbackReady = Number(selfEvolutionCanary.rollback_ready_n || 0) > 0;
 
   const actions = [];
   const stageRows = [];
@@ -716,6 +743,7 @@ async function main() {
     objectiveArtifact,
     currentSys,
     snapshotKeys: AI_SNAPSHOT_KEYS,
+    selfEvolutionRollbackReady,
   });
   history = result.history;
   stateData.stages.AI = result.stageState;
@@ -750,6 +778,7 @@ async function main() {
     objectiveArtifact,
     currentSys,
     snapshotKeys: MARKET_SNAPSHOT_KEYS,
+    selfEvolutionRollbackReady,
   });
   history = result.history;
   stateData.stages.MARKET = result.stageState;
@@ -775,6 +804,7 @@ async function main() {
     canaryPass,
     nowMeta,
     nowMs,
+    selfEvolutionRollbackReady,
   });
   history = result.history;
   stateData.stages.EV = result.stageState;
@@ -799,6 +829,7 @@ async function main() {
     canaryPass,
     nowMeta,
     nowMs,
+    selfEvolutionRollbackReady,
   });
   history = result.history;
   stateData.stages.WAIT = result.stageState;
@@ -831,6 +862,7 @@ async function main() {
     changeArtifact,
     stateData,
     canaryPass,
+    canaryReason,
     nowMeta,
     nowMs,
     candidateOverride: pineCandidate,
@@ -859,10 +891,19 @@ async function main() {
     provider: PROVIDER,
     objective_verdict: String(objectiveArtifact && objectiveArtifact.data && objectiveArtifact.data.verdict || "N/A"),
     canary_pass: canaryPass,
+    self_evolution_canary: {
+      available: !!(selfEvolutionCanaryArtifact && selfEvolutionCanaryArtifact.data),
+      apply_pass: Boolean(selfEvolutionCanary.apply_pass === true),
+      rollback_ready_n: toNum(selfEvolutionCanary.rollback_ready_n) || 0,
+      ready_n: toNum(selfEvolutionCanary.ready_n) || 0,
+      blocked_n: toNum(selfEvolutionCanary.blocked_n) || 0,
+      top_ready_market: String(selfEvolutionCanary.top_ready_market || "").trim() || null,
+      top_rollback_market: String(selfEvolutionCanary.top_rollback_market || "").trim() || null,
+    },
     best_febt_tuning_contract: bestFebtContract,
     stage_rows: stageRows,
     actions,
-    artifacts: [objectiveArtifact, mlArtifact, evArtifact, waitArtifact, canaryArtifact, changeArtifact, codexArtifact].map((row) => ({
+    artifacts: [objectiveArtifact, mlArtifact, evArtifact, waitArtifact, canaryArtifact, selfEvolutionCanaryArtifact, changeArtifact, codexArtifact].map((row) => ({
       name: row.name,
       filePath: row.filePath,
       fresh: row.fresh,
@@ -884,6 +925,7 @@ async function main() {
       severity: actions.some((row) => row.type === "AUTO_ROLLBACK") ? "WARN" : "INFO",
       sections: [
         { header: "공통 상태", lines: [`전체 목표 판정은 ${report.objective_verdict} 입니다.`, `변경 안전 검증은 ${report.canary_pass ? "정상" : "차단"} 입니다.`] },
+        { header: "자기 진화 canary", lines: [`apply ${report.self_evolution_canary && report.self_evolution_canary.apply_pass ? "PASS" : "BLOCK"} / ready ${report.self_evolution_canary && report.self_evolution_canary.ready_n != null ? report.self_evolution_canary.ready_n : "N/A"} / blocked ${report.self_evolution_canary && report.self_evolution_canary.blocked_n != null ? report.self_evolution_canary.blocked_n : "N/A"}`, `rollback ${report.self_evolution_canary && report.self_evolution_canary.rollback_ready_n != null ? report.self_evolution_canary.rollback_ready_n : "N/A"} / top ready ${report.self_evolution_canary && report.self_evolution_canary.top_ready_market || "N/A"} / top rollback ${report.self_evolution_canary && report.self_evolution_canary.top_rollback_market || "N/A"}`] },
         { header: "BEST/FEBT 공통 계약", lines: [`mode ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.mode || "N/A"} / tightening ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.tightening_allowed ? "ALLOW" : "BLOCK"} / recovery ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.recovery_priority ? "FIRST" : "NORMAL"}`, `replacement ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_replacement_ratio != null ? Number(report.best_febt_tuning_contract.projected_replacement_ratio).toFixed(2) : "N/A"} / count ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_count_ratio_global != null ? `${Number(report.best_febt_tuning_contract.projected_count_ratio_global).toFixed(2)}x` : "N/A"}`] },
         { header: "이번에 실제로 한 일", lines: actions.map((row) => `${row.stage} 단계에서 ${row.type} 처리: ${row.detail}`) },
         { header: "각 단계 상태", lines: stageRows.map((row) => `${row.stage} 단계는 ${row.machine_state} 상태이며 사유는 ${row.reason} 입니다.`) },
@@ -900,6 +942,8 @@ async function main() {
     actions: actions.length,
     objective: report.objective_verdict,
     canary_pass: report.canary_pass,
+    self_evolution_canary_apply_pass: report.self_evolution_canary.apply_pass,
+    self_evolution_canary_rollback_ready_n: report.self_evolution_canary.rollback_ready_n,
   }));
 }
 

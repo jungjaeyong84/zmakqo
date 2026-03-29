@@ -151,6 +151,9 @@ function buildPrompt(context = {}) {
   const selfEvolutionReplay = objectiveSupervisor && objectiveSupervisor.self_evolution_replay && typeof objectiveSupervisor.self_evolution_replay === "object"
     ? objectiveSupervisor.self_evolution_replay
     : {};
+  const selfEvolutionCanary = objectiveSupervisor && objectiveSupervisor.self_evolution_canary && typeof objectiveSupervisor.self_evolution_canary === "object"
+    ? objectiveSupervisor.self_evolution_canary
+    : {};
   return [
     "You are the weekly Codex patch engine for DONBEOLJA.",
     "Task: inspect the provided latest reports and return a single JSON decision only.",
@@ -197,6 +200,7 @@ function buildPrompt(context = {}) {
     `- BEST self-evolution master spec: ${selfEvolutionPolicy.master_spec_path}`,
     `- BEST self-evolution objective score spec: ${selfEvolutionPolicy.objective_latest_path || "N/A"}`,
     `- BEST self-evolution attribution spec: ${selfEvolutionPolicy.attribution_latest_path || "N/A"}`,
+    `- BEST self-evolution canary spec: ${selfEvolutionPolicy.canary_latest_path || "N/A"}`,
     "Filter layer interpretation:",
     ...objectiveLayerLines,
     "Quick context:",
@@ -249,6 +253,10 @@ function buildPrompt(context = {}) {
     `- mode: ${selfEvolutionReplay.validation_mode || "N/A"}`,
     `- total/pass/warn/block: ${selfEvolutionReplay.total_n != null ? selfEvolutionReplay.total_n : "N/A"} / ${selfEvolutionReplay.pass_n != null ? selfEvolutionReplay.pass_n : "N/A"} / ${selfEvolutionReplay.warn_n != null ? selfEvolutionReplay.warn_n : "N/A"} / ${selfEvolutionReplay.block_n != null ? selfEvolutionReplay.block_n : "N/A"}`,
     `- best candidate: ${selfEvolutionReplay.best_candidate_id || "N/A"} / verdict ${selfEvolutionReplay.best_verdict || "N/A"} / delta ${selfEvolutionReplay.best_objective_delta != null ? selfEvolutionReplay.best_objective_delta : "N/A"}`,
+    "Self-evolution canary snapshot:",
+    `- total/shadow/soft/hard: ${selfEvolutionCanary.total_n != null ? selfEvolutionCanary.total_n : "N/A"} / ${selfEvolutionCanary.shadow_n != null ? selfEvolutionCanary.shadow_n : "N/A"} / ${selfEvolutionCanary.soft_n != null ? selfEvolutionCanary.soft_n : "N/A"} / ${selfEvolutionCanary.hard_n != null ? selfEvolutionCanary.hard_n : "N/A"}`,
+    `- ready/blocked/rollback: ${selfEvolutionCanary.ready_n != null ? selfEvolutionCanary.ready_n : "N/A"} / ${selfEvolutionCanary.blocked_n != null ? selfEvolutionCanary.blocked_n : "N/A"} / ${selfEvolutionCanary.rollback_ready_n != null ? selfEvolutionCanary.rollback_ready_n : "N/A"} / apply ${selfEvolutionCanary.apply_pass === true ? "PASS" : "BLOCK"}`,
+    `- top ready: ${selfEvolutionCanary.top_ready_market || "N/A"} / top rollback: ${selfEvolutionCanary.top_rollback_market || "N/A"}`,
   ].join("\n");
 }
 

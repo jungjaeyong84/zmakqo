@@ -155,6 +155,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.self_evolution_policy.attribution_latest_path.endsWith("best_self_evolution_attribution_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_policy.candidates_latest_path.endsWith("best_self_evolution_candidates_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_policy.replay_latest_path.endsWith("best_self_evolution_replay_latest.json"), true);
+  assert.strictEqual(allowPromote.self_evolution_policy.canary_latest_path.endsWith("best_self_evolution_canary_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_dataset.rows_n, 24);
   assert.strictEqual(allowPromote.self_evolution_dataset.features_coverage_rate, 0.91);
   assert.strictEqual(typeof allowPromote.self_evolution_objective.objective_score, "number");
@@ -164,6 +165,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.self_evolution_attribution.drop_top_layer, null);
   assert.strictEqual(allowPromote.self_evolution_candidates.total_n, 0);
   assert.strictEqual(allowPromote.self_evolution_replay.total_n, 0);
+  assert.strictEqual(allowPromote.self_evolution_canary.total_n, 0);
   assert.strictEqual(allowPromote.best_febt_tuning_contract.mode, "NORMAL");
   assert.strictEqual(allowPromote.best_febt_tuning_contract.tightening_allowed, true);
   assert.strictEqual(Array.isArray(allowPromote.best_febt_market_contracts), true);
@@ -202,6 +204,37 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   });
   assert.strictEqual(replayBlockedPromotion.verdict, "HOLD");
   assert.strictEqual(replayBlockedPromotion.reason, "SELF_EVOLUTION_REPLAY_BLOCK");
+
+  const canaryBlockedPromotion = __test.evaluateSupervisor({
+    ...base,
+    phase0: {
+      fresh: true,
+      provider: "BINANCEFUT",
+      tf: "15m",
+      legacy_wait_baseline: {},
+      bridge_latency: { webhook_to_fill_ms: { p95: 1420 }, duplicate_count: 0, reject_count: 0 },
+    },
+    selfEvolutionDataset: {
+      fresh: true,
+      summary: { rows_n: 10, executed_n: 5, drop_n: 3, missed_n: 1, features_coverage_rate: 0.9, febt_coverage_rate: 0.8 },
+    },
+    selfEvolutionCanary: {
+      summary: { total_n: 2, ready_n: 0, blocked_n: 2, rollback_ready_n: 0, apply_pass: false, global_canary_pass: true, top_ready_market: null, top_rollback_market: null },
+      rows: [],
+    },
+    codex: {
+      status: "FRESH",
+      verdict: "PROMOTE",
+      recommended_candidate_id: "AUTO_CORE_SCORE_TIGHTEN",
+    },
+    stageAutopilot: {
+      fresh: true,
+      objective_verdict: "HOLD",
+      actions: [],
+    },
+  });
+  assert.strictEqual(canaryBlockedPromotion.verdict, "HOLD");
+  assert.strictEqual(canaryBlockedPromotion.reason, "SELF_EVOLUTION_CANARY_BLOCK");
 
   const blockPromote = __test.evaluateSupervisor({
     ...base,
@@ -379,8 +412,8 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
     },
     self_evolution_policy: {
       master_spec_path: "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MASTER_SPEC.md",
-      current_focus: "P0_DATASET,P1_OBJECTIVE,P2_ATTRIBUTION,P3_CANDIDATE_CHANGESET,P4_REPLAY",
-      next_focus: "P5_CANARY,P6_AUTOROLLBACK,P7_MEMORY_LEDGER",
+      current_focus: "P0_DATASET,P1_OBJECTIVE,P2_ATTRIBUTION,P3_CANDIDATE_CHANGESET,P4_REPLAY,P5_CANARY,P6_AUTOROLLBACK",
+      next_focus: "P7_MEMORY_LEDGER",
       linked_paths: ["/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DATASET_SPEC.md"],
     },
     best_febt_tuning_contract: {

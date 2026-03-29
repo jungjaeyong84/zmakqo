@@ -206,10 +206,10 @@ function evaluateCommonAutoApply({
   };
 }
 
-function shouldAutoRollback({ stageState = {}, objectiveSupervisor = {}, canaryPass = true } = {}) {
+function shouldAutoRollback({ stageState = {}, objectiveSupervisor = {}, canaryPass = true, selfEvolutionRollbackReady = false } = {}) {
   if (!stageState || !stageState.applied_signature || !hasSnapshot(stageState.pre_apply_snapshot)) return { rollback: false, adverse: false };
   const objective = objectiveSupervisor && objectiveSupervisor.objective ? objectiveSupervisor.objective : {};
-  const adverse = canaryPass !== true || (
+  const adverse = canaryPass !== true || selfEvolutionRollbackReady === true || (
     objective.enough_sample === true &&
     (objective.pass === false || objective.monthly_pass === false)
   );

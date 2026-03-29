@@ -37,7 +37,13 @@
 1. 시장별 canary state
 2. canary 확대/차단/rollback 자동화
 
-## P6 Memory
+## P6 Autorollback
+
+1. self-evolution rollback ready 감지
+2. auto rollback adverse loop 연결
+3. stage autopilot 차단/복귀 자동화
+
+## P7 Memory
 
 1. patch memory ledger
 2. 실패 fingerprint 차단
@@ -51,3 +57,4 @@
 5. P4
 6. P5
 7. P6
+8. P7

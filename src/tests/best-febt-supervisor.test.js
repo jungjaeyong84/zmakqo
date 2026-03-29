@@ -9,11 +9,12 @@ function run() {
   assert.strictEqual(selfEvolution.attribution_latest_path.endsWith("best_self_evolution_attribution_latest.json"), true);
   assert.strictEqual(selfEvolution.candidates_latest_path.endsWith("best_self_evolution_candidates_latest.json"), true);
   assert.strictEqual(selfEvolution.replay_latest_path.endsWith("best_self_evolution_replay_latest.json"), true);
+  assert.strictEqual(selfEvolution.canary_latest_path.endsWith("best_self_evolution_canary_latest.json"), true);
   assert.strictEqual(Array.isArray(selfEvolution.linked_paths), true);
   assert.strictEqual(selfEvolution.linked_paths.length >= 6, true);
   assert.strictEqual(selfEvolution.status, "ACTIVE");
-  assert.strictEqual(selfEvolution.current_focus, "P0_DATASET,P1_OBJECTIVE,P2_ATTRIBUTION,P3_CANDIDATE_CHANGESET,P4_REPLAY");
-  assert.strictEqual(selfEvolution.next_focus, "P5_CANARY,P6_AUTOROLLBACK,P7_MEMORY_LEDGER");
+  assert.strictEqual(selfEvolution.current_focus, "P0_DATASET,P1_OBJECTIVE,P2_ATTRIBUTION,P3_CANDIDATE_CHANGESET,P4_REPLAY,P5_CANARY,P6_AUTOROLLBACK");
+  assert.strictEqual(selfEvolution.next_focus, "P7_MEMORY_LEDGER");
 
   const contracts = __test.deriveBestFebtMarketContracts({
     governance: {

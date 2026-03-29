@@ -20,6 +20,7 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
         master_spec_path: "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MASTER_SPEC.md",
         objective_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_objective_latest.json",
         attribution_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_attribution_latest.json",
+        canary_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_canary_latest.json",
         linked_paths: [
           "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DATASET_SPEC.md",
           "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_OBJECTIVE_SCORE_SPEC.md",
@@ -60,6 +61,18 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
         best_candidate_id: "AUTO_CORE_REGIME_TIGHTEN",
         best_verdict: "PASS",
         best_objective_delta: 0.62,
+      },
+      self_evolution_canary: {
+        total_n: 6,
+        shadow_n: 4,
+        soft_n: 2,
+        hard_n: 0,
+        ready_n: 2,
+        blocked_n: 4,
+        rollback_ready_n: 1,
+        apply_pass: true,
+        top_ready_market: "BTCUSDT",
+        top_rollback_market: "DOGEUSDT",
       },
       best_febt_market_contracts: [
         {
@@ -126,6 +139,10 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.ok(prompt.includes("Self-evolution replay snapshot:"));
   assert.ok(prompt.includes("mode: OFFLINE_PROXY_V1"));
   assert.ok(prompt.includes("best candidate: AUTO_CORE_REGIME_TIGHTEN / verdict PASS / delta 0.62"));
+  assert.ok(prompt.includes("Self-evolution canary snapshot:"));
+  assert.ok(prompt.includes("total/shadow/soft/hard: 6 / 4 / 2 / 0"));
+  assert.ok(prompt.includes("ready/blocked/rollback: 2 / 4 / 1 / apply PASS"));
+  assert.ok(prompt.includes("top ready: BTCUSDT / top rollback: DOGEUSDT"));
   assert.ok(prompt.includes("febt contract mode: RECOVERY_FIRST"));
   assert.ok(prompt.includes("febt tightening allowed: NO"));
   assert.ok(prompt.includes("BEST/FEBT market contracts:"));
