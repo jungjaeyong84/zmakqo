@@ -153,6 +153,64 @@ function formatNamedBreakdown(rows = []) {
   return items.map((row) => `${row.value} ${row.n}`).join(" / ");
 }
 
+function formatPairBreakdown(rows = [], limit = 3) {
+  const items = (Array.isArray(rows) ? rows : []).slice(0, limit);
+  if (!items.length) return "N/A";
+  return items.map((row) => `${row.wait_action} x ${row.value} ${row.n}`).join(" / ");
+}
+
+function summarizeFebtShadowReplacement(rows = []) {
+  const items = Array.isArray(rows) ? rows : [];
+  let disagreeN = 0;
+  let fallbackN = 0;
+  let candidateRecoveredN = 0;
+  let candidateBlockedN = 0;
+  let candidateWaitN = 0;
+  for (const row of items) {
+    const disagree = row && row.febt_shadow_disagrees_legacy_wait === true;
+    const fallback = row && row.febt_shadow_fallback_to_legacy === true;
+    const reason = String(row && row.febt_shadow_disagreement_reason || "").trim().toUpperCase() || "UNKNOWN";
+    if (disagree) {
+      disagreeN += 1;
+      if (reason === "FEBT_ALLOW_LEGACY_WAIT") candidateRecoveredN += 1;
+      else if (reason === "FEBT_BLOCK_LEGACY_ALLOW") candidateBlockedN += 1;
+      else if (reason === "FEBT_WAIT_LEGACY_ALLOW") candidateWaitN += 1;
+    }
+    if (fallback) fallbackN += 1;
+  }
+  const sampledN = items.length;
+  return {
+    sampled_n: sampledN,
+    disagree_n: disagreeN,
+    disagree_rate: sampledN > 0 ? (disagreeN / sampledN) : null,
+    fallback_n: fallbackN,
+    fallback_rate: sampledN > 0 ? (fallbackN / sampledN) : null,
+    candidate_recovered_n: candidateRecoveredN,
+    candidate_blocked_n: candidateBlockedN,
+    candidate_wait_n: candidateWaitN,
+    projected_net_signal_delta_n: candidateRecoveredN - candidateBlockedN,
+    projected_count_ratio: sampledN > 0 ? ((sampledN - candidateBlockedN + candidateRecoveredN) / sampledN) : null,
+    projected_replacement_ratio: candidateBlockedN > 0 ? (candidateRecoveredN / candidateBlockedN) : null,
+    by_reason: summarizeNamedBreakdown(items.filter((row) => row && row.febt_shadow_disagrees_legacy_wait === true), "febt_shadow_disagreement_reason"),
+    by_verdict: summarizeNamedBreakdown(items, "febt_shadow_verdict"),
+    by_legacy_wait_action: summarizeNamedBreakdown(items, "febt_shadow_legacy_wait_action"),
+    by_trigger_path: summarizeNamedBreakdown(items, "febt_shadow_legacy_wait_trigger_path"),
+  };
+}
+
+function summarizeFebtPhase0Overlap(phase0 = null) {
+  const overlap = phase0 && phase0.legacy_wait_overlap && typeof phase0.legacy_wait_overlap === "object"
+    ? phase0.legacy_wait_overlap
+    : {};
+  return {
+    compared_n: Number(overlap.compared_n || 0),
+    wait_action_breakdown: Array.isArray(overlap.wait_action_breakdown) ? overlap.wait_action_breakdown.slice(0, 4) : [],
+    market_action_pairs: Array.isArray(overlap.market_state_action_pairs) ? overlap.market_state_action_pairs.slice(0, 4) : [],
+    entry_exec_timing_pairs: Array.isArray(overlap.entry_exec_timing_pairs) ? overlap.entry_exec_timing_pairs.slice(0, 4) : [],
+    ev_policy_source_pairs: Array.isArray(overlap.ev_policy_source_pairs) ? overlap.ev_policy_source_pairs.slice(0, 4) : [],
+  };
+}
+
 function summarizeCounterfactualFeatureBreakdown(rows = []) {
   const matured = (Array.isArray(rows) ? rows : []).filter((row) => row && row.ok === true);
   return {
@@ -183,11 +241,11 @@ function buildWeeklyTelegramLayerLines({ current = {}, recommendations = {}, set
   const marketState = stripSummaryPrefix(featureLines[0], "market state ");
   const marketAction = stripSummaryPrefix(featureLines[1], "market action ");
   const evPolicy = stripSummaryPrefix(featureLines[2], "ev policy ");
-  const byTier = current && current.by_tier && typeof current.by_tier === "object" ? current.by_tier : {};
-  const tierRows = Object.values(byTier).filter((row) => row && typeof row === "object");
-  const febtExecuted = tierRows.reduce((acc, row) => acc + Number(row.executed_n || 0), 0);
-  const febtDisagree = tierRows.reduce((acc, row) => acc + Number(row.febt_disagreement_n || 0), 0);
-  const febtFallback = tierRows.reduce((acc, row) => acc + Number(row.febt_fallback_legacy_n || 0), 0);
+  const chainRows = current && current.quality && Array.isArray(current.quality.chain_rows)
+    ? current.quality.chain_rows
+    : [];
+  const febtShadow = summarizeFebtShadowReplacement(chainRows);
+  const phase0Overlap = summarizeFebtPhase0Overlap(phase0);
   const lines = [
     `1차 상태/무결성 ${recommendations.QUALITY && recommendations.QUALITY.action || "N/A"} / ${recommendations.QUALITY && recommendations.QUALITY.reason || "N/A"}`,
     `2차 진입 품질 ${recommendations.AI && recommendations.AI.action || "N/A"} / ${recommendations.AI && recommendations.AI.reason || "N/A"}`,
@@ -198,8 +256,16 @@ function buildWeeklyTelegramLayerLines({ current = {}, recommendations = {}, set
     `4차 EV/시간가치층 threshold 기본 ${pct(settings.ev_gate_tp1_prob_min)} / ${LIVE_ENTRY_LABEL} ${pct(settings.ev_gate_tp1_prob_min_early)}`,
     `4차 EV/시간가치층 band full ${pct(settings.ev_gate_tp1_prob_full)} / kill ${pct(settings.ev_gate_tp1_prob_kill)} / mid ${pct(settings.ev_gate_qty_scale_mid)} / low ${pct(settings.ev_gate_qty_scale_low)}`,
     `4차 EV/시간가치층 policy ${evPolicy || "N/A"}`,
-    `5차 WAIT 타이밍층 streak ${settings.wait_one_bar_same_dir_streak_min} / chase ${ratioX(settings.wait_one_bar_chase_ratio_min)} / close ${pct(settings.wait_one_bar_last_close_control_min)} / body ${pct(settings.wait_one_bar_last_dir_body_min)} / wick ${pct(settings.wait_one_bar_last_opposite_wick_max)} / move1 ${pct(settings.wait_one_bar_recent_move1_pct_min)} / counter ${settings.wait_one_bar_counter_dir_bars_max}${febtExecuted > 0 ? ` / disagree ${febtDisagree} / fallback ${febtFallback}` : ""}`,
+    `5차 WAIT 타이밍층 streak ${settings.wait_one_bar_same_dir_streak_min} / chase ${ratioX(settings.wait_one_bar_chase_ratio_min)} / close ${pct(settings.wait_one_bar_last_close_control_min)} / body ${pct(settings.wait_one_bar_last_dir_body_min)} / wick ${pct(settings.wait_one_bar_last_opposite_wick_max)} / move1 ${pct(settings.wait_one_bar_recent_move1_pct_min)} / counter ${settings.wait_one_bar_counter_dir_bars_max}${febtShadow.sampled_n > 0 ? ` / disagree ${febtShadow.disagree_n} / fallback ${febtShadow.fallback_n}` : ""}`,
   ];
+  if (febtShadow.sampled_n > 0) {
+    lines.push(
+      `FEBT shadow sampled ${febtShadow.sampled_n} / disagree ${febtShadow.disagree_n} / fallback ${febtShadow.fallback_n} / reason ${formatNamedBreakdown(febtShadow.by_reason)} / verdict ${formatNamedBreakdown(febtShadow.by_verdict)}`
+    );
+    lines.push(
+      `FEBT replacement proxy recovered ${febtShadow.candidate_recovered_n} / blocked ${febtShadow.candidate_blocked_n} / wait ${febtShadow.candidate_wait_n} / replacement ${ratioX(febtShadow.projected_replacement_ratio)} / count ${ratioX(febtShadow.projected_count_ratio)} / delta ${signedNum(febtShadow.projected_net_signal_delta_n, 0)}`
+    );
+  }
   if (phase0 && phase0.legacy_wait_baseline) {
     const baseline = phase0.legacy_wait_baseline || {};
     const latency = phase0.bridge_latency || {};
@@ -211,6 +277,14 @@ function buildWeeklyTelegramLayerLines({ current = {}, recommendations = {}, set
     );
     lines.push(
       `FEBT Phase0 bridge p95 ${latency.webhook_to_fill_ms && Number.isFinite(Number(latency.webhook_to_fill_ms.p95)) ? `${Number(latency.webhook_to_fill_ms.p95).toFixed(0)}ms` : "N/A"} / dup ${latency.duplicate_count || 0} / reject ${latency.reject_count || 0}`
+    );
+  }
+  if (phase0Overlap.compared_n > 0) {
+    lines.push(
+      `FEBT overlap compared ${phase0Overlap.compared_n} / wait ${formatNamedBreakdown(phase0Overlap.wait_action_breakdown)}`
+    );
+    lines.push(
+      `FEBT overlap wait x market ${formatPairBreakdown(phase0Overlap.market_action_pairs)} / wait x timing ${formatPairBreakdown(phase0Overlap.entry_exec_timing_pairs)}`
     );
   }
   return lines;
@@ -2252,6 +2326,16 @@ function summarizeSizingPerformance(chainRows = [], intents = []) {
   };
 }
 
+function buildWeeklyFebtShadowSummary({ current = {}, phase0 = null } = {}) {
+  const chainRows = current && current.quality && Array.isArray(current.quality.chain_rows)
+    ? current.quality.chain_rows
+    : [];
+  return {
+    shadow: summarizeFebtShadowReplacement(chainRows),
+    phase0_overlap: summarizeFebtPhase0Overlap(phase0),
+  };
+}
+
 function summarizeSideTierRegime({ signals = [], drops = [], quality = {} } = {}) {
   const agg = new Map();
   const ensure = (key, meta) => {
@@ -2510,6 +2594,12 @@ function renderMarkdown({ nowMeta, current, previous, recommendations, settings,
   if (artifacts.febt_phase0_summary) {
     lines.push(`- FEBT Phase0: coverage ${pct(artifacts.febt_phase0_summary.legacy_wait_coverage_rate)} / observed ${artifacts.febt_phase0_summary.legacy_wait_observed_chain_n || 0} / immediate win ${pct(artifacts.febt_phase0_summary.immediate_win_rate)} / saved_loss ${pct(artifacts.febt_phase0_summary.saved_loss_pct)} / missed_gain ${pct(artifacts.febt_phase0_summary.missed_gain_pct)} / delta ${signedPct(artifacts.febt_phase0_summary.saved_loss_minus_missed_gain)}`);
     lines.push(`- FEBT bridge: webhook->fill p95 ${artifacts.febt_phase0_summary.webhook_to_fill_p95_ms != null ? `${Number(artifacts.febt_phase0_summary.webhook_to_fill_p95_ms).toFixed(0)}ms` : "N/A"} / dup ${artifacts.febt_phase0_summary.duplicate_count || 0} / reject ${artifacts.febt_phase0_summary.reject_count || 0}`);
+    lines.push(`- FEBT overlap: compared ${artifacts.febt_phase0_summary.overlap_compared_n || 0} / wait ${formatNamedBreakdown(artifacts.febt_phase0_summary.overlap_wait_action_breakdown || [])}`);
+    lines.push(`- FEBT overlap top: wait x market ${formatPairBreakdown(artifacts.febt_phase0_summary.overlap_market_action_pairs || [])} / wait x timing ${formatPairBreakdown(artifacts.febt_phase0_summary.overlap_entry_exec_timing_pairs || [])}`);
+  }
+  if (current.febt_shadow) {
+    lines.push(`- FEBT shadow: sampled ${current.febt_shadow.sampled_n || 0} / disagree ${current.febt_shadow.disagree_n || 0} / fallback ${current.febt_shadow.fallback_n || 0} / reason ${formatNamedBreakdown(current.febt_shadow.by_reason || [])} / verdict ${formatNamedBreakdown(current.febt_shadow.by_verdict || [])}`);
+    lines.push(`- FEBT replacement proxy: recovered ${current.febt_shadow.candidate_recovered_n || 0} / blocked ${current.febt_shadow.candidate_blocked_n || 0} / wait ${current.febt_shadow.candidate_wait_n || 0} / replacement ${ratioX(current.febt_shadow.projected_replacement_ratio)} / count ${ratioX(current.febt_shadow.projected_count_ratio)} / delta ${signedNum(current.febt_shadow.projected_net_signal_delta_n, 0)}`);
   }
   lines.push("");
   lines.push("## 3차/4차 실제 성과 분해(현재)");
@@ -2670,6 +2760,7 @@ async function buildWindowSummary({ signals, fills, drops, intents = [], fromMs,
     pine_quality_linkage: pineQualityLinkage,
     side_tier_regime: sideTierRegime,
     sizing,
+    febt_shadow: buildWeeklyFebtShadowSummary({ current: { quality }, phase0: null }).shadow,
   };
 }
 
@@ -2817,6 +2908,19 @@ async function main() {
       webhook_to_fill_p95_ms: toNum(febtPhase0Latest.bridge_latency && febtPhase0Latest.bridge_latency.webhook_to_fill_ms && febtPhase0Latest.bridge_latency.webhook_to_fill_ms.p95),
       duplicate_count: toNum(febtPhase0Latest.bridge_latency && febtPhase0Latest.bridge_latency.duplicate_count) || 0,
       reject_count: toNum(febtPhase0Latest.bridge_latency && febtPhase0Latest.bridge_latency.reject_count) || 0,
+      overlap_compared_n: toNum(febtPhase0Latest.legacy_wait_overlap && febtPhase0Latest.legacy_wait_overlap.compared_n) || 0,
+      overlap_wait_action_breakdown: Array.isArray(febtPhase0Latest.legacy_wait_overlap && febtPhase0Latest.legacy_wait_overlap.wait_action_breakdown)
+        ? febtPhase0Latest.legacy_wait_overlap.wait_action_breakdown.slice(0, 4)
+        : [],
+      overlap_market_action_pairs: Array.isArray(febtPhase0Latest.legacy_wait_overlap && febtPhase0Latest.legacy_wait_overlap.market_state_action_pairs)
+        ? febtPhase0Latest.legacy_wait_overlap.market_state_action_pairs.slice(0, 4)
+        : [],
+      overlap_entry_exec_timing_pairs: Array.isArray(febtPhase0Latest.legacy_wait_overlap && febtPhase0Latest.legacy_wait_overlap.entry_exec_timing_pairs)
+        ? febtPhase0Latest.legacy_wait_overlap.entry_exec_timing_pairs.slice(0, 4)
+        : [],
+      overlap_ev_policy_source_pairs: Array.isArray(febtPhase0Latest.legacy_wait_overlap && febtPhase0Latest.legacy_wait_overlap.ev_policy_source_pairs)
+        ? febtPhase0Latest.legacy_wait_overlap.ev_policy_source_pairs.slice(0, 4)
+        : [],
     }
     : null;
 
@@ -2853,6 +2957,9 @@ async function main() {
       },
     },
   };
+  const weeklyFebtShadowSummary = buildWeeklyFebtShadowSummary({ current, phase0: febtPhase0Latest });
+  report.current.febt_shadow = weeklyFebtShadowSummary.shadow;
+  report.artifacts.febt_overlap_summary = weeklyFebtShadowSummary.phase0_overlap;
   if (report.current && report.current.quality && report.current.quality.by_tier) {
     report.current.quality.by_tier_rows = tierMapToRows(report.current.quality.by_tier);
   }
@@ -2996,6 +3103,8 @@ async function main() {
           `Pine 후속 ${LIVE_ENTRY_LABEL} MFE ${pct(liveFollowSummary && liveFollowSummary.avg_mfe)} / MAE ${pct(liveFollowSummary && liveFollowSummary.avg_mae)} / ${formatPhysicsSummary(liveFollowSummary || {})} / survival 4h ${pct(liveFollowSummary && Array.isArray(liveFollowSummary.survival) ? (liveFollowSummary.survival.find((x) => Number(x.hours) === 4) || {}).tp1_rate : null)}`,
           `Pine↔1차 guard ${current.sequential_guard ? current.sequential_guard.verdict : "N/A"} / budget ${current.sequential_guard && current.sequential_guard.patch_budget_vars != null ? current.sequential_guard.patch_budget_vars : "N/A"}변수`,
           `regime 누락 signals ${pct(current.regime_missing && current.regime_missing.signals && current.regime_missing.signals.missing_rate)} / drops ${pct(current.regime_missing && current.regime_missing.drops && current.regime_missing.drops.missing_rate)} / intents ${pct(current.regime_missing && current.regime_missing.intents && current.regime_missing.intents.missing_rate)}`,
+          `FEBT shadow sampled ${current.febt_shadow ? current.febt_shadow.sampled_n : 0} / disagree ${current.febt_shadow ? current.febt_shadow.disagree_n : 0} / fallback ${current.febt_shadow ? current.febt_shadow.fallback_n : 0} / reason ${formatNamedBreakdown(current.febt_shadow && current.febt_shadow.by_reason || [])}`,
+          `FEBT replacement recovered ${current.febt_shadow ? current.febt_shadow.candidate_recovered_n : 0} / blocked ${current.febt_shadow ? current.febt_shadow.candidate_blocked_n : 0} / wait ${current.febt_shadow ? current.febt_shadow.candidate_wait_n : 0} / replacement ${ratioX(current.febt_shadow && current.febt_shadow.projected_replacement_ratio)} / count ${ratioX(current.febt_shadow && current.febt_shadow.projected_count_ratio)}`,
         ],
       },
       {
@@ -3056,6 +3165,9 @@ if (require.main === module) {
       buildCompetingRiskCurve,
       wilsonInterval,
       summarizeSizingPerformance,
+      summarizeFebtShadowReplacement,
+      summarizeFebtPhase0Overlap,
+      buildWeeklyFebtShadowSummary,
       summarizeEvEvaluatedEntries,
       buildSufficiencyRows,
       summarizeCounterfactualFeatureBreakdown,

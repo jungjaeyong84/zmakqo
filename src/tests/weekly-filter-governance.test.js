@@ -150,12 +150,81 @@ function run() {
   assert.strictEqual(cfSummaryLines.length, 3);
   assert.ok(cfSummaryLines[0].includes("market state"));
   assert.ok(cfSummaryLines[2].includes("source"));
+  const febtShadow = __test.summarizeFebtShadowReplacement([
+    {
+      febt_shadow_disagrees_legacy_wait: true,
+      febt_shadow_disagreement_reason: "FEBT_ALLOW_LEGACY_WAIT",
+      febt_shadow_fallback_to_legacy: false,
+      febt_shadow_verdict: "ALLOW_CANDIDATE",
+      febt_shadow_legacy_wait_action: "WAIT_ONE_BAR",
+      febt_shadow_legacy_wait_trigger_path: "BASE",
+    },
+    {
+      febt_shadow_disagrees_legacy_wait: true,
+      febt_shadow_disagreement_reason: "FEBT_BLOCK_LEGACY_ALLOW",
+      febt_shadow_fallback_to_legacy: true,
+      febt_shadow_verdict: "BLOCK_CANDIDATE",
+      febt_shadow_legacy_wait_action: "ALLOW",
+      febt_shadow_legacy_wait_trigger_path: "BASE",
+    },
+    {
+      febt_shadow_disagrees_legacy_wait: true,
+      febt_shadow_disagreement_reason: "FEBT_WAIT_LEGACY_ALLOW",
+      febt_shadow_fallback_to_legacy: false,
+      febt_shadow_verdict: "WAIT_CANDIDATE",
+      febt_shadow_legacy_wait_action: "ALLOW",
+      febt_shadow_legacy_wait_trigger_path: "BASE",
+    },
+  ]);
+  assert.strictEqual(febtShadow.sampled_n, 3);
+  assert.strictEqual(febtShadow.disagree_n, 3);
+  assert.strictEqual(febtShadow.fallback_n, 1);
+  assert.strictEqual(febtShadow.candidate_recovered_n, 1);
+  assert.strictEqual(febtShadow.candidate_blocked_n, 1);
+  assert.strictEqual(febtShadow.candidate_wait_n, 1);
+  assert.strictEqual(Number(febtShadow.projected_count_ratio.toFixed(4)), 1.0000);
+  assert.strictEqual(Number(febtShadow.projected_replacement_ratio.toFixed(4)), 1.0000);
+  const phase0Overlap = __test.summarizeFebtPhase0Overlap({
+    legacy_wait_overlap: {
+      compared_n: 5,
+      wait_action_breakdown: [{ value: "WAIT_ONE_BAR", n: 3 }, { value: "ALLOW", n: 2 }],
+      market_state_action_pairs: [{ wait_action: "WAIT_ONE_BAR", value: "REDUCE", n: 2 }],
+      entry_exec_timing_pairs: [{ wait_action: "ALLOW", value: "IMMEDIATE", n: 2 }],
+      ev_policy_source_pairs: [{ wait_action: "ALLOW", value: "DEFAULT", n: 2 }],
+    },
+  });
+  assert.strictEqual(phase0Overlap.compared_n, 5);
+  assert.strictEqual(phase0Overlap.wait_action_breakdown[0].value, "WAIT_ONE_BAR");
   const weeklyLayerLines = __test.buildWeeklyTelegramLayerLines({
     current: {
       drop_counterfactual: cfSummary,
-      by_tier: {
-        CORE: { executed_n: 3, febt_disagreement_n: 2, febt_fallback_legacy_n: 1 },
-        EARLY: { executed_n: 1, febt_disagreement_n: 0, febt_fallback_legacy_n: 1 },
+      quality: {
+        chain_rows: [
+          {
+            febt_shadow_disagrees_legacy_wait: true,
+            febt_shadow_disagreement_reason: "FEBT_ALLOW_LEGACY_WAIT",
+            febt_shadow_fallback_to_legacy: false,
+            febt_shadow_verdict: "ALLOW_CANDIDATE",
+            febt_shadow_legacy_wait_action: "WAIT_ONE_BAR",
+            febt_shadow_legacy_wait_trigger_path: "BASE",
+          },
+          {
+            febt_shadow_disagrees_legacy_wait: true,
+            febt_shadow_disagreement_reason: "FEBT_BLOCK_LEGACY_ALLOW",
+            febt_shadow_fallback_to_legacy: true,
+            febt_shadow_verdict: "BLOCK_CANDIDATE",
+            febt_shadow_legacy_wait_action: "ALLOW",
+            febt_shadow_legacy_wait_trigger_path: "BASE",
+          },
+          {
+            febt_shadow_disagrees_legacy_wait: false,
+            febt_shadow_disagreement_reason: "NONE",
+            febt_shadow_fallback_to_legacy: true,
+            febt_shadow_verdict: "ALLOW_CANDIDATE",
+            febt_shadow_legacy_wait_action: "ALLOW",
+            febt_shadow_legacy_wait_trigger_path: "BASE",
+          },
+        ],
       },
     },
     recommendations: {
@@ -184,10 +253,18 @@ function run() {
     },
     phase0: {
       legacy_wait_baseline: {
+        legacy_wait_coverage_rate: 0.4,
+        legacy_wait_observed_chain_n: 10,
         immediate_win_rate: 0.57,
         saved_loss_pct: 0.31,
         missed_gain_pct: 0.12,
         saved_loss_minus_missed_gain: 0.19,
+      },
+      legacy_wait_overlap: {
+        compared_n: 12,
+        wait_action_breakdown: [{ value: "WAIT_ONE_BAR", n: 7 }, { value: "ALLOW", n: 5 }],
+        market_state_action_pairs: [{ wait_action: "WAIT_ONE_BAR", value: "REDUCE", n: 4 }],
+        entry_exec_timing_pairs: [{ wait_action: "ALLOW", value: "IMMEDIATE", n: 5 }],
       },
       bridge_latency: {
         webhook_to_fill_ms: { p95: 1420 },
@@ -201,9 +278,12 @@ function run() {
   assert.ok(weeklyLayerLines.some((line) => line.includes("3차 상태 분포")));
   assert.ok(weeklyLayerLines.some((line) => line.includes("4차 EV/시간가치층 policy")));
   assert.ok(weeklyLayerLines.some((line) => line.includes("5차 WAIT 타이밍층")));
-  assert.ok(weeklyLayerLines.some((line) => line.includes("disagree 2") || line.includes("disagree 2 / fallback 1") || line.includes("disagree 2 / fallback")));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("disagree 2") || line.includes("disagree 2 / fallback 1") || line.includes("disagree 2 / fallback 2")));
   assert.ok(weeklyLayerLines.some((line) => line.includes("FEBT Phase0 immediate win")));
   assert.ok(weeklyLayerLines.some((line) => line.includes("bridge p95")));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("FEBT shadow sampled 3")));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("replacement proxy recovered 1 / blocked 1 / wait 0") || line.includes("replacement proxy recovered 1 / blocked 1")));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("FEBT overlap compared 12")));
 
   const riskCurve = __test.buildCompetingRiskCurve([
     { ok: true, tp1_time_h: 1, sl_time_h: null },
