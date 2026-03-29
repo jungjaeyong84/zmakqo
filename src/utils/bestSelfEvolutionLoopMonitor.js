@@ -1,0 +1,132 @@
+"use strict";
+
+function unwrapRawReport(value) {
+  if (!value || typeof value !== "object") return value || null;
+  if (value.raw && typeof value.raw === "object") return value.raw;
+  return value;
+}
+
+function toNum(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
+  const objectiveSupervisor = unwrapRawReport(reports.objectiveSupervisor) || {};
+  const stageAutopilot = unwrapRawReport(reports.stageAutopilot) || {};
+  const candidates = unwrapRawReport(reports.candidates) || {};
+  const replay = unwrapRawReport(reports.replay) || {};
+  const canary = unwrapRawReport(reports.canary) || {};
+  const deployment = unwrapRawReport(reports.deployment) || {};
+  const deploymentPlan = unwrapRawReport(reports.deploymentPlan) || {};
+  const weightTuning = unwrapRawReport(reports.weightTuning) || {};
+  const memory = unwrapRawReport(reports.memory) || {};
+  const codexPatch = unwrapRawReport(reports.codexPatch) || {};
+
+  const objectiveReason = String(objectiveSupervisor.reason || "").trim() || null;
+  const deploymentSummary = deployment.summary && typeof deployment.summary === "object" ? deployment.summary : {};
+  const deploymentPlanSummary = deploymentPlan.summary && typeof deploymentPlan.summary === "object" ? deploymentPlan.summary : {};
+  const canarySummary = canary.summary && typeof canary.summary === "object" ? canary.summary : {};
+  const candidateSummary = candidates.summary && typeof candidates.summary === "object" ? candidates.summary : {};
+  const replaySummary = replay.summary && typeof replay.summary === "object" ? replay.summary : {};
+  const memorySummary = memory.summary && typeof memory.summary === "object" ? memory.summary : {};
+  const weightSummary = weightTuning.summary && typeof weightTuning.summary === "object" ? weightTuning.summary : {};
+
+  const rows = [
+    {
+      loop: "OBJECTIVE_SUPERVISOR",
+      fresh: artifacts.objectiveSupervisor && artifacts.objectiveSupervisor.fresh === true,
+      status: String(objectiveSupervisor.verdict || "N/A").trim().toUpperCase() || "N/A",
+      reason: objectiveReason || "N/A",
+    },
+    {
+      loop: "CANDIDATES",
+      fresh: artifacts.candidates && artifacts.candidates.fresh === true,
+      status: Number(candidateSummary.ready_n || 0) > 0 ? "READY" : "HOLD",
+      reason: `top=${candidateSummary.top_candidate_id || "N/A"} / blocked=${candidateSummary.blocked_n ?? 0} / memory=${candidateSummary.memory_blocked_n ?? 0}`,
+    },
+    {
+      loop: "REPLAY",
+      fresh: artifacts.replay && artifacts.replay.fresh === true,
+      status: Number(replaySummary.pass_n || 0) > 0 ? "PASS" : "HOLD",
+      reason: `best=${replaySummary.best_candidate_id || "N/A"} / pass=${replaySummary.pass_n ?? 0} / block=${replaySummary.block_n ?? 0}`,
+    },
+    {
+      loop: "CANARY",
+      fresh: artifacts.canary && artifacts.canary.fresh === true,
+      status: canarySummary.apply_pass === true ? "PASS" : "BLOCK",
+      reason: `open_wave=${canarySummary.open_wave ?? "N/A"} / scale=${canarySummary.scale_allowed ? "YES" : "NO"} / blocked=${canarySummary.blocked_n ?? 0}`,
+    },
+    {
+      loop: "DEPLOYMENT_GUARDS",
+      fresh: artifacts.deployment && artifacts.deployment.fresh === true,
+      status: deploymentSummary.deploy_pass === true ? "PASS" : "BLOCK",
+      reason: Array.isArray(deploymentSummary.blockers) && deploymentSummary.blockers.length ? deploymentSummary.blockers.join("|") : "none",
+    },
+    {
+      loop: "DEPLOYMENT_PLAN",
+      fresh: artifacts.deploymentPlan && artifacts.deploymentPlan.fresh === true,
+      status: String(deploymentPlanSummary.plan_status || "N/A").trim().toUpperCase() || "N/A",
+      reason: `candidate=${deploymentPlanSummary.target_candidate_id || "N/A"} / manual=${deploymentPlanSummary.manual_step_required ? "YES" : "NO"} / file=${deploymentPlanSummary.prepared_file_path || deploymentPlanSummary.latest_generated_file_path || "N/A"}`,
+    },
+    {
+      loop: "STAGE_AUTOPILOT",
+      fresh: artifacts.stageAutopilot && artifacts.stageAutopilot.fresh === true,
+      status: String(stageAutopilot.objective_verdict || "N/A").trim().toUpperCase() || "N/A",
+      reason: `actions=${Array.isArray(stageAutopilot.actions) ? stageAutopilot.actions.length : 0}`,
+    },
+    {
+      loop: "WEIGHT_TUNING",
+      fresh: artifacts.weightTuning && artifacts.weightTuning.fresh === true,
+      status: String(weightSummary.advisory_mode || "N/A").trim().toUpperCase() || "N/A",
+      reason: `suggestions=${weightSummary.suggestion_n ?? 0} / canary_blocked=${weightSummary.canary_blocked ? "YES" : "NO"}`,
+    },
+    {
+      loop: "MEMORY_LEDGER",
+      fresh: artifacts.memory && artifacts.memory.fresh === true,
+      status: Number(memorySummary.blocked_candidate_n || 0) > 0 ? "BLOCK" : "PASS",
+      reason: `blocked=${memorySummary.blocked_candidate_n ?? 0} / top_failed=${memorySummary.top_failed_candidate_id || "N/A"}`,
+    },
+    {
+      loop: "CODEX_PATCH_ENGINE",
+      fresh: artifacts.codexPatch && artifacts.codexPatch.fresh === true,
+      status: String(codexPatch.verdict || "N/A").trim().toUpperCase() || "N/A",
+      reason: `candidate=${codexPatch.recommended_candidate_id || "N/A"} / rollback=${codexPatch.recommended_rollback_file_path || "N/A"}`,
+    },
+  ];
+
+  const staleArtifacts = rows.filter((row) => row.fresh !== true).map((row) => row.loop);
+  const blockers = [];
+  if (objectiveReason) blockers.push(objectiveReason);
+  if (Array.isArray(deploymentSummary.blockers)) blockers.push(...deploymentSummary.blockers);
+  if (Number(memorySummary.blocked_candidate_n || 0) > 0) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK_PRESENT");
+  const uniqueBlockers = Array.from(new Set(blockers.filter(Boolean)));
+
+  let overallStatus = "HEALTHY";
+  if (deploymentPlanSummary.manual_step_required === true) overallStatus = "READY_FOR_MANUAL_PASTE";
+  else if (staleArtifacts.length) overallStatus = "BLOCKED";
+  else if (uniqueBlockers.length || canarySummary.apply_pass === false || deploymentSummary.deploy_pass === false) overallStatus = "DEGRADED";
+
+  return {
+    summary: {
+      overall_status: overallStatus,
+      stale_artifact_n: staleArtifacts.length,
+      stale_artifacts: staleArtifacts,
+      critical_blocker_n: uniqueBlockers.length,
+      critical_blockers: uniqueBlockers.slice(0, 10),
+      promotion_path_ready: deploymentSummary.deploy_pass === true,
+      manual_paste_ready: deploymentPlanSummary.manual_step_required === true,
+      ready_candidate_id: deploymentPlanSummary.target_candidate_id || deploymentSummary.target_candidate_id || null,
+      canary_open_wave: toNum(canarySummary.open_wave) || null,
+      loop_n: rows.length,
+      fresh_loop_n: rows.filter((row) => row.fresh === true).length,
+    },
+    rows,
+  };
+}
+
+module.exports = {
+  deriveLoopMonitor,
+  unwrapRawReport,
+};

@@ -13,6 +13,8 @@
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_CANDIDATE_CHANGESET_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_CANARY_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DEPLOYMENT_GUARDS_SPEC.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DEPLOYMENT_AUTOPILOT_SPEC.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_LOOP_MONITOR_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_WEIGHT_TUNING_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MEMORY_LEDGER_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_WORK_BREAKDOWN.md`
@@ -113,11 +115,13 @@
 14. deployment guards
 15. memory-aware pre-block
 16. weight tuning advisory
+17. deployment handoff plan
+18. Codex loop monitor
 
 ## 8. 다음 고도화 범위
 
-1. 시장별 objective score 정교화
-2. deployment autopilot hardening
+1. Pine manual paste handoff 고도화
+2. 시장별 objective score 정교화
 3. memory 기반 candidate pre-block 자동화 강화
 4. weight tuning auto-apply 금지 해제 여부 검증
 

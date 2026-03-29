@@ -175,6 +175,8 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.self_evolution_policy.replay_latest_path.endsWith("best_self_evolution_replay_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_policy.canary_latest_path.endsWith("best_self_evolution_canary_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_policy.deployment_guards_latest_path.endsWith("best_self_evolution_deployment_guards_latest.json"), true);
+  assert.strictEqual(allowPromote.self_evolution_policy.deployment_plan_latest_path.endsWith("best_self_evolution_deployment_plan_latest.json"), true);
+  assert.strictEqual(allowPromote.self_evolution_policy.loop_monitor_latest_path.endsWith("best_self_evolution_loop_monitor_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_policy.weight_tuning_latest_path.endsWith("best_self_evolution_weight_tuning_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_policy.memory_latest_path.endsWith("best_self_evolution_memory_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_dataset.rows_n, 24);
@@ -188,6 +190,8 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.self_evolution_replay.total_n, 1);
   assert.strictEqual(allowPromote.self_evolution_canary.total_n, 1);
   assert.strictEqual(allowPromote.self_evolution_deployment.deploy_pass, true);
+  assert.strictEqual(allowPromote.self_evolution_deployment_plan.prepare_pass, true);
+  assert.strictEqual(allowPromote.codex_authority.owner, "CODEX");
   assert.strictEqual(typeof allowPromote.self_evolution_weight_tuning.summary.advisory_mode, "string");
   assert.strictEqual(allowPromote.self_evolution_memory.total_n, 0);
   assert.strictEqual(allowPromote.best_febt_tuning_contract.mode, "NORMAL");
@@ -479,8 +483,8 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
     },
     self_evolution_policy: {
       master_spec_path: "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MASTER_SPEC.md",
-      current_focus: "P0_DATASET,P1_OBJECTIVE,P2_ATTRIBUTION,P3_CANDIDATE_CHANGESET,P4_REPLAY,P5_CANARY,P6_AUTOROLLBACK,P7_MEMORY_LEDGER,CANARY_SCALE,DEPLOYMENT_GUARDS,MEMORY_PREBLOCK,WEIGHT_TUNING_ADVISORY",
-      next_focus: "DEPLOYMENT_AUTOPILOT_HARDENING",
+      current_focus: "P0_DATASET,P1_OBJECTIVE,P2_ATTRIBUTION,P3_CANDIDATE_CHANGESET,P4_REPLAY,P5_CANARY,P6_AUTOROLLBACK,P7_MEMORY_LEDGER,CANARY_SCALE,DEPLOYMENT_GUARDS,DEPLOYMENT_HANDOFF,LOOP_MONITORING,MEMORY_PREBLOCK,WEIGHT_TUNING_ADVISORY",
+      next_focus: "PINE_MANUAL_PASTE_HANDOFF",
       linked_paths: ["/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DATASET_SPEC.md"],
     },
     best_febt_tuning_contract: {
@@ -528,6 +532,15 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
       market_ready_n: 1,
       market_total_n: 2,
     },
+    self_evolution_deployment_plan: {
+      plan_status: "PREPARE_PROMOTION",
+      prepare_pass: true,
+      manual_step_required: false,
+      prepared_file_path: "/tmp/prepared.pine",
+      latest_generated_file_path: "/tmp/latest.pine",
+      rollback_source_file_path: null,
+      blockers: [],
+    },
     self_evolution_weight_tuning: {
       summary: {
         advisory_mode: "HOLD",
@@ -542,6 +555,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
       ],
     },
     codex_review: { status: "FRESH", verdict: "HOLD", reason: "BLOCKED" },
+    codex_authority: { owner: "CODEX", authority_mode: "PREPARE_PROMOTION", status: "FRESH", verdict: "HOLD", manual_step_required: false, prepared_file_path: "/tmp/prepared.pine" },
     stage_autopilot: { status: "FRESH", objective_verdict: "HOLD", action_n: 0, action_types: [] },
   });
   assert.ok(Array.isArray(telegramSections));
@@ -558,6 +572,8 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.ok(telegramSections.some((section) => section.header === "BEST/FEBT 공통 계약"));
   assert.ok(telegramSections.some((section) => section.header === "자기 진화 정책"));
   assert.ok(telegramSections.some((section) => section.header === "자기 진화 배포 가드"));
+  assert.ok(telegramSections.some((section) => section.header === "자기 진화 배포 handoff"));
+  assert.ok(telegramSections.some((section) => section.header === "Codex 권한"));
   assert.ok(telegramSections.some((section) => section.header === "자기 진화 가중치 튜닝"));
   assert.ok(telegramSections.some((section) => section.header === "자기 진화 메모리"));
   assert.ok(telegramSections.some((section) => section.header === "시장별 BEST/FEBT 계약"));

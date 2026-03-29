@@ -12,6 +12,8 @@ const {
   writeJson,
 } = require("./automation-utils");
 
+const WEEKLY_PINE_HISTORY_PATH = path.join(OPS_DAILY_DIR, "weekly_pine_upgrade_history.json");
+
 const STATE_MACHINE = Object.freeze({
   WATCH: "WATCH",
   READY: "READY",
@@ -77,6 +79,12 @@ function readStageSnapshot({ stage, provider } = {}) {
     filePath,
     data: readJsonSafe(filePath, null),
   };
+}
+
+function readWeeklyPineLatestHistoryRow() {
+  const data = readJsonSafe(WEEKLY_PINE_HISTORY_PATH, null);
+  const rows = Array.isArray(data && data.weeks) ? data.weeks : [];
+  return rows.length ? rows[rows.length - 1] : null;
 }
 
 function getStageState(state, stage) {
@@ -229,6 +237,7 @@ module.exports = {
   stageSnapshotPath,
   writeStageSnapshot,
   readStageSnapshot,
+  readWeeklyPineLatestHistoryRow,
   getStageState,
   normalizeSignature,
   appendStageHistory,
@@ -244,5 +253,6 @@ module.exports = {
     computeSignatureStreak,
     evaluateCommonAutoApply,
     shouldAutoRollback,
+    readWeeklyPineLatestHistoryRow,
   },
 };

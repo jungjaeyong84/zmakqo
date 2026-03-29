@@ -55,7 +55,7 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
   assert.strictEqual(marketCandidate.nextSettings.ai_bias_gate_opposite_mult, 0.30);
 
   const pinePromote = __test.buildPineCandidate(
-    { data: { verdict: "PATCH_CANDIDATE", promotion: { candidate_id: "AUTO_CORE_SCORE_TIGHTEN" }, reason: "AUTO_PROMOTION_READY" } },
+    { data: { verdict: "PATCH_CANDIDATE", promotion: { candidate_id: "AUTO_CORE_SCORE_TIGHTEN" }, codex_authority: { status: "FRESH", verdict: "PROMOTE", recommended_candidate_id: "AUTO_CORE_SCORE_TIGHTEN" }, reason: "AUTO_PROMOTION_READY" } },
     { data: { verdict: "PROMOTE" }, fresh: true },
     { data: {} },
   );

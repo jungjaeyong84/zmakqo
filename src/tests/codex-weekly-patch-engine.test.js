@@ -22,6 +22,8 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
         attribution_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_attribution_latest.json",
         canary_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_canary_latest.json",
         deployment_guards_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_deployment_guards_latest.json",
+        deployment_plan_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_deployment_plan_latest.json",
+        loop_monitor_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_loop_monitor_latest.json",
         weight_tuning_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_weight_tuning_latest.json",
         memory_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_memory_latest.json",
         linked_paths: [
@@ -91,6 +93,18 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
         market_ready_n: 2,
         market_total_n: 6,
       },
+      self_evolution_deployment_plan: {
+        plan_status: "PREPARE_PROMOTION",
+        prepare_pass: false,
+        manual_step_required: false,
+        display_candidate_id: "AUTO_CORE_REGIME_TIGHTEN",
+        open_wave: 2,
+        market_scope_ready_n: 2,
+        market_scope_n: 6,
+        prepared_file_path: "/tmp/prepared.pine",
+        latest_generated_file_path: "/tmp/latest.pine",
+        rollback_source_file_path: null,
+      },
       self_evolution_memory: {
         total_n: 12,
         current_n: 6,
@@ -112,6 +126,14 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
         suggestions: [
           { axis: "delay_cost_weight", direction: "UP", delta: 0.05, reason: "LATE_LOSS_TOP_MARKET" },
         ],
+      },
+      codex_authority: {
+        owner: "CODEX",
+        authority_mode: "PREPARE_PROMOTION",
+        status: "FRESH",
+        verdict: "HOLD",
+        display_candidate_id: "AUTO_CORE_REGIME_TIGHTEN",
+        prepared_file_path: "/tmp/prepared.pine",
       },
       best_febt_market_contracts: [
         {
@@ -151,6 +173,8 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
     wait: { reason: "KEEP" },
     canary: { shadow: { summary: { drift: 0 } } },
     stageAutopilot: { objective_verdict: "HOLD", actions: [] },
+    deploymentPlan: { summary: { plan_status: "PREPARE_PROMOTION", target_candidate_id: "AUTO_CORE_REGIME_TIGHTEN" } },
+    loopMonitor: { summary: { overall_status: "DEGRADED", fresh_loop_n: 8, loop_n: 10, critical_blockers: ["SELF_EVOLUTION_CANARY_APPLY_BLOCK"], ready_candidate_id: "AUTO_CORE_REGIME_TIGHTEN", canary_open_wave: 2 } },
     retrospective: { periods: { DAILY: { objective: { verdict: "PASS" }, realized_trades: { net_pnl_quote: 1000 } }, WEEKLY: { objective: { verdict: "PASS" }, realized_trades: { net_pnl_quote: 3000 } }, MONTHLY: { objective: { verdict: "PASS" }, realized_trades: { net_pnl_quote: 12000 } } } },
   });
 
@@ -167,6 +191,8 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.ok(prompt.includes("BEST_SELF_EVOLUTION_DATASET_SPEC.md"));
   assert.ok(prompt.includes("BEST self-evolution memory ledger spec"));
   assert.ok(prompt.includes("BEST self-evolution deployment guards spec"));
+  assert.ok(prompt.includes("BEST self-evolution deployment plan spec"));
+  assert.ok(prompt.includes("BEST self-evolution loop monitor spec"));
   assert.ok(prompt.includes("BEST self-evolution weight tuning spec"));
   assert.ok(prompt.includes("Self-evolution objective snapshot:"));
   assert.ok(prompt.includes("objective score: 3.2145"));
@@ -188,6 +214,8 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.ok(prompt.includes("top ready: BTCUSDT / top rollback: DOGEUSDT"));
   assert.ok(prompt.includes("Self-evolution deployment guards snapshot:"));
   assert.ok(prompt.includes("target/deploy/rollback_only: AUTO_CORE_REGIME_TIGHTEN / BLOCK / NO"));
+  assert.ok(prompt.includes("Self-evolution deployment plan snapshot:"));
+  assert.ok(prompt.includes("status/prepare/manual: PREPARE_PROMOTION / BLOCK / NO"));
   assert.ok(prompt.includes("Self-evolution weight tuning snapshot:"));
   assert.ok(prompt.includes("advisory/suggestions/dominant: HOLD / 2 / delay_cost_weight"));
   assert.ok(prompt.includes("Self-evolution memory ledger snapshot:"));
@@ -195,6 +223,10 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.ok(prompt.includes("success/neutral/fail/rolled_back: 2 / 5 / 3 / 2"));
   assert.ok(prompt.includes("blocked candidates: AUTO_CORE_REGIME_TIGHTEN"));
   assert.ok(prompt.includes("Never retry a blocked candidate"));
+  assert.ok(prompt.includes("Codex authority snapshot:"));
+  assert.ok(prompt.includes("owner/mode/status/verdict: CODEX / PREPARE_PROMOTION / FRESH / HOLD"));
+  assert.ok(prompt.includes("Self-evolution loop monitor snapshot:"));
+  assert.ok(prompt.includes("overall/fresh/blockers: DEGRADED / 8 / 10 / SELF_EVOLUTION_CANARY_APPLY_BLOCK"));
   assert.ok(prompt.includes("febt contract mode: RECOVERY_FIRST"));
   assert.ok(prompt.includes("febt tightening allowed: NO"));
   assert.ok(prompt.includes("BEST/FEBT market contracts:"));

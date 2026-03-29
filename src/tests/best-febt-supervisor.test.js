@@ -16,8 +16,10 @@ function run() {
   assert.strictEqual(selfEvolution.linked_paths.length >= 6, true);
   assert.strictEqual(selfEvolution.status, "ACTIVE");
   assert.strictEqual(selfEvolution.deployment_guards_latest_path.endsWith("best_self_evolution_deployment_guards_latest.json"), true);
-  assert.strictEqual(selfEvolution.current_focus, "P0_DATASET,P1_OBJECTIVE,P2_ATTRIBUTION,P3_CANDIDATE_CHANGESET,P4_REPLAY,P5_CANARY,P6_AUTOROLLBACK,P7_MEMORY_LEDGER,CANARY_SCALE,DEPLOYMENT_GUARDS,MEMORY_PREBLOCK,WEIGHT_TUNING_ADVISORY");
-  assert.strictEqual(selfEvolution.next_focus, "DEPLOYMENT_AUTOPILOT_HARDENING");
+  assert.strictEqual(selfEvolution.deployment_plan_latest_path.endsWith("best_self_evolution_deployment_plan_latest.json"), true);
+  assert.strictEqual(selfEvolution.loop_monitor_latest_path.endsWith("best_self_evolution_loop_monitor_latest.json"), true);
+  assert.strictEqual(selfEvolution.current_focus, "P0_DATASET,P1_OBJECTIVE,P2_ATTRIBUTION,P3_CANDIDATE_CHANGESET,P4_REPLAY,P5_CANARY,P6_AUTOROLLBACK,P7_MEMORY_LEDGER,CANARY_SCALE,DEPLOYMENT_GUARDS,DEPLOYMENT_HANDOFF,LOOP_MONITORING,MEMORY_PREBLOCK,WEIGHT_TUNING_ADVISORY");
+  assert.strictEqual(selfEvolution.next_focus, "PINE_MANUAL_PASTE_HANDOFF");
 
   const contracts = __test.deriveBestFebtMarketContracts({
     governance: {

@@ -17,6 +17,8 @@ const SELF_EVOLUTION_REPLAY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_ev
 const SELF_EVOLUTION_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json");
 const SELF_EVOLUTION_MEMORY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_memory_latest.json");
 const SELF_EVOLUTION_DEPLOYMENT_GUARDS_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_guards_latest.json");
+const SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json");
+const SELF_EVOLUTION_LOOP_MONITOR_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_loop_monitor_latest.json");
 const SELF_EVOLUTION_WEIGHT_TUNING_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_weight_tuning_latest.json");
 const SELF_EVOLUTION_POLICY_PATHS = Object.freeze([
   SELF_EVOLUTION_MASTER_SPEC_PATH,
@@ -26,6 +28,8 @@ const SELF_EVOLUTION_POLICY_PATHS = Object.freeze([
   "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_CANDIDATE_CHANGESET_SPEC.md",
   "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_CANARY_SPEC.md",
   "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DEPLOYMENT_GUARDS_SPEC.md",
+  "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DEPLOYMENT_AUTOPILOT_SPEC.md",
+  "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_LOOP_MONITOR_SPEC.md",
   "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_WEIGHT_TUNING_SPEC.md",
   "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MEMORY_LEDGER_SPEC.md",
   "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_WORK_BREAKDOWN.md",
@@ -80,12 +84,14 @@ function buildSelfEvolutionPolicySpec() {
     replay_latest_path: SELF_EVOLUTION_REPLAY_LATEST_PATH,
     canary_latest_path: SELF_EVOLUTION_CANARY_LATEST_PATH,
     deployment_guards_latest_path: SELF_EVOLUTION_DEPLOYMENT_GUARDS_LATEST_PATH,
+    deployment_plan_latest_path: SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST_PATH,
+    loop_monitor_latest_path: SELF_EVOLUTION_LOOP_MONITOR_LATEST_PATH,
     weight_tuning_latest_path: SELF_EVOLUTION_WEIGHT_TUNING_LATEST_PATH,
     memory_latest_path: SELF_EVOLUTION_MEMORY_LATEST_PATH,
     linked_paths: SELF_EVOLUTION_POLICY_PATHS.slice(),
     status: "ACTIVE",
-    current_focus: "P0_DATASET,P1_OBJECTIVE,P2_ATTRIBUTION,P3_CANDIDATE_CHANGESET,P4_REPLAY,P5_CANARY,P6_AUTOROLLBACK,P7_MEMORY_LEDGER,CANARY_SCALE,DEPLOYMENT_GUARDS,MEMORY_PREBLOCK,WEIGHT_TUNING_ADVISORY",
-    next_focus: "DEPLOYMENT_AUTOPILOT_HARDENING",
+    current_focus: "P0_DATASET,P1_OBJECTIVE,P2_ATTRIBUTION,P3_CANDIDATE_CHANGESET,P4_REPLAY,P5_CANARY,P6_AUTOROLLBACK,P7_MEMORY_LEDGER,CANARY_SCALE,DEPLOYMENT_GUARDS,DEPLOYMENT_HANDOFF,LOOP_MONITORING,MEMORY_PREBLOCK,WEIGHT_TUNING_ADVISORY",
+    next_focus: "PINE_MANUAL_PASTE_HANDOFF",
   };
 }
 
@@ -310,6 +316,8 @@ module.exports = {
   SELF_EVOLUTION_REPLAY_LATEST_PATH,
   SELF_EVOLUTION_CANARY_LATEST_PATH,
   SELF_EVOLUTION_DEPLOYMENT_GUARDS_LATEST_PATH,
+  SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST_PATH,
+  SELF_EVOLUTION_LOOP_MONITOR_LATEST_PATH,
   SELF_EVOLUTION_WEIGHT_TUNING_LATEST_PATH,
   SELF_EVOLUTION_MEMORY_LATEST_PATH,
   SELF_EVOLUTION_POLICY_PATHS,
