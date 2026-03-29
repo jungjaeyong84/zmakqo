@@ -40,6 +40,8 @@ const { __test } = require("../engine/paperUpbitRunner");
   assert.strictEqual(wait.ok, false);
   assert.strictEqual(wait.action, "WAIT_ONE_BAR");
   assert.strictEqual(wait.reason, "DROP_WAIT_ONE_BAR_TIMING");
+  assert.strictEqual(wait.detail.febt_shadow_fallback_to_legacy, true);
+  assert.strictEqual(wait.detail.febt_shadow_fallback_reason, "PAYLOAD_MISSING");
 
   const allow = __test.evaluateWaitOneBarTiming({
     intent: "ENTRY",
@@ -58,6 +60,7 @@ const { __test } = require("../engine/paperUpbitRunner");
   });
   assert.strictEqual(allow.ok, true);
   assert.strictEqual(allow.action, "ALLOW");
+  assert.strictEqual(allow.detail.febt_shadow_fallback_to_legacy, true);
 
   const physicsAssist = __test.evaluateWaitOneBarTiming({
     intent: "ENTRY",
@@ -83,6 +86,7 @@ const { __test } = require("../engine/paperUpbitRunner");
   assert.strictEqual(physicsAssist.detail.wait_one_bar_trigger_path, "PHYSICS_ASSIST");
   assert.strictEqual(physicsAssist.detail.wait_one_bar_market_state_action, "REDUCE");
   assert.strictEqual(physicsAssist.detail.wait_one_bar_market_state_wait_assist, true);
+  assert.strictEqual(physicsAssist.detail.febt_shadow_fallback_to_legacy, true);
 
   const physicsHard = __test.evaluateWaitOneBarTiming({
     intent: "ENTRY",
@@ -112,6 +116,7 @@ const { __test } = require("../engine/paperUpbitRunner");
   assert.strictEqual(physicsHard.detail.wait_one_bar_trigger_path, "PHYSICS_HARD");
   assert.strictEqual(physicsHard.detail.wait_one_bar_market_state_action, "DROP");
   assert.strictEqual(physicsHard.detail.wait_one_bar_market_state_wait_hard, true);
+  assert.strictEqual(physicsHard.detail.febt_shadow_fallback_to_legacy, true);
 
   const skip = __test.evaluateWaitOneBarTiming({
     intent: "ENTRY",
@@ -123,6 +128,32 @@ const { __test } = require("../engine/paperUpbitRunner");
   assert.strictEqual(skip.ok, true);
   assert.strictEqual(skip.action, "SKIP");
   assert.strictEqual(skip.detail.wait_one_bar_skip_reason, "FEATURES_MISSING");
+  assert.strictEqual(skip.detail.febt_shadow_fallback_to_legacy, true);
+
+  const disagreement = __test.evaluateWaitOneBarTiming({
+    intent: "ENTRY",
+    intentDir: "LONG",
+    eventUpper: "LONG",
+    cfg,
+    features: {
+      ev_gate_same_dir_streak: 3,
+      ev_gate_chase_ratio: 1.92,
+      ev_gate_last_close_control: 0.88,
+      ev_gate_last_dir_body: 0.56,
+      ev_gate_last_opposite_wick: 0.09,
+      ev_gate_recent_move_1_pct: 0.52,
+      ev_gate_counter_dir_bars: 0,
+      febt_mode: "SHADOW",
+      febt_phase: "FIRE",
+      febt_calc_ok: true,
+      febt_calc_reason: "OK",
+    },
+  });
+  assert.strictEqual(disagreement.ok, false);
+  assert.strictEqual(disagreement.detail.febt_shadow_verdict, "ALLOW_CANDIDATE");
+  assert.strictEqual(disagreement.detail.febt_shadow_disagrees_legacy_wait, true);
+  assert.strictEqual(disagreement.detail.febt_shadow_disagreement_reason, "FEBT_ALLOW_LEGACY_WAIT");
+  assert.strictEqual(disagreement.detail.febt_shadow_fallback_to_legacy, false);
 
   console.log("WAIT_ONE_BAR_POLICY_TEST_OK");
 })().catch((err) => {

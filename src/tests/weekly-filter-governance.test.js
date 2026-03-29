@@ -151,7 +151,13 @@ function run() {
   assert.ok(cfSummaryLines[0].includes("market state"));
   assert.ok(cfSummaryLines[2].includes("source"));
   const weeklyLayerLines = __test.buildWeeklyTelegramLayerLines({
-    current: { drop_counterfactual: cfSummary },
+    current: {
+      drop_counterfactual: cfSummary,
+      by_tier: {
+        CORE: { executed_n: 3, febt_disagreement_n: 2, febt_fallback_legacy_n: 1 },
+        EARLY: { executed_n: 1, febt_disagreement_n: 0, febt_fallback_legacy_n: 1 },
+      },
+    },
     recommendations: {
       QUALITY: { action: "KEEP", reason: "STABLE" },
       AI: { action: "KEEP", reason: "ALIGNED" },
@@ -195,6 +201,7 @@ function run() {
   assert.ok(weeklyLayerLines.some((line) => line.includes("3차 상태 분포")));
   assert.ok(weeklyLayerLines.some((line) => line.includes("4차 EV/시간가치층 policy")));
   assert.ok(weeklyLayerLines.some((line) => line.includes("5차 WAIT 타이밍층")));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("disagree 2") || line.includes("disagree 2 / fallback 1") || line.includes("disagree 2 / fallback")));
   assert.ok(weeklyLayerLines.some((line) => line.includes("FEBT Phase0 immediate win")));
   assert.ok(weeklyLayerLines.some((line) => line.includes("bridge p95")));
 

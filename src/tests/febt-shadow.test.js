@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("assert");
-const { resolveFebtShadow } = require("../utils/febtShadow");
+const { resolveFebtShadow, buildFebtLegacyWaitComparison } = require("../utils/febtShadow");
 
 function run() {
   const parsed = resolveFebtShadow({
@@ -44,6 +44,32 @@ function run() {
   assert.strictEqual(missing.payloadMissing, true);
   assert.strictEqual(missing.phase, null);
   assert.strictEqual(missing.calcOk, null);
+
+  const compareWait = buildFebtLegacyWaitComparison({
+    input: {
+      features_json: {
+        febt_phase: "FIRE",
+        febt_calc_ok: true,
+        febt_calc_reason: "OK",
+      },
+    },
+    legacyWaitAction: "WAIT_ONE_BAR",
+    legacyWaitTriggerPath: "BASE",
+  });
+  assert.strictEqual(compareWait.febt_shadow_verdict, "ALLOW_CANDIDATE");
+  assert.strictEqual(compareWait.febt_shadow_disagrees_legacy_wait, true);
+  assert.strictEqual(compareWait.febt_shadow_disagreement_reason, "FEBT_ALLOW_LEGACY_WAIT");
+  assert.strictEqual(compareWait.febt_shadow_fallback_to_legacy, false);
+
+  const compareFallback = buildFebtLegacyWaitComparison({
+    input: { features_json: {} },
+    legacyWaitAction: "ALLOW",
+    legacyWaitTriggerPath: "UNKNOWN",
+  });
+  assert.strictEqual(compareFallback.febt_shadow_verdict, "LEGACY_FALLBACK");
+  assert.strictEqual(compareFallback.febt_shadow_fallback_to_legacy, true);
+  assert.strictEqual(compareFallback.febt_shadow_fallback_reason, "PAYLOAD_MISSING");
+  assert.strictEqual(compareFallback.febt_shadow_disagrees_legacy_wait, false);
 
   console.log("FEBT_SHADOW_TEST_OK");
 }

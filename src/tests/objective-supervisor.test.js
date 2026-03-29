@@ -242,6 +242,8 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
         febt_fire_n: 3,
         febt_late_n: 1,
         febt_void_n: 0,
+        febt_disagreement_n: 2,
+        febt_fallback_legacy_n: 1,
         febt_missing_rate: 0.25,
       },
     },
@@ -281,6 +283,8 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   const filterLayerSection = telegramSections.find((section) => section.header === "필터 계층");
   assert.ok(filterLayerSection.lines[4].includes("FEBT calc 75.00%"));
   assert.ok(filterLayerSection.lines[4].includes("fire 3"));
+  assert.ok(filterLayerSection.lines[4].includes("disagree 2"));
+  assert.ok(filterLayerSection.lines[4].includes("fallback 1"));
   assert.ok(telegramSections.some((section) => section.header === "FEBT Phase 0"));
 
   console.log("OBJECTIVE_SUPERVISOR_TEST_OK");

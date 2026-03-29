@@ -11,12 +11,21 @@ const {
   susceptibilityBucket,
   freeEnergyBucket,
 } = require("./statPhysFeatures");
-const { resolveFebtShadow } = require("./febtShadow");
+const { resolveFebtShadow, buildFebtLegacyWaitComparison } = require("./febtShadow");
 
 function toNum(v) {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+function toBool(v) {
+  if (v === true || v === false) return v;
+  const raw = String(v || "").trim().toUpperCase();
+  if (!raw) return null;
+  if (["TRUE", "1", "YES", "Y", "ON"].includes(raw)) return true;
+  if (["FALSE", "0", "NO", "N", "OFF"].includes(raw)) return false;
+  return null;
 }
 
 function featuresOf(row) {
@@ -122,6 +131,16 @@ function buildFilterFeatureSignature(row) {
   const entryExecTiming = String(f._entry_exec_timing ?? (row && row._entry_exec_timing) ?? "unknown").trim().toUpperCase() || "unknown";
   const evGatePolicyVersion = String(f.ev_gate_policy_version ?? f.policy_version ?? "unknown").trim().toUpperCase() || "unknown";
   const evGatePolicySource = String(f.ev_gate_policy_source ?? f.policy_source ?? "unknown").trim().toUpperCase() || "unknown";
+  const febtCompare = buildFebtLegacyWaitComparison({
+    input: row,
+    legacyWaitAction,
+    legacyWaitTriggerPath,
+  });
+  const febtShadowVerdict = String(f.febt_shadow_verdict ?? febtCompare.febt_shadow_verdict ?? "unknown").trim().toUpperCase() || "unknown";
+  const febtShadowFallbackReason = String(f.febt_shadow_fallback_reason ?? febtCompare.febt_shadow_fallback_reason ?? "unknown").trim().toUpperCase() || "unknown";
+  const febtShadowDisagreementReason = String(f.febt_shadow_disagreement_reason ?? febtCompare.febt_shadow_disagreement_reason ?? "unknown").trim().toUpperCase() || "unknown";
+  const febtShadowLegacyWaitAction = String(f.febt_shadow_legacy_wait_action ?? febtCompare.febt_shadow_legacy_wait_action ?? legacyWaitAction).trim().toUpperCase() || "unknown";
+  const febtShadowLegacyWaitTriggerPath = String(f.febt_shadow_legacy_wait_trigger_path ?? febtCompare.febt_shadow_legacy_wait_trigger_path ?? legacyWaitTriggerPath).trim().toUpperCase() || "unknown";
   return {
     regime: resolveRegimeRecord(row) || "unknown",
     score_abs: scoreAbs,
@@ -144,6 +163,13 @@ function buildFilterFeatureSignature(row) {
     entry_exec_timing: entryExecTiming,
     ev_gate_policy_version: evGatePolicyVersion,
     ev_gate_policy_source: evGatePolicySource,
+    febt_shadow_verdict: febtShadowVerdict,
+    febt_shadow_fallback_to_legacy: toBool(f.febt_shadow_fallback_to_legacy) === true || febtCompare.febt_shadow_fallback_to_legacy === true,
+    febt_shadow_fallback_reason: febtShadowFallbackReason,
+    febt_shadow_disagrees_legacy_wait: toBool(f.febt_shadow_disagrees_legacy_wait) === true || febtCompare.febt_shadow_disagrees_legacy_wait === true,
+    febt_shadow_disagreement_reason: febtShadowDisagreementReason,
+    febt_shadow_legacy_wait_action: febtShadowLegacyWaitAction,
+    febt_shadow_legacy_wait_trigger_path: febtShadowLegacyWaitTriggerPath,
     febt_mode: febt.mode || "unknown",
     febt_phase: febt.phase || "unknown",
     febt_calc_ok: febt.calcOk,

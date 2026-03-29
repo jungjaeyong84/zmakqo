@@ -28,6 +28,78 @@ function normalizeEnum(raw, allowed, fallback = null) {
   return allowed.includes(value) ? value : fallback;
 }
 
+function normalizeLegacyWaitAction(raw) {
+  return normalizeEnum(raw, ["ALLOW", "WAIT_ONE_BAR", "SKIP"], "UNKNOWN");
+}
+
+function normalizeLegacyWaitTriggerPath(raw) {
+  return normalizeEnum(raw, ["BASE", "PHYSICS_ASSIST", "PHYSICS_HARD", "UNKNOWN"], "UNKNOWN");
+}
+
+function resolveFebtShadowVerdict(shadow = {}) {
+  if (!shadow || shadow.payloadMissing === true) {
+    return { verdict: "LEGACY_FALLBACK", fallbackToLegacy: true, fallbackReason: "PAYLOAD_MISSING" };
+  }
+  if (shadow.calcOk !== true) {
+    return {
+      verdict: "LEGACY_FALLBACK",
+      fallbackToLegacy: true,
+      fallbackReason: shadow.calcReason || "CALC_FAIL",
+    };
+  }
+  if (shadow.phase === "FIRE") {
+    return { verdict: "ALLOW_CANDIDATE", fallbackToLegacy: false, fallbackReason: "NONE" };
+  }
+  if (shadow.phase === "PREPARE" || shadow.phase === "ARMED") {
+    return { verdict: "WAIT_CANDIDATE", fallbackToLegacy: false, fallbackReason: "NONE" };
+  }
+  if (shadow.phase === "LATE" || shadow.phase === "VOID") {
+    return { verdict: "BLOCK_CANDIDATE", fallbackToLegacy: false, fallbackReason: "NONE" };
+  }
+  return {
+    verdict: "LEGACY_FALLBACK",
+    fallbackToLegacy: true,
+    fallbackReason: shadow.phase === "UNKNOWN" ? "UNKNOWN_PHASE" : "PHASE_UNMAPPED",
+  };
+}
+
+function buildFebtLegacyWaitComparison({ input = {}, legacyWaitAction = null, legacyWaitTriggerPath = null } = {}) {
+  const shadow = resolveFebtShadow(input);
+  const legacyAction = normalizeLegacyWaitAction(legacyWaitAction);
+  const legacyTrigger = normalizeLegacyWaitTriggerPath(legacyWaitTriggerPath);
+  const verdict = resolveFebtShadowVerdict(shadow);
+
+  let disagrees = false;
+  let disagreementReason = "NONE";
+  if (!verdict.fallbackToLegacy) {
+    if (legacyAction === "ALLOW" && verdict.verdict === "WAIT_CANDIDATE") {
+      disagrees = true;
+      disagreementReason = "FEBT_WAIT_LEGACY_ALLOW";
+    } else if (legacyAction === "ALLOW" && verdict.verdict === "BLOCK_CANDIDATE") {
+      disagrees = true;
+      disagreementReason = "FEBT_BLOCK_LEGACY_ALLOW";
+    } else if (legacyAction === "WAIT_ONE_BAR" && verdict.verdict === "ALLOW_CANDIDATE") {
+      disagrees = true;
+      disagreementReason = "FEBT_ALLOW_LEGACY_WAIT";
+    } else if (legacyAction === "WAIT_ONE_BAR" && verdict.verdict === "BLOCK_CANDIDATE") {
+      disagrees = true;
+      disagreementReason = "FEBT_BLOCK_LEGACY_WAIT";
+    } else if (legacyAction === "SKIP" && verdict.verdict !== "LEGACY_FALLBACK") {
+      disagreementReason = "LEGACY_SKIP";
+    }
+  }
+
+  return {
+    febt_shadow_verdict: verdict.verdict,
+    febt_shadow_fallback_to_legacy: verdict.fallbackToLegacy === true,
+    febt_shadow_fallback_reason: verdict.fallbackReason,
+    febt_shadow_disagrees_legacy_wait: disagrees,
+    febt_shadow_disagreement_reason: disagreementReason,
+    febt_shadow_legacy_wait_action: legacyAction,
+    febt_shadow_legacy_wait_trigger_path: legacyTrigger,
+  };
+}
+
 function resolveFebtShadow(input = {}) {
   const f = featuresOf(input);
   const mode = normalizeEnum(f.febt_mode, ["OFF", "SHADOW", "SOFT", "HARD"], null);
@@ -104,9 +176,13 @@ function resolveFebtShadow(input = {}) {
 
 module.exports = {
   resolveFebtShadow,
+  buildFebtLegacyWaitComparison,
   __test: {
     toNum,
     toBool,
     normalizeEnum,
+    normalizeLegacyWaitAction,
+    normalizeLegacyWaitTriggerPath,
+    resolveFebtShadowVerdict,
   },
 };

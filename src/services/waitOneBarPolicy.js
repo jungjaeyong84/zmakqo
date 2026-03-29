@@ -3,6 +3,7 @@
 const { resolveEntryTimingTier } = require("../utils/liveEntryTaxonomy");
 const { buildEntryMicroDetail, buildEntryMicroSnapshotFromFeatures } = require("../utils/entryMicroSnapshot");
 const { resolveMarketStateSummary } = require("../utils/marketStateSummary");
+const { buildFebtLegacyWaitComparison } = require("../utils/febtShadow");
 
 function clampNumber(value, min, max, fallback) {
   const n = Number(value);
@@ -106,6 +107,17 @@ function evaluateWaitOneBarTiming({
     wait_one_bar_market_state_wait_hard: marketState.waitHard,
   };
 
+  function withFebtShadow(baseDetail, legacyAction, legacyTriggerPath = "UNKNOWN") {
+    return {
+      ...baseDetail,
+      ...buildFebtLegacyWaitComparison({
+        input: f,
+        legacyWaitAction: legacyAction,
+        legacyWaitTriggerPath: legacyTriggerPath,
+      }),
+    };
+  }
+
   if (
     !Number.isFinite(sameDirStreak) ||
     !Number.isFinite(chaseRatio) ||
@@ -117,11 +129,11 @@ function evaluateWaitOneBarTiming({
     return {
       ok: true,
       action: "SKIP",
-      detail: {
+      detail: withFebtShadow({
         ...detail,
         wait_one_bar_action: "SKIP",
         wait_one_bar_skip_reason: "FEATURES_MISSING",
-      },
+      }, "SKIP", "UNKNOWN"),
     };
   }
 
@@ -159,20 +171,22 @@ function evaluateWaitOneBarTiming({
     && lastDirBody >= Math.max(0.05, Number(cfg.lastDirBodyMin) - 0.08);
 
   if (!shouldWaitBase && !shouldWaitPhysicsAssist && !shouldWaitPhysicsHard) {
-    return { ok: true, action: "ALLOW", detail };
+    return { ok: true, action: "ALLOW", detail: withFebtShadow(detail, "ALLOW", "UNKNOWN") };
   }
+
+  const waitTriggerPath = shouldWaitBase ? "BASE" : shouldWaitPhysicsHard ? "PHYSICS_HARD" : "PHYSICS_ASSIST";
 
   return {
     ok: false,
     action: "WAIT_ONE_BAR",
     reason: "DROP_WAIT_ONE_BAR_TIMING",
-    detail: {
+    detail: withFebtShadow({
       ...detail,
       wait_one_bar_action: "WAIT_ONE_BAR",
       wait_one_bar_triggered: true,
-      wait_one_bar_trigger_path: shouldWaitBase ? "BASE" : shouldWaitPhysicsHard ? "PHYSICS_HARD" : "PHYSICS_ASSIST",
+      wait_one_bar_trigger_path: waitTriggerPath,
       wait_one_bar_physics_assist: physicsAssist,
-    },
+    }, "WAIT_ONE_BAR", waitTriggerPath),
   };
 }
 

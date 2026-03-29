@@ -183,6 +183,11 @@ function buildWeeklyTelegramLayerLines({ current = {}, recommendations = {}, set
   const marketState = stripSummaryPrefix(featureLines[0], "market state ");
   const marketAction = stripSummaryPrefix(featureLines[1], "market action ");
   const evPolicy = stripSummaryPrefix(featureLines[2], "ev policy ");
+  const byTier = current && current.by_tier && typeof current.by_tier === "object" ? current.by_tier : {};
+  const tierRows = Object.values(byTier).filter((row) => row && typeof row === "object");
+  const febtExecuted = tierRows.reduce((acc, row) => acc + Number(row.executed_n || 0), 0);
+  const febtDisagree = tierRows.reduce((acc, row) => acc + Number(row.febt_disagreement_n || 0), 0);
+  const febtFallback = tierRows.reduce((acc, row) => acc + Number(row.febt_fallback_legacy_n || 0), 0);
   const lines = [
     `1차 상태/무결성 ${recommendations.QUALITY && recommendations.QUALITY.action || "N/A"} / ${recommendations.QUALITY && recommendations.QUALITY.reason || "N/A"}`,
     `2차 진입 품질 ${recommendations.AI && recommendations.AI.action || "N/A"} / ${recommendations.AI && recommendations.AI.reason || "N/A"}`,
@@ -193,7 +198,7 @@ function buildWeeklyTelegramLayerLines({ current = {}, recommendations = {}, set
     `4차 EV/시간가치층 threshold 기본 ${pct(settings.ev_gate_tp1_prob_min)} / ${LIVE_ENTRY_LABEL} ${pct(settings.ev_gate_tp1_prob_min_early)}`,
     `4차 EV/시간가치층 band full ${pct(settings.ev_gate_tp1_prob_full)} / kill ${pct(settings.ev_gate_tp1_prob_kill)} / mid ${pct(settings.ev_gate_qty_scale_mid)} / low ${pct(settings.ev_gate_qty_scale_low)}`,
     `4차 EV/시간가치층 policy ${evPolicy || "N/A"}`,
-    `5차 WAIT 타이밍층 streak ${settings.wait_one_bar_same_dir_streak_min} / chase ${ratioX(settings.wait_one_bar_chase_ratio_min)} / close ${pct(settings.wait_one_bar_last_close_control_min)} / body ${pct(settings.wait_one_bar_last_dir_body_min)} / wick ${pct(settings.wait_one_bar_last_opposite_wick_max)} / move1 ${pct(settings.wait_one_bar_recent_move1_pct_min)} / counter ${settings.wait_one_bar_counter_dir_bars_max}`,
+    `5차 WAIT 타이밍층 streak ${settings.wait_one_bar_same_dir_streak_min} / chase ${ratioX(settings.wait_one_bar_chase_ratio_min)} / close ${pct(settings.wait_one_bar_last_close_control_min)} / body ${pct(settings.wait_one_bar_last_dir_body_min)} / wick ${pct(settings.wait_one_bar_last_opposite_wick_max)} / move1 ${pct(settings.wait_one_bar_recent_move1_pct_min)} / counter ${settings.wait_one_bar_counter_dir_bars_max}${febtExecuted > 0 ? ` / disagree ${febtDisagree} / fallback ${febtFallback}` : ""}`,
   ];
   if (phase0 && phase0.legacy_wait_baseline) {
     const baseline = phase0.legacy_wait_baseline || {};
@@ -690,10 +695,12 @@ function renderTierLines(byTier = {}) {
   const febtLate = rows.reduce((acc, row) => acc + Number(row.febt_late_n || 0), 0);
   const febtVoid = rows.reduce((acc, row) => acc + Number(row.febt_void_n || 0), 0);
   const febtMissing = rows.reduce((acc, row) => acc + Number(row.febt_payload_missing_n || 0), 0);
+  const febtDisagree = rows.reduce((acc, row) => acc + Number(row.febt_disagreement_n || 0), 0);
+  const febtFallback = rows.reduce((acc, row) => acc + Number(row.febt_fallback_legacy_n || 0), 0);
   const febtCalcOkRate = febtExecuted > 0 ? (febtCalcOk / febtExecuted) : null;
   const febtPayloadMissingRate = febtExecuted > 0 ? (febtMissing / febtExecuted) : null;
   const febtSummary = febtExecuted > 0
-    ? ` / FEBT calc=${pct(febtCalcOkRate)} phase_known=${febtPhaseKnown} fire=${febtFire} late=${febtLate} void=${febtVoid} missing=${pct(febtPayloadMissingRate)}`
+    ? ` / FEBT calc=${pct(febtCalcOkRate)} phase_known=${febtPhaseKnown} fire=${febtFire} late=${febtLate} void=${febtVoid} disagree=${febtDisagree} fallback=${febtFallback} missing=${pct(febtPayloadMissingRate)}`
     : "";
   return [
     `- ${LIVE_ENTRY_LABEL}: signals=${live.signals_n || 0}, executed=${live.executed_n || 0}, execution=${pct(live.execution_rate)}, tp1_hit=${pct(live.tp1_hit_rate)}, win=${pct(live.win_rate)}, avg_ret_net=${signedPct(live.avg_ret_net)} / ${formatPhysicsSummary(live)}${febtSummary}`,

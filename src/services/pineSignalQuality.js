@@ -136,6 +136,8 @@ function emptyTierStats() {
     febt_late_n: 0,
     febt_void_n: 0,
     febt_unknown_n: 0,
+    febt_disagreement_n: 0,
+    febt_fallback_legacy_n: 0,
     febt_lock_score_sum: 0,
     febt_lock_score_n: 0,
     febt_delay_cost_sum: 0,
@@ -168,6 +170,8 @@ function finalizeTierStats(stats) {
   out.febt_calc_ok_rate = out.executed_n > 0 ? (out.febt_calc_ok_n / out.executed_n) : null;
   out.febt_phase_known_rate = out.executed_n > 0 ? (out.febt_phase_known_n / out.executed_n) : null;
   out.febt_payload_missing_rate = out.executed_n > 0 ? (out.febt_payload_missing_n / out.executed_n) : null;
+  out.febt_disagreement_rate = out.executed_n > 0 ? (out.febt_disagreement_n / out.executed_n) : null;
+  out.febt_fallback_legacy_rate = out.executed_n > 0 ? (out.febt_fallback_legacy_n / out.executed_n) : null;
   out.avg_febt_lock_score = out.febt_lock_score_n > 0 ? (out.febt_lock_score_sum / out.febt_lock_score_n) : null;
   out.avg_febt_delay_cost = out.febt_delay_cost_n > 0 ? (out.febt_delay_cost_sum / out.febt_delay_cost_n) : null;
   out.avg_febt_late_risk = out.febt_late_risk_n > 0 ? (out.febt_late_risk_sum / out.febt_late_risk_n) : null;
@@ -382,6 +386,12 @@ async function summarizePineSignalQuality({
     if (signalMeta.febt_payload_missing === true) {
       tierStats.febt_payload_missing_n += 1;
     }
+    if (signalMeta.febt_shadow_disagrees_legacy_wait === true) {
+      tierStats.febt_disagreement_n += 1;
+    }
+    if (signalMeta.febt_shadow_fallback_to_legacy === true) {
+      tierStats.febt_fallback_legacy_n += 1;
+    }
     if (signalMeta.febt_calc_ok === true) {
       tierStats.febt_calc_ok_n += 1;
     }
@@ -462,6 +472,13 @@ async function summarizePineSignalQuality({
       entry_exec_timing: signalMeta.entry_exec_timing || "unknown",
       ev_gate_policy_version: signalMeta.ev_gate_policy_version || "unknown",
       ev_gate_policy_source: signalMeta.ev_gate_policy_source || "unknown",
+      febt_shadow_verdict: signalMeta.febt_shadow_verdict || "unknown",
+      febt_shadow_fallback_to_legacy: signalMeta.febt_shadow_fallback_to_legacy === true,
+      febt_shadow_fallback_reason: signalMeta.febt_shadow_fallback_reason || "unknown",
+      febt_shadow_disagrees_legacy_wait: signalMeta.febt_shadow_disagrees_legacy_wait === true,
+      febt_shadow_disagreement_reason: signalMeta.febt_shadow_disagreement_reason || "unknown",
+      febt_shadow_legacy_wait_action: signalMeta.febt_shadow_legacy_wait_action || "unknown",
+      febt_shadow_legacy_wait_trigger_path: signalMeta.febt_shadow_legacy_wait_trigger_path || "unknown",
       febt_mode: signalMeta.febt_mode || "unknown",
       febt_phase: signalMeta.febt_phase || "unknown",
       febt_calc_ok: signalMeta.febt_calc_ok === true,

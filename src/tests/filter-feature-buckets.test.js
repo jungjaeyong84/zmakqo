@@ -20,6 +20,13 @@ function run() {
       _entry_exec_timing: "IMMEDIATE",
       ev_gate_policy_version: "TP1_WEIGHT_V1",
       ev_gate_policy_source: "DEFAULT",
+      febt_shadow_verdict: "ALLOW_CANDIDATE",
+      febt_shadow_fallback_to_legacy: false,
+      febt_shadow_fallback_reason: "NONE",
+      febt_shadow_disagrees_legacy_wait: true,
+      febt_shadow_disagreement_reason: "FEBT_ALLOW_LEGACY_WAIT",
+      febt_shadow_legacy_wait_action: "WAIT_ONE_BAR",
+      febt_shadow_legacy_wait_trigger_path: "BASE",
       febt_mode: "SHADOW",
       febt_phase: "FIRE",
       febt_calc_ok: true,
@@ -49,6 +56,13 @@ function run() {
   assert.strictEqual(sig.entry_exec_timing, "IMMEDIATE");
   assert.strictEqual(sig.ev_gate_policy_version, "TP1_WEIGHT_V1");
   assert.strictEqual(sig.ev_gate_policy_source, "DEFAULT");
+  assert.strictEqual(sig.febt_shadow_verdict, "ALLOW_CANDIDATE");
+  assert.strictEqual(sig.febt_shadow_fallback_to_legacy, false);
+  assert.strictEqual(sig.febt_shadow_fallback_reason, "NONE");
+  assert.strictEqual(sig.febt_shadow_disagrees_legacy_wait, true);
+  assert.strictEqual(sig.febt_shadow_disagreement_reason, "FEBT_ALLOW_LEGACY_WAIT");
+  assert.strictEqual(sig.febt_shadow_legacy_wait_action, "WAIT_ONE_BAR");
+  assert.strictEqual(sig.febt_shadow_legacy_wait_trigger_path, "BASE");
   assert.strictEqual(sig.febt_mode, "SHADOW");
   assert.strictEqual(sig.febt_phase, "FIRE");
   assert.strictEqual(sig.febt_calc_ok, true);
