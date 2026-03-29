@@ -46,6 +46,13 @@ function run() {
   assert.strictEqual(contracts[1].mode, "COUNT_GUARD_ACTIVE");
   assert.strictEqual(contracts[1].dominant_disagreement_reason, "FEBT_BLOCK_LEGACY_ALLOW");
 
+  const marketGuard = __test.deriveBestFebtMarketGuardContract({
+    contract: { mode: "NORMAL" },
+    marketContracts: contracts,
+  });
+  assert.strictEqual(marketGuard.market, "DOGEUSDT");
+  assert.strictEqual(marketGuard.mode, "COUNT_GUARD_ACTIVE");
+
   console.log("BEST_FEBT_SUPERVISOR_TEST_OK");
 }
 

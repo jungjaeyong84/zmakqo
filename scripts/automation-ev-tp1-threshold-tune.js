@@ -748,7 +748,7 @@ async function getRawProviderSettings(provider) {
   return providers && typeof providers[provider] === "object" ? providers[provider] : {};
 }
 
-function renderMarkdown({ nowMeta, windowDays, maturityHours, currentThreshold, currentTierThresholds, nextTierThresholds, plan, bandPlan, resolvedEntries, unresolvedOpenCount, unresolvedStaleCount, provider, tf, cacheMeta, mlPolicyReport, mlHint, stageLedger, bestFebtContract }) {
+function renderMarkdown({ nowMeta, windowDays, maturityHours, currentThreshold, currentTierThresholds, nextTierThresholds, plan, bandPlan, resolvedEntries, unresolvedOpenCount, unresolvedStaleCount, provider, tf, cacheMeta, mlPolicyReport, mlHint, stageLedger, bestFebtContract, bestFebtMarketGuard }) {
   const lines = [];
   lines.push(`# EV TP1 Threshold Tune`);
   lines.push("");
@@ -768,6 +768,7 @@ function renderMarkdown({ nowMeta, windowDays, maturityHours, currentThreshold, 
   lines.push(`- 현재 월간페이스: ${plan.current.monthlyRunRateKrw == null ? "N/A" : `${roundTo(plan.current.monthlyRunRateKrw, 0)} KRW`}`);
   lines.push(`- 현재 sample: ${plan.current.n}`);
   lines.push(`- BEST/FEBT contract: ${bestFebtContract && bestFebtContract.mode || "N/A"} / replacement ${bestFebtContract && bestFebtContract.projected_replacement_ratio != null ? pct(bestFebtContract.projected_replacement_ratio) : "N/A"} / count ${bestFebtContract && bestFebtContract.projected_count_ratio_global != null ? `${Number(bestFebtContract.projected_count_ratio_global).toFixed(2)}x` : "N/A"}`);
+  lines.push(`- market guard: ${bestFebtMarketGuard && bestFebtMarketGuard.market ? `${bestFebtMarketGuard.market} / ${bestFebtMarketGuard.mode}` : "N/A"}`);
   if (plan.best) {
     lines.push(`- 추천 threshold: ${pct(plan.best.threshold)}`);
     lines.push(`- 추천 hit rate: ${pct(plan.best.hitRate)}`);
@@ -934,6 +935,7 @@ async function main() {
   const stageLedgerReport = readFreshEvResolvedLedger(nowMs);
   const bestFebtContext = readBestFebtSupervisorContext(nowMs);
   const bestFebtContract = bestFebtContext.contract;
+  const bestFebtMarketGuard = bestFebtContext.marketGuardContract;
 
   const [intentRes, fillRes, dropsRes] = await Promise.all([
     getCachedRecentByCreatedAt("order_intents_paper", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: true }),
@@ -1051,7 +1053,7 @@ async function main() {
     bandPlan,
     currentThreshold,
     currentBand,
-    bestFebtContract,
+    bestFebtContract: bestFebtMarketGuard || bestFebtContract,
   });
   effectivePlan = bestFebtGuard.plan;
   bandPlan = bestFebtGuard.bandPlan;
@@ -1143,6 +1145,7 @@ async function main() {
     },
     ml_guidance: mlGuidance,
     best_febt_tuning_contract: bestFebtContract,
+    best_febt_market_guard_contract: bestFebtMarketGuard,
     best_febt_guard: bestFebtGuard,
     tier_thresholds: Object.fromEntries(TIERS.map((tier) => [tier, {
       current_threshold: currentTierThresholds[tier],
@@ -1195,6 +1198,7 @@ async function main() {
     mlHint: mlGuidance,
     stageLedger: stageLedgerMeta,
     bestFebtContract,
+    bestFebtMarketGuard,
   }));
   copyLatest(jsonPath, path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json"));
   copyLatest(mdPath, path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.md"));
@@ -1223,6 +1227,7 @@ async function main() {
           `stage ledger ${stageLedgerMeta.source} / ${stageLedgerMeta.filePath || "N/A"}`,
           `ML report ${mlPolicyReport && mlPolicyReport.filePath ? "연계" : "없음"} / hint ${mlGuidance.applied ? "적용" : "미적용"}`,
           `BEST/FEBT ${bestFebtContract && bestFebtContract.mode || "N/A"} / replacement ${bestFebtContract && bestFebtContract.projected_replacement_ratio != null ? pct(bestFebtContract.projected_replacement_ratio) : "N/A"} / count ${bestFebtContract && bestFebtContract.projected_count_ratio_global != null ? `${Number(bestFebtContract.projected_count_ratio_global).toFixed(2)}x` : "N/A"}`,
+          `market guard ${bestFebtMarketGuard && bestFebtMarketGuard.market ? `${bestFebtMarketGuard.market} / ${bestFebtMarketGuard.mode}` : "N/A"}`,
         ],
       },
       {

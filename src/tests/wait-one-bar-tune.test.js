@@ -67,6 +67,11 @@ const { __test } = require('../../scripts/automation-wait-one-bar-tune');
     { ...currentCfg, sameDirStreakMin: 4 }
   ), false);
   assert.strictEqual(__test.bestFebtAllowsWaitPlan(
+    { market: "DOGEUSDT", tightening_allowed: false, recovery_priority: false },
+    currentCfg,
+    { ...currentCfg, chaseRatioMin: 1.95 }
+  ), false);
+  assert.strictEqual(__test.bestFebtAllowsWaitPlan(
     { tightening_allowed: true, recovery_priority: false },
     currentCfg,
     { ...currentCfg, sameDirStreakMin: 2 }

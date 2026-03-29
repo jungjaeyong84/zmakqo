@@ -111,6 +111,7 @@ function run() {
   assert.strictEqual(bestFebtGuarded.MARKET.action, "HOLD");
   assert.strictEqual(bestFebtGuarded.EV.action, "HOLD");
   assert.strictEqual(__test.bestFebtGuardReason({ tightening_allowed: false }), "BEST/FEBT count 보존 기준(count_ratio_global < 1.00)에서는 tightening 자동 권고를 차단합니다.");
+  assert.strictEqual(__test.bestFebtGuardReason({ market: "DOGEUSDT", tightening_allowed: false }), "[DOGEUSDT] BEST/FEBT count 보존 기준(count_ratio_global < 1.00)에서는 tightening 자동 권고를 차단합니다.");
   assert.strictEqual(__test.isAiHardeningRecommendation("ALLOW", 0.5, { action: "REVIEW_UPDATE", next: "REDUCE" }), true);
   assert.strictEqual(__test.isEvHardeningRecommendation({
     ev_gate_tp1_prob_min: 0.55,

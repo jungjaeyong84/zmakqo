@@ -202,6 +202,31 @@ function deriveBestFebtMarketContracts({ governance = null, objectiveSupervisor 
     .slice(0, Math.max(1, Number(limit) || DEFAULT_MARKET_CONTRACT_LIMIT));
 }
 
+function deriveBestFebtMarketGuardContract({ contract = null, marketContracts = [] } = {}) {
+  const rows = Array.isArray(marketContracts) ? marketContracts.filter((row) => row && typeof row === "object") : [];
+  if (!rows.length) return contract || null;
+  const countGuardRows = rows.filter((row) => row.tightening_allowed === false);
+  if (countGuardRows.length) {
+    return countGuardRows.slice().sort((a, b) =>
+      ((toNum(a.projected_count_ratio_global) ?? Infinity) - (toNum(b.projected_count_ratio_global) ?? Infinity))
+      || ((toNum(b.sampled_n) ?? 0) - (toNum(a.sampled_n) ?? 0))
+      || String(a.market || "").localeCompare(String(b.market || ""))
+    )[0];
+  }
+  const recoveryRows = rows.filter((row) => row.recovery_priority === true);
+  if (recoveryRows.length) {
+    return recoveryRows.slice().sort((a, b) =>
+      ((toNum(a.projected_replacement_ratio) ?? Infinity) - (toNum(b.projected_replacement_ratio) ?? Infinity))
+      || ((toNum(b.sampled_n) ?? 0) - (toNum(a.sampled_n) ?? 0))
+      || String(a.market || "").localeCompare(String(b.market || ""))
+    )[0];
+  }
+  return rows.slice().sort((a, b) =>
+    ((toNum(b.sampled_n) ?? 0) - (toNum(a.sampled_n) ?? 0))
+    || String(a.market || "").localeCompare(String(b.market || ""))
+  )[0];
+}
+
 function readBestFebtSupervisorContext(nowMs, options = {}) {
   const weeklyMaxAgeHours = Math.max(1, Number(options.weeklyMaxAgeHours || DEFAULT_WEEKLY_GOVERNANCE_MAX_AGE_HOURS));
   const objectiveSupervisorMaxAgeHours = Math.max(1, Number(options.objectiveSupervisorMaxAgeHours || DEFAULT_OBJECTIVE_SUPERVISOR_MAX_AGE_HOURS));
@@ -228,6 +253,7 @@ function readBestFebtSupervisorContext(nowMs, options = {}) {
     objectiveSupervisorArtifact,
     contract,
     marketContracts,
+    marketGuardContract: deriveBestFebtMarketGuardContract({ contract, marketContracts }),
   };
 }
 
@@ -236,9 +262,11 @@ module.exports = {
   AUTO_LEVERS,
   deriveBestFebtTuningContract,
   deriveBestFebtMarketContracts,
+  deriveBestFebtMarketGuardContract,
   readBestFebtSupervisorContext,
   __test: {
     deriveBestFebtTuningContract,
     deriveBestFebtMarketContracts,
+    deriveBestFebtMarketGuardContract,
   },
 };

@@ -761,7 +761,7 @@ function bestFebtAllowsWaitPlan(bestFebtContract = null, currentCfg = {}, nextCf
   return true;
 }
 
-function renderMarkdown({ nowMeta, provider, tf, currentCfg, plan, rows, cacheMeta, mlPolicyReport, stageLedger, weeklyGovernance, bestFebtContract }) {
+function renderMarkdown({ nowMeta, provider, tf, currentCfg, plan, rows, cacheMeta, mlPolicyReport, stageLedger, weeklyGovernance, bestFebtContract, bestFebtMarketGuard }) {
   const lines = [];
   lines.push("# WAIT_ONE_BAR Tune");
   lines.push("");
@@ -785,6 +785,7 @@ function renderMarkdown({ nowMeta, provider, tf, currentCfg, plan, rows, cacheMe
   lines.push(`- 공통 목표 상태: ${weeklyGovernance && weeklyGovernance.currentObjective ? weeklyGovernance.currentObjective.verdict : "N/A"}`);
   lines.push(`- 월간 페이스: ${weeklyGovernance && weeklyGovernance.currentObjective && Number.isFinite(Number(weeklyGovernance.currentObjective.monthly_run_rate_krw)) ? `${Number(weeklyGovernance.currentObjective.monthly_run_rate_krw).toLocaleString("ko-KR")} KRW` : "N/A"}`);
   lines.push(`- BEST/FEBT contract: ${bestFebtContract && bestFebtContract.mode || "N/A"} / replacement ${bestFebtContract && bestFebtContract.projected_replacement_ratio != null ? pct(bestFebtContract.projected_replacement_ratio) : "N/A"} / count ${bestFebtContract && bestFebtContract.projected_count_ratio_global != null ? `${Number(bestFebtContract.projected_count_ratio_global).toFixed(2)}x` : "N/A"}`);
+  lines.push(`- market guard: ${bestFebtMarketGuard && bestFebtMarketGuard.market ? `${bestFebtMarketGuard.market} / ${bestFebtMarketGuard.mode}` : "N/A"}`);
   lines.push("");
   lines.push("## 현재 설정");
   for (const [key, value] of Object.entries(summarizeConfig(currentCfg))) {
@@ -924,6 +925,7 @@ async function main() {
   const weeklyGovernance = readFreshWeeklyGovernance(nowMs);
   const bestFebtContext = readBestFebtSupervisorContext(nowMs);
   const bestFebtContract = bestFebtContext.contract;
+  const bestFebtMarketGuard = bestFebtContext.marketGuardContract;
 
   const [signalsRes, dropsRes] = await Promise.all([
     getCachedRecentByCreatedAt("signals", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: true }),
@@ -972,7 +974,7 @@ async function main() {
   const skippedRows = evaluatedRows.filter((row) => !row || row.ok !== true);
 
   const plan = pickBestPlan(currentCfg, maturedRows, weeklyGovernance);
-  if (plan.changed && !bestFebtAllowsWaitPlan(bestFebtContract, currentCfg, plan.best && plan.best.cfg ? plan.best.cfg : currentCfg)) {
+  if (plan.changed && !bestFebtAllowsWaitPlan(bestFebtMarketGuard || bestFebtContract, currentCfg, plan.best && plan.best.cfg ? plan.best.cfg : currentCfg)) {
     plan.changed = false;
     plan.nextCfg = currentCfg;
     plan.reason = bestFebtContract && bestFebtContract.tightening_allowed === false
@@ -1048,6 +1050,7 @@ async function main() {
       fresh: weeklyGovernance.fresh,
     },
     best_febt_tuning_contract: bestFebtContract,
+    best_febt_market_guard_contract: bestFebtMarketGuard,
   };
 
   writeJson(jsonPath, wrapDisplayAndRawReport(report));
@@ -1063,6 +1066,7 @@ async function main() {
     stageLedger: stageLedgerMeta,
     weeklyGovernance,
     bestFebtContract,
+    bestFebtMarketGuard,
   }));
   copyLatest(jsonPath, path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json"));
   copyLatest(mdPath, path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.md"));
@@ -1082,6 +1086,7 @@ async function main() {
           `stage ledger ${stageLedgerMeta.source} / ${stageLedgerMeta.filePath || "N/A"}`,
           `공통목표 ${weeklyGovernance && weeklyGovernance.currentObjective ? weeklyGovernance.currentObjective.verdict : "N/A"} / 월간 ${weeklyGovernance && weeklyGovernance.currentObjective && Number.isFinite(Number(weeklyGovernance.currentObjective.monthly_run_rate_krw)) ? `${Number(weeklyGovernance.currentObjective.monthly_run_rate_krw).toLocaleString("ko-KR")} KRW` : "N/A"}`,
           `BEST/FEBT ${bestFebtContract && bestFebtContract.mode || "N/A"} / replacement ${bestFebtContract && bestFebtContract.projected_replacement_ratio != null ? pct(bestFebtContract.projected_replacement_ratio) : "N/A"} / count ${bestFebtContract && bestFebtContract.projected_count_ratio_global != null ? `${Number(bestFebtContract.projected_count_ratio_global).toFixed(2)}x` : "N/A"}`,
+          `market guard ${bestFebtMarketGuard && bestFebtMarketGuard.market ? `${bestFebtMarketGuard.market} / ${bestFebtMarketGuard.mode}` : "N/A"}`,
         ],
       },
       {

@@ -550,11 +550,12 @@ function sharedObjectiveFailing(sharedObjective) {
 
 function bestFebtGuardReason(bestFebtContract = null) {
   if (!bestFebtContract || typeof bestFebtContract !== "object") return null;
+  const marketPrefix = bestFebtContract.market ? `[${bestFebtContract.market}] ` : "";
   if (bestFebtContract.tightening_allowed === false) {
-    return "BEST/FEBT count 보존 기준(count_ratio_global < 1.00)에서는 tightening 자동 권고를 차단합니다.";
+    return `${marketPrefix}BEST/FEBT count 보존 기준(count_ratio_global < 1.00)에서는 tightening 자동 권고를 차단합니다.`;
   }
   if (bestFebtContract.recovery_priority === true) {
-    return "BEST/FEBT replacement 회복 우선 상태에서는 tightening보다 recovery 우선입니다.";
+    return `${marketPrefix}BEST/FEBT replacement 회복 우선 상태에서는 tightening보다 recovery 우선입니다.`;
   }
   return null;
 }
@@ -822,7 +823,7 @@ function buildRecommendationRows(recommendations = {}) {
   return rows;
 }
 
-function renderMarkdown({ nowMeta, provider, tf, lookbackDays, model, metrics, trainMetrics, validation, latePenalty, recommendations, coverage, stageSamples, selfValidation, artifacts, sharedObjective, bestFebtContract }) {
+function renderMarkdown({ nowMeta, provider, tf, lookbackDays, model, metrics, trainMetrics, validation, latePenalty, recommendations, coverage, stageSamples, selfValidation, artifacts, sharedObjective, bestFebtContract, bestFebtMarketGuard }) {
   const lines = [];
   lines.push("# ML Filter Policy");
   lines.push("");
@@ -854,6 +855,7 @@ function renderMarkdown({ nowMeta, provider, tf, lookbackDays, model, metrics, t
   lines.push(`- projected replacement ratio: ${bestFebtContract && bestFebtContract.projected_replacement_ratio != null ? pct(bestFebtContract.projected_replacement_ratio) : "N/A"}`);
   lines.push(`- projected count ratio: ${bestFebtContract && bestFebtContract.projected_count_ratio_global != null ? `${Number(bestFebtContract.projected_count_ratio_global).toFixed(2)}x` : "N/A"}`);
   lines.push(`- fire / late / disagree: ${bestFebtContract && bestFebtContract.fire_n != null ? bestFebtContract.fire_n : "N/A"} / ${bestFebtContract && bestFebtContract.late_n != null ? bestFebtContract.late_n : "N/A"} / ${bestFebtContract && bestFebtContract.disagreement_n != null ? bestFebtContract.disagreement_n : "N/A"}`);
+  lines.push(`- market guard: ${bestFebtMarketGuard && bestFebtMarketGuard.market ? `${bestFebtMarketGuard.market} / ${bestFebtMarketGuard.mode}` : "N/A"}`);
   lines.push("");
   lines.push("## late-entry penalty");
   lines.push(`- on-time: n=${latePenalty.on_time.n} / success=${pct(latePenalty.on_time.labelRate)} / avg_ret_net=${signedPct(latePenalty.on_time.avgRetNet)}`);
@@ -904,6 +906,7 @@ async function main() {
   const sharedObjective = readFreshWeeklyGovernance(nowMs);
   const bestFebtContext = readBestFebtSupervisorContext(nowMs);
   const bestFebtContract = bestFebtContext.contract;
+  const bestFebtMarketGuard = bestFebtContext.marketGuardContract;
 
   const [sysRes, signalsRes, dropsRes, fillsRes] = await Promise.all([
     getSystemSettingsForProvider(PROVIDER, 0),
@@ -972,7 +975,7 @@ async function main() {
     MARKET: buildMarketRecommendation(stageSamples.MARKET, sysCfg),
     EV: buildEvRecommendation(stageSamples.EV, sysCfg),
   };
-  const recommendations = applySharedObjectiveGuard(rawRecommendations, sysCfg, sharedObjective, bestFebtContract);
+  const recommendations = applySharedObjectiveGuard(rawRecommendations, sysCfg, sharedObjective, bestFebtMarketGuard || bestFebtContract);
   recommendations.QUALITY = (Array.isArray(recommendations.QUALITY) ? recommendations.QUALITY : []).map((row) => ({
     ...row,
     display_key: describeQualityRecommendationKeyForUser(row.key),
@@ -1032,6 +1035,7 @@ async function main() {
       target_monthly_net_krw: Number(sharedObjective && sharedObjective.objectiveConfig && sharedObjective.objectiveConfig.min_monthly_net_krw || OBJECTIVE_TARGET_MONTHLY_KRW),
     },
     best_febt_tuning_contract: bestFebtContract,
+    best_febt_market_guard_contract: bestFebtMarketGuard,
     recommendations,
     artifacts: {
       cache: {
@@ -1073,7 +1077,8 @@ async function main() {
       },
       sharedObjective,
       bestFebtContract,
-  }));
+      bestFebtMarketGuard,
+    }));
   copyLatest(jsonPath, path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.json"));
   copyLatest(mdPath, path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.md"));
 
