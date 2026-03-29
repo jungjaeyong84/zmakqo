@@ -10,6 +10,7 @@ const {
   loadLocalEnv,
   nowKstMeta,
   readJsonRawSafe,
+  resolveAutomationCycleMeta,
   sendKoreanTelegramSummary,
   writeJson,
   writeText,
@@ -23,6 +24,7 @@ const {
 const { buildMemoryLedger } = require("../src/utils/bestSelfEvolutionMemoryLedger");
 const { deriveDeploymentGuards } = require("../src/utils/bestSelfEvolutionDeploymentGuards");
 const { deriveDeploymentPlan } = require("../src/utils/bestSelfEvolutionDeploymentPlan");
+const { deriveLoopMonitor } = require("../src/utils/bestSelfEvolutionLoopMonitor");
 const { deriveWeightTuningPlan } = require("../src/utils/bestSelfEvolutionWeightTuning");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
 const { resolveMarketStateSummary } = require("../src/utils/marketStateSummary");
@@ -500,6 +502,30 @@ function summarizeSelfEvolutionDeploymentPlan(report = null) {
   };
 }
 
+function summarizeSelfEvolutionLoopMonitor(report = null) {
+  const summary = report && report.summary && typeof report.summary === "object" ? report.summary : {};
+  const rows = Array.isArray(report && report.rows) ? report.rows : [];
+  return {
+    available: !!report,
+    cycle_id: String(summary.cycle_id || report && report.cycle_id || "").trim() || null,
+    overall_status: String(summary.overall_status || "").trim().toUpperCase() || null,
+    stale_artifact_n: toNum(summary.stale_artifact_n) || 0,
+    stale_artifacts: Array.isArray(summary.stale_artifacts) ? summary.stale_artifacts : [],
+    cycle_consistent: summary.cycle_consistent === true,
+    cycle_mismatch_n: toNum(summary.cycle_mismatch_n) || 0,
+    cycle_mismatches: Array.isArray(summary.cycle_mismatches) ? summary.cycle_mismatches : [],
+    critical_blocker_n: toNum(summary.critical_blocker_n) || 0,
+    critical_blockers: Array.isArray(summary.critical_blockers) ? summary.critical_blockers : [],
+    promotion_path_ready: summary.promotion_path_ready === true,
+    manual_paste_ready: summary.manual_paste_ready === true,
+    ready_candidate_id: String(summary.ready_candidate_id || "").trim() || null,
+    canary_open_wave: toNum(summary.canary_open_wave) || null,
+    loop_n: toNum(summary.loop_n) || 0,
+    fresh_loop_n: toNum(summary.fresh_loop_n) || 0,
+    rows,
+  };
+}
+
 function summarizeCodexAuthority({
   reportVerdict = "HOLD",
   reportReason = "N/A",
@@ -743,6 +769,14 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
       ],
     },
     {
+      header: "자기 진화 루프 모니터",
+      lines: [
+        `cycle ${report.self_evolution_loop_monitor && report.self_evolution_loop_monitor.cycle_id || "N/A"} / status ${report.self_evolution_loop_monitor && report.self_evolution_loop_monitor.overall_status || "N/A"} / consistent ${report.self_evolution_loop_monitor && report.self_evolution_loop_monitor.cycle_consistent ? "YES" : "NO"}`,
+        `fresh ${report.self_evolution_loop_monitor && report.self_evolution_loop_monitor.fresh_loop_n != null ? report.self_evolution_loop_monitor.fresh_loop_n : "N/A"} / ${report.self_evolution_loop_monitor && report.self_evolution_loop_monitor.loop_n != null ? report.self_evolution_loop_monitor.loop_n : "N/A"} / promotion ${report.self_evolution_loop_monitor && report.self_evolution_loop_monitor.promotion_path_ready ? "YES" : "NO"} / manual ${report.self_evolution_loop_monitor && report.self_evolution_loop_monitor.manual_paste_ready ? "YES" : "NO"}`,
+        `blockers ${report.self_evolution_loop_monitor && Array.isArray(report.self_evolution_loop_monitor.critical_blockers) && report.self_evolution_loop_monitor.critical_blockers.length ? report.self_evolution_loop_monitor.critical_blockers.join("|") : "none"}`,
+      ],
+    },
+    {
       header: "자기 진화 가중치 튜닝",
       lines: [
         `mode ${report.self_evolution_weight_tuning && report.self_evolution_weight_tuning.summary && report.self_evolution_weight_tuning.summary.advisory_mode || "N/A"} / suggestion ${report.self_evolution_weight_tuning && report.self_evolution_weight_tuning.summary && report.self_evolution_weight_tuning.summary.suggestion_n != null ? report.self_evolution_weight_tuning.summary.suggestion_n : "N/A"} / dominant ${report.self_evolution_weight_tuning && report.self_evolution_weight_tuning.summary && report.self_evolution_weight_tuning.summary.dominant_axis || "N/A"}`,
@@ -786,7 +820,7 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
   ];
 }
 
-function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionMemory, codex, stageAutopilot, retrospective, weeklyHistory } = {}) {
+function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionMemory, selfEvolutionLoopMonitor, codex, stageAutopilot, retrospective, weeklyHistory } = {}) {
   const objective = governance && governance.current && governance.current.objective ? governance.current.objective : {};
   const objectiveCfg = governance && governance.objective ? governance.objective : {};
   const promotion = changeControl && changeControl.auto_promotion ? changeControl.auto_promotion : {};
@@ -906,6 +940,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     canary: selfEvolutionCanarySummary,
     memoryLedger: selfEvolutionMemorySummary,
   });
+  const selfEvolutionLoopMonitorSummary = summarizeSelfEvolutionLoopMonitor(selfEvolutionLoopMonitor);
   const memoryBlockedIds = new Set(selfEvolutionMemorySummary.blocked_candidate_ids || []);
 
   const blockers = [];
@@ -930,6 +965,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   if (promotionReplay && promotionReplay.validation_verdict === "BLOCK") blockers.push("SELF_EVOLUTION_REPLAY_BLOCK");
   if (promotion.ready === true && selfEvolutionCanarySummary.available && selfEvolutionCanarySummary.apply_pass !== true) blockers.push("SELF_EVOLUTION_CANARY_BLOCK");
   if (selfEvolutionCanarySummary.rollback_ready_n > 0) blockers.push("SELF_EVOLUTION_CANARY_ROLLBACK_READY");
+  if (selfEvolutionLoopMonitorSummary.available && selfEvolutionLoopMonitorSummary.cycle_consistent === false) blockers.push("SELF_EVOLUTION_LOOP_CYCLE_MISMATCH");
   if (promotion.ready === true && promotionCandidateId && memoryBlockedIds.has(promotionCandidateId)) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK");
   if (promotion.ready === true && selfEvolutionDeploymentSummary.deploy_pass !== true) {
     const deployReason = Array.isArray(selfEvolutionDeploymentSummary.blockers) && selfEvolutionDeploymentSummary.blockers.length
@@ -964,6 +1000,8 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
         ? "SELF_EVOLUTION_CANARY_BLOCK"
       : selfEvolutionCanarySummary.rollback_ready_n > 0
         ? "SELF_EVOLUTION_CANARY_ROLLBACK_READY"
+      : (selfEvolutionLoopMonitorSummary.available && selfEvolutionLoopMonitorSummary.cycle_consistent === false)
+        ? "SELF_EVOLUTION_LOOP_CYCLE_MISMATCH"
       : (promotion.ready === true && promotionCandidateId && memoryBlockedIds.has(promotionCandidateId))
         ? "SELF_EVOLUTION_MEMORY_BLOCK"
       : (promotion.ready === true && selfEvolutionDeploymentSummary.deploy_pass !== true)
@@ -1100,6 +1138,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     self_evolution_canary: selfEvolutionCanarySummary,
     self_evolution_deployment: selfEvolutionDeploymentSummary,
     self_evolution_deployment_plan: selfEvolutionDeploymentPlanSummary,
+    self_evolution_loop_monitor: selfEvolutionLoopMonitorSummary,
     self_evolution_weight_tuning: selfEvolutionWeightTuning,
     self_evolution_memory: selfEvolutionMemorySummary,
     self_evolution_policy: selfEvolutionPolicy,
@@ -1142,6 +1181,7 @@ function renderMarkdown(report = {}) {
     "# Objective Supervisor",
     "",
     `- 실행 시각: ${report.generated_at_kst || "N/A"}`,
+    `- cycle_id: ${report.cycle_id || "N/A"}`,
     `- verdict: ${report.verdict || "N/A"}`,
     `- reason: ${report.reason || "N/A"}`,
     `- blockers: ${(report.blockers || []).length ? report.blockers.join(", ") : "none"}`,
@@ -1206,6 +1246,7 @@ function renderMarkdown(report = {}) {
     `- deployment_guards_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.deployment_guards_latest_path || "N/A"}`,
     `- deployment_plan_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.deployment_plan_latest_path || "N/A"}`,
     `- loop_monitor_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.loop_monitor_latest_path || "N/A"}`,
+    `- loop_run_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.loop_run_latest_path || "N/A"}`,
     `- weight_tuning_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.weight_tuning_latest_path || "N/A"}`,
     `- memory_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.memory_latest_path || "N/A"}`,
     `- status: ${report.self_evolution_policy && report.self_evolution_policy.status || "N/A"}`,
@@ -1262,6 +1303,12 @@ function renderMarkdown(report = {}) {
     `- prepared/latest/rollback: ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.prepared_file_path || "N/A"} / ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.latest_generated_file_path || "N/A"} / ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.rollback_source_file_path || "N/A"}`,
     `- blockers: ${report.self_evolution_deployment_plan && Array.isArray(report.self_evolution_deployment_plan.blockers) && report.self_evolution_deployment_plan.blockers.length ? report.self_evolution_deployment_plan.blockers.join("|") : "none"}`,
     "",
+    "## Self-Evolution Loop Monitor",
+    `- cycle/status/consistent: ${report.self_evolution_loop_monitor && report.self_evolution_loop_monitor.cycle_id || "N/A"} / ${report.self_evolution_loop_monitor && report.self_evolution_loop_monitor.overall_status || "N/A"} / ${report.self_evolution_loop_monitor && report.self_evolution_loop_monitor.cycle_consistent ? "YES" : "NO"}`,
+    `- fresh/stale: ${report.self_evolution_loop_monitor && report.self_evolution_loop_monitor.fresh_loop_n != null ? report.self_evolution_loop_monitor.fresh_loop_n : "N/A"} / ${report.self_evolution_loop_monitor && report.self_evolution_loop_monitor.loop_n != null ? report.self_evolution_loop_monitor.loop_n : "N/A"} / ${report.self_evolution_loop_monitor && report.self_evolution_loop_monitor.stale_artifact_n != null ? report.self_evolution_loop_monitor.stale_artifact_n : "N/A"}`,
+    `- promotion/manual: ${report.self_evolution_loop_monitor && report.self_evolution_loop_monitor.promotion_path_ready ? "YES" : "NO"} / ${report.self_evolution_loop_monitor && report.self_evolution_loop_monitor.manual_paste_ready ? "YES" : "NO"} / candidate ${report.self_evolution_loop_monitor && report.self_evolution_loop_monitor.ready_candidate_id || "N/A"}`,
+    `- blockers: ${report.self_evolution_loop_monitor && Array.isArray(report.self_evolution_loop_monitor.critical_blockers) && report.self_evolution_loop_monitor.critical_blockers.length ? report.self_evolution_loop_monitor.critical_blockers.join("|") : "none"}`,
+    "",
     "## Self-Evolution Weight Tuning",
     `- advisory_mode: ${report.self_evolution_weight_tuning && report.self_evolution_weight_tuning.summary && report.self_evolution_weight_tuning.summary.advisory_mode || "N/A"}`,
     `- suggestion_n/dominant_axis: ${report.self_evolution_weight_tuning && report.self_evolution_weight_tuning.summary && report.self_evolution_weight_tuning.summary.suggestion_n != null ? report.self_evolution_weight_tuning.summary.suggestion_n : "N/A"} / ${report.self_evolution_weight_tuning && report.self_evolution_weight_tuning.summary && report.self_evolution_weight_tuning.summary.dominant_axis || "N/A"}`,
@@ -1315,6 +1362,7 @@ function renderMarkdown(report = {}) {
 
 async function main() {
   const nowMeta = nowKstMeta();
+  const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
   const governanceArtifact = readArtifact("weekly_governance", GOVERNANCE_LATEST_PATH, FRESHNESS_HOURS.governance);
   const changeArtifact = readArtifact("change_control", CHANGE_CONTROL_LATEST_PATH, FRESHNESS_HOURS.changeControl);
   const canaryArtifact = readArtifact("shadow_canary", CANARY_LATEST_PATH, FRESHNESS_HOURS.canary);
@@ -1359,6 +1407,7 @@ async function main() {
     selfEvolutionReplay: selfEvolutionReplayArtifact.exists ? { ...selfEvolutionReplayArtifact.data, fresh: selfEvolutionReplayArtifact.fresh } : null,
     selfEvolutionCanary: selfEvolutionCanaryArtifact.exists ? { ...selfEvolutionCanaryArtifact.data, fresh: selfEvolutionCanaryArtifact.fresh } : null,
     selfEvolutionMemory: selfEvolutionMemoryData,
+    selfEvolutionLoopMonitor: null,
     codex: codexArtifact.exists ? { ...codexArtifact.data, fresh: codexArtifact.fresh } : null,
     stageAutopilot: stageAutopilotArtifact.exists ? { ...stageAutopilotArtifact.data, fresh: stageAutopilotArtifact.fresh } : null,
     retrospective: retrospectiveArtifact.data,
@@ -1368,6 +1417,8 @@ async function main() {
   const report = {
     ok: true,
     generated_at_kst: nowMeta.kst,
+    cycle_id: cycleMeta.cycle_id,
+    generation_id: cycleMeta.generation_id,
     verdict: evaluation.verdict,
     reason: evaluation.reason,
     blockers: evaluation.blockers,
@@ -1385,6 +1436,7 @@ async function main() {
     self_evolution_canary: evaluation.self_evolution_canary,
     self_evolution_deployment: evaluation.self_evolution_deployment,
     self_evolution_deployment_plan: evaluation.self_evolution_deployment_plan,
+    self_evolution_loop_monitor: null,
     self_evolution_weight_tuning: evaluation.self_evolution_weight_tuning,
     self_evolution_memory: evaluation.self_evolution_memory,
     filter_layers: evaluation.filter_layers,
@@ -1407,6 +1459,33 @@ async function main() {
     })),
   };
 
+  report.self_evolution_loop_monitor = summarizeSelfEvolutionLoopMonitor(deriveLoopMonitor({
+    artifacts: {
+      objectiveSupervisor: { fresh: true },
+      candidates: selfEvolutionCandidatesArtifact,
+      replay: selfEvolutionReplayArtifact,
+      canary: selfEvolutionCanaryArtifact,
+      deployment: { fresh: true },
+      deploymentPlan: { fresh: true },
+      stageAutopilot: stageAutopilotArtifact,
+      weightTuning: { fresh: true },
+      memory: selfEvolutionMemoryArtifact.exists ? selfEvolutionMemoryArtifact : { fresh: true },
+      codexPatch: codexArtifact,
+    },
+    reports: {
+      objectiveSupervisor: report,
+      candidates: selfEvolutionCandidatesArtifact.data,
+      replay: selfEvolutionReplayArtifact.data,
+      canary: selfEvolutionCanaryArtifact.data,
+      deployment: { cycle_id: cycleMeta.cycle_id, summary: evaluation.self_evolution_deployment },
+      deploymentPlan: { cycle_id: cycleMeta.cycle_id, summary: evaluation.self_evolution_deployment_plan },
+      stageAutopilot: stageAutopilotArtifact.data,
+      weightTuning: { cycle_id: cycleMeta.cycle_id, ...evaluation.self_evolution_weight_tuning },
+      memory: selfEvolutionMemoryData,
+      codexPatch: codexArtifact.data,
+    },
+  }));
+
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}`;
   const jsonPath = path.join(OPS_DAILY_DIR, `${base}_objective_supervisor.json`);
   const mdPath = path.join(OPS_DAILY_DIR, `${base}_objective_supervisor.md`);
@@ -1416,22 +1495,24 @@ async function main() {
   copyLatest(mdPath, REPORT_LATEST_MD);
   const telegramSections = buildObjectiveSupervisorTelegramSections(report);
 
-  const alert = await sendKoreanTelegramSummary({
-    title: `[목표 점검] ${report.verdict}`,
-    severity: report.verdict === "ROLLBACK_CANDIDATE" ? "WARN" : (report.verdict === "PATCH_CANDIDATE" ? "INFO" : "INFO"),
-    dedupeKey: `objective_supervisor:${report.verdict}:${report.reason}`,
-    dedupeWindowSec: 18 * 60 * 60,
-    dedupeFingerprint: JSON.stringify({
-      verdict: report.verdict,
-      reason: report.reason,
-      blockers: report.blockers,
-      physics: report.physics,
-      retrospective: report.retrospective,
-    }),
-    sections: telegramSections,
-  });
-  if (!alert || (alert.ok !== true && !(alert.skipped && alert.reason === "SKIP_ALERT"))) {
-    throw new Error(`TELEGRAM_SEND_FAILED:${JSON.stringify(alert || {})}`);
+  if (String(process.env.OBJECTIVE_SUPERVISOR_SKIP_TELEGRAM || "").trim() !== "1") {
+    const alert = await sendKoreanTelegramSummary({
+      title: `[목표 점검] ${report.verdict}`,
+      severity: report.verdict === "ROLLBACK_CANDIDATE" ? "WARN" : (report.verdict === "PATCH_CANDIDATE" ? "INFO" : "INFO"),
+      dedupeKey: `objective_supervisor:${report.verdict}:${report.reason}`,
+      dedupeWindowSec: 18 * 60 * 60,
+      dedupeFingerprint: JSON.stringify({
+        verdict: report.verdict,
+        reason: report.reason,
+        blockers: report.blockers,
+        physics: report.physics,
+        retrospective: report.retrospective,
+      }),
+      sections: telegramSections,
+    });
+    if (!alert || (alert.ok !== true && !(alert.skipped && alert.reason === "SKIP_ALERT"))) {
+      throw new Error(`TELEGRAM_SEND_FAILED:${JSON.stringify(alert || {})}`);
+    }
   }
 
   console.log(JSON.stringify({
@@ -1466,6 +1547,7 @@ module.exports = {
     summarizeSelfEvolutionCanary,
     summarizeSelfEvolutionMemory,
     summarizeSelfEvolutionDeploymentPlan,
+    summarizeSelfEvolutionLoopMonitor,
     summarizeCodexAuthority,
   },
 };

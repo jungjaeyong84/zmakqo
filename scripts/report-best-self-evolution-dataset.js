@@ -9,6 +9,7 @@ const {
   loadLocalEnv,
   nowKstMeta,
   readJsonRawSafe,
+  resolveAutomationCycleMeta,
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
@@ -63,6 +64,7 @@ function renderMarkdown(report = {}) {
     "# BEST Self-Evolution Dataset",
     "",
     `- 생성 시각: ${report.generated_at_kst || "N/A"}`,
+    `- cycle_id: ${report.cycle_id || "N/A"}`,
     `- 대상: ${report.provider || "N/A"} ${report.tf || "N/A"}`,
     `- 윈도우: ${report.window && report.window.from_utc || "N/A"} -> ${report.window && report.window.to_utc || "N/A"}`,
     "",
@@ -104,6 +106,7 @@ function renderMarkdown(report = {}) {
 
 async function main() {
   const nowMeta = nowKstMeta();
+  const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
   const weekly = readJsonRawSafe(WEEKLY_LATEST_JSON, null);
   const windowFromMs = toNum(weekly && weekly.current && weekly.current.range && weekly.current.range.from_ms)
     || (nowMeta.nowMs - (WINDOW_DAYS * 24 * 60 * 60 * 1000));
@@ -139,6 +142,8 @@ async function main() {
   const report = {
     ok: true,
     generated_at_kst: nowMeta.kst,
+    cycle_id: cycleMeta.cycle_id,
+    generation_id: cycleMeta.generation_id,
     provider: PROVIDER,
     tf: TF,
     window: {

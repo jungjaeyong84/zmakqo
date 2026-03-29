@@ -221,6 +221,16 @@ function nowKstMeta() {
   return { nowMs, dateKey, hhmm, kst: text };
 }
 
+function resolveAutomationCycleMeta({ envKey = "AUTOMATION_CYCLE_ID", prefix = "automation", nowMeta = null } = {}) {
+  const meta = nowMeta && typeof nowMeta === "object" ? nowMeta : nowKstMeta();
+  const explicit = String(process.env[envKey] || "").trim();
+  const cycleId = explicit || `${String(prefix || "automation").trim()}_${meta.dateKey}_${meta.hhmm}_${sha1(`${prefix}:${meta.nowMs}:${process.pid}`).slice(0, 8)}`;
+  return {
+    cycle_id: cycleId,
+    generation_id: cycleId,
+  };
+}
+
 function formatPct(value, digits = 2) {
   const n = Number(value);
   if (!Number.isFinite(n)) return "N/A";
@@ -443,6 +453,7 @@ module.exports = {
   copyLatest,
   loadLocalEnv,
   nowKstMeta,
+  resolveAutomationCycleMeta,
   formatPct,
   formatSignedPct,
   formatSignedNumber,

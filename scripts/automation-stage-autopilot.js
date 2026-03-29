@@ -12,6 +12,7 @@ const {
   loadLocalEnv,
   nowKstMeta,
   readJsonRawSafe,
+  resolveAutomationCycleMeta,
   sendKoreanTelegramSummary,
   writeJson,
   writeText,
@@ -722,6 +723,7 @@ async function processPineStage({
 
 async function main() {
   const nowMeta = nowKstMeta();
+  const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
   const nowMs = nowMeta.nowMs;
   const bestFebtContext = readBestFebtSupervisorContext(nowMs, {
     weeklyMaxAgeHours: FRESHNESS_HOURS.objective,
@@ -758,6 +760,10 @@ async function main() {
   const selfEvolutionDeploymentPlan = objectiveArtifact && objectiveArtifact.data && objectiveArtifact.data.self_evolution_deployment_plan
     && typeof objectiveArtifact.data.self_evolution_deployment_plan === "object"
       ? objectiveArtifact.data.self_evolution_deployment_plan
+      : {};
+  const selfEvolutionLoopMonitor = objectiveArtifact && objectiveArtifact.data && objectiveArtifact.data.self_evolution_loop_monitor
+    && typeof objectiveArtifact.data.self_evolution_loop_monitor === "object"
+      ? objectiveArtifact.data.self_evolution_loop_monitor
       : {};
   const codexAuthority = objectiveArtifact && objectiveArtifact.data && objectiveArtifact.data.codex_authority
     && typeof objectiveArtifact.data.codex_authority === "object"
@@ -909,6 +915,14 @@ async function main() {
     pineCandidate.actionable = false;
     pineCandidate.reason = pineBestFebtGuard.reason;
   }
+  if (pineCandidate.actionable && selfEvolutionLoopMonitor.cycle_consistent === false) {
+    pineCandidate.actionable = false;
+    pineCandidate.reason = "SELF_EVOLUTION_LOOP_CYCLE_MISMATCH";
+  }
+  if (pineCandidate.actionable && Number(selfEvolutionLoopMonitor.stale_artifact_n || 0) > 0) {
+    pineCandidate.actionable = false;
+    pineCandidate.reason = "SELF_EVOLUTION_LOOP_STALE";
+  }
   result = await processPineStage({
     objectiveArtifact,
     codexArtifact,
@@ -944,6 +958,8 @@ async function main() {
   const report = {
     ok: true,
     generated_at_kst: nowMeta.kst,
+    cycle_id: cycleMeta.cycle_id,
+    generation_id: cycleMeta.generation_id,
     provider: PROVIDER,
     objective_verdict: String(objectiveArtifact && objectiveArtifact.data && objectiveArtifact.data.verdict || "N/A"),
     canary_pass: canaryPass,
@@ -974,6 +990,17 @@ async function main() {
       latest_generated_file_path: String(selfEvolutionDeploymentPlan.latest_generated_file_path || "").trim() || null,
       rollback_source_file_path: String(selfEvolutionDeploymentPlan.rollback_source_file_path || "").trim() || null,
       blockers: Array.isArray(selfEvolutionDeploymentPlan.blockers) ? selfEvolutionDeploymentPlan.blockers : [],
+    },
+    self_evolution_loop_monitor: {
+      available: !!(objectiveArtifact && objectiveArtifact.data && objectiveArtifact.data.self_evolution_loop_monitor),
+      cycle_id: String(selfEvolutionLoopMonitor.cycle_id || "").trim() || null,
+      overall_status: String(selfEvolutionLoopMonitor.overall_status || "").trim().toUpperCase() || null,
+      cycle_consistent: selfEvolutionLoopMonitor.cycle_consistent === true,
+      stale_artifact_n: toNum(selfEvolutionLoopMonitor.stale_artifact_n) || 0,
+      critical_blockers: Array.isArray(selfEvolutionLoopMonitor.critical_blockers) ? selfEvolutionLoopMonitor.critical_blockers : [],
+      promotion_path_ready: selfEvolutionLoopMonitor.promotion_path_ready === true,
+      manual_paste_ready: selfEvolutionLoopMonitor.manual_paste_ready === true,
+      ready_candidate_id: String(selfEvolutionLoopMonitor.ready_candidate_id || "").trim() || null,
     },
     self_evolution_pine_handoff: {
       stage_ready: result.stageState.machine_state === STATE_MACHINE.READY,
@@ -1012,7 +1039,7 @@ async function main() {
   copyLatest(jsonPath, REPORT_LATEST_JSON);
   copyLatest(mdPath, REPORT_LATEST_MD);
 
-  if (actions.length) {
+  if (actions.length && String(process.env.STAGE_AUTOPILOT_SKIP_TELEGRAM || "").trim() !== "1") {
     const alert = await sendKoreanTelegramSummary({
       title: `[자동 변경 반영] ${actions.length}건 처리`,
       provider: PROVIDER,

@@ -9,6 +9,7 @@ const {
   loadLocalEnv,
   nowKstMeta,
   readJsonRawSafe,
+  resolveAutomationCycleMeta,
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
@@ -34,6 +35,7 @@ function renderMarkdown(report = {}) {
     "# BEST Self-Evolution Deployment Plan",
     "",
     `- 생성 시각: ${report.generated_at_kst || "N/A"}`,
+    `- cycle_id: ${report.cycle_id || "N/A"}`,
     "",
     "## Summary",
     `- status: ${summary.plan_status || "N/A"}`,
@@ -63,9 +65,12 @@ function renderMarkdown(report = {}) {
 
 async function main() {
   const nowMeta = nowKstMeta();
+  const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
   const output = {
     ok: true,
     generated_at_kst: nowMeta.kst,
+    cycle_id: cycleMeta.cycle_id,
+    generation_id: cycleMeta.generation_id,
     inputs: { ...INPUTS },
     ...deriveDeploymentPlan({
       objectiveSupervisor: readJsonRawSafe(INPUTS.objectiveSupervisor, null),

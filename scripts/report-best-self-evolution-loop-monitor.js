@@ -10,6 +10,7 @@ const {
   loadLocalEnv,
   nowKstMeta,
   readJsonRawSafe,
+  resolveAutomationCycleMeta,
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
@@ -68,8 +69,10 @@ function renderMarkdown(report = {}) {
     "# BEST Self-Evolution Loop Monitor",
     "",
     `- 생성 시각: ${report.generated_at_kst || "N/A"}`,
+    `- cycle_id: ${report.cycle_id || "N/A"}`,
     "",
     "## Summary",
+    `- cycle_consistent: ${summary.cycle_consistent ? "YES" : "NO"} / cycle_mismatch_n: ${summary.cycle_mismatch_n ?? 0}`,
     `- overall_status: ${summary.overall_status || "N/A"}`,
     `- fresh loops: ${summary.fresh_loop_n ?? 0} / ${summary.loop_n ?? 0}`,
     `- stale artifacts: ${Array.isArray(summary.stale_artifacts) && summary.stale_artifacts.length ? summary.stale_artifacts.join(", ") : "none"}`,
@@ -87,12 +90,15 @@ function renderMarkdown(report = {}) {
 
 async function main() {
   const nowMeta = nowKstMeta();
+  const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
   const artifacts = Object.fromEntries(
     Object.entries(INPUTS).map(([key, filePath]) => [key, readFresh(filePath, MAX_AGE_HOURS[key] || 24)])
   );
   const output = {
     ok: true,
     generated_at_kst: nowMeta.kst,
+    cycle_id: cycleMeta.cycle_id,
+    generation_id: cycleMeta.generation_id,
     inputs: { ...INPUTS },
     ...deriveLoopMonitor({
       artifacts,

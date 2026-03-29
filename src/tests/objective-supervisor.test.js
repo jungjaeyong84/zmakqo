@@ -144,6 +144,10 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
       summary: { total_n: 1, shadow_n: 0, soft_n: 1, hard_n: 0, ready_n: 1, blocked_n: 0, rollback_ready_n: 0, apply_pass: true, global_canary_pass: true, current_open_wave: 1, open_wave: 1, scale_allowed: false, next_wave_candidate: 2, top_ready_market: "BTCUSDT", top_rollback_market: null },
       rows: [{ market: "BTCUSDT", wave: 1, current_stage: "SOFT", candidate_id: "AUTO_CORE_SCORE_TIGHTEN", canary_verdict: "READY", blockers: [] }],
     },
+    selfEvolutionLoopMonitor: {
+      summary: { cycle_id: "cycle-1", overall_status: "READY_FOR_MANUAL_PASTE", cycle_consistent: true, stale_artifact_n: 0, cycle_mismatch_n: 0, critical_blocker_n: 0, critical_blockers: [], promotion_path_ready: true, manual_paste_ready: true, ready_candidate_id: "AUTO_CORE_SCORE_TIGHTEN", canary_open_wave: 1, loop_n: 10, fresh_loop_n: 10 },
+      rows: [],
+    },
     selfEvolutionMemory: {
       summary: { total_n: 0, current_n: 0, success_n: 0, neutral_n: 0, fail_n: 0, rolled_back_n: 0, blocked_candidate_n: 0, blocked_candidate_ids: [] },
       current_rows: [],
@@ -177,6 +181,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.self_evolution_policy.deployment_guards_latest_path.endsWith("best_self_evolution_deployment_guards_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_policy.deployment_plan_latest_path.endsWith("best_self_evolution_deployment_plan_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_policy.loop_monitor_latest_path.endsWith("best_self_evolution_loop_monitor_latest.json"), true);
+  assert.strictEqual(allowPromote.self_evolution_policy.loop_run_latest_path.endsWith("best_self_evolution_loop_run_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_policy.weight_tuning_latest_path.endsWith("best_self_evolution_weight_tuning_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_policy.memory_latest_path.endsWith("best_self_evolution_memory_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_dataset.rows_n, 24);
@@ -191,6 +196,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.self_evolution_canary.total_n, 1);
   assert.strictEqual(allowPromote.self_evolution_deployment.deploy_pass, true);
   assert.strictEqual(allowPromote.self_evolution_deployment_plan.prepare_pass, true);
+  assert.strictEqual(allowPromote.self_evolution_loop_monitor.cycle_consistent, true);
   assert.strictEqual(allowPromote.codex_authority.owner, "CODEX");
   assert.strictEqual(typeof allowPromote.self_evolution_weight_tuning.summary.advisory_mode, "string");
   assert.strictEqual(allowPromote.self_evolution_memory.total_n, 0);

@@ -12,6 +12,12 @@ function toNum(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function readCycleId(report = null) {
+  const raw = unwrapRawReport(report) || {};
+  const cycleId = String(raw.cycle_id || raw.generation_id || "").trim();
+  return cycleId || null;
+}
+
 function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const objectiveSupervisor = unwrapRawReport(reports.objectiveSupervisor) || {};
   const stageAutopilot = unwrapRawReport(reports.stageAutopilot) || {};
@@ -32,87 +38,117 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const replaySummary = replay.summary && typeof replay.summary === "object" ? replay.summary : {};
   const memorySummary = memory.summary && typeof memory.summary === "object" ? memory.summary : {};
   const weightSummary = weightTuning.summary && typeof weightTuning.summary === "object" ? weightTuning.summary : {};
+  const expectedCycleId = readCycleId(objectiveSupervisor)
+    || readCycleId(candidates)
+    || readCycleId(replay)
+    || readCycleId(canary)
+    || readCycleId(deployment)
+    || readCycleId(deploymentPlan)
+    || readCycleId(stageAutopilot)
+    || readCycleId(weightTuning)
+    || readCycleId(memory)
+    || readCycleId(codexPatch);
 
   const rows = [
     {
       loop: "OBJECTIVE_SUPERVISOR",
       fresh: artifacts.objectiveSupervisor && artifacts.objectiveSupervisor.fresh === true,
+      cycle_id: readCycleId(objectiveSupervisor),
       status: String(objectiveSupervisor.verdict || "N/A").trim().toUpperCase() || "N/A",
       reason: objectiveReason || "N/A",
     },
     {
       loop: "CANDIDATES",
       fresh: artifacts.candidates && artifacts.candidates.fresh === true,
+      cycle_id: readCycleId(candidates),
       status: Number(candidateSummary.ready_n || 0) > 0 ? "READY" : "HOLD",
       reason: `top=${candidateSummary.top_candidate_id || "N/A"} / blocked=${candidateSummary.blocked_n ?? 0} / memory=${candidateSummary.memory_blocked_n ?? 0}`,
     },
     {
       loop: "REPLAY",
       fresh: artifacts.replay && artifacts.replay.fresh === true,
+      cycle_id: readCycleId(replay),
       status: Number(replaySummary.pass_n || 0) > 0 ? "PASS" : "HOLD",
       reason: `best=${replaySummary.best_candidate_id || "N/A"} / pass=${replaySummary.pass_n ?? 0} / block=${replaySummary.block_n ?? 0}`,
     },
     {
       loop: "CANARY",
       fresh: artifacts.canary && artifacts.canary.fresh === true,
+      cycle_id: readCycleId(canary),
       status: canarySummary.apply_pass === true ? "PASS" : "BLOCK",
       reason: `open_wave=${canarySummary.open_wave ?? "N/A"} / scale=${canarySummary.scale_allowed ? "YES" : "NO"} / blocked=${canarySummary.blocked_n ?? 0}`,
     },
     {
       loop: "DEPLOYMENT_GUARDS",
       fresh: artifacts.deployment && artifacts.deployment.fresh === true,
+      cycle_id: readCycleId(deployment),
       status: deploymentSummary.deploy_pass === true ? "PASS" : "BLOCK",
       reason: Array.isArray(deploymentSummary.blockers) && deploymentSummary.blockers.length ? deploymentSummary.blockers.join("|") : "none",
     },
     {
       loop: "DEPLOYMENT_PLAN",
       fresh: artifacts.deploymentPlan && artifacts.deploymentPlan.fresh === true,
+      cycle_id: readCycleId(deploymentPlan),
       status: String(deploymentPlanSummary.plan_status || "N/A").trim().toUpperCase() || "N/A",
       reason: `candidate=${deploymentPlanSummary.target_candidate_id || "N/A"} / manual=${deploymentPlanSummary.manual_step_required ? "YES" : "NO"} / file=${deploymentPlanSummary.prepared_file_path || deploymentPlanSummary.latest_generated_file_path || "N/A"}`,
     },
     {
       loop: "STAGE_AUTOPILOT",
       fresh: artifacts.stageAutopilot && artifacts.stageAutopilot.fresh === true,
+      cycle_id: readCycleId(stageAutopilot),
       status: String(stageAutopilot.objective_verdict || "N/A").trim().toUpperCase() || "N/A",
       reason: `actions=${Array.isArray(stageAutopilot.actions) ? stageAutopilot.actions.length : 0}`,
     },
     {
       loop: "WEIGHT_TUNING",
       fresh: artifacts.weightTuning && artifacts.weightTuning.fresh === true,
+      cycle_id: readCycleId(weightTuning),
       status: String(weightSummary.advisory_mode || "N/A").trim().toUpperCase() || "N/A",
       reason: `suggestions=${weightSummary.suggestion_n ?? 0} / canary_blocked=${weightSummary.canary_blocked ? "YES" : "NO"}`,
     },
     {
       loop: "MEMORY_LEDGER",
       fresh: artifacts.memory && artifacts.memory.fresh === true,
+      cycle_id: readCycleId(memory),
       status: Number(memorySummary.blocked_candidate_n || 0) > 0 ? "BLOCK" : "PASS",
       reason: `blocked=${memorySummary.blocked_candidate_n ?? 0} / top_failed=${memorySummary.top_failed_candidate_id || "N/A"}`,
     },
     {
       loop: "CODEX_PATCH_ENGINE",
       fresh: artifacts.codexPatch && artifacts.codexPatch.fresh === true,
+      cycle_id: readCycleId(codexPatch),
       status: String(codexPatch.verdict || "N/A").trim().toUpperCase() || "N/A",
       reason: `candidate=${codexPatch.recommended_candidate_id || "N/A"} / rollback=${codexPatch.recommended_rollback_file_path || "N/A"}`,
     },
   ];
 
   const staleArtifacts = rows.filter((row) => row.fresh !== true).map((row) => row.loop);
+  const cycleMismatches = expectedCycleId
+    ? rows
+      .filter((row) => row.cycle_id && row.cycle_id !== expectedCycleId)
+      .map((row) => ({ loop: row.loop, cycle_id: row.cycle_id }))
+    : [];
   const blockers = [];
   if (objectiveReason) blockers.push(objectiveReason);
   if (Array.isArray(deploymentSummary.blockers)) blockers.push(...deploymentSummary.blockers);
   if (Number(memorySummary.blocked_candidate_n || 0) > 0) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK_PRESENT");
+  if (cycleMismatches.length) blockers.push("SELF_EVOLUTION_CYCLE_MISMATCH");
   const uniqueBlockers = Array.from(new Set(blockers.filter(Boolean)));
 
   let overallStatus = "HEALTHY";
   if (deploymentPlanSummary.manual_step_required === true) overallStatus = "READY_FOR_MANUAL_PASTE";
-  else if (staleArtifacts.length) overallStatus = "BLOCKED";
+  else if (staleArtifacts.length || cycleMismatches.length) overallStatus = "BLOCKED";
   else if (uniqueBlockers.length || canarySummary.apply_pass === false || deploymentSummary.deploy_pass === false) overallStatus = "DEGRADED";
 
   return {
     summary: {
+      cycle_id: expectedCycleId,
       overall_status: overallStatus,
       stale_artifact_n: staleArtifacts.length,
       stale_artifacts: staleArtifacts,
+      cycle_consistent: cycleMismatches.length === 0,
+      cycle_mismatch_n: cycleMismatches.length,
+      cycle_mismatches: cycleMismatches,
       critical_blocker_n: uniqueBlockers.length,
       critical_blockers: uniqueBlockers.slice(0, 10),
       promotion_path_ready: deploymentSummary.deploy_pass === true,
