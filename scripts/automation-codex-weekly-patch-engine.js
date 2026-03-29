@@ -154,6 +154,12 @@ function buildPrompt(context = {}) {
   const selfEvolutionCanary = objectiveSupervisor && objectiveSupervisor.self_evolution_canary && typeof objectiveSupervisor.self_evolution_canary === "object"
     ? objectiveSupervisor.self_evolution_canary
     : {};
+  const selfEvolutionDeployment = objectiveSupervisor && objectiveSupervisor.self_evolution_deployment && typeof objectiveSupervisor.self_evolution_deployment === "object"
+    ? objectiveSupervisor.self_evolution_deployment
+    : {};
+  const selfEvolutionWeightTuning = objectiveSupervisor && objectiveSupervisor.self_evolution_weight_tuning && typeof objectiveSupervisor.self_evolution_weight_tuning === "object"
+    ? objectiveSupervisor.self_evolution_weight_tuning
+    : {};
   const selfEvolutionMemory = objectiveSupervisor && objectiveSupervisor.self_evolution_memory && typeof objectiveSupervisor.self_evolution_memory === "object"
     ? objectiveSupervisor.self_evolution_memory
     : {};
@@ -204,6 +210,8 @@ function buildPrompt(context = {}) {
     `- BEST self-evolution objective score spec: ${selfEvolutionPolicy.objective_latest_path || "N/A"}`,
     `- BEST self-evolution attribution spec: ${selfEvolutionPolicy.attribution_latest_path || "N/A"}`,
     `- BEST self-evolution canary spec: ${selfEvolutionPolicy.canary_latest_path || "N/A"}`,
+    `- BEST self-evolution deployment guards spec: ${selfEvolutionPolicy.deployment_guards_latest_path || "N/A"}`,
+    `- BEST self-evolution weight tuning spec: ${selfEvolutionPolicy.weight_tuning_latest_path || "N/A"}`,
     `- BEST self-evolution memory ledger spec: ${selfEvolutionPolicy.memory_latest_path || "N/A"}`,
     "Filter layer interpretation:",
     ...objectiveLayerLines,
@@ -260,7 +268,17 @@ function buildPrompt(context = {}) {
     "Self-evolution canary snapshot:",
     `- total/shadow/soft/hard: ${selfEvolutionCanary.total_n != null ? selfEvolutionCanary.total_n : "N/A"} / ${selfEvolutionCanary.shadow_n != null ? selfEvolutionCanary.shadow_n : "N/A"} / ${selfEvolutionCanary.soft_n != null ? selfEvolutionCanary.soft_n : "N/A"} / ${selfEvolutionCanary.hard_n != null ? selfEvolutionCanary.hard_n : "N/A"}`,
     `- ready/blocked/rollback: ${selfEvolutionCanary.ready_n != null ? selfEvolutionCanary.ready_n : "N/A"} / ${selfEvolutionCanary.blocked_n != null ? selfEvolutionCanary.blocked_n : "N/A"} / ${selfEvolutionCanary.rollback_ready_n != null ? selfEvolutionCanary.rollback_ready_n : "N/A"} / apply ${selfEvolutionCanary.apply_pass === true ? "PASS" : "BLOCK"}`,
+    `- wave open/current/next: ${selfEvolutionCanary.open_wave != null ? selfEvolutionCanary.open_wave : "N/A"} / ${selfEvolutionCanary.current_open_wave != null ? selfEvolutionCanary.current_open_wave : "N/A"} / ${selfEvolutionCanary.next_wave_candidate != null ? selfEvolutionCanary.next_wave_candidate : "N/A"} / scale ${selfEvolutionCanary.scale_allowed === true ? "YES" : "NO"}`,
     `- top ready: ${selfEvolutionCanary.top_ready_market || "N/A"} / top rollback: ${selfEvolutionCanary.top_rollback_market || "N/A"}`,
+    "Self-evolution deployment guards snapshot:",
+    `- target/deploy/rollback_only: ${selfEvolutionDeployment.target_candidate_id || "N/A"} / ${selfEvolutionDeployment.deploy_pass === true ? "PASS" : "BLOCK"} / ${selfEvolutionDeployment.rollback_only === true ? "YES" : "NO"}`,
+    `- replay/open_wave/markets: ${selfEvolutionDeployment.replay_verdict || "N/A"} / ${selfEvolutionDeployment.canary_open_wave != null ? selfEvolutionDeployment.canary_open_wave : "N/A"} / ${selfEvolutionDeployment.market_ready_n != null ? selfEvolutionDeployment.market_ready_n : "N/A"} / ${selfEvolutionDeployment.market_total_n != null ? selfEvolutionDeployment.market_total_n : "N/A"}`,
+    `- blockers: ${Array.isArray(selfEvolutionDeployment.blockers) && selfEvolutionDeployment.blockers.length ? selfEvolutionDeployment.blockers.join(", ") : "none"}`,
+    "Self-evolution weight tuning snapshot:",
+    `- advisory/suggestions/dominant: ${selfEvolutionWeightTuning.summary && selfEvolutionWeightTuning.summary.advisory_mode || "N/A"} / ${selfEvolutionWeightTuning.summary && selfEvolutionWeightTuning.summary.suggestion_n != null ? selfEvolutionWeightTuning.summary.suggestion_n : "N/A"} / ${selfEvolutionWeightTuning.summary && selfEvolutionWeightTuning.summary.dominant_axis || "N/A"}`,
+    ...((Array.isArray(selfEvolutionWeightTuning.suggestions) && selfEvolutionWeightTuning.suggestions.length)
+      ? selfEvolutionWeightTuning.suggestions.slice(0, 5).map((row) => `- ${row.axis}: ${row.direction} ${row.delta} / ${row.reason}`)
+      : ["- none"]),
     "Self-evolution memory ledger snapshot:",
     `- total/current/blocked: ${selfEvolutionMemory.total_n != null ? selfEvolutionMemory.total_n : "N/A"} / ${selfEvolutionMemory.current_n != null ? selfEvolutionMemory.current_n : "N/A"} / ${selfEvolutionMemory.blocked_candidate_n != null ? selfEvolutionMemory.blocked_candidate_n : "N/A"}`,
     `- success/neutral/fail/rolled_back: ${selfEvolutionMemory.success_n != null ? selfEvolutionMemory.success_n : "N/A"} / ${selfEvolutionMemory.neutral_n != null ? selfEvolutionMemory.neutral_n : "N/A"} / ${selfEvolutionMemory.fail_n != null ? selfEvolutionMemory.fail_n : "N/A"} / ${selfEvolutionMemory.rolled_back_n != null ? selfEvolutionMemory.rolled_back_n : "N/A"}`,

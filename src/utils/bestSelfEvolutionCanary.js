@@ -24,6 +24,58 @@ function marketWave(market) {
   return 9;
 }
 
+function previousOpenWave(previousCanary = null) {
+  const rows = Array.isArray(previousCanary && previousCanary.rows) ? previousCanary.rows : [];
+  const progressed = rows.filter((row) => {
+    const stage = String(row && row.current_stage || "").trim().toUpperCase();
+    return stage === "SOFT" || stage === "HARD";
+  });
+  if (!progressed.length) return 1;
+  return progressed.reduce((acc, row) => Math.max(acc, marketWave(row && row.market)), 1);
+}
+
+function waveHealthy(rows = [], wave) {
+  const scoped = (Array.isArray(rows) ? rows : []).filter((row) => marketWave(row && row.market) === Number(wave));
+  if (!scoped.length) return false;
+  return scoped.every((row) => {
+    const stage = String(row && row.current_stage || "").trim().toUpperCase();
+    return (stage === "SOFT" || stage === "HARD")
+      && String(row && row.canary_verdict || "").trim().toUpperCase() === "READY"
+      && row.rollback_ready !== true;
+  });
+}
+
+function deriveOpenWave({ previousCanary = null, memoryLedger = null } = {}) {
+  const previousSummary = previousCanary && previousCanary.summary && typeof previousCanary.summary === "object"
+    ? previousCanary.summary
+    : {};
+  const previousRows = Array.isArray(previousCanary && previousCanary.rows) ? previousCanary.rows : [];
+  const memorySummary = memoryLedger && memoryLedger.summary && typeof memoryLedger.summary === "object"
+    ? memoryLedger.summary
+    : {};
+  const currentOpenWave = previousOpenWave(previousCanary);
+  const scaleBlockers = [];
+  if (previousRows.length > 0 && previousSummary.apply_pass !== true) scaleBlockers.push("PREVIOUS_CANARY_NOT_PASS");
+  if (Number(previousSummary.rollback_ready_n || 0) > 0) scaleBlockers.push("PREVIOUS_ROLLBACK_READY");
+  if (Number(memorySummary.blocked_candidate_n || 0) > 0) scaleBlockers.push("MEMORY_BLOCKED_CANDIDATES");
+  if (Number(memorySummary.rolled_back_n || 0) > 0) scaleBlockers.push("MEMORY_ROLLBACK_HISTORY");
+  if (Number(memorySummary.fail_n || 0) > (Number(memorySummary.success_n || 0) + Number(memorySummary.neutral_n || 0))) {
+    scaleBlockers.push("MEMORY_FAIL_DOMINANT");
+  }
+
+  let openWave = currentOpenWave;
+  if (!scaleBlockers.length) {
+    if (openWave === 1 && waveHealthy(previousRows, 1)) openWave = 2;
+    if (openWave === 2 && waveHealthy(previousRows, 2)) openWave = 3;
+  }
+  return {
+    current_open_wave: currentOpenWave,
+    open_wave: openWave,
+    scale_allowed: openWave > currentOpenWave,
+    scale_block_reason: scaleBlockers[0] || null,
+  };
+}
+
 function uniqueMarkets(...lists) {
   const set = new Set();
   for (const list of lists) {
@@ -80,6 +132,7 @@ function buildMarketCanaryRows({
   replayReport = null,
   driftCanary = null,
   previousCanary = null,
+  memoryLedger = null,
 } = {}) {
   const objective = objectiveSupervisor && objectiveSupervisor.self_evolution_objective && typeof objectiveSupervisor.self_evolution_objective === "object"
     ? objectiveSupervisor.self_evolution_objective
@@ -93,6 +146,7 @@ function buildMarketCanaryRows({
   const driftShadow = toNum(driftCanary && driftCanary.shadow && driftCanary.shadow.summary && driftCanary.shadow.summary.drift) || 0;
   const driftGolden = toNum(driftCanary && driftCanary.golden && driftCanary.golden.summary && driftCanary.golden.summary.drift) || 0;
   const globalCanaryPass = driftShadow === 0 && driftGolden === 0;
+  const waveState = deriveOpenWave({ previousCanary, memoryLedger });
 
   const rows = [];
   for (const market of uniqueMarkets(
@@ -114,7 +168,7 @@ function buildMarketCanaryRows({
     if (!globalCanaryPass) blockers.push("FILTER_CANARY_DRIFT");
     if (!candidate || !replay) blockers.push("SELF_EVOLUTION_REPLAY_MISSING");
     if (candidate && replay && String(replay.validation_verdict || "").toUpperCase() !== "PASS") blockers.push("SELF_EVOLUTION_REPLAY_NOT_PASS");
-    if (wave !== 1) blockers.push("WAVE_NOT_OPEN");
+    if (wave > waveState.open_wave) blockers.push("WAVE_NOT_OPEN");
     if (marketContract && String(marketContract.mode || "").toUpperCase() !== "NORMAL") blockers.push("MARKET_CONTRACT_BLOCK");
     if (marketContract && marketContract.tightening_allowed === false && String(candidate && candidate.direction || "").toUpperCase() === "TIGHTEN") blockers.push("COUNT_GUARD_ACTIVE");
     if (marketContract && marketContract.recovery_priority === true && String(candidate && candidate.direction || "").toUpperCase() === "TIGHTEN") blockers.push("RECOVERY_PRIORITY_ACTIVE");
@@ -181,6 +235,11 @@ function buildMarketCanaryRows({
       rollback_ready_n: rollbackRows.length,
       apply_pass: readyRows.some((row) => row.wave === 1 && (row.current_stage === "SOFT" || row.current_stage === "HARD")),
       global_canary_pass: globalCanaryPass,
+      current_open_wave: waveState.current_open_wave,
+      open_wave: waveState.open_wave,
+      scale_allowed: waveState.scale_allowed,
+      scale_block_reason: waveState.scale_block_reason,
+      next_wave_candidate: waveState.open_wave < 3 ? waveState.open_wave + 1 : null,
       top_ready_market: readyRows[0] ? readyRows[0].market : null,
       top_rollback_market: rollbackRows[0] ? rollbackRows[0].market : null,
     },
@@ -193,7 +252,9 @@ module.exports = {
   marketWave,
   unwrapRawReport,
   __test: {
+    deriveOpenWave,
     extractExistingStage,
     findBestValidationForMarket,
+    waveHealthy,
   },
 };

@@ -12,6 +12,8 @@
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_ATTRIBUTION_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_CANDIDATE_CHANGESET_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_CANARY_SPEC.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DEPLOYMENT_GUARDS_SPEC.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_WEIGHT_TUNING_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MEMORY_LEDGER_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_WORK_BREAKDOWN.md`
 
@@ -107,20 +109,23 @@
 10. P5 market canary
 11. P6 auto rollback
 12. P7 memory ledger
+13. canary scale
+14. deployment guards
+15. memory-aware pre-block
+16. weight tuning advisory
 
 ## 8. 다음 고도화 범위
 
-1. wave 2/3 canary 확대
-2. 시장별 objective score 정교화
-3. weight tuning과 deployment guard 분리
-4. memory 기반 candidate pre-block 자동화 강화
+1. 시장별 objective score 정교화
+2. deployment autopilot hardening
+3. memory 기반 candidate pre-block 자동화 강화
+4. weight tuning auto-apply 금지 해제 여부 검증
 
 ## 9. 다음 구현 우선순위
 
-1. `Canary Scale`
-2. `Weight Tuning`
-3. `Deployment Guards`
-4. `Memory-aware Candidate Blocking`
+1. `Deployment Autopilot Hardening`
+2. `Memory-aware Candidate Blocking`
+3. `Weight Tuning Auto-Apply Review`
 
 ## 10. 한 줄 결론
 

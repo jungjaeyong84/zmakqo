@@ -19,6 +19,12 @@
    - `PROMOTE_HARD`
    - `AUTO_ROLLBACK`
    - `KEEP`
+5. scale fields
+   - `current_open_wave`
+   - `open_wave`
+   - `next_wave_candidate`
+   - `scale_allowed`
+   - `scale_block_reason`
 
 ## 1. canary 단위
 
@@ -36,6 +42,7 @@
 4. `replay.validation_verdict = PASS` 여야 한다
 5. `global_canary_pass = true` 여야 한다
 6. 시장 계약이 `COUNT_GUARD_ACTIVE` 또는 `RECOVERY_FIRST`면 tighten 승격을 막는다
+7. 이전 canary wave가 건강하고 memory가 실패 우세가 아닐 때만 다음 wave를 연다
 
 ## 3. rollback 조건
 

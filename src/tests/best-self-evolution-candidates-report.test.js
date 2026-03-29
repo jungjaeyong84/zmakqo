@@ -8,6 +8,8 @@ function run() {
       total_n: 3,
       ready_n: 1,
       blocked_n: 1,
+      memory_blocked_n: 1,
+      failed_fingerprint_repeat_n: 0,
       by_scope: { PINE: 1, EV: 1, WAIT: 1 },
       top_candidate_id: "AUTO_CORE_REGIME_TIGHTEN",
       top_scope: "PINE",
@@ -28,6 +30,7 @@ function run() {
 
   assert.match(markdown, /BEST Self-Evolution Candidate Change Sets/);
   assert.match(markdown, /total\/ready\/blocked: 3 \/ 1 \/ 1/);
+  assert.match(markdown, /memory_blocked\/fingerprint_repeat: 1 \/ 0/);
   assert.match(markdown, /AUTO_CORE_REGIME_TIGHTEN: PINE\/TIGHTEN/);
   console.log("BEST_SELF_EVOLUTION_CANDIDATES_REPORT_TEST_OK");
 }

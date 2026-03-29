@@ -93,7 +93,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
     codex: null,
   });
   assert.strictEqual(requireFresh.verdict, "HOLD");
-  assert.strictEqual(requireFresh.reason, "CODEX_REVIEW_REQUIRED_PROMOTION");
+  assert.strictEqual(requireFresh.reason, "SELF_EVOLUTION_REPLAY_MISSING");
 
   const allowPromote = __test.evaluateSupervisor({
     ...base,
@@ -131,6 +131,24 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
         avg_hold_minutes: 47.5,
       },
     },
+    selfEvolutionCandidates: {
+      summary: { total_n: 1, ready_n: 1, blocked_n: 0, top_candidate_id: "AUTO_CORE_SCORE_TIGHTEN", top_scope: "PINE" },
+      rows: [{ candidate_id: "AUTO_CORE_SCORE_TIGHTEN", scope: "PINE", ready_for_auto_apply: true }],
+    },
+    selfEvolutionReplay: {
+      validation_mode: "OFFLINE_PROXY_V1",
+      summary: { total_n: 1, pass_n: 1, warn_n: 0, block_n: 0, best_candidate_id: "AUTO_CORE_SCORE_TIGHTEN", best_verdict: "PASS", best_objective_delta: 0.8 },
+      validations: [{ candidate_id: "AUTO_CORE_SCORE_TIGHTEN", validation_verdict: "PASS", candidate_objective_delta: 0.8 }],
+    },
+    selfEvolutionCanary: {
+      summary: { total_n: 1, shadow_n: 0, soft_n: 1, hard_n: 0, ready_n: 1, blocked_n: 0, rollback_ready_n: 0, apply_pass: true, global_canary_pass: true, current_open_wave: 1, open_wave: 1, scale_allowed: false, next_wave_candidate: 2, top_ready_market: "BTCUSDT", top_rollback_market: null },
+      rows: [{ market: "BTCUSDT", wave: 1, current_stage: "SOFT", candidate_id: "AUTO_CORE_SCORE_TIGHTEN", canary_verdict: "READY", blockers: [] }],
+    },
+    selfEvolutionMemory: {
+      summary: { total_n: 0, current_n: 0, success_n: 0, neutral_n: 0, fail_n: 0, rolled_back_n: 0, blocked_candidate_n: 0, blocked_candidate_ids: [] },
+      current_rows: [],
+      rows: [],
+    },
     codex: {
       status: "FRESH",
       verdict: "PROMOTE",
@@ -156,6 +174,8 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.self_evolution_policy.candidates_latest_path.endsWith("best_self_evolution_candidates_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_policy.replay_latest_path.endsWith("best_self_evolution_replay_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_policy.canary_latest_path.endsWith("best_self_evolution_canary_latest.json"), true);
+  assert.strictEqual(allowPromote.self_evolution_policy.deployment_guards_latest_path.endsWith("best_self_evolution_deployment_guards_latest.json"), true);
+  assert.strictEqual(allowPromote.self_evolution_policy.weight_tuning_latest_path.endsWith("best_self_evolution_weight_tuning_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_policy.memory_latest_path.endsWith("best_self_evolution_memory_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_dataset.rows_n, 24);
   assert.strictEqual(allowPromote.self_evolution_dataset.features_coverage_rate, 0.91);
@@ -164,9 +184,11 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.self_evolution_objective.replacement_floor_pass, true);
   assert.strictEqual(Array.isArray(allowPromote.self_evolution_objective.market_objective_scores), true);
   assert.strictEqual(allowPromote.self_evolution_attribution.drop_top_layer, null);
-  assert.strictEqual(allowPromote.self_evolution_candidates.total_n, 0);
-  assert.strictEqual(allowPromote.self_evolution_replay.total_n, 0);
-  assert.strictEqual(allowPromote.self_evolution_canary.total_n, 0);
+  assert.strictEqual(allowPromote.self_evolution_candidates.total_n, 1);
+  assert.strictEqual(allowPromote.self_evolution_replay.total_n, 1);
+  assert.strictEqual(allowPromote.self_evolution_canary.total_n, 1);
+  assert.strictEqual(allowPromote.self_evolution_deployment.deploy_pass, true);
+  assert.strictEqual(typeof allowPromote.self_evolution_weight_tuning.summary.advisory_mode, "string");
   assert.strictEqual(allowPromote.self_evolution_memory.total_n, 0);
   assert.strictEqual(allowPromote.best_febt_tuning_contract.mode, "NORMAL");
   assert.strictEqual(allowPromote.best_febt_tuning_contract.tightening_allowed, true);
@@ -294,7 +316,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
     },
   });
   assert.strictEqual(blockPromote.verdict, "HOLD");
-  assert.strictEqual(blockPromote.reason, "CODEX_REVIEW_BLOCK_PROMOTION");
+  assert.strictEqual(blockPromote.reason, "SELF_EVOLUTION_REPLAY_MISSING");
 
   const stalePromote = __test.evaluateSupervisor({
     ...base,
@@ -309,7 +331,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
     },
   });
   assert.strictEqual(stalePromote.verdict, "HOLD");
-  assert.strictEqual(stalePromote.reason, "CODEX_REVIEW_REQUIRED_PROMOTION");
+  assert.strictEqual(stalePromote.reason, "SELF_EVOLUTION_REPLAY_MISSING");
 
   const staleAutopilot = __test.evaluateSupervisor({
     ...base,
@@ -325,7 +347,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
     },
   });
   assert.strictEqual(staleAutopilot.verdict, "HOLD");
-  assert.strictEqual(staleAutopilot.reason, "STAGE_AUTOPILOT_REQUIRED_PROMOTION");
+  assert.strictEqual(staleAutopilot.reason, "SELF_EVOLUTION_REPLAY_MISSING");
 
   const failedButNoAction = __test.evaluateSupervisor({
     ...base,
@@ -457,8 +479,8 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
     },
     self_evolution_policy: {
       master_spec_path: "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MASTER_SPEC.md",
-      current_focus: "P0_DATASET,P1_OBJECTIVE,P2_ATTRIBUTION,P3_CANDIDATE_CHANGESET,P4_REPLAY,P5_CANARY,P6_AUTOROLLBACK,P7_MEMORY_LEDGER",
-      next_focus: "CANARY_SCALE,WEIGHT_TUNING,DEPLOYMENT_GUARDS",
+      current_focus: "P0_DATASET,P1_OBJECTIVE,P2_ATTRIBUTION,P3_CANDIDATE_CHANGESET,P4_REPLAY,P5_CANARY,P6_AUTOROLLBACK,P7_MEMORY_LEDGER,CANARY_SCALE,DEPLOYMENT_GUARDS,MEMORY_PREBLOCK,WEIGHT_TUNING_ADVISORY",
+      next_focus: "DEPLOYMENT_AUTOPILOT_HARDENING",
       linked_paths: ["/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DATASET_SPEC.md"],
     },
     best_febt_tuning_contract: {
@@ -496,6 +518,29 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
       top_success_candidate_id: "WAIT_ONE_BAR_TUNE",
       top_failed_candidate_id: "AUTO_CORE_SCORE_TIGHTEN",
     },
+    self_evolution_deployment: {
+      target_candidate_id: "WAIT_ONE_BAR_TUNE",
+      deploy_pass: false,
+      rollback_only: false,
+      blockers: ["SELF_EVOLUTION_MEMORY_BLOCK"],
+      replay_verdict: "PASS",
+      canary_open_wave: 2,
+      market_ready_n: 1,
+      market_total_n: 2,
+    },
+    self_evolution_weight_tuning: {
+      summary: {
+        advisory_mode: "HOLD",
+        suggestion_n: 2,
+        dominant_axis: "delay_cost_weight",
+        count_guard_blocked: true,
+        memory_blocked: false,
+        canary_blocked: false,
+      },
+      suggestions: [
+        { axis: "delay_cost_weight", direction: "UP", delta: 0.05, reason: "LATE_LOSS_TOP_MARKET" },
+      ],
+    },
     codex_review: { status: "FRESH", verdict: "HOLD", reason: "BLOCKED" },
     stage_autopilot: { status: "FRESH", objective_verdict: "HOLD", action_n: 0, action_types: [] },
   });
@@ -512,6 +557,8 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.ok(telegramSections.some((section) => section.header === "FEBT Phase 0"));
   assert.ok(telegramSections.some((section) => section.header === "BEST/FEBT 공통 계약"));
   assert.ok(telegramSections.some((section) => section.header === "자기 진화 정책"));
+  assert.ok(telegramSections.some((section) => section.header === "자기 진화 배포 가드"));
+  assert.ok(telegramSections.some((section) => section.header === "자기 진화 가중치 튜닝"));
   assert.ok(telegramSections.some((section) => section.header === "자기 진화 메모리"));
   assert.ok(telegramSections.some((section) => section.header === "시장별 BEST/FEBT 계약"));
 

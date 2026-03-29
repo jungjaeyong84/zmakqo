@@ -21,6 +21,8 @@ const {
   deriveAttribution,
 } = require("../src/utils/bestSelfEvolutionAnalysis");
 const { buildMemoryLedger } = require("../src/utils/bestSelfEvolutionMemoryLedger");
+const { deriveDeploymentGuards } = require("../src/utils/bestSelfEvolutionDeploymentGuards");
+const { deriveWeightTuningPlan } = require("../src/utils/bestSelfEvolutionWeightTuning");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
 const { resolveMarketStateSummary } = require("../src/utils/marketStateSummary");
 const { resolveStatPhysFeatures } = require("../src/utils/statPhysFeatures");
@@ -404,6 +406,11 @@ function summarizeSelfEvolutionCanary(report = null) {
     rollback_ready_n: toNum(summary.rollback_ready_n) || 0,
     apply_pass: summary.apply_pass === true,
     global_canary_pass: summary.global_canary_pass === true,
+    current_open_wave: toNum(summary.current_open_wave) || 1,
+    open_wave: toNum(summary.open_wave) || 1,
+    scale_allowed: summary.scale_allowed === true,
+    scale_block_reason: String(summary.scale_block_reason || "").trim() || null,
+    next_wave_candidate: toNum(summary.next_wave_candidate),
     top_ready_market: String(summary.top_ready_market || "").trim() || null,
     top_rollback_market: String(summary.top_rollback_market || "").trim() || null,
     rows,
@@ -432,6 +439,24 @@ function summarizeSelfEvolutionMemory(report = null) {
     recent_failed_fingerprints: Array.isArray(summary.recent_failed_fingerprints) ? summary.recent_failed_fingerprints : [],
     latest_week_key: String(summary.latest_week_key || "").trim() || null,
     current_rows: rows,
+  };
+}
+
+function summarizeSelfEvolutionDeployment(report = null) {
+  const summary = report && report.summary && typeof report.summary === "object" ? report.summary : {};
+  const rows = Array.isArray(report && report.rows) ? report.rows : [];
+  return {
+    available: !!report,
+    target_candidate_id: String(summary.target_candidate_id || "").trim() || null,
+    deploy_pass: summary.deploy_pass === true,
+    rollback_only: summary.rollback_only === true,
+    blockers: Array.isArray(summary.blockers) ? summary.blockers : [],
+    replay_verdict: String(summary.replay_verdict || "").trim().toUpperCase() || null,
+    canary_open_wave: toNum(summary.canary_open_wave) || 1,
+    market_ready_n: toNum(summary.market_ready_n) || 0,
+    market_total_n: toNum(summary.market_total_n) || 0,
+    memory_blocked_candidate_n: toNum(summary.memory_blocked_candidate_n) || 0,
+    rows,
   };
 }
 
@@ -632,6 +657,21 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
       ],
     },
     {
+      header: "자기 진화 배포 가드",
+      lines: [
+        `target ${report.self_evolution_deployment && report.self_evolution_deployment.target_candidate_id || "N/A"} / deploy ${report.self_evolution_deployment && report.self_evolution_deployment.deploy_pass ? "PASS" : "BLOCK"} / rollback_only ${report.self_evolution_deployment && report.self_evolution_deployment.rollback_only ? "YES" : "NO"}`,
+        `replay ${report.self_evolution_deployment && report.self_evolution_deployment.replay_verdict || "N/A"} / open wave ${report.self_evolution_deployment && report.self_evolution_deployment.canary_open_wave != null ? report.self_evolution_deployment.canary_open_wave : "N/A"} / markets ${report.self_evolution_deployment && report.self_evolution_deployment.market_ready_n != null ? report.self_evolution_deployment.market_ready_n : "N/A"} / ${report.self_evolution_deployment && report.self_evolution_deployment.market_total_n != null ? report.self_evolution_deployment.market_total_n : "N/A"}`,
+        `blockers ${report.self_evolution_deployment && Array.isArray(report.self_evolution_deployment.blockers) && report.self_evolution_deployment.blockers.length ? report.self_evolution_deployment.blockers.join("|") : "none"}`,
+      ],
+    },
+    {
+      header: "자기 진화 가중치 튜닝",
+      lines: [
+        `mode ${report.self_evolution_weight_tuning && report.self_evolution_weight_tuning.summary && report.self_evolution_weight_tuning.summary.advisory_mode || "N/A"} / suggestion ${report.self_evolution_weight_tuning && report.self_evolution_weight_tuning.summary && report.self_evolution_weight_tuning.summary.suggestion_n != null ? report.self_evolution_weight_tuning.summary.suggestion_n : "N/A"} / dominant ${report.self_evolution_weight_tuning && report.self_evolution_weight_tuning.summary && report.self_evolution_weight_tuning.summary.dominant_axis || "N/A"}`,
+        `count ${report.self_evolution_weight_tuning && report.self_evolution_weight_tuning.summary && report.self_evolution_weight_tuning.summary.count_guard_blocked ? "BLOCK" : "PASS"} / memory ${report.self_evolution_weight_tuning && report.self_evolution_weight_tuning.summary && report.self_evolution_weight_tuning.summary.memory_blocked ? "BLOCK" : "PASS"} / canary ${report.self_evolution_weight_tuning && report.self_evolution_weight_tuning.summary && report.self_evolution_weight_tuning.summary.canary_blocked ? "BLOCK" : "PASS"}`,
+      ],
+    },
+    {
       header: "자기 진화 메모리",
       lines: [
         `total ${report.self_evolution_memory && report.self_evolution_memory.total_n != null ? report.self_evolution_memory.total_n : "N/A"} / current ${report.self_evolution_memory && report.self_evolution_memory.current_n != null ? report.self_evolution_memory.current_n : "N/A"} / blocked ${report.self_evolution_memory && report.self_evolution_memory.blocked_candidate_n != null ? report.self_evolution_memory.blocked_candidate_n : "N/A"}`,
@@ -747,6 +787,26 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   const selfEvolutionReplaySummary = summarizeSelfEvolutionReplay(selfEvolutionReplay);
   const selfEvolutionCanarySummary = summarizeSelfEvolutionCanary(selfEvolutionCanary);
   const selfEvolutionMemorySummary = summarizeSelfEvolutionMemory(selfEvolutionMemory);
+  const selfEvolutionDeploymentSummary = summarizeSelfEvolutionDeployment(deriveDeploymentGuards({
+    objectiveSupervisor: {
+      guards: {
+        canary_pass: Boolean(canary && canarySummary.drift === 0 && canaryGolden.drift === 0),
+      },
+      promotion,
+      rollback,
+      self_evolution_objective: selfEvolutionObjectiveSummary,
+    },
+    candidateChangeSet: selfEvolutionCandidates,
+    replayReport: selfEvolutionReplay,
+    canaryReport: selfEvolutionCanary,
+    memoryLedger: selfEvolutionMemory,
+  }));
+  const selfEvolutionWeightTuning = deriveWeightTuningPlan({
+    objective: selfEvolutionObjectiveSummary,
+    attribution: selfEvolutionAttributionSummary,
+    canary: selfEvolutionCanarySummary,
+    memoryLedger: selfEvolutionMemorySummary,
+  });
   const memoryBlockedIds = new Set(selfEvolutionMemorySummary.blocked_candidate_ids || []);
 
   const blockers = [];
@@ -772,6 +832,12 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   if (promotion.ready === true && selfEvolutionCanarySummary.available && selfEvolutionCanarySummary.apply_pass !== true) blockers.push("SELF_EVOLUTION_CANARY_BLOCK");
   if (selfEvolutionCanarySummary.rollback_ready_n > 0) blockers.push("SELF_EVOLUTION_CANARY_ROLLBACK_READY");
   if (promotion.ready === true && promotionCandidateId && memoryBlockedIds.has(promotionCandidateId)) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK");
+  if (promotion.ready === true && selfEvolutionDeploymentSummary.deploy_pass !== true) {
+    const deployReason = Array.isArray(selfEvolutionDeploymentSummary.blockers) && selfEvolutionDeploymentSummary.blockers.length
+      ? selfEvolutionDeploymentSummary.blockers[0]
+      : "SELF_EVOLUTION_DEPLOYMENT_BLOCK";
+    if (!blockers.includes(deployReason)) blockers.push(deployReason);
+  }
   if (codex && codexStatus === "FAILED" && (promotion.ready === true || rollback.ready === true)) {
     blockers.push("CODEX_REVIEW_FAILED");
   }
@@ -798,6 +864,10 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
         ? "SELF_EVOLUTION_CANARY_ROLLBACK_READY"
       : (promotion.ready === true && promotionCandidateId && memoryBlockedIds.has(promotionCandidateId))
         ? "SELF_EVOLUTION_MEMORY_BLOCK"
+      : (promotion.ready === true && selfEvolutionDeploymentSummary.deploy_pass !== true)
+        ? ((Array.isArray(selfEvolutionDeploymentSummary.blockers) && selfEvolutionDeploymentSummary.blockers.length)
+          ? selfEvolutionDeploymentSummary.blockers[0]
+          : "SELF_EVOLUTION_DEPLOYMENT_BLOCK")
       : retrospectiveSummary.any_fail
         ? "RETROSPECTIVE_OBJECTIVE_FAIL"
       : (!objective || objective.enough_sample !== true)
@@ -906,6 +976,8 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     self_evolution_candidates: selfEvolutionCandidatesSummary,
     self_evolution_replay: selfEvolutionReplaySummary,
     self_evolution_canary: selfEvolutionCanarySummary,
+    self_evolution_deployment: selfEvolutionDeploymentSummary,
+    self_evolution_weight_tuning: selfEvolutionWeightTuning,
     self_evolution_memory: selfEvolutionMemorySummary,
     self_evolution_policy: selfEvolutionPolicy,
     best_febt_tuning_contract: bestFebtTuningContract,
@@ -1007,6 +1079,8 @@ function renderMarkdown(report = {}) {
     `- candidates_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.candidates_latest_path || "N/A"}`,
     `- replay_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.replay_latest_path || "N/A"}`,
     `- canary_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.canary_latest_path || "N/A"}`,
+    `- deployment_guards_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.deployment_guards_latest_path || "N/A"}`,
+    `- weight_tuning_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.weight_tuning_latest_path || "N/A"}`,
     `- memory_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.memory_latest_path || "N/A"}`,
     `- status: ${report.self_evolution_policy && report.self_evolution_policy.status || "N/A"}`,
     `- current_focus: ${report.self_evolution_policy && report.self_evolution_policy.current_focus || "N/A"}`,
@@ -1048,7 +1122,20 @@ function renderMarkdown(report = {}) {
     "## Self-Evolution Canary",
     `- total/shadow/soft/hard: ${report.self_evolution_canary && report.self_evolution_canary.total_n != null ? report.self_evolution_canary.total_n : "N/A"} / ${report.self_evolution_canary && report.self_evolution_canary.shadow_n != null ? report.self_evolution_canary.shadow_n : "N/A"} / ${report.self_evolution_canary && report.self_evolution_canary.soft_n != null ? report.self_evolution_canary.soft_n : "N/A"} / ${report.self_evolution_canary && report.self_evolution_canary.hard_n != null ? report.self_evolution_canary.hard_n : "N/A"}`,
     `- ready/blocked/rollback: ${report.self_evolution_canary && report.self_evolution_canary.ready_n != null ? report.self_evolution_canary.ready_n : "N/A"} / ${report.self_evolution_canary && report.self_evolution_canary.blocked_n != null ? report.self_evolution_canary.blocked_n : "N/A"} / ${report.self_evolution_canary && report.self_evolution_canary.rollback_ready_n != null ? report.self_evolution_canary.rollback_ready_n : "N/A"} / apply=${report.self_evolution_canary && report.self_evolution_canary.apply_pass ? "PASS" : "BLOCK"}`,
+    `- open/current/next wave: ${report.self_evolution_canary && report.self_evolution_canary.open_wave != null ? report.self_evolution_canary.open_wave : "N/A"} / ${report.self_evolution_canary && report.self_evolution_canary.current_open_wave != null ? report.self_evolution_canary.current_open_wave : "N/A"} / ${report.self_evolution_canary && report.self_evolution_canary.next_wave_candidate != null ? report.self_evolution_canary.next_wave_candidate : "N/A"} / scale=${report.self_evolution_canary && report.self_evolution_canary.scale_allowed ? "YES" : "NO"}`,
     `- top_ready: ${report.self_evolution_canary && report.self_evolution_canary.top_ready_market || "N/A"} / top_rollback: ${report.self_evolution_canary && report.self_evolution_canary.top_rollback_market || "N/A"}`,
+    "",
+    "## Self-Evolution Deployment",
+    `- target/deploy/rollback_only: ${report.self_evolution_deployment && report.self_evolution_deployment.target_candidate_id || "N/A"} / ${report.self_evolution_deployment && report.self_evolution_deployment.deploy_pass ? "PASS" : "BLOCK"} / ${report.self_evolution_deployment && report.self_evolution_deployment.rollback_only ? "YES" : "NO"}`,
+    `- replay/open_wave/markets: ${report.self_evolution_deployment && report.self_evolution_deployment.replay_verdict || "N/A"} / ${report.self_evolution_deployment && report.self_evolution_deployment.canary_open_wave != null ? report.self_evolution_deployment.canary_open_wave : "N/A"} / ${report.self_evolution_deployment && report.self_evolution_deployment.market_ready_n != null ? report.self_evolution_deployment.market_ready_n : "N/A"} / ${report.self_evolution_deployment && report.self_evolution_deployment.market_total_n != null ? report.self_evolution_deployment.market_total_n : "N/A"}`,
+    `- blockers: ${report.self_evolution_deployment && Array.isArray(report.self_evolution_deployment.blockers) && report.self_evolution_deployment.blockers.length ? report.self_evolution_deployment.blockers.join("|") : "none"}`,
+    "",
+    "## Self-Evolution Weight Tuning",
+    `- advisory_mode: ${report.self_evolution_weight_tuning && report.self_evolution_weight_tuning.summary && report.self_evolution_weight_tuning.summary.advisory_mode || "N/A"}`,
+    `- suggestion_n/dominant_axis: ${report.self_evolution_weight_tuning && report.self_evolution_weight_tuning.summary && report.self_evolution_weight_tuning.summary.suggestion_n != null ? report.self_evolution_weight_tuning.summary.suggestion_n : "N/A"} / ${report.self_evolution_weight_tuning && report.self_evolution_weight_tuning.summary && report.self_evolution_weight_tuning.summary.dominant_axis || "N/A"}`,
+    ...((report.self_evolution_weight_tuning && Array.isArray(report.self_evolution_weight_tuning.suggestions) && report.self_evolution_weight_tuning.suggestions.length)
+      ? report.self_evolution_weight_tuning.suggestions.slice(0, 10).map((row) => `- ${row.axis}: ${row.direction} ${row.delta} / ${row.reason}`)
+      : ["- none"]),
     "",
     "## Self-Evolution Memory",
     `- total/current/blocked: ${report.self_evolution_memory && report.self_evolution_memory.total_n != null ? report.self_evolution_memory.total_n : "N/A"} / ${report.self_evolution_memory && report.self_evolution_memory.current_n != null ? report.self_evolution_memory.current_n : "N/A"} / ${report.self_evolution_memory && report.self_evolution_memory.blocked_candidate_n != null ? report.self_evolution_memory.blocked_candidate_n : "N/A"}`,
@@ -1156,6 +1243,8 @@ async function main() {
     self_evolution_candidates: evaluation.self_evolution_candidates,
     self_evolution_replay: evaluation.self_evolution_replay,
     self_evolution_canary: evaluation.self_evolution_canary,
+    self_evolution_deployment: evaluation.self_evolution_deployment,
+    self_evolution_weight_tuning: evaluation.self_evolution_weight_tuning,
     self_evolution_memory: evaluation.self_evolution_memory,
     filter_layers: evaluation.filter_layers,
     best_febt_tuning_contract: {

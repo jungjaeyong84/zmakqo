@@ -23,6 +23,7 @@ const INPUTS = Object.freeze({
   ev: path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json"),
   wait: path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json"),
   changeControl: path.join(OPS_DAILY_DIR, "pine_quality_change_control_latest.json"),
+  memory: path.join(OPS_DAILY_DIR, "best_self_evolution_memory_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -35,6 +36,7 @@ function renderMarkdown(report = {}) {
     "",
     "## Summary",
     `- total/ready/blocked: ${summary.total_n ?? 0} / ${summary.ready_n ?? 0} / ${summary.blocked_n ?? 0}`,
+    `- memory_blocked/fingerprint_repeat: ${summary.memory_blocked_n ?? 0} / ${summary.failed_fingerprint_repeat_n ?? 0}`,
     `- by_scope: ${summary.by_scope ? Object.entries(summary.by_scope).map(([k, v]) => `${k}=${v}`).join(", ") : "N/A"}`,
     `- top_candidate: ${summary.top_candidate_id || "N/A"} / scope=${summary.top_scope || "N/A"}`,
     "",
@@ -59,6 +61,7 @@ async function main() {
     ev: readJsonRawSafe(INPUTS.ev, null),
     wait: readJsonRawSafe(INPUTS.wait, null),
     changeControl: readJsonRawSafe(INPUTS.changeControl, null),
+    memoryLedger: readJsonRawSafe(INPUTS.memory, null),
   });
   const output = {
     ok: true,

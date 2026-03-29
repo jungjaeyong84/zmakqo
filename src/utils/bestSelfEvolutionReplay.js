@@ -33,6 +33,8 @@ function deriveCandidateObjectiveDelta(candidate = {}, context = {}) {
   const deltaParts = [];
   const blockers = [];
 
+  if (hasFlag(candidate, "MEMORY_BLOCKED")) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK");
+  if (hasFlag(candidate, "FAILED_FINGERPRINT_REPEAT")) blockers.push("SELF_EVOLUTION_FINGERPRINT_REPEAT");
   if (hasFlag(candidate, "COUNT_GUARD_ACTIVE") && direction === "TIGHTEN") blockers.push("COUNT_GUARD_ACTIVE");
   if (hasFlag(candidate, "RECOVERY_PRIORITY_ACTIVE") && direction === "TIGHTEN") blockers.push("RECOVERY_PRIORITY_ACTIVE");
   if (!countFloorPass && direction === "TIGHTEN") blockers.push("SELF_EVOLUTION_COUNT_FLOOR_FAIL");

@@ -1,5 +1,7 @@
 "use strict";
 
+const { candidateFingerprint } = require("./bestSelfEvolutionMemoryLedger");
+
 function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
@@ -73,6 +75,54 @@ function buildRiskFlags({ direction, contract, marketGuard, blocked = false, rea
   if (effective && effective.recovery_priority === true && direction === "TIGHTEN") flags.push("RECOVERY_PRIORITY_ACTIVE");
   if (effective && String(effective.mode || "").toUpperCase() === "COUNT_GUARD_ACTIVE") flags.push("MARKET_COUNT_GUARD");
   return flags;
+}
+
+function buildMemoryGuardContext(memoryLedger = null) {
+  const raw = unwrapRawReport(memoryLedger);
+  const summary = raw && raw.summary && typeof raw.summary === "object" ? raw.summary : {};
+  const currentRows = Array.isArray(raw && raw.current_rows) ? raw.current_rows : [];
+  return {
+    blockedIds: new Set(
+      (Array.isArray(summary.blocked_candidate_ids) ? summary.blocked_candidate_ids : [])
+        .map((row) => String(row || "").trim())
+        .filter(Boolean)
+    ),
+    recentFailedFingerprints: new Set(
+      (Array.isArray(summary.recent_failed_fingerprints) ? summary.recent_failed_fingerprints : [])
+        .map((row) => String(row || "").trim())
+        .filter(Boolean)
+    ),
+    currentRowById: new Map(
+      currentRows
+        .map((row) => [String(row && row.candidate_id || "").trim(), row])
+        .filter((row) => row[0])
+    ),
+  };
+}
+
+function applyMemoryGuards(candidate = {}, memoryContext = null) {
+  const next = {
+    ...candidate,
+    risk_flags: Array.isArray(candidate.risk_flags) ? candidate.risk_flags.slice() : [],
+  };
+  if (!memoryContext) return next;
+  const candidateId = String(candidate && candidate.candidate_id || "").trim();
+  const fingerprint = candidateFingerprint(candidate);
+  const memoryRow = candidateId ? (memoryContext.currentRowById.get(candidateId) || null) : null;
+  const memoryBlocked = (candidateId && memoryContext.blockedIds.has(candidateId)) || (memoryRow && memoryRow.memory_blocked === true);
+  const fingerprintRepeated = memoryContext.recentFailedFingerprints.has(fingerprint);
+
+  next.change_fingerprint = fingerprint;
+  next.memory_blocked = memoryBlocked === true;
+  next.memory_block_reason = memoryBlocked
+    ? String(memoryRow && memoryRow.memory_block_reason || "RECENT_FAIL_FINGERPRINT")
+    : null;
+  next.failed_fingerprint_repeat = fingerprintRepeated === true;
+
+  if (memoryBlocked && !next.risk_flags.includes("MEMORY_BLOCKED")) next.risk_flags.push("MEMORY_BLOCKED");
+  if (fingerprintRepeated && !next.risk_flags.includes("FAILED_FINGERPRINT_REPEAT")) next.risk_flags.push("FAILED_FINGERPRINT_REPEAT");
+  if (memoryBlocked || fingerprintRepeated) next.ready_for_auto_apply = false;
+  return next;
 }
 
 function buildPineCandidates({ patchCandidates, tf = "15m", contract = null, marketGuard = null, changeControl = null } = {}) {
@@ -261,6 +311,7 @@ function buildCandidateChangeSets({
   ev = null,
   wait = null,
   changeControl = null,
+  memoryLedger = null,
 } = {}) {
   const supervisor = unwrapRawReport(objectiveSupervisor) || {};
   const contract = supervisor.best_febt_tuning_contract || null;
@@ -270,12 +321,15 @@ function buildCandidateChangeSets({
       || null
     : null;
   const tf = String(supervisor.phase0 && supervisor.phase0.tf || "15m");
+  const memoryContext = buildMemoryGuardContext(memoryLedger);
   const rows = [
     ...buildPineCandidates({ patchCandidates, tf, contract, marketGuard, changeControl: unwrapRawReport(changeControl) }),
     ...buildMlCandidates({ ml, tf, contract, marketGuard }),
     ...buildEvCandidate({ ev, tf, contract, marketGuard }),
     ...buildWaitCandidate({ wait, tf, contract, marketGuard }),
-  ].filter((row) => row && row.candidate_id);
+  ]
+    .filter((row) => row && row.candidate_id)
+    .map((row) => applyMemoryGuards(row, memoryContext));
 
   const byScope = rows.reduce((acc, row) => {
     const key = String(row.scope || "UNKNOWN");
@@ -284,6 +338,8 @@ function buildCandidateChangeSets({
   }, {});
   const ready = rows.filter((row) => row.ready_for_auto_apply === true).length;
   const blocked = rows.filter((row) => Array.isArray(row.risk_flags) && row.risk_flags.includes("BLOCKED_SOURCE_ACTION")).length;
+  const memoryBlocked = rows.filter((row) => row.memory_blocked === true).length;
+  const fingerprintRepeated = rows.filter((row) => row.failed_fingerprint_repeat === true).length;
   const topCandidate = rows.slice().sort((a, b) =>
     ((toNum(b.evidence && b.evidence.priority_score) ?? -Infinity) - (toNum(a.evidence && a.evidence.priority_score) ?? -Infinity))
     || ((toNum(b.evidence && b.evidence.support_n) ?? 0) - (toNum(a.evidence && a.evidence.support_n) ?? 0))
@@ -296,6 +352,8 @@ function buildCandidateChangeSets({
       total_n: rows.length,
       ready_n: ready,
       blocked_n: blocked,
+      memory_blocked_n: memoryBlocked,
+      failed_fingerprint_repeat_n: fingerprintRepeated,
       by_scope: byScope,
       top_candidate_id: topCandidate && topCandidate.candidate_id || null,
       top_scope: topCandidate && topCandidate.scope || null,

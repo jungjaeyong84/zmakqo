@@ -90,6 +90,21 @@ function run() {
       },
     },
     changeControl: { raw: { auto_rollback: { rollback_file_path: "/tmp/rollback.json" } } },
+    memoryLedger: {
+      raw: {
+        summary: {
+          blocked_candidate_ids: ["AUTO_CORE_REGIME_TIGHTEN"],
+          recent_failed_fingerprints: [],
+        },
+        current_rows: [
+          {
+            candidate_id: "AUTO_CORE_REGIME_TIGHTEN",
+            memory_blocked: true,
+            memory_block_reason: "RECENT_FAIL_FINGERPRINT",
+          },
+        ],
+      },
+    },
   });
 
   assert.strictEqual(report.summary.total_n >= 4, true);
@@ -97,9 +112,12 @@ function run() {
   const pine = report.rows.find((row) => row.candidate_id === "AUTO_CORE_REGIME_TIGHTEN");
   assert.strictEqual(pine.scope, "PINE");
   assert.ok(pine.risk_flags.includes("COUNT_GUARD_ACTIVE"));
+  assert.ok(pine.risk_flags.includes("MEMORY_BLOCKED"));
+  assert.strictEqual(pine.ready_for_auto_apply, false);
   const ev = report.rows.find((row) => row.candidate_id === "EV_TP1_THRESHOLD_TUNE");
   assert.strictEqual(ev.scope, "EV");
   assert.strictEqual(ev.ready_for_auto_apply, true);
+  assert.strictEqual(report.summary.memory_blocked_n, 1);
 
   console.log("BEST_SELF_EVOLUTION_CANDIDATES_TEST_OK");
 }

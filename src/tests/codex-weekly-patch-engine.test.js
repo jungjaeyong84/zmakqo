@@ -21,6 +21,8 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
         objective_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_objective_latest.json",
         attribution_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_attribution_latest.json",
         canary_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_canary_latest.json",
+        deployment_guards_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_deployment_guards_latest.json",
+        weight_tuning_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_weight_tuning_latest.json",
         memory_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_memory_latest.json",
         linked_paths: [
           "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DATASET_SPEC.md",
@@ -72,8 +74,22 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
         blocked_n: 4,
         rollback_ready_n: 1,
         apply_pass: true,
+        current_open_wave: 1,
+        open_wave: 2,
+        scale_allowed: true,
+        next_wave_candidate: 3,
         top_ready_market: "BTCUSDT",
         top_rollback_market: "DOGEUSDT",
+      },
+      self_evolution_deployment: {
+        target_candidate_id: "AUTO_CORE_REGIME_TIGHTEN",
+        deploy_pass: false,
+        rollback_only: false,
+        blockers: ["SELF_EVOLUTION_MEMORY_BLOCK"],
+        replay_verdict: "PASS",
+        canary_open_wave: 2,
+        market_ready_n: 2,
+        market_total_n: 6,
       },
       self_evolution_memory: {
         total_n: 12,
@@ -86,6 +102,16 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
         blocked_candidate_ids: ["AUTO_CORE_REGIME_TIGHTEN"],
         top_success_candidate_id: "WAIT_ONE_BAR_TUNE",
         top_failed_candidate_id: "AUTO_CORE_REGIME_TIGHTEN",
+      },
+      self_evolution_weight_tuning: {
+        summary: {
+          advisory_mode: "HOLD",
+          suggestion_n: 2,
+          dominant_axis: "delay_cost_weight",
+        },
+        suggestions: [
+          { axis: "delay_cost_weight", direction: "UP", delta: 0.05, reason: "LATE_LOSS_TOP_MARKET" },
+        ],
       },
       best_febt_market_contracts: [
         {
@@ -140,6 +166,8 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.ok(prompt.includes("Self-evolution policy docs:"));
   assert.ok(prompt.includes("BEST_SELF_EVOLUTION_DATASET_SPEC.md"));
   assert.ok(prompt.includes("BEST self-evolution memory ledger spec"));
+  assert.ok(prompt.includes("BEST self-evolution deployment guards spec"));
+  assert.ok(prompt.includes("BEST self-evolution weight tuning spec"));
   assert.ok(prompt.includes("Self-evolution objective snapshot:"));
   assert.ok(prompt.includes("objective score: 3.2145"));
   assert.ok(prompt.includes("constraints count/replacement/latency: FAIL / PASS / PASS"));
@@ -156,7 +184,12 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.ok(prompt.includes("Self-evolution canary snapshot:"));
   assert.ok(prompt.includes("total/shadow/soft/hard: 6 / 4 / 2 / 0"));
   assert.ok(prompt.includes("ready/blocked/rollback: 2 / 4 / 1 / apply PASS"));
+  assert.ok(prompt.includes("wave open/current/next: 2 / 1 / 3 / scale YES"));
   assert.ok(prompt.includes("top ready: BTCUSDT / top rollback: DOGEUSDT"));
+  assert.ok(prompt.includes("Self-evolution deployment guards snapshot:"));
+  assert.ok(prompt.includes("target/deploy/rollback_only: AUTO_CORE_REGIME_TIGHTEN / BLOCK / NO"));
+  assert.ok(prompt.includes("Self-evolution weight tuning snapshot:"));
+  assert.ok(prompt.includes("advisory/suggestions/dominant: HOLD / 2 / delay_cost_weight"));
   assert.ok(prompt.includes("Self-evolution memory ledger snapshot:"));
   assert.ok(prompt.includes("total/current/blocked: 12 / 6 / 1"));
   assert.ok(prompt.includes("success/neutral/fail/rolled_back: 2 / 5 / 3 / 2"));

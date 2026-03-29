@@ -22,6 +22,7 @@ const INPUTS = Object.freeze({
   replay: path.join(OPS_DAILY_DIR, "best_self_evolution_replay_latest.json"),
   driftCanary: path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json"),
   previousCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json"),
+  memory: path.join(OPS_DAILY_DIR, "best_self_evolution_memory_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -36,6 +37,8 @@ function renderMarkdown(report = {}) {
     `- total/shadow/soft/hard: ${summary.total_n ?? 0} / ${summary.shadow_n ?? 0} / ${summary.soft_n ?? 0} / ${summary.hard_n ?? 0}`,
     `- ready/blocked/rollback: ${summary.ready_n ?? 0} / ${summary.blocked_n ?? 0} / ${summary.rollback_ready_n ?? 0}`,
     `- apply_pass: ${summary.apply_pass ? "YES" : "NO"} / global_canary_pass: ${summary.global_canary_pass ? "YES" : "NO"}`,
+    `- wave open/current/next: ${summary.open_wave ?? "N/A"} / ${summary.current_open_wave ?? "N/A"} / ${summary.next_wave_candidate ?? "N/A"}`,
+    `- scale_allowed: ${summary.scale_allowed ? "YES" : "NO"} / reason=${summary.scale_block_reason || "N/A"}`,
     `- top_ready: ${summary.top_ready_market || "N/A"} / top_rollback: ${summary.top_rollback_market || "N/A"}`,
     "",
     "## Markets",
@@ -59,6 +62,7 @@ async function main() {
     replayReport: readJsonRawSafe(INPUTS.replay, null),
     driftCanary: readJsonRawSafe(INPUTS.driftCanary, null),
     previousCanary: readJsonRawSafe(INPUTS.previousCanary, null),
+    memoryLedger: readJsonRawSafe(INPUTS.memory, null),
   });
   const output = {
     ok: true,

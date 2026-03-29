@@ -263,6 +263,7 @@ function renderMarkdown(report = {}) {
     `- objective: ${report.objective_verdict || "N/A"}`,
     `- canary: ${report.canary_pass ? "PASS" : "BLOCK"}`,
     `- self_evolution_canary: ${report.self_evolution_canary && report.self_evolution_canary.apply_pass ? "PASS" : "BLOCK"} / rollback_ready ${report.self_evolution_canary && report.self_evolution_canary.rollback_ready_n != null ? report.self_evolution_canary.rollback_ready_n : "N/A"}`,
+    `- self_evolution_deployment: ${report.self_evolution_deployment && report.self_evolution_deployment.deploy_pass ? "PASS" : "BLOCK"} / target ${report.self_evolution_deployment && report.self_evolution_deployment.target_candidate_id || "N/A"}`,
     `- BEST/FEBT contract: ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.mode || "N/A"} / tightening ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.tightening_allowed ? "ALLOW" : "BLOCK"} / recovery ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.recovery_priority ? "FIRST" : "NORMAL"} / replacement ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_replacement_ratio != null ? Number(report.best_febt_tuning_contract.projected_replacement_ratio).toFixed(2) : "N/A"} / count ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_count_ratio_global != null ? Number(report.best_febt_tuning_contract.projected_count_ratio_global).toFixed(2) : "N/A"}x`,
     "",
     "## Stages",
@@ -716,6 +717,10 @@ async function main() {
   const selfEvolutionCanary = selfEvolutionCanaryArtifact && selfEvolutionCanaryArtifact.data && selfEvolutionCanaryArtifact.data.summary
     ? selfEvolutionCanaryArtifact.data.summary
     : {};
+  const selfEvolutionDeployment = objectiveArtifact && objectiveArtifact.data && objectiveArtifact.data.self_evolution_deployment
+    && typeof objectiveArtifact.data.self_evolution_deployment === "object"
+      ? objectiveArtifact.data.self_evolution_deployment
+      : {};
   const canaryPass = shadowCanaryPass && Boolean(selfEvolutionCanary.apply_pass === true);
   const canaryReason = !shadowCanaryPass
     ? "CANARY_DRIFT"
@@ -846,6 +851,12 @@ async function main() {
   });
 
   const pineCandidate = buildPineCandidate(objectiveArtifact, codexArtifact, changeArtifact);
+  if (pineCandidate.actionable && pineCandidate.kind === "PROMOTE" && selfEvolutionDeployment.deploy_pass !== true) {
+    pineCandidate.actionable = false;
+    pineCandidate.reason = Array.isArray(selfEvolutionDeployment.blockers) && selfEvolutionDeployment.blockers.length
+      ? selfEvolutionDeployment.blockers[0]
+      : "SELF_EVOLUTION_DEPLOYMENT_BLOCK";
+  }
   const pineBestFebtGuard = bestFebtAutopilotGuard({
     stage: "PINE",
     candidate: pineCandidate,
@@ -900,6 +911,14 @@ async function main() {
       top_ready_market: String(selfEvolutionCanary.top_ready_market || "").trim() || null,
       top_rollback_market: String(selfEvolutionCanary.top_rollback_market || "").trim() || null,
     },
+    self_evolution_deployment: {
+      available: !!(objectiveArtifact && objectiveArtifact.data && objectiveArtifact.data.self_evolution_deployment),
+      deploy_pass: selfEvolutionDeployment.deploy_pass === true,
+      rollback_only: selfEvolutionDeployment.rollback_only === true,
+      target_candidate_id: String(selfEvolutionDeployment.target_candidate_id || "").trim() || null,
+      blockers: Array.isArray(selfEvolutionDeployment.blockers) ? selfEvolutionDeployment.blockers : [],
+      canary_open_wave: toNum(selfEvolutionDeployment.canary_open_wave) || 1,
+    },
     best_febt_tuning_contract: bestFebtContract,
     stage_rows: stageRows,
     actions,
@@ -926,6 +945,7 @@ async function main() {
       sections: [
         { header: "공통 상태", lines: [`전체 목표 판정은 ${report.objective_verdict} 입니다.`, `변경 안전 검증은 ${report.canary_pass ? "정상" : "차단"} 입니다.`] },
         { header: "자기 진화 canary", lines: [`apply ${report.self_evolution_canary && report.self_evolution_canary.apply_pass ? "PASS" : "BLOCK"} / ready ${report.self_evolution_canary && report.self_evolution_canary.ready_n != null ? report.self_evolution_canary.ready_n : "N/A"} / blocked ${report.self_evolution_canary && report.self_evolution_canary.blocked_n != null ? report.self_evolution_canary.blocked_n : "N/A"}`, `rollback ${report.self_evolution_canary && report.self_evolution_canary.rollback_ready_n != null ? report.self_evolution_canary.rollback_ready_n : "N/A"} / top ready ${report.self_evolution_canary && report.self_evolution_canary.top_ready_market || "N/A"} / top rollback ${report.self_evolution_canary && report.self_evolution_canary.top_rollback_market || "N/A"}`] },
+        { header: "자기 진화 배포 가드", lines: [`deploy ${report.self_evolution_deployment && report.self_evolution_deployment.deploy_pass ? "PASS" : "BLOCK"} / target ${report.self_evolution_deployment && report.self_evolution_deployment.target_candidate_id || "N/A"} / open wave ${report.self_evolution_deployment && report.self_evolution_deployment.canary_open_wave != null ? report.self_evolution_deployment.canary_open_wave : "N/A"}`, `blockers ${report.self_evolution_deployment && Array.isArray(report.self_evolution_deployment.blockers) && report.self_evolution_deployment.blockers.length ? report.self_evolution_deployment.blockers.join("|") : "none"}`] },
         { header: "BEST/FEBT 공통 계약", lines: [`mode ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.mode || "N/A"} / tightening ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.tightening_allowed ? "ALLOW" : "BLOCK"} / recovery ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.recovery_priority ? "FIRST" : "NORMAL"}`, `replacement ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_replacement_ratio != null ? Number(report.best_febt_tuning_contract.projected_replacement_ratio).toFixed(2) : "N/A"} / count ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_count_ratio_global != null ? `${Number(report.best_febt_tuning_contract.projected_count_ratio_global).toFixed(2)}x` : "N/A"}`] },
         { header: "이번에 실제로 한 일", lines: actions.map((row) => `${row.stage} 단계에서 ${row.type} 처리: ${row.detail}`) },
         { header: "각 단계 상태", lines: stageRows.map((row) => `${row.stage} 단계는 ${row.machine_state} 상태이며 사유는 ${row.reason} 입니다.`) },
