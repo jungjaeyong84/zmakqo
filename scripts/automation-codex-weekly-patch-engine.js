@@ -95,10 +95,26 @@ function readFreshJson(filePath, maxAgeHours = MAX_AGE_HOURS) {
   }
 }
 
+function buildObjectiveSupervisorLayerLines(objectiveSupervisor = null) {
+  const layers = objectiveSupervisor && objectiveSupervisor.filter_layers && typeof objectiveSupervisor.filter_layers === "object"
+    ? objectiveSupervisor.filter_layers
+    : {};
+  return [
+    `- current filter layer model: 1차 상태/무결성 -> 2차 진입 품질 -> 3차 상태 기반 Soft Sizing -> 4차 EV/시간가치층 -> 5차 WAIT 타이밍층`,
+    `- legacy mapping: '3차 시황' == '3차 상태 기반 Soft Sizing', '4차 EV' == '4차 EV/시간가치층', '5차 WAIT' == '5차 WAIT 타이밍층'`,
+    `- layer 1 integrity: ${layers.integrity ? `${layers.integrity.server_mode || "N/A"} / coverage ${layers.integrity.coverage_pass ? "PASS" : "BLOCK"}` : "N/A"}`,
+    `- layer 2 entry quality: ${layers.entry_quality ? `candidate ${layers.entry_quality.pine_candidate_verdict || "N/A"} / ml quality ${layers.entry_quality.quality_actions != null ? layers.entry_quality.quality_actions : "N/A"}` : "N/A"}`,
+    `- layer 3 state soft sizing: ${layers.state_soft_sizing ? `${layers.state_soft_sizing.ml_action || "N/A"} / physics ${layers.state_soft_sizing.physics_action || "N/A"} / qty ${layers.state_soft_sizing.qty_scale != null ? layers.state_soft_sizing.qty_scale : "N/A"}` : "N/A"}`,
+    `- layer 4 EV/time value: ${layers.ev_time_value ? `${layers.ev_time_value.tuner_reason || "N/A"} / policy ${layers.ev_time_value.policy_version || "N/A"} / source ${layers.ev_time_value.policy_source || "N/A"}` : "N/A"}`,
+    `- layer 5 wait timing: ${layers.wait_timing ? `${layers.wait_timing.tuner_reason || "N/A"} / ${layers.wait_timing.wait_action || "N/A"}` : "N/A"}`,
+  ];
+}
+
 function buildPrompt(context = {}) {
   const { objectiveSupervisor, governance, changeControl, patchCandidates, ml, ev, wait, canary, stageAutopilot, retrospective } = context;
   const displayMap = buildCandidateDisplayMap(changeControl, patchCandidates);
   const promotionDisplayId = toDisplayCandidateId(changeControl && changeControl.auto_promotion && changeControl.auto_promotion.candidate_id, displayMap);
+  const objectiveLayerLines = buildObjectiveSupervisorLayerLines(objectiveSupervisor);
   return [
     "You are the weekly Codex patch engine for DONBEOLJA.",
     "Task: inspect the provided latest reports and return a single JSON decision only.",
@@ -135,6 +151,8 @@ function buildPrompt(context = {}) {
     `- shadow canary: ${INPUT_PATHS.canary}`,
     `- stage autopilot: ${INPUT_PATHS.stageAutopilot}`,
     `- objective retrospective: ${INPUT_PATHS.retrospective}`,
+    "Filter layer interpretation:",
+    ...objectiveLayerLines,
     "Quick context:",
     `- objective supervisor verdict: ${objectiveSupervisor && objectiveSupervisor.verdict || "N/A"} / reason=${objectiveSupervisor && objectiveSupervisor.reason || "N/A"}`,
     `- governance objective: ${governance && governance.current && governance.current.objective ? governance.current.objective.verdict : "N/A"}`,
@@ -373,7 +391,18 @@ async function main() {
   }));
 }
 
-main().catch((err) => {
-  console.error(err && err.stack ? err.stack : err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err && err.stack ? err.stack : err);
+    process.exit(1);
+  });
+} else {
+  module.exports = {
+    __test: {
+      buildPrompt,
+      buildCandidateDisplayMap,
+      replaceCandidateIdsInText,
+      buildObjectiveSupervisorLayerLines,
+    },
+  };
+}

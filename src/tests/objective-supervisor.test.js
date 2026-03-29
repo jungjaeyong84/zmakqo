@@ -76,6 +76,9 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   });
   assert.strictEqual(allowPromote.verdict, "PATCH_CANDIDATE");
   assert.strictEqual(allowPromote.reason, "AUTO_PROMOTION_READY");
+  assert.strictEqual(allowPromote.filter_layers.integrity.label, "1차 상태/무결성");
+  assert.strictEqual(allowPromote.filter_layers.state_soft_sizing.label, "3차 상태 기반 Soft Sizing");
+  assert.strictEqual(allowPromote.filter_layers.ev_time_value.label, "4차 EV/시간가치층");
 
   const blockPromote = __test.evaluateSupervisor({
     ...base,
