@@ -7,6 +7,7 @@
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_CONCEPT.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_PHILOSOPHY.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_IMPLEMENTATION_FRAMEWORK.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_FEBT_SYSTEM_ROLLOUT_PLAN.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_FEBT_INTERFACE_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_PERFORMANCE_PROTOCOL.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SIGNAL_COUNT_PROTOCOL.md`
@@ -14,6 +15,9 @@
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_REPLACEMENT_MEASUREMENT_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_CONCEPT.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_PHASE0_MEASUREMENT_PLAN.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_PHASE0_BASELINE_SNAPSHOT_2026W13.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_OVERLAP_MATRIX_SCHEMA.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_BRIDGE_LATENCY_BUDGET.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_PHASE1_PINE_FIELD_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_PINE_INTRODUCTION_PLAN.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_MICROSTRUCTURE_INPUT_SPEC.md`

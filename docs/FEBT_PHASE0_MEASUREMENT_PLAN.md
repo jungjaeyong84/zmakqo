@@ -7,6 +7,9 @@
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_CONCEPT.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_CONCEPT.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_PINE_INTRODUCTION_PLAN.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_PHASE0_BASELINE_SNAPSHOT_2026W13.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_OVERLAP_MATRIX_SCHEMA.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_BRIDGE_LATENCY_BUDGET.md`
 
 ## 측정 목표
 
