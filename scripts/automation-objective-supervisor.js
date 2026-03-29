@@ -424,6 +424,19 @@ function resolveSelfEvolutionRealizedMinSample() {
   return Number.isFinite(configured) && configured > 0 ? configured : 8;
 }
 
+function resolveGovernanceRealizedMinSample(governance = null, objective = null) {
+  const configured = toNum(process.env.OBJECTIVE_SUPERVISOR_GOVERNANCE_REALIZED_MIN_SAMPLE);
+  if (Number.isFinite(configured) && configured > 0) return configured;
+  const objectiveCfg = governance && governance.objective && typeof governance.objective === "object"
+    ? governance.objective
+    : {};
+  const configuredMin = toNum(objectiveCfg.realized_min_sample);
+  if (Number.isFinite(configuredMin) && configuredMin > 0) return configuredMin;
+  const objectiveMin = toNum(objective && objective.realized_min_sample);
+  if (Number.isFinite(objectiveMin) && objectiveMin > 0) return objectiveMin;
+  return 8;
+}
+
 function summarizeSelfEvolutionAttribution(report = null) {
   const attribution = report && report.attribution && typeof report.attribution === "object"
     ? report.attribution
@@ -1020,7 +1033,12 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     canary: selfEvolutionCanarySummary,
     memoryLedger: selfEvolutionMemorySummary,
   });
-  const governanceSampleReady = objective.enough_sample === true;
+  const governanceRealizedMinSample = resolveGovernanceRealizedMinSample(governance, objective);
+  const governanceStrictRealizedN = toNum(objective.realized_n) || 0;
+  const governanceMonthlySourceRealizedN = toNum(objective.monthly_source_realized_n) || 0;
+  const governanceEffectiveRealizedN = Math.max(governanceStrictRealizedN, governanceMonthlySourceRealizedN);
+  const governanceStrictSampleReady = objective.enough_sample === true;
+  const governanceSampleReady = governanceStrictSampleReady || governanceEffectiveRealizedN >= governanceRealizedMinSample;
   const selfEvolutionRealizedMinSample = resolveSelfEvolutionRealizedMinSample();
   const selfEvolutionSampleReady = Number(selfEvolutionObjectiveSummary.realized_n || 0) >= selfEvolutionRealizedMinSample;
   const selfEvolutionCycleSummary = selfEvolutionCycleState && typeof selfEvolutionCycleState === "object"
@@ -1184,9 +1202,13 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       verdict: String(objective.verdict || "N/A"),
       pass: objective.pass === true,
       enough_sample: governanceSampleReady,
+      strict_enough_sample: governanceStrictSampleReady,
       activity_pass: objective.activity_pass === true,
       executed_n: toNum(objective.executed_n),
-      realized_n: toNum(objective.realized_n),
+      realized_n: governanceStrictRealizedN,
+      monthly_source_realized_n: governanceMonthlySourceRealizedN,
+      effective_realized_n: governanceEffectiveRealizedN,
+      realized_min_sample: governanceRealizedMinSample,
       win_rate: toNum(governance && governance.current && governance.current.overall && governance.current.overall.win_rate),
       avg_ret_net: toNum(governance && governance.current && governance.current.overall && governance.current.overall.avg_ret_net),
       net_pnl_quote: toNum(governance && governance.current && governance.current.overall && governance.current.overall.net_pnl_quote),
@@ -1200,9 +1222,13 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       verdict: String(objective.verdict || "N/A"),
       pass: objective.pass === true,
       enough_sample: governanceSampleReady,
+      strict_enough_sample: governanceStrictSampleReady,
       activity_pass: objective.activity_pass === true,
       executed_n: toNum(objective.executed_n),
-      realized_n: toNum(objective.realized_n),
+      realized_n: governanceStrictRealizedN,
+      monthly_source_realized_n: governanceMonthlySourceRealizedN,
+      effective_realized_n: governanceEffectiveRealizedN,
+      realized_min_sample: governanceRealizedMinSample,
       win_rate: toNum(governance && governance.current && governance.current.overall && governance.current.overall.win_rate),
       avg_ret_net: toNum(governance && governance.current && governance.current.overall && governance.current.overall.avg_ret_net),
       net_pnl_quote: toNum(governance && governance.current && governance.current.overall && governance.current.overall.net_pnl_quote),
@@ -1249,7 +1275,11 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     self_evolution_weight_tuning: selfEvolutionWeightTuning,
     self_evolution_memory: selfEvolutionMemorySummary,
     sample_readiness: {
-      governance_realized_n: toNum(objective.realized_n) || 0,
+      governance_realized_n: governanceStrictRealizedN,
+      governance_monthly_source_realized_n: governanceMonthlySourceRealizedN,
+      governance_effective_realized_n: governanceEffectiveRealizedN,
+      governance_realized_min_sample: governanceRealizedMinSample,
+      governance_strict_enough_sample: governanceStrictSampleReady,
       governance_enough_sample: governanceSampleReady,
       self_evolution_realized_n: toNum(selfEvolutionObjectiveSummary.realized_n) || 0,
       self_evolution_realized_min_sample: selfEvolutionRealizedMinSample,
@@ -1303,7 +1333,7 @@ function renderMarkdown(report = {}) {
     "## Objective",
     `- objective: ${report.objective && report.objective.verdict || "N/A"}`,
     `- activity: ${report.objective && report.objective.activity_pass ? "PASS" : "FAIL"} / executed=${report.objective && report.objective.executed_n != null ? report.objective.executed_n : "N/A"}`,
-    `- governance enough_sample: ${report.objective && report.objective.enough_sample ? "YES" : "NO"} / realized=${report.objective && report.objective.realized_n != null ? report.objective.realized_n : "N/A"}`,
+    `- governance enough_sample: ${report.objective && report.objective.enough_sample ? "YES" : "NO"} / strict=${report.objective && report.objective.strict_enough_sample ? "YES" : "NO"} / realized=${report.objective && report.objective.realized_n != null ? report.objective.realized_n : "N/A"} / monthly_source=${report.objective && report.objective.monthly_source_realized_n != null ? report.objective.monthly_source_realized_n : "N/A"} / effective=${report.objective && report.objective.effective_realized_n != null ? report.objective.effective_realized_n : "N/A"} / min=${report.objective && report.objective.realized_min_sample != null ? report.objective.realized_min_sample : "N/A"}`,
     `- win_rate: ${pct(report.objective && report.objective.win_rate)}`,
     `- avg_ret_net: ${pct(report.objective && report.objective.avg_ret_net)}`,
     `- net_pnl_quote: ${signedNum(report.objective && report.objective.net_pnl_quote, 2)}`,
@@ -1374,7 +1404,7 @@ function renderMarkdown(report = {}) {
     `- rows/executed/drop/missed: ${report.self_evolution_dataset && report.self_evolution_dataset.rows_n != null ? report.self_evolution_dataset.rows_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.executed_n != null ? report.self_evolution_dataset.executed_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.drop_n != null ? report.self_evolution_dataset.drop_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.missed_n != null ? report.self_evolution_dataset.missed_n : "N/A"}`,
     `- fallback/rejected/partial: ${report.self_evolution_dataset && report.self_evolution_dataset.fallback_n != null ? report.self_evolution_dataset.fallback_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.rejected_n != null ? report.self_evolution_dataset.rejected_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.partial_n != null ? report.self_evolution_dataset.partial_n : "N/A"}`,
     `- realized_n: ${report.self_evolution_dataset && report.self_evolution_dataset.realized_n != null ? report.self_evolution_dataset.realized_n : "N/A"} / features=${pct(report.self_evolution_dataset && report.self_evolution_dataset.features_coverage_rate)} / febt=${pct(report.self_evolution_dataset && report.self_evolution_dataset.febt_coverage_rate)}`,
-    `- sample_readiness: governance=${report.sample_readiness && report.sample_readiness.governance_enough_sample ? "YES" : "NO"} (${report.sample_readiness && report.sample_readiness.governance_realized_n != null ? report.sample_readiness.governance_realized_n : "N/A"}) / self_evolution=${report.sample_readiness && report.sample_readiness.self_evolution_enough_sample ? "YES" : "NO"} (${report.sample_readiness && report.sample_readiness.self_evolution_realized_n != null ? report.sample_readiness.self_evolution_realized_n : "N/A"} / min ${report.sample_readiness && report.sample_readiness.self_evolution_realized_min_sample != null ? report.sample_readiness.self_evolution_realized_min_sample : "N/A"})`,
+    `- sample_readiness: governance=${report.sample_readiness && report.sample_readiness.governance_enough_sample ? "YES" : "NO"} (strict ${report.sample_readiness && report.sample_readiness.governance_realized_n != null ? report.sample_readiness.governance_realized_n : "N/A"} / monthly ${report.sample_readiness && report.sample_readiness.governance_monthly_source_realized_n != null ? report.sample_readiness.governance_monthly_source_realized_n : "N/A"} / effective ${report.sample_readiness && report.sample_readiness.governance_effective_realized_n != null ? report.sample_readiness.governance_effective_realized_n : "N/A"} / min ${report.sample_readiness && report.sample_readiness.governance_realized_min_sample != null ? report.sample_readiness.governance_realized_min_sample : "N/A"}) / self_evolution=${report.sample_readiness && report.sample_readiness.self_evolution_enough_sample ? "YES" : "NO"} (${report.sample_readiness && report.sample_readiness.self_evolution_realized_n != null ? report.sample_readiness.self_evolution_realized_n : "N/A"} / min ${report.sample_readiness && report.sample_readiness.self_evolution_realized_min_sample != null ? report.sample_readiness.self_evolution_realized_min_sample : "N/A"})`,
     `- avg_realized_ret_net: ${signedPct(report.self_evolution_dataset && report.self_evolution_dataset.avg_realized_ret_net)} / avg_realized_pnl_quote: ${signedNum(report.self_evolution_dataset && report.self_evolution_dataset.avg_realized_pnl_quote, 0)} / avg_hold_minutes: ${report.self_evolution_dataset && report.self_evolution_dataset.avg_hold_minutes != null ? Number(report.self_evolution_dataset.avg_hold_minutes).toFixed(1) : "N/A"}`,
     "",
     "## Self-Evolution Objective",

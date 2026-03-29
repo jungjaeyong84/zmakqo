@@ -236,6 +236,9 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.best_febt_market_contracts[0].market, "BTCUSDT");
   assert.strictEqual(allowPromote.best_febt_market_contracts[1].market, "DOGEUSDT");
   assert.strictEqual(allowPromote.best_febt_market_contracts[1].mode, "COUNT_GUARD_ACTIVE");
+  assert.strictEqual(allowPromote.sample_readiness.governance_monthly_source_realized_n, 0);
+  assert.strictEqual(allowPromote.sample_readiness.governance_effective_realized_n, 24);
+  assert.strictEqual(allowPromote.sample_readiness.governance_realized_min_sample, 8);
 
   const replayBlockedPromotion = __test.evaluateSupervisor({
     ...base,
@@ -455,6 +458,52 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(noTradeRetro.blockers.includes("DAILY_NO_TRADE_ACTIVITY"), true);
   assert.strictEqual(noTradeRetro.blockers.includes("ZERO_KRW_IDLE"), true);
   assert.strictEqual(noTradeRetro.retrospective.daily.executed_n, 0);
+
+  const monthlySourceSampleReady = __test.evaluateSupervisor({
+    ...base,
+    governance: {
+      current: {
+        objective: {
+          verdict: "FAIL",
+          pass: false,
+          enough_sample: false,
+          executed_n: 18,
+          realized_n: 0,
+          monthly_source_realized_n: 9,
+          monthly_run_rate_krw: -471,
+          monthly_pass: false,
+          failed_checks: ["INSUFFICIENT_SAMPLE", "MONTHLY_TARGET_NOT_MET"],
+        },
+        overall: {
+          win_rate: null,
+          avg_ret_net: null,
+          net_pnl_quote: null,
+        },
+      },
+      objective: {
+        min_monthly_net_krw: 1500000,
+        realized_min_sample: 8,
+      },
+    },
+    changeControl: {
+      verdict: "HOLD",
+      auto_promotion: { ready: false, reason: "CANDIDATE_NOT_READY" },
+      auto_rollback: { ready: false, reason: "NO_PATCHED_HISTORY" },
+      coverage_guard: { pass: true, ai: { pass: true }, market: { pass: true } },
+    },
+    retrospective: {
+      periods: {
+        DAILY: { objective: { verdict: "PASS", pass: true, executed_n: 1, realized_n: 1, failed_checks: [] }, realized_trades: { net_pnl_quote: 1 } },
+        WEEKLY: { objective: { verdict: "PASS", pass: true, executed_n: 2, realized_n: 2, failed_checks: [] }, realized_trades: { net_pnl_quote: 1 } },
+        MONTHLY: { objective: { verdict: "FAIL", pass: false, executed_n: 10, realized_n: 9, failed_checks: ["MONTHLY_TARGET_NOT_MET"] }, realized_trades: { net_pnl_quote: -1 } },
+      },
+    },
+  });
+  assert.strictEqual(monthlySourceSampleReady.sample_readiness.governance_realized_n, 0);
+  assert.strictEqual(monthlySourceSampleReady.sample_readiness.governance_monthly_source_realized_n, 9);
+  assert.strictEqual(monthlySourceSampleReady.sample_readiness.governance_effective_realized_n, 9);
+  assert.strictEqual(monthlySourceSampleReady.sample_readiness.governance_enough_sample, true);
+  assert.strictEqual(monthlySourceSampleReady.blockers.includes("GOVERNANCE_OBJECTIVE_SAMPLE_NOT_READY"), false);
 
   const telegramSections = __test.buildObjectiveSupervisorTelegramSections({
     verdict: "HOLD",

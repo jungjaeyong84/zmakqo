@@ -308,6 +308,76 @@ function buildWaitCandidate({ wait, tf = "15m", contract = null, marketGuard = n
   }];
 }
 
+function buildMarketConcentrationCandidate({ objectiveSupervisor = null, tf = "15m", contract = null } = {}) {
+  const supervisor = unwrapRawReport(objectiveSupervisor) || {};
+  const objective = supervisor.self_evolution_objective && typeof supervisor.self_evolution_objective === "object"
+    ? supervisor.self_evolution_objective
+    : {};
+  const concentration = objective.market_concentration && typeof objective.market_concentration === "object"
+    ? objective.market_concentration
+    : {};
+  const dominant = concentration.dominant_negative_market && typeof concentration.dominant_negative_market === "object"
+    ? concentration.dominant_negative_market
+    : null;
+  const market = String(dominant && dominant.market || "").trim().toUpperCase();
+  const objectiveScore = toNum(dominant && dominant.objective_score);
+  const realizedN = toNum(dominant && dominant.realized_n);
+  const dragGap = toNum(concentration.bottom_market_drag_gap);
+  if (!concentration.concentration_flag || !market) return [];
+  if (objectiveScore == null || objectiveScore > -2) return [];
+  if (realizedN == null || realizedN < 3) return [];
+  if (dragGap == null || dragGap < 1) return [];
+
+  const rationale = `dominant negative market ${market} objective ${objectiveScore.toFixed(4)} / drag ${dragGap.toFixed(4)} / realized ${realizedN}`;
+  const changes = [
+    {
+      key: "shared_regime_transition_confirmation",
+      current: 0,
+      next: 1,
+      direction: "TIGHTEN",
+      reason: rationale,
+    },
+    {
+      key: "entry_core_score_abs",
+      current: 0,
+      next: 1,
+      direction: "TIGHTEN",
+      reason: rationale,
+    },
+  ];
+
+  return [{
+    candidate_id: `AUTO_MARKET_${market}_REGIME_TIGHTEN`,
+    display_candidate_id: `AUTO_${market}_REGIME_TIGHTEN`,
+    scope: "PINE",
+    source: "MARKET_CONCENTRATION_RECOVERY",
+    markets: [market],
+    tf,
+    changes,
+    objective_delta: null,
+    ...buildGuardEffects(contract, null),
+    risk_flags: [
+      ...buildRiskFlags({ direction: "TIGHTEN", contract, marketGuard: null, blocked: false, ready: true }),
+      "MARKET_CONCENTRATION_RECOVERY",
+    ],
+    rollback_target: null,
+    direction: "TIGHTEN",
+    status: "MARKET_CONCENTRATION_RECOVERY",
+    ready_for_auto_apply: true,
+    evidence: {
+      support_n: realizedN,
+      support_rate: toNum(concentration.dominant_negative_share),
+      priority_score: dragGap,
+      avg_dropped_ret_net: toNum(dominant && dominant.avg_realized_ret_net),
+      rationale,
+    },
+    market_concentration_recovery: true,
+    target_market: market,
+    target_market_objective_score: objectiveScore,
+    target_market_drag_gap: dragGap,
+  }];
+}
+
 function buildCandidateChangeSets({
   objectiveSupervisor = null,
   patchCandidates = null,
@@ -328,6 +398,7 @@ function buildCandidateChangeSets({
   const memoryContext = buildMemoryGuardContext(memoryLedger);
   const generatedRows = [
     ...buildPineCandidates({ patchCandidates, tf, contract, marketGuard, changeControl: unwrapRawReport(changeControl) }),
+    ...buildMarketConcentrationCandidate({ objectiveSupervisor: supervisor, tf, contract }),
     ...buildMlCandidates({ ml, tf, contract, marketGuard }),
     ...buildEvCandidate({ ev, tf, contract, marketGuard }),
     ...buildWaitCandidate({ wait, tf, contract, marketGuard }),

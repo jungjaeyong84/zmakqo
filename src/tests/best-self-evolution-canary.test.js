@@ -136,6 +136,60 @@ function run() {
   assert.strictEqual(solBlocked.drift_shadow_market, 1);
   assert.deepStrictEqual(solBlocked.drift_shadow_stages, ["QUALITY"]);
 
+  const concentrationRecovery = buildMarketCanaryRows({
+    objectiveSupervisor: {
+      best_febt_market_contracts: [
+        { market: "BTCUSDT", mode: "NORMAL", tightening_allowed: true, recovery_priority: false },
+        { market: "SOLUSDT", mode: "NORMAL", tightening_allowed: true, recovery_priority: false },
+        { market: "ETHUSDT", mode: "NORMAL", tightening_allowed: true, recovery_priority: false },
+        { market: "BNBUSDT", mode: "NORMAL", tightening_allowed: true, recovery_priority: false },
+        { market: "XRPUSDT", mode: "NORMAL", tightening_allowed: true, recovery_priority: false },
+        { market: "AXSUSDT", mode: "NORMAL", tightening_allowed: true, recovery_priority: false },
+      ],
+      self_evolution_objective: {
+        market_objective_scores: [
+          { market: "BTCUSDT", objective_score: 0.4, projected_count_ratio_global: 1.01, projected_replacement_ratio: 0.92, constraints: { count_floor_pass: true, replacement_floor_pass: true, latency_budget_pass: true } },
+          { market: "SOLUSDT", objective_score: 0.4, projected_count_ratio_global: 1.01, projected_replacement_ratio: 0.92, constraints: { count_floor_pass: true, replacement_floor_pass: true, latency_budget_pass: true } },
+          { market: "ETHUSDT", objective_score: 0.3, projected_count_ratio_global: 1.01, projected_replacement_ratio: 0.92, constraints: { count_floor_pass: true, replacement_floor_pass: true, latency_budget_pass: true } },
+          { market: "BNBUSDT", objective_score: 0.3, projected_count_ratio_global: 1.01, projected_replacement_ratio: 0.92, constraints: { count_floor_pass: true, replacement_floor_pass: true, latency_budget_pass: true } },
+          { market: "XRPUSDT", objective_score: 0.2, projected_count_ratio_global: 1.01, projected_replacement_ratio: 0.92, constraints: { count_floor_pass: true, replacement_floor_pass: true, latency_budget_pass: true } },
+          { market: "AXSUSDT", objective_score: -3.0, projected_count_ratio_global: 1.0, projected_replacement_ratio: null, constraints: { count_floor_pass: true, replacement_floor_pass: true, latency_budget_pass: true } },
+        ],
+      },
+    },
+    candidateChangeSet: {
+      rows: [
+        { candidate_id: "AUTO_CORE_REGIME_TIGHTEN", scope: "PINE", source: "PINE_PATCH_CANDIDATE", direction: "TIGHTEN", markets: ["ALL"] },
+        { candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN", scope: "PINE", source: "MARKET_CONCENTRATION_RECOVERY", market_concentration_recovery: true, target_market: "AXSUSDT", direction: "TIGHTEN", markets: ["AXSUSDT"] },
+      ],
+    },
+    replayReport: {
+      validations: [
+        { candidate_id: "AUTO_CORE_REGIME_TIGHTEN", validation_verdict: "PASS", candidate_objective_delta: 2.0 },
+        { candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN", validation_verdict: "PASS", candidate_objective_delta: 1.5 },
+      ],
+    },
+    driftCanary: { golden: { summary: { drift: 0, byMarket: {} } }, shadow: { summary: { drift: 0, byMarket: {} } } },
+    previousCanary: {
+      summary: { apply_pass: true, rollback_ready_n: 0 },
+      rows: [
+        { market: "BTCUSDT", current_stage: "SOFT", canary_verdict: "READY", rollback_ready: false },
+        { market: "SOLUSDT", current_stage: "SOFT", canary_verdict: "READY", rollback_ready: false },
+        { market: "ETHUSDT", current_stage: "SOFT", canary_verdict: "READY", rollback_ready: false },
+        { market: "BNBUSDT", current_stage: "SOFT", canary_verdict: "READY", rollback_ready: false },
+        { market: "XRPUSDT", current_stage: "SOFT", canary_verdict: "READY", rollback_ready: false },
+      ],
+    },
+    memoryLedger: { summary: { blocked_candidate_n: 0, rolled_back_n: 0, fail_n: 0, success_n: 2, neutral_n: 0 } },
+  });
+  const axsRecovery = concentrationRecovery.rows.find((row) => row.market === "AXSUSDT");
+  assert.strictEqual(concentrationRecovery.summary.open_wave, 3);
+  assert.strictEqual(axsRecovery.canary_verdict, "READY");
+  assert.strictEqual(axsRecovery.current_stage, "SOFT");
+  assert.strictEqual(axsRecovery.candidate_id, "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN");
+  assert.strictEqual(axsRecovery.blockers.includes("OBJECTIVE_SCORE_NEGATIVE"), false);
+  assert.strictEqual(axsRecovery.concentration_recovery, true);
+
   console.log("BEST_SELF_EVOLUTION_CANARY_TEST_OK");
 }
 

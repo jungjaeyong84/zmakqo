@@ -133,17 +133,19 @@ function findBestValidationForMarket(candidateChangeSet, replayReport, market) {
   const rows = Array.isArray(candidateChangeSet && candidateChangeSet.rows) ? candidateChangeSet.rows : [];
   const validations = Array.isArray(replayReport && replayReport.validations) ? replayReport.validations : [];
   const candidateMap = new Map(rows.map((row) => [String(row && row.candidate_id || "").trim(), row]));
+  const marketKey = String(market || "").trim().toUpperCase();
   const scored = validations
     .map((validation) => {
       const candidateId = String(validation && validation.candidate_id || "").trim();
       const candidate = candidateMap.get(candidateId);
       if (!candidate) return null;
       const markets = Array.isArray(candidate.markets) ? candidate.markets.map((row) => String(row || "").trim().toUpperCase()) : [];
-      const applies = markets.includes("ALL") || markets.includes(String(market || "").trim().toUpperCase());
+      const applies = markets.includes("ALL") || markets.includes(marketKey);
       if (!applies) return null;
       return {
         candidate,
         validation,
+        exactMarketScoped: markets.includes(marketKey) && !markets.includes("ALL"),
       };
     })
     .filter(Boolean)
@@ -155,7 +157,8 @@ function findBestValidationForMarket(candidateChangeSet, replayReport, market) {
         if (verdict === "BLOCK") return 1;
         return 0;
       };
-      return verdictRank(b) - verdictRank(a)
+      return Number(b.exactMarketScoped === true) - Number(a.exactMarketScoped === true)
+        || verdictRank(b) - verdictRank(a)
         || (toNum(b.validation && b.validation.candidate_objective_delta) || -Infinity) - (toNum(a.validation && a.validation.candidate_objective_delta) || -Infinity)
         || String(a.validation && a.validation.candidate_id || "").localeCompare(String(b.validation && b.validation.candidate_id || ""));
     });
@@ -208,6 +211,18 @@ function buildMarketCanaryRows({
     const marketContract = marketContractMap.get(market) || null;
     const replay = best && best.validation || null;
     const candidate = best && best.candidate || null;
+    const concentrationRecovery = Boolean(
+      candidate
+      && (
+        candidate.market_concentration_recovery === true
+        || String(candidate && candidate.source || "").trim().toUpperCase() === "MARKET_CONCENTRATION_RECOVERY"
+        || (Array.isArray(candidate && candidate.risk_flags) && candidate.risk_flags.includes("MARKET_CONCENTRATION_RECOVERY"))
+      )
+    );
+    const concentrationRecoveryPass = concentrationRecovery
+      && String(candidate && candidate.target_market || "").trim().toUpperCase() === market
+      && toNum(replay && replay.candidate_objective_delta) != null
+      && toNum(replay && replay.candidate_objective_delta) >= 1.0;
     const wave = marketWave(market);
     const shadowMarketMeta = driftMetaForMarket(shadowByMarket, market);
     const goldenMarketMeta = driftMetaForMarket(goldenByMarket, market);
@@ -228,7 +243,9 @@ function buildMarketCanaryRows({
     if (marketScore && marketScore.constraints && marketScore.constraints.count_floor_pass === false) blockers.push("OBJECTIVE_COUNT_BLOCK");
     if (marketScore && marketScore.constraints && marketScore.constraints.replacement_floor_pass === false) blockers.push("OBJECTIVE_REPLACEMENT_BLOCK");
     if (marketScore && marketScore.constraints && marketScore.constraints.latency_budget_pass === false) blockers.push("OBJECTIVE_LATENCY_BLOCK");
-    if (marketScore && toNum(marketScore.objective_score) != null && toNum(marketScore.objective_score) < 0) blockers.push("OBJECTIVE_SCORE_NEGATIVE");
+    if (marketScore && toNum(marketScore.objective_score) != null && toNum(marketScore.objective_score) < 0 && !concentrationRecoveryPass) {
+      blockers.push("OBJECTIVE_SCORE_NEGATIVE");
+    }
 
     const currentStageRaw = String(previousStage || "SHADOW").toUpperCase();
     const currentStage = ["SHADOW", "SOFT", "HARD"].includes(currentStageRaw) ? currentStageRaw : "SHADOW";
@@ -277,6 +294,7 @@ function buildMarketCanaryRows({
       drift_golden_global: goldenGlobalDrift,
       drift_shadow_stages: driftStageList(shadowMarketMeta),
       drift_golden_stages: driftStageList(goldenMarketMeta),
+      concentration_recovery: concentrationRecovery,
       blockers,
     });
   }

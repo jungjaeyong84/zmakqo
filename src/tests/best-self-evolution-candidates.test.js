@@ -175,6 +175,49 @@ function run() {
   assert.strictEqual(reportWithFingerprintBlock.rows.some((row) => row.candidate_id === "EV_TP1_THRESHOLD_TUNE"), false);
   assert.strictEqual(reportWithFingerprintBlock.summary.memory_blocked_n, 1);
 
+  const concentrationReport = buildCandidateChangeSets({
+    objectiveSupervisor: {
+      raw: {
+        phase0: { tf: "15m" },
+        best_febt_tuning_contract: {
+          mode: "NORMAL",
+          projected_count_ratio_global: 1.0,
+          projected_replacement_ratio: 0.82,
+          tightening_allowed: true,
+          recovery_priority: false,
+        },
+        best_febt_market_contracts: [
+          { market: "AXSUSDT", mode: "NORMAL", tightening_allowed: true, recovery_priority: false },
+        ],
+        self_evolution_objective: {
+          market_concentration: {
+            concentration_flag: true,
+            dominant_negative_share: 1,
+            bottom_market_drag_gap: 3.7445,
+            dominant_negative_market: {
+              market: "AXSUSDT",
+              objective_score: -3.7445,
+              realized_n: 5,
+              avg_realized_ret_net: -0.0112,
+            },
+          },
+        },
+      },
+    },
+    patchCandidates: { raw: { candidates: [] } },
+    ml: { raw: { recommendations: { QUALITY: [], MARKET: { action: "KEEP" }, AI: { action: "KEEP" }, EV: { action: "KEEP" } } } },
+    ev: null,
+    wait: null,
+    changeControl: { raw: {} },
+    memoryLedger: { raw: { summary: { blocked_candidate_ids: [], recent_failed_fingerprints: [] }, current_rows: [] } },
+  });
+  const axsRecovery = concentrationReport.rows.find((row) => row.candidate_id === "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN");
+  assert.ok(axsRecovery);
+  assert.deepStrictEqual(axsRecovery.markets, ["AXSUSDT"]);
+  assert.strictEqual(axsRecovery.scope, "PINE");
+  assert.strictEqual(axsRecovery.market_concentration_recovery, true);
+  assert.ok(axsRecovery.risk_flags.includes("MARKET_CONCENTRATION_RECOVERY"));
+
   console.log("BEST_SELF_EVOLUTION_CANDIDATES_TEST_OK");
 }
 
