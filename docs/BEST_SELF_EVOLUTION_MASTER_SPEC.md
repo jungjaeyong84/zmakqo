@@ -1,7 +1,7 @@
 # BEST_SELF_EVOLUTION_MASTER_SPEC
 
 - 제정: 2026-03-29
-- 상태: PROPOSED
+- 상태: ACTIVE
 - 목적: `BEST/FEBT`를 단순 튜닝 루프가 아니라 `측정 -> 원인분해 -> 후보생성 -> 오프라인 검증 -> canary -> 자동 롤백 -> 패치 메모리`까지 닫힌 자기 진화 시스템으로 확장하기 위한 상위 SSOT
 - 연계 문서:
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_MASTER_SPEC.md`
@@ -99,26 +99,28 @@
 2. fills/trades까지 `features_json` 전파
 3. 감독관 공통 계약과 시장별 계약
 4. ML/WAIT/EV/Codex/Autopilot/Audit가 감독관 계약을 읽는 구조
+5. P0 dataset
+6. P1 objective score
+7. P2 attribution
+8. P3 candidate change set
+9. P4 replay validation
+10. P5 market canary
+11. P6 auto rollback
+12. P7 memory ledger
 
-## 8. 아직 부족한 범위
+## 8. 다음 고도화 범위
 
-1. unified learning row 정식 생성기
-2. 전역 목적함수 정식 계산기
-3. 원인분해 ledger
-4. candidate change set 공통 schema
-5. replay validator
-6. 시장별 canary executor
-7. patch memory ledger
+1. wave 2/3 canary 확대
+2. 시장별 objective score 정교화
+3. weight tuning과 deployment guard 분리
+4. memory 기반 candidate pre-block 자동화 강화
 
 ## 9. 다음 구현 우선순위
 
-1. `P0 Dataset`
-2. `P1 Objective Score`
-3. `P2 Attribution`
-4. `P3 Candidate Change Set`
-5. `P4 Replay Validator`
-6. `P5 Canary Executor`
-7. `P6 Memory Ledger`
+1. `Canary Scale`
+2. `Weight Tuning`
+3. `Deployment Guards`
+4. `Memory-aware Candidate Blocking`
 
 ## 10. 한 줄 결론
 

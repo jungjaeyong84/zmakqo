@@ -154,6 +154,9 @@ function buildPrompt(context = {}) {
   const selfEvolutionCanary = objectiveSupervisor && objectiveSupervisor.self_evolution_canary && typeof objectiveSupervisor.self_evolution_canary === "object"
     ? objectiveSupervisor.self_evolution_canary
     : {};
+  const selfEvolutionMemory = objectiveSupervisor && objectiveSupervisor.self_evolution_memory && typeof objectiveSupervisor.self_evolution_memory === "object"
+    ? objectiveSupervisor.self_evolution_memory
+    : {};
   return [
     "You are the weekly Codex patch engine for DONBEOLJA.",
     "Task: inspect the provided latest reports and return a single JSON decision only.",
@@ -201,6 +204,7 @@ function buildPrompt(context = {}) {
     `- BEST self-evolution objective score spec: ${selfEvolutionPolicy.objective_latest_path || "N/A"}`,
     `- BEST self-evolution attribution spec: ${selfEvolutionPolicy.attribution_latest_path || "N/A"}`,
     `- BEST self-evolution canary spec: ${selfEvolutionPolicy.canary_latest_path || "N/A"}`,
+    `- BEST self-evolution memory ledger spec: ${selfEvolutionPolicy.memory_latest_path || "N/A"}`,
     "Filter layer interpretation:",
     ...objectiveLayerLines,
     "Quick context:",
@@ -257,6 +261,12 @@ function buildPrompt(context = {}) {
     `- total/shadow/soft/hard: ${selfEvolutionCanary.total_n != null ? selfEvolutionCanary.total_n : "N/A"} / ${selfEvolutionCanary.shadow_n != null ? selfEvolutionCanary.shadow_n : "N/A"} / ${selfEvolutionCanary.soft_n != null ? selfEvolutionCanary.soft_n : "N/A"} / ${selfEvolutionCanary.hard_n != null ? selfEvolutionCanary.hard_n : "N/A"}`,
     `- ready/blocked/rollback: ${selfEvolutionCanary.ready_n != null ? selfEvolutionCanary.ready_n : "N/A"} / ${selfEvolutionCanary.blocked_n != null ? selfEvolutionCanary.blocked_n : "N/A"} / ${selfEvolutionCanary.rollback_ready_n != null ? selfEvolutionCanary.rollback_ready_n : "N/A"} / apply ${selfEvolutionCanary.apply_pass === true ? "PASS" : "BLOCK"}`,
     `- top ready: ${selfEvolutionCanary.top_ready_market || "N/A"} / top rollback: ${selfEvolutionCanary.top_rollback_market || "N/A"}`,
+    "Self-evolution memory ledger snapshot:",
+    `- total/current/blocked: ${selfEvolutionMemory.total_n != null ? selfEvolutionMemory.total_n : "N/A"} / ${selfEvolutionMemory.current_n != null ? selfEvolutionMemory.current_n : "N/A"} / ${selfEvolutionMemory.blocked_candidate_n != null ? selfEvolutionMemory.blocked_candidate_n : "N/A"}`,
+    `- success/neutral/fail/rolled_back: ${selfEvolutionMemory.success_n != null ? selfEvolutionMemory.success_n : "N/A"} / ${selfEvolutionMemory.neutral_n != null ? selfEvolutionMemory.neutral_n : "N/A"} / ${selfEvolutionMemory.fail_n != null ? selfEvolutionMemory.fail_n : "N/A"} / ${selfEvolutionMemory.rolled_back_n != null ? selfEvolutionMemory.rolled_back_n : "N/A"}`,
+    `- top success: ${selfEvolutionMemory.top_success_candidate_id || "N/A"} / top failed: ${selfEvolutionMemory.top_failed_candidate_id || "N/A"}`,
+    `- blocked candidates: ${Array.isArray(selfEvolutionMemory.blocked_candidate_ids) && selfEvolutionMemory.blocked_candidate_ids.length ? selfEvolutionMemory.blocked_candidate_ids.join(", ") : "none"}`,
+    "- Never retry a blocked candidate or a candidate that reuses a recent failed fingerprint unless there is explicit contrary evidence in the current objective/replay/canary outputs.",
   ].join("\n");
 }
 

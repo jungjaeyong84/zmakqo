@@ -45,6 +45,9 @@ function deriveCandidateObjectiveDelta(candidate = {}, context = {}) {
   const avgDroppedRet = toNum(candidate.evidence && candidate.evidence.avg_dropped_ret_net);
   const projectedCount = toNum(candidate.count_guard_effect && candidate.count_guard_effect.projected_count_ratio_global);
   const projectedReplacement = toNum(candidate.replacement_effect && candidate.replacement_effect.projected_replacement_ratio);
+  const impliedAvgRetNetDelta = avgDroppedRet == null
+    ? null
+    : Number(((direction === "TIGHTEN" ? -avgDroppedRet : avgDroppedRet)).toFixed(4));
 
   if (priorityScore != null) deltaParts.push(clamp(priorityScore * 1.5, -1.0, 1.5));
   if (supportRate != null) deltaParts.push(clamp((supportRate - 0.5) * 3, -1.0, 1.0));
@@ -95,6 +98,9 @@ function deriveCandidateObjectiveDelta(candidate = {}, context = {}) {
     direction,
     current_objective_score: Number(currentObjectiveScore.toFixed(4)),
     candidate_objective_delta: delta,
+    count_delta: projectedCount == null ? null : Number((projectedCount - 1).toFixed(4)),
+    replacement_delta: projectedReplacement == null ? null : Number((projectedReplacement - 0.8).toFixed(4)),
+    avg_ret_net_delta: impliedAvgRetNetDelta,
     projected_objective_score: Number((currentObjectiveScore + delta).toFixed(4)),
     validation_verdict: validationVerdict,
     blockers,

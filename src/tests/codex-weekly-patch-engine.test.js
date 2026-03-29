@@ -21,6 +21,7 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
         objective_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_objective_latest.json",
         attribution_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_attribution_latest.json",
         canary_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_canary_latest.json",
+        memory_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_memory_latest.json",
         linked_paths: [
           "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DATASET_SPEC.md",
           "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_OBJECTIVE_SCORE_SPEC.md",
@@ -74,6 +75,18 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
         top_ready_market: "BTCUSDT",
         top_rollback_market: "DOGEUSDT",
       },
+      self_evolution_memory: {
+        total_n: 12,
+        current_n: 6,
+        success_n: 2,
+        neutral_n: 5,
+        fail_n: 3,
+        rolled_back_n: 2,
+        blocked_candidate_n: 1,
+        blocked_candidate_ids: ["AUTO_CORE_REGIME_TIGHTEN"],
+        top_success_candidate_id: "WAIT_ONE_BAR_TUNE",
+        top_failed_candidate_id: "AUTO_CORE_REGIME_TIGHTEN",
+      },
       best_febt_market_contracts: [
         {
           market: "BTCUSDT",
@@ -126,6 +139,7 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.ok(prompt.includes("BEST self-evolution master spec"));
   assert.ok(prompt.includes("Self-evolution policy docs:"));
   assert.ok(prompt.includes("BEST_SELF_EVOLUTION_DATASET_SPEC.md"));
+  assert.ok(prompt.includes("BEST self-evolution memory ledger spec"));
   assert.ok(prompt.includes("Self-evolution objective snapshot:"));
   assert.ok(prompt.includes("objective score: 3.2145"));
   assert.ok(prompt.includes("constraints count/replacement/latency: FAIL / PASS / PASS"));
@@ -143,6 +157,11 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.ok(prompt.includes("total/shadow/soft/hard: 6 / 4 / 2 / 0"));
   assert.ok(prompt.includes("ready/blocked/rollback: 2 / 4 / 1 / apply PASS"));
   assert.ok(prompt.includes("top ready: BTCUSDT / top rollback: DOGEUSDT"));
+  assert.ok(prompt.includes("Self-evolution memory ledger snapshot:"));
+  assert.ok(prompt.includes("total/current/blocked: 12 / 6 / 1"));
+  assert.ok(prompt.includes("success/neutral/fail/rolled_back: 2 / 5 / 3 / 2"));
+  assert.ok(prompt.includes("blocked candidates: AUTO_CORE_REGIME_TIGHTEN"));
+  assert.ok(prompt.includes("Never retry a blocked candidate"));
   assert.ok(prompt.includes("febt contract mode: RECOVERY_FIRST"));
   assert.ok(prompt.includes("febt tightening allowed: NO"));
   assert.ok(prompt.includes("BEST/FEBT market contracts:"));

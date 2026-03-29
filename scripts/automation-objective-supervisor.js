@@ -20,6 +20,7 @@ const {
   deriveMarketObjectiveScores,
   deriveAttribution,
 } = require("../src/utils/bestSelfEvolutionAnalysis");
+const { buildMemoryLedger } = require("../src/utils/bestSelfEvolutionMemoryLedger");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
 const { resolveMarketStateSummary } = require("../src/utils/marketStateSummary");
 const { resolveStatPhysFeatures } = require("../src/utils/statPhysFeatures");
@@ -47,6 +48,7 @@ const SELF_EVOLUTION_ATTRIBUTION_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_se
 const SELF_EVOLUTION_CANDIDATES_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_candidates_latest.json");
 const SELF_EVOLUTION_REPLAY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_replay_latest.json");
 const SELF_EVOLUTION_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json");
+const SELF_EVOLUTION_MEMORY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_memory_latest.json");
 const CODEX_PATCH_LATEST_PATH = path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.json");
 const STAGE_AUTOPILOT_LATEST_PATH = path.join(OPS_DAILY_DIR, "stage_autopilot_latest.json");
 const RETROSPECTIVE_LATEST_PATH = path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json");
@@ -66,6 +68,7 @@ const FRESHNESS_HOURS = Object.freeze({
   selfEvolutionCandidates: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_CANDIDATES_MAX_AGE_HOURS || 36)),
   selfEvolutionReplay: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_REPLAY_MAX_AGE_HOURS || 36)),
   selfEvolutionCanary: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_CANARY_MAX_AGE_HOURS || 36)),
+  selfEvolutionMemory: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_MEMORY_MAX_AGE_HOURS || 72)),
   codex: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_CODEX_MAX_AGE_HOURS || 48)),
   stageAutopilot: Math.max(4, Number(process.env.OBJECTIVE_SUPERVISOR_STAGE_AUTOPILOT_MAX_AGE_HOURS || 12)),
   retrospective: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_RETROSPECTIVE_MAX_AGE_HOURS || 30)),
@@ -407,6 +410,31 @@ function summarizeSelfEvolutionCanary(report = null) {
   };
 }
 
+function summarizeSelfEvolutionMemory(report = null) {
+  const summary = report && report.summary && typeof report.summary === "object" ? report.summary : {};
+  const rows = Array.isArray(report && report.current_rows) ? report.current_rows : [];
+  return {
+    available: !!report,
+    total_n: toNum(summary.total_n) || 0,
+    current_n: toNum(summary.current_n) || 0,
+    success_n: toNum(summary.success_n) || 0,
+    neutral_n: toNum(summary.neutral_n) || 0,
+    fail_n: toNum(summary.fail_n) || 0,
+    rolled_back_n: toNum(summary.rolled_back_n) || 0,
+    blocked_candidate_n: toNum(summary.blocked_candidate_n) || 0,
+    blocked_candidate_ids: Array.isArray(summary.blocked_candidate_ids) ? summary.blocked_candidate_ids : [],
+    top_success_candidate_id: String(summary.top_success_candidate_id || "").trim() || null,
+    top_failed_candidate_id: String(summary.top_failed_candidate_id || "").trim() || null,
+    avg_objective_delta: toNum(summary.avg_objective_delta),
+    avg_count_delta: toNum(summary.avg_count_delta),
+    avg_replacement_delta: toNum(summary.avg_replacement_delta),
+    avg_ret_net_delta: toNum(summary.avg_ret_net_delta),
+    recent_failed_fingerprints: Array.isArray(summary.recent_failed_fingerprints) ? summary.recent_failed_fingerprints : [],
+    latest_week_key: String(summary.latest_week_key || "").trim() || null,
+    current_rows: rows,
+  };
+}
+
 function formatBestFebtMarketContractLine(row = {}) {
   const market = String(row.market || "UNKNOWN");
   const replacement = row.projected_replacement_ratio != null ? pct(row.projected_replacement_ratio) : "N/A";
@@ -604,6 +632,14 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
       ],
     },
     {
+      header: "자기 진화 메모리",
+      lines: [
+        `total ${report.self_evolution_memory && report.self_evolution_memory.total_n != null ? report.self_evolution_memory.total_n : "N/A"} / current ${report.self_evolution_memory && report.self_evolution_memory.current_n != null ? report.self_evolution_memory.current_n : "N/A"} / blocked ${report.self_evolution_memory && report.self_evolution_memory.blocked_candidate_n != null ? report.self_evolution_memory.blocked_candidate_n : "N/A"}`,
+        `success ${report.self_evolution_memory && report.self_evolution_memory.success_n != null ? report.self_evolution_memory.success_n : "N/A"} / fail ${report.self_evolution_memory && report.self_evolution_memory.fail_n != null ? report.self_evolution_memory.fail_n : "N/A"} / rolled_back ${report.self_evolution_memory && report.self_evolution_memory.rolled_back_n != null ? report.self_evolution_memory.rolled_back_n : "N/A"}`,
+        `top success ${report.self_evolution_memory && report.self_evolution_memory.top_success_candidate_id || "N/A"} / top failed ${report.self_evolution_memory && report.self_evolution_memory.top_failed_candidate_id || "N/A"}`,
+      ],
+    },
+    {
       header: "시장별 BEST/FEBT 계약",
       lines: Array.isArray(report.best_febt_market_contracts) && report.best_febt_market_contracts.length
         ? report.best_febt_market_contracts.slice(0, 4).map((row) => formatBestFebtMarketContractLine(row))
@@ -625,7 +661,7 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
   ];
 }
 
-function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, codex, stageAutopilot, retrospective } = {}) {
+function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionMemory, codex, stageAutopilot, retrospective } = {}) {
   const objective = governance && governance.current && governance.current.objective ? governance.current.objective : {};
   const objectiveCfg = governance && governance.objective ? governance.objective : {};
   const promotion = changeControl && changeControl.auto_promotion ? changeControl.auto_promotion : {};
@@ -710,6 +746,8 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   const selfEvolutionCandidatesSummary = summarizeSelfEvolutionCandidates(selfEvolutionCandidates);
   const selfEvolutionReplaySummary = summarizeSelfEvolutionReplay(selfEvolutionReplay);
   const selfEvolutionCanarySummary = summarizeSelfEvolutionCanary(selfEvolutionCanary);
+  const selfEvolutionMemorySummary = summarizeSelfEvolutionMemory(selfEvolutionMemory);
+  const memoryBlockedIds = new Set(selfEvolutionMemorySummary.blocked_candidate_ids || []);
 
   const blockers = [];
   if (!objective || objective.enough_sample !== true) blockers.push("OBJECTIVE_SAMPLE_NOT_READY");
@@ -733,6 +771,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   if (promotionReplay && promotionReplay.validation_verdict === "BLOCK") blockers.push("SELF_EVOLUTION_REPLAY_BLOCK");
   if (promotion.ready === true && selfEvolutionCanarySummary.available && selfEvolutionCanarySummary.apply_pass !== true) blockers.push("SELF_EVOLUTION_CANARY_BLOCK");
   if (selfEvolutionCanarySummary.rollback_ready_n > 0) blockers.push("SELF_EVOLUTION_CANARY_ROLLBACK_READY");
+  if (promotion.ready === true && promotionCandidateId && memoryBlockedIds.has(promotionCandidateId)) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK");
   if (codex && codexStatus === "FAILED" && (promotion.ready === true || rollback.ready === true)) {
     blockers.push("CODEX_REVIEW_FAILED");
   }
@@ -757,6 +796,8 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
         ? "SELF_EVOLUTION_CANARY_BLOCK"
       : selfEvolutionCanarySummary.rollback_ready_n > 0
         ? "SELF_EVOLUTION_CANARY_ROLLBACK_READY"
+      : (promotion.ready === true && promotionCandidateId && memoryBlockedIds.has(promotionCandidateId))
+        ? "SELF_EVOLUTION_MEMORY_BLOCK"
       : retrospectiveSummary.any_fail
         ? "RETROSPECTIVE_OBJECTIVE_FAIL"
       : (!objective || objective.enough_sample !== true)
@@ -865,6 +906,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     self_evolution_candidates: selfEvolutionCandidatesSummary,
     self_evolution_replay: selfEvolutionReplaySummary,
     self_evolution_canary: selfEvolutionCanarySummary,
+    self_evolution_memory: selfEvolutionMemorySummary,
     self_evolution_policy: selfEvolutionPolicy,
     best_febt_tuning_contract: bestFebtTuningContract,
     best_febt_market_contracts: bestFebtMarketContracts,
@@ -965,6 +1007,7 @@ function renderMarkdown(report = {}) {
     `- candidates_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.candidates_latest_path || "N/A"}`,
     `- replay_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.replay_latest_path || "N/A"}`,
     `- canary_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.canary_latest_path || "N/A"}`,
+    `- memory_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.memory_latest_path || "N/A"}`,
     `- status: ${report.self_evolution_policy && report.self_evolution_policy.status || "N/A"}`,
     `- current_focus: ${report.self_evolution_policy && report.self_evolution_policy.current_focus || "N/A"}`,
     `- next_focus: ${report.self_evolution_policy && report.self_evolution_policy.next_focus || "N/A"}`,
@@ -1006,6 +1049,13 @@ function renderMarkdown(report = {}) {
     `- total/shadow/soft/hard: ${report.self_evolution_canary && report.self_evolution_canary.total_n != null ? report.self_evolution_canary.total_n : "N/A"} / ${report.self_evolution_canary && report.self_evolution_canary.shadow_n != null ? report.self_evolution_canary.shadow_n : "N/A"} / ${report.self_evolution_canary && report.self_evolution_canary.soft_n != null ? report.self_evolution_canary.soft_n : "N/A"} / ${report.self_evolution_canary && report.self_evolution_canary.hard_n != null ? report.self_evolution_canary.hard_n : "N/A"}`,
     `- ready/blocked/rollback: ${report.self_evolution_canary && report.self_evolution_canary.ready_n != null ? report.self_evolution_canary.ready_n : "N/A"} / ${report.self_evolution_canary && report.self_evolution_canary.blocked_n != null ? report.self_evolution_canary.blocked_n : "N/A"} / ${report.self_evolution_canary && report.self_evolution_canary.rollback_ready_n != null ? report.self_evolution_canary.rollback_ready_n : "N/A"} / apply=${report.self_evolution_canary && report.self_evolution_canary.apply_pass ? "PASS" : "BLOCK"}`,
     `- top_ready: ${report.self_evolution_canary && report.self_evolution_canary.top_ready_market || "N/A"} / top_rollback: ${report.self_evolution_canary && report.self_evolution_canary.top_rollback_market || "N/A"}`,
+    "",
+    "## Self-Evolution Memory",
+    `- total/current/blocked: ${report.self_evolution_memory && report.self_evolution_memory.total_n != null ? report.self_evolution_memory.total_n : "N/A"} / ${report.self_evolution_memory && report.self_evolution_memory.current_n != null ? report.self_evolution_memory.current_n : "N/A"} / ${report.self_evolution_memory && report.self_evolution_memory.blocked_candidate_n != null ? report.self_evolution_memory.blocked_candidate_n : "N/A"}`,
+    `- success/neutral/fail/rolled_back: ${report.self_evolution_memory && report.self_evolution_memory.success_n != null ? report.self_evolution_memory.success_n : "N/A"} / ${report.self_evolution_memory && report.self_evolution_memory.neutral_n != null ? report.self_evolution_memory.neutral_n : "N/A"} / ${report.self_evolution_memory && report.self_evolution_memory.fail_n != null ? report.self_evolution_memory.fail_n : "N/A"} / ${report.self_evolution_memory && report.self_evolution_memory.rolled_back_n != null ? report.self_evolution_memory.rolled_back_n : "N/A"}`,
+    `- avg objective/count/replacement/ret: ${signedNum(report.self_evolution_memory && report.self_evolution_memory.avg_objective_delta, 4)} / ${signedNum(report.self_evolution_memory && report.self_evolution_memory.avg_count_delta, 4)} / ${signedNum(report.self_evolution_memory && report.self_evolution_memory.avg_replacement_delta, 4)} / ${signedNum(report.self_evolution_memory && report.self_evolution_memory.avg_ret_net_delta, 4)}`,
+    `- top success: ${report.self_evolution_memory && report.self_evolution_memory.top_success_candidate_id || "N/A"} / top failed: ${report.self_evolution_memory && report.self_evolution_memory.top_failed_candidate_id || "N/A"}`,
+    `- blocked_candidate_ids: ${report.self_evolution_memory && Array.isArray(report.self_evolution_memory.blocked_candidate_ids) && report.self_evolution_memory.blocked_candidate_ids.length ? report.self_evolution_memory.blocked_candidate_ids.join(", ") : "none"}`,
     "",
     "## BEST/FEBT Market Contracts",
     ...((Array.isArray(report.best_febt_market_contracts) && report.best_febt_market_contracts.length)
@@ -1053,9 +1103,20 @@ async function main() {
   const selfEvolutionCandidatesArtifact = readArtifact("self_evolution_candidates", SELF_EVOLUTION_CANDIDATES_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCandidates);
   const selfEvolutionReplayArtifact = readArtifact("self_evolution_replay", SELF_EVOLUTION_REPLAY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionReplay);
   const selfEvolutionCanaryArtifact = readArtifact("self_evolution_canary", SELF_EVOLUTION_CANARY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCanary);
+  const selfEvolutionMemoryArtifact = readArtifact("self_evolution_memory", SELF_EVOLUTION_MEMORY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionMemory);
   const codexArtifact = readArtifact("codex_patch", CODEX_PATCH_LATEST_PATH, FRESHNESS_HOURS.codex);
   const stageAutopilotArtifact = readArtifact("stage_autopilot", STAGE_AUTOPILOT_LATEST_PATH, FRESHNESS_HOURS.stageAutopilot);
   const retrospectiveArtifact = readArtifact("objective_retrospective", RETROSPECTIVE_LATEST_PATH, FRESHNESS_HOURS.retrospective);
+
+  const selfEvolutionMemoryData = selfEvolutionMemoryArtifact.exists
+    ? { ...selfEvolutionMemoryArtifact.data, fresh: selfEvolutionMemoryArtifact.fresh }
+    : buildMemoryLedger({
+      candidateChangeSet: selfEvolutionCandidatesArtifact.data,
+      replayReport: selfEvolutionReplayArtifact.data,
+      canaryReport: selfEvolutionCanaryArtifact.data,
+      previousLedger: null,
+      nowMeta,
+    });
 
   const evaluation = evaluateSupervisor({
     governance: governanceArtifact.data,
@@ -1071,6 +1132,7 @@ async function main() {
     selfEvolutionCandidates: selfEvolutionCandidatesArtifact.exists ? { ...selfEvolutionCandidatesArtifact.data, fresh: selfEvolutionCandidatesArtifact.fresh } : null,
     selfEvolutionReplay: selfEvolutionReplayArtifact.exists ? { ...selfEvolutionReplayArtifact.data, fresh: selfEvolutionReplayArtifact.fresh } : null,
     selfEvolutionCanary: selfEvolutionCanaryArtifact.exists ? { ...selfEvolutionCanaryArtifact.data, fresh: selfEvolutionCanaryArtifact.fresh } : null,
+    selfEvolutionMemory: selfEvolutionMemoryData,
     codex: codexArtifact.exists ? { ...codexArtifact.data, fresh: codexArtifact.fresh } : null,
     stageAutopilot: stageAutopilotArtifact.exists ? { ...stageAutopilotArtifact.data, fresh: stageAutopilotArtifact.fresh } : null,
     retrospective: retrospectiveArtifact.data,
@@ -1094,6 +1156,7 @@ async function main() {
     self_evolution_candidates: evaluation.self_evolution_candidates,
     self_evolution_replay: evaluation.self_evolution_replay,
     self_evolution_canary: evaluation.self_evolution_canary,
+    self_evolution_memory: evaluation.self_evolution_memory,
     filter_layers: evaluation.filter_layers,
     best_febt_tuning_contract: {
       ...(evaluation.best_febt_tuning_contract || {}),
@@ -1105,7 +1168,7 @@ async function main() {
     codex_review: evaluation.codex_review,
     stage_autopilot: evaluation.stage_autopilot,
     retrospective: evaluation.retrospective,
-    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, phase0Artifact, selfEvolutionDatasetArtifact, selfEvolutionObjectiveArtifact, selfEvolutionAttributionArtifact, selfEvolutionCandidatesArtifact, selfEvolutionReplayArtifact, selfEvolutionCanaryArtifact, codexArtifact, stageAutopilotArtifact, retrospectiveArtifact].map((row) => ({
+    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, phase0Artifact, selfEvolutionDatasetArtifact, selfEvolutionObjectiveArtifact, selfEvolutionAttributionArtifact, selfEvolutionCandidatesArtifact, selfEvolutionReplayArtifact, selfEvolutionCanaryArtifact, selfEvolutionMemoryArtifact, codexArtifact, stageAutopilotArtifact, retrospectiveArtifact].map((row) => ({
       name: row.name,
       filePath: row.filePath,
       fresh: row.fresh,
@@ -1170,5 +1233,6 @@ module.exports = {
     summarizeSelfEvolutionCandidates,
     summarizeSelfEvolutionReplay,
     summarizeSelfEvolutionCanary,
+    summarizeSelfEvolutionMemory,
   },
 };
