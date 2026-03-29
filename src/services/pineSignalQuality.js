@@ -183,6 +183,7 @@ function finalizeTierStats(stats) {
 async function summarizePineSignalQuality({
   signals = [],
   fills = [],
+  intents = [],
   exchange = null,
   tf = null,
   fromMs = null,
@@ -201,6 +202,25 @@ async function summarizePineSignalQuality({
 
   const signalRows = [];
   const signalMetaByKey = new Map();
+  const mergeSignalMeta = (key, patch = {}) => {
+    if (!key) return;
+    const prev = signalMetaByKey.get(key) || {};
+    const next = { ...prev };
+    for (const [field, value] of Object.entries(patch || {})) {
+      if (value === null || value === undefined || value === "") continue;
+      if (typeof value === "boolean") {
+        next[field] = value;
+        continue;
+      }
+      if (typeof value === "number" && Number.isFinite(value)) {
+        next[field] = value;
+        continue;
+      }
+      const hasPrev = prev[field] !== null && prev[field] !== undefined && prev[field] !== "" && prev[field] !== "unknown" && prev[field] !== "UNKNOWN";
+      if (!hasPrev) next[field] = value;
+    }
+    signalMetaByKey.set(key, next);
+  };
   for (const row of signals || []) {
     const event = toUpper(row && row.event);
     const tier = normalizeTier(row);
@@ -230,6 +250,31 @@ async function summarizePineSignalQuality({
         ...buildFilterFeatureSignature(row),
       });
     }
+  }
+
+  for (const row of intents || []) {
+    const event = toUpper(row && row.event);
+    const tier = normalizeTier(row);
+    if (!tier) continue;
+    const ex = normalizeExchange(row && row.exchange);
+    const rowTf = normalizeTf(row);
+    const barMs = resolveBarMs(row);
+    if (exchangeNorm && ex && ex !== exchangeNorm) continue;
+    if (tfNorm && rowTf && rowTf !== tfNorm) continue;
+    if (Number.isFinite(fromMs) && Number.isFinite(barMs) && barMs < fromMs) continue;
+    if (Number.isFinite(toMs) && Number.isFinite(barMs) && barMs >= toMs) continue;
+    const key = makeSignalKey({
+      exchange: ex,
+      symbol_or_pair_id: normalizeMarket(row),
+      tf: rowTf,
+      event,
+      signal_bar_close_time_utc_ms: barMs,
+      bar_close_time_utc_ms: barMs,
+    });
+    mergeSignalMeta(key, {
+      side: normalizeSide(row && row.side),
+      ...buildFilterFeatureSignature(row),
+    });
   }
 
   const fillsFiltered = [];

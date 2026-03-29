@@ -18,6 +18,7 @@ const {
   summarizeLegacyWaitOverlap,
   summarizeBridgeLatency,
 } = require("../src/utils/febtPhase0");
+const { summarizePineSignalQuality } = require("../src/services/pineSignalQuality");
 
 loadLocalEnv();
 
@@ -171,24 +172,39 @@ async function main() {
     || (nowMeta.nowMs - (WINDOW_DAYS * 24 * 60 * 60 * 1000));
   const windowToMs = toNum(weekly.current && weekly.current.range && weekly.current.range.to_ms) || nowMeta.nowMs;
 
-  const [dropsCache, intentsCache, fillsCache, webhookCache] = await Promise.all([
+  const [signalsCache, dropsCache, intentsCache, fillsCache, webhookCache] = await Promise.all([
+    getCachedRecentByCreatedAt("signals", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: true }),
     getCachedRecentByCreatedAt("signals_dropped", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: true }),
     getCachedRecentByCreatedAt("order_intents_paper", { limit: SCAN_LIMIT * 2, maxDocs: SCAN_LIMIT * 2, overlapDocs: 800, pageSize: 1000, refresh: true }),
     getCachedRecentByCreatedAt("fills_paper", { limit: SCAN_LIMIT * 2, maxDocs: SCAN_LIMIT * 2, overlapDocs: 800, pageSize: 1000, refresh: true }),
     getCachedRecentByCreatedAt("webhook_ledger", { limit: SCAN_LIMIT * 2, maxDocs: SCAN_LIMIT * 2, overlapDocs: 800, pageSize: 1000, refresh: true }),
   ]);
 
+  const signals = Array.isArray(signalsCache.rows) ? signalsCache.rows : [];
   const drops = Array.isArray(dropsCache.rows) ? dropsCache.rows : [];
   const intents = Array.isArray(intentsCache.rows) ? intentsCache.rows : [];
   const fills = Array.isArray(fillsCache.rows) ? fillsCache.rows : [];
   const webhooks = Array.isArray(webhookCache.rows) ? webhookCache.rows : [];
+  const freshQuality = await summarizePineSignalQuality({
+    signals,
+    fills,
+    intents,
+    exchange: PROVIDER,
+    tf: TF,
+    fromMs: windowFromMs,
+    toMs: windowToMs,
+  });
+  const current = {
+    ...(weekly.current || {}),
+    quality: freshQuality,
+  };
 
   const legacyWaitBaseline = summarizeLegacyWaitBaseline({
-    current: weekly.current,
+    current,
     drops,
   });
   const legacyWaitOverlap = summarizeLegacyWaitOverlap({
-    current: weekly.current,
+    current,
     drops,
   });
   const bridgeLatency = summarizeBridgeLatency({
@@ -235,6 +251,7 @@ async function main() {
     },
     sources: {
       weekly_governance_latest: WEEKLY_LATEST_JSON,
+      signals_cache: signalsCache.meta && signalsCache.meta.filePath,
       drops_cache: dropsCache.meta && dropsCache.meta.filePath,
       intents_cache: intentsCache.meta && intentsCache.meta.filePath,
       fills_cache: fillsCache.meta && fillsCache.meta.filePath,

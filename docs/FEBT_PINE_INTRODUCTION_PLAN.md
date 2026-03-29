@@ -126,7 +126,7 @@
 2. `febt_phase`를 debug/payload 메타에만 기록
 3. chart debug label 또는 panel row 추가는 선택적
 4. `SHADOW` mode에서만 활성
-5. `FEBT` 계산 실패 시 기본값을 `NEUTRAL_SHADOW` 또는 `VOID_SHADOW`로 명시 기록하고, live entry decision에는 영향 주지 않음
+5. `FEBT` 계산 실패 시 `febt_phase = UNKNOWN`, `febt_timing_action = NO_OP`로 기록하고, live entry decision에는 영향 주지 않음
 
 완료 기준:
 1. 차트 신호 수 변화 0
@@ -141,11 +141,12 @@
 
 작업:
 1. webhook ingest가 `febt_*` 필드 저장
-2. signal/fill/trade/quality report에 `febt_phase` 포함
-3. weekly governance, objective supervisor, impact report에 phase breakdown 추가
+2. signal/quality report에 `febt_phase` 포함
+3. weekly governance, objective supervisor, hourly guard, improvement pack에 phase breakdown 추가
 4. TradingView alert 시각, webhook 수신 시각, intent 생성 시각, fill 시각 차이를 연결해서 latency budget 리포트 추가
 5. duplicate signal / overlap signal / stale signal과 `FEBT` phase 관계 집계
 6. `FEBT` 저장 실패 시 fallback reason code 기록
+7. fill/trade/impact report propagation은 `Phase 2b` 후속 범위로 분리
 
 완료 기준:
 1. phase별 표본 수 집계 가능

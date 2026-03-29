@@ -360,7 +360,8 @@ Pine은 아래 메타를 만들 수 있어야 한다.
 2. symbol × regime × side × tier 기준 비교표
 3. shadow canary에서 `FEBT` phase logging
 4. Pine payload에 `febt_*` 필드 실을 자리 확보
-5. weekly governance / objective supervisor / impact report에 phase별 breakdown 추가
+5. weekly governance / objective supervisor / hourly guard / improvement pack에 phase별 breakdown 추가
+6. fill/trade/impact report propagation은 `Phase 2b` 후속 범위로 분리
 
 ## 권장 다음 단계
 

@@ -166,8 +166,12 @@ Pine의 출력 원칙:
 1. weekly governance
 2. objective supervisor
 3. hourly guard
-4. impact report
+4. improvement pack / dashboard surfaces
 5. patch supervisor feedback
+
+비고:
+
+1. `impact report`와 `fill/trade propagation`은 `Phase 2b` 후속 범위로 분리 가능하다.
 
 ## 60%+와 count 유지의 구현 원칙
 

@@ -2675,6 +2675,7 @@ async function buildWindowSummary({ signals, fills, drops, intents = [], fromMs,
   const quality = await summarizePineSignalQuality({
     signals: filteredSignals,
     fills: qualityFills,
+    intents: filteredIntents,
     exchange: provider,
     tf,
     fromMs,

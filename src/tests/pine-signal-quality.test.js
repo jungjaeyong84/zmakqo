@@ -145,6 +145,7 @@ async function run() {
   const summary = await summarizePineSignalQuality({
     signals,
     fills,
+    intents: [],
     exchange: "UPBIT",
     tf: "60m",
     fromMs: 0,
@@ -227,6 +228,75 @@ async function run() {
   assert.strictEqual(summary.by_tier.EARLY.febt_fallback_legacy_n, 1);
   assert.strictEqual(summary.by_tier.EARLY.febt_payload_missing_n, 1);
 
+  const summaryWithIntentFallback = await summarizePineSignalQuality({
+    signals: [
+      {
+        exchange: "BINANCEFUT",
+        symbol: "BTCUSDT",
+        tf: "15m",
+        event: "LONG",
+        side: "BUY",
+        bar_close_time_utc_ms: 12000,
+        features_json: {
+          sp_entropy_score: 0.41,
+          sp_coherence_score: 0.63,
+          sp_transition_risk: 0.34,
+          sp_state: "MIXED",
+        },
+      },
+    ],
+    fills: [
+      {
+        exchange: "BINANCEFUT",
+        symbol: "BTCUSDT",
+        tf: "15m",
+        side: "BUY",
+        event: "LONG",
+        exec_price: 100,
+        qty_pct: 0.2,
+        exec_bar_close_time_utc_ms: 12000,
+        signal_bar_close_time_utc_ms: 12000,
+        entry_event_id: "ENTRY__BINANCEFUT__BTCUSDT__15m__12000__LONG",
+        entry_signal_type: "LONG",
+      },
+      {
+        exchange: "BINANCEFUT",
+        symbol: "BTCUSDT",
+        tf: "15m",
+        side: "SELL",
+        event: "EXIT_TP_P1_3P",
+        exec_price: 102,
+        qty_pct: 0.2,
+        exec_bar_close_time_utc_ms: 13000,
+        signal_bar_close_time_utc_ms: 12000,
+        entry_event_id: "ENTRY__BINANCEFUT__BTCUSDT__15m__12000__LONG",
+        entry_signal_type: "LONG",
+      },
+    ],
+    intents: [
+      {
+        exchange: "BINANCEFUT",
+        symbol_or_pair_id: "BTCUSDT",
+        tf: "15m",
+        event: "LONG",
+        side: "BUY",
+        signal_bar_close_time_utc_ms: 12000,
+        features_json: {
+          wait_one_bar_action: "ALLOW",
+          wait_one_bar_trigger_path: "BASE",
+          _entry_exec_timing: "EXEC_CURRENT_BAR",
+        },
+      },
+    ],
+    exchange: "BINANCEFUT",
+    tf: "15m",
+    fromMs: 0,
+    toMs: 20000,
+  });
+  assert.strictEqual(summaryWithIntentFallback.chain_rows[0].legacy_wait_action, "ALLOW");
+  assert.strictEqual(summaryWithIntentFallback.chain_rows[0].legacy_wait_trigger_path, "BASE");
+  assert.strictEqual(summaryWithIntentFallback.chain_rows[0].entry_exec_timing, "EXEC_CURRENT_BAR");
+
   const outOfOrderFills = [
     {
       exchange: "BINANCEFUT",
@@ -268,6 +338,7 @@ async function run() {
       },
     ],
     fills: outOfOrderFills,
+    intents: [],
     exchange: "BINANCEFUT",
     tf: "15m",
     fromMs: 0,
