@@ -39,9 +39,10 @@ function renderMarkdown(report = {}) {
     `- total/shadow/soft/hard: ${summary.total_n ?? 0} / ${summary.shadow_n ?? 0} / ${summary.soft_n ?? 0} / ${summary.hard_n ?? 0}`,
     `- ready/blocked/rollback: ${summary.ready_n ?? 0} / ${summary.blocked_n ?? 0} / ${summary.rollback_ready_n ?? 0}`,
     `- apply_pass: ${summary.apply_pass ? "YES" : "NO"} / global_canary_pass: ${summary.global_canary_pass ? "YES" : "NO"}`,
+    `- drift global shadow/golden: ${summary.shadow_global_drift ?? 0} / ${summary.golden_global_drift ?? 0}`,
     `- wave open/current/next: ${summary.open_wave ?? "N/A"} / ${summary.current_open_wave ?? "N/A"} / ${summary.next_wave_candidate ?? "N/A"}`,
     `- scale_allowed: ${summary.scale_allowed ? "YES" : "NO"} / reason=${summary.scale_block_reason || "N/A"}`,
-    `- top_ready: ${summary.top_ready_market || "N/A"} / top_rollback: ${summary.top_rollback_market || "N/A"}`,
+    `- top_ready: ${summary.top_ready_market || "N/A"} / top_rollback: ${summary.top_rollback_market || "N/A"} / top_shadow_drift: ${summary.top_shadow_drift_market || "N/A"} / top_golden_drift: ${summary.top_golden_drift_market || "N/A"}`,
     "",
     "## Markets",
   ];
@@ -49,7 +50,7 @@ function renderMarkdown(report = {}) {
     lines.push("- none");
   } else {
     for (const row of rows.slice(0, 20)) {
-      lines.push(`- ${row.market}: wave=${row.wave} / stage ${row.previous_stage} -> ${row.current_stage} / action=${row.canary_action} / verdict=${row.canary_verdict} / candidate=${row.candidate_id || "N/A"} / replay=${row.replay_verdict || "N/A"} / objective=${row.objective_score != null ? Number(row.objective_score).toFixed(3) : "N/A"} / blockers=${Array.isArray(row.blockers) && row.blockers.length ? row.blockers.join("|") : "none"}`);
+      lines.push(`- ${row.market}: wave=${row.wave} / stage ${row.previous_stage} -> ${row.current_stage} / action=${row.canary_action} / verdict=${row.canary_verdict} / candidate=${row.candidate_id || "N/A"} / replay=${row.replay_verdict || "N/A"} / objective=${row.objective_score != null ? Number(row.objective_score).toFixed(3) : "N/A"} / drift shadow=${row.drift_shadow_market ?? 0} golden=${row.drift_golden_market ?? 0} / blockers=${Array.isArray(row.blockers) && row.blockers.length ? row.blockers.join("|") : "none"}`);
     }
   }
   return `${lines.join("\n")}\n`;

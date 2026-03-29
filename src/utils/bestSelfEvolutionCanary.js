@@ -12,6 +12,42 @@ function unwrapRawReport(value) {
   return value;
 }
 
+function resolveDriftByMarket(summary = null) {
+  const byMarket = summary && summary.byMarket && typeof summary.byMarket === "object"
+    ? summary.byMarket
+    : {};
+  const out = {};
+  for (const [marketRaw, meta] of Object.entries(byMarket)) {
+    const market = String(marketRaw || "").trim().toUpperCase();
+    if (!market) continue;
+    out[market] = {
+      total: toNum(meta && meta.total) || 0,
+      drift: toNum(meta && meta.drift) || 0,
+      byStage: meta && meta.byStage && typeof meta.byStage === "object" ? meta.byStage : {},
+    };
+  }
+  if (!Object.keys(out).length && Number(toNum(summary && summary.drift) || 0) > 0) {
+    out.GLOBAL = {
+      total: toNum(summary && summary.total) || 0,
+      drift: toNum(summary && summary.drift) || 0,
+      byStage: summary && summary.byStage && typeof summary.byStage === "object" ? summary.byStage : {},
+    };
+  }
+  return out;
+}
+
+function driftMetaForMarket(byMarket = {}, market) {
+  const key = String(market || "").trim().toUpperCase();
+  return byMarket[key] || { total: 0, drift: 0, byStage: {} };
+}
+
+function driftStageList(meta = null) {
+  return Object.entries(meta && meta.byStage && typeof meta.byStage === "object" ? meta.byStage : {})
+    .filter(([, value]) => Number(toNum(value && value.drift) || 0) > 0)
+    .map(([stage]) => String(stage).trim().toUpperCase())
+    .sort();
+}
+
 const WAVE_1 = Object.freeze(["BTCUSDT", "SOLUSDT"]);
 const WAVE_2 = Object.freeze(["ETHUSDT", "BNBUSDT", "XRPUSDT"]);
 const WAVE_3 = Object.freeze(["DOGEUSDT", "AXSUSDT"]);
@@ -143,8 +179,18 @@ function buildMarketCanaryRows({
     ? objectiveSupervisor.best_febt_market_contracts
     : [];
   const marketContractMap = new Map(marketContracts.map((row) => [String(row && row.market || "").trim().toUpperCase(), row]));
-  const driftShadow = toNum(driftCanary && driftCanary.shadow && driftCanary.shadow.summary && driftCanary.shadow.summary.drift) || 0;
-  const driftGolden = toNum(driftCanary && driftCanary.golden && driftCanary.golden.summary && driftCanary.golden.summary.drift) || 0;
+  const shadowSummary = driftCanary && driftCanary.shadow && driftCanary.shadow.summary && typeof driftCanary.shadow.summary === "object"
+    ? driftCanary.shadow.summary
+    : {};
+  const goldenSummary = driftCanary && driftCanary.golden && driftCanary.golden.summary && typeof driftCanary.golden.summary === "object"
+    ? driftCanary.golden.summary
+    : {};
+  const driftShadow = toNum(shadowSummary.drift) || 0;
+  const driftGolden = toNum(goldenSummary.drift) || 0;
+  const shadowByMarket = resolveDriftByMarket(shadowSummary);
+  const goldenByMarket = resolveDriftByMarket(goldenSummary);
+  const shadowGlobalDrift = toNum(driftMetaForMarket(shadowByMarket, "GLOBAL").drift) || 0;
+  const goldenGlobalDrift = toNum(driftMetaForMarket(goldenByMarket, "GLOBAL").drift) || 0;
   const globalCanaryPass = driftShadow === 0 && driftGolden === 0;
   const waveState = deriveOpenWave({ previousCanary, memoryLedger });
 
@@ -163,9 +209,16 @@ function buildMarketCanaryRows({
     const replay = best && best.validation || null;
     const candidate = best && best.candidate || null;
     const wave = marketWave(market);
+    const shadowMarketMeta = driftMetaForMarket(shadowByMarket, market);
+    const goldenMarketMeta = driftMetaForMarket(goldenByMarket, market);
+    const shadowMarketDrift = toNum(shadowMarketMeta.drift) || 0;
+    const goldenMarketDrift = toNum(goldenMarketMeta.drift) || 0;
     const blockers = [];
 
-    if (!globalCanaryPass) blockers.push("FILTER_CANARY_DRIFT");
+    if (shadowGlobalDrift > 0) blockers.push("FILTER_CANARY_DRIFT_GLOBAL_SHADOW");
+    if (goldenGlobalDrift > 0) blockers.push("FILTER_CANARY_DRIFT_GLOBAL_GOLDEN");
+    if (shadowMarketDrift > 0) blockers.push("FILTER_CANARY_DRIFT_MARKET_SHADOW");
+    if (goldenMarketDrift > 0) blockers.push("FILTER_CANARY_DRIFT_MARKET_GOLDEN");
     if (!candidate || !replay) blockers.push("SELF_EVOLUTION_REPLAY_MISSING");
     if (candidate && replay && String(replay.validation_verdict || "").toUpperCase() !== "PASS") blockers.push("SELF_EVOLUTION_REPLAY_NOT_PASS");
     if (wave > waveState.open_wave) blockers.push("WAVE_NOT_OPEN");
@@ -218,12 +271,24 @@ function buildMarketCanaryRows({
       late_n: toNum(marketContract && marketContract.late_n),
       disagreement_n: toNum(marketContract && marketContract.disagreement_n),
       dominant_disagreement_reason: String(marketContract && marketContract.dominant_disagreement_reason || "").trim() || null,
+      drift_shadow_market: shadowMarketDrift,
+      drift_golden_market: goldenMarketDrift,
+      drift_shadow_global: shadowGlobalDrift,
+      drift_golden_global: goldenGlobalDrift,
+      drift_shadow_stages: driftStageList(shadowMarketMeta),
+      drift_golden_stages: driftStageList(goldenMarketMeta),
       blockers,
     });
   }
 
   const readyRows = rows.filter((row) => row.canary_verdict === "READY");
   const rollbackRows = rows.filter((row) => row.rollback_ready === true);
+  const topShadowDriftMarket = rows
+    .slice()
+    .sort((a, b) => (Number(b.drift_shadow_market || 0) - Number(a.drift_shadow_market || 0)) || String(a.market || "").localeCompare(String(b.market || "")))[0] || null;
+  const topGoldenDriftMarket = rows
+    .slice()
+    .sort((a, b) => (Number(b.drift_golden_market || 0) - Number(a.drift_golden_market || 0)) || String(a.market || "").localeCompare(String(b.market || "")))[0] || null;
   return {
     summary: {
       total_n: rows.length,
@@ -235,6 +300,8 @@ function buildMarketCanaryRows({
       rollback_ready_n: rollbackRows.length,
       apply_pass: readyRows.some((row) => row.wave === 1 && (row.current_stage === "SOFT" || row.current_stage === "HARD")),
       global_canary_pass: globalCanaryPass,
+      shadow_global_drift: shadowGlobalDrift,
+      golden_global_drift: goldenGlobalDrift,
       current_open_wave: waveState.current_open_wave,
       open_wave: waveState.open_wave,
       scale_allowed: waveState.scale_allowed,
@@ -242,6 +309,8 @@ function buildMarketCanaryRows({
       next_wave_candidate: waveState.open_wave < 3 ? waveState.open_wave + 1 : null,
       top_ready_market: readyRows[0] ? readyRows[0].market : null,
       top_rollback_market: rollbackRows[0] ? rollbackRows[0].market : null,
+      top_shadow_drift_market: topShadowDriftMarket && Number(topShadowDriftMarket.drift_shadow_market || 0) > 0 ? topShadowDriftMarket.market : null,
+      top_golden_drift_market: topGoldenDriftMarket && Number(topGoldenDriftMarket.drift_golden_market || 0) > 0 ? topGoldenDriftMarket.market : null,
     },
     rows,
   };

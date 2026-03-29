@@ -13,7 +13,11 @@ const {
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
-const { deriveDatasetObjectiveScore, deriveMarketObjectiveScores } = require("../src/utils/bestSelfEvolutionAnalysis");
+const {
+  deriveDatasetObjectiveScore,
+  deriveMarketObjectiveScores,
+  deriveMarketConcentrationDiagnostics,
+} = require("../src/utils/bestSelfEvolutionAnalysis");
 
 loadLocalEnv();
 
@@ -35,6 +39,7 @@ function signedNum(value, digits = 2) {
 function renderMarkdown(report = {}) {
   const global = report.global_objective_score || {};
   const topMarkets = Array.isArray(report.market_objective_scores) ? report.market_objective_scores.slice(0, 10) : [];
+  const concentration = report.market_concentration || {};
   const lines = [
     "# BEST Self-Evolution Objective Score",
     "",
@@ -50,6 +55,7 @@ function renderMarkdown(report = {}) {
     `- profit/count/replacement/tp1: ${signedNum(global.components && global.components.profit_score, 3)} / ${signedNum(global.components && global.components.count_score, 3)} / ${signedNum(global.components && global.components.replacement_score, 3)} / ${signedNum(global.components && global.components.tp1_score, 3)}`,
     `- drawdown/latency/instability penalty: ${signedNum(global.components && global.components.drawdown_penalty, 3)} / ${signedNum(global.components && global.components.latency_penalty, 3)} / ${signedNum(global.components && global.components.instability_penalty, 3)}`,
     `- fire win / tp1 first / count / replacement: ${pct(global.snapshot && global.snapshot.fire_win_rate)} / ${pct(global.snapshot && global.snapshot.tp1_first_rate)} / ${global.snapshot && global.snapshot.projected_count_ratio_global != null ? Number(global.snapshot.projected_count_ratio_global).toFixed(2) : "N/A"} / ${pct(global.snapshot && global.snapshot.projected_replacement_ratio)}`,
+    `- concentration: ${concentration.dominant_negative_market && concentration.dominant_negative_market.market ? `${concentration.dominant_negative_market.market} share ${pct(concentration.dominant_negative_share)} / ex-bottom ${signedNum(concentration.objective_score_ex_bottom_market, 4)}` : "N/A"}`,
     "",
     "## Markets",
   ];
@@ -95,6 +101,10 @@ async function main() {
       marketContracts,
     }),
   };
+  report.market_concentration = deriveMarketConcentrationDiagnostics({
+    globalObjectiveScore: report.global_objective_score && report.global_objective_score.objective_score,
+    marketObjectiveScores: report.market_objective_scores,
+  });
 
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}`;
   const jsonPath = path.join(OPS_DAILY_DIR, `${base}_best_self_evolution_objective.json`);

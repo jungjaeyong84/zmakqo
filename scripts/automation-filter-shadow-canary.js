@@ -16,6 +16,7 @@ const {
   copyLatest,
   loadLocalEnv,
   nowKstMeta,
+  resolveAutomationCycleMeta,
   sendKoreanTelegramSummary,
   writeJson,
   writeText,
@@ -34,6 +35,7 @@ const AFTER_BARS = Math.max(1, Number(process.env.FILTER_SHADOW_CANARY_AFTER_BAR
 const FLOAT_TOL = Number(process.env.FILTER_SHADOW_CANARY_FLOAT_TOL || 1e-9);
 const REPORT_LATEST_MD = path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.md");
 const REPORT_LATEST_JSON = path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json");
+const GOLDEN_FIXTURE_VERSION = 2;
 
 function parseIsoMs(value) {
   const ms = Date.parse(String(value || ""));
@@ -266,7 +268,7 @@ function inferQualityCfgFromRow(row = {}) {
   const tier = resolveEntryTimingTier({ event, features: f });
   const minScoreAbs = Number.isFinite(Number(f.min_score_abs))
     ? Number(f.min_score_abs)
-    : (tier === "CORE" ? 35 : tier === "PRE_REAL" ? 40 : tier === "REAL" ? 45 : 25);
+    : (tier === "CORE" ? 24 : tier === "PRE_REAL" ? 30 : tier === "REAL" ? 36 : 16);
   return {
     enabled: true,
     trendOnly: reason.endsWith("_REGIME"),
@@ -274,10 +276,10 @@ function inferQualityCfgFromRow(row = {}) {
     applyPreReal: true,
     applyReal: true,
     applyEarly: true,
-    minCoreScoreAbs: tier === "CORE" ? minScoreAbs : 35,
-    minPreRealScoreAbs: tier === "PRE_REAL" ? minScoreAbs : 40,
-    minRealScoreAbs: tier === "REAL" ? minScoreAbs : 45,
-    minEarlyScoreAbs: tier === "EARLY" ? minScoreAbs : 25,
+    minCoreScoreAbs: tier === "CORE" ? minScoreAbs : 24,
+    minPreRealScoreAbs: tier === "PRE_REAL" ? minScoreAbs : 30,
+    minRealScoreAbs: tier === "REAL" ? minScoreAbs : 36,
+    minEarlyScoreAbs: tier === "EARLY" ? minScoreAbs : 16,
     minConfidence: reason.endsWith("_CONF") ? (Number.isFinite(Number(f.min_confidence)) ? Number(f.min_confidence) : 0.55) : 0,
     minWaveConf: reason.endsWith("_WAVE") ? (Number.isFinite(Number(f.min_wave_conf)) ? Number(f.min_wave_conf) : 0.60) : 0,
     blockConflict: reason.endsWith("_CONFLICT"),
@@ -477,7 +479,7 @@ async function buildGoldenFixture() {
         intent: "ENTRY",
         intentDir: "LONG",
         eventUpper: "CORE_LONG",
-        features: { score: 30.056604493, confidence: 0.3248693773, zz_wave_conf: 0.6127122668, regime: "trend", pro_conflict: false, pro_conflict_long: false, pro_conflict_short: false },
+        features: { score: 20.056604493, confidence: 0.3248693773, zz_wave_conf: 0.6127122668, regime: "trend", pro_conflict: false, pro_conflict_long: false, pro_conflict_short: false },
         cfg: {
           enabled: true,
           trendOnly: true,
@@ -485,12 +487,12 @@ async function buildGoldenFixture() {
           applyPreReal: true,
           applyReal: true,
           applyEarly: true,
-          minCoreScoreAbs: 35,
-          minPreRealScoreAbs: 40,
-          minRealScoreAbs: 45,
-          minEarlyScoreAbs: 25,
-          minConfidence: 0.25,
-          minWaveConf: 0.60,
+          minCoreScoreAbs: 24,
+          minPreRealScoreAbs: 30,
+          minRealScoreAbs: 36,
+          minEarlyScoreAbs: 16,
+          minConfidence: 0,
+          minWaveConf: 0,
           blockConflict: true,
           transitionExceptionEnabled: false,
           transitionExceptionCoreEnabled: false,
@@ -518,12 +520,12 @@ async function buildGoldenFixture() {
           applyPreReal: true,
           applyReal: true,
           applyEarly: true,
-          minCoreScoreAbs: 35,
-          minPreRealScoreAbs: 40,
-          minRealScoreAbs: 45,
-          minEarlyScoreAbs: 25,
-          minConfidence: 0.55,
-          minWaveConf: 0.60,
+          minCoreScoreAbs: 24,
+          minPreRealScoreAbs: 30,
+          minRealScoreAbs: 36,
+          minEarlyScoreAbs: 16,
+          minConfidence: 0,
+          minWaveConf: 0,
           blockConflict: true,
           transitionExceptionEnabled: true,
           transitionExceptionCoreEnabled: true,
@@ -801,7 +803,7 @@ async function buildGoldenFixture() {
   }
 
   return {
-    version: 1,
+    version: GOLDEN_FIXTURE_VERSION,
     provider: PROVIDER,
     tf: TF,
     baseline_created_at: new Date().toISOString(),
@@ -820,7 +822,12 @@ async function buildGoldenFixture() {
 async function ensureGoldenFixture() {
   try {
     const loaded = JSON.parse(fs.readFileSync(GOLDEN_FIXTURE_PATH, "utf8"));
-    if (loaded && Array.isArray(loaded.cases) && loaded.cases.length) return loaded;
+    if (
+      loaded
+      && Number(loaded.version) === GOLDEN_FIXTURE_VERSION
+      && Array.isArray(loaded.cases)
+      && loaded.cases.length
+    ) return loaded;
   } catch (_err) {}
   const fixture = await buildGoldenFixture();
   ensureDir(path.dirname(GOLDEN_FIXTURE_PATH));
@@ -829,11 +836,12 @@ async function ensureGoldenFixture() {
 }
 
 function buildShadowAiCase(row) {
+  const market = String(row.symbol_or_pair_id || row.symbol || row.market || "").trim().toUpperCase() || null;
   return {
     id: `shadow_ai__${String(row.signal_id || row.id || "").replace(/[^A-Za-z0-9_\-]/g, "_")}`,
     stage: "AI",
     source: "shadow",
-    sourceDoc: { id: row.id || null, signal_id: row.signal_id || null, reason: row.drop_reason_code || row.reason || null, created_at: row.created_at || null },
+    sourceDoc: { id: row.id || null, signal_id: row.signal_id || null, market, reason: row.drop_reason_code || row.reason || null, created_at: row.created_at || null },
     input: {
       qtyFraction: Number(row.qty_pct),
       features: (() => {
@@ -853,11 +861,12 @@ function buildShadowAiCase(row) {
 }
 
 function buildShadowQualityCase(row) {
+  const market = String(row.symbol_or_pair_id || row.symbol || row.market || "").trim().toUpperCase() || null;
   return {
     id: `shadow_quality__${String(row.signal_id || row.id || "").replace(/[^A-Za-z0-9_\-]/g, "_")}`,
     stage: "QUALITY",
     source: "shadow",
-    sourceDoc: { id: row.id || null, signal_id: row.signal_id || null, reason: row.drop_reason_code || row.reason || null, created_at: row.created_at || null },
+    sourceDoc: { id: row.id || null, signal_id: row.signal_id || null, market, reason: row.drop_reason_code || row.reason || null, created_at: row.created_at || null },
     input: {
       intent: String(row.event_intent || "ENTRY").toUpperCase(),
       intentDir: String(row.side || "").toUpperCase() === "SELL" ? "SHORT" : "LONG",
@@ -877,11 +886,12 @@ function buildShadowQualityCase(row) {
 
 function buildShadowMarketCase(row) {
   const features = cloneJson(row.features_json || {});
+  const market = String(row.symbol_or_pair_id || row.symbol || row.market || "").trim().toUpperCase() || null;
   return {
     id: `shadow_market__${String(row.signal_id || row.id || "").replace(/[^A-Za-z0-9_\-]/g, "_")}`,
     stage: "MARKET",
     source: "shadow",
-    sourceDoc: { id: row.id || null, signal_id: row.signal_id || null, reason: row.drop_reason_code || row.reason || null, created_at: row.created_at || null },
+    sourceDoc: { id: row.id || null, signal_id: row.signal_id || null, market, reason: row.drop_reason_code || row.reason || null, created_at: row.created_at || null },
     input: {
       intent: String(row.event_intent || "ENTRY").toUpperCase(),
       intentDir: String(row.side || "").toUpperCase() === "SELL" ? "SHORT" : "LONG",
@@ -901,6 +911,7 @@ function buildShadowMarketCase(row) {
 
 async function buildShadowEvCase(row) {
   const features = cloneJson(row.features_json || {});
+  const market = String(row.symbol_or_pair_id || row.symbol || row.market || "").trim().toUpperCase() || null;
   const bars = await fetchBarsWindow({
     exchange: row.exchange || PROVIDER,
     symbol: row.symbol_or_pair_id || row.symbol || row.market,
@@ -912,7 +923,7 @@ async function buildShadowEvCase(row) {
     id: `shadow_ev__${String(row.signal_id || row.id || "").replace(/[^A-Za-z0-9_\-]/g, "_")}`,
     stage: "EV",
     source: "shadow",
-    sourceDoc: { id: row.id || null, signal_id: row.signal_id || null, reason: row.drop_reason_code || row.reason || null, created_at: row.created_at || null },
+    sourceDoc: { id: row.id || null, signal_id: row.signal_id || null, market, reason: row.drop_reason_code || row.reason || null, created_at: row.created_at || null },
     input: {
       exchange: String(row.exchange || PROVIDER).toUpperCase(),
       symbol: String(row.symbol_or_pair_id || row.symbol || row.market || "").toUpperCase(),
@@ -940,11 +951,12 @@ async function buildShadowEvCase(row) {
 
 function buildShadowWaitCase(row) {
   const features = cloneJson(row.features_json || {});
+  const market = String(row.symbol_or_pair_id || row.symbol || row.market || "").trim().toUpperCase() || null;
   return {
     id: `shadow_wait__${String(row.signal_id || row.id || "").replace(/[^A-Za-z0-9_\-]/g, "_")}`,
     stage: "WAIT",
     source: "shadow",
-    sourceDoc: { id: row.id || null, signal_id: row.signal_id || null, reason: row.drop_reason_code || row.reason || null, created_at: row.created_at || null },
+    sourceDoc: { id: row.id || null, signal_id: row.signal_id || null, market, reason: row.drop_reason_code || row.reason || null, created_at: row.created_at || null },
     input: {
       intent: String(row.event_intent || "ENTRY").toUpperCase(),
       intentDir: String(row.side || "").toUpperCase() === "SELL" ? "SHORT" : "LONG",
@@ -1003,6 +1015,7 @@ async function replayCases(cases = []) {
       stage: caseDef.stage,
       source: caseDef.source,
       sourceDoc: caseDef.sourceDoc || null,
+      market: resolveCaseMarket(caseDef, actual),
       expected: caseDef.expected,
       actual,
       ok: compare.ok,
@@ -1012,20 +1025,52 @@ async function replayCases(cases = []) {
   return results;
 }
 
+function parseMarketFromSignalId(signalId) {
+  const raw = String(signalId || "").trim();
+  if (!raw.startsWith("SIG__")) return null;
+  const parts = raw.split("__");
+  const market = String(parts[2] || "").trim().toUpperCase();
+  return market || null;
+}
+
+function resolveCaseMarket(caseDef = {}, actual = null) {
+  const candidates = [
+    caseDef && caseDef.sourceDoc && caseDef.sourceDoc.market,
+    caseDef && caseDef.input && caseDef.input.symbol,
+    caseDef && caseDef.input && caseDef.input.ev && caseDef.input.ev.symbol,
+    actual && actual.symbol,
+    actual && actual.market,
+    caseDef && caseDef.sourceDoc && parseMarketFromSignalId(caseDef.sourceDoc.signal_id),
+  ];
+  for (const value of candidates) {
+    const market = String(value || "").trim().toUpperCase();
+    if (market) return market;
+  }
+  return "GLOBAL";
+}
+
 function summarizeResults(results = []) {
   const rows = Array.isArray(results) ? results : [];
   const byStage = {};
+  const byMarket = {};
   let drift = 0;
   for (const row of rows) {
     const stage = String(row.stage || "UNKNOWN").toUpperCase();
+    const market = String(row.market || "GLOBAL").trim().toUpperCase() || "GLOBAL";
     if (!byStage[stage]) byStage[stage] = { total: 0, drift: 0 };
     byStage[stage].total += 1;
+    if (!byMarket[market]) byMarket[market] = { total: 0, drift: 0, byStage: {} };
+    byMarket[market].total += 1;
+    if (!byMarket[market].byStage[stage]) byMarket[market].byStage[stage] = { total: 0, drift: 0 };
+    byMarket[market].byStage[stage].total += 1;
     if (!row.ok) {
       byStage[stage].drift += 1;
+      byMarket[market].drift += 1;
+      byMarket[market].byStage[stage].drift += 1;
       drift += 1;
     }
   }
-  return { total: rows.length, drift, byStage };
+  return { total: rows.length, drift, byStage, byMarket };
 }
 
 function buildMarkdown(report) {
@@ -1045,10 +1090,18 @@ function buildMarkdown(report) {
   for (const [stage, meta] of Object.entries(report.golden.summary.byStage || {})) {
     lines.push(`- ${stage}: ${meta.total} cases / drift ${meta.drift}`);
   }
+  for (const [market, meta] of Object.entries(report.golden.summary.byMarket || {})) {
+    const driftStages = Object.entries(meta.byStage || {}).filter(([, value]) => Number(value && value.drift || 0) > 0).map(([stage]) => stage).join("|") || "none";
+    lines.push(`- market ${market}: ${meta.total} cases / drift ${meta.drift} / stages ${driftStages}`);
+  }
   lines.push("");
   lines.push(`## Shadow Replay`);
   for (const [stage, meta] of Object.entries(report.shadow.summary.byStage || {})) {
     lines.push(`- ${stage}: ${meta.total} cases / drift ${meta.drift}`);
+  }
+  for (const [market, meta] of Object.entries(report.shadow.summary.byMarket || {})) {
+    const driftStages = Object.entries(meta.byStage || {}).filter(([, value]) => Number(value && value.drift || 0) > 0).map(([stage]) => stage).join("|") || "none";
+    lines.push(`- market ${market}: ${meta.total} cases / drift ${meta.drift} / stages ${driftStages}`);
   }
   lines.push(`- stage coverage: QUALITY ${report.shadow.counters.QUALITY}, AI ${report.shadow.counters.AI}, MARKET ${report.shadow.counters.MARKET}, EV ${report.shadow.counters.EV}, WAIT ${report.shadow.counters.TIMING}`);
   lines.push("");
@@ -1073,12 +1126,15 @@ function buildMarkdown(report) {
 async function main() {
   loadLocalEnv();
   const meta = nowKstMeta();
+  const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "filter_shadow_canary", nowMeta: meta });
   const fixture = await ensureGoldenFixture();
   const goldenResults = await replayCases(fixture.cases || []);
   const shadow = await buildShadowCases({ baselineMs: fixture.baseline_created_at_ms });
   const shadowResults = await replayCases(shadow.cases || []);
   const report = {
     generated_at_kst: meta.kst,
+    cycle_id: cycleMeta.cycle_id,
+    generation_id: cycleMeta.generation_id,
     provider: PROVIDER,
     tf: TF,
     fixture_path: GOLDEN_FIXTURE_PATH,

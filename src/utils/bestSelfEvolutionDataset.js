@@ -44,6 +44,77 @@ function mergeFeatures(...objects) {
   return out;
 }
 
+function countPresentKeys(obj, keys = []) {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return 0;
+  let n = 0;
+  for (const key of Array.isArray(keys) ? keys : []) {
+    const value = obj[key];
+    if (value === null || value === undefined || value === "") continue;
+    n += 1;
+  }
+  return n;
+}
+
+const FEBT_FEATURE_KEYS = Object.freeze([
+  "febt_shadow_verdict",
+  "febt_shadow_fallback_to_legacy",
+  "febt_shadow_fallback_reason",
+  "febt_shadow_disagrees_legacy_wait",
+  "febt_shadow_disagreement_reason",
+  "febt_shadow_legacy_wait_action",
+  "febt_shadow_legacy_wait_trigger_path",
+  "febt_mode",
+  "febt_phase",
+  "febt_calc_ok",
+  "febt_calc_reason",
+  "febt_timing_action",
+  "febt_authority",
+  "febt_payload_missing",
+  "febt_lock_score",
+  "febt_delay_cost",
+  "febt_late_risk",
+  "febt_failure_risk",
+  "febt_edge",
+  "late_by_bars",
+]);
+
+function featureRichnessScore(row) {
+  const features = resolveFeatures(row);
+  const keysN = Object.keys(features).length;
+  const febtN = countPresentKeys(features, FEBT_FEATURE_KEYS);
+  const updatedMs = parseMs(row && (row.updated_at || row.created_at)) || 0;
+  return (febtN * 1000) + keysN + (updatedMs / 1e15);
+}
+
+function sortRowsByFeatureRichness(rows = []) {
+  return (Array.isArray(rows) ? rows : [])
+    .slice()
+    .sort((a, b) => featureRichnessScore(b) - featureRichnessScore(a));
+}
+
+function extractChainBackfillFeatures(chainRow) {
+  if (!chainRow || typeof chainRow !== "object" || Array.isArray(chainRow)) return {};
+  const out = {};
+  for (const key of FEBT_FEATURE_KEYS) {
+    const value = chainRow[key];
+    if (value === null || value === undefined || value === "") continue;
+    out[key] = value;
+  }
+  const extraKeys = [
+    "market_state_summary_state",
+    "market_state_summary_action",
+    "wait_one_bar_market_state_action",
+    "legacy_wait_action",
+    "legacy_wait_trigger_path",
+  ];
+  for (const key of extraKeys) {
+    const value = chainRow[key];
+    if (value === null || value === undefined || value === "") continue;
+    out[key] = value;
+  }
+  return out;
+}
+
 function resolveProvider(row) {
   const ex = toUpper(row && row.exchange, "");
   if (!ex) return "BINANCEFUT";
@@ -563,8 +634,10 @@ function buildUnifiedLearningRows({
   }
 
   const rows = buckets.map((bucket) => {
-    const signalRow = bucket.signals[0] || null;
-    const dropRow = bucket.drops[0] || null;
+    const signalRows = sortRowsByFeatureRichness(bucket.signals);
+    const dropRows = sortRowsByFeatureRichness(bucket.drops);
+    const signalRow = signalRows[0] || null;
+    const dropRow = dropRows[0] || null;
     const latestIntent = bucket.intents.slice().sort((a, b) => parseMs(b && b.updated_at) - parseMs(a && a.updated_at))[0] || null;
     const entryFills = bucket.fills.filter((row) => {
       const ev = toUpper(row && row.event, "");
@@ -587,14 +660,6 @@ function buildUnifiedLearningRows({
       || entryFills.some((row) => isEntryTierEvent(resolveEvent(row)))
     );
     const exitOnlySignal = Boolean(baseEvent && baseEvent.startsWith("EXIT_") && !hasEntryContext);
-    const features = mergeFeatures(
-      resolveFeatures(dropRow),
-      resolveFeatures(signalRow),
-      resolveFeatures(latestIntent),
-      resolveFeatures(entryFill),
-      resolveFeatures(tradeRow)
-    );
-
     const signalId = resolveSignalId(baseRow);
     const event = resolveEvent(baseRow);
     const rawEntryEventId = resolveEntryEventId(baseRow);
@@ -608,6 +673,15 @@ function buildUnifiedLearningRows({
     const chainRow = entryEventId
       ? (chainByEntryEvent.get(entryEventId) || chainByEntryEvent.get(rawEntryEventId) || null)
       : null;
+    const chainBackfillFeatures = extractChainBackfillFeatures(chainRow);
+    const features = mergeFeatures(
+      ...dropRows.map((row) => resolveFeatures(row)),
+      ...signalRows.map((row) => resolveFeatures(row)),
+      resolveFeatures(latestIntent),
+      resolveFeatures(entryFill),
+      resolveFeatures(tradeRow),
+      chainBackfillFeatures
+    );
 
     const dropReason = resolveDropReason(dropRow) || resolveRejectReason(latestIntent);
     const dropStageKey = buildDropStageKey(dropReason);

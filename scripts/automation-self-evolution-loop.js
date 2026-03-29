@@ -26,6 +26,7 @@ function buildStepPlan() {
     { id: "attribution", script: "report-best-self-evolution-attribution.js" },
     { id: "candidates", script: "report-best-self-evolution-candidates.js" },
     { id: "replay", script: "report-best-self-evolution-replay.js" },
+    { id: "filter_shadow_canary", script: "automation-filter-shadow-canary.js" },
     { id: "canary", script: "report-best-self-evolution-canary.js" },
     { id: "memory", script: "report-best-self-evolution-memory-ledger.js" },
     { id: "deployment_guards", script: "report-best-self-evolution-deployment-guards.js" },

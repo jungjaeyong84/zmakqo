@@ -291,6 +291,44 @@ function deriveMarketObjectiveScores({
     .sort((a, b) => (Number(b.objective_score || -Infinity) - Number(a.objective_score || -Infinity)) || String(a.market).localeCompare(String(b.market)));
 }
 
+function deriveMarketConcentrationDiagnostics({
+  globalObjectiveScore = null,
+  marketObjectiveScores = [],
+} = {}) {
+  const rows = Array.isArray(marketObjectiveScores) ? marketObjectiveScores : [];
+  const globalScore = toNum(globalObjectiveScore);
+  const negativeRows = rows
+    .filter((row) => toNum(row && row.objective_score) != null && Number(row.objective_score) < 0)
+    .slice()
+    .sort((a, b) => Number(a.objective_score) - Number(b.objective_score));
+  const worst = negativeRows[0] || null;
+  const negativeAbsTotal = negativeRows.reduce((acc, row) => acc + Math.abs(Number(row.objective_score || 0)), 0);
+  const worstAbs = worst ? Math.abs(Number(worst.objective_score || 0)) : null;
+  const dominantNegativeShare = (worstAbs != null && negativeAbsTotal > 0)
+    ? Number((worstAbs / negativeAbsTotal).toFixed(4))
+    : null;
+  const objectiveScoreExBottomMarket = (globalScore != null && worst)
+    ? Number((globalScore - Number(worst.objective_score || 0)).toFixed(4))
+    : globalScore;
+  const marketDragGap = (globalScore != null && objectiveScoreExBottomMarket != null)
+    ? Number((objectiveScoreExBottomMarket - globalScore).toFixed(4))
+    : null;
+  return {
+    available: rows.length > 0,
+    negative_market_n: negativeRows.length,
+    dominant_negative_market: worst,
+    dominant_negative_share: dominantNegativeShare,
+    objective_score_ex_bottom_market: objectiveScoreExBottomMarket,
+    bottom_market_drag_gap: marketDragGap,
+    concentration_flag: Boolean(
+      worst
+      && dominantNegativeShare != null
+      && dominantNegativeShare >= 0.5
+      && Number(worst.realized_n || 0) >= 3
+    ),
+  };
+}
+
 function buildAttributionGroupRows(rows = [], grouper) {
   const map = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
@@ -358,6 +396,7 @@ module.exports = {
   deriveObjectiveScore,
   deriveDatasetObjectiveScore,
   deriveMarketObjectiveScores,
+  deriveMarketConcentrationDiagnostics,
   deriveAttribution,
   __test: {
     deriveConstraintFlags,

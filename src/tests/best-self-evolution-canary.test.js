@@ -25,7 +25,7 @@ function run() {
         { candidate_id: "AUTO_CORE_REGIME_TIGHTEN", validation_verdict: "PASS", candidate_objective_delta: 0.9 },
       ],
     },
-    driftCanary: { golden: { summary: { drift: 0 } }, shadow: { summary: { drift: 0 } } },
+    driftCanary: { golden: { summary: { drift: 0, byMarket: {} } }, shadow: { summary: { drift: 0, byMarket: {} } } },
   });
 
   assert.strictEqual(ready.summary.apply_pass, true);
@@ -54,7 +54,7 @@ function run() {
     replayReport: {
       validations: [{ candidate_id: "AUTO_CORE_REGIME_TIGHTEN", validation_verdict: "PASS", candidate_objective_delta: 0.7 }],
     },
-    driftCanary: { golden: { summary: { drift: 0 } }, shadow: { summary: { drift: 0 } } },
+    driftCanary: { golden: { summary: { drift: 0, byMarket: {} } }, shadow: { summary: { drift: 0, byMarket: {} } } },
     previousCanary: {
       rows: [{ market: "BTCUSDT", current_stage: "SOFT" }],
     },
@@ -84,7 +84,7 @@ function run() {
     replayReport: {
       validations: [{ candidate_id: "WAIT_ONE_BAR_TUNE", validation_verdict: "PASS", candidate_objective_delta: 0.8 }],
     },
-    driftCanary: { golden: { summary: { drift: 0 } }, shadow: { summary: { drift: 0 } } },
+    driftCanary: { golden: { summary: { drift: 0, byMarket: {} } }, shadow: { summary: { drift: 0, byMarket: {} } } },
     previousCanary: {
       summary: { apply_pass: true, rollback_ready_n: 0 },
       rows: [
@@ -96,6 +96,45 @@ function run() {
   });
   assert.strictEqual(scaled.summary.open_wave, 2);
   assert.strictEqual(scaled.summary.scale_allowed, true);
+
+  const marketDrift = buildMarketCanaryRows({
+    objectiveSupervisor: {
+      best_febt_market_contracts: [
+        { market: "BTCUSDT", mode: "NORMAL", tightening_allowed: true, recovery_priority: false },
+        { market: "SOLUSDT", mode: "NORMAL", tightening_allowed: true, recovery_priority: false },
+      ],
+      self_evolution_objective: {
+        market_objective_scores: [
+          { market: "BTCUSDT", objective_score: 0.5, projected_count_ratio_global: 1.01, projected_replacement_ratio: 0.92, constraints: { count_floor_pass: true, replacement_floor_pass: true, latency_budget_pass: true } },
+          { market: "SOLUSDT", objective_score: 0.4, projected_count_ratio_global: 1.01, projected_replacement_ratio: 0.90, constraints: { count_floor_pass: true, replacement_floor_pass: true, latency_budget_pass: true } },
+        ],
+      },
+    },
+    candidateChangeSet: {
+      rows: [{ candidate_id: "AUTO_CORE_REGIME_TIGHTEN", scope: "PINE", direction: "TIGHTEN", markets: ["ALL"] }],
+    },
+    replayReport: {
+      validations: [{ candidate_id: "AUTO_CORE_REGIME_TIGHTEN", validation_verdict: "PASS", candidate_objective_delta: 0.8 }],
+    },
+    driftCanary: {
+      golden: { summary: { drift: 0, byMarket: {} } },
+      shadow: {
+        summary: {
+          drift: 1,
+          byMarket: {
+            SOLUSDT: { total: 1, drift: 1, byStage: { QUALITY: { total: 1, drift: 1 } } },
+          },
+        },
+      },
+    },
+  });
+  const btcReady = marketDrift.rows.find((row) => row.market === "BTCUSDT");
+  const solBlocked = marketDrift.rows.find((row) => row.market === "SOLUSDT");
+  assert.strictEqual(btcReady.canary_verdict, "READY");
+  assert.strictEqual(solBlocked.canary_verdict, "BLOCK");
+  assert.strictEqual(solBlocked.blockers.includes("FILTER_CANARY_DRIFT_MARKET_SHADOW"), true);
+  assert.strictEqual(solBlocked.drift_shadow_market, 1);
+  assert.deepStrictEqual(solBlocked.drift_shadow_stages, ["QUALITY"]);
 
   console.log("BEST_SELF_EVOLUTION_CANARY_TEST_OK");
 }

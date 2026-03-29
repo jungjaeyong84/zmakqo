@@ -4,6 +4,7 @@ const assert = require("assert");
 const {
   deriveDatasetObjectiveScore,
   deriveMarketObjectiveScores,
+  deriveMarketConcentrationDiagnostics,
   deriveAttribution,
 } = require("../../src/utils/bestSelfEvolutionAnalysis");
 
@@ -137,6 +138,13 @@ function run() {
   assert.strictEqual(markets.length >= 3, true);
   assert.strictEqual(markets[0].market, "BTCUSDT");
   assert.ok(markets.some((row) => row.market === "ETHUSDT" && row.mode === "COUNT_GUARD_ACTIVE"));
+
+  const concentration = deriveMarketConcentrationDiagnostics({
+    globalObjectiveScore: objective.objective_score,
+    marketObjectiveScores: markets,
+  });
+  assert.strictEqual(concentration.available, true);
+  assert.strictEqual(typeof concentration.objective_score_ex_bottom_market, "number");
 
   const attribution = deriveAttribution({ dataset });
   assert.strictEqual(attribution.summary.drop_top_layer.key, "QUALITY");

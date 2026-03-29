@@ -19,6 +19,7 @@ const { deriveBestFebtTuningContract, deriveBestFebtMarketContracts, buildSelfEv
 const {
   deriveDatasetObjectiveScore,
   deriveMarketObjectiveScores,
+  deriveMarketConcentrationDiagnostics,
   deriveAttribution,
 } = require("../src/utils/bestSelfEvolutionAnalysis");
 const { buildMemoryLedger } = require("../src/utils/bestSelfEvolutionMemoryLedger");
@@ -377,6 +378,12 @@ function summarizeSelfEvolutionObjective(report = null) {
     ? report.global_objective_score
     : {};
   const markets = Array.isArray(report && report.market_objective_scores) ? report.market_objective_scores : [];
+  const concentration = report && report.market_concentration && typeof report.market_concentration === "object"
+    ? report.market_concentration
+    : deriveMarketConcentrationDiagnostics({
+      globalObjectiveScore: global.objective_score,
+      marketObjectiveScores: markets,
+    });
   return {
     available: !!report,
     objective_score: toNum(global.objective_score),
@@ -400,6 +407,7 @@ function summarizeSelfEvolutionObjective(report = null) {
     projected_replacement_ratio: toNum(global.snapshot && global.snapshot.projected_replacement_ratio),
     top_market: markets[0] || null,
     bottom_market: markets.length ? markets[markets.length - 1] : null,
+    market_concentration: concentration,
     market_objective_scores: markets,
   };
 }
@@ -780,6 +788,7 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
         `score ${report.self_evolution_objective && report.self_evolution_objective.objective_score != null ? signedNum(report.self_evolution_objective.objective_score, 4) : "N/A"} / count ${report.self_evolution_objective && report.self_evolution_objective.count_floor_pass === true ? "PASS" : (report.self_evolution_objective && report.self_evolution_objective.count_floor_pass === false ? "FAIL" : "N/A")} / replacement ${report.self_evolution_objective && report.self_evolution_objective.replacement_floor_pass === true ? "PASS" : (report.self_evolution_objective && report.self_evolution_objective.replacement_floor_pass === false ? "FAIL" : "N/A")} / latency ${report.self_evolution_objective && report.self_evolution_objective.latency_budget_pass === true ? "PASS" : (report.self_evolution_objective && report.self_evolution_objective.latency_budget_pass === false ? "FAIL" : "N/A")}`,
         `fire win ${report.self_evolution_objective && report.self_evolution_objective.fire_win_rate != null ? pct(report.self_evolution_objective.fire_win_rate) : "N/A"} / tp1 ${report.self_evolution_objective && report.self_evolution_objective.tp1_first_rate != null ? pct(report.self_evolution_objective.tp1_first_rate) : "N/A"} / count ${report.self_evolution_objective && report.self_evolution_objective.projected_count_ratio_global != null ? `${Number(report.self_evolution_objective.projected_count_ratio_global).toFixed(2)}x` : "N/A"} / replacement ${report.self_evolution_objective && report.self_evolution_objective.projected_replacement_ratio != null ? pct(report.self_evolution_objective.projected_replacement_ratio) : "N/A"}`,
         `top ${report.self_evolution_objective && report.self_evolution_objective.top_market ? `${report.self_evolution_objective.top_market.market} ${signedNum(report.self_evolution_objective.top_market.objective_score, 3)}` : "N/A"} / bottom ${report.self_evolution_objective && report.self_evolution_objective.bottom_market ? `${report.self_evolution_objective.bottom_market.market} ${signedNum(report.self_evolution_objective.bottom_market.objective_score, 3)}` : "N/A"}`,
+        `dominant drag ${report.self_evolution_objective && report.self_evolution_objective.market_concentration && report.self_evolution_objective.market_concentration.dominant_negative_market ? `${report.self_evolution_objective.market_concentration.dominant_negative_market.market} share ${pct(report.self_evolution_objective.market_concentration.dominant_negative_share)} / ex-bottom ${signedNum(report.self_evolution_objective.market_concentration.objective_score_ex_bottom_market, 3)}` : "N/A"}`,
       ],
     },
     {
@@ -1335,6 +1344,7 @@ function renderMarkdown(report = {}) {
     `- fire_win/tp1/count/replacement: ${pct(report.self_evolution_objective && report.self_evolution_objective.fire_win_rate)} / ${pct(report.self_evolution_objective && report.self_evolution_objective.tp1_first_rate)} / ${report.self_evolution_objective && report.self_evolution_objective.projected_count_ratio_global != null ? Number(report.self_evolution_objective.projected_count_ratio_global).toFixed(2) : "N/A"} / ${pct(report.self_evolution_objective && report.self_evolution_objective.projected_replacement_ratio)}`,
     `- top_market: ${report.self_evolution_objective && report.self_evolution_objective.top_market ? `${report.self_evolution_objective.top_market.market} / ${signedNum(report.self_evolution_objective.top_market.objective_score, 3)}` : "N/A"}`,
     `- bottom_market: ${report.self_evolution_objective && report.self_evolution_objective.bottom_market ? `${report.self_evolution_objective.bottom_market.market} / ${signedNum(report.self_evolution_objective.bottom_market.objective_score, 3)}` : "N/A"}`,
+    `- dominant_drag: ${report.self_evolution_objective && report.self_evolution_objective.market_concentration && report.self_evolution_objective.market_concentration.dominant_negative_market ? `${report.self_evolution_objective.market_concentration.dominant_negative_market.market} / share ${pct(report.self_evolution_objective.market_concentration.dominant_negative_share)} / ex-bottom ${signedNum(report.self_evolution_objective.market_concentration.objective_score_ex_bottom_market, 3)}` : "N/A"}`,
     "",
     "## Self-Evolution Attribution",
     `- drop_top_layer: ${report.self_evolution_attribution && report.self_evolution_attribution.drop_top_layer ? `${report.self_evolution_attribution.drop_top_layer.key} ${report.self_evolution_attribution.drop_top_layer.count}` : "N/A"}`,

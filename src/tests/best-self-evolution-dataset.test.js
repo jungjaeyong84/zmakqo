@@ -13,6 +13,8 @@ function run() {
   const tradeOnlyEntryEventId = "ENTRY__BINANCEFUT__BNBUSDT__15m__5000__EARLY_LONG";
   const legacyEntryEventId = "BINANCEFUT|SOLUSDT|15m|6000|EARLY_SHORT|EARLY_SHORT";
   const legacySignalDocId = "SIG__BINANCEFUT__SOLUSDT__15m__6000__EARLY_SHORT";
+  const chainOnlySignalId = "SIG__BINANCEFUT__XRPUSDT__15m__8000__CORE_LONG";
+  const chainOnlyEntryEventId = "ENTRY__BINANCEFUT__XRPUSDT__15m__8000__CORE_LONG";
   const rows = buildUnifiedLearningRows({
     signals: [
       {
@@ -68,6 +70,18 @@ function run() {
         features_json: {
           signal_id: "SIG_MISS",
           febt_phase: "PREPARE",
+        },
+      },
+      {
+        exchange: "BINANCEFUT",
+        symbol_or_pair_id: "XRPUSDT",
+        tf: "15m",
+        event: "CORE_LONG",
+        side: "BUY",
+        signal_id: chainOnlySignalId,
+        bar_close_time_utc_ms: 8000,
+        features_json: {
+          signal_id: chainOnlySignalId,
         },
       },
     ],
@@ -249,6 +263,15 @@ function run() {
           sl_before_tp1: false,
           trail_after_tp1: false,
         },
+        {
+          entry_event_id: chainOnlyEntryEventId,
+          realized: false,
+          febt_phase: "ARMED",
+          febt_edge: 0.42,
+          febt_lock_score: 0.77,
+          febt_timing_action: "ALLOW",
+          febt_authority: "SHADOW",
+        },
       ],
     },
   });
@@ -260,6 +283,7 @@ function run() {
   const rejected = byId.get("SIG_REJECT");
   const tradeOnly = byId.get(tradeOnlySignalId);
   const legacyLinked = byId.get(legacySignalDocId);
+  const chainOnly = byId.get(chainOnlySignalId);
   const exitOnlySync = rows.find((row) => row.event === "EXIT_EXTERNAL_SYNC");
 
   assert.strictEqual(executed.source_row_type, "EXECUTED");
@@ -284,20 +308,25 @@ function run() {
   assert.strictEqual(legacyLinked.tp1_first, true);
   assert.strictEqual(legacyLinked.realized_ret_net, 0.11);
   assert.strictEqual(legacyLinked.outcome_state, "REALIZED");
+  assert.strictEqual(chainOnly.source_row_type, "MISSED");
+  assert.strictEqual(chainOnly.febt_phase, "ARMED");
+  assert.strictEqual(chainOnly.febt_edge, 0.42);
+  assert.strictEqual(chainOnly.febt_lock_score, 0.77);
   assert.strictEqual(exitOnlySync.source_row_type, "EXIT_ONLY");
   assert.strictEqual(exitOnlySync.outcome_state, "EXIT_PRESENT_UNLABELED");
 
   const summary = summarizeBestSelfEvolutionDataset(rows);
-  assert.strictEqual(summary.rows_n, 7);
+  assert.strictEqual(summary.rows_n, 8);
   assert.strictEqual(summary.executed_n, 3);
   assert.strictEqual(summary.drop_n, 1);
-  assert.strictEqual(summary.missed_n, 1);
+  assert.strictEqual(summary.missed_n, 2);
   assert.strictEqual(summary.rejected_n, 1);
   assert.strictEqual(summary.exit_only_n, 1);
   assert.strictEqual(summary.realized_n, 3);
   assert.strictEqual(summary.all_realized_n, 3);
   assert.strictEqual(summary.entry_executed_null_realized_n, 0);
   assert.strictEqual(summary.executed_exit_only_n, 1);
+  assert.ok(summary.febt_coverage_rate > 0.5);
   assert.strictEqual(summary.by_source_row_type[0].key, "EXECUTED");
 
   assert.strictEqual(__test.resolveSourceSignalKeyFromEntryEventId(execEntryEventId), "DOGEUSDT__15m__1000__CORE_SHORT");
