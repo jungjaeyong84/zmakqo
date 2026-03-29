@@ -10,6 +10,8 @@ const {
 const POLICY_PATH = "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_FEBT_WEEKLY_TUNING_POLICY.md";
 const SELF_EVOLUTION_MASTER_SPEC_PATH = "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MASTER_SPEC.md";
 const SELF_EVOLUTION_DATASET_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_dataset_latest.json");
+const SELF_EVOLUTION_OBJECTIVE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_objective_latest.json");
+const SELF_EVOLUTION_ATTRIBUTION_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_attribution_latest.json");
 const SELF_EVOLUTION_POLICY_PATHS = Object.freeze([
   SELF_EVOLUTION_MASTER_SPEC_PATH,
   "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DATASET_SPEC.md",
@@ -64,6 +66,8 @@ function buildSelfEvolutionPolicySpec() {
   return {
     master_spec_path: SELF_EVOLUTION_MASTER_SPEC_PATH,
     dataset_latest_path: SELF_EVOLUTION_DATASET_LATEST_PATH,
+    objective_latest_path: SELF_EVOLUTION_OBJECTIVE_LATEST_PATH,
+    attribution_latest_path: SELF_EVOLUTION_ATTRIBUTION_LATEST_PATH,
     linked_paths: SELF_EVOLUTION_POLICY_PATHS.slice(),
     status: "PROPOSED",
     current_focus: "P0_DATASET,P1_OBJECTIVE,P2_ATTRIBUTION",
@@ -285,6 +289,8 @@ module.exports = {
   POLICY_PATH,
   SELF_EVOLUTION_MASTER_SPEC_PATH,
   SELF_EVOLUTION_DATASET_LATEST_PATH,
+  SELF_EVOLUTION_OBJECTIVE_LATEST_PATH,
+  SELF_EVOLUTION_ATTRIBUTION_LATEST_PATH,
   SELF_EVOLUTION_POLICY_PATHS,
   AUTO_LEVERS,
   buildSelfEvolutionPolicySpec,

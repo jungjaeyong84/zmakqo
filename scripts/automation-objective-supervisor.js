@@ -15,6 +15,11 @@ const {
   writeText,
 } = require("./lib/automation-utils");
 const { deriveBestFebtTuningContract, deriveBestFebtMarketContracts, buildSelfEvolutionPolicySpec } = require("./lib/best-febt-supervisor");
+const {
+  deriveDatasetObjectiveScore,
+  deriveMarketObjectiveScores,
+  deriveAttribution,
+} = require("../src/utils/bestSelfEvolutionAnalysis");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
 const { resolveMarketStateSummary } = require("../src/utils/marketStateSummary");
 const { resolveStatPhysFeatures } = require("../src/utils/statPhysFeatures");
@@ -37,6 +42,8 @@ const EV_LATEST_PATH = path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.js
 const WAIT_LATEST_PATH = path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json");
 const FEBT_PHASE0_LATEST_PATH = path.join(OPS_DAILY_DIR, "febt_phase0_baseline_latest.json");
 const SELF_EVOLUTION_DATASET_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_dataset_latest.json");
+const SELF_EVOLUTION_OBJECTIVE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_objective_latest.json");
+const SELF_EVOLUTION_ATTRIBUTION_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_attribution_latest.json");
 const CODEX_PATCH_LATEST_PATH = path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.json");
 const STAGE_AUTOPILOT_LATEST_PATH = path.join(OPS_DAILY_DIR, "stage_autopilot_latest.json");
 const RETROSPECTIVE_LATEST_PATH = path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json");
@@ -51,6 +58,8 @@ const FRESHNESS_HOURS = Object.freeze({
   wait: Math.max(24, Number(process.env.OBJECTIVE_SUPERVISOR_WAIT_MAX_AGE_HOURS || 144)),
   phase0: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_FEBT_PHASE0_MAX_AGE_HOURS || 36)),
   selfEvolutionDataset: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_DATASET_MAX_AGE_HOURS || 36)),
+  selfEvolutionObjective: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_OBJECTIVE_MAX_AGE_HOURS || 36)),
+  selfEvolutionAttribution: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_ATTRIBUTION_MAX_AGE_HOURS || 36)),
   codex: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_CODEX_MAX_AGE_HOURS || 48)),
   stageAutopilot: Math.max(4, Number(process.env.OBJECTIVE_SUPERVISOR_STAGE_AUTOPILOT_MAX_AGE_HOURS || 12)),
   retrospective: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_RETROSPECTIVE_MAX_AGE_HOURS || 30)),
@@ -288,6 +297,58 @@ function summarizeSelfEvolutionDataset(dataset = null) {
   };
 }
 
+function summarizeSelfEvolutionObjective(report = null) {
+  const global = report && report.global_objective_score && typeof report.global_objective_score === "object"
+    ? report.global_objective_score
+    : {};
+  const markets = Array.isArray(report && report.market_objective_scores) ? report.market_objective_scores : [];
+  return {
+    available: !!report,
+    objective_score: toNum(global.objective_score),
+    profit_score: toNum(global.components && global.components.profit_score),
+    count_score: toNum(global.components && global.components.count_score),
+    replacement_score: toNum(global.components && global.components.replacement_score),
+    tp1_score: toNum(global.components && global.components.tp1_score),
+    drawdown_penalty: toNum(global.components && global.components.drawdown_penalty),
+    latency_penalty: toNum(global.components && global.components.latency_penalty),
+    instability_penalty: toNum(global.components && global.components.instability_penalty),
+    count_floor_pass: global.constraints && typeof global.constraints.count_floor_pass === "boolean" ? global.constraints.count_floor_pass : null,
+    replacement_floor_pass: global.constraints && typeof global.constraints.replacement_floor_pass === "boolean" ? global.constraints.replacement_floor_pass : null,
+    latency_budget_pass: global.constraints && typeof global.constraints.latency_budget_pass === "boolean" ? global.constraints.latency_budget_pass : null,
+    rows_n: toNum(global.snapshot && global.snapshot.rows_n),
+    executed_n: toNum(global.snapshot && global.snapshot.executed_n),
+    realized_n: toNum(global.snapshot && global.snapshot.realized_n),
+    fire_n: toNum(global.snapshot && global.snapshot.fire_n),
+    fire_win_rate: toNum(global.snapshot && global.snapshot.fire_win_rate),
+    tp1_first_rate: toNum(global.snapshot && global.snapshot.tp1_first_rate),
+    projected_count_ratio_global: toNum(global.snapshot && global.snapshot.projected_count_ratio_global),
+    projected_replacement_ratio: toNum(global.snapshot && global.snapshot.projected_replacement_ratio),
+    top_market: markets[0] || null,
+    bottom_market: markets.length ? markets[markets.length - 1] : null,
+    market_objective_scores: markets,
+  };
+}
+
+function summarizeSelfEvolutionAttribution(report = null) {
+  const attribution = report && report.attribution && typeof report.attribution === "object"
+    ? report.attribution
+    : {};
+  const summary = attribution.summary && typeof attribution.summary === "object" ? attribution.summary : {};
+  return {
+    available: !!report,
+    drop_top_layer: summary.drop_top_layer || null,
+    late_loss_top_market: summary.late_loss_top_market || null,
+    false_fire_top_market: summary.false_fire_top_market || null,
+    missed_recovery_top_reason: summary.missed_recovery_top_reason || null,
+    fallback_cost_top_market: summary.fallback_cost_top_market || null,
+    drop_attribution: Array.isArray(attribution.drop_attribution) ? attribution.drop_attribution : [],
+    late_loss_attribution: Array.isArray(attribution.late_loss_attribution) ? attribution.late_loss_attribution : [],
+    false_fire_attribution: Array.isArray(attribution.false_fire_attribution) ? attribution.false_fire_attribution : [],
+    missed_recovery_attribution: Array.isArray(attribution.missed_recovery_attribution) ? attribution.missed_recovery_attribution : [],
+    fallback_cost_attribution: Array.isArray(attribution.fallback_cost_attribution) ? attribution.fallback_cost_attribution : [],
+  };
+}
+
 function formatBestFebtMarketContractLine(row = {}) {
   const market = String(row.market || "UNKNOWN");
   const replacement = row.projected_replacement_ratio != null ? pct(row.projected_replacement_ratio) : "N/A";
@@ -447,6 +508,22 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
       ],
     },
     {
+      header: "자기 진화 목적함수",
+      lines: [
+        `score ${report.self_evolution_objective && report.self_evolution_objective.objective_score != null ? signedNum(report.self_evolution_objective.objective_score, 4) : "N/A"} / count ${report.self_evolution_objective && report.self_evolution_objective.count_floor_pass === true ? "PASS" : (report.self_evolution_objective && report.self_evolution_objective.count_floor_pass === false ? "FAIL" : "N/A")} / replacement ${report.self_evolution_objective && report.self_evolution_objective.replacement_floor_pass === true ? "PASS" : (report.self_evolution_objective && report.self_evolution_objective.replacement_floor_pass === false ? "FAIL" : "N/A")} / latency ${report.self_evolution_objective && report.self_evolution_objective.latency_budget_pass === true ? "PASS" : (report.self_evolution_objective && report.self_evolution_objective.latency_budget_pass === false ? "FAIL" : "N/A")}`,
+        `fire win ${report.self_evolution_objective && report.self_evolution_objective.fire_win_rate != null ? pct(report.self_evolution_objective.fire_win_rate) : "N/A"} / tp1 ${report.self_evolution_objective && report.self_evolution_objective.tp1_first_rate != null ? pct(report.self_evolution_objective.tp1_first_rate) : "N/A"} / count ${report.self_evolution_objective && report.self_evolution_objective.projected_count_ratio_global != null ? `${Number(report.self_evolution_objective.projected_count_ratio_global).toFixed(2)}x` : "N/A"} / replacement ${report.self_evolution_objective && report.self_evolution_objective.projected_replacement_ratio != null ? pct(report.self_evolution_objective.projected_replacement_ratio) : "N/A"}`,
+        `top ${report.self_evolution_objective && report.self_evolution_objective.top_market ? `${report.self_evolution_objective.top_market.market} ${signedNum(report.self_evolution_objective.top_market.objective_score, 3)}` : "N/A"} / bottom ${report.self_evolution_objective && report.self_evolution_objective.bottom_market ? `${report.self_evolution_objective.bottom_market.market} ${signedNum(report.self_evolution_objective.bottom_market.objective_score, 3)}` : "N/A"}`,
+      ],
+    },
+    {
+      header: "자기 진화 원인분해",
+      lines: [
+        `drop top layer ${report.self_evolution_attribution && report.self_evolution_attribution.drop_top_layer ? `${report.self_evolution_attribution.drop_top_layer.key} ${report.self_evolution_attribution.drop_top_layer.count}` : "N/A"}`,
+        `late loss top market ${report.self_evolution_attribution && report.self_evolution_attribution.late_loss_top_market ? `${report.self_evolution_attribution.late_loss_top_market.key} ${report.self_evolution_attribution.late_loss_top_market.count}` : "N/A"} / false fire ${report.self_evolution_attribution && report.self_evolution_attribution.false_fire_top_market ? `${report.self_evolution_attribution.false_fire_top_market.key} ${report.self_evolution_attribution.false_fire_top_market.count}` : "N/A"}`,
+        `missed recovery ${report.self_evolution_attribution && report.self_evolution_attribution.missed_recovery_top_reason ? `${report.self_evolution_attribution.missed_recovery_top_reason.key} ${report.self_evolution_attribution.missed_recovery_top_reason.count}` : "N/A"} / fallback cost ${report.self_evolution_attribution && report.self_evolution_attribution.fallback_cost_top_market ? `${report.self_evolution_attribution.fallback_cost_top_market.key} ${report.self_evolution_attribution.fallback_cost_top_market.count}` : "N/A"}`,
+      ],
+    },
+    {
       header: "시장별 BEST/FEBT 계약",
       lines: Array.isArray(report.best_febt_market_contracts) && report.best_febt_market_contracts.length
         ? report.best_febt_market_contracts.slice(0, 4).map((row) => formatBestFebtMarketContractLine(row))
@@ -468,7 +545,7 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
   ];
 }
 
-function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, codex, stageAutopilot, retrospective } = {}) {
+function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionAttribution, codex, stageAutopilot, retrospective } = {}) {
   const objective = governance && governance.current && governance.current.objective ? governance.current.objective : {};
   const objectiveCfg = governance && governance.objective ? governance.objective : {};
   const promotion = changeControl && changeControl.auto_promotion ? changeControl.auto_promotion : {};
@@ -529,6 +606,27 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   });
   const selfEvolutionPolicy = buildSelfEvolutionPolicySpec();
   const selfEvolutionDatasetSummary = summarizeSelfEvolutionDataset(selfEvolutionDataset);
+  const selfEvolutionObjectiveSummary = summarizeSelfEvolutionObjective(
+    selfEvolutionObjective || {
+      global_objective_score: deriveDatasetObjectiveScore({
+        dataset: selfEvolutionDataset,
+        governance,
+        phase0,
+        tuningContract: bestFebtTuningContract,
+      }),
+      market_objective_scores: deriveMarketObjectiveScores({
+        dataset: selfEvolutionDataset,
+        governance,
+        phase0,
+        marketContracts: bestFebtMarketContracts,
+      }),
+    }
+  );
+  const selfEvolutionAttributionSummary = summarizeSelfEvolutionAttribution(
+    selfEvolutionAttribution || {
+      attribution: deriveAttribution({ dataset: selfEvolutionDataset }),
+    }
+  );
 
   const blockers = [];
   if (!objective || objective.enough_sample !== true) blockers.push("OBJECTIVE_SAMPLE_NOT_READY");
@@ -544,6 +642,9 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   if (!changeControl || String(changeControl.verdict || "").toUpperCase() === "HOLD") blockers.push("CHANGE_CONTROL_HOLD");
   if (changeControl && changeControl.coverage_guard && changeControl.coverage_guard.pass !== true) blockers.push("COVERAGE_GUARD_BLOCK");
   if (physicsSummary.block_reason) blockers.push(physicsSummary.block_reason);
+  if (selfEvolutionObjectiveSummary.count_floor_pass === false) blockers.push("SELF_EVOLUTION_COUNT_FLOOR_FAIL");
+  if (selfEvolutionObjectiveSummary.replacement_floor_pass === false) blockers.push("SELF_EVOLUTION_REPLACEMENT_FLOOR_FAIL");
+  if (selfEvolutionObjectiveSummary.latency_budget_pass === false) blockers.push("SELF_EVOLUTION_LATENCY_BUDGET_FAIL");
   if (codex && codexStatus === "FAILED" && (promotion.ready === true || rollback.ready === true)) {
     blockers.push("CODEX_REVIEW_FAILED");
   }
@@ -556,9 +657,15 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       ? "ZERO_KRW_IDLE"
       : physicsSummary.block_reason
         ? physicsSummary.block_reason
+      : selfEvolutionObjectiveSummary.count_floor_pass === false
+        ? "SELF_EVOLUTION_COUNT_FLOOR_FAIL"
+      : selfEvolutionObjectiveSummary.replacement_floor_pass === false
+        ? "SELF_EVOLUTION_REPLACEMENT_FLOOR_FAIL"
+      : selfEvolutionObjectiveSummary.latency_budget_pass === false
+        ? "SELF_EVOLUTION_LATENCY_BUDGET_FAIL"
       : retrospectiveSummary.any_fail
         ? "RETROSPECTIVE_OBJECTIVE_FAIL"
-        : (!objective || objective.enough_sample !== true)
+      : (!objective || objective.enough_sample !== true)
           ? "OBJECTIVE_SAMPLE_NOT_READY"
           : (objective && objective.pass === false)
             ? "OBJECTIVE_NOT_MET"
@@ -659,6 +766,8 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     physics: physicsSummary,
     phase0: phase0Summary,
     self_evolution_dataset: selfEvolutionDatasetSummary,
+    self_evolution_objective: selfEvolutionObjectiveSummary,
+    self_evolution_attribution: selfEvolutionAttributionSummary,
     self_evolution_policy: selfEvolutionPolicy,
     best_febt_tuning_contract: bestFebtTuningContract,
     best_febt_market_contracts: bestFebtMarketContracts,
@@ -754,6 +863,8 @@ function renderMarkdown(report = {}) {
     "## Self-Evolution Policy",
     `- master_spec_path: ${report.self_evolution_policy && report.self_evolution_policy.master_spec_path || "N/A"}`,
     `- dataset_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.dataset_latest_path || "N/A"}`,
+    `- objective_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.objective_latest_path || "N/A"}`,
+    `- attribution_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.attribution_latest_path || "N/A"}`,
     `- status: ${report.self_evolution_policy && report.self_evolution_policy.status || "N/A"}`,
     `- current_focus: ${report.self_evolution_policy && report.self_evolution_policy.current_focus || "N/A"}`,
     ...((report.self_evolution_policy && Array.isArray(report.self_evolution_policy.linked_paths) && report.self_evolution_policy.linked_paths.length)
@@ -765,6 +876,21 @@ function renderMarkdown(report = {}) {
     `- fallback/rejected/partial: ${report.self_evolution_dataset && report.self_evolution_dataset.fallback_n != null ? report.self_evolution_dataset.fallback_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.rejected_n != null ? report.self_evolution_dataset.rejected_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.partial_n != null ? report.self_evolution_dataset.partial_n : "N/A"}`,
     `- realized_n: ${report.self_evolution_dataset && report.self_evolution_dataset.realized_n != null ? report.self_evolution_dataset.realized_n : "N/A"} / features=${pct(report.self_evolution_dataset && report.self_evolution_dataset.features_coverage_rate)} / febt=${pct(report.self_evolution_dataset && report.self_evolution_dataset.febt_coverage_rate)}`,
     `- avg_realized_ret_net: ${signedPct(report.self_evolution_dataset && report.self_evolution_dataset.avg_realized_ret_net)} / avg_realized_pnl_quote: ${signedNum(report.self_evolution_dataset && report.self_evolution_dataset.avg_realized_pnl_quote, 0)} / avg_hold_minutes: ${report.self_evolution_dataset && report.self_evolution_dataset.avg_hold_minutes != null ? Number(report.self_evolution_dataset.avg_hold_minutes).toFixed(1) : "N/A"}`,
+    "",
+    "## Self-Evolution Objective",
+    `- objective_score: ${signedNum(report.self_evolution_objective && report.self_evolution_objective.objective_score, 4)}`,
+    `- constraints: count=${report.self_evolution_objective && report.self_evolution_objective.count_floor_pass === true ? "PASS" : (report.self_evolution_objective && report.self_evolution_objective.count_floor_pass === false ? "FAIL" : "N/A")} / replacement=${report.self_evolution_objective && report.self_evolution_objective.replacement_floor_pass === true ? "PASS" : (report.self_evolution_objective && report.self_evolution_objective.replacement_floor_pass === false ? "FAIL" : "N/A")} / latency=${report.self_evolution_objective && report.self_evolution_objective.latency_budget_pass === true ? "PASS" : (report.self_evolution_objective && report.self_evolution_objective.latency_budget_pass === false ? "FAIL" : "N/A")}`,
+    `- components: profit=${signedNum(report.self_evolution_objective && report.self_evolution_objective.profit_score, 3)} / count=${signedNum(report.self_evolution_objective && report.self_evolution_objective.count_score, 3)} / replacement=${signedNum(report.self_evolution_objective && report.self_evolution_objective.replacement_score, 3)} / tp1=${signedNum(report.self_evolution_objective && report.self_evolution_objective.tp1_score, 3)} / drawdown=${signedNum(report.self_evolution_objective && report.self_evolution_objective.drawdown_penalty, 3)} / latency=${signedNum(report.self_evolution_objective && report.self_evolution_objective.latency_penalty, 3)} / instability=${signedNum(report.self_evolution_objective && report.self_evolution_objective.instability_penalty, 3)}`,
+    `- fire_win/tp1/count/replacement: ${pct(report.self_evolution_objective && report.self_evolution_objective.fire_win_rate)} / ${pct(report.self_evolution_objective && report.self_evolution_objective.tp1_first_rate)} / ${report.self_evolution_objective && report.self_evolution_objective.projected_count_ratio_global != null ? Number(report.self_evolution_objective.projected_count_ratio_global).toFixed(2) : "N/A"} / ${pct(report.self_evolution_objective && report.self_evolution_objective.projected_replacement_ratio)}`,
+    `- top_market: ${report.self_evolution_objective && report.self_evolution_objective.top_market ? `${report.self_evolution_objective.top_market.market} / ${signedNum(report.self_evolution_objective.top_market.objective_score, 3)}` : "N/A"}`,
+    `- bottom_market: ${report.self_evolution_objective && report.self_evolution_objective.bottom_market ? `${report.self_evolution_objective.bottom_market.market} / ${signedNum(report.self_evolution_objective.bottom_market.objective_score, 3)}` : "N/A"}`,
+    "",
+    "## Self-Evolution Attribution",
+    `- drop_top_layer: ${report.self_evolution_attribution && report.self_evolution_attribution.drop_top_layer ? `${report.self_evolution_attribution.drop_top_layer.key} ${report.self_evolution_attribution.drop_top_layer.count}` : "N/A"}`,
+    `- late_loss_top_market: ${report.self_evolution_attribution && report.self_evolution_attribution.late_loss_top_market ? `${report.self_evolution_attribution.late_loss_top_market.key} ${report.self_evolution_attribution.late_loss_top_market.count}` : "N/A"}`,
+    `- false_fire_top_market: ${report.self_evolution_attribution && report.self_evolution_attribution.false_fire_top_market ? `${report.self_evolution_attribution.false_fire_top_market.key} ${report.self_evolution_attribution.false_fire_top_market.count}` : "N/A"}`,
+    `- missed_recovery_top_reason: ${report.self_evolution_attribution && report.self_evolution_attribution.missed_recovery_top_reason ? `${report.self_evolution_attribution.missed_recovery_top_reason.key} ${report.self_evolution_attribution.missed_recovery_top_reason.count}` : "N/A"}`,
+    `- fallback_cost_top_market: ${report.self_evolution_attribution && report.self_evolution_attribution.fallback_cost_top_market ? `${report.self_evolution_attribution.fallback_cost_top_market.key} ${report.self_evolution_attribution.fallback_cost_top_market.count}` : "N/A"}`,
     "",
     "## BEST/FEBT Market Contracts",
     ...((Array.isArray(report.best_febt_market_contracts) && report.best_febt_market_contracts.length)
@@ -807,6 +933,8 @@ async function main() {
   const waitArtifact = readArtifact("wait_tuner", WAIT_LATEST_PATH, FRESHNESS_HOURS.wait);
   const phase0Artifact = readArtifact("febt_phase0", FEBT_PHASE0_LATEST_PATH, FRESHNESS_HOURS.phase0);
   const selfEvolutionDatasetArtifact = readArtifact("self_evolution_dataset", SELF_EVOLUTION_DATASET_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionDataset);
+  const selfEvolutionObjectiveArtifact = readArtifact("self_evolution_objective", SELF_EVOLUTION_OBJECTIVE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionObjective);
+  const selfEvolutionAttributionArtifact = readArtifact("self_evolution_attribution", SELF_EVOLUTION_ATTRIBUTION_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionAttribution);
   const codexArtifact = readArtifact("codex_patch", CODEX_PATCH_LATEST_PATH, FRESHNESS_HOURS.codex);
   const stageAutopilotArtifact = readArtifact("stage_autopilot", STAGE_AUTOPILOT_LATEST_PATH, FRESHNESS_HOURS.stageAutopilot);
   const retrospectiveArtifact = readArtifact("objective_retrospective", RETROSPECTIVE_LATEST_PATH, FRESHNESS_HOURS.retrospective);
@@ -820,6 +948,8 @@ async function main() {
     wait: waitArtifact.data,
     phase0: phase0Artifact.exists ? { ...phase0Artifact.data, fresh: phase0Artifact.fresh } : null,
     selfEvolutionDataset: selfEvolutionDatasetArtifact.exists ? { ...selfEvolutionDatasetArtifact.data, fresh: selfEvolutionDatasetArtifact.fresh } : null,
+    selfEvolutionObjective: selfEvolutionObjectiveArtifact.exists ? { ...selfEvolutionObjectiveArtifact.data, fresh: selfEvolutionObjectiveArtifact.fresh } : null,
+    selfEvolutionAttribution: selfEvolutionAttributionArtifact.exists ? { ...selfEvolutionAttributionArtifact.data, fresh: selfEvolutionAttributionArtifact.fresh } : null,
     codex: codexArtifact.exists ? { ...codexArtifact.data, fresh: codexArtifact.fresh } : null,
     stageAutopilot: stageAutopilotArtifact.exists ? { ...stageAutopilotArtifact.data, fresh: stageAutopilotArtifact.fresh } : null,
     retrospective: retrospectiveArtifact.data,
@@ -838,6 +968,8 @@ async function main() {
     physics: evaluation.physics,
     phase0: evaluation.phase0,
     self_evolution_dataset: evaluation.self_evolution_dataset,
+    self_evolution_objective: evaluation.self_evolution_objective,
+    self_evolution_attribution: evaluation.self_evolution_attribution,
     filter_layers: evaluation.filter_layers,
     best_febt_tuning_contract: {
       ...(evaluation.best_febt_tuning_contract || {}),
@@ -849,7 +981,7 @@ async function main() {
     codex_review: evaluation.codex_review,
     stage_autopilot: evaluation.stage_autopilot,
     retrospective: evaluation.retrospective,
-    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, phase0Artifact, selfEvolutionDatasetArtifact, codexArtifact, stageAutopilotArtifact, retrospectiveArtifact].map((row) => ({
+    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, phase0Artifact, selfEvolutionDatasetArtifact, selfEvolutionObjectiveArtifact, selfEvolutionAttributionArtifact, codexArtifact, stageAutopilotArtifact, retrospectiveArtifact].map((row) => ({
       name: row.name,
       filePath: row.filePath,
       fresh: row.fresh,
@@ -909,5 +1041,7 @@ module.exports = {
     deriveBestFebtTuningContract,
     deriveBestFebtMarketContracts,
     formatBestFebtMarketContractLine,
+    summarizeSelfEvolutionObjective,
+    summarizeSelfEvolutionAttribution,
   },
 };

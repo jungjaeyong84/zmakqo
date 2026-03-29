@@ -139,6 +139,12 @@ function buildPrompt(context = {}) {
   const selfEvolutionPolicy = objectiveSupervisor && objectiveSupervisor.self_evolution_policy && typeof objectiveSupervisor.self_evolution_policy === "object"
     ? objectiveSupervisor.self_evolution_policy
     : buildSelfEvolutionPolicySpec();
+  const selfEvolutionObjective = objectiveSupervisor && objectiveSupervisor.self_evolution_objective && typeof objectiveSupervisor.self_evolution_objective === "object"
+    ? objectiveSupervisor.self_evolution_objective
+    : {};
+  const selfEvolutionAttribution = objectiveSupervisor && objectiveSupervisor.self_evolution_attribution && typeof objectiveSupervisor.self_evolution_attribution === "object"
+    ? objectiveSupervisor.self_evolution_attribution
+    : {};
   return [
     "You are the weekly Codex patch engine for DONBEOLJA.",
     "Task: inspect the provided latest reports and return a single JSON decision only.",
@@ -183,6 +189,8 @@ function buildPrompt(context = {}) {
     `- objective retrospective: ${INPUT_PATHS.retrospective}`,
     `- BEST/FEBT weekly tuning policy: /Users/jeongjaeyong/Projects/donbeolja/docs/BEST_FEBT_WEEKLY_TUNING_POLICY.md`,
     `- BEST self-evolution master spec: ${selfEvolutionPolicy.master_spec_path}`,
+    `- BEST self-evolution objective score spec: ${selfEvolutionPolicy.objective_latest_path || "N/A"}`,
+    `- BEST self-evolution attribution spec: ${selfEvolutionPolicy.attribution_latest_path || "N/A"}`,
     "Filter layer interpretation:",
     ...objectiveLayerLines,
     "Quick context:",
@@ -217,6 +225,17 @@ function buildPrompt(context = {}) {
     ...((Array.isArray(selfEvolutionPolicy.linked_paths) && selfEvolutionPolicy.linked_paths.length)
       ? selfEvolutionPolicy.linked_paths.map((row) => `- ${row}`)
       : ["- N/A"]),
+    "Self-evolution objective snapshot:",
+    `- objective score: ${selfEvolutionObjective.objective_score != null ? selfEvolutionObjective.objective_score : "N/A"}`,
+    `- constraints count/replacement/latency: ${selfEvolutionObjective.count_floor_pass === true ? "PASS" : (selfEvolutionObjective.count_floor_pass === false ? "FAIL" : "N/A")} / ${selfEvolutionObjective.replacement_floor_pass === true ? "PASS" : (selfEvolutionObjective.replacement_floor_pass === false ? "FAIL" : "N/A")} / ${selfEvolutionObjective.latency_budget_pass === true ? "PASS" : (selfEvolutionObjective.latency_budget_pass === false ? "FAIL" : "N/A")}`,
+    `- fire win / tp1 / count / replacement: ${selfEvolutionObjective.fire_win_rate != null ? selfEvolutionObjective.fire_win_rate : "N/A"} / ${selfEvolutionObjective.tp1_first_rate != null ? selfEvolutionObjective.tp1_first_rate : "N/A"} / ${selfEvolutionObjective.projected_count_ratio_global != null ? selfEvolutionObjective.projected_count_ratio_global : "N/A"} / ${selfEvolutionObjective.projected_replacement_ratio != null ? selfEvolutionObjective.projected_replacement_ratio : "N/A"}`,
+    `- top market: ${selfEvolutionObjective.top_market ? `${selfEvolutionObjective.top_market.market} ${selfEvolutionObjective.top_market.objective_score}` : "N/A"} / bottom market: ${selfEvolutionObjective.bottom_market ? `${selfEvolutionObjective.bottom_market.market} ${selfEvolutionObjective.bottom_market.objective_score}` : "N/A"}`,
+    "Self-evolution attribution summary:",
+    `- drop top layer: ${selfEvolutionAttribution.drop_top_layer ? `${selfEvolutionAttribution.drop_top_layer.key} ${selfEvolutionAttribution.drop_top_layer.count}` : "N/A"}`,
+    `- late loss top market: ${selfEvolutionAttribution.late_loss_top_market ? `${selfEvolutionAttribution.late_loss_top_market.key} ${selfEvolutionAttribution.late_loss_top_market.count}` : "N/A"}`,
+    `- false fire top market: ${selfEvolutionAttribution.false_fire_top_market ? `${selfEvolutionAttribution.false_fire_top_market.key} ${selfEvolutionAttribution.false_fire_top_market.count}` : "N/A"}`,
+    `- missed recovery top reason: ${selfEvolutionAttribution.missed_recovery_top_reason ? `${selfEvolutionAttribution.missed_recovery_top_reason.key} ${selfEvolutionAttribution.missed_recovery_top_reason.count}` : "N/A"}`,
+    `- fallback cost top market: ${selfEvolutionAttribution.fallback_cost_top_market ? `${selfEvolutionAttribution.fallback_cost_top_market.key} ${selfEvolutionAttribution.fallback_cost_top_market.count}` : "N/A"}`,
   ].join("\n");
 }
 

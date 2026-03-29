@@ -18,10 +18,31 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
       },
       self_evolution_policy: {
         master_spec_path: "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MASTER_SPEC.md",
+        objective_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_objective_latest.json",
+        attribution_latest_path: "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_attribution_latest.json",
         linked_paths: [
           "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DATASET_SPEC.md",
           "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_OBJECTIVE_SCORE_SPEC.md",
         ],
+      },
+      self_evolution_objective: {
+        objective_score: 3.2145,
+        count_floor_pass: false,
+        replacement_floor_pass: true,
+        latency_budget_pass: true,
+        fire_win_rate: 0.58,
+        tp1_first_rate: 0.61,
+        projected_count_ratio_global: 0.96,
+        projected_replacement_ratio: 0.78,
+        top_market: { market: "BTCUSDT", objective_score: 4.5 },
+        bottom_market: { market: "DOGEUSDT", objective_score: -0.8 },
+      },
+      self_evolution_attribution: {
+        drop_top_layer: { key: "QUALITY", count: 12 },
+        late_loss_top_market: { key: "DOGEUSDT", count: 5 },
+        false_fire_top_market: { key: "ETHUSDT", count: 2 },
+        missed_recovery_top_reason: { key: "DROP_WAIT_ONE_BAR_TIMING", count: 4 },
+        fallback_cost_top_market: { key: "SOLUSDT", count: 1 },
       },
       best_febt_market_contracts: [
         {
@@ -75,6 +96,13 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.ok(prompt.includes("BEST self-evolution master spec"));
   assert.ok(prompt.includes("Self-evolution policy docs:"));
   assert.ok(prompt.includes("BEST_SELF_EVOLUTION_DATASET_SPEC.md"));
+  assert.ok(prompt.includes("Self-evolution objective snapshot:"));
+  assert.ok(prompt.includes("objective score: 3.2145"));
+  assert.ok(prompt.includes("constraints count/replacement/latency: FAIL / PASS / PASS"));
+  assert.ok(prompt.includes("top market: BTCUSDT 4.5 / bottom market: DOGEUSDT -0.8"));
+  assert.ok(prompt.includes("Self-evolution attribution summary:"));
+  assert.ok(prompt.includes("drop top layer: QUALITY 12"));
+  assert.ok(prompt.includes("missed recovery top reason: DROP_WAIT_ONE_BAR_TIMING 4"));
   assert.ok(prompt.includes("febt contract mode: RECOVERY_FIRST"));
   assert.ok(prompt.includes("febt tightening allowed: NO"));
   assert.ok(prompt.includes("BEST/FEBT market contracts:"));

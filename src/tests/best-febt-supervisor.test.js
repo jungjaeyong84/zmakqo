@@ -5,6 +5,8 @@ function run() {
   const selfEvolution = __test.buildSelfEvolutionPolicySpec();
   assert.strictEqual(selfEvolution.master_spec_path.endsWith("BEST_SELF_EVOLUTION_MASTER_SPEC.md"), true);
   assert.strictEqual(selfEvolution.dataset_latest_path.endsWith("best_self_evolution_dataset_latest.json"), true);
+  assert.strictEqual(selfEvolution.objective_latest_path.endsWith("best_self_evolution_objective_latest.json"), true);
+  assert.strictEqual(selfEvolution.attribution_latest_path.endsWith("best_self_evolution_attribution_latest.json"), true);
   assert.strictEqual(Array.isArray(selfEvolution.linked_paths), true);
   assert.strictEqual(selfEvolution.linked_paths.length >= 6, true);
 

@@ -21,6 +21,14 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
           avg_ret_net: 0.012,
           net_pnl_quote: 220,
         },
+        febt_shadow: {
+          projected_replacement_ratio: 0.91,
+          projected_count_ratio: 1.03,
+          projected_net_signal_delta_n: 1,
+          candidate_recovered_n: 2,
+          candidate_blocked_n: 1,
+          candidate_wait_n: 0,
+        },
         quality: {
           chain_rows: [
             {
@@ -143,8 +151,15 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.phase0.immediate_win_rate, 0.57);
   assert.strictEqual(allowPromote.self_evolution_policy.master_spec_path.endsWith("BEST_SELF_EVOLUTION_MASTER_SPEC.md"), true);
   assert.strictEqual(allowPromote.self_evolution_policy.dataset_latest_path.endsWith("best_self_evolution_dataset_latest.json"), true);
+  assert.strictEqual(allowPromote.self_evolution_policy.objective_latest_path.endsWith("best_self_evolution_objective_latest.json"), true);
+  assert.strictEqual(allowPromote.self_evolution_policy.attribution_latest_path.endsWith("best_self_evolution_attribution_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_dataset.rows_n, 24);
   assert.strictEqual(allowPromote.self_evolution_dataset.features_coverage_rate, 0.91);
+  assert.strictEqual(typeof allowPromote.self_evolution_objective.objective_score, "number");
+  assert.strictEqual(allowPromote.self_evolution_objective.count_floor_pass, true);
+  assert.strictEqual(allowPromote.self_evolution_objective.replacement_floor_pass, true);
+  assert.strictEqual(Array.isArray(allowPromote.self_evolution_objective.market_objective_scores), true);
+  assert.strictEqual(allowPromote.self_evolution_attribution.drop_top_layer, null);
   assert.strictEqual(allowPromote.best_febt_tuning_contract.mode, "NORMAL");
   assert.strictEqual(allowPromote.best_febt_tuning_contract.tightening_allowed, true);
   assert.strictEqual(Array.isArray(allowPromote.best_febt_market_contracts), true);
