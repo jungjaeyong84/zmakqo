@@ -21,7 +21,7 @@ const REPO_ROOT = path.resolve(__dirname, "..");
 function buildStepPlan() {
   return [
     { id: "dataset", script: "report-best-self-evolution-dataset.js" },
-    { id: "objective_seed", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SKIP_TELEGRAM: "1" } },
+    { id: "objective_seed", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SKIP_TELEGRAM: "1", OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "SEED" } },
     { id: "objective", script: "report-best-self-evolution-objective.js" },
     { id: "attribution", script: "report-best-self-evolution-attribution.js" },
     { id: "candidates", script: "report-best-self-evolution-candidates.js" },
@@ -32,9 +32,9 @@ function buildStepPlan() {
     { id: "deployment_plan", script: "report-best-self-evolution-deployment-plan.js" },
     { id: "weight_tuning", script: "report-best-self-evolution-weight-tuning.js" },
     { id: "codex_patch_engine", script: "automation-codex-weekly-patch-engine.js", env: { CODEX_PATCH_ENGINE_SKIP_TELEGRAM: "1" } },
-    { id: "objective_integrated", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SKIP_TELEGRAM: "1" } },
+    { id: "objective_integrated", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SKIP_TELEGRAM: "1", OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "INTEGRATED" } },
     { id: "stage_autopilot", script: "automation-stage-autopilot.js" },
-    { id: "objective_final", script: "automation-objective-supervisor.js" },
+    { id: "objective_final", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "FINAL" } },
     { id: "loop_monitor", script: "report-best-self-evolution-loop-monitor.js" },
   ];
 }
@@ -84,6 +84,7 @@ function main() {
       env: {
         ...process.env,
         BEST_SELF_EVOLUTION_CYCLE_ID: cycleMeta.cycle_id,
+        BEST_SELF_EVOLUTION_ALLOW_LATEST_WRITE: "1",
         ...(step.env || {}),
       },
       maxBuffer: 1024 * 1024 * 8,

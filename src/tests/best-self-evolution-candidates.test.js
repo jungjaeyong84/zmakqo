@@ -108,13 +108,15 @@ function run() {
     },
   });
 
+  assert.strictEqual(report.summary.generated_n >= 6, true);
   assert.strictEqual(report.summary.total_n >= 4, true);
-  assert.strictEqual(report.summary.top_candidate_id, "AUTO_CORE_REGIME_TIGHTEN");
   const pine = report.rows.find((row) => row.candidate_id === "AUTO_CORE_REGIME_TIGHTEN");
-  assert.strictEqual(pine.scope, "PINE");
-  assert.ok(pine.risk_flags.includes("COUNT_GUARD_ACTIVE"));
-  assert.ok(pine.risk_flags.includes("MEMORY_BLOCKED"));
-  assert.strictEqual(pine.ready_for_auto_apply, false);
+  assert.strictEqual(pine, undefined);
+  const blockedPine = report.blocked_rows.find((row) => row.candidate_id === "AUTO_CORE_REGIME_TIGHTEN");
+  assert.strictEqual(blockedPine.scope, "PINE");
+  assert.ok(blockedPine.risk_flags.includes("COUNT_GUARD_ACTIVE"));
+  assert.ok(blockedPine.risk_flags.includes("MEMORY_BLOCKED"));
+  assert.strictEqual(blockedPine.ready_for_auto_apply, false);
   const ev = report.rows.find((row) => row.candidate_id === "EV_TP1_THRESHOLD_TUNE");
   assert.strictEqual(ev.scope, "EV");
   assert.strictEqual(ev.ready_for_auto_apply, true);
@@ -165,11 +167,12 @@ function run() {
       },
     },
   });
-  const evBlocked = reportWithFingerprintBlock.rows.find((row) => row.candidate_id === "EV_TP1_THRESHOLD_TUNE");
+  const evBlocked = reportWithFingerprintBlock.blocked_rows.find((row) => row.candidate_id === "EV_TP1_THRESHOLD_TUNE");
   assert.strictEqual(evBlocked.memory_blocked, true);
   assert.strictEqual(evBlocked.failed_fingerprint_repeat, true);
   assert.ok(evBlocked.risk_flags.includes("FAILED_FINGERPRINT_REPEAT"));
   assert.ok(evBlocked.risk_flags.includes("MEMORY_BLOCKED"));
+  assert.strictEqual(reportWithFingerprintBlock.rows.some((row) => row.candidate_id === "EV_TP1_THRESHOLD_TUNE"), false);
   assert.strictEqual(reportWithFingerprintBlock.summary.memory_blocked_n, 1);
 
   console.log("BEST_SELF_EVOLUTION_CANDIDATES_TEST_OK");

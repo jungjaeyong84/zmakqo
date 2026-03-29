@@ -129,6 +129,18 @@ function copyLatest(sourcePath, latestPath) {
   fs.copyFileSync(sourcePath, latestPath);
 }
 
+function shouldWriteSelfEvolutionLatest() {
+  const cycleId = String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim();
+  const allowLatestWrite = String(process.env.BEST_SELF_EVOLUTION_ALLOW_LATEST_WRITE || "").trim();
+  return Boolean(cycleId) && allowLatestWrite === "1";
+}
+
+function copySelfEvolutionLatest(sourcePath, latestPath) {
+  if (!shouldWriteSelfEvolutionLatest()) return false;
+  copyLatest(sourcePath, latestPath);
+  return true;
+}
+
 function sha1(text) {
   return crypto.createHash("sha1").update(String(text || ""), "utf8").digest("hex");
 }
@@ -451,6 +463,8 @@ module.exports = {
   writeJson,
   writeText,
   copyLatest,
+  copySelfEvolutionLatest,
+  shouldWriteSelfEvolutionLatest,
   loadLocalEnv,
   nowKstMeta,
   resolveAutomationCycleMeta,

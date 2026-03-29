@@ -5,7 +5,7 @@
 const path = require("path");
 const {
   OPS_DAILY_DIR,
-  copyLatest,
+  copySelfEvolutionLatest,
   loadLocalEnv,
   nowKstMeta,
   readJsonRawSafe,
@@ -193,8 +193,8 @@ async function main() {
 
   writeJson(jsonPath, report);
   writeText(mdPath, renderMarkdown(report));
-  copyLatest(jsonPath, latestJsonPath);
-  copyLatest(mdPath, latestMdPath);
+  copySelfEvolutionLatest(jsonPath, latestJsonPath);
+  copySelfEvolutionLatest(mdPath, latestMdPath);
 
   console.log(JSON.stringify({
     ok: true,

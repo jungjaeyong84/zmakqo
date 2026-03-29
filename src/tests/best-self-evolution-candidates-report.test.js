@@ -5,6 +5,7 @@ function run() {
   const markdown = __test.renderMarkdown({
     generated_at_kst: "2026-03-29 19:47:00 KST",
     summary: {
+      generated_n: 4,
       total_n: 3,
       ready_n: 1,
       blocked_n: 1,
@@ -26,12 +27,23 @@ function run() {
         risk_flags: ["NOT_READY"],
       },
     ],
+    blocked_rows: [
+      {
+        candidate_id: "ML_GATE_CORE_SCORE_ABS",
+        scope: "ML",
+        direction: "TIGHTEN",
+        memory_block_reason: "FAILED_FINGERPRINT_REPEAT",
+        risk_flags: ["MEMORY_BLOCKED", "FAILED_FINGERPRINT_REPEAT"],
+      },
+    ],
   });
 
   assert.match(markdown, /BEST Self-Evolution Candidate Change Sets/);
-  assert.match(markdown, /total\/ready\/blocked: 3 \/ 1 \/ 1/);
+  assert.match(markdown, /generated\/active\/ready\/source_blocked: 4 \/ 3 \/ 1 \/ 1/);
   assert.match(markdown, /memory_blocked\/fingerprint_repeat: 1 \/ 0/);
   assert.match(markdown, /AUTO_CORE_REGIME_TIGHTEN: PINE\/TIGHTEN/);
+  assert.match(markdown, /Memory Blocked/);
+  assert.match(markdown, /ML_GATE_CORE_SCORE_ABS: ML\/TIGHTEN/);
   console.log("BEST_SELF_EVOLUTION_CANDIDATES_REPORT_TEST_OK");
 }
 

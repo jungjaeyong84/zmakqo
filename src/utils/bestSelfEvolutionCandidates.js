@@ -326,7 +326,7 @@ function buildCandidateChangeSets({
     : null;
   const tf = String(supervisor.phase0 && supervisor.phase0.tf || "15m");
   const memoryContext = buildMemoryGuardContext(memoryLedger);
-  const rows = [
+  const generatedRows = [
     ...buildPineCandidates({ patchCandidates, tf, contract, marketGuard, changeControl: unwrapRawReport(changeControl) }),
     ...buildMlCandidates({ ml, tf, contract, marketGuard }),
     ...buildEvCandidate({ ev, tf, contract, marketGuard }),
@@ -334,6 +334,8 @@ function buildCandidateChangeSets({
   ]
     .filter((row) => row && row.candidate_id)
     .map((row) => applyMemoryGuards(row, memoryContext));
+  const blockedRows = generatedRows.filter((row) => row.memory_blocked === true);
+  const rows = generatedRows.filter((row) => row.memory_blocked !== true);
 
   const byScope = rows.reduce((acc, row) => {
     const key = String(row.scope || "UNKNOWN");
@@ -342,8 +344,8 @@ function buildCandidateChangeSets({
   }, {});
   const ready = rows.filter((row) => row.ready_for_auto_apply === true).length;
   const blocked = rows.filter((row) => Array.isArray(row.risk_flags) && row.risk_flags.includes("BLOCKED_SOURCE_ACTION")).length;
-  const memoryBlocked = rows.filter((row) => row.memory_blocked === true).length;
-  const fingerprintRepeated = rows.filter((row) => row.failed_fingerprint_repeat === true).length;
+  const memoryBlocked = blockedRows.length;
+  const fingerprintRepeated = blockedRows.filter((row) => row.failed_fingerprint_repeat === true).length;
   const topCandidate = rows.slice().sort((a, b) =>
     ((toNum(b.evidence && b.evidence.priority_score) ?? -Infinity) - (toNum(a.evidence && a.evidence.priority_score) ?? -Infinity))
     || ((toNum(b.evidence && b.evidence.support_n) ?? 0) - (toNum(a.evidence && a.evidence.support_n) ?? 0))
@@ -352,7 +354,9 @@ function buildCandidateChangeSets({
 
   return {
     rows,
+    blocked_rows: blockedRows,
     summary: {
+      generated_n: generatedRows.length,
       total_n: rows.length,
       ready_n: ready,
       blocked_n: blocked,

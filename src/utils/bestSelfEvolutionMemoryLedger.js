@@ -117,7 +117,10 @@ function buildCurrentRows({
   nowMeta = null,
   previousLedger = null,
 } = {}) {
-  const candidateRows = Array.isArray(candidateChangeSet && candidateChangeSet.rows) ? candidateChangeSet.rows : [];
+  const candidateRows = [
+    ...(Array.isArray(candidateChangeSet && candidateChangeSet.rows) ? candidateChangeSet.rows : []),
+    ...(Array.isArray(candidateChangeSet && candidateChangeSet.blocked_rows) ? candidateChangeSet.blocked_rows : []),
+  ];
   const replayRows = Array.isArray(replayReport && replayReport.validations) ? replayReport.validations : [];
   const canaryRows = Array.isArray(canaryReport && canaryReport.rows) ? canaryReport.rows : [];
   const previousRows = Array.isArray(previousLedger && previousLedger.rows) ? previousLedger.rows : [];

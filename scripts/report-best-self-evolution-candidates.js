@@ -5,7 +5,7 @@
 const path = require("path");
 const {
   OPS_DAILY_DIR,
-  copyLatest,
+  copySelfEvolutionLatest,
   loadLocalEnv,
   nowKstMeta,
   readJsonRawSafe,
@@ -30,6 +30,7 @@ const INPUTS = Object.freeze({
 function renderMarkdown(report = {}) {
   const summary = report.summary || {};
   const rows = Array.isArray(report.rows) ? report.rows : [];
+  const blockedRows = Array.isArray(report.blocked_rows) ? report.blocked_rows : [];
   const lines = [
     "# BEST Self-Evolution Candidate Change Sets",
     "",
@@ -37,18 +38,27 @@ function renderMarkdown(report = {}) {
     `- cycle_id: ${report.cycle_id || "N/A"}`,
     "",
     "## Summary",
-    `- total/ready/blocked: ${summary.total_n ?? 0} / ${summary.ready_n ?? 0} / ${summary.blocked_n ?? 0}`,
+    `- generated/active/ready/source_blocked: ${summary.generated_n ?? summary.total_n ?? 0} / ${summary.total_n ?? 0} / ${summary.ready_n ?? 0} / ${summary.blocked_n ?? 0}`,
     `- memory_blocked/fingerprint_repeat: ${summary.memory_blocked_n ?? 0} / ${summary.failed_fingerprint_repeat_n ?? 0}`,
     `- by_scope: ${summary.by_scope ? Object.entries(summary.by_scope).map(([k, v]) => `${k}=${v}`).join(", ") : "N/A"}`,
     `- top_candidate: ${summary.top_candidate_id || "N/A"} / scope=${summary.top_scope || "N/A"}`,
     "",
-    "## Candidates",
+    "## Active Candidates",
   ];
   if (!rows.length) {
     lines.push("- none");
   } else {
     for (const row of rows.slice(0, 20)) {
       lines.push(`- ${row.candidate_id}: ${row.scope}/${row.direction} / status=${row.status} / ready=${row.ready_for_auto_apply ? "YES" : "NO"} / count=${row.count_guard_effect && row.count_guard_effect.projected_count_ratio_global != null ? Number(row.count_guard_effect.projected_count_ratio_global).toFixed(2) : "N/A"} / replacement=${row.replacement_effect && row.replacement_effect.projected_replacement_ratio != null ? Number(row.replacement_effect.projected_replacement_ratio).toFixed(2) : "N/A"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
+    }
+  }
+  lines.push("");
+  lines.push("## Memory Blocked");
+  if (!blockedRows.length) {
+    lines.push("- none");
+  } else {
+    for (const row of blockedRows.slice(0, 20)) {
+      lines.push(`- ${row.candidate_id}: ${row.scope}/${row.direction} / reason=${row.memory_block_reason || "N/A"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
     }
   }
   return `${lines.join("\n")}\n`;
@@ -74,6 +84,7 @@ async function main() {
     inputs: Object.fromEntries(Object.entries(INPUTS).map(([k, v]) => [k, v])),
     summary: report.summary,
     rows: report.rows,
+    blocked_rows: report.blocked_rows,
   };
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}`;
   const jsonPath = path.join(OPS_DAILY_DIR, `${base}_best_self_evolution_candidates.json`);
@@ -82,8 +93,8 @@ async function main() {
   const latestMdPath = path.join(OPS_DAILY_DIR, "best_self_evolution_candidates_latest.md");
   writeJson(jsonPath, output);
   writeText(mdPath, renderMarkdown(output));
-  copyLatest(jsonPath, latestJsonPath);
-  copyLatest(mdPath, latestMdPath);
+  copySelfEvolutionLatest(jsonPath, latestJsonPath);
+  copySelfEvolutionLatest(mdPath, latestMdPath);
   console.log(JSON.stringify({ ok: true, json: jsonPath, markdown: mdPath, latest_json: latestJsonPath, latest_markdown: latestMdPath }));
 }
 

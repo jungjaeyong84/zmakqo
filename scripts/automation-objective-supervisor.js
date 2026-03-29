@@ -146,6 +146,65 @@ function readArtifact(name, filePath, maxAgeHours) {
   }
 }
 
+function readCycleId(value = null) {
+  const raw = value && value.raw && typeof value.raw === "object" ? value.raw : value;
+  const cycleId = String(raw && (raw.cycle_id || raw.generation_id) || "").trim();
+  return cycleId || null;
+}
+
+const SELF_EVOLUTION_STAGE_KEYS = Object.freeze({
+  SEED: ["dataset"],
+  INTEGRATED: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "memory", "codex"],
+  FINAL: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "memory", "codex", "stageAutopilot"],
+  STANDALONE: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "memory", "codex", "stageAutopilot"],
+});
+
+function summarizeSelfEvolutionArtifactCycles({ artifacts = {}, stage = "STANDALONE", preferredCycleId = null } = {}) {
+  const normalizedStage = String(stage || "STANDALONE").trim().toUpperCase();
+  const keys = SELF_EVOLUTION_STAGE_KEYS[normalizedStage] || SELF_EVOLUTION_STAGE_KEYS.STANDALONE;
+  const rows = keys.map((key) => {
+    const artifact = artifacts[key] || {};
+    const exists = artifact.exists === true || artifact.data != null;
+    return {
+      key,
+      exists,
+      fresh: artifact.fresh === true,
+      cycle_id: readCycleId(artifact.data),
+    };
+  });
+  const availableWithCycle = rows.filter((row) => row.exists && row.cycle_id);
+  const cycleCounts = availableWithCycle.reduce((acc, row) => {
+    acc[row.cycle_id] = (acc[row.cycle_id] || 0) + 1;
+    return acc;
+  }, {});
+  const dominantCycleId = Object.entries(cycleCounts)
+    .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0) || String(a[0]).localeCompare(String(b[0])))
+    .map((row) => row[0])[0] || null;
+  const expectedCycleId = String(preferredCycleId || "").trim() || dominantCycleId || null;
+  const missingKeys = rows.filter((row) => !row.exists).map((row) => row.key);
+  const cycleMismatches = expectedCycleId
+    ? rows.filter((row) => row.exists && row.cycle_id && row.cycle_id !== expectedCycleId).map((row) => ({ key: row.key, cycle_id: row.cycle_id }))
+    : [];
+  const cycleIdAbsentKeys = expectedCycleId
+    ? rows.filter((row) => row.exists && row.fresh === true && !row.cycle_id).map((row) => row.key)
+    : [];
+  return {
+    available: rows.some((row) => row.exists),
+    stage: normalizedStage,
+    expected_cycle_id: expectedCycleId,
+    required_keys: keys.slice(),
+    available_n: rows.filter((row) => row.exists).length,
+    missing_key_n: missingKeys.length,
+    missing_keys: missingKeys,
+    cycle_consistent: missingKeys.length === 0 && cycleMismatches.length === 0 && cycleIdAbsentKeys.length === 0,
+    cycle_mismatch_n: cycleMismatches.length,
+    cycle_mismatches: cycleMismatches,
+    cycle_id_absent_n: cycleIdAbsentKeys.length,
+    cycle_id_absent_keys: cycleIdAbsentKeys,
+    rows,
+  };
+}
+
 function summarizeRetrospective(retrospective = null) {
   const periods = retrospective && retrospective.periods && typeof retrospective.periods === "object"
     ? retrospective.periods
@@ -820,7 +879,7 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
   ];
 }
 
-function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionMemory, selfEvolutionLoopMonitor, codex, stageAutopilot, retrospective, weeklyHistory } = {}) {
+function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory } = {}) {
   const objective = governance && governance.current && governance.current.objective ? governance.current.objective : {};
   const objectiveCfg = governance && governance.objective ? governance.objective : {};
   const promotion = changeControl && changeControl.auto_promotion ? changeControl.auto_promotion : {};
@@ -940,6 +999,9 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     canary: selfEvolutionCanarySummary,
     memoryLedger: selfEvolutionMemorySummary,
   });
+  const selfEvolutionCycleSummary = selfEvolutionCycleState && typeof selfEvolutionCycleState === "object"
+    ? selfEvolutionCycleState
+    : { available: false, cycle_consistent: true, cycle_mismatch_n: 0, missing_key_n: 0, cycle_id_absent_n: 0, missing_keys: [], cycle_mismatches: [], cycle_id_absent_keys: [] };
   const selfEvolutionLoopMonitorSummary = summarizeSelfEvolutionLoopMonitor(selfEvolutionLoopMonitor);
   const memoryBlockedIds = new Set(selfEvolutionMemorySummary.blocked_candidate_ids || []);
 
@@ -965,6 +1027,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   if (promotionReplay && promotionReplay.validation_verdict === "BLOCK") blockers.push("SELF_EVOLUTION_REPLAY_BLOCK");
   if (promotion.ready === true && selfEvolutionCanarySummary.available && selfEvolutionCanarySummary.apply_pass !== true) blockers.push("SELF_EVOLUTION_CANARY_BLOCK");
   if (selfEvolutionCanarySummary.rollback_ready_n > 0) blockers.push("SELF_EVOLUTION_CANARY_ROLLBACK_READY");
+  if (selfEvolutionCycleSummary.available && selfEvolutionCycleSummary.cycle_consistent === false) blockers.push("SELF_EVOLUTION_ARTIFACT_CYCLE_MISMATCH");
   if (selfEvolutionLoopMonitorSummary.available && selfEvolutionLoopMonitorSummary.cycle_consistent === false) blockers.push("SELF_EVOLUTION_LOOP_CYCLE_MISMATCH");
   if (promotion.ready === true && promotionCandidateId && memoryBlockedIds.has(promotionCandidateId)) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK");
   if (promotion.ready === true && selfEvolutionDeploymentSummary.deploy_pass !== true) {
@@ -1000,6 +1063,8 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
         ? "SELF_EVOLUTION_CANARY_BLOCK"
       : selfEvolutionCanarySummary.rollback_ready_n > 0
         ? "SELF_EVOLUTION_CANARY_ROLLBACK_READY"
+      : (selfEvolutionCycleSummary.available && selfEvolutionCycleSummary.cycle_consistent === false)
+        ? "SELF_EVOLUTION_ARTIFACT_CYCLE_MISMATCH"
       : (selfEvolutionLoopMonitorSummary.available && selfEvolutionLoopMonitorSummary.cycle_consistent === false)
         ? "SELF_EVOLUTION_LOOP_CYCLE_MISMATCH"
       : (promotion.ready === true && promotionCandidateId && memoryBlockedIds.has(promotionCandidateId))
@@ -1136,6 +1201,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     self_evolution_candidates: selfEvolutionCandidatesSummary,
     self_evolution_replay: selfEvolutionReplaySummary,
     self_evolution_canary: selfEvolutionCanarySummary,
+    self_evolution_cycle: selfEvolutionCycleSummary,
     self_evolution_deployment: selfEvolutionDeploymentSummary,
     self_evolution_deployment_plan: selfEvolutionDeploymentPlanSummary,
     self_evolution_loop_monitor: selfEvolutionLoopMonitorSummary,
@@ -1363,6 +1429,7 @@ function renderMarkdown(report = {}) {
 async function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
+  const selfEvolutionStage = String(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE || "STANDALONE").trim().toUpperCase();
   const governanceArtifact = readArtifact("weekly_governance", GOVERNANCE_LATEST_PATH, FRESHNESS_HOURS.governance);
   const changeArtifact = readArtifact("change_control", CHANGE_CONTROL_LATEST_PATH, FRESHNESS_HOURS.changeControl);
   const canaryArtifact = readArtifact("shadow_canary", CANARY_LATEST_PATH, FRESHNESS_HOURS.canary);
@@ -1381,6 +1448,22 @@ async function main() {
   const stageAutopilotArtifact = readArtifact("stage_autopilot", STAGE_AUTOPILOT_LATEST_PATH, FRESHNESS_HOURS.stageAutopilot);
   const weeklyPineHistoryArtifact = readArtifact("weekly_pine_history", WEEKLY_PINE_HISTORY_PATH, FRESHNESS_HOURS.weeklyPineHistory);
   const retrospectiveArtifact = readArtifact("objective_retrospective", RETROSPECTIVE_LATEST_PATH, FRESHNESS_HOURS.retrospective);
+  const selfEvolutionCycleState = summarizeSelfEvolutionArtifactCycles({
+    stage: selfEvolutionStage,
+    preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
+    artifacts: {
+      dataset: selfEvolutionDatasetArtifact,
+      objective: selfEvolutionObjectiveArtifact,
+      attribution: selfEvolutionAttributionArtifact,
+      candidates: selfEvolutionCandidatesArtifact,
+      replay: selfEvolutionReplayArtifact,
+      canary: selfEvolutionCanaryArtifact,
+      memory: selfEvolutionMemoryArtifact,
+      codex: codexArtifact,
+      stageAutopilot: stageAutopilotArtifact,
+    },
+  });
+  const reportCycleId = selfEvolutionCycleState.expected_cycle_id || cycleMeta.cycle_id;
 
   const selfEvolutionMemoryData = selfEvolutionMemoryArtifact.exists
     ? { ...selfEvolutionMemoryArtifact.data, fresh: selfEvolutionMemoryArtifact.fresh }
@@ -1408,6 +1491,7 @@ async function main() {
     selfEvolutionCanary: selfEvolutionCanaryArtifact.exists ? { ...selfEvolutionCanaryArtifact.data, fresh: selfEvolutionCanaryArtifact.fresh } : null,
     selfEvolutionMemory: selfEvolutionMemoryData,
     selfEvolutionLoopMonitor: null,
+    selfEvolutionCycleState,
     codex: codexArtifact.exists ? { ...codexArtifact.data, fresh: codexArtifact.fresh } : null,
     stageAutopilot: stageAutopilotArtifact.exists ? { ...stageAutopilotArtifact.data, fresh: stageAutopilotArtifact.fresh } : null,
     retrospective: retrospectiveArtifact.data,
@@ -1417,8 +1501,8 @@ async function main() {
   const report = {
     ok: true,
     generated_at_kst: nowMeta.kst,
-    cycle_id: cycleMeta.cycle_id,
-    generation_id: cycleMeta.generation_id,
+    cycle_id: reportCycleId,
+    generation_id: reportCycleId,
     verdict: evaluation.verdict,
     reason: evaluation.reason,
     blockers: evaluation.blockers,
@@ -1434,6 +1518,7 @@ async function main() {
     self_evolution_candidates: evaluation.self_evolution_candidates,
     self_evolution_replay: evaluation.self_evolution_replay,
     self_evolution_canary: evaluation.self_evolution_canary,
+    self_evolution_cycle: evaluation.self_evolution_cycle,
     self_evolution_deployment: evaluation.self_evolution_deployment,
     self_evolution_deployment_plan: evaluation.self_evolution_deployment_plan,
     self_evolution_loop_monitor: null,
@@ -1477,10 +1562,10 @@ async function main() {
       candidates: selfEvolutionCandidatesArtifact.data,
       replay: selfEvolutionReplayArtifact.data,
       canary: selfEvolutionCanaryArtifact.data,
-      deployment: { cycle_id: cycleMeta.cycle_id, summary: evaluation.self_evolution_deployment },
-      deploymentPlan: { cycle_id: cycleMeta.cycle_id, summary: evaluation.self_evolution_deployment_plan },
+      deployment: { cycle_id: reportCycleId, summary: evaluation.self_evolution_deployment },
+      deploymentPlan: { cycle_id: reportCycleId, summary: evaluation.self_evolution_deployment_plan },
       stageAutopilot: stageAutopilotArtifact.data,
-      weightTuning: { cycle_id: cycleMeta.cycle_id, ...evaluation.self_evolution_weight_tuning },
+      weightTuning: { cycle_id: reportCycleId, ...evaluation.self_evolution_weight_tuning },
       memory: selfEvolutionMemoryData,
       codexPatch: codexArtifact.data,
     },
@@ -1548,6 +1633,7 @@ module.exports = {
     summarizeSelfEvolutionMemory,
     summarizeSelfEvolutionDeploymentPlan,
     summarizeSelfEvolutionLoopMonitor,
+    summarizeSelfEvolutionArtifactCycles,
     summarizeCodexAuthority,
   },
 };

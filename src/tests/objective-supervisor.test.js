@@ -95,6 +95,36 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(requireFresh.verdict, "HOLD");
   assert.strictEqual(requireFresh.reason, "SELF_EVOLUTION_REPLAY_MISSING");
 
+  const seedCycle = __test.summarizeSelfEvolutionArtifactCycles({
+    stage: "SEED",
+    preferredCycleId: "cycle-1",
+    artifacts: {
+      dataset: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
+      objective: { exists: true, fresh: true, data: { cycle_id: "stale-cycle" } },
+    },
+  });
+  assert.strictEqual(seedCycle.cycle_consistent, true);
+  assert.strictEqual(seedCycle.missing_key_n, 0);
+
+  const finalCycle = __test.summarizeSelfEvolutionArtifactCycles({
+    stage: "FINAL",
+    preferredCycleId: "cycle-1",
+    artifacts: {
+      dataset: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
+      objective: { exists: true, fresh: true, data: { cycle_id: "cycle-2" } },
+      attribution: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
+      candidates: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
+      replay: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
+      canary: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
+      memory: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
+      codex: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
+      stageAutopilot: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
+    },
+  });
+  assert.strictEqual(finalCycle.cycle_consistent, false);
+  assert.strictEqual(finalCycle.cycle_mismatch_n, 1);
+  assert.deepStrictEqual(finalCycle.cycle_mismatches[0], { key: "objective", cycle_id: "cycle-2" });
+
   const allowPromote = __test.evaluateSupervisor({
     ...base,
     phase0: {
