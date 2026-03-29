@@ -44,6 +44,23 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
         missed_recovery_top_reason: { key: "DROP_WAIT_ONE_BAR_TIMING", count: 4 },
         fallback_cost_top_market: { key: "SOLUSDT", count: 1 },
       },
+      self_evolution_candidates: {
+        total_n: 6,
+        ready_n: 2,
+        blocked_n: 1,
+        top_candidate_id: "AUTO_CORE_REGIME_TIGHTEN",
+        top_scope: "PINE",
+      },
+      self_evolution_replay: {
+        validation_mode: "OFFLINE_PROXY_V1",
+        total_n: 6,
+        pass_n: 1,
+        warn_n: 3,
+        block_n: 2,
+        best_candidate_id: "AUTO_CORE_REGIME_TIGHTEN",
+        best_verdict: "PASS",
+        best_objective_delta: 0.62,
+      },
       best_febt_market_contracts: [
         {
           market: "BTCUSDT",
@@ -103,6 +120,12 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.ok(prompt.includes("Self-evolution attribution summary:"));
   assert.ok(prompt.includes("drop top layer: QUALITY 12"));
   assert.ok(prompt.includes("missed recovery top reason: DROP_WAIT_ONE_BAR_TIMING 4"));
+  assert.ok(prompt.includes("Self-evolution candidate snapshot:"));
+  assert.ok(prompt.includes("total / ready / blocked: 6 / 2 / 1"));
+  assert.ok(prompt.includes("top candidate: AUTO_CORE_REGIME_TIGHTEN / scope PINE"));
+  assert.ok(prompt.includes("Self-evolution replay snapshot:"));
+  assert.ok(prompt.includes("mode: OFFLINE_PROXY_V1"));
+  assert.ok(prompt.includes("best candidate: AUTO_CORE_REGIME_TIGHTEN / verdict PASS / delta 0.62"));
   assert.ok(prompt.includes("febt contract mode: RECOVERY_FIRST"));
   assert.ok(prompt.includes("febt tightening allowed: NO"));
   assert.ok(prompt.includes("BEST/FEBT market contracts:"));

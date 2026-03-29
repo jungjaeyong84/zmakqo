@@ -145,6 +145,12 @@ function buildPrompt(context = {}) {
   const selfEvolutionAttribution = objectiveSupervisor && objectiveSupervisor.self_evolution_attribution && typeof objectiveSupervisor.self_evolution_attribution === "object"
     ? objectiveSupervisor.self_evolution_attribution
     : {};
+  const selfEvolutionCandidates = objectiveSupervisor && objectiveSupervisor.self_evolution_candidates && typeof objectiveSupervisor.self_evolution_candidates === "object"
+    ? objectiveSupervisor.self_evolution_candidates
+    : {};
+  const selfEvolutionReplay = objectiveSupervisor && objectiveSupervisor.self_evolution_replay && typeof objectiveSupervisor.self_evolution_replay === "object"
+    ? objectiveSupervisor.self_evolution_replay
+    : {};
   return [
     "You are the weekly Codex patch engine for DONBEOLJA.",
     "Task: inspect the provided latest reports and return a single JSON decision only.",
@@ -236,6 +242,13 @@ function buildPrompt(context = {}) {
     `- false fire top market: ${selfEvolutionAttribution.false_fire_top_market ? `${selfEvolutionAttribution.false_fire_top_market.key} ${selfEvolutionAttribution.false_fire_top_market.count}` : "N/A"}`,
     `- missed recovery top reason: ${selfEvolutionAttribution.missed_recovery_top_reason ? `${selfEvolutionAttribution.missed_recovery_top_reason.key} ${selfEvolutionAttribution.missed_recovery_top_reason.count}` : "N/A"}`,
     `- fallback cost top market: ${selfEvolutionAttribution.fallback_cost_top_market ? `${selfEvolutionAttribution.fallback_cost_top_market.key} ${selfEvolutionAttribution.fallback_cost_top_market.count}` : "N/A"}`,
+    "Self-evolution candidate snapshot:",
+    `- total / ready / blocked: ${selfEvolutionCandidates.total_n != null ? selfEvolutionCandidates.total_n : "N/A"} / ${selfEvolutionCandidates.ready_n != null ? selfEvolutionCandidates.ready_n : "N/A"} / ${selfEvolutionCandidates.blocked_n != null ? selfEvolutionCandidates.blocked_n : "N/A"}`,
+    `- top candidate: ${selfEvolutionCandidates.top_candidate_id || "N/A"} / scope ${selfEvolutionCandidates.top_scope || "N/A"}`,
+    "Self-evolution replay snapshot:",
+    `- mode: ${selfEvolutionReplay.validation_mode || "N/A"}`,
+    `- total/pass/warn/block: ${selfEvolutionReplay.total_n != null ? selfEvolutionReplay.total_n : "N/A"} / ${selfEvolutionReplay.pass_n != null ? selfEvolutionReplay.pass_n : "N/A"} / ${selfEvolutionReplay.warn_n != null ? selfEvolutionReplay.warn_n : "N/A"} / ${selfEvolutionReplay.block_n != null ? selfEvolutionReplay.block_n : "N/A"}`,
+    `- best candidate: ${selfEvolutionReplay.best_candidate_id || "N/A"} / verdict ${selfEvolutionReplay.best_verdict || "N/A"} / delta ${selfEvolutionReplay.best_objective_delta != null ? selfEvolutionReplay.best_objective_delta : "N/A"}`,
   ].join("\n");
 }
 

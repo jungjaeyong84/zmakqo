@@ -153,6 +153,8 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.self_evolution_policy.dataset_latest_path.endsWith("best_self_evolution_dataset_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_policy.objective_latest_path.endsWith("best_self_evolution_objective_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_policy.attribution_latest_path.endsWith("best_self_evolution_attribution_latest.json"), true);
+  assert.strictEqual(allowPromote.self_evolution_policy.candidates_latest_path.endsWith("best_self_evolution_candidates_latest.json"), true);
+  assert.strictEqual(allowPromote.self_evolution_policy.replay_latest_path.endsWith("best_self_evolution_replay_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_dataset.rows_n, 24);
   assert.strictEqual(allowPromote.self_evolution_dataset.features_coverage_rate, 0.91);
   assert.strictEqual(typeof allowPromote.self_evolution_objective.objective_score, "number");
@@ -160,12 +162,46 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.self_evolution_objective.replacement_floor_pass, true);
   assert.strictEqual(Array.isArray(allowPromote.self_evolution_objective.market_objective_scores), true);
   assert.strictEqual(allowPromote.self_evolution_attribution.drop_top_layer, null);
+  assert.strictEqual(allowPromote.self_evolution_candidates.total_n, 0);
+  assert.strictEqual(allowPromote.self_evolution_replay.total_n, 0);
   assert.strictEqual(allowPromote.best_febt_tuning_contract.mode, "NORMAL");
   assert.strictEqual(allowPromote.best_febt_tuning_contract.tightening_allowed, true);
   assert.strictEqual(Array.isArray(allowPromote.best_febt_market_contracts), true);
   assert.strictEqual(allowPromote.best_febt_market_contracts[0].market, "BTCUSDT");
   assert.strictEqual(allowPromote.best_febt_market_contracts[1].market, "DOGEUSDT");
   assert.strictEqual(allowPromote.best_febt_market_contracts[1].mode, "COUNT_GUARD_ACTIVE");
+
+  const replayBlockedPromotion = __test.evaluateSupervisor({
+    ...base,
+    phase0: {
+      fresh: true,
+      provider: "BINANCEFUT",
+      tf: "15m",
+      legacy_wait_baseline: {},
+      bridge_latency: { webhook_to_fill_ms: { p95: 1420 }, duplicate_count: 0, reject_count: 0 },
+    },
+    selfEvolutionDataset: {
+      fresh: true,
+      summary: { rows_n: 10, executed_n: 5, drop_n: 3, missed_n: 1, features_coverage_rate: 0.9, febt_coverage_rate: 0.8 },
+    },
+    selfEvolutionReplay: {
+      validation_mode: "OFFLINE_PROXY_V1",
+      summary: { total_n: 1, pass_n: 0, warn_n: 0, block_n: 1, best_candidate_id: "AUTO_CORE_SCORE_TIGHTEN", best_verdict: "BLOCK", best_objective_delta: -0.7 },
+      validations: [{ candidate_id: "AUTO_CORE_SCORE_TIGHTEN", validation_verdict: "BLOCK", candidate_objective_delta: -0.7, blockers: ["COUNT_GUARD_ACTIVE"] }],
+    },
+    codex: {
+      status: "FRESH",
+      verdict: "PROMOTE",
+      recommended_candidate_id: "AUTO_CORE_SCORE_TIGHTEN",
+    },
+    stageAutopilot: {
+      fresh: true,
+      objective_verdict: "HOLD",
+      actions: [],
+    },
+  });
+  assert.strictEqual(replayBlockedPromotion.verdict, "HOLD");
+  assert.strictEqual(replayBlockedPromotion.reason, "SELF_EVOLUTION_REPLAY_BLOCK");
 
   const blockPromote = __test.evaluateSupervisor({
     ...base,
@@ -343,7 +379,8 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
     },
     self_evolution_policy: {
       master_spec_path: "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MASTER_SPEC.md",
-      current_focus: "P0_DATASET,P1_OBJECTIVE,P2_ATTRIBUTION",
+      current_focus: "P0_DATASET,P1_OBJECTIVE,P2_ATTRIBUTION,P3_CANDIDATE_CHANGESET,P4_REPLAY",
+      next_focus: "P5_CANARY,P6_AUTOROLLBACK,P7_MEMORY_LEDGER",
       linked_paths: ["/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DATASET_SPEC.md"],
     },
     best_febt_tuning_contract: {
