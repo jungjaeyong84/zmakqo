@@ -64,7 +64,12 @@ function deriveDeploymentGuards({
   if (canarySummary.apply_pass !== true) blockers.push("SELF_EVOLUTION_CANARY_APPLY_BLOCK");
   if (Number(canarySummary.rollback_ready_n || 0) > 0) blockers.push("SELF_EVOLUTION_CANARY_ROLLBACK_READY");
   if (memoryBlockedIds.has(targetCandidateId)) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK");
-  if (supervisor.guards && supervisor.guards.canary_pass === false) blockers.push("FILTER_CANARY_DRIFT");
+  const globalCanaryPass = canarySummary.global_canary_pass === true
+    || (
+      (toNum(canarySummary.shadow_global_drift) || 0) === 0
+      && (toNum(canarySummary.golden_global_drift) || 0) === 0
+    );
+  if (globalCanaryPass !== true) blockers.push("FILTER_CANARY_DRIFT");
 
   const deployPass = promotion.ready === true && blockers.length === 0;
   const rollbackOnly = rollback.ready === true && deployPass !== true;

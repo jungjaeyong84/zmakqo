@@ -412,6 +412,11 @@ function summarizeSelfEvolutionObjective(report = null) {
   };
 }
 
+function resolveSelfEvolutionRealizedMinSample() {
+  const configured = toNum(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_REALIZED_MIN_SAMPLE);
+  return Number.isFinite(configured) && configured > 0 ? configured : 8;
+}
+
 function summarizeSelfEvolutionAttribution(report = null) {
   const attribution = report && report.attribution && typeof report.attribution === "object"
     ? report.attribution
@@ -1008,6 +1013,9 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     canary: selfEvolutionCanarySummary,
     memoryLedger: selfEvolutionMemorySummary,
   });
+  const governanceSampleReady = objective.enough_sample === true;
+  const selfEvolutionRealizedMinSample = resolveSelfEvolutionRealizedMinSample();
+  const selfEvolutionSampleReady = Number(selfEvolutionObjectiveSummary.realized_n || 0) >= selfEvolutionRealizedMinSample;
   const selfEvolutionCycleSummary = selfEvolutionCycleState && typeof selfEvolutionCycleState === "object"
     ? selfEvolutionCycleState
     : { available: false, cycle_consistent: true, cycle_mismatch_n: 0, missing_key_n: 0, cycle_id_absent_n: 0, missing_keys: [], cycle_mismatches: [], cycle_id_absent_keys: [] };
@@ -1015,7 +1023,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   const memoryBlockedIds = new Set(selfEvolutionMemorySummary.blocked_candidate_ids || []);
 
   const blockers = [];
-  if (!objective || objective.enough_sample !== true) blockers.push("OBJECTIVE_SAMPLE_NOT_READY");
+  if (!objective || governanceSampleReady !== true) blockers.push("GOVERNANCE_OBJECTIVE_SAMPLE_NOT_READY");
   if (objective && objective.monthly_pass === false) blockers.push("MONTHLY_TARGET_NOT_MET");
   if (objective && objective.pass === false) blockers.push("OBJECTIVE_NOT_MET");
   if (!retrospectiveSummary.available) blockers.push("RETROSPECTIVE_MISSING");
@@ -1086,8 +1094,8 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
         ? "SELF_EVOLUTION_DEPLOYMENT_PLAN_BLOCK"
       : retrospectiveSummary.any_fail
         ? "RETROSPECTIVE_OBJECTIVE_FAIL"
-      : (!objective || objective.enough_sample !== true)
-          ? "OBJECTIVE_SAMPLE_NOT_READY"
+      : (!objective || governanceSampleReady !== true)
+          ? "GOVERNANCE_OBJECTIVE_SAMPLE_NOT_READY"
           : (objective && objective.pass === false)
             ? "OBJECTIVE_NOT_MET"
             : null;
@@ -1165,9 +1173,26 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     reason,
     blockers: Array.from(new Set(blockers)),
     objective: {
+      scope: "GOVERNANCE_7D_ENTRY_COHORT",
       verdict: String(objective.verdict || "N/A"),
       pass: objective.pass === true,
-      enough_sample: objective.enough_sample === true,
+      enough_sample: governanceSampleReady,
+      activity_pass: objective.activity_pass === true,
+      executed_n: toNum(objective.executed_n),
+      realized_n: toNum(objective.realized_n),
+      win_rate: toNum(governance && governance.current && governance.current.overall && governance.current.overall.win_rate),
+      avg_ret_net: toNum(governance && governance.current && governance.current.overall && governance.current.overall.avg_ret_net),
+      net_pnl_quote: toNum(governance && governance.current && governance.current.overall && governance.current.overall.net_pnl_quote),
+      monthly_run_rate_krw: toNum(objective.monthly_run_rate_krw),
+      min_monthly_net_krw: toNum(objectiveCfg.min_monthly_net_krw),
+      monthly_pass: objective.monthly_pass === true,
+      failed_checks: Array.isArray(objective.failed_checks) ? objective.failed_checks : [],
+    },
+    governance_objective: {
+      scope: "GOVERNANCE_7D_ENTRY_COHORT",
+      verdict: String(objective.verdict || "N/A"),
+      pass: objective.pass === true,
+      enough_sample: governanceSampleReady,
       activity_pass: objective.activity_pass === true,
       executed_n: toNum(objective.executed_n),
       realized_n: toNum(objective.realized_n),
@@ -1216,6 +1241,13 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     self_evolution_loop_monitor: selfEvolutionLoopMonitorSummary,
     self_evolution_weight_tuning: selfEvolutionWeightTuning,
     self_evolution_memory: selfEvolutionMemorySummary,
+    sample_readiness: {
+      governance_realized_n: toNum(objective.realized_n) || 0,
+      governance_enough_sample: governanceSampleReady,
+      self_evolution_realized_n: toNum(selfEvolutionObjectiveSummary.realized_n) || 0,
+      self_evolution_realized_min_sample: selfEvolutionRealizedMinSample,
+      self_evolution_enough_sample: selfEvolutionSampleReady,
+    },
     self_evolution_policy: selfEvolutionPolicy,
     best_febt_tuning_contract: bestFebtTuningContract,
     best_febt_market_contracts: bestFebtMarketContracts,
@@ -1264,7 +1296,7 @@ function renderMarkdown(report = {}) {
     "## Objective",
     `- objective: ${report.objective && report.objective.verdict || "N/A"}`,
     `- activity: ${report.objective && report.objective.activity_pass ? "PASS" : "FAIL"} / executed=${report.objective && report.objective.executed_n != null ? report.objective.executed_n : "N/A"}`,
-    `- enough_sample: ${report.objective && report.objective.enough_sample ? "YES" : "NO"} / realized=${report.objective && report.objective.realized_n != null ? report.objective.realized_n : "N/A"}`,
+    `- governance enough_sample: ${report.objective && report.objective.enough_sample ? "YES" : "NO"} / realized=${report.objective && report.objective.realized_n != null ? report.objective.realized_n : "N/A"}`,
     `- win_rate: ${pct(report.objective && report.objective.win_rate)}`,
     `- avg_ret_net: ${pct(report.objective && report.objective.avg_ret_net)}`,
     `- net_pnl_quote: ${signedNum(report.objective && report.objective.net_pnl_quote, 2)}`,
@@ -1335,6 +1367,7 @@ function renderMarkdown(report = {}) {
     `- rows/executed/drop/missed: ${report.self_evolution_dataset && report.self_evolution_dataset.rows_n != null ? report.self_evolution_dataset.rows_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.executed_n != null ? report.self_evolution_dataset.executed_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.drop_n != null ? report.self_evolution_dataset.drop_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.missed_n != null ? report.self_evolution_dataset.missed_n : "N/A"}`,
     `- fallback/rejected/partial: ${report.self_evolution_dataset && report.self_evolution_dataset.fallback_n != null ? report.self_evolution_dataset.fallback_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.rejected_n != null ? report.self_evolution_dataset.rejected_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.partial_n != null ? report.self_evolution_dataset.partial_n : "N/A"}`,
     `- realized_n: ${report.self_evolution_dataset && report.self_evolution_dataset.realized_n != null ? report.self_evolution_dataset.realized_n : "N/A"} / features=${pct(report.self_evolution_dataset && report.self_evolution_dataset.features_coverage_rate)} / febt=${pct(report.self_evolution_dataset && report.self_evolution_dataset.febt_coverage_rate)}`,
+    `- sample_readiness: governance=${report.sample_readiness && report.sample_readiness.governance_enough_sample ? "YES" : "NO"} (${report.sample_readiness && report.sample_readiness.governance_realized_n != null ? report.sample_readiness.governance_realized_n : "N/A"}) / self_evolution=${report.sample_readiness && report.sample_readiness.self_evolution_enough_sample ? "YES" : "NO"} (${report.sample_readiness && report.sample_readiness.self_evolution_realized_n != null ? report.sample_readiness.self_evolution_realized_n : "N/A"} / min ${report.sample_readiness && report.sample_readiness.self_evolution_realized_min_sample != null ? report.sample_readiness.self_evolution_realized_min_sample : "N/A"})`,
     `- avg_realized_ret_net: ${signedPct(report.self_evolution_dataset && report.self_evolution_dataset.avg_realized_ret_net)} / avg_realized_pnl_quote: ${signedNum(report.self_evolution_dataset && report.self_evolution_dataset.avg_realized_pnl_quote, 0)} / avg_hold_minutes: ${report.self_evolution_dataset && report.self_evolution_dataset.avg_hold_minutes != null ? Number(report.self_evolution_dataset.avg_hold_minutes).toFixed(1) : "N/A"}`,
     "",
     "## Self-Evolution Objective",
@@ -1517,6 +1550,7 @@ async function main() {
     reason: evaluation.reason,
     blockers: evaluation.blockers,
     objective: evaluation.objective,
+    governance_objective: evaluation.governance_objective,
     promotion: evaluation.promotion,
     rollback: evaluation.rollback,
     guards: evaluation.guards,
@@ -1534,6 +1568,7 @@ async function main() {
     self_evolution_loop_monitor: null,
     self_evolution_weight_tuning: evaluation.self_evolution_weight_tuning,
     self_evolution_memory: evaluation.self_evolution_memory,
+    sample_readiness: evaluation.sample_readiness,
     filter_layers: evaluation.filter_layers,
     best_febt_tuning_contract: {
       ...(evaluation.best_febt_tuning_contract || {}),

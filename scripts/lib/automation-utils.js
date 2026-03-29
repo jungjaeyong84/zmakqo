@@ -42,6 +42,7 @@ const TELEGRAM_KO_EXACT_MAP = Object.freeze({
   LOADED: "실행 중",
   OK: "정상",
   OBJECTIVE_SAMPLE_NOT_READY: "목표 판단에 필요한 표본이 아직 부족합니다",
+  GOVERNANCE_OBJECTIVE_SAMPLE_NOT_READY: "거버넌스 목표 판단에 필요한 표본이 아직 부족합니다",
   MONTHLY_TARGET_NOT_MET: "월간 목표를 아직 달성하지 못했습니다",
   OBJECTIVE_NOT_MET: "공통 목표를 아직 달성하지 못했습니다",
   DAILY_OBJECTIVE_FAIL: "오늘 목표를 달성하지 못했습니다",
