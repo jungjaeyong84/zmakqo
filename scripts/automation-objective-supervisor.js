@@ -36,6 +36,7 @@ const ML_LATEST_PATH = path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.json");
 const EV_LATEST_PATH = path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json");
 const WAIT_LATEST_PATH = path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json");
 const FEBT_PHASE0_LATEST_PATH = path.join(OPS_DAILY_DIR, "febt_phase0_baseline_latest.json");
+const SELF_EVOLUTION_DATASET_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_dataset_latest.json");
 const CODEX_PATCH_LATEST_PATH = path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.json");
 const STAGE_AUTOPILOT_LATEST_PATH = path.join(OPS_DAILY_DIR, "stage_autopilot_latest.json");
 const RETROSPECTIVE_LATEST_PATH = path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json");
@@ -49,6 +50,7 @@ const FRESHNESS_HOURS = Object.freeze({
   ev: Math.max(24, Number(process.env.OBJECTIVE_SUPERVISOR_EV_MAX_AGE_HOURS || 96)),
   wait: Math.max(24, Number(process.env.OBJECTIVE_SUPERVISOR_WAIT_MAX_AGE_HOURS || 144)),
   phase0: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_FEBT_PHASE0_MAX_AGE_HOURS || 36)),
+  selfEvolutionDataset: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_DATASET_MAX_AGE_HOURS || 36)),
   codex: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_CODEX_MAX_AGE_HOURS || 48)),
   stageAutopilot: Math.max(4, Number(process.env.OBJECTIVE_SUPERVISOR_STAGE_AUTOPILOT_MAX_AGE_HOURS || 12)),
   retrospective: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_RETROSPECTIVE_MAX_AGE_HOURS || 30)),
@@ -264,6 +266,28 @@ function summarizeFebtByTier(byTier = {}) {
   };
 }
 
+function summarizeSelfEvolutionDataset(dataset = null) {
+  const summary = dataset && dataset.summary && typeof dataset.summary === "object"
+    ? dataset.summary
+    : {};
+  return {
+    available: !!dataset,
+    rows_n: toNum(summary.rows_n) || 0,
+    executed_n: toNum(summary.executed_n) || 0,
+    drop_n: toNum(summary.drop_n) || 0,
+    missed_n: toNum(summary.missed_n) || 0,
+    fallback_n: toNum(summary.fallback_n) || 0,
+    rejected_n: toNum(summary.rejected_n) || 0,
+    partial_n: toNum(summary.partial_n) || 0,
+    realized_n: toNum(summary.realized_n) || 0,
+    features_coverage_rate: toNum(summary.features_coverage_rate),
+    febt_coverage_rate: toNum(summary.febt_coverage_rate),
+    avg_realized_ret_net: toNum(summary.avg_realized_ret_net),
+    avg_realized_pnl_quote: toNum(summary.avg_realized_pnl_quote),
+    avg_hold_minutes: toNum(summary.avg_hold_minutes),
+  };
+}
+
 function formatBestFebtMarketContractLine(row = {}) {
   const market = String(row.market || "UNKNOWN");
   const replacement = row.projected_replacement_ratio != null ? pct(row.projected_replacement_ratio) : "N/A";
@@ -415,6 +439,14 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
       ],
     },
     {
+      header: "자기 진화 데이터셋",
+      lines: [
+        `rows ${report.self_evolution_dataset && report.self_evolution_dataset.rows_n != null ? report.self_evolution_dataset.rows_n : "N/A"} / executed ${report.self_evolution_dataset && report.self_evolution_dataset.executed_n != null ? report.self_evolution_dataset.executed_n : "N/A"} / drop ${report.self_evolution_dataset && report.self_evolution_dataset.drop_n != null ? report.self_evolution_dataset.drop_n : "N/A"} / missed ${report.self_evolution_dataset && report.self_evolution_dataset.missed_n != null ? report.self_evolution_dataset.missed_n : "N/A"}`,
+        `fallback ${report.self_evolution_dataset && report.self_evolution_dataset.fallback_n != null ? report.self_evolution_dataset.fallback_n : "N/A"} / rejected ${report.self_evolution_dataset && report.self_evolution_dataset.rejected_n != null ? report.self_evolution_dataset.rejected_n : "N/A"} / partial ${report.self_evolution_dataset && report.self_evolution_dataset.partial_n != null ? report.self_evolution_dataset.partial_n : "N/A"}`,
+        `features ${report.self_evolution_dataset && report.self_evolution_dataset.features_coverage_rate != null ? pct(report.self_evolution_dataset.features_coverage_rate) : "N/A"} / FEBT ${report.self_evolution_dataset && report.self_evolution_dataset.febt_coverage_rate != null ? pct(report.self_evolution_dataset.febt_coverage_rate) : "N/A"} / avg_ret ${report.self_evolution_dataset && report.self_evolution_dataset.avg_realized_ret_net != null ? signedPct(report.self_evolution_dataset.avg_realized_ret_net) : "N/A"}`,
+      ],
+    },
+    {
       header: "시장별 BEST/FEBT 계약",
       lines: Array.isArray(report.best_febt_market_contracts) && report.best_febt_market_contracts.length
         ? report.best_febt_market_contracts.slice(0, 4).map((row) => formatBestFebtMarketContractLine(row))
@@ -436,7 +468,7 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
   ];
 }
 
-function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, codex, stageAutopilot, retrospective } = {}) {
+function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, codex, stageAutopilot, retrospective } = {}) {
   const objective = governance && governance.current && governance.current.objective ? governance.current.objective : {};
   const objectiveCfg = governance && governance.objective ? governance.objective : {};
   const promotion = changeControl && changeControl.auto_promotion ? changeControl.auto_promotion : {};
@@ -496,6 +528,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     },
   });
   const selfEvolutionPolicy = buildSelfEvolutionPolicySpec();
+  const selfEvolutionDatasetSummary = summarizeSelfEvolutionDataset(selfEvolutionDataset);
 
   const blockers = [];
   if (!objective || objective.enough_sample !== true) blockers.push("OBJECTIVE_SAMPLE_NOT_READY");
@@ -625,6 +658,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     },
     physics: physicsSummary,
     phase0: phase0Summary,
+    self_evolution_dataset: selfEvolutionDatasetSummary,
     self_evolution_policy: selfEvolutionPolicy,
     best_febt_tuning_contract: bestFebtTuningContract,
     best_febt_market_contracts: bestFebtMarketContracts,
@@ -719,11 +753,18 @@ function renderMarkdown(report = {}) {
     "",
     "## Self-Evolution Policy",
     `- master_spec_path: ${report.self_evolution_policy && report.self_evolution_policy.master_spec_path || "N/A"}`,
+    `- dataset_latest_path: ${report.self_evolution_policy && report.self_evolution_policy.dataset_latest_path || "N/A"}`,
     `- status: ${report.self_evolution_policy && report.self_evolution_policy.status || "N/A"}`,
     `- current_focus: ${report.self_evolution_policy && report.self_evolution_policy.current_focus || "N/A"}`,
     ...((report.self_evolution_policy && Array.isArray(report.self_evolution_policy.linked_paths) && report.self_evolution_policy.linked_paths.length)
       ? report.self_evolution_policy.linked_paths.map((row) => `- doc: ${row}`)
       : ["- doc: none"]),
+    "",
+    "## Self-Evolution Dataset",
+    `- rows/executed/drop/missed: ${report.self_evolution_dataset && report.self_evolution_dataset.rows_n != null ? report.self_evolution_dataset.rows_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.executed_n != null ? report.self_evolution_dataset.executed_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.drop_n != null ? report.self_evolution_dataset.drop_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.missed_n != null ? report.self_evolution_dataset.missed_n : "N/A"}`,
+    `- fallback/rejected/partial: ${report.self_evolution_dataset && report.self_evolution_dataset.fallback_n != null ? report.self_evolution_dataset.fallback_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.rejected_n != null ? report.self_evolution_dataset.rejected_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.partial_n != null ? report.self_evolution_dataset.partial_n : "N/A"}`,
+    `- realized_n: ${report.self_evolution_dataset && report.self_evolution_dataset.realized_n != null ? report.self_evolution_dataset.realized_n : "N/A"} / features=${pct(report.self_evolution_dataset && report.self_evolution_dataset.features_coverage_rate)} / febt=${pct(report.self_evolution_dataset && report.self_evolution_dataset.febt_coverage_rate)}`,
+    `- avg_realized_ret_net: ${signedPct(report.self_evolution_dataset && report.self_evolution_dataset.avg_realized_ret_net)} / avg_realized_pnl_quote: ${signedNum(report.self_evolution_dataset && report.self_evolution_dataset.avg_realized_pnl_quote, 0)} / avg_hold_minutes: ${report.self_evolution_dataset && report.self_evolution_dataset.avg_hold_minutes != null ? Number(report.self_evolution_dataset.avg_hold_minutes).toFixed(1) : "N/A"}`,
     "",
     "## BEST/FEBT Market Contracts",
     ...((Array.isArray(report.best_febt_market_contracts) && report.best_febt_market_contracts.length)
@@ -765,6 +806,7 @@ async function main() {
   const evArtifact = readArtifact("ev_tuner", EV_LATEST_PATH, FRESHNESS_HOURS.ev);
   const waitArtifact = readArtifact("wait_tuner", WAIT_LATEST_PATH, FRESHNESS_HOURS.wait);
   const phase0Artifact = readArtifact("febt_phase0", FEBT_PHASE0_LATEST_PATH, FRESHNESS_HOURS.phase0);
+  const selfEvolutionDatasetArtifact = readArtifact("self_evolution_dataset", SELF_EVOLUTION_DATASET_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionDataset);
   const codexArtifact = readArtifact("codex_patch", CODEX_PATCH_LATEST_PATH, FRESHNESS_HOURS.codex);
   const stageAutopilotArtifact = readArtifact("stage_autopilot", STAGE_AUTOPILOT_LATEST_PATH, FRESHNESS_HOURS.stageAutopilot);
   const retrospectiveArtifact = readArtifact("objective_retrospective", RETROSPECTIVE_LATEST_PATH, FRESHNESS_HOURS.retrospective);
@@ -777,6 +819,7 @@ async function main() {
     ev: evArtifact.data,
     wait: waitArtifact.data,
     phase0: phase0Artifact.exists ? { ...phase0Artifact.data, fresh: phase0Artifact.fresh } : null,
+    selfEvolutionDataset: selfEvolutionDatasetArtifact.exists ? { ...selfEvolutionDatasetArtifact.data, fresh: selfEvolutionDatasetArtifact.fresh } : null,
     codex: codexArtifact.exists ? { ...codexArtifact.data, fresh: codexArtifact.fresh } : null,
     stageAutopilot: stageAutopilotArtifact.exists ? { ...stageAutopilotArtifact.data, fresh: stageAutopilotArtifact.fresh } : null,
     retrospective: retrospectiveArtifact.data,
@@ -794,6 +837,7 @@ async function main() {
     guards: evaluation.guards,
     physics: evaluation.physics,
     phase0: evaluation.phase0,
+    self_evolution_dataset: evaluation.self_evolution_dataset,
     filter_layers: evaluation.filter_layers,
     best_febt_tuning_contract: {
       ...(evaluation.best_febt_tuning_contract || {}),
@@ -805,7 +849,7 @@ async function main() {
     codex_review: evaluation.codex_review,
     stage_autopilot: evaluation.stage_autopilot,
     retrospective: evaluation.retrospective,
-    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, phase0Artifact, codexArtifact, stageAutopilotArtifact, retrospectiveArtifact].map((row) => ({
+    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, phase0Artifact, selfEvolutionDatasetArtifact, codexArtifact, stageAutopilotArtifact, retrospectiveArtifact].map((row) => ({
       name: row.name,
       filePath: row.filePath,
       fresh: row.fresh,

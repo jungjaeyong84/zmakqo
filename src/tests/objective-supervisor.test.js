@@ -105,6 +105,24 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
         reject_count: 2,
       },
     },
+    selfEvolutionDataset: {
+      fresh: true,
+      summary: {
+        rows_n: 24,
+        executed_n: 10,
+        drop_n: 7,
+        missed_n: 3,
+        fallback_n: 2,
+        rejected_n: 1,
+        partial_n: 1,
+        realized_n: 8,
+        features_coverage_rate: 0.91,
+        febt_coverage_rate: 0.83,
+        avg_realized_ret_net: 0.014,
+        avg_realized_pnl_quote: 1320,
+        avg_hold_minutes: 47.5,
+      },
+    },
     codex: {
       status: "FRESH",
       verdict: "PROMOTE",
@@ -124,6 +142,9 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.phase0.available, true);
   assert.strictEqual(allowPromote.phase0.immediate_win_rate, 0.57);
   assert.strictEqual(allowPromote.self_evolution_policy.master_spec_path.endsWith("BEST_SELF_EVOLUTION_MASTER_SPEC.md"), true);
+  assert.strictEqual(allowPromote.self_evolution_policy.dataset_latest_path.endsWith("best_self_evolution_dataset_latest.json"), true);
+  assert.strictEqual(allowPromote.self_evolution_dataset.rows_n, 24);
+  assert.strictEqual(allowPromote.self_evolution_dataset.features_coverage_rate, 0.91);
   assert.strictEqual(allowPromote.best_febt_tuning_contract.mode, "NORMAL");
   assert.strictEqual(allowPromote.best_febt_tuning_contract.tightening_allowed, true);
   assert.strictEqual(Array.isArray(allowPromote.best_febt_market_contracts), true);
