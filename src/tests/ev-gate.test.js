@@ -1,0 +1,243 @@
+"use strict";
+
+const assert = require("assert");
+const { __test } = require("../engine/paperUpbitRunner");
+
+function makeBars({
+  count = 12,
+  start = 100,
+  driftPct = 0.35,
+  rangePct = 1.30,
+  closeControl = 0.78,
+  direction = "LONG",
+  adverseEvery = 0,
+} = {}) {
+  const bars = [];
+  let close = start;
+  let ts = 1_700_000_000_000;
+  for (let i = 0; i < count; i += 1) {
+    const sign = (adverseEvery > 0 && i > 0 && i % adverseEvery === 0) ? -1 : 1;
+    const drift = driftPct * sign * (direction === "SHORT" ? -1 : 1);
+    const open = close;
+    close = open * (1 + (drift / 100));
+    const center = Math.max(open, close);
+    const floor = Math.min(open, close);
+    const fullRange = open * (rangePct / 100);
+    const high = center + (fullRange * (1 - closeControl));
+    const low = floor - (fullRange * closeControl);
+    bars.push({
+      open,
+      high,
+      low,
+      close,
+      bar_close_time_utc_ms: ts,
+    });
+    ts += 900_000;
+  }
+  return bars;
+}
+
+async function run() {
+  assert.strictEqual(typeof __test.resolveEvGateConfig, "function", "resolveEvGateConfig export missing");
+  assert.strictEqual(typeof __test.resolveEvGateTradePlan, "function", "resolveEvGateTradePlan export missing");
+  assert.strictEqual(typeof __test.shouldBypassEvEntryGate, "function", "shouldBypassEvEntryGate export missing");
+  assert.strictEqual(typeof __test.evaluateEvEntryGate, "function", "evaluateEvEntryGate export missing");
+
+  const cfg = __test.resolveEvGateConfig({
+    ev_gate_enabled: true,
+    ev_gate_core_enabled: true,
+    ev_gate_pre_real_enabled: true,
+    ev_gate_real_enabled: true,
+    ev_gate_early_enabled: true,
+    ev_gate_tp1_prob_min: 0.55,
+    ev_gate_tp1_prob_min_early: 0.60,
+    ev_gate_tp1_prob_min_core: 0.55,
+    ev_gate_tp1_prob_min_pre_real: 0.56,
+    ev_gate_tp1_prob_min_real: 0.58,
+    ev_gate_tp1_prob_full: 0.60,
+    ev_gate_tp1_prob_kill: 0.50,
+    ev_gate_qty_scale_mid: 0.70,
+    ev_gate_qty_scale_low: 0.40,
+    ev_gate_lookback_bars: 12,
+    ev_gate_atr_bars: 8,
+    ev_gate_default_tp1_pct: 3.25,
+    ev_gate_default_sl_pct: 1.65,
+    ev_gate_skip_missing_bars: true,
+  }, "BINANCEFUT");
+
+  assert.strictEqual(cfg.enabled, true);
+  assert.strictEqual(cfg.applyEarly, true);
+  assert.strictEqual(cfg.tp1ProbMin, 0.55);
+  assert.strictEqual(cfg.tp1ProbMinEarly, 0.60);
+  assert.strictEqual(cfg.tp1ProbFull, 0.60);
+  assert.strictEqual(cfg.tp1ProbKill, 0.50);
+
+  const allowCoreLong = await __test.evaluateEvEntryGate({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    tf: "15m",
+    barCloseMs: 1_700_000_000_000 + (11 * 900_000),
+    intent: "ENTRY",
+    intentDir: "LONG",
+    eventUpper: "CORE_LONG",
+    features: {},
+    cfg,
+    bars: makeBars({ direction: "LONG", driftPct: 0.50, rangePct: 1.80, closeControl: 0.92 }),
+  });
+  assert.strictEqual(allowCoreLong.ok, true);
+  assert.strictEqual(allowCoreLong.detail.ev_gate_action, "REDUCE_MID");
+  assert.strictEqual(allowCoreLong.qtyScale, 0.70);
+  assert.strictEqual(allowCoreLong.detail.ev_gate_tp1_prob_min, 0.55);
+  assert.strictEqual(allowCoreLong.detail.ev_gate_policy_version, "TP1_WEIGHT_V1");
+  assert.strictEqual(allowCoreLong.detail.ev_gate_policy_source, "DEFAULT");
+  assert.ok(allowCoreLong.detail.ev_gate_component_weights);
+  assert.ok(allowCoreLong.detail.ev_gate_tp1_reach_prob_lower_bound > 0.55);
+  assert.ok(allowCoreLong.detail.ev_gate_tp1_reach_prob_lower_bound < 0.60);
+
+  const reduceCoreLong = await __test.evaluateEvEntryGate({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    tf: "15m",
+    barCloseMs: 1_700_000_000_000 + (11 * 900_000),
+    intent: "ENTRY",
+    intentDir: "LONG",
+    eventUpper: "CORE_LONG",
+    features: {},
+    cfg,
+    bars: makeBars({ direction: "LONG", driftPct: 0.20, rangePct: 1.40, closeControl: 0.65, adverseEvery: 4 }),
+  });
+  assert.strictEqual(reduceCoreLong.ok, true);
+  assert.strictEqual(reduceCoreLong.detail.ev_gate_action, "REDUCE_LOW");
+  assert.strictEqual(reduceCoreLong.qtyScale, 0.40);
+  assert.ok(reduceCoreLong.detail.ev_gate_tp1_reach_prob_lower_bound >= 0.50);
+  assert.ok(reduceCoreLong.detail.ev_gate_tp1_reach_prob_lower_bound < 0.55);
+
+  const dropCoreLong = await __test.evaluateEvEntryGate({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    tf: "15m",
+    barCloseMs: 1_700_000_000_000 + (11 * 900_000),
+    intent: "ENTRY",
+    intentDir: "LONG",
+    eventUpper: "CORE_LONG",
+    features: {},
+    cfg,
+    bars: makeBars({ direction: "LONG", driftPct: 0.05, rangePct: 1.35, closeControl: 0.40, adverseEvery: 2 }),
+  });
+  assert.strictEqual(dropCoreLong.ok, false);
+  assert.strictEqual(dropCoreLong.reason, "DROP_EV_GATE_TP1_PROB");
+  assert.strictEqual(dropCoreLong.detail.ev_gate_action, "DROP");
+
+  const reduceEarlyLong = await __test.evaluateEvEntryGate({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    tf: "15m",
+    barCloseMs: 1_700_000_000_000 + (11 * 900_000),
+    intent: "ENTRY",
+    intentDir: "LONG",
+    eventUpper: "EARLY_LONG",
+    features: {},
+    cfg,
+    bars: makeBars({ direction: "LONG", driftPct: 0.50, rangePct: 1.80, closeControl: 0.92 }),
+  });
+  assert.strictEqual(reduceEarlyLong.ok, true);
+  assert.strictEqual(reduceEarlyLong.detail.ev_gate_tp1_prob_min, 0.6);
+  assert.strictEqual(reduceEarlyLong.detail.ev_gate_action, "REDUCE_LOW");
+
+  const allowCoreShort = await __test.evaluateEvEntryGate({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    tf: "15m",
+    barCloseMs: 1_700_000_000_000 + (11 * 900_000),
+    intent: "ENTRY",
+    intentDir: "SHORT",
+    eventUpper: "CORE_SHORT",
+    features: {},
+    cfg,
+    bars: makeBars({ direction: "SHORT", driftPct: 0.50, rangePct: 1.80, closeControl: 0.92 }),
+  });
+  assert.strictEqual(allowCoreShort.ok, true);
+  assert.strictEqual(allowCoreShort.detail.ev_gate_action, "ALLOW");
+  assert.strictEqual(allowCoreShort.qtyScale, 1);
+  assert.ok(allowCoreShort.detail.ev_gate_tp1_reach_prob_lower_bound >= 0.60);
+
+  const overridePlan = __test.resolveEvGateTradePlan({
+    cfg,
+    exitRules: { SL: -0.02, TP_P1: 0.03, TP_P1_QTY: 0.5, BE_ENABLE: true, BE_PCT: 0.0025, RUNNER_MIN_PROFIT_PCT: 0.02 },
+    features: {
+      exit_policy_source: "PINE_FIXED",
+      exit_policy_sl_pct: 1.0,
+      exit_policy_tp1_pct: 4.0,
+      exit_policy_be_pct: 0,
+      exit_policy_runner_min_profit_pct: 1.5,
+    },
+  });
+  assert.strictEqual(overridePlan.source, "exit_rules");
+  assert.strictEqual(overridePlan.tp1Pct, 4);
+  assert.strictEqual(overridePlan.slPct, 1);
+
+  const skipMissingBars = await __test.evaluateEvEntryGate({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    tf: "15m",
+    barCloseMs: 1_700_000_000_000 + (4 * 900_000),
+    intent: "ENTRY",
+    intentDir: "SHORT",
+    eventUpper: "CORE_SHORT",
+    features: {},
+    cfg,
+    bars: makeBars({ count: 5, direction: "SHORT" }),
+  });
+  assert.strictEqual(skipMissingBars.ok, true);
+  assert.strictEqual(skipMissingBars.detail.ev_gate_skipped, true);
+  assert.strictEqual(skipMissingBars.detail.ev_gate_skip_reason, "INSUFFICIENT_BARS");
+
+  const strictCfg = __test.resolveEvGateConfig({
+    ev_gate_enabled: true,
+    ev_gate_skip_missing_bars: false,
+  }, "BINANCEFUT");
+  const dropMissingBars = await __test.evaluateEvEntryGate({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    tf: "15m",
+    barCloseMs: 1_700_000_000_000 + (4 * 900_000),
+    intent: "ENTRY",
+    intentDir: "SHORT",
+    eventUpper: "CORE_SHORT",
+    features: {},
+    cfg: strictCfg,
+    bars: makeBars({ count: 5, direction: "SHORT" }),
+  });
+  assert.strictEqual(dropMissingBars.ok, false);
+  assert.strictEqual(dropMissingBars.reason, "DROP_EV_GATE_BARS_MISSING");
+
+  const skipAdd = await __test.evaluateEvEntryGate({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    tf: "15m",
+    intent: "ADD",
+    intentDir: "LONG",
+    eventUpper: "CORE_LONG",
+    features: {},
+    cfg,
+    bars: makeBars({ direction: "LONG" }),
+  });
+  assert.strictEqual(skipAdd.ok, true);
+  assert.strictEqual(skipAdd.detail, undefined);
+
+  assert.strictEqual(__test.shouldBypassEvEntryGate({
+    intent: "ENTRY",
+    features: { _manual_retry_by_user: true },
+  }), true);
+  assert.strictEqual(__test.shouldBypassEvEntryGate({
+    intent: "ENTRY",
+    features: {},
+  }), false);
+
+  console.log("EV_GATE_TEST_OK");
+}
+
+run().catch((err) => {
+  console.error("EV_GATE_TEST_FAIL", err && err.stack ? err.stack : err);
+  process.exit(1);
+});
