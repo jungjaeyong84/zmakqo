@@ -150,6 +150,38 @@ function run() {
   assert.strictEqual(cfSummaryLines.length, 3);
   assert.ok(cfSummaryLines[0].includes("market state"));
   assert.ok(cfSummaryLines[2].includes("source"));
+  const weeklyLayerLines = __test.buildWeeklyTelegramLayerLines({
+    current: { drop_counterfactual: cfSummary },
+    recommendations: {
+      QUALITY: { action: "KEEP", reason: "STABLE" },
+      AI: { action: "KEEP", reason: "ALIGNED" },
+      MARKET: { action: "SOFTEN", reason: "STATE_MIXED" },
+    },
+    settings: {
+      ai_bias_gate_neutral_mult: 0.5,
+      ai_bias_gate_opposite_mult: 0.25,
+      ai_bias_gate_strong_opposite_score: 0.35,
+      ai_bias_gate_strong_opposite_conf: 0.60,
+      ev_gate_tp1_prob_min: 0.52,
+      ev_gate_tp1_prob_min_early: 0.48,
+      ev_gate_tp1_prob_full: 0.66,
+      ev_gate_tp1_prob_kill: 0.40,
+      ev_gate_qty_scale_mid: 0.70,
+      ev_gate_qty_scale_low: 0.45,
+      wait_one_bar_same_dir_streak_min: 3,
+      wait_one_bar_chase_ratio_min: 1.5,
+      wait_one_bar_last_close_control_min: 0.55,
+      wait_one_bar_last_dir_body_min: 0.25,
+      wait_one_bar_last_opposite_wick_max: 0.35,
+      wait_one_bar_recent_move1_pct_min: 0.008,
+      wait_one_bar_counter_dir_bars_max: 2,
+    },
+  });
+  assert.strictEqual(weeklyLayerLines.length >= 9, true);
+  assert.ok(weeklyLayerLines[0].includes("1차 무결성층"));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("3차 상태 분포")));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("4차 EV policy")));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("5차 WAIT 타이밍층")));
 
   const riskCurve = __test.buildCompetingRiskCurve([
     { ok: true, tp1_time_h: 1, sl_time_h: null },

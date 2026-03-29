@@ -171,6 +171,30 @@ function buildCounterfactualFeatureSummaryLines(summary = {}) {
   ];
 }
 
+function stripSummaryPrefix(line, prefix) {
+  const raw = String(line || "");
+  return raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
+}
+
+function buildWeeklyTelegramLayerLines({ current = {}, recommendations = {}, settings = {} } = {}) {
+  const featureLines = buildCounterfactualFeatureSummaryLines(current.drop_counterfactual || {});
+  const marketState = stripSummaryPrefix(featureLines[0], "market state ");
+  const marketAction = stripSummaryPrefix(featureLines[1], "market action ");
+  const evPolicy = stripSummaryPrefix(featureLines[2], "ev policy ");
+  return [
+    `1차 무결성층 ${recommendations.QUALITY && recommendations.QUALITY.action || "N/A"} / ${recommendations.QUALITY && recommendations.QUALITY.reason || "N/A"}`,
+    `2차 행동결정층(AI) ${recommendations.AI && recommendations.AI.action || "N/A"} / ${recommendations.AI && recommendations.AI.reason || "N/A"}`,
+    `2차 AI 수량배수 neutral ${pct(settings.ai_bias_gate_neutral_mult)} / opposite ${pct(settings.ai_bias_gate_opposite_mult)} / strong score ${pct(settings.ai_bias_gate_strong_opposite_score)} / strong conf ${pct(settings.ai_bias_gate_strong_opposite_conf)}`,
+    `3차 상태층 ${recommendations.MARKET && recommendations.MARKET.action || "N/A"} / ${recommendations.MARKET && recommendations.MARKET.reason || "N/A"}`,
+    `3차 상태 분포 ${marketState || "N/A"}`,
+    `3차 상태 action ${marketAction || "N/A"}`,
+    `4차 EV/시간가치층 threshold 기본 ${pct(settings.ev_gate_tp1_prob_min)} / ${LIVE_ENTRY_LABEL} ${pct(settings.ev_gate_tp1_prob_min_early)}`,
+    `4차 EV band full ${pct(settings.ev_gate_tp1_prob_full)} / kill ${pct(settings.ev_gate_tp1_prob_kill)} / mid ${pct(settings.ev_gate_qty_scale_mid)} / low ${pct(settings.ev_gate_qty_scale_low)}`,
+    `4차 EV policy ${evPolicy || "N/A"}`,
+    `5차 WAIT 타이밍층 streak ${settings.wait_one_bar_same_dir_streak_min} / chase ${ratioX(settings.wait_one_bar_chase_ratio_min)} / close ${pct(settings.wait_one_bar_last_close_control_min)} / body ${pct(settings.wait_one_bar_last_dir_body_min)} / wick ${pct(settings.wait_one_bar_last_opposite_wick_max)} / move1 ${pct(settings.wait_one_bar_recent_move1_pct_min)} / counter ${settings.wait_one_bar_counter_dir_bars_max}`,
+  ];
+}
+
 function tfIntervalMs(tf) {
   const raw = String(tf || "").trim().toLowerCase();
   if (raw === "15m") return 15 * 60 * 1000;
@@ -2863,6 +2887,11 @@ async function main() {
   const mlPolicyPath = report.artifacts.ml_policy_report || "N/A";
   const patchCandidatePath = patchCandidatesMdPath;
   const changeControlPath = changeControlMdPath;
+  const layerLines = buildWeeklyTelegramLayerLines({
+    current,
+    recommendations,
+    settings,
+  });
   await sendKoreanTelegramSummary({
     title: `[주간 전략 점검] ${PROVIDER}`,
     severity: current.objective.pass ? "INFO" : (current.objective.enough_sample ? "WARN" : "INFO"),
@@ -2888,15 +2917,9 @@ async function main() {
         ],
       },
       {
-        header: "현재 권고와 운영값",
+        header: "현재 필터 계층",
         lines: [
-          `1차 무결성 가드 ${recommendations.QUALITY.action} / ${recommendations.QUALITY.reason}`,
-          `2차 AI ${recommendations.AI.action} / ${recommendations.AI.reason}`,
-          `3차 시황 ${recommendations.MARKET.action} / ${recommendations.MARKET.reason}`,
-          `4차 EV threshold 기본 ${pct(settings.ev_gate_tp1_prob_min)} / ${LIVE_ENTRY_LABEL} ${pct(settings.ev_gate_tp1_prob_min_early)}`,
-          `3차 시황 수량배수 neutral ${pct(settings.ai_bias_gate_neutral_mult)} / opposite ${pct(settings.ai_bias_gate_opposite_mult)}`,
-          `4차 EV band full ${pct(settings.ev_gate_tp1_prob_full)} / kill ${pct(settings.ev_gate_tp1_prob_kill)} / mid ${pct(settings.ev_gate_qty_scale_mid)} / low ${pct(settings.ev_gate_qty_scale_low)}`,
-          `5차 WAIT streak ${settings.wait_one_bar_same_dir_streak_min} / chase ${ratioX(settings.wait_one_bar_chase_ratio_min)} / close ${pct(settings.wait_one_bar_last_close_control_min)} / body ${pct(settings.wait_one_bar_last_dir_body_min)}`,
+          ...layerLines,
           `Pine full-quality 후보 ${current.pine_stage1_patch_candidates && current.pine_stage1_patch_candidates.verdict || "N/A"} / ${current.pine_stage1_patch_candidates && Array.isArray(current.pine_stage1_patch_candidates.candidates) && current.pine_stage1_patch_candidates.candidates[0] ? (current.pine_stage1_patch_candidates.candidates[0].display_candidate_id || displayCandidateId(current.pine_stage1_patch_candidates.candidates[0])) : "hold"}`,
         ],
       },
@@ -2974,6 +2997,7 @@ if (require.main === module) {
       buildSufficiencyRows,
       summarizeCounterfactualFeatureBreakdown,
       buildCounterfactualFeatureSummaryLines,
+      buildWeeklyTelegramLayerLines,
       ratioX,
     },
   };

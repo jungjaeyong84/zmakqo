@@ -18,6 +18,7 @@ const {
 } = require("./lib/automation-utils");
 const { getFirestore } = require("../src/storage/firestore");
 const { auditBinanceExitIntegrity } = require("../src/services/exitIntegrityAudit");
+const { resolveMarketStateSummary } = require("../src/utils/marketStateSummary");
 const { resolveStatPhysFeatures } = require("../src/utils/statPhysFeatures");
 
 loadLocalEnv();
@@ -151,6 +152,15 @@ function summarizePhysics(rows = []) {
     sp_susceptibility: averages.susceptibility,
     sp_free_energy: averages.freeEnergy,
   });
+  const marketState = resolveMarketStateSummary({
+    sp_entropy_score: averages.entropy,
+    sp_coherence_score: averages.coherence,
+    sp_transition_risk: averages.transitionRisk,
+    sp_field_alignment: averages.fieldAlignment,
+    sp_domain_wall_density: averages.domainWallDensity,
+    sp_susceptibility: averages.susceptibility,
+    sp_free_energy: averages.freeEnergy,
+  });
   return {
     sampled_n: Array.isArray(rows) ? rows.length : 0,
     counted_n: countedN,
@@ -168,7 +178,57 @@ function summarizePhysics(rows = []) {
     domain_wall_density: averages.domainWallDensity,
     susceptibility: averages.susceptibility,
     free_energy: averages.freeEnergy,
+    action: marketState.physicsAction || "ALLOW",
+    qty_scale: Number.isFinite(Number(marketState.physicsQtyScale)) ? Number(marketState.physicsQtyScale) : null,
+    wait_assist: marketState.waitAssist === true,
+    wait_hard: marketState.waitHard === true,
   };
+}
+
+function buildPhysicsWaitLabel(summary = {}) {
+  if (summary && summary.wait_hard === true) return "HARD";
+  if (summary && summary.wait_assist === true) return "ASSIST";
+  return "ALLOW";
+}
+
+function buildHourlyPhysicsLine(label, summary = {}) {
+  return `${label} ${summary.display_state || "정보 없음"} / action ${summary.action || "N/A"} / qty ${summary.qty_scale != null ? summary.qty_scale : "N/A"} / wait ${buildPhysicsWaitLabel(summary)} / critical ${pct(summary.critical_rate, 0)} / disorder ${pct(summary.disordered_rate, 0)} / free ${pct(summary.free_energy)}`;
+}
+
+function buildHourlyGuardTelegramSections({
+  findings = [],
+  recentSignals = [],
+  recentDropped = [],
+  gatePass = 0,
+  integrity = {},
+  report = {},
+  signalPhysics = {},
+  dropPhysics = {},
+  action = "없음",
+} = {}) {
+  return [
+    {
+      header: "현재 상태",
+      lines: [
+        findings.length ? findings[0] : "정상",
+        `신호 ${recentSignals.length} / 드롭 ${recentDropped.length} / Gate PASS ${gatePass}`,
+        `보호주문 이슈 ${integrity.issue_count || 0}건`,
+        `시스템 오류 24h ${Number.isFinite(Number(report.system_error_count_24h)) ? Number(report.system_error_count_24h) : "N/A"}건`,
+      ],
+    },
+    {
+      header: "상태층(시장 물리)",
+      lines: [
+        buildHourlyPhysicsLine("신호", signalPhysics),
+        buildHourlyPhysicsLine("드롭", dropPhysics),
+      ],
+    },
+    {
+      header: "핵심",
+      lines: findings.slice(1, 3).length ? findings.slice(1, 3) : ["즉시 이상 없음"],
+    },
+    { header: "조치", lines: [action] },
+  ];
 }
 
 async function main() {
@@ -291,8 +351,8 @@ async function main() {
       `- 생성 시각: ${meta.kst}`,
       `- 상태: ${status}`,
       `- 최근 90분 신호: ${recentSignals.length}건 / 드롭: ${recentDropped.length}건 / Gate PASS: ${gatePass}건`,
-      `- 시장물리(신호): ${signalPhysics.display_state || "정보 없음"} / critical ${pct(signalPhysics.critical_rate, 0)} / disorder ${pct(signalPhysics.disordered_rate, 0)} / free ${pct(signalPhysics.free_energy)}`,
-      `- 시장물리(드롭): ${dropPhysics.display_state || "정보 없음"} / critical ${pct(dropPhysics.critical_rate, 0)} / disorder ${pct(dropPhysics.disordered_rate, 0)} / free ${pct(dropPhysics.free_energy)}`,
+      `- 상태층(신호): ${buildHourlyPhysicsLine("신호", signalPhysics)}`,
+      `- 상태층(드롭): ${buildHourlyPhysicsLine("드롭", dropPhysics)}`,
       `- 보호주문 감사: ok=${integrity.ok} / issue_count=${integrity.issue_count || 0}`,
       `- 핵심 발견:`,
       ...(findings.length ? findings.map((line) => `  - ${line}`) : ["  - 정상"]),
@@ -304,32 +364,21 @@ async function main() {
   copyLatest(jsonPath, latestJson);
   copyLatest(mdPath, latestMd);
 
+  const telegramSections = buildHourlyGuardTelegramSections({
+    findings,
+    recentSignals,
+    recentDropped,
+    gatePass,
+    integrity,
+    report,
+    signalPhysics,
+    dropPhysics,
+    action,
+  });
   const alertResult = await sendKoreanTelegramSummary({
     title: `[시간별 운영 점검] ${status}`,
     severity: status === "치명" ? "WARN" : "INFO",
-    sections: [
-      {
-        header: "현재 상태",
-        lines: [
-          findings.length ? findings[0] : "정상",
-          `신호 ${recentSignals.length} / 드롭 ${recentDropped.length} / Gate PASS ${gatePass}`,
-          `보호주문 이슈 ${integrity.issue_count || 0}건`,
-          `시스템 오류 24h ${Number.isFinite(Number(report.system_error_count_24h)) ? Number(report.system_error_count_24h) : "N/A"}건`,
-        ],
-      },
-      {
-        header: "시장 물리",
-        lines: [
-          `신호 ${signalPhysics.display_state || "정보 없음"} / critical ${pct(signalPhysics.critical_rate, 0)} / disorder ${pct(signalPhysics.disordered_rate, 0)} / free ${pct(signalPhysics.free_energy)}`,
-          `드롭 ${dropPhysics.display_state || "정보 없음"} / critical ${pct(dropPhysics.critical_rate, 0)} / disorder ${pct(dropPhysics.disordered_rate, 0)} / free ${pct(dropPhysics.free_energy)}`,
-        ],
-      },
-      {
-        header: "핵심",
-        lines: findings.slice(1, 3).length ? findings.slice(1, 3) : ["즉시 이상 없음"],
-      },
-      { header: "조치", lines: [action] },
-    ],
+    sections: telegramSections,
   });
   if (!alertResult || (alertResult.ok !== true && alertResult.skipped !== true)) {
     throw new Error(`TELEGRAM_SEND_FAILED:${JSON.stringify(alertResult || {})}`);
@@ -338,7 +387,19 @@ async function main() {
   console.log(JSON.stringify({ ok: true, status, jsonPath, mdPath, alert: alertResult }, null, 2));
 }
 
-main().catch((err) => {
-  console.error("automation-hourly-guard failed:", err && err.stack ? err.stack : err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("automation-hourly-guard failed:", err && err.stack ? err.stack : err);
+    process.exit(1);
+  });
+} else {
+  module.exports = {
+    main,
+    __test: {
+      summarizePhysics,
+      buildPhysicsWaitLabel,
+      buildHourlyPhysicsLine,
+      buildHourlyGuardTelegramSections,
+    },
+  };
+}

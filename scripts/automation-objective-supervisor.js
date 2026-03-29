@@ -15,6 +15,7 @@ const {
   writeText,
 } = require("./lib/automation-utils");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
+const { resolveMarketStateSummary } = require("../src/utils/marketStateSummary");
 const { resolveStatPhysFeatures } = require("../src/utils/statPhysFeatures");
 
 loadLocalEnv();
@@ -177,6 +178,15 @@ function summarizeGovernancePhysics(governance = null) {
     sp_susceptibility: summary.susceptibility,
     sp_free_energy: summary.freeEnergy,
   });
+  const marketState = resolveMarketStateSummary({
+    sp_entropy_score: summary.entropy,
+    sp_coherence_score: summary.coherence,
+    sp_transition_risk: summary.transitionRisk,
+    sp_field_alignment: summary.fieldAlignment,
+    sp_domain_wall_density: summary.domainWallDensity,
+    sp_susceptibility: summary.susceptibility,
+    sp_free_energy: summary.freeEnergy,
+  });
   const available = [
     summary.entropy,
     summary.coherence,
@@ -202,7 +212,76 @@ function summarizeGovernancePhysics(governance = null) {
     susceptibility: summary.susceptibility,
     free_energy: summary.freeEnergy,
     block_reason: blockReason,
+    action: marketState.physicsAction || "ALLOW",
+    qty_scale: Number.isFinite(Number(marketState.physicsQtyScale)) ? Number(marketState.physicsQtyScale) : null,
+    wait_assist: marketState.waitAssist === true,
+    wait_hard: marketState.waitHard === true,
   };
+}
+
+function buildObjectiveSupervisorTelegramSections(report = {}) {
+  const blockersLine = Array.isArray(report.blockers) && report.blockers.length
+    ? report.blockers.slice(0, 4).join(", ")
+    : "없음";
+  const physicsWait = report.physics && report.physics.wait_hard
+    ? "HARD"
+    : (report.physics && report.physics.wait_assist ? "ASSIST" : "ALLOW");
+  return [
+    {
+      header: "지금 결론",
+      lines: [
+        `자동화는 지금 '${report.verdict}' 상태입니다. 주된 이유는 '${report.reason}' 입니다.`,
+        `현재 차단 사유 ${blockersLine}`,
+      ],
+    },
+    {
+      header: "목표 달성 상태",
+      lines: [
+        `현재 실현 표본 ${report.objective.realized_n ?? "정보 없음"}건, 실행 ${report.objective.executed_n ?? "정보 없음"}건, 월간 예상 수익 ${signedNum(report.objective.monthly_run_rate_krw, 0)} KRW, 목표 ${signedNum(report.objective.min_monthly_net_krw, 0)} KRW`,
+      ],
+    },
+    {
+      header: "최근 회고",
+      lines: [
+        `오늘 ${report.retrospective.daily.verdict}, 실행 ${report.retrospective.daily.executed_n ?? "정보 없음"}건, 실현 ${report.retrospective.daily.realized_n ?? "정보 없음"}건, 손익 ${signedNum(report.retrospective.daily.net_pnl_quote, 0)} KRW`,
+        `주간 ${report.retrospective.weekly.verdict} / 월간 ${report.retrospective.monthly.verdict}`,
+      ],
+    },
+    {
+      header: "자동 변경 가능 여부",
+      lines: [
+        `변경 승격 ${report.promotion.ready ? "가능" : "보류"} / 사유 ${report.promotion.reason} / 후보 ${report.promotion.display_candidate_id || report.promotion.candidate_id || "정보 없음"}`,
+        `자동 롤백 ${report.rollback.ready ? "가능" : "보류"} / 사유 ${report.rollback.reason}`,
+      ],
+    },
+    {
+      header: "안전 장치",
+      lines: [
+        `검증 ${report.guards.canary_pass ? "정상" : "차단"} / golden drift ${report.guards.canary_golden_drift} / shadow drift ${report.guards.canary_shadow_drift}`,
+        `데이터 커버리지 ${report.guards.coverage_pass ? "충분" : "부족"}`,
+      ],
+    },
+    {
+      header: "상태층(시장 물리)",
+      lines: [
+        `상태 ${report.physics.display_state || "정보 없음"} / action ${report.physics.action || "N/A"} / qty ${report.physics.qty_scale != null ? report.physics.qty_scale : "N/A"} / wait ${physicsWait} / 차단 ${report.physics.block_reason || "없음"}`,
+        `entropy ${pct(report.physics.entropy)} / coherence ${pct(report.physics.coherence)} / transition ${pct(report.physics.transition_risk)} / align ${pct(report.physics.field_alignment)} / wall ${pct(report.physics.domain_wall_density)} / free ${pct(report.physics.free_energy)}`,
+      ],
+    },
+    {
+      header: "Codex 검토",
+      lines: [
+        `상태 ${report.codex_review.status} / 결론 ${report.codex_review.verdict} / 사유 ${report.codex_review.reason}`,
+      ],
+    },
+    {
+      header: "자동 적용 엔진",
+      lines: [
+        `상태 ${report.stage_autopilot.status} / 목표 판정 ${report.stage_autopilot.objective_verdict}`,
+        `이번 실행에서 실제 반영된 변경 ${report.stage_autopilot.action_n}건 / ${(report.stage_autopilot.action_types || []).join(", ") || "없음"}`,
+      ],
+    },
+  ];
 }
 
 function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, codex, stageAutopilot, retrospective } = {}) {
@@ -499,6 +578,7 @@ async function main() {
   writeText(mdPath, renderMarkdown(report));
   copyLatest(jsonPath, REPORT_LATEST_JSON);
   copyLatest(mdPath, REPORT_LATEST_MD);
+  const telegramSections = buildObjectiveSupervisorTelegramSections(report);
 
   const alert = await sendKoreanTelegramSummary({
     title: `[목표 점검] ${report.verdict}`,
@@ -512,16 +592,7 @@ async function main() {
       physics: report.physics,
       retrospective: report.retrospective,
     }),
-    sections: [
-      { header: "지금 결론", lines: [`자동화는 지금 '${report.verdict}' 상태입니다. 주된 이유는 '${report.reason}' 입니다.`] },
-      { header: "목표 달성 상태", lines: [`현재 실현 표본 ${report.objective.realized_n ?? "정보 없음"}건, 실행 ${report.objective.executed_n ?? "정보 없음"}건, 월간 예상 수익 ${signedNum(report.objective.monthly_run_rate_krw, 0)} KRW, 목표 ${signedNum(report.objective.min_monthly_net_krw, 0)} KRW`] },
-      { header: "최근 회고", lines: [`오늘 ${report.retrospective.daily.verdict}, 실행 ${report.retrospective.daily.executed_n ?? "정보 없음"}건, 실현 ${report.retrospective.daily.realized_n ?? "정보 없음"}건, 손익 ${signedNum(report.retrospective.daily.net_pnl_quote, 0)} KRW`, `주간 ${report.retrospective.weekly.verdict} / 월간 ${report.retrospective.monthly.verdict}`] },
-      { header: "자동 변경 가능 여부", lines: [`변경 승격 ${report.promotion.ready ? "가능" : "보류"} / 사유 ${report.promotion.reason} / 후보 ${report.promotion.display_candidate_id || report.promotion.candidate_id || "정보 없음"}`, `자동 롤백 ${report.rollback.ready ? "가능" : "보류"} / 사유 ${report.rollback.reason}`] },
-      { header: "안전 장치", lines: [`검증 ${report.guards.canary_pass ? "정상" : "차단"} / golden drift ${report.guards.canary_golden_drift} / shadow drift ${report.guards.canary_shadow_drift}`, `데이터 커버리지 ${report.guards.coverage_pass ? "충분" : "부족"}`] },
-      { header: "시장 물리", lines: [`상태 ${report.physics.display_state || "정보 없음"} / 실행 표본 ${report.physics.executed_n ?? "정보 없음"} / 차단 ${report.physics.block_reason || "없음"}`, `entropy ${pct(report.physics.entropy)} / coherence ${pct(report.physics.coherence)} / transition ${pct(report.physics.transition_risk)} / align ${pct(report.physics.field_alignment)} / wall ${pct(report.physics.domain_wall_density)} / free ${pct(report.physics.free_energy)}`] },
-      { header: "Codex 검토", lines: [`상태 ${report.codex_review.status} / 결론 ${report.codex_review.verdict} / 사유 ${report.codex_review.reason}`] },
-      { header: "자동 적용 엔진", lines: [`상태 ${report.stage_autopilot.status} / 목표 판정 ${report.stage_autopilot.objective_verdict}`, `이번 실행에서 실제 반영된 변경 ${report.stage_autopilot.action_n}건 / ${(report.stage_autopilot.action_types || []).join(", ") || "없음"}`] },
-    ],
+    sections: telegramSections,
   });
   if (!alert || (alert.ok !== true && !(alert.skipped && alert.reason === "SKIP_ALERT"))) {
     throw new Error(`TELEGRAM_SEND_FAILED:${JSON.stringify(alert || {})}`);
@@ -547,5 +618,6 @@ if (require.main === module) {
 module.exports = {
   __test: {
     evaluateSupervisor,
+    buildObjectiveSupervisorTelegramSections,
   },
 };

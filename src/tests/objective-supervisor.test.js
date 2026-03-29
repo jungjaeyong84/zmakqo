@@ -190,5 +190,46 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(noTradeRetro.blockers.includes("ZERO_KRW_IDLE"), true);
   assert.strictEqual(noTradeRetro.retrospective.daily.executed_n, 0);
 
+  const telegramSections = __test.buildObjectiveSupervisorTelegramSections({
+    verdict: "HOLD",
+    reason: "STAT_PHYSICS_CRITICAL",
+    blockers: ["STAT_PHYSICS_CRITICAL", "CODEX_REVIEW_REQUIRED_PROMOTION"],
+    objective: {
+      realized_n: 24,
+      executed_n: 32,
+      monthly_run_rate_krw: 1800000,
+      min_monthly_net_krw: 1500000,
+    },
+    retrospective: {
+      daily: { verdict: "PASS", executed_n: 3, realized_n: 2, net_pnl_quote: 12000 },
+      weekly: { verdict: "PASS" },
+      monthly: { verdict: "HOLD" },
+    },
+    promotion: { ready: false, reason: "BLOCKED", candidate_id: null, display_candidate_id: null },
+    rollback: { ready: false, reason: "NO_PATCHED_HISTORY" },
+    guards: { canary_pass: true, canary_golden_drift: 0, canary_shadow_drift: 0, coverage_pass: true },
+    physics: {
+      display_state: "혼돈 임계",
+      action: "DROP",
+      qty_scale: 0,
+      wait_hard: true,
+      wait_assist: false,
+      block_reason: "STAT_PHYSICS_CRITICAL",
+      entropy: 0.82,
+      coherence: 0.18,
+      transition_risk: 0.91,
+      field_alignment: 0.20,
+      domain_wall_density: 0.71,
+      free_energy: 0.77,
+    },
+    codex_review: { status: "FRESH", verdict: "HOLD", reason: "BLOCKED" },
+    stage_autopilot: { status: "FRESH", objective_verdict: "HOLD", action_n: 0, action_types: [] },
+  });
+  assert.ok(Array.isArray(telegramSections));
+  assert.ok(telegramSections.some((section) => section.header === "상태층(시장 물리)"));
+  const physicsSection = telegramSections.find((section) => section.header === "상태층(시장 물리)");
+  assert.ok(physicsSection.lines[0].includes("action DROP"));
+  assert.ok(physicsSection.lines[0].includes("wait HARD"));
+
   console.log("OBJECTIVE_SUPERVISOR_TEST_OK");
 })();
