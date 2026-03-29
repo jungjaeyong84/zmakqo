@@ -34,6 +34,7 @@ const CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest
 const ML_LATEST_PATH = path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.json");
 const EV_LATEST_PATH = path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json");
 const WAIT_LATEST_PATH = path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json");
+const FEBT_PHASE0_LATEST_PATH = path.join(OPS_DAILY_DIR, "febt_phase0_baseline_latest.json");
 const CODEX_PATCH_LATEST_PATH = path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.json");
 const STAGE_AUTOPILOT_LATEST_PATH = path.join(OPS_DAILY_DIR, "stage_autopilot_latest.json");
 const RETROSPECTIVE_LATEST_PATH = path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json");
@@ -46,6 +47,7 @@ const FRESHNESS_HOURS = Object.freeze({
   ml: Math.max(4, Number(process.env.OBJECTIVE_SUPERVISOR_ML_MAX_AGE_HOURS || 12)),
   ev: Math.max(24, Number(process.env.OBJECTIVE_SUPERVISOR_EV_MAX_AGE_HOURS || 96)),
   wait: Math.max(24, Number(process.env.OBJECTIVE_SUPERVISOR_WAIT_MAX_AGE_HOURS || 144)),
+  phase0: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_FEBT_PHASE0_MAX_AGE_HOURS || 36)),
   codex: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_CODEX_MAX_AGE_HOURS || 48)),
   stageAutopilot: Math.max(4, Number(process.env.OBJECTIVE_SUPERVISOR_STAGE_AUTOPILOT_MAX_AGE_HOURS || 12)),
   retrospective: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_RETROSPECTIVE_MAX_AGE_HOURS || 30)),
@@ -58,15 +60,25 @@ function toNum(value) {
 }
 
 function pct(value, digits = 2) {
+  if (value === null || value === undefined || value === "") return "N/A";
   const n = Number(value);
   if (!Number.isFinite(n)) return "N/A";
   return `${(n * 100).toFixed(digits)}%`;
 }
 
 function signedNum(value, digits = 0) {
+  if (value === null || value === undefined || value === "") return "N/A";
   const n = Number(value);
   if (!Number.isFinite(n)) return "N/A";
   return `${n > 0 ? "+" : ""}${n.toFixed(digits)}`;
+}
+
+function signedPct(value, digits = 2) {
+  if (value === null || value === undefined || value === "") return "N/A";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "N/A";
+  const text = (n * 100).toFixed(digits);
+  return `${n > 0 ? "+" : ""}${text}%`;
 }
 
 function resolveDisplayCandidateId(candidateId, changeControl = null) {
@@ -336,6 +348,14 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
       ],
     },
     {
+      header: "FEBT Phase 0",
+      lines: [
+        `legacy WAIT coverage ${report.phase0 && report.phase0.legacy_wait_coverage_rate != null ? pct(report.phase0.legacy_wait_coverage_rate) : "N/A"} / observed ${report.phase0 && report.phase0.legacy_wait_observed_chain_n != null ? report.phase0.legacy_wait_observed_chain_n : "N/A"}`,
+        `legacy WAIT immediate win ${report.phase0 && report.phase0.immediate_win_rate != null ? pct(report.phase0.immediate_win_rate) : "N/A"} / saved_loss ${report.phase0 && report.phase0.saved_loss_pct != null ? pct(report.phase0.saved_loss_pct) : "N/A"} / missed_gain ${report.phase0 && report.phase0.missed_gain_pct != null ? pct(report.phase0.missed_gain_pct) : "N/A"} / delta ${report.phase0 && report.phase0.saved_loss_minus_missed_gain != null ? signedPct(report.phase0.saved_loss_minus_missed_gain) : "N/A"}`,
+        `bridge webhook->fill p95 ${report.phase0 && report.phase0.webhook_to_fill_p95_ms != null ? `${Number(report.phase0.webhook_to_fill_p95_ms).toFixed(0)}ms` : "N/A"} / dup ${report.phase0 && report.phase0.duplicate_count != null ? report.phase0.duplicate_count : "N/A"} / reject ${report.phase0 && report.phase0.reject_count != null ? report.phase0.reject_count : "N/A"} / fresh ${report.phase0 && report.phase0.fresh ? "YES" : "NO"}`,
+      ],
+    },
+    {
       header: "Codex 검토",
       lines: [
         `상태 ${report.codex_review.status} / 결론 ${report.codex_review.verdict} / 사유 ${report.codex_review.reason}`,
@@ -351,7 +371,7 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
   ];
 }
 
-function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, codex, stageAutopilot, retrospective } = {}) {
+function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, codex, stageAutopilot, retrospective } = {}) {
   const objective = governance && governance.current && governance.current.objective ? governance.current.objective : {};
   const objectiveCfg = governance && governance.objective ? governance.objective : {};
   const promotion = changeControl && changeControl.auto_promotion ? changeControl.auto_promotion : {};
@@ -379,6 +399,21 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, c
     wait,
     physicsSummary,
   });
+  const phase0Summary = {
+    available: !!phase0,
+    fresh: Boolean(phase0 && phase0.fresh === true),
+    provider: String(phase0 && phase0.provider || "N/A"),
+    tf: String(phase0 && phase0.tf || "N/A"),
+    legacy_wait_coverage_rate: toNum(phase0 && phase0.legacy_wait_baseline && phase0.legacy_wait_baseline.legacy_wait_coverage_rate),
+    legacy_wait_observed_chain_n: toNum(phase0 && phase0.legacy_wait_baseline && phase0.legacy_wait_baseline.legacy_wait_observed_chain_n),
+    immediate_win_rate: toNum(phase0 && phase0.legacy_wait_baseline && phase0.legacy_wait_baseline.immediate_win_rate),
+    saved_loss_pct: toNum(phase0 && phase0.legacy_wait_baseline && phase0.legacy_wait_baseline.saved_loss_pct),
+    missed_gain_pct: toNum(phase0 && phase0.legacy_wait_baseline && phase0.legacy_wait_baseline.missed_gain_pct),
+    saved_loss_minus_missed_gain: toNum(phase0 && phase0.legacy_wait_baseline && phase0.legacy_wait_baseline.saved_loss_minus_missed_gain),
+    webhook_to_fill_p95_ms: toNum(phase0 && phase0.bridge_latency && phase0.bridge_latency.webhook_to_fill_ms && phase0.bridge_latency.webhook_to_fill_ms.p95),
+    duplicate_count: toNum(phase0 && phase0.bridge_latency && phase0.bridge_latency.duplicate_count) || 0,
+    reject_count: toNum(phase0 && phase0.bridge_latency && phase0.bridge_latency.reject_count) || 0,
+  };
 
   const blockers = [];
   if (!objective || objective.enough_sample !== true) blockers.push("OBJECTIVE_SAMPLE_NOT_READY");
@@ -507,6 +542,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, c
       market_coverage_pass: Boolean(changeControl && changeControl.coverage_guard && changeControl.coverage_guard.market && changeControl.coverage_guard.market.pass === true),
     },
     physics: physicsSummary,
+    phase0: phase0Summary,
     filter_layers: filterLayers,
     tuning: {
       ev_reason: String(ev && ev.decision_reason || "N/A"),
@@ -581,6 +617,12 @@ function renderMarkdown(report = {}) {
     `- state: ${report.physics && report.physics.display_state || "정보 없음"} (${report.physics && report.physics.state || "N/A"}) / executed=${report.physics && report.physics.executed_n != null ? report.physics.executed_n : "N/A"} / block=${report.physics && report.physics.block_reason || "none"}`,
     `- entropy=${pct(report.physics && report.physics.entropy)} / coherence=${pct(report.physics && report.physics.coherence)} / transition=${pct(report.physics && report.physics.transition_risk)} / align=${pct(report.physics && report.physics.field_alignment)} / wall=${pct(report.physics && report.physics.domain_wall_density)} / susc=${pct(report.physics && report.physics.susceptibility)} / free_energy=${pct(report.physics && report.physics.free_energy)}`,
     "",
+    "## FEBT Phase 0",
+    `- available: ${report.phase0 && report.phase0.available ? "YES" : "NO"} / fresh=${report.phase0 && report.phase0.fresh ? "YES" : "NO"} / provider=${report.phase0 && report.phase0.provider || "N/A"} / tf=${report.phase0 && report.phase0.tf || "N/A"}`,
+    `- legacy_wait coverage=${pct(report.phase0 && report.phase0.legacy_wait_coverage_rate)} / observed=${report.phase0 && report.phase0.legacy_wait_observed_chain_n != null ? report.phase0.legacy_wait_observed_chain_n : "N/A"}`,
+    `- legacy_wait immediate_win=${pct(report.phase0 && report.phase0.immediate_win_rate)} / saved_loss=${pct(report.phase0 && report.phase0.saved_loss_pct)} / missed_gain=${pct(report.phase0 && report.phase0.missed_gain_pct)} / delta=${signedPct(report.phase0 && report.phase0.saved_loss_minus_missed_gain)}`,
+    `- bridge webhook_to_fill p95=${report.phase0 && report.phase0.webhook_to_fill_p95_ms != null ? `${Number(report.phase0.webhook_to_fill_p95_ms).toFixed(0)}ms` : "N/A"} / duplicate=${report.phase0 && report.phase0.duplicate_count != null ? report.phase0.duplicate_count : "N/A"} / reject=${report.phase0 && report.phase0.reject_count != null ? report.phase0.reject_count : "N/A"}`,
+    "",
     "## Tuning Inputs",
     `- EV: ${report.tuning && report.tuning.ev_reason || "N/A"}`,
     `- WAIT: ${report.tuning && report.tuning.wait_reason || "N/A"}`,
@@ -615,6 +657,7 @@ async function main() {
   const mlArtifact = readArtifact("ml_policy", ML_LATEST_PATH, FRESHNESS_HOURS.ml);
   const evArtifact = readArtifact("ev_tuner", EV_LATEST_PATH, FRESHNESS_HOURS.ev);
   const waitArtifact = readArtifact("wait_tuner", WAIT_LATEST_PATH, FRESHNESS_HOURS.wait);
+  const phase0Artifact = readArtifact("febt_phase0", FEBT_PHASE0_LATEST_PATH, FRESHNESS_HOURS.phase0);
   const codexArtifact = readArtifact("codex_patch", CODEX_PATCH_LATEST_PATH, FRESHNESS_HOURS.codex);
   const stageAutopilotArtifact = readArtifact("stage_autopilot", STAGE_AUTOPILOT_LATEST_PATH, FRESHNESS_HOURS.stageAutopilot);
   const retrospectiveArtifact = readArtifact("objective_retrospective", RETROSPECTIVE_LATEST_PATH, FRESHNESS_HOURS.retrospective);
@@ -626,6 +669,7 @@ async function main() {
     ml: mlArtifact.data,
     ev: evArtifact.data,
     wait: waitArtifact.data,
+    phase0: phase0Artifact.exists ? { ...phase0Artifact.data, fresh: phase0Artifact.fresh } : null,
     codex: codexArtifact.exists ? { ...codexArtifact.data, fresh: codexArtifact.fresh } : null,
     stageAutopilot: stageAutopilotArtifact.exists ? { ...stageAutopilotArtifact.data, fresh: stageAutopilotArtifact.fresh } : null,
     retrospective: retrospectiveArtifact.data,
@@ -642,11 +686,12 @@ async function main() {
     rollback: evaluation.rollback,
     guards: evaluation.guards,
     physics: evaluation.physics,
+    phase0: evaluation.phase0,
     tuning: evaluation.tuning,
     codex_review: evaluation.codex_review,
     stage_autopilot: evaluation.stage_autopilot,
     retrospective: evaluation.retrospective,
-    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, codexArtifact, stageAutopilotArtifact, retrospectiveArtifact].map((row) => ({
+    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, phase0Artifact, codexArtifact, stageAutopilotArtifact, retrospectiveArtifact].map((row) => ({
       name: row.name,
       filePath: row.filePath,
       fresh: row.fresh,

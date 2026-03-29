@@ -63,6 +63,22 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
 
   const allowPromote = __test.evaluateSupervisor({
     ...base,
+    phase0: {
+      fresh: true,
+      provider: "BINANCEFUT",
+      tf: "15m",
+      legacy_wait_baseline: {
+        immediate_win_rate: 0.57,
+        saved_loss_pct: 0.31,
+        missed_gain_pct: 0.12,
+        saved_loss_minus_missed_gain: 0.19,
+      },
+      bridge_latency: {
+        webhook_to_fill_ms: { p95: 1420 },
+        duplicate_count: 1,
+        reject_count: 2,
+      },
+    },
     codex: {
       status: "FRESH",
       verdict: "PROMOTE",
@@ -79,6 +95,8 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.filter_layers.integrity.label, "1차 상태/무결성");
   assert.strictEqual(allowPromote.filter_layers.state_soft_sizing.label, "3차 상태 기반 Soft Sizing");
   assert.strictEqual(allowPromote.filter_layers.ev_time_value.label, "4차 EV/시간가치층");
+  assert.strictEqual(allowPromote.phase0.available, true);
+  assert.strictEqual(allowPromote.phase0.immediate_win_rate, 0.57);
 
   const blockPromote = __test.evaluateSupervisor({
     ...base,
@@ -225,6 +243,17 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
       domain_wall_density: 0.71,
       free_energy: 0.77,
     },
+    phase0: {
+      available: true,
+      fresh: true,
+      immediate_win_rate: 0.57,
+      saved_loss_pct: 0.31,
+      missed_gain_pct: 0.12,
+      saved_loss_minus_missed_gain: 0.19,
+      webhook_to_fill_p95_ms: 1420,
+      duplicate_count: 1,
+      reject_count: 2,
+    },
     codex_review: { status: "FRESH", verdict: "HOLD", reason: "BLOCKED" },
     stage_autopilot: { status: "FRESH", objective_verdict: "HOLD", action_n: 0, action_types: [] },
   });
@@ -233,6 +262,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   const physicsSection = telegramSections.find((section) => section.header === "상태층(시장 물리)");
   assert.ok(physicsSection.lines[0].includes("action DROP"));
   assert.ok(physicsSection.lines[0].includes("wait HARD"));
+  assert.ok(telegramSections.some((section) => section.header === "FEBT Phase 0"));
 
   console.log("OBJECTIVE_SUPERVISOR_TEST_OK");
 })();

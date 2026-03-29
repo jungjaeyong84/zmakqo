@@ -115,6 +115,9 @@ function buildFilterFeatureSignature(row) {
   const marketStateSummaryState = String(f.market_state_summary_state ?? f.sp_state ?? statPhys.state ?? "unknown").trim().toUpperCase() || "unknown";
   const marketStateSummaryAction = String(f.market_state_summary_action ?? f.market_physics_action ?? "unknown").trim().toUpperCase() || "unknown";
   const waitOneBarMarketStateAction = String(f.wait_one_bar_market_state_action ?? "unknown").trim().toUpperCase() || "unknown";
+  const legacyWaitAction = String(f.wait_one_bar_action ?? "unknown").trim().toUpperCase() || "unknown";
+  const legacyWaitTriggerPath = String(f.wait_one_bar_trigger_path ?? "unknown").trim().toUpperCase() || "unknown";
+  const entryExecTiming = String(f._entry_exec_timing ?? (row && row._entry_exec_timing) ?? "unknown").trim().toUpperCase() || "unknown";
   const evGatePolicyVersion = String(f.ev_gate_policy_version ?? f.policy_version ?? "unknown").trim().toUpperCase() || "unknown";
   const evGatePolicySource = String(f.ev_gate_policy_source ?? f.policy_source ?? "unknown").trim().toUpperCase() || "unknown";
   return {
@@ -134,6 +137,9 @@ function buildFilterFeatureSignature(row) {
     market_state_summary_state: marketStateSummaryState,
     market_state_summary_action: marketStateSummaryAction,
     wait_one_bar_market_state_action: waitOneBarMarketStateAction,
+    legacy_wait_action: legacyWaitAction,
+    legacy_wait_trigger_path: legacyWaitTriggerPath,
+    entry_exec_timing: entryExecTiming,
     ev_gate_policy_version: evGatePolicyVersion,
     ev_gate_policy_source: evGatePolicySource,
     late_by_bars: lateByBars,

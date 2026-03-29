@@ -176,12 +176,27 @@ function run() {
       wait_one_bar_recent_move1_pct_min: 0.008,
       wait_one_bar_counter_dir_bars_max: 2,
     },
+    phase0: {
+      legacy_wait_baseline: {
+        immediate_win_rate: 0.57,
+        saved_loss_pct: 0.31,
+        missed_gain_pct: 0.12,
+        saved_loss_minus_missed_gain: 0.19,
+      },
+      bridge_latency: {
+        webhook_to_fill_ms: { p95: 1420 },
+        duplicate_count: 1,
+        reject_count: 2,
+      },
+    },
   });
   assert.strictEqual(weeklyLayerLines.length >= 9, true);
   assert.ok(weeklyLayerLines[0].includes("1차 상태/무결성"));
   assert.ok(weeklyLayerLines.some((line) => line.includes("3차 상태 분포")));
   assert.ok(weeklyLayerLines.some((line) => line.includes("4차 EV/시간가치층 policy")));
   assert.ok(weeklyLayerLines.some((line) => line.includes("5차 WAIT 타이밍층")));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("FEBT Phase0 immediate win")));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("bridge p95")));
 
   const riskCurve = __test.buildCompetingRiskCurve([
     { ok: true, tp1_time_h: 1, sl_time_h: null },

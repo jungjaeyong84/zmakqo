@@ -15,6 +15,9 @@ function run() {
       market_state_summary_state: "MIXED",
       market_state_summary_action: "REDUCE",
       wait_one_bar_market_state_action: "DROP",
+      wait_one_bar_action: "ALLOW",
+      wait_one_bar_trigger_path: "PHYSICS_ASSIST",
+      _entry_exec_timing: "IMMEDIATE",
       ev_gate_policy_version: "TP1_WEIGHT_V1",
       ev_gate_policy_source: "DEFAULT",
     },
@@ -30,6 +33,9 @@ function run() {
   assert.strictEqual(sig.market_state_summary_state, "MIXED");
   assert.strictEqual(sig.market_state_summary_action, "REDUCE");
   assert.strictEqual(sig.wait_one_bar_market_state_action, "DROP");
+  assert.strictEqual(sig.legacy_wait_action, "ALLOW");
+  assert.strictEqual(sig.legacy_wait_trigger_path, "PHYSICS_ASSIST");
+  assert.strictEqual(sig.entry_exec_timing, "IMMEDIATE");
   assert.strictEqual(sig.ev_gate_policy_version, "TP1_WEIGHT_V1");
   assert.strictEqual(sig.ev_gate_policy_source, "DEFAULT");
   console.log("FILTER_FEATURE_BUCKETS_TEST_OK");

@@ -94,6 +94,14 @@ async function run() {
         sp_susceptibility: 0.26,
         sp_free_energy: 0.29,
         sp_state: "ORDERED",
+        market_state_summary_state: "ORDERED",
+        market_state_summary_action: "ALLOW",
+        wait_one_bar_market_state_action: "ALLOW",
+        wait_one_bar_action: "ALLOW",
+        wait_one_bar_trigger_path: "BASE",
+        _entry_exec_timing: "IMMEDIATE",
+        ev_gate_policy_version: "TP1_WEIGHT_V1",
+        ev_gate_policy_source: "DEFAULT",
       },
     },
     {
@@ -144,6 +152,14 @@ async function run() {
   assert.strictEqual(summary.chain_rows[0].domain_wall_bucket, "<0.25");
   assert.strictEqual(summary.chain_rows[0].free_energy_bucket, "<0.35");
   assert.strictEqual(summary.chain_rows[0].stat_phys_state, "ORDERED");
+  assert.strictEqual(summary.chain_rows[0].market_state_summary_state, "ORDERED");
+  assert.strictEqual(summary.chain_rows[0].market_state_summary_action, "ALLOW");
+  assert.strictEqual(summary.chain_rows[0].wait_one_bar_market_state_action, "ALLOW");
+  assert.strictEqual(summary.chain_rows[0].legacy_wait_action, "ALLOW");
+  assert.strictEqual(summary.chain_rows[0].legacy_wait_trigger_path, "BASE");
+  assert.strictEqual(summary.chain_rows[0].entry_exec_timing, "IMMEDIATE");
+  assert.strictEqual(summary.chain_rows[0].ev_gate_policy_version, "TP1_WEIGHT_V1");
+  assert.strictEqual(summary.chain_rows[0].ev_gate_policy_source, "DEFAULT");
   assert.strictEqual(summary.chain_rows[0].entry_price, 100);
   assert.strictEqual(summary.chain_rows[0].tp1_ms, 2000);
   assert.strictEqual(summary.chain_rows[0].first_exit_ms, 2000);

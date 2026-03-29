@@ -68,6 +68,8 @@ const SUFFICIENCY_THRESHOLDS = Object.freeze({
 const STAGE_KEYS = ["OPS", "QUALITY", "AI", "MARKET", "EV", "TIMING"];
 const LIVE_ENTRY_SCOPE = "LONG_SHORT_SINGLE";
 const LIVE_ENTRY_LABEL = "LONG/SHORT";
+const FEBT_PHASE0_LATEST_JSON = path.join(OPS_DAILY_DIR, "febt_phase0_baseline_latest.json");
+const FEBT_PHASE0_LATEST_MD = path.join(OPS_DAILY_DIR, "febt_phase0_baseline_latest.md");
 const STAGE_LABELS = {
   OPS: "0차 운영/보호",
   QUALITY: "1차 상태/무결성",
@@ -176,12 +178,12 @@ function stripSummaryPrefix(line, prefix) {
   return raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
 }
 
-function buildWeeklyTelegramLayerLines({ current = {}, recommendations = {}, settings = {} } = {}) {
+function buildWeeklyTelegramLayerLines({ current = {}, recommendations = {}, settings = {}, phase0 = null } = {}) {
   const featureLines = buildCounterfactualFeatureSummaryLines(current.drop_counterfactual || {});
   const marketState = stripSummaryPrefix(featureLines[0], "market state ");
   const marketAction = stripSummaryPrefix(featureLines[1], "market action ");
   const evPolicy = stripSummaryPrefix(featureLines[2], "ev policy ");
-  return [
+  const lines = [
     `1차 상태/무결성 ${recommendations.QUALITY && recommendations.QUALITY.action || "N/A"} / ${recommendations.QUALITY && recommendations.QUALITY.reason || "N/A"}`,
     `2차 진입 품질 ${recommendations.AI && recommendations.AI.action || "N/A"} / ${recommendations.AI && recommendations.AI.reason || "N/A"}`,
     `2차 진입 품질 세부(AI bias) neutral ${pct(settings.ai_bias_gate_neutral_mult)} / opposite ${pct(settings.ai_bias_gate_opposite_mult)} / strong score ${pct(settings.ai_bias_gate_strong_opposite_score)} / strong conf ${pct(settings.ai_bias_gate_strong_opposite_conf)}`,
@@ -193,6 +195,20 @@ function buildWeeklyTelegramLayerLines({ current = {}, recommendations = {}, set
     `4차 EV/시간가치층 policy ${evPolicy || "N/A"}`,
     `5차 WAIT 타이밍층 streak ${settings.wait_one_bar_same_dir_streak_min} / chase ${ratioX(settings.wait_one_bar_chase_ratio_min)} / close ${pct(settings.wait_one_bar_last_close_control_min)} / body ${pct(settings.wait_one_bar_last_dir_body_min)} / wick ${pct(settings.wait_one_bar_last_opposite_wick_max)} / move1 ${pct(settings.wait_one_bar_recent_move1_pct_min)} / counter ${settings.wait_one_bar_counter_dir_bars_max}`,
   ];
+  if (phase0 && phase0.legacy_wait_baseline) {
+    const baseline = phase0.legacy_wait_baseline || {};
+    const latency = phase0.bridge_latency || {};
+    lines.push(
+      `FEBT Phase0 coverage ${pct(baseline.legacy_wait_coverage_rate)} / observed ${baseline.legacy_wait_observed_chain_n || 0}`
+    );
+    lines.push(
+      `FEBT Phase0 immediate win ${pct(baseline.immediate_win_rate)} / saved_loss ${pct(baseline.saved_loss_pct)} / missed_gain ${pct(baseline.missed_gain_pct)} / delta ${signedPct(baseline.saved_loss_minus_missed_gain)}`
+    );
+    lines.push(
+      `FEBT Phase0 bridge p95 ${latency.webhook_to_fill_ms && Number.isFinite(Number(latency.webhook_to_fill_ms.p95)) ? `${Number(latency.webhook_to_fill_ms.p95).toFixed(0)}ms` : "N/A"} / dup ${latency.duplicate_count || 0} / reject ${latency.reject_count || 0}`
+    );
+  }
+  return lines;
 }
 
 function tfIntervalMs(tf) {
@@ -2471,6 +2487,10 @@ function renderMarkdown({ nowMeta, current, previous, recommendations, settings,
   lines.push(`- 3차 상태 기반 Soft Sizing 세부: neutral ${pct(settings.ai_bias_gate_neutral_mult)} / opposite ${pct(settings.ai_bias_gate_opposite_mult)} / strong score ${pct(settings.ai_bias_gate_strong_opposite_score)} / strong conf ${pct(settings.ai_bias_gate_strong_opposite_conf)}`);
   lines.push(`- 4차 EV/시간가치층 band: full ${pct(settings.ev_gate_tp1_prob_full)} / kill ${pct(settings.ev_gate_tp1_prob_kill)} / mid ${pct(settings.ev_gate_qty_scale_mid)} / low ${pct(settings.ev_gate_qty_scale_low)}`);
   lines.push(`- 5차 WAIT 타이밍층: streak ${settings.wait_one_bar_same_dir_streak_min} / chase ${ratioX(settings.wait_one_bar_chase_ratio_min)} / close ${pct(settings.wait_one_bar_last_close_control_min)} / body ${pct(settings.wait_one_bar_last_dir_body_min)} / wick ${pct(settings.wait_one_bar_last_opposite_wick_max)} / move1 ${pct(settings.wait_one_bar_recent_move1_pct_min)} / counter ${settings.wait_one_bar_counter_dir_bars_max}`);
+  if (artifacts.febt_phase0_summary) {
+    lines.push(`- FEBT Phase0: coverage ${pct(artifacts.febt_phase0_summary.legacy_wait_coverage_rate)} / observed ${artifacts.febt_phase0_summary.legacy_wait_observed_chain_n || 0} / immediate win ${pct(artifacts.febt_phase0_summary.immediate_win_rate)} / saved_loss ${pct(artifacts.febt_phase0_summary.saved_loss_pct)} / missed_gain ${pct(artifacts.febt_phase0_summary.missed_gain_pct)} / delta ${signedPct(artifacts.febt_phase0_summary.saved_loss_minus_missed_gain)}`);
+    lines.push(`- FEBT bridge: webhook->fill p95 ${artifacts.febt_phase0_summary.webhook_to_fill_p95_ms != null ? `${Number(artifacts.febt_phase0_summary.webhook_to_fill_p95_ms).toFixed(0)}ms` : "N/A"} / dup ${artifacts.febt_phase0_summary.duplicate_count || 0} / reject ${artifacts.febt_phase0_summary.reject_count || 0}`);
+  }
   lines.push("");
   lines.push("## 3차/4차 실제 성과 분해(현재)");
   lines.push("- 주의: 아래 realized/actual/fullsize_proxy는 `현재 윈도우 entry cohort 중 이미 실현 완료된 체인`만 집계합니다.");
@@ -2501,6 +2521,7 @@ function renderMarkdown({ nowMeta, current, previous, recommendations, settings,
   lines.push(`- EV 자동보정: ${artifacts.ev_tune_report || "N/A"}`);
   lines.push(`- WAIT 자동보정: ${artifacts.wait_tune_report || "N/A"}`);
   lines.push(`- ML 정책: ${artifacts.ml_policy_report || "N/A"}`);
+  lines.push(`- FEBT Phase 0: ${artifacts.febt_phase0_report || "N/A"}`);
   lines.push(`- Pine full-quality 후보: ${artifacts.pine_quality_patch_candidates_md || artifacts.pine_stage1_patch_candidates_md || "N/A"}`);
   lines.push(`- Pine full-quality change control: ${artifacts.pine_quality_change_control_md || artifacts.pine_stage1_change_control_md || "N/A"}`);
   lines.push(`- JSON: ${artifacts.jsonPath}`);
@@ -2761,6 +2782,23 @@ async function main() {
   const mlPolicyReport = fs.existsSync(path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.md"))
     ? { filePath: path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.md") }
     : findLatestFile(/_ml_filter_policy\.md$/);
+  const febtPhase0Report = fs.existsSync(FEBT_PHASE0_LATEST_MD)
+    ? { filePath: FEBT_PHASE0_LATEST_MD }
+    : findLatestFile(/_febt_phase0_baseline\.md$/);
+  const febtPhase0Latest = readJsonRawSafe(FEBT_PHASE0_LATEST_JSON, null);
+  const febtPhase0Summary = febtPhase0Latest && febtPhase0Latest.legacy_wait_baseline
+    ? {
+      legacy_wait_coverage_rate: toNum(febtPhase0Latest.legacy_wait_baseline.legacy_wait_coverage_rate),
+      legacy_wait_observed_chain_n: toNum(febtPhase0Latest.legacy_wait_baseline.legacy_wait_observed_chain_n),
+      immediate_win_rate: toNum(febtPhase0Latest.legacy_wait_baseline.immediate_win_rate),
+      saved_loss_pct: toNum(febtPhase0Latest.legacy_wait_baseline.saved_loss_pct),
+      missed_gain_pct: toNum(febtPhase0Latest.legacy_wait_baseline.missed_gain_pct),
+      saved_loss_minus_missed_gain: toNum(febtPhase0Latest.legacy_wait_baseline.saved_loss_minus_missed_gain),
+      webhook_to_fill_p95_ms: toNum(febtPhase0Latest.bridge_latency && febtPhase0Latest.bridge_latency.webhook_to_fill_ms && febtPhase0Latest.bridge_latency.webhook_to_fill_ms.p95),
+      duplicate_count: toNum(febtPhase0Latest.bridge_latency && febtPhase0Latest.bridge_latency.duplicate_count) || 0,
+      reject_count: toNum(febtPhase0Latest.bridge_latency && febtPhase0Latest.bridge_latency.reject_count) || 0,
+    }
+    : null;
 
   const report = {
     ok: true,
@@ -2785,6 +2823,8 @@ async function main() {
       ev_tune_report: evTuneReport ? evTuneReport.filePath : null,
       wait_tune_report: waitTuneReport ? waitTuneReport.filePath : null,
       ml_policy_report: mlPolicyReport ? mlPolicyReport.filePath : null,
+      febt_phase0_report: febtPhase0Report ? febtPhase0Report.filePath : null,
+      febt_phase0_summary: febtPhase0Summary,
       cache: {
         signals: signalsRes.meta,
         drops: dropsRes.meta,
@@ -2860,6 +2900,8 @@ async function main() {
       ev_tune_report: report.artifacts.ev_tune_report,
       wait_tune_report: report.artifacts.wait_tune_report,
       ml_policy_report: report.artifacts.ml_policy_report,
+      febt_phase0_report: report.artifacts.febt_phase0_report,
+      febt_phase0_summary: report.artifacts.febt_phase0_summary,
       pine_stage1_patch_candidates_md: patchCandidatesMdPath,
       pine_stage1_change_control_md: changeControlMdPath,
       pine_quality_patch_candidates_md: pineQualityPatchCandidatesMdLatest,
@@ -2891,6 +2933,7 @@ async function main() {
     current,
     recommendations,
     settings,
+    phase0: febtPhase0Latest,
   });
   await sendKoreanTelegramSummary({
     title: `[주간 전략 점검] ${PROVIDER}`,
@@ -2945,7 +2988,7 @@ async function main() {
       },
       {
         header: "연계 보고서",
-        lines: [weeklyPinePath, evTunePath, waitTunePath, mlPolicyPath, patchCandidatePath, changeControlPath, mdPath, jsonPath],
+        lines: [weeklyPinePath, evTunePath, waitTunePath, mlPolicyPath, report.artifacts.febt_phase0_report || "N/A", patchCandidatePath, changeControlPath, mdPath, jsonPath],
       },
     ],
   });
