@@ -2613,7 +2613,8 @@ float febt_dir_reject_long = f_clamp01(febt_lower_wick_ratio)
 float febt_dir_reject_short = f_clamp01(febt_upper_wick_ratio)
 float febt_opp_wick_long = f_clamp01(febt_upper_wick_ratio)
 float febt_opp_wick_short = f_clamp01(febt_lower_wick_ratio)
-float febt_vol_ma_20 = math.max(ta.sma(volume, 20), 1.0)
+float febt_vol_ma_20_raw = ta.sma(volume, 20)
+float febt_vol_ma_20 = math.max(febt_vol_ma_20_raw, 1.0)
 float febt_vol_ratio_20 = volume / febt_vol_ma_20
 float febt_vol_spike = f_clamp01(febt_vol_ratio_20 / 2.5)
 int febt_same_dir_streak_long = f_febt_same_dir_streak(true)
@@ -2708,7 +2709,7 @@ float febt_failure_risk_short = f_clamp01(
 float febt_edge_long = f_clamp01(0.5 + febt_delay_cost_long - febt_late_risk_long) - 0.5
 float febt_edge_short = f_clamp01(0.5 + febt_delay_cost_short - febt_late_risk_short) - 0.5
 bool febt_state_valid = regime_state != "range_hard_block" and not na(sp_coherence_score) and not na(sp_transition_risk) and sp_coherence_score >= 0.30 and sp_transition_risk <= 0.84
-bool febt_inputs_ready = not na(close[2]) and not na(high[2]) and not na(low[2]) and not na(open[1]) and not na(close[1]) and not na(ta.sma(volume, 20)) and not na(sp_coherence_score) and not na(sp_transition_risk)
+bool febt_inputs_ready = not na(close[2]) and not na(high[2]) and not na(low[2]) and not na(open[1]) and not na(close[1]) and not na(febt_vol_ma_20_raw) and not na(sp_coherence_score) and not na(sp_transition_risk)
 bool febt_scores_ready = febt_inputs_ready and not na(febt_lock_score_long) and not na(febt_lock_score_short) and not na(febt_delay_cost_long) and not na(febt_delay_cost_short) and not na(febt_late_risk_long) and not na(febt_late_risk_short) and not na(febt_failure_risk_long) and not na(febt_failure_risk_short) and not na(febt_edge_long) and not na(febt_edge_short)
 bool febt_calc_ok = febt_mode_runtime != "OFF" and febt_scores_ready
 string febt_calc_reason = febt_mode_runtime == "OFF" ? "OFF" : not febt_inputs_ready ? "MISSING_INPUT" : not febt_scores_ready ? "SHADOW_FAILSAFE" : "OK"
