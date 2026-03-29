@@ -14,7 +14,7 @@ const {
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
-const { deriveBestFebtTuningContract, deriveBestFebtMarketContracts } = require("./lib/best-febt-supervisor");
+const { deriveBestFebtTuningContract, deriveBestFebtMarketContracts, buildSelfEvolutionPolicySpec } = require("./lib/best-febt-supervisor");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
 const { resolveMarketStateSummary } = require("../src/utils/marketStateSummary");
 const { resolveStatPhysFeatures } = require("../src/utils/statPhysFeatures");
@@ -408,6 +408,13 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
       ],
     },
     {
+      header: "자기 진화 정책",
+      lines: [
+        `master ${report.self_evolution_policy && report.self_evolution_policy.master_spec_path || "N/A"}`,
+        `focus ${report.self_evolution_policy && report.self_evolution_policy.current_focus || "N/A"} / docs ${report.self_evolution_policy && Array.isArray(report.self_evolution_policy.linked_paths) ? report.self_evolution_policy.linked_paths.length : 0}`,
+      ],
+    },
+    {
       header: "시장별 BEST/FEBT 계약",
       lines: Array.isArray(report.best_febt_market_contracts) && report.best_febt_market_contracts.length
         ? report.best_febt_market_contracts.slice(0, 4).map((row) => formatBestFebtMarketContractLine(row))
@@ -488,6 +495,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       phase0: phase0Summary,
     },
   });
+  const selfEvolutionPolicy = buildSelfEvolutionPolicySpec();
 
   const blockers = [];
   if (!objective || objective.enough_sample !== true) blockers.push("OBJECTIVE_SAMPLE_NOT_READY");
@@ -617,6 +625,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     },
     physics: physicsSummary,
     phase0: phase0Summary,
+    self_evolution_policy: selfEvolutionPolicy,
     best_febt_tuning_contract: bestFebtTuningContract,
     best_febt_market_contracts: bestFebtMarketContracts,
     filter_layers: filterLayers,
@@ -708,6 +717,14 @@ function renderMarkdown(report = {}) {
     `- fire/late/void: ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.fire_n != null ? report.best_febt_tuning_contract.fire_n : "N/A"} / ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.late_n != null ? report.best_febt_tuning_contract.late_n : "N/A"} / ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.void_n != null ? report.best_febt_tuning_contract.void_n : "N/A"}`,
     `- disagreement/fallback/missing: ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.disagreement_n != null ? report.best_febt_tuning_contract.disagreement_n : "N/A"} / ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.fallback_legacy_n != null ? report.best_febt_tuning_contract.fallback_legacy_n : "N/A"} / ${pct(report.best_febt_tuning_contract && report.best_febt_tuning_contract.missing_rate)}`,
     "",
+    "## Self-Evolution Policy",
+    `- master_spec_path: ${report.self_evolution_policy && report.self_evolution_policy.master_spec_path || "N/A"}`,
+    `- status: ${report.self_evolution_policy && report.self_evolution_policy.status || "N/A"}`,
+    `- current_focus: ${report.self_evolution_policy && report.self_evolution_policy.current_focus || "N/A"}`,
+    ...((report.self_evolution_policy && Array.isArray(report.self_evolution_policy.linked_paths) && report.self_evolution_policy.linked_paths.length)
+      ? report.self_evolution_policy.linked_paths.map((row) => `- doc: ${row}`)
+      : ["- doc: none"]),
+    "",
     "## BEST/FEBT Market Contracts",
     ...((Array.isArray(report.best_febt_market_contracts) && report.best_febt_market_contracts.length)
       ? report.best_febt_market_contracts.map((row) => `- ${formatBestFebtMarketContractLine(row)}`)
@@ -782,6 +799,7 @@ async function main() {
       ...(evaluation.best_febt_tuning_contract || {}),
       objective_verdict: evaluation.verdict,
     },
+    self_evolution_policy: evaluation.self_evolution_policy,
     best_febt_market_contracts: evaluation.best_febt_market_contracts,
     tuning: evaluation.tuning,
     codex_review: evaluation.codex_review,

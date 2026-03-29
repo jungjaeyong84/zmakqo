@@ -2,6 +2,11 @@ const assert = require("assert");
 const { __test } = require("../../scripts/lib/best-febt-supervisor");
 
 function run() {
+  const selfEvolution = __test.buildSelfEvolutionPolicySpec();
+  assert.strictEqual(selfEvolution.master_spec_path.endsWith("BEST_SELF_EVOLUTION_MASTER_SPEC.md"), true);
+  assert.strictEqual(Array.isArray(selfEvolution.linked_paths), true);
+  assert.strictEqual(selfEvolution.linked_paths.length >= 6, true);
+
   const contracts = __test.deriveBestFebtMarketContracts({
     governance: {
       current: {

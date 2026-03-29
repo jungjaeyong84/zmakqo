@@ -16,6 +16,7 @@ const {
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
+const { buildSelfEvolutionPolicySpec } = require("./lib/best-febt-supervisor");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
 
 loadLocalEnv();
@@ -135,6 +136,9 @@ function buildPrompt(context = {}) {
     ? objectiveSupervisor.best_febt_tuning_contract
     : null;
   const bestFebtMarketLines = buildBestFebtMarketContractLines(objectiveSupervisor);
+  const selfEvolutionPolicy = objectiveSupervisor && objectiveSupervisor.self_evolution_policy && typeof objectiveSupervisor.self_evolution_policy === "object"
+    ? objectiveSupervisor.self_evolution_policy
+    : buildSelfEvolutionPolicySpec();
   return [
     "You are the weekly Codex patch engine for DONBEOLJA.",
     "Task: inspect the provided latest reports and return a single JSON decision only.",
@@ -146,6 +150,7 @@ function buildPrompt(context = {}) {
     "- Respect change budget and change-control guards.",
     "- Treat patch candidates as Pine full-quality bundle candidates; server 1차 remains integrity-only and must not be semantically retuned here.",
     "- BEST/FEBT weekly tuning must follow /Users/jeongjaeyong/Projects/donbeolja/docs/BEST_FEBT_WEEKLY_TUNING_POLICY.md.",
+    `- BEST self-evolution master spec must be treated as the higher-level autonomy roadmap: ${selfEvolutionPolicy.master_spec_path}.`,
     "- BEST/FEBT weekly tuning may only use these automatic levers: febt_lock_arm_min, febt_lock_fire_min, febt_fire_edge_min, febt_late_hard_max, febt_fail_max.",
     "- Do not recommend automatic weight changes for lock_score, delay_cost, late_risk, or failure_risk in the weekly loop.",
     "- If count_ratio_global < 1.00, tightening recommendations are disallowed; prefer HOLD or rollback-compatible reasoning.",
@@ -177,6 +182,7 @@ function buildPrompt(context = {}) {
     `- stage autopilot: ${INPUT_PATHS.stageAutopilot}`,
     `- objective retrospective: ${INPUT_PATHS.retrospective}`,
     `- BEST/FEBT weekly tuning policy: /Users/jeongjaeyong/Projects/donbeolja/docs/BEST_FEBT_WEEKLY_TUNING_POLICY.md`,
+    `- BEST self-evolution master spec: ${selfEvolutionPolicy.master_spec_path}`,
     "Filter layer interpretation:",
     ...objectiveLayerLines,
     "Quick context:",
@@ -207,6 +213,10 @@ function buildPrompt(context = {}) {
     `- wait layer febt disagreement / fallback / missing: ${waitLayer.febt_disagreement_n != null ? waitLayer.febt_disagreement_n : "N/A"} / ${waitLayer.febt_fallback_legacy_n != null ? waitLayer.febt_fallback_legacy_n : "N/A"} / ${waitLayer.febt_missing_rate != null ? waitLayer.febt_missing_rate : "N/A"}`,
     "BEST/FEBT market contracts:",
     ...bestFebtMarketLines,
+    "Self-evolution policy docs:",
+    ...((Array.isArray(selfEvolutionPolicy.linked_paths) && selfEvolutionPolicy.linked_paths.length)
+      ? selfEvolutionPolicy.linked_paths.map((row) => `- ${row}`)
+      : ["- N/A"]),
   ].join("\n");
 }
 

@@ -16,6 +16,13 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
         projected_count_ratio_global: 0.96,
         projected_net_signal_delta_n: -2,
       },
+      self_evolution_policy: {
+        master_spec_path: "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MASTER_SPEC.md",
+        linked_paths: [
+          "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DATASET_SPEC.md",
+          "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_OBJECTIVE_SCORE_SPEC.md",
+        ],
+      },
       best_febt_market_contracts: [
         {
           market: "BTCUSDT",
@@ -65,6 +72,9 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.ok(prompt.includes("febt_lock_arm_min, febt_lock_fire_min, febt_fire_edge_min, febt_late_hard_max, febt_fail_max"));
   assert.ok(prompt.includes("If count_ratio_global < 1.00, tightening recommendations are disallowed"));
   assert.ok(prompt.includes("BEST/FEBT weekly tuning policy"));
+  assert.ok(prompt.includes("BEST self-evolution master spec"));
+  assert.ok(prompt.includes("Self-evolution policy docs:"));
+  assert.ok(prompt.includes("BEST_SELF_EVOLUTION_DATASET_SPEC.md"));
   assert.ok(prompt.includes("febt contract mode: RECOVERY_FIRST"));
   assert.ok(prompt.includes("febt tightening allowed: NO"));
   assert.ok(prompt.includes("BEST/FEBT market contracts:"));

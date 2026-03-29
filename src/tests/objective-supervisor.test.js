@@ -123,6 +123,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.filter_layers.ev_time_value.label, "4차 EV/시간가치층");
   assert.strictEqual(allowPromote.phase0.available, true);
   assert.strictEqual(allowPromote.phase0.immediate_win_rate, 0.57);
+  assert.strictEqual(allowPromote.self_evolution_policy.master_spec_path.endsWith("BEST_SELF_EVOLUTION_MASTER_SPEC.md"), true);
   assert.strictEqual(allowPromote.best_febt_tuning_contract.mode, "NORMAL");
   assert.strictEqual(allowPromote.best_febt_tuning_contract.tightening_allowed, true);
   assert.strictEqual(Array.isArray(allowPromote.best_febt_market_contracts), true);
@@ -304,6 +305,11 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
       duplicate_count: 1,
       reject_count: 2,
     },
+    self_evolution_policy: {
+      master_spec_path: "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MASTER_SPEC.md",
+      current_focus: "P0_DATASET,P1_OBJECTIVE,P2_ATTRIBUTION",
+      linked_paths: ["/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DATASET_SPEC.md"],
+    },
     best_febt_tuning_contract: {
       mode: "COUNT_GUARD_ACTIVE",
       tightening_allowed: false,
@@ -343,6 +349,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.ok(filterLayerSection.lines[4].includes("fallback 1"));
   assert.ok(telegramSections.some((section) => section.header === "FEBT Phase 0"));
   assert.ok(telegramSections.some((section) => section.header === "BEST/FEBT 공통 계약"));
+  assert.ok(telegramSections.some((section) => section.header === "자기 진화 정책"));
   assert.ok(telegramSections.some((section) => section.header === "시장별 BEST/FEBT 계약"));
 
   const derivedContract = __test.deriveBestFebtTuningContract({

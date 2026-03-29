@@ -8,6 +8,17 @@ const {
 } = require("./automation-utils");
 
 const POLICY_PATH = "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_FEBT_WEEKLY_TUNING_POLICY.md";
+const SELF_EVOLUTION_MASTER_SPEC_PATH = "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MASTER_SPEC.md";
+const SELF_EVOLUTION_POLICY_PATHS = Object.freeze([
+  SELF_EVOLUTION_MASTER_SPEC_PATH,
+  "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DATASET_SPEC.md",
+  "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_OBJECTIVE_SCORE_SPEC.md",
+  "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_ATTRIBUTION_SPEC.md",
+  "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_CANDIDATE_CHANGESET_SPEC.md",
+  "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_CANARY_SPEC.md",
+  "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MEMORY_LEDGER_SPEC.md",
+  "/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_WORK_BREAKDOWN.md",
+]);
 const DEFAULT_WEEKLY_GOVERNANCE_MAX_AGE_HOURS = 18;
 const DEFAULT_OBJECTIVE_SUPERVISOR_MAX_AGE_HOURS = 18;
 const DEFAULT_MARKET_CONTRACT_LIMIT = 7;
@@ -48,6 +59,15 @@ function topCountValue(map) {
     .sort((a, b) => (b[1] - a[1]) || String(a[0]).localeCompare(String(b[0])))[0][0];
 }
 
+function buildSelfEvolutionPolicySpec() {
+  return {
+    master_spec_path: SELF_EVOLUTION_MASTER_SPEC_PATH,
+    linked_paths: SELF_EVOLUTION_POLICY_PATHS.slice(),
+    status: "PROPOSED",
+    current_focus: "P0_DATASET,P1_OBJECTIVE,P2_ATTRIBUTION",
+  };
+}
+
 function deriveBestFebtTuningContract({ governance = null, objectiveSupervisor = null } = {}) {
   const febtShadow = governance && governance.current && governance.current.febt_shadow && typeof governance.current.febt_shadow === "object"
     ? governance.current.febt_shadow
@@ -79,6 +99,8 @@ function deriveBestFebtTuningContract({ governance = null, objectiveSupervisor =
     : (recoveryPriority ? "RECOVERY_FIRST" : "NORMAL");
   return {
     policy_path: POLICY_PATH,
+    self_evolution_master_spec_path: SELF_EVOLUTION_MASTER_SPEC_PATH,
+    self_evolution_policy_paths: SELF_EVOLUTION_POLICY_PATHS.slice(),
     allowed_auto_levers: AUTO_LEVERS.slice(),
     objective_verdict: String(objectiveSupervisor && objectiveSupervisor.verdict || "N/A"),
     wait_tuner_reason: String(waitLayer.tuner_reason || "N/A"),
@@ -259,12 +281,16 @@ function readBestFebtSupervisorContext(nowMs, options = {}) {
 
 module.exports = {
   POLICY_PATH,
+  SELF_EVOLUTION_MASTER_SPEC_PATH,
+  SELF_EVOLUTION_POLICY_PATHS,
   AUTO_LEVERS,
+  buildSelfEvolutionPolicySpec,
   deriveBestFebtTuningContract,
   deriveBestFebtMarketContracts,
   deriveBestFebtMarketGuardContract,
   readBestFebtSupervisorContext,
   __test: {
+    buildSelfEvolutionPolicySpec,
     deriveBestFebtTuningContract,
     deriveBestFebtMarketContracts,
     deriveBestFebtMarketGuardContract,
