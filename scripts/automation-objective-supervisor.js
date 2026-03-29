@@ -14,6 +14,7 @@ const {
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
+const { deriveBestFebtTuningContract } = require("./lib/best-febt-supervisor");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
 const { resolveMarketStateSummary } = require("../src/utils/marketStateSummary");
 const { resolveStatPhysFeatures } = require("../src/utils/statPhysFeatures");
@@ -392,6 +393,14 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
       ],
     },
     {
+      header: "BEST/FEBT 공통 계약",
+      lines: [
+        `mode ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.mode || "N/A"} / tightening ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.tightening_allowed ? "ALLOW" : "BLOCK"} / recovery ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.recovery_priority ? "FIRST" : "NORMAL"}`,
+        `replacement ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_replacement_ratio != null ? pct(report.best_febt_tuning_contract.projected_replacement_ratio) : "N/A"} / count ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_count_ratio_global != null ? `${Number(report.best_febt_tuning_contract.projected_count_ratio_global).toFixed(2)}x` : "N/A"} / net delta ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_net_signal_delta_n != null ? report.best_febt_tuning_contract.projected_net_signal_delta_n : "N/A"}`,
+        `fire ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.fire_n != null ? report.best_febt_tuning_contract.fire_n : "N/A"} / late ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.late_n != null ? report.best_febt_tuning_contract.late_n : "N/A"} / disagree ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.disagreement_n != null ? report.best_febt_tuning_contract.disagreement_n : "N/A"} / fallback ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.fallback_legacy_n != null ? report.best_febt_tuning_contract.fallback_legacy_n : "N/A"}`,
+      ],
+    },
+    {
       header: "Codex 검토",
       lines: [
         `상태 ${report.codex_review.status} / 결론 ${report.codex_review.verdict} / 사유 ${report.codex_review.reason}`,
@@ -450,6 +459,14 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     duplicate_count: toNum(phase0 && phase0.bridge_latency && phase0.bridge_latency.duplicate_count) || 0,
     reject_count: toNum(phase0 && phase0.bridge_latency && phase0.bridge_latency.reject_count) || 0,
   };
+  const bestFebtTuningContract = deriveBestFebtTuningContract({
+    governance,
+    objectiveSupervisor: {
+      verdict: null,
+      filter_layers: filterLayers,
+      phase0: phase0Summary,
+    },
+  });
 
   const blockers = [];
   if (!objective || objective.enough_sample !== true) blockers.push("OBJECTIVE_SAMPLE_NOT_READY");
@@ -579,6 +596,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     },
     physics: physicsSummary,
     phase0: phase0Summary,
+    best_febt_tuning_contract: bestFebtTuningContract,
     filter_layers: filterLayers,
     tuning: {
       ev_reason: String(ev && ev.decision_reason || "N/A"),
@@ -659,6 +677,15 @@ function renderMarkdown(report = {}) {
     `- legacy_wait immediate_win=${pct(report.phase0 && report.phase0.immediate_win_rate)} / saved_loss=${pct(report.phase0 && report.phase0.saved_loss_pct)} / missed_gain=${pct(report.phase0 && report.phase0.missed_gain_pct)} / delta=${signedPct(report.phase0 && report.phase0.saved_loss_minus_missed_gain)}`,
     `- bridge webhook_to_fill p95=${report.phase0 && report.phase0.webhook_to_fill_p95_ms != null ? `${Number(report.phase0.webhook_to_fill_p95_ms).toFixed(0)}ms` : "N/A"} / duplicate=${report.phase0 && report.phase0.duplicate_count != null ? report.phase0.duplicate_count : "N/A"} / reject=${report.phase0 && report.phase0.reject_count != null ? report.phase0.reject_count : "N/A"}`,
     "",
+    "## BEST/FEBT Tuning Contract",
+    `- mode: ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.mode || "N/A"}`,
+    `- tightening_allowed: ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.tightening_allowed ? "YES" : "NO"} / recovery_priority: ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.recovery_priority ? "YES" : "NO"}`,
+    `- projected_replacement_ratio: ${pct(report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_replacement_ratio)}`,
+    `- projected_count_ratio_global: ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_count_ratio_global != null ? Number(report.best_febt_tuning_contract.projected_count_ratio_global).toFixed(2) : "N/A"}`,
+    `- projected_net_signal_delta_n: ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_net_signal_delta_n != null ? report.best_febt_tuning_contract.projected_net_signal_delta_n : "N/A"}`,
+    `- fire/late/void: ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.fire_n != null ? report.best_febt_tuning_contract.fire_n : "N/A"} / ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.late_n != null ? report.best_febt_tuning_contract.late_n : "N/A"} / ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.void_n != null ? report.best_febt_tuning_contract.void_n : "N/A"}`,
+    `- disagreement/fallback/missing: ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.disagreement_n != null ? report.best_febt_tuning_contract.disagreement_n : "N/A"} / ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.fallback_legacy_n != null ? report.best_febt_tuning_contract.fallback_legacy_n : "N/A"} / ${pct(report.best_febt_tuning_contract && report.best_febt_tuning_contract.missing_rate)}`,
+    "",
     "## Tuning Inputs",
     `- EV: ${report.tuning && report.tuning.ev_reason || "N/A"}`,
     `- WAIT: ${report.tuning && report.tuning.wait_reason || "N/A"}`,
@@ -723,6 +750,11 @@ async function main() {
     guards: evaluation.guards,
     physics: evaluation.physics,
     phase0: evaluation.phase0,
+    filter_layers: evaluation.filter_layers,
+    best_febt_tuning_contract: {
+      ...(evaluation.best_febt_tuning_contract || {}),
+      objective_verdict: evaluation.verdict,
+    },
     tuning: evaluation.tuning,
     codex_review: evaluation.codex_review,
     stage_autopilot: evaluation.stage_autopilot,
@@ -784,5 +816,6 @@ module.exports = {
     evaluateSupervisor,
     buildObjectiveSupervisorTelegramSections,
     buildFilterLayerSummary,
+    deriveBestFebtTuningContract,
   },
 };

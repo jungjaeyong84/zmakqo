@@ -97,6 +97,8 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.filter_layers.ev_time_value.label, "4차 EV/시간가치층");
   assert.strictEqual(allowPromote.phase0.available, true);
   assert.strictEqual(allowPromote.phase0.immediate_win_rate, 0.57);
+  assert.strictEqual(allowPromote.best_febt_tuning_contract.mode, "NORMAL");
+  assert.strictEqual(allowPromote.best_febt_tuning_contract.tightening_allowed, true);
 
   const blockPromote = __test.evaluateSupervisor({
     ...base,
@@ -286,6 +288,40 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.ok(filterLayerSection.lines[4].includes("disagree 2"));
   assert.ok(filterLayerSection.lines[4].includes("fallback 1"));
   assert.ok(telegramSections.some((section) => section.header === "FEBT Phase 0"));
+  assert.ok(telegramSections.some((section) => section.header === "BEST/FEBT 공통 계약"));
+
+  const derivedContract = __test.deriveBestFebtTuningContract({
+    governance: {
+      current: {
+        febt_shadow: {
+          projected_replacement_ratio: 0.72,
+          projected_count_ratio: 0.94,
+          projected_net_signal_delta_n: -3,
+        },
+      },
+    },
+    objectiveSupervisor: {
+      filter_layers: {
+        wait_timing: {
+          tuner_reason: "KEEP",
+          wait_action: "WAIT_HARD",
+          febt_fire_n: 3,
+          febt_late_n: 2,
+          febt_void_n: 1,
+          febt_disagreement_n: 4,
+          febt_fallback_legacy_n: 1,
+          febt_missing_rate: 0.25,
+        },
+      },
+      phase0: {
+        legacy_wait_coverage_rate: 0.08,
+        legacy_wait_observed_chain_n: 12,
+      },
+    },
+  });
+  assert.strictEqual(derivedContract.mode, "COUNT_GUARD_ACTIVE");
+  assert.strictEqual(derivedContract.tightening_allowed, false);
+  assert.strictEqual(derivedContract.recovery_priority, true);
 
   console.log("OBJECTIVE_SUPERVISOR_TEST_OK");
 })();

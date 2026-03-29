@@ -8,6 +8,14 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
     objectiveSupervisor: {
       verdict: "HOLD",
       reason: "OBJECTIVE_ON_TRACK",
+      best_febt_tuning_contract: {
+        mode: "RECOVERY_FIRST",
+        tightening_allowed: false,
+        recovery_priority: true,
+        projected_replacement_ratio: 0.78,
+        projected_count_ratio_global: 0.96,
+        projected_net_signal_delta_n: -2,
+      },
       filter_layers: {
         integrity: { server_mode: "INTEGRITY_GUARD_ONLY", coverage_pass: true },
         entry_quality: { pine_candidate_verdict: "WATCHLIST_ONLY", quality_actions: 2 },
@@ -31,6 +39,12 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.ok(prompt.includes("legacy mapping"));
   assert.ok(prompt.includes("layer 3 state soft sizing: KEEP / physics REDUCE / qty 0.7"));
   assert.ok(prompt.includes("layer 4 EV/time value: KEEP / policy TP1_WEIGHT_V1 / source DEFAULT"));
+  assert.ok(prompt.includes("BEST/FEBT weekly tuning must follow"));
+  assert.ok(prompt.includes("febt_lock_arm_min, febt_lock_fire_min, febt_fire_edge_min, febt_late_hard_max, febt_fail_max"));
+  assert.ok(prompt.includes("If count_ratio_global < 1.00, tightening recommendations are disallowed"));
+  assert.ok(prompt.includes("BEST/FEBT weekly tuning policy"));
+  assert.ok(prompt.includes("febt contract mode: RECOVERY_FIRST"));
+  assert.ok(prompt.includes("febt tightening allowed: NO"));
 
   console.log("CODEX_WEEKLY_PATCH_ENGINE_TEST_OK");
 })();

@@ -115,6 +115,15 @@ function buildPrompt(context = {}) {
   const displayMap = buildCandidateDisplayMap(changeControl, patchCandidates);
   const promotionDisplayId = toDisplayCandidateId(changeControl && changeControl.auto_promotion && changeControl.auto_promotion.candidate_id, displayMap);
   const objectiveLayerLines = buildObjectiveSupervisorLayerLines(objectiveSupervisor);
+  const febtShadow = governance && governance.current && governance.current.febt_shadow && typeof governance.current.febt_shadow === "object"
+    ? governance.current.febt_shadow
+    : {};
+  const waitLayer = objectiveSupervisor && objectiveSupervisor.filter_layers && objectiveSupervisor.filter_layers.wait_timing && typeof objectiveSupervisor.filter_layers.wait_timing === "object"
+    ? objectiveSupervisor.filter_layers.wait_timing
+    : {};
+  const bestFebtContract = objectiveSupervisor && objectiveSupervisor.best_febt_tuning_contract && typeof objectiveSupervisor.best_febt_tuning_contract === "object"
+    ? objectiveSupervisor.best_febt_tuning_contract
+    : null;
   return [
     "You are the weekly Codex patch engine for DONBEOLJA.",
     "Task: inspect the provided latest reports and return a single JSON decision only.",
@@ -125,6 +134,11 @@ function buildPrompt(context = {}) {
     "- Maintain long/short symmetry.",
     "- Respect change budget and change-control guards.",
     "- Treat patch candidates as Pine full-quality bundle candidates; server 1차 remains integrity-only and must not be semantically retuned here.",
+    "- BEST/FEBT weekly tuning must follow /Users/jeongjaeyong/Projects/donbeolja/docs/BEST_FEBT_WEEKLY_TUNING_POLICY.md.",
+    "- BEST/FEBT weekly tuning may only use these automatic levers: febt_lock_arm_min, febt_lock_fire_min, febt_fire_edge_min, febt_late_hard_max, febt_fail_max.",
+    "- Do not recommend automatic weight changes for lock_score, delay_cost, late_risk, or failure_risk in the weekly loop.",
+    "- If count_ratio_global < 1.00, tightening recommendations are disallowed; prefer HOLD or rollback-compatible reasoning.",
+    "- Favor replacement_ratio and count preservation ahead of marginal win-rate gains.",
     "- Prefer HOLD on weak/conflicting evidence.",
     "- PROMOTE only when existing change-control already indicates a ready promotion candidate.",
     "- ROLLBACK only when existing change-control already indicates a ready rollback target.",
@@ -151,6 +165,7 @@ function buildPrompt(context = {}) {
     `- shadow canary: ${INPUT_PATHS.canary}`,
     `- stage autopilot: ${INPUT_PATHS.stageAutopilot}`,
     `- objective retrospective: ${INPUT_PATHS.retrospective}`,
+    `- BEST/FEBT weekly tuning policy: /Users/jeongjaeyong/Projects/donbeolja/docs/BEST_FEBT_WEEKLY_TUNING_POLICY.md`,
     "Filter layer interpretation:",
     ...objectiveLayerLines,
     "Quick context:",
@@ -169,6 +184,16 @@ function buildPrompt(context = {}) {
     `- retrospective daily: ${retrospective && retrospective.periods && retrospective.periods.DAILY && retrospective.periods.DAILY.objective ? retrospective.periods.DAILY.objective.verdict : "N/A"} / net=${retrospective && retrospective.periods && retrospective.periods.DAILY && retrospective.periods.DAILY.realized_trades ? retrospective.periods.DAILY.realized_trades.net_pnl_quote : "N/A"}`,
     `- retrospective weekly: ${retrospective && retrospective.periods && retrospective.periods.WEEKLY && retrospective.periods.WEEKLY.objective ? retrospective.periods.WEEKLY.objective.verdict : "N/A"} / net=${retrospective && retrospective.periods && retrospective.periods.WEEKLY && retrospective.periods.WEEKLY.realized_trades ? retrospective.periods.WEEKLY.realized_trades.net_pnl_quote : "N/A"}`,
     `- retrospective monthly: ${retrospective && retrospective.periods && retrospective.periods.MONTHLY && retrospective.periods.MONTHLY.objective ? retrospective.periods.MONTHLY.objective.verdict : "N/A"} / net=${retrospective && retrospective.periods && retrospective.periods.MONTHLY && retrospective.periods.MONTHLY.realized_trades ? retrospective.periods.MONTHLY.realized_trades.net_pnl_quote : "N/A"}`,
+    "BEST/FEBT weekly tuning snapshot:",
+    `- febt contract mode: ${bestFebtContract && bestFebtContract.mode || "N/A"}`,
+    `- febt tightening allowed: ${bestFebtContract ? (bestFebtContract.tightening_allowed ? "YES" : "NO") : "N/A"}`,
+    `- febt recovery priority: ${bestFebtContract ? (bestFebtContract.recovery_priority ? "YES" : "NO") : "N/A"}`,
+    `- febt projected replacement_ratio: ${bestFebtContract && bestFebtContract.projected_replacement_ratio != null ? bestFebtContract.projected_replacement_ratio : (febtShadow.projected_replacement_ratio != null ? febtShadow.projected_replacement_ratio : "N/A")}`,
+    `- febt projected count_ratio_global: ${bestFebtContract && bestFebtContract.projected_count_ratio_global != null ? bestFebtContract.projected_count_ratio_global : (febtShadow.projected_count_ratio != null ? febtShadow.projected_count_ratio : "N/A")}`,
+    `- febt projected net signal delta: ${bestFebtContract && bestFebtContract.projected_net_signal_delta_n != null ? bestFebtContract.projected_net_signal_delta_n : (febtShadow.projected_net_signal_delta_n != null ? febtShadow.projected_net_signal_delta_n : "N/A")}`,
+    `- febt candidate recovered / blocked / wait: ${febtShadow.candidate_recovered_n != null ? febtShadow.candidate_recovered_n : "N/A"} / ${febtShadow.candidate_blocked_n != null ? febtShadow.candidate_blocked_n : "N/A"} / ${febtShadow.candidate_wait_n != null ? febtShadow.candidate_wait_n : "N/A"}`,
+    `- wait layer febt fire / late / void: ${waitLayer.febt_fire_n != null ? waitLayer.febt_fire_n : "N/A"} / ${waitLayer.febt_late_n != null ? waitLayer.febt_late_n : "N/A"} / ${waitLayer.febt_void_n != null ? waitLayer.febt_void_n : "N/A"}`,
+    `- wait layer febt disagreement / fallback / missing: ${waitLayer.febt_disagreement_n != null ? waitLayer.febt_disagreement_n : "N/A"} / ${waitLayer.febt_fallback_legacy_n != null ? waitLayer.febt_fallback_legacy_n : "N/A"} / ${waitLayer.febt_missing_rate != null ? waitLayer.febt_missing_rate : "N/A"}`,
   ].join("\n");
 }
 

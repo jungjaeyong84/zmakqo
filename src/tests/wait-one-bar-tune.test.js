@@ -57,6 +57,20 @@ const { __test } = require('../../scripts/automation-wait-one-bar-tune');
     0.60,
     { currentObjective: { monthly_pass: false, net_pass: true, ev_pass: true, win_pass: true } },
   ), false);
+  assert.strictEqual(__test.isWaitTighteningChange(
+    currentCfg,
+    { ...currentCfg, sameDirStreakMin: 4 }
+  ), true);
+  assert.strictEqual(__test.bestFebtAllowsWaitPlan(
+    { tightening_allowed: false, recovery_priority: true },
+    currentCfg,
+    { ...currentCfg, sameDirStreakMin: 4 }
+  ), false);
+  assert.strictEqual(__test.bestFebtAllowsWaitPlan(
+    { tightening_allowed: true, recovery_priority: false },
+    currentCfg,
+    { ...currentCfg, sameDirStreakMin: 2 }
+  ), true);
 
   const summary = __test.summarizeConfig(currentCfg);
   assert.strictEqual(summary.wait_one_bar_same_dir_streak_min, 3);

@@ -225,6 +225,28 @@ function run() {
   });
   assert.strictEqual(mlRejectedNoHoldout.applied, false);
 
+  assert.strictEqual(__test.isEvThresholdHardening(0.55, 0.58), true);
+  assert.strictEqual(__test.isEvBandHardening(
+    { fullThreshold: 0.60, killThreshold: 0.50, midScale: 0.70, lowScale: 0.40 },
+    { fullThreshold: 0.62, killThreshold: 0.52, midScale: 0.65, lowScale: 0.35 }
+  ), true);
+  const bestFebtBlocked = __test.applyBestFebtEvGuard({
+    plan: { changed: true, next: 0.58, reason: "TARGET_THRESHOLD_SEARCH" },
+    bandPlan: {
+      changed: true,
+      next: { fullThreshold: 0.62, killThreshold: 0.52, midScale: 0.65, lowScale: 0.35 },
+      reason: "BAND_OBJECTIVE_SEARCH",
+    },
+    currentThreshold: 0.55,
+    currentBand: { fullThreshold: 0.60, killThreshold: 0.50, midScale: 0.70, lowScale: 0.40 },
+    bestFebtContract: { tightening_allowed: false, recovery_priority: true },
+  });
+  assert.strictEqual(bestFebtBlocked.plan.changed, false);
+  assert.strictEqual(bestFebtBlocked.plan.next, 0.55);
+  assert.strictEqual(bestFebtBlocked.bandPlan.changed, false);
+  assert.strictEqual(bestFebtBlocked.bandPlan.next.fullThreshold, 0.60);
+  assert.strictEqual(bestFebtBlocked.reason, "BEST_FEBT_COUNT_GUARD_BLOCK");
+
   const fillsByEntryEventId = new Map([
     ["BINANCEFUT|BTCUSDT|15m|1000|CORE_LONG|CORE_LONG", [
       { event: "EXIT_TP_P1_3.25P" },

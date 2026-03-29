@@ -31,6 +31,7 @@ const {
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
+const { readBestFebtSupervisorContext } = require("./lib/best-febt-supervisor");
 const { DEFAULT_MIN_MONTHLY_NET_KRW } = require("./lib/objective-policy");
 const { describeStageForUser, wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
 const {
@@ -547,67 +548,151 @@ function sharedObjectiveFailing(sharedObjective) {
   return current.monthly_pass === false || current.net_pass === false || current.ev_pass === false || current.win_pass === false;
 }
 
-function applySharedObjectiveGuard(recommendations = {}, settings = {}, sharedObjective = null) {
+function bestFebtGuardReason(bestFebtContract = null) {
+  if (!bestFebtContract || typeof bestFebtContract !== "object") return null;
+  if (bestFebtContract.tightening_allowed === false) {
+    return "BEST/FEBT count 보존 기준(count_ratio_global < 1.00)에서는 tightening 자동 권고를 차단합니다.";
+  }
+  if (bestFebtContract.recovery_priority === true) {
+    return "BEST/FEBT replacement 회복 우선 상태에서는 tightening보다 recovery 우선입니다.";
+  }
+  return null;
+}
+
+function isAiHardeningRecommendation(currentPolicy, currentReduce, aiRecommendation = null) {
+  const action = String(aiRecommendation && aiRecommendation.action || "").trim().toUpperCase();
+  if (action !== "REVIEW_UPDATE") return false;
+  const nextPolicy = String(aiRecommendation && (aiRecommendation.next_policy || aiRecommendation.next) || currentPolicy).trim().toUpperCase();
+  const nextReduce = Number(
+    aiRecommendation && (
+      aiRecommendation.next_reduce_pct != null
+        ? aiRecommendation.next_reduce_pct
+        : (aiRecommendation.key === "ai_missing_reduce_pct" ? aiRecommendation.next : currentReduce)
+    )
+  );
+  return (
+    (currentPolicy === "ALLOW" && (nextPolicy === "REDUCE" || nextPolicy === "BLOCK"))
+    || (currentPolicy === "REDUCE" && nextPolicy === "BLOCK")
+    || (currentPolicy === "REDUCE" && Number.isFinite(nextReduce) && nextReduce < currentReduce)
+  );
+}
+
+function isEvHardeningRecommendation(settings = {}, evRecommendation = null) {
+  if (String(evRecommendation && evRecommendation.action || "").trim().toUpperCase() !== "REVIEW_UPDATE") return false;
+  const currentThreshold = Number(settings.ev_gate_tp1_prob_min || 0.55);
+  const currentLow = Number(settings.ev_gate_qty_scale_low || 0.40);
+  const currentMid = Number(settings.ev_gate_qty_scale_mid || 0.70);
+  const evNext = evRecommendation && evRecommendation.next ? evRecommendation.next : null;
+  if (!evNext || typeof evNext !== "object") return false;
+  return (
+    Number(evNext.ev_gate_tp1_prob_min) > currentThreshold
+    || Number(evNext.ev_gate_qty_scale_low) < currentLow
+    || Number(evNext.ev_gate_qty_scale_mid) < currentMid
+  );
+}
+
+function applySharedObjectiveGuard(recommendations = {}, settings = {}, sharedObjective = null, bestFebtContract = null) {
   const next = {
     QUALITY: Array.isArray(recommendations.QUALITY) ? recommendations.QUALITY.map((row) => ({ ...row })) : [],
     AI: recommendations.AI ? { ...recommendations.AI } : { action: "HOLD", reason: "recommendation missing" },
     MARKET: recommendations.MARKET ? { ...recommendations.MARKET } : { action: "HOLD", reason: "recommendation missing" },
     EV: recommendations.EV ? { ...recommendations.EV } : { action: "HOLD", reason: "recommendation missing" },
   };
-  if (!sharedObjectiveFailing(sharedObjective)) return next;
-
-  const blockReason = `공통 목표(${Number(sharedObjective && sharedObjective.objectiveConfig && sharedObjective.objectiveConfig.min_monthly_net_krw || OBJECTIVE_TARGET_MONTHLY_KRW).toLocaleString("ko-KR")} KRW/월 포함) 미달 상태에서는 완화안을 자동 권고하지 않습니다.`;
-  next.QUALITY = next.QUALITY.map((row) => {
-    if (String(row && row.action || "").toUpperCase() !== "REVIEW_LOOSEN") return row;
-    return { action: "HOLD", reason: blockReason, blocked_action: row.action, blocked_key: row.key || null };
-  });
-
   const currentAiPolicy = String(settings.ai_missing_policy || "ALLOW").trim().toUpperCase();
   const currentAiReduce = Number(settings.ai_missing_reduce_pct || 0.5);
-  const aiNextPolicy = String(next.AI && (next.AI.next_policy || next.AI.next) || currentAiPolicy).trim().toUpperCase();
-  const aiNextReduce = Number(
-    next.AI && (
-      next.AI.next_reduce_pct != null
-        ? next.AI.next_reduce_pct
-        : (next.AI.key === "ai_missing_reduce_pct" ? next.AI.next : currentAiReduce)
-    )
-  );
-  const aiSoftening = String(next.AI && next.AI.action || "").toUpperCase() === "REVIEW_UPDATE" && (
-    (currentAiPolicy === "BLOCK" && (aiNextPolicy === "REDUCE" || aiNextPolicy === "ALLOW"))
-    || (currentAiPolicy === "REDUCE" && aiNextPolicy === "ALLOW")
-    || (currentAiPolicy === "REDUCE" && Number.isFinite(aiNextReduce) && aiNextReduce > currentAiReduce)
-  );
-  if (aiSoftening) {
+  const currentThreshold = Number(settings.ev_gate_tp1_prob_min || 0.55);
+  const currentLow = Number(settings.ev_gate_qty_scale_low || 0.40);
+  const currentMid = Number(settings.ev_gate_qty_scale_mid || 0.70);
+
+  if (sharedObjectiveFailing(sharedObjective)) {
+    const blockReason = `공통 목표(${Number(sharedObjective && sharedObjective.objectiveConfig && sharedObjective.objectiveConfig.min_monthly_net_krw || OBJECTIVE_TARGET_MONTHLY_KRW).toLocaleString("ko-KR")} KRW/월 포함) 미달 상태에서는 완화안을 자동 권고하지 않습니다.`;
+    next.QUALITY = next.QUALITY.map((row) => {
+      if (String(row && row.action || "").toUpperCase() !== "REVIEW_LOOSEN") return row;
+      return { action: "HOLD", reason: blockReason, blocked_action: row.action, blocked_key: row.key || null };
+    });
+
+    const aiNextPolicy = String(next.AI && (next.AI.next_policy || next.AI.next) || currentAiPolicy).trim().toUpperCase();
+    const aiNextReduce = Number(
+      next.AI && (
+        next.AI.next_reduce_pct != null
+          ? next.AI.next_reduce_pct
+          : (next.AI.key === "ai_missing_reduce_pct" ? next.AI.next : currentAiReduce)
+      )
+    );
+    const aiSoftening = String(next.AI && next.AI.action || "").toUpperCase() === "REVIEW_UPDATE" && (
+      (currentAiPolicy === "BLOCK" && (aiNextPolicy === "REDUCE" || aiNextPolicy === "ALLOW"))
+      || (currentAiPolicy === "REDUCE" && aiNextPolicy === "ALLOW")
+      || (currentAiPolicy === "REDUCE" && Number.isFinite(aiNextReduce) && aiNextReduce > currentAiReduce)
+    );
+    if (aiSoftening) {
+      next.AI = {
+        action: "HOLD",
+        reason: blockReason,
+        blocked_action: "REVIEW_UPDATE",
+        blocked_key: next.AI.key || "AI_SOFTENING",
+        next: currentAiPolicy,
+        next_policy: currentAiPolicy,
+        next_reduce_pct: currentAiReduce,
+      };
+    }
+
+    if (String(next.MARKET.action || "").toUpperCase() === "REVIEW_SOFTEN") {
+      next.MARKET = { action: "HOLD", reason: blockReason, blocked_action: "REVIEW_SOFTEN", blocked_key: next.MARKET.key || null };
+    }
+
+    const evNext = next.EV && next.EV.next ? next.EV.next : null;
+    const evSoftening = evNext && (
+      Number(evNext.ev_gate_tp1_prob_min) < currentThreshold ||
+      Number(evNext.ev_gate_qty_scale_low) > currentLow ||
+      Number(evNext.ev_gate_qty_scale_mid) > currentMid
+    );
+    if (String(next.EV.action || "").toUpperCase() === "REVIEW_UPDATE" && evSoftening) {
+      next.EV = {
+        action: "HOLD",
+        reason: blockReason,
+        blocked_action: "REVIEW_UPDATE",
+        blocked_key: "EV_SOFTENING",
+        next: {
+          ev_gate_tp1_prob_min: currentThreshold,
+          ev_gate_qty_scale_low: currentLow,
+          ev_gate_qty_scale_mid: currentMid,
+        },
+        threshold_eval: next.EV.threshold_eval,
+        buckets: next.EV.buckets,
+      };
+    }
+  }
+
+  const bestFebtReason = bestFebtGuardReason(bestFebtContract);
+  if (!bestFebtReason) return next;
+
+  next.QUALITY = next.QUALITY.map((row) => {
+    if (String(row && row.action || "").toUpperCase() !== "REVIEW_TIGHTEN") return row;
+    return { action: "HOLD", reason: bestFebtReason, blocked_action: row.action, blocked_key: row.key || null };
+  });
+
+  if (isAiHardeningRecommendation(currentAiPolicy, currentAiReduce, next.AI)) {
     next.AI = {
       action: "HOLD",
-      reason: blockReason,
-      blocked_action: "REVIEW_UPDATE",
-      blocked_key: next.AI.key || "AI_SOFTENING",
+      reason: bestFebtReason,
+      blocked_action: next.AI.action || "REVIEW_UPDATE",
+      blocked_key: next.AI.key || "AI_HARDENING",
       next: currentAiPolicy,
       next_policy: currentAiPolicy,
       next_reduce_pct: currentAiReduce,
     };
   }
 
-  if (String(next.MARKET.action || "").toUpperCase() === "REVIEW_SOFTEN") {
-    next.MARKET = { action: "HOLD", reason: blockReason, blocked_action: "REVIEW_SOFTEN", blocked_key: next.MARKET.key || null };
+  if (String(next.MARKET.action || "").toUpperCase() === "REVIEW_TIGHTEN") {
+    next.MARKET = { action: "HOLD", reason: bestFebtReason, blocked_action: "REVIEW_TIGHTEN", blocked_key: next.MARKET.key || null };
   }
 
-  const currentThreshold = Number(settings.ev_gate_tp1_prob_min || 0.55);
-  const currentLow = Number(settings.ev_gate_qty_scale_low || 0.40);
-  const currentMid = Number(settings.ev_gate_qty_scale_mid || 0.70);
-  const evNext = next.EV && next.EV.next ? next.EV.next : null;
-  const evSoftening = evNext && (
-    Number(evNext.ev_gate_tp1_prob_min) < currentThreshold ||
-    Number(evNext.ev_gate_qty_scale_low) > currentLow ||
-    Number(evNext.ev_gate_qty_scale_mid) > currentMid
-  );
-  if (String(next.EV.action || "").toUpperCase() === "REVIEW_UPDATE" && evSoftening) {
+  if (isEvHardeningRecommendation(settings, next.EV)) {
     next.EV = {
       action: "HOLD",
-      reason: blockReason,
-      blocked_action: "REVIEW_UPDATE",
-      blocked_key: "EV_SOFTENING",
+      reason: bestFebtReason,
+      blocked_action: next.EV.action || "REVIEW_UPDATE",
+      blocked_key: "EV_HARDENING",
       next: {
         ev_gate_tp1_prob_min: currentThreshold,
         ev_gate_qty_scale_low: currentLow,
@@ -737,7 +822,7 @@ function buildRecommendationRows(recommendations = {}) {
   return rows;
 }
 
-function renderMarkdown({ nowMeta, provider, tf, lookbackDays, model, metrics, trainMetrics, validation, latePenalty, recommendations, coverage, stageSamples, selfValidation, artifacts, sharedObjective }) {
+function renderMarkdown({ nowMeta, provider, tf, lookbackDays, model, metrics, trainMetrics, validation, latePenalty, recommendations, coverage, stageSamples, selfValidation, artifacts, sharedObjective, bestFebtContract }) {
   const lines = [];
   lines.push("# ML Filter Policy");
   lines.push("");
@@ -762,6 +847,13 @@ function renderMarkdown({ nowMeta, provider, tf, lookbackDays, model, metrics, t
   if (selfValidation && Array.isArray(selfValidation.checks)) {
     selfValidation.checks.forEach((row) => lines.push(`  - ${row}`));
   }
+  lines.push("");
+  lines.push("## BEST/FEBT 공통 계약");
+  lines.push(`- mode: ${bestFebtContract && bestFebtContract.mode || "N/A"}`);
+  lines.push(`- tightening allowed: ${bestFebtContract && bestFebtContract.tightening_allowed ? "YES" : "NO"} / recovery priority: ${bestFebtContract && bestFebtContract.recovery_priority ? "YES" : "NO"}`);
+  lines.push(`- projected replacement ratio: ${bestFebtContract && bestFebtContract.projected_replacement_ratio != null ? pct(bestFebtContract.projected_replacement_ratio) : "N/A"}`);
+  lines.push(`- projected count ratio: ${bestFebtContract && bestFebtContract.projected_count_ratio_global != null ? `${Number(bestFebtContract.projected_count_ratio_global).toFixed(2)}x` : "N/A"}`);
+  lines.push(`- fire / late / disagree: ${bestFebtContract && bestFebtContract.fire_n != null ? bestFebtContract.fire_n : "N/A"} / ${bestFebtContract && bestFebtContract.late_n != null ? bestFebtContract.late_n : "N/A"} / ${bestFebtContract && bestFebtContract.disagreement_n != null ? bestFebtContract.disagreement_n : "N/A"}`);
   lines.push("");
   lines.push("## late-entry penalty");
   lines.push(`- on-time: n=${latePenalty.on_time.n} / success=${pct(latePenalty.on_time.labelRate)} / avg_ret_net=${signedPct(latePenalty.on_time.avgRetNet)}`);
@@ -800,6 +892,7 @@ function renderMarkdown({ nowMeta, provider, tf, lookbackDays, model, metrics, t
   lines.push(`- drops cache: ${artifacts.cache.drops.filePath}`);
   lines.push(`- fills cache: ${artifacts.cache.fills.filePath}`);
   lines.push(`- weekly governance: ${artifacts.weeklyGovernancePath || "N/A"}`);
+  lines.push(`- objective supervisor: ${artifacts.objectiveSupervisorPath || "N/A"}`);
   return `${lines.join("\n")}\n`;
 }
 
@@ -809,6 +902,8 @@ async function main() {
   const nowMs = nowMeta.nowMs;
   const fromMs = nowMs - (LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
   const sharedObjective = readFreshWeeklyGovernance(nowMs);
+  const bestFebtContext = readBestFebtSupervisorContext(nowMs);
+  const bestFebtContract = bestFebtContext.contract;
 
   const [sysRes, signalsRes, dropsRes, fillsRes] = await Promise.all([
     getSystemSettingsForProvider(PROVIDER, 0),
@@ -877,7 +972,7 @@ async function main() {
     MARKET: buildMarketRecommendation(stageSamples.MARKET, sysCfg),
     EV: buildEvRecommendation(stageSamples.EV, sysCfg),
   };
-  const recommendations = applySharedObjectiveGuard(rawRecommendations, sysCfg, sharedObjective);
+  const recommendations = applySharedObjectiveGuard(rawRecommendations, sysCfg, sharedObjective, bestFebtContract);
   recommendations.QUALITY = (Array.isArray(recommendations.QUALITY) ? recommendations.QUALITY : []).map((row) => ({
     ...row,
     display_key: describeQualityRecommendationKeyForUser(row.key),
@@ -936,6 +1031,7 @@ async function main() {
       fresh: sharedObjective.fresh,
       target_monthly_net_krw: Number(sharedObjective && sharedObjective.objectiveConfig && sharedObjective.objectiveConfig.min_monthly_net_krw || OBJECTIVE_TARGET_MONTHLY_KRW),
     },
+    best_febt_tuning_contract: bestFebtContract,
     recommendations,
     artifacts: {
       cache: {
@@ -944,6 +1040,7 @@ async function main() {
         fills: fillsRes.meta,
       },
       weekly_governance_path: sharedObjective.filePath,
+      objective_supervisor_path: bestFebtContext.objectiveSupervisorArtifact && bestFebtContext.objectiveSupervisorArtifact.filePath,
     },
   };
   report.stage_sample_rows = buildStageSampleRows(report.stage_samples);
@@ -972,8 +1069,10 @@ async function main() {
         jsonPath,
         cache: report.artifacts.cache,
         weeklyGovernancePath: sharedObjective.filePath,
+        objectiveSupervisorPath: report.artifacts.objective_supervisor_path,
       },
       sharedObjective,
+      bestFebtContract,
   }));
   copyLatest(jsonPath, path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.json"));
   copyLatest(mdPath, path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.md"));
@@ -996,6 +1095,7 @@ async function main() {
           `학습에 쓴 전체 표본은 ${examples.length}건이고, 실제 체결 ${executedExamples.length}건, 드롭 반사실 ${dropExamples.length}건입니다.`,
           `검증 방식은 ${split.mode}, 학습 ${trainingRows.length}건, 평가 ${split.eval.length}건입니다.`,
           `공통 목표 상태는 ${sharedObjective && sharedObjective.currentObjective ? sharedObjective.currentObjective.verdict : "정보 없음"} / 월간 예상 ${sharedObjective && sharedObjective.currentObjective && Number.isFinite(Number(sharedObjective.currentObjective.monthly_run_rate_krw)) ? `${Number(sharedObjective.currentObjective.monthly_run_rate_krw).toLocaleString("ko-KR")} KRW` : "정보 없음"} / 목표 ${Number(sharedObjective && sharedObjective.objectiveConfig && sharedObjective.objectiveConfig.min_monthly_net_krw || OBJECTIVE_TARGET_MONTHLY_KRW).toLocaleString("ko-KR")} KRW 입니다.`,
+          `BEST/FEBT 계약은 ${bestFebtContract && bestFebtContract.mode || "정보 없음"} / replacement ${bestFebtContract && bestFebtContract.projected_replacement_ratio != null ? pct(bestFebtContract.projected_replacement_ratio) : "정보 없음"} / count ${bestFebtContract && bestFebtContract.projected_count_ratio_global != null ? `${Number(bestFebtContract.projected_count_ratio_global).toFixed(2)}x` : "정보 없음"} 입니다.`,
           `평가 결과는 정확도 ${pct(metrics.accuracy)}, Brier ${metrics.brier == null ? "정보 없음" : metrics.brier.toFixed(4)}, logloss ${metrics.logloss == null ? "정보 없음" : metrics.logloss.toFixed(4)} 입니다.`,
           `자체 검증 ${selfValidation.result} / ${selfValidation.checks.join(" ; ")}`,
           `늦은 진입 1봉 이상 지연 성공률 ${pct(latePenalty.late_1_plus.labelRate)} / 제시간 진입 성공률 ${pct(latePenalty.on_time.labelRate)} / 차이 ${signedPct(latePenalty.penalty_1_plus)}`,
@@ -1059,5 +1159,8 @@ module.exports = {
     buildMlSelfValidation,
     applySharedObjectiveGuard,
     sharedObjectiveFailing,
+    bestFebtGuardReason,
+    isAiHardeningRecommendation,
+    isEvHardeningRecommendation,
   },
 };

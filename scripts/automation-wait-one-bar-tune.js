@@ -24,6 +24,7 @@ const {
 const { DEFAULT_MIN_MONTHLY_NET_KRW } = require("./lib/objective-policy");
 const { buildWaitStateMachineLedger } = require("./lib/stage-outcome-ledgers");
 const { pickSettingsSnapshot, writeStageSnapshot } = require("./lib/stage-autopilot");
+const { readBestFebtSupervisorContext } = require("./lib/best-febt-supervisor");
 const {
   isEntryTierEvent,
   resolveEntryTimingTier,
@@ -739,7 +740,28 @@ function sharedObjectiveAllowsPlan(sharedObjective, currentSummary, bestSummary)
   return true;
 }
 
-function renderMarkdown({ nowMeta, provider, tf, currentCfg, plan, rows, cacheMeta, mlPolicyReport, stageLedger, weeklyGovernance }) {
+function isWaitTighteningChange(currentCfg = {}, nextCfg = {}) {
+  return (
+    Number(nextCfg.sameDirStreakMin) > Number(currentCfg.sameDirStreakMin)
+    || Number(nextCfg.chaseRatioMin) > Number(currentCfg.chaseRatioMin)
+    || Number(nextCfg.lastCloseControlMin) > Number(currentCfg.lastCloseControlMin)
+    || Number(nextCfg.lastDirBodyMin) > Number(currentCfg.lastDirBodyMin)
+    || Number(nextCfg.lastOppWickMax) < Number(currentCfg.lastOppWickMax)
+    || Number(nextCfg.recentMove1PctMin) > Number(currentCfg.recentMove1PctMin)
+    || Number(nextCfg.counterDirBarsMax) < Number(currentCfg.counterDirBarsMax)
+  );
+}
+
+function bestFebtAllowsWaitPlan(bestFebtContract = null, currentCfg = {}, nextCfg = {}) {
+  if (!bestFebtContract || typeof bestFebtContract !== "object") return true;
+  const tightening = isWaitTighteningChange(currentCfg, nextCfg);
+  if (!tightening) return true;
+  if (bestFebtContract.tightening_allowed === false) return false;
+  if (bestFebtContract.recovery_priority === true) return false;
+  return true;
+}
+
+function renderMarkdown({ nowMeta, provider, tf, currentCfg, plan, rows, cacheMeta, mlPolicyReport, stageLedger, weeklyGovernance, bestFebtContract }) {
   const lines = [];
   lines.push("# WAIT_ONE_BAR Tune");
   lines.push("");
@@ -762,6 +784,7 @@ function renderMarkdown({ nowMeta, provider, tf, currentCfg, plan, rows, cacheMe
   lines.push(`- 사유: ${plan.reason}`);
   lines.push(`- 공통 목표 상태: ${weeklyGovernance && weeklyGovernance.currentObjective ? weeklyGovernance.currentObjective.verdict : "N/A"}`);
   lines.push(`- 월간 페이스: ${weeklyGovernance && weeklyGovernance.currentObjective && Number.isFinite(Number(weeklyGovernance.currentObjective.monthly_run_rate_krw)) ? `${Number(weeklyGovernance.currentObjective.monthly_run_rate_krw).toLocaleString("ko-KR")} KRW` : "N/A"}`);
+  lines.push(`- BEST/FEBT contract: ${bestFebtContract && bestFebtContract.mode || "N/A"} / replacement ${bestFebtContract && bestFebtContract.projected_replacement_ratio != null ? pct(bestFebtContract.projected_replacement_ratio) : "N/A"} / count ${bestFebtContract && bestFebtContract.projected_count_ratio_global != null ? `${Number(bestFebtContract.projected_count_ratio_global).toFixed(2)}x` : "N/A"}`);
   lines.push("");
   lines.push("## 현재 설정");
   for (const [key, value] of Object.entries(summarizeConfig(currentCfg))) {
@@ -899,6 +922,8 @@ async function main() {
   const mlPolicyReport = readFreshMlPolicyReport(nowMs);
   const stageLedgerReport = readFreshWaitStateMachineLedger(nowMs);
   const weeklyGovernance = readFreshWeeklyGovernance(nowMs);
+  const bestFebtContext = readBestFebtSupervisorContext(nowMs);
+  const bestFebtContract = bestFebtContext.contract;
 
   const [signalsRes, dropsRes] = await Promise.all([
     getCachedRecentByCreatedAt("signals", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: true }),
@@ -947,6 +972,13 @@ async function main() {
   const skippedRows = evaluatedRows.filter((row) => !row || row.ok !== true);
 
   const plan = pickBestPlan(currentCfg, maturedRows, weeklyGovernance);
+  if (plan.changed && !bestFebtAllowsWaitPlan(bestFebtContract, currentCfg, plan.best && plan.best.cfg ? plan.best.cfg : currentCfg)) {
+    plan.changed = false;
+    plan.nextCfg = currentCfg;
+    plan.reason = bestFebtContract && bestFebtContract.tightening_allowed === false
+      ? "BEST_FEBT_COUNT_GUARD_BLOCK"
+      : "BEST_FEBT_RECOVERY_GUARD_BLOCK";
+  }
   let autopilotSnapshot = null;
   if (plan.changed && plan.enoughSample && plan.enoughTriggers) {
     autopilotSnapshot = writeStageSnapshot({
@@ -1015,6 +1047,7 @@ async function main() {
       previous: weeklyGovernance.previousObjective,
       fresh: weeklyGovernance.fresh,
     },
+    best_febt_tuning_contract: bestFebtContract,
   };
 
   writeJson(jsonPath, wrapDisplayAndRawReport(report));
@@ -1029,6 +1062,7 @@ async function main() {
     mlPolicyReport,
     stageLedger: stageLedgerMeta,
     weeklyGovernance,
+    bestFebtContract,
   }));
   copyLatest(jsonPath, path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json"));
   copyLatest(mdPath, path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.md"));
@@ -1047,6 +1081,7 @@ async function main() {
           `표본 ${plan.current.sample_n} / trigger ${plan.current.trigger_n}`,
           `stage ledger ${stageLedgerMeta.source} / ${stageLedgerMeta.filePath || "N/A"}`,
           `공통목표 ${weeklyGovernance && weeklyGovernance.currentObjective ? weeklyGovernance.currentObjective.verdict : "N/A"} / 월간 ${weeklyGovernance && weeklyGovernance.currentObjective && Number.isFinite(Number(weeklyGovernance.currentObjective.monthly_run_rate_krw)) ? `${Number(weeklyGovernance.currentObjective.monthly_run_rate_krw).toLocaleString("ko-KR")} KRW` : "N/A"}`,
+          `BEST/FEBT ${bestFebtContract && bestFebtContract.mode || "N/A"} / replacement ${bestFebtContract && bestFebtContract.projected_replacement_ratio != null ? pct(bestFebtContract.projected_replacement_ratio) : "N/A"} / count ${bestFebtContract && bestFebtContract.projected_count_ratio_global != null ? `${Number(bestFebtContract.projected_count_ratio_global).toFixed(2)}x` : "N/A"}`,
         ],
       },
       {
@@ -1101,5 +1136,7 @@ module.exports = {
     summarizeConfig,
     sharedObjectiveNeedsProfitRecovery,
     sharedObjectiveAllowsPlan,
+    isWaitTighteningChange,
+    bestFebtAllowsWaitPlan,
   },
 };

@@ -23,6 +23,7 @@ const { getCachedRecentByCreatedAt } = require("./lib/firestore-recent-cache");
 const { buildEvResolvedLedger } = require("./lib/stage-outcome-ledgers");
 const { monthlyRunRateKrw } = require("./lib/objective-policy");
 const { pickSettingsSnapshot, writeStageSnapshot } = require("./lib/stage-autopilot");
+const { readBestFebtSupervisorContext } = require("./lib/best-febt-supervisor");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
 const {
   isEntryTierEvent,
@@ -747,7 +748,7 @@ async function getRawProviderSettings(provider) {
   return providers && typeof providers[provider] === "object" ? providers[provider] : {};
 }
 
-function renderMarkdown({ nowMeta, windowDays, maturityHours, currentThreshold, currentTierThresholds, nextTierThresholds, plan, bandPlan, resolvedEntries, unresolvedOpenCount, unresolvedStaleCount, provider, tf, cacheMeta, mlPolicyReport, mlHint, stageLedger }) {
+function renderMarkdown({ nowMeta, windowDays, maturityHours, currentThreshold, currentTierThresholds, nextTierThresholds, plan, bandPlan, resolvedEntries, unresolvedOpenCount, unresolvedStaleCount, provider, tf, cacheMeta, mlPolicyReport, mlHint, stageLedger, bestFebtContract }) {
   const lines = [];
   lines.push(`# EV TP1 Threshold Tune`);
   lines.push("");
@@ -766,6 +767,7 @@ function renderMarkdown({ nowMeta, windowDays, maturityHours, currentThreshold, 
   lines.push(`- 현재 Wilson LB: ${pct(plan.current.wilsonLower)}`);
   lines.push(`- 현재 월간페이스: ${plan.current.monthlyRunRateKrw == null ? "N/A" : `${roundTo(plan.current.monthlyRunRateKrw, 0)} KRW`}`);
   lines.push(`- 현재 sample: ${plan.current.n}`);
+  lines.push(`- BEST/FEBT contract: ${bestFebtContract && bestFebtContract.mode || "N/A"} / replacement ${bestFebtContract && bestFebtContract.projected_replacement_ratio != null ? pct(bestFebtContract.projected_replacement_ratio) : "N/A"} / count ${bestFebtContract && bestFebtContract.projected_count_ratio_global != null ? `${Number(bestFebtContract.projected_count_ratio_global).toFixed(2)}x` : "N/A"}`);
   if (plan.best) {
     lines.push(`- 추천 threshold: ${pct(plan.best.threshold)}`);
     lines.push(`- 추천 hit rate: ${pct(plan.best.hitRate)}`);
@@ -863,6 +865,48 @@ function buildMlTierPlanRows(tierPlans = {}) {
   });
 }
 
+function isEvThresholdHardening(currentThreshold, nextThreshold) {
+  return Number(nextThreshold) > Number(currentThreshold);
+}
+
+function isEvBandHardening(currentBand = {}, nextBand = {}) {
+  return (
+    Number(nextBand.fullThreshold) > Number(currentBand.fullThreshold)
+    || Number(nextBand.killThreshold) > Number(currentBand.killThreshold)
+    || Number(nextBand.midScale) < Number(currentBand.midScale)
+    || Number(nextBand.lowScale) < Number(currentBand.lowScale)
+  );
+}
+
+function applyBestFebtEvGuard({ plan, bandPlan, currentThreshold, currentBand, bestFebtContract } = {}) {
+  if (!bestFebtContract || typeof bestFebtContract !== "object") {
+    return { plan, bandPlan, blocked: false, reason: null };
+  }
+  const tighteningBlocked = bestFebtContract.tightening_allowed === false || bestFebtContract.recovery_priority === true;
+  if (!tighteningBlocked) {
+    return { plan, bandPlan, blocked: false, reason: null };
+  }
+  const reason = bestFebtContract.tightening_allowed === false
+    ? "BEST_FEBT_COUNT_GUARD_BLOCK"
+    : "BEST_FEBT_RECOVERY_GUARD_BLOCK";
+  const nextPlan = { ...(plan || {}) };
+  const nextBandPlan = { ...(bandPlan || {}) };
+  let blocked = false;
+  if (nextPlan && nextPlan.changed && isEvThresholdHardening(currentThreshold, nextPlan.next)) {
+    nextPlan.changed = false;
+    nextPlan.next = currentThreshold;
+    nextPlan.reason = reason;
+    blocked = true;
+  }
+  if (nextBandPlan && nextBandPlan.changed && isEvBandHardening(currentBand, nextBandPlan.next || {})) {
+    nextBandPlan.changed = false;
+    nextBandPlan.next = { ...currentBand };
+    nextBandPlan.reason = reason;
+    blocked = true;
+  }
+  return { plan: nextPlan, bandPlan: nextBandPlan, blocked, reason: blocked ? reason : null };
+}
+
 async function main() {
   loadLocalEnv();
   const nowMeta = nowKstMeta();
@@ -888,6 +932,8 @@ async function main() {
   };
   const mlPolicyReport = readFreshMlPolicyReport(nowMs);
   const stageLedgerReport = readFreshEvResolvedLedger(nowMs);
+  const bestFebtContext = readBestFebtSupervisorContext(nowMs);
+  const bestFebtContract = bestFebtContext.contract;
 
   const [intentRes, fillRes, dropsRes] = await Promise.all([
     getCachedRecentByCreatedAt("order_intents_paper", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: true }),
@@ -998,8 +1044,17 @@ async function main() {
     currentBand,
     mlPolicyReport,
   });
-  const effectivePlan = mlGuidance.plan || plan;
+  let effectivePlan = mlGuidance.plan || plan;
   bandPlan = mlGuidance.bandPlan || bandPlan;
+  const bestFebtGuard = applyBestFebtEvGuard({
+    plan: effectivePlan,
+    bandPlan,
+    currentThreshold,
+    currentBand,
+    bestFebtContract,
+  });
+  effectivePlan = bestFebtGuard.plan;
+  bandPlan = bestFebtGuard.bandPlan;
 
   let settingsUpdated = false;
   let autopilotSnapshot = null;
@@ -1076,6 +1131,7 @@ async function main() {
     },
     artifacts: {
       ml_policy_report: mlPolicyReport && mlPolicyReport.filePath ? mlPolicyReport.filePath : null,
+      objective_supervisor_report: bestFebtContext.objectiveSupervisorArtifact && bestFebtContext.objectiveSupervisorArtifact.filePath ? bestFebtContext.objectiveSupervisorArtifact.filePath : null,
       stage_ev_resolved_ledger: stageLedgerMeta.filePath,
       stage_ev_resolved_ledger_source: stageLedgerMeta.source,
       autopilot_snapshot_path: autopilotSnapshot && autopilotSnapshot.filePath ? autopilotSnapshot.filePath : null,
@@ -1086,6 +1142,8 @@ async function main() {
       },
     },
     ml_guidance: mlGuidance,
+    best_febt_tuning_contract: bestFebtContract,
+    best_febt_guard: bestFebtGuard,
     tier_thresholds: Object.fromEntries(TIERS.map((tier) => [tier, {
       current_threshold: currentTierThresholds[tier],
       next_threshold: nextTierThresholds[tier],
@@ -1136,6 +1194,7 @@ async function main() {
     mlPolicyReport,
     mlHint: mlGuidance,
     stageLedger: stageLedgerMeta,
+    bestFebtContract,
   }));
   copyLatest(jsonPath, path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json"));
   copyLatest(mdPath, path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.md"));
@@ -1163,6 +1222,7 @@ async function main() {
           `cache intents new ${intentRes.meta.fetched_new} / fills new ${fillRes.meta.fetched_new} / drops new ${dropsRes.meta.fetched_new}`,
           `stage ledger ${stageLedgerMeta.source} / ${stageLedgerMeta.filePath || "N/A"}`,
           `ML report ${mlPolicyReport && mlPolicyReport.filePath ? "연계" : "없음"} / hint ${mlGuidance.applied ? "적용" : "미적용"}`,
+          `BEST/FEBT ${bestFebtContract && bestFebtContract.mode || "N/A"} / replacement ${bestFebtContract && bestFebtContract.projected_replacement_ratio != null ? pct(bestFebtContract.projected_replacement_ratio) : "N/A"} / count ${bestFebtContract && bestFebtContract.projected_count_ratio_global != null ? `${Number(bestFebtContract.projected_count_ratio_global).toFixed(2)}x` : "N/A"}`,
         ],
       },
       {
@@ -1237,6 +1297,9 @@ module.exports = {
     applyMlEvGuidance,
     buildTierThresholdRows,
     buildMlTierPlanRows,
+    isEvThresholdHardening,
+    isEvBandHardening,
+    applyBestFebtEvGuard,
     describeEvDecisionReasonForUser,
     buildEntryEventId,
     classifyEntryOutcome,

@@ -83,6 +83,48 @@ function run() {
   assert.strictEqual(guarded.MARKET.action, "HOLD");
   assert.strictEqual(guarded.EV.action, "HOLD");
 
+  const bestFebtGuarded = __test.applySharedObjectiveGuard({
+    QUALITY: [{ action: "REVIEW_TIGHTEN", key: "gate_core_score_abs", current: 0.55, next: 0.57, reason: "tighten" }],
+    AI: { action: "REVIEW_UPDATE", key: "ai_missing_policy", current: "ALLOW", next: "REDUCE", reason: "tighten ai" },
+    MARKET: { action: "REVIEW_TIGHTEN", key: "ai_bias_gate_opposite_mult", current: 0.35, next: 0.30, reason: "tighten market" },
+    EV: {
+      action: "REVIEW_UPDATE",
+      reason: "tighten ev",
+      next: {
+        ev_gate_tp1_prob_min: 0.58,
+        ev_gate_qty_scale_low: 0.35,
+        ev_gate_qty_scale_mid: 0.65,
+      },
+    },
+  }, {
+    ai_missing_policy: "ALLOW",
+    ai_missing_reduce_pct: 0.5,
+    ev_gate_tp1_prob_min: 0.55,
+    ev_gate_qty_scale_low: 0.40,
+    ev_gate_qty_scale_mid: 0.70,
+  }, null, {
+    tightening_allowed: false,
+    recovery_priority: true,
+  });
+  assert.strictEqual(bestFebtGuarded.QUALITY[0].action, "HOLD");
+  assert.strictEqual(bestFebtGuarded.AI.action, "HOLD");
+  assert.strictEqual(bestFebtGuarded.MARKET.action, "HOLD");
+  assert.strictEqual(bestFebtGuarded.EV.action, "HOLD");
+  assert.strictEqual(__test.bestFebtGuardReason({ tightening_allowed: false }), "BEST/FEBT count 보존 기준(count_ratio_global < 1.00)에서는 tightening 자동 권고를 차단합니다.");
+  assert.strictEqual(__test.isAiHardeningRecommendation("ALLOW", 0.5, { action: "REVIEW_UPDATE", next: "REDUCE" }), true);
+  assert.strictEqual(__test.isEvHardeningRecommendation({
+    ev_gate_tp1_prob_min: 0.55,
+    ev_gate_qty_scale_low: 0.40,
+    ev_gate_qty_scale_mid: 0.70,
+  }, {
+    action: "REVIEW_UPDATE",
+    next: {
+      ev_gate_tp1_prob_min: 0.58,
+      ev_gate_qty_scale_low: 0.35,
+      ev_gate_qty_scale_mid: 0.65,
+    },
+  }), true);
+
   console.log("AUTOMATION_ML_FILTER_POLICY_TEST_OK");
 }
 
