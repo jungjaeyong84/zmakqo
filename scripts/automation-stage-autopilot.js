@@ -16,6 +16,7 @@ const {
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
+const { readBestFebtSupervisorContext } = require("./lib/best-febt-supervisor");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
 const {
   STATE_MACHINE,
@@ -259,6 +260,7 @@ function renderMarkdown(report = {}) {
     `- provider: ${report.provider || "N/A"}`,
     `- objective: ${report.objective_verdict || "N/A"}`,
     `- canary: ${report.canary_pass ? "PASS" : "BLOCK"}`,
+    `- BEST/FEBT contract: ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.mode || "N/A"} / tightening ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.tightening_allowed ? "ALLOW" : "BLOCK"} / recovery ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.recovery_priority ? "FIRST" : "NORMAL"} / replacement ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_replacement_ratio != null ? Number(report.best_febt_tuning_contract.projected_replacement_ratio).toFixed(2) : "N/A"} / count ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_count_ratio_global != null ? Number(report.best_febt_tuning_contract.projected_count_ratio_global).toFixed(2) : "N/A"}x`,
     "",
     "## Stages",
   ];
@@ -281,6 +283,36 @@ function renderMarkdown(report = {}) {
     lines.push(`- ${row.name}: ${row.fresh ? "fresh" : "stale"} / ${row.filePath}`);
   }
   return `${lines.join("\n")}\n`;
+}
+
+function isAiAutopilotTightening(currentSys = {}, nextSettings = {}) {
+  const currentPolicy = String(currentSys.ai_missing_policy || "ALLOW").trim().toUpperCase();
+  const nextPolicy = String(nextSettings.ai_missing_policy || currentPolicy).trim().toUpperCase();
+  const currentReducePct = toNum(currentSys.ai_missing_reduce_pct) ?? 0.5;
+  const nextReducePct = toNum(nextSettings.ai_missing_reduce_pct);
+  if (currentPolicy === "ALLOW" && (nextPolicy === "REDUCE" || nextPolicy === "BLOCK")) return true;
+  if (currentPolicy === "REDUCE" && nextPolicy === "BLOCK") return true;
+  if (currentPolicy === nextPolicy && nextPolicy === "REDUCE" && nextReducePct != null && nextReducePct < currentReducePct) return true;
+  return false;
+}
+
+function bestFebtAutopilotGuard({ stage, candidate, currentSys = {}, bestFebtContract = null } = {}) {
+  if (!candidate || candidate.actionable !== true || !bestFebtContract || typeof bestFebtContract !== "object") {
+    return { blocked: false, reason: null };
+  }
+  const tighteningAllowed = bestFebtContract.tightening_allowed !== false;
+  const recoveryPriority = bestFebtContract.recovery_priority === true;
+  if (stage === "AI" && !tighteningAllowed && isAiAutopilotTightening(currentSys, candidate.nextSettings || {})) {
+    return { blocked: true, reason: "BEST_FEBT_COUNT_GUARD_BLOCK" };
+  }
+  if (stage === "MARKET" && !tighteningAllowed && String(candidate.action || "").toUpperCase() === "REVIEW_TIGHTEN") {
+    return { blocked: true, reason: "BEST_FEBT_COUNT_GUARD_BLOCK" };
+  }
+  if (stage === "PINE" && candidate.kind === "PROMOTE") {
+    if (!tighteningAllowed) return { blocked: true, reason: "BEST_FEBT_COUNT_GUARD_BLOCK" };
+    if (recoveryPriority) return { blocked: true, reason: "BEST_FEBT_RECOVERY_GUARD_BLOCK" };
+  }
+  return { blocked: false, reason: null };
 }
 
 function buildPineCandidate(objectiveArtifact, codexArtifact, changeArtifact) {
@@ -567,8 +599,8 @@ async function processObservedStage({ stage, artifact, stateData, currentSys, ob
   };
 }
 
-async function processPineStage({ objectiveArtifact, codexArtifact, changeArtifact, stateData, canaryPass, nowMeta, nowMs }) {
-  const candidate = buildPineCandidate(objectiveArtifact, codexArtifact, changeArtifact);
+async function processPineStage({ objectiveArtifact, codexArtifact, changeArtifact, stateData, canaryPass, nowMeta, nowMs, candidateOverride = null }) {
+  const candidate = candidateOverride || buildPineCandidate(objectiveArtifact, codexArtifact, changeArtifact);
   const stage = "PINE";
   const stageState = getStageState(stateData, stage);
   let history = stateData.history || [];
@@ -638,6 +670,13 @@ async function processPineStage({ objectiveArtifact, codexArtifact, changeArtifa
 async function main() {
   const nowMeta = nowKstMeta();
   const nowMs = nowMeta.nowMs;
+  const bestFebtContext = readBestFebtSupervisorContext(nowMs, {
+    weeklyMaxAgeHours: FRESHNESS_HOURS.objective,
+    objectiveSupervisorMaxAgeHours: FRESHNESS_HOURS.objective,
+  });
+  const bestFebtContract = bestFebtContext && bestFebtContext.contract && typeof bestFebtContext.contract === "object"
+    ? bestFebtContext.contract
+    : null;
   const objectiveArtifact = readArtifact("objective_supervisor", path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json"), FRESHNESS_HOURS.objective);
   const mlArtifact = readArtifact("ml_filter_policy", path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.json"), FRESHNESS_HOURS.ml);
   const evArtifact = readArtifact("ev_tp1_threshold_tune", path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json"), FRESHNESS_HOURS.ev);
@@ -660,6 +699,11 @@ async function main() {
   const stageRows = [];
 
   const aiCandidate = buildAiStageCandidate(mlArtifact, currentSys, objectiveArtifact.data || {});
+  const aiBestFebtGuard = bestFebtAutopilotGuard({ stage: "AI", candidate: aiCandidate, currentSys, bestFebtContract });
+  if (aiBestFebtGuard.blocked) {
+    aiCandidate.actionable = false;
+    aiCandidate.reason = aiBestFebtGuard.reason;
+  }
   aiCandidate.run_key = mlArtifact && mlArtifact.data && mlArtifact.data.generated_at_kst || nowMeta.kst;
   let result = await applyStageCandidate({
     stage: "AI",
@@ -685,9 +729,15 @@ async function main() {
     blockers: result.stageState.blockers || [],
     signature: result.stageState.last_signature,
     snapshot_path: result.stageState.last_snapshot_path || null,
+    best_febt_guard: aiBestFebtGuard.reason,
   });
 
   const marketCandidate = buildMarketStageCandidate(mlArtifact, currentSys, objectiveArtifact.data || {});
+  const marketBestFebtGuard = bestFebtAutopilotGuard({ stage: "MARKET", candidate: marketCandidate, currentSys, bestFebtContract });
+  if (marketBestFebtGuard.blocked) {
+    marketCandidate.actionable = false;
+    marketCandidate.reason = marketBestFebtGuard.reason;
+  }
   marketCandidate.run_key = mlArtifact && mlArtifact.data && mlArtifact.data.generated_at_kst || nowMeta.kst;
   result = await applyStageCandidate({
     stage: "MARKET",
@@ -713,6 +763,7 @@ async function main() {
     blockers: result.stageState.blockers || [],
     signature: result.stageState.last_signature,
     snapshot_path: result.stageState.last_snapshot_path || null,
+    best_febt_guard: marketBestFebtGuard.reason,
   });
 
   result = await processObservedStage({
@@ -763,6 +814,17 @@ async function main() {
     snapshot_path: result.stageState.last_snapshot_path || null,
   });
 
+  const pineCandidate = buildPineCandidate(objectiveArtifact, codexArtifact, changeArtifact);
+  const pineBestFebtGuard = bestFebtAutopilotGuard({
+    stage: "PINE",
+    candidate: pineCandidate,
+    currentSys,
+    bestFebtContract,
+  });
+  if (pineBestFebtGuard.blocked) {
+    pineCandidate.actionable = false;
+    pineCandidate.reason = pineBestFebtGuard.reason;
+  }
   result = await processPineStage({
     objectiveArtifact,
     codexArtifact,
@@ -771,6 +833,7 @@ async function main() {
     canaryPass,
     nowMeta,
     nowMs,
+    candidateOverride: pineCandidate,
   });
   history = result.history;
   stateData.stages.PINE = result.stageState;
@@ -784,6 +847,7 @@ async function main() {
     blockers: result.stageState.blockers || [],
     signature: result.stageState.last_signature,
     snapshot_path: null,
+    best_febt_guard: pineBestFebtGuard.reason,
   });
 
   stateData.history = history;
@@ -795,6 +859,7 @@ async function main() {
     provider: PROVIDER,
     objective_verdict: String(objectiveArtifact && objectiveArtifact.data && objectiveArtifact.data.verdict || "N/A"),
     canary_pass: canaryPass,
+    best_febt_tuning_contract: bestFebtContract,
     stage_rows: stageRows,
     actions,
     artifacts: [objectiveArtifact, mlArtifact, evArtifact, waitArtifact, canaryArtifact, changeArtifact, codexArtifact].map((row) => ({
@@ -819,6 +884,7 @@ async function main() {
       severity: actions.some((row) => row.type === "AUTO_ROLLBACK") ? "WARN" : "INFO",
       sections: [
         { header: "공통 상태", lines: [`전체 목표 판정은 ${report.objective_verdict} 입니다.`, `변경 안전 검증은 ${report.canary_pass ? "정상" : "차단"} 입니다.`] },
+        { header: "BEST/FEBT 공통 계약", lines: [`mode ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.mode || "N/A"} / tightening ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.tightening_allowed ? "ALLOW" : "BLOCK"} / recovery ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.recovery_priority ? "FIRST" : "NORMAL"}`, `replacement ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_replacement_ratio != null ? Number(report.best_febt_tuning_contract.projected_replacement_ratio).toFixed(2) : "N/A"} / count ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_count_ratio_global != null ? `${Number(report.best_febt_tuning_contract.projected_count_ratio_global).toFixed(2)}x` : "N/A"}`] },
         { header: "이번에 실제로 한 일", lines: actions.map((row) => `${row.stage} 단계에서 ${row.type} 처리: ${row.detail}`) },
         { header: "각 단계 상태", lines: stageRows.map((row) => `${row.stage} 단계는 ${row.machine_state} 상태이며 사유는 ${row.reason} 입니다.`) },
       ],
@@ -852,5 +918,7 @@ module.exports = {
     buildPineCandidate,
     stageChangeBudgetOk,
     stableSignature,
+    isAiAutopilotTightening,
+    bestFebtAutopilotGuard,
   },
 };

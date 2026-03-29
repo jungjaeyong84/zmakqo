@@ -17,6 +17,7 @@ const {
   ensureExchangeApiKeys,
   readJsonRawSafe,
 } = require("./lib/automation-utils");
+const { readBestFebtSupervisorContext } = require("./lib/best-febt-supervisor");
 const { getFirestore } = require("../src/storage/firestore");
 const { auditBinanceExitIntegrity } = require("../src/services/exitIntegrityAudit");
 const { resolveMarketStateSummary } = require("../src/utils/marketStateSummary");
@@ -202,6 +203,10 @@ function buildHourlyFebtLine(label, summary = {}) {
   return `${label} calc ${pct(summary.calc_ok_rate, 0)} / phase ${pct(summary.phase_known_rate, 0)} / fire ${summary.fire_n ?? 0} / late ${summary.late_n ?? 0} / void ${summary.void_n ?? 0} / disagree ${summary.disagreement_n ?? 0} / fallback ${summary.fallback_legacy_n ?? 0} / verdict ${summary.top_verdict || "N/A"}`;
 }
 
+function buildHourlyBestFebtContractLine(contract = {}) {
+  return `mode ${contract.mode || "N/A"} / tightening ${contract.tightening_allowed ? "ALLOW" : "BLOCK"} / recovery ${contract.recovery_priority ? "FIRST" : "NORMAL"} / replacement ${contract.projected_replacement_ratio != null ? Number(contract.projected_replacement_ratio).toFixed(2) : "N/A"} / count ${contract.projected_count_ratio_global != null ? `${Number(contract.projected_count_ratio_global).toFixed(2)}x` : "N/A"} / delta ${contract.projected_net_signal_delta_n != null ? contract.projected_net_signal_delta_n : "N/A"}`;
+}
+
 function buildHourlyGuardTelegramSections({
   findings = [],
   recentSignals = [],
@@ -214,6 +219,7 @@ function buildHourlyGuardTelegramSections({
   signalFebt = {},
   dropFebt = {},
   phase0 = {},
+  bestFebtContract = {},
   action = "없음",
 } = {}) {
   return [
@@ -242,6 +248,10 @@ function buildHourlyGuardTelegramSections({
       ],
     },
     {
+      header: "감독관 계약",
+      lines: [buildHourlyBestFebtContractLine(bestFebtContract)],
+    },
+    {
       header: "핵심",
       lines: findings.slice(1, 3).length ? findings.slice(1, 3) : ["즉시 이상 없음"],
     },
@@ -252,6 +262,10 @@ function buildHourlyGuardTelegramSections({
 async function main() {
   const meta = nowKstMeta();
   await ensureExchangeApiKeys("BINANCEFUT");
+  const bestFebtContext = readBestFebtSupervisorContext(meta.nowMs);
+  const bestFebtContract = bestFebtContext && bestFebtContext.contract && typeof bestFebtContext.contract === "object"
+    ? bestFebtContext.contract
+    : {};
   const sinceMs = meta.nowMs - (90 * 60 * 1000);
   const ops = require("./lib/automation-utils").readJsonSafe(path.join(OPS_DAILY_DIR, "system_ops_check_latest.json"), {});
   const align = require("./lib/automation-utils").readJsonSafe(path.join(OPS_DAILY_DIR, "strategy_id_alignment_latest.json"), {});
@@ -354,6 +368,7 @@ async function main() {
       dropped: dropFebt,
       phase0,
     },
+    best_febt_tuning_contract: bestFebtContract,
     system_error_count_24h:
       Number.isFinite(Number(ops.error_count)) ? Number(ops.error_count)
         : (Number.isFinite(Number(align.conservative_metrics && align.conservative_metrics.error_count_24h))
@@ -383,6 +398,7 @@ async function main() {
       `- FEBT SHADOW(신호): ${buildHourlyFebtLine("신호", signalFebt)}`,
       `- FEBT SHADOW(드롭): ${buildHourlyFebtLine("드롭", dropFebt)}`,
       `- FEBT Phase0: coverage ${pct(phase0.legacy_wait_coverage_rate, 0)} / immediate win ${pct(phase0.immediate_win_rate, 0)} / saved_loss ${pct(phase0.saved_loss_pct, 0)} / missed_gain ${pct(phase0.missed_gain_pct, 0)} / delta ${pct(phase0.saved_loss_minus_missed_gain, 0)}`,
+      `- BEST/FEBT 계약: ${buildHourlyBestFebtContractLine(bestFebtContract)}`,
       `- 보호주문 감사: ok=${integrity.ok} / issue_count=${integrity.issue_count || 0}`,
       `- 핵심 발견:`,
       ...(findings.length ? findings.map((line) => `  - ${line}`) : ["  - 정상"]),
@@ -406,6 +422,7 @@ async function main() {
     signalFebt,
     dropFebt,
     phase0,
+    bestFebtContract,
     action,
   });
   const alertResult = await sendKoreanTelegramSummary({
@@ -433,6 +450,7 @@ if (require.main === module) {
       buildPhysicsWaitLabel,
       buildHourlyPhysicsLine,
       buildHourlyFebtLine,
+      buildHourlyBestFebtContractLine,
       buildHourlyGuardTelegramSections,
     },
   };

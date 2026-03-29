@@ -37,6 +37,7 @@ const {
   writeText,
   kstStartOfTodayUtcMs,
 } = require("./lib/automation-utils");
+const { deriveBestFebtTuningContract } = require("./lib/best-febt-supervisor");
 
 const PROVIDER = String(process.env.WEEKLY_FILTER_PROVIDER || "BINANCEFUT").trim().toUpperCase();
 const TF = String(process.env.WEEKLY_FILTER_TF || "15m").trim();
@@ -236,7 +237,7 @@ function stripSummaryPrefix(line, prefix) {
   return raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
 }
 
-function buildWeeklyTelegramLayerLines({ current = {}, recommendations = {}, settings = {}, phase0 = null } = {}) {
+function buildWeeklyTelegramLayerLines({ current = {}, recommendations = {}, settings = {}, phase0 = null, bestFebtContract = null } = {}) {
   const featureLines = buildCounterfactualFeatureSummaryLines(current.drop_counterfactual || {});
   const marketState = stripSummaryPrefix(featureLines[0], "market state ");
   const marketAction = stripSummaryPrefix(featureLines[1], "market action ");
@@ -285,6 +286,11 @@ function buildWeeklyTelegramLayerLines({ current = {}, recommendations = {}, set
     );
     lines.push(
       `FEBT overlap wait x market ${formatPairBreakdown(phase0Overlap.market_action_pairs)} / wait x timing ${formatPairBreakdown(phase0Overlap.entry_exec_timing_pairs)}`
+    );
+  }
+  if (bestFebtContract && typeof bestFebtContract === "object") {
+    lines.push(
+      `BEST/FEBT 공통 계약 ${bestFebtContract.mode || "N/A"} / tightening ${bestFebtContract.tightening_allowed ? "ALLOW" : "BLOCK"} / recovery ${bestFebtContract.recovery_priority ? "FIRST" : "NORMAL"} / replacement ${ratioX(bestFebtContract.projected_replacement_ratio)} / count ${ratioX(bestFebtContract.projected_count_ratio_global)} / delta ${signedNum(bestFebtContract.projected_net_signal_delta_n, 0)}`
     );
   }
   return lines;
@@ -2402,7 +2408,7 @@ function summarizeSideTierRegime({ signals = [], drops = [], quality = {} } = {}
     .slice(0, 20);
 }
 
-function renderMarkdown({ nowMeta, current, previous, recommendations, settings, artifacts, provider, tf }) {
+function renderMarkdown({ nowMeta, current, previous, recommendations, settings, artifacts, provider, tf, bestFebtContract = null }) {
   const lines = [];
   lines.push("# Weekly Filter Governance");
   lines.push("");
@@ -2600,6 +2606,9 @@ function renderMarkdown({ nowMeta, current, previous, recommendations, settings,
   if (current.febt_shadow) {
     lines.push(`- FEBT shadow: sampled ${current.febt_shadow.sampled_n || 0} / disagree ${current.febt_shadow.disagree_n || 0} / fallback ${current.febt_shadow.fallback_n || 0} / reason ${formatNamedBreakdown(current.febt_shadow.by_reason || [])} / verdict ${formatNamedBreakdown(current.febt_shadow.by_verdict || [])}`);
     lines.push(`- FEBT replacement proxy: recovered ${current.febt_shadow.candidate_recovered_n || 0} / blocked ${current.febt_shadow.candidate_blocked_n || 0} / wait ${current.febt_shadow.candidate_wait_n || 0} / replacement ${ratioX(current.febt_shadow.projected_replacement_ratio)} / count ${ratioX(current.febt_shadow.projected_count_ratio)} / delta ${signedNum(current.febt_shadow.projected_net_signal_delta_n, 0)}`);
+  }
+  if (bestFebtContract && typeof bestFebtContract === "object") {
+    lines.push(`- BEST/FEBT contract: ${bestFebtContract.mode || "N/A"} / tightening ${bestFebtContract.tightening_allowed ? "ALLOW" : "BLOCK"} / recovery ${bestFebtContract.recovery_priority ? "FIRST" : "NORMAL"} / replacement ${ratioX(bestFebtContract.projected_replacement_ratio)} / count ${ratioX(bestFebtContract.projected_count_ratio_global)} / delta ${signedNum(bestFebtContract.projected_net_signal_delta_n, 0)}`);
   }
   lines.push("");
   lines.push("## 3차/4차 실제 성과 분해(현재)");
@@ -2961,6 +2970,12 @@ async function main() {
   const weeklyFebtShadowSummary = buildWeeklyFebtShadowSummary({ current, phase0: febtPhase0Latest });
   report.current.febt_shadow = weeklyFebtShadowSummary.shadow;
   report.artifacts.febt_overlap_summary = weeklyFebtShadowSummary.phase0_overlap;
+  const latestObjectiveSupervisor = readJsonRawSafe(path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json"), null);
+  report.current.best_febt_tuning_contract = deriveBestFebtTuningContract({
+    governance: report,
+    objectiveSupervisor: latestObjectiveSupervisor,
+  });
+  report.artifacts.objective_supervisor_report = path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json");
   if (report.current && report.current.quality && report.current.quality.by_tier) {
     report.current.quality.by_tier_rows = tierMapToRows(report.current.quality.by_tier);
   }
@@ -3039,6 +3054,7 @@ async function main() {
     },
     provider: PROVIDER,
     tf: TF,
+    bestFebtContract: report.current.best_febt_tuning_contract,
   }));
   copyLatest(jsonPath, path.join(OPS_DAILY_DIR, "weekly_filter_governance_latest.json"));
   copyLatest(mdPath, path.join(OPS_DAILY_DIR, "weekly_filter_governance_latest.md"));
@@ -3062,6 +3078,7 @@ async function main() {
     recommendations,
     settings,
     phase0: febtPhase0Latest,
+    bestFebtContract: report.current.best_febt_tuning_contract,
   });
   await sendKoreanTelegramSummary({
     title: `[주간 전략 점검] ${PROVIDER}`,
@@ -3106,6 +3123,7 @@ async function main() {
           `regime 누락 signals ${pct(current.regime_missing && current.regime_missing.signals && current.regime_missing.signals.missing_rate)} / drops ${pct(current.regime_missing && current.regime_missing.drops && current.regime_missing.drops.missing_rate)} / intents ${pct(current.regime_missing && current.regime_missing.intents && current.regime_missing.intents.missing_rate)}`,
           `FEBT shadow sampled ${current.febt_shadow ? current.febt_shadow.sampled_n : 0} / disagree ${current.febt_shadow ? current.febt_shadow.disagree_n : 0} / fallback ${current.febt_shadow ? current.febt_shadow.fallback_n : 0} / reason ${formatNamedBreakdown(current.febt_shadow && current.febt_shadow.by_reason || [])}`,
           `FEBT replacement recovered ${current.febt_shadow ? current.febt_shadow.candidate_recovered_n : 0} / blocked ${current.febt_shadow ? current.febt_shadow.candidate_blocked_n : 0} / wait ${current.febt_shadow ? current.febt_shadow.candidate_wait_n : 0} / replacement ${ratioX(current.febt_shadow && current.febt_shadow.projected_replacement_ratio)} / count ${ratioX(current.febt_shadow && current.febt_shadow.projected_count_ratio)}`,
+          `BEST/FEBT contract ${current.best_febt_tuning_contract ? current.best_febt_tuning_contract.mode : "N/A"} / tightening ${current.best_febt_tuning_contract && current.best_febt_tuning_contract.tightening_allowed ? "ALLOW" : "BLOCK"} / recovery ${current.best_febt_tuning_contract && current.best_febt_tuning_contract.recovery_priority ? "FIRST" : "NORMAL"}`,
         ],
       },
       {

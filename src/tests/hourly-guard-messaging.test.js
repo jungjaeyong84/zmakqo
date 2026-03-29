@@ -51,6 +51,14 @@ const { __test } = require("../../scripts/automation-hourly-guard");
     missed_gain_pct: 0.12,
     saved_loss_minus_missed_gain: 0.19,
   };
+  const bestFebtContract = {
+    mode: "COUNT_GUARD_ACTIVE",
+    tightening_allowed: false,
+    recovery_priority: true,
+    projected_replacement_ratio: 0.78,
+    projected_count_ratio_global: 0.96,
+    projected_net_signal_delta_n: -2,
+  };
 
   const line = __test.buildHourlyPhysicsLine("신호", signalPhysics);
   assert.ok(line.includes("action DROP"));
@@ -58,6 +66,9 @@ const { __test } = require("../../scripts/automation-hourly-guard");
   const febtLine = __test.buildHourlyFebtLine("신호", signalFebt);
   assert.ok(febtLine.includes("calc 75%"));
   assert.ok(febtLine.includes("disagree 2"));
+  const contractLine = __test.buildHourlyBestFebtContractLine(bestFebtContract);
+  assert.ok(contractLine.includes("COUNT_GUARD_ACTIVE"));
+  assert.ok(contractLine.includes("tightening BLOCK"));
 
   const sections = __test.buildHourlyGuardTelegramSections({
     findings: ["STAT_PHYSICS_CRITICAL", "DROP 증가"],
@@ -71,6 +82,7 @@ const { __test } = require("../../scripts/automation-hourly-guard");
     signalFebt,
     dropFebt,
     phase0,
+    bestFebtContract,
     action: "신규 진입 중지 후 원인 확인",
   });
 
@@ -83,6 +95,8 @@ const { __test } = require("../../scripts/automation-hourly-guard");
   assert.ok(sections[2].lines[0].includes("fire 3"));
   assert.ok(sections[2].lines[1].includes("fallback 2"));
   assert.ok(sections[2].lines[2].includes("saved_loss 31%"));
+  assert.strictEqual(sections[3].header, "감독관 계약");
+  assert.ok(sections[3].lines[0].includes("COUNT_GUARD_ACTIVE"));
 
   console.log("HOURLY_GUARD_MESSAGING_TEST_OK");
 })();

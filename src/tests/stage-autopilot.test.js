@@ -78,5 +78,35 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
   const stableSig = __test.stableSignature({ b: 2, a: 1 });
   assert.strictEqual(stableSig, 'a=1|b=2');
 
+  assert.strictEqual(__test.isAiAutopilotTightening(
+    { ai_missing_policy: "ALLOW", ai_missing_reduce_pct: 0.5 },
+    { ai_missing_policy: "REDUCE", ai_missing_reduce_pct: 0.35 }
+  ), true);
+  assert.strictEqual(__test.isAiAutopilotTightening(
+    { ai_missing_policy: "REDUCE", ai_missing_reduce_pct: 0.35 },
+    { ai_missing_policy: "REDUCE", ai_missing_reduce_pct: 0.45 }
+  ), false);
+
+  const aiGuard = __test.bestFebtAutopilotGuard({
+    stage: "AI",
+    candidate: {
+      actionable: true,
+      nextSettings: { ai_missing_policy: "REDUCE", ai_missing_reduce_pct: 0.35 },
+    },
+    currentSys: { ai_missing_policy: "ALLOW", ai_missing_reduce_pct: 0.5 },
+    bestFebtContract: { tightening_allowed: false, recovery_priority: false },
+  });
+  assert.strictEqual(aiGuard.blocked, true);
+  assert.strictEqual(aiGuard.reason, "BEST_FEBT_COUNT_GUARD_BLOCK");
+
+  const pineGuard = __test.bestFebtAutopilotGuard({
+    stage: "PINE",
+    candidate: { actionable: true, kind: "PROMOTE" },
+    currentSys: {},
+    bestFebtContract: { tightening_allowed: true, recovery_priority: true },
+  });
+  assert.strictEqual(pineGuard.blocked, true);
+  assert.strictEqual(pineGuard.reason, "BEST_FEBT_RECOVERY_GUARD_BLOCK");
+
   console.log("STAGE_AUTOPILOT_TEST_OK");
 })();

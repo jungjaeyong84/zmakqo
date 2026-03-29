@@ -19,6 +19,7 @@ const {
   sendKoreanTelegramSummary,
   ensureExchangeApiKeys,
 } = require("./lib/automation-utils");
+const { readBestFebtSupervisorContext } = require("./lib/best-febt-supervisor");
 const { getFirestore } = require("../src/storage/firestore");
 const { auditBinanceExitIntegrity } = require("../src/services/exitIntegrityAudit");
 
@@ -188,9 +189,23 @@ function artifactImageCount() {
   );
 }
 
+function buildBestFebtDailyAuditLine(contract = {}) {
+  return `mode ${contract.mode || "N/A"} / tightening ${contract.tightening_allowed ? "ALLOW" : "BLOCK"} / recovery ${contract.recovery_priority ? "FIRST" : "NORMAL"} / replacement ${contract.projected_replacement_ratio != null ? Number(contract.projected_replacement_ratio).toFixed(2) : "N/A"} / count ${contract.projected_count_ratio_global != null ? `${Number(contract.projected_count_ratio_global).toFixed(2)}x` : "N/A"} / delta ${contract.projected_net_signal_delta_n != null ? contract.projected_net_signal_delta_n : "N/A"}`;
+}
+
 async function main() {
   const meta = nowKstMeta();
   await ensureExchangeApiKeys("BINANCEFUT");
+  const bestFebtContext = readBestFebtSupervisorContext(meta.nowMs);
+  const bestFebtContract = bestFebtContext && bestFebtContext.contract && typeof bestFebtContext.contract === "object"
+    ? bestFebtContext.contract
+    : {};
+  const filterLayers = bestFebtContext
+    && bestFebtContext.objectiveSupervisor
+    && bestFebtContext.objectiveSupervisor.filter_layers
+    && typeof bestFebtContext.objectiveSupervisor.filter_layers === "object"
+      ? bestFebtContext.objectiveSupervisor.filter_layers
+      : null;
   const runA = runDailySystemOpsCheck();
   const runB = runScript("node scripts/strategy-id-alignment-check.js");
   const ops = readJsonSafe(path.join(OPS_DAILY_DIR, "system_ops_check_latest.json"), {});
@@ -310,6 +325,8 @@ async function main() {
       cloud_run_revisions_last_24h: revisionCount24h,
       artifact_image_count: artifactCount,
     },
+    best_febt_tuning_contract: bestFebtContract,
+    filter_layers: filterLayers,
     day_over_day: dayOverDay,
     findings: driftFindings,
   };
@@ -333,6 +350,8 @@ async function main() {
       `- 전략 정렬: ${align.decision || "N/A"} / mismatch ${align.mismatch && align.mismatch.total_count != null ? align.mismatch.total_count : "N/A"}건`,
       `- 보호주문 감사: ${Number(integrity.issue_count || 0) > 0 ? `ok=${integrity.ok} / issue_count=${integrity.issue_count || 0}` : (integrity.ok ? "정상" : `실패 또는 미완료${integrity.reason ? ` (${integrity.reason})` : ""}`)}`,
       `- Drift: expired intents=${expiredPending == null ? "N/A" : expiredPending}, builds24h=${todayBuildCount == null ? "N/A" : todayBuildCount}, revisions24h=${revisionCount24h}, artifactImages=${artifactCount == null ? "N/A" : artifactCount}`,
+      `- BEST/FEBT 계약: ${buildBestFebtDailyAuditLine(bestFebtContract)}`,
+      `- 감독관 필터 계층: ${filterLayers ? Object.keys(filterLayers).length : 0}개`,
       `- 핵심 이상:`,
       ...(driftFindings.length ? driftFindings.map((line) => `  - ${line}`) : ["  - 정상"]),
       "",
@@ -366,6 +385,13 @@ async function main() {
         ],
       },
       {
+        header: "BEST/FEBT 계약",
+        lines: [
+          buildBestFebtDailyAuditLine(bestFebtContract),
+          `감독관 필터 계층 ${filterLayers ? Object.keys(filterLayers).length : 0}개 / objective ${bestFebtContract.objective_verdict || "N/A"}`,
+        ],
+      },
+      {
         header: "핵심",
         lines: driftFindings.slice(0, 5).length ? driftFindings.slice(0, 5) : ["정상"],
       },
@@ -382,7 +408,16 @@ async function main() {
   console.log(JSON.stringify({ ok: true, status, jsonPath, mdPath, alert: alertResult }, null, 2));
 }
 
-main().catch((err) => {
-  console.error("automation-daily-audit failed:", err && err.stack ? err.stack : err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("automation-daily-audit failed:", err && err.stack ? err.stack : err);
+    process.exit(1);
+  });
+} else {
+  module.exports = {
+    main,
+    __test: {
+      buildBestFebtDailyAuditLine,
+    },
+  };
+}

@@ -272,6 +272,14 @@ function run() {
         reject_count: 2,
       },
     },
+    bestFebtContract: {
+      mode: "COUNT_GUARD_ACTIVE",
+      tightening_allowed: false,
+      recovery_priority: true,
+      projected_replacement_ratio: 0.75,
+      projected_count_ratio_global: 0.97,
+      projected_net_signal_delta_n: -1,
+    },
   });
   assert.strictEqual(weeklyLayerLines.length >= 9, true);
   assert.ok(weeklyLayerLines[0].includes("1차 상태/무결성"));
@@ -284,6 +292,7 @@ function run() {
   assert.ok(weeklyLayerLines.some((line) => line.includes("FEBT shadow sampled 3")));
   assert.ok(weeklyLayerLines.some((line) => line.includes("replacement proxy recovered 1 / blocked 1 / wait 0") || line.includes("replacement proxy recovered 1 / blocked 1")));
   assert.ok(weeklyLayerLines.some((line) => line.includes("FEBT overlap compared 12")));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("BEST/FEBT 공통 계약 COUNT_GUARD_ACTIVE")));
 
   const riskCurve = __test.buildCompetingRiskCurve([
     { ok: true, tp1_time_h: 1, sl_time_h: null },
