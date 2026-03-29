@@ -4,6 +4,15 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function normalizeFeaturesJson(featuresJson) {
+  if (!featuresJson || typeof featuresJson !== "object" || Array.isArray(featuresJson)) return null;
+  try {
+    return JSON.parse(JSON.stringify(featuresJson));
+  } catch (_err) {
+    return null;
+  }
+}
+
 // fills_paper: intent 실행 결과(체결) 기록
 async function upsertFill({
   intentId,
@@ -43,12 +52,14 @@ async function upsertFill({
   signalPriceSource = null,
   leverageApplied = null,
   leverageReason = null,
+  featuresJson = null,
 } = {}) {
   const db = getFirestore();
 
   if (!intentId) throw new Error("upsertFill: intentId required");
   const ref = db.collection("fills_paper").doc(); // auto id
 
+  const normalizedFeaturesJson = normalizeFeaturesJson(featuresJson);
   const payload = {
     fill_id: ref.id,
     intent_id: intentId,
@@ -98,6 +109,8 @@ async function upsertFill({
     updated_at: nowIso(),
   };
 
+  if (normalizedFeaturesJson) payload.features_json = normalizedFeaturesJson;
+
   await ref.set(payload, { merge: false });
   return { ok: true, fill_id: ref.id };
 }
@@ -139,6 +152,7 @@ async function upsertExternalFill({
   signalPriceSource = null,
   leverageApplied = null,
   leverageReason = null,
+  featuresJson = null,
   createdAt = null,
   extra = null,
 } = {}) {
@@ -154,6 +168,7 @@ async function upsertExternalFill({
   const qtyPctVal = (qtyPct === null || qtyPct === undefined || qtyPct === "") ? null : Number(qtyPct);
   const qtyFractionVal = (qtyFraction === null || qtyFraction === undefined || qtyFraction === "") ? null : Number(qtyFraction);
 
+  const normalizedFeaturesJson = normalizeFeaturesJson(featuresJson);
   const payload = {
     fill_id: fillId,
     intent_id: intentId || null,
@@ -205,6 +220,7 @@ async function upsertExternalFill({
   if (extra && typeof extra === "object") {
     Object.assign(payload, extra);
   }
+  if (normalizedFeaturesJson) payload.features_json = normalizedFeaturesJson;
 
   await ref.set(payload, { merge: true });
   return { ok: true, fill_id: fillId, inserted: createdNew };

@@ -25,6 +25,18 @@ function readExternalRealizedPnl(fill) {
   return null;
 }
 
+function pickFeaturesJson(fill) {
+  const featuresJson = fill && fill.features_json && typeof fill.features_json === "object" && !Array.isArray(fill.features_json)
+    ? fill.features_json
+    : null;
+  if (!featuresJson) return null;
+  try {
+    return JSON.parse(JSON.stringify(featuresJson));
+  } catch (_err) {
+    return null;
+  }
+}
+
 function resolveQtyFromFill(f) {
   const qtyBase = toNum(f.exec_qty_base);
   if (qtyBase !== null && qtyBase > 0) return { qty: qtyBase, unit: "BASE" };
@@ -252,6 +264,7 @@ function buildTradesFromFills(fills, opts = {}) {
   let tradeId = 0;
   let currentEntryEventId = null;
   let currentEntrySignalType = null;
+  let currentEntryFeaturesJson = null;
 
   for (const f of fills) {
     const side = String(f.side || "").toUpperCase();
@@ -293,6 +306,7 @@ function buildTradesFromFills(fills, opts = {}) {
         close_type: "EXTERNAL_REALIZED",
         pnl_mode: mode,
         position_side: side === "SELL" ? "SHORT" : "LONG",
+        features_json: pickFeaturesJson(f),
       });
       if (Number.isFinite(pnlPct)) closedTradePnls.push(pnlPct);
       continue;
@@ -311,6 +325,7 @@ function buildTradesFromFills(fills, opts = {}) {
         posSide = "LONG";
         currentEntryEventId = pickEntryEventId(f);
         currentEntrySignalType = pickEntrySignalType(f);
+        currentEntryFeaturesJson = pickFeaturesJson(f);
       } else if (posSide === "LONG") {
         const prevNotional = posSize;
         const nextNotional = posSize + qty;
@@ -318,6 +333,7 @@ function buildTradesFromFills(fills, opts = {}) {
         posSize = nextNotional;
         if (!currentEntryEventId) currentEntryEventId = pickEntryEventId(f);
         if (!currentEntrySignalType) currentEntrySignalType = pickEntrySignalType(f);
+        if (!currentEntryFeaturesJson) currentEntryFeaturesJson = pickFeaturesJson(f);
       } else if (posSide === "SHORT") {
         const closeQty = Math.min(qty, posSize);
         const pnlPct = (posAvg - px) / posAvg;
@@ -373,6 +389,7 @@ function buildTradesFromFills(fills, opts = {}) {
           close_type: (remainingAfter <= 0) ? "FULL_CLOSE" : "PARTIAL_CLOSE",
           pnl_mode: mode,
           position_side: "SHORT",
+          features_json: currentEntryFeaturesJson || pickFeaturesJson(f),
         };
 
         posSize = remainingAfter;
@@ -392,6 +409,7 @@ function buildTradesFromFills(fills, opts = {}) {
           tradeOpenMs = null;
           currentEntryEventId = null;
           currentEntrySignalType = null;
+          currentEntryFeaturesJson = null;
         }
       }
       continue;
@@ -406,6 +424,7 @@ function buildTradesFromFills(fills, opts = {}) {
         posSide = "SHORT";
         currentEntryEventId = pickEntryEventId(f);
         currentEntrySignalType = pickEntrySignalType(f);
+        currentEntryFeaturesJson = pickFeaturesJson(f);
         continue;
       }
 
@@ -416,6 +435,7 @@ function buildTradesFromFills(fills, opts = {}) {
         posSize = nextNotional;
         if (!currentEntryEventId) currentEntryEventId = pickEntryEventId(f);
         if (!currentEntrySignalType) currentEntrySignalType = pickEntrySignalType(f);
+        if (!currentEntryFeaturesJson) currentEntryFeaturesJson = pickFeaturesJson(f);
         continue;
       }
 
@@ -475,6 +495,7 @@ function buildTradesFromFills(fills, opts = {}) {
         close_type: (remainingAfter <= 0) ? "FULL_CLOSE" : "PARTIAL_CLOSE",
         pnl_mode: mode,
         position_side: "LONG",
+        features_json: currentEntryFeaturesJson || pickFeaturesJson(f),
       };
 
       posSize = remainingAfter;
@@ -495,6 +516,7 @@ function buildTradesFromFills(fills, opts = {}) {
         tradeOpenMs = null;
         currentEntryEventId = null;
         currentEntrySignalType = null;
+        currentEntryFeaturesJson = null;
       }
     }
   }

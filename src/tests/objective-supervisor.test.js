@@ -21,6 +21,32 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
           avg_ret_net: 0.012,
           net_pnl_quote: 220,
         },
+        quality: {
+          chain_rows: [
+            {
+              market: "BTCUSDT",
+              febt_phase: "FIRE",
+              febt_calc_ok: true,
+              febt_payload_missing: false,
+              febt_shadow_disagrees_legacy_wait: true,
+              febt_shadow_disagreement_reason: "FEBT_ALLOW_LEGACY_WAIT",
+              febt_shadow_fallback_to_legacy: false,
+              febt_shadow_verdict: "ALLOW",
+              febt_shadow_legacy_wait_action: "WAIT_HARD",
+            },
+            {
+              market: "DOGEUSDT",
+              febt_phase: "LATE",
+              febt_calc_ok: true,
+              febt_payload_missing: false,
+              febt_shadow_disagrees_legacy_wait: true,
+              febt_shadow_disagreement_reason: "FEBT_BLOCK_LEGACY_ALLOW",
+              febt_shadow_fallback_to_legacy: false,
+              febt_shadow_verdict: "BLOCK",
+              febt_shadow_legacy_wait_action: "ALLOW",
+            },
+          ],
+        },
       },
       objective: {
         min_monthly_net_krw: 1500000,
@@ -99,6 +125,10 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.phase0.immediate_win_rate, 0.57);
   assert.strictEqual(allowPromote.best_febt_tuning_contract.mode, "NORMAL");
   assert.strictEqual(allowPromote.best_febt_tuning_contract.tightening_allowed, true);
+  assert.strictEqual(Array.isArray(allowPromote.best_febt_market_contracts), true);
+  assert.strictEqual(allowPromote.best_febt_market_contracts[0].market, "BTCUSDT");
+  assert.strictEqual(allowPromote.best_febt_market_contracts[1].market, "DOGEUSDT");
+  assert.strictEqual(allowPromote.best_febt_market_contracts[1].mode, "COUNT_GUARD_ACTIVE");
 
   const blockPromote = __test.evaluateSupervisor({
     ...base,
@@ -274,6 +304,30 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
       duplicate_count: 1,
       reject_count: 2,
     },
+    best_febt_tuning_contract: {
+      mode: "COUNT_GUARD_ACTIVE",
+      tightening_allowed: false,
+      recovery_priority: true,
+      projected_replacement_ratio: 0.72,
+      projected_count_ratio_global: 0.94,
+      projected_net_signal_delta_n: -3,
+      fire_n: 3,
+      late_n: 2,
+      disagreement_n: 4,
+      fallback_legacy_n: 1,
+    },
+    best_febt_market_contracts: [
+      {
+        market: "BTCUSDT",
+        mode: "NORMAL",
+        projected_replacement_ratio: 1.2,
+        projected_count_ratio_global: 1.05,
+        fire_n: 4,
+        late_n: 1,
+        disagreement_n: 1,
+        dominant_disagreement_reason: "FEBT_ALLOW_LEGACY_WAIT",
+      },
+    ],
     codex_review: { status: "FRESH", verdict: "HOLD", reason: "BLOCKED" },
     stage_autopilot: { status: "FRESH", objective_verdict: "HOLD", action_n: 0, action_types: [] },
   });
@@ -289,6 +343,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.ok(filterLayerSection.lines[4].includes("fallback 1"));
   assert.ok(telegramSections.some((section) => section.header === "FEBT Phase 0"));
   assert.ok(telegramSections.some((section) => section.header === "BEST/FEBT 공통 계약"));
+  assert.ok(telegramSections.some((section) => section.header === "시장별 BEST/FEBT 계약"));
 
   const derivedContract = __test.deriveBestFebtTuningContract({
     governance: {
@@ -322,6 +377,15 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(derivedContract.mode, "COUNT_GUARD_ACTIVE");
   assert.strictEqual(derivedContract.tightening_allowed, false);
   assert.strictEqual(derivedContract.recovery_priority, true);
+
+  const marketContracts = __test.deriveBestFebtMarketContracts({
+    governance: base.governance,
+    objectiveSupervisor: { verdict: "HOLD" },
+  });
+  assert.strictEqual(marketContracts[0].market, "BTCUSDT");
+  assert.strictEqual(marketContracts[0].mode, "NORMAL");
+  assert.strictEqual(marketContracts[1].market, "DOGEUSDT");
+  assert.strictEqual(marketContracts[1].mode, "COUNT_GUARD_ACTIVE");
 
   console.log("OBJECTIVE_SUPERVISOR_TEST_OK");
 })();

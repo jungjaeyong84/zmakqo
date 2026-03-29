@@ -68,6 +68,19 @@ function resolveEvGateFeatures(row) {
   return featuresJson || features || {};
 }
 
+function resolveObservationMs(row) {
+  const values = [
+    row && row.bar_close_time_utc_ms,
+    row && row.signal_bar_close_time_utc_ms,
+    row && row.exec_bar_close_time_utc_ms,
+  ];
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
 function hasEvGateObservation(row) {
   const reason = String(row && (row.drop_reason_code || row.reason) || '').toUpperCase();
   if (reason === 'DROP_EV_GATE_TP1_PROB' || reason === 'DROP_EV_GATE_BARS_MISSING') return true;
@@ -85,14 +98,15 @@ function isEvGateSkipped(row) {
 }
 
 function evGateEntryKey(row) {
-  const signalId = String(row && row.signal_id || '').trim();
+  const features = resolveEvGateFeatures(row);
+  const signalId = String(row && (row.signal_id || features.signal_id) || '').trim();
   if (signalId) return signalId;
   const exchange = String(row && row.exchange || '').toUpperCase();
   const symbol = String(row && (row.symbol_or_pair_id || row.symbol) || '').toUpperCase();
   const tf = String(row && row.tf || '').trim();
   const event = String(row && row.event || '').toUpperCase();
   const side = String(row && row.side || '').toUpperCase();
-  const barMs = Number(row && row.bar_close_time_utc_ms);
+  const barMs = resolveObservationMs(row);
   return `${exchange}__${symbol}__${tf}__${event}__${side}__${Number.isFinite(barMs) ? barMs : 'NA'}`;
 }
 
@@ -143,6 +157,7 @@ function uniqueEntryCount(rows = [], filterFn = null) {
 function buildEvGateBreakdowns(rows = []) {
   const scoped = Array.isArray(rows) ? rows : [];
   return {
+    by_observation_source: countBy(scoped, (x) => String(x.observation_source || 'UNKNOWN').toUpperCase()),
     by_event: countBy(scoped, (x) => eventDisplay(x.event, x.side)),
     by_dir: countBy(scoped, (x) => String((x.features_json && x.features_json.ev_gate_dir) || x.side || 'UNKNOWN').toUpperCase()),
     by_plan_source: countBy(scoped, (x) => String((x.features_json && x.features_json.ev_gate_plan_source) || 'UNKNOWN').toUpperCase()),
@@ -158,10 +173,11 @@ function buildEvGateBreakdowns(rows = []) {
 function buildRecentEvGateExamples(rows = []) {
   return (Array.isArray(rows) ? rows : [])
     .slice()
-    .sort((a, b) => Number(b.bar_close_time_utc_ms || 0) - Number(a.bar_close_time_utc_ms || 0))
+    .sort((a, b) => Number(resolveObservationMs(b) || 0) - Number(resolveObservationMs(a) || 0))
     .slice(0, 10)
     .map((x) => ({
-      kst: toKstString(Number(x.bar_close_time_utc_ms || 0), { fallbackToString: true }),
+      kst: toKstString(Number(resolveObservationMs(x) || 0), { fallbackToString: true }),
+      observation_source: x.observation_source || null,
       symbol: x.symbol_or_pair_id || null,
       event: x.event || null,
       side: x.side || null,
@@ -182,12 +198,31 @@ async function fetchRange(col, startMs, endMs) {
   const db = getFirestore();
   const timeField = col === 'order_intents_paper'
     ? 'signal_bar_close_time_utc_ms'
-    : 'bar_close_time_utc_ms';
+    : ((col === 'fills_paper' || col === 'trades_paper')
+      ? 'exec_bar_close_time_utc_ms'
+      : 'bar_close_time_utc_ms');
   const snap = await db.collection(col)
     .where(timeField, '>=', startMs)
     .where(timeField, '<=', endMs)
     .get();
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+function withObservationSource(rows = [], source) {
+  return (Array.isArray(rows) ? rows : []).map((row) => ({
+    ...row,
+    observation_source: source,
+  }));
+}
+
+function buildObservationSourceSummary(observed = {}) {
+  return {
+    signals: uniqueEntryCount(observed.signals || []),
+    intents: uniqueEntryCount(observed.intents || []),
+    drops: uniqueEntryCount(observed.drops || []),
+    fills: uniqueEntryCount(observed.fills || []),
+    trades: uniqueEntryCount(observed.trades || []),
+  };
 }
 
 async function main() {
@@ -202,20 +237,39 @@ async function main() {
     : kstDayRange(dateArg);
   const windowLabel = cli.rolling24h ? 'rolling_24h' : dateArg;
 
-  const [signalsAll, dropsAll, intentsAll] = await Promise.all([
+  const [signalsAll, dropsAll, intentsAll, fillsAll, tradesAll] = await Promise.all([
     fetchRange('signals', startUtcMs, endUtcMs),
     fetchRange('signals_dropped', startUtcMs, endUtcMs),
     fetchRange('order_intents_paper', startUtcMs, endUtcMs),
+    fetchRange('fills_paper', startUtcMs, endUtcMs),
+    fetchRange('trades_paper', startUtcMs, endUtcMs),
   ]);
 
   const signals = signalsAll.filter((x) => String(x.exchange || '').toUpperCase() === exchange && String(x.tf || '') === tf);
   const drops = dropsAll.filter((x) => String(x.exchange || '').toUpperCase() === exchange && String(x.tf || '') === tf);
   const intents = intentsAll.filter((x) => String(x.exchange || '').toUpperCase() === exchange && String(x.tf || '') === tf);
+  const fills = fillsAll.filter((x) => String(x.exchange || '').toUpperCase() === exchange && String(x.tf || '') === tf);
+  const trades = tradesAll.filter((x) => String(x.exchange || '').toUpperCase() === exchange && String(x.tf || '') === tf);
   const scopedSignals = signals.filter(isScopedEntrySignal);
   const observedSignals = scopedSignals.filter(hasEvGateObservation);
   const observedIntents = intents.filter((row) => isScopedEntrySignal(row) && hasEvGateObservation(row));
   const observedDrops = drops.filter((row) => isScopedEntrySignal(row) && hasEvGateObservation(row));
-  const observedRows = [...observedSignals, ...observedIntents, ...observedDrops];
+  const observedFills = fills.filter((row) => isScopedEntrySignal(row) && hasEvGateObservation(row));
+  const observedTrades = trades.filter((row) => isScopedEntrySignal(row) && hasEvGateObservation(row));
+  const observationSourceSummary = buildObservationSourceSummary({
+    signals: observedSignals,
+    intents: observedIntents,
+    drops: observedDrops,
+    fills: observedFills,
+    trades: observedTrades,
+  });
+  const observedRows = [
+    ...withObservationSource(observedSignals, 'SIGNAL'),
+    ...withObservationSource(observedIntents, 'INTENT'),
+    ...withObservationSource(observedDrops, 'DROP'),
+    ...withObservationSource(observedFills, 'FILL'),
+    ...withObservationSource(observedTrades, 'TRADE'),
+  ];
   const evaluatedRows = observedRows.filter((row) => !isEvGateSkipped(row));
   const skippedRows = observedRows.filter(isEvGateSkipped);
   const evProbDrops = drops.filter((x) => String(x.drop_reason_code || x.reason || '').toUpperCase() === 'DROP_EV_GATE_TP1_PROB');
@@ -267,6 +321,11 @@ async function main() {
 
   const breakdowns = buildEvGateBreakdowns(evTotalDrops);
   const recentExamples = buildRecentEvGateExamples(evDrops);
+  const fillBreakdowns = buildEvGateBreakdowns(withObservationSource(observedFills, 'FILL'));
+  const tradeBreakdowns = buildEvGateBreakdowns(withObservationSource(observedTrades, 'TRADE'));
+  const recentFillExamples = buildRecentEvGateExamples(withObservationSource(observedFills, 'FILL'));
+  const recentTradeExamples = buildRecentEvGateExamples(withObservationSource(observedTrades, 'TRADE'));
+  const byEvent = breakdowns.by_event;
 
   const payload = {
     ok: true,
@@ -286,6 +345,11 @@ async function main() {
       ev_gate_observed_entries: uniqueEntryCount(observedRows),
       ev_gate_evaluated_entries: uniqueEntryCount(evaluatedRows),
       ev_gate_skipped_entries: uniqueEntryCount(skippedRows),
+      ev_gate_signal_observations: observationSourceSummary.signals,
+      ev_gate_intent_observations: observationSourceSummary.intents,
+      ev_gate_drop_observations: observationSourceSummary.drops,
+      ev_gate_fill_observations: observationSourceSummary.fills,
+      ev_gate_trade_observations: observationSourceSummary.trades,
       all_drops: drops.length,
       ev_gate_drops_total: evTotalDrops.length,
       ev_gate_prob_drops: evProbDrops.length,
@@ -302,8 +366,12 @@ async function main() {
     breakdowns: {
       ...breakdowns,
       by_market: byMarket,
+      fills: fillBreakdowns,
+      trades: tradeBreakdowns,
     },
     recent_examples: recentExamples,
+    recent_fill_examples: recentFillExamples,
+    recent_trade_examples: recentTradeExamples,
   };
 
   const baseName = cli.rolling24h
@@ -331,6 +399,7 @@ async function main() {
   lines.push(`- ev gate observed entries: ${payload.summary.ev_gate_observed_entries}`);
   lines.push(`- ev gate evaluated entries: ${payload.summary.ev_gate_evaluated_entries}`);
   lines.push(`- ev gate skipped entries: ${payload.summary.ev_gate_skipped_entries}`);
+  lines.push(`- source observations: signal ${payload.summary.ev_gate_signal_observations}, intent ${payload.summary.ev_gate_intent_observations}, drop ${payload.summary.ev_gate_drop_observations}, fill ${payload.summary.ev_gate_fill_observations}, trade ${payload.summary.ev_gate_trade_observations}`);
   lines.push(`- all drops: ${payload.summary.all_drops}`);
   lines.push(`- ev gate total drops: ${payload.summary.ev_gate_drops_total}`);
   lines.push(`- ev gate tp1-prob drops: ${payload.summary.ev_gate_prob_drops}`);
@@ -370,12 +439,34 @@ async function main() {
     if (breakdowns.by_market_action.length) lines.push(`- market action: ${breakdowns.by_market_action.slice(0, 5).map((row) => `${row.key}:${row.count}`).join(', ')}`);
   }
   lines.push('');
+  lines.push('## Fill/Trade 관측');
+  if (!payload.summary.ev_gate_fill_observations && !payload.summary.ev_gate_trade_observations) {
+    lines.push('- 해당 범위에서 fill/trade EV 관측 없음');
+  } else {
+    if (fillBreakdowns.by_policy_source.length) lines.push(`- fills policy source: ${fillBreakdowns.by_policy_source.slice(0, 5).map((row) => `${row.key}:${row.count}`).join(', ')}`);
+    if (fillBreakdowns.by_market_action.length) lines.push(`- fills market action: ${fillBreakdowns.by_market_action.slice(0, 5).map((row) => `${row.key}:${row.count}`).join(', ')}`);
+    if (tradeBreakdowns.by_policy_source.length) lines.push(`- trades policy source: ${tradeBreakdowns.by_policy_source.slice(0, 5).map((row) => `${row.key}:${row.count}`).join(', ')}`);
+    if (tradeBreakdowns.by_market_action.length) lines.push(`- trades market action: ${tradeBreakdowns.by_market_action.slice(0, 5).map((row) => `${row.key}:${row.count}`).join(', ')}`);
+  }
+  lines.push('');
   lines.push('## 최근 사례');
   if (!recentExamples.length) {
     lines.push('- 없음');
   } else {
     for (const row of recentExamples) {
       lines.push(`- ${row.kst} | ${row.symbol} ${eventDisplay(row.event, row.side)} | tp1_prob ${numString(row.tp1_reach_prob)} | tp1_lb ${numString(row.tp1_reach_prob_lower_bound)} | atr_pct ${numString(row.atr_pct)} | ${row.plan_source}/${row.exit_profile} | ${row.policy_version || 'N/A'}/${row.policy_source || 'N/A'} | ${row.market_state || 'N/A'}/${row.market_action || 'N/A'}`);
+    }
+  }
+  lines.push('');
+  lines.push('## 최근 Fill/Trade 사례');
+  if (!recentFillExamples.length && !recentTradeExamples.length) {
+    lines.push('- 없음');
+  } else {
+    for (const row of recentFillExamples.slice(0, 5)) {
+      lines.push(`- [FILL] ${row.kst} | ${row.symbol} ${eventDisplay(row.event, row.side)} | ${row.policy_version || 'N/A'}/${row.policy_source || 'N/A'} | ${row.market_state || 'N/A'}/${row.market_action || 'N/A'}`);
+    }
+    for (const row of recentTradeExamples.slice(0, 5)) {
+      lines.push(`- [TRADE] ${row.kst} | ${row.symbol} ${eventDisplay(row.event, row.side)} | ${row.policy_version || 'N/A'}/${row.policy_source || 'N/A'} | ${row.market_state || 'N/A'}/${row.market_action || 'N/A'}`);
     }
   }
 
@@ -400,8 +491,10 @@ if (require.main === module) {
       isEvGateSkipped,
       uniqueEntryCount,
       evGateEntryKey,
+      resolveObservationMs,
       buildEvGateBreakdowns,
       buildRecentEvGateExamples,
+      buildObservationSourceSummary,
     },
   };
 }

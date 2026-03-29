@@ -16,6 +16,28 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
         projected_count_ratio_global: 0.96,
         projected_net_signal_delta_n: -2,
       },
+      best_febt_market_contracts: [
+        {
+          market: "BTCUSDT",
+          mode: "NORMAL",
+          projected_replacement_ratio: 1.1,
+          projected_count_ratio_global: 1.02,
+          fire_n: 5,
+          late_n: 1,
+          disagreement_n: 1,
+          dominant_disagreement_reason: "FEBT_ALLOW_LEGACY_WAIT",
+        },
+        {
+          market: "DOGEUSDT",
+          mode: "COUNT_GUARD_ACTIVE",
+          projected_replacement_ratio: 0.5,
+          projected_count_ratio_global: 0.85,
+          fire_n: 1,
+          late_n: 4,
+          disagreement_n: 3,
+          dominant_disagreement_reason: "FEBT_BLOCK_LEGACY_ALLOW",
+        },
+      ],
       filter_layers: {
         integrity: { server_mode: "INTEGRITY_GUARD_ONLY", coverage_pass: true },
         entry_quality: { pine_candidate_verdict: "WATCHLIST_ONLY", quality_actions: 2 },
@@ -45,6 +67,9 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.ok(prompt.includes("BEST/FEBT weekly tuning policy"));
   assert.ok(prompt.includes("febt contract mode: RECOVERY_FIRST"));
   assert.ok(prompt.includes("febt tightening allowed: NO"));
+  assert.ok(prompt.includes("BEST/FEBT market contracts:"));
+  assert.ok(prompt.includes("market BTCUSDT: NORMAL"));
+  assert.ok(prompt.includes("market DOGEUSDT: COUNT_GUARD_ACTIVE"));
 
   console.log("CODEX_WEEKLY_PATCH_ENGINE_TEST_OK");
 })();

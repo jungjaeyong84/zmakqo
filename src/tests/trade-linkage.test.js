@@ -15,6 +15,10 @@ function run() {
       exec_bar_close_time_utc_ms: baseMs,
       entry_event_id: "ENTRY_EVT",
       entry_signal_type: "LONG",
+      features_json: {
+        febt_phase: "FIRE",
+        ev_gate_policy_version: "TP1_WEIGHT_V1",
+      },
     },
     {
       fill_id: "fill-exit",
@@ -36,6 +40,10 @@ function run() {
   assert.strictEqual(built.trades[0].fill_id, "fill-exit");
   assert.strictEqual(built.trades[0].entry_event_id, "ENTRY_EVT");
   assert.strictEqual(built.trades[0].entry_signal_type, "LONG");
+  assert.deepStrictEqual(built.trades[0].features_json, {
+    febt_phase: "FIRE",
+    ev_gate_policy_version: "TP1_WEIGHT_V1",
+  });
 
   console.log("TRADE_LINKAGE_TEST_OK");
 }

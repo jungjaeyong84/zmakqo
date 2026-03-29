@@ -1152,6 +1152,7 @@ async function syncMarketTrades({
         signalDocId,
         leverageApplied: Number.isFinite(intentLeverage) && intentLeverage > 0 ? intentLeverage : null,
         leverageReason: intentLeverageReason || null,
+        featuresJson: (intent && intent.features_json && typeof intent.features_json === "object") ? intent.features_json : null,
         createdAt: execTimeIso,
         extra: {
           external: true,

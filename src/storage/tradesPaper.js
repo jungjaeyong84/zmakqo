@@ -5,6 +5,15 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function normalizeFeaturesJson(featuresJson) {
+  if (!featuresJson || typeof featuresJson !== "object" || Array.isArray(featuresJson)) return null;
+  try {
+    return JSON.parse(JSON.stringify(featuresJson));
+  } catch (_err) {
+    return null;
+  }
+}
+
 function buildTradeId({ exchange, symbol, event, execBarCloseMs, execMs }) {
   const execSuffix = Number.isFinite(execMs) ? `__${Math.trunc(execMs)}` : "";
   return `TRADE__${exchange}__${symbol}__${event}__${execBarCloseMs}${execSuffix}`;
@@ -35,6 +44,7 @@ async function upsertTradeEvent({
   qtyFraction = null,
   meta = {},
   executionMode = null,
+  featuresJson = null,
 } = {}) {
   const db = getFirestore();
   const execMsNum = Number(execMs);
@@ -54,6 +64,7 @@ async function upsertTradeEvent({
     if (existing.exists) createdAt = existing.data()?.created_at || createdAt;
   } catch (_) {}
 
+  const normalizedFeaturesJson = normalizeFeaturesJson(featuresJson);
   const payload = {
     trade_id: id,
     run_id: runId || null,
@@ -89,6 +100,8 @@ async function upsertTradeEvent({
     created_at: createdAt,
     updated_at: nowIso(),
   };
+
+  if (normalizedFeaturesJson) payload.features_json = normalizedFeaturesJson;
 
   await ref.set(payload, { merge: true });
   return payload;

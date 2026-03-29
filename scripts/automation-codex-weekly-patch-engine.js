@@ -110,6 +110,16 @@ function buildObjectiveSupervisorLayerLines(objectiveSupervisor = null) {
   ];
 }
 
+function buildBestFebtMarketContractLines(objectiveSupervisor = null) {
+  const rows = Array.isArray(objectiveSupervisor && objectiveSupervisor.best_febt_market_contracts)
+    ? objectiveSupervisor.best_febt_market_contracts
+    : [];
+  if (!rows.length) return ["- market contract: N/A"];
+  return rows.slice(0, 5).map((row) =>
+    `- market ${row.market || "UNKNOWN"}: ${row.mode || "N/A"} / replacement ${row.projected_replacement_ratio != null ? row.projected_replacement_ratio : "N/A"} / count ${row.projected_count_ratio_global != null ? row.projected_count_ratio_global : "N/A"} / fire ${row.fire_n != null ? row.fire_n : "N/A"} / late ${row.late_n != null ? row.late_n : "N/A"} / disagree ${row.disagreement_n != null ? row.disagreement_n : "N/A"} / reason ${row.dominant_disagreement_reason || "N/A"}`
+  );
+}
+
 function buildPrompt(context = {}) {
   const { objectiveSupervisor, governance, changeControl, patchCandidates, ml, ev, wait, canary, stageAutopilot, retrospective } = context;
   const displayMap = buildCandidateDisplayMap(changeControl, patchCandidates);
@@ -124,6 +134,7 @@ function buildPrompt(context = {}) {
   const bestFebtContract = objectiveSupervisor && objectiveSupervisor.best_febt_tuning_contract && typeof objectiveSupervisor.best_febt_tuning_contract === "object"
     ? objectiveSupervisor.best_febt_tuning_contract
     : null;
+  const bestFebtMarketLines = buildBestFebtMarketContractLines(objectiveSupervisor);
   return [
     "You are the weekly Codex patch engine for DONBEOLJA.",
     "Task: inspect the provided latest reports and return a single JSON decision only.",
@@ -194,6 +205,8 @@ function buildPrompt(context = {}) {
     `- febt candidate recovered / blocked / wait: ${febtShadow.candidate_recovered_n != null ? febtShadow.candidate_recovered_n : "N/A"} / ${febtShadow.candidate_blocked_n != null ? febtShadow.candidate_blocked_n : "N/A"} / ${febtShadow.candidate_wait_n != null ? febtShadow.candidate_wait_n : "N/A"}`,
     `- wait layer febt fire / late / void: ${waitLayer.febt_fire_n != null ? waitLayer.febt_fire_n : "N/A"} / ${waitLayer.febt_late_n != null ? waitLayer.febt_late_n : "N/A"} / ${waitLayer.febt_void_n != null ? waitLayer.febt_void_n : "N/A"}`,
     `- wait layer febt disagreement / fallback / missing: ${waitLayer.febt_disagreement_n != null ? waitLayer.febt_disagreement_n : "N/A"} / ${waitLayer.febt_fallback_legacy_n != null ? waitLayer.febt_fallback_legacy_n : "N/A"} / ${waitLayer.febt_missing_rate != null ? waitLayer.febt_missing_rate : "N/A"}`,
+    "BEST/FEBT market contracts:",
+    ...bestFebtMarketLines,
   ].join("\n");
 }
 
@@ -428,6 +441,7 @@ if (require.main === module) {
       buildCandidateDisplayMap,
       replaceCandidateIdsInText,
       buildObjectiveSupervisorLayerLines,
+      buildBestFebtMarketContractLines,
     },
   };
 }

@@ -9,6 +9,8 @@ function run() {
   assert.strictEqual(typeof __test.uniqueEntryCount, "function", "uniqueEntryCount export missing");
   assert.strictEqual(typeof __test.buildEvGateBreakdowns, "function", "buildEvGateBreakdowns export missing");
   assert.strictEqual(typeof __test.buildRecentEvGateExamples, "function", "buildRecentEvGateExamples export missing");
+  assert.strictEqual(typeof __test.buildObservationSourceSummary, "function", "buildObservationSourceSummary export missing");
+  assert.strictEqual(typeof __test.resolveObservationMs, "function", "resolveObservationMs export missing");
 
   const allowRow = {
     signal_id: "SIG1",
@@ -42,8 +44,10 @@ function run() {
       event: "CORE_LONG",
       side: "BUY",
       execution_mode: "PAPER",
-      bar_close_time_utc_ms: 1000,
+      exec_bar_close_time_utc_ms: 1000,
+      observation_source: "FILL",
       features_json: {
+        signal_id: "SIG_FILL_1",
         ev_gate_plan_source: "EXIT_RULES",
         ev_gate_exit_profile: "TREND",
         ev_gate_policy_version: "TP1_WEIGHT_V1",
@@ -54,16 +58,35 @@ function run() {
     },
   ];
   const breakdowns = __test.buildEvGateBreakdowns(diagnosticsRows);
+  assert.strictEqual(breakdowns.by_observation_source[0].key, "FILL");
   assert.strictEqual(breakdowns.by_policy_version[0].key, "TP1_WEIGHT_V1");
   assert.strictEqual(breakdowns.by_policy_source[0].key, "DEFAULT");
   assert.strictEqual(breakdowns.by_market_state[0].key, "MIXED");
   assert.strictEqual(breakdowns.by_market_action[0].key, "REDUCE");
 
   const examples = __test.buildRecentEvGateExamples(diagnosticsRows);
+  assert.strictEqual(__test.resolveObservationMs(diagnosticsRows[0]), 1000);
+  assert.strictEqual(__test.uniqueEntryCount(diagnosticsRows), 1);
   assert.strictEqual(examples[0].policy_version, "TP1_WEIGHT_V1");
   assert.strictEqual(examples[0].policy_source, "DEFAULT");
   assert.strictEqual(examples[0].market_state, "MIXED");
   assert.strictEqual(examples[0].market_action, "REDUCE");
+  assert.strictEqual(examples[0].observation_source, "FILL");
+
+  const sourceSummary = __test.buildObservationSourceSummary({
+    signals: [{ signal_id: "SIG_A" }],
+    intents: [{ signal_id: "SIG_B" }],
+    drops: [{ signal_id: "SIG_C" }],
+    fills: diagnosticsRows,
+    trades: [{ features_json: { signal_id: "SIG_TRADE_1" }, exec_bar_close_time_utc_ms: 1200, event: "CORE_LONG", side: "BUY" }],
+  });
+  assert.deepStrictEqual(sourceSummary, {
+    signals: 1,
+    intents: 1,
+    drops: 1,
+    fills: 1,
+    trades: 1,
+  });
 }
 
 try {

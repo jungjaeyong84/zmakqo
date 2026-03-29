@@ -7508,6 +7508,7 @@ async function runPaperUpbitForBar({
       entrySignalType: entrySignalTypeForFill,
       leverageApplied: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
       leverageReason: appliedLeverageReason,
+      featuresJson: it.features_json && typeof it.features_json === "object" ? it.features_json : null,
       exitProfile: appliedExitProfile || null,
       exitProfileReason: appliedExitProfileReason || null,
     });
@@ -7803,6 +7804,7 @@ async function runPaperUpbitForBar({
       qtyFraction: useBudget ? qtyFraction : null,
       meta: { trading_mode, execution_mode: executionMode },
       executionMode,
+      featuresJson: it.features_json && typeof it.features_json === "object" ? it.features_json : null,
     });
 
       fillsExecuted += 1;
@@ -9906,6 +9908,7 @@ async function runPaperFuturesForBar({
       entrySignalType: entrySignalTypeForFill,
       leverageApplied: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
       leverageReason: appliedLeverageReason,
+      featuresJson: it.features_json && typeof it.features_json === "object" ? it.features_json : null,
       exitProfile: appliedExitProfile || null,
       exitProfileReason: appliedExitProfileReason || null,
     });
@@ -10267,6 +10270,7 @@ async function runPaperFuturesForBar({
         exit_profile_reason: appliedExitProfileReason || null,
       },
       executionMode,
+      featuresJson: it.features_json && typeof it.features_json === "object" ? it.features_json : null,
     });
 
       fillsExecuted += 1;

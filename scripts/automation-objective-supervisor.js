@@ -14,7 +14,7 @@ const {
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
-const { deriveBestFebtTuningContract } = require("./lib/best-febt-supervisor");
+const { deriveBestFebtTuningContract, deriveBestFebtMarketContracts } = require("./lib/best-febt-supervisor");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
 const { resolveMarketStateSummary } = require("../src/utils/marketStateSummary");
 const { resolveStatPhysFeatures } = require("../src/utils/statPhysFeatures");
@@ -264,6 +264,13 @@ function summarizeFebtByTier(byTier = {}) {
   };
 }
 
+function formatBestFebtMarketContractLine(row = {}) {
+  const market = String(row.market || "UNKNOWN");
+  const replacement = row.projected_replacement_ratio != null ? pct(row.projected_replacement_ratio) : "N/A";
+  const count = row.projected_count_ratio_global != null ? `${Number(row.projected_count_ratio_global).toFixed(2)}x` : "N/A";
+  return `${market} ${row.mode || "N/A"} / replacement ${replacement} / count ${count} / fire ${row.fire_n ?? 0} / late ${row.late_n ?? 0} / disagree ${row.disagreement_n ?? 0} / reason ${row.dominant_disagreement_reason || "N/A"}`;
+}
+
 function buildFilterLayerSummary({ governance, changeControl, ml, ev, wait, physicsSummary } = {}) {
   const current = governance && governance.current && typeof governance.current === "object" ? governance.current : {};
   const patchCandidates = current && current.pine_stage1_patch_candidates && typeof current.pine_stage1_patch_candidates === "object"
@@ -401,6 +408,12 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
       ],
     },
     {
+      header: "시장별 BEST/FEBT 계약",
+      lines: Array.isArray(report.best_febt_market_contracts) && report.best_febt_market_contracts.length
+        ? report.best_febt_market_contracts.slice(0, 4).map((row) => formatBestFebtMarketContractLine(row))
+        : ["시장별 계약 없음"],
+    },
+    {
       header: "Codex 검토",
       lines: [
         `상태 ${report.codex_review.status} / 결론 ${report.codex_review.verdict} / 사유 ${report.codex_review.reason}`,
@@ -460,6 +473,14 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     reject_count: toNum(phase0 && phase0.bridge_latency && phase0.bridge_latency.reject_count) || 0,
   };
   const bestFebtTuningContract = deriveBestFebtTuningContract({
+    governance,
+    objectiveSupervisor: {
+      verdict: null,
+      filter_layers: filterLayers,
+      phase0: phase0Summary,
+    },
+  });
+  const bestFebtMarketContracts = deriveBestFebtMarketContracts({
     governance,
     objectiveSupervisor: {
       verdict: null,
@@ -597,6 +618,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     physics: physicsSummary,
     phase0: phase0Summary,
     best_febt_tuning_contract: bestFebtTuningContract,
+    best_febt_market_contracts: bestFebtMarketContracts,
     filter_layers: filterLayers,
     tuning: {
       ev_reason: String(ev && ev.decision_reason || "N/A"),
@@ -686,6 +708,11 @@ function renderMarkdown(report = {}) {
     `- fire/late/void: ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.fire_n != null ? report.best_febt_tuning_contract.fire_n : "N/A"} / ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.late_n != null ? report.best_febt_tuning_contract.late_n : "N/A"} / ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.void_n != null ? report.best_febt_tuning_contract.void_n : "N/A"}`,
     `- disagreement/fallback/missing: ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.disagreement_n != null ? report.best_febt_tuning_contract.disagreement_n : "N/A"} / ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.fallback_legacy_n != null ? report.best_febt_tuning_contract.fallback_legacy_n : "N/A"} / ${pct(report.best_febt_tuning_contract && report.best_febt_tuning_contract.missing_rate)}`,
     "",
+    "## BEST/FEBT Market Contracts",
+    ...((Array.isArray(report.best_febt_market_contracts) && report.best_febt_market_contracts.length)
+      ? report.best_febt_market_contracts.map((row) => `- ${formatBestFebtMarketContractLine(row)}`)
+      : ["- none"]),
+    "",
     "## Tuning Inputs",
     `- EV: ${report.tuning && report.tuning.ev_reason || "N/A"}`,
     `- WAIT: ${report.tuning && report.tuning.wait_reason || "N/A"}`,
@@ -755,6 +782,7 @@ async function main() {
       ...(evaluation.best_febt_tuning_contract || {}),
       objective_verdict: evaluation.verdict,
     },
+    best_febt_market_contracts: evaluation.best_febt_market_contracts,
     tuning: evaluation.tuning,
     codex_review: evaluation.codex_review,
     stage_autopilot: evaluation.stage_autopilot,
@@ -817,5 +845,7 @@ module.exports = {
     buildObjectiveSupervisorTelegramSections,
     buildFilterLayerSummary,
     deriveBestFebtTuningContract,
+    deriveBestFebtMarketContracts,
+    formatBestFebtMarketContractLine,
   },
 };
