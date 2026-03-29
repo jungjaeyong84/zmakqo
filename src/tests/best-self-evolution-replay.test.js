@@ -25,9 +25,34 @@ function run() {
     late_loss_top_market: { key: "DOGEUSDT", count: 5 },
     false_fire_top_market: { key: "ETHUSDT", count: 2 },
   };
-  const result = deriveCandidateObjectiveDelta(candidate, { objective, attribution });
+  const dataset = {
+    rows: [
+      {
+        market: "DOGEUSDT",
+        event: "CORE_SHORT",
+        source_row_type: "DROP",
+        drop_stage_key: "TIMING",
+        wait_verdict: "DROP",
+        realized_ret_net: 0.03,
+        tp1_first: true,
+        febt_phase: "ARMED",
+      },
+      {
+        market: "DOGEUSDT",
+        event: "CORE_SHORT",
+        source_row_type: "EXECUTED",
+        wait_verdict: "ALLOW",
+        realized_ret_net: -0.02,
+        tp1_first: false,
+        febt_phase: "LATE",
+      },
+    ],
+  };
+  const result = deriveCandidateObjectiveDelta(candidate, { objective, attribution, dataset });
   assert.strictEqual(result.validation_verdict, "PASS");
   assert.strictEqual(result.projected_objective_score > result.current_objective_score, true);
+  assert.strictEqual(result.historical_applied_n, 1);
+  assert.strictEqual(result.validation_mode, "HISTORICAL_ENTRY_COHORT_V1");
 
   const report = buildReplayValidationReport({
     candidateChangeSet: {
@@ -48,6 +73,7 @@ function run() {
     },
     objective,
     attribution,
+    dataset,
   });
   assert.strictEqual(report.summary.total_n, 2);
   assert.strictEqual(report.summary.pass_n, 1);

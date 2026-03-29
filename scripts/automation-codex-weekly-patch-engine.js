@@ -12,6 +12,7 @@ const {
   loadLocalEnv,
   nowKstMeta,
   readJsonRawSafe,
+  resolveAutomationCycleMeta,
   sendKoreanTelegramSummary,
   writeJson,
   writeText,
@@ -318,6 +319,7 @@ function renderMarkdown(report = {}) {
     "# Codex Weekly Patch Engine",
     "",
     `- 실행 시각: ${report.generated_at_kst || "N/A"}`,
+    `- cycle_id: ${report.cycle_id || "N/A"}`,
     `- status: ${report.status || "N/A"}`,
     `- verdict: ${report.verdict || "N/A"}`,
     `- reason: ${report.reason || "N/A"}`,
@@ -383,6 +385,7 @@ function runCodexExec({ args, prompt, lastMessagePath } = {}) {
 
 async function main() {
   const nowMeta = nowKstMeta();
+  const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
   const objectiveSupervisor = readFreshJson(INPUT_PATHS.objectiveSupervisor, MAX_AGE_HOURS);
   const governance = readFreshJson(INPUT_PATHS.governance, MAX_AGE_HOURS);
   const changeControl = readFreshJson(INPUT_PATHS.changeControl, MAX_AGE_HOURS);
@@ -408,6 +411,8 @@ async function main() {
   const baseReport = {
     ok: true,
     generated_at_kst: nowMeta.kst,
+    cycle_id: cycleMeta.cycle_id,
+    generation_id: cycleMeta.generation_id,
     status: "SKIPPED",
     verdict: "HOLD",
     recommended_candidate_id: null,
@@ -491,6 +496,8 @@ async function main() {
   const report = {
     ok: !!parsed,
     generated_at_kst: nowMeta.kst,
+    cycle_id: cycleMeta.cycle_id,
+    generation_id: cycleMeta.generation_id,
     status: parsed ? "OK" : (res.error ? "FAILED" : `EXIT_${res.status}`),
     verdict: parsed ? String(parsed.verdict || "HOLD").toUpperCase() : "HOLD",
     recommended_candidate_id: parsed ? (String(parsed.recommended_candidate_id || "").trim() || null) : null,
@@ -512,19 +519,21 @@ async function main() {
   copyLatest(jsonPath, REPORT_LATEST_JSON);
   copyLatest(mdPath, REPORT_LATEST_MD);
 
-  const alert = await sendKoreanTelegramSummary({
-    title: `[Codex 주간 패치 엔진] ${report.verdict}`,
-    severity: report.verdict === "ROLLBACK" ? "WARN" : "INFO",
-    sections: [
-      { header: "판정", lines: [`${report.verdict} / ${report.reason}`] },
-      { header: "추천", lines: [`candidate ${report.display_candidate_id || report.recommended_candidate_id || "N/A"}`, `rollback ${report.recommended_rollback_file_path || "N/A"}`] },
-      { header: "요약", lines: [report.summary || "N/A"] },
-      { header: "점검", lines: (report.checks || []).slice(0, 5) },
-      { header: "리스크", lines: (report.risks || []).slice(0, 5) },
-    ],
-  });
-  if (!alert || (alert.ok !== true && !(alert.skipped && alert.reason === "SKIP_ALERT"))) {
-    throw new Error(`TELEGRAM_SEND_FAILED:${JSON.stringify(alert || {})}`);
+  if (String(process.env.CODEX_PATCH_ENGINE_SKIP_TELEGRAM || "0").trim() !== "1") {
+    const alert = await sendKoreanTelegramSummary({
+      title: `[Codex 주간 패치 엔진] ${report.verdict}`,
+      severity: report.verdict === "ROLLBACK" ? "WARN" : "INFO",
+      sections: [
+        { header: "판정", lines: [`${report.verdict} / ${report.reason}`] },
+        { header: "추천", lines: [`candidate ${report.display_candidate_id || report.recommended_candidate_id || "N/A"}`, `rollback ${report.recommended_rollback_file_path || "N/A"}`] },
+        { header: "요약", lines: [report.summary || "N/A"] },
+        { header: "점검", lines: (report.checks || []).slice(0, 5) },
+        { header: "리스크", lines: (report.risks || []).slice(0, 5) },
+      ],
+    });
+    if (!alert || (alert.ok !== true && !(alert.skipped && alert.reason === "SKIP_ALERT"))) {
+      throw new Error(`TELEGRAM_SEND_FAILED:${JSON.stringify(alert || {})}`);
+    }
   }
 
   console.log(JSON.stringify({

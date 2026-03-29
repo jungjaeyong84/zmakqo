@@ -109,13 +109,17 @@ function applyMemoryGuards(candidate = {}, memoryContext = null) {
   const candidateId = String(candidate && candidate.candidate_id || "").trim();
   const fingerprint = candidateFingerprint(candidate);
   const memoryRow = candidateId ? (memoryContext.currentRowById.get(candidateId) || null) : null;
-  const memoryBlocked = (candidateId && memoryContext.blockedIds.has(candidateId)) || (memoryRow && memoryRow.memory_blocked === true);
+  const explicitMemoryBlocked = (candidateId && memoryContext.blockedIds.has(candidateId)) || (memoryRow && memoryRow.memory_blocked === true);
   const fingerprintRepeated = memoryContext.recentFailedFingerprints.has(fingerprint);
+  const memoryBlocked = explicitMemoryBlocked || fingerprintRepeated;
 
   next.change_fingerprint = fingerprint;
   next.memory_blocked = memoryBlocked === true;
   next.memory_block_reason = memoryBlocked
-    ? String(memoryRow && memoryRow.memory_block_reason || "RECENT_FAIL_FINGERPRINT")
+    ? String(
+      (memoryRow && memoryRow.memory_block_reason)
+      || (fingerprintRepeated ? "FAILED_FINGERPRINT_REPEAT" : "RECENT_FAIL_FINGERPRINT")
+    )
     : null;
   next.failed_fingerprint_repeat = fingerprintRepeated === true;
 

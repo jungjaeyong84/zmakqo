@@ -18,6 +18,8 @@
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_WEIGHT_TUNING_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MEMORY_LEDGER_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_WORK_BREAKDOWN.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_CLAUDE_AUDIT_SPEC.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/CLAUDE_SELF_EVOLUTION_VALIDATION_PROMPT.md`
 
 ## 1. 한 줄 정의
 

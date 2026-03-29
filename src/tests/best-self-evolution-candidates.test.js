@@ -2,6 +2,7 @@
 
 const assert = require("assert");
 const { buildCandidateChangeSets, __test } = require("../../src/utils/bestSelfEvolutionCandidates");
+const { candidateFingerprint } = require("../utils/bestSelfEvolutionMemoryLedger");
 
 function run() {
   assert.strictEqual(__test.resolveDiffDirection("foo_min", 1, 2), "TIGHTEN");
@@ -118,6 +119,58 @@ function run() {
   assert.strictEqual(ev.scope, "EV");
   assert.strictEqual(ev.ready_for_auto_apply, true);
   assert.strictEqual(report.summary.memory_blocked_n, 1);
+
+  const fingerprintBaseArgs = {
+    objectiveSupervisor: {
+      raw: {
+        phase0: { tf: "15m" },
+        best_febt_tuning_contract: {
+          mode: "NORMAL",
+          projected_count_ratio_global: 1.01,
+          projected_replacement_ratio: 0.82,
+          tightening_allowed: true,
+          recovery_priority: false,
+        },
+        best_febt_market_contracts: [],
+      },
+    },
+    patchCandidates: { raw: { candidates: [] } },
+    ml: { raw: { recommendations: { QUALITY: [], MARKET: { action: "KEEP" }, AI: { action: "KEEP" }, EV: { action: "KEEP" } } } },
+    ev: {
+      raw: {
+        tf: "15m",
+        current_threshold: 0.55,
+        next_threshold: 0.52,
+        current_band: { fullThreshold: 0.6, killThreshold: 0.5, midScale: 0.7, lowScale: 0.35 },
+        next_band: { fullThreshold: 0.58, killThreshold: 0.48, midScale: 0.75, lowScale: 0.4 },
+        settings_updated: true,
+        decision_reason: "SOFTEN_TEST",
+      },
+    },
+    wait: { raw: { tf: "15m", current: {}, next: {}, changed: false, reason: "KEEP" } },
+    changeControl: { raw: {} },
+    memoryLedger: { raw: { summary: { blocked_candidate_ids: [], recent_failed_fingerprints: [] }, current_rows: [] } },
+  };
+  const fingerprintBaseReport = buildCandidateChangeSets(fingerprintBaseArgs);
+  const evFingerprint = candidateFingerprint(fingerprintBaseReport.rows.find((row) => row.candidate_id === "EV_TP1_THRESHOLD_TUNE"));
+  const reportWithFingerprintBlock = buildCandidateChangeSets({
+    ...fingerprintBaseArgs,
+    memoryLedger: {
+      raw: {
+        summary: {
+          blocked_candidate_ids: [],
+          recent_failed_fingerprints: [evFingerprint],
+        },
+        current_rows: [],
+      },
+    },
+  });
+  const evBlocked = reportWithFingerprintBlock.rows.find((row) => row.candidate_id === "EV_TP1_THRESHOLD_TUNE");
+  assert.strictEqual(evBlocked.memory_blocked, true);
+  assert.strictEqual(evBlocked.failed_fingerprint_repeat, true);
+  assert.ok(evBlocked.risk_flags.includes("FAILED_FINGERPRINT_REPEAT"));
+  assert.ok(evBlocked.risk_flags.includes("MEMORY_BLOCKED"));
+  assert.strictEqual(reportWithFingerprintBlock.summary.memory_blocked_n, 1);
 
   console.log("BEST_SELF_EVOLUTION_CANDIDATES_TEST_OK");
 }

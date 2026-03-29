@@ -14,13 +14,14 @@ const {
   writeText,
 } = require("./lib/automation-utils");
 const { buildReplayValidationReport } = require("../src/utils/bestSelfEvolutionReplay");
-const { unwrapRawReport } = require("../src/utils/bestSelfEvolutionCandidates");
 
 loadLocalEnv();
 
 const INPUTS = Object.freeze({
-  objectiveSupervisor: path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json"),
+  objective: path.join(OPS_DAILY_DIR, "best_self_evolution_objective_latest.json"),
+  attribution: path.join(OPS_DAILY_DIR, "best_self_evolution_attribution_latest.json"),
   candidates: path.join(OPS_DAILY_DIR, "best_self_evolution_candidates_latest.json"),
+  dataset: path.join(OPS_DAILY_DIR, "best_self_evolution_dataset_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -43,7 +44,7 @@ function renderMarkdown(report = {}) {
     lines.push("- none");
   } else {
     for (const row of rows.slice(0, 20)) {
-      lines.push(`- ${row.candidate_id}: ${row.validation_verdict} / delta=${row.candidate_objective_delta != null ? Number(row.candidate_objective_delta).toFixed(4) : "N/A"} / next=${row.projected_objective_score != null ? Number(row.projected_objective_score).toFixed(4) : "N/A"} / blockers=${Array.isArray(row.blockers) && row.blockers.length ? row.blockers.join("|") : "none"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
+      lines.push(`- ${row.candidate_id}: ${row.validation_verdict} / delta=${row.candidate_objective_delta != null ? Number(row.candidate_objective_delta).toFixed(4) : "N/A"} / next=${row.projected_objective_score != null ? Number(row.projected_objective_score).toFixed(4) : "N/A"} / matched=${row.historical_match_n ?? "N/A"} / applied=${row.historical_applied_n ?? "N/A"} / blockers=${Array.isArray(row.blockers) && row.blockers.length ? row.blockers.join("|") : "none"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
     }
   }
   return `${lines.join("\n")}\n`;
@@ -52,12 +53,15 @@ function renderMarkdown(report = {}) {
 async function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
-  const objectiveSupervisor = unwrapRawReport(readJsonRawSafe(INPUTS.objectiveSupervisor, null)) || {};
+  const objectiveReport = readJsonRawSafe(INPUTS.objective, null) || {};
+  const attributionReport = readJsonRawSafe(INPUTS.attribution, null) || {};
   const candidateChangeSet = readJsonRawSafe(INPUTS.candidates, null);
+  const dataset = readJsonRawSafe(INPUTS.dataset, null);
   const replay = buildReplayValidationReport({
     candidateChangeSet,
-    objective: objectiveSupervisor.self_evolution_objective,
-    attribution: objectiveSupervisor.self_evolution_attribution,
+    objective: objectiveReport && objectiveReport.global_objective_score ? objectiveReport.global_objective_score : objectiveReport,
+    attribution: attributionReport && attributionReport.attribution ? attributionReport.attribution : attributionReport,
+    dataset,
   });
   const output = {
     ok: true,

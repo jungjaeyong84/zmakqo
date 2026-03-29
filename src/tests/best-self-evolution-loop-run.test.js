@@ -9,6 +9,7 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
   assert.strictEqual(steps[0].id, "dataset");
   assert.strictEqual(steps[steps.length - 1].id, "loop_monitor");
   assert.strictEqual(steps.some((row) => row.id === "objective_seed"), true);
+  assert.strictEqual(steps.some((row) => row.id === "codex_patch_engine"), true);
   assert.strictEqual(steps.some((row) => row.id === "objective_final"), true);
 
   const parsed = __test.extractJson("x\n{\"ok\":true,\"step\":\"dataset\"}\n");
@@ -18,12 +19,12 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
     generated_at_kst: "2026-03-29 22:00:00 KST",
     cycle_id: "cycle-1",
     status: "PASS",
-    completed_steps: 15,
-    total_steps: 15,
+    completed_steps: 16,
+    total_steps: 16,
     failed_step: null,
     steps: [{ id: "dataset", status: "PASS", script: "x.js", exit_code: 0, summary: "OK" }],
   });
   assert.match(md, /cycle-1/);
-  assert.match(md, /completed_steps: 15 \/ 15/);
+  assert.match(md, /completed_steps: 16 \/ 16/);
   console.log("BEST_SELF_EVOLUTION_LOOP_RUN_TEST_OK");
 })();

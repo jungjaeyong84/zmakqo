@@ -128,16 +128,22 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       .filter((row) => row.cycle_id && row.cycle_id !== expectedCycleId)
       .map((row) => ({ loop: row.loop, cycle_id: row.cycle_id }))
     : [];
+  const cycleIdAbsent = expectedCycleId
+    ? rows
+      .filter((row) => row.fresh === true && !row.cycle_id)
+      .map((row) => row.loop)
+    : [];
   const blockers = [];
   if (objectiveReason) blockers.push(objectiveReason);
   if (Array.isArray(deploymentSummary.blockers)) blockers.push(...deploymentSummary.blockers);
   if (Number(memorySummary.blocked_candidate_n || 0) > 0) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK_PRESENT");
   if (cycleMismatches.length) blockers.push("SELF_EVOLUTION_CYCLE_MISMATCH");
+  if (cycleIdAbsent.length) blockers.push("SELF_EVOLUTION_CYCLE_ID_ABSENT");
   const uniqueBlockers = Array.from(new Set(blockers.filter(Boolean)));
 
   let overallStatus = "HEALTHY";
   if (deploymentPlanSummary.manual_step_required === true) overallStatus = "READY_FOR_MANUAL_PASTE";
-  else if (staleArtifacts.length || cycleMismatches.length) overallStatus = "BLOCKED";
+  else if (staleArtifacts.length || cycleMismatches.length || cycleIdAbsent.length) overallStatus = "BLOCKED";
   else if (uniqueBlockers.length || canarySummary.apply_pass === false || deploymentSummary.deploy_pass === false) overallStatus = "DEGRADED";
 
   return {
@@ -149,6 +155,8 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       cycle_consistent: cycleMismatches.length === 0,
       cycle_mismatch_n: cycleMismatches.length,
       cycle_mismatches: cycleMismatches,
+      cycle_id_absent_n: cycleIdAbsent.length,
+      cycle_id_absent_loops: cycleIdAbsent,
       critical_blocker_n: uniqueBlockers.length,
       critical_blockers: uniqueBlockers.slice(0, 10),
       promotion_path_ready: deploymentSummary.deploy_pass === true,

@@ -48,5 +48,19 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
   });
   assert.strictEqual(mismatch.summary.cycle_consistent, false);
   assert.strictEqual(mismatch.summary.overall_status, "BLOCKED");
+
+  const absent = deriveLoopMonitor({
+    artifacts: {
+      objectiveSupervisor: { fresh: true },
+      codexPatch: { fresh: true },
+    },
+    reports: {
+      objectiveSupervisor: { cycle_id: "cycle-z", verdict: "HOLD", reason: "X" },
+      codexPatch: { verdict: "HOLD", recommended_candidate_id: null },
+    },
+  });
+  assert.strictEqual(absent.summary.cycle_id_absent_n, 1);
+  assert.strictEqual(absent.summary.overall_status, "BLOCKED");
+  assert.ok(absent.summary.critical_blockers.includes("SELF_EVOLUTION_CYCLE_ID_ABSENT"));
   console.log("BEST_SELF_EVOLUTION_LOOP_MONITOR_TEST_OK");
 })();

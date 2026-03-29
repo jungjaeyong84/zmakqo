@@ -4,7 +4,7 @@ const { __test } = require("../../scripts/report-best-self-evolution-replay");
 function run() {
   const markdown = __test.renderMarkdown({
     generated_at_kst: "2026-03-29 19:47:00 KST",
-    validation_mode: "OFFLINE_PROXY_V1",
+    validation_mode: "HISTORICAL_ENTRY_COHORT_V1",
     summary: {
       total_n: 3,
       pass_n: 1,
@@ -20,6 +20,8 @@ function run() {
         validation_verdict: "PASS",
         candidate_objective_delta: 0.6251,
         projected_objective_score: -4.0123,
+        historical_match_n: 4,
+        historical_applied_n: 2,
         blockers: [],
         risk_flags: ["NOT_READY"],
       },

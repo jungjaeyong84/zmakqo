@@ -7889,12 +7889,16 @@ async function runPaperUpbitForBar({
 
   const externalSignals = externalSignalsRaw.map((s) => {
     const signalBarMs = Number(s.bar_close_time_utc_ms);
+    const signalDocId = String(s.signal_doc_id || (String(s.signal_id || "").startsWith("SIG__") ? s.signal_id : "") || "").trim() || null;
     let lateByBars = 0;
     if (Number.isFinite(signalTfMs) && Number.isFinite(signalBarMs)) {
       const delta = barCloseMs - signalBarMs;
       if (delta >= signalTfMs / 2) lateByBars = Math.max(0, Math.round(delta / signalTfMs));
     }
     const features = { ...(s.features_json || {}) };
+    if (signalDocId && !features.signal_doc_id) features.signal_doc_id = signalDocId;
+    if (s.signal_id && !features.signal_id) features.signal_id = s.signal_id;
+    if (Number.isFinite(Number(s.price)) && !Number.isFinite(Number(features.signal_price))) features.signal_price = Number(s.price);
     if (lateByBars > 0) {
       lateSignals += 1;
       features._late_by_bars = lateByBars;
@@ -7904,12 +7908,14 @@ async function runPaperUpbitForBar({
 
     return {
       signal_id: s.signal_id,
+      signal_doc_id: signalDocId,
       event: s.event,
       side: s.side,
       qty_pct: s.qty_pct,
       reason: s.reason || "TV_WEBHOOK",
       signal_bar_close_time_utc_ms: Number.isFinite(signalBarMs) ? signalBarMs : null,
       signal_bar_close_time_utc: s.bar_close_time_utc || null,
+      signal_price: Number.isFinite(Number(s.price)) ? Number(s.price) : null,
       features,
     };
   });
@@ -10340,12 +10346,16 @@ async function runPaperFuturesForBar({
 
   const externalSignals = externalSignalsRaw.map((s) => {
     const signalBarMs = Number(s.bar_close_time_utc_ms);
+    const signalDocId = String(s.signal_doc_id || (String(s.signal_id || "").startsWith("SIG__") ? s.signal_id : "") || "").trim() || null;
     let lateByBars = 0;
     if (Number.isFinite(signalTfMs) && Number.isFinite(signalBarMs)) {
       const delta = barCloseMs - signalBarMs;
       if (delta >= signalTfMs / 2) lateByBars = Math.max(0, Math.round(delta / signalTfMs));
     }
     const features = { ...(s.features_json || {}) };
+    if (signalDocId && !features.signal_doc_id) features.signal_doc_id = signalDocId;
+    if (s.signal_id && !features.signal_id) features.signal_id = s.signal_id;
+    if (Number.isFinite(Number(s.price)) && !Number.isFinite(Number(features.signal_price))) features.signal_price = Number(s.price);
     if (lateByBars > 0) {
       lateSignals += 1;
       features._late_by_bars = lateByBars;
@@ -10355,12 +10365,14 @@ async function runPaperFuturesForBar({
 
     return {
       signal_id: s.signal_id,
+      signal_doc_id: signalDocId,
       event: s.event,
       side: s.side,
       qty_pct: s.qty_pct,
       reason: s.reason || "TV_WEBHOOK",
       signal_bar_close_time_utc_ms: Number.isFinite(signalBarMs) ? signalBarMs : null,
       signal_bar_close_time_utc: s.bar_close_time_utc || null,
+      signal_price: Number.isFinite(Number(s.price)) ? Number(s.price) : null,
       features,
     };
   });

@@ -22,6 +22,7 @@ const PROVIDER = String(process.env.BEST_SELF_EVOLUTION_PROVIDER || "BINANCEFUT"
 const TF = String(process.env.BEST_SELF_EVOLUTION_TF || "15m").trim();
 const WINDOW_DAYS = Math.max(7, Number(process.env.BEST_SELF_EVOLUTION_WINDOW_DAYS || 7));
 const SCAN_LIMIT = Math.max(3000, Number(process.env.BEST_SELF_EVOLUTION_SCAN_LIMIT || 30000));
+const STALE_RANGE_MAX_AGE_MS = Math.max(1, Number(process.env.BEST_SELF_EVOLUTION_STALE_RANGE_MAX_HOURS || 6)) * 60 * 60 * 1000;
 const WEEKLY_LATEST_JSON = path.join(OPS_DAILY_DIR, "weekly_filter_governance_latest.json");
 
 function toNum(value) {
@@ -67,12 +68,14 @@ function renderMarkdown(report = {}) {
     `- cycle_id: ${report.cycle_id || "N/A"}`,
     `- 대상: ${report.provider || "N/A"} ${report.tf || "N/A"}`,
     `- 윈도우: ${report.window && report.window.from_utc || "N/A"} -> ${report.window && report.window.to_utc || "N/A"}`,
+    `- window_source: ${report.window_source || "N/A"}`,
     "",
     "## Core",
     `- rows: ${summary.rows_n || 0}`,
     `- executed/drop/missed: ${summary.executed_n || 0} / ${summary.drop_n || 0} / ${summary.missed_n || 0}`,
     `- fallback/rejected/partial: ${summary.fallback_n || 0} / ${summary.rejected_n || 0} / ${summary.partial_n || 0}`,
-    `- realized_n: ${summary.realized_n || 0} / features ${pct(summary.features_coverage_rate)} / FEBT ${pct(summary.febt_coverage_rate)}`,
+    `- realized_n: ${summary.realized_n || 0} / all_realized_n: ${summary.all_realized_n || 0} / features ${pct(summary.features_coverage_rate)} / FEBT ${pct(summary.febt_coverage_rate)}`,
+    `- entry_executed_null_realized_n: ${summary.entry_executed_null_realized_n || 0} / executed_exit_only_n: ${summary.executed_exit_only_n || 0} / exit_only_n: ${summary.exit_only_n || 0} / exit_only_realized_n: ${summary.exit_only_realized_n || 0}`,
     `- avg_realized_ret_net: ${signedPct(summary.avg_realized_ret_net)}`,
     `- avg_realized_pnl_quote: ${signedNum(summary.avg_realized_pnl_quote, 0)}`,
     `- avg_hold_minutes: ${summary.avg_hold_minutes != null ? Number(summary.avg_hold_minutes).toFixed(1) : "N/A"}`,
@@ -82,9 +85,14 @@ function renderMarkdown(report = {}) {
     `- market: ${renderSummaryLine(summary.by_market)}`,
     `- side: ${renderSummaryLine(summary.by_side)}`,
     `- event: ${renderSummaryLine(summary.by_event)}`,
+    `- outcome_state: ${renderSummaryLine(summary.by_outcome_state)}`,
     `- drop_stage: ${renderSummaryLine(summary.by_drop_stage)}`,
     `- drop_reason: ${renderSummaryLine(summary.by_drop_reason)}`,
     `- fallback_reason: ${renderSummaryLine(summary.by_fallback_reason)}`,
+    `- realized_source: ${renderSummaryLine(summary.realized_source_counts)}`,
+    `- exit_only_event: ${renderSummaryLine(summary.exit_only_by_event)}`,
+    `- exit_only_outcome_state: ${renderSummaryLine(summary.exit_only_by_outcome_state)}`,
+    `- exit_only_realized_source: ${renderSummaryLine(summary.exit_only_realized_source_counts)}`,
     "",
     "## Sample Rows",
   ];
@@ -96,7 +104,7 @@ function renderMarkdown(report = {}) {
     for (const row of sampleRows) {
       lines.push(
         `- ${row.market || "N/A"} ${row.tf || "N/A"} ${row.event || "N/A"} ${row.source_row_type || "N/A"}`
-        + ` / stage=${row.drop_stage_key || "N/A"} / febt=${row.febt_phase || "N/A"}`
+        + ` / state=${row.outcome_state || "N/A"} / stage=${row.drop_stage_key || "N/A"} / febt=${row.febt_phase || "N/A"}`
         + ` / ret=${signedPct(row.realized_ret_net)} / pnl=${signedNum(row.realized_pnl_quote, 0)}`
       );
     }
@@ -104,14 +112,32 @@ function renderMarkdown(report = {}) {
   return `${lines.join("\n")}\n`;
 }
 
+function resolveDatasetWindow({ nowMs, weeklyRange, windowDays = WINDOW_DAYS, staleRangeMaxAgeMs = STALE_RANGE_MAX_AGE_MS } = {}) {
+  const rollingToMs = Number.isFinite(nowMs) ? nowMs : Date.now();
+  const rollingFromMs = rollingToMs - (Math.max(1, Number(windowDays) || 7) * 24 * 60 * 60 * 1000);
+  const weeklyFromMs = toNum(weeklyRange && weeklyRange.from_ms);
+  const weeklyToMs = toNum(weeklyRange && weeklyRange.to_ms);
+  const weeklyUsable = Number.isFinite(weeklyFromMs) && Number.isFinite(weeklyToMs) && weeklyToMs > weeklyFromMs;
+  if (!weeklyUsable) {
+    return { fromMs: rollingFromMs, toMs: rollingToMs, source: "ROLLING_FALLBACK_MISSING_WEEKLY_RANGE" };
+  }
+  if (rollingToMs - weeklyToMs > staleRangeMaxAgeMs) {
+    return { fromMs: rollingFromMs, toMs: rollingToMs, source: "ROLLING_FALLBACK_STALE_WEEKLY_RANGE" };
+  }
+  return { fromMs: weeklyFromMs, toMs: weeklyToMs, source: "WEEKLY_RANGE" };
+}
+
 async function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
   const weekly = readJsonRawSafe(WEEKLY_LATEST_JSON, null);
-  const windowFromMs = toNum(weekly && weekly.current && weekly.current.range && weekly.current.range.from_ms)
-    || (nowMeta.nowMs - (WINDOW_DAYS * 24 * 60 * 60 * 1000));
-  const windowToMs = toNum(weekly && weekly.current && weekly.current.range && weekly.current.range.to_ms)
-    || nowMeta.nowMs;
+  const windowMeta = resolveDatasetWindow({
+    nowMs: nowMeta.nowMs,
+    weeklyRange: weekly && weekly.current && weekly.current.range,
+    windowDays: WINDOW_DAYS,
+  });
+  const windowFromMs = windowMeta.fromMs;
+  const windowToMs = windowMeta.toMs;
 
   const [signalsCache, dropsCache, intentsCache, fillsCache, tradesCache] = await Promise.all([
     getCachedRecentByCreatedAt("signals", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: true }),
@@ -146,6 +172,7 @@ async function main() {
     generation_id: cycleMeta.generation_id,
     provider: PROVIDER,
     tf: TF,
+    window_source: windowMeta.source,
     window: {
       from_ms: windowFromMs,
       to_ms: windowToMs,
@@ -154,6 +181,7 @@ async function main() {
     },
     summary: dataset.summary,
     quality_meta: dataset.quality && dataset.quality.meta ? dataset.quality.meta : null,
+    exit_only_rows: Array.isArray(dataset.exit_only_rows) ? dataset.exit_only_rows : [],
     rows: dataset.rows,
   };
 
@@ -189,5 +217,6 @@ module.exports = {
   main,
   __test: {
     renderMarkdown,
+    resolveDatasetWindow,
   },
 };
