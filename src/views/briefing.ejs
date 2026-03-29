@@ -1,0 +1,133 @@
+<%- include('partials/app_start', { title: '브리핑 · DONBEOLJA Ω', pageTitle: '브리핑', active: 'briefing' }) %>
+
+<div class="subnav">
+  <a href="/dashboard/analysis">요약</a>
+  <a href="/dashboard/report">리포트</a>
+  <a href="/dashboard/eval">평가</a>
+  <a class="active" href="/dashboard/briefing">브리핑</a>
+  <a href="/dashboard/profit">수익</a>
+  <a href="/dashboard/cashflow">입출금</a>
+</div>
+
+<div class="card">
+  <h2>시장 요약</h2>
+  <div class="subtle">
+    KPI 최신 스냅샷을 기준으로 현재 상태를 빠르게 읽습니다.
+  </div>
+  <div class="hr"></div>
+  <div id="br-summary" style="font-size:15px; line-height:1.6; color:#111;">요약 확인 중…</div>
+  <div id="br-summary-lines" class="subtle" style="margin-top:8px; line-height:1.7;"></div>
+  <div class="hr"></div>
+  <div class="kv">
+    <div class="k">계산 시각</div><div class="v mono" id="br-at">…</div>
+    <div class="k">운영 타임프레임</div><div class="v mono" id="br-tf">…</div>
+    <div class="k">행 수</div><div class="v mono" id="br-count">…</div>
+    <div class="k">대상 마켓</div><div class="v mono" id="br-exp">…</div>
+  </div>
+</div>
+
+<div class="hr"></div>
+
+<div class="tablewrap">
+  <div class="head">
+    <h2>최신 KPI</h2>
+    <div class="subtle">각 마켓의 최신 KPI</div>
+  </div>
+  <div class="scroll" style="max-height:520px;">
+    <table>
+      <thead>
+        <tr>
+          <th>마켓</th>
+          <th>타임프레임</th>
+          <th>상태</th>
+          <th>표본</th>
+          <th>기대값</th>
+          <th>승률</th>
+          <th>계산 시각</th>
+          <th>출처</th>
+        </tr>
+      </thead>
+      <tbody id="br-body">
+        <tr><td colspan="8" class="subtle">로딩 중…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+(async function(){
+  function $(id){ return document.getElementById(id); }
+  function set(id, v){ const el = $(id); if (el) el.textContent = v; }
+  function setHtml(id, v){ const el = $(id); if (el) el.innerHTML = v; }
+  function fmtNum(x){ const n = Number(x); if (!Number.isFinite(n)) return '-'; return n.toLocaleString(); }
+  function fmtEv(x){ const n = Number(x); if (!Number.isFinite(n)) return '-'; return n.toFixed(4); }
+  function fmtPct(x){ const n = Number(x); if (!Number.isFinite(n)) return '-'; return (n*100).toFixed(2) + '%'; }
+  function fmtKst(v){
+    if (!v) return '-';
+    const raw = String(v);
+    if (raw.includes('KST')) return raw;
+    const ms = Date.parse(raw);
+    if (!Number.isFinite(ms)) return raw;
+    const k = new Date(ms + 9 * 60 * 60 * 1000);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${k.getUTCFullYear()}-${pad(k.getUTCMonth() + 1)}-${pad(k.getUTCDate())} ${pad(k.getUTCHours())}:${pad(k.getUTCMinutes())}:${pad(k.getUTCSeconds())} KST`;
+  }
+  function statusLabel(s){
+    const x = String(s || "INCONCLUSIVE").toUpperCase();
+    if (x === "GREEN" || x === "PASS") return "양호";
+    if (x === "YELLOW" || x === "WARN") return "주의";
+    if (x === "RED" || x === "FAIL") return "경고";
+    if (x === "INCONCLUSIVE" || x === "NEED_DATA") return "보류";
+    return s || "-";
+  }
+
+  const r = await fetch('/api/briefing/latest', { credentials:'include' });
+  const t = await r.text();
+  let j = null;
+  try{ j = JSON.parse(t); }catch(_){ j=null; }
+
+  if (!r.ok || !j || !j.ok){
+    set('br-at','(확인 불가)');
+    set('br-tf','(확인 불가)');
+    set('br-summary','브리핑 요약을 불러오지 못했습니다.');
+    setHtml('br-summary-lines', '');
+    $('br-body').innerHTML = `<tr><td colspan="8" class="subtle">로드 실패: ${r.status}</td></tr>`;
+    return;
+  }
+
+  set('br-summary', j.summary_ko || '-');
+  setHtml('br-summary-lines', (Array.isArray(j.summary_lines_ko) ? j.summary_lines_ko : [])
+    .map((line) => `<div>${line}</div>`)
+    .join(''));
+  set('br-at', fmtKst(j.computed_at || '-'));
+  set('br-tf', j.exec_tf || '-');
+  set('br-count', fmtNum(j.count));
+  set('br-exp', (j.markets_expected || []).join(', '));
+
+  const body = $('br-body');
+  const rows = Array.isArray(j.rows) ? j.rows : [];
+  if (rows.length === 0){
+    body.innerHTML = `<tr><td colspan="8" class="subtle">표가 비어 있습니다.</td></tr>`;
+    return;
+  }
+  body.innerHTML = '';
+
+  for (const row of rows){
+    const k = row.kpi || {};
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="mono">${row.market || '-'}</td>
+      <td class="mono">${row.tf || '-'}</td>
+      <td>${statusLabel(k.status)}</td>
+      <td class="mono">${fmtNum(k.n)}</td>
+      <td class="mono">${fmtEv(k.ev)}</td>
+      <td class="mono">${fmtPct(k.win_rate)}</td>
+      <td class="mono">${fmtKst(row.computed_at || '-')}</td>
+      <td class="subtle">${row.source || '-'}</td>
+    `;
+    body.appendChild(tr);
+  }
+})();
+</script>
+
+<%- include('partials/app_end') %>

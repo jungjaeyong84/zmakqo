@@ -1,0 +1,37 @@
+돈벌자 Ω 대시보드 외부 접근(읽기 전용) 설정
+
+목표
+- 외부에서 대시보드 화면을 볼 수 있도록 합니다.
+- 쓰기/설정 변경은 보호하고, 읽기용 화면만 공개합니다.
+
+필수 환경변수
+- PUBLIC_UI_NO_AUTH=1
+
+허용되는 화면(읽기 전용)
+- /dashboard/home
+- /dashboard/analysis
+- /dashboard/report
+- /dashboard/eval
+- /dashboard/briefing
+- /dashboard/state
+
+허용되는 API(읽기 전용)
+- /api/eval/latest
+- /api/report/latest
+- /api/report/preview
+- /api/briefing/latest
+
+적용 방법
+1) 로컬
+- .env에 PUBLIC_UI_NO_AUTH=1 추가 후 서버 재시작
+
+2) Cloud Run
+- 서비스 환경변수에 PUBLIC_UI_NO_AUTH=1 추가 후 재배포
+- 예시:
+  gcloud run services update donbeolja \
+    --region asia-northeast3 \
+    --set-env-vars PUBLIC_UI_NO_AUTH=1
+
+주의
+- 이 모드는 로그인 없이 화면을 열 수 있습니다.
+- 민감한 설정 화면(/dashboard/settings)은 그대로 보호됩니다.

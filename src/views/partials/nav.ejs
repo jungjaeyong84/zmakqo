@@ -1,0 +1,210 @@
+<style>
+  .db-nav {
+    position: sticky;
+    top: 0;
+    z-index: 999;
+    background: #fff;
+    border-bottom: 1px solid #eee;
+    margin: -20px -20px 18px -20px;
+    padding: 12px 20px;
+  }
+  .db-nav .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .db-nav .brand {
+    font-weight: 800;
+    letter-spacing: -0.3px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .db-nav .brand .dot {
+    width: 10px; height: 10px; border-radius: 999px;
+    background: #111;
+    display: inline-block;
+  }
+  .db-nav .links {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .db-nav a {
+    text-decoration: none;
+    color: #111;
+    border: 1px solid #e6e6e6;
+    padding: 7px 10px;
+    border-radius: 999px;
+    font-size: 13px;
+  }
+  .db-nav a:hover { background: #fafafa; }
+  .db-nav a.active {
+    background: #111;
+    color: #fff;
+    border-color: #111;
+  }
+
+  .db-nav .meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .pill {
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    border:1px solid #e6e6e6;
+    background:#fff;
+    padding:6px 10px;
+    border-radius:999px;
+    font-size:12px;
+    color:#111;
+  }
+  .pill .k { color:#666; }
+  .pill.ok { background:#f0fff4; border-color:#b7eb8f; }
+  .pill.bad { background:#fff1f0; border-color:#ffa39e; }
+  .pill.na { background:#fafafa; border-color:#e6e6e6; color:#666; }
+  .pill code {
+    background:#f6f6f6;
+    border:1px solid #eee;
+    border-radius:8px;
+    padding:2px 6px;
+    font-size:12px;
+  }
+</style>
+
+<div class="db-nav">
+  <div class="row">
+    <div class="brand">
+      <span class="dot"></span>
+      DONBEOLJA Ω
+    </div>
+
+    <div class="links">
+      <a href="/dashboard" data-path="/dashboard">Home</a>
+      <a href="/dashboard/eval" data-path="/dashboard/eval">Eval</a>
+      <a href="/dashboard/report" data-path="/dashboard/report">Report</a>
+      <a href="/dashboard/briefing" data-path="/dashboard/briefing">Briefing</a>
+      <a href="/api/rules/summary" data-path="/api/rules/summary" target="_blank" rel="noopener">Rules API</a>
+    </div>
+
+    <div class="meta">
+      <span class="pill na" id="pill-mode"><span class="k">mode</span><span>-</span></span>
+      <span class="pill na" id="pill-rules"><span class="k">rules</span><span>-</span></span>
+      <span class="pill na" id="pill-eval"><span class="k">eval</span><span>-</span></span>
+      <span class="pill na"><span class="k">time</span><code id="db-nav-time">-</code></span>
+      <span class="pill na"><span class="k">path</span><code id="db-nav-path">-</code></span>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const path = location.pathname || "/";
+    const byId = (id)=>document.getElementById(id);
+
+    function setPill(el, text, cls) {
+      el.classList.remove("ok","bad","na");
+      el.classList.add(cls);
+      const spans = el.querySelectorAll("span");
+      if (spans && spans.length >= 2) spans[1].textContent = text;
+    }
+
+    // active link
+    try {
+      byId("db-nav-path").textContent = path;
+      const links = document.querySelectorAll(".db-nav a[data-path]");
+      let best = null;
+      for (const a of links) {
+        const p = a.getAttribute("data-path");
+        if (!p) continue;
+        if (path === p) best = a;
+        if (path.startsWith(p) && p !== "/") best = a;
+      }
+      if (best) best.classList.add("active");
+    } catch (_) {}
+
+    // time (KST)
+    try {
+      const el = byId("db-nav-time");
+      const pad = (n) => String(n).padStart(2, "0");
+      const tick = () => {
+        const d = new Date();
+        const k = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+        el.textContent =
+          k.getUTCFullYear() + "-" +
+          pad(k.getUTCMonth() + 1) + "-" +
+          pad(k.getUTCDate()) + " " +
+          pad(k.getUTCHours()) + ":" +
+          pad(k.getUTCMinutes()) + ":" +
+          pad(k.getUTCSeconds()) + " KST";
+      };
+      tick();
+      setInterval(tick, 1000);
+    } catch (_) {}
+
+    // fetch helpers
+    async function getJson(url) {
+      const r = await fetch(url, { credentials: "same-origin" });
+      const ct = (r.headers.get("content-type") || "");
+      if (!ct.includes("application/json")) throw new Error("NOT_JSON");
+      const j = await r.json();
+      return { ok: r.ok, status: r.status, json: j };
+    }
+
+    // 1) Scheduler mode
+    (async () => {
+      const pill = byId("pill-mode");
+      try {
+        const r = await getJson("/scheduler/status");
+        if (!r.ok || !r.json || !r.json.ok) throw new Error("BAD");
+        const mode = r.json.runtime?.mode || "-";
+        const eng  = r.json.runtime?.engine_version || "-";
+        const schedRunning = !!r.json.scheduler?.running;
+        const managedExternally = r.json.runtime?.scheduler_managed_externally === true;
+        // trading_mode는 /scheduler/tick 응답에 있지만 status에 없으니 여기서는 runtime + running 표시
+        const schedLabel = schedRunning ? "RUN" : (managedExternally ? "EXT" : "IDLE");
+        setPill(pill, `${mode} / ${eng} / ${schedLabel}`, "ok");
+      } catch (e) {
+        // 로컬/비로그인/라우트 없음도 안전하게
+        setPill(pill, "unavailable", "na");
+      }
+    })();
+
+    // 2) Rules summary (public)
+    (async () => {
+      const pill = byId("pill-rules");
+      try {
+        const r = await getJson("/api/rules/summary");
+        if (!r.ok || !r.json || !r.json.ok) throw new Error("BAD");
+        const c = r.json.counts || {};
+        const w = c.WATCHLIST ?? "-";
+        const ca = c.CANDIDATE ?? "-";
+        const a = c.ACTIVE ?? "-";
+        const t = r.json.total ?? "-";
+        setPill(pill, `W${w} C${ca} A${a} / T${t}`, "ok");
+      } catch (e) {
+        setPill(pill, "unavailable", "na");
+      }
+    })();
+
+    // 3) Eval latest (may be login-protected depending on mount)
+    (async () => {
+      const pill = byId("pill-eval");
+      try {
+        const r = await getJson("/api/eval/latest");
+        if (!r.ok || !r.json || !r.json.ok) throw new Error("BAD");
+        const id = r.json.id || "-";
+        const streams = r.json.data?.streams ?? "-";
+        setPill(pill, `${id} / streams ${streams}`, "ok");
+      } catch (e) {
+        setPill(pill, "login", "na");
+      }
+    })();
+  })();
+</script>

@@ -1,0 +1,25 @@
+const RETENTION_POLICY = [
+  { collection: "bars_snapshots", days: 90, field: "created_at" },
+  { collection: "signals", days: 180, field: "created_at" },
+  { collection: "signals_tv", days: 180, field: "created_at" },
+  { collection: "order_intents_paper", days: 180, field: "created_at" },
+  { collection: "orders_paper", days: 180, field: "created_at" },
+  { collection: "fills_paper", days: 365, field: "created_at" },
+  { collection: "trades_paper", days: 365, field: "created_at" },
+  { collection: "paper_trades", days: 365, field: "created_at" },
+  { collection: "gate_events", days: 30, field: "created_at" },
+  { collection: "report_runs", days: 365, field: "created_at" },
+  { collection: "weekly_runs", days: 365, field: "created_at" },
+  { collection: "system_runs", days: 30, field: "started_at" },
+  { collection: "eval_weekly", days: 365, field: "created_at" },
+  { collection: "kpi_snapshots", days: 90, field: "created_at" },
+  { collection: "account_snapshots", days: 365, field: "created_at" },
+  { collection: "risk_budget_history", days: 365, field: "created_at" },
+  { collection: "settings_change_log", days: 365, field: "created_at" },
+  { collection: "dev_change_log", days: 365, field: "created_at" },
+  { collection: "filters_drop", days: 365, field: "updated_at" },
+  { collection: "briefing_agg", days: 90, field: "created_at" },
+  { collection: "openclaude_analysis_runs", days: 0, field: "created_at" },
+];
+
+module.exports = { RETENTION_POLICY };

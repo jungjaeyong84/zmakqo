@@ -1,0 +1,4 @@
+# AI_BLOCK eval (daily, 02:10 UTC)
+# Adjust BASE_URL and working dir for your environment.
+#
+# 10 2 * * * cd /Users/jeongjaeyong/Projects/donbeolja && BASE_URL=https://donbeolja-350958953672.asia-northeast3.run.app ops/ai_block_eval_run.sh BINANCEFUT 30 /Users/jeongjaeyong/Projects/donbeolja/ops/reports

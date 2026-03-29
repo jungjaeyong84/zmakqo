@@ -1,0 +1,85 @@
+{
+  "name": "donbeolja",
+  "version": "5.5.9",
+  "description": "DONBEOLJA Ω Autonomous Decision System (Phase 0)",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "predev": "lsof -ti:3000 | xargs kill -9 2>/dev/null || true",
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "app:dev": "electron ./desktop/main.js",
+    "app:mac:build": "electron-builder --mac --universal",
+    "app:mac:dir": "electron-builder --mac dir --universal",
+    "test": "node src/tests/run-tests.js && node src/tests/signals-fallback-guard.test.js && node src/tests/tick-exit-cooldown.test.js && node src/tests/signal-doc-id.test.js && node src/tests/binance-fills-qty-pct.test.js && node src/tests/trade-execution-alert.test.js && node src/tests/pine-signal-quality.test.js",
+    "test:guards": "node src/tests/signals-fallback-guard.test.js && node src/tests/tick-exit-cooldown.test.js",
+    "check:binance-exec-safety": "node scripts/binance-execution-safety-check.js",
+    "refresh:execution-flow-cycles": "node scripts/refresh-execution-flow-cycles.js",
+    "run:system-autonomous-cycle": "node scripts/system-autonomous-cycle.js",
+    "run:system-dev-autonomous-cycle": "node scripts/system-dev-autonomous-cycle.js",
+    "run:codex-octopus": "node scripts/codex-octopus.js",
+    "check:scheduler-env": "node scripts/check-scheduler-env.js",
+    "check:dup-helpers": "node scripts/check-dup-helpers.js",
+    "cleanup:retention": "node scripts/cleanup-firestore-retention.js",
+    "log:dev-change": "node ops/log_dev_change.js",
+    "audit:fills-signals": "node ops/audit_fills_signals.js"
+  },
+  "author": "Jaeyong Jung",
+  "license": "ISC",
+  "dependencies": {
+    "@google-cloud/firestore": "^8.0.0",
+    "archiver": "^7.0.1",
+    "date-holidays": "^3.26.7",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.10",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.5.1",
+    "express-session": "^1.18.2",
+    "firebase-admin": "^13.6.0",
+    "jszip": "^3.10.1",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "nodemon": "^3.1.11"
+  },
+  "build": {
+    "appId": "com.jaeyong.donbeolja",
+    "productName": "DONBEOLJA HQ",
+    "directories": {
+      "output": "dist-app"
+    },
+    "files": [
+      "desktop/**/*",
+      "src/**/*",
+      "public/**/*",
+      "server.js",
+      "package.json",
+      "package-lock.json"
+    ],
+    "extraMetadata": {
+      "main": "desktop/main.js"
+    },
+    "mac": {
+      "category": "public.app-category.finance",
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ]
+    }
+  }
+}

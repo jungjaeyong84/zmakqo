@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key><string>com.jaeyong.donbeolja.tick</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/zsh</string>
+      <string>/Users/jeongjaeyong/Projects/donbeolja/ops/donbeolja_tick.sh</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+      <key>Minute</key><integer>2</integer>
+    </dict>
+    <key>StandardOutPath</key><string>/tmp/donbeolja_tick.out</string>
+    <key>StandardErrorPath</key><string>/tmp/donbeolja_tick.err</string>
+    <key>RunAtLoad</key><true/>
+  </dict>
+</plist>

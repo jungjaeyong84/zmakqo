@@ -1,0 +1,47 @@
+const AI_ALLOCATION_DEFAULTS = {
+  enabled: false,
+  apply_live: false,
+  news_window_days: 1,
+  // Legacy field: kept for backward compatibility, no longer used for total budget scaling.
+  mode_scale: {
+    aggressive: 1.0,
+    neutral: 1.0,
+    conservative: 1.0,
+  },
+  total_cap_pct_max: 0.8,
+  reinvest_rate: 0.6,
+  reinvest_loss_rate: 1.0,
+  equity_mult_min: 0.6,
+  equity_mult_max: 1.4,
+  directional_enabled: true,
+  side_bias_max_tilt: 0.35,
+  side_bias_neutral_threshold: 0.05,
+  side_bias_min_confidence: 0.3,
+  side_scale_min: 0.65,
+  side_scale_max: 1.35,
+  min_per_market_krw: 100000,
+  max_per_market_krw: 3000000,
+  max_change_pct: 0.05,
+  min_bars: 30,
+  bars_limit: 1200,
+  gpt_enabled: true,
+  gpt_model: "gpt-4o-mini",
+  gpt_model_router: "gpt-4o-mini",
+  gpt_model_pro: "gpt-4o-mini",
+  claude_enabled: true,
+  // Use Sonnet by default for broader account access/latency stability.
+  claude_model: "claude-3-7-sonnet-20250219",
+  claude_timeout_ms: 8000,
+  ensemble_enabled: true,
+  ensemble_w_gpt: 0.6,
+  ensemble_w_claude: 0.4,
+  router_conf_threshold: 0.6,
+  gpt_temperature: 0.2,
+  cadence_days: 1,
+  run_dow: 1, // KST 기준 월요일 (cadence_days <= 1이면 무시됨)
+  run_hour_kst: 0,
+  run_hours_kst: [0, 3, 6, 9, 12, 15, 18, 21],
+  run_minute_kst: 30,
+};
+
+module.exports = { AI_ALLOCATION_DEFAULTS };

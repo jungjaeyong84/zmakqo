@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Risk Budget Settings</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,sans-serif;background:#fafafa;margin:0}
+    .wrap{max-width:820px;margin:24px auto;background:#fff;border:1px solid #eee;border-radius:16px;padding:18px 18px 22px;box-shadow:0 4px 18px rgba(0,0,0,.04)}
+    h1{font-size:18px;margin:0 0 12px}
+    .muted{color:#666;font-size:13px;margin-bottom:14px}
+    .row{display:flex;gap:12px;align-items:center;margin:10px 0}
+    .row label{width:160px;color:#222;font-size:14px}
+    .row input,.row select{flex:1;padding:8px 10px;border:1px solid #ccc;border-radius:10px;font-size:14px}
+    .grid{margin-top:12px;border-top:1px dashed #eee;padding-top:12px}
+    .btns{display:flex;justify-content:flex-end;margin-top:12px}
+    button{padding:10px 14px;border-radius:12px;border:1px solid #111;background:#111;color:#fff;font-weight:700;cursor:pointer}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    #save_status{margin-top:10px;font-size:13px;color:#555}
+    .ok{color:#0a7a2f}
+    .bad{color:#c01818}
+    .tiny{font-size:12px;color:#888}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Risk Budget Settings</h1>
+    <div class="muted">저장 즉시 다음 tick부터 적용됨.</div>
+
+    <div class="row">
+      <label>enabled</label>
+      <select id="enabled">
+        <option value="true">true</option>
+        <option value="false">false</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label>default_max_krw</label>
+      <input id="default_max_krw" type="number" min="100" max="5000000" step="100"/>
+    </div>
+
+    <div class="row">
+      <label>예산 초과 시</label>
+      <select id="on_exceed">
+        <option value="CLAMP">CLAMP (예산에 맞게 축소)</option>
+        <option value="SKIP">SKIP (주문 차단)</option>
+      </select>
+    </div>
+
+    <div class="grid">
+      <div class="row">
+        <label>KRW-BTC</label>
+        <input id="m_KRW-BTC" type="number" min="0" step="100"/>
+      </div>
+      <div class="row">
+        <label>KRW-ETH</label>
+        <input id="m_KRW-ETH" type="number" min="0" step="100"/>
+      </div>
+      <div class="row">
+        <label>KRW-XRP</label>
+        <input id="m_KRW-XRP" type="number" min="0" step="10"/>
+      </div>
+      <div class="tiny">by_market에 없는 심볼은 default_max_krw 적용</div>
+    </div>
+
+    <div class="btns">
+      <button id="saveBtn" type="button">저장</button>
+    </div>
+    <div id="save_status"></div>
+  </div>
+
+<script>
+(() => {
+  const API = "/api/settings/risk-budget";
+
+  const $ = (id) => document.getElementById(id);
+  const setStatus = (msg, ok) => {
+    const el = $("save_status");
+    if (!el) return;
+    el.className = ok ? "ok" : "bad";
+    el.textContent = msg;
+  };
+
+  window.__RB_SAVE_LOCK__ = window.__RB_SAVE_LOCK__ || false;
+
+  const readInt = (id, defv) => {
+    const v = Number(($ (id) && $(id).value) || defv);
+    return Number.isFinite(v) ? v : defv;
+  };
+
+  const collect = () => {
+    const enabled = String($("enabled").value) === "true";
+    const def = readInt("default_max_krw", 50000);
+    const on_exceed = String($("on_exceed").value || "CLAMP").toUpperCase() === "SKIP" ? "SKIP" : "CLAMP";
+
+    const by_market = {
+      "KRW-BTC": readInt("m_KRW-BTC", 0),
+      "KRW-ETH": readInt("m_KRW-ETH", 0),
+      "KRW-XRP": readInt("m_KRW-XRP", 0),
+    };
+
+    return { enabled, default_max_krw: def, on_exceed, by_market };
+  };
+
+  const applyToUI = (data) => {
+    const d = (data && data.data) ? data.data : (data || {});
+    $("enabled").value = String((d.enabled !== false));
+    $("default_max_krw").value = (d.default_max_krw ?? 50000);
+    $("on_exceed").value = (String(d.on_exceed || "CLAMP").toUpperCase() === "SKIP") ? "SKIP" : "CLAMP";
+
+    const by = d.by_market || {};
+    $("m_KRW-BTC").value = Number(by["KRW-BTC"] ?? 0);
+    $("m_KRW-ETH").value = Number(by["KRW-ETH"] ?? 0);
+    $("m_KRW-XRP").value = Number(by["KRW-XRP"] ?? 0);
+  };
+
+  async function load() {
+    const res = await fetch(API, { method: "GET" });
+    const j = await res.json();
+    if (!res.ok) throw new Error(j && j.message ? j.message : "LOAD_FAILED");
+    applyToUI(j);
+    setStatus("불러오기 완료", true);
+  }
+
+  async function save() {
+    if (window.__RB_SAVE_LOCK__ === true) return;
+
+    const btn = $("saveBtn");
+    window.__RB_SAVE_LOCK__ = true;
+    if (btn) btn.disabled = true;
+
+    try {
+      setStatus("저장 중...", true);
+
+      const payload = collect();
+      const nonce = (Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,10));
+      window.__RB_LAST_NONCE__ = nonce;
+
+      const res = await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-rb-nonce": nonce },
+        body: JSON.stringify(payload)
+      });
+
+      const j = await res.json();
+      if (!res.ok) throw new Error(j && j.message ? j.message : "SAVE_FAILED");
+
+      if (j && j.dedup === true) setStatus("저장 완료(중복요청 자동 무시)", true);
+      else setStatus("저장 완료", true);
+
+      await load();
+    } catch (e) {
+      setStatus("저장 실패(서버 확인)", false);
+    } finally {
+      window.__RB_SAVE_LOCK__ = false;
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", async () => {
+    const btn = $("saveBtn");
+    if (btn) {
+      btn.type = "button";
+      btn.onclick = null;
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        save();
+      }, { capture: true });
+    }
+
+    try { await load(); }
+    catch (e) { setStatus("불러오기 실패(서버/프로젝트ID/권한 확인)", false); }
+  });
+})();
+</script>
+</body>
+</html>

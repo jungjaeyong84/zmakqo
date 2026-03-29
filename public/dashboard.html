@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>DONBEOLJA Ω Dashboard</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 20px; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom: 12px; }
+    button { padding:10px 12px; border:1px solid #ccc; border-radius:10px; background:#fff; cursor:pointer; }
+    button:hover { background:#f6f6f6; }
+    .card { border:1px solid #e5e5e5; border-radius:14px; padding:14px; margin:10px 0; }
+    pre { background:#0b0b0b; color:#eaeaea; padding:12px; border-radius:12px; overflow:auto; }
+    table { border-collapse: collapse; width:100%; }
+    th, td { border-bottom: 1px solid #eee; padding:8px; text-align:left; font-size: 14px; }
+    .pill { display:inline-block; padding:4px 10px; border-radius:999px; border:1px solid #ddd; font-size:12px;}
+  </style>
+</head>
+<body>
+  <h2>DONBEOLJA Ω Dashboard</h2>
+
+  <div class="row">
+    <button onclick="callApi('/system/run')">RUN</button>
+    <button onclick="callApi('/system/halt')">HALT</button>
+    <button onclick="callApi('/scheduler/start')">Scheduler START</button>
+    <button onclick="callApi('/scheduler/stop')">Scheduler STOP</button>
+    <button onclick="callApi('/scheduler/tick?force=1')">Tick (force)</button>
+    <button onclick="callApi('/pipeline/run')">Pipeline RUN (default)</button>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <span class="pill" id="statePill">STATE: ?</span>
+      <span class="pill" id="schedPill">SCHED: ?</span>
+      <span class="pill" id="closePill">CLOSE: ?</span>
+      <span class="pill" id="sumPill">SUMMARY: ?</span>
+      <button onclick="refresh()">Refresh</button>
+    </div>
+    <pre id="dashboardJson">loading...</pre>
+  </div>
+
+  <div class="card">
+    <h3>Recent Trades (UPBIT_60M)</h3>
+    <table id="tradesTable">
+      <thead>
+        <tr>
+          <th>time</th><th>market</th><th>action</th><th>price</th><th>idemKey</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+<script>
+  async function refresh() {
+    const res = await fetch('/dashboard');
+    const data = await res.json();
+
+    document.getElementById('dashboardJson').textContent = JSON.stringify(data, null, 2);
+
+    const st = data?.state?.state || '?';
+    const sr = data?.scheduler?.running ? 'ON' : 'OFF';
+    const lc = data?.scheduler?.lastCloseTime || 'null';
+    const sum = data?.scheduler?.summary
+      ? `total=${data.scheduler.summary.total}, ok=${data.scheduler.summary.ok}, dup=${data.scheduler.summary.duplicate}, gate=${data.scheduler.summary.gate_failed}`
+      : '?';
+
+    document.getElementById('statePill').textContent = `STATE: ${st}`;
+    document.getElementById('schedPill').textContent = `SCHED: ${sr}`;
+    document.getElementById('closePill').textContent = `CLOSE: ${lc}`;
+    document.getElementById('sumPill').textContent = `SUMMARY: ${sum}`;
+
+    const tbody = document.querySelector('#tradesTable tbody');
+    tbody.innerHTML = '';
+    (data.lastTrades || []).slice().reverse().forEach(t => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${t.time || ''}</td>
+        <td>${t.market || ''}</td>
+        <td>${t.action || ''}</td>
+        <td>${t.price || ''}</td>
+        <td style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px;">${t.idemKey || ''}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function callApi(path) {
+    try {
+      const res = await fetch(path);
+      const text = await res.text();
+      // 일부는 409/403도 정상 시나리오라 alert 대신 콘솔
+      console.log('[API]', path, res.status, text);
+      await refresh();
+    } catch (e) {
+      console.error(e);
+      alert(String(e));
+    }
+  }
+
+  refresh();
+  setInterval(refresh, 5000);
+</script>
+</body>
+</html>

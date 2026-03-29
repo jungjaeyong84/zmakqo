@@ -1,0 +1,458 @@
+const { buildTradesFromFillsWithFunding } = require("./tradesFromFills");
+const { buildFilterFeatureSignature } = require("../utils/filterFeatureBuckets");
+const { resolveEntryTimingTier } = require("../utils/liveEntryTaxonomy");
+
+function toNum(v) {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function toUpper(v) {
+  return String(v || "").trim().toUpperCase();
+}
+
+function normalizeExchange(v) {
+  const ex = toUpper(v);
+  if (!ex) return "BINANCEFUT";
+  if (ex.includes("BINANCE")) return "BINANCEFUT";
+  return "BINANCEFUT";
+}
+
+function normalizeMarket(row) {
+  return String(
+    (row && (row.symbol_or_pair_id || row.symbol || row.market)) || ""
+  ).trim().toUpperCase();
+}
+
+function normalizeTf(row) {
+  return String((row && row.tf) || "").trim();
+}
+
+function normalizeTier(eventRaw) {
+  return resolveEntryTimingTier(eventRaw);
+}
+
+function isEntryTierEvent(eventRaw) {
+  return normalizeTier(eventRaw) !== null;
+}
+
+function normalizeSide(v) {
+  const side = toUpper(v);
+  if (side === "BUY" || side === "LONG") return "LONG";
+  if (side === "SELL" || side === "SHORT") return "SHORT";
+  return null;
+}
+
+function resolveBarMs(row) {
+  return (
+    toNum(row && row.signal_bar_close_time_utc_ms) ??
+    toNum(row && row.bar_close_time_utc_ms) ??
+    toNum(row && row.exec_bar_close_time_utc_ms)
+  );
+}
+
+function makeSignalKey(row) {
+  const market = normalizeMarket(row);
+  const tf = normalizeTf(row);
+  const event = toUpper(row && row.event);
+  const barMs = resolveBarMs(row);
+  if (!market || !tf || !event || !Number.isFinite(barMs)) return null;
+  return `${market}__${tf}__${barMs}__${event}`;
+}
+
+function resolveExecMs(row) {
+  return (
+    toNum(row && row.exec_bar_close_time_utc_ms) ??
+    toNum(row && row.signal_bar_close_time_utc_ms) ??
+    toNum(row && row.bar_close_time_utc_ms)
+  );
+}
+
+function resolveEntryEventId(row) {
+  const direct = String(
+    (row && (row.entry_event_id || row.entryEventId)) || ""
+  ).trim();
+  if (direct) return direct;
+  const market = normalizeMarket(row);
+  const tf = normalizeTf(row);
+  const ev = toUpper(
+    row && (row.entry_signal_type || row.entrySignalType || row.event)
+  );
+  const barMs = resolveBarMs(row);
+  const ex = normalizeExchange(row && row.exchange);
+  if (!market || !tf || !ev || !Number.isFinite(barMs)) return null;
+  return ["ENTRY", ex || "UNKNOWN", market, tf, barMs, ev].join("__");
+}
+
+function classifyExitEvent(eventRaw) {
+  const ev = toUpper(eventRaw);
+  if (!ev) return null;
+  if (ev.startsWith("EXIT_TP_P1")) return "TP1";
+  if (ev.startsWith("EXIT_TRAIL")) return "TRAIL";
+  if (ev.startsWith("EXIT_SL")) return "SL";
+  if (ev.startsWith("EXIT_BE")) return "BE";
+  if (ev.startsWith("EXIT_")) return "EXIT_OTHER";
+  return null;
+}
+
+function emptyTierStats() {
+  return {
+    signals_n: 0,
+    executed_n: 0,
+    execution_rate: null,
+    exits_seen_n: 0,
+    tp1_hit_n: 0,
+    tp1_hit_rate: null,
+    sl_before_tp1_n: 0,
+    sl_before_tp1_rate: null,
+    trail_after_tp1_n: 0,
+    trail_capture_rate: null,
+    realized_chains_n: 0,
+    win_n: 0,
+    win_rate: null,
+    avg_ret_net: null,
+    avg_pnl_quote: null,
+    entropy_sum: 0,
+    entropy_n: 0,
+    coherence_sum: 0,
+    coherence_n: 0,
+    transition_risk_sum: 0,
+    transition_risk_n: 0,
+    field_alignment_sum: 0,
+    field_alignment_n: 0,
+    domain_wall_density_sum: 0,
+    domain_wall_density_n: 0,
+    susceptibility_sum: 0,
+    susceptibility_n: 0,
+    free_energy_sum: 0,
+    free_energy_n: 0,
+  };
+}
+
+function finalizeTierStats(stats) {
+  const out = { ...stats };
+  out.execution_rate = out.signals_n > 0 ? (out.executed_n / out.signals_n) : null;
+  out.tp1_hit_rate = out.executed_n > 0 ? (out.tp1_hit_n / out.executed_n) : null;
+  out.sl_before_tp1_rate = out.executed_n > 0 ? (out.sl_before_tp1_n / out.executed_n) : null;
+  out.trail_capture_rate = out.tp1_hit_n > 0 ? (out.trail_after_tp1_n / out.tp1_hit_n) : null;
+  out.win_rate = out.realized_chains_n > 0 ? (out.win_n / out.realized_chains_n) : null;
+  out.avg_ret_net = out.realized_chains_n > 0 ? (out.avg_ret_net / out.realized_chains_n) : null;
+  out.avg_pnl_quote = out.realized_chains_n > 0 ? (out.avg_pnl_quote / out.realized_chains_n) : null;
+  out.avg_entropy_score = out.entropy_n > 0 ? (out.entropy_sum / out.entropy_n) : null;
+  out.avg_coherence_score = out.coherence_n > 0 ? (out.coherence_sum / out.coherence_n) : null;
+  out.avg_transition_risk = out.transition_risk_n > 0 ? (out.transition_risk_sum / out.transition_risk_n) : null;
+  out.avg_field_alignment = out.field_alignment_n > 0 ? (out.field_alignment_sum / out.field_alignment_n) : null;
+  out.avg_domain_wall_density = out.domain_wall_density_n > 0 ? (out.domain_wall_density_sum / out.domain_wall_density_n) : null;
+  out.avg_susceptibility = out.susceptibility_n > 0 ? (out.susceptibility_sum / out.susceptibility_n) : null;
+  out.avg_free_energy = out.free_energy_n > 0 ? (out.free_energy_sum / out.free_energy_n) : null;
+  return out;
+}
+
+async function summarizePineSignalQuality({
+  signals = [],
+  fills = [],
+  exchange = null,
+  tf = null,
+  fromMs = null,
+  toMs = null,
+} = {}) {
+  const exchangeNorm = normalizeExchange(exchange);
+  const tfNorm = String(tf || "").trim();
+  const preferredTierOrder = ["EARLY", "CORE"];
+  const fallbackTierOrder = [];
+  const byTier = Object.fromEntries(preferredTierOrder.concat(fallbackTierOrder).map((tier) => [tier, emptyTierStats()]));
+  const ensureTierStats = (tier) => {
+    if (!tier) return null;
+    if (!byTier[tier]) byTier[tier] = emptyTierStats();
+    return byTier[tier];
+  };
+
+  const signalRows = [];
+  const signalMetaByKey = new Map();
+  for (const row of signals || []) {
+    const event = toUpper(row && row.event);
+    const tier = normalizeTier(row);
+    if (!tier) continue;
+    const ex = normalizeExchange(row && row.exchange);
+    const rowTf = normalizeTf(row);
+    const barMs = resolveBarMs(row);
+    if (exchangeNorm && ex && ex !== exchangeNorm) continue;
+    if (tfNorm && rowTf && rowTf !== tfNorm) continue;
+    if (Number.isFinite(fromMs) && Number.isFinite(barMs) && barMs < fromMs) continue;
+    if (Number.isFinite(toMs) && Number.isFinite(barMs) && barMs >= toMs) continue;
+    ensureTierStats(tier).signals_n += 1;
+    signalRows.push({
+      exchange: ex,
+      market: normalizeMarket(row),
+      tf: rowTf,
+      event,
+      tier,
+      bar_ms: barMs,
+      side: normalizeSide(row && row.side),
+      ...buildFilterFeatureSignature(row),
+    });
+    const key = makeSignalKey(row);
+    if (key && !signalMetaByKey.has(key)) {
+      signalMetaByKey.set(key, {
+        side: normalizeSide(row && row.side),
+        ...buildFilterFeatureSignature(row),
+      });
+    }
+  }
+
+  const fillsFiltered = [];
+  const chains = new Map();
+  for (const row of fills || []) {
+    const ex = normalizeExchange(row && row.exchange);
+    const rowTf = normalizeTf(row);
+    const execMs = resolveExecMs(row);
+    if (exchangeNorm && ex && ex !== exchangeNorm) continue;
+    if (tfNorm && rowTf && rowTf !== tfNorm) continue;
+    if (Number.isFinite(toMs) && Number.isFinite(execMs) && execMs >= toMs) continue;
+    fillsFiltered.push(row);
+
+    const chainId = resolveEntryEventId(row);
+    if (!chainId) continue;
+    const entrySignalType = toUpper(
+      row && (row.entry_signal_type || row.entrySignalType || row.event)
+    );
+    const tier = normalizeTier({
+      event: entrySignalType,
+      features_json: row && row.features_json,
+      features: row && row.features,
+    });
+    if (!tier) continue;
+    const barMs = resolveBarMs(row);
+    let chain = chains.get(chainId);
+    if (!chain) {
+      chain = {
+        entry_event_id: chainId,
+        entry_signal_type: entrySignalType,
+        tier,
+        exchange: ex,
+        market: normalizeMarket(row),
+        tf: rowTf,
+        entry_bar_ms: barMs,
+        entry_exec_ms: null,
+        entry_price: null,
+        fills: [],
+      };
+      chains.set(chainId, chain);
+    }
+    chain.fills.push(row);
+    if (isEntryTierEvent(row && row.event)) {
+      const entryMs = resolveExecMs(row);
+      const entryPrice = toNum(row && row.exec_price);
+      chain.entry_exec_ms = Number.isFinite(chain.entry_exec_ms)
+        ? Math.min(chain.entry_exec_ms, entryMs)
+        : entryMs;
+      if (Number.isFinite(entryPrice)) {
+        chain.entry_price = Number.isFinite(chain.entry_price)
+          ? chain.entry_price
+          : entryPrice;
+      }
+      if (Number.isFinite(barMs)) {
+        chain.entry_bar_ms = Number.isFinite(chain.entry_bar_ms)
+          ? Math.min(chain.entry_bar_ms, barMs)
+          : barMs;
+      }
+    }
+  }
+
+  const selectedChains = [];
+  for (const chain of chains.values()) {
+    const barMs = toNum(chain.entry_bar_ms);
+    if (Number.isFinite(fromMs) && Number.isFinite(barMs) && barMs < fromMs) continue;
+    if (Number.isFinite(toMs) && Number.isFinite(barMs) && barMs >= toMs) continue;
+    selectedChains.push(chain);
+    ensureTierStats(chain.tier).executed_n += 1;
+  }
+
+  const tradeRows = [];
+  const fillsByMarket = {};
+  for (const row of fillsFiltered) {
+    const market = normalizeMarket(row);
+    if (!market) continue;
+    if (!fillsByMarket[market]) fillsByMarket[market] = [];
+    fillsByMarket[market].push(row);
+  }
+  for (const [market, marketFills] of Object.entries(fillsByMarket)) {
+    marketFills.sort((a, b) => resolveExecMs(a) - resolveExecMs(b));
+    const res = await buildTradesFromFillsWithFunding(marketFills, {
+      exchange: exchangeNorm || normalizeExchange(marketFills[0] && marketFills[0].exchange),
+      symbol: market,
+      mode: "EACH_SELL",
+    });
+    for (const trade of res.trades || []) {
+      const entryEventId = String(trade && trade.entry_event_id || "").trim();
+      if (!entryEventId) continue;
+      tradeRows.push(trade);
+    }
+  }
+
+  const tradesByEntry = new Map();
+  for (const trade of tradeRows) {
+    const key = String(trade.entry_event_id || "").trim();
+    if (!key) continue;
+    if (!tradesByEntry.has(key)) tradesByEntry.set(key, []);
+    tradesByEntry.get(key).push(trade);
+  }
+
+  const chainRows = [];
+  for (const chain of selectedChains) {
+    const fillsSorted = chain.fills
+      .slice()
+      .sort((a, b) => resolveExecMs(a) - resolveExecMs(b));
+    const exitKinds = fillsSorted
+      .map((row) => ({ kind: classifyExitEvent(row && row.event), ms: resolveExecMs(row), event: toUpper(row && row.event) }))
+      .filter((row) => row.kind);
+
+    const hasExits = exitKinds.length > 0;
+    const firstExit = hasExits ? exitKinds[0] : null;
+    const firstTp1Idx = exitKinds.findIndex((x) => x.kind === "TP1");
+    const hasTp1 = firstTp1Idx >= 0;
+    const hasTrailAfterTp1 = hasTp1 && exitKinds.slice(firstTp1Idx + 1).some((x) => x.kind === "TRAIL");
+    const slBeforeTp1 = exitKinds.some((x, idx) => x.kind === "SL" && (firstTp1Idx < 0 || idx < firstTp1Idx));
+    const firstTp1 = hasTp1 ? exitKinds[firstTp1Idx] : null;
+    const firstSl = exitKinds.find((x) => x.kind === "SL") || null;
+    const signalKey = `${chain.market}__${chain.tf}__${chain.entry_bar_ms}__${chain.entry_signal_type}`;
+    const signalMeta = signalMetaByKey.get(signalKey) || {};
+
+    const tierStats = ensureTierStats(chain.tier);
+    if (hasExits) tierStats.exits_seen_n += 1;
+    if (hasTp1) tierStats.tp1_hit_n += 1;
+    if (slBeforeTp1) tierStats.sl_before_tp1_n += 1;
+    if (hasTrailAfterTp1) tierStats.trail_after_tp1_n += 1;
+    if (Number.isFinite(signalMeta.entropy_score)) {
+      tierStats.entropy_sum += Number(signalMeta.entropy_score);
+      tierStats.entropy_n += 1;
+    }
+    if (Number.isFinite(signalMeta.coherence_score)) {
+      tierStats.coherence_sum += Number(signalMeta.coherence_score);
+      tierStats.coherence_n += 1;
+    }
+    if (Number.isFinite(signalMeta.transition_risk)) {
+      tierStats.transition_risk_sum += Number(signalMeta.transition_risk);
+      tierStats.transition_risk_n += 1;
+    }
+    if (Number.isFinite(signalMeta.field_alignment)) {
+      tierStats.field_alignment_sum += Number(signalMeta.field_alignment);
+      tierStats.field_alignment_n += 1;
+    }
+    if (Number.isFinite(signalMeta.domain_wall_density)) {
+      tierStats.domain_wall_density_sum += Number(signalMeta.domain_wall_density);
+      tierStats.domain_wall_density_n += 1;
+    }
+    if (Number.isFinite(signalMeta.susceptibility)) {
+      tierStats.susceptibility_sum += Number(signalMeta.susceptibility);
+      tierStats.susceptibility_n += 1;
+    }
+    if (Number.isFinite(signalMeta.free_energy)) {
+      tierStats.free_energy_sum += Number(signalMeta.free_energy);
+      tierStats.free_energy_n += 1;
+    }
+
+    const chainTrades = tradesByEntry.get(chain.entry_event_id) || [];
+    let pnlQuote = 0;
+    let notional = 0;
+    for (const trade of chainTrades) {
+      const pnl = toNum(trade.pnl_krw);
+      const tradeNotional = toNum(trade.notional_krw);
+      if (Number.isFinite(pnl)) pnlQuote += pnl;
+      if (Number.isFinite(tradeNotional) && tradeNotional > 0) notional += tradeNotional;
+    }
+    const retNet = notional > 0 ? (pnlQuote / notional) : null;
+    const realized = chainTrades.length > 0 && Number.isFinite(retNet);
+    if (realized) {
+      tierStats.realized_chains_n += 1;
+      if (retNet > 0) tierStats.win_n += 1;
+      tierStats.avg_ret_net += retNet;
+      tierStats.avg_pnl_quote += pnlQuote;
+    }
+
+    chainRows.push({
+      entry_event_id: chain.entry_event_id,
+      exchange: chain.exchange,
+      market: chain.market,
+      tf: chain.tf,
+      tier: chain.tier,
+      side: signalMeta.side || null,
+      regime: signalMeta.regime || "unknown",
+      score_abs: Number.isFinite(signalMeta.score_abs) ? signalMeta.score_abs : null,
+      confidence: Number.isFinite(signalMeta.confidence) ? signalMeta.confidence : null,
+      wave_conf: Number.isFinite(signalMeta.wave_conf) ? signalMeta.wave_conf : null,
+      volatility: Number.isFinite(signalMeta.volatility) ? signalMeta.volatility : null,
+      entropy_score: Number.isFinite(signalMeta.entropy_score) ? signalMeta.entropy_score : null,
+      coherence_score: Number.isFinite(signalMeta.coherence_score) ? signalMeta.coherence_score : null,
+      transition_risk: Number.isFinite(signalMeta.transition_risk) ? signalMeta.transition_risk : null,
+      field_alignment: Number.isFinite(signalMeta.field_alignment) ? signalMeta.field_alignment : null,
+      domain_wall_density: Number.isFinite(signalMeta.domain_wall_density) ? signalMeta.domain_wall_density : null,
+      susceptibility: Number.isFinite(signalMeta.susceptibility) ? signalMeta.susceptibility : null,
+      free_energy: Number.isFinite(signalMeta.free_energy) ? signalMeta.free_energy : null,
+      stat_phys_state: signalMeta.stat_phys_state || "unknown",
+      late_by_bars: Number.isFinite(signalMeta.late_by_bars) ? signalMeta.late_by_bars : null,
+      score_bucket: signalMeta.score_bucket || "unknown",
+      conf_bucket: signalMeta.conf_bucket || "unknown",
+      wave_bucket: signalMeta.wave_bucket || "unknown",
+      volatility_bucket: signalMeta.volatility_bucket || "unknown",
+      entropy_bucket: signalMeta.entropy_bucket || "unknown",
+      coherence_bucket: signalMeta.coherence_bucket || "unknown",
+      transition_bucket: signalMeta.transition_bucket || "unknown",
+      field_alignment_bucket: signalMeta.field_alignment_bucket || "unknown",
+      domain_wall_bucket: signalMeta.domain_wall_bucket || "unknown",
+      susceptibility_bucket: signalMeta.susceptibility_bucket || "unknown",
+      free_energy_bucket: signalMeta.free_energy_bucket || "unknown",
+      late_bucket: signalMeta.late_bucket || "on_time",
+      session_bucket: signalMeta.session_bucket || "unknown",
+      entry_signal_type: chain.entry_signal_type,
+      entry_bar_ms: chain.entry_bar_ms,
+      entry_exec_ms: chain.entry_exec_ms,
+      entry_price: Number.isFinite(chain.entry_price) ? chain.entry_price : null,
+      exits_seen: hasExits,
+      first_exit_kind: firstExit ? firstExit.kind : null,
+      first_exit_event: firstExit ? firstExit.event : null,
+      first_exit_ms: firstExit ? firstExit.ms : null,
+      tp1_hit: hasTp1,
+      tp1_ms: firstTp1 ? firstTp1.ms : null,
+      sl_before_tp1: slBeforeTp1,
+      sl_ms: firstSl ? firstSl.ms : null,
+      trail_after_tp1: hasTrailAfterTp1,
+      realized_ret_net: retNet,
+      realized_pnl_quote: realized ? pnlQuote : null,
+      realized: realized,
+    });
+  }
+
+  const tierOrder = preferredTierOrder
+    .concat(fallbackTierOrder)
+    .filter((tier) => {
+      const stats = byTier[tier];
+      return Number(stats && (stats.signals_n || stats.executed_n || stats.realized_chains_n || 0)) > 0;
+    });
+  const tierSummary = {};
+  for (const tier of tierOrder) tierSummary[tier] = finalizeTierStats(byTier[tier]);
+
+  return {
+    meta: {
+      exchange: exchangeNorm || null,
+      tf: tfNorm || null,
+      from_ms: Number.isFinite(fromMs) ? fromMs : null,
+      to_ms: Number.isFinite(toMs) ? toMs : null,
+      signals_scanned_n: signalRows.length,
+      fills_scanned_n: fillsFiltered.length,
+      chains_n: selectedChains.length,
+    },
+    by_tier: tierSummary,
+    chain_rows: chainRows.sort((a, b) => (a.entry_bar_ms || 0) - (b.entry_bar_ms || 0)),
+  };
+}
+
+module.exports = {
+  summarizePineSignalQuality,
+  __test: {
+    normalizeTier,
+    classifyExitEvent,
+    resolveEntryEventId,
+  },
+};

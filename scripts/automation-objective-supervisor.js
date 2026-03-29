@@ -1,0 +1,551 @@
+#!/usr/bin/env node
+/* eslint-disable no-console */
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+const {
+  OPS_DAILY_DIR,
+  copyLatest,
+  loadLocalEnv,
+  nowKstMeta,
+  readJsonRawSafe,
+  sendKoreanTelegramSummary,
+  writeJson,
+  writeText,
+} = require("./lib/automation-utils");
+const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
+const { resolveStatPhysFeatures } = require("../src/utils/statPhysFeatures");
+
+loadLocalEnv();
+
+function resolveLatestArtifactPath(...names) {
+  for (const name of names) {
+    const filePath = path.join(OPS_DAILY_DIR, name);
+    if (fs.existsSync(filePath)) return filePath;
+  }
+  return path.join(OPS_DAILY_DIR, names[0]);
+}
+
+const GOVERNANCE_LATEST_PATH = path.join(OPS_DAILY_DIR, "weekly_filter_governance_latest.json");
+const CHANGE_CONTROL_LATEST_PATH = resolveLatestArtifactPath("pine_quality_change_control_latest.json", "pine_stage1_change_control_latest.json");
+const CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json");
+const ML_LATEST_PATH = path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.json");
+const EV_LATEST_PATH = path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json");
+const WAIT_LATEST_PATH = path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json");
+const CODEX_PATCH_LATEST_PATH = path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.json");
+const STAGE_AUTOPILOT_LATEST_PATH = path.join(OPS_DAILY_DIR, "stage_autopilot_latest.json");
+const RETROSPECTIVE_LATEST_PATH = path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json");
+const REPORT_LATEST_MD = path.join(OPS_DAILY_DIR, "objective_supervisor_latest.md");
+const REPORT_LATEST_JSON = path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json");
+const FRESHNESS_HOURS = Object.freeze({
+  governance: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_GOVERNANCE_MAX_AGE_HOURS || 30)),
+  changeControl: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_CHANGE_CONTROL_MAX_AGE_HOURS || 36)),
+  canary: Math.max(4, Number(process.env.OBJECTIVE_SUPERVISOR_CANARY_MAX_AGE_HOURS || 12)),
+  ml: Math.max(4, Number(process.env.OBJECTIVE_SUPERVISOR_ML_MAX_AGE_HOURS || 12)),
+  ev: Math.max(24, Number(process.env.OBJECTIVE_SUPERVISOR_EV_MAX_AGE_HOURS || 96)),
+  wait: Math.max(24, Number(process.env.OBJECTIVE_SUPERVISOR_WAIT_MAX_AGE_HOURS || 144)),
+  codex: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_CODEX_MAX_AGE_HOURS || 48)),
+  stageAutopilot: Math.max(4, Number(process.env.OBJECTIVE_SUPERVISOR_STAGE_AUTOPILOT_MAX_AGE_HOURS || 12)),
+  retrospective: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_RETROSPECTIVE_MAX_AGE_HOURS || 30)),
+});
+
+function toNum(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function pct(value, digits = 2) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "N/A";
+  return `${(n * 100).toFixed(digits)}%`;
+}
+
+function signedNum(value, digits = 0) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "N/A";
+  return `${n > 0 ? "+" : ""}${n.toFixed(digits)}`;
+}
+
+function resolveDisplayCandidateId(candidateId, changeControl = null) {
+  const raw = String(candidateId || "").trim();
+  if (!raw) return null;
+  const display = String(
+    changeControl
+    && changeControl.auto_promotion
+    && changeControl.auto_promotion.display_candidate_id
+    || ""
+  ).trim();
+  if (
+    display
+    && String(changeControl && changeControl.auto_promotion && changeControl.auto_promotion.candidate_id || "").trim() === raw
+  ) return display;
+  return raw;
+}
+
+function readArtifact(name, filePath, maxAgeHours) {
+  const data = readJsonRawSafe(filePath, null);
+  if (!data) {
+    return { name, filePath, data: null, exists: false, fresh: false, ageHours: null };
+  }
+  try {
+    const st = fs.statSync(filePath);
+    const ageHours = (Date.now() - Number(st.mtimeMs || 0)) / (60 * 60 * 1000);
+    return {
+      name,
+      filePath,
+      data,
+      exists: true,
+      ageHours,
+      fresh: Number.isFinite(ageHours) && ageHours <= maxAgeHours,
+    };
+  } catch (_err) {
+    return { name, filePath, data, exists: true, fresh: false, ageHours: null };
+  }
+}
+
+function summarizeRetrospective(retrospective = null) {
+  const periods = retrospective && retrospective.periods && typeof retrospective.periods === "object"
+    ? retrospective.periods
+    : {};
+  const daily = periods.DAILY || null;
+  const weekly = periods.WEEKLY || null;
+  const monthly = periods.MONTHLY || null;
+  const buildRow = (row) => ({
+    verdict: String(row && row.objective && row.objective.verdict || "N/A"),
+    pass: row && row.objective ? row.objective.pass === true : null,
+    executed_n: toNum(row && row.objective && row.objective.executed_n),
+    realized_n: toNum(row && row.objective && row.objective.realized_n),
+    net_pnl_quote: toNum(row && row.realized_trades && row.realized_trades.net_pnl_quote),
+    failed_checks: Array.isArray(row && row.objective && row.objective.failed_checks) ? row.objective.failed_checks : [],
+  });
+  const dailyRow = buildRow(daily);
+  const weeklyRow = buildRow(weekly);
+  const monthlyRow = buildRow(monthly);
+  return {
+    available: !!retrospective,
+    daily: dailyRow,
+    weekly: weeklyRow,
+    monthly: monthlyRow,
+    any_fail: [dailyRow, weeklyRow, monthlyRow].some((row) => row.pass === false),
+    any_no_trade: [dailyRow, weeklyRow, monthlyRow].some((row) => row.failed_checks.includes("NO_TRADE_ACTIVITY")),
+    any_zero_idle: [dailyRow, weeklyRow, monthlyRow].some((row) => row.failed_checks.includes("ZERO_KRW_IDLE")),
+  };
+}
+
+function weightedAvg(rows = [], field, weightField = "executed_n") {
+  const scoped = (Array.isArray(rows) ? rows : []).filter((row) => Number(row && row[weightField] || 0) > 0 && Number.isFinite(toNum(row && row[field])));
+  if (!scoped.length) return null;
+  const totalWeight = scoped.reduce((acc, row) => acc + Number(row[weightField] || 0), 0);
+  if (!Number.isFinite(totalWeight) || totalWeight <= 0) return null;
+  return scoped.reduce((acc, row) => acc + (Number(row[field] || 0) * Number(row[weightField] || 0)), 0) / totalWeight;
+}
+
+function summarizeGovernancePhysics(governance = null) {
+  const current = governance && governance.current && typeof governance.current === "object" ? governance.current : {};
+  const byTier = current && current.pine_follow_through && current.pine_follow_through.by_tier && typeof current.pine_follow_through.by_tier === "object"
+    ? current.pine_follow_through.by_tier
+    : {};
+  const rows = [byTier.EARLY, byTier.CORE].filter(Boolean);
+  const executedN = rows.length
+    ? rows.reduce((acc, row) => acc + Number(row && row.executed_n || 0), 0)
+    : toNum(current && current.overall && current.overall.executed_n);
+  const summary = rows.length ? {
+    entropy: weightedAvg(rows, "avg_entropy_score"),
+    coherence: weightedAvg(rows, "avg_coherence_score"),
+    transitionRisk: weightedAvg(rows, "avg_transition_risk"),
+    fieldAlignment: weightedAvg(rows, "avg_field_alignment"),
+    domainWallDensity: weightedAvg(rows, "avg_domain_wall_density"),
+    susceptibility: weightedAvg(rows, "avg_susceptibility"),
+    freeEnergy: weightedAvg(rows, "avg_free_energy"),
+  } : {
+    entropy: toNum(current && current.overall && current.overall.avg_entropy_score),
+    coherence: toNum(current && current.overall && current.overall.avg_coherence_score),
+    transitionRisk: toNum(current && current.overall && current.overall.avg_transition_risk),
+    fieldAlignment: toNum(current && current.overall && current.overall.avg_field_alignment),
+    domainWallDensity: toNum(current && current.overall && current.overall.avg_domain_wall_density),
+    susceptibility: toNum(current && current.overall && current.overall.avg_susceptibility),
+    freeEnergy: toNum(current && current.overall && current.overall.avg_free_energy),
+  };
+  const resolved = resolveStatPhysFeatures({
+    sp_entropy_score: summary.entropy,
+    sp_coherence_score: summary.coherence,
+    sp_transition_risk: summary.transitionRisk,
+    sp_field_alignment: summary.fieldAlignment,
+    sp_domain_wall_density: summary.domainWallDensity,
+    sp_susceptibility: summary.susceptibility,
+    sp_free_energy: summary.freeEnergy,
+  });
+  const available = [
+    summary.entropy,
+    summary.coherence,
+    summary.transitionRisk,
+    summary.fieldAlignment,
+    summary.domainWallDensity,
+    summary.susceptibility,
+    summary.freeEnergy,
+  ].some((v) => Number.isFinite(v));
+  let blockReason = null;
+  if (resolved.state === "CRITICAL" && Number(executedN || 0) >= 4) blockReason = "STAT_PHYSICS_CRITICAL";
+  else if (resolved.state === "DISORDERED" && Number(executedN || 0) >= 8) blockReason = "STAT_PHYSICS_DISORDERED";
+  return {
+    available,
+    executed_n: Number.isFinite(Number(executedN)) ? Number(executedN) : null,
+    state: resolved.state || null,
+    display_state: resolved.display_state,
+    entropy: summary.entropy,
+    coherence: summary.coherence,
+    transition_risk: summary.transitionRisk,
+    field_alignment: summary.fieldAlignment,
+    domain_wall_density: summary.domainWallDensity,
+    susceptibility: summary.susceptibility,
+    free_energy: summary.freeEnergy,
+    block_reason: blockReason,
+  };
+}
+
+function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, codex, stageAutopilot, retrospective } = {}) {
+  const objective = governance && governance.current && governance.current.objective ? governance.current.objective : {};
+  const objectiveCfg = governance && governance.objective ? governance.objective : {};
+  const promotion = changeControl && changeControl.auto_promotion ? changeControl.auto_promotion : {};
+  const rollback = changeControl && changeControl.auto_rollback ? changeControl.auto_rollback : {};
+  const canarySummary = canary && canary.shadow && canary.shadow.summary ? canary.shadow.summary : {};
+  const canaryGolden = canary && canary.golden && canary.golden.summary ? canary.golden.summary : {};
+  const codexVerdict = String(codex && codex.verdict || "HOLD").toUpperCase();
+  const codexStatus = String(codex && codex.status || "N/A").toUpperCase();
+  const codexCandidateId = String(codex && codex.recommended_candidate_id || "").trim() || null;
+  const codexDisplayCandidateId = resolveDisplayCandidateId(codexCandidateId, changeControl);
+  const codexRollbackPath = String(codex && codex.recommended_rollback_file_path || "").trim() || null;
+  const codexFresh = Boolean(codex && (codex.fresh === true || codexStatus === "FRESH" || codexStatus === "SKIPPED"));
+  const codexDisplayStatus = codexStatus === "FAILED"
+    ? "FAILED"
+    : (codexFresh ? "FRESH" : (codex ? "STALE" : "N/A"));
+  const stageAutopilotStatus = String(stageAutopilot && stageAutopilot.status || "").toUpperCase();
+  const stageAutopilotFresh = Boolean(stageAutopilot && (stageAutopilot.fresh === true || stageAutopilotStatus === "FRESH"));
+  const retrospectiveSummary = summarizeRetrospective(retrospective);
+  const physicsSummary = summarizeGovernancePhysics(governance);
+
+  const blockers = [];
+  if (!objective || objective.enough_sample !== true) blockers.push("OBJECTIVE_SAMPLE_NOT_READY");
+  if (objective && objective.monthly_pass === false) blockers.push("MONTHLY_TARGET_NOT_MET");
+  if (objective && objective.pass === false) blockers.push("OBJECTIVE_NOT_MET");
+  if (!retrospectiveSummary.available) blockers.push("RETROSPECTIVE_MISSING");
+  if (retrospectiveSummary.daily.pass === false) blockers.push("DAILY_OBJECTIVE_FAIL");
+  if (retrospectiveSummary.weekly.pass === false) blockers.push("WEEKLY_OBJECTIVE_FAIL");
+  if (retrospectiveSummary.monthly.pass === false) blockers.push("RETROSPECTIVE_MONTHLY_FAIL");
+  if (retrospectiveSummary.any_no_trade) blockers.push("DAILY_NO_TRADE_ACTIVITY");
+  if (retrospectiveSummary.any_zero_idle) blockers.push("ZERO_KRW_IDLE");
+  if (!canary || canarySummary.drift > 0 || canaryGolden.drift > 0) blockers.push("CANARY_DRIFT");
+  if (!changeControl || String(changeControl.verdict || "").toUpperCase() === "HOLD") blockers.push("CHANGE_CONTROL_HOLD");
+  if (changeControl && changeControl.coverage_guard && changeControl.coverage_guard.pass !== true) blockers.push("COVERAGE_GUARD_BLOCK");
+  if (physicsSummary.block_reason) blockers.push(physicsSummary.block_reason);
+  if (codex && codexStatus === "FAILED" && (promotion.ready === true || rollback.ready === true)) {
+    blockers.push("CODEX_REVIEW_FAILED");
+  }
+  if ((promotion.ready === true || rollback.ready === true) && !stageAutopilotFresh) {
+    blockers.push("STAGE_AUTOPILOT_STALE");
+  }
+  const objectiveBlockReason = retrospectiveSummary.any_no_trade
+    ? "DAILY_NO_TRADE_ACTIVITY"
+    : retrospectiveSummary.any_zero_idle
+      ? "ZERO_KRW_IDLE"
+      : physicsSummary.block_reason
+        ? physicsSummary.block_reason
+      : retrospectiveSummary.any_fail
+        ? "RETROSPECTIVE_OBJECTIVE_FAIL"
+        : (!objective || objective.enough_sample !== true)
+          ? "OBJECTIVE_SAMPLE_NOT_READY"
+          : (objective && objective.pass === false)
+            ? "OBJECTIVE_NOT_MET"
+            : null;
+
+  let verdict = "HOLD";
+  let reason = "NO_ACTION_READY";
+  if (rollback && rollback.ready === true) {
+    if (!codex || !codexFresh) {
+      verdict = "HOLD";
+      reason = "CODEX_REVIEW_REQUIRED_ROLLBACK";
+      blockers.push("CODEX_REVIEW_REQUIRED_ROLLBACK");
+    } else if (!stageAutopilotFresh) {
+      verdict = "HOLD";
+      reason = "STAGE_AUTOPILOT_REQUIRED_ROLLBACK";
+      blockers.push("STAGE_AUTOPILOT_REQUIRED_ROLLBACK");
+    } else if (codexVerdict === "ROLLBACK") {
+      verdict = "ROLLBACK_CANDIDATE";
+      reason = "AUTO_ROLLBACK_READY";
+    } else {
+      verdict = "HOLD";
+      reason = "CODEX_REVIEW_BLOCK_ROLLBACK";
+      blockers.push("CODEX_BLOCK_ROLLBACK");
+    }
+  } else if (promotion && promotion.ready === true) {
+    if (objectiveBlockReason) {
+      verdict = "HOLD";
+      reason = objectiveBlockReason;
+    } else if (!codex || !codexFresh) {
+      verdict = "HOLD";
+      reason = "CODEX_REVIEW_REQUIRED_PROMOTION";
+      blockers.push("CODEX_REVIEW_REQUIRED_PROMOTION");
+    } else if (!stageAutopilotFresh) {
+      verdict = "HOLD";
+      reason = "STAGE_AUTOPILOT_REQUIRED_PROMOTION";
+      blockers.push("STAGE_AUTOPILOT_REQUIRED_PROMOTION");
+    } else if (codexVerdict === "PROMOTE") {
+      verdict = "PATCH_CANDIDATE";
+      reason = "AUTO_PROMOTION_READY";
+    } else {
+      verdict = "HOLD";
+      reason = "CODEX_REVIEW_BLOCK_PROMOTION";
+      blockers.push("CODEX_BLOCK_PROMOTION");
+    }
+  } else if (objectiveBlockReason) {
+    verdict = "HOLD";
+    reason = objectiveBlockReason;
+  } else if (objective && objective.pass === true) {
+    verdict = "HOLD";
+    reason = "OBJECTIVE_ON_TRACK";
+  } else if (blockers.length) {
+    verdict = "HOLD";
+    reason = blockers[0];
+  }
+
+  return {
+    verdict,
+    reason,
+    blockers: Array.from(new Set(blockers)),
+    objective: {
+      verdict: String(objective.verdict || "N/A"),
+      pass: objective.pass === true,
+      enough_sample: objective.enough_sample === true,
+      activity_pass: objective.activity_pass === true,
+      executed_n: toNum(objective.executed_n),
+      realized_n: toNum(objective.realized_n),
+      win_rate: toNum(governance && governance.current && governance.current.overall && governance.current.overall.win_rate),
+      avg_ret_net: toNum(governance && governance.current && governance.current.overall && governance.current.overall.avg_ret_net),
+      net_pnl_quote: toNum(governance && governance.current && governance.current.overall && governance.current.overall.net_pnl_quote),
+      monthly_run_rate_krw: toNum(objective.monthly_run_rate_krw),
+      min_monthly_net_krw: toNum(objectiveCfg.min_monthly_net_krw),
+      monthly_pass: objective.monthly_pass === true,
+      failed_checks: Array.isArray(objective.failed_checks) ? objective.failed_checks : [],
+    },
+    promotion: {
+      ready: promotion.ready === true,
+      reason: String(promotion.reason || "N/A"),
+      candidate_id: String(promotion.candidate_id || "").trim() || null,
+      display_candidate_id: resolveDisplayCandidateId(promotion.candidate_id, changeControl),
+      streak_current: toNum(promotion.streak_current),
+      streak_required: toNum(promotion.streak_required),
+    },
+    rollback: {
+      ready: rollback.ready === true,
+      reason: String(rollback.reason || "N/A"),
+      rollback_file_path: String(rollback.rollback_file_path || "").trim() || null,
+      based_on_patch_id: String(rollback.based_on_patch_id || "").trim() || null,
+      based_on_week_key: String(rollback.based_on_week_key || "").trim() || null,
+    },
+    guards: {
+      canary_pass: Boolean(canary && canarySummary.drift === 0 && canaryGolden.drift === 0),
+      canary_shadow_drift: toNum(canarySummary.drift) || 0,
+      canary_golden_drift: toNum(canaryGolden.drift) || 0,
+      coverage_pass: Boolean(changeControl && changeControl.coverage_guard && changeControl.coverage_guard.pass === true),
+      ai_coverage_pass: Boolean(changeControl && changeControl.coverage_guard && changeControl.coverage_guard.ai && changeControl.coverage_guard.ai.pass === true),
+      market_coverage_pass: Boolean(changeControl && changeControl.coverage_guard && changeControl.coverage_guard.market && changeControl.coverage_guard.market.pass === true),
+    },
+    physics: physicsSummary,
+    tuning: {
+      ev_reason: String(ev && ev.decision_reason || "N/A"),
+      wait_reason: String(wait && wait.reason || "N/A"),
+      ml_quality_actions: Array.isArray(ml && ml.recommendations && ml.recommendations.QUALITY) ? ml.recommendations.QUALITY.length : 0,
+      ml_market_action: String(ml && ml.recommendations && ml.recommendations.MARKET && ml.recommendations.MARKET.action || "N/A"),
+      ml_ev_action: String(ml && ml.recommendations && ml.recommendations.EV && ml.recommendations.EV.action || "N/A"),
+    },
+    codex_review: {
+      available: !!codex,
+      status: codexDisplayStatus,
+      verdict: codexVerdict,
+      recommended_candidate_id: codexCandidateId,
+      display_candidate_id: codexDisplayCandidateId,
+      recommended_rollback_file_path: codexRollbackPath,
+      confidence: toNum(codex && codex.confidence),
+      reason: String(codex && (codex.reason || codex.summary) || "N/A"),
+    },
+    stage_autopilot: {
+      available: !!stageAutopilot,
+      status: stageAutopilotFresh ? "FRESH" : (stageAutopilot ? "STALE" : "N/A"),
+      objective_verdict: String(stageAutopilot && stageAutopilot.objective_verdict || "N/A"),
+      action_n: Array.isArray(stageAutopilot && stageAutopilot.actions) ? stageAutopilot.actions.length : 0,
+      action_types: Array.isArray(stageAutopilot && stageAutopilot.actions)
+        ? Array.from(new Set(stageAutopilot.actions.map((row) => String(row && row.type || "N/A"))))
+        : [],
+    },
+    retrospective: retrospectiveSummary,
+  };
+}
+
+function renderMarkdown(report = {}) {
+  const lines = [
+    "# Objective Supervisor",
+    "",
+    `- 실행 시각: ${report.generated_at_kst || "N/A"}`,
+    `- verdict: ${report.verdict || "N/A"}`,
+    `- reason: ${report.reason || "N/A"}`,
+    `- blockers: ${(report.blockers || []).length ? report.blockers.join(", ") : "none"}`,
+    "",
+    "## Objective",
+    `- objective: ${report.objective && report.objective.verdict || "N/A"}`,
+    `- activity: ${report.objective && report.objective.activity_pass ? "PASS" : "FAIL"} / executed=${report.objective && report.objective.executed_n != null ? report.objective.executed_n : "N/A"}`,
+    `- enough_sample: ${report.objective && report.objective.enough_sample ? "YES" : "NO"} / realized=${report.objective && report.objective.realized_n != null ? report.objective.realized_n : "N/A"}`,
+    `- win_rate: ${pct(report.objective && report.objective.win_rate)}`,
+    `- avg_ret_net: ${pct(report.objective && report.objective.avg_ret_net)}`,
+    `- net_pnl_quote: ${signedNum(report.objective && report.objective.net_pnl_quote, 2)}`,
+    `- monthly_run_rate_krw: ${signedNum(report.objective && report.objective.monthly_run_rate_krw, 0)} / target=${signedNum(report.objective && report.objective.min_monthly_net_krw, 0)}`,
+    `- monthly_pass: ${report.objective && report.objective.monthly_pass ? "PASS" : "FAIL"}`,
+    "",
+    "## Retrospective",
+    `- daily: ${report.retrospective && report.retrospective.daily ? `${report.retrospective.daily.verdict} / executed=${report.retrospective.daily.executed_n ?? "N/A"} / realized=${report.retrospective.daily.realized_n ?? "N/A"} / net=${signedNum(report.retrospective.daily.net_pnl_quote, 0)}` : "N/A"}`,
+    `- weekly: ${report.retrospective && report.retrospective.weekly ? `${report.retrospective.weekly.verdict} / executed=${report.retrospective.weekly.executed_n ?? "N/A"} / realized=${report.retrospective.weekly.realized_n ?? "N/A"} / net=${signedNum(report.retrospective.weekly.net_pnl_quote, 0)}` : "N/A"}`,
+    `- monthly: ${report.retrospective && report.retrospective.monthly ? `${report.retrospective.monthly.verdict} / executed=${report.retrospective.monthly.executed_n ?? "N/A"} / realized=${report.retrospective.monthly.realized_n ?? "N/A"} / net=${signedNum(report.retrospective.monthly.net_pnl_quote, 0)}` : "N/A"}`,
+    "",
+    "## Change Control",
+    `- promotion: ${report.promotion && report.promotion.ready ? "READY" : "HOLD"} / ${report.promotion && report.promotion.reason || "N/A"} / candidate=${report.promotion && (report.promotion.display_candidate_id || report.promotion.candidate_id) || "N/A"}`,
+    `- rollback: ${report.rollback && report.rollback.ready ? "READY" : "HOLD"} / ${report.rollback && report.rollback.reason || "N/A"} / target=${report.rollback && report.rollback.rollback_file_path || "N/A"}`,
+    "",
+    "## Guards",
+    `- canary: ${report.guards && report.guards.canary_pass ? "PASS" : "BLOCK"} / golden=${report.guards && report.guards.canary_golden_drift != null ? report.guards.canary_golden_drift : "N/A"} / shadow=${report.guards && report.guards.canary_shadow_drift != null ? report.guards.canary_shadow_drift : "N/A"}`,
+    `- coverage: ${report.guards && report.guards.coverage_pass ? "PASS" : "BLOCK"} / ai=${report.guards && report.guards.ai_coverage_pass ? "PASS" : "BLOCK"} / market=${report.guards && report.guards.market_coverage_pass ? "PASS" : "BLOCK"}`,
+    "",
+    "## Market Physics",
+    `- state: ${report.physics && report.physics.display_state || "정보 없음"} (${report.physics && report.physics.state || "N/A"}) / executed=${report.physics && report.physics.executed_n != null ? report.physics.executed_n : "N/A"} / block=${report.physics && report.physics.block_reason || "none"}`,
+    `- entropy=${pct(report.physics && report.physics.entropy)} / coherence=${pct(report.physics && report.physics.coherence)} / transition=${pct(report.physics && report.physics.transition_risk)} / align=${pct(report.physics && report.physics.field_alignment)} / wall=${pct(report.physics && report.physics.domain_wall_density)} / susc=${pct(report.physics && report.physics.susceptibility)} / free_energy=${pct(report.physics && report.physics.free_energy)}`,
+    "",
+    "## Tuning Inputs",
+    `- EV: ${report.tuning && report.tuning.ev_reason || "N/A"}`,
+    `- WAIT: ${report.tuning && report.tuning.wait_reason || "N/A"}`,
+    `- ML: quality=${report.tuning && report.tuning.ml_quality_actions != null ? report.tuning.ml_quality_actions : "N/A"} / market=${report.tuning && report.tuning.ml_market_action || "N/A"} / ev=${report.tuning && report.tuning.ml_ev_action || "N/A"}`,
+    "",
+    "## Codex Review",
+    `- status: ${report.codex_review && report.codex_review.status || "N/A"}`,
+    `- verdict: ${report.codex_review && report.codex_review.verdict || "N/A"}`,
+    `- candidate: ${report.codex_review && (report.codex_review.display_candidate_id || report.codex_review.recommended_candidate_id) || "N/A"}`,
+    `- rollback: ${report.codex_review && report.codex_review.recommended_rollback_file_path || "N/A"}`,
+    `- confidence: ${report.codex_review && report.codex_review.confidence != null ? report.codex_review.confidence : "N/A"}`,
+    `- reason: ${report.codex_review && report.codex_review.reason || "N/A"}`,
+    "",
+    "## Stage Autopilot",
+    `- status: ${report.stage_autopilot && report.stage_autopilot.status || "N/A"}`,
+    `- objective: ${report.stage_autopilot && report.stage_autopilot.objective_verdict || "N/A"}`,
+    `- actions: ${report.stage_autopilot && report.stage_autopilot.action_n != null ? report.stage_autopilot.action_n : "N/A"} / ${(report.stage_autopilot && report.stage_autopilot.action_types && report.stage_autopilot.action_types.length) ? report.stage_autopilot.action_types.join(", ") : "none"}`,
+    "",
+    "## Artifacts",
+  ];
+  for (const row of report.artifacts || []) {
+    lines.push(`- ${row.name}: ${row.fresh ? "fresh" : "stale"} / ${row.filePath || "N/A"}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+async function main() {
+  const nowMeta = nowKstMeta();
+  const governanceArtifact = readArtifact("weekly_governance", GOVERNANCE_LATEST_PATH, FRESHNESS_HOURS.governance);
+  const changeArtifact = readArtifact("change_control", CHANGE_CONTROL_LATEST_PATH, FRESHNESS_HOURS.changeControl);
+  const canaryArtifact = readArtifact("shadow_canary", CANARY_LATEST_PATH, FRESHNESS_HOURS.canary);
+  const mlArtifact = readArtifact("ml_policy", ML_LATEST_PATH, FRESHNESS_HOURS.ml);
+  const evArtifact = readArtifact("ev_tuner", EV_LATEST_PATH, FRESHNESS_HOURS.ev);
+  const waitArtifact = readArtifact("wait_tuner", WAIT_LATEST_PATH, FRESHNESS_HOURS.wait);
+  const codexArtifact = readArtifact("codex_patch", CODEX_PATCH_LATEST_PATH, FRESHNESS_HOURS.codex);
+  const stageAutopilotArtifact = readArtifact("stage_autopilot", STAGE_AUTOPILOT_LATEST_PATH, FRESHNESS_HOURS.stageAutopilot);
+  const retrospectiveArtifact = readArtifact("objective_retrospective", RETROSPECTIVE_LATEST_PATH, FRESHNESS_HOURS.retrospective);
+
+  const evaluation = evaluateSupervisor({
+    governance: governanceArtifact.data,
+    changeControl: changeArtifact.data,
+    canary: canaryArtifact.data,
+    ml: mlArtifact.data,
+    ev: evArtifact.data,
+    wait: waitArtifact.data,
+    codex: codexArtifact.exists ? { ...codexArtifact.data, fresh: codexArtifact.fresh } : null,
+    stageAutopilot: stageAutopilotArtifact.exists ? { ...stageAutopilotArtifact.data, fresh: stageAutopilotArtifact.fresh } : null,
+    retrospective: retrospectiveArtifact.data,
+  });
+
+  const report = {
+    ok: true,
+    generated_at_kst: nowMeta.kst,
+    verdict: evaluation.verdict,
+    reason: evaluation.reason,
+    blockers: evaluation.blockers,
+    objective: evaluation.objective,
+    promotion: evaluation.promotion,
+    rollback: evaluation.rollback,
+    guards: evaluation.guards,
+    physics: evaluation.physics,
+    tuning: evaluation.tuning,
+    codex_review: evaluation.codex_review,
+    stage_autopilot: evaluation.stage_autopilot,
+    retrospective: evaluation.retrospective,
+    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, codexArtifact, stageAutopilotArtifact, retrospectiveArtifact].map((row) => ({
+      name: row.name,
+      filePath: row.filePath,
+      fresh: row.fresh,
+      age_hours: row.ageHours,
+    })),
+  };
+
+  const base = `${nowMeta.dateKey}_${nowMeta.hhmm}`;
+  const jsonPath = path.join(OPS_DAILY_DIR, `${base}_objective_supervisor.json`);
+  const mdPath = path.join(OPS_DAILY_DIR, `${base}_objective_supervisor.md`);
+  writeJson(jsonPath, wrapDisplayAndRawReport(report));
+  writeText(mdPath, renderMarkdown(report));
+  copyLatest(jsonPath, REPORT_LATEST_JSON);
+  copyLatest(mdPath, REPORT_LATEST_MD);
+
+  const alert = await sendKoreanTelegramSummary({
+    title: `[목표 점검] ${report.verdict}`,
+    severity: report.verdict === "ROLLBACK_CANDIDATE" ? "WARN" : (report.verdict === "PATCH_CANDIDATE" ? "INFO" : "INFO"),
+    dedupeKey: `objective_supervisor:${report.verdict}:${report.reason}`,
+    dedupeWindowSec: 18 * 60 * 60,
+    dedupeFingerprint: JSON.stringify({
+      verdict: report.verdict,
+      reason: report.reason,
+      blockers: report.blockers,
+      physics: report.physics,
+      retrospective: report.retrospective,
+    }),
+    sections: [
+      { header: "지금 결론", lines: [`자동화는 지금 '${report.verdict}' 상태입니다. 주된 이유는 '${report.reason}' 입니다.`] },
+      { header: "목표 달성 상태", lines: [`현재 실현 표본 ${report.objective.realized_n ?? "정보 없음"}건, 실행 ${report.objective.executed_n ?? "정보 없음"}건, 월간 예상 수익 ${signedNum(report.objective.monthly_run_rate_krw, 0)} KRW, 목표 ${signedNum(report.objective.min_monthly_net_krw, 0)} KRW`] },
+      { header: "최근 회고", lines: [`오늘 ${report.retrospective.daily.verdict}, 실행 ${report.retrospective.daily.executed_n ?? "정보 없음"}건, 실현 ${report.retrospective.daily.realized_n ?? "정보 없음"}건, 손익 ${signedNum(report.retrospective.daily.net_pnl_quote, 0)} KRW`, `주간 ${report.retrospective.weekly.verdict} / 월간 ${report.retrospective.monthly.verdict}`] },
+      { header: "자동 변경 가능 여부", lines: [`변경 승격 ${report.promotion.ready ? "가능" : "보류"} / 사유 ${report.promotion.reason} / 후보 ${report.promotion.display_candidate_id || report.promotion.candidate_id || "정보 없음"}`, `자동 롤백 ${report.rollback.ready ? "가능" : "보류"} / 사유 ${report.rollback.reason}`] },
+      { header: "안전 장치", lines: [`검증 ${report.guards.canary_pass ? "정상" : "차단"} / golden drift ${report.guards.canary_golden_drift} / shadow drift ${report.guards.canary_shadow_drift}`, `데이터 커버리지 ${report.guards.coverage_pass ? "충분" : "부족"}`] },
+      { header: "시장 물리", lines: [`상태 ${report.physics.display_state || "정보 없음"} / 실행 표본 ${report.physics.executed_n ?? "정보 없음"} / 차단 ${report.physics.block_reason || "없음"}`, `entropy ${pct(report.physics.entropy)} / coherence ${pct(report.physics.coherence)} / transition ${pct(report.physics.transition_risk)} / align ${pct(report.physics.field_alignment)} / wall ${pct(report.physics.domain_wall_density)} / free ${pct(report.physics.free_energy)}`] },
+      { header: "Codex 검토", lines: [`상태 ${report.codex_review.status} / 결론 ${report.codex_review.verdict} / 사유 ${report.codex_review.reason}`] },
+      { header: "자동 적용 엔진", lines: [`상태 ${report.stage_autopilot.status} / 목표 판정 ${report.stage_autopilot.objective_verdict}`, `이번 실행에서 실제 반영된 변경 ${report.stage_autopilot.action_n}건 / ${(report.stage_autopilot.action_types || []).join(", ") || "없음"}`] },
+    ],
+  });
+  if (!alert || (alert.ok !== true && !(alert.skipped && alert.reason === "SKIP_ALERT"))) {
+    throw new Error(`TELEGRAM_SEND_FAILED:${JSON.stringify(alert || {})}`);
+  }
+
+  console.log(JSON.stringify({
+    ok: true,
+    verdict: report.verdict,
+    reason: report.reason,
+    blockers: report.blockers,
+    promotion_ready: report.promotion.ready,
+    rollback_ready: report.rollback.ready,
+  }));
+}
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err && err.stack ? err.stack : err);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  __test: {
+    evaluateSupervisor,
+  },
+};

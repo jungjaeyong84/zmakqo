@@ -1,0 +1,286 @@
+<%- include('partials/app_start', { title: '평가 · DONBEOLJA Ω', pageTitle: '평가', active: 'eval' }) %>
+
+<style>
+  .diag-box { display:flex; flex-direction:column; gap:10px; }
+  .diag-row { display:flex; align-items:center; gap:10px; }
+  .diag-label { width:120px; font-size:12px; color:#333; }
+  .diag-bar { flex:1; height:10px; background:#f1f1f1; border-radius:999px; overflow:hidden; }
+  .diag-bar-fill { height:100%; width:0%; transition:width .3s ease; }
+  .diag-bar-fill.ok { background:#1f9d55; }
+  .diag-bar-fill.warn { background:#e58f2a; }
+  .diag-meta { width:160px; text-align:right; font-size:12px; color:#444; }
+  .diag-summary { font-size:12px; color:#333; }
+  .diag-alerts { display:flex; align-items:center; gap:10px; font-size:12px; }
+  .diag-raw summary { cursor:pointer; font-size:12px; color:#555; }
+  @media (max-width: 900px) {
+    .diag-row { flex-direction:column; align-items:flex-start; }
+    .diag-label, .diag-meta { width:auto; }
+    .diag-meta { text-align:left; }
+  }
+</style>
+
+<div class="subnav">
+  <a href="/dashboard/analysis">요약</a>
+  <a href="/dashboard/report">리포트</a>
+  <a class="active" href="/dashboard/eval">평가</a>
+  <a href="/dashboard/briefing">브리핑</a>
+  <a href="/dashboard/profit">수익</a>
+  <a href="/dashboard/cashflow">입출금</a>
+</div>
+
+<div class="card">
+  <h2>요약</h2>
+  <div class="subtle">
+    최신 평가 결과를 읽기 쉽게 보여줍니다. 표본 수가 부족하면 판단을 보류합니다.
+  </div>
+  <div class="hr"></div>
+  <div class="kv">
+    <div class="k">주차</div><div class="v mono" id="ev-week">…</div>
+    <div class="k">생성 시각</div><div class="v mono" id="ev-gen">…</div>
+    <div class="k">타임프레임/범위</div><div class="v mono" id="ev-tf">…</div>
+    <div class="k">스트림 수</div><div class="v mono" id="ev-streams">…</div>
+  </div>
+</div>
+
+<div class="hr"></div>
+
+<div class="grid cols-2">
+  <div class="card">
+    <h2>판단 요약</h2>
+    <div class="subtle">유지 / 제거 / 조정 / 보류 · 충분 기준: 보류 0개, 부분 기준: 70% 이상 충족</div>
+    <div class="hr"></div>
+    <div class="kv">
+      <div class="k">최소 표본</div><div class="v mono" id="ev-minn">…</div>
+      <div class="k">판단 가능</div>
+      <div class="v">
+        <span id="ev-sufficient" class="pill dim">…</span>
+        <span id="ev-sufficient-desc" class="subtle" style="margin-left:6px;">-</span>
+      </div>
+      <div class="k">유지</div><div class="v mono" id="ev-keep">…</div>
+      <div class="k">제거</div><div class="v mono" id="ev-drop">…</div>
+      <div class="k">조정</div><div class="v mono" id="ev-tune">…</div>
+      <div class="k">보류</div><div class="v mono" id="ev-need">…</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>데이터 진단</h2>
+    <div class="subtle">데이터 상태를 비율로 확인합니다.</div>
+    <div class="hr"></div>
+    <div class="diag-box">
+      <div class="diag-row">
+        <div class="diag-label">정상</div>
+        <div class="diag-bar"><div id="ev-diag-ok-bar" class="diag-bar-fill ok"></div></div>
+        <div class="diag-meta"><span id="ev-diag-ok-pct">-</span> · <span id="ev-diag-ok-count">-</span></div>
+      </div>
+      <div class="diag-row">
+        <div class="diag-label">현재 봉 누락</div>
+        <div class="diag-bar"><div id="ev-diag-now-bar" class="diag-bar-fill warn"></div></div>
+        <div class="diag-meta"><span id="ev-diag-now-pct">-</span> · <span id="ev-diag-now-count">-</span></div>
+      </div>
+      <div class="diag-row">
+        <div class="diag-label">다음 봉 누락</div>
+        <div class="diag-bar"><div id="ev-diag-fut-bar" class="diag-bar-fill warn"></div></div>
+        <div class="diag-meta"><span id="ev-diag-fut-pct">-</span> · <span id="ev-diag-fut-count">-</span></div>
+      </div>
+      <div class="diag-summary mono" id="ev-diag-summary">-</div>
+      <div class="diag-alerts">
+        <span id="ev-diag-warn" class="pill dim">상태 확인 중…</span>
+        <span id="ev-diag-cause" class="subtle">-</span>
+      </div>
+      <details class="diag-raw" open>
+        <summary>원본 보기</summary>
+        <pre class="mono" id="ev-diag-raw" style="margin:6px 0 0; white-space:pre-wrap; font-size:12px; color:#333;">…</pre>
+      </details>
+    </div>
+  </div>
+</div>
+
+<div class="hr"></div>
+
+<div class="tablewrap">
+  <div class="head">
+    <h2>신호 KPI</h2>
+    <div class="subtle">표본 기반 KPI (상위 200개 표시)</div>
+  </div>
+  <div class="scroll" style="max-height:520px;">
+    <table>
+      <thead>
+        <tr>
+          <th>거래소</th>
+          <th>마켓</th>
+          <th>방향</th>
+          <th>그룹</th>
+          <th>유형</th>
+          <th>표본</th>
+          <th>평가 표본</th>
+          <th>기대값</th>
+          <th>승률</th>
+        </tr>
+      </thead>
+      <tbody id="ev-body">
+        <tr><td colspan="9" class="subtle">로딩 중…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+(async function(){
+  function $(id){ return document.getElementById(id); }
+  function set(id, v){ const el = $(id); if (el) el.textContent = v; }
+
+  function fmtNum(x){
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '-';
+    return n.toLocaleString();
+  }
+  function fmtKst(v){
+    if (!v) return '-';
+    const raw = String(v);
+    if (raw.includes('KST')) return raw;
+    const ms = Date.parse(raw);
+    if (!Number.isFinite(ms)) return raw;
+    const k = new Date(ms + 9 * 60 * 60 * 1000);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${k.getUTCFullYear()}-${pad(k.getUTCMonth() + 1)}-${pad(k.getUTCDate())} ${pad(k.getUTCHours())}:${pad(k.getUTCMinutes())}:${pad(k.getUTCSeconds())} KST`;
+  }
+  function fmtPct(x){
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '-';
+    return (n * 100).toFixed(2) + '%';
+  }
+  function fmtEv(x){
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '-';
+    return n.toFixed(4);
+  }
+  function sideLabel(side){
+    const s = String(side || "").toUpperCase();
+    if (s === "BUY") return "매수";
+    if (s === "SELL") return "매도";
+    if (s === "HOLD") return "대기";
+    return side || "-";
+  }
+
+  const r = await fetch('/api/eval/latest', { credentials:'include' });
+  const t = await r.text();
+  let j = null;
+  try{ j = JSON.parse(t); }catch(_){ j=null; }
+
+  if (!r.ok || !j || !j.ok){
+    set('ev-week','(확인 불가)');
+    $('ev-body').innerHTML = `<tr><td colspan="9" class="subtle">로드 실패: ${r.status}</td></tr>`;
+    return;
+  }
+
+  const data = j.data || {};
+  set('ev-week', j.id || '-');
+  set('ev-gen', fmtKst(data.generated_at || '-'));
+  set('ev-tf', (data.tf||'-') + ' / ' + (data.horizon_bars||'-'));
+  set('ev-streams', fmtNum(data.streams));
+  set('ev-minn', fmtNum(data.decisions?.kpi_min_n));
+  set('ev-keep', fmtNum((data.decisions?.keep||[]).length));
+  set('ev-drop', fmtNum((data.decisions?.drop||[]).length));
+  set('ev-tune', fmtNum((data.decisions?.tune||[]).length));
+  set('ev-need', fmtNum((data.decisions?.need_data||[]).length));
+  (function(){
+    const total = Number(data.per_key_summary?.rows_n ?? data.streams ?? 0);
+    const need = Number((data.decisions?.need_data || []).length);
+    const pass = Math.max(0, total - need);
+    const ratio = total > 0 ? (pass / total) : 0;
+    const pill = $('ev-sufficient');
+    const desc = $('ev-sufficient-desc');
+    if (!pill || !desc) return;
+    let label = '부족';
+    if (total === 0) label = '부족';
+    else if (need === 0) label = '충분';
+    else if (ratio >= 0.7) label = '부분';
+    pill.textContent = label;
+    pill.className = `pill ${label === '충분' ? 'ok' : (label === '부분' ? 'warn' : 'dim')}`;
+    desc.textContent = total > 0 ? `${pass}/${total} 충족` : '표본 없음';
+  })();
+  (function(){
+    const d = data.diagnostics || {};
+    const ok = Number(d.match_ok || 0);
+    const missNow = Number(d.match_nowClose_missing || 0);
+    const missFut = Number(d.match_futClose_missing || 0);
+    const scanned = Number(d.scanned_signals || d.scanned || 0);
+    const total = scanned || (ok + missNow + missFut);
+
+    const pct = (n) => total > 0 ? (n / total) * 100 : 0;
+    const fmtPct2 = (n) => Number.isFinite(n) ? (n.toFixed(2) + "%") : "-";
+    const setBar = (id, n, p) => {
+      const bar = document.getElementById(id);
+      if (bar) bar.style.width = Math.max(0, Math.min(100, p)) + "%";
+      return { n, p };
+    };
+
+    const pOk = pct(ok);
+    const pNow = pct(missNow);
+    const pFut = pct(missFut);
+
+    setBar("ev-diag-ok-bar", ok, pOk);
+    setBar("ev-diag-now-bar", missNow, pNow);
+    setBar("ev-diag-fut-bar", missFut, pFut);
+
+    set("ev-diag-ok-pct", fmtPct2(pOk));
+    set("ev-diag-now-pct", fmtPct2(pNow));
+    set("ev-diag-fut-pct", fmtPct2(pFut));
+    set("ev-diag-ok-count", fmtNum(ok) + " / " + fmtNum(total));
+    set("ev-diag-now-count", fmtNum(missNow));
+    set("ev-diag-fut-count", fmtNum(missFut));
+
+    const summary = `정상 ${fmtPct2(pOk)} (${fmtNum(ok)}/${fmtNum(total)}) · 현재 봉 누락 ${fmtPct2(pNow)} · 다음 봉 누락 ${fmtPct2(pFut)} · closeMap ${fmtNum(d.closeMap_size)}`;
+    set("ev-diag-summary", summary);
+
+    const warnEl = document.getElementById("ev-diag-warn");
+    if (warnEl) {
+      const missTotalPct = pNow + pFut;
+      let level = "ok";
+      let msg = "상태 양호";
+      if (missTotalPct >= 30) { level = "bad"; msg = "누락 비율 높음: 백필/대기 필요"; }
+      else if (missTotalPct >= 10) { level = "warn"; msg = "일부 누락: 최근 신호/봉 부족 가능"; }
+      warnEl.textContent = msg;
+      warnEl.className = "pill " + level;
+    }
+
+    const causeEl = document.getElementById("ev-diag-cause");
+    if (causeEl) {
+      const nowPct = pNow;
+      const futPct = pFut;
+      let cause = "균형적 누락";
+      if (nowPct >= futPct * 1.5) cause = "현재 봉 데이터 부족(과거 봉 누락 가능)";
+      else if (futPct >= nowPct * 1.5) cause = "미래 봉 대기(최근 신호가 많음)";
+      causeEl.textContent = cause;
+    }
+
+    set("ev-diag-raw", JSON.stringify(d || {}, null, 2));
+  })();
+
+  const body = $('ev-body');
+  const rows = Array.isArray(data.signal_kpi_A) ? data.signal_kpi_A.slice(0, 200) : [];
+  if (rows.length === 0){
+    body.innerHTML = `<tr><td colspan="9" class="subtle">표가 비어 있습니다.</td></tr>`;
+    return;
+  }
+  body.innerHTML = '';
+  for (const x of rows){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="mono">${x.exchange || '-'}</td>
+      <td class="mono">${x.symbol_or_pair_id || x.symbol || '-'}</td>
+      <td>${sideLabel(x.side)}</td>
+      <td>${x.group || '-'}</td>
+      <td>${x.subtype || '-'}</td>
+      <td class="mono">${fmtNum(x.n)}</td>
+      <td class="mono">${fmtNum(x.eval_n)}</td>
+      <td class="mono">${fmtEv(x.ev)}</td>
+      <td class="mono">${fmtPct(x.win_rate)}</td>
+    `;
+    body.appendChild(tr);
+  }
+})();
+</script>
+
+<%- include('partials/app_end') %>

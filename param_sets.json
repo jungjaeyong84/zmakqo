@@ -1,0 +1,12 @@
+{
+  "active_param_set_id": "P0",
+  "param_sets": {
+    "P0": {
+      "desc": "baseline (no tuning)",
+      "KPI_MIN_N": 20,
+      "KPI_GREEN_WINRATE": 0.70,
+      "KPI_YELLOW_WINRATE": 0.60,
+      "TRADE_PNL_MODE": "EACH_SELL"
+    }
+  }
+}

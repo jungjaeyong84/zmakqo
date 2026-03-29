@@ -1,0 +1,317 @@
+<%- include('partials/app_start', { title: 'AI 저널 · DONBEOLJA Ω', pageTitle: 'AI 저널', active: 'trading' }) %>
+
+<%
+  const sideLabel = (side) => {
+    const s = String(side || '').toUpperCase();
+    if (s === 'BUY') return '매수';
+    if (s === 'SELL') return '매도';
+    if (s === 'HOLD') return '대기';
+    return side || '-';
+  };
+  const decisionLabel = (d) => {
+    const s = String(d || '').toUpperCase();
+    if (s === 'BLOCK') return '차단';
+    if (s === 'REDUCE') return '축소';
+    if (s === 'ALLOW') return '허용';
+    return d || '-';
+  };
+  const corrLevelLabel = (lvl) => {
+    if (!lvl) return null;
+    const s = String(lvl).toUpperCase();
+    if (s === 'HIGH') return '높음';
+    if (s === 'MID') return '중간';
+    if (s === 'LOW') return '낮음';
+    return lvl;
+  };
+  const fmtKst = (v) => {
+    if (!v) return '-';
+    const raw = String(v);
+    if (raw.includes('KST')) return raw;
+    const ms = Date.parse(raw);
+    if (!Number.isFinite(ms)) return raw;
+    const k = new Date(ms + 9 * 60 * 60 * 1000);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${k.getUTCFullYear()}-${pad(k.getUTCMonth() + 1)}-${pad(k.getUTCDate())} ${pad(k.getUTCHours())}:${pad(k.getUTCMinutes())}:${pad(k.getUTCSeconds())} KST`;
+  };
+  const fmtPct = (x) => {
+    if (x == null || x === '') return '-';
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '-';
+    return n.toFixed(2);
+  };
+  const fmtConf = (x) => {
+    if (x == null || x === '') return '-';
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '-';
+    return n.toFixed(2);
+  };
+  const fmtWeight = (x) => {
+    if (x == null || x === '') return '-';
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '-';
+    return n.toFixed(2);
+  };
+  const fmtScore = (x) => {
+    if (x == null || x === '') return '-';
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '-';
+    return n.toFixed(2);
+  };
+  const fmtNet = (x) => {
+    if (x == null || x === '') return '-';
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '-';
+    return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  };
+  const fmtInt = (x) => {
+    if (x == null || x === '') return '-';
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '-';
+    return String(Math.round(n));
+  };
+  const aiRiskBiasLabel = (mode) => {
+    const s = String(mode || '').toUpperCase();
+    if (!s) return '-';
+    if (s.includes('AGG') || s.includes('LONG') || s.includes('BULL') || s === 'UP') return '롱우위';
+    if (s.includes('CON') || s.includes('SHORT') || s.includes('BEAR') || s === 'DOWN') return '숏우위';
+    if (s.includes('NEU')) return '중립';
+    return String(mode);
+  };
+  const exitEventTag = (event) => {
+    const ev = String(event || '').toUpperCase();
+    let m = ev.match(/^EXIT_TP_P1_([0-9]+(?:\.[0-9]+)?)P$/);
+    if (m) return `TP1_${m[1]}`;
+    m = ev.match(/^EXIT_TP_C_([0-9]+(?:\.[0-9]+)?)P$/);
+    if (m) return `TP1_${m[1]}`;
+    m = ev.match(/^EXIT_TRAIL_([0-9]+(?:\.[0-9]+)?)P$/);
+    if (m) return `TRAIL_${m[1]}`;
+    m = ev.match(/^EXIT_SL_([0-9]+(?:\.[0-9]+)?)P$/);
+    if (m) return `SL_${m[1]}`;
+    m = ev.match(/^EXIT_BE_([0-9]+(?:\.[0-9]+)?)P$/);
+    if (m) return `BE_${m[1]}`;
+    if (ev.startsWith('EXIT_TP_P1')) return 'TP1';
+    if (ev.startsWith('EXIT_TP_C')) return 'TP1';
+    if (ev.startsWith('EXIT_TRAIL')) return 'TRAIL';
+    if (ev.startsWith('EXIT_SL')) return 'SL';
+    if (ev.startsWith('EXIT_BE')) return 'BE';
+    return null;
+  };
+  const eventDisplay = (event) => {
+    const rawUpper = String(event || '').toUpperCase();
+    if (rawUpper === 'LONG') return 'LONG';
+    if (rawUpper === 'SHORT') return 'SHORT';
+    const entryMatch = rawUpper.match(/^(EARLY|CORE|PRE_REAL|REAL)_(LONG|SHORT)$/);
+    if (entryMatch) return entryMatch[2];
+    let raw = String(event || '-');
+    raw = rawUpper.replace(/^EXIT_TP_C_([0-9]+(?:\.[0-9]+)?)P$/, 'EXIT_TP_P1_$1P');
+    raw = raw === 'EXIT_TP_C' ? 'EXIT_TP_P1' : raw;
+    const tag = exitEventTag(event);
+    return tag ? `${raw} (${tag})` : raw;
+  };
+  const hasKo = (s) => /[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(String(s || ''));
+  const translateReason = (text) => {
+    if (!text) return '-';
+    let t = String(text);
+    const replaceMap = [
+      [/DROP_STALE_SIGNAL/g, "지연 신호"],
+      [/DROP_NO_POSITION_EXIT/g, "포지션 없음(청산 불가)"],
+      [/NO_POSITION_EXIT/g, "포지션 없음(청산 불가)"],
+      [/DROP_OVERLAP/g, "신호 겹침"],
+      [/DROP_LOW_SCORE/g, "점수 부족"],
+      [/DROP_SPIKE_LOCK/g, "급등락 락"],
+      [/AI_BLOCK/g, "AI 차단"],
+      [/CROSS_ASSET_BLOCK/g, "교차자산: 차단"],
+      [/CROSS_ASSET_REDUCE/g, "교차자산: 축소"],
+      [/CROSS_ASSET_OPPOSITE_HIGH_CORR/g, "교차자산: 반대 포지션(고상관)"],
+      [/CROSS_ASSET_HEDGE_HIGH_CORR/g, "교차자산: 헤지(고상관)"],
+      [/CROSS_ASSET_HEDGE_MID_CORR/g, "교차자산: 헤지(중상관)"],
+      [/CROSS_ASSET_OPPOSITE_LOW_CORR/g, "교차자산: 반대 포지션(저상관)"],
+      [/CROSS_ASSET_HEDGE_TOO_SMALL/g, "교차자산: 헤지 너무 작음"],
+      [/fetch failed/gi, "가져오기 실패"],
+      [/EXIT_ALWAYS_ALLOW/g, "EXIT 항상 허용"],
+      [/PRO_RISK_SOFT/g, "리스크 완화"],
+      [/REVERSE_BLOCKED/g, "반대전환 차단"],
+      [/FLAT_ENTRY/g, "무포지션 진입"],
+      [/IN_POSITION_SAME_DIR/g, "동방향 추가"],
+      [/IN_POSITION_OPPOSITE_DIR/g, "반대방향 진입"],
+    ];
+    replaceMap.forEach(([re, rep]) => { t = t.replace(re, rep); });
+
+    const kvMap = [
+      [/late_by_bars=/g, "지연바="],
+      [/max=/g, "최대="],
+      [/gate_tf=/g, "게이트TF="],
+      [/gate_dir=/g, "게이트방향="],
+      [/gate_reason=/g, "게이트사유="],
+      [/gate_move_pct=/g, "게이트변동="],
+      [/pos_state=/g, "포지션상태="],
+      [/pos_dir=/g, "포지션방향="],
+      [/pos_size_pct=/g, "포지션크기="],
+      [/pos_active=/g, "포지션활성="],
+      [/overlap_bars=/g, "겹침바="],
+      [/last_entry_bar_ms=/g, "마지막진입바(ms)="],
+      [/score_min=/g, "최소점수="],
+      [/score=/g, "점수="],
+      [/ai_reason=/g, "AI사유="],
+      [/ai_conf=/g, "AI신뢰도="],
+    ];
+    kvMap.forEach(([re, rep]) => { t = t.replace(re, rep); });
+
+    t = t.replace(/\bLONG\b/g, "롱");
+    t = t.replace(/\bSHORT\b/g, "숏");
+    t = t.replace(/\bNEUTRAL\b/g, "중립");
+    t = t.replace(/\bUP_SEQ\b/g, "상승연속");
+    t = t.replace(/\bDOWN_SEQ\b/g, "하락연속");
+    return t;
+  };
+  const rowsSafe = Array.isArray(rows) ? rows : [];
+  const stats = rowsSafe.reduce((acc, r) => {
+    const d = String(r.ai_decision || 'NONE').toUpperCase();
+    acc.total += 1;
+    acc[d] = (acc[d] || 0) + 1;
+    return acc;
+  }, { total: 0 });
+%>
+
+<div class="subnav">
+  <a href="/dashboard/trading">상태</a>
+  <a href="/dashboard/journal">저널</a>
+  <a class="active" href="/dashboard/ai">AI 저널</a>
+</div>
+
+<div class="card">
+  <h2>AI 판단 타임라인</h2>
+  <div class="subtle">
+    신호/드랍 기준 최신 200건. 각 신호의 AI 판단과 요약을 보여줍니다.
+  </div>
+  <div class="hr"></div>
+
+  <div class="kv">
+    <div class="k">건수</div><div class="v"><%= meta && meta.n != null ? meta.n : rowsSafe.length %></div>
+    <div class="k">최신 시각</div><div class="v mono"><%= meta && meta.last_created_kst ? meta.last_created_kst : '-' %></div>
+    <div class="k">신호 TF</div><div class="v mono"><%= signal_tf || '-' %></div>
+    <div class="k">차단</div><div class="v"><%= stats.BLOCK || 0 %></div>
+    <div class="k">축소</div><div class="v"><%= stats.REDUCE || 0 %></div>
+    <div class="k">허용</div><div class="v"><%= stats.ALLOW || 0 %></div>
+    <div class="k">AI 미사용</div><div class="v"><%= stats.NONE || 0 %></div>
+  </div>
+</div>
+
+<div class="hr"></div>
+
+<div class="tablewrap">
+  <div class="head">
+    <h2>AI 분석 기록</h2>
+    <div class="subtle">컬렉션: signals / signals_dropped</div>
+  </div>
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>시간</th>
+          <th>마켓</th>
+          <th>TF</th>
+          <th>방향</th>
+          <th>이벤트</th>
+          <th>흐름</th>
+          <th>AI 결정</th>
+          <th>GPT 신뢰도</th>
+          <th>AI Guard</th>
+          <th>교차자산</th>
+          <th>AI 우위(참고)</th>
+          <th>수량(원→최종)</th>
+          <th>AI 요약</th>
+          <th>사유</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (rowsSafe.length === 0) { %>
+          <tr><td colspan="14" class="subtle">AI 기록이 없습니다. (AI 비활성 또는 아직 데이터 없음)</td></tr>
+        <% } else { %>
+          <% rowsSafe.forEach(r => { %>
+            <tr>
+              <td class="mono">
+                <div><%= fmtKst(r.signal_created_kst || r.signal_created_at || r.created_kst || r.created_at) %></div>
+                <% if (r.has_drop && r.drop_created_at) { %>
+                  <div class="subtle">최종 <%= fmtKst(r.drop_created_kst || r.drop_created_at) %></div>
+                <% } %>
+              </td>
+              <td class="mono"><%= r.symbol_or_pair_id || '-' %></td>
+              <td class="mono"><%= r.tf || '-' %></td>
+              <td><%= sideLabel(r.side) %></td>
+              <td>
+                <%= eventDisplay(r.event) %>
+              </td>
+              <td class="mono"><%= r.lifecycle || r.kind || '-' %></td>
+              <td><%= decisionLabel(r.ai_decision) %></td>
+              <td class="mono"><%= fmtConf(r.ai_confidence) %></td>
+              <td class="mono">
+                <% const gptDecision = r.ai_gpt_decision || r.ai_decision; %>
+                <% const gptConf = r.ai_gpt_confidence != null ? r.ai_gpt_confidence : r.ai_confidence; %>
+                <% const claudeLabel = r.ai_claude_attempted ? decisionLabel(r.ai_claude_decision) : '-'; %>
+                <div>GPT: <%= decisionLabel(gptDecision) %> · <%= fmtConf(gptConf) %></div>
+                <div>Claude: <%= claudeLabel %> · <%= fmtConf(r.ai_claude_confidence) %></div>
+                <div>Ens: <%= fmtScore(r.ai_ensemble_score) %> (A <%= fmtScore(r.ai_ensemble_allow_min) %> / R <%= fmtScore(r.ai_ensemble_reduce_min) %>)</div>
+                <div class="subtle">w <%= fmtWeight(r.ai_ensemble_w_gpt) %>/<%= fmtWeight(r.ai_ensemble_w_claude) %></div>
+              </td>
+              <td class="mono">
+                <% if (r.ai_cross_decision) { %>
+                  <% const crossLevel = corrLevelLabel(r.ai_cross_level); %>
+                  <% const crossCorr = r.ai_cross_corr != null ? fmtConf(r.ai_cross_corr) : null; %>
+                  <% const crossBeta = r.ai_cross_beta != null ? fmtConf(r.ai_cross_beta) : null; %>
+                  <% const crossScale = r.ai_cross_scale != null ? fmtConf(r.ai_cross_scale) : null; %>
+                  <% const crossNetBefore = r.ai_cross_net_before != null ? fmtNet(r.ai_cross_net_before) : null; %>
+                  <% const crossNetAfter = r.ai_cross_net_after != null ? fmtNet(r.ai_cross_net_after) : null; %>
+                  <% const crossSource = r.ai_cross_corr_source || null; %>
+                  <% const crossCorrN = r.ai_cross_corr_n != null ? fmtInt(r.ai_cross_corr_n) : null; %>
+                  <% const crossTf = r.ai_cross_corr_tf || null; %>
+                  <% const crossWin = r.ai_cross_corr_window != null ? fmtInt(r.ai_cross_corr_window) : null; %>
+                  <% const crossPosN = r.ai_cross_positions_n != null ? fmtInt(r.ai_cross_positions_n) : null; %>
+                  <div>
+                    <%= decisionLabel(r.ai_cross_decision) %>
+                    <% if (crossLevel) { %> · <%= crossLevel %><% } %>
+                    <% if (crossCorr) { %> · corr <%= crossCorr %><% } %>
+                    <% if (crossBeta) { %> · beta <%= crossBeta %><% } %>
+                    <% if (crossScale) { %> · x<%= crossScale %><% } %>
+                  </div>
+                  <% if (crossNetBefore || crossNetAfter) { %>
+                    <div class="subtle">net <%= crossNetBefore || '-' %> → <%= crossNetAfter || '-' %></div>
+                  <% } %>
+                  <% if (crossSource || crossCorrN) { %>
+                    <div class="subtle">src <%= crossSource || '-' %><% if (crossCorrN) { %> · n <%= crossCorrN %><% } %></div>
+                  <% } %>
+                  <% if (crossTf || crossWin || crossPosN) { %>
+                    <div class="subtle">tf <%= crossTf || '-' %> · win <%= crossWin || '-' %> · pos <%= crossPosN || '-' %></div>
+                  <% } %>
+                  <% if (r.ai_cross_reason) { %>
+                    <div class="subtle"><%= r.ai_cross_reason_ko || translateReason(r.ai_cross_reason) %></div>
+                  <% } %>
+                <% } else { %>
+                  -
+                <% } %>
+              </td>
+              <td><%= aiRiskBiasLabel(r.ai_risk_mode) %></td>
+              <td class="mono"><%= fmtPct(r.ai_qty_raw) %> → <%= fmtPct(r.ai_qty_final) %></td>
+              <td class="subtle"><%= r.ai_news_summary_ko || r.ai_reason_ko || '-' %></td>
+              <td class="subtle">
+                <% if (r.has_signal) { %>
+                  <div>수신: <%= translateReason(r.signal_reason_detail || r.signal_reason || '-') %></div>
+                <% } %>
+                <% if (r.has_drop) { %>
+                  <div>최종: <%= translateReason(r.drop_reason_detail || r.drop_reason || '-') %></div>
+                <% } else if (!r.has_signal) { %>
+                  <div><%= translateReason(r.reason_detail || r.reason || '-') %></div>
+                <% } %>
+                <% if (r.ai_reason_ko) { %>
+                  <div class="subtle">AI: <%= r.ai_reason_ko %></div>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<%- include('partials/app_end') %>

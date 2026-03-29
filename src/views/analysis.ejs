@@ -1,0 +1,196 @@
+<%- include('partials/app_start', { title: '리포트 센터 · DONBEOLJA Ω', pageTitle: '리포트 센터', active: 'analysis' }) %>
+
+<div class="subnav">
+  <a class="active" href="/dashboard/analysis">요약</a>
+  <a href="/dashboard/report">리포트</a>
+  <a href="/dashboard/eval">평가</a>
+  <a href="/dashboard/briefing">브리핑</a>
+  <a href="/dashboard/profit">수익</a>
+  <a href="/dashboard/cashflow">입출금</a>
+</div>
+
+<div class="grid cols-3">
+  <div class="card">
+    <h2>리포트</h2>
+    <div class="subtle">주간/월간 요약을 확인하고 ZIP 패키지를 내려받습니다.</div>
+    <div class="hr"></div>
+    <div class="kv">
+      <div class="k">최근 주간</div><div class="v" id="an-wk">…</div>
+      <div class="k">최근 월간</div><div class="v" id="an-mo">…</div>
+    </div>
+    <div class="hr"></div>
+    <a class="btn ghost slim" href="/dashboard/report">리포트 열기</a>
+  </div>
+
+  <div class="card">
+    <h2>평가</h2>
+    <div class="subtle">표본 수, EV/승률, 유지/제거 요약을 확인합니다.</div>
+    <div class="hr"></div>
+    <div class="kv">
+      <div class="k">평가 주차</div><div class="v" id="an-ev-week">…</div>
+      <div class="k">상태</div><div class="v" id="an-ev-status">…</div>
+    </div>
+    <div class="hr"></div>
+    <a class="btn ghost slim" href="/dashboard/eval">평가 열기</a>
+  </div>
+
+  <div class="card">
+    <h2>브리핑</h2>
+    <div class="subtle">사람이 읽기 좋은 문장으로 현재 상태를 요약합니다.</div>
+    <div class="hr"></div>
+    <div class="kv">
+      <div class="k">출처</div><div class="v" id="an-br-src">…</div>
+      <div class="k">업데이트</div><div class="v" id="an-br-upd">…</div>
+    </div>
+    <div class="hr"></div>
+    <a class="btn ghost slim" href="/dashboard/briefing">브리핑 열기</a>
+  </div>
+</div>
+
+<div class="hr"></div>
+
+<div class="card">
+  <h2>데이터 신선도</h2>
+  <div class="subtle">신호/체결의 최신 도착 시각을 확인합니다. (상세는 거래/리포트)</div>
+  <div class="hr"></div>
+  <div class="grid cols-2">
+    <div class="card" style="box-shadow:none;">
+      <h2>신호</h2>
+      <div class="kv">
+        <div class="k">최신</div><div class="v mono" id="an-sig">…</div>
+      </div>
+    </div>
+    <div class="card" style="box-shadow:none;">
+      <h2>체결</h2>
+      <div class="kv">
+        <div class="k">최신</div><div class="v mono" id="an-fill">…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(async function(){
+  async function j(url){
+    try{
+      const r = await fetch(url, { credentials:'include' });
+      const t = await r.text();
+      try{ return { ok:r.ok, json: JSON.parse(t) }; } catch(_){ return { ok:r.ok, json:null }; }
+    }catch(e){ return { ok:false, json:null }; }
+  }
+  function set(id, v){
+    const el = document.getElementById(id);
+    if (el) el.textContent = v;
+  }
+  function toMsSafe(v){
+    if (!v) return null;
+    const direct = Date.parse(String(v));
+    if (Number.isFinite(direct)) return direct;
+    const s = String(v);
+    if (s.includes(" KST")) {
+      const iso = s.replace(" KST", "+09:00");
+      const ms = Date.parse(iso);
+      if (Number.isFinite(ms)) return ms;
+    }
+    return null;
+  }
+  function fmtKstMs(ms){
+    if (!Number.isFinite(ms)) return "-";
+    const k = new Date(ms + 9 * 60 * 60 * 1000);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${k.getUTCFullYear()}-${pad(k.getUTCMonth() + 1)}-${pad(k.getUTCDate())} ${pad(k.getUTCHours())}:${pad(k.getUTCMinutes())}:${pad(k.getUTCSeconds())} KST`;
+  }
+  function fmtKst(v){
+    if (!v) return "-";
+    const ms = toMsSafe(v);
+    if (!Number.isFinite(ms)) return String(v);
+    return fmtKstMs(ms);
+  }
+  function statusLabel(s){
+    const x = String(s || "").toUpperCase();
+    if (x === "GREEN" || x === "PASS" || x === "OK") return "양호";
+    if (x === "YELLOW" || x === "WARN") return "주의";
+    if (x === "RED" || x === "FAIL") return "경고";
+    if (x === "INCONCLUSIVE" || x === "NEED_DATA") return "보류";
+    return s || "-";
+  }
+
+  const ev = await j('/api/eval/latest');
+  if (ev.ok && ev.json && ev.json.ok){
+    set('an-ev-week', ev.json.id || '-');
+    const st = ev.json.data && ev.json.data.status ? ev.json.data.status : (ev.json.status || 'OK');
+    set('an-ev-status', statusLabel(st));
+  } else {
+    set('an-ev-week','(확인 불가)');
+    set('an-ev-status','(확인 불가)');
+  }
+
+  const wk = await j('/api/report/latest?mode=weekly');
+  const mo = await j('/api/report/latest?mode=monthly');
+  if (wk.ok && wk.json && wk.json.ok) set('an-wk', (wk.json.id||'LATEST__weekly') + ' · ' + fmtKst(wk.json.data?.computed_at || '-'));
+  else set('an-wk','(확인 불가)');
+  if (mo.ok && mo.json && mo.json.ok) set('an-mo', (mo.json.id||'LATEST__monthly') + ' · ' + fmtKst(mo.json.data?.computed_at || '-'));
+  else set('an-mo','(확인 불가)');
+
+  const br = await j('/api/briefing/latest');
+  if (br.ok && br.json && br.json.ok){
+    set('an-br-src', 'kpi_latest (' + (br.json.count||0) + ' rows)');
+    set('an-br-upd', fmtKst(br.json.computed_at || '-'));
+  } else {
+    set('an-br-src','(확인 불가)');
+    set('an-br-upd','(확인 불가)');
+  }
+
+  const st = await j('/api/state');
+  let latestSigText = null;
+  let latestFillText = null;
+  if (st.ok && st.json && st.json.ok && Array.isArray(st.json.rows)){
+    let sigMs = null;
+    let sigMarket = null;
+    let fillMs = null;
+    let fillMarket = null;
+    for (const row of st.json.rows){
+      const s = row.last_signal || null;
+      const f = row.last_fill || null;
+      const sMs = toMsSafe(s?.created_at || s?.created_kst || s?.createdAt);
+      const fMs = toMsSafe(f?.created_at || f?.created_kst || f?.createdAt);
+      if (Number.isFinite(sMs) && (sigMs === null || sMs > sigMs)) {
+        sigMs = sMs;
+        sigMarket = row.market || s?.symbol_or_pair_id || s?.symbol || null;
+      }
+      if (Number.isFinite(fMs) && (fillMs === null || fMs > fillMs)) {
+        fillMs = fMs;
+        fillMarket = row.market || f?.symbol_or_pair_id || f?.symbol || null;
+      }
+    }
+    if (sigMs !== null) {
+      latestSigText = fmtKstMs(sigMs) + (sigMarket ? (' · ' + sigMarket) : '');
+      set('an-sig', latestSigText);
+    }
+    if (fillMs !== null) {
+      latestFillText = fmtKstMs(fillMs) + (fillMarket ? (' · ' + fillMarket) : '');
+      set('an-fill', latestFillText);
+    }
+  }
+
+  // freshness: piggyback report preview (cheap)
+  const now = new Date();
+  const from = new Date(now.getTime() - 7*24*60*60*1000).toISOString();
+  const to = now.toISOString();
+  const prev = await j('/api/report/preview?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to));
+  if (prev.ok && prev.json && prev.json.ok){
+    const counts = prev.json.counts || {};
+    const fillsNew = counts.fills_new ?? prev.json.fillsNew ?? prev.json.fills_new ?? '-';
+    const sellsNew = counts.sells_new ?? prev.json.sellsNew ?? prev.json.sells_new ?? '-';
+    const fillSuffix = '신규체결=' + fillsNew + ', 신규매도=' + sellsNew;
+    if (latestFillText) set('an-fill', latestFillText + ' · ' + fillSuffix);
+    else set('an-fill', fillSuffix);
+    if (!latestSigText) set('an-sig', fmtKst(prev.json.range?.to || '(확인 불가)'));
+  } else {
+    set('an-sig','(미리보기 없음)');
+    set('an-fill','(미리보기 없음)');
+  }
+})();
+</script>
+
+<%- include('partials/app_end') %>

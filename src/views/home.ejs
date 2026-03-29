@@ -1,0 +1,1473 @@
+<%- include('partials/app_start', { title: '대시보드 · DONBEOLJA Ω', pageTitle: '대시보드', active: 'home' }) %>
+
+<%
+  const budgetUnit = String(
+    (budget_summary && budget_summary.unit) ||
+    (budget_perf && budget_perf.unit) ||
+    (String(exchange || "").includes("BINANCE") ? "USDT" : "KRW")
+  ).toUpperCase();
+  const fmtNum = (x) => (x == null || x === '' || Number.isNaN(Number(x))) ? '-' : Number(x).toLocaleString();
+  const rawNum = (x) => {
+    const n = Number(x);
+    return Number.isFinite(n) ? n : '';
+  };
+  const fmtKrw = (x) => {
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '-';
+    if (budgetUnit === "USDT") {
+      return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    const cut = Math.trunc(n / 10) * 10;
+    return cut.toLocaleString();
+  };
+  const fmtPct = (x) => (x == null || x === '' || Number.isNaN(Number(x))) ? '-' : (Number(x).toFixed(2) + '%');
+  const fmtPctSigned = (x) => {
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '-';
+    const sign = n > 0 ? '+' : n < 0 ? '' : '';
+    return sign + (n * 100).toFixed(2) + '%';
+  };
+  const fmtNumSigned = (x) => {
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '-';
+    const sign = n > 0 ? '+' : n < 0 ? '' : '';
+    return sign + n.toLocaleString();
+  };
+  const fmtKrwSigned = (x) => {
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '-';
+    const sign = n > 0 ? '+' : n < 0 ? '' : '';
+    if (budgetUnit === "USDT") {
+      return sign + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    const cut = Math.trunc(n / 10) * 10;
+    return sign + cut.toLocaleString();
+  };
+  const fmtPctShort = (x) => {
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '-';
+    return (n * 100).toFixed(0) + '%';
+  };
+  const reportLink = (market) => {
+    let url = "/dashboard/report?mode=weekly";
+    if (weekly_range_perf && weekly_range_perf.from && weekly_range_perf.to) {
+      url += `&from=${encodeURIComponent(weekly_range_perf.from)}&to=${encodeURIComponent(weekly_range_perf.to)}`;
+    }
+    if (market) url += `&market=${encodeURIComponent(market)}`;
+    return url;
+  };
+  const fmtKst = (s) => {
+    if (!s) return '-';
+    const raw = String(s);
+    if (raw.includes('KST')) return raw;
+    const ms = Date.parse(raw);
+    if (!Number.isFinite(ms)) return raw;
+    const k = new Date(ms + 9 * 60 * 60 * 1000);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${k.getUTCFullYear()}-${pad(k.getUTCMonth() + 1)}-${pad(k.getUTCDate())} ${pad(k.getUTCHours())}:${pad(k.getUTCMinutes())}:${pad(k.getUTCSeconds())} KST`;
+  };
+  const stackColor = (x) => {
+    const n = Number(x);
+    if (!Number.isFinite(n)) return '#c9c9cc';
+    if (n > 0) return '#0a7a5a';
+    if (n < 0) return '#b42318';
+    return '#8a8f98';
+  };
+  const kpiBadge = (st) => {
+    const s = String(st || 'INCONCLUSIVE').toUpperCase();
+    if (s === 'GREEN' || s === 'PASS') return 'ok';
+    if (s === 'YELLOW' || s === 'WARN') return 'warn';
+    if (s === 'RED' || s === 'FAIL') return 'bad';
+    return 'dim';
+  };
+  const statusLabel = (st) => {
+    const s = String(st || 'INCONCLUSIVE').toUpperCase();
+    if (s === 'GREEN' || s === 'PASS') return '양호';
+    if (s === 'YELLOW' || s === 'WARN') return '주의';
+    if (s === 'RED' || s === 'FAIL') return '경고';
+    if (s === 'INCONCLUSIVE' || s === 'NEED_DATA') return '보류';
+    return st || '-';
+  };
+  const liveStatus = (sys) => {
+    const s = sys || {};
+    const exec = String(s.execution_mode || 'PAPER').toUpperCase();
+    if (exec !== 'LIVE') return { label: 'PAPER', badge: 'dim' };
+    if (s.live_dry_run) return { label: 'DRY RUN', badge: 'warn' };
+    if (s.live_enabled) return { label: 'LIVE', badge: 'ok' };
+    return { label: 'OFF', badge: 'bad' };
+  };
+  const parseAiBiasRaw = (raw) => {
+    const key = String(raw || '').trim().toLowerCase();
+    if (!key) return null;
+    if (
+      key === 'long' || key === 'bull' || key === 'up' ||
+      key.includes('long') || key.includes('bull') ||
+      key.includes('롱') || key.includes('상승')
+    ) return 'long';
+    if (
+      key === 'short' || key === 'bear' || key === 'down' ||
+      key.includes('short') || key.includes('bear') ||
+      key.includes('숏') || key.includes('하락')
+    ) return 'short';
+    if (
+      key === 'neutral' || key === 'flat' || key === 'none' ||
+      key.includes('neutral') || key.includes('중립')
+    ) return 'neutral';
+    return null;
+  };
+  const aiBiasKey = (src) => {
+    const obj = (src && typeof src === 'object') ? src : null;
+    const side = (obj && obj.side_allocation && typeof obj.side_allocation === 'object') ? obj.side_allocation : null;
+    const candidates = [
+      side && side.bias_direction,
+      obj && obj.bias_direction,
+      obj && obj.direction,
+      src,
+    ];
+    for (const c of candidates) {
+      const parsed = parseAiBiasRaw(c);
+      if (parsed) return parsed;
+    }
+    if (side) {
+      const longPct = Number(side.long_pct);
+      const shortPct = Number(side.short_pct);
+      if (Number.isFinite(longPct) && Number.isFinite(shortPct)) {
+        const diff = longPct - shortPct;
+        if (Math.abs(diff) < 0.02) return 'neutral';
+        return diff > 0 ? 'long' : 'short';
+      }
+    }
+    const mode = String(obj ? (obj.mode || '') : '').toLowerCase();
+    if (mode === 'aggressive') return 'long';
+    if (mode === 'conservative') return 'short';
+    return 'neutral';
+  };
+  const aiBiasLabel = (src) => {
+    const key = aiBiasKey(src);
+    if (key === 'long') return '롱우위';
+    if (key === 'short') return '숏우위';
+    return '중립';
+  };
+  const aiBiasBadge = (src) => {
+    const key = aiBiasKey(src);
+    if (key === 'long') return 'ok';
+    if (key === 'short') return 'warn';
+    return 'dim';
+  };
+  const aiReason = (r) => {
+    if (!r) return '-';
+    const s = String(r).trim();
+    if (s.length <= 160) return s;
+    return s.slice(0, 160) + '…';
+  };
+  const shortText = (txt, maxLen = 260) => {
+    const s = String(txt || '').trim();
+    if (!s) return '-';
+    if (s.length <= maxLen) return s;
+    return s.slice(0, maxLen) + '…';
+  };
+  const newsSourceLabel = (run) => {
+    if (!run) return '-';
+    const p = String(run.news_provider || '').trim();
+    if (!p) return '-';
+    const base = p.toLowerCase();
+    return run.news_cached ? `${base} (cache)` : base;
+  };
+  const newsReasonLabel = (run) => {
+    if (!run || !run.news_reason) return '-';
+    const s = String(run.news_reason).trim();
+    return s || '-';
+  };
+  const applyReasonLabel = (run, opts = {}) => {
+    if (!run) return '-';
+    if (run.applied) {
+      if (run.news_ok === false) return '뉴스 실패 후 중립 fallback 적용';
+      if (run.ensemble_used) return '앙상블 결과를 예산 설정에 반영';
+      if (run.gpt_attempted || run.claude_attempted) return '개별 판단 또는 기본 정책을 예산 설정에 반영';
+      return '현재 실행 결과를 예산 설정에 반영';
+    }
+    const s = String(run.apply_reason || '').trim();
+    if (!s) return '-';
+    const stale = !!opts.stale;
+    const liveNow = !!opts.liveNow;
+    if (s === 'LIVE_MODE_OFF' && liveNow) {
+      return stale ? 'LIVE_MODE_OFF (최근 실행 기준, 현재 LIVE)' : 'LIVE_MODE_OFF (설정 확인 필요)';
+    }
+    if (stale) return `${s} (최근 실행 기준)`;
+    return s;
+  };
+  const aiModelStatus = (attempted, ok) => {
+    if (!attempted) return '-';
+    return ok ? 'OK' : 'FAIL';
+  };
+  const applyStateLabel = (run) => {
+    if (!run) return '-';
+    if (!run.applied) return '미적용';
+    if (run.news_ok === false) return '중립 fallback';
+    if (run.ensemble_used) return '적용';
+    return '기본 적용';
+  };
+  const ensembleUsageLabel = (cfg, run) => {
+    if (!(cfg && cfg.ensemble_enabled)) return 'OFF';
+    if (run && run.ensemble_used) return '사용';
+    if (run && (run.gpt_attempted || run.claude_attempted || run.news_ok === false)) return '켜짐(이번 실행 미사용)';
+    return '켜짐';
+  };
+  const aiEnsembleWeightLabel = (cfg, run) => {
+    const g = Number(
+      (cfg && cfg.ensemble_w_gpt != null) ? cfg.ensemble_w_gpt
+        : (run && run.ensemble_w_gpt != null) ? run.ensemble_w_gpt
+          : 0.6
+    );
+    const c = Number(
+      (cfg && cfg.ensemble_w_claude != null) ? cfg.ensemble_w_claude
+        : (run && run.ensemble_w_claude != null) ? run.ensemble_w_claude
+          : 0.4
+    );
+    const gTxt = Number.isFinite(g) ? g.toFixed(2) : '-';
+    const cTxt = Number.isFinite(c) ? c.toFixed(2) : '-';
+    return `GPT ${gTxt} / Claude ${cTxt}`;
+  };
+  const aiScheduleLabel = (cfg) => {
+    if (!cfg || cfg.enabled !== true) return '비활성';
+    const minuteNum = Number(cfg.run_minute_kst);
+    const minute = Number.isFinite(minuteNum)
+      ? String(Math.max(0, Math.min(59, Math.trunc(minuteNum)))).padStart(2, '0')
+      : '30';
+    const arr = Array.isArray(cfg.run_hours_kst)
+      ? cfg.run_hours_kst.filter((x) => Number.isFinite(Number(x))).map((x) => Number(x)).sort((a, b) => a - b)
+      : [];
+    if (arr.length) return `매일 ${arr.map((x) => `${String(x).padStart(2, '0')}:${minute}`).join(', ')} (KST)`;
+    if (cfg.run_hour_kst != null) return `기본 ${String(cfg.run_hour_kst).padStart(2, '0')}:${minute} (KST)`;
+    return '-';
+  };
+  const buildAiDeltas = (run) => {
+    if (!run || !run.current_by_market || !run.next_by_market) return [];
+    const cur = run.current_by_market || {};
+    const nxt = run.next_by_market || {};
+    const keys = Array.from(new Set([...Object.keys(cur), ...Object.keys(nxt)])).sort();
+    const out = [];
+    for (const k of keys) {
+      const c = Number(cur[k] || 0);
+      const n = Number(nxt[k] || 0);
+      if (!Number.isFinite(c) && !Number.isFinite(n)) continue;
+      const delta = n - c;
+      if (!Number.isFinite(delta) || delta === 0) continue;
+      out.push({ market: k, delta });
+    }
+    out.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+    return out.slice(0, 6);
+  };
+  const buildAiMajors = (run, limit = 5, filterFn = null, strict = false) => {
+    if (!run) return [];
+    const next = (run.next_by_market && typeof run.next_by_market === 'object') ? run.next_by_market : null;
+    const cur = (run.current_by_market && typeof run.current_by_market === 'object') ? run.current_by_market : null;
+    const src = next || cur || {};
+    const rows = Object.entries(src).map(([market, value]) => ({
+      market,
+      value: Number(value),
+    })).filter((x) => Number.isFinite(x.value));
+    const filtered = (typeof filterFn === 'function') ? rows.filter((x) => filterFn(x.market)) : rows;
+    const list = (strict && typeof filterFn === 'function') ? filtered : (filtered.length ? filtered : rows);
+    list.sort((a, b) => b.value - a.value);
+    return list.slice(0, Math.max(1, limit));
+  };
+  const buildAiDeltaRows = (run) => {
+    if (!run || !run.current_by_market || !run.next_by_market) return [];
+    const cur = run.current_by_market || {};
+    const nxt = run.next_by_market || {};
+    const keys = Array.from(new Set([...Object.keys(cur), ...Object.keys(nxt)])).sort();
+    const rows = [];
+    for (const k of keys) {
+      const c = Number(cur[k] || 0);
+      const n = Number(nxt[k] || 0);
+      const delta = n - c;
+      if (!Number.isFinite(c) && !Number.isFinite(n)) continue;
+      rows.push({ market: k, cur: c, next: n, delta });
+    }
+    rows.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+    return rows;
+  };
+  const pnlBadge = (x) => {
+    const n = Number(x);
+    if (!Number.isFinite(n)) return 'dim';
+    if (n > 0) return 'ok';
+    if (n < 0) return 'bad';
+    return 'warn';
+  };
+  const charterMismatch = (charter_check && Array.isArray(charter_check.checks))
+    ? charter_check.checks.filter(c => !c.ok)
+    : [];
+  const charterTotal = (charter_check && Array.isArray(charter_check.checks))
+    ? charter_check.checks.length
+    : 0;
+  const charterOkCount = Math.max(0, charterTotal - charterMismatch.length);
+  const positionLabel = (st) => {
+    const s = String(st || 'FLAT').toUpperCase();
+    if (s === 'FLAT') return '대기';
+    if (s === 'ACTIVE') return '보유';
+    if (s === 'EXIT_ONLY') return '청산만';
+    return st || '-';
+  };
+  const sideLabel = (side) => {
+    const s = String(side || '').toUpperCase();
+    if (s === 'BUY') return '매수';
+    if (s === 'SELL') return '매도';
+    if (s === 'HOLD') return '대기';
+    return side || '-';
+  };
+  const exchangeLabel = (ex) => {
+    const v = String(ex || "").toUpperCase();
+    if (v.includes("BINANCE")) return "바이낸스";
+    return "바이낸스";
+  };
+  const gateBadge = (g) => {
+    const st = String(g && (g.status || g.overall_status) || '').toUpperCase();
+    const sev = String(g && g.severity || '').toUpperCase();
+    if (st === 'PASS') return 'ok';
+    if (sev === 'SOFT') return 'warn';
+    if (sev === 'HARD') return 'bad';
+    return 'dim';
+  };
+  const gateLabel = (g) => {
+    const st = String(g && g.status || '').toUpperCase();
+    if (!st) return '-';
+    if (st === 'PASS') return 'PASS';
+    return st;
+  };
+  const gateReasonLabel = (code, g) => {
+    const c = String(code || '').toUpperCase();
+    if (!c) return '-';
+    if (c === 'BAR_INTERVAL_MISMATCH') {
+      const exp = g && g.metrics_json && g.metrics_json.interval_expected_ms;
+      const act = g && g.metrics_json && g.metrics_json.interval_actual_ms;
+      if (Number.isFinite(exp) && Number.isFinite(act)) {
+        const expMin = Math.round(exp / 60000);
+        const actMin = Math.round(act / 60000);
+        return `봉 간격 불일치 (${actMin}m vs ${expMin}m)`;
+      }
+      return '봉 간격 불일치';
+    }
+    if (c === 'SESSION_GAP') return '세션 공백(장 종료)';
+    if (c === 'BAR_LAG_TOO_HIGH') return '봉 지연';
+    if (c === 'NOT_STABLE_ENOUGH') return '데이터 부족';
+    if (c === 'NO_BARS') return '봉 없음';
+    if (c === 'RATE_LIMIT_OR_FETCH_FAIL') return '데이터 조회 실패';
+    return c;
+  };
+  const gateReasonText = (g) => {
+    if (!g) return '-';
+    const codes = Array.isArray(g.reason_codes) ? g.reason_codes : (Array.isArray(g.reasonCodes) ? g.reasonCodes : []);
+    if (!codes.length) return '-';
+    return codes.map((c) => gateReasonLabel(c, g)).join(', ');
+  };
+  const latestSignal = (signals12 && signals12.length) ? signals12[0] : null;
+  const latestFill = (fills12 && fills12.length) ? fills12[0] : null;
+  const leverageSummary = (typeof leverage_summary !== 'undefined' && leverage_summary) ? leverage_summary : null;
+  const rollbackSummary = (typeof rollback_summary !== 'undefined' && rollback_summary) ? rollback_summary : null;
+  const fmtLeverage = (v) => {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0) return '-';
+    const rounded = Math.round(n * 10) / 10;
+    return `${rounded}x`;
+  };
+  const leverageBadge = (tier) => {
+    const t = String(tier || '').toLowerCase();
+    if (t === '3x') return 'warn';
+    if (t === '2x') return 'ok';
+    if (t.endsWith('x')) return 'dim';
+    return 'dim';
+  };
+  const exitEventTag = (event) => {
+    const ev = String(event || '').toUpperCase();
+    let m = ev.match(/^EXIT_TP_P1_([0-9]+(?:\.[0-9]+)?)P$/);
+    if (m) return `TP1_${m[1]}`;
+    m = ev.match(/^EXIT_TP_C_([0-9]+(?:\.[0-9]+)?)P$/);
+    if (m) return `TP1_${m[1]}`;
+    m = ev.match(/^EXIT_TRAIL_([0-9]+(?:\.[0-9]+)?)P$/);
+    if (m) return `TRAIL_${m[1]}`;
+    m = ev.match(/^EXIT_SL_([0-9]+(?:\.[0-9]+)?)P$/);
+    if (m) return `SL_${m[1]}`;
+    m = ev.match(/^EXIT_BE_([0-9]+(?:\.[0-9]+)?)P$/);
+    if (m) return `BE_${m[1]}`;
+    if (ev.startsWith('EXIT_TP_P1')) return 'TP1';
+    if (ev.startsWith('EXIT_TP_C')) return 'TP1';
+    if (ev.startsWith('EXIT_TRAIL')) return 'TRAIL';
+    if (ev.startsWith('EXIT_SL')) return 'SL';
+    if (ev.startsWith('EXIT_BE')) return 'BE';
+    return null;
+  };
+  const eventDisplay = (event) => {
+    const rawUpper = String(event || '').toUpperCase();
+    if (rawUpper === 'LONG') return 'LONG';
+    if (rawUpper === 'SHORT') return 'SHORT';
+    const entryMatch = rawUpper.match(/^(EARLY|CORE|PRE_REAL|REAL)_(LONG|SHORT)$/);
+    if (entryMatch) return entryMatch[2];
+    let raw = String(event || '-');
+    raw = rawUpper.replace(/^EXIT_TP_C_([0-9]+(?:\.[0-9]+)?)P$/, 'EXIT_TP_P1_$1P');
+    raw = raw === 'EXIT_TP_C' ? 'EXIT_TP_P1' : raw;
+    const tag = exitEventTag(event);
+    return tag ? `${raw} (${tag})` : raw;
+  };
+  const ratioToPctToken = (ratio, abs = false) => {
+    const n = Number(ratio);
+    if (!Number.isFinite(n)) return null;
+    const pct = Math.round(((abs ? Math.abs(n) : n) * 100) * 100) / 100;
+    const asInt = Math.round(pct);
+    if (Math.abs(pct - asInt) < 1e-9) return String(asInt);
+    return String(pct).replace(/\.?0+$/, '');
+  };
+  const parseMs = (v) => {
+    if (!v) return null;
+    const ms = Date.parse(String(v));
+    return Number.isFinite(ms) ? ms : null;
+  };
+  const fmtRemain = (ms) => {
+    const n = Number(ms);
+    if (!Number.isFinite(n) || n <= 0) return '-';
+    const totalSec = Math.max(0, Math.round(n / 1000));
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+  };
+  const latestSignalMs = latestSignal ? parseMs(latestSignal.created_at || latestSignal.created_kst) : null;
+  const latestFillMs = latestFill ? parseMs(latestFill.created_at || latestFill.created_kst) : null;
+  const signalToFillMin = (latestSignalMs && latestFillMs)
+    ? Math.round((latestFillMs - latestSignalMs) / 60000)
+    : null;
+  const decisionState = latestFill ? "EXECUTED" : (latestSignal ? "SIGNAL_ONLY" : "IDLE");
+  const decisionLabel = (decisionState === "EXECUTED")
+    ? "실행됨"
+    : (decisionState === "SIGNAL_ONLY" ? "신호만" : "대기");
+  const riskUsedPct = (budget_summary && budget_summary.total_used_pct != null)
+    ? budget_summary.total_used_pct
+    : null;
+%>
+
+<div class="section-head">
+  <div class="section-title">시스템 핵심</div>
+  <div class="subtle">판단 흐름과 손익 중심으로 간결하게 요약합니다.</div>
+</div>
+
+<div class="metric-grid">
+  <div class="metric-card">
+    <div class="metric-label">운영 상태</div>
+    <div class="metric-value">
+      <span class="pill <%= liveStatus(system_settings).badge %>"><%= liveStatus(system_settings).label %></span>
+    </div>
+    <div class="metric-meta mono">
+      <%= runtime && runtime.mode ? runtime.mode : '-' %> · <%= runtime && runtime.engine_version ? runtime.engine_version : '-' %>
+    </div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">게이트</div>
+    <div class="metric-value">
+      <span class="pill <%= gateBadge(gate_latest) %>"><%= gateLabel(gate_latest) %></span>
+    </div>
+    <div class="metric-meta"><%= gateReasonText(gate_latest) %></div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">리스크 사용률</div>
+    <div class="metric-value">
+      <%= (riskUsedPct == null) ? '-' : fmtPct(riskUsedPct) %>
+    </div>
+    <div class="metric-meta">
+      <%= fmtKrw(budget_summary && budget_summary.total_used_krw) %> / <%= fmtKrw(budget_summary && budget_summary.total_max_krw) %> <%= budgetUnit %>
+    </div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">총 손익</div>
+    <div class="metric-value">
+      <span class="pill <%= pnlBadge(budget_perf && budget_perf.total_pnl_krw) %>"><%= fmtKrwSigned(budget_perf && budget_perf.total_pnl_krw) %> <%= budgetUnit %></span>
+      <% if (budgetUnit === "USDT") { %>
+        <span class="subtle mono usdt-krw" data-usdt="<%= rawNum(budget_perf && budget_perf.total_pnl_krw) %>">(≈ - KRW)</span>
+      <% } %>
+    </div>
+    <div class="metric-meta">
+      성장률 <%= fmtPctSigned(budget_perf && budget_perf.growth_pct_total) %> · 실현(<%= (budget_perf && budget_perf.pnl_scope_days) ? budget_perf.pnl_scope_days : 730 %>일)+미실현
+    </div>
+  </div>
+</div>
+
+<div class="grid cols-2" style="margin-top:12px;">
+  <div class="card">
+    <h2>판단 흐름</h2>
+    <div class="subtle">신호 → 게이트 → 실행 순으로 최신 판단을 요약합니다.</div>
+    <div class="hr"></div>
+    <div class="pipeline">
+      <div class="pipeline-step <%= latestSignal ? 'ok' : 'dim' %>">
+        <span class="pipeline-dot"></span>
+        <div>
+          <div class="pipeline-title">Signal</div>
+          <div class="pipeline-meta">
+            <%= latestSignal ? (fmtKst(latestSignal.created_kst || latestSignal.created_at) + " · " + (latestSignal.symbol || '-') + " · " + eventDisplay(latestSignal.event) + " · " + sideLabel(latestSignal.side)) : '최근 신호 없음' %>
+            <% if (latestSignal && latestSignal.display_reason_external_fill) { %>
+              · <span class="pill ok">외부체결 보정</span>
+            <% } else if (latestSignal && latestSignal.display_reason_stage_text) { %>
+              · <span class="subtle"><%= latestSignal.display_reason_stage_text %></span>
+              <% if (latestSignal.display_reason_ko) { %>
+                · <span class="subtle"><%= latestSignal.display_reason_ko %></span>
+              <% } else if (latestSignal.display_reason) { %>
+                · <span class="subtle"><%= latestSignal.display_reason %></span>
+              <% } %>
+            <% } else if (latestSignal && latestSignal.display_reason) { %>
+              · <span class="subtle"><%= latestSignal.display_reason %></span>
+            <% } %>
+          </div>
+        </div>
+      </div>
+      <div class="pipeline-step <%= gateBadge(gate_latest) %>">
+        <span class="pipeline-dot"></span>
+        <div>
+          <div class="pipeline-title">Gate</div>
+          <div class="pipeline-meta"><%= gateLabel(gate_latest) %> · <%= gateReasonText(gate_latest) %></div>
+        </div>
+      </div>
+      <div class="pipeline-step <%= latestFill ? 'ok' : (latestSignal ? 'warn' : 'dim') %>">
+        <span class="pipeline-dot"></span>
+        <div>
+          <div class="pipeline-title">Execution</div>
+          <div class="pipeline-meta">
+            <%= latestFill ? (fmtKst(latestFill.created_kst || latestFill.created_at) + " · " + (latestFill.symbol || '-') + " · " + eventDisplay(latestFill.event) + " · " + sideLabel(latestFill.side) + ((latestFill.leverage_tier || latestFill.leverage_applied != null) ? (" · " + (latestFill.leverage_tier || fmtLeverage(latestFill.leverage_applied))) : "")) : '체결 대기 또는 미발생' %>
+            <% if (latestFill && latestFill.display_exec_text) { %>
+              · <span class="subtle"><%= latestFill.display_exec_text %></span>
+            <% } %>
+            <% if (signalToFillMin != null) { %>
+              · 지연 <%= fmtNum(signalToFillMin) %> 분
+            <% } %>
+          </div>
+          <% if (latestFill && latestFill.display_exec_ko) { %>
+            <div class="pipeline-meta subtle"><%= latestFill.display_exec_ko %></div>
+          <% } %>
+        </div>
+      </div>
+    </div>
+    <div class="hr"></div>
+    <div class="kv">
+      <div class="k">상태</div>
+      <div class="v"><span class="pill <%= decisionState === 'EXECUTED' ? 'ok' : (decisionState === 'SIGNAL_ONLY' ? 'warn' : 'dim') %>"><%= decisionLabel %></span></div>
+      <div class="k">신호 최신</div><div class="v mono"><%= fmtKst(latestSignalsAt) %></div>
+      <div class="k">체결 최신</div><div class="v mono"><%= fmtKst(latestFillsAt) %></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>손익 & 리스크 요약</h2>
+    <div class="subtle">총손익 = 실현(최근 <%= (budget_perf && budget_perf.pnl_scope_days) ? budget_perf.pnl_scope_days : 730 %>일) + 미실현(현재 포지션)</div>
+    <div class="hr"></div>
+    <div class="kv">
+      <div class="k">미실현</div>
+      <div class="v mono">
+        <%= fmtKrwSigned(budget_perf && budget_perf.total_unrealized_krw) %> <%= budgetUnit %>
+        <% if (budgetUnit === "USDT") { %>
+          <span class="subtle mono usdt-krw" data-usdt="<%= rawNum(budget_perf && budget_perf.total_unrealized_krw) %>">(≈ - KRW)</span>
+        <% } %>
+      </div>
+      <div class="k">실현(최근 <%= (budget_perf && budget_perf.pnl_scope_days) ? budget_perf.pnl_scope_days : 730 %>일)</div>
+      <div class="v mono">
+        <%= fmtKrwSigned(budget_perf && budget_perf.total_realized_krw) %> <%= budgetUnit %>
+        <% if (budgetUnit === "USDT") { %>
+          <span class="subtle mono usdt-krw" data-usdt="<%= rawNum(budget_perf && budget_perf.total_realized_krw) %>">(≈ - KRW)</span>
+        <% } %>
+      </div>
+      <div class="k">주간 실현</div>
+      <div class="v mono">
+        <%= fmtKrwSigned(weekly_range_perf && weekly_range_perf.total_realized_krw) %> <%= budgetUnit %>
+        <% if (budgetUnit === "USDT") { %>
+          <span class="subtle mono usdt-krw" data-usdt="<%= rawNum(weekly_range_perf && weekly_range_perf.total_realized_krw) %>">(≈ - KRW)</span>
+        <% } %>
+      </div>
+      <div class="k">실현 소스</div><div class="v mono"><%= budget_perf && budget_perf.realized_source_mode ? budget_perf.realized_source_mode : '-' %></div>
+      <div class="k">배율 상태</div>
+      <div class="v">
+        <% if (leverageSummary && leverageSummary.enabled) { %>
+          <span class="pill ok">2x <%= fmtNum(leverageSummary.tier_2x || 0) %></span>
+          <span class="pill warn">3x <%= fmtNum(leverageSummary.tier_3x || 0) %></span>
+          <span class="subtle mono">· 활성 <%= fmtNum(leverageSummary.active_markets || 0) %></span>
+        <% } else { %>
+          <span class="pill dim">현물/비활성</span>
+        <% } %>
+      </div>
+      <div class="k">롤백 상태</div>
+      <div class="v">
+        <% if (rollbackSummary && rollbackSummary.enabled) { %>
+          <% const rbCount = Number(rollbackSummary.rollback_active || 0); %>
+          <% if (rbCount > 0) { %>
+            <span class="pill bad">활성 <%= fmtNum(rbCount) %></span>
+            <span class="subtle mono">· 최대 남은 <%= fmtRemain(rollbackSummary.max_remaining_ms) %></span>
+          <% } else { %>
+            <span class="pill ok">비활성</span>
+          <% } %>
+        <% } else { %>
+          <span class="pill dim">현물/비활성</span>
+        <% } %>
+      </div>
+      <div class="k">리스크 상태</div>
+      <div class="v">
+        <span class="pill <%= (charter_check && charter_check.ok) ? 'ok' : 'warn' %>"><%= (charter_check && charter_check.ok) ? '정상' : '확인 필요' %></span>
+      </div>
+      <div class="k">방향 기준</div>
+      <div class="v">
+        <% if (budget_summary && budget_summary.source === 'ai_allocation') { %>
+          <span class="pill <%= aiBiasBadge(ai_run_latest) %>">AI <%= aiBiasLabel(ai_run_latest) %></span>
+          <% if (budget_summary.virtual) { %>
+            <span class="subtle">· 미적용(가상)</span>
+          <% } %>
+        <% } else if (budget_summary && budget_summary.enabled) { %>
+          <span class="pill dim">수동 예산</span>
+        <% } else { %>
+          <span class="pill dim">미설정</span>
+        <% } %>
+      </div>
+    </div>
+    <div class="hr"></div>
+    <div class="subtle">판단 근거(데이터 커버리지)</div>
+    <div class="hr"></div>
+    <div class="kv">
+      <div class="k">KPI 표본</div><div class="v mono"><%= coverage && coverage.min_n != null ? coverage.min_n : '-' %> / <%= coverage && coverage.kpi_min_n != null ? coverage.kpi_min_n : '-' %></div>
+      <div class="k">상태</div><div class="v"><span class="pill <%= (coverage && coverage.label === 'DATA_OK') ? 'ok' : 'warn' %>"><%= coverage && coverage.label ? coverage.label : '-' %></span></div>
+      <div class="k">메모</div><div class="v subtle"><%= coverage && coverage.note ? coverage.note : '-' %></div>
+    </div>
+  </div>
+</div>
+
+<details class="details-block" style="margin-top:14px;" open>
+  <summary>운영 상세</summary>
+  <div class="details-body">
+
+<div class="grid cols-2">
+  <div class="stack">
+  <div class="card compact">
+    <h2>운영 요약</h2>
+    <div class="grid cols-2">
+      <div>
+        <div class="subtle">시스템</div>
+        <div class="hr"></div>
+        <div class="kv">
+          <div class="k">실행 모드</div><div class="v mono"><%= runtime && runtime.mode ? runtime.mode : '-' %></div>
+          <div class="k">엔진</div><div class="v mono"><%= runtime && runtime.engine_version ? runtime.engine_version : '-' %></div>
+          <div class="k">실거래</div>
+          <div class="v"><span class="pill <%= liveStatus(system_settings).badge %>"><%= liveStatus(system_settings).label %></span></div>
+          <div class="k">신호 TF</div><div class="v mono"><%= signal_tf || '-' %></div>
+          <div class="k">실행 TF</div><div class="v mono"><%= exec_tf || '-' %></div>
+          <div class="k">금일 우위</div>
+          <div class="v">
+            <span class="pill <%= ai_mode_display ? aiBiasBadge(ai_mode_display) : 'dim' %>"><%= ai_mode_display ? aiBiasLabel(ai_mode_display) : '미산출' %></span>
+            <% if (ai_mode_stale) { %><span class="pill warn">최근값(전일)</span><% } %>
+          </div>
+          <div class="k">우위 시각</div><div class="v mono"><%= ai_mode_display ? fmtKst(ai_mode_display.created_at) : '-' %></div>
+          <div class="k">신호 최신(KST)</div><div class="v mono"><%= fmtKst(latestSignalsAt) %></div>
+          <div class="k">체결 최신(KST)</div><div class="v mono"><%= fmtKst(latestFillsAt) %></div>
+          <div class="k">게이트</div><div class="v"><span class="pill <%= gateBadge(gate_latest) %>"><%= gateLabel(gate_latest) %></span></div>
+          <div class="k">게이트 사유</div><div class="v subtle"><%= gateReasonText(gate_latest) %></div>
+        </div>
+      </div>
+      <div>
+        <div class="subtle">데이터 커버리지</div>
+        <div class="hr"></div>
+        <div class="subtle">
+          KPI 표본 수가 <b>최소 <%= coverage && coverage.kpi_min_n != null ? coverage.kpi_min_n : '-' %></b> 이상이면 EV/승률을 신뢰할 수 있습니다.
+        </div>
+        <div class="hr"></div>
+        <div class="kv">
+          <div class="k">상태</div><div class="v"><span class="pill <%= (coverage && coverage.label === 'DATA_OK') ? 'ok' : 'warn' %>"><%= coverage && coverage.label ? coverage.label : '-' %></span></div>
+          <div class="k">최소 표본</div><div class="v mono"><%= coverage && coverage.min_n != null ? coverage.min_n : '-' %></div>
+          <div class="k">메모</div><div class="v subtle"><%= coverage && coverage.note ? coverage.note : '-' %></div>
+        </div>
+        <div class="hr"></div>
+        <div class="subtle">현장-구현 체크</div>
+        <div class="hr"></div>
+        <div class="kv">
+          <div class="k">상태</div>
+          <div class="v"><span class="pill <%= (charter_check && charter_check.ok) ? 'ok' : 'bad' %>"><%= (charter_check && charter_check.ok) ? 'OK' : '불일치' %></span></div>
+          <div class="k">업데이트</div><div class="v mono"><%= charter_check && charter_check.updated_at ? fmtKst(charter_check.updated_at) : '-' %></div>
+          <div class="k">일치</div><div class="v mono"><%= charterTotal ? (charterOkCount + '/' + charterTotal) : '-' %></div>
+          <div class="k">요약</div>
+          <div class="v subtle">
+            <%= charterMismatch.length ? (charterMismatch[0].label + ' 불일치' + (charterMismatch.length > 1 ? (' 외 ' + (charterMismatch.length - 1) + '개') : '')) : '모든 규칙 일치' %>
+          </div>
+          <div class="k">불일치</div>
+          <div class="v subtle">
+            <% if (charterMismatch.length) { %>
+              <% const _labels = charterMismatch.slice(0, 3).map(m => m.label); %>
+              <%= _labels.join(', ') %><%= charterMismatch.length > 3 ? (' 외 ' + (charterMismatch.length - 3) + '개') : '' %>
+            <% } else { %>
+              -
+            <% } %>
+          </div>
+          <div class="k">상세</div>
+          <div class="v">
+            <a class="btn ghost slim" href="<%= reportLink() %>">리포트에서 보기</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+    <div class="card">
+      <% const _isBinance = String(exchange || '').toUpperCase().includes('BINANCE'); %>
+      <% const fmtPctSummary = (value, min, max, abs = false) => {
+        const minNum = Number(min);
+        const maxNum = Number(max);
+        if (Number.isFinite(minNum) && Number.isFinite(maxNum) && Math.abs(maxNum - minNum) > 1e-9) {
+          return `${ratioToPctToken(minNum, abs) || '-'}~${ratioToPctToken(maxNum, abs) || '-'}`;
+        }
+        return ratioToPctToken(value, abs) || ratioToPctToken(min, abs) || '-';
+      }; %>
+      <h2>부분 익절 조건</h2>
+      <div class="subtle">
+        <%= tp_status && tp_status.rules_source_label ? tp_status.rules_source_label : `${exchangeLabel(exchange)} 기본 규칙` %>
+        <%= tp_status && tp_status.exec_tf ? tp_status.exec_tf : '-' %> 봉 마감
+        +<%= fmtPctSummary(tp_status && tp_status.threshold_pct, tp_status && tp_status.threshold_pct_min, tp_status && tp_status.threshold_pct_max) %>%
+        (비중 <%= fmtPctSummary(tp_status && tp_status.tp_qty_pct, tp_status && tp_status.tp_qty_pct_min, tp_status && tp_status.tp_qty_pct_max) %>%)
+        이후 남은 물량은 최소 +<%= fmtPctSummary(tp_status && tp_status.runner_min_profit_pct, tp_status && tp_status.runner_min_profit_pct_min, tp_status && tp_status.runner_min_profit_pct_max) %>% 수익 보호 기준 후
+        트레일링 -<%= fmtPctSummary(tp_status && tp_status.trail_pct, tp_status && tp_status.trail_pct_min, tp_status && tp_status.trail_pct_max, true) %>% 기준입니다.
+      </div>
+      <div class="subtle mono">
+        이벤트 키:
+        SL_<%= fmtPctSummary(tp_status && tp_status.sl_pct, tp_status && tp_status.sl_pct_min, tp_status && tp_status.sl_pct_max, true) %>
+        · TP1_<%= fmtPctSummary(tp_status && tp_status.threshold_pct, tp_status && tp_status.threshold_pct_min, tp_status && tp_status.threshold_pct_max) %>
+        · TRAIL_<%= fmtPctSummary(tp_status && tp_status.trail_pct, tp_status && tp_status.trail_pct_min, tp_status && tp_status.trail_pct_max) %>
+        · RUNNER_MIN_<%= fmtPctSummary(tp_status && tp_status.runner_min_profit_pct, tp_status && tp_status.runner_min_profit_pct_min, tp_status && tp_status.runner_min_profit_pct_max) %>
+      </div>
+      <% if (_isBinance) { %>
+        <div class="subtle">선물 기준이며 레버리지 반영 수익률로 판단됩니다.</div>
+      <% } %>
+      <div class="hr"></div>
+      <div class="kv">
+        <div class="k">조건 충족</div>
+        <div class="v">
+          <span class="pill <%= (tp_status && tp_status.ready_count) ? 'ok' : 'dim' %>">
+            <%= (tp_status && tp_status.ready_count) ? 'YES' : 'NO' %>
+          </span>
+        </div>
+        <div class="k">충족 마켓</div>
+        <div class="v mono"><%= (tp_status && tp_status.ready_markets && tp_status.ready_markets.length) ? tp_status.ready_markets.join(', ') : '-' %></div>
+        <div class="k">마감 시각</div>
+        <div class="v mono"><%= tp_status && tp_status.latest_exec_kst ? tp_status.latest_exec_kst : '-' %></div>
+        <div class="k">다음 실행</div>
+        <div class="v mono"><%= tp_status && tp_status.next_exec_kst ? tp_status.next_exec_kst : '-' %></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>대기 주문 실패</h2>
+      <div class="subtle"><%= exchangeLabel(exchange) %> 기준 최근 실패 사유입니다.</div>
+      <div class="hr"></div>
+      <% if (intent_failures && intent_failures.total) { %>
+        <div class="kv">
+          <div class="k">최근 실패 시각</div>
+          <div class="v mono"><%= fmtKst(intent_failures.latest_at) %></div>
+          <div class="k">최근 실패 건수</div>
+          <div class="v mono"><%= fmtNum(intent_failures.total) %></div>
+        </div>
+        <div class="hr"></div>
+        <div class="subtle">상위 실패 사유</div>
+        <div class="hr"></div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <% (intent_failures.top || []).forEach((x)=>{ %>
+            <span class="pill bad"><%= x.reason %> · <%= fmtNum(x.count) %></span>
+          <% }) %>
+        </div>
+        <% if (intent_failures.recent && intent_failures.recent.length) { %>
+          <div class="hr"></div>
+          <div class="subtle">최근 실패</div>
+          <div class="hr"></div>
+          <table class="table compact">
+            <thead>
+              <tr>
+                <th>시각</th>
+                <th>마켓</th>
+                <th>사유</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% intent_failures.recent.forEach((x)=>{ %>
+                <tr>
+                  <td class="mono"><%= fmtKst(x.updated_at) %></td>
+                  <td class="mono"><%= x.market %></td>
+                  <td class="mono">
+                    <%= x.reason %>
+                    <% if (x.note) { %>
+                      <div class="subtle"><%= x.note %></div>
+                    <% } %>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      <% } else { %>
+        <div class="subtle">최근 실패 내역이 없습니다.</div>
+      <% } %>
+    </div>
+  </div>
+
+  <div class="stack">
+    <div class="card" id="account-summary-card" data-exchange="<%= exchange %>">
+      <h2><%= exchangeLabel(exchange) %> 총액</h2>
+      <div class="subtle">실거래 키가 있을 때만 표시됩니다.</div>
+      <div class="hr"></div>
+      <div class="kv">
+        <div class="k">총액</div><div class="v mono" id="acc-total-krw">-</div>
+        <div class="k" id="acc-cash-label">현금</div><div class="v mono" id="acc-cash-krw">-</div>
+        <div class="k">업데이트</div><div class="v mono" id="acc-updated-at">-</div>
+      </div>
+      <div class="hr"></div>
+      <div class="subtle" id="acc-note">불러오는 중...</div>
+    </div>
+
+    <div class="card">
+      <h2>AI 요약</h2>
+      <div class="subtle">앙상블 판단 사유를 한국어로 요약/상세 해석합니다.</div>
+      <div class="hr"></div>
+      <% if (ai_run_latest) { %>
+        <div class="kv">
+          <div class="k">실행 시각</div><div class="v mono"><%= fmtKst(ai_run_latest.created_at) %></div>
+          <div class="k">우위</div>
+          <div class="v"><span class="pill <%= aiBiasBadge(ai_run_latest) %>"><%= aiBiasLabel(ai_run_latest) %></span></div>
+          <div class="k">신뢰도</div><div class="v mono"><%= ai_run_latest.confidence == null ? '-' : ai_run_latest.confidence.toFixed(2) %></div>
+          <div class="k">적용 여부</div>
+          <div class="v"><span class="pill <%= ai_run_latest.applied ? 'ok' : 'warn' %>"><%= applyStateLabel(ai_run_latest) %></span></div>
+          <div class="k">적용 사유</div><div class="v mono"><%= applyReasonLabel(ai_run_latest, { stale: ai_mode_stale, liveNow: liveStatus(system_settings).badge === 'ok' }) %></div>
+          <div class="k">뉴스</div><div class="v mono"><%= ai_run_latest.news_ok ? (ai_run_latest.news_count ?? '-') : '실패' %></div>
+          <div class="k">뉴스 소스</div><div class="v mono"><%= newsSourceLabel(ai_run_latest) %></div>
+          <div class="k">뉴스 사유</div><div class="v mono"><%= newsReasonLabel(ai_run_latest) %></div>
+          <div class="k">GPT</div><div class="v mono"><%= aiModelStatus(ai_run_latest.gpt_attempted, ai_run_latest.gpt_ok) %></div>
+          <div class="k">Claude</div><div class="v mono"><%= aiModelStatus(ai_run_latest.claude_attempted, ai_run_latest.claude_ok) %></div>
+          <div class="k">앙상블</div>
+          <div class="v mono"><%= ensembleUsageLabel(ai_alloc_config, ai_run_latest) %></div>
+          <div class="k">비중(G/C)</div><div class="v mono"><%= aiEnsembleWeightLabel(ai_alloc_config, ai_run_latest) %></div>
+          <div class="k">실행 슬롯</div><div class="v mono"><%= aiScheduleLabel(ai_alloc_config) %></div>
+          <div class="k">총예산</div>
+          <div class="v mono"><%= fmtKrw(ai_run_latest.base_total_krw) %> → <%= fmtKrw(ai_run_latest.target_total_krw) %></div>
+          <div class="k">요약(KO)</div>
+          <div class="v subtle"><%= ai_run_latest.reason_ko_summary || aiReason(ai_run_latest.reason_en || ai_run_latest.reason) %></div>
+        </div>
+        <div class="hr"></div>
+        <div class="subtle">한국어 상세 번역</div>
+        <div class="subtle" style="margin-top:6px; line-height:1.5;">
+          <%= ai_run_latest.reason_ko_translation || ai_run_latest.reason_ko_summary || '-' %>
+        </div>
+        <% if (Array.isArray(ai_run_latest.reason_ko_details) && ai_run_latest.reason_ko_details.length) { %>
+          <ul class="subtle" style="margin:8px 0 0 16px; padding:0; line-height:1.5;">
+            <% ai_run_latest.reason_ko_details.forEach((line)=>{ %>
+              <li><%= line %></li>
+            <% }) %>
+          </ul>
+        <% } else { %>
+          <div class="subtle" style="margin-top:8px;">상세 해석 데이터가 없습니다.</div>
+        <% } %>
+        <div class="hr"></div>
+        <div class="subtle">원문(EN)</div>
+        <div class="mono subtle"><%= shortText(ai_run_latest.reason_en || ai_run_latest.reason, 600) %></div>
+      <% } else { %>
+        <div class="subtle">최근 실행 기록이 없습니다.</div>
+      <% } %>
+    </div>
+
+    <div class="card">
+      <h2>주간 개선팩</h2>
+      <div class="subtle">ZIP 패키지(STANDARD). 신호 개선 분석용입니다.</div>
+      <div class="hr"></div>
+      <div class="kv">
+        <div class="k">시작(KST)</div><div class="v mono"><%= fmtKst(weekly && weekly.from ? weekly.from : null) %></div>
+        <div class="k">끝(KST)</div><div class="v mono"><%= fmtKst(weekly && weekly.to ? weekly.to : null) %></div>
+      </div>
+      <div class="hr"></div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a class="btn lg" href="<%= packUrl %>">개선팩 ZIP 다운로드</a>
+        <a class="btn ghost slim" href="/dashboard/report?mode=weekly&from=<%= encodeURIComponent(weekly.from) %>&to=<%= encodeURIComponent(weekly.to) %>">리포트 열기</a>
+        <button class="btn ghost slim" type="button" id="copy-pack-prompt">프롬프트</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+  </div>
+</details>
+
+<div class="hr"></div>
+
+<details class="details-block" open>
+  <summary>성과 요약</summary>
+  <div class="details-body">
+
+<div class="grid cols-2">
+  <div class="card">
+    <h2>예산 성과</h2>
+    <div class="subtle">설정 예산 대비 현재 성과(미실현 포함)</div>
+    <div class="hr"></div>
+    <% if (budget_summary && budget_summary.enabled) { %>
+      <% if (budget_summary.source === 'ai_allocation') { %>
+        <div class="subtle">AI 자동 예산 기준<%= budget_summary.virtual ? ' (미적용/가상)' : '' %></div>
+        <div class="hr"></div>
+      <% } %>
+      <div class="kv">
+        <div class="k">미실현</div>
+        <div class="v mono">
+          <%= fmtKrwSigned(budget_perf && budget_perf.total_unrealized_krw) %> <%= budgetUnit %>
+          <% if (budgetUnit === "USDT") { %>
+            <span class="subtle mono usdt-krw" data-usdt="<%= rawNum(budget_perf && budget_perf.total_unrealized_krw) %>">(≈ - KRW)</span>
+          <% } %>
+        </div>
+        <div class="k">실현</div>
+        <div class="v mono">
+          <%= fmtKrwSigned(budget_perf && budget_perf.total_realized_krw) %> <%= budgetUnit %>
+          <% if (budgetUnit === "USDT") { %>
+            <span class="subtle mono usdt-krw" data-usdt="<%= rawNum(budget_perf && budget_perf.total_realized_krw) %>">(≈ - KRW)</span>
+          <% } %>
+        </div>
+        <div class="k">총 손익</div>
+        <div class="v mono">
+          <%= fmtKrwSigned(budget_perf && budget_perf.total_pnl_krw) %> <%= budgetUnit %>
+          <% if (budgetUnit === "USDT") { %>
+            <span class="subtle mono usdt-krw" data-usdt="<%= rawNum(budget_perf && budget_perf.total_pnl_krw) %>">(≈ - KRW)</span>
+          <% } %>
+        </div>
+        <div class="k">성장률(총액)</div>
+        <div class="v"><span class="pill <%= pnlBadge(budget_perf && budget_perf.growth_pct_total) %>"><%= fmtPctSigned(budget_perf && budget_perf.growth_pct_total) %></span></div>
+        <div class="k">성장률(사용분)</div>
+        <div class="v"><span class="pill <%= pnlBadge(budget_perf && budget_perf.growth_pct_used) %>"><%= fmtPctSigned(budget_perf && budget_perf.growth_pct_used) %></span></div>
+        <div class="k">기준금액(사용분)</div>
+        <div class="v mono">
+          <%= fmtKrw(budget_perf && budget_perf.pnl_used_krw) %> <%= budgetUnit %>
+          <% if (budgetUnit === "USDT") { %>
+            <span class="subtle mono usdt-krw" data-usdt="<%= rawNum(budget_perf && budget_perf.pnl_used_krw) %>">(≈ - KRW)</span>
+          <% } %>
+        </div>
+      </div>
+    <% } else { %>
+      <div class="subtle">리스크 예산이 꺼져 있습니다.</div>
+    <% } %>
+  </div>
+
+  <div class="card">
+    <h2>주간 성과</h2>
+    <div class="subtle">이번 주 범위(<%= fmtKst(weekly_range_perf && weekly_range_perf.from ? weekly_range_perf.from : null) %> → <%= fmtKst(weekly_range_perf && weekly_range_perf.to ? weekly_range_perf.to : null) %>) 실현 손익 요약</div>
+    <div class="hr"></div>
+    <div class="kv">
+      <div class="k">실현 손익</div>
+      <div class="v mono">
+        <%= fmtKrwSigned(weekly_range_perf && weekly_range_perf.total_realized_krw) %> <%= budgetUnit %>
+        <% if (budgetUnit === "USDT") { %>
+          <span class="subtle mono usdt-krw" data-usdt="<%= rawNum(weekly_range_perf && weekly_range_perf.total_realized_krw) %>">(≈ - KRW)</span>
+        <% } %>
+      </div>
+      <div class="k">성장률(주간)</div>
+      <div class="v"><span class="pill <%= pnlBadge(weekly_range_perf && weekly_range_perf.growth_pct_total) %>"><%= fmtPctSigned(weekly_range_perf && weekly_range_perf.growth_pct_total) %></span></div>
+      <div class="k">거래 수</div>
+      <div class="v mono"><%= fmtNum(weekly_range_perf && weekly_range_perf.trades_n) %></div>
+    </div>
+    <% if (weekly_range_perf && weekly_range_perf.top3 && weekly_range_perf.top3.length) { %>
+      <div class="hr"></div>
+      <div class="subtle">기여 상위</div>
+      <div class="mini-stack" style="display:flex; gap:4px; margin-top:8px;">
+        <% weekly_range_perf.top3.forEach((t) => { %>
+          <div style="flex:<%= (t.share_pct != null ? t.share_pct : 0.01) %>; min-width:32px; height:10px; border-radius:999px; background:<%= stackColor(t.realized_krw) %>;"></div>
+        <% }) %>
+        <% if (weekly_range_perf.other) { %>
+          <div style="flex:<%= (weekly_range_perf.other.share_pct != null ? weekly_range_perf.other.share_pct : 0.01) %>; min-width:28px; height:10px; border-radius:999px; border:1px dashed #8a8f98; background:transparent;"></div>
+        <% } %>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px;">
+        <% weekly_range_perf.top3.forEach((t) => { %>
+          <a class="pill <%= pnlBadge(t.realized_krw) %>" href="<%= reportLink(t.market) %>">
+            <%= t.market %> · <%= fmtKrwSigned(t.realized_krw) %> · <%= fmtPctShort(t.share_pct) %>
+          </a>
+        <% }) %>
+        <% if (weekly_range_perf.other) { %>
+          <span class="pill dim">
+            기타 · <%= fmtKrwSigned(weekly_range_perf.other.realized_krw) %> · <%= fmtPctShort(weekly_range_perf.other.share_pct) %>
+          </span>
+        <% } %>
+      </div>
+    <% } %>
+    <div class="hr"></div>
+    <a class="btn ghost slim" href="/dashboard/report?mode=weekly">리포트에서 자세히 보기</a>
+  </div>
+</div>
+
+  </div>
+</details>
+
+<details class="details-block" style="margin-top:12px;" open>
+  <summary>마켓 현황</summary>
+  <div class="details-body">
+
+<div class="tablewrap">
+  <div class="head">
+    <h2>마켓 목록</h2>
+    <% if (budget_summary && budget_summary.enabled) { %>
+      <div class="subtle">
+        예산 합계:
+        <span class="mono"><%= fmtKrw(budget_summary.total_used_krw) %></span>
+        /
+        <span class="mono"><%= fmtKrw(budget_summary.total_max_krw) %></span>
+        <span class="mono">(<%= fmtPct(budget_summary.total_used_pct) %>)</span>
+        <% if (budgetUnit === "USDT") { %>
+          <span class="subtle mono usdt-krw" data-usdt="<%= rawNum(budget_summary.total_used_krw) %>">(≈ - KRW)</span>
+          <span class="subtle mono">/</span>
+          <span class="subtle mono usdt-krw" data-usdt="<%= rawNum(budget_summary.total_max_krw) %>">(≈ - KRW)</span>
+        <% } %>
+      </div>
+    <% } %>
+  </div>
+  <div class="scroll" style="max-height:420px;">
+    <table>
+      <thead>
+        <tr>
+          <th>마켓</th>
+          <th>KPI 상태</th>
+          <th>표본 수</th>
+          <th>포지션</th>
+          <th>청산 상태</th>
+          <th>성장률</th>
+          <th>최근 신호</th>
+          <th>최근 체결</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% (markets || []).forEach(m => { %>
+          <tr>
+            <td class="mono"><%= m.market %></td>
+            <td>
+              <span class="pill <%= kpiBadge(m.kpi && m.kpi.status) %>">
+                <%= statusLabel(m.kpi && m.kpi.status) %>
+              </span>
+            </td>
+            <td class="mono"><%= (m.kpi_n != null) ? m.kpi_n : '-' %></td>
+            <td class="mono">
+              <%= positionLabel(m.position && m.position.state) %>
+              · <%= fmtPct(m.position && m.position.size_pct) %>
+              <% if (m.position && m.position.leverage_tier) { %>
+                · <span class="pill <%= leverageBadge(m.position.leverage_tier) %>"><%= m.position.leverage_tier %></span>
+              <% } else if (m.position && m.position.leverage != null) { %>
+                · <span class="pill dim"><%= fmtLeverage(m.position.leverage) %></span>
+              <% } %>
+              <% if (m.position && m.position.rollback_active) { %>
+                · <span class="pill bad">롤백</span>
+                <% if (m.position.rollback_remaining_ms != null) { %>
+                  <span class="subtle mono"><%= fmtRemain(m.position.rollback_remaining_ms) %></span>
+                <% } %>
+              <% } %>
+              <% if (m.position && m.position.avg_price != null) { %>
+                · 평균가 <%= fmtKrw(m.position.avg_price) %>
+              <% } %>
+              <% if (m.position && (m.position.budget_used_krw != null || m.position.budget_max_krw != null)) { %>
+                · 예산 <%= fmtKrw(m.position.budget_used_krw) %> / <%= fmtKrw(m.position.budget_max_krw) %>
+              <% } %>
+            </td>
+            <td>
+              <% if (m.exit_stage) { %>
+                <% if (m.exit_stage.label && m.exit_stage.label !== 'TP1 대기') { %>
+                  <span class="pill <%= m.exit_stage.pill %>"><%= m.exit_stage.label %></span>
+                <% } %>
+                <div class="subtle mono" style="margin-top:6px;">
+                  <%= m.exit_stage.compact_headline.left_label %> <%= fmtKrw(m.exit_stage.compact_headline.left_price) %>
+                  · <%= m.exit_stage.compact_headline.right_label %> <%= fmtKrw(m.exit_stage.compact_headline.right_price) %>
+                </div>
+                <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">
+                  <% if (m.exit_stage.tp1_pending) { %>
+                    <span class="pill warn">TP1 진행</span>
+                  <% } %>
+                  <% if (m.exit_stage.native_refresh_status && m.exit_stage.native_refresh_status !== 'OK') { %>
+                    <span class="pill <%= m.exit_stage.native_refresh_status === 'FAILED' ? 'bad' : 'warn' %>">보호 <%= m.exit_stage.native_refresh_status %></span>
+                  <% } %>
+                  <% if (m.exit_stage.native_tp_status && m.exit_stage.native_tp_status !== 'OK' && m.exit_stage.native_tp_status !== m.exit_stage.native_refresh_status) { %>
+                    <span class="pill <%= m.exit_stage.native_tp_status === 'FAILED' ? 'bad' : 'warn' %>">TP <%= m.exit_stage.native_tp_status %></span>
+                  <% } %>
+                  <% if (m.exit_stage.native_protection_stale) { %>
+                    <span class="pill bad">보호 STALE</span>
+                  <% } %>
+                  <% if (m.exit_stage.tp1_skip_reason) { %>
+                    <span class="pill bad"><%= m.exit_stage.tp1_skip_reason %></span>
+                  <% } %>
+                </div>
+              <% } else { %>
+                <span class="subtle">-</span>
+              <% } %>
+            </td>
+            <td class="mono">
+              <% if (m.growth_pct != null) { %>
+                <span class="pill <%= pnlBadge(m.growth_pct) %>"><%= fmtPctSigned(m.growth_pct) %></span>
+              <% } else { %>
+                -
+              <% } %>
+            </td>
+            <td class="mono">
+              <% if (m.last_signal) { %>
+                <%= fmtKst(m.last_signal.created_kst || m.last_signal.created_at) %>
+                · <%= sideLabel(m.last_signal.side) %>
+                · <%= eventDisplay(m.last_signal.event) %>
+                <% if (m.last_signal.event_intent) { %> · <span class="subtle"><%= m.last_signal.event_intent %></span><% } %>
+                <% if (m.last_signal.qty_pct != null) { %> · 비중 <%= fmtNum(m.last_signal.qty_pct) %><% } %>
+                <% if (m.last_signal.late_by_bars != null && Number(m.last_signal.late_by_bars) !== 0) { %>
+                  · 지연 <%= fmtNum(m.last_signal.late_by_bars) %> bar
+                <% } %>
+                <% if (m.last_signal.mapping_ok === false) { %> · <span class="pill bad">매핑 오류</span><% } %>
+              <% } else { %>
+                -
+              <% } %>
+            </td>
+            <td class="mono">
+              <% if (m.last_fill) { %>
+                <%= fmtKst(m.last_fill.created_kst || m.last_fill.created_at) %>
+                · <%= sideLabel(m.last_fill.side) %>
+                · <%= eventDisplay(m.last_fill.event) %>
+                <% if (m.last_fill.exec_price != null) { %> · <%= fmtKrw(m.last_fill.exec_price) %><% } %>
+                <% if (m.last_fill.signal_price_diff_pct != null) { %>
+                  · 신호대비 <%= fmtPctSigned(m.last_fill.signal_price_diff_pct) %>
+                <% } %>
+                <% if (m.last_fill.notional_krw != null) { %> · 체결금액 <%= fmtKrw(m.last_fill.notional_krw) %><% } %>
+                <% if (m.last_fill.leverage_tier) { %>
+                  · <span class="pill <%= leverageBadge(m.last_fill.leverage_tier) %>"><%= m.last_fill.leverage_tier %></span>
+                <% } else if (m.last_fill.leverage_applied != null) { %>
+                  · <span class="pill dim"><%= fmtLeverage(m.last_fill.leverage_applied) %></span>
+                <% } %>
+                <% if (m.last_fill.exec_price_source) { %> · <span class="subtle"><%= m.last_fill.exec_price_source %></span><% } %>
+              <% } else { %>
+                -
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+  </div>
+</details>
+
+<details class="details-block" style="margin-top:12px;" open>
+  <summary>최근 흐름</summary>
+  <div class="details-body">
+
+<div class="grid cols-2">
+  <div class="tablewrap">
+    <div class="head">
+      <h2>최근 신호</h2>
+      <div class="subtle">최근 12건</div>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>시간</th><th>마켓</th><th>타임프레임</th><th>이벤트</th><th>의도</th><th>방향</th><th>비중%</th><th>지연</th><th>사유</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% (signals12 || []).forEach(s => { %>
+            <tr>
+              <td class="mono"><%= fmtKst(s.created_kst || s.created_at) %></td>
+              <td class="mono"><%= s.symbol || '-' %></td>
+              <td class="mono"><%= s.tf || '-' %></td>
+              <td>
+                <%= eventDisplay(s.event) %>
+              </td>
+              <td class="mono"><%= s.event_intent || '-' %></td>
+              <td><%= sideLabel(s.side) %></td>
+              <td class="mono"><%= (s.qty_pct == null) ? '-' : fmtNum(s.qty_pct) %></td>
+              <td class="mono"><%= (s.late_by_bars == null) ? '-' : fmtNum(s.late_by_bars) %></td>
+              <td class="subtle">
+                <% if (s.display_reason_stage_text) { %>
+                  <span class="subtle"><%= s.display_reason_stage_text %></span>
+                  ·
+                <% } %>
+                <%= s.display_reason || s.reason || '' %>
+                <% if (s.display_reason_external_fill) { %>
+                  · <span class="pill ok">외부체결 보정</span>
+                <% } else if (s.display_reason_detail) { %>
+                  · <%= s.display_reason_detail %>
+                <% } %>
+                <% if (s.display_reason_ko) { %>
+                  <div class="subtle"><%= s.display_reason_ko %></div>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+          <% if (!signals12 || signals12.length===0) { %><tr><td colspan="9" class="subtle">신호 없음</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tablewrap">
+    <div class="head">
+      <h2>최근 체결</h2>
+      <div class="subtle">최근 12건</div>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>시간</th><th>마켓</th><th>타임프레임</th><th>이벤트</th><th>방향</th><th>가격</th><th>배율</th><th>신호대비</th><th>체결금액</th><th>가격 기준</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% (fills12 || []).forEach(f => { %>
+            <tr>
+              <td class="mono"><%= fmtKst(f.created_kst || f.created_at) %></td>
+              <td class="mono"><%= f.symbol || '-' %></td>
+              <td class="mono"><%= f.tf || '-' %></td>
+              <td>
+                <%= eventDisplay(f.event) %>
+                <% if (f.display_exec_text || f.display_exec_ko) { %>
+                  <div class="subtle">
+                    <%= f.display_exec_text || '-' %>
+                    <% if (f.display_exec_ko) { %>
+                      · <%= f.display_exec_ko %>
+                    <% } %>
+                  </div>
+                <% } %>
+              </td>
+              <td><%= sideLabel(f.side) %></td>
+              <td class="mono"><%= (f.exec_price==null) ? '-' : fmtKrw(f.exec_price) %></td>
+              <td class="mono">
+                <% if (f.leverage_tier) { %>
+                  <span class="pill <%= leverageBadge(f.leverage_tier) %>"><%= f.leverage_tier %></span>
+                <% } else if (f.leverage_applied != null) { %>
+                  <span class="pill dim"><%= fmtLeverage(f.leverage_applied) %></span>
+                <% } else { %>
+                  -
+                <% } %>
+              </td>
+              <td class="mono"><%= (f.signal_price_diff_pct==null) ? '-' : fmtPctSigned(f.signal_price_diff_pct) %></td>
+              <td class="mono"><%= (f.notional_krw==null) ? '-' : fmtKrw(f.notional_krw) %></td>
+              <td class="subtle"><%= f.exec_price_source || '-' %></td>
+            </tr>
+          <% }) %>
+          <% if (!fills12 || fills12.length===0) { %><tr><td colspan="10" class="subtle">체결 없음</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+  </div>
+</details>
+
+<%- include('partials/app_end') %>
+
+<script>
+(function(){
+  const btn = document.getElementById("copy-pack-prompt");
+  if (!btn) return;
+  const promptText = `너는 ‘돈벌자 Ω’ 신호 개선 퀀트 리서처이자 PineScript 엔지니어다.
+입력은 이 ZIP 하나뿐이다. 외부 데이터/추측 금지. ZIP 안의 meta/config/data/analysis/qa/cases만 사용하라.
+
+목표:
+- 각 신호(LONG/SHORT 라이브 진입, 내부 진단 밴드, EMO/🔔 Ichi Bell/SS/TD9P/Vol Emoji/ZigZag/EV)의 precision과 win_rate, EV를
+  “과최적화 없이” 개선할 수 있는 패치 후보를 제안한다.
+- 패치는 주 1회만, 변경 변수는 1~2개만 허용한다(큰 리팩토링 금지).
+- 롤백 기준(악화 조건)과 검증 근거를 반드시 포함한다.
+
+절차(반드시 이 순서로):
+1) 팩 무결성 점검
+- qa/data_quality_report.json, qa/deterministic_replay_report.json을 먼저 읽고
+  Gate FAIL이면 “개선 제안 보류” 또는 “데이터/재현성 문제 먼저 해결”을 1순위로 제시.
+- signal_events ↔ signal_features 조인율, trade_ledger 링크율을 확인하고 이상 시 경고.
+
+2) 베이스라인 요약
+- analysis/kpi_overall.json에서 baseline KPI를 정리.
+- kpi_by_signal, kpi_by_market, kpi_by_regime로 “어느 신호가 어디서 망가지는지”를 1페이지 요약.
+
+3) 문제 유형 분류(신호별)
+- FP 과다형(precision 낮음): false_positive 케이스/분포로 원인 후보 추출
+- FN 과다형(놓침): false_negative/NEG_SAMPLE 기반으로 원인 후보 추출
+- Tail risk형(worst/p10 악화): 시장/레짐/세션 쏠림과 필터 영향 분석
+
+4) 패치 후보 생성(최대 3개, 각 후보는 변경 1~2변수)
+각 패치 후보는 다음 템플릿으로 작성:
+- patch_id: YYYYMMDD_signal_focus_vX
+- 변경 변수(1~2개): 변수명/현재값/제안값/변경폭(%)
+- 가설: 왜 precision/win_rate/EV가 개선될지(데이터 근거: 분포/케이스/레짐 분해)
+- 예상 부작용: 거래수 감소, FN 증가, 특정 시장 쏠림, 꼬리위험 등
+- 검증 계획:
+  (a) walkforward_summary 기반으로 OOS 구간 성과 확인
+  (b) regime별 성과 악화 여부 확인
+  (c) worst/p10 악화 여부 확인
+  (d) 표본수 n<30이면 “보수적 결론” 표기 + 다음 데이터 요구사항 제시
+- 롤백 기준(자동/수동): 아래 중 최소 2개 포함
+  * OOS win_rate가 baseline 대비 -X%p 이상 하락
+  * OOS EV가 baseline 대비 감소
+  * worst 또는 p10가 baseline 대비 악화
+  * fill_rate가 과도하게 감소(예: -30% 이상)
+  * 특정 market/regime 편향이 더 심해짐(예: 한 구간에 70% 이상)
+
+5) “추천 1개”만 선정
+- 위 3개 후보 중 가장 안전(안정성/일관성)한 1개를 ‘이번 주 패치’로 추천하고,
+  나머지는 보류/추가데이터 요구로 분류.
+
+6) 코드 반영 지시(라인 앵커 기준)
+- code/donbeolja.pine.txt 또는 코드 해시/앵커를 근거로,
+  변경해야 할 input/상수/조건의 위치를 명확히 지시.
+- 단, 로직 구조 변경(대규모 리팩토링)은 금지. 파라미터/임계/가중치 조정 위주.
+
+출력 형식:
+- (I) 베이스라인 요약
+- (II) 신호별 문제 TOP 5
+- (III) 패치 후보 3개(각각 변경 1~2변수)
+- (IV) 이번 주 추천 패치 1개 + 롤백 기준 + 검증 체크리스트
+- (V) 추가 데이터가 필요하면 “딱 5개 항목”으로만 요청(과도한 요구 금지)`;
+
+  async function copyText(text){
+    try{
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    }catch(_){}
+    try{
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      return true;
+    }catch(_){
+      return false;
+    }
+  }
+
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    const ok = await copyText(promptText);
+    btn.textContent = ok ? "복사됨" : "복사 실패";
+    setTimeout(() => {
+      btn.textContent = "프롬프트";
+      btn.disabled = false;
+    }, 1400);
+  });
+})();
+</script>
+
+<script>
+(function(){
+  const card = document.getElementById("account-summary-card");
+  if (!card) return;
+  const exchange = String(card.dataset.exchange || "BINANCEFUT").toUpperCase();
+
+  const elTotal = document.getElementById("acc-total-krw");
+  const elCash = document.getElementById("acc-cash-krw");
+  const elUpdated = document.getElementById("acc-updated-at");
+  const elNote = document.getElementById("acc-note");
+  const elCashLabel = document.getElementById("acc-cash-label");
+
+  const fmtValue = (x, unit) => {
+    const n = Number(x);
+    if (!Number.isFinite(n)) return "-";
+    if (unit === "USDT") {
+      return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    const cut = Math.trunc(n / 10) * 10;
+    return cut.toLocaleString();
+  };
+  const fmtKst = (s) => {
+    if (!s) return "-";
+    const ms = Date.parse(String(s));
+    if (!Number.isFinite(ms)) return String(s);
+    const k = new Date(ms + 9 * 60 * 60 * 1000);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${k.getUTCFullYear()}-${pad(k.getUTCMonth() + 1)}-${pad(k.getUTCDate())} ${pad(k.getUTCHours())}:${pad(k.getUTCMinutes())} KST`;
+  };
+  const fmtKrwApprox = (x) => {
+    const n = Number(x);
+    if (!Number.isFinite(n)) return "-";
+    const sign = n < 0 ? "-" : "";
+    const abs = Math.abs(n);
+    const cut = Math.trunc(abs / 10) * 10;
+    return sign + cut.toLocaleString();
+  };
+  const getUsdtKrwRate = (() => {
+    let cached = null;
+    let inflight = null;
+    return () => {
+      if (cached) return Promise.resolve(cached);
+      if (inflight) return inflight;
+      inflight = fetch("https://open.er-api.com/v6/latest/USD")
+        .then((r) => r.json())
+        .then((fx) => {
+          const usdKrw = fx && fx.rates ? Number(fx.rates.KRW) : NaN;
+          if (!Number.isFinite(usdKrw) || usdKrw <= 0) return null;
+          cached = usdKrw;
+          return cached;
+        })
+        .catch(() => null)
+        .finally(() => {
+          inflight = null;
+        });
+      return inflight;
+    };
+  })();
+  const applyUsdtKrw = (rate) => {
+    const targets = document.querySelectorAll(".usdt-krw[data-usdt]");
+    if (!targets.length) return;
+    targets.forEach((el) => {
+      const raw = Number(el.dataset.usdt);
+      if (!Number.isFinite(raw) || !Number.isFinite(rate)) {
+        el.textContent = "(≈ - KRW)";
+        return;
+      }
+      const krw = raw * rate;
+      el.textContent = `(≈ ${fmtKrwApprox(krw)} KRW)`;
+    });
+  };
+  const refreshUsdtKrw = () => {
+    const targets = document.querySelectorAll(".usdt-krw[data-usdt]");
+    if (!targets.length) return;
+    getUsdtKrwRate().then((rate) => {
+      if (!rate) return;
+      applyUsdtKrw(rate);
+    });
+  };
+
+  refreshUsdtKrw();
+
+  fetch("/api/account/summary?exchange=" + encodeURIComponent(exchange))
+    .then((r) => r.json())
+    .then((j) => {
+      if (!j || !j.ok) {
+        const msg = (j && (j.message || j.error)) ? String(j.message || j.error) : "불러오기 실패";
+        if (elNote) elNote.textContent = `불러오기 실패: ${msg}`;
+        return;
+      }
+      const unit = String(j.unit || (exchange.includes("BINANCE") ? "USDT" : "KRW")).toUpperCase();
+      const totalVal = (j.total_value != null) ? j.total_value : (unit === "USDT" ? j.total_usdt : j.total_krw);
+      const cashVal = (j.cash_value != null) ? j.cash_value : (unit === "USDT" ? j.cash_usdt : j.cash_krw);
+      const totalText = fmtValue(totalVal, unit) + " " + unit;
+      const cashText = fmtValue(cashVal, unit) + " " + unit;
+      if (elTotal) elTotal.textContent = totalText;
+      if (elCash) elCash.textContent = cashText;
+      if (elCashLabel) elCashLabel.textContent = "현금(" + unit + ")";
+      if (elUpdated) elUpdated.textContent = fmtKst(j.updated_at);
+      if (elNote) {
+        const missing = Array.isArray(j.missing_markets) && j.missing_markets.length
+          ? `가격 미확인: ${j.missing_markets.join(", ")}`
+          : "정상";
+        elNote.textContent = missing;
+      }
+      if (unit === "USDT") {
+        getUsdtKrwRate().then((rate) => {
+          if (!rate) return;
+          const totalNum = Number(totalVal);
+          const cashNum = Number(cashVal);
+          if (elTotal && Number.isFinite(totalNum)) {
+            elTotal.textContent = `${totalText} (≈ ${fmtKrwApprox(totalNum * rate)} KRW)`;
+          }
+          if (elCash && Number.isFinite(cashNum)) {
+            elCash.textContent = `${cashText} (≈ ${fmtKrwApprox(cashNum * rate)} KRW)`;
+          }
+          applyUsdtKrw(rate);
+        });
+      }
+    })
+    .catch(() => {
+      if (elNote) elNote.textContent = "불러오기 실패";
+    });
+})();
+</script>
