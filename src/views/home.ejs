@@ -631,6 +631,44 @@
   </div>
 </div>
 
+<div class="grid cols-2" style="margin-top:12px;">
+  <div class="card">
+    <h2>FEBT SHADOW</h2>
+    <div class="subtle">최근 signals+drops 200건 기준으로 legacy WAIT와의 shadow 비교를 요약합니다.</div>
+    <div class="hr"></div>
+    <div class="kv">
+      <div class="k">표본</div><div class="v mono"><%= fmtNum(febt_shadow_recent && febt_shadow_recent.sampled_n) %></div>
+      <div class="k">calc / phase</div><div class="v mono"><%= fmtPct(febt_shadow_recent && febt_shadow_recent.calc_ok_rate) %> / <%= fmtPct(febt_shadow_recent && febt_shadow_recent.phase_known_rate) %></div>
+      <div class="k">FIRE / LATE / VOID</div><div class="v mono"><%= fmtNum(febt_shadow_recent && febt_shadow_recent.fire_n) %> / <%= fmtNum(febt_shadow_recent && febt_shadow_recent.late_n) %> / <%= fmtNum(febt_shadow_recent && febt_shadow_recent.void_n) %></div>
+      <div class="k">disagree / fallback</div><div class="v mono"><%= fmtNum(febt_shadow_recent && febt_shadow_recent.disagreement_n) %> / <%= fmtNum(febt_shadow_recent && febt_shadow_recent.fallback_legacy_n) %></div>
+      <div class="k">대표 verdict</div><div class="v mono"><%= febt_shadow_recent && febt_shadow_recent.top_verdict ? febt_shadow_recent.top_verdict : '-' %></div>
+      <div class="k">대표 phase</div><div class="v mono"><%= febt_shadow_recent && febt_shadow_recent.top_phase ? febt_shadow_recent.top_phase : '-' %></div>
+      <div class="k">avg edge</div><div class="v mono"><%= fmtPctSigned(febt_shadow_recent && febt_shadow_recent.avg_edge) %></div>
+      <div class="k">avg lock</div><div class="v mono"><%= fmtPct(febt_shadow_recent && febt_shadow_recent.avg_lock_score) %></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>FEBT Phase 0</h2>
+    <div class="subtle">현재 legacy WAIT 기준선입니다. saved loss와 missed gain이 역전돼야 FEBT 도입 가치가 생깁니다.</div>
+    <div class="hr"></div>
+    <div class="kv">
+      <div class="k">상태</div>
+      <div class="v">
+        <span class="pill <%= (febt_phase0_latest && febt_phase0_latest.available) ? ((febt_phase0_latest && febt_phase0_latest.fresh) ? 'ok' : 'warn') : 'dim' %>">
+          <%= (febt_phase0_latest && febt_phase0_latest.available) ? ((febt_phase0_latest && febt_phase0_latest.fresh) ? 'READY' : 'STALE') : 'MISSING' %>
+        </span>
+      </div>
+      <div class="k">legacy WAIT coverage</div><div class="v mono"><%= fmtPct(febt_phase0_latest && febt_phase0_latest.legacy_wait_coverage_rate) %></div>
+      <div class="k">observed</div><div class="v mono"><%= fmtNum(febt_phase0_latest && febt_phase0_latest.legacy_wait_observed_chain_n) %></div>
+      <div class="k">immediate win</div><div class="v mono"><%= fmtPct(febt_phase0_latest && febt_phase0_latest.immediate_win_rate) %></div>
+      <div class="k">saved / missed</div><div class="v mono"><%= fmtPct(febt_phase0_latest && febt_phase0_latest.saved_loss_pct) %> / <%= fmtPct(febt_phase0_latest && febt_phase0_latest.missed_gain_pct) %></div>
+      <div class="k">delta</div><div class="v mono"><%= fmtPctSigned(febt_phase0_latest && febt_phase0_latest.saved_loss_minus_missed_gain) %></div>
+      <div class="k">bridge p95</div><div class="v mono"><%= (febt_phase0_latest && febt_phase0_latest.webhook_to_fill_p95_ms != null) ? (Math.round(Number(febt_phase0_latest.webhook_to_fill_p95_ms)) + 'ms') : '-' %></div>
+      <div class="k">dup / reject</div><div class="v mono"><%= fmtNum(febt_phase0_latest && febt_phase0_latest.duplicate_count) %> / <%= fmtNum(febt_phase0_latest && febt_phase0_latest.reject_count) %></div>
+    </div>
+  </div>
+</div>
+
 <details class="details-block" style="margin-top:14px;" open>
   <summary>운영 상세</summary>
   <div class="details-body">

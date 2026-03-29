@@ -1,3 +1,5 @@
+const fs = require("fs");
+const path = require("path");
 const express = require("express");
 const router = express.Router();
 const { getFirestore } = require("../storage/firestore");
@@ -41,6 +43,18 @@ const {
   resolvePositionBudgetUsedKrw,
   resolveFillBudgetUsedKrw,
 } = require("../utils/budgetUsageView");
+const { summarizeFebtRows, summarizeFebtPhase0Artifact } = require("../utils/febtSummary");
+
+const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
+const FEBT_PHASE0_LATEST_PATH = path.join(OPS_DAILY_DIR, "febt_phase0_baseline_latest.json");
+
+function readJsonSafe(filePath, fallback = null) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch (_err) {
+    return fallback;
+  }
+}
 
 function maxCreatedAt(arr) {
   let max = null;
@@ -635,6 +649,8 @@ router.get("/dashboard/home", async (req, res) => {
       const bMs = toMsSafe(b.created_at || b.created_kst || b.bar_close_time_utc_ms) || 0;
       return bMs - aMs;
     });
+    const febtShadowRecent = summarizeFebtRows(signalsMerged.slice(0, 200));
+    const febtPhase0Latest = summarizeFebtPhase0Artifact(readJsonSafe(FEBT_PHASE0_LATEST_PATH, null));
 
     const fillsRaw = [];
     fillSnap.forEach((d) => {
@@ -1369,6 +1385,8 @@ router.get("/dashboard/home", async (req, res) => {
       budget_summary,
       budget_perf,
       weekly_range_perf,
+      febt_shadow_recent: febtShadowRecent,
+      febt_phase0_latest: febtPhase0Latest,
       intent_failures: intentFailures,
     };
     setHomeCache(cacheKey, payload);

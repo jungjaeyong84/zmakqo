@@ -15,16 +15,19 @@ const {
   execJson,
   sendKoreanTelegramSummary,
   ensureExchangeApiKeys,
+  readJsonRawSafe,
 } = require("./lib/automation-utils");
 const { getFirestore } = require("../src/storage/firestore");
 const { auditBinanceExitIntegrity } = require("../src/services/exitIntegrityAudit");
 const { resolveMarketStateSummary } = require("../src/utils/marketStateSummary");
 const { resolveStatPhysFeatures } = require("../src/utils/statPhysFeatures");
+const { summarizeFebtRows, summarizeFebtPhase0Artifact } = require("../src/utils/febtSummary");
 
 loadLocalEnv();
 ensureDir(OPS_DAILY_DIR);
 
 const SERVICE = process.env.CLOUD_RUN_SERVICE || "donbeolja";
+const FEBT_PHASE0_LATEST_PATH = path.join(OPS_DAILY_DIR, "febt_phase0_baseline_latest.json");
 
 async function readRecentCollection(collectionName, { exchange = "BINANCEFUT", limit = 200 } = {}) {
   const db = getFirestore();
@@ -195,6 +198,10 @@ function buildHourlyPhysicsLine(label, summary = {}) {
   return `${label} ${summary.display_state || "정보 없음"} / action ${summary.action || "N/A"} / qty ${summary.qty_scale != null ? summary.qty_scale : "N/A"} / wait ${buildPhysicsWaitLabel(summary)} / critical ${pct(summary.critical_rate, 0)} / disorder ${pct(summary.disordered_rate, 0)} / free ${pct(summary.free_energy)}`;
 }
 
+function buildHourlyFebtLine(label, summary = {}) {
+  return `${label} calc ${pct(summary.calc_ok_rate, 0)} / phase ${pct(summary.phase_known_rate, 0)} / fire ${summary.fire_n ?? 0} / late ${summary.late_n ?? 0} / void ${summary.void_n ?? 0} / disagree ${summary.disagreement_n ?? 0} / fallback ${summary.fallback_legacy_n ?? 0} / verdict ${summary.top_verdict || "N/A"}`;
+}
+
 function buildHourlyGuardTelegramSections({
   findings = [],
   recentSignals = [],
@@ -204,6 +211,9 @@ function buildHourlyGuardTelegramSections({
   report = {},
   signalPhysics = {},
   dropPhysics = {},
+  signalFebt = {},
+  dropFebt = {},
+  phase0 = {},
   action = "없음",
 } = {}) {
   return [
@@ -224,6 +234,14 @@ function buildHourlyGuardTelegramSections({
       ],
     },
     {
+      header: "FEBT SHADOW",
+      lines: [
+        buildHourlyFebtLine("신호", signalFebt),
+        buildHourlyFebtLine("드롭", dropFebt),
+        `Phase0 coverage ${pct(phase0.legacy_wait_coverage_rate, 0)} / immediate win ${pct(phase0.immediate_win_rate, 0)} / saved_loss ${pct(phase0.saved_loss_pct, 0)} / missed_gain ${pct(phase0.missed_gain_pct, 0)} / delta ${pct(phase0.saved_loss_minus_missed_gain, 0)}`,
+      ],
+    },
+    {
       header: "핵심",
       lines: findings.slice(1, 3).length ? findings.slice(1, 3) : ["즉시 이상 없음"],
     },
@@ -237,6 +255,7 @@ async function main() {
   const sinceMs = meta.nowMs - (90 * 60 * 1000);
   const ops = require("./lib/automation-utils").readJsonSafe(path.join(OPS_DAILY_DIR, "system_ops_check_latest.json"), {});
   const align = require("./lib/automation-utils").readJsonSafe(path.join(OPS_DAILY_DIR, "strategy_id_alignment_latest.json"), {});
+  const phase0Latest = readJsonRawSafe(FEBT_PHASE0_LATEST_PATH, null);
 
   const [integrity, signals, dropped, gates, intents] = await Promise.all([
     auditBinanceExitIntegrity({ includeFlat: false }),
@@ -252,6 +271,9 @@ async function main() {
   const recentIntents = getRecent(intents, sinceMs);
   const signalPhysics = summarizePhysics(recentSignals);
   const dropPhysics = summarizePhysics(recentDropped);
+  const signalFebt = summarizeFebtRows(recentSignals);
+  const dropFebt = summarizeFebtRows(recentDropped);
+  const phase0 = summarizeFebtPhase0Artifact(phase0Latest ? { ...phase0Latest, fresh: true } : null);
 
   const gatePass = recentGates.filter((row) => String(row.status || "").toUpperCase() === "PASS").length;
   const gateFail = recentGates.filter((row) => String(row.status || "").toUpperCase() !== "PASS").length;
@@ -327,6 +349,11 @@ async function main() {
       signals: signalPhysics,
       dropped: dropPhysics,
     },
+    febt: {
+      signals: signalFebt,
+      dropped: dropFebt,
+      phase0,
+    },
     system_error_count_24h:
       Number.isFinite(Number(ops.error_count)) ? Number(ops.error_count)
         : (Number.isFinite(Number(align.conservative_metrics && align.conservative_metrics.error_count_24h))
@@ -353,6 +380,9 @@ async function main() {
       `- 최근 90분 신호: ${recentSignals.length}건 / 드롭: ${recentDropped.length}건 / Gate PASS: ${gatePass}건`,
       `- 상태층(신호): ${buildHourlyPhysicsLine("신호", signalPhysics)}`,
       `- 상태층(드롭): ${buildHourlyPhysicsLine("드롭", dropPhysics)}`,
+      `- FEBT SHADOW(신호): ${buildHourlyFebtLine("신호", signalFebt)}`,
+      `- FEBT SHADOW(드롭): ${buildHourlyFebtLine("드롭", dropFebt)}`,
+      `- FEBT Phase0: coverage ${pct(phase0.legacy_wait_coverage_rate, 0)} / immediate win ${pct(phase0.immediate_win_rate, 0)} / saved_loss ${pct(phase0.saved_loss_pct, 0)} / missed_gain ${pct(phase0.missed_gain_pct, 0)} / delta ${pct(phase0.saved_loss_minus_missed_gain, 0)}`,
       `- 보호주문 감사: ok=${integrity.ok} / issue_count=${integrity.issue_count || 0}`,
       `- 핵심 발견:`,
       ...(findings.length ? findings.map((line) => `  - ${line}`) : ["  - 정상"]),
@@ -373,6 +403,9 @@ async function main() {
     report,
     signalPhysics,
     dropPhysics,
+    signalFebt,
+    dropFebt,
+    phase0,
     action,
   });
   const alertResult = await sendKoreanTelegramSummary({
@@ -399,6 +432,7 @@ if (require.main === module) {
       summarizePhysics,
       buildPhysicsWaitLabel,
       buildHourlyPhysicsLine,
+      buildHourlyFebtLine,
       buildHourlyGuardTelegramSections,
     },
   };

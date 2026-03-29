@@ -16,6 +16,7 @@ const { isLiveDocForExchange } = require("../utils/liveOnly");
 const { toKstStringFromMs, toKstString } = require("../utils/timeKst");
 const { buildFundingIndexForFills, sumFunding } = require("../services/fundingFees");
 const { summarizePineSignalQuality } = require("../services/pineSignalQuality");
+const { summarizeFebtByTier } = require("../utils/febtSummary");
 const { fetchCandles } = require("../exchanges");
 const { normalizePositionSide } = require("../utils/positionSide");
 const {
@@ -2612,6 +2613,7 @@ router.get("/api/report/improvement-pack", async (req, res) => {
       fromMs: actualFromMs,
       toMs: actualToMs,
     });
+    const febtShadowSummary = summarizeFebtByTier(pineQuality && pineQuality.by_tier ? pineQuality.by_tier : {});
 
     const missingRequired = [];
     if (!pineFile.ok) missingRequired.push("/code/donbeolja.pine.txt");
@@ -2662,6 +2664,7 @@ router.get("/api/report/improvement-pack", async (req, res) => {
         quantity_profile: "FIXED",
         note: "External live entry events are unified to LONG/SHORT only. Active live source bands are EARLY and CORE; PRE_REAL/REAL are legacy diagnostic bands only.",
       },
+      febt_shadow_summary: febtShadowSummary,
       win_definition: {
         win_flag_rule: "ret_net > 0",
         r_unit: "1% of entry price",
@@ -2969,6 +2972,7 @@ router.get("/api/report/improvement-pack", async (req, res) => {
     addTextFile("qa/data_quality_report.json", JSON.stringify(dataQuality, null, 2));
     addTextFile("qa/deterministic_replay_report.json", JSON.stringify(deterministic, null, 2));
     addTextFile("qa/feature_nan_report.json", JSON.stringify(featureNanReport, null, 2));
+    addTextFile("analysis/febt_shadow_summary.json", JSON.stringify(febtShadowSummary, null, 2));
 
     // prompt
     addTextFile("prompt/analysis_prompt_ko.txt", buildPrompt());
@@ -3011,6 +3015,7 @@ router.get("/api/report/improvement-pack", async (req, res) => {
         if (!row) return `- ${tier}: unavailable`;
         return `- ${tier}: signals=${row.signals_n}, executed=${row.executed_n}, tp1_hit_rate=${row.tp1_hit_rate}, sl_before_tp1_rate=${row.sl_before_tp1_rate}, trail_capture_rate=${row.trail_capture_rate}, win_rate=${row.win_rate}, avg_ret_net=${row.avg_ret_net}`;
       }),
+      `- FEBT shadow: sampled=${febtShadowSummary.sampled_n || 0}, calc_ok=${febtShadowSummary.calc_ok_n || 0}, phase_known=${febtShadowSummary.phase_known_n || 0}, fire=${febtShadowSummary.fire_n || 0}, late=${febtShadowSummary.late_n || 0}, void=${febtShadowSummary.void_n || 0}, disagree=${febtShadowSummary.disagreement_n || 0}, fallback=${febtShadowSummary.fallback_legacy_n || 0}, top_verdict=${febtShadowSummary.top_verdict || "N/A"}`,
       "",
       "## Gate",
       `- data_quality missing=${dataQuality.summary.missing}, delayed=${dataQuality.summary.delayed}, outlier=${dataQuality.summary.outlier}`,
