@@ -682,8 +682,21 @@ function combineLiveFollowThroughRow(byTier = {}) {
 
 function renderTierLines(byTier = {}) {
   const live = combineLiveEntryQualityRow(byTier);
+  const rows = Object.values(byTier || {}).filter((row) => row && typeof row === "object");
+  const febtExecuted = rows.reduce((acc, row) => acc + Number(row.executed_n || 0), 0);
+  const febtCalcOk = rows.reduce((acc, row) => acc + Number(row.febt_calc_ok_n || 0), 0);
+  const febtPhaseKnown = rows.reduce((acc, row) => acc + Number(row.febt_phase_known_n || 0), 0);
+  const febtFire = rows.reduce((acc, row) => acc + Number(row.febt_fire_n || 0), 0);
+  const febtLate = rows.reduce((acc, row) => acc + Number(row.febt_late_n || 0), 0);
+  const febtVoid = rows.reduce((acc, row) => acc + Number(row.febt_void_n || 0), 0);
+  const febtMissing = rows.reduce((acc, row) => acc + Number(row.febt_payload_missing_n || 0), 0);
+  const febtCalcOkRate = febtExecuted > 0 ? (febtCalcOk / febtExecuted) : null;
+  const febtPayloadMissingRate = febtExecuted > 0 ? (febtMissing / febtExecuted) : null;
+  const febtSummary = febtExecuted > 0
+    ? ` / FEBT calc=${pct(febtCalcOkRate)} phase_known=${febtPhaseKnown} fire=${febtFire} late=${febtLate} void=${febtVoid} missing=${pct(febtPayloadMissingRate)}`
+    : "";
   return [
-    `- ${LIVE_ENTRY_LABEL}: signals=${live.signals_n || 0}, executed=${live.executed_n || 0}, execution=${pct(live.execution_rate)}, tp1_hit=${pct(live.tp1_hit_rate)}, win=${pct(live.win_rate)}, avg_ret_net=${signedPct(live.avg_ret_net)} / ${formatPhysicsSummary(live)}`,
+    `- ${LIVE_ENTRY_LABEL}: signals=${live.signals_n || 0}, executed=${live.executed_n || 0}, execution=${pct(live.execution_rate)}, tp1_hit=${pct(live.tp1_hit_rate)}, win=${pct(live.win_rate)}, avg_ret_net=${signedPct(live.avg_ret_net)} / ${formatPhysicsSummary(live)}${febtSummary}`,
   ];
 }
 

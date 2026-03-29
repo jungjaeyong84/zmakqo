@@ -102,6 +102,17 @@ async function run() {
         _entry_exec_timing: "IMMEDIATE",
         ev_gate_policy_version: "TP1_WEIGHT_V1",
         ev_gate_policy_source: "DEFAULT",
+        febt_mode: "SHADOW",
+        febt_phase: "FIRE",
+        febt_calc_ok: true,
+        febt_calc_reason: "OK",
+        febt_timing_action: "OBSERVE",
+        febt_authority: "SHADOW_ONLY",
+        febt_lock_score: 0.74,
+        febt_delay_cost: 0.66,
+        febt_late_risk: 0.29,
+        febt_failure_risk: 0.18,
+        febt_edge: 0.37,
       },
     },
     {
@@ -160,6 +171,15 @@ async function run() {
   assert.strictEqual(summary.chain_rows[0].entry_exec_timing, "IMMEDIATE");
   assert.strictEqual(summary.chain_rows[0].ev_gate_policy_version, "TP1_WEIGHT_V1");
   assert.strictEqual(summary.chain_rows[0].ev_gate_policy_source, "DEFAULT");
+  assert.strictEqual(summary.chain_rows[0].febt_mode, "SHADOW");
+  assert.strictEqual(summary.chain_rows[0].febt_phase, "FIRE");
+  assert.strictEqual(summary.chain_rows[0].febt_calc_ok, true);
+  assert.strictEqual(summary.chain_rows[0].febt_calc_reason, "OK");
+  assert.strictEqual(summary.chain_rows[0].febt_timing_action, "OBSERVE");
+  assert.strictEqual(summary.chain_rows[0].febt_authority, "SHADOW_ONLY");
+  assert.strictEqual(summary.chain_rows[0].febt_lock_score, 0.74);
+  assert.strictEqual(summary.chain_rows[0].febt_edge, 0.37);
+  assert.strictEqual(summary.chain_rows[0].febt_payload_missing, false);
   assert.strictEqual(summary.chain_rows[0].entry_price, 100);
   assert.strictEqual(summary.chain_rows[0].tp1_ms, 2000);
   assert.strictEqual(summary.chain_rows[0].first_exit_ms, 2000);
@@ -170,6 +190,11 @@ async function run() {
   assert.strictEqual(summary.by_tier.CORE.avg_domain_wall_density, 0.21);
   assert.strictEqual(summary.by_tier.CORE.avg_susceptibility, 0.26);
   assert.strictEqual(summary.by_tier.CORE.avg_free_energy, 0.29);
+  assert.strictEqual(summary.by_tier.CORE.febt_calc_ok_n, 1);
+  assert.strictEqual(summary.by_tier.CORE.febt_fire_n, 1);
+  assert.strictEqual(summary.by_tier.CORE.febt_payload_missing_n, 0);
+  assert.strictEqual(summary.by_tier.CORE.avg_febt_lock_score, 0.74);
+  assert.strictEqual(summary.by_tier.CORE.avg_febt_edge, 0.37);
 
   assert.strictEqual(summary.by_tier.EARLY.signals_n, 1);
   assert.strictEqual(summary.by_tier.EARLY.executed_n, 1);
@@ -183,6 +208,7 @@ async function run() {
   assert.strictEqual(summary.by_tier.EARLY.avg_domain_wall_density, 0.57);
   assert.strictEqual(summary.by_tier.EARLY.avg_susceptibility, 0.69);
   assert.strictEqual(summary.by_tier.EARLY.avg_free_energy, 0.73);
+  assert.strictEqual(summary.by_tier.EARLY.febt_payload_missing_n, 1);
 
   const outOfOrderFills = [
     {

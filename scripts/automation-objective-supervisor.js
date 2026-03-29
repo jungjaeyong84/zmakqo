@@ -239,6 +239,26 @@ function topBreakdownValue(rows = []) {
   return text || null;
 }
 
+function summarizeFebtByTier(byTier = {}) {
+  const rows = Object.values(byTier || {}).filter((row) => row && typeof row === "object");
+  const executed = rows.reduce((acc, row) => acc + Number(row.executed_n || 0), 0);
+  const calcOk = rows.reduce((acc, row) => acc + Number(row.febt_calc_ok_n || 0), 0);
+  const phaseKnown = rows.reduce((acc, row) => acc + Number(row.febt_phase_known_n || 0), 0);
+  const fire = rows.reduce((acc, row) => acc + Number(row.febt_fire_n || 0), 0);
+  const late = rows.reduce((acc, row) => acc + Number(row.febt_late_n || 0), 0);
+  const voidN = rows.reduce((acc, row) => acc + Number(row.febt_void_n || 0), 0);
+  const missing = rows.reduce((acc, row) => acc + Number(row.febt_payload_missing_n || 0), 0);
+  return {
+    executed,
+    calc_ok_rate: executed > 0 ? (calcOk / executed) : null,
+    phase_known: phaseKnown,
+    fire,
+    late,
+    void_n: voidN,
+    missing_rate: executed > 0 ? (missing / executed) : null,
+  };
+}
+
 function buildFilterLayerSummary({ governance, changeControl, ml, ev, wait, physicsSummary } = {}) {
   const current = governance && governance.current && typeof governance.current === "object" ? governance.current : {};
   const patchCandidates = current && current.pine_stage1_patch_candidates && typeof current.pine_stage1_patch_candidates === "object"
@@ -254,6 +274,10 @@ function buildFilterLayerSummary({ governance, changeControl, ml, ev, wait, phys
   const waitPhysics = physicsSummary && physicsSummary.wait_hard
     ? "HARD"
     : (physicsSummary && physicsSummary.wait_assist ? "ASSIST" : "ALLOW");
+  const qualityByTier = current && current.quality && current.quality.by_tier && typeof current.quality.by_tier === "object"
+    ? current.quality.by_tier
+    : {};
+  const febtShadow = summarizeFebtByTier(qualityByTier);
   return {
     integrity: {
       label: "1차 상태/무결성",
@@ -284,6 +308,12 @@ function buildFilterLayerSummary({ governance, changeControl, ml, ev, wait, phys
       label: "5차 WAIT 타이밍층",
       tuner_reason: String(wait && wait.reason || "N/A"),
       wait_action: waitPhysics,
+      febt_calc_ok_rate: febtShadow.calc_ok_rate,
+      febt_phase_known: febtShadow.phase_known,
+      febt_fire_n: febtShadow.fire,
+      febt_late_n: febtShadow.late,
+      febt_void_n: febtShadow.void_n,
+      febt_missing_rate: febtShadow.missing_rate,
     },
   };
 }
@@ -337,7 +367,7 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
         `2차 진입 품질 ${report.filter_layers && report.filter_layers.entry_quality ? `candidate ${report.filter_layers.entry_quality.pine_candidate_verdict} / ml quality ${report.filter_layers.entry_quality.quality_actions}` : "N/A"}`,
         `3차 상태 기반 Soft Sizing ${report.filter_layers && report.filter_layers.state_soft_sizing ? `${report.filter_layers.state_soft_sizing.ml_action} / physics ${report.filter_layers.state_soft_sizing.physics_action} / qty ${report.filter_layers.state_soft_sizing.qty_scale != null ? report.filter_layers.state_soft_sizing.qty_scale : "N/A"}` : "N/A"}`,
         `4차 EV/시간가치층 ${report.filter_layers && report.filter_layers.ev_time_value ? `${report.filter_layers.ev_time_value.tuner_reason} / policy ${report.filter_layers.ev_time_value.policy_version || "N/A"} / source ${report.filter_layers.ev_time_value.policy_source || "N/A"}` : "N/A"}`,
-        `5차 WAIT 타이밍층 ${report.filter_layers && report.filter_layers.wait_timing ? `${report.filter_layers.wait_timing.tuner_reason} / ${report.filter_layers.wait_timing.wait_action}` : "N/A"}`,
+        `5차 WAIT 타이밍층 ${report.filter_layers && report.filter_layers.wait_timing ? `${report.filter_layers.wait_timing.tuner_reason} / ${report.filter_layers.wait_timing.wait_action} / FEBT calc ${pct(report.filter_layers.wait_timing.febt_calc_ok_rate)} / phase_known ${pct(report.filter_layers.wait_timing.febt_phase_known)} / fire ${report.filter_layers.wait_timing.febt_fire_n ?? 0} / late ${report.filter_layers.wait_timing.febt_late_n ?? 0} / void ${report.filter_layers.wait_timing.febt_void_n ?? 0} / missing ${pct(report.filter_layers.wait_timing.febt_missing_rate)}` : "N/A"}`,
       ],
     },
     {
@@ -611,7 +641,7 @@ function renderMarkdown(report = {}) {
     `- 2차 진입 품질: ${report.filter_layers && report.filter_layers.entry_quality ? `candidate=${report.filter_layers.entry_quality.pine_candidate_verdict} / ml_quality_actions=${report.filter_layers.entry_quality.quality_actions}` : "N/A"}`,
     `- 3차 상태 기반 Soft Sizing: ${report.filter_layers && report.filter_layers.state_soft_sizing ? `${report.filter_layers.state_soft_sizing.ml_action} / physics=${report.filter_layers.state_soft_sizing.physics_action} / qty=${report.filter_layers.state_soft_sizing.qty_scale != null ? report.filter_layers.state_soft_sizing.qty_scale : "N/A"} / dominant_state=${report.filter_layers.state_soft_sizing.dominant_state || "N/A"} / dominant_action=${report.filter_layers.state_soft_sizing.dominant_action || "N/A"}` : "N/A"}`,
     `- 4차 EV/시간가치층: ${report.filter_layers && report.filter_layers.ev_time_value ? `${report.filter_layers.ev_time_value.tuner_reason} / policy=${report.filter_layers.ev_time_value.policy_version || "N/A"} / source=${report.filter_layers.ev_time_value.policy_source || "N/A"}` : "N/A"}`,
-    `- 5차 WAIT 타이밍층: ${report.filter_layers && report.filter_layers.wait_timing ? `${report.filter_layers.wait_timing.tuner_reason} / action=${report.filter_layers.wait_timing.wait_action}` : "N/A"}`,
+    `- 5차 WAIT 타이밍층: ${report.filter_layers && report.filter_layers.wait_timing ? `${report.filter_layers.wait_timing.tuner_reason} / action=${report.filter_layers.wait_timing.wait_action} / FEBT calc=${pct(report.filter_layers.wait_timing.febt_calc_ok_rate)} / phase_known=${pct(report.filter_layers.wait_timing.febt_phase_known)} / fire=${report.filter_layers.wait_timing.febt_fire_n ?? 0} / late=${report.filter_layers.wait_timing.febt_late_n ?? 0} / void=${report.filter_layers.wait_timing.febt_void_n ?? 0} / missing=${pct(report.filter_layers.wait_timing.febt_missing_rate)}` : "N/A"}`,
     "",
     "## Market Physics",
     `- state: ${report.physics && report.physics.display_state || "정보 없음"} (${report.physics && report.physics.state || "N/A"}) / executed=${report.physics && report.physics.executed_n != null ? report.physics.executed_n : "N/A"} / block=${report.physics && report.physics.block_reason || "none"}`,

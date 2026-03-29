@@ -229,6 +229,22 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
     promotion: { ready: false, reason: "BLOCKED", candidate_id: null, display_candidate_id: null },
     rollback: { ready: false, reason: "NO_PATCHED_HISTORY" },
     guards: { canary_pass: true, canary_golden_drift: 0, canary_shadow_drift: 0, coverage_pass: true },
+    filter_layers: {
+      integrity: { server_mode: "ENFORCED", coverage_pass: true },
+      entry_quality: { pine_candidate_verdict: "READY", quality_actions: 1 },
+      state_soft_sizing: { ml_action: "KEEP", physics_action: "DROP", qty_scale: 0.2 },
+      ev_time_value: { tuner_reason: "KEEP", policy_version: "TP1_WEIGHT_V1", policy_source: "DEFAULT" },
+      wait_timing: {
+        tuner_reason: "KEEP",
+        wait_action: "WAIT_HARD",
+        febt_calc_ok_rate: 0.75,
+        febt_phase_known: 0.75,
+        febt_fire_n: 3,
+        febt_late_n: 1,
+        febt_void_n: 0,
+        febt_missing_rate: 0.25,
+      },
+    },
     physics: {
       display_state: "혼돈 임계",
       action: "DROP",
@@ -262,6 +278,9 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   const physicsSection = telegramSections.find((section) => section.header === "상태층(시장 물리)");
   assert.ok(physicsSection.lines[0].includes("action DROP"));
   assert.ok(physicsSection.lines[0].includes("wait HARD"));
+  const filterLayerSection = telegramSections.find((section) => section.header === "필터 계층");
+  assert.ok(filterLayerSection.lines[4].includes("FEBT calc 75.00%"));
+  assert.ok(filterLayerSection.lines[4].includes("fire 3"));
   assert.ok(telegramSections.some((section) => section.header === "FEBT Phase 0"));
 
   console.log("OBJECTIVE_SUPERVISOR_TEST_OK");

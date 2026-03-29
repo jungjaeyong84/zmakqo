@@ -106,6 +106,7 @@ indicator("돈벌자 :) Ω Full 🐬 v6.0.3.0 (LONG_SHORT_CORE_BINANCE_SP_FIX)",
 // [PATCH-68] RS_BLOCK_FIX: RS 관망 차단을 gap/_p54/tier 계산보다 먼저 적용해 long fire 오염 방지
 // [PATCH-69] EMO_SINGLE_DEFINITION: emo_long/short 이중 정의 제거, 상위 단계 배제 조건 일원화
 // [PATCH-70] DIAG_C_BLOCK_GUARD: diag_c 차단 시 diag_b/pulse도 함께 정리, score 포화 경고 표시
+// [PATCH-71] FEBT_PHASE1_SHADOW: BEST/FEBT 5차 타이밍 센서 shadow payload 추가(라이브 판정 불변)
 // [PATCH-71] STAT_PHYSICS_V2: field alignment / domain wall / susceptibility / free-energy proxy 추가
 //   → 통계물리학을 단순 threshold가 아니라 구조적 상태량으로 강화
 //   → quality gate와 CORE→LONG/SHORT 승격이 ordered-state를 더 강하게 요구
@@ -140,6 +141,7 @@ grp_alert    = "═══ 서버 알림 설정 ═══"
 grp_binancef = "═══ Binance Futures 필터 ═══"
 grp_opt      = "═══ 시장별 승률 최적화(실험) ═══"
 grp_display  = "═══ 표시 설정 ═══"
+grp_febt     = "═══ FEBT Timing ═══"
 // Pine 내부 최적화 버그 회피용 더미 플롯(시각 출력 없음)
 plot(close, title = "dummy", display = display.none)
 
@@ -277,6 +279,15 @@ exit_tp1_atr_mult_trend = input.float(3.5, "추세 TP ATR 배수", minval = 1.0,
 exit_trail_atr_mult_trend = input.float(0.8, "추세 Trail ATR 배수", minval = 0.3, maxval = 3.0, step = 0.1, group = grp_alert)
 exit_tp1_floor         = input.float(1.5, "Exit TP 최소(%)", minval = 0.5, maxval = 5.0, step = 0.1, group = grp_alert)
 exit_trail_floor       = input.float(0.5, "Exit Trail 최소(%)", minval = 0.2, maxval = 3.0, step = 0.1, group = grp_alert)
+febt_mode              = input.string("SHADOW", "FEBT 모드", options = ["OFF", "SHADOW", "SOFT", "HARD"], group = grp_febt,
+     tooltip = "Phase 1 구현은 SHADOW 전용입니다. SOFT/HARD 선택 시에도 현재 런타임은 SHADOW로 고정됩니다.")
+febt_lock_arm_min      = input.float(0.48, "FEBT LOCK arm 최소", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_febt)
+febt_lock_fire_min     = input.float(0.62, "FEBT LOCK fire 최소", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_febt)
+febt_fire_edge_min     = input.float(0.12, "FEBT FIRE edge 최소", minval = -0.5, maxval = 0.5, step = 0.01, group = grp_febt)
+febt_late_hard_max     = input.float(0.74, "FEBT LATE hard 상한", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_febt)
+febt_fail_max          = input.float(0.68, "FEBT failure 상한", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_febt)
+febt_debug_enable      = input.bool(false, "FEBT 디버그 표시", group = grp_febt)
+febt_payload_enable    = input.bool(true, "FEBT payload 포함", group = grp_febt)
 
 //────────────────────────────────────
 // 02. 표시 설정 — [PATCH-43] grp_bg+grp_onoff+grp_panel → grp_display 통합
@@ -567,6 +578,53 @@ f_strategy_id_effective() =>
     strategy_id_override_trimmed != "" ? strategy_id_override_trimmed : STRATEGY_ID
 f_strategy_id_source() =>
     str.trim(strategy_id_override) != "" ? "OVERRIDE" : "DEFAULT"
+f_febt_mode_runtime(string _mode) =>
+    string modeU = str.upper(str.trim(_mode))
+    modeU == "OFF" ? "OFF" : "SHADOW"
+f_febt_same_dir_streak(bool _dir_long) =>
+    int streak = 0
+    for i = 0 to 9
+        if na(close[i]) or na(close[i + 1])
+            break
+        bool same_dir = _dir_long ? (close[i] >= close[i + 1]) : (close[i] <= close[i + 1])
+        if same_dir
+            streak += 1
+        else
+            break
+    streak
+f_febt_phase(bool _state_valid, float _lock_score, float _edge, float _late_risk, float _failure_risk) =>
+    if not _state_valid
+        "VOID"
+    else if _failure_risk > febt_fail_max
+        "VOID"
+    else if _late_risk >= febt_late_hard_max
+        "LATE"
+    else if _lock_score < febt_lock_arm_min
+        "PREPARE"
+    else if _lock_score >= febt_lock_fire_min and _edge >= febt_fire_edge_min
+        "FIRE"
+    else
+        "ARMED"
+f_febt_timing_action(string _mode_runtime, string _phase, bool _calc_ok) =>
+    string modeU = str.upper(str.trim(_mode_runtime))
+    string phaseU = str.upper(str.trim(_phase))
+    if not _calc_ok or modeU == "OFF"
+        "NO_OP"
+    else if modeU == "SHADOW"
+        "OBSERVE"
+    else if modeU == "SOFT"
+        phaseU == "FIRE" ? "PASS" : phaseU == "ARMED" ? "DEFER_HINT" : phaseU == "LATE" ? "LATE_WARN" : phaseU == "VOID" ? "BLOCK_CANDIDATE" : "NO_OP"
+    else
+        phaseU == "FIRE" ? "PASS" : phaseU == "ARMED" ? "DEFER_HINT" : phaseU == "VOID" or phaseU == "LATE" ? "BLOCK_CANDIDATE" : "NO_OP"
+f_febt_authority(string _mode_runtime) =>
+    string modeU = str.upper(str.trim(_mode_runtime))
+    modeU == "HARD" ? "WAIT_PRIMARY" : modeU == "SOFT" ? "TIMING_ADVISORY" : "SHADOW_ONLY"
+f_febt_pick_float(int _sig_dir, float _long_v, float _short_v) =>
+    _sig_dir > 0 ? _long_v : _sig_dir < 0 ? _short_v : na
+f_febt_pick_int(int _sig_dir, int _long_v, int _short_v) =>
+    _sig_dir > 0 ? _long_v : _sig_dir < 0 ? _short_v : na
+f_febt_pick_string(int _sig_dir, string _long_v, string _short_v) =>
+    _sig_dir > 0 ? _long_v : _sig_dir < 0 ? _short_v : "UNKNOWN"
 
 // 품질게이트 단계 상수
 int STAGE_EARLY = 0
@@ -2541,6 +2599,121 @@ else if (sp_entropy_score >= 0.68 and sp_coherence_score <= 0.42) or (sp_domain_
     sp_state := "DISORDERED"
 else if sp_coherence_score >= 0.68 and sp_entropy_score <= 0.42 and sp_transition_risk <= 0.42 and sp_free_energy <= 0.40
     sp_state := "ORDERED"
+// [PATCH-71] FEBT Phase 1 SHADOW: OHLCV 기반 timing sensor 계산(라이브 판정 미사용)
+string febt_mode_runtime = f_febt_mode_runtime(febt_mode)
+string febt_authority_runtime = f_febt_authority(febt_mode_runtime)
+float febt_range_safe = math.max(candle_range, syminfo.mintick)
+float febt_body_ratio = f_clamp01(body_pct)
+float febt_range_pos = f_clamp01((close - low) / febt_range_safe)
+float febt_upper_wick_ratio = candle_range > syminfo.mintick ? (upper_wick / candle_range) : 0.0
+float febt_lower_wick_ratio = candle_range > syminfo.mintick ? (lower_wick / candle_range) : 0.0
+float febt_dir_close_pos_long = febt_range_pos
+float febt_dir_close_pos_short = f_clamp01(1.0 - febt_range_pos)
+float febt_dir_reject_long = f_clamp01(febt_lower_wick_ratio)
+float febt_dir_reject_short = f_clamp01(febt_upper_wick_ratio)
+float febt_opp_wick_long = f_clamp01(febt_upper_wick_ratio)
+float febt_opp_wick_short = f_clamp01(febt_lower_wick_ratio)
+float febt_vol_ma_20 = math.max(ta.sma(volume, 20), 1.0)
+float febt_vol_ratio_20 = volume / febt_vol_ma_20
+float febt_vol_spike = f_clamp01(febt_vol_ratio_20 / 2.5)
+int febt_same_dir_streak_long = f_febt_same_dir_streak(true)
+int febt_same_dir_streak_short = f_febt_same_dir_streak(false)
+float febt_recent_move_1_pct = not na(close[1]) ? ((close - close[1]) / math.max(close[1], syminfo.mintick)) * 100.0 : na
+float febt_recent_move_2_pct = not na(close[2]) ? ((close - close[2]) / math.max(close[2], syminfo.mintick)) * 100.0 : na
+float febt_break_ref_long = na(high[1]) or na(high[2]) ? na : math.max(high[1], high[2])
+float febt_break_ref_short = na(low[1]) or na(low[2]) ? na : math.min(low[1], low[2])
+float febt_break_retention_long = na(febt_break_ref_long) ? na : f_clamp01(0.5 + ((close - febt_break_ref_long) / febt_range_safe))
+float febt_break_retention_short = na(febt_break_ref_short) ? na : f_clamp01(0.5 + ((febt_break_ref_short - close) / febt_range_safe))
+float febt_close_control_long = f_clamp01(0.65 * febt_dir_close_pos_long + 0.35 * febt_body_ratio)
+float febt_close_control_short = f_clamp01(0.65 * febt_dir_close_pos_short + 0.35 * febt_body_ratio)
+float febt_prev_range = na(high[1]) or na(low[1]) ? na : (high[1] - low[1])
+float febt_prev_range_safe = na(febt_prev_range) ? syminfo.mintick : math.max(febt_prev_range, syminfo.mintick)
+float febt_body_ratio_prev = not na(close[1]) and not na(open[1]) ? math.abs(close[1] - open[1]) / febt_prev_range_safe : na
+float febt_dir_body_prev_long = not na(close[1]) and not na(open[1]) and close[1] >= open[1] ? f_clamp01(febt_body_ratio_prev) : 0.0
+float febt_dir_body_prev_short = not na(close[1]) and not na(open[1]) and close[1] <= open[1] ? f_clamp01(febt_body_ratio_prev) : 0.0
+float febt_dir_body_now_long = close >= open ? f_clamp01(febt_body_ratio) : 0.0
+float febt_dir_body_now_short = close <= open ? f_clamp01(febt_body_ratio) : 0.0
+float febt_extension_fail_long = na(high[1]) ? na : f_clamp01((high[1] - close) / febt_range_safe)
+float febt_extension_fail_short = na(low[1]) ? na : f_clamp01((close - low[1]) / febt_range_safe)
+float febt_impulse_decay_long = f_clamp01(0.60 * math.max(febt_dir_body_prev_long - febt_dir_body_now_long, 0.0) + 0.40 * nz(febt_extension_fail_long, 0.0))
+float febt_impulse_decay_short = f_clamp01(0.60 * math.max(febt_dir_body_prev_short - febt_dir_body_now_short, 0.0) + 0.40 * nz(febt_extension_fail_short, 0.0))
+float febt_counter_rejection_long = f_clamp01(0.60 * febt_dir_reject_long + 0.40 * febt_dir_close_pos_long)
+float febt_counter_rejection_short = f_clamp01(0.60 * febt_dir_reject_short + 0.40 * febt_dir_close_pos_short)
+float febt_micro_absorption_long = f_clamp01(0.45 * febt_vol_spike + 0.35 * febt_dir_reject_long + 0.20 * febt_dir_close_pos_long)
+float febt_micro_absorption_short = f_clamp01(0.45 * febt_vol_spike + 0.35 * febt_dir_reject_short + 0.20 * febt_dir_close_pos_short)
+float febt_same_dir_streak_norm_long = f_clamp01(febt_same_dir_streak_long / 4.0)
+float febt_same_dir_streak_norm_short = f_clamp01(febt_same_dir_streak_short / 4.0)
+float febt_recent_move_1_norm = f_clamp01(math.abs(febt_recent_move_1_pct) / 2.5)
+float febt_recent_move_2_norm = f_clamp01(math.abs(febt_recent_move_2_pct) / 4.0)
+float febt_break_retention_norm_long = f_clamp01(febt_break_retention_long)
+float febt_break_retention_norm_short = f_clamp01(febt_break_retention_short)
+float febt_close_control_norm_long = f_clamp01(febt_close_control_long)
+float febt_close_control_norm_short = f_clamp01(febt_close_control_short)
+float febt_impulse_decay_norm_long = f_clamp01(febt_impulse_decay_long)
+float febt_impulse_decay_norm_short = f_clamp01(febt_impulse_decay_short)
+float febt_counter_rejection_norm_long = f_clamp01(febt_counter_rejection_long)
+float febt_counter_rejection_norm_short = f_clamp01(febt_counter_rejection_short)
+float febt_micro_absorption_norm_long = f_clamp01(febt_micro_absorption_long)
+float febt_micro_absorption_norm_short = f_clamp01(febt_micro_absorption_short)
+float febt_lock_score_long = f_clamp01(
+     0.28 * febt_dir_close_pos_long +
+     0.22 * febt_break_retention_norm_long +
+     0.20 * febt_body_ratio +
+     0.18 * febt_dir_reject_long +
+     0.12 * febt_micro_absorption_norm_long)
+float febt_lock_score_short = f_clamp01(
+     0.28 * febt_dir_close_pos_short +
+     0.22 * febt_break_retention_norm_short +
+     0.20 * febt_body_ratio +
+     0.18 * febt_dir_reject_short +
+     0.12 * febt_micro_absorption_norm_short)
+float febt_delay_cost_long = f_clamp01(
+     (0.30 * febt_close_control_norm_long +
+      0.24 * febt_break_retention_norm_long +
+      0.18 * febt_recent_move_1_norm +
+      0.16 * febt_counter_rejection_norm_long +
+      0.12 * febt_micro_absorption_norm_long) - (0.15 * febt_impulse_decay_norm_long))
+float febt_delay_cost_short = f_clamp01(
+     (0.30 * febt_close_control_norm_short +
+      0.24 * febt_break_retention_norm_short +
+      0.18 * febt_recent_move_1_norm +
+      0.16 * febt_counter_rejection_norm_short +
+      0.12 * febt_micro_absorption_norm_short) - (0.15 * febt_impulse_decay_norm_short))
+float febt_late_risk_long_raw =
+     0.34 * febt_same_dir_streak_norm_long +
+     0.26 * febt_recent_move_1_norm +
+     0.18 * febt_recent_move_2_norm +
+     0.12 * febt_close_control_norm_long +
+     0.10 * febt_impulse_decay_norm_long
+float febt_late_risk_short_raw =
+     0.34 * febt_same_dir_streak_norm_short +
+     0.26 * febt_recent_move_1_norm +
+     0.18 * febt_recent_move_2_norm +
+     0.12 * febt_close_control_norm_short +
+     0.10 * febt_impulse_decay_norm_short
+float febt_late_risk_long = f_clamp01(febt_late_risk_long_raw - (febt_micro_absorption_norm_long >= 0.70 ? 0.08 : 0.0))
+float febt_late_risk_short = f_clamp01(febt_late_risk_short_raw - (febt_micro_absorption_norm_short >= 0.70 ? 0.08 : 0.0))
+float febt_failure_risk_long = f_clamp01(
+     0.30 * febt_opp_wick_long +
+     0.24 * febt_impulse_decay_norm_long +
+     0.18 * (1.0 - febt_break_retention_norm_long) +
+     0.16 * (1.0 - febt_close_control_norm_long) +
+     0.12 * (1.0 - febt_counter_rejection_norm_long))
+float febt_failure_risk_short = f_clamp01(
+     0.30 * febt_opp_wick_short +
+     0.24 * febt_impulse_decay_norm_short +
+     0.18 * (1.0 - febt_break_retention_norm_short) +
+     0.16 * (1.0 - febt_close_control_norm_short) +
+     0.12 * (1.0 - febt_counter_rejection_norm_short))
+float febt_edge_long = f_clamp01(0.5 + febt_delay_cost_long - febt_late_risk_long) - 0.5
+float febt_edge_short = f_clamp01(0.5 + febt_delay_cost_short - febt_late_risk_short) - 0.5
+bool febt_state_valid = regime_state != "range_hard_block" and not na(sp_coherence_score) and not na(sp_transition_risk) and sp_coherence_score >= 0.30 and sp_transition_risk <= 0.84
+bool febt_inputs_ready = not na(close[2]) and not na(high[2]) and not na(low[2]) and not na(open[1]) and not na(close[1]) and not na(ta.sma(volume, 20)) and not na(sp_coherence_score) and not na(sp_transition_risk)
+bool febt_scores_ready = febt_inputs_ready and not na(febt_lock_score_long) and not na(febt_lock_score_short) and not na(febt_delay_cost_long) and not na(febt_delay_cost_short) and not na(febt_late_risk_long) and not na(febt_late_risk_short) and not na(febt_failure_risk_long) and not na(febt_failure_risk_short) and not na(febt_edge_long) and not na(febt_edge_short)
+bool febt_calc_ok = febt_mode_runtime != "OFF" and febt_scores_ready
+string febt_calc_reason = febt_mode_runtime == "OFF" ? "OFF" : not febt_inputs_ready ? "MISSING_INPUT" : not febt_scores_ready ? "SHADOW_FAILSAFE" : "OK"
+string febt_phase_long = febt_calc_ok ? f_febt_phase(febt_state_valid, febt_lock_score_long, febt_edge_long, febt_late_risk_long, febt_failure_risk_long) : "UNKNOWN"
+string febt_phase_short = febt_calc_ok ? f_febt_phase(febt_state_valid, febt_lock_score_short, febt_edge_short, febt_late_risk_short, febt_failure_risk_short) : "UNKNOWN"
 // [QUALITY_GATE_FIX_2026-02-20]
 // 품질 게이트(정확도 우선): 노이즈 구간을 줄이고 방향 우세가 명확할 때만 통과
 // 주의: tuple destructuring([a,b,...])/함수 내부 percentrank는 컴파일 이슈가 있어 사용하지 않는다.
@@ -4186,6 +4359,22 @@ f_alert_payload(string ev, string sd, float qty, string action, string reason, i
     bool pineStage1Owned = pine_stage1_bundle_runtime
     string bundleEvent = f_live_entry_bundle_event(ev, sd, entryGrade)
     bool pineStage1StagePass = pineStage1Owned and f_stage1_bundle_pass_for_event(bundleEvent, sd, pine_stage1_bundle_mask)
+    string febtPhaseSelected = f_febt_pick_string(sigDir, febt_phase_long, febt_phase_short)
+    float febtLockSelected = f_febt_pick_float(sigDir, febt_lock_score_long, febt_lock_score_short)
+    float febtDelaySelected = f_febt_pick_float(sigDir, febt_delay_cost_long, febt_delay_cost_short)
+    float febtLateSelected = f_febt_pick_float(sigDir, febt_late_risk_long, febt_late_risk_short)
+    float febtFailureSelected = f_febt_pick_float(sigDir, febt_failure_risk_long, febt_failure_risk_short)
+    float febtEdgeSelected = f_febt_pick_float(sigDir, febt_edge_long, febt_edge_short)
+    int febtSameDirStreakSelected = f_febt_pick_int(sigDir, febt_same_dir_streak_long, febt_same_dir_streak_short)
+    float febtBreakRetentionSelected = f_febt_pick_float(sigDir, febt_break_retention_long, febt_break_retention_short)
+    float febtCloseControlSelected = f_febt_pick_float(sigDir, febt_close_control_long, febt_close_control_short)
+    float febtImpulseDecaySelected = f_febt_pick_float(sigDir, febt_impulse_decay_long, febt_impulse_decay_short)
+    float febtCounterRejectionSelected = f_febt_pick_float(sigDir, febt_counter_rejection_long, febt_counter_rejection_short)
+    float febtMicroAbsorptionSelected = f_febt_pick_float(sigDir, febt_micro_absorption_long, febt_micro_absorption_short)
+    bool febtCalcOkSelected = sigDir != 0 and febt_calc_ok
+    bool febtStateValidSelected = sigDir != 0 and febt_state_valid
+    string febtCalcReasonSelected = sigDir == 0 ? "SIDE_UNKNOWN" : febt_calc_reason
+    string febtTimingActionSelected = f_febt_timing_action(febt_mode_runtime, febtPhaseSelected, febtCalcOkSelected)
     int barCloseMs = int(time_close)
     string signalKey = sym + "|" + tf + "|" + ev + "|" + str.tostring(barCloseMs) + "|" + str.tostring(sigDir)
     string signalId = signalKey + "|" + action + "|" + emitMode
@@ -4205,6 +4394,19 @@ f_alert_payload(string ev, string sd, float qty, string action, string reason, i
     payload += f_json_pair_b("cost_shield_enable", cost_shield_enable)
     payload += f_json_pair_n("cost_shield_entry_mult", cost_shield_entry_mult)
     payload += f_json_pair_b("qty_sanitized", true)
+    if febt_payload_enable
+        payload += f_json_pair_s("febt_mode", febt_mode_runtime)
+        payload += f_json_pair_s("febt_phase", febtPhaseSelected)
+        payload += f_json_pair_n("febt_lock_score", febtLockSelected)
+        payload += f_json_pair_n("febt_delay_cost", febtDelaySelected)
+        payload += f_json_pair_n("febt_late_risk", febtLateSelected)
+        payload += f_json_pair_n("febt_failure_risk", febtFailureSelected)
+        payload += f_json_pair_n("febt_edge", febtEdgeSelected)
+        payload += f_json_pair_b("febt_state_valid", febtStateValidSelected)
+        payload += f_json_pair_b("febt_calc_ok", febtCalcOkSelected)
+        payload += f_json_pair_s("febt_calc_reason", febtCalcReasonSelected)
+        payload += f_json_pair_s("febt_timing_action", febtTimingActionSelected)
+        payload += f_json_pair_s("febt_authority", febt_authority_runtime)
     // [PATCH-41] 동적 Exit Policy
     float _atr_pct = atr_val / math.max(close, 1.0) * 100.0
     float _exit_tp1 = 3.0
@@ -4258,6 +4460,27 @@ f_alert_payload(string ev, string sd, float qty, string action, string reason, i
     payload += f_json_pair_n("zz_post_prob_long", zz_post_prob_long) + f_json_pair_n("zz_post_prob_short", zz_post_prob_short)
     payload += f_json_pair_n("zz_wave_conf", nz(zz_wave_conf, 0.5))
     payload += f_json_pair_n("zz_ev_core_long", zz_ev_core_long) + f_json_pair_n("zz_ev_core_short", zz_ev_core_short)
+    if febt_payload_enable
+        payload += f_json_pair_s("febt_mode", febt_mode_runtime)
+        payload += f_json_pair_s("febt_phase", febtPhaseSelected)
+        payload += f_json_pair_n("febt_lock_score", febtLockSelected)
+        payload += f_json_pair_n("febt_delay_cost", febtDelaySelected)
+        payload += f_json_pair_n("febt_late_risk", febtLateSelected)
+        payload += f_json_pair_n("febt_failure_risk", febtFailureSelected)
+        payload += f_json_pair_n("febt_edge", febtEdgeSelected)
+        payload += f_json_pair_b("febt_state_valid", febtStateValidSelected)
+        payload += f_json_pair_b("febt_calc_ok", febtCalcOkSelected)
+        payload += f_json_pair_s("febt_calc_reason", febtCalcReasonSelected)
+        payload += f_json_pair_s("febt_timing_action", febtTimingActionSelected)
+        payload += f_json_pair_s("febt_authority", febt_authority_runtime)
+        payload += f_json_pair_i("febt_same_dir_streak", febtSameDirStreakSelected)
+        payload += f_json_pair_n("febt_recent_move_1_pct", febt_recent_move_1_pct)
+        payload += f_json_pair_n("febt_recent_move_2_pct", febt_recent_move_2_pct)
+        payload += f_json_pair_n("febt_break_retention", febtBreakRetentionSelected)
+        payload += f_json_pair_n("febt_close_control", febtCloseControlSelected)
+        payload += f_json_pair_n("febt_impulse_decay", febtImpulseDecaySelected)
+        payload += f_json_pair_n("febt_counter_rejection", febtCounterRejectionSelected)
+        payload += f_json_pair_n("febt_micro_absorption", febtMicroAbsorptionSelected)
     payload += f_json_pair_n("zz_ev_diag_c_long", zz_ev_diag_c_long) + f_json_pair_n("zz_ev_diag_c_short", zz_ev_diag_c_short) + "}}"
     payload
 // 42-3D) 실시간(선발) / 확정(잔여) 전송 유틸

@@ -127,6 +127,25 @@ function emptyTierStats() {
     susceptibility_n: 0,
     free_energy_sum: 0,
     free_energy_n: 0,
+    febt_payload_missing_n: 0,
+    febt_calc_ok_n: 0,
+    febt_phase_known_n: 0,
+    febt_prepare_n: 0,
+    febt_armed_n: 0,
+    febt_fire_n: 0,
+    febt_late_n: 0,
+    febt_void_n: 0,
+    febt_unknown_n: 0,
+    febt_lock_score_sum: 0,
+    febt_lock_score_n: 0,
+    febt_delay_cost_sum: 0,
+    febt_delay_cost_n: 0,
+    febt_late_risk_sum: 0,
+    febt_late_risk_n: 0,
+    febt_failure_risk_sum: 0,
+    febt_failure_risk_n: 0,
+    febt_edge_sum: 0,
+    febt_edge_n: 0,
   };
 }
 
@@ -146,6 +165,14 @@ function finalizeTierStats(stats) {
   out.avg_domain_wall_density = out.domain_wall_density_n > 0 ? (out.domain_wall_density_sum / out.domain_wall_density_n) : null;
   out.avg_susceptibility = out.susceptibility_n > 0 ? (out.susceptibility_sum / out.susceptibility_n) : null;
   out.avg_free_energy = out.free_energy_n > 0 ? (out.free_energy_sum / out.free_energy_n) : null;
+  out.febt_calc_ok_rate = out.executed_n > 0 ? (out.febt_calc_ok_n / out.executed_n) : null;
+  out.febt_phase_known_rate = out.executed_n > 0 ? (out.febt_phase_known_n / out.executed_n) : null;
+  out.febt_payload_missing_rate = out.executed_n > 0 ? (out.febt_payload_missing_n / out.executed_n) : null;
+  out.avg_febt_lock_score = out.febt_lock_score_n > 0 ? (out.febt_lock_score_sum / out.febt_lock_score_n) : null;
+  out.avg_febt_delay_cost = out.febt_delay_cost_n > 0 ? (out.febt_delay_cost_sum / out.febt_delay_cost_n) : null;
+  out.avg_febt_late_risk = out.febt_late_risk_n > 0 ? (out.febt_late_risk_sum / out.febt_late_risk_n) : null;
+  out.avg_febt_failure_risk = out.febt_failure_risk_n > 0 ? (out.febt_failure_risk_sum / out.febt_failure_risk_n) : null;
+  out.avg_febt_edge = out.febt_edge_n > 0 ? (out.febt_edge_sum / out.febt_edge_n) : null;
   return out;
 }
 
@@ -352,6 +379,42 @@ async function summarizePineSignalQuality({
       tierStats.free_energy_sum += Number(signalMeta.free_energy);
       tierStats.free_energy_n += 1;
     }
+    if (signalMeta.febt_payload_missing === true) {
+      tierStats.febt_payload_missing_n += 1;
+    }
+    if (signalMeta.febt_calc_ok === true) {
+      tierStats.febt_calc_ok_n += 1;
+    }
+    const febtPhase = toUpper(signalMeta.febt_phase);
+    if (febtPhase && febtPhase !== "UNKNOWN") {
+      tierStats.febt_phase_known_n += 1;
+    }
+    if (febtPhase === "PREPARE") tierStats.febt_prepare_n += 1;
+    else if (febtPhase === "ARMED") tierStats.febt_armed_n += 1;
+    else if (febtPhase === "FIRE") tierStats.febt_fire_n += 1;
+    else if (febtPhase === "LATE") tierStats.febt_late_n += 1;
+    else if (febtPhase === "VOID") tierStats.febt_void_n += 1;
+    else tierStats.febt_unknown_n += 1;
+    if (Number.isFinite(signalMeta.febt_lock_score)) {
+      tierStats.febt_lock_score_sum += Number(signalMeta.febt_lock_score);
+      tierStats.febt_lock_score_n += 1;
+    }
+    if (Number.isFinite(signalMeta.febt_delay_cost)) {
+      tierStats.febt_delay_cost_sum += Number(signalMeta.febt_delay_cost);
+      tierStats.febt_delay_cost_n += 1;
+    }
+    if (Number.isFinite(signalMeta.febt_late_risk)) {
+      tierStats.febt_late_risk_sum += Number(signalMeta.febt_late_risk);
+      tierStats.febt_late_risk_n += 1;
+    }
+    if (Number.isFinite(signalMeta.febt_failure_risk)) {
+      tierStats.febt_failure_risk_sum += Number(signalMeta.febt_failure_risk);
+      tierStats.febt_failure_risk_n += 1;
+    }
+    if (Number.isFinite(signalMeta.febt_edge)) {
+      tierStats.febt_edge_sum += Number(signalMeta.febt_edge);
+      tierStats.febt_edge_n += 1;
+    }
 
     const chainTrades = tradesByEntry.get(chain.entry_event_id) || [];
     let pnlQuote = 0;
@@ -399,6 +462,18 @@ async function summarizePineSignalQuality({
       entry_exec_timing: signalMeta.entry_exec_timing || "unknown",
       ev_gate_policy_version: signalMeta.ev_gate_policy_version || "unknown",
       ev_gate_policy_source: signalMeta.ev_gate_policy_source || "unknown",
+      febt_mode: signalMeta.febt_mode || "unknown",
+      febt_phase: signalMeta.febt_phase || "unknown",
+      febt_calc_ok: signalMeta.febt_calc_ok === true,
+      febt_calc_reason: signalMeta.febt_calc_reason || "unknown",
+      febt_timing_action: signalMeta.febt_timing_action || "unknown",
+      febt_authority: signalMeta.febt_authority || "unknown",
+      febt_payload_missing: signalMeta.febt_payload_missing === true,
+      febt_lock_score: Number.isFinite(signalMeta.febt_lock_score) ? signalMeta.febt_lock_score : null,
+      febt_delay_cost: Number.isFinite(signalMeta.febt_delay_cost) ? signalMeta.febt_delay_cost : null,
+      febt_late_risk: Number.isFinite(signalMeta.febt_late_risk) ? signalMeta.febt_late_risk : null,
+      febt_failure_risk: Number.isFinite(signalMeta.febt_failure_risk) ? signalMeta.febt_failure_risk : null,
+      febt_edge: Number.isFinite(signalMeta.febt_edge) ? signalMeta.febt_edge : null,
       late_by_bars: Number.isFinite(signalMeta.late_by_bars) ? signalMeta.late_by_bars : null,
       score_bucket: signalMeta.score_bucket || "unknown",
       conf_bucket: signalMeta.conf_bucket || "unknown",

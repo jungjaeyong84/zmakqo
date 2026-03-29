@@ -20,6 +20,17 @@ function run() {
       _entry_exec_timing: "IMMEDIATE",
       ev_gate_policy_version: "TP1_WEIGHT_V1",
       ev_gate_policy_source: "DEFAULT",
+      febt_mode: "SHADOW",
+      febt_phase: "FIRE",
+      febt_calc_ok: true,
+      febt_calc_reason: "OK",
+      febt_timing_action: "OBSERVE",
+      febt_authority: "SHADOW_ONLY",
+      febt_lock_score: 0.74,
+      febt_delay_cost: 0.66,
+      febt_late_risk: 0.29,
+      febt_failure_risk: 0.18,
+      febt_edge: 0.37,
     },
     regime: "trend",
   });
@@ -38,6 +49,15 @@ function run() {
   assert.strictEqual(sig.entry_exec_timing, "IMMEDIATE");
   assert.strictEqual(sig.ev_gate_policy_version, "TP1_WEIGHT_V1");
   assert.strictEqual(sig.ev_gate_policy_source, "DEFAULT");
+  assert.strictEqual(sig.febt_mode, "SHADOW");
+  assert.strictEqual(sig.febt_phase, "FIRE");
+  assert.strictEqual(sig.febt_calc_ok, true);
+  assert.strictEqual(sig.febt_calc_reason, "OK");
+  assert.strictEqual(sig.febt_timing_action, "OBSERVE");
+  assert.strictEqual(sig.febt_authority, "SHADOW_ONLY");
+  assert.strictEqual(sig.febt_lock_score, 0.74);
+  assert.strictEqual(sig.febt_edge, 0.37);
+  assert.strictEqual(sig.febt_payload_missing, false);
   console.log("FILTER_FEATURE_BUCKETS_TEST_OK");
 }
 

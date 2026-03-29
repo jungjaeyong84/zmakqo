@@ -17,6 +17,7 @@ const { buildWebhookRequestId, recordWebhookIngress, recordWebhookOutcome } = re
 const { normalizeProviderId, pickProviderEntry } = require("../utils/providerUtils");
 const { normalizePositionSide } = require("../utils/positionSide");
 const { alignBarCloseMs } = require("../utils/alignBarCloseMs");
+const { resolveFebtShadow } = require("../utils/febtShadow");
 const { runOneMarket } = require("../scheduler/marketRunner");
 const { resolveExecTfForExchange } = require("../utils/resolveExchange");
 const { sendSignalReceivedAlert } = require("../services/signalLifecycleAlert");
@@ -1522,6 +1523,28 @@ function createWebhookRoutes() {
         _tf_upgraded: tfRaw !== tf,
         _execution_mode: executionMode,
       };
+      const febtShadow = resolveFebtShadow(features);
+      features.febt_payload_missing = febtShadow.payloadMissing === true;
+      if (!features.febt_mode && febtShadow.mode) features.febt_mode = febtShadow.mode;
+      if (!features.febt_phase && febtShadow.phase) features.febt_phase = febtShadow.phase;
+      if (features.febt_calc_ok == null && febtShadow.calcOk !== null) features.febt_calc_ok = febtShadow.calcOk;
+      if (!features.febt_calc_reason && febtShadow.calcReason) features.febt_calc_reason = febtShadow.calcReason;
+      if (!features.febt_timing_action && febtShadow.timingAction) features.febt_timing_action = febtShadow.timingAction;
+      if (!features.febt_authority && febtShadow.authority) features.febt_authority = febtShadow.authority;
+      if (features.febt_state_valid == null && febtShadow.stateValid !== null) features.febt_state_valid = febtShadow.stateValid;
+      if (!Number.isFinite(Number(features.febt_lock_score)) && Number.isFinite(febtShadow.lockScore)) features.febt_lock_score = febtShadow.lockScore;
+      if (!Number.isFinite(Number(features.febt_delay_cost)) && Number.isFinite(febtShadow.delayCost)) features.febt_delay_cost = febtShadow.delayCost;
+      if (!Number.isFinite(Number(features.febt_late_risk)) && Number.isFinite(febtShadow.lateRisk)) features.febt_late_risk = febtShadow.lateRisk;
+      if (!Number.isFinite(Number(features.febt_failure_risk)) && Number.isFinite(febtShadow.failureRisk)) features.febt_failure_risk = febtShadow.failureRisk;
+      if (!Number.isFinite(Number(features.febt_edge)) && Number.isFinite(febtShadow.edge)) features.febt_edge = febtShadow.edge;
+      if (!Number.isFinite(Number(features.febt_same_dir_streak)) && Number.isFinite(febtShadow.sameDirStreak)) features.febt_same_dir_streak = febtShadow.sameDirStreak;
+      if (!Number.isFinite(Number(features.febt_recent_move_1_pct)) && Number.isFinite(febtShadow.recentMove1Pct)) features.febt_recent_move_1_pct = febtShadow.recentMove1Pct;
+      if (!Number.isFinite(Number(features.febt_recent_move_2_pct)) && Number.isFinite(febtShadow.recentMove2Pct)) features.febt_recent_move_2_pct = febtShadow.recentMove2Pct;
+      if (!Number.isFinite(Number(features.febt_break_retention)) && Number.isFinite(febtShadow.breakRetention)) features.febt_break_retention = febtShadow.breakRetention;
+      if (!Number.isFinite(Number(features.febt_close_control)) && Number.isFinite(febtShadow.closeControl)) features.febt_close_control = febtShadow.closeControl;
+      if (!Number.isFinite(Number(features.febt_impulse_decay)) && Number.isFinite(febtShadow.impulseDecay)) features.febt_impulse_decay = febtShadow.impulseDecay;
+      if (!Number.isFinite(Number(features.febt_counter_rejection)) && Number.isFinite(febtShadow.counterRejection)) features.febt_counter_rejection = febtShadow.counterRejection;
+      if (!Number.isFinite(Number(features.febt_micro_absorption)) && Number.isFinite(febtShadow.microAbsorption)) features.febt_micro_absorption = febtShadow.microAbsorption;
       if (posSnap) {
         features._pos_active = posSnap.active;
         if (posSnap.side) features._pos_side = posSnap.side;
