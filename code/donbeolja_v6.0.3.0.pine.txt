@@ -337,8 +337,8 @@ ssot_block_enable = input.bool(false, "SSOT BLOCK(미확인 시 전 신호 차�
 bool show_ichi_stock = false
 show_ichi_coin    = input.bool(true, "Ichimoku (Binance)",      group = grp_ichimoku, inline = "ICH_ON")
 // REAL/CORE 표시 옵션
-show_diag_c_long  = input.bool(true, "LONG (L) 표시",  group = grp_real)
-show_diag_c_short = input.bool(true, "SHORT (S) 표시", group = grp_real)
+show_diag_c_long  = input.bool(true, "웹훅 LONG (L) 표시",  group = grp_real)
+show_diag_c_short = input.bool(true, "웹훅 SHORT (S) 표시", group = grp_real)
 bool show_core_long = true
 bool show_core_short = true
 // 감정 신호
@@ -3634,13 +3634,13 @@ bool scan_watch_short =
      (tier_dir == -1 and tier_phase >= 2 and score < 0 and regime_state != "range")
 string scan_main = "-"
 if scan_strong_long
-    scan_main := "L++"
+    scan_main := "UP++"
 else if scan_watch_long
-    scan_main := "L+"
+    scan_main := "UP+"
 else if scan_strong_short
-    scan_main := "S++"
+    scan_main := "DN++"
 else if scan_watch_short
-    scan_main := "S+"
+    scan_main := "DN+"
 string scan_flag = "-"
 if kimchi_extreme
     scan_flag := "김프"
@@ -3648,16 +3648,16 @@ else if fake_pump_cond
     scan_flag := "FAKE"
 color scan_bg      = color.new(color.black, 80)
 color scan_txt_col = color.new(color.gray, 40)
-if scan_main == "L++"
+if scan_main == "UP++"
     scan_bg      := color.new(color.lime, 92)
     scan_txt_col := color.new(color.lime, 0)
-else if scan_main == "L+"
+else if scan_main == "UP+"
     scan_bg      := color.new(color.lime, 92)
     scan_txt_col := color.new(color.lime, 0)
-else if scan_main == "S++"
+else if scan_main == "DN++"
     scan_bg      := color.new(color.red, 80)
     scan_txt_col := color.white
-else if scan_main == "S+"
+else if scan_main == "DN+"
     scan_bg      := color.new(color.orange, 85)
     scan_txt_col := color.white
 color scan_flag_bg  = color.new(color.black, 85)
@@ -3780,22 +3780,22 @@ txt_white = color.white
 string strategy_txt = "중립"
 if tier_dir == 1
     if tier_phase == 3
-        strategy_txt := "리얼 롱"
+        strategy_txt := "상향 강"
     else if tier_phase == 2
-        strategy_txt := "코어 롱"
+        strategy_txt := "상향 코어"
     else if tier_phase == 1
-        strategy_txt := "롱"
+        strategy_txt := "상향"
     else
-        strategy_txt := "롱 준비"
+        strategy_txt := "상향 준비"
 else if tier_dir == -1
     if tier_phase == 3
-        strategy_txt := "리얼 숏"
+        strategy_txt := "하향 강"
     else if tier_phase == 2
-        strategy_txt := "코어 숏"
+        strategy_txt := "하향 코어"
     else if tier_phase == 1
-        strategy_txt := "숏"
+        strategy_txt := "하향"
     else
-        strategy_txt := "숏 준비"
+        strategy_txt := "하향 준비"
 // Trend / HTF 텍스트
 string trend_word = trend_state == "bull" ? "상승" : trend_state == "bear" ? "하락" : "중립"
 string htf_word   = htf_state   == "bull" ? "상승" : htf_state   == "bear" ? "하락" : "중립"
@@ -4209,11 +4209,11 @@ bool emo_short_alert_pulse = false
 
 // 신호 표시 = 실제 알림 신호(confirmed stream)와 동일하게 렌더링
 plotshape(tf_show_diag_c_ls and show_diag_c_long and long_display_pulse,
-          title = "Long", location = location.belowbar,
+          title = "Webhook Long", location = location.belowbar,
           style = shape.triangleup, color = color.lime,
           text = "L", textcolor = color.white, size = size.tiny)
 plotshape(tf_show_diag_c_ls and show_diag_c_short and short_display_pulse,
-          title = "Short", location = location.abovebar,
+          title = "Webhook Short", location = location.abovebar,
           style = shape.triangledown, color = color.red,
           text = "S", textcolor = color.white, size = size.tiny)
 
@@ -4598,11 +4598,11 @@ f_process_alert_stream(
         pos := posCf14
         lastEntryBar := lastBarCf14
         lastEntryDir := lastDirCf14
-        [posCf15, lastBarCf15, lastDirCf15] = f_emit_confirm(pos, lastEntryBar, lastEntryDir, ichi_bell_long_pulse, "ICHI_BELL_LONG", "BUY", alert_qty_ichi, false, "", 1, "", "")
+        [posCf15, lastBarCf15, lastDirCf15] = f_emit_confirm(pos, lastEntryBar, lastEntryDir, false, "ICHI_BELL_LONG", "BUY", alert_qty_ichi, false, "", 1, "", "")
         pos := posCf15
         lastEntryBar := lastBarCf15
         lastEntryDir := lastDirCf15
-        [posCf16, lastBarCf16, lastDirCf16] = f_emit_confirm(pos, lastEntryBar, lastEntryDir, ichi_bell_short_pulse, "ICHI_BELL_SHORT", "SELL", alert_qty_ichi, false, "", -1, "", "")
+        [posCf16, lastBarCf16, lastDirCf16] = f_emit_confirm(pos, lastEntryBar, lastEntryDir, false, "ICHI_BELL_SHORT", "SELL", alert_qty_ichi, false, "", -1, "", "")
         pos := posCf16
         lastEntryBar := lastBarCf16
         lastEntryDir := lastDirCf16
