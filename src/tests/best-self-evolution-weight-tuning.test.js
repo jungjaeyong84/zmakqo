@@ -26,5 +26,18 @@ const { deriveWeightTuningPlan } = require("../../src/utils/bestSelfEvolutionWei
   assert.ok(adjust.suggestions.some((row) => row.axis === "delay_cost_weight"));
   assert.ok(adjust.suggestions.some((row) => row.axis === "failure_risk_weight"));
 
+  const advisoryOnly = deriveWeightTuningPlan({
+    objective: { count_floor_pass: true, replacement_floor_pass: true, latency_budget_pass: true },
+    attribution: {
+      missed_recovery_top_reason: { key: "DROP_EV_GATE_TP1_PROB", count: 4 },
+      fallback_cost_top_market: { key: "SOLUSDT", count: 2 },
+    },
+    canary: { apply_pass: true },
+    memoryLedger: { blocked_candidate_n: 3 },
+  });
+  assert.strictEqual(advisoryOnly.summary.advisory_mode, "ADVISORY_ONLY");
+  assert.strictEqual(advisoryOnly.summary.memory_blocked, true);
+  assert.ok(advisoryOnly.suggestions.length > 0);
+
   console.log("BEST_SELF_EVOLUTION_WEIGHT_TUNING_TEST_OK");
 })();

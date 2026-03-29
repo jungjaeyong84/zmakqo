@@ -81,6 +81,22 @@ const MARKET_SNAPSHOT_KEYS = Object.freeze([
   "ai_bias_gate_strong_opposite_conf",
 ]);
 
+function buildLoopMonitorView({ objectiveArtifact = null, cycleMeta = null } = {}) {
+  const expectedCycleId = String(cycleMeta && cycleMeta.cycle_id || "").trim() || null;
+  return {
+    available: false,
+    source: "PENDING_FINAL_LOOP_MONITOR",
+    cycle_id: expectedCycleId,
+    overall_status: "PENDING_FINAL_LOOP_MONITOR",
+    cycle_consistent: null,
+    stale_artifact_n: null,
+    critical_blockers: [],
+    promotion_path_ready: false,
+    manual_paste_ready: false,
+    ready_candidate_id: null,
+  };
+}
+
 function toNum(v) {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
@@ -761,10 +777,7 @@ async function main() {
     && typeof objectiveArtifact.data.self_evolution_deployment_plan === "object"
       ? objectiveArtifact.data.self_evolution_deployment_plan
       : {};
-  const selfEvolutionLoopMonitor = objectiveArtifact && objectiveArtifact.data && objectiveArtifact.data.self_evolution_loop_monitor
-    && typeof objectiveArtifact.data.self_evolution_loop_monitor === "object"
-      ? objectiveArtifact.data.self_evolution_loop_monitor
-      : {};
+  const selfEvolutionLoopMonitor = buildLoopMonitorView({ objectiveArtifact, cycleMeta });
   const codexAuthority = objectiveArtifact && objectiveArtifact.data && objectiveArtifact.data.codex_authority
     && typeof objectiveArtifact.data.codex_authority === "object"
       ? objectiveArtifact.data.codex_authority
@@ -992,11 +1005,14 @@ async function main() {
       blockers: Array.isArray(selfEvolutionDeploymentPlan.blockers) ? selfEvolutionDeploymentPlan.blockers : [],
     },
     self_evolution_loop_monitor: {
-      available: !!(objectiveArtifact && objectiveArtifact.data && objectiveArtifact.data.self_evolution_loop_monitor),
+      available: selfEvolutionLoopMonitor.available === true,
+      source: String(selfEvolutionLoopMonitor.source || "").trim() || null,
       cycle_id: String(selfEvolutionLoopMonitor.cycle_id || "").trim() || null,
       overall_status: String(selfEvolutionLoopMonitor.overall_status || "").trim().toUpperCase() || null,
-      cycle_consistent: selfEvolutionLoopMonitor.cycle_consistent === true,
-      stale_artifact_n: toNum(selfEvolutionLoopMonitor.stale_artifact_n) || 0,
+      cycle_consistent: selfEvolutionLoopMonitor.cycle_consistent === true
+        ? true
+        : (selfEvolutionLoopMonitor.cycle_consistent === false ? false : null),
+      stale_artifact_n: toNum(selfEvolutionLoopMonitor.stale_artifact_n),
       critical_blockers: Array.isArray(selfEvolutionLoopMonitor.critical_blockers) ? selfEvolutionLoopMonitor.critical_blockers : [],
       promotion_path_ready: selfEvolutionLoopMonitor.promotion_path_ready === true,
       manual_paste_ready: selfEvolutionLoopMonitor.manual_paste_ready === true,
@@ -1085,6 +1101,7 @@ module.exports = {
     buildMarketStageCandidate,
     buildObservedStageCandidate,
     buildPineCandidate,
+    buildLoopMonitorView,
     stageChangeBudgetOk,
     stableSignature,
     isAiAutopilotTightening,

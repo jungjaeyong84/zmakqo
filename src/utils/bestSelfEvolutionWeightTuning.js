@@ -18,7 +18,7 @@ function deriveWeightTuningPlan({ objective = null, attribution = null, canary =
   const memoryBlocked = Number(memorySummary.blocked_candidate_n || 0) > 0;
   const canaryBlocked = canarySummary.apply_pass === false;
 
-  if (!countBlocked && !memoryBlocked) {
+  if (!countBlocked) {
     if (attributionSummary.late_loss_top_market) {
       suggestions.push({ axis: "delay_cost_weight", direction: "UP", delta: 0.05, reason: "LATE_LOSS_TOP_MARKET" });
       suggestions.push({ axis: "late_risk_weight", direction: "DOWN", delta: 0.02, reason: "LATE_LOSS_EARLIER_ENTRY" });
@@ -36,9 +36,9 @@ function deriveWeightTuningPlan({ objective = null, attribution = null, canary =
     }
   }
 
-  const advisoryMode = (countBlocked || replacementBlocked || memoryBlocked || canaryBlocked)
+  const advisoryMode = (countBlocked || replacementBlocked || canaryBlocked)
     ? "HOLD"
-    : (suggestions.length ? "ADJUST" : "KEEP");
+    : (suggestions.length ? (memoryBlocked ? "ADVISORY_ONLY" : "ADJUST") : "KEEP");
   const dominant = suggestions[0] ? suggestions[0].axis : null;
 
   return {

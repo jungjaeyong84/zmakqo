@@ -437,6 +437,17 @@ function resolveGovernanceRealizedMinSample(governance = null, objective = null)
   return 8;
 }
 
+function normalizeGovernanceFailedChecks(failedChecks = [], { strictEnoughSample = false, effectiveEnoughSample = false } = {}) {
+  const rows = Array.isArray(failedChecks) ? failedChecks : [];
+  return rows.map((row) => {
+    const value = String(row || "").trim().toUpperCase();
+    if (value === "INSUFFICIENT_SAMPLE" && strictEnoughSample !== true && effectiveEnoughSample === true) {
+      return "STRICT_SAMPLE_ONLY";
+    }
+    return value;
+  }).filter(Boolean);
+}
+
 function summarizeSelfEvolutionAttribution(report = null) {
   const attribution = report && report.attribution && typeof report.attribution === "object"
     ? report.attribution
@@ -1039,6 +1050,10 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   const governanceEffectiveRealizedN = Math.max(governanceStrictRealizedN, governanceMonthlySourceRealizedN);
   const governanceStrictSampleReady = objective.enough_sample === true;
   const governanceSampleReady = governanceStrictSampleReady || governanceEffectiveRealizedN >= governanceRealizedMinSample;
+  const governanceFailedChecks = normalizeGovernanceFailedChecks(objective.failed_checks, {
+    strictEnoughSample: governanceStrictSampleReady,
+    effectiveEnoughSample: governanceSampleReady,
+  });
   const selfEvolutionRealizedMinSample = resolveSelfEvolutionRealizedMinSample();
   const selfEvolutionSampleReady = Number(selfEvolutionObjectiveSummary.realized_n || 0) >= selfEvolutionRealizedMinSample;
   const selfEvolutionCycleSummary = selfEvolutionCycleState && typeof selfEvolutionCycleState === "object"
@@ -1215,7 +1230,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       monthly_run_rate_krw: toNum(objective.monthly_run_rate_krw),
       min_monthly_net_krw: toNum(objectiveCfg.min_monthly_net_krw),
       monthly_pass: objective.monthly_pass === true,
-      failed_checks: Array.isArray(objective.failed_checks) ? objective.failed_checks : [],
+      failed_checks: governanceFailedChecks,
     },
     governance_objective: {
       scope: "GOVERNANCE_7D_ENTRY_COHORT",
@@ -1235,7 +1250,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       monthly_run_rate_krw: toNum(objective.monthly_run_rate_krw),
       min_monthly_net_krw: toNum(objectiveCfg.min_monthly_net_krw),
       monthly_pass: objective.monthly_pass === true,
-      failed_checks: Array.isArray(objective.failed_checks) ? objective.failed_checks : [],
+      failed_checks: governanceFailedChecks,
     },
     promotion: {
       ready: promotion.ready === true,

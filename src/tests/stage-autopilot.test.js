@@ -70,6 +70,26 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
   assert.strictEqual(pineRollbackBlocked.actionable, false);
   assert.strictEqual(pineRollbackBlocked.kind, "ROLLBACK");
 
+  const pendingLoopMonitor = __test.buildLoopMonitorView({
+    cycleMeta: { cycle_id: "cycle-new" },
+    objectiveArtifact: {
+      data: {
+        cycle_id: "cycle-old",
+        self_evolution_loop_monitor: {
+          cycle_id: "cycle-old",
+          overall_status: "BLOCKED",
+          cycle_consistent: false,
+          stale_artifact_n: 1,
+          critical_blockers: ["SELF_EVOLUTION_CYCLE_MISMATCH"],
+        },
+      },
+    },
+  });
+  assert.strictEqual(pendingLoopMonitor.available, false);
+  assert.strictEqual(pendingLoopMonitor.source, "PENDING_FINAL_LOOP_MONITOR");
+  assert.strictEqual(pendingLoopMonitor.cycle_id, "cycle-new");
+  assert.strictEqual(pendingLoopMonitor.cycle_consistent, null);
+
   const budgetBlocked = __test.stageChangeBudgetOk([
     { stage: "AI", action: "AUTO_APPLY", ts_ms: 1_000_000 },
   ], 1_000_000 + (12 * 60 * 60 * 1000), "AI");
