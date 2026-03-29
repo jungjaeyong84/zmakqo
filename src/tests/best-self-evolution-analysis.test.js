@@ -12,7 +12,7 @@ function run() {
   const dataset = {
     summary: {
       rows_n: 6,
-      executed_n: 4,
+      executed_n: 3,
       drop_n: 1,
       missed_n: 1,
       fallback_n: 1,
@@ -126,6 +126,11 @@ function run() {
   assert.strictEqual(objective.constraints.count_floor_pass, true);
   assert.strictEqual(objective.constraints.replacement_floor_pass, true);
   assert.strictEqual(objective.constraints.latency_budget_pass, true);
+  assert.strictEqual(objective.snapshot.cohort_scope, "SELF_EVOLUTION_ENTRY_EXECUTED_COHORT");
+  assert.strictEqual(objective.snapshot.executed_n, 4);
+  assert.strictEqual(objective.snapshot.strict_executed_n, 3);
+  assert.strictEqual(objective.snapshot.fallback_n, 1);
+  assert.strictEqual(objective.snapshot.win_rate, 0.25);
   assert.strictEqual(objective.snapshot.fire_n, 2);
 
   const markets = deriveMarketObjectiveScores({

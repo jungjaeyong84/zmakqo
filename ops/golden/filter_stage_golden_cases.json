@@ -119,9 +119,9 @@
       "expected": {
         "drop": false,
         "reason": null,
-        "qtyFraction": 0.08,
-        "aiPolicy": "ALLOW",
-        "aiFallback": "ALLOW"
+        "qtyFraction": 0.04,
+        "aiPolicy": "REDUCE",
+        "aiFallback": "REDUCE"
       }
     },
     {

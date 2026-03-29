@@ -168,6 +168,17 @@ function deriveDatasetObjectiveScore({
   const fireRows = executedRows.filter((row) => String(row.febt_phase || "").toUpperCase() === "FIRE");
   const realizedRows = executedRows.filter((row) => Number.isFinite(toNum(row.realized_ret_net)));
   const fireRealized = fireRows.filter((row) => Number.isFinite(toNum(row.realized_ret_net)));
+  const executedRowsWithFeatures = executedRows.filter((row) => row.features_json && typeof row.features_json === "object");
+  const cohortExecutedN = executedRows.length;
+  const cohortRealizedN = realizedRows.length;
+  const strictExecutedN = toNum(summary.executed_n) || 0;
+  const partialN = toNum(summary.partial_n) || 0;
+  const fallbackN = toNum(summary.fallback_n) || 0;
+  const datasetAvgRet = mean(realizedRows.map((row) => row.realized_ret_net));
+  const datasetWinRate = ratio(realizedRows.filter((row) => Number(row.realized_ret_net) > 0).length, cohortRealizedN);
+  const executedMissingRate = cohortExecutedN > 0
+    ? (1 - (executedRowsWithFeatures.length / cohortExecutedN))
+    : null;
 
   const overall = governance && governance.current && governance.current.overall && typeof governance.current.overall === "object"
     ? governance.current.overall
@@ -189,14 +200,14 @@ function deriveDatasetObjectiveScore({
     tuningContract && tuningContract.disagreement_n,
     tuningContract && tuningContract.fire_n != null && tuningContract.late_n != null && tuningContract.void_n != null
       ? (Number(tuningContract.fire_n || 0) + Number(tuningContract.late_n || 0) + Number(tuningContract.void_n || 0))
-      : summary.executed_n
+      : cohortExecutedN
   );
-  const fallbackRate = ratio(tuningContract && tuningContract.fallback_legacy_n, summary.executed_n);
+  const fallbackRate = ratio(tuningContract && tuningContract.fallback_legacy_n, cohortExecutedN);
   const score = deriveObjectiveScore({
     monthlyRunRateKrw: toNum(objective.monthly_run_rate_krw),
     minMonthlyNetKrw: toNum(objectiveCfg.min_monthly_net_krw) || 1500000,
-    avgRetNet: toNum(summary.avg_realized_ret_net) ?? toNum(overall.avg_ret_net),
-    winRate: toNum(overall.win_rate),
+    avgRetNet: datasetAvgRet ?? toNum(summary.avg_realized_ret_net) ?? toNum(overall.avg_ret_net),
+    winRate: datasetWinRate ?? toNum(overall.win_rate),
     projectedCountRatioGlobal: toNum(tuningContract && tuningContract.projected_count_ratio_global),
     projectedReplacementRatio: toNum(tuningContract && tuningContract.projected_replacement_ratio),
     tp1FirstRate: ratio(realizedRows.filter((row) => row.tp1_first === true).length, realizedRows.length)
@@ -207,7 +218,7 @@ function deriveDatasetObjectiveScore({
     rejectCount: toNum(phase0Latency.reject_count) || 0,
     disagreementRate,
     fallbackRate,
-    missingRate: toNum(summary.features_coverage_rate) == null ? null : (1 - Number(summary.features_coverage_rate)),
+    missingRate: executedMissingRate ?? (toNum(summary.features_coverage_rate) == null ? null : (1 - Number(summary.features_coverage_rate))),
     monthlyPass: typeof objective.monthly_pass === "boolean" ? objective.monthly_pass : null,
     objectivePass: typeof objective.pass === "boolean" ? objective.pass : null,
   });
@@ -215,13 +226,20 @@ function deriveDatasetObjectiveScore({
   return {
     ...score,
     snapshot: {
+      cohort_scope: "SELF_EVOLUTION_ENTRY_EXECUTED_COHORT",
       rows_n: toNum(summary.rows_n) || 0,
-      executed_n: toNum(summary.executed_n) || 0,
+      executed_n: cohortExecutedN,
+      strict_executed_n: strictExecutedN,
+      partial_n: partialN,
+      fallback_n: fallbackN,
       drop_n: toNum(summary.drop_n) || 0,
-      realized_n: realizedRows.length,
+      realized_n: cohortRealizedN,
       fire_n: fireRows.length,
       fire_win_rate: ratio(fireRealized.filter((row) => Number(row.realized_ret_net) > 0).length, fireRealized.length),
       tp1_first_rate: ratio(realizedRows.filter((row) => row.tp1_first === true).length, realizedRows.length),
+      avg_realized_ret_net: datasetAvgRet ?? toNum(summary.avg_realized_ret_net) ?? toNum(overall.avg_ret_net),
+      win_rate: datasetWinRate ?? toNum(overall.win_rate),
+      missing_rate: executedMissingRate ?? (toNum(summary.features_coverage_rate) == null ? null : (1 - Number(summary.features_coverage_rate))),
       projected_count_ratio_global: toNum(tuningContract && tuningContract.projected_count_ratio_global),
       projected_replacement_ratio: toNum(tuningContract && tuningContract.projected_replacement_ratio),
     },

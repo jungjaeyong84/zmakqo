@@ -233,5 +233,27 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.ok(prompt.includes("market BTCUSDT: NORMAL"));
   assert.ok(prompt.includes("market DOGEUSDT: COUNT_GUARD_ACTIVE"));
 
+  const inlineLoopMonitor = __test.deriveInlineLoopMonitorSummary(
+    {
+      self_evolution_loop_monitor: {
+        overall_status: "DEGRADED",
+        critical_blockers: ["DAILY_NO_TRADE_ACTIVITY"],
+        cycle_consistent: true,
+      },
+    },
+    {
+      summary: {
+        overall_status: "BLOCKED",
+        critical_blockers: ["SELF_EVOLUTION_CYCLE_MISMATCH"],
+        cycle_consistent: false,
+      },
+    }
+  );
+  assert.deepStrictEqual(inlineLoopMonitor, {
+    overall_status: "DEGRADED",
+    critical_blockers: ["DAILY_NO_TRADE_ACTIVITY"],
+    cycle_consistent: true,
+  });
+
   console.log("CODEX_WEEKLY_PATCH_ENGINE_TEST_OK");
 })();

@@ -32,6 +32,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
 
   const objectiveReason = String(objectiveSupervisor.reason || "").trim() || null;
   const deploymentSummary = deployment.summary && typeof deployment.summary === "object" ? deployment.summary : {};
+  const deploymentBlockers = Array.isArray(deploymentSummary.blockers) ? deploymentSummary.blockers.filter(Boolean) : [];
   const deploymentPlanSummary = deploymentPlan.summary && typeof deploymentPlan.summary === "object" ? deploymentPlan.summary : {};
   const canarySummary = canary.summary && typeof canary.summary === "object" ? canary.summary : {};
   const candidateSummary = candidates.summary && typeof candidates.summary === "object" ? candidates.summary : {};
@@ -82,8 +83,8 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       loop: "DEPLOYMENT_GUARDS",
       fresh: artifacts.deployment && artifacts.deployment.fresh === true,
       cycle_id: readCycleId(deployment),
-      status: deploymentSummary.deploy_pass === true ? "PASS" : "BLOCK",
-      reason: Array.isArray(deploymentSummary.blockers) && deploymentSummary.blockers.length ? deploymentSummary.blockers.join("|") : "none",
+      status: deploymentSummary.deploy_pass === true ? "PASS" : (deploymentBlockers.length ? "BLOCK" : "HOLD"),
+      reason: deploymentBlockers.length ? deploymentBlockers.join("|") : "none",
     },
     {
       loop: "DEPLOYMENT_PLAN",
@@ -135,7 +136,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     : [];
   const blockers = [];
   if (objectiveReason) blockers.push(objectiveReason);
-  if (Array.isArray(deploymentSummary.blockers)) blockers.push(...deploymentSummary.blockers);
+  blockers.push(...deploymentBlockers);
   if (Number(memorySummary.blocked_candidate_n || 0) > 0) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK_PRESENT");
   if (cycleMismatches.length) blockers.push("SELF_EVOLUTION_CYCLE_MISMATCH");
   if (cycleIdAbsent.length) blockers.push("SELF_EVOLUTION_CYCLE_ID_ABSENT");

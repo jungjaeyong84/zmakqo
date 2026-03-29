@@ -32,7 +32,14 @@ function buildStepPlan() {
     { id: "deployment_guards", script: "report-best-self-evolution-deployment-guards.js" },
     { id: "deployment_plan", script: "report-best-self-evolution-deployment-plan.js" },
     { id: "weight_tuning", script: "report-best-self-evolution-weight-tuning.js" },
-    { id: "codex_patch_engine", script: "automation-codex-weekly-patch-engine.js", env: { CODEX_PATCH_ENGINE_SKIP_TELEGRAM: "1" } },
+    {
+      id: "codex_patch_engine",
+      script: "automation-codex-weekly-patch-engine.js",
+      env: {
+        CODEX_PATCH_ENGINE_SKIP_TELEGRAM: "1",
+        CODEX_PATCH_ENGINE_TIMEOUT_MS: String(process.env.CODEX_PATCH_ENGINE_TIMEOUT_MS || 120000),
+      },
+    },
     { id: "objective_integrated", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SKIP_TELEGRAM: "1", OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "INTEGRATED" } },
     { id: "stage_autopilot", script: "automation-stage-autopilot.js" },
     { id: "objective_final", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "FINAL" } },

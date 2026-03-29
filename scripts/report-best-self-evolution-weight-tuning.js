@@ -21,6 +21,12 @@ const INPUTS = Object.freeze({
   objectiveSupervisor: path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json"),
 });
 
+function unwrapSupervisor(value) {
+  if (!value || typeof value !== "object") return {};
+  if (value.raw && typeof value.raw === "object") return value.raw;
+  return value;
+}
+
 function renderMarkdown(report = {}) {
   const summary = report.summary || {};
   const suggestions = Array.isArray(report.suggestions) ? report.suggestions : [];
@@ -50,7 +56,7 @@ function renderMarkdown(report = {}) {
 async function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
-  const supervisor = readJsonRawSafe(INPUTS.objectiveSupervisor, null) || {};
+  const supervisor = unwrapSupervisor(readJsonRawSafe(INPUTS.objectiveSupervisor, null) || {});
   const output = {
     ok: true,
     generated_at_kst: nowMeta.kst,
@@ -86,6 +92,7 @@ if (require.main === module) {
 module.exports = {
   main,
   __test: {
+    unwrapSupervisor,
     renderMarkdown,
   },
 };

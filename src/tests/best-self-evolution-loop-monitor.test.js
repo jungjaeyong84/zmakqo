@@ -35,6 +35,9 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
   assert.strictEqual(report.summary.manual_paste_ready, true);
   assert.strictEqual(report.summary.ready_candidate_id, "AUTO_CORE");
   assert.strictEqual(report.summary.cycle_consistent, true);
+  const deploymentRow = report.rows.find((row) => row.loop === "DEPLOYMENT_GUARDS");
+  assert.ok(deploymentRow);
+  assert.strictEqual(deploymentRow.status, "PASS");
 
   const mismatch = deriveLoopMonitor({
     artifacts: {
@@ -48,6 +51,21 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
   });
   assert.strictEqual(mismatch.summary.cycle_consistent, false);
   assert.strictEqual(mismatch.summary.overall_status, "BLOCKED");
+
+  const holdDeployment = deriveLoopMonitor({
+    artifacts: {
+      objectiveSupervisor: { fresh: true },
+      deployment: { fresh: true },
+    },
+    reports: {
+      objectiveSupervisor: { cycle_id: "cycle-h", verdict: "HOLD", reason: "DAILY_NO_TRADE_ACTIVITY" },
+      deployment: { cycle_id: "cycle-h", summary: { deploy_pass: false, target_candidate_id: "AUTO_CORE", blockers: [] } },
+    },
+  });
+  const holdDeploymentRow = holdDeployment.rows.find((row) => row.loop === "DEPLOYMENT_GUARDS");
+  assert.ok(holdDeploymentRow);
+  assert.strictEqual(holdDeploymentRow.status, "HOLD");
+  assert.strictEqual(holdDeploymentRow.reason, "none");
 
   const absent = deriveLoopMonitor({
     artifacts: {

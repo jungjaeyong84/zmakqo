@@ -29,6 +29,13 @@ const MAX_AGE_HOURS = Math.max(12, Number(process.env.CODEX_PATCH_ENGINE_INPUT_M
 const RETRY_COUNT = Math.max(1, Number(process.env.CODEX_PATCH_ENGINE_RETRY_COUNT || 2));
 const REPORT_LATEST_MD = path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.md");
 const REPORT_LATEST_JSON = path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.json");
+
+function unwrapRawReport(value) {
+  if (!value || typeof value !== "object") return value || null;
+  if (value.raw && typeof value.raw === "object") return value.raw;
+  return value;
+}
+
 function resolveLatestArtifactPath(...names) {
   for (const name of names) {
     const candidate = path.join(OPS_DAILY_DIR, name);
@@ -46,6 +53,8 @@ const INPUT_PATHS = Object.freeze({
   wait: path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json"),
   canary: path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json"),
   stageAutopilot: path.join(OPS_DAILY_DIR, "stage_autopilot_latest.json"),
+  selfEvolutionCandidates: path.join(OPS_DAILY_DIR, "best_self_evolution_candidates_latest.json"),
+  selfEvolutionCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json"),
   deploymentPlan: path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json"),
   loopMonitor: path.join(OPS_DAILY_DIR, "best_self_evolution_loop_monitor_latest.json"),
   retrospective: path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json"),
@@ -85,6 +94,34 @@ function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function deriveInlineLoopMonitorSummary(objectiveSupervisor = null, standaloneLoopMonitor = null) {
+  const inlineSummary = objectiveSupervisor
+    && objectiveSupervisor.self_evolution_loop_monitor
+    && typeof objectiveSupervisor.self_evolution_loop_monitor === "object"
+    ? objectiveSupervisor.self_evolution_loop_monitor
+    : null;
+  if (inlineSummary) return inlineSummary;
+  const standalone = unwrapRawReport(standaloneLoopMonitor);
+  if (standalone && standalone.summary && typeof standalone.summary === "object") return standalone.summary;
+  if (standalone && typeof standalone === "object") return standalone;
+  return {};
+}
+
+function readCycleId(report = null) {
+  const raw = unwrapRawReport(report) || {};
+  const cycleId = String(raw.cycle_id || raw.generation_id || "").trim();
+  return cycleId || null;
+}
+
+function deriveCycleConsistency(reports = []) {
+  const cycleIds = Array.from(new Set(reports.map((row) => readCycleId(row)).filter(Boolean)));
+  return {
+    cycle_consistent: cycleIds.length <= 1,
+    cycle_id: cycleIds.length === 1 ? cycleIds[0] : null,
+    cycle_ids: cycleIds,
+  };
 }
 
 function readFreshJson(filePath, maxAgeHours = MAX_AGE_HOURS) {
@@ -395,11 +432,18 @@ async function main() {
   const wait = readFreshJson(INPUT_PATHS.wait, MAX_AGE_HOURS);
   const canary = readFreshJson(INPUT_PATHS.canary, MAX_AGE_HOURS);
   const stageAutopilot = readFreshJson(INPUT_PATHS.stageAutopilot, MAX_AGE_HOURS);
+  const selfEvolutionCandidatesArtifact = readFreshJson(INPUT_PATHS.selfEvolutionCandidates, MAX_AGE_HOURS);
+  const selfEvolutionCanaryArtifact = readFreshJson(INPUT_PATHS.selfEvolutionCanary, MAX_AGE_HOURS);
   const deploymentPlan = readFreshJson(INPUT_PATHS.deploymentPlan, MAX_AGE_HOURS);
   const loopMonitor = readFreshJson(INPUT_PATHS.loopMonitor, MAX_AGE_HOURS);
   const retrospective = readFreshJson(INPUT_PATHS.retrospective, MAX_AGE_HOURS);
+  const objectiveSupervisorData = unwrapRawReport(objectiveSupervisor.data);
+  const governanceData = unwrapRawReport(governance.data);
+  const loopMonitorData = unwrapRawReport(loopMonitor.data);
+  const selfEvolutionCandidatesData = unwrapRawReport(selfEvolutionCandidatesArtifact.data);
+  const selfEvolutionCanaryData = unwrapRawReport(selfEvolutionCanaryArtifact.data);
   const candidateDisplayMap = buildCandidateDisplayMap(changeControl.data, patchCandidates.data);
-  const inputs = [objectiveSupervisor, governance, changeControl, patchCandidates, ml, ev, wait, canary, stageAutopilot, deploymentPlan, loopMonitor, retrospective];
+  const inputs = [objectiveSupervisor, governance, changeControl, patchCandidates, ml, ev, wait, canary, stageAutopilot, selfEvolutionCandidatesArtifact, selfEvolutionCanaryArtifact, deploymentPlan, loopMonitor, retrospective];
   const readyPromotion = Boolean(changeControl.data && changeControl.data.auto_promotion && changeControl.data.auto_promotion.ready === true);
   const readyRollback = Boolean(changeControl.data && changeControl.data.auto_rollback && changeControl.data.auto_rollback.ready === true);
   const anyWatchlist = Boolean(patchCandidates.data && Array.isArray(patchCandidates.data.candidates) && patchCandidates.data.candidates.length > 0);
@@ -435,6 +479,54 @@ async function main() {
     return;
   }
 
+  if (!(readyPromotion || readyRollback)) {
+    const selfEvolutionCandidates = selfEvolutionCandidatesData && selfEvolutionCandidatesData.summary && typeof selfEvolutionCandidatesData.summary === "object"
+      ? selfEvolutionCandidatesData.summary
+      : objectiveSupervisorData && objectiveSupervisorData.self_evolution_candidates && typeof objectiveSupervisorData.self_evolution_candidates === "object"
+        ? objectiveSupervisorData.self_evolution_candidates
+      : {};
+    const selfEvolutionDeploymentPlan = objectiveSupervisorData && objectiveSupervisorData.self_evolution_deployment_plan && typeof objectiveSupervisorData.self_evolution_deployment_plan === "object"
+      ? objectiveSupervisorData.self_evolution_deployment_plan
+      : (deploymentPlan.data && deploymentPlan.data.summary && typeof deploymentPlan.data.summary === "object" ? deploymentPlan.data.summary : {});
+    const selfEvolutionCanary = selfEvolutionCanaryData && selfEvolutionCanaryData.summary && typeof selfEvolutionCanaryData.summary === "object"
+      ? selfEvolutionCanaryData.summary
+      : objectiveSupervisorData && objectiveSupervisorData.self_evolution_canary && typeof objectiveSupervisorData.self_evolution_canary === "object"
+        ? objectiveSupervisorData.self_evolution_canary
+      : {};
+    const currentCycle = deriveCycleConsistency([
+      objectiveSupervisor.data,
+      selfEvolutionCandidatesArtifact.data,
+      selfEvolutionCanaryArtifact.data,
+      deploymentPlan.data,
+    ]);
+    const objectiveBlockers = Array.isArray(objectiveSupervisorData && objectiveSupervisorData.blockers)
+      ? objectiveSupervisorData.blockers.filter(Boolean)
+      : [];
+    const topCandidateId = toDisplayCandidateId(selfEvolutionCandidates.top_candidate_id, candidateDisplayMap);
+    const localHold = {
+      ...baseReport,
+      status: "LOCAL_HOLD",
+      reason: anyWatchlist ? "SELF_EVOLUTION_NOT_READY" : "NO_REVIEW_NEEDED",
+      summary: anyWatchlist
+        ? "self-evolution watchlist는 있지만 promotion/rollback 경로가 아직 준비되지 않아 외부 Codex 검토를 생략했습니다."
+        : baseReport.summary,
+      checks: [
+        `ready_promotion=${readyPromotion ? "YES" : "NO"} / ready_rollback=${readyRollback ? "YES" : "NO"}`,
+        `candidate_ready_n=${selfEvolutionCandidates.ready_n != null ? selfEvolutionCandidates.ready_n : "N/A"} / top=${topCandidateId || "N/A"}`,
+        `deployment_plan=${selfEvolutionDeploymentPlan.plan_status || "N/A"} / prepare=${selfEvolutionDeploymentPlan.prepare_pass === true ? "PASS" : "BLOCK"}`,
+        `canary_apply=${selfEvolutionCanary.apply_pass === true ? "PASS" : "BLOCK"} / ready_markets=${selfEvolutionCanary.ready_n != null ? selfEvolutionCanary.ready_n : "N/A"}`,
+        `supervisor=${objectiveSupervisorData && objectiveSupervisorData.verdict || "N/A"} / blockers=${objectiveBlockers.length ? objectiveBlockers.join("|") : (objectiveSupervisorData && objectiveSupervisorData.reason || "none")} / cycle_consistent=${currentCycle.cycle_consistent ? "YES" : "NO"}`,
+      ],
+      risks: anyWatchlist ? ["Promotion path is not ready; defer external Codex review until the objective and governance gates recover."] : [],
+    };
+    writeJson(jsonPath, wrapDisplayAndRawReport(localHold));
+    writeText(mdPath, renderMarkdown(localHold));
+    copyLatest(jsonPath, REPORT_LATEST_JSON);
+    copyLatest(mdPath, REPORT_LATEST_MD);
+    console.log(JSON.stringify({ ok: true, status: localHold.status, reason: localHold.reason }));
+    return;
+  }
+
   if (!fs.existsSync(CODEX_BIN)) {
     const failed = { ...baseReport, ok: false, status: "FAILED", reason: "CODEX_BIN_MISSING", summary: CODEX_BIN };
     writeJson(jsonPath, wrapDisplayAndRawReport(failed));
@@ -464,8 +556,8 @@ async function main() {
   writeJson(schemaPath, schema);
 
   const prompt = buildPrompt({
-    objectiveSupervisor: objectiveSupervisor.data,
-    governance: governance.data,
+    objectiveSupervisor: objectiveSupervisorData,
+    governance: governanceData,
     changeControl: changeControl.data,
     patchCandidates: patchCandidates.data,
     ml: ml.data,
@@ -474,7 +566,7 @@ async function main() {
     canary: canary.data,
     stageAutopilot: stageAutopilot.data,
     deploymentPlan: deploymentPlan.data,
-    loopMonitor: loopMonitor.data,
+    loopMonitor: loopMonitorData,
     retrospective: retrospective.data,
   });
 
@@ -558,6 +650,7 @@ if (require.main === module) {
       replaceCandidateIdsInText,
       buildObjectiveSupervisorLayerLines,
       buildBestFebtMarketContractLines,
+      deriveInlineLoopMonitorSummary,
     },
   };
 }
