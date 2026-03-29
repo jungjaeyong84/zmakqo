@@ -1147,7 +1147,7 @@ async function main() {
   ) ? "INFO" : "WARN";
 
   await sendKoreanTelegramSummary({
-    title: `[4차 EV 자동 조정] ${PROVIDER}`,
+    title: `[4차 EV/시간가치층 자동 조정] ${PROVIDER}`,
     severity,
     provider: PROVIDER,
     sections: [

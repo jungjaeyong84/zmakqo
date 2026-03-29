@@ -96,11 +96,11 @@ function classifyDropStage(reason) {
 
 function stageLabel(stage) {
   const key = String(stage || "OPS").toUpperCase();
-  if (key === "QUALITY") return "1차 무결성 가드";
-  if (key === "AI") return "2차 AI";
-  if (key === "MARKET") return "3차 시황";
-  if (key === "EV") return "4차 EV";
-  if (key === "TIMING") return "5차 타이밍";
+  if (key === "QUALITY") return "1차 상태/무결성";
+  if (key === "AI") return "2차 진입 품질";
+  if (key === "MARKET") return "3차 상태 기반 Soft Sizing";
+  if (key === "EV") return "4차 EV/시간가치층";
+  if (key === "TIMING") return "5차 WAIT 타이밍층";
   return "0차 운영/보호";
 }
 
@@ -254,11 +254,11 @@ function buildReflection({ periodLabel, objective, entryOverall, realizedOverall
   if (worstTier && Number(worstTier.executed_n || 0) > 0) {
     lines.push(`${periodLabel} Pine follow-through가 가장 약한 구간은 ${describeTierForUser(worstTier.tier)}이며 avg_ret_net=${signedPct(worstTier.avg_ret_net)} 입니다.`);
   }
-  if (topStage && topStage.stage === "QUALITY") lines.push("다음 수정에서는 Pine full-quality bundle과 1차 무결성 가드 fallback 경계가 과차단인지 먼저 검토해야 합니다.");
-  if (topStage && topStage.stage === "AI") lines.push("다음 수정에서는 2차 AI usable coverage와 missing/block 정책부터 점검해야 합니다.");
-  if (topStage && topStage.stage === "MARKET") lines.push("다음 수정에서는 3차 시황 bias neutral/opposite sizing이 과한지 확인해야 합니다.");
-  if (topStage && topStage.stage === "EV") lines.push("다음 수정에서는 4차 EV threshold/band가 목표 대비 과도하게 경직됐는지 확인해야 합니다.");
-  if (topStage && topStage.stage === "TIMING") lines.push("다음 수정에서는 5차 WAIT timing defer가 과민한지 확인해야 합니다.");
+  if (topStage && topStage.stage === "QUALITY") lines.push("다음 수정에서는 Pine full-quality bundle과 1차 상태/무결성 fallback 경계가 과차단인지 먼저 검토해야 합니다.");
+  if (topStage && topStage.stage === "AI") lines.push("다음 수정에서는 2차 진입 품질의 AI usable coverage와 missing/block 정책부터 점검해야 합니다.");
+  if (topStage && topStage.stage === "MARKET") lines.push("다음 수정에서는 3차 상태 기반 Soft Sizing의 bias neutral/opposite sizing이 과한지 확인해야 합니다.");
+  if (topStage && topStage.stage === "EV") lines.push("다음 수정에서는 4차 EV/시간가치층 threshold/band가 목표 대비 과도하게 경직됐는지 확인해야 합니다.");
+  if (topStage && topStage.stage === "TIMING") lines.push("다음 수정에서는 5차 WAIT 타이밍층 defer가 과민한지 확인해야 합니다.");
   return lines;
 }
 

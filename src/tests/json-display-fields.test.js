@@ -26,7 +26,7 @@ const {
   const out = addDisplayFieldsDeep(input);
   assert.strictEqual(out.rows[0].display_event, "LONG");
   assert.strictEqual(out.rows[0].display_tier, "LONG/SHORT 기본 진입");
-  assert.strictEqual(out.rows[0].display_stage, "1차 무결성 가드");
+  assert.strictEqual(out.rows[0].display_stage, "1차 상태/무결성");
   assert.ok(String(out.rows[0].display_reason || "").includes("무결성"));
   assert.strictEqual(out.by_tier.CORE.display_tier, "LONG/SHORT 확장 진입");
 

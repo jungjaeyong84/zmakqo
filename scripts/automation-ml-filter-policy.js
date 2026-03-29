@@ -774,20 +774,20 @@ function renderMarkdown({ nowMeta, provider, tf, lookbackDays, model, metrics, t
   lines.push(`- late marker coverage: ${coverage.late_marker_n}/${coverage.total_n} (${pct(coverage.late_marker_rate)})`);
   lines.push("");
   lines.push("## stage sample scope");
-  lines.push(`- 1차 무결성 가드 표본: ${stageSamples.quality_n}`);
-  lines.push(`- 2차 AI 표본: ${stageSamples.ai_n}`);
-  lines.push(`- 3차 시황 표본: ${stageSamples.market_n}`);
-  lines.push(`- 4차 EV 표본: ${stageSamples.ev_n}`);
+  lines.push(`- 1차 상태/무결성 표본: ${stageSamples.quality_n}`);
+  lines.push(`- 2차 진입 품질 표본: ${stageSamples.ai_n}`);
+  lines.push(`- 3차 상태 기반 Soft Sizing 표본: ${stageSamples.market_n}`);
+  lines.push(`- 4차 EV/시간가치층 표본: ${stageSamples.ev_n}`);
   lines.push("");
   lines.push("## stage recommendations");
   for (const row of recommendations.QUALITY) {
     const keyText = row.display_key || describeQualityRecommendationKeyForUser(row.key);
     const reasonText = row.display_reason || rewriteQualityRecommendationReasonForUser(row.reason);
-    lines.push(`- 1차 무결성 가드: ${row.action}${keyText ? ` / ${keyText} ${row.current} -> ${row.next}` : ""} / ${reasonText}`);
+    lines.push(`- 1차 상태/무결성: ${row.action}${keyText ? ` / ${keyText} ${row.current} -> ${row.next}` : ""} / ${reasonText}`);
   }
-  lines.push(`- 2차 AI: ${recommendations.AI.action}${recommendations.AI.key ? ` / ${recommendations.AI.key} ${recommendations.AI.current} -> ${recommendations.AI.next}` : ""} / ${recommendations.AI.reason}`);
-  lines.push(`- 3차 시황: ${recommendations.MARKET.action}${recommendations.MARKET.key ? ` / ${recommendations.MARKET.key} ${recommendations.MARKET.current} -> ${recommendations.MARKET.next}` : ""} / ${recommendations.MARKET.reason}`);
-  lines.push(`- 4차 EV: ${recommendations.EV.action} / ${recommendations.EV.reason}`);
+  lines.push(`- 2차 진입 품질: ${recommendations.AI.action}${recommendations.AI.key ? ` / ${recommendations.AI.key} ${recommendations.AI.current} -> ${recommendations.AI.next}` : ""} / ${recommendations.AI.reason}`);
+  lines.push(`- 3차 상태 기반 Soft Sizing: ${recommendations.MARKET.action}${recommendations.MARKET.key ? ` / ${recommendations.MARKET.key} ${recommendations.MARKET.current} -> ${recommendations.MARKET.next}` : ""} / ${recommendations.MARKET.reason}`);
+  lines.push(`- 4차 EV/시간가치층: ${recommendations.EV.action} / ${recommendations.EV.reason}`);
   if (recommendations.EV && recommendations.EV.next) {
     lines.push(`  - ev_gate_tp1_prob_min: ${recommendations.EV.next.ev_gate_tp1_prob_min}`);
     lines.push(`  - ev_gate_qty_scale_mid: ${recommendations.EV.next.ev_gate_qty_scale_mid}`);
@@ -1007,11 +1007,11 @@ async function main() {
           ...recommendations.QUALITY.slice(0, 2).map((row) => {
             const keyText = row.display_key || describeQualityRecommendationKeyForUser(row.key);
             const reasonText = row.display_reason || rewriteQualityRecommendationReasonForUser(row.reason);
-            return `1차 무결성 가드 ${row.action}${keyText ? ` ${keyText} ${row.current} -> ${row.next}` : ""} / ${reasonText}`;
+            return `1차 상태/무결성 ${row.action}${keyText ? ` ${keyText} ${row.current} -> ${row.next}` : ""} / ${reasonText}`;
           }),
-          `2차 ${recommendations.AI.action} / ${recommendations.AI.reason}`,
-          `3차 ${recommendations.MARKET.action}${recommendations.MARKET.key ? ` ${recommendations.MARKET.key} ${recommendations.MARKET.current} -> ${recommendations.MARKET.next}` : ""} / ${recommendations.MARKET.reason}`,
-          `4차 ${recommendations.EV.action} / ${recommendations.EV.reason}`,
+          `2차 진입 품질 ${recommendations.AI.action} / ${recommendations.AI.reason}`,
+          `3차 상태 기반 Soft Sizing ${recommendations.MARKET.action}${recommendations.MARKET.key ? ` ${recommendations.MARKET.key} ${recommendations.MARKET.current} -> ${recommendations.MARKET.next}` : ""} / ${recommendations.MARKET.reason}`,
+          `4차 EV/시간가치층 ${recommendations.EV.action} / ${recommendations.EV.reason}`,
         ],
       },
       {

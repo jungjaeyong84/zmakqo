@@ -31,11 +31,11 @@ const REPORT_LATEST_MD = path.join(OPS_DAILY_DIR, "no_trade_root_cause_latest.md
 const STAGE_ACTION_HINTS = Object.freeze({
   PINE: "Pine 품질 번들 생성 조건이 너무 엄격한지 먼저 봐야 합니다.",
   OPS: "운영 보호, 데이터 무결성, 웹훅 흐름을 먼저 확인해야 합니다.",
-  QUALITY: "Pine 품질 기준과 1차 guard 경계가 과차단인지 확인해야 합니다.",
-  AI: "2차 AI usable, missing, block 정책과 데이터 수집 상태를 같이 확인해야 합니다.",
-  MARKET: "3차 시황 방향 prior가 과하게 보수적인지 확인해야 합니다.",
-  EV: "4차 EV 확률 기준과 수량 밴드가 과하게 높지 않은지 확인해야 합니다.",
-  TIMING: "5차 WAIT 타이밍 연기 조건이 과도한지 확인해야 합니다.",
+  QUALITY: "Pine 품질 기준과 1차 상태/무결성 경계가 과차단인지 확인해야 합니다.",
+  AI: "2차 진입 품질의 AI usable, missing, block 정책과 데이터 수집 상태를 같이 확인해야 합니다.",
+  MARKET: "3차 상태 기반 Soft Sizing의 방향 prior가 과하게 보수적인지 확인해야 합니다.",
+  EV: "4차 EV/시간가치층의 확률 기준과 수량 밴드가 과하게 높지 않은지 확인해야 합니다.",
+  TIMING: "5차 WAIT 타이밍층의 연기 조건이 과도한지 확인해야 합니다.",
   EXIT: "청산 구조가 지나치게 공격적이거나 보수적인지 확인해야 합니다.",
 });
 
@@ -81,15 +81,15 @@ function buildStageEntries(period = {}, coverageGuard = {}) {
     const signalWeight = signalsN > 0 ? (count / Math.max(1, signalsN)) : 0;
     const score = Number((share * 1.6) + (signalWeight * 1.4) + (activityFail ? 0.9 : 0.2) + (trust ? 0.1 : -0.2));
     const reason = stageKey === "QUALITY"
-      ? "1차 무결성 가드 fallback 차단 비중이 높아, 실제 거래 부족의 직접 원인일 가능성이 큽니다."
+      ? "1차 상태/무결성 fallback 차단 비중이 높아, 실제 거래 부족의 직접 원인일 가능성이 큽니다."
       : stageKey === "EV"
-        ? "4차 EV에서 TP1 확률 기준으로 많이 걸러져 거래가 줄었을 가능성이 큽니다."
+        ? "4차 EV/시간가치층에서 TP1 확률 기준으로 많이 걸러져 거래가 줄었을 가능성이 큽니다."
         : stageKey === "MARKET"
-          ? "3차 시황 방향 prior에서 막힌 비중이 커 거래가 줄었을 가능성이 큽니다."
+          ? "3차 상태 기반 Soft Sizing의 방향 prior에서 막힌 비중이 커 거래가 줄었을 가능성이 큽니다."
           : stageKey === "AI"
-            ? "2차 AI usable 또는 missing/block 정책이 거래 부족에 영향을 줬을 가능성이 있습니다."
+            ? "2차 진입 품질의 AI usable 또는 missing/block 정책이 거래 부족에 영향을 줬을 가능성이 있습니다."
             : stageKey === "TIMING"
-              ? "5차 WAIT 타이밍 연기로 진입이 뒤로 밀렸을 가능성이 있습니다."
+              ? "5차 WAIT 타이밍층 연기로 진입이 뒤로 밀렸을 가능성이 있습니다."
               : "운영 보호나 기타 비거래 사유 비중이 높습니다.";
     entries.push({
       stage: stageKey,

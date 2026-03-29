@@ -53,7 +53,7 @@ const { buildSignalDisplayReason, classifySignalReasonStage } = require('../util
 
   const stageQuality = classifySignalReasonStage('DROP_ENTRY_QUALITY_CONF');
   assert.strictEqual(stageQuality.step, 1);
-  assert.strictEqual(stageQuality.text, '1차 무결성 가드');
+  assert.strictEqual(stageQuality.text, '1차 상태/무결성');
 
   const stagePine = classifySignalReasonStage('DROP_PINE_STAGE1_QUALITY_REJECT');
   assert.strictEqual(stagePine.key, 'PINE');
@@ -61,19 +61,19 @@ const { buildSignalDisplayReason, classifySignalReasonStage } = require('../util
 
   const stageAi = classifySignalReasonStage('DROP_AI_BIAS_OPPOSITE_LONG');
   assert.strictEqual(stageAi.step, 3);
-  assert.strictEqual(stageAi.text, '3차 시황(롱숏우위) 필터');
+  assert.strictEqual(stageAi.text, '3차 상태 기반 Soft Sizing');
 
   const stageAiMissing = classifySignalReasonStage('DROP_AI_MISSING');
   assert.strictEqual(stageAiMissing.step, 2);
-  assert.strictEqual(stageAiMissing.text, '2차 AI 필터');
+  assert.strictEqual(stageAiMissing.text, '2차 진입 품질');
 
   const stageEv = classifySignalReasonStage('DROP_EV_GATE_TP1_PROB');
   assert.strictEqual(stageEv.step, 4);
-  assert.strictEqual(stageEv.text, '4차 EV 필터');
+  assert.strictEqual(stageEv.text, '4차 EV/시간가치층');
 
   const stageMarket = classifySignalReasonStage('DROP_LONG_GATE_CONF');
   assert.strictEqual(stageMarket.step, 1);
-  assert.strictEqual(stageMarket.text, '1차 무결성 가드');
+  assert.strictEqual(stageMarket.text, '1차 상태/무결성');
 
   const marketReason = buildSignalDisplayReason(
     { reason: 'DROP_LONG_GATE_CONF' },
@@ -96,7 +96,7 @@ const { buildSignalDisplayReason, classifySignalReasonStage } = require('../util
   const waitStage = classifySignalReasonStage('DROP_WAIT_ONE_BAR_TIMING');
   assert.strictEqual(waitStage.step, 5);
   assert.strictEqual(waitStage.key, 'TIMING');
-  assert.strictEqual(waitStage.text, '5차 타이밍 연기 필터');
+  assert.strictEqual(waitStage.text, '5차 WAIT 타이밍층');
 
   const waitReason = buildSignalDisplayReason(
     { reason: 'DROP_WAIT_ONE_BAR_TIMING' },

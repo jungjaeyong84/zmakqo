@@ -12,11 +12,11 @@ const PERIOD_WEIGHTS = Object.freeze({
 const STAGE_LABELS = Object.freeze({
   PINE: "Pine 품질",
   OPS: "0차 운영/보호",
-  QUALITY: "1차 무결성 가드",
-  AI: "2차 AI",
-  MARKET: "3차 시황",
-  EV: "4차 EV",
-  TIMING: "5차 타이밍",
+  QUALITY: "1차 상태/무결성",
+  AI: "2차 진입 품질",
+  MARKET: "3차 상태 기반 Soft Sizing",
+  EV: "4차 EV/시간가치층",
+  TIMING: "5차 WAIT 타이밍층",
   EXIT: "청산 엔진",
 });
 

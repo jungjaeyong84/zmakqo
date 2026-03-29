@@ -33,7 +33,7 @@ const { __test } = require("../../scripts/automation-objective-retrospective");
   });
   assert.strictEqual(Array.isArray(reflection), true);
   assert.ok(reflection.some((line) => line.includes("0원")));
-  assert.ok(reflection.some((line) => line.includes("1차 무결성 가드")));
+  assert.ok(reflection.some((line) => line.includes("1차 상태/무결성")));
 
   console.log("OBJECTIVE_RETROSPECTIVE_TEST_OK");
 })();

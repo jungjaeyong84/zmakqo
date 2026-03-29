@@ -52,8 +52,8 @@ function classifySignalReasonStage(reason) {
     return {
       step: 1,
       key: "QUALITY",
-      label: "무결성 가드",
-      text: "1차 무결성 가드",
+      label: "상태/무결성",
+      text: "1차 상태/무결성",
       code,
     };
   }
@@ -65,8 +65,8 @@ function classifySignalReasonStage(reason) {
     return {
       step: 2,
       key: "AI",
-      label: "AI",
-      text: "2차 AI 필터",
+      label: "진입 품질",
+      text: "2차 진입 품질",
       code,
     };
   }
@@ -75,8 +75,8 @@ function classifySignalReasonStage(reason) {
     return {
       step: 4,
       key: "EV",
-      label: "EV",
-      text: "4차 EV 필터",
+      label: "EV/시간가치층",
+      text: "4차 EV/시간가치층",
       code,
     };
   }
@@ -85,8 +85,8 @@ function classifySignalReasonStage(reason) {
     return {
       step: 5,
       key: "TIMING",
-      label: "타이밍",
-      text: "5차 타이밍 연기 필터",
+      label: "WAIT 타이밍층",
+      text: "5차 WAIT 타이밍층",
       code,
     };
   }
@@ -95,8 +95,8 @@ function classifySignalReasonStage(reason) {
     return {
       step: 3,
       key: "MARKET",
-      label: "시황(롱숏우위)",
-      text: "3차 시황(롱숏우위) 필터",
+      label: "상태 기반 Soft Sizing",
+      text: "3차 상태 기반 Soft Sizing",
       code,
     };
   }
@@ -151,16 +151,16 @@ function explainSignalReason(reason) {
   if (direct[code]) return direct[code];
 
   if (code.startsWith("DROP_AI_BIAS_")) {
-    return "3차 시황(롱숏우위) 필터에서 방향 우위가 맞지 않아 진입을 보류했습니다.";
+    return "3차 상태 기반 Soft Sizing 필터에서 방향 우위가 맞지 않아 진입을 보류했습니다.";
   }
   if (classifyStage1IntegrityReason(code)) {
-    return "1차 무결성 가드에서 Pine 품질 번들 fallback 검사 기준 미달로 진입을 보류했습니다.";
+    return "1차 상태/무결성에서 Pine 품질 번들 fallback 검사 기준 미달로 진입을 보류했습니다.";
   }
   if (code.startsWith("DROP_AI_")) {
-    return "2차 AI 필터에서 기준 미달로 진입을 보류했습니다.";
+    return "2차 진입 품질 필터에서 기준 미달로 진입을 보류했습니다.";
   }
   if (code.startsWith("DROP_EV_GATE_")) {
-    return "4차 EV 필터에서 기준 미달로 진입을 보류했습니다.";
+    return "4차 EV/시간가치층 필터에서 기준 미달로 진입을 보류했습니다.";
   }
   if (code.startsWith("DROP_WAIT_ONE_BAR_")) {
     return "최근 봉 구조상 지금은 늦은 추격으로 판단되어 다음 봉까지 진입을 연기했습니다.";

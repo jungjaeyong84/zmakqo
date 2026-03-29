@@ -178,9 +178,9 @@ function run() {
     },
   });
   assert.strictEqual(weeklyLayerLines.length >= 9, true);
-  assert.ok(weeklyLayerLines[0].includes("1차 무결성층"));
+  assert.ok(weeklyLayerLines[0].includes("1차 상태/무결성"));
   assert.ok(weeklyLayerLines.some((line) => line.includes("3차 상태 분포")));
-  assert.ok(weeklyLayerLines.some((line) => line.includes("4차 EV policy")));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("4차 EV/시간가치층 policy")));
   assert.ok(weeklyLayerLines.some((line) => line.includes("5차 WAIT 타이밍층")));
 
   const riskCurve = __test.buildCompetingRiskCurve([

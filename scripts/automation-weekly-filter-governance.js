@@ -70,11 +70,11 @@ const LIVE_ENTRY_SCOPE = "LONG_SHORT_SINGLE";
 const LIVE_ENTRY_LABEL = "LONG/SHORT";
 const STAGE_LABELS = {
   OPS: "0차 운영/보호",
-  QUALITY: "1차 무결성 가드",
-  AI: "2차 AI",
-  MARKET: "3차 시황(롱숏우위)",
-  EV: "4차 EV",
-  TIMING: "5차 타이밍 연기",
+  QUALITY: "1차 상태/무결성",
+  AI: "2차 진입 품질",
+  MARKET: "3차 상태 기반 Soft Sizing",
+  EV: "4차 EV/시간가치층",
+  TIMING: "5차 WAIT 타이밍층",
 };
 
 function toNum(v) {
@@ -103,7 +103,7 @@ function formatBool(v) {
 
 function buildUserFacingSettingsSnapshot(settings = {}) {
   return [
-    { label: "1차 무결성 가드 사용", value: formatBool(settings.gate_enabled) },
+    { label: "1차 상태/무결성 사용", value: formatBool(settings.gate_enabled) },
     { label: "1차 추세 전용", value: formatBool(settings.gate_trend_only) },
     { label: "LONG/SHORT 기본 진입 점수 기준", value: settings.gate_early_score_abs },
     { label: "LONG/SHORT 확장 진입 점수 기준", value: settings.gate_core_score_abs },
@@ -114,19 +114,19 @@ function buildUserFacingSettingsSnapshot(settings = {}) {
       value: `enabled ${formatBool(settings.gate_transition_exception_enabled)} / score ${settings.gate_transition_exception_score_abs} / wave ${pct(settings.gate_transition_exception_wave_conf_min)}`,
     },
     {
-      label: "2차 AI 기본 정책",
+      label: "2차 진입 품질 기본 정책",
       value: `enabled ${formatBool(settings.ai_bias_gate_enabled)} / neutral ${settings.ai_bias_gate_neutral_policy} / score ${pct(settings.ai_bias_gate_score_threshold)} / conf ${pct(settings.ai_bias_gate_conf_min)}`,
     },
     {
-      label: "4차 EV 기본 threshold",
+      label: "4차 EV/시간가치층 기본 threshold",
       value: `${pct(settings.ev_gate_tp1_prob_min)} / live ${pct(settings.ev_gate_tp1_prob_min_early)}`,
     },
     {
-      label: "4차 EV size band",
+      label: "4차 EV/시간가치층 size band",
       value: `full ${pct(settings.ev_gate_tp1_prob_full)} / kill ${pct(settings.ev_gate_tp1_prob_kill)} / mid ${pct(settings.ev_gate_qty_scale_mid)} / low ${pct(settings.ev_gate_qty_scale_low)}`,
     },
     {
-      label: "5차 WAIT",
+      label: "5차 WAIT 타이밍층",
       value: `streak ${settings.wait_one_bar_same_dir_streak_min} / chase ${ratioX(settings.wait_one_bar_chase_ratio_min)} / close ${pct(settings.wait_one_bar_last_close_control_min)} / body ${pct(settings.wait_one_bar_last_dir_body_min)} / wick ${pct(settings.wait_one_bar_last_opposite_wick_max)} / move1 ${pct(settings.wait_one_bar_recent_move1_pct_min)} / counter ${settings.wait_one_bar_counter_dir_bars_max}`,
     },
   ];
@@ -182,15 +182,15 @@ function buildWeeklyTelegramLayerLines({ current = {}, recommendations = {}, set
   const marketAction = stripSummaryPrefix(featureLines[1], "market action ");
   const evPolicy = stripSummaryPrefix(featureLines[2], "ev policy ");
   return [
-    `1차 무결성층 ${recommendations.QUALITY && recommendations.QUALITY.action || "N/A"} / ${recommendations.QUALITY && recommendations.QUALITY.reason || "N/A"}`,
-    `2차 행동결정층(AI) ${recommendations.AI && recommendations.AI.action || "N/A"} / ${recommendations.AI && recommendations.AI.reason || "N/A"}`,
-    `2차 AI 수량배수 neutral ${pct(settings.ai_bias_gate_neutral_mult)} / opposite ${pct(settings.ai_bias_gate_opposite_mult)} / strong score ${pct(settings.ai_bias_gate_strong_opposite_score)} / strong conf ${pct(settings.ai_bias_gate_strong_opposite_conf)}`,
-    `3차 상태층 ${recommendations.MARKET && recommendations.MARKET.action || "N/A"} / ${recommendations.MARKET && recommendations.MARKET.reason || "N/A"}`,
+    `1차 상태/무결성 ${recommendations.QUALITY && recommendations.QUALITY.action || "N/A"} / ${recommendations.QUALITY && recommendations.QUALITY.reason || "N/A"}`,
+    `2차 진입 품질 ${recommendations.AI && recommendations.AI.action || "N/A"} / ${recommendations.AI && recommendations.AI.reason || "N/A"}`,
+    `2차 진입 품질 세부(AI bias) neutral ${pct(settings.ai_bias_gate_neutral_mult)} / opposite ${pct(settings.ai_bias_gate_opposite_mult)} / strong score ${pct(settings.ai_bias_gate_strong_opposite_score)} / strong conf ${pct(settings.ai_bias_gate_strong_opposite_conf)}`,
+    `3차 상태 기반 Soft Sizing ${recommendations.MARKET && recommendations.MARKET.action || "N/A"} / ${recommendations.MARKET && recommendations.MARKET.reason || "N/A"}`,
     `3차 상태 분포 ${marketState || "N/A"}`,
     `3차 상태 action ${marketAction || "N/A"}`,
     `4차 EV/시간가치층 threshold 기본 ${pct(settings.ev_gate_tp1_prob_min)} / ${LIVE_ENTRY_LABEL} ${pct(settings.ev_gate_tp1_prob_min_early)}`,
-    `4차 EV band full ${pct(settings.ev_gate_tp1_prob_full)} / kill ${pct(settings.ev_gate_tp1_prob_kill)} / mid ${pct(settings.ev_gate_qty_scale_mid)} / low ${pct(settings.ev_gate_qty_scale_low)}`,
-    `4차 EV policy ${evPolicy || "N/A"}`,
+    `4차 EV/시간가치층 band full ${pct(settings.ev_gate_tp1_prob_full)} / kill ${pct(settings.ev_gate_tp1_prob_kill)} / mid ${pct(settings.ev_gate_qty_scale_mid)} / low ${pct(settings.ev_gate_qty_scale_low)}`,
+    `4차 EV/시간가치층 policy ${evPolicy || "N/A"}`,
     `5차 WAIT 타이밍층 streak ${settings.wait_one_bar_same_dir_streak_min} / chase ${ratioX(settings.wait_one_bar_chase_ratio_min)} / close ${pct(settings.wait_one_bar_last_close_control_min)} / body ${pct(settings.wait_one_bar_last_dir_body_min)} / wick ${pct(settings.wait_one_bar_last_opposite_wick_max)} / move1 ${pct(settings.wait_one_bar_recent_move1_pct_min)} / counter ${settings.wait_one_bar_counter_dir_bars_max}`,
   ];
 }
@@ -378,37 +378,37 @@ function pickStageRecommendation({ stageKey, current, previous, objective, setti
   if (stageKey === "QUALITY") {
     const executionRate = Number(current && current.overall && current.overall.execution_rate);
     if (objective.pass !== true && Number.isFinite(executionRate) && executionRate > 0.35 && share < 0.30) {
-      return { action: "REVIEW_TIGHTEN", reason: "성과가 목표 미달인데 1차 무결성 가드 드롭 비중이 낮아 Pine 번들 fallback 경계가 너무 느슨한지 검토할 필요가 있습니다." };
+      return { action: "REVIEW_TIGHTEN", reason: "성과가 목표 미달인데 1차 상태/무결성 드롭 비중이 낮아 Pine 번들 fallback 경계가 너무 느슨한지 검토할 필요가 있습니다." };
     }
     if (objective.pass === true && Number.isFinite(executionRate) && executionRate < 0.15 && share > 0.55) {
-      return { action: "REVIEW_LOOSEN", reason: "성과는 유지되는데 1차 무결성 가드 드롭 비중이 과도해 Pine fallback 경계가 너무 빡빡한지 검토할 필요가 있습니다." };
+      return { action: "REVIEW_LOOSEN", reason: "성과는 유지되는데 1차 상태/무결성 드롭 비중이 과도해 Pine fallback 경계가 너무 빡빡한지 검토할 필요가 있습니다." };
     }
-    return { action: "KEEP", reason: "1차 무결성 가드는 현재 주간 성과와 fallback 드롭 분포 기준으로 즉시 수정 근거가 약합니다." };
+    return { action: "KEEP", reason: "1차 상태/무결성은 현재 주간 성과와 fallback 드롭 분포 기준으로 즉시 수정 근거가 약합니다." };
   }
 
   if (stageKey === "AI") {
     const aiMissing = (currentDrops.top_reasons || []).find((row) => String(row.reason || "").startsWith("DROP_AI_MISSING"));
     if (aiMissing && Number(aiMissing.n || 0) > 0) {
-      return { action: "REVIEW_DATA", reason: "2차 AI 드롭의 핵심이 AI missing이라 threshold보다 데이터/수집 안정화가 우선입니다." };
+      return { action: "REVIEW_DATA", reason: "2차 진입 품질 드롭의 핵심이 AI missing이라 threshold보다 데이터/수집 안정화가 우선입니다." };
     }
     if (objective.pass === true && share > 0.35) {
-      return { action: "REVIEW_LOOSEN", reason: "성과는 목표를 만족하지만 2차 AI 드롭 비중이 높아 AI 기본 차단이 과도할 수 있습니다." };
+      return { action: "REVIEW_LOOSEN", reason: "성과는 목표를 만족하지만 2차 진입 품질 드롭 비중이 높아 AI 기본 차단이 과도할 수 있습니다." };
     }
-    return { action: "KEEP", reason: "2차 AI 판단 필터는 현재 지표 기준으로 유지가 타당합니다." };
+    return { action: "KEEP", reason: "2차 진입 품질 판단 필터는 현재 지표 기준으로 유지가 타당합니다." };
   }
 
   if (stageKey === "MARKET") {
     const neutralBlocked = (currentDrops.top_reasons || []).find((row) => String(row.reason || "") === "DROP_AI_BIAS_NEUTRAL_BLOCK");
     if (objective.pass === true && share > 0.30) {
-      return { action: "REVIEW_SOFTEN", reason: "성과는 목표를 만족하는데 3차 시황 드롭 비중이 높아 수량 기반 soft 정책 검토 가치가 있습니다." };
+      return { action: "REVIEW_SOFTEN", reason: "성과는 목표를 만족하는데 3차 상태 기반 Soft Sizing 드롭 비중이 높아 수량 기반 soft 정책 검토 가치가 있습니다." };
     }
     if (neutralPolicy === "block" && neutralBlocked && Number(neutralBlocked.n || 0) >= 3) {
       return { action: "REVIEW_NEUTRAL_POLICY", reason: "중립 차단이 반복되어 neutral policy 재검토가 필요합니다." };
     }
     if (deltaDrops >= 5 && objective.pass !== true) {
-      return { action: "REVIEW_TIGHTEN", reason: "3차 시황 드롭이 늘고 성과도 목표 미달이라 bias 정책을 더 보수적으로 볼 근거가 있습니다." };
+      return { action: "REVIEW_TIGHTEN", reason: "3차 상태 기반 Soft Sizing 드롭이 늘고 성과도 목표 미달이라 bias 정책을 더 보수적으로 볼 근거가 있습니다." };
     }
-    return { action: "KEEP", reason: "3차 시황 필터는 현재 주간 분포 기준으로 즉시 수정 근거가 약합니다." };
+    return { action: "KEEP", reason: "3차 상태 기반 Soft Sizing 필터는 현재 주간 분포 기준으로 즉시 수정 근거가 약합니다." };
   }
 
   return { action: "KEEP", reason: "유지" };
@@ -2133,8 +2133,8 @@ function renderPineStage1ChangeControlMarkdown(report = {}) {
     "",
     "## Guards",
     `- canary: ${report.canary_guard && report.canary_guard.pass ? "PASS" : "BLOCK"} / golden=${report.canary_guard && report.canary_guard.golden_drift != null ? report.canary_guard.golden_drift : "N/A"} / shadow=${report.canary_guard && report.canary_guard.shadow_drift != null ? report.canary_guard.shadow_drift : "N/A"}`,
-    `- 2차 AI coverage: ${report.coverage_guard && report.coverage_guard.ai && report.coverage_guard.ai.pass ? "PASS" : "BLOCK"} / sample=${report.coverage_guard && report.coverage_guard.ai && report.coverage_guard.ai.sample_n || 0}`,
-    `- 3차 시황 coverage: ${report.coverage_guard && report.coverage_guard.market && report.coverage_guard.market.pass ? "PASS" : "BLOCK"} / sample=${report.coverage_guard && report.coverage_guard.market && report.coverage_guard.market.sample_n || 0} / ai_bias=${pct(report.coverage_guard && report.coverage_guard.market && report.coverage_guard.market.ai_bias_coverage)}`,
+    `- 2차 진입 품질 coverage: ${report.coverage_guard && report.coverage_guard.ai && report.coverage_guard.ai.pass ? "PASS" : "BLOCK"} / sample=${report.coverage_guard && report.coverage_guard.ai && report.coverage_guard.ai.sample_n || 0}`,
+    `- 3차 상태 기반 Soft Sizing coverage: ${report.coverage_guard && report.coverage_guard.market && report.coverage_guard.market.pass ? "PASS" : "BLOCK"} / sample=${report.coverage_guard && report.coverage_guard.market && report.coverage_guard.market.sample_n || 0} / ai_bias=${pct(report.coverage_guard && report.coverage_guard.market && report.coverage_guard.market.ai_bias_coverage)}`,
     "",
   ];
   return `${lines.join("\n")}\n`;
@@ -2384,7 +2384,7 @@ function renderMarkdown({ nowMeta, current, previous, recommendations, settings,
     }
   }
   lines.push("");
-  lines.push("## 1차 무결성 가드 심화(현재)");
+  lines.push("## 1차 상태/무결성 심화(현재)");
   const qualityDeep = current.quality_deep_dive || {};
   lines.push(`- total quality drops=${qualityDeep.total_quality_drops_n || 0} / matured=${qualityDeep.matured_n || 0} / skipped=${qualityDeep.skipped_n || 0}`);
   if (Array.isArray(qualityDeep.skip_reasons) && qualityDeep.skip_reasons.length) {
@@ -2408,7 +2408,7 @@ function renderMarkdown({ nowMeta, current, previous, recommendations, settings,
     );
   }
   lines.push("");
-  lines.push("## Pine ↔ 1차 무결성 가드 연동 판단(현재)");
+  lines.push("## Pine ↔ 1차 상태/무결성 연동 판단(현재)");
   for (const row of (current.pine_quality_linkage || []).slice(0, 10)) {
     lines.push(
       `- ${displayStageReasonForUser(row.reason, "QUALITY")} (${row.reason}) / ${row.side} / ${LIVE_ENTRY_SCOPE} / ${row.regime}: analyzed=${row.analyzed_n} / dropped_avg_ret_net=${signedPct(row.dropped_avg_ret_net)} / ` +
@@ -2464,25 +2464,25 @@ function renderMarkdown({ nowMeta, current, previous, recommendations, settings,
   }
   lines.push("");
   lines.push("## 주간 권고 및 운영값(1~5차)");
-  lines.push(`- 1차 무결성 가드: ${recommendations.QUALITY.action} / ${recommendations.QUALITY.reason}`);
-  lines.push(`- 2차 AI: ${recommendations.AI.action} / ${recommendations.AI.reason}`);
-  lines.push(`- 3차 시황: ${recommendations.MARKET.action} / ${recommendations.MARKET.reason}`);
-  lines.push(`- 4차 EV 참조: 기본 threshold ${pct(settings.ev_gate_tp1_prob_min)} / ${LIVE_ENTRY_LABEL} threshold ${pct(settings.ev_gate_tp1_prob_min_early)}`);
-  lines.push(`- 3차 시황 soft sizing: neutral ${pct(settings.ai_bias_gate_neutral_mult)} / opposite ${pct(settings.ai_bias_gate_opposite_mult)} / strong score ${pct(settings.ai_bias_gate_strong_opposite_score)} / strong conf ${pct(settings.ai_bias_gate_strong_opposite_conf)}`);
-  lines.push(`- 4차 EV band: full ${pct(settings.ev_gate_tp1_prob_full)} / kill ${pct(settings.ev_gate_tp1_prob_kill)} / mid ${pct(settings.ev_gate_qty_scale_mid)} / low ${pct(settings.ev_gate_qty_scale_low)}`);
-  lines.push(`- 5차 WAIT: streak ${settings.wait_one_bar_same_dir_streak_min} / chase ${ratioX(settings.wait_one_bar_chase_ratio_min)} / close ${pct(settings.wait_one_bar_last_close_control_min)} / body ${pct(settings.wait_one_bar_last_dir_body_min)} / wick ${pct(settings.wait_one_bar_last_opposite_wick_max)} / move1 ${pct(settings.wait_one_bar_recent_move1_pct_min)} / counter ${settings.wait_one_bar_counter_dir_bars_max}`);
+  lines.push(`- 1차 상태/무결성: ${recommendations.QUALITY.action} / ${recommendations.QUALITY.reason}`);
+  lines.push(`- 2차 진입 품질: ${recommendations.AI.action} / ${recommendations.AI.reason}`);
+  lines.push(`- 3차 상태 기반 Soft Sizing: ${recommendations.MARKET.action} / ${recommendations.MARKET.reason}`);
+  lines.push(`- 4차 EV/시간가치층 참조: 기본 threshold ${pct(settings.ev_gate_tp1_prob_min)} / ${LIVE_ENTRY_LABEL} threshold ${pct(settings.ev_gate_tp1_prob_min_early)}`);
+  lines.push(`- 3차 상태 기반 Soft Sizing 세부: neutral ${pct(settings.ai_bias_gate_neutral_mult)} / opposite ${pct(settings.ai_bias_gate_opposite_mult)} / strong score ${pct(settings.ai_bias_gate_strong_opposite_score)} / strong conf ${pct(settings.ai_bias_gate_strong_opposite_conf)}`);
+  lines.push(`- 4차 EV/시간가치층 band: full ${pct(settings.ev_gate_tp1_prob_full)} / kill ${pct(settings.ev_gate_tp1_prob_kill)} / mid ${pct(settings.ev_gate_qty_scale_mid)} / low ${pct(settings.ev_gate_qty_scale_low)}`);
+  lines.push(`- 5차 WAIT 타이밍층: streak ${settings.wait_one_bar_same_dir_streak_min} / chase ${ratioX(settings.wait_one_bar_chase_ratio_min)} / close ${pct(settings.wait_one_bar_last_close_control_min)} / body ${pct(settings.wait_one_bar_last_dir_body_min)} / wick ${pct(settings.wait_one_bar_last_opposite_wick_max)} / move1 ${pct(settings.wait_one_bar_recent_move1_pct_min)} / counter ${settings.wait_one_bar_counter_dir_bars_max}`);
   lines.push("");
   lines.push("## 3차/4차 실제 성과 분해(현재)");
   lines.push("- 주의: 아래 realized/actual/fullsize_proxy는 `현재 윈도우 entry cohort 중 이미 실현 완료된 체인`만 집계합니다.");
-  lines.push("- 3차 시황 soft sizing:");
+  lines.push("- 3차 상태 기반 Soft Sizing:");
   for (const row of (current.sizing && current.sizing.market_bias || []).slice(0, 8)) {
     lines.push(`  - ${row.bucket}: entry-cohort realized=${row.realized_n} / win=${pct(row.win_rate)} / avg_ret_net=${signedPct(row.avg_ret_net)} / actual=${signedNum(row.net_pnl_quote, 2)} / fullsize_proxy=${signedNum(row.fullsize_proxy_pnl_quote, 2)} / saved_loss=${signedNum(row.saved_loss_quote, 2)} / missed_gain=${signedNum(row.missed_gain_quote, 2)}`);
   }
-  lines.push("- 4차 EV band:");
+  lines.push("- 4차 EV/시간가치층 band:");
   for (const row of (current.sizing && current.sizing.ev_band || []).slice(0, 8)) {
     lines.push(`  - ${row.bucket}: entry-cohort realized=${row.realized_n} / win=${pct(row.win_rate)} / avg_ret_net=${signedPct(row.avg_ret_net)} / actual=${signedNum(row.net_pnl_quote, 2)} / fullsize_proxy=${signedNum(row.fullsize_proxy_pnl_quote, 2)} / saved_loss=${signedNum(row.saved_loss_quote, 2)} / missed_gain=${signedNum(row.missed_gain_quote, 2)}`);
   }
-  lines.push("- 5차 WAIT:");
+  lines.push("- 5차 WAIT 타이밍층:");
   lines.push(`  - streak=${settings.wait_one_bar_same_dir_streak_min} / chase=${ratioX(settings.wait_one_bar_chase_ratio_min)} / close=${pct(settings.wait_one_bar_last_close_control_min)} / body=${pct(settings.wait_one_bar_last_dir_body_min)} / wick=${pct(settings.wait_one_bar_last_opposite_wick_max)} / move1=${pct(settings.wait_one_bar_recent_move1_pct_min)} / counter=${settings.wait_one_bar_counter_dir_bars_max}`);
   lines.push("");
   lines.push("## 로컬 증분 캐시");

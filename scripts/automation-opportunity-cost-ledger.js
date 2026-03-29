@@ -102,7 +102,7 @@ function buildEvStageRow(evSummary = {}) {
   else if (Number.isFinite(avgRet) && avgRet > 0 && dropN > (executedN * 3)) verdict = "SOFTEN_PRESSURE";
   return {
     stage: "EV_LEDGER",
-    label: "4차 EV 실제 결과",
+    label: "4차 EV/시간가치층 실제 결과",
     resolved_n: resolvedN,
     ev_drop_n: dropN,
     executed_entry_n: executedN,
@@ -111,7 +111,7 @@ function buildEvStageRow(evSummary = {}) {
     verdict,
     note: verdict === "SOFTEN_PRESSURE"
       ? "실제 EV 표본 수익은 양수인데 드롭이 많아 기준 완화 검토 가치가 있습니다."
-      : (verdict === "HOLD_SAMPLE" ? "4차 EV 실표본이 아직 적습니다." : "즉시 조정 근거가 약합니다."),
+      : (verdict === "HOLD_SAMPLE" ? "4차 EV/시간가치층 실표본이 아직 적습니다." : "즉시 조정 근거가 약합니다."),
   };
 }
 
@@ -128,7 +128,7 @@ function buildWaitStageRow(waitSummary = {}) {
   else if (Number.isFinite(avgDelta) && avgDelta < 0 && Number(harmfulRate || 0) >= Number(beneficialRate || 0)) verdict = "TIGHTEN_PRESSURE";
   return {
     stage: "WAIT_LEDGER",
-    label: "5차 WAIT 실제 결과",
+    label: "5차 WAIT 타이밍층 실제 결과",
     trigger_n: triggerN,
     beneficial_rate: beneficialRate,
     harmful_rate: harmfulRate,
@@ -138,7 +138,7 @@ function buildWaitStageRow(waitSummary = {}) {
       ? "기다린 쪽이 더 나은 비중이 높아 WAIT 완화보다 활용 가치가 있습니다."
       : verdict === "TIGHTEN_PRESSURE"
         ? "WAIT이 오히려 손해라 타이밍 연기 조건을 보수화할 근거가 있습니다."
-        : (verdict === "HOLD_SAMPLE" ? "5차 WAIT 발동 표본이 아직 적습니다." : "즉시 조정 근거가 약합니다."),
+        : (verdict === "HOLD_SAMPLE" ? "5차 WAIT 타이밍층 발동 표본이 아직 적습니다." : "즉시 조정 근거가 약합니다."),
   };
 }
 
@@ -247,10 +247,10 @@ async function main() {
         ],
       },
       {
-        header: "4차/5차 실제 결과",
+        header: "4차/5차 계층 실제 결과",
         lines: [
-          `4차 EV ${evRow.verdict} / resolved ${evRow.resolved_n} / avg_ret ${signedPct(evRow.avg_ret_net)}`,
-          `5차 WAIT ${waitRow.verdict} / trigger ${waitRow.trigger_n} / avg_delta ${signedPct(waitRow.avg_delta_ret_net)}`,
+          `4차 EV/시간가치층 ${evRow.verdict} / resolved ${evRow.resolved_n} / avg_ret ${signedPct(evRow.avg_ret_net)}`,
+          `5차 WAIT 타이밍층 ${waitRow.verdict} / trigger ${waitRow.trigger_n} / avg_delta ${signedPct(waitRow.avg_delta_ret_net)}`,
         ],
       },
       {

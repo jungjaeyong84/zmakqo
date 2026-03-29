@@ -242,7 +242,7 @@
     <div class="card" style="background:#fafafa;">
       <h2>진입 판단 계층</h2>
       <div class="subtle">
-        현재 실행 순서는 <b>1차 상태/무결성</b> → <b>2차 진입 품질</b> → <b>3차 상태 기반 Soft Sizing</b> → <b>4차 EV Final Sizing</b> → <b>5차 WAIT Timing</b> 입니다.
+        현재 실행 순서는 <b>1차 상태/무결성</b> → <b>2차 진입 품질</b> → <b>3차 상태 기반 Soft Sizing</b> → <b>4차 EV/시간가치층</b> → <b>5차 WAIT 타이밍층</b> 입니다.
       </div>
       <div class="subtle" style="margin-top:6px;">
         이 탭에서 직접 조정하는 것은 3~5차입니다. 1~2차는 Pine/서버 품질 계층에서 관리되며, 여기서는 의미를 구분해서 볼 수 있도록만 설명합니다.
@@ -280,7 +280,7 @@
 
     <div class="tablewrap">
       <div class="head">
-        <h2>4차 EV Final Sizing</h2>
+        <h2>4차 EV/시간가치층</h2>
         <div class="subtle">3차까지 통과한 뒤, TP1 도달 확률과 hold-value 관점에서 최종 수량을 조절합니다. kill 미만만 hard drop이며 상태/진입 품질은 여기서 다시 재판정하지 않습니다.</div>
       </div>
       <div class="grid cols-2">
@@ -307,7 +307,7 @@
 
     <div class="tablewrap">
       <div class="head">
-        <h2>5차 WAIT Timing</h2>
+        <h2>5차 WAIT 타이밍층</h2>
         <div class="subtle">1~4차를 통과한 뒤에도 현재 봉이 과열된 추격봉이면 다음 봉까지 진입을 연기합니다. 이 단계는 타이밍만 다루며, 상태/진입 품질/EV는 다시 재판정하지 않고 open/close·wick 구조만 봅니다.</div>
       </div>
       <div class="grid cols-2">

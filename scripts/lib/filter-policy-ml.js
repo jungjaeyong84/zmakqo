@@ -212,7 +212,7 @@ function buildQualityRecommendations(examples = [], modelMetrics = {}, settings 
   const out = [];
   const sampleN = rows.length;
   if (sampleN < 60 || !(modelMetrics && modelMetrics.ok)) {
-    return [{ action: "HOLD", reason: "표본 또는 모델 품질이 부족해 1차 무결성 가드 자동 조정을 보류합니다." }];
+    return [{ action: "HOLD", reason: "표본 또는 모델 품질이 부족해 1차 상태/무결성 자동 조정을 보류합니다." }];
   }
 
   const scoreConfigs = [
@@ -280,7 +280,7 @@ function buildQualityRecommendations(examples = [], modelMetrics = {}, settings 
     });
   }
 
-  return out.length ? out.slice(0, 4) : [{ action: "KEEP", reason: "1차 무결성 가드는 현재 학습 결과 기준 즉시 조정 근거가 약합니다." }];
+  return out.length ? out.slice(0, 4) : [{ action: "KEEP", reason: "1차 상태/무결성은 현재 학습 결과 기준 즉시 조정 근거가 약합니다." }];
 }
 
 function buildAiRecommendation(examples = [], settings = {}) {
@@ -291,7 +291,7 @@ function buildAiRecommendation(examples = [], settings = {}) {
   const currentReduce = clamp(roundTo(Number(settings.ai_missing_reduce_pct || 0.5), 2), 0, 1);
   const aiCoverage = (Array.isArray(examples) ? examples : []).filter((row) => row.aiUsable === true || row.aiMissing === true).length;
   if (aiCoverage < 20) {
-    return { action: "HOLD", reason: "2차 AI usable 관련 표본이 부족해 자동 조정을 보류합니다." };
+    return { action: "HOLD", reason: "2차 진입 품질의 AI usable 관련 표본이 부족해 자동 조정을 보류합니다." };
   }
   const missingRows = (Array.isArray(examples) ? examples : []).filter((row) => row.aiMissing === true);
   const missing = missingRows.length;
@@ -392,15 +392,15 @@ function buildAiRecommendation(examples = [], settings = {}) {
     }
   }
   if (missing >= 8) {
-    return { action: "REVIEW_DATA", reason: "2차 AI 판단은 임계값보다 AI missing/수집 안정화가 우선입니다." };
+    return { action: "REVIEW_DATA", reason: "2차 진입 품질 판단은 임계값보다 AI missing/수집 안정화가 우선입니다." };
   }
-  return { action: "KEEP", reason: "2차 AI 판단은 현재 학습 결과 기준 즉시 조정 근거가 약합니다." };
+  return { action: "KEEP", reason: "2차 진입 품질 판단은 현재 학습 결과 기준 즉시 조정 근거가 약합니다." };
 }
 
 function buildMarketRecommendation(examples = [], settings = {}) {
   const rows = (Array.isArray(examples) ? examples : []).filter((row) => row.aiBiasDir && row.aiBiasDir !== "UNKNOWN");
   if (rows.length < 20) {
-    return { action: "HOLD", reason: "3차 시황 학습 표본이 부족하거나 ai_bias feature coverage가 낮습니다." };
+    return { action: "HOLD", reason: "3차 상태 기반 Soft Sizing 학습 표본이 부족하거나 ai_bias feature coverage가 낮습니다." };
   }
   const neutralRows = rows.filter((row) => row.aiBiasDir === "NEUTRAL");
   const oppositeRows = rows.filter((row) => row.aiBiasRelation === "OPPOSITE_WEAK");
@@ -424,7 +424,7 @@ function buildMarketRecommendation(examples = [], settings = {}) {
       reason: "약한 반대 bias 구간의 실제 성공률이 낮아 opposite 배수 축소 근거가 있습니다.",
     };
   }
-  return { action: "KEEP", reason: "3차 시황 필터는 현재 학습 결과 기준 즉시 조정 근거가 약합니다." };
+  return { action: "KEEP", reason: "3차 상태 기반 Soft Sizing 필터는 현재 학습 결과 기준 즉시 조정 근거가 약합니다." };
 }
 
 function deriveEvThresholdSearchRange(rows = [], {
@@ -570,7 +570,7 @@ function buildEvRecommendation(examples = [], settings = {}) {
   const changed = Object.keys(next).some((key) => Math.abs(Number(next[key]) - Number(settings[key] || current)) >= 0.01);
   return {
     action: changed ? "REVIEW_UPDATE" : "KEEP",
-    reason: reasons.length ? reasons.join(" / ") : "4차 EV는 현재 학습 결과 기준 즉시 조정 근거가 약합니다.",
+    reason: reasons.length ? reasons.join(" / ") : "4차 EV/시간가치층은 현재 학습 결과 기준 즉시 조정 근거가 약합니다.",
     next,
     threshold_eval: thresholdEval,
     buckets: { low: lowBucket, mid: midBucket },

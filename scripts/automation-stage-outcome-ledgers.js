@@ -169,8 +169,8 @@ function renderCoverageMarkdown(report = {}) {
     `- 대상: ${report.provider || "N/A"} ${report.tf || "N/A"}`,
     `- overall: ${guard.pass ? "PASS" : "BLOCK"}`,
     `- self-validation: ${guard.self_validation_ok === true ? "OK" : "WARN"}`,
-    `- 2차 AI: ${guard.ai && guard.ai.pass ? "PASS" : "BLOCK"} / sample ${guard.ai && guard.ai.sample_n || 0}/${guard.ai && guard.ai.min_sample || 0}`,
-    `- 3차 시황: ${guard.market && guard.market.pass ? "PASS" : "BLOCK"} / sample ${guard.market && guard.market.sample_n || 0}/${guard.market && guard.market.min_sample || 0} / ai_bias_coverage ${pct(guard.market && guard.market.ai_bias_coverage)}`,
+    `- 2차 진입 품질: ${guard.ai && guard.ai.pass ? "PASS" : "BLOCK"} / sample ${guard.ai && guard.ai.sample_n || 0}/${guard.ai && guard.ai.min_sample || 0}`,
+    `- 3차 상태 기반 Soft Sizing: ${guard.market && guard.market.pass ? "PASS" : "BLOCK"} / sample ${guard.market && guard.market.sample_n || 0}/${guard.market && guard.market.min_sample || 0} / ai_bias_coverage ${pct(guard.market && guard.market.ai_bias_coverage)}`,
   ].join("\n") + "\n";
 }
 
@@ -302,14 +302,14 @@ async function main() {
     severity: summary.coverage_guard.guard.pass ? "INFO" : "WARN",
     sections: [
       {
-        header: "4차 EV",
+        header: "4차 EV/시간가치층",
         lines: [
           `resolved ${summary.ev_ledger.summary.resolved_n} / entry ${summary.ev_ledger.summary.executed_entry_n} / ev_drop ${summary.ev_ledger.summary.ev_drop_n} / wait_after_stage4 ${summary.ev_ledger.summary.wait_after_stage4_n}`,
           `TP1 ${summary.ev_ledger.summary.tp1_hit_n} / no_tp1 ${summary.ev_ledger.summary.no_tp1_n} / avg_ret ${signedPct(summary.ev_ledger.summary.avg_ret_net)}`,
         ],
       },
       {
-        header: "5차 WAIT",
+        header: "5차 WAIT 타이밍층",
         lines: [
           `matured ${summary.wait_ledger.summary.matured_n} / trigger ${summary.wait_ledger.summary.wait_trigger_n}`,
           `beneficial ${summary.wait_ledger.summary.beneficial_wait_n} / harmful ${summary.wait_ledger.summary.harmful_wait_n} / avg_delta ${signedPct(summary.wait_ledger.summary.avg_delta_ret_net)}`,
@@ -318,8 +318,8 @@ async function main() {
       {
         header: "2·3차 데이터 충분성",
         lines: [
-          `2차 AI ${summary.coverage_guard.guard.ai.pass ? "PASS" : "BLOCK"} / sample ${summary.coverage_guard.guard.ai.sample_n}`,
-          `3차 시황 ${summary.coverage_guard.guard.market.pass ? "PASS" : "BLOCK"} / sample ${summary.coverage_guard.guard.market.sample_n} / ai_bias ${pct(summary.coverage_guard.guard.market.ai_bias_coverage)}`,
+          `2차 진입 품질 ${summary.coverage_guard.guard.ai.pass ? "PASS" : "BLOCK"} / sample ${summary.coverage_guard.guard.ai.sample_n}`,
+          `3차 상태 기반 Soft Sizing ${summary.coverage_guard.guard.market.pass ? "PASS" : "BLOCK"} / sample ${summary.coverage_guard.guard.market.sample_n} / ai_bias ${pct(summary.coverage_guard.guard.market.ai_bias_coverage)}`,
         ],
       },
       {
