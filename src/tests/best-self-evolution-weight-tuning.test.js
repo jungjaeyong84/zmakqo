@@ -37,6 +37,8 @@ const { deriveWeightTuningPlan } = require("../../src/utils/bestSelfEvolutionWei
   });
   assert.strictEqual(advisoryOnly.summary.advisory_mode, "ADVISORY_ONLY");
   assert.strictEqual(advisoryOnly.summary.memory_blocked, true);
+  assert.strictEqual(advisoryOnly.summary.autonomous_defer, true);
+  assert.strictEqual(advisoryOnly.summary.defer_reason, "MEMORY_BLOCKED");
   assert.ok(advisoryOnly.suggestions.length > 0);
 
   console.log("BEST_SELF_EVOLUTION_WEIGHT_TUNING_TEST_OK");

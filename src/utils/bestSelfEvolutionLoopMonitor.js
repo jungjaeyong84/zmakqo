@@ -119,8 +119,12 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       loop: "WEIGHT_TUNING",
       fresh: artifacts.weightTuning && artifacts.weightTuning.fresh === true,
       cycle_id: readCycleId(weightTuning),
-      status: String(weightSummary.advisory_mode || "N/A").trim().toUpperCase() || "N/A",
-      reason: `suggestions=${weightSummary.suggestion_n ?? 0} / canary_blocked=${weightSummary.canary_blocked ? "YES" : "NO"}`,
+      status: weightSummary.autonomous_defer === true
+        ? "DEFERRED"
+        : (String(weightSummary.advisory_mode || "N/A").trim().toUpperCase() || "N/A"),
+      reason: weightSummary.autonomous_defer === true
+        ? `suggestions=${weightSummary.suggestion_n ?? 0} / defer=${weightSummary.defer_reason || "N/A"}`
+        : `suggestions=${weightSummary.suggestion_n ?? 0} / canary_blocked=${weightSummary.canary_blocked ? "YES" : "NO"}`,
     },
     {
       loop: "MEMORY_LEDGER",

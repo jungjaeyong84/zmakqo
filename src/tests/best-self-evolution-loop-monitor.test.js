@@ -25,7 +25,7 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
       deployment: { cycle_id: "cycle-1", summary: { deploy_pass: true, target_candidate_id: "AUTO_CORE", blockers: [] } },
       deploymentPlan: { cycle_id: "cycle-1", summary: { plan_status: "READY_FOR_MANUAL_PASTE", manual_step_required: true, target_candidate_id: "AUTO_CORE" } },
       stageAutopilot: { cycle_id: "cycle-1", objective_verdict: "PATCH_CANDIDATE", actions: [] },
-      weightTuning: { cycle_id: "cycle-1", summary: { advisory_mode: "HOLD", suggestion_n: 0, canary_blocked: false } },
+      weightTuning: { cycle_id: "cycle-1", summary: { advisory_mode: "HOLD", suggestion_n: 0, canary_blocked: false, autonomous_defer: false } },
       memory: { cycle_id: "cycle-1", summary: { blocked_candidate_n: 0, top_failed_candidate_id: null } },
       codexPatch: { cycle_id: "cycle-1", verdict: "PROMOTE", recommended_candidate_id: "AUTO_CORE" },
     },
@@ -88,6 +88,21 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
   assert.strictEqual(stageRow.reason, "post_stage_pending / latest=cycle-old");
   assert.ok(memoryRow);
   assert.strictEqual(memoryRow.reason, "blocked=2 / ids=AI_AI|WAIT_ONE_BAR_TUNE");
+
+  const deferredWeight = deriveLoopMonitor({
+    artifacts: {
+      objectiveSupervisor: { fresh: true },
+      weightTuning: { fresh: true },
+    },
+    reports: {
+      objectiveSupervisor: { cycle_id: "cycle-w", verdict: "HOLD", reason: "DAILY_NO_TRADE_ACTIVITY" },
+      weightTuning: { cycle_id: "cycle-w", summary: { advisory_mode: "ADVISORY_ONLY", suggestion_n: 3, canary_blocked: false, autonomous_defer: true, defer_reason: "MEMORY_BLOCKED" } },
+    },
+  });
+  const weightRow = deferredWeight.rows.find((row) => row.loop === "WEIGHT_TUNING");
+  assert.ok(weightRow);
+  assert.strictEqual(weightRow.status, "DEFERRED");
+  assert.strictEqual(weightRow.reason, "suggestions=3 / defer=MEMORY_BLOCKED");
 
   const absent = deriveLoopMonitor({
     artifacts: {

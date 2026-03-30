@@ -628,6 +628,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(monthlySourceSampleReady.sample_readiness.governance_effective_realized_n, 9);
   assert.strictEqual(monthlySourceSampleReady.sample_readiness.governance_enough_sample, true);
   assert.strictEqual(monthlySourceSampleReady.blockers.includes("GOVERNANCE_OBJECTIVE_SAMPLE_NOT_READY"), false);
+  assert.strictEqual(monthlySourceSampleReady.blockers.includes("CHANGE_CONTROL_HOLD"), false);
   assert.deepStrictEqual(monthlySourceSampleReady.governance_objective.failed_checks, ["STRICT_SAMPLE_ONLY", "MONTHLY_TARGET_NOT_MET"]);
 
   const telegramSections = __test.buildObjectiveSupervisorTelegramSections({

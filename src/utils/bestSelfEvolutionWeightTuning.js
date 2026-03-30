@@ -40,6 +40,10 @@ function deriveWeightTuningPlan({ objective = null, attribution = null, canary =
     ? "HOLD"
     : (suggestions.length ? (memoryBlocked ? "ADVISORY_ONLY" : "ADJUST") : "KEEP");
   const dominant = suggestions[0] ? suggestions[0].axis : null;
+  const autonomousDefer = advisoryMode === "ADVISORY_ONLY";
+  const deferReason = autonomousDefer
+    ? (memoryBlocked ? "MEMORY_BLOCKED" : "BOUNDED_DEFER")
+    : null;
 
   return {
     summary: {
@@ -50,6 +54,8 @@ function deriveWeightTuningPlan({ objective = null, attribution = null, canary =
       replacement_guard_blocked: replacementBlocked,
       memory_blocked: memoryBlocked,
       canary_blocked: canaryBlocked,
+      autonomous_defer: autonomousDefer,
+      defer_reason: deferReason,
     },
     suggestions,
   };

@@ -111,23 +111,28 @@ function deriveDeploymentPlan({
     && !!rollbackFilePath
     && codexVerdict === "ROLLBACK"
     && (!codexRollbackPath || codexRollbackPath === rollbackFilePath);
+  const dryPrepareEligible = promotionPreparePass
+    && prepared.prepared_stage_ready !== true
+    && String(prepared.prepared_reason || "").trim().toUpperCase() === "DAILY_NO_TRADE_ACTIVITY";
   const readyForManualPaste = promotionPreparePass
     && prepared.prepared_stage_ready === true
     && (!!prepared.prepared_file_path || !!prepared.latest_generated_file_path);
   const readyForManualRollback = rollbackPreparePass
     && prepared.prepared_stage_ready === true
     && (!!prepared.rollback_source_file_path || !!rollbackFilePath);
+  const changeControlRelevant = promotion.ready === true || rollback.ready === true;
 
   let planStatus = "HOLD";
   if (readyForManualRollback) planStatus = "READY_FOR_MANUAL_ROLLBACK";
   else if (rollbackPreparePass) planStatus = "PREPARE_ROLLBACK";
   else if (readyForManualPaste) planStatus = "READY_FOR_MANUAL_PASTE";
-  else if (promotionPreparePass) planStatus = "PREPARE_PROMOTION";
+  else if (promotionPreparePass) planStatus = dryPrepareEligible ? "PREPARE_PROMOTION_DRY" : "PREPARE_PROMOTION";
 
   const blockers = [];
   if (planStatus === "HOLD" && Array.isArray(guardSummary.blockers)) blockers.push(...guardSummary.blockers);
-  if ((promotion.ready === true || rollback.ready === true) && codexVerdict === "HOLD") blockers.push("CODEX_ACTION_NOT_APPROVED");
-  if (promotionPreparePass && !readyForManualPaste) blockers.push("PINE_PREPARE_PENDING");
+  if (changeControlRelevant && codexVerdict === "HOLD") blockers.push("CODEX_ACTION_NOT_APPROVED");
+  if (promotionPreparePass && !readyForManualPaste && !dryPrepareEligible) blockers.push("PINE_PREPARE_PENDING");
+  if (dryPrepareEligible) blockers.push("DRY_PREPARE_ONLY");
   if (rollbackPreparePass && !readyForManualRollback) blockers.push("ROLLBACK_PREPARE_PENDING");
 
   const checklist = rollbackPreparePass
@@ -144,6 +149,26 @@ function deriveDeploymentPlan({
       "붙여넣기 후 webhook alert가 기존 LONG/SHORT 메인 이벤트만 가리키는지 확인",
     ];
 
+  const nextActions = [];
+  if (dryPrepareEligible) {
+    nextActions.push("거래가 없는 날에도 prepared/generated Pine 파일 경로를 유지하고 다음 거래 세션 전에 수동 반영 준비");
+  }
+  if (String(prepared.prepared_reason || "").trim().toUpperCase() === "DAILY_NO_TRADE_ACTIVITY") {
+    nextActions.push("DAILY_NO_TRADE_ACTIVITY 해소 전까지 dry-prepare 상태로 유지하고 거래 재개 시 prepared artifact 재검증");
+  }
+  if (changeControlRelevant && codexVerdict === "HOLD") {
+    nextActions.push("Codex 승인 또는 rollback 결론이 나올 때까지 change-control 상태를 재평가");
+  }
+  if (marketScope.blocked_n > 0) {
+    nextActions.push("blocked market canary를 먼저 해소해 open wave 전체를 READY 상태로 맞춤");
+  }
+  if (promotionPreparePass && !readyForManualPaste && !dryPrepareEligible) {
+    nextActions.push("PINE stage가 prepared file을 생성할 때까지 stage_autopilot 결과를 재확인");
+  }
+  if (rollbackPreparePass && !readyForManualRollback) {
+    nextActions.push("rollback source file 경로를 준비한 뒤 manual rollback handoff를 생성");
+  }
+
   return {
     summary: {
       plan_status: planStatus,
@@ -151,6 +176,7 @@ function deriveDeploymentPlan({
       display_candidate_id: displayCandidateId,
       rollback_file_path: rollbackFilePath,
       prepare_pass: promotionPreparePass || rollbackPreparePass,
+      dry_prepare_available: dryPrepareEligible,
       ready_for_manual_paste: readyForManualPaste || readyForManualRollback,
       manual_step_required: planStatus === "READY_FOR_MANUAL_PASTE" || planStatus === "READY_FOR_MANUAL_ROLLBACK",
       open_wave: openWave,
@@ -165,6 +191,7 @@ function deriveDeploymentPlan({
       source_week_key: prepared.source_week_key,
       codex_verdict: codexVerdict,
       blockers: Array.from(new Set(blockers.filter(Boolean))),
+      next_actions: Array.from(new Set(nextActions.filter(Boolean))),
     },
     rows: marketScope.rows,
     handoff: {
@@ -174,6 +201,8 @@ function deriveDeploymentPlan({
       rollback_source_file_path: prepared.rollback_source_file_path,
       candidate_signature: prepared.prepared_candidate_signature || targetCandidateId,
       prepared_reason: prepared.prepared_reason,
+      dry_prepare: dryPrepareEligible,
+      next_actions: Array.from(new Set(nextActions.filter(Boolean))),
     },
   };
 }

@@ -1188,6 +1188,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     : { available: false, cycle_consistent: true, cycle_mismatch_n: 0, missing_key_n: 0, cycle_id_absent_n: 0, missing_keys: [], cycle_mismatches: [], cycle_id_absent_keys: [] };
   const selfEvolutionLoopMonitorSummary = summarizeSelfEvolutionLoopMonitor(selfEvolutionLoopMonitor);
   const memoryBlockedIds = new Set(selfEvolutionMemorySummary.blocked_candidate_ids || []);
+  const changeControlRelevant = promotion.ready === true || rollback.ready === true;
 
   const blockers = [];
   if (!objective || governanceSampleReady !== true) blockers.push("GOVERNANCE_OBJECTIVE_SAMPLE_NOT_READY");
@@ -1200,7 +1201,9 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   if (retrospectiveSummary.any_no_trade) blockers.push("DAILY_NO_TRADE_ACTIVITY");
   if (retrospectiveSummary.any_zero_idle) blockers.push("ZERO_KRW_IDLE");
   if (!canary || canarySummary.drift > 0 || canaryGolden.drift > 0) blockers.push("CANARY_DRIFT");
-  if (!changeControl || String(changeControl.verdict || "").toUpperCase() === "HOLD") blockers.push("CHANGE_CONTROL_HOLD");
+  if (changeControlRelevant && (!changeControl || String(changeControl.verdict || "").toUpperCase() === "HOLD")) {
+    blockers.push("CHANGE_CONTROL_HOLD");
+  }
   if (changeControl && changeControl.coverage_guard && changeControl.coverage_guard.pass !== true) blockers.push("COVERAGE_GUARD_BLOCK");
   if (physicsSummary.block_reason) blockers.push(physicsSummary.block_reason);
   if (selfEvolutionObjectiveSummary.count_floor_pass === false) blockers.push("SELF_EVOLUTION_COUNT_FLOOR_FAIL");
