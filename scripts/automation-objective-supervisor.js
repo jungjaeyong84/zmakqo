@@ -1686,6 +1686,8 @@ async function main() {
     evaluation_scope: selfEvolutionStage,
     verdict: evaluation.verdict,
     reason: evaluation.reason,
+    root_cause: evaluation.root_cause,
+    action_plan: evaluation.action_plan,
     blockers: evaluation.blockers,
     objective: evaluation.objective,
     governance_objective: evaluation.governance_objective,
