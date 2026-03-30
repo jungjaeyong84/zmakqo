@@ -23,7 +23,7 @@
    - governance effective sample readiness
    - market concentration recovery candidate
    - AXSUSDT market-specific canary promotion
-   - stage_autopilot의 pending final loop monitor 표현
+   - stage_autopilot embedded loop monitor source semantics
    - weight tuning advisory-only 모드
    - governance strict/effective sample check 분리
    - replay preflight BLOCKED_SOURCE_ACTION 조기 차단
@@ -243,7 +243,7 @@
 9. stage_autopilot stale loop_monitor mismatch를 OPEN으로 적으려면
    - stage_autopilot의 embedded loop monitor가 authoritative latest와 모순되면서
    - 그 값이 실제 action gating에 사용된다는 근거를 제시해라.
-   source = PENDING_FINAL_LOOP_MONITOR 또는 cycle_consistent = null이면 CLOSED 또는 PARTIAL로 처리해라.
+   source = PENDING_FINAL_LOOP_MONITOR, 또는 source = FINAL_LOOP_MONITOR 이면서 cycle_consistent = true 이면 CLOSED 또는 PARTIAL로 처리해라.
 10. memory blocker 때문에 weight tuning 제안 생성 차단을 OPEN으로 적으려면
    - 최신 weight tuning에서 memory_blocked=true 이면서 suggestion_n=0이어야 한다.
    ADVISORY_ONLY 또는 suggestion_n>0이면 CLOSED 또는 PARTIAL로 처리해라.
@@ -272,9 +272,10 @@
 5. governance sample fallback은 현재 실제 blocker 완화에 기여했는가
 6. AXSUSDT concentration recovery path는 현재 실제 후보 생성과 canary 전진으로 연결되는가
 7. stage_autopilot의 pending loop monitor 표현은 현재 모니터링 혼동을 줄였는가
-8. weight tuning은 현재 memory block 하에서도 advisory 경로를 유지하는가
-9. replay preflight와 deployment guards가 운영자에게 실제 해소 경로를 주는가
-10. Pine 붙여넣기 제외 기준으로 완전자율성이 현재 어디까지 왔는가
+8. stage_autopilot embedded loop monitor가 현재 FINAL_LOOP_MONITOR인지, PENDING_FINAL_LOOP_MONITOR인지, 그리고 그 상태가 코드/아티팩트와 일치하는가
+9. weight tuning은 현재 memory block 하에서도 advisory 경로를 유지하는가
+10. replay preflight와 deployment guards가 운영자에게 실제 해소 경로를 주는가
+11. Pine 붙여넣기 제외 기준으로 완전자율성이 현재 어디까지 왔는가
 
 출력 형식:
 1. Findings
