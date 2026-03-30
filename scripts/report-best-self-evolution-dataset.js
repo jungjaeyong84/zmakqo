@@ -24,6 +24,7 @@ const WINDOW_DAYS = Math.max(7, Number(process.env.BEST_SELF_EVOLUTION_WINDOW_DA
 const SCAN_LIMIT = Math.max(3000, Number(process.env.BEST_SELF_EVOLUTION_SCAN_LIMIT || 30000));
 const STALE_RANGE_MAX_AGE_MS = Math.max(1, Number(process.env.BEST_SELF_EVOLUTION_STALE_RANGE_MAX_HOURS || 6)) * 60 * 60 * 1000;
 const WEEKLY_LATEST_JSON = path.join(OPS_DAILY_DIR, "weekly_filter_governance_latest.json");
+const EV_TUNER_LATEST_JSON = path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json");
 
 function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -90,6 +91,8 @@ function renderMarkdown(report = {}) {
     `- drop_reason: ${renderSummaryLine(summary.by_drop_reason)}`,
     `- fallback_reason: ${renderSummaryLine(summary.by_fallback_reason)}`,
     `- realized_source: ${renderSummaryLine(summary.realized_source_counts)}`,
+    `- all_realized_source: ${renderSummaryLine(summary.all_realized_source_counts)}`,
+    `- ev_counterfactual_n: ${summary.ev_counterfactual_n ?? 0}`,
     `- exit_only_event: ${renderSummaryLine(summary.exit_only_by_event)}`,
     `- exit_only_outcome_state: ${renderSummaryLine(summary.exit_only_by_outcome_state)}`,
     `- exit_only_realized_source: ${renderSummaryLine(summary.exit_only_realized_source_counts)}`,
@@ -131,6 +134,7 @@ async function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
   const weekly = readJsonRawSafe(WEEKLY_LATEST_JSON, null);
+  const evTuner = readJsonRawSafe(EV_TUNER_LATEST_JSON, null);
   const windowMeta = resolveDatasetWindow({
     nowMs: nowMeta.nowMs,
     weeklyRange: weekly && weekly.current && weekly.current.range,
@@ -163,6 +167,7 @@ async function main() {
     tf: TF,
     fromMs: windowFromMs,
     toMs: windowToMs,
+    evTunerReport: evTuner,
   });
 
   const report = {

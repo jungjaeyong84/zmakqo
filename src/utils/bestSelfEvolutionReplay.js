@@ -16,6 +16,11 @@ function hasFlag(candidate, flag) {
   return Array.isArray(candidate && candidate.risk_flags) && candidate.risk_flags.includes(flag);
 }
 
+function hasOnlyBlocker(blockers = [], expected = "") {
+  const rows = Array.isArray(blockers) ? blockers : [];
+  return rows.length === 1 && String(rows[0] || "").trim().toUpperCase() === String(expected || "").trim().toUpperCase();
+}
+
 function ratio(numerator, denominator) {
   const num = Number(numerator);
   const den = Number(denominator);
@@ -292,9 +297,12 @@ function deriveCandidateObjectiveDelta(candidate = {}, context = {}) {
   const afterMetrics = deriveCohortMetrics(replay.replay_rows);
   const replayDelta = buildHistoricalReplayDelta(beforeMetrics, afterMetrics);
   const marketReplayDeltas = deriveMarketReplayDeltas(candidate, datasetRows, replay.replay_rows);
+  const shadowCounterfactualMissing =
+    hasFlag(candidate, "EV_SHADOW_FALLBACK")
+    && hasOnlyBlocker(blockers, "NO_REALIZED_COUNTERFACTUAL");
 
   let validationVerdict = "WARN";
-  if (blockers.length) validationVerdict = "BLOCK";
+  if (blockers.length) validationVerdict = shadowCounterfactualMissing ? "WARN" : "BLOCK";
   else if (replayDelta.candidate_objective_delta >= 0.25) validationVerdict = "PASS";
   else if (replayDelta.candidate_objective_delta <= -0.25) validationVerdict = "BLOCK";
 
@@ -311,7 +319,7 @@ function deriveCandidateObjectiveDelta(candidate = {}, context = {}) {
     avg_ret_net_delta: replayDelta.avg_ret_net_delta,
     projected_objective_score: Number((currentObjectiveScore + replayDelta.candidate_objective_delta).toFixed(4)),
     validation_verdict: validationVerdict,
-    blockers,
+    blockers: shadowCounterfactualMissing ? ["SHADOW_COUNTERFACTUAL_MISSING"] : blockers,
     risk_flags: Array.isArray(candidate.risk_flags) ? candidate.risk_flags.slice() : [],
     count_guard_effect: candidate.count_guard_effect || null,
     replacement_effect: candidate.replacement_effect || null,
@@ -321,7 +329,9 @@ function deriveCandidateObjectiveDelta(candidate = {}, context = {}) {
     historical_applied_n: replay.historical_applied_n,
     before_metrics: beforeMetrics,
     after_metrics: afterMetrics,
-    summary: String(candidate.evidence && candidate.evidence.rationale || candidate.status || "N/A"),
+    summary: shadowCounterfactualMissing
+      ? `shadow fallback pending counterfactual / ${String(candidate.evidence && candidate.evidence.rationale || candidate.status || "N/A")}`
+      : String(candidate.evidence && candidate.evidence.rationale || candidate.status || "N/A"),
   };
 }
 

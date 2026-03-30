@@ -274,6 +274,19 @@ function run() {
         },
       ],
     },
+    evTunerReport: {
+      recent_resolved_examples: [
+        {
+          signalId: "DOGEUSDT__15m__2000__CORE_LONG",
+          symbol: "DOGEUSDT",
+          event: "CORE_LONG",
+          realizedPnlQuote: 30,
+          realizedRetNet: 0.03,
+          stage4Source: "EV_DROP",
+          resolvedForTune: true,
+        },
+      ],
+    },
   });
 
   const byId = new Map(rows.map((row) => [row.signal_id || row.signal_key, row]));
@@ -295,6 +308,8 @@ function run() {
   assert.strictEqual(dropped.source_row_type, "DROP");
   assert.strictEqual(dropped.drop_stage_key, "TIMING");
   assert.strictEqual(dropped.wait_verdict, "DROP");
+  assert.strictEqual(dropped.realized_ret_net, 0.03);
+  assert.strictEqual(dropped.realized_source, "EV_TUNER_COUNTERFACTUAL");
 
   assert.strictEqual(missed.source_row_type, "MISSED");
   assert.strictEqual(rejected.source_row_type, "REJECTED");
@@ -323,11 +338,13 @@ function run() {
   assert.strictEqual(summary.rejected_n, 1);
   assert.strictEqual(summary.exit_only_n, 1);
   assert.strictEqual(summary.realized_n, 3);
-  assert.strictEqual(summary.all_realized_n, 3);
+  assert.strictEqual(summary.all_realized_n, 4);
+  assert.strictEqual(summary.ev_counterfactual_n, 1);
   assert.strictEqual(summary.entry_executed_null_realized_n, 0);
   assert.strictEqual(summary.executed_exit_only_n, 1);
   assert.ok(summary.febt_coverage_rate > 0.5);
   assert.strictEqual(summary.by_source_row_type[0].key, "EXECUTED");
+  assert.ok(summary.all_realized_source_counts.some((item) => item.key === "EV_TUNER_COUNTERFACTUAL" && item.count === 1));
 
   assert.strictEqual(__test.resolveSourceSignalKeyFromEntryEventId(execEntryEventId), "DOGEUSDT__15m__1000__CORE_SHORT");
   assert.strictEqual(__test.resolveSourceSignalKeyFromEntryEventId(legacyEntryEventId), "SOLUSDT__15m__6000__EARLY_SHORT");

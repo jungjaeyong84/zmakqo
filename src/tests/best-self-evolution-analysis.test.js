@@ -63,6 +63,8 @@ function run() {
         febt_phase: "FIRE",
         drop_stage_key: "TIMING",
         drop_reason: "DROP_WAIT_ONE_BAR_TIMING",
+        realized_ret_net: 0.03,
+        realized_pnl_quote: 300,
         features_json: { ok: true },
       },
       {
@@ -157,6 +159,9 @@ function run() {
   assert.strictEqual(attribution.summary.false_fire_top_market.key, "ETHUSDT");
   assert.strictEqual(attribution.summary.missed_recovery_top_reason.key, "DROP_WAIT_ONE_BAR_TIMING");
   assert.strictEqual(attribution.summary.fallback_cost_top_market.key, "SOLUSDT");
+  assert.strictEqual(attribution.drop_attribution[0].avg_ret_net, 0.03);
+  assert.strictEqual(attribution.drop_attribution[0].missed_gain_pct, 1);
+  assert.strictEqual(attribution.drop_attribution[0].saved_loss_pct, 0);
 
   console.log("BEST_SELF_EVOLUTION_ANALYSIS_TEST_OK");
 }

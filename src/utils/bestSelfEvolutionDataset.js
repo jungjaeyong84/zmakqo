@@ -115,6 +115,33 @@ function extractChainBackfillFeatures(chainRow) {
   return out;
 }
 
+function normalizeEvResolvedSignalKey(row) {
+  const direct = String(row && row.signalId || "").trim().toUpperCase();
+  if (direct) return direct;
+  return buildCompositeSignalKey({
+    market: String(row && row.symbol || row && row.market || "").trim().toUpperCase(),
+    tf: String(row && row.tf || "15m").trim(),
+    barMs: toNum(row && row.signalBarCloseMs),
+    event: String(row && row.event || "").trim().toUpperCase(),
+  });
+}
+
+function buildEvResolvedCounterfactualMap(evTunerReport = null) {
+  const raw = evTunerReport && typeof evTunerReport === "object"
+    ? (evTunerReport.raw && typeof evTunerReport.raw === "object" ? evTunerReport.raw : evTunerReport)
+    : {};
+  const rows = Array.isArray(raw.recent_resolved_examples) ? raw.recent_resolved_examples : [];
+  const out = new Map();
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    if (String(row.stage4Source || "").trim().toUpperCase() !== "EV_DROP") continue;
+    const signalKey = normalizeEvResolvedSignalKey(row);
+    if (!signalKey) continue;
+    if (!out.has(signalKey)) out.set(signalKey, row);
+  }
+  return out;
+}
+
 function resolveProvider(row) {
   const ex = toUpper(row && row.exchange, "");
   if (!ex) return "BINANCEFUT";
@@ -583,6 +610,7 @@ function buildUnifiedLearningRows({
   fromMs = null,
   toMs = null,
   qualitySummary = null,
+  evTunerReport = null,
 } = {}) {
   const providerNorm = String(provider || "").trim().toUpperCase();
   const tfNorm = String(tf || "").trim();
@@ -625,13 +653,22 @@ function buildUnifiedLearningRows({
     : null;
   const chainRows = Array.isArray(quality && quality.chain_rows) ? quality.chain_rows : [];
   const chainByEntryEvent = new Map();
+  const chainBySignalKey = new Map();
   for (const row of chainRows) {
     const rawEntryEventId = row && row.entry_event_id ? String(row.entry_event_id).trim() : "";
     if (!rawEntryEventId) continue;
     chainByEntryEvent.set(rawEntryEventId, row);
     const normalizedEntryEventId = normalizeEntryEventId(rawEntryEventId);
     if (normalizedEntryEventId) chainByEntryEvent.set(normalizedEntryEventId, row);
+    const signalKey = buildCompositeSignalKey({
+      market: String(row && row.market || "").trim().toUpperCase(),
+      tf: String(row && row.tf || "").trim(),
+      barMs: toNum(row && row.entry_bar_ms),
+      event: String(row && row.entry_signal_type || "").trim().toUpperCase(),
+    });
+    if (signalKey) chainBySignalKey.set(signalKey, row);
   }
+  const evResolvedCounterfactualBySignalKey = buildEvResolvedCounterfactualMap(evTunerReport);
 
   const rows = buckets.map((bucket) => {
     const signalRows = sortRowsByFeatureRichness(bucket.signals);
@@ -673,7 +710,9 @@ function buildUnifiedLearningRows({
     const chainRow = entryEventId
       ? (chainByEntryEvent.get(entryEventId) || chainByEntryEvent.get(rawEntryEventId) || null)
       : null;
-    const chainBackfillFeatures = extractChainBackfillFeatures(chainRow);
+    const matchedChainRow = chainRow || chainBySignalKey.get(signalKey) || null;
+    const evResolvedCounterfactual = evResolvedCounterfactualBySignalKey.get(String(signalKey || "").trim().toUpperCase()) || null;
+    const chainBackfillFeatures = extractChainBackfillFeatures(matchedChainRow);
     const features = mergeFeatures(
       ...dropRows.map((row) => resolveFeatures(row)),
       ...signalRows.map((row) => resolveFeatures(row)),
@@ -776,17 +815,20 @@ function buildUnifiedLearningRows({
     } else if (Number.isFinite(priceMoveRetFallback)) {
       realizedRetNet = priceMoveRetFallback;
       realizedSource = "PRICE_MOVE_ESTIMATE";
-    } else if (chainRow && Number.isFinite(toNum(chainRow.realized_ret_net))) {
-      realizedRetNet = toNum(chainRow.realized_ret_net);
+    } else if (matchedChainRow && Number.isFinite(toNum(matchedChainRow.realized_ret_net))) {
+      realizedRetNet = toNum(matchedChainRow.realized_ret_net);
       realizedSource = "QUALITY_CHAIN";
-    } else if (hasChainExitEvidence(chainRow)) {
+    } else if (evResolvedCounterfactual && Number.isFinite(toNum(evResolvedCounterfactual.realizedRetNet))) {
+      realizedRetNet = toNum(evResolvedCounterfactual.realizedRetNet);
+      realizedSource = "EV_TUNER_COUNTERFACTUAL";
+    } else if (hasChainExitEvidence(matchedChainRow)) {
       const featureRetFallback = resolveFeatureRetNet(baseRow, features);
       if (Number.isFinite(featureRetFallback)) {
         realizedRetNet = featureRetFallback;
         realizedSource = "ENTRY_FEATURE_RET";
       }
     }
-    const realizedPnlQuoteFinal = realizedPnlQuote ?? exitFillPnlQuote;
+    const realizedPnlQuoteFinal = realizedPnlQuote ?? exitFillPnlQuote ?? toNum(evResolvedCounterfactual && evResolvedCounterfactual.realizedPnlQuote);
 
     const holdStartMs = Number.isFinite(fillCreatedAtMs) ? fillCreatedAtMs : tradeOpenAtMs;
     const holdMinutes = Number.isFinite(holdStartMs) && Number.isFinite(tradeClosedAtMs)
@@ -803,7 +845,7 @@ function buildUnifiedLearningRows({
       tradesN: tradeRows.length,
       exitFillsN: exitFills.length,
       realizedTradesN: realizedTradeRows.length,
-      chainRow,
+      chainRow: matchedChainRow,
     });
 
     return {
@@ -864,11 +906,11 @@ function buildUnifiedLearningRows({
       outcome_state: outcomeState,
       hold_minutes: holdMinutes,
 
-      chain_realized: chainRow ? (chainRow.realized === true || Number.isFinite(realizedRetNet)) : Number.isFinite(realizedRetNet),
-      chain_first_exit_kind: chainRow ? chainRow.first_exit_kind || null : tradeExitKind,
-      chain_tp1_hit: chainRow ? chainRow.tp1_hit === true : tp1First,
-      chain_sl_before_tp1: chainRow ? chainRow.sl_before_tp1 === true : slFirst,
-      chain_trail_after_tp1: chainRow ? chainRow.trail_after_tp1 === true : false,
+      chain_realized: matchedChainRow ? (matchedChainRow.realized === true || Number.isFinite(realizedRetNet)) : Number.isFinite(realizedRetNet),
+      chain_first_exit_kind: matchedChainRow ? matchedChainRow.first_exit_kind || null : tradeExitKind,
+      chain_tp1_hit: matchedChainRow ? matchedChainRow.tp1_hit === true : tp1First,
+      chain_sl_before_tp1: matchedChainRow ? matchedChainRow.sl_before_tp1 === true : slFirst,
+      chain_trail_after_tp1: matchedChainRow ? matchedChainRow.trail_after_tp1 === true : false,
       intent_status: intentStatus,
       fills_n: bucket.fills.length,
       trades_n: tradeRows.length,
@@ -899,6 +941,8 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
   const nullRealizedExecuted = executedRows.filter((row) => !Number.isFinite(toNum(row.realized_ret_net)));
   const executedExitOnly = scoped.filter((row) => row.source_row_type === "EXIT_ONLY");
   const realizedSourceCounts = countBy(realizedRows.filter((row) => row.realized_source), (row) => row.realized_source);
+  const allRealizedSourceCounts = countBy(allRealizedRows.filter((row) => row.realized_source), (row) => row.realized_source);
+  const evCounterfactualRows = allRealizedRows.filter((row) => row.realized_source === "EV_TUNER_COUNTERFACTUAL");
   return {
     rows_n: scoped.length,
     executed_n: scoped.filter((row) => row.source_row_type === "EXECUTED").length,
@@ -926,6 +970,8 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
     by_drop_reason: countBy(scoped.filter((row) => row.drop_reason), (row) => row.drop_reason).slice(0, 20),
     by_fallback_reason: countBy(scoped.filter((row) => row.fallback_reason), (row) => row.fallback_reason).slice(0, 20),
     realized_source_counts: realizedSourceCounts,
+    all_realized_source_counts: allRealizedSourceCounts,
+    ev_counterfactual_n: evCounterfactualRows.length,
   };
 }
 
@@ -951,6 +997,7 @@ async function buildBestSelfEvolutionDataset({
   tf = null,
   fromMs = null,
   toMs = null,
+  evTunerReport = null,
 } = {}) {
   const quality = await summarizePineSignalQuality({
     signals,
@@ -972,6 +1019,7 @@ async function buildBestSelfEvolutionDataset({
     fromMs,
     toMs,
     qualitySummary: quality,
+    evTunerReport,
   });
   const exitOnlyRows = rows.filter((row) => row.source_row_type === "EXIT_ONLY");
   const learningRows = rows.filter((row) => row.source_row_type !== "EXIT_ONLY");
@@ -1009,5 +1057,6 @@ module.exports = {
     classifyExitEvent,
     isRealizedTradeRow,
     summarizeExitOnlyDiagnostics,
+    buildEvResolvedCounterfactualMap,
   },
 };

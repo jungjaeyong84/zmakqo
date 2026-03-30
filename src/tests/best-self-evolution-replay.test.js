@@ -161,6 +161,26 @@ function run() {
   });
   assert.ok(loosenNoCounterfactual.blockers.includes("NO_REALIZED_COUNTERFACTUAL"));
 
+  const shadowFallbackNoCounterfactual = deriveCandidateObjectiveDelta({
+    candidate_id: "EV_TP1_THRESHOLD_TUNE",
+    display_candidate_id: "EV_TP1_THRESHOLD_TUNE",
+    scope: "EV",
+    direction: "LOOSEN",
+    markets: ["ALL"],
+    risk_flags: ["NOT_READY", "EV_SHADOW_FALLBACK", "EV_TUNER_STALE", "EV_TUNER_INSUFFICIENT_SAMPLE"],
+    evidence: { rationale: "STALE_ARTIFACT / missed_recovery=6" },
+  }, {
+    objective,
+    attribution,
+    dataset: {
+      rows: [
+        { market: "BTCUSDT", event: "CORE_LONG", source_row_type: "DROP", drop_stage_key: "EV", ev_verdict: "DROP", realized_ret_net: null, entry_grade: "CORE" },
+      ],
+    },
+  });
+  assert.strictEqual(shadowFallbackNoCounterfactual.validation_verdict, "WARN");
+  assert.deepStrictEqual(shadowFallbackNoCounterfactual.blockers, ["SHADOW_COUNTERFACTUAL_MISSING"]);
+
   console.log("BEST_SELF_EVOLUTION_REPLAY_TEST_OK");
 }
 
