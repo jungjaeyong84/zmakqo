@@ -8,11 +8,13 @@ Use an external scheduler as the primary driver for BEST self-evolution.
 - internal auto hook: `src/scheduler/autoSelfEvolution.js`
 - authenticated trigger route: `POST /scheduler/self-evolution`
 - shell wrapper: `ops/self_evolution_scheduler.sh`
+- cache refresh wrapper: `ops/analytics_local_cache_refresh.sh`
 
 ## Default Cadence
 
 - freshness target: every 4 hours
-- external scheduler cadence: every 4 hours
+- analytics cache refresh cadence: every 15 minutes
+- self-evolution cadence: every 4 hours
 - route duplicate check: skip when latest loop is fresh
 - lock stale timeout: 2 hours
 
@@ -25,11 +27,21 @@ Environment:
 
 ## How It Runs
 
-1. An external scheduler calls `POST /scheduler/self-evolution`.
-2. The route checks the latest loop artifact age.
-3. If the latest loop is fresher than 4 hours, it skips with `reason=FRESH`.
-4. If stale or missing, it runs `automation-self-evolution-loop.js`.
-5. A file lock prevents duplicate execution.
+1. An external scheduler refreshes analytics cache first.
+2. A second external scheduler calls `POST /scheduler/self-evolution`.
+3. The dataset step reads only local cache snapshots.
+4. If the latest loop is fresher than 4 hours, it skips with `reason=FRESH`.
+5. If stale or missing, it runs `automation-self-evolution-loop.js`.
+6. A file lock prevents duplicate execution.
+
+## Cache Refresh Route
+
+```bash
+curl -sS -X POST "http://127.0.0.1:3000/scheduler/analytics-local-cache-refresh" \
+  -H "content-type: application/json" \
+  -H "x-scheduler-token: ${SCHEDULER_TOKEN}" \
+  -d '{}'
+```
 
 ## Authenticated Route
 
@@ -55,6 +67,12 @@ curl -sS -X POST "http://127.0.0.1:3000/scheduler/self-evolution" \
 /Users/jeongjaeyong/Projects/donbeolja/ops/self_evolution_scheduler.sh
 ```
 
+Cache refresh:
+
+```bash
+/Users/jeongjaeyong/Projects/donbeolja/ops/analytics_local_cache_refresh.sh
+```
+
 Force re-run:
 
 ```bash
@@ -69,6 +87,19 @@ gcloud scheduler jobs create http donbeolja-self-evolution \
   --time-zone=Asia/Seoul \
   --schedule="0 */4 * * *" \
   --uri="https://donbeolja-350958953672.asia-northeast3.run.app/scheduler/self-evolution" \
+  --http-method=POST \
+  --headers="content-type=application/json,x-scheduler-token=${SCHEDULER_TOKEN}" \
+  --message-body='{}'
+```
+
+Analytics cache refresh:
+
+```bash
+gcloud scheduler jobs create http donbeolja-analytics-cache-refresh \
+  --location=asia-northeast3 \
+  --time-zone=Asia/Seoul \
+  --schedule="*/15 * * * *" \
+  --uri="https://donbeolja-350958953672.asia-northeast3.run.app/scheduler/analytics-local-cache-refresh" \
   --http-method=POST \
   --headers="content-type=application/json,x-scheduler-token=${SCHEDULER_TOKEN}" \
   --message-body='{}'
@@ -90,12 +121,14 @@ gcloud scheduler jobs update http donbeolja-self-evolution \
 ## Cron Example
 
 ```bash
+*/15 * * * * /Users/jeongjaeyong/Projects/donbeolja/ops/analytics_local_cache_refresh.sh >> /tmp/analytics_local_cache_refresh.log 2>&1
 0 */4 * * * /Users/jeongjaeyong/Projects/donbeolja/ops/self_evolution_scheduler.sh >> /tmp/self_evolution_scheduler.log 2>&1
 ```
 
 ## Recommended Policy
 
 - Primary: external HTTP scheduler hitting `/scheduler/self-evolution`
+- Precondition: keep analytics local cache fresh via `/scheduler/analytics-local-cache-refresh`
 - Internal app auto hook: keep `AUTO_SELF_EVOLUTION=0` unless you intentionally want local fallback
 - Do not run both on overlapping cadences
 

@@ -25,6 +25,9 @@ const SCAN_LIMIT = Math.max(3000, Number(process.env.BEST_SELF_EVOLUTION_SCAN_LI
 const STALE_RANGE_MAX_AGE_MS = Math.max(1, Number(process.env.BEST_SELF_EVOLUTION_STALE_RANGE_MAX_HOURS || 6)) * 60 * 60 * 1000;
 const WEEKLY_LATEST_JSON = path.join(OPS_DAILY_DIR, "weekly_filter_governance_latest.json");
 const EV_TUNER_LATEST_JSON = path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json");
+const ANALYTICS_CACHE_LATEST_JSON = path.join(OPS_DAILY_DIR, "analytics_local_cache_refresh_latest.json");
+const CACHE_ONLY = String(process.env.BEST_SELF_EVOLUTION_CACHE_ONLY || "1") !== "0";
+const CACHE_MAX_AGE_MS = Math.max(1, Number(process.env.BEST_SELF_EVOLUTION_CACHE_MAX_AGE_HOURS || 6)) * 60 * 60 * 1000;
 
 function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -130,11 +133,54 @@ function resolveDatasetWindow({ nowMs, weeklyRange, windowDays = WINDOW_DAYS, st
   return { fromMs: weeklyFromMs, toMs: weeklyToMs, source: "WEEKLY_RANGE" };
 }
 
+function parseGeneratedAtMs(artifact = null, filePath = null) {
+  const raw = artifact && typeof artifact === "object" ? artifact : null;
+  const candidates = [
+    raw && raw.generated_at,
+    raw && raw.generated_at_utc,
+    raw && raw.generated_at_kst,
+    raw && raw.updated_at,
+  ];
+  for (const value of candidates) {
+    const ms = Date.parse(String(value || ""));
+    if (Number.isFinite(ms)) return ms;
+  }
+  try {
+    if (filePath) return require("fs").statSync(filePath).mtimeMs;
+  } catch (_err) {
+    // noop
+  }
+  return null;
+}
+
+function resolveAnalyticsCachePolicy({ nowMs, latestArtifact = null, cacheOnly = CACHE_ONLY, maxAgeMs = CACHE_MAX_AGE_MS } = {}) {
+  const generatedAtMs = parseGeneratedAtMs(latestArtifact, ANALYTICS_CACHE_LATEST_JSON);
+  const ageMs = Number.isFinite(generatedAtMs) && Number.isFinite(nowMs) ? (nowMs - generatedAtMs) : null;
+  const fresh = Number.isFinite(ageMs) ? ageMs <= maxAgeMs : false;
+  return {
+    cache_only: cacheOnly,
+    latest_path: ANALYTICS_CACHE_LATEST_JSON,
+    generated_at_ms: generatedAtMs,
+    age_hours: Number.isFinite(ageMs) ? Number((ageMs / (60 * 60 * 1000)).toFixed(3)) : null,
+    fresh,
+    reason: cacheOnly ? (fresh ? "CACHE_ONLY_FRESH" : "CACHE_ONLY_STALE") : "CACHE_REFRESH_ALLOWED",
+  };
+}
+
 async function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
   const weekly = readJsonRawSafe(WEEKLY_LATEST_JSON, null);
   const evTuner = readJsonRawSafe(EV_TUNER_LATEST_JSON, null);
+  const analyticsCache = readJsonRawSafe(ANALYTICS_CACHE_LATEST_JSON, null);
+  const cachePolicy = resolveAnalyticsCachePolicy({
+    nowMs: nowMeta.nowMs,
+    latestArtifact: analyticsCache,
+    cacheOnly: CACHE_ONLY,
+  });
+  if (cachePolicy.cache_only && !cachePolicy.fresh) {
+    throw new Error(`ANALYTICS_LOCAL_CACHE_STALE:${ANALYTICS_CACHE_LATEST_JSON}`);
+  }
   const windowMeta = resolveDatasetWindow({
     nowMs: nowMeta.nowMs,
     weeklyRange: weekly && weekly.current && weekly.current.range,
@@ -144,11 +190,11 @@ async function main() {
   const windowToMs = windowMeta.toMs;
 
   const [signalsCache, dropsCache, intentsCache, fillsCache, tradesCache] = await Promise.all([
-    getCachedRecentByCreatedAt("signals", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: true }),
-    getCachedRecentByCreatedAt("signals_dropped", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: true }),
-    getCachedRecentByCreatedAt("order_intents_paper", { limit: SCAN_LIMIT * 2, maxDocs: SCAN_LIMIT * 2, overlapDocs: 800, pageSize: 1000, refresh: true }),
-    getCachedRecentByCreatedAt("fills_paper", { limit: SCAN_LIMIT * 2, maxDocs: SCAN_LIMIT * 2, overlapDocs: 800, pageSize: 1000, refresh: true }),
-    getCachedRecentByCreatedAt("trades_paper", { limit: SCAN_LIMIT * 2, maxDocs: SCAN_LIMIT * 2, overlapDocs: 800, pageSize: 1000, refresh: true }),
+    getCachedRecentByCreatedAt("signals", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: !cachePolicy.cache_only }),
+    getCachedRecentByCreatedAt("signals_dropped", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: !cachePolicy.cache_only }),
+    getCachedRecentByCreatedAt("order_intents_paper", { limit: SCAN_LIMIT * 2, maxDocs: SCAN_LIMIT * 2, overlapDocs: 800, pageSize: 1000, refresh: !cachePolicy.cache_only }),
+    getCachedRecentByCreatedAt("fills_paper", { limit: SCAN_LIMIT * 2, maxDocs: SCAN_LIMIT * 2, overlapDocs: 800, pageSize: 1000, refresh: !cachePolicy.cache_only }),
+    getCachedRecentByCreatedAt("trades_paper", { limit: SCAN_LIMIT * 2, maxDocs: SCAN_LIMIT * 2, overlapDocs: 800, pageSize: 1000, refresh: !cachePolicy.cache_only }),
   ]);
 
   const signals = Array.isArray(signalsCache.rows) ? signalsCache.rows : [];
@@ -178,6 +224,7 @@ async function main() {
     provider: PROVIDER,
     tf: TF,
     window_source: windowMeta.source,
+    cache_policy: cachePolicy,
     window: {
       from_ms: windowFromMs,
       to_ms: windowToMs,
@@ -223,5 +270,6 @@ module.exports = {
   __test: {
     renderMarkdown,
     resolveDatasetWindow,
+    resolveAnalyticsCachePolicy,
   },
 };

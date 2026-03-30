@@ -14,6 +14,7 @@ const { runCostGuard } = require("../services/costGuardService");
 const { fetchRecentNewFills, buildTradesFromFillsWithFunding } = require("../services/tradesFromFills");
 const { resolveRealizedRowsByMarket } = require("../services/realizedPnlResolver");
 const { runSelfEvolutionLoop } = require("../scheduler/selfEvolutionRunner");
+const { runAnalyticsLocalCacheRefresh } = require("../scheduler/analyticsLocalCacheRunner");
 
 const DEFAULT_EXEC_TF = defaultExecTfFromEnv() || "15m";
 
@@ -612,6 +613,22 @@ const markets = (tickResult && tickResult.markets) ? tickResult.markets : [];
       return res.json({ ok: true, result });
     } catch (e) {
       return res.status(500).json({ ok: false, error: "SELF_EVOLUTION_ROUTE_FAIL", message: e && e.message ? e.message : String(e) });
+    }
+  });
+
+  router.post("/scheduler/analytics-local-cache-refresh", requireSchedulerAuth, async (req, res) => {
+    try {
+      const force = req.body && (req.body.force === true || String(req.body.force || "").toLowerCase() === "true" || String(req.body.force || "") === "1");
+      const result = runAnalyticsLocalCacheRefresh({
+        trigger: force ? "scheduler_route_force" : "scheduler_route",
+        force,
+      });
+      if (!result.ok && !result.skipped) {
+        return res.status(500).json({ ok: false, error: "ANALYTICS_LOCAL_CACHE_REFRESH_FAIL", result });
+      }
+      return res.json({ ok: true, result });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: "ANALYTICS_LOCAL_CACHE_ROUTE_FAIL", message: e && e.message ? e.message : String(e) });
     }
   });
 
