@@ -80,6 +80,87 @@ function run() {
   assert.strictEqual(report.summary.block_n, 1);
   assert.strictEqual(report.summary.best_candidate_id, "WAIT_ONE_BAR_TUNE");
 
+  const blockedSourceAction = deriveCandidateObjectiveDelta({
+    candidate_id: "ML_EV_SOFTENING",
+    display_candidate_id: "ML_EV_SOFTENING",
+    scope: "ML",
+    direction: "SHIFT",
+    markets: ["BTCUSDT"],
+    changes: [{ key: "ml.market_gate_core_score_abs", next: 0.2 }],
+    risk_flags: ["BLOCKED_SOURCE_ACTION"],
+    evidence: { rationale: "blocked loosening" },
+  }, {
+    objective,
+    attribution,
+    dataset: {
+      rows: [
+        { market: "BTCUSDT", event: "CORE_LONG", source_row_type: "EXECUTED", drop_reason: "DROP_SHORT_GATE_SCORE", realized_ret_net: -0.03, entry_grade: "CORE" },
+      ],
+    },
+  });
+  assert.strictEqual(blockedSourceAction.validation_verdict, "BLOCK");
+  assert.ok(blockedSourceAction.blockers.includes("BLOCKED_SOURCE_ACTION"));
+  assert.strictEqual(blockedSourceAction.historical_applied_n, 0);
+
+  const mlShiftNoEffect = deriveCandidateObjectiveDelta({
+    candidate_id: "ML_GATE_CORE_SCORE_ABS",
+    display_candidate_id: "ML_GATE_CORE_SCORE_ABS",
+    scope: "ML",
+    direction: "SHIFT",
+    markets: ["BTCUSDT"],
+    changes: [{ key: "ml.gate_core_score_abs", next: 0.48 }],
+    risk_flags: [],
+    evidence: { rationale: "shift score gate" },
+  }, {
+    objective,
+    attribution,
+    dataset: {
+      rows: [
+        { market: "BTCUSDT", event: "CORE_LONG", source_row_type: "EXECUTED", drop_reason: "DROP_SHORT_GATE_SCORE", realized_ret_net: -0.03, entry_grade: "CORE" },
+      ],
+    },
+  });
+  assert.ok(mlShiftNoEffect.blockers.includes("NO_EFFECT_CHANGESET"));
+
+  const mlTightenNoMatch = deriveCandidateObjectiveDelta({
+    candidate_id: "ML_MARKET",
+    display_candidate_id: "ML_MARKET",
+    scope: "ML",
+    direction: "TIGHTEN",
+    markets: ["BTCUSDT"],
+    changes: [{ key: "ml.market_regime_score", next: 0.71 }],
+    risk_flags: [],
+    evidence: { rationale: "tighten market regime" },
+  }, {
+    objective,
+    attribution,
+    dataset: {
+      rows: [
+        { market: "BTCUSDT", event: "CORE_LONG", source_row_type: "EXECUTED", drop_reason: "DROP_REGIME", realized_ret_net: 0.04, entry_grade: "CORE" },
+      ],
+    },
+  });
+  assert.ok(mlTightenNoMatch.blockers.includes("NO_HISTORICAL_TIGHTEN_MATCH"));
+
+  const loosenNoCounterfactual = deriveCandidateObjectiveDelta({
+    candidate_id: "EV_TP1_THRESHOLD_TUNE",
+    display_candidate_id: "EV_TP1_THRESHOLD_TUNE",
+    scope: "EV",
+    direction: "LOOSEN",
+    markets: ["BTCUSDT"],
+    risk_flags: [],
+    evidence: { rationale: "loosen ev threshold" },
+  }, {
+    objective,
+    attribution,
+    dataset: {
+      rows: [
+        { market: "BTCUSDT", event: "CORE_LONG", source_row_type: "EXECUTED", ev_verdict: "ALLOW", realized_ret_net: 0.01, entry_grade: "CORE" },
+      ],
+    },
+  });
+  assert.ok(loosenNoCounterfactual.blockers.includes("NO_REALIZED_COUNTERFACTUAL"));
+
   console.log("BEST_SELF_EVOLUTION_REPLAY_TEST_OK");
 }
 

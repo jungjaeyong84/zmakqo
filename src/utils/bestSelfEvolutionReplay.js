@@ -140,6 +140,21 @@ function deriveCohortMetrics(rows = []) {
   };
 }
 
+function deriveMarketCohortMetrics(rows = [], markets = []) {
+  const targetMarkets = Array.isArray(markets)
+    ? markets.map((row) => String(row || "").trim().toUpperCase()).filter(Boolean)
+    : [];
+  const marketSet = new Set(targetMarkets.includes("ALL")
+    ? Array.from(new Set((Array.isArray(rows) ? rows : []).map((row) => String(row && row.market || "").trim().toUpperCase()).filter(Boolean)))
+    : targetMarkets);
+  const out = [];
+  for (const market of marketSet) {
+    const scoped = (Array.isArray(rows) ? rows : []).filter((row) => String(row && row.market || "").trim().toUpperCase() === market);
+    out.push({ market, ...deriveCohortMetrics(scoped) });
+  }
+  return out;
+}
+
 function deltaOrZero(after, before) {
   const a = toNum(after);
   const b = toNum(before);
@@ -165,6 +180,23 @@ function buildHistoricalReplayDelta(beforeMetrics, afterMetrics) {
     replacement_delta: null,
     avg_ret_net_delta: Number(deltaOrZero(afterMetrics.avg_ret_net, beforeMetrics.avg_ret_net).toFixed(4)),
   };
+}
+
+function deriveMarketReplayDeltas(candidate = {}, beforeRows = [], afterRows = []) {
+  return deriveMarketCohortMetrics(beforeRows, normalizeMarkets(candidate))
+    .map((beforeRow) => {
+      const afterRow = deriveMarketCohortMetrics(afterRows, [beforeRow.market])[0] || { market: beforeRow.market };
+      const marketDelta = buildHistoricalReplayDelta(beforeRow, afterRow);
+      return {
+        market: beforeRow.market,
+        candidate_objective_delta: marketDelta.candidate_objective_delta,
+        count_delta: marketDelta.count_delta,
+        replacement_delta: marketDelta.replacement_delta,
+        avg_ret_net_delta: marketDelta.avg_ret_net_delta,
+        before_metrics: beforeRow,
+        after_metrics: afterRow,
+      };
+    });
 }
 
 function buildHistoricalReplayRows(candidate = {}, dataset = null) {
@@ -208,6 +240,7 @@ function buildHistoricalReplayRows(candidate = {}, dataset = null) {
 function deriveCandidateObjectiveDelta(candidate = {}, context = {}) {
   const objective = context.objective || {};
   const dataset = context.dataset || {};
+  const datasetRows = Array.isArray(dataset && dataset.rows) ? dataset.rows : [];
   const currentObjectiveScore = toNum(objective.objective_score) || 0;
   const countFloorPass = objective.count_floor_pass !== false;
   const replacementFloorPass = objective.replacement_floor_pass !== false;
@@ -218,17 +251,47 @@ function deriveCandidateObjectiveDelta(candidate = {}, context = {}) {
 
   if (hasFlag(candidate, "MEMORY_BLOCKED")) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK");
   if (hasFlag(candidate, "FAILED_FINGERPRINT_REPEAT")) blockers.push("SELF_EVOLUTION_FINGERPRINT_REPEAT");
+  if (hasFlag(candidate, "BLOCKED_SOURCE_ACTION")) blockers.push("BLOCKED_SOURCE_ACTION");
   if (hasFlag(candidate, "COUNT_GUARD_ACTIVE") && direction === "TIGHTEN") blockers.push("COUNT_GUARD_ACTIVE");
   if (hasFlag(candidate, "RECOVERY_PRIORITY_ACTIVE") && direction === "TIGHTEN") blockers.push("RECOVERY_PRIORITY_ACTIVE");
   if (!countFloorPass && direction === "TIGHTEN") blockers.push("SELF_EVOLUTION_COUNT_FLOOR_FAIL");
   if (!replacementFloorPass && direction === "TIGHTEN") blockers.push("SELF_EVOLUTION_REPLACEMENT_FLOOR_FAIL");
   if (!latencyBudgetPass) blockers.push("SELF_EVOLUTION_LATENCY_BUDGET_FAIL");
 
-  const beforeMetrics = deriveCohortMetrics(Array.isArray(dataset && dataset.rows) ? dataset.rows : []);
+  const beforeMetrics = deriveCohortMetrics(datasetRows);
+  if (blockers.length) {
+    return {
+      validation_mode: "HISTORICAL_ENTRY_COHORT_V1",
+      candidate_id: candidate.candidate_id || null,
+      display_candidate_id: candidate.display_candidate_id || candidate.candidate_id || null,
+      scope,
+      direction,
+      current_objective_score: Number(currentObjectiveScore.toFixed(4)),
+      candidate_objective_delta: 0,
+      count_delta: 0,
+      replacement_delta: null,
+      avg_ret_net_delta: 0,
+      projected_objective_score: Number(currentObjectiveScore.toFixed(4)),
+      validation_verdict: "BLOCK",
+      blockers,
+      risk_flags: Array.isArray(candidate.risk_flags) ? candidate.risk_flags.slice() : [],
+      count_guard_effect: candidate.count_guard_effect || null,
+      replacement_effect: candidate.replacement_effect || null,
+      market_objective_deltas: deriveMarketReplayDeltas(candidate, datasetRows, datasetRows),
+      historical_match_n: 0,
+      historical_realized_match_n: 0,
+      historical_applied_n: 0,
+      before_metrics: beforeMetrics,
+      after_metrics: beforeMetrics,
+      summary: String(candidate.evidence && candidate.evidence.rationale || candidate.status || "N/A"),
+    };
+  }
+
   const replay = buildHistoricalReplayRows(candidate, dataset);
   blockers.push(...replay.blockers);
   const afterMetrics = deriveCohortMetrics(replay.replay_rows);
   const replayDelta = buildHistoricalReplayDelta(beforeMetrics, afterMetrics);
+  const marketReplayDeltas = deriveMarketReplayDeltas(candidate, datasetRows, replay.replay_rows);
 
   let validationVerdict = "WARN";
   if (blockers.length) validationVerdict = "BLOCK";
@@ -252,6 +315,7 @@ function deriveCandidateObjectiveDelta(candidate = {}, context = {}) {
     risk_flags: Array.isArray(candidate.risk_flags) ? candidate.risk_flags.slice() : [],
     count_guard_effect: candidate.count_guard_effect || null,
     replacement_effect: candidate.replacement_effect || null,
+    market_objective_deltas: marketReplayDeltas,
     historical_match_n: replay.historical_matched_n,
     historical_realized_match_n: replay.historical_realized_match_n,
     historical_applied_n: replay.historical_applied_n,

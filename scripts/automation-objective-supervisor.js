@@ -7,11 +7,13 @@ const path = require("path");
 const {
   OPS_DAILY_DIR,
   copyLatest,
+  copySelfEvolutionLatest,
   loadLocalEnv,
   nowKstMeta,
   readJsonRawSafe,
   resolveAutomationCycleMeta,
   sendKoreanTelegramSummary,
+  selfEvolutionSnapshotLatestPath,
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
@@ -61,6 +63,8 @@ const STAGE_AUTOPILOT_LATEST_PATH = path.join(OPS_DAILY_DIR, "stage_autopilot_la
 const RETROSPECTIVE_LATEST_PATH = path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json");
 const REPORT_LATEST_MD = path.join(OPS_DAILY_DIR, "objective_supervisor_latest.md");
 const REPORT_LATEST_JSON = path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json");
+const SELF_EVOLUTION_REPORT_LATEST_JSON = selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json");
+const SELF_EVOLUTION_REPORT_LATEST_MD = selfEvolutionSnapshotLatestPath("objective_supervisor_latest.md");
 const FRESHNESS_HOURS = Object.freeze({
   governance: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_GOVERNANCE_MAX_AGE_HOURS || 30)),
   changeControl: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_CHANGE_CONTROL_MAX_AGE_HOURS || 36)),
@@ -156,7 +160,7 @@ function readCycleId(value = null) {
 const SELF_EVOLUTION_STAGE_KEYS = Object.freeze({
   SEED: ["dataset"],
   INTEGRATED: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "memory", "codex"],
-  FINAL: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "memory", "codex", "stageAutopilot"],
+  FINAL: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "memory", "codex"],
   STANDALONE: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "memory", "codex", "stageAutopilot"],
 });
 
@@ -559,6 +563,8 @@ function summarizeSelfEvolutionDeployment(report = null) {
     deploy_pass: summary.deploy_pass === true,
     rollback_only: summary.rollback_only === true,
     blockers: Array.isArray(summary.blockers) ? summary.blockers : [],
+    root_cause: String(summary.root_cause || "").trim() || null,
+    next_actions: Array.isArray(summary.next_actions) ? summary.next_actions : [],
     replay_verdict: String(summary.replay_verdict || "").trim().toUpperCase() || null,
     canary_open_wave: toNum(summary.canary_open_wave) || 1,
     market_ready_n: toNum(summary.market_ready_n) || 0,
@@ -593,6 +599,7 @@ function summarizeSelfEvolutionDeploymentPlan(report = null) {
     source_week_key: String(summary.source_week_key || "").trim() || null,
     codex_verdict: String(summary.codex_verdict || "").trim().toUpperCase() || null,
     blockers: Array.isArray(summary.blockers) ? summary.blockers : [],
+    next_actions: Array.isArray(summary.next_actions) ? summary.next_actions : [],
     rows,
     handoff: {
       checklist: Array.isArray(handoff.checklist) ? handoff.checklist : [],
@@ -601,6 +608,7 @@ function summarizeSelfEvolutionDeploymentPlan(report = null) {
       rollback_source_file_path: String(handoff.rollback_source_file_path || "").trim() || null,
       candidate_signature: String(handoff.candidate_signature || "").trim() || null,
       prepared_reason: String(handoff.prepared_reason || "").trim() || null,
+      next_actions: Array.isArray(handoff.next_actions) ? handoff.next_actions : [],
     },
   };
 }
@@ -658,6 +666,64 @@ function summarizeCodexAuthority({
     rollback_source_file_path: plan.rollback_source_file_path || null,
     blockers: Array.isArray(plan.blockers) ? plan.blockers : [],
   };
+}
+
+function pushPlanStep(steps = [], message) {
+  const line = String(message || "").trim();
+  if (!line) return;
+  if (!steps.includes(line)) steps.push(line);
+}
+
+function buildSupervisorActionPlan({
+  reason = null,
+  blockers = [],
+  promotionCandidateId = null,
+  promotionReplay = null,
+  deployment = null,
+  deploymentPlan = null,
+  governanceEnoughSample = false,
+  codexFresh = false,
+  stageAutopilotFresh = false,
+} = {}) {
+  const steps = [];
+  const blockerSet = new Set(Array.isArray(blockers) ? blockers : []);
+  const deploymentSummary = deployment && typeof deployment === "object" ? deployment : {};
+  const deploymentPlanSummary = deploymentPlan && typeof deploymentPlan === "object" ? deploymentPlan : {};
+
+  if (blockerSet.has("DAILY_NO_TRADE_ACTIVITY")) {
+    pushPlanStep(steps, "Run the loop after real trade activity resumes or move the schedule into active trading hours.");
+  }
+  if (blockerSet.has("ZERO_KRW_IDLE")) {
+    pushPlanStep(steps, "Restore idle KRW balance before expecting new validation trades.");
+  }
+  if (blockerSet.has("MONTHLY_TARGET_NOT_MET") || blockerSet.has("OBJECTIVE_NOT_MET") || blockerSet.has("RETROSPECTIVE_MONTHLY_FAIL")) {
+    pushPlanStep(steps, "Use the current replay/canary-ready candidate set to recover objective performance before promotion.");
+  }
+  if (blockerSet.has("SELF_EVOLUTION_REPLAY_BLOCK") || blockerSet.has("SELF_EVOLUTION_REPLAY_NOT_PASS")) {
+    pushPlanStep(
+      steps,
+      `Resolve replay blockers for ${promotionCandidateId || "the promotion candidate"}: ${Array.isArray(promotionReplay && promotionReplay.blockers) && promotionReplay.blockers.length ? promotionReplay.blockers.join(", ") : "validation_verdict is not PASS"}.`
+    );
+  }
+  if (Array.isArray(deploymentSummary.next_actions)) {
+    deploymentSummary.next_actions.forEach((row) => pushPlanStep(steps, row));
+  }
+  if (deploymentPlanSummary.prepare_pass !== true && Array.isArray(deploymentPlanSummary.next_actions)) {
+    deploymentPlanSummary.next_actions.forEach((row) => pushPlanStep(steps, row));
+  }
+  if ((reason === "CODEX_REVIEW_REQUIRED_PROMOTION" || reason === "CODEX_REVIEW_REQUIRED_ROLLBACK") && !codexFresh) {
+    pushPlanStep(steps, "Refresh Codex review for the current cycle before promotion or rollback.");
+  }
+  if ((reason === "STAGE_AUTOPILOT_REQUIRED_PROMOTION" || reason === "STAGE_AUTOPILOT_REQUIRED_ROLLBACK") && !stageAutopilotFresh) {
+    pushPlanStep(steps, "Refresh stage autopilot for the current cycle before promotion or rollback.");
+  }
+  if (reason === "GOVERNANCE_OBJECTIVE_SAMPLE_NOT_READY" && governanceEnoughSample !== true) {
+    pushPlanStep(steps, "Wait for more realized governance trades or increase the effective governance sample source.");
+  }
+  if (!steps.length && reason) {
+    pushPlanStep(steps, `Review the blocker '${reason}' and clear the highest-priority gate before the next loop.`);
+  }
+  return steps;
 }
 
 function formatBestFebtMarketContractLine(row = {}) {
@@ -1130,8 +1196,6 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
         ? ((Array.isArray(selfEvolutionDeploymentSummary.blockers) && selfEvolutionDeploymentSummary.blockers.length)
           ? selfEvolutionDeploymentSummary.blockers[0]
           : "SELF_EVOLUTION_DEPLOYMENT_BLOCK")
-      : ((promotion.ready === true || rollback.ready === true) && selfEvolutionDeploymentPlanSummary.prepare_pass !== true)
-        ? "SELF_EVOLUTION_DEPLOYMENT_PLAN_BLOCK"
       : retrospectiveSummary.any_fail
         ? "RETROSPECTIVE_OBJECTIVE_FAIL"
       : (!objective || governanceSampleReady !== true)
@@ -1163,9 +1227,6 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     if (objectiveBlockReason) {
       verdict = "HOLD";
       reason = objectiveBlockReason;
-    } else if (selfEvolutionDeploymentPlanSummary.prepare_pass !== true) {
-      verdict = "HOLD";
-      reason = "SELF_EVOLUTION_DEPLOYMENT_PLAN_BLOCK";
     } else if (!codex || !codexFresh) {
       verdict = "HOLD";
       reason = "CODEX_REVIEW_REQUIRED_PROMOTION";
@@ -1174,13 +1235,16 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       verdict = "HOLD";
       reason = "STAGE_AUTOPILOT_REQUIRED_PROMOTION";
       blockers.push("STAGE_AUTOPILOT_REQUIRED_PROMOTION");
-    } else if (codexVerdict === "PROMOTE") {
-      verdict = "PATCH_CANDIDATE";
-      reason = "AUTO_PROMOTION_READY";
-    } else {
+    } else if (codexVerdict !== "PROMOTE") {
       verdict = "HOLD";
       reason = "CODEX_REVIEW_BLOCK_PROMOTION";
       blockers.push("CODEX_BLOCK_PROMOTION");
+    } else if (selfEvolutionDeploymentPlanSummary.prepare_pass !== true) {
+      verdict = "HOLD";
+      reason = "SELF_EVOLUTION_DEPLOYMENT_PLAN_BLOCK";
+    } else {
+      verdict = "PATCH_CANDIDATE";
+      reason = "AUTO_PROMOTION_READY";
     }
   } else if (objectiveBlockReason) {
     verdict = "HOLD";
@@ -1207,10 +1271,23 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     },
     deploymentPlan: selfEvolutionDeploymentPlanSummary,
   });
+  const actionPlan = buildSupervisorActionPlan({
+    reason,
+    blockers,
+    promotionCandidateId,
+    promotionReplay,
+    deployment: selfEvolutionDeploymentSummary,
+    deploymentPlan: selfEvolutionDeploymentPlanSummary,
+    governanceEnoughSample: governanceSampleReady,
+    codexFresh,
+    stageAutopilotFresh,
+  });
 
   return {
     verdict,
     reason,
+    root_cause: reason,
+    action_plan: actionPlan,
     blockers: Array.from(new Set(blockers)),
     objective: {
       scope: "GOVERNANCE_7D_ENTRY_COHORT",
@@ -1259,6 +1336,9 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       display_candidate_id: resolveDisplayCandidateId(promotion.candidate_id, changeControl),
       streak_current: toNum(promotion.streak_current),
       streak_required: toNum(promotion.streak_required),
+      replay_verdict: String(promotionReplay && promotionReplay.validation_verdict || "").trim().toUpperCase() || null,
+      replay_delta: toNum(promotionReplay && promotionReplay.candidate_objective_delta),
+      replay_blockers: Array.isArray(promotionReplay && promotionReplay.blockers) ? promotionReplay.blockers : [],
     },
     rollback: {
       ready: rollback.ready === true,
@@ -1343,7 +1423,9 @@ function renderMarkdown(report = {}) {
     `- cycle_id: ${report.cycle_id || "N/A"}`,
     `- verdict: ${report.verdict || "N/A"}`,
     `- reason: ${report.reason || "N/A"}`,
+    `- root_cause: ${report.root_cause || "N/A"}`,
     `- blockers: ${(report.blockers || []).length ? report.blockers.join(", ") : "none"}`,
+    `- action_plan: ${(report.action_plan || []).length ? report.action_plan.join(" | ") : "none"}`,
     "",
     "## Objective",
     `- objective: ${report.objective && report.objective.verdict || "N/A"}`,
@@ -1362,6 +1444,7 @@ function renderMarkdown(report = {}) {
     "",
     "## Change Control",
     `- promotion: ${report.promotion && report.promotion.ready ? "READY" : "HOLD"} / ${report.promotion && report.promotion.reason || "N/A"} / candidate=${report.promotion && (report.promotion.display_candidate_id || report.promotion.candidate_id) || "N/A"}`,
+    `- promotion replay: ${report.promotion && report.promotion.replay_verdict || "N/A"} / delta=${signedNum(report.promotion && report.promotion.replay_delta, 4)} / blockers=${report.promotion && Array.isArray(report.promotion.replay_blockers) && report.promotion.replay_blockers.length ? report.promotion.replay_blockers.join(", ") : "none"}`,
     `- rollback: ${report.rollback && report.rollback.ready ? "READY" : "HOLD"} / ${report.rollback && report.rollback.reason || "N/A"} / target=${report.rollback && report.rollback.rollback_file_path || "N/A"}`,
     "",
     "## Guards",
@@ -1598,6 +1681,9 @@ async function main() {
     generated_at_kst: nowMeta.kst,
     cycle_id: reportCycleId,
     generation_id: reportCycleId,
+    source_cycle_id: selfEvolutionCycleState.expected_cycle_id || null,
+    evaluation_cycle_id: cycleMeta.cycle_id,
+    evaluation_scope: selfEvolutionStage,
     verdict: evaluation.verdict,
     reason: evaluation.reason,
     blockers: evaluation.blockers,
@@ -1675,6 +1761,10 @@ async function main() {
   writeText(mdPath, renderMarkdown(report));
   copyLatest(jsonPath, REPORT_LATEST_JSON);
   copyLatest(mdPath, REPORT_LATEST_MD);
+  if (selfEvolutionStage !== "STANDALONE") {
+    copySelfEvolutionLatest(jsonPath, SELF_EVOLUTION_REPORT_LATEST_JSON);
+    copySelfEvolutionLatest(mdPath, SELF_EVOLUTION_REPORT_LATEST_MD);
+  }
   const telegramSections = buildObjectiveSupervisorTelegramSections(report);
 
   if (String(process.env.OBJECTIVE_SUPERVISOR_SKIP_TELEGRAM || "").trim() !== "1") {

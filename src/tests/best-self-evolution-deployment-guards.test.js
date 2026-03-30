@@ -28,6 +28,8 @@ const { deriveDeploymentGuards } = require("../../src/utils/bestSelfEvolutionDep
   });
   assert.strictEqual(allow.summary.deploy_pass, true);
   assert.strictEqual(allow.summary.canary_open_wave, 2);
+  assert.strictEqual(allow.summary.root_cause, null);
+  assert.deepStrictEqual(allow.summary.next_actions, []);
 
   const blocked = deriveDeploymentGuards({
     objectiveSupervisor: {
@@ -44,7 +46,7 @@ const { deriveDeploymentGuards } = require("../../src/utils/bestSelfEvolutionDep
       validations: [{ candidate_id: "AUTO_CORE_REGIME_TIGHTEN", validation_verdict: "BLOCK" }],
     },
     canaryReport: {
-      summary: { apply_pass: false, rollback_ready_n: 1, open_wave: 1 },
+      summary: { apply_pass: false, rollback_ready_n: 1, open_wave: 1, global_canary_pass: true },
       rows: [],
     },
     memoryLedger: {
@@ -55,6 +57,68 @@ const { deriveDeploymentGuards } = require("../../src/utils/bestSelfEvolutionDep
   assert.ok(blocked.summary.blockers.includes("SELF_EVOLUTION_REPLAY_NOT_PASS"));
   assert.ok(blocked.summary.blockers.includes("SELF_EVOLUTION_MEMORY_BLOCK"));
   assert.ok(blocked.summary.blockers.includes("SELF_EVOLUTION_CANARY_ROLLBACK_READY"));
+  assert.strictEqual(blocked.summary.root_cause, "SELF_EVOLUTION_REPLAY_NOT_PASS");
+  assert.strictEqual(blocked.summary.next_actions.some((row) => row.includes("Resolve replay blockers")), true);
+
+  const explicitDriftBlock = deriveDeploymentGuards({
+    objectiveSupervisor: {
+      promotion: { ready: true, candidate_id: "WAIT_ONE_BAR_TUNE" },
+      rollback: { ready: false },
+      self_evolution_objective: {
+        count_floor_pass: true,
+        replacement_floor_pass: true,
+        latency_budget_pass: true,
+      },
+    },
+    replayReport: {
+      validations: [{ candidate_id: "WAIT_ONE_BAR_TUNE", validation_verdict: "PASS" }],
+    },
+    canaryReport: {
+      summary: {
+        apply_pass: true,
+        rollback_ready_n: 0,
+        open_wave: 2,
+        global_canary_pass: false,
+        shadow_global_drift: 0,
+        golden_global_drift: 0,
+      },
+      rows: [{ market: "BTCUSDT", wave: 2, current_stage: "SOFT", candidate_id: "WAIT_ONE_BAR_TUNE", canary_verdict: "READY", blockers: [] }],
+    },
+    memoryLedger: {
+      summary: { blocked_candidate_ids: [], blocked_candidate_n: 0 },
+    },
+  });
+  assert.strictEqual(explicitDriftBlock.summary.deploy_pass, false);
+  assert.ok(explicitDriftBlock.summary.blockers.includes("FILTER_CANARY_DRIFT"));
+
+  const backwardCompatibleDriftPass = deriveDeploymentGuards({
+    objectiveSupervisor: {
+      promotion: { ready: true, candidate_id: "WAIT_ONE_BAR_TUNE" },
+      rollback: { ready: false },
+      self_evolution_objective: {
+        count_floor_pass: true,
+        replacement_floor_pass: true,
+        latency_budget_pass: true,
+      },
+    },
+    replayReport: {
+      validations: [{ candidate_id: "WAIT_ONE_BAR_TUNE", validation_verdict: "PASS" }],
+    },
+    canaryReport: {
+      summary: {
+        apply_pass: true,
+        rollback_ready_n: 0,
+        open_wave: 2,
+        shadow_global_drift: 0,
+        golden_global_drift: 0,
+      },
+      rows: [{ market: "BTCUSDT", wave: 2, current_stage: "SOFT", candidate_id: "WAIT_ONE_BAR_TUNE", canary_verdict: "READY", blockers: [] }],
+    },
+    memoryLedger: {
+      summary: { blocked_candidate_ids: [], blocked_candidate_n: 0 },
+    },
+  });
+  assert.strictEqual(backwardCompatibleDriftPass.summary.deploy_pass, true);
 
   console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_GUARDS_TEST_OK");
 })();

@@ -271,6 +271,9 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   });
   assert.strictEqual(replayBlockedPromotion.verdict, "HOLD");
   assert.strictEqual(replayBlockedPromotion.reason, "SELF_EVOLUTION_REPLAY_BLOCK");
+  assert.strictEqual(replayBlockedPromotion.promotion.replay_verdict, "BLOCK");
+  assert.deepStrictEqual(replayBlockedPromotion.promotion.replay_blockers, ["COUNT_GUARD_ACTIVE"]);
+  assert.strictEqual(replayBlockedPromotion.action_plan.some((row) => row.includes("COUNT_GUARD_ACTIVE")), true);
 
   const canaryBlockedPromotion = __test.evaluateSupervisor({
     ...base,
@@ -346,8 +349,41 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(memoryBlockedPromotion.verdict, "HOLD");
   assert.strictEqual(memoryBlockedPromotion.reason, "SELF_EVOLUTION_MEMORY_BLOCK");
 
+  const promotionReadyArtifacts = {
+    phase0: {
+      fresh: true,
+      provider: "BINANCEFUT",
+      tf: "15m",
+      legacy_wait_baseline: {},
+      bridge_latency: { webhook_to_fill_ms: { p95: 1420 }, duplicate_count: 0, reject_count: 0 },
+    },
+    selfEvolutionDataset: {
+      fresh: true,
+      summary: { rows_n: 10, executed_n: 5, drop_n: 3, missed_n: 1, features_coverage_rate: 0.9, febt_coverage_rate: 0.8 },
+    },
+    selfEvolutionReplay: {
+      validation_mode: "HISTORICAL_ENTRY_COHORT_V1",
+      summary: { total_n: 1, pass_n: 1, warn_n: 0, block_n: 0, best_candidate_id: "AUTO_CORE_SCORE_TIGHTEN", best_verdict: "PASS", best_objective_delta: 0.8 },
+      validations: [{ candidate_id: "AUTO_CORE_SCORE_TIGHTEN", validation_verdict: "PASS", candidate_objective_delta: 0.8, blockers: [] }],
+    },
+    selfEvolutionCanary: {
+      summary: { total_n: 1, ready_n: 1, blocked_n: 0, rollback_ready_n: 0, apply_pass: true, global_canary_pass: true, current_open_wave: 1, open_wave: 1 },
+      rows: [{ market: "BTCUSDT", wave: 1, current_stage: "SOFT", candidate_id: "AUTO_CORE_SCORE_TIGHTEN", canary_verdict: "READY", blockers: [] }],
+    },
+    selfEvolutionMemory: {
+      summary: { total_n: 0, current_n: 0, success_n: 0, neutral_n: 0, fail_n: 0, rolled_back_n: 0, blocked_candidate_n: 0, blocked_candidate_ids: [] },
+      current_rows: [],
+      rows: [],
+    },
+    selfEvolutionLoopMonitor: {
+      summary: { cycle_id: "cycle-1", overall_status: "READY_FOR_MANUAL_PASTE", cycle_consistent: true, stale_artifact_n: 0, cycle_mismatch_n: 0, critical_blocker_n: 0, critical_blockers: [], promotion_path_ready: true, manual_paste_ready: true, ready_candidate_id: "AUTO_CORE_SCORE_TIGHTEN", canary_open_wave: 1, loop_n: 10, fresh_loop_n: 10 },
+      rows: [],
+    },
+  };
+
   const blockPromote = __test.evaluateSupervisor({
     ...base,
+    ...promotionReadyArtifacts,
     codex: {
       status: "FRESH",
       verdict: "HOLD",
@@ -359,10 +395,11 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
     },
   });
   assert.strictEqual(blockPromote.verdict, "HOLD");
-  assert.strictEqual(blockPromote.reason, "SELF_EVOLUTION_REPLAY_MISSING");
+  assert.strictEqual(blockPromote.reason, "CODEX_REVIEW_BLOCK_PROMOTION");
 
   const stalePromote = __test.evaluateSupervisor({
     ...base,
+    ...promotionReadyArtifacts,
     codex: {
       status: "STALE",
       verdict: "PROMOTE",
@@ -374,10 +411,11 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
     },
   });
   assert.strictEqual(stalePromote.verdict, "HOLD");
-  assert.strictEqual(stalePromote.reason, "SELF_EVOLUTION_REPLAY_MISSING");
+  assert.strictEqual(stalePromote.reason, "CODEX_REVIEW_REQUIRED_PROMOTION");
 
   const staleAutopilot = __test.evaluateSupervisor({
     ...base,
+    ...promotionReadyArtifacts,
     codex: {
       status: "FRESH",
       verdict: "PROMOTE",
@@ -390,7 +428,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
     },
   });
   assert.strictEqual(staleAutopilot.verdict, "HOLD");
-  assert.strictEqual(staleAutopilot.reason, "SELF_EVOLUTION_REPLAY_MISSING");
+  assert.strictEqual(staleAutopilot.reason, "STAGE_AUTOPILOT_REQUIRED_PROMOTION");
 
   const failedButNoAction = __test.evaluateSupervisor({
     ...base,
