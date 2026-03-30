@@ -120,6 +120,7 @@ function run() {
   const ev = report.rows.find((row) => row.candidate_id === "EV_TP1_THRESHOLD_TUNE");
   assert.strictEqual(ev.scope, "EV");
   assert.strictEqual(ev.ready_for_auto_apply, true);
+  assert.deepStrictEqual(ev.markets, ["ALL"]);
   assert.strictEqual(report.summary.memory_blocked_n, 1);
 
   const fingerprintBaseArgs = {
@@ -163,7 +164,14 @@ function run() {
           blocked_candidate_ids: [],
           recent_failed_fingerprints: [evFingerprint],
         },
-        current_rows: [],
+        current_rows: [
+          {
+            candidate_id: "HISTORICAL_EV_TP1_THRESHOLD_TUNE",
+            change_fingerprint: evFingerprint,
+            memory_blocked: true,
+            memory_block_reason: "RECENT_FAIL_FINGERPRINT_WITHIN_TTL",
+          },
+        ],
       },
     },
   });

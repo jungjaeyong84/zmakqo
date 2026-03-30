@@ -81,15 +81,16 @@ function buildMemoryGuardContext(memoryLedger = null) {
   const raw = unwrapRawReport(memoryLedger);
   const summary = raw && raw.summary && typeof raw.summary === "object" ? raw.summary : {};
   const currentRows = Array.isArray(raw && raw.current_rows) ? raw.current_rows : [];
+  const blockedRows = currentRows.filter((row) => row && row.memory_blocked === true);
   return {
     blockedIds: new Set(
       (Array.isArray(summary.blocked_candidate_ids) ? summary.blocked_candidate_ids : [])
         .map((row) => String(row || "").trim())
         .filter(Boolean)
     ),
-    recentFailedFingerprints: new Set(
-      (Array.isArray(summary.recent_failed_fingerprints) ? summary.recent_failed_fingerprints : [])
-        .map((row) => String(row || "").trim())
+    blockedFingerprints: new Set(
+      blockedRows
+        .map((row) => String(row && row.change_fingerprint || "").trim())
         .filter(Boolean)
     ),
     currentRowById: new Map(
@@ -110,7 +111,7 @@ function applyMemoryGuards(candidate = {}, memoryContext = null) {
   const fingerprint = candidateFingerprint(candidate);
   const memoryRow = candidateId ? (memoryContext.currentRowById.get(candidateId) || null) : null;
   const explicitMemoryBlocked = (candidateId && memoryContext.blockedIds.has(candidateId)) || (memoryRow && memoryRow.memory_blocked === true);
-  const fingerprintRepeated = memoryContext.recentFailedFingerprints.has(fingerprint);
+  const fingerprintRepeated = memoryContext.blockedFingerprints.has(fingerprint);
   const memoryBlocked = explicitMemoryBlocked || fingerprintRepeated;
 
   next.change_fingerprint = fingerprint;
@@ -118,7 +119,7 @@ function applyMemoryGuards(candidate = {}, memoryContext = null) {
   next.memory_block_reason = memoryBlocked
     ? String(
       (memoryRow && memoryRow.memory_block_reason)
-      || (fingerprintRepeated ? "FAILED_FINGERPRINT_REPEAT" : "RECENT_FAIL_FINGERPRINT")
+      || (fingerprintRepeated ? "FAILED_FINGERPRINT_REPEAT" : "RECENT_FAIL_FINGERPRINT_WITHIN_TTL")
     )
     : null;
   next.failed_fingerprint_repeat = fingerprintRepeated === true;
@@ -255,12 +256,13 @@ function buildEvCandidate({ ev, tf = "15m", contract = null, marketGuard = null 
     display_candidate_id: "EV_TP1_THRESHOLD_TUNE",
     scope: "EV",
     source: "EV_TUNER",
-    markets: marketGuard && marketGuard.market ? [marketGuard.market] : ["ALL"],
+    // Filter-4 softening is a shared policy change, not a market-local override.
+    markets: ["ALL"],
     tf: String(raw.tf || tf || "15m"),
     changes,
     objective_delta: null,
-    ...buildGuardEffects(contract, marketGuard),
-    risk_flags: buildRiskFlags({ direction, contract, marketGuard, blocked: false, ready: raw.settings_updated === true }),
+    ...buildGuardEffects(contract, null),
+    risk_flags: buildRiskFlags({ direction, contract, marketGuard: null, blocked: false, ready: raw.settings_updated === true }),
     rollback_target: null,
     direction,
     status: String(raw.decision_reason || "N/A"),
