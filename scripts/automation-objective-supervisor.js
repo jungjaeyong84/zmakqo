@@ -114,6 +114,13 @@ function signedPct(value, digits = 2) {
   return `${n > 0 ? "+" : ""}${text}%`;
 }
 
+function renderSummaryLine(rows = []) {
+  return (Array.isArray(rows) ? rows : [])
+    .slice(0, 8)
+    .map((row) => `${row.key} ${row.count}`)
+    .join(" / ") || "N/A";
+}
+
 function parseArtifactTimestampMs(value) {
   const raw = String(value || "").trim();
   if (!raw) return null;
@@ -396,9 +403,26 @@ function summarizeSelfEvolutionDataset(dataset = null) {
     realized_n: toNum(summary.realized_n) || 0,
     features_coverage_rate: toNum(summary.features_coverage_rate),
     febt_coverage_rate: toNum(summary.febt_coverage_rate),
+    febt_eligible_n: toNum(summary.febt_eligible_n) || 0,
+    febt_coverage_rate_eligible: toNum(summary.febt_coverage_rate_eligible),
+    febt_active_eligible_n: toNum(summary.febt_active_eligible_n) || 0,
+    febt_coverage_rate_active_eligible: toNum(summary.febt_coverage_rate_active_eligible),
+    active_entry_n: toNum(summary.active_entry_n) || 0,
+    legacy_entry_n: toNum(summary.legacy_entry_n) || 0,
+    active_entry_family_counts: Array.isArray(summary.active_entry_family_counts) ? summary.active_entry_family_counts : [],
     avg_realized_ret_net: toNum(summary.avg_realized_ret_net),
     avg_realized_pnl_quote: toNum(summary.avg_realized_pnl_quote),
     avg_hold_minutes: toNum(summary.avg_hold_minutes),
+    entry_pending_total_n: toNum(summary.entry_pending_total_n) || 0,
+    entry_executed_null_realized_n: toNum(summary.entry_executed_null_realized_n) || 0,
+    entry_fallback_pending_n: toNum(summary.entry_fallback_pending_n) || 0,
+    entry_fallback_pending_active_n: toNum(summary.entry_fallback_pending_active_n) || 0,
+    entry_fallback_pending_active_by_family: Array.isArray(summary.entry_fallback_pending_active_by_family)
+      ? summary.entry_fallback_pending_active_by_family
+      : [],
+    entry_exit_present_unlabeled_n: toNum(summary.entry_exit_present_unlabeled_n) || 0,
+    entry_open_pending_n: toNum(summary.entry_open_pending_n) || 0,
+    entry_link_missing_n: toNum(summary.entry_link_missing_n) || 0,
   };
 }
 
@@ -1548,8 +1572,10 @@ function renderMarkdown(report = {}) {
     "## Self-Evolution Dataset",
     `- rows/executed/drop/missed: ${report.self_evolution_dataset && report.self_evolution_dataset.rows_n != null ? report.self_evolution_dataset.rows_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.executed_n != null ? report.self_evolution_dataset.executed_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.drop_n != null ? report.self_evolution_dataset.drop_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.missed_n != null ? report.self_evolution_dataset.missed_n : "N/A"}`,
     `- fallback/rejected/partial: ${report.self_evolution_dataset && report.self_evolution_dataset.fallback_n != null ? report.self_evolution_dataset.fallback_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.rejected_n != null ? report.self_evolution_dataset.rejected_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.partial_n != null ? report.self_evolution_dataset.partial_n : "N/A"}`,
-    `- realized_n: ${report.self_evolution_dataset && report.self_evolution_dataset.realized_n != null ? report.self_evolution_dataset.realized_n : "N/A"} / features=${pct(report.self_evolution_dataset && report.self_evolution_dataset.features_coverage_rate)} / febt_all=${pct(report.self_evolution_dataset && report.self_evolution_dataset.febt_coverage_rate)} / febt_eligible=${pct(report.self_evolution_dataset && report.self_evolution_dataset.febt_coverage_rate_eligible)} (${report.self_evolution_dataset && report.self_evolution_dataset.febt_eligible_n != null ? report.self_evolution_dataset.febt_eligible_n : "N/A"})`,
+    `- realized_n: ${report.self_evolution_dataset && report.self_evolution_dataset.realized_n != null ? report.self_evolution_dataset.realized_n : "N/A"} / features=${pct(report.self_evolution_dataset && report.self_evolution_dataset.features_coverage_rate)} / febt_all=${pct(report.self_evolution_dataset && report.self_evolution_dataset.febt_coverage_rate)} / febt_eligible=${pct(report.self_evolution_dataset && report.self_evolution_dataset.febt_coverage_rate_eligible)} (${report.self_evolution_dataset && report.self_evolution_dataset.febt_eligible_n != null ? report.self_evolution_dataset.febt_eligible_n : "N/A"}) / febt_active=${pct(report.self_evolution_dataset && report.self_evolution_dataset.febt_coverage_rate_active_eligible)} (${report.self_evolution_dataset && report.self_evolution_dataset.febt_active_eligible_n != null ? report.self_evolution_dataset.febt_active_eligible_n : "N/A"})`,
+    `- active_entry: ${report.self_evolution_dataset && report.self_evolution_dataset.active_entry_n != null ? report.self_evolution_dataset.active_entry_n : "N/A"} / legacy_entry=${report.self_evolution_dataset && report.self_evolution_dataset.legacy_entry_n != null ? report.self_evolution_dataset.legacy_entry_n : "N/A"} / family=${renderSummaryLine(report.self_evolution_dataset && report.self_evolution_dataset.active_entry_family_counts)}`,
     `- entry_pending: total=${report.self_evolution_dataset && report.self_evolution_dataset.entry_pending_total_n != null ? report.self_evolution_dataset.entry_pending_total_n : "N/A"} / executed=${report.self_evolution_dataset && report.self_evolution_dataset.entry_executed_null_realized_n != null ? report.self_evolution_dataset.entry_executed_null_realized_n : "N/A"} / fallback=${report.self_evolution_dataset && report.self_evolution_dataset.entry_fallback_pending_n != null ? report.self_evolution_dataset.entry_fallback_pending_n : "N/A"} / exit_present_unlabeled=${report.self_evolution_dataset && report.self_evolution_dataset.entry_exit_present_unlabeled_n != null ? report.self_evolution_dataset.entry_exit_present_unlabeled_n : "N/A"} / open_pending=${report.self_evolution_dataset && report.self_evolution_dataset.entry_open_pending_n != null ? report.self_evolution_dataset.entry_open_pending_n : "N/A"} / link_missing=${report.self_evolution_dataset && report.self_evolution_dataset.entry_link_missing_n != null ? report.self_evolution_dataset.entry_link_missing_n : "N/A"}`,
+    `- fallback_active: ${report.self_evolution_dataset && report.self_evolution_dataset.entry_fallback_pending_active_n != null ? report.self_evolution_dataset.entry_fallback_pending_active_n : "N/A"} / family=${renderSummaryLine(report.self_evolution_dataset && report.self_evolution_dataset.entry_fallback_pending_active_by_family)}`,
     `- sample_readiness: governance=${report.sample_readiness && report.sample_readiness.governance_enough_sample ? "YES" : "NO"} (strict ${report.sample_readiness && report.sample_readiness.governance_realized_n != null ? report.sample_readiness.governance_realized_n : "N/A"} / monthly ${report.sample_readiness && report.sample_readiness.governance_monthly_source_realized_n != null ? report.sample_readiness.governance_monthly_source_realized_n : "N/A"} / effective ${report.sample_readiness && report.sample_readiness.governance_effective_realized_n != null ? report.sample_readiness.governance_effective_realized_n : "N/A"} / min ${report.sample_readiness && report.sample_readiness.governance_realized_min_sample != null ? report.sample_readiness.governance_realized_min_sample : "N/A"}) / self_evolution=${report.sample_readiness && report.sample_readiness.self_evolution_enough_sample ? "YES" : "NO"} (${report.sample_readiness && report.sample_readiness.self_evolution_realized_n != null ? report.sample_readiness.self_evolution_realized_n : "N/A"} / min ${report.sample_readiness && report.sample_readiness.self_evolution_realized_min_sample != null ? report.sample_readiness.self_evolution_realized_min_sample : "N/A"})`,
     `- avg_realized_ret_net: ${signedPct(report.self_evolution_dataset && report.self_evolution_dataset.avg_realized_ret_net)} / avg_realized_pnl_quote: ${signedNum(report.self_evolution_dataset && report.self_evolution_dataset.avg_realized_pnl_quote, 0)} / avg_hold_minutes: ${report.self_evolution_dataset && report.self_evolution_dataset.avg_hold_minutes != null ? Number(report.self_evolution_dataset.avg_hold_minutes).toFixed(1) : "N/A"}`,
     "",

@@ -3,10 +3,14 @@
 const assert = require("assert");
 const {
   isEntryTierEvent,
+  isActiveEntryTimingTier,
+  isLegacyInactiveEntryTimingTier,
   resolveEntryTimingTier,
   resolveEntryQtyProfile,
   resolveEntrySide,
   canonicalExternalEntryEvent,
+  resolveActiveEntryFamily,
+  resolveLegacyEntryFamily,
   describeTimingTierForUser,
 } = require("../utils/liveEntryTaxonomy");
 
@@ -21,6 +25,12 @@ assert.strictEqual(resolveEntryTimingTier("SHORT"), "EARLY");
 assert.strictEqual(resolveEntryTimingTier({ event: "LONG", features: { entry_grade: "CORE" } }), "CORE");
 assert.strictEqual(resolveEntryTimingTier("PRE_REAL_LONG"), "PRE_REAL");
 assert.strictEqual(resolveEntryTimingTier("REAL_SHORT"), "REAL");
+
+assert.strictEqual(isActiveEntryTimingTier("EARLY"), true);
+assert.strictEqual(isActiveEntryTimingTier("CORE"), true);
+assert.strictEqual(isActiveEntryTimingTier("PRE_REAL"), false);
+assert.strictEqual(isLegacyInactiveEntryTimingTier("REAL"), true);
+assert.strictEqual(isLegacyInactiveEntryTimingTier("CORE"), false);
 
 assert.strictEqual(resolveEntryQtyProfile("LONG"), "FIXED");
 assert.strictEqual(resolveEntryQtyProfile("SHORT"), "FIXED");
@@ -38,6 +48,11 @@ assert.strictEqual(canonicalExternalEntryEvent("SHORT", "SELL"), "SHORT");
 assert.strictEqual(canonicalExternalEntryEvent("EARLY_LONG", null), "LONG");
 assert.strictEqual(canonicalExternalEntryEvent("CORE_SHORT", null), "SHORT");
 assert.strictEqual(canonicalExternalEntryEvent("PRE_REAL_LONG", "BUY"), "LONG");
+assert.strictEqual(resolveActiveEntryFamily("EARLY_LONG", null, null), "EARLY_LONG");
+assert.strictEqual(resolveActiveEntryFamily({ event: "LONG", features: { entry_grade: "CORE" }, side: "BUY" }), "CORE_LONG");
+assert.strictEqual(resolveActiveEntryFamily("PRE_REAL_LONG", null, "BUY"), null);
+assert.strictEqual(resolveLegacyEntryFamily("PRE_REAL_LONG", null, "BUY"), "PRE_REAL_LONG");
+assert.strictEqual(resolveLegacyEntryFamily("CORE_SHORT", null, "SELL"), null);
 
 assert.strictEqual(describeTimingTierForUser("EARLY"), "LONG/SHORT 기본 진입");
 assert.strictEqual(describeTimingTierForUser("CORE"), "LONG/SHORT 확장 진입");

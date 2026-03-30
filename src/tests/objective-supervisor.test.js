@@ -156,6 +156,21 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
         realized_n: 8,
         features_coverage_rate: 0.91,
         febt_coverage_rate: 0.83,
+        febt_eligible_n: 12,
+        febt_coverage_rate_eligible: 0.92,
+        febt_active_eligible_n: 9,
+        febt_coverage_rate_active_eligible: 0.89,
+        active_entry_n: 18,
+        legacy_entry_n: 2,
+        active_entry_family_counts: [{ key: "CORE_LONG", count: 8 }, { key: "EARLY_LONG", count: 6 }],
+        entry_pending_total_n: 4,
+        entry_executed_null_realized_n: 2,
+        entry_fallback_pending_n: 2,
+        entry_fallback_pending_active_n: 1,
+        entry_fallback_pending_active_by_family: [{ key: "CORE_LONG", count: 1 }],
+        entry_exit_present_unlabeled_n: 1,
+        entry_open_pending_n: 1,
+        entry_link_missing_n: 0,
         avg_realized_ret_net: 0.014,
         avg_realized_pnl_quote: 1320,
         avg_hold_minutes: 47.5,
@@ -217,6 +232,11 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.self_evolution_policy.memory_latest_path.endsWith("best_self_evolution_memory_latest.json"), true);
   assert.strictEqual(allowPromote.self_evolution_dataset.rows_n, 24);
   assert.strictEqual(allowPromote.self_evolution_dataset.features_coverage_rate, 0.91);
+  assert.strictEqual(allowPromote.self_evolution_dataset.febt_coverage_rate_active_eligible, 0.89);
+  assert.strictEqual(allowPromote.self_evolution_dataset.active_entry_n, 18);
+  assert.strictEqual(allowPromote.self_evolution_dataset.legacy_entry_n, 2);
+  assert.strictEqual(allowPromote.self_evolution_dataset.entry_fallback_pending_active_n, 1);
+  assert.strictEqual(allowPromote.self_evolution_dataset.active_entry_family_counts[0].key, "CORE_LONG");
   assert.strictEqual(typeof allowPromote.self_evolution_objective.objective_score, "number");
   assert.strictEqual(allowPromote.self_evolution_objective.count_floor_pass, true);
   assert.strictEqual(allowPromote.self_evolution_objective.replacement_floor_pass, true);

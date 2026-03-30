@@ -2,7 +2,11 @@
 
 const { summarizePineSignalQuality } = require("../services/pineSignalQuality");
 const { classifySignalReasonStage } = require("./signalReasonView");
-const { isEntryTierEvent } = require("./liveEntryTaxonomy");
+const {
+  isEntryTierEvent,
+  resolveActiveEntryFamily,
+  resolveLegacyEntryFamily,
+} = require("./liveEntryTaxonomy");
 
 function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -929,6 +933,8 @@ function buildUnifiedLearningRows({
 
 function summarizeBestSelfEvolutionDataset(rows = []) {
   const scoped = Array.isArray(rows) ? rows : [];
+  const resolveActiveFamily = (row) => resolveActiveEntryFamily(row, resolveFeatures(row), row && row.side);
+  const resolveLegacyFamily = (row) => resolveLegacyEntryFamily(row, resolveFeatures(row), row && row.side);
   const executedRows = scoped.filter((row) => row.source_row_type === "EXECUTED" || row.source_row_type === "PARTIAL" || row.source_row_type === "FALLBACK");
   const realizedRows = executedRows.filter((row) => Number.isFinite(toNum(row.realized_ret_net)));
   const allRealizedRows = scoped.filter((row) => Number.isFinite(toNum(row.realized_ret_net)));
@@ -959,6 +965,11 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
     return rowType === "EXECUTED" || rowType === "PARTIAL";
   });
   const pendingEntryFallback = pendingEntryRows.filter((row) => toUpper(row && row.source_row_type, "UNKNOWN") === "FALLBACK");
+  const activeEntryRows = scoped.filter((row) => resolveActiveFamily(row));
+  const legacyEntryRows = scoped.filter((row) => resolveLegacyFamily(row));
+  const febtActiveEligibleRows = febtEligibleRows.filter((row) => resolveActiveFamily(row));
+  const pendingEntryFallbackActive = pendingEntryFallback.filter((row) => resolveActiveFamily(row));
+  const pendingEntryFallbackLegacy = pendingEntryFallback.filter((row) => resolveLegacyFamily(row));
   const executedExitOnly = scoped.filter((row) => row.source_row_type === "EXIT_ONLY");
   const realizedSourceCounts = countBy(realizedRows.filter((row) => row.realized_source), (row) => row.realized_source);
   const allRealizedSourceCounts = countBy(allRealizedRows.filter((row) => row.realized_source), (row) => row.realized_source);
@@ -996,6 +1007,11 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
     entry_fallback_pending_by_reason: countBy(pendingEntryFallback, (row) => row.fallback_reason).slice(0, 10),
     entry_fallback_pending_by_market: countBy(pendingEntryFallback, (row) => row.market).slice(0, 10),
     entry_fallback_pending_by_event: countBy(pendingEntryFallback, (row) => row.event).slice(0, 10),
+    entry_fallback_pending_active_n: pendingEntryFallbackActive.length,
+    entry_fallback_pending_active_by_market: countBy(pendingEntryFallbackActive, (row) => row.market).slice(0, 10),
+    entry_fallback_pending_active_by_family: countBy(pendingEntryFallbackActive, (row) => resolveActiveFamily(row)).slice(0, 10),
+    entry_fallback_pending_legacy_n: pendingEntryFallbackLegacy.length,
+    entry_fallback_pending_legacy_by_family: countBy(pendingEntryFallbackLegacy, (row) => resolveLegacyFamily(row)).slice(0, 10),
     executed_exit_only_n: executedExitOnly.length,
     features_coverage_rate: scoped.length > 0 ? (withFeatures.length / scoped.length) : null,
     febt_coverage_rate: scoped.length > 0 ? (withFebt.length / scoped.length) : null,
@@ -1003,9 +1019,19 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
     febt_coverage_rate_eligible: febtEligibleRows.length > 0 ? (withFebt.length / febtEligibleRows.length) : null,
     febt_eligible_by_market: coverageByGroup(febtEligibleRows, (row) => row.market).slice(0, 10),
     febt_eligible_by_event: coverageByGroup(febtEligibleRows, (row) => row.event).slice(0, 12),
+    febt_active_eligible_n: febtActiveEligibleRows.length,
+    febt_coverage_rate_active_eligible: febtActiveEligibleRows.length > 0
+      ? (febtActiveEligibleRows.filter((row) => hasFebt(row)).length / febtActiveEligibleRows.length)
+      : null,
+    febt_active_eligible_by_market: coverageByGroup(febtActiveEligibleRows, (row) => row.market).slice(0, 10),
+    febt_active_eligible_by_family: coverageByGroup(febtActiveEligibleRows, (row) => resolveActiveFamily(row)).slice(0, 10),
     avg_realized_ret_net: mean(realizedRows.map((row) => row.realized_ret_net)),
     avg_realized_pnl_quote: mean(realizedRows.map((row) => row.realized_pnl_quote)),
     avg_hold_minutes: mean(executedRows.map((row) => row.hold_minutes)),
+    active_entry_n: activeEntryRows.length,
+    legacy_entry_n: legacyEntryRows.length,
+    active_entry_family_counts: countBy(activeEntryRows, (row) => resolveActiveFamily(row)).slice(0, 10),
+    legacy_entry_family_counts: countBy(legacyEntryRows, (row) => resolveLegacyFamily(row)).slice(0, 10),
     by_source_row_type: countBy(scoped, (row) => row.source_row_type),
     by_market: countBy(scoped, (row) => row.market),
     by_side: countBy(scoped, (row) => row.side),

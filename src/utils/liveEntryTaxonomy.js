@@ -36,6 +36,16 @@ function normalizeQtyProfileToken(value) {
   return null;
 }
 
+function isActiveEntryTimingTier(tierRaw) {
+  const tier = normalizeUpper(tierRaw);
+  return tier === "EARLY" || tier === "CORE";
+}
+
+function isLegacyInactiveEntryTimingTier(tierRaw) {
+  const tier = normalizeUpper(tierRaw);
+  return tier === "PRE_REAL" || tier === "REAL";
+}
+
 function isPrimaryLongShortEvent(eventRaw) {
   const ev = resolveEventToken(eventRaw);
   return ev === "LONG" || ev === "SHORT";
@@ -108,6 +118,20 @@ function canonicalExternalEntryEvent(eventRaw, sideRaw) {
   return null;
 }
 
+function resolveActiveEntryFamily(eventRaw, featuresMaybe, sideRaw) {
+  const tier = resolveEntryTimingTier(eventRaw, featuresMaybe);
+  const side = resolveEntrySide(eventRaw, sideRaw);
+  if (!side || !isActiveEntryTimingTier(tier)) return null;
+  return `${tier}_${side}`;
+}
+
+function resolveLegacyEntryFamily(eventRaw, featuresMaybe, sideRaw) {
+  const tier = resolveEntryTimingTier(eventRaw, featuresMaybe);
+  const side = resolveEntrySide(eventRaw, sideRaw);
+  if (!side || !isLegacyInactiveEntryTimingTier(tier)) return null;
+  return `${tier}_${side}`;
+}
+
 function describeTimingTierForUser(tierRaw) {
   const tier = normalizeUpper(tierRaw);
   if (!tier) return "N/A";
@@ -141,6 +165,8 @@ function describeEntryEventForUser(eventRaw, sideRaw) {
 
 module.exports = {
   normalizeUpper,
+  isActiveEntryTimingTier,
+  isLegacyInactiveEntryTimingTier,
   isPrimaryLongShortEvent,
   isLegacyTierEntryEvent,
   isEntryTierEvent,
@@ -148,6 +174,8 @@ module.exports = {
   resolveEntryQtyProfile,
   resolveEntrySide,
   canonicalExternalEntryEvent,
+  resolveActiveEntryFamily,
+  resolveLegacyEntryFamily,
   describeTimingTierForUser,
   describeQtyProfileForUser,
   describeEntryEventForUser,
