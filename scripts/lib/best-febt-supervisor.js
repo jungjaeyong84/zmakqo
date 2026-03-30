@@ -75,6 +75,46 @@ function topCountValue(map) {
     .sort((a, b) => (b[1] - a[1]) || String(a[0]).localeCompare(String(b[0])))[0][0];
 }
 
+function readSelfEvolutionDatasetSummary(selfEvolutionDataset = null) {
+  const dataset = selfEvolutionDataset && typeof selfEvolutionDataset === "object"
+    ? selfEvolutionDataset
+    : readJsonRawSafe(SELF_EVOLUTION_DATASET_LATEST_PATH, null);
+  const summary = dataset && dataset.summary && typeof dataset.summary === "object" ? dataset.summary : {};
+  return {
+    febt_active_eligible_by_market: Array.isArray(summary.febt_active_eligible_by_market) ? summary.febt_active_eligible_by_market : [],
+    entry_fallback_pending_active_by_market: Array.isArray(summary.entry_fallback_pending_active_by_market) ? summary.entry_fallback_pending_active_by_market : [],
+    entry_fallback_payload_missing_by_market: Array.isArray(summary.entry_fallback_payload_missing_by_market) ? summary.entry_fallback_payload_missing_by_market : [],
+  };
+}
+
+function buildActiveDatasetMarketCoverage(selfEvolutionDataset = null) {
+  const summary = readSelfEvolutionDatasetSummary(selfEvolutionDataset);
+  const activeFallbackMap = new Map(
+    summary.entry_fallback_pending_active_by_market
+      .map((row) => [String(row && row.key || "").trim().toUpperCase(), Number(row && row.count || 0)])
+      .filter(([market]) => market)
+  );
+  const payloadMissingMap = new Map(
+    summary.entry_fallback_payload_missing_by_market
+      .map((row) => [String(row && row.key || "").trim().toUpperCase(), Number(row && row.count || 0)])
+      .filter(([market]) => market)
+  );
+  const coverageMap = new Map();
+  for (const row of summary.febt_active_eligible_by_market) {
+    const market = String(row && row.key || "").trim().toUpperCase();
+    if (!market) continue;
+    coverageMap.set(market, {
+      market,
+      eligible_n: Number(row && row.eligible_n || 0),
+      with_febt_n: Number(row && row.with_febt_n || 0),
+      coverage_rate: toNum(row && row.coverage_rate),
+      active_fallback_pending_n: activeFallbackMap.get(market) || 0,
+      payload_missing_n: payloadMissingMap.get(market) || 0,
+    });
+  }
+  return coverageMap;
+}
+
 function buildSelfEvolutionPolicySpec() {
   return {
     master_spec_path: SELF_EVOLUTION_MASTER_SPEC_PATH,
@@ -155,12 +195,18 @@ function deriveBestFebtTuningContract({ governance = null, objectiveSupervisor =
   };
 }
 
-function deriveBestFebtMarketContracts({ governance = null, objectiveSupervisor = null, limit = DEFAULT_MARKET_CONTRACT_LIMIT } = {}) {
+function deriveBestFebtMarketContracts({
+  governance = null,
+  objectiveSupervisor = null,
+  selfEvolutionDataset = null,
+  limit = DEFAULT_MARKET_CONTRACT_LIMIT,
+} = {}) {
   const chainRows = governance && governance.current && governance.current.quality && Array.isArray(governance.current.quality.chain_rows)
     ? governance.current.quality.chain_rows
     : [];
   const objectiveVerdict = String(objectiveSupervisor && objectiveSupervisor.verdict || "N/A");
   const marketMap = new Map();
+  const datasetCoverageMap = buildActiveDatasetMarketCoverage(selfEvolutionDataset);
   for (const row of chainRows) {
     const market = String(row && (row.market || row.symbol_or_pair_id || row.symbol) || "").trim().toUpperCase();
     if (!market) continue;
@@ -206,6 +252,46 @@ function deriveBestFebtMarketContracts({ governance = null, objectiveSupervisor 
       else if (reason === "FEBT_BLOCK_LEGACY_ALLOW") acc.candidate_blocked_n += 1;
       else if (reason === "FEBT_WAIT_LEGACY_ALLOW") acc.candidate_wait_n += 1;
     }
+  }
+  for (const [market, overlay] of datasetCoverageMap.entries()) {
+    if (!marketMap.has(market)) {
+      marketMap.set(market, {
+        market,
+        sampled_n: 0,
+        calc_ok_n: 0,
+        phase_known_n: 0,
+        fire_n: 0,
+        late_n: 0,
+        void_n: 0,
+        disagreement_n: 0,
+        fallback_legacy_n: 0,
+        missing_n: 0,
+        candidate_recovered_n: 0,
+        candidate_blocked_n: 0,
+        candidate_wait_n: 0,
+        disagreementReasons: new Map(),
+        legacyWaitActions: new Map(),
+        shadowVerdicts: new Map(),
+      });
+    }
+    const acc = marketMap.get(market);
+    const governanceLooksLegacyOnly = acc.sampled_n === 0
+      || (
+        acc.calc_ok_n === 0
+        && acc.phase_known_n === 0
+        && acc.fire_n === 0
+        && acc.late_n === 0
+        && acc.void_n === 0
+        && acc.disagreement_n === 0
+      );
+    if (!governanceLooksLegacyOnly) continue;
+    acc.sampled_n = Math.max(acc.sampled_n, overlay.eligible_n);
+    acc.calc_ok_n = Math.max(acc.calc_ok_n, overlay.with_febt_n);
+    acc.phase_known_n = Math.max(acc.phase_known_n, overlay.with_febt_n);
+    acc.fallback_legacy_n = Math.max(acc.fallback_legacy_n, overlay.active_fallback_pending_n);
+    acc.missing_n = Math.max(acc.missing_n, overlay.payload_missing_n || Math.max(0, overlay.eligible_n - overlay.with_febt_n));
+    acc.shadowVerdicts = new Map([[overlay.with_febt_n > 0 ? "ACTIVE_DATASET" : "LEGACY_FALLBACK", Math.max(1, overlay.with_febt_n || overlay.eligible_n)]]);
+    acc.legacyWaitActions = new Map([[overlay.payload_missing_n > 0 ? "PAYLOAD_MISSING" : "OBSERVE", Math.max(1, overlay.payload_missing_n || overlay.eligible_n)]]);
   }
   return Array.from(marketMap.values())
     .map((acc) => {
@@ -330,6 +416,7 @@ module.exports = {
   deriveBestFebtMarketGuardContract,
   readBestFebtSupervisorContext,
   __test: {
+    buildActiveDatasetMarketCoverage,
     buildSelfEvolutionPolicySpec,
     deriveBestFebtTuningContract,
     deriveBestFebtMarketContracts,

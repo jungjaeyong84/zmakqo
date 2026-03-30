@@ -276,6 +276,8 @@ function summarizeRetrospective(retrospective = null) {
     any_fail: [dailyRow, weeklyRow, monthlyRow].some((row) => row.pass === false),
     daily_no_trade: dailyRow.failed_checks.includes("NO_TRADE_ACTIVITY"),
     daily_zero_idle: dailyRow.failed_checks.includes("ZERO_KRW_IDLE"),
+    daily_scope_no_trade: dailyRow.failed_checks.includes("NO_TRADE_ACTIVITY"),
+    daily_scope_zero_idle: dailyRow.failed_checks.includes("ZERO_KRW_IDLE"),
     any_no_trade: dailyRow.failed_checks.includes("NO_TRADE_ACTIVITY"),
     any_zero_idle: dailyRow.failed_checks.includes("ZERO_KRW_IDLE"),
   };
@@ -917,7 +919,7 @@ function deriveAutonomousRecoveryPromotion({
   ).trim() || null;
   const blockerIds = memoryBlockedIds instanceof Set ? memoryBlockedIds : new Set();
   const performancePressure = Boolean(
-    retrospectiveSummary && (retrospectiveSummary.any_no_trade || retrospectiveSummary.any_fail)
+    retrospectiveSummary && (retrospectiveSummary.daily_scope_no_trade || retrospectiveSummary.any_fail)
     || objective && (objective.pass === false || objective.monthly_pass === false)
   );
   const replayPass = String(selfEvolutionReplaySummary && selfEvolutionReplaySummary.best_verdict || "").trim().toUpperCase() === "PASS";
@@ -1353,6 +1355,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       filter_layers: filterLayers,
       phase0: phase0Summary,
     },
+    selfEvolutionDataset,
   });
   const selfEvolutionPolicy = buildSelfEvolutionPolicySpec();
   const selfEvolutionDatasetSummary = summarizeSelfEvolutionDataset(selfEvolutionDataset);
@@ -1458,8 +1461,8 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   if (retrospectiveSummary.daily.pass === false) blockers.push("DAILY_OBJECTIVE_FAIL");
   if (retrospectiveSummary.weekly.pass === false) blockers.push("WEEKLY_OBJECTIVE_FAIL");
   if (retrospectiveSummary.monthly.pass === false) blockers.push("RETROSPECTIVE_MONTHLY_FAIL");
-  if (retrospectiveSummary.any_no_trade) blockers.push("DAILY_NO_TRADE_ACTIVITY");
-  if (retrospectiveSummary.any_zero_idle) blockers.push("ZERO_KRW_IDLE");
+  if (retrospectiveSummary.daily_scope_no_trade) blockers.push("DAILY_NO_TRADE_ACTIVITY");
+  if (retrospectiveSummary.daily_scope_zero_idle) blockers.push("ZERO_KRW_IDLE");
   if (!canary || canarySummary.drift > 0 || canaryGolden.drift > 0) blockers.push("CANARY_DRIFT");
   if (changeControlRelevant && (!changeControl || String(changeControl.verdict || "").toUpperCase() === "HOLD")) {
     blockers.push("CHANGE_CONTROL_HOLD");
@@ -1492,9 +1495,9 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   if ((effectivePromotion.ready === true || rollback.ready === true) && !stageAutopilotFresh) {
     blockers.push("STAGE_AUTOPILOT_STALE");
   }
-  const objectiveBlockReason = retrospectiveSummary.any_no_trade
+  const objectiveBlockReason = retrospectiveSummary.daily_scope_no_trade
     ? "DAILY_NO_TRADE_ACTIVITY"
-    : retrospectiveSummary.any_zero_idle
+    : retrospectiveSummary.daily_scope_zero_idle
       ? "ZERO_KRW_IDLE"
       : physicsSummary.block_reason
         ? physicsSummary.block_reason
@@ -1743,7 +1746,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       dataset_realized_n_7d: toNum(selfEvolutionDatasetSummary.realized_n),
     },
     operational_recovery_context: {
-      recommended_scheduler_policy: retrospectiveSummary.any_no_trade ? "ACTIVE_TRADING_HOURS_ONLY" : "NORMAL_4H",
+      recommended_scheduler_policy: retrospectiveSummary.daily_scope_no_trade ? "ACTIVE_TRADING_HOURS_ONLY" : "NORMAL_4H",
       daily_no_trade: retrospectiveSummary.daily_no_trade === true,
       daily_zero_idle: retrospectiveSummary.daily_zero_idle === true,
       daily_executed_n: retrospectiveSummary.daily.executed_n,

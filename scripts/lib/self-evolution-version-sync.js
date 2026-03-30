@@ -18,6 +18,34 @@ function prependCsvValue(raw, value) {
   return Array.from(new Set([target, ...rows])).join(",");
 }
 
+function mergeCsvValues(...values) {
+  const merged = [];
+  for (const raw of values) {
+    for (const item of String(raw || "")
+      .split(",")
+      .map((entry) => String(entry || "").trim())
+      .filter(Boolean)) {
+      if (!merged.includes(item)) merged.push(item);
+    }
+  }
+  return merged.join(",");
+}
+
+function extractAllowedCsvFromText(filePath, text) {
+  const normalized = String(filePath || "").replace(/\\/g, "/");
+  const raw = String(text || "");
+  if (normalized.endsWith("/ecosystem.config.js")) {
+    const match = raw.match(/WEBHOOK_ALLOWED_STRATEGY_IDS:\s*"([^"]*)"/);
+    return match ? String(match[1] || "").trim() : "";
+  }
+  if (normalized.endsWith("/cloudbuild.yaml")) {
+    const match = raw.match(/WEBHOOK_ALLOWED_STRATEGY_IDS=([^;"]+)/);
+    return match ? String(match[1] || "").trim() : "";
+  }
+  const match = raw.match(/^WEBHOOK_ALLOWED_STRATEGY_IDS=(.*)$/m);
+  return match ? String(match[1] || "").trim() : "";
+}
+
 function replaceOrAppendEnvLine(text, key, value) {
   const line = `${key}=${value}`;
   const re = new RegExp(`^${key}=.*$`, "m");
@@ -26,45 +54,44 @@ function replaceOrAppendEnvLine(text, key, value) {
   return `${text}${suffix}${line}\n`;
 }
 
-function syncEnvText(text, { strategyId, engineVersion }) {
+function syncEnvText(text, { strategyId, engineVersion, allowedCsv = "" }) {
   let next = String(text || "");
   next = replaceOrAppendEnvLine(next, "DONBEOLJA_STRATEGY_ID", strategyId);
   next = replaceOrAppendEnvLine(next, "ENGINE_VERSION", engineVersion);
-  const allowedMatch = next.match(/^WEBHOOK_ALLOWED_STRATEGY_IDS=(.*)$/m);
-  const nextAllowed = prependCsvValue(allowedMatch ? allowedMatch[1] : "", strategyId);
+  const nextAllowed = mergeCsvValues(strategyId, allowedCsv);
   next = replaceOrAppendEnvLine(next, "WEBHOOK_ALLOWED_STRATEGY_IDS", nextAllowed);
   return next;
 }
 
-function syncJsText(text, { strategyId, engineVersion }) {
+function syncJsText(text, { strategyId, engineVersion, allowedCsv = "" }) {
   let next = String(text || "");
   next = next.replace(/ENGINE_VERSION:\s*"[^"]*"/g, `ENGINE_VERSION: "${engineVersion}"`);
   next = next.replace(/DONBEOLJA_STRATEGY_ID:\s*"[^"]*"/g, `DONBEOLJA_STRATEGY_ID: "${strategyId}"`);
-  next = next.replace(/WEBHOOK_ALLOWED_STRATEGY_IDS:\s*"([^"]*)"/g, (_m, csv) => {
-    return `WEBHOOK_ALLOWED_STRATEGY_IDS: "${prependCsvValue(csv, strategyId)}"`;
+  next = next.replace(/WEBHOOK_ALLOWED_STRATEGY_IDS:\s*"([^"]*)"/g, () => {
+    return `WEBHOOK_ALLOWED_STRATEGY_IDS: "${mergeCsvValues(strategyId, allowedCsv)}"`;
   });
   return next;
 }
 
-function syncCloudBuildText(text, { strategyId, engineVersion }) {
+function syncCloudBuildText(text, { strategyId, engineVersion, allowedCsv = "" }) {
   let next = String(text || "");
   next = next.replace(/DONBEOLJA_STRATEGY_ID=[^;"]+/g, `DONBEOLJA_STRATEGY_ID=${strategyId}`);
   next = next.replace(/ENGINE_VERSION=[^;"]+/g, `ENGINE_VERSION=${engineVersion}`);
-  next = next.replace(/WEBHOOK_ALLOWED_STRATEGY_IDS=([^;"]+)/g, (_m, csv) => {
-    return `WEBHOOK_ALLOWED_STRATEGY_IDS=${prependCsvValue(csv, strategyId)}`;
+  next = next.replace(/WEBHOOK_ALLOWED_STRATEGY_IDS=([^;"]+)/g, () => {
+    return `WEBHOOK_ALLOWED_STRATEGY_IDS=${mergeCsvValues(strategyId, allowedCsv)}`;
   });
   return next;
 }
 
-function syncTextByPath(filePath, text, { strategyId, engineVersion }) {
+function syncTextByPath(filePath, text, { strategyId, engineVersion, allowedCsv = "" }) {
   const normalized = String(filePath || "").replace(/\\/g, "/");
   if (normalized.endsWith("/cloudbuild.yaml")) {
-    return syncCloudBuildText(text, { strategyId, engineVersion });
+    return syncCloudBuildText(text, { strategyId, engineVersion, allowedCsv });
   }
   if (normalized.endsWith("/ecosystem.config.js")) {
-    return syncJsText(text, { strategyId, engineVersion });
+    return syncJsText(text, { strategyId, engineVersion, allowedCsv });
   }
-  return syncEnvText(text, { strategyId, engineVersion });
+  return syncEnvText(text, { strategyId, engineVersion, allowedCsv });
 }
 
 function syncStrategyRuntimeFiles({ rootDir = process.cwd(), strategyId } = {}) {
@@ -78,11 +105,19 @@ function syncStrategyRuntimeFiles({ rootDir = process.cwd(), strategyId } = {}) 
     path.join(rootDir, "ecosystem.config.js"),
     path.join(rootDir, "cloudbuild.yaml"),
   ];
+  const sourceRows = targets
+    .filter((filePath) => fs.existsSync(filePath))
+    .map((filePath) => ({
+      filePath,
+      text: fs.readFileSync(filePath, "utf8"),
+    }));
+  const allowedCsv = mergeCsvValues(
+    strategyId,
+    ...sourceRows.map((row) => extractAllowedCsvFromText(row.filePath, row.text))
+  );
   const changed = [];
-  for (const filePath of targets) {
-    if (!fs.existsSync(filePath)) continue;
-    const before = fs.readFileSync(filePath, "utf8");
-    const after = syncTextByPath(filePath, before, { strategyId, engineVersion });
+  for (const { filePath, text: before } of sourceRows) {
+    const after = syncTextByPath(filePath, before, { strategyId, engineVersion, allowedCsv });
     if (after !== before) {
       fs.writeFileSync(filePath, after, "utf8");
       changed.push(filePath);
@@ -98,6 +133,8 @@ function syncStrategyRuntimeFiles({ rootDir = process.cwd(), strategyId } = {}) 
 module.exports = {
   strategyIdToEngineVersion,
   prependCsvValue,
+  mergeCsvValues,
+  extractAllowedCsvFromText,
   syncEnvText,
   syncJsText,
   syncCloudBuildText,

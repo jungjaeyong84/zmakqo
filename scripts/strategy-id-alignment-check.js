@@ -111,6 +111,20 @@ function csvIncludesStrategyId(csv, strategyId) {
   return normalizeStrategyIdCsv(csv).includes(target);
 }
 
+function resolveMismatchAuditCounts({
+  mismatchTotal = 0,
+  mismatchHistoricalCount = null,
+  mismatchFreshness = null,
+} = {}) {
+  const freshnessTotal = toNum(mismatchFreshness && mismatchFreshness.total_count, null);
+  const freshnessHistorical = toNum(mismatchFreshness && mismatchFreshness.created_before_live_revision_count, null);
+  const total = Number.isFinite(freshnessTotal) ? freshnessTotal : toNum(mismatchTotal, 0);
+  const historical = Number.isFinite(freshnessHistorical)
+    ? freshnessHistorical
+    : (Number.isFinite(toNum(mismatchHistoricalCount, null)) ? toNum(mismatchHistoricalCount, null) : total);
+  return { total, historical };
+}
+
 function roundTo(value, digits = 1) {
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
@@ -696,6 +710,13 @@ async function main() {
     && Number.isFinite(mismatchAfterSyncCount)
     && mismatchAfterSyncCount === 0
   );
+  const auditMismatchCounts = resolveMismatchAuditCounts({
+    mismatchTotal,
+    mismatchHistoricalCount,
+    mismatchFreshness,
+  });
+  const auditMismatchTotal = auditMismatchCounts.total;
+  const auditHistoricalCount = auditMismatchCounts.historical;
   const liveSyncSatisfiedByCurrentRuntime = !!(
     liveService.ok
     && mismatchHistoricalOnly
@@ -723,16 +744,16 @@ async function main() {
       : "허용목록 반영 후 신규 mismatch 0건 확인. 60분 추가 관찰 뒤 경보 단계 완화 여부 결정 요청");
 
   const issueLines = [];
-  if (mismatchTotal >= 1 || mismatchGuardCount >= 1) {
+  if (auditMismatchTotal >= 1 || mismatchGuardCount >= 1) {
     if (liveSyncNeeded) {
-      issueLines.push(`[ISSUE] H | 최근 strategy_id 불일치 드롭 ${mismatchTotal}건 | 실서버 허용ID 동기화 필요`);
+      issueLines.push(`[ISSUE] H | 최근 strategy_id 불일치 드롭 ${auditMismatchTotal}건 | 실서버 허용ID 동기화 필요`);
       issueLines.push(`[ISSUE] H | 실서버 허용ID(${liveAllowed || "N/A"})와 수신ID(${receivedIdsText}) 불일치 | 신호 드롭 지속 위험`);
     } else if (mismatchGuardCount >= 1) {
       issueLines.push(`[ISSUE] H | 동기화 이후 신규 strategy_id 불일치 ${mismatchGuardCount}건 | 게이트 반영/전파 경로 즉시 재점검 필요`);
     } else if (mismatchHistoricalOnly) {
-      issueLines.push(`[ISSUE] L | 실서버 허용ID 동기화 완료(rev ${liveService.revision || "N/A"}) | 누적 mismatch ${mismatchTotal}건은 과거 데이터, 리비전 이후 신규 0건`);
+      issueLines.push(`[ISSUE] L | 실서버 허용ID 동기화 완료(rev ${liveService.revision || "N/A"}) | 누적 mismatch ${auditMismatchTotal}건은 과거 데이터, 리비전 이후 신규 0건`);
     } else {
-      issueLines.push(`[ISSUE] M | 실서버 허용ID 동기화 완료(rev ${liveService.revision || "N/A"}) | 누적 mismatch ${mismatchTotal}건은 과거 데이터, 운영 가드 0건 유지`);
+      issueLines.push(`[ISSUE] M | 실서버 허용ID 동기화 완료(rev ${liveService.revision || "N/A"}) | 누적 mismatch ${auditMismatchTotal}건은 과거 데이터, 운영 가드 0건 유지`);
     }
   }
   if (!mismatchFreshness.ok) {
@@ -773,10 +794,10 @@ async function main() {
     decision: "보류 유지 / 비용 차단 유지 / No-Go 유지",
     mission: "strategy_id 불일치 드롭 해소를 위한 실서버/코드 정합성 동기화",
     mismatch: {
-      total_count: mismatchTotal,
+      total_count: auditMismatchTotal,
       guard_count: mismatchGuardCount,
       after_live_revision_count: Number.isFinite(mismatchAfterSyncCount) ? mismatchAfterSyncCount : null,
-      historical_count: Number.isFinite(mismatchHistoricalCount) ? mismatchHistoricalCount : null,
+      historical_count: auditHistoricalCount,
       count_policy: "guard_count(운영판정)=신규 불일치, total_count(감사)=누적 불일치",
       received_strategy_ids: receivedIds,
       expected_strategy_ids: expectedIds,
@@ -974,4 +995,5 @@ module.exports = {
   normalizeStrategyIdCsv,
   strategyIdCsvEqual,
   csvIncludesStrategyId,
+  resolveMismatchAuditCounts,
 };

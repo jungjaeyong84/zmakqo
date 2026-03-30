@@ -56,15 +56,32 @@ function run() {
     objectiveSupervisor: {
       verdict: "HOLD",
     },
+    selfEvolutionDataset: {
+      summary: {
+        febt_active_eligible_by_market: [
+          { key: "ETHUSDT", eligible_n: 10, with_febt_n: 6, coverage_rate: 0.6 },
+          { key: "DOGEUSDT", eligible_n: 4, with_febt_n: 0, coverage_rate: 0 },
+        ],
+        entry_fallback_pending_active_by_market: [
+          { key: "ETHUSDT", count: 2 },
+          { key: "DOGEUSDT", count: 1 },
+        ],
+        entry_fallback_payload_missing_by_market: [
+          { key: "ETHUSDT", count: 2 },
+          { key: "DOGEUSDT", count: 1 },
+        ],
+      },
+    },
   });
 
   assert.strictEqual(Array.isArray(contracts), true);
-  assert.strictEqual(contracts.length, 2);
-  assert.strictEqual(contracts[0].market, "BTCUSDT");
-  assert.strictEqual(contracts[0].mode, "NORMAL");
-  assert.strictEqual(contracts[1].market, "DOGEUSDT");
-  assert.strictEqual(contracts[1].mode, "COUNT_GUARD_ACTIVE");
-  assert.strictEqual(contracts[1].dominant_disagreement_reason, "FEBT_BLOCK_LEGACY_ALLOW");
+  assert.strictEqual(contracts.length, 3);
+  const byMarket = new Map(contracts.map((row) => [row.market, row]));
+  assert.strictEqual(byMarket.get("BTCUSDT").mode, "NORMAL");
+  assert.strictEqual(byMarket.get("DOGEUSDT").mode, "COUNT_GUARD_ACTIVE");
+  assert.strictEqual(byMarket.get("DOGEUSDT").dominant_disagreement_reason, "FEBT_BLOCK_LEGACY_ALLOW");
+  assert.strictEqual(byMarket.get("ETHUSDT").calc_ok_rate, 0.6);
+  assert.strictEqual(byMarket.get("ETHUSDT").dominant_shadow_verdict, "ACTIVE_DATASET");
 
   const marketGuard = __test.deriveBestFebtMarketGuardContract({
     contract: { mode: "NORMAL" },
