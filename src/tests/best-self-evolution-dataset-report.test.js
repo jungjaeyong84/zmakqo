@@ -46,6 +46,8 @@ function run() {
       entry_pending_total_n: 4,
       entry_executed_null_realized_n: 2,
       entry_fallback_pending_n: 2,
+      entry_fallback_payload_missing_n: 2,
+      entry_fallback_payload_missing_linked_n: 1,
       entry_fallback_pending_active_n: 1,
       entry_fallback_pending_active_by_market: [{ key: "BTCUSDT", count: 1 }],
       entry_fallback_pending_active_by_family: [{ key: "CORE_LONG", count: 1 }],
@@ -61,6 +63,7 @@ function run() {
       febt_coverage_rate_eligible: 0.92,
       febt_active_eligible_n: 9,
       febt_coverage_rate_active_eligible: 0.89,
+      febt_active_missing_n: 1,
       entry_fallback_pending_by_reason: [{ key: "PAYLOAD_MISSING", count: 2 }],
       entry_fallback_pending_by_market: [{ key: "BTCUSDT", count: 1 }, { key: "ETHUSDT", count: 1 }],
       entry_fallback_pending_by_event: [{ key: "CORE_LONG", count: 2 }],
@@ -106,10 +109,11 @@ function run() {
   assert.ok(markdown.includes("window_source: ROLLING_FALLBACK_STALE_WEEKLY_RANGE"));
   assert.ok(markdown.includes("realized_n: 8 / all_realized_n: 9 / features 91.00% / FEBT all 83.00% / eligible 92.00% (12)"));
   assert.ok(markdown.includes("active_entry_n: 18 / legacy_entry_n: 2 / active_family: CORE_LONG 8 / EARLY_LONG 6 / CORE_SHORT 4 / legacy_family: PRE_REAL_LONG 2"));
-  assert.ok(markdown.includes("FEBT active eligible 89.00% (9) / by_family: CORE_LONG 5/6 (83.33%) / by_market: BTCUSDT 6/7 (85.71%)"));
+  assert.ok(markdown.includes("FEBT active eligible 89.00% (9) / missing 1 / by_family: CORE_LONG 5/6 (83.33%) / by_market: BTCUSDT 6/7 (85.71%)"));
   assert.ok(markdown.includes("entry_pending_total_n: 4 / executed_null_realized 2 / fallback_pending 2 / exit_present_unlabeled 1 / open_pending 1 / link_missing 0"));
   assert.ok(markdown.includes("executed_exit_only_n: 1 / exit_only_n: 1 / exit_only_realized_n: 1"));
   assert.ok(markdown.includes("fallback_pending_reason: PAYLOAD_MISSING 2"));
+  assert.ok(markdown.includes("fallback_payload_missing: 2 / linked_exec 1"));
   assert.ok(markdown.includes("fallback_pending_market: BTCUSDT 1 / ETHUSDT 1 / event: CORE_LONG 2"));
   assert.ok(markdown.includes("fallback_pending_active: 1 / market: BTCUSDT 1 / family: CORE_LONG 1"));
   assert.ok(markdown.includes("fallback_pending_legacy: 1 / family: PRE_REAL_LONG 1"));

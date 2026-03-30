@@ -48,6 +48,10 @@ function mergeFeatures(...objects) {
   return out;
 }
 
+function hasValue(value) {
+  return !(value === null || value === undefined || value === "");
+}
+
 function countPresentKeys(obj, keys = []) {
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) return 0;
   let n = 0;
@@ -851,6 +855,12 @@ function buildUnifiedLearningRows({
       realizedTradesN: realizedTradeRows.length,
       chainRow: matchedChainRow,
     });
+    const featuresWithIdentity = mergeFeatures(features, {
+      entry_event_id: entryEventId,
+      entry_signal_type: event,
+      signal_id: signalId,
+      signal_key: signalKey,
+    });
 
     return {
       signal_id: signalId,
@@ -864,7 +874,7 @@ function buildUnifiedLearningRows({
       signal_bar_close_time_utc_ms: resolveSignalBarCloseMs(baseRow),
       source_row_type: sourceRowType,
 
-      features_json: Object.keys(features).length ? features : null,
+      features_json: Object.keys(featuresWithIdentity).length ? featuresWithIdentity : null,
       entry_grade: String(
         features.entry_grade
         || features.entry_tier
@@ -939,11 +949,29 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
   const realizedRows = executedRows.filter((row) => Number.isFinite(toNum(row.realized_ret_net)));
   const allRealizedRows = scoped.filter((row) => Number.isFinite(toNum(row.realized_ret_net)));
   const withFeatures = scoped.filter((row) => row.features_json && typeof row.features_json === "object");
-  const hasFebt = (row) => row && row.features_json && (
-    row.features_json.febt_phase !== undefined
-    || row.features_json.febt_edge !== undefined
-    || row.features_json.febt_lock_score !== undefined
-  );
+  const hasFebt = (row) => {
+    const features = resolveFeatures(row);
+    if (!features || typeof features !== "object") return false;
+    if (features.febt_payload_missing === true) return false;
+    const phase = toUpper(features.febt_phase, "");
+    const mode = toUpper(features.febt_mode, "");
+    const authority = toUpper(features.febt_authority, "");
+    const timingAction = toUpper(features.febt_timing_action, "");
+    const calcReason = toUpper(features.febt_calc_reason, "");
+    return (
+      Number.isFinite(toNum(features.febt_edge))
+      || Number.isFinite(toNum(features.febt_lock_score))
+      || Number.isFinite(toNum(features.febt_delay_cost))
+      || Number.isFinite(toNum(features.febt_late_risk))
+      || Number.isFinite(toNum(features.febt_failure_risk))
+      || features.febt_calc_ok === true
+      || (phase && phase !== "UNKNOWN")
+      || (mode && mode !== "UNKNOWN")
+      || (authority && authority !== "UNKNOWN")
+      || (timingAction && timingAction !== "UNKNOWN")
+      || (calcReason && calcReason !== "UNKNOWN")
+    );
+  };
   const withFebt = scoped.filter((row) => row.features_json && (
     row.features_json.febt_phase !== undefined
     || row.features_json.febt_edge !== undefined
@@ -958,6 +986,22 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
     if (rowType === "DROP" && ["EV", "TIMING", "OPS", "FILLED"].includes(dropStage)) return true;
     return false;
   });
+  const hasFebtContractEvidence = (row) => {
+    const features = resolveFeatures(row);
+    const waitAction = String(features.wait_one_bar_market_state_action || features.legacy_wait_action || "").trim();
+    return (
+      hasFebt(row)
+      || features.febt_payload_missing === true
+      || hasValue(features.febt_shadow_verdict)
+      || hasValue(features.febt_shadow_fallback_reason)
+      || hasValue(features.febt_shadow_legacy_wait_action)
+      || hasValue(features.febt_calc_reason)
+      || hasValue(features.febt_mode)
+      || hasValue(features.febt_phase)
+      || hasValue(waitAction)
+      || toUpper(row && row.drop_stage_key, "") === "TIMING"
+    );
+  };
   const nullRealizedExecuted = executedRows.filter((row) => !Number.isFinite(toNum(row.realized_ret_net)));
   const pendingEntryRows = nullRealizedExecuted.filter((row) => !String(row.event || "").toUpperCase().startsWith("EXIT_"));
   const pendingEntryExecuted = pendingEntryRows.filter((row) => {
@@ -967,9 +1011,15 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
   const pendingEntryFallback = pendingEntryRows.filter((row) => toUpper(row && row.source_row_type, "UNKNOWN") === "FALLBACK");
   const activeEntryRows = scoped.filter((row) => resolveActiveFamily(row));
   const legacyEntryRows = scoped.filter((row) => resolveLegacyFamily(row));
-  const febtActiveEligibleRows = febtEligibleRows.filter((row) => resolveActiveFamily(row));
+  const febtActiveEligibleRows = scoped.filter((row) => resolveActiveFamily(row) && hasFebtContractEvidence(row));
   const pendingEntryFallbackActive = pendingEntryFallback.filter((row) => resolveActiveFamily(row));
   const pendingEntryFallbackLegacy = pendingEntryFallback.filter((row) => resolveLegacyFamily(row));
+  const pendingEntryFallbackPayloadMissing = pendingEntryFallback.filter((row) => toUpper(row && row.fallback_reason, "") === "PAYLOAD_MISSING");
+  const pendingEntryFallbackPayloadMissingLinked = pendingEntryFallbackPayloadMissing.filter((row) => (
+    hasValue(row && row.entry_event_id)
+    || Number(row && row.fills_n || 0) > 0
+    || Number(row && row.trades_n || 0) > 0
+  ));
   const executedExitOnly = scoped.filter((row) => row.source_row_type === "EXIT_ONLY");
   const realizedSourceCounts = countBy(realizedRows.filter((row) => row.realized_source), (row) => row.realized_source);
   const allRealizedSourceCounts = countBy(allRealizedRows.filter((row) => row.realized_source), (row) => row.realized_source);
@@ -1007,6 +1057,8 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
     entry_fallback_pending_by_reason: countBy(pendingEntryFallback, (row) => row.fallback_reason).slice(0, 10),
     entry_fallback_pending_by_market: countBy(pendingEntryFallback, (row) => row.market).slice(0, 10),
     entry_fallback_pending_by_event: countBy(pendingEntryFallback, (row) => row.event).slice(0, 10),
+    entry_fallback_payload_missing_n: pendingEntryFallbackPayloadMissing.length,
+    entry_fallback_payload_missing_linked_n: pendingEntryFallbackPayloadMissingLinked.length,
     entry_fallback_pending_active_n: pendingEntryFallbackActive.length,
     entry_fallback_pending_active_by_market: countBy(pendingEntryFallbackActive, (row) => row.market).slice(0, 10),
     entry_fallback_pending_active_by_family: countBy(pendingEntryFallbackActive, (row) => resolveActiveFamily(row)).slice(0, 10),
@@ -1023,6 +1075,7 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
     febt_coverage_rate_active_eligible: febtActiveEligibleRows.length > 0
       ? (febtActiveEligibleRows.filter((row) => hasFebt(row)).length / febtActiveEligibleRows.length)
       : null,
+    febt_active_missing_n: febtActiveEligibleRows.filter((row) => !hasFebt(row)).length,
     febt_active_eligible_by_market: coverageByGroup(febtActiveEligibleRows, (row) => row.market).slice(0, 10),
     febt_active_eligible_by_family: coverageByGroup(febtActiveEligibleRows, (row) => resolveActiveFamily(row)).slice(0, 10),
     avg_realized_ret_net: mean(realizedRows.map((row) => row.realized_ret_net)),

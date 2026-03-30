@@ -323,6 +323,8 @@ function run() {
   assert.strictEqual(legacyLinked.tp1_first, true);
   assert.strictEqual(legacyLinked.realized_ret_net, 0.11);
   assert.strictEqual(legacyLinked.outcome_state, "REALIZED");
+  assert.strictEqual(legacyLinked.features_json.entry_event_id, "ENTRY__BINANCEFUT__SOLUSDT__15m__6000__EARLY_SHORT");
+  assert.strictEqual(legacyLinked.features_json.entry_signal_type, "EARLY_SHORT");
   assert.strictEqual(chainOnly.source_row_type, "MISSED");
   assert.strictEqual(chainOnly.febt_phase, "ARMED");
   assert.strictEqual(chainOnly.febt_edge, 0.42);
@@ -355,9 +357,12 @@ function run() {
   assert.ok(summary.active_entry_family_counts.some((item) => item.key === "EARLY_LONG" && item.count === 2));
   assert.strictEqual(summary.entry_fallback_pending_active_n, 0);
   assert.strictEqual(summary.entry_fallback_pending_legacy_n, 0);
-  assert.strictEqual(summary.febt_active_eligible_n, 7);
-  assert.ok(summary.febt_coverage_rate_active_eligible >= 0.8);
-  assert.ok(summary.febt_active_eligible_by_family.some((item) => item.key === "CORE_LONG" && item.eligible_n === 3));
+  assert.strictEqual(summary.entry_fallback_payload_missing_n, 0);
+  assert.strictEqual(summary.entry_fallback_payload_missing_linked_n, 0);
+  assert.strictEqual(summary.febt_active_eligible_n, 6);
+  assert.strictEqual(summary.febt_active_missing_n, 0);
+  assert.strictEqual(summary.febt_coverage_rate_active_eligible, 1);
+  assert.ok(summary.febt_active_eligible_by_family.some((item) => item.key === "CORE_LONG" && item.eligible_n === 2));
   assert.strictEqual(summary.executed_exit_only_n, 1);
   assert.ok(summary.febt_coverage_rate > 0.5);
   assert.ok(summary.febt_coverage_rate_eligible >= summary.febt_coverage_rate);
