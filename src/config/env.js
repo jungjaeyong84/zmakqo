@@ -32,7 +32,7 @@ module.exports = {
     evalLatest: toBool(process.env.AUTO_EVAL_LATEST, true),
     evalLatestCheckMs: toNum(process.env.AUTO_EVAL_LATEST_CHECK_MS, 6 * 60 * 60 * 1000),
     evalLatestMaxAgeMs: toNum(process.env.AUTO_EVAL_LATEST_MAX_AGE_MS, 24 * 60 * 60 * 1000),
-    selfEvolution: toBool(process.env.AUTO_SELF_EVOLUTION, true),
+    selfEvolution: toBool(process.env.AUTO_SELF_EVOLUTION, false),
     selfEvolutionCheckMs: toNum(process.env.AUTO_SELF_EVOLUTION_CHECK_MS, 15 * 60 * 1000),
     selfEvolutionMaxAgeMs: toNum(process.env.AUTO_SELF_EVOLUTION_MAX_AGE_MS, 4 * 60 * 60 * 1000),
     selfEvolutionLockStaleMs: toNum(process.env.AUTO_SELF_EVOLUTION_LOCK_STALE_MS, 2 * 60 * 60 * 1000),
