@@ -10,6 +10,7 @@ const {
   nowKstMeta,
   readJsonRawSafe,
   resolveAutomationCycleMeta,
+  selfEvolutionSnapshotLatestPath,
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
@@ -18,7 +19,7 @@ const { deriveDeploymentGuards } = require("../src/utils/bestSelfEvolutionDeploy
 loadLocalEnv();
 
 const INPUTS = Object.freeze({
-  objectiveSupervisor: path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json"),
+  objectiveSupervisor: selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json"),
   candidates: path.join(OPS_DAILY_DIR, "best_self_evolution_candidates_latest.json"),
   replay: path.join(OPS_DAILY_DIR, "best_self_evolution_replay_latest.json"),
   canary: path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json"),

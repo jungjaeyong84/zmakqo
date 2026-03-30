@@ -14,6 +14,7 @@ const {
   readJsonRawSafe,
   resolveAutomationCycleMeta,
   sendKoreanTelegramSummary,
+  selfEvolutionSnapshotLatestPath,
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
@@ -61,6 +62,8 @@ const FRESHNESS_HOURS = Object.freeze({
   codex: Math.max(12, Number(process.env.STAGE_AUTOPILOT_CODEX_MAX_AGE_HOURS || 48)),
 });
 const SELF_EVOLUTION_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json");
+const SELF_EVOLUTION_OBJECTIVE_SUPERVISOR_LATEST_PATH = selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json");
+const SELF_EVOLUTION_LOOP_MONITOR_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_loop_monitor_latest.json");
 const AI_SNAPSHOT_KEYS = Object.freeze([
   "ai_missing_policy",
   "ai_missing_reduce_pct",
@@ -81,8 +84,36 @@ const MARKET_SNAPSHOT_KEYS = Object.freeze([
   "ai_bias_gate_strong_opposite_conf",
 ]);
 
-function buildLoopMonitorView({ objectiveArtifact = null, cycleMeta = null } = {}) {
+function buildLoopMonitorView({ objectiveArtifact = null, loopMonitorArtifact = null, cycleMeta = null } = {}) {
   const expectedCycleId = String(cycleMeta && cycleMeta.cycle_id || "").trim() || null;
+  const loopMonitorData = loopMonitorArtifact && loopMonitorArtifact.data && typeof loopMonitorArtifact.data === "object"
+    ? (loopMonitorArtifact.data.raw && typeof loopMonitorArtifact.data.raw === "object" ? loopMonitorArtifact.data.raw : loopMonitorArtifact.data)
+    : null;
+  const loopSummary = loopMonitorData && loopMonitorData.summary && typeof loopMonitorData.summary === "object"
+    ? loopMonitorData.summary
+    : null;
+  if (
+    loopMonitorArtifact
+    && loopMonitorArtifact.fresh === true
+    && loopSummary
+    && String(loopSummary.cycle_id || "").trim()
+    && String(loopSummary.cycle_id || "").trim() === expectedCycleId
+  ) {
+    return {
+      available: true,
+      source: "FINAL_LOOP_MONITOR",
+      cycle_id: String(loopSummary.cycle_id || "").trim() || expectedCycleId,
+      overall_status: String(loopSummary.overall_status || "").trim().toUpperCase() || null,
+      cycle_consistent: loopSummary.cycle_consistent === true
+        ? true
+        : (loopSummary.cycle_consistent === false ? false : null),
+      stale_artifact_n: toNum(loopSummary.stale_artifact_n),
+      critical_blockers: Array.isArray(loopSummary.critical_blockers) ? loopSummary.critical_blockers : [],
+      promotion_path_ready: loopSummary.promotion_path_ready === true,
+      manual_paste_ready: loopSummary.manual_paste_ready === true,
+      ready_candidate_id: String(loopSummary.ready_candidate_id || "").trim() || null,
+    };
+  }
   return {
     available: false,
     source: "PENDING_FINAL_LOOP_MONITOR",
@@ -355,6 +386,7 @@ function buildPineCandidate(objectiveArtifact, codexArtifact, changeArtifact) {
     || String(codexAuthority.status || "").toUpperCase() === "FRESH"
   );
   if (verdict === "PATCH_CANDIDATE") {
+    const recoveryPromotion = objective.promotion && objective.promotion.recovery_mode === true;
     const candidateId = String(
       codexAuthority.recommended_candidate_id
       || objective.promotion && objective.promotion.candidate_id
@@ -362,7 +394,7 @@ function buildPineCandidate(objectiveArtifact, codexArtifact, changeArtifact) {
       || ""
     ).trim();
     return {
-      actionable: !!candidateId && codexFresh && codexVerdict === "PROMOTE",
+      actionable: !!candidateId && (recoveryPromotion || (codexFresh && codexVerdict === "PROMOTE")),
       kind: "PROMOTE",
       signature: candidateId || null,
       reason: String(objective.reason || "PATCH_CANDIDATE"),
@@ -687,7 +719,12 @@ async function processPineStage({
       action: null,
     };
   }
-  if (stageState.applied_signature === candidate.signature && stageState.machine_state === STATE_MACHINE.READY) {
+  const stageAlreadyPrepared = Boolean(
+    stageState.prepared_file_path
+    || stageState.latest_generated_file_path
+    || stageState.rollback_source_file_path
+  );
+  if (stageState.applied_signature === candidate.signature && stageState.machine_state === STATE_MACHINE.READY && stageAlreadyPrepared) {
     return {
       stageState: stageState,
       history,
@@ -702,17 +739,22 @@ async function processPineStage({
     : (String(latestWeeklyHistory.created_file_path || "").trim() || null);
   const latestGeneratedFilePath = String(latestWeeklyHistory.latest_generated_file_path || "").trim() || null;
   const rollbackSourceFilePath = String(latestWeeklyHistory.rollback_source_file_path || "").trim() || null;
+  const preparedArtifactAvailable = Boolean(preparedFilePath || latestGeneratedFilePath || rollbackSourceFilePath);
   const nextState = {
     ...stageState,
     stage,
-    machine_state: prep.ok ? STATE_MACHINE.READY : STATE_MACHINE.HOLD,
+    machine_state: prep.ok && preparedArtifactAvailable ? STATE_MACHINE.READY : STATE_MACHINE.HOLD,
     last_signature: candidate.signature,
     last_action: "PINE_PREPARE",
-    last_reason: prep.ok ? `${candidate.kind}_PREPARED` : `PINE_PREPARE_FAILED:${prep.error || prep.status || "UNKNOWN"}`,
+    last_reason: prep.ok
+      ? (preparedArtifactAvailable ? `${candidate.kind}_PREPARED` : "PINE_PREPARE_PENDING")
+      : `PINE_PREPARE_FAILED:${prep.error || prep.status || "UNKNOWN"}`,
     streak_current: candidate.signature ? computeSignatureStreak(history, stage, candidate.signature) : 0,
     applied_signature: candidate.signature,
     applied_at_kst: nowMeta.kst,
-    blockers: prep.ok ? [] : ["PINE_PREPARE_FAILED"],
+    blockers: prep.ok
+      ? (preparedArtifactAvailable ? [] : ["PINE_PREPARE_PENDING"])
+      : ["PINE_PREPARE_FAILED"],
     prep_stdout: prep.stdout ? prep.stdout.slice(-4000) : "",
     prep_stderr: prep.stderr ? prep.stderr.slice(-4000) : "",
     prepared_file_path: preparedFilePath,
@@ -749,13 +791,16 @@ async function main() {
     ? bestFebtContext.contract
     : null;
   const objectiveArtifact = readArtifact("objective_supervisor", path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json"), FRESHNESS_HOURS.objective);
+  const selfEvolutionObjectiveArtifact = readArtifact("self_evolution_objective_supervisor", SELF_EVOLUTION_OBJECTIVE_SUPERVISOR_LATEST_PATH, FRESHNESS_HOURS.objective);
   const mlArtifact = readArtifact("ml_filter_policy", path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.json"), FRESHNESS_HOURS.ml);
   const evArtifact = readArtifact("ev_tp1_threshold_tune", path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json"), FRESHNESS_HOURS.ev);
   const waitArtifact = readArtifact("wait_one_bar_tune", path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json"), FRESHNESS_HOURS.wait);
   const canaryArtifact = readArtifact("filter_shadow_canary", path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json"), FRESHNESS_HOURS.canary);
   const selfEvolutionCanaryArtifact = readArtifact("best_self_evolution_canary", SELF_EVOLUTION_CANARY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCanary);
+  const selfEvolutionLoopMonitorArtifact = readArtifact("best_self_evolution_loop_monitor", SELF_EVOLUTION_LOOP_MONITOR_LATEST_PATH, FRESHNESS_HOURS.objective);
   const changeArtifact = readArtifact("pine_quality_change_control", path.join(OPS_DAILY_DIR, "pine_quality_change_control_latest.json"), FRESHNESS_HOURS.change);
   const codexArtifact = readArtifact("codex_weekly_patch_engine", path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.json"), FRESHNESS_HOURS.codex);
+  const objectiveArtifactForLoop = selfEvolutionObjectiveArtifact.exists ? selfEvolutionObjectiveArtifact : objectiveArtifact;
   const currentSysRes = await getSystemSettingsForProvider(PROVIDER, 0);
   const currentSys = currentSysRes && currentSysRes.data ? currentSysRes.data : {};
   const autopilotStore = readAutopilotState();
@@ -769,18 +814,18 @@ async function main() {
   const selfEvolutionCanary = selfEvolutionCanaryArtifact && selfEvolutionCanaryArtifact.data && selfEvolutionCanaryArtifact.data.summary
     ? selfEvolutionCanaryArtifact.data.summary
     : {};
-  const selfEvolutionDeployment = objectiveArtifact && objectiveArtifact.data && objectiveArtifact.data.self_evolution_deployment
-    && typeof objectiveArtifact.data.self_evolution_deployment === "object"
-      ? objectiveArtifact.data.self_evolution_deployment
+  const selfEvolutionDeployment = objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.self_evolution_deployment
+    && typeof objectiveArtifactForLoop.data.self_evolution_deployment === "object"
+      ? objectiveArtifactForLoop.data.self_evolution_deployment
       : {};
-  const selfEvolutionDeploymentPlan = objectiveArtifact && objectiveArtifact.data && objectiveArtifact.data.self_evolution_deployment_plan
-    && typeof objectiveArtifact.data.self_evolution_deployment_plan === "object"
-      ? objectiveArtifact.data.self_evolution_deployment_plan
+  const selfEvolutionDeploymentPlan = objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.self_evolution_deployment_plan
+    && typeof objectiveArtifactForLoop.data.self_evolution_deployment_plan === "object"
+      ? objectiveArtifactForLoop.data.self_evolution_deployment_plan
       : {};
-  const selfEvolutionLoopMonitor = buildLoopMonitorView({ objectiveArtifact, cycleMeta });
-  const codexAuthority = objectiveArtifact && objectiveArtifact.data && objectiveArtifact.data.codex_authority
-    && typeof objectiveArtifact.data.codex_authority === "object"
-      ? objectiveArtifact.data.codex_authority
+  const selfEvolutionLoopMonitor = buildLoopMonitorView({ objectiveArtifact: objectiveArtifactForLoop, loopMonitorArtifact: selfEvolutionLoopMonitorArtifact, cycleMeta });
+  const codexAuthority = objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.codex_authority
+    && typeof objectiveArtifactForLoop.data.codex_authority === "object"
+      ? objectiveArtifactForLoop.data.codex_authority
       : {};
   const canaryPass = shadowCanaryPass && Boolean(selfEvolutionCanary.apply_pass === true);
   const canaryReason = !shadowCanaryPass
@@ -791,7 +836,7 @@ async function main() {
   const actions = [];
   const stageRows = [];
 
-  const aiCandidate = buildAiStageCandidate(mlArtifact, currentSys, objectiveArtifact.data || {});
+  const aiCandidate = buildAiStageCandidate(mlArtifact, currentSys, objectiveArtifactForLoop.data || {});
   const aiBestFebtGuard = bestFebtAutopilotGuard({ stage: "AI", candidate: aiCandidate, currentSys, bestFebtContract });
   if (aiBestFebtGuard.blocked) {
     aiCandidate.actionable = false;
@@ -806,7 +851,7 @@ async function main() {
     nowMeta,
     nowMs,
     canaryPass,
-    objectiveArtifact,
+    objectiveArtifact: objectiveArtifactForLoop,
     currentSys,
     snapshotKeys: AI_SNAPSHOT_KEYS,
     selfEvolutionRollbackReady,
@@ -826,7 +871,7 @@ async function main() {
     best_febt_guard: aiBestFebtGuard.reason,
   });
 
-  const marketCandidate = buildMarketStageCandidate(mlArtifact, currentSys, objectiveArtifact.data || {});
+  const marketCandidate = buildMarketStageCandidate(mlArtifact, currentSys, objectiveArtifactForLoop.data || {});
   const marketBestFebtGuard = bestFebtAutopilotGuard({ stage: "MARKET", candidate: marketCandidate, currentSys, bestFebtContract });
   if (marketBestFebtGuard.blocked) {
     marketCandidate.actionable = false;
@@ -841,7 +886,7 @@ async function main() {
     nowMeta,
     nowMs,
     canaryPass,
-    objectiveArtifact,
+    objectiveArtifact: objectiveArtifactForLoop,
     currentSys,
     snapshotKeys: MARKET_SNAPSHOT_KEYS,
     selfEvolutionRollbackReady,
@@ -866,7 +911,7 @@ async function main() {
     artifact: evArtifact,
     stateData,
     currentSys,
-    objectiveArtifact,
+    objectiveArtifact: objectiveArtifactForLoop,
     canaryPass,
     nowMeta,
     nowMs,
@@ -891,7 +936,7 @@ async function main() {
     artifact: waitArtifact,
     stateData,
     currentSys,
-    objectiveArtifact,
+    objectiveArtifact: objectiveArtifactForLoop,
     canaryPass,
     nowMeta,
     nowMs,
@@ -911,7 +956,7 @@ async function main() {
     snapshot_path: result.stageState.last_snapshot_path || null,
   });
 
-  const pineCandidate = buildPineCandidate(objectiveArtifact, codexArtifact, changeArtifact);
+  const pineCandidate = buildPineCandidate(objectiveArtifactForLoop, codexArtifact, changeArtifact);
   if (pineCandidate.actionable && pineCandidate.kind === "PROMOTE" && selfEvolutionDeployment.deploy_pass !== true) {
     pineCandidate.actionable = false;
     pineCandidate.reason = Array.isArray(selfEvolutionDeployment.blockers) && selfEvolutionDeployment.blockers.length
@@ -937,7 +982,7 @@ async function main() {
     pineCandidate.reason = "SELF_EVOLUTION_LOOP_STALE";
   }
   result = await processPineStage({
-    objectiveArtifact,
+    objectiveArtifact: objectiveArtifactForLoop,
     codexArtifact,
     changeArtifact,
     stateData,
@@ -974,7 +1019,7 @@ async function main() {
     cycle_id: cycleMeta.cycle_id,
     generation_id: cycleMeta.generation_id,
     provider: PROVIDER,
-    objective_verdict: String(objectiveArtifact && objectiveArtifact.data && objectiveArtifact.data.verdict || "N/A"),
+    objective_verdict: String(objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.verdict || "N/A"),
     canary_pass: canaryPass,
     self_evolution_canary: {
       available: !!(selfEvolutionCanaryArtifact && selfEvolutionCanaryArtifact.data),
@@ -986,7 +1031,7 @@ async function main() {
       top_rollback_market: String(selfEvolutionCanary.top_rollback_market || "").trim() || null,
     },
     self_evolution_deployment: {
-      available: !!(objectiveArtifact && objectiveArtifact.data && objectiveArtifact.data.self_evolution_deployment),
+      available: !!(objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.self_evolution_deployment),
       deploy_pass: selfEvolutionDeployment.deploy_pass === true,
       rollback_only: selfEvolutionDeployment.rollback_only === true,
       target_candidate_id: String(selfEvolutionDeployment.target_candidate_id || "").trim() || null,
@@ -994,7 +1039,7 @@ async function main() {
       canary_open_wave: toNum(selfEvolutionDeployment.canary_open_wave) || 1,
     },
     self_evolution_deployment_plan: {
-      available: !!(objectiveArtifact && objectiveArtifact.data && objectiveArtifact.data.self_evolution_deployment_plan),
+      available: !!(objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.self_evolution_deployment_plan),
       plan_status: String(selfEvolutionDeploymentPlan.plan_status || "").trim().toUpperCase() || null,
       prepare_pass: selfEvolutionDeploymentPlan.prepare_pass === true,
       manual_step_required: selfEvolutionDeploymentPlan.manual_step_required === true,
@@ -1040,7 +1085,7 @@ async function main() {
     best_febt_tuning_contract: bestFebtContract,
     stage_rows: stageRows,
     actions,
-    artifacts: [objectiveArtifact, mlArtifact, evArtifact, waitArtifact, canaryArtifact, selfEvolutionCanaryArtifact, changeArtifact, codexArtifact].map((row) => ({
+    artifacts: [objectiveArtifactForLoop, mlArtifact, evArtifact, waitArtifact, canaryArtifact, selfEvolutionCanaryArtifact, selfEvolutionLoopMonitorArtifact, changeArtifact, codexArtifact].map((row) => ({
       name: row.name,
       filePath: row.filePath,
       fresh: row.fresh,

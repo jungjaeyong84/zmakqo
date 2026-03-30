@@ -50,6 +50,8 @@ const REQUIRED_QA_ARTIFACTS = Object.freeze({
 const CHANGE_CONTROL_LATEST_PATH = resolveLatestArtifactPath("pine_quality_change_control_latest.json", "pine_stage1_change_control_latest.json");
 const CODEX_PATCH_REVIEW_LATEST_PATH = path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.json");
 const OBJECTIVE_RETROSPECTIVE_LATEST_PATH = path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json");
+const SELF_EVOLUTION_OBJECTIVE_SUPERVISOR_LATEST_PATH = resolveLatestArtifactPath("best_self_evolution_objective_supervisor_latest.json", "objective_supervisor_latest.json");
+const SELF_EVOLUTION_CANDIDATES_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_candidates_latest.json");
 const CODEX_PATCH_REVIEW_MAX_AGE_HOURS = Math.max(6, Number(process.env.CODEX_PATCH_REVIEW_MAX_AGE_HOURS || 36));
 
 function parsePineBaseInfo() {
@@ -420,6 +422,8 @@ function buildMonthlyRows(weeklyRows) {
 function applyInputChange(text, change, registryMap) {
   const reg = registryMap.get(change.key);
   if (!reg || !reg.code_anchor || !Number.isFinite(Number(reg.code_anchor.line_start))) {
+    const abstractPatched = applyAbstractSharedChange(text, change);
+    if (abstractPatched != null) return abstractPatched;
     throw new Error(`ANCHOR_MISSING:${change.key}`);
   }
   const lines = text.split(/\r?\n/);
@@ -432,6 +436,47 @@ function applyInputChange(text, change, registryMap) {
   if (replaced === lines[idx]) throw new Error(`INPUT_REPLACE_FAILED:${change.key}`);
   lines[idx] = replaced;
   return lines.join("\n");
+}
+
+function patchNumberLiteral(text, pattern, delta) {
+  let replaced = false;
+  const out = String(text || "").replace(pattern, (_match, prefix, num, suffix = "") => {
+    replaced = true;
+    return `${prefix}${Number(num) + Number(delta)}${suffix}`;
+  });
+  return replaced ? out : null;
+}
+
+function applyAbstractSharedChange(text, change = {}) {
+  const key = String(change.key || "").trim();
+  const delta = Number(
+    Object.prototype.hasOwnProperty.call(change, "new_value")
+      ? change.new_value
+      : (Object.prototype.hasOwnProperty.call(change, "next") ? change.next : NaN)
+  );
+  if (!key || !Number.isFinite(delta)) return null;
+  if (key === "shared_regime_transition_confirmation") {
+    return patchNumberLiteral(
+      text,
+      /(bool\s+_regime_ok_core\s*=\s*_regime_for_core\s*==\s*"trend"\s+or\s+\(_regime_for_core\s*==\s*"transition"\s+and\s+math\.abs\(score\)\s*>=\s*)(\d+)(\))/,
+      delta
+    );
+  }
+  if (key === "entry_core_score_abs" || key === "shared_core_score_floor") {
+    return patchNumberLiteral(
+      text,
+      /(bf_core_score_min\s*=\s*input\.int\()(\d+)(,\s*"CORE 점수 최소")/,
+      delta
+    );
+  }
+  if (key === "shared_early_score_floor") {
+    return patchNumberLiteral(
+      text,
+      /(bf_early_score_min\s*=\s*input\.int\()(\d+)(,\s*"LONG\/SHORT 기본 점수 최소")/,
+      delta
+    );
+  }
+  return null;
 }
 
 function updateVersionInPine(text, newVersion) {
@@ -502,6 +547,52 @@ function readObjectiveRetrospectiveLatest() {
     daily: data.periods && data.periods.DAILY ? data.periods.DAILY : null,
     weekly: data.periods && data.periods.WEEKLY ? data.periods.WEEKLY : null,
     monthly: data.periods && data.periods.MONTHLY ? data.periods.MONTHLY : null,
+  };
+}
+
+function readSelfEvolutionObjectiveSupervisorLatest() {
+  const data = readJsonRawSafe(SELF_EVOLUTION_OBJECTIVE_SUPERVISOR_LATEST_PATH, null);
+  if (!data || typeof data !== "object") return null;
+  const raw = data.raw && typeof data.raw === "object" ? data.raw : data;
+  return {
+    filePath: SELF_EVOLUTION_OBJECTIVE_SUPERVISOR_LATEST_PATH,
+    raw,
+    verdict: String(raw.verdict || "HOLD").toUpperCase(),
+    reason: String(raw.reason || "").trim() || null,
+    promotion: raw.promotion && typeof raw.promotion === "object" ? raw.promotion : null,
+  };
+}
+
+function readSelfEvolutionCandidatesLatest() {
+  const data = readJsonRawSafe(SELF_EVOLUTION_CANDIDATES_LATEST_PATH, null);
+  if (!data || typeof data !== "object") return null;
+  return {
+    filePath: SELF_EVOLUTION_CANDIDATES_LATEST_PATH,
+    rows: Array.isArray(data.rows) ? data.rows : [],
+    summary: data.summary && typeof data.summary === "object" ? data.summary : null,
+  };
+}
+
+function buildSelfEvolutionRecoveryWeeklyCandidate({ objectiveSupervisor = null, candidatesReport = null } = {}) {
+  const promotion = objectiveSupervisor && objectiveSupervisor.promotion && typeof objectiveSupervisor.promotion === "object"
+    ? objectiveSupervisor.promotion
+    : null;
+  if (!promotion || promotion.ready !== true || promotion.recovery_mode !== true) return null;
+  const candidateId = String(promotion.candidate_id || "").trim();
+  if (!candidateId) return null;
+  const rows = candidatesReport && Array.isArray(candidatesReport.rows) ? candidatesReport.rows : [];
+  const row = rows.find((item) => String(item && item.candidate_id || "").trim() === candidateId);
+  if (!row || !Array.isArray(row.changes) || row.changes.length === 0) return null;
+  return {
+    patch_id: String(row.display_candidate_id || row.candidate_id || candidateId).trim(),
+    source: `self_evolution:${String(row.source || "RECOVERY").trim() || "RECOVERY"}`,
+    safe: true,
+    reason: String(promotion.reason || objectiveSupervisor.reason || row.status || "AUTONOMOUS_RECOVERY_PROMOTION").trim(),
+    changes: row.changes.map((change) => ({
+      ...change,
+      old_value: Object.prototype.hasOwnProperty.call(change, "old_value") ? change.old_value : change.current,
+      new_value: Object.prototype.hasOwnProperty.call(change, "new_value") ? change.new_value : change.next,
+    })),
   };
 }
 
@@ -664,6 +755,8 @@ async function main() {
   const weeklyGovernance = readWeeklyGovernanceLatest();
   const objectiveRetrospective = readObjectiveRetrospectiveLatest();
   const codexPatchReview = readCodexPatchReviewLatest();
+  const selfEvolutionObjectiveSupervisor = readSelfEvolutionObjectiveSupervisorLatest();
+  const selfEvolutionCandidates = readSelfEvolutionCandidatesLatest();
   const problemSignals = detectProblemSignals(currentPack);
   const baseInfo = parsePineBaseInfo();
   const octopusResult = runWeeklyOctopus({ meta, currentQa, previousQa, currentOverall, previousOverall, deltas, previousChangeAssessment, problemSignals, candidates, baseInfo, currentPack, previousPack, weeklyGovernance, objectiveRetrospective });
@@ -705,14 +798,21 @@ async function main() {
   let rollbackPrepared = false;
   let rollbackSourceFilePath = null;
   const safeCandidates = candidates.filter((row) => row.safe && Array.isArray(row.changes) && row.changes.length >= 1);
+  const recoveryPromotionCandidate = buildSelfEvolutionRecoveryWeeklyCandidate({
+    objectiveSupervisor: selfEvolutionObjectiveSupervisor,
+    candidatesReport: selfEvolutionCandidates,
+  });
   const promotionCandidateId = changeControl && changeControl.auto_promotion && changeControl.auto_promotion.ready
     ? String(changeControl.auto_promotion.candidate_id || "").trim()
-    : "";
+    : (recoveryPromotionCandidate ? String(recoveryPromotionCandidate.patch_id || "").trim() : "");
   const rollbackCandidatePath = changeControl && changeControl.auto_rollback && changeControl.auto_rollback.ready
     ? String(changeControl.auto_rollback.rollback_file_path || "").trim()
     : "";
+  const recoveryPromotionActive = Boolean(recoveryPromotionCandidate);
   const codexVerdict = codexPatchReview ? String(codexPatchReview.verdict || "HOLD").toUpperCase() : "HOLD";
-  const codexPromotionApproved = !promotionCandidateId
+  const codexPromotionApproved = recoveryPromotionActive
+    ? true
+    : !promotionCandidateId
     ? true
     : Boolean(codexPatchReview
       && codexPatchReview.fresh === true
@@ -728,12 +828,14 @@ async function main() {
   const octopusUnavailable = !octopusResult.ok
     || !octopusResult.summary
     || (octopusProviders.length > 0 && octopusProviders.every((row) => String(row.status || "").toUpperCase() === "UNAVAILABLE"));
-  if (!rollbackCandidatePath && currentQa.pass && previousQa.pass && previousChangeAssessment !== "harmful" && safeCandidates.length) {
+  if (!rollbackCandidatePath && (recoveryPromotionCandidate || (currentQa.pass && previousQa.pass && previousChangeAssessment !== "harmful" && safeCandidates.length))) {
     const octopusPatchId = String(octopusResult.summary && octopusResult.summary.recommended_patch_id || "hold").trim();
     const octopusVerdict = String(octopusResult.summary && octopusResult.summary.overall_verdict || "HOLD").toUpperCase();
     if (promotionCandidateId) {
       if (codexPromotionApproved) {
-        chosenCandidate = safeCandidates.find((row) => row.patch_id === promotionCandidateId) || null;
+        chosenCandidate = safeCandidates.find((row) => row.patch_id === promotionCandidateId)
+          || (recoveryPromotionCandidate && recoveryPromotionCandidate.patch_id === promotionCandidateId ? recoveryPromotionCandidate : null)
+          || null;
       }
     } else if (octopusUnavailable) {
       if (codexPatchReview && codexPatchReview.fresh === true && codexVerdict === "PROMOTE" && codexPatchReview.recommendedCandidateId) {
@@ -930,6 +1032,8 @@ if (require.main === module) {
     __test: {
       readZipJsonWithStatus,
       qaGateStatus,
+      buildSelfEvolutionRecoveryWeeklyCandidate,
+      applyInputChange,
     },
   };
 }

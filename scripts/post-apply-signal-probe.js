@@ -6,6 +6,7 @@ const path = require("path");
 const { getFirestore } = require("../src/storage/firestore");
 const { toKstString, kstDateKey } = require("../src/utils/timeKst");
 const { hasFebtContract } = require("../src/utils/febtPayloadContract");
+const { resolveActiveEntryFamily } = require("../src/utils/liveEntryTaxonomy");
 
 const ROOT = process.cwd();
 const OPS_DAILY = path.join(ROOT, "ops", "daily");
@@ -202,6 +203,7 @@ function buildVerification(signals) {
   let activeTracePayloadVersionCount = 0;
   let activeFebtContractCount = 0;
   let activeFebtTraceContractMissingCount = 0;
+  const activeEntryFamilyCounts = new Map();
   let costShieldEnableCount = 0;
   let costShieldEntryMultCount = 0;
   let qtySanitizedAnyCount = 0;
@@ -210,7 +212,12 @@ function buildVerification(signals) {
   for (const row of signals) {
     const features = row ? parseJsonObject(row.features_json) : null;
     const event = String((row && row.event) || (features && features.event) || "").trim().toUpperCase();
-    const isActiveEntry = ["EARLY_LONG", "EARLY_SHORT", "CORE_LONG", "CORE_SHORT"].includes(event);
+    const activeEntryFamily = resolveActiveEntryFamily({
+      event,
+      side: row && row.side,
+      features_json: features,
+    });
+    const isActiveEntry = !!activeEntryFamily;
     const tracePayloadVersion = row && row.trace_payload_version != null
       ? row.trace_payload_version
       : (features && (features.trace_payload_version || features.tracePayloadVersion));
@@ -242,6 +249,9 @@ function buildVerification(signals) {
     if (tracePayloadVersion != null && isActiveEntry) activeTracePayloadVersionCount += 1;
     if (febtContractPresent && isActiveEntry) activeFebtContractCount += 1;
     if (febtTraceContractMissing && isActiveEntry) activeFebtTraceContractMissingCount += 1;
+    if (activeEntryFamily) {
+      activeEntryFamilyCounts.set(activeEntryFamily, (activeEntryFamilyCounts.get(activeEntryFamily) || 0) + 1);
+    }
     if (typeof costShieldEnable === "boolean") costShieldEnableCount += 1;
     if (Number.isFinite(Number(costShieldEntryMult))) costShieldEntryMultCount += 1;
     if (typeof qtySanitized === "boolean") {
@@ -251,6 +261,7 @@ function buildVerification(signals) {
   }
 
   return {
+    active_entry_taxonomy: "ACTIVE_ENTRY_FAMILY",
     trace_payload_version_count: tracePayloadVersionCount,
     trace_emit_mode_count: traceEmitModeCount,
     trace_chain_key_count: traceChainKeyCount,
@@ -259,6 +270,9 @@ function buildVerification(signals) {
     active_trace_payload_version_count: activeTracePayloadVersionCount,
     active_febt_contract_count: activeFebtContractCount,
     active_febt_trace_contract_missing_count: activeFebtTraceContractMissingCount,
+    active_entry_family_counts: Array.from(activeEntryFamilyCounts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([key, count]) => ({ key, count })),
     cost_shield_enable_count: costShieldEnableCount,
     cost_shield_entry_mult_count: costShieldEntryMultCount,
     qty_sanitized_any_count: qtySanitizedAnyCount,
@@ -285,7 +299,7 @@ function buildMarkdown(payload, jsonPath) {
   }
   if (payload.verification.active_trace_payload_version_count > 0 && payload.verification.active_febt_contract_count === 0) {
     issues.push(
-      `[ISSUE] H | active TPTR_V2 신호 ${payload.verification.active_trace_payload_version_count}건에서 FEBT contract 0건 | TradingView 적용본 또는 nested features payload 누락 점검`
+      `[ISSUE] H | active TPTR_V2 신호 ${payload.verification.active_trace_payload_version_count}건에서 FEBT contract 0건 | active taxonomy=${payload.verification.active_entry_taxonomy || "N/A"} 기준으로 TradingView 적용본 또는 nested features payload 누락 점검`
     );
   } else if (payload.verification.active_febt_trace_contract_missing_count > 0) {
     issues.push(
@@ -330,6 +344,7 @@ ${payload.strategy_mismatch_top.length
 - trace_chain_key: \`${payload.verification.trace_chain_key_count}\`
 - febt_contract: \`${payload.verification.febt_contract_count}\`
 - febt_trace_contract_missing: \`${payload.verification.febt_trace_contract_missing_count}\`
+- active taxonomy: \`${payload.verification.active_entry_taxonomy || "N/A"}\` / family \`${(payload.verification.active_entry_family_counts || []).map((row) => `${row.key}:${row.count}`).join(", ") || "N/A"}\`
 - active tptr/febt/missing: \`${payload.verification.active_trace_payload_version_count}\` / \`${payload.verification.active_febt_contract_count}\` / \`${payload.verification.active_febt_trace_contract_missing_count}\`
 - cost_shield_enable: \`${payload.verification.cost_shield_enable_count}\`
 - cost_shield_entry_mult: \`${payload.verification.cost_shield_entry_mult_count}\`
@@ -459,17 +474,26 @@ async function main() {
   );
 }
 
-main().catch((err) => {
-  console.error(
-    JSON.stringify(
-      {
-        ok: false,
-        role: ROLE_NAME,
-        error: err && err.message ? err.message : String(err),
-      },
-      null,
-      2
-    )
-  );
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(
+      JSON.stringify(
+        {
+          ok: false,
+          role: ROLE_NAME,
+          error: err && err.message ? err.message : String(err),
+        },
+        null,
+        2
+      )
+    );
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  __test: {
+    buildVerification,
+    parseJsonObject,
+  },
+};

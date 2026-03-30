@@ -827,6 +827,9 @@ const FUTURES_BASE_LEVERAGE = normalizeFuturesLeverage(Number(process.env.FUTURE
 // Active runtime is LONG/SHORT + FIXED qty. Legacy tier budget auto-scaling stays disabled.
 const FUTURES_ENTRY_TIER_BUDGET_AUTO_SCALE = false;
 const FUTURES_ENTRY_TIER_TARGET_MODE = "FIXED";
+const FUTURES_ACTIVE_FIXED_MARGIN_TARGET = Number.isFinite(Number(process.env.FUTURES_ACTIVE_FIXED_MARGIN_TARGET))
+  ? Number(process.env.FUTURES_ACTIVE_FIXED_MARGIN_TARGET)
+  : 1000;
 const FUTURES_3X_BASE_WHITELIST = new Set(parseUpperList(
   process.env.FUTURES_3X_BASE_WHITELIST,
   ["BNBUSDT", "SOLUSDT"]
@@ -1122,7 +1125,7 @@ async function resolveAdaptiveFuturesLeverage({
   if (intentUpper !== "ENTRY" && intentUpper !== "ADD") return { leverage: baseLeverage, reason: "NON_ENTRY_INTENT" };
 
   const tier = resolveSignalTier(event, features);
-  if (tier !== "CORE" && tier !== "REAL") return { leverage: baseLeverage, reason: "NON_CORE_REAL_EVENT" };
+  if (tier !== "CORE" && tier !== "REAL") return { leverage: baseLeverage, reason: "NON_CORE_TIER_EVENT", tier };
 
   const regime = pickSignalRegime(features);
   if (regime !== "trend") return { leverage: baseLeverage, reason: "REGIME_NOT_TREND" };
@@ -1258,7 +1261,7 @@ async function resolveAdaptiveFuturesExitProfile({
   if (intentUpper !== "ENTRY" && intentUpper !== "ADD") return { ...base, reason: "NON_ENTRY_INTENT" };
 
   const tier = resolveSignalTier(event, features);
-  if (tier !== "CORE" && tier !== "REAL") return { ...base, reason: "NON_CORE_REAL_EVENT" };
+  if (tier !== "CORE" && tier !== "REAL") return { ...base, reason: "NON_CORE_TIER_EVENT", tier };
 
   const regime = pickSignalRegime(features);
   if (regime !== "trend") return { ...base, reason: "REGIME_NOT_TREND", tier };
@@ -6546,19 +6549,30 @@ function resolveEntryTierBudgetMax({
   baseLeverage = FUTURES_BASE_LEVERAGE,
 } = {}) {
   const ev = String(event || "").toUpperCase();
+  const base = Number(budgetMax);
+  const lev = normalizeFuturesLeverage(Number(baseLeverage), FUTURES_BASE_LEVERAGE);
   let tier = null;
   const qtyProfile = resolveSignalQtyProfile(ev, features);
   if (qtyProfile === "FIXED") {
+    const fixedTier = resolveSignalTier(ev, features) || "FIXED";
+    const targetMargin = Number.isFinite(FUTURES_ACTIVE_FIXED_MARGIN_TARGET) && FUTURES_ACTIVE_FIXED_MARGIN_TARGET > 0
+      ? FUTURES_ACTIVE_FIXED_MARGIN_TARGET
+      : null;
+    const applied = Number.isFinite(base) && base > 0 && Number.isFinite(targetMargin) && targetMargin > base;
     return {
-      applied: false,
-      tier: "FIXED",
-      budgetMax: Number(budgetMax),
+      applied,
+      tier: fixedTier,
+      budgetMax: applied ? targetMargin : Number(budgetMax),
       targetMode: FUTURES_ENTRY_TIER_TARGET_MODE,
-      targetNotional: null,
+      targetNotional: (Number.isFinite(targetMargin) && targetMargin > 0 && Number.isFinite(lev) && lev > 0)
+        ? (targetMargin * lev)
+        : null,
       dynamicPreRealTarget: null,
-      requiredBudget: null,
+      requiredBudget: Number.isFinite(targetMargin) && targetMargin > 0 ? targetMargin : null,
       qtyFraction: Number(qtyFraction),
       fixedQty: true,
+      targetMargin,
+      reason: applied ? "FIXED_MARGIN_TARGET_OVERRIDE" : "FIXED_MARGIN_TARGET_OK",
     };
   }
   if (isEarlyEventName(ev, features)) tier = "EARLY";
@@ -7520,6 +7534,7 @@ async function runPaperUpbitForBar({
       intent,
       executionMode,
       notional,
+      execQtyBase,
       execPrice: fillPrice,
       closeRatio,
       fullExit: intent === "EXIT" && newState === "FLAT",
@@ -9926,6 +9941,7 @@ async function runPaperFuturesForBar({
       intent,
       executionMode,
       notional,
+      execQtyBase,
       execPrice: fillPrice,
       closeRatio,
       fullExit: intent === "EXIT" && newState === "FLAT",

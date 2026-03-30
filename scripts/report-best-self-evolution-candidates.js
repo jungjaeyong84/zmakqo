@@ -10,6 +10,7 @@ const {
   nowKstMeta,
   readJsonRawSafe,
   resolveAutomationCycleMeta,
+  selfEvolutionSnapshotLatestPath,
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
@@ -18,7 +19,7 @@ const { buildCandidateChangeSets, unwrapRawReport } = require("../src/utils/best
 loadLocalEnv();
 
 const INPUTS = Object.freeze({
-  objectiveSupervisor: path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json"),
+  objectiveSupervisor: selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json"),
   patchCandidates: path.join(OPS_DAILY_DIR, "pine_quality_patch_candidates_latest.json"),
   ml: path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.json"),
   ev: path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json"),

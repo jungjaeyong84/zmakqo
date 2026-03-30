@@ -44,7 +44,12 @@ function renderMarkdown(report = {}) {
     lines.push("- none");
   } else {
     for (const row of rows.slice(0, 20)) {
-      lines.push(`- ${row.candidate_id}: ${row.validation_verdict} / delta=${row.candidate_objective_delta != null ? Number(row.candidate_objective_delta).toFixed(4) : "N/A"} / next=${row.projected_objective_score != null ? Number(row.projected_objective_score).toFixed(4) : "N/A"} / matched=${row.historical_match_n ?? "N/A"} / applied=${row.historical_applied_n ?? "N/A"} / blockers=${Array.isArray(row.blockers) && row.blockers.length ? row.blockers.join("|") : "none"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
+      const topMarketDelta = Array.isArray(row.market_objective_deltas) && row.market_objective_deltas.length
+        ? row.market_objective_deltas
+          .slice()
+          .sort((a, b) => Math.abs(Number(b && b.candidate_objective_delta || 0)) - Math.abs(Number(a && a.candidate_objective_delta || 0)))[0]
+        : null;
+      lines.push(`- ${row.candidate_id}: ${row.validation_verdict} / delta=${row.candidate_objective_delta != null ? Number(row.candidate_objective_delta).toFixed(4) : "N/A"} / top_market=${topMarketDelta && topMarketDelta.market ? `${topMarketDelta.market}:${Number(topMarketDelta.candidate_objective_delta || 0).toFixed(4)}` : "N/A"} / next=${row.projected_objective_score != null ? Number(row.projected_objective_score).toFixed(4) : "N/A"} / matched=${row.historical_match_n ?? "N/A"} / applied=${row.historical_applied_n ?? "N/A"} / blockers=${Array.isArray(row.blockers) && row.blockers.length ? row.blockers.join("|") : "none"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
     }
   }
   return `${lines.join("\n")}\n`;

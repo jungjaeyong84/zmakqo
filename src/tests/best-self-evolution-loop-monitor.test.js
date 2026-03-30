@@ -96,13 +96,45 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
     },
     reports: {
       objectiveSupervisor: { cycle_id: "cycle-w", verdict: "HOLD", reason: "DAILY_NO_TRADE_ACTIVITY" },
-      weightTuning: { cycle_id: "cycle-w", summary: { advisory_mode: "ADVISORY_ONLY", suggestion_n: 3, canary_blocked: false, autonomous_defer: true, defer_reason: "MEMORY_BLOCKED" } },
+      weightTuning: { cycle_id: "cycle-w", summary: { advisory_mode: "ADVISORY_ONLY", suggestion_n: 3, canary_blocked: false, autonomous_defer: true, defer_reason: "MEMORY_BLOCKED", memory_defer_remaining_weeks_min: 1 } },
     },
   });
   const weightRow = deferredWeight.rows.find((row) => row.loop === "WEIGHT_TUNING");
   assert.ok(weightRow);
   assert.strictEqual(weightRow.status, "DEFERRED");
-  assert.strictEqual(weightRow.reason, "suggestions=3 / defer=MEMORY_BLOCKED");
+  assert.strictEqual(weightRow.reason, "suggestions=3 / defer=MEMORY_BLOCKED / eta_w=1");
+
+  const appliedPending = deriveLoopMonitor({
+    artifacts: {
+      objectiveSupervisor: { fresh: true },
+      deployment: { fresh: true },
+      deploymentPlan: { fresh: true },
+    },
+    reports: {
+      objectiveSupervisor: { cycle_id: "cycle-p", verdict: "PATCH_CANDIDATE", reason: "AUTONOMOUS_RECOVERY_PROMOTION_READY" },
+      deployment: { cycle_id: "cycle-p", summary: { deploy_pass: true, target_candidate_id: "AUTO_CORE", blockers: [] } },
+      deploymentPlan: { cycle_id: "cycle-p", summary: { plan_status: "APPLIED_PENDING_SIGNAL_CONFIRMATION", manual_step_required: false, target_candidate_id: "AUTO_CORE" } },
+    },
+  });
+  assert.strictEqual(appliedPending.summary.overall_status, "APPLIED_PENDING_SIGNAL_CONFIRMATION");
+  assert.strictEqual(appliedPending.summary.manual_paste_ready, false);
+  assert.strictEqual(appliedPending.summary.applied_pending_signal_confirmation, true);
+
+  const appliedConfirmed = deriveLoopMonitor({
+    artifacts: {
+      objectiveSupervisor: { fresh: true },
+      deployment: { fresh: true },
+      deploymentPlan: { fresh: true },
+    },
+    reports: {
+      objectiveSupervisor: { cycle_id: "cycle-c", verdict: "PATCH_CANDIDATE", reason: "AUTONOMOUS_RECOVERY_PROMOTION_READY" },
+      deployment: { cycle_id: "cycle-c", summary: { deploy_pass: true, target_candidate_id: "AUTO_CORE", blockers: [] } },
+      deploymentPlan: { cycle_id: "cycle-c", summary: { plan_status: "APPLIED_CONFIRMED", manual_step_required: false, target_candidate_id: "AUTO_CORE" } },
+    },
+  });
+  assert.strictEqual(appliedConfirmed.summary.overall_status, "APPLIED_CONFIRMED");
+  assert.strictEqual(appliedConfirmed.summary.applied_confirmed, true);
+  assert.strictEqual(appliedConfirmed.summary.applied_pending_signal_confirmation, false);
 
   const absent = deriveLoopMonitor({
     artifacts: {

@@ -30,6 +30,10 @@ async function run() {
   });
   assert.ok(shortEntry, "short entry message should exist");
   assert.strictEqual(shortEntry.title, "SOLUSDT 숏 진입");
+  assert.ok(shortEntry.body.includes("노출금액: 2,007.10 USDT"), "entry alert should show notional separately");
+  assert.ok(shortEntry.body.includes("증거금추정: 1,003.55 USDT"), "entry alert should show estimated margin separately");
+  assert.ok(shortEntry.body.includes("체결수량: 23.86 SOL"), "entry alert should show base quantity");
+  assert.ok(shortEntry.body.includes("티어: PRE_REAL"), "entry alert should show entry tier");
   assert.ok(shortEntry.body.includes("이벤트: SHORT"), "entry event tag should be canonical SHORT");
   assert.ok(shortEntry.body.includes("수량조정: 시황 50% × EV 70%"), "entry alert should include sizing reductions");
   assert.ok(shortEntry.body.includes("최종비중: 35%"), "entry alert should include final sizing");

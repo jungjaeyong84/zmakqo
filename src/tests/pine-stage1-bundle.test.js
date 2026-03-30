@@ -118,8 +118,12 @@ const { __test } = require("../engine/paperUpbitRunner");
     qtyFraction: 0.22,
     budgetMax: 100,
   });
-  assert.strictEqual(tierBudget.tier, "FIXED");
+  assert.strictEqual(tierBudget.tier, "CORE");
   assert.strictEqual(tierBudget.fixedQty, true);
+  assert.strictEqual(tierBudget.applied, true);
+  assert.strictEqual(tierBudget.reason, "FIXED_MARGIN_TARGET_OVERRIDE");
+  assert.strictEqual(tierBudget.targetMargin, 1000);
+  assert.strictEqual(tierBudget.budgetMax, 1000);
 
   console.log("PINE_STAGE1_BUNDLE_TEST_OK");
 })();

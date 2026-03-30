@@ -142,6 +142,12 @@ function copySelfEvolutionLatest(sourcePath, latestPath) {
   return true;
 }
 
+function selfEvolutionSnapshotLatestPath(fileName) {
+  const base = String(fileName || "").trim();
+  if (!base) return null;
+  return path.join(OPS_DAILY_DIR, `best_self_evolution_${base}`);
+}
+
 function sha1(text) {
   return crypto.createHash("sha1").update(String(text || ""), "utf8").digest("hex");
 }
@@ -465,6 +471,7 @@ module.exports = {
   writeText,
   copyLatest,
   copySelfEvolutionLatest,
+  selfEvolutionSnapshotLatestPath,
   shouldWriteSelfEvolutionLatest,
   loadLocalEnv,
   nowKstMeta,

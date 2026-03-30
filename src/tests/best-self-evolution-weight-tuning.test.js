@@ -33,12 +33,21 @@ const { deriveWeightTuningPlan } = require("../../src/utils/bestSelfEvolutionWei
       fallback_cost_top_market: { key: "SOLUSDT", count: 2 },
     },
     canary: { apply_pass: true },
-    memoryLedger: { blocked_candidate_n: 3 },
+    memoryLedger: {
+      blocked_candidate_n: 3,
+      fingerprint_block_ttl_weeks: 2,
+      current_rows: [
+        { candidate_id: "AI_AI", memory_blocked: true, previous_fail_age_weeks: 1 },
+        { candidate_id: "WAIT_ONE_BAR_TUNE", memory_blocked: true, previous_fail_age_weeks: 1 },
+      ],
+    },
   });
   assert.strictEqual(advisoryOnly.summary.advisory_mode, "ADVISORY_ONLY");
   assert.strictEqual(advisoryOnly.summary.memory_blocked, true);
   assert.strictEqual(advisoryOnly.summary.autonomous_defer, true);
   assert.strictEqual(advisoryOnly.summary.defer_reason, "MEMORY_BLOCKED");
+  assert.strictEqual(advisoryOnly.summary.memory_defer_remaining_weeks_min, 1);
+  assert.deepStrictEqual(advisoryOnly.summary.memory_defer_blocked_candidate_ids, ["AI_AI", "WAIT_ONE_BAR_TUNE"]);
   assert.ok(advisoryOnly.suggestions.length > 0);
 
   console.log("BEST_SELF_EVOLUTION_WEIGHT_TUNING_TEST_OK");

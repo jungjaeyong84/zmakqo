@@ -19,6 +19,9 @@ function run() {
         candidate_id: "WAIT_ONE_BAR_TUNE",
         validation_verdict: "PASS",
         candidate_objective_delta: 0.6251,
+        market_objective_deltas: [
+          { market: "BTCUSDT", candidate_objective_delta: 0.8123 },
+        ],
         projected_objective_score: -4.0123,
         historical_match_n: 4,
         historical_applied_n: 2,
@@ -31,6 +34,7 @@ function run() {
   assert.match(markdown, /BEST Self-Evolution Replay Validation/);
   assert.match(markdown, /total\/pass\/warn\/block: 3 \/ 1 \/ 1 \/ 1/);
   assert.match(markdown, /WAIT_ONE_BAR_TUNE: PASS \/ delta=0.6251/);
+  assert.match(markdown, /top_market=BTCUSDT:0.8123/);
   console.log("BEST_SELF_EVOLUTION_REPLAY_REPORT_TEST_OK");
 }
 

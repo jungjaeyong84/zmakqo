@@ -48,8 +48,12 @@ function run() {
       entry_fallback_pending_n: 2,
       entry_fallback_payload_missing_n: 2,
       entry_fallback_payload_missing_linked_n: 1,
+      entry_fallback_payload_missing_by_cause: [{ key: "LINKED_EXECUTION_ONLY", count: 2 }],
+      entry_fallback_payload_missing_by_market: [{ key: "BTCUSDT", count: 1 }, { key: "ETHUSDT", count: 1 }],
+      entry_fallback_payload_missing_by_family: [{ key: "CORE_LONG", count: 2 }],
       entry_fallback_pending_active_n: 1,
       entry_fallback_pending_active_by_market: [{ key: "BTCUSDT", count: 1 }],
+      entry_fallback_pending_active_by_event: [{ key: "LONG", count: 1 }],
       entry_fallback_pending_active_by_family: [{ key: "CORE_LONG", count: 1 }],
       entry_fallback_pending_legacy_n: 1,
       entry_fallback_pending_legacy_by_family: [{ key: "PRE_REAL_LONG", count: 1 }],
@@ -69,6 +73,21 @@ function run() {
       entry_fallback_pending_by_event: [{ key: "CORE_LONG", count: 2 }],
       febt_eligible_by_market: [{ key: "BTCUSDT", eligible_n: 10, with_febt_n: 8, coverage_rate: 0.8 }],
       febt_eligible_by_event: [{ key: "CORE_LONG", eligible_n: 8, with_febt_n: 6, coverage_rate: 0.75 }],
+      febt_eligible_by_canonical_event: [{ key: "LONG", eligible_n: 8, with_febt_n: 6, coverage_rate: 0.75 }],
+      febt_active_eligible_by_event: [{ key: "LONG", eligible_n: 6, with_febt_n: 5, coverage_rate: 0.8333333333 }],
+      febt_active_low_coverage_events: [{ key: "SHORT", eligible_n: 5, with_febt_n: 2, coverage_rate: 0.4 }],
+      febt_active_coverage_gap_by_event: {
+        low_key: "SHORT",
+        low_eligible_n: 5,
+        low_with_febt_n: 2,
+        low_coverage_rate: 0.4,
+        high_key: "LONG",
+        high_eligible_n: 6,
+        high_with_febt_n: 5,
+        high_coverage_rate: 0.8333333333,
+        coverage_gap: 0.4333333333,
+        min_eligible_n: 5,
+      },
       febt_active_eligible_by_market: [{ key: "BTCUSDT", eligible_n: 7, with_febt_n: 6, coverage_rate: 0.8571428571 }],
       febt_active_eligible_by_family: [{ key: "CORE_LONG", eligible_n: 6, with_febt_n: 5, coverage_rate: 0.8333333333 }],
       avg_realized_ret_net: 0.014,
@@ -114,11 +133,16 @@ function run() {
   assert.ok(markdown.includes("executed_exit_only_n: 1 / exit_only_n: 1 / exit_only_realized_n: 1"));
   assert.ok(markdown.includes("fallback_pending_reason: PAYLOAD_MISSING 2"));
   assert.ok(markdown.includes("fallback_payload_missing: 2 / linked_exec 1"));
+  assert.ok(markdown.includes("fallback_payload_missing_cause: LINKED_EXECUTION_ONLY 2 / market: BTCUSDT 1 / ETHUSDT 1 / family: CORE_LONG 2"));
   assert.ok(markdown.includes("fallback_pending_market: BTCUSDT 1 / ETHUSDT 1 / event: CORE_LONG 2"));
-  assert.ok(markdown.includes("fallback_pending_active: 1 / market: BTCUSDT 1 / family: CORE_LONG 1"));
+  assert.ok(markdown.includes("fallback_pending_active: 1 / market: BTCUSDT 1 / event: LONG 1 / family: CORE_LONG 1"));
   assert.ok(markdown.includes("fallback_pending_legacy: 1 / family: PRE_REAL_LONG 1"));
   assert.ok(markdown.includes("FEBT eligible coverage by market: BTCUSDT 8/10 (80.00%)"));
   assert.ok(markdown.includes("FEBT eligible coverage by event: CORE_LONG 6/8 (75.00%)"));
+  assert.ok(markdown.includes("FEBT eligible coverage by canonical event: LONG 6/8 (75.00%)"));
+  assert.ok(markdown.includes("FEBT active coverage by canonical event: LONG 5/6 (83.33%)"));
+  assert.ok(markdown.includes("FEBT active low coverage events: SHORT 2/5 (40.00%)"));
+  assert.ok(markdown.includes("FEBT active coverage gap: SHORT 40.00% vs LONG 83.33% (gap 43.33%)"));
   assert.ok(markdown.includes("outcome_state: REALIZED 8 / OPEN_PENDING 2"));
   assert.ok(markdown.includes("realized_source: EXIT_FILL_PNL 6 / TRADE_PNL 2"));
   assert.ok(markdown.includes("exit_only_event: EXIT_TRAIL_1P 1"));

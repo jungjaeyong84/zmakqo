@@ -10,6 +10,7 @@ const {
   nowKstMeta,
   readJsonRawSafe,
   resolveAutomationCycleMeta,
+  selfEvolutionSnapshotLatestPath,
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
@@ -18,7 +19,7 @@ const { buildMarketCanaryRows, unwrapRawReport } = require("../src/utils/bestSel
 loadLocalEnv();
 
 const INPUTS = Object.freeze({
-  objectiveSupervisor: path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json"),
+  objectiveSupervisor: selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json"),
   candidates: path.join(OPS_DAILY_DIR, "best_self_evolution_candidates_latest.json"),
   replay: path.join(OPS_DAILY_DIR, "best_self_evolution_replay_latest.json"),
   driftCanary: path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json"),
@@ -50,7 +51,7 @@ function renderMarkdown(report = {}) {
     lines.push("- none");
   } else {
     for (const row of rows.slice(0, 20)) {
-      lines.push(`- ${row.market}: wave=${row.wave} / stage ${row.previous_stage} -> ${row.current_stage} / action=${row.canary_action} / verdict=${row.canary_verdict} / candidate=${row.candidate_id || "N/A"} / replay=${row.replay_verdict || "N/A"} / objective=${row.objective_score != null ? Number(row.objective_score).toFixed(3) : "N/A"} / drift shadow=${row.drift_shadow_market ?? 0} golden=${row.drift_golden_market ?? 0} / blockers=${Array.isArray(row.blockers) && row.blockers.length ? row.blockers.join("|") : "none"}`);
+      lines.push(`- ${row.market}: wave=${row.wave} / stage ${row.previous_stage} -> ${row.current_stage} / action=${row.canary_action} / verdict=${row.canary_verdict} / candidate=${row.candidate_id || "N/A"} / replay=${row.replay_verdict || "N/A"} / replay_market=${row.replay_delta_market != null ? Number(row.replay_delta_market).toFixed(4) : "N/A"} / replay_global=${row.replay_delta_global != null ? Number(row.replay_delta_global).toFixed(4) : "N/A"} / objective=${row.objective_score != null ? Number(row.objective_score).toFixed(3) : "N/A"} / drift shadow=${row.drift_shadow_market ?? 0} golden=${row.drift_golden_market ?? 0} / blockers=${Array.isArray(row.blockers) && row.blockers.length ? row.blockers.join("|") : "none"}`);
     }
   }
   return `${lines.join("\n")}\n`;

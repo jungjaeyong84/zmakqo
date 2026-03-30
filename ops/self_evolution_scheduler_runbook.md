@@ -138,3 +138,8 @@ gcloud scheduler jobs update http donbeolja-self-evolution \
 - The scheduler solves cadence. It does not bypass governance or deployment blockers.
 - The latest loop artifact remains the source of truth:
   - `ops/daily/best_self_evolution_loop_run_latest.json`
+- If `DAILY_NO_TRADE_ACTIVITY` persists across loops, prefer running self-evolution during active trading hours first and return to the default 4-hour cadence only after real executions resume.
+- Recommended fallback while daily executed trades remain 0:
+  - analytics cache refresh: every 15 minutes
+  - self-evolution loop: hourly during active trading hours
+  - revert to every 4 hours after `retrospective daily executed_n > 0`

@@ -62,6 +62,14 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
   assert.strictEqual(pinePromote.actionable, true);
   assert.strictEqual(pinePromote.kind, "PROMOTE");
 
+  const pineRecoveryPromote = __test.buildPineCandidate(
+    { data: { verdict: "PATCH_CANDIDATE", promotion: { candidate_id: "AUTO_CORE_SCORE_TIGHTEN", recovery_mode: true }, codex_authority: { status: "FRESH", verdict: "HOLD" }, reason: "AUTONOMOUS_RECOVERY_PROMOTION_READY" } },
+    { data: { verdict: "HOLD" }, fresh: true },
+    { data: {} },
+  );
+  assert.strictEqual(pineRecoveryPromote.actionable, true);
+  assert.strictEqual(pineRecoveryPromote.kind, "PROMOTE");
+
   const pineRollbackBlocked = __test.buildPineCandidate(
     { data: { verdict: "ROLLBACK_CANDIDATE", rollback: { rollback_file_path: "/tmp/rb.pine" }, reason: "AUTO_ROLLBACK_READY" } },
     { data: { verdict: "HOLD" }, fresh: true },

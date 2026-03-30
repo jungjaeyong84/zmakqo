@@ -10,6 +10,7 @@ const {
   nowKstMeta,
   readJsonRawSafe,
   resolveAutomationCycleMeta,
+  selfEvolutionSnapshotLatestPath,
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
@@ -18,7 +19,7 @@ const { deriveWeightTuningPlan } = require("../src/utils/bestSelfEvolutionWeight
 loadLocalEnv();
 
 const INPUTS = Object.freeze({
-  objectiveSupervisor: path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json"),
+  objectiveSupervisor: selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json"),
 });
 
 function unwrapSupervisor(value) {

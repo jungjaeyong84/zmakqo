@@ -43,6 +43,23 @@ function isoWeekKeyFromDateKey(dateKey) {
   return `${isoYear}W${String(week).padStart(2, "0")}`;
 }
 
+function parseIsoWeekKey(weekKey) {
+  const text = String(weekKey || "").trim().toUpperCase();
+  const match = text.match(/^(\d{4})W(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const week = Number(match[2]);
+  if (!Number.isFinite(year) || !Number.isFinite(week)) return null;
+  return { year, week };
+}
+
+function isoWeekDistance(currentWeekKey, previousWeekKey) {
+  const current = parseIsoWeekKey(currentWeekKey);
+  const previous = parseIsoWeekKey(previousWeekKey);
+  if (!current || !previous) return null;
+  return ((current.year * 53) + current.week) - ((previous.year * 53) + previous.week);
+}
+
 function candidateFingerprint(candidate = {}) {
   const payload = stableObject({
     scope: String(candidate.scope || "").trim().toUpperCase(),
@@ -127,13 +144,21 @@ function buildCurrentRows({
   const weekKey = isoWeekKeyFromDateKey(nowMeta && nowMeta.dateKey) || String(nowMeta && nowMeta.dateKey || "N/A");
   const replayMap = new Map(replayRows.map((row) => [String(row && row.candidate_id || "").trim(), row]));
   const canaryMap = mapByCandidateId(canaryRows);
+  const fingerprintBlockTtlWeeks = Math.max(1, Number(process.env.BEST_SELF_EVOLUTION_MEMORY_BLOCK_TTL_WEEKS || 2));
   const previousFailMap = new Map();
+  const previousSuccessFingerprintSet = new Set();
   for (const row of previousRows) {
     if (String(row && row.applied_week_key || "").trim() === weekKey) continue;
     const fingerprint = String(row && row.change_fingerprint || "").trim();
     if (!fingerprint) continue;
     const verdict = String(row && row.verdict || "").trim().toUpperCase();
+    if (verdict === "SUCCESS") {
+      previousSuccessFingerprintSet.add(fingerprint);
+      continue;
+    }
     if (verdict !== "FAIL" && verdict !== "ROLLED_BACK") continue;
+    const ageWeeks = isoWeekDistance(weekKey, String(row && row.applied_week_key || "").trim());
+    if (ageWeeks != null && ageWeeks > fingerprintBlockTtlWeeks) continue;
     if (!previousFailMap.has(fingerprint)) previousFailMap.set(fingerprint, []);
     previousFailMap.get(fingerprint).push(row);
   }
@@ -156,8 +181,10 @@ function buildCurrentRows({
         : null);
     const avgRetNetDelta = toNum(replay && replay.avg_ret_net_delta);
     const previousFails = previousFailMap.get(fingerprint) || [];
-    const memoryBlocked = previousFails.length > 0;
+    const successReleased = previousSuccessFingerprintSet.has(fingerprint);
+    const memoryBlocked = previousFails.length > 0 && !successReleased;
     const latestFail = previousFails[0] || null;
+    const previousFailAgeWeeks = latestFail ? isoWeekDistance(weekKey, String(latestFail.applied_week_key || "").trim()) : null;
     return {
       candidate_id: candidateId,
       display_candidate_id: String(candidate && (candidate.display_candidate_id || candidate.candidate_id) || "").trim() || null,
@@ -176,9 +203,12 @@ function buildCurrentRows({
       canary_stage: perCandidateCanary.map((row) => String(row && row.current_stage || "").trim().toUpperCase()).filter(Boolean)[0] || "SHADOW",
       canary_action: perCandidateCanary.map((row) => String(row && row.canary_action || "").trim().toUpperCase()).filter(Boolean)[0] || "KEEP",
       memory_blocked: memoryBlocked,
-      memory_block_reason: memoryBlocked ? "RECENT_FAIL_FINGERPRINT" : null,
+      memory_block_reason: memoryBlocked ? "RECENT_FAIL_FINGERPRINT_WITHIN_TTL" : null,
       previous_fail_week_key: memoryBlocked ? String(latestFail && latestFail.applied_week_key || "").trim() || null : null,
       previous_fail_verdict: memoryBlocked ? String(latestFail && latestFail.verdict || "").trim().toUpperCase() || null : null,
+      previous_fail_age_weeks: memoryBlocked ? previousFailAgeWeeks : null,
+      memory_block_ttl_weeks: fingerprintBlockTtlWeeks,
+      memory_released_by_success: successReleased,
       current_week: true,
     };
   });
@@ -239,6 +269,7 @@ function buildMemoryLedger({
       avg_count_delta: average(currentRows.map((row) => row.count_delta)),
       avg_replacement_delta: average(currentRows.map((row) => row.replacement_delta)),
       avg_ret_net_delta: average(currentRows.map((row) => row.avg_ret_net_delta)),
+      fingerprint_block_ttl_weeks: Math.max(1, Number(process.env.BEST_SELF_EVOLUTION_MEMORY_BLOCK_TTL_WEEKS || 2)),
       recent_failed_fingerprints: rows
         .filter((row) => row.verdict === "FAIL" || row.verdict === "ROLLED_BACK")
         .slice(0, 5)

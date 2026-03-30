@@ -123,7 +123,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
         ? "DEFERRED"
         : (String(weightSummary.advisory_mode || "N/A").trim().toUpperCase() || "N/A"),
       reason: weightSummary.autonomous_defer === true
-        ? `suggestions=${weightSummary.suggestion_n ?? 0} / defer=${weightSummary.defer_reason || "N/A"}`
+        ? `suggestions=${weightSummary.suggestion_n ?? 0} / defer=${weightSummary.defer_reason || "N/A"} / eta_w=${weightSummary.memory_defer_remaining_weeks_min != null ? weightSummary.memory_defer_remaining_weeks_min : "N/A"}`
         : `suggestions=${weightSummary.suggestion_n ?? 0} / canary_blocked=${weightSummary.canary_blocked ? "YES" : "NO"}`,
     },
     {
@@ -169,7 +169,9 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const uniqueBlockers = Array.from(new Set(blockers.filter(Boolean)));
 
   let overallStatus = "HEALTHY";
-  if (deploymentPlanSummary.manual_step_required === true) overallStatus = "READY_FOR_MANUAL_PASTE";
+  if (String(deploymentPlanSummary.plan_status || "").trim().toUpperCase() === "APPLIED_CONFIRMED") overallStatus = "APPLIED_CONFIRMED";
+  else if (String(deploymentPlanSummary.plan_status || "").trim().toUpperCase() === "APPLIED_PENDING_SIGNAL_CONFIRMATION") overallStatus = "APPLIED_PENDING_SIGNAL_CONFIRMATION";
+  else if (deploymentPlanSummary.manual_step_required === true) overallStatus = "READY_FOR_MANUAL_PASTE";
   else if (staleArtifacts.length || cycleMismatches.length || cycleIdAbsent.length) overallStatus = "BLOCKED";
   else if (uniqueBlockers.length || canarySummary.apply_pass === false || deploymentSummary.deploy_pass === false) overallStatus = "DEGRADED";
 
@@ -188,6 +190,8 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       critical_blockers: uniqueBlockers.slice(0, 10),
       promotion_path_ready: deploymentSummary.deploy_pass === true,
       manual_paste_ready: deploymentPlanSummary.manual_step_required === true,
+      applied_confirmed: String(deploymentPlanSummary.plan_status || "").trim().toUpperCase() === "APPLIED_CONFIRMED",
+      applied_pending_signal_confirmation: String(deploymentPlanSummary.plan_status || "").trim().toUpperCase() === "APPLIED_PENDING_SIGNAL_CONFIRMATION",
       ready_candidate_id: deploymentPlanSummary.target_candidate_id || deploymentSummary.target_candidate_id || null,
       canary_open_wave: toNum(canarySummary.open_wave) || null,
       loop_n: rows.length,

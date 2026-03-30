@@ -12,6 +12,12 @@ function unwrapRawReport(value) {
   return value;
 }
 
+function findReplayMarketDelta(replay = null, market = null) {
+  const rows = Array.isArray(replay && replay.market_objective_deltas) ? replay.market_objective_deltas : [];
+  const key = String(market || "").trim().toUpperCase();
+  return rows.find((row) => String(row && row.market || "").trim().toUpperCase() === key) || null;
+}
+
 function resolveDriftByMarket(summary = null) {
   const byMarket = summary && summary.byMarket && typeof summary.byMarket === "object"
     ? summary.byMarket
@@ -253,11 +259,15 @@ function buildMarketCanaryRows({
     let canaryAction = "KEEP";
     let rollbackReady = false;
 
+    const replayMarketDelta = findReplayMarketDelta(replay, market);
+    const effectiveReplayDelta = toNum(replayMarketDelta && replayMarketDelta.candidate_objective_delta) != null
+      ? toNum(replayMarketDelta && replayMarketDelta.candidate_objective_delta)
+      : toNum(replay && replay.candidate_objective_delta);
     const baseEligible = blockers.length === 0;
     if (currentStage === "SHADOW" && baseEligible) {
       nextStage = "SOFT";
       canaryAction = "PROMOTE_SOFT";
-    } else if (currentStage === "SOFT" && baseEligible && toNum(replay && replay.candidate_objective_delta) != null && toNum(replay && replay.candidate_objective_delta) >= 1.0 && toNum(marketScore && marketScore.objective_score) != null && toNum(marketScore && marketScore.objective_score) >= 0) {
+    } else if (currentStage === "SOFT" && baseEligible && effectiveReplayDelta != null && effectiveReplayDelta >= 1.0 && toNum(marketScore && marketScore.objective_score) != null && toNum(marketScore && marketScore.objective_score) >= 0) {
       nextStage = "HARD";
       canaryAction = "PROMOTE_HARD";
     } else if (currentStage !== "SHADOW" && blockers.length) {
@@ -277,7 +287,9 @@ function buildMarketCanaryRows({
       candidate_id: String(candidate && candidate.candidate_id || "").trim() || null,
       candidate_scope: String(candidate && candidate.scope || "").trim() || null,
       replay_verdict: String(replay && replay.validation_verdict || "").trim() || null,
-      replay_delta: toNum(replay && replay.candidate_objective_delta),
+      replay_delta: effectiveReplayDelta,
+      replay_delta_global: toNum(replay && replay.candidate_objective_delta),
+      replay_delta_market: toNum(replayMarketDelta && replayMarketDelta.candidate_objective_delta),
       objective_score: toNum(marketScore && marketScore.objective_score),
       projected_count_ratio_global: toNum(marketScore && marketScore.projected_count_ratio_global),
       projected_replacement_ratio: toNum(marketScore && marketScore.projected_replacement_ratio),

@@ -3,7 +3,7 @@
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { sendAlert } = require("../utils/alerts");
 const { resolveEventMapping } = require("./signalStandard");
-const { canonicalExternalEntryEvent } = require("../utils/liveEntryTaxonomy");
+const { canonicalExternalEntryEvent, resolveEntryTimingTier } = require("../utils/liveEntryTaxonomy");
 
 const channelCache = new Map();
 
@@ -123,6 +123,38 @@ function formatLeverage(raw) {
   if (!Number.isFinite(n) || n <= 0) return null;
   const rounded = Math.round(n * 10) / 10;
   return `${rounded}x`;
+}
+
+function formatBaseQty(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const abs = Math.abs(n);
+  const digits = abs >= 100 ? 2 : (abs >= 1 ? 3 : 6);
+  return n.toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  });
+}
+
+function resolveBaseAssetSymbol(symbol) {
+  const raw = String(symbol || "").trim().toUpperCase();
+  if (!raw) return null;
+  if (raw.startsWith("KRW-")) return raw.slice(4) || null;
+  for (const suffix of ["USDT", "FDUSD", "BUSD", "USDC", "BTC", "ETH"]) {
+    if (raw.endsWith(suffix) && raw.length > suffix.length) {
+      return raw.slice(0, -suffix.length) || null;
+    }
+  }
+  return raw;
+}
+
+function resolveEntryQtyBase(payload = {}, execPrice = null, notional = null) {
+  const explicit = Number(payload.execQtyBase ?? payload.qtyBase);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  const px = Number(execPrice);
+  const q = Number(notional);
+  if (Number.isFinite(px) && px > 0 && Number.isFinite(q) && q > 0) return q / px;
+  return null;
 }
 
 function trimPctToken(raw) {
@@ -268,6 +300,9 @@ function buildMessage(payload) {
   const event = normalizeTpP1EventForExchange(payload.event, exchange);
   const intent = resolveIntent(payload);
   if (!symbol || !event || !intent) return null;
+  const feat = (payload.features && typeof payload.features === "object")
+    ? payload.features
+    : ((payload.features_json && typeof payload.features_json === "object") ? payload.features_json : {});
 
   const unit = exchange.includes("BINANCE") ? "USDT" : "KRW";
   const notional = Number(payload.notional);
@@ -291,8 +326,18 @@ function buildMessage(payload) {
     const action = intent === "ADD" ? "추가진입" : "진입";
     const title = directionKo ? `${symbol} ${directionKo} ${action}` : `${symbol} ${action}`;
     const lines = [];
-    if (Number.isFinite(notional)) lines.push(`규모: ${formatMoney(notional, { unit })} ${unit}`);
+    const tier = resolveEntryTimingTier(event, feat);
+    const qtyBase = resolveEntryQtyBase(payload, execPrice, notional);
+    const baseAsset = resolveBaseAssetSymbol(symbol);
+    const leverageNum = Number(payload.appliedLeverage);
+    const marginEstimate = (String(unit).toUpperCase() === "USDT" && Number.isFinite(notional) && Number.isFinite(leverageNum) && leverageNum > 0)
+      ? (notional / leverageNum)
+      : null;
+    if (Number.isFinite(notional)) lines.push(`노출금액: ${formatMoney(notional, { unit })} ${unit}`);
+    if (Number.isFinite(marginEstimate) && marginEstimate > 0) lines.push(`증거금추정: ${formatMoney(marginEstimate, { unit })} ${unit}`);
+    if (Number.isFinite(qtyBase) && qtyBase > 0) lines.push(`체결수량: ${formatBaseQty(qtyBase)}${baseAsset ? ` ${baseAsset}` : ""}`);
     if (Number.isFinite(execPrice)) lines.push(`체결가: ${formatMoney(execPrice, { unit })} ${unit}`);
+    if (tier) lines.push(`티어: ${tier}`);
     if (leverageLabel) {
       lines.push(`배율: ${leverageLabel}${leverageReason ? ` (${leverageReason})` : ""}`);
     }

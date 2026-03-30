@@ -1,5 +1,5 @@
 //@version=6
-indicator("돈벌자 :) Ω Full 🐬 v6.0.3.0 (LONG_SHORT_CORE_BINANCE_SP_FIX)", overlay = true, max_lines_count = 500, max_labels_count = 500)
+indicator("돈벌자 :) Ω Full 🐬 v6.0.3.1 (LONG_SHORT_CORE_BINANCE_SP_FIX)", overlay = true, max_lines_count = 500, max_labels_count = 500)
 // Tier SSOT: /Users/jeongjaeyong/Projects/donbeolja/docs/SIGNAL_TIER_DEFINITION.md
 // Before changing live LONG/SHORT source bands (EARLY/CORE) or legacy diagnostic bands, read the SSOT and preserve the current meaning.
 // Baseline snapshot: v6.0.3.0 locks LONG/SHORT live semantics at long_alert_pulse/short_alert_pulse with EARLY/CORE entry grades only.
@@ -156,7 +156,7 @@ float W_FRACTAL3 = 0.35
 float W_OMEGA    = 0.45
 float W_RSI_DIV  = 0.20
 // 전략 식별자(알림 payload용)
-string STRATEGY_ID = "donbeolja_v6.0.3.0"
+string STRATEGY_ID = "donbeolja_v6.0.3.1"
 // [ZZ_FUSION_START] - inputs
 grp_zz_fusion = "═══ ZigZag Ω Fusion (Wave) ═══"
 zz_use_wave_filter = input.bool(false, "ZigZag 미래 파동으로 LONG/SHORT source 품질 필터", group = grp_zz_fusion)
@@ -2242,7 +2242,7 @@ if is_coin
         bool _candle_ok_long = _candle_quality_long or score >= 20
         bool _candle_ok_short = _candle_quality_short or score <= -20
         // [PATCH-66] transition score 강화는 과도했으므로 되돌리고, stat-physics 확인으로만 추가 보수화한다.
-        bool _regime_ok_core = _regime_for_core == "trend" or (_regime_for_core == "transition" and math.abs(score) >= 25)
+        bool _regime_ok_core = _regime_for_core == "trend" or (_regime_for_core == "transition" and math.abs(score) >= 27)
         // [PATCH-49] 스토캐스틱 과매도/과매수 오버라이드
         //   문제: 저점에서 K<D → stoch_core_long=false → CL 차단
         //   해법: 과매도(K<=30)면 롱 허용, 과매수(K>=70)면 숏 허용

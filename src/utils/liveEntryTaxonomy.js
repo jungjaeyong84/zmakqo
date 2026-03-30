@@ -125,6 +125,10 @@ function resolveActiveEntryFamily(eventRaw, featuresMaybe, sideRaw) {
   return `${tier}_${side}`;
 }
 
+function hasActiveEntryFamily(eventRaw, featuresMaybe, sideRaw) {
+  return !!resolveActiveEntryFamily(eventRaw, featuresMaybe, sideRaw);
+}
+
 function resolveLegacyEntryFamily(eventRaw, featuresMaybe, sideRaw) {
   const tier = resolveEntryTimingTier(eventRaw, featuresMaybe);
   const side = resolveEntrySide(eventRaw, sideRaw);
@@ -175,6 +179,7 @@ module.exports = {
   resolveEntrySide,
   canonicalExternalEntryEvent,
   resolveActiveEntryFamily,
+  hasActiveEntryFamily,
   resolveLegacyEntryFamily,
   describeTimingTierForUser,
   describeQtyProfileForUser,

@@ -120,5 +120,32 @@ const { deriveDeploymentGuards } = require("../../src/utils/bestSelfEvolutionDep
   });
   assert.strictEqual(backwardCompatibleDriftPass.summary.deploy_pass, true);
 
+  const promotionNotReady = deriveDeploymentGuards({
+    objectiveSupervisor: {
+      promotion: { ready: false, reason: "DAILY_NO_TRADE_ACTIVITY", candidate_id: "WAIT_ONE_BAR_TUNE" },
+      rollback: { ready: false },
+      self_evolution_objective: {
+        count_floor_pass: true,
+        replacement_floor_pass: true,
+        latency_budget_pass: true,
+      },
+    },
+    replayReport: {
+      validations: [{ candidate_id: "WAIT_ONE_BAR_TUNE", validation_verdict: "PASS" }],
+    },
+    canaryReport: {
+      summary: { apply_pass: true, rollback_ready_n: 0, open_wave: 2, shadow_global_drift: 0, golden_global_drift: 0 },
+      rows: [{ market: "BTCUSDT", wave: 2, current_stage: "SOFT", candidate_id: "WAIT_ONE_BAR_TUNE", canary_verdict: "READY", blockers: [] }],
+    },
+    memoryLedger: {
+      summary: { blocked_candidate_ids: [], blocked_candidate_n: 0 },
+    },
+  });
+  assert.strictEqual(promotionNotReady.summary.deploy_pass, false);
+  assert.strictEqual(promotionNotReady.summary.root_cause, "DAILY_NO_TRADE_ACTIVITY");
+  assert.strictEqual(promotionNotReady.summary.promotion_ready, false);
+  assert.strictEqual(promotionNotReady.summary.promotion_not_ready_reason, "DAILY_NO_TRADE_ACTIVITY");
+  assert.ok(promotionNotReady.summary.next_actions[0].includes("DAILY_NO_TRADE_ACTIVITY"));
+
   console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_GUARDS_TEST_OK");
 })();

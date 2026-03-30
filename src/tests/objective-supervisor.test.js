@@ -256,6 +256,15 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.codex_authority.owner, "CODEX");
   assert.strictEqual(typeof allowPromote.self_evolution_weight_tuning.summary.advisory_mode, "string");
   assert.strictEqual(allowPromote.self_evolution_memory.total_n, 0);
+  assert.strictEqual(allowPromote.current_latest_context.latest_mode, "STANDALONE_RECOMPUTE");
+  assert.strictEqual(allowPromote.current_latest_context.evaluation_scope, "STANDALONE");
+  assert.strictEqual(allowPromote.filter_canary_drift_context.golden_drift, 0);
+  assert.strictEqual(allowPromote.ev_tuner_context.stale, false);
+  assert.strictEqual(allowPromote.operational_recovery_context.recommended_scheduler_policy, "NORMAL_4H");
+  assert.strictEqual(allowPromote.autonomy_assessment.engine_autonomy, "YES");
+  assert.strictEqual(allowPromote.autonomy_assessment.loop_autonomy, "YES");
+  assert.strictEqual(allowPromote.autonomy_assessment.operational_autonomy_except_pine, "PARTIAL");
+  assert.ok(Array.isArray(allowPromote.autonomy_assessment.manual_boundaries));
   assert.strictEqual(allowPromote.best_febt_tuning_contract.mode, "NORMAL");
   assert.strictEqual(allowPromote.best_febt_tuning_contract.tightening_allowed, true);
   assert.strictEqual(Array.isArray(allowPromote.best_febt_market_contracts), true);
@@ -275,6 +284,9 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(staleEv.filter_layers.ev_time_value.policy_source, "STALE_TUNER_ARTIFACT");
   assert.strictEqual(staleEv.filter_layers.ev_time_value.fresh, false);
   assert.strictEqual(staleEv.filter_layers.ev_time_value.age_hours, 36);
+  assert.strictEqual(staleEv.ev_tuner_context.stale, true);
+  assert.strictEqual(staleEv.ev_tuner_context.observed_reason, "KEEP");
+  assert.strictEqual(staleEv.action_plan.some((row) => row.includes("Refresh EV tuner artifact")), true);
 
   const replayBlockedPromotion = __test.evaluateSupervisor({
     ...base,
@@ -341,6 +353,29 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   });
   assert.strictEqual(canaryBlockedPromotion.verdict, "HOLD");
   assert.strictEqual(canaryBlockedPromotion.reason, "SELF_EVOLUTION_CANARY_BLOCK");
+
+  const canaryDrift = __test.evaluateSupervisor({
+    ...base,
+    canary: {
+      shadow: { summary: { drift: 0, byMarket: {}, byStage: {} } },
+      golden: { summary: { drift: 1, byMarket: { GLOBAL: { drift: 1 } }, byStage: { AI: { drift: 1 } } } },
+    },
+    phase0: {
+      fresh: true,
+      provider: "BINANCEFUT",
+      tf: "15m",
+      legacy_wait_baseline: {},
+      bridge_latency: { webhook_to_fill_ms: { p95: 1420 }, duplicate_count: 0, reject_count: 0 },
+    },
+    selfEvolutionDataset: {
+      fresh: true,
+      summary: { rows_n: 10, executed_n: 5, drop_n: 3, missed_n: 1, features_coverage_rate: 0.9, febt_coverage_rate: 0.8 },
+    },
+  });
+  assert.strictEqual(canaryDrift.blockers.includes("CANARY_DRIFT"), true);
+  assert.strictEqual(canaryDrift.filter_canary_drift_context.golden_drift, 1);
+  assert.strictEqual(canaryDrift.filter_canary_drift_context.primary_label, "AI:1");
+  assert.strictEqual(canaryDrift.action_plan.some((row) => row.includes("shadow=0, golden=1, top=AI:1")), true);
 
   const memoryBlockedPromotion = __test.evaluateSupervisor({
     ...base,
@@ -535,6 +570,8 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(noTradeRetro.retrospective_activity_context.source, "RETROSPECTIVE_DAILY");
   assert.strictEqual(noTradeRetro.retrospective_activity_context.daily_no_trade, true);
   assert.strictEqual(noTradeRetro.retrospective_activity_context.daily_zero_idle, true);
+  assert.strictEqual(noTradeRetro.operational_recovery_context.recommended_scheduler_policy, "ACTIVE_TRADING_HOURS_ONLY");
+  assert.strictEqual(noTradeRetro.autonomy_assessment.operational_autonomy_except_pine, "PARTIAL");
   assert.strictEqual(noTradeRetro.action_plan.some((row) => row.includes("retrospective daily executed_n=0")), true);
 
   const weeklyOnlyNoTradeRetro = __test.evaluateSupervisor({
@@ -582,6 +619,217 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   });
   assert.strictEqual(weeklyOnlyNoTradeRetro.blockers.includes("DAILY_NO_TRADE_ACTIVITY"), false);
   assert.strictEqual(weeklyOnlyNoTradeRetro.retrospective_activity_context.daily_no_trade, false);
+
+  const autonomousRecoveryPromotion = __test.evaluateSupervisor({
+    ...base,
+    changeControl: {
+      verdict: "REVIEW",
+      auto_promotion: {
+        ready: false,
+        reason: "CANDIDATE_NOT_READY",
+        candidate_id: "AUTO_CORE_SCORE_TIGHTEN",
+        streak_current: 0,
+        streak_required: 2,
+      },
+      auto_rollback: {
+        ready: false,
+        reason: "NO_PATCHED_HISTORY",
+      },
+      coverage_guard: {
+        pass: true,
+        ai: { pass: true },
+        market: { pass: true },
+      },
+    },
+    phase0: {
+      fresh: true,
+      provider: "BINANCEFUT",
+      tf: "15m",
+      legacy_wait_baseline: {},
+      bridge_latency: { webhook_to_fill_ms: { p95: 1420 }, duplicate_count: 0, reject_count: 0 },
+    },
+    selfEvolutionDataset: {
+      fresh: true,
+      summary: { rows_n: 10, executed_n: 5, drop_n: 3, missed_n: 1, features_coverage_rate: 0.9, febt_coverage_rate: 0.8 },
+    },
+    selfEvolutionCandidates: {
+      summary: { total_n: 1, ready_n: 1, blocked_n: 0, top_candidate_id: "AUTO_CORE_SCORE_TIGHTEN", top_scope: "PINE" },
+      rows: [{ candidate_id: "AUTO_CORE_SCORE_TIGHTEN", scope: "PINE", ready_for_auto_apply: true }],
+    },
+    selfEvolutionReplay: {
+      validation_mode: "HISTORICAL_ENTRY_COHORT_V1",
+      summary: { total_n: 1, pass_n: 1, warn_n: 0, block_n: 0, best_candidate_id: "AUTO_CORE_SCORE_TIGHTEN", best_verdict: "PASS", best_objective_delta: 0.8 },
+      validations: [{ candidate_id: "AUTO_CORE_SCORE_TIGHTEN", validation_verdict: "PASS", candidate_objective_delta: 0.8, blockers: [] }],
+    },
+    selfEvolutionCanary: {
+      summary: { total_n: 1, ready_n: 1, blocked_n: 0, rollback_ready_n: 0, apply_pass: true, global_canary_pass: true, current_open_wave: 1, open_wave: 1 },
+      rows: [{ market: "BTCUSDT", wave: 1, current_stage: "SOFT", candidate_id: "AUTO_CORE_SCORE_TIGHTEN", canary_verdict: "READY", blockers: [] }],
+    },
+    selfEvolutionMemory: {
+      summary: { total_n: 0, current_n: 0, success_n: 0, neutral_n: 0, fail_n: 0, rolled_back_n: 0, blocked_candidate_n: 0, blocked_candidate_ids: [] },
+      current_rows: [],
+      rows: [],
+    },
+    selfEvolutionLoopMonitor: {
+      summary: { cycle_id: "cycle-r", overall_status: "DEGRADED", cycle_consistent: true, stale_artifact_n: 0, cycle_mismatch_n: 0, critical_blocker_n: 0, critical_blockers: [], promotion_path_ready: false, manual_paste_ready: false, ready_candidate_id: "AUTO_CORE_SCORE_TIGHTEN", canary_open_wave: 1, loop_n: 10, fresh_loop_n: 10 },
+      rows: [],
+    },
+    retrospective: {
+      periods: {
+        DAILY: {
+          objective: {
+            verdict: "FAIL",
+            pass: false,
+            executed_n: 0,
+            realized_n: 0,
+            failed_checks: ["NO_TRADE_ACTIVITY"],
+          },
+          realized_trades: { net_pnl_quote: 0 },
+        },
+        WEEKLY: {
+          objective: {
+            verdict: "FAIL",
+            pass: false,
+            executed_n: 3,
+            realized_n: 2,
+            failed_checks: ["PERIOD_TARGET_NOT_MET"],
+          },
+          realized_trades: { net_pnl_quote: -10 },
+        },
+        MONTHLY: {
+          objective: {
+            verdict: "FAIL",
+            pass: false,
+            executed_n: 8,
+            realized_n: 7,
+            failed_checks: ["MONTHLY_TARGET_NOT_MET"],
+          },
+          realized_trades: { net_pnl_quote: -20 },
+        },
+      },
+    },
+    codex: {
+      status: "FRESH",
+      verdict: "PROMOTE",
+      recommended_candidate_id: "AUTO_CORE_SCORE_TIGHTEN",
+    },
+    stageAutopilot: {
+      fresh: true,
+      objective_verdict: "HOLD",
+      actions: [],
+    },
+  });
+  assert.strictEqual(autonomousRecoveryPromotion.verdict, "PATCH_CANDIDATE");
+  assert.strictEqual(autonomousRecoveryPromotion.reason, "AUTONOMOUS_RECOVERY_PROMOTION_READY");
+  assert.strictEqual(autonomousRecoveryPromotion.promotion.ready, true);
+  assert.strictEqual(autonomousRecoveryPromotion.promotion.recovery_mode, true);
+  assert.strictEqual(autonomousRecoveryPromotion.promotion.reason, "AUTONOMOUS_RECOVERY_PROMOTION");
+
+  const autonomousRecoveryPromotionWithoutCodexPromote = __test.evaluateSupervisor({
+    ...base,
+    changeControl: {
+      verdict: "REVIEW",
+      auto_promotion: {
+        ready: false,
+        reason: "CANDIDATE_NOT_READY",
+        candidate_id: "AUTO_CORE_SCORE_TIGHTEN",
+        streak_current: 0,
+        streak_required: 2,
+      },
+      auto_rollback: {
+        ready: false,
+        reason: "NO_PATCHED_HISTORY",
+      },
+      coverage_guard: {
+        pass: true,
+        ai: { pass: true },
+        market: { pass: true },
+      },
+    },
+    phase0: {
+      fresh: true,
+      provider: "BINANCEFUT",
+      tf: "15m",
+      legacy_wait_baseline: {},
+      bridge_latency: { webhook_to_fill_ms: { p95: 1420 }, duplicate_count: 0, reject_count: 0 },
+    },
+    selfEvolutionDataset: {
+      fresh: true,
+      summary: { rows_n: 10, executed_n: 5, drop_n: 3, missed_n: 1, features_coverage_rate: 0.9, febt_coverage_rate: 0.8 },
+    },
+    selfEvolutionCandidates: {
+      summary: { total_n: 1, ready_n: 1, blocked_n: 0, top_candidate_id: "AUTO_CORE_SCORE_TIGHTEN", top_scope: "PINE" },
+      rows: [{ candidate_id: "AUTO_CORE_SCORE_TIGHTEN", scope: "PINE", ready_for_auto_apply: true }],
+    },
+    selfEvolutionReplay: {
+      validation_mode: "HISTORICAL_ENTRY_COHORT_V1",
+      summary: { total_n: 1, pass_n: 1, warn_n: 0, block_n: 0, best_candidate_id: "AUTO_CORE_SCORE_TIGHTEN", best_verdict: "PASS", best_objective_delta: 0.8 },
+      validations: [{ candidate_id: "AUTO_CORE_SCORE_TIGHTEN", validation_verdict: "PASS", candidate_objective_delta: 0.8, blockers: [] }],
+    },
+    selfEvolutionCanary: {
+      summary: { total_n: 1, ready_n: 1, blocked_n: 0, rollback_ready_n: 0, apply_pass: true, global_canary_pass: true, current_open_wave: 1, open_wave: 1 },
+      rows: [{ market: "BTCUSDT", wave: 1, current_stage: "SOFT", candidate_id: "AUTO_CORE_SCORE_TIGHTEN", canary_verdict: "READY", blockers: [] }],
+    },
+    selfEvolutionMemory: {
+      summary: { total_n: 0, current_n: 0, success_n: 0, neutral_n: 0, fail_n: 0, rolled_back_n: 0, blocked_candidate_n: 0, blocked_candidate_ids: [] },
+      current_rows: [],
+      rows: [],
+    },
+    selfEvolutionLoopMonitor: {
+      summary: { cycle_id: "cycle-r", overall_status: "DEGRADED", cycle_consistent: true, stale_artifact_n: 0, cycle_mismatch_n: 0, critical_blocker_n: 0, critical_blockers: [], promotion_path_ready: false, manual_paste_ready: false, ready_candidate_id: "AUTO_CORE_SCORE_TIGHTEN", canary_open_wave: 1, loop_n: 10, fresh_loop_n: 10 },
+      rows: [],
+    },
+    retrospective: {
+      periods: {
+        DAILY: {
+          objective: {
+            verdict: "FAIL",
+            pass: false,
+            executed_n: 0,
+            realized_n: 0,
+            failed_checks: ["NO_TRADE_ACTIVITY"],
+          },
+          realized_trades: { net_pnl_quote: 0 },
+        },
+        WEEKLY: {
+          objective: {
+            verdict: "FAIL",
+            pass: false,
+            executed_n: 3,
+            realized_n: 2,
+            failed_checks: ["PERIOD_TARGET_NOT_MET"],
+          },
+          realized_trades: { net_pnl_quote: -10 },
+        },
+        MONTHLY: {
+          objective: {
+            verdict: "FAIL",
+            pass: false,
+            executed_n: 8,
+            realized_n: 7,
+            failed_checks: ["MONTHLY_TARGET_NOT_MET"],
+          },
+          realized_trades: { net_pnl_quote: -20 },
+        },
+      },
+    },
+    codex: {
+      status: "FRESH",
+      verdict: "HOLD",
+      recommended_candidate_id: null,
+    },
+    stageAutopilot: {
+      fresh: true,
+      objective_verdict: "HOLD",
+      actions: [],
+    },
+  });
+  assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.verdict, "PATCH_CANDIDATE");
+  assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.reason, "AUTONOMOUS_RECOVERY_PROMOTION_READY");
+  assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.promotion.ready, true);
+  assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.promotion.recovery_mode, true);
+  assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.blockers.includes("CODEX_BLOCK_PROMOTION"), false);
+  assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.blockers.includes("CODEX_REVIEW_REQUIRED_PROMOTION"), false);
 
   const monthlySourceSampleReady = __test.evaluateSupervisor({
     ...base,

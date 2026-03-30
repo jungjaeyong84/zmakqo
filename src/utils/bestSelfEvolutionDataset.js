@@ -4,6 +4,7 @@ const { summarizePineSignalQuality } = require("../services/pineSignalQuality");
 const { classifySignalReasonStage } = require("./signalReasonView");
 const {
   isEntryTierEvent,
+  canonicalExternalEntryEvent,
   resolveActiveEntryFamily,
   resolveLegacyEntryFamily,
 } = require("./liveEntryTaxonomy");
@@ -945,6 +946,7 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
   const scoped = Array.isArray(rows) ? rows : [];
   const resolveActiveFamily = (row) => resolveActiveEntryFamily(row, resolveFeatures(row), row && row.side);
   const resolveLegacyFamily = (row) => resolveLegacyEntryFamily(row, resolveFeatures(row), row && row.side);
+  const resolveCanonicalEvent = (row) => canonicalExternalEntryEvent(row, row && row.side) || toUpper(row && row.event, "UNKNOWN");
   const executedRows = scoped.filter((row) => row.source_row_type === "EXECUTED" || row.source_row_type === "PARTIAL" || row.source_row_type === "FALLBACK");
   const realizedRows = executedRows.filter((row) => Number.isFinite(toNum(row.realized_ret_net)));
   const allRealizedRows = scoped.filter((row) => Number.isFinite(toNum(row.realized_ret_net)));
@@ -1037,6 +1039,52 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
       coverage_rate: subset.length > 0 ? (subsetWithFebt.length / subset.length) : null,
     };
   });
+  const summarizeCoverageGap = (rows = [], { minEligible = 5 } = {}) => {
+    const qualified = (Array.isArray(rows) ? rows : [])
+      .filter((row) => Number(row && row.eligible_n || 0) >= minEligible && row && row.coverage_rate != null)
+      .slice()
+      .sort((a, b) => {
+        const diff = Number(a.coverage_rate) - Number(b.coverage_rate);
+        if (diff !== 0) return diff;
+        return Number(b.eligible_n || 0) - Number(a.eligible_n || 0);
+      });
+    if (qualified.length < 2) return null;
+    const lowest = qualified[0];
+    const highest = qualified[qualified.length - 1];
+    const gap = Number(highest.coverage_rate) - Number(lowest.coverage_rate);
+    if (!(gap > 0)) return null;
+    return {
+      low_key: lowest.key,
+      low_eligible_n: lowest.eligible_n,
+      low_with_febt_n: lowest.with_febt_n,
+      low_coverage_rate: lowest.coverage_rate,
+      high_key: highest.key,
+      high_eligible_n: highest.eligible_n,
+      high_with_febt_n: highest.with_febt_n,
+      high_coverage_rate: highest.coverage_rate,
+      coverage_gap: gap,
+      min_eligible_n: minEligible,
+    };
+  };
+  const classifyPayloadMissingCause = (row) => {
+    const features = resolveFeatures(row);
+    if (features && features._febt_trace_contract_missing === true) return "TRACE_CONTRACT_MISSING";
+    if (!features || !Object.keys(features).length) return "FEATURES_OBJECT_MISSING";
+    if (!hasValue(resolveSignalId(row)) && !hasValue(resolveEntryEventId(row))) return "IDENTITY_MISSING";
+    if (Number(row && row.fills_n || 0) > 0 || Number(row && row.trades_n || 0) > 0 || hasValue(row && row.entry_event_id)) {
+      return "LINKED_EXECUTION_ONLY";
+    }
+    if (resolveActiveFamily(row)) return "ACTIVE_UPSTREAM_PAYLOAD_INCOMPLETE";
+    if (resolveLegacyFamily(row)) return "LEGACY_UPSTREAM_PAYLOAD_INCOMPLETE";
+    return "UPSTREAM_PAYLOAD_INCOMPLETE";
+  };
+  const febtEligibleByCanonicalEvent = coverageByGroup(febtEligibleRows, (row) => resolveCanonicalEvent(row)).slice(0, 12);
+  const febtActiveEligibleByEvent = coverageByGroup(febtActiveEligibleRows, (row) => resolveCanonicalEvent(row)).slice(0, 10);
+  const febtActiveCoverageGapByEvent = summarizeCoverageGap(febtActiveEligibleByEvent, { minEligible: 5 });
+  const febtActiveLowCoverageEvents = febtActiveEligibleByEvent
+    .filter((row) => Number(row && row.eligible_n || 0) >= 5 && Number(row && row.coverage_rate || 0) < 0.5)
+    .slice(0, 5);
+
   return {
     rows_n: scoped.length,
     executed_n: scoped.filter((row) => row.source_row_type === "EXECUTED").length,
@@ -1059,8 +1107,13 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
     entry_fallback_pending_by_event: countBy(pendingEntryFallback, (row) => row.event).slice(0, 10),
     entry_fallback_payload_missing_n: pendingEntryFallbackPayloadMissing.length,
     entry_fallback_payload_missing_linked_n: pendingEntryFallbackPayloadMissingLinked.length,
+    entry_fallback_payload_missing_by_cause: countBy(pendingEntryFallbackPayloadMissing, classifyPayloadMissingCause).slice(0, 10),
+    entry_fallback_payload_missing_by_market: countBy(pendingEntryFallbackPayloadMissing, (row) => row.market).slice(0, 10),
+    entry_fallback_payload_missing_by_event: countBy(pendingEntryFallbackPayloadMissing, (row) => resolveCanonicalEvent(row)).slice(0, 10),
+    entry_fallback_payload_missing_by_family: countBy(pendingEntryFallbackPayloadMissing, (row) => resolveActiveFamily(row) || resolveLegacyFamily(row)).slice(0, 10),
     entry_fallback_pending_active_n: pendingEntryFallbackActive.length,
     entry_fallback_pending_active_by_market: countBy(pendingEntryFallbackActive, (row) => row.market).slice(0, 10),
+    entry_fallback_pending_active_by_event: countBy(pendingEntryFallbackActive, (row) => resolveCanonicalEvent(row)).slice(0, 10),
     entry_fallback_pending_active_by_family: countBy(pendingEntryFallbackActive, (row) => resolveActiveFamily(row)).slice(0, 10),
     entry_fallback_pending_legacy_n: pendingEntryFallbackLegacy.length,
     entry_fallback_pending_legacy_by_family: countBy(pendingEntryFallbackLegacy, (row) => resolveLegacyFamily(row)).slice(0, 10),
@@ -1071,13 +1124,17 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
     febt_coverage_rate_eligible: febtEligibleRows.length > 0 ? (withFebt.length / febtEligibleRows.length) : null,
     febt_eligible_by_market: coverageByGroup(febtEligibleRows, (row) => row.market).slice(0, 10),
     febt_eligible_by_event: coverageByGroup(febtEligibleRows, (row) => row.event).slice(0, 12),
+    febt_eligible_by_canonical_event: febtEligibleByCanonicalEvent,
     febt_active_eligible_n: febtActiveEligibleRows.length,
     febt_coverage_rate_active_eligible: febtActiveEligibleRows.length > 0
       ? (febtActiveEligibleRows.filter((row) => hasFebt(row)).length / febtActiveEligibleRows.length)
       : null,
     febt_active_missing_n: febtActiveEligibleRows.filter((row) => !hasFebt(row)).length,
+    febt_active_eligible_by_event: febtActiveEligibleByEvent,
     febt_active_eligible_by_market: coverageByGroup(febtActiveEligibleRows, (row) => row.market).slice(0, 10),
     febt_active_eligible_by_family: coverageByGroup(febtActiveEligibleRows, (row) => resolveActiveFamily(row)).slice(0, 10),
+    febt_active_coverage_gap_by_event: febtActiveCoverageGapByEvent,
+    febt_active_low_coverage_events: febtActiveLowCoverageEvents,
     avg_realized_ret_net: mean(realizedRows.map((row) => row.realized_ret_net)),
     avg_realized_pnl_quote: mean(realizedRows.map((row) => row.realized_pnl_quote)),
     avg_hold_minutes: mean(executedRows.map((row) => row.hold_minutes)),

@@ -11,12 +11,24 @@ function deriveWeightTuningPlan({ objective = null, attribution = null, canary =
   const attributionSummary = attribution && typeof attribution === "object" ? attribution : {};
   const canarySummary = canary && typeof canary === "object" ? canary : {};
   const memorySummary = memoryLedger && typeof memoryLedger === "object" ? memoryLedger : {};
+  const memoryRows = Array.isArray(memorySummary.current_rows)
+    ? memorySummary.current_rows
+    : (Array.isArray(memoryLedger && memoryLedger.current_rows) ? memoryLedger.current_rows : []);
   const suggestions = [];
 
   const countBlocked = objectiveSummary.count_floor_pass === false;
   const replacementBlocked = objectiveSummary.replacement_floor_pass === false;
   const memoryBlocked = Number(memorySummary.blocked_candidate_n || 0) > 0;
   const canaryBlocked = canarySummary.apply_pass === false;
+  const ttlWeeks = toNum(memorySummary.fingerprint_block_ttl_weeks);
+  const blockedRows = memoryRows.filter((row) => row && row.memory_blocked === true);
+  const remainingWeeks = blockedRows
+    .map((row) => {
+      const ageWeeks = toNum(row && row.previous_fail_age_weeks);
+      if (ttlWeeks == null || ageWeeks == null) return null;
+      return Math.max(0, ttlWeeks - ageWeeks);
+    })
+    .filter((value) => value != null);
 
   if (!countBlocked) {
     if (attributionSummary.late_loss_top_market) {
@@ -56,6 +68,8 @@ function deriveWeightTuningPlan({ objective = null, attribution = null, canary =
       canary_blocked: canaryBlocked,
       autonomous_defer: autonomousDefer,
       defer_reason: deferReason,
+      memory_defer_remaining_weeks_min: autonomousDefer && remainingWeeks.length ? Math.min(...remainingWeeks) : null,
+      memory_defer_blocked_candidate_ids: autonomousDefer ? blockedRows.map((row) => String(row.candidate_id || "").trim()).filter(Boolean) : [],
     },
     suggestions,
   };

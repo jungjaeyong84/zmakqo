@@ -41,9 +41,9 @@ function buildStepPlan() {
       },
     },
     { id: "objective_integrated", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SKIP_TELEGRAM: "1", OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "INTEGRATED" } },
-    { id: "stage_autopilot", script: "automation-stage-autopilot.js" },
     { id: "objective_final", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "FINAL" } },
     { id: "loop_monitor", script: "report-best-self-evolution-loop-monitor.js" },
+    { id: "stage_autopilot", script: "automation-stage-autopilot.js" },
   ];
 }
 

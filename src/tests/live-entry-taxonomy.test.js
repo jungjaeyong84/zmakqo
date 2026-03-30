@@ -10,6 +10,7 @@ const {
   resolveEntrySide,
   canonicalExternalEntryEvent,
   resolveActiveEntryFamily,
+  hasActiveEntryFamily,
   resolveLegacyEntryFamily,
   describeTimingTierForUser,
 } = require("../utils/liveEntryTaxonomy");
@@ -50,6 +51,7 @@ assert.strictEqual(canonicalExternalEntryEvent("CORE_SHORT", null), "SHORT");
 assert.strictEqual(canonicalExternalEntryEvent("PRE_REAL_LONG", "BUY"), "LONG");
 assert.strictEqual(resolveActiveEntryFamily("EARLY_LONG", null, null), "EARLY_LONG");
 assert.strictEqual(resolveActiveEntryFamily({ event: "LONG", features: { entry_grade: "CORE" }, side: "BUY" }), "CORE_LONG");
+assert.strictEqual(hasActiveEntryFamily({ event: "LONG", features: { entry_grade: "CORE" }, side: "BUY" }), true);
 assert.strictEqual(resolveActiveEntryFamily("PRE_REAL_LONG", null, "BUY"), null);
 assert.strictEqual(resolveLegacyEntryFamily("PRE_REAL_LONG", null, "BUY"), "PRE_REAL_LONG");
 assert.strictEqual(resolveLegacyEntryFamily("CORE_SHORT", null, "SELL"), null);

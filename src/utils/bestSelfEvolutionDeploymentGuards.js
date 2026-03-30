@@ -16,6 +16,12 @@ function deriveDeploymentRootCause(blockers = []) {
   return Array.isArray(blockers) && blockers.length ? String(blockers[0] || "").trim() || null : null;
 }
 
+function derivePromotionNotReadyReason(promotion = null) {
+  if (!promotion || typeof promotion !== "object") return "PROMOTION_NOT_READY";
+  const explicit = String(promotion.reason || promotion.status || "").trim();
+  return explicit || "PROMOTION_NOT_READY";
+}
+
 function pushAction(actions, message) {
   const line = String(message || "").trim();
   if (!line) return;
@@ -29,6 +35,8 @@ function deriveDeploymentNextActions({
   targetCanaryRows = [],
   shadowGlobalDrift = 0,
   goldenGlobalDrift = 0,
+  promotionReady = false,
+  promotionNotReadyReason = null,
 } = {}) {
   const actions = [];
   for (const blocker of Array.isArray(blockers) ? blockers : []) {
@@ -72,6 +80,9 @@ function deriveDeploymentNextActions({
       default:
         break;
     }
+  }
+  if (!blockers.length && promotionReady !== true) {
+    pushAction(actions, `Keep ${targetCandidateId || "the target candidate"} in replay/canary-ready state until promotion becomes ready (${promotionNotReadyReason || "PROMOTION_NOT_READY"}).`);
   }
   return actions;
 }
@@ -119,6 +130,8 @@ function deriveDeploymentGuards({
   );
   const shadowGlobalDrift = toNum(canarySummary.shadow_global_drift) || 0;
   const goldenGlobalDrift = toNum(canarySummary.golden_global_drift) || 0;
+  const promotionReady = promotion.ready === true;
+  const promotionNotReadyReason = promotionReady ? null : derivePromotionNotReadyReason(promotion);
 
   const blockers = [];
   if (!targetCandidateId) blockers.push("NO_TARGET_CANDIDATE");
@@ -135,7 +148,7 @@ function deriveDeploymentGuards({
     ? canarySummary.global_canary_pass === true
     : (shadowGlobalDrift === 0 && goldenGlobalDrift === 0);
   if (globalCanaryPass !== true) blockers.push("FILTER_CANARY_DRIFT");
-  const rootCause = deriveDeploymentRootCause(blockers);
+  const rootCause = deriveDeploymentRootCause(blockers) || promotionNotReadyReason;
   const nextActions = deriveDeploymentNextActions({
     blockers,
     targetCandidateId,
@@ -143,9 +156,11 @@ function deriveDeploymentGuards({
     targetCanaryRows,
     shadowGlobalDrift,
     goldenGlobalDrift,
+    promotionReady,
+    promotionNotReadyReason,
   });
 
-  const deployPass = promotion.ready === true && blockers.length === 0;
+  const deployPass = promotionReady === true && blockers.length === 0;
   const rollbackOnly = rollback.ready === true && deployPass !== true;
   const rows = canaryRows.map((row) => ({
     market: String(row && row.market || "").trim().toUpperCase() || "UNKNOWN",
@@ -166,6 +181,8 @@ function deriveDeploymentGuards({
       blockers,
       root_cause: rootCause,
       next_actions: nextActions,
+      promotion_ready: promotionReady,
+      promotion_not_ready_reason: promotionNotReadyReason,
       replay_verdict: String(targetReplay && targetReplay.validation_verdict || "").trim().toUpperCase() || null,
       canary_open_wave: toNum(canarySummary.open_wave) || 1,
       market_ready_n: rows.filter((row) => row.deploy_pass).length,

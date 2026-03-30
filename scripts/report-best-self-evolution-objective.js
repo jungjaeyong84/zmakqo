@@ -10,6 +10,7 @@ const {
   nowKstMeta,
   readJsonRawSafe,
   resolveAutomationCycleMeta,
+  selfEvolutionSnapshotLatestPath,
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
@@ -24,7 +25,7 @@ loadLocalEnv();
 const DATASET_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_dataset_latest.json");
 const GOVERNANCE_LATEST_PATH = path.join(OPS_DAILY_DIR, "weekly_filter_governance_latest.json");
 const PHASE0_LATEST_PATH = path.join(OPS_DAILY_DIR, "febt_phase0_baseline_latest.json");
-const OBJECTIVE_SUPERVISOR_LATEST_PATH = path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json");
+const OBJECTIVE_SUPERVISOR_LATEST_PATH = selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json");
 
 function pct(value, digits = 2) {
   const n = Number(value);
