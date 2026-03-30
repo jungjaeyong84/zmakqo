@@ -67,6 +67,28 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
   assert.strictEqual(holdDeploymentRow.status, "HOLD");
   assert.strictEqual(holdDeploymentRow.reason, "none");
 
+  const pendingStage = deriveLoopMonitor({
+    artifacts: {
+      objectiveSupervisor: { fresh: true },
+      stageAutopilot: { fresh: true },
+      memory: { fresh: true },
+    },
+    reports: {
+      objectiveSupervisor: { cycle_id: "cycle-new", verdict: "HOLD", reason: "DAILY_NO_TRADE_ACTIVITY", evaluation_scope: "LOOP" },
+      stageAutopilot: { cycle_id: "cycle-old", objective_verdict: "HOLD", actions: [] },
+      memory: { cycle_id: "cycle-new", summary: { blocked_candidate_n: 2, blocked_candidate_ids: ["AI_AI", "WAIT_ONE_BAR_TUNE"], top_failed_candidate_id: "EV_TP1_THRESHOLD_TUNE" } },
+    },
+  });
+  const stageRow = pendingStage.rows.find((row) => row.loop === "STAGE_AUTOPILOT");
+  const memoryRow = pendingStage.rows.find((row) => row.loop === "MEMORY_LEDGER");
+  assert.ok(stageRow);
+  assert.strictEqual(stageRow.status, "PENDING");
+  assert.strictEqual(stageRow.cycle_id, null);
+  assert.strictEqual(stageRow.source_cycle_id, "cycle-old");
+  assert.strictEqual(stageRow.reason, "post_stage_pending / latest=cycle-old");
+  assert.ok(memoryRow);
+  assert.strictEqual(memoryRow.reason, "blocked=2 / ids=AI_AI|WAIT_ONE_BAR_TUNE");
+
   const absent = deriveLoopMonitor({
     artifacts: {
       objectiveSupervisor: { fresh: true },

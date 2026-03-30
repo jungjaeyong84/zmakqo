@@ -31,6 +31,8 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const codexPatch = unwrapRawReport(reports.codexPatch) || {};
 
   const objectiveReason = String(objectiveSupervisor.reason || "").trim() || null;
+  const evaluationScope = String(objectiveSupervisor.evaluation_scope || "").trim().toUpperCase() || "STANDALONE";
+  const stageAutopilotOptional = evaluationScope !== "STANDALONE";
   const deploymentSummary = deployment.summary && typeof deployment.summary === "object" ? deployment.summary : {};
   const deploymentBlockers = Array.isArray(deploymentSummary.blockers) ? deploymentSummary.blockers.filter(Boolean) : [];
   const deploymentPlanSummary = deploymentPlan.summary && typeof deploymentPlan.summary === "object" ? deploymentPlan.summary : {};
@@ -49,6 +51,16 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(weightTuning)
     || readCycleId(memory)
     || readCycleId(codexPatch);
+  const stageAutopilotCycleId = readCycleId(stageAutopilot);
+  const stageAutopilotPending = Boolean(
+    stageAutopilotOptional
+    && expectedCycleId
+    && stageAutopilotCycleId
+    && stageAutopilotCycleId !== expectedCycleId
+  );
+  const blockedCandidateIds = Array.isArray(memorySummary.blocked_candidate_ids)
+    ? memorySummary.blocked_candidate_ids.filter(Boolean)
+    : [];
 
   const rows = [
     {
@@ -96,9 +108,12 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     {
       loop: "STAGE_AUTOPILOT",
       fresh: artifacts.stageAutopilot && artifacts.stageAutopilot.fresh === true,
-      cycle_id: readCycleId(stageAutopilot),
-      status: String(stageAutopilot.objective_verdict || "N/A").trim().toUpperCase() || "N/A",
-      reason: `actions=${Array.isArray(stageAutopilot.actions) ? stageAutopilot.actions.length : 0}`,
+      cycle_id: stageAutopilotPending ? null : stageAutopilotCycleId,
+      source_cycle_id: stageAutopilotPending ? stageAutopilotCycleId : null,
+      status: stageAutopilotPending ? "PENDING" : (String(stageAutopilot.objective_verdict || "N/A").trim().toUpperCase() || "N/A"),
+      reason: stageAutopilotPending
+        ? `post_stage_pending / latest=${stageAutopilotCycleId}`
+        : `actions=${Array.isArray(stageAutopilot.actions) ? stageAutopilot.actions.length : 0}`,
     },
     {
       loop: "WEIGHT_TUNING",
@@ -112,7 +127,9 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       fresh: artifacts.memory && artifacts.memory.fresh === true,
       cycle_id: readCycleId(memory),
       status: Number(memorySummary.blocked_candidate_n || 0) > 0 ? "BLOCK" : "PASS",
-      reason: `blocked=${memorySummary.blocked_candidate_n ?? 0} / top_failed=${memorySummary.top_failed_candidate_id || "N/A"}`,
+      reason: Number(memorySummary.blocked_candidate_n || 0) > 0
+        ? `blocked=${memorySummary.blocked_candidate_n ?? 0} / ids=${blockedCandidateIds.slice(0, 3).join("|") || "N/A"}`
+        : `blocked=0 / top_failed=${memorySummary.top_failed_candidate_id || "N/A"}`,
     },
     {
       loop: "CODEX_PATCH_ENGINE",
@@ -123,15 +140,20 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     },
   ];
 
-  const staleArtifacts = rows.filter((row) => row.fresh !== true).map((row) => row.loop);
+  const staleArtifacts = rows
+    .filter((row) => row.fresh !== true)
+    .filter((row) => !(stageAutopilotOptional && row.loop === "STAGE_AUTOPILOT"))
+    .map((row) => row.loop);
   const cycleMismatches = expectedCycleId
     ? rows
       .filter((row) => row.cycle_id && row.cycle_id !== expectedCycleId)
+      .filter((row) => !(stageAutopilotOptional && row.loop === "STAGE_AUTOPILOT"))
       .map((row) => ({ loop: row.loop, cycle_id: row.cycle_id }))
     : [];
   const cycleIdAbsent = expectedCycleId
     ? rows
       .filter((row) => row.fresh === true && !row.cycle_id)
+      .filter((row) => !(stageAutopilotOptional && row.loop === "STAGE_AUTOPILOT"))
       .map((row) => row.loop)
     : [];
   const blockers = [];
