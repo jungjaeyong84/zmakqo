@@ -583,8 +583,11 @@ function buildSelfEvolutionRecoveryWeeklyCandidate({ objectiveSupervisor = null,
   const rows = candidatesReport && Array.isArray(candidatesReport.rows) ? candidatesReport.rows : [];
   const row = rows.find((item) => String(item && item.candidate_id || "").trim() === candidateId);
   if (!row || !Array.isArray(row.changes) || row.changes.length === 0) return null;
+  const canonicalCandidateId = String(row.candidate_id || candidateId).trim() || candidateId;
+  const displayCandidateId = String(row.display_candidate_id || canonicalCandidateId).trim() || canonicalCandidateId;
   return {
-    patch_id: String(row.display_candidate_id || row.candidate_id || candidateId).trim(),
+    patch_id: canonicalCandidateId,
+    display_patch_id: displayCandidateId,
     source: `self_evolution:${String(row.source || "RECOVERY").trim() || "RECOVERY"}`,
     safe: true,
     reason: String(promotion.reason || objectiveSupervisor.reason || row.status || "AUTONOMOUS_RECOVERY_PROMOTION").trim(),
@@ -786,8 +789,10 @@ async function main() {
     deltas,
     assessment: previousChangeAssessment,
     recommended_patch_id: null,
+    display_recommended_patch_id: null,
     change_control_verdict: changeControl && changeControl.verdict ? changeControl.verdict : null,
     created_file_path: null,
+    created_strategy_id: null,
     latest_generated_file_path: null,
     rollback_source_file_path: null,
     rollback_prepared: false,
@@ -856,6 +861,9 @@ async function main() {
     if (chosenCandidate) recommendation = chosenCandidate.patch_id;
   }
   nextHistoryRow.recommended_patch_id = recommendation;
+  nextHistoryRow.display_recommended_patch_id = chosenCandidate
+    ? String(chosenCandidate.display_patch_id || chosenCandidate.patch_id || "").trim() || null
+    : recommendation;
 
   let createdFile = null;
   let latestGeneratedFilePath = null;
@@ -871,6 +879,7 @@ async function main() {
     openResult = openPineFileForReview(createdFile.nextFilePath);
   }
   nextHistoryRow.created_file_path = createdFile ? createdFile.nextFilePath : null;
+  nextHistoryRow.created_strategy_id = createdFile ? `donbeolja_v${createdFile.nextVersion}` : null;
   nextHistoryRow.latest_generated_file_path = latestGeneratedFilePath;
   nextHistoryRow.rollback_source_file_path = rollbackSourceFilePath;
   nextHistoryRow.rollback_prepared = rollbackPrepared;

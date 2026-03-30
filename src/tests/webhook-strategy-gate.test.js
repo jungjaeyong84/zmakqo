@@ -30,5 +30,23 @@ const { buildRuntimeStrategyGate, parseAllowedStrategyIds } = createWebhookRoute
   assert.strictEqual(runtime.source.manual_paste_acknowledged, true);
   assert.strictEqual(runtime.source.live_signal_confirmation_pending, true);
 
+  const preparedRuntime = buildRuntimeStrategyGate({
+    envDefaultStrategyId: "donbeolja_v6.0.3.1",
+    envAllowedStrategyIds: ["donbeolja_v6.0.3.1", "STRAT_v010"],
+    manualPasteAck: {
+      acknowledged: false,
+      applied_strategy_id: "donbeolja_v6.0.3.1",
+    },
+    deploymentSummary: {
+      plan_status: "READY_FOR_MANUAL_PASTE",
+      prepared_stage_ready: true,
+      prepared_strategy_id: "donbeolja_v6.0.3.2",
+      applied_strategy_id: "donbeolja_v6.0.3.1",
+    },
+  });
+  assert.strictEqual(preparedRuntime.defaultStrategyId, "donbeolja_v6.0.3.1");
+  assert.ok(preparedRuntime.allowedStrategySet.has("donbeolja_v6.0.3.2"));
+  assert.strictEqual(preparedRuntime.source.prepared_strategy_id, "donbeolja_v6.0.3.2");
+
   console.log("WEBHOOK_STRATEGY_GATE_TEST_OK");
 })();

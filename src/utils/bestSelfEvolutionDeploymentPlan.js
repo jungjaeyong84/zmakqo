@@ -36,6 +36,18 @@ function fileExists(pathValue) {
   }
 }
 
+function extractPineStrategyId(pathValue) {
+  const filePath = String(pathValue || "").trim();
+  if (!filePath || !fileExists(filePath)) return null;
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const match = raw.match(/STRATEGY_ID\s*=\s*\"([^\"]+)\"/);
+    return match ? String(match[1] || "").trim() || null : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
 function findPreparedPaths({ stageAutopilot = null, weeklyHistory = null, targetCandidateId = null, rollbackFilePath = null } = {}) {
   const stage = unwrapRawReport(stageAutopilot) || {};
   const stageRows = Array.isArray(stage.stage_rows) ? stage.stage_rows : [];
@@ -52,14 +64,24 @@ function findPreparedPaths({ stageAutopilot = null, weeklyHistory = null, target
     ) || null;
   }
   const latestHistory = matchedHistory || latestWeeklyRow(weeklyHistory) || {};
+  const preparedFilePath = String(pineStage.prepared_file_path || latestHistory.created_file_path || "").trim() || null;
+  const latestGeneratedFilePath = String(pineStage.latest_generated_file_path || latestHistory.latest_generated_file_path || "").trim() || null;
   return {
-    prepared_file_path: String(pineStage.prepared_file_path || latestHistory.created_file_path || "").trim() || null,
-    latest_generated_file_path: String(pineStage.latest_generated_file_path || latestHistory.latest_generated_file_path || "").trim() || null,
+    prepared_file_path: preparedFilePath,
+    prepared_strategy_id: String(
+      pineStage.prepared_strategy_id
+      || latestHistory.created_strategy_id
+      || extractPineStrategyId(preparedFilePath || latestGeneratedFilePath)
+      || ""
+    ).trim() || null,
+    latest_generated_file_path: latestGeneratedFilePath,
     rollback_source_file_path: String(pineStage.rollback_source_file_path || latestHistory.rollback_source_file_path || "").trim() || null,
     prepared_candidate_signature: String(pineStage.signature || pineStage.candidate_signature || "").trim() || null,
+    prepared_display_candidate_id: String(pineStage.display_signature || latestHistory.display_recommended_patch_id || "").trim() || null,
     prepared_stage_ready: pineStage.machine_state === "READY",
     prepared_reason: String(pineStage.reason || "").trim() || null,
     source_week_key: String(latestHistory.week_key || "").trim() || null,
+    source_recommended_patch_id: String(latestHistory.recommended_patch_id || "").trim() || null,
   };
 }
 
@@ -90,6 +112,7 @@ function deriveManualPasteAck({ manualPasteAck = null, prepared = {}, targetCand
   const ackLatestGeneratedFilePath = String(ack.latest_generated_file_path || "").trim() || null;
   const ackCandidateSignature = String(ack.candidate_signature || ack.target_candidate_id || "").trim() || null;
   const ackTargetCandidateId = String(ack.target_candidate_id || "").trim() || null;
+  const ackAppliedStrategyId = String(ack.applied_strategy_id || "").trim() || null;
   const fileMatched = Boolean(
     (ackPreparedFilePath && prepared.prepared_file_path && ackPreparedFilePath === prepared.prepared_file_path)
     || (ackLatestGeneratedFilePath && prepared.latest_generated_file_path && ackLatestGeneratedFilePath === prepared.latest_generated_file_path)
@@ -98,8 +121,21 @@ function deriveManualPasteAck({ manualPasteAck = null, prepared = {}, targetCand
     (ackCandidateSignature && prepared.prepared_candidate_signature && ackCandidateSignature === prepared.prepared_candidate_signature)
     || (ackTargetCandidateId && targetCandidateId && ackTargetCandidateId === targetCandidateId)
   );
+  const strategyMatched = Boolean(
+    ackAppliedStrategyId
+    && prepared.prepared_strategy_id
+    && ackAppliedStrategyId === prepared.prepared_strategy_id
+  );
+  const strategyMismatch = Boolean(
+    ackAppliedStrategyId
+    && prepared.prepared_strategy_id
+    && ackAppliedStrategyId !== prepared.prepared_strategy_id
+  );
   const preparedFileStillExists = fileExists(ackPreparedFilePath || prepared.prepared_file_path);
-  const matched = acknowledged && preparedFileStillExists && (fileMatched || candidateMatched);
+  const matched = acknowledged
+    && preparedFileStillExists
+    && !strategyMismatch
+    && (strategyMatched || fileMatched || candidateMatched);
   return {
     acknowledged: matched,
     acknowledged_at_kst: String(ack.acknowledged_at_kst || "").trim() || null,
@@ -108,7 +144,9 @@ function deriveManualPasteAck({ manualPasteAck = null, prepared = {}, targetCand
     latest_generated_file_path: ackLatestGeneratedFilePath,
     candidate_signature: ackCandidateSignature,
     target_candidate_id: ackTargetCandidateId,
-    applied_strategy_id: String(ack.applied_strategy_id || "").trim() || null,
+    applied_strategy_id: ackAppliedStrategyId,
+    prepared_strategy_id: prepared.prepared_strategy_id || null,
+    strategy_mismatch: strategyMismatch,
     live_signal_confirmed: ack.live_signal_confirmed === true,
     live_signal_confirmation_pending: ack.live_signal_confirmation_pending === true,
     confirmed_signal_id: String(ack.confirmed_signal_id || "").trim() || null,
@@ -121,7 +159,7 @@ function deriveManualPasteAck({ manualPasteAck = null, prepared = {}, targetCand
 function deriveLiveSignalConfirmation({ signalsCache = null, manualPaste = null } = {}) {
   const docs = Array.isArray(signalsCache && signalsCache.docs) ? signalsCache.docs : [];
   const appliedStrategyId = String(manualPaste && manualPaste.applied_strategy_id || "").trim() || null;
-  if (manualPaste && manualPaste.live_signal_confirmed === true && appliedStrategyId) {
+  if (manualPaste && manualPaste.acknowledged === true && manualPaste.live_signal_confirmed === true && appliedStrategyId) {
     return {
       confirmed: true,
       pending: false,
@@ -329,6 +367,7 @@ function deriveDeploymentPlan({
       market_scope_ready_n: marketScope.ready_n,
       market_scope_blocked_n: marketScope.blocked_n,
       prepared_file_path: prepared.prepared_file_path,
+      prepared_strategy_id: prepared.prepared_strategy_id,
       latest_generated_file_path: prepared.latest_generated_file_path,
       rollback_source_file_path: prepared.rollback_source_file_path,
       prepared_stage_ready: prepared.prepared_stage_ready,
@@ -346,6 +385,7 @@ function deriveDeploymentPlan({
     handoff: {
       checklist,
       prepared_file_path: prepared.prepared_file_path,
+      prepared_strategy_id: prepared.prepared_strategy_id,
       latest_generated_file_path: prepared.latest_generated_file_path,
       rollback_source_file_path: prepared.rollback_source_file_path,
       candidate_signature: prepared.prepared_candidate_signature || targetCandidateId,

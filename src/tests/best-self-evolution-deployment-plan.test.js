@@ -108,6 +108,52 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
 (() => {
   const report = deriveDeploymentPlan({
     objectiveSupervisor: {
+      promotion: { ready: true, recovery_mode: true, candidate_id: "AUTO_CORE_REGIME_TIGHTEN", display_candidate_id: "AUTO_LONG_SHORT_REGIME_TIGHTEN" },
+      rollback: { ready: false },
+      self_evolution_deployment: { deploy_pass: true },
+    },
+    changeControl: {},
+    codexPatchReview: { verdict: "HOLD" },
+    deploymentGuards: { summary: { deploy_pass: true, target_candidate_id: "AUTO_CORE_REGIME_TIGHTEN", canary_open_wave: 1 } },
+    canaryReport: { summary: { open_wave: 1 }, rows: [] },
+    stageAutopilot: {
+      raw: {
+        stage_rows: [
+          {
+            stage: "PINE",
+            machine_state: "READY",
+            prepared_file_path: "/tmp/donbeolja_v6.0.3.2.pine.txt",
+            prepared_strategy_id: "donbeolja_v6.0.3.2",
+            latest_generated_file_path: "/tmp/latest.pine",
+            signature: "AUTO_CORE_REGIME_TIGHTEN",
+          },
+        ],
+      },
+    },
+    weeklyHistory: { weeks: [] },
+    manualPasteAck: {
+      acknowledged: true,
+      prepared_file_path: "/tmp/donbeolja_v6.0.3.1.pine.txt",
+      latest_generated_file_path: "/tmp/latest.pine",
+      candidate_signature: "AUTO_CORE_REGIME_TIGHTEN",
+      target_candidate_id: "AUTO_CORE_REGIME_TIGHTEN",
+      applied_strategy_id: "donbeolja_v6.0.3.1",
+      live_signal_confirmed: true,
+      confirmed_signal_id: "SIG__BINANCEFUT__BTCUSDT__15m__1774844100000__LONG",
+      acknowledged_at_kst: "2026-03-30 13:40:00 KST",
+    },
+  });
+
+  assert.strictEqual(report.summary.manual_paste_acknowledged, false);
+  assert.strictEqual(report.summary.plan_status, "READY_FOR_MANUAL_PASTE");
+  assert.strictEqual(report.summary.prepared_strategy_id, "donbeolja_v6.0.3.2");
+  assert.strictEqual(report.summary.live_signal_confirmed, false);
+  console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_STRATEGY_MISMATCH_TEST_OK");
+})();
+
+(() => {
+  const report = deriveDeploymentPlan({
+    objectiveSupervisor: {
       promotion: { ready: true, recovery_mode: true, candidate_id: "AUTO_CORE_REGIME_TIGHTEN", display_candidate_id: "AUTO_CORE_REGIME_TIGHTEN" },
       rollback: { ready: false },
       self_evolution_deployment: { deploy_pass: true },

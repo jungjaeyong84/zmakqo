@@ -11,6 +11,7 @@ const OPS_DAILY_DIR = path.join(ROOT, "ops", "daily");
 const OPS_RUNTIME_DIR = path.join(ROOT, "ops", "runtime");
 const LOCAL_RUNTIME_PATH = path.join(OPS_RUNTIME_DIR, "self_evolution_manual_paste_ack.json");
 const DAILY_RUNTIME_PATH = path.join(OPS_DAILY_DIR, "self_evolution_manual_paste_ack_latest.json");
+const DEPLOYMENT_PLAN_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json");
 const SETTINGS_COLLECTION = "settings";
 const SETTINGS_DOC_ID = "system";
 const SETTINGS_FIELD = "self_evolution_runtime";
@@ -58,12 +59,53 @@ function parseIsoMs(value) {
   return Number.isFinite(ms) ? ms : null;
 }
 
-function assessSelfEvolutionRuntimeSignalConfirmation(current = null, { strategyId = null, createdAt = null } = {}) {
+function toKstString(iso = null) {
+  const date = iso ? new Date(iso) : new Date();
+  const parts = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date).reduce((acc, part) => {
+    if (part.type !== "literal") acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second} KST`;
+}
+
+function readPreparedSelfEvolutionTarget() {
+  const raw = readJsonSafe(DEPLOYMENT_PLAN_LATEST_PATH);
+  const data = raw && raw.summary && typeof raw.summary === "object" ? raw.summary : raw;
+  if (!data || typeof data !== "object") return null;
+  const preparedStrategyId = pickString(data.prepared_strategy_id);
+  const preparedFilePath = pickString(data.prepared_file_path);
+  const targetCandidateId = pickString(data.target_candidate_id);
+  const preparedStageReady = data.prepared_stage_ready === true;
+  const readyForManualPaste = data.ready_for_manual_paste === true;
+  if (!preparedStrategyId || !preparedFilePath || !preparedStageReady || !readyForManualPaste) return null;
+  return {
+    target_candidate_id: targetCandidateId,
+    prepared_file_path: preparedFilePath,
+    latest_generated_file_path: pickString(data.latest_generated_file_path),
+    prepared_strategy_id: preparedStrategyId,
+  };
+}
+
+function assessSelfEvolutionRuntimeSignalConfirmation(current = null, { strategyId = null, createdAt = null, preparedRuntime = null } = {}) {
   const currentStrategyId = pickString(current && current.applied_strategy_id);
+  const incomingStrategyId = pickString(strategyId);
+  const prepared = preparedRuntime && typeof preparedRuntime === "object" ? preparedRuntime : null;
+  const preparedStrategyId = pickString(prepared && prepared.prepared_strategy_id);
+  if (preparedStrategyId && incomingStrategyId && incomingStrategyId === preparedStrategyId) {
+    return { ok: true, reason: "MATCHED_PREPARED_STRATEGY", preparedRuntime: prepared };
+  }
   if (!(current && current.acknowledged) || !currentStrategyId) {
     return { ok: false, reason: "NO_PENDING_RUNTIME_STATE" };
   }
-  const incomingStrategyId = pickString(strategyId);
   if (!incomingStrategyId || incomingStrategyId !== currentStrategyId) {
     return { ok: false, reason: "STRATEGY_ID_NOT_APPLIED" };
   }
@@ -201,11 +243,33 @@ async function confirmSelfEvolutionRuntimeSignal({
 } = {}) {
   const runtime = await resolveSelfEvolutionRuntimeState({ ttlMs: 0 });
   const current = runtime && runtime.data ? runtime.data : null;
-  const assessment = assessSelfEvolutionRuntimeSignalConfirmation(current, { strategyId, createdAt });
+  const preparedRuntime = readPreparedSelfEvolutionTarget();
+  const assessment = assessSelfEvolutionRuntimeSignalConfirmation(current, { strategyId, createdAt, preparedRuntime });
   if (!assessment.ok) {
     return { ok: true, updated: false, reason: assessment.reason, data: current };
   }
   const incomingStrategyId = pickString(strategyId);
+  if (assessment.reason === "MATCHED_PREPARED_STRATEGY") {
+    const prepared = assessment.preparedRuntime || preparedRuntime || {};
+    const now = nowIso();
+    const next = await writeSelfEvolutionRuntimeState({
+      acknowledged: true,
+      acknowledged_at_iso: now,
+      acknowledged_at_kst: toKstString(now),
+      target_candidate_id: pickString(prepared.target_candidate_id),
+      candidate_signature: pickString(prepared.target_candidate_id),
+      prepared_file_path: pickString(prepared.prepared_file_path),
+      latest_generated_file_path: pickString(prepared.latest_generated_file_path),
+      applied_file_path: pickString(prepared.prepared_file_path),
+      applied_strategy_id: incomingStrategyId,
+      live_signal_confirmed: true,
+      confirmed_signal_id: pickString(signalId),
+      confirmed_signal_created_at: pickString(createdAt),
+      confirmed_signal_event: pickString(event ? String(event).trim().toUpperCase() : null),
+      confirmed_strategy_id: incomingStrategyId,
+    }, { updatedBy });
+    return { ok: true, updated: true, reason: "PREPARED_STRATEGY_CONFIRMED", data: next };
+  }
   if (current.live_signal_confirmed === true && current.confirmed_signal_id === pickString(signalId)) {
     return { ok: true, updated: false, reason: "ALREADY_CONFIRMED", data: current };
   }
@@ -229,6 +293,8 @@ module.exports = {
     mergeSelfEvolutionRuntimeStateRaw,
     normalizeSelfEvolutionRuntimeState,
     parseIsoMs,
+    readPreparedSelfEvolutionTarget,
+    toKstString,
     assessSelfEvolutionRuntimeSignalConfirmation,
   },
 };

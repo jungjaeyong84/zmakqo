@@ -32,7 +32,8 @@ const { __test } = require("../../scripts/automation-weekly-pine-upgrade");
       ],
     },
   });
-  assert.strictEqual(candidate.patch_id, "AUTO_LONG_SHORT_REGIME_TIGHTEN");
+  assert.strictEqual(candidate.patch_id, "AUTO_CORE_REGIME_TIGHTEN");
+  assert.strictEqual(candidate.display_patch_id, "AUTO_LONG_SHORT_REGIME_TIGHTEN");
   assert.strictEqual(candidate.safe, true);
   assert.strictEqual(candidate.changes[0].old_value, 1);
   assert.strictEqual(candidate.changes[0].new_value, 2);

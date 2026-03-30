@@ -57,5 +57,24 @@ const { __test } = require("../../src/utils/selfEvolutionRuntimeState");
   assert.strictEqual(wrongStrategy.ok, false);
   assert.strictEqual(wrongStrategy.reason, "STRATEGY_ID_NOT_APPLIED");
 
+  const preparedStrategy = __test.assessSelfEvolutionRuntimeSignalConfirmation(
+    {
+      acknowledged: true,
+      acknowledged_at_iso: "2026-03-30T08:48:07.723Z",
+      applied_strategy_id: "donbeolja_v6.0.3.1",
+    },
+    {
+      strategyId: "donbeolja_v6.0.3.2",
+      createdAt: "2026-03-30T11:45:11.125Z",
+      preparedRuntime: {
+        target_candidate_id: "AUTO_CORE_REGIME_TIGHTEN",
+        prepared_file_path: "/tmp/donbeolja_v6.0.3.2.pine.txt",
+        prepared_strategy_id: "donbeolja_v6.0.3.2",
+      },
+    }
+  );
+  assert.strictEqual(preparedStrategy.ok, true);
+  assert.strictEqual(preparedStrategy.reason, "MATCHED_PREPARED_STRATEGY");
+
   console.log("SELF_EVOLUTION_RUNTIME_STATE_TEST_OK");
 })();

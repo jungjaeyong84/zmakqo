@@ -393,12 +393,20 @@ function buildPineCandidate(objectiveArtifact, codexArtifact, changeArtifact) {
       || change.auto_promotion && change.auto_promotion.candidate_id
       || ""
     ).trim();
+    const displayCandidateId = String(
+      codexAuthority.display_candidate_id
+      || objective.promotion && objective.promotion.display_candidate_id
+      || change.auto_promotion && change.auto_promotion.display_candidate_id
+      || candidateId
+      || ""
+    ).trim() || null;
     return {
       actionable: !!candidateId && (recoveryPromotion || (codexFresh && codexVerdict === "PROMOTE")),
       kind: "PROMOTE",
       signature: candidateId || null,
+      display_signature: displayCandidateId,
       reason: String(objective.reason || "PATCH_CANDIDATE"),
-      detail: candidateId || "N/A",
+      detail: displayCandidateId || candidateId || "N/A",
     };
   }
   if (verdict === "ROLLBACK_CANDIDATE") {
@@ -439,6 +447,19 @@ function runWeeklyPinePreparation() {
     stdout: String(res.stdout || "").trim(),
     stderr: String(res.stderr || "").trim(),
   };
+}
+
+function isPreparedPineAligned(latestWeeklyHistory = {}, candidate = {}) {
+  if (!candidate || String(candidate.kind || "").toUpperCase() === "ROLLBACK") return true;
+  const recommendedPatchId = String(latestWeeklyHistory && latestWeeklyHistory.recommended_patch_id || "").trim() || null;
+  const displayRecommendedPatchId = String(latestWeeklyHistory && latestWeeklyHistory.display_recommended_patch_id || "").trim() || null;
+  const candidateSignature = String(candidate && candidate.signature || "").trim() || null;
+  const candidateDisplaySignature = String(candidate && candidate.display_signature || "").trim() || null;
+  if (!candidateSignature) return false;
+  return recommendedPatchId === candidateSignature
+    || displayRecommendedPatchId === candidateSignature
+    || (candidateDisplaySignature && recommendedPatchId === candidateDisplaySignature)
+    || (candidateDisplaySignature && displayRecommendedPatchId === candidateDisplaySignature);
 }
 
 async function applyStageCandidate({ stage, candidate, stageState, history, nowMeta, nowMs, canaryPass, objectiveArtifact, currentSys, snapshotKeys, selfEvolutionRollbackReady = false }) {
@@ -725,8 +746,25 @@ async function processPineStage({
     || stageState.rollback_source_file_path
   );
   if (stageState.applied_signature === candidate.signature && stageState.machine_state === STATE_MACHINE.READY && stageAlreadyPrepared) {
+    const latestWeeklyHistory = readWeeklyPineLatestHistoryRow() || {};
+    const preparedFilePath = candidate.kind === "ROLLBACK"
+      ? (String(latestWeeklyHistory.rollback_source_file_path || "").trim() || stageState.prepared_file_path || String(candidate.detail || "").trim() || null)
+      : (String(latestWeeklyHistory.created_file_path || "").trim() || stageState.prepared_file_path || null);
+    const preparedStrategyId = candidate.kind === "ROLLBACK"
+      ? null
+      : (String(latestWeeklyHistory.created_strategy_id || "").trim() || stageState.prepared_strategy_id || null);
+    const latestGeneratedFilePath = String(latestWeeklyHistory.latest_generated_file_path || "").trim() || stageState.latest_generated_file_path || null;
+    const rollbackSourceFilePath = String(latestWeeklyHistory.rollback_source_file_path || "").trim() || stageState.rollback_source_file_path || null;
     return {
-      stageState: stageState,
+      stageState: {
+        ...stageState,
+        last_signature: candidate.signature,
+        display_signature: candidate.display_signature || stageState.display_signature || null,
+        prepared_file_path: preparedFilePath,
+        prepared_strategy_id: preparedStrategyId,
+        latest_generated_file_path: latestGeneratedFilePath,
+        rollback_source_file_path: rollbackSourceFilePath,
+      },
       history,
       action: null,
     };
@@ -734,12 +772,17 @@ async function processPineStage({
 
   const prep = runWeeklyPinePreparation();
   const latestWeeklyHistory = readWeeklyPineLatestHistoryRow() || {};
+  const preparedAligned = isPreparedPineAligned(latestWeeklyHistory, candidate);
   const preparedFilePath = candidate.kind === "ROLLBACK"
     ? (String(latestWeeklyHistory.rollback_source_file_path || "").trim() || String(candidate.detail || "").trim() || null)
     : (String(latestWeeklyHistory.created_file_path || "").trim() || null);
+  const preparedStrategyId = candidate.kind === "ROLLBACK"
+    ? null
+    : (String(latestWeeklyHistory.created_strategy_id || "").trim() || null);
   const latestGeneratedFilePath = String(latestWeeklyHistory.latest_generated_file_path || "").trim() || null;
   const rollbackSourceFilePath = String(latestWeeklyHistory.rollback_source_file_path || "").trim() || null;
-  const preparedArtifactAvailable = Boolean(preparedFilePath || latestGeneratedFilePath || rollbackSourceFilePath);
+  const preparedArtifactAvailable = Boolean(preparedFilePath || latestGeneratedFilePath || rollbackSourceFilePath)
+    && preparedAligned;
   const nextState = {
     ...stageState,
     stage,
@@ -747,19 +790,21 @@ async function processPineStage({
     last_signature: candidate.signature,
     last_action: "PINE_PREPARE",
     last_reason: prep.ok
-      ? (preparedArtifactAvailable ? `${candidate.kind}_PREPARED` : "PINE_PREPARE_PENDING")
+      ? (preparedArtifactAvailable ? `${candidate.kind}_PREPARED` : (preparedAligned ? "PINE_PREPARE_PENDING" : "PINE_TARGET_MISMATCH"))
       : `PINE_PREPARE_FAILED:${prep.error || prep.status || "UNKNOWN"}`,
     streak_current: candidate.signature ? computeSignatureStreak(history, stage, candidate.signature) : 0,
     applied_signature: candidate.signature,
     applied_at_kst: nowMeta.kst,
     blockers: prep.ok
-      ? (preparedArtifactAvailable ? [] : ["PINE_PREPARE_PENDING"])
+      ? (preparedArtifactAvailable ? [] : [preparedAligned ? "PINE_PREPARE_PENDING" : "PINE_TARGET_MISMATCH"])
       : ["PINE_PREPARE_FAILED"],
     prep_stdout: prep.stdout ? prep.stdout.slice(-4000) : "",
     prep_stderr: prep.stderr ? prep.stderr.slice(-4000) : "",
     prepared_file_path: preparedFilePath,
+    prepared_strategy_id: preparedStrategyId,
     latest_generated_file_path: latestGeneratedFilePath,
     rollback_source_file_path: rollbackSourceFilePath,
+    display_signature: candidate.display_signature || null,
   };
   return {
     stageState: nextState,
@@ -995,20 +1040,22 @@ async function main() {
   history = result.history;
   stateData.stages.PINE = result.stageState;
   if (result.action) actions.push(result.action);
-  stageRows.push({
-    stage: "PINE",
-    machine_state: result.stageState.machine_state,
-    reason: result.stageState.last_reason,
+    stageRows.push({
+      stage: "PINE",
+      machine_state: result.stageState.machine_state,
+      reason: result.stageState.last_reason,
     last_action: result.stageState.last_action,
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
     signature: result.stageState.last_signature,
     snapshot_path: null,
-    prepared_file_path: result.stageState.prepared_file_path || null,
-    latest_generated_file_path: result.stageState.latest_generated_file_path || null,
-    rollback_source_file_path: result.stageState.rollback_source_file_path || null,
-    best_febt_guard: pineBestFebtGuard.reason,
-  });
+      prepared_file_path: result.stageState.prepared_file_path || null,
+      prepared_strategy_id: result.stageState.prepared_strategy_id || null,
+      latest_generated_file_path: result.stageState.latest_generated_file_path || null,
+      rollback_source_file_path: result.stageState.rollback_source_file_path || null,
+      display_signature: result.stageState.display_signature || pineCandidate.display_signature || null,
+      best_febt_guard: pineBestFebtGuard.reason,
+    });
 
   stateData.history = history;
   writeAutopilotState(autopilotStore.filePath, stateData);
@@ -1065,7 +1112,10 @@ async function main() {
     },
     self_evolution_pine_handoff: {
       stage_ready: result.stageState.machine_state === STATE_MACHINE.READY,
+      target_candidate_id: pineCandidate.signature || null,
+      display_candidate_id: pineCandidate.display_signature || pineCandidate.signature || null,
       prepared_file_path: result.stageState.prepared_file_path || null,
+      prepared_strategy_id: result.stageState.prepared_strategy_id || null,
       latest_generated_file_path: result.stageState.latest_generated_file_path || null,
       rollback_source_file_path: result.stageState.rollback_source_file_path || null,
       candidate_signature: result.stageState.last_signature || null,

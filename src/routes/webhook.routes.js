@@ -83,6 +83,14 @@ function buildRuntimeStrategyGate({
     || safeManualPasteAck.applied_strategy_id
     || ""
   ).trim() || null;
+  const preparedReady = safeDeploymentSummary.prepared_stage_ready === true
+    && (
+      safeDeploymentSummary.ready_for_manual_paste === true
+      || String(safeDeploymentSummary.plan_status || "").trim().toUpperCase() === "READY_FOR_MANUAL_PASTE"
+    );
+  const preparedStrategyId = preparedReady
+    ? (String(safeDeploymentSummary.prepared_strategy_id || "").trim() || null)
+    : null;
   const manualPasteAcknowledged = safeManualPasteAck.acknowledged === true || safeDeploymentSummary.manual_paste_acknowledged === true;
   const liveSignalConfirmationPending = safeManualPasteAck.live_signal_confirmation_pending === true
     || safeDeploymentSummary.live_signal_confirmation_pending === true;
@@ -95,6 +103,7 @@ function buildRuntimeStrategyGate({
     ...safeEnvAllowedStrategyIds,
     runtimeDefaultStrategyId,
     appliedStrategyId,
+    preparedStrategyId,
   ].filter(Boolean)));
 
   return {
@@ -105,6 +114,8 @@ function buildRuntimeStrategyGate({
       env_default_strategy_id: safeEnvDefaultStrategyId,
       env_allowed_strategy_ids: safeEnvAllowedStrategyIds,
       applied_strategy_id: appliedStrategyId,
+      prepared_strategy_id: preparedStrategyId,
+      prepared_ready: preparedReady,
       manual_paste_acknowledged: manualPasteAcknowledged,
       live_signal_confirmation_pending: liveSignalConfirmationPending,
       live_signal_confirmed: liveSignalConfirmed,
