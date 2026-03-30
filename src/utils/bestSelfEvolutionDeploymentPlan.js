@@ -109,6 +109,11 @@ function deriveManualPasteAck({ manualPasteAck = null, prepared = {}, targetCand
     candidate_signature: ackCandidateSignature,
     target_candidate_id: ackTargetCandidateId,
     applied_strategy_id: String(ack.applied_strategy_id || "").trim() || null,
+    live_signal_confirmed: ack.live_signal_confirmed === true,
+    live_signal_confirmation_pending: ack.live_signal_confirmation_pending === true,
+    confirmed_signal_id: String(ack.confirmed_signal_id || "").trim() || null,
+    confirmed_signal_created_at: String(ack.confirmed_signal_created_at || "").trim() || null,
+    confirmed_signal_event: String(ack.confirmed_signal_event || "").trim().toUpperCase() || null,
     confirmation_status: matched ? "APPLIED_PENDING_SIGNAL_CONFIRMATION" : "N/A",
   };
 }
@@ -116,6 +121,16 @@ function deriveManualPasteAck({ manualPasteAck = null, prepared = {}, targetCand
 function deriveLiveSignalConfirmation({ signalsCache = null, manualPaste = null } = {}) {
   const docs = Array.isArray(signalsCache && signalsCache.docs) ? signalsCache.docs : [];
   const appliedStrategyId = String(manualPaste && manualPaste.applied_strategy_id || "").trim() || null;
+  if (manualPaste && manualPaste.live_signal_confirmed === true && appliedStrategyId) {
+    return {
+      confirmed: true,
+      pending: false,
+      signal_id: String(manualPaste.confirmed_signal_id || "").trim() || null,
+      created_at: String(manualPaste.confirmed_signal_created_at || "").trim() || null,
+      strategy_id: appliedStrategyId,
+      event: String(manualPaste.confirmed_signal_event || "").trim().toUpperCase() || null,
+    };
+  }
   const ackMs = parseIsoMs(manualPaste && manualPaste.acknowledged_at_iso);
   if (!(manualPaste && manualPaste.acknowledged) || !appliedStrategyId || !docs.length) {
     return {

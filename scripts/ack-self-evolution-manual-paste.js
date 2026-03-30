@@ -14,6 +14,9 @@ const {
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
+const { writeSelfEvolutionRuntimeState } = require("../src/utils/selfEvolutionRuntimeState");
+const { syncStrategyRuntimeFiles } = require("./lib/self-evolution-version-sync");
+const { syncSelfEvolutionLiveServices } = require("./lib/self-evolution-live-service-sync");
 
 loadLocalEnv();
 
@@ -29,6 +32,11 @@ function parseStrategyId(filePath) {
   const text = readTextSafe(filePath);
   const match = text.match(/STRATEGY_ID\s*=\s*\"([^\"]+)\"/);
   return match ? String(match[1] || "").trim() || null : null;
+}
+
+function parseEnvLine(text, key) {
+  const match = String(text || "").match(new RegExp(`^${key}=(.*)$`, "m"));
+  return match ? String(match[1] || "").trim() : "";
 }
 
 function syncCanonicalSource(appliedFilePath) {
@@ -94,7 +102,41 @@ async function main() {
   writeJson(runtimePath, payload);
   writeJson(dailyJsonPath, payload);
   writeText(dailyMdPath, renderMarkdown(payload));
-  console.log(JSON.stringify({ ok: true, runtime_json: runtimePath, latest_json: dailyJsonPath, latest_markdown: dailyMdPath, applied_strategy_id: strategyId }));
+  await writeSelfEvolutionRuntimeState({
+    ...payload,
+    acknowledged: true,
+    live_signal_confirmed: false,
+    confirmed_signal_id: null,
+    confirmed_signal_created_at: null,
+    confirmed_signal_event: null,
+    confirmed_strategy_id: null,
+  }, { updatedBy: "manual_paste_ack" });
+  const configSync = syncStrategyRuntimeFiles({ rootDir: process.cwd(), strategyId });
+  const syncedEnvText = readTextSafe(path.join(process.cwd(), ".env"));
+  const desiredAllowedCsv = parseEnvLine(syncedEnvText, "WEBHOOK_ALLOWED_STRATEGY_IDS");
+  const liveServiceSyncEnabled = process.env.SELF_EVOLUTION_SYNC_LIVE_SERVICES !== "0";
+  const liveServiceSync = liveServiceSyncEnabled
+    ? syncSelfEvolutionLiveServices({
+      strategyId,
+      engineVersion: configSync.engineVersion,
+      desiredAllowedCsv,
+    })
+    : [];
+  console.log(JSON.stringify({
+    ok: true,
+    runtime_json: runtimePath,
+    latest_json: dailyJsonPath,
+    latest_markdown: dailyMdPath,
+    applied_strategy_id: strategyId,
+    shared_runtime_state: "SYNCED",
+    engine_version: configSync.engineVersion,
+    config_files_synced: configSync.changed,
+    live_service_sync_enabled: liveServiceSyncEnabled,
+    live_services_synced: liveServiceSync.map((row) => ({
+      service: row.service,
+      revision: row.after && row.after.revision ? row.after.revision : null,
+    })),
+  }));
 }
 
 if (require.main === module) {
@@ -107,6 +149,7 @@ if (require.main === module) {
 module.exports = {
   __test: {
     parseStrategyId,
+    parseEnvLine,
     renderMarkdown,
   },
 };

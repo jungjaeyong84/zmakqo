@@ -93,6 +93,45 @@ function parseKstDateTimeToMs(text) {
   return Date.UTC(y, mo - 1, d, hh - 9, mm, ss);
 }
 
+function parseAnyDateToMs(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return null;
+  const kstMs = parseKstDateTimeToMs(text);
+  if (Number.isFinite(kstMs)) return kstMs;
+  const isoMs = Date.parse(text);
+  return Number.isFinite(isoMs) ? isoMs : null;
+}
+
+function buildArtifactFreshness(report, nowMs, filePath = null, maxAgeHours = 6) {
+  const fromFields = parseAnyDateToMs(
+    (report && (
+      report.generated_at_kst
+      || report.generated_at
+      || report.generated_at_iso
+      || report.created_at_kst
+      || report.updated_at_kst
+    )) || ""
+  );
+  let sourceMs = fromFields;
+  if (!Number.isFinite(sourceMs) && filePath) {
+    try {
+      sourceMs = fs.statSync(filePath).mtimeMs;
+    } catch (_err) {
+      sourceMs = null;
+    }
+  }
+  const ageHours = Number.isFinite(sourceMs) && Number.isFinite(nowMs)
+    ? round((nowMs - sourceMs) / (60 * 60 * 1000), 3)
+    : null;
+  const fresh = Number.isFinite(ageHours) ? ageHours <= maxAgeHours : false;
+  return {
+    available: Number.isFinite(sourceMs),
+    fresh,
+    age_hours: ageHours,
+    max_age_hours: maxAgeHours,
+  };
+}
+
 function parseKstLabel(text) {
   const ms = parseKstDateTimeToMs(text);
   if (!Number.isFinite(ms)) {
@@ -249,6 +288,9 @@ function buildStaticCheck(text) {
 
 function buildIssues(metrics, staticCheck, context = {}) {
   const staffDeadlineLabel = context.staff_deadline_label || "다음 보고 시각";
+  const reportingActive = context.reporting_active === true;
+  const liveDriftCurrent = context.live_drift_current !== false;
+  const strategyMismatchCurrent = context.strategy_mismatch_current !== false;
   const preflightFailedCount = Array.isArray(context.preflight_results)
     ? context.preflight_results.filter((x) => !x.ok).length
     : 0;
@@ -263,10 +305,12 @@ function buildIssues(metrics, staticCheck, context = {}) {
   if (Number.isFinite(metrics.conflict_count_conservative) && metrics.conflict_count_conservative >= 1) {
     issues.push(`[ISSUE] H | 운영충돌(consistency_check) ${metrics.conflict_count_conservative}건 | approval_consistency_owner 정리 필요`);
   }
-  if (Number.isFinite(metrics.conflict_count_clock) && metrics.conflict_count_clock >= 1) {
+  if (liveDriftCurrent && Number.isFinite(metrics.conflict_count_clock) && metrics.conflict_count_clock >= 1) {
     issues.push(`[ISSUE] M | 실시간차이(live_drift_check) ${metrics.conflict_count_clock}건 | report_clock_manager 즉시 정리 필요`);
   }
   if (
+    liveDriftCurrent
+    && 
     Number.isFinite(metrics.conflict_count_conservative)
     && Number.isFinite(metrics.conflict_count_clock)
     && metrics.conflict_count_conservative !== metrics.conflict_count_clock
@@ -275,10 +319,10 @@ function buildIssues(metrics, staticCheck, context = {}) {
       `[ISSUE] M | 수치 분기(운영충돌(consistency_check) ${metrics.conflict_count_conservative}건 / 실시간차이(live_drift_check) ${metrics.conflict_count_clock}건) | metric_reconciliation_owner 기준 정리 필요`
     );
   }
-  if (Number.isFinite(metrics.on_time_rate_pct) && metrics.on_time_rate_pct < 90) {
+  if (reportingActive && Number.isFinite(metrics.on_time_rate_pct) && metrics.on_time_rate_pct < 90) {
     issues.push(`[ISSUE] M | 정시율 ${fmtPct(metrics.on_time_rate_pct, 1)} | ${staffDeadlineLabel}까지 90%+ 복구 필요`);
   }
-  if (Number.isFinite(metrics.strategy_id_mismatch_drop_count) && metrics.strategy_id_mismatch_drop_count >= 1) {
+  if (strategyMismatchCurrent && Number.isFinite(metrics.strategy_id_mismatch_drop_count) && metrics.strategy_id_mismatch_drop_count >= 1) {
     issues.push(
       `[ISSUE] M | strategy_id 누적 불일치 ${metrics.strategy_id_mismatch_drop_count}건(신규 ${metrics.strategy_id_mismatch_after_revision_count}건) | 신규 0 유지 + 누적 소거 분리 관리`
     );
@@ -597,6 +641,13 @@ function main() {
   const clockResyncAfter = clockResync.after || {};
   const clockManagerNumbers = reportClockManager.key_numbers || {};
   const metricReconciliationSummary = metricReconciliation.reconciliation_summary || {};
+  const ceoGovernanceFreshness = buildArtifactFreshness(ceoGovernance, nowMs, CEO_GOVERNANCE_LATEST, 6);
+  const ceoFinalDecisionFreshness = buildArtifactFreshness(ceoFinalDecision, nowMs, CEO_FINAL_DECISION_LATEST, 6);
+  const approvalExecutionFreshness = buildArtifactFreshness(approvalExecution, nowMs, APPROVAL_EXECUTION_LATEST, 6);
+  const clockResyncFreshness = buildArtifactFreshness(clockResync, nowMs, REPORT_CLOCK_RESYNC_LATEST, 6);
+  const metricReconciliationFreshness = buildArtifactFreshness(metricReconciliation, nowMs, METRIC_RECONCILIATION_LATEST, 6);
+  const syncBoardFreshness = buildArtifactFreshness(syncBoard, nowMs, syncBoardPath, 6);
+  const reportClockManagerFreshness = buildArtifactFreshness(reportClockManager, nowMs, reportClockManagerPath, 6);
   const ceoGovernanceGeneratedAtMs = parseKstDateTimeToMs(ceoGovernance.generated_at_kst || "");
   const ceoScheduleFresh = Number.isFinite(ceoGovernanceGeneratedAtMs) && Number.isFinite(nowMs)
     ? Math.abs(nowMs - ceoGovernanceGeneratedAtMs) <= 60 * 60 * 1000
@@ -620,11 +671,11 @@ function main() {
   const nextStaffRaw = pickUpcomingKstLabel(
     [
       ceoScheduleFresh ? ceoStaffNext : "",
-      approvalNextReport.staff_to_jihye,
-      clockResyncAfter.staff_to_jihye,
-      clockManagerNumbers.matrix_staff_to_jihye,
-      ceoGovernance?.next_report?.staff_to_jihye,
-      ceoFinalNextReports.staff_to_jihye,
+      approvalExecutionFreshness.fresh ? approvalNextReport.staff_to_jihye : "",
+      clockResyncFreshness.fresh ? clockResyncAfter.staff_to_jihye : "",
+      reportClockManagerFreshness.fresh ? clockManagerNumbers.matrix_staff_to_jihye : "",
+      ceoGovernanceFreshness.fresh ? ceoGovernance?.next_report?.staff_to_jihye : "",
+      ceoFinalDecisionFreshness.fresh ? ceoFinalNextReports.staff_to_jihye : "",
     ],
     nowMs,
     staffFallbackDefault
@@ -632,12 +683,12 @@ function main() {
   let nextJihyeRaw = pickUpcomingKstLabel(
     [
       ceoScheduleFresh ? ceoJihyeNext : "",
-      approvalNextReport.jihye_to_jaeyong,
-      clockResyncAfter.jihye_to_jaeyong,
-      clockManagerNumbers.matrix_jihye_to_jaeyong,
-      clockManagerNumbers.approval_jihye_to_jaeyong,
-      ceoGovernance?.next_report?.jihye_to_jaeyong,
-      ceoFinalNextReports.jihye_to_jaeyong,
+      approvalExecutionFreshness.fresh ? approvalNextReport.jihye_to_jaeyong : "",
+      clockResyncFreshness.fresh ? clockResyncAfter.jihye_to_jaeyong : "",
+      reportClockManagerFreshness.fresh ? clockManagerNumbers.matrix_jihye_to_jaeyong : "",
+      reportClockManagerFreshness.fresh ? clockManagerNumbers.approval_jihye_to_jaeyong : "",
+      ceoGovernanceFreshness.fresh ? ceoGovernance?.next_report?.jihye_to_jaeyong : "",
+      ceoFinalDecisionFreshness.fresh ? ceoFinalNextReports.jihye_to_jaeyong : "",
     ],
     nowMs,
     jihyeFallbackDefault
@@ -681,37 +732,37 @@ function main() {
   })();
 
   const conflictCountConservative = toNum(
-    metricReconciliationSummary.consistency_mismatch_count,
+    metricReconciliationFreshness.fresh ? metricReconciliationSummary.consistency_mismatch_count : null,
     toNum(
-      ceoLatestMetrics.conservative_conflict_count,
-      toNum(ceoConservative.conflict_count, toNum(consolidated.conflict_count, 0))
+      ceoGovernanceFreshness.fresh ? ceoLatestMetrics.conservative_conflict_count : null,
+      toNum(ceoGovernanceFreshness.fresh ? ceoConservative.conflict_count : null, toNum(consolidated.conflict_count, 0))
     )
   );
   const conflictMatrixVsRole = toNum(
-    ceoLatestMetrics.conflict_matrix_vs_role,
-    toNum(clockManagerNumbers.conflict_matrix_vs_role, null)
+    ceoGovernanceFreshness.fresh ? ceoLatestMetrics.conflict_matrix_vs_role : null,
+    toNum(reportClockManagerFreshness.fresh ? clockManagerNumbers.conflict_matrix_vs_role : null, null)
   );
   const conflictApprovalVsRole = toNum(
-    ceoLatestMetrics.conflict_approval_vs_role,
-    toNum(clockManagerNumbers.conflict_approval_vs_role, null)
+    ceoGovernanceFreshness.fresh ? ceoLatestMetrics.conflict_approval_vs_role : null,
+    toNum(reportClockManagerFreshness.fresh ? clockManagerNumbers.conflict_approval_vs_role : null, null)
   );
   const conflictCountClock = toNum(
-    metricReconciliationSummary.live_drift_mismatch_count,
+    metricReconciliationFreshness.fresh ? metricReconciliationSummary.live_drift_mismatch_count : null,
     toNum(
-      ceoDecisionBasis.live_drift_check_count,
+      ceoGovernanceFreshness.fresh ? ceoDecisionBasis.live_drift_check_count : null,
       toNum(
-        ceoLatestMetrics.live_drift_check_count,
+        ceoGovernanceFreshness.fresh ? ceoLatestMetrics.live_drift_check_count : null,
         toNum(
-          ceoLatestMetrics.report_conflict_count,
+          ceoGovernanceFreshness.fresh ? ceoLatestMetrics.report_conflict_count : null,
           toNum(
-            ceoLive.live_drift_check_count,
+            ceoGovernanceFreshness.fresh ? ceoLive.live_drift_check_count : null,
             toNum(
-              syncRuntime.conflict_count,
+              syncBoardFreshness.fresh ? syncRuntime.conflict_count : null,
               toNum(
-                syncSummary.conflict_count,
+                syncBoardFreshness.fresh ? syncSummary.conflict_count : null,
                 Number.isFinite(conflictMatrixVsRole) && Number.isFinite(conflictApprovalVsRole)
                   ? Math.max(conflictMatrixVsRole, conflictApprovalVsRole)
-                  : 0
+                  : null
               )
             )
           )
@@ -719,15 +770,17 @@ function main() {
       )
     ),
   );
+  const costLimitPct = toNum(ceoGovernanceFreshness.fresh ? ceoLive.cost_limit_pct : null, null);
+  const mddLimitPct = toNum(ceoGovernanceFreshness.fresh ? ceoLive.mdd_limit_pct : null, null);
 
   const metrics = {
-    cost_ratio_pct: toNum(consolidated.cost_ratio_pct, toNum(ceoConservative.cost_ratio_pct, null)),
-    cost_limit_pct: toNum(ceoLive.cost_limit_pct, 0.2),
-    mdd_pct: toNum(consolidated.mdd_pct, toNum(ceoConservative.mdd_pct, null)),
-    mdd_limit_pct: toNum(ceoLive.mdd_limit_pct, -1.5),
-    on_time_rate_pct: toNum(syncSummary.on_time_rate_pct, toNum(ceoLive.on_time_rate_pct, null)),
-    valid_submission_rate_pct: toNum(syncSummary.valid_submission_rate_pct, toNum(ceoLive.valid_submission_rate_pct, null)),
-    stale_or_missing_count: toNum(syncSummary.stale_or_missing_count, toNum(ceoLive.stale_or_missing_count, null)),
+    cost_ratio_pct: toNum(consolidated.cost_ratio_pct, toNum(ceoGovernanceFreshness.fresh ? ceoConservative.cost_ratio_pct : null, null)),
+    cost_limit_pct: Number.isFinite(costLimitPct) ? costLimitPct : 0.2,
+    mdd_pct: toNum(consolidated.mdd_pct, toNum(ceoGovernanceFreshness.fresh ? ceoConservative.mdd_pct : null, null)),
+    mdd_limit_pct: Number.isFinite(mddLimitPct) ? mddLimitPct : -1.5,
+    on_time_rate_pct: toNum(syncBoardFreshness.fresh ? syncSummary.on_time_rate_pct : null, toNum(ceoGovernanceFreshness.fresh ? ceoLive.on_time_rate_pct : null, null)),
+    valid_submission_rate_pct: toNum(syncBoardFreshness.fresh ? syncSummary.valid_submission_rate_pct : null, toNum(ceoGovernanceFreshness.fresh ? ceoLive.valid_submission_rate_pct : null, null)),
+    stale_or_missing_count: toNum(syncBoardFreshness.fresh ? syncSummary.stale_or_missing_count : null, toNum(ceoGovernanceFreshness.fresh ? ceoLive.stale_or_missing_count : null, null)),
     conflict_count: conflictCountConservative,
     conflict_count_conservative: conflictCountConservative,
     conflict_count_clock: conflictCountClock,
@@ -746,12 +799,14 @@ function main() {
     active_febt_contract_count: toNum(probeVerify.active_febt_contract_count, 0),
     active_febt_trace_contract_missing_count: toNum(probeVerify.active_febt_trace_contract_missing_count, 0),
   };
+  if (!Number.isFinite(metrics.cost_limit_pct) || metrics.cost_limit_pct <= 0) metrics.cost_limit_pct = 0.2;
+  if (!Number.isFinite(metrics.mdd_limit_pct) || metrics.mdd_limit_pct >= 0) metrics.mdd_limit_pct = -1.5;
 
   const holdNeeded =
     (Number.isFinite(metrics.cost_ratio_pct) && metrics.cost_ratio_pct > metrics.cost_limit_pct)
     || (Number.isFinite(metrics.mdd_pct) && metrics.mdd_pct < metrics.mdd_limit_pct)
     || (Number.isFinite(metrics.conflict_count_conservative) && metrics.conflict_count_conservative >= 1)
-    || (Number.isFinite(metrics.on_time_rate_pct) && metrics.on_time_rate_pct < 90);
+    || (reportingJudgement.is_reporting_time_now === true && Number.isFinite(metrics.on_time_rate_pct) && metrics.on_time_rate_pct < 90);
 
   const decision = holdNeeded
     ? {
@@ -793,6 +848,9 @@ function main() {
 
   const issues = buildIssues(metrics, staticCheck, {
     staff_deadline_label: nextStaff.raw,
+    reporting_active: reportingJudgement.is_reporting_time_now === true,
+    live_drift_current: metricReconciliationFreshness.fresh || syncBoardFreshness.fresh || reportClockManagerFreshness.fresh || ceoGovernanceFreshness.fresh,
+    strategy_mismatch_current: toNum(mismatchFreshness.created_after_live_revision_count, 0) > 0 || String(mismatchFreshness.status || "").trim().toUpperCase() !== "HISTORICAL_ONLY",
     preflight_results: preflightResults,
   });
   const dailyRequiredPct = toNum(ceoGovernance?.team_common_goal?.daily_required_return_pct, 0.1667);
@@ -940,6 +998,17 @@ function main() {
       report_clock_manager_latest: reportClockManagerPath,
       report_sync_status_board_latest: syncBoardPath,
     },
+    source_freshness: {
+      ceo_governance: ceoGovernanceFreshness,
+      ceo_final_decision: ceoFinalDecisionFreshness,
+      approval_execution: approvalExecutionFreshness,
+      report_clock_resync: clockResyncFreshness,
+      metric_reconciliation: metricReconciliationFreshness,
+      report_sync_status_board: syncBoardFreshness,
+      report_clock_manager: reportClockManagerFreshness,
+      strategy_alignment: buildArtifactFreshness(strategyAlignment, nowMs, STRATEGY_ALIGNMENT_LATEST, 24),
+      post_apply_signal_probe: buildArtifactFreshness(signalProbe, nowMs, POST_APPLY_SIGNAL_LATEST, 6),
+    },
   };
 
   const markdown = buildMarkdown(payload);
@@ -981,5 +1050,6 @@ if (require.main === module) {
 module.exports = {
   __test: {
     buildStaticCheck,
+    buildIssues,
   },
 };

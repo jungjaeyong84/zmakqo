@@ -162,6 +162,52 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
 (() => {
   const report = deriveDeploymentPlan({
     objectiveSupervisor: {
+      promotion: { ready: true, recovery_mode: true, candidate_id: "AUTO_CORE_REGIME_TIGHTEN", display_candidate_id: "AUTO_CORE_REGIME_TIGHTEN" },
+      rollback: { ready: false },
+      self_evolution_deployment: { deploy_pass: true },
+    },
+    changeControl: {},
+    codexPatchReview: { verdict: "HOLD" },
+    deploymentGuards: { summary: { deploy_pass: true, target_candidate_id: "AUTO_CORE_REGIME_TIGHTEN", canary_open_wave: 1 } },
+    canaryReport: { summary: { open_wave: 1 }, rows: [] },
+    stageAutopilot: {
+      raw: {
+        stage_rows: [
+          {
+            stage: "PINE",
+            machine_state: "READY",
+            prepared_file_path: __filename,
+            latest_generated_file_path: "/tmp/latest.pine",
+            signature: "AUTO_CORE_REGIME_TIGHTEN",
+          },
+        ],
+      },
+    },
+    weeklyHistory: { weeks: [] },
+    manualPasteAck: {
+      acknowledged: true,
+      acknowledged_at_iso: "2026-03-30T04:40:00.000Z",
+      prepared_file_path: __filename,
+      latest_generated_file_path: "/tmp/latest.pine",
+      candidate_signature: "AUTO_CORE_REGIME_TIGHTEN",
+      target_candidate_id: "AUTO_CORE_REGIME_TIGHTEN",
+      applied_strategy_id: "donbeolja_v6.0.3.1",
+      live_signal_confirmed: true,
+      confirmed_signal_id: "SIG__BINANCEFUT__ETHUSDT__15m__1774858500000__LONG",
+      confirmed_signal_created_at: "2026-03-30T11:15:00.000Z",
+      confirmed_signal_event: "LONG",
+    },
+  });
+
+  assert.strictEqual(report.summary.plan_status, "APPLIED_CONFIRMED");
+  assert.strictEqual(report.summary.live_signal_confirmed, true);
+  assert.strictEqual(report.summary.confirmed_signal_id, "SIG__BINANCEFUT__ETHUSDT__15m__1774858500000__LONG");
+  console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_SHARED_CONFIRM_TEST_OK");
+})();
+
+(() => {
+  const report = deriveDeploymentPlan({
+    objectiveSupervisor: {
       promotion: { ready: false, candidate_id: null, display_candidate_id: null },
       rollback: { ready: false },
       self_evolution_deployment: { deploy_pass: true },

@@ -16,6 +16,7 @@ const {
   writeText,
 } = require("./lib/automation-utils");
 const { deriveDeploymentPlan } = require("../src/utils/bestSelfEvolutionDeploymentPlan");
+const { resolveSelfEvolutionRuntimeState } = require("../src/utils/selfEvolutionRuntimeState");
 
 loadLocalEnv();
 
@@ -77,6 +78,7 @@ function renderMarkdown(report = {}) {
 async function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
+  const runtimeState = await resolveSelfEvolutionRuntimeState({ ttlMs: 0 });
   const output = {
     ok: true,
     generated_at_kst: nowMeta.kst,
@@ -91,7 +93,7 @@ async function main() {
       canaryReport: readJsonRawSafe(INPUTS.canary, null),
       stageAutopilot: readJsonRawSafe(INPUTS.stageAutopilot, null),
       weeklyHistory: readJsonRawSafe(INPUTS.weeklyHistory, null),
-      manualPasteAck: readJsonRawSafe(INPUTS.manualPasteAck, null),
+      manualPasteAck: runtimeState && runtimeState.data ? runtimeState.data : readJsonRawSafe(INPUTS.manualPasteAck, null),
       signalsCache: readJsonRawSafe(INPUTS.signalsCache, null),
     }),
   };

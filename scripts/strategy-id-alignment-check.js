@@ -89,6 +89,28 @@ function uniq(items) {
   return Array.from(new Set(items.filter(Boolean)));
 }
 
+function normalizeStrategyIdCsv(value) {
+  return uniq(parseCsv(value)).sort(compareStrategyIdsDesc);
+}
+
+function strategyIdCsvEqual(a, b) {
+  const left = normalizeStrategyIdCsv(a);
+  const right = normalizeStrategyIdCsv(b);
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i += 1) {
+    if (String(left[i] || "") !== String(right[i] || "")) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function csvIncludesStrategyId(csv, strategyId) {
+  const target = String(strategyId || "").trim();
+  if (!target) return false;
+  return normalizeStrategyIdCsv(csv).includes(target);
+}
+
 function roundTo(value, digits = 1) {
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
@@ -158,7 +180,7 @@ function buildEnvUpdateCommand(service, region, envPairs) {
   const serialized = Object.entries(envPairs)
     .filter(([key, value]) => key && value != null)
     .map(([key, value]) => `${key}=${String(value)}`)
-    .join(",");
+    .join(":");
   return `gcloud run services update ${service} --region ${region} --update-env-vars "${delimiter}${serialized}"`;
 }
 
@@ -595,14 +617,9 @@ async function main() {
   const conservativeAllowedCsv = recommendedAllowedCsv;
   const conservativeEngine = liveEngine || recommendedEngine;
   const receivedIdsText = receivedIds.join(", ") || "N/A";
-
-  const liveSyncNeeded = !liveService.ok
-    ? true
-    : (
-      String(liveDefault || "") !== String(conservativeDefault || "")
-      || String(liveAllowed || "") !== String(conservativeAllowedCsv || "")
-      || String(liveEngine || "") !== String(conservativeEngine || "")
-    );
+  const liveMatchesConservativeDefault = String(liveDefault || "") === String(conservativeDefault || "");
+  const liveMatchesConservativeEngine = String(liveEngine || "") === String(conservativeEngine || "");
+  const liveAllowsConservativeDefault = csvIncludesStrategyId(liveAllowed || "", conservativeDefault || "");
 
   const conservativeCommand = buildEnvUpdateCommand(CLOUD_RUN_SERVICE, CLOUD_RUN_REGION, {
     WEBHOOK_ALLOWED_STRATEGY_IDS: conservativeAllowedCsv || null,
@@ -672,6 +689,30 @@ async function main() {
   const freshnessStatus = mismatchFreshness && mismatchFreshness.status
     ? mismatchFreshness.status
     : "UNKNOWN";
+  const mismatchHistoricalOnly = !!(
+    mismatchFreshness
+    && mismatchFreshness.ok
+    && freshnessStatus === "HISTORICAL_ONLY"
+    && Number.isFinite(mismatchAfterSyncCount)
+    && mismatchAfterSyncCount === 0
+  );
+  const liveSyncSatisfiedByCurrentRuntime = !!(
+    liveService.ok
+    && mismatchHistoricalOnly
+    && liveMatchesConservativeDefault
+    && liveMatchesConservativeEngine
+    && liveAllowsConservativeDefault
+  );
+  const liveSyncNeeded = !liveService.ok
+    ? true
+    : (
+      !liveSyncSatisfiedByCurrentRuntime
+      && (
+        !liveMatchesConservativeDefault
+        || !strategyIdCsvEqual(liveAllowed || "", conservativeAllowedCsv || "")
+        || !liveMatchesConservativeEngine
+      )
+    );
   const approvalStateText = liveSyncNeeded
     ? "[USER_APPROVAL_REQUIRED] 실서버 strategy_id 허용목록 갱신 | 운영 서버 환경값 변경이므로 승인 필요 | 승인 시 보수안 커맨드 우선 실행 후 60분 검증"
     : "없음(승인 반영 완료, 60분 검증 진행)";
@@ -688,6 +729,8 @@ async function main() {
       issueLines.push(`[ISSUE] H | 실서버 허용ID(${liveAllowed || "N/A"})와 수신ID(${receivedIdsText}) 불일치 | 신호 드롭 지속 위험`);
     } else if (mismatchGuardCount >= 1) {
       issueLines.push(`[ISSUE] H | 동기화 이후 신규 strategy_id 불일치 ${mismatchGuardCount}건 | 게이트 반영/전파 경로 즉시 재점검 필요`);
+    } else if (mismatchHistoricalOnly) {
+      issueLines.push(`[ISSUE] L | 실서버 허용ID 동기화 완료(rev ${liveService.revision || "N/A"}) | 누적 mismatch ${mismatchTotal}건은 과거 데이터, 리비전 이후 신규 0건`);
     } else {
       issueLines.push(`[ISSUE] M | 실서버 허용ID 동기화 완료(rev ${liveService.revision || "N/A"}) | 누적 mismatch ${mismatchTotal}건은 과거 데이터, 운영 가드 0건 유지`);
     }
@@ -920,7 +963,15 @@ async function main() {
   console.log(`- ${OUTPUT_LATEST_MD_PATH}`);
 }
 
-main().catch((err) => {
-  console.error("[strategy-id-alignment-check] failed:", err && err.message ? err.message : err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("[strategy-id-alignment-check] failed:", err && err.message ? err.message : err);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  normalizeStrategyIdCsv,
+  strategyIdCsvEqual,
+  csvIncludesStrategyId,
+};

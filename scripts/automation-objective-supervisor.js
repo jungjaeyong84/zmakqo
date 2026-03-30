@@ -32,6 +32,7 @@ const { deriveWeightTuningPlan } = require("../src/utils/bestSelfEvolutionWeight
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
 const { resolveMarketStateSummary } = require("../src/utils/marketStateSummary");
 const { resolveStatPhysFeatures } = require("../src/utils/statPhysFeatures");
+const { resolveSelfEvolutionRuntimeState } = require("../src/utils/selfEvolutionRuntimeState");
 
 loadLocalEnv();
 
@@ -2024,7 +2025,10 @@ async function main() {
   const stageAutopilotArtifact = readArtifact("stage_autopilot", STAGE_AUTOPILOT_LATEST_PATH, FRESHNESS_HOURS.stageAutopilot);
   const weeklyPineHistoryArtifact = readArtifact("weekly_pine_history", WEEKLY_PINE_HISTORY_PATH, FRESHNESS_HOURS.weeklyPineHistory);
   const retrospectiveArtifact = readArtifact("objective_retrospective", RETROSPECTIVE_LATEST_PATH, FRESHNESS_HOURS.retrospective);
-  const manualPasteAck = readJsonRawSafe(SELF_EVOLUTION_MANUAL_PASTE_ACK_LATEST_PATH, null);
+  const runtimeState = await resolveSelfEvolutionRuntimeState({ ttlMs: 0 });
+  const manualPasteAck = runtimeState && runtimeState.data
+    ? runtimeState.data
+    : readJsonRawSafe(SELF_EVOLUTION_MANUAL_PASTE_ACK_LATEST_PATH, null);
   const signalsCache = readJsonRawSafe(SIGNALS_CACHE_LATEST_PATH, null);
   const selfEvolutionCycleState = summarizeSelfEvolutionArtifactCycles({
     stage: selfEvolutionStage,

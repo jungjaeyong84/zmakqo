@@ -1,3 +1,5 @@
+const fs = require("fs");
+const path = require("path");
 const express = require("express");
 const rateLimit = require("express-rate-limit");
 const env = require("../config/env");
@@ -19,6 +21,10 @@ const { normalizePositionSide } = require("../utils/positionSide");
 const { alignBarCloseMs } = require("../utils/alignBarCloseMs");
 const { resolveFebtShadow } = require("../utils/febtShadow");
 const { mergeFebtPayloadContract } = require("../utils/febtPayloadContract");
+const {
+  resolveSelfEvolutionRuntimeState,
+  confirmSelfEvolutionRuntimeSignal,
+} = require("../utils/selfEvolutionRuntimeState");
 const { runOneMarket } = require("../scheduler/marketRunner");
 const { resolveExecTfForExchange } = require("../utils/resolveExchange");
 const { sendSignalReceivedAlert } = require("../services/signalLifecycleAlert");
@@ -35,7 +41,98 @@ const {
   sideToPositionDir,
 } = require("../services/webhookReverseException");
 
+const ROOT = path.resolve(__dirname, "../..");
+const OPS_DAILY = path.join(ROOT, "ops", "daily");
+const SELF_EVOLUTION_MANUAL_PASTE_ACK_LATEST = path.join(OPS_DAILY, "self_evolution_manual_paste_ack_latest.json");
+const SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST = path.join(OPS_DAILY, "best_self_evolution_deployment_plan_latest.json");
 const DEFAULT_STRATEGY_ID = process.env.DONBEOLJA_STRATEGY_ID || "STRAT_v010";
+
+function readJsonSafe(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch (_err) {
+    return null;
+  }
+}
+
+function parseAllowedStrategyIds(raw) {
+  return Array.from(new Set(
+    String(raw || "")
+      .split(",")
+      .map((s) => String(s || "").trim())
+      .filter(Boolean)
+  ));
+}
+
+function buildRuntimeStrategyGate({
+  envDefaultStrategyId = DEFAULT_STRATEGY_ID,
+  envAllowedStrategyIds = [],
+  manualPasteAck = null,
+  deploymentSummary = null,
+} = {}) {
+  const safeEnvDefaultStrategyId = String(envDefaultStrategyId || "").trim() || "STRAT_v010";
+  const safeEnvAllowedStrategyIds = Array.isArray(envAllowedStrategyIds)
+    ? envAllowedStrategyIds.map((row) => String(row || "").trim()).filter(Boolean)
+    : parseAllowedStrategyIds(envAllowedStrategyIds || safeEnvDefaultStrategyId);
+  const safeDeploymentSummary = deploymentSummary && typeof deploymentSummary === "object"
+    ? deploymentSummary
+    : {};
+  const safeManualPasteAck = manualPasteAck && typeof manualPasteAck === "object" ? manualPasteAck : {};
+  const appliedStrategyId = String(
+    safeDeploymentSummary.applied_strategy_id
+    || safeManualPasteAck.applied_strategy_id
+    || ""
+  ).trim() || null;
+  const manualPasteAcknowledged = safeManualPasteAck.acknowledged === true || safeDeploymentSummary.manual_paste_acknowledged === true;
+  const liveSignalConfirmationPending = safeManualPasteAck.live_signal_confirmation_pending === true
+    || safeDeploymentSummary.live_signal_confirmation_pending === true;
+  const liveSignalConfirmed = safeManualPasteAck.live_signal_confirmed === true
+    || safeDeploymentSummary.live_signal_confirmed === true;
+  const runtimeDefaultStrategyId = (manualPasteAcknowledged || liveSignalConfirmationPending || liveSignalConfirmed) && appliedStrategyId
+    ? appliedStrategyId
+    : safeEnvDefaultStrategyId;
+  const allowedStrategyIds = Array.from(new Set([
+    ...safeEnvAllowedStrategyIds,
+    runtimeDefaultStrategyId,
+    appliedStrategyId,
+  ].filter(Boolean)));
+
+  return {
+    defaultStrategyId: runtimeDefaultStrategyId,
+    allowedStrategyIds,
+    allowedStrategySet: new Set(allowedStrategyIds),
+    source: {
+      env_default_strategy_id: safeEnvDefaultStrategyId,
+      env_allowed_strategy_ids: safeEnvAllowedStrategyIds,
+      applied_strategy_id: appliedStrategyId,
+      manual_paste_acknowledged: manualPasteAcknowledged,
+      live_signal_confirmation_pending: liveSignalConfirmationPending,
+      live_signal_confirmed: liveSignalConfirmed,
+    },
+  };
+}
+
+async function resolveRuntimeStrategyGate() {
+  const envDefaultStrategyId = String(DEFAULT_STRATEGY_ID || "").trim() || "STRAT_v010";
+  const envAllowedStrategyIds = parseAllowedStrategyIds(process.env.WEBHOOK_ALLOWED_STRATEGY_IDS || envDefaultStrategyId);
+  const runtimeState = await resolveSelfEvolutionRuntimeState({ ttlMs: 30_000 });
+  const manualPasteAck = runtimeState && runtimeState.data
+    ? runtimeState.data
+    : (readJsonSafe(SELF_EVOLUTION_MANUAL_PASTE_ACK_LATEST) || {});
+  const deploymentPlan = readJsonSafe(SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST) || {};
+  const deploymentSummary = deploymentPlan && deploymentPlan.summary && typeof deploymentPlan.summary === "object"
+    ? deploymentPlan.summary
+    : {};
+  const gate = buildRuntimeStrategyGate({
+    envDefaultStrategyId,
+    envAllowedStrategyIds,
+    manualPasteAck,
+    deploymentSummary,
+  });
+  gate.source.runtime_state_source = runtimeState && runtimeState.source ? runtimeState.source : "local";
+  gate.source.runtime_state_error = runtimeState && runtimeState.error ? runtimeState.error : null;
+  return gate;
+}
 
 function createWebhookRoutes() {
   const router = express.Router();
@@ -45,13 +142,6 @@ function createWebhookRoutes() {
   const WEBHOOK_STRATEGY_REQUIRE_ID = ["1", "true", "yes", "y", "on"].includes(
     String(process.env.WEBHOOK_STRATEGY_REQUIRE_ID || "1").trim().toLowerCase()
   );
-  const WEBHOOK_ALLOWED_STRATEGY_IDS = Array.from(new Set(
-    String(process.env.WEBHOOK_ALLOWED_STRATEGY_IDS || DEFAULT_STRATEGY_ID)
-      .split(",")
-      .map((s) => String(s || "").trim())
-      .filter(Boolean)
-  ));
-  const WEBHOOK_ALLOWED_STRATEGY_SET = new Set(WEBHOOK_ALLOWED_STRATEGY_IDS);
   const WEBHOOK_IMMEDIATE_PROCESS = String(process.env.WEBHOOK_IMMEDIATE_PROCESS || "1") === "1";
   const WEBHOOK_IMMEDIATE_TIMEOUT_MS = Number(process.env.WEBHOOK_IMMEDIATE_TIMEOUT_MS || 30000);
   const WEBHOOK_IMMEDIATE_RETRY_MAX = Math.max(0, Number(process.env.WEBHOOK_IMMEDIATE_RETRY_MAX || 2));
@@ -1328,14 +1418,15 @@ function createWebhookRoutes() {
         ? clampNumber(exitPolicyRunnerMinProfitPctParsed, 0.5, 10)
         : null;
 
+      const strategyGate = await resolveRuntimeStrategyGate();
       const strategyIdRaw = p.strategy_id || p.strategyId || p.strategy || p.strategy_name || null;
       const strategyIdPresent = strategyIdRaw != null && String(strategyIdRaw).trim() !== "";
       const strategyId = (strategyIdRaw != null && String(strategyIdRaw).trim() !== "")
         ? String(strategyIdRaw).trim()
-        : DEFAULT_STRATEGY_ID;
-      const strategyAllowed = !WEBHOOK_STRATEGY_GATE_ENABLED || WEBHOOK_ALLOWED_STRATEGY_SET.size === 0
+        : strategyGate.defaultStrategyId;
+      const strategyAllowed = !WEBHOOK_STRATEGY_GATE_ENABLED || strategyGate.allowedStrategySet.size === 0
         ? true
-        : WEBHOOK_ALLOWED_STRATEGY_SET.has(strategyId);
+        : strategyGate.allowedStrategySet.has(strategyId);
       const strategyMissingBlocked = WEBHOOK_STRATEGY_GATE_ENABLED && WEBHOOK_STRATEGY_REQUIRE_ID && !strategyIdPresent;
       const strategyMismatchBlocked = WEBHOOK_STRATEGY_GATE_ENABLED && !strategyAllowed;
       const confidenceRaw = p.confidence ?? p.signal_confidence ?? p.conf ?? null;
@@ -1373,8 +1464,9 @@ function createWebhookRoutes() {
               _strategy_required: WEBHOOK_STRATEGY_REQUIRE_ID,
               _strategy_id_present: strategyIdPresent,
               _strategy_id_received: strategyIdPresent ? strategyId : null,
-              _strategy_id_default: DEFAULT_STRATEGY_ID,
-              _strategy_allowed_ids: WEBHOOK_ALLOWED_STRATEGY_IDS,
+              _strategy_id_default: strategyGate.defaultStrategyId,
+              _strategy_allowed_ids: strategyGate.allowedStrategyIds,
+              _strategy_gate_source: strategyGate.source,
             },
             event_group: "DROP",
             event_subtype: "DROP",
@@ -1789,6 +1881,23 @@ function createWebhookRoutes() {
         features,
         executionMode,
       });
+      try {
+        const confirmation = await confirmSelfEvolutionRuntimeSignal({
+          signalId: saved && saved.signal_id ? saved.signal_id : (p.signal_id || null),
+          createdAt: new Date().toISOString(),
+          event,
+          strategyId,
+        });
+        if (confirmation && confirmation.updated) {
+          console.log("[SELF_EVOLUTION_RUNTIME_CONFIRMED]", JSON.stringify({
+            signal_id: saved && saved.signal_id ? saved.signal_id : (p.signal_id || null),
+            strategy_id: strategyId,
+            event,
+          }));
+        }
+      } catch (runtimeErr) {
+        console.warn("[SELF_EVOLUTION_RUNTIME_CONFIRM_FAIL]", runtimeErr?.message || runtimeErr);
+      }
       sendSignalReceivedAlert({
         exchange,
         symbol,
@@ -1896,3 +2005,7 @@ function createWebhookRoutes() {
 }
 
 module.exports = createWebhookRoutes;
+module.exports.__test = {
+  buildRuntimeStrategyGate,
+  parseAllowedStrategyIds,
+};
