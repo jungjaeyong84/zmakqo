@@ -32,6 +32,16 @@ function readJsonSafe(filePath) {
   }
 }
 
+function writeJsonSafe(filePath, payload) {
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
+    return true;
+  } catch (_err) {
+    return false;
+  }
+}
+
 function pickString(value) {
   const text = String(value || "").trim();
   return text || null;
@@ -46,6 +56,24 @@ function pickBoolean(value, fallback = false) {
 function parseIsoMs(value) {
   const ms = Date.parse(String(value || ""));
   return Number.isFinite(ms) ? ms : null;
+}
+
+function assessSelfEvolutionRuntimeSignalConfirmation(current = null, { strategyId = null, createdAt = null } = {}) {
+  const currentStrategyId = pickString(current && current.applied_strategy_id);
+  if (!(current && current.acknowledged) || !currentStrategyId) {
+    return { ok: false, reason: "NO_PENDING_RUNTIME_STATE" };
+  }
+  const incomingStrategyId = pickString(strategyId);
+  if (!incomingStrategyId || incomingStrategyId !== currentStrategyId) {
+    return { ok: false, reason: "STRATEGY_ID_NOT_APPLIED" };
+  }
+  const incomingCreatedMs = parseIsoMs(createdAt);
+  const acknowledgedMs = parseIsoMs(current && current.acknowledged_at_iso);
+  const signalBeforeAck = incomingCreatedMs != null && acknowledgedMs != null && incomingCreatedMs < acknowledgedMs;
+  return {
+    ok: true,
+    reason: signalBeforeAck ? "MATCHED_STRATEGY_PRE_ACK" : "MATCHED_STRATEGY",
+  };
 }
 
 function mergeSelfEvolutionRuntimeStateRaw(...states) {
@@ -154,6 +182,8 @@ async function writeSelfEvolutionRuntimeState(patch = {}, { updatedBy = "self_ev
     [SETTINGS_FIELD]: next,
     updated_at: next.updated_at_iso,
   }, { merge: true });
+  writeJsonSafe(LOCAL_RUNTIME_PATH, next);
+  writeJsonSafe(DAILY_RUNTIME_PATH, next);
   invalidateSettingsCache("system");
   sharedCache = {
     data: next,
@@ -171,19 +201,11 @@ async function confirmSelfEvolutionRuntimeSignal({
 } = {}) {
   const runtime = await resolveSelfEvolutionRuntimeState({ ttlMs: 0 });
   const current = runtime && runtime.data ? runtime.data : null;
-  const currentStrategyId = pickString(current && current.applied_strategy_id);
-  if (!(current && current.acknowledged) || !currentStrategyId) {
-    return { ok: true, updated: false, reason: "NO_PENDING_RUNTIME_STATE", data: current };
+  const assessment = assessSelfEvolutionRuntimeSignalConfirmation(current, { strategyId, createdAt });
+  if (!assessment.ok) {
+    return { ok: true, updated: false, reason: assessment.reason, data: current };
   }
   const incomingStrategyId = pickString(strategyId);
-  if (!incomingStrategyId || incomingStrategyId !== currentStrategyId) {
-    return { ok: true, updated: false, reason: "STRATEGY_ID_NOT_APPLIED", data: current };
-  }
-  const incomingCreatedMs = parseIsoMs(createdAt);
-  const acknowledgedMs = parseIsoMs(current.acknowledged_at_iso);
-  if (incomingCreatedMs != null && acknowledgedMs != null && incomingCreatedMs < acknowledgedMs) {
-    return { ok: true, updated: false, reason: "SIGNAL_BEFORE_ACK", data: current };
-  }
   if (current.live_signal_confirmed === true && current.confirmed_signal_id === pickString(signalId)) {
     return { ok: true, updated: false, reason: "ALREADY_CONFIRMED", data: current };
   }
@@ -207,5 +229,6 @@ module.exports = {
     mergeSelfEvolutionRuntimeStateRaw,
     normalizeSelfEvolutionRuntimeState,
     parseIsoMs,
+    assessSelfEvolutionRuntimeSignalConfirmation,
   },
 };

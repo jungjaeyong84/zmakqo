@@ -1,6 +1,7 @@
 const { getFirestore } = require("./firestore");
 const { sendSignalDroppedAlert } = require("../services/signalLifecycleAlert");
 const { enrichFeaturesWithRegime } = require("../utils/regime");
+const { confirmSelfEvolutionRuntimeSignal } = require("../utils/selfEvolutionRuntimeState");
 
 function nowIso() {
   return new Date().toISOString();
@@ -24,6 +25,28 @@ function dropId({ exchange, symbol, tf, barCloseMs, event, side, group, subtype 
     String(group || ""),
     String(subtype || ""),
   ].join("__");
+}
+
+function pickDropStrategyId(payload = null) {
+  if (!payload || typeof payload !== "object") return null;
+  const features = payload.features_json && typeof payload.features_json === "object"
+    ? payload.features_json
+    : {};
+  const strategyId = String(
+    payload.strategy_id
+    || features.strategy_id
+    || ""
+  ).trim();
+  return strategyId || null;
+}
+
+function shouldConfirmSelfEvolutionFromDrop(payload = null) {
+  if (!payload || typeof payload !== "object") return false;
+  const executionMode = normalizeExecutionMode(payload.execution_mode);
+  if (executionMode !== "LIVE") return false;
+  if (!String(payload.signal_id || "").trim()) return false;
+  if (!pickDropStrategyId(payload)) return false;
+  return true;
 }
 
 async function recordSignalDrops({ exchange, symbol, tf, drops = [] } = {}) {
@@ -83,6 +106,20 @@ async function recordSignalDrops({ exchange, symbol, tf, drops = [] } = {}) {
   });
 
   await Promise.allSettled(writes);
+  const confirmations = normalizedDrops
+    .filter((payload) => shouldConfirmSelfEvolutionFromDrop(payload))
+    .map((payload) =>
+      confirmSelfEvolutionRuntimeSignal({
+        signalId: payload.signal_id || null,
+        createdAt: payload.created_at || now,
+        event: payload.event || null,
+        strategyId: pickDropStrategyId(payload),
+        updatedBy: "webhook_drop_signal_confirm",
+      })
+    );
+  if (confirmations.length) {
+    await Promise.allSettled(confirmations);
+  }
   const alerts = normalizedDrops.map((d) =>
     sendSignalDroppedAlert({
       exchange: d.exchange,
@@ -101,4 +138,10 @@ async function recordSignalDrops({ exchange, symbol, tf, drops = [] } = {}) {
   return { ok: true, written: writes.length };
 }
 
-module.exports = { recordSignalDrops };
+module.exports = {
+  recordSignalDrops,
+  __test: {
+    pickDropStrategyId,
+    shouldConfirmSelfEvolutionFromDrop,
+  },
+};
