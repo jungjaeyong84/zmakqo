@@ -63,6 +63,13 @@ function renderSummaryLine(rows = []) {
     .join(" / ") || "N/A";
 }
 
+function renderCoverageLine(rows = []) {
+  return (Array.isArray(rows) ? rows : [])
+    .slice(0, 8)
+    .map((row) => `${row.key} ${row.with_febt_n}/${row.eligible_n} (${pct(row.coverage_rate)})`)
+    .join(" / ") || "N/A";
+}
+
 function renderMarkdown(report = {}) {
   const summary = report.summary || {};
   const lines = [
@@ -81,6 +88,10 @@ function renderMarkdown(report = {}) {
     `- realized_n: ${summary.realized_n || 0} / all_realized_n: ${summary.all_realized_n || 0} / features ${pct(summary.features_coverage_rate)} / FEBT all ${pct(summary.febt_coverage_rate)} / eligible ${pct(summary.febt_coverage_rate_eligible)} (${summary.febt_eligible_n || 0})`,
     `- entry_pending_total_n: ${summary.entry_pending_total_n || 0} / executed_null_realized ${summary.entry_executed_null_realized_n || 0} / fallback_pending ${summary.entry_fallback_pending_n || 0} / exit_present_unlabeled ${summary.entry_exit_present_unlabeled_n || 0} / open_pending ${summary.entry_open_pending_n || 0} / link_missing ${summary.entry_link_missing_n || 0}`,
     `- executed_exit_only_n: ${summary.executed_exit_only_n || 0} / exit_only_n: ${summary.exit_only_n || 0} / exit_only_realized_n: ${summary.exit_only_realized_n || 0}`,
+    `- fallback_pending_reason: ${renderSummaryLine(summary.entry_fallback_pending_by_reason)}`,
+    `- fallback_pending_market: ${renderSummaryLine(summary.entry_fallback_pending_by_market)} / event: ${renderSummaryLine(summary.entry_fallback_pending_by_event)}`,
+    `- FEBT eligible coverage by market: ${renderCoverageLine(summary.febt_eligible_by_market)}`,
+    `- FEBT eligible coverage by event: ${renderCoverageLine(summary.febt_eligible_by_event)}`,
     `- avg_realized_ret_net: ${signedPct(summary.avg_realized_ret_net)}`,
     `- avg_realized_pnl_quote: ${signedNum(summary.avg_realized_pnl_quote, 0)}`,
     `- avg_hold_minutes: ${summary.avg_hold_minutes != null ? Number(summary.avg_hold_minutes).toFixed(1) : "N/A"}`,

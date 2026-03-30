@@ -963,6 +963,19 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
   const realizedSourceCounts = countBy(realizedRows.filter((row) => row.realized_source), (row) => row.realized_source);
   const allRealizedSourceCounts = countBy(allRealizedRows.filter((row) => row.realized_source), (row) => row.realized_source);
   const evCounterfactualRows = allRealizedRows.filter((row) => row.realized_source === "EV_TUNER_COUNTERFACTUAL");
+  const coverageByGroup = (items = [], keyFn) => countBy(items, keyFn).map((row) => {
+    const subset = items.filter((item) => {
+      const value = keyFn(item);
+      return (value == null ? "N/A" : value) === row.key;
+    });
+    const subsetWithFebt = subset.filter((item) => hasFebt(item));
+    return {
+      key: row.key,
+      eligible_n: subset.length,
+      with_febt_n: subsetWithFebt.length,
+      coverage_rate: subset.length > 0 ? (subsetWithFebt.length / subset.length) : null,
+    };
+  });
   return {
     rows_n: scoped.length,
     executed_n: scoped.filter((row) => row.source_row_type === "EXECUTED").length,
@@ -980,11 +993,16 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
     entry_exit_present_unlabeled_n: pendingEntryExecuted.filter((row) => row.outcome_state === "EXIT_PRESENT_UNLABELED").length,
     entry_open_pending_n: pendingEntryExecuted.filter((row) => row.outcome_state === "OPEN_PENDING").length,
     entry_link_missing_n: pendingEntryExecuted.filter((row) => row.outcome_state === "LINK_MISSING").length,
+    entry_fallback_pending_by_reason: countBy(pendingEntryFallback, (row) => row.fallback_reason).slice(0, 10),
+    entry_fallback_pending_by_market: countBy(pendingEntryFallback, (row) => row.market).slice(0, 10),
+    entry_fallback_pending_by_event: countBy(pendingEntryFallback, (row) => row.event).slice(0, 10),
     executed_exit_only_n: executedExitOnly.length,
     features_coverage_rate: scoped.length > 0 ? (withFeatures.length / scoped.length) : null,
     febt_coverage_rate: scoped.length > 0 ? (withFebt.length / scoped.length) : null,
     febt_eligible_n: febtEligibleRows.length,
     febt_coverage_rate_eligible: febtEligibleRows.length > 0 ? (withFebt.length / febtEligibleRows.length) : null,
+    febt_eligible_by_market: coverageByGroup(febtEligibleRows, (row) => row.market).slice(0, 10),
+    febt_eligible_by_event: coverageByGroup(febtEligibleRows, (row) => row.event).slice(0, 12),
     avg_realized_ret_net: mean(realizedRows.map((row) => row.realized_ret_net)),
     avg_realized_pnl_quote: mean(realizedRows.map((row) => row.realized_pnl_quote)),
     avg_hold_minutes: mean(executedRows.map((row) => row.hold_minutes)),

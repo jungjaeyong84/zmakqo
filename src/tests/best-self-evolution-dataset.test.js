@@ -346,6 +346,9 @@ function run() {
   assert.strictEqual(summary.entry_exit_present_unlabeled_n, 0);
   assert.strictEqual(summary.entry_open_pending_n, 0);
   assert.strictEqual(summary.entry_link_missing_n, 0);
+  assert.ok(Array.isArray(summary.entry_fallback_pending_by_reason));
+  assert.ok(Array.isArray(summary.febt_eligible_by_market));
+  assert.ok(Array.isArray(summary.febt_eligible_by_event));
   assert.strictEqual(summary.executed_exit_only_n, 1);
   assert.ok(summary.febt_coverage_rate > 0.5);
   assert.ok(summary.febt_coverage_rate_eligible >= summary.febt_coverage_rate);
