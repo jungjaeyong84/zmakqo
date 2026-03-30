@@ -183,6 +183,60 @@ function run() {
   assert.strictEqual(reportWithFingerprintBlock.rows.some((row) => row.candidate_id === "EV_TP1_THRESHOLD_TUNE"), false);
   assert.strictEqual(reportWithFingerprintBlock.summary.memory_blocked_n, 1);
 
+  const fallbackEvReport = buildCandidateChangeSets({
+    objectiveSupervisor: {
+      raw: {
+        phase0: { tf: "15m" },
+        best_febt_tuning_contract: {
+          mode: "NORMAL",
+          projected_count_ratio_global: 1.01,
+          projected_replacement_ratio: 0.82,
+          tightening_allowed: true,
+          recovery_priority: false,
+        },
+        best_febt_market_contracts: [],
+        filter_layers: {
+          ev_time_value: {
+            tuner_reason: "INSUFFICIENT_SAMPLE",
+          },
+        },
+        self_evolution_attribution: {
+          missed_recovery_top_reason: {
+            key: "DROP_EV_GATE_TP1_PROB",
+            count: 6,
+          },
+        },
+      },
+    },
+    patchCandidates: { raw: { candidates: [] } },
+    ml: { raw: { recommendations: { QUALITY: [], MARKET: { action: "KEEP" }, AI: { action: "KEEP" }, EV: { action: "KEEP" } } } },
+    ev: {
+      raw: {
+        tf: "15m",
+        current_threshold: 0.55,
+        next_threshold: 0.55,
+        current_band: { fullThreshold: 0.6, killThreshold: 0.5, midScale: 0.7, lowScale: 0.35 },
+        next_band: { fullThreshold: 0.6, killThreshold: 0.5, midScale: 0.7, lowScale: 0.35 },
+        settings_updated: false,
+        decision_reason: "INSUFFICIENT_SAMPLE",
+      },
+    },
+    wait: null,
+    changeControl: { raw: {} },
+    memoryLedger: { raw: { summary: { blocked_candidate_ids: [], recent_failed_fingerprints: [] }, current_rows: [] } },
+  });
+  const fallbackEv = fallbackEvReport.rows.find((row) => row.candidate_id === "EV_TP1_THRESHOLD_TUNE");
+  assert.strictEqual(fallbackEv.scope, "EV");
+  assert.deepStrictEqual(fallbackEv.markets, ["ALL"]);
+  assert.strictEqual(fallbackEv.source, "EV_TUNER_SHADOW_FALLBACK");
+  assert.strictEqual(fallbackEv.ready_for_auto_apply, false);
+  assert.strictEqual(fallbackEv.shadow_only, true);
+  assert.strictEqual(fallbackEv.direction, "LOOSEN");
+  assert.ok(fallbackEv.risk_flags.includes("EV_SHADOW_FALLBACK"));
+  assert.ok(fallbackEv.risk_flags.includes("EV_TUNER_INSUFFICIENT_SAMPLE"));
+  assert.ok(fallbackEv.risk_flags.includes("NOT_READY"));
+  assert.strictEqual(fallbackEv.evidence.support_n, 6);
+
   const concentrationReport = buildCandidateChangeSets({
     objectiveSupervisor: {
       raw: {

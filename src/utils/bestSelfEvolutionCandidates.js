@@ -8,6 +8,12 @@ function toNum(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function clamp(value, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return min;
+  return Math.max(min, Math.min(max, n));
+}
+
 function unwrapRawReport(value) {
   if (!value || typeof value !== "object") return value || null;
   if (value.raw && typeof value.raw === "object") return value.raw;
@@ -238,43 +244,89 @@ function buildMlCandidates({ ml, tf = "15m", contract = null, marketGuard = null
   return out;
 }
 
-function buildEvCandidate({ ev, tf = "15m", contract = null, marketGuard = null } = {}) {
+function buildEvCandidate({ ev, tf = "15m", contract = null, marketGuard = null, objectiveSupervisor = null } = {}) {
   const raw = unwrapRawReport(ev);
   if (!raw || typeof raw !== "object") return [];
+  const supervisor = unwrapRawReport(objectiveSupervisor) || {};
+  const filterLayers = supervisor.filter_layers && typeof supervisor.filter_layers === "object"
+    ? supervisor.filter_layers
+    : {};
+  const evLayer = filterLayers.ev_time_value && typeof filterLayers.ev_time_value === "object"
+    ? filterLayers.ev_time_value
+    : {};
+  const attribution = supervisor.self_evolution_attribution && typeof supervisor.self_evolution_attribution === "object"
+    ? supervisor.self_evolution_attribution
+    : {};
+  const missedRecovery = attribution.missed_recovery_top_reason && typeof attribution.missed_recovery_top_reason === "object"
+    ? attribution.missed_recovery_top_reason
+    : {};
+  const evReason = String(raw.decision_reason || "").trim().toUpperCase();
+  const evLayerReason = String(evLayer.tuner_reason || "").trim().toUpperCase();
+  const staleEvTuner = evLayerReason === "STALE_ARTIFACT" || raw.fresh === false;
+  const insufficientSample = evReason === "INSUFFICIENT_SAMPLE" || evLayerReason === "INSUFFICIENT_SAMPLE";
+  const evMissedRecovery = String(missedRecovery.key || "").trim().toUpperCase() === "DROP_EV_GATE_TP1_PROB";
+  const evMissedRecoveryN = toNum(missedRecovery.count) || 0;
+  const allowShadowFallback = (staleEvTuner || insufficientSample) && evMissedRecovery && evMissedRecoveryN >= 3;
   const currentBand = raw.current_band && typeof raw.current_band === "object" ? raw.current_band : {};
   const nextBand = raw.next_band && typeof raw.next_band === "object" ? raw.next_band : {};
-  const changes = [
-    buildChange("ev_gate_tp1_prob_min", raw.current_threshold, raw.next_threshold, raw.decision_reason),
-    buildChange("ev_gate_tp1_prob_full", currentBand.fullThreshold, nextBand.fullThreshold, raw.decision_reason),
-    buildChange("ev_gate_tp1_prob_kill", currentBand.killThreshold, nextBand.killThreshold, raw.decision_reason),
-    buildChange("ev_gate_qty_scale_mid", currentBand.midScale, nextBand.midScale, raw.decision_reason),
-    buildChange("ev_gate_qty_scale_low", currentBand.lowScale, nextBand.lowScale, raw.decision_reason),
-  ].filter((row) => row.current != null || row.next != null);
+  const fallbackBand = allowShadowFallback
+    ? {
+      fullThreshold: toNum(currentBand.fullThreshold) == null ? null : Number((clamp(toNum(currentBand.fullThreshold) - 0.02, 0.35, 0.95)).toFixed(4)),
+      killThreshold: toNum(currentBand.killThreshold),
+      midScale: toNum(currentBand.midScale) == null ? null : Number((clamp(toNum(currentBand.midScale) + 0.05, 0.05, 1)).toFixed(4)),
+      lowScale: toNum(currentBand.lowScale) == null ? null : Number((clamp(toNum(currentBand.lowScale) + 0.05, 0.05, 1)).toFixed(4)),
+    }
+    : nextBand;
+  const nextThreshold = allowShadowFallback && toNum(raw.current_threshold) != null
+    ? Number((clamp(toNum(raw.current_threshold) - 0.02, 0.3, 0.95)).toFixed(4))
+    : raw.next_threshold;
+  const changes = allowShadowFallback
+    ? [
+      buildChange("ev_gate_tp1_prob_min", raw.current_threshold, nextThreshold, raw.decision_reason),
+      buildChange("ev_gate_tp1_prob_full", currentBand.fullThreshold, fallbackBand.fullThreshold, raw.decision_reason),
+    ].filter((row) => row.current != null || row.next != null)
+    : [
+      buildChange("ev_gate_tp1_prob_min", raw.current_threshold, nextThreshold, raw.decision_reason),
+      buildChange("ev_gate_tp1_prob_full", currentBand.fullThreshold, fallbackBand.fullThreshold, raw.decision_reason),
+      buildChange("ev_gate_tp1_prob_kill", currentBand.killThreshold, fallbackBand.killThreshold, raw.decision_reason),
+      buildChange("ev_gate_qty_scale_mid", currentBand.midScale, fallbackBand.midScale, raw.decision_reason),
+      buildChange("ev_gate_qty_scale_low", currentBand.lowScale, fallbackBand.lowScale, raw.decision_reason),
+    ].filter((row) => row.current != null || row.next != null);
+  if (!raw.settings_updated && !allowShadowFallback) return [];
   const direction = aggregateDirection(changes);
-  return [{
+  const candidate = {
     candidate_id: "EV_TP1_THRESHOLD_TUNE",
     display_candidate_id: "EV_TP1_THRESHOLD_TUNE",
     scope: "EV",
-    source: "EV_TUNER",
+    source: allowShadowFallback ? "EV_TUNER_SHADOW_FALLBACK" : "EV_TUNER",
     // Filter-4 softening is a shared policy change, not a market-local override.
     markets: ["ALL"],
     tf: String(raw.tf || tf || "15m"),
     changes,
     objective_delta: null,
     ...buildGuardEffects(contract, null),
-    risk_flags: buildRiskFlags({ direction, contract, marketGuard: null, blocked: false, ready: raw.settings_updated === true }),
+    risk_flags: buildRiskFlags({ direction, contract, marketGuard: null, blocked: false, ready: raw.settings_updated === true && !allowShadowFallback }),
     rollback_target: null,
     direction,
-    status: String(raw.decision_reason || "N/A"),
-    ready_for_auto_apply: raw.settings_updated === true,
+    status: allowShadowFallback
+      ? (staleEvTuner ? "STALE_ARTIFACT_SHADOW_FALLBACK" : "INSUFFICIENT_SAMPLE_SHADOW_FALLBACK")
+      : String(raw.decision_reason || "N/A"),
+    ready_for_auto_apply: raw.settings_updated === true && !allowShadowFallback,
     evidence: {
-      support_n: null,
+      support_n: allowShadowFallback ? evMissedRecoveryN : null,
       support_rate: null,
       priority_score: null,
       avg_dropped_ret_net: null,
-      rationale: String(raw.decision_reason || ""),
+      rationale: allowShadowFallback
+        ? `${staleEvTuner ? "STALE_ARTIFACT" : "INSUFFICIENT_SAMPLE"} / missed_recovery=${evMissedRecoveryN}`
+        : String(raw.decision_reason || ""),
     },
-  }];
+    shadow_only: allowShadowFallback,
+  };
+  if (allowShadowFallback && !candidate.risk_flags.includes("EV_SHADOW_FALLBACK")) candidate.risk_flags.push("EV_SHADOW_FALLBACK");
+  if (staleEvTuner && !candidate.risk_flags.includes("EV_TUNER_STALE")) candidate.risk_flags.push("EV_TUNER_STALE");
+  if (insufficientSample && !candidate.risk_flags.includes("EV_TUNER_INSUFFICIENT_SAMPLE")) candidate.risk_flags.push("EV_TUNER_INSUFFICIENT_SAMPLE");
+  return [candidate];
 }
 
 function buildWaitCandidate({ wait, tf = "15m", contract = null, marketGuard = null } = {}) {
@@ -402,7 +454,7 @@ function buildCandidateChangeSets({
     ...buildPineCandidates({ patchCandidates, tf, contract, marketGuard, changeControl: unwrapRawReport(changeControl) }),
     ...buildMarketConcentrationCandidate({ objectiveSupervisor: supervisor, tf, contract }),
     ...buildMlCandidates({ ml, tf, contract, marketGuard }),
-    ...buildEvCandidate({ ev, tf, contract, marketGuard }),
+    ...buildEvCandidate({ ev, tf, contract, marketGuard, objectiveSupervisor: supervisor }),
     ...buildWaitCandidate({ wait, tf, contract, marketGuard }),
   ]
     .filter((row) => row && row.candidate_id)

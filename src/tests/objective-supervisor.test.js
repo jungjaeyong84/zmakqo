@@ -199,6 +199,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.filter_layers.integrity.label, "1차 상태/무결성");
   assert.strictEqual(allowPromote.filter_layers.state_soft_sizing.label, "3차 상태 기반 Soft Sizing");
   assert.strictEqual(allowPromote.filter_layers.ev_time_value.label, "4차 EV/시간가치층");
+  assert.strictEqual(allowPromote.filter_layers.ev_time_value.fresh, true);
   assert.strictEqual(allowPromote.phase0.available, true);
   assert.strictEqual(allowPromote.phase0.immediate_win_rate, 0.57);
   assert.strictEqual(allowPromote.self_evolution_policy.master_spec_path.endsWith("BEST_SELF_EVOLUTION_MASTER_SPEC.md"), true);
@@ -239,6 +240,16 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.sample_readiness.governance_monthly_source_realized_n, 0);
   assert.strictEqual(allowPromote.sample_readiness.governance_effective_realized_n, 24);
   assert.strictEqual(allowPromote.sample_readiness.governance_realized_min_sample, 8);
+
+  const staleEv = __test.evaluateSupervisor({
+    ...base,
+    ev: { decision_reason: "KEEP", fresh: false, age_hours: 36 },
+  });
+  assert.strictEqual(staleEv.filter_layers.ev_time_value.tuner_reason, "STALE_ARTIFACT");
+  assert.strictEqual(staleEv.filter_layers.ev_time_value.observed_tuner_reason, "KEEP");
+  assert.strictEqual(staleEv.filter_layers.ev_time_value.policy_source, "STALE_TUNER_ARTIFACT");
+  assert.strictEqual(staleEv.filter_layers.ev_time_value.fresh, false);
+  assert.strictEqual(staleEv.filter_layers.ev_time_value.age_hours, 36);
 
   const replayBlockedPromotion = __test.evaluateSupervisor({
     ...base,

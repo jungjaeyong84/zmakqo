@@ -70,7 +70,7 @@ const FRESHNESS_HOURS = Object.freeze({
   changeControl: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_CHANGE_CONTROL_MAX_AGE_HOURS || 36)),
   canary: Math.max(4, Number(process.env.OBJECTIVE_SUPERVISOR_CANARY_MAX_AGE_HOURS || 12)),
   ml: Math.max(4, Number(process.env.OBJECTIVE_SUPERVISOR_ML_MAX_AGE_HOURS || 12)),
-  ev: Math.max(24, Number(process.env.OBJECTIVE_SUPERVISOR_EV_MAX_AGE_HOURS || 96)),
+  ev: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_EV_MAX_AGE_HOURS || 24)),
   wait: Math.max(24, Number(process.env.OBJECTIVE_SUPERVISOR_WAIT_MAX_AGE_HOURS || 144)),
   phase0: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_FEBT_PHASE0_MAX_AGE_HOURS || 36)),
   selfEvolutionDataset: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_DATASET_MAX_AGE_HOURS || 36)),
@@ -114,6 +114,26 @@ function signedPct(value, digits = 2) {
   return `${n > 0 ? "+" : ""}${text}%`;
 }
 
+function parseArtifactTimestampMs(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const normalized = raw.endsWith(" KST")
+    ? `${raw.slice(0, -4).replace(" ", "T")}+09:00`
+    : raw.replace(" ", "T");
+  const ms = Date.parse(normalized);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function extractArtifactGeneratedAtMs(data) {
+  const raw = data && data.raw && typeof data.raw === "object" ? data.raw : data;
+  const display = data && data.display && typeof data.display === "object" ? data.display : null;
+  return (
+    parseArtifactTimestampMs(raw && (raw.generated_at_kst || raw.generated_at))
+    || parseArtifactTimestampMs(display && (display.generated_at_kst || display.generated_at))
+    || null
+  );
+}
+
 function resolveDisplayCandidateId(candidateId, changeControl = null) {
   const raw = String(candidateId || "").trim();
   if (!raw) return null;
@@ -137,13 +157,16 @@ function readArtifact(name, filePath, maxAgeHours) {
   }
   try {
     const st = fs.statSync(filePath);
-    const ageHours = (Date.now() - Number(st.mtimeMs || 0)) / (60 * 60 * 1000);
+    const generatedAtMs = extractArtifactGeneratedAtMs(data);
+    const referenceMs = Number.isFinite(generatedAtMs) ? generatedAtMs : Number(st.mtimeMs || 0);
+    const ageHours = (Date.now() - referenceMs) / (60 * 60 * 1000);
     return {
       name,
       filePath,
       data,
       exists: true,
       ageHours,
+      generatedAtMs: Number.isFinite(generatedAtMs) ? generatedAtMs : null,
       fresh: Number.isFinite(ageHours) && ageHours <= maxAgeHours,
     };
   } catch (_err) {
@@ -752,6 +775,8 @@ function buildFilterLayerSummary({ governance, changeControl, ml, ev, wait, phys
     ? current.quality.by_tier
     : {};
   const febtShadow = summarizeFebtByTier(qualityByTier);
+  const evReasonRaw = String(ev && ev.decision_reason || "N/A");
+  const evFresh = ev ? ev.fresh !== false : true;
   return {
     integrity: {
       label: "1차 상태/무결성",
@@ -774,9 +799,12 @@ function buildFilterLayerSummary({ governance, changeControl, ml, ev, wait, phys
     },
     ev_time_value: {
       label: "4차 EV/시간가치층",
-      tuner_reason: String(ev && ev.decision_reason || "N/A"),
-      policy_version: topBreakdownValue(featureBreakdown.ev_policy_version),
-      policy_source: topBreakdownValue(featureBreakdown.ev_policy_source),
+      tuner_reason: evFresh ? evReasonRaw : "STALE_ARTIFACT",
+      observed_tuner_reason: evReasonRaw,
+      fresh: evFresh,
+      age_hours: toNum(ev && ev.age_hours),
+      policy_version: evFresh ? topBreakdownValue(featureBreakdown.ev_policy_version) : "STALE_ARTIFACT",
+      policy_source: evFresh ? topBreakdownValue(featureBreakdown.ev_policy_source) : "STALE_TUNER_ARTIFACT",
     },
     wait_timing: {
       label: "5차 WAIT 타이밍층",
@@ -1658,7 +1686,7 @@ async function main() {
     changeControl: changeArtifact.data,
     canary: canaryArtifact.data,
     ml: mlArtifact.data,
-    ev: evArtifact.data,
+    ev: evArtifact.exists ? { ...evArtifact.data, fresh: evArtifact.fresh, age_hours: evArtifact.ageHours } : null,
     wait: waitArtifact.data,
     phase0: phase0Artifact.exists ? { ...phase0Artifact.data, fresh: phase0Artifact.fresh } : null,
     selfEvolutionDataset: selfEvolutionDatasetArtifact.exists ? { ...selfEvolutionDatasetArtifact.data, fresh: selfEvolutionDatasetArtifact.fresh } : null,
