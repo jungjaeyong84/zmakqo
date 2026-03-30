@@ -25,6 +25,12 @@ const {
   maybeAutoEvalLatest,
 } = require("./autoEval");
 const {
+  autoSelfEvolutionEnabled,
+  autoSelfEvolutionCheckMs,
+  autoSelfEvolutionMaxAgeMs,
+  maybeAutoSelfEvolutionLoop,
+} = require("./autoSelfEvolution");
+const {
   autoAiAllocationEnabled,
   autoAiAllocationCheckMs,
   maybeAutoAiAllocation,
@@ -499,6 +505,7 @@ function createScheduler() {
 
     const weeklyAuto = await maybeAutoWeeklyClose({ exchanges });
     const evalAuto = await maybeAutoEvalLatest({ exchanges });
+    const selfEvolutionAuto = await maybeAutoSelfEvolutionLoop();
     const aiAuto = await maybeAutoAiAllocation();
     const sysBinance = await getSystemSettingsForProvider("BINANCEFUT", 5000);
     const reinvestAuto = await maybeAutoReinvest({ exchanges, sys: (sysBinance && sysBinance.data) ? sysBinance.data : sys });
@@ -527,6 +534,7 @@ function createScheduler() {
       errors,
       weekly_auto: weeklyAuto,
       eval_auto: evalAuto,
+      self_evolution_auto: selfEvolutionAuto,
       ai_auto: aiAuto,
       reinvest_auto: reinvestAuto,
       exit_integrity: exitIntegrity,
@@ -560,6 +568,7 @@ function createScheduler() {
       exchanges: exchangeResults,
       errors,
       eval_auto: evalAuto,
+      self_evolution_auto: selfEvolutionAuto,
       ai_auto: aiAuto,
       reinvest_auto: reinvestAuto,
       exit_integrity: exitIntegrity,
