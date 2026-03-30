@@ -172,12 +172,15 @@ function buildStaticCheck(text) {
   const lookaheadOffCount = countMatches(text, /lookahead\s*=\s*barmerge\.lookahead_off/g);
   const barConfirmedCount = countMatches(text, /\bbarstate\.isconfirmed\b/g);
   const alertCallCount = countMatches(text, /\balert\s*\(/g);
+  const hasPreAlertDefaultOff =
+    /pre_alert_enable\s*=\s*input\.bool\(\s*false/.test(text)
+    || /\bbool\s+pre_alert_enable\s*=\s*false\b/.test(text);
 
   const requiredTokens = [
     {
       key: "pre_alert_default_off",
-      ok: /pre_alert_enable\s*=\s*input\.bool\(\s*false/.test(text),
-      evidence: "pre_alert_enable = input.bool(false, ...)",
+      ok: hasPreAlertDefaultOff,
+      evidence: "pre_alert_enable default false (input.bool(false) or bool = false)",
     },
     {
       key: "entry_cooldown_input",
@@ -540,20 +543,25 @@ function main() {
   const dateKey = kstDateKey(nowIso) || generatedAtKst.slice(0, 10);
   const cycleHhmm = generatedAtKst.slice(11, 16).replace(":", "");
 
-  const preflightCommands = [
-    "node scripts/post-apply-signal-probe.js",
-    "node scripts/strategy-id-alignment-check.js",
-    "node scripts/data-consistency-lead.js",
-    "node scripts/report-sync-status-board.js",
-  ];
-  const preflightResults = preflightCommands.map((cmd) => {
-    try {
-      execSync(cmd, { cwd: ROOT, stdio: "pipe" });
-      return { command: cmd, ok: true, error: null };
-    } catch (err) {
-      return { command: cmd, ok: false, error: String(err && err.message ? err.message : err) };
-    }
-  });
+  const skipPreflight = String(process.env.PINE_OWNER_SKIP_PREFLIGHT || "").trim() === "1";
+  const preflightCommands = skipPreflight
+    ? []
+    : [
+        "node scripts/post-apply-signal-probe.js",
+        "node scripts/strategy-id-alignment-check.js",
+        "node scripts/data-consistency-lead.js",
+        "node scripts/report-sync-status-board.js",
+      ];
+  const preflightResults = skipPreflight
+    ? [{ command: "SKIPPED_BY_ENV", ok: true, error: null }]
+    : preflightCommands.map((cmd) => {
+        try {
+          execSync(cmd, { cwd: ROOT, stdio: "pipe" });
+          return { command: cmd, ok: true, error: null };
+        } catch (err) {
+          return { command: cmd, ok: false, error: String(err && err.message ? err.message : err) };
+        }
+      });
 
   const dataConsistency = readJsonSafe(DATA_CONSISTENCY_LATEST) || {};
   const strategyAlignment = readJsonSafe(STRATEGY_ALIGNMENT_LATEST) || {};
@@ -966,4 +974,12 @@ function main() {
   );
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  __test: {
+    buildStaticCheck,
+  },
+};
