@@ -340,9 +340,16 @@ function run() {
   assert.strictEqual(summary.realized_n, 3);
   assert.strictEqual(summary.all_realized_n, 4);
   assert.strictEqual(summary.ev_counterfactual_n, 1);
+  assert.strictEqual(summary.entry_pending_total_n, 0);
   assert.strictEqual(summary.entry_executed_null_realized_n, 0);
+  assert.strictEqual(summary.entry_fallback_pending_n, 0);
+  assert.strictEqual(summary.entry_exit_present_unlabeled_n, 0);
+  assert.strictEqual(summary.entry_open_pending_n, 0);
+  assert.strictEqual(summary.entry_link_missing_n, 0);
   assert.strictEqual(summary.executed_exit_only_n, 1);
   assert.ok(summary.febt_coverage_rate > 0.5);
+  assert.ok(summary.febt_coverage_rate_eligible >= summary.febt_coverage_rate);
+  assert.ok(summary.febt_eligible_n >= summary.executed_n);
   assert.strictEqual(summary.by_source_row_type[0].key, "EXECUTED");
   assert.ok(summary.all_realized_source_counts.some((item) => item.key === "EV_TUNER_COUNTERFACTUAL" && item.count === 1));
 

@@ -257,8 +257,10 @@ function summarizeRetrospective(retrospective = null) {
     weekly: weeklyRow,
     monthly: monthlyRow,
     any_fail: [dailyRow, weeklyRow, monthlyRow].some((row) => row.pass === false),
-    any_no_trade: [dailyRow, weeklyRow, monthlyRow].some((row) => row.failed_checks.includes("NO_TRADE_ACTIVITY")),
-    any_zero_idle: [dailyRow, weeklyRow, monthlyRow].some((row) => row.failed_checks.includes("ZERO_KRW_IDLE")),
+    daily_no_trade: dailyRow.failed_checks.includes("NO_TRADE_ACTIVITY"),
+    daily_zero_idle: dailyRow.failed_checks.includes("ZERO_KRW_IDLE"),
+    any_no_trade: dailyRow.failed_checks.includes("NO_TRADE_ACTIVITY"),
+    any_zero_idle: dailyRow.failed_checks.includes("ZERO_KRW_IDLE"),
   };
 }
 
@@ -707,6 +709,7 @@ function buildSupervisorActionPlan({
   governanceEnoughSample = false,
   codexFresh = false,
   stageAutopilotFresh = false,
+  retrospective = null,
 } = {}) {
   const steps = [];
   const blockerSet = new Set(Array.isArray(blockers) ? blockers : []);
@@ -714,7 +717,10 @@ function buildSupervisorActionPlan({
   const deploymentPlanSummary = deploymentPlan && typeof deploymentPlan === "object" ? deploymentPlan : {};
 
   if (blockerSet.has("DAILY_NO_TRADE_ACTIVITY")) {
-    pushPlanStep(steps, "Run the loop after real trade activity resumes or move the schedule into active trading hours.");
+    const dailyExecuted = retrospective && retrospective.daily && retrospective.daily.executed_n != null
+      ? retrospective.daily.executed_n
+      : "N/A";
+    pushPlanStep(steps, `Run the loop after real trade activity resumes or move the schedule into active trading hours (retrospective daily executed_n=${dailyExecuted}).`);
   }
   if (blockerSet.has("ZERO_KRW_IDLE")) {
     pushPlanStep(steps, "Restore idle KRW balance before expecting new validation trades.");
@@ -1309,6 +1315,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     governanceEnoughSample: governanceSampleReady,
     codexFresh,
     stageAutopilotFresh,
+    retrospective: retrospectiveSummary,
   });
 
   return {
@@ -1397,6 +1404,17 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     self_evolution_loop_monitor: selfEvolutionLoopMonitorSummary,
     self_evolution_weight_tuning: selfEvolutionWeightTuning,
     self_evolution_memory: selfEvolutionMemorySummary,
+    retrospective_activity_context: {
+      source: "RETROSPECTIVE_DAILY",
+      daily_executed_n: retrospectiveSummary.daily.executed_n,
+      daily_realized_n: retrospectiveSummary.daily.realized_n,
+      daily_failed_checks: retrospectiveSummary.daily.failed_checks,
+      daily_no_trade: retrospectiveSummary.daily_no_trade === true,
+      daily_zero_idle: retrospectiveSummary.daily_zero_idle === true,
+      dataset_window_source: selfEvolutionDatasetSummary.window_source || null,
+      dataset_executed_n_7d: toNum(selfEvolutionDatasetSummary.executed_n),
+      dataset_realized_n_7d: toNum(selfEvolutionDatasetSummary.realized_n),
+    },
     sample_readiness: {
       governance_realized_n: governanceStrictRealizedN,
       governance_monthly_source_realized_n: governanceMonthlySourceRealizedN,
@@ -1467,6 +1485,7 @@ function renderMarkdown(report = {}) {
     "",
     "## Retrospective",
     `- daily: ${report.retrospective && report.retrospective.daily ? `${report.retrospective.daily.verdict} / executed=${report.retrospective.daily.executed_n ?? "N/A"} / realized=${report.retrospective.daily.realized_n ?? "N/A"} / net=${signedNum(report.retrospective.daily.net_pnl_quote, 0)}` : "N/A"}`,
+    `- activity_scope: ${report.retrospective_activity_context && report.retrospective_activity_context.source || "N/A"} / daily_no_trade=${report.retrospective_activity_context && report.retrospective_activity_context.daily_no_trade ? "YES" : "NO"} / daily_zero_idle=${report.retrospective_activity_context && report.retrospective_activity_context.daily_zero_idle ? "YES" : "NO"} / dataset_7d_executed=${report.retrospective_activity_context && report.retrospective_activity_context.dataset_executed_n_7d != null ? report.retrospective_activity_context.dataset_executed_n_7d : "N/A"}`,
     `- weekly: ${report.retrospective && report.retrospective.weekly ? `${report.retrospective.weekly.verdict} / executed=${report.retrospective.weekly.executed_n ?? "N/A"} / realized=${report.retrospective.weekly.realized_n ?? "N/A"} / net=${signedNum(report.retrospective.weekly.net_pnl_quote, 0)}` : "N/A"}`,
     `- monthly: ${report.retrospective && report.retrospective.monthly ? `${report.retrospective.monthly.verdict} / executed=${report.retrospective.monthly.executed_n ?? "N/A"} / realized=${report.retrospective.monthly.realized_n ?? "N/A"} / net=${signedNum(report.retrospective.monthly.net_pnl_quote, 0)}` : "N/A"}`,
     "",
@@ -1529,7 +1548,8 @@ function renderMarkdown(report = {}) {
     "## Self-Evolution Dataset",
     `- rows/executed/drop/missed: ${report.self_evolution_dataset && report.self_evolution_dataset.rows_n != null ? report.self_evolution_dataset.rows_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.executed_n != null ? report.self_evolution_dataset.executed_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.drop_n != null ? report.self_evolution_dataset.drop_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.missed_n != null ? report.self_evolution_dataset.missed_n : "N/A"}`,
     `- fallback/rejected/partial: ${report.self_evolution_dataset && report.self_evolution_dataset.fallback_n != null ? report.self_evolution_dataset.fallback_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.rejected_n != null ? report.self_evolution_dataset.rejected_n : "N/A"} / ${report.self_evolution_dataset && report.self_evolution_dataset.partial_n != null ? report.self_evolution_dataset.partial_n : "N/A"}`,
-    `- realized_n: ${report.self_evolution_dataset && report.self_evolution_dataset.realized_n != null ? report.self_evolution_dataset.realized_n : "N/A"} / features=${pct(report.self_evolution_dataset && report.self_evolution_dataset.features_coverage_rate)} / febt=${pct(report.self_evolution_dataset && report.self_evolution_dataset.febt_coverage_rate)}`,
+    `- realized_n: ${report.self_evolution_dataset && report.self_evolution_dataset.realized_n != null ? report.self_evolution_dataset.realized_n : "N/A"} / features=${pct(report.self_evolution_dataset && report.self_evolution_dataset.features_coverage_rate)} / febt_all=${pct(report.self_evolution_dataset && report.self_evolution_dataset.febt_coverage_rate)} / febt_eligible=${pct(report.self_evolution_dataset && report.self_evolution_dataset.febt_coverage_rate_eligible)} (${report.self_evolution_dataset && report.self_evolution_dataset.febt_eligible_n != null ? report.self_evolution_dataset.febt_eligible_n : "N/A"})`,
+    `- entry_pending: total=${report.self_evolution_dataset && report.self_evolution_dataset.entry_pending_total_n != null ? report.self_evolution_dataset.entry_pending_total_n : "N/A"} / executed=${report.self_evolution_dataset && report.self_evolution_dataset.entry_executed_null_realized_n != null ? report.self_evolution_dataset.entry_executed_null_realized_n : "N/A"} / fallback=${report.self_evolution_dataset && report.self_evolution_dataset.entry_fallback_pending_n != null ? report.self_evolution_dataset.entry_fallback_pending_n : "N/A"} / exit_present_unlabeled=${report.self_evolution_dataset && report.self_evolution_dataset.entry_exit_present_unlabeled_n != null ? report.self_evolution_dataset.entry_exit_present_unlabeled_n : "N/A"} / open_pending=${report.self_evolution_dataset && report.self_evolution_dataset.entry_open_pending_n != null ? report.self_evolution_dataset.entry_open_pending_n : "N/A"} / link_missing=${report.self_evolution_dataset && report.self_evolution_dataset.entry_link_missing_n != null ? report.self_evolution_dataset.entry_link_missing_n : "N/A"}`,
     `- sample_readiness: governance=${report.sample_readiness && report.sample_readiness.governance_enough_sample ? "YES" : "NO"} (strict ${report.sample_readiness && report.sample_readiness.governance_realized_n != null ? report.sample_readiness.governance_realized_n : "N/A"} / monthly ${report.sample_readiness && report.sample_readiness.governance_monthly_source_realized_n != null ? report.sample_readiness.governance_monthly_source_realized_n : "N/A"} / effective ${report.sample_readiness && report.sample_readiness.governance_effective_realized_n != null ? report.sample_readiness.governance_effective_realized_n : "N/A"} / min ${report.sample_readiness && report.sample_readiness.governance_realized_min_sample != null ? report.sample_readiness.governance_realized_min_sample : "N/A"}) / self_evolution=${report.sample_readiness && report.sample_readiness.self_evolution_enough_sample ? "YES" : "NO"} (${report.sample_readiness && report.sample_readiness.self_evolution_realized_n != null ? report.sample_readiness.self_evolution_realized_n : "N/A"} / min ${report.sample_readiness && report.sample_readiness.self_evolution_realized_min_sample != null ? report.sample_readiness.self_evolution_realized_min_sample : "N/A"})`,
     `- avg_realized_ret_net: ${signedPct(report.self_evolution_dataset && report.self_evolution_dataset.avg_realized_ret_net)} / avg_realized_pnl_quote: ${signedNum(report.self_evolution_dataset && report.self_evolution_dataset.avg_realized_pnl_quote, 0)} / avg_hold_minutes: ${report.self_evolution_dataset && report.self_evolution_dataset.avg_hold_minutes != null ? Number(report.self_evolution_dataset.avg_hold_minutes).toFixed(1) : "N/A"}`,
     "",

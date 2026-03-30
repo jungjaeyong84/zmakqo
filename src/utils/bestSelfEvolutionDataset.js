@@ -933,12 +933,32 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
   const realizedRows = executedRows.filter((row) => Number.isFinite(toNum(row.realized_ret_net)));
   const allRealizedRows = scoped.filter((row) => Number.isFinite(toNum(row.realized_ret_net)));
   const withFeatures = scoped.filter((row) => row.features_json && typeof row.features_json === "object");
+  const hasFebt = (row) => row && row.features_json && (
+    row.features_json.febt_phase !== undefined
+    || row.features_json.febt_edge !== undefined
+    || row.features_json.febt_lock_score !== undefined
+  );
   const withFebt = scoped.filter((row) => row.features_json && (
     row.features_json.febt_phase !== undefined
     || row.features_json.febt_edge !== undefined
     || row.features_json.febt_lock_score !== undefined
   ));
+  const febtEligibleRows = scoped.filter((row) => {
+    const rowType = toUpper(row && row.source_row_type, "UNKNOWN");
+    const dropStage = toUpper(row && row.drop_stage_key, "");
+    if (rowType === "EXIT_ONLY") return false;
+    if (hasFebt(row)) return true;
+    if (["EXECUTED", "PARTIAL", "FALLBACK", "MISSED", "REJECTED"].includes(rowType)) return true;
+    if (rowType === "DROP" && ["EV", "TIMING", "OPS", "FILLED"].includes(dropStage)) return true;
+    return false;
+  });
   const nullRealizedExecuted = executedRows.filter((row) => !Number.isFinite(toNum(row.realized_ret_net)));
+  const pendingEntryRows = nullRealizedExecuted.filter((row) => !String(row.event || "").toUpperCase().startsWith("EXIT_"));
+  const pendingEntryExecuted = pendingEntryRows.filter((row) => {
+    const rowType = toUpper(row && row.source_row_type, "UNKNOWN");
+    return rowType === "EXECUTED" || rowType === "PARTIAL";
+  });
+  const pendingEntryFallback = pendingEntryRows.filter((row) => toUpper(row && row.source_row_type, "UNKNOWN") === "FALLBACK");
   const executedExitOnly = scoped.filter((row) => row.source_row_type === "EXIT_ONLY");
   const realizedSourceCounts = countBy(realizedRows.filter((row) => row.realized_source), (row) => row.realized_source);
   const allRealizedSourceCounts = countBy(allRealizedRows.filter((row) => row.realized_source), (row) => row.realized_source);
@@ -954,10 +974,17 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
     exit_only_n: scoped.filter((row) => row.source_row_type === "EXIT_ONLY").length,
     realized_n: realizedRows.length,
     all_realized_n: allRealizedRows.length,
-    entry_executed_null_realized_n: nullRealizedExecuted.filter((row) => !String(row.event || "").toUpperCase().startsWith("EXIT_")).length,
+    entry_pending_total_n: pendingEntryRows.length,
+    entry_executed_null_realized_n: pendingEntryExecuted.length,
+    entry_fallback_pending_n: pendingEntryFallback.length,
+    entry_exit_present_unlabeled_n: pendingEntryExecuted.filter((row) => row.outcome_state === "EXIT_PRESENT_UNLABELED").length,
+    entry_open_pending_n: pendingEntryExecuted.filter((row) => row.outcome_state === "OPEN_PENDING").length,
+    entry_link_missing_n: pendingEntryExecuted.filter((row) => row.outcome_state === "LINK_MISSING").length,
     executed_exit_only_n: executedExitOnly.length,
     features_coverage_rate: scoped.length > 0 ? (withFeatures.length / scoped.length) : null,
     febt_coverage_rate: scoped.length > 0 ? (withFebt.length / scoped.length) : null,
+    febt_eligible_n: febtEligibleRows.length,
+    febt_coverage_rate_eligible: febtEligibleRows.length > 0 ? (withFebt.length / febtEligibleRows.length) : null,
     avg_realized_ret_net: mean(realizedRows.map((row) => row.realized_ret_net)),
     avg_realized_pnl_quote: mean(realizedRows.map((row) => row.realized_pnl_quote)),
     avg_hold_minutes: mean(executedRows.map((row) => row.hold_minutes)),

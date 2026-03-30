@@ -39,10 +39,17 @@ function run() {
       exit_only_n: 1,
       realized_n: 8,
       all_realized_n: 9,
+      entry_pending_total_n: 4,
       entry_executed_null_realized_n: 2,
+      entry_fallback_pending_n: 2,
+      entry_exit_present_unlabeled_n: 1,
+      entry_open_pending_n: 1,
+      entry_link_missing_n: 0,
       executed_exit_only_n: 1,
       features_coverage_rate: 0.91,
       febt_coverage_rate: 0.83,
+      febt_eligible_n: 12,
+      febt_coverage_rate_eligible: 0.92,
       avg_realized_ret_net: 0.014,
       avg_realized_pnl_quote: 1320,
       avg_hold_minutes: 47.5,
@@ -79,8 +86,9 @@ function run() {
   assert.ok(markdown.includes("rows: 24"));
   assert.ok(markdown.includes("executed/drop/missed: 10 / 7 / 3"));
   assert.ok(markdown.includes("window_source: ROLLING_FALLBACK_STALE_WEEKLY_RANGE"));
-  assert.ok(markdown.includes("realized_n: 8 / all_realized_n: 9 / features 91.00% / FEBT 83.00%"));
-  assert.ok(markdown.includes("entry_executed_null_realized_n: 2 / executed_exit_only_n: 1 / exit_only_n: 1 / exit_only_realized_n: 1"));
+  assert.ok(markdown.includes("realized_n: 8 / all_realized_n: 9 / features 91.00% / FEBT all 83.00% / eligible 92.00% (12)"));
+  assert.ok(markdown.includes("entry_pending_total_n: 4 / executed_null_realized 2 / fallback_pending 2 / exit_present_unlabeled 1 / open_pending 1 / link_missing 0"));
+  assert.ok(markdown.includes("executed_exit_only_n: 1 / exit_only_n: 1 / exit_only_realized_n: 1"));
   assert.ok(markdown.includes("outcome_state: REALIZED 8 / OPEN_PENDING 2"));
   assert.ok(markdown.includes("realized_source: EXIT_FILL_PNL 6 / TRADE_PNL 2"));
   assert.ok(markdown.includes("exit_only_event: EXIT_TRAIL_1P 1"));

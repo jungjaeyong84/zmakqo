@@ -507,6 +507,56 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(noTradeRetro.blockers.includes("DAILY_NO_TRADE_ACTIVITY"), true);
   assert.strictEqual(noTradeRetro.blockers.includes("ZERO_KRW_IDLE"), true);
   assert.strictEqual(noTradeRetro.retrospective.daily.executed_n, 0);
+  assert.strictEqual(noTradeRetro.retrospective_activity_context.source, "RETROSPECTIVE_DAILY");
+  assert.strictEqual(noTradeRetro.retrospective_activity_context.daily_no_trade, true);
+  assert.strictEqual(noTradeRetro.retrospective_activity_context.daily_zero_idle, true);
+  assert.strictEqual(noTradeRetro.action_plan.some((row) => row.includes("retrospective daily executed_n=0")), true);
+
+  const weeklyOnlyNoTradeRetro = __test.evaluateSupervisor({
+    ...base,
+    retrospective: {
+      periods: {
+        DAILY: {
+          objective: {
+            verdict: "PASS",
+            pass: true,
+            executed_n: 1,
+            realized_n: 1,
+            failed_checks: [],
+          },
+          realized_trades: {
+            net_pnl_quote: 10,
+          },
+        },
+        WEEKLY: {
+          objective: {
+            verdict: "FAIL",
+            pass: false,
+            executed_n: 0,
+            realized_n: 0,
+            failed_checks: ["NO_TRADE_ACTIVITY", "PERIOD_TARGET_NOT_MET"],
+          },
+          realized_trades: {
+            net_pnl_quote: 0,
+          },
+        },
+        MONTHLY: {
+          objective: {
+            verdict: "FAIL",
+            pass: false,
+            executed_n: 20,
+            realized_n: 15,
+            failed_checks: ["MONTHLY_TARGET_NOT_MET"],
+          },
+          realized_trades: {
+            net_pnl_quote: -100,
+          },
+        },
+      },
+    },
+  });
+  assert.strictEqual(weeklyOnlyNoTradeRetro.blockers.includes("DAILY_NO_TRADE_ACTIVITY"), false);
+  assert.strictEqual(weeklyOnlyNoTradeRetro.retrospective_activity_context.daily_no_trade, false);
 
   const monthlySourceSampleReady = __test.evaluateSupervisor({
     ...base,
