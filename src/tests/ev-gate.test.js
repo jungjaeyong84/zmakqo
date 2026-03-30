@@ -39,6 +39,7 @@ function makeBars({
 
 async function run() {
   assert.strictEqual(typeof __test.resolveEvGateConfig, "function", "resolveEvGateConfig export missing");
+  assert.strictEqual(typeof __test.resolveEvGateDecision, "function", "resolveEvGateDecision export missing");
   assert.strictEqual(typeof __test.resolveEvGateTradePlan, "function", "resolveEvGateTradePlan export missing");
   assert.strictEqual(typeof __test.shouldBypassEvEntryGate, "function", "shouldBypassEvEntryGate export missing");
   assert.strictEqual(typeof __test.evaluateEvEntryGate, "function", "evaluateEvEntryGate export missing");
@@ -71,6 +72,35 @@ async function run() {
   assert.strictEqual(cfg.tp1ProbMinEarly, 0.60);
   assert.strictEqual(cfg.tp1ProbFull, 0.60);
   assert.strictEqual(cfg.tp1ProbKill, 0.50);
+  assert.strictEqual(cfg.pointPassKillRescueEnabled, true);
+  assert.strictEqual(cfg.pointPassKillRescueMargin, 0.06);
+  assert.strictEqual(cfg.qtyScaleKillRescue, 0.25);
+
+  const rescuedDecision = __test.resolveEvGateDecision({
+    cfg,
+    tp1ProbMin: 0.55,
+    estimate: {
+      probability: 0.6005366150130764,
+      lowerBound: 0.4698889564706964,
+    },
+  });
+  assert.strictEqual(rescuedDecision.ok, true);
+  assert.strictEqual(rescuedDecision.action, "REDUCE_RESCUE");
+  assert.strictEqual(rescuedDecision.qtyScale, 0.25);
+  assert.strictEqual(rescuedDecision.pointPass, true);
+  assert.strictEqual(rescuedDecision.pointPassKillRescueApplied, true);
+
+  const dropDecision = __test.resolveEvGateDecision({
+    cfg,
+    tp1ProbMin: 0.55,
+    estimate: {
+      probability: 0.52,
+      lowerBound: 0.39,
+    },
+  });
+  assert.strictEqual(dropDecision.ok, false);
+  assert.strictEqual(dropDecision.action, "DROP");
+  assert.strictEqual(dropDecision.reason, "DROP_EV_GATE_TP1_PROB");
 
   const allowCoreLong = await __test.evaluateEvEntryGate({
     exchange: "BINANCEFUT",
@@ -122,11 +152,32 @@ async function run() {
     eventUpper: "CORE_LONG",
     features: {},
     cfg,
-    bars: makeBars({ direction: "LONG", driftPct: 0.05, rangePct: 1.35, closeControl: 0.40, adverseEvery: 2 }),
+    bars: makeBars({ direction: "LONG", driftPct: 0.03, rangePct: 2.2, closeControl: 0.2, adverseEvery: 1 }),
   });
   assert.strictEqual(dropCoreLong.ok, false);
   assert.strictEqual(dropCoreLong.reason, "DROP_EV_GATE_TP1_PROB");
   assert.strictEqual(dropCoreLong.detail.ev_gate_action, "DROP");
+
+  const rescueCoreLong = await __test.evaluateEvEntryGate({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    tf: "15m",
+    barCloseMs: 1_700_000_000_000 + (11 * 900_000),
+    intent: "ENTRY",
+    intentDir: "LONG",
+    eventUpper: "CORE_LONG",
+    features: {},
+    cfg,
+    bars: makeBars({ direction: "LONG", driftPct: 0.05, rangePct: 1.35, closeControl: 0.40, adverseEvery: 2 }),
+  });
+  assert.strictEqual(rescueCoreLong.ok, true);
+  assert.strictEqual(rescueCoreLong.detail.ev_gate_action, "REDUCE_RESCUE");
+  assert.strictEqual(rescueCoreLong.qtyScale, 0.25);
+  assert.strictEqual(rescueCoreLong.detail.ev_gate_point_pass, true);
+  assert.strictEqual(rescueCoreLong.detail.ev_gate_point_pass_kill_rescue_applied, true);
+  assert.ok(rescueCoreLong.detail.ev_gate_tp1_reach_prob >= rescueCoreLong.detail.ev_gate_tp1_prob_min);
+  assert.ok(rescueCoreLong.detail.ev_gate_tp1_reach_prob_lower_bound < rescueCoreLong.detail.ev_gate_tp1_prob_kill);
+  assert.ok(rescueCoreLong.detail.ev_gate_tp1_reach_prob_lower_bound >= rescueCoreLong.detail.ev_gate_point_pass_kill_rescue_floor);
 
   const reduceEarlyLong = await __test.evaluateEvEntryGate({
     exchange: "BINANCEFUT",

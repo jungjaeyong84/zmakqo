@@ -3721,6 +3721,10 @@ function resolveEvGateConfig(sysCfg = {}, exchange = "") {
   const tp1ProbKill = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_kill, 0.50), 0, 1);
   const qtyScaleMid = clamp(normalizeNumber(sysCfg.ev_gate_qty_scale_mid, 0.70), 0, 1);
   const qtyScaleLow = clamp(normalizeNumber(sysCfg.ev_gate_qty_scale_low, 0.40), 0, 1);
+  const pointPassKillRescueEnabled = normalizeBool(sysCfg.ev_gate_point_pass_kill_rescue_enabled, true);
+  const pointPassKillRescueMargin = clamp(normalizeNumber(sysCfg.ev_gate_point_pass_kill_rescue_margin, 0.06), 0, 0.25);
+  const qtyScaleKillRescueRaw = clamp(normalizeNumber(sysCfg.ev_gate_qty_scale_kill_rescue, Math.min(qtyScaleLow, 0.25)), 0, 1);
+  const qtyScaleKillRescue = Math.min(qtyScaleLow, qtyScaleKillRescueRaw);
   const lookbackBars = Math.max(8, Math.min(24, normalizeInt(sysCfg.ev_gate_lookback_bars, 12)));
   const atrBars = Math.max(4, Math.min(lookbackBars - 1, normalizeInt(sysCfg.ev_gate_atr_bars, 8)));
   const defaultTp1Pct = Math.max(0.1, normalizeNumber(sysCfg.ev_gate_default_tp1_pct, 3.25));
@@ -3740,6 +3744,9 @@ function resolveEvGateConfig(sysCfg = {}, exchange = "") {
     tp1ProbKill: Number.isFinite(tp1ProbKill) ? Math.min(tp1ProbMin, tp1ProbKill) : Math.min(tp1ProbMin, 0.50),
     qtyScaleMid: Number.isFinite(qtyScaleMid) ? qtyScaleMid : 0.70,
     qtyScaleLow: Number.isFinite(qtyScaleLow) ? qtyScaleLow : 0.40,
+    pointPassKillRescueEnabled,
+    pointPassKillRescueMargin,
+    qtyScaleKillRescue: Number.isFinite(qtyScaleKillRescue) ? qtyScaleKillRescue : Math.min(Number.isFinite(qtyScaleLow) ? qtyScaleLow : 0.40, 0.25),
     lookbackBars,
     atrBars,
     defaultTp1Pct,
@@ -3769,6 +3776,81 @@ function shouldApplyEvGateByEvent(eventUpper, cfg, features) {
 
 function shouldBypassEvEntryGate({ intent, features } = {}) {
   return String(intent || "").toUpperCase() === "ENTRY" && isManualRetryFeatures(features);
+}
+
+function resolveEvGateDecision({ estimate, cfg, tp1ProbMin } = {}) {
+  const killThreshold = Number(cfg && cfg.tp1ProbKill);
+  const fullThreshold = Number(cfg && cfg.tp1ProbFull);
+  const probMin = Number(tp1ProbMin);
+  const pointProbability = Number(estimate && estimate.probability);
+  const lowerBound = Number(estimate && estimate.lowerBound);
+  const pointPass = Number.isFinite(pointProbability) && Number.isFinite(probMin) && pointProbability >= probMin;
+  const rescueMargin = Math.max(0, Number(cfg && cfg.pointPassKillRescueMargin) || 0);
+  const rescueFloor = Number.isFinite(killThreshold) ? Math.max(0, killThreshold - rescueMargin) : null;
+  const rescueScale = Number(cfg && cfg.qtyScaleKillRescue);
+  const lowScale = Number(cfg && cfg.qtyScaleLow);
+  const midScale = Number(cfg && cfg.qtyScaleMid);
+
+  if (Number.isFinite(killThreshold) && Number.isFinite(lowerBound) && lowerBound < killThreshold) {
+    const rescueEligible = cfg && cfg.pointPassKillRescueEnabled === true
+      && pointPass
+      && Number.isFinite(rescueFloor)
+      && lowerBound >= rescueFloor
+      && Number.isFinite(rescueScale)
+      && rescueScale > 0;
+    if (rescueEligible) {
+      return {
+        ok: true,
+        action: "REDUCE_RESCUE",
+        qtyScale: rescueScale,
+        reason: null,
+        pointPass,
+        rescueFloor,
+        pointPassKillRescueApplied: true,
+      };
+    }
+    return {
+      ok: false,
+      action: "DROP",
+      qtyScale: 0,
+      reason: "DROP_EV_GATE_TP1_PROB",
+      pointPass,
+      rescueFloor,
+      pointPassKillRescueApplied: false,
+    };
+  }
+
+  if (Number.isFinite(lowerBound) && Number.isFinite(probMin) && lowerBound < probMin) {
+    return {
+      ok: true,
+      action: "REDUCE_LOW",
+      qtyScale: Number.isFinite(lowScale) ? lowScale : 0.40,
+      reason: null,
+      pointPass,
+      rescueFloor,
+      pointPassKillRescueApplied: false,
+    };
+  }
+  if (Number.isFinite(lowerBound) && Number.isFinite(fullThreshold) && lowerBound < fullThreshold) {
+    return {
+      ok: true,
+      action: "REDUCE_MID",
+      qtyScale: Number.isFinite(midScale) ? midScale : 0.70,
+      reason: null,
+      pointPass,
+      rescueFloor,
+      pointPassKillRescueApplied: false,
+    };
+  }
+  return {
+    ok: true,
+    action: "ALLOW",
+    qtyScale: 1,
+    reason: null,
+    pointPass,
+    rescueFloor,
+    pointPassKillRescueApplied: false,
+  };
 }
 
 function resolveEvGateTradePlan({ cfg, exitRules, features } = {}) {
@@ -3844,6 +3926,9 @@ async function evaluateEvEntryGate({
     ev_gate_tp1_prob_kill: Number(cfg.tp1ProbKill),
     ev_gate_qty_scale_mid: Number(cfg.qtyScaleMid),
     ev_gate_qty_scale_low: Number(cfg.qtyScaleLow),
+    ev_gate_qty_scale_kill_rescue: Number(cfg.qtyScaleKillRescue),
+    ev_gate_point_pass_kill_rescue_enabled: cfg.pointPassKillRescueEnabled === true,
+    ev_gate_point_pass_kill_rescue_margin: Number(cfg.pointPassKillRescueMargin),
     ev_gate_tp1_pct: Number.isFinite(tp1Pct) ? tp1Pct : null,
     ev_gate_sl_pct: Number.isFinite(slPct) ? slPct : null,
     ev_gate_tp1_qty_ratio: Number.isFinite(Number(plan.tp1QtyRatio)) ? Number(plan.tp1QtyRatio) : null,
@@ -3897,20 +3982,10 @@ async function evaluateEvEntryGate({
     return { ok: false, action: "DROP", qtyScale: 0, reason: "DROP_EV_GATE_BARS_MISSING", detail };
   }
 
-  let action = "ALLOW";
-  let qtyScale = 1;
-  let dropReason = null;
-  if (estimate.lowerBound < Number(cfg.tp1ProbKill)) {
-    action = "DROP";
-    qtyScale = 0;
-    dropReason = "DROP_EV_GATE_TP1_PROB";
-  } else if (estimate.lowerBound < tp1ProbMin) {
-    action = "REDUCE_LOW";
-    qtyScale = Number(cfg.qtyScaleLow);
-  } else if (estimate.lowerBound < Number(cfg.tp1ProbFull)) {
-    action = "REDUCE_MID";
-    qtyScale = Number(cfg.qtyScaleMid);
-  }
+  const decision = resolveEvGateDecision({ estimate, cfg, tp1ProbMin });
+  const action = decision.action;
+  const qtyScale = decision.qtyScale;
+  const dropReason = decision.reason;
 
   const detail = {
     ...baseDetail,
@@ -3930,6 +4005,9 @@ async function evaluateEvEntryGate({
     ev_gate_chase_ratio: estimate.chaseRatio,
     ev_gate_same_dir_streak: estimate.sameDirStreak,
     ev_gate_counter_dir_bars: estimate.counterDirBars,
+    ev_gate_point_pass: decision.pointPass,
+    ev_gate_point_pass_kill_rescue_applied: decision.pointPassKillRescueApplied,
+    ev_gate_point_pass_kill_rescue_floor: decision.rescueFloor,
     ev_gate_avg_close_control: estimate.avgCloseControl,
     ev_gate_avg_opposite_wick: estimate.avgOppWick,
     ev_gate_avg_dir_body: estimate.avgDirBody,
@@ -11683,6 +11761,7 @@ module.exports = {
     evaluateLiveRescueAdd,
     evaluateReplayRescueAdd,
     resolveEvGateConfig,
+    resolveEvGateDecision,
     resolveEvGateTradePlan,
     shouldBypassEvEntryGate,
     evaluateEvEntryGate,
