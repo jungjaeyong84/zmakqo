@@ -18,6 +18,7 @@ const { normalizeProviderId, pickProviderEntry } = require("../utils/providerUti
 const { normalizePositionSide } = require("../utils/positionSide");
 const { alignBarCloseMs } = require("../utils/alignBarCloseMs");
 const { resolveFebtShadow } = require("../utils/febtShadow");
+const { mergeFebtPayloadContract } = require("../utils/febtPayloadContract");
 const { runOneMarket } = require("../scheduler/marketRunner");
 const { resolveExecTfForExchange } = require("../utils/resolveExchange");
 const { sendSignalReceivedAlert } = require("../services/signalLifecycleAlert");
@@ -1523,6 +1524,8 @@ function createWebhookRoutes() {
         _tf_upgraded: tfRaw !== tf,
         _execution_mode: executionMode,
       };
+      const febtPayloadContract = mergeFebtPayloadContract({ payload: p, features });
+      Object.assign(features, febtPayloadContract.features);
       const febtShadow = resolveFebtShadow(features);
       features.febt_payload_missing = febtShadow.payloadMissing === true;
       if (!features.febt_mode && febtShadow.mode) features.febt_mode = febtShadow.mode;

@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const { getFirestore } = require("../src/storage/firestore");
 const { toKstString, kstDateKey } = require("../src/utils/timeKst");
+const { hasFebtContract } = require("../src/utils/febtPayloadContract");
 
 const ROOT = process.cwd();
 const OPS_DAILY = path.join(ROOT, "ops", "daily");
@@ -196,6 +197,11 @@ function buildVerification(signals) {
   let tracePayloadVersionCount = 0;
   let traceEmitModeCount = 0;
   let traceChainKeyCount = 0;
+  let febtContractCount = 0;
+  let febtTraceContractMissingCount = 0;
+  let activeTracePayloadVersionCount = 0;
+  let activeFebtContractCount = 0;
+  let activeFebtTraceContractMissingCount = 0;
   let costShieldEnableCount = 0;
   let costShieldEntryMultCount = 0;
   let qtySanitizedAnyCount = 0;
@@ -203,6 +209,8 @@ function buildVerification(signals) {
 
   for (const row of signals) {
     const features = row ? parseJsonObject(row.features_json) : null;
+    const event = String((row && row.event) || (features && features.event) || "").trim().toUpperCase();
+    const isActiveEntry = ["EARLY_LONG", "EARLY_SHORT", "CORE_LONG", "CORE_SHORT"].includes(event);
     const tracePayloadVersion = row && row.trace_payload_version != null
       ? row.trace_payload_version
       : (features && (features.trace_payload_version || features.tracePayloadVersion));
@@ -221,10 +229,19 @@ function buildVerification(signals) {
     const qtySanitized = row && typeof row.qty_sanitized === "boolean"
       ? row.qty_sanitized
       : (features && typeof features.qty_sanitized === "boolean" ? features.qty_sanitized : null);
+    const febtContractPresent = hasFebtContract(features || {});
+    const febtTraceContractMissing = row && row._febt_trace_contract_missing === true
+      ? true
+      : (features && features._febt_trace_contract_missing === true);
 
     if (tracePayloadVersion != null) tracePayloadVersionCount += 1;
     if (traceEmitMode != null) traceEmitModeCount += 1;
     if (traceChainKey != null) traceChainKeyCount += 1;
+    if (febtContractPresent) febtContractCount += 1;
+    if (febtTraceContractMissing) febtTraceContractMissingCount += 1;
+    if (tracePayloadVersion != null && isActiveEntry) activeTracePayloadVersionCount += 1;
+    if (febtContractPresent && isActiveEntry) activeFebtContractCount += 1;
+    if (febtTraceContractMissing && isActiveEntry) activeFebtTraceContractMissingCount += 1;
     if (typeof costShieldEnable === "boolean") costShieldEnableCount += 1;
     if (Number.isFinite(Number(costShieldEntryMult))) costShieldEntryMultCount += 1;
     if (typeof qtySanitized === "boolean") {
@@ -237,6 +254,11 @@ function buildVerification(signals) {
     trace_payload_version_count: tracePayloadVersionCount,
     trace_emit_mode_count: traceEmitModeCount,
     trace_chain_key_count: traceChainKeyCount,
+    febt_contract_count: febtContractCount,
+    febt_trace_contract_missing_count: febtTraceContractMissingCount,
+    active_trace_payload_version_count: activeTracePayloadVersionCount,
+    active_febt_contract_count: activeFebtContractCount,
+    active_febt_trace_contract_missing_count: activeFebtTraceContractMissingCount,
     cost_shield_enable_count: costShieldEnableCount,
     cost_shield_entry_mult_count: costShieldEntryMultCount,
     qty_sanitized_any_count: qtySanitizedAnyCount,
@@ -260,6 +282,15 @@ function buildMarkdown(payload, jsonPath) {
         `[ISSUE] H | 전략ID 불일치 ${mismatchTop.count}건 (수신: ${mismatchTop.received_strategy_id || "null"}, 기준: ${mismatchTop.expected_strategy_id || "null"}) | 기본 전략ID 상수와 Pine strategy_id 동기화 확인`
       );
     }
+  }
+  if (payload.verification.active_trace_payload_version_count > 0 && payload.verification.active_febt_contract_count === 0) {
+    issues.push(
+      `[ISSUE] H | active TPTR_V2 신호 ${payload.verification.active_trace_payload_version_count}건에서 FEBT contract 0건 | TradingView 적용본 또는 nested features payload 누락 점검`
+    );
+  } else if (payload.verification.active_febt_trace_contract_missing_count > 0) {
+    issues.push(
+      `[ISSUE] M | active TPTR_V2 신호 ${payload.verification.active_febt_trace_contract_missing_count}건이 FEBT contract 없이 수신됨 | webhook top-level backfill 또는 Pine payload branch 점검`
+    );
   }
   if (!issues.length) {
     issues.push("[ISSUE] L | post-apply 구간 드롭/누락 없음 | 다음 실신호 3분 검증 대기");
@@ -297,6 +328,9 @@ ${payload.strategy_mismatch_top.length
 - trace_payload_version: \`${payload.verification.trace_payload_version_count}\`
 - trace_emit_mode: \`${payload.verification.trace_emit_mode_count}\`
 - trace_chain_key: \`${payload.verification.trace_chain_key_count}\`
+- febt_contract: \`${payload.verification.febt_contract_count}\`
+- febt_trace_contract_missing: \`${payload.verification.febt_trace_contract_missing_count}\`
+- active tptr/febt/missing: \`${payload.verification.active_trace_payload_version_count}\` / \`${payload.verification.active_febt_contract_count}\` / \`${payload.verification.active_febt_trace_contract_missing_count}\`
 - cost_shield_enable: \`${payload.verification.cost_shield_enable_count}\`
 - cost_shield_entry_mult: \`${payload.verification.cost_shield_entry_mult_count}\`
 - qty_sanitized(true): \`${payload.verification.qty_sanitized_true_count}\`

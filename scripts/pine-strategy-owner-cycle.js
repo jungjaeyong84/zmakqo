@@ -283,6 +283,20 @@ function buildIssues(metrics, staticCheck, context = {}) {
   if (Number.isFinite(metrics.trace_payload_version_count) && metrics.trace_payload_version_count === 0) {
     issues.push("[ISSUE] M | trace_payload_version 관측 0건 | TradingView 반영 여부 재확인 필요");
   }
+  if (
+    Number.isFinite(metrics.active_trace_payload_version_count)
+    && metrics.active_trace_payload_version_count > 0
+    && Number.isFinite(metrics.active_febt_contract_count)
+    && metrics.active_febt_contract_count === 0
+  ) {
+    issues.push(
+      `[ISSUE] H | active TPTR_V2 ${metrics.active_trace_payload_version_count}건에서 FEBT contract 0건 | TradingView 적용본 또는 nested features payload 누락 점검`
+    );
+  } else if (Number.isFinite(metrics.active_febt_trace_contract_missing_count) && metrics.active_febt_trace_contract_missing_count > 0) {
+    issues.push(
+      `[ISSUE] M | active TPTR_V2 ${metrics.active_febt_trace_contract_missing_count}건이 FEBT contract 없이 수신됨 | webhook top-level backfill 또는 Pine payload branch 점검`
+    );
+  }
   if (!staticCheck.pass) {
     issues.push(`[ISSUE] H | Pine 정적 점검 실패(${staticCheck.missing_required.join(", ") || "unknown"}) | 코드 기준선 복구 필요`);
   }
@@ -718,6 +732,11 @@ function main() {
     trace_payload_version_count: toNum(probeVerify.trace_payload_version_count, 0),
     trace_emit_mode_count: toNum(probeVerify.trace_emit_mode_count, 0),
     trace_chain_key_count: toNum(probeVerify.trace_chain_key_count, 0),
+    febt_contract_count: toNum(probeVerify.febt_contract_count, 0),
+    febt_trace_contract_missing_count: toNum(probeVerify.febt_trace_contract_missing_count, 0),
+    active_trace_payload_version_count: toNum(probeVerify.active_trace_payload_version_count, 0),
+    active_febt_contract_count: toNum(probeVerify.active_febt_contract_count, 0),
+    active_febt_trace_contract_missing_count: toNum(probeVerify.active_febt_trace_contract_missing_count, 0),
   };
 
   const holdNeeded =
@@ -807,6 +826,7 @@ function main() {
       `정시율 ${fmtPct(metrics.on_time_rate_pct, 1)} / 유효 제출률 ${fmtPct(metrics.valid_submission_rate_pct, 1)} / stale ${metrics.stale_or_missing_count}건`,
       `운영충돌(consistency_check)/실시간차이(live_drift_check) ${metrics.conflict_count_conservative}/${metrics.conflict_count_clock}건${Number.isFinite(metrics.conflict_matrix_vs_role) && Number.isFinite(metrics.conflict_approval_vs_role) ? ` (matrix-role ${metrics.conflict_matrix_vs_role}, approval-role ${metrics.conflict_approval_vs_role})` : ""}`,
       `신호 ${metrics.signal_count}건 / 드롭 ${metrics.drop_count}건 / strategy_id 누적 불일치 ${metrics.strategy_id_mismatch_drop_count}건(신규 ${metrics.strategy_id_mismatch_after_revision_count}건)`,
+      `active TPTR_V2/FEBT/missing ${metrics.active_trace_payload_version_count}/${metrics.active_febt_contract_count}/${metrics.active_febt_trace_contract_missing_count}`,
       `월 목표 5% 기준 일 필요수익 ${fmtPct(dailyRequiredPct, 4)}`,
       `파인 정적 점검 lookahead 커버리지 ${fmtPct(staticCheck.lookahead_coverage_pct, 1)} (${staticCheck.lookahead_off_count}/${staticCheck.request_security_count})`,
     ],
@@ -825,6 +845,7 @@ function main() {
       `strategy_id 신규 불일치 ${metrics.strategy_id_mismatch_after_revision_count}건 유지 확인`,
       `운영충돌(consistency_check)/실시간차이(live_drift_check) ${metrics.conflict_count_conservative}/${metrics.conflict_count_clock}건 확인`,
       `trace_payload_version/trace_emit_mode/trace_chain_key = ${metrics.trace_payload_version_count}/${metrics.trace_emit_mode_count}/${metrics.trace_chain_key_count}`,
+      `active TPTR_V2/FEBT contract/missing = ${metrics.active_trace_payload_version_count}/${metrics.active_febt_contract_count}/${metrics.active_febt_trace_contract_missing_count}`,
       `정시율 ${fmtPct(metrics.on_time_rate_pct, 1)} -> ${nextStaff.raw}까지 ${onTimeActionText} 목표`,
     ],
     independent_execution_plan: {
