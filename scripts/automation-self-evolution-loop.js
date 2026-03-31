@@ -52,7 +52,7 @@ function buildStepPlan() {
       },
     },
     { id: "authority_ensemble", script: "report-self-evolution-authority-ensemble.js" },
-    { id: "deployment_plan", script: "report-best-self-evolution-deployment-plan.js" },
+    { id: "deployment_plan", script: "report-best-self-evolution-deployment-plan.js", env: { SELF_EVOLUTION_SYNC_LIVE_SERVICES: "0" } },
     { id: "objective_integrated", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SKIP_TELEGRAM: "1", OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "INTEGRATED" } },
     { id: "objective_final", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "FINAL" } },
     { id: "loop_monitor", script: "report-best-self-evolution-loop-monitor.js" },

@@ -249,6 +249,25 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.strictEqual(pendingBlock.reviewReady, false);
   assert.strictEqual(pendingBlock.blockedReason, "BUNDLE_ACTIVATION_PENDING_BLOCK");
 
+  const activeByBundle = __test.deriveReviewReadiness({
+    changeControl: {
+      auto_promotion: { ready: false },
+      auto_rollback: { ready: true },
+    },
+    selfEvolutionCanary: {
+      summary: { ready_n: 0, apply_pass: false, rollback_ready_n: 1 },
+    },
+    deploymentPlan: {
+      summary: { plan_status: "APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS", authority_bypass_active: true },
+    },
+    bundleActivation: {
+      summary: { activation_confirmed: true, activation_pending: false },
+    },
+  });
+  assert.strictEqual(activeByBundle.pendingSignalConfirmation, false);
+  assert.strictEqual(activeByBundle.reviewReady, true);
+  assert.strictEqual(activeByBundle.blockedReason, null);
+
   const inlineLoopMonitor = __test.deriveInlineLoopMonitorSummary(
     {
       self_evolution_loop_monitor: {

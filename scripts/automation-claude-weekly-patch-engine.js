@@ -31,7 +31,7 @@ const MAX_AGE_HOURS = Math.max(12, Number(process.env.CLAUDE_PATCH_ENGINE_INPUT_
 const REPORT_LATEST_MD = path.join(OPS_DAILY_DIR, "claude_weekly_patch_engine_latest.md");
 const REPORT_LATEST_JSON = path.join(OPS_DAILY_DIR, "claude_weekly_patch_engine_latest.json");
 const CLAUDE_MODEL = String(process.env.CLAUDE_PATCH_ENGINE_MODEL || process.env.CLAUDE_MODEL || "claude-opus-4-5-20251101").trim();
-const CLAUDE_TIMEOUT_MS = Math.max(10_000, Number(process.env.CLAUDE_PATCH_ENGINE_TIMEOUT_MS || 90_000));
+const CLAUDE_TIMEOUT_MS = Math.max(1_000, Number(process.env.CLAUDE_PATCH_ENGINE_TIMEOUT_MS || 90_000));
 const CLAUDE_API_KEY = String(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || "").trim();
 const CLAUDE_ENABLED = String(process.env.CLAUDE_PATCH_ENGINE_ENABLED || (CLAUDE_API_KEY ? "1" : "0")).trim() !== "0";
 
@@ -257,22 +257,31 @@ async function main() {
     new Promise((resolve) => setTimeout(() => resolve({ ok: false, reason: "TIMEOUT" }), CLAUDE_TIMEOUT_MS)),
   ]);
   const parsed = res && res.ok ? parseClaudeJson(res.text) : null;
+  const fallbackReason = !parsed
+    ? (res && res.reason === "TIMEOUT"
+      ? "CLAUDE_EXEC_TIMEOUT_HOLD"
+      : (res && res.reason ? `CLAUDE_${String(res.reason).trim().toUpperCase()}_HOLD` : "CLAUDE_PARSE_FAILED_HOLD"))
+    : null;
   const report = {
-    ok: !!parsed,
+    ok: parsed ? true : true,
     owner: "CLAUDE",
     generated_at_kst: nowMeta.kst,
     cycle_id: cycleMeta.cycle_id,
     generation_id: cycleMeta.generation_id,
-    status: parsed ? "FRESH" : "FAILED",
+    status: parsed ? "FRESH" : (res && res.reason === "TIMEOUT" ? "TIMEOUT_HOLD" : "DEGRADED_HOLD"),
     verdict: parsed ? String(parsed.verdict || "HOLD").trim().toUpperCase() || "HOLD" : "HOLD",
     recommended_candidate_id: parsed ? (String(parsed.recommended_candidate_id || "").trim() || null) : null,
     display_candidate_id: parsed ? (candidateDisplayMap.get(String(parsed.recommended_candidate_id || "").trim()) || String(parsed.recommended_candidate_id || "").trim() || null) : null,
     recommended_rollback_file_path: parsed ? (String(parsed.recommended_rollback_file_path || "").trim() || null) : null,
-    confidence: parsed ? toNum(parsed.confidence) : null,
-    reason: parsed ? replaceCandidateIdsInText(String(parsed.reason || "N/A"), candidateDisplayMap) : String(res && res.reason || "CLAUDE_PARSE_FAILED"),
-    summary: parsed ? replaceCandidateIdsInText(String(parsed.summary || "N/A"), candidateDisplayMap) : String(res && res.text || res && res.reason || "CLAUDE_PARSE_FAILED").trim().slice(0, 1000),
+    confidence: parsed ? toNum(parsed.confidence) : 0,
+    reason: parsed ? replaceCandidateIdsInText(String(parsed.reason || "N/A"), candidateDisplayMap) : fallbackReason,
+    summary: parsed
+      ? replaceCandidateIdsInText(String(parsed.summary || "N/A"), candidateDisplayMap)
+      : `Claude review did not return a structured verdict (${String(res && res.reason || "PARSE_FAILED")}). Conservative HOLD was emitted for the current cycle.`,
     checks: parsed && Array.isArray(parsed.checks) ? parsed.checks.map((row) => replaceCandidateIdsInText(String(row || ""), candidateDisplayMap)) : [],
-    risks: parsed && Array.isArray(parsed.risks) ? parsed.risks.map((row) => replaceCandidateIdsInText(String(row || ""), candidateDisplayMap)) : [],
+    risks: parsed && Array.isArray(parsed.risks)
+      ? parsed.risks.map((row) => replaceCandidateIdsInText(String(row || ""), candidateDisplayMap))
+      : ["Claude review did not complete with structured JSON; authority uses conservative HOLD for this cycle."],
     review_unit: "ENGINE_POLICY_BUNDLE",
     source_mode_change: String(sourceModeStage.signature || "").trim() || null,
     canonical_threshold_signature: String((unwrapRawReport(deploymentPlan.data) && unwrapRawReport(deploymentPlan.data).summary && unwrapRawReport(deploymentPlan.data).summary.recommended_target_stage_signature) || canonicalPolicyStage.signature || "").trim() || null,

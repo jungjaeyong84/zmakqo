@@ -4,7 +4,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { spawn } = require("child_process");
 const {
   REPO_ROOT,
   OPS_DAILY_DIR,
@@ -25,7 +25,7 @@ loadLocalEnv();
 const CODEX_BIN = String(process.env.CODEX_BIN || "/Applications/Codex.app/Contents/Resources/codex").trim();
 const CODEX_MODEL = String(process.env.CODEX_PATCH_ENGINE_MODEL || "").trim();
 const CODEX_REASONING_EFFORT = String(process.env.CODEX_PATCH_ENGINE_REASONING_EFFORT || "medium").trim().toLowerCase();
-const EXEC_TIMEOUT_MS = Math.max(60_000, Number(process.env.CODEX_PATCH_ENGINE_TIMEOUT_MS || 900_000));
+const EXEC_TIMEOUT_MS = Math.max(1_000, Number(process.env.CODEX_PATCH_ENGINE_TIMEOUT_MS || 900_000));
 const MAX_AGE_HOURS = Math.max(12, Number(process.env.CODEX_PATCH_ENGINE_INPUT_MAX_AGE_HOURS || 48));
 const RETRY_COUNT = Math.max(1, Number(process.env.CODEX_PATCH_ENGINE_RETRY_COUNT || 2));
 const REPORT_LATEST_MD = path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.md");
@@ -495,24 +495,131 @@ function parseCodexJson(raw) {
   return null;
 }
 
-function runCodexExec({ args, prompt, lastMessagePath } = {}) {
+function appendCapped(text, chunk, cap = 1024 * 1024 * 8) {
+  const merged = `${String(text || "")}${String(chunk || "")}`;
+  if (merged.length <= cap) return merged;
+  return merged.slice(-cap);
+}
+
+function killChildProcess(child, signal = "SIGTERM") {
+  if (!child || typeof child.pid !== "number" || child.pid <= 0) return;
+  if (process.platform !== "win32") {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch (_err) {
+      // fall through
+    }
+  }
+  try {
+    process.kill(child.pid, signal);
+  } catch (_err) {
+    // ignore
+  }
+}
+
+function runCodexAttempt({ args, prompt, lastMessagePath } = {}) {
+  return new Promise((resolve) => {
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    let timeoutError = null;
+    let resolved = false;
+    let hardKillTimer = null;
+    try {
+      fs.rmSync(lastMessagePath, { force: true });
+    } catch (_err) {
+      // ignore
+    }
+
+    const child = spawn(CODEX_BIN, args, {
+      cwd: REPO_ROOT,
+      stdio: ["pipe", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+    });
+
+    const finish = (payload) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeoutTimer);
+      if (hardKillTimer) clearTimeout(hardKillTimer);
+      resolve(payload);
+    };
+
+    const timeoutTimer = setTimeout(() => {
+      timedOut = true;
+      timeoutError = Object.assign(new Error(`CODEX_EXEC_TIMEOUT:${EXEC_TIMEOUT_MS}`), { code: "ETIMEDOUT" });
+      killChildProcess(child, "SIGTERM");
+      hardKillTimer = setTimeout(() => {
+        killChildProcess(child, "SIGKILL");
+      }, 1500);
+    }, EXEC_TIMEOUT_MS);
+
+    if (child.stdout) {
+      child.stdout.on("data", (chunk) => {
+        stdout = appendCapped(stdout, chunk);
+      });
+    }
+    if (child.stderr) {
+      child.stderr.on("data", (chunk) => {
+        stderr = appendCapped(stderr, chunk);
+      });
+    }
+
+    child.on("error", (err) => {
+      finish({
+        status: null,
+        signal: null,
+        error: timedOut ? timeoutError || err : err,
+        stdout,
+        stderr,
+        timedOut,
+      });
+    });
+
+    child.on("close", (code, signal) => {
+      const finalRaw = fs.existsSync(lastMessagePath) ? fs.readFileSync(lastMessagePath, "utf8") : String(stdout || "");
+      finish({
+        status: code,
+        signal,
+        error: timedOut ? timeoutError : null,
+        stdout,
+        stderr,
+        timedOut,
+        finalRaw,
+      });
+    });
+
+    try {
+      if (child.stdin) {
+        child.stdin.write(prompt || "");
+        child.stdin.end();
+      }
+    } catch (err) {
+      finish({
+        status: null,
+        signal: null,
+        error: err,
+        stdout,
+        stderr,
+        timedOut,
+      });
+    }
+  });
+}
+
+async function runCodexExec({ args, prompt, lastMessagePath } = {}) {
   let res = null;
   let parsed = null;
   let finalRaw = "";
   let attempts = 0;
   for (let i = 0; i < RETRY_COUNT; i += 1) {
     attempts += 1;
-    res = spawnSync(CODEX_BIN, args, {
-      cwd: REPO_ROOT,
-      encoding: "utf8",
-      input: prompt,
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: EXEC_TIMEOUT_MS,
-      maxBuffer: 1024 * 1024 * 8,
-    });
-    finalRaw = fs.existsSync(lastMessagePath) ? fs.readFileSync(lastMessagePath, "utf8") : String(res.stdout || "");
+    res = await runCodexAttempt({ args, prompt, lastMessagePath });
+    finalRaw = String(res && res.finalRaw || "");
     parsed = parseCodexJson(finalRaw);
     if (parsed) break;
+    if (res && (res.timedOut === true || (res.error && res.error.code === "ETIMEDOUT"))) break;
   }
   return { res, parsed, finalRaw, attempts };
 }
@@ -739,8 +846,48 @@ async function main() {
     "-",
   );
   const promptNormalized = replaceCandidateIdsInText(prompt, candidateDisplayMap);
-  const execResult = runCodexExec({ args, prompt: promptNormalized, lastMessagePath });
+  const execResult = await runCodexExec({ args, prompt: promptNormalized, lastMessagePath });
   const { res, parsed, finalRaw, attempts } = execResult;
+  if (!parsed && res && (res.timedOut === true || (res.error && res.error.code === "ETIMEDOUT"))) {
+    const timeoutHold = {
+      ...baseReport,
+      ok: true,
+      status: "TIMEOUT_HOLD",
+      verdict: "HOLD",
+      recommended_candidate_id: null,
+      recommended_rollback_file_path: null,
+      confidence: 0,
+      reason: "CODEX_EXEC_TIMEOUT_HOLD",
+      summary: `Codex external review exceeded timeout ${EXEC_TIMEOUT_MS}ms. Conservative HOLD was emitted so the loop can close the current cycle.`,
+      checks: [
+        `plan_status=${deploymentPlanSummary.plan_status || "N/A"}`,
+        `attempts=${attempts}`,
+        `timeout_ms=${EXEC_TIMEOUT_MS}`,
+        `ready_promotion=${readyPromotion ? "YES" : "NO"} / ready_rollback=${readyRollback ? "YES" : "NO"}`,
+      ],
+      risks: [
+        "Codex CLI review did not complete within timeout; authority uses conservative HOLD for this cycle.",
+      ],
+      review_unit: "ENGINE_POLICY_BUNDLE",
+      source_mode_change: String(sourceModeStage.signature || "").trim() || null,
+      canonical_threshold_signature: String(canonicalPolicyStage.signature || deploymentPlanSummary.recommended_target_stage_signature || "").trim() || null,
+      inputs: baseReport.inputs,
+      attempts,
+      command: [CODEX_BIN, ...args].join(" "),
+      stderr_tail: String(res.stderr || "").trim().split(/\r?\n/).filter(Boolean).slice(-20),
+    };
+    writeJson(jsonPath, wrapDisplayAndRawReport(timeoutHold));
+    writeText(mdPath, renderMarkdown(timeoutHold));
+    copyLatest(jsonPath, REPORT_LATEST_JSON);
+    copyLatest(mdPath, REPORT_LATEST_MD);
+    console.log(JSON.stringify({
+      ok: true,
+      status: timeoutHold.status,
+      verdict: timeoutHold.verdict,
+      reason: timeoutHold.reason,
+    }));
+    return;
+  }
   const report = {
     ok: !!parsed,
     generated_at_kst: nowMeta.kst,

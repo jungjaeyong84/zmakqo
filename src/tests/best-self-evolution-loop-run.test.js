@@ -17,6 +17,7 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
   assert.strictEqual(steps.some((row) => row.id === "authority_ensemble"), true);
   assert.strictEqual(steps.some((row) => row.id === "filter_shadow_canary"), true);
   assert.strictEqual(steps.some((row) => row.id === "objective_final"), true);
+  assert.strictEqual(steps.find((row) => row.id === "deployment_plan").env.SELF_EVOLUTION_SYNC_LIVE_SERVICES, "0");
   assert.strictEqual(steps.findIndex((row) => row.id === "loop_monitor") < steps.findIndex((row) => row.id === "stage_autopilot"), true);
   assert.strictEqual(steps.findIndex((row) => row.id === "authority_ensemble") < steps.findIndex((row) => row.id === "deployment_plan"), true);
 
