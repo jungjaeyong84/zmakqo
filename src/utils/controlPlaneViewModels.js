@@ -46,6 +46,16 @@ function numberText(value, digits = 2) {
   return n.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
+function timeText(value) {
+  if (value == null || value === "") return "-";
+  const ms = Number(value);
+  const parsed = Number.isFinite(ms) ? ms : Date.parse(String(value));
+  if (!Number.isFinite(parsed)) return compactText(String(value), 32);
+  const kst = new Date(parsed + (9 * 60 * 60 * 1000));
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(kst.getUTCMonth() + 1)}-${pad(kst.getUTCDate())} ${pad(kst.getUTCHours())}:${pad(kst.getUTCMinutes())} KST`;
+}
+
 function signedNumberText(value, digits = 2) {
   const n = Number(value);
   if (!Number.isFinite(n)) return "-";
@@ -133,6 +143,35 @@ function buildLoopHref(loopName) {
   if (loop.includes("RECOVERY") || loop.includes("CANDIDATE") || loop.includes("CANARY") || loop.includes("AUTHORITY")) return "/dashboard/recovery";
   if (loop.includes("PARITY") || loop.includes("PROVENANCE") || loop.includes("EXECUTION")) return "/dashboard/execution";
   return "/dashboard/audit";
+}
+
+function rowReasonText(row) {
+  if (!row || typeof row !== "object") return "-";
+  return compactText(
+    row.drop_reason ||
+    row.reason ||
+    (row.features_json && (row.features_json.reason || row.features_json._intent_override_reason || row.features_json._reason_raw)) ||
+    row.source_row_type ||
+    "-",
+    56,
+  );
+}
+
+function buildRecentRuntimeRows(datasetArtifact, limit = 6) {
+  const rows = Array.isArray(datasetArtifact.rows) ? datasetArtifact.rows.slice() : [];
+  rows.sort((a, b) => {
+    const ax = Number(a && (a.created_at_ms || a.signal_bar_close_time_utc_ms || Date.parse(a.created_at || a.created_kst || ""))) || 0;
+    const bx = Number(b && (b.created_at_ms || b.signal_bar_close_time_utc_ms || Date.parse(b.created_at || b.created_kst || ""))) || 0;
+    return bx - ax;
+  });
+  return rows.slice(0, Math.max(0, limit)).map((row) => ({
+    at: timeText(row.created_at_ms || row.signal_bar_close_time_utc_ms || row.created_at || row.created_kst),
+    market: compactText(row.market),
+    type: compactText(row.source_row_type),
+    event: compactText(row.event),
+    reason: rowReasonText(row),
+    open: buildLink("Report", buildReportUrl(row.market)),
+  }));
 }
 
 function pickStageRow(stageArtifact, stageName) {
@@ -642,6 +681,7 @@ function buildDeploymentViewModel() {
 function buildExecutionViewModel(query = {}) {
   const parity = loadLatestArtifact("best_self_evolution_canonical_engine_parity_latest.json");
   const provenance = loadLatestArtifact("best_self_evolution_canonical_engine_provenance_latest.json");
+  const dataset = loadLatestArtifact("best_self_evolution_dataset_latest.json");
   const stageAutopilot = loadLatestArtifact("stage_autopilot_latest.json");
   const sourceMode = buildSourceModeText(stageAutopilot);
   const canonicalPolicyRow = pickStageRow(stageAutopilot, "CANONICAL_POLICY");
@@ -779,6 +819,44 @@ function buildExecutionViewModel(query = {}) {
                 ),
               }), 6),
             },
+          },
+        ],
+      },
+      {
+        title: "Recent Runtime Rows",
+        description: "최근 dataset row를 바로 보여줍니다. 빈 recent cache 대신 현재 운영 흔적을 먼저 확인합니다.",
+        columns: 2,
+        cards: [
+          {
+            title: "Dataset Preview",
+            tone: "dim",
+            rows: [
+              { label: "Rows", value: numberText(dataset.summary.row_n || dataset.summary.rows_n || dataset.rows.length, 0) },
+              { label: "Focus Source", value: compactText(focusedSource || "all") },
+              { label: "Focus Collection", value: compactText(focusedCollection || "dataset_latest") },
+              { label: "Meaning", value: "recent runtime evidence across drop/missed/fallback rows" },
+            ],
+            table: {
+              columns: [
+                { key: "at", label: "At" },
+                { key: "market", label: "Market" },
+                { key: "type", label: "Type" },
+                { key: "event", label: "Event" },
+                { key: "reason", label: "Reason" },
+                { key: "open", label: "Open" },
+              ],
+              rows: buildRecentRuntimeRows(dataset, 6),
+            },
+          },
+          {
+            title: "Interpretation",
+            tone: "warn",
+            rows: [
+              { label: "Recent Cache", value: "signals/signals_dropped/order_intents are currently sparse in local cache" },
+              { label: "Fallback SOT", value: "best_self_evolution_dataset_latest.json" },
+              { label: "Why", value: "Execution page should still show recent runtime evidence even when cache shards are empty" },
+              { label: "Next Jump", value: "/dashboard/report?mode=weekly&market=<market>" },
+            ],
           },
         ],
       },
