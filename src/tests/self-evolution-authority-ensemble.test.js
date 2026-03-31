@@ -57,5 +57,37 @@ const { deriveAuthorityEnsemble } = require("../../src/utils/selfEvolutionAuthor
   });
   assert.strictEqual(codexOnly.owner, "CODEX");
   assert.strictEqual(codexOnly.verdict, "PROMOTE");
+
+  const degradedPromote = deriveAuthorityEnsemble({
+    authorityMode: "CODEX_CLAUDE_ENSEMBLE",
+    codexReview: { fresh: true, status: "TIMEOUT_HOLD", verdict: "HOLD", reason: "CODEX_EXEC_TIMEOUT_HOLD", confidence: 0 },
+    claudeReview: { fresh: true, status: "TIMEOUT_HOLD", verdict: "HOLD", reason: "CLAUDE_EXEC_TIMEOUT_HOLD", confidence: 0 },
+    autonomyContract: {
+      authority_policy: {
+        degraded_timeout_policy: {
+          enabled: true,
+          min_timeout_streak: 3,
+          allow_target_deploy_units: ["SERVER_SETTINGS", "ENGINE_POLICY_BUNDLE"],
+          confidence_floor: 0.35,
+        },
+      },
+    },
+    recoveryGovernor: {
+      summary: {
+        target_candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN",
+        target_deploy_unit: "SERVER_SETTINGS",
+        governor_status: "RECOVERY_PROMOTION_READY",
+        degraded_authority_eligible: true,
+      },
+    },
+    timeoutContext: {
+      codex_timeout_streak: 4,
+      claude_timeout_streak: 4,
+      ensemble_timeout_streak: 4,
+    },
+  });
+  assert.strictEqual(degradedPromote.verdict, "PROMOTE");
+  assert.strictEqual(degradedPromote.recommended_candidate_id, "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN");
+  assert.strictEqual(degradedPromote.degraded_authority_applied, true);
   console.log("SELF_EVOLUTION_AUTHORITY_ENSEMBLE_TEST_OK");
 })();

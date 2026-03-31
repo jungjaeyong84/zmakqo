@@ -34,9 +34,12 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const canonicalParity = unwrapRawReport(reports.canonicalParity) || {};
   const canonicalProvenance = unwrapRawReport(reports.canonicalProvenance) || {};
   const serverPrimaryCanary = unwrapRawReport(reports.serverPrimaryCanary) || {};
+  const serverPrimaryAcceptanceWatch = unwrapRawReport(reports.serverPrimaryAcceptanceWatch) || {};
   const pineShadowDrift = unwrapRawReport(reports.pineShadowDrift) || {};
   const deploymentProbe = unwrapRawReport(reports.deploymentProbe) || {};
   const bundleActivation = unwrapRawReport(reports.bundleActivation) || {};
+  const openclawAutonomyContract = unwrapRawReport(reports.openclawAutonomyContract) || {};
+  const objectiveRecoveryGovernor = unwrapRawReport(reports.objectiveRecoveryGovernor) || {};
   const deployment = unwrapRawReport(reports.deployment) || {};
   const deploymentPlan = unwrapRawReport(reports.deploymentPlan) || {};
   const weightTuning = unwrapRawReport(reports.weightTuning) || {};
@@ -67,9 +70,12 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     : (canonicalProvenanceSummary.with_bundle_version_n ?? canonicalProvenanceSummary.bundle_version_n ?? 0);
   const canonicalProvenanceStatus = String(canonicalProvenanceSummary.post_cutover_status || "").trim().toUpperCase();
   const serverPrimaryCanarySummary = serverPrimaryCanary.summary && typeof serverPrimaryCanary.summary === "object" ? serverPrimaryCanary.summary : {};
+  const serverPrimaryAcceptanceSummary = serverPrimaryAcceptanceWatch.summary && typeof serverPrimaryAcceptanceWatch.summary === "object" ? serverPrimaryAcceptanceWatch.summary : {};
   const pineShadowDriftSummary = pineShadowDrift.summary && typeof pineShadowDrift.summary === "object" ? pineShadowDrift.summary : {};
   const deploymentProbeSummary = deploymentProbe.summary && typeof deploymentProbe.summary === "object" ? deploymentProbe.summary : {};
   const bundleActivationSummary = bundleActivation.summary && typeof bundleActivation.summary === "object" ? bundleActivation.summary : {};
+  const autonomyContractSummary = openclawAutonomyContract.summary && typeof openclawAutonomyContract.summary === "object" ? openclawAutonomyContract.summary : {};
+  const objectiveRecoveryGovernorSummary = objectiveRecoveryGovernor.summary && typeof objectiveRecoveryGovernor.summary === "object" ? objectiveRecoveryGovernor.summary : {};
   const candidateSummary = candidates.summary && typeof candidates.summary === "object" ? candidates.summary : {};
   const replaySummary = replay.summary && typeof replay.summary === "object" ? replay.summary : {};
   const memorySummary = memory.summary && typeof memory.summary === "object" ? memory.summary : {};
@@ -81,9 +87,12 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(canonicalParity)
     || readCycleId(canonicalProvenance)
     || readCycleId(serverPrimaryCanary)
+    || readCycleId(serverPrimaryAcceptanceWatch)
     || readCycleId(pineShadowDrift)
     || readCycleId(deploymentProbe)
     || readCycleId(bundleActivation)
+    || readCycleId(openclawAutonomyContract)
+    || readCycleId(objectiveRecoveryGovernor)
     || readCycleId(deployment)
     || readCycleId(deploymentPlan)
     || readCycleId(stageAutopilot)
@@ -102,6 +111,11 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   );
   const blockedCandidateIds = Array.isArray(memorySummary.blocked_candidate_ids)
     ? memorySummary.blocked_candidate_ids.filter(Boolean)
+    : [];
+  const governorMemoryBlocked = objectiveRecoveryGovernorSummary.memory_blocked === true
+    || objectiveRecoveryGovernorSummary.target_memory_blocked === true;
+  const unrelatedMemoryBlockedIds = Array.isArray(objectiveRecoveryGovernorSummary.unrelated_memory_blocked_candidate_ids)
+    ? objectiveRecoveryGovernorSummary.unrelated_memory_blocked_candidate_ids.filter(Boolean)
     : [];
 
   const rows = [
@@ -165,6 +179,17 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       reason: `executed=${serverPrimaryCanarySummary.server_primary_executed_n ?? 0} / disagreement=${serverPrimaryCanarySummary.pine_shadow_disagreement_n ?? 0}/${serverPrimaryCanarySummary.pine_shadow_observed_n ?? 0} / rollback=${serverPrimaryCanarySummary.rollback_trigger_n ?? 0}`,
     },
     {
+      loop: "SERVER_PRIMARY_ACCEPTANCE_WATCH",
+      fresh: artifacts.serverPrimaryAcceptanceWatch && artifacts.serverPrimaryAcceptanceWatch.fresh === true,
+      cycle_id: readCycleId(serverPrimaryAcceptanceWatch),
+      status: String(serverPrimaryAcceptanceSummary.phase_d_status || "N/A").trim().toUpperCase() === "READY"
+        ? "PASS"
+        : (String(serverPrimaryAcceptanceSummary.phase_d_status || "N/A").trim().toUpperCase() === "BLOCK"
+        ? "BLOCK"
+        : (String(serverPrimaryAcceptanceSummary.phase_d_status || "N/A").trim().toUpperCase() === "PENDING" ? "HOLD" : "N/A")),
+      reason: `executed=${serverPrimaryAcceptanceSummary.executed_n ?? 0}/${serverPrimaryAcceptanceSummary.min_executed_n ?? "N/A"} / disagreement=${serverPrimaryAcceptanceSummary.disagreement_rate ?? "N/A"}<=${serverPrimaryAcceptanceSummary.max_disagreement_rate ?? "N/A"} / rollback=${serverPrimaryAcceptanceSummary.rollback_trigger_n ?? 0}<=${serverPrimaryAcceptanceSummary.max_rollback_trigger_n ?? "N/A"} / ${serverPrimaryAcceptanceSummary.phase_d_reason || "N/A"}`,
+    },
+    {
       loop: "PINE_SHADOW_DRIFT",
       fresh: artifacts.pineShadowDrift && artifacts.pineShadowDrift.fresh === true,
       cycle_id: readCycleId(pineShadowDrift),
@@ -192,6 +217,24 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
         ? "PASS"
         : (bundleActivationSummary.activation_pending === true ? "HOLD" : "N/A")),
       reason: `engine=${bundleActivationSummary.engine_bundle_loaded ? "YES" : "NO"} / policy=${bundleActivationSummary.policy_bundle_loaded ? "YES" : "NO"} / data=${bundleActivationSummary.market_data_flow_ok ? "YES" : "NO"} / probe=${bundleActivationSummary.probe_pass ? "YES" : "NO"} / decision=${bundleActivationSummary.first_decision_seen ? "YES" : "NO"} / reason=${bundleActivationSummary.activation_reason || "N/A"}`,
+    },
+    {
+      loop: "OPENCLAW_AUTONOMY_CONTRACT",
+      fresh: artifacts.openclawAutonomyContract && artifacts.openclawAutonomyContract.fresh === true,
+      cycle_id: readCycleId(openclawAutonomyContract),
+      status: String(autonomyContractSummary.ops_status || "N/A").trim().toUpperCase() || "N/A",
+      reason: `goal=${autonomyContractSummary.goal_state || "N/A"} / authority=${autonomyContractSummary.authority_state || "N/A"} / phase_d=${autonomyContractSummary.phase_d_status || "N/A"}`,
+    },
+    {
+      loop: "OBJECTIVE_RECOVERY_GOVERNOR",
+      fresh: artifacts.objectiveRecoveryGovernor && artifacts.objectiveRecoveryGovernor.fresh === true,
+      cycle_id: readCycleId(objectiveRecoveryGovernor),
+      status: String(objectiveRecoveryGovernorSummary.governor_status || "N/A").trim().toUpperCase() === "RECOVERY_PROMOTION_READY"
+        ? "READY"
+        : (String(objectiveRecoveryGovernorSummary.governor_status || "N/A").trim().toUpperCase() === "OBJECTIVE_ON_TRACK"
+        ? "PASS"
+        : (/BLOCKED/.test(String(objectiveRecoveryGovernorSummary.governor_status || "")) ? "BLOCK" : "HOLD")),
+      reason: `candidate=${objectiveRecoveryGovernorSummary.target_candidate_id || "N/A"} / degraded=${objectiveRecoveryGovernorSummary.degraded_authority_eligible ? "YES" : "NO"} / ${objectiveRecoveryGovernorSummary.governor_reason || "N/A"}`,
     },
     {
       loop: "DEPLOYMENT_GUARDS",
@@ -232,9 +275,13 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       loop: "MEMORY_LEDGER",
       fresh: artifacts.memory && artifacts.memory.fresh === true,
       cycle_id: readCycleId(memory),
-      status: Number(memorySummary.blocked_candidate_n || 0) > 0 ? "BLOCK" : "PASS",
-      reason: Number(memorySummary.blocked_candidate_n || 0) > 0
-        ? `blocked=${memorySummary.blocked_candidate_n ?? 0} / ids=${blockedCandidateIds.slice(0, 3).join("|") || "N/A"}`
+      status: governorMemoryBlocked
+        ? "BLOCK"
+        : (Number(memorySummary.blocked_candidate_n || 0) > 0 ? "WARN" : "PASS"),
+      reason: governorMemoryBlocked
+        ? `target_blocked=YES / reason=${objectiveRecoveryGovernorSummary.target_memory_block_reason || "N/A"} / ids=${blockedCandidateIds.slice(0, 3).join("|") || "N/A"}`
+        : Number(memorySummary.blocked_candidate_n || 0) > 0
+        ? `target_blocked=NO / blocked=${memorySummary.blocked_candidate_n ?? 0} / ids=${unrelatedMemoryBlockedIds.slice(0, 3).join("|") || blockedCandidateIds.slice(0, 3).join("|") || "N/A"}`
         : `blocked=0 / top_failed=${memorySummary.top_failed_candidate_id || "N/A"}`,
     },
     {
@@ -265,6 +312,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const blockers = [];
   if (objectiveReason) blockers.push(objectiveReason);
   if (Number(canonicalParitySummary.source_parity_mismatch_n || 0) > 0) blockers.push("SELF_EVOLUTION_CANONICAL_SOURCE_MISMATCH");
+  if (String(serverPrimaryAcceptanceSummary.phase_d_status || "").trim().toUpperCase() === "BLOCK") blockers.push("SELF_EVOLUTION_SERVER_PRIMARY_ACCEPTANCE_BLOCK");
   if (Number(serverPrimaryCanarySummary.server_primary_executed_n || 0) > 0 && serverPrimaryCanarySummary.apply_pass === false) {
     blockers.push("SELF_EVOLUTION_SERVER_PRIMARY_CANARY_BLOCK");
   }
@@ -276,7 +324,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || String(deploymentPlanSummary.authority_state || "").trim().toUpperCase() === "PENDING"
     || deploymentPlanSummary.authority_bypass_active === true
   ) blockers.push("SELF_EVOLUTION_EXTERNAL_AUTHORITY_PENDING");
-  if (Number(memorySummary.blocked_candidate_n || 0) > 0) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK_PRESENT");
+  if (governorMemoryBlocked) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK_PRESENT");
   if (cycleMismatches.length) blockers.push("SELF_EVOLUTION_CYCLE_MISMATCH");
   if (cycleIdAbsent.length) blockers.push("SELF_EVOLUTION_CYCLE_ID_ABSENT");
   const uniqueBlockers = Array.from(new Set(blockers.filter(Boolean)));

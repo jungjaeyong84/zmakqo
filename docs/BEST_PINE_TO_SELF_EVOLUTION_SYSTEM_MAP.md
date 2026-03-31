@@ -5,6 +5,7 @@
 - 목적:
   - `Pine -> webhook -> 1~5차 서버 실행 -> 저장/리포트 -> BEST/FEBT 감독 -> self-evolution -> Codex/Claude authority -> 배포/bundle activation`
     까지 전체 시스템을 한 문서에서 이해할 수 있게 정리한다.
+  - `OpenClaw cron / ops agent / Telegram transport`까지 포함한 운영 substrate의 현재 정본 경로를 같이 정리한다.
   - 기존 세부 SSOT 문서를 대체하지 않고, 어떤 문서가 어디를 책임지는지 상위 지도 역할을 한다.
 - 연계 문서:
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/PINE_AND_FILTER_STAGE_ROLES.md`
@@ -17,7 +18,7 @@
 
 ## 1. 한 줄 정의
 
-이 시스템은 현재 `bundle-based hybrid canonical` 상태다. 대부분 시장은 아직 `PINE_PRIMARY`로 움직이지만, 서버 canonical engine이 parity/provenance/probe/activation의 정본을 들고 있고, 일부 승인 시장은 `SERVER_PRIMARY` canary로 승격될 수 있다.
+이 시스템은 현재 `bundle-based hybrid canonical + OpenClaw ops substrate + autonomy governor` 상태다. 대부분 시장은 아직 `PINE_PRIMARY`로 움직이지만, 서버 canonical engine이 parity/provenance/probe/activation의 정본을 들고 있고, 일부 승인 시장은 `SERVER_PRIMARY` canary로 승격될 수 있다. 로컬 자동화 scheduler와 텔레그램 알림은 이제 `OpenClaw`가 정본이며, 목표 미달 시 회복 경로는 `OpenClaw autonomy contract`와 `objective recovery governor`가 판정한다.
 
 ## 2. 시스템 최상위 흐름
 
@@ -28,11 +29,15 @@ flowchart LR
   C --> D["Signals / Intents / Fills / Trades / Drops"]
   D --> E["Governance / Objective Supervisor / Canary"]
   E --> F["BEST Self-Evolution Loop"]
-  F --> G["Codex + Claude Authority"]
-  G --> H["Deployment Plan / Stage Autopilot"]
-  H --> I["Bundle Activation / Deployment Probe"]
-  I --> J["Applied Runtime / Next Cycle Feedback"]
-  H -. legacy .-> K["Optional Manual Pine Paste"]
+  F --> G["OpenClaw Autonomy Contract / Recovery Governor"]
+  G --> H["Codex + Claude Authority"]
+  H --> I["Deployment Plan / Stage Autopilot"]
+  I --> J["Bundle Activation / Deployment Probe"]
+  J --> K["Applied Runtime / Next Cycle Feedback"]
+  O["OpenClaw Cron / Ops Agent / Telegram Delivery"] --> E
+  O --> F
+  O --> G
+  I -. legacy .-> L["Optional Manual Pine Paste"]
 ```
 
 ## 3. 용어 사전
@@ -56,6 +61,11 @@ flowchart LR
 7. `authority bypass`
    - 과거 artifact에 남아 있던 legacy 용어다.
    - 최신 SSOT는 `authority_state=PENDING`과 `*_PENDING_AUTHORITY`만 쓴다.
+8. `OpenClaw cron`
+   - local automation scheduler의 현재 정본이다.
+   - 기존 `launchd`는 fallback이 아니라 legacy diagnostic 대상으로만 남는다.
+9. `OpenClaw-first Telegram`
+   - 텔레그램 알림 전송은 repo alert path 기준으로 먼저 OpenClaw를 사용하고, 필요한 경우에만 direct API fallback을 탄다.
 
 ## 4. Pine 레이어
 
@@ -220,28 +230,70 @@ FEBT는 아래 문서들이 세부 SSOT다.
 2. `canonical_engine_parity`
 3. `canonical_engine_provenance`
 4. `server_primary_canary`
-5. `pine_shadow_drift`
-6. `deployment_probe`
-7. `bundle_activation`
-8. `objective_seed`
-9. `objective`
-10. `attribution`
-11. `candidates`
-12. `replay`
-13. `filter_shadow_canary`
-14. `ev_gate_rescue`
-15. `canary`
-16. `memory`
-17. `deployment_guards`
-18. `weight_tuning`
-19. `codex_patch_engine`
-20. `claude_patch_engine`
-21. `authority_ensemble`
-22. `deployment_plan`
-23. `objective_integrated`
-24. `objective_final`
-25. `loop_monitor`
-26. `stage_autopilot`
+5. `server_primary_acceptance_watch`
+6. `pine_shadow_drift`
+7. `deployment_probe`
+8. `bundle_activation`
+9. `objective_seed`
+10. `objective`
+11. `openclaw_autonomy_contract`
+12. `attribution`
+13. `candidates`
+14. `replay`
+15. `filter_shadow_canary`
+16. `ev_gate_rescue`
+17. `canary`
+18. `memory`
+19. `deployment_guards`
+20. `objective_recovery_governor`
+21. `weight_tuning`
+22. `codex_patch_engine`
+23. `claude_patch_engine`
+24. `authority_ensemble`
+25. `deployment_plan`
+26. `objective_integrated`
+27. `objective_final`
+28. `loop_monitor`
+29. `stage_autopilot`
+
+### 8.3 OpenClaw autonomy governor
+
+핵심 산출물:
+
+1. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_openclaw_autonomy_contract_latest.json`
+2. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_server_primary_acceptance_watch_latest.json`
+3. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_objective_recovery_governor_latest.json`
+
+여기서 하는 일:
+
+1. objective miss가 실제 recovery 모드인지 판정
+2. bounded degraded authority policy를 선언
+3. `Phase D` acceptance를 별도 watch로 추적
+4. 회복 candidate가 replay/canary/guards/memory/ops health를 모두 통과했는지 판정
+
+현재 상태:
+
+1. `goal_state = OBJECTIVE_RECOVERY_REQUIRED`
+2. `recovery candidate = AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN`
+3. `governor_status = RECOVERY_PROMOTION_READY`
+4. `degraded_authority_enabled = true`
+5. `degraded_authority_eligible = true`
+6. authority ensemble 실상태는 아직 `DEGRADED_TIMEOUT_CONSENSUS_NOT_PRESENT`
+
+### 8.4 운영 substrate
+
+현재 local 운영 substrate는 아래처럼 정리된다.
+
+1. scheduler of record
+   - `OpenClaw cron`
+2. automation runner
+   - `donbeolja-ops` agent
+3. alert transport
+   - `src/utils/alerts.js`의 `OpenClaw-first Telegram`
+4. watchdog SSOT
+   - `automation_watchdog_latest.json`의 `scheduler_mode=OPENCLAW_CRON`
+5. legacy substrate
+   - `launchd` label은 의도적으로 disabled 상태이며 diagnostic only다.
 
 ### 8.3 각 단계의 의미
 
@@ -289,6 +341,8 @@ FEBT는 아래 문서들이 세부 SSOT다.
    - cycle consistency와 critical blocker를 최종 집계한다.
 22. `stage_autopilot`
    - `EV / CANONICAL_POLICY / SOURCE_MODE` stage를 갱신한다.
+   - 읽을 때 `display.cycle_id`는 self-evolution main cycle, `display.evaluation_cycle_id`는 post-loop 재평가 cycle로 구분해야 한다.
+   - 따라서 `evaluation_cycle_id`만 다르다고 current cycle mismatch로 판단하면 안 되고, `loop_monitor`의 cycle consistency를 함께 봐야 한다.
 
 ## 9. 외부 권위 레이어
 
@@ -364,6 +418,25 @@ FEBT는 아래 문서들이 세부 SSOT다.
 6. `shadow_pine`는 운영 source가 아니라 overlay audit handoff로만 읽는다.
 7. 최신 applied 상태는 현재 `APPLIED_ACTIVE_PENDING_AUTHORITY`가 SSOT다.
 
+### 10.3 운영 substrate와 메시지 경로
+
+핵심 파일:
+
+1. `/Users/jeongjaeyong/Projects/donbeolja/src/utils/alerts.js`
+2. `/Users/jeongjaeyong/Projects/donbeolja/scripts/lib/openclaw-cron-manifest.js`
+3. `/Users/jeongjaeyong/Projects/donbeolja/scripts/setup-openclaw-cron.js`
+4. `/Users/jeongjaeyong/Projects/donbeolja/scripts/disable-launchd-automations.js`
+5. `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-automation-watchdog.js`
+6. `/Users/jeongjaeyong/Projects/donbeolja/openclaw-ops-workspace/AGENTS.md`
+7. `/Users/jeongjaeyong/Projects/donbeolja/openclaw-ops-workspace/MEMORY.md`
+
+현재 사실:
+
+1. `OpenClaw cron`이 local automation 16개를 소유한다.
+2. `automation_watchdog_latest.json`의 `scheduler_mode=OPENCLAW_CRON`, `verdict=PASS`가 현재 scheduler health SSOT다.
+3. `launchd`는 더 이상 실행 정본이 아니고, watchdog에서 `Legacy Launchd (diagnostic only)`로만 보여준다.
+4. 텔레그램 요약/알림은 `sendAlert()` 경로에서 OpenClaw를 먼저 사용한다.
+
 ### 10.2 current applied vs recommended target
 
 현재 시스템은 아래 둘을 분리해서 기록해야 한다.
@@ -423,6 +496,12 @@ FEBT는 아래 문서들이 세부 SSOT다.
 4. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_self_evolution_authority_latest.json`
 5. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/self_evolution_manual_paste_ack_latest.json`
 
+### 12.4 운영 substrate / 메시지
+
+1. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/automation_watchdog_latest.json`
+2. `/Users/jeongjaeyong/Projects/donbeolja/scripts/lib/openclaw-cron-manifest.js`
+3. `/Users/jeongjaeyong/Projects/donbeolja/openclaw-ops-workspace/AGENTS.md`
+
 ## 13. 현재 시스템 사실상 중요 주의점
 
 1. `FIXED = 무조건 프리리얼 체결 수량`은 아니다.
@@ -447,4 +526,4 @@ FEBT는 아래 문서들이 세부 SSOT다.
 
 ## 15. 한 줄 결론
 
-이 저장소의 핵심은 “Pine가 신호 품질을 만들고, 서버가 실행과 리스크를 책임지고, BEST/FEBT와 self-evolution이 그 결과를 학습해서 다음 Pine/정책을 만들며, 최종 승격은 Codex/Claude ensemble이 통제한다”는 점이다.
+이 저장소의 핵심은 “Pine가 품질 telemetry와 overlay를 만들고, 서버 canonical engine이 실행 정본을 책임지고, BEST/FEBT와 self-evolution이 그 결과를 학습해서 다음 engine/policy bundle을 만들며, 자동화와 메시지 전달은 OpenClaw가 운영 substrate로 담당한다”는 점이다.

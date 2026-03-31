@@ -2,6 +2,7 @@
 /* eslint-disable no-console */
 "use strict";
 
+const fs = require("fs");
 const path = require("path");
 const {
   OPS_DAILY_DIR,
@@ -14,7 +15,10 @@ const {
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
-const { deriveAuthorityEnsemble } = require("../src/utils/selfEvolutionAuthorityEnsemble");
+const {
+  deriveAuthorityEnsemble,
+  isTimeoutHoldReview,
+} = require("../src/utils/selfEvolutionAuthorityEnsemble");
 
 loadLocalEnv();
 
@@ -24,6 +28,8 @@ const INPUTS = Object.freeze({
   codex: path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.json"),
   claude: path.join(OPS_DAILY_DIR, "claude_weekly_patch_engine_latest.json"),
   deploymentPlan: path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json"),
+  autonomyContract: path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_autonomy_contract_latest.json"),
+  objectiveRecoveryGovernor: path.join(OPS_DAILY_DIR, "best_self_evolution_objective_recovery_governor_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -41,6 +47,8 @@ function renderMarkdown(report = {}) {
     `- rollback: ${report.recommended_rollback_file_path || "N/A"}`,
     `- reason: ${report.reason || "N/A"}`,
     `- confidence: ${report.confidence != null ? report.confidence : "N/A"}`,
+    `- degraded_authority: ${report.degraded_authority_enabled ? (report.degraded_authority_applied ? "APPLIED" : (report.degraded_authority_eligible ? "READY" : (report.degraded_authority_reason || "BLOCKED"))) : "DISABLED"}`,
+    `- timeout_streak_min: ${report.timeout_streak_min != null ? report.timeout_streak_min : "N/A"}`,
     "",
     "## Reviews",
     `- codex: ${report.codex_review && report.codex_review.status || "N/A"} / ${report.codex_review && report.codex_review.verdict || "N/A"} / unit ${report.codex_review && report.codex_review.review_unit || "N/A"} / ${report.codex_review && (report.codex_review.display_candidate_id || report.codex_review.recommended_candidate_id || report.codex_review.recommended_rollback_file_path) || "N/A"}`,
@@ -94,6 +102,36 @@ function resolveReportCycleId({ preferredCycleId = null, deploymentPlan = null, 
   ).trim() || null;
 }
 
+function listHistoricalReports(pattern) {
+  try {
+    return fs.readdirSync(OPS_DAILY_DIR)
+      .filter((name) => pattern.test(name))
+      .sort()
+      .map((name) => path.join(OPS_DAILY_DIR, name));
+  } catch (_err) {
+    return [];
+  }
+}
+
+function deriveTimeoutStreak(filePaths = []) {
+  let streak = 0;
+  let totalTimeouts = 0;
+  for (let i = filePaths.length - 1; i >= 0; i -= 1) {
+    const data = readJsonRawSafe(filePaths[i], null);
+    if (!data) break;
+    if (isTimeoutHoldReview(data)) {
+      streak += 1;
+      totalTimeouts += 1;
+      continue;
+    }
+    break;
+  }
+  return {
+    streak,
+    total_timeouts: totalTimeouts,
+  };
+}
+
 function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
@@ -101,10 +139,22 @@ function main() {
   const codexReview = readFreshReview(INPUTS.codex);
   const claudeReview = readFreshReview(INPUTS.claude);
   const deploymentPlan = readJsonRawSafe(INPUTS.deploymentPlan, null);
+  const autonomyContract = readJsonRawSafe(INPUTS.autonomyContract, null);
+  const objectiveRecoveryGovernor = readJsonRawSafe(INPUTS.objectiveRecoveryGovernor, null);
+  const codexHistory = deriveTimeoutStreak(listHistoricalReports(/^\d{4}-\d{2}-\d{2}_\d{4}_codex_weekly_patch_engine\.json$/));
+  const claudeHistory = deriveTimeoutStreak(listHistoricalReports(/^\d{4}-\d{2}-\d{2}_\d{4}_claude_weekly_patch_engine\.json$/));
+  const timeoutContext = {
+    codex_timeout_streak: codexHistory.streak,
+    claude_timeout_streak: claudeHistory.streak,
+    ensemble_timeout_streak: Math.min(codexHistory.streak || 0, claudeHistory.streak || 0),
+  };
   const derived = deriveAuthorityEnsemble({
     codexReview,
     claudeReview,
     authorityMode,
+    autonomyContract,
+    recoveryGovernor: objectiveRecoveryGovernor,
+    timeoutContext,
   });
   const reportCycleId = resolveReportCycleId({
     preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,

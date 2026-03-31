@@ -16,7 +16,7 @@
 
 ## 0. 최신 구현 상태
 
-2026-03-31 19:26 KST 기준 최신 cycle `best_self_evolution_2026-03-31_1926_b61d3609`의 상태는 아래와 같다.
+2026-03-31 21:34 KST 기준 최신 cycle `best_self_evolution_2026-03-31_2128_1dc17b7c`의 상태는 아래와 같다.
 
 1. `Phase A`
    - `PASS`
@@ -25,17 +25,28 @@
 3. `Phase C`
    - `PASS`
    - post-cutover canonical provenance가 `8/8`로 닫혔다.
+   - post-cutover `execution_source`, `pine_overlay_role`, `actual_source_decision`까지 모두 `8/8`로 남는다.
 4. `Phase D`
    - `PARTIAL`
-   - `AXSUSDT`는 이미 `SERVER_PRIMARY`지만, canary acceptance는 아직 `executed_n = 0`이라 닫히지 않았다.
+   - `AXSUSDT`는 이미 `SERVER_PRIMARY`다.
+   - acceptance watch 기준 `observed_n = 1`, `executed_n = 0`, `phase_d_reason = SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT`라 아직 닫히지 않았다.
 5. `Phase E`
    - `PASS`
    - deployment probe와 bundle activation은 `ACTIVE_BY_PROBE`로 닫힌다.
 6. `Phase F`
    - `PASS`
    - deploy unit은 `ENGINE_POLICY_BUNDLE` 기준이고, 최신 SSOT는 `*_PENDING_AUTHORITY`만 쓴다.
+7. `운영 substrate`
+   - `PASS`
+   - local automation scheduler는 이제 `OpenClaw cron`이 정본이다.
+   - Telegram alert transport도 `OpenClaw-first`로 바뀌었고, watchdog는 `OPENCLAW_CRON`을 scheduler SSOT로 읽는다.
+8. `OpenClaw autonomy governor`
+   - `ACTIVE`
+   - autonomy contract는 `OBJECTIVE_RECOVERY_REQUIRED`를 선언하고, bounded degraded authority policy를 들고 있다.
+   - objective recovery governor는 현재 `RECOVERY_PROMOTION_READY`다.
+   - 다만 authority ensemble은 아직 `timeout consensus`가 아니므로 degraded policy를 실제로 쓰지 않았다.
 
-남은 구조적 작업은 없다. 남은 것은 `Phase D 운영 acceptance sample`이다.
+남은 구조적 작업은 없다. 남은 것은 `Phase D 운영 acceptance sample`, `external authority pending`, `timeout degraded-policy 실발동 검증` 같은 운영 상태다.
 
 ## 1. 한 줄 정의
 
@@ -53,6 +64,8 @@
    - rollback file이 준비돼도 Pine 자체를 되돌리지 않으면 signal source는 바뀌지 않는다.
 4. `PINE scope candidate dependence`
    - threshold나 regime gating이 Pine 내부에 있으면 self-evolution이 직접 적용할 수 없다.
+
+현재 이 4개는 구조적으로는 대부분 해소됐다. 남은 것은 `OpenClaw autonomy contract` 아래에서 운영 증거를 충분히 쌓아 완전 자율 상태로 닫는 일이다.
 
 위 4개는 모두 `signal source of truth`가 Pine에 있기 때문에 생긴다.
 
@@ -231,6 +244,7 @@ flowchart LR
 2. Pine-primary / server-primary 비교 canary
 3. rollback switch를 runtime settings로 제공
 4. `authority`가 engine bundle promotion을 심사하게 변경
+5. `OpenClaw autonomy contract`가 degraded timeout policy와 acceptance policy를 같이 소유
 
 안전 장치:
 1. `server-primary`는 승인 시장군에만 적용
@@ -240,6 +254,7 @@ flowchart LR
 1. 승인 시장군에서 server-primary live 실행
 2. Pine는 shadow overlay로만 동작
 3. rollback이 Pine paste 없이 완료
+4. acceptance watch가 `executed_n >= 2`와 disagreement/rollback guard를 모두 통과
 
 ## 7.5 Phase E - Live Confirm 경계 제거
 
@@ -314,6 +329,11 @@ Pine의 남는 역할:
    - deploy unit이 `engine_bundle / policy_bundle`로 재정의됐다.
    - Pine는 `shadow_pine` overlay/audit 계층으로 내려갔다.
    - 최신 artifact에는 `*_AUTHORITY_BYPASS` 상태가 더 이상 나타나지 않는다.
+7. `운영 substrate`
+   - 완료
+   - `OpenClaw cron`이 16개 local automation을 모두 소유한다.
+   - 기존 `launchd` label은 의도적으로 disabled 상태이고, watchdog는 이를 failure가 아니라 legacy diagnostic으로만 기록한다.
+   - Telegram/summary alert는 repo alert path 기준 `OpenClaw-first`로 전송된다.
 
 ## 9. D~F 실행 계획
 

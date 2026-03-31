@@ -3,6 +3,7 @@
 function unwrapRawReport(value) {
   if (!value || typeof value !== "object") return value || null;
   if (value.raw && typeof value.raw === "object") return value.raw;
+  if (value.display && typeof value.display === "object") return value.display;
   return value;
 }
 
@@ -37,10 +38,83 @@ function normalizeReview(input = null, fallbackOwner = "CODEX") {
   };
 }
 
+function isTimeoutHoldReview(review = null) {
+  const normalized = review && review.owner ? review : normalizeReview(review);
+  const status = String(normalized.status || "").trim().toUpperCase();
+  const reason = String(normalized.reason || "").trim().toUpperCase();
+  return normalized.verdict === "HOLD" && (status.includes("TIMEOUT") || reason.includes("TIMEOUT"));
+}
+
+function deriveDegradedAuthorityDecision({
+  codex = null,
+  claude = null,
+  autonomyContract = null,
+  recoveryGovernor = null,
+  timeoutContext = null,
+} = {}) {
+  const contract = unwrapRawReport(autonomyContract) || {};
+  const governor = unwrapRawReport(recoveryGovernor) || {};
+  const governorSummary = governor.summary && typeof governor.summary === "object" ? governor.summary : governor;
+  const policy = contract.authority_policy && contract.authority_policy.degraded_timeout_policy && typeof contract.authority_policy.degraded_timeout_policy === "object"
+    ? contract.authority_policy.degraded_timeout_policy
+    : {};
+  const enabled = policy.enabled === true;
+  const timeoutStreakMin = Math.max(
+    0,
+    toNum(timeoutContext && timeoutContext.ensemble_timeout_streak) || 0,
+    Math.min(
+      toNum(timeoutContext && timeoutContext.codex_timeout_streak) || 0,
+      toNum(timeoutContext && timeoutContext.claude_timeout_streak) || 0
+    )
+  );
+  const targetCandidateId = String(governorSummary.target_candidate_id || governorSummary.display_candidate_id || "").trim() || null;
+  const targetDeployUnit = String(governorSummary.target_deploy_unit || "").trim().toUpperCase() || null;
+  const allowedUnits = Array.isArray(policy.allow_target_deploy_units) ? policy.allow_target_deploy_units : [];
+  const targetAllowed = !allowedUnits.length || allowedUnits.includes(targetDeployUnit);
+  const governorEligible = governorSummary.degraded_authority_eligible === true;
+  const bothTimeoutHold = isTimeoutHoldReview(codex) && isTimeoutHoldReview(claude);
+  const minTimeoutStreak = Math.max(1, toNum(policy.min_timeout_streak) || 1);
+
+  let eligible = false;
+  let reason = "DEGRADED_AUTHORITY_DISABLED";
+  if (!enabled) {
+    reason = "DEGRADED_AUTHORITY_DISABLED";
+  } else if (!bothTimeoutHold) {
+    reason = "DEGRADED_TIMEOUT_CONSENSUS_NOT_PRESENT";
+  } else if (timeoutStreakMin < minTimeoutStreak) {
+    reason = "DEGRADED_TIMEOUT_STREAK_SHORT";
+  } else if (!governorEligible) {
+    reason = String(governorSummary.governor_reason || governorSummary.governor_status || "DEGRADED_GOVERNOR_NOT_READY").trim().toUpperCase() || "DEGRADED_GOVERNOR_NOT_READY";
+  } else if (!targetCandidateId) {
+    reason = "DEGRADED_TARGET_CANDIDATE_MISSING";
+  } else if (!targetAllowed) {
+    reason = `DEGRADED_TARGET_UNIT_BLOCKED:${targetDeployUnit || "N/A"}`;
+  } else {
+    eligible = true;
+    reason = "DEGRADED_TIMEOUT_RECOVERY_PROMOTION_READY";
+  }
+
+  return {
+    enabled,
+    eligible,
+    applied: eligible,
+    reason,
+    timeout_streak_min: timeoutStreakMin,
+    min_timeout_streak: minTimeoutStreak,
+    target_candidate_id: targetCandidateId,
+    target_deploy_unit: targetDeployUnit,
+    confidence_floor: toNum(policy.confidence_floor) || 0.35,
+    governor_status: String(governorSummary.governor_status || "").trim().toUpperCase() || null,
+  };
+}
+
 function deriveAuthorityEnsemble({
   codexReview = null,
   claudeReview = null,
   authorityMode = "CODEX_CLAUDE_ENSEMBLE",
+  autonomyContract = null,
+  recoveryGovernor = null,
+  timeoutContext = null,
 } = {}) {
   const mode = String(authorityMode || "CODEX_CLAUDE_ENSEMBLE").trim().toUpperCase() || "CODEX_CLAUDE_ENSEMBLE";
   const codex = normalizeReview(codexReview, "CODEX");
@@ -52,6 +126,15 @@ function deriveAuthorityEnsemble({
   checks.push(`mode=${mode}`);
   checks.push(`codex=${codex.status}/${codex.verdict}/${codex.recommended_candidate_id || codex.recommended_rollback_file_path || "N/A"}`);
   checks.push(`claude=${claude.status}/${claude.verdict}/${claude.recommended_candidate_id || claude.recommended_rollback_file_path || "N/A"}`);
+  const degradedDecision = deriveDegradedAuthorityDecision({
+    codex,
+    claude,
+    autonomyContract,
+    recoveryGovernor,
+    timeoutContext,
+  });
+  checks.push(`timeout_streak_min=${degradedDecision.timeout_streak_min}`);
+  checks.push(`degraded_authority=${degradedDecision.enabled ? (degradedDecision.eligible ? "READY" : degradedDecision.reason) : "DISABLED"}`);
 
   let owner = "CODEX";
   let status = codex.status;
@@ -85,13 +168,30 @@ function deriveAuthorityEnsemble({
       );
 
       if (consensus) {
-        verdict = codex.verdict;
-        recommendedCandidateId = codex.recommended_candidate_id || claude.recommended_candidate_id;
-        displayCandidateId = codex.display_candidate_id || claude.display_candidate_id || recommendedCandidateId;
-        recommendedRollbackFilePath = codex.recommended_rollback_file_path || claude.recommended_rollback_file_path;
-        confidence = toNum(((toNum(codex.confidence) || 0) + (toNum(claude.confidence) || 0)) / 2);
-        reason = `CONSENSUS_${verdict}:${codex.reason}`;
-        summary = `Codex와 Claude가 ${verdict}에 합의했습니다.`;
+        if (degradedDecision.applied) {
+          verdict = "PROMOTE";
+          recommendedCandidateId = degradedDecision.target_candidate_id;
+          displayCandidateId = degradedDecision.target_candidate_id;
+          recommendedRollbackFilePath = null;
+          confidence = Math.max(
+            degradedDecision.confidence_floor,
+            Math.min(toNum(codex.confidence) || 0, toNum(claude.confidence) || 0)
+          );
+          reason = `DEGRADED_TIMEOUT_PROMOTE:${degradedDecision.reason}`;
+          summary = "외부 권위 timeout이 반복되어 bounded degraded authority policy로 recovery candidate를 승격했습니다.";
+          risks.push("Degraded authority policy promoted a bounded recovery candidate after repeated timeout holds.");
+        } else {
+          verdict = codex.verdict;
+          recommendedCandidateId = codex.recommended_candidate_id || claude.recommended_candidate_id;
+          displayCandidateId = codex.display_candidate_id || claude.display_candidate_id || recommendedCandidateId;
+          recommendedRollbackFilePath = codex.recommended_rollback_file_path || claude.recommended_rollback_file_path;
+          confidence = toNum(((toNum(codex.confidence) || 0) + (toNum(claude.confidence) || 0)) / 2);
+          reason = `CONSENSUS_${verdict}:${codex.reason}`;
+          summary = `Codex와 Claude가 ${verdict}에 합의했습니다.`;
+          if (isTimeoutHoldReview(codex) && isTimeoutHoldReview(claude) && degradedDecision.enabled) {
+            blockers.push(degradedDecision.reason);
+          }
+        }
       } else {
         verdict = "HOLD";
         recommendedCandidateId = null;
@@ -130,6 +230,12 @@ function deriveAuthorityEnsemble({
     risks,
     blockers: Array.from(new Set(blockers)),
     consensus,
+    degraded_authority_enabled: degradedDecision.enabled,
+    degraded_authority_eligible: degradedDecision.eligible,
+    degraded_authority_applied: degradedDecision.applied,
+    degraded_authority_reason: degradedDecision.reason,
+    timeout_streak_min: degradedDecision.timeout_streak_min,
+    timeout_context: timeoutContext || null,
     review_unit: codex.review_unit || claude.review_unit || null,
     source_mode_change: codex.source_mode_change || claude.source_mode_change || null,
     canonical_threshold_signature: codex.canonical_threshold_signature || claude.canonical_threshold_signature || null,
@@ -142,5 +248,6 @@ function deriveAuthorityEnsemble({
 module.exports = {
   unwrapRawReport,
   normalizeReview,
+  isTimeoutHoldReview,
   deriveAuthorityEnsemble,
 };

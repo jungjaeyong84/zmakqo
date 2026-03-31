@@ -22,6 +22,7 @@
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_WORK_BREAKDOWN.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_CLAUDE_AUDIT_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/CLAUDE_SELF_EVOLUTION_VALIDATION_PROMPT.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/OPENCLAW_AUTONOMY_CONTRACT.md`
 
 ## 1. 한 줄 정의
 
@@ -81,6 +82,8 @@
    - 패치 결과 ledger와 재시도 금지 규칙
 8. `L7 Constitution`
    - 감독관 계약, count floor, drawdown, latency, rollback 헌법
+9. `L8 Ops Substrate`
+   - `OpenClaw cron`, `ops agent`, `automation watchdog`, `OpenClaw-first Telegram transport`
 
 ## 6. 적용 대상
 
@@ -100,6 +103,7 @@
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-objective-supervisor.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-stage-autopilot.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-codex-weekly-patch-engine.js`
+   - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-automation-watchdog.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/backfill-canonical-engine-provenance.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/report-best-self-evolution-deployment-probe.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/report-best-self-evolution-bundle-activation.js`
@@ -107,6 +111,9 @@
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-ml-filter-policy.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-wait-one-bar-tune.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-ev-tp1-threshold-tune.js`
+   - `/Users/jeongjaeyong/Projects/donbeolja/scripts/setup-openclaw-cron.js`
+   - `/Users/jeongjaeyong/Projects/donbeolja/scripts/disable-launchd-automations.js`
+   - `/Users/jeongjaeyong/Projects/donbeolja/src/utils/alerts.js`
 
 ## 7. 지금 구현된 범위
 
@@ -132,6 +139,11 @@
 20. deployment probe / bundle activation
 21. server-primary canary
 22. bundle-based deploy unit
+23. OpenClaw cron automation substrate
+24. OpenClaw-first alert transport
+25. OpenClaw autonomy contract
+26. server-primary acceptance watch
+27. objective recovery governor
 
 현재 migration 상태:
 
@@ -142,18 +154,39 @@
 5. `Phase E`: `PASS`
 6. `Phase F`: `PASS`
 
+현재 운영 substrate 상태:
+
+1. `Automation Scheduler`: `PASS`
+   - `OpenClaw cron`이 local automation 16개를 소유한다.
+   - watchdog는 `scheduler_mode=OPENCLAW_CRON`, `verdict=PASS`다.
+2. `Telegram Delivery`: `PASS`
+   - repo alert path는 `OpenClaw-first`로 동작한다.
+3. `External Authority`: `PENDING`
+   - applied runtime은 active지만 authority verdict는 아직 `HOLD`다.
+
+현재 autonomy governor 상태:
+
+1. `Goal State`: `OBJECTIVE_RECOVERY_REQUIRED`
+2. `Recovery Candidate`: `AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN`
+3. `Governor Status`: `RECOVERY_PROMOTION_READY`
+4. `Degraded Authority`: `ENABLED and ELIGIBLE`
+5. `Phase D`: `SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT`
+6. `Memory Ledger`: unrelated block `AI_AI` remains `WARN` only
+
 ## 8. 다음 고도화 범위
 
 1. `SERVER_PRIMARY` acceptance sample 축적
-2. 시장별 objective score 정교화
-3. memory 기반 candidate pre-block 자동화 강화
-4. weight tuning auto-apply 금지 해제 여부 검증
+2. external authority pending 해소
+3. timeout authority degraded-policy 발동 검증
+4. downstream parity mismatch, 특히 `EV_POLICY` 압력 완화
+5. 시장별 objective score 정교화
 
 ## 9. 다음 구현 우선순위
 
 1. `Server-Primary Acceptance`
-2. `Memory-aware Candidate Blocking`
-3. `Weight Tuning Auto-Apply Review`
+2. `External Authority Closure`
+3. `Degraded Timeout Authority Validation`
+4. `Downstream Policy Pressure Reduction`
 
 ## 10. 한 줄 결론
 

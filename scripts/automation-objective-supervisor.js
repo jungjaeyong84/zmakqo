@@ -66,9 +66,12 @@ const SELF_EVOLUTION_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_ev
 const SELF_EVOLUTION_CANONICAL_PARITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_parity_latest.json");
 const SELF_EVOLUTION_CANONICAL_PROVENANCE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_provenance_latest.json");
 const SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json");
+const SELF_EVOLUTION_SERVER_PRIMARY_ACCEPTANCE_WATCH_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_acceptance_watch_latest.json");
 const SELF_EVOLUTION_PINE_SHADOW_DRIFT_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_pine_shadow_drift_latest.json");
 const SELF_EVOLUTION_DEPLOYMENT_PROBE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_probe_latest.json");
 const SELF_EVOLUTION_BUNDLE_ACTIVATION_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_bundle_activation_latest.json");
+const SELF_EVOLUTION_OPENCLAW_AUTONOMY_CONTRACT_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_autonomy_contract_latest.json");
+const SELF_EVOLUTION_OBJECTIVE_RECOVERY_GOVERNOR_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_objective_recovery_governor_latest.json");
 const SELF_EVOLUTION_EV_GATE_RESCUE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_ev_gate_rescue_latest.json");
 const SELF_EVOLUTION_MEMORY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_memory_latest.json");
 const WEEKLY_PINE_HISTORY_PATH = path.join(OPS_DAILY_DIR, "weekly_pine_upgrade_history.json");
@@ -99,8 +102,11 @@ const FRESHNESS_HOURS = Object.freeze({
   selfEvolutionCanonicalParity: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_CANONICAL_PARITY_MAX_AGE_HOURS || 36)),
   selfEvolutionCanonicalProvenance: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_CANONICAL_PROVENANCE_MAX_AGE_HOURS || 36)),
   selfEvolutionServerPrimaryCanary: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_SERVER_PRIMARY_CANARY_MAX_AGE_HOURS || 36)),
+  selfEvolutionServerPrimaryAcceptanceWatch: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_SERVER_PRIMARY_ACCEPTANCE_WATCH_MAX_AGE_HOURS || 36)),
   selfEvolutionPineShadowDrift: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_PINE_SHADOW_DRIFT_MAX_AGE_HOURS || 36)),
   selfEvolutionBundleActivation: Math.max(6, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_BUNDLE_ACTIVATION_MAX_AGE_HOURS || 24)),
+  selfEvolutionOpenclawAutonomyContract: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_OPENCLAW_AUTONOMY_CONTRACT_MAX_AGE_HOURS || 36)),
+  selfEvolutionObjectiveRecoveryGovernor: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_OBJECTIVE_RECOVERY_GOVERNOR_MAX_AGE_HOURS || 36)),
   selfEvolutionEvGateRescue: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_EV_GATE_RESCUE_MAX_AGE_HOURS || 36)),
   selfEvolutionMemory: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_MEMORY_MAX_AGE_HOURS || 72)),
   weeklyPineHistory: Math.max(24, Number(process.env.OBJECTIVE_SUPERVISOR_WEEKLY_PINE_HISTORY_MAX_AGE_HOURS || 240)),
@@ -219,9 +225,9 @@ function readCycleId(value = null) {
 
 const SELF_EVOLUTION_STAGE_KEYS = Object.freeze({
   SEED: ["dataset"],
-  INTEGRATED: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "pineShadowDrift", "deploymentProbe", "bundleActivation", "memory", "codex"],
-  FINAL: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "pineShadowDrift", "deploymentProbe", "bundleActivation", "memory", "codex"],
-  STANDALONE: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "pineShadowDrift", "deploymentProbe", "bundleActivation", "memory", "codex", "stageAutopilot"],
+  INTEGRATED: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "serverPrimaryAcceptanceWatch", "pineShadowDrift", "deploymentProbe", "bundleActivation", "openclawAutonomyContract", "objectiveRecoveryGovernor", "memory", "codex"],
+  FINAL: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "serverPrimaryAcceptanceWatch", "pineShadowDrift", "deploymentProbe", "bundleActivation", "openclawAutonomyContract", "objectiveRecoveryGovernor", "memory", "codex"],
+  STANDALONE: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "serverPrimaryAcceptanceWatch", "pineShadowDrift", "deploymentProbe", "bundleActivation", "openclawAutonomyContract", "objectiveRecoveryGovernor", "memory", "codex", "stageAutopilot"],
 });
 
 function summarizeSelfEvolutionArtifactCycles({ artifacts = {}, stage = "STANDALONE", preferredCycleId = null } = {}) {
@@ -855,6 +861,75 @@ function summarizeSelfEvolutionLoopMonitor(report = null) {
     loop_n: toNum(summary.loop_n) || 0,
     fresh_loop_n: toNum(summary.fresh_loop_n) || 0,
     rows,
+  };
+}
+
+function summarizeSelfEvolutionOpenClawAutonomyContract(report = null) {
+  const summary = report && report.summary && typeof report.summary === "object" ? report.summary : {};
+  const status = report && report.current_status && typeof report.current_status === "object" ? report.current_status : {};
+  return {
+    available: !!report,
+    goal_state: String(summary.goal_state || "").trim().toUpperCase() || null,
+    authority_state: String(summary.authority_state || "").trim().toUpperCase() || null,
+    phase_d_status: String(summary.phase_d_status || "").trim().toUpperCase() || null,
+    ops_status: String(summary.ops_status || "").trim().toUpperCase() || null,
+    degraded_authority_enabled: summary.degraded_authority_enabled === true,
+    degraded_authority_min_timeout_streak: toNum(summary.degraded_authority_min_timeout_streak) || null,
+    objective_score: toNum(status.objective_score),
+    monthly_run_rate_krw: toNum(status.monthly_run_rate_krw),
+    win_rate: toNum(status.win_rate),
+    objective_met: status.objective_met === true,
+    recovery_required: status.recovery_required === true,
+    authority_pending: status.authority_pending === true,
+    phase_d_acceptance_ready: status.phase_d_acceptance_ready === true,
+    phase_d_acceptance_reason: String(status.phase_d_acceptance_reason || "").trim().toUpperCase() || null,
+    ops_healthy: status.ops_healthy === true,
+    scheduler_mode: String(status.scheduler_mode || "").trim().toUpperCase() || null,
+    watchdog_verdict: String(status.watchdog_verdict || "").trim().toUpperCase() || null,
+  };
+}
+
+function summarizeSelfEvolutionServerPrimaryAcceptanceWatch(report = null) {
+  const summary = report && report.summary && typeof report.summary === "object" ? report.summary : {};
+  return {
+    available: !!report,
+    configured_server_primary_markets_n: toNum(summary.configured_server_primary_markets_n) || 0,
+    configured_server_primary_markets: Array.isArray(summary.configured_server_primary_markets) ? summary.configured_server_primary_markets : [],
+    observed_n: toNum(summary.observed_n) || 0,
+    executed_n: toNum(summary.executed_n) || 0,
+    realized_n: toNum(summary.realized_n) || 0,
+    min_executed_n: toNum(summary.min_executed_n) || null,
+    phase_d_ready: summary.phase_d_ready === true,
+    phase_d_status: String(summary.phase_d_status || "").trim().toUpperCase() || null,
+    phase_d_reason: String(summary.phase_d_reason || "").trim().toUpperCase() || null,
+    disagreement_rate: toNum(summary.disagreement_rate),
+    rollback_trigger_n: toNum(summary.rollback_trigger_n) || 0,
+  };
+}
+
+function summarizeSelfEvolutionObjectiveRecoveryGovernor(report = null) {
+  const summary = report && report.summary && typeof report.summary === "object" ? report.summary : {};
+  return {
+    available: !!report,
+    recovery_required: summary.recovery_required === true,
+    objective_score: toNum(summary.objective_score),
+    target_candidate_id: String(summary.target_candidate_id || "").trim() || null,
+    display_candidate_id: String(summary.display_candidate_id || "").trim() || null,
+    target_deploy_unit: String(summary.target_deploy_unit || "").trim().toUpperCase() || null,
+    target_migration_class: String(summary.target_migration_class || "").trim().toUpperCase() || null,
+    replay_pass: summary.replay_pass === true,
+    canary_ready: summary.canary_ready === true,
+    deployment_guards_pass: summary.deployment_guards_pass === true,
+    memory_blocked: summary.memory_blocked === true,
+    openclaw_ops_healthy: summary.openclaw_ops_healthy === true,
+    phase_d_status: String(summary.phase_d_status || "").trim().toUpperCase() || null,
+    phase_d_ready: summary.phase_d_ready === true,
+    governor_status: String(summary.governor_status || "").trim().toUpperCase() || null,
+    governor_reason: String(summary.governor_reason || "").trim().toUpperCase() || null,
+    degraded_authority_enabled: summary.degraded_authority_enabled === true,
+    degraded_authority_eligible: summary.degraded_authority_eligible === true,
+    degraded_authority_reason: String(summary.degraded_authority_reason || "").trim().toUpperCase() || null,
+    next_actions: Array.isArray(summary.next_actions) ? summary.next_actions : [],
   };
 }
 
@@ -2169,6 +2244,21 @@ function renderMarkdown(report = {}) {
     `- top success: ${report.self_evolution_memory && report.self_evolution_memory.top_success_candidate_id || "N/A"} / top failed: ${report.self_evolution_memory && report.self_evolution_memory.top_failed_candidate_id || "N/A"}`,
     `- blocked_candidate_ids: ${report.self_evolution_memory && Array.isArray(report.self_evolution_memory.blocked_candidate_ids) && report.self_evolution_memory.blocked_candidate_ids.length ? report.self_evolution_memory.blocked_candidate_ids.join(", ") : "none"}`,
     "",
+    "## OpenClaw Autonomy Contract",
+    `- goal/authority/phase_d/ops: ${report.self_evolution_openclaw_autonomy_contract && report.self_evolution_openclaw_autonomy_contract.goal_state || "N/A"} / ${report.self_evolution_openclaw_autonomy_contract && report.self_evolution_openclaw_autonomy_contract.authority_state || "N/A"} / ${report.self_evolution_openclaw_autonomy_contract && report.self_evolution_openclaw_autonomy_contract.phase_d_status || "N/A"} / ${report.self_evolution_openclaw_autonomy_contract && report.self_evolution_openclaw_autonomy_contract.ops_status || "N/A"}`,
+    `- objective_met/recovery_required: ${report.self_evolution_openclaw_autonomy_contract && report.self_evolution_openclaw_autonomy_contract.objective_met ? "YES" : "NO"} / ${report.self_evolution_openclaw_autonomy_contract && report.self_evolution_openclaw_autonomy_contract.recovery_required ? "YES" : "NO"}`,
+    `- degraded_authority: ${report.self_evolution_openclaw_autonomy_contract && report.self_evolution_openclaw_autonomy_contract.degraded_authority_enabled ? "ENABLED" : "DISABLED"} / min_streak ${report.self_evolution_openclaw_autonomy_contract && report.self_evolution_openclaw_autonomy_contract.degraded_authority_min_timeout_streak != null ? report.self_evolution_openclaw_autonomy_contract.degraded_authority_min_timeout_streak : "N/A"}`,
+    "",
+    "## Server-Primary Acceptance Watch",
+    `- markets/executed/realized: ${report.self_evolution_server_primary_acceptance_watch && report.self_evolution_server_primary_acceptance_watch.configured_server_primary_markets_n != null ? report.self_evolution_server_primary_acceptance_watch.configured_server_primary_markets_n : "N/A"} / ${report.self_evolution_server_primary_acceptance_watch && report.self_evolution_server_primary_acceptance_watch.executed_n != null ? report.self_evolution_server_primary_acceptance_watch.executed_n : "N/A"} / ${report.self_evolution_server_primary_acceptance_watch && report.self_evolution_server_primary_acceptance_watch.realized_n != null ? report.self_evolution_server_primary_acceptance_watch.realized_n : "N/A"}`,
+    `- phase_d: ${report.self_evolution_server_primary_acceptance_watch && report.self_evolution_server_primary_acceptance_watch.phase_d_status || "N/A"} / ready ${report.self_evolution_server_primary_acceptance_watch && report.self_evolution_server_primary_acceptance_watch.phase_d_ready ? "YES" : "NO"} / ${report.self_evolution_server_primary_acceptance_watch && report.self_evolution_server_primary_acceptance_watch.phase_d_reason || "N/A"}`,
+    "",
+    "## Objective Recovery Governor",
+    `- status/reason: ${report.self_evolution_objective_recovery_governor && report.self_evolution_objective_recovery_governor.governor_status || "N/A"} / ${report.self_evolution_objective_recovery_governor && report.self_evolution_objective_recovery_governor.governor_reason || "N/A"}`,
+    `- candidate/deploy_unit: ${report.self_evolution_objective_recovery_governor && (report.self_evolution_objective_recovery_governor.display_candidate_id || report.self_evolution_objective_recovery_governor.target_candidate_id) || "N/A"} / ${report.self_evolution_objective_recovery_governor && report.self_evolution_objective_recovery_governor.target_deploy_unit || "N/A"}`,
+    `- replay/canary/guards/memory: ${report.self_evolution_objective_recovery_governor && report.self_evolution_objective_recovery_governor.replay_pass ? "YES" : "NO"} / ${report.self_evolution_objective_recovery_governor && report.self_evolution_objective_recovery_governor.canary_ready ? "YES" : "NO"} / ${report.self_evolution_objective_recovery_governor && report.self_evolution_objective_recovery_governor.deployment_guards_pass ? "YES" : "NO"} / ${report.self_evolution_objective_recovery_governor && report.self_evolution_objective_recovery_governor.memory_blocked ? "BLOCK" : "CLEAR"}`,
+    `- degraded_authority: ${report.self_evolution_objective_recovery_governor && report.self_evolution_objective_recovery_governor.degraded_authority_enabled ? "ENABLED" : "DISABLED"} / eligible ${report.self_evolution_objective_recovery_governor && report.self_evolution_objective_recovery_governor.degraded_authority_eligible ? "YES" : "NO"} / ${report.self_evolution_objective_recovery_governor && report.self_evolution_objective_recovery_governor.degraded_authority_reason || "N/A"}`,
+    "",
     "## BEST/FEBT Market Contracts",
     ...((Array.isArray(report.best_febt_market_contracts) && report.best_febt_market_contracts.length)
       ? report.best_febt_market_contracts.map((row) => `- ${formatBestFebtMarketContractLine(row)}`)
@@ -2227,9 +2317,12 @@ async function main() {
   const selfEvolutionCanonicalParityArtifact = readArtifact("self_evolution_canonical_parity", SELF_EVOLUTION_CANONICAL_PARITY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCanonicalParity);
   const selfEvolutionCanonicalProvenanceArtifact = readArtifact("self_evolution_canonical_provenance", SELF_EVOLUTION_CANONICAL_PROVENANCE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCanonicalProvenance);
   const selfEvolutionServerPrimaryCanaryArtifact = readArtifact("self_evolution_server_primary_canary", SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionServerPrimaryCanary);
+  const selfEvolutionServerPrimaryAcceptanceWatchArtifact = readArtifact("self_evolution_server_primary_acceptance_watch", SELF_EVOLUTION_SERVER_PRIMARY_ACCEPTANCE_WATCH_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionServerPrimaryAcceptanceWatch);
   const selfEvolutionPineShadowDriftArtifact = readArtifact("self_evolution_pine_shadow_drift", SELF_EVOLUTION_PINE_SHADOW_DRIFT_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionPineShadowDrift);
   const selfEvolutionDeploymentProbeArtifact = readArtifact("self_evolution_deployment_probe", SELF_EVOLUTION_DEPLOYMENT_PROBE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionBundleActivation);
   const selfEvolutionBundleActivationArtifact = readArtifact("self_evolution_bundle_activation", SELF_EVOLUTION_BUNDLE_ACTIVATION_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionBundleActivation);
+  const selfEvolutionOpenclawAutonomyContractArtifact = readArtifact("self_evolution_openclaw_autonomy_contract", SELF_EVOLUTION_OPENCLAW_AUTONOMY_CONTRACT_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionOpenclawAutonomyContract);
+  const selfEvolutionObjectiveRecoveryGovernorArtifact = readArtifact("self_evolution_objective_recovery_governor", SELF_EVOLUTION_OBJECTIVE_RECOVERY_GOVERNOR_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionObjectiveRecoveryGovernor);
   const selfEvolutionEvGateRescueArtifact = readArtifact("self_evolution_ev_gate_rescue", SELF_EVOLUTION_EV_GATE_RESCUE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionEvGateRescue);
   const selfEvolutionMemoryArtifact = readArtifact("self_evolution_memory", SELF_EVOLUTION_MEMORY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionMemory);
   const codexArtifact = readArtifact("codex_patch", CODEX_PATCH_LATEST_PATH, FRESHNESS_HOURS.codex);
@@ -2255,9 +2348,12 @@ async function main() {
       canonicalParity: selfEvolutionCanonicalParityArtifact,
       canonicalProvenance: selfEvolutionCanonicalProvenanceArtifact,
       serverPrimaryCanary: selfEvolutionServerPrimaryCanaryArtifact,
+      serverPrimaryAcceptanceWatch: selfEvolutionServerPrimaryAcceptanceWatchArtifact,
       pineShadowDrift: selfEvolutionPineShadowDriftArtifact,
       deploymentProbe: selfEvolutionDeploymentProbeArtifact,
       bundleActivation: selfEvolutionBundleActivationArtifact,
+      openclawAutonomyContract: selfEvolutionOpenclawAutonomyContractArtifact,
+      objectiveRecoveryGovernor: selfEvolutionObjectiveRecoveryGovernorArtifact,
       memory: selfEvolutionMemoryArtifact,
       codex: codexArtifact,
       stageAutopilot: stageAutopilotArtifact,
@@ -2307,6 +2403,13 @@ async function main() {
     signalsCache,
     preparedOverride,
   });
+  const selfEvolutionOpenclawAutonomyContractSummary = summarizeSelfEvolutionOpenClawAutonomyContract(selfEvolutionOpenclawAutonomyContractArtifact.data);
+  const selfEvolutionServerPrimaryAcceptanceWatchSummary = summarizeSelfEvolutionServerPrimaryAcceptanceWatch(selfEvolutionServerPrimaryAcceptanceWatchArtifact.data);
+  const selfEvolutionObjectiveRecoveryGovernorSummary = summarizeSelfEvolutionObjectiveRecoveryGovernor(selfEvolutionObjectiveRecoveryGovernorArtifact.data);
+  const mergedActionPlan = Array.from(new Set([
+    ...(Array.isArray(evaluation.action_plan) ? evaluation.action_plan : []),
+    ...(Array.isArray(selfEvolutionObjectiveRecoveryGovernorSummary.next_actions) ? selfEvolutionObjectiveRecoveryGovernorSummary.next_actions : []),
+  ].filter(Boolean)));
 
   const report = {
     ok: true,
@@ -2319,7 +2422,7 @@ async function main() {
     verdict: evaluation.verdict,
     reason: evaluation.reason,
     root_cause: evaluation.root_cause,
-    action_plan: evaluation.action_plan,
+    action_plan: mergedActionPlan,
     blockers: evaluation.blockers,
     objective: evaluation.objective,
     governance_objective: evaluation.governance_objective,
@@ -2337,8 +2440,11 @@ async function main() {
     self_evolution_canonical_parity: evaluation.self_evolution_canonical_parity,
     self_evolution_canonical_provenance: evaluation.self_evolution_canonical_provenance,
     self_evolution_server_primary_canary: evaluation.self_evolution_server_primary_canary,
+    self_evolution_server_primary_acceptance_watch: selfEvolutionServerPrimaryAcceptanceWatchSummary,
     self_evolution_pine_shadow_drift: evaluation.self_evolution_pine_shadow_drift,
+    self_evolution_openclaw_autonomy_contract: selfEvolutionOpenclawAutonomyContractSummary,
     self_evolution_bundle_activation: evaluation.self_evolution_bundle_activation,
+    self_evolution_objective_recovery_governor: selfEvolutionObjectiveRecoveryGovernorSummary,
     self_evolution_ev_gate_rescue: evaluation.self_evolution_ev_gate_rescue,
     self_evolution_cycle: evaluation.self_evolution_cycle,
     self_evolution_deployment: evaluation.self_evolution_deployment,
@@ -2371,7 +2477,7 @@ async function main() {
     codex_authority: evaluation.codex_authority,
     stage_autopilot: evaluation.stage_autopilot,
     retrospective: evaluation.retrospective,
-    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, phase0Artifact, selfEvolutionDatasetArtifact, selfEvolutionObjectiveArtifact, selfEvolutionAttributionArtifact, selfEvolutionCandidatesArtifact, selfEvolutionReplayArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionPineShadowDriftArtifact, selfEvolutionBundleActivationArtifact, selfEvolutionEvGateRescueArtifact, selfEvolutionMemoryArtifact, codexArtifact, stageAutopilotArtifact, weeklyPineHistoryArtifact, retrospectiveArtifact].map((row) => ({
+    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, phase0Artifact, selfEvolutionDatasetArtifact, selfEvolutionObjectiveArtifact, selfEvolutionAttributionArtifact, selfEvolutionCandidatesArtifact, selfEvolutionReplayArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionServerPrimaryAcceptanceWatchArtifact, selfEvolutionPineShadowDriftArtifact, selfEvolutionBundleActivationArtifact, selfEvolutionOpenclawAutonomyContractArtifact, selfEvolutionObjectiveRecoveryGovernorArtifact, selfEvolutionEvGateRescueArtifact, selfEvolutionMemoryArtifact, codexArtifact, stageAutopilotArtifact, weeklyPineHistoryArtifact, retrospectiveArtifact].map((row) => ({
       name: row.name,
       filePath: row.filePath,
       fresh: row.fresh,
@@ -2388,9 +2494,12 @@ async function main() {
       canonicalParity: selfEvolutionCanonicalParityArtifact,
       canonicalProvenance: selfEvolutionCanonicalProvenanceArtifact,
       serverPrimaryCanary: selfEvolutionServerPrimaryCanaryArtifact,
+      serverPrimaryAcceptanceWatch: selfEvolutionServerPrimaryAcceptanceWatchArtifact,
       pineShadowDrift: selfEvolutionPineShadowDriftArtifact,
       deploymentProbe: selfEvolutionDeploymentProbeArtifact,
       bundleActivation: selfEvolutionBundleActivationArtifact,
+      openclawAutonomyContract: selfEvolutionOpenclawAutonomyContractArtifact,
+      objectiveRecoveryGovernor: selfEvolutionObjectiveRecoveryGovernorArtifact,
       deployment: { fresh: true },
       deploymentPlan: { fresh: true },
       stageAutopilot: stageAutopilotArtifact,
@@ -2406,9 +2515,12 @@ async function main() {
       canonicalParity: selfEvolutionCanonicalParityArtifact.data,
       canonicalProvenance: selfEvolutionCanonicalProvenanceArtifact.data,
       serverPrimaryCanary: selfEvolutionServerPrimaryCanaryArtifact.data,
+      serverPrimaryAcceptanceWatch: selfEvolutionServerPrimaryAcceptanceWatchArtifact.data,
       pineShadowDrift: selfEvolutionPineShadowDriftArtifact.data,
       deploymentProbe: selfEvolutionDeploymentProbeArtifact.data,
       bundleActivation: selfEvolutionBundleActivationArtifact.data,
+      openclawAutonomyContract: selfEvolutionOpenclawAutonomyContractArtifact.data,
+      objectiveRecoveryGovernor: selfEvolutionObjectiveRecoveryGovernorArtifact.data,
       deployment: { cycle_id: reportCycleId, summary: evaluation.self_evolution_deployment },
       deploymentPlan: { cycle_id: reportCycleId, summary: evaluation.self_evolution_deployment_plan },
       stageAutopilot: stageAutopilotArtifact.data,
