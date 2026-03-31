@@ -65,8 +65,19 @@ const { __test } = require("../../scripts/report-best-self-evolution-server-prim
 
   const empty = __test.deriveServerPrimaryCanary({
     dataset: { rows: [] },
+    stageAutopilot: {
+      raw: {
+        stage_rows: [
+          {
+            stage: "SOURCE_MODE",
+            current_source_modes: [{ market: "AXSUSDT", source_mode: "SERVER_PRIMARY" }],
+          },
+        ],
+      },
+    },
   });
   assert.strictEqual(empty.summary.acceptance_ready, false);
-  assert.strictEqual(empty.summary.acceptance_reason, "NO_SERVER_PRIMARY_ROWS");
+  assert.strictEqual(empty.summary.acceptance_reason, "NO_SERVER_PRIMARY_ROWS_AFTER_SWITCH");
+  assert.strictEqual(empty.summary.configured_server_primary_markets_n, 1);
   console.log("SERVER_PRIMARY_CANARY_REPORT_TEST_OK");
 })();

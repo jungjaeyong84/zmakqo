@@ -61,7 +61,10 @@ const { __test } = require("../../scripts/report-best-self-evolution-canonical-e
     ],
   });
 
-  assert.strictEqual(report.summary.eligible_n, 3);
+  assert.strictEqual(report.summary.rows_n, 3);
+  assert.strictEqual(report.summary.raw_signal_n, 1);
+  assert.strictEqual(report.summary.engine_eligible_n, 2);
+  assert.strictEqual(report.summary.eligible_n, 2);
   assert.strictEqual(report.summary.with_bundle_version_n, 3);
     assert.strictEqual(report.summary.with_threshold_bundle_version_n, 2);
     assert.strictEqual(report.summary.with_actual_source_decision_n, 2);
@@ -71,8 +74,8 @@ const { __test } = require("../../scripts/report-best-self-evolution-canonical-e
     assert.strictEqual(report.summary.with_pine_overlay_role_n, 2);
     assert.strictEqual(report.summary.with_pine_shadow_decision_n, 2);
     assert.strictEqual(report.summary.with_pine_shadow_parity_n, 2);
-    assert.strictEqual(report.summary.complete_n, 2);
-  assert.strictEqual(report.summary.by_collection.find((row) => row.collection === "signals").complete_n, 1);
+    assert.strictEqual(report.summary.complete_n, 1);
+  assert.strictEqual(report.summary.by_collection.find((row) => row.collection === "signals").complete_n, 0);
   assert.strictEqual(report.summary.by_collection.find((row) => row.collection === "signals_dropped").complete_n, 0);
   assert.strictEqual(report.rows.length, 1);
   assert.strictEqual(report.rows[0].signal_id, "DROP__ETH");
@@ -83,8 +86,8 @@ const { __test } = require("../../scripts/report-best-self-evolution-canonical-e
     summary: report.summary,
     rows: report.rows,
   });
-  assert.ok(md.includes("eligible rows: 3"));
-  assert.ok(md.includes("complete: 2"));
+  assert.ok(md.includes("rows / raw webhook / engine eligible: 3 / 1 / 2"));
+  assert.ok(md.includes("complete: 1"));
   assert.ok(md.includes("bundle / threshold / source_mode / execution_source / source_decision: 3 / 2 / 3 / 3 / 2"));
   assert.ok(md.includes("decision_id / policy_origin / pine_overlay_role / pine_shadow / pine_shadow_parity: 3 / 2 / 2 / 2 / 2"));
   assert.ok(md.includes("signals_dropped / ETHUSDT / SHORT / DROP__ETH"));

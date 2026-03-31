@@ -76,10 +76,10 @@ function evaluateRollbackMonitor({
   if (rollback.ready === true && rollbackFilePath) {
     if (!codexFresh) {
       verdict = "HOLD";
-      reason = "CODEX_REVIEW_REQUIRED_ROLLBACK";
+      reason = "EXTERNAL_AUTHORITY_REQUIRED_ROLLBACK";
     } else if (!codexAllowsRollback) {
       verdict = "HOLD";
-      reason = "CODEX_REVIEW_BLOCK_ROLLBACK";
+      reason = "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK";
     } else if (state.rollback_file_path === rollbackFilePath && state.prepared_at) {
       verdict = "ROLLBACK_PREPARED";
       reason = "ALREADY_PREPARED";

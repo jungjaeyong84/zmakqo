@@ -13,7 +13,7 @@ const { __test } = require("../../scripts/automation-rollback-monitor");
     state: {},
   });
   assert.strictEqual(stale.verdict, "HOLD");
-  assert.strictEqual(stale.reason, "CODEX_REVIEW_REQUIRED_ROLLBACK");
+  assert.strictEqual(stale.reason, "EXTERNAL_AUTHORITY_REQUIRED_ROLLBACK");
 
   const blocked = __test.evaluateRollbackMonitor({
     rollback: { ready: true },
@@ -24,7 +24,7 @@ const { __test } = require("../../scripts/automation-rollback-monitor");
     state: {},
   });
   assert.strictEqual(blocked.verdict, "HOLD");
-  assert.strictEqual(blocked.reason, "CODEX_REVIEW_BLOCK_ROLLBACK");
+  assert.strictEqual(blocked.reason, "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK");
 
   const alreadyPrepared = __test.evaluateRollbackMonitor({
     rollback: { ready: true },

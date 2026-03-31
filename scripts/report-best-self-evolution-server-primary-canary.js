@@ -19,6 +19,7 @@ loadLocalEnv();
 
 const INPUTS = Object.freeze({
   dataset: path.join(OPS_DAILY_DIR, "best_self_evolution_dataset_latest.json"),
+  stageAutopilot: path.join(OPS_DAILY_DIR, "stage_autopilot_latest.json"),
 });
 
 function toNum(value) {
@@ -116,8 +117,11 @@ function buildMarketRow(rows = [], market = "UNKNOWN") {
   };
 }
 
-function deriveServerPrimaryCanary({ dataset = null } = {}) {
+function deriveServerPrimaryCanary({ dataset = null, stageAutopilot = null } = {}) {
   const raw = dataset && typeof dataset === "object" ? dataset : {};
+  const stageRaw = stageAutopilot && typeof stageAutopilot === "object"
+    ? ((stageAutopilot.raw && typeof stageAutopilot.raw === "object") ? stageAutopilot.raw : stageAutopilot)
+    : {};
   const allRows = Array.isArray(raw.rows) ? raw.rows : [];
   const longShortRows = allRows.filter(qualifiesRow);
   const scoped = longShortRows
@@ -126,6 +130,15 @@ function deriveServerPrimaryCanary({ dataset = null } = {}) {
   const realized = executed.filter((row) => Number.isFinite(toNum(row.realized_ret_net)));
   const pineObserved = scoped.filter((row) => featureObj(row).pine_shadow_parity_match !== null && featureObj(row).pine_shadow_parity_match !== undefined);
   const pineDisagreement = pineObserved.filter((row) => featureObj(row).pine_shadow_parity_match === false);
+  const sourceModeStage = Array.isArray(stageRaw.stage_rows)
+    ? stageRaw.stage_rows.find((row) => String(row && row.stage || "").trim().toUpperCase() === "SOURCE_MODE")
+    : null;
+  const configuredServerPrimaryMarkets = Array.isArray(sourceModeStage && sourceModeStage.current_source_modes)
+    ? sourceModeStage.current_source_modes
+      .filter((row) => normalizeSourceMode(row && row.source_mode) === "SERVER_PRIMARY")
+      .map((row) => String(row && row.market || "").trim().toUpperCase())
+      .filter(Boolean)
+    : [];
   const acceptanceMinExecuted = Math.max(2, Number(process.env.SELF_EVOLUTION_SERVER_PRIMARY_ACCEPTANCE_MIN_EXECUTED || 2));
   const markets = Array.from(new Set(scoped.map((row) => String(row.market || row.symbol_or_pair_id || "UNKNOWN").trim().toUpperCase() || "UNKNOWN")))
     .sort((a, b) => a.localeCompare(b))
@@ -135,7 +148,8 @@ function deriveServerPrimaryCanary({ dataset = null } = {}) {
   const applyPass = markets.length > 0 ? summaryRollbackTriggers.length === 0 : null;
   const executedN = executed.length;
   let acceptanceReason = "NO_SERVER_PRIMARY_ROWS";
-  if (scoped.length === 0) acceptanceReason = "NO_SERVER_PRIMARY_ROWS";
+  if (scoped.length === 0 && configuredServerPrimaryMarkets.length > 0) acceptanceReason = "NO_SERVER_PRIMARY_ROWS_AFTER_SWITCH";
+  else if (scoped.length === 0) acceptanceReason = "NO_SERVER_PRIMARY_ROWS";
   else if (applyPass === false) acceptanceReason = "SERVER_PRIMARY_CANARY_BLOCK";
   else if (executedN < acceptanceMinExecuted) acceptanceReason = "SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT";
   else if (applyPass === true) acceptanceReason = "SERVER_PRIMARY_ACCEPTANCE_READY";
@@ -152,6 +166,8 @@ function deriveServerPrimaryCanary({ dataset = null } = {}) {
       server_primary_avg_ret_net: mean(realized.map((row) => row.realized_ret_net)),
       rollback_trigger_n: summaryRollbackTriggers.length,
       rollback_trigger_markets: summaryRollbackTriggers.map((row) => row.market),
+      configured_server_primary_markets_n: configuredServerPrimaryMarkets.length,
+      configured_server_primary_markets: configuredServerPrimaryMarkets,
       apply_pass: applyPass,
       acceptance_min_executed: acceptanceMinExecuted,
       acceptance_ready: applyPass === true && executedN >= acceptanceMinExecuted,
@@ -187,6 +203,7 @@ function renderMarkdown(report = {}) {
     "",
     "## Summary",
     `- rows / markets: ${summary.row_n || 0} / ${summary.server_primary_markets_n || 0}`,
+    `- configured server-primary markets: ${summary.configured_server_primary_markets_n || 0} / ${Array.isArray(summary.configured_server_primary_markets) && summary.configured_server_primary_markets.length ? summary.configured_server_primary_markets.join(", ") : "none"}`,
     `- executed / realized: ${summary.server_primary_executed_n || 0} / ${summary.server_primary_realized_n || 0}`,
     `- pine shadow observed / disagreement: ${summary.pine_shadow_observed_n || 0} / ${summary.pine_shadow_disagreement_n || 0} (${pct(summary.pine_shadow_disagreement_rate)})`,
     `- win_rate / avg_ret_net: ${pct(summary.server_primary_win_rate)} / ${signedPct(summary.server_primary_avg_ret_net)}`,
@@ -212,6 +229,7 @@ async function main() {
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
   const report = deriveServerPrimaryCanary({
     dataset: readJsonRawSafe(INPUTS.dataset, null),
+    stageAutopilot: readJsonRawSafe(INPUTS.stageAutopilot, null),
   });
   const output = {
     ok: true,

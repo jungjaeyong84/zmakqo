@@ -515,7 +515,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
     },
   });
   assert.strictEqual(blockPromote.verdict, "HOLD");
-  assert.strictEqual(blockPromote.reason, "CODEX_REVIEW_BLOCK_PROMOTION");
+  assert.strictEqual(blockPromote.reason, "EXTERNAL_AUTHORITY_BLOCK_PROMOTION");
 
   const stalePromote = __test.evaluateSupervisor({
     ...base,
@@ -531,7 +531,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
     },
   });
   assert.strictEqual(stalePromote.verdict, "HOLD");
-  assert.strictEqual(stalePromote.reason, "CODEX_REVIEW_REQUIRED_PROMOTION");
+  assert.strictEqual(stalePromote.reason, "EXTERNAL_AUTHORITY_REQUIRED_PROMOTION");
 
   const staleAutopilot = __test.evaluateSupervisor({
     ...base,
@@ -874,11 +874,11 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
     },
   });
   assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.verdict, "HOLD");
-  assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.reason, "CODEX_REVIEW_BLOCK_PROMOTION");
+  assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.reason, "EXTERNAL_AUTHORITY_BLOCK_PROMOTION");
   assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.promotion.ready, true);
   assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.promotion.recovery_mode, true);
-  assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.blockers.includes("CODEX_BLOCK_PROMOTION"), true);
-  assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.blockers.includes("CODEX_REVIEW_REQUIRED_PROMOTION"), false);
+  assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.blockers.includes("EXTERNAL_AUTHORITY_BLOCK_PROMOTION"), true);
+  assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.blockers.includes("EXTERNAL_AUTHORITY_REQUIRED_PROMOTION"), false);
 
   const monthlySourceSampleReady = __test.evaluateSupervisor({
     ...base,
@@ -931,7 +931,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   const telegramSections = __test.buildObjectiveSupervisorTelegramSections({
     verdict: "HOLD",
     reason: "STAT_PHYSICS_CRITICAL",
-    blockers: ["STAT_PHYSICS_CRITICAL", "CODEX_REVIEW_REQUIRED_PROMOTION"],
+    blockers: ["STAT_PHYSICS_CRITICAL", "EXTERNAL_AUTHORITY_REQUIRED_PROMOTION"],
     objective: {
       realized_n: 24,
       executed_n: 32,

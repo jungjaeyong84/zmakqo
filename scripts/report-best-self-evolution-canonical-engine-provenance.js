@@ -50,6 +50,11 @@ function qualifiesRow(row = {}) {
   return isPrimaryLongShortEvent(row && row.event);
 }
 
+function isEngineCollection(collection = "") {
+  const normalized = String(collection || "").trim();
+  return normalized === "signals_dropped" || normalized === "order_intents_paper";
+}
+
 function countBy(rows = [], keyFn) {
   const counts = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
@@ -63,7 +68,8 @@ function countBy(rows = [], keyFn) {
 
 function deriveCollectionCoverage(rows = [], collection) {
   const scoped = rows.filter((row) => row.collection === collection);
-  const eligibleN = scoped.length;
+  const eligibleRows = isEngineCollection(collection) ? scoped : [];
+  const eligibleN = eligibleRows.length;
   const withBundle = scoped.filter((row) => row.features.canonical_engine_bundle_version != null).length;
   const withThresholdBundle = scoped.filter((row) => row.features.canonical_engine_threshold_bundle_version != null).length;
   const withSourceMode = scoped.filter((row) => row.features.canonical_engine_source_mode_effective != null).length;
@@ -74,7 +80,7 @@ function deriveCollectionCoverage(rows = [], collection) {
   const withPineOverlayRole = scoped.filter((row) => row.features.pine_overlay_runtime_role != null).length;
   const withPineShadowDecision = scoped.filter((row) => row.features.pine_shadow_decision != null).length;
   const withPineShadowParity = scoped.filter((row) => row.features.pine_shadow_parity_match != null).length;
-  const completeN = scoped.filter((row) =>
+  const completeN = eligibleRows.filter((row) =>
     row.features.canonical_engine_bundle_version != null
     && row.features.canonical_engine_threshold_bundle_version != null
     && row.features.canonical_engine_source_mode_effective != null
@@ -111,7 +117,9 @@ function deriveProvenanceReport({ signals = [], drops = [], intents = [] } = {})
     ...drops.map((row) => normalizeRow(row, "signals_dropped")),
     ...intents.map((row) => normalizeRow(row, "order_intents_paper")),
   ].filter(qualifiesRow);
-  const eligibleN = rows.length;
+  const engineRows = rows.filter((row) => isEngineCollection(row.collection));
+  const rawSignalRows = rows.filter((row) => !isEngineCollection(row.collection));
+  const eligibleN = engineRows.length;
   const withBundleVersionN = rows.filter((row) => row.features.canonical_engine_bundle_version != null).length;
   const withThresholdBundleVersionN = rows.filter((row) => row.features.canonical_engine_threshold_bundle_version != null).length;
   const withSourceModeN = rows.filter((row) => row.features.canonical_engine_source_mode_effective != null).length;
@@ -122,7 +130,7 @@ function deriveProvenanceReport({ signals = [], drops = [], intents = [] } = {})
   const withPineOverlayRoleN = rows.filter((row) => row.features.pine_overlay_runtime_role != null).length;
   const withPineShadowDecisionN = rows.filter((row) => row.features.pine_shadow_decision != null).length;
   const withPineShadowParityN = rows.filter((row) => row.features.pine_shadow_parity_match != null).length;
-  const completeRows = rows.filter((row) =>
+  const completeRows = engineRows.filter((row) =>
     row.features.canonical_engine_bundle_version != null
     && row.features.canonical_engine_threshold_bundle_version != null
     && row.features.canonical_engine_source_mode_effective != null
@@ -134,7 +142,7 @@ function deriveProvenanceReport({ signals = [], drops = [], intents = [] } = {})
     && row.features.pine_shadow_decision != null
     && row.features.pine_shadow_parity_match != null
   );
-  const missingRows = rows
+  const missingRows = engineRows
     .filter((row) => !completeRows.includes(row))
     .slice()
     .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
@@ -163,6 +171,8 @@ function deriveProvenanceReport({ signals = [], drops = [], intents = [] } = {})
   return {
     summary: {
       rows_n: rows.length,
+      raw_signal_n: rawSignalRows.length,
+      engine_eligible_n: eligibleN,
       eligible_n: eligibleN,
       with_bundle_version_n: withBundleVersionN,
       with_threshold_bundle_version_n: withThresholdBundleVersionN,
@@ -209,7 +219,7 @@ function renderMarkdown(report = {}) {
     `- cycle_id: ${report.cycle_id || "N/A"}`,
     "",
     "## Summary",
-    `- eligible rows: ${summary.eligible_n || 0}`,
+    `- rows / raw webhook / engine eligible: ${summary.rows_n || 0} / ${summary.raw_signal_n || 0} / ${summary.engine_eligible_n || summary.eligible_n || 0}`,
     `- bundle / threshold / source_mode / execution_source / source_decision: ${summary.with_bundle_version_n || 0} / ${summary.with_threshold_bundle_version_n || 0} / ${summary.with_source_mode_n || 0} / ${summary.with_execution_source_n || 0} / ${summary.with_actual_source_decision_n || 0}`,
     `- decision_id / policy_origin / pine_overlay_role / pine_shadow / pine_shadow_parity: ${summary.with_decision_id_n || 0} / ${summary.with_policy_origin_n || 0} / ${summary.with_pine_overlay_role_n || 0} / ${summary.with_pine_shadow_decision_n || 0} / ${summary.with_pine_shadow_parity_n || 0}`,
     `- complete: ${summary.complete_n || 0} (${pct(summary.complete_rate)})`,

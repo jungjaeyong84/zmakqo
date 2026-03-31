@@ -1732,8 +1732,8 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       reason = "SELF_EVOLUTION_BUNDLE_ACTIVATION_PENDING";
     } else if (!codex || !codexFresh) {
       verdict = "HOLD";
-      reason = "CODEX_REVIEW_REQUIRED_ROLLBACK";
-      blockers.push("CODEX_REVIEW_REQUIRED_ROLLBACK");
+      reason = "EXTERNAL_AUTHORITY_REQUIRED_ROLLBACK";
+      blockers.push("EXTERNAL_AUTHORITY_REQUIRED_ROLLBACK");
     } else if (!stageAutopilotFresh) {
       verdict = "HOLD";
       reason = "STAGE_AUTOPILOT_REQUIRED_ROLLBACK";
@@ -1743,8 +1743,8 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       reason = "AUTO_ROLLBACK_READY";
     } else {
       verdict = "HOLD";
-      reason = "CODEX_REVIEW_BLOCK_ROLLBACK";
-      blockers.push("CODEX_BLOCK_ROLLBACK");
+      reason = "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK";
+      blockers.push("EXTERNAL_AUTHORITY_BLOCK_ROLLBACK");
     }
   } else if (effectivePromotion && effectivePromotion.ready === true) {
     const recoveryPromotion = effectivePromotion.recovery_mode === true;
@@ -1753,16 +1753,16 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       reason = promotionObjectiveBlockReason;
     } else if (!codex || !codexFresh) {
       verdict = "HOLD";
-      reason = "CODEX_REVIEW_REQUIRED_PROMOTION";
-      blockers.push("CODEX_REVIEW_REQUIRED_PROMOTION");
+      reason = "EXTERNAL_AUTHORITY_REQUIRED_PROMOTION";
+      blockers.push("EXTERNAL_AUTHORITY_REQUIRED_PROMOTION");
     } else if (!stageAutopilotFresh) {
       verdict = "HOLD";
       reason = "STAGE_AUTOPILOT_REQUIRED_PROMOTION";
       blockers.push("STAGE_AUTOPILOT_REQUIRED_PROMOTION");
     } else if (codexVerdict !== "PROMOTE") {
       verdict = "HOLD";
-      reason = "CODEX_REVIEW_BLOCK_PROMOTION";
-      blockers.push("CODEX_BLOCK_PROMOTION");
+      reason = "EXTERNAL_AUTHORITY_BLOCK_PROMOTION";
+      blockers.push("EXTERNAL_AUTHORITY_BLOCK_PROMOTION");
     } else if (selfEvolutionDeploymentPlanSummary.prepare_pass !== true) {
       verdict = "HOLD";
       reason = "SELF_EVOLUTION_DEPLOYMENT_PLAN_BLOCK";
