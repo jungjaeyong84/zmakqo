@@ -142,6 +142,8 @@ function run() {
   ]);
   assert.strictEqual(cfSummary.overall.matured_n, 2);
   assert.strictEqual(cfSummary.by_stage.QUALITY.tp1_first_n, 1);
+  assert.strictEqual(cfSummary.by_market[0].market, "UNKNOWN");
+  assert.strictEqual(cfSummary.by_reason_market[0].reason, "DROP_LONG_GATE_SCORE");
   assert.strictEqual(Array.isArray(cfSummary.overall.competing_risk), true);
   assert.strictEqual(cfSummary.feature_breakdown.market_state[0].value, "MIXED");
   assert.strictEqual(cfSummary.feature_breakdown.ev_policy_version[0].value, "TP1_WEIGHT_V1");
@@ -195,6 +197,26 @@ function run() {
   });
   assert.strictEqual(phase0Overlap.compared_n, 5);
   assert.strictEqual(phase0Overlap.wait_action_breakdown[0].value, "WAIT_ONE_BAR");
+  const rollbackTarget = __test.findRollbackTarget([
+    {
+      week_key: "2026-03-22__2026-03-29",
+      recommended_patch_id: "AUTO_CORE_REGIME_TIGHTEN",
+      created_file_path: "/tmp/donbeolja_v6.0.3.3.pine.txt",
+      created_strategy_id: "donbeolja_v6.0.3.3",
+    },
+    {
+      week_key: "2026-03-23__2026-03-30",
+      recommended_patch_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN",
+      created_file_path: "/tmp/donbeolja_v6.0.3.2.pine.txt",
+      created_strategy_id: "donbeolja_v6.0.3.2",
+    },
+  ], {
+    currentAppliedStrategyId: "donbeolja_v6.0.3.2",
+    currentPreparedStrategyId: "donbeolja_v6.0.3.3",
+    currentPreparedFilePath: "/tmp/donbeolja_v6.0.3.3.pine.txt",
+  });
+  assert.strictEqual(rollbackTarget.ready, false);
+  assert.strictEqual(rollbackTarget.reason, "NO_PREVIOUS_SAFE_FILE");
   const weeklyLayerLines = __test.buildWeeklyTelegramLayerLines({
     current: {
       drop_counterfactual: cfSummary,

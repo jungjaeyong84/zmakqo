@@ -13,6 +13,8 @@ function run() {
   assert.strictEqual(__test.normalizeWaitAction("WAIT_ONE_BAR"), "WAIT_ONE_BAR");
   assert.strictEqual(__test.normalizeWaitTriggerPath("PHYSICS_ASSIST"), "PHYSICS_ASSIST");
   assert.strictEqual(__test.normalizeEntryExecTiming("immediate"), "IMMEDIATE");
+  assert.strictEqual(__test.normalizeDirectionalEvent("CORE_LONG"), "LONG");
+  assert.strictEqual(__test.normalizeDirectionalEvent("EARLY_SHORT"), "SHORT");
 
   const current = {
     signals_n: 4,
@@ -107,6 +109,7 @@ function run() {
       request_id: "REQ1",
       exchange: "BINANCEFUT",
       tf: "15m",
+      symbol: "BTCUSDT",
       created_at: "2026-03-29T00:00:01.100Z",
     },
     {
@@ -115,6 +118,7 @@ function run() {
       signal_id: "SIG1",
       exchange: "BINANCEFUT",
       tf: "15m",
+      symbol: "BTCUSDT",
       event: "CORE_LONG",
       bar_close_time_utc_ms: Date.parse("2026-03-29T00:00:01.000Z"),
       created_at: "2026-03-29T00:00:01.200Z",
@@ -125,6 +129,7 @@ function run() {
       signal_id: "SIG1",
       exchange: "BINANCEFUT",
       tf: "15m",
+      symbol_or_pair_id: "BTCUSDT",
       event: "CORE_LONG",
       signal_bar_close_time_utc_ms: Date.parse("2026-03-29T00:00:01.000Z"),
       intent_id: "INTENT1",
@@ -138,6 +143,7 @@ function run() {
       exchange: "BINANCEFUT",
       tf: "15m",
       intent_id: "INTENT1",
+      symbol: "BTCUSDT",
       entry_signal_type: "CORE_LONG",
       signal_bar_close_time_utc_ms: Date.parse("2026-03-29T00:00:01.000Z"),
       created_at: "2026-03-29T00:00:01.500Z",
@@ -159,6 +165,54 @@ function run() {
   assert.strictEqual(Number(latency.webhook_to_fill_ms.avg.toFixed(0)), 300);
   assert.strictEqual(latency.duplicate_count, 0);
   assert.strictEqual(latency.reject_count, 0);
+
+  const liveWebhooks = [
+    {
+      stage: "OUTCOME",
+      signal_id: "SIG__BINANCEFUT__DOGEUSDT__15m__1774912500000__SHORT",
+      exchange: "BINANCEFUT",
+      tf: "15m",
+      event: "SHORT",
+      symbol: "DOGEUSDT",
+      bar_close_time_utc_ms: 1774912500000,
+      created_at: "2026-03-30T23:15:08.414Z",
+    },
+  ];
+  const liveIntents = [
+    {
+      intent_id: "INTENT__BINANCEFUT__DOGEUSDT__15m__1774912500000__SHORT",
+      exchange: "BINANCEFUT",
+      tf: "15m",
+      event: "SHORT",
+      symbol_or_pair_id: "DOGEUSDT",
+      signal_bar_close_time_utc_ms: 1774912500000,
+      created_at: "2026-03-30T23:15:09.414Z",
+      status: "FILLED",
+    },
+  ];
+  const liveFills = [
+    {
+      signal_id: "DOGEUSDT.P|15|SHORT|1774912500000|-1|ENTRY|BAR_CLOSE",
+      intent_id: "INTENT__BINANCEFUT__DOGEUSDT__15m__1774912500000__SHORT",
+      exchange: "BINANCEFUT",
+      tf: "15m",
+      event: "SHORT",
+      symbol: "DOGEUSDT",
+      exec_bar_close_time_utc_ms: 1774912500000,
+      created_at: "2026-03-30T23:15:28.158Z",
+      entry_signal_type: "SHORT",
+    },
+  ];
+  const liveLatency = summarizeBridgeLatency({
+    webhooks: liveWebhooks,
+    intents: liveIntents,
+    fills: liveFills,
+    provider: "BINANCEFUT",
+    tf: "15m",
+  });
+  assert.strictEqual(liveLatency.outcome_n, 1);
+  assert.strictEqual(liveLatency.matched_intent_n, 1);
+  assert.strictEqual(liveLatency.matched_fill_n, 1);
 
   console.log("FEBT_PHASE0_TEST_OK");
 }

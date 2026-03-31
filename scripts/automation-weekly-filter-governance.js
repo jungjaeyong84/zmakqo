@@ -1484,6 +1484,8 @@ function summarizeDropCounterfactual(rows = []) {
   const overall = createCfStats();
   const byStage = {};
   const byReasonMap = new Map();
+  const byMarketMap = new Map();
+  const byReasonMarketMap = new Map();
   const stageRows = {};
   const maturedRows = [];
   for (const row of Array.isArray(rows) ? rows : []) {
@@ -1502,6 +1504,20 @@ function summarizeDropCounterfactual(rows = []) {
       byReasonMap.set(reasonKey, reasonStats);
     }
     buckets.push(reasonStats);
+    const marketKey = String(row.market || "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
+    let marketStats = byMarketMap.get(marketKey);
+    if (!marketStats) {
+      marketStats = createCfStats();
+      byMarketMap.set(marketKey, marketStats);
+    }
+    buckets.push(marketStats);
+    const reasonMarketKey = `${reasonKey}__${marketKey}`;
+    let reasonMarketStats = byReasonMarketMap.get(reasonMarketKey);
+    if (!reasonMarketStats) {
+      reasonMarketStats = createCfStats();
+      byReasonMarketMap.set(reasonMarketKey, reasonMarketStats);
+    }
+    buckets.push(reasonMarketStats);
     for (const bucket of buckets) {
       bucket.matured_n += 1;
       if (row.outcome === "TP1_FIRST") bucket.tp1_first_n += 1;
@@ -1532,6 +1548,19 @@ function summarizeDropCounterfactual(rows = []) {
       .map(([reason, stats]) => ({ reason, ...finalizeCfStats(stats) }))
       .sort((a, b) => (b.tp1_first_n - a.tp1_first_n) || (b.matured_n - a.matured_n) || a.reason.localeCompare(b.reason))
       .slice(0, 8),
+    by_market: Array.from(byMarketMap.entries())
+      .map(([market, stats]) => ({ market, ...finalizeCfStats(stats) }))
+      .sort((a, b) => (b.matured_n - a.matured_n) || ((b.horizon_pos_rate || 0) - (a.horizon_pos_rate || 0)) || a.market.localeCompare(b.market))
+      .slice(0, 16),
+    by_reason_market: Array.from(byReasonMarketMap.entries())
+      .map(([key, stats]) => {
+        const splitIdx = key.lastIndexOf("__");
+        const reason = splitIdx >= 0 ? key.slice(0, splitIdx) : key;
+        const market = splitIdx >= 0 ? key.slice(splitIdx + 2) : "UNKNOWN";
+        return { reason, market, ...finalizeCfStats(stats) };
+      })
+      .sort((a, b) => (b.matured_n - a.matured_n) || ((b.horizon_pos_rate || 0) - (a.horizon_pos_rate || 0)) || a.reason.localeCompare(b.reason) || a.market.localeCompare(b.market))
+      .slice(0, 32),
     feature_breakdown: summarizeCounterfactualFeatureBreakdown(maturedRows),
   };
 }
@@ -2111,9 +2140,26 @@ function topCandidateStreak(rows = [], candidateId) {
   return streak;
 }
 
-function findRollbackTarget(weeklyRows = []) {
+function findRollbackTarget(weeklyRows = [], {
+  currentAppliedStrategyId = null,
+  currentPreparedStrategyId = null,
+  currentPreparedFilePath = null,
+} = {}) {
   const rows = Array.isArray(weeklyRows) ? weeklyRows.slice().reverse() : [];
-  const latestPatched = rows.find((row) => row && row.recommended_patch_id && row.recommended_patch_id !== "hold" && row.created_file_path);
+  const appliedStrategyId = String(currentAppliedStrategyId || "").trim() || null;
+  const preparedStrategyId = String(currentPreparedStrategyId || "").trim() || null;
+  const preparedFilePath = String(currentPreparedFilePath || "").trim() || null;
+  const latestPatched = (
+    appliedStrategyId
+      ? rows.find((row) =>
+        row
+        && row.recommended_patch_id
+        && row.recommended_patch_id !== "hold"
+        && row.created_file_path
+        && String(row.created_strategy_id || "").trim() === appliedStrategyId
+      )
+      : null
+  ) || rows.find((row) => row && row.recommended_patch_id && row.recommended_patch_id !== "hold" && row.created_file_path);
   if (!latestPatched) {
     return {
       ready: false,
@@ -2128,7 +2174,10 @@ function findRollbackTarget(weeklyRows = []) {
     row.week_key !== latestPatched.week_key &&
     row.recommended_patch_id &&
     row.recommended_patch_id !== "hold" &&
-    row.created_file_path
+    row.created_file_path &&
+    (!appliedStrategyId || String(row.created_strategy_id || "").trim() !== appliedStrategyId) &&
+    (!preparedStrategyId || String(row.created_strategy_id || "").trim() !== preparedStrategyId) &&
+    (!preparedFilePath || String(row.created_file_path || "").trim() !== preparedFilePath)
   );
   if (!previousSafe) {
     return {
@@ -2156,6 +2205,7 @@ function buildPineStage1ChangeControl({ current = {}, nowMeta, mlPolicyReport = 
   const candidateHistoryPath = path.join(OPS_DAILY_DIR, "pine_stage1_patch_candidates_history.json");
   const canaryArtifact = readLatestJsonArtifact("filter_shadow_canary_latest.json");
   const stageCoverageArtifact = readLatestJsonArtifact("stage_coverage_guard_latest.json");
+  const selfEvolutionRuntime = readLatestJsonArtifact("self_evolution_manual_paste_ack_latest.json");
   const weeklyHistory = readHistory(path.join(OPS_DAILY_DIR, "weekly_pine_upgrade_history.json"), "weeks");
   const coverageGuard = stageCoverageArtifact.data && stageCoverageArtifact.data.guard
     ? stageCoverageArtifact.data.guard
@@ -2191,7 +2241,11 @@ function buildPineStage1ChangeControl({ current = {}, nowMeta, mlPolicyReport = 
   else if (coverageGuard.pass !== true) promotionReason = "COVERAGE_GUARD_BLOCK";
   else if (canaryGuard.pass !== true) promotionReason = "CANARY_GUARD_BLOCK";
 
-  const rollbackBase = findRollbackTarget(weeklyHistory);
+  const rollbackBase = findRollbackTarget(weeklyHistory, {
+    currentAppliedStrategyId: selfEvolutionRuntime.data && selfEvolutionRuntime.data.applied_strategy_id,
+    currentPreparedStrategyId: selfEvolutionRuntime.data && selfEvolutionRuntime.data.prepared_strategy_id,
+    currentPreparedFilePath: selfEvolutionRuntime.data && selfEvolutionRuntime.data.prepared_file_path,
+  });
   const adverseStreak = Number(sequentialGuard.adverse_streak_n || 0);
   const rollbackReady = rollbackBase.ready === true && (String(sequentialGuard.verdict || "").toUpperCase() === "HOLD" || adverseStreak >= 2);
   const rollbackReason = rollbackReady ? "AUTO_ROLLBACK_READY" : rollbackBase.reason;
@@ -3192,6 +3246,7 @@ if (require.main === module) {
       summarizeCounterfactualFeatureBreakdown,
       buildCounterfactualFeatureSummaryLines,
       buildWeeklyTelegramLayerLines,
+      findRollbackTarget,
       ratioX,
     },
   };

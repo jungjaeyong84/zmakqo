@@ -16,6 +16,7 @@ const {
   copyLatest,
   loadLocalEnv,
   nowKstMeta,
+  readJsonRawSafe,
   resolveAutomationCycleMeta,
   sendKoreanTelegramSummary,
   writeJson,
@@ -35,6 +36,7 @@ const AFTER_BARS = Math.max(1, Number(process.env.FILTER_SHADOW_CANARY_AFTER_BAR
 const FLOAT_TOL = Number(process.env.FILTER_SHADOW_CANARY_FLOAT_TOL || 1e-9);
 const REPORT_LATEST_MD = path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.md");
 const REPORT_LATEST_JSON = path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json");
+const SYSTEM_OPS_LATEST_JSON = path.join(OPS_DAILY_DIR, "system_ops_check_latest.json");
 const GOLDEN_FIXTURE_VERSION = 2;
 
 function parseIsoMs(value) {
@@ -819,6 +821,19 @@ async function buildGoldenFixture() {
   };
 }
 
+const GOLDEN_RUNTIME_REFRESH_CASE_IDS = new Set(["ai_missing_policy_current"]);
+
+async function goldenFixtureNeedsRuntimeRefresh(loaded) {
+  if (!loaded || !Array.isArray(loaded.cases) || !loaded.cases.length) return true;
+  for (const caseDef of loaded.cases) {
+    if (!caseDef || !GOLDEN_RUNTIME_REFRESH_CASE_IDS.has(String(caseDef.id || ""))) continue;
+    const replayed = await replayCase(caseDef);
+    const cmp = compareCanaryOutcome(caseDef.expected || {}, replayed || {}, caseDef || {});
+    if (!cmp.ok) return true;
+  }
+  return false;
+}
+
 async function ensureGoldenFixture() {
   try {
     const loaded = JSON.parse(fs.readFileSync(GOLDEN_FIXTURE_PATH, "utf8"));
@@ -827,6 +842,7 @@ async function ensureGoldenFixture() {
       && Number(loaded.version) === GOLDEN_FIXTURE_VERSION
       && Array.isArray(loaded.cases)
       && loaded.cases.length
+      && !(await goldenFixtureNeedsRuntimeRefresh(loaded))
     ) return loaded;
   } catch (_err) {}
   const fixture = await buildGoldenFixture();
@@ -1105,6 +1121,16 @@ function buildMarkdown(report) {
   }
   lines.push(`- stage coverage: QUALITY ${report.shadow.counters.QUALITY}, AI ${report.shadow.counters.AI}, MARKET ${report.shadow.counters.MARKET}, EV ${report.shadow.counters.EV}, WAIT ${report.shadow.counters.TIMING}`);
   lines.push("");
+  lines.push("## System Ops");
+  lines.push(`- available: ${report.system_ops && report.system_ops.available ? "YES" : "NO"}`);
+  lines.push(`- status: ${report.system_ops && report.system_ops.status || "N/A"}`);
+  lines.push(`- approvals: ${report.system_ops && report.system_ops.approval_n != null ? report.system_ops.approval_n : "N/A"}`);
+  if (report.system_ops && Array.isArray(report.system_ops.approvals) && report.system_ops.approvals.length) {
+    for (const row of report.system_ops.approvals.slice(0, 10)) {
+      lines.push(`- approval: ${row.title || "N/A"} / ${row.reason || "N/A"}`);
+    }
+  }
+  lines.push("");
   const driftRows = [
     ...report.golden.results.filter((row) => !row.ok).map((row) => ({ lane: "golden", ...row })),
     ...report.shadow.results.filter((row) => !row.ok).map((row) => ({ lane: "shadow", ...row })),
@@ -1123,6 +1149,25 @@ function buildMarkdown(report) {
   return `${lines.join("\n")}\n`;
 }
 
+function summarizeSystemOps(raw = null) {
+  const src = raw && typeof raw === "object"
+    ? (raw.raw && typeof raw.raw === "object" ? raw.raw : raw)
+    : {};
+  const approvals = Array.isArray(src.approvals) ? src.approvals : [];
+  return {
+    available: Object.keys(src).length > 0,
+    generated_at_kst: String(src.generated_at_kst || "").trim() || null,
+    status: String(src.status || "").trim() || null,
+    mode: String(src.mode || "").trim() || null,
+    approval_n: approvals.length,
+    approvals: approvals.map((row) => ({
+      title: String(row && row.title || "").trim() || null,
+      reason: String(row && row.reason || "").trim() || null,
+      action: String(row && row.action || "").trim() || null,
+    })),
+  };
+}
+
 async function main() {
   loadLocalEnv();
   const meta = nowKstMeta();
@@ -1131,6 +1176,7 @@ async function main() {
   const goldenResults = await replayCases(fixture.cases || []);
   const shadow = await buildShadowCases({ baselineMs: fixture.baseline_created_at_ms });
   const shadowResults = await replayCases(shadow.cases || []);
+  const systemOps = summarizeSystemOps(readJsonRawSafe(SYSTEM_OPS_LATEST_JSON, null));
   const report = {
     generated_at_kst: meta.kst,
     cycle_id: cycleMeta.cycle_id,
@@ -1150,6 +1196,7 @@ async function main() {
       summary: summarizeResults(shadowResults),
       results: shadowResults,
     },
+    system_ops: systemOps,
   };
   const jsonPath = path.join(OPS_DAILY_DIR, `${meta.dateKey}_${meta.hhmm}_filter_shadow_canary.json`);
   const mdPath = path.join(OPS_DAILY_DIR, `${meta.dateKey}_${meta.hhmm}_filter_shadow_canary.md`);

@@ -36,6 +36,24 @@ function resolveEvent(row) {
   return toUpper(row && row.event, "");
 }
 
+function normalizeDirectionalEvent(value) {
+  const event = toUpper(value, "");
+  if (!event) return "";
+  if (
+    event === "LONG"
+    || event === "SHORT"
+    || event.endsWith("_LONG")
+    || event.endsWith("_SHORT")
+  ) {
+    return event.endsWith("_LONG")
+      ? "LONG"
+      : event.endsWith("_SHORT")
+        ? "SHORT"
+        : event;
+  }
+  return event;
+}
+
 function resolveBarCloseMs(row) {
   return (
     toNum(row && row.signal_bar_close_time_utc_ms) ??
@@ -252,34 +270,36 @@ function summarizeLegacyWaitOverlap({
 }
 
 function buildWebhookSignalKey(row) {
-  const signalId = String(row && row.signal_id || "").trim();
-  if (signalId) return signalId;
   const market = resolveMarket(row);
   const tf = resolveTf(row);
-  const event = resolveEvent(row);
+  const event = normalizeDirectionalEvent(resolveEvent(row));
   const barCloseMs = toNum(row && row.bar_close_time_utc_ms);
   if (!market || !tf || !event || !Number.isFinite(barCloseMs)) return null;
   return `${market}__${tf}__${barCloseMs}__${event}`;
 }
 
 function buildIntentSignalKey(row) {
-  const signalId = String(row && row.signal_id || "").trim();
-  if (signalId) return signalId;
   const market = resolveMarket(row);
   const tf = resolveTf(row);
-  const event = resolveEvent(row);
-  const barCloseMs = toNum(row && row.signal_bar_close_time_utc_ms);
+  const event = normalizeDirectionalEvent(
+    row && (row.entry_signal_type || row.event)
+  );
+  const barCloseMs = (
+    toNum(row && row.signal_bar_close_time_utc_ms)
+    ?? toNum(row && row.exec_bar_close_time_utc_ms)
+  );
   if (!market || !tf || !event || !Number.isFinite(barCloseMs)) return null;
   return `${market}__${tf}__${barCloseMs}__${event}`;
 }
 
 function buildFillSignalKey(row) {
-  const signalId = String(row && row.signal_id || "").trim();
-  if (signalId) return signalId;
   const market = resolveMarket(row);
   const tf = resolveTf(row);
-  const event = toUpper(row && (row.entry_signal_type || row.event), "");
-  const barCloseMs = toNum(row && row.signal_bar_close_time_utc_ms);
+  const event = normalizeDirectionalEvent(row && (row.entry_signal_type || row.event));
+  const barCloseMs = (
+    toNum(row && row.signal_bar_close_time_utc_ms)
+    ?? toNum(row && row.exec_bar_close_time_utc_ms)
+  );
   if (!market || !tf || !event || !Number.isFinite(barCloseMs)) return null;
   return `${market}__${tf}__${barCloseMs}__${event}`;
 }
@@ -363,9 +383,21 @@ function summarizeBridgeLatency({
     if (Number.isFinite(fromMs) && Number.isFinite(createdMs) && createdMs < fromMs) continue;
     if (Number.isFinite(toMs) && Number.isFinite(createdMs) && createdMs >= toMs) continue;
     const intentId = String(row && row.intent_id || "").trim();
-    if (intentId && !fillsByIntent.has(intentId)) fillsByIntent.set(intentId, row);
+    if (intentId) {
+      const prev = fillsByIntent.get(intentId);
+      const prevMs = parseMs(prev && prev.created_at);
+      if (!prev || (Number.isFinite(createdMs) && (!Number.isFinite(prevMs) || createdMs < prevMs))) {
+        fillsByIntent.set(intentId, row);
+      }
+    }
     const key = buildFillSignalKey(row);
-    if (key && !fillsBySignalKey.has(key)) fillsBySignalKey.set(key, row);
+    if (key) {
+      const prev = fillsBySignalKey.get(key);
+      const prevMs = parseMs(prev && prev.created_at);
+      if (!prev || (Number.isFinite(createdMs) && (!Number.isFinite(prevMs) || createdMs < prevMs))) {
+        fillsBySignalKey.set(key, row);
+      }
+    }
   }
 
   const proxyAlertToWebhook = [];
@@ -431,6 +463,7 @@ module.exports = {
     normalizeWaitAction,
     normalizeWaitTriggerPath,
     normalizeEntryExecTiming,
+    normalizeDirectionalEvent,
     summarizeLatencySeries,
     buildSignalKey,
     buildWebhookSignalKey,
