@@ -23,6 +23,7 @@
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_CLAUDE_AUDIT_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/CLAUDE_SELF_EVOLUTION_VALIDATION_PROMPT.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/OPENCLAW_AUTONOMY_CONTRACT.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/DONBEOLJA_UIUX_CONTROL_SURFACE_PLAN.md`
 
 ## 1. 한 줄 정의
 
