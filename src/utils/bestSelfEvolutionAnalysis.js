@@ -448,21 +448,36 @@ function deriveCanonicalProvenanceDiagnostics(provenance = null) {
   const raw = provenance && provenance.summary && typeof provenance.summary === "object"
     ? provenance.summary
     : (provenance || {});
-  const byCollection = Array.isArray(raw.by_collection) ? raw.by_collection : [];
+  const postCutoverEligibleN = toNum(raw.post_cutover_engine_eligible_n);
+  const useCutoverCohort = postCutoverEligibleN != null;
+  const eligibleN = useCutoverCohort ? postCutoverEligibleN : (toNum(raw.eligible_n) || 0);
+  const completeN = useCutoverCohort ? (toNum(raw.post_cutover_complete_n) || 0) : (toNum(raw.complete_n) || 0);
+  const bundleVersionN = useCutoverCohort ? (toNum(raw.post_cutover_with_bundle_version_n) || 0) : (toNum(raw.with_bundle_version_n) || 0);
+  const thresholdBundleVersionN = useCutoverCohort ? (toNum(raw.post_cutover_with_threshold_bundle_version_n) || 0) : (toNum(raw.with_threshold_bundle_version_n) || 0);
+  const sourceModeN = useCutoverCohort ? (toNum(raw.post_cutover_with_source_mode_n) || 0) : (toNum(raw.with_source_mode_n) || 0);
+  const actualSourceDecisionN = useCutoverCohort ? (toNum(raw.post_cutover_with_actual_source_decision_n) || 0) : (toNum(raw.with_actual_source_decision_n) || 0);
+  const byCollection = useCutoverCohort && Array.isArray(raw.post_cutover_by_collection)
+    ? raw.post_cutover_by_collection
+    : (Array.isArray(raw.by_collection) ? raw.by_collection : []);
   const topGapCollection = byCollection
     .slice()
     .sort((a, b) => Number(a.complete_rate || 0) - Number(b.complete_rate || 0))[0] || null;
   return {
     available: !!provenance,
-    eligible_n: toNum(raw.eligible_n) || 0,
-    complete_n: toNum(raw.complete_n) || 0,
-    complete_rate: toNum(raw.complete_rate),
-    bundle_version_n: toNum(raw.with_bundle_version_n) || 0,
-    threshold_bundle_version_n: toNum(raw.with_threshold_bundle_version_n) || 0,
-    source_mode_n: toNum(raw.with_source_mode_n) || 0,
-    actual_source_decision_n: toNum(raw.with_actual_source_decision_n) || 0,
-    storage_contract_pass: raw.eligible_n > 0 ? Number(raw.complete_n || 0) === Number(raw.eligible_n || 0) : null,
-    storage_contract_gap_n: Math.max(0, Number(raw.eligible_n || 0) - Number(raw.complete_n || 0)),
+    cutover_reference_iso: String(raw.cutover_reference_iso || "").trim() || null,
+    cutover_reference_source: String(raw.cutover_reference_source || "").trim().toUpperCase() || null,
+    post_cutover_status: String(raw.post_cutover_status || "").trim().toUpperCase() || null,
+    using_cutover_cohort: useCutoverCohort,
+    awaiting_post_cutover_rows: useCutoverCohort && eligibleN === 0,
+    eligible_n: eligibleN,
+    complete_n: completeN,
+    complete_rate: eligibleN > 0 ? (completeN / eligibleN) : null,
+    bundle_version_n: bundleVersionN,
+    threshold_bundle_version_n: thresholdBundleVersionN,
+    source_mode_n: sourceModeN,
+    actual_source_decision_n: actualSourceDecisionN,
+    storage_contract_pass: eligibleN > 0 ? completeN === eligibleN : null,
+    storage_contract_gap_n: Math.max(0, eligibleN - completeN),
     dominant_gap_collection: topGapCollection ? String(topGapCollection.collection || "").trim() || null : null,
   };
 }

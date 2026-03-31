@@ -21,11 +21,18 @@ const INPUTS = Object.freeze({
   signals: path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "signals.json"),
   drops: path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "signals_dropped.json"),
   intents: path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "order_intents_paper.json"),
+  sourceModeSnapshot: path.join(OPS_DAILY_DIR, "source_mode_BINANCEFUT_autopilot_snapshot_latest.json"),
+  canonicalPolicySnapshot: path.join(OPS_DAILY_DIR, "canonical_policy_BINANCEFUT_autopilot_snapshot_latest.json"),
 });
 
 function readCacheDocs(filePath) {
   const raw = readJsonRawSafe(filePath, null);
   return raw && Array.isArray(raw.docs) ? raw.docs : [];
+}
+
+function toMs(value) {
+  const parsed = Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function featureObj(row = {}) {
@@ -111,12 +118,23 @@ function deriveCollectionCoverage(rows = [], collection) {
   };
 }
 
-function deriveProvenanceReport({ signals = [], drops = [], intents = [] } = {}) {
-  const rows = [
-    ...signals.map((row) => normalizeRow(row, "signals")),
-    ...drops.map((row) => normalizeRow(row, "signals_dropped")),
-    ...intents.map((row) => normalizeRow(row, "order_intents_paper")),
-  ].filter(qualifiesRow);
+function isCompleteProvenanceRow(row = {}) {
+  const features = row && row.features && typeof row.features === "object" ? row.features : {};
+  return (
+    features.canonical_engine_bundle_version != null
+    && features.canonical_engine_threshold_bundle_version != null
+    && features.canonical_engine_source_mode_effective != null
+    && features.canonical_engine_execution_source_effective != null
+    && features.canonical_engine_actual_source_decision != null
+    && features.canonical_engine_decision_id != null
+    && features.canonical_engine_policy_origin != null
+    && features.pine_overlay_runtime_role != null
+    && features.pine_shadow_decision != null
+    && features.pine_shadow_parity_match != null
+  );
+}
+
+function buildSummary(rows = []) {
   const engineRows = rows.filter((row) => isEngineCollection(row.collection));
   const rawSignalRows = rows.filter((row) => !isEngineCollection(row.collection));
   const eligibleN = engineRows.length;
@@ -130,20 +148,80 @@ function deriveProvenanceReport({ signals = [], drops = [], intents = [] } = {})
   const withPineOverlayRoleN = rows.filter((row) => row.features.pine_overlay_runtime_role != null).length;
   const withPineShadowDecisionN = rows.filter((row) => row.features.pine_shadow_decision != null).length;
   const withPineShadowParityN = rows.filter((row) => row.features.pine_shadow_parity_match != null).length;
-  const completeRows = engineRows.filter((row) =>
-    row.features.canonical_engine_bundle_version != null
-    && row.features.canonical_engine_threshold_bundle_version != null
-    && row.features.canonical_engine_source_mode_effective != null
-    && row.features.canonical_engine_execution_source_effective != null
-    && row.features.canonical_engine_actual_source_decision != null
-    && row.features.canonical_engine_decision_id != null
-    && row.features.canonical_engine_policy_origin != null
-    && row.features.pine_overlay_runtime_role != null
-    && row.features.pine_shadow_decision != null
-    && row.features.pine_shadow_parity_match != null
-  );
-  const missingRows = engineRows
-    .filter((row) => !completeRows.includes(row))
+  const completeRows = engineRows.filter((row) => isCompleteProvenanceRow(row));
+  const byCollection = ["signals", "signals_dropped", "order_intents_paper"]
+    .map((collection) => deriveCollectionCoverage(rows, collection));
+  return {
+    rows_n: rows.length,
+    raw_signal_n: rawSignalRows.length,
+    engine_eligible_n: eligibleN,
+    eligible_n: eligibleN,
+    with_bundle_version_n: withBundleVersionN,
+    with_threshold_bundle_version_n: withThresholdBundleVersionN,
+    with_source_mode_n: withSourceModeN,
+    with_execution_source_n: withExecutionSourceN,
+    with_actual_source_decision_n: withActualSourceDecisionN,
+    with_decision_id_n: withDecisionIdN,
+    with_policy_origin_n: withPolicyOriginN,
+    with_pine_overlay_role_n: withPineOverlayRoleN,
+    with_pine_shadow_decision_n: withPineShadowDecisionN,
+    with_pine_shadow_parity_n: withPineShadowParityN,
+    complete_n: completeRows.length,
+    bundle_version_rate: eligibleN > 0 ? (withBundleVersionN / eligibleN) : null,
+    threshold_bundle_version_rate: eligibleN > 0 ? (withThresholdBundleVersionN / eligibleN) : null,
+    source_mode_rate: eligibleN > 0 ? (withSourceModeN / eligibleN) : null,
+    actual_source_decision_rate: eligibleN > 0 ? (withActualSourceDecisionN / eligibleN) : null,
+    complete_rate: eligibleN > 0 ? (completeRows.length / eligibleN) : null,
+    by_collection: byCollection,
+    by_source_mode: countBy(rows.filter((row) => row.features.canonical_engine_source_mode_effective != null), (row) => row.features.canonical_engine_source_mode_effective),
+    by_execution_source: countBy(rows.filter((row) => row.features.canonical_engine_execution_source_effective != null), (row) => row.features.canonical_engine_execution_source_effective),
+    by_actual_source_decision: countBy(rows.filter((row) => row.features.canonical_engine_actual_source_decision != null), (row) => row.features.canonical_engine_actual_source_decision),
+    by_policy_origin: countBy(rows.filter((row) => row.features.canonical_engine_policy_origin != null), (row) => row.features.canonical_engine_policy_origin),
+    by_pine_overlay_role: countBy(rows.filter((row) => row.features.pine_overlay_runtime_role != null), (row) => row.features.pine_overlay_runtime_role),
+    by_pine_shadow_decision: countBy(rows.filter((row) => row.features.pine_shadow_decision != null), (row) => row.features.pine_shadow_decision),
+  };
+}
+
+function deriveCutoverReference({ sourceModeSnapshot = null, canonicalPolicySnapshot = null } = {}) {
+  const candidates = [
+    { key: "SOURCE_MODE", generated_at: sourceModeSnapshot && sourceModeSnapshot.generated_at || null },
+    { key: "CANONICAL_POLICY", generated_at: canonicalPolicySnapshot && canonicalPolicySnapshot.generated_at || null },
+  ]
+    .map((row) => ({ ...row, generated_at_ms: toMs(row.generated_at) }))
+    .filter((row) => Number.isFinite(row.generated_at_ms))
+    .sort((a, b) => b.generated_at_ms - a.generated_at_ms);
+  const latest = candidates[0] || null;
+  return {
+    reference_iso: latest ? latest.generated_at : null,
+    reference_ms: latest ? latest.generated_at_ms : null,
+    reference_source: latest ? latest.key : null,
+    reference_sources: candidates.map((row) => ({ key: row.key, generated_at: row.generated_at })),
+  };
+}
+
+function deriveProvenanceReport({ signals = [], drops = [], intents = [], cutoverReference = null } = {}) {
+  const rows = [
+    ...signals.map((row) => normalizeRow(row, "signals")),
+    ...drops.map((row) => normalizeRow(row, "signals_dropped")),
+    ...intents.map((row) => normalizeRow(row, "order_intents_paper")),
+  ].filter(qualifiesRow);
+  const summary = buildSummary(rows);
+  const cutoverMs = cutoverReference && Number.isFinite(cutoverReference.reference_ms)
+    ? cutoverReference.reference_ms
+    : null;
+  const postCutoverRows = Number.isFinite(cutoverMs)
+    ? rows.filter((row) => {
+      const rowMs = toMs(row.created_at);
+      return Number.isFinite(rowMs) && rowMs >= cutoverMs;
+    })
+    : [];
+  const postCutoverSummary = Number.isFinite(cutoverMs) ? buildSummary(postCutoverRows) : null;
+  const engineRows = rows.filter((row) => isEngineCollection(row.collection));
+  const missingRowsBase = (postCutoverSummary && Number(postCutoverSummary.engine_eligible_n || 0) > 0)
+    ? postCutoverRows.filter((row) => isEngineCollection(row.collection))
+    : engineRows;
+  const missingRows = missingRowsBase
+    .filter((row) => !isCompleteProvenanceRow(row))
     .slice()
     .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
     .slice(0, 20)
@@ -166,38 +244,44 @@ function deriveProvenanceReport({ signals = [], drops = [], intents = [] } = {})
         row.features.pine_shadow_parity_match == null ? "pine_shadow_parity_match" : null,
       ].filter(Boolean),
     }));
-  const byCollection = ["signals", "signals_dropped", "order_intents_paper"]
-    .map((collection) => deriveCollectionCoverage(rows, collection));
+  const effectiveEligibleN = postCutoverSummary && Number.isFinite(Number(postCutoverSummary.engine_eligible_n))
+    ? Number(postCutoverSummary.engine_eligible_n)
+    : Number(summary.engine_eligible_n || 0);
+  const effectiveCompleteN = postCutoverSummary && Number.isFinite(Number(postCutoverSummary.complete_n))
+    ? Number(postCutoverSummary.complete_n)
+    : Number(summary.complete_n || 0);
+  const postCutoverStatus = !postCutoverSummary
+    ? "NO_CUTOVER_REFERENCE"
+    : (Number(postCutoverSummary.engine_eligible_n || 0) > 0
+      ? (Number(postCutoverSummary.complete_n || 0) === Number(postCutoverSummary.engine_eligible_n || 0)
+        ? "PASS"
+        : "MISSING_PROVENANCE_FIELDS")
+      : "NO_ENGINE_ROWS_AFTER_CUTOVER");
+  summary.cutover_reference_iso = cutoverReference && cutoverReference.reference_iso || null;
+  summary.cutover_reference_source = cutoverReference && cutoverReference.reference_source || null;
+  summary.cutover_reference_sources = cutoverReference && cutoverReference.reference_sources || [];
+  summary.post_cutover_rows_n = postCutoverSummary ? postCutoverSummary.rows_n : null;
+  summary.post_cutover_raw_signal_n = postCutoverSummary ? postCutoverSummary.raw_signal_n : null;
+  summary.post_cutover_engine_eligible_n = postCutoverSummary ? postCutoverSummary.engine_eligible_n : null;
+  summary.post_cutover_with_bundle_version_n = postCutoverSummary ? postCutoverSummary.with_bundle_version_n : null;
+  summary.post_cutover_with_threshold_bundle_version_n = postCutoverSummary ? postCutoverSummary.with_threshold_bundle_version_n : null;
+  summary.post_cutover_with_source_mode_n = postCutoverSummary ? postCutoverSummary.with_source_mode_n : null;
+  summary.post_cutover_with_execution_source_n = postCutoverSummary ? postCutoverSummary.with_execution_source_n : null;
+  summary.post_cutover_with_actual_source_decision_n = postCutoverSummary ? postCutoverSummary.with_actual_source_decision_n : null;
+  summary.post_cutover_with_decision_id_n = postCutoverSummary ? postCutoverSummary.with_decision_id_n : null;
+  summary.post_cutover_with_policy_origin_n = postCutoverSummary ? postCutoverSummary.with_policy_origin_n : null;
+  summary.post_cutover_with_pine_overlay_role_n = postCutoverSummary ? postCutoverSummary.with_pine_overlay_role_n : null;
+  summary.post_cutover_with_pine_shadow_decision_n = postCutoverSummary ? postCutoverSummary.with_pine_shadow_decision_n : null;
+  summary.post_cutover_with_pine_shadow_parity_n = postCutoverSummary ? postCutoverSummary.with_pine_shadow_parity_n : null;
+  summary.post_cutover_complete_n = postCutoverSummary ? postCutoverSummary.complete_n : null;
+  summary.post_cutover_complete_rate = postCutoverSummary ? postCutoverSummary.complete_rate : null;
+  summary.post_cutover_by_collection = postCutoverSummary ? postCutoverSummary.by_collection : [];
+  summary.post_cutover_status = postCutoverStatus;
+  summary.effective_eligible_n = effectiveEligibleN;
+  summary.effective_complete_n = effectiveCompleteN;
+  summary.effective_complete_rate = effectiveEligibleN > 0 ? (effectiveCompleteN / effectiveEligibleN) : null;
   return {
-    summary: {
-      rows_n: rows.length,
-      raw_signal_n: rawSignalRows.length,
-      engine_eligible_n: eligibleN,
-      eligible_n: eligibleN,
-      with_bundle_version_n: withBundleVersionN,
-      with_threshold_bundle_version_n: withThresholdBundleVersionN,
-      with_source_mode_n: withSourceModeN,
-      with_execution_source_n: withExecutionSourceN,
-      with_actual_source_decision_n: withActualSourceDecisionN,
-      with_decision_id_n: withDecisionIdN,
-      with_policy_origin_n: withPolicyOriginN,
-      with_pine_overlay_role_n: withPineOverlayRoleN,
-      with_pine_shadow_decision_n: withPineShadowDecisionN,
-      with_pine_shadow_parity_n: withPineShadowParityN,
-      complete_n: completeRows.length,
-      bundle_version_rate: eligibleN > 0 ? (withBundleVersionN / eligibleN) : null,
-      threshold_bundle_version_rate: eligibleN > 0 ? (withThresholdBundleVersionN / eligibleN) : null,
-      source_mode_rate: eligibleN > 0 ? (withSourceModeN / eligibleN) : null,
-      actual_source_decision_rate: eligibleN > 0 ? (withActualSourceDecisionN / eligibleN) : null,
-      complete_rate: eligibleN > 0 ? (completeRows.length / eligibleN) : null,
-      by_collection: byCollection,
-      by_source_mode: countBy(rows.filter((row) => row.features.canonical_engine_source_mode_effective != null), (row) => row.features.canonical_engine_source_mode_effective),
-      by_execution_source: countBy(rows.filter((row) => row.features.canonical_engine_execution_source_effective != null), (row) => row.features.canonical_engine_execution_source_effective),
-      by_actual_source_decision: countBy(rows.filter((row) => row.features.canonical_engine_actual_source_decision != null), (row) => row.features.canonical_engine_actual_source_decision),
-      by_policy_origin: countBy(rows.filter((row) => row.features.canonical_engine_policy_origin != null), (row) => row.features.canonical_engine_policy_origin),
-      by_pine_overlay_role: countBy(rows.filter((row) => row.features.pine_overlay_runtime_role != null), (row) => row.features.pine_overlay_runtime_role),
-      by_pine_shadow_decision: countBy(rows.filter((row) => row.features.pine_shadow_decision != null), (row) => row.features.pine_shadow_decision),
-    },
+    summary,
     rows: missingRows,
   };
 }
@@ -220,10 +304,15 @@ function renderMarkdown(report = {}) {
     "",
     "## Summary",
     `- rows / raw webhook / engine eligible: ${summary.rows_n || 0} / ${summary.raw_signal_n || 0} / ${summary.engine_eligible_n || summary.eligible_n || 0}`,
+    `- cutover: ${summary.cutover_reference_iso || "N/A"} / source=${summary.cutover_reference_source || "N/A"} / post_cutover=${summary.post_cutover_status || "N/A"}`,
+    `- post_cutover rows / raw webhook / engine eligible: ${summary.post_cutover_rows_n ?? "N/A"} / ${summary.post_cutover_raw_signal_n ?? "N/A"} / ${summary.post_cutover_engine_eligible_n ?? "N/A"}`,
     `- bundle / threshold / source_mode / execution_source / source_decision: ${summary.with_bundle_version_n || 0} / ${summary.with_threshold_bundle_version_n || 0} / ${summary.with_source_mode_n || 0} / ${summary.with_execution_source_n || 0} / ${summary.with_actual_source_decision_n || 0}`,
+    `- post_cutover bundle / threshold / source_mode / execution_source / source_decision: ${summary.post_cutover_with_bundle_version_n ?? "N/A"} / ${summary.post_cutover_with_threshold_bundle_version_n ?? "N/A"} / ${summary.post_cutover_with_source_mode_n ?? "N/A"} / ${summary.post_cutover_with_execution_source_n ?? "N/A"} / ${summary.post_cutover_with_actual_source_decision_n ?? "N/A"}`,
     `- decision_id / policy_origin / pine_overlay_role / pine_shadow / pine_shadow_parity: ${summary.with_decision_id_n || 0} / ${summary.with_policy_origin_n || 0} / ${summary.with_pine_overlay_role_n || 0} / ${summary.with_pine_shadow_decision_n || 0} / ${summary.with_pine_shadow_parity_n || 0}`,
-    `- complete: ${summary.complete_n || 0} (${pct(summary.complete_rate)})`,
+    `- post_cutover decision_id / policy_origin / pine_overlay_role / pine_shadow / pine_shadow_parity: ${summary.post_cutover_with_decision_id_n ?? "N/A"} / ${summary.post_cutover_with_policy_origin_n ?? "N/A"} / ${summary.post_cutover_with_pine_overlay_role_n ?? "N/A"} / ${summary.post_cutover_with_pine_shadow_decision_n ?? "N/A"} / ${summary.post_cutover_with_pine_shadow_parity_n ?? "N/A"}`,
+    `- complete: effective ${summary.effective_complete_n ?? 0}/${summary.effective_eligible_n ?? 0} (${pct(summary.effective_complete_rate)}) / total ${summary.complete_n || 0}/${summary.engine_eligible_n || summary.eligible_n || 0} (${pct(summary.complete_rate)})`,
     `- by collection: ${Array.isArray(summary.by_collection) ? summary.by_collection.map((row) => `${row.collection}=${row.complete_n}/${row.eligible_n} (${pct(row.complete_rate)})`).join(", ") : "none"}`,
+    `- post_cutover by collection: ${Array.isArray(summary.post_cutover_by_collection) && summary.post_cutover_by_collection.length ? summary.post_cutover_by_collection.map((row) => `${row.collection}=${row.complete_n}/${row.eligible_n} (${pct(row.complete_rate)})`).join(", ") : "none"}`,
     `- by source mode: ${Array.isArray(summary.by_source_mode) && summary.by_source_mode.length ? summary.by_source_mode.map((row) => `${row.key}=${row.count}`).join(", ") : "none"}`,
     `- by execution source: ${Array.isArray(summary.by_execution_source) && summary.by_execution_source.length ? summary.by_execution_source.map((row) => `${row.key}=${row.count}`).join(", ") : "none"}`,
     `- by actual source decision: ${Array.isArray(summary.by_actual_source_decision) && summary.by_actual_source_decision.length ? summary.by_actual_source_decision.map((row) => `${row.key}=${row.count}`).join(", ") : "none"}`,
@@ -246,10 +335,15 @@ function renderMarkdown(report = {}) {
 async function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
+  const cutoverReference = deriveCutoverReference({
+    sourceModeSnapshot: readJsonRawSafe(INPUTS.sourceModeSnapshot, null),
+    canonicalPolicySnapshot: readJsonRawSafe(INPUTS.canonicalPolicySnapshot, null),
+  });
   const report = deriveProvenanceReport({
     signals: readCacheDocs(INPUTS.signals),
     drops: readCacheDocs(INPUTS.drops),
     intents: readCacheDocs(INPUTS.intents),
+    cutoverReference,
   });
   const output = {
     ok: true,
@@ -282,6 +376,7 @@ if (require.main === module) {
 module.exports = {
   main,
   __test: {
+    deriveCutoverReference,
     deriveProvenanceReport,
     renderMarkdown,
   },

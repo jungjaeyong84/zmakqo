@@ -25,7 +25,7 @@
 
 ## 1. 한 줄 정의
 
-`BEST Self-Evolution`은 Pine, 서버, 필터, 자동화, 감독관이 하나의 목적함수와 하나의 변경 헌법 아래에서 스스로 측정하고, 스스로 후보를 만들고, 스스로 검증하고, 조건부로만 적용하며, 실패하면 자동으로 되돌리는 운영 체계다.
+`BEST Self-Evolution`은 Pine, 서버 canonical engine, 필터, 자동화, 감독관이 하나의 목적함수와 하나의 변경 헌법 아래에서 스스로 측정하고, 스스로 후보를 만들고, 스스로 검증하고, 조건부로만 적용하며, 실패하면 자동으로 되돌리는 운영 체계다.
 
 ## 2. 최종 목적
 
@@ -38,14 +38,15 @@
 ## 3. 닫혀야 할 루프
 
 1. Pine가 신호와 timing telemetry를 보낸다.
-2. 서버가 실행, 드롭, reject, partial fill, fallback을 모두 기록한다.
-3. 데이터 통합층이 하나의 학습 row를 만든다.
-4. 감독관이 목적함수와 원인분해 결과로 현재 상태를 진단한다.
-5. 튜너와 Codex가 공통 schema의 후보 변경 집합을 만든다.
-6. replay/offline 검증이 후보를 점수화한다.
-7. stage autopilot이 canary를 제한적으로 적용한다.
-8. 목표 미달이면 rollback 한다.
-9. 결과는 memory ledger에 기록되어 다음 주 후보 생성에 사용된다.
+2. 서버 canonical engine이 parity/provenance/source mode를 함께 계산한다.
+3. 서버가 실행, 드롭, reject, partial fill, fallback을 모두 기록한다.
+4. 데이터 통합층이 하나의 학습 row를 만든다.
+5. 감독관이 목적함수와 원인분해 결과로 현재 상태를 진단한다.
+6. 튜너와 Codex가 공통 schema의 후보 변경 집합을 만든다.
+7. replay/offline 검증이 후보를 점수화한다.
+8. stage autopilot이 canary를 제한적으로 적용한다.
+9. 목표 미달이면 rollback 한다.
+10. 결과는 memory ledger에 기록되어 다음 주 후보 생성에 사용된다.
 
 ## 4. 상위 원칙
 
@@ -87,6 +88,8 @@
    - `/Users/jeongjaeyong/Projects/donbeolja/code/donbeolja_v6.0.3.0.pine.txt`
 2. 서버/실행 체인
    - `/Users/jeongjaeyong/Projects/donbeolja/src/routes/webhook.routes.js`
+   - `/Users/jeongjaeyong/Projects/donbeolja/src/services/canonicalEngine/canonicalDecision.js`
+   - `/Users/jeongjaeyong/Projects/donbeolja/src/services/canonicalEngine/thresholdResolver.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/src/services/pineSignalQuality.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/src/services/waitOneBarPolicy.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/src/services/evTp1Probability.js`
@@ -97,6 +100,10 @@
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-objective-supervisor.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-stage-autopilot.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-codex-weekly-patch-engine.js`
+   - `/Users/jeongjaeyong/Projects/donbeolja/scripts/backfill-canonical-engine-provenance.js`
+   - `/Users/jeongjaeyong/Projects/donbeolja/scripts/report-best-self-evolution-deployment-probe.js`
+   - `/Users/jeongjaeyong/Projects/donbeolja/scripts/report-best-self-evolution-bundle-activation.js`
+   - `/Users/jeongjaeyong/Projects/donbeolja/scripts/report-best-self-evolution-server-primary-canary.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-ml-filter-policy.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-wait-one-bar-tune.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-ev-tp1-threshold-tune.js`
@@ -121,17 +128,30 @@
 16. weight tuning advisory
 17. deployment handoff plan
 18. Codex loop monitor
+19. canonical engine parity/provenance
+20. deployment probe / bundle activation
+21. server-primary canary
+22. bundle-based deploy unit
+
+현재 migration 상태:
+
+1. `Phase A`: `PASS`
+2. `Phase B`: `PASS`
+3. `Phase C`: `PASS`
+4. `Phase D`: `PARTIAL`
+5. `Phase E`: `PASS`
+6. `Phase F`: `PASS`
 
 ## 8. 다음 고도화 범위
 
-1. Pine manual paste handoff 고도화
+1. `SERVER_PRIMARY` acceptance sample 축적
 2. 시장별 objective score 정교화
 3. memory 기반 candidate pre-block 자동화 강화
 4. weight tuning auto-apply 금지 해제 여부 검증
 
 ## 9. 다음 구현 우선순위
 
-1. `Deployment Autopilot Hardening`
+1. `Server-Primary Acceptance`
 2. `Memory-aware Candidate Blocking`
 3. `Weight Tuning Auto-Apply Review`
 

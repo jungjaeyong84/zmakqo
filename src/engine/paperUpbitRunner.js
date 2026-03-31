@@ -4229,6 +4229,13 @@ function evaluateCanonicalEntryGate({ intent, intentDir, eventUpper, features, s
   };
 }
 
+function mergeCanonicalDecisionDetail(features = {}, detail = {}) {
+  return {
+    ...((features && typeof features === "object") ? features : {}),
+    ...((detail && typeof detail === "object") ? detail : {}),
+  };
+}
+
 function getCoreProbeMeta(posMeta, intentDir) {
   if (!posMeta || !intentDir) return null;
   const dir = String(intentDir).toLowerCase();
@@ -8507,7 +8514,8 @@ async function runPaperUpbitForBar({
         continue;
       }
       if (canonical.detail) {
-        s.features = { ...(s.features || {}), ...(canonical.detail || {}) };
+        s.features = mergeCanonicalDecisionDetail(s.features, canonical.detail);
+        Object.assign(features, canonical.detail || {});
       }
       const quality = evaluateEntryQualityGate({
         intent,
@@ -11383,7 +11391,8 @@ async function runPaperFuturesForBar({
         continue;
       }
       if (canonical.detail) {
-        s.features = { ...(s.features || {}), ...(canonical.detail || {}) };
+        s.features = mergeCanonicalDecisionDetail(s.features, canonical.detail);
+        Object.assign(features, canonical.detail || {});
       }
       const quality = evaluateEntryQualityGate({
         intent,
@@ -12112,6 +12121,7 @@ module.exports = {
     evaluateEntryQualityGate,
     resolveCanonicalEntryConfig,
     evaluateCanonicalEntryGate,
+    mergeCanonicalDecisionDetail,
     resolvePineStage1BundleMeta,
     resolveSignalTier,
     resolveEntryQualityTier,

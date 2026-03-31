@@ -3,7 +3,7 @@
 - 제정: 2026-03-31
 - 상태: ACTIVE
 - 목적:
-  - `Pine -> webhook -> 1~5차 서버 실행 -> 저장/리포트 -> BEST/FEBT 감독 -> self-evolution -> Codex/Claude authority -> 배포/수동 paste -> live confirm`
+  - `Pine -> webhook -> 1~5차 서버 실행 -> 저장/리포트 -> BEST/FEBT 감독 -> self-evolution -> Codex/Claude authority -> 배포/bundle activation`
     까지 전체 시스템을 한 문서에서 이해할 수 있게 정리한다.
   - 기존 세부 SSOT 문서를 대체하지 않고, 어떤 문서가 어디를 책임지는지 상위 지도 역할을 한다.
 - 연계 문서:
@@ -17,7 +17,7 @@
 
 ## 1. 한 줄 정의
 
-이 시스템은 `Pine가 신호 품질의 원천(SSOT)`을 만들고, `서버가 실행/드롭/리스크/실행 품질`을 책임지며, `BEST/FEBT 자동화와 self-evolution`이 그 결과를 학습해서 다음 Pine/정책 변경 후보를 만들고, `Codex + Claude ensemble`이 마지막 외부 권위로 승격을 통제하는 구조다.
+이 시스템은 현재 `bundle-based hybrid canonical` 상태다. 대부분 시장은 아직 `PINE_PRIMARY`로 움직이지만, 서버 canonical engine이 parity/provenance/probe/activation의 정본을 들고 있고, 일부 승인 시장은 `SERVER_PRIMARY` canary로 승격될 수 있다.
 
 ## 2. 시스템 최상위 흐름
 
@@ -30,9 +30,9 @@ flowchart LR
   E --> F["BEST Self-Evolution Loop"]
   F --> G["Codex + Claude Authority"]
   G --> H["Deployment Plan / Stage Autopilot"]
-  H --> I["Manual Pine Paste"]
-  I --> J["Live Signal Confirmation"]
-  J --> K["Applied Runtime / Next Cycle Feedback"]
+  H --> I["Bundle Activation / Deployment Probe"]
+  I --> J["Applied Runtime / Next Cycle Feedback"]
+  H -. legacy .-> K["Optional Manual Pine Paste"]
 ```
 
 ## 3. 용어 사전
@@ -54,7 +54,8 @@ flowchart LR
 6. `applied origin`
    - 현재 실제로 붙여넣어 운영 중인 Pine가 어떤 candidate 출처에서 왔는지
 7. `authority bypass`
-   - Pine는 운영에 반영됐지만, `CODEX_CLAUDE_ENSEMBLE`의 정식 `PROMOTE` 없이 적용된 상태
+   - 과거 artifact에 남아 있던 legacy 용어다.
+   - 최신 SSOT는 `authority_state=PENDING`과 `*_PENDING_AUTHORITY`만 쓴다.
 
 ## 4. Pine 레이어
 
@@ -158,6 +159,7 @@ Pine는 아래를 책임진다.
 4. fill이 체결됐는지
 5. 수량이 어느 단계에서 줄었는지
 6. `features_json.strategy_id`, `entry_qty_profile`, `ev_gate_*`, `ai_signal.*`, `febt_*`가 무엇인지
+7. `canonical_engine_*`, `pine_overlay_runtime_role`, `pine_shadow_*` provenance가 무엇인지
 
 ## 7. BEST/FEBT 감독 레이어
 
@@ -215,50 +217,78 @@ FEBT는 아래 문서들이 세부 SSOT다.
 현재 루프 단계:
 
 1. `dataset`
-2. `objective_seed`
-3. `objective`
-4. `attribution`
-5. `candidates`
-6. `replay`
-7. `filter_shadow_canary`
-8. `ev_gate_rescue`
-9. `canary`
-10. `memory`
-11. `deployment_guards`
-12. `weight_tuning`
-13. `codex_patch_engine`
-14. `claude_patch_engine`
-15. `authority_ensemble`
-16. `deployment_plan`
-17. `objective_integrated`
-18. `objective_final`
-19. `loop_monitor`
-20. `stage_autopilot`
+2. `canonical_engine_parity`
+3. `canonical_engine_provenance`
+4. `server_primary_canary`
+5. `pine_shadow_drift`
+6. `deployment_probe`
+7. `bundle_activation`
+8. `objective_seed`
+9. `objective`
+10. `attribution`
+11. `candidates`
+12. `replay`
+13. `filter_shadow_canary`
+14. `ev_gate_rescue`
+15. `canary`
+16. `memory`
+17. `deployment_guards`
+18. `weight_tuning`
+19. `codex_patch_engine`
+20. `claude_patch_engine`
+21. `authority_ensemble`
+22. `deployment_plan`
+23. `objective_integrated`
+24. `objective_final`
+25. `loop_monitor`
+26. `stage_autopilot`
 
 ### 8.3 각 단계의 의미
 
 1. `dataset`
    - 최근 signals / drops / intents / fills / trades를 학습 row로 정리
-2. `objective`
+2. `canonical_engine_parity`
+   - Pine source와 canonical engine source의 parity를 시장/티어/regime 기준으로 본다.
+3. `canonical_engine_provenance`
+   - `canonical_engine_*`, `pine_overlay_*`, `pine_shadow_*` 필드가 실제 row에 남는지 검증한다.
+4. `server_primary_canary`
+   - `SERVER_PRIMARY` 시장의 live row, disagreement, rollback trigger를 본다.
+5. `pine_shadow_drift`
+   - source가 `SERVER_PRIMARY`일 때 Pine overlay drift를 audit-only로 본다.
+6. `deployment_probe`
+   - `engine_bundle_loaded / policy_bundle_loaded / market_data_flow_ok / probe_pass`를 점검한다.
+7. `bundle_activation`
+   - deploy가 실제 active 상태인지 probe 기준으로 닫는다.
+8. `objective`
    - 전역/시장별 목적함수 계산
-3. `attribution`
+9. `attribution`
    - 손실, fallback, late, void, replacement 문제 분해
-4. `candidates`
+10. `candidates`
    - 자동 tightening / regime / tuning 후보 생성
-5. `replay`
+11. `replay`
    - offline delta 검증
-6. `canary`
+12. `filter_shadow_canary`
+   - 필터 shadow drift를 본다.
+13. `ev_gate_rescue`
+   - downstream EV mismatch를 후보/튜닝 관점으로 구조화한다.
+14. `canary`
    - 시장별 wave/stage 적용 가능성 계산
-7. `memory`
+15. `memory`
    - 실패 후보 재시도 금지와 TTL 관리
-8. `deployment_guards`
+16. `deployment_guards`
    - promotion 가능 여부 점검
-9. `codex/claude/ensemble`
+17. `weight_tuning`
+   - canary와 memory를 읽는 advisory weight tuning을 계산한다.
+18. `codex/claude/ensemble`
    - 외부 권위 심사
-10. `deployment_plan`
-   - 다음 Pine 파일, 현재 적용 상태, 수동 paste 필요 여부 정리
-11. `stage_autopilot`
-   - handoff 파일과 rollout 상태 갱신
+19. `deployment_plan`
+   - 다음 `engine_bundle / policy_bundle`과 현재 applied 상태를 정리한다.
+20. `objective_integrated / objective_final`
+   - 최종 integrated objective와 supervisor input을 정리한다.
+21. `loop_monitor`
+   - cycle consistency와 critical blocker를 최종 집계한다.
+22. `stage_autopilot`
+   - `EV / CANONICAL_POLICY / SOURCE_MODE` stage를 갱신한다.
 
 ## 9. 외부 권위 레이어
 
@@ -332,6 +362,7 @@ FEBT는 아래 문서들이 세부 SSOT다.
    를 확인한다.
 5. deployment plan / loop monitor / supervisor는 file path가 아니라 bundle activation 상태를 중심으로 새 applied 상태를 반영한다.
 6. `shadow_pine`는 운영 source가 아니라 overlay audit handoff로만 읽는다.
+7. 최신 applied 상태는 현재 `APPLIED_ACTIVE_PENDING_AUTHORITY`가 SSOT다.
 
 ### 10.2 current applied vs recommended target
 
@@ -346,17 +377,27 @@ FEBT는 아래 문서들이 세부 SSOT다.
 
 ## 11. 현재 수동 경계
 
-지금도 사람이 반드시 하는 일:
+지금도 사람이 할 수 있는 legacy 경계:
 
 1. TradingView Pine 붙여넣기
+
+중요:
+
+1. 이 경계는 더 이상 bundle activation 정본을 결정하지 않는다.
+2. 최신 applied 상태는 deployment probe와 bundle activation이 닫는다.
 
 사람이 원하면 개입할 수 있지만, 시스템이 기본적으로 자동화하는 일:
 
 1. prepared file 생성
 2. runtime/version sync
 3. webhook strategy gate 확장
-4. applied/live signal confirmation
+4. deployment probe / bundle activation
 5. objective/canary/self-evolution artifact 갱신
+
+현재 추가로 알아야 할 점:
+
+1. `SERVER_PRIMARY`는 이미 승인 시장 `AXSUSDT`에 적용됐다.
+2. 다만 canary acceptance는 아직 `executed_n = 0`이라 `SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT` 상태다.
 
 ## 12. 운영자가 지금 봐야 할 핵심 파일
 

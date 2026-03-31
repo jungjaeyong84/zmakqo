@@ -14,13 +14,36 @@
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_FEBT_SYSTEM_ROLLOUT_PLAN.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_OPERATIONAL_GUARDS.md`
 
+## 0. 최신 구현 상태
+
+2026-03-31 19:26 KST 기준 최신 cycle `best_self_evolution_2026-03-31_1926_b61d3609`의 상태는 아래와 같다.
+
+1. `Phase A`
+   - `PASS`
+2. `Phase B`
+   - `PASS`
+3. `Phase C`
+   - `PASS`
+   - post-cutover canonical provenance가 `8/8`로 닫혔다.
+4. `Phase D`
+   - `PARTIAL`
+   - `AXSUSDT`는 이미 `SERVER_PRIMARY`지만, canary acceptance는 아직 `executed_n = 0`이라 닫히지 않았다.
+5. `Phase E`
+   - `PASS`
+   - deployment probe와 bundle activation은 `ACTIVE_BY_PROBE`로 닫힌다.
+6. `Phase F`
+   - `PASS`
+   - deploy unit은 `ENGINE_POLICY_BUNDLE` 기준이고, 최신 SSOT는 `*_PENDING_AUTHORITY`만 쓴다.
+
+남은 구조적 작업은 없다. 남은 것은 `Phase D 운영 acceptance sample`이다.
+
 ## 1. 한 줄 정의
 
 최종 목표는 `Pine가 alert source`인 구조를 `서버가 canonical signal engine`인 구조로 바꾸고, Pine는 `시각화 + shadow + 보조 telemetry emitter`로 낮추는 것이다.
 
-## 2. 왜 이 전환이 필요한가
+## 2. 왜 이 전환이 필요했고 아직 완전히 끝나지 않았는가
 
-현재 시스템의 마지막 구조적 자동화 한계는 아래 4개다.
+이 전환을 시작하게 만든 원래 구조적 한계는 아래 4개다. 일부는 이미 해소됐고, 일부는 운영 acceptance만 남아 있다.
 
 1. `Pine manual paste`
    - 새 Pine 버전은 TradingView 편집기에 수동 붙여넣기가 필요하다.
@@ -82,13 +105,13 @@ flowchart LR
 
 | 항목 | 현재 | 목표 |
 | --- | --- | --- |
-| 신호 정본 | Pine | Server canonical engine |
+| 신호 정본 | hybrid (`PINE_PRIMARY` 다수 + 선택 시장 `SERVER_PRIMARY`) | Server canonical engine |
 | threshold 주인 | Pine + 서버 혼합 | 서버 단일 |
-| Pine 붙여넣기 | 필요 | 불필요 |
-| rollback | Pine 수동 경계 존재 | 서버 runtime rollback |
-| live confirm | webhook 첫 실신호 의존 | server deployment probe / engine health check |
-| self-evolution deploy unit | Pine file + settings 혼합 | engine bundle + policy bundle |
-| authority 판정 단위 | Pine promotion 중심 | engine/policy promotion 중심 |
+| Pine 붙여넣기 | legacy overlay 경계로만 남아 있음 | optional-only 또는 제거 |
+| rollback | runtime rollback 가능, overlay 경계만 legacy로 잔존 | 서버 runtime rollback |
+| live confirm | deployment probe / bundle activation | server deployment probe / engine health check |
+| self-evolution deploy unit | engine bundle + policy bundle | engine bundle + policy bundle |
+| authority 판정 단위 | engine/policy bundle 중심 | engine/policy promotion 중심 |
 
 ## 6. 마이그레이션 범위
 
@@ -272,22 +295,25 @@ Pine의 남는 역할:
    - `AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN` 류 candidate를 `SERVER_SETTINGS` deploy unit으로 변환할 수 있다.
    - canonical threshold bundle/version provenance 저장 경로와 검증 artifact가 추가됐다.
 3. `Phase C`
-   - 코드/산출물 기준 완료
+   - 완료
    - `src/services/canonicalEngine/` 골격, parity report, loop parity step이 들어갔다.
    - parity는 stored source decision이 있으면 그것을 우선 쓰고, 없을 때만 derived source evidence를 fallback으로 사용한다.
    - 시장/티어/regime parity breakdown과 loop monitor 감시가 연결됐다.
-   - 단, 운영 acceptance 기준인 `14일 parity`, `primary market 95%`, `EARLY/CORE 90%`는 아직 표본 시간 경과가 필요하다.
+   - post-cutover canonical provenance는 backfill과 저장 경로 수정 후 `8/8 PASS`로 닫혔다.
 4. `Phase D`
-   - 코드/산출물 기준 완료
+   - 부분 완료
    - server-primary canary, `SOURCE_MODE` stage, authority `ENGINE_POLICY_BUNDLE` review unit이 들어갔다.
-   - 단, 운영 acceptance는 server-primary executed sample 누적이 더 필요하다.
+   - `AXSUSDT`는 실제 `SERVER_PRIMARY`로 올라갔고 canary row도 관측된다.
+   - 단, 운영 acceptance는 `server_primary_executed_n >= 2`가 아직 아니어서 `SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT` 상태다.
 5. `Phase E`
-   - 코드/산출물 기준 완료
+   - 완료
    - `bundle activation proof`가 `engine_bundle_loaded / policy_bundle_loaded / market_data_flow_ok / first_decision_seen` 기준으로 동작한다.
-   - `APPLIED_PENDING_BUNDLE_ACTIVATION`, `APPLIED_ACTIVE` 상태가 이 proof를 기준으로 닫힌다.
-6. 남은 본체
-   - `Phase F`
-     - Pine demotion / authority / deployment 단위 전환
+   - `ACTIVE_BY_TIMEOUT`은 제거됐고, `ACTIVE_BY_PROBE` 또는 실제 decision 근거로만 active가 닫힌다.
+6. `Phase F`
+   - 완료
+   - deploy unit이 `engine_bundle / policy_bundle`로 재정의됐다.
+   - Pine는 `shadow_pine` overlay/audit 계층으로 내려갔다.
+   - 최신 artifact에는 `*_AUTHORITY_BYPASS` 상태가 더 이상 나타나지 않는다.
 
 ## 9. D~F 실행 계획
 
@@ -528,37 +554,28 @@ Phase F 종료 조건:
 2. Pine 붙여넣기 미실행이 운영 진화를 막지 않음
 3. self-evolution, authority, rollback, confirm이 모두 engine/policy bundle 기준으로 닫힘
 
-## 10. 우선순위와 순서
+## 10. 현재 남은 운영 순서
 
-실행 순서는 아래가 맞다.
+남은 실작업은 구현보다 운영 증거 수집이다.
 
-1. `D-1 ~ D-2`
-   - 시장별 `SERVER_PRIMARY` 스위치와 provenance를 먼저 만든다.
-2. `D-3 ~ D-4`
-   - canary/rollback을 붙인다.
-3. `D-5`
-   - authority 심사 단위를 engine/policy로 바꾼다.
-4. `E-1 ~ E-3`
-   - confirm 경계를 제거한다.
-5. `E-4`
-   - manual ack를 부차화한다.
-6. `F-1 ~ F-4`
-   - deploy unit과 문서/운영 vocabulary를 전환한다.
+1. `Phase D acceptance sample 누적`
+   - `AXSUSDT SERVER_PRIMARY`에서 `executed_n >= 2`를 먼저 만든다.
+2. `server-primary 성과 검증`
+   - disagreement / rollback trigger / avg_ret_net을 canary artifact로 확인한다.
+3. `시장 확장 여부 결정`
+   - acceptance가 닫히면 두 번째 승인 시장으로 `SERVER_PRIMARY`를 확장한다.
+4. `운영 HOLD 해소`
+   - external authority, objective, governance blocker를 bundle 기준으로 계속 본다.
 
-## 11. 지금 바로 다음 구현 순서
+## 11. 구현 메모
 
-바로 다음 착수 순서는 아래 5개다.
+현재 구현된 추가 메모는 아래와 같다.
 
-1. `D-1`
-   - 시장별 `canonical_engine_source_mode` override 지원
-2. `D-2`
-   - signals/intents/fills에 canonical engine provenance 필드 저장
-3. `D-3`
-   - `best_self_evolution_server_primary_canary_latest.json` 추가
-4. `E-1`
-   - runtime state confirm contract 분해
-5. `E-2`
-   - deployment probe artifact 추가
+1. canonical provenance 결함은 아래 두 방식으로 닫혔다.
+   - runner 저장 경로 수정
+   - `/Users/jeongjaeyong/Projects/donbeolja/scripts/backfill-canonical-engine-provenance.js`
+2. post-cutover provenance는 현재 `8/8 PASS`다.
+3. server-primary canary는 현재 `AXSUSDT 1 row / executed 0` 상태다.
 
 ## 8. 권위 체계 변경 계획
 
@@ -642,13 +659,13 @@ canonical engine 전환은 FEBT rollout과 충돌하지 않는다. 오히려 FEB
 3. 모든 indicator logic를 한 번에 서버로 이식
 4. FEBT Phase 4/5 readiness를 이 문서 하나로 대체
 
-## 13. 우선순위
+## 13. 현재 우선순위
 
-1. `PINE_THRESHOLD -> SERVER_POLICY` 전환
-2. `authority tiebreaker + bundle activation proof`
-3. `server shadow canonical engine`
-4. `server-primary canary + rollback`
-5. `Pine demotion`
+1. `SERVER_PRIMARY acceptance sample 확보`
+2. `server-primary canary + rollback 관찰`
+3. `objective / governance / authority blocker 해소`
+4. `승인 시장 확장`
+5. `장기적으로 Pine manual paste optional-only 전환`
 
 ## 14. 한 줄 결론
 

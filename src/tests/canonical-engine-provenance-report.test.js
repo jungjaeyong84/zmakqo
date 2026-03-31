@@ -87,9 +87,40 @@ const { __test } = require("../../scripts/report-best-self-evolution-canonical-e
     rows: report.rows,
   });
   assert.ok(md.includes("rows / raw webhook / engine eligible: 3 / 1 / 2"));
-  assert.ok(md.includes("complete: 1"));
+  assert.ok(md.includes("complete: effective 1/2"));
   assert.ok(md.includes("bundle / threshold / source_mode / execution_source / source_decision: 3 / 2 / 3 / 3 / 2"));
   assert.ok(md.includes("decision_id / policy_origin / pine_overlay_role / pine_shadow / pine_shadow_parity: 3 / 2 / 2 / 2 / 2"));
   assert.ok(md.includes("signals_dropped / ETHUSDT / SHORT / DROP__ETH"));
+
+  const cutoverReference = __test.deriveCutoverReference({
+    sourceModeSnapshot: { generated_at: "2026-03-31T06:00:00.000Z" },
+    canonicalPolicySnapshot: { generated_at: "2026-03-31T05:59:00.000Z" },
+  });
+  const cutoverReport = __test.deriveProvenanceReport({
+    signals: [
+      {
+        signal_id: "SIG__OLD",
+        event: "LONG",
+        symbol_or_pair_id: "BTCUSDT",
+        created_at: "2026-03-31T05:00:00.000Z",
+        features_json: {},
+      },
+    ],
+    drops: [
+      {
+        signal_id: "DROP__OLD",
+        event: "SHORT",
+        symbol_or_pair_id: "ETHUSDT",
+        created_at: "2026-03-31T05:05:00.000Z",
+        features_json: {},
+      },
+    ],
+    intents: [],
+    cutoverReference,
+  });
+  assert.strictEqual(cutoverReport.summary.cutover_reference_source, "SOURCE_MODE");
+  assert.strictEqual(cutoverReport.summary.post_cutover_engine_eligible_n, 0);
+  assert.strictEqual(cutoverReport.summary.post_cutover_status, "NO_ENGINE_ROWS_AFTER_CUTOVER");
+  assert.strictEqual(cutoverReport.summary.effective_eligible_n, 0);
   console.log("CANONICAL_ENGINE_PROVENANCE_REPORT_TEST_OK");
 })();

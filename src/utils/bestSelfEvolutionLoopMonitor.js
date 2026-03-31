@@ -53,6 +53,19 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const canarySummary = canary.summary && typeof canary.summary === "object" ? canary.summary : {};
   const canonicalParitySummary = canonicalParity.summary && typeof canonicalParity.summary === "object" ? canonicalParity.summary : {};
   const canonicalProvenanceSummary = canonicalProvenance.summary && typeof canonicalProvenance.summary === "object" ? canonicalProvenance.summary : {};
+  const canonicalProvenanceEligible = canonicalProvenanceSummary.post_cutover_engine_eligible_n != null
+    ? canonicalProvenanceSummary.post_cutover_engine_eligible_n
+    : (canonicalProvenanceSummary.eligible_n || 0);
+  const canonicalProvenanceComplete = canonicalProvenanceSummary.post_cutover_complete_n != null
+    ? canonicalProvenanceSummary.post_cutover_complete_n
+    : (canonicalProvenanceSummary.complete_n || 0);
+  const canonicalProvenanceSourceDecision = canonicalProvenanceSummary.post_cutover_with_actual_source_decision_n != null
+    ? canonicalProvenanceSummary.post_cutover_with_actual_source_decision_n
+    : (canonicalProvenanceSummary.with_actual_source_decision_n ?? canonicalProvenanceSummary.actual_source_decision_n ?? 0);
+  const canonicalProvenanceBundle = canonicalProvenanceSummary.post_cutover_with_bundle_version_n != null
+    ? canonicalProvenanceSummary.post_cutover_with_bundle_version_n
+    : (canonicalProvenanceSummary.with_bundle_version_n ?? canonicalProvenanceSummary.bundle_version_n ?? 0);
+  const canonicalProvenanceStatus = String(canonicalProvenanceSummary.post_cutover_status || "").trim().toUpperCase();
   const serverPrimaryCanarySummary = serverPrimaryCanary.summary && typeof serverPrimaryCanary.summary === "object" ? serverPrimaryCanary.summary : {};
   const pineShadowDriftSummary = pineShadowDrift.summary && typeof pineShadowDrift.summary === "object" ? pineShadowDrift.summary : {};
   const deploymentProbeSummary = deploymentProbe.summary && typeof deploymentProbe.summary === "object" ? deploymentProbe.summary : {};
@@ -133,10 +146,14 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       loop: "CANONICAL_PROVENANCE",
       fresh: artifacts.canonicalProvenance && artifacts.canonicalProvenance.fresh === true,
       cycle_id: readCycleId(canonicalProvenance),
-      status: Number(canonicalProvenanceSummary.complete_n || 0) > 0
+      status: canonicalProvenanceStatus === "NO_ENGINE_ROWS_AFTER_CUTOVER"
+        ? "N/A"
+        : Number(canonicalProvenanceComplete || 0) > 0
         ? "PASS"
-        : (Number(canonicalProvenanceSummary.eligible_n || 0) > 0 ? "HOLD" : "N/A"),
-      reason: `complete=${canonicalProvenanceSummary.complete_n ?? 0}/${canonicalProvenanceSummary.eligible_n ?? 0} / source_decision=${canonicalProvenanceSummary.with_actual_source_decision_n ?? canonicalProvenanceSummary.actual_source_decision_n ?? 0} / bundle=${canonicalProvenanceSummary.with_bundle_version_n ?? canonicalProvenanceSummary.bundle_version_n ?? 0}`,
+        : (Number(canonicalProvenanceEligible || 0) > 0 ? "HOLD" : "N/A"),
+      reason: canonicalProvenanceStatus === "NO_ENGINE_ROWS_AFTER_CUTOVER"
+        ? `cutover=${canonicalProvenanceSummary.cutover_reference_source || "N/A"} / eligible=0`
+        : `complete=${canonicalProvenanceComplete ?? 0}/${canonicalProvenanceEligible ?? 0} / source_decision=${canonicalProvenanceSourceDecision ?? 0} / bundle=${canonicalProvenanceBundle ?? 0}`,
     },
     {
       loop: "SERVER_PRIMARY_CANARY",

@@ -199,6 +199,25 @@ function run() {
   assert.strictEqual(provenance.storage_contract_gap_n, 2);
   assert.strictEqual(provenance.dominant_gap_collection, "signals_dropped");
 
+  const cutoverProvenance = deriveCanonicalProvenanceDiagnostics({
+    summary: {
+      cutover_reference_iso: "2026-03-31T09:06:01.827Z",
+      cutover_reference_source: "SOURCE_MODE",
+      post_cutover_status: "NO_ENGINE_ROWS_AFTER_CUTOVER",
+      post_cutover_engine_eligible_n: 0,
+      post_cutover_complete_n: 0,
+      post_cutover_with_bundle_version_n: 0,
+      post_cutover_with_threshold_bundle_version_n: 0,
+      post_cutover_with_source_mode_n: 0,
+      post_cutover_with_actual_source_decision_n: 0,
+      post_cutover_by_collection: [],
+    },
+  });
+  assert.strictEqual(cutoverProvenance.using_cutover_cohort, true);
+  assert.strictEqual(cutoverProvenance.awaiting_post_cutover_rows, true);
+  assert.strictEqual(cutoverProvenance.storage_contract_pass, null);
+  assert.strictEqual(cutoverProvenance.storage_contract_gap_n, 0);
+
   const serverPrimaryCanary = deriveServerPrimaryCanaryDiagnostics({
     summary: {
       server_primary_executed_n: 3,

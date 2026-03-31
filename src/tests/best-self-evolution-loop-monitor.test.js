@@ -192,5 +192,28 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
   assert.ok(absent.summary.critical_blockers.includes("SELF_EVOLUTION_CYCLE_ID_ABSENT"));
   assert.ok(absent.summary.critical_blockers.includes("SELF_EVOLUTION_CANONICAL_SOURCE_MISMATCH"));
   assert.ok(absent.summary.critical_blockers.includes("SELF_EVOLUTION_SERVER_PRIMARY_CANARY_BLOCK"));
+
+  const postCutoverPending = deriveLoopMonitor({
+    artifacts: {
+      objectiveSupervisor: { fresh: true },
+      canonicalProvenance: { fresh: true },
+    },
+    reports: {
+      objectiveSupervisor: { cycle_id: "cycle-pc", verdict: "HOLD", reason: "X" },
+      canonicalProvenance: {
+        cycle_id: "cycle-pc",
+        summary: {
+          cutover_reference_source: "SOURCE_MODE",
+          post_cutover_status: "NO_ENGINE_ROWS_AFTER_CUTOVER",
+          post_cutover_engine_eligible_n: 0,
+          post_cutover_complete_n: 0,
+        },
+      },
+    },
+  });
+  const postCutoverProvenanceRow = postCutoverPending.rows.find((row) => row.loop === "CANONICAL_PROVENANCE");
+  assert.ok(postCutoverProvenanceRow);
+  assert.strictEqual(postCutoverProvenanceRow.status, "N/A");
+  assert.strictEqual(postCutoverProvenanceRow.reason, "cutover=SOURCE_MODE / eligible=0");
   console.log("BEST_SELF_EVOLUTION_LOOP_MONITOR_TEST_OK");
 })();
