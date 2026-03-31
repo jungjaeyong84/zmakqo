@@ -26,6 +26,7 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
             stage: "PINE",
             machine_state: "READY",
             prepared_file_path: "/tmp/prepared.pine",
+            prepared_strategy_id: "donbeolja_v6.0.3.3",
             latest_generated_file_path: "/tmp/latest.pine",
             rollback_source_file_path: "/tmp/rollback.pine",
             signature: "AUTO_CORE_REGIME_TIGHTEN",
@@ -39,6 +40,7 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
           week_key: "2026W13",
           recommended_patch_id: "AUTO_CORE_REGIME_TIGHTEN",
           created_file_path: "/tmp/prepared.pine",
+          created_strategy_id: "donbeolja_v6.0.3.3",
           latest_generated_file_path: "/tmp/latest.pine",
           rollback_source_file_path: "/tmp/rollback.pine",
         },
@@ -49,10 +51,14 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
   assert.strictEqual(report.summary.plan_status, "READY_FOR_MANUAL_PASTE");
   assert.strictEqual(report.summary.manual_step_required, true);
   assert.strictEqual(report.summary.prepared_file_path, "/tmp/prepared.pine");
+  assert.strictEqual(report.summary.deploy_unit_primary, "ENGINE_POLICY_BUNDLE");
+  assert.strictEqual(report.summary.prepared_engine_bundle_id, "strategy:donbeolja_v6.0.3.3");
+  assert.strictEqual(report.summary.shadow_pine.prepared_file_path, "/tmp/prepared.pine");
   assert.strictEqual(report.summary.recommended_target_candidate_id, "AUTO_CORE_REGIME_TIGHTEN");
   assert.strictEqual(report.summary.prepared_origin_candidate_id, "AUTO_CORE_REGIME_TIGHTEN");
   assert.strictEqual(report.summary.market_scope_ready_n, 1);
   assert.strictEqual(report.handoff.checklist.length > 0, true);
+  assert.strictEqual(report.handoff.prepared_engine_bundle.bundle_id, "strategy:donbeolja_v6.0.3.3");
   assert.strictEqual(Array.isArray(report.summary.next_actions), true);
   console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_TEST_OK");
 })();

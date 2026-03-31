@@ -21,6 +21,11 @@ const { __test } = require("../../scripts/report-best-self-evolution-deployment-
       prepare_pass: true,
       ready_for_manual_paste: true,
       manual_step_required: true,
+      deploy_unit_primary: "ENGINE_POLICY_BUNDLE",
+      deploy_units: ["ENGINE_BUNDLE", "POLICY_BUNDLE"],
+      prepared_engine_bundle_id: "strategy:donbeolja_v6.0.3.3",
+      prepared_policy_bundle_id: "policy:bundle-1",
+      rollback_engine_bundle_id: "strategy:donbeolja_v6.0.3.2",
       open_wave: 1,
       target_wave: 1,
       market_scope_ready_n: 1,
@@ -34,6 +39,8 @@ const { __test } = require("../../scripts/report-best-self-evolution-deployment-
     handoff: { checklist: ["paste file"] },
   });
   assert.ok(md.includes("READY_FOR_MANUAL_PASTE"));
+  assert.ok(md.includes("ENGINE_POLICY_BUNDLE"));
+  assert.ok(md.includes("strategy:donbeolja_v6.0.3.3"));
   assert.ok(md.includes("/tmp/prepared.pine"));
   assert.ok(md.includes("BTCUSDT"));
   console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_REPORT_TEST_OK");

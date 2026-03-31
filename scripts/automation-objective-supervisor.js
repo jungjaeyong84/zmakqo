@@ -725,12 +725,71 @@ function summarizeSelfEvolutionDeploymentPlan(report = null) {
     confirmation_deadline_kst: String(summary.confirmation_deadline_kst || "").trim() || null,
     confirmed_signal_id: String(summary.confirmed_signal_id || "").trim() || null,
     confirmed_signal_created_at: String(summary.confirmed_signal_created_at || "").trim() || null,
+    deploy_unit_primary: String(summary.deploy_unit_primary || "").trim().toUpperCase() || null,
+    deploy_units: Array.isArray(summary.deploy_units) ? summary.deploy_units : [],
+    prepared_engine_bundle_id: String(
+      summary.prepared_engine_bundle_id
+      || (summary.prepared_engine_bundle && summary.prepared_engine_bundle.bundle_id)
+      || ""
+    ).trim() || null,
+    active_engine_bundle_id: String(
+      summary.active_engine_bundle_id
+      || (summary.active_engine_bundle && summary.active_engine_bundle.bundle_id)
+      || ""
+    ).trim() || null,
+    rollback_engine_bundle_id: String(
+      summary.rollback_engine_bundle_id
+      || (summary.rollback_engine_bundle && summary.rollback_engine_bundle.bundle_id)
+      || ""
+    ).trim() || null,
+    prepared_policy_bundle_id: String(
+      summary.prepared_policy_bundle_id
+      || (summary.prepared_policy_bundle && summary.prepared_policy_bundle.bundle_id)
+      || ""
+    ).trim() || null,
+    active_policy_bundle_id: String(
+      summary.active_policy_bundle_id
+      || (summary.active_policy_bundle && summary.active_policy_bundle.bundle_id)
+      || ""
+    ).trim() || null,
+    prepared_engine_bundle: summary.prepared_engine_bundle && typeof summary.prepared_engine_bundle === "object"
+      ? summary.prepared_engine_bundle
+      : null,
+    active_engine_bundle: summary.active_engine_bundle && typeof summary.active_engine_bundle === "object"
+      ? summary.active_engine_bundle
+      : null,
+    rollback_engine_bundle: summary.rollback_engine_bundle && typeof summary.rollback_engine_bundle === "object"
+      ? summary.rollback_engine_bundle
+      : null,
+    prepared_policy_bundle: summary.prepared_policy_bundle && typeof summary.prepared_policy_bundle === "object"
+      ? summary.prepared_policy_bundle
+      : null,
+    active_policy_bundle: summary.active_policy_bundle && typeof summary.active_policy_bundle === "object"
+      ? summary.active_policy_bundle
+      : null,
+    shadow_pine: summary.shadow_pine && typeof summary.shadow_pine === "object"
+      ? summary.shadow_pine
+      : null,
     codex_verdict: String(summary.codex_verdict || "").trim().toUpperCase() || null,
     blockers: Array.isArray(summary.blockers) ? summary.blockers : [],
     next_actions: Array.isArray(summary.next_actions) ? summary.next_actions : [],
     rows,
     handoff: {
       checklist: Array.isArray(handoff.checklist) ? handoff.checklist : [],
+      deploy_unit_primary: String(handoff.deploy_unit_primary || "").trim().toUpperCase() || null,
+      deploy_units: Array.isArray(handoff.deploy_units) ? handoff.deploy_units : [],
+      prepared_engine_bundle: handoff.prepared_engine_bundle && typeof handoff.prepared_engine_bundle === "object"
+        ? handoff.prepared_engine_bundle
+        : null,
+      prepared_policy_bundle: handoff.prepared_policy_bundle && typeof handoff.prepared_policy_bundle === "object"
+        ? handoff.prepared_policy_bundle
+        : null,
+      rollback_engine_bundle: handoff.rollback_engine_bundle && typeof handoff.rollback_engine_bundle === "object"
+        ? handoff.rollback_engine_bundle
+        : null,
+      shadow_pine: handoff.shadow_pine && typeof handoff.shadow_pine === "object"
+        ? handoff.shadow_pine
+        : null,
       prepared_file_path: String(handoff.prepared_file_path || "").trim() || null,
       latest_generated_file_path: String(handoff.latest_generated_file_path || "").trim() || null,
       rollback_source_file_path: String(handoff.rollback_source_file_path || "").trim() || null,
@@ -806,9 +865,14 @@ function summarizeCodexAuthority({
     manual_step_required: plan.manual_step_required === true,
     ready_for_manual_paste: plan.ready_for_manual_paste === true,
     prepared_stage_ready: plan.prepared_stage_ready === true,
+    deploy_unit_primary: plan.deploy_unit_primary || null,
+    prepared_engine_bundle_id: plan.prepared_engine_bundle_id || null,
+    prepared_policy_bundle_id: plan.prepared_policy_bundle_id || null,
+    rollback_engine_bundle_id: plan.rollback_engine_bundle_id || null,
     prepared_file_path: plan.prepared_file_path || null,
     latest_generated_file_path: plan.latest_generated_file_path || null,
     rollback_source_file_path: plan.rollback_source_file_path || null,
+    shadow_pine: plan.shadow_pine || null,
     blockers: Array.isArray(plan.blockers) ? plan.blockers : [],
     codex_review_status: String(review.codex_review && review.codex_review.status || "").trim().toUpperCase() || null,
     claude_review_status: String(review.claude_review && review.claude_review.status || "").trim().toUpperCase() || null,
@@ -1258,7 +1322,8 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
       header: "자기 진화 배포 handoff",
       lines: [
         `status ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.plan_status || "N/A"} / prepare ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.prepare_pass ? "PASS" : "BLOCK"} / manual ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.manual_step_required ? "YES" : "NO"}`,
-        `file ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.prepared_file_path || report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.latest_generated_file_path || "N/A"} / rollback ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.rollback_source_file_path || "N/A"}`,
+        `bundle ${report.self_evolution_deployment_plan && (report.self_evolution_deployment_plan.prepared_engine_bundle_id || report.self_evolution_deployment_plan.active_engine_bundle_id) || "N/A"} / policy ${report.self_evolution_deployment_plan && (report.self_evolution_deployment_plan.prepared_policy_bundle_id || report.self_evolution_deployment_plan.active_policy_bundle_id) || "N/A"} / rollback ${report.self_evolution_deployment_plan && (report.self_evolution_deployment_plan.rollback_engine_bundle_id || report.self_evolution_deployment_plan.rollback_source_file_path) || "N/A"}`,
+        `shadow ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.prepared_file_path || report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.latest_generated_file_path || "N/A"}`,
       ],
     },
     {
@@ -1300,7 +1365,7 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
       header: "외부 권한",
       lines: [
         `owner ${report.codex_authority && report.codex_authority.owner || "N/A"} / mode ${report.codex_authority && report.codex_authority.authority_mode || "N/A"} / verdict ${report.codex_authority && report.codex_authority.verdict || "N/A"}`,
-        `manual ${report.codex_authority && report.codex_authority.manual_step_required ? "YES" : "NO"} / file ${report.codex_authority && report.codex_authority.prepared_file_path || report.codex_authority && report.codex_authority.latest_generated_file_path || "N/A"}`,
+        `manual ${report.codex_authority && report.codex_authority.manual_step_required ? "YES" : "NO"} / bundle ${report.codex_authority && report.codex_authority.prepared_engine_bundle_id || "N/A"} / shadow ${report.codex_authority && report.codex_authority.prepared_file_path || report.codex_authority && report.codex_authority.latest_generated_file_path || "N/A"}`,
       ],
     },
     {
@@ -2049,7 +2114,8 @@ function renderMarkdown(report = {}) {
     "## Self-Evolution Deployment Plan",
     `- status/prepare/manual: ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.plan_status || "N/A"} / ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.prepare_pass ? "PASS" : "BLOCK"} / ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.manual_step_required ? "YES" : "NO"}`,
     `- target/wave/markets: ${report.self_evolution_deployment_plan && (report.self_evolution_deployment_plan.display_candidate_id || report.self_evolution_deployment_plan.target_candidate_id) || "N/A"} / ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.open_wave != null ? report.self_evolution_deployment_plan.open_wave : "N/A"} / ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.market_scope_ready_n != null ? report.self_evolution_deployment_plan.market_scope_ready_n : "N/A"} / ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.market_scope_n != null ? report.self_evolution_deployment_plan.market_scope_n : "N/A"}`,
-    `- prepared/latest/rollback: ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.prepared_file_path || "N/A"} / ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.latest_generated_file_path || "N/A"} / ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.rollback_source_file_path || "N/A"}`,
+    `- engine/policy/rollback bundle: ${report.self_evolution_deployment_plan && (report.self_evolution_deployment_plan.prepared_engine_bundle_id || report.self_evolution_deployment_plan.active_engine_bundle_id) || "N/A"} / ${report.self_evolution_deployment_plan && (report.self_evolution_deployment_plan.prepared_policy_bundle_id || report.self_evolution_deployment_plan.active_policy_bundle_id) || "N/A"} / ${report.self_evolution_deployment_plan && (report.self_evolution_deployment_plan.rollback_engine_bundle_id || report.self_evolution_deployment_plan.rollback_source_file_path) || "N/A"}`,
+    `- shadow prepared/latest: ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.prepared_file_path || "N/A"} / ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.latest_generated_file_path || "N/A"}`,
     `- blockers: ${report.self_evolution_deployment_plan && Array.isArray(report.self_evolution_deployment_plan.blockers) && report.self_evolution_deployment_plan.blockers.length ? report.self_evolution_deployment_plan.blockers.join("|") : "none"}`,
     "",
     "## Self-Evolution Loop Monitor",
@@ -2102,7 +2168,8 @@ function renderMarkdown(report = {}) {
     "## Codex Authority",
     `- owner/mode/status/verdict: ${report.codex_authority && report.codex_authority.owner || "N/A"} / ${report.codex_authority && report.codex_authority.authority_mode || "N/A"} / ${report.codex_authority && report.codex_authority.status || "N/A"} / ${report.codex_authority && report.codex_authority.verdict || "N/A"}`,
     `- manual/ready/prepared: ${report.codex_authority && report.codex_authority.manual_step_required ? "YES" : "NO"} / ${report.codex_authority && report.codex_authority.ready_for_manual_paste ? "YES" : "NO"} / ${report.codex_authority && report.codex_authority.prepared_stage_ready ? "YES" : "NO"}`,
-    `- candidate/file/rollback: ${report.codex_authority && (report.codex_authority.display_candidate_id || report.codex_authority.recommended_candidate_id) || "N/A"} / ${report.codex_authority && report.codex_authority.prepared_file_path || report.codex_authority && report.codex_authority.latest_generated_file_path || "N/A"} / ${report.codex_authority && report.codex_authority.recommended_rollback_file_path || report.codex_authority && report.codex_authority.rollback_source_file_path || "N/A"}`,
+    `- candidate/bundle/rollback: ${report.codex_authority && (report.codex_authority.display_candidate_id || report.codex_authority.recommended_candidate_id) || "N/A"} / ${report.codex_authority && report.codex_authority.prepared_engine_bundle_id || "N/A"} / ${report.codex_authority && report.codex_authority.recommended_rollback_file_path || report.codex_authority && report.codex_authority.rollback_engine_bundle_id || report.codex_authority && report.codex_authority.rollback_source_file_path || "N/A"}`,
+    `- shadow prepared: ${report.codex_authority && report.codex_authority.prepared_file_path || report.codex_authority && report.codex_authority.latest_generated_file_path || "N/A"}`,
     `- blockers: ${report.codex_authority && Array.isArray(report.codex_authority.blockers) && report.codex_authority.blockers.length ? report.codex_authority.blockers.join("|") : "none"}`,
     "",
     "## Stage Autopilot",

@@ -321,11 +321,18 @@ FEBT는 아래 문서들이 세부 SSOT다.
 
 ### 10.1 실제 흐름
 
-1. self-evolution이 다음 Pine file path를 준비한다.
-2. 사람이 TradingView에 붙여넣는다.
-3. `ack-self-evolution-manual-paste.js`가 runtime state를 기록한다.
-4. 첫 `LONG/SHORT` live 신호 또는 live dropped 신호가 들어오면 strategy id로 confirm한다.
-5. deployment plan / loop monitor / supervisor가 새 applied 상태를 반영한다.
+1. self-evolution이 다음 deploy unit을 계산한다.
+   - `engine_bundle`
+   - `policy_bundle`
+2. 현재는 호환 경계 때문에 `shadow_pine.prepared_file_path`가 같이 생성될 수 있다.
+3. `ack-self-evolution-manual-paste.js`는 legacy manual 경계가 있는 동안 runtime state를 기록한다.
+4. `bundle activation proof`
+   - `engine_bundle_loaded`
+   - `policy_bundle_loaded`
+   - `market_data_flow_ok`
+   - `first_decision_seen`
+   를 확인한다.
+5. deployment plan / loop monitor / supervisor는 file path가 아니라 bundle activation 상태를 중심으로 새 applied 상태를 반영한다.
 
 ### 10.2 current applied vs recommended target
 

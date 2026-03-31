@@ -155,7 +155,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       fresh: artifacts.deploymentPlan && artifacts.deploymentPlan.fresh === true,
       cycle_id: readCycleId(deploymentPlan),
       status: deploymentPlanStatus,
-      reason: `target=${deploymentPlanSummary.recommended_target_candidate_id || deploymentPlanSummary.target_candidate_id || "N/A"} / origin=${deploymentPlanSummary.applied_origin_candidate_id || deploymentPlanSummary.prepared_origin_candidate_id || "N/A"} / manual=${deploymentPlanSummary.manual_step_required ? "YES" : "NO"} / file=${deploymentPlanSummary.prepared_file_path || deploymentPlanSummary.latest_generated_file_path || "N/A"}`,
+      reason: `target=${deploymentPlanSummary.recommended_target_candidate_id || deploymentPlanSummary.target_candidate_id || "N/A"} / origin=${deploymentPlanSummary.applied_origin_candidate_id || deploymentPlanSummary.prepared_origin_candidate_id || "N/A"} / manual=${deploymentPlanSummary.manual_step_required ? "YES" : "NO"} / engine=${deploymentPlanSummary.prepared_engine_bundle_id || deploymentPlanSummary.active_engine_bundle_id || "N/A"} / policy=${deploymentPlanSummary.prepared_policy_bundle_id || deploymentPlanSummary.active_policy_bundle_id || "N/A"} / shadow=${deploymentPlanSummary.prepared_file_path || deploymentPlanSummary.latest_generated_file_path || "N/A"}`,
     },
     {
       loop: "STAGE_AUTOPILOT",

@@ -267,21 +267,25 @@ Pine의 남는 역할:
    - 완료
    - candidate에 `SERVER_POLICY / PINE_THRESHOLD / PINE_LOGIC` 분류가 들어갔다.
 2. `Phase B`
-   - 구조 구현 완료
+   - 코드/산출물 기준 완료
    - canonical threshold settings 경로와 `CANONICAL_POLICY` stage가 추가됐다.
    - `AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN` 류 candidate를 `SERVER_SETTINGS` deploy unit으로 변환할 수 있다.
-   - canonical threshold bundle/version provenance가 signals/intents/drops 저장 경로로 전파된다.
+   - canonical threshold bundle/version provenance 저장 경로와 검증 artifact가 추가됐다.
 3. `Phase C`
-   - 구조 구현 완료
+   - 코드/산출물 기준 완료
    - `src/services/canonicalEngine/` 골격, parity report, loop parity step이 들어갔다.
-   - parity는 현재 `source_parity_match_n > 0`, `final_downstream_mismatch_n > 0`를 구분해 기록한다.
+   - parity는 stored source decision이 있으면 그것을 우선 쓰고, 없을 때만 derived source evidence를 fallback으로 사용한다.
    - 시장/티어/regime parity breakdown과 loop monitor 감시가 연결됐다.
-   - 단, 문서의 운영 acceptance 기준인 `14일 parity`, `primary market 95%`, `EARLY/CORE 90%`는 아직 표본 시간 경과가 필요하다.
-4. 남은 본체
-   - `Phase D`
-     - server-primary 실행 경로
-   - `Phase E`
-     - Pine signal confirmation 의존 제거
+   - 단, 운영 acceptance 기준인 `14일 parity`, `primary market 95%`, `EARLY/CORE 90%`는 아직 표본 시간 경과가 필요하다.
+4. `Phase D`
+   - 코드/산출물 기준 완료
+   - server-primary canary, `SOURCE_MODE` stage, authority `ENGINE_POLICY_BUNDLE` review unit이 들어갔다.
+   - 단, 운영 acceptance는 server-primary executed sample 누적이 더 필요하다.
+5. `Phase E`
+   - 코드/산출물 기준 완료
+   - `bundle activation proof`가 `engine_bundle_loaded / policy_bundle_loaded / market_data_flow_ok / first_decision_seen` 기준으로 동작한다.
+   - `APPLIED_PENDING_BUNDLE_ACTIVATION`, `APPLIED_ACTIVE` 상태가 이 proof를 기준으로 닫힌다.
+6. 남은 본체
    - `Phase F`
      - Pine demotion / authority / deployment 단위 전환
 

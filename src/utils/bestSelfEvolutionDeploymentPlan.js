@@ -106,6 +106,139 @@ function extractPineStrategyId(pathValue) {
   }
 }
 
+function deriveEngineBundleId(strategyId = null) {
+  const normalized = String(strategyId || "").trim();
+  return normalized ? `strategy:${normalized}` : null;
+}
+
+function buildEngineBundle({
+  strategyId = null,
+  bundleId = null,
+  loaded = false,
+  ready = false,
+  source = null,
+} = {}) {
+  const normalizedStrategyId = String(strategyId || "").trim() || null;
+  const normalizedBundleId = String(bundleId || deriveEngineBundleId(normalizedStrategyId) || "").trim() || null;
+  return {
+    deploy_unit: "ENGINE_BUNDLE",
+    bundle_id: normalizedBundleId,
+    strategy_id: normalizedStrategyId,
+    loaded: loaded === true,
+    ready: ready === true,
+    source: String(source || "").trim() || null,
+  };
+}
+
+function buildPolicyBundle({
+  bundleId = null,
+  thresholdBundleSignature = null,
+  sourceModeSignature = null,
+  loaded = false,
+  source = null,
+  stagedCandidateId = null,
+  stagedSignature = null,
+  stageState = null,
+  stageReason = null,
+} = {}) {
+  return {
+    deploy_unit: "POLICY_BUNDLE",
+    bundle_id: String(bundleId || "").trim() || null,
+    threshold_bundle_signature: String(thresholdBundleSignature || "").trim() || null,
+    source_mode_signature: String(sourceModeSignature || "").trim() || null,
+    loaded: loaded === true,
+    source: String(source || "").trim() || null,
+    staged_candidate_id: String(stagedCandidateId || "").trim() || null,
+    staged_signature: String(stagedSignature || "").trim() || null,
+    stage_state: String(stageState || "").trim().toUpperCase() || null,
+    stage_reason: String(stageReason || "").trim() || null,
+  };
+}
+
+function buildShadowPine({
+  preparedFilePath = null,
+  latestGeneratedFilePath = null,
+  rollbackSourceFilePath = null,
+  preparedStrategyId = null,
+} = {}) {
+  return {
+    layer: "PINE_SHADOW",
+    prepared_file_path: String(preparedFilePath || "").trim() || null,
+    latest_generated_file_path: String(latestGeneratedFilePath || "").trim() || null,
+    rollback_source_file_path: String(rollbackSourceFilePath || "").trim() || null,
+    prepared_strategy_id: String(preparedStrategyId || "").trim() || null,
+  };
+}
+
+function deriveDeployUnits({
+  prepared = {},
+  manualPaste = {},
+  bundleActivationSummary = {},
+  canonicalPolicyRecommendation = null,
+  rollbackFilePath = null,
+} = {}) {
+  const rollbackSourceFilePath = String(rollbackFilePath || prepared.rollback_source_file_path || "").trim() || null;
+  const rollbackStrategyId = extractPineStrategyId(rollbackSourceFilePath);
+  const preparedEngineBundle = buildEngineBundle({
+    strategyId: prepared.prepared_strategy_id,
+    loaded: manualPaste.acknowledged === true
+      && !!prepared.prepared_strategy_id
+      && manualPaste.applied_strategy_id === prepared.prepared_strategy_id,
+    ready: prepared.prepared_stage_ready === true,
+    source: prepared.override_active === true ? "PREPARED_OVERRIDE" : "PINE_STAGE",
+  });
+  const activeEngineBundle = buildEngineBundle({
+    strategyId: manualPaste.applied_strategy_id,
+    bundleId: bundleActivationSummary.engine_bundle_id,
+    loaded: bundleActivationSummary.engine_bundle_loaded === true,
+    ready: manualPaste.acknowledged === true || bundleActivationSummary.engine_bundle_loaded === true,
+    source: bundleActivationSummary.engine_bundle_loaded === true
+      ? "BUNDLE_ACTIVATION"
+      : (manualPaste.acknowledged === true ? "MANUAL_ACK" : null),
+  });
+  const preparedPolicyBundle = buildPolicyBundle({
+    bundleId: bundleActivationSummary.policy_bundle_id,
+    thresholdBundleSignature: bundleActivationSummary.threshold_bundle_signature,
+    sourceModeSignature: bundleActivationSummary.source_mode_signature,
+    loaded: bundleActivationSummary.policy_bundle_loaded === true,
+    source: canonicalPolicyRecommendation ? "CANONICAL_POLICY_STAGE" : "BUNDLE_ACTIVATION",
+    stagedCandidateId: canonicalPolicyRecommendation && canonicalPolicyRecommendation.candidate_id,
+    stagedSignature: canonicalPolicyRecommendation && canonicalPolicyRecommendation.stage_signature,
+    stageState: canonicalPolicyRecommendation && canonicalPolicyRecommendation.stage_state,
+    stageReason: canonicalPolicyRecommendation && canonicalPolicyRecommendation.stage_reason,
+  });
+  const activePolicyBundle = buildPolicyBundle({
+    bundleId: bundleActivationSummary.policy_bundle_id,
+    thresholdBundleSignature: bundleActivationSummary.threshold_bundle_signature,
+    sourceModeSignature: bundleActivationSummary.source_mode_signature,
+    loaded: bundleActivationSummary.policy_bundle_loaded === true,
+    source: "BUNDLE_ACTIVATION",
+  });
+  const rollbackEngineBundle = buildEngineBundle({
+    strategyId: rollbackStrategyId,
+    bundleId: rollbackStrategyId ? deriveEngineBundleId(rollbackStrategyId) : (rollbackSourceFilePath ? `file:${rollbackSourceFilePath}` : null),
+    ready: !!rollbackSourceFilePath,
+    loaded: false,
+    source: rollbackSourceFilePath ? "ROLLBACK_SOURCE_FILE" : null,
+  });
+  const shadowPine = buildShadowPine({
+    preparedFilePath: prepared.prepared_file_path,
+    latestGeneratedFilePath: prepared.latest_generated_file_path,
+    rollbackSourceFilePath,
+    preparedStrategyId: prepared.prepared_strategy_id,
+  });
+  return {
+    deploy_unit_primary: "ENGINE_POLICY_BUNDLE",
+    deploy_units: ["ENGINE_BUNDLE", "POLICY_BUNDLE"],
+    prepared_engine_bundle: preparedEngineBundle,
+    active_engine_bundle: activeEngineBundle,
+    rollback_engine_bundle: rollbackEngineBundle,
+    prepared_policy_bundle: preparedPolicyBundle,
+    active_policy_bundle: activePolicyBundle,
+    shadow_pine: shadowPine,
+  };
+}
+
 function findPreparedPaths({ stageAutopilot = null, weeklyHistory = null, targetCandidateId = null, rollbackFilePath = null, preparedOverride = null } = {}) {
   const stage = unwrapRawReport(stageAutopilot) || {};
   const stageRows = Array.isArray(stage.stage_rows) ? stage.stage_rows : [];
@@ -453,6 +586,13 @@ function deriveDeploymentPlan({
     && (manualPaste.acknowledged === true || liveSignalConfirmation.confirmed === true)
     && !appliedAuthorityApproved
   );
+  const deployUnits = deriveDeployUnits({
+    prepared,
+    manualPaste,
+    bundleActivationSummary,
+    canonicalPolicyRecommendation,
+    rollbackFilePath,
+  });
 
   let planStatus = "HOLD";
   if (readyForManualRollback) planStatus = "READY_FOR_MANUAL_ROLLBACK";
@@ -581,6 +721,19 @@ function deriveDeploymentPlan({
       policy_bundle_id: bundleActivationSummary.policy_bundle_id,
       threshold_bundle_signature: bundleActivationSummary.threshold_bundle_signature,
       source_mode_signature: bundleActivationSummary.source_mode_signature,
+      deploy_unit_primary: deployUnits.deploy_unit_primary,
+      deploy_units: deployUnits.deploy_units,
+      prepared_engine_bundle_id: deployUnits.prepared_engine_bundle.bundle_id,
+      active_engine_bundle_id: deployUnits.active_engine_bundle.bundle_id,
+      rollback_engine_bundle_id: deployUnits.rollback_engine_bundle.bundle_id,
+      prepared_policy_bundle_id: deployUnits.prepared_policy_bundle.bundle_id,
+      active_policy_bundle_id: deployUnits.active_policy_bundle.bundle_id,
+      prepared_engine_bundle: deployUnits.prepared_engine_bundle,
+      active_engine_bundle: deployUnits.active_engine_bundle,
+      rollback_engine_bundle: deployUnits.rollback_engine_bundle,
+      prepared_policy_bundle: deployUnits.prepared_policy_bundle,
+      active_policy_bundle: deployUnits.active_policy_bundle,
+      shadow_pine: deployUnits.shadow_pine,
       open_wave: openWave,
       target_wave: openWave,
       market_scope_n: marketScope.total_n,
@@ -609,6 +762,12 @@ function deriveDeploymentPlan({
     rows: marketScope.rows,
     handoff: {
       checklist,
+      deploy_unit_primary: deployUnits.deploy_unit_primary,
+      deploy_units: deployUnits.deploy_units,
+      prepared_engine_bundle: deployUnits.prepared_engine_bundle,
+      prepared_policy_bundle: deployUnits.prepared_policy_bundle,
+      rollback_engine_bundle: deployUnits.rollback_engine_bundle,
+      shadow_pine: deployUnits.shadow_pine,
       prepared_file_path: prepared.prepared_file_path,
       prepared_strategy_id: prepared.prepared_strategy_id,
       latest_generated_file_path: prepared.latest_generated_file_path,
