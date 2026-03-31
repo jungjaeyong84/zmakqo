@@ -19,6 +19,12 @@ function loadLatestArtifact(fileName) {
   const display = file && typeof file === "object" && !Array.isArray(file) && file.display && typeof file.display === "object"
     ? file.display
     : raw;
+  const rows =
+    (Array.isArray(display && display.rows) && display.rows) ||
+    (Array.isArray(raw && raw.rows) && raw.rows) ||
+    (Array.isArray(display && display.stage_rows) && display.stage_rows) ||
+    (Array.isArray(raw && raw.stage_rows) && raw.stage_rows) ||
+    [];
   return {
     fileName,
     absPath,
@@ -27,15 +33,16 @@ function loadLatestArtifact(fileName) {
     display,
     summary: (raw && raw.summary) || (display && display.summary) || {},
     currentStatus: (raw && raw.current_status) || (display && display.current_status) || {},
-    rows: Array.isArray((display && display.rows)) ? display.rows : Array.isArray(raw && raw.rows) ? raw.rows : [],
+    rows,
   };
 }
 
 function statusTone(value) {
   const s = String(value || "").toUpperCase();
   if (!s) return "dim";
-  if (["PASS", "OK", "ACTIVE", "APPROVED", "PROMOTE", "READY", "YES", "TRUE", "ON_TRACK"].includes(s)) return "ok";
-  if (s.includes("FAIL") || s.includes("BLOCK") || s.includes("ROLLBACK") || s === "HOLD" || s === "PENDING" || s === "TIMEOUT_HOLD" || s === "OBJECTIVE_RECOVERY_REQUIRED") return s.includes("PENDING") ? "warn" : "bad";
+  if (s.includes("PENDING")) return "warn";
+  if (s.includes("FAIL") || s.includes("BLOCK") || s.includes("ROLLBACK") || s === "HOLD" || s === "TIMEOUT_HOLD" || s === "OBJECTIVE_RECOVERY_REQUIRED") return "bad";
+  if (["PASS", "OK", "ACTIVE", "APPROVED", "PROMOTE", "READY", "YES", "TRUE", "ON_TRACK"].includes(s) || s.includes("ACTIVE")) return "ok";
   if (s.includes("WATCH") || s.includes("MONITOR") || s.includes("WARN") || s.includes("PARTIAL") || s.includes("SHORT") || s === "N/A") return "warn";
   return "dim";
 }
@@ -228,6 +235,10 @@ function buildMissionControlViewModel() {
 
   const sourceMode = buildSourceModeText(stageAutopilot);
   const policyBundle = buildPolicyBundleLabel(deploymentPlan, stageAutopilot);
+  const autonomyControlPlane =
+    (autonomy.raw && autonomy.raw.control_plane) ||
+    (autonomy.display && autonomy.display.control_plane) ||
+    {};
   const topBlocker = Array.isArray(loopMonitor.summary.critical_blockers) && loopMonitor.summary.critical_blockers.length
     ? loopMonitor.summary.critical_blockers[0]
     : compactText(objectiveSupervisor.display && objectiveSupervisor.display.root_cause);
@@ -353,10 +364,10 @@ function buildMissionControlViewModel() {
             title: "Shadow Pine",
             tone: "dim",
             rows: [
-              { label: "Role", value: "SHADOW_OVERLAY_AUDIT" },
-              { label: "Execution SOT", value: compactText(autonomy.control_plane && autonomy.control_plane.execution_sot) },
-              { label: "Telegram", value: compactText(autonomy.control_plane && autonomy.control_plane.telegram_transport_sot) },
-              { label: "Scheduler", value: compactText(autonomy.control_plane && autonomy.control_plane.scheduler_sot) },
+              { label: "Role", value: compactText(autonomyControlPlane.pine_role || "SHADOW_OVERLAY_AUDIT") },
+              { label: "Execution SOT", value: compactText(autonomyControlPlane.execution_sot) },
+              { label: "Telegram", value: compactText(autonomyControlPlane.telegram_transport_sot || autonomy.currentStatus.telegram_transport_sot) },
+              { label: "Scheduler", value: compactText(autonomyControlPlane.scheduler_sot || autonomy.currentStatus.scheduler_mode) },
             ],
           },
         ],

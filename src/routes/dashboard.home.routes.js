@@ -618,10 +618,8 @@ router.get("/dashboard/home", async (req, res) => {
     const cacheKey = `${exchange}__${signalTf}__${execTf}__${weekly.from}__${weekly.to}`;
     const cached = getHomeCache(cacheKey);
     if (cached) {
-      const cachedPayload = cached.mission_control
-        ? cached
-        : { ...cached, mission_control: buildMissionControlViewModel() };
-      if (cachedPayload !== cached) setHomeCache(cacheKey, cachedPayload);
+      const cachedPayload = { ...cached, mission_control: buildMissionControlViewModel() };
+      setHomeCache(cacheKey, cachedPayload);
       return res.render("home", cachedPayload);
     }
 
