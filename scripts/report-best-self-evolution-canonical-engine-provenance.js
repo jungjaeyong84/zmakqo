@@ -67,18 +67,22 @@ function deriveCollectionCoverage(rows = [], collection) {
   const withBundle = scoped.filter((row) => row.features.canonical_engine_bundle_version != null).length;
   const withThresholdBundle = scoped.filter((row) => row.features.canonical_engine_threshold_bundle_version != null).length;
   const withSourceMode = scoped.filter((row) => row.features.canonical_engine_source_mode_effective != null).length;
+  const withExecutionSource = scoped.filter((row) => row.features.canonical_engine_execution_source_effective != null).length;
   const withSourceDecision = scoped.filter((row) => row.features.canonical_engine_actual_source_decision != null).length;
   const withDecisionId = scoped.filter((row) => row.features.canonical_engine_decision_id != null).length;
   const withPolicyOrigin = scoped.filter((row) => row.features.canonical_engine_policy_origin != null).length;
+  const withPineOverlayRole = scoped.filter((row) => row.features.pine_overlay_runtime_role != null).length;
   const withPineShadowDecision = scoped.filter((row) => row.features.pine_shadow_decision != null).length;
   const withPineShadowParity = scoped.filter((row) => row.features.pine_shadow_parity_match != null).length;
   const completeN = scoped.filter((row) =>
     row.features.canonical_engine_bundle_version != null
     && row.features.canonical_engine_threshold_bundle_version != null
     && row.features.canonical_engine_source_mode_effective != null
+    && row.features.canonical_engine_execution_source_effective != null
     && row.features.canonical_engine_actual_source_decision != null
     && row.features.canonical_engine_decision_id != null
     && row.features.canonical_engine_policy_origin != null
+    && row.features.pine_overlay_runtime_role != null
     && row.features.pine_shadow_decision != null
     && row.features.pine_shadow_parity_match != null
   ).length;
@@ -88,9 +92,11 @@ function deriveCollectionCoverage(rows = [], collection) {
     with_bundle_version_n: withBundle,
     with_threshold_bundle_version_n: withThresholdBundle,
     with_source_mode_n: withSourceMode,
+    with_execution_source_n: withExecutionSource,
     with_actual_source_decision_n: withSourceDecision,
     with_decision_id_n: withDecisionId,
     with_policy_origin_n: withPolicyOrigin,
+    with_pine_overlay_role_n: withPineOverlayRole,
     with_pine_shadow_decision_n: withPineShadowDecision,
     with_pine_shadow_parity_n: withPineShadowParity,
     complete_n: completeN,
@@ -109,18 +115,22 @@ function deriveProvenanceReport({ signals = [], drops = [], intents = [] } = {})
   const withBundleVersionN = rows.filter((row) => row.features.canonical_engine_bundle_version != null).length;
   const withThresholdBundleVersionN = rows.filter((row) => row.features.canonical_engine_threshold_bundle_version != null).length;
   const withSourceModeN = rows.filter((row) => row.features.canonical_engine_source_mode_effective != null).length;
+  const withExecutionSourceN = rows.filter((row) => row.features.canonical_engine_execution_source_effective != null).length;
   const withActualSourceDecisionN = rows.filter((row) => row.features.canonical_engine_actual_source_decision != null).length;
   const withDecisionIdN = rows.filter((row) => row.features.canonical_engine_decision_id != null).length;
   const withPolicyOriginN = rows.filter((row) => row.features.canonical_engine_policy_origin != null).length;
+  const withPineOverlayRoleN = rows.filter((row) => row.features.pine_overlay_runtime_role != null).length;
   const withPineShadowDecisionN = rows.filter((row) => row.features.pine_shadow_decision != null).length;
   const withPineShadowParityN = rows.filter((row) => row.features.pine_shadow_parity_match != null).length;
   const completeRows = rows.filter((row) =>
     row.features.canonical_engine_bundle_version != null
     && row.features.canonical_engine_threshold_bundle_version != null
     && row.features.canonical_engine_source_mode_effective != null
+    && row.features.canonical_engine_execution_source_effective != null
     && row.features.canonical_engine_actual_source_decision != null
     && row.features.canonical_engine_decision_id != null
     && row.features.canonical_engine_policy_origin != null
+    && row.features.pine_overlay_runtime_role != null
     && row.features.pine_shadow_decision != null
     && row.features.pine_shadow_parity_match != null
   );
@@ -139,9 +149,11 @@ function deriveProvenanceReport({ signals = [], drops = [], intents = [] } = {})
         row.features.canonical_engine_bundle_version == null ? "canonical_engine_bundle_version" : null,
         row.features.canonical_engine_threshold_bundle_version == null ? "canonical_engine_threshold_bundle_version" : null,
         row.features.canonical_engine_source_mode_effective == null ? "canonical_engine_source_mode_effective" : null,
+        row.features.canonical_engine_execution_source_effective == null ? "canonical_engine_execution_source_effective" : null,
         row.features.canonical_engine_actual_source_decision == null ? "canonical_engine_actual_source_decision" : null,
         row.features.canonical_engine_decision_id == null ? "canonical_engine_decision_id" : null,
         row.features.canonical_engine_policy_origin == null ? "canonical_engine_policy_origin" : null,
+        row.features.pine_overlay_runtime_role == null ? "pine_overlay_runtime_role" : null,
         row.features.pine_shadow_decision == null ? "pine_shadow_decision" : null,
         row.features.pine_shadow_parity_match == null ? "pine_shadow_parity_match" : null,
       ].filter(Boolean),
@@ -155,9 +167,11 @@ function deriveProvenanceReport({ signals = [], drops = [], intents = [] } = {})
       with_bundle_version_n: withBundleVersionN,
       with_threshold_bundle_version_n: withThresholdBundleVersionN,
       with_source_mode_n: withSourceModeN,
+      with_execution_source_n: withExecutionSourceN,
       with_actual_source_decision_n: withActualSourceDecisionN,
       with_decision_id_n: withDecisionIdN,
       with_policy_origin_n: withPolicyOriginN,
+      with_pine_overlay_role_n: withPineOverlayRoleN,
       with_pine_shadow_decision_n: withPineShadowDecisionN,
       with_pine_shadow_parity_n: withPineShadowParityN,
       complete_n: completeRows.length,
@@ -168,8 +182,10 @@ function deriveProvenanceReport({ signals = [], drops = [], intents = [] } = {})
       complete_rate: eligibleN > 0 ? (completeRows.length / eligibleN) : null,
       by_collection: byCollection,
       by_source_mode: countBy(rows.filter((row) => row.features.canonical_engine_source_mode_effective != null), (row) => row.features.canonical_engine_source_mode_effective),
+      by_execution_source: countBy(rows.filter((row) => row.features.canonical_engine_execution_source_effective != null), (row) => row.features.canonical_engine_execution_source_effective),
       by_actual_source_decision: countBy(rows.filter((row) => row.features.canonical_engine_actual_source_decision != null), (row) => row.features.canonical_engine_actual_source_decision),
       by_policy_origin: countBy(rows.filter((row) => row.features.canonical_engine_policy_origin != null), (row) => row.features.canonical_engine_policy_origin),
+      by_pine_overlay_role: countBy(rows.filter((row) => row.features.pine_overlay_runtime_role != null), (row) => row.features.pine_overlay_runtime_role),
       by_pine_shadow_decision: countBy(rows.filter((row) => row.features.pine_shadow_decision != null), (row) => row.features.pine_shadow_decision),
     },
     rows: missingRows,
@@ -194,13 +210,15 @@ function renderMarkdown(report = {}) {
     "",
     "## Summary",
     `- eligible rows: ${summary.eligible_n || 0}`,
-    `- bundle / threshold / source_mode / source_decision: ${summary.with_bundle_version_n || 0} / ${summary.with_threshold_bundle_version_n || 0} / ${summary.with_source_mode_n || 0} / ${summary.with_actual_source_decision_n || 0}`,
-    `- decision_id / policy_origin / pine_shadow / pine_shadow_parity: ${summary.with_decision_id_n || 0} / ${summary.with_policy_origin_n || 0} / ${summary.with_pine_shadow_decision_n || 0} / ${summary.with_pine_shadow_parity_n || 0}`,
+    `- bundle / threshold / source_mode / execution_source / source_decision: ${summary.with_bundle_version_n || 0} / ${summary.with_threshold_bundle_version_n || 0} / ${summary.with_source_mode_n || 0} / ${summary.with_execution_source_n || 0} / ${summary.with_actual_source_decision_n || 0}`,
+    `- decision_id / policy_origin / pine_overlay_role / pine_shadow / pine_shadow_parity: ${summary.with_decision_id_n || 0} / ${summary.with_policy_origin_n || 0} / ${summary.with_pine_overlay_role_n || 0} / ${summary.with_pine_shadow_decision_n || 0} / ${summary.with_pine_shadow_parity_n || 0}`,
     `- complete: ${summary.complete_n || 0} (${pct(summary.complete_rate)})`,
     `- by collection: ${Array.isArray(summary.by_collection) ? summary.by_collection.map((row) => `${row.collection}=${row.complete_n}/${row.eligible_n} (${pct(row.complete_rate)})`).join(", ") : "none"}`,
     `- by source mode: ${Array.isArray(summary.by_source_mode) && summary.by_source_mode.length ? summary.by_source_mode.map((row) => `${row.key}=${row.count}`).join(", ") : "none"}`,
+    `- by execution source: ${Array.isArray(summary.by_execution_source) && summary.by_execution_source.length ? summary.by_execution_source.map((row) => `${row.key}=${row.count}`).join(", ") : "none"}`,
     `- by actual source decision: ${Array.isArray(summary.by_actual_source_decision) && summary.by_actual_source_decision.length ? summary.by_actual_source_decision.map((row) => `${row.key}=${row.count}`).join(", ") : "none"}`,
     `- by policy origin: ${Array.isArray(summary.by_policy_origin) && summary.by_policy_origin.length ? summary.by_policy_origin.map((row) => `${row.key}=${row.count}`).join(", ") : "none"}`,
+    `- by pine overlay role: ${Array.isArray(summary.by_pine_overlay_role) && summary.by_pine_overlay_role.length ? summary.by_pine_overlay_role.map((row) => `${row.key}=${row.count}`).join(", ") : "none"}`,
     `- by pine shadow decision: ${Array.isArray(summary.by_pine_shadow_decision) && summary.by_pine_shadow_decision.length ? summary.by_pine_shadow_decision.map((row) => `${row.key}=${row.count}`).join(", ") : "none"}`,
     "",
     "## Missing Rows",

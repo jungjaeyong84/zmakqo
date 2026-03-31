@@ -72,8 +72,11 @@ const {
   assert.strictEqual(shadow.detail.canonical_engine_bundle_version, shadowCfg.bundleVersion);
   assert.strictEqual(shadow.detail.canonical_engine_threshold_bundle_version, shadowCfg.thresholdBundleVersion);
   assert.strictEqual(shadow.detail.canonical_engine_source_mode_effective, "PINE_PRIMARY");
+  assert.strictEqual(shadow.detail.canonical_engine_execution_source_effective, "PINE_ALERT");
   assert.strictEqual(typeof shadow.detail.canonical_engine_decision_id, "string");
   assert.strictEqual(shadow.detail.canonical_engine_policy_origin, "MARKET_OVERRIDE");
+  assert.strictEqual(shadow.detail.pine_overlay_runtime_role, "PRIMARY_ALERT");
+  assert.strictEqual(shadow.detail.pine_overlay_audit_only, false);
   assert.strictEqual(shadow.detail.pine_shadow_decision, "PASS");
   assert.strictEqual(shadow.detail.pine_shadow_parity_match, true);
 
@@ -95,5 +98,8 @@ const {
   });
   assert.strictEqual(primary.ok, false);
   assert.strictEqual(primary.reason, "DROP_CANONICAL_ENGINE_TRANSITION_CORE_SCORE");
+  assert.strictEqual(primary.detail.canonical_engine_execution_source_effective, "SERVER_CANONICAL");
+  assert.strictEqual(primary.detail.pine_overlay_runtime_role, "SHADOW_AUDIT");
+  assert.strictEqual(primary.detail.pine_overlay_audit_only, true);
   console.log("CANONICAL_ENGINE_TEST_OK");
 })();

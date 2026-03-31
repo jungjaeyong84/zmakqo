@@ -67,6 +67,8 @@ function evaluateCanonicalDecision({ features, event, side, market, tf, config, 
     ? "PINE_ALERT_UPSTREAM_PASS"
     : (pineShadowPass === false ? "PINE_ALERT_UPSTREAM_DROP" : null);
   const pineShadowParityMatch = pineShadowPass === null ? null : pineShadowPass === actualSourcePass;
+  const executionSource = resolvedConfig.sourceMode === "SERVER_PRIMARY" ? "SERVER_CANONICAL" : "PINE_ALERT";
+  const pineRuntimeRole = resolvedConfig.sourceMode === "SERVER_PRIMARY" ? "SHADOW_AUDIT" : "PRIMARY_ALERT";
   const policyOrigin = resolvedConfig.marketOverrideActive === true ? "MARKET_OVERRIDE" : "GLOBAL_DEFAULT";
   const policyOriginDetail = resolvedConfig.marketOverrideActive === true
     ? (resolvedConfig.marketOverrideKey || null)
@@ -85,6 +87,8 @@ function evaluateCanonicalDecision({ features, event, side, market, tf, config, 
     canonical_engine_shadow_enabled: resolvedConfig.shadowEnabled === true,
     canonical_engine_source_mode: resolvedConfig.sourceMode || null,
     canonical_engine_source_mode_effective: resolvedConfig.sourceMode || null,
+    canonical_engine_execution_source: executionSource,
+    canonical_engine_execution_source_effective: executionSource,
     canonical_engine_market_override_key: resolvedConfig.marketOverrideKey || null,
     canonical_engine_market_override_active: resolvedConfig.marketOverrideActive === true,
     canonical_engine_decision_id: decisionId,
@@ -119,6 +123,10 @@ function evaluateCanonicalDecision({ features, event, side, market, tf, config, 
     canonical_engine_actual_source_pass: actualSourcePass,
     canonical_engine_actual_source_reason: actualSourceReason,
     canonical_engine_actual_source_evidence: "EVALUATED",
+    pine_overlay_build_id: snapshot.strategy_id || null,
+    pine_overlay_strategy_id: snapshot.strategy_id || null,
+    pine_overlay_runtime_role: pineRuntimeRole,
+    pine_overlay_audit_only: pineRuntimeRole === "SHADOW_AUDIT",
     pine_shadow_decision: normalizedPineShadowDecision,
     pine_shadow_pass: pineShadowPass,
     pine_shadow_reason: pineShadowReason,
