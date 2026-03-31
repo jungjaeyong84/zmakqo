@@ -29,6 +29,7 @@ const {
   buildRollbackPrepared,
   computeSignatureStreak,
   evaluateCommonAutoApply,
+  getRawProviderSettings,
   getStageState,
   normalizeSignature,
   pickSettingsSnapshot,
@@ -53,6 +54,15 @@ const STREAK_REQUIRED = Math.max(2, Number(process.env.STAGE_AUTOPILOT_STREAK_RE
 const CHANGE_BUDGET_WINDOW_HOURS = Math.max(12, Number(process.env.STAGE_AUTOPILOT_CHANGE_BUDGET_WINDOW_HOURS || 24));
 const CHANGE_BUDGET_LIMIT = Math.max(1, Number(process.env.STAGE_AUTOPILOT_CHANGE_BUDGET_LIMIT || 2));
 const SAME_STAGE_COOLDOWN_HOURS = Math.max(12, Number(process.env.STAGE_AUTOPILOT_STAGE_COOLDOWN_HOURS || 36));
+const STAGE_BUDGET_SCOPES = Object.freeze({
+  AI: "POLICY_TUNING",
+  MARKET: "POLICY_TUNING",
+  EV: "POLICY_TUNING",
+  WAIT: "POLICY_TUNING",
+  CANONICAL_POLICY: "CANONICAL_ENGINE",
+  SOURCE_MODE: "CANONICAL_ENGINE",
+  PINE: "PINE_OVERLAY",
+});
 const PINE_REVIEW_MAX_AGE_HOURS = Math.max(6, Number(process.env.STAGE_AUTOPILOT_PINE_REVIEW_MAX_AGE_HOURS || 36));
 const FRESHNESS_HOURS = Object.freeze({
   objective: Math.max(6, Number(process.env.STAGE_AUTOPILOT_OBJECTIVE_MAX_AGE_HOURS || 18)),
@@ -238,20 +248,40 @@ function stableSignature(obj = {}) {
   return keys.map((key) => `${key}=${JSON.stringify(obj[key])}`).join("|");
 }
 
-function countRecentMutations(history = [], nowMs, hours, stage = null) {
+function resolveStageBudgetScope(stage) {
+  const stageKey = String(stage || "").trim().toUpperCase();
+  return STAGE_BUDGET_SCOPES[stageKey] || stageKey || "UNKNOWN";
+}
+
+function isMutationHistoryRow(row) {
+  const action = String(row && row.action || "").trim().toUpperCase();
+  if (action === "PINE_PREPARE") return true;
+  if (action !== "AUTO_APPLY" && action !== "AUTO_ROLLBACK") return false;
+  const runKey = String(row && row.run_key || "").trim().toUpperCase();
+  return runKey.includes("__AUTO_APPLY") || runKey.includes("__AUTO_ROLLBACK");
+}
+
+function countRecentMutations(history = [], nowMs, hours, stage = null, matchMode = "scope") {
   const cutoff = nowMs - (hours * 60 * 60 * 1000);
   return (Array.isArray(history) ? history : []).filter((row) => {
     const ts = Number(row && row.ts_ms);
     if (!Number.isFinite(ts) || ts < cutoff) return false;
-    if (stage && String(row && row.stage || "") !== String(stage)) return false;
-    const action = String(row && row.action || "").toUpperCase();
-    return action === "AUTO_APPLY" || action === "AUTO_ROLLBACK" || action === "PINE_PREPARE";
+    if (stage) {
+      if (matchMode === "stage") {
+        if (String(row && row.stage || "").trim().toUpperCase() !== String(stage || "").trim().toUpperCase()) return false;
+      } else {
+        const expectedScope = resolveStageBudgetScope(stage);
+        const rowScope = String(row && row.budget_scope || "").trim().toUpperCase() || resolveStageBudgetScope(row && row.stage);
+        if (rowScope !== expectedScope) return false;
+      }
+    }
+    return isMutationHistoryRow(row);
   }).length;
 }
 
 function stageChangeBudgetOk(history = [], nowMs, stage) {
-  if (countRecentMutations(history, nowMs, CHANGE_BUDGET_WINDOW_HOURS) >= CHANGE_BUDGET_LIMIT) return false;
-  if (countRecentMutations(history, nowMs, SAME_STAGE_COOLDOWN_HOURS, stage) > 0) return false;
+  if (countRecentMutations(history, nowMs, CHANGE_BUDGET_WINDOW_HOURS, stage, "scope") >= CHANGE_BUDGET_LIMIT) return false;
+  if (countRecentMutations(history, nowMs, SAME_STAGE_COOLDOWN_HOURS, stage, "stage") > 0) return false;
   return true;
 }
 
@@ -429,11 +459,7 @@ function applyCanonicalSourceModeChanges({ currentSys = {}, candidate = {}, next
     const currentMode = resolveCanonicalSourceModeForMarket(currentSys, market);
     currentModes.push({ market, current_source_mode: currentMode, next_source_mode: targetMode });
     if (currentMode === targetMode) continue;
-    const currentRow = nextOverrides[market] && typeof nextOverrides[market] === "object"
-      ? { ...nextOverrides[market] }
-      : {};
-    currentRow.source_mode = targetMode;
-    nextOverrides[market] = currentRow;
+    nextOverrides[market] = { source_mode: targetMode };
   }
   if (stableSignature(nextOverrides) !== stableSignature(currentOverrides)) {
     nextSettings.canonical_engine_market_overrides = nextOverrides;
@@ -442,6 +468,23 @@ function applyCanonicalSourceModeChanges({ currentSys = {}, candidate = {}, next
     nextSettings,
     current_modes: currentModes,
   };
+}
+
+function mergeStageNextSettings(currentSys = {}, nextSettings = {}) {
+  const merged = { ...(nextSettings || {}) };
+  if (Object.prototype.hasOwnProperty.call(nextSettings || {}, "canonical_engine_market_overrides")) {
+    const currentOverrides = normalizeCanonicalEngineMarketOverrides(currentSys && currentSys.canonical_engine_market_overrides);
+    const incomingOverrides = normalizeCanonicalEngineMarketOverrides(nextSettings && nextSettings.canonical_engine_market_overrides);
+    const mergedOverrides = { ...currentOverrides };
+    for (const [market, incomingRow] of Object.entries(incomingOverrides || {})) {
+      const currentRow = mergedOverrides[market] && typeof mergedOverrides[market] === "object"
+        ? mergedOverrides[market]
+        : {};
+      mergedOverrides[market] = { ...currentRow, ...(incomingRow || {}) };
+    }
+    merged.canonical_engine_market_overrides = mergedOverrides;
+  }
+  return merged;
 }
 
 function buildCanonicalPolicyStageCandidate(candidatesArtifact, currentSys = {}, objectiveSupervisor = {}) {
@@ -507,6 +550,7 @@ function buildCanonicalPolicyStageCandidate(candidatesArtifact, currentSys = {},
 function buildSourceModeStageCandidate({
   candidatesArtifact,
   parityArtifact,
+  serverPrimaryCanaryArtifact,
   currentSys = {},
   objectiveSupervisor = {},
 } = {}) {
@@ -525,9 +569,17 @@ function buildSourceModeStageCandidate({
   const paritySummary = parityArtifact && parityArtifact.data && parityArtifact.data.summary && typeof parityArtifact.data.summary === "object"
     ? parityArtifact.data.summary
     : {};
+  const serverPrimarySummary = serverPrimaryCanaryArtifact && serverPrimaryCanaryArtifact.data && serverPrimaryCanaryArtifact.data.summary && typeof serverPrimaryCanaryArtifact.data.summary === "object"
+    ? serverPrimaryCanaryArtifact.data.summary
+    : {};
   const sourceParityMismatchN = toNum(paritySummary.source_parity_mismatch_n) || 0;
   const shadowObservedN = toNum(paritySummary.shadow_observed_n) || 0;
   const shadowObservedMin = Math.max(5, Number(process.env.STAGE_AUTOPILOT_SOURCE_MODE_PARITY_MIN || 5));
+  const serverPrimaryExecutedN = toNum(serverPrimarySummary.server_primary_executed_n) || 0;
+  const serverPrimaryApplyPass = typeof serverPrimarySummary.apply_pass === "boolean" ? serverPrimarySummary.apply_pass : null;
+  const serverPrimaryAcceptanceReady = serverPrimarySummary.acceptance_ready === true;
+  const serverPrimaryAcceptanceReason = String(serverPrimarySummary.acceptance_reason || "").trim().toUpperCase() || null;
+  const serverPrimaryRollbackTriggerN = toNum(serverPrimarySummary.rollback_trigger_n) || 0;
   if (!selected) {
     return {
       stage: "SOURCE_MODE",
@@ -549,6 +601,11 @@ function buildSourceModeStageCandidate({
       support_n: shadowObservedN,
       source_parity_mismatch_n: sourceParityMismatchN,
       current_source_modes: [],
+      server_primary_executed_n: serverPrimaryExecutedN,
+      server_primary_apply_pass: serverPrimaryApplyPass,
+      server_primary_acceptance_ready: serverPrimaryAcceptanceReady,
+      server_primary_acceptance_reason: serverPrimaryAcceptanceReason,
+      server_primary_rollback_trigger_n: serverPrimaryRollbackTriggerN,
     };
   }
 
@@ -564,7 +621,9 @@ function buildSourceModeStageCandidate({
     && Object.keys(nextSettings).length > 0;
   let reason = "SOURCE_MODE_NOOP";
   if (actionable) reason = "SERVER_PRIMARY_PROMOTION_READY";
-  else if (alreadyServerPrimary) reason = "SOURCE_MODE_ALREADY_SERVER_PRIMARY";
+  else if (alreadyServerPrimary && serverPrimaryApplyPass === false) reason = "SERVER_PRIMARY_CANARY_BLOCK";
+  else if (alreadyServerPrimary && serverPrimaryAcceptanceReady) reason = "SERVER_PRIMARY_ACTIVE";
+  else if (alreadyServerPrimary) reason = serverPrimaryAcceptanceReason || "SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT";
   else if (sourceParityMismatchN > 0) reason = "SOURCE_MODE_SOURCE_PARITY_BLOCK";
   else if (shadowObservedN < shadowObservedMin) reason = "SOURCE_MODE_PARITY_SAMPLE_SHORT";
   return {
@@ -584,9 +643,14 @@ function buildSourceModeStageCandidate({
     direction: "SHIFT",
     candidate_id: String(selected.candidate_id || "").trim() || null,
     source: "CANONICAL_PARITY_SOURCE_MODE_PROMOTION",
-    support_n: shadowObservedN,
+    support_n: alreadyServerPrimary ? serverPrimaryExecutedN : shadowObservedN,
     source_parity_mismatch_n: sourceParityMismatchN,
     current_source_modes: current_modes,
+    server_primary_executed_n: serverPrimaryExecutedN,
+    server_primary_apply_pass: serverPrimaryApplyPass,
+    server_primary_acceptance_ready: serverPrimaryAcceptanceReady,
+    server_primary_acceptance_reason: alreadyServerPrimary || serverPrimaryExecutedN > 0 ? serverPrimaryAcceptanceReason : null,
+    server_primary_rollback_trigger_n: serverPrimaryRollbackTriggerN,
   };
 }
 
@@ -715,11 +779,12 @@ function renderMarkdown(report = {}) {
     `- objective: ${report.objective_verdict || "N/A"}`,
     `- canary: ${report.canary_pass ? "PASS" : "BLOCK"}`,
     `- self_evolution_canary: ${report.self_evolution_canary && report.self_evolution_canary.apply_pass ? "PASS" : "BLOCK"} / rollback_ready ${report.self_evolution_canary && report.self_evolution_canary.rollback_ready_n != null ? report.self_evolution_canary.rollback_ready_n : "N/A"}`,
-    `- server_primary_canary: ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.apply_pass === true ? "PASS" : (report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.apply_pass === false ? "BLOCK" : "N/A")} / executed ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.executed_n != null ? report.self_evolution_server_primary_canary.executed_n : "N/A"} / rollback ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.rollback_trigger_n != null ? report.self_evolution_server_primary_canary.rollback_trigger_n : "N/A"}`,
+    `- server_primary_canary: ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.apply_pass === true ? "PASS" : (report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.apply_pass === false ? "BLOCK" : "N/A")} / executed ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.executed_n != null ? report.self_evolution_server_primary_canary.executed_n : "N/A"} / rollback ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.rollback_trigger_n != null ? report.self_evolution_server_primary_canary.rollback_trigger_n : "N/A"} / acceptance ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.acceptance_ready ? "READY" : "PENDING"}`,
     `- self_evolution_deployment: ${report.self_evolution_deployment && report.self_evolution_deployment.deploy_pass ? "PASS" : "BLOCK"} / target ${report.self_evolution_deployment && report.self_evolution_deployment.target_candidate_id || "N/A"}`,
-    `- deployment plan: ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.plan_status || "N/A"} / manual ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.manual_step_required ? "YES" : "NO"} / file ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.prepared_file_path || report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.latest_generated_file_path || "N/A"}`,
-    `- pine handoff: ${report.self_evolution_pine_handoff && report.self_evolution_pine_handoff.stage_ready ? "READY" : "HOLD"} / file ${report.self_evolution_pine_handoff && report.self_evolution_pine_handoff.prepared_file_path || "N/A"} / latest ${report.self_evolution_pine_handoff && report.self_evolution_pine_handoff.latest_generated_file_path || "N/A"}`,
-    `- codex authority: ${report.codex_authority && report.codex_authority.authority_mode || "N/A"} / ${report.codex_authority && report.codex_authority.verdict || "N/A"} / manual ${report.codex_authority && report.codex_authority.manual_step_required ? "YES" : "NO"}`,
+    `- deployment plan: ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.plan_status || "N/A"} / unit ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.deploy_unit_primary || "N/A"} / authority ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.authority_state || "N/A"}`,
+    `- bundle handoff: engine ${report.self_evolution_deployment_plan && (report.self_evolution_deployment_plan.prepared_engine_bundle_id || report.self_evolution_deployment_plan.active_engine_bundle_id) || "N/A"} / policy ${report.self_evolution_deployment_plan && (report.self_evolution_deployment_plan.prepared_policy_bundle_id || report.self_evolution_deployment_plan.active_policy_bundle_id) || "N/A"}`,
+    `- pine overlay: ${report.self_evolution_pine_handoff && report.self_evolution_pine_handoff.stage_ready ? "READY" : "HOLD"} / prepared ${report.self_evolution_pine_handoff && report.self_evolution_pine_handoff.prepared_file_path || "N/A"} / latest ${report.self_evolution_pine_handoff && report.self_evolution_pine_handoff.latest_generated_file_path || "N/A"}`,
+    `- codex authority: ${report.codex_authority && report.codex_authority.authority_mode || "N/A"} / ${report.codex_authority && report.codex_authority.verdict || "N/A"} / unit ${report.codex_authority && report.codex_authority.review_unit || "N/A"}`,
     `- BEST/FEBT contract: ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.mode || "N/A"} / tightening ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.tightening_allowed ? "ALLOW" : "BLOCK"} / recovery ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.recovery_priority ? "FIRST" : "NORMAL"} / replacement ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_replacement_ratio != null ? Number(report.best_febt_tuning_contract.projected_replacement_ratio).toFixed(2) : "N/A"} / count ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_count_ratio_global != null ? Number(report.best_febt_tuning_contract.projected_count_ratio_global).toFixed(2) : "N/A"}x`,
     "",
     "## Stages",
@@ -729,7 +794,9 @@ function renderMarkdown(report = {}) {
     if (row.blockers && row.blockers.length) lines.push(`  - blockers: ${row.blockers.join(", ")}`);
     if (row.signature) lines.push(`  - signature: ${row.signature}`);
     if (row.snapshot_path) lines.push(`  - snapshot: ${row.snapshot_path}`);
-    if (row.prepared_file_path || row.latest_generated_file_path) lines.push(`  - handoff: ${row.prepared_file_path || "N/A"} / latest ${row.latest_generated_file_path || "N/A"}`);
+    if (row.prepared_engine_bundle_id || row.prepared_policy_bundle_id) lines.push(`  - bundle: engine ${row.prepared_engine_bundle_id || "N/A"} / policy ${row.prepared_policy_bundle_id || "N/A"}`);
+    if (row.stage === "SOURCE_MODE") lines.push(`  - acceptance: executed ${row.server_primary_executed_n ?? "N/A"} / apply ${row.server_primary_apply_pass == null ? "N/A" : (row.server_primary_apply_pass ? "PASS" : "BLOCK")} / ready ${row.server_primary_acceptance_ready ? "YES" : "NO"} / ${row.server_primary_acceptance_reason || "N/A"}`);
+    if (row.prepared_file_path || row.latest_generated_file_path) lines.push(`  - pine-overlay: ${row.prepared_file_path || "N/A"} / latest ${row.latest_generated_file_path || "N/A"}`);
   }
   lines.push("");
   lines.push("## Actions");
@@ -860,6 +927,38 @@ function runWeeklyPinePreparation() {
   };
 }
 
+function resolveStageRollbackInputs({
+  stage,
+  candidate = {},
+  objectiveArtifact = null,
+  canaryPass = true,
+  selfEvolutionRollbackReady = false,
+} = {}) {
+  const stageKey = String(stage || "").trim().toUpperCase();
+  if (stageKey === "SOURCE_MODE") {
+    const sourceModeCanaryPass = candidate.server_primary_apply_pass === false ? false : canaryPass;
+    const sourceModeRollbackReady = selfEvolutionRollbackReady === true
+      || (Number(candidate.server_primary_rollback_trigger_n || 0) > 0);
+    return {
+      objectiveSupervisor: { objective: { enough_sample: false } },
+      canaryPass: sourceModeCanaryPass,
+      selfEvolutionRollbackReady: sourceModeRollbackReady,
+    };
+  }
+  if (stageKey === "CANONICAL_POLICY") {
+    return {
+      objectiveSupervisor: { objective: { enough_sample: false } },
+      canaryPass,
+      selfEvolutionRollbackReady,
+    };
+  }
+  return {
+    objectiveSupervisor: objectiveArtifact && objectiveArtifact.data ? objectiveArtifact.data : {},
+    canaryPass,
+    selfEvolutionRollbackReady,
+  };
+}
+
 function isPreparedPineAligned(latestWeeklyHistory = {}, candidate = {}) {
   if (!candidate || String(candidate.kind || "").toUpperCase() === "ROLLBACK") return true;
   const recommendedPatchId = String(latestWeeklyHistory && latestWeeklyHistory.recommended_patch_id || "").trim() || null;
@@ -881,9 +980,10 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
       stage,
       run_key: String(candidate.run_key || nowMeta.kst),
       signature: candidate.signature,
-      action: candidate.action || candidate.kind || "WATCH",
+      action: candidate.actionable ? `PROPOSED_${candidate.action || candidate.kind || "WATCH"}` : "WATCH",
       reason: candidate.reason,
       ts_ms: nowMs,
+      budget_scope: resolveStageBudgetScope(stage),
     })
     : history;
   const streakCurrent = candidate.signature ? computeSignatureStreak(nextHistory, stage, candidate.signature) : 0;
@@ -902,19 +1002,22 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
   });
 
   if (candidate.actionable && guard.ready && stageState.applied_signature !== candidate.signature) {
+    const liveCurrentSys = await getRawProviderSettings(PROVIDER);
+    const liveSnapshot = pickSettingsSnapshot(liveCurrentSys, snapshotKeys);
+    const effectiveNextSettings = mergeStageNextSettings(liveCurrentSys, candidate.nextSettings || {});
     const snapshotWrite = writeStageSnapshot({
       stage,
       provider: PROVIDER,
-      snapshot,
+      snapshot: liveSnapshot,
       meta: {
         source: "automation-stage-autopilot",
-        next_settings: candidate.nextSettings,
+        next_settings: effectiveNextSettings,
         reason: candidate.reason,
       },
     });
     await updateProviderSettings({
       provider: PROVIDER,
-      kv: candidate.nextSettings,
+      kv: effectiveNextSettings,
       updatedBy: `automation-stage-autopilot:${stage.toLowerCase()}`,
     });
     return {
@@ -928,7 +1031,7 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
         streak_current: streakCurrent,
         applied_at_kst: nowMeta.kst,
         applied_signature: candidate.signature,
-        pre_apply_snapshot: snapshotWrite.data.snapshot,
+        pre_apply_snapshot: liveSnapshot,
         adverse_streak_n: 0,
         monitor_window_runs: 0,
         last_snapshot_path: snapshotWrite.filePath,
@@ -939,18 +1042,26 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
         run_key: `${nowMeta.kst}__AUTO_APPLY`,
         signature: candidate.signature,
         action: "AUTO_APPLY",
-        reason: candidate.reason,
-        ts_ms: nowMs,
-      }),
-      action: { stage, type: "AUTO_APPLY", detail: stableSignature(candidate.nextSettings) },
+      reason: candidate.reason,
+      ts_ms: nowMs,
+      budget_scope: resolveStageBudgetScope(stage),
+    }),
+      action: { stage, type: "AUTO_APPLY", detail: stableSignature(effectiveNextSettings) },
     };
   }
 
-  const rollback = shouldAutoRollback({
-    stageState,
-    objectiveSupervisor: objectiveArtifact && objectiveArtifact.data ? objectiveArtifact.data : {},
+  const rollbackInputs = resolveStageRollbackInputs({
+    stage,
+    candidate,
+    objectiveArtifact,
     canaryPass,
     selfEvolutionRollbackReady,
+  });
+  const rollback = shouldAutoRollback({
+    stageState,
+    objectiveSupervisor: rollbackInputs.objectiveSupervisor,
+    canaryPass: rollbackInputs.canaryPass,
+    selfEvolutionRollbackReady: rollbackInputs.selfEvolutionRollbackReady,
   });
   if (rollback.rollback && stageState.pre_apply_snapshot && Object.keys(stageState.pre_apply_snapshot).length) {
     await updateProviderSettings({
@@ -978,6 +1089,7 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
         action: "AUTO_ROLLBACK",
         reason: "OBJECTIVE_OR_CANARY_ADVERSE",
         ts_ms: nowMs,
+        budget_scope: resolveStageBudgetScope(stage),
       }),
       action: { stage, type: "AUTO_ROLLBACK", detail: stableSignature(stageState.pre_apply_snapshot) },
     };
@@ -1006,12 +1118,12 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
   };
 }
 
-async function processObservedStage({ stage, artifact, stateData, currentSys, objectiveArtifact, canaryPass, nowMeta, nowMs, selfEvolutionRollbackReady = false }) {
+async function processObservedStage({ stage, artifact, stateData, history: currentHistory = [], currentSys, objectiveArtifact, canaryPass, nowMeta, nowMs, selfEvolutionRollbackReady = false }) {
   const currentObjective = objectiveArtifact && objectiveArtifact.data ? objectiveArtifact.data.objective : null;
   const stageState = getStageState(stateData, stage);
   const candidate = buildObservedStageCandidate(stage, artifact, currentObjective);
   const runKey = String(candidate && candidate.reason || artifact && artifact.data && artifact.data.generated_at_kst || nowMeta.kst);
-  let history = stateData.history || [];
+  let history = Array.isArray(currentHistory) ? currentHistory : [];
   if (candidate.signature) {
     history = appendStageHistory(history, {
       stage,
@@ -1020,6 +1132,7 @@ async function processObservedStage({ stage, artifact, stateData, currentSys, ob
       action: candidate.observedUpdate ? "OBSERVED_UPDATE" : "MONITOR",
       reason: candidate.reason,
       ts_ms: nowMs,
+      budget_scope: resolveStageBudgetScope(stage),
     });
   }
   if (candidate.observedUpdate && stageState.applied_signature !== candidate.signature) {
@@ -1049,6 +1162,7 @@ async function processObservedStage({ stage, artifact, stateData, currentSys, ob
         action: "AUTO_APPLY",
         reason: candidate.reason,
         ts_ms: nowMs,
+        budget_scope: resolveStageBudgetScope(stage),
       }),
       action: { stage, type: "AUTO_APPLY", detail: candidate.signature },
     };
@@ -1085,6 +1199,7 @@ async function processObservedStage({ stage, artifact, stateData, currentSys, ob
         action: "AUTO_ROLLBACK",
         reason: "OBJECTIVE_OR_CANARY_ADVERSE",
         ts_ms: nowMs,
+        budget_scope: resolveStageBudgetScope(stage),
       }),
       action: { stage, type: "AUTO_ROLLBACK", detail: stableSignature(stageState.pre_apply_snapshot) },
     };
@@ -1112,6 +1227,7 @@ async function processPineStage({
   codexArtifact,
   changeArtifact,
   stateData,
+  history: currentHistory = [],
   canaryPass,
   canaryReason = null,
   nowMeta,
@@ -1121,7 +1237,7 @@ async function processPineStage({
   const candidate = candidateOverride || buildPineCandidate(objectiveArtifact, codexArtifact, changeArtifact);
   const stage = "PINE";
   const stageState = getStageState(stateData, stage);
-  let history = stateData.history || [];
+  let history = Array.isArray(currentHistory) ? currentHistory : [];
   if (candidate.signature) {
     history = appendStageHistory(history, {
       stage,
@@ -1385,6 +1501,7 @@ async function main() {
       stage: "EV",
       artifact: evArtifact,
       stateData,
+      history,
       currentSys,
       objectiveArtifact: objectiveArtifactForLoop,
       canaryPass,
@@ -1427,6 +1544,7 @@ async function main() {
     stage: "WAIT",
     artifact: waitArtifact,
     stateData,
+    history,
     currentSys,
     objectiveArtifact: objectiveArtifactForLoop,
     canaryPass,
@@ -1494,6 +1612,7 @@ async function main() {
   const sourceModeCandidate = buildSourceModeStageCandidate({
     candidatesArtifact: selfEvolutionCandidatesArtifact,
     parityArtifact: selfEvolutionCanonicalParityArtifact,
+    serverPrimaryCanaryArtifact: selfEvolutionServerPrimaryCanaryArtifact,
     currentSys,
     objectiveSupervisor: objectiveArtifactForLoop.data || {},
   });
@@ -1539,6 +1658,11 @@ async function main() {
     support_n: sourceModeCandidate.support_n || 0,
     source_parity_mismatch_n: sourceModeCandidate.source_parity_mismatch_n || 0,
     current_source_modes: sourceModeCandidate.current_source_modes || [],
+    server_primary_executed_n: sourceModeCandidate.server_primary_executed_n || 0,
+    server_primary_apply_pass: sourceModeCandidate.server_primary_apply_pass,
+    server_primary_acceptance_ready: sourceModeCandidate.server_primary_acceptance_ready === true,
+    server_primary_acceptance_reason: sourceModeCandidate.server_primary_acceptance_reason || null,
+    server_primary_rollback_trigger_n: sourceModeCandidate.server_primary_rollback_trigger_n || 0,
     server_primary_rollback_ready: serverPrimaryRollbackReady,
     best_febt_guard: sourceModeBestFebtGuard.reason,
   });
@@ -1573,6 +1697,7 @@ async function main() {
     codexArtifact,
     changeArtifact,
     stateData,
+    history,
     canaryPass,
     canaryReason,
     nowMeta,
@@ -1792,7 +1917,9 @@ module.exports = {
     applyCanonicalThresholdChanges,
     buildCanonicalPolicyStageCandidate,
     applyCanonicalSourceModeChanges,
+    mergeStageNextSettings,
     buildSourceModeStageCandidate,
     buildEvParityCandidate,
+    resolveStageRollbackInputs,
   },
 };

@@ -35,14 +35,14 @@ const { __test } = require("../../src/utils/selfEvolutionRuntimeState");
   });
   assert.strictEqual(normalizedConfirmed.live_signal_confirmation_pending, false);
   assert.strictEqual(normalizedConfirmed.confirmed_signal_id, "SIG__BINANCEFUT__ETHUSDT__15m__1774858500000__LONG");
-  assert.strictEqual(normalizedConfirmed.plan_status, "APPLIED_CONFIRMED_AUTHORITY_BYPASS");
+  assert.strictEqual(normalizedConfirmed.plan_status, "APPLIED_PENDING_BUNDLE_ACTIVATION_PENDING_AUTHORITY");
 
   const derivedPendingBypass = __test.deriveRuntimePlanStatus({
     acknowledged: true,
     liveSignalConfirmed: false,
     authorityBypassActive: true,
   });
-  assert.strictEqual(derivedPendingBypass, "APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS");
+  assert.strictEqual(derivedPendingBypass, "APPLIED_PENDING_BUNDLE_ACTIVATION_PENDING_AUTHORITY");
 
   const preAckMatch = __test.assessSelfEvolutionRuntimeSignalConfirmation(
     {

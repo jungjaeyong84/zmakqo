@@ -36,7 +36,7 @@ const { __test } = require("../../scripts/automation-claude-weekly-patch-engine"
       summary: { ready_n: 0, apply_pass: false, rollback_ready_n: 0 },
     },
     deploymentPlan: {
-      summary: { plan_status: "APPLIED_CONFIRMED_AUTHORITY_BYPASS", authority_bypass_active: true },
+      summary: { plan_status: "APPLIED_CONFIRMED_PENDING_AUTHORITY", authority_bypass_active: true, external_authority_pending: true, authority_state: "PENDING" },
     },
   });
   assert.strictEqual(bypassReady.reviewReady, true);
@@ -51,7 +51,7 @@ const { __test } = require("../../scripts/automation-claude-weekly-patch-engine"
       summary: { ready_n: 0, apply_pass: false, rollback_ready_n: 1 },
     },
     deploymentPlan: {
-      summary: { plan_status: "APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS", authority_bypass_active: true },
+      summary: { plan_status: "APPLIED_PENDING_BUNDLE_ACTIVATION_PENDING_AUTHORITY", authority_bypass_active: true, external_authority_pending: true, authority_state: "PENDING" },
     },
   });
   assert.strictEqual(pendingBlock.pendingSignalConfirmation, true);

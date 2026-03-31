@@ -87,6 +87,7 @@ async function main() {
   if (shouldWriteSelfEvolutionLatest()) {
     const summary = report.summary || {};
     await writeSelfEvolutionRuntimeState({
+      cycle_id: report.cycle_id || null,
       engine_bundle_loaded: summary.engine_bundle_loaded === true,
       policy_bundle_loaded: summary.policy_bundle_loaded === true,
       market_data_flow_ok: summary.market_data_flow_ok === true,

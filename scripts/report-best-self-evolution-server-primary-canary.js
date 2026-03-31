@@ -126,11 +126,19 @@ function deriveServerPrimaryCanary({ dataset = null } = {}) {
   const realized = executed.filter((row) => Number.isFinite(toNum(row.realized_ret_net)));
   const pineObserved = scoped.filter((row) => featureObj(row).pine_shadow_parity_match !== null && featureObj(row).pine_shadow_parity_match !== undefined);
   const pineDisagreement = pineObserved.filter((row) => featureObj(row).pine_shadow_parity_match === false);
+  const acceptanceMinExecuted = Math.max(2, Number(process.env.SELF_EVOLUTION_SERVER_PRIMARY_ACCEPTANCE_MIN_EXECUTED || 2));
   const markets = Array.from(new Set(scoped.map((row) => String(row.market || row.symbol_or_pair_id || "UNKNOWN").trim().toUpperCase() || "UNKNOWN")))
     .sort((a, b) => a.localeCompare(b))
     .map((market) => buildMarketRow(scoped.filter((row) => String(row.market || row.symbol_or_pair_id || "").trim().toUpperCase() === market), market))
     .sort((a, b) => (b.executed_n - a.executed_n) || a.market.localeCompare(b.market));
   const summaryRollbackTriggers = markets.filter((row) => row.rollback_trigger_n > 0);
+  const applyPass = markets.length > 0 ? summaryRollbackTriggers.length === 0 : null;
+  const executedN = executed.length;
+  let acceptanceReason = "NO_SERVER_PRIMARY_ROWS";
+  if (scoped.length === 0) acceptanceReason = "NO_SERVER_PRIMARY_ROWS";
+  else if (applyPass === false) acceptanceReason = "SERVER_PRIMARY_CANARY_BLOCK";
+  else if (executedN < acceptanceMinExecuted) acceptanceReason = "SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT";
+  else if (applyPass === true) acceptanceReason = "SERVER_PRIMARY_ACCEPTANCE_READY";
   return {
     summary: {
       row_n: scoped.length,
@@ -144,7 +152,10 @@ function deriveServerPrimaryCanary({ dataset = null } = {}) {
       server_primary_avg_ret_net: mean(realized.map((row) => row.realized_ret_net)),
       rollback_trigger_n: summaryRollbackTriggers.length,
       rollback_trigger_markets: summaryRollbackTriggers.map((row) => row.market),
-      apply_pass: markets.length > 0 ? summaryRollbackTriggers.length === 0 : null,
+      apply_pass: applyPass,
+      acceptance_min_executed: acceptanceMinExecuted,
+      acceptance_ready: applyPass === true && executedN >= acceptanceMinExecuted,
+      acceptance_reason: acceptanceReason,
       by_source_mode: countBy(longShortRows, (row) => normalizeSourceMode(featureObj(row).canonical_engine_source_mode_effective)),
     },
     rows: markets,
@@ -181,6 +192,7 @@ function renderMarkdown(report = {}) {
     `- win_rate / avg_ret_net: ${pct(summary.server_primary_win_rate)} / ${signedPct(summary.server_primary_avg_ret_net)}`,
     `- rollback triggers: ${summary.rollback_trigger_n || 0} / ${Array.isArray(summary.rollback_trigger_markets) && summary.rollback_trigger_markets.length ? summary.rollback_trigger_markets.join(", ") : "none"}`,
     `- apply_pass: ${summary.apply_pass == null ? "N/A" : (summary.apply_pass ? "YES" : "NO")}`,
+    `- acceptance: ${summary.acceptance_ready ? "READY" : "PENDING"} / min ${summary.acceptance_min_executed ?? "N/A"} / ${summary.acceptance_reason || "N/A"}`,
     `- source_mode breakdown: ${Array.isArray(summary.by_source_mode) && summary.by_source_mode.length ? summary.by_source_mode.map((row) => `${row.key}=${row.count}`).join(", ") : "none"}`,
     "",
     "## Markets",

@@ -13,6 +13,7 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
       canonicalParity: { fresh: true },
       canonicalProvenance: { fresh: true },
       serverPrimaryCanary: { fresh: true },
+      pineShadowDrift: { fresh: true },
       deployment: { fresh: true },
       deploymentPlan: { fresh: true },
       stageAutopilot: { fresh: true },
@@ -28,6 +29,7 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
       canonicalParity: { cycle_id: "cycle-1", summary: { shadow_observed_n: 7, source_parity_mismatch_n: 0, final_downstream_mismatch_n: 2, by_actual_drop_reason_family: [{ key: "EV_POLICY", count: 2 }] } },
       canonicalProvenance: { cycle_id: "cycle-1", summary: { eligible_n: 6, complete_n: 6, with_actual_source_decision_n: 6, with_bundle_version_n: 6 } },
       serverPrimaryCanary: { cycle_id: "cycle-1", summary: { server_primary_executed_n: 0, pine_shadow_observed_n: 0, pine_shadow_disagreement_n: 0, rollback_trigger_n: 0, apply_pass: null } },
+      pineShadowDrift: { cycle_id: "cycle-1", summary: { audit_only: true, observed_n: 0, drift_n: 0, top_drift_market: null } },
       deployment: { cycle_id: "cycle-1", summary: { deploy_pass: true, target_candidate_id: "AUTO_CORE", blockers: [] } },
       deploymentPlan: { cycle_id: "cycle-1", summary: { plan_status: "READY_FOR_MANUAL_PASTE", manual_step_required: true, target_candidate_id: "AUTO_CORE" } },
       stageAutopilot: { cycle_id: "cycle-1", objective_verdict: "PATCH_CANDIDATE", actions: [] },
@@ -45,14 +47,17 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
   const parityRow = report.rows.find((row) => row.loop === "CANONICAL_PARITY");
   const provenanceRow = report.rows.find((row) => row.loop === "CANONICAL_PROVENANCE");
   const serverPrimaryRow = report.rows.find((row) => row.loop === "SERVER_PRIMARY_CANARY");
+  const pineShadowDriftRow = report.rows.find((row) => row.loop === "PINE_SHADOW_DRIFT");
   assert.ok(deploymentRow);
   assert.ok(parityRow);
   assert.ok(provenanceRow);
   assert.ok(serverPrimaryRow);
+  assert.ok(pineShadowDriftRow);
   assert.strictEqual(deploymentRow.status, "PASS");
   assert.strictEqual(parityRow.status, "PASS");
   assert.strictEqual(provenanceRow.status, "PASS");
   assert.strictEqual(serverPrimaryRow.status, "N/A");
+  assert.strictEqual(pineShadowDriftRow.status, "N/A");
 
   const mismatch = deriveLoopMonitor({
     artifacts: {
@@ -160,23 +165,25 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
     reports: {
       objectiveSupervisor: { cycle_id: "cycle-b", verdict: "HOLD", reason: "SELF_EVOLUTION_LATENCY_BUDGET_FAIL" },
       deployment: { cycle_id: "cycle-b", summary: { deploy_pass: false, target_candidate_id: "AUTO_MARKET_AXS", blockers: ["SELF_EVOLUTION_LATENCY_BUDGET_FAIL"] } },
-      deploymentPlan: { cycle_id: "cycle-b", summary: { plan_status: "APPLIED_ACTIVE_AUTHORITY_BYPASS", manual_step_required: false, target_candidate_id: "AUTO_MARKET_AXS", recommended_target_candidate_id: "AUTO_MARKET_AXS", applied_origin_candidate_id: "AUTO_CORE", authority_bypass_active: true } },
+      deploymentPlan: { cycle_id: "cycle-b", summary: { plan_status: "APPLIED_ACTIVE_PENDING_AUTHORITY", manual_step_required: false, target_candidate_id: "AUTO_MARKET_AXS", recommended_target_candidate_id: "AUTO_MARKET_AXS", applied_origin_candidate_id: "AUTO_CORE", authority_bypass_active: true, external_authority_pending: true, authority_state: "PENDING" } },
     },
   });
-  assert.strictEqual(appliedConfirmedAuthorityBypass.summary.overall_status, "APPLIED_ACTIVE_AUTHORITY_BYPASS");
-  assert.ok(appliedConfirmedAuthorityBypass.summary.critical_blockers.includes("SELF_EVOLUTION_AUTHORITY_BYPASS"));
+  assert.strictEqual(appliedConfirmedAuthorityBypass.summary.overall_status, "APPLIED_ACTIVE_PENDING_AUTHORITY");
+  assert.ok(appliedConfirmedAuthorityBypass.summary.critical_blockers.includes("SELF_EVOLUTION_EXTERNAL_AUTHORITY_PENDING"));
 
   const absent = deriveLoopMonitor({
     artifacts: {
       objectiveSupervisor: { fresh: true },
       canonicalParity: { fresh: true },
       serverPrimaryCanary: { fresh: true },
+      pineShadowDrift: { fresh: true },
       codexPatch: { fresh: true },
     },
     reports: {
       objectiveSupervisor: { cycle_id: "cycle-z", verdict: "HOLD", reason: "X" },
       canonicalParity: { cycle_id: "cycle-z", summary: { shadow_observed_n: 4, source_parity_mismatch_n: 1, final_downstream_mismatch_n: 0, by_actual_drop_reason_family: [] } },
       serverPrimaryCanary: { cycle_id: "cycle-z", summary: { server_primary_executed_n: 2, pine_shadow_observed_n: 2, pine_shadow_disagreement_n: 1, rollback_trigger_n: 1, apply_pass: false } },
+      pineShadowDrift: { cycle_id: "cycle-z", summary: { audit_only: true, observed_n: 2, drift_n: 1, top_drift_market: "AXSUSDT" } },
       codexPatch: { verdict: "HOLD", recommended_candidate_id: null },
     },
   });

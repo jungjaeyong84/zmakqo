@@ -282,13 +282,11 @@ FEBT는 아래 문서들이 세부 SSOT다.
 ### 9.2 현재 해석 규칙
 
 1. 자동 promotion은 `Codex + Claude` 합의 없는 상태에서 통과하면 안 된다.
-2. 이미 수동으로 적용된 Pine는 `authority bypass` 상태로 별도 표기한다.
+2. 외부 권위가 아직 안 닫힌 live bundle은 `authority_state=PENDING`으로 별도 표기한다.
 3. 따라서 applied 상태는 두 종류가 있다.
    - `APPLIED_ACTIVE`
-   - `APPLIED_ACTIVE_AUTHORITY_BYPASS`
-4. 과거 artifact는 레거시 호환 상태로 남을 수 있다.
-   - `APPLIED_CONFIRMED`
-   - `APPLIED_CONFIRMED_AUTHORITY_BYPASS`
+   - `APPLIED_ACTIVE_PENDING_AUTHORITY`
+4. 과거 artifact의 `*_AUTHORITY_BYPASS`는 내부 호환 입력으로만 취급하고, 최신 SSOT는 `*_PENDING_AUTHORITY`를 쓴다.
 
 ## 10. 배포 상태 머신
 
@@ -307,8 +305,8 @@ FEBT는 아래 문서들이 세부 SSOT다.
 3. `READY_FOR_MANUAL_PASTE`
 4. `APPLIED_PENDING_BUNDLE_ACTIVATION`
 5. `APPLIED_ACTIVE`
-6. `APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS`
-7. `APPLIED_ACTIVE_AUTHORITY_BYPASS`
+6. `APPLIED_PENDING_BUNDLE_ACTIVATION_PENDING_AUTHORITY`
+7. `APPLIED_ACTIVE_PENDING_AUTHORITY`
 8. `PREPARE_ROLLBACK`
 9. `READY_FOR_MANUAL_ROLLBACK`
 
@@ -316,8 +314,8 @@ FEBT는 아래 문서들이 세부 SSOT다.
 
 1. `APPLIED_PENDING_SIGNAL_CONFIRMATION`
 2. `APPLIED_CONFIRMED`
-3. `APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS`
-4. `APPLIED_CONFIRMED_AUTHORITY_BYPASS`
+3. `APPLIED_PENDING_SIGNAL_CONFIRMATION_PENDING_AUTHORITY`
+4. `APPLIED_CONFIRMED_PENDING_AUTHORITY`
 
 ### 10.1 실제 흐름
 
@@ -325,7 +323,7 @@ FEBT는 아래 문서들이 세부 SSOT다.
    - `engine_bundle`
    - `policy_bundle`
 2. 현재는 호환 경계 때문에 `shadow_pine.prepared_file_path`가 같이 생성될 수 있다.
-3. `ack-self-evolution-manual-paste.js`는 legacy manual 경계가 있는 동안 runtime state를 기록한다.
+3. `ack-self-evolution-manual-paste.js`는 legacy manual 경계가 있는 동안 compatibility runtime state를 기록한다.
 4. `bundle activation proof`
    - `engine_bundle_loaded`
    - `policy_bundle_loaded`
@@ -333,6 +331,7 @@ FEBT는 아래 문서들이 세부 SSOT다.
    - `first_decision_seen`
    를 확인한다.
 5. deployment plan / loop monitor / supervisor는 file path가 아니라 bundle activation 상태를 중심으로 새 applied 상태를 반영한다.
+6. `shadow_pine`는 운영 source가 아니라 overlay audit handoff로만 읽는다.
 
 ### 10.2 current applied vs recommended target
 
@@ -388,7 +387,7 @@ FEBT는 아래 문서들이 세부 SSOT다.
 1. `FIXED = 무조건 프리리얼 체결 수량`은 아니다.
    - 현재는 `EV` 감산만 억제되고, 다른 reduce path는 남아 있다.
 2. `authority verdict = HOLD`인데 applied가 존재할 수 있다.
-   - 이 경우는 버그가 아니라 `AUTHORITY_BYPASS` 상태다.
+   - 이 경우는 버그가 아니라 `EXTERNAL_AUTHORITY_PENDING` 상태다.
 3. self-evolution report의 `latest` alias는 같은 cycle env로 써야 원자적으로 정렬된다.
 4. `objective HOLD`와 `applied confirmed`는 동시에 가능하다.
    - 하나는 운영 성과 상태이고, 다른 하나는 버전 적용 확인 상태다.

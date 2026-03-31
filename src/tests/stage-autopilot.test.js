@@ -124,9 +124,26 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
     nextSourceMode: "SERVER_PRIMARY",
   });
   assert.strictEqual(sourceModePatch.nextSettings.canonical_engine_market_overrides.AXSUSDT.source_mode, "SERVER_PRIMARY");
+  assert.deepStrictEqual(sourceModePatch.nextSettings.canonical_engine_market_overrides.AXSUSDT, {
+    source_mode: "SERVER_PRIMARY",
+  });
   assert.deepStrictEqual(sourceModePatch.current_modes, [
     { market: "AXSUSDT", current_source_mode: "PINE_PRIMARY", next_source_mode: "SERVER_PRIMARY" },
   ]);
+
+  const mergedCanonicalPatch = __test.mergeStageNextSettings({
+    canonical_engine_market_overrides: {
+      AXSUSDT: {
+        core_score_abs: 34,
+        transition_core_score_abs: 30,
+      },
+    },
+  }, sourceModePatch.nextSettings);
+  assert.deepStrictEqual(mergedCanonicalPatch.canonical_engine_market_overrides.AXSUSDT, {
+    core_score_abs: 34,
+    transition_core_score_abs: 30,
+    source_mode: "SERVER_PRIMARY",
+  });
 
   const sourceModeCandidate = __test.buildSourceModeStageCandidate({
     candidatesArtifact: {
@@ -171,6 +188,86 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
   assert.strictEqual(sourceModeCandidate.source, "CANONICAL_PARITY_SOURCE_MODE_PROMOTION");
   assert.strictEqual(sourceModeCandidate.support_n, 7);
   assert.strictEqual(sourceModeCandidate.nextSettings.canonical_engine_market_overrides.AXSUSDT.source_mode, "SERVER_PRIMARY");
+
+  const sourceModeActiveCandidate = __test.buildSourceModeStageCandidate({
+    candidatesArtifact: {
+      data: {
+        rows: [
+          {
+            candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN",
+            display_candidate_id: "AUTO_AXSUSDT_REGIME_TIGHTEN",
+            canonical_migration_class: "PINE_THRESHOLD",
+            target_deploy_unit: "SERVER_SETTINGS",
+            ready_for_auto_apply: true,
+            memory_blocked: false,
+            direction: "TIGHTEN",
+            markets: ["AXSUSDT"],
+          },
+        ],
+      },
+    },
+    parityArtifact: {
+      data: { summary: { source_parity_mismatch_n: 0, shadow_observed_n: 7 } },
+    },
+    serverPrimaryCanaryArtifact: {
+      data: {
+        summary: {
+          server_primary_executed_n: 3,
+          apply_pass: true,
+          acceptance_ready: true,
+          acceptance_reason: "SERVER_PRIMARY_ACCEPTANCE_READY",
+          rollback_trigger_n: 0,
+        },
+      },
+    },
+    currentSys: {
+      canonical_engine_market_overrides: {
+        AXSUSDT: {
+          core_score_abs: 36,
+          transition_core_score_abs: 32,
+          source_mode: "SERVER_PRIMARY",
+        },
+      },
+    },
+    objectiveSupervisor: {
+      objective: { enough_sample: true },
+    },
+  });
+  assert.strictEqual(sourceModeActiveCandidate.actionable, false);
+  assert.strictEqual(sourceModeActiveCandidate.reason, "SERVER_PRIMARY_ACTIVE");
+
+  const sourceModeRollbackInputs = __test.resolveStageRollbackInputs({
+    stage: "SOURCE_MODE",
+    candidate: {
+      server_primary_apply_pass: null,
+      server_primary_rollback_trigger_n: 0,
+    },
+    objectiveArtifact: {
+      data: { objective: { enough_sample: true, pass: false, monthly_pass: false } },
+    },
+    canaryPass: true,
+    selfEvolutionRollbackReady: false,
+  });
+  assert.strictEqual(sourceModeRollbackInputs.objectiveSupervisor.objective.enough_sample, false);
+  assert.strictEqual(sourceModeRollbackInputs.canaryPass, true);
+  assert.strictEqual(sourceModeRollbackInputs.selfEvolutionRollbackReady, false);
+
+  const sourceModeRollbackTriggered = __test.resolveStageRollbackInputs({
+    stage: "SOURCE_MODE",
+    candidate: {
+      server_primary_apply_pass: false,
+      server_primary_rollback_trigger_n: 1,
+    },
+    objectiveArtifact: {
+      data: { objective: { enough_sample: true, pass: false, monthly_pass: false } },
+    },
+    canaryPass: true,
+    selfEvolutionRollbackReady: false,
+  });
+  assert.strictEqual(sourceModeRollbackTriggered.canaryPass, false);
+  assert.strictEqual(sourceModeRollbackTriggered.selfEvolutionRollbackReady, true);
+  assert.strictEqual(sourceModeActiveCandidate.support_n, 3);
+  assert.strictEqual(sourceModeActiveCandidate.server_primary_acceptance_ready, true);
 
   const evParityCandidate = __test.buildEvParityCandidate({
     data: {
@@ -276,9 +373,32 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
   assert.strictEqual(overrideApplied.pineStageRow.signature, "AUTO_CORE_REGIME_TIGHTEN");
 
   const budgetBlocked = __test.stageChangeBudgetOk([
-    { stage: "AI", action: "AUTO_APPLY", ts_ms: 1_000_000 },
+    { stage: "AI", action: "AUTO_APPLY", run_key: "2026-03-31 10:00:00 KST__AUTO_APPLY", ts_ms: 1_000_000 },
   ], 1_000_000 + (12 * 60 * 60 * 1000), "AI");
   assert.strictEqual(budgetBlocked, false);
+
+  const scopedBudgetAllowed = __test.stageChangeBudgetOk([
+    { stage: "PINE", action: "PINE_PREPARE", ts_ms: 1_000_000, budget_scope: "PINE_OVERLAY" },
+    { stage: "EV", action: "AUTO_APPLY", ts_ms: 1_100_000, budget_scope: "POLICY_TUNING" },
+    { stage: "CANONICAL_POLICY", action: "AUTO_APPLY", ts_ms: 1_200_000, budget_scope: "CANONICAL_ENGINE" },
+  ], 1_200_000 + (12 * 60 * 60 * 1000), "SOURCE_MODE");
+  assert.strictEqual(scopedBudgetAllowed, true);
+
+  const scopedBudgetBlocked = __test.stageChangeBudgetOk([
+    { stage: "CANONICAL_POLICY", action: "AUTO_APPLY", run_key: "2026-03-31 10:00:00 KST__AUTO_APPLY", ts_ms: 1_000_000, budget_scope: "CANONICAL_ENGINE" },
+    { stage: "SOURCE_MODE", action: "AUTO_APPLY", run_key: "2026-03-31 11:00:00 KST__AUTO_APPLY", ts_ms: 1_100_000, budget_scope: "CANONICAL_ENGINE" },
+  ], 1_100_000 + (12 * 60 * 60 * 1000), "SOURCE_MODE");
+  assert.strictEqual(scopedBudgetBlocked, false);
+
+  const proposedActionIgnored = __test.stageChangeBudgetOk([
+    { stage: "SOURCE_MODE", action: "PROPOSED_AUTO_APPLY", ts_ms: 1_000_000, budget_scope: "CANONICAL_ENGINE" },
+  ], 1_000_000 + (12 * 60 * 60 * 1000), "SOURCE_MODE");
+  assert.strictEqual(proposedActionIgnored, true);
+
+  const legacyFalseApplyIgnored = __test.stageChangeBudgetOk([
+    { stage: "SOURCE_MODE", action: "AUTO_APPLY", run_key: "2026-03-31 17:55:52 KST", ts_ms: 1_000_000, budget_scope: "CANONICAL_ENGINE" },
+  ], 1_000_000 + (12 * 60 * 60 * 1000), "SOURCE_MODE");
+  assert.strictEqual(legacyFalseApplyIgnored, true);
 
   const stableSig = __test.stableSignature({ b: 2, a: 1 });
   assert.strictEqual(stableSig, 'a=1|b=2');

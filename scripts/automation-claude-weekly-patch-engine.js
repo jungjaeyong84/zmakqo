@@ -180,7 +180,7 @@ async function main() {
       checks: [
         `plan_status=${String((unwrapRawReport(deploymentPlan.data) && unwrapRawReport(deploymentPlan.data).summary && unwrapRawReport(deploymentPlan.data).summary.plan_status) || (unwrapRawReport(deploymentPlan.data) && unwrapRawReport(deploymentPlan.data).plan_status) || "N/A")}`,
         `change=${readyPromotion ? "PROMOTE" : (readyRollback ? "ROLLBACK" : "NO")}`,
-        `self-evolution=${selfEvolutionPromotionReady ? "PROMOTE" : (selfEvolutionRollbackReady ? "ROLLBACK" : (selfEvolutionAuthorityBypass ? "AUTHORITY_BYPASS" : "NO"))}`,
+        `self-evolution=${selfEvolutionPromotionReady ? "PROMOTE" : (selfEvolutionRollbackReady ? "ROLLBACK" : (selfEvolutionAuthorityBypass ? "PENDING_AUTHORITY" : "NO"))}`,
       ],
       risks: [
         "pending signal confirmation 이전 review verdict는 false disagreement를 만들 수 있음",
@@ -301,7 +301,7 @@ async function main() {
       severity: report.verdict === "ROLLBACK" ? "WARN" : "INFO",
       sections: [
         { header: "판정", lines: [`${report.verdict} / ${report.reason}`] },
-        { header: "검토 준비", lines: [`change=${readyPromotion ? "PROMOTE" : (readyRollback ? "ROLLBACK" : "NO")}`, `self-evolution=${selfEvolutionPromotionReady ? "PROMOTE" : (selfEvolutionRollbackReady ? "ROLLBACK" : (selfEvolutionAuthorityBypass ? "AUTHORITY_BYPASS" : "NO"))}`] },
+        { header: "검토 준비", lines: [`change=${readyPromotion ? "PROMOTE" : (readyRollback ? "ROLLBACK" : "NO")}`, `self-evolution=${selfEvolutionPromotionReady ? "PROMOTE" : (selfEvolutionRollbackReady ? "ROLLBACK" : (selfEvolutionAuthorityBypass ? "PENDING_AUTHORITY" : "NO"))}`] },
         { header: "추천", lines: [`candidate ${report.display_candidate_id || report.recommended_candidate_id || "N/A"}`, `rollback ${report.recommended_rollback_file_path || "N/A"}`] },
       ],
     });

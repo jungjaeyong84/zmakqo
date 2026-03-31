@@ -116,10 +116,13 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
       candidates: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
       replay: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
       canary: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
+      canonicalParity: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
       canonicalProvenance: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
+      serverPrimaryCanary: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
+      pineShadowDrift: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
+      bundleActivation: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
       memory: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
       codex: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
-      stageAutopilot: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
     },
   });
   assert.strictEqual(finalCycle.cycle_consistent, false);
@@ -220,6 +223,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.filter_layers.ev_time_value.label, "4차 EV/시간가치층");
   assert.strictEqual(allowPromote.filter_layers.ev_time_value.fresh, true);
   assert.strictEqual(allowPromote.self_evolution_canonical_provenance.available, false);
+  assert.strictEqual(allowPromote.self_evolution_pine_shadow_drift.available, false);
 
   const pendingRollbackHold = __test.evaluateSupervisor({
     ...base,

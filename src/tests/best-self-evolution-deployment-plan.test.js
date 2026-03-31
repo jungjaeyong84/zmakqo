@@ -104,13 +104,13 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
     },
   });
 
-  assert.strictEqual(report.summary.plan_status, "APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS");
+  assert.strictEqual(report.summary.plan_status, "APPLIED_PENDING_BUNDLE_ACTIVATION_PENDING_AUTHORITY");
   assert.strictEqual(report.summary.ready_for_manual_paste, false);
   assert.strictEqual(report.summary.manual_step_required, false);
   assert.strictEqual(report.summary.manual_paste_acknowledged, true);
   assert.strictEqual(report.summary.activation_pending, true);
   assert.strictEqual(report.summary.applied_strategy_id, "donbeolja_v6.0.3.1");
-  assert.strictEqual(report.summary.authority_bypass_active, true);
+  assert.strictEqual(report.summary.authority_bypass_active, false);
   console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_APPLIED_ACK_TEST_OK");
 })();
 
@@ -222,11 +222,11 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
     },
   });
 
-  assert.strictEqual(report.summary.plan_status, "APPLIED_ACTIVE_AUTHORITY_BYPASS");
+  assert.strictEqual(report.summary.plan_status, "APPLIED_ACTIVE_PENDING_AUTHORITY");
   assert.strictEqual(report.summary.live_signal_confirmed, true);
   assert.strictEqual(report.summary.live_signal_confirmation_pending, false);
   assert.strictEqual(report.summary.confirmed_signal_id, "SIG__BINANCEFUT__BTCUSDT__15m__1774844100000__LONG");
-  assert.strictEqual(report.summary.authority_bypass_active, true);
+  assert.strictEqual(report.summary.authority_bypass_active, false);
   assert.strictEqual(report.summary.applied_origin_candidate_id, "AUTO_CORE_REGIME_TIGHTEN");
   console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_SIGNAL_CONFIRM_TEST_OK");
 })();
@@ -362,11 +362,11 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
     },
   });
 
-  assert.strictEqual(report.summary.plan_status, "APPLIED_ACTIVE_AUTHORITY_BYPASS");
+  assert.strictEqual(report.summary.plan_status, "APPLIED_ACTIVE_PENDING_AUTHORITY");
   assert.strictEqual(report.summary.live_signal_confirmed, true);
   assert.strictEqual(report.summary.activation_confirmed, true);
   assert.strictEqual(report.summary.confirmed_signal_id, "SIG__BINANCEFUT__ETHUSDT__15m__1774858500000__LONG");
-  assert.strictEqual(report.summary.authority_bypass_active, true);
+  assert.strictEqual(report.summary.authority_bypass_active, false);
   console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_SHARED_CONFIRM_TEST_OK");
 })();
 

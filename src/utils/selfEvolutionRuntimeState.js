@@ -96,6 +96,8 @@ function readPreparedSelfEvolutionTarget() {
     prepared_strategy_id: preparedStrategyId,
     authority_required: data.authority_required === true,
     authority_approved: data.authority_approved === true,
+    authority_state: pickString(data.authority_state),
+    external_authority_pending: data.external_authority_pending === true,
     authority_bypass_active: data.authority_bypass_active === true,
   };
 }
@@ -143,6 +145,8 @@ function normalizeSelfEvolutionRuntimeState(raw = null) {
   const preparedStageReady = pickBoolean(src.prepared_stage_ready, false);
   const readyForManualPaste = pickBoolean(src.ready_for_manual_paste, false);
   const authorityBypassActive = pickBoolean(src.authority_bypass_active, false);
+  const externalAuthorityPending = pickBoolean(src.external_authority_pending, false) || authorityBypassActive;
+  const authorityState = pickString(src.authority_state) || (externalAuthorityPending ? "PENDING" : null);
   const bundleActivationConfirmed = pickBoolean(src.bundle_activation_confirmed, false);
   const preparedStrategyId = pickString(src.prepared_strategy_id);
   const preparedFilePath = pickString(src.prepared_file_path);
@@ -155,6 +159,7 @@ function normalizeSelfEvolutionRuntimeState(raw = null) {
     readyForManualPaste,
     preparedStrategyId,
     preparedFilePath,
+    externalAuthorityPending,
     authorityBypassActive,
   });
   return {
@@ -179,6 +184,8 @@ function normalizeSelfEvolutionRuntimeState(raw = null) {
     canonical_source_synced: pickBoolean(src.canonical_source_synced, false),
     authority_required: pickBoolean(src.authority_required, false),
     authority_approved: pickBoolean(src.authority_approved, false),
+    authority_state: authorityState,
+    external_authority_pending: externalAuthorityPending,
     authority_bypass_active: authorityBypassActive,
     live_signal_confirmed: liveSignalConfirmed,
     live_signal_confirmation_pending: acknowledged && !liveSignalConfirmed,
@@ -215,16 +222,18 @@ function deriveRuntimePlanStatus({
   readyForManualPaste = false,
   preparedStrategyId = null,
   preparedFilePath = null,
+  externalAuthorityPending = false,
   authorityBypassActive = false,
 } = {}) {
+  const pendingAuthority = externalAuthorityPending === true || authorityBypassActive === true;
   if (bundleActivationConfirmed) {
-    return authorityBypassActive ? "APPLIED_ACTIVE_AUTHORITY_BYPASS" : "APPLIED_ACTIVE";
-  }
-  if (liveSignalConfirmed) {
-    return authorityBypassActive ? "APPLIED_CONFIRMED_AUTHORITY_BYPASS" : "APPLIED_CONFIRMED";
+    return pendingAuthority ? "APPLIED_ACTIVE_PENDING_AUTHORITY" : "APPLIED_ACTIVE";
   }
   if (acknowledged) {
-    return authorityBypassActive ? "APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS" : "APPLIED_PENDING_BUNDLE_ACTIVATION";
+    return pendingAuthority ? "APPLIED_PENDING_BUNDLE_ACTIVATION_PENDING_AUTHORITY" : "APPLIED_PENDING_BUNDLE_ACTIVATION";
+  }
+  if (liveSignalConfirmed) {
+    return pendingAuthority ? "APPLIED_CONFIRMED_PENDING_AUTHORITY" : "APPLIED_CONFIRMED";
   }
   if (preparedStageReady && readyForManualPaste && (preparedStrategyId || preparedFilePath)) {
     return "READY_FOR_MANUAL_PASTE";
@@ -267,6 +276,8 @@ function buildPreparedRuntimePatch(summary = null, currentState = null) {
       candidate_signature: pickString(current.candidate_signature),
       authority_required: src.authority_required === true || pickBoolean(current.authority_required, false),
       authority_approved: src.authority_approved === true || pickBoolean(current.authority_approved, false),
+      authority_state: pickString(src.authority_state) || pickString(current.authority_state),
+      external_authority_pending: src.external_authority_pending === true || pickBoolean(current.external_authority_pending, false),
       authority_bypass_active: src.authority_bypass_active === true || pickBoolean(current.authority_bypass_active, false),
     };
   }
@@ -283,6 +294,8 @@ function buildPreparedRuntimePatch(summary = null, currentState = null) {
     candidate_signature: targetCandidateId,
     authority_required: src.authority_required === true,
     authority_approved: src.authority_approved === true,
+    authority_state: pickString(src.authority_state),
+    external_authority_pending: src.external_authority_pending === true,
     authority_bypass_active: src.authority_bypass_active === true,
     acknowledged: shouldResetConfirmation ? false : undefined,
     acknowledged_at_kst: shouldResetConfirmation ? null : undefined,
@@ -420,6 +433,8 @@ async function confirmSelfEvolutionRuntimeSignal({
       applied_strategy_id: incomingStrategyId,
       authority_required: prepared.authority_required === true,
       authority_approved: prepared.authority_approved === true,
+      authority_state: pickString(prepared.authority_state),
+      external_authority_pending: prepared.external_authority_pending === true,
       authority_bypass_active: prepared.authority_bypass_active === true,
       engine_bundle_loaded: true,
       first_decision_seen: true,

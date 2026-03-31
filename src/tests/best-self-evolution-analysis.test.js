@@ -8,6 +8,7 @@ const {
   deriveCanonicalParityDiagnostics,
   deriveCanonicalProvenanceDiagnostics,
   deriveServerPrimaryCanaryDiagnostics,
+  derivePineShadowDriftDiagnostics,
   deriveAttribution,
 } = require("../../src/utils/bestSelfEvolutionAnalysis");
 
@@ -208,12 +209,33 @@ function run() {
       server_primary_avg_ret_net: -0.01,
       rollback_trigger_n: 1,
       apply_pass: false,
+      acceptance_min_executed: 2,
+      acceptance_ready: false,
+      acceptance_reason: "SERVER_PRIMARY_CANARY_BLOCK",
     },
   });
   assert.strictEqual(serverPrimaryCanary.available, true);
   assert.strictEqual(serverPrimaryCanary.executed_n, 3);
   assert.strictEqual(serverPrimaryCanary.rollback_trigger_n, 1);
   assert.strictEqual(serverPrimaryCanary.apply_pass, false);
+  assert.strictEqual(serverPrimaryCanary.acceptance_ready, false);
+  assert.strictEqual(serverPrimaryCanary.acceptance_reason, "SERVER_PRIMARY_CANARY_BLOCK");
+
+  const pineShadowDrift = derivePineShadowDriftDiagnostics({
+    summary: {
+      audit_only: true,
+      observed_n: 4,
+      drift_n: 1,
+      drift_rate: 0.25,
+      executed_drift_n: 1,
+      drop_drift_n: 0,
+      by_market: [{ key: "AXSUSDT", count: 1 }],
+    },
+  });
+  assert.strictEqual(pineShadowDrift.available, true);
+  assert.strictEqual(pineShadowDrift.audit_only, true);
+  assert.strictEqual(pineShadowDrift.drift_present, true);
+  assert.strictEqual(pineShadowDrift.top_drift_market, "AXSUSDT");
 
   const attribution = deriveAttribution({ dataset });
   assert.strictEqual(attribution.summary.drop_top_layer.key, "QUALITY");

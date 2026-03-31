@@ -11,6 +11,7 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
   assert.strictEqual(steps[1].id, "canonical_engine_parity");
   assert.strictEqual(steps[2].id, "canonical_engine_provenance");
   assert.strictEqual(steps[3].id, "server_primary_canary");
+  assert.strictEqual(steps[4].id, "pine_shadow_drift");
   assert.strictEqual(steps.some((row) => row.id === "objective_seed"), true);
   assert.strictEqual(steps.some((row) => row.id === "codex_patch_engine"), true);
   assert.strictEqual(steps.some((row) => row.id === "claude_patch_engine"), true);
@@ -28,12 +29,12 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
     generated_at_kst: "2026-03-29 22:00:00 KST",
     cycle_id: "cycle-1",
     status: "PASS",
-    completed_steps: 24,
-    total_steps: 24,
+    completed_steps: 25,
+    total_steps: 25,
     failed_step: null,
     steps: [{ id: "dataset", status: "PASS", script: "x.js", exit_code: 0, summary: "OK" }],
   });
   assert.match(md, /cycle-1/);
-  assert.match(md, /completed_steps: 24 \/ 24/);
+  assert.match(md, /completed_steps: 25 \/ 25/);
   console.log("BEST_SELF_EVOLUTION_LOOP_RUN_TEST_OK");
 })();

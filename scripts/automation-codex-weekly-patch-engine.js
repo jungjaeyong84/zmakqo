@@ -2,6 +2,12 @@
 /* eslint-disable no-console */
 "use strict";
 
+const {
+  isPendingAuthorityPlanStatus,
+  isAppliedPendingBundleActivationLike,
+  isAppliedPendingSignalConfirmationLike,
+} = require("../src/utils/selfEvolutionPlanStatus");
+
 const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
@@ -147,9 +153,11 @@ function deriveReviewReadiness({ changeControl = null, selfEvolutionCanary = nul
     && selfEvolutionSummary.apply_pass === true
   );
   const selfEvolutionRollbackReady = Boolean(toNum(selfEvolutionSummary.rollback_ready_n) > 0);
-  const selfEvolutionAuthorityBypass = Boolean(
-    deploymentPlanSummary.authority_bypass_active === true
-    || /AUTHORITY_BYPASS/.test(planStatus)
+  const selfEvolutionAuthorityPending = Boolean(
+    deploymentPlanSummary.external_authority_pending === true
+    || String(deploymentPlanSummary.authority_state || "").trim().toUpperCase() === "PENDING"
+    || isPendingAuthorityPlanStatus(planStatus)
+    || deploymentPlanSummary.authority_bypass_active === true
   );
   const pendingBundleActivation = Object.keys(bundleActivationSummary).length
     ? (
@@ -158,20 +166,18 @@ function deriveReviewReadiness({ changeControl = null, selfEvolutionCanary = nul
         : bundleActivationSummary.activation_pending === true
     )
     : (
-      planStatus === "APPLIED_PENDING_BUNDLE_ACTIVATION"
-      || planStatus === "APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS"
-      || planStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION"
-      || planStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS"
+      isAppliedPendingBundleActivationLike(planStatus)
+      || isAppliedPendingSignalConfirmationLike(planStatus)
     );
   const reviewReady = !pendingBundleActivation && (
-    readyPromotion || readyRollback || selfEvolutionPromotionReady || selfEvolutionRollbackReady || selfEvolutionAuthorityBypass
+    readyPromotion || readyRollback || selfEvolutionPromotionReady || selfEvolutionRollbackReady || selfEvolutionAuthorityPending
   );
   return {
     readyPromotion,
     readyRollback,
     selfEvolutionPromotionReady,
     selfEvolutionRollbackReady,
-    selfEvolutionAuthorityBypass,
+    selfEvolutionAuthorityBypass: selfEvolutionAuthorityPending,
     pendingSignalConfirmation: pendingBundleActivation,
     reviewReady,
     blockedReason: pendingBundleActivation ? "BUNDLE_ACTIVATION_PENDING_BLOCK" : null,
@@ -426,7 +432,7 @@ function buildPrompt(context = {}) {
     "Self-evolution deployment plan snapshot:",
     `- status/prepare/manual: ${selfEvolutionDeploymentPlan.plan_status || "N/A"} / ${selfEvolutionDeploymentPlan.prepare_pass === true ? "PASS" : "BLOCK"} / ${selfEvolutionDeploymentPlan.manual_step_required === true ? "YES" : "NO"}`,
     `- candidate/wave/markets: ${selfEvolutionDeploymentPlan.display_candidate_id || selfEvolutionDeploymentPlan.target_candidate_id || "N/A"} / ${selfEvolutionDeploymentPlan.open_wave != null ? selfEvolutionDeploymentPlan.open_wave : "N/A"} / ${selfEvolutionDeploymentPlan.market_scope_ready_n != null ? selfEvolutionDeploymentPlan.market_scope_ready_n : "N/A"} / ${selfEvolutionDeploymentPlan.market_scope_n != null ? selfEvolutionDeploymentPlan.market_scope_n : "N/A"}`,
-    `- applied origin / recommended target / authority bypass: ${selfEvolutionDeploymentPlan.applied_origin_display_candidate_id || selfEvolutionDeploymentPlan.applied_origin_candidate_id || "N/A"} / ${selfEvolutionDeploymentPlan.display_candidate_id || selfEvolutionDeploymentPlan.recommended_target_candidate_id || selfEvolutionDeploymentPlan.target_candidate_id || "N/A"} / ${selfEvolutionDeploymentPlan.authority_bypass_active === true ? "YES" : "NO"}`,
+    `- applied origin / recommended target / authority state: ${selfEvolutionDeploymentPlan.applied_origin_display_candidate_id || selfEvolutionDeploymentPlan.applied_origin_candidate_id || "N/A"} / ${selfEvolutionDeploymentPlan.display_candidate_id || selfEvolutionDeploymentPlan.recommended_target_candidate_id || selfEvolutionDeploymentPlan.target_candidate_id || "N/A"} / ${selfEvolutionDeploymentPlan.authority_state || (selfEvolutionDeploymentPlan.external_authority_pending ? "PENDING" : "N/A")}`,
     `- prepared/latest/rollback: ${selfEvolutionDeploymentPlan.prepared_file_path || "N/A"} / ${selfEvolutionDeploymentPlan.latest_generated_file_path || "N/A"} / ${selfEvolutionDeploymentPlan.rollback_source_file_path || "N/A"}`,
     "Self-evolution weight tuning snapshot:",
     `- advisory/suggestions/dominant: ${selfEvolutionWeightTuning.summary && selfEvolutionWeightTuning.summary.advisory_mode || "N/A"} / ${selfEvolutionWeightTuning.summary && selfEvolutionWeightTuning.summary.suggestion_n != null ? selfEvolutionWeightTuning.summary.suggestion_n : "N/A"} / ${selfEvolutionWeightTuning.summary && selfEvolutionWeightTuning.summary.dominant_axis || "N/A"}`,
@@ -712,7 +718,7 @@ async function main() {
       checks: [
         `plan_status=${deploymentPlanSummary.plan_status || "N/A"}`,
         `ready_promotion=${readyPromotion ? "YES" : "NO"} / ready_rollback=${readyRollback ? "YES" : "NO"}`,
-        `se_recovery=${selfEvolutionPromotionReady ? "YES" : "NO"} / se_rollback=${selfEvolutionRollbackReady ? "YES" : "NO"} / se_bypass=${selfEvolutionAuthorityBypass ? "YES" : "NO"}`,
+        `se_recovery=${selfEvolutionPromotionReady ? "YES" : "NO"} / se_rollback=${selfEvolutionRollbackReady ? "YES" : "NO"} / se_pending_authority=${selfEvolutionAuthorityBypass ? "YES" : "NO"}`,
       ],
       risks: [
         "live signal confirmation 전 rollback/promotion verdict를 확정하면 false authority disagreement가 발생할 수 있음",
@@ -767,7 +773,7 @@ async function main() {
         ? "self-evolution watchlist는 있지만 promotion/rollback 경로가 아직 준비되지 않아 외부 Codex 검토를 생략했습니다."
         : baseReport.summary,
       checks: [
-        `ready_promotion=${readyPromotion ? "YES" : "NO"} / ready_rollback=${readyRollback ? "YES" : "NO"} / se_recovery=${selfEvolutionPromotionReady ? "YES" : "NO"} / se_rollback=${selfEvolutionRollbackReady ? "YES" : "NO"} / se_bypass=${selfEvolutionAuthorityBypass ? "YES" : "NO"}`,
+        `ready_promotion=${readyPromotion ? "YES" : "NO"} / ready_rollback=${readyRollback ? "YES" : "NO"} / se_recovery=${selfEvolutionPromotionReady ? "YES" : "NO"} / se_rollback=${selfEvolutionRollbackReady ? "YES" : "NO"} / se_pending_authority=${selfEvolutionAuthorityBypass ? "YES" : "NO"}`,
         `candidate_ready_n=${selfEvolutionCandidates.ready_n != null ? selfEvolutionCandidates.ready_n : "N/A"} / top=${topCandidateId || "N/A"}`,
         `deployment_plan=${selfEvolutionDeploymentPlan.plan_status || "N/A"} / prepare=${selfEvolutionDeploymentPlan.prepare_pass === true ? "PASS" : "BLOCK"}`,
         `canary_apply=${selfEvolutionCanary.apply_pass === true ? "PASS" : "BLOCK"} / ready_markets=${selfEvolutionCanary.ready_n != null ? selfEvolutionCanary.ready_n : "N/A"}`,

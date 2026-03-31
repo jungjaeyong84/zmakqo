@@ -481,6 +481,28 @@ function deriveServerPrimaryCanaryDiagnostics(serverPrimaryCanary = null) {
     avg_ret_net: toNum(raw.server_primary_avg_ret_net),
     rollback_trigger_n: toNum(raw.rollback_trigger_n) || 0,
     apply_pass: typeof raw.apply_pass === "boolean" ? raw.apply_pass : null,
+    acceptance_min_executed: toNum(raw.acceptance_min_executed) || 0,
+    acceptance_ready: raw.acceptance_ready === true,
+    acceptance_reason: String(raw.acceptance_reason || "").trim().toUpperCase() || null,
+  };
+}
+
+function derivePineShadowDriftDiagnostics(pineShadowDrift = null) {
+  const raw = pineShadowDrift && pineShadowDrift.summary && typeof pineShadowDrift.summary === "object"
+    ? pineShadowDrift.summary
+    : (pineShadowDrift || {});
+  const byMarket = Array.isArray(raw.by_market) ? raw.by_market : [];
+  const topMarket = byMarket[0] || null;
+  return {
+    available: !!pineShadowDrift,
+    audit_only: raw.audit_only !== false,
+    observed_n: toNum(raw.observed_n) || 0,
+    drift_n: toNum(raw.drift_n) || 0,
+    drift_rate: toNum(raw.drift_rate),
+    executed_drift_n: toNum(raw.executed_drift_n) || 0,
+    drop_drift_n: toNum(raw.drop_drift_n) || 0,
+    top_drift_market: topMarket ? String(topMarket.key || "").trim().toUpperCase() || null : null,
+    drift_present: Number(raw.drift_n || 0) > 0,
   };
 }
 
@@ -492,6 +514,7 @@ module.exports = {
   deriveCanonicalParityDiagnostics,
   deriveCanonicalProvenanceDiagnostics,
   deriveServerPrimaryCanaryDiagnostics,
+  derivePineShadowDriftDiagnostics,
   deriveAttribution,
   __test: {
     deriveConstraintFlags,

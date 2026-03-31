@@ -65,7 +65,9 @@ function renderMarkdown(report = {}) {
     `- canonical_source_synced: ${report.canonical_source_synced ? "YES" : "NO"}`,
     `- authority_required: ${report.authority_required ? "YES" : "NO"}`,
     `- authority_approved: ${report.authority_approved ? "YES" : "NO"}`,
-    `- authority_bypass_active: ${report.authority_bypass_active ? "YES" : "NO"}`,
+    `- authority_state: ${report.authority_state || "N/A"}`,
+    `- external_authority_pending: ${report.external_authority_pending ? "YES" : "NO"}`,
+    `- authority_bypass_active_legacy: ${report.authority_bypass_active ? "YES" : "NO"}`,
   ];
   return `${lines.join("\n")}\n`;
 }
@@ -116,7 +118,9 @@ async function main() {
     canonical_source_synced: canonicalSync.synced,
     authority_required: summary.authority_required === true,
     authority_approved: summary.authority_approved === true,
-    authority_bypass_active: summary.authority_bypass_active === true,
+    authority_state: String(summary.authority_state || "").trim() || ((summary.external_authority_pending === true || summary.authority_bypass_active === true) ? "PENDING" : null),
+    external_authority_pending: summary.external_authority_pending === true || summary.authority_bypass_active === true,
+    authority_bypass_active: false,
     confirmation_timeout_minutes: confirmationTimeoutMinutes,
   };
   const runtimePath = path.join(OPS_RUNTIME_DIR, "self_evolution_manual_paste_ack.json");

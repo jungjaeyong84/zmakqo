@@ -1,5 +1,12 @@
 "use strict";
 
+const {
+  normalizePlanStatus,
+  isAppliedConfirmedLike,
+  isAppliedPendingSignalConfirmationLike,
+  isAppliedPendingBundleActivationLike,
+} = require("./selfEvolutionPlanStatus");
+
 function unwrapRawReport(value) {
   if (!value || typeof value !== "object") return value || null;
   if (value.raw && typeof value.raw === "object") return value.raw;
@@ -27,6 +34,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const canonicalParity = unwrapRawReport(reports.canonicalParity) || {};
   const canonicalProvenance = unwrapRawReport(reports.canonicalProvenance) || {};
   const serverPrimaryCanary = unwrapRawReport(reports.serverPrimaryCanary) || {};
+  const pineShadowDrift = unwrapRawReport(reports.pineShadowDrift) || {};
   const bundleActivation = unwrapRawReport(reports.bundleActivation) || {};
   const deployment = unwrapRawReport(reports.deployment) || {};
   const deploymentPlan = unwrapRawReport(reports.deploymentPlan) || {};
@@ -45,6 +53,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const canonicalParitySummary = canonicalParity.summary && typeof canonicalParity.summary === "object" ? canonicalParity.summary : {};
   const canonicalProvenanceSummary = canonicalProvenance.summary && typeof canonicalProvenance.summary === "object" ? canonicalProvenance.summary : {};
   const serverPrimaryCanarySummary = serverPrimaryCanary.summary && typeof serverPrimaryCanary.summary === "object" ? serverPrimaryCanary.summary : {};
+  const pineShadowDriftSummary = pineShadowDrift.summary && typeof pineShadowDrift.summary === "object" ? pineShadowDrift.summary : {};
   const bundleActivationSummary = bundleActivation.summary && typeof bundleActivation.summary === "object" ? bundleActivation.summary : {};
   const candidateSummary = candidates.summary && typeof candidates.summary === "object" ? candidates.summary : {};
   const replaySummary = replay.summary && typeof replay.summary === "object" ? replay.summary : {};
@@ -57,6 +66,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(canonicalParity)
     || readCycleId(canonicalProvenance)
     || readCycleId(serverPrimaryCanary)
+    || readCycleId(pineShadowDrift)
     || readCycleId(bundleActivation)
     || readCycleId(deployment)
     || readCycleId(deploymentPlan)
@@ -133,6 +143,15 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
         ? (serverPrimaryCanarySummary.apply_pass === true ? "PASS" : "BLOCK")
         : "N/A",
       reason: `executed=${serverPrimaryCanarySummary.server_primary_executed_n ?? 0} / disagreement=${serverPrimaryCanarySummary.pine_shadow_disagreement_n ?? 0}/${serverPrimaryCanarySummary.pine_shadow_observed_n ?? 0} / rollback=${serverPrimaryCanarySummary.rollback_trigger_n ?? 0}`,
+    },
+    {
+      loop: "PINE_SHADOW_DRIFT",
+      fresh: artifacts.pineShadowDrift && artifacts.pineShadowDrift.fresh === true,
+      cycle_id: readCycleId(pineShadowDrift),
+      status: Number(pineShadowDriftSummary.observed_n || 0) > 0
+        ? (Number(pineShadowDriftSummary.drift_n || 0) > 0 ? "WARN" : "PASS")
+        : "N/A",
+      reason: `audit_only=${pineShadowDriftSummary.audit_only ? "YES" : "NO"} / drift=${pineShadowDriftSummary.drift_n ?? 0}/${pineShadowDriftSummary.observed_n ?? 0} / top=${pineShadowDriftSummary.top_drift_market || "N/A"}`,
     },
     {
       loop: "BUNDLE_ACTIVATION",
@@ -220,21 +239,26 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   }
   if (bundleActivationSummary.activation_pending === true) blockers.push("SELF_EVOLUTION_BUNDLE_ACTIVATION_PENDING");
   blockers.push(...deploymentBlockers);
-  if (deploymentPlanSummary.authority_bypass_active === true) blockers.push("SELF_EVOLUTION_AUTHORITY_BYPASS");
+  if (
+    deploymentPlanSummary.external_authority_pending === true
+    || String(deploymentPlanSummary.authority_state || "").trim().toUpperCase() === "PENDING"
+    || deploymentPlanSummary.authority_bypass_active === true
+  ) blockers.push("SELF_EVOLUTION_EXTERNAL_AUTHORITY_PENDING");
   if (Number(memorySummary.blocked_candidate_n || 0) > 0) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK_PRESENT");
   if (cycleMismatches.length) blockers.push("SELF_EVOLUTION_CYCLE_MISMATCH");
   if (cycleIdAbsent.length) blockers.push("SELF_EVOLUTION_CYCLE_ID_ABSENT");
   const uniqueBlockers = Array.from(new Set(blockers.filter(Boolean)));
 
   let overallStatus = "HEALTHY";
-  if (deploymentPlanStatus === "APPLIED_ACTIVE_AUTHORITY_BYPASS") overallStatus = "APPLIED_ACTIVE_AUTHORITY_BYPASS";
-  else if (deploymentPlanStatus === "APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS") overallStatus = "APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS";
-  else if (deploymentPlanStatus === "APPLIED_ACTIVE") overallStatus = "APPLIED_ACTIVE";
-  else if (deploymentPlanStatus === "APPLIED_PENDING_BUNDLE_ACTIVATION") overallStatus = "APPLIED_PENDING_BUNDLE_ACTIVATION";
-  else if (deploymentPlanStatus === "APPLIED_CONFIRMED_AUTHORITY_BYPASS") overallStatus = "APPLIED_CONFIRMED_AUTHORITY_BYPASS";
-  else if (deploymentPlanStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS") overallStatus = "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS";
-  else if (deploymentPlanStatus === "APPLIED_CONFIRMED") overallStatus = "APPLIED_CONFIRMED";
-  else if (deploymentPlanStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION") overallStatus = "APPLIED_PENDING_SIGNAL_CONFIRMATION";
+  const normalizedDeploymentPlanStatus = normalizePlanStatus(deploymentPlanStatus);
+  if (normalizedDeploymentPlanStatus === "APPLIED_ACTIVE_PENDING_AUTHORITY") overallStatus = "APPLIED_ACTIVE_PENDING_AUTHORITY";
+  else if (normalizedDeploymentPlanStatus === "APPLIED_PENDING_BUNDLE_ACTIVATION_PENDING_AUTHORITY") overallStatus = "APPLIED_PENDING_BUNDLE_ACTIVATION_PENDING_AUTHORITY";
+  else if (normalizedDeploymentPlanStatus === "APPLIED_ACTIVE") overallStatus = "APPLIED_ACTIVE";
+  else if (normalizedDeploymentPlanStatus === "APPLIED_PENDING_BUNDLE_ACTIVATION") overallStatus = "APPLIED_PENDING_BUNDLE_ACTIVATION";
+  else if (normalizedDeploymentPlanStatus === "APPLIED_CONFIRMED_PENDING_AUTHORITY") overallStatus = "APPLIED_CONFIRMED_PENDING_AUTHORITY";
+  else if (normalizedDeploymentPlanStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION_PENDING_AUTHORITY") overallStatus = "APPLIED_PENDING_SIGNAL_CONFIRMATION_PENDING_AUTHORITY";
+  else if (normalizedDeploymentPlanStatus === "APPLIED_CONFIRMED") overallStatus = "APPLIED_CONFIRMED";
+  else if (normalizedDeploymentPlanStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION") overallStatus = "APPLIED_PENDING_SIGNAL_CONFIRMATION";
   else if (deploymentPlanSummary.manual_step_required === true) overallStatus = "READY_FOR_MANUAL_PASTE";
   else if (staleArtifacts.length || cycleMismatches.length || cycleIdAbsent.length) overallStatus = "BLOCKED";
   else if (uniqueBlockers.length || canarySummary.apply_pass === false || deploymentSummary.deploy_pass === false) overallStatus = "DEGRADED";
@@ -254,9 +278,9 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       critical_blockers: uniqueBlockers.slice(0, 10),
       promotion_path_ready: deploymentSummary.deploy_pass === true,
       manual_paste_ready: deploymentPlanSummary.manual_step_required === true,
-      applied_confirmed: deploymentPlanStatus === "APPLIED_CONFIRMED" || deploymentPlanStatus === "APPLIED_CONFIRMED_AUTHORITY_BYPASS" || deploymentPlanStatus === "APPLIED_ACTIVE" || deploymentPlanStatus === "APPLIED_ACTIVE_AUTHORITY_BYPASS",
-      applied_pending_signal_confirmation: deploymentPlanStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION" || deploymentPlanStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS",
-      applied_pending_bundle_activation: deploymentPlanStatus === "APPLIED_PENDING_BUNDLE_ACTIVATION" || deploymentPlanStatus === "APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS",
+      applied_confirmed: isAppliedConfirmedLike(deploymentPlanStatus),
+      applied_pending_signal_confirmation: isAppliedPendingSignalConfirmationLike(deploymentPlanStatus),
+      applied_pending_bundle_activation: isAppliedPendingBundleActivationLike(deploymentPlanStatus),
       ready_candidate_id: deploymentPlanSummary.recommended_target_candidate_id || deploymentPlanSummary.target_candidate_id || deploymentSummary.target_candidate_id || null,
       canary_open_wave: toNum(canarySummary.open_wave) || null,
       loop_n: rows.length,

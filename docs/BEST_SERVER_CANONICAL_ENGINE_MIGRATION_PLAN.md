@@ -499,15 +499,16 @@ Phase E 종료 조건:
 완료 기준:
 1. Pine drift가 운영 체결 source를 바꾸지 않는다.
 
-#### F-3. Authority Bypass 제거
+#### F-3. External Authority Pending 정규화
 
 작업:
-1. `manual paste`가 없어지면 `AUTHORITY_BYPASS` 상태 자체를 제거
-2. `APPLIED_*_AUTHORITY_BYPASS` 계열 상태를 deprecated 처리
+1. `manual paste`가 없어지면 `AUTHORITY_BYPASS`라는 이름 자체를 제거
+2. 최신 SSOT는 `APPLIED_*_PENDING_AUTHORITY`만 쓰고, `*_AUTHORITY_BYPASS`는 입력 호환만 유지
 3. authority verdict 없이 live source가 바뀌는 경로 봉쇄
 
 완료 기준:
-1. authority bypass 상태가 더 이상 발생하지 않는다.
+1. 최신 artifact에 `*_AUTHORITY_BYPASS` 상태가 더 이상 나타나지 않는다.
+2. 남은 의미는 `authority_state=PENDING` 하나로 수렴한다.
 
 #### F-4. 문서/리포트/운영 용어 전환
 

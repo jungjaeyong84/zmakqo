@@ -581,11 +581,22 @@ function deriveDeploymentPlan({
       || manualPaste.acknowledged === true
     )
   );
+  const authorityRequired = Boolean(
+    prepared.override_active === true || preparedStrategyApplied || promotion.ready === true || rollback.ready === true
+  );
   const authorityBypassActive = Boolean(
     (prepared.override_active === true || preparedStrategyApplied)
     && (manualPaste.acknowledged === true || liveSignalConfirmation.confirmed === true)
     && !appliedAuthorityApproved
   );
+  const externalAuthorityPending = Boolean(
+    authorityRequired
+    && !appliedAuthorityApproved
+    && (manualPaste.acknowledged === true || bundleActivationSummary.activation_confirmed === true || preparedStrategyApplied)
+  );
+  const authorityState = !authorityRequired
+    ? "NOT_REQUIRED"
+    : (appliedAuthorityApproved ? "APPROVED" : (externalAuthorityPending ? "PENDING" : "REQUIRED"));
   const deployUnits = deriveDeployUnits({
     prepared,
     manualPaste,
@@ -597,15 +608,15 @@ function deriveDeploymentPlan({
   let planStatus = "HOLD";
   if (readyForManualRollback) planStatus = "READY_FOR_MANUAL_ROLLBACK";
   else if (rollbackPreparePass) planStatus = "PREPARE_ROLLBACK";
-  else if (bundleActivationSummary.activation_confirmed) planStatus = authorityBypassActive ? "APPLIED_ACTIVE_AUTHORITY_BYPASS" : "APPLIED_ACTIVE";
-  else if (manualPaste.acknowledged) planStatus = authorityBypassActive ? "APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS" : "APPLIED_PENDING_BUNDLE_ACTIVATION";
+  else if (bundleActivationSummary.activation_confirmed) planStatus = externalAuthorityPending ? "APPLIED_ACTIVE_PENDING_AUTHORITY" : "APPLIED_ACTIVE";
+  else if (manualPaste.acknowledged) planStatus = externalAuthorityPending ? "APPLIED_PENDING_BUNDLE_ACTIVATION_PENDING_AUTHORITY" : "APPLIED_PENDING_BUNDLE_ACTIVATION";
   else if (readyForManualPaste) planStatus = "READY_FOR_MANUAL_PASTE";
   else if (promotionPreparePass) planStatus = dryPrepareEligible ? "PREPARE_PROMOTION_DRY" : "PREPARE_PROMOTION";
 
   const blockers = [];
   if (planStatus === "HOLD" && Array.isArray(guardSummary.blockers)) blockers.push(...guardSummary.blockers);
   if (changeControlRelevant && codexVerdict === "HOLD" && !recoveryPromotion) blockers.push("CODEX_ACTION_NOT_APPROVED");
-  if (authorityBypassActive) blockers.push("EXTERNAL_AUTHORITY_BYPASS");
+  if (externalAuthorityPending || authorityBypassActive) blockers.push("EXTERNAL_AUTHORITY_PENDING");
   if (promotionPreparePass && !readyForManualPaste && !dryPrepareEligible) blockers.push("PINE_PREPARE_PENDING");
   if (dryPrepareEligible) blockers.push("DRY_PREPARE_ONLY");
   if (rollbackPreparePass && !readyForManualRollback) blockers.push("ROLLBACK_PREPARE_PENDING");
@@ -662,12 +673,12 @@ function deriveDeploymentPlan({
     nextActions.push("bundle activation proof가 ACTIVE가 될 때까지 APPLIED_PENDING_BUNDLE_ACTIVATION 상태를 유지");
   }
   if (authorityBypassActive) {
-    nextActions.push("manual prepared override가 외부 권위 PROMOTE 없이 적용되어 authority bypass 상태임을 명시하고 candidate 출처를 분리 추적");
+    nextActions.push("bundle은 활성화됐지만 외부 권위는 아직 미승인 상태이므로 authority_state=PENDING 으로 추적");
   }
   if (bundleActivationSummary.activation_confirmed) {
     nextActions.length = 0;
     if (authorityBypassActive) {
-      nextActions.push("적용된 Pine는 authority bypass 상태이므로 current applied origin과 current recommended target을 분리해서 추적");
+      nextActions.push("engine/policy bundle은 ACTIVE지만 external authority는 PENDING 상태이므로 applied origin과 recommended target을 분리 추적");
     }
   }
 
@@ -753,15 +764,20 @@ function deriveDeploymentPlan({
       confirmed_signal_id: bundleActivationSummary.first_decision_id || liveSignalConfirmation.signal_id,
       confirmed_signal_created_at: bundleActivationSummary.first_decision_created_at || liveSignalConfirmation.created_at,
       codex_verdict: codexVerdict,
-      authority_required: prepared.override_active === true || preparedStrategyApplied || promotion.ready === true || rollback.ready === true,
+      authority_required: authorityRequired,
       authority_approved: appliedAuthorityApproved,
-      authority_bypass_active: authorityBypassActive,
+      authority_state: authorityState,
+      external_authority_pending: externalAuthorityPending,
+      authority_bypass_active: false,
       blockers: Array.from(new Set(blockers.filter(Boolean))),
       next_actions: Array.from(new Set(nextActions.filter(Boolean))),
     },
     rows: marketScope.rows,
     handoff: {
       checklist,
+      authority_state: authorityState,
+      external_authority_pending: externalAuthorityPending,
+      authority_bypass_active: false,
       deploy_unit_primary: deployUnits.deploy_unit_primary,
       deploy_units: deployUnits.deploy_units,
       prepared_engine_bundle: deployUnits.prepared_engine_bundle,

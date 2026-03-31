@@ -46,6 +46,8 @@ const { __test } = require("../../scripts/report-best-self-evolution-server-prim
   assert.strictEqual(report.summary.server_primary_realized_n, 2);
   assert.strictEqual(report.summary.pine_shadow_disagreement_n, 1);
   assert.strictEqual(report.summary.rollback_trigger_n, 1);
+  assert.strictEqual(report.summary.acceptance_ready, false);
+  assert.strictEqual(report.summary.acceptance_reason, "SERVER_PRIMARY_CANARY_BLOCK");
   assert.strictEqual(report.summary.by_source_mode[0].key, "SERVER_PRIMARY");
   assert.strictEqual(report.rows[0].market, "AXSUSDT");
   assert.strictEqual(report.rows[0].rollback_triggers[0], "PINE_SHADOW_DISAGREEMENT");
@@ -58,6 +60,13 @@ const { __test } = require("../../scripts/report-best-self-evolution-server-prim
   });
   assert.match(md, /cycle-d/);
   assert.match(md, /rows \/ markets: 2 \/ 1/);
+  assert.match(md, /acceptance: PENDING/);
   assert.match(md, /AXSUSDT/);
+
+  const empty = __test.deriveServerPrimaryCanary({
+    dataset: { rows: [] },
+  });
+  assert.strictEqual(empty.summary.acceptance_ready, false);
+  assert.strictEqual(empty.summary.acceptance_reason, "NO_SERVER_PRIMARY_ROWS");
   console.log("SERVER_PRIMARY_CANARY_REPORT_TEST_OK");
 })();
