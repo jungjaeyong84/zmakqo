@@ -42,7 +42,7 @@ const INPUTS = Object.freeze({
   stageAutopilot: path.join(OPS_DAILY_DIR, "stage_autopilot_latest.json"),
   weightTuning: path.join(OPS_DAILY_DIR, "best_self_evolution_weight_tuning_latest.json"),
   memory: path.join(OPS_DAILY_DIR, "best_self_evolution_memory_latest.json"),
-  codexPatch: path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.json"),
+  codexPatch: selfEvolutionSnapshotLatestPath("self_evolution_authority_latest.json"),
 });
 
 function readFresh(filePath, maxAgeHours) {
@@ -89,17 +89,46 @@ function renderMarkdown(report = {}) {
   return `${lines.join("\n")}\n`;
 }
 
+function resolveReportCycleId({ preferredCycleId = null, objectiveSupervisor = null, deploymentPlan = null, fallbackCycleId = null } = {}) {
+  const objective = objectiveSupervisor && typeof objectiveSupervisor === "object" ? objectiveSupervisor : {};
+  const plan = deploymentPlan && typeof deploymentPlan === "object" ? deploymentPlan : {};
+  return String(
+    preferredCycleId
+    || objective.source_cycle_id
+    || objective.cycle_id
+    || plan.source_cycle_id
+    || plan.cycle_id
+    || fallbackCycleId
+    || ""
+  ).trim() || null;
+}
+
 async function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
   const artifacts = Object.fromEntries(
     Object.entries(INPUTS).map(([key, filePath]) => [key, readFresh(filePath, MAX_AGE_HOURS[key] || 24)])
   );
+  const objectiveSupervisor = artifacts.objectiveSupervisor && artifacts.objectiveSupervisor.data;
+  const deploymentPlan = artifacts.deploymentPlan && artifacts.deploymentPlan.data;
+  const reportCycleId = resolveReportCycleId({
+    preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
+    objectiveSupervisor,
+    deploymentPlan,
+    fallbackCycleId: cycleMeta.cycle_id,
+  });
   const output = {
     ok: true,
     generated_at_kst: nowMeta.kst,
-    cycle_id: cycleMeta.cycle_id,
-    generation_id: cycleMeta.generation_id,
+    cycle_id: reportCycleId,
+    generation_id: reportCycleId,
+    source_cycle_id: String(
+      (objectiveSupervisor && (objectiveSupervisor.source_cycle_id || objectiveSupervisor.cycle_id))
+      || (deploymentPlan && (deploymentPlan.source_cycle_id || deploymentPlan.cycle_id))
+      || reportCycleId
+      || ""
+    ).trim() || null,
+    evaluation_cycle_id: cycleMeta.cycle_id,
     inputs: { ...INPUTS },
     ...deriveLoopMonitor({
       artifacts,
@@ -129,6 +158,7 @@ module.exports = {
   main,
   __test: {
     readFresh,
+    resolveReportCycleId,
     renderMarkdown,
   },
 };

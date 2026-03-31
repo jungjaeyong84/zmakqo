@@ -67,7 +67,7 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
     { data: { verdict: "HOLD" }, fresh: true },
     { data: {} },
   );
-  assert.strictEqual(pineRecoveryPromote.actionable, true);
+  assert.strictEqual(pineRecoveryPromote.actionable, false);
   assert.strictEqual(pineRecoveryPromote.kind, "PROMOTE");
   assert.strictEqual(pineRecoveryPromote.signature, "AUTO_CORE_SCORE_TIGHTEN");
   assert.strictEqual(pineRecoveryPromote.display_signature, "AUTO_LONG_SHORT_SCORE_TIGHTEN");
@@ -99,6 +99,40 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
   assert.strictEqual(pendingLoopMonitor.source, "PENDING_FINAL_LOOP_MONITOR");
   assert.strictEqual(pendingLoopMonitor.cycle_id, "cycle-new");
   assert.strictEqual(pendingLoopMonitor.cycle_consistent, null);
+
+  const resolvedCycleId = __test.resolveReportCycleId({
+    objectiveArtifact: { data: { source_cycle_id: "cycle-source", cycle_id: "cycle-objective" } },
+    deploymentPlan: { cycle_id: "cycle-plan" },
+    loopMonitor: { cycle_id: "cycle-monitor" },
+    fallbackCycleId: "cycle-fallback",
+  });
+  assert.strictEqual(resolvedCycleId, "cycle-source");
+
+  const overrideApplied = __test.applyPreparedOverrideToPineArtifacts({
+    pineHandoff: {
+      stage_ready: false,
+      target_candidate_id: "AUTO_OLD",
+      prepared_strategy_id: "donbeolja_v6.0.3.2",
+    },
+    pineStageRow: {
+      machine_state: "HOLD",
+      reason: "SELF_EVOLUTION_CANARY_BLOCK",
+      prepared_strategy_id: "donbeolja_v6.0.3.2",
+      signature: "AUTO_OLD",
+    },
+    preparedOverride: {
+      active: true,
+      target_candidate_id: "AUTO_CORE_REGIME_TIGHTEN",
+      display_candidate_id: "AUTO_LONG_SHORT_REGIME_TIGHTEN",
+      prepared_strategy_id: "donbeolja_v6.0.3.3",
+      prepared_file_path: "/tmp/donbeolja_v6.0.3.3.pine.txt",
+    },
+  });
+  assert.strictEqual(overrideApplied.pineHandoff.stage_ready, true);
+  assert.strictEqual(overrideApplied.pineHandoff.prepared_strategy_id, "donbeolja_v6.0.3.3");
+  assert.strictEqual(overrideApplied.pineStageRow.machine_state, "READY");
+  assert.strictEqual(overrideApplied.pineStageRow.reason, "MANUAL_PREPARED_OVERRIDE");
+  assert.strictEqual(overrideApplied.pineStageRow.signature, "AUTO_CORE_REGIME_TIGHTEN");
 
   const budgetBlocked = __test.stageChangeBudgetOk([
     { stage: "AI", action: "AUTO_APPLY", ts_ms: 1_000_000 },

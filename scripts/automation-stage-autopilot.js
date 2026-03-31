@@ -8,6 +8,7 @@ const { spawnSync } = require("child_process");
 const { getSystemSettingsForProvider } = require("../src/storage/settings");
 const {
   OPS_DAILY_DIR,
+  OPS_RUNTIME_DIR,
   copyLatest,
   loadLocalEnv,
   nowKstMeta,
@@ -20,6 +21,7 @@ const {
 } = require("./lib/automation-utils");
 const { readBestFebtSupervisorContext } = require("./lib/best-febt-supervisor");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
+const { normalizePreparedOverride } = require("../src/utils/selfEvolutionPreparedOverride");
 const {
   STATE_MACHINE,
   appendStageHistory,
@@ -64,6 +66,8 @@ const FRESHNESS_HOURS = Object.freeze({
 const SELF_EVOLUTION_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json");
 const SELF_EVOLUTION_OBJECTIVE_SUPERVISOR_LATEST_PATH = selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json");
 const SELF_EVOLUTION_LOOP_MONITOR_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_loop_monitor_latest.json");
+const SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json");
+const SELF_EVOLUTION_PREPARED_OVERRIDE_PATH = path.join(OPS_RUNTIME_DIR, "self_evolution_prepared_override.json");
 const AI_SNAPSHOT_KEYS = Object.freeze([
   "ai_missing_policy",
   "ai_missing_reduce_pct",
@@ -126,6 +130,55 @@ function buildLoopMonitorView({ objectiveArtifact = null, loopMonitorArtifact = 
     manual_paste_ready: false,
     ready_candidate_id: null,
   };
+}
+
+function resolveReportCycleId({ preferredCycleId = null, objectiveArtifact = null, deploymentPlan = null, loopMonitor = null, fallbackCycleId = null } = {}) {
+  const objectiveData = objectiveArtifact && objectiveArtifact.data && typeof objectiveArtifact.data === "object"
+    ? objectiveArtifact.data
+    : {};
+  const deploymentData = deploymentPlan && typeof deploymentPlan === "object"
+    ? deploymentPlan
+    : {};
+  const loopData = loopMonitor && typeof loopMonitor === "object"
+    ? loopMonitor
+    : {};
+  return String(
+    preferredCycleId
+    || objectiveData.source_cycle_id
+    || objectiveData.cycle_id
+    || deploymentData.source_cycle_id
+    || deploymentData.cycle_id
+    || loopData.cycle_id
+    || fallbackCycleId
+    || ""
+  ).trim() || null;
+}
+
+function applyPreparedOverrideToPineArtifacts({ pineHandoff = null, pineStageRow = null, preparedOverride = null } = {}) {
+  const override = preparedOverride && typeof preparedOverride === "object" ? preparedOverride : {};
+  if (override.active !== true) return { pineHandoff, pineStageRow };
+
+  const nextHandoff = pineHandoff && typeof pineHandoff === "object" ? { ...pineHandoff } : {};
+  nextHandoff.stage_ready = true;
+  nextHandoff.target_candidate_id = override.target_candidate_id || nextHandoff.target_candidate_id || null;
+  nextHandoff.display_candidate_id = override.display_candidate_id || nextHandoff.display_candidate_id || null;
+  nextHandoff.prepared_file_path = override.prepared_file_path || nextHandoff.prepared_file_path || null;
+  nextHandoff.prepared_strategy_id = override.prepared_strategy_id || nextHandoff.prepared_strategy_id || null;
+  nextHandoff.latest_generated_file_path = override.latest_generated_file_path || nextHandoff.latest_generated_file_path || null;
+  nextHandoff.rollback_source_file_path = override.rollback_source_file_path || nextHandoff.rollback_source_file_path || null;
+  nextHandoff.candidate_signature = override.target_candidate_id || nextHandoff.candidate_signature || null;
+
+  const nextStageRow = pineStageRow && typeof pineStageRow === "object" ? { ...pineStageRow } : {};
+  nextStageRow.machine_state = "READY";
+  nextStageRow.reason = "MANUAL_PREPARED_OVERRIDE";
+  nextStageRow.last_action = nextStageRow.last_action || "HOLD";
+  nextStageRow.prepared_file_path = override.prepared_file_path || nextStageRow.prepared_file_path || null;
+  nextStageRow.prepared_strategy_id = override.prepared_strategy_id || nextStageRow.prepared_strategy_id || null;
+  nextStageRow.latest_generated_file_path = override.latest_generated_file_path || nextStageRow.latest_generated_file_path || null;
+  nextStageRow.rollback_source_file_path = override.rollback_source_file_path || nextStageRow.rollback_source_file_path || null;
+  nextStageRow.signature = override.target_candidate_id || nextStageRow.signature || null;
+  nextStageRow.display_signature = override.display_candidate_id || nextStageRow.display_signature || null;
+  return { pineHandoff: nextHandoff, pineStageRow: nextStageRow };
 }
 
 function toNum(v) {
@@ -386,7 +439,6 @@ function buildPineCandidate(objectiveArtifact, codexArtifact, changeArtifact) {
     || String(codexAuthority.status || "").toUpperCase() === "FRESH"
   );
   if (verdict === "PATCH_CANDIDATE") {
-    const recoveryPromotion = objective.promotion && objective.promotion.recovery_mode === true;
     const candidateId = String(
       codexAuthority.recommended_candidate_id
       || objective.promotion && objective.promotion.candidate_id
@@ -401,7 +453,7 @@ function buildPineCandidate(objectiveArtifact, codexArtifact, changeArtifact) {
       || ""
     ).trim() || null;
     return {
-      actionable: !!candidateId && (recoveryPromotion || (codexFresh && codexVerdict === "PROMOTE")),
+      actionable: !!candidateId && codexFresh && codexVerdict === "PROMOTE",
       kind: "PROMOTE",
       signature: candidateId || null,
       display_signature: displayCandidateId,
@@ -842,9 +894,10 @@ async function main() {
   const waitArtifact = readArtifact("wait_one_bar_tune", path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json"), FRESHNESS_HOURS.wait);
   const canaryArtifact = readArtifact("filter_shadow_canary", path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json"), FRESHNESS_HOURS.canary);
   const selfEvolutionCanaryArtifact = readArtifact("best_self_evolution_canary", SELF_EVOLUTION_CANARY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCanary);
+  const selfEvolutionDeploymentPlanArtifact = readArtifact("best_self_evolution_deployment_plan", SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST_PATH, FRESHNESS_HOURS.objective);
   const selfEvolutionLoopMonitorArtifact = readArtifact("best_self_evolution_loop_monitor", SELF_EVOLUTION_LOOP_MONITOR_LATEST_PATH, FRESHNESS_HOURS.objective);
   const changeArtifact = readArtifact("pine_quality_change_control", path.join(OPS_DAILY_DIR, "pine_quality_change_control_latest.json"), FRESHNESS_HOURS.change);
-  const codexArtifact = readArtifact("codex_weekly_patch_engine", path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.json"), FRESHNESS_HOURS.codex);
+  const codexArtifact = readArtifact("self_evolution_authority", selfEvolutionSnapshotLatestPath("self_evolution_authority_latest.json"), FRESHNESS_HOURS.codex);
   const objectiveArtifactForLoop = selfEvolutionObjectiveArtifact.exists ? selfEvolutionObjectiveArtifact : objectiveArtifact;
   const currentSysRes = await getSystemSettingsForProvider(PROVIDER, 0);
   const currentSys = currentSysRes && currentSysRes.data ? currentSysRes.data : {};
@@ -863,10 +916,17 @@ async function main() {
     && typeof objectiveArtifactForLoop.data.self_evolution_deployment === "object"
       ? objectiveArtifactForLoop.data.self_evolution_deployment
       : {};
-  const selfEvolutionDeploymentPlan = objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.self_evolution_deployment_plan
-    && typeof objectiveArtifactForLoop.data.self_evolution_deployment_plan === "object"
-      ? objectiveArtifactForLoop.data.self_evolution_deployment_plan
-      : {};
+  const selfEvolutionDeploymentPlan = selfEvolutionDeploymentPlanArtifact
+    && selfEvolutionDeploymentPlanArtifact.exists
+    && selfEvolutionDeploymentPlanArtifact.fresh === true
+    && selfEvolutionDeploymentPlanArtifact.data
+    && selfEvolutionDeploymentPlanArtifact.data.summary
+    && typeof selfEvolutionDeploymentPlanArtifact.data.summary === "object"
+      ? selfEvolutionDeploymentPlanArtifact.data.summary
+      : (objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.self_evolution_deployment_plan
+        && typeof objectiveArtifactForLoop.data.self_evolution_deployment_plan === "object"
+          ? objectiveArtifactForLoop.data.self_evolution_deployment_plan
+          : {});
   const selfEvolutionLoopMonitor = buildLoopMonitorView({ objectiveArtifact: objectiveArtifactForLoop, loopMonitorArtifact: selfEvolutionLoopMonitorArtifact, cycleMeta });
   const codexAuthority = objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.codex_authority
     && typeof objectiveArtifactForLoop.data.codex_authority === "object"
@@ -877,6 +937,7 @@ async function main() {
     ? "CANARY_DRIFT"
     : (selfEvolutionCanary.apply_pass === true ? null : "SELF_EVOLUTION_CANARY_BLOCK");
   const selfEvolutionRollbackReady = Number(selfEvolutionCanary.rollback_ready_n || 0) > 0;
+  const preparedOverride = normalizePreparedOverride(readJsonRawSafe(SELF_EVOLUTION_PREPARED_OVERRIDE_PATH, null));
 
   const actions = [];
   const stageRows = [];
@@ -1040,31 +1101,65 @@ async function main() {
   history = result.history;
   stateData.stages.PINE = result.stageState;
   if (result.action) actions.push(result.action);
-    stageRows.push({
-      stage: "PINE",
-      machine_state: result.stageState.machine_state,
-      reason: result.stageState.last_reason,
+
+  const pineStageRow = {
+    stage: "PINE",
+    machine_state: result.stageState.machine_state,
+    reason: result.stageState.last_reason,
     last_action: result.stageState.last_action,
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
     signature: result.stageState.last_signature,
     snapshot_path: null,
-      prepared_file_path: result.stageState.prepared_file_path || null,
-      prepared_strategy_id: result.stageState.prepared_strategy_id || null,
-      latest_generated_file_path: result.stageState.latest_generated_file_path || null,
-      rollback_source_file_path: result.stageState.rollback_source_file_path || null,
-      display_signature: result.stageState.display_signature || pineCandidate.display_signature || null,
-      best_febt_guard: pineBestFebtGuard.reason,
-    });
+    prepared_file_path: result.stageState.prepared_file_path || null,
+    prepared_strategy_id: result.stageState.prepared_strategy_id || null,
+    latest_generated_file_path: result.stageState.latest_generated_file_path || null,
+    rollback_source_file_path: result.stageState.rollback_source_file_path || null,
+    display_signature: result.stageState.display_signature || pineCandidate.display_signature || null,
+    best_febt_guard: pineBestFebtGuard.reason,
+  };
 
   stateData.history = history;
   writeAutopilotState(autopilotStore.filePath, stateData);
 
+  const pineHandoff = {
+    stage_ready: result.stageState.machine_state === STATE_MACHINE.READY,
+    target_candidate_id: pineCandidate.signature || null,
+    display_candidate_id: pineCandidate.display_signature || pineCandidate.signature || null,
+    prepared_file_path: result.stageState.prepared_file_path || null,
+    prepared_strategy_id: result.stageState.prepared_strategy_id || null,
+    latest_generated_file_path: result.stageState.latest_generated_file_path || null,
+    rollback_source_file_path: result.stageState.rollback_source_file_path || null,
+    candidate_signature: result.stageState.last_signature || null,
+  };
+  const overrideApplied = applyPreparedOverrideToPineArtifacts({ pineHandoff, pineStageRow, preparedOverride });
+  stageRows.push(overrideApplied.pineStageRow);
+
+  const reportCycleId = resolveReportCycleId({
+    preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
+    objectiveArtifact: objectiveArtifactForLoop,
+    deploymentPlan: selfEvolutionDeploymentPlan,
+    loopMonitor: selfEvolutionLoopMonitor,
+    fallbackCycleId: cycleMeta.cycle_id,
+  });
+
+  const sourceCycleId = String(
+    selfEvolutionDeploymentPlan.source_cycle_id
+    || (objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.source_cycle_id)
+    || (objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.cycle_id)
+    || reportCycleId
+    || ""
+  ).trim() || null;
+
+  const evaluationCycleId = cycleMeta.cycle_id;
+
   const report = {
     ok: true,
     generated_at_kst: nowMeta.kst,
-    cycle_id: cycleMeta.cycle_id,
-    generation_id: cycleMeta.generation_id,
+    cycle_id: reportCycleId,
+    generation_id: reportCycleId,
+    source_cycle_id: sourceCycleId,
+    evaluation_cycle_id: evaluationCycleId,
     provider: PROVIDER,
     objective_verdict: String(objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.verdict || "N/A"),
     canary_pass: canaryPass,
@@ -1086,12 +1181,19 @@ async function main() {
       canary_open_wave: toNum(selfEvolutionDeployment.canary_open_wave) || 1,
     },
     self_evolution_deployment_plan: {
-      available: !!(objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.self_evolution_deployment_plan),
+      available: !!(
+        (selfEvolutionDeploymentPlanArtifact && selfEvolutionDeploymentPlanArtifact.exists && selfEvolutionDeploymentPlanArtifact.data && selfEvolutionDeploymentPlanArtifact.data.summary)
+        || (objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.self_evolution_deployment_plan)
+      ),
       plan_status: String(selfEvolutionDeploymentPlan.plan_status || "").trim().toUpperCase() || null,
       prepare_pass: selfEvolutionDeploymentPlan.prepare_pass === true,
       manual_step_required: selfEvolutionDeploymentPlan.manual_step_required === true,
       target_candidate_id: String(selfEvolutionDeploymentPlan.target_candidate_id || "").trim() || null,
       prepared_file_path: String(selfEvolutionDeploymentPlan.prepared_file_path || "").trim() || null,
+      prepared_strategy_id: String(selfEvolutionDeploymentPlan.prepared_strategy_id || "").trim() || null,
+      applied_strategy_id: String(selfEvolutionDeploymentPlan.applied_strategy_id || "").trim() || null,
+      manual_paste_acknowledged: selfEvolutionDeploymentPlan.manual_paste_acknowledged === true,
+      live_signal_confirmed: selfEvolutionDeploymentPlan.live_signal_confirmed === true,
       latest_generated_file_path: String(selfEvolutionDeploymentPlan.latest_generated_file_path || "").trim() || null,
       rollback_source_file_path: String(selfEvolutionDeploymentPlan.rollback_source_file_path || "").trim() || null,
       blockers: Array.isArray(selfEvolutionDeploymentPlan.blockers) ? selfEvolutionDeploymentPlan.blockers : [],
@@ -1110,16 +1212,7 @@ async function main() {
       manual_paste_ready: selfEvolutionLoopMonitor.manual_paste_ready === true,
       ready_candidate_id: String(selfEvolutionLoopMonitor.ready_candidate_id || "").trim() || null,
     },
-    self_evolution_pine_handoff: {
-      stage_ready: result.stageState.machine_state === STATE_MACHINE.READY,
-      target_candidate_id: pineCandidate.signature || null,
-      display_candidate_id: pineCandidate.display_signature || pineCandidate.signature || null,
-      prepared_file_path: result.stageState.prepared_file_path || null,
-      prepared_strategy_id: result.stageState.prepared_strategy_id || null,
-      latest_generated_file_path: result.stageState.latest_generated_file_path || null,
-      rollback_source_file_path: result.stageState.rollback_source_file_path || null,
-      candidate_signature: result.stageState.last_signature || null,
-    },
+    self_evolution_pine_handoff: overrideApplied.pineHandoff,
     codex_authority: {
       owner: String(codexAuthority.owner || "").trim() || "CODEX",
       authority_mode: String(codexAuthority.authority_mode || "").trim().toUpperCase() || null,
@@ -1161,7 +1254,7 @@ async function main() {
         { header: "자기 진화 배포 가드", lines: [`deploy ${report.self_evolution_deployment && report.self_evolution_deployment.deploy_pass ? "PASS" : "BLOCK"} / target ${report.self_evolution_deployment && report.self_evolution_deployment.target_candidate_id || "N/A"} / open wave ${report.self_evolution_deployment && report.self_evolution_deployment.canary_open_wave != null ? report.self_evolution_deployment.canary_open_wave : "N/A"}`, `blockers ${report.self_evolution_deployment && Array.isArray(report.self_evolution_deployment.blockers) && report.self_evolution_deployment.blockers.length ? report.self_evolution_deployment.blockers.join("|") : "none"}`] },
         { header: "자기 진화 배포 handoff", lines: [`status ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.plan_status || "N/A"} / prepare ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.prepare_pass ? "PASS" : "BLOCK"} / manual ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.manual_step_required ? "YES" : "NO"}`, `file ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.prepared_file_path || report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.latest_generated_file_path || "N/A"} / rollback ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.rollback_source_file_path || "N/A"}`] },
         { header: "Pine 수동 handoff", lines: [`ready ${report.self_evolution_pine_handoff && report.self_evolution_pine_handoff.stage_ready ? "YES" : "NO"} / candidate ${report.self_evolution_pine_handoff && report.self_evolution_pine_handoff.candidate_signature || "N/A"}`, `file ${report.self_evolution_pine_handoff && report.self_evolution_pine_handoff.prepared_file_path || "N/A"} / latest ${report.self_evolution_pine_handoff && report.self_evolution_pine_handoff.latest_generated_file_path || "N/A"}`] },
-        { header: "Codex 권한", lines: [`mode ${report.codex_authority && report.codex_authority.authority_mode || "N/A"} / status ${report.codex_authority && report.codex_authority.status || "N/A"} / verdict ${report.codex_authority && report.codex_authority.verdict || "N/A"}`, `manual ${report.codex_authority && report.codex_authority.manual_step_required ? "YES" : "NO"} / file ${report.codex_authority && report.codex_authority.prepared_file_path || report.codex_authority && report.codex_authority.latest_generated_file_path || "N/A"}`] },
+        { header: "외부 권한", lines: [`mode ${report.codex_authority && report.codex_authority.authority_mode || "N/A"} / status ${report.codex_authority && report.codex_authority.status || "N/A"} / verdict ${report.codex_authority && report.codex_authority.verdict || "N/A"}`, `manual ${report.codex_authority && report.codex_authority.manual_step_required ? "YES" : "NO"} / file ${report.codex_authority && report.codex_authority.prepared_file_path || report.codex_authority && report.codex_authority.latest_generated_file_path || "N/A"}`] },
         { header: "BEST/FEBT 공통 계약", lines: [`mode ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.mode || "N/A"} / tightening ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.tightening_allowed ? "ALLOW" : "BLOCK"} / recovery ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.recovery_priority ? "FIRST" : "NORMAL"}`, `replacement ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_replacement_ratio != null ? Number(report.best_febt_tuning_contract.projected_replacement_ratio).toFixed(2) : "N/A"} / count ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_count_ratio_global != null ? `${Number(report.best_febt_tuning_contract.projected_count_ratio_global).toFixed(2)}x` : "N/A"}`] },
         { header: "이번에 실제로 한 일", lines: actions.map((row) => `${row.stage} 단계에서 ${row.type} 처리: ${row.detail}`) },
         { header: "각 단계 상태", lines: stageRows.map((row) => `${row.stage} 단계는 ${row.machine_state} 상태이며 사유는 ${row.reason} 입니다.`) },
@@ -1197,6 +1290,8 @@ module.exports = {
     buildObservedStageCandidate,
     buildPineCandidate,
     buildLoopMonitorView,
+    resolveReportCycleId,
+    applyPreparedOverrideToPineArtifacts,
     stageChangeBudgetOk,
     stableSignature,
     isAiAutopilotTightening,

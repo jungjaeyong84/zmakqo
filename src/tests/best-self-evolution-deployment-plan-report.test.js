@@ -4,6 +4,15 @@ const assert = require("assert");
 const { __test } = require("../../scripts/report-best-self-evolution-deployment-plan");
 
 (() => {
+  const cycleId = __test.resolveReportCycleId({
+    objectiveSupervisor: { source_cycle_id: "cycle-source", cycle_id: "cycle-objective" },
+    runtimeState: { cycle_id: "cycle-runtime" },
+    fallbackCycleId: "cycle-fallback",
+  });
+  assert.strictEqual(cycleId, "cycle-source");
+})();
+
+(() => {
   const md = __test.renderMarkdown({
     generated_at_kst: "2026-03-29 21:00:00 KST",
     summary: {
