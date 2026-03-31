@@ -7,6 +7,9 @@ const { candidateFingerprint } = require("../utils/bestSelfEvolutionMemoryLedger
 function run() {
   assert.strictEqual(__test.resolveDiffDirection("foo_min", 1, 2), "TIGHTEN");
   assert.strictEqual(__test.resolveDiffDirection("foo_max", 1, 2), "LOOSEN");
+  assert.strictEqual(__test.isPineThresholdChangeKey("shared_regime_transition_confirmation"), true);
+  assert.strictEqual(__test.isPineThresholdChangeKey("entry_core_score_abs"), true);
+  assert.strictEqual(__test.isPineThresholdChangeKey("pine_full_quality_bundle"), false);
 
   const report = buildCandidateChangeSets({
     objectiveSupervisor: {
@@ -114,14 +117,24 @@ function run() {
   assert.strictEqual(pine, undefined);
   const blockedPine = report.blocked_rows.find((row) => row.candidate_id === "AUTO_CORE_REGIME_TIGHTEN");
   assert.strictEqual(blockedPine.scope, "PINE");
+  assert.strictEqual(blockedPine.canonical_migration_class, "PINE_THRESHOLD");
+  assert.strictEqual(blockedPine.current_deploy_unit, "PINE_FILE");
+  assert.strictEqual(blockedPine.target_deploy_unit, "SERVER_SETTINGS");
   assert.ok(blockedPine.risk_flags.includes("COUNT_GUARD_ACTIVE"));
   assert.ok(blockedPine.risk_flags.includes("MEMORY_BLOCKED"));
   assert.strictEqual(blockedPine.ready_for_auto_apply, false);
   const ev = report.rows.find((row) => row.candidate_id === "EV_TP1_THRESHOLD_TUNE");
   assert.strictEqual(ev.scope, "EV");
+  assert.strictEqual(ev.canonical_migration_class, "SERVER_POLICY");
+  assert.strictEqual(ev.current_deploy_unit, "SERVER_SETTINGS");
+  assert.strictEqual(ev.target_deploy_unit, "SERVER_SETTINGS");
   assert.strictEqual(ev.ready_for_auto_apply, true);
   assert.deepStrictEqual(ev.markets, ["ALL"]);
   assert.strictEqual(report.summary.memory_blocked_n, 1);
+  assert.ok(report.summary.by_canonical_migration_class.SERVER_POLICY >= 1);
+  assert.ok(report.summary.by_canonical_migration_class_generated.PINE_THRESHOLD >= 1);
+  assert.ok(report.summary.by_target_deploy_unit.SERVER_SETTINGS >= 1);
+  assert.ok(report.summary.by_target_deploy_unit_generated.SERVER_SETTINGS >= 1);
 
   const fingerprintBaseArgs = {
     objectiveSupervisor: {
@@ -227,6 +240,7 @@ function run() {
   });
   const fallbackEv = fallbackEvReport.rows.find((row) => row.candidate_id === "EV_TP1_THRESHOLD_TUNE");
   assert.strictEqual(fallbackEv.scope, "EV");
+  assert.strictEqual(fallbackEv.canonical_migration_class, "SERVER_POLICY");
   assert.deepStrictEqual(fallbackEv.markets, ["ALL"]);
   assert.strictEqual(fallbackEv.source, "EV_TUNER_SHADOW_FALLBACK");
   assert.strictEqual(fallbackEv.ready_for_auto_apply, false);
@@ -277,8 +291,19 @@ function run() {
   assert.ok(axsRecovery);
   assert.deepStrictEqual(axsRecovery.markets, ["AXSUSDT"]);
   assert.strictEqual(axsRecovery.scope, "PINE");
+  assert.strictEqual(axsRecovery.canonical_migration_class, "PINE_THRESHOLD");
+  assert.strictEqual(axsRecovery.target_deploy_unit, "SERVER_SETTINGS");
   assert.strictEqual(axsRecovery.market_concentration_recovery, true);
   assert.ok(axsRecovery.risk_flags.includes("MARKET_CONCENTRATION_RECOVERY"));
+
+  const pineLogic = __test.annotateCanonicalMigration({
+    candidate_id: "PINE_LOGIC_SAMPLE",
+    scope: "PINE",
+    changes: [{ key: "PINE_FULL_QUALITY_BUNDLE" }],
+  });
+  assert.strictEqual(pineLogic.canonical_migration_class, "PINE_LOGIC");
+  assert.strictEqual(pineLogic.current_deploy_unit, "PINE_FILE");
+  assert.strictEqual(pineLogic.target_deploy_unit, "PINE_FILE");
 
   console.log("BEST_SELF_EVOLUTION_CANDIDATES_TEST_OK");
 }

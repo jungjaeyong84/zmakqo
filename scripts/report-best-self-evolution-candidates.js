@@ -42,7 +42,11 @@ function renderMarkdown(report = {}) {
     `- generated/active/ready/source_blocked: ${summary.generated_n ?? summary.total_n ?? 0} / ${summary.total_n ?? 0} / ${summary.ready_n ?? 0} / ${summary.blocked_n ?? 0}`,
     `- memory_blocked/fingerprint_repeat: ${summary.memory_blocked_n ?? 0} / ${summary.failed_fingerprint_repeat_n ?? 0}`,
     `- by_scope: ${summary.by_scope ? Object.entries(summary.by_scope).map(([k, v]) => `${k}=${v}`).join(", ") : "N/A"}`,
-    `- top_candidate: ${summary.top_candidate_id || "N/A"} / scope=${summary.top_scope || "N/A"}`,
+    `- by_migration_class_generated: ${summary.by_canonical_migration_class_generated ? Object.entries(summary.by_canonical_migration_class_generated).map(([k, v]) => `${k}=${v}`).join(", ") : "N/A"}`,
+    `- by_migration_class_active: ${summary.by_canonical_migration_class ? Object.entries(summary.by_canonical_migration_class).map(([k, v]) => `${k}=${v}`).join(", ") : "N/A"}`,
+    `- by_target_deploy_unit_generated: ${summary.by_target_deploy_unit_generated ? Object.entries(summary.by_target_deploy_unit_generated).map(([k, v]) => `${k}=${v}`).join(", ") : "N/A"}`,
+    `- by_target_deploy_unit_active: ${summary.by_target_deploy_unit ? Object.entries(summary.by_target_deploy_unit).map(([k, v]) => `${k}=${v}`).join(", ") : "N/A"}`,
+    `- top_candidate: ${summary.top_candidate_id || "N/A"} / scope=${summary.top_scope || "N/A"} / class=${summary.top_candidate_migration_class || "N/A"} / target=${summary.top_candidate_target_deploy_unit || "N/A"}`,
     "",
     "## Active Candidates",
   ];
@@ -50,7 +54,7 @@ function renderMarkdown(report = {}) {
     lines.push("- none");
   } else {
     for (const row of rows.slice(0, 20)) {
-      lines.push(`- ${row.candidate_id}: ${row.scope}/${row.direction} / status=${row.status} / ready=${row.ready_for_auto_apply ? "YES" : "NO"} / count=${row.count_guard_effect && row.count_guard_effect.projected_count_ratio_global != null ? Number(row.count_guard_effect.projected_count_ratio_global).toFixed(2) : "N/A"} / replacement=${row.replacement_effect && row.replacement_effect.projected_replacement_ratio != null ? Number(row.replacement_effect.projected_replacement_ratio).toFixed(2) : "N/A"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
+      lines.push(`- ${row.candidate_id}: ${row.scope}/${row.direction} / class=${row.canonical_migration_class || "N/A"} / deploy=${row.current_deploy_unit || "N/A"}->${row.target_deploy_unit || "N/A"} / status=${row.status} / ready=${row.ready_for_auto_apply ? "YES" : "NO"} / count=${row.count_guard_effect && row.count_guard_effect.projected_count_ratio_global != null ? Number(row.count_guard_effect.projected_count_ratio_global).toFixed(2) : "N/A"} / replacement=${row.replacement_effect && row.replacement_effect.projected_replacement_ratio != null ? Number(row.replacement_effect.projected_replacement_ratio).toFixed(2) : "N/A"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
     }
   }
   lines.push("");
@@ -59,7 +63,7 @@ function renderMarkdown(report = {}) {
     lines.push("- none");
   } else {
     for (const row of blockedRows.slice(0, 20)) {
-      lines.push(`- ${row.candidate_id}: ${row.scope}/${row.direction} / reason=${row.memory_block_reason || "N/A"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
+      lines.push(`- ${row.candidate_id}: ${row.scope}/${row.direction} / class=${row.canonical_migration_class || "N/A"} / deploy=${row.current_deploy_unit || "N/A"}->${row.target_deploy_unit || "N/A"} / reason=${row.memory_block_reason || "N/A"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
     }
   }
   return `${lines.join("\n")}\n`;

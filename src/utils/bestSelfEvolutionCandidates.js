@@ -57,6 +57,61 @@ function buildChange(key, current, next, reason) {
   };
 }
 
+const PINE_THRESHOLD_KEYS = new Set([
+  "SHARED_REGIME_TRANSITION_CONFIRMATION",
+  "ENTRY_CORE_SCORE_ABS",
+  "ENTRY_EARLY_SCORE_ABS",
+  "ENTRY_PRE_REAL_SCORE_ABS",
+  "ENTRY_REAL_SCORE_ABS",
+  "GATE_CORE_SCORE_ABS",
+  "GATE_EARLY_SCORE_ABS",
+]);
+
+function isPineThresholdChangeKey(key) {
+  const raw = String(key || "").trim().toUpperCase();
+  if (!raw) return false;
+  if (PINE_THRESHOLD_KEYS.has(raw)) return true;
+  if (raw.includes("REGIME") && raw.includes("CONFIRM")) return true;
+  if (raw.includes("SCORE_ABS")) return true;
+  if (raw.endsWith("_THRESHOLD")) return true;
+  if (raw.endsWith("_MIN") || raw.endsWith("_MAX")) return true;
+  return false;
+}
+
+function deriveCanonicalMigrationClass(candidate = {}) {
+  const scope = String(candidate && candidate.scope || "").trim().toUpperCase();
+  if (scope && scope !== "PINE") return "SERVER_POLICY";
+  const changes = Array.isArray(candidate && candidate.changes) ? candidate.changes : [];
+  const keyedChanges = changes
+    .map((row) => String(row && row.key || "").trim())
+    .filter(Boolean);
+  if (keyedChanges.length && keyedChanges.every((key) => isPineThresholdChangeKey(key))) {
+    return "PINE_THRESHOLD";
+  }
+  return "PINE_LOGIC";
+}
+
+function deriveCurrentDeployUnit(candidate = {}) {
+  const scope = String(candidate && candidate.scope || "").trim().toUpperCase();
+  return scope === "PINE" ? "PINE_FILE" : "SERVER_SETTINGS";
+}
+
+function deriveTargetDeployUnit(migrationClass) {
+  if (migrationClass === "SERVER_POLICY") return "SERVER_SETTINGS";
+  if (migrationClass === "PINE_THRESHOLD") return "SERVER_SETTINGS";
+  return "PINE_FILE";
+}
+
+function annotateCanonicalMigration(candidate = {}) {
+  const canonicalMigrationClass = deriveCanonicalMigrationClass(candidate);
+  return {
+    ...candidate,
+    canonical_migration_class: canonicalMigrationClass,
+    current_deploy_unit: deriveCurrentDeployUnit(candidate),
+    target_deploy_unit: deriveTargetDeployUnit(canonicalMigrationClass),
+  };
+}
+
 function buildGuardEffects(contract = null, marketGuard = null) {
   const selected = marketGuard && typeof marketGuard === "object" ? marketGuard : (contract || {});
   return {
@@ -458,12 +513,33 @@ function buildCandidateChangeSets({
     ...buildWaitCandidate({ wait, tf, contract, marketGuard }),
   ]
     .filter((row) => row && row.candidate_id)
+    .map((row) => annotateCanonicalMigration(row))
     .map((row) => applyMemoryGuards(row, memoryContext));
   const blockedRows = generatedRows.filter((row) => row.memory_blocked === true);
   const rows = generatedRows.filter((row) => row.memory_blocked !== true);
 
+  const byCanonicalMigrationClassGenerated = generatedRows.reduce((acc, row) => {
+    const key = String(row.canonical_migration_class || "UNKNOWN");
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const byTargetDeployUnitGenerated = generatedRows.reduce((acc, row) => {
+    const key = String(row.target_deploy_unit || "UNKNOWN");
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
   const byScope = rows.reduce((acc, row) => {
     const key = String(row.scope || "UNKNOWN");
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const byCanonicalMigrationClass = rows.reduce((acc, row) => {
+    const key = String(row.canonical_migration_class || "UNKNOWN");
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const byTargetDeployUnit = rows.reduce((acc, row) => {
+    const key = String(row.target_deploy_unit || "UNKNOWN");
     acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {});
@@ -488,8 +564,14 @@ function buildCandidateChangeSets({
       memory_blocked_n: memoryBlocked,
       failed_fingerprint_repeat_n: fingerprintRepeated,
       by_scope: byScope,
+      by_canonical_migration_class_generated: byCanonicalMigrationClassGenerated,
+      by_canonical_migration_class: byCanonicalMigrationClass,
+      by_target_deploy_unit_generated: byTargetDeployUnitGenerated,
+      by_target_deploy_unit: byTargetDeployUnit,
       top_candidate_id: topCandidate && topCandidate.candidate_id || null,
       top_scope: topCandidate && topCandidate.scope || null,
+      top_candidate_migration_class: topCandidate && topCandidate.canonical_migration_class || null,
+      top_candidate_target_deploy_unit: topCandidate && topCandidate.target_deploy_unit || null,
     },
   };
 }
@@ -500,5 +582,10 @@ module.exports = {
   __test: {
     resolveDiffDirection,
     aggregateDirection,
+    isPineThresholdChangeKey,
+    deriveCanonicalMigrationClass,
+    deriveCurrentDeployUnit,
+    deriveTargetDeployUnit,
+    annotateCanonicalMigration,
   },
 };

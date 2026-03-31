@@ -5,6 +5,7 @@
 - 목적: `BEST/FEBT`를 단순 튜닝 루프가 아니라 `측정 -> 원인분해 -> 후보생성 -> 오프라인 검증 -> canary -> 자동 롤백 -> 패치 메모리`까지 닫힌 자기 진화 시스템으로 확장하기 위한 상위 SSOT
 - 연계 문서:
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_PINE_TO_SELF_EVOLUTION_SYSTEM_MAP.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SERVER_CANONICAL_ENGINE_MIGRATION_PLAN.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_MASTER_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_FEBT_SYSTEM_ROLLOUT_PLAN.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_FEBT_WEEKLY_TUNING_POLICY.md`
