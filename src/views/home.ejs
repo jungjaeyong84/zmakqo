@@ -458,13 +458,10 @@
     <div class="grid cols-2">
       <div class="card compact">
         <h2>Legacy Quick Links</h2>
-        <div class="subtle">예전 운영 화면이 필요하면 여기서 바로 엽니다.</div>
+        <div class="subtle">정말 필요한 예전 화면만 남겼습니다.</div>
         <div class="control-actions" style="margin-top:12px;">
           <a class="btn ghost slim" href="/dashboard/trading">Trading</a>
           <a class="btn ghost slim" href="/dashboard/report?mode=weekly">Report</a>
-          <a class="btn ghost slim" href="/dashboard/briefing">Briefing</a>
-          <a class="btn ghost slim" href="/dashboard/profit">Profit</a>
-          <a class="btn ghost slim" href="/dashboard/settings">Settings</a>
         </div>
       </div>
       <div class="card compact">
@@ -479,6 +476,7 @@
           <div class="k">총 손익</div>
           <div class="v"><%= fmtKrwSigned(budget_perf && budget_perf.total_pnl_krw) %> <%= budgetUnit %></div>
         </div>
+        <div class="subtle" style="margin-top:10px;">설정과 상세 감사는 상단 `Settings`, `Audit`에서 바로 여는 쪽이 정본입니다.</div>
       </div>
     </div>
   </div>

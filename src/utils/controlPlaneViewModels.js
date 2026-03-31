@@ -426,6 +426,9 @@ function buildRecoveryViewModel() {
   const replay = loadLatestArtifact("best_self_evolution_replay_latest.json");
   const canary = loadLatestArtifact("best_self_evolution_canary_latest.json");
   const deploymentGuards = loadLatestArtifact("best_self_evolution_deployment_guards_latest.json");
+  const nextAction = Array.isArray(governor.summary.next_actions) && governor.summary.next_actions.length
+    ? governor.summary.next_actions[0]
+    : null;
   const targetValidation = Array.isArray(replay.raw && replay.raw.validations)
     ? replay.raw.validations.find((row) => row.candidate_id === effect.summary.target_candidate_id || row.display_candidate_id === effect.summary.target_candidate_id)
     : null;
@@ -453,29 +456,60 @@ function buildRecoveryViewModel() {
     ],
     sections: [
       {
-        title: "Recovery Path",
-        description: "현재 적용 대상과 더 큰 개선 후보를 분리해서 봅니다.",
+        title: "Operator Strip",
+        description: "운영자가 먼저 보는 회복 판단 3가지를 고정합니다.",
         columns: 3,
         cards: [
           {
-            title: "Current Target",
+            title: "Decision",
             tone: statusTone(governor.summary.governor_status),
             rows: [
-              { label: "Candidate", value: compactText(effect.summary.target_candidate_id) },
+              { label: "Governor", value: compactText(governor.summary.governor_status) },
+              { label: "Target", value: compactText(governor.summary.display_candidate_id || governor.summary.target_candidate_id) },
+              { label: "Reason", value: compactText(governor.summary.governor_reason) },
+              { label: "Next", value: compactText(nextAction) },
+            ],
+            actions: [{ label: "Weekly Report", href: buildReportUrl(effect.summary.target_market || "AXSUSDT"), tone: "ghost" }],
+          },
+          {
+            title: "Score Path",
+            tone: statusTone(effect.summary.tracking_status),
+            rows: [
+              { label: "Current", value: signedNumberText(effect.summary.current_objective_score, 2) },
+              { label: "Projected", value: signedNumberText(effect.summary.projected_objective_score, 2) },
+              { label: "Gap Closure", value: `${numberText((effect.summary.gap_closure_rate || 0) * 100, 1)}%` },
+              { label: "Target Delta", value: signedNumberText(effect.summary.target_candidate_objective_delta, 2) },
+            ],
+          },
+          {
+            title: "Release Gates",
+            tone: governor.summary.replay_pass && governor.summary.canary_ready && governor.summary.deployment_guards_pass ? "ok" : "warn",
+            rows: [
+              { label: "Replay", value: governor.summary.replay_pass ? "PASS" : "HOLD" },
+              { label: "Canary", value: governor.summary.canary_ready ? "READY" : "HOLD" },
+              { label: "Guards", value: governor.summary.deployment_guards_pass ? "PASS" : "FAIL" },
+              { label: "Memory", value: governor.summary.target_memory_blocked ? compactText(governor.summary.target_memory_block_reason) : "CLEAR" },
+            ],
+          },
+        ],
+      },
+      {
+        title: "Recovery Detail",
+        description: "현재 target, 대안 candidate, retrospective blocker를 같은 레벨에서 봅니다.",
+        columns: 2,
+        cards: [
+          {
+            title: "Target and Alternative",
+            tone: "warn",
+            rows: [
+              { label: "Current Target", value: compactText(effect.summary.target_candidate_id) },
               { label: "Deploy Unit", value: compactText(effect.summary.target_deploy_unit) },
               { label: "Projected Win Rate", value: numberText((effect.summary.projected_win_rate || 0) * 100, 1) + "%" },
               { label: "Projected Avg Ret", value: signedNumberText((effect.summary.projected_avg_ret_net || 0) * 100, 2) + "%" },
-            ],
-            notes: Array.isArray(effect.summary.next_actions) ? effect.summary.next_actions.slice(0, 3) : [],
-          },
-          {
-            title: "Higher Delta Candidate",
-            tone: effect.summary.higher_delta_candidate_available ? "warn" : "dim",
-            rows: [
-              { label: "Candidate", value: compactText(effect.summary.higher_delta_candidate_id || "N/A") },
-              { label: "Objective Delta", value: signedNumberText(effect.summary.higher_delta_candidate_objective_delta, 2) },
-              { label: "Ready", value: effect.summary.higher_delta_candidate_ready_for_auto_apply ? "YES" : "NO" },
-              { label: "Hold Reason", value: compactText(effect.summary.higher_delta_candidate_hold_reason) },
+              { label: "Higher Delta", value: compactText(effect.summary.higher_delta_candidate_id || "N/A") },
+              { label: "Higher Delta Value", value: signedNumberText(effect.summary.higher_delta_candidate_objective_delta, 2) },
+              { label: "Higher Delta Ready", value: effect.summary.higher_delta_candidate_ready_for_auto_apply ? "YES" : "NO" },
+              { label: "Higher Delta Hold", value: compactText(effect.summary.higher_delta_candidate_hold_reason) },
             ],
           },
           {
@@ -487,12 +521,13 @@ function buildRecoveryViewModel() {
               { label: "Top Drop Reason", value: compactText(effect.summary.retrospective_monthly_top_drop_reason) },
               { label: "Dominant Drag", value: `${compactText(effect.summary.dominant_negative_market)} (${numberText((effect.summary.dominant_negative_share || 0) * 100, 1)}%)` },
             ],
+            notes: sliceList(objectiveSupervisor.display && objectiveSupervisor.display.blockers, 4),
           },
         ],
       },
       {
-        title: "Recovery Evidence",
-        description: "replay, canary, deployment guards를 현재 recovery target 기준으로 풀어봅니다.",
+        title: "Release Evidence",
+        description: "replay, canary, deployment guards를 release 관점으로 압축합니다.",
         columns: 3,
         cards: [
           {
@@ -612,46 +647,46 @@ function buildDeploymentViewModel() {
     ],
     sections: [
       {
-        title: "Bundle State",
-        description: "active / prepared / rollback 번들을 함께 읽습니다.",
+        title: "Operator Strip",
+        description: "배포에서 먼저 봐야 할 3개 상태를 우선 배치합니다.",
         columns: 3,
         cards: [
           {
-            title: "Engine Bundle",
+            title: "Active Runtime",
             tone: "ok",
             rows: [
-              { label: "Active", value: compactText(deploymentPlan.summary.active_engine_bundle_id) },
-              { label: "Prepared", value: compactText(deploymentPlan.summary.prepared_engine_bundle_id) },
-              { label: "Rollback", value: compactText(deploymentPlan.summary.rollback_engine_bundle_id) },
-              { label: "Strategy", value: compactText(deploymentPlan.summary.active_engine_bundle && deploymentPlan.summary.active_engine_bundle.strategy_id) },
-            ],
-          },
-          {
-            title: "Policy Bundle",
-            tone: "warn",
-            rows: [
-              { label: "Active", value: compactText(policyBundle.primary, 84) },
-              { label: "Stage Reason", value: compactText(deploymentPlan.summary.recommended_target_stage_reason) },
-              { label: "Source Mode Signature", value: compactText(deploymentPlan.summary.source_mode_signature, 84) },
-              { label: "Threshold Signature", value: compactText(deploymentPlan.summary.threshold_bundle_signature, 84) },
-            ],
-          },
-          {
-            title: "Approval and Probe",
-            tone: statusTone(deploymentPlan.summary.authority_state),
-            rows: [
+              { label: "Plan", value: compactText(deploymentPlan.summary.plan_status) },
               { label: "Authority", value: compactText(deploymentPlan.summary.authority_state) },
-              { label: "Approved", value: deploymentPlan.summary.authority_approved ? "YES" : "NO" },
               { label: "Probe", value: compactText(deploymentProbe.summary.probe_reason) },
               { label: "Activation", value: compactText(bundleActivation.summary.activation_reason) },
+            ],
+          },
+          {
+            title: "Bundle Pair",
+            tone: "warn",
+            rows: [
+              { label: "Engine", value: compactText(deploymentPlan.summary.active_engine_bundle_id) },
+              { label: "Policy", value: compactText(policyBundle.primary, 84) },
+              { label: "Source Mode", value: compactText(deploymentPlan.summary.source_mode_signature, 84) },
+              { label: "Shadow Pine", value: "SHADOW_OVERLAY_AUDIT" },
+            ],
+          },
+          {
+            title: "Prepared and Rollback",
+            tone: statusTone(deploymentPlan.summary.prepare_pass ? "PASS" : "FAIL"),
+            rows: [
+              { label: "Prepared", value: compactText(deploymentPlan.summary.prepared_engine_bundle_id) },
+              { label: "Rollback", value: compactText(deploymentPlan.summary.rollback_engine_bundle_id) },
+              { label: "Origin", value: compactText(deploymentPlan.summary.applied_origin_display_candidate_id || deploymentPlan.summary.applied_origin_candidate_id) },
+              { label: "Manual Step", value: deploymentPlan.summary.manual_step_required ? "YES" : "NO" },
             ],
           },
         ],
       },
       {
-        title: "Readiness Chain",
-        description: "prepared -> probe -> activation -> runtime ack 경로를 연속해서 봅니다.",
-        columns: 3,
+        title: "Runtime Evidence",
+        description: "probe, activation, runtime ack를 증거 체인으로 압축합니다.",
+        columns: 2,
         cards: [
           {
             title: "Prepared State",
@@ -671,6 +706,10 @@ function buildDeploymentViewModel() {
               { label: "Policy Loaded", value: deploymentProbe.summary.policy_bundle_loaded ? "YES" : "NO" },
               { label: "Data Flow", value: deploymentProbe.summary.market_data_flow_ok ? "YES" : "NO" },
               { label: "Latest Data", value: compactText(deploymentProbe.summary.latest_market_data_at_kst) },
+            ],
+            notes: [
+              compactText(bundleActivation.summary.activation_status),
+              compactText(bundleActivation.summary.activation_reason),
             ],
           },
           {
@@ -903,8 +942,45 @@ function buildServerPrimaryViewModel() {
     ],
     sections: [
       {
+        title: "Operator Strip",
+        description: "Phase D에서 운영자가 먼저 보는 acceptance 기준입니다.",
+        columns: 3,
+        cards: [
+          {
+            title: "Phase D Gate",
+            tone: statusTone(acceptanceWatch.summary.phase_d_status || acceptanceWatch.summary.phase_d_reason),
+            rows: [
+              { label: "Status", value: compactText(acceptanceWatch.summary.phase_d_status || "PENDING") },
+              { label: "Reason", value: compactText(acceptanceWatch.summary.phase_d_reason || acceptanceWatch.summary.acceptance_reason) },
+              { label: "Apply Pass", value: acceptanceWatch.summary.apply_pass ? "YES" : "NO" },
+              { label: "Ready", value: acceptanceWatch.summary.phase_d_ready ? "YES" : "NO" },
+            ],
+          },
+          {
+            title: "Current Market",
+            tone: "warn",
+            rows: [
+              { label: "Markets", value: joinList(acceptanceWatch.summary.configured_server_primary_markets || []) },
+              { label: "Observed", value: numberText(acceptanceWatch.summary.observed_n, 0) },
+              { label: "Executed", value: numberText(acceptanceWatch.summary.executed_n, 0) },
+              { label: "Realized", value: numberText(acceptanceWatch.summary.realized_n, 0) },
+            ],
+          },
+          {
+            title: "Expand Rule",
+            tone: "dim",
+            rows: [
+              { label: "Min Executed", value: numberText(acceptanceWatch.summary.min_executed_n || acceptanceWatch.summary.acceptance_min_executed, 0) },
+              { label: "Max Disagreement", value: numberText(((acceptanceWatch.summary.max_disagreement_rate || acceptanceWatch.summary.acceptance_max_disagreement_rate) || 0) * 100, 1) + "%" },
+              { label: "Max Rollback", value: numberText(acceptanceWatch.summary.max_rollback_trigger_n || acceptanceWatch.summary.acceptance_max_rollback_trigger_n, 0) },
+              { label: "Gap", value: numberText(Math.max(0, (acceptanceWatch.summary.min_executed_n || acceptanceWatch.summary.acceptance_min_executed || 0) - (acceptanceWatch.summary.executed_n || 0)), 0) },
+            ],
+          },
+        ],
+      },
+      {
         title: "Acceptance Threshold",
-        description: "Phase D를 닫기 위한 샘플과 가드레일입니다.",
+        description: "시장별 evidence와 가드레일입니다.",
         columns: 2,
         cards: [
           {
@@ -926,6 +1002,28 @@ function buildServerPrimaryViewModel() {
               { label: "Max Rollback", value: numberText(acceptanceWatch.summary.acceptance_max_rollback_trigger_n != null ? acceptanceWatch.summary.acceptance_max_rollback_trigger_n : acceptanceWatch.summary.max_rollback_trigger_n, 0) },
               { label: "Ready", value: acceptanceWatch.summary.acceptance_ready || acceptanceWatch.summary.phase_d_ready ? "YES" : "NO" },
             ],
+          },
+          {
+            title: "Market Evidence",
+            tone: "warn",
+            table: {
+              columns: [
+                { key: "market", label: "Market" },
+                { key: "executed", label: "Executed" },
+                { key: "realized", label: "Realized" },
+                { key: "disagreement", label: "Disagreement" },
+                { key: "rollback", label: "Rollback" },
+                { key: "open", label: "Open" },
+              ],
+              rows: buildRowsPreview(acceptanceWatch.rows, (row) => ({
+                market: compactText(row.market),
+                executed: numberText(row.executed_n, 0),
+                realized: numberText(row.realized_n, 0),
+                disagreement: toDisplayPercent(row.pine_shadow_disagreement_rate, 1),
+                rollback: numberText(row.rollback_trigger_n, 0),
+                open: buildLink("Report", buildReportUrl(row.market)),
+              }), 6),
+            },
           },
         ],
       },
@@ -968,18 +1066,28 @@ function buildAuditViewModel(query = {}) {
     ],
     sections: [
       {
-        title: "Audit Chain",
-        description: "cycle, freshness, wrapper 주의 대상을 같은 곳에서 확인합니다.",
-        columns: 2,
+        title: "Operator Strip",
+        description: "cycle health, blocker, wrapper rule을 운영자 strip으로 올립니다.",
+        columns: 3,
         cards: [
           {
-            title: "Loop Monitor",
+            title: "Cycle Health",
             tone: statusTone(loopMonitor.summary.overall_status),
             rows: [
               { label: "Cycle Consistent", value: loopMonitor.summary.cycle_consistent ? "YES" : "NO" },
-              { label: "Stale Artifacts", value: numberText(loopMonitor.summary.stale_artifact_n, 0) },
+              { label: "Fresh", value: `${numberText(loopMonitor.summary.fresh_loop_n, 0)}/${numberText(loopMonitor.summary.loop_n, 0)}` },
+              { label: "Stale", value: numberText(loopMonitor.summary.stale_artifact_n, 0) },
               { label: "Mismatch", value: numberText(loopMonitor.summary.cycle_mismatch_n, 0) },
+            ],
+          },
+          {
+            title: "Current Blocker",
+            tone: loopMonitor.summary.critical_blocker_n > 0 ? "bad" : "ok",
+            rows: [
+              { label: "Supervisor", value: compactText(objectiveSupervisor.display && objectiveSupervisor.display.root_cause) },
+              { label: "Critical", value: joinList(loopMonitor.summary.critical_blockers || []) },
               { label: "Ready Candidate", value: compactText(loopMonitor.summary.ready_candidate_id) },
+              { label: "Overall", value: compactText(loopMonitor.summary.overall_status) },
             ],
           },
           {
