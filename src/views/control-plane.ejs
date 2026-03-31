@@ -1,3 +1,4 @@
 <%- include('partials/app_start', { title: `${model && model.title ? model.title : 'Control Plane'} · DONBEOLJA Ω`, pageTitle: model && model.title ? model.title : 'Control Plane', active: model && model.active ? model.active : 'mission' }) %>
+<%- include('partials/control_surface_nav', { active: model && model.active ? model.active : 'mission' }) %>
 <%- include('partials/control_surface_body', { model }) %>
 <%- include('partials/app_end') %>

@@ -95,6 +95,30 @@
                 <% }) %>
               </div>
             <% } %>
+            <% if (card.table && Array.isArray(card.table.columns) && Array.isArray(card.table.rows) && card.table.rows.length) { %>
+              <div class="control-table-wrap">
+                <div class="scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <% card.table.columns.forEach((column) => { %>
+                          <th><%= column.label %></th>
+                        <% }) %>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <% card.table.rows.forEach((tableRow) => { %>
+                        <tr>
+                          <% card.table.columns.forEach((column) => { %>
+                            <td><%= tableRow[column.key] == null || tableRow[column.key] === '' ? '-' : tableRow[column.key] %></td>
+                          <% }) %>
+                        </tr>
+                      <% }) %>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            <% } %>
             <% if (Array.isArray(card.actions) && card.actions.length) { %>
               <div class="control-actions" style="margin-top:14px;">
                 <% card.actions.forEach((action) => { %>

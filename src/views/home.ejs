@@ -447,14 +447,7 @@
 
 <%- include('partials/control_surface_body', { model: mission_control }) %>
 
-<div class="subnav" style="margin-top:-4px; margin-bottom:18px;">
-  <a href="/dashboard/home" class="active">Mission</a>
-  <a href="/dashboard/recovery">Recovery</a>
-  <a href="/dashboard/deployment">Deployment</a>
-  <a href="/dashboard/execution">Execution</a>
-  <a href="/dashboard/server-primary">Phase D</a>
-  <a href="/dashboard/audit">Audit</a>
-</div>
+<%- include('partials/control_surface_nav', { active: 'mission' }) %>
 
 <details class="details-block" style="margin-top:12px;">
   <summary>

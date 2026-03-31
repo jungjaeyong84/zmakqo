@@ -1,0 +1,16 @@
+<%
+  const __active = (typeof active !== 'undefined' && active) ? String(active) : 'mission';
+  const __links = [
+    { key: 'mission', href: '/dashboard/home', label: 'Mission' },
+    { key: 'recovery', href: '/dashboard/recovery', label: 'Recovery' },
+    { key: 'deployment', href: '/dashboard/deployment', label: 'Deployment' },
+    { key: 'execution', href: '/dashboard/execution', label: 'Execution' },
+    { key: 'server-primary', href: '/dashboard/server-primary', label: 'Phase D' },
+    { key: 'audit', href: '/dashboard/audit', label: 'Audit' },
+  ];
+%>
+<div class="subnav" style="margin-top:-4px; margin-bottom:18px;">
+  <% __links.forEach((link) => { %>
+    <a href="<%= link.href %>" class="<%= __active === link.key ? 'active' : '' %>"><%= link.label %></a>
+  <% }) %>
+</div>
