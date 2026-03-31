@@ -4,6 +4,18 @@ const assert = require("assert");
 const { __test } = require("../../scripts/lib/stage-autopilot");
 
 (() => {
+  const appended = __test.appendStageHistory([
+    { stage: "AI", run_key: "a", signature: "sig-a", action: "WATCH" },
+  ], {
+    stage: "MARKET",
+    run_key: "b",
+    signature: "sig-b",
+    action: "WATCH",
+  });
+  assert.strictEqual(appended.length, 2);
+  assert.strictEqual(appended[0].stage, "AI");
+  assert.strictEqual(appended[1].stage, "MARKET");
+
   const none = __test.shouldAutoRollback({
     stageState: {
       applied_signature: null,

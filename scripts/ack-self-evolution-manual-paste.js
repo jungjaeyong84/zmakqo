@@ -17,6 +17,7 @@ const {
 const { writeSelfEvolutionRuntimeState } = require("../src/utils/selfEvolutionRuntimeState");
 const { syncStrategyRuntimeFiles } = require("./lib/self-evolution-version-sync");
 const { syncSelfEvolutionLiveServices } = require("./lib/self-evolution-live-service-sync");
+const { toKstString } = require("../src/utils/timeKst");
 
 loadLocalEnv();
 
@@ -71,6 +72,7 @@ function renderMarkdown(report = {}) {
 
 async function main() {
   const nowMeta = nowKstMeta();
+  const confirmationTimeoutMinutes = Math.max(30, Number(process.env.SELF_EVOLUTION_BUNDLE_CONFIRM_TIMEOUT_MINUTES || 180));
   ensureDir(OPS_RUNTIME_DIR);
   const deploymentPlan = readJsonRawSafe(path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json"), null) || {};
   const summary = deploymentPlan.summary && typeof deploymentPlan.summary === "object" ? deploymentPlan.summary : {};
@@ -115,6 +117,7 @@ async function main() {
     authority_required: summary.authority_required === true,
     authority_approved: summary.authority_approved === true,
     authority_bypass_active: summary.authority_bypass_active === true,
+    confirmation_timeout_minutes: confirmationTimeoutMinutes,
   };
   const runtimePath = path.join(OPS_RUNTIME_DIR, "self_evolution_manual_paste_ack.json");
   const dailyJsonPath = path.join(OPS_DAILY_DIR, "self_evolution_manual_paste_ack_latest.json");
@@ -124,6 +127,25 @@ async function main() {
   writeText(dailyMdPath, renderMarkdown(payload));
   await writeSelfEvolutionRuntimeState({
     ...payload,
+    engine_bundle_loaded: true,
+    policy_bundle_loaded: false,
+    market_data_flow_ok: false,
+    first_decision_seen: false,
+    first_decision_kind: null,
+    first_decision_id: null,
+    first_decision_created_at: null,
+    first_decision_event: null,
+    first_decision_reason: null,
+    confirmation_timeout_minutes: confirmationTimeoutMinutes,
+    confirmation_deadline_iso: payload.acknowledged_at_iso
+      ? new Date(Date.parse(payload.acknowledged_at_iso) + (confirmationTimeoutMinutes * 60 * 1000)).toISOString()
+      : null,
+    confirmation_deadline_kst: payload.acknowledged_at_iso
+      ? toKstString(Date.parse(payload.acknowledged_at_iso) + (confirmationTimeoutMinutes * 60 * 1000), { fallbackToString: true })
+      : null,
+    bundle_activation_confirmed: false,
+    bundle_activation_status: "PENDING",
+    bundle_activation_reason: "PENDING_POLICY_BUNDLE_LOAD",
     acknowledged: true,
     live_signal_confirmed: false,
     confirmed_signal_id: null,

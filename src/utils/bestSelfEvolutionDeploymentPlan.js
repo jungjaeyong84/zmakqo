@@ -22,6 +22,63 @@ function unwrapRawReport(value) {
   return value;
 }
 
+function resolveCandidateRows(candidateChangeSet = null) {
+  const raw = unwrapRawReport(candidateChangeSet) || {};
+  return Array.isArray(raw.rows) ? raw.rows : [];
+}
+
+function findCandidateRow(candidateChangeSet = null, candidateId = null) {
+  const target = String(candidateId || "").trim();
+  if (!target) return null;
+  return resolveCandidateRows(candidateChangeSet)
+    .find((row) => String(row && row.candidate_id || "").trim() === target) || null;
+}
+
+function deriveCanonicalPolicyRecommendation({ candidateChangeSet = null, stageAutopilot = null } = {}) {
+  const stage = unwrapRawReport(stageAutopilot) || {};
+  const stageRows = Array.isArray(stage.stage_rows) ? stage.stage_rows : [];
+  const canonicalStage = stageRows.find((row) => String(row && row.stage || "").trim().toUpperCase() === "SOURCE_MODE")
+    || stageRows.find((row) => String(row && row.stage || "").trim().toUpperCase() === "CANONICAL_POLICY")
+    || null;
+  const stageCandidateId = String(canonicalStage && canonicalStage.candidate_id || "").trim() || null;
+  if (stageCandidateId) {
+    const candidateRow = findCandidateRow(candidateChangeSet, stageCandidateId);
+    if (
+      candidateRow
+      && String(candidateRow.canonical_migration_class || "").trim().toUpperCase() === "PINE_THRESHOLD"
+      && String(candidateRow.target_deploy_unit || "").trim().toUpperCase() === "SERVER_SETTINGS"
+    ) {
+      return {
+        candidate_id: stageCandidateId,
+        display_candidate_id: String(candidateRow.display_candidate_id || candidateRow.candidate_id || "").trim() || null,
+        canonical_migration_class: String(candidateRow.canonical_migration_class || "").trim().toUpperCase() || null,
+        target_deploy_unit: String(candidateRow.target_deploy_unit || "").trim().toUpperCase() || null,
+        stage_state: String(canonicalStage.machine_state || "").trim().toUpperCase() || null,
+        stage_reason: String(canonicalStage.reason || "").trim() || null,
+        stage_signature: String(canonicalStage.signature || "").trim() || null,
+      };
+    }
+  }
+  const candidateRows = resolveCandidateRows(candidateChangeSet);
+  const fallback = candidateRows.find((row) =>
+    row
+    && String(row.canonical_migration_class || "").trim().toUpperCase() === "PINE_THRESHOLD"
+    && String(row.target_deploy_unit || "").trim().toUpperCase() === "SERVER_SETTINGS"
+    && row.ready_for_auto_apply === true
+    && row.memory_blocked !== true
+  ) || null;
+  if (!fallback) return null;
+  return {
+    candidate_id: String(fallback.candidate_id || "").trim() || null,
+    display_candidate_id: String(fallback.display_candidate_id || fallback.candidate_id || "").trim() || null,
+    canonical_migration_class: "PINE_THRESHOLD",
+    target_deploy_unit: "SERVER_SETTINGS",
+    stage_state: null,
+    stage_reason: null,
+    stage_signature: null,
+  };
+}
+
 function latestWeeklyRow(weeklyHistory = null) {
   const rows = Array.isArray(weeklyHistory && weeklyHistory.weeks) ? weeklyHistory.weeks : [];
   return rows.length ? rows[rows.length - 1] : null;
@@ -167,7 +224,7 @@ function deriveManualPasteAck({ manualPasteAck = null, prepared = {}, targetCand
     confirmed_signal_id: String(ack.confirmed_signal_id || "").trim() || null,
     confirmed_signal_created_at: String(ack.confirmed_signal_created_at || "").trim() || null,
     confirmed_signal_event: String(ack.confirmed_signal_event || "").trim().toUpperCase() || null,
-    confirmation_status: matched ? "APPLIED_PENDING_SIGNAL_CONFIRMATION" : "N/A",
+    confirmation_status: matched ? "APPLIED_PENDING_BUNDLE_ACTIVATION" : "N/A",
   };
 }
 
@@ -223,16 +280,46 @@ function deriveLiveSignalConfirmation({ signalsCache = null, manualPaste = null 
   };
 }
 
+function deriveBundleActivationSummary(bundleActivation = null) {
+  const raw = unwrapRawReport(bundleActivation) || {};
+  const summary = raw.summary && typeof raw.summary === "object" ? raw.summary : raw;
+  return {
+    available: !!bundleActivation,
+    engine_bundle_loaded: summary.engine_bundle_loaded === true,
+    policy_bundle_loaded: summary.policy_bundle_loaded === true,
+    market_data_flow_ok: summary.market_data_flow_ok === true,
+    first_decision_seen: summary.first_decision_seen === true,
+    first_decision_kind: String(summary.first_decision_kind || "").trim().toUpperCase() || null,
+    first_decision_id: String(summary.first_decision_id || "").trim() || null,
+    first_decision_created_at: String(summary.first_decision_created_at || "").trim() || null,
+    first_decision_event: String(summary.first_decision_event || "").trim().toUpperCase() || null,
+    confirmation_timeout_minutes: toNum(summary.confirmation_timeout_minutes),
+    confirmation_deadline_iso: String(summary.confirmation_deadline_iso || "").trim() || null,
+    confirmation_deadline_kst: String(summary.confirmation_deadline_kst || "").trim() || null,
+    timeout_elapsed: summary.timeout_elapsed === true,
+    activation_confirmed: summary.activation_confirmed === true,
+    activation_pending: summary.activation_pending === true,
+    activation_status: String(summary.activation_status || "").trim().toUpperCase() || null,
+    activation_reason: String(summary.activation_reason || "").trim().toUpperCase() || null,
+    engine_bundle_id: String(summary.engine_bundle_id || "").trim() || null,
+    policy_bundle_id: String(summary.policy_bundle_id || "").trim() || null,
+    threshold_bundle_signature: String(summary.threshold_bundle_signature || "").trim() || null,
+    source_mode_signature: String(summary.source_mode_signature || "").trim() || null,
+  };
+}
+
 function deriveDeploymentPlan({
   objectiveSupervisor = null,
   changeControl = null,
   codexPatchReview = null,
   deploymentGuards = null,
+  candidateChangeSet = null,
   canaryReport = null,
   stageAutopilot = null,
   weeklyHistory = null,
   manualPasteAck = null,
   signalsCache = null,
+  bundleActivation = null,
   preparedOverride = null,
 } = {}) {
   const supervisor = unwrapRawReport(objectiveSupervisor) || {};
@@ -258,6 +345,10 @@ function deriveDeploymentPlan({
   const codexRollbackPath = String(codex.recommended_rollback_file_path || "").trim() || null;
   const recoveryPromotion = promotion.ready === true && promotion.recovery_mode === true;
   const openWave = toNum(guardSummary.canary_open_wave) || toNum(canarySummary.open_wave) || 1;
+  const canonicalPolicyRecommendation = deriveCanonicalPolicyRecommendation({
+    candidateChangeSet,
+    stageAutopilot,
+  });
   const prepared = findPreparedPaths({
     stageAutopilot,
     weeklyHistory,
@@ -274,6 +365,28 @@ function deriveDeploymentPlan({
     signalsCache,
     manualPaste,
   });
+  const bundleActivationSummaryBase = deriveBundleActivationSummary(bundleActivation);
+  const bundleActivationSummary = bundleActivationSummaryBase.available
+    ? bundleActivationSummaryBase
+    : {
+      ...bundleActivationSummaryBase,
+      engine_bundle_loaded: manualPaste.acknowledged === true,
+      policy_bundle_loaded: false,
+      market_data_flow_ok: liveSignalConfirmation.confirmed === true,
+      first_decision_seen: liveSignalConfirmation.confirmed === true,
+      first_decision_kind: liveSignalConfirmation.confirmed === true ? "SIGNAL" : null,
+      first_decision_id: liveSignalConfirmation.signal_id || null,
+      first_decision_created_at: liveSignalConfirmation.created_at || null,
+      first_decision_event: liveSignalConfirmation.event || null,
+      activation_confirmed: liveSignalConfirmation.confirmed === true,
+      activation_pending: manualPaste.acknowledged === true && liveSignalConfirmation.confirmed !== true,
+      activation_status: liveSignalConfirmation.confirmed === true
+        ? "ACTIVE_BY_FIRST_DECISION"
+        : (manualPaste.acknowledged === true ? "PENDING" : null),
+      activation_reason: liveSignalConfirmation.confirmed === true
+        ? "FIRST_DECISION_SEEN"
+        : (manualPaste.acknowledged === true ? "BUNDLE_ACTIVATION_REPORT_PENDING" : null),
+    };
   const marketScope = deriveMarketScope(canaryRows, targetCandidateId, openWave);
   const preparedOriginCandidateId = String(prepared.prepared_candidate_signature || "").trim() || null;
   const appliedOriginCandidateId = String(
@@ -344,8 +457,8 @@ function deriveDeploymentPlan({
   let planStatus = "HOLD";
   if (readyForManualRollback) planStatus = "READY_FOR_MANUAL_ROLLBACK";
   else if (rollbackPreparePass) planStatus = "PREPARE_ROLLBACK";
-  else if (liveSignalConfirmation.confirmed) planStatus = authorityBypassActive ? "APPLIED_CONFIRMED_AUTHORITY_BYPASS" : "APPLIED_CONFIRMED";
-  else if (manualPaste.acknowledged) planStatus = authorityBypassActive ? "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS" : "APPLIED_PENDING_SIGNAL_CONFIRMATION";
+  else if (bundleActivationSummary.activation_confirmed) planStatus = authorityBypassActive ? "APPLIED_ACTIVE_AUTHORITY_BYPASS" : "APPLIED_ACTIVE";
+  else if (manualPaste.acknowledged) planStatus = authorityBypassActive ? "APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS" : "APPLIED_PENDING_BUNDLE_ACTIVATION";
   else if (readyForManualPaste) planStatus = "READY_FOR_MANUAL_PASTE";
   else if (promotionPreparePass) planStatus = dryPrepareEligible ? "PREPARE_PROMOTION_DRY" : "PREPARE_PROMOTION";
 
@@ -364,17 +477,17 @@ function deriveDeploymentPlan({
       "현재 활성 심볼/시간대가 rollback target과 일치하는지 확인",
       "붙여넣기 후 alert 재설정 여부 확인",
     ]
-    : (liveSignalConfirmation.confirmed
+    : (bundleActivationSummary.activation_confirmed
       ? [
-        `confirmed signal ${liveSignalConfirmation.signal_id || "N/A"} 에서 ${liveSignalConfirmation.strategy_id || "N/A"} 확인`,
-        `event ${liveSignalConfirmation.event || "N/A"} / created_at ${liveSignalConfirmation.created_at || "N/A"}`,
-        "post-apply signal probe와 strategy alignment 리포트가 신규 strategy_id를 반영하는지 점검",
+        `bundle activation ${bundleActivationSummary.activation_status || "ACTIVE"} / ${bundleActivationSummary.activation_reason || "N/A"}`,
+        `engine ${bundleActivationSummary.engine_bundle_id || "N/A"} / policy ${bundleActivationSummary.policy_bundle_id || "N/A"}`,
+        `first decision ${bundleActivationSummary.first_decision_kind || "N/A"} / ${bundleActivationSummary.first_decision_id || "N/A"}`,
       ]
       : (manualPaste.acknowledged
       ? [
-        `applied candidate ${displayCandidateId || targetCandidateId || "N/A"} 의 live signal strategy_id를 확인`,
-        `첫 active LONG/SHORT 신호에서 ${manualPaste.applied_strategy_id || "strategy_id"} 수신 여부 점검`,
-        "post-apply signal probe와 strategy alignment 리포트를 재생성",
+        `applied candidate ${displayCandidateId || targetCandidateId || "N/A"} 의 bundle activation proof를 확인`,
+        `engine bundle ${manualPaste.applied_strategy_id || "N/A"} / deadline ${bundleActivationSummary.confirmation_deadline_kst || "N/A"}`,
+        "post-apply signal probe와 signals/drops cache가 market_data_flow_ok를 충족하는지 점검",
       ]
       : [
       `candidate ${displayCandidateId || targetCandidateId || "N/A"} generated file을 latest alias와 비교`,
@@ -406,12 +519,12 @@ function deriveDeploymentPlan({
     nextActions.push("rollback source file 경로를 준비한 뒤 manual rollback handoff를 생성");
   }
   if (manualPaste.acknowledged) {
-    nextActions.push("live signal에서 applied strategy_id 확인 전까지 APPLIED_PENDING_SIGNAL_CONFIRMATION 상태를 유지");
+    nextActions.push("bundle activation proof가 ACTIVE가 될 때까지 APPLIED_PENDING_BUNDLE_ACTIVATION 상태를 유지");
   }
   if (authorityBypassActive) {
     nextActions.push("manual prepared override가 외부 권위 PROMOTE 없이 적용되어 authority bypass 상태임을 명시하고 candidate 출처를 분리 추적");
   }
-  if (liveSignalConfirmation.confirmed) {
+  if (bundleActivationSummary.activation_confirmed) {
     nextActions.length = 0;
     if (authorityBypassActive) {
       nextActions.push("적용된 Pine는 authority bypass 상태이므로 current applied origin과 current recommended target을 분리해서 추적");
@@ -422,8 +535,22 @@ function deriveDeploymentPlan({
     summary: {
       plan_status: planStatus,
       target_candidate_id: targetCandidateId,
-      recommended_target_candidate_id: targetCandidateId,
-      display_candidate_id: displayCandidateId,
+      recommended_target_candidate_id: String(
+        canonicalPolicyRecommendation && canonicalPolicyRecommendation.candidate_id
+        || targetCandidateId
+        || ""
+      ).trim() || null,
+      display_candidate_id: String(
+        canonicalPolicyRecommendation && canonicalPolicyRecommendation.display_candidate_id
+        || displayCandidateId
+        || ""
+      ).trim() || null,
+      deploy_guard_target_candidate_id: targetCandidateId,
+      recommended_target_migration_class: canonicalPolicyRecommendation && canonicalPolicyRecommendation.canonical_migration_class || null,
+      recommended_target_deploy_unit: canonicalPolicyRecommendation && canonicalPolicyRecommendation.target_deploy_unit || null,
+      recommended_target_stage_state: canonicalPolicyRecommendation && canonicalPolicyRecommendation.stage_state || null,
+      recommended_target_stage_reason: canonicalPolicyRecommendation && canonicalPolicyRecommendation.stage_reason || null,
+      recommended_target_stage_signature: canonicalPolicyRecommendation && canonicalPolicyRecommendation.stage_signature || null,
       applied_origin_candidate_id: appliedOriginCandidateId,
       applied_origin_display_candidate_id: appliedOriginDisplayCandidateId,
       prepared_origin_candidate_id: preparedOriginCandidateId,
@@ -434,8 +561,26 @@ function deriveDeploymentPlan({
       ready_for_manual_paste: (!manualPaste.acknowledged) && (readyForManualPaste || readyForManualRollback),
       manual_step_required: (!manualPaste.acknowledged) && (planStatus === "READY_FOR_MANUAL_PASTE" || planStatus === "READY_FOR_MANUAL_ROLLBACK"),
       manual_paste_acknowledged: manualPaste.acknowledged,
-      live_signal_confirmation_pending: liveSignalConfirmation.pending,
-      live_signal_confirmed: liveSignalConfirmation.confirmed,
+      live_signal_confirmation_pending: manualPaste.acknowledged === true
+        && bundleActivationSummary.activation_confirmed !== true
+        && bundleActivationSummary.first_decision_seen !== true,
+      live_signal_confirmed: bundleActivationSummary.first_decision_seen === true,
+      engine_bundle_loaded: bundleActivationSummary.engine_bundle_loaded,
+      policy_bundle_loaded: bundleActivationSummary.policy_bundle_loaded,
+      market_data_flow_ok: bundleActivationSummary.market_data_flow_ok,
+      first_decision_seen: bundleActivationSummary.first_decision_seen,
+      first_decision_kind: bundleActivationSummary.first_decision_kind,
+      activation_confirmed: bundleActivationSummary.activation_confirmed,
+      activation_pending: bundleActivationSummary.activation_pending,
+      activation_status: bundleActivationSummary.activation_status,
+      activation_reason: bundleActivationSummary.activation_reason,
+      confirmation_timeout_minutes: bundleActivationSummary.confirmation_timeout_minutes,
+      confirmation_deadline_iso: bundleActivationSummary.confirmation_deadline_iso,
+      confirmation_deadline_kst: bundleActivationSummary.confirmation_deadline_kst,
+      engine_bundle_id: bundleActivationSummary.engine_bundle_id,
+      policy_bundle_id: bundleActivationSummary.policy_bundle_id,
+      threshold_bundle_signature: bundleActivationSummary.threshold_bundle_signature,
+      source_mode_signature: bundleActivationSummary.source_mode_signature,
       open_wave: openWave,
       target_wave: openWave,
       market_scope_n: marketScope.total_n,
@@ -452,8 +597,8 @@ function deriveDeploymentPlan({
       applied_strategy_id: manualPaste.applied_strategy_id,
       manual_paste_acknowledged_at_kst: manualPaste.acknowledged_at_kst,
       manual_paste_acknowledged_at_iso: manualPaste.acknowledged_at_iso,
-      confirmed_signal_id: liveSignalConfirmation.signal_id,
-      confirmed_signal_created_at: liveSignalConfirmation.created_at,
+      confirmed_signal_id: bundleActivationSummary.first_decision_id || liveSignalConfirmation.signal_id,
+      confirmed_signal_created_at: bundleActivationSummary.first_decision_created_at || liveSignalConfirmation.created_at,
       codex_verdict: codexVerdict,
       authority_required: prepared.override_active === true || preparedStrategyApplied || promotion.ready === true || rollback.ready === true,
       authority_approved: appliedAuthorityApproved,

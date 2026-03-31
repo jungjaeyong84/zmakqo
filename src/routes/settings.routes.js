@@ -568,6 +568,14 @@ function normalizeSystem(req, body, current = {}) {
   clean.gate_transition_exception_score_abs = (gateTransitionScoreAbs == null) ? 40 : gateTransitionScoreAbs;
   const gateTransitionWaveConf = clampNumber(body.gate_transition_exception_wave_conf_min, 0, 1);
   clean.gate_transition_exception_wave_conf_min = (gateTransitionWaveConf == null) ? 0.6 : gateTransitionWaveConf;
+  clean.canonical_engine_enabled = normalizeBool(body.canonical_engine_enabled === undefined ? true : body.canonical_engine_enabled);
+  clean.canonical_engine_shadow_enabled = normalizeBool(body.canonical_engine_shadow_enabled === undefined ? true : body.canonical_engine_shadow_enabled);
+  clean.canonical_engine_source_mode = normalizeCanonicalEngineSourceMode(body.canonical_engine_source_mode, "PINE_PRIMARY");
+  const canonicalCoreScoreAbs = clampNumber(body.canonical_engine_core_score_abs, 0, 100);
+  clean.canonical_engine_core_score_abs = (canonicalCoreScoreAbs == null) ? 33 : canonicalCoreScoreAbs;
+  const canonicalTransitionCoreScoreAbs = clampNumber(body.canonical_engine_transition_core_score_abs, 0, 100);
+  clean.canonical_engine_transition_core_score_abs = (canonicalTransitionCoreScoreAbs == null) ? 29 : canonicalTransitionCoreScoreAbs;
+  clean.canonical_engine_market_overrides = normalizeCanonicalEngineMarketOverrides(body.canonical_engine_market_overrides);
 
   // Legacy compatibility: keep mirrored short_gate_* keys until callers are fully migrated.
   clean.short_gate_enabled = clean.gate_enabled;
@@ -842,6 +850,12 @@ const SYSTEM_PROVIDER_KEYS = [
   "gate_transition_exception_early_enabled",
   "gate_transition_exception_score_abs",
   "gate_transition_exception_wave_conf_min",
+  "canonical_engine_enabled",
+  "canonical_engine_shadow_enabled",
+  "canonical_engine_source_mode",
+  "canonical_engine_core_score_abs",
+  "canonical_engine_transition_core_score_abs",
+  "canonical_engine_market_overrides",
   "ai_missing_policy",
   "ai_missing_reduce_pct",
   "ai_bias_gate_enabled",
@@ -981,6 +995,43 @@ function normalizeBpsMap(raw) {
     const val = clampInt(v, 0, 10000);
     if (val == null) continue;
     out[key] = val;
+  }
+  return out;
+}
+
+function normalizeCanonicalEngineSourceMode(raw, fallback = "PINE_PRIMARY") {
+  const value = String(raw || "").trim().toUpperCase();
+  if (value === "PINE_PRIMARY" || value === "SERVER_SHADOW" || value === "SERVER_PRIMARY") return value;
+  return fallback;
+}
+
+function normalizeCanonicalEngineMarketOverrides(raw) {
+  if (raw === null || raw === undefined || raw === "") return {};
+  let source = raw;
+  if (typeof source === "string") {
+    try {
+      source = JSON.parse(source);
+    } catch (_err) {
+      return {};
+    }
+  }
+  if (!source || typeof source !== "object" || Array.isArray(source)) return {};
+  const out = {};
+  for (const [market, value] of Object.entries(source)) {
+    const key = String(market || "").trim().toUpperCase().replace(/\.P$/, "");
+    if (!key) continue;
+    const row = value && typeof value === "object" && !Array.isArray(value)
+      ? value
+      : { core_score_abs: value };
+    const normalized = {};
+    if (row.enabled !== undefined) normalized.enabled = normalizeBool(row.enabled);
+    if (row.shadow_enabled !== undefined) normalized.shadow_enabled = normalizeBool(row.shadow_enabled);
+    if (row.source_mode !== undefined) normalized.source_mode = normalizeCanonicalEngineSourceMode(row.source_mode, "PINE_PRIMARY");
+    const coreScoreAbs = clampNumber(row.core_score_abs, 0, 100);
+    const transitionCoreScoreAbs = clampNumber(row.transition_core_score_abs, 0, 100);
+    if (coreScoreAbs != null) normalized.core_score_abs = coreScoreAbs;
+    if (transitionCoreScoreAbs != null) normalized.transition_core_score_abs = transitionCoreScoreAbs;
+    if (Object.keys(normalized).length) out[key] = normalized;
   }
   return out;
 }
@@ -1559,6 +1610,12 @@ router.get("/api/settings/system", async (req, res) => {
       gate_transition_exception_early_enabled: false,
       gate_transition_exception_score_abs: 40,
       gate_transition_exception_wave_conf_min: 0.6,
+      canonical_engine_enabled: true,
+      canonical_engine_shadow_enabled: true,
+      canonical_engine_source_mode: "PINE_PRIMARY",
+      canonical_engine_core_score_abs: 33,
+      canonical_engine_transition_core_score_abs: 29,
+      canonical_engine_market_overrides: {},
       ai_missing_policy: "ALLOW",
       ai_missing_reduce_pct: 0.5,
       ai_bias_gate_enabled: true,

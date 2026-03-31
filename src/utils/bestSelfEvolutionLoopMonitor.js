@@ -24,6 +24,10 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const candidates = unwrapRawReport(reports.candidates) || {};
   const replay = unwrapRawReport(reports.replay) || {};
   const canary = unwrapRawReport(reports.canary) || {};
+  const canonicalParity = unwrapRawReport(reports.canonicalParity) || {};
+  const canonicalProvenance = unwrapRawReport(reports.canonicalProvenance) || {};
+  const serverPrimaryCanary = unwrapRawReport(reports.serverPrimaryCanary) || {};
+  const bundleActivation = unwrapRawReport(reports.bundleActivation) || {};
   const deployment = unwrapRawReport(reports.deployment) || {};
   const deploymentPlan = unwrapRawReport(reports.deploymentPlan) || {};
   const weightTuning = unwrapRawReport(reports.weightTuning) || {};
@@ -38,6 +42,10 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const deploymentPlanSummary = deploymentPlan.summary && typeof deploymentPlan.summary === "object" ? deploymentPlan.summary : {};
   const deploymentPlanStatus = String(deploymentPlanSummary.plan_status || "N/A").trim().toUpperCase() || "N/A";
   const canarySummary = canary.summary && typeof canary.summary === "object" ? canary.summary : {};
+  const canonicalParitySummary = canonicalParity.summary && typeof canonicalParity.summary === "object" ? canonicalParity.summary : {};
+  const canonicalProvenanceSummary = canonicalProvenance.summary && typeof canonicalProvenance.summary === "object" ? canonicalProvenance.summary : {};
+  const serverPrimaryCanarySummary = serverPrimaryCanary.summary && typeof serverPrimaryCanary.summary === "object" ? serverPrimaryCanary.summary : {};
+  const bundleActivationSummary = bundleActivation.summary && typeof bundleActivation.summary === "object" ? bundleActivation.summary : {};
   const candidateSummary = candidates.summary && typeof candidates.summary === "object" ? candidates.summary : {};
   const replaySummary = replay.summary && typeof replay.summary === "object" ? replay.summary : {};
   const memorySummary = memory.summary && typeof memory.summary === "object" ? memory.summary : {};
@@ -46,6 +54,10 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(candidates)
     || readCycleId(replay)
     || readCycleId(canary)
+    || readCycleId(canonicalParity)
+    || readCycleId(canonicalProvenance)
+    || readCycleId(serverPrimaryCanary)
+    || readCycleId(bundleActivation)
     || readCycleId(deployment)
     || readCycleId(deploymentPlan)
     || readCycleId(stageAutopilot)
@@ -94,6 +106,42 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       cycle_id: readCycleId(canary),
       status: canarySummary.apply_pass === true ? "PASS" : "BLOCK",
       reason: `open_wave=${canarySummary.open_wave ?? "N/A"} / scale=${canarySummary.scale_allowed ? "YES" : "NO"} / blocked=${canarySummary.blocked_n ?? 0}`,
+    },
+    {
+      loop: "CANONICAL_PARITY",
+      fresh: artifacts.canonicalParity && artifacts.canonicalParity.fresh === true,
+      cycle_id: readCycleId(canonicalParity),
+      status: Number(canonicalParitySummary.source_parity_mismatch_n || 0) > 0
+        ? "BLOCK"
+        : (Number(canonicalParitySummary.shadow_observed_n || 0) > 0 ? "PASS" : "HOLD"),
+      reason: `source=${canonicalParitySummary.source_parity_mismatch_n ?? 0} / downstream=${canonicalParitySummary.final_downstream_mismatch_n ?? 0} / ev=${canonicalParitySummary.by_actual_drop_reason_family && Array.isArray(canonicalParitySummary.by_actual_drop_reason_family) ? ((canonicalParitySummary.by_actual_drop_reason_family.find((row) => row.key === "EV_POLICY") || {}).count ?? 0) : "N/A"}`,
+    },
+    {
+      loop: "CANONICAL_PROVENANCE",
+      fresh: artifacts.canonicalProvenance && artifacts.canonicalProvenance.fresh === true,
+      cycle_id: readCycleId(canonicalProvenance),
+      status: Number(canonicalProvenanceSummary.complete_n || 0) > 0
+        ? "PASS"
+        : (Number(canonicalProvenanceSummary.eligible_n || 0) > 0 ? "HOLD" : "N/A"),
+      reason: `complete=${canonicalProvenanceSummary.complete_n ?? 0}/${canonicalProvenanceSummary.eligible_n ?? 0} / source_decision=${canonicalProvenanceSummary.with_actual_source_decision_n ?? canonicalProvenanceSummary.actual_source_decision_n ?? 0} / bundle=${canonicalProvenanceSummary.with_bundle_version_n ?? canonicalProvenanceSummary.bundle_version_n ?? 0}`,
+    },
+    {
+      loop: "SERVER_PRIMARY_CANARY",
+      fresh: artifacts.serverPrimaryCanary && artifacts.serverPrimaryCanary.fresh === true,
+      cycle_id: readCycleId(serverPrimaryCanary),
+      status: Number(serverPrimaryCanarySummary.server_primary_executed_n || 0) > 0
+        ? (serverPrimaryCanarySummary.apply_pass === true ? "PASS" : "BLOCK")
+        : "N/A",
+      reason: `executed=${serverPrimaryCanarySummary.server_primary_executed_n ?? 0} / disagreement=${serverPrimaryCanarySummary.pine_shadow_disagreement_n ?? 0}/${serverPrimaryCanarySummary.pine_shadow_observed_n ?? 0} / rollback=${serverPrimaryCanarySummary.rollback_trigger_n ?? 0}`,
+    },
+    {
+      loop: "BUNDLE_ACTIVATION",
+      fresh: artifacts.bundleActivation && artifacts.bundleActivation.fresh === true,
+      cycle_id: readCycleId(bundleActivation),
+      status: bundleActivationSummary.activation_confirmed === true
+        ? "PASS"
+        : (bundleActivationSummary.activation_pending === true ? "HOLD" : "N/A"),
+      reason: `engine=${bundleActivationSummary.engine_bundle_loaded ? "YES" : "NO"} / policy=${bundleActivationSummary.policy_bundle_loaded ? "YES" : "NO"} / data=${bundleActivationSummary.market_data_flow_ok ? "YES" : "NO"} / decision=${bundleActivationSummary.first_decision_seen ? "YES" : "NO"} / reason=${bundleActivationSummary.activation_reason || "N/A"}`,
     },
     {
       loop: "DEPLOYMENT_GUARDS",
@@ -166,6 +214,11 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     : [];
   const blockers = [];
   if (objectiveReason) blockers.push(objectiveReason);
+  if (Number(canonicalParitySummary.source_parity_mismatch_n || 0) > 0) blockers.push("SELF_EVOLUTION_CANONICAL_SOURCE_MISMATCH");
+  if (Number(serverPrimaryCanarySummary.server_primary_executed_n || 0) > 0 && serverPrimaryCanarySummary.apply_pass === false) {
+    blockers.push("SELF_EVOLUTION_SERVER_PRIMARY_CANARY_BLOCK");
+  }
+  if (bundleActivationSummary.activation_pending === true) blockers.push("SELF_EVOLUTION_BUNDLE_ACTIVATION_PENDING");
   blockers.push(...deploymentBlockers);
   if (deploymentPlanSummary.authority_bypass_active === true) blockers.push("SELF_EVOLUTION_AUTHORITY_BYPASS");
   if (Number(memorySummary.blocked_candidate_n || 0) > 0) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK_PRESENT");
@@ -174,7 +227,11 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const uniqueBlockers = Array.from(new Set(blockers.filter(Boolean)));
 
   let overallStatus = "HEALTHY";
-  if (deploymentPlanStatus === "APPLIED_CONFIRMED_AUTHORITY_BYPASS") overallStatus = "APPLIED_CONFIRMED_AUTHORITY_BYPASS";
+  if (deploymentPlanStatus === "APPLIED_ACTIVE_AUTHORITY_BYPASS") overallStatus = "APPLIED_ACTIVE_AUTHORITY_BYPASS";
+  else if (deploymentPlanStatus === "APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS") overallStatus = "APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS";
+  else if (deploymentPlanStatus === "APPLIED_ACTIVE") overallStatus = "APPLIED_ACTIVE";
+  else if (deploymentPlanStatus === "APPLIED_PENDING_BUNDLE_ACTIVATION") overallStatus = "APPLIED_PENDING_BUNDLE_ACTIVATION";
+  else if (deploymentPlanStatus === "APPLIED_CONFIRMED_AUTHORITY_BYPASS") overallStatus = "APPLIED_CONFIRMED_AUTHORITY_BYPASS";
   else if (deploymentPlanStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS") overallStatus = "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS";
   else if (deploymentPlanStatus === "APPLIED_CONFIRMED") overallStatus = "APPLIED_CONFIRMED";
   else if (deploymentPlanStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION") overallStatus = "APPLIED_PENDING_SIGNAL_CONFIRMATION";
@@ -197,8 +254,9 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       critical_blockers: uniqueBlockers.slice(0, 10),
       promotion_path_ready: deploymentSummary.deploy_pass === true,
       manual_paste_ready: deploymentPlanSummary.manual_step_required === true,
-      applied_confirmed: deploymentPlanStatus === "APPLIED_CONFIRMED" || deploymentPlanStatus === "APPLIED_CONFIRMED_AUTHORITY_BYPASS",
+      applied_confirmed: deploymentPlanStatus === "APPLIED_CONFIRMED" || deploymentPlanStatus === "APPLIED_CONFIRMED_AUTHORITY_BYPASS" || deploymentPlanStatus === "APPLIED_ACTIVE" || deploymentPlanStatus === "APPLIED_ACTIVE_AUTHORITY_BYPASS",
       applied_pending_signal_confirmation: deploymentPlanStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION" || deploymentPlanStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS",
+      applied_pending_bundle_activation: deploymentPlanStatus === "APPLIED_PENDING_BUNDLE_ACTIVATION" || deploymentPlanStatus === "APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS",
       ready_candidate_id: deploymentPlanSummary.recommended_target_candidate_id || deploymentPlanSummary.target_candidate_id || deploymentSummary.target_candidate_id || null,
       canary_open_wave: toNum(canarySummary.open_wave) || null,
       loop_n: rows.length,

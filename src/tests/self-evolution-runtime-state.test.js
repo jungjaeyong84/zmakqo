@@ -24,7 +24,7 @@ const { __test } = require("../../src/utils/selfEvolutionRuntimeState");
   assert.strictEqual(normalizedPending.live_signal_confirmation_pending, true);
   assert.strictEqual(normalizedPending.prepared_stage_ready, true);
   assert.strictEqual(normalizedPending.prepared_strategy_id, "donbeolja_v6.0.3.2");
-  assert.strictEqual(normalizedPending.plan_status, "APPLIED_PENDING_SIGNAL_CONFIRMATION");
+  assert.strictEqual(normalizedPending.plan_status, "APPLIED_PENDING_BUNDLE_ACTIVATION");
 
   const normalizedConfirmed = __test.normalizeSelfEvolutionRuntimeState({
     acknowledged: true,
@@ -42,7 +42,7 @@ const { __test } = require("../../src/utils/selfEvolutionRuntimeState");
     liveSignalConfirmed: false,
     authorityBypassActive: true,
   });
-  assert.strictEqual(derivedPendingBypass, "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS");
+  assert.strictEqual(derivedPendingBypass, "APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS");
 
   const preAckMatch = __test.assessSelfEvolutionRuntimeSignalConfirmation(
     {

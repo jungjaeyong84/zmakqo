@@ -10,6 +10,9 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
       candidates: { fresh: true },
       replay: { fresh: true },
       canary: { fresh: true },
+      canonicalParity: { fresh: true },
+      canonicalProvenance: { fresh: true },
+      serverPrimaryCanary: { fresh: true },
       deployment: { fresh: true },
       deploymentPlan: { fresh: true },
       stageAutopilot: { fresh: true },
@@ -22,6 +25,9 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
       candidates: { cycle_id: "cycle-1", summary: { ready_n: 1, blocked_n: 0, top_candidate_id: "AUTO_CORE" } },
       replay: { cycle_id: "cycle-1", summary: { pass_n: 1, block_n: 0, best_candidate_id: "AUTO_CORE" } },
       canary: { cycle_id: "cycle-1", summary: { apply_pass: true, open_wave: 1, blocked_n: 0 } },
+      canonicalParity: { cycle_id: "cycle-1", summary: { shadow_observed_n: 7, source_parity_mismatch_n: 0, final_downstream_mismatch_n: 2, by_actual_drop_reason_family: [{ key: "EV_POLICY", count: 2 }] } },
+      canonicalProvenance: { cycle_id: "cycle-1", summary: { eligible_n: 6, complete_n: 6, with_actual_source_decision_n: 6, with_bundle_version_n: 6 } },
+      serverPrimaryCanary: { cycle_id: "cycle-1", summary: { server_primary_executed_n: 0, pine_shadow_observed_n: 0, pine_shadow_disagreement_n: 0, rollback_trigger_n: 0, apply_pass: null } },
       deployment: { cycle_id: "cycle-1", summary: { deploy_pass: true, target_candidate_id: "AUTO_CORE", blockers: [] } },
       deploymentPlan: { cycle_id: "cycle-1", summary: { plan_status: "READY_FOR_MANUAL_PASTE", manual_step_required: true, target_candidate_id: "AUTO_CORE" } },
       stageAutopilot: { cycle_id: "cycle-1", objective_verdict: "PATCH_CANDIDATE", actions: [] },
@@ -36,8 +42,17 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
   assert.strictEqual(report.summary.ready_candidate_id, "AUTO_CORE");
   assert.strictEqual(report.summary.cycle_consistent, true);
   const deploymentRow = report.rows.find((row) => row.loop === "DEPLOYMENT_GUARDS");
+  const parityRow = report.rows.find((row) => row.loop === "CANONICAL_PARITY");
+  const provenanceRow = report.rows.find((row) => row.loop === "CANONICAL_PROVENANCE");
+  const serverPrimaryRow = report.rows.find((row) => row.loop === "SERVER_PRIMARY_CANARY");
   assert.ok(deploymentRow);
+  assert.ok(parityRow);
+  assert.ok(provenanceRow);
+  assert.ok(serverPrimaryRow);
   assert.strictEqual(deploymentRow.status, "PASS");
+  assert.strictEqual(parityRow.status, "PASS");
+  assert.strictEqual(provenanceRow.status, "PASS");
+  assert.strictEqual(serverPrimaryRow.status, "N/A");
 
   const mismatch = deriveLoopMonitor({
     artifacts: {
@@ -113,12 +128,12 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
     reports: {
       objectiveSupervisor: { cycle_id: "cycle-p", verdict: "PATCH_CANDIDATE", reason: "AUTONOMOUS_RECOVERY_PROMOTION_READY" },
       deployment: { cycle_id: "cycle-p", summary: { deploy_pass: true, target_candidate_id: "AUTO_CORE", blockers: [] } },
-      deploymentPlan: { cycle_id: "cycle-p", summary: { plan_status: "APPLIED_PENDING_SIGNAL_CONFIRMATION", manual_step_required: false, target_candidate_id: "AUTO_CORE" } },
+      deploymentPlan: { cycle_id: "cycle-p", summary: { plan_status: "APPLIED_PENDING_BUNDLE_ACTIVATION", manual_step_required: false, target_candidate_id: "AUTO_CORE" } },
     },
   });
-  assert.strictEqual(appliedPending.summary.overall_status, "APPLIED_PENDING_SIGNAL_CONFIRMATION");
+  assert.strictEqual(appliedPending.summary.overall_status, "APPLIED_PENDING_BUNDLE_ACTIVATION");
   assert.strictEqual(appliedPending.summary.manual_paste_ready, false);
-  assert.strictEqual(appliedPending.summary.applied_pending_signal_confirmation, true);
+  assert.strictEqual(appliedPending.summary.applied_pending_bundle_activation, true);
 
   const appliedConfirmed = deriveLoopMonitor({
     artifacts: {
@@ -129,10 +144,10 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
     reports: {
       objectiveSupervisor: { cycle_id: "cycle-c", verdict: "PATCH_CANDIDATE", reason: "AUTONOMOUS_RECOVERY_PROMOTION_READY" },
       deployment: { cycle_id: "cycle-c", summary: { deploy_pass: true, target_candidate_id: "AUTO_CORE", blockers: [] } },
-      deploymentPlan: { cycle_id: "cycle-c", summary: { plan_status: "APPLIED_CONFIRMED", manual_step_required: false, target_candidate_id: "AUTO_CORE" } },
+      deploymentPlan: { cycle_id: "cycle-c", summary: { plan_status: "APPLIED_ACTIVE", manual_step_required: false, target_candidate_id: "AUTO_CORE" } },
     },
   });
-  assert.strictEqual(appliedConfirmed.summary.overall_status, "APPLIED_CONFIRMED");
+  assert.strictEqual(appliedConfirmed.summary.overall_status, "APPLIED_ACTIVE");
   assert.strictEqual(appliedConfirmed.summary.applied_confirmed, true);
   assert.strictEqual(appliedConfirmed.summary.applied_pending_signal_confirmation, false);
 
@@ -145,24 +160,30 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
     reports: {
       objectiveSupervisor: { cycle_id: "cycle-b", verdict: "HOLD", reason: "SELF_EVOLUTION_LATENCY_BUDGET_FAIL" },
       deployment: { cycle_id: "cycle-b", summary: { deploy_pass: false, target_candidate_id: "AUTO_MARKET_AXS", blockers: ["SELF_EVOLUTION_LATENCY_BUDGET_FAIL"] } },
-      deploymentPlan: { cycle_id: "cycle-b", summary: { plan_status: "APPLIED_CONFIRMED_AUTHORITY_BYPASS", manual_step_required: false, target_candidate_id: "AUTO_MARKET_AXS", recommended_target_candidate_id: "AUTO_MARKET_AXS", applied_origin_candidate_id: "AUTO_CORE", authority_bypass_active: true } },
+      deploymentPlan: { cycle_id: "cycle-b", summary: { plan_status: "APPLIED_ACTIVE_AUTHORITY_BYPASS", manual_step_required: false, target_candidate_id: "AUTO_MARKET_AXS", recommended_target_candidate_id: "AUTO_MARKET_AXS", applied_origin_candidate_id: "AUTO_CORE", authority_bypass_active: true } },
     },
   });
-  assert.strictEqual(appliedConfirmedAuthorityBypass.summary.overall_status, "APPLIED_CONFIRMED_AUTHORITY_BYPASS");
+  assert.strictEqual(appliedConfirmedAuthorityBypass.summary.overall_status, "APPLIED_ACTIVE_AUTHORITY_BYPASS");
   assert.ok(appliedConfirmedAuthorityBypass.summary.critical_blockers.includes("SELF_EVOLUTION_AUTHORITY_BYPASS"));
 
   const absent = deriveLoopMonitor({
     artifacts: {
       objectiveSupervisor: { fresh: true },
+      canonicalParity: { fresh: true },
+      serverPrimaryCanary: { fresh: true },
       codexPatch: { fresh: true },
     },
     reports: {
       objectiveSupervisor: { cycle_id: "cycle-z", verdict: "HOLD", reason: "X" },
+      canonicalParity: { cycle_id: "cycle-z", summary: { shadow_observed_n: 4, source_parity_mismatch_n: 1, final_downstream_mismatch_n: 0, by_actual_drop_reason_family: [] } },
+      serverPrimaryCanary: { cycle_id: "cycle-z", summary: { server_primary_executed_n: 2, pine_shadow_observed_n: 2, pine_shadow_disagreement_n: 1, rollback_trigger_n: 1, apply_pass: false } },
       codexPatch: { verdict: "HOLD", recommended_candidate_id: null },
     },
   });
   assert.strictEqual(absent.summary.cycle_id_absent_n, 1);
   assert.strictEqual(absent.summary.overall_status, "BLOCKED");
   assert.ok(absent.summary.critical_blockers.includes("SELF_EVOLUTION_CYCLE_ID_ABSENT"));
+  assert.ok(absent.summary.critical_blockers.includes("SELF_EVOLUTION_CANONICAL_SOURCE_MISMATCH"));
+  assert.ok(absent.summary.critical_blockers.includes("SELF_EVOLUTION_SERVER_PRIMARY_CANARY_BLOCK"));
   console.log("BEST_SELF_EVOLUTION_LOOP_MONITOR_TEST_OK");
 })();

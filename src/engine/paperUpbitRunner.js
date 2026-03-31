@@ -32,6 +32,10 @@ const {
 const { resolveMarketStateSummary } = require("../utils/marketStateSummary");
 const { resolveEventMapping } = require("../services/signalMapping");
 const { normalizeEvent } = require("../services/signalStandard");
+const {
+  evaluateCanonicalDecision,
+  resolveCanonicalEngineConfig: resolveCanonicalEngineConfigShared,
+} = require("../services/canonicalEngine");
 const { sendTradeExecutionAlert, sendTradeExecutionFailureAlert } = require("../services/tradeExecutionAlert");
 const { sendAlert } = require("../utils/alerts");
 const { estimateTp1ReachProbability } = require("../services/evTp1Probability");
@@ -4173,6 +4177,58 @@ function evaluateEntryQualityGate({ intent, intentDir, eventUpper, features, cfg
   return { ok: true };
 }
 
+function resolveCanonicalEntryConfig(sysCfg = {}, market = "") {
+  return resolveCanonicalEngineConfigShared(sysCfg, { market });
+}
+
+function applyCanonicalSourceProvenanceDefaults({ intent, features, sysCfg, market, eventUpper, intentDir, tf } = {}) {
+  const entryIntent = String(intent || "").toUpperCase();
+  if (entryIntent !== "ENTRY" && entryIntent !== "ADD") return features;
+  const featureObj = (features && typeof features === "object") ? features : {};
+  if (featureObj.canonical_engine_actual_source_decision != null && featureObj.canonical_engine_decision_id != null) return featureObj;
+  const resolvedCfg = resolveCanonicalEntryConfig(sysCfg, market);
+  if (!resolvedCfg || resolvedCfg.enabled !== true) return featureObj;
+  const decision = evaluateCanonicalDecision({
+    features: featureObj,
+    event: eventUpper,
+    side: intentDir,
+    market,
+    tf,
+    config: resolvedCfg,
+    pineShadowDecision: "PASS",
+  });
+  return {
+    ...featureObj,
+    ...(decision && decision.detail ? decision.detail : {}),
+  };
+}
+
+function evaluateCanonicalEntryGate({ intent, intentDir, eventUpper, features, sysCfg, cfg, market, tf } = {}) {
+  const entryIntent = String(intent || "").toUpperCase();
+  if (entryIntent !== "ENTRY" && entryIntent !== "ADD") return { ok: true };
+  const resolvedCfg = cfg || resolveCanonicalEntryConfig(sysCfg, market);
+  if (!resolvedCfg || resolvedCfg.enabled !== true) return { ok: true };
+  const decision = evaluateCanonicalDecision({
+    features,
+    event: eventUpper,
+    side: intentDir,
+    market,
+    tf,
+    config: resolvedCfg,
+  });
+  if (!decision.ok) {
+    return {
+      ok: false,
+      reason: decision.reason || "DROP_CANONICAL_ENGINE",
+      detail: decision.detail || {},
+    };
+  }
+  return {
+    ok: true,
+    detail: decision.detail || {},
+  };
+}
+
 function getCoreProbeMeta(posMeta, intentDir) {
   if (!posMeta || !intentDir) return null;
   const dir = String(intentDir).toLowerCase();
@@ -7122,6 +7178,26 @@ async function runPaperUpbitForBar({
       continue;
     }
     if (intentIsEntry) {
+      const canonical = evaluateCanonicalEntryGate({
+        intent,
+        intentDir,
+        eventUpper,
+        features: it.features_json,
+        sysCfg: sysCfgEffective,
+        market: it.symbol_or_pair_id || symbol,
+        tf: signalTf,
+      });
+      if (!canonical.ok) {
+        await markIntentStatus(it.intent_id, "CANCELED", {
+          cancel_reason: canonical.reason || "DROP_CANONICAL_ENGINE",
+          status_reason: canonical.reason || "DROP_CANONICAL_ENGINE",
+          cancel_note: canonical.detail ? JSON.stringify(canonical.detail) : undefined,
+        });
+        continue;
+      }
+      if (canonical.detail) {
+        it.features_json = { ...(it.features_json || {}), ...(canonical.detail || {}) };
+      }
       const quality = evaluateEntryQualityGate({
         intent,
         intentDir,
@@ -8128,6 +8204,17 @@ async function runPaperUpbitForBar({
   for (const s of signals) {
     const intent = intentFromSignal({ event: s.event, side: s.side, features: s.features });
     const intentIsEntry = intent === "ENTRY" || intent === "ADD";
+    if (intentIsEntry) {
+      s.features = applyCanonicalSourceProvenanceDefaults({
+        intent,
+        features: s.features,
+        sysCfg: sysCfgEffective,
+        market: s.symbol_or_pair_id || symbol,
+        eventUpper: String(s.event || "").trim().toUpperCase(),
+        intentDir: directionFromSignal({ event: s.event, side: s.side }),
+        tf: signalTf,
+      });
+    }
     const manualRetryIntent = intentIsEntry && isManualRetryFeatures(s.features);
     let preQtyScale = 1;
     const effectiveBarMs = Number(s && s.features && s.features._late_origin_bar_close_time_utc_ms) || Number(barCloseMs);
@@ -8398,6 +8485,30 @@ async function runPaperUpbitForBar({
     }
 
     if (intentIsEntry && !manualRetryIntent) {
+      const canonical = evaluateCanonicalEntryGate({
+        intent,
+        intentDir,
+        eventUpper,
+        features: s.features,
+        sysCfg: sysCfgEffective,
+        market: s.symbol_or_pair_id || symbol,
+        tf: signalTf,
+      });
+      if (!canonical.ok) {
+        signalDrops.push({
+          ...s,
+          bar_close_time_utc_ms: effectiveBarMs,
+          qty_pct: qtyFraction,
+          reason: canonical.reason || "DROP_CANONICAL_ENGINE",
+          drop_reason_code: canonical.reason || "DROP_CANONICAL_ENGINE",
+          features_json: { ...(s.features || {}), ...(canonical.detail || {}) },
+          event_intent: intent,
+        });
+        continue;
+      }
+      if (canonical.detail) {
+        s.features = { ...(s.features || {}), ...(canonical.detail || {}) };
+      }
       const quality = evaluateEntryQualityGate({
         intent,
         intentDir,
@@ -9332,6 +9443,26 @@ async function runPaperFuturesForBar({
       continue;
     }
     if (intentIsEntry) {
+      const canonical = evaluateCanonicalEntryGate({
+        intent,
+        intentDir,
+        eventUpper,
+        features: it.features_json,
+        sysCfg: sysCfgEffective,
+        market: it.symbol_or_pair_id || symbol,
+        tf: signalTf,
+      });
+      if (!canonical.ok) {
+        await markIntentStatus(it.intent_id, "CANCELED", {
+          cancel_reason: canonical.reason || "DROP_CANONICAL_ENGINE",
+          status_reason: canonical.reason || "DROP_CANONICAL_ENGINE",
+          cancel_note: canonical.detail ? JSON.stringify(canonical.detail) : undefined,
+        });
+        continue;
+      }
+      if (canonical.detail) {
+        it.features_json = { ...(it.features_json || {}), ...(canonical.detail || {}) };
+      }
       const quality = evaluateEntryQualityGate({
         intent,
         intentDir,
@@ -10893,6 +11024,17 @@ async function runPaperFuturesForBar({
   for (const s of signals) {
     const intent = intentFromSignal({ event: s.event, side: s.side, features: s.features });
     const intentIsEntry = intent === "ENTRY" || intent === "ADD";
+    if (intentIsEntry) {
+      s.features = applyCanonicalSourceProvenanceDefaults({
+        intent,
+        features: s.features,
+        sysCfg: sysCfgEffective,
+        market: s.symbol_or_pair_id || symbol,
+        eventUpper: String(s.event || "").trim().toUpperCase(),
+        intentDir: directionFromSignal({ event: s.event, side: s.side }),
+        tf: signalTf,
+      });
+    }
     const effectiveBarMs = Number(s && s.features && s.features._late_origin_bar_close_time_utc_ms) || Number(barCloseMs);
     const signalBarMsRaw = s && s.signal_bar_close_time_utc_ms;
     const signalBarMsParsed = (signalBarMsRaw === null || signalBarMsRaw === undefined) ? null : Number(signalBarMsRaw);
@@ -11219,6 +11361,30 @@ async function runPaperFuturesForBar({
     }
 
     if (intentIsEntry) {
+      const canonical = evaluateCanonicalEntryGate({
+        intent,
+        intentDir,
+        eventUpper,
+        features: s.features,
+        sysCfg: sysCfgEffective,
+        market: s.symbol_or_pair_id || symbol,
+        tf: signalTf,
+      });
+      if (!canonical.ok) {
+        signalDrops.push({
+          ...s,
+          bar_close_time_utc_ms: effectiveBarMs,
+          qty_pct: qtyFraction,
+          reason: canonical.reason || "DROP_CANONICAL_ENGINE",
+          drop_reason_code: canonical.reason || "DROP_CANONICAL_ENGINE",
+          features_json: { ...(s.features || {}), ...(canonical.detail || {}) },
+          event_intent: intent,
+        });
+        continue;
+      }
+      if (canonical.detail) {
+        s.features = { ...(s.features || {}), ...(canonical.detail || {}) };
+      }
       const quality = evaluateEntryQualityGate({
         intent,
         intentDir,
@@ -11944,6 +12110,8 @@ module.exports = {
     evaluateShortEntryGate,
     resolveEntryQualityGateConfig,
     evaluateEntryQualityGate,
+    resolveCanonicalEntryConfig,
+    evaluateCanonicalEntryGate,
     resolvePineStage1BundleMeta,
     resolveSignalTier,
     resolveEntryQualityTier,

@@ -116,6 +116,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
       candidates: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
       replay: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
       canary: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
+      canonicalProvenance: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
       memory: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
       codex: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
       stageAutopilot: { exists: true, fresh: true, data: { cycle_id: "cycle-1" } },
@@ -218,6 +219,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.filter_layers.state_soft_sizing.label, "3차 상태 기반 Soft Sizing");
   assert.strictEqual(allowPromote.filter_layers.ev_time_value.label, "4차 EV/시간가치층");
   assert.strictEqual(allowPromote.filter_layers.ev_time_value.fresh, true);
+  assert.strictEqual(allowPromote.self_evolution_canonical_provenance.available, false);
 
   const pendingRollbackHold = __test.evaluateSupervisor({
     ...base,
@@ -259,8 +261,8 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
     signalsCache: { docs: [] },
   });
   assert.strictEqual(pendingRollbackHold.verdict, "HOLD");
-  assert.strictEqual(pendingRollbackHold.reason, "SELF_EVOLUTION_PENDING_SIGNAL_CONFIRMATION");
-  assert.ok(pendingRollbackHold.blockers.includes("SELF_EVOLUTION_PENDING_SIGNAL_CONFIRMATION"));
+  assert.strictEqual(pendingRollbackHold.reason, "SELF_EVOLUTION_BUNDLE_ACTIVATION_PENDING");
+  assert.ok(pendingRollbackHold.blockers.includes("SELF_EVOLUTION_BUNDLE_ACTIVATION_PENDING"));
   assert.strictEqual(allowPromote.phase0.available, true);
   assert.strictEqual(allowPromote.phase0.immediate_win_rate, 0.57);
   assert.strictEqual(allowPromote.self_evolution_policy.master_spec_path.endsWith("BEST_SELF_EVOLUTION_MASTER_SPEC.md"), true);

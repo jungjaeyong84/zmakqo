@@ -23,6 +23,9 @@ const {
   deriveDatasetObjectiveScore,
   deriveMarketObjectiveScores,
   deriveMarketConcentrationDiagnostics,
+  deriveCanonicalParityDiagnostics,
+  deriveCanonicalProvenanceDiagnostics,
+  deriveServerPrimaryCanaryDiagnostics,
   deriveAttribution,
 } = require("../src/utils/bestSelfEvolutionAnalysis");
 const { buildMemoryLedger } = require("../src/utils/bestSelfEvolutionMemoryLedger");
@@ -59,6 +62,10 @@ const SELF_EVOLUTION_ATTRIBUTION_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_se
 const SELF_EVOLUTION_CANDIDATES_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_candidates_latest.json");
 const SELF_EVOLUTION_REPLAY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_replay_latest.json");
 const SELF_EVOLUTION_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json");
+const SELF_EVOLUTION_CANONICAL_PARITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_parity_latest.json");
+const SELF_EVOLUTION_CANONICAL_PROVENANCE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_provenance_latest.json");
+const SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json");
+const SELF_EVOLUTION_BUNDLE_ACTIVATION_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_bundle_activation_latest.json");
 const SELF_EVOLUTION_EV_GATE_RESCUE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_ev_gate_rescue_latest.json");
 const SELF_EVOLUTION_MEMORY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_memory_latest.json");
 const WEEKLY_PINE_HISTORY_PATH = path.join(OPS_DAILY_DIR, "weekly_pine_upgrade_history.json");
@@ -86,6 +93,10 @@ const FRESHNESS_HOURS = Object.freeze({
   selfEvolutionCandidates: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_CANDIDATES_MAX_AGE_HOURS || 36)),
   selfEvolutionReplay: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_REPLAY_MAX_AGE_HOURS || 36)),
   selfEvolutionCanary: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_CANARY_MAX_AGE_HOURS || 36)),
+  selfEvolutionCanonicalParity: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_CANONICAL_PARITY_MAX_AGE_HOURS || 36)),
+  selfEvolutionCanonicalProvenance: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_CANONICAL_PROVENANCE_MAX_AGE_HOURS || 36)),
+  selfEvolutionServerPrimaryCanary: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_SERVER_PRIMARY_CANARY_MAX_AGE_HOURS || 36)),
+  selfEvolutionBundleActivation: Math.max(6, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_BUNDLE_ACTIVATION_MAX_AGE_HOURS || 24)),
   selfEvolutionEvGateRescue: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_EV_GATE_RESCUE_MAX_AGE_HOURS || 36)),
   selfEvolutionMemory: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_MEMORY_MAX_AGE_HOURS || 72)),
   weeklyPineHistory: Math.max(24, Number(process.env.OBJECTIVE_SUPERVISOR_WEEKLY_PINE_HISTORY_MAX_AGE_HOURS || 240)),
@@ -204,9 +215,9 @@ function readCycleId(value = null) {
 
 const SELF_EVOLUTION_STAGE_KEYS = Object.freeze({
   SEED: ["dataset"],
-  INTEGRATED: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "memory", "codex"],
-  FINAL: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "memory", "codex"],
-  STANDALONE: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "memory", "codex", "stageAutopilot"],
+  INTEGRATED: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "bundleActivation", "memory", "codex"],
+  FINAL: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "bundleActivation", "memory", "codex"],
+  STANDALONE: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "bundleActivation", "memory", "codex", "stageAutopilot"],
 });
 
 function summarizeSelfEvolutionArtifactCycles({ artifacts = {}, stage = "STANDALONE", preferredCycleId = null } = {}) {
@@ -702,6 +713,16 @@ function summarizeSelfEvolutionDeploymentPlan(report = null) {
     manual_paste_acknowledged: summary.manual_paste_acknowledged === true,
     live_signal_confirmation_pending: summary.live_signal_confirmation_pending === true,
     live_signal_confirmed: summary.live_signal_confirmed === true,
+    engine_bundle_loaded: summary.engine_bundle_loaded === true,
+    policy_bundle_loaded: summary.policy_bundle_loaded === true,
+    market_data_flow_ok: summary.market_data_flow_ok === true,
+    first_decision_seen: summary.first_decision_seen === true,
+    first_decision_kind: String(summary.first_decision_kind || "").trim().toUpperCase() || null,
+    activation_confirmed: summary.activation_confirmed === true,
+    activation_pending: summary.activation_pending === true,
+    activation_status: String(summary.activation_status || "").trim().toUpperCase() || null,
+    activation_reason: String(summary.activation_reason || "").trim().toUpperCase() || null,
+    confirmation_deadline_kst: String(summary.confirmation_deadline_kst || "").trim() || null,
     confirmed_signal_id: String(summary.confirmed_signal_id || "").trim() || null,
     confirmed_signal_created_at: String(summary.confirmed_signal_created_at || "").trim() || null,
     codex_verdict: String(summary.codex_verdict || "").trim().toUpperCase() || null,
@@ -717,6 +738,23 @@ function summarizeSelfEvolutionDeploymentPlan(report = null) {
       prepared_reason: String(handoff.prepared_reason || "").trim() || null,
       next_actions: Array.isArray(handoff.next_actions) ? handoff.next_actions : [],
     },
+  };
+}
+
+function summarizeSelfEvolutionBundleActivation(report = null) {
+  const summary = report && report.summary && typeof report.summary === "object" ? report.summary : {};
+  return {
+    available: !!report,
+    engine_bundle_loaded: summary.engine_bundle_loaded === true,
+    policy_bundle_loaded: summary.policy_bundle_loaded === true,
+    market_data_flow_ok: summary.market_data_flow_ok === true,
+    first_decision_seen: summary.first_decision_seen === true,
+    first_decision_kind: String(summary.first_decision_kind || "").trim().toUpperCase() || null,
+    activation_confirmed: summary.activation_confirmed === true,
+    activation_pending: summary.activation_pending === true,
+    activation_status: String(summary.activation_status || "").trim().toUpperCase() || null,
+    activation_reason: String(summary.activation_reason || "").trim().toUpperCase() || null,
+    confirmation_deadline_kst: String(summary.confirmation_deadline_kst || "").trim() || null,
   };
 }
 
@@ -1343,7 +1381,7 @@ function buildObjectiveSupervisorTelegramAlertSections(report = {}) {
   }));
 }
 
-function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionEvGateRescue, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache, preparedOverride } = {}) {
+function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionCanonicalParity, selfEvolutionCanonicalProvenance, selfEvolutionServerPrimaryCanary, selfEvolutionBundleActivation, selfEvolutionEvGateRescue, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache, preparedOverride } = {}) {
   const objective = governance && governance.current && governance.current.objective ? governance.current.objective : {};
   const objectiveCfg = governance && governance.objective ? governance.objective : {};
   const promotion = changeControl && changeControl.auto_promotion ? changeControl.auto_promotion : {};
@@ -1429,6 +1467,10 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   const selfEvolutionCandidatesSummary = summarizeSelfEvolutionCandidates(selfEvolutionCandidates);
   const selfEvolutionReplaySummary = summarizeSelfEvolutionReplay(selfEvolutionReplay);
   const selfEvolutionCanarySummary = summarizeSelfEvolutionCanary(selfEvolutionCanary);
+  const selfEvolutionCanonicalParitySummary = deriveCanonicalParityDiagnostics(selfEvolutionCanonicalParity);
+  const selfEvolutionCanonicalProvenanceSummary = deriveCanonicalProvenanceDiagnostics(selfEvolutionCanonicalProvenance);
+  const selfEvolutionServerPrimaryCanarySummary = deriveServerPrimaryCanaryDiagnostics(selfEvolutionServerPrimaryCanary);
+  const selfEvolutionBundleActivationSummary = summarizeSelfEvolutionBundleActivation(selfEvolutionBundleActivation);
   const selfEvolutionEvGateRescueSummary = summarizeSelfEvolutionEvGateRescue(selfEvolutionEvGateRescue);
   const selfEvolutionMemorySummary = summarizeSelfEvolutionMemory(selfEvolutionMemory);
   const memoryBlockedIds = new Set(selfEvolutionMemorySummary.blocked_candidate_ids || []);
@@ -1478,6 +1520,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     weeklyHistory,
     manualPasteAck,
     signalsCache,
+    bundleActivation: selfEvolutionBundleActivation,
     preparedOverride,
   }));
   const selfEvolutionWeightTuning = deriveWeightTuningPlan({
@@ -1520,12 +1563,13 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   if (selfEvolutionObjectiveSummary.count_floor_pass === false) blockers.push("SELF_EVOLUTION_COUNT_FLOOR_FAIL");
   if (selfEvolutionObjectiveSummary.replacement_floor_pass === false) blockers.push("SELF_EVOLUTION_REPLACEMENT_FLOOR_FAIL");
   if (selfEvolutionObjectiveSummary.latency_budget_pass === false) blockers.push("SELF_EVOLUTION_LATENCY_BUDGET_FAIL");
+  if (selfEvolutionCanonicalParitySummary.available && selfEvolutionCanonicalParitySummary.source_quality_pass === false) blockers.push("SELF_EVOLUTION_CANONICAL_SOURCE_MISMATCH");
   const promotionCandidateId = String(effectivePromotion && effectivePromotion.candidate_id || "").trim() || null;
   const promotionReplay = selfEvolutionReplaySummary.validations.find((row) => String(row && row.candidate_id || "").trim() === promotionCandidateId) || null;
   if (promotionReplay && promotionReplay.validation_verdict === "BLOCK") blockers.push("SELF_EVOLUTION_REPLAY_BLOCK");
   if (effectivePromotion.ready === true && selfEvolutionCanarySummary.available && selfEvolutionCanarySummary.apply_pass !== true) blockers.push("SELF_EVOLUTION_CANARY_BLOCK");
   if (selfEvolutionCanarySummary.rollback_ready_n > 0) blockers.push("SELF_EVOLUTION_CANARY_ROLLBACK_READY");
-  if (selfEvolutionDeploymentPlanSummary.live_signal_confirmation_pending === true) blockers.push("SELF_EVOLUTION_PENDING_SIGNAL_CONFIRMATION");
+  if (selfEvolutionDeploymentPlanSummary.activation_pending === true) blockers.push("SELF_EVOLUTION_BUNDLE_ACTIVATION_PENDING");
   if (selfEvolutionCycleSummary.available && selfEvolutionCycleSummary.cycle_consistent === false) blockers.push("SELF_EVOLUTION_ARTIFACT_CYCLE_MISMATCH");
   if (selfEvolutionLoopMonitorSummary.available && selfEvolutionLoopMonitorSummary.cycle_consistent === false) blockers.push("SELF_EVOLUTION_LOOP_CYCLE_MISMATCH");
   if (effectivePromotion.ready === true && promotionCandidateId && memoryBlockedIds.has(promotionCandidateId)) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK");
@@ -1556,14 +1600,16 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
         ? "SELF_EVOLUTION_REPLACEMENT_FLOOR_FAIL"
       : selfEvolutionObjectiveSummary.latency_budget_pass === false
         ? "SELF_EVOLUTION_LATENCY_BUDGET_FAIL"
+      : (selfEvolutionCanonicalParitySummary.available && selfEvolutionCanonicalParitySummary.source_quality_pass === false)
+        ? "SELF_EVOLUTION_CANONICAL_SOURCE_MISMATCH"
       : (promotionReplay && promotionReplay.validation_verdict === "BLOCK")
         ? "SELF_EVOLUTION_REPLAY_BLOCK"
       : (promotion.ready === true && selfEvolutionCanarySummary.available && selfEvolutionCanarySummary.apply_pass !== true)
         ? "SELF_EVOLUTION_CANARY_BLOCK"
       : selfEvolutionCanarySummary.rollback_ready_n > 0
         ? "SELF_EVOLUTION_CANARY_ROLLBACK_READY"
-      : selfEvolutionDeploymentPlanSummary.live_signal_confirmation_pending === true
-        ? "SELF_EVOLUTION_PENDING_SIGNAL_CONFIRMATION"
+      : selfEvolutionDeploymentPlanSummary.activation_pending === true
+        ? "SELF_EVOLUTION_BUNDLE_ACTIVATION_PENDING"
       : (selfEvolutionCycleSummary.available && selfEvolutionCycleSummary.cycle_consistent === false)
         ? "SELF_EVOLUTION_ARTIFACT_CYCLE_MISMATCH"
       : (selfEvolutionLoopMonitorSummary.available && selfEvolutionLoopMonitorSummary.cycle_consistent === false)
@@ -1597,9 +1643,9 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   let verdict = "HOLD";
   let reason = "NO_ACTION_READY";
   if (rollback && rollback.ready === true) {
-    if (selfEvolutionDeploymentPlanSummary.live_signal_confirmation_pending === true) {
+    if (selfEvolutionDeploymentPlanSummary.activation_pending === true) {
       verdict = "HOLD";
-      reason = "SELF_EVOLUTION_PENDING_SIGNAL_CONFIRMATION";
+      reason = "SELF_EVOLUTION_BUNDLE_ACTIVATION_PENDING";
     } else if (!codex || !codexFresh) {
       verdict = "HOLD";
       reason = "CODEX_REVIEW_REQUIRED_ROLLBACK";
@@ -1777,6 +1823,10 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     self_evolution_candidates: selfEvolutionCandidatesSummary,
     self_evolution_replay: selfEvolutionReplaySummary,
     self_evolution_canary: selfEvolutionCanarySummary,
+    self_evolution_canonical_parity: selfEvolutionCanonicalParitySummary,
+    self_evolution_canonical_provenance: selfEvolutionCanonicalProvenanceSummary,
+    self_evolution_server_primary_canary: selfEvolutionServerPrimaryCanarySummary,
+    self_evolution_bundle_activation: selfEvolutionBundleActivationSummary,
     self_evolution_ev_gate_rescue: selfEvolutionEvGateRescueSummary,
     self_evolution_cycle: selfEvolutionCycleSummary,
     self_evolution_deployment: selfEvolutionDeploymentSummary,
@@ -1964,6 +2014,9 @@ function renderMarkdown(report = {}) {
     `- top_market: ${report.self_evolution_objective && report.self_evolution_objective.top_market ? `${report.self_evolution_objective.top_market.market} / ${signedNum(report.self_evolution_objective.top_market.objective_score, 3)}` : "N/A"}`,
     `- bottom_market: ${report.self_evolution_objective && report.self_evolution_objective.bottom_market ? `${report.self_evolution_objective.bottom_market.market} / ${signedNum(report.self_evolution_objective.bottom_market.objective_score, 3)}` : "N/A"}`,
     `- dominant_drag: ${report.self_evolution_objective && report.self_evolution_objective.market_concentration && report.self_evolution_objective.market_concentration.dominant_negative_market ? `${report.self_evolution_objective.market_concentration.dominant_negative_market.market} / share ${pct(report.self_evolution_objective.market_concentration.dominant_negative_share)} / ex-bottom ${signedNum(report.self_evolution_objective.market_concentration.objective_score_ex_bottom_market, 3)}` : "N/A"}`,
+    `- canonical_parity: ${report.self_evolution_canonical_parity && report.self_evolution_canonical_parity.available ? `source_mismatch=${report.self_evolution_canonical_parity.source_parity_mismatch_n ?? 0} / downstream=${report.self_evolution_canonical_parity.final_downstream_mismatch_n ?? 0} / ev=${report.self_evolution_canonical_parity.ev_policy_mismatch_n ?? 0} / top=${report.self_evolution_canonical_parity.dominant_mismatch_family || "N/A"}` : "N/A"}`,
+    `- canonical_provenance: ${report.self_evolution_canonical_provenance && report.self_evolution_canonical_provenance.available ? `complete=${report.self_evolution_canonical_provenance.complete_n ?? 0}/${report.self_evolution_canonical_provenance.eligible_n ?? 0} / bundle=${report.self_evolution_canonical_provenance.bundle_version_n ?? 0} / threshold=${report.self_evolution_canonical_provenance.threshold_bundle_version_n ?? 0} / source_decision=${report.self_evolution_canonical_provenance.actual_source_decision_n ?? 0}` : "N/A"}`,
+    `- server_primary_canary: ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.available ? `executed=${report.self_evolution_server_primary_canary.executed_n ?? 0} / disagreement=${report.self_evolution_server_primary_canary.disagreement_n ?? 0} / rollback=${report.self_evolution_server_primary_canary.rollback_trigger_n ?? 0} / apply=${report.self_evolution_server_primary_canary.apply_pass == null ? "N/A" : (report.self_evolution_server_primary_canary.apply_pass ? "YES" : "NO")}` : "N/A"}`,
     "",
     "## Self-Evolution Attribution",
     `- drop_top_layer: ${report.self_evolution_attribution && report.self_evolution_attribution.drop_top_layer ? `${report.self_evolution_attribution.drop_top_layer.key} ${report.self_evolution_attribution.drop_top_layer.count}` : "N/A"}`,
@@ -2082,6 +2135,10 @@ async function main() {
   const selfEvolutionCandidatesArtifact = readArtifact("self_evolution_candidates", SELF_EVOLUTION_CANDIDATES_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCandidates);
   const selfEvolutionReplayArtifact = readArtifact("self_evolution_replay", SELF_EVOLUTION_REPLAY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionReplay);
   const selfEvolutionCanaryArtifact = readArtifact("self_evolution_canary", SELF_EVOLUTION_CANARY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCanary);
+  const selfEvolutionCanonicalParityArtifact = readArtifact("self_evolution_canonical_parity", SELF_EVOLUTION_CANONICAL_PARITY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCanonicalParity);
+  const selfEvolutionCanonicalProvenanceArtifact = readArtifact("self_evolution_canonical_provenance", SELF_EVOLUTION_CANONICAL_PROVENANCE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCanonicalProvenance);
+  const selfEvolutionServerPrimaryCanaryArtifact = readArtifact("self_evolution_server_primary_canary", SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionServerPrimaryCanary);
+  const selfEvolutionBundleActivationArtifact = readArtifact("self_evolution_bundle_activation", SELF_EVOLUTION_BUNDLE_ACTIVATION_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionBundleActivation);
   const selfEvolutionEvGateRescueArtifact = readArtifact("self_evolution_ev_gate_rescue", SELF_EVOLUTION_EV_GATE_RESCUE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionEvGateRescue);
   const selfEvolutionMemoryArtifact = readArtifact("self_evolution_memory", SELF_EVOLUTION_MEMORY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionMemory);
   const codexArtifact = readArtifact("codex_patch", CODEX_PATCH_LATEST_PATH, FRESHNESS_HOURS.codex);
@@ -2104,6 +2161,10 @@ async function main() {
       candidates: selfEvolutionCandidatesArtifact,
       replay: selfEvolutionReplayArtifact,
       canary: selfEvolutionCanaryArtifact,
+      canonicalParity: selfEvolutionCanonicalParityArtifact,
+      canonicalProvenance: selfEvolutionCanonicalProvenanceArtifact,
+      serverPrimaryCanary: selfEvolutionServerPrimaryCanaryArtifact,
+      bundleActivation: selfEvolutionBundleActivationArtifact,
       memory: selfEvolutionMemoryArtifact,
       codex: codexArtifact,
       stageAutopilot: stageAutopilotArtifact,
@@ -2135,6 +2196,11 @@ async function main() {
     selfEvolutionCandidates: selfEvolutionCandidatesArtifact.exists ? { ...selfEvolutionCandidatesArtifact.data, fresh: selfEvolutionCandidatesArtifact.fresh } : null,
     selfEvolutionReplay: selfEvolutionReplayArtifact.exists ? { ...selfEvolutionReplayArtifact.data, fresh: selfEvolutionReplayArtifact.fresh } : null,
     selfEvolutionCanary: selfEvolutionCanaryArtifact.exists ? { ...selfEvolutionCanaryArtifact.data, fresh: selfEvolutionCanaryArtifact.fresh } : null,
+    selfEvolutionCanonicalParity: selfEvolutionCanonicalParityArtifact.exists ? { ...selfEvolutionCanonicalParityArtifact.data, fresh: selfEvolutionCanonicalParityArtifact.fresh } : null,
+    selfEvolutionCanonicalProvenance: selfEvolutionCanonicalProvenanceArtifact.exists ? { ...selfEvolutionCanonicalProvenanceArtifact.data, fresh: selfEvolutionCanonicalProvenanceArtifact.fresh } : null,
+    selfEvolutionServerPrimaryCanary: selfEvolutionServerPrimaryCanaryArtifact.exists ? { ...selfEvolutionServerPrimaryCanaryArtifact.data, fresh: selfEvolutionServerPrimaryCanaryArtifact.fresh } : null,
+    selfEvolutionBundleActivation: selfEvolutionBundleActivationArtifact.exists ? { ...selfEvolutionBundleActivationArtifact.data, fresh: selfEvolutionBundleActivationArtifact.fresh } : null,
+    selfEvolutionEvGateRescue: selfEvolutionEvGateRescueArtifact.exists ? { ...selfEvolutionEvGateRescueArtifact.data, fresh: selfEvolutionEvGateRescueArtifact.fresh } : null,
     selfEvolutionMemory: selfEvolutionMemoryData,
     selfEvolutionLoopMonitor: null,
     selfEvolutionCycleState,
@@ -2144,6 +2210,7 @@ async function main() {
     weeklyHistory: weeklyPineHistoryArtifact.data,
     manualPasteAck,
     signalsCache,
+    selfEvolutionBundleActivation: selfEvolutionBundleActivationArtifact.exists ? { ...selfEvolutionBundleActivationArtifact.data, fresh: selfEvolutionBundleActivationArtifact.fresh } : null,
     preparedOverride,
   });
 
@@ -2173,6 +2240,11 @@ async function main() {
     self_evolution_candidates: evaluation.self_evolution_candidates,
     self_evolution_replay: evaluation.self_evolution_replay,
     self_evolution_canary: evaluation.self_evolution_canary,
+    self_evolution_canonical_parity: evaluation.self_evolution_canonical_parity,
+    self_evolution_canonical_provenance: evaluation.self_evolution_canonical_provenance,
+    self_evolution_server_primary_canary: evaluation.self_evolution_server_primary_canary,
+    self_evolution_bundle_activation: evaluation.self_evolution_bundle_activation,
+    self_evolution_ev_gate_rescue: evaluation.self_evolution_ev_gate_rescue,
     self_evolution_cycle: evaluation.self_evolution_cycle,
     self_evolution_deployment: evaluation.self_evolution_deployment,
     self_evolution_deployment_plan: evaluation.self_evolution_deployment_plan,
@@ -2204,7 +2276,7 @@ async function main() {
     codex_authority: evaluation.codex_authority,
     stage_autopilot: evaluation.stage_autopilot,
     retrospective: evaluation.retrospective,
-    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, phase0Artifact, selfEvolutionDatasetArtifact, selfEvolutionObjectiveArtifact, selfEvolutionAttributionArtifact, selfEvolutionCandidatesArtifact, selfEvolutionReplayArtifact, selfEvolutionCanaryArtifact, selfEvolutionMemoryArtifact, codexArtifact, stageAutopilotArtifact, weeklyPineHistoryArtifact, retrospectiveArtifact].map((row) => ({
+    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, phase0Artifact, selfEvolutionDatasetArtifact, selfEvolutionObjectiveArtifact, selfEvolutionAttributionArtifact, selfEvolutionCandidatesArtifact, selfEvolutionReplayArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionBundleActivationArtifact, selfEvolutionEvGateRescueArtifact, selfEvolutionMemoryArtifact, codexArtifact, stageAutopilotArtifact, weeklyPineHistoryArtifact, retrospectiveArtifact].map((row) => ({
       name: row.name,
       filePath: row.filePath,
       fresh: row.fresh,
@@ -2218,6 +2290,10 @@ async function main() {
       candidates: selfEvolutionCandidatesArtifact,
       replay: selfEvolutionReplayArtifact,
       canary: selfEvolutionCanaryArtifact,
+      canonicalParity: selfEvolutionCanonicalParityArtifact,
+      canonicalProvenance: selfEvolutionCanonicalProvenanceArtifact,
+      serverPrimaryCanary: selfEvolutionServerPrimaryCanaryArtifact,
+      bundleActivation: selfEvolutionBundleActivationArtifact,
       deployment: { fresh: true },
       deploymentPlan: { fresh: true },
       stageAutopilot: stageAutopilotArtifact,
@@ -2230,6 +2306,10 @@ async function main() {
       candidates: selfEvolutionCandidatesArtifact.data,
       replay: selfEvolutionReplayArtifact.data,
       canary: selfEvolutionCanaryArtifact.data,
+      canonicalParity: selfEvolutionCanonicalParityArtifact.data,
+      canonicalProvenance: selfEvolutionCanonicalProvenanceArtifact.data,
+      serverPrimaryCanary: selfEvolutionServerPrimaryCanaryArtifact.data,
+      bundleActivation: selfEvolutionBundleActivationArtifact.data,
       deployment: { cycle_id: reportCycleId, summary: evaluation.self_evolution_deployment },
       deploymentPlan: { cycle_id: reportCycleId, summary: evaluation.self_evolution_deployment_plan },
       stageAutopilot: stageAutopilotArtifact.data,

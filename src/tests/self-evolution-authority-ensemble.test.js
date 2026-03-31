@@ -6,13 +6,32 @@ const { deriveAuthorityEnsemble } = require("../../src/utils/selfEvolutionAuthor
 (() => {
   const consensus = deriveAuthorityEnsemble({
     authorityMode: "CODEX_CLAUDE_ENSEMBLE",
-    codexReview: { status: "FRESH", verdict: "PROMOTE", recommended_candidate_id: "AUTO_CORE", confidence: 0.8 },
-    claudeReview: { status: "FRESH", verdict: "PROMOTE", recommended_candidate_id: "AUTO_CORE", confidence: 0.6 },
+    codexReview: {
+      status: "FRESH",
+      verdict: "PROMOTE",
+      recommended_candidate_id: "AUTO_CORE",
+      confidence: 0.8,
+      review_unit: "ENGINE_POLICY_BUNDLE",
+      source_mode_change: "canonical_engine_market_overrides={\"AXSUSDT\":{\"source_mode\":\"SERVER_PRIMARY\"}}",
+      canonical_threshold_signature: "canonical_engine_market_overrides={\"AXSUSDT\":{\"transition_core_score_abs\":30,\"core_score_abs\":34}}",
+    },
+    claudeReview: {
+      status: "FRESH",
+      verdict: "PROMOTE",
+      recommended_candidate_id: "AUTO_CORE",
+      confidence: 0.6,
+      review_unit: "ENGINE_POLICY_BUNDLE",
+      source_mode_change: "canonical_engine_market_overrides={\"AXSUSDT\":{\"source_mode\":\"SERVER_PRIMARY\"}}",
+      canonical_threshold_signature: "canonical_engine_market_overrides={\"AXSUSDT\":{\"transition_core_score_abs\":30,\"core_score_abs\":34}}",
+    },
   });
   assert.strictEqual(consensus.owner, "CODEX_CLAUDE_ENSEMBLE");
   assert.strictEqual(consensus.verdict, "PROMOTE");
   assert.strictEqual(consensus.recommended_candidate_id, "AUTO_CORE");
   assert.strictEqual(consensus.consensus, true);
+  assert.strictEqual(consensus.review_unit, "ENGINE_POLICY_BUNDLE");
+  assert.strictEqual(consensus.source_mode_change, "canonical_engine_market_overrides={\"AXSUSDT\":{\"source_mode\":\"SERVER_PRIMARY\"}}");
+  assert.strictEqual(consensus.canonical_threshold_signature, "canonical_engine_market_overrides={\"AXSUSDT\":{\"transition_core_score_abs\":30,\"core_score_abs\":34}}");
 
   const disagreement = deriveAuthorityEnsemble({
     authorityMode: "CODEX_CLAUDE_ENSEMBLE",

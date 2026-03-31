@@ -112,7 +112,9 @@ function normalizeSignature(v) {
 }
 
 function appendStageHistory(state, row) {
-  const prev = Array.isArray(state.history) ? state.history : [];
+  const prev = Array.isArray(state)
+    ? state
+    : (Array.isArray(state && state.history) ? state.history : []);
   const dedupKey = `${row.stage || "N/A"}__${row.run_key || "N/A"}__${row.signature || "NONE"}`;
   const next = prev.filter((item) => `${item.stage || "N/A"}__${item.run_key || "N/A"}__${item.signature || "NONE"}` !== dedupKey);
   next.push(row);
@@ -250,6 +252,7 @@ module.exports = {
   shouldAutoRollback,
   hasSnapshot,
   __test: {
+    appendStageHistory,
     computeSignatureStreak,
     evaluateCommonAutoApply,
     shouldAutoRollback,

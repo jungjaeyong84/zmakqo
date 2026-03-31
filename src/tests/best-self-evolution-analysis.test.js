@@ -5,6 +5,9 @@ const {
   deriveDatasetObjectiveScore,
   deriveMarketObjectiveScores,
   deriveMarketConcentrationDiagnostics,
+  deriveCanonicalParityDiagnostics,
+  deriveCanonicalProvenanceDiagnostics,
+  deriveServerPrimaryCanaryDiagnostics,
   deriveAttribution,
 } = require("../../src/utils/bestSelfEvolutionAnalysis");
 
@@ -152,6 +155,65 @@ function run() {
   });
   assert.strictEqual(concentration.available, true);
   assert.strictEqual(typeof concentration.objective_score_ex_bottom_market, "number");
+
+  const parity = deriveCanonicalParityDiagnostics({
+    summary: {
+      rows_n: 90,
+      shadow_applicable_n: 7,
+      shadow_observed_n: 7,
+      parity_mismatch_n: 4,
+      parity_mismatch_rate: 0.5714285714,
+      source_parity_match_n: 7,
+      source_parity_mismatch_n: 0,
+      final_downstream_mismatch_n: 4,
+      by_actual_drop_reason_family: [
+        { key: "EV_POLICY", count: 2 },
+        { key: "COOLDOWN_POLICY", count: 1 },
+        { key: "STRATEGY_GATE", count: 1 },
+      ],
+    },
+  });
+  assert.strictEqual(parity.available, true);
+  assert.strictEqual(parity.source_quality_pass, true);
+  assert.strictEqual(parity.downstream_ev_pressure, true);
+  assert.strictEqual(parity.ev_policy_mismatch_n, 2);
+  assert.strictEqual(parity.dominant_mismatch_family, "EV_POLICY");
+
+  const provenance = deriveCanonicalProvenanceDiagnostics({
+    summary: {
+      eligible_n: 7,
+      complete_n: 5,
+      with_bundle_version_n: 6,
+      with_threshold_bundle_version_n: 5,
+      with_source_mode_n: 7,
+      with_actual_source_decision_n: 6,
+      by_collection: [
+        { collection: "signals", complete_rate: 1 },
+        { collection: "signals_dropped", complete_rate: 0.5 },
+      ],
+    },
+  });
+  assert.strictEqual(provenance.available, true);
+  assert.strictEqual(provenance.storage_contract_pass, false);
+  assert.strictEqual(provenance.storage_contract_gap_n, 2);
+  assert.strictEqual(provenance.dominant_gap_collection, "signals_dropped");
+
+  const serverPrimaryCanary = deriveServerPrimaryCanaryDiagnostics({
+    summary: {
+      server_primary_executed_n: 3,
+      server_primary_realized_n: 2,
+      pine_shadow_disagreement_n: 1,
+      pine_shadow_disagreement_rate: 0.3333,
+      server_primary_win_rate: 0.5,
+      server_primary_avg_ret_net: -0.01,
+      rollback_trigger_n: 1,
+      apply_pass: false,
+    },
+  });
+  assert.strictEqual(serverPrimaryCanary.available, true);
+  assert.strictEqual(serverPrimaryCanary.executed_n, 3);
+  assert.strictEqual(serverPrimaryCanary.rollback_trigger_n, 1);
+  assert.strictEqual(serverPrimaryCanary.apply_pass, false);
 
   const attribution = deriveAttribution({ dataset });
   assert.strictEqual(attribution.summary.drop_top_layer.key, "QUALITY");

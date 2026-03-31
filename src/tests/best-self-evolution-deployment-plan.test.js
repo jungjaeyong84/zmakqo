@@ -98,11 +98,11 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
     },
   });
 
-  assert.strictEqual(report.summary.plan_status, "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS");
+  assert.strictEqual(report.summary.plan_status, "APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS");
   assert.strictEqual(report.summary.ready_for_manual_paste, false);
   assert.strictEqual(report.summary.manual_step_required, false);
   assert.strictEqual(report.summary.manual_paste_acknowledged, true);
-  assert.strictEqual(report.summary.live_signal_confirmation_pending, true);
+  assert.strictEqual(report.summary.activation_pending, true);
   assert.strictEqual(report.summary.applied_strategy_id, "donbeolja_v6.0.3.1");
   assert.strictEqual(report.summary.authority_bypass_active, true);
   console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_APPLIED_ACK_TEST_OK");
@@ -199,15 +199,79 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
         },
       ],
     },
+    bundleActivation: {
+      summary: {
+        activation_confirmed: true,
+        activation_pending: false,
+        activation_status: "ACTIVE",
+        activation_reason: "ACTIVE_BY_FIRST_DECISION",
+        engine_bundle_loaded: true,
+        policy_bundle_loaded: true,
+        market_data_flow_ok: true,
+        first_decision_seen: true,
+        first_decision_kind: "SIGNAL",
+        first_decision_id: "SIG__BINANCEFUT__BTCUSDT__15m__1774844100000__LONG",
+        first_decision_created_at: "2026-03-30T04:55:00.000Z",
+      },
+    },
   });
 
-  assert.strictEqual(report.summary.plan_status, "APPLIED_CONFIRMED_AUTHORITY_BYPASS");
+  assert.strictEqual(report.summary.plan_status, "APPLIED_ACTIVE_AUTHORITY_BYPASS");
   assert.strictEqual(report.summary.live_signal_confirmed, true);
   assert.strictEqual(report.summary.live_signal_confirmation_pending, false);
   assert.strictEqual(report.summary.confirmed_signal_id, "SIG__BINANCEFUT__BTCUSDT__15m__1774844100000__LONG");
   assert.strictEqual(report.summary.authority_bypass_active, true);
   assert.strictEqual(report.summary.applied_origin_candidate_id, "AUTO_CORE_REGIME_TIGHTEN");
   console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_SIGNAL_CONFIRM_TEST_OK");
+})();
+
+(() => {
+  const report = deriveDeploymentPlan({
+    objectiveSupervisor: {
+      promotion: { ready: true, candidate_id: "EV_TP1_THRESHOLD_TUNE", display_candidate_id: "EV_TP1_THRESHOLD_TUNE" },
+      rollback: { ready: false },
+      self_evolution_deployment: { deploy_pass: true },
+    },
+    changeControl: {},
+    codexPatchReview: { verdict: "PROMOTE", recommended_candidate_id: "EV_TP1_THRESHOLD_TUNE" },
+    deploymentGuards: { summary: { deploy_pass: true, target_candidate_id: "EV_TP1_THRESHOLD_TUNE", canary_open_wave: 1 } },
+    candidateChangeSet: {
+      rows: [
+        {
+          candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN",
+          display_candidate_id: "AUTO_AXSUSDT_REGIME_TIGHTEN",
+          canonical_migration_class: "PINE_THRESHOLD",
+          target_deploy_unit: "SERVER_SETTINGS",
+          ready_for_auto_apply: true,
+          memory_blocked: false,
+        },
+      ],
+    },
+    canaryReport: { summary: { open_wave: 1 }, rows: [] },
+    stageAutopilot: {
+      raw: {
+        stage_rows: [
+          {
+            stage: "CANONICAL_POLICY",
+            machine_state: "WATCH",
+            reason: "CANONICAL_POLICY_STREAK_SHORT",
+            candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN",
+            signature: "canonical_engine_market_overrides={\"AXSUSDT\":{\"transition_core_score_abs\":30}}",
+          },
+        ],
+      },
+    },
+    weeklyHistory: { weeks: [] },
+  });
+
+  assert.strictEqual(report.summary.target_candidate_id, "EV_TP1_THRESHOLD_TUNE");
+  assert.strictEqual(report.summary.deploy_guard_target_candidate_id, "EV_TP1_THRESHOLD_TUNE");
+  assert.strictEqual(report.summary.recommended_target_candidate_id, "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN");
+  assert.strictEqual(report.summary.display_candidate_id, "AUTO_AXSUSDT_REGIME_TIGHTEN");
+  assert.strictEqual(report.summary.recommended_target_migration_class, "PINE_THRESHOLD");
+  assert.strictEqual(report.summary.recommended_target_deploy_unit, "SERVER_SETTINGS");
+  assert.strictEqual(report.summary.recommended_target_stage_state, "WATCH");
+  console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_CANONICAL_POLICY_TARGET_TEST_OK");
 })();
 
 (() => {
@@ -292,8 +356,9 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
     },
   });
 
-  assert.strictEqual(report.summary.plan_status, "APPLIED_CONFIRMED_AUTHORITY_BYPASS");
+  assert.strictEqual(report.summary.plan_status, "APPLIED_ACTIVE_AUTHORITY_BYPASS");
   assert.strictEqual(report.summary.live_signal_confirmed, true);
+  assert.strictEqual(report.summary.activation_confirmed, true);
   assert.strictEqual(report.summary.confirmed_signal_id, "SIG__BINANCEFUT__ETHUSDT__15m__1774858500000__LONG");
   assert.strictEqual(report.summary.authority_bypass_active, true);
   console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_SHARED_CONFIRM_TEST_OK");

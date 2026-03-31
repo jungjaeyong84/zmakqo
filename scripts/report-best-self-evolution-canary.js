@@ -25,6 +25,7 @@ const INPUTS = Object.freeze({
   driftCanary: path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json"),
   previousCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json"),
   memory: path.join(OPS_DAILY_DIR, "best_self_evolution_memory_latest.json"),
+  serverPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -43,6 +44,7 @@ function renderMarkdown(report = {}) {
     `- drift global shadow/golden: ${summary.shadow_global_drift ?? 0} / ${summary.golden_global_drift ?? 0}`,
     `- wave open/current/next: ${summary.open_wave ?? "N/A"} / ${summary.current_open_wave ?? "N/A"} / ${summary.next_wave_candidate ?? "N/A"}`,
     `- scale_allowed: ${summary.scale_allowed ? "YES" : "NO"} / reason=${summary.scale_block_reason || "N/A"}`,
+    `- source_mode_breakdown: ${Array.isArray(summary.source_mode_breakdown) && summary.source_mode_breakdown.length ? summary.source_mode_breakdown.map((row) => `${row.key}=${row.count}`).join(", ") : "none"}`,
     `- top_ready: ${summary.top_ready_market || "N/A"} / top_rollback: ${summary.top_rollback_market || "N/A"} / top_shadow_drift: ${summary.top_shadow_drift_market || "N/A"} / top_golden_drift: ${summary.top_golden_drift_market || "N/A"}`,
     "",
     "## Markets",
@@ -69,13 +71,25 @@ async function main() {
     previousCanary: readJsonRawSafe(INPUTS.previousCanary, null),
     memoryLedger: readJsonRawSafe(INPUTS.memory, null),
   });
+  const serverPrimaryCanary = readJsonRawSafe(INPUTS.serverPrimaryCanary, null);
   const output = {
     ok: true,
     generated_at_kst: nowMeta.kst,
     cycle_id: cycleMeta.cycle_id,
     generation_id: cycleMeta.generation_id,
     inputs: { ...INPUTS },
-    summary: report.summary,
+    summary: {
+      ...report.summary,
+      source_mode_breakdown: Array.isArray(serverPrimaryCanary && serverPrimaryCanary.summary && serverPrimaryCanary.summary.by_source_mode)
+        ? serverPrimaryCanary.summary.by_source_mode
+        : [],
+      server_primary_apply_pass: serverPrimaryCanary && serverPrimaryCanary.summary
+        ? (serverPrimaryCanary.summary.apply_pass ?? null)
+        : null,
+      server_primary_executed_n: serverPrimaryCanary && serverPrimaryCanary.summary
+        ? (serverPrimaryCanary.summary.server_primary_executed_n ?? 0)
+        : 0,
+    },
     rows: report.rows,
   };
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}`;

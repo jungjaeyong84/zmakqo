@@ -295,6 +295,52 @@ function run() {
   assert.strictEqual(axsRecovery.target_deploy_unit, "SERVER_SETTINGS");
   assert.strictEqual(axsRecovery.market_concentration_recovery, true);
   assert.ok(axsRecovery.risk_flags.includes("MARKET_CONCENTRATION_RECOVERY"));
+  assert.strictEqual(axsRecovery.market_concentration_fallback_triggered, false);
+
+  const concentrationFallbackReport = buildCandidateChangeSets({
+    objectiveSupervisor: {
+      raw: {
+        phase0: { tf: "15m" },
+        best_febt_tuning_contract: {
+          mode: "NORMAL",
+          projected_count_ratio_global: 1.0,
+          projected_replacement_ratio: 0.82,
+          tightening_allowed: true,
+          recovery_priority: false,
+        },
+        best_febt_market_contracts: [
+          { market: "AXSUSDT", mode: "NORMAL", tightening_allowed: true, recovery_priority: false },
+        ],
+        self_evolution_objective: {
+          market_concentration: {
+            concentration_flag: false,
+            dominant_negative_share: 0.4447,
+            bottom_market_drag_gap: 6.4327,
+            dominant_negative_market: {
+              market: "AXSUSDT",
+              objective_score: -6.4327,
+              realized_n: 4,
+              avg_realized_ret_net: -0.0097,
+              constraints: {
+                count_floor_pass: true,
+                latency_budget_pass: true,
+              },
+            },
+          },
+        },
+      },
+    },
+    patchCandidates: { raw: { candidates: [] } },
+    ml: { raw: { recommendations: { QUALITY: [], MARKET: { action: "KEEP" }, AI: { action: "KEEP" }, EV: { action: "KEEP" } } } },
+    ev: null,
+    wait: null,
+    changeControl: { raw: {} },
+    memoryLedger: { raw: { summary: { blocked_candidate_ids: [], recent_failed_fingerprints: [] }, current_rows: [] } },
+  });
+  const axsFallbackRecovery = concentrationFallbackReport.rows.find((row) => row.candidate_id === "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN");
+  assert.ok(axsFallbackRecovery);
+  assert.strictEqual(axsFallbackRecovery.canonical_migration_class, "PINE_THRESHOLD");
+  assert.strictEqual(axsFallbackRecovery.market_concentration_fallback_triggered, true);
 
   const pineLogic = __test.annotateCanonicalMigration({
     candidate_id: "PINE_LOGIC_SAMPLE",

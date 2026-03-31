@@ -89,6 +89,10 @@ const INPUT_PATHS = Object.freeze({
   stageAutopilot: path.join(OPS_DAILY_DIR, "stage_autopilot_latest.json"),
   selfEvolutionCandidates: path.join(OPS_DAILY_DIR, "best_self_evolution_candidates_latest.json"),
   selfEvolutionCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json"),
+  selfEvolutionCanonicalParity: path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_parity_latest.json"),
+  selfEvolutionCanonicalProvenance: path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_provenance_latest.json"),
+  selfEvolutionServerPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
+  selfEvolutionBundleActivation: path.join(OPS_DAILY_DIR, "best_self_evolution_bundle_activation_latest.json"),
   deploymentPlan: path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json"),
   loopMonitor: path.join(OPS_DAILY_DIR, "best_self_evolution_loop_monitor_latest.json"),
   retrospective: path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json"),
@@ -108,6 +112,10 @@ async function main() {
   const stageAutopilot = readFreshJson(INPUT_PATHS.stageAutopilot, MAX_AGE_HOURS);
   const selfEvolutionCandidatesArtifact = readFreshJson(INPUT_PATHS.selfEvolutionCandidates, MAX_AGE_HOURS);
   const selfEvolutionCanaryArtifact = readFreshJson(INPUT_PATHS.selfEvolutionCanary, MAX_AGE_HOURS);
+  const selfEvolutionCanonicalParityArtifact = readFreshJson(INPUT_PATHS.selfEvolutionCanonicalParity, MAX_AGE_HOURS);
+  const selfEvolutionCanonicalProvenanceArtifact = readFreshJson(INPUT_PATHS.selfEvolutionCanonicalProvenance, MAX_AGE_HOURS);
+  const selfEvolutionServerPrimaryCanaryArtifact = readFreshJson(INPUT_PATHS.selfEvolutionServerPrimaryCanary, MAX_AGE_HOURS);
+  const selfEvolutionBundleActivationArtifact = readFreshJson(INPUT_PATHS.selfEvolutionBundleActivation, MAX_AGE_HOURS);
   const deploymentPlan = readFreshJson(INPUT_PATHS.deploymentPlan, MAX_AGE_HOURS);
   const loopMonitor = readFreshJson(INPUT_PATHS.loopMonitor, MAX_AGE_HOURS);
   const retrospective = readFreshJson(INPUT_PATHS.retrospective, MAX_AGE_HOURS);
@@ -115,11 +123,16 @@ async function main() {
   const selfEvolutionCandidatesData = unwrapRawReport(selfEvolutionCandidatesArtifact.data);
   const selfEvolutionCanaryData = unwrapRawReport(selfEvolutionCanaryArtifact.data);
   const candidateDisplayMap = buildCandidateDisplayMap(changeControl.data, patchCandidates.data);
-  const inputs = [objectiveSupervisor, governance, changeControl, patchCandidates, ml, ev, wait, canary, stageAutopilot, selfEvolutionCandidatesArtifact, selfEvolutionCanaryArtifact, deploymentPlan, loopMonitor, retrospective];
+  const stageAutopilotData = unwrapRawReport(stageAutopilot.data);
+  const stageRows = Array.isArray(stageAutopilotData && stageAutopilotData.stage_rows) ? stageAutopilotData.stage_rows : [];
+  const sourceModeStage = stageRows.find((row) => String(row && row.stage || "").trim().toUpperCase() === "SOURCE_MODE") || {};
+  const canonicalPolicyStage = stageRows.find((row) => String(row && row.stage || "").trim().toUpperCase() === "CANONICAL_POLICY") || {};
+  const inputs = [objectiveSupervisor, governance, changeControl, patchCandidates, ml, ev, wait, canary, stageAutopilot, selfEvolutionCandidatesArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionBundleActivationArtifact, deploymentPlan, loopMonitor, retrospective];
   const reviewReadiness = deriveReviewReadiness({
     changeControl: changeControl.data,
     selfEvolutionCanary: selfEvolutionCanaryData,
     deploymentPlan: unwrapRawReport(deploymentPlan.data),
+    bundleActivation: unwrapRawReport(selfEvolutionBundleActivationArtifact.data),
   });
   const {
     readyPromotion,
@@ -151,6 +164,9 @@ async function main() {
     summary: "자동 승격/롤백 준비 상태가 아니어서 Claude 검토를 생략했습니다.",
     checks: [],
     risks: [],
+    review_unit: "ENGINE_POLICY_BUNDLE",
+    source_mode_change: String(sourceModeStage.signature || "").trim() || null,
+    canonical_threshold_signature: String((unwrapRawReport(deploymentPlan.data) && unwrapRawReport(deploymentPlan.data).summary && unwrapRawReport(deploymentPlan.data).summary.recommended_target_stage_signature) || canonicalPolicyStage.signature || "").trim() || null,
     inputs: inputs.map((row) => ({ name: path.basename(row.filePath, ".json"), filePath: row.filePath, fresh: row.fresh, age_hours: row.ageHours })),
     model: CLAUDE_MODEL,
   };
@@ -160,7 +176,7 @@ async function main() {
       ...baseReport,
       status: "FRESH",
       reason: blockedReason,
-      summary: "현재 적용 전략이 첫 live LONG/SHORT 신호 확인 전이라 Claude 권위 심사를 보류합니다.",
+      summary: "현재 적용 전략의 bundle activation proof가 아직 닫히지 않아 Claude 권위 심사를 보류합니다.",
       checks: [
         `plan_status=${String((unwrapRawReport(deploymentPlan.data) && unwrapRawReport(deploymentPlan.data).summary && unwrapRawReport(deploymentPlan.data).summary.plan_status) || (unwrapRawReport(deploymentPlan.data) && unwrapRawReport(deploymentPlan.data).plan_status) || "N/A")}`,
         `change=${readyPromotion ? "PROMOTE" : (readyRollback ? "ROLLBACK" : "NO")}`,
@@ -213,6 +229,9 @@ async function main() {
     stageAutopilot: stageAutopilot.data,
     selfEvolutionCandidatesDirect: selfEvolutionCandidatesData,
     selfEvolutionCanaryDirect: selfEvolutionCanaryData,
+    selfEvolutionCanonicalParityDirect: unwrapRawReport(selfEvolutionCanonicalParityArtifact.data),
+    selfEvolutionCanonicalProvenanceDirect: unwrapRawReport(selfEvolutionCanonicalProvenanceArtifact.data),
+    selfEvolutionServerPrimaryCanaryDirect: unwrapRawReport(selfEvolutionServerPrimaryCanaryArtifact.data),
     deploymentPlan: deploymentPlan.data,
     loopMonitor: unwrapRawReport(loopMonitor.data),
     retrospective: retrospective.data,
@@ -254,6 +273,9 @@ async function main() {
     summary: parsed ? replaceCandidateIdsInText(String(parsed.summary || "N/A"), candidateDisplayMap) : String(res && res.text || res && res.reason || "CLAUDE_PARSE_FAILED").trim().slice(0, 1000),
     checks: parsed && Array.isArray(parsed.checks) ? parsed.checks.map((row) => replaceCandidateIdsInText(String(row || ""), candidateDisplayMap)) : [],
     risks: parsed && Array.isArray(parsed.risks) ? parsed.risks.map((row) => replaceCandidateIdsInText(String(row || ""), candidateDisplayMap)) : [],
+    review_unit: "ENGINE_POLICY_BUNDLE",
+    source_mode_change: String(sourceModeStage.signature || "").trim() || null,
+    canonical_threshold_signature: String((unwrapRawReport(deploymentPlan.data) && unwrapRawReport(deploymentPlan.data).summary && unwrapRawReport(deploymentPlan.data).summary.recommended_target_stage_signature) || canonicalPolicyStage.signature || "").trim() || null,
     inputs: baseReport.inputs,
     model: CLAUDE_MODEL,
     raw_reason: res && res.reason ? res.reason : null,

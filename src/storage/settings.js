@@ -219,6 +219,59 @@ function applyEvGateDefaultsForProvider(data = {}, provider = "BINANCEFUT") {
   return out;
 }
 
+function normalizeCanonicalEngineSourceMode(raw, fallback = "PINE_PRIMARY") {
+  const value = String(raw || "").trim().toUpperCase();
+  if (value === "PINE_PRIMARY" || value === "SERVER_SHADOW" || value === "SERVER_PRIMARY") return value;
+  return fallback;
+}
+
+function normalizeCanonicalEngineMarketOverrides(raw = null) {
+  let source = raw;
+  if (typeof source === "string") {
+    try {
+      source = JSON.parse(source);
+    } catch (_err) {
+      return {};
+    }
+  }
+  if (!source || typeof source !== "object" || Array.isArray(source)) return {};
+  const out = {};
+  for (const [market, value] of Object.entries(source)) {
+    const key = String(market || "").trim().toUpperCase().replace(/\.P$/, "");
+    if (!key) continue;
+    const row = value && typeof value === "object" && !Array.isArray(value)
+      ? value
+      : { core_score_abs: value };
+    const normalized = {};
+    if (row.enabled !== undefined) normalized.enabled = normalizeBool(row.enabled, true);
+    if (row.shadow_enabled !== undefined) normalized.shadow_enabled = normalizeBool(row.shadow_enabled, true);
+    if (row.source_mode !== undefined) normalized.source_mode = normalizeCanonicalEngineSourceMode(row.source_mode, "PINE_PRIMARY");
+    const coreScoreAbs = Number(row.core_score_abs);
+    const transitionCoreScoreAbs = Number(row.transition_core_score_abs);
+    if (Number.isFinite(coreScoreAbs)) normalized.core_score_abs = Math.min(100, Math.max(0, coreScoreAbs));
+    if (Number.isFinite(transitionCoreScoreAbs)) normalized.transition_core_score_abs = Math.min(100, Math.max(0, transitionCoreScoreAbs));
+    if (Object.keys(normalized).length) out[key] = normalized;
+  }
+  return out;
+}
+
+function applyCanonicalEngineDefaultsForProvider(data = {}) {
+  const out = { ...data };
+  if (out.canonical_engine_enabled === undefined || out.canonical_engine_enabled === null || out.canonical_engine_enabled === "") {
+    out.canonical_engine_enabled = true;
+  }
+  if (out.canonical_engine_shadow_enabled === undefined || out.canonical_engine_shadow_enabled === null || out.canonical_engine_shadow_enabled === "") {
+    out.canonical_engine_shadow_enabled = true;
+  }
+  out.canonical_engine_source_mode = normalizeCanonicalEngineSourceMode(out.canonical_engine_source_mode, "PINE_PRIMARY");
+  const coreScoreAbs = Number(out.canonical_engine_core_score_abs);
+  out.canonical_engine_core_score_abs = Number.isFinite(coreScoreAbs) ? Math.min(100, Math.max(0, coreScoreAbs)) : 33;
+  const transitionCoreScoreAbs = Number(out.canonical_engine_transition_core_score_abs);
+  out.canonical_engine_transition_core_score_abs = Number.isFinite(transitionCoreScoreAbs) ? Math.min(100, Math.max(0, transitionCoreScoreAbs)) : 29;
+  out.canonical_engine_market_overrides = normalizeCanonicalEngineMarketOverrides(out.canonical_engine_market_overrides);
+  return out;
+}
+
 function applyReverseExceptionDefaultsForProvider(data = {}, provider = "BINANCEFUT") {
   const out = { ...data };
   const p = normalizeProviderId(provider || "BINANCEFUT");
@@ -370,6 +423,12 @@ async function getSystemSettingsCached(ttlMs = 30_000) {
     gate_real_enabled: false,
     gate_early_enabled: false,
     gate_core_score_abs: 35,
+    canonical_engine_enabled: true,
+    canonical_engine_shadow_enabled: true,
+    canonical_engine_source_mode: "PINE_PRIMARY",
+    canonical_engine_core_score_abs: 33,
+    canonical_engine_transition_core_score_abs: 29,
+    canonical_engine_market_overrides: {},
     gate_pre_real_score_abs: 40,
     gate_real_score_abs: 45,
     gate_early_score_abs: 25,
@@ -472,7 +531,8 @@ async function getSystemSettingsForProvider(provider, ttlMs = 30_000) {
   const withAiMissingDefaults = applyAiMissingDefaultsForProvider(withGateAlias, target);
   const withAiDefaults = applyAiBiasDefaultsForProvider(withAiMissingDefaults, target);
   const withEvDefaults = applyEvGateDefaultsForProvider(withAiDefaults, target);
-  const withReverseDefaults = applyReverseExceptionDefaultsForProvider(withEvDefaults, target);
+  const withCanonicalDefaults = applyCanonicalEngineDefaultsForProvider(withEvDefaults, target);
+  const withReverseDefaults = applyReverseExceptionDefaultsForProvider(withCanonicalDefaults, target);
   const normalized = applyExecutionDefaults(target, withReverseDefaults);
   return {
     ok: true,

@@ -56,6 +56,10 @@ const INPUT_PATHS = Object.freeze({
   stageAutopilot: path.join(OPS_DAILY_DIR, "stage_autopilot_latest.json"),
   selfEvolutionCandidates: path.join(OPS_DAILY_DIR, "best_self_evolution_candidates_latest.json"),
   selfEvolutionCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json"),
+  selfEvolutionCanonicalParity: path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_parity_latest.json"),
+  selfEvolutionCanonicalProvenance: path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_provenance_latest.json"),
+  selfEvolutionServerPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
+  selfEvolutionBundleActivation: path.join(OPS_DAILY_DIR, "best_self_evolution_bundle_activation_latest.json"),
   deploymentPlan: path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json"),
   loopMonitor: path.join(OPS_DAILY_DIR, "best_self_evolution_loop_monitor_latest.json"),
   retrospective: path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json"),
@@ -125,7 +129,7 @@ function deriveCycleConsistency(reports = []) {
   };
 }
 
-function deriveReviewReadiness({ changeControl = null, selfEvolutionCanary = null, deploymentPlan = null } = {}) {
+function deriveReviewReadiness({ changeControl = null, selfEvolutionCanary = null, deploymentPlan = null, bundleActivation = null } = {}) {
   const readyPromotion = Boolean(changeControl && changeControl.auto_promotion && changeControl.auto_promotion.ready === true);
   const readyRollback = Boolean(changeControl && changeControl.auto_rollback && changeControl.auto_rollback.ready === true);
   const selfEvolutionSummary = selfEvolutionCanary && selfEvolutionCanary.summary && typeof selfEvolutionCanary.summary === "object"
@@ -134,6 +138,9 @@ function deriveReviewReadiness({ changeControl = null, selfEvolutionCanary = nul
   const deploymentPlanSummary = deploymentPlan && deploymentPlan.summary && typeof deploymentPlan.summary === "object"
     ? deploymentPlan.summary
     : (deploymentPlan && typeof deploymentPlan === "object" ? deploymentPlan : {});
+  const bundleActivationSummary = bundleActivation && bundleActivation.summary && typeof bundleActivation.summary === "object"
+    ? bundleActivation.summary
+    : (bundleActivation && typeof bundleActivation === "object" ? bundleActivation : {});
   const planStatus = String(deploymentPlanSummary.plan_status || "").trim().toUpperCase();
   const selfEvolutionPromotionReady = Boolean(
     toNum(selfEvolutionSummary.ready_n) > 0
@@ -144,11 +151,19 @@ function deriveReviewReadiness({ changeControl = null, selfEvolutionCanary = nul
     deploymentPlanSummary.authority_bypass_active === true
     || /AUTHORITY_BYPASS/.test(planStatus)
   );
-  const pendingSignalConfirmation = (
-    planStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION"
-    || planStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS"
-  );
-  const reviewReady = !pendingSignalConfirmation && (
+  const pendingBundleActivation = Object.keys(bundleActivationSummary).length
+    ? (
+      bundleActivationSummary.activation_confirmed === true
+        ? false
+        : bundleActivationSummary.activation_pending === true
+    )
+    : (
+      planStatus === "APPLIED_PENDING_BUNDLE_ACTIVATION"
+      || planStatus === "APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS"
+      || planStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION"
+      || planStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS"
+    );
+  const reviewReady = !pendingBundleActivation && (
     readyPromotion || readyRollback || selfEvolutionPromotionReady || selfEvolutionRollbackReady || selfEvolutionAuthorityBypass
   );
   return {
@@ -157,9 +172,9 @@ function deriveReviewReadiness({ changeControl = null, selfEvolutionCanary = nul
     selfEvolutionPromotionReady,
     selfEvolutionRollbackReady,
     selfEvolutionAuthorityBypass,
-    pendingSignalConfirmation,
+    pendingSignalConfirmation: pendingBundleActivation,
     reviewReady,
-    blockedReason: pendingSignalConfirmation ? "PENDING_SIGNAL_CONFIRMATION_BLOCK" : null,
+    blockedReason: pendingBundleActivation ? "BUNDLE_ACTIVATION_PENDING_BLOCK" : null,
   };
 }
 
@@ -241,6 +256,27 @@ function buildPrompt(context = {}) {
     : (objectiveSupervisor && objectiveSupervisor.self_evolution_canary && typeof objectiveSupervisor.self_evolution_canary === "object"
       ? objectiveSupervisor.self_evolution_canary
       : {});
+  const selfEvolutionCanonicalParity = context.selfEvolutionCanonicalParityDirect
+    && context.selfEvolutionCanonicalParityDirect.summary
+    && typeof context.selfEvolutionCanonicalParityDirect.summary === "object"
+    ? context.selfEvolutionCanonicalParityDirect.summary
+    : (objectiveSupervisor && objectiveSupervisor.self_evolution_canonical_parity && typeof objectiveSupervisor.self_evolution_canonical_parity === "object"
+      ? objectiveSupervisor.self_evolution_canonical_parity
+      : {});
+  const selfEvolutionCanonicalProvenance = context.selfEvolutionCanonicalProvenanceDirect
+    && context.selfEvolutionCanonicalProvenanceDirect.summary
+    && typeof context.selfEvolutionCanonicalProvenanceDirect.summary === "object"
+    ? context.selfEvolutionCanonicalProvenanceDirect.summary
+    : (objectiveSupervisor && objectiveSupervisor.self_evolution_canonical_provenance && typeof objectiveSupervisor.self_evolution_canonical_provenance === "object"
+      ? objectiveSupervisor.self_evolution_canonical_provenance
+      : {});
+  const selfEvolutionServerPrimaryCanary = context.selfEvolutionServerPrimaryCanaryDirect
+    && context.selfEvolutionServerPrimaryCanaryDirect.summary
+    && typeof context.selfEvolutionServerPrimaryCanaryDirect.summary === "object"
+    ? context.selfEvolutionServerPrimaryCanaryDirect.summary
+    : (objectiveSupervisor && objectiveSupervisor.self_evolution_server_primary_canary && typeof objectiveSupervisor.self_evolution_server_primary_canary === "object"
+      ? objectiveSupervisor.self_evolution_server_primary_canary
+      : {});
   const selfEvolutionDeployment = objectiveSupervisor && objectiveSupervisor.self_evolution_deployment && typeof objectiveSupervisor.self_evolution_deployment === "object"
     ? objectiveSupervisor.self_evolution_deployment
     : {};
@@ -259,6 +295,10 @@ function buildPrompt(context = {}) {
   const loopMonitorSummary = loopMonitor && loopMonitor.summary && typeof loopMonitor.summary === "object"
     ? loopMonitor.summary
     : {};
+  const stageAutopilotRaw = unwrapRawReport(stageAutopilot) || {};
+  const stageRows = Array.isArray(stageAutopilotRaw.stage_rows) ? stageAutopilotRaw.stage_rows : [];
+  const sourceModeStage = stageRows.find((row) => String(row && row.stage || "").trim().toUpperCase() === "SOURCE_MODE") || {};
+  const canonicalPolicyStage = stageRows.find((row) => String(row && row.stage || "").trim().toUpperCase() === "CANONICAL_POLICY") || {};
   return [
     "You are the weekly Codex patch engine for DONBEOLJA.",
     "Task: inspect the provided latest reports and return a single JSON decision only.",
@@ -299,6 +339,9 @@ function buildPrompt(context = {}) {
     `- ev tuner: ${INPUT_PATHS.ev}`,
     `- wait tuner: ${INPUT_PATHS.wait}`,
     `- shadow canary: ${INPUT_PATHS.canary}`,
+    `- self-evolution canonical parity: ${INPUT_PATHS.selfEvolutionCanonicalParity}`,
+    `- self-evolution canonical provenance: ${INPUT_PATHS.selfEvolutionCanonicalProvenance}`,
+    `- self-evolution server-primary canary: ${INPUT_PATHS.selfEvolutionServerPrimaryCanary}`,
     `- stage autopilot: ${INPUT_PATHS.stageAutopilot}`,
     `- objective retrospective: ${INPUT_PATHS.retrospective}`,
     `- BEST/FEBT weekly tuning policy: /Users/jeongjaeyong/Projects/donbeolja/docs/BEST_FEBT_WEEKLY_TUNING_POLICY.md`,
@@ -370,6 +413,12 @@ function buildPrompt(context = {}) {
     `- ready/blocked/rollback: ${selfEvolutionCanary.ready_n != null ? selfEvolutionCanary.ready_n : "N/A"} / ${selfEvolutionCanary.blocked_n != null ? selfEvolutionCanary.blocked_n : "N/A"} / ${selfEvolutionCanary.rollback_ready_n != null ? selfEvolutionCanary.rollback_ready_n : "N/A"} / apply ${selfEvolutionCanary.apply_pass === true ? "PASS" : "BLOCK"}`,
     `- wave open/current/next: ${selfEvolutionCanary.open_wave != null ? selfEvolutionCanary.open_wave : "N/A"} / ${selfEvolutionCanary.current_open_wave != null ? selfEvolutionCanary.current_open_wave : "N/A"} / ${selfEvolutionCanary.next_wave_candidate != null ? selfEvolutionCanary.next_wave_candidate : "N/A"} / scale ${selfEvolutionCanary.scale_allowed === true ? "YES" : "NO"}`,
     `- top ready: ${selfEvolutionCanary.top_ready_market || "N/A"} / top rollback: ${selfEvolutionCanary.top_rollback_market || "N/A"}`,
+    "Canonical engine bundle snapshot:",
+    `- source parity/source pressure/ev pressure: ${selfEvolutionCanonicalParity.source_parity_mismatch_n != null ? selfEvolutionCanonicalParity.source_parity_mismatch_n : "N/A"} / ${selfEvolutionCanonicalParity.downstream_policy_pressure === true ? "YES" : "NO"} / ${selfEvolutionCanonicalParity.downstream_ev_pressure === true ? "YES" : "NO"}`,
+    `- provenance complete/eligible/decision_id/policy_origin: ${selfEvolutionCanonicalProvenance.complete_n != null ? selfEvolutionCanonicalProvenance.complete_n : "N/A"} / ${selfEvolutionCanonicalProvenance.eligible_n != null ? selfEvolutionCanonicalProvenance.eligible_n : "N/A"} / ${selfEvolutionCanonicalProvenance.with_decision_id_n != null ? selfEvolutionCanonicalProvenance.with_decision_id_n : "N/A"} / ${selfEvolutionCanonicalProvenance.with_policy_origin_n != null ? selfEvolutionCanonicalProvenance.with_policy_origin_n : "N/A"}`,
+    `- server-primary executed/disagreement/rollback/apply: ${selfEvolutionServerPrimaryCanary.server_primary_executed_n != null ? selfEvolutionServerPrimaryCanary.server_primary_executed_n : (selfEvolutionServerPrimaryCanary.executed_n != null ? selfEvolutionServerPrimaryCanary.executed_n : "N/A")} / ${selfEvolutionServerPrimaryCanary.pine_shadow_disagreement_n != null ? selfEvolutionServerPrimaryCanary.pine_shadow_disagreement_n : (selfEvolutionServerPrimaryCanary.disagreement_n != null ? selfEvolutionServerPrimaryCanary.disagreement_n : "N/A")} / ${selfEvolutionServerPrimaryCanary.rollback_trigger_n != null ? selfEvolutionServerPrimaryCanary.rollback_trigger_n : "N/A"} / ${selfEvolutionServerPrimaryCanary.apply_pass === true ? "PASS" : (selfEvolutionServerPrimaryCanary.apply_pass === false ? "BLOCK" : "N/A")}`,
+    `- review unit deploy/source_mode/threshold: ${selfEvolutionDeploymentPlan.recommended_target_deploy_unit || "N/A"} / ${sourceModeStage.machine_state || "N/A"} ${sourceModeStage.reason || "N/A"} / ${canonicalPolicyStage.machine_state || "N/A"} ${canonicalPolicyStage.reason || "N/A"}`,
+    `- source mode change / threshold signature: ${sourceModeStage.signature || "N/A"} / ${canonicalPolicyStage.signature || selfEvolutionDeploymentPlan.recommended_target_stage_signature || "N/A"}`,
     "Self-evolution deployment guards snapshot:",
     `- target/deploy/rollback_only: ${selfEvolutionDeployment.target_candidate_id || "N/A"} / ${selfEvolutionDeployment.deploy_pass === true ? "PASS" : "BLOCK"} / ${selfEvolutionDeployment.rollback_only === true ? "YES" : "NO"}`,
     `- replay/open_wave/markets: ${selfEvolutionDeployment.replay_verdict || "N/A"} / ${selfEvolutionDeployment.canary_open_wave != null ? selfEvolutionDeployment.canary_open_wave : "N/A"} / ${selfEvolutionDeployment.market_ready_n != null ? selfEvolutionDeployment.market_ready_n : "N/A"} / ${selfEvolutionDeployment.market_total_n != null ? selfEvolutionDeployment.market_total_n : "N/A"}`,
@@ -482,6 +531,10 @@ async function main() {
   const stageAutopilot = readFreshJson(INPUT_PATHS.stageAutopilot, MAX_AGE_HOURS);
   const selfEvolutionCandidatesArtifact = readFreshJson(INPUT_PATHS.selfEvolutionCandidates, MAX_AGE_HOURS);
   const selfEvolutionCanaryArtifact = readFreshJson(INPUT_PATHS.selfEvolutionCanary, MAX_AGE_HOURS);
+  const selfEvolutionCanonicalParityArtifact = readFreshJson(INPUT_PATHS.selfEvolutionCanonicalParity, MAX_AGE_HOURS);
+  const selfEvolutionCanonicalProvenanceArtifact = readFreshJson(INPUT_PATHS.selfEvolutionCanonicalProvenance, MAX_AGE_HOURS);
+  const selfEvolutionServerPrimaryCanaryArtifact = readFreshJson(INPUT_PATHS.selfEvolutionServerPrimaryCanary, MAX_AGE_HOURS);
+  const selfEvolutionBundleActivationArtifact = readFreshJson(INPUT_PATHS.selfEvolutionBundleActivation, MAX_AGE_HOURS);
   const deploymentPlan = readFreshJson(INPUT_PATHS.deploymentPlan, MAX_AGE_HOURS);
   const loopMonitor = readFreshJson(INPUT_PATHS.loopMonitor, MAX_AGE_HOURS);
   const retrospective = readFreshJson(INPUT_PATHS.retrospective, MAX_AGE_HOURS);
@@ -494,12 +547,17 @@ async function main() {
   const deploymentPlanSummary = deploymentPlanData && deploymentPlanData.summary && typeof deploymentPlanData.summary === "object"
     ? deploymentPlanData.summary
     : {};
+  const stageAutopilotData = unwrapRawReport(stageAutopilot.data);
+  const stageRows = Array.isArray(stageAutopilotData && stageAutopilotData.stage_rows) ? stageAutopilotData.stage_rows : [];
+  const sourceModeStage = stageRows.find((row) => String(row && row.stage || "").trim().toUpperCase() === "SOURCE_MODE") || {};
+  const canonicalPolicyStage = stageRows.find((row) => String(row && row.stage || "").trim().toUpperCase() === "CANONICAL_POLICY") || {};
   const candidateDisplayMap = buildCandidateDisplayMap(changeControl.data, patchCandidates.data);
-  const inputs = [objectiveSupervisor, governance, changeControl, patchCandidates, ml, ev, wait, canary, stageAutopilot, selfEvolutionCandidatesArtifact, selfEvolutionCanaryArtifact, deploymentPlan, loopMonitor, retrospective];
+  const inputs = [objectiveSupervisor, governance, changeControl, patchCandidates, ml, ev, wait, canary, stageAutopilot, selfEvolutionCandidatesArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionBundleActivationArtifact, deploymentPlan, loopMonitor, retrospective];
   const reviewReadiness = deriveReviewReadiness({
     changeControl: changeControl.data,
     selfEvolutionCanary: selfEvolutionCanaryData,
     deploymentPlan: deploymentPlanData,
+    bundleActivation: unwrapRawReport(selfEvolutionBundleActivationArtifact.data),
   });
   const {
     readyPromotion,
@@ -531,6 +589,9 @@ async function main() {
     summary: "자동 승격/롤백 준비 상태가 아니어서 Codex 검토를 생략했습니다.",
     checks: [],
     risks: [],
+    review_unit: "ENGINE_POLICY_BUNDLE",
+    source_mode_change: String(sourceModeStage.signature || "").trim() || null,
+    canonical_threshold_signature: String(canonicalPolicyStage.signature || deploymentPlanSummary.recommended_target_stage_signature || "").trim() || null,
     inputs: inputs.map((row) => ({ name: path.basename(row.filePath, ".json"), filePath: row.filePath, fresh: row.fresh, age_hours: row.ageHours })),
     command: null,
   };
@@ -540,7 +601,7 @@ async function main() {
       ...baseReport,
       status: "FRESH",
       reason: blockedReason,
-      summary: "현재 적용 전략이 첫 live LONG/SHORT 신호 확인 전이라 외부 권위의 승격/롤백 심사를 보류합니다.",
+      summary: "현재 적용 전략의 bundle activation proof가 아직 닫히지 않아 외부 권위의 승격/롤백 심사를 보류합니다.",
       checks: [
         `plan_status=${deploymentPlanSummary.plan_status || "N/A"}`,
         `ready_promotion=${readyPromotion ? "YES" : "NO"} / ready_rollback=${readyRollback ? "YES" : "NO"}`,
@@ -658,6 +719,9 @@ async function main() {
     retrospective: retrospective.data,
     selfEvolutionCandidatesDirect: selfEvolutionCandidatesData,
     selfEvolutionCanaryDirect: selfEvolutionCanaryData,
+    selfEvolutionCanonicalParityDirect: unwrapRawReport(selfEvolutionCanonicalParityArtifact.data),
+    selfEvolutionCanonicalProvenanceDirect: unwrapRawReport(selfEvolutionCanonicalProvenanceArtifact.data),
+    selfEvolutionServerPrimaryCanaryDirect: unwrapRawReport(selfEvolutionServerPrimaryCanaryArtifact.data),
   });
 
   const args = [
@@ -692,6 +756,9 @@ async function main() {
     summary: parsed ? replaceCandidateIdsInText(String(parsed.summary || "N/A"), candidateDisplayMap) : replaceCandidateIdsInText(String(finalRaw || res.stderr || "N/A").trim().slice(0, 1000), candidateDisplayMap),
     checks: parsed && Array.isArray(parsed.checks) ? parsed.checks.map((row) => replaceCandidateIdsInText(String(row), candidateDisplayMap)) : [],
     risks: parsed && Array.isArray(parsed.risks) ? parsed.risks.map((row) => replaceCandidateIdsInText(String(row), candidateDisplayMap)) : [],
+    review_unit: "ENGINE_POLICY_BUNDLE",
+    source_mode_change: String(sourceModeStage.signature || "").trim() || null,
+    canonical_threshold_signature: String(canonicalPolicyStage.signature || deploymentPlanSummary.recommended_target_stage_signature || "").trim() || null,
     inputs: baseReport.inputs,
     attempts,
     command: [CODEX_BIN, ...args].join(" "),

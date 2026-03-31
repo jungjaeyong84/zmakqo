@@ -27,6 +27,9 @@ function normalizeReview(input = null, fallbackOwner = "CODEX") {
     summary: String(raw.summary || raw.reason || "N/A").trim() || "N/A",
     checks: Array.isArray(raw.checks) ? raw.checks.map((row) => String(row || "").trim()).filter(Boolean) : [],
     risks: Array.isArray(raw.risks) ? raw.risks.map((row) => String(row || "").trim()).filter(Boolean) : [],
+    review_unit: String(raw.review_unit || "").trim() || null,
+    source_mode_change: String(raw.source_mode_change || "").trim() || null,
+    canonical_threshold_signature: String(raw.canonical_threshold_signature || "").trim() || null,
     cycle_id: String(raw.cycle_id || raw.generation_id || "").trim() || null,
     fresh: input && input.fresh === true
       ? true
@@ -127,6 +130,9 @@ function deriveAuthorityEnsemble({
     risks,
     blockers: Array.from(new Set(blockers)),
     consensus,
+    review_unit: codex.review_unit || claude.review_unit || null,
+    source_mode_change: codex.source_mode_change || claude.source_mode_change || null,
+    canonical_threshold_signature: codex.canonical_threshold_signature || claude.canonical_threshold_signature || null,
     codex_review: codex,
     claude_review: claude,
     cycle_id: codex.cycle_id || claude.cycle_id || null,

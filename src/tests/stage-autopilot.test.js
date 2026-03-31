@@ -54,6 +54,147 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
   assert.strictEqual(marketCandidate.actionable, true);
   assert.strictEqual(marketCandidate.nextSettings.ai_bias_gate_opposite_mult, 0.30);
 
+  const canonicalGlobal = __test.applyCanonicalThresholdChanges({
+    currentSys: {
+      canonical_engine_core_score_abs: 33,
+      canonical_engine_transition_core_score_abs: 29,
+    },
+    candidate: {
+      changes: [
+        { key: "entry_core_score_abs", current: 0, next: 1 },
+        { key: "shared_regime_transition_confirmation", current: 0, next: 1 },
+      ],
+      markets: ["ALL"],
+    },
+  });
+  assert.strictEqual(canonicalGlobal.nextSettings.canonical_engine_core_score_abs, 34);
+  assert.strictEqual(canonicalGlobal.nextSettings.canonical_engine_transition_core_score_abs, 30);
+  assert.deepStrictEqual(canonicalGlobal.unsupportedKeys, []);
+
+  const canonicalMarketCandidate = __test.buildCanonicalPolicyStageCandidate({
+    data: {
+      rows: [
+        {
+          candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN",
+          display_candidate_id: "AUTO_AXSUSDT_REGIME_TIGHTEN",
+          canonical_migration_class: "PINE_THRESHOLD",
+          target_deploy_unit: "SERVER_SETTINGS",
+          ready_for_auto_apply: true,
+          memory_blocked: false,
+          direction: "TIGHTEN",
+          status: "MARKET_CONCENTRATION_RECOVERY",
+          source: "MARKET_CONCENTRATION_RECOVERY",
+          markets: ["AXSUSDT"],
+          changes: [
+            { key: "entry_core_score_abs", current: 0, next: 1 },
+            { key: "shared_regime_transition_confirmation", current: 0, next: 1 },
+          ],
+          evidence: { priority_score: 7.2, support_n: 5 },
+        },
+      ],
+    },
+  }, {
+    canonical_engine_market_overrides: {
+      AXSUSDT: {
+        core_score_abs: 35,
+        transition_core_score_abs: 31,
+      },
+    },
+  }, {
+    objective: { enough_sample: true },
+  });
+  assert.strictEqual(canonicalMarketCandidate.actionable, true);
+  assert.strictEqual(canonicalMarketCandidate.candidate_id, "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN");
+  assert.strictEqual(canonicalMarketCandidate.nextSettings.canonical_engine_market_overrides.AXSUSDT.core_score_abs, 36);
+  assert.strictEqual(canonicalMarketCandidate.nextSettings.canonical_engine_market_overrides.AXSUSDT.transition_core_score_abs, 32);
+
+  const sourceModePatch = __test.applyCanonicalSourceModeChanges({
+    currentSys: {
+      canonical_engine_source_mode: "PINE_PRIMARY",
+      canonical_engine_market_overrides: {
+        AXSUSDT: {
+          core_score_abs: 36,
+          transition_core_score_abs: 32,
+        },
+      },
+    },
+    candidate: {
+      markets: ["AXSUSDT"],
+    },
+    nextSourceMode: "SERVER_PRIMARY",
+  });
+  assert.strictEqual(sourceModePatch.nextSettings.canonical_engine_market_overrides.AXSUSDT.source_mode, "SERVER_PRIMARY");
+  assert.deepStrictEqual(sourceModePatch.current_modes, [
+    { market: "AXSUSDT", current_source_mode: "PINE_PRIMARY", next_source_mode: "SERVER_PRIMARY" },
+  ]);
+
+  const sourceModeCandidate = __test.buildSourceModeStageCandidate({
+    candidatesArtifact: {
+      data: {
+        rows: [
+          {
+            candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN",
+            display_candidate_id: "AUTO_AXSUSDT_REGIME_TIGHTEN",
+            canonical_migration_class: "PINE_THRESHOLD",
+            target_deploy_unit: "SERVER_SETTINGS",
+            ready_for_auto_apply: true,
+            memory_blocked: false,
+            direction: "TIGHTEN",
+            markets: ["AXSUSDT"],
+          },
+        ],
+      },
+    },
+    parityArtifact: {
+      data: {
+        summary: {
+          source_parity_mismatch_n: 0,
+          shadow_observed_n: 7,
+        },
+      },
+    },
+    currentSys: {
+      canonical_engine_source_mode: "PINE_PRIMARY",
+      canonical_engine_market_overrides: {
+        AXSUSDT: {
+          core_score_abs: 36,
+          transition_core_score_abs: 32,
+        },
+      },
+    },
+    objectiveSupervisor: {
+      objective: { enough_sample: true },
+    },
+  });
+  assert.strictEqual(sourceModeCandidate.actionable, true);
+  assert.strictEqual(sourceModeCandidate.reason, "SERVER_PRIMARY_PROMOTION_READY");
+  assert.strictEqual(sourceModeCandidate.source, "CANONICAL_PARITY_SOURCE_MODE_PROMOTION");
+  assert.strictEqual(sourceModeCandidate.support_n, 7);
+  assert.strictEqual(sourceModeCandidate.nextSettings.canonical_engine_market_overrides.AXSUSDT.source_mode, "SERVER_PRIMARY");
+
+  const evParityCandidate = __test.buildEvParityCandidate({
+    data: {
+      summary: {
+        shadow_observed_n: 7,
+        source_parity_mismatch_n: 0,
+        parity_mismatch_rate: 0.57,
+        by_actual_drop_reason_family: [
+          { key: "EV_POLICY", count: 2 },
+          { key: "COOLDOWN_POLICY", count: 1 },
+        ],
+      },
+    },
+  }, {
+    ev_gate_tp1_prob_min: 0.55,
+    ev_gate_tp1_prob_full: 0.60,
+  }, {
+    objective: { enough_sample: false },
+  });
+  assert.strictEqual(evParityCandidate.actionable, true);
+  assert.strictEqual(evParityCandidate.nextSettings.ev_gate_tp1_prob_min, 0.54);
+  assert.strictEqual(evParityCandidate.nextSettings.ev_gate_tp1_prob_full, 0.59);
+  assert.strictEqual(evParityCandidate.support_n, 2);
+
   const pinePromote = __test.buildPineCandidate(
     { data: { verdict: "PATCH_CANDIDATE", promotion: { candidate_id: "AUTO_CORE_SCORE_TIGHTEN" }, codex_authority: { status: "FRESH", verdict: "PROMOTE", recommended_candidate_id: "AUTO_CORE_SCORE_TIGHTEN" }, reason: "AUTO_PROMOTION_READY" } },
     { data: { verdict: "PROMOTE" }, fresh: true },
@@ -171,6 +312,15 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
   });
   assert.strictEqual(pineGuard.blocked, true);
   assert.strictEqual(pineGuard.reason, "BEST_FEBT_RECOVERY_GUARD_BLOCK");
+
+  const canonicalGuard = __test.bestFebtAutopilotGuard({
+    stage: "CANONICAL_POLICY",
+    candidate: { actionable: true, direction: "TIGHTEN" },
+    currentSys: {},
+    bestFebtContract: { tightening_allowed: false, recovery_priority: false },
+  });
+  assert.strictEqual(canonicalGuard.blocked, true);
+  assert.strictEqual(canonicalGuard.reason, "BEST_FEBT_COUNT_GUARD_BLOCK");
 
   console.log("STAGE_AUTOPILOT_TEST_OK");
 })();

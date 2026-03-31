@@ -7,6 +7,8 @@ const { __test } = require("../engine/paperUpbitRunner");
   assert.strictEqual(typeof __test.evaluateShortEntryGate, "function", "evaluateShortEntryGate export missing");
   assert.strictEqual(typeof __test.resolveEntryQualityGateConfig, "function", "resolveEntryQualityGateConfig export missing");
   assert.strictEqual(typeof __test.evaluateEntryQualityGate, "function", "evaluateEntryQualityGate export missing");
+  assert.strictEqual(typeof __test.resolveCanonicalEntryConfig, "function", "resolveCanonicalEntryConfig export missing");
+  assert.strictEqual(typeof __test.evaluateCanonicalEntryGate, "function", "evaluateCanonicalEntryGate export missing");
   assert.strictEqual(typeof __test.resolveSignalTier, "function", "resolveSignalTier export missing");
   assert.strictEqual(typeof __test.resolveEntryQualityTier, "function", "resolveEntryQualityTier export missing");
   assert.strictEqual(typeof __test.resolveEntryTierBudgetMax, "function", "resolveEntryTierBudgetMax export missing");
@@ -104,6 +106,56 @@ const { __test } = require("../engine/paperUpbitRunner");
   });
   assert.strictEqual(qualityNotBypassed.ok, false);
   assert.strictEqual(qualityNotBypassed.reason, "DROP_ENTRY_QUALITY_RANGE");
+
+  const canonicalCfg = __test.resolveCanonicalEntryConfig({
+    canonical_engine_enabled: true,
+    canonical_engine_shadow_enabled: true,
+    canonical_engine_source_mode: "PINE_PRIMARY",
+    canonical_engine_core_score_abs: 33,
+    canonical_engine_transition_core_score_abs: 29,
+  }, "BTCUSDT");
+  assert.strictEqual(canonicalCfg.enabled, true);
+  assert.strictEqual(canonicalCfg.sourceMode, "PINE_PRIMARY");
+  assert.strictEqual(canonicalCfg.coreScoreAbs, 33);
+  assert.strictEqual(canonicalCfg.transitionCoreScoreAbs, 29);
+
+  const canonicalShadow = __test.evaluateCanonicalEntryGate({
+    intent: "ENTRY",
+    intentDir: "LONG",
+    eventUpper: "LONG",
+    features: {
+      entry_grade: "CORE",
+      score: 31,
+      regime: "transition",
+    },
+    sysCfg: canonicalCfg,
+    market: "BTCUSDT",
+    tf: "15m",
+  });
+  assert.strictEqual(canonicalShadow.ok, true);
+  assert.strictEqual(canonicalShadow.detail.canonical_engine_shadow_pass, true);
+
+  const canonicalPrimaryFail = __test.evaluateCanonicalEntryGate({
+    intent: "ENTRY",
+    intentDir: "LONG",
+    eventUpper: "LONG",
+    features: {
+      entry_grade: "CORE",
+      score: 28,
+      regime: "transition",
+    },
+    sysCfg: {
+      canonical_engine_enabled: true,
+      canonical_engine_shadow_enabled: true,
+      canonical_engine_source_mode: "SERVER_PRIMARY",
+      canonical_engine_core_score_abs: 33,
+      canonical_engine_transition_core_score_abs: 29,
+    },
+    market: "BTCUSDT",
+    tf: "15m",
+  });
+  assert.strictEqual(canonicalPrimaryFail.ok, false);
+  assert.strictEqual(canonicalPrimaryFail.reason, "DROP_CANONICAL_ENGINE_TRANSITION_CORE_SCORE");
 
   assert.strictEqual(__test.resolveSignalTier("LONG"), "EARLY");
   assert.strictEqual(__test.resolveSignalTier("LONG", { entry_grade: "CORE" }), "CORE");

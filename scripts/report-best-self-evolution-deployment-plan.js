@@ -32,12 +32,14 @@ const INPUTS = Object.freeze({
   changeControl: path.join(OPS_DAILY_DIR, "pine_quality_change_control_latest.json"),
   codexPatch: selfEvolutionSnapshotLatestPath("self_evolution_authority_latest.json"),
   deploymentGuards: path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_guards_latest.json"),
+  candidateChangeSet: path.join(OPS_DAILY_DIR, "best_self_evolution_candidates_latest.json"),
   canary: path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json"),
   stageAutopilot: path.join(OPS_DAILY_DIR, "stage_autopilot_latest.json"),
   weeklyHistory: path.join(OPS_DAILY_DIR, "weekly_pine_upgrade_history.json"),
   manualPasteAck: path.join(OPS_RUNTIME_DIR, "self_evolution_manual_paste_ack.json"),
   preparedOverride: path.join(OPS_RUNTIME_DIR, "self_evolution_prepared_override.json"),
   signalsCache: path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "signals.json"),
+  bundleActivation: path.join(OPS_DAILY_DIR, "best_self_evolution_bundle_activation_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -55,7 +57,8 @@ function renderMarkdown(report = {}) {
     `- candidate: ${summary.display_candidate_id || summary.target_candidate_id || "N/A"}`,
     `- rollback: ${summary.rollback_file_path || "N/A"}`,
     `- prepare/dry/ready/manual: ${summary.prepare_pass ? "YES" : "NO"} / ${summary.dry_prepare_available ? "YES" : "NO"} / ${summary.ready_for_manual_paste ? "YES" : "NO"} / ${summary.manual_step_required ? "YES" : "NO"}`,
-    `- applied ack/live confirm: ${summary.manual_paste_acknowledged ? "YES" : "NO"} / ${summary.live_signal_confirmation_pending ? "PENDING" : "NO"}`,
+    `- applied ack/activation: ${summary.manual_paste_acknowledged ? "YES" : "NO"} / ${summary.activation_status || "N/A"}`,
+    `- bundle loaded/data/decision: ${summary.engine_bundle_loaded ? "YES" : "NO"} / ${summary.market_data_flow_ok ? "YES" : "NO"} / ${summary.first_decision_seen ? "YES" : "NO"}`,
     `- wave open/target: ${summary.open_wave ?? "N/A"} / ${summary.target_wave ?? "N/A"}`,
     `- market scope ready/blocked/total: ${summary.market_scope_ready_n ?? 0} / ${summary.market_scope_blocked_n ?? 0} / ${summary.market_scope_n ?? 0}`,
     `- prepared file: ${summary.prepared_file_path || "N/A"}`,
@@ -143,12 +146,14 @@ async function main() {
       changeControl: readJsonRawSafe(INPUTS.changeControl, null),
       codexPatchReview: readJsonRawSafe(INPUTS.codexPatch, null),
       deploymentGuards: readJsonRawSafe(INPUTS.deploymentGuards, null),
+      candidateChangeSet: readJsonRawSafe(INPUTS.candidateChangeSet, null),
       canaryReport: readJsonRawSafe(INPUTS.canary, null),
       stageAutopilot: readJsonRawSafe(INPUTS.stageAutopilot, null),
       weeklyHistory: readJsonRawSafe(INPUTS.weeklyHistory, null),
       manualPasteAck: runtimeStateData,
       preparedOverride: readJsonRawSafe(INPUTS.preparedOverride, null),
       signalsCache: readJsonRawSafe(INPUTS.signalsCache, null),
+      bundleActivation: readJsonRawSafe(INPUTS.bundleActivation, null),
     }),
   };
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}`;

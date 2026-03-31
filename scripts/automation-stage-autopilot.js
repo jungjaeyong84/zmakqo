@@ -6,6 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 const { getSystemSettingsForProvider } = require("../src/storage/settings");
+const { normalizeCanonicalEngineMarketOverrides } = require("../src/services/canonicalEngine");
 const {
   OPS_DAILY_DIR,
   OPS_RUNTIME_DIR,
@@ -61,12 +62,16 @@ const FRESHNESS_HOURS = Object.freeze({
   change: Math.max(12, Number(process.env.STAGE_AUTOPILOT_CHANGE_MAX_AGE_HOURS || 48)),
   canary: Math.max(4, Number(process.env.STAGE_AUTOPILOT_CANARY_MAX_AGE_HOURS || 12)),
   selfEvolutionCanary: Math.max(4, Number(process.env.STAGE_AUTOPILOT_SELF_EVOLUTION_CANARY_MAX_AGE_HOURS || 12)),
+  serverPrimaryCanary: Math.max(4, Number(process.env.STAGE_AUTOPILOT_SERVER_PRIMARY_CANARY_MAX_AGE_HOURS || 12)),
   codex: Math.max(12, Number(process.env.STAGE_AUTOPILOT_CODEX_MAX_AGE_HOURS || 48)),
 });
 const SELF_EVOLUTION_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json");
+const SELF_EVOLUTION_CANONICAL_PARITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_parity_latest.json");
+const SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json");
 const SELF_EVOLUTION_OBJECTIVE_SUPERVISOR_LATEST_PATH = selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json");
 const SELF_EVOLUTION_LOOP_MONITOR_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_loop_monitor_latest.json");
 const SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json");
+const SELF_EVOLUTION_CANDIDATES_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_candidates_latest.json");
 const SELF_EVOLUTION_PREPARED_OVERRIDE_PATH = path.join(OPS_RUNTIME_DIR, "self_evolution_prepared_override.json");
 const AI_SNAPSHOT_KEYS = Object.freeze([
   "ai_missing_policy",
@@ -86,6 +91,22 @@ const MARKET_SNAPSHOT_KEYS = Object.freeze([
   "ai_bias_gate_opposite_mult",
   "ai_bias_gate_strong_opposite_score",
   "ai_bias_gate_strong_opposite_conf",
+]);
+const CANONICAL_POLICY_SNAPSHOT_KEYS = Object.freeze([
+  "canonical_engine_enabled",
+  "canonical_engine_shadow_enabled",
+  "canonical_engine_source_mode",
+  "canonical_engine_core_score_abs",
+  "canonical_engine_transition_core_score_abs",
+  "canonical_engine_market_overrides",
+]);
+const SOURCE_MODE_SNAPSHOT_KEYS = CANONICAL_POLICY_SNAPSHOT_KEYS;
+const EV_SNAPSHOT_KEYS = Object.freeze([
+  "ev_gate_tp1_prob_min",
+  "ev_gate_tp1_prob_full",
+  "ev_gate_tp1_prob_kill",
+  "ev_gate_qty_scale_mid",
+  "ev_gate_qty_scale_low",
 ]);
 
 function buildLoopMonitorView({ objectiveArtifact = null, loopMonitorArtifact = null, cycleMeta = null } = {}) {
@@ -292,6 +313,335 @@ function buildMarketStageCandidate(mlArtifact, currentSys = {}, objectiveSupervi
   };
 }
 
+function toCanonicalThresholdDelta(change = {}) {
+  const current = toNum(change && change.current);
+  const next = toNum(change && change.next);
+  if (current == null && next == null) return null;
+  if (current == null) return next;
+  if (next == null) return null;
+  return next - current;
+}
+
+function clampCanonicalThreshold(value, fallback) {
+  const n = toNum(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(100, n));
+}
+
+function normalizeCandidateMarkets(markets = []) {
+  const rows = Array.isArray(markets) ? markets : [];
+  const normalized = rows
+    .map((row) => String(row || "").trim().toUpperCase().replace(/\\.P$/, ""))
+    .filter(Boolean);
+  return normalized.length ? normalized : ["ALL"];
+}
+
+function sortCanonicalPolicyCandidates(rows = []) {
+  return rows.slice().sort((a, b) => {
+    const priorityDelta = (toNum(b && b.evidence && b.evidence.priority_score) ?? -Infinity) - (toNum(a && a.evidence && a.evidence.priority_score) ?? -Infinity);
+    if (priorityDelta !== 0) return priorityDelta;
+    const supportDelta = (toNum(b && b.evidence && b.evidence.support_n) ?? -Infinity) - (toNum(a && a.evidence && a.evidence.support_n) ?? -Infinity);
+    if (supportDelta !== 0) return supportDelta;
+    return String(a && a.candidate_id || "").localeCompare(String(b && b.candidate_id || ""));
+  });
+}
+
+function applyCanonicalThresholdChanges({ currentSys = {}, candidate = {} } = {}) {
+  const changes = Array.isArray(candidate && candidate.changes) ? candidate.changes : [];
+  if (!changes.length) return { nextSettings: {}, unsupportedKeys: [] };
+
+  const nextSettings = {};
+  const markets = normalizeCandidateMarkets(candidate && candidate.markets);
+  const marketSpecific = !(markets.length === 1 && markets[0] === "ALL");
+  const currentOverrides = normalizeCanonicalEngineMarketOverrides(currentSys && currentSys.canonical_engine_market_overrides);
+  const nextOverrides = { ...currentOverrides };
+  const unsupportedKeys = [];
+
+  const applyGlobal = (field, delta, fallback) => {
+    const currentValue = clampCanonicalThreshold(currentSys && currentSys[field], fallback);
+    nextSettings[field] = clampCanonicalThreshold(currentValue + delta, fallback);
+  };
+
+  const applyMarketOverride = (field, delta, fallback) => {
+    for (const market of markets) {
+      const currentRow = nextOverrides[market] && typeof nextOverrides[market] === "object"
+        ? { ...nextOverrides[market] }
+        : {};
+      const currentValue = clampCanonicalThreshold(currentRow[field], fallback);
+      currentRow[field] = clampCanonicalThreshold(currentValue + delta, fallback);
+      nextOverrides[market] = currentRow;
+    }
+  };
+
+  for (const change of changes) {
+    const key = String(change && change.key || "").trim().toUpperCase();
+    const delta = toCanonicalThresholdDelta(change);
+    if (!Number.isFinite(delta) || delta === 0) continue;
+
+    if (key === "ENTRY_CORE_SCORE_ABS" || key === "GATE_CORE_SCORE_ABS") {
+      if (marketSpecific) applyMarketOverride("core_score_abs", delta, 33);
+      else applyGlobal("canonical_engine_core_score_abs", delta, 33);
+      continue;
+    }
+    if (key === "SHARED_REGIME_TRANSITION_CONFIRMATION") {
+      if (marketSpecific) applyMarketOverride("transition_core_score_abs", delta, 29);
+      else applyGlobal("canonical_engine_transition_core_score_abs", delta, 29);
+      continue;
+    }
+    unsupportedKeys.push(key || "UNKNOWN");
+  }
+
+  if (marketSpecific) nextSettings.canonical_engine_market_overrides = nextOverrides;
+  return { nextSettings, unsupportedKeys };
+}
+
+function resolveCanonicalSourceModeForMarket(currentSys = {}, market = "ALL") {
+  const marketKey = String(market || "").trim().toUpperCase();
+  const overrides = normalizeCanonicalEngineMarketOverrides(currentSys && currentSys.canonical_engine_market_overrides);
+  const marketOverride = marketKey && overrides[marketKey] && typeof overrides[marketKey] === "object"
+    ? overrides[marketKey]
+    : null;
+  const overrideMode = String(marketOverride && marketOverride.source_mode || "").trim().toUpperCase();
+  if (overrideMode === "PINE_PRIMARY" || overrideMode === "SERVER_PRIMARY" || overrideMode === "SERVER_SHADOW") return overrideMode;
+  const globalMode = String(currentSys && currentSys.canonical_engine_source_mode || "").trim().toUpperCase();
+  if (globalMode === "PINE_PRIMARY" || globalMode === "SERVER_PRIMARY" || globalMode === "SERVER_SHADOW") return globalMode;
+  return "PINE_PRIMARY";
+}
+
+function applyCanonicalSourceModeChanges({ currentSys = {}, candidate = {}, nextSourceMode = "SERVER_PRIMARY" } = {}) {
+  const targetMode = String(nextSourceMode || "SERVER_PRIMARY").trim().toUpperCase() || "SERVER_PRIMARY";
+  const markets = normalizeCandidateMarkets(candidate && candidate.markets);
+  const marketSpecific = !(markets.length === 1 && markets[0] === "ALL");
+  const nextSettings = {};
+  if (!marketSpecific) {
+    const currentMode = resolveCanonicalSourceModeForMarket(currentSys, "ALL");
+    if (currentMode !== targetMode) nextSettings.canonical_engine_source_mode = targetMode;
+    return {
+      nextSettings,
+      current_modes: [{ market: "ALL", current_source_mode: currentMode, next_source_mode: targetMode }],
+    };
+  }
+
+  const currentOverrides = normalizeCanonicalEngineMarketOverrides(currentSys && currentSys.canonical_engine_market_overrides);
+  const nextOverrides = { ...currentOverrides };
+  const currentModes = [];
+  for (const market of markets) {
+    const currentMode = resolveCanonicalSourceModeForMarket(currentSys, market);
+    currentModes.push({ market, current_source_mode: currentMode, next_source_mode: targetMode });
+    if (currentMode === targetMode) continue;
+    const currentRow = nextOverrides[market] && typeof nextOverrides[market] === "object"
+      ? { ...nextOverrides[market] }
+      : {};
+    currentRow.source_mode = targetMode;
+    nextOverrides[market] = currentRow;
+  }
+  if (stableSignature(nextOverrides) !== stableSignature(currentOverrides)) {
+    nextSettings.canonical_engine_market_overrides = nextOverrides;
+  }
+  return {
+    nextSettings,
+    current_modes: currentModes,
+  };
+}
+
+function buildCanonicalPolicyStageCandidate(candidatesArtifact, currentSys = {}, objectiveSupervisor = {}) {
+  const raw = candidatesArtifact && candidatesArtifact.data && typeof candidatesArtifact.data === "object"
+    ? candidatesArtifact.data
+    : {};
+  const rows = Array.isArray(raw.rows) ? raw.rows : [];
+  const eligible = sortCanonicalPolicyCandidates(rows.filter((row) =>
+    row
+    && row.canonical_migration_class === "PINE_THRESHOLD"
+    && row.target_deploy_unit === "SERVER_SETTINGS"
+    && row.ready_for_auto_apply === true
+    && row.memory_blocked !== true
+  ));
+  const selected = eligible[0] || null;
+  if (!selected) {
+    return {
+      stage: "CANONICAL_POLICY",
+      actionable: false,
+      action: "HOLD",
+      reason: "NO_ACTIONABLE_CANONICAL_POLICY_CANDIDATE",
+      signature: null,
+      display_signature: null,
+      nextSettings: {},
+      streakRequired: STREAK_REQUIRED,
+      sampleSufficient: true,
+      coverageSufficient: true,
+      objectiveEnoughSample: Boolean(objectiveSupervisor && objectiveSupervisor.objective && objectiveSupervisor.objective.enough_sample === true),
+      objectiveDirectionOk: false,
+      challengerBeatsCurrent: false,
+      direction: "SHIFT",
+      candidate_id: null,
+      source: null,
+      unsupported_keys: [],
+    };
+  }
+
+  const { nextSettings, unsupportedKeys } = applyCanonicalThresholdChanges({ currentSys, candidate: selected });
+  const actionable = unsupportedKeys.length === 0 && Object.keys(nextSettings).length > 0;
+  return {
+    stage: "CANONICAL_POLICY",
+    actionable,
+    action: actionable ? "AUTO_APPLY" : "HOLD",
+    reason: actionable
+      ? String(selected.status || selected.source || selected.candidate_id || "CANONICAL_POLICY_READY")
+      : (unsupportedKeys.length ? `UNSUPPORTED_CANONICAL_THRESHOLD_KEYS:${unsupportedKeys.join("|")}` : "CANONICAL_POLICY_NOOP"),
+    signature: actionable ? stableSignature(nextSettings) : null,
+    display_signature: String(selected.display_candidate_id || selected.candidate_id || "").trim() || null,
+    nextSettings,
+    streakRequired: STREAK_REQUIRED,
+    sampleSufficient: true,
+    coverageSufficient: true,
+    objectiveEnoughSample: Boolean(objectiveSupervisor && objectiveSupervisor.objective && objectiveSupervisor.objective.enough_sample === true),
+    objectiveDirectionOk: actionable,
+    challengerBeatsCurrent: actionable,
+    direction: String(selected.direction || "SHIFT").trim().toUpperCase() || "SHIFT",
+    candidate_id: String(selected.candidate_id || "").trim() || null,
+    source: String(selected.source || "").trim() || null,
+    unsupported_keys: unsupportedKeys,
+  };
+}
+
+function buildSourceModeStageCandidate({
+  candidatesArtifact,
+  parityArtifact,
+  currentSys = {},
+  objectiveSupervisor = {},
+} = {}) {
+  const raw = candidatesArtifact && candidatesArtifact.data && typeof candidatesArtifact.data === "object"
+    ? candidatesArtifact.data
+    : {};
+  const rows = Array.isArray(raw.rows) ? raw.rows : [];
+  const eligible = sortCanonicalPolicyCandidates(rows.filter((row) =>
+    row
+    && row.canonical_migration_class === "PINE_THRESHOLD"
+    && row.target_deploy_unit === "SERVER_SETTINGS"
+    && row.ready_for_auto_apply === true
+    && row.memory_blocked !== true
+  ));
+  const selected = eligible[0] || null;
+  const paritySummary = parityArtifact && parityArtifact.data && parityArtifact.data.summary && typeof parityArtifact.data.summary === "object"
+    ? parityArtifact.data.summary
+    : {};
+  const sourceParityMismatchN = toNum(paritySummary.source_parity_mismatch_n) || 0;
+  const shadowObservedN = toNum(paritySummary.shadow_observed_n) || 0;
+  const shadowObservedMin = Math.max(5, Number(process.env.STAGE_AUTOPILOT_SOURCE_MODE_PARITY_MIN || 5));
+  if (!selected) {
+    return {
+      stage: "SOURCE_MODE",
+      actionable: false,
+      action: "HOLD",
+      reason: "NO_ACTIONABLE_SOURCE_MODE_CANDIDATE",
+      signature: null,
+      display_signature: null,
+      nextSettings: {},
+      streakRequired: STREAK_REQUIRED,
+      sampleSufficient: false,
+      coverageSufficient: false,
+      objectiveEnoughSample: Boolean(objectiveSupervisor && objectiveSupervisor.objective && objectiveSupervisor.objective.enough_sample === true),
+      objectiveDirectionOk: false,
+      challengerBeatsCurrent: false,
+      direction: "SHIFT",
+      candidate_id: null,
+      source: "CANONICAL_PARITY_SOURCE_MODE_PROMOTION",
+      support_n: shadowObservedN,
+      source_parity_mismatch_n: sourceParityMismatchN,
+      current_source_modes: [],
+    };
+  }
+
+  const { nextSettings, current_modes } = applyCanonicalSourceModeChanges({
+    currentSys,
+    candidate: selected,
+    nextSourceMode: "SERVER_PRIMARY",
+  });
+  const alreadyServerPrimary = current_modes.length > 0 && current_modes.every((row) => row.current_source_mode === "SERVER_PRIMARY");
+  const actionable = !alreadyServerPrimary
+    && sourceParityMismatchN === 0
+    && shadowObservedN >= shadowObservedMin
+    && Object.keys(nextSettings).length > 0;
+  let reason = "SOURCE_MODE_NOOP";
+  if (actionable) reason = "SERVER_PRIMARY_PROMOTION_READY";
+  else if (alreadyServerPrimary) reason = "SOURCE_MODE_ALREADY_SERVER_PRIMARY";
+  else if (sourceParityMismatchN > 0) reason = "SOURCE_MODE_SOURCE_PARITY_BLOCK";
+  else if (shadowObservedN < shadowObservedMin) reason = "SOURCE_MODE_PARITY_SAMPLE_SHORT";
+  return {
+    stage: "SOURCE_MODE",
+    actionable,
+    action: actionable ? "AUTO_APPLY" : "HOLD",
+    reason,
+    signature: actionable ? stableSignature(nextSettings) : null,
+    display_signature: String(selected.display_candidate_id || selected.candidate_id || "").trim() || null,
+    nextSettings,
+    streakRequired: STREAK_REQUIRED,
+    sampleSufficient: shadowObservedN >= shadowObservedMin,
+    coverageSufficient: sourceParityMismatchN === 0,
+    objectiveEnoughSample: Boolean(objectiveSupervisor && objectiveSupervisor.objective && objectiveSupervisor.objective.enough_sample === true),
+    objectiveDirectionOk: actionable,
+    challengerBeatsCurrent: actionable,
+    direction: "SHIFT",
+    candidate_id: String(selected.candidate_id || "").trim() || null,
+    source: "CANONICAL_PARITY_SOURCE_MODE_PROMOTION",
+    support_n: shadowObservedN,
+    source_parity_mismatch_n: sourceParityMismatchN,
+    current_source_modes: current_modes,
+  };
+}
+
+function clampProb(value, fallback) {
+  const n = toNum(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(1, n));
+}
+
+function readParityFamilyCount(summary = {}, key) {
+  const rows = Array.isArray(summary && summary.by_actual_drop_reason_family) ? summary.by_actual_drop_reason_family : [];
+  const matched = rows.find((row) => String(row && row.key || "").trim().toUpperCase() === String(key || "").trim().toUpperCase());
+  return matched ? (toNum(matched.count) || 0) : 0;
+}
+
+function buildEvParityCandidate(parityArtifact, currentSys = {}, objectiveSupervisor = {}) {
+  const raw = parityArtifact && parityArtifact.data && typeof parityArtifact.data === "object"
+    ? parityArtifact.data
+    : {};
+  const summary = raw && raw.summary && typeof raw.summary === "object" ? raw.summary : {};
+  const evPolicyMismatchN = readParityFamilyCount(summary, "EV_POLICY");
+  const sourceParityMismatchN = toNum(summary.source_parity_mismatch_n) || 0;
+  const shadowObservedN = toNum(summary.shadow_observed_n) || 0;
+  const actionable = evPolicyMismatchN >= 2 && sourceParityMismatchN === 0;
+  const currentMin = clampProb(currentSys && currentSys.ev_gate_tp1_prob_min, 0.55);
+  const currentFull = clampProb(currentSys && currentSys.ev_gate_tp1_prob_full, 0.60);
+  const nextSettings = actionable
+    ? {
+      ev_gate_tp1_prob_min: Number(Math.max(0.30, currentMin - 0.01).toFixed(4)),
+      ev_gate_tp1_prob_full: Number(Math.max(0.35, currentFull - 0.01).toFixed(4)),
+    }
+    : {};
+  return {
+    stage: "EV",
+    actionable,
+    action: actionable ? "AUTO_APPLY" : "HOLD",
+    reason: actionable
+      ? "CANONICAL_PARITY_EV_POLICY_RESCUE"
+      : "NO_ACTIONABLE_EV_PARITY_RESCUE",
+    signature: actionable ? stableSignature(nextSettings) : null,
+    nextSettings,
+    streakRequired: STREAK_REQUIRED,
+    sampleSufficient: evPolicyMismatchN >= 2,
+    coverageSufficient: shadowObservedN >= evPolicyMismatchN && sourceParityMismatchN === 0,
+    objectiveEnoughSample: actionable,
+    objectiveDirectionOk: actionable,
+    challengerBeatsCurrent: actionable,
+    support_n: evPolicyMismatchN,
+    support_rate: summary && toNum(summary.parity_mismatch_rate),
+    source: "CANONICAL_PARITY_EV_POLICY_RESCUE",
+    current_ev_policy_mismatch_n: evPolicyMismatchN,
+    source_parity_mismatch_n: sourceParityMismatchN,
+  };
+}
+
 function buildObservedStageCandidate(stage, artifact, currentObj = {}) {
   const data = artifact && artifact.data ? artifact.data : null;
   if (!data) {
@@ -365,6 +715,7 @@ function renderMarkdown(report = {}) {
     `- objective: ${report.objective_verdict || "N/A"}`,
     `- canary: ${report.canary_pass ? "PASS" : "BLOCK"}`,
     `- self_evolution_canary: ${report.self_evolution_canary && report.self_evolution_canary.apply_pass ? "PASS" : "BLOCK"} / rollback_ready ${report.self_evolution_canary && report.self_evolution_canary.rollback_ready_n != null ? report.self_evolution_canary.rollback_ready_n : "N/A"}`,
+    `- server_primary_canary: ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.apply_pass === true ? "PASS" : (report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.apply_pass === false ? "BLOCK" : "N/A")} / executed ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.executed_n != null ? report.self_evolution_server_primary_canary.executed_n : "N/A"} / rollback ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.rollback_trigger_n != null ? report.self_evolution_server_primary_canary.rollback_trigger_n : "N/A"}`,
     `- self_evolution_deployment: ${report.self_evolution_deployment && report.self_evolution_deployment.deploy_pass ? "PASS" : "BLOCK"} / target ${report.self_evolution_deployment && report.self_evolution_deployment.target_candidate_id || "N/A"}`,
     `- deployment plan: ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.plan_status || "N/A"} / manual ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.manual_step_required ? "YES" : "NO"} / file ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.prepared_file_path || report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.latest_generated_file_path || "N/A"}`,
     `- pine handoff: ${report.self_evolution_pine_handoff && report.self_evolution_pine_handoff.stage_ready ? "READY" : "HOLD"} / file ${report.self_evolution_pine_handoff && report.self_evolution_pine_handoff.prepared_file_path || "N/A"} / latest ${report.self_evolution_pine_handoff && report.self_evolution_pine_handoff.latest_generated_file_path || "N/A"}`,
@@ -417,6 +768,14 @@ function bestFebtAutopilotGuard({ stage, candidate, currentSys = {}, bestFebtCon
   }
   if (stage === "MARKET" && !tighteningAllowed && String(candidate.action || "").toUpperCase() === "REVIEW_TIGHTEN") {
     return { blocked: true, reason: "BEST_FEBT_COUNT_GUARD_BLOCK" };
+  }
+  if (stage === "CANONICAL_POLICY" && String(candidate.direction || "").toUpperCase() === "TIGHTEN") {
+    if (!tighteningAllowed) return { blocked: true, reason: "BEST_FEBT_COUNT_GUARD_BLOCK" };
+    if (recoveryPriority) return { blocked: true, reason: "BEST_FEBT_RECOVERY_GUARD_BLOCK" };
+  }
+  if (stage === "SOURCE_MODE") {
+    if (!tighteningAllowed) return { blocked: true, reason: "BEST_FEBT_COUNT_GUARD_BLOCK" };
+    if (recoveryPriority) return { blocked: true, reason: "BEST_FEBT_RECOVERY_GUARD_BLOCK" };
   }
   if (stage === "PINE" && candidate.kind === "PROMOTE") {
     if (!tighteningAllowed) return { blocked: true, reason: "BEST_FEBT_COUNT_GUARD_BLOCK" };
@@ -894,8 +1253,11 @@ async function main() {
   const waitArtifact = readArtifact("wait_one_bar_tune", path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json"), FRESHNESS_HOURS.wait);
   const canaryArtifact = readArtifact("filter_shadow_canary", path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json"), FRESHNESS_HOURS.canary);
   const selfEvolutionCanaryArtifact = readArtifact("best_self_evolution_canary", SELF_EVOLUTION_CANARY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCanary);
+  const selfEvolutionCanonicalParityArtifact = readArtifact("best_self_evolution_canonical_parity", SELF_EVOLUTION_CANONICAL_PARITY_LATEST_PATH, FRESHNESS_HOURS.objective);
+  const selfEvolutionServerPrimaryCanaryArtifact = readArtifact("best_self_evolution_server_primary_canary", SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH, FRESHNESS_HOURS.serverPrimaryCanary);
   const selfEvolutionDeploymentPlanArtifact = readArtifact("best_self_evolution_deployment_plan", SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST_PATH, FRESHNESS_HOURS.objective);
   const selfEvolutionLoopMonitorArtifact = readArtifact("best_self_evolution_loop_monitor", SELF_EVOLUTION_LOOP_MONITOR_LATEST_PATH, FRESHNESS_HOURS.objective);
+  const selfEvolutionCandidatesArtifact = readArtifact("best_self_evolution_candidates", SELF_EVOLUTION_CANDIDATES_LATEST_PATH, FRESHNESS_HOURS.objective);
   const changeArtifact = readArtifact("pine_quality_change_control", path.join(OPS_DAILY_DIR, "pine_quality_change_control_latest.json"), FRESHNESS_HOURS.change);
   const codexArtifact = readArtifact("self_evolution_authority", selfEvolutionSnapshotLatestPath("self_evolution_authority_latest.json"), FRESHNESS_HOURS.codex);
   const objectiveArtifactForLoop = selfEvolutionObjectiveArtifact.exists ? selfEvolutionObjectiveArtifact : objectiveArtifact;
@@ -928,6 +1290,9 @@ async function main() {
           ? objectiveArtifactForLoop.data.self_evolution_deployment_plan
           : {});
   const selfEvolutionLoopMonitor = buildLoopMonitorView({ objectiveArtifact: objectiveArtifactForLoop, loopMonitorArtifact: selfEvolutionLoopMonitorArtifact, cycleMeta });
+  const selfEvolutionServerPrimaryCanary = selfEvolutionServerPrimaryCanaryArtifact && selfEvolutionServerPrimaryCanaryArtifact.data && selfEvolutionServerPrimaryCanaryArtifact.data.summary
+    ? selfEvolutionServerPrimaryCanaryArtifact.data.summary
+    : {};
   const codexAuthority = objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.codex_authority
     && typeof objectiveArtifactForLoop.data.codex_authority === "object"
       ? objectiveArtifactForLoop.data.codex_authority
@@ -937,6 +1302,7 @@ async function main() {
     ? "CANARY_DRIFT"
     : (selfEvolutionCanary.apply_pass === true ? null : "SELF_EVOLUTION_CANARY_BLOCK");
   const selfEvolutionRollbackReady = Number(selfEvolutionCanary.rollback_ready_n || 0) > 0;
+  const serverPrimaryRollbackReady = Number(selfEvolutionServerPrimaryCanary.rollback_trigger_n || 0) > 0 && selfEvolutionServerPrimaryCanary.apply_pass === false;
   const preparedOverride = normalizePreparedOverride(readJsonRawSafe(SELF_EVOLUTION_PREPARED_OVERRIDE_PATH, null));
 
   const actions = [];
@@ -1012,17 +1378,35 @@ async function main() {
     best_febt_guard: marketBestFebtGuard.reason,
   });
 
-  result = await processObservedStage({
-    stage: "EV",
-    artifact: evArtifact,
-    stateData,
-    currentSys,
-    objectiveArtifact: objectiveArtifactForLoop,
-    canaryPass,
-    nowMeta,
-    nowMs,
-    selfEvolutionRollbackReady,
-  });
+  const evObservedCandidate = buildObservedStageCandidate("EV", evArtifact, objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.objective ? objectiveArtifactForLoop.data.objective : null);
+  const evParityCandidate = buildEvParityCandidate(selfEvolutionCanonicalParityArtifact, currentSys, objectiveArtifactForLoop.data || {});
+  if (evObservedCandidate.observedUpdate === true) {
+    result = await processObservedStage({
+      stage: "EV",
+      artifact: evArtifact,
+      stateData,
+      currentSys,
+      objectiveArtifact: objectiveArtifactForLoop,
+      canaryPass,
+      nowMeta,
+      nowMs,
+      selfEvolutionRollbackReady,
+    });
+  } else {
+    result = await applyStageCandidate({
+      stage: "EV",
+      candidate: evParityCandidate,
+      stageState: getStageState(stateData, "EV"),
+      history,
+      nowMeta,
+      nowMs,
+      canaryPass,
+      objectiveArtifact: objectiveArtifactForLoop,
+      currentSys,
+      snapshotKeys: EV_SNAPSHOT_KEYS,
+      selfEvolutionRollbackReady,
+    });
+  }
   history = result.history;
   stateData.stages.EV = result.stageState;
   if (result.action) actions.push(result.action);
@@ -1035,6 +1419,8 @@ async function main() {
     blockers: result.stageState.blockers || [],
     signature: result.stageState.last_signature,
     snapshot_path: result.stageState.last_snapshot_path || null,
+    source: evObservedCandidate.observedUpdate === true ? "EV_TUNER" : evParityCandidate.source,
+    support_n: evObservedCandidate.observedUpdate === true ? null : evParityCandidate.support_n,
   });
 
   result = await processObservedStage({
@@ -1060,6 +1446,101 @@ async function main() {
     blockers: result.stageState.blockers || [],
     signature: result.stageState.last_signature,
     snapshot_path: result.stageState.last_snapshot_path || null,
+  });
+
+  const canonicalPolicyCandidate = buildCanonicalPolicyStageCandidate(selfEvolutionCandidatesArtifact, currentSys, objectiveArtifactForLoop.data || {});
+  const canonicalPolicyBestFebtGuard = bestFebtAutopilotGuard({
+    stage: "CANONICAL_POLICY",
+    candidate: canonicalPolicyCandidate,
+    currentSys,
+    bestFebtContract,
+  });
+  if (canonicalPolicyBestFebtGuard.blocked) {
+    canonicalPolicyCandidate.actionable = false;
+    canonicalPolicyCandidate.reason = canonicalPolicyBestFebtGuard.reason;
+  }
+  canonicalPolicyCandidate.run_key = selfEvolutionCandidatesArtifact && selfEvolutionCandidatesArtifact.data && selfEvolutionCandidatesArtifact.data.generated_at_kst || nowMeta.kst;
+  result = await applyStageCandidate({
+    stage: "CANONICAL_POLICY",
+    candidate: canonicalPolicyCandidate,
+    stageState: getStageState(stateData, "CANONICAL_POLICY"),
+    history,
+    nowMeta,
+    nowMs,
+    canaryPass,
+    objectiveArtifact: objectiveArtifactForLoop,
+    currentSys,
+    snapshotKeys: CANONICAL_POLICY_SNAPSHOT_KEYS,
+    selfEvolutionRollbackReady,
+  });
+  history = result.history;
+  stateData.stages.CANONICAL_POLICY = result.stageState;
+  if (result.action) actions.push(result.action);
+  stageRows.push({
+    stage: "CANONICAL_POLICY",
+    machine_state: result.stageState.machine_state,
+    reason: result.stageState.last_reason,
+    last_action: result.stageState.last_action,
+    streak_current: result.stageState.streak_current,
+    blockers: result.stageState.blockers || [],
+    signature: result.stageState.last_signature,
+    snapshot_path: result.stageState.last_snapshot_path || null,
+    display_signature: canonicalPolicyCandidate.display_signature || null,
+    candidate_id: canonicalPolicyCandidate.candidate_id || null,
+    source: canonicalPolicyCandidate.source || null,
+    best_febt_guard: canonicalPolicyBestFebtGuard.reason,
+  });
+
+  const sourceModeCandidate = buildSourceModeStageCandidate({
+    candidatesArtifact: selfEvolutionCandidatesArtifact,
+    parityArtifact: selfEvolutionCanonicalParityArtifact,
+    currentSys,
+    objectiveSupervisor: objectiveArtifactForLoop.data || {},
+  });
+  const sourceModeBestFebtGuard = bestFebtAutopilotGuard({
+    stage: "SOURCE_MODE",
+    candidate: sourceModeCandidate,
+    currentSys,
+    bestFebtContract,
+  });
+  if (sourceModeBestFebtGuard.blocked) {
+    sourceModeCandidate.actionable = false;
+    sourceModeCandidate.reason = sourceModeBestFebtGuard.reason;
+  }
+  sourceModeCandidate.run_key = selfEvolutionCanonicalParityArtifact && selfEvolutionCanonicalParityArtifact.data && selfEvolutionCanonicalParityArtifact.data.generated_at_kst || nowMeta.kst;
+  result = await applyStageCandidate({
+    stage: "SOURCE_MODE",
+    candidate: sourceModeCandidate,
+    stageState: getStageState(stateData, "SOURCE_MODE"),
+    history,
+    nowMeta,
+    nowMs,
+    canaryPass,
+    objectiveArtifact: objectiveArtifactForLoop,
+    currentSys,
+    snapshotKeys: SOURCE_MODE_SNAPSHOT_KEYS,
+    selfEvolutionRollbackReady: serverPrimaryRollbackReady,
+  });
+  history = result.history;
+  stateData.stages.SOURCE_MODE = result.stageState;
+  if (result.action) actions.push(result.action);
+  stageRows.push({
+    stage: "SOURCE_MODE",
+    machine_state: result.stageState.machine_state,
+    reason: result.stageState.last_reason,
+    last_action: result.stageState.last_action,
+    streak_current: result.stageState.streak_current,
+    blockers: result.stageState.blockers || [],
+    signature: result.stageState.last_signature,
+    snapshot_path: result.stageState.last_snapshot_path || null,
+    display_signature: sourceModeCandidate.display_signature || null,
+    candidate_id: sourceModeCandidate.candidate_id || null,
+    source: sourceModeCandidate.source || null,
+    support_n: sourceModeCandidate.support_n || 0,
+    source_parity_mismatch_n: sourceModeCandidate.source_parity_mismatch_n || 0,
+    current_source_modes: sourceModeCandidate.current_source_modes || [],
+    server_primary_rollback_ready: serverPrimaryRollbackReady,
+    best_febt_guard: sourceModeBestFebtGuard.reason,
   });
 
   const pineCandidate = buildPineCandidate(objectiveArtifactForLoop, codexArtifact, changeArtifact);
@@ -1172,6 +1653,16 @@ async function main() {
       top_ready_market: String(selfEvolutionCanary.top_ready_market || "").trim() || null,
       top_rollback_market: String(selfEvolutionCanary.top_rollback_market || "").trim() || null,
     },
+    self_evolution_server_primary_canary: {
+      available: selfEvolutionServerPrimaryCanaryArtifact.exists === true,
+      executed_n: toNum(selfEvolutionServerPrimaryCanary.server_primary_executed_n),
+      realized_n: toNum(selfEvolutionServerPrimaryCanary.server_primary_realized_n),
+      disagreement_n: toNum(selfEvolutionServerPrimaryCanary.pine_shadow_disagreement_n),
+      disagreement_rate: toNum(selfEvolutionServerPrimaryCanary.pine_shadow_disagreement_rate),
+      rollback_trigger_n: toNum(selfEvolutionServerPrimaryCanary.rollback_trigger_n) || 0,
+      rollback_trigger_markets: Array.isArray(selfEvolutionServerPrimaryCanary.rollback_trigger_markets) ? selfEvolutionServerPrimaryCanary.rollback_trigger_markets : [],
+      apply_pass: selfEvolutionServerPrimaryCanary.apply_pass === true ? true : (selfEvolutionServerPrimaryCanary.apply_pass === false ? false : null),
+    },
     self_evolution_deployment: {
       available: !!(objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.self_evolution_deployment),
       deploy_pass: selfEvolutionDeployment.deploy_pass === true,
@@ -1228,7 +1719,7 @@ async function main() {
     best_febt_tuning_contract: bestFebtContract,
     stage_rows: stageRows,
     actions,
-    artifacts: [objectiveArtifactForLoop, mlArtifact, evArtifact, waitArtifact, canaryArtifact, selfEvolutionCanaryArtifact, selfEvolutionLoopMonitorArtifact, changeArtifact, codexArtifact].map((row) => ({
+    artifacts: [objectiveArtifactForLoop, mlArtifact, evArtifact, waitArtifact, canaryArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionLoopMonitorArtifact, selfEvolutionCandidatesArtifact, changeArtifact, codexArtifact].map((row) => ({
       name: row.name,
       filePath: row.filePath,
       fresh: row.fresh,
@@ -1251,6 +1742,7 @@ async function main() {
       sections: [
         { header: "공통 상태", lines: [`전체 목표 판정은 ${report.objective_verdict} 입니다.`, `변경 안전 검증은 ${report.canary_pass ? "정상" : "차단"} 입니다.`] },
         { header: "자기 진화 canary", lines: [`apply ${report.self_evolution_canary && report.self_evolution_canary.apply_pass ? "PASS" : "BLOCK"} / ready ${report.self_evolution_canary && report.self_evolution_canary.ready_n != null ? report.self_evolution_canary.ready_n : "N/A"} / blocked ${report.self_evolution_canary && report.self_evolution_canary.blocked_n != null ? report.self_evolution_canary.blocked_n : "N/A"}`, `rollback ${report.self_evolution_canary && report.self_evolution_canary.rollback_ready_n != null ? report.self_evolution_canary.rollback_ready_n : "N/A"} / top ready ${report.self_evolution_canary && report.self_evolution_canary.top_ready_market || "N/A"} / top rollback ${report.self_evolution_canary && report.self_evolution_canary.top_rollback_market || "N/A"}`] },
+        { header: "server-primary canary", lines: [`apply ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.apply_pass === true ? "PASS" : (report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.apply_pass === false ? "BLOCK" : "N/A")} / executed ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.executed_n != null ? report.self_evolution_server_primary_canary.executed_n : "N/A"} / realized ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.realized_n != null ? report.self_evolution_server_primary_canary.realized_n : "N/A"}`, `disagreement ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.disagreement_n != null ? report.self_evolution_server_primary_canary.disagreement_n : "N/A"} / rollback ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.rollback_trigger_n != null ? report.self_evolution_server_primary_canary.rollback_trigger_n : "N/A"} / markets ${report.self_evolution_server_primary_canary && Array.isArray(report.self_evolution_server_primary_canary.rollback_trigger_markets) && report.self_evolution_server_primary_canary.rollback_trigger_markets.length ? report.self_evolution_server_primary_canary.rollback_trigger_markets.join("|") : "none"}`] },
         { header: "자기 진화 배포 가드", lines: [`deploy ${report.self_evolution_deployment && report.self_evolution_deployment.deploy_pass ? "PASS" : "BLOCK"} / target ${report.self_evolution_deployment && report.self_evolution_deployment.target_candidate_id || "N/A"} / open wave ${report.self_evolution_deployment && report.self_evolution_deployment.canary_open_wave != null ? report.self_evolution_deployment.canary_open_wave : "N/A"}`, `blockers ${report.self_evolution_deployment && Array.isArray(report.self_evolution_deployment.blockers) && report.self_evolution_deployment.blockers.length ? report.self_evolution_deployment.blockers.join("|") : "none"}`] },
         { header: "자기 진화 배포 handoff", lines: [`status ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.plan_status || "N/A"} / prepare ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.prepare_pass ? "PASS" : "BLOCK"} / manual ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.manual_step_required ? "YES" : "NO"}`, `file ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.prepared_file_path || report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.latest_generated_file_path || "N/A"} / rollback ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.rollback_source_file_path || "N/A"}`] },
         { header: "Pine 수동 handoff", lines: [`ready ${report.self_evolution_pine_handoff && report.self_evolution_pine_handoff.stage_ready ? "YES" : "NO"} / candidate ${report.self_evolution_pine_handoff && report.self_evolution_pine_handoff.candidate_signature || "N/A"}`, `file ${report.self_evolution_pine_handoff && report.self_evolution_pine_handoff.prepared_file_path || "N/A"} / latest ${report.self_evolution_pine_handoff && report.self_evolution_pine_handoff.latest_generated_file_path || "N/A"}`] },
@@ -1273,6 +1765,7 @@ async function main() {
     canary_pass: report.canary_pass,
     self_evolution_canary_apply_pass: report.self_evolution_canary.apply_pass,
     self_evolution_canary_rollback_ready_n: report.self_evolution_canary.rollback_ready_n,
+    self_evolution_server_primary_canary_rollback_trigger_n: report.self_evolution_server_primary_canary.rollback_trigger_n,
   }));
 }
 
@@ -1296,5 +1789,10 @@ module.exports = {
     stableSignature,
     isAiAutopilotTightening,
     bestFebtAutopilotGuard,
+    applyCanonicalThresholdChanges,
+    buildCanonicalPolicyStageCandidate,
+    applyCanonicalSourceModeChanges,
+    buildSourceModeStageCandidate,
+    buildEvParityCandidate,
   },
 };

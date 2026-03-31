@@ -432,10 +432,22 @@ function buildMarketConcentrationCandidate({ objectiveSupervisor = null, tf = "1
   const objectiveScore = toNum(dominant && dominant.objective_score);
   const realizedN = toNum(dominant && dominant.realized_n);
   const dragGap = toNum(concentration.bottom_market_drag_gap);
-  if (!concentration.concentration_flag || !market) return [];
+  const dominantShare = toNum(concentration.dominant_negative_share);
+  const constraints = dominant && dominant.constraints && typeof dominant.constraints === "object"
+    ? dominant.constraints
+    : {};
+  const countFloorPass = constraints.count_floor_pass !== false;
+  const latencyBudgetPass = constraints.latency_budget_pass !== false;
+  const severeConcentrationFallback = (
+    (dominantShare != null && dominantShare >= 0.40)
+    || (dragGap != null && dragGap >= 4)
+    || (objectiveScore != null && objectiveScore <= -4)
+  );
+  if ((!concentration.concentration_flag && !severeConcentrationFallback) || !market) return [];
   if (objectiveScore == null || objectiveScore > -2) return [];
   if (realizedN == null || realizedN < 3) return [];
   if (dragGap == null || dragGap < 1) return [];
+  if (!countFloorPass || !latencyBudgetPass) return [];
 
   const rationale = `dominant negative market ${market} objective ${objectiveScore.toFixed(4)} / drag ${dragGap.toFixed(4)} / realized ${realizedN}`;
   const changes = [
@@ -481,6 +493,7 @@ function buildMarketConcentrationCandidate({ objectiveSupervisor = null, tf = "1
       rationale,
     },
     market_concentration_recovery: true,
+    market_concentration_fallback_triggered: concentration.concentration_flag !== true,
     target_market: market,
     target_market_objective_score: objectiveScore,
     target_market_drag_gap: dragGap,

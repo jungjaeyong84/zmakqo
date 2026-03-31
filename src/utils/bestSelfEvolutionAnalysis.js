@@ -410,11 +410,88 @@ function deriveAttribution({
   return out;
 }
 
+function deriveCanonicalParityDiagnostics(parity = null) {
+  const raw = parity && parity.summary && typeof parity.summary === "object"
+    ? parity.summary
+    : {};
+  const byFamilyRows = Array.isArray(raw.by_actual_drop_reason_family) ? raw.by_actual_drop_reason_family : [];
+  const familyMap = new Map(
+    byFamilyRows.map((row) => [String(row && row.key || "").trim().toUpperCase(), Number(row && row.count || 0)])
+  );
+  const evPolicyMismatchN = familyMap.get("EV_POLICY") || 0;
+  const cooldownPolicyMismatchN = familyMap.get("COOLDOWN_POLICY") || 0;
+  const strategyGateMismatchN = familyMap.get("STRATEGY_GATE") || 0;
+  const sourceParityMismatchN = toNum(raw.source_parity_mismatch_n) || 0;
+  const finalDownstreamMismatchN = toNum(raw.final_downstream_mismatch_n) || 0;
+  const topFamily = byFamilyRows[0] || null;
+  return {
+    available: Object.keys(raw).length > 0,
+    rows_n: toNum(raw.rows_n) || 0,
+    shadow_applicable_n: toNum(raw.shadow_applicable_n) || 0,
+    shadow_observed_n: toNum(raw.shadow_observed_n) || 0,
+    parity_mismatch_n: toNum(raw.parity_mismatch_n) || 0,
+    parity_mismatch_rate: toNum(raw.parity_mismatch_rate),
+    source_parity_match_n: toNum(raw.source_parity_match_n) || 0,
+    source_parity_mismatch_n: sourceParityMismatchN,
+    final_downstream_mismatch_n: finalDownstreamMismatchN,
+    ev_policy_mismatch_n: evPolicyMismatchN,
+    cooldown_policy_mismatch_n: cooldownPolicyMismatchN,
+    strategy_gate_mismatch_n: strategyGateMismatchN,
+    source_quality_pass: sourceParityMismatchN === 0,
+    downstream_policy_pressure: finalDownstreamMismatchN > 0,
+    downstream_ev_pressure: evPolicyMismatchN >= 2,
+    dominant_mismatch_family: topFamily ? String(topFamily.key || "").trim().toUpperCase() || null : null,
+  };
+}
+
+function deriveCanonicalProvenanceDiagnostics(provenance = null) {
+  const raw = provenance && provenance.summary && typeof provenance.summary === "object"
+    ? provenance.summary
+    : (provenance || {});
+  const byCollection = Array.isArray(raw.by_collection) ? raw.by_collection : [];
+  const topGapCollection = byCollection
+    .slice()
+    .sort((a, b) => Number(a.complete_rate || 0) - Number(b.complete_rate || 0))[0] || null;
+  return {
+    available: !!provenance,
+    eligible_n: toNum(raw.eligible_n) || 0,
+    complete_n: toNum(raw.complete_n) || 0,
+    complete_rate: toNum(raw.complete_rate),
+    bundle_version_n: toNum(raw.with_bundle_version_n) || 0,
+    threshold_bundle_version_n: toNum(raw.with_threshold_bundle_version_n) || 0,
+    source_mode_n: toNum(raw.with_source_mode_n) || 0,
+    actual_source_decision_n: toNum(raw.with_actual_source_decision_n) || 0,
+    storage_contract_pass: raw.eligible_n > 0 ? Number(raw.complete_n || 0) === Number(raw.eligible_n || 0) : null,
+    storage_contract_gap_n: Math.max(0, Number(raw.eligible_n || 0) - Number(raw.complete_n || 0)),
+    dominant_gap_collection: topGapCollection ? String(topGapCollection.collection || "").trim() || null : null,
+  };
+}
+
+function deriveServerPrimaryCanaryDiagnostics(serverPrimaryCanary = null) {
+  const raw = serverPrimaryCanary && serverPrimaryCanary.summary && typeof serverPrimaryCanary.summary === "object"
+    ? serverPrimaryCanary.summary
+    : (serverPrimaryCanary || {});
+  return {
+    available: !!serverPrimaryCanary,
+    executed_n: toNum(raw.server_primary_executed_n) || 0,
+    realized_n: toNum(raw.server_primary_realized_n) || 0,
+    disagreement_n: toNum(raw.pine_shadow_disagreement_n) || 0,
+    disagreement_rate: toNum(raw.pine_shadow_disagreement_rate),
+    win_rate: toNum(raw.server_primary_win_rate),
+    avg_ret_net: toNum(raw.server_primary_avg_ret_net),
+    rollback_trigger_n: toNum(raw.rollback_trigger_n) || 0,
+    apply_pass: typeof raw.apply_pass === "boolean" ? raw.apply_pass : null,
+  };
+}
+
 module.exports = {
   deriveObjectiveScore,
   deriveDatasetObjectiveScore,
   deriveMarketObjectiveScores,
   deriveMarketConcentrationDiagnostics,
+  deriveCanonicalParityDiagnostics,
+  deriveCanonicalProvenanceDiagnostics,
+  deriveServerPrimaryCanaryDiagnostics,
   deriveAttribution,
   __test: {
     deriveConstraintFlags,

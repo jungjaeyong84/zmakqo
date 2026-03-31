@@ -25,7 +25,7 @@
 1. `Pine manual paste`
    - 새 Pine 버전은 TradingView 편집기에 수동 붙여넣기가 필요하다.
 2. `live signal confirmation dependence`
-   - 붙여넣기 후 첫 `LONG/SHORT` 신호가 올 때까지 `APPLIED_PENDING_SIGNAL_CONFIRMATION` 상태가 남는다.
+   - 붙여넣기 후 bundle activation proof가 닫힐 때까지 `APPLIED_PENDING_BUNDLE_ACTIVATION` 상태가 남는다.
 3. `rollback manual boundary`
    - rollback file이 준비돼도 Pine 자체를 되돌리지 않으면 signal source는 바뀌지 않는다.
 4. `PINE scope candidate dependence`
@@ -234,7 +234,7 @@ flowchart LR
 3. timeout 기반 confirm 또는 probe 기반 confirm 도입
 
 완료 기준:
-1. `APPLIED_PENDING_SIGNAL_CONFIRMATION` 상태가 Pine signal 대기 때문에 무기한 지속되지 않음
+1. `APPLIED_PENDING_BUNDLE_ACTIVATION` 상태가 Pine signal 대기 때문에 무기한 지속되지 않음
 2. deployment plan은 `engine active`만으로 confirm 가능
 
 ## 7.6 Phase F - Pine Demotion
@@ -258,6 +258,302 @@ Pine의 남는 역할:
 1. `manual paste ack` 제거 또는 optional-only로 전환
 2. self-evolution deployment plan이 Pine file path 없이도 완결
 3. `authority bypass`가 Pine 붙여넣기 때문에 생기지 않음
+
+## 8. 현재 진행 상태
+
+2026-03-31 기준 현재 상태는 아래와 같다.
+
+1. `Phase A`
+   - 완료
+   - candidate에 `SERVER_POLICY / PINE_THRESHOLD / PINE_LOGIC` 분류가 들어갔다.
+2. `Phase B`
+   - 구조 구현 완료
+   - canonical threshold settings 경로와 `CANONICAL_POLICY` stage가 추가됐다.
+   - `AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN` 류 candidate를 `SERVER_SETTINGS` deploy unit으로 변환할 수 있다.
+   - canonical threshold bundle/version provenance가 signals/intents/drops 저장 경로로 전파된다.
+3. `Phase C`
+   - 구조 구현 완료
+   - `src/services/canonicalEngine/` 골격, parity report, loop parity step이 들어갔다.
+   - parity는 현재 `source_parity_match_n > 0`, `final_downstream_mismatch_n > 0`를 구분해 기록한다.
+   - 시장/티어/regime parity breakdown과 loop monitor 감시가 연결됐다.
+   - 단, 문서의 운영 acceptance 기준인 `14일 parity`, `primary market 95%`, `EARLY/CORE 90%`는 아직 표본 시간 경과가 필요하다.
+4. 남은 본체
+   - `Phase D`
+     - server-primary 실행 경로
+   - `Phase E`
+     - Pine signal confirmation 의존 제거
+   - `Phase F`
+     - Pine demotion / authority / deployment 단위 전환
+
+## 9. D~F 실행 계획
+
+이 절은 현재 구현 상태를 기준으로 `바로 실행 가능한 순서`로 정리한다.
+
+### 9.1 Phase D - Server-Primary Canary 상세 계획
+
+목표:
+- 승인 시장군에서 `PINE_PRIMARY`가 아니라 `SERVER_PRIMARY`를 실제 signal source로 쓰기 시작한다.
+
+현재 선행조건:
+1. canonical engine shadow 경로 존재
+2. parity artifact 존재
+3. `CANONICAL_POLICY` stage 존재
+4. server-side threshold bundle 존재
+
+남은 작업 패키지:
+
+#### D-1. Source Mode 런타임 스위치 정식화
+
+작업:
+1. `canonical_engine_source_mode`를 시장 단위로 확장
+   - 현재: 전역 모드 중심
+   - 목표: `ALL | MARKET_OVERRIDES`
+2. `canonical_engine_market_overrides`에 아래 필드 허용
+   - `source_mode`
+   - `core_score_abs`
+   - `transition_core_score_abs`
+   - 필요 시 `enabled`, `shadow_enabled`
+3. `paperUpbitRunner.js`에서 시장별 `SERVER_PRIMARY` 분기 추가
+
+산출물:
+1. market-scoped source mode settings schema
+2. runtime effective source mode snapshot
+
+완료 기준:
+1. AXSUSDT 같은 단일 시장만 `SERVER_PRIMARY`로 올릴 수 있다.
+2. 다른 시장은 계속 `PINE_PRIMARY`로 유지된다.
+
+#### D-2. Server-Primary Decision Audit 저장
+
+작업:
+1. signals / dropped / intents에 아래 필드 추가
+   - `canonical_engine_source_mode_effective`
+   - `canonical_engine_decision_id`
+   - `canonical_engine_bundle_version`
+   - `canonical_engine_threshold_bundle_version`
+   - `canonical_engine_policy_origin`
+2. source가 `SERVER_PRIMARY`일 때도 Pine shadow 비교를 별도 필드로 유지
+   - `pine_shadow_decision`
+   - `pine_shadow_parity_match`
+3. fill/trade까지 engine provenance 전파
+
+산출물:
+1. end-to-end provenance chain
+
+완료 기준:
+1. 한 체결 row만 보고도 `누가 source였는지`와 `다른 쪽이 shadow에서 뭐라고 했는지`를 알 수 있다.
+
+#### D-3. Server-Primary Canary Artifact 추가
+
+작업:
+1. 기존 `best_self_evolution_canary_latest.json`에 source mode breakdown 추가
+2. 별도 artifact 추가
+   - `best_self_evolution_server_primary_canary_latest.json`
+3. 지표:
+   - server-primary executed_n
+   - pine-shadow disagreement_rate
+   - server-primary win_rate
+   - server-primary avg_ret_net
+   - rollback trigger count
+
+산출물:
+1. server-primary 전용 canary report
+
+완료 기준:
+1. 승인 시장군의 server-primary 성과를 Pine-primary와 분리해서 볼 수 있다.
+
+#### D-4. Server Rollback Switch
+
+작업:
+1. `rollback_to_source_mode = PINE_PRIMARY` 또는 이전 engine bundle을 runtime으로 즉시 적용
+2. `deployment guards`와 `stage_autopilot`가 rollback을 Pine file이 아니라 settings/bundle switch로 수행
+3. rollback 이후 parity/canary reset 규칙 정의
+
+산출물:
+1. source-mode rollback runbook
+2. automatic rollback switch logic
+
+완료 기준:
+1. 승인 시장군 rollback이 Pine paste 없이 끝난다.
+
+#### D-5. Authority 심사 단위 전환
+
+작업:
+1. Codex/Claude review 입력에 Pine file path 대신 아래를 추가
+   - `canonical_engine_bundle_version`
+   - `threshold_bundle_diff`
+   - `source_mode_change`
+2. authority verdict reason에 `SERVER_PRIMARY_PROMOTION_READY` 계열 reason 추가
+3. `ROLLBACK/HOLD/PROMOTE`가 engine bundle 단위로 내려오게 수정
+
+완료 기준:
+1. authority가 더 이상 Pine 파일 승격 여부를 핵심 기준으로 보지 않는다.
+
+Phase D 종료 조건:
+1. 최소 1개 승인 시장에서 `SERVER_PRIMARY` live 실행
+2. Pine는 같은 시장에서 shadow overlay만 수행
+3. rollback이 runtime switch로 완료
+
+### 9.2 Phase E - Live Confirm 경계 제거 상세 계획
+
+목표:
+- `첫 Pine 실신호`를 기다리는 confirmation 구조를 제거한다.
+
+남은 작업 패키지:
+
+#### E-1. Confirm Contract 분해
+
+작업:
+1. runtime state에 아래 필드 추가
+   - `engine_bundle_loaded`
+   - `policy_bundle_loaded`
+   - `market_data_flow_ok`
+   - `first_decision_seen`
+   - `first_decision_source_mode`
+2. 기존
+   - `live_signal_confirmed`
+   - `live_signal_confirmation_pending`
+   를 deprecated 상태로 전환
+
+완료 기준:
+1. confirm 상태를 “신호 유무” 하나로 뭉뚱그리지 않는다.
+
+#### E-2. Probe 기반 Confirm
+
+작업:
+1. market data health probe 추가
+   - 최근 candle 수신
+   - feature snapshot 생성 가능
+   - canonical decision 계산 가능
+2. deploy 직후 probe를 한 번 강제 실행
+3. 첫 실제 signal이 없어도 `engine active`를 증명할 수 있게 함
+
+산출물:
+1. `best_self_evolution_deployment_probe_latest.json`
+
+완료 기준:
+1. 시장이 조용해도 deploy confirm이 가능하다.
+
+#### E-3. Timeout Confirm
+
+작업:
+1. deployment plan에
+   - `confirmation_timeout_minutes`
+   - `confirmation_deadline_kst`
+   추가
+2. deadline 내 `first_decision_seen` 또는 `probe_pass`면 confirm
+3. deadline 초과 시
+   - `DEPLOYMENT_CONFIRM_TIMEOUT`
+   - 또는 자동 rollback
+
+완료 기준:
+1. `APPLIED_PENDING_BUNDLE_ACTIVATION`가 무기한 지속되지 않는다.
+
+#### E-4. Manual Paste Ack 축소
+
+작업:
+1. `ack-self-evolution-manual-paste.js`를 server-primary 시대에 맞게 축소
+2. manual ack는 `operator_observed_visual_sync` 정도만 남기고,
+   실제 deploy confirm은 runtime probe가 담당
+
+완료 기준:
+1. manual ack는 참고 정보이고, 정본 상태를 결정하지 않는다.
+
+Phase E 종료 조건:
+1. deployment plan이 Pine signal 대기 없이 `CONFIRMED` 또는 `TIMEOUT/ROLLBACK`으로 닫힘
+2. runtime state가 confirm 근거를 구조적으로 남김
+
+### 9.3 Phase F - Pine Demotion 상세 계획
+
+목표:
+- Pine를 정본 signal source에서 완전히 내리고, overlay/shadow/audit 역할만 남긴다.
+
+남은 작업 패키지:
+
+#### F-1. Deploy Unit 재정의
+
+작업:
+1. self-evolution deploy unit을 아래 두 개로 고정
+   - `engine_bundle`
+   - `policy_bundle`
+2. `prepared_file_path`, `rollback_source_file_path` 중심 구조를
+   - `prepared_engine_bundle`
+   - `prepared_policy_bundle`
+   - `rollback_engine_bundle`
+   로 전환
+
+완료 기준:
+1. deployment plan이 Pine file path 없이 완결된다.
+
+#### F-2. Pine를 Shadow/Overlay 전용으로 고정
+
+작업:
+1. Pine alert는 운영 source가 아니라 shadow audit 태그를 포함
+2. Pine signal이 서버 정본과 다르면 drift row로만 기록
+3. Pine 쪽 `strategy_id`는 운영 배포판이 아니라 overlay build id로 재정의 가능 여부 검토
+
+완료 기준:
+1. Pine drift가 운영 체결 source를 바꾸지 않는다.
+
+#### F-3. Authority Bypass 제거
+
+작업:
+1. `manual paste`가 없어지면 `AUTHORITY_BYPASS` 상태 자체를 제거
+2. `APPLIED_*_AUTHORITY_BYPASS` 계열 상태를 deprecated 처리
+3. authority verdict 없이 live source가 바뀌는 경로 봉쇄
+
+완료 기준:
+1. authority bypass 상태가 더 이상 발생하지 않는다.
+
+#### F-4. 문서/리포트/운영 용어 전환
+
+작업:
+1. 아래 문서 용어를 교체
+   - `prepared pine`
+   - `manual paste`
+   - `strategy mismatch`
+   를 engine/policy/deploy probe 기준 용어로 변경
+2. objective/supervisor/stage/loop monitor에 Pine 관련 필드를 optional shadow 필드로 이동
+
+완료 기준:
+1. 운영 문서에서 Pine는 정본이 아니라 보조 계층으로만 등장한다.
+
+Phase F 종료 조건:
+1. 운영 source of truth가 server canonical engine으로 완전히 이전
+2. Pine 붙여넣기 미실행이 운영 진화를 막지 않음
+3. self-evolution, authority, rollback, confirm이 모두 engine/policy bundle 기준으로 닫힘
+
+## 10. 우선순위와 순서
+
+실행 순서는 아래가 맞다.
+
+1. `D-1 ~ D-2`
+   - 시장별 `SERVER_PRIMARY` 스위치와 provenance를 먼저 만든다.
+2. `D-3 ~ D-4`
+   - canary/rollback을 붙인다.
+3. `D-5`
+   - authority 심사 단위를 engine/policy로 바꾼다.
+4. `E-1 ~ E-3`
+   - confirm 경계를 제거한다.
+5. `E-4`
+   - manual ack를 부차화한다.
+6. `F-1 ~ F-4`
+   - deploy unit과 문서/운영 vocabulary를 전환한다.
+
+## 11. 지금 바로 다음 구현 순서
+
+바로 다음 착수 순서는 아래 5개다.
+
+1. `D-1`
+   - 시장별 `canonical_engine_source_mode` override 지원
+2. `D-2`
+   - signals/intents/fills에 canonical engine provenance 필드 저장
+3. `D-3`
+   - `best_self_evolution_server_primary_canary_latest.json` 추가
+4. `E-1`
+   - runtime state confirm contract 분해
+5. `E-2`
+   - deployment probe artifact 추가
 
 ## 8. 권위 체계 변경 계획
 

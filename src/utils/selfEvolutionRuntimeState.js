@@ -139,15 +139,18 @@ function normalizeSelfEvolutionRuntimeState(raw = null) {
   const src = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   const acknowledged = pickBoolean(src.acknowledged, false);
   const liveSignalConfirmed = pickBoolean(src.live_signal_confirmed, false);
+  const firstDecisionSeen = pickBoolean(src.first_decision_seen, liveSignalConfirmed);
   const preparedStageReady = pickBoolean(src.prepared_stage_ready, false);
   const readyForManualPaste = pickBoolean(src.ready_for_manual_paste, false);
   const authorityBypassActive = pickBoolean(src.authority_bypass_active, false);
+  const bundleActivationConfirmed = pickBoolean(src.bundle_activation_confirmed, false);
   const preparedStrategyId = pickString(src.prepared_strategy_id);
   const preparedFilePath = pickString(src.prepared_file_path);
   const normalizedPlanStatus = deriveRuntimePlanStatus({
     rawPlanStatus: pickString(src.plan_status),
     acknowledged,
     liveSignalConfirmed,
+    bundleActivationConfirmed,
     preparedStageReady,
     readyForManualPaste,
     preparedStrategyId,
@@ -179,6 +182,21 @@ function normalizeSelfEvolutionRuntimeState(raw = null) {
     authority_bypass_active: authorityBypassActive,
     live_signal_confirmed: liveSignalConfirmed,
     live_signal_confirmation_pending: acknowledged && !liveSignalConfirmed,
+    engine_bundle_loaded: pickBoolean(src.engine_bundle_loaded, false),
+    policy_bundle_loaded: pickBoolean(src.policy_bundle_loaded, false),
+    market_data_flow_ok: pickBoolean(src.market_data_flow_ok, false),
+    first_decision_seen: firstDecisionSeen,
+    first_decision_kind: pickString(src.first_decision_kind),
+    first_decision_id: pickString(src.first_decision_id),
+    first_decision_created_at: pickString(src.first_decision_created_at),
+    first_decision_event: pickString(src.first_decision_event),
+    first_decision_reason: pickString(src.first_decision_reason),
+    confirmation_timeout_minutes: Number.isFinite(Number(src.confirmation_timeout_minutes)) ? Math.max(5, Number(src.confirmation_timeout_minutes)) : null,
+    confirmation_deadline_iso: pickString(src.confirmation_deadline_iso),
+    confirmation_deadline_kst: pickString(src.confirmation_deadline_kst),
+    bundle_activation_confirmed: bundleActivationConfirmed,
+    bundle_activation_status: pickString(src.bundle_activation_status),
+    bundle_activation_reason: pickString(src.bundle_activation_reason),
     confirmed_signal_id: pickString(src.confirmed_signal_id),
     confirmed_signal_created_at: pickString(src.confirmed_signal_created_at),
     confirmed_signal_event: pickString(src.confirmed_signal_event),
@@ -192,17 +210,21 @@ function deriveRuntimePlanStatus({
   rawPlanStatus = null,
   acknowledged = false,
   liveSignalConfirmed = false,
+  bundleActivationConfirmed = false,
   preparedStageReady = false,
   readyForManualPaste = false,
   preparedStrategyId = null,
   preparedFilePath = null,
   authorityBypassActive = false,
 } = {}) {
+  if (bundleActivationConfirmed) {
+    return authorityBypassActive ? "APPLIED_ACTIVE_AUTHORITY_BYPASS" : "APPLIED_ACTIVE";
+  }
   if (liveSignalConfirmed) {
     return authorityBypassActive ? "APPLIED_CONFIRMED_AUTHORITY_BYPASS" : "APPLIED_CONFIRMED";
   }
   if (acknowledged) {
-    return authorityBypassActive ? "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS" : "APPLIED_PENDING_SIGNAL_CONFIRMATION";
+    return authorityBypassActive ? "APPLIED_PENDING_BUNDLE_ACTIVATION_AUTHORITY_BYPASS" : "APPLIED_PENDING_BUNDLE_ACTIVATION";
   }
   if (preparedStageReady && readyForManualPaste && (preparedStrategyId || preparedFilePath)) {
     return "READY_FOR_MANUAL_PASTE";
@@ -266,6 +288,18 @@ function buildPreparedRuntimePatch(summary = null, currentState = null) {
     acknowledged_at_kst: shouldResetConfirmation ? null : undefined,
     acknowledged_at_iso: shouldResetConfirmation ? null : undefined,
     live_signal_confirmed: shouldResetConfirmation ? false : undefined,
+    engine_bundle_loaded: shouldResetConfirmation ? false : undefined,
+    policy_bundle_loaded: shouldResetConfirmation ? false : undefined,
+    market_data_flow_ok: shouldResetConfirmation ? false : undefined,
+    first_decision_seen: shouldResetConfirmation ? false : undefined,
+    first_decision_kind: shouldResetConfirmation ? null : undefined,
+    first_decision_id: shouldResetConfirmation ? null : undefined,
+    first_decision_created_at: shouldResetConfirmation ? null : undefined,
+    first_decision_event: shouldResetConfirmation ? null : undefined,
+    first_decision_reason: shouldResetConfirmation ? null : undefined,
+    bundle_activation_confirmed: shouldResetConfirmation ? false : undefined,
+    bundle_activation_status: shouldResetConfirmation ? null : undefined,
+    bundle_activation_reason: shouldResetConfirmation ? null : undefined,
     confirmed_signal_id: shouldResetConfirmation ? null : undefined,
     confirmed_signal_created_at: shouldResetConfirmation ? null : undefined,
     confirmed_signal_event: shouldResetConfirmation ? null : undefined,
@@ -387,6 +421,12 @@ async function confirmSelfEvolutionRuntimeSignal({
       authority_required: prepared.authority_required === true,
       authority_approved: prepared.authority_approved === true,
       authority_bypass_active: prepared.authority_bypass_active === true,
+      engine_bundle_loaded: true,
+      first_decision_seen: true,
+      first_decision_kind: "SIGNAL",
+      first_decision_id: pickString(signalId),
+      first_decision_created_at: pickString(createdAt),
+      first_decision_event: pickString(event ? String(event).trim().toUpperCase() : null),
       live_signal_confirmed: true,
       confirmed_signal_id: pickString(signalId),
       confirmed_signal_created_at: pickString(createdAt),
@@ -399,6 +439,11 @@ async function confirmSelfEvolutionRuntimeSignal({
     return { ok: true, updated: false, reason: "ALREADY_CONFIRMED", data: current };
   }
   const next = await writeSelfEvolutionRuntimeState({
+    first_decision_seen: true,
+    first_decision_kind: "SIGNAL",
+    first_decision_id: pickString(signalId),
+    first_decision_created_at: pickString(createdAt),
+    first_decision_event: pickString(event ? String(event).trim().toUpperCase() : null),
     live_signal_confirmed: true,
     confirmed_signal_id: pickString(signalId),
     confirmed_signal_created_at: pickString(createdAt),
