@@ -774,6 +774,150 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(autonomousRecoveryPromotion.promotion.recovery_mode, true);
   assert.strictEqual(autonomousRecoveryPromotion.promotion.reason, "AUTONOMOUS_RECOVERY_PROMOTION");
 
+  const activeApprovedRecoveryDoesNotReopenAuthorityBlock = __test.evaluateSupervisor({
+    ...base,
+    changeControl: {
+      verdict: "REVIEW",
+      auto_promotion: {
+        ready: false,
+        reason: "CANDIDATE_NOT_READY",
+        candidate_id: "AUTO_CORE_SCORE_TIGHTEN",
+        streak_current: 0,
+        streak_required: 2,
+      },
+      auto_rollback: {
+        ready: true,
+        reason: "AUTO_ROLLBACK_READY",
+        rollback_file_path: "/tmp/rollback.pine",
+      },
+      coverage_guard: {
+        pass: true,
+        ai: { pass: true },
+        market: { pass: true },
+      },
+    },
+    phase0: {
+      fresh: true,
+      provider: "BINANCEFUT",
+      tf: "15m",
+      legacy_wait_baseline: {},
+      bridge_latency: { webhook_to_fill_ms: { p95: 1420 }, duplicate_count: 0, reject_count: 0 },
+    },
+    selfEvolutionDataset: {
+      fresh: true,
+      summary: { rows_n: 10, executed_n: 5, drop_n: 3, missed_n: 1, features_coverage_rate: 0.9, febt_coverage_rate: 0.8 },
+    },
+    selfEvolutionCandidates: {
+      summary: { total_n: 1, ready_n: 1, blocked_n: 0, top_candidate_id: "AUTO_CORE_SCORE_TIGHTEN", top_scope: "PINE" },
+      rows: [{ candidate_id: "AUTO_CORE_SCORE_TIGHTEN", scope: "PINE", ready_for_auto_apply: true }],
+    },
+    selfEvolutionReplay: {
+      validation_mode: "HISTORICAL_ENTRY_COHORT_V1",
+      summary: { total_n: 1, pass_n: 1, warn_n: 0, block_n: 0, best_candidate_id: "AUTO_CORE_SCORE_TIGHTEN", best_verdict: "PASS", best_objective_delta: 0.8 },
+      validations: [{ candidate_id: "AUTO_CORE_SCORE_TIGHTEN", validation_verdict: "PASS", candidate_objective_delta: 0.8, blockers: [] }],
+    },
+    selfEvolutionCanary: {
+      summary: { total_n: 1, ready_n: 1, blocked_n: 0, rollback_ready_n: 0, apply_pass: true, global_canary_pass: true, current_open_wave: 1, open_wave: 1 },
+      rows: [{ market: "BTCUSDT", wave: 1, current_stage: "SOFT", candidate_id: "AUTO_CORE_SCORE_TIGHTEN", canary_verdict: "READY", blockers: [] }],
+    },
+    selfEvolutionBundleActivation: {
+      summary: {
+        activation_confirmed: true,
+        activation_pending: false,
+        activation_status: "ACTIVE",
+        activation_reason: "ACTIVE_BY_PROBE",
+        engine_bundle_loaded: true,
+        policy_bundle_loaded: true,
+        market_data_flow_ok: true,
+        probe_pass: true,
+        probe_status: "PASS",
+        probe_reason: "PROBE_PASS",
+        engine_bundle_id: "strategy:donbeolja_v6.0.3.3",
+        policy_bundle_id: "policy-1",
+        threshold_bundle_signature: "threshold-1",
+        source_mode_signature: "source-1",
+        first_decision_seen: false,
+      },
+    },
+    selfEvolutionMemory: {
+      summary: { total_n: 0, current_n: 0, success_n: 0, neutral_n: 0, fail_n: 0, rolled_back_n: 0, blocked_candidate_n: 0, blocked_candidate_ids: [] },
+      current_rows: [],
+      rows: [],
+    },
+    selfEvolutionLoopMonitor: {
+      summary: { cycle_id: "cycle-r", overall_status: "APPLIED_ACTIVE", cycle_consistent: true, stale_artifact_n: 0, cycle_mismatch_n: 0, critical_blocker_n: 0, critical_blockers: [], promotion_path_ready: true, manual_paste_ready: false, ready_candidate_id: "AUTO_CORE_SCORE_TIGHTEN", canary_open_wave: 1, loop_n: 10, fresh_loop_n: 10 },
+      rows: [],
+    },
+    retrospective: {
+      periods: {
+        DAILY: {
+          objective: {
+            verdict: "FAIL",
+            pass: false,
+            executed_n: 0,
+            realized_n: 0,
+            failed_checks: ["NO_TRADE_ACTIVITY"],
+          },
+          realized_trades: { net_pnl_quote: 0 },
+        },
+        WEEKLY: {
+          objective: {
+            verdict: "FAIL",
+            pass: false,
+            executed_n: 3,
+            realized_n: 2,
+            failed_checks: ["PERIOD_TARGET_NOT_MET"],
+          },
+          realized_trades: { net_pnl_quote: -10 },
+        },
+        MONTHLY: {
+          objective: {
+            verdict: "FAIL",
+            pass: false,
+            executed_n: 8,
+            realized_n: 7,
+            failed_checks: ["MONTHLY_TARGET_NOT_MET"],
+          },
+          realized_trades: { net_pnl_quote: -20 },
+        },
+      },
+    },
+    codex: {
+      status: "FRESH",
+      verdict: "PROMOTE",
+      recommended_candidate_id: "AUTO_CORE_SCORE_TIGHTEN",
+    },
+    stageAutopilot: {
+      fresh: true,
+      objective_verdict: "HOLD",
+      actions: [],
+    },
+    manualPasteAck: {
+      acknowledged: true,
+      acknowledged_at_iso: "2026-03-31T12:00:00.000Z",
+      target_candidate_id: "AUTO_CORE_SCORE_TIGHTEN",
+      candidate_signature: "AUTO_CORE_SCORE_TIGHTEN",
+      prepared_file_path: "/Users/jeongjaeyong/Projects/donbeolja/code/donbeolja_v6.0.3.3.pine.txt",
+      applied_strategy_id: "donbeolja_v6.0.3.3",
+    },
+    preparedOverride: {
+      active: true,
+      prepared_stage_ready: true,
+      prepared_file_path: "/Users/jeongjaeyong/Projects/donbeolja/code/donbeolja_v6.0.3.3.pine.txt",
+      prepared_strategy_id: "donbeolja_v6.0.3.3",
+      target_candidate_id: "AUTO_CORE_SCORE_TIGHTEN",
+      display_candidate_id: "AUTO_CORE_SCORE_TIGHTEN",
+      prepared_reason: "MANUAL_PREPARED_OVERRIDE",
+      override_source: "MANUAL",
+    },
+    signalsCache: { docs: [] },
+  });
+  assert.strictEqual(activeApprovedRecoveryDoesNotReopenAuthorityBlock.verdict, "HOLD");
+  assert.notStrictEqual(activeApprovedRecoveryDoesNotReopenAuthorityBlock.reason, "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK");
+  assert.strictEqual(activeApprovedRecoveryDoesNotReopenAuthorityBlock.self_evolution_deployment_plan.authority_approved, true);
+  assert.strictEqual(activeApprovedRecoveryDoesNotReopenAuthorityBlock.self_evolution_deployment_plan.external_authority_pending, false);
+  assert.strictEqual(activeApprovedRecoveryDoesNotReopenAuthorityBlock.blockers.includes("EXTERNAL_AUTHORITY_BLOCK_ROLLBACK"), false);
+
   const autonomousRecoveryPromotionWithoutCodexPromote = __test.evaluateSupervisor({
     ...base,
     changeControl: {

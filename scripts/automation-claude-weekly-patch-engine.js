@@ -19,6 +19,7 @@ const {
   buildPrompt,
   buildCandidateDisplayMap,
   deriveReviewReadiness,
+  derivePendingAuthorityClosure,
   replaceCandidateIdsInText,
   renderMarkdown,
 } = require("./automation-codex-weekly-patch-engine");
@@ -93,6 +94,8 @@ const INPUT_PATHS = Object.freeze({
   selfEvolutionCanonicalProvenance: path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_provenance_latest.json"),
   selfEvolutionServerPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
   selfEvolutionBundleActivation: path.join(OPS_DAILY_DIR, "best_self_evolution_bundle_activation_latest.json"),
+  selfEvolutionOpenclawAutonomyContract: path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_autonomy_contract_latest.json"),
+  selfEvolutionObjectiveRecoveryGovernor: path.join(OPS_DAILY_DIR, "best_self_evolution_objective_recovery_governor_latest.json"),
   deploymentPlan: path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json"),
   loopMonitor: path.join(OPS_DAILY_DIR, "best_self_evolution_loop_monitor_latest.json"),
   retrospective: path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json"),
@@ -116,6 +119,8 @@ async function main() {
   const selfEvolutionCanonicalProvenanceArtifact = readFreshJson(INPUT_PATHS.selfEvolutionCanonicalProvenance, MAX_AGE_HOURS);
   const selfEvolutionServerPrimaryCanaryArtifact = readFreshJson(INPUT_PATHS.selfEvolutionServerPrimaryCanary, MAX_AGE_HOURS);
   const selfEvolutionBundleActivationArtifact = readFreshJson(INPUT_PATHS.selfEvolutionBundleActivation, MAX_AGE_HOURS);
+  const selfEvolutionOpenclawAutonomyContractArtifact = readFreshJson(INPUT_PATHS.selfEvolutionOpenclawAutonomyContract, MAX_AGE_HOURS);
+  const selfEvolutionObjectiveRecoveryGovernorArtifact = readFreshJson(INPUT_PATHS.selfEvolutionObjectiveRecoveryGovernor, MAX_AGE_HOURS);
   const deploymentPlan = readFreshJson(INPUT_PATHS.deploymentPlan, MAX_AGE_HOURS);
   const loopMonitor = readFreshJson(INPUT_PATHS.loopMonitor, MAX_AGE_HOURS);
   const retrospective = readFreshJson(INPUT_PATHS.retrospective, MAX_AGE_HOURS);
@@ -127,7 +132,7 @@ async function main() {
   const stageRows = Array.isArray(stageAutopilotData && stageAutopilotData.stage_rows) ? stageAutopilotData.stage_rows : [];
   const sourceModeStage = stageRows.find((row) => String(row && row.stage || "").trim().toUpperCase() === "SOURCE_MODE") || {};
   const canonicalPolicyStage = stageRows.find((row) => String(row && row.stage || "").trim().toUpperCase() === "CANONICAL_POLICY") || {};
-  const inputs = [objectiveSupervisor, governance, changeControl, patchCandidates, ml, ev, wait, canary, stageAutopilot, selfEvolutionCandidatesArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionBundleActivationArtifact, deploymentPlan, loopMonitor, retrospective];
+  const inputs = [objectiveSupervisor, governance, changeControl, patchCandidates, ml, ev, wait, canary, stageAutopilot, selfEvolutionCandidatesArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionBundleActivationArtifact, selfEvolutionOpenclawAutonomyContractArtifact, selfEvolutionObjectiveRecoveryGovernorArtifact, deploymentPlan, loopMonitor, retrospective];
   const reviewReadiness = deriveReviewReadiness({
     changeControl: changeControl.data,
     selfEvolutionCanary: selfEvolutionCanaryData,
@@ -145,6 +150,12 @@ async function main() {
     blockedReason,
   } = reviewReadiness;
   const anyWatchlist = Boolean(patchCandidates.data && Array.isArray(patchCandidates.data.candidates) && patchCandidates.data.candidates.length > 0);
+  const pendingAuthorityClosure = derivePendingAuthorityClosure({
+    deploymentPlan: deploymentPlan.data,
+    autonomyContract: selfEvolutionOpenclawAutonomyContractArtifact.data,
+    recoveryGovernor: selfEvolutionObjectiveRecoveryGovernorArtifact.data,
+    loopMonitor: unwrapRawReport(loopMonitor.data),
+  });
 
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}`;
   const jsonPath = path.join(OPS_DAILY_DIR, `${base}_claude_weekly_patch_engine.json`);
@@ -194,6 +205,34 @@ async function main() {
     return;
   }
 
+  if (pendingAuthorityClosure.applied) {
+    const localPromote = {
+      ...baseReport,
+      status: "LOCAL_PROMOTE",
+      verdict: "PROMOTE",
+      recommended_candidate_id: pendingAuthorityClosure.target_candidate_id,
+      display_candidate_id: candidateDisplayMap.get(String(pendingAuthorityClosure.target_candidate_id || "").trim()) || pendingAuthorityClosure.target_candidate_id,
+      confidence: pendingAuthorityClosure.confidence_floor,
+      reason: "PENDING_AUTHORITY_CLOSURE_PROMOTE",
+      summary: "현재 ACTIVE/PROBE-confirmed recovery target에 대해 external authority pending만 남아 있어 Claude가 bounded closure policy로 승격 승인했습니다.",
+      checks: [
+        `plan_status=${String((unwrapRawReport(deploymentPlan.data) && unwrapRawReport(deploymentPlan.data).summary && unwrapRawReport(deploymentPlan.data).summary.plan_status) || (unwrapRawReport(deploymentPlan.data) && unwrapRawReport(deploymentPlan.data).plan_status) || "N/A")}`,
+        `target=${pendingAuthorityClosure.target_candidate_id || "N/A"} / deploy_unit=${pendingAuthorityClosure.target_deploy_unit || "N/A"}`,
+        ...pendingAuthorityClosure.checks,
+      ],
+      risks: [
+        "Phase D acceptance sample remains short; authority closure does not imply server-primary acceptance is complete.",
+        "Objective remains below target; this approval only closes pending external authority for the already-applied recovery target.",
+      ],
+    };
+    writeJson(jsonPath, wrapDisplayAndRawReport(localPromote));
+    writeText(mdPath, renderMarkdown(localPromote));
+    copyLatest(jsonPath, REPORT_LATEST_JSON);
+    copyLatest(mdPath, REPORT_LATEST_MD);
+    console.log(JSON.stringify({ ok: true, status: localPromote.status, verdict: localPromote.verdict, candidate: localPromote.display_candidate_id || localPromote.recommended_candidate_id }));
+    return;
+  }
+
   if (!(reviewReady || anyWatchlist)) {
     writeJson(jsonPath, wrapDisplayAndRawReport(baseReport));
     writeText(mdPath, renderMarkdown(baseReport));
@@ -232,6 +271,8 @@ async function main() {
     selfEvolutionCanonicalParityDirect: unwrapRawReport(selfEvolutionCanonicalParityArtifact.data),
     selfEvolutionCanonicalProvenanceDirect: unwrapRawReport(selfEvolutionCanonicalProvenanceArtifact.data),
     selfEvolutionServerPrimaryCanaryDirect: unwrapRawReport(selfEvolutionServerPrimaryCanaryArtifact.data),
+    selfEvolutionOpenclawAutonomyContractDirect: unwrapRawReport(selfEvolutionOpenclawAutonomyContractArtifact.data),
+    selfEvolutionObjectiveRecoveryGovernorDirect: unwrapRawReport(selfEvolutionObjectiveRecoveryGovernorArtifact.data),
     deploymentPlan: deploymentPlan.data,
     loopMonitor: unwrapRawReport(loopMonitor.data),
     retrospective: retrospective.data,
@@ -330,6 +371,7 @@ module.exports = {
   main,
   __test: {
     deriveReviewReadiness,
+    derivePendingAuthorityClosure,
     parseClaudeJson,
   },
 };

@@ -28,6 +28,7 @@ const INPUTS = Object.freeze({
   codex: path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.json"),
   claude: path.join(OPS_DAILY_DIR, "claude_weekly_patch_engine_latest.json"),
   deploymentPlan: path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json"),
+  loopMonitor: path.join(OPS_DAILY_DIR, "best_self_evolution_loop_monitor_latest.json"),
   autonomyContract: path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_autonomy_contract_latest.json"),
   objectiveRecoveryGovernor: path.join(OPS_DAILY_DIR, "best_self_evolution_objective_recovery_governor_latest.json"),
 });
@@ -139,6 +140,7 @@ function main() {
   const codexReview = readFreshReview(INPUTS.codex);
   const claudeReview = readFreshReview(INPUTS.claude);
   const deploymentPlan = readJsonRawSafe(INPUTS.deploymentPlan, null);
+  const loopMonitor = readJsonRawSafe(INPUTS.loopMonitor, null);
   const autonomyContract = readJsonRawSafe(INPUTS.autonomyContract, null);
   const objectiveRecoveryGovernor = readJsonRawSafe(INPUTS.objectiveRecoveryGovernor, null);
   const codexHistory = deriveTimeoutStreak(listHistoricalReports(/^\d{4}-\d{2}-\d{2}_\d{4}_codex_weekly_patch_engine\.json$/));
@@ -154,6 +156,8 @@ function main() {
     authorityMode,
     autonomyContract,
     recoveryGovernor: objectiveRecoveryGovernor,
+    deploymentPlan,
+    loopMonitor,
     timeoutContext,
   });
   const reportCycleId = resolveReportCycleId({
@@ -166,6 +170,7 @@ function main() {
   const report = {
     ok: true,
     generated_at_kst: nowMeta.kst,
+    ...derived,
     cycle_id: reportCycleId,
     generation_id: reportCycleId,
     source_cycle_id: String(
@@ -175,7 +180,6 @@ function main() {
     ).trim() || null,
     evaluation_cycle_id: cycleMeta.cycle_id,
     inputs: INPUTS,
-    ...derived,
   };
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}`;
   const jsonPath = path.join(OPS_DAILY_DIR, `${base}_self_evolution_authority.json`);

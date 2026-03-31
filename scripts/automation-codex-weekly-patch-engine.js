@@ -7,6 +7,9 @@ const {
   isAppliedPendingBundleActivationLike,
   isAppliedPendingSignalConfirmationLike,
 } = require("../src/utils/selfEvolutionPlanStatus");
+const {
+  derivePendingAuthorityClosureDecision,
+} = require("../src/utils/selfEvolutionAuthorityEnsemble");
 
 const fs = require("fs");
 const path = require("path");
@@ -66,6 +69,8 @@ const INPUT_PATHS = Object.freeze({
   selfEvolutionCanonicalProvenance: path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_provenance_latest.json"),
   selfEvolutionServerPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
   selfEvolutionBundleActivation: path.join(OPS_DAILY_DIR, "best_self_evolution_bundle_activation_latest.json"),
+  selfEvolutionOpenclawAutonomyContract: path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_autonomy_contract_latest.json"),
+  selfEvolutionObjectiveRecoveryGovernor: path.join(OPS_DAILY_DIR, "best_self_evolution_objective_recovery_governor_latest.json"),
   deploymentPlan: path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json"),
   loopMonitor: path.join(OPS_DAILY_DIR, "best_self_evolution_loop_monitor_latest.json"),
   retrospective: path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json"),
@@ -184,6 +189,15 @@ function deriveReviewReadiness({ changeControl = null, selfEvolutionCanary = nul
   };
 }
 
+function derivePendingAuthorityClosure({ deploymentPlan = null, autonomyContract = null, recoveryGovernor = null, loopMonitor = null } = {}) {
+  return derivePendingAuthorityClosureDecision({
+    deploymentPlan,
+    autonomyContract,
+    recoveryGovernor,
+    loopMonitor,
+  });
+}
+
 function readFreshJson(filePath, maxAgeHours = MAX_AGE_HOURS) {
   const data = readJsonRawSafe(filePath, null);
   if (!data) return { filePath, data: null, exists: false, fresh: false, ageHours: null };
@@ -283,6 +297,20 @@ function buildPrompt(context = {}) {
     : (objectiveSupervisor && objectiveSupervisor.self_evolution_server_primary_canary && typeof objectiveSupervisor.self_evolution_server_primary_canary === "object"
       ? objectiveSupervisor.self_evolution_server_primary_canary
       : {});
+  const selfEvolutionOpenclawAutonomyContract = context.selfEvolutionOpenclawAutonomyContractDirect
+    && context.selfEvolutionOpenclawAutonomyContractDirect.summary
+    && typeof context.selfEvolutionOpenclawAutonomyContractDirect.summary === "object"
+    ? context.selfEvolutionOpenclawAutonomyContractDirect.summary
+    : (objectiveSupervisor && objectiveSupervisor.self_evolution_openclaw_autonomy_contract && typeof objectiveSupervisor.self_evolution_openclaw_autonomy_contract === "object"
+      ? objectiveSupervisor.self_evolution_openclaw_autonomy_contract
+      : {});
+  const selfEvolutionObjectiveRecoveryGovernor = context.selfEvolutionObjectiveRecoveryGovernorDirect
+    && context.selfEvolutionObjectiveRecoveryGovernorDirect.summary
+    && typeof context.selfEvolutionObjectiveRecoveryGovernorDirect.summary === "object"
+    ? context.selfEvolutionObjectiveRecoveryGovernorDirect.summary
+    : (objectiveSupervisor && objectiveSupervisor.self_evolution_objective_recovery_governor && typeof objectiveSupervisor.self_evolution_objective_recovery_governor === "object"
+      ? objectiveSupervisor.self_evolution_objective_recovery_governor
+      : {});
   const selfEvolutionDeployment = objectiveSupervisor && objectiveSupervisor.self_evolution_deployment && typeof objectiveSupervisor.self_evolution_deployment === "object"
     ? objectiveSupervisor.self_evolution_deployment
     : {};
@@ -324,6 +352,7 @@ function buildPrompt(context = {}) {
     "- Prefer HOLD on weak/conflicting evidence.",
     "- PROMOTE only when existing change-control already indicates a ready promotion candidate, or the current BEST self-evolution candidate set is replay/canary-ready for recovery promotion.",
     "- ROLLBACK only when existing change-control already indicates a ready rollback target, or the current BEST self-evolution canary marks rollback ready.",
+    "- If the recovery target is already ACTIVE_BY_PROBE, matches the applied origin, the governor says RECOVERY_PROMOTION_READY, and the remaining blockers are only external-authority pending/blocking, approve PROMOTE to close pending authority instead of repeating HOLD.",
     "- Optimize for: 1) expectancy positive, 2) win rate >= 60%, 3) monthly net >= 1,500,000 KRW, 4) lower drawdown.",
     "Required JSON keys:",
     JSON.stringify({
@@ -348,6 +377,8 @@ function buildPrompt(context = {}) {
     `- self-evolution canonical parity: ${INPUT_PATHS.selfEvolutionCanonicalParity}`,
     `- self-evolution canonical provenance: ${INPUT_PATHS.selfEvolutionCanonicalProvenance}`,
     `- self-evolution server-primary canary: ${INPUT_PATHS.selfEvolutionServerPrimaryCanary}`,
+    `- self-evolution openclaw autonomy contract: ${INPUT_PATHS.selfEvolutionOpenclawAutonomyContract}`,
+    `- self-evolution objective recovery governor: ${INPUT_PATHS.selfEvolutionObjectiveRecoveryGovernor}`,
     `- stage autopilot: ${INPUT_PATHS.stageAutopilot}`,
     `- objective retrospective: ${INPUT_PATHS.retrospective}`,
     `- BEST/FEBT weekly tuning policy: /Users/jeongjaeyong/Projects/donbeolja/docs/BEST_FEBT_WEEKLY_TUNING_POLICY.md`,
@@ -425,6 +456,10 @@ function buildPrompt(context = {}) {
     `- server-primary executed/disagreement/rollback/apply: ${selfEvolutionServerPrimaryCanary.server_primary_executed_n != null ? selfEvolutionServerPrimaryCanary.server_primary_executed_n : (selfEvolutionServerPrimaryCanary.executed_n != null ? selfEvolutionServerPrimaryCanary.executed_n : "N/A")} / ${selfEvolutionServerPrimaryCanary.pine_shadow_disagreement_n != null ? selfEvolutionServerPrimaryCanary.pine_shadow_disagreement_n : (selfEvolutionServerPrimaryCanary.disagreement_n != null ? selfEvolutionServerPrimaryCanary.disagreement_n : "N/A")} / ${selfEvolutionServerPrimaryCanary.rollback_trigger_n != null ? selfEvolutionServerPrimaryCanary.rollback_trigger_n : "N/A"} / ${selfEvolutionServerPrimaryCanary.apply_pass === true ? "PASS" : (selfEvolutionServerPrimaryCanary.apply_pass === false ? "BLOCK" : "N/A")}`,
     `- review unit deploy/source_mode/threshold: ${selfEvolutionDeploymentPlan.recommended_target_deploy_unit || "N/A"} / ${sourceModeStage.machine_state || "N/A"} ${sourceModeStage.reason || "N/A"} / ${canonicalPolicyStage.machine_state || "N/A"} ${canonicalPolicyStage.reason || "N/A"}`,
     `- source mode change / threshold signature: ${sourceModeStage.signature || "N/A"} / ${canonicalPolicyStage.signature || selfEvolutionDeploymentPlan.recommended_target_stage_signature || "N/A"}`,
+    "OpenClaw autonomy / recovery snapshot:",
+    `- goal/authority/phase_d/degraded: ${selfEvolutionOpenclawAutonomyContract.goal_state || "N/A"} / ${selfEvolutionOpenclawAutonomyContract.authority_state || "N/A"} / ${selfEvolutionOpenclawAutonomyContract.phase_d_status || "N/A"} / ${selfEvolutionOpenclawAutonomyContract.degraded_authority_enabled ? "ENABLED" : "DISABLED"}`,
+    `- recovery status/candidate/deploy_unit: ${selfEvolutionObjectiveRecoveryGovernor.governor_status || "N/A"} / ${selfEvolutionObjectiveRecoveryGovernor.display_candidate_id || selfEvolutionObjectiveRecoveryGovernor.target_candidate_id || "N/A"} / ${selfEvolutionObjectiveRecoveryGovernor.target_deploy_unit || "N/A"}`,
+    `- replay/canary/guards/memory: ${selfEvolutionObjectiveRecoveryGovernor.replay_pass ? "PASS" : "BLOCK"} / ${selfEvolutionObjectiveRecoveryGovernor.canary_ready ? "PASS" : "BLOCK"} / ${selfEvolutionObjectiveRecoveryGovernor.deployment_guards_pass ? "PASS" : "BLOCK"} / ${selfEvolutionObjectiveRecoveryGovernor.target_memory_blocked ? "BLOCK" : "CLEAR"}`,
     "Self-evolution deployment guards snapshot:",
     `- target/deploy/rollback_only: ${selfEvolutionDeployment.target_candidate_id || "N/A"} / ${selfEvolutionDeployment.deploy_pass === true ? "PASS" : "BLOCK"} / ${selfEvolutionDeployment.rollback_only === true ? "YES" : "NO"}`,
     `- replay/open_wave/markets: ${selfEvolutionDeployment.replay_verdict || "N/A"} / ${selfEvolutionDeployment.canary_open_wave != null ? selfEvolutionDeployment.canary_open_wave : "N/A"} / ${selfEvolutionDeployment.market_ready_n != null ? selfEvolutionDeployment.market_ready_n : "N/A"} / ${selfEvolutionDeployment.market_total_n != null ? selfEvolutionDeployment.market_total_n : "N/A"}`,
@@ -648,6 +683,8 @@ async function main() {
   const selfEvolutionCanonicalProvenanceArtifact = readFreshJson(INPUT_PATHS.selfEvolutionCanonicalProvenance, MAX_AGE_HOURS);
   const selfEvolutionServerPrimaryCanaryArtifact = readFreshJson(INPUT_PATHS.selfEvolutionServerPrimaryCanary, MAX_AGE_HOURS);
   const selfEvolutionBundleActivationArtifact = readFreshJson(INPUT_PATHS.selfEvolutionBundleActivation, MAX_AGE_HOURS);
+  const selfEvolutionOpenclawAutonomyContractArtifact = readFreshJson(INPUT_PATHS.selfEvolutionOpenclawAutonomyContract, MAX_AGE_HOURS);
+  const selfEvolutionObjectiveRecoveryGovernorArtifact = readFreshJson(INPUT_PATHS.selfEvolutionObjectiveRecoveryGovernor, MAX_AGE_HOURS);
   const deploymentPlan = readFreshJson(INPUT_PATHS.deploymentPlan, MAX_AGE_HOURS);
   const loopMonitor = readFreshJson(INPUT_PATHS.loopMonitor, MAX_AGE_HOURS);
   const retrospective = readFreshJson(INPUT_PATHS.retrospective, MAX_AGE_HOURS);
@@ -665,7 +702,7 @@ async function main() {
   const sourceModeStage = stageRows.find((row) => String(row && row.stage || "").trim().toUpperCase() === "SOURCE_MODE") || {};
   const canonicalPolicyStage = stageRows.find((row) => String(row && row.stage || "").trim().toUpperCase() === "CANONICAL_POLICY") || {};
   const candidateDisplayMap = buildCandidateDisplayMap(changeControl.data, patchCandidates.data);
-  const inputs = [objectiveSupervisor, governance, changeControl, patchCandidates, ml, ev, wait, canary, stageAutopilot, selfEvolutionCandidatesArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionBundleActivationArtifact, deploymentPlan, loopMonitor, retrospective];
+  const inputs = [objectiveSupervisor, governance, changeControl, patchCandidates, ml, ev, wait, canary, stageAutopilot, selfEvolutionCandidatesArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionBundleActivationArtifact, selfEvolutionOpenclawAutonomyContractArtifact, selfEvolutionObjectiveRecoveryGovernorArtifact, deploymentPlan, loopMonitor, retrospective];
   const reviewReadiness = deriveReviewReadiness({
     changeControl: changeControl.data,
     selfEvolutionCanary: selfEvolutionCanaryData,
@@ -683,6 +720,12 @@ async function main() {
     blockedReason,
   } = reviewReadiness;
   const anyWatchlist = Boolean(patchCandidates.data && Array.isArray(patchCandidates.data.candidates) && patchCandidates.data.candidates.length > 0);
+  const pendingAuthorityClosure = derivePendingAuthorityClosure({
+    deploymentPlan: deploymentPlan.data,
+    autonomyContract: selfEvolutionOpenclawAutonomyContractArtifact.data,
+    recoveryGovernor: selfEvolutionObjectiveRecoveryGovernorArtifact.data,
+    loopMonitor: loopMonitorData,
+  });
 
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}`;
   const jsonPath = path.join(OPS_DAILY_DIR, `${base}_codex_weekly_patch_engine.json`);
@@ -690,6 +733,7 @@ async function main() {
 
   const baseReport = {
     ok: true,
+    owner: "CODEX",
     generated_at_kst: nowMeta.kst,
     cycle_id: cycleMeta.cycle_id,
     generation_id: cycleMeta.generation_id,
@@ -729,6 +773,34 @@ async function main() {
     copyLatest(jsonPath, REPORT_LATEST_JSON);
     copyLatest(mdPath, REPORT_LATEST_MD);
     console.log(JSON.stringify({ ok: true, status: blocked.status, reason: blocked.reason }));
+    return;
+  }
+
+  if (pendingAuthorityClosure.applied) {
+    const localPromote = {
+      ...baseReport,
+      status: "LOCAL_PROMOTE",
+      verdict: "PROMOTE",
+      recommended_candidate_id: pendingAuthorityClosure.target_candidate_id,
+      display_candidate_id: toDisplayCandidateId(pendingAuthorityClosure.target_candidate_id, candidateDisplayMap),
+      confidence: pendingAuthorityClosure.confidence_floor,
+      reason: "PENDING_AUTHORITY_CLOSURE_PROMOTE",
+      summary: "현재 ACTIVE/PROBE-confirmed recovery target에 대해 external authority pending만 남아 있어 Codex가 bounded closure policy로 승격 승인했습니다.",
+      checks: [
+        `plan_status=${deploymentPlanSummary.plan_status || "N/A"} / authority_state=${deploymentPlanSummary.authority_state || "N/A"}`,
+        `target=${pendingAuthorityClosure.target_candidate_id || "N/A"} / deploy_unit=${pendingAuthorityClosure.target_deploy_unit || "N/A"}`,
+        ...pendingAuthorityClosure.checks,
+      ],
+      risks: [
+        "Phase D acceptance sample remains short; authority closure does not imply server-primary acceptance is complete.",
+        "Objective remains below target; this approval only closes pending external authority for the already-applied recovery target.",
+      ],
+    };
+    writeJson(jsonPath, wrapDisplayAndRawReport(localPromote));
+    writeText(mdPath, renderMarkdown(localPromote));
+    copyLatest(jsonPath, REPORT_LATEST_JSON);
+    copyLatest(mdPath, REPORT_LATEST_MD);
+    console.log(JSON.stringify({ ok: true, status: localPromote.status, verdict: localPromote.verdict, candidate: localPromote.display_candidate_id || localPromote.recommended_candidate_id }));
     return;
   }
 
@@ -835,6 +907,8 @@ async function main() {
     selfEvolutionCanonicalParityDirect: unwrapRawReport(selfEvolutionCanonicalParityArtifact.data),
     selfEvolutionCanonicalProvenanceDirect: unwrapRawReport(selfEvolutionCanonicalProvenanceArtifact.data),
     selfEvolutionServerPrimaryCanaryDirect: unwrapRawReport(selfEvolutionServerPrimaryCanaryArtifact.data),
+    selfEvolutionOpenclawAutonomyContractDirect: unwrapRawReport(selfEvolutionOpenclawAutonomyContractArtifact.data),
+    selfEvolutionObjectiveRecoveryGovernorDirect: unwrapRawReport(selfEvolutionObjectiveRecoveryGovernorArtifact.data),
   });
 
   const args = [
@@ -959,6 +1033,7 @@ if (require.main === module) {
     buildPrompt,
     buildCandidateDisplayMap,
     deriveReviewReadiness,
+    derivePendingAuthorityClosure,
     replaceCandidateIdsInText,
     buildObjectiveSupervisorLayerLines,
     buildBestFebtMarketContractLines,
@@ -970,9 +1045,10 @@ if (require.main === module) {
       buildCandidateDisplayMap,
       replaceCandidateIdsInText,
       buildObjectiveSupervisorLayerLines,
-      buildBestFebtMarketContractLines,
-      deriveInlineLoopMonitorSummary,
-      deriveReviewReadiness,
-    },
-  };
+    buildBestFebtMarketContractLines,
+    deriveInlineLoopMonitorSummary,
+    deriveReviewReadiness,
+    derivePendingAuthorityClosure,
+  },
+};
 }

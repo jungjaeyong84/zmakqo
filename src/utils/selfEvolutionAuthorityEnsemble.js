@@ -1,5 +1,7 @@
 "use strict";
 
+const { isPendingAuthorityPlanStatus } = require("./selfEvolutionPlanStatus");
+
 function unwrapRawReport(value) {
   if (!value || typeof value !== "object") return value || null;
   if (value.raw && typeof value.raw === "object") return value.raw;
@@ -11,6 +13,11 @@ function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function readSummary(value) {
+  const raw = unwrapRawReport(value) || {};
+  return raw.summary && typeof raw.summary === "object" ? raw.summary : raw;
 }
 
 function normalizeReview(input = null, fallbackOwner = "CODEX") {
@@ -43,6 +50,118 @@ function isTimeoutHoldReview(review = null) {
   const status = String(normalized.status || "").trim().toUpperCase();
   const reason = String(normalized.reason || "").trim().toUpperCase();
   return normalized.verdict === "HOLD" && (status.includes("TIMEOUT") || reason.includes("TIMEOUT"));
+}
+
+function derivePendingAuthorityClosureDecision({
+  deploymentPlan = null,
+  autonomyContract = null,
+  recoveryGovernor = null,
+  loopMonitor = null,
+} = {}) {
+  const planSummary = readSummary(deploymentPlan);
+  const contract = unwrapRawReport(autonomyContract) || {};
+  const contractSummary = readSummary(contract);
+  const contractStatus = contract.current_status && typeof contract.current_status === "object" ? contract.current_status : {};
+  const governorSummary = readSummary(recoveryGovernor);
+  const loopSummary = readSummary(loopMonitor);
+  const degradedPolicy = contract.authority_policy && contract.authority_policy.degraded_timeout_policy && typeof contract.authority_policy.degraded_timeout_policy === "object"
+    ? contract.authority_policy.degraded_timeout_policy
+    : {};
+  const planStatus = String(planSummary.plan_status || "").trim().toUpperCase();
+  const authorityPending = Boolean(
+    planSummary.external_authority_pending === true
+    || String(planSummary.authority_state || "").trim().toUpperCase() === "PENDING"
+    || isPendingAuthorityPlanStatus(planStatus)
+  );
+  const activationReady = planSummary.activation_confirmed === true
+    && planSummary.activation_pending !== true
+    && planSummary.engine_bundle_loaded === true
+    && planSummary.policy_bundle_loaded === true
+    && planSummary.probe_pass === true;
+  const targetCandidateId = String(
+    governorSummary.target_candidate_id
+    || governorSummary.display_candidate_id
+    || planSummary.recommended_target_candidate_id
+    || planSummary.target_candidate_id
+    || ""
+  ).trim() || null;
+  const appliedOriginCandidateId = String(planSummary.applied_origin_candidate_id || "").trim() || null;
+  const targetMatchesApplied = Boolean(targetCandidateId && appliedOriginCandidateId && targetCandidateId === appliedOriginCandidateId);
+  const targetDeployUnit = String(
+    governorSummary.target_deploy_unit
+    || planSummary.recommended_target_deploy_unit
+    || ""
+  ).trim().toUpperCase() || null;
+  const allowedUnits = Array.isArray(degradedPolicy.allow_target_deploy_units)
+    ? degradedPolicy.allow_target_deploy_units.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean)
+    : [];
+  const targetAllowed = !allowedUnits.length || allowedUnits.includes(targetDeployUnit);
+  const governorEligible = governorSummary.degraded_authority_eligible === true
+    && String(governorSummary.governor_status || "").trim().toUpperCase() === "RECOVERY_PROMOTION_READY"
+    && governorSummary.replay_pass === true
+    && governorSummary.canary_ready === true
+    && governorSummary.deployment_guards_pass === true
+    && governorSummary.target_memory_blocked !== true;
+  const opsHealthy = contractStatus.ops_healthy === true
+    || String(contractSummary.ops_status || "").trim().toUpperCase() === "PASS";
+  const cycleConsistent = loopSummary.cycle_consistent !== false;
+  const blockers = Array.isArray(loopSummary.critical_blockers)
+    ? loopSummary.critical_blockers.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean)
+    : [];
+  const allowedAuthorityBlockers = new Set([
+    "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK",
+    "EXTERNAL_AUTHORITY_BLOCK_PROMOTION",
+    "SELF_EVOLUTION_EXTERNAL_AUTHORITY_PENDING",
+  ]);
+  const nonAuthorityBlockers = blockers.filter((item) => !allowedAuthorityBlockers.has(item));
+  const confidenceFloor = Math.max(0.35, Math.min(0.75, toNum(degradedPolicy.confidence_floor) || 0.51));
+
+  let eligible = false;
+  let reason = "PENDING_AUTHORITY_NOT_REQUIRED";
+  if (!authorityPending) {
+    reason = "PENDING_AUTHORITY_NOT_REQUIRED";
+  } else if (!activationReady) {
+    reason = "PENDING_AUTHORITY_BUNDLE_NOT_ACTIVE";
+  } else if (!governorEligible) {
+    reason = String(governorSummary.governor_reason || governorSummary.governor_status || "RECOVERY_GOVERNOR_NOT_READY").trim().toUpperCase() || "RECOVERY_GOVERNOR_NOT_READY";
+  } else if (!targetCandidateId) {
+    reason = "PENDING_AUTHORITY_TARGET_MISSING";
+  } else if (!targetMatchesApplied) {
+    reason = "PENDING_AUTHORITY_TARGET_NOT_APPLIED";
+  } else if (!targetAllowed) {
+    reason = `PENDING_AUTHORITY_TARGET_UNIT_BLOCKED:${targetDeployUnit || "N/A"}`;
+  } else if (!opsHealthy) {
+    reason = "PENDING_AUTHORITY_OPENCLAW_OPS_UNHEALTHY";
+  } else if (!cycleConsistent) {
+    reason = "PENDING_AUTHORITY_CYCLE_MISMATCH";
+  } else if (nonAuthorityBlockers.length) {
+    reason = `PENDING_AUTHORITY_NON_AUTHORITY_BLOCKERS:${nonAuthorityBlockers.join("|")}`;
+  } else {
+    eligible = true;
+    reason = "PENDING_AUTHORITY_CLOSURE_READY";
+  }
+
+  return {
+    enabled: degradedPolicy.enabled === true,
+    eligible,
+    applied: eligible,
+    reason,
+    target_candidate_id: targetCandidateId,
+    target_deploy_unit: targetDeployUnit,
+    confidence_floor: confidenceFloor,
+    non_authority_blockers: nonAuthorityBlockers,
+    authority_pending: authorityPending,
+    activation_ready: activationReady,
+    target_matches_applied: targetMatchesApplied,
+    governor_status: String(governorSummary.governor_status || "").trim().toUpperCase() || null,
+    checks: [
+      `authority_pending=${authorityPending ? "YES" : "NO"}`,
+      `activation_ready=${activationReady ? "YES" : "NO"}`,
+      `target=${targetCandidateId || "N/A"} / applied=${appliedOriginCandidateId || "N/A"}`,
+      `governor=${governorSummary.governor_status || "N/A"} / eligible=${governorEligible ? "YES" : "NO"}`,
+      `blockers=${blockers.length ? blockers.join("|") : "none"}`,
+    ],
+  };
 }
 
 function deriveDegradedAuthorityDecision({
@@ -114,6 +233,8 @@ function deriveAuthorityEnsemble({
   authorityMode = "CODEX_CLAUDE_ENSEMBLE",
   autonomyContract = null,
   recoveryGovernor = null,
+  deploymentPlan = null,
+  loopMonitor = null,
   timeoutContext = null,
 } = {}) {
   const mode = String(authorityMode || "CODEX_CLAUDE_ENSEMBLE").trim().toUpperCase() || "CODEX_CLAUDE_ENSEMBLE";
@@ -133,8 +254,15 @@ function deriveAuthorityEnsemble({
     recoveryGovernor,
     timeoutContext,
   });
+  const pendingAuthorityClosure = derivePendingAuthorityClosureDecision({
+    deploymentPlan,
+    autonomyContract,
+    recoveryGovernor,
+    loopMonitor,
+  });
   checks.push(`timeout_streak_min=${degradedDecision.timeout_streak_min}`);
   checks.push(`degraded_authority=${degradedDecision.enabled ? (degradedDecision.eligible ? "READY" : degradedDecision.reason) : "DISABLED"}`);
+  checks.push(`pending_authority_closure=${pendingAuthorityClosure.eligible ? "READY" : pendingAuthorityClosure.reason}`);
 
   let owner = "CODEX";
   let status = codex.status;
@@ -180,6 +308,15 @@ function deriveAuthorityEnsemble({
           reason = `DEGRADED_TIMEOUT_PROMOTE:${degradedDecision.reason}`;
           summary = "외부 권위 timeout이 반복되어 bounded degraded authority policy로 recovery candidate를 승격했습니다.";
           risks.push("Degraded authority policy promoted a bounded recovery candidate after repeated timeout holds.");
+        } else if (pendingAuthorityClosure.applied) {
+          verdict = "PROMOTE";
+          recommendedCandidateId = pendingAuthorityClosure.target_candidate_id;
+          displayCandidateId = pendingAuthorityClosure.target_candidate_id;
+          recommendedRollbackFilePath = null;
+          confidence = pendingAuthorityClosure.confidence_floor;
+          reason = `PENDING_AUTHORITY_CLOSURE_PROMOTE:${pendingAuthorityClosure.reason}`;
+          summary = "이미 ACTIVE/PROBE-confirmed 된 recovery target에 대해 external authority pending만 남아 있어 bounded closure policy로 승격 승인했습니다.";
+          risks.push("Authority closure policy approved the already-applied recovery target to resolve pending external authority.");
         } else {
           verdict = codex.verdict;
           recommendedCandidateId = codex.recommended_candidate_id || claude.recommended_candidate_id;
@@ -234,6 +371,9 @@ function deriveAuthorityEnsemble({
     degraded_authority_eligible: degradedDecision.eligible,
     degraded_authority_applied: degradedDecision.applied,
     degraded_authority_reason: degradedDecision.reason,
+    pending_authority_closure_eligible: pendingAuthorityClosure.eligible,
+    pending_authority_closure_applied: pendingAuthorityClosure.applied,
+    pending_authority_closure_reason: pendingAuthorityClosure.reason,
     timeout_streak_min: degradedDecision.timeout_streak_min,
     timeout_context: timeoutContext || null,
     review_unit: codex.review_unit || claude.review_unit || null,
@@ -249,5 +389,6 @@ module.exports = {
   unwrapRawReport,
   normalizeReview,
   isTimeoutHoldReview,
+  derivePendingAuthorityClosureDecision,
   deriveAuthorityEnsemble,
 };

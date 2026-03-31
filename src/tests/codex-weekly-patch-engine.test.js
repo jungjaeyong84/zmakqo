@@ -194,6 +194,8 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.ok(prompt.includes("BEST self-evolution deployment plan spec"));
   assert.ok(prompt.includes("BEST self-evolution loop monitor spec"));
   assert.ok(prompt.includes("BEST self-evolution weight tuning spec"));
+  assert.ok(prompt.includes("self-evolution openclaw autonomy contract"));
+  assert.ok(prompt.includes("self-evolution objective recovery governor"));
   assert.ok(prompt.includes("Self-evolution objective snapshot:"));
   assert.ok(prompt.includes("objective score: 3.2145"));
   assert.ok(prompt.includes("constraints count/replacement/latency: FAIL / PASS / PASS"));
@@ -267,6 +269,58 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.strictEqual(activeByBundle.pendingSignalConfirmation, false);
   assert.strictEqual(activeByBundle.reviewReady, true);
   assert.strictEqual(activeByBundle.blockedReason, null);
+
+  const pendingAuthorityClosure = __test.derivePendingAuthorityClosure({
+    deploymentPlan: {
+      summary: {
+        plan_status: "APPLIED_ACTIVE_PENDING_AUTHORITY",
+        external_authority_pending: true,
+        authority_state: "PENDING",
+        activation_confirmed: true,
+        activation_pending: false,
+        engine_bundle_loaded: true,
+        policy_bundle_loaded: true,
+        probe_pass: true,
+        applied_origin_candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN",
+        recommended_target_candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN",
+      },
+    },
+    autonomyContract: {
+      current_status: { ops_healthy: true },
+      summary: { ops_status: "PASS" },
+      authority_policy: {
+        degraded_timeout_policy: {
+          enabled: true,
+          allow_target_deploy_units: ["SERVER_SETTINGS", "ENGINE_POLICY_BUNDLE"],
+          confidence_floor: 0.51,
+        },
+      },
+    },
+    recoveryGovernor: {
+      summary: {
+        target_candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN",
+        target_deploy_unit: "SERVER_SETTINGS",
+        governor_status: "RECOVERY_PROMOTION_READY",
+        degraded_authority_eligible: true,
+        replay_pass: true,
+        canary_ready: true,
+        deployment_guards_pass: true,
+        target_memory_blocked: false,
+      },
+    },
+    loopMonitor: {
+      summary: {
+        cycle_consistent: true,
+        critical_blockers: [
+          "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK",
+          "SELF_EVOLUTION_EXTERNAL_AUTHORITY_PENDING",
+        ],
+      },
+    },
+  });
+  assert.strictEqual(pendingAuthorityClosure.applied, true);
+  assert.strictEqual(pendingAuthorityClosure.reason, "PENDING_AUTHORITY_CLOSURE_READY");
+  assert.strictEqual(pendingAuthorityClosure.target_candidate_id, "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN");
 
   const inlineLoopMonitor = __test.deriveInlineLoopMonitorSummary(
     {

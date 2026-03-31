@@ -38,6 +38,7 @@ const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
 const { resolveMarketStateSummary } = require("../src/utils/marketStateSummary");
 const { resolveStatPhysFeatures } = require("../src/utils/statPhysFeatures");
 const { normalizePreparedOverride } = require("../src/utils/selfEvolutionPreparedOverride");
+const { normalizePlanStatus } = require("../src/utils/selfEvolutionPlanStatus");
 const { resolveSelfEvolutionRuntimeState } = require("../src/utils/selfEvolutionRuntimeState");
 
 loadLocalEnv();
@@ -781,6 +782,11 @@ function summarizeSelfEvolutionDeploymentPlan(report = null) {
       ? summary.shadow_pine
       : null,
     codex_verdict: String(summary.codex_verdict || "").trim().toUpperCase() || null,
+    authority_required: summary.authority_required === true,
+    authority_approved: summary.authority_approved === true,
+    authority_state: String(summary.authority_state || "").trim().toUpperCase() || null,
+    external_authority_pending: summary.external_authority_pending === true,
+    authority_bypass_active: summary.authority_bypass_active === true,
     blockers: Array.isArray(summary.blockers) ? summary.blockers : [],
     next_actions: Array.isArray(summary.next_actions) ? summary.next_actions : [],
     rows,
@@ -1798,10 +1804,30 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   const promotionObjectiveBlockReason = effectivePromotion && effectivePromotion.recovery_mode === true && recoveryModeObjectiveBypassReasons.has(objectiveBlockReason)
     ? null
     : objectiveBlockReason;
+  const normalizedDeploymentPlanStatus = normalizePlanStatus(selfEvolutionDeploymentPlanSummary.plan_status);
+  const recoveryPromotionActiveApproved = Boolean(
+    effectivePromotion
+    && effectivePromotion.ready === true
+    && effectivePromotion.recovery_mode === true
+    && codex
+    && codexFresh
+    && codexVerdict === "PROMOTE"
+    && selfEvolutionDeploymentPlanSummary.authority_approved === true
+    && selfEvolutionDeploymentPlanSummary.external_authority_pending !== true
+    && normalizedDeploymentPlanStatus === "APPLIED_ACTIVE"
+    && (
+      !promotionCandidateId
+      || !selfEvolutionDeploymentPlanSummary.target_candidate_id
+      || selfEvolutionDeploymentPlanSummary.target_candidate_id === promotionCandidateId
+    )
+  );
 
   let verdict = "HOLD";
   let reason = "NO_ACTION_READY";
-  if (rollback && rollback.ready === true) {
+  if (recoveryPromotionActiveApproved) {
+    verdict = "HOLD";
+    reason = objectiveBlockReason || "OBJECTIVE_RECOVERY_ACTIVE";
+  } else if (rollback && rollback.ready === true) {
     if (selfEvolutionDeploymentPlanSummary.activation_pending === true) {
       verdict = "HOLD";
       reason = "SELF_EVOLUTION_BUNDLE_ACTIVATION_PENDING";
@@ -2537,7 +2563,8 @@ async function main() {
   writeText(mdPath, renderMarkdown(report));
   copyLatest(jsonPath, REPORT_LATEST_JSON);
   copyLatest(mdPath, REPORT_LATEST_MD);
-  if (selfEvolutionStage !== "STANDALONE") {
+  const selfEvolutionScoped = /^best_self_evolution_/i.test(String(reportCycleId || "").trim()) || selfEvolutionStage !== "STANDALONE";
+  if (selfEvolutionScoped) {
     copySelfEvolutionLatest(jsonPath, SELF_EVOLUTION_REPORT_LATEST_JSON);
     copySelfEvolutionLatest(mdPath, SELF_EVOLUTION_REPORT_LATEST_MD);
   }
