@@ -103,6 +103,38 @@ function buildRowsPreview(rows, mapper, limit = 5) {
   return rows.slice(0, Math.max(0, limit)).map(mapper).filter(Boolean);
 }
 
+function buildUrl(basePath, params = {}) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value == null || value === "") return;
+    qs.set(key, String(value));
+  });
+  const query = qs.toString();
+  return query ? `${basePath}?${query}` : basePath;
+}
+
+function buildLink(label, href) {
+  if (!href) return label || "-";
+  return { label: label || href, href };
+}
+
+function buildReportUrl(market) {
+  return buildUrl("/dashboard/report", { mode: "weekly", market });
+}
+
+function buildAuditUrl(params = {}) {
+  return buildUrl("/dashboard/audit", params);
+}
+
+function buildLoopHref(loopName) {
+  const loop = String(loopName || "").toUpperCase();
+  if (loop.includes("SERVER_PRIMARY")) return "/dashboard/server-primary";
+  if (loop.includes("DEPLOYMENT") || loop.includes("BUNDLE_ACTIVATION") || loop.includes("PROBE")) return "/dashboard/deployment";
+  if (loop.includes("RECOVERY") || loop.includes("CANDIDATE") || loop.includes("CANARY") || loop.includes("AUTHORITY")) return "/dashboard/recovery";
+  if (loop.includes("PARITY") || loop.includes("PROVENANCE") || loop.includes("EXECUTION")) return "/dashboard/execution";
+  return "/dashboard/audit";
+}
+
 function pickStageRow(stageArtifact, stageName) {
   const target = String(stageName || "").toUpperCase();
   return (stageArtifact.rows || []).find((row) => {
@@ -429,8 +461,12 @@ function buildRecoveryViewModel() {
                 { key: "executed", label: "Executed" },
                 { key: "realized", label: "Realized" },
                 { key: "win_rate", label: "Win Rate" },
+                { key: "open", label: "Open" },
               ],
-              rows: buildMarketImpactRows(targetValidation),
+              rows: buildMarketImpactRows(targetValidation).map((row) => ({
+                ...row,
+                open: buildLink("Report", buildReportUrl(row.market)),
+              })),
             } : null,
           },
           {
@@ -449,6 +485,7 @@ function buildRecoveryViewModel() {
                 { key: "candidate", label: "Candidate" },
                 { key: "verdict", label: "Verdict" },
                 { key: "blockers", label: "Blockers" },
+                { key: "open", label: "Open" },
               ],
               rows: buildRowsPreview(canary.rows, (row) => ({
                 market: compactText(row.market),
@@ -456,6 +493,7 @@ function buildRecoveryViewModel() {
                 candidate: compactText(row.candidate_id),
                 verdict: compactText(row.canary_verdict),
                 blockers: joinList(row.blockers, "-"),
+                open: buildLink("Report", buildReportUrl(row.market)),
               }), 5),
             },
           },
@@ -475,6 +513,7 @@ function buildRecoveryViewModel() {
                 { key: "candidate", label: "Candidate" },
                 { key: "deploy", label: "Deploy" },
                 { key: "blockers", label: "Blockers" },
+                { key: "open", label: "Open" },
               ],
               rows: buildRowsPreview(deploymentGuards.rows, (row) => ({
                 market: compactText(row.market),
@@ -482,6 +521,7 @@ function buildRecoveryViewModel() {
                 candidate: compactText(row.candidate_id),
                 deploy: row.deploy_pass ? "PASS" : "HOLD",
                 blockers: joinList(row.blockers, "-"),
+                open: buildLink("Report", buildReportUrl(row.market)),
               }), 6),
             },
           },
@@ -599,7 +639,7 @@ function buildDeploymentViewModel() {
   };
 }
 
-function buildExecutionViewModel() {
+function buildExecutionViewModel(query = {}) {
   const parity = loadLatestArtifact("best_self_evolution_canonical_engine_parity_latest.json");
   const provenance = loadLatestArtifact("best_self_evolution_canonical_engine_provenance_latest.json");
   const stageAutopilot = loadLatestArtifact("stage_autopilot_latest.json");
@@ -607,6 +647,8 @@ function buildExecutionViewModel() {
   const canonicalPolicyRow = pickStageRow(stageAutopilot, "CANONICAL_POLICY");
   const paritySummary = parity.summary;
   const provenanceSummary = provenance.summary;
+  const focusedCollection = String(query.collection || "").trim();
+  const focusedSource = String(query.source || "").trim();
   return {
     active: "execution",
     title: "Execution",
@@ -674,6 +716,7 @@ function buildExecutionViewModel() {
                 { key: "complete", label: "Complete" },
                 { key: "source", label: "Source" },
                 { key: "overlay", label: "Overlay" },
+                { key: "open", label: "Open" },
               ],
               rows: buildRowsPreview(provenanceSummary.by_collection, (row) => ({
                 collection: compactText(row.collection),
@@ -681,8 +724,13 @@ function buildExecutionViewModel() {
                 complete: numberText(row.complete_n, 0),
                 source: numberText(row.with_execution_source_n, 0),
                 overlay: numberText(row.with_pine_overlay_role_n, 0),
+                open: buildLink("Audit", buildAuditUrl({ focus: "provenance", collection: row.collection })),
               }), 4),
             },
+            notes: [
+              focusedCollection ? `focused collection: ${focusedCollection}` : null,
+              focusedSource ? `focused source: ${focusedSource}` : null,
+            ].filter(Boolean),
           },
         ],
       },
@@ -701,6 +749,7 @@ function buildExecutionViewModel() {
                 { key: "match", label: "Match" },
                 { key: "mismatch", label: "Mismatch" },
                 { key: "rate", label: "Parity" },
+                { key: "open", label: "Open" },
               ],
               rows: buildRowsPreview(paritySummary.by_market_parity, (row) => ({
                 market: compactText(row.key),
@@ -708,6 +757,7 @@ function buildExecutionViewModel() {
                 match: numberText(row.match_n, 0),
                 mismatch: numberText(row.mismatch_n, 0),
                 rate: toDisplayPercent(row.parity_rate, 0),
+                open: buildLink("Report", buildReportUrl(row.key)),
               }), 6),
             },
           },
@@ -718,10 +768,15 @@ function buildExecutionViewModel() {
               columns: [
                 { key: "key", label: "Source" },
                 { key: "count", label: "Count" },
+                { key: "open", label: "Open" },
               ],
               rows: buildRowsPreview(provenanceSummary.by_execution_source, (row) => ({
                 key: compactText(row.key),
                 count: numberText(row.count, 0),
+                open: buildLink(
+                  row.key === "SERVER_PRIMARY" ? "Phase D" : "Audit",
+                  row.key === "SERVER_PRIMARY" ? "/dashboard/server-primary" : buildAuditUrl({ focus: "execution-source", source: row.key }),
+                ),
               }), 6),
             },
           },
@@ -789,11 +844,14 @@ function buildServerPrimaryViewModel() {
   };
 }
 
-function buildAuditViewModel() {
+function buildAuditViewModel(query = {}) {
   const loopMonitor = loadLatestArtifact("best_self_evolution_loop_monitor_latest.json");
   const objectiveSupervisor = loadLatestArtifact("objective_supervisor_latest.json");
   const watchdog = loadLatestArtifact("automation_watchdog_latest.json");
   const stageAutopilot = loadLatestArtifact("stage_autopilot_latest.json");
+  const focus = String(query.focus || "").trim();
+  const collection = String(query.collection || "").trim();
+  const source = String(query.source || "").trim();
   return {
     active: "audit",
     title: "Audit",
@@ -861,12 +919,14 @@ function buildAuditViewModel() {
                 { key: "status", label: "Status" },
                 { key: "fresh", label: "Fresh" },
                 { key: "reason", label: "Reason" },
+                { key: "open", label: "Open" },
               ],
               rows: buildRowsPreview(loopMonitor.rows, (row) => ({
                 loop: compactText(row.loop),
                 status: compactText(row.status),
                 fresh: row.fresh ? "YES" : "NO",
                 reason: compactText(row.reason, 56),
+                open: buildLink("Open", buildLoopHref(row.loop)),
               }), 10),
             },
           },
@@ -886,17 +946,44 @@ function buildAuditViewModel() {
           },
         ],
       },
+      {
+        title: "Focused Drill-Through",
+        description: "Execution/Audit query focus를 그대로 노출합니다.",
+        columns: 2,
+        cards: [
+          {
+            title: "Focused Target",
+            tone: focus ? "warn" : "dim",
+            rows: [
+              { label: "Focus", value: compactText(focus || "none") },
+              { label: "Collection", value: compactText(collection || "-") },
+              { label: "Source", value: compactText(source || "-") },
+              { label: "Interpretation", value: focus ? "query-scoped drill-through" : "open from Execution tables to focus a target" },
+            ],
+          },
+          {
+            title: "Next Jump",
+            tone: "dim",
+            rows: [
+              { label: "Execution", value: "/dashboard/execution" },
+              { label: "Deployment", value: "/dashboard/deployment" },
+              { label: "Phase D", value: "/dashboard/server-primary" },
+              { label: "Report", value: "/dashboard/report?mode=weekly" },
+            ],
+          },
+        ],
+      },
     ],
   };
 }
 
-function buildControlPlaneRouteModel(pageKey) {
+function buildControlPlaneRouteModel(pageKey, query = {}) {
   const key = String(pageKey || "mission").toLowerCase();
   if (key === "recovery") return buildRecoveryViewModel();
   if (key === "deployment") return buildDeploymentViewModel();
-  if (key === "execution") return buildExecutionViewModel();
+  if (key === "execution") return buildExecutionViewModel(query);
   if (key === "server-primary") return buildServerPrimaryViewModel();
-  if (key === "audit") return buildAuditViewModel();
+  if (key === "audit") return buildAuditViewModel(query);
   return buildMissionControlViewModel();
 }
 

@@ -4,7 +4,7 @@ const { buildControlPlaneRouteModel } = require("../utils/controlPlaneViewModels
 
 function renderControlPlane(pageKey) {
   return (req, res) => {
-    const model = buildControlPlaneRouteModel(pageKey);
+    const model = buildControlPlaneRouteModel(pageKey, req.query || {});
     return res.render("control-plane", { model });
   };
 }

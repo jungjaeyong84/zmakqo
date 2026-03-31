@@ -18,6 +18,11 @@
     if (cols === 3) return 'grid cols-3';
     return 'grid cols-2';
   };
+  const __cellText = (value) => {
+    if (value == null || value === '') return '-';
+    if (typeof value === 'object' && value && value.label) return value.label;
+    return value;
+  };
 %>
 
 <div class="control-surface stack" style="margin-bottom:20px;">
@@ -110,7 +115,14 @@
                       <% card.table.rows.forEach((tableRow) => { %>
                         <tr>
                           <% card.table.columns.forEach((column) => { %>
-                            <td><%= tableRow[column.key] == null || tableRow[column.key] === '' ? '-' : tableRow[column.key] %></td>
+                            <% const __cell = tableRow[column.key]; %>
+                            <td>
+                              <% if (__cell && typeof __cell === 'object' && __cell.href) { %>
+                                <a href="<%= __cell.href %>" class="control-table-link"><%= __cellText(__cell) %></a>
+                              <% } else { %>
+                                <%= __cellText(__cell) %>
+                              <% } %>
+                            </td>
                           <% }) %>
                         </tr>
                       <% }) %>
