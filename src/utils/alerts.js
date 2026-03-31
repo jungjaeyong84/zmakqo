@@ -1,4 +1,12 @@
+const path = require("path");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
+
 const DEFAULT_TIMEOUT_MS = 8000;
+const OPENCLAW_TIMEOUT_MS = 15000;
+const OPENCLAW_MAX_BUFFER = 1024 * 1024;
+const execFileAsync = promisify(execFile);
+const REPO_ROOT = path.resolve(__dirname, "../..");
 
 const TELEGRAM_LABEL_MAP = new Map([
   ["reason:", "사유:"],
@@ -154,16 +162,84 @@ function normalizeTelegramBody(body) {
     .join("\n");
 }
 
-async function sendTelegram({ token, chatId, title, body, severity }) {
-  const apiToken = String(token || process.env.TELEGRAM_BOT_TOKEN || "").trim();
-  if (!apiToken) throw new Error("TELEGRAM_BOT_TOKEN_MISSING");
-  const chat = String(chatId || process.env.TELEGRAM_CHAT_ID || "").trim();
-  if (!chat) throw new Error("TELEGRAM_CHAT_ID_MISSING");
+function buildTelegramText({ title, body, severity }) {
   const normalizedTitle = normalizeTelegramTitle(title, severity);
   const normalizedBody = normalizeTelegramBody(body);
-  const text = `${normalizedTitle}\n${normalizedBody}`.trim();
+  return `${normalizedTitle}\n${normalizedBody}`.trim();
+}
+
+function resolveTelegramTransport({ token } = {}) {
+  const raw = String(process.env.TELEGRAM_ALERT_TRANSPORT || process.env.ALERT_TELEGRAM_TRANSPORT || "auto")
+    .trim()
+    .toLowerCase();
+  if (raw === "api" || raw === "direct" || raw === "telegram_api") return "api";
+  if (raw === "openclaw_required") return "openclaw_required";
+  if (raw === "openclaw") return "openclaw";
+  if (String(token || "").trim()) return "api";
+  return "auto";
+}
+
+function buildOpenClawSendArgs({ chatId, text }) {
+  return [
+    "message",
+    "send",
+    "--channel",
+    "telegram",
+    "--target",
+    String(chatId || "").trim(),
+    "--message",
+    String(text || ""),
+    "--json",
+  ];
+}
+
+async function sendTelegramViaOpenClaw({ chatId, title, body, severity }) {
+  const chat = String(chatId || process.env.TELEGRAM_CHAT_ID || "").trim();
+  if (!chat) throw new Error("TELEGRAM_CHAT_ID_MISSING");
+  const text = buildTelegramText({ title, body, severity });
+  const bin = String(process.env.OPENCLAW_BIN || "openclaw").trim() || "openclaw";
+  const args = buildOpenClawSendArgs({ chatId: chat, text });
+  const { stdout } = await execFileAsync(bin, args, {
+    cwd: REPO_ROOT,
+    timeout: Number(process.env.OPENCLAW_ALERT_TIMEOUT_MS || OPENCLAW_TIMEOUT_MS),
+    maxBuffer: OPENCLAW_MAX_BUFFER,
+  });
+  const parsed = JSON.parse(String(stdout || "{}"));
+  const payload = parsed && parsed.payload ? parsed.payload : {};
+  if (payload.ok !== true) {
+    throw new Error(`OPENCLAW_SEND_FAILED:${JSON.stringify(parsed)}`);
+  }
+  return {
+    ok: true,
+    transport: "openclaw",
+    chatId: payload.chatId || chat,
+    messageId: payload.messageId || null,
+    raw: parsed,
+  };
+}
+
+async function sendTelegram({ token, chatId, title, body, severity }) {
+  const chat = String(chatId || process.env.TELEGRAM_CHAT_ID || "").trim();
+  if (!chat) throw new Error("TELEGRAM_CHAT_ID_MISSING");
+  const transport = resolveTelegramTransport({ token });
+  if (transport !== "api") {
+    try {
+      return await sendTelegramViaOpenClaw({ chatId: chat, title, body, severity });
+    } catch (err) {
+      if (
+        transport === "openclaw_required"
+        || String(process.env.ALERT_OPENCLAW_REQUIRED || "").trim() === "1"
+      ) {
+        throw err;
+      }
+    }
+  }
+  const apiToken = String(token || process.env.TELEGRAM_BOT_TOKEN || "").trim();
+  if (!apiToken) throw new Error("TELEGRAM_BOT_TOKEN_MISSING");
+  const text = buildTelegramText({ title, body, severity });
   const url = `https://api.telegram.org/bot${apiToken}/sendMessage`;
-  return postJson(url, { chat_id: chat, text, disable_web_page_preview: true });
+  const result = await postJson(url, { chat_id: chat, text, disable_web_page_preview: true });
+  return { ...result, transport: "telegram_api" };
 }
 
 async function sendEmailSendGrid({ to, from, subject, body }) {
@@ -241,5 +317,8 @@ module.exports = {
     normalizeTelegramTitle,
     normalizeTelegramBody,
     normalizeTelegramLine,
+    buildTelegramText,
+    resolveTelegramTransport,
+    buildOpenClawSendArgs,
   },
 };

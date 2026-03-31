@@ -13,6 +13,63 @@ const { __test } = require("../../scripts/automation-automation-watchdog");
   assert.strictEqual(rows.get("com.jeongjaeyong.donbeolja.weeklypine").lastExit, 0);
   assert.strictEqual(rows.get("com.jeongjaeyong.donbeolja.stageautopilot").lastExit, 78);
 
+  const cronRows = __test.parseOpenClawCronList({
+    jobs: [
+      {
+        id: "job-1",
+        name: "donbeolja-objective-supervisor",
+        enabled: true,
+        state: {
+          lastStatus: "ok",
+          nextRunAtMs: 12345,
+        },
+      },
+      {
+        id: "job-2",
+        name: "donbeolja-weekly-pine",
+        enabled: false,
+        state: {
+          lastStatus: "error",
+          consecutiveErrors: 2,
+        },
+      },
+    ],
+  });
+  assert.strictEqual(cronRows.get("donbeolja-objective-supervisor").id, "job-1");
+
+  const schedulerPass = __test.assessSchedulerJob(
+    {
+      label: "com.jeongjaeyong.donbeolja.objectivesupervisor",
+      name: "donbeolja-objective-supervisor",
+      severity: "FAIL",
+    },
+    cronRows
+  );
+  assert.strictEqual(schedulerPass.configured, true);
+  assert.strictEqual(schedulerPass.enabled, true);
+  assert.strictEqual(schedulerPass.issueCode, null);
+
+  const schedulerDisabled = __test.assessSchedulerJob(
+    {
+      label: "com.jeongjaeyong.donbeolja.weeklypine",
+      name: "donbeolja-weekly-pine",
+      severity: "WARN",
+    },
+    cronRows
+  );
+  assert.strictEqual(schedulerDisabled.enabled, false);
+  assert.strictEqual(schedulerDisabled.issueCode, "donbeolja-weekly-pine_DISABLED");
+
+  const launchdMissing = __test.assessLaunchdPresence(
+    {
+      label: "com.jeongjaeyong.donbeolja.rollbackmonitor",
+      severity: "FAIL",
+    },
+    rows
+  );
+  assert.strictEqual(launchdMissing.loaded, false);
+  assert.strictEqual(launchdMissing.issueCode, "com.jeongjaeyong.donbeolja.rollbackmonitor_MISSING");
+
   const passVerdict = __test.computeVerdict(
     [{ issueSeverity: null }, { issueSeverity: null }],
     [{ issueSeverity: null }]

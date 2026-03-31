@@ -5,12 +5,14 @@
 const fs = require("fs");
 const path = require("path");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
+const { OPENCLAW_CRON_JOBS } = require("./lib/openclaw-cron-manifest");
 const {
   OPS_DAILY_DIR,
   OPS_RUNTIME_DIR,
   REPO_ROOT,
   copyLatest,
   ensureDir,
+  execJson,
   execText,
   loadLocalEnv,
   nowKstMeta,
@@ -47,23 +49,33 @@ const ARTIFACT_SPECS = Object.freeze([
   { name: "codex_weekly_patch_engine", filePath: path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.json"), maxAgeHours: 192, severity: "WARN" },
 ]);
 
-const AGENT_SPECS = Object.freeze([
-  { label: "com.jeongjaeyong.donbeolja.objectiveretrospective", severity: "FAIL" },
-  { label: "com.jeongjaeyong.donbeolja.objectivesupervisor", severity: "FAIL" },
-  { label: "com.jeongjaeyong.donbeolja.rollbackmonitor", severity: "FAIL" },
-  { label: "com.jeongjaeyong.donbeolja.stageautopilot", severity: "FAIL" },
-  { label: "com.jeongjaeyong.donbeolja.signaldataintegrity", severity: "FAIL" },
-  { label: "com.jeongjaeyong.donbeolja.analyticscache", severity: "WARN" },
-  { label: "com.jeongjaeyong.donbeolja.stageoutcomeledgers", severity: "WARN" },
-  { label: "com.jeongjaeyong.donbeolja.codexweeklypatch", severity: "WARN" },
-  { label: "com.jeongjaeyong.donbeolja.filtershadowcanary", severity: "WARN" },
-  { label: "com.jeongjaeyong.donbeolja.hourlyguard", severity: "WARN" },
-  { label: "com.jeongjaeyong.donbeolja.mlfilterpolicy", severity: "WARN" },
-  { label: "com.jeongjaeyong.donbeolja.evtp1tune", severity: "WARN" },
-  { label: "com.jeongjaeyong.donbeolja.waitonebartune", severity: "WARN" },
-  { label: "com.jeongjaeyong.donbeolja.weeklyfilters", severity: "WARN" },
-  { label: "com.jeongjaeyong.donbeolja.weeklypine", severity: "WARN" },
-]);
+const AUTOMATION_SEVERITY_BY_LABEL = Object.freeze({
+  "com.jeongjaeyong.donbeolja.objectiveretrospective": "FAIL",
+  "com.jeongjaeyong.donbeolja.objectivesupervisor": "FAIL",
+  "com.jeongjaeyong.donbeolja.rollbackmonitor": "FAIL",
+  "com.jeongjaeyong.donbeolja.stageautopilot": "FAIL",
+  "com.jeongjaeyong.donbeolja.signaldataintegrity": "FAIL",
+  "com.jeongjaeyong.donbeolja.analyticscache": "WARN",
+  "com.jeongjaeyong.donbeolja.stageoutcomeledgers": "WARN",
+  "com.jeongjaeyong.donbeolja.codexweeklypatch": "WARN",
+  "com.jeongjaeyong.donbeolja.filtershadowcanary": "WARN",
+  "com.jeongjaeyong.donbeolja.hourlyguard": "WARN",
+  "com.jeongjaeyong.donbeolja.mlfilterpolicy": "WARN",
+  "com.jeongjaeyong.donbeolja.evtp1tune": "WARN",
+  "com.jeongjaeyong.donbeolja.waitonebartune": "WARN",
+  "com.jeongjaeyong.donbeolja.weeklyfilters": "WARN",
+  "com.jeongjaeyong.donbeolja.weeklypine": "WARN",
+  "com.jeongjaeyong.donbeolja.automationwatchdog": "WARN",
+});
+
+const AUTOMATION_SPECS = Object.freeze(
+  OPENCLAW_CRON_JOBS.map((job) => ({
+    label: job.label,
+    name: job.name,
+    wrapper: job.wrapper,
+    severity: AUTOMATION_SEVERITY_BY_LABEL[job.label] || "WARN",
+  }))
+);
 
 function ageHoursFromStat(stat) {
   return (Date.now() - Number(stat.mtimeMs || 0)) / (60 * 60 * 1000);
@@ -115,7 +127,59 @@ function parseLaunchctlList(text) {
   return out;
 }
 
-function assessAgent(spec, launchctlRows) {
+function parseOpenClawCronList(payload) {
+  const out = new Map();
+  const jobs = Array.isArray(payload && payload.jobs) ? payload.jobs : [];
+  for (const job of jobs) {
+    const name = String(job && job.name || "").trim();
+    if (!name) continue;
+    out.set(name, job);
+  }
+  return out;
+}
+
+function assessSchedulerJob(spec, cronRows) {
+  const row = cronRows.get(spec.name);
+  if (!row) {
+    return {
+      ...spec,
+      scheduler: "OPENCLAW_CRON",
+      configured: false,
+      enabled: false,
+      cronId: null,
+      lastStatus: null,
+      nextRunAtMs: null,
+      issueCode: `${spec.name}_MISSING`,
+      issueSeverity: spec.severity,
+    };
+  }
+  const enabled = row.enabled === true;
+  const lastStatus = String(row && row.state && (row.state.lastStatus || row.state.lastRunStatus) || "").trim() || null;
+  const consecutiveErrors = Number(row && row.state && row.state.consecutiveErrors || 0);
+  const badStatus = Boolean(lastStatus) && !["ok", "not-delivered"].includes(String(lastStatus).toLowerCase());
+  let issueCode = null;
+  let issueSeverity = null;
+  if (!enabled) {
+    issueCode = `${spec.name}_DISABLED`;
+    issueSeverity = spec.severity;
+  } else if (badStatus || consecutiveErrors > 0) {
+    issueCode = `${spec.name}_STATUS_${String(lastStatus || "ERROR").toUpperCase()}`;
+    issueSeverity = spec.severity;
+  }
+  return {
+    ...spec,
+    scheduler: "OPENCLAW_CRON",
+    configured: true,
+    enabled,
+    cronId: String(row.id || "").trim() || null,
+    lastStatus,
+    nextRunAtMs: Number(row && row.state && row.state.nextRunAtMs || 0) || null,
+    issueCode,
+    issueSeverity,
+  };
+}
+
+function assessLaunchdPresence(spec, launchctlRows) {
   const row = launchctlRows.get(spec.label);
   if (!row) {
     return {
@@ -257,8 +321,13 @@ function renderMarkdown(report) {
   for (const row of report.artifacts) {
     lines.push(`- ${row.name}: ${row.exists ? (row.fresh ? "fresh" : "stale") : "missing"} / age=${row.ageHours == null ? "N/A" : row.ageHours.toFixed(2)}h / max=${row.maxAgeHours}h`);
   }
-  lines.push("", "## Launchd");
-  for (const row of report.launchd) {
+  lines.push(`- scheduler_mode: ${report.scheduler_mode || "UNKNOWN"}`);
+  lines.push("", "## Automation Scheduler");
+  for (const row of report.scheduler_jobs || []) {
+    lines.push(`- ${row.name}: ${row.configured ? (row.enabled ? "enabled" : "disabled") : "missing"} / last=${row.lastStatus || "N/A"} / next=${row.nextRunAtMs == null ? "N/A" : row.nextRunAtMs}`);
+  }
+  lines.push("", "## Legacy Launchd (diagnostic only)");
+  for (const row of report.launchd_legacy || []) {
     lines.push(`- ${row.label}: ${row.loaded ? "loaded" : "missing"} / exit=${row.lastExit == null ? "N/A" : row.lastExit} / pid=${row.pid == null ? "-" : row.pid}`);
   }
   lines.push("", "## Issues");
@@ -280,18 +349,26 @@ function renderMarkdown(report) {
 
 async function main() {
   const meta = nowKstMeta();
+  const cronRes = execJson("openclaw cron list --json");
   const launchctlRes = execText("launchctl list");
   const launchctlRows = parseLaunchctlList(launchctlRes.ok ? launchctlRes.text : "");
+  const cronRows = parseOpenClawCronList(cronRes.ok ? cronRes.data : null);
+  const schedulerMode = cronRes.ok ? "OPENCLAW_CRON" : "LAUNCHD_FALLBACK";
   const previous = readJsonSafe(STATE_PATH, { last_verdict: "PASS", last_issue_signature: "" }) || { last_verdict: "PASS", last_issue_signature: "" };
   const recoveryMode = normalizeRecoveryMode(process.env.AUTOMATION_WATCHDOG_RECOVERY_MODE || "REPORT_ONLY");
   const recoveryAllowed = isRecoveryExecutionAllowed(recoveryMode, process.env.AUTOMATION_WATCHDOG_ALLOW_RECOVERY);
 
   const artifactRows = ARTIFACT_SPECS.map(assessArtifact);
-  const agentRows = AGENT_SPECS.map((spec) => assessAgent(spec, launchctlRows));
-  const preSnapshot = buildSnapshot(artifactRows, agentRows);
+  const schedulerRows = AUTOMATION_SPECS.map((spec) => (
+    schedulerMode === "OPENCLAW_CRON"
+      ? assessSchedulerJob(spec, cronRows)
+      : assessLaunchdPresence(spec, launchctlRows)
+  ));
+  const launchdLegacyRows = AUTOMATION_SPECS.map((spec) => assessLaunchdPresence(spec, launchctlRows));
+  const preSnapshot = buildSnapshot(artifactRows, schedulerRows);
 
   let postArtifactRows = artifactRows;
-  let postAgentRows = agentRows;
+  let postSchedulerRows = schedulerRows;
   let postSnapshot = null;
   let recovery = {
     mode: recoveryMode,
@@ -320,12 +397,18 @@ async function main() {
       summary: latestRecovery,
     };
     postArtifactRows = ARTIFACT_SPECS.map(assessArtifact);
-    postAgentRows = AGENT_SPECS.map((spec) => assessAgent(spec, launchctlRows));
-    postSnapshot = buildSnapshot(postArtifactRows, postAgentRows);
+    postSchedulerRows = AUTOMATION_SPECS.map((spec) => (
+      schedulerMode === "OPENCLAW_CRON"
+        ? assessSchedulerJob(spec, cronRows)
+        : assessLaunchdPresence(spec, launchctlRows)
+    ));
+    postSnapshot = buildSnapshot(postArtifactRows, postSchedulerRows);
   }
 
   const report = {
     generated_at_kst: meta.kst,
+    scheduler_mode: schedulerMode,
+    scheduler_ok: !!cronRes.ok,
     recovery_mode: recoveryMode,
     recovery_allowed: recoveryAllowed,
     verdict: preSnapshot.verdict,
@@ -333,9 +416,10 @@ async function main() {
     issue_signature: preSnapshot.issueSignature,
     data_backfill_recovery: recovery,
     artifacts: artifactRows,
-    launchd: agentRows,
+    scheduler_jobs: schedulerRows,
+    launchd_legacy: launchdLegacyRows,
     artifacts_post_recovery: recovery.attempted ? postArtifactRows : null,
-    launchd_post_recovery: recovery.attempted ? postAgentRows : null,
+    scheduler_jobs_post_recovery: recovery.attempted ? postSchedulerRows : null,
     issues: preSnapshot.issues,
     issues_post_recovery: postSnapshot ? postSnapshot.issues : null,
     pre_recovery: preSnapshot,
@@ -417,6 +501,9 @@ if (require.main === module) {
   module.exports = {
     __test: {
       parseLaunchctlList,
+      parseOpenClawCronList,
+      assessSchedulerJob,
+      assessLaunchdPresence,
       computeVerdict,
       buildIssueSignature,
       normalizeRecoveryMode,
