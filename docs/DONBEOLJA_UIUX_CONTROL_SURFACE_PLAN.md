@@ -1,7 +1,8 @@
 # DONBEOLJA UIUX CONTROL SURFACE PLAN
 
 - 제정: 2026-03-31
-- 상태: PLANNED
+- 업데이트: 2026-04-01
+- 상태: IN_PROGRESS
 - 목적:
   - 현재 `bundle-based hybrid canonical + OpenClaw ops substrate + autonomy governor` 구조에 맞게 운영 UI를 다시 설계한다.
   - 기존 `대시보드/거래/리포트/설정` 중심 IA를 `goal/authority/deployment/execution/audit` 중심 control surface로 재편한다.
@@ -27,6 +28,30 @@
 4. 현재 라우트 구조는 기능 중심이고, 운영 판단 중심이 아니다.
 
 즉 UI의 문제는 "디자인이 촌스럽다"보다 "운영 정본 구조와 화면 정보구조가 어긋난다"는 점이다.
+
+## 2.1 구현 진행 현황
+
+2026-04-01 기준 구현 상태는 아래와 같다.
+
+1. `Phase 1. IA Fix`
+   - 완료
+   - 상단 네비를 `Mission / Recovery / Deployment / Execution / Audit / Settings` 기준으로 재편했다.
+2. `Phase 2. Serializer Layer`
+   - 완료
+   - `/Users/jeongjaeyong/Projects/donbeolja/src/utils/controlPlaneViewModels.js`에서 control-plane view model을 정본으로 사용한다.
+3. `Phase 3. Mission Control 교체`
+   - 완료
+   - `/dashboard/home`는 Mission Control이 정본이며, home cache hit 시에도 latest artifact 기준으로 `mission_control`을 재생성한다.
+4. `Phase 4. Recovery / Deployment`
+   - 완료
+   - `/dashboard/recovery`와 `/dashboard/deployment`는 operator strip, evidence chain, drill-down을 포함한다.
+5. `Phase 5. Execution / Server-Primary / Audit 정교화`
+   - 대부분 완료
+   - `/dashboard/execution`, `/dashboard/server-primary`, `/dashboard/audit`에 operator strip, runtime preview, artifact timeline, focus drill-through가 들어갔다.
+6. `Phase 6. Legacy Screen Demotion`
+   - 진행 중
+   - legacy report/trading 화면은 새 IA 아래의 보조 화면으로 강등했고, control surface로 복귀하는 bridge CTA를 추가했다.
+   - 남은 일은 중복 CTA 제거와 일부 legacy wording 정리다.
 
 ## 3. 상위 원칙
 

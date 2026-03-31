@@ -173,11 +173,8 @@
   }, { total: 0 });
 %>
 
-<div class="subnav">
-  <a href="/dashboard/trading">상태</a>
-  <a href="/dashboard/journal">저널</a>
-  <a class="active" href="/dashboard/ai">AI 저널</a>
-</div>
+<%- include('partials/legacy_trading_subnav', { activeTab: 'ai' }) %>
+<%- include('partials/legacy_control_surface_bridge', { mode: 'trading', surfaceHref: '/dashboard/execution', surfaceLabel: 'Execution', detailHref: '/dashboard/home', detailLabel: 'Mission', extraHref: '/dashboard/audit', extraLabel: 'Audit' }) %>
 
 <div class="card">
   <h2>AI 판단 타임라인</h2>

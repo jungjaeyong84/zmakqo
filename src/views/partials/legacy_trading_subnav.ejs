@@ -1,0 +1,8 @@
+<%
+  const __activeTab = String(typeof activeTab !== 'undefined' && activeTab ? activeTab : 'state');
+%>
+<div class="subnav">
+  <a class="<%= __activeTab === 'state' ? 'active' : '' %>" href="/dashboard/trading">상태</a>
+  <a class="<%= __activeTab === 'journal' ? 'active' : '' %>" href="/dashboard/journal">저널</a>
+  <a class="<%= __activeTab === 'ai' ? 'active' : '' %>" href="/dashboard/ai">AI 저널</a>
+</div>

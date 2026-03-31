@@ -371,14 +371,8 @@
   }
 </style>
 
-<div class="subnav">
-  <a href="/dashboard/analysis">요약</a>
-  <a href="/dashboard/report">리포트</a>
-  <a href="/dashboard/eval">평가</a>
-  <a href="/dashboard/briefing">브리핑</a>
-  <a class="active" href="/dashboard/profit">수익</a>
-  <a href="/dashboard/cashflow">입출금</a>
-</div>
+<%- include('partials/legacy_report_subnav', { activeTab: 'profit' }) %>
+<%- include('partials/legacy_control_surface_bridge', { mode: 'report', surfaceHref: '/dashboard/home', surfaceLabel: 'Mission', detailHref: '/dashboard/audit', detailLabel: 'Audit', extraHref: '/dashboard/recovery', extraLabel: 'Recovery' }) %>
 
 <div class="profit-shell">
   <div class="profit-head">

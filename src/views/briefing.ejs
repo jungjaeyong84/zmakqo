@@ -1,13 +1,7 @@
 <%- include('partials/app_start', { title: '브리핑 · DONBEOLJA Ω', pageTitle: '브리핑', active: 'briefing' }) %>
 
-<div class="subnav">
-  <a href="/dashboard/analysis">요약</a>
-  <a href="/dashboard/report">리포트</a>
-  <a href="/dashboard/eval">평가</a>
-  <a class="active" href="/dashboard/briefing">브리핑</a>
-  <a href="/dashboard/profit">수익</a>
-  <a href="/dashboard/cashflow">입출금</a>
-</div>
+<%- include('partials/legacy_report_subnav', { activeTab: 'briefing' }) %>
+<%- include('partials/legacy_control_surface_bridge', { mode: 'report', surfaceHref: '/dashboard/home', surfaceLabel: 'Mission', detailHref: '/dashboard/audit', detailLabel: 'Audit', extraHref: '/dashboard/recovery', extraLabel: 'Recovery' }) %>
 
 <div class="card">
   <h2>시장 요약</h2>

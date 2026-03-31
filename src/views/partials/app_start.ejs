@@ -16,13 +16,13 @@
     execution: { eyebrow: 'Canonical Execution', hint: 'source mode, parity, provenance를 함께 읽습니다.' },
     'server-primary': { eyebrow: 'Phase D Acceptance', hint: 'SERVER_PRIMARY 샘플, 불일치율, 롤백 기준을 추적합니다.' },
     audit: { eyebrow: 'Cycle Audit', hint: 'current cycle, freshness, wrapper caveat을 함께 점검합니다.' },
-    trading: { eyebrow: '실행 관제', hint: '실행 중인 포지션과 대기 인텐트, 가드레일을 추적합니다.' },
-    analysis: { eyebrow: '리포트 센터', hint: '요약, 리포트, 평가, 브리핑을 같은 흐름에서 확인합니다.' },
-    report: { eyebrow: '리포트 센터', hint: '기간 성과와 품질, 위험을 한 화면에서 점검합니다.' },
-    eval: { eyebrow: '리포트 센터', hint: '승률, EV, 데이터 품질을 기반으로 신호를 평가합니다.' },
-    briefing: { eyebrow: '리포트 센터', hint: '현재 상태를 사람이 읽기 좋은 문장과 KPI로 요약합니다.' },
-    profit: { eyebrow: '리포트 센터', hint: '수익 변화와 예산 사용을 시각적으로 확인합니다.' },
-    cashflow: { eyebrow: '리포트 센터', hint: '입출금 흐름과 실제 자금 이동을 검증합니다.' },
+    trading: { eyebrow: 'Execution Detail', hint: 'Mission/Execution 아래에서 포지션, 인텐트, 가드레일을 세부 추적합니다.' },
+    analysis: { eyebrow: 'Legacy Reports', hint: 'Mission/Audit 아래의 보조 리포트 화면입니다. 운영 정본 판단은 control surface에서 합니다.' },
+    report: { eyebrow: 'Legacy Reports', hint: 'Mission/Audit 아래의 보조 리포트 화면입니다. 운영 정본 판단은 control surface에서 합니다.' },
+    eval: { eyebrow: 'Legacy Reports', hint: 'Mission/Audit 아래의 보조 리포트 화면입니다. 운영 정본 판단은 control surface에서 합니다.' },
+    briefing: { eyebrow: 'Legacy Reports', hint: 'Mission/Audit 아래의 보조 리포트 화면입니다. 운영 정본 판단은 control surface에서 합니다.' },
+    profit: { eyebrow: 'Legacy Reports', hint: 'Mission/Audit 아래의 보조 리포트 화면입니다. 운영 정본 판단은 control surface에서 합니다.' },
+    cashflow: { eyebrow: 'Legacy Reports', hint: 'Mission/Audit 아래의 보조 리포트 화면입니다. 운영 정본 판단은 control surface에서 합니다.' },
     settings: { eyebrow: '시스템 관리', hint: '리스크, 시스템, AI, 거래소 설정을 관리합니다.' },
   };
   const __pageMeta = __pageMetaMap[__active] || { eyebrow: 'DONBEOLJA Ω', hint: '' };
@@ -468,6 +468,46 @@
       color: var(--accentText);
       border-color: #d2e3fc;
       box-shadow: none;
+    }
+
+    .legacy-bridge{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:16px;
+      flex-wrap:wrap;
+      padding:16px 18px;
+      border:1px solid var(--line);
+      border-radius: 20px;
+      background: linear-gradient(135deg, #f8fbff 0%, #ffffff 100%);
+      box-shadow: var(--shadow);
+      margin: 12px 0 16px 0;
+    }
+    .legacy-bridge-copy{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      min-width: 280px;
+      flex: 1 1 320px;
+    }
+    .legacy-bridge-kicker{
+      color: var(--accentText);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+    .legacy-bridge-title{
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .legacy-bridge-actions{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
     }
 
     .status-strip{

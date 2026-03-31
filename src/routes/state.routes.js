@@ -700,7 +700,7 @@ function createStateRoutes() {
     }
   }
 
-  // Alias: /dashboard/trading (IA top menu) + legacy: /dashboard/state
+  // Control-surface alias: /dashboard/trading + legacy compatibility: /dashboard/state
   router.get("/dashboard/trading", renderTrading);
   router.get("/dashboard/state", renderTrading);
 

@@ -134,11 +134,8 @@
   };
 %>
 
-<div class="subnav">
-  <a class="active" href="/dashboard/trading">상태</a>
-  <a href="/dashboard/journal">저널</a>
-  <a href="/dashboard/ai">AI 저널</a>
-</div>
+<%- include('partials/legacy_trading_subnav', { activeTab: 'state' }) %>
+<%- include('partials/legacy_control_surface_bridge', { mode: 'trading', surfaceHref: '/dashboard/execution', surfaceLabel: 'Execution', detailHref: '/dashboard/home', detailLabel: 'Mission', extraHref: '/dashboard/audit', extraLabel: 'Audit' }) %>
 
 <style>
   .trading-kpi-block{
