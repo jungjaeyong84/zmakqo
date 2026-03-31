@@ -32,6 +32,7 @@ const createPricesRoutes = require("../routes/prices.routes");
 const accountRoutes = require("../routes/account.routes");
 const createStateRoutes = require("../routes/state.routes");
 const dashboardHomeRoutes = require("../routes/dashboard.home.routes");
+const dashboardControlRoutes = require("../routes/dashboard.control.routes");
 const dashboardAnalysisRoutes = require("../routes/dashboard.analysis.routes");
 const dashboardReportRoutes = require("../routes/dashboard.report.routes");
 const dashboardBriefingRoutes = require("../routes/dashboard.briefing.routes");
@@ -81,6 +82,12 @@ const ensureAuthMaybe = (req, res, next) => {
     const path = String(req.path || "");
     const uiAllowed = [
       "/dashboard/home",
+      "/dashboard/mission",
+      "/dashboard/recovery",
+      "/dashboard/deployment",
+      "/dashboard/execution",
+      "/dashboard/server-primary",
+      "/dashboard/audit",
       "/dashboard/analysis",
       "/dashboard/report",
       "/dashboard/eval",
@@ -284,6 +291,7 @@ function createApp() {
   app.use("/", ensureAuthMaybe, createDashboardRoutes(stateMachine, scheduler));
   app.use("/", ensureAuthMaybe, createStateRoutes());
   app.use("/", ensureAuthMaybe, dashboardHomeRoutes);
+  app.use("/", ensureAuthMaybe, dashboardControlRoutes);
   app.use("/", ensureAuthMaybe, dashboardAnalysisRoutes);
   app.use("/", ensureAuthMaybe, dashboardReportRoutes);
   app.use("/", ensureAuthMaybe, dashboardEvalRoutes);

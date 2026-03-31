@@ -44,6 +44,7 @@ const {
   resolveFillBudgetUsedKrw,
 } = require("../utils/budgetUsageView");
 const { summarizeFebtRows, summarizeFebtPhase0Artifact } = require("../utils/febtSummary");
+const { buildMissionControlViewModel } = require("../utils/controlPlaneViewModels");
 
 const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
 const FEBT_PHASE0_LATEST_PATH = path.join(OPS_DAILY_DIR, "febt_phase0_baseline_latest.json");
@@ -579,6 +580,12 @@ function aggregateFillsForUi(fills, limit) {
   return out;
 }
 
+router.get("/dashboard/mission", async (req, res) => {
+  const idx = String(req.originalUrl || "").indexOf("?");
+  const qs = idx >= 0 ? String(req.originalUrl || "").slice(idx) : "";
+  return res.redirect(`/dashboard/home${qs}`);
+});
+
 router.get("/dashboard/home", async (req, res) => {
   try {
     const allowLocal = String(process.env.ALLOW_LOCAL_NO_OAUTH || "0") === "1";
@@ -610,7 +617,13 @@ router.get("/dashboard/home", async (req, res) => {
     const packUrl = `/api/report/improvement-pack?level=STANDARD&exchange=${encodeURIComponent(exchange)}&tf=${encodeURIComponent(signalTf)}&from=${encodeURIComponent(weekly.from)}&to=${encodeURIComponent(weekly.to)}`;
     const cacheKey = `${exchange}__${signalTf}__${execTf}__${weekly.from}__${weekly.to}`;
     const cached = getHomeCache(cacheKey);
-    if (cached) return res.render("home", cached);
+    if (cached) {
+      const cachedPayload = cached.mission_control
+        ? cached
+        : { ...cached, mission_control: buildMissionControlViewModel() };
+      if (cachedPayload !== cached) setHomeCache(cacheKey, cachedPayload);
+      return res.render("home", cachedPayload);
+    }
 
     const [sigSnap, dropSnap, fillSnap, intentSnap] = await Promise.all([
       db.collection("signals").orderBy("created_at", "desc").limit(200).get(),
@@ -1388,6 +1401,7 @@ router.get("/dashboard/home", async (req, res) => {
       febt_shadow_recent: febtShadowRecent,
       febt_phase0_latest: febtPhase0Latest,
       intent_failures: intentFailures,
+      mission_control: buildMissionControlViewModel(),
     };
     setHomeCache(cacheKey, payload);
     return res.render("home", payload);

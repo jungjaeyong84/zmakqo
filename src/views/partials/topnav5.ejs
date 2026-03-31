@@ -7,8 +7,11 @@
       : 'env';
 
   const __envUpper = __envLabel.toUpperCase();
-  const __reportActive = ['analysis', 'report', 'eval', 'briefing', 'profit', 'cashflow'].includes(__active);
-  const __tradingActive = ['trading'].includes(__active);
+  const __missionActive = ['home', 'mission'].includes(__active);
+  const __recoveryActive = ['recovery'].includes(__active);
+  const __deploymentActive = ['deployment'].includes(__active);
+  const __executionActive = ['execution', 'trading', 'server-primary'].includes(__active);
+  const __auditActive = ['audit', 'analysis', 'report', 'eval', 'briefing', 'profit', 'cashflow', 'journal', 'ai', 'risk'].includes(__active);
 %>
 
 <style>
@@ -152,12 +155,14 @@
 <div class="topnav5">
   <div class="brand-wrap">
     <div class="brand">DONBEOLJA Console</div>
-    <div class="brand-meta">Operations Dashboard</div>
+    <div class="brand-meta">OpenClaw Control Surface</div>
   </div>
   <div class="nav-primary">
-    <a href="/dashboard/home" class="<%= __active === 'home' ? 'active' : '' %>">대시보드</a>
-    <a href="/dashboard/trading" class="<%= __tradingActive ? 'active' : '' %>">거래</a>
-    <a href="/dashboard/report" class="<%= __reportActive ? 'active' : '' %>">리포트 센터</a>
+    <a href="/dashboard/home" class="<%= __missionActive ? 'active' : '' %>">Mission</a>
+    <a href="/dashboard/recovery" class="<%= __recoveryActive ? 'active' : '' %>">Recovery</a>
+    <a href="/dashboard/deployment" class="<%= __deploymentActive ? 'active' : '' %>">Deployment</a>
+    <a href="/dashboard/execution" class="<%= __executionActive ? 'active' : '' %>">Execution</a>
+    <a href="/dashboard/audit" class="<%= __auditActive ? 'active' : '' %>">Audit</a>
     <a href="/dashboard/settings" class="<%= __active === 'settings' ? 'active' : '' %>">설정</a>
   </div>
   <div class="spacer"></div>

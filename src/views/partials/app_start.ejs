@@ -9,7 +9,13 @@
       ? String(process.env.RUNTIME_MODE || process.env.NODE_ENV || 'env')
       : 'env';
   const __pageMetaMap = {
-    home: { eyebrow: '운영 개요', hint: '오늘의 상태, 위험, 성과를 먼저 확인합니다.' },
+    home: { eyebrow: 'Mission Control', hint: 'OpenClaw governor, 목표 상태, 실행 정본을 한 화면에서 읽습니다.' },
+    mission: { eyebrow: 'Mission Control', hint: 'OpenClaw governor, 목표 상태, 실행 정본을 한 화면에서 읽습니다.' },
+    recovery: { eyebrow: 'Objective Recovery', hint: '왜 HOLD인지와 어떤 후보가 회복 경로인지 먼저 판단합니다.' },
+    deployment: { eyebrow: 'Bundle Deployment', hint: 'active/prepared/rollback bundle과 probe, activation 근거를 확인합니다.' },
+    execution: { eyebrow: 'Canonical Execution', hint: 'source mode, parity, provenance를 함께 읽습니다.' },
+    'server-primary': { eyebrow: 'Phase D Acceptance', hint: 'SERVER_PRIMARY 샘플, 불일치율, 롤백 기준을 추적합니다.' },
+    audit: { eyebrow: 'Cycle Audit', hint: 'current cycle, freshness, wrapper caveat을 함께 점검합니다.' },
     trading: { eyebrow: '실행 관제', hint: '실행 중인 포지션과 대기 인텐트, 가드레일을 추적합니다.' },
     analysis: { eyebrow: '리포트 센터', hint: '요약, 리포트, 평가, 브리핑을 같은 흐름에서 확인합니다.' },
     report: { eyebrow: '리포트 센터', hint: '기간 성과와 품질, 위험을 한 화면에서 점검합니다.' },
@@ -586,6 +592,141 @@
     .issue-pill.warn{ border-color: var(--warnLn); color: var(--warnTx); }
     .issue-pill.bad{ border-color: var(--badLn); color: var(--badTx); }
 
+    .control-hero{
+      display:grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.95fr);
+      gap: 14px;
+      padding: 18px;
+      border-radius: 28px;
+      border: 1px solid var(--line);
+      background:
+        radial-gradient(circle at top left, rgba(26,115,232,.10), transparent 44%),
+        linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+      box-shadow: var(--shadow);
+    }
+    .control-hero.ok{
+      background:
+        radial-gradient(circle at top left, rgba(24,128,56,.12), transparent 44%),
+        linear-gradient(180deg, #ffffff 0%, #f4fbf6 100%);
+      border-color: var(--okLn);
+    }
+    .control-hero.warn{
+      background:
+        radial-gradient(circle at top left, rgba(176,96,0,.12), transparent 44%),
+        linear-gradient(180deg, #ffffff 0%, #fffaf0 100%);
+      border-color: var(--warnLn);
+    }
+    .control-hero.bad{
+      background:
+        radial-gradient(circle at top left, rgba(197,34,31,.12), transparent 44%),
+        linear-gradient(180deg, #ffffff 0%, #fff7f7 100%);
+      border-color: var(--badLn);
+    }
+    .control-hero-main{
+      display:flex;
+      flex-direction:column;
+      gap: 10px;
+      min-width:0;
+    }
+    .control-hero-eyebrow{
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .control-hero-title{
+      font-size: 34px;
+      line-height: 1.05;
+      font-weight: 800;
+      letter-spacing: -0.05em;
+    }
+    .control-hero-detail{
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 760px;
+    }
+    .control-actions{
+      display:flex;
+      flex-wrap:wrap;
+      gap: 8px;
+      margin-top: 2px;
+    }
+    .control-pill-grid{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      min-width:0;
+    }
+    .control-pill{
+      min-height: 86px;
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.92);
+      box-shadow: 0 1px 2px rgba(60,64,67,.05);
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      gap: 10px;
+    }
+    .control-pill .label{
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .control-pill .value{
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+    .control-pill.ok,
+    .control-metric-card.ok,
+    .control-panel.ok{
+      border-color: var(--okLn);
+      background: var(--okBg);
+    }
+    .control-pill.warn,
+    .control-metric-card.warn,
+    .control-panel.warn{
+      border-color: var(--warnLn);
+      background: var(--warnBg);
+    }
+    .control-pill.bad,
+    .control-metric-card.bad,
+    .control-panel.bad{
+      border-color: var(--badLn);
+      background: var(--badBg);
+    }
+    .control-pill.ok .label,
+    .control-pill.warn .label,
+    .control-pill.bad .label,
+    .control-pill.ok .value,
+    .control-pill.warn .value,
+    .control-pill.bad .value{
+      color: inherit;
+    }
+    .control-panel-head{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .control-panel .kv{
+      grid-template-columns: 128px 1fr;
+    }
+    .control-note-list{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      margin-top: 14px;
+    }
+
     /* Tooltip (simple) */
     .help{
       display:inline-flex;
@@ -630,6 +771,12 @@
         font-size: 28px;
       }
       .status-strip{
+        grid-template-columns: 1fr;
+      }
+      .control-hero{
+        grid-template-columns: 1fr;
+      }
+      .control-pill-grid{
         grid-template-columns: 1fr;
       }
       .status-chip-grid{

@@ -1,0 +1,110 @@
+<%
+  const __model = model || {};
+  const __hero = __model.hero || {};
+  const __metrics = Array.isArray(__model.metrics) ? __model.metrics : [];
+  const __sections = Array.isArray(__model.sections) ? __model.sections : [];
+  const __toneClass = (value) => {
+    const s = String(value || '').trim();
+    return s ? s : 'dim';
+  };
+  const __buttonClass = (tone) => {
+    const s = String(tone || '').toLowerCase();
+    if (s === 'primary') return 'btn';
+    if (s === 'secondary') return 'btn secondary';
+    return 'btn ghost';
+  };
+  const __sectionColsClass = (section) => {
+    const cols = Number(section && section.columns);
+    if (cols === 3) return 'grid cols-3';
+    return 'grid cols-2';
+  };
+%>
+
+<div class="control-surface stack" style="margin-bottom:20px;">
+  <section class="control-hero <%= __toneClass(__hero.tone) %>">
+    <div class="control-hero-main">
+      <% if (__hero.eyebrow) { %>
+        <div class="control-hero-eyebrow"><%= __hero.eyebrow %></div>
+      <% } %>
+      <div class="control-hero-title"><%= __hero.title || '-' %></div>
+      <% if (__hero.detail) { %>
+        <div class="control-hero-detail"><%= __hero.detail %></div>
+      <% } %>
+      <% if (Array.isArray(__hero.actions) && __hero.actions.length) { %>
+        <div class="control-actions">
+          <% __hero.actions.forEach((action) => { %>
+            <a href="<%= action.href %>" class="<%= __buttonClass(action.tone) %>"><%= action.label %></a>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+    <% if (Array.isArray(__hero.pills) && __hero.pills.length) { %>
+      <div class="control-pill-grid">
+        <% __hero.pills.forEach((pill) => { %>
+          <div class="control-pill <%= __toneClass(pill.tone) %>">
+            <div class="label"><%= pill.label %></div>
+            <div class="value"><%= pill.value || '-' %></div>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+  </section>
+
+  <% if (__metrics.length) { %>
+    <section class="metric-grid">
+      <% __metrics.forEach((metric) => { %>
+        <div class="metric-card control-metric-card <%= __toneClass(metric.tone) %>">
+          <div class="metric-label"><%= metric.label %></div>
+          <div class="metric-value"><%= metric.value || '-' %></div>
+          <% if (metric.meta) { %>
+            <div class="metric-meta"><%= metric.meta %></div>
+          <% } %>
+        </div>
+      <% }) %>
+    </section>
+  <% } %>
+
+  <% __sections.forEach((section) => { %>
+    <section class="stack">
+      <div class="section-head">
+        <div>
+          <div class="section-title"><%= section.title %></div>
+          <% if (section.description) { %>
+            <div class="subtle"><%= section.description %></div>
+          <% } %>
+        </div>
+      </div>
+      <div class="<%= __sectionColsClass(section) %>">
+        <% (section.cards || []).forEach((card) => { %>
+          <div class="card control-panel <%= __toneClass(card.tone) %>">
+            <div class="control-panel-head">
+              <h2><%= card.title %></h2>
+            </div>
+            <% if (Array.isArray(card.rows) && card.rows.length) { %>
+              <div class="kv">
+                <% card.rows.forEach((row) => { %>
+                  <div class="k"><%= row.label %></div>
+                  <div class="v"><%= row.value || '-' %></div>
+                <% }) %>
+              </div>
+            <% } %>
+            <% if (Array.isArray(card.notes) && card.notes.length) { %>
+              <div class="control-note-list">
+                <% card.notes.forEach((note) => { %>
+                  <div class="issue-pill <%= __toneClass(card.tone) %>"><%= note %></div>
+                <% }) %>
+              </div>
+            <% } %>
+            <% if (Array.isArray(card.actions) && card.actions.length) { %>
+              <div class="control-actions" style="margin-top:14px;">
+                <% card.actions.forEach((action) => { %>
+                  <a href="<%= action.href %>" class="<%= __buttonClass(action.tone) %>"><%= action.label %></a>
+                <% }) %>
+              </div>
+            <% } %>
+          </div>
+        <% }) %>
+      </div>
+    </section>
+  <% }) %>
+</div>

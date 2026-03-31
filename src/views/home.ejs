@@ -1,4 +1,4 @@
-<%- include('partials/app_start', { title: '대시보드 · DONBEOLJA Ω', pageTitle: '대시보드', active: 'home' }) %>
+<%- include('partials/app_start', { title: 'Mission Control · DONBEOLJA Ω', pageTitle: 'Mission Control', active: 'mission' }) %>
 
 <%
   const budgetUnit = String(
@@ -444,6 +444,8 @@
     ? budget_summary.total_used_pct
     : null;
 %>
+
+<%- include('partials/control_surface_body', { model: mission_control }) %>
 
 <div class="section-head">
   <div class="section-title">시스템 핵심</div>
