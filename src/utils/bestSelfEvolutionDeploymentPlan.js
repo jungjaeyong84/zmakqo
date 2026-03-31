@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("fs");
+const { normalizePreparedOverride } = require("./selfEvolutionPreparedOverride");
 
 function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -48,7 +49,7 @@ function extractPineStrategyId(pathValue) {
   }
 }
 
-function findPreparedPaths({ stageAutopilot = null, weeklyHistory = null, targetCandidateId = null, rollbackFilePath = null } = {}) {
+function findPreparedPaths({ stageAutopilot = null, weeklyHistory = null, targetCandidateId = null, rollbackFilePath = null, preparedOverride = null } = {}) {
   const stage = unwrapRawReport(stageAutopilot) || {};
   const stageRows = Array.isArray(stage.stage_rows) ? stage.stage_rows : [];
   const pineStage = stageRows.find((row) => String(row && row.stage || "").trim().toUpperCase() === "PINE") || {};
@@ -66,7 +67,7 @@ function findPreparedPaths({ stageAutopilot = null, weeklyHistory = null, target
   const latestHistory = matchedHistory || latestWeeklyRow(weeklyHistory) || {};
   const preparedFilePath = String(pineStage.prepared_file_path || latestHistory.created_file_path || "").trim() || null;
   const latestGeneratedFilePath = String(pineStage.latest_generated_file_path || latestHistory.latest_generated_file_path || "").trim() || null;
-  return {
+  const resolved = {
     prepared_file_path: preparedFilePath,
     prepared_strategy_id: String(
       pineStage.prepared_strategy_id
@@ -82,6 +83,20 @@ function findPreparedPaths({ stageAutopilot = null, weeklyHistory = null, target
     prepared_reason: String(pineStage.reason || "").trim() || null,
     source_week_key: String(latestHistory.week_key || "").trim() || null,
     source_recommended_patch_id: String(latestHistory.recommended_patch_id || "").trim() || null,
+  };
+  const override = normalizePreparedOverride(preparedOverride);
+  if (!override.active) return resolved;
+  return {
+    ...resolved,
+    prepared_file_path: override.prepared_file_path || resolved.prepared_file_path,
+    prepared_strategy_id: override.prepared_strategy_id || resolved.prepared_strategy_id,
+    latest_generated_file_path: override.latest_generated_file_path || resolved.latest_generated_file_path,
+    prepared_candidate_signature: override.target_candidate_id || resolved.prepared_candidate_signature,
+    prepared_display_candidate_id: override.display_candidate_id || resolved.prepared_display_candidate_id,
+    prepared_stage_ready: override.prepared_stage_ready === true,
+    prepared_reason: override.prepared_reason || resolved.prepared_reason,
+    override_active: true,
+    override_source: override.override_source || null,
   };
 }
 
@@ -218,6 +233,7 @@ function deriveDeploymentPlan({
   weeklyHistory = null,
   manualPasteAck = null,
   signalsCache = null,
+  preparedOverride = null,
 } = {}) {
   const supervisor = unwrapRawReport(objectiveSupervisor) || {};
   const change = unwrapRawReport(changeControl) || {};
@@ -247,6 +263,7 @@ function deriveDeploymentPlan({
     weeklyHistory,
     targetCandidateId,
     rollbackFilePath,
+    preparedOverride,
   });
   const manualPaste = deriveManualPasteAck({
     manualPasteAck,
@@ -258,6 +275,20 @@ function deriveDeploymentPlan({
     manualPaste,
   });
   const marketScope = deriveMarketScope(canaryRows, targetCandidateId, openWave);
+  const preparedOriginCandidateId = String(prepared.prepared_candidate_signature || "").trim() || null;
+  const appliedOriginCandidateId = String(
+    manualPaste.target_candidate_id
+    || manualPaste.candidate_signature
+    || preparedOriginCandidateId
+    || ""
+  ).trim() || null;
+  const appliedOriginDisplayCandidateId = String(
+    (appliedOriginCandidateId && preparedOriginCandidateId && appliedOriginCandidateId === preparedOriginCandidateId
+      ? prepared.prepared_display_candidate_id
+      : null)
+    || appliedOriginCandidateId
+    || ""
+  ).trim() || null;
 
   const promotionAuthorityPass = (
     codexVerdict === "PROMOTE"
@@ -273,25 +304,55 @@ function deriveDeploymentPlan({
   const dryPrepareEligible = promotionPreparePass
     && prepared.prepared_stage_ready !== true
     && String(prepared.prepared_reason || "").trim().toUpperCase() === "DAILY_NO_TRADE_ACTIVITY";
-  const readyForManualPaste = promotionPreparePass
+  const overrideReadyForManualPaste = prepared.override_active === true
     && prepared.prepared_stage_ready === true
-    && (!!prepared.prepared_file_path || !!prepared.latest_generated_file_path);
+    && !!prepared.prepared_file_path
+    && !!prepared.prepared_strategy_id
+    && manualPaste.acknowledged !== true;
+  const readyForManualPaste = (
+    promotionPreparePass
+    && prepared.prepared_stage_ready === true
+    && (!!prepared.prepared_file_path || !!prepared.latest_generated_file_path)
+  ) || overrideReadyForManualPaste;
   const readyForManualRollback = rollbackPreparePass
     && prepared.prepared_stage_ready === true
     && (!!prepared.rollback_source_file_path || !!rollbackFilePath);
   const changeControlRelevant = promotion.ready === true || rollback.ready === true;
+  const appliedAuthorityApproved = Boolean(
+    codexVerdict === "PROMOTE"
+    && (
+      !appliedOriginCandidateId
+      || !codexCandidateId
+      || codexCandidateId === appliedOriginCandidateId
+    )
+  );
+  const preparedStrategyApplied = Boolean(
+    prepared.prepared_stage_ready === true
+    && (
+      (prepared.prepared_strategy_id
+        && manualPaste.applied_strategy_id
+        && manualPaste.applied_strategy_id === prepared.prepared_strategy_id)
+      || manualPaste.acknowledged === true
+    )
+  );
+  const authorityBypassActive = Boolean(
+    (prepared.override_active === true || preparedStrategyApplied)
+    && (manualPaste.acknowledged === true || liveSignalConfirmation.confirmed === true)
+    && !appliedAuthorityApproved
+  );
 
   let planStatus = "HOLD";
   if (readyForManualRollback) planStatus = "READY_FOR_MANUAL_ROLLBACK";
   else if (rollbackPreparePass) planStatus = "PREPARE_ROLLBACK";
-  else if (liveSignalConfirmation.confirmed) planStatus = "APPLIED_CONFIRMED";
-  else if (manualPaste.acknowledged) planStatus = "APPLIED_PENDING_SIGNAL_CONFIRMATION";
+  else if (liveSignalConfirmation.confirmed) planStatus = authorityBypassActive ? "APPLIED_CONFIRMED_AUTHORITY_BYPASS" : "APPLIED_CONFIRMED";
+  else if (manualPaste.acknowledged) planStatus = authorityBypassActive ? "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS" : "APPLIED_PENDING_SIGNAL_CONFIRMATION";
   else if (readyForManualPaste) planStatus = "READY_FOR_MANUAL_PASTE";
   else if (promotionPreparePass) planStatus = dryPrepareEligible ? "PREPARE_PROMOTION_DRY" : "PREPARE_PROMOTION";
 
   const blockers = [];
   if (planStatus === "HOLD" && Array.isArray(guardSummary.blockers)) blockers.push(...guardSummary.blockers);
   if (changeControlRelevant && codexVerdict === "HOLD" && !recoveryPromotion) blockers.push("CODEX_ACTION_NOT_APPROVED");
+  if (authorityBypassActive) blockers.push("EXTERNAL_AUTHORITY_BYPASS");
   if (promotionPreparePass && !readyForManualPaste && !dryPrepareEligible) blockers.push("PINE_PREPARE_PENDING");
   if (dryPrepareEligible) blockers.push("DRY_PREPARE_ONLY");
   if (rollbackPreparePass && !readyForManualRollback) blockers.push("ROLLBACK_PREPARE_PENDING");
@@ -335,6 +396,9 @@ function deriveDeploymentPlan({
   if (marketScope.blocked_n > 0) {
     nextActions.push("blocked market canary를 먼저 해소해 open wave 전체를 READY 상태로 맞춤");
   }
+  if (prepared.override_active === true) {
+    nextActions.push("manual prepared override가 활성화되어 있으므로 TradingView 반영 후 첫 LONG/SHORT 실신호로 신규 strategy_id를 확인");
+  }
   if (promotionPreparePass && !readyForManualPaste && !dryPrepareEligible) {
     nextActions.push("PINE stage가 prepared file을 생성할 때까지 stage_autopilot 결과를 재확인");
   }
@@ -344,17 +408,28 @@ function deriveDeploymentPlan({
   if (manualPaste.acknowledged) {
     nextActions.push("live signal에서 applied strategy_id 확인 전까지 APPLIED_PENDING_SIGNAL_CONFIRMATION 상태를 유지");
   }
+  if (authorityBypassActive) {
+    nextActions.push("manual prepared override가 외부 권위 PROMOTE 없이 적용되어 authority bypass 상태임을 명시하고 candidate 출처를 분리 추적");
+  }
   if (liveSignalConfirmation.confirmed) {
     nextActions.length = 0;
+    if (authorityBypassActive) {
+      nextActions.push("적용된 Pine는 authority bypass 상태이므로 current applied origin과 current recommended target을 분리해서 추적");
+    }
   }
 
   return {
     summary: {
       plan_status: planStatus,
       target_candidate_id: targetCandidateId,
+      recommended_target_candidate_id: targetCandidateId,
       display_candidate_id: displayCandidateId,
+      applied_origin_candidate_id: appliedOriginCandidateId,
+      applied_origin_display_candidate_id: appliedOriginDisplayCandidateId,
+      prepared_origin_candidate_id: preparedOriginCandidateId,
+      prepared_origin_display_candidate_id: prepared.prepared_display_candidate_id || null,
       rollback_file_path: rollbackFilePath,
-      prepare_pass: promotionPreparePass || rollbackPreparePass,
+      prepare_pass: promotionPreparePass || rollbackPreparePass || overrideReadyForManualPaste,
       dry_prepare_available: dryPrepareEligible,
       ready_for_manual_paste: (!manualPaste.acknowledged) && (readyForManualPaste || readyForManualRollback),
       manual_step_required: (!manualPaste.acknowledged) && (planStatus === "READY_FOR_MANUAL_PASTE" || planStatus === "READY_FOR_MANUAL_ROLLBACK"),
@@ -371,6 +446,8 @@ function deriveDeploymentPlan({
       latest_generated_file_path: prepared.latest_generated_file_path,
       rollback_source_file_path: prepared.rollback_source_file_path,
       prepared_stage_ready: prepared.prepared_stage_ready,
+      prepared_override_active: prepared.override_active === true,
+      prepared_override_source: prepared.override_source || null,
       source_week_key: prepared.source_week_key,
       applied_strategy_id: manualPaste.applied_strategy_id,
       manual_paste_acknowledged_at_kst: manualPaste.acknowledged_at_kst,
@@ -378,6 +455,9 @@ function deriveDeploymentPlan({
       confirmed_signal_id: liveSignalConfirmation.signal_id,
       confirmed_signal_created_at: liveSignalConfirmation.created_at,
       codex_verdict: codexVerdict,
+      authority_required: prepared.override_active === true || preparedStrategyApplied || promotion.ready === true || rollback.ready === true,
+      authority_approved: appliedAuthorityApproved,
+      authority_bypass_active: authorityBypassActive,
       blockers: Array.from(new Set(blockers.filter(Boolean))),
       next_actions: Array.from(new Set(nextActions.filter(Boolean))),
     },
@@ -389,6 +469,7 @@ function deriveDeploymentPlan({
       latest_generated_file_path: prepared.latest_generated_file_path,
       rollback_source_file_path: prepared.rollback_source_file_path,
       candidate_signature: prepared.prepared_candidate_signature || targetCandidateId,
+      applied_origin_candidate_id: appliedOriginCandidateId,
       prepared_reason: prepared.prepared_reason,
       dry_prepare: dryPrepareEligible,
       next_actions: Array.from(new Set(nextActions.filter(Boolean))),

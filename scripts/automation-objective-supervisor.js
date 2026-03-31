@@ -6,6 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const {
   OPS_DAILY_DIR,
+  OPS_RUNTIME_DIR,
   copyLatest,
   copySelfEvolutionLatest,
   loadLocalEnv,
@@ -32,6 +33,7 @@ const { deriveWeightTuningPlan } = require("../src/utils/bestSelfEvolutionWeight
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
 const { resolveMarketStateSummary } = require("../src/utils/marketStateSummary");
 const { resolveStatPhysFeatures } = require("../src/utils/statPhysFeatures");
+const { normalizePreparedOverride } = require("../src/utils/selfEvolutionPreparedOverride");
 const { resolveSelfEvolutionRuntimeState } = require("../src/utils/selfEvolutionRuntimeState");
 
 loadLocalEnv();
@@ -57,12 +59,14 @@ const SELF_EVOLUTION_ATTRIBUTION_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_se
 const SELF_EVOLUTION_CANDIDATES_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_candidates_latest.json");
 const SELF_EVOLUTION_REPLAY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_replay_latest.json");
 const SELF_EVOLUTION_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json");
+const SELF_EVOLUTION_EV_GATE_RESCUE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_ev_gate_rescue_latest.json");
 const SELF_EVOLUTION_MEMORY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_memory_latest.json");
 const WEEKLY_PINE_HISTORY_PATH = path.join(OPS_DAILY_DIR, "weekly_pine_upgrade_history.json");
-const CODEX_PATCH_LATEST_PATH = path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.json");
+const CODEX_PATCH_LATEST_PATH = selfEvolutionSnapshotLatestPath("self_evolution_authority_latest.json");
 const STAGE_AUTOPILOT_LATEST_PATH = path.join(OPS_DAILY_DIR, "stage_autopilot_latest.json");
 const RETROSPECTIVE_LATEST_PATH = path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json");
 const SELF_EVOLUTION_MANUAL_PASTE_ACK_LATEST_PATH = path.join(OPS_DAILY_DIR, "self_evolution_manual_paste_ack_latest.json");
+const SELF_EVOLUTION_PREPARED_OVERRIDE_PATH = path.join(OPS_RUNTIME_DIR, "self_evolution_prepared_override.json");
 const SIGNALS_CACHE_LATEST_PATH = path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "signals.json");
 const REPORT_LATEST_MD = path.join(OPS_DAILY_DIR, "objective_supervisor_latest.md");
 const REPORT_LATEST_JSON = path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json");
@@ -82,6 +86,7 @@ const FRESHNESS_HOURS = Object.freeze({
   selfEvolutionCandidates: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_CANDIDATES_MAX_AGE_HOURS || 36)),
   selfEvolutionReplay: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_REPLAY_MAX_AGE_HOURS || 36)),
   selfEvolutionCanary: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_CANARY_MAX_AGE_HOURS || 36)),
+  selfEvolutionEvGateRescue: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_EV_GATE_RESCUE_MAX_AGE_HOURS || 36)),
   selfEvolutionMemory: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_MEMORY_MAX_AGE_HOURS || 72)),
   weeklyPineHistory: Math.max(24, Number(process.env.OBJECTIVE_SUPERVISOR_WEEKLY_PINE_HISTORY_MAX_AGE_HOURS || 240)),
   codex: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_CODEX_MAX_AGE_HOURS || 48)),
@@ -593,6 +598,34 @@ function summarizeSelfEvolutionCanary(report = null) {
   };
 }
 
+function summarizeSelfEvolutionEvGateRescue(report = null) {
+  const raw = report && report.raw && typeof report.raw === "object" ? report.raw : report;
+  const byMarket = Array.isArray(raw && raw.by_market) ? raw.by_market : [];
+  const overallCf = raw && raw.counterfactual_reason_overall && typeof raw.counterfactual_reason_overall === "object"
+    ? raw.counterfactual_reason_overall
+    : null;
+  const topMarket = byMarket[0] || null;
+  return {
+    available: !!raw,
+    total_drops: toNum(raw && raw.total_live_active_ev_tp1_drops) || 0,
+    rescue_count: toNum(raw && raw.rescue_count) || 0,
+    hard_drop_count: toNum(raw && raw.hard_drop_count) || 0,
+    rescue_rate: toNum(raw && raw.rescue_rate),
+    point_pass_lower_fail_count: toNum(raw && raw.point_pass_lower_fail_count) || 0,
+    point_fail_count: toNum(raw && raw.point_fail_count) || 0,
+    counterfactual_matured_n: toNum(overallCf && overallCf.matured_n),
+    counterfactual_tp1_first_rate: toNum(overallCf && overallCf.tp1_first_rate),
+    counterfactual_sl_first_rate: toNum(overallCf && overallCf.sl_first_rate),
+    counterfactual_horizon_pos_rate: toNum(overallCf && overallCf.horizon_pos_rate),
+    counterfactual_avg_horizon_ret_net: toNum(overallCf && overallCf.avg_horizon_ret_net),
+    counterfactual_verdict: String(overallCf && overallCf.verdict || "").trim() || null,
+    top_market: String(topMarket && topMarket.market || "").trim() || null,
+    top_market_rescue_count: toNum(topMarket && topMarket.rescue) || 0,
+    top_market_actual_verdict: String(topMarket && topMarket.actual_verdict || "").trim() || null,
+    top_market_actual_avg_horizon_ret_net: toNum(topMarket && topMarket.actual_avg_horizon_ret_net),
+  };
+}
+
 function summarizeSelfEvolutionMemory(report = null) {
   const summary = report && report.summary && typeof report.summary === "object" ? report.summary : {};
   const rows = Array.isArray(report && report.current_rows) ? report.current_rows : [];
@@ -658,10 +691,19 @@ function summarizeSelfEvolutionDeploymentPlan(report = null) {
     market_scope_ready_n: toNum(summary.market_scope_ready_n) || 0,
     market_scope_blocked_n: toNum(summary.market_scope_blocked_n) || 0,
     prepared_file_path: String(summary.prepared_file_path || "").trim() || null,
+    prepared_strategy_id: String(summary.prepared_strategy_id || "").trim() || null,
     latest_generated_file_path: String(summary.latest_generated_file_path || "").trim() || null,
     rollback_source_file_path: String(summary.rollback_source_file_path || "").trim() || null,
     prepared_stage_ready: summary.prepared_stage_ready === true,
+    prepared_override_active: summary.prepared_override_active === true,
+    prepared_override_source: String(summary.prepared_override_source || "").trim() || null,
     source_week_key: String(summary.source_week_key || "").trim() || null,
+    applied_strategy_id: String(summary.applied_strategy_id || "").trim() || null,
+    manual_paste_acknowledged: summary.manual_paste_acknowledged === true,
+    live_signal_confirmation_pending: summary.live_signal_confirmation_pending === true,
+    live_signal_confirmed: summary.live_signal_confirmed === true,
+    confirmed_signal_id: String(summary.confirmed_signal_id || "").trim() || null,
+    confirmed_signal_created_at: String(summary.confirmed_signal_created_at || "").trim() || null,
     codex_verdict: String(summary.codex_verdict || "").trim().toUpperCase() || null,
     blockers: Array.isArray(summary.blockers) ? summary.blockers : [],
     next_actions: Array.isArray(summary.next_actions) ? summary.next_actions : [],
@@ -710,9 +752,9 @@ function summarizeCodexAuthority({
 } = {}) {
   const review = codexReview && typeof codexReview === "object" ? codexReview : {};
   const plan = deploymentPlan && typeof deploymentPlan === "object" ? deploymentPlan : {};
-  const authorityMode = plan.plan_status || review.verdict || "HOLD";
+  const authorityMode = review.authority_mode || plan.plan_status || review.verdict || "HOLD";
   return {
-    owner: "CODEX",
+    owner: String(review.owner || "CODEX").trim() || "CODEX",
     authority_mode: String(authorityMode || "HOLD").trim().toUpperCase(),
     report_verdict: String(reportVerdict || "HOLD").trim().toUpperCase(),
     report_reason: String(reportReason || "N/A"),
@@ -730,6 +772,10 @@ function summarizeCodexAuthority({
     latest_generated_file_path: plan.latest_generated_file_path || null,
     rollback_source_file_path: plan.rollback_source_file_path || null,
     blockers: Array.isArray(plan.blockers) ? plan.blockers : [],
+    codex_review_status: String(review.codex_review && review.codex_review.status || "").trim().toUpperCase() || null,
+    claude_review_status: String(review.claude_review && review.claude_review.status || "").trim().toUpperCase() || null,
+    codex_review_verdict: String(review.codex_review && review.codex_review.verdict || "").trim().toUpperCase() || null,
+    claude_review_verdict: String(review.claude_review && review.claude_review.verdict || "").trim().toUpperCase() || null,
   };
 }
 
@@ -1207,13 +1253,13 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
         : ["시장별 계약 없음"],
     },
     {
-      header: "Codex 검토",
+      header: "외부 검토",
       lines: [
         `상태 ${report.codex_review.status} / 결론 ${report.codex_review.verdict} / 사유 ${report.codex_review.reason}`,
       ],
     },
     {
-      header: "Codex 권한",
+      header: "외부 권한",
       lines: [
         `owner ${report.codex_authority && report.codex_authority.owner || "N/A"} / mode ${report.codex_authority && report.codex_authority.authority_mode || "N/A"} / verdict ${report.codex_authority && report.codex_authority.verdict || "N/A"}`,
         `manual ${report.codex_authority && report.codex_authority.manual_step_required ? "YES" : "NO"} / file ${report.codex_authority && report.codex_authority.prepared_file_path || report.codex_authority && report.codex_authority.latest_generated_file_path || "N/A"}`,
@@ -1297,7 +1343,7 @@ function buildObjectiveSupervisorTelegramAlertSections(report = {}) {
   }));
 }
 
-function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache } = {}) {
+function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionEvGateRescue, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache, preparedOverride } = {}) {
   const objective = governance && governance.current && governance.current.objective ? governance.current.objective : {};
   const objectiveCfg = governance && governance.objective ? governance.objective : {};
   const promotion = changeControl && changeControl.auto_promotion ? changeControl.auto_promotion : {};
@@ -1383,6 +1429,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   const selfEvolutionCandidatesSummary = summarizeSelfEvolutionCandidates(selfEvolutionCandidates);
   const selfEvolutionReplaySummary = summarizeSelfEvolutionReplay(selfEvolutionReplay);
   const selfEvolutionCanarySummary = summarizeSelfEvolutionCanary(selfEvolutionCanary);
+  const selfEvolutionEvGateRescueSummary = summarizeSelfEvolutionEvGateRescue(selfEvolutionEvGateRescue);
   const selfEvolutionMemorySummary = summarizeSelfEvolutionMemory(selfEvolutionMemory);
   const memoryBlockedIds = new Set(selfEvolutionMemorySummary.blocked_candidate_ids || []);
   const canaryDriftContext = summarizeCanaryDriftContext(canary);
@@ -1431,6 +1478,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     weeklyHistory,
     manualPasteAck,
     signalsCache,
+    preparedOverride,
   }));
   const selfEvolutionWeightTuning = deriveWeightTuningPlan({
     objective: selfEvolutionObjectiveSummary,
@@ -1477,6 +1525,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   if (promotionReplay && promotionReplay.validation_verdict === "BLOCK") blockers.push("SELF_EVOLUTION_REPLAY_BLOCK");
   if (effectivePromotion.ready === true && selfEvolutionCanarySummary.available && selfEvolutionCanarySummary.apply_pass !== true) blockers.push("SELF_EVOLUTION_CANARY_BLOCK");
   if (selfEvolutionCanarySummary.rollback_ready_n > 0) blockers.push("SELF_EVOLUTION_CANARY_ROLLBACK_READY");
+  if (selfEvolutionDeploymentPlanSummary.live_signal_confirmation_pending === true) blockers.push("SELF_EVOLUTION_PENDING_SIGNAL_CONFIRMATION");
   if (selfEvolutionCycleSummary.available && selfEvolutionCycleSummary.cycle_consistent === false) blockers.push("SELF_EVOLUTION_ARTIFACT_CYCLE_MISMATCH");
   if (selfEvolutionLoopMonitorSummary.available && selfEvolutionLoopMonitorSummary.cycle_consistent === false) blockers.push("SELF_EVOLUTION_LOOP_CYCLE_MISMATCH");
   if (effectivePromotion.ready === true && promotionCandidateId && memoryBlockedIds.has(promotionCandidateId)) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK");
@@ -1513,6 +1562,8 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
         ? "SELF_EVOLUTION_CANARY_BLOCK"
       : selfEvolutionCanarySummary.rollback_ready_n > 0
         ? "SELF_EVOLUTION_CANARY_ROLLBACK_READY"
+      : selfEvolutionDeploymentPlanSummary.live_signal_confirmation_pending === true
+        ? "SELF_EVOLUTION_PENDING_SIGNAL_CONFIRMATION"
       : (selfEvolutionCycleSummary.available && selfEvolutionCycleSummary.cycle_consistent === false)
         ? "SELF_EVOLUTION_ARTIFACT_CYCLE_MISMATCH"
       : (selfEvolutionLoopMonitorSummary.available && selfEvolutionLoopMonitorSummary.cycle_consistent === false)
@@ -1546,7 +1597,10 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   let verdict = "HOLD";
   let reason = "NO_ACTION_READY";
   if (rollback && rollback.ready === true) {
-    if (!codex || !codexFresh) {
+    if (selfEvolutionDeploymentPlanSummary.live_signal_confirmation_pending === true) {
+      verdict = "HOLD";
+      reason = "SELF_EVOLUTION_PENDING_SIGNAL_CONFIRMATION";
+    } else if (!codex || !codexFresh) {
       verdict = "HOLD";
       reason = "CODEX_REVIEW_REQUIRED_ROLLBACK";
       blockers.push("CODEX_REVIEW_REQUIRED_ROLLBACK");
@@ -1567,7 +1621,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     if (promotionObjectiveBlockReason) {
       verdict = "HOLD";
       reason = promotionObjectiveBlockReason;
-    } else if (!recoveryPromotion && (!codex || !codexFresh)) {
+    } else if (!codex || !codexFresh) {
       verdict = "HOLD";
       reason = "CODEX_REVIEW_REQUIRED_PROMOTION";
       blockers.push("CODEX_REVIEW_REQUIRED_PROMOTION");
@@ -1575,7 +1629,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       verdict = "HOLD";
       reason = "STAGE_AUTOPILOT_REQUIRED_PROMOTION";
       blockers.push("STAGE_AUTOPILOT_REQUIRED_PROMOTION");
-    } else if (!recoveryPromotion && codexVerdict !== "PROMOTE") {
+    } else if (codexVerdict !== "PROMOTE") {
       verdict = "HOLD";
       reason = "CODEX_REVIEW_BLOCK_PROMOTION";
       blockers.push("CODEX_BLOCK_PROMOTION");
@@ -1601,6 +1655,8 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     reportVerdict: verdict,
     reportReason: reason,
     codexReview: {
+      owner: String(codex && codex.owner || "").trim() || "CODEX",
+      authority_mode: String(codex && codex.authority_mode || "").trim().toUpperCase() || null,
       status: codexDisplayStatus,
       verdict: codexVerdict,
       recommended_candidate_id: codexCandidateId,
@@ -1608,6 +1664,8 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       recommended_rollback_file_path: codexRollbackPath,
       confidence: toNum(codex && codex.confidence),
       reason: String(codex && (codex.reason || codex.summary) || "N/A"),
+      codex_review: codex && codex.codex_review ? codex.codex_review : null,
+      claude_review: codex && codex.claude_review ? codex.claude_review : null,
     },
     deploymentPlan: selfEvolutionDeploymentPlanSummary,
   });
@@ -1719,6 +1777,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     self_evolution_candidates: selfEvolutionCandidatesSummary,
     self_evolution_replay: selfEvolutionReplaySummary,
     self_evolution_canary: selfEvolutionCanarySummary,
+    self_evolution_ev_gate_rescue: selfEvolutionEvGateRescueSummary,
     self_evolution_cycle: selfEvolutionCycleSummary,
     self_evolution_deployment: selfEvolutionDeploymentSummary,
     self_evolution_deployment_plan: selfEvolutionDeploymentPlanSummary,
@@ -2023,6 +2082,7 @@ async function main() {
   const selfEvolutionCandidatesArtifact = readArtifact("self_evolution_candidates", SELF_EVOLUTION_CANDIDATES_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCandidates);
   const selfEvolutionReplayArtifact = readArtifact("self_evolution_replay", SELF_EVOLUTION_REPLAY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionReplay);
   const selfEvolutionCanaryArtifact = readArtifact("self_evolution_canary", SELF_EVOLUTION_CANARY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCanary);
+  const selfEvolutionEvGateRescueArtifact = readArtifact("self_evolution_ev_gate_rescue", SELF_EVOLUTION_EV_GATE_RESCUE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionEvGateRescue);
   const selfEvolutionMemoryArtifact = readArtifact("self_evolution_memory", SELF_EVOLUTION_MEMORY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionMemory);
   const codexArtifact = readArtifact("codex_patch", CODEX_PATCH_LATEST_PATH, FRESHNESS_HOURS.codex);
   const stageAutopilotArtifact = readArtifact("stage_autopilot", STAGE_AUTOPILOT_LATEST_PATH, FRESHNESS_HOURS.stageAutopilot);
@@ -2032,6 +2092,7 @@ async function main() {
   const manualPasteAck = runtimeState && runtimeState.data
     ? runtimeState.data
     : readJsonRawSafe(SELF_EVOLUTION_MANUAL_PASTE_ACK_LATEST_PATH, null);
+  const preparedOverride = normalizePreparedOverride(readJsonRawSafe(SELF_EVOLUTION_PREPARED_OVERRIDE_PATH, null));
   const signalsCache = readJsonRawSafe(SIGNALS_CACHE_LATEST_PATH, null);
   const selfEvolutionCycleState = summarizeSelfEvolutionArtifactCycles({
     stage: selfEvolutionStage,
@@ -2083,6 +2144,7 @@ async function main() {
     weeklyHistory: weeklyPineHistoryArtifact.data,
     manualPasteAck,
     signalsCache,
+    preparedOverride,
   });
 
   const report = {

@@ -83,13 +83,25 @@ function buildRuntimeStrategyGate({
     || safeManualPasteAck.applied_strategy_id
     || ""
   ).trim() || null;
-  const preparedReady = safeDeploymentSummary.prepared_stage_ready === true
+  const preparedReady = (
+    safeManualPasteAck.prepared_stage_ready === true
+    && (
+      safeManualPasteAck.ready_for_manual_paste === true
+      || String(safeManualPasteAck.plan_status || "").trim().toUpperCase() === "READY_FOR_MANUAL_PASTE"
+    )
+  ) || (
+    safeDeploymentSummary.prepared_stage_ready === true
     && (
       safeDeploymentSummary.ready_for_manual_paste === true
       || String(safeDeploymentSummary.plan_status || "").trim().toUpperCase() === "READY_FOR_MANUAL_PASTE"
-    );
+    )
+  );
   const preparedStrategyId = preparedReady
-    ? (String(safeDeploymentSummary.prepared_strategy_id || "").trim() || null)
+    ? (String(
+      safeManualPasteAck.prepared_strategy_id
+      || safeDeploymentSummary.prepared_strategy_id
+      || ""
+    ).trim() || null)
     : null;
   const manualPasteAcknowledged = safeManualPasteAck.acknowledged === true || safeDeploymentSummary.manual_paste_acknowledged === true;
   const liveSignalConfirmationPending = safeManualPasteAck.live_signal_confirmation_pending === true
@@ -120,6 +132,51 @@ function buildRuntimeStrategyGate({
       live_signal_confirmation_pending: liveSignalConfirmationPending,
       live_signal_confirmed: liveSignalConfirmed,
     },
+  };
+}
+
+function firstTrimmedStrategyValue(...values) {
+  for (const value of values) {
+    if (value == null) continue;
+    const trimmed = String(value).trim();
+    if (trimmed) return trimmed;
+  }
+  return null;
+}
+
+function resolvePayloadStrategyIdentity({
+  payload = null,
+  featureObj = null,
+  featureJsonObj = null,
+  defaultStrategyId = null,
+} = {}) {
+  const read = (obj, keys = []) => {
+    if (!obj || typeof obj !== "object") return null;
+    for (const key of keys) {
+      if (obj[key] == null) continue;
+      const trimmed = String(obj[key]).trim();
+      if (trimmed) return trimmed;
+    }
+    return null;
+  };
+
+  const canonicalId = firstTrimmedStrategyValue(
+    read(payload, ["strategy_id", "strategyId"]),
+    read(featureObj, ["strategy_id", "strategyId"]),
+    read(featureJsonObj, ["strategy_id", "strategyId"])
+  );
+  const aliasId = firstTrimmedStrategyValue(
+    read(payload, ["strategy", "strategy_name", "strategyName"]),
+    read(featureObj, ["strategy", "strategy_name", "strategyName"]),
+    read(featureJsonObj, ["strategy", "strategy_name", "strategyName"])
+  );
+  const effectiveStrategyId = canonicalId || aliasId || firstTrimmedStrategyValue(defaultStrategyId);
+
+  return {
+    canonicalId,
+    aliasId,
+    present: canonicalId != null || aliasId != null,
+    effectiveStrategyId,
   };
 }
 
@@ -1230,6 +1287,7 @@ function createWebhookRoutes() {
       let intentOverrideReason = null;
       let reverseExceptionDetail = null;
       const featureObj = (p.features && typeof p.features === "object") ? p.features : {};
+      const featureJsonObj = (p.features_json && typeof p.features_json === "object") ? p.features_json : {};
       const entryTimingTier = resolveEntryTimingTier({ event: eventUpper, features_json: featureObj });
       const isEarlyEvent = entryTimingTier === "EARLY";
       const priceRaw = p.price ?? p.last ?? p.close ?? p.current_price ?? p.cur_price ?? null;
@@ -1430,11 +1488,14 @@ function createWebhookRoutes() {
         : null;
 
       const strategyGate = await resolveRuntimeStrategyGate();
-      const strategyIdRaw = p.strategy_id || p.strategyId || p.strategy || p.strategy_name || null;
-      const strategyIdPresent = strategyIdRaw != null && String(strategyIdRaw).trim() !== "";
-      const strategyId = (strategyIdRaw != null && String(strategyIdRaw).trim() !== "")
-        ? String(strategyIdRaw).trim()
-        : strategyGate.defaultStrategyId;
+      const strategyIdentity = resolvePayloadStrategyIdentity({
+        payload: p,
+        featureObj,
+        featureJsonObj,
+        defaultStrategyId: strategyGate.defaultStrategyId,
+      });
+      const strategyIdPresent = strategyIdentity.present === true;
+      const strategyId = strategyIdentity.effectiveStrategyId;
       const strategyAllowed = !WEBHOOK_STRATEGY_GATE_ENABLED || strategyGate.allowedStrategySet.size === 0
         ? true
         : strategyGate.allowedStrategySet.has(strategyId);
@@ -1475,6 +1536,8 @@ function createWebhookRoutes() {
               _strategy_required: WEBHOOK_STRATEGY_REQUIRE_ID,
               _strategy_id_present: strategyIdPresent,
               _strategy_id_received: strategyIdPresent ? strategyId : null,
+              _strategy_id_canonical_received: strategyIdentity.canonicalId,
+              _strategy_id_alias_received: strategyIdentity.aliasId,
               _strategy_id_default: strategyGate.defaultStrategyId,
               _strategy_allowed_ids: strategyGate.allowedStrategyIds,
               _strategy_gate_source: strategyGate.source,
@@ -2019,4 +2082,5 @@ module.exports = createWebhookRoutes;
 module.exports.__test = {
   buildRuntimeStrategyGate,
   parseAllowedStrategyIds,
+  resolvePayloadStrategyIdentity,
 };

@@ -44,13 +44,15 @@
 
 Claude Code는 전체 감사를 시작하기 전에 아래 문서를 먼저 읽는다.
 
-1. `docs/SIGNAL_TIER_DEFINITION.md`
-2. `docs/PINE_AND_FILTER_STAGE_ROLES.md`
-3. `docs/FILTER_STAGE_POLICY.md`
-4. `docs/OBJECTIVE_RETROSPECTIVE_POLICY.md`
-5. `docs/SCHEDULER_ENV_POLICY.md`
-6. `docs/AI_ALLOCATION_POLICY.md`
-7. `docs/BINANCE_FUTURES_SPEC.md`
+1. `docs/BEST_PINE_TO_SELF_EVOLUTION_SYSTEM_MAP.md`
+2. `docs/CLAUDE_FULL_SYSTEM_QUALITY_AUDIT_PROMPT.md`
+3. `docs/SIGNAL_TIER_DEFINITION.md`
+4. `docs/PINE_AND_FILTER_STAGE_ROLES.md`
+5. `docs/FILTER_STAGE_POLICY.md`
+6. `docs/OBJECTIVE_RETROSPECTIVE_POLICY.md`
+7. `docs/SCHEDULER_ENV_POLICY.md`
+8. `docs/AI_ALLOCATION_POLICY.md`
+9. `docs/BINANCE_FUTURES_SPEC.md`
 
 특정 패치 배치나 감사 주차를 검토하는 경우에는 위 문서 다음에 해당 handoff 문서를 바로 읽는다.
 

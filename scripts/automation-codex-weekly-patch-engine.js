@@ -24,7 +24,8 @@ loadLocalEnv();
 
 const CODEX_BIN = String(process.env.CODEX_BIN || "/Applications/Codex.app/Contents/Resources/codex").trim();
 const CODEX_MODEL = String(process.env.CODEX_PATCH_ENGINE_MODEL || "").trim();
-const EXEC_TIMEOUT_MS = Math.max(60_000, Number(process.env.CODEX_PATCH_ENGINE_TIMEOUT_MS || 600_000));
+const CODEX_REASONING_EFFORT = String(process.env.CODEX_PATCH_ENGINE_REASONING_EFFORT || "medium").trim().toLowerCase();
+const EXEC_TIMEOUT_MS = Math.max(60_000, Number(process.env.CODEX_PATCH_ENGINE_TIMEOUT_MS || 900_000));
 const MAX_AGE_HOURS = Math.max(12, Number(process.env.CODEX_PATCH_ENGINE_INPUT_MAX_AGE_HOURS || 48));
 const RETRY_COUNT = Math.max(1, Number(process.env.CODEX_PATCH_ENGINE_RETRY_COUNT || 2));
 const REPORT_LATEST_MD = path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.md");
@@ -124,6 +125,44 @@ function deriveCycleConsistency(reports = []) {
   };
 }
 
+function deriveReviewReadiness({ changeControl = null, selfEvolutionCanary = null, deploymentPlan = null } = {}) {
+  const readyPromotion = Boolean(changeControl && changeControl.auto_promotion && changeControl.auto_promotion.ready === true);
+  const readyRollback = Boolean(changeControl && changeControl.auto_rollback && changeControl.auto_rollback.ready === true);
+  const selfEvolutionSummary = selfEvolutionCanary && selfEvolutionCanary.summary && typeof selfEvolutionCanary.summary === "object"
+    ? selfEvolutionCanary.summary
+    : {};
+  const deploymentPlanSummary = deploymentPlan && deploymentPlan.summary && typeof deploymentPlan.summary === "object"
+    ? deploymentPlan.summary
+    : (deploymentPlan && typeof deploymentPlan === "object" ? deploymentPlan : {});
+  const planStatus = String(deploymentPlanSummary.plan_status || "").trim().toUpperCase();
+  const selfEvolutionPromotionReady = Boolean(
+    toNum(selfEvolutionSummary.ready_n) > 0
+    && selfEvolutionSummary.apply_pass === true
+  );
+  const selfEvolutionRollbackReady = Boolean(toNum(selfEvolutionSummary.rollback_ready_n) > 0);
+  const selfEvolutionAuthorityBypass = Boolean(
+    deploymentPlanSummary.authority_bypass_active === true
+    || /AUTHORITY_BYPASS/.test(planStatus)
+  );
+  const pendingSignalConfirmation = (
+    planStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION"
+    || planStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS"
+  );
+  const reviewReady = !pendingSignalConfirmation && (
+    readyPromotion || readyRollback || selfEvolutionPromotionReady || selfEvolutionRollbackReady || selfEvolutionAuthorityBypass
+  );
+  return {
+    readyPromotion,
+    readyRollback,
+    selfEvolutionPromotionReady,
+    selfEvolutionRollbackReady,
+    selfEvolutionAuthorityBypass,
+    pendingSignalConfirmation,
+    reviewReady,
+    blockedReason: pendingSignalConfirmation ? "PENDING_SIGNAL_CONFIRMATION_BLOCK" : null,
+  };
+}
+
 function readFreshJson(filePath, maxAgeHours = MAX_AGE_HOURS) {
   const data = readJsonRawSafe(filePath, null);
   if (!data) return { filePath, data: null, exists: false, fresh: false, ageHours: null };
@@ -185,15 +224,23 @@ function buildPrompt(context = {}) {
   const selfEvolutionAttribution = objectiveSupervisor && objectiveSupervisor.self_evolution_attribution && typeof objectiveSupervisor.self_evolution_attribution === "object"
     ? objectiveSupervisor.self_evolution_attribution
     : {};
-  const selfEvolutionCandidates = objectiveSupervisor && objectiveSupervisor.self_evolution_candidates && typeof objectiveSupervisor.self_evolution_candidates === "object"
-    ? objectiveSupervisor.self_evolution_candidates
-    : {};
+  const selfEvolutionCandidates = context.selfEvolutionCandidatesDirect
+    && context.selfEvolutionCandidatesDirect.summary
+    && typeof context.selfEvolutionCandidatesDirect.summary === "object"
+    ? context.selfEvolutionCandidatesDirect.summary
+    : (objectiveSupervisor && objectiveSupervisor.self_evolution_candidates && typeof objectiveSupervisor.self_evolution_candidates === "object"
+      ? objectiveSupervisor.self_evolution_candidates
+      : {});
   const selfEvolutionReplay = objectiveSupervisor && objectiveSupervisor.self_evolution_replay && typeof objectiveSupervisor.self_evolution_replay === "object"
     ? objectiveSupervisor.self_evolution_replay
     : {};
-  const selfEvolutionCanary = objectiveSupervisor && objectiveSupervisor.self_evolution_canary && typeof objectiveSupervisor.self_evolution_canary === "object"
-    ? objectiveSupervisor.self_evolution_canary
-    : {};
+  const selfEvolutionCanary = context.selfEvolutionCanaryDirect
+    && context.selfEvolutionCanaryDirect.summary
+    && typeof context.selfEvolutionCanaryDirect.summary === "object"
+    ? context.selfEvolutionCanaryDirect.summary
+    : (objectiveSupervisor && objectiveSupervisor.self_evolution_canary && typeof objectiveSupervisor.self_evolution_canary === "object"
+      ? objectiveSupervisor.self_evolution_canary
+      : {});
   const selfEvolutionDeployment = objectiveSupervisor && objectiveSupervisor.self_evolution_deployment && typeof objectiveSupervisor.self_evolution_deployment === "object"
     ? objectiveSupervisor.self_evolution_deployment
     : {};
@@ -229,8 +276,8 @@ function buildPrompt(context = {}) {
     "- If count_ratio_global < 1.00, tightening recommendations are disallowed; prefer HOLD or rollback-compatible reasoning.",
     "- Favor replacement_ratio and count preservation ahead of marginal win-rate gains.",
     "- Prefer HOLD on weak/conflicting evidence.",
-    "- PROMOTE only when existing change-control already indicates a ready promotion candidate.",
-    "- ROLLBACK only when existing change-control already indicates a ready rollback target.",
+    "- PROMOTE only when existing change-control already indicates a ready promotion candidate, or the current BEST self-evolution candidate set is replay/canary-ready for recovery promotion.",
+    "- ROLLBACK only when existing change-control already indicates a ready rollback target, or the current BEST self-evolution canary marks rollback ready.",
     "- Optimize for: 1) expectancy positive, 2) win rate >= 60%, 3) monthly net >= 1,500,000 KRW, 4) lower drawdown.",
     "Required JSON keys:",
     JSON.stringify({
@@ -330,6 +377,7 @@ function buildPrompt(context = {}) {
     "Self-evolution deployment plan snapshot:",
     `- status/prepare/manual: ${selfEvolutionDeploymentPlan.plan_status || "N/A"} / ${selfEvolutionDeploymentPlan.prepare_pass === true ? "PASS" : "BLOCK"} / ${selfEvolutionDeploymentPlan.manual_step_required === true ? "YES" : "NO"}`,
     `- candidate/wave/markets: ${selfEvolutionDeploymentPlan.display_candidate_id || selfEvolutionDeploymentPlan.target_candidate_id || "N/A"} / ${selfEvolutionDeploymentPlan.open_wave != null ? selfEvolutionDeploymentPlan.open_wave : "N/A"} / ${selfEvolutionDeploymentPlan.market_scope_ready_n != null ? selfEvolutionDeploymentPlan.market_scope_ready_n : "N/A"} / ${selfEvolutionDeploymentPlan.market_scope_n != null ? selfEvolutionDeploymentPlan.market_scope_n : "N/A"}`,
+    `- applied origin / recommended target / authority bypass: ${selfEvolutionDeploymentPlan.applied_origin_display_candidate_id || selfEvolutionDeploymentPlan.applied_origin_candidate_id || "N/A"} / ${selfEvolutionDeploymentPlan.display_candidate_id || selfEvolutionDeploymentPlan.recommended_target_candidate_id || selfEvolutionDeploymentPlan.target_candidate_id || "N/A"} / ${selfEvolutionDeploymentPlan.authority_bypass_active === true ? "YES" : "NO"}`,
     `- prepared/latest/rollback: ${selfEvolutionDeploymentPlan.prepared_file_path || "N/A"} / ${selfEvolutionDeploymentPlan.latest_generated_file_path || "N/A"} / ${selfEvolutionDeploymentPlan.rollback_source_file_path || "N/A"}`,
     "Self-evolution weight tuning snapshot:",
     `- advisory/suggestions/dominant: ${selfEvolutionWeightTuning.summary && selfEvolutionWeightTuning.summary.advisory_mode || "N/A"} / ${selfEvolutionWeightTuning.summary && selfEvolutionWeightTuning.summary.suggestion_n != null ? selfEvolutionWeightTuning.summary.suggestion_n : "N/A"} / ${selfEvolutionWeightTuning.summary && selfEvolutionWeightTuning.summary.dominant_axis || "N/A"}`,
@@ -442,10 +490,27 @@ async function main() {
   const loopMonitorData = unwrapRawReport(loopMonitor.data);
   const selfEvolutionCandidatesData = unwrapRawReport(selfEvolutionCandidatesArtifact.data);
   const selfEvolutionCanaryData = unwrapRawReport(selfEvolutionCanaryArtifact.data);
+  const deploymentPlanData = unwrapRawReport(deploymentPlan.data);
+  const deploymentPlanSummary = deploymentPlanData && deploymentPlanData.summary && typeof deploymentPlanData.summary === "object"
+    ? deploymentPlanData.summary
+    : {};
   const candidateDisplayMap = buildCandidateDisplayMap(changeControl.data, patchCandidates.data);
   const inputs = [objectiveSupervisor, governance, changeControl, patchCandidates, ml, ev, wait, canary, stageAutopilot, selfEvolutionCandidatesArtifact, selfEvolutionCanaryArtifact, deploymentPlan, loopMonitor, retrospective];
-  const readyPromotion = Boolean(changeControl.data && changeControl.data.auto_promotion && changeControl.data.auto_promotion.ready === true);
-  const readyRollback = Boolean(changeControl.data && changeControl.data.auto_rollback && changeControl.data.auto_rollback.ready === true);
+  const reviewReadiness = deriveReviewReadiness({
+    changeControl: changeControl.data,
+    selfEvolutionCanary: selfEvolutionCanaryData,
+    deploymentPlan: deploymentPlanData,
+  });
+  const {
+    readyPromotion,
+    readyRollback,
+    selfEvolutionPromotionReady,
+    selfEvolutionRollbackReady,
+    selfEvolutionAuthorityBypass,
+    pendingSignalConfirmation,
+    reviewReady,
+    blockedReason,
+  } = reviewReadiness;
   const anyWatchlist = Boolean(patchCandidates.data && Array.isArray(patchCandidates.data.candidates) && patchCandidates.data.candidates.length > 0);
 
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}`;
@@ -470,7 +535,30 @@ async function main() {
     command: null,
   };
 
-  if (!(readyPromotion || readyRollback || anyWatchlist)) {
+  if (pendingSignalConfirmation) {
+    const blocked = {
+      ...baseReport,
+      status: "FRESH",
+      reason: blockedReason,
+      summary: "현재 적용 전략이 첫 live LONG/SHORT 신호 확인 전이라 외부 권위의 승격/롤백 심사를 보류합니다.",
+      checks: [
+        `plan_status=${deploymentPlanSummary.plan_status || "N/A"}`,
+        `ready_promotion=${readyPromotion ? "YES" : "NO"} / ready_rollback=${readyRollback ? "YES" : "NO"}`,
+        `se_recovery=${selfEvolutionPromotionReady ? "YES" : "NO"} / se_rollback=${selfEvolutionRollbackReady ? "YES" : "NO"} / se_bypass=${selfEvolutionAuthorityBypass ? "YES" : "NO"}`,
+      ],
+      risks: [
+        "live signal confirmation 전 rollback/promotion verdict를 확정하면 false authority disagreement가 발생할 수 있음",
+      ],
+    };
+    writeJson(jsonPath, wrapDisplayAndRawReport(blocked));
+    writeText(mdPath, renderMarkdown(blocked));
+    copyLatest(jsonPath, REPORT_LATEST_JSON);
+    copyLatest(mdPath, REPORT_LATEST_MD);
+    console.log(JSON.stringify({ ok: true, status: blocked.status, reason: blocked.reason }));
+    return;
+  }
+
+  if (!(reviewReady || anyWatchlist)) {
     writeJson(jsonPath, wrapDisplayAndRawReport(baseReport));
     writeText(mdPath, renderMarkdown(baseReport));
     copyLatest(jsonPath, REPORT_LATEST_JSON);
@@ -479,7 +567,7 @@ async function main() {
     return;
   }
 
-  if (!(readyPromotion || readyRollback)) {
+  if (!reviewReady) {
     const selfEvolutionCandidates = selfEvolutionCandidatesData && selfEvolutionCandidatesData.summary && typeof selfEvolutionCandidatesData.summary === "object"
       ? selfEvolutionCandidatesData.summary
       : objectiveSupervisorData && objectiveSupervisorData.self_evolution_candidates && typeof objectiveSupervisorData.self_evolution_candidates === "object"
@@ -511,7 +599,7 @@ async function main() {
         ? "self-evolution watchlist는 있지만 promotion/rollback 경로가 아직 준비되지 않아 외부 Codex 검토를 생략했습니다."
         : baseReport.summary,
       checks: [
-        `ready_promotion=${readyPromotion ? "YES" : "NO"} / ready_rollback=${readyRollback ? "YES" : "NO"}`,
+        `ready_promotion=${readyPromotion ? "YES" : "NO"} / ready_rollback=${readyRollback ? "YES" : "NO"} / se_recovery=${selfEvolutionPromotionReady ? "YES" : "NO"} / se_rollback=${selfEvolutionRollbackReady ? "YES" : "NO"} / se_bypass=${selfEvolutionAuthorityBypass ? "YES" : "NO"}`,
         `candidate_ready_n=${selfEvolutionCandidates.ready_n != null ? selfEvolutionCandidates.ready_n : "N/A"} / top=${topCandidateId || "N/A"}`,
         `deployment_plan=${selfEvolutionDeploymentPlan.plan_status || "N/A"} / prepare=${selfEvolutionDeploymentPlan.prepare_pass === true ? "PASS" : "BLOCK"}`,
         `canary_apply=${selfEvolutionCanary.apply_pass === true ? "PASS" : "BLOCK"} / ready_markets=${selfEvolutionCanary.ready_n != null ? selfEvolutionCanary.ready_n : "N/A"}`,
@@ -568,15 +656,19 @@ async function main() {
     deploymentPlan: deploymentPlan.data,
     loopMonitor: loopMonitorData,
     retrospective: retrospective.data,
+    selfEvolutionCandidatesDirect: selfEvolutionCandidatesData,
+    selfEvolutionCanaryDirect: selfEvolutionCanaryData,
   });
 
   const args = [
     "exec",
+    "--ephemeral",
     "--dangerously-bypass-approvals-and-sandbox",
     "-C", REPO_ROOT,
     "--color", "never",
   ];
   if (CODEX_MODEL) args.push("-m", CODEX_MODEL);
+  if (CODEX_REASONING_EFFORT) args.push("-c", `model_reasoning_effort=\"${CODEX_REASONING_EFFORT}\"`);
   args.push(
     "--output-schema", schemaPath,
     "--output-last-message", lastMessagePath,
@@ -644,6 +736,15 @@ if (require.main === module) {
   });
 } else {
   module.exports = {
+    buildPrompt,
+    buildCandidateDisplayMap,
+    deriveReviewReadiness,
+    replaceCandidateIdsInText,
+    buildObjectiveSupervisorLayerLines,
+    buildBestFebtMarketContractLines,
+    deriveInlineLoopMonitorSummary,
+    renderMarkdown,
+    parseCodexJson,
     __test: {
       buildPrompt,
       buildCandidateDisplayMap,
@@ -651,6 +752,7 @@ if (require.main === module) {
       buildObjectiveSupervisorLayerLines,
       buildBestFebtMarketContractLines,
       deriveInlineLoopMonitorSummary,
+      deriveReviewReadiness,
     },
   };
 }

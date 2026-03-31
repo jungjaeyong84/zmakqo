@@ -214,6 +214,77 @@ function run() {
   assert.strictEqual(liveLatency.matched_intent_n, 1);
   assert.strictEqual(liveLatency.matched_fill_n, 1);
 
+  const mixedLatency = summarizeBridgeLatency({
+    webhooks: [
+      {
+        stage: "OUTCOME",
+        exchange: "BINANCEFUT",
+        tf: "15m",
+        event: "LONG",
+        symbol: "BTCUSDT",
+        bar_close_time_utc_ms: Date.parse("2026-03-29T00:05:00.000Z"),
+        created_at: "2026-03-29T00:05:01.000Z",
+      },
+      {
+        stage: "OUTCOME",
+        exchange: "BINANCEFUT",
+        tf: "15m",
+        event: "EARLY_LONG",
+        symbol: "BTCUSDT",
+        bar_close_time_utc_ms: Date.parse("2026-03-29T00:10:00.000Z"),
+        created_at: "2026-03-29T00:10:01.000Z",
+      },
+    ],
+    intents: [
+      {
+        exchange: "BINANCEFUT",
+        tf: "15m",
+        event: "LONG",
+        symbol_or_pair_id: "BTCUSDT",
+        signal_bar_close_time_utc_ms: Date.parse("2026-03-29T00:05:00.000Z"),
+        intent_id: "INTENT_ACTIVE",
+        created_at: "2026-03-29T00:05:02.000Z",
+      },
+      {
+        exchange: "BINANCEFUT",
+        tf: "15m",
+        event: "EARLY_LONG",
+        symbol_or_pair_id: "BTCUSDT",
+        signal_bar_close_time_utc_ms: Date.parse("2026-03-29T00:10:00.000Z"),
+        intent_id: "INTENT_LEGACY",
+        created_at: "2026-03-29T00:14:00.000Z",
+      },
+    ],
+    fills: [
+      {
+        exchange: "BINANCEFUT",
+        tf: "15m",
+        entry_signal_type: "LONG",
+        symbol: "BTCUSDT",
+        intent_id: "INTENT_ACTIVE",
+        signal_bar_close_time_utc_ms: Date.parse("2026-03-29T00:05:00.000Z"),
+        created_at: "2026-03-29T00:05:03.000Z",
+      },
+      {
+        exchange: "BINANCEFUT",
+        tf: "15m",
+        entry_signal_type: "EARLY_LONG",
+        symbol: "BTCUSDT",
+        intent_id: "INTENT_LEGACY",
+        signal_bar_close_time_utc_ms: Date.parse("2026-03-29T00:10:00.000Z"),
+        created_at: "2026-03-29T00:16:00.000Z",
+      },
+    ],
+    provider: "BINANCEFUT",
+    tf: "15m",
+    scope: "PRIMARY_LONG_SHORT",
+  });
+  assert.strictEqual(mixedLatency.scope, "PRIMARY_LONG_SHORT");
+  assert.strictEqual(mixedLatency.outcome_n, 1);
+  assert.strictEqual(mixedLatency.matched_intent_n, 1);
+  assert.strictEqual(mixedLatency.matched_fill_n, 1);
+  assert.strictEqual(Number(mixedLatency.webhook_to_fill_ms.avg.toFixed(0)), 2000);
+
   console.log("FEBT_PHASE0_TEST_OK");
 }
 

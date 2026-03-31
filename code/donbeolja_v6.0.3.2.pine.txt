@@ -195,7 +195,7 @@ bf_enable          = input.bool(false,  "선물 환경 필터 사용", group = g
 bf_ls_mode         = input.string("롱/숏", "롱/숏 사용", options = ["롱/숏", "롱만", "숏만"], group = grp_binancef)
 bf_core_td_min     = input.int(4,  "CORE TD 최소", minval = 1, group = grp_binancef)
 int bf_diag_c_td_min = 3
-bf_core_score_min  = input.int(33, "CORE 점수 최소", minval = 0, maxval = 100, group = grp_binancef)
+bf_core_score_min  = input.int(34, "CORE 점수 최소", minval = 0, maxval = 100, group = grp_binancef)
 int bf_diag_c_score_min = 38
 int bf_pred_diag_c_score_min = 20
 bf_early_score_min = input.int(18, "LONG/SHORT 기본 점수 최소", minval = 0, maxval = 100, group = grp_binancef)
@@ -2242,7 +2242,7 @@ if is_coin
         bool _candle_ok_long = _candle_quality_long or score >= 20
         bool _candle_ok_short = _candle_quality_short or score <= -20
         // [PATCH-66] transition score 강화는 과도했으므로 되돌리고, stat-physics 확인으로만 추가 보수화한다.
-        bool _regime_ok_core = _regime_for_core == "trend" or (_regime_for_core == "transition" and math.abs(score) >= 29)
+        bool _regime_ok_core = _regime_for_core == "trend" or (_regime_for_core == "transition" and math.abs(score) >= 28)
         // [PATCH-49] 스토캐스틱 과매도/과매수 오버라이드
         //   문제: 저점에서 K<D → stoch_core_long=false → CL 차단
         //   해법: 과매도(K<=30)면 롱 허용, 과매수(K>=70)면 숏 허용

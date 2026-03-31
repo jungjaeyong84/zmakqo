@@ -136,6 +136,21 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
   assert.strictEqual(appliedConfirmed.summary.applied_confirmed, true);
   assert.strictEqual(appliedConfirmed.summary.applied_pending_signal_confirmation, false);
 
+  const appliedConfirmedAuthorityBypass = deriveLoopMonitor({
+    artifacts: {
+      objectiveSupervisor: { fresh: true },
+      deployment: { fresh: true },
+      deploymentPlan: { fresh: true },
+    },
+    reports: {
+      objectiveSupervisor: { cycle_id: "cycle-b", verdict: "HOLD", reason: "SELF_EVOLUTION_LATENCY_BUDGET_FAIL" },
+      deployment: { cycle_id: "cycle-b", summary: { deploy_pass: false, target_candidate_id: "AUTO_MARKET_AXS", blockers: ["SELF_EVOLUTION_LATENCY_BUDGET_FAIL"] } },
+      deploymentPlan: { cycle_id: "cycle-b", summary: { plan_status: "APPLIED_CONFIRMED_AUTHORITY_BYPASS", manual_step_required: false, target_candidate_id: "AUTO_MARKET_AXS", recommended_target_candidate_id: "AUTO_MARKET_AXS", applied_origin_candidate_id: "AUTO_CORE", authority_bypass_active: true } },
+    },
+  });
+  assert.strictEqual(appliedConfirmedAuthorityBypass.summary.overall_status, "APPLIED_CONFIRMED_AUTHORITY_BYPASS");
+  assert.ok(appliedConfirmedAuthorityBypass.summary.critical_blockers.includes("SELF_EVOLUTION_AUTHORITY_BYPASS"));
+
   const absent = deriveLoopMonitor({
     artifacts: {
       objectiveSupervisor: { fresh: true },

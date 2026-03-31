@@ -83,15 +83,20 @@ function readPreparedSelfEvolutionTarget() {
   if (!data || typeof data !== "object") return null;
   const preparedStrategyId = pickString(data.prepared_strategy_id);
   const preparedFilePath = pickString(data.prepared_file_path);
-  const targetCandidateId = pickString(data.target_candidate_id);
+  const targetCandidateId = pickString(data.prepared_origin_candidate_id || data.applied_origin_candidate_id || data.target_candidate_id);
+  const recommendedTargetCandidateId = pickString(data.recommended_target_candidate_id || data.target_candidate_id);
   const preparedStageReady = data.prepared_stage_ready === true;
   const readyForManualPaste = data.ready_for_manual_paste === true;
   if (!preparedStrategyId || !preparedFilePath || !preparedStageReady || !readyForManualPaste) return null;
   return {
     target_candidate_id: targetCandidateId,
+    recommended_target_candidate_id: recommendedTargetCandidateId,
     prepared_file_path: preparedFilePath,
     latest_generated_file_path: pickString(data.latest_generated_file_path),
     prepared_strategy_id: preparedStrategyId,
+    authority_required: data.authority_required === true,
+    authority_approved: data.authority_approved === true,
+    authority_bypass_active: data.authority_bypass_active === true,
   };
 }
 
@@ -134,19 +139,44 @@ function normalizeSelfEvolutionRuntimeState(raw = null) {
   const src = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   const acknowledged = pickBoolean(src.acknowledged, false);
   const liveSignalConfirmed = pickBoolean(src.live_signal_confirmed, false);
+  const preparedStageReady = pickBoolean(src.prepared_stage_ready, false);
+  const readyForManualPaste = pickBoolean(src.ready_for_manual_paste, false);
+  const authorityBypassActive = pickBoolean(src.authority_bypass_active, false);
+  const preparedStrategyId = pickString(src.prepared_strategy_id);
+  const preparedFilePath = pickString(src.prepared_file_path);
+  const normalizedPlanStatus = deriveRuntimePlanStatus({
+    rawPlanStatus: pickString(src.plan_status),
+    acknowledged,
+    liveSignalConfirmed,
+    preparedStageReady,
+    readyForManualPaste,
+    preparedStrategyId,
+    preparedFilePath,
+    authorityBypassActive,
+  });
   return {
     acknowledged,
     acknowledged_at_kst: pickString(src.acknowledged_at_kst),
     acknowledged_at_iso: pickString(src.acknowledged_at_iso),
     cycle_id: pickString(src.cycle_id),
     target_candidate_id: pickString(src.target_candidate_id),
+    recommended_target_candidate_id: pickString(src.recommended_target_candidate_id),
     candidate_signature: pickString(src.candidate_signature),
     prepared_file_path: pickString(src.prepared_file_path),
     latest_generated_file_path: pickString(src.latest_generated_file_path),
     applied_file_path: pickString(src.applied_file_path),
     applied_strategy_id: pickString(src.applied_strategy_id),
+    prepared_stage_ready: preparedStageReady,
+    ready_for_manual_paste: readyForManualPaste,
+    plan_status: normalizedPlanStatus,
+    prepared_strategy_id: preparedStrategyId,
+    prepared_file_path: pickString(src.prepared_file_path),
+    latest_generated_file_path: pickString(src.latest_generated_file_path),
     canonical_source_path: pickString(src.canonical_source_path),
     canonical_source_synced: pickBoolean(src.canonical_source_synced, false),
+    authority_required: pickBoolean(src.authority_required, false),
+    authority_approved: pickBoolean(src.authority_approved, false),
+    authority_bypass_active: authorityBypassActive,
     live_signal_confirmed: liveSignalConfirmed,
     live_signal_confirmation_pending: acknowledged && !liveSignalConfirmed,
     confirmed_signal_id: pickString(src.confirmed_signal_id),
@@ -155,6 +185,91 @@ function normalizeSelfEvolutionRuntimeState(raw = null) {
     confirmed_strategy_id: pickString(src.confirmed_strategy_id),
     updated_at_iso: pickString(src.updated_at_iso),
     updated_by: pickString(src.updated_by),
+  };
+}
+
+function deriveRuntimePlanStatus({
+  rawPlanStatus = null,
+  acknowledged = false,
+  liveSignalConfirmed = false,
+  preparedStageReady = false,
+  readyForManualPaste = false,
+  preparedStrategyId = null,
+  preparedFilePath = null,
+  authorityBypassActive = false,
+} = {}) {
+  if (liveSignalConfirmed) {
+    return authorityBypassActive ? "APPLIED_CONFIRMED_AUTHORITY_BYPASS" : "APPLIED_CONFIRMED";
+  }
+  if (acknowledged) {
+    return authorityBypassActive ? "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS" : "APPLIED_PENDING_SIGNAL_CONFIRMATION";
+  }
+  if (preparedStageReady && readyForManualPaste && (preparedStrategyId || preparedFilePath)) {
+    return "READY_FOR_MANUAL_PASTE";
+  }
+  return rawPlanStatus;
+}
+
+function buildPreparedRuntimePatch(summary = null, currentState = null) {
+  const src = summary && typeof summary === "object" ? summary : {};
+  const cycleId = pickString(src.cycle_id);
+  const preparedStageReady = src.prepared_stage_ready === true;
+  const readyForManualPaste = src.ready_for_manual_paste === true;
+  const preparedStrategyId = pickString(src.prepared_strategy_id);
+  const preparedFilePath = pickString(src.prepared_file_path);
+  const latestGeneratedFilePath = pickString(src.latest_generated_file_path);
+  const targetCandidateId = pickString(src.prepared_origin_candidate_id || src.applied_origin_candidate_id || src.target_candidate_id);
+  const recommendedTargetCandidateId = pickString(src.recommended_target_candidate_id || src.target_candidate_id);
+  const planStatus = pickString(src.plan_status);
+  const current = currentState && typeof currentState === "object" ? currentState : {};
+  const currentAppliedStrategyId = pickString(current.applied_strategy_id);
+  const currentConfirmedStrategyId = pickString(current.confirmed_strategy_id);
+  const shouldResetConfirmation = Boolean(
+    preparedStrategyId
+    && (
+      (currentAppliedStrategyId && currentAppliedStrategyId !== preparedStrategyId)
+      || (currentConfirmedStrategyId && currentConfirmedStrategyId !== preparedStrategyId)
+    )
+  );
+  if (!(preparedStageReady && readyForManualPaste && preparedStrategyId && preparedFilePath)) {
+    return {
+      prepared_stage_ready: false,
+      ready_for_manual_paste: false,
+      cycle_id: cycleId,
+      plan_status: planStatus,
+      prepared_strategy_id: null,
+      prepared_file_path: null,
+      latest_generated_file_path: null,
+      target_candidate_id: pickString(current.target_candidate_id),
+      recommended_target_candidate_id: pickString(current.recommended_target_candidate_id),
+      candidate_signature: pickString(current.candidate_signature),
+      authority_required: src.authority_required === true || pickBoolean(current.authority_required, false),
+      authority_approved: src.authority_approved === true || pickBoolean(current.authority_approved, false),
+      authority_bypass_active: src.authority_bypass_active === true || pickBoolean(current.authority_bypass_active, false),
+    };
+  }
+  return {
+    prepared_stage_ready: true,
+    ready_for_manual_paste: true,
+    cycle_id: cycleId,
+    plan_status: planStatus || "READY_FOR_MANUAL_PASTE",
+    prepared_strategy_id: preparedStrategyId,
+    prepared_file_path: preparedFilePath,
+    latest_generated_file_path: latestGeneratedFilePath,
+    target_candidate_id: targetCandidateId,
+    recommended_target_candidate_id: recommendedTargetCandidateId,
+    candidate_signature: targetCandidateId,
+    authority_required: src.authority_required === true,
+    authority_approved: src.authority_approved === true,
+    authority_bypass_active: src.authority_bypass_active === true,
+    acknowledged: shouldResetConfirmation ? false : undefined,
+    acknowledged_at_kst: shouldResetConfirmation ? null : undefined,
+    acknowledged_at_iso: shouldResetConfirmation ? null : undefined,
+    live_signal_confirmed: shouldResetConfirmation ? false : undefined,
+    confirmed_signal_id: shouldResetConfirmation ? null : undefined,
+    confirmed_signal_created_at: shouldResetConfirmation ? null : undefined,
+    confirmed_signal_event: shouldResetConfirmation ? null : undefined,
+    confirmed_strategy_id: shouldResetConfirmation ? null : undefined,
   };
 }
 
@@ -234,6 +349,12 @@ async function writeSelfEvolutionRuntimeState(patch = {}, { updatedBy = "self_ev
   return next;
 }
 
+async function syncPreparedSelfEvolutionRuntime(summary = null, { updatedBy = "deployment_plan_sync" } = {}) {
+  const current = await resolveSelfEvolutionRuntimeState({ ttlMs: 0 });
+  const patch = buildPreparedRuntimePatch(summary, current && current.data ? current.data : null);
+  return writeSelfEvolutionRuntimeState(patch, { updatedBy });
+}
+
 async function confirmSelfEvolutionRuntimeSignal({
   signalId = null,
   createdAt = null,
@@ -257,11 +378,15 @@ async function confirmSelfEvolutionRuntimeSignal({
       acknowledged_at_iso: now,
       acknowledged_at_kst: toKstString(now),
       target_candidate_id: pickString(prepared.target_candidate_id),
+      recommended_target_candidate_id: pickString(prepared.recommended_target_candidate_id),
       candidate_signature: pickString(prepared.target_candidate_id),
       prepared_file_path: pickString(prepared.prepared_file_path),
       latest_generated_file_path: pickString(prepared.latest_generated_file_path),
       applied_file_path: pickString(prepared.prepared_file_path),
       applied_strategy_id: incomingStrategyId,
+      authority_required: prepared.authority_required === true,
+      authority_approved: prepared.authority_approved === true,
+      authority_bypass_active: prepared.authority_bypass_active === true,
       live_signal_confirmed: true,
       confirmed_signal_id: pickString(signalId),
       confirmed_signal_created_at: pickString(createdAt),
@@ -288,6 +413,7 @@ module.exports = {
   readSharedSelfEvolutionRuntimeState,
   resolveSelfEvolutionRuntimeState,
   writeSelfEvolutionRuntimeState,
+  syncPreparedSelfEvolutionRuntime,
   confirmSelfEvolutionRuntimeSignal,
   __test: {
     mergeSelfEvolutionRuntimeStateRaw,
@@ -296,5 +422,7 @@ module.exports = {
     readPreparedSelfEvolutionTarget,
     toKstString,
     assessSelfEvolutionRuntimeSignalConfirmation,
+    buildPreparedRuntimePatch,
+    deriveRuntimePlanStatus,
   },
 };

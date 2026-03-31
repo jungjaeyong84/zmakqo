@@ -10,9 +10,12 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
   assert.strictEqual(steps[steps.length - 1].id, "stage_autopilot");
   assert.strictEqual(steps.some((row) => row.id === "objective_seed"), true);
   assert.strictEqual(steps.some((row) => row.id === "codex_patch_engine"), true);
+  assert.strictEqual(steps.some((row) => row.id === "claude_patch_engine"), true);
+  assert.strictEqual(steps.some((row) => row.id === "authority_ensemble"), true);
   assert.strictEqual(steps.some((row) => row.id === "filter_shadow_canary"), true);
   assert.strictEqual(steps.some((row) => row.id === "objective_final"), true);
   assert.strictEqual(steps.findIndex((row) => row.id === "loop_monitor") < steps.findIndex((row) => row.id === "stage_autopilot"), true);
+  assert.strictEqual(steps.findIndex((row) => row.id === "authority_ensemble") < steps.findIndex((row) => row.id === "deployment_plan"), true);
 
   const parsed = __test.extractJson("x\n{\"ok\":true,\"step\":\"dataset\"}\n");
   assert.deepStrictEqual(parsed, { ok: true, step: "dataset" });
@@ -21,12 +24,12 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
     generated_at_kst: "2026-03-29 22:00:00 KST",
     cycle_id: "cycle-1",
     status: "PASS",
-    completed_steps: 17,
-    total_steps: 17,
+    completed_steps: 20,
+    total_steps: 20,
     failed_step: null,
     steps: [{ id: "dataset", status: "PASS", script: "x.js", exit_code: 0, summary: "OK" }],
   });
   assert.match(md, /cycle-1/);
-  assert.match(md, /completed_steps: 17 \/ 17/);
+  assert.match(md, /completed_steps: 20 \/ 20/);
   console.log("BEST_SELF_EVOLUTION_LOOP_RUN_TEST_OK");
 })();

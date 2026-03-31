@@ -113,21 +113,30 @@ function renderOverlapMarkdown(report = {}) {
 
 function renderLatencyMarkdown(report = {}) {
   const latency = report && report.bridge_latency ? report.bridge_latency : {};
+  const allEntriesLatency = report && report.bridge_latency_all_entries ? report.bridge_latency_all_entries : {};
   const lines = [
     "# FEBT Phase 0 Bridge Latency",
     "",
     `- 생성 시각: ${report.generated_at_kst || "N/A"}`,
+    `- scope: ${latency.scope || "N/A"}`,
     `- outcome ${latency.outcome_n || 0} / matched intents ${latency.matched_intent_n || 0} / matched fills ${latency.matched_fill_n || 0}`,
     `- duplicate ${latency.duplicate_count || 0} / stale ${latency.stale_count || 0} / reject ${latency.reject_count || 0}`,
     "",
-    "## Latency",
+    "## Active LONG/SHORT",
     `- bar_close_to_webhook_ms_proxy: ${msStat(latency.bar_close_to_webhook_ms_proxy)}`,
     `- webhook_to_intent_ms: ${msStat(latency.webhook_to_intent_ms)}`,
     `- intent_to_fill_ms: ${msStat(latency.intent_to_fill_ms)}`,
     `- webhook_to_fill_ms: ${msStat(latency.webhook_to_fill_ms)}`,
     "",
+    "## All Entry Tiers",
+    `- scope: ${allEntriesLatency.scope || "N/A"}`,
+    `- outcome ${allEntriesLatency.outcome_n || 0} / matched intents ${allEntriesLatency.matched_intent_n || 0} / matched fills ${allEntriesLatency.matched_fill_n || 0}`,
+    `- duplicate ${allEntriesLatency.duplicate_count || 0} / stale ${allEntriesLatency.stale_count || 0} / reject ${allEntriesLatency.reject_count || 0}`,
+    `- webhook_to_fill_ms: ${msStat(allEntriesLatency.webhook_to_fill_ms)}`,
+    "",
     "## Notes",
     "- `bar_close_to_webhook_ms_proxy`는 실제 TradingView emit timestamp가 없어서 bar close 기준 proxy로 계산했습니다.",
+    "- 상단 `bridge_latency`는 현재 운영 active LONG/SHORT 기준이며, 전체 tier 혼합값은 `bridge_latency_all_entries`에 별도 보관합니다.",
     "",
   ];
   return `${lines.join("\n")}\n`;
@@ -137,6 +146,7 @@ function renderMainMarkdown(report = {}) {
   const baseline = report.legacy_wait_baseline || {};
   const overlap = report.legacy_wait_overlap || {};
   const latency = report.bridge_latency || {};
+  const allEntriesLatency = report.bridge_latency_all_entries || {};
   const lines = [
     "# FEBT Phase 0 Baseline",
     "",
@@ -149,8 +159,9 @@ function renderMainMarkdown(report = {}) {
     `- immediate win ${pct(baseline.immediate_win_rate)} / immediate avg_ret_net ${signedPct(baseline.immediate_avg_ret_net)}`,
     `- timing saved_loss ${pct(baseline.saved_loss_pct)} / missed_gain ${pct(baseline.missed_gain_pct)} / delta ${signedPct(baseline.saved_loss_minus_missed_gain)}`,
     `- overlap rows ${overlap.compared_n || 0} / wait action ${(overlap.wait_action_breakdown || []).map((row) => `${row.value} ${row.n}`).join(" / ") || "N/A"}`,
-    `- bridge latency webhook->fill ${msStat(latency.webhook_to_fill_ms)}`,
-    `- bridge duplicate ${latency.duplicate_count || 0} / stale ${latency.stale_count || 0} / reject ${latency.reject_count || 0}`,
+    `- bridge latency(active LONG/SHORT) webhook->fill ${msStat(latency.webhook_to_fill_ms)}`,
+    `- bridge duplicate(active) ${latency.duplicate_count || 0} / stale ${latency.stale_count || 0} / reject ${latency.reject_count || 0}`,
+    `- bridge latency(all tiers) webhook->fill ${msStat(allEntriesLatency.webhook_to_fill_ms)}`,
     "",
     "## Files",
     `- wait baseline: ${report.artifacts && report.artifacts.wait_baseline_md || "N/A"}`,
@@ -215,6 +226,17 @@ async function main() {
     tf: TF,
     fromMs: windowFromMs,
     toMs: windowToMs,
+    scope: "PRIMARY_LONG_SHORT",
+  });
+  const bridgeLatencyAllEntries = summarizeBridgeLatency({
+    webhooks,
+    intents,
+    fills,
+    provider: PROVIDER,
+    tf: TF,
+    fromMs: windowFromMs,
+    toMs: windowToMs,
+    scope: "ALL_ENTRIES",
   });
 
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}`;
@@ -241,6 +263,7 @@ async function main() {
     legacy_wait_baseline: legacyWaitBaseline,
     legacy_wait_overlap: legacyWaitOverlap,
     bridge_latency: bridgeLatency,
+    bridge_latency_all_entries: bridgeLatencyAllEntries,
     artifacts: {
       wait_baseline_json: waitBaselineJson,
       wait_baseline_md: waitBaselineMd,
@@ -283,6 +306,7 @@ async function main() {
     tf: TF,
     immediate_win_rate: legacyWaitBaseline.immediate_win_rate,
     timing_saved_loss_delta: legacyWaitBaseline.saved_loss_minus_missed_gain,
+    bridge_latency_scope: bridgeLatency.scope,
     webhook_to_fill_p95_ms: bridgeLatency.webhook_to_fill_ms && bridgeLatency.webhook_to_fill_ms.p95,
     duplicate_count: bridgeLatency.duplicate_count,
     reject_count: bridgeLatency.reject_count,

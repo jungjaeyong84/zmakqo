@@ -233,6 +233,22 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.ok(prompt.includes("market BTCUSDT: NORMAL"));
   assert.ok(prompt.includes("market DOGEUSDT: COUNT_GUARD_ACTIVE"));
 
+  const pendingBlock = __test.deriveReviewReadiness({
+    changeControl: {
+      auto_promotion: { ready: false },
+      auto_rollback: { ready: true },
+    },
+    selfEvolutionCanary: {
+      summary: { ready_n: 0, apply_pass: false, rollback_ready_n: 1 },
+    },
+    deploymentPlan: {
+      summary: { plan_status: "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS", authority_bypass_active: true },
+    },
+  });
+  assert.strictEqual(pendingBlock.pendingSignalConfirmation, true);
+  assert.strictEqual(pendingBlock.reviewReady, false);
+  assert.strictEqual(pendingBlock.blockedReason, "PENDING_SIGNAL_CONFIRMATION_BLOCK");
+
   const inlineLoopMonitor = __test.deriveInlineLoopMonitorSummary(
     {
       self_evolution_loop_monitor: {

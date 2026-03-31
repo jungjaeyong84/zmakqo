@@ -27,10 +27,10 @@ function buildStepPlan() {
     { id: "candidates", script: "report-best-self-evolution-candidates.js" },
     { id: "replay", script: "report-best-self-evolution-replay.js" },
     { id: "filter_shadow_canary", script: "automation-filter-shadow-canary.js" },
+    { id: "ev_gate_rescue", script: "report-best-self-evolution-ev-gate-rescue.js" },
     { id: "canary", script: "report-best-self-evolution-canary.js" },
     { id: "memory", script: "report-best-self-evolution-memory-ledger.js" },
     { id: "deployment_guards", script: "report-best-self-evolution-deployment-guards.js" },
-    { id: "deployment_plan", script: "report-best-self-evolution-deployment-plan.js" },
     { id: "weight_tuning", script: "report-best-self-evolution-weight-tuning.js" },
     {
       id: "codex_patch_engine",
@@ -40,10 +40,19 @@ function buildStepPlan() {
         CODEX_PATCH_ENGINE_TIMEOUT_MS: String(process.env.CODEX_PATCH_ENGINE_TIMEOUT_MS || 120000),
       },
     },
+    {
+      id: "claude_patch_engine",
+      script: "automation-claude-weekly-patch-engine.js",
+      env: {
+        CLAUDE_PATCH_ENGINE_SKIP_TELEGRAM: "1",
+      },
+    },
+    { id: "authority_ensemble", script: "report-self-evolution-authority-ensemble.js" },
+    { id: "deployment_plan", script: "report-best-self-evolution-deployment-plan.js" },
     { id: "objective_integrated", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SKIP_TELEGRAM: "1", OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "INTEGRATED" } },
     { id: "objective_final", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "FINAL" } },
     { id: "loop_monitor", script: "report-best-self-evolution-loop-monitor.js" },
-    { id: "stage_autopilot", script: "automation-stage-autopilot.js" },
+    { id: "stage_autopilot", script: "automation-stage-autopilot.js", env: { STAGE_AUTOPILOT_SKIP_TELEGRAM: "1" } },
   ];
 }
 

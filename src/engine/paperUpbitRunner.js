@@ -682,6 +682,89 @@ function resolveSignalQtyProfile(event, features) {
   return qtyProfile || null;
 }
 
+function isFixedQtyProfileSignal(event, features) {
+  return resolveSignalQtyProfile(event, features) === "FIXED";
+}
+
+function applyEvQtyScale({
+  qtyFraction,
+  evScale,
+  intent,
+  event,
+  features,
+} = {}) {
+  const baseQtyFraction = Number(qtyFraction);
+  const suggestedScale = Number(evScale);
+  const entryIntent = String(intent || "").toUpperCase();
+  const qtyProfile = resolveSignalQtyProfile(event, features);
+  const scaleReducing = Number.isFinite(suggestedScale) && suggestedScale > 0 && suggestedScale < 0.9999;
+  if (!scaleReducing || !Number.isFinite(baseQtyFraction) || baseQtyFraction <= 0) {
+    return {
+      qtyFraction: baseQtyFraction,
+      appliedScale: 1,
+      suggestedScale,
+      suggestedQtyFraction: baseQtyFraction,
+      suppressedForFixed: false,
+      qtyProfile,
+    };
+  }
+  const suggestedQtyFraction = baseQtyFraction * suggestedScale;
+  const suppressForFixed = (entryIntent === "ENTRY" || entryIntent === "ADD")
+    && qtyProfile === "FIXED";
+  return {
+    qtyFraction: suppressForFixed ? baseQtyFraction : suggestedQtyFraction,
+    appliedScale: suppressForFixed ? 1 : suggestedScale,
+    suggestedScale,
+    suggestedQtyFraction,
+    suppressedForFixed: suppressForFixed,
+    qtyProfile,
+  };
+}
+
+function restoreFixedEntryQtyFraction({
+  qtyFraction,
+  intent,
+  event,
+  features,
+} = {}) {
+  const entryIntent = String(intent || "").toUpperCase();
+  const currentQtyFraction = Number(qtyFraction);
+  const qtyProfile = resolveSignalQtyProfile(event, features);
+  if ((entryIntent !== "ENTRY" && entryIntent !== "ADD") || qtyProfile !== "FIXED") {
+    return {
+      qtyFraction: currentQtyFraction,
+      restored: false,
+      originalQtyFraction: currentQtyFraction,
+      qtyProfile,
+    };
+  }
+  const evBaseQtyFraction = Number(
+    (features && (features.ev_gate_qty_before ?? features.market_ev_base_qty))
+  );
+  if (!Number.isFinite(evBaseQtyFraction) || evBaseQtyFraction <= 0) {
+    return {
+      qtyFraction: currentQtyFraction,
+      restored: false,
+      originalQtyFraction: currentQtyFraction,
+      qtyProfile,
+    };
+  }
+  if (Number.isFinite(currentQtyFraction) && evBaseQtyFraction <= currentQtyFraction) {
+    return {
+      qtyFraction: currentQtyFraction,
+      restored: false,
+      originalQtyFraction: currentQtyFraction,
+      qtyProfile,
+    };
+  }
+  return {
+    qtyFraction: normalizeQtyFraction(evBaseQtyFraction),
+    restored: true,
+    originalQtyFraction: currentQtyFraction,
+    qtyProfile,
+  };
+}
+
 function isPreRealQtyProfileEvent(event, features) {
   return false;
 }
@@ -7151,6 +7234,21 @@ async function runPaperUpbitForBar({
     }
 
     let qtyFraction = useBudget ? normalizeQtyFraction(it.qty_pct) : Number(it.qty_pct);
+    const fixedQtyRestore = restoreFixedEntryQtyFraction({
+      qtyFraction,
+      intent,
+      event: it.event,
+      features: it.features_json,
+    });
+    if (fixedQtyRestore.restored) {
+      qtyFraction = fixedQtyRestore.qtyFraction;
+      it.features_json = {
+        ...(it.features_json || {}),
+        fixed_qty_ev_scale_restored: true,
+        fixed_qty_original_qty_fraction: fixedQtyRestore.originalQtyFraction,
+        fixed_qty_restored_qty_fraction: fixedQtyRestore.qtyFraction,
+      };
+    }
     if (!Number.isFinite(qtyFraction) || qtyFraction <= 0) {
       await markIntentStatus(it.intent_id, "CANCELED", { cancel_reason: "BAD_QTY", status_reason: "BAD_QTY" });
       continue;
@@ -8577,17 +8675,34 @@ async function runPaperUpbitForBar({
       }
       const evScale = Number(evGate.qtyScale);
       if (Number.isFinite(evScale) && evScale > 0 && evScale < 0.9999) {
-        qtyFraction = qtyFraction * evScale;
+        const evQtyScaleResult = applyEvQtyScale({
+          qtyFraction,
+          evScale,
+          intent,
+          event: s.event,
+          features: s.features,
+        });
+        qtyFraction = evQtyScaleResult.qtyFraction;
         s.features = {
           ...(s.features || {}),
           ev_gate_qty_before: evGateBaseQty,
           ev_gate_qty_after: qtyFraction,
-          ev_mult: evScale,
+          ev_gate_qty_after_suggested: evQtyScaleResult.suggestedQtyFraction,
+          ev_gate_qty_scale_applied: evQtyScaleResult.appliedScale,
+          ev_gate_qty_scale_suggested: evQtyScaleResult.suggestedScale,
+          ev_gate_qty_scale_suppressed_for_fixed: evQtyScaleResult.suppressedForFixed,
+          ev_gate_qty_profile: evQtyScaleResult.qtyProfile,
+          ev_mult: evQtyScaleResult.appliedScale,
         };
         Object.assign(features, {
           ev_gate_qty_before: evGateBaseQty,
           ev_gate_qty_after: qtyFraction,
-          ev_mult: evScale,
+          ev_gate_qty_after_suggested: evQtyScaleResult.suggestedQtyFraction,
+          ev_gate_qty_scale_applied: evQtyScaleResult.appliedScale,
+          ev_gate_qty_scale_suggested: evQtyScaleResult.suggestedScale,
+          ev_gate_qty_scale_suppressed_for_fixed: evQtyScaleResult.suppressedForFixed,
+          ev_gate_qty_profile: evQtyScaleResult.qtyProfile,
+          ev_mult: evQtyScaleResult.appliedScale,
         });
       }
       s.features = {
@@ -9291,6 +9406,21 @@ async function runPaperFuturesForBar({
     }
 
     let qtyFraction = useBudget ? normalizeQtyFraction(it.qty_pct) : Number(it.qty_pct);
+    const fixedQtyRestore = restoreFixedEntryQtyFraction({
+      qtyFraction,
+      intent,
+      event: it.event,
+      features: it.features_json,
+    });
+    if (fixedQtyRestore.restored) {
+      qtyFraction = fixedQtyRestore.qtyFraction;
+      it.features_json = {
+        ...(it.features_json || {}),
+        fixed_qty_ev_scale_restored: true,
+        fixed_qty_original_qty_fraction: fixedQtyRestore.originalQtyFraction,
+        fixed_qty_restored_qty_fraction: fixedQtyRestore.qtyFraction,
+      };
+    }
     if (!Number.isFinite(qtyFraction) || qtyFraction <= 0) {
       await markIntentStatus(it.intent_id, "CANCELED", { cancel_reason: "BAD_QTY", status_reason: "BAD_QTY" });
       continue;
@@ -9616,6 +9746,28 @@ async function runPaperFuturesForBar({
     } else {
       await markIntentStatus(it.intent_id, "CANCELED", { cancel_reason: "UNKNOWN_INTENT", status_reason: "UNKNOWN_INTENT" });
       continue;
+    }
+
+    if (intentIsEntry && useBudget) {
+      const nextBudgetUsedKrw = Number.isFinite(budgetMaxForIntent) && Number.isFinite(qtyFraction)
+        ? (budgetMaxForIntent * qtyFraction)
+        : null;
+      const qtyChanged = Math.abs(Number(it.qty_pct || 0) - Number(qtyFraction || 0)) > 1e-9;
+      const budgetChanged = Math.abs(Number(it.budget_max_krw || 0) - Number(budgetMaxForIntent || 0)) > 1e-9;
+      const budgetUsedChanged = Math.abs(Number(it.budget_used_krw || 0) - Number(nextBudgetUsedKrw || 0)) > 1e-9;
+      if (qtyChanged || budgetChanged || budgetUsedChanged || fixedQtyRestore.restored) {
+        await patchIntent(it.intent_id, {
+          qty_pct: qtyFraction,
+          qty_fraction: qtyFraction,
+          budget_max_krw: budgetMaxForIntent,
+          budget_used_krw: nextBudgetUsedKrw,
+          features_json: it.features_json,
+        });
+        it.qty_pct = qtyFraction;
+        it.qty_fraction = qtyFraction;
+        it.budget_max_krw = budgetMaxForIntent;
+        it.budget_used_krw = nextBudgetUsedKrw;
+      }
     }
 
     const isLiveExecution = liveCfg.executionMode === "LIVE" || liveCfg.executionMode === "LIVE_DRY_RUN";
@@ -11288,17 +11440,34 @@ async function runPaperFuturesForBar({
       }
       const evScale = Number(evGate.qtyScale);
       if (Number.isFinite(evScale) && evScale > 0 && evScale < 0.9999) {
-        qtyFraction = qtyFraction * evScale;
+        const evQtyScaleResult = applyEvQtyScale({
+          qtyFraction,
+          evScale,
+          intent,
+          event: s.event,
+          features: s.features,
+        });
+        qtyFraction = evQtyScaleResult.qtyFraction;
         s.features = {
           ...(s.features || {}),
           ev_gate_qty_before: evGateBaseQty,
           ev_gate_qty_after: qtyFraction,
-          ev_mult: evScale,
+          ev_gate_qty_after_suggested: evQtyScaleResult.suggestedQtyFraction,
+          ev_gate_qty_scale_applied: evQtyScaleResult.appliedScale,
+          ev_gate_qty_scale_suggested: evQtyScaleResult.suggestedScale,
+          ev_gate_qty_scale_suppressed_for_fixed: evQtyScaleResult.suppressedForFixed,
+          ev_gate_qty_profile: evQtyScaleResult.qtyProfile,
+          ev_mult: evQtyScaleResult.appliedScale,
         };
         Object.assign(features, {
           ev_gate_qty_before: evGateBaseQty,
           ev_gate_qty_after: qtyFraction,
-          ev_mult: evScale,
+          ev_gate_qty_after_suggested: evQtyScaleResult.suggestedQtyFraction,
+          ev_gate_qty_scale_applied: evQtyScaleResult.appliedScale,
+          ev_gate_qty_scale_suggested: evQtyScaleResult.suggestedScale,
+          ev_gate_qty_scale_suppressed_for_fixed: evQtyScaleResult.suppressedForFixed,
+          ev_gate_qty_profile: evQtyScaleResult.qtyProfile,
+          ev_mult: evQtyScaleResult.appliedScale,
         });
       }
       s.features = {
@@ -11763,6 +11932,8 @@ module.exports = {
     resolveEvGateConfig,
     resolveEvGateDecision,
     resolveEvGateTradePlan,
+    applyEvQtyScale,
+    restoreFixedEntryQtyFraction,
     shouldBypassEvEntryGate,
     evaluateEvEntryGate,
     resolveWaitOneBarConfig,

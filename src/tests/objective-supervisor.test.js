@@ -218,6 +218,49 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(allowPromote.filter_layers.state_soft_sizing.label, "3차 상태 기반 Soft Sizing");
   assert.strictEqual(allowPromote.filter_layers.ev_time_value.label, "4차 EV/시간가치층");
   assert.strictEqual(allowPromote.filter_layers.ev_time_value.fresh, true);
+
+  const pendingRollbackHold = __test.evaluateSupervisor({
+    ...base,
+    codex: {
+      status: "FRESH",
+      verdict: "HOLD",
+    },
+    stageAutopilot: {
+      fresh: true,
+      objective_verdict: "HOLD",
+      actions: [],
+    },
+    changeControl: {
+      ...base.changeControl,
+      auto_promotion: { ready: false, reason: "HOLD" },
+      auto_rollback: { ready: true, reason: "AUTO_ROLLBACK_READY", rollback_file_path: "/tmp/rollback.pine" },
+    },
+    manualPasteAck: {
+      acknowledged: true,
+      acknowledged_at_iso: "2026-03-31T04:20:00.000Z",
+      target_candidate_id: "AUTO_CORE_SCORE_TIGHTEN",
+      candidate_signature: "AUTO_CORE_SCORE_TIGHTEN",
+      prepared_file_path: "/Users/jeongjaeyong/Projects/donbeolja/code/donbeolja_v6.0.3.3.pine.txt",
+      applied_strategy_id: "donbeolja_v6.0.3.3",
+      live_signal_confirmed: false,
+      live_signal_confirmation_pending: true,
+      authority_bypass_active: true,
+    },
+    preparedOverride: {
+      active: true,
+      prepared_stage_ready: true,
+      prepared_file_path: "/Users/jeongjaeyong/Projects/donbeolja/code/donbeolja_v6.0.3.3.pine.txt",
+      prepared_strategy_id: "donbeolja_v6.0.3.3",
+      target_candidate_id: "AUTO_CORE_SCORE_TIGHTEN",
+      display_candidate_id: "AUTO_CORE_SCORE_TIGHTEN",
+      prepared_reason: "MANUAL_PREPARED_OVERRIDE",
+      override_source: "MANUAL",
+    },
+    signalsCache: { docs: [] },
+  });
+  assert.strictEqual(pendingRollbackHold.verdict, "HOLD");
+  assert.strictEqual(pendingRollbackHold.reason, "SELF_EVOLUTION_PENDING_SIGNAL_CONFIRMATION");
+  assert.ok(pendingRollbackHold.blockers.includes("SELF_EVOLUTION_PENDING_SIGNAL_CONFIRMATION"));
   assert.strictEqual(allowPromote.phase0.available, true);
   assert.strictEqual(allowPromote.phase0.immediate_win_rate, 0.57);
   assert.strictEqual(allowPromote.self_evolution_policy.master_spec_path.endsWith("BEST_SELF_EVOLUTION_MASTER_SPEC.md"), true);
@@ -824,11 +867,11 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
       actions: [],
     },
   });
-  assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.verdict, "PATCH_CANDIDATE");
-  assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.reason, "AUTONOMOUS_RECOVERY_PROMOTION_READY");
+  assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.verdict, "HOLD");
+  assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.reason, "CODEX_REVIEW_BLOCK_PROMOTION");
   assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.promotion.ready, true);
   assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.promotion.recovery_mode, true);
-  assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.blockers.includes("CODEX_BLOCK_PROMOTION"), false);
+  assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.blockers.includes("CODEX_BLOCK_PROMOTION"), true);
   assert.strictEqual(autonomousRecoveryPromotionWithoutCodexPromote.blockers.includes("CODEX_REVIEW_REQUIRED_PROMOTION"), false);
 
   const monthlySourceSampleReady = __test.evaluateSupervisor({
@@ -1032,7 +1075,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.ok(telegramSections.some((section) => section.header === "자기 진화 정책"));
   assert.ok(telegramSections.some((section) => section.header === "자기 진화 배포 가드"));
   assert.ok(telegramSections.some((section) => section.header === "자기 진화 배포 handoff"));
-  assert.ok(telegramSections.some((section) => section.header === "Codex 권한"));
+  assert.ok(telegramSections.some((section) => section.header === "외부 권한"));
   assert.ok(telegramSections.some((section) => section.header === "자기 진화 가중치 튜닝"));
   assert.ok(telegramSections.some((section) => section.header === "자기 진화 메모리"));
   assert.ok(telegramSections.some((section) => section.header === "시장별 BEST/FEBT 계약"));
@@ -1074,10 +1117,10 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
     governance: base.governance,
     objectiveSupervisor: { verdict: "HOLD" },
   });
-  assert.strictEqual(marketContracts[0].market, "BTCUSDT");
-  assert.strictEqual(marketContracts[0].mode, "NORMAL");
-  assert.strictEqual(marketContracts[1].market, "DOGEUSDT");
-  assert.strictEqual(marketContracts[1].mode, "COUNT_GUARD_ACTIVE");
+  const btcContract = marketContracts.find((row) => row.market === "BTCUSDT");
+  const dogeContract = marketContracts.find((row) => row.market === "DOGEUSDT");
+  assert.strictEqual(btcContract.mode, "NORMAL");
+  assert.strictEqual(dogeContract.mode, "COUNT_GUARD_ACTIVE");
 
   console.log("OBJECTIVE_SUPERVISOR_TEST_OK");
 })();

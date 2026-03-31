@@ -5,6 +5,8 @@
 - 목적:
   - Pine와 서버 1~5차 필터의 역할, 입력, 출력, 수정 원칙을 현재 운영 구조 기준으로 고정한다.
   - 이 문서는 `Pine -> 1차 -> 2차 -> 3차 -> 4차 -> 5차` 체인의 역할 SSOT다.
+- 상위 지도:
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_PINE_TO_SELF_EVOLUTION_SYSTEM_MAP.md`
 
 ## 핵심 원칙
 

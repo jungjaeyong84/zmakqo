@@ -1,5 +1,9 @@
 "use strict";
 
+const {
+  isPrimaryLongShortEvent,
+} = require("./liveEntryTaxonomy");
+
 function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
@@ -114,6 +118,18 @@ function summarizeLatencySeries(values = []) {
     p95: pick(0.95),
     max: nums[nums.length - 1],
   };
+}
+
+function normalizeBridgeLatencyScope(scopeRaw) {
+  const scope = toUpper(scopeRaw, "ALL_ENTRIES");
+  if (scope === "PRIMARY_LONG_SHORT") return "PRIMARY_LONG_SHORT";
+  return "ALL_ENTRIES";
+}
+
+function matchesBridgeLatencyScope(eventRaw, scopeRaw) {
+  const scope = normalizeBridgeLatencyScope(scopeRaw);
+  if (scope === "ALL_ENTRIES") return true;
+  return isPrimaryLongShortEvent(eventRaw);
 }
 
 function buildSignalKey(row) {
@@ -312,9 +328,11 @@ function summarizeBridgeLatency({
   tf = "",
   fromMs = null,
   toMs = null,
+  scope = "ALL_ENTRIES",
 } = {}) {
   const providerUpper = toUpper(provider, "BINANCEFUT");
   const tfText = String(tf || "").trim();
+  const latencyScope = normalizeBridgeLatencyScope(scope);
   const ingressByRequest = new Map();
   const outcomeByKey = new Map();
   const outcomeCountByKey = new Map();
@@ -337,6 +355,7 @@ function summarizeBridgeLatency({
       continue;
     }
     if (stage !== "OUTCOME") continue;
+    if (!matchesBridgeLatencyScope(resolveEvent(row), latencyScope)) continue;
     const key = buildWebhookSignalKey(row);
     if (!key) continue;
     outcomeCountByKey.set(key, (outcomeCountByKey.get(key) || 0) + 1);
@@ -359,6 +378,7 @@ function summarizeBridgeLatency({
     if (tfText && rowTf && rowTf !== tfText) continue;
     if (Number.isFinite(fromMs) && Number.isFinite(createdMs) && createdMs < fromMs) continue;
     if (Number.isFinite(toMs) && Number.isFinite(createdMs) && createdMs >= toMs) continue;
+    if (!matchesBridgeLatencyScope(row && (row.entry_signal_type || row.event), latencyScope)) continue;
     const status = toUpper(row && row.status, "");
     const reason = toUpper(row && (row.status_reason || row.cancel_reason || row.pending_reason), "");
     if (reason.includes("STALE") || reason.includes("EXPIRED")) staleCount += 1;
@@ -382,6 +402,7 @@ function summarizeBridgeLatency({
     if (tfText && rowTf && rowTf !== tfText) continue;
     if (Number.isFinite(fromMs) && Number.isFinite(createdMs) && createdMs < fromMs) continue;
     if (Number.isFinite(toMs) && Number.isFinite(createdMs) && createdMs >= toMs) continue;
+    if (!matchesBridgeLatencyScope(row && (row.entry_signal_type || row.event), latencyScope)) continue;
     const intentId = String(row && row.intent_id || "").trim();
     if (intentId) {
       const prev = fillsByIntent.get(intentId);
@@ -442,6 +463,7 @@ function summarizeBridgeLatency({
   const duplicateCount = Array.from(outcomeCountByKey.values()).filter((n) => Number(n) > 1).length;
 
   return {
+    scope: latencyScope,
     outcome_n: matchedOutcomeN,
     matched_intent_n: matchedIntentN,
     matched_fill_n: matchedFillN,
@@ -465,6 +487,8 @@ module.exports = {
     normalizeEntryExecTiming,
     normalizeDirectionalEvent,
     summarizeLatencySeries,
+    normalizeBridgeLatencyScope,
+    matchesBridgeLatencyScope,
     buildSignalKey,
     buildWebhookSignalKey,
     buildIntentSignalKey,

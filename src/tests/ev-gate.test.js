@@ -41,6 +41,8 @@ async function run() {
   assert.strictEqual(typeof __test.resolveEvGateConfig, "function", "resolveEvGateConfig export missing");
   assert.strictEqual(typeof __test.resolveEvGateDecision, "function", "resolveEvGateDecision export missing");
   assert.strictEqual(typeof __test.resolveEvGateTradePlan, "function", "resolveEvGateTradePlan export missing");
+  assert.strictEqual(typeof __test.applyEvQtyScale, "function", "applyEvQtyScale export missing");
+  assert.strictEqual(typeof __test.restoreFixedEntryQtyFraction, "function", "restoreFixedEntryQtyFraction export missing");
   assert.strictEqual(typeof __test.shouldBypassEvEntryGate, "function", "shouldBypassEvEntryGate export missing");
   assert.strictEqual(typeof __test.evaluateEvEntryGate, "function", "evaluateEvEntryGate export missing");
 
@@ -89,6 +91,44 @@ async function run() {
   assert.strictEqual(rescuedDecision.qtyScale, 0.25);
   assert.strictEqual(rescuedDecision.pointPass, true);
   assert.strictEqual(rescuedDecision.pointPassKillRescueApplied, true);
+
+  const fixedQtySuppressed = __test.applyEvQtyScale({
+    qtyFraction: 0.154,
+    evScale: 0.25,
+    intent: "ENTRY",
+    event: "LONG",
+    features: { entry_grade: "EARLY" },
+  });
+  assert.strictEqual(fixedQtySuppressed.suppressedForFixed, true);
+  assert.strictEqual(fixedQtySuppressed.appliedScale, 1);
+  assert.strictEqual(fixedQtySuppressed.suggestedScale, 0.25);
+  assert.ok(Math.abs(fixedQtySuppressed.qtyFraction - 0.154) < 1e-12);
+  assert.ok(Math.abs(fixedQtySuppressed.suggestedQtyFraction - 0.0385) < 1e-12);
+
+  const legacyQtyScaled = __test.applyEvQtyScale({
+    qtyFraction: 0.154,
+    evScale: 0.25,
+    intent: "ENTRY",
+    event: "CORE_LONG",
+    features: {},
+  });
+  assert.strictEqual(legacyQtyScaled.suppressedForFixed, false);
+  assert.strictEqual(legacyQtyScaled.appliedScale, 0.25);
+  assert.ok(Math.abs(legacyQtyScaled.qtyFraction - 0.0385) < 1e-12);
+
+  const restoredFixedQty = __test.restoreFixedEntryQtyFraction({
+    qtyFraction: 0.0385,
+    intent: "ENTRY",
+    event: "SHORT",
+    features: {
+      entry_grade: "EARLY",
+      ev_gate_qty_before: 0.154,
+      ev_gate_qty_after: 0.0385,
+    },
+  });
+  assert.strictEqual(restoredFixedQty.restored, true);
+  assert.ok(Math.abs(restoredFixedQty.qtyFraction - 0.154) < 1e-12);
+  assert.ok(Math.abs(restoredFixedQty.originalQtyFraction - 0.0385) < 1e-12);
 
   const dropDecision = __test.resolveEvGateDecision({
     cfg,

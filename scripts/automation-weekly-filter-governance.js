@@ -3134,11 +3134,12 @@ async function main() {
     phase0: febtPhase0Latest,
     bestFebtContract: report.current.best_febt_tuning_contract,
   });
-  await sendKoreanTelegramSummary({
-    title: `[주간 전략 점검] ${PROVIDER}`,
-    severity: current.objective.pass ? "INFO" : (current.objective.enough_sample ? "WARN" : "INFO"),
-    provider: PROVIDER,
-    sections: [
+  if (String(process.env.WEEKLY_FILTER_GOVERNANCE_SKIP_TELEGRAM || "0").trim() !== "1") {
+    await sendKoreanTelegramSummary({
+      title: `[주간 전략 점검] ${PROVIDER}`,
+      severity: current.objective.pass ? "INFO" : (current.objective.enough_sample ? "WARN" : "INFO"),
+      provider: PROVIDER,
+      sections: [
       {
         header: "이번 주 목표 점검",
         lines: [
@@ -3192,8 +3193,9 @@ async function main() {
         header: "연계 보고서",
         lines: [weeklyPinePath, evTunePath, waitTunePath, mlPolicyPath, report.artifacts.febt_phase0_report || "N/A", patchCandidatePath, changeControlPath, mdPath, jsonPath],
       },
-    ],
-  });
+      ],
+    });
+  }
 
   console.log(JSON.stringify({
     ok: true,

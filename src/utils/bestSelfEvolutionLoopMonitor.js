@@ -36,6 +36,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const deploymentSummary = deployment.summary && typeof deployment.summary === "object" ? deployment.summary : {};
   const deploymentBlockers = Array.isArray(deploymentSummary.blockers) ? deploymentSummary.blockers.filter(Boolean) : [];
   const deploymentPlanSummary = deploymentPlan.summary && typeof deploymentPlan.summary === "object" ? deploymentPlan.summary : {};
+  const deploymentPlanStatus = String(deploymentPlanSummary.plan_status || "N/A").trim().toUpperCase() || "N/A";
   const canarySummary = canary.summary && typeof canary.summary === "object" ? canary.summary : {};
   const candidateSummary = candidates.summary && typeof candidates.summary === "object" ? candidates.summary : {};
   const replaySummary = replay.summary && typeof replay.summary === "object" ? replay.summary : {};
@@ -51,6 +52,9 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(weightTuning)
     || readCycleId(memory)
     || readCycleId(codexPatch);
+  const authorityLoopLabel = String(codexPatch.owner || "").trim().toUpperCase() === "CODEX_CLAUDE_ENSEMBLE"
+    ? "AUTHORITY_ENSEMBLE"
+    : "CODEX_PATCH_ENGINE";
   const stageAutopilotCycleId = readCycleId(stageAutopilot);
   const stageAutopilotPending = Boolean(
     stageAutopilotOptional
@@ -102,8 +106,8 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       loop: "DEPLOYMENT_PLAN",
       fresh: artifacts.deploymentPlan && artifacts.deploymentPlan.fresh === true,
       cycle_id: readCycleId(deploymentPlan),
-      status: String(deploymentPlanSummary.plan_status || "N/A").trim().toUpperCase() || "N/A",
-      reason: `candidate=${deploymentPlanSummary.target_candidate_id || "N/A"} / manual=${deploymentPlanSummary.manual_step_required ? "YES" : "NO"} / file=${deploymentPlanSummary.prepared_file_path || deploymentPlanSummary.latest_generated_file_path || "N/A"}`,
+      status: deploymentPlanStatus,
+      reason: `target=${deploymentPlanSummary.recommended_target_candidate_id || deploymentPlanSummary.target_candidate_id || "N/A"} / origin=${deploymentPlanSummary.applied_origin_candidate_id || deploymentPlanSummary.prepared_origin_candidate_id || "N/A"} / manual=${deploymentPlanSummary.manual_step_required ? "YES" : "NO"} / file=${deploymentPlanSummary.prepared_file_path || deploymentPlanSummary.latest_generated_file_path || "N/A"}`,
     },
     {
       loop: "STAGE_AUTOPILOT",
@@ -136,7 +140,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
         : `blocked=0 / top_failed=${memorySummary.top_failed_candidate_id || "N/A"}`,
     },
     {
-      loop: "CODEX_PATCH_ENGINE",
+      loop: authorityLoopLabel,
       fresh: artifacts.codexPatch && artifacts.codexPatch.fresh === true,
       cycle_id: readCycleId(codexPatch),
       status: String(codexPatch.verdict || "N/A").trim().toUpperCase() || "N/A",
@@ -163,14 +167,17 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const blockers = [];
   if (objectiveReason) blockers.push(objectiveReason);
   blockers.push(...deploymentBlockers);
+  if (deploymentPlanSummary.authority_bypass_active === true) blockers.push("SELF_EVOLUTION_AUTHORITY_BYPASS");
   if (Number(memorySummary.blocked_candidate_n || 0) > 0) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK_PRESENT");
   if (cycleMismatches.length) blockers.push("SELF_EVOLUTION_CYCLE_MISMATCH");
   if (cycleIdAbsent.length) blockers.push("SELF_EVOLUTION_CYCLE_ID_ABSENT");
   const uniqueBlockers = Array.from(new Set(blockers.filter(Boolean)));
 
   let overallStatus = "HEALTHY";
-  if (String(deploymentPlanSummary.plan_status || "").trim().toUpperCase() === "APPLIED_CONFIRMED") overallStatus = "APPLIED_CONFIRMED";
-  else if (String(deploymentPlanSummary.plan_status || "").trim().toUpperCase() === "APPLIED_PENDING_SIGNAL_CONFIRMATION") overallStatus = "APPLIED_PENDING_SIGNAL_CONFIRMATION";
+  if (deploymentPlanStatus === "APPLIED_CONFIRMED_AUTHORITY_BYPASS") overallStatus = "APPLIED_CONFIRMED_AUTHORITY_BYPASS";
+  else if (deploymentPlanStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS") overallStatus = "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS";
+  else if (deploymentPlanStatus === "APPLIED_CONFIRMED") overallStatus = "APPLIED_CONFIRMED";
+  else if (deploymentPlanStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION") overallStatus = "APPLIED_PENDING_SIGNAL_CONFIRMATION";
   else if (deploymentPlanSummary.manual_step_required === true) overallStatus = "READY_FOR_MANUAL_PASTE";
   else if (staleArtifacts.length || cycleMismatches.length || cycleIdAbsent.length) overallStatus = "BLOCKED";
   else if (uniqueBlockers.length || canarySummary.apply_pass === false || deploymentSummary.deploy_pass === false) overallStatus = "DEGRADED";
@@ -190,9 +197,9 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       critical_blockers: uniqueBlockers.slice(0, 10),
       promotion_path_ready: deploymentSummary.deploy_pass === true,
       manual_paste_ready: deploymentPlanSummary.manual_step_required === true,
-      applied_confirmed: String(deploymentPlanSummary.plan_status || "").trim().toUpperCase() === "APPLIED_CONFIRMED",
-      applied_pending_signal_confirmation: String(deploymentPlanSummary.plan_status || "").trim().toUpperCase() === "APPLIED_PENDING_SIGNAL_CONFIRMATION",
-      ready_candidate_id: deploymentPlanSummary.target_candidate_id || deploymentSummary.target_candidate_id || null,
+      applied_confirmed: deploymentPlanStatus === "APPLIED_CONFIRMED" || deploymentPlanStatus === "APPLIED_CONFIRMED_AUTHORITY_BYPASS",
+      applied_pending_signal_confirmation: deploymentPlanStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION" || deploymentPlanStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION_AUTHORITY_BYPASS",
+      ready_candidate_id: deploymentPlanSummary.recommended_target_candidate_id || deploymentPlanSummary.target_candidate_id || deploymentSummary.target_candidate_id || null,
       canary_open_wave: toNum(canarySummary.open_wave) || null,
       loop_n: rows.length,
       fresh_loop_n: rows.filter((row) => row.fresh === true).length,

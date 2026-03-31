@@ -61,12 +61,12 @@ function deriveConstraintFlags({
   projectedCountRatioGlobal = null,
   projectedReplacementRatio = null,
   latencyP95Ms = null,
-  latencyBudgetMs = 1500,
+  latencyBudgetMs = 180000,
 } = {}) {
   const countRatio = toNum(projectedCountRatioGlobal);
   const replacementRatio = toNum(projectedReplacementRatio);
   const latencyP95 = toNum(latencyP95Ms);
-  const budget = Number.isFinite(Number(latencyBudgetMs)) ? Number(latencyBudgetMs) : 1500;
+  const budget = Number.isFinite(Number(latencyBudgetMs)) ? Number(latencyBudgetMs) : 180000;
   return {
     count_floor_pass: countRatio == null ? null : countRatio >= 1.0,
     replacement_floor_pass: replacementRatio == null ? null : replacementRatio >= 0.80,

@@ -55,12 +55,16 @@ function renderMarkdown(report = {}) {
     `- acknowledged_at_kst: ${report.acknowledged_at_kst || "N/A"}`,
     `- cycle_id: ${report.cycle_id || "N/A"}`,
     `- target_candidate_id: ${report.target_candidate_id || "N/A"}`,
+    `- recommended_target_candidate_id: ${report.recommended_target_candidate_id || "N/A"}`,
     `- candidate_signature: ${report.candidate_signature || "N/A"}`,
     `- applied_strategy_id: ${report.applied_strategy_id || "N/A"}`,
     `- prepared_file_path: ${report.prepared_file_path || "N/A"}`,
     `- latest_generated_file_path: ${report.latest_generated_file_path || "N/A"}`,
     `- canonical_source_path: ${report.canonical_source_path || "N/A"}`,
     `- canonical_source_synced: ${report.canonical_source_synced ? "YES" : "NO"}`,
+    `- authority_required: ${report.authority_required ? "YES" : "NO"}`,
+    `- authority_approved: ${report.authority_approved ? "YES" : "NO"}`,
+    `- authority_bypass_active: ${report.authority_bypass_active ? "YES" : "NO"}`,
   ];
   return `${lines.join("\n")}\n`;
 }
@@ -73,8 +77,20 @@ async function main() {
   const handoff = deploymentPlan.handoff && typeof deploymentPlan.handoff === "object" ? deploymentPlan.handoff : {};
   const preparedFilePath = String(summary.prepared_file_path || handoff.prepared_file_path || "").trim() || null;
   const latestGeneratedFilePath = String(summary.latest_generated_file_path || handoff.latest_generated_file_path || "").trim() || null;
-  const candidateSignature = String(handoff.candidate_signature || summary.target_candidate_id || "").trim() || null;
-  const targetCandidateId = String(summary.target_candidate_id || "").trim() || null;
+  const targetCandidateId = String(
+    summary.prepared_origin_candidate_id
+    || summary.applied_origin_candidate_id
+    || handoff.applied_origin_candidate_id
+    || handoff.candidate_signature
+    || summary.target_candidate_id
+    || ""
+  ).trim() || null;
+  const recommendedTargetCandidateId = String(
+    summary.recommended_target_candidate_id
+    || summary.target_candidate_id
+    || ""
+  ).trim() || null;
+  const candidateSignature = targetCandidateId;
   const sourceFile = preparedFilePath || latestGeneratedFilePath;
   if (!sourceFile || !fs.existsSync(sourceFile)) {
     throw new Error("MANUAL_PASTE_ACK_SOURCE_FILE_MISSING");
@@ -88,6 +104,7 @@ async function main() {
     acknowledged_at_iso: new Date().toISOString(),
     cycle_id: String(deploymentPlan.cycle_id || "").trim() || null,
     target_candidate_id: targetCandidateId,
+    recommended_target_candidate_id: recommendedTargetCandidateId,
     candidate_signature: candidateSignature,
     prepared_file_path: preparedFilePath,
     latest_generated_file_path: latestGeneratedFilePath,
@@ -95,6 +112,9 @@ async function main() {
     applied_strategy_id: strategyId,
     canonical_source_path: canonicalSync.canonicalPath,
     canonical_source_synced: canonicalSync.synced,
+    authority_required: summary.authority_required === true,
+    authority_approved: summary.authority_approved === true,
+    authority_bypass_active: summary.authority_bypass_active === true,
   };
   const runtimePath = path.join(OPS_RUNTIME_DIR, "self_evolution_manual_paste_ack.json");
   const dailyJsonPath = path.join(OPS_DAILY_DIR, "self_evolution_manual_paste_ack_latest.json");
