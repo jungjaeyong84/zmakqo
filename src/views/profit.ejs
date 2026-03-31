@@ -379,6 +379,7 @@
     <div>
       <div class="profit-title">수익 세부 분석</div>
       <div class="profit-sub"><%= exchange %> · 실현 손익 기반 보조 화면 · <%= basisHint %><% if (customRangeData && customRangeData.start && customRangeData.end) { %> · <%= customRangeData.start %> ~ <%= customRangeData.end %><% } %></div>
+      <div class="profit-sub">목표 상태와 blocker 판단은 Mission/Recovery/Audit를 우선합니다.</div>
       <% if (leverageSummary && leverageSummary.enabled) { %>
         <div class="profit-sub">배율 상태 · 2x <%= fmtInt(leverageSummary.tier_2x || 0) %> / 3x <%= fmtInt(leverageSummary.tier_3x || 0) %> (활성 <%= fmtInt(leverageSummary.active_markets || 0) %>)</div>
       <% } %>
@@ -400,22 +401,22 @@
 
   <div class="profit-cards">
     <div class="profit-card">
-      <div class="label">Today PNL</div>
+      <div class="label">오늘 손익</div>
       <div class="value <%= pnlColor(rangeAgg.today && rangeAgg.today.total) %>" data-field="today_pnl"><%- fmtPnlHtml(rangeAgg.today && rangeAgg.today.total) %></div>
       <div class="meta" data-field="today_pct"><%= fmtPct((profit && profit.total_max_krw && rangeAgg.today && rangeAgg.today.total != null) ? (rangeAgg.today.total / profit.total_max_krw) : null) %></div>
     </div>
     <div class="profit-card">
-      <div class="label" data-field="range_label"><%= fmtRangeLabel(ranges[defaultRangeKey]) %> PNL</div>
+      <div class="label" data-field="range_label"><%= fmtRangeLabel(ranges[defaultRangeKey]) %> 손익</div>
       <div class="value <%= pnlColor(rangeAgg[defaultRangeKey] && rangeAgg[defaultRangeKey].total) %>" data-field="range_pnl"><%- fmtPnlHtml(rangeAgg[defaultRangeKey] && rangeAgg[defaultRangeKey].total) %></div>
       <div class="meta" data-field="range_pct"><%= fmtPct((profit && profit.total_max_krw && rangeAgg[defaultRangeKey] && rangeAgg[defaultRangeKey].total != null) ? (rangeAgg[defaultRangeKey].total / profit.total_max_krw) : null) %></div>
     </div>
     <div class="profit-card">
-      <div class="label">30D PNL</div>
+      <div class="label">30일 손익</div>
       <div class="value <%= pnlColor(rangeAgg.d30 && rangeAgg.d30.total) %>" data-field="range2_pnl"><%- fmtPnlHtml(rangeAgg.d30 && rangeAgg.d30.total) %></div>
       <div class="meta" data-field="range2_pct"><%= fmtPct((profit && profit.total_max_krw && rangeAgg.d30 && rangeAgg.d30.total != null) ? (rangeAgg.d30.total / profit.total_max_krw) : null) %></div>
     </div>
     <div class="profit-card">
-      <div class="label">6M PNL</div>
+      <div class="label">6개월 손익</div>
       <div class="value <%= pnlColor(rangeAgg.m6 && rangeAgg.m6.total) %>" data-field="m6_pnl"><%- fmtPnlHtml(rangeAgg.m6 && rangeAgg.m6.total) %></div>
       <div class="meta" data-field="m6_pct"><%= fmtPct((profit && profit.total_max_krw && rangeAgg.m6 && rangeAgg.m6.total != null) ? (rangeAgg.m6.total / profit.total_max_krw) : null) %></div>
     </div>

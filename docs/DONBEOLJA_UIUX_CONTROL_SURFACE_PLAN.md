@@ -51,7 +51,7 @@
 6. `Phase 6. Legacy Screen Demotion`
    - 마무리 단계
    - legacy report/trading 화면은 새 IA 아래의 보조 화면으로 강등했고, control surface로 복귀하는 bridge CTA와 family subnav를 공통 partial로 적용했다.
-   - 남은 일은 소수의 legacy wording 정리와 화면별 copy polish다.
+   - 남은 일은 화면별 copy polish와 시각 정리 정도이며, 구조적 migration은 사실상 끝났다.
 
 ## 3. 상위 원칙
 
