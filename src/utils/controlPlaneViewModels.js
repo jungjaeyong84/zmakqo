@@ -65,6 +65,19 @@ function joinList(values, fallback = "-") {
   return values.filter(Boolean).map((v) => String(v)).join(" / ");
 }
 
+function sliceList(values, max = 3) {
+  if (!Array.isArray(values) || !values.length) return [];
+  return values.slice(0, Math.max(0, max));
+}
+
+function extractThresholdPair(signatureText) {
+  const text = String(signatureText || "");
+  const core = text.match(/core_score_abs\\?":(\d+)/);
+  const transition = text.match(/transition_core_score_abs\\?":(\d+)/);
+  if (core && transition) return `${core[1]}/${transition[1]}`;
+  return null;
+}
+
 function pickStageRow(stageArtifact, stageName) {
   const target = String(stageName || "").toUpperCase();
   return (stageArtifact.rows || []).find((row) => {
@@ -86,6 +99,22 @@ function buildSourceModeText(stageArtifact) {
   };
 }
 
+function buildPolicyBundleLabel(deploymentPlan, stageAutopilot) {
+  const canonicalPolicyRow = pickStageRow(stageAutopilot, "CANONICAL_POLICY");
+  const sourceMode = buildSourceModeText(stageAutopilot);
+  const thresholdPair =
+    extractThresholdPair(
+      (canonicalPolicyRow && (canonicalPolicyRow.active_signature || canonicalPolicyRow.signature)) ||
+      deploymentPlan.summary.threshold_bundle_signature
+    ) ||
+    extractThresholdPair(deploymentPlan.summary.active_policy_bundle_id) ||
+    "-";
+  return {
+    primary: `${thresholdPair} · ${sourceMode.value}`,
+    detail: compactText((canonicalPolicyRow && canonicalPolicyRow.active_reason) || deploymentPlan.summary.recommended_target_stage_reason),
+  };
+}
+
 function buildMissionControlViewModel() {
   const autonomy = loadLatestArtifact("best_self_evolution_openclaw_autonomy_contract_latest.json");
   const recoveryGovernor = loadLatestArtifact("best_self_evolution_objective_recovery_governor_latest.json");
@@ -98,8 +127,11 @@ function buildMissionControlViewModel() {
   const objectiveSupervisor = loadLatestArtifact("objective_supervisor_latest.json");
   const watchdog = loadLatestArtifact("automation_watchdog_latest.json");
   const stageAutopilot = loadLatestArtifact("stage_autopilot_latest.json");
+  const parity = loadLatestArtifact("best_self_evolution_canonical_engine_parity_latest.json");
+  const provenance = loadLatestArtifact("best_self_evolution_canonical_engine_provenance_latest.json");
 
   const sourceMode = buildSourceModeText(stageAutopilot);
+  const policyBundle = buildPolicyBundleLabel(deploymentPlan, stageAutopilot);
   const topBlocker = Array.isArray(loopMonitor.summary.critical_blockers) && loopMonitor.summary.critical_blockers.length
     ? loopMonitor.summary.critical_blockers[0]
     : compactText(objectiveSupervisor.display && objectiveSupervisor.display.root_cause);
@@ -170,27 +202,26 @@ function buildMissionControlViewModel() {
         columns: 2,
         cards: [
           {
-            title: "Objective Recovery",
+            title: "Why Blocked",
             tone: statusTone(objectiveSupervisor.display && objectiveSupervisor.display.verdict),
             rows: [
               { label: "Root Cause", value: compactText(objectiveSupervisor.display && objectiveSupervisor.display.root_cause) },
-              { label: "Recovery Target", value: compactText(recoveryGovernor.summary.display_candidate_id || recoveryGovernor.summary.target_candidate_id) },
+              { label: "Failed Checks", value: joinList(objectiveSupervisor.display && objectiveSupervisor.display.blockers, "-") },
               { label: "Projected Score", value: signedNumberText(recoveryEffect.summary.projected_objective_score, 2) },
-              { label: "Gap Closure", value: `${numberText((recoveryEffect.summary.gap_closure_rate || 0) * 100, 1)}%` },
+              { label: "Dominant Drag", value: compactText(recoveryEffect.summary.dominant_negative_market || "N/A") },
             ],
-            notes: objectiveSupervisor.display && Array.isArray(objectiveSupervisor.display.action_plan)
-              ? objectiveSupervisor.display.action_plan.slice(0, 3)
-              : [],
+            notes: sliceList(objectiveSupervisor.display && objectiveSupervisor.display.blockers, 5),
           },
           {
-            title: "Governor Status",
+            title: "Next Autonomous Action",
             tone: statusTone(recoveryGovernor.summary.governor_status),
             rows: [
-              { label: "Status", value: compactText(recoveryGovernor.summary.governor_status) },
-              { label: "Reason", value: compactText(recoveryGovernor.summary.governor_reason) },
+              { label: "Target", value: compactText(recoveryGovernor.summary.display_candidate_id || recoveryGovernor.summary.target_candidate_id) },
+              { label: "Governor", value: compactText(recoveryGovernor.summary.governor_status) },
               { label: "Replay / Canary", value: `${recoveryGovernor.summary.replay_pass ? "PASS" : "FAIL"} / ${recoveryGovernor.summary.canary_ready ? "READY" : "HOLD"}` },
-              { label: "Higher Delta", value: compactText(recoveryEffect.summary.higher_delta_candidate_id || "N/A") },
+              { label: "Gap Closure", value: `${numberText((recoveryEffect.summary.gap_closure_rate || 0) * 100, 1)}%` },
             ],
+            notes: sliceList(recoveryGovernor.summary.next_actions || objectiveSupervisor.display && objectiveSupervisor.display.action_plan, 3),
             actions: [
               { label: "Open Recovery", href: "/dashboard/recovery", tone: "ghost" },
             ],
@@ -198,8 +229,45 @@ function buildMissionControlViewModel() {
         ],
       },
       {
-        title: "Operational State",
-        description: "배포와 실행 근거를 같은 표면에서 읽습니다.",
+        title: "Bundle State",
+        description: "현재 active engine/policy bundle과 shadow 역할을 읽습니다.",
+        columns: 3,
+        cards: [
+          {
+            title: "Engine Bundle",
+            tone: "ok",
+            rows: [
+              { label: "Active", value: compactText(deploymentPlan.summary.active_engine_bundle && deploymentPlan.summary.active_engine_bundle.strategy_id) },
+              { label: "Prepared", value: compactText(deploymentPlan.summary.prepared_engine_bundle_id) },
+              { label: "Rollback", value: compactText(deploymentPlan.summary.rollback_engine_bundle_id) },
+              { label: "Activation", value: compactText(bundleActivation.summary.activation_reason) },
+            ],
+          },
+          {
+            title: "Policy Bundle",
+            tone: "warn",
+            rows: [
+              { label: "Active Policy", value: compactText(policyBundle.primary, 84) },
+              { label: "Policy Reason", value: compactText(policyBundle.detail) },
+              { label: "Source Mode", value: sourceMode.value },
+              { label: "Stage", value: compactText(deploymentPlan.summary.recommended_target_stage_reason) },
+            ],
+          },
+          {
+            title: "Shadow Pine",
+            tone: "dim",
+            rows: [
+              { label: "Role", value: "SHADOW_OVERLAY_AUDIT" },
+              { label: "Execution SOT", value: compactText(autonomy.control_plane && autonomy.control_plane.execution_sot) },
+              { label: "Telegram", value: compactText(autonomy.control_plane && autonomy.control_plane.telegram_transport_sot) },
+              { label: "Scheduler", value: compactText(autonomy.control_plane && autonomy.control_plane.scheduler_sot) },
+            ],
+          },
+        ],
+      },
+      {
+        title: "Evidence Chain",
+        description: "현재 배포와 실행의 근거 artifact를 같은 높이에서 봅니다.",
         columns: 3,
         cards: [
           {
@@ -228,12 +296,12 @@ function buildMissionControlViewModel() {
             ],
           },
           {
-            title: "Audit",
-            tone: statusTone(loopMonitor.summary.overall_status),
+            title: "Evidence",
+            tone: statusTone(parity.summary.source_parity_mismatch_n === 0 ? "PASS" : "WARN"),
             rows: [
-              { label: "Cycle", value: compactText(loopMonitor.summary.cycle_id) },
-              { label: "Loop Freshness", value: `${numberText(loopMonitor.summary.fresh_loop_n, 0)}/${numberText(loopMonitor.summary.loop_n, 0)}` },
-              { label: "Critical Blocker", value: compactText(topBlocker) },
+              { label: "Source Parity", value: `${numberText(parity.summary.source_parity_match_n, 0)}/${numberText(parity.summary.shadow_observed_n, 0)}` },
+              { label: "Downstream", value: numberText(parity.summary.final_downstream_mismatch_n, 0) },
+              { label: "Provenance", value: `${numberText(provenance.summary.complete_n, 0)}/${numberText(provenance.summary.engine_eligible_n, 0)}` },
               { label: "Ops", value: compactText(watchdog.display && watchdog.display.verdict) },
             ],
             actions: [{ label: "Open Audit", href: "/dashboard/audit", tone: "ghost" }],
@@ -274,7 +342,7 @@ function buildRecoveryViewModel() {
       {
         title: "Recovery Path",
         description: "현재 적용 대상과 더 큰 개선 후보를 분리해서 봅니다.",
-        columns: 2,
+        columns: 3,
         cards: [
           {
             title: "Current Target",
@@ -297,6 +365,16 @@ function buildRecoveryViewModel() {
               { label: "Hold Reason", value: compactText(effect.summary.higher_delta_candidate_hold_reason) },
             ],
           },
+          {
+            title: "Retrospective Blockers",
+            tone: "bad",
+            rows: [
+              { label: "Root Cause", value: compactText(objectiveSupervisor.display && objectiveSupervisor.display.root_cause) },
+              { label: "Monthly Failed", value: joinList(effect.summary.retrospective_monthly_failed_checks || []) },
+              { label: "Top Drop Reason", value: compactText(effect.summary.retrospective_monthly_top_drop_reason) },
+              { label: "Dominant Drag", value: `${compactText(effect.summary.dominant_negative_market)} (${numberText((effect.summary.dominant_negative_share || 0) * 100, 1)}%)` },
+            ],
+          },
         ],
       },
     ],
@@ -307,6 +385,8 @@ function buildDeploymentViewModel() {
   const deploymentPlan = loadLatestArtifact("best_self_evolution_deployment_plan_latest.json");
   const deploymentProbe = loadLatestArtifact("best_self_evolution_deployment_probe_latest.json");
   const bundleActivation = loadLatestArtifact("best_self_evolution_bundle_activation_latest.json");
+  const stageAutopilot = loadLatestArtifact("stage_autopilot_latest.json");
+  const policyBundle = buildPolicyBundleLabel(deploymentPlan, stageAutopilot);
   return {
     active: "deployment",
     title: "Deployment",
@@ -333,7 +413,7 @@ function buildDeploymentViewModel() {
       {
         title: "Bundle State",
         description: "active / prepared / rollback 번들을 함께 읽습니다.",
-        columns: 2,
+        columns: 3,
         cards: [
           {
             title: "Engine Bundle",
@@ -349,10 +429,20 @@ function buildDeploymentViewModel() {
             title: "Policy Bundle",
             tone: "warn",
             rows: [
-              { label: "Active", value: compactText(deploymentPlan.summary.active_policy_bundle && deploymentPlan.summary.active_policy_bundle.source) },
+              { label: "Active", value: compactText(policyBundle.primary, 84) },
               { label: "Stage Reason", value: compactText(deploymentPlan.summary.recommended_target_stage_reason) },
-              { label: "Source Mode Signature", value: compactText(deploymentPlan.summary.source_mode_signature) },
-              { label: "Threshold Signature", value: compactText(deploymentPlan.summary.threshold_bundle_signature) },
+              { label: "Source Mode Signature", value: compactText(deploymentPlan.summary.source_mode_signature, 84) },
+              { label: "Threshold Signature", value: compactText(deploymentPlan.summary.threshold_bundle_signature, 84) },
+            ],
+          },
+          {
+            title: "Approval and Probe",
+            tone: statusTone(deploymentPlan.summary.authority_state),
+            rows: [
+              { label: "Authority", value: compactText(deploymentPlan.summary.authority_state) },
+              { label: "Approved", value: deploymentPlan.summary.authority_approved ? "YES" : "NO" },
+              { label: "Probe", value: compactText(deploymentProbe.summary.probe_reason) },
+              { label: "Activation", value: compactText(bundleActivation.summary.activation_reason) },
             ],
           },
         ],
@@ -366,6 +456,7 @@ function buildExecutionViewModel() {
   const provenance = loadLatestArtifact("best_self_evolution_canonical_engine_provenance_latest.json");
   const stageAutopilot = loadLatestArtifact("stage_autopilot_latest.json");
   const sourceMode = buildSourceModeText(stageAutopilot);
+  const canonicalPolicyRow = pickStageRow(stageAutopilot, "CANONICAL_POLICY");
   const paritySummary = parity.summary;
   const provenanceSummary = provenance.summary;
   return {
@@ -397,8 +488,18 @@ function buildExecutionViewModel() {
       {
         title: "Execution Evidence",
         description: "source parity와 provenance를 분리해 보여줍니다.",
-        columns: 2,
+        columns: 3,
         cards: [
+          {
+            title: "Active Policy",
+            tone: "warn",
+            rows: [
+              { label: "Threshold", value: extractThresholdPair(canonicalPolicyRow && canonicalPolicyRow.active_signature) || "-" },
+              { label: "Policy Reason", value: compactText(canonicalPolicyRow && canonicalPolicyRow.active_reason) },
+              { label: "Source Mode", value: sourceMode.value },
+              { label: "Acceptance", value: sourceMode.detail },
+            ],
+          },
           {
             title: "Parity",
             tone: statusTone(paritySummary.source_parity_mismatch_n === 0 ? "PASS" : "FAIL"),
@@ -471,10 +572,10 @@ function buildServerPrimaryViewModel() {
             title: "Thresholds",
             tone: "dim",
             rows: [
-              { label: "Min Executed", value: numberText(acceptanceWatch.summary.acceptance_min_executed, 0) },
-              { label: "Max Disagreement", value: numberText((acceptanceWatch.summary.acceptance_max_disagreement_rate || 0) * 100, 1) + "%" },
-              { label: "Max Rollback", value: numberText(acceptanceWatch.summary.acceptance_max_rollback_trigger_n, 0) },
-              { label: "Ready", value: acceptanceWatch.summary.acceptance_ready ? "YES" : "NO" },
+              { label: "Min Executed", value: numberText(acceptanceWatch.summary.acceptance_min_executed || acceptanceWatch.summary.min_executed_n, 0) },
+              { label: "Max Disagreement", value: numberText(((acceptanceWatch.summary.acceptance_max_disagreement_rate != null ? acceptanceWatch.summary.acceptance_max_disagreement_rate : acceptanceWatch.summary.max_disagreement_rate) || 0) * 100, 1) + "%" },
+              { label: "Max Rollback", value: numberText(acceptanceWatch.summary.acceptance_max_rollback_trigger_n != null ? acceptanceWatch.summary.acceptance_max_rollback_trigger_n : acceptanceWatch.summary.max_rollback_trigger_n, 0) },
+              { label: "Ready", value: acceptanceWatch.summary.acceptance_ready || acceptanceWatch.summary.phase_d_ready ? "YES" : "NO" },
             ],
           },
         ],

@@ -447,6 +447,21 @@
 
 <%- include('partials/control_surface_body', { model: mission_control }) %>
 
+<div class="subnav" style="margin-top:-4px; margin-bottom:18px;">
+  <a href="/dashboard/home" class="active">Mission</a>
+  <a href="/dashboard/recovery">Recovery</a>
+  <a href="/dashboard/deployment">Deployment</a>
+  <a href="/dashboard/execution">Execution</a>
+  <a href="/dashboard/server-primary">Phase D</a>
+  <a href="/dashboard/audit">Audit</a>
+</div>
+
+<details class="details-block" style="margin-top:12px;">
+  <summary>
+    <span>Legacy Ops Snapshot</span>
+    <span class="subtle">기존 KPI/실행 표를 접어서 관리합니다.</span>
+  </summary>
+  <div class="details-body">
 <div class="section-head">
   <div class="section-title">시스템 핵심</div>
   <div class="subtle">판단 흐름과 손익 중심으로 간결하게 요약합니다.</div>
@@ -1286,6 +1301,9 @@
 </div>
 
   </div>
+</details>
+
+</div>
 </details>
 
 <%- include('partials/app_end') %>
