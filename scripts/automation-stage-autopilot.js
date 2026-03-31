@@ -45,6 +45,7 @@ const {
 loadLocalEnv();
 
 const PROVIDER = String(process.env.STAGE_AUTOPILOT_PROVIDER || "BINANCEFUT").trim().toUpperCase();
+const REPO_ROOT = path.resolve(__dirname, "..");
 const REPORT_LATEST_JSON = path.join(OPS_DAILY_DIR, "stage_autopilot_latest.json");
 const REPORT_LATEST_MD = path.join(OPS_DAILY_DIR, "stage_autopilot_latest.md");
 const AI_STAGE_SAMPLE_MIN = Math.max(20, Number(process.env.STAGE_AUTOPILOT_AI_MIN_SAMPLE || 40));
@@ -77,6 +78,7 @@ const FRESHNESS_HOURS = Object.freeze({
 });
 const SELF_EVOLUTION_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json");
 const SELF_EVOLUTION_CANONICAL_PARITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_parity_latest.json");
+const SELF_EVOLUTION_DEPLOYMENT_PROBE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_probe_latest.json");
 const SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json");
 const SELF_EVOLUTION_OBJECTIVE_SUPERVISOR_LATEST_PATH = selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json");
 const SELF_EVOLUTION_LOOP_MONITOR_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_loop_monitor_latest.json");
@@ -241,6 +243,122 @@ function readArtifact(name, filePath, maxAgeHours) {
   } catch (_err) {
     return { name, filePath, data, exists: true, fresh: false, ageHours: null };
   }
+}
+
+function extractJson(stdout = "") {
+  const lines = String(stdout || "").trim().split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    try {
+      return JSON.parse(lines[i]);
+    } catch (_err) {
+      // continue
+    }
+  }
+  return null;
+}
+
+function summarizeDeploymentPlanForReport(summary = {}) {
+  return {
+    available: !!summary,
+    plan_status: String(summary.plan_status || "").trim().toUpperCase() || null,
+    prepare_pass: summary.prepare_pass === true,
+    manual_step_required: summary.manual_step_required === true,
+    target_candidate_id: String(summary.target_candidate_id || "").trim() || null,
+    prepared_file_path: String(summary.prepared_file_path || "").trim() || null,
+    prepared_strategy_id: String(summary.prepared_strategy_id || "").trim() || null,
+    applied_strategy_id: String(summary.applied_strategy_id || "").trim() || null,
+    manual_paste_acknowledged: summary.manual_paste_acknowledged === true,
+    live_signal_confirmed: summary.live_signal_confirmed === true,
+    latest_generated_file_path: String(summary.latest_generated_file_path || "").trim() || null,
+    rollback_source_file_path: String(summary.rollback_source_file_path || "").trim() || null,
+    blockers: Array.isArray(summary.blockers) ? summary.blockers : [],
+    activation_status: String(summary.activation_status || "").trim().toUpperCase() || null,
+    activation_reason: String(summary.activation_reason || "").trim().toUpperCase() || null,
+    deploy_unit_primary: String(summary.deploy_unit_primary || "").trim().toUpperCase() || null,
+    authority_state: String(summary.authority_state || "").trim().toUpperCase() || null,
+    external_authority_pending: summary.external_authority_pending === true,
+  };
+}
+
+function summarizeLoopMonitorForReport(loopMonitor = {}) {
+  return {
+    available: loopMonitor.available === true,
+    source: String(loopMonitor.source || "").trim() || null,
+    cycle_id: String(loopMonitor.cycle_id || "").trim() || null,
+    overall_status: String(loopMonitor.overall_status || "").trim().toUpperCase() || null,
+    cycle_consistent: loopMonitor.cycle_consistent === true
+      ? true
+      : (loopMonitor.cycle_consistent === false ? false : null),
+    stale_artifact_n: toNum(loopMonitor.stale_artifact_n),
+    critical_blockers: Array.isArray(loopMonitor.critical_blockers) ? loopMonitor.critical_blockers : [],
+    promotion_path_ready: loopMonitor.promotion_path_ready === true,
+    manual_paste_ready: loopMonitor.manual_paste_ready === true,
+    ready_candidate_id: String(loopMonitor.ready_candidate_id || "").trim() || null,
+  };
+}
+
+function writeStageAutopilotArtifacts({ report, jsonPath, mdPath }) {
+  writeJson(jsonPath, wrapDisplayAndRawReport(report));
+  writeText(mdPath, renderMarkdown(report));
+  copyLatest(jsonPath, REPORT_LATEST_JSON);
+  copyLatest(mdPath, REPORT_LATEST_MD);
+}
+
+function runSelfEvolutionRefreshStep({ id, script, cycleId, env = {} }) {
+  const scriptPath = path.join(__dirname, script);
+  const child = spawnSync(process.execPath, [scriptPath], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      BEST_SELF_EVOLUTION_CYCLE_ID: cycleId,
+      BEST_SELF_EVOLUTION_ALLOW_LATEST_WRITE: "1",
+      ...env,
+    },
+    maxBuffer: 1024 * 1024 * 8,
+  });
+  const parsed = extractJson(child.stdout);
+  return {
+    id,
+    script: scriptPath,
+    ok: child.status === 0,
+    exit_code: child.status,
+    summary: parsed && (parsed.reason || parsed.verdict || parsed.latest_json || parsed.json || (parsed.ok === true ? "OK" : null)) || null,
+    stdout_tail: String(child.stdout || "").trim().split(/\r?\n/).filter(Boolean).slice(-5),
+    stderr_tail: String(child.stderr || "").trim().split(/\r?\n/).filter(Boolean).slice(-5),
+  };
+}
+
+function refreshSelfEvolutionPostApplyArtifacts({ cycleId = null } = {}) {
+  const steps = [
+    { id: "deployment_probe", script: "report-best-self-evolution-deployment-probe.js" },
+    { id: "bundle_activation", script: "report-best-self-evolution-bundle-activation.js" },
+    { id: "deployment_plan", script: "report-best-self-evolution-deployment-plan.js", env: { SELF_EVOLUTION_SYNC_LIVE_SERVICES: "0" } },
+    { id: "objective_final", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SKIP_TELEGRAM: "1", OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "FINAL" } },
+    { id: "loop_monitor", script: "report-best-self-evolution-loop-monitor.js" },
+  ];
+  const rows = [];
+  for (const step of steps) {
+    rows.push(runSelfEvolutionRefreshStep({
+      id: step.id,
+      script: step.script,
+      cycleId,
+      env: step.env || {},
+    }));
+    if (rows[rows.length - 1].ok !== true) break;
+  }
+  return {
+    ok: rows.every((row) => row.ok === true),
+    steps: rows,
+  };
+}
+
+function summarizeCurrentSourceModes(currentSys = {}) {
+  const overrides = normalizeCanonicalEngineMarketOverrides(currentSys && currentSys.canonical_engine_market_overrides);
+  return Object.entries(overrides).map(([market, row]) => ({
+    market,
+    source_mode: String(row && row.source_mode || "").trim().toUpperCase() || "PINE_PRIMARY",
+  }));
 }
 
 function stableSignature(obj = {}) {
@@ -1378,7 +1496,7 @@ async function main() {
   const codexArtifact = readArtifact("self_evolution_authority", selfEvolutionSnapshotLatestPath("self_evolution_authority_latest.json"), FRESHNESS_HOURS.codex);
   const objectiveArtifactForLoop = selfEvolutionObjectiveArtifact.exists ? selfEvolutionObjectiveArtifact : objectiveArtifact;
   const currentSysRes = await getSystemSettingsForProvider(PROVIDER, 0);
-  const currentSys = currentSysRes && currentSysRes.data ? currentSysRes.data : {};
+  let currentSys = currentSysRes && currentSysRes.data ? currentSysRes.data : {};
   const autopilotStore = readAutopilotState();
   const stateData = autopilotStore.data || { stages: {}, history: [] };
   let history = Array.isArray(stateData.history) ? stateData.history : [];
@@ -1447,6 +1565,7 @@ async function main() {
   history = result.history;
   stateData.stages.AI = result.stageState;
   if (result.action) actions.push(result.action);
+  if (result.action && (result.action.type === "AUTO_APPLY" || result.action.type === "AUTO_ROLLBACK")) currentSys = await getRawProviderSettings(PROVIDER);
   stageRows.push({
     stage: "AI",
     machine_state: result.stageState.machine_state,
@@ -1482,6 +1601,7 @@ async function main() {
   history = result.history;
   stateData.stages.MARKET = result.stageState;
   if (result.action) actions.push(result.action);
+  if (result.action && (result.action.type === "AUTO_APPLY" || result.action.type === "AUTO_ROLLBACK")) currentSys = await getRawProviderSettings(PROVIDER);
   stageRows.push({
     stage: "MARKET",
     machine_state: result.stageState.machine_state,
@@ -1527,6 +1647,7 @@ async function main() {
   history = result.history;
   stateData.stages.EV = result.stageState;
   if (result.action) actions.push(result.action);
+  if (result.action && (result.action.type === "AUTO_APPLY" || result.action.type === "AUTO_ROLLBACK")) currentSys = await getRawProviderSettings(PROVIDER);
   stageRows.push({
     stage: "EV",
     machine_state: result.stageState.machine_state,
@@ -1555,6 +1676,7 @@ async function main() {
   history = result.history;
   stateData.stages.WAIT = result.stageState;
   if (result.action) actions.push(result.action);
+  if (result.action && (result.action.type === "AUTO_APPLY" || result.action.type === "AUTO_ROLLBACK")) currentSys = await getRawProviderSettings(PROVIDER);
   stageRows.push({
     stage: "WAIT",
     machine_state: result.stageState.machine_state,
@@ -1594,6 +1716,8 @@ async function main() {
   history = result.history;
   stateData.stages.CANONICAL_POLICY = result.stageState;
   if (result.action) actions.push(result.action);
+  if (result.action && (result.action.type === "AUTO_APPLY" || result.action.type === "AUTO_ROLLBACK")) currentSys = await getRawProviderSettings(PROVIDER);
+  const activeCanonicalPolicySignature = stableSignature(pickSettingsSnapshot(currentSys, CANONICAL_POLICY_SNAPSHOT_KEYS));
   stageRows.push({
     stage: "CANONICAL_POLICY",
     machine_state: result.stageState.machine_state,
@@ -1602,8 +1726,14 @@ async function main() {
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
     signature: result.stageState.last_signature,
+    active_signature: result.stageState.applied_signature || activeCanonicalPolicySignature,
+    next_signature: canonicalPolicyCandidate.signature || null,
     snapshot_path: result.stageState.last_snapshot_path || null,
     display_signature: canonicalPolicyCandidate.display_signature || null,
+    active_display_signature: result.stageState.applied_signature || activeCanonicalPolicySignature,
+    next_display_signature: canonicalPolicyCandidate.display_signature || null,
+    active_reason: result.stageState.applied_signature ? "ACTIVE_POLICY_BUNDLE" : null,
+    next_reason: canonicalPolicyCandidate.reason || null,
     candidate_id: canonicalPolicyCandidate.candidate_id || null,
     source: canonicalPolicyCandidate.source || null,
     best_febt_guard: canonicalPolicyBestFebtGuard.reason,
@@ -1643,6 +1773,12 @@ async function main() {
   history = result.history;
   stateData.stages.SOURCE_MODE = result.stageState;
   if (result.action) actions.push(result.action);
+  if (result.action && (result.action.type === "AUTO_APPLY" || result.action.type === "AUTO_ROLLBACK")) currentSys = await getRawProviderSettings(PROVIDER);
+  const activeSourceModes = summarizeCurrentSourceModes(currentSys);
+  const activeSourceModeSignature = stableSignature({
+    canonical_engine_source_mode: currentSys && currentSys.canonical_engine_source_mode,
+    canonical_engine_market_overrides: Object.fromEntries(activeSourceModes.map((row) => [row.market, { source_mode: row.source_mode }])),
+  });
   stageRows.push({
     stage: "SOURCE_MODE",
     machine_state: result.stageState.machine_state,
@@ -1651,13 +1787,21 @@ async function main() {
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
     signature: result.stageState.last_signature,
+    active_signature: result.stageState.applied_signature || activeSourceModeSignature,
+    next_signature: sourceModeCandidate.signature || null,
     snapshot_path: result.stageState.last_snapshot_path || null,
     display_signature: sourceModeCandidate.display_signature || null,
+    active_display_signature: activeSourceModeSignature,
+    next_display_signature: sourceModeCandidate.display_signature || null,
+    active_reason: activeSourceModes.some((row) => row.source_mode === "SERVER_PRIMARY")
+      ? (sourceModeCandidate.server_primary_acceptance_reason || "SERVER_PRIMARY_ACTIVE")
+      : "PINE_PRIMARY_ACTIVE",
+    next_reason: sourceModeCandidate.reason || null,
     candidate_id: sourceModeCandidate.candidate_id || null,
     source: sourceModeCandidate.source || null,
     support_n: sourceModeCandidate.support_n || 0,
     source_parity_mismatch_n: sourceModeCandidate.source_parity_mismatch_n || 0,
-    current_source_modes: sourceModeCandidate.current_source_modes || [],
+    current_source_modes: activeSourceModes,
     server_primary_executed_n: sourceModeCandidate.server_primary_executed_n || 0,
     server_primary_apply_pass: sourceModeCandidate.server_primary_apply_pass,
     server_primary_acceptance_ready: sourceModeCandidate.server_primary_acceptance_ready === true,
@@ -1707,6 +1851,7 @@ async function main() {
   history = result.history;
   stateData.stages.PINE = result.stageState;
   if (result.action) actions.push(result.action);
+  if (result.action && (result.action.type === "AUTO_APPLY" || result.action.type === "AUTO_ROLLBACK")) currentSys = await getRawProviderSettings(PROVIDER);
 
   const pineStageRow = {
     stage: "PINE",
@@ -1796,38 +1941,8 @@ async function main() {
       blockers: Array.isArray(selfEvolutionDeployment.blockers) ? selfEvolutionDeployment.blockers : [],
       canary_open_wave: toNum(selfEvolutionDeployment.canary_open_wave) || 1,
     },
-    self_evolution_deployment_plan: {
-      available: !!(
-        (selfEvolutionDeploymentPlanArtifact && selfEvolutionDeploymentPlanArtifact.exists && selfEvolutionDeploymentPlanArtifact.data && selfEvolutionDeploymentPlanArtifact.data.summary)
-        || (objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.self_evolution_deployment_plan)
-      ),
-      plan_status: String(selfEvolutionDeploymentPlan.plan_status || "").trim().toUpperCase() || null,
-      prepare_pass: selfEvolutionDeploymentPlan.prepare_pass === true,
-      manual_step_required: selfEvolutionDeploymentPlan.manual_step_required === true,
-      target_candidate_id: String(selfEvolutionDeploymentPlan.target_candidate_id || "").trim() || null,
-      prepared_file_path: String(selfEvolutionDeploymentPlan.prepared_file_path || "").trim() || null,
-      prepared_strategy_id: String(selfEvolutionDeploymentPlan.prepared_strategy_id || "").trim() || null,
-      applied_strategy_id: String(selfEvolutionDeploymentPlan.applied_strategy_id || "").trim() || null,
-      manual_paste_acknowledged: selfEvolutionDeploymentPlan.manual_paste_acknowledged === true,
-      live_signal_confirmed: selfEvolutionDeploymentPlan.live_signal_confirmed === true,
-      latest_generated_file_path: String(selfEvolutionDeploymentPlan.latest_generated_file_path || "").trim() || null,
-      rollback_source_file_path: String(selfEvolutionDeploymentPlan.rollback_source_file_path || "").trim() || null,
-      blockers: Array.isArray(selfEvolutionDeploymentPlan.blockers) ? selfEvolutionDeploymentPlan.blockers : [],
-    },
-    self_evolution_loop_monitor: {
-      available: selfEvolutionLoopMonitor.available === true,
-      source: String(selfEvolutionLoopMonitor.source || "").trim() || null,
-      cycle_id: String(selfEvolutionLoopMonitor.cycle_id || "").trim() || null,
-      overall_status: String(selfEvolutionLoopMonitor.overall_status || "").trim().toUpperCase() || null,
-      cycle_consistent: selfEvolutionLoopMonitor.cycle_consistent === true
-        ? true
-        : (selfEvolutionLoopMonitor.cycle_consistent === false ? false : null),
-      stale_artifact_n: toNum(selfEvolutionLoopMonitor.stale_artifact_n),
-      critical_blockers: Array.isArray(selfEvolutionLoopMonitor.critical_blockers) ? selfEvolutionLoopMonitor.critical_blockers : [],
-      promotion_path_ready: selfEvolutionLoopMonitor.promotion_path_ready === true,
-      manual_paste_ready: selfEvolutionLoopMonitor.manual_paste_ready === true,
-      ready_candidate_id: String(selfEvolutionLoopMonitor.ready_candidate_id || "").trim() || null,
-    },
+    self_evolution_deployment_plan: summarizeDeploymentPlanForReport(selfEvolutionDeploymentPlan),
+    self_evolution_loop_monitor: summarizeLoopMonitorForReport(selfEvolutionLoopMonitor),
     self_evolution_pine_handoff: overrideApplied.pineHandoff,
     codex_authority: {
       owner: String(codexAuthority.owner || "").trim() || "CODEX",
@@ -1854,10 +1969,46 @@ async function main() {
 
   const jsonPath = path.join(OPS_DAILY_DIR, `${nowMeta.dateKey}_${nowMeta.hhmm}_stage_autopilot.json`);
   const mdPath = path.join(OPS_DAILY_DIR, `${nowMeta.dateKey}_${nowMeta.hhmm}_stage_autopilot.md`);
-  writeJson(jsonPath, wrapDisplayAndRawReport(report));
-  writeText(mdPath, renderMarkdown(report));
-  copyLatest(jsonPath, REPORT_LATEST_JSON);
-  copyLatest(mdPath, REPORT_LATEST_MD);
+  writeStageAutopilotArtifacts({ report, jsonPath, mdPath });
+
+  if (actions.length) {
+    const refresh = refreshSelfEvolutionPostApplyArtifacts({ cycleId: reportCycleId });
+    report.post_apply_refresh = {
+      ok: refresh.ok,
+      step_n: refresh.steps.length,
+      steps: refresh.steps,
+    };
+    const refreshedObjectiveArtifact = readArtifact("self_evolution_objective_supervisor", SELF_EVOLUTION_OBJECTIVE_SUPERVISOR_LATEST_PATH, FRESHNESS_HOURS.objective);
+    const refreshedDeploymentPlanArtifact = readArtifact("best_self_evolution_deployment_plan", SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST_PATH, FRESHNESS_HOURS.objective);
+    const refreshedLoopMonitorArtifact = readArtifact("best_self_evolution_loop_monitor", SELF_EVOLUTION_LOOP_MONITOR_LATEST_PATH, FRESHNESS_HOURS.objective);
+    const refreshedDeploymentPlan = refreshedDeploymentPlanArtifact
+      && refreshedDeploymentPlanArtifact.data
+      && refreshedDeploymentPlanArtifact.data.summary
+      && typeof refreshedDeploymentPlanArtifact.data.summary === "object"
+        ? refreshedDeploymentPlanArtifact.data.summary
+        : {};
+    const refreshedLoopMonitor = buildLoopMonitorView({
+      objectiveArtifact: refreshedObjectiveArtifact.exists ? refreshedObjectiveArtifact : objectiveArtifactForLoop,
+      loopMonitorArtifact: refreshedLoopMonitorArtifact,
+      cycleMeta,
+    });
+    report.objective_verdict = String(refreshedObjectiveArtifact && refreshedObjectiveArtifact.data && refreshedObjectiveArtifact.data.verdict || report.objective_verdict || "N/A");
+    report.self_evolution_deployment_plan = summarizeDeploymentPlanForReport(refreshedDeploymentPlan);
+    report.self_evolution_loop_monitor = summarizeLoopMonitorForReport(refreshedLoopMonitor);
+    report.artifacts = report.artifacts.map((row) => {
+      if (row.name === "self_evolution_objective_supervisor") {
+        return { name: refreshedObjectiveArtifact.name, filePath: refreshedObjectiveArtifact.filePath, fresh: refreshedObjectiveArtifact.fresh, age_hours: refreshedObjectiveArtifact.ageHours };
+      }
+      if (row.name === "best_self_evolution_deployment_plan") {
+        return { name: refreshedDeploymentPlanArtifact.name, filePath: refreshedDeploymentPlanArtifact.filePath, fresh: refreshedDeploymentPlanArtifact.fresh, age_hours: refreshedDeploymentPlanArtifact.ageHours };
+      }
+      if (row.name === "best_self_evolution_loop_monitor") {
+        return { name: refreshedLoopMonitorArtifact.name, filePath: refreshedLoopMonitorArtifact.filePath, fresh: refreshedLoopMonitorArtifact.fresh, age_hours: refreshedLoopMonitorArtifact.ageHours };
+      }
+      return row;
+    });
+    writeStageAutopilotArtifacts({ report, jsonPath, mdPath });
+  }
 
   if (actions.length && String(process.env.STAGE_AUTOPILOT_SKIP_TELEGRAM || "").trim() !== "1") {
     const alert = await sendKoreanTelegramSummary({

@@ -234,6 +234,54 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
 (() => {
   const report = deriveDeploymentPlan({
     objectiveSupervisor: {
+      promotion: { ready: false, candidate_id: null, display_candidate_id: null },
+      rollback: { ready: false },
+      self_evolution_deployment: { deploy_pass: true },
+    },
+    changeControl: {},
+    codexPatchReview: { verdict: "HOLD" },
+    deploymentGuards: { summary: { deploy_pass: true, target_candidate_id: null, canary_open_wave: 1 } },
+    canaryReport: { summary: { open_wave: 1 }, rows: [] },
+    stageAutopilot: { raw: { stage_rows: [] } },
+    weeklyHistory: { weeks: [] },
+    manualPasteAck: {
+      acknowledged: true,
+      acknowledged_at_kst: "2026-03-30 13:40:00 KST",
+      prepared_file_path: __filename,
+      latest_generated_file_path: "/tmp/latest.pine",
+      applied_strategy_id: "donbeolja_v6.0.3.1",
+    },
+    bundleActivation: {
+      summary: {
+        activation_confirmed: true,
+        activation_pending: false,
+        activation_status: "ACTIVE",
+        activation_reason: "ACTIVE_BY_PROBE",
+        engine_bundle_loaded: true,
+        policy_bundle_loaded: true,
+        market_data_flow_ok: true,
+        probe_pass: true,
+        probe_status: "PASS",
+        probe_reason: "PROBE_PASS",
+        engine_bundle_id: "strategy:donbeolja_v6.0.3.1",
+        policy_bundle_id: "policy:test",
+        threshold_bundle_signature: "threshold:test",
+        source_mode_signature: "source:test",
+      },
+    },
+  });
+
+  assert.strictEqual(report.summary.plan_status, "APPLIED_ACTIVE");
+  assert.strictEqual(report.summary.activation_reason, "ACTIVE_BY_PROBE");
+  assert.strictEqual(report.summary.probe_pass, true);
+  assert.strictEqual(report.summary.probe_status, "PASS");
+  assert.strictEqual(report.summary.probe_reason, "PROBE_PASS");
+  console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_PROBE_PROPAGATION_TEST_OK");
+})();
+
+(() => {
+  const report = deriveDeploymentPlan({
+    objectiveSupervisor: {
       promotion: { ready: true, candidate_id: "EV_TP1_THRESHOLD_TUNE", display_candidate_id: "EV_TP1_THRESHOLD_TUNE" },
       rollback: { ready: false },
       self_evolution_deployment: { deploy_pass: true },

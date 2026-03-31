@@ -35,6 +35,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const canonicalProvenance = unwrapRawReport(reports.canonicalProvenance) || {};
   const serverPrimaryCanary = unwrapRawReport(reports.serverPrimaryCanary) || {};
   const pineShadowDrift = unwrapRawReport(reports.pineShadowDrift) || {};
+  const deploymentProbe = unwrapRawReport(reports.deploymentProbe) || {};
   const bundleActivation = unwrapRawReport(reports.bundleActivation) || {};
   const deployment = unwrapRawReport(reports.deployment) || {};
   const deploymentPlan = unwrapRawReport(reports.deploymentPlan) || {};
@@ -54,6 +55,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const canonicalProvenanceSummary = canonicalProvenance.summary && typeof canonicalProvenance.summary === "object" ? canonicalProvenance.summary : {};
   const serverPrimaryCanarySummary = serverPrimaryCanary.summary && typeof serverPrimaryCanary.summary === "object" ? serverPrimaryCanary.summary : {};
   const pineShadowDriftSummary = pineShadowDrift.summary && typeof pineShadowDrift.summary === "object" ? pineShadowDrift.summary : {};
+  const deploymentProbeSummary = deploymentProbe.summary && typeof deploymentProbe.summary === "object" ? deploymentProbe.summary : {};
   const bundleActivationSummary = bundleActivation.summary && typeof bundleActivation.summary === "object" ? bundleActivation.summary : {};
   const candidateSummary = candidates.summary && typeof candidates.summary === "object" ? candidates.summary : {};
   const replaySummary = replay.summary && typeof replay.summary === "object" ? replay.summary : {};
@@ -67,6 +69,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(canonicalProvenance)
     || readCycleId(serverPrimaryCanary)
     || readCycleId(pineShadowDrift)
+    || readCycleId(deploymentProbe)
     || readCycleId(bundleActivation)
     || readCycleId(deployment)
     || readCycleId(deploymentPlan)
@@ -154,13 +157,24 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       reason: `audit_only=${pineShadowDriftSummary.audit_only ? "YES" : "NO"} / drift=${pineShadowDriftSummary.drift_n ?? 0}/${pineShadowDriftSummary.observed_n ?? 0} / top=${pineShadowDriftSummary.top_drift_market || "N/A"}`,
     },
     {
+      loop: "DEPLOYMENT_PROBE",
+      fresh: artifacts.deploymentProbe && artifacts.deploymentProbe.fresh === true,
+      cycle_id: readCycleId(deploymentProbe),
+      status: deploymentProbeSummary.probe_pass === true
+        ? "PASS"
+        : (deploymentProbeSummary.acknowledged === true ? "HOLD" : "N/A"),
+      reason: `engine=${deploymentProbeSummary.engine_bundle_loaded ? "YES" : "NO"} / policy=${deploymentProbeSummary.policy_bundle_loaded ? "YES" : "NO"} / data=${deploymentProbeSummary.market_data_flow_ok ? "YES" : "NO"} / probe=${deploymentProbeSummary.probe_status || "N/A"}`,
+    },
+    {
       loop: "BUNDLE_ACTIVATION",
       fresh: artifacts.bundleActivation && artifacts.bundleActivation.fresh === true,
       cycle_id: readCycleId(bundleActivation),
-      status: bundleActivationSummary.activation_confirmed === true
+      status: bundleActivationSummary.activation_status === "TIMEOUT"
+        ? "TIMEOUT"
+        : (bundleActivationSummary.activation_confirmed === true
         ? "PASS"
-        : (bundleActivationSummary.activation_pending === true ? "HOLD" : "N/A"),
-      reason: `engine=${bundleActivationSummary.engine_bundle_loaded ? "YES" : "NO"} / policy=${bundleActivationSummary.policy_bundle_loaded ? "YES" : "NO"} / data=${bundleActivationSummary.market_data_flow_ok ? "YES" : "NO"} / decision=${bundleActivationSummary.first_decision_seen ? "YES" : "NO"} / reason=${bundleActivationSummary.activation_reason || "N/A"}`,
+        : (bundleActivationSummary.activation_pending === true ? "HOLD" : "N/A")),
+      reason: `engine=${bundleActivationSummary.engine_bundle_loaded ? "YES" : "NO"} / policy=${bundleActivationSummary.policy_bundle_loaded ? "YES" : "NO"} / data=${bundleActivationSummary.market_data_flow_ok ? "YES" : "NO"} / probe=${bundleActivationSummary.probe_pass ? "YES" : "NO"} / decision=${bundleActivationSummary.first_decision_seen ? "YES" : "NO"} / reason=${bundleActivationSummary.activation_reason || "N/A"}`,
     },
     {
       loop: "DEPLOYMENT_GUARDS",
@@ -238,6 +252,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     blockers.push("SELF_EVOLUTION_SERVER_PRIMARY_CANARY_BLOCK");
   }
   if (bundleActivationSummary.activation_pending === true) blockers.push("SELF_EVOLUTION_BUNDLE_ACTIVATION_PENDING");
+  if (bundleActivationSummary.activation_status === "TIMEOUT") blockers.push("SELF_EVOLUTION_DEPLOYMENT_CONFIRM_TIMEOUT");
   blockers.push(...deploymentBlockers);
   if (
     deploymentPlanSummary.external_authority_pending === true
@@ -255,6 +270,8 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   else if (normalizedDeploymentPlanStatus === "APPLIED_PENDING_BUNDLE_ACTIVATION_PENDING_AUTHORITY") overallStatus = "APPLIED_PENDING_BUNDLE_ACTIVATION_PENDING_AUTHORITY";
   else if (normalizedDeploymentPlanStatus === "APPLIED_ACTIVE") overallStatus = "APPLIED_ACTIVE";
   else if (normalizedDeploymentPlanStatus === "APPLIED_PENDING_BUNDLE_ACTIVATION") overallStatus = "APPLIED_PENDING_BUNDLE_ACTIVATION";
+  else if (normalizedDeploymentPlanStatus === "APPLIED_BUNDLE_ACTIVATION_TIMEOUT_PENDING_AUTHORITY") overallStatus = "APPLIED_BUNDLE_ACTIVATION_TIMEOUT_PENDING_AUTHORITY";
+  else if (normalizedDeploymentPlanStatus === "APPLIED_BUNDLE_ACTIVATION_TIMEOUT") overallStatus = "APPLIED_BUNDLE_ACTIVATION_TIMEOUT";
   else if (normalizedDeploymentPlanStatus === "APPLIED_CONFIRMED_PENDING_AUTHORITY") overallStatus = "APPLIED_CONFIRMED_PENDING_AUTHORITY";
   else if (normalizedDeploymentPlanStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION_PENDING_AUTHORITY") overallStatus = "APPLIED_PENDING_SIGNAL_CONFIRMATION_PENDING_AUTHORITY";
   else if (normalizedDeploymentPlanStatus === "APPLIED_CONFIRMED") overallStatus = "APPLIED_CONFIRMED";

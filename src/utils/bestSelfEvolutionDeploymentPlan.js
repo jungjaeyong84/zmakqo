@@ -434,6 +434,10 @@ function deriveBundleActivationSummary(bundleActivation = null) {
     activation_pending: summary.activation_pending === true,
     activation_status: String(summary.activation_status || "").trim().toUpperCase() || null,
     activation_reason: String(summary.activation_reason || "").trim().toUpperCase() || null,
+    probe_pass: summary.probe_pass === true,
+    probe_status: String(summary.probe_status || "").trim().toUpperCase() || null,
+    probe_reason: String(summary.probe_reason || "").trim().toUpperCase() || null,
+    confirmation_timed_out: summary.confirmation_timed_out === true,
     engine_bundle_id: String(summary.engine_bundle_id || "").trim() || null,
     policy_bundle_id: String(summary.policy_bundle_id || "").trim() || null,
     threshold_bundle_signature: String(summary.threshold_bundle_signature || "").trim() || null,
@@ -608,6 +612,11 @@ function deriveDeploymentPlan({
   let planStatus = "HOLD";
   if (readyForManualRollback) planStatus = "READY_FOR_MANUAL_ROLLBACK";
   else if (rollbackPreparePass) planStatus = "PREPARE_ROLLBACK";
+  else if (bundleActivationSummary.activation_status === "TIMEOUT") {
+    planStatus = externalAuthorityPending
+      ? "APPLIED_BUNDLE_ACTIVATION_TIMEOUT_PENDING_AUTHORITY"
+      : "APPLIED_BUNDLE_ACTIVATION_TIMEOUT";
+  }
   else if (bundleActivationSummary.activation_confirmed) planStatus = externalAuthorityPending ? "APPLIED_ACTIVE_PENDING_AUTHORITY" : "APPLIED_ACTIVE";
   else if (manualPaste.acknowledged) planStatus = externalAuthorityPending ? "APPLIED_PENDING_BUNDLE_ACTIVATION_PENDING_AUTHORITY" : "APPLIED_PENDING_BUNDLE_ACTIVATION";
   else if (readyForManualPaste) planStatus = "READY_FOR_MANUAL_PASTE";
@@ -617,6 +626,7 @@ function deriveDeploymentPlan({
   if (planStatus === "HOLD" && Array.isArray(guardSummary.blockers)) blockers.push(...guardSummary.blockers);
   if (changeControlRelevant && codexVerdict === "HOLD" && !recoveryPromotion) blockers.push("CODEX_ACTION_NOT_APPROVED");
   if (externalAuthorityPending || authorityBypassActive) blockers.push("EXTERNAL_AUTHORITY_PENDING");
+  if (bundleActivationSummary.activation_status === "TIMEOUT") blockers.push("DEPLOYMENT_CONFIRM_TIMEOUT");
   if (promotionPreparePass && !readyForManualPaste && !dryPrepareEligible) blockers.push("PINE_PREPARE_PENDING");
   if (dryPrepareEligible) blockers.push("DRY_PREPARE_ONLY");
   if (rollbackPreparePass && !readyForManualRollback) blockers.push("ROLLBACK_PREPARE_PENDING");
@@ -634,6 +644,12 @@ function deriveDeploymentPlan({
         `engine ${bundleActivationSummary.engine_bundle_id || "N/A"} / policy ${bundleActivationSummary.policy_bundle_id || "N/A"}`,
         `first decision ${bundleActivationSummary.first_decision_kind || "N/A"} / ${bundleActivationSummary.first_decision_id || "N/A"}`,
       ]
+      : (bundleActivationSummary.activation_status === "TIMEOUT"
+        ? [
+          `bundle activation ${bundleActivationSummary.activation_status || "TIMEOUT"} / ${bundleActivationSummary.activation_reason || "N/A"}`,
+          `engine ${bundleActivationSummary.engine_bundle_id || "N/A"} / policy ${bundleActivationSummary.policy_bundle_id || "N/A"}`,
+          `deadline ${bundleActivationSummary.confirmation_deadline_kst || "N/A"} / probe ${bundleActivationSummary.probe_status || "N/A"}`,
+        ]
       : (manualPaste.acknowledged
       ? [
         `applied candidate ${displayCandidateId || targetCandidateId || "N/A"} 의 bundle activation proof를 확인`,
@@ -645,7 +661,7 @@ function deriveDeploymentPlan({
       `wave ${openWave} 범위 시장(${marketScope.rows.map((row) => row.market).join(", ") || "N/A"})만 적용`,
       "TradingView Pine 편집기에 prepared/generated file을 붙여넣기",
       "붙여넣기 후 webhook alert가 기존 LONG/SHORT 메인 이벤트만 가리키는지 확인",
-    ]));
+    ])));
 
   const nextActions = [];
   if (dryPrepareEligible) {
@@ -671,6 +687,10 @@ function deriveDeploymentPlan({
   }
   if (manualPaste.acknowledged) {
     nextActions.push("bundle activation proof가 ACTIVE가 될 때까지 APPLIED_PENDING_BUNDLE_ACTIVATION 상태를 유지");
+  }
+  if (bundleActivationSummary.activation_status === "TIMEOUT") {
+    nextActions.push("deployment probe 또는 first decision 근거 없이 confirmation deadline을 초과했으므로 timeout 상태로 유지");
+    nextActions.push("engine/policy bundle load와 market_data_flow/probe_pass를 재검증한 뒤 필요하면 rollback 또는 재배포");
   }
   if (authorityBypassActive) {
     nextActions.push("bundle은 활성화됐지만 외부 권위는 아직 미승인 상태이므로 authority_state=PENDING 으로 추적");
@@ -719,12 +739,16 @@ function deriveDeploymentPlan({
       engine_bundle_loaded: bundleActivationSummary.engine_bundle_loaded,
       policy_bundle_loaded: bundleActivationSummary.policy_bundle_loaded,
       market_data_flow_ok: bundleActivationSummary.market_data_flow_ok,
+      probe_pass: bundleActivationSummary.probe_pass === true,
+      probe_status: bundleActivationSummary.probe_status || null,
+      probe_reason: bundleActivationSummary.probe_reason || null,
       first_decision_seen: bundleActivationSummary.first_decision_seen,
       first_decision_kind: bundleActivationSummary.first_decision_kind,
       activation_confirmed: bundleActivationSummary.activation_confirmed,
       activation_pending: bundleActivationSummary.activation_pending,
       activation_status: bundleActivationSummary.activation_status,
       activation_reason: bundleActivationSummary.activation_reason,
+      confirmation_timed_out: bundleActivationSummary.confirmation_timed_out === true,
       confirmation_timeout_minutes: bundleActivationSummary.confirmation_timeout_minutes,
       confirmation_deadline_iso: bundleActivationSummary.confirmation_deadline_iso,
       confirmation_deadline_kst: bundleActivationSummary.confirmation_deadline_kst,

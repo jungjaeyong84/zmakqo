@@ -67,6 +67,7 @@ const SELF_EVOLUTION_CANONICAL_PARITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "be
 const SELF_EVOLUTION_CANONICAL_PROVENANCE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_provenance_latest.json");
 const SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json");
 const SELF_EVOLUTION_PINE_SHADOW_DRIFT_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_pine_shadow_drift_latest.json");
+const SELF_EVOLUTION_DEPLOYMENT_PROBE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_probe_latest.json");
 const SELF_EVOLUTION_BUNDLE_ACTIVATION_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_bundle_activation_latest.json");
 const SELF_EVOLUTION_EV_GATE_RESCUE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_ev_gate_rescue_latest.json");
 const SELF_EVOLUTION_MEMORY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_memory_latest.json");
@@ -218,9 +219,9 @@ function readCycleId(value = null) {
 
 const SELF_EVOLUTION_STAGE_KEYS = Object.freeze({
   SEED: ["dataset"],
-  INTEGRATED: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "pineShadowDrift", "bundleActivation", "memory", "codex"],
-  FINAL: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "pineShadowDrift", "bundleActivation", "memory", "codex"],
-  STANDALONE: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "pineShadowDrift", "bundleActivation", "memory", "codex", "stageAutopilot"],
+  INTEGRATED: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "pineShadowDrift", "deploymentProbe", "bundleActivation", "memory", "codex"],
+  FINAL: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "pineShadowDrift", "deploymentProbe", "bundleActivation", "memory", "codex"],
+  STANDALONE: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "pineShadowDrift", "deploymentProbe", "bundleActivation", "memory", "codex", "stageAutopilot"],
 });
 
 function summarizeSelfEvolutionArtifactCycles({ artifacts = {}, stage = "STANDALONE", preferredCycleId = null } = {}) {
@@ -817,6 +818,19 @@ function summarizeSelfEvolutionBundleActivation(report = null) {
     activation_status: String(summary.activation_status || "").trim().toUpperCase() || null,
     activation_reason: String(summary.activation_reason || "").trim().toUpperCase() || null,
     confirmation_deadline_kst: String(summary.confirmation_deadline_kst || "").trim() || null,
+  };
+}
+
+function summarizeSelfEvolutionDeploymentProbe(report = null) {
+  const summary = report && report.summary && typeof report.summary === "object" ? report.summary : {};
+  return {
+    available: !!report,
+    engine_bundle_loaded: summary.engine_bundle_loaded === true,
+    policy_bundle_loaded: summary.policy_bundle_loaded === true,
+    market_data_flow_ok: summary.market_data_flow_ok === true,
+    probe_pass: summary.probe_pass === true,
+    probe_status: String(summary.probe_status || "").trim().toUpperCase() || null,
+    probe_reason: String(summary.probe_reason || "").trim().toUpperCase() || null,
   };
 }
 
@@ -1449,7 +1463,7 @@ function buildObjectiveSupervisorTelegramAlertSections(report = {}) {
   }));
 }
 
-function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionCanonicalParity, selfEvolutionCanonicalProvenance, selfEvolutionServerPrimaryCanary, selfEvolutionPineShadowDrift, selfEvolutionBundleActivation, selfEvolutionEvGateRescue, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache, preparedOverride } = {}) {
+function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionCanonicalParity, selfEvolutionCanonicalProvenance, selfEvolutionServerPrimaryCanary, selfEvolutionPineShadowDrift, selfEvolutionDeploymentProbe, selfEvolutionBundleActivation, selfEvolutionEvGateRescue, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache, preparedOverride } = {}) {
   const objective = governance && governance.current && governance.current.objective ? governance.current.objective : {};
   const objectiveCfg = governance && governance.objective ? governance.objective : {};
   const promotion = changeControl && changeControl.auto_promotion ? changeControl.auto_promotion : {};
@@ -1539,6 +1553,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   const selfEvolutionCanonicalProvenanceSummary = deriveCanonicalProvenanceDiagnostics(selfEvolutionCanonicalProvenance);
   const selfEvolutionServerPrimaryCanarySummary = deriveServerPrimaryCanaryDiagnostics(selfEvolutionServerPrimaryCanary);
   const selfEvolutionPineShadowDriftSummary = derivePineShadowDriftDiagnostics(selfEvolutionPineShadowDrift);
+  const selfEvolutionDeploymentProbeSummary = summarizeSelfEvolutionDeploymentProbe(selfEvolutionDeploymentProbe);
   const selfEvolutionBundleActivationSummary = summarizeSelfEvolutionBundleActivation(selfEvolutionBundleActivation);
   const selfEvolutionEvGateRescueSummary = summarizeSelfEvolutionEvGateRescue(selfEvolutionEvGateRescue);
   const selfEvolutionMemorySummary = summarizeSelfEvolutionMemory(selfEvolutionMemory);
@@ -1896,6 +1911,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     self_evolution_canonical_provenance: selfEvolutionCanonicalProvenanceSummary,
     self_evolution_server_primary_canary: selfEvolutionServerPrimaryCanarySummary,
     self_evolution_pine_shadow_drift: selfEvolutionPineShadowDriftSummary,
+    self_evolution_deployment_probe: selfEvolutionDeploymentProbeSummary,
     self_evolution_bundle_activation: selfEvolutionBundleActivationSummary,
     self_evolution_ev_gate_rescue: selfEvolutionEvGateRescueSummary,
     self_evolution_cycle: selfEvolutionCycleSummary,
@@ -2212,6 +2228,7 @@ async function main() {
   const selfEvolutionCanonicalProvenanceArtifact = readArtifact("self_evolution_canonical_provenance", SELF_EVOLUTION_CANONICAL_PROVENANCE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCanonicalProvenance);
   const selfEvolutionServerPrimaryCanaryArtifact = readArtifact("self_evolution_server_primary_canary", SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionServerPrimaryCanary);
   const selfEvolutionPineShadowDriftArtifact = readArtifact("self_evolution_pine_shadow_drift", SELF_EVOLUTION_PINE_SHADOW_DRIFT_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionPineShadowDrift);
+  const selfEvolutionDeploymentProbeArtifact = readArtifact("self_evolution_deployment_probe", SELF_EVOLUTION_DEPLOYMENT_PROBE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionBundleActivation);
   const selfEvolutionBundleActivationArtifact = readArtifact("self_evolution_bundle_activation", SELF_EVOLUTION_BUNDLE_ACTIVATION_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionBundleActivation);
   const selfEvolutionEvGateRescueArtifact = readArtifact("self_evolution_ev_gate_rescue", SELF_EVOLUTION_EV_GATE_RESCUE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionEvGateRescue);
   const selfEvolutionMemoryArtifact = readArtifact("self_evolution_memory", SELF_EVOLUTION_MEMORY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionMemory);
@@ -2239,6 +2256,7 @@ async function main() {
       canonicalProvenance: selfEvolutionCanonicalProvenanceArtifact,
       serverPrimaryCanary: selfEvolutionServerPrimaryCanaryArtifact,
       pineShadowDrift: selfEvolutionPineShadowDriftArtifact,
+      deploymentProbe: selfEvolutionDeploymentProbeArtifact,
       bundleActivation: selfEvolutionBundleActivationArtifact,
       memory: selfEvolutionMemoryArtifact,
       codex: codexArtifact,
@@ -2275,6 +2293,7 @@ async function main() {
     selfEvolutionCanonicalProvenance: selfEvolutionCanonicalProvenanceArtifact.exists ? { ...selfEvolutionCanonicalProvenanceArtifact.data, fresh: selfEvolutionCanonicalProvenanceArtifact.fresh } : null,
     selfEvolutionServerPrimaryCanary: selfEvolutionServerPrimaryCanaryArtifact.exists ? { ...selfEvolutionServerPrimaryCanaryArtifact.data, fresh: selfEvolutionServerPrimaryCanaryArtifact.fresh } : null,
     selfEvolutionPineShadowDrift: selfEvolutionPineShadowDriftArtifact.exists ? { ...selfEvolutionPineShadowDriftArtifact.data, fresh: selfEvolutionPineShadowDriftArtifact.fresh } : null,
+    selfEvolutionDeploymentProbe: selfEvolutionDeploymentProbeArtifact.exists ? { ...selfEvolutionDeploymentProbeArtifact.data, fresh: selfEvolutionDeploymentProbeArtifact.fresh } : null,
     selfEvolutionBundleActivation: selfEvolutionBundleActivationArtifact.exists ? { ...selfEvolutionBundleActivationArtifact.data, fresh: selfEvolutionBundleActivationArtifact.fresh } : null,
     selfEvolutionEvGateRescue: selfEvolutionEvGateRescueArtifact.exists ? { ...selfEvolutionEvGateRescueArtifact.data, fresh: selfEvolutionEvGateRescueArtifact.fresh } : null,
     selfEvolutionMemory: selfEvolutionMemoryData,
@@ -2286,7 +2305,6 @@ async function main() {
     weeklyHistory: weeklyPineHistoryArtifact.data,
     manualPasteAck,
     signalsCache,
-    selfEvolutionBundleActivation: selfEvolutionBundleActivationArtifact.exists ? { ...selfEvolutionBundleActivationArtifact.data, fresh: selfEvolutionBundleActivationArtifact.fresh } : null,
     preparedOverride,
   });
 
@@ -2371,6 +2389,7 @@ async function main() {
       canonicalProvenance: selfEvolutionCanonicalProvenanceArtifact,
       serverPrimaryCanary: selfEvolutionServerPrimaryCanaryArtifact,
       pineShadowDrift: selfEvolutionPineShadowDriftArtifact,
+      deploymentProbe: selfEvolutionDeploymentProbeArtifact,
       bundleActivation: selfEvolutionBundleActivationArtifact,
       deployment: { fresh: true },
       deploymentPlan: { fresh: true },
@@ -2388,6 +2407,7 @@ async function main() {
       canonicalProvenance: selfEvolutionCanonicalProvenanceArtifact.data,
       serverPrimaryCanary: selfEvolutionServerPrimaryCanaryArtifact.data,
       pineShadowDrift: selfEvolutionPineShadowDriftArtifact.data,
+      deploymentProbe: selfEvolutionDeploymentProbeArtifact.data,
       bundleActivation: selfEvolutionBundleActivationArtifact.data,
       deployment: { cycle_id: reportCycleId, summary: evaluation.self_evolution_deployment },
       deploymentPlan: { cycle_id: reportCycleId, summary: evaluation.self_evolution_deployment_plan },

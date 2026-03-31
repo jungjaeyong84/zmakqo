@@ -25,6 +25,7 @@ function buildStepPlan() {
     { id: "canonical_engine_provenance", script: "report-best-self-evolution-canonical-engine-provenance.js" },
     { id: "server_primary_canary", script: "report-best-self-evolution-server-primary-canary.js" },
     { id: "pine_shadow_drift", script: "report-best-self-evolution-pine-shadow-drift.js" },
+    { id: "deployment_probe", script: "report-best-self-evolution-deployment-probe.js" },
     { id: "bundle_activation", script: "report-best-self-evolution-bundle-activation.js" },
     { id: "objective_seed", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SKIP_TELEGRAM: "1", OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "SEED" } },
     { id: "objective", script: "report-best-self-evolution-objective.js" },

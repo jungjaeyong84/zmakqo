@@ -34,10 +34,17 @@ function isAppliedPendingBundleActivationLike(planStatus = null) {
     || normalized === "APPLIED_PENDING_BUNDLE_ACTIVATION_PENDING_AUTHORITY";
 }
 
+function isBundleActivationTimeoutLike(planStatus = null) {
+  const normalized = normalizePlanStatus(planStatus);
+  return normalized === "APPLIED_BUNDLE_ACTIVATION_TIMEOUT"
+    || normalized === "APPLIED_BUNDLE_ACTIVATION_TIMEOUT_PENDING_AUTHORITY";
+}
+
 module.exports = {
   normalizePlanStatus,
   isPendingAuthorityPlanStatus,
   isAppliedConfirmedLike,
   isAppliedPendingSignalConfirmationLike,
   isAppliedPendingBundleActivationLike,
+  isBundleActivationTimeoutLike,
 };

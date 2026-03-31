@@ -29,12 +29,12 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
     generated_at_kst: "2026-03-29 22:00:00 KST",
     cycle_id: "cycle-1",
     status: "PASS",
-    completed_steps: 25,
-    total_steps: 25,
+    completed_steps: 26,
+    total_steps: 26,
     failed_step: null,
     steps: [{ id: "dataset", status: "PASS", script: "x.js", exit_code: 0, summary: "OK" }],
   });
   assert.match(md, /cycle-1/);
-  assert.match(md, /completed_steps: 25 \/ 25/);
+  assert.match(md, /completed_steps: 26 \/ 26/);
   console.log("BEST_SELF_EVOLUTION_LOOP_RUN_TEST_OK");
 })();

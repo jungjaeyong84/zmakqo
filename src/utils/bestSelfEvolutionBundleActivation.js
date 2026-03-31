@@ -160,6 +160,7 @@ function deriveBundleActivation({
   signalsCache = null,
   dropsCache = null,
   postApplyProbe = null,
+  deploymentProbe = null,
   nowMs = Date.now(),
   provider = "BINANCEFUT",
   flowMaxAgeMinutes = 360,
@@ -198,45 +199,63 @@ function deriveBundleActivation({
   const latestProbeMs = parseIsoMs(postApplyProbe && postApplyProbe.generated_at_iso);
   const latestFlowMs = [latestSignalsMs, latestDropsMs, latestProbeMs].filter((v) => v != null).sort((a, b) => b - a)[0] || null;
   const flowMaxAgeMs = Math.max(15, Number(flowMaxAgeMinutes || 360)) * 60 * 1000;
-  const marketDataFlowOk = latestFlowMs != null ? (nowMs - latestFlowMs) <= flowMaxAgeMs : false;
-
+  const fallbackMarketDataFlowOk = latestFlowMs != null ? (nowMs - latestFlowMs) <= flowMaxAgeMs : false;
   const policy = derivePolicyBundle(systemSettings);
-  const engineBundleLoaded = Boolean(
+  const fallbackEngineBundleLoaded = Boolean(
     acknowledged
     && appliedStrategyId
     && ack.canonical_source_synced !== false
   );
+  const probeSummary = deploymentProbe && typeof deploymentProbe === "object"
+    ? (deploymentProbe.summary && typeof deploymentProbe.summary === "object" ? deploymentProbe.summary : deploymentProbe)
+    : {};
+  const engineBundleLoaded = typeof probeSummary.engine_bundle_loaded === "boolean"
+    ? probeSummary.engine_bundle_loaded
+    : fallbackEngineBundleLoaded;
+  const marketDataFlowOk = typeof probeSummary.market_data_flow_ok === "boolean"
+    ? probeSummary.market_data_flow_ok
+    : fallbackMarketDataFlowOk;
+  const policyLoaded = typeof probeSummary.policy_bundle_loaded === "boolean"
+    ? probeSummary.policy_bundle_loaded
+    : policy.loaded;
+  const probePass = typeof probeSummary.probe_pass === "boolean"
+    ? probeSummary.probe_pass
+    : Boolean(engineBundleLoaded && policyLoaded && marketDataFlowOk);
+  const probeStatus = pickString(probeSummary.probe_status);
+  const probeReason = pickString(probeSummary.probe_reason);
   const firstDecisionSeen = !!firstDecision;
   const activationConfirmed = Boolean(
     acknowledged
     && engineBundleLoaded
-    && policy.loaded
-    && marketDataFlowOk
-    && (firstDecisionSeen || timeoutElapsed)
+    && policyLoaded
+    && (firstDecisionSeen || probePass)
   );
-  const activationPending = Boolean(acknowledged && !activationConfirmed);
+  const activationPending = Boolean(acknowledged && !activationConfirmed && !timeoutElapsed);
 
   let activationStatus = "N/A";
   let activationReason = "NO_ACKNOWLEDGEMENT";
   if (acknowledged) {
-    if (!engineBundleLoaded) {
+    if (firstDecisionSeen) {
+      activationStatus = "ACTIVE";
+      activationReason = "ACTIVE_BY_FIRST_DECISION";
+    } else if (probePass) {
+      activationStatus = "ACTIVE";
+      activationReason = "ACTIVE_BY_PROBE";
+    } else if (timeoutElapsed) {
+      activationStatus = "TIMEOUT";
+      activationReason = "DEPLOYMENT_CONFIRM_TIMEOUT";
+    } else if (!engineBundleLoaded) {
       activationStatus = "PENDING";
       activationReason = "PENDING_ENGINE_BUNDLE_LOAD";
-    } else if (!policy.loaded) {
+    } else if (!policyLoaded) {
       activationStatus = "PENDING";
       activationReason = "PENDING_POLICY_BUNDLE_LOAD";
     } else if (!marketDataFlowOk) {
       activationStatus = "PENDING";
       activationReason = "PENDING_MARKET_DATA_FLOW";
-    } else if (firstDecisionSeen) {
-      activationStatus = "ACTIVE";
-      activationReason = "ACTIVE_BY_FIRST_DECISION";
-    } else if (timeoutElapsed) {
-      activationStatus = "ACTIVE";
-      activationReason = "ACTIVE_BY_TIMEOUT";
     } else {
       activationStatus = "PENDING";
-      activationReason = "PENDING_FIRST_DECISION";
+      activationReason = "PENDING_ACTIVATION_PROOF";
     }
   }
 
@@ -248,10 +267,13 @@ function deriveBundleActivation({
       engine_bundle_id: appliedStrategyId ? `strategy:${appliedStrategyId}` : null,
       policy_bundle_id: policy.policy_bundle_id,
       engine_bundle_loaded: engineBundleLoaded,
-      policy_bundle_loaded: policy.loaded,
+      policy_bundle_loaded: policyLoaded,
       threshold_bundle_signature: policy.threshold_bundle_signature,
       source_mode_signature: policy.source_mode_signature,
       market_data_flow_ok: marketDataFlowOk,
+      probe_pass: probePass,
+      probe_status: probeStatus || (probePass ? "PASS" : (activationStatus === "TIMEOUT" ? "TIMEOUT" : "PENDING")),
+      probe_reason: probeReason || (probePass ? "PROBE_PASS" : null),
       latest_market_data_at_iso: latestFlowMs != null ? new Date(latestFlowMs).toISOString() : null,
       latest_market_data_at_kst: latestFlowMs != null ? toKstString(new Date(latestFlowMs).toISOString()) : null,
       first_decision_seen: firstDecisionSeen,
@@ -265,6 +287,7 @@ function deriveBundleActivation({
       confirmation_deadline_iso: deadlineIso,
       confirmation_deadline_kst: deadlineIso ? toKstString(deadlineIso) : null,
       timeout_elapsed: timeoutElapsed,
+      confirmation_timed_out: timeoutElapsed && !activationConfirmed,
       activation_confirmed: activationConfirmed,
       activation_pending: activationPending,
       activation_status: activationStatus,

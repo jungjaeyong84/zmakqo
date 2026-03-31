@@ -29,6 +29,7 @@ const INPUTS = Object.freeze({
   signalsCache: path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "signals.json"),
   dropsCache: path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "signals_dropped.json"),
   postApplyProbe: path.join(OPS_DAILY_DIR, "post_apply_signal_probe_latest.json"),
+  deploymentProbe: path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_probe_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -43,6 +44,7 @@ function renderMarkdown(report = {}) {
     `- engine_bundle_loaded: ${summary.engine_bundle_loaded ? "YES" : "NO"}`,
     `- policy_bundle_loaded: ${summary.policy_bundle_loaded ? "YES" : "NO"}`,
     `- market_data_flow_ok: ${summary.market_data_flow_ok ? "YES" : "NO"}`,
+    `- probe_pass: ${summary.probe_pass ? "YES" : "NO"} / ${summary.probe_reason || summary.probe_status || "N/A"}`,
     `- first_decision_seen: ${summary.first_decision_seen ? "YES" : "NO"} / ${summary.first_decision_kind || "N/A"}`,
     `- timeout: ${summary.confirmation_timeout_minutes ?? "N/A"}m / elapsed ${summary.timeout_elapsed ? "YES" : "NO"}`,
     `- activation: ${summary.activation_status || "N/A"} / ${summary.activation_reason || "N/A"}`,
@@ -68,6 +70,7 @@ async function main() {
       signalsCache: readJsonRawSafe(INPUTS.signalsCache, null),
       dropsCache: readJsonRawSafe(INPUTS.dropsCache, null),
       postApplyProbe: readJsonRawSafe(INPUTS.postApplyProbe, null),
+      deploymentProbe: readJsonRawSafe(INPUTS.deploymentProbe, null),
       provider: PROVIDER,
       defaultTimeoutMinutes: Math.max(30, Number(process.env.SELF_EVOLUTION_BUNDLE_CONFIRM_TIMEOUT_MINUTES || 180)),
       flowMaxAgeMinutes: Math.max(30, Number(process.env.SELF_EVOLUTION_MARKET_DATA_FLOW_MAX_AGE_MINUTES || 360)),
@@ -91,6 +94,9 @@ async function main() {
       engine_bundle_loaded: summary.engine_bundle_loaded === true,
       policy_bundle_loaded: summary.policy_bundle_loaded === true,
       market_data_flow_ok: summary.market_data_flow_ok === true,
+      probe_pass: summary.probe_pass === true,
+      probe_status: summary.probe_status || null,
+      probe_reason: summary.probe_reason || null,
       first_decision_seen: summary.first_decision_seen === true,
       first_decision_kind: summary.first_decision_kind || null,
       first_decision_id: summary.first_decision_id || null,
@@ -100,6 +106,7 @@ async function main() {
       confirmation_timeout_minutes: summary.confirmation_timeout_minutes,
       confirmation_deadline_iso: summary.confirmation_deadline_iso || null,
       confirmation_deadline_kst: summary.confirmation_deadline_kst || null,
+      confirmation_timed_out: summary.confirmation_timed_out === true,
       bundle_activation_confirmed: summary.activation_confirmed === true,
       bundle_activation_status: summary.activation_status || null,
       bundle_activation_reason: summary.activation_reason || null,

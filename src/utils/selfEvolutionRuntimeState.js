@@ -148,6 +148,9 @@ function normalizeSelfEvolutionRuntimeState(raw = null) {
   const externalAuthorityPending = pickBoolean(src.external_authority_pending, false) || authorityBypassActive;
   const authorityState = pickString(src.authority_state) || (externalAuthorityPending ? "PENDING" : null);
   const bundleActivationConfirmed = pickBoolean(src.bundle_activation_confirmed, false);
+  const bundleActivationStatus = pickString(src.bundle_activation_status);
+  const confirmationTimedOut = pickBoolean(src.confirmation_timed_out, false)
+    || bundleActivationStatus === "TIMEOUT";
   const preparedStrategyId = pickString(src.prepared_strategy_id);
   const preparedFilePath = pickString(src.prepared_file_path);
   const normalizedPlanStatus = deriveRuntimePlanStatus({
@@ -155,6 +158,7 @@ function normalizeSelfEvolutionRuntimeState(raw = null) {
     acknowledged,
     liveSignalConfirmed,
     bundleActivationConfirmed,
+    bundleActivationStatus,
     preparedStageReady,
     readyForManualPaste,
     preparedStrategyId,
@@ -188,10 +192,13 @@ function normalizeSelfEvolutionRuntimeState(raw = null) {
     external_authority_pending: externalAuthorityPending,
     authority_bypass_active: authorityBypassActive,
     live_signal_confirmed: liveSignalConfirmed,
-    live_signal_confirmation_pending: acknowledged && !liveSignalConfirmed,
+    live_signal_confirmation_pending: acknowledged && !liveSignalConfirmed && !confirmationTimedOut,
     engine_bundle_loaded: pickBoolean(src.engine_bundle_loaded, false),
     policy_bundle_loaded: pickBoolean(src.policy_bundle_loaded, false),
     market_data_flow_ok: pickBoolean(src.market_data_flow_ok, false),
+    probe_pass: pickBoolean(src.probe_pass, false),
+    probe_status: pickString(src.probe_status),
+    probe_reason: pickString(src.probe_reason),
     first_decision_seen: firstDecisionSeen,
     first_decision_kind: pickString(src.first_decision_kind),
     first_decision_id: pickString(src.first_decision_id),
@@ -201,8 +208,9 @@ function normalizeSelfEvolutionRuntimeState(raw = null) {
     confirmation_timeout_minutes: Number.isFinite(Number(src.confirmation_timeout_minutes)) ? Math.max(5, Number(src.confirmation_timeout_minutes)) : null,
     confirmation_deadline_iso: pickString(src.confirmation_deadline_iso),
     confirmation_deadline_kst: pickString(src.confirmation_deadline_kst),
+    confirmation_timed_out: confirmationTimedOut,
     bundle_activation_confirmed: bundleActivationConfirmed,
-    bundle_activation_status: pickString(src.bundle_activation_status),
+    bundle_activation_status: bundleActivationStatus,
     bundle_activation_reason: pickString(src.bundle_activation_reason),
     confirmed_signal_id: pickString(src.confirmed_signal_id),
     confirmed_signal_created_at: pickString(src.confirmed_signal_created_at),
@@ -218,6 +226,7 @@ function deriveRuntimePlanStatus({
   acknowledged = false,
   liveSignalConfirmed = false,
   bundleActivationConfirmed = false,
+  bundleActivationStatus = null,
   preparedStageReady = false,
   readyForManualPaste = false,
   preparedStrategyId = null,
@@ -228,6 +237,9 @@ function deriveRuntimePlanStatus({
   const pendingAuthority = externalAuthorityPending === true || authorityBypassActive === true;
   if (bundleActivationConfirmed) {
     return pendingAuthority ? "APPLIED_ACTIVE_PENDING_AUTHORITY" : "APPLIED_ACTIVE";
+  }
+  if (String(bundleActivationStatus || "").trim().toUpperCase() === "TIMEOUT") {
+    return pendingAuthority ? "APPLIED_BUNDLE_ACTIVATION_TIMEOUT_PENDING_AUTHORITY" : "APPLIED_BUNDLE_ACTIVATION_TIMEOUT";
   }
   if (acknowledged) {
     return pendingAuthority ? "APPLIED_PENDING_BUNDLE_ACTIVATION_PENDING_AUTHORITY" : "APPLIED_PENDING_BUNDLE_ACTIVATION";
