@@ -1,5 +1,5 @@
 //@version=6
-indicator("돈벌자 :) Ω Full 🐬 v6.0.3.2 (LONG_SHORT_CORE_BINANCE_SP_FIX)", overlay = true, max_lines_count = 500, max_labels_count = 500)
+indicator("돈벌자 :) Ω Full 🐬 v6.0.3.3 (LONG_SHORT_CORE_BINANCE_SP_FIX)", overlay = true, max_lines_count = 500, max_labels_count = 500)
 // Tier SSOT: /Users/jeongjaeyong/Projects/donbeolja/docs/SIGNAL_TIER_DEFINITION.md
 // Before changing live LONG/SHORT source bands (EARLY/CORE) or legacy diagnostic bands, read the SSOT and preserve the current meaning.
 // Baseline snapshot: v6.0.3.0 locks LONG/SHORT live semantics at long_alert_pulse/short_alert_pulse with EARLY/CORE entry grades only.
@@ -156,7 +156,7 @@ float W_FRACTAL3 = 0.35
 float W_OMEGA    = 0.45
 float W_RSI_DIV  = 0.20
 // 전략 식별자(알림 payload용)
-string STRATEGY_ID = "donbeolja_v6.0.3.2"
+string STRATEGY_ID = "donbeolja_v6.0.3.3"
 // [ZZ_FUSION_START] - inputs
 grp_zz_fusion = "═══ ZigZag Ω Fusion (Wave) ═══"
 zz_use_wave_filter = input.bool(false, "ZigZag 미래 파동으로 LONG/SHORT source 품질 필터", group = grp_zz_fusion)
@@ -2862,6 +2862,52 @@ if wr_def_apply
     diag_b_short := diag_b_short and wr_diag_c_short_ok
     diag_c_long_cond := diag_c_long_cond and wr_diag_c_long_ok
     diag_c_short_cond := diag_c_short_cond and wr_diag_c_short_ok
+// [PATCH-72] TRANSITION_EARLY_LEAD_TO_CORE:
+// transition 초입에서 posterior/wave/stat-physics가 이미 충분한 EARLY 후보는
+// 다음 봉 CORE 신호를 기다리지 않고 한 봉 먼저 CORE로 승격한다.
+// 목적은 신호 수를 억지로 줄이지 않으면서도, 늦게 들어가 4차 EV에서 잘리는 케이스를 줄이는 것이다.
+float transition_lead_rh20 = ta.highest(high, 20)
+float transition_lead_rl20 = ta.lowest(low, 20)
+float transition_lead_rng20 = transition_lead_rh20 - transition_lead_rl20
+float transition_lead_pos20 = transition_lead_rng20 > syminfo.mintick ? (close - transition_lead_rl20) / transition_lead_rng20 : 0.5
+bool transition_lead_long =
+     is_bnf_intraday and
+     regime_state == "transition" and
+     not core_long_cond and
+     early_long and
+     trend_state != "bear" and
+     htf_state != "bear" and
+     score >= 22 and
+     zz_post_prob_long >= 0.70 and
+     (zz_post_prob_long - zz_post_prob_short) >= 0.40 and
+     zz_wave_conf >= 0.54 and
+     sp_coherence_score >= 0.40 and
+     sp_transition_risk <= 0.58 and
+     sp_entropy_score <= 0.68 and
+     sp_free_energy <= 0.58 and
+     transition_lead_pos20 <= 0.68 and
+     (cross_kd_up or (k_val >= d_val and k_val > nz(k_val[1]) and k_val <= 62))
+bool transition_lead_short =
+     is_bnf_intraday and
+     regime_state == "transition" and
+     not core_short_cond and
+     early_short and
+     trend_state != "bull" and
+     htf_state != "bull" and
+     score <= -22 and
+     zz_post_prob_short >= 0.70 and
+     (zz_post_prob_short - zz_post_prob_long) >= 0.40 and
+     zz_wave_conf >= 0.54 and
+     sp_coherence_score >= 0.40 and
+     sp_transition_risk <= 0.58 and
+     sp_entropy_score <= 0.68 and
+     sp_free_energy <= 0.58 and
+     transition_lead_pos20 >= 0.32 and
+     (cross_kd_down or (k_val <= d_val and k_val < nz(k_val[1]) and k_val >= 38))
+if transition_lead_long
+    core_long_cond := true
+if transition_lead_short
+    core_short_cond := true
 // [PATCH-67] noncoin legacy mask path removed with Binance-only runtime cleanup.
 // [ZZ_FUSION_END]
 ///────────────────────────────────────

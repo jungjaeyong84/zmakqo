@@ -6,6 +6,11 @@ const authorityReport = require("../../scripts/report-self-evolution-authority-e
 const loopMonitorReport = require("../../scripts/report-best-self-evolution-loop-monitor");
 
 (() => {
+  assert.strictEqual(
+    authorityReport.__test.INPUTS.deploymentPlan,
+    "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_deployment_plan_latest.json"
+  );
+
   const authorityCycle = authorityReport.__test.resolveReportCycleId({
     deploymentPlan: { source_cycle_id: "cycle-source", cycle_id: "cycle-plan" },
     codexReview: { cycle_id: "cycle-codex" },

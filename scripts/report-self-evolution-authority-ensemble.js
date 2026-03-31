@@ -23,7 +23,7 @@ const MAX_AGE_HOURS = Math.max(12, Number(process.env.SELF_EVOLUTION_AUTHORITY_M
 const INPUTS = Object.freeze({
   codex: path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.json"),
   claude: path.join(OPS_DAILY_DIR, "claude_weekly_patch_engine_latest.json"),
-  deploymentPlan: selfEvolutionSnapshotLatestPath("best_self_evolution_deployment_plan_latest.json"),
+  deploymentPlan: path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -152,6 +152,7 @@ if (require.main === module) {
 module.exports = {
   main,
   __test: {
+    INPUTS,
     resolveReportCycleId,
     renderMarkdown,
   },
