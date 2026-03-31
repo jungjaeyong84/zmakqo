@@ -446,7 +446,6 @@ function buildRecoveryViewModel() {
         { label: "Canary", value: governor.summary.canary_ready ? "READY" : "HOLD", tone: statusTone(governor.summary.canary_ready ? "READY" : "HOLD") },
         { label: "Guards", value: governor.summary.deployment_guards_pass ? "PASS" : "FAIL", tone: statusTone(governor.summary.deployment_guards_pass ? "PASS" : "FAIL") },
       ],
-      actions: [{ label: "Mission", href: "/dashboard/home", tone: "ghost" }],
     },
     metrics: [
       { label: "Current Score", value: signedNumberText(effect.summary.current_objective_score, 2), meta: compactText(objectiveSupervisor.display && objectiveSupervisor.display.root_cause), tone: "bad" },
@@ -637,7 +636,6 @@ function buildDeploymentViewModel() {
         { label: "Activation", value: compactText(bundleActivation.summary.activation_status), tone: statusTone(bundleActivation.summary.activation_status) },
         { label: "Primary", value: compactText(deploymentPlan.summary.deploy_unit_primary), tone: "dim" },
       ],
-      actions: [{ label: "Mission", href: "/dashboard/home", tone: "ghost" }],
     },
     metrics: [
       { label: "Engine Bundle", value: compactText(deploymentPlan.summary.active_engine_bundle && deploymentPlan.summary.active_engine_bundle.strategy_id), meta: compactText(deploymentPlan.summary.rollback_engine_bundle_id), tone: "ok" },
@@ -739,6 +737,8 @@ function buildExecutionViewModel(query = {}) {
   const provenanceSummary = provenance.summary;
   const focusedCollection = String(query.collection || "").trim();
   const focusedSource = String(query.source || "").trim();
+  const recentRuntimeRows = buildRecentRuntimeRows(dataset, 6);
+  const latestRuntimeRow = recentRuntimeRows[0] || null;
   return {
     active: "execution",
     title: "Execution",
@@ -765,6 +765,44 @@ function buildExecutionViewModel(query = {}) {
       { label: "Provenance Complete", value: `${numberText(provenanceSummary.complete_n, 0)}/${numberText(provenanceSummary.engine_eligible_n, 0)}`, meta: `exec src ${numberText(provenanceSummary.with_execution_source_n, 0)} / overlay ${numberText(provenanceSummary.with_pine_overlay_role_n, 0)}`, tone: statusTone(provenanceSummary.complete_n > 0 ? "PASS" : "WARN") },
     ],
     sections: [
+      {
+        title: "Operator Strip",
+        description: "실행 화면에서 먼저 봐야 할 현재 source, 최신 row, policy alignment입니다.",
+        columns: 3,
+        cards: [
+          {
+            title: "Current Runtime",
+            tone: sourceMode.tone,
+            rows: [
+              { label: "Source Mode", value: sourceMode.value },
+              { label: "Acceptance", value: sourceMode.detail },
+              { label: "Source Parity", value: `${numberText(paritySummary.source_parity_match_n, 0)}/${numberText(paritySummary.shadow_observed_n, 0)}` },
+              { label: "Downstream", value: numberText(paritySummary.final_downstream_mismatch_n, 0) },
+            ],
+          },
+          {
+            title: "Latest Runtime Row",
+            tone: latestRuntimeRow ? "warn" : "dim",
+            rows: [
+              { label: "At", value: latestRuntimeRow ? latestRuntimeRow.at : "-" },
+              { label: "Market", value: latestRuntimeRow ? latestRuntimeRow.market : "-" },
+              { label: "Type", value: latestRuntimeRow ? latestRuntimeRow.type : "-" },
+              { label: "Reason", value: latestRuntimeRow ? latestRuntimeRow.reason : "-" },
+            ],
+            actions: latestRuntimeRow ? [{ label: "Open Report", href: buildReportUrl(latestRuntimeRow.market), tone: "ghost" }] : [],
+          },
+          {
+            title: "Policy Alignment",
+            tone: "warn",
+            rows: [
+              { label: "Threshold", value: extractThresholdPair(canonicalPolicyRow && canonicalPolicyRow.active_signature) || "-" },
+              { label: "Policy Reason", value: compactText(canonicalPolicyRow && canonicalPolicyRow.active_reason) },
+              { label: "Execution Source", value: joinList((provenanceSummary.by_execution_source || []).map((row) => `${row.key}:${row.count}`)) },
+              { label: "Focused Source", value: compactText(focusedSource || "all") },
+            ],
+          },
+        ],
+      },
       {
         title: "Execution Evidence",
         description: "source parity와 provenance를 분리해 보여줍니다.",
@@ -1036,6 +1074,9 @@ function buildAuditViewModel(query = {}) {
   const objectiveSupervisor = loadLatestArtifact("objective_supervisor_latest.json");
   const watchdog = loadLatestArtifact("automation_watchdog_latest.json");
   const stageAutopilot = loadLatestArtifact("stage_autopilot_latest.json");
+  const dataset = loadLatestArtifact("best_self_evolution_dataset_latest.json");
+  const parity = loadLatestArtifact("best_self_evolution_canonical_engine_parity_latest.json");
+  const provenance = loadLatestArtifact("best_self_evolution_canonical_engine_provenance_latest.json");
   const focus = String(query.focus || "").trim();
   const collection = String(query.collection || "").trim();
   const source = String(query.source || "").trim();
@@ -1052,10 +1093,6 @@ function buildAuditViewModel(query = {}) {
         { label: "Fresh", value: `${numberText(loopMonitor.summary.fresh_loop_n, 0)}/${numberText(loopMonitor.summary.loop_n, 0)}`, tone: "ok" },
         { label: "Watchdog", value: compactText(watchdog.display && watchdog.display.verdict), tone: statusTone(watchdog.display && watchdog.display.verdict) },
         { label: "Stage Eval", value: compactText(stageAutopilot.display && stageAutopilot.display.evaluation_cycle_id), tone: "dim" },
-      ],
-      actions: [
-        { label: "Legacy Report", href: "/dashboard/report", tone: "ghost" },
-        { label: "Legacy Briefing", href: "/dashboard/briefing", tone: "ghost" },
       ],
     },
     metrics: [
@@ -1091,14 +1128,21 @@ function buildAuditViewModel(query = {}) {
             ],
           },
           {
-            title: "Wrapper Caveat",
-            tone: "warn",
-            rows: [
-              { label: "objective_supervisor", value: "display/raw wrapper" },
-              { label: "stage_autopilot", value: "cycle_id + evaluation_cycle_id" },
-              { label: "watchdog", value: "display/raw wrapper" },
-              { label: "Use", value: "display first, raw on drill-down" },
-            ],
+            title: "Artifact Timeline",
+            tone: "dim",
+            table: {
+              columns: [
+                { key: "artifact", label: "Artifact" },
+                { key: "generated", label: "Generated" },
+                { key: "status", label: "Status" },
+              ],
+              rows: [
+                { artifact: "dataset", generated: compactText(dataset.raw && dataset.raw.generated_at_kst), status: numberText(dataset.summary.rows_n, 0) },
+                { artifact: "parity", generated: compactText(parity.raw && parity.raw.generated_at_kst), status: `${numberText(parity.summary.source_parity_match_n, 0)}/${numberText(parity.summary.shadow_observed_n, 0)}` },
+                { artifact: "provenance", generated: compactText(provenance.raw && provenance.raw.generated_at_kst), status: `${numberText(provenance.summary.complete_n, 0)}/${numberText(provenance.summary.engine_eligible_n, 0)}` },
+                { artifact: "loop_monitor", generated: compactText(loopMonitor.raw && loopMonitor.raw.generated_at_kst), status: compactText(loopMonitor.summary.overall_status) },
+              ],
+            },
           },
         ],
       },
