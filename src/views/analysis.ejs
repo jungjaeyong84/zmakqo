@@ -1,42 +1,42 @@
-<%- include('partials/app_start', { title: '리포트 센터 · DONBEOLJA Ω', pageTitle: '리포트 센터', active: 'analysis' }) %>
+<%- include('partials/app_start', { title: '리포트 보조 허브 · DONBEOLJA Ω', pageTitle: '리포트 보조 허브', active: 'analysis' }) %>
 <%- include('partials/legacy_report_subnav', { activeTab: 'analysis' }) %>
 <%- include('partials/legacy_control_surface_bridge', { mode: 'report', surfaceHref: '/dashboard/home', surfaceLabel: 'Mission', detailHref: '/dashboard/audit', detailLabel: 'Audit', extraHref: '/dashboard/recovery', extraLabel: 'Recovery' }) %>
 
 <div class="grid cols-3">
   <div class="card">
     <h2>리포트</h2>
-    <div class="subtle">주간/월간 요약을 확인하고 ZIP 패키지를 내려받습니다.</div>
+    <div class="subtle">기간 성과와 개선팩을 깊게 보는 보조 화면입니다.</div>
     <div class="hr"></div>
     <div class="kv">
       <div class="k">최근 주간</div><div class="v" id="an-wk">…</div>
       <div class="k">최근 월간</div><div class="v" id="an-mo">…</div>
     </div>
     <div class="hr"></div>
-    <a class="btn ghost slim" href="/dashboard/report">리포트 열기</a>
+    <a class="btn ghost slim" href="/dashboard/report">세부 보기</a>
   </div>
 
   <div class="card">
     <h2>평가</h2>
-    <div class="subtle">표본 수, EV/승률, 유지/제거 요약을 확인합니다.</div>
+    <div class="subtle">표본 수, EV, 유지/제거 판단 근거를 세부 확인합니다.</div>
     <div class="hr"></div>
     <div class="kv">
       <div class="k">평가 주차</div><div class="v" id="an-ev-week">…</div>
       <div class="k">상태</div><div class="v" id="an-ev-status">…</div>
     </div>
     <div class="hr"></div>
-    <a class="btn ghost slim" href="/dashboard/eval">평가 열기</a>
+    <a class="btn ghost slim" href="/dashboard/eval">세부 보기</a>
   </div>
 
   <div class="card">
     <h2>브리핑</h2>
-    <div class="subtle">사람이 읽기 좋은 문장으로 현재 상태를 요약합니다.</div>
+    <div class="subtle">현재 상태를 사람이 읽기 쉬운 문장으로 다시 요약합니다.</div>
     <div class="hr"></div>
     <div class="kv">
       <div class="k">출처</div><div class="v" id="an-br-src">…</div>
       <div class="k">업데이트</div><div class="v" id="an-br-upd">…</div>
     </div>
     <div class="hr"></div>
-    <a class="btn ghost slim" href="/dashboard/briefing">브리핑 열기</a>
+    <a class="btn ghost slim" href="/dashboard/briefing">세부 보기</a>
   </div>
 </div>
 
@@ -44,7 +44,7 @@
 
 <div class="card">
   <h2>데이터 신선도</h2>
-  <div class="subtle">신호/체결의 최신 도착 시각을 확인합니다. (상세는 거래/리포트)</div>
+  <div class="subtle">신호/체결의 최신 도착 시각을 확인합니다. 운영 판단은 Mission/Execution/Audit에서 먼저 읽습니다.</div>
   <div class="hr"></div>
   <div class="grid cols-2">
     <div class="card" style="box-shadow:none;">

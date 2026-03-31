@@ -377,8 +377,8 @@
 <div class="profit-shell">
   <div class="profit-head">
     <div>
-      <div class="profit-title">Profit and Loss Center</div>
-      <div class="profit-sub"><%= exchange %> · 실현 손익 기반 · <%= basisHint %><% if (customRangeData && customRangeData.start && customRangeData.end) { %> · <%= customRangeData.start %> ~ <%= customRangeData.end %><% } %></div>
+      <div class="profit-title">수익 세부 분석</div>
+      <div class="profit-sub"><%= exchange %> · 실현 손익 기반 보조 화면 · <%= basisHint %><% if (customRangeData && customRangeData.start && customRangeData.end) { %> · <%= customRangeData.start %> ~ <%= customRangeData.end %><% } %></div>
       <% if (leverageSummary && leverageSummary.enabled) { %>
         <div class="profit-sub">배율 상태 · 2x <%= fmtInt(leverageSummary.tier_2x || 0) %> / 3x <%= fmtInt(leverageSummary.tier_3x || 0) %> (활성 <%= fmtInt(leverageSummary.active_markets || 0) %>)</div>
       <% } %>
@@ -423,7 +423,7 @@
 
   <div class="profit-grid">
     <div class="profit-panel">
-      <h3>Profit and Loss Analysis</h3>
+      <h3>손익 분석</h3>
       <div class="profit-kv">
         <div class="k">총 이익</div><div class="v" data-field="total_profit"><%- fmtNumHtml(rangeAgg[defaultRangeKey] && rangeAgg[defaultRangeKey].total_profit, 2) %></div>
         <div class="k">총 손실</div><div class="v" data-field="total_loss"><%- fmtNumHtml(rangeAgg[defaultRangeKey] && rangeAgg[defaultRangeKey].total_loss, 2) %></div>
@@ -440,7 +440,7 @@
     </div>
 
     <div class="profit-chart">
-      <h3 id="daily-title">Daily PNL (<%= fmtRangeLabel(ranges[defaultRangeKey]) %>)</h3>
+      <h3 id="daily-title">일별 손익 (<%= fmtRangeLabel(ranges[defaultRangeKey]) %>)</h3>
       <div class="chart-bars" id="daily-bars">
         <% dailySeries.forEach(function(d){ %>
           <div class="bar <%= d.dir %>" style="height:<%= d.height_pct %>%" title="<%= d.day %> · <%= fmtNum(d.pnl, 2) %> <%= unit %>"></div>

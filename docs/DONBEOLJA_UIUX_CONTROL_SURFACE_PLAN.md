@@ -49,9 +49,9 @@
    - 대부분 완료
    - `/dashboard/execution`, `/dashboard/server-primary`, `/dashboard/audit`에 operator strip, runtime preview, artifact timeline, focus drill-through가 들어갔다.
 6. `Phase 6. Legacy Screen Demotion`
-   - 진행 중
-   - legacy report/trading 화면은 새 IA 아래의 보조 화면으로 강등했고, control surface로 복귀하는 bridge CTA를 추가했다.
-   - 남은 일은 중복 CTA 제거와 일부 legacy wording 정리다.
+   - 마무리 단계
+   - legacy report/trading 화면은 새 IA 아래의 보조 화면으로 강등했고, control surface로 복귀하는 bridge CTA와 family subnav를 공통 partial로 적용했다.
+   - 남은 일은 소수의 legacy wording 정리와 화면별 copy polish다.
 
 ## 3. 상위 원칙
 

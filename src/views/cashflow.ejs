@@ -97,8 +97,8 @@
 <div class="cashflow-shell">
   <div class="cashflow-head">
     <div>
-      <div class="cashflow-title">입출금</div>
-      <div class="cashflow-sub"><%= exchange %> · BINANCE Wallet · <%= rangeLabel %> · USDT는 당시 1h 시세로 환산</div>
+      <div class="cashflow-title">입출금 세부 분석</div>
+      <div class="cashflow-sub"><%= exchange %> · BINANCE Wallet · 보조 화면 · <%= rangeLabel %> · USDT는 당시 1h 시세로 환산</div>
     </div>
     <div class="cashflow-controls">
       <label>
@@ -189,10 +189,10 @@
       </div>
     </div>
 
-    <% if (coins.length > 1 || !summaryCoin) { %>
+  <% if (coins.length > 1 || !summaryCoin) { %>
       <div class="cashflow-section">
         <h2>코인별 합계</h2>
-        <div class="subtle">완료된 입출금만 집계합니다.</div>
+        <div class="subtle">완료된 입출금만 집계합니다. 운영 판단은 Mission/Audit를 우선합니다.</div>
         <div class="hr"></div>
         <table class="cashflow-table">
           <thead>
@@ -236,7 +236,7 @@
 
     <div class="cashflow-section">
       <h2>입출금 내역</h2>
-      <div class="subtle">Binance wallet 기준. 전송/입출금 모두 표시하며, 완료 외 상태는 참고용으로 표시합니다.</div>
+      <div class="subtle">Binance wallet 기준 세부 로그입니다. 전송/입출금 모두 표시하며, 완료 외 상태는 참고용으로 표시합니다.</div>
       <div class="hr"></div>
       <table class="cashflow-table" id="cf-table">
         <thead>
