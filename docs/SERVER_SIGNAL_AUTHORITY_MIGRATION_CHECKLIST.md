@@ -60,6 +60,7 @@
 1. Pine는 비교/시각화로만 사용
 2. 운영 의사결정이 Pine 없이 닫힘
 3. 2주 비교 운영 기준 충족
+4. 신호 체계 변경 시 Pine 동반 산출물 3종이 항상 같이 갱신됨
 
 ## 4. 현재 blocker
 
@@ -83,6 +84,10 @@
 3. `order_intent_24h_n > 0`
 4. `fill_24h_n > 0`
 5. `server_signal_cutover_readiness.summary.blockers` 감소 추세
+6. 최신 서버 신호 체계 변경마다 아래 3개가 같이 갱신됨
+   - `SIGNAL_REDESIGN.pine.txt`
+   - `PRODUCTION_CANDIDATE.pine.txt`
+   - `TV_IMPORT_FINAL.pine.txt`
 
 ## 6. rollback 조건
 
@@ -102,7 +107,17 @@
 4. Pine shadow 비교 운영 2주 유지
 5. Pine 완전 shadow 마감 선언
 
-## 8. 현재 판단
+## 8. Pine 동반 산출물 규칙
+
+신호 체계 변경은 아래를 같은 묶음으로 본다.
+
+1. 서버 설정/정책 변경
+2. Pine shadow source 갱신
+3. TradingView import final 갱신
+
+즉 `서버 신호 체계만 바뀌고 Pine가 안 바뀐 상태`는 완료로 보지 않는다.
+
+## 9. 현재 판단
 
 현재 돈벌자는 더 이상 단순 `Pine ingress + server consume` 구조로 설명하면 정확하지 않다.
 

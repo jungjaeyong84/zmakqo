@@ -135,6 +135,13 @@
 2. `PINE_SHADOW`는 저장/비교만 한다.
 3. Pine shadow mismatch가 있어도 source parity mismatch가 아니면 바로 rollback하지 않는다.
 4. rollback은 아래 경우만 고려한다.
+5. 서버 신호 체계가 바뀌면 Pine shadow 파일과 TradingView import final도 같은 변경 묶음으로 갱신한다.
+
+필수 동반 파일:
+
+1. `/Users/jeongjaeyong/Projects/donbeolja/code/donbeolja_v6.1.1.0_SIGNAL_REDESIGN.pine.txt`
+2. `/Users/jeongjaeyong/Projects/donbeolja/code/donbeolja_v6.1.1.0_PRODUCTION_CANDIDATE.pine.txt`
+3. `/Users/jeongjaeyong/Projects/donbeolja/code/donbeolja_v6.1.1.0_TV_IMPORT_FINAL.pine.txt`
 
 rollback 후보:
 

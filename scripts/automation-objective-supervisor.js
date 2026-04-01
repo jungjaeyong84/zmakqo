@@ -2575,6 +2575,12 @@ async function main() {
     ...(evaluation.self_evolution_server_signal_cutover_readiness && Array.isArray(evaluation.self_evolution_server_signal_cutover_readiness.blocker_actions)
       ? evaluation.self_evolution_server_signal_cutover_readiness.blocker_actions.map((row) => `SERVER_SIGNAL_BLOCKER_ACTION: ${row.family || "N/A"} -> ${row.action || "N/A"}`)
       : []),
+    ...(evaluation.self_evolution_server_signal_cutover_readiness
+      ? [
+        "PINE_SHADOW_REGEN_REQUIRED: server signal change must update SIGNAL_REDESIGN + PRODUCTION_CANDIDATE + TV_IMPORT_FINAL together",
+        "TRADINGVIEW_VISUAL_CHECK_REQUIRED: paste latest TV_IMPORT_FINAL and verify RE/RC/SE/SC distribution before closing signal change",
+      ]
+      : []),
     ...(Array.isArray(selfEvolutionObjectiveRecoveryGovernorSummary.next_actions) ? selfEvolutionObjectiveRecoveryGovernorSummary.next_actions : []),
     ...(Array.isArray(selfEvolutionObjectiveRecoveryEffectSummary.next_actions) ? selfEvolutionObjectiveRecoveryEffectSummary.next_actions : []),
   ].filter(Boolean)));

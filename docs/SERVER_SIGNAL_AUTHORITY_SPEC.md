@@ -52,6 +52,7 @@
 2. EMA / 구조선 / 보조 마커
 3. shadow parity visualization
 4. 사용자가 차트에서 전략 상태를 읽기 쉽게 보여주는 일
+5. 서버 신호 체계 변경이 있을 때 최신 규칙을 차트에서 확인할 수 있는 동반 산출물 역할
 
 ### 3.3 Pine가 더 이상 책임지지 않는 것
 
@@ -121,6 +122,22 @@
 10. `bar_close_time_utc_ms`
 11. `matched_server_signal_id`
 12. `parity_status`
+
+## 5.3 Pine 동반 산출물 규칙
+
+신호 체계가 자동진화나 운영 튜닝으로 바뀌면, 서버 설정 변경만으로 완료로 보지 않는다.
+
+같은 변경 묶음에서 아래 Pine 산출물이 함께 갱신돼야 한다.
+
+1. `/Users/jeongjaeyong/Projects/donbeolja/code/donbeolja_v6.1.1.0_SIGNAL_REDESIGN.pine.txt`
+2. `/Users/jeongjaeyong/Projects/donbeolja/code/donbeolja_v6.1.1.0_PRODUCTION_CANDIDATE.pine.txt`
+3. `/Users/jeongjaeyong/Projects/donbeolja/code/donbeolja_v6.1.1.0_TV_IMPORT_FINAL.pine.txt`
+
+의미:
+
+1. 서버는 정본 실행을 담당한다.
+2. Pine는 비교/시각화 shadow를 담당한다.
+3. 사용자는 최신 전략을 차트에 붙여넣어 직접 확인할 수 있어야 한다.
 
 ## 6. 현재 artifact 규칙
 
@@ -243,6 +260,7 @@ Pine shadow mismatch는 성과 평가의 정본이 아니라 `diagnostic evidenc
 
 1. 구조상 shadow-only로 거의 내려왔다.
 2. 최종 완료는 `SERVER_PRIMARY` 승격과 2주 비교 운영 종료 이후로 본다.
+3. 다만 신호 체계 변경 시 Pine 동반 산출물 생성 의무는 유지한다.
 
 ## 11. acceptance 기준
 
