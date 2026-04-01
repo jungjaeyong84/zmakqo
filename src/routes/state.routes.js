@@ -684,7 +684,7 @@ function createStateRoutes() {
       });
 
       const asOfKst = toKstString(new Date().toISOString());
-      return res.render("state", {
+      return res.render(String(req.query.legacy || "").trim() === "1" ? "state.legacy" : "state", {
         markets_expected: markets,
         exchange,
         tf_default: tfDefault,

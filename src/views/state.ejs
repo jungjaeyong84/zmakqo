@@ -1,782 +1,736 @@
-<%- include('partials/app_start', { title: '거래 · DONBEOLJA Ω', pageTitle: '거래', active: 'trading' }) %>
+<%- include('partials/app_start_trader', { title: '거래기록 · DONBEOLJA Trader', pageTitle: '거래기록', active: 'trading' }) %>
 
 <%
-  const budgetUnit = String(String(exchange || "").includes("BINANCE") ? "USDT" : "KRW").toUpperCase();
-  const fmtNum = (x) => (x == null || x === '' || Number.isNaN(Number(x))) ? '-' : Number(x).toLocaleString();
-  const fmtKrw = (x) => {
+  const budgetUnit = String(String(exchange || '').includes('BINANCE') ? 'USDT' : 'KRW').toUpperCase();
+  const signalRows = Array.isArray(signals12) ? signals12 : [];
+  const fillRows = Array.isArray(fills12) ? fills12 : [];
+  const marketRows = Array.isArray(rows) ? rows : [];
+  const dropSummary = health && health.drop_summary ? health.drop_summary : null;
+  const topDropMarkets = Array.isArray(dropSummary && dropSummary.by_market) ? dropSummary.by_market.slice(0, 5) : [];
+  const recentDropN = dropSummary && dropSummary.total != null ? Number(dropSummary.total) : 0;
+  const monitoredMarketsN = Array.isArray(markets_expected) ? markets_expected.length : 0;
+  const shadowMode = !!show_shadow_signals;
+  const activePositionsN = marketRows.filter((row) => {
+    const state = String(row && row.position_state || '').toUpperCase();
+    return state === 'ACTIVE' || state === 'EXIT_ONLY';
+  }).length;
+  const pendingMarketsN = marketRows.filter((row) => Array.isArray(row && row.pending_intents) && row.pending_intents.length > 0).length;
+
+  function fmtNum(x, digits = 0) {
     const n = Number(x);
     if (!Number.isFinite(n)) return '-';
-    if (budgetUnit === "USDT") {
-      return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-    const cut = Math.trunc(n / 10) * 10;
-    return cut.toLocaleString();
-  };
-  const fmtPct = (x) => (x == null || x === '' || Number.isNaN(Number(x))) ? '-' : (Number(x).toFixed(2) + '%');
-  const fmtPctRatio = (x) => {
+    return n.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  }
+  function fmtPrice(x) {
     const n = Number(x);
     if (!Number.isFinite(n)) return '-';
-    return (n * 100).toFixed(2) + '%';
-  };
-  const fmtMin = (ms) => {
-    const n = Number(ms);
+    return budgetUnit === 'USDT'
+      ? n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : (Math.trunc(n / 10) * 10).toLocaleString();
+  }
+  function fmtPct(x) {
+    const n = Number(x);
     if (!Number.isFinite(n)) return '-';
-    return Math.round(n / 60000).toLocaleString();
-  };
-  const fmtRemain = (ms) => {
-    const n = Number(ms);
-    if (!Number.isFinite(n) || n <= 0) return '-';
-    const totalSec = Math.max(0, Math.round(n / 1000));
-    const h = Math.floor(totalSec / 3600);
-    const m = Math.floor((totalSec % 3600) / 60);
-    if (h > 0) return `${h}h ${m}m`;
-    return `${m}m`;
-  };
-  const fmtKst = (v) => {
+    return (n * 100).toFixed(1) + '%';
+  }
+  function fmtKst(v) {
     if (!v) return '-';
     const raw = String(v);
     if (raw.includes('KST')) return raw;
     const ms = Date.parse(raw);
     if (!Number.isFinite(ms)) return raw;
-    const k = new Date(ms + 9 * 60 * 60 * 1000);
+    const d = new Date(ms + 9 * 60 * 60 * 1000);
     const pad = (n) => String(n).padStart(2, '0');
-    return `${k.getUTCFullYear()}-${pad(k.getUTCMonth() + 1)}-${pad(k.getUTCDate())} ${pad(k.getUTCHours())}:${pad(k.getUTCMinutes())}:${pad(k.getUTCSeconds())} KST`;
-  };
-  const exchangeLabel = (typeof exchange !== 'undefined' && exchange) ? exchange : '-';
-  const tfLabel = (typeof tf_default !== 'undefined' && tf_default) ? tf_default : '-';
-  const positionLabel = (st) => {
-    const s = String(st || 'FLAT').toUpperCase();
-    if (s === 'FLAT') return '대기';
-    if (s === 'ACTIVE') return '보유';
-    if (s === 'EXIT_ONLY') return '청산만';
-    return st || '-';
-  };
-  const positionSideLabel = (side) => {
-    const s = String(side || '').toUpperCase();
-    if (s === 'LONG') return '롱';
-    if (s === 'SHORT') return '숏';
-    return null;
-  };
-  const sideLabel = (side) => {
-    const s = String(side || '').toUpperCase();
-    if (s === 'BUY') return '매수';
-    if (s === 'SELL') return '매도';
-    if (s === 'HOLD') return '대기';
-    return side || '-';
-  };
-  const signalOriginLabel = (signal) => {
-    if (!signal) return null;
+    return `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  }
+  function eventLabel(event) {
+    const s = String(event || '').toUpperCase();
+    if (s.includes('SHORT')) return '숏';
+    if (s.includes('LONG')) return '롱';
+    if (s.startsWith('EXIT')) return '청산';
+    return s || '-';
+  }
+  function eventTone(event) {
+    const s = String(event || '').toUpperCase();
+    if (s.includes('SHORT')) return 'short';
+    if (s.includes('LONG')) return 'long';
+    return 'soft';
+  }
+  function gradeLabel(signal) {
+    const g = String(signal && signal.entry_grade || '').toUpperCase();
+    if (g === 'CORE') return '코어';
+    if (g === 'EARLY') return '얼리';
+    return '-';
+  }
+  function sourceLabel(signal) {
+    if (!signal) return '-';
     const source = String(signal.source || '').toUpperCase();
-    if (signal.authoritative === true || source === 'SERVER') return '정본';
-    if (source === 'PINE_SHADOW') return '그림자';
-    if (source === 'WEBHOOK') return '외부수신';
+    if (signal.authoritative === true || source === 'SERVER') return '서버';
+    if (source === 'PINE_SHADOW') return 'Pine';
+    if (source === 'WEBHOOK') return '외부';
+    return '-';
+  }
+  function statusLabel(signal) {
+    if (!signal) return '-';
+    if (signal.exec_plan && signal.exec_plan.status) {
+      const s = String(signal.exec_plan.status).toUpperCase();
+      if (s === 'PENDING') return '주문 대기';
+      if (s === 'FILLED') return '체결 완료';
+      if (s === 'CANCELED') return '취소';
+      return s;
+    }
+    if (signal._signal_source === 'DROP') return '드롭';
+    return '수신';
+  }
+  function positionStateLabel(row) {
+    const s = String(row && row.position_state || '').toUpperCase();
+    if (s === 'ACTIVE') return '보유 중';
+    if (s === 'EXIT_ONLY') return '청산 대기';
+    return '대기';
+  }
+  function positionSideLabel(row) {
+    const side = String(row && row.position && (row.position.position_side || row.position.positionSide || row.position.side) || '').toUpperCase();
+    if (side === 'LONG') return '롱';
+    if (side === 'SHORT') return '숏';
     return null;
-  };
-  const signalOriginTone = (signal) => {
-    if (!signal) return 'dim';
-    const source = String(signal.source || '').toUpperCase();
-    if (signal.authoritative === true || source === 'SERVER') return 'ok';
-    if (source === 'PINE_SHADOW') return 'dim';
-    if (source === 'WEBHOOK') return 'warn';
-    return 'dim';
-  };
-  const guardrailLabel = (s) => {
-    const x = String(s || '').toUpperCase();
-    if (x === 'ALERT') return '경고';
-    if (x === 'OK') return '정상';
-    if (x === 'ERROR') return '오류';
-    if (x === 'NO_TRADES') return '체결 없음';
-    return '비활성';
-  };
-  const guardrailPill = (s) => {
-    const x = String(s || '').toUpperCase();
-    if (x === 'ALERT') return 'bad';
-    if (x === 'OK') return 'ok';
-    if (x === 'ERROR') return 'warn';
-    if (x === 'NO_TRADES') return 'warn';
-    return 'dim';
-  };
-  const fmtUnit = (x) => {
-    if (x == null || x === '' || Number.isNaN(Number(x))) return '-';
-    return budgetUnit === "USDT"
-      ? Number(x).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-      : (Math.trunc(Number(x) / 10) * 10).toLocaleString();
-  };
-  const leverageSummary = (typeof leverage_summary !== 'undefined' && leverage_summary) ? leverage_summary : null;
-  const rollbackSummary = (typeof rollback_summary !== 'undefined' && rollback_summary) ? rollback_summary : null;
-  const fmtLeverage = (x) => {
+  }
+  function leverageText(x, tier) {
     const n = Number(x);
+    if (tier) return String(tier);
     if (!Number.isFinite(n) || n <= 0) return '-';
-    const rounded = Math.round(n * 10) / 10;
-    return `${rounded}x`;
-  };
-  const leverageBadge = (tier) => {
-    const t = String(tier || '').toLowerCase();
-    if (t === '3x') return 'warn';
-    if (t === '2x') return 'ok';
-    if (t.endsWith('x')) return 'dim';
-    return 'dim';
-  };
-  const exitEventTag = (event) => {
-    const ev = String(event || '').toUpperCase();
-    let m = ev.match(/^EXIT_TP_P1_([0-9]+(?:\.[0-9]+)?)P$/);
-    if (m) return `TP1_${m[1]}`;
-    m = ev.match(/^EXIT_TP_C_([0-9]+(?:\.[0-9]+)?)P$/);
-    if (m) return `TP1_${m[1]}`;
-    m = ev.match(/^EXIT_TRAIL_([0-9]+(?:\.[0-9]+)?)P$/);
-    if (m) return `TRAIL_${m[1]}`;
-    m = ev.match(/^EXIT_SL_([0-9]+(?:\.[0-9]+)?)P$/);
-    if (m) return `SL_${m[1]}`;
-    m = ev.match(/^EXIT_BE_([0-9]+(?:\.[0-9]+)?)P$/);
-    if (m) return `BE_${m[1]}`;
-    if (ev.startsWith('EXIT_TP_P1')) return 'TP1';
-    if (ev.startsWith('EXIT_TP_C')) return 'TP1';
-    if (ev.startsWith('EXIT_TRAIL')) return 'TRAIL';
-    if (ev.startsWith('EXIT_SL')) return 'SL';
-    if (ev.startsWith('EXIT_BE')) return 'BE';
-    return null;
-  };
-  const eventDisplay = (event) => {
-    const rawUpper = String(event || '').toUpperCase();
-    if (rawUpper === 'LONG') return 'LONG';
-    if (rawUpper === 'SHORT') return 'SHORT';
-    const entryMatch = rawUpper.match(/^(EARLY|CORE|PRE_REAL|REAL)_(LONG|SHORT)$/);
-    if (entryMatch) return entryMatch[2];
-    let raw = String(event || '-');
-    raw = rawUpper.replace(/^EXIT_TP_C_([0-9]+(?:\.[0-9]+)?)P$/, 'EXIT_TP_P1_$1P');
-    raw = raw === 'EXIT_TP_C' ? 'EXIT_TP_P1' : raw;
-    const tag = exitEventTag(event);
-    return tag ? `${raw} (${tag})` : raw;
-  };
+    return `${Math.round(n * 10) / 10}x`;
+  }
+  function noteShort(v, len = 28) {
+    const raw = String(v || '-');
+    return raw.length > len ? raw.slice(0, len) + '...' : raw;
+  }
 %>
 
-<%- include('partials/legacy_trading_subnav', { activeTab: 'state' }) %>
-<%- include('partials/legacy_control_surface_bridge', { mode: 'trading', surfaceHref: '/dashboard/execution', surfaceLabel: '실행', detailHref: '/dashboard/home', detailLabel: '미션', extraHref: '/dashboard/audit', extraLabel: '감사' }) %>
-
 <style>
-  .trading-kpi-block{
-    margin-bottom: 24px;
+  .trading-records {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
   }
-  @media (max-width: 760px){
-    .trading-kpi-block{
-      margin-bottom: 18px;
-    }
+  .records-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) 340px;
+    gap: 16px;
+  }
+  .records-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .records-kpi {
+    padding: 14px 15px;
+    border-radius: 18px;
+    border: 1px solid var(--trade-border);
+    background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
+  }
+  .records-kpi .label,
+  .records-mini .label,
+  .runtime-row .label,
+  .drop-row .label {
+    color: var(--trade-muted);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+  }
+  .records-kpi .value,
+  .records-mini .value {
+    margin-top: 6px;
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: -.04em;
+  }
+  .records-kpi .meta,
+  .records-mini .meta,
+  .runtime-row .meta,
+  .drop-row .meta {
+    margin-top: 5px;
+    color: var(--trade-muted);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .records-hero .trade-panel-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .records-mini {
+    padding: 12px 13px;
+    border: 1px solid var(--trade-border);
+    border-radius: 14px;
+    background: #fbfcfd;
+  }
+  .side-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .runtime-list,
+  .drop-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .runtime-row,
+  .drop-row {
+    padding: 10px 12px;
+    border: 1px solid var(--trade-border);
+    border-radius: 14px;
+    background: #fbfcfd;
+  }
+  .runtime-row strong,
+  .drop-row strong {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+  }
+  .trade-layout-grid,
+  .market-layout-grid,
+  .fills-layout-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) 340px;
+    gap: 16px;
+  }
+  .compact-record-table th,
+  .compact-record-table td {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .compact-record-table td strong {
+    display: block;
+    font-size: 11px;
+  }
+  .compact-record-table td span {
+    display: block;
+    margin-top: 2px;
+    color: var(--trade-muted);
+    font-size: 10px;
+  }
+  .table-chip.soft {
+    color: var(--trade-muted);
+    background: #f7f8fa;
+  }
+  .table-chip.status {
+    color: #3f4954;
+    background: #f4f6f8;
+  }
+  .action-stack {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 10px;
+    border: 1px solid var(--trade-border);
+    background: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--trade-text);
+    cursor: pointer;
+  }
+  .action-btn:disabled {
+    opacity: .45;
+    cursor: default;
+  }
+  .action-btn.warn {
+    border-color: #ead8a2;
+    background: #fff8e7;
+    color: #8a6303;
+  }
+  .action-btn.bad {
+    border-color: #f0c5c1;
+    background: #fff1f0;
+    color: var(--trade-down);
+  }
+  .pending-stack {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .subchip {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 7px;
+    border-radius: 999px;
+    background: #f4f6f8;
+    color: var(--trade-muted);
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .right-align { text-align: right; }
+  .center-align { text-align: center; }
+  @media (max-width: 1260px) {
+    .records-top,
+    .trade-layout-grid,
+    .market-layout-grid,
+    .fills-layout-grid { grid-template-columns: 1fr; }
+    .records-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 860px) {
+    .records-kpis,
+    .records-hero .trade-panel-body { grid-template-columns: 1fr; }
   }
 </style>
 
-<div class="section-head">
-  <div class="section-title">실행 세부 상태</div>
-  <div class="subtle">실행 화면 아래에서 포지션, 인텐트, 리스크를 세부 추적합니다.</div>
-</div>
-
-<div class="metric-grid trading-kpi-block">
-  <div class="metric-card">
-    <div class="metric-label">거래소 · TF</div>
-    <div class="metric-value"><%= exchangeLabel %></div>
-    <div class="metric-meta mono">TF <%= tfLabel %> · <%= now_kst || '-' %></div>
-  </div>
-  <div class="metric-card">
-    <div class="metric-label">스케줄러</div>
-    <div class="metric-value"><%= health && health.last_tick_kst ? '가동' : '대기' %></div>
-    <div class="metric-meta mono"><%= health && health.last_tick_kst ? health.last_tick_kst : '-' %></div>
-  </div>
-  <div class="metric-card">
-    <div class="metric-label">리스크 가드레일</div>
-    <div class="metric-value">
-      <span class="pill <%= guardrailPill(health && health.guardrail ? health.guardrail.status : null) %>">
-        <%= guardrailLabel(health && health.guardrail ? health.guardrail.status : null) %>
-      </span>
-    </div>
-    <div class="metric-meta">
-      일일 손익 <%= fmtKrw(health && health.guardrail ? health.guardrail.daily_realized_krw : null) %> <%= budgetUnit %>
-      · <%= health && health.guardrail && health.guardrail.daily_realized_source ? health.guardrail.daily_realized_source : '-' %>
-    </div>
-  </div>
-  <div class="metric-card">
-    <div class="metric-label">대기 인텐트</div>
-    <div class="metric-value"><%= intent_summary && intent_summary.pending != null ? intent_summary.pending : '-' %></div>
-    <div class="metric-meta">총 <%= intent_summary && intent_summary.total != null ? intent_summary.total : '-' %> 건</div>
-  </div>
-</div>
-
-<div class="card">
-  <h2>요약</h2>
-  <div class="subtle">
-    이 페이지는 실행 상태를 세부 확인하는 보조 화면입니다. 운영 판단은 실행/감사에서 먼저 보고, 여기서는 마켓별 강제 정리와 대기 취소를 다룹니다.
-  </div>
-  <div class="hr"></div>
-  <div class="kv">
-    <div class="k">현재 시각</div><div class="v mono"><%= now_kst || '-' %></div>
-    <div class="k">대상 마켓</div><div class="v mono"><%= (markets_expected || []).join(', ') %></div>
-    <div class="k">거래소</div><div class="v mono"><%= exchangeLabel %></div>
-    <div class="k">기본 TF</div><div class="v mono"><%= tfLabel %></div>
-    <div class="k">배율 상태</div>
-    <div class="v">
-      <% if (leverageSummary && leverageSummary.enabled) { %>
-        <span class="pill ok">2x <%= fmtNum(leverageSummary.tier_2x || 0) %></span>
-        <span class="pill warn">3x <%= fmtNum(leverageSummary.tier_3x || 0) %></span>
-        <span class="subtle mono">· 활성 <%= fmtNum(leverageSummary.active_markets || 0) %></span>
-      <% } else { %>
-        <span class="pill dim">현물/비활성</span>
-      <% } %>
-    </div>
-    <div class="k">롤백 상태</div>
-    <div class="v">
-      <% if (rollbackSummary && rollbackSummary.enabled) { %>
-        <% const rbCount = Number(rollbackSummary.rollback_active || 0); %>
-        <% if (rbCount > 0) { %>
-          <span class="pill bad">활성 <%= fmtNum(rbCount) %></span>
-          <span class="subtle mono">· 최대 남은 <%= fmtRemain(rollbackSummary.max_remaining_ms) %></span>
-        <% } else { %>
-          <span class="pill ok">비활성</span>
-        <% } %>
-      <% } else { %>
-        <span class="pill dim">현물/비활성</span>
-      <% } %>
-    </div>
-  </div>
-  <% if (typeof intent_summary !== 'undefined' && intent_summary) { %>
-    <div class="hr"></div>
-    <div class="kv">
-      <div class="k">인텐트 합계</div><div class="v mono"><%= intent_summary.total %></div>
-      <div class="k">대기</div><div class="v mono"><%= intent_summary.pending %></div>
-      <div class="k">체결</div><div class="v mono"><%= intent_summary.filled %></div>
-      <div class="k">취소</div><div class="v mono"><%= intent_summary.canceled %></div>
-      <div class="k">만료 대기</div><div class="v mono"><%= intent_summary.expired_pending %></div>
-    </div>
-  <% } %>
-</div>
-
-<div class="hr"></div>
-
-<div class="card">
-  <h2>자동 실행 감시</h2>
-  <div class="subtle">스케줄러/신호/체결/데이터 최신 상태</div>
-  <div class="hr"></div>
-  <div class="kv">
-    <div class="k">스케줄러 최근</div><div class="v mono"><%= health && health.last_tick_kst ? health.last_tick_kst : '-' %></div>
-    <div class="k">최근 간격</div><div class="v mono"><%= fmtMin(health && health.tick_interval_ms) %> 분</div>
-    <div class="k">신호 최근(수신)</div><div class="v mono"><%= health && health.last_signal_any_kst ? health.last_signal_any_kst : '-' %></div>
-    <div class="k">신호 최근(저장)</div><div class="v mono"><%= health && health.last_signal_kst ? health.last_signal_kst : '-' %></div>
-    <div class="k">체결 최근</div><div class="v mono"><%= health && health.last_fill_kst ? health.last_fill_kst : '-' %></div>
-    <div class="k">봉 최신</div><div class="v mono"><%= health && health.latest_bar_kst ? health.latest_bar_kst : '-' %></div>
-    <div class="k">봉 지연</div><div class="v mono"><%= fmtNum(health && health.stale_bars_n) %> 개</div>
-    <div class="k">로그 레벨</div><div class="v mono"><%= health && health.log_level ? health.log_level : '-' %></div>
-    <div class="k">보관 기간</div><div class="v mono"><%= (health && typeof health.retention_days !== 'undefined') ? health.retention_days : '-' %> 일</div>
-  </div>
-  <div class="hr"></div>
-  <% if (health && health.guardrail) { %>
-    <div class="kv">
-      <div class="k">리스크 가드레일</div><div class="v"><span class="pill <%= guardrailPill(health.guardrail.status) %>"><%= guardrailLabel(health.guardrail.status) %></span></div>
-      <div class="k">일일 손익</div><div class="v mono"><%= fmtKrw(health.guardrail.daily_realized_krw) %></div>
-      <div class="k">일일 거래 수</div><div class="v mono"><%= fmtNum(health.guardrail.daily_trades_n) %></div>
-      <div class="k">일일 소스</div><div class="v mono"><%= health.guardrail.daily_realized_source || '-' %></div>
-      <div class="k">소스 상세</div><div class="v mono">
-        <% if (health.guardrail.daily_source_breakdown) { %>
-          E:<%= fmtNum(health.guardrail.daily_source_breakdown.external_markets) %> /
-          F:<%= fmtNum(health.guardrail.daily_source_breakdown.fallback_markets) %> /
-          N:<%= fmtNum(health.guardrail.daily_source_breakdown.none_markets) %>
-        <% } else { %>
-          -
-        <% } %>
+<section class="trading-records">
+  <section class="records-top">
+    <article class="trade-panel soft records-hero compact">
+      <div class="trade-panel-head">
+        <div>
+          <div class="trade-panel-title">거래기록 요약</div>
+          <div class="trade-panel-sub">신호, 드롭, 대기 인텐트, 체결을 거래소형 화면으로 빠르게 읽습니다.</div>
+        </div>
       </div>
-      <div class="k">소스 정책</div><div class="v mono"><%= health.guardrail.pnl_source_policy || '-' %></div>
-      <div class="k">손실률</div><div class="v mono"><%= fmtPctRatio(health.guardrail.daily_loss_pct) %></div>
-      <div class="k">손실 한도(%)</div><div class="v mono"><%= fmtPctRatio(health.guardrail.threshold_pct) %></div>
-      <div class="k">손실 한도(금액)</div><div class="v mono"><%= fmtUnit(health.guardrail.threshold_krw) %> <%= budgetUnit %></div>
-      <div class="k">총 예산</div><div class="v mono"><%= fmtUnit(health.guardrail.total_max_krw) %> <%= budgetUnit %></div>
-    </div>
-  <% } %>
-  <% if (health && health.drop_summary) { %>
-    <div class="hr"></div>
-    <div class="subtle">신호 필터링 요약 (<%= health.drop_summary.window_hours %>h)</div>
-    <div class="kv">
-      <div class="k">드랍 합계</div><div class="v mono"><%= fmtNum(health.drop_summary.total) %></div>
-      <div class="k">AI_BLOCK</div>
-      <div class="v mono">
-        <%= fmtNum(health.drop_summary.ai_block) %>
-        <% if (health.drop_summary.ai_block_pct != null) { %>
-          · <%= fmtPctRatio(health.drop_summary.ai_block_pct) %>
-        <% } %>
+      <div class="trade-panel-body">
+        <div class="records-mini">
+          <div class="label">거래소 · TF</div>
+          <div class="value"><%= exchange || '-' %></div>
+          <div class="meta">기본 TF <span class="mono"><%= tf_default || '-' %></span> · <span class="mono"><%= now_kst || '-' %></span></div>
+        </div>
+        <div class="records-mini">
+          <div class="label">실행 상태</div>
+          <div class="value"><%= health && health.last_tick_kst ? '가동 중' : '대기' %></div>
+          <div class="meta">최근 스케줄러 <span class="mono"><%= health && health.last_tick_kst ? health.last_tick_kst : '-' %></span></div>
+        </div>
+        <div class="records-mini">
+          <div class="label">신호 보기</div>
+          <div class="value"><%= shadowMode ? '그림자 포함' : '정본 기준' %></div>
+          <div class="meta"><a class="trade-btn" href="<%= shadowMode ? '/dashboard/trading?shadow=0' : '/dashboard/trading?shadow=1' %>"><%= shadowMode ? '정본만 보기' : '그림자 포함 보기' %></a></div>
+        </div>
+        <div class="records-mini">
+          <div class="label">감시 마켓</div>
+          <div class="value"><%= fmtNum(monitoredMarketsN) %>개</div>
+          <div class="meta">활성 포지션 <%= fmtNum(activePositionsN) %> · 대기 마켓 <%= fmtNum(pendingMarketsN) %></div>
+        </div>
       </div>
-      <div class="k">상위 사유</div><div class="v"><%= (health.drop_summary.top_reasons || []).length ? health.drop_summary.top_reasons.join(', ') : '-' %></div>
-      <div class="k">AI 이유</div><div class="v"><%= (health.drop_summary.top_ai_reasons || []).length ? health.drop_summary.top_ai_reasons.join(', ') : '-' %></div>
-    </div>
-    <% if (health.drop_summary.by_market && health.drop_summary.by_market.length) { %>
-      <div class="hr"></div>
-      <div class="subtle">AI_BLOCK 상세 (마켓별)</div>
-      <div class="tablewrap">
-        <div class="scroll" style="max-height:260px;">
-          <table>
+    </article>
+
+    <aside class="side-stack">
+      <section class="trade-panel compact">
+        <div class="trade-panel-head">
+          <div>
+            <div class="trade-panel-title">실행 런타임</div>
+            <div class="trade-panel-sub">감시와 가드레일 상태</div>
+          </div>
+        </div>
+        <div class="trade-panel-body runtime-list">
+          <div class="runtime-row">
+            <div class="label">리스크 가드레일</div>
+            <strong><%= health && health.guardrail && health.guardrail.status ? health.guardrail.status : '-' %></strong>
+            <div class="meta">일일 손익 <%= fmtPrice(health && health.guardrail ? health.guardrail.daily_realized_krw : null) %> <%= budgetUnit %></div>
+          </div>
+          <div class="runtime-row">
+            <div class="label">봉 최신</div>
+            <strong><%= health && health.latest_bar_kst ? health.latest_bar_kst : '-' %></strong>
+            <div class="meta">지연 봉 <%= fmtNum(health && health.stale_bars_n) %>개</div>
+          </div>
+          <div class="runtime-row">
+            <div class="label">최근 체결</div>
+            <strong><%= health && health.last_fill_kst ? health.last_fill_kst : '-' %></strong>
+            <div class="meta">로그 <span class="mono"><%= health && health.log_level ? health.log_level : '-' %></span></div>
+          </div>
+        </div>
+      </section>
+    </aside>
+  </section>
+
+  <section class="records-kpis">
+    <article class="records-kpi">
+      <div class="label">최근 신호</div>
+      <div class="value"><%= fmtNum(signalRows.length) %>건</div>
+      <div class="meta">현재 화면에 표시되는 최근 12건 기준</div>
+    </article>
+    <article class="records-kpi">
+      <div class="label">최근 드롭</div>
+      <div class="value"><%= fmtNum(recentDropN) %>건</div>
+      <div class="meta"><%= dropSummary ? `${dropSummary.window_hours}시간 필터링 기준` : '드롭 집계 없음' %></div>
+    </article>
+    <article class="records-kpi">
+      <div class="label">대기 인텐트</div>
+      <div class="value"><%= intent_summary && intent_summary.pending != null ? fmtNum(intent_summary.pending) : '-' %></div>
+      <div class="meta">총 <%= intent_summary && intent_summary.total != null ? fmtNum(intent_summary.total) : '-' %>건</div>
+    </article>
+    <article class="records-kpi">
+      <div class="label">최근 체결</div>
+      <div class="value"><%= fmtNum(fillRows.length) %>건</div>
+      <div class="meta">최근 12건 기준</div>
+    </article>
+  </section>
+
+  <section class="trade-layout-grid">
+    <article class="trade-panel compact">
+      <div class="trade-panel-head">
+        <div>
+          <div class="trade-panel-title">최근 신호</div>
+          <div class="trade-panel-sub">홈보다 조금 더 자세히 읽지만, 과한 내부 코드는 숨깁니다.</div>
+        </div>
+      </div>
+      <div class="trade-panel-body">
+        <% if (signalRows.length) { %>
+          <table class="trade-table compact-record-table">
+            <colgroup>
+              <col style="width: 18%">
+              <col style="width: 18%">
+              <col style="width: 18%">
+              <col style="width: 18%">
+              <col style="width: 28%">
+            </colgroup>
             <thead>
               <tr>
+                <th>시각</th>
                 <th>마켓</th>
-                <th>드랍</th>
-                <th>AI_BLOCK</th>
-                <th>사유 TOP</th>
-                <th>AI 이유</th>
+                <th>신호</th>
+                <th>상태</th>
+                <th>메모</th>
               </tr>
             </thead>
             <tbody>
-              <% health.drop_summary.by_market.forEach((m) => { %>
+              <% signalRows.forEach((s) => { %>
                 <tr>
-                  <td class="mono"><%= m.market %></td>
-                  <td class="mono"><%= fmtNum(m.total) %></td>
-                  <td class="mono">
-                    <%= fmtNum(m.ai_block) %>
-                    <% if (m.ai_block_pct != null) { %>
-                      · <%= fmtPctRatio(m.ai_block_pct) %>
-                    <% } %>
+                  <td class="mono"><%= fmtKst(s.created_kst || s.created_at) %></td>
+                  <td><strong><%= s.symbol_or_pair_id || s.symbol || '-' %></strong><span><%= s.market || s.timeframe || '-' %></span></td>
+                  <td>
+                    <span class="table-chip <%= eventTone(s.event) %>"><%= eventLabel(s.event) %></span>
+                    <span class="table-chip <%= gradeLabel(s) === '코어' ? 'core' : 'soft' %>"><%= gradeLabel(s) %></span>
                   </td>
-                  <td><%= (m.top_reasons || []).length ? m.top_reasons.join(', ') : '-' %></td>
-                  <td><%= (m.top_ai_reasons || []).length ? m.top_ai_reasons.join(', ') : '-' %></td>
+                  <td>
+                    <span class="table-chip soft"><%= sourceLabel(s) %></span>
+                    <span class="table-chip status"><%= statusLabel(s) %></span>
+                  </td>
+                  <td><span><%= noteShort(s.display_reason_ko || s.display_reason || s.reason || '-') %></span></td>
                 </tr>
               <% }) %>
             </tbody>
           </table>
+        <% } else { %>
+          <div class="trade-empty">최근 신호가 없습니다.</div>
+        <% } %>
+      </div>
+    </article>
+
+    <aside class="trade-panel compact">
+      <div class="trade-panel-head">
+        <div>
+          <div class="trade-panel-title">드롭 요약</div>
+          <div class="trade-panel-sub">최근 필터링이 어디서 많이 발생하는지 봅니다.</div>
         </div>
       </div>
-    <% } %>
-  <% } %>
-  <div class="hr"></div>
-  <% if (health && health.warnings && health.warnings.length) { %>
-    <div class="subtle">경고</div>
-    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
-      <% health.warnings.forEach(w => { %>
-        <span class="pill <%= w.level %>"><%= w.message %></span>
-      <% }) %>
-    </div>
-  <% } else { %>
-    <span class="pill ok">정상</span>
-  <% } %>
-</div>
-
-<div class="hr"></div>
-
-<% if (typeof kpi_summary !== 'undefined' && kpi_summary) { %>
-  <div class="card">
-    <h2>성과 요약 (KPI)</h2>
-    <div class="subtle">최근 KPI 스냅샷 기준입니다.</div>
-    <div class="hr"></div>
-    <div class="kv">
-      <div class="k">최근 계산</div><div class="v mono"><%= kpi_summary.last_computed_kst || '-' %></div>
-      <div class="k">표본 최소치</div>
-      <div class="v mono">
-        <%= fmtNum(kpi_summary.min_n) %> / <%= fmtNum(kpi_summary.kpi_min_n) %>
-        (<%= fmtNum(kpi_summary.ready_markets) %>/<%= fmtNum(kpi_summary.total_markets) %>)
-      </div>
-      <div class="k">평균 승률</div><div class="v mono"><%= fmtPctRatio(kpi_summary.avg_win_rate) %></div>
-      <div class="k">평균 EV</div><div class="v mono"><%= fmtPctRatio(kpi_summary.avg_ev) %></div>
-      <div class="k">평균 MDD</div><div class="v mono"><%= fmtPctRatio(kpi_summary.avg_mdd) %></div>
-      <div class="k">꼬리 손실(최악)</div><div class="v mono"><%= fmtPctRatio(kpi_summary.worst_tail) %></div>
-      <div class="k">상태 분포</div><div class="v"><%= kpi_summary.status_text || '-' %></div>
-    </div>
-  </div>
-  <div class="hr"></div>
-<% } %>
-
-<div class="tablewrap">
-  <div class="head">
-    <h2>마켓 상태</h2>
-    <div class="subtle">포지션 + 최근 신호/체결 + 대기 주문</div>
-  </div>
-  <div class="scroll" style="max-height:520px;">
-    <table>
-      <thead>
-        <tr>
-          <th>마켓</th>
-          <th>포지션</th>
-          <th>청산 상태</th>
-          <th>최근 신호</th>
-          <th>최근 체결</th>
-          <th>대기 주문</th>
-          <th>강제 정리</th>
-        </tr>
-      </thead>
-      <tbody>
-        <% (rows || []).forEach(r => { %>
-          <tr>
-            <% const ps = r.pending_intents || []; %>
-            <td class="mono"><%= r.market %></td>
-            <td class="mono">
-              <%= positionLabel(r.position_state || (r.position && r.position.state)) %>
-              <% const posSide = positionSideLabel(r.position && (r.position.position_side || r.position.positionSide || r.position.side)); %>
-              <% if (posSide) { %> · <%= posSide %><% } %>
-              · <%= fmtPct(r.position_size_pct) %>
-              <% if (r.position_leverage_tier) { %>
-                · <span class="pill <%= leverageBadge(r.position_leverage_tier) %>"><%= r.position_leverage_tier %></span>
-              <% } else if (r.position_leverage != null) { %>
-                · <span class="pill dim"><%= fmtLeverage(r.position_leverage) %></span>
-              <% } %>
-              <% if (r.position_rollback_active) { %>
-                · <span class="pill bad">롤백</span>
-                <% if (r.position_rollback_remaining_ms != null) { %>
-                  <span class="subtle mono"><%= fmtRemain(r.position_rollback_remaining_ms) %></span>
-                <% } %>
-              <% } %>
-              <% if (r.position_avg_price != null) { %> · 평균가 <%= fmtKrw(r.position_avg_price) %><% } %>
-            </td>
-            <td>
-              <% if (r.exit_stage) { %>
-                <% if (r.exit_stage.label && r.exit_stage.label !== 'TP1 대기') { %>
-                  <span class="pill <%= r.exit_stage.pill %>"><%= r.exit_stage.label %></span>
-                <% } %>
-                <div class="subtle mono" style="margin-top:6px;">
-                  <%= r.exit_stage.compact_headline.left_label %> <%= fmtKrw(r.exit_stage.compact_headline.left_price) %>
-                  · <%= r.exit_stage.compact_headline.right_label %> <%= fmtKrw(r.exit_stage.compact_headline.right_price) %>
-                </div>
-                <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">
-                  <% if (r.exit_stage.tp1_pending) { %>
-                    <span class="pill warn">TP1 진행</span>
-                  <% } %>
-                  <% if (r.exit_stage.native_refresh_status && r.exit_stage.native_refresh_status !== 'OK') { %>
-                    <span class="pill <%= r.exit_stage.native_refresh_status === 'FAILED' ? 'bad' : 'warn' %>">보호 <%= r.exit_stage.native_refresh_status %></span>
-                  <% } %>
-                  <% if (r.exit_stage.native_tp_status && r.exit_stage.native_tp_status !== 'OK' && r.exit_stage.native_tp_status !== r.exit_stage.native_refresh_status) { %>
-                    <span class="pill <%= r.exit_stage.native_tp_status === 'FAILED' ? 'bad' : 'warn' %>">TP <%= r.exit_stage.native_tp_status %></span>
-                  <% } %>
-                  <% if (r.exit_stage.native_protection_stale) { %>
-                    <span class="pill bad">보호 STALE</span>
-                  <% } %>
-                  <% if (r.exit_stage.tp1_skip_reason) { %>
-                    <span class="pill bad"><%= r.exit_stage.tp1_skip_reason %></span>
-                  <% } %>
-                </div>
-              <% } else { %>
-                <span class="subtle">-</span>
-              <% } %>
-            </td>
-            <td class="mono">
-              <% if (r.last_signal) { %>
-                <%= fmtKst((r._view && r._view.last_signal_ts) ? r._view.last_signal_ts : (r.last_signal.created_kst || r.last_signal.created_at)) %>
-                · <%= sideLabel(r.last_signal.side) %>
-                · <%= eventDisplay(r.last_signal.event) %>
-                <% const lastSignalOriginLabel = signalOriginLabel(r.last_signal); %>
-                <% if (lastSignalOriginLabel) { %>
-                  · <span class="pill <%= signalOriginTone(r.last_signal) %>"><%= lastSignalOriginLabel %></span>
-                <% } %>
-                <% if (r.last_signal.event_intent) { %> · <span class="subtle"><%= r.last_signal.event_intent %></span><% } %>
-                <% if (r.last_signal.qty_pct != null || r.last_signal.qtyPct != null) { %>
-                  · 비중 <%= fmtNum(r.last_signal.qty_pct ?? r.last_signal.qtyPct) %>
-                <% } %>
-                <% if (r.last_signal.late_by_bars != null && Number(r.last_signal.late_by_bars) !== 0) { %>
-                  · 지연 <%= fmtNum(r.last_signal.late_by_bars) %> bar
-                <% } %>
-                <% if (r.last_signal.mapping_ok === false) { %> · <span class="pill bad">매핑 오류</span><% } %>
-              <% } else { %>-<% } %>
-            </td>
-            <td class="mono">
-              <% if (r.last_fill) { %>
-                <%= fmtKst((r._view && r._view.last_fill_ts) ? r._view.last_fill_ts : (r.last_fill.created_kst || r.last_fill.created_at)) %>
-                · <%= sideLabel(r.last_fill.side) %>
-                · <%= eventDisplay(r.last_fill.event) %>
-                <% if (r.last_fill.leverage_tier) { %>
-                  · <span class="pill <%= leverageBadge(r.last_fill.leverage_tier) %>"><%= r.last_fill.leverage_tier %></span>
-                <% } else if (r.last_fill.leverage_applied != null) { %>
-                  · <span class="pill dim"><%= fmtLeverage(r.last_fill.leverage_applied) %></span>
-                <% } %>
-                <% if (r.last_fill.exec_price != null) { %> · <%= fmtKrw(r.last_fill.exec_price) %><% } %>
-                <% if (r.last_fill.signal_price_diff_pct != null) { %>
-                  · 신호대비 <%= (r.last_fill.signal_price_diff_pct * 100).toFixed(2) %>%
-                <% } %>
-                <% if (r.last_fill.exec_price_source) { %> · <span class="subtle"><%= r.last_fill.exec_price_source %></span><% } %>
-              <% } else { %>-<% } %>
-            </td>
-            <td class="pending-cell">
-              <% if (ps.length === 0) { %>
-                <span class="subtle pending-empty">없음</span>
-              <% } else { %>
-                <div class="subtle pending-count">건수: <span class="mono"><%= ps.length %></span></div>
-                <div class="subtle pending-list">
-                  <% ps.slice(0,3).forEach(p => { %>
-                    <div class="mono">
-                      <%= p.intent_id || p.id || '-' %>
-                      · <%= p.side || '-' %>
-                      · <%= eventDisplay(p.event) %>
-                      <% if (p.scheduled_exec_bar_close_time_utc_ms) { %>
-                        · 예정 <%= new Date(p.scheduled_exec_bar_close_time_utc_ms + 9*60*60*1000).toISOString().replace("T"," ").slice(0,16) %> KST
-                      <% } %>
-                      <% if (p.expires_at) { %>
-                        <% const expMs = Date.parse(p.expires_at); %>
-                        · 만료 <%= Number.isFinite(expMs) ? (new Date(expMs + 9*60*60*1000).toISOString().replace("T"," ").slice(0,16) + " KST") : p.expires_at %>
-                      <% } %>
-                      <% if (p.pending_reason || p.status_reason) { %>
-                        <% const _pendingReason = String(p.pending_reason || p.status_reason || "").toUpperCase(); %>
-                        ·
-                        <% if (_pendingReason === "EXTERNAL_FILL_RECONCILED") { %>
-                          <span class="pill ok">외부체결 보정</span>
-                        <% } else { %>
-                          <span class="subtle"><%= p.pending_reason || p.status_reason %></span>
-                        <% } %>
-                      <% } %>
-                    </div>
-                  <% }) %>
-                </div>
-              <% } %>
-            </td>
-            <% const posStateRaw = String(r.position_state || (r.position && r.position.state) || '').toUpperCase(); %>
-            <% const posSize = Number(r.position_size_pct); %>
-            <% const posActive = Number.isFinite(posSize) && posSize > 0 && posStateRaw !== 'FLAT'; %>
-            <td>
-              <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                <button class="btn ghost slim cancel-pending-btn" data-market="<%= r.market %>" data-exchange="<%= exchange %>" data-pending-count="<%= ps.length %>" <%= ps.length ? '' : 'disabled' %>>대기 취소</button>
-                <button class="btn ghost slim force-exit-btn" data-market="<%= r.market %>" data-exchange="<%= exchange %>" data-fraction="0.5" <%= posActive ? '' : 'disabled' %>>50% 정리</button>
-                <button class="btn ghost slim force-exit-btn" data-market="<%= r.market %>" data-exchange="<%= exchange %>" data-fraction="1" <%= posActive ? '' : 'disabled' %>>전량 정리</button>
-              </div>
-            </td>
-          </tr>
-        <% }) %>
-        <% if (!rows || rows.length===0) { %>
-          <tr><td colspan="7" class="subtle">데이터 없음</td></tr>
+      <div class="trade-panel-body drop-list">
+        <% if (topDropMarkets.length) { %>
+          <% topDropMarkets.forEach((m) => { %>
+            <div class="drop-row">
+              <div class="label"><%= m.market || '-' %></div>
+              <strong><%= fmtNum(m.total) %>건 · AI <%= fmtNum(m.ai_block) %>건</strong>
+              <div class="meta"><%= (m.top_reasons || []).join(', ') || '상세 사유 없음' %></div>
+            </div>
+          <% }) %>
+        <% } else { %>
+          <div class="trade-empty">최근 드롭이 없습니다.</div>
         <% } %>
-      </tbody>
-    </table>
-  </div>
-</div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="market-layout-grid">
+    <article class="trade-panel compact">
+      <div class="trade-panel-head">
+        <div>
+          <div class="trade-panel-title">마켓 실행 보드</div>
+          <div class="trade-panel-sub">포지션, 최근 신호, 대기 주문, 즉시 조치를 한 줄에서 봅니다.</div>
+        </div>
+      </div>
+      <div class="trade-panel-body">
+        <table class="trade-table compact-record-table">
+          <colgroup>
+            <col style="width: 16%">
+            <col style="width: 18%">
+            <col style="width: 18%">
+            <col style="width: 16%">
+            <col style="width: 14%">
+            <col style="width: 18%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>마켓</th>
+              <th>포지션</th>
+              <th>최근 신호</th>
+              <th>대기</th>
+              <th>최근 체결</th>
+              <th>조치</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% marketRows.forEach((r) => { %>
+              <% const posSide = positionSideLabel(r); %>
+              <% const pendingCount = Array.isArray(r.pending_intents) ? r.pending_intents.length : 0; %>
+              <% const posActive = String(r.position_state || '').toUpperCase() === 'ACTIVE' || String(r.position_state || '').toUpperCase() === 'EXIT_ONLY'; %>
+              <tr>
+                <td><strong><%= r.market %></strong><span><%= r.tf || tf_default || '-' %></span></td>
+                <td>
+                  <span class="table-chip status"><%= positionStateLabel(r) %></span>
+                  <% if (posSide) { %><span class="table-chip <%= posSide === '롱' ? 'long' : 'short' %>"><%= posSide %></span><% } %>
+                  <span><%= r.position_size_pct != null ? `${fmtNum(r.position_size_pct, 0)}%` : '비중 없음' %> · <%= leverageText(r.position_leverage, r.position_leverage_tier) %></span>
+                </td>
+                <td>
+                  <% if (r.last_signal) { %>
+                    <span class="table-chip <%= eventTone(r.last_signal.event) %>"><%= eventLabel(r.last_signal.event) %></span>
+                    <span class="table-chip soft"><%= sourceLabel(r.last_signal) %></span>
+                    <span><%= fmtKst(r._view && r._view.last_signal_ts) %></span>
+                  <% } else { %>
+                    <span>신호 없음</span>
+                  <% } %>
+                </td>
+                <td class="pending-cell">
+                  <% if (pendingCount > 0) { %>
+                    <div class="pending-stack">
+                      <span class="subchip"><%= pendingCount %>건</span>
+                    </div>
+                  <% } else { %>
+                    <span>없음</span>
+                  <% } %>
+                </td>
+                <td class="right-align">
+                  <% if (r.last_fill && r.last_fill.exec_price != null) { %>
+                    <strong class="mono"><%= fmtPrice(r.last_fill.exec_price) %></strong>
+                    <span><%= fmtKst(r._view && r._view.last_fill_ts) %></span>
+                  <% } else { %>
+                    <span>-</span>
+                  <% } %>
+                </td>
+                <td>
+                  <div class="action-stack">
+                    <button class="action-btn cancel-pending-btn" data-market="<%= r.market %>" data-exchange="<%= exchange %>" data-pending-count="<%= pendingCount %>" <%= pendingCount ? '' : 'disabled' %>>대기 취소</button>
+                    <button class="action-btn warn force-exit-btn" data-market="<%= r.market %>" data-exchange="<%= exchange %>" data-fraction="0.5" <%= posActive ? '' : 'disabled' %>>50% 정리</button>
+                    <button class="action-btn bad force-exit-btn" data-market="<%= r.market %>" data-exchange="<%= exchange %>" data-fraction="1" <%= posActive ? '' : 'disabled' %>>전량 정리</button>
+                  </div>
+                </td>
+              </tr>
+            <% }) %>
+            <% if (!marketRows.length) { %>
+              <tr><td colspan="6" class="trade-empty">감시 중인 마켓이 없습니다.</td></tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <aside class="side-stack">
+      <section class="trade-panel compact">
+        <div class="trade-panel-head">
+          <div>
+            <div class="trade-panel-title">레버리지 요약</div>
+            <div class="trade-panel-sub">현재 감시 마켓의 레버리지 상태</div>
+          </div>
+        </div>
+        <div class="trade-panel-body runtime-list">
+          <div class="runtime-row">
+            <div class="label">2x 마켓</div>
+            <strong><%= leverage_summary && leverage_summary.tier_2x != null ? fmtNum(leverage_summary.tier_2x) : '-' %></strong>
+            <div class="meta">활성 <%= leverage_summary && leverage_summary.active_markets != null ? fmtNum(leverage_summary.active_markets) : '-' %>개</div>
+          </div>
+          <div class="runtime-row">
+            <div class="label">3x 마켓</div>
+            <strong><%= leverage_summary && leverage_summary.tier_3x != null ? fmtNum(leverage_summary.tier_3x) : '-' %></strong>
+            <div class="meta">기본 레버리지 <%= leverage_summary && leverage_summary.default_leverage != null ? leverage_summary.default_leverage : '-' %>x</div>
+          </div>
+          <div class="runtime-row">
+            <div class="label">롤백 상태</div>
+            <strong><%= rollback_summary && rollback_summary.rollback_active != null ? fmtNum(rollback_summary.rollback_active) : '-' %></strong>
+            <div class="meta">최대 남은 시간 <%= rollback_summary && rollback_summary.max_remaining_ms != null ? fmtNum(Math.round(rollback_summary.max_remaining_ms / 60000)) : '-' %>분</div>
+          </div>
+        </div>
+      </section>
+    </aside>
+  </section>
+
+  <section class="fills-layout-grid">
+    <article class="trade-panel compact">
+      <div class="trade-panel-head">
+        <div>
+          <div class="trade-panel-title">최근 체결</div>
+          <div class="trade-panel-sub">체결까지 내려온 거래만 따로 봅니다.</div>
+        </div>
+      </div>
+      <div class="trade-panel-body">
+        <% if (fillRows.length) { %>
+          <table class="trade-table compact-record-table">
+            <colgroup>
+              <col style="width: 18%">
+              <col style="width: 18%">
+              <col style="width: 14%">
+              <col style="width: 18%">
+              <col style="width: 32%">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>시각</th>
+                <th>마켓</th>
+                <th>방향</th>
+                <th class="right-align">체결가</th>
+                <th>메모</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% fillRows.forEach((f) => { %>
+                <tr>
+                  <td class="mono"><%= fmtKst(f.created_kst || f.created_at) %></td>
+                  <td><strong><%= f.symbol || f.symbol_or_pair_id || f.market || '-' %></strong><span><%= leverageText(f.leverage_applied, f.leverage_tier) %></span></td>
+                  <td class="center-align"><span class="table-chip <%= eventTone(f.event) %>"><%= eventLabel(f.event) %></span></td>
+                  <td class="right-align mono"><%= f.exec_price != null ? fmtPrice(f.exec_price) : '-' %></td>
+                  <td><span><%= noteShort(f.display_exec_ko || f.display_exec_text || '-') %></span></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } else { %>
+          <div class="trade-empty">최근 체결이 없습니다.</div>
+        <% } %>
+      </div>
+    </article>
+
+    <aside class="trade-panel compact">
+      <div class="trade-panel-head">
+        <div>
+          <div class="trade-panel-title">KPI 준비 상태</div>
+          <div class="trade-panel-sub">실행 품질 지표 준비 상황</div>
+        </div>
+      </div>
+      <div class="trade-panel-body runtime-list">
+        <div class="runtime-row">
+          <div class="label">준비 마켓</div>
+          <strong><%= kpi_summary && kpi_summary.ready_markets != null ? fmtNum(kpi_summary.ready_markets) : '-' %> / <%= kpi_summary && kpi_summary.total_markets != null ? fmtNum(kpi_summary.total_markets) : '-' %></strong>
+          <div class="meta">최소 표본 <%= kpi_summary && kpi_summary.kpi_min_n != null ? fmtNum(kpi_summary.kpi_min_n) : '-' %>건</div>
+        </div>
+        <div class="runtime-row">
+          <div class="label">평균 승률</div>
+          <strong><%= kpi_summary && kpi_summary.avg_win_rate != null ? fmtPct(kpi_summary.avg_win_rate) : '-' %></strong>
+          <div class="meta">평균 EV <%= kpi_summary && kpi_summary.avg_ev != null ? fmtNum(kpi_summary.avg_ev, 2) : '-' %></div>
+        </div>
+        <div class="runtime-row">
+          <div class="label">상태</div>
+          <strong><%= kpi_summary && kpi_summary.status_text ? kpi_summary.status_text : '-' %></strong>
+          <div class="meta">최근 계산 <%= kpi_summary && kpi_summary.last_computed_kst ? kpi_summary.last_computed_kst : '-' %></div>
+        </div>
+      </div>
+    </aside>
+  </section>
+</section>
 
 <script>
 (function(){
-  const buttons = Array.from(document.querySelectorAll(".force-exit-btn"));
-  const cancelButtons = Array.from(document.querySelectorAll(".cancel-pending-btn"));
+  const buttons = Array.from(document.querySelectorAll('.force-exit-btn'));
+  const cancelButtons = Array.from(document.querySelectorAll('.cancel-pending-btn'));
   if (!buttons.length && !cancelButtons.length) return;
 
   function notify(msg, ok){
     if (window.dbExchangeToast) {
-      window.dbExchangeToast(msg, ok ? "ok" : "bad");
+      window.dbExchangeToast(msg, ok ? 'ok' : 'bad');
       return;
     }
     alert(msg);
   }
 
   function markButtonsRequested(btn, selector){
-    const root = btn && btn.closest ? btn.closest("td") : null;
+    const root = btn && btn.closest ? btn.closest('td') : null;
     const targets = root ? Array.from(root.querySelectorAll(selector)) : [btn];
     targets.forEach((b) => {
       if (!b) return;
       b.disabled = true;
-      b.textContent = "요청됨";
+      b.textContent = '요청됨';
     });
   }
 
-  function updatePendingCell(btn, canceled){
-    const row = btn && btn.closest ? btn.closest("tr") : null;
+  function updatePendingCell(btn){
+    const row = btn && btn.closest ? btn.closest('tr') : null;
     if (!row) return;
-    const cell = row.querySelector(".pending-cell");
+    const cell = row.querySelector('.pending-cell');
     if (!cell) return;
-    cell.innerHTML = '<span class="subtle pending-empty">없음</span>';
-    const cancelBtn = row.querySelector(".cancel-pending-btn");
+    cell.innerHTML = '<span>없음</span>';
+    const cancelBtn = row.querySelector('.cancel-pending-btn');
     if (cancelBtn) cancelBtn.disabled = true;
   }
 
   async function postForceExit(btn){
-    const market = btn.getAttribute("data-market");
-    const exchange = btn.getAttribute("data-exchange");
-    const fraction = Number(btn.getAttribute("data-fraction"));
-    const label = fraction >= 1 ? "전량" : "50%";
+    const market = btn.getAttribute('data-market');
+    const exchange = btn.getAttribute('data-exchange');
+    const fraction = Number(btn.getAttribute('data-fraction'));
+    const label = fraction >= 1 ? '전량' : '50%';
     if (!market || !Number.isFinite(fraction)) return;
     const ok = confirm(`[${market}] ${label} 정리를 요청할까요?`);
     if (!ok) return;
     btn.disabled = true;
     try{
-      const res = await fetch("/api/trading/force-exit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      body: JSON.stringify({ market, fraction, provider: exchange }),
+      const res = await fetch('/api/trading/force-exit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ market, fraction, provider: exchange }),
       });
       const text = await res.text();
       let payload = null;
       try { payload = JSON.parse(text); } catch(_) { payload = null; }
       if (!res.ok || !payload || !payload.ok) {
-        const msg = payload && payload.error ? payload.error : "요청 실패";
+        const msg = payload && payload.error ? payload.error : '요청 실패';
         notify(msg, false);
         return;
       }
-      const when = payload.scheduled_exec_kst ? ` (예정 ${payload.scheduled_exec_kst})` : "";
+      const when = payload.scheduled_exec_kst ? ` (예정 ${payload.scheduled_exec_kst})` : '';
       notify(`강제 정리 요청 완료${when}`, true);
-      markButtonsRequested(btn, ".force-exit-btn");
+      markButtonsRequested(btn, '.force-exit-btn');
     } catch (e) {
-      notify("요청 중 오류가 발생했습니다", false);
+      notify('요청 중 오류가 발생했습니다', false);
     } finally {
       btn.disabled = false;
     }
   }
 
   async function postCancelPending(btn){
-    const market = btn.getAttribute("data-market");
-    const exchange = btn.getAttribute("data-exchange");
-    const pendingCount = Number(btn.getAttribute("data-pending-count") || 0);
+    const market = btn.getAttribute('data-market');
+    const exchange = btn.getAttribute('data-exchange');
+    const pendingCount = Number(btn.getAttribute('data-pending-count') || 0);
     if (!market) return;
-    const label = pendingCount > 0 ? ` (${pendingCount}건)` : "";
+    const label = pendingCount > 0 ? ` (${pendingCount}건)` : '';
     const ok = confirm(`[${market}] 대기 주문${label}을 모두 취소할까요?`);
     if (!ok) return;
     btn.disabled = true;
     try{
-      const res = await fetch("/api/trading/cancel-pending", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+      const res = await fetch('/api/trading/cancel-pending', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ market, provider: exchange }),
       });
       const text = await res.text();
       let payload = null;
       try { payload = JSON.parse(text); } catch(_) { payload = null; }
       if (!res.ok || !payload || !payload.ok) {
-        const msg = payload && payload.error ? payload.error : "요청 실패";
+        const msg = payload && payload.error ? payload.error : '요청 실패';
         notify(msg, false);
         return;
       }
       notify(`대기 주문 취소 완료 · ${payload.canceled || 0}건`, true);
-      updatePendingCell(btn, payload.canceled || 0);
+      updatePendingCell(btn);
     } catch (e) {
-      notify("요청 중 오류가 발생했습니다", false);
+      notify('요청 중 오류가 발생했습니다', false);
     } finally {
       btn.disabled = false;
     }
   }
 
-  buttons.forEach((btn) => {
-    btn.addEventListener("click", () => postForceExit(btn));
-  });
-  cancelButtons.forEach((btn) => {
-    btn.addEventListener("click", () => postCancelPending(btn));
-  });
+  buttons.forEach((btn) => btn.addEventListener('click', () => postForceExit(btn)));
+  cancelButtons.forEach((btn) => btn.addEventListener('click', () => postCancelPending(btn)));
 })();
 </script>
 
-<div class="hr"></div>
-
-<div class="grid cols-2">
-<div class="tablewrap">
-  <div class="head">
-    <h2>최근 신호</h2>
-    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-      <div class="subtle">최근 12건</div>
-      <% if (show_shadow_signals) { %>
-        <span class="pill warn">그림자 포함</span>
-        <a class="btn ghost slim" href="?shadow=0">정본만 보기</a>
-      <% } else { %>
-        <span class="pill ok">정본 기준</span>
-        <a class="btn ghost slim" href="?shadow=1">그림자 포함 보기</a>
-      <% } %>
-    </div>
-  </div>
-    <div class="scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>시간</th><th>마켓</th><th>이벤트</th><th>의도</th><th>방향</th><th>비중%</th><th>실행 예정</th><th>지연</th><th>사유</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% (signals12 || []).forEach(s => { %>
-            <tr>
-              <td class="mono"><%= fmtKst(s.created_kst || s.created_at) %></td>
-              <td class="mono"><%= s.symbol_or_pair_id || s.symbol || '-' %></td>
-              <td>
-                <%= eventDisplay(s.event) %>
-                <% const signalListOriginLabel = signalOriginLabel(s); %>
-                <% if (signalListOriginLabel) { %>
-                  <div style="margin-top:4px;">
-                    <span class="pill <%= signalOriginTone(s) %>"><%= signalListOriginLabel %></span>
-                  </div>
-                <% } %>
-              </td>
-              <td class="mono"><%= s.event_intent || '-' %></td>
-              <td><%= sideLabel(s.side) %></td>
-              <td class="mono"><%= (s.qty_pct == null && s.qtyPct == null) ? '-' : fmtNum(s.qty_pct ?? s.qtyPct) %></td>
-              <td class="mono">
-                <% if (s.exec_plan && s.exec_plan.scheduled_exec_kst) { %>
-                  <%= fmtKst(s.exec_plan.scheduled_exec_kst) %>
-                  <% if (s.exec_plan.status) { %> · <span class="subtle"><%= s.exec_plan.status %></span><% } %>
-                  <% if (s.display_reason) { %>
-                    <% const _statusReason = String(s.display_reason || "").toUpperCase(); %>
-                    ·
-                    <% if (_statusReason === "EXTERNAL_FILL_RECONCILED") { %>
-                      <span class="pill ok">외부체결 보정</span>
-                    <% } else if (s.display_reason_stage_text) { %>
-                      <span class="subtle"><%= s.display_reason_stage_text %></span>
-                      <% if (s.display_reason_ko) { %>
-                        · <span class="subtle"><%= s.display_reason_ko %></span>
-                      <% } %>
-                    <% } else { %>
-                      <span class="subtle"><%= s.display_reason %></span>
-                    <% } %>
-                  <% } %>
-                <% } else { %>-<% } %>
-              </td>
-              <td class="mono"><%= (s.late_by_bars == null) ? '-' : fmtNum(s.late_by_bars) %></td>
-              <td class="subtle">
-                <% if (s.display_reason_stage_text) { %>
-                  <span class="subtle"><%= s.display_reason_stage_text %></span>
-                  ·
-                <% } %>
-                <%= s.display_reason || s.reason || '' %>
-                <% if (s.display_reason_external_fill) { %>
-                  · <span class="pill ok">외부체결 보정</span>
-                <% } else if (s.display_reason_detail) { %>
-                  · <%= s.display_reason_detail %>
-                <% } %>
-                <% if (s.display_reason_ko) { %>
-                  <div class="subtle"><%= s.display_reason_ko %></div>
-                <% } %>
-              </td>
-            </tr>
-          <% }) %>
-          <% if (!signals12 || signals12.length===0) { %><tr><td colspan="9" class="subtle">신호 없음</td></tr><% } %>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="tablewrap">
-    <div class="head">
-      <h2>최근 체결</h2>
-      <div class="subtle">최근 12건</div>
-    </div>
-    <div class="scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>시간</th><th>마켓</th><th>이벤트</th><th>방향</th><th>가격</th><th>배율</th><th>신호대비</th><th>가격 기준</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% (fills12 || []).forEach(f => { %>
-            <tr>
-              <td class="mono"><%= fmtKst(f.created_kst || f.created_at) %></td>
-              <td class="mono"><%= f.symbol || f.symbol_or_pair_id || f.market || '-' %></td>
-              <td>
-                <%= eventDisplay(f.event) %>
-                <% if (f.display_exec_text || f.display_exec_ko) { %>
-                  <div class="subtle">
-                    <%= f.display_exec_text || '-' %>
-                    <% if (f.display_exec_ko) { %>
-                      · <%= f.display_exec_ko %>
-                    <% } %>
-                  </div>
-                <% } %>
-              </td>
-              <td><%= sideLabel(f.side) %></td>
-              <td class="mono"><%= (f.exec_price==null) ? '-' : fmtKrw(f.exec_price) %></td>
-              <td class="mono">
-                <% if (f.leverage_tier) { %>
-                  <span class="pill <%= leverageBadge(f.leverage_tier) %>"><%= f.leverage_tier %></span>
-                <% } else if (f.leverage_applied != null) { %>
-                  <span class="pill dim"><%= fmtLeverage(f.leverage_applied) %></span>
-                <% } else { %>
-                  -
-                <% } %>
-              </td>
-              <td class="mono"><%= (f.signal_price_diff_pct==null) ? '-' : (Number(f.signal_price_diff_pct) * 100).toFixed(2) + '%' %></td>
-              <td class="subtle"><%= f.exec_price_source || '-' %></td>
-            </tr>
-          <% }) %>
-          <% if (!fills12 || fills12.length===0) { %><tr><td colspan="8" class="subtle">체결 없음</td></tr><% } %>
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-<%- include('partials/app_end') %>
+<%- include('partials/app_end_trader') %>

@@ -1,0 +1,411 @@
+<%
+  const __title = (typeof title !== 'undefined' && title) ? String(title) : 'DONBEOLJA Trader';
+  const __active = (typeof active !== 'undefined' && active) ? String(active) : '';
+  const __pageTitle = (typeof pageTitle !== 'undefined' && pageTitle) ? String(pageTitle) : '';
+  const __bodyClass = (typeof bodyClass !== 'undefined' && bodyClass) ? String(bodyClass) : '';
+  const __envLabel = (typeof envLabel !== 'undefined' && envLabel)
+    ? String(envLabel)
+    : (typeof process !== 'undefined' && process.env)
+      ? String(process.env.RUNTIME_MODE || process.env.NODE_ENV || 'env')
+      : 'env';
+  const __pageMetaMap = {
+    home: { eyebrow: 'Trading Home', hint: '현재 자산, 수익, 최근 신호와 체결을 거래 제품처럼 먼저 읽습니다.' },
+    mission: { eyebrow: 'Trading Home', hint: '현재 자산, 수익, 최근 신호와 체결을 거래 제품처럼 먼저 읽습니다.' },
+    profit: { eyebrow: 'Performance', hint: '기간별 손익과 주요 기여 마켓을 확인합니다.' },
+    cashflow: { eyebrow: 'Treasury', hint: '입출금과 자금 흐름을 별도 화면으로 확인합니다.' },
+    trading: { eyebrow: 'Execution Log', hint: '신호, 드롭, 주문, 포지션, 체결을 거래소형 화면으로 봅니다.' },
+    recovery: { eyebrow: 'Strategy Status', hint: '자연 진화 상태와 서버 우선 전환 상태를 확인합니다.' },
+    settings: { eyebrow: 'Settings', hint: '거래소, 리스크, 실행 설정을 조정합니다.' },
+  };
+  const __pageMeta = __pageMetaMap[__active] || { eyebrow: 'DONBEOLJA Trader', hint: '' };
+  const __compactTopbar = __active === 'home';
+%>
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title><%= __title %></title>
+  <style>
+    :root {
+      --trade-bg: #f3f5f7;
+      --trade-panel: #ffffff;
+      --trade-panel-soft: #fbfbfc;
+      --trade-rail: #f8f9fb;
+      --trade-border: #e3e7ec;
+      --trade-border-strong: #d2d8e0;
+      --trade-text: #14171a;
+      --trade-muted: #67707a;
+      --trade-gold: #c99618;
+      --trade-gold-soft: #fff4d7;
+      --trade-up: #0f9d58;
+      --trade-down: #d93025;
+      --trade-shadow: 0 20px 40px rgba(20, 23, 26, 0.06), 0 2px 6px rgba(20, 23, 26, 0.04);
+      --radius-xl: 28px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --mono: "JetBrains Mono", "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      color: var(--trade-text);
+      background:
+        radial-gradient(circle at top left, rgba(201, 150, 24, 0.10) 0%, rgba(201, 150, 24, 0) 22%),
+        linear-gradient(180deg, #f6f7f9 0%, #eef2f5 100%);
+      font-family: "IBM Plex Sans KR", "IBM Plex Sans", "Noto Sans KR", sans-serif;
+    }
+    a { color: inherit; }
+    .mono { font-family: var(--mono); }
+
+    .trader-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+    }
+    .trader-rail {
+      border-right: 1px solid var(--trade-border);
+      background: linear-gradient(180deg, #fbfcfd 0%, var(--trade-rail) 100%);
+      padding: 16px 14px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+    }
+    .trader-main {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .trader-topbar {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 20px;
+      border-bottom: 1px solid rgba(227, 231, 236, 0.9);
+      background: rgba(246, 247, 249, 0.92);
+      backdrop-filter: blur(16px);
+    }
+    .trader-topbar.compact-home {
+      min-height: 58px;
+      padding-top: 10px;
+      padding-bottom: 10px;
+      justify-content: flex-end;
+    }
+    .trader-topbar.compact-home .trader-topbar-copy {
+      display: none;
+    }
+    .trader-topbar.compact-home .trader-top-actions {
+      width: 100%;
+      justify-content: flex-end;
+    }
+    .trader-topbar-copy {
+      min-width: 0;
+    }
+    .trader-kicker {
+      color: var(--trade-gold);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .trader-page-title {
+      margin: 4px 0 2px;
+      font-size: 24px;
+      line-height: 1.1;
+      letter-spacing: -0.05em;
+      font-weight: 800;
+    }
+    .trader-page-hint {
+      color: var(--trade-muted);
+      font-size: 12px;
+      line-height: 1.45;
+      max-width: 820px;
+    }
+    .trader-top-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .trade-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--trade-border);
+      background: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .trade-chip.gold {
+      border-color: #ead8a2;
+      background: var(--trade-gold-soft);
+      color: #8a6303;
+    }
+    .trade-chip.soft {
+      background: #f7f8fa;
+      color: var(--trade-muted);
+    }
+    .trade-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      text-decoration: none;
+      padding: 9px 13px;
+      border-radius: 12px;
+      border: 1px solid var(--trade-border);
+      background: #fff;
+      color: var(--trade-text);
+      font-size: 12px;
+      font-weight: 700;
+      box-shadow: 0 2px 5px rgba(20, 23, 26, 0.04);
+    }
+    .trade-btn.primary {
+      background: linear-gradient(180deg, #1f2328 0%, #2c3137 100%);
+      border-color: #1f2328;
+      color: #fff;
+      box-shadow: 0 10px 22px rgba(31, 35, 40, 0.16);
+    }
+    .trade-btn.gold {
+      background: linear-gradient(180deg, #fff4d7 0%, #ffe7ae 100%);
+      border-color: #e2c46f;
+      color: #805b00;
+    }
+    .trade-content {
+      padding: 16px 20px 24px;
+    }
+    .trade-panel {
+      background: var(--trade-panel);
+      border: 1px solid var(--trade-border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--trade-shadow);
+    }
+    .trade-panel.soft {
+      background: linear-gradient(180deg, var(--trade-panel-soft) 0%, #ffffff 100%);
+    }
+    .trade-panel-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px 0;
+    }
+    .trade-panel-title {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
+    .trade-panel-sub {
+      margin-top: 4px;
+      color: var(--trade-muted);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+    .trade-panel-body {
+      padding: 14px 16px 16px;
+    }
+    .trade-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    .trade-table th,
+    .trade-table td {
+      padding: 9px 8px;
+      border-bottom: 1px solid #edf1f5;
+      text-align: left;
+      vertical-align: middle;
+    }
+    .trade-table th {
+      color: var(--trade-muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 700;
+    }
+    .trade-table tbody tr:last-child td { border-bottom: 0; }
+    .trade-table tbody tr:hover { background: #fafbfd; }
+    .profit-up { color: var(--trade-up); }
+    .profit-down { color: var(--trade-down); }
+    .profit-neutral { color: var(--trade-text); }
+    .trade-empty {
+      color: var(--trade-muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .trade-rail-shell { display: flex; flex-direction: column; gap: 14px; }
+    .trade-rail-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 4px 2px 12px;
+      border-bottom: 1px solid var(--trade-border);
+    }
+    .trade-rail-logo {
+      width: 34px;
+      height: 34px;
+      border-radius: 11px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, #1f2328 0%, #444b53 100%);
+      color: #fff;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
+    .trade-rail-title {
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
+    .trade-rail-sub {
+      margin-top: 3px;
+      color: var(--trade-muted);
+      font-size: 11px;
+    }
+    .trade-rail-block {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .trade-rail-label {
+      color: var(--trade-muted);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0 4px;
+    }
+    .trade-rail-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .trade-rail-nav a {
+      text-decoration: none;
+      padding: 9px 11px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      color: var(--trade-muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .trade-rail-nav a:hover {
+      background: #fff;
+      border-color: var(--trade-border);
+      color: var(--trade-text);
+    }
+    .trade-rail-nav a.active {
+      background: linear-gradient(180deg, #ffffff 0%, #fff9ec 100%);
+      border-color: #ead8a2;
+      color: #805b00;
+      box-shadow: 0 10px 20px rgba(201, 150, 24, 0.08);
+    }
+    .trade-rail-control-block {
+      padding: 12px;
+      border: 1px solid var(--trade-border);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.84);
+    }
+    .trade-rail-control {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--trade-muted);
+    }
+    .trade-rail-control select {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--trade-border-strong);
+      padding: 8px 10px;
+      background: #fff;
+      font-size: 12px;
+      color: var(--trade-text);
+    }
+    .trade-rail-hint {
+      margin-top: 8px;
+      color: var(--trade-muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .trade-rail-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .trade-rail-foot {
+      margin-top: auto;
+      padding-top: 4px;
+    }
+    .trade-rail-foot a {
+      color: var(--trade-muted);
+      font-size: 11px;
+      text-decoration: none;
+    }
+    .trade-rail-foot a:hover { color: var(--trade-text); }
+
+    @media (max-width: 1180px) {
+      .trader-shell { grid-template-columns: 1fr; }
+      .trader-rail {
+        position: relative;
+        height: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--trade-border);
+      }
+      .trade-rail-shell { gap: 14px; }
+      .trade-rail-nav {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 760px) {
+      .trader-topbar,
+      .trade-content { padding-left: 16px; padding-right: 16px; }
+      .trader-topbar {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .trader-page-title { font-size: 28px; }
+      .trade-rail-nav { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+  <% if (typeof extraHead !== 'undefined' && extraHead) { %>
+    <%- extraHead %>
+  <% } %>
+</head>
+<body class="<%= __bodyClass %>">
+  <div class="trader-shell">
+    <aside class="trader-rail">
+      <%- include('topnav_trader', { active: __active, envLabel: __envLabel }) %>
+    </aside>
+    <main class="trader-main">
+      <header class="trader-topbar <%= __compactTopbar ? 'compact-home' : '' %>">
+        <div class="trader-topbar-copy">
+          <div class="trader-kicker"><%= __pageMeta.eyebrow %></div>
+          <h1 class="trader-page-title"><%= __pageTitle || 'DONBEOLJA Trader' %></h1>
+          <% if (__pageMeta.hint) { %>
+            <div class="trader-page-hint"><%= __pageMeta.hint %></div>
+          <% } %>
+        </div>
+        <div class="trader-top-actions">
+          <span class="trade-chip gold"><%= __compactTopbar ? '서버 정본' : '신호 정본 · 서버' %></span>
+          <span class="trade-chip soft"><%= __compactTopbar ? 'Pine 비교' : '비교 신호 · Pine Shadow' %></span>
+          <% if (!__compactTopbar) { %>
+            <span class="trade-chip soft">환경 · <span class="mono"><%= __envLabel.toUpperCase() %></span></span>
+          <% } %>
+        </div>
+      </header>
+      <div class="trade-content">

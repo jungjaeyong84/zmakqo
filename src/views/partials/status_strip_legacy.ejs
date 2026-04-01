@@ -1,0 +1,269 @@
+<div class="container">
+  <div class="status-strip" id="status-strip">
+    <div class="status-summary" id="ss-summary">
+      <div class="status-summary-top">
+        <div>
+          <div class="status-summary-kicker">운영 상태</div>
+          <div class="status-summary-title" id="ss-summary-title">확인 중</div>
+        </div>
+        <span class="pill dim mono" id="ss-summary-pill">진단 대기</span>
+      </div>
+      <div class="status-summary-detail" id="ss-summary-detail">스케줄러, 게이트, 신호, 체결 상태를 확인하고 있습니다.</div>
+      <div class="issue-list" id="ss-issues"></div>
+    </div>
+    <div class="status-chip-grid">
+      <div class="status-chip" id="ss-auto"><span class="label">자동 실행</span><span class="value">확인 중</span></div>
+      <div class="status-chip" id="ss-gate"><span class="label">게이트</span><span class="value">확인 중</span></div>
+      <div class="status-chip" id="ss-ctx"><span class="label">환경</span><span class="value">확인 중</span></div>
+      <div class="status-chip" id="ss-signal"><span class="label">신호 최신</span><span class="value">확인 중</span></div>
+      <div class="status-chip" id="ss-fill"><span class="label">체결 최신</span><span class="value">확인 중</span></div>
+      <div class="status-chip" id="ss-next"><span class="label">다음 봉</span><span class="value">계산 중</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const byId = (id) => document.getElementById(id);
+  const state = { issues: [] };
+
+  function setChip(id, text, cls, title){
+    const el = byId(id);
+    if (!el) return;
+    el.classList.remove("ok","warn","bad");
+    if (cls) el.classList.add(cls);
+    const val = el.querySelector(".value");
+    if (val) val.textContent = text;
+    if (title) el.title = title;
+  }
+
+  function resetIssues(){
+    state.issues = [];
+  }
+
+  function pushIssue(level, text){
+    if (!text) return;
+    state.issues.push({ level: level || "warn", text: String(text) });
+  }
+
+  function renderSummary(){
+    const summary = byId("ss-summary");
+    const title = byId("ss-summary-title");
+    const detail = byId("ss-summary-detail");
+    const pill = byId("ss-summary-pill");
+    const issues = byId("ss-issues");
+    if (!summary || !title || !detail || !pill || !issues) return;
+
+    summary.classList.remove("warn", "bad");
+    issues.innerHTML = "";
+
+    const badIssues = state.issues.filter((x) => x.level === "bad");
+    const warnIssues = state.issues.filter((x) => x.level !== "bad");
+
+    if (badIssues.length) {
+      summary.classList.add("bad");
+      title.textContent = "즉시 확인 필요";
+      detail.textContent = `운영에 직접 영향을 주는 문제 ${badIssues.length}건이 있습니다.`;
+      pill.className = "pill bad mono";
+      pill.textContent = `위험 ${badIssues.length}건`;
+    } else if (warnIssues.length) {
+      summary.classList.add("warn");
+      title.textContent = "주의 필요";
+      detail.textContent = `확인할 항목 ${warnIssues.length}건이 있습니다.`;
+      pill.className = "pill warn mono";
+      pill.textContent = `주의 ${warnIssues.length}건`;
+    } else {
+      title.textContent = "정상 운영 중";
+      detail.textContent = "핵심 상태에서 즉시 조치가 필요한 항목은 없습니다.";
+      pill.className = "pill ok mono";
+      pill.textContent = "문제 없음";
+    }
+
+    for (const item of state.issues.slice(0, 6)) {
+      const span = document.createElement("span");
+      span.className = `issue-pill ${item.level}`;
+      span.textContent = item.text;
+      issues.appendChild(span);
+    }
+  }
+
+  function toMsSafe(v){
+    if (!v) return null;
+    const direct = Date.parse(String(v));
+    if (Number.isFinite(direct)) return direct;
+    const s = String(v);
+    if (s.includes(" KST")) {
+      const iso = s.replace(" KST", "+09:00");
+      const ms = Date.parse(iso);
+      if (Number.isFinite(ms)) return ms;
+    }
+    return null;
+  }
+
+  function fmtTime(ms){
+    if (!Number.isFinite(ms)) return "-";
+    const k = new Date(ms + 9 * 60 * 60 * 1000);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${k.getUTCFullYear()}-${pad(k.getUTCMonth() + 1)}-${pad(k.getUTCDate())} ${pad(k.getUTCHours())}:${pad(k.getUTCMinutes())} KST`;
+  }
+
+  function tfToMs(tf){
+    const t = String(tf || "").trim().toLowerCase();
+    const m = t.match(/^(\d+(?:\.\d+)?)([mhd])$/);
+    if (!m) return null;
+    const n = Number(m[1]);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    if (m[2] === "m") return n * 60 * 1000;
+    if (m[2] === "h") return n * 60 * 60 * 1000;
+    if (m[2] === "d") return n * 24 * 60 * 60 * 1000;
+    return null;
+  }
+
+  async function getJson(url){
+    try{
+      const r = await fetch(url, { credentials: "include" });
+      const t = await r.text();
+      let j = null;
+      try{ j = JSON.parse(t); }catch(_){}
+      return { ok: r.ok, json: j };
+    }catch(_){
+      return { ok: false, json: null };
+    }
+  }
+
+  let signalTfMs = 15 * 60 * 1000;
+  let execTfMs = 15 * 60 * 1000;
+
+  function updateNextBar(){
+    const now = Date.now();
+    const step = Number.isFinite(execTfMs) && execTfMs > 0 ? execTfMs : 15 * 60 * 1000;
+    const next = (Math.floor(now / step) + 1) * step;
+    setChip("ss-next", fmtTime(next), null);
+  }
+
+  async function loadScheduler(){
+    const r = await getJson("/scheduler/status");
+    if (!r.ok || !r.json || !r.json.ok){
+      setChip("ss-auto", "확인 실패", "warn");
+      setChip("ss-gate", "확인 실패", "warn");
+      setChip("ss-ctx", "확인 실패", "warn");
+      pushIssue("bad", "스케줄러 상태 확인 실패");
+      return;
+    }
+    const sched = r.json.scheduler || {};
+    const runtime = r.json.runtime || {};
+
+    const last = sched.lastTick || {};
+    const gate = (last.overall_gate_str || last.overall_status || (last.overall_gate && (last.overall_gate.overall_status || last.overall_gate.status)) || "-");
+    const gateStr = String(gate || "-").toUpperCase();
+    let gateCls = "warn";
+    let gateLabel = gateStr;
+    if (gateStr.includes("PASS")) { gateCls = "ok"; gateLabel = "통과"; }
+    else if (gateStr.includes("FAIL_HARD")) { gateCls = "bad"; gateLabel = "중지"; }
+    else if (gateStr.includes("FAIL_SOFT")) { gateCls = "warn"; gateLabel = "주의"; }
+    else if (gateStr.includes("FAIL")) { gateCls = "bad"; gateLabel = "실패"; }
+    let gateNote = null;
+    const reasons = last.overall_gate && Array.isArray(last.overall_gate.reasonCodes) ? last.overall_gate.reasonCodes : [];
+    if (reasons.length) gateNote = reasons.slice(0, 4).join(", ");
+    setChip("ss-gate", gateLabel, gateCls, gateNote);
+    if (gateCls === "bad") pushIssue("bad", gateNote ? `게이트 중지 · ${gateNote}` : "게이트 중지");
+    else if (gateCls === "warn") pushIssue("warn", gateNote ? `게이트 주의 · ${gateNote}` : "게이트 주의");
+
+    const signalTf = sched.signal_tf || last.tf || sched.exec_tf || last.exec_tf || "15m";
+    const execTf = sched.exec_tf || last.exec_tf || signalTf;
+    const signalMs = tfToMs(signalTf);
+    const execMs = tfToMs(execTf);
+    if (Number.isFinite(signalMs)) signalTfMs = signalMs;
+    if (Number.isFinite(execMs)) execTfMs = execMs;
+    updateNextBar();
+    const exch = sched.exchange || last.exchange || "-";
+    setChip("ss-ctx", `${exch} · ${signalTf}/${execTf}`, "ok");
+
+    const lastMs = toMsSafe(last.finished_at || last.started_at);
+    const recentWindow = Number.isFinite(execTfMs) && execTfMs > 0 ? execTfMs * 2 : 30 * 60 * 1000;
+    const recent = Number.isFinite(lastMs) ? ((Date.now() - lastMs) <= recentWindow) : false;
+    const running = !!sched.running || recent;
+    const managedExternally = runtime.scheduler_managed_externally === true;
+    if (running) {
+      setChip("ss-auto", "켜짐", "ok", recent ? "최근 실행됨" : null);
+    } else if (managedExternally) {
+      setChip("ss-auto", "외부 실행", "ok", "Cloud Run 환경에서는 내부 스케줄러 루프를 자동 시작하지 않습니다.");
+    } else {
+      setChip("ss-auto", "꺼짐", "bad", recent ? "최근 실행됨" : null);
+      pushIssue("bad", "자동 실행이 멈춤");
+    }
+  }
+
+  async function loadState(){
+    const r = await getJson("/api/state");
+    if (!r.ok || !r.json || !r.json.ok || !Array.isArray(r.json.rows)){
+      setChip("ss-signal", "확인 실패", "warn");
+      setChip("ss-fill", "확인 실패", "warn");
+      pushIssue("warn", "상태 API 확인 실패");
+      return;
+    }
+    const meta = r.json.meta || {};
+    let sigMs = null;
+    let sigMarket = null;
+    let fillMs = null;
+    let fillMarket = null;
+    for (const row of r.json.rows){
+      const s = row.last_signal || null;
+      const f = row.last_fill || null;
+      const sMs = toMsSafe(s?.created_at || s?.created_kst || s?.createdAt);
+      const fMs = toMsSafe(f?.created_at || f?.created_kst || f?.createdAt);
+      if (Number.isFinite(sMs) && (sigMs === null || sMs > sigMs)) {
+        sigMs = sMs;
+        sigMarket = row.market || s?.symbol_or_pair_id || s?.symbol || null;
+      }
+      if (Number.isFinite(fMs) && (fillMs === null || fMs > fillMs)) {
+        fillMs = fMs;
+        fillMarket = row.market || f?.symbol_or_pair_id || f?.symbol || null;
+      }
+    }
+    const sigAnyMs = toMsSafe(meta.last_signal_any_ms);
+    if (Number.isFinite(sigAnyMs) && (sigMs === null || sigAnyMs > sigMs)) {
+      sigMs = sigAnyMs;
+      sigMarket = meta.last_signal_any_market || sigMarket;
+    }
+
+    if (sigMs !== null) {
+      const txt = fmtTime(sigMs) + (sigMarket ? (" · " + sigMarket) : "");
+      const signalDelay = Date.now() - sigMs;
+      const signalWindow = Number.isFinite(signalTfMs) && signalTfMs > 0 ? signalTfMs * 2 : 2 * 60 * 60 * 1000;
+      const signalCls = signalDelay > signalWindow ? "warn" : "ok";
+      const signalTitle = signalCls === "warn"
+        ? "최근 2개 신호봉 동안 저장/드롭된 신호 기록이 없습니다."
+        : null;
+      setChip("ss-signal", txt, signalCls, signalTitle);
+      if (signalCls === "warn") pushIssue("warn", "최근 2개 신호봉 동안 신호 기록 없음");
+    } else {
+      setChip("ss-signal", "아직 없음", "warn");
+      pushIssue("warn", "신호 기록 없음");
+    }
+    if (fillMs !== null) {
+      const txt = fmtTime(fillMs) + (fillMarket ? (" · " + fillMarket) : "");
+      const fillDelay = Date.now() - fillMs;
+      const fillWindow = Number.isFinite(execTfMs) && execTfMs > 0 ? execTfMs * 24 : 6 * 60 * 60 * 1000;
+      const fillCls = fillDelay > fillWindow ? "warn" : "ok";
+      setChip("ss-fill", txt, fillCls);
+      if (fillCls === "warn") pushIssue("warn", "최근 체결 없음");
+    } else {
+      setChip("ss-fill", "아직 없음", "warn");
+      pushIssue("warn", "체결 기록 없음");
+    }
+  }
+
+  async function refresh(){
+    resetIssues();
+    await loadScheduler();
+    await loadState();
+    updateNextBar();
+    renderSummary();
+  }
+
+  refresh();
+  setInterval(updateNextBar, 30000);
+  setInterval(refresh, 60000);
+})();
+</script>

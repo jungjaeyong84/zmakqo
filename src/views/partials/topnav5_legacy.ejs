@@ -1,0 +1,369 @@
+<%
+  const __active = (typeof active !== 'undefined' && active) ? String(active) : '';
+  const __envLabel = (typeof envLabel !== 'undefined' && envLabel)
+    ? String(envLabel)
+    : (typeof process !== 'undefined' && process.env)
+      ? String(process.env.RUNTIME_MODE || process.env.NODE_ENV || 'env')
+      : 'env';
+
+  const __envUpper = __envLabel.toUpperCase();
+  const __homeActive = ['home', 'mission'].includes(__active);
+  const __profitActive = ['profit'].includes(__active);
+  const __cashflowActive = ['cashflow'].includes(__active);
+  const __tradingActive = ['execution', 'trading', 'server-primary', 'journal', 'ai', 'state'].includes(__active);
+  const __automationActive = ['recovery', 'deployment', 'audit', 'analysis', 'report', 'eval', 'briefing', 'risk'].includes(__active);
+%>
+
+<style>
+  .topnav5{
+    position:sticky;
+    top:0;
+    z-index:999;
+    display:flex;
+    gap:16px;
+    padding:14px 22px;
+    border-bottom:1px solid var(--line);
+    align-items:center;
+    background: #ffffff;
+    flex-wrap:nowrap;
+    box-shadow: 0 1px 2px rgba(60,64,67,.08);
+  }
+  .topnav5 .brand-wrap{
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    min-width: 162px;
+  }
+  .topnav5 .brand{
+    font-weight:700;
+    font-size:16px;
+    letter-spacing:-0.03em;
+    color: var(--text);
+  }
+  .topnav5 .brand-meta{
+    color: var(--muted);
+    font-size:11px;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+  }
+  .topnav5 .nav-primary{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    align-items:center;
+    padding: 4px;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: var(--card-muted);
+  }
+  .topnav5 a{
+    text-decoration:none;
+    color: var(--muted);
+    padding:10px 14px;
+    border-radius:12px;
+    border:1px solid transparent;
+    font-size:13px;
+    font-weight:600;
+  }
+  .topnav5 a:hover{
+    background: var(--accentBg);
+    color: var(--accentText);
+  }
+  .topnav5 a.active{
+    background: #fff;
+    color: var(--accentText);
+    border-color: #d2e3fc;
+    box-shadow: 0 1px 2px rgba(26,115,232,.14);
+  }
+  .topnav5 .spacer{ flex:1; }
+  .topnav5 .toolbar{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .topnav5 .env{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding: 7px 11px;
+    border-radius: 999px;
+    border:1px solid var(--line);
+    background:#fff;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .topnav5 .ex-switch{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:7px 10px;
+    border:1px solid var(--line);
+    border-radius:16px;
+    background:#fff;
+    font-size:12px;
+    color:var(--muted);
+    white-space:nowrap;
+    box-shadow: 0 1px 2px rgba(60,64,67,.06);
+  }
+  .topnav5 .ex-switch select{
+    border:1px solid var(--line);
+    border-radius:999px;
+    padding:6px 10px;
+    font-size:12px;
+    background:#fff;
+    color:var(--text);
+    min-width: 110px;
+  }
+  .topnav5 .ex-switch .hint{ color:var(--muted); white-space:nowrap; }
+
+  @media (max-width: 760px){
+    .topnav5{
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+      padding: 12px 16px;
+    }
+    .topnav5 .brand-wrap{
+      width:100%;
+    }
+    .topnav5 .nav-primary{
+      width:100%;
+      order:3;
+      overflow-x:auto;
+      flex-wrap:nowrap;
+      padding-bottom:2px;
+    }
+    .topnav5 .toolbar{
+      order:2;
+      width:100%;
+      justify-content:space-between;
+    }
+    .topnav5 .ex-switch .hint{ display:none; }
+    .topnav5 .ex-switch select{ min-width:120px; padding:4px 6px; }
+    .topnav5 .env{
+      display:none;
+    }
+  }
+  .ex-toast{ position:fixed; right:18px; bottom:18px; background:#111; color:#fff; padding:10px 12px; border-radius:12px; font-size:12px; border:1px solid rgba(0,0,0,0.15); box-shadow:0 10px 30px rgba(0,0,0,0.15); opacity:1; transition:opacity 0.2s ease; z-index:9999; }
+  .ex-toast.dim{ background:#222; }
+  .ex-toast.ok{ background:#0b6; }
+  .ex-toast.bad{ background:#c23; }
+  .ex-toast.hide{ opacity:0; pointer-events:none; }
+</style>
+
+<div class="topnav5">
+  <div class="brand-wrap">
+    <div class="brand">돈벌자</div>
+    <div class="brand-meta">자동 전략으로 거래하고 자산·수익을 관리하는 화면</div>
+  </div>
+  <div class="nav-primary">
+    <a href="/dashboard/home" class="<%= __homeActive ? 'active' : '' %>">홈</a>
+    <a href="/dashboard/profit" class="<%= __profitActive ? 'active' : '' %>">수익</a>
+    <a href="/dashboard/cashflow" class="<%= __cashflowActive ? 'active' : '' %>">입출금</a>
+    <a href="/dashboard/trading" class="<%= __tradingActive ? 'active' : '' %>">거래기록</a>
+    <a href="/dashboard/recovery" class="<%= __automationActive ? 'active' : '' %>">전략상태</a>
+    <a href="/dashboard/settings" class="<%= __active === 'settings' ? 'active' : '' %>">설정</a>
+  </div>
+  <div class="spacer"></div>
+  <div class="toolbar">
+    <div class="ex-switch">
+      <span>거래소</span>
+      <select id="ex-mode"></select>
+      <span class="hint" id="ex-mode-hint">현물</span>
+    </div>
+    <div class="env mono">환경 · <%= __envUpper %></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const key = "db_exchange_mode";
+  const sel = document.getElementById("ex-mode");
+  const hint = document.getElementById("ex-mode-hint");
+  if (!sel) return;
+
+  function normalizeProvider(raw){
+    const v = String(raw || "").toUpperCase();
+    if (v.includes("BINANCE")) return "BINANCEFUT";
+    return "BINANCEFUT";
+  }
+
+  function labelForProvider(provider){
+    const p = normalizeProvider(provider);
+    if (p === "BINANCEFUT") return "바이낸스";
+    return "바이낸스";
+  }
+
+  function hintForProvider(provider, multi){
+    const p = normalizeProvider(provider);
+    if (multi) {
+      if (p === "BINANCEFUT") return "선물·멀티 실행";
+      return "선물·멀티 실행";
+    }
+    if (p === "BINANCEFUT") return "선물 · BTC/XRP 롱·숏";
+    return "선물 · BTC/XRP 롱·숏";
+  }
+
+  function renderProviderOptions(providers){
+    const fallback = ["BINANCEFUT"];
+    const listRaw = Array.isArray(providers) && providers.length ? providers : fallback;
+    const list = [];
+    const seen = new Set();
+    for (const item of listRaw) {
+      const norm = normalizeProvider(item);
+      if (seen.has(norm)) continue;
+      seen.add(norm);
+      list.push(norm);
+    }
+    sel.innerHTML = "";
+    for (const provider of list) {
+      const opt = document.createElement("option");
+      opt.value = provider;
+      opt.textContent = labelForProvider(provider);
+      sel.appendChild(opt);
+    }
+    return list;
+  }
+
+  function apply(val){
+    const v = normalizeProvider(val);
+    const hasOption = Array.from(sel.options).some((o) => String(o.value || "").toUpperCase() === v);
+    const next = hasOption ? v : (sel.options[0] ? String(sel.options[0].value || "").toUpperCase() : "BINANCEFUT");
+    const resolved = normalizeProvider(next);
+    sel.value = resolved;
+    if (hint) {
+      hint.textContent = hintForProvider(resolved, !!apply._multi);
+    }
+    try { localStorage.setItem(key, resolved); } catch(_) {}
+    try { document.cookie = `db_exchange_mode=${encodeURIComponent(resolved)}; path=/; max-age=31536000`; } catch(_) {}
+    updateNavLinks(resolved);
+  }
+
+  function applyServerOptions(info){
+    const list = renderProviderOptions(info && info.availableProviders);
+    apply._multi = !!(info && info.multi);
+    if (!list.length) {
+      renderProviderOptions(["BINANCEFUT"]);
+    }
+  }
+
+  function currentProvider(){
+    return normalizeProvider(sel.value || (sel.options[0] && sel.options[0].value) || "BINANCEFUT");
+  }
+
+  function updateNavLinks(provider){
+    const links = document.querySelectorAll(".topnav5 a[href^='/dashboard'], .mobile-nav a[href^='/dashboard']");
+    if (!links.length) return;
+    const v = normalizeProvider(provider);
+    links.forEach((a) => {
+      try{
+        const url = new URL(a.getAttribute("href"), window.location.origin);
+        url.searchParams.set("exchange", v);
+        a.setAttribute("href", url.pathname + url.search);
+      }catch(_){}
+    });
+  }
+
+  async function loadServerProvider(){
+    try{
+      const r = await fetch("/api/settings/exchanges", { credentials: "include" });
+      const t = await r.text();
+      const j = JSON.parse(t);
+      if (!r.ok || !j || !j.ok) return { provider: null, locked: false, multi: false, availableProviders: [] };
+      const providers = Array.isArray(j.data && j.data.available_providers)
+        ? j.data.available_providers.map((v) => normalizeProvider(v))
+        : [];
+      return {
+        provider: (j.data && j.data.provider) ? normalizeProvider(j.data.provider) : null,
+        locked: !!(j.data && j.data.locked_by_env),
+        multi: !!(j.data && j.data.multi_enabled),
+        availableProviders: providers,
+      };
+    }catch(_){ return null; }
+  }
+
+  async function saveServerProvider(provider){
+    try{
+      const nextProvider = normalizeProvider(provider);
+      const payload = { provider: nextProvider, set_active_only: true };
+      const resp = await fetch("/api/settings/exchanges", {
+        method: "POST",
+        headers: { "Content-Type":"application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      return !!(resp && resp.ok);
+    }catch(_){
+      return false;
+    }
+  }
+
+  function ensureToast(){
+    let el = document.getElementById("ex-toast");
+    if (!el){
+      el = document.createElement("div");
+      el.id = "ex-toast";
+      el.className = "ex-toast hide";
+      el.setAttribute("aria-live", "polite");
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+
+  function showToast(text, level){
+    const el = ensureToast();
+    el.textContent = text;
+    el.classList.remove("ok","bad","dim","hide");
+    el.classList.add(level || "dim");
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(()=>{ el.classList.add("hide"); }, 2200);
+  }
+
+  window.dbExchangeToast = showToast;
+
+  (async function init(){
+    let saved = null;
+    try { saved = localStorage.getItem(key); } catch(_) { saved = null; }
+    const serverInfo = await loadServerProvider();
+    applyServerOptions(serverInfo || {});
+    const provider = serverInfo && serverInfo.provider ? serverInfo.provider : null;
+    apply(provider || saved || currentProvider());
+    if (serverInfo && serverInfo.locked) {
+      sel.disabled = true;
+      if (hint) {
+        const lockedText = hintForProvider(currentProvider(), !!(serverInfo && serverInfo.multi));
+        hint.textContent = `${lockedText} · 고정`;
+      }
+    }
+
+    try {
+      const url = new URL(window.location.href);
+      const qRaw = url.searchParams.get("exchange");
+      const q = qRaw ? normalizeProvider(qRaw) : "";
+      const cur = currentProvider();
+      if (!q || q !== cur) {
+        url.searchParams.set("exchange", cur);
+        window.location.replace(url.pathname + url.search);
+      }
+    } catch(_) {}
+  })();
+
+  sel.addEventListener("change", async () => {
+    const next = currentProvider();
+    showToast("거래소 변경됨 · 갱신 중…", "dim");
+    const ok = await saveServerProvider(next);
+    if (!ok) {
+      showToast("갱신 실패", "bad");
+      const serverInfo = await loadServerProvider();
+      apply((serverInfo && serverInfo.provider) ? serverInfo.provider : currentProvider());
+      return;
+    }
+    apply(next);
+    showToast("갱신 완료", "ok");
+    const url = new URL(window.location.href);
+    url.searchParams.set("exchange", next);
+    setTimeout(() => { window.location.href = url.pathname + url.search; }, 500);
+  });
+})();
+</script>
