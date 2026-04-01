@@ -38,6 +38,7 @@ const MAX_AGE_HOURS = Object.freeze({
   marketObjectiveScore: 24,
   serverVsPinePerformanceDelta: 24,
   explorationBudget: 24,
+  explorationProposal: 24,
   canonicalProvenance: 24,
   serverPrimaryCanary: 24,
   serverPrimaryAcceptanceWatch: 24,
@@ -73,6 +74,7 @@ const INPUTS = Object.freeze({
   marketObjectiveScore: path.join(OPS_DAILY_DIR, "best_self_evolution_market_objective_score_latest.json"),
   serverVsPinePerformanceDelta: path.join(OPS_DAILY_DIR, "best_self_evolution_server_vs_pine_performance_delta_latest.json"),
   explorationBudget: path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_budget_latest.json"),
+  explorationProposal: path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_proposal_latest.json"),
   canonicalProvenance: path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_provenance_latest.json"),
   serverPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
   serverPrimaryAcceptanceWatch: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_acceptance_watch_latest.json"),
@@ -210,6 +212,11 @@ async function main() {
       ? artifacts.explorationBudget.data.raw
       : artifacts.explorationBudget.data)
     : {};
+  const explorationProposalRaw = artifacts.explorationProposal && artifacts.explorationProposal.data
+    ? ((artifacts.explorationProposal.data.raw && typeof artifacts.explorationProposal.data.raw === "object")
+      ? artifacts.explorationProposal.data.raw
+      : artifacts.explorationProposal.data)
+    : {};
   const overrideAuthoritySummary = overrideAuthorityRaw.summary && typeof overrideAuthorityRaw.summary === "object"
     ? overrideAuthorityRaw.summary
     : {};
@@ -221,6 +228,9 @@ async function main() {
     : {};
   const explorationBudgetSummary = explorationBudgetRaw.summary && typeof explorationBudgetRaw.summary === "object"
     ? explorationBudgetRaw.summary
+    : {};
+  const explorationProposalSummary = explorationProposalRaw.summary && typeof explorationProposalRaw.summary === "object"
+    ? explorationProposalRaw.summary
     : {};
   const dropValidationSummary = dropValidationRaw.summary && typeof dropValidationRaw.summary === "object"
     ? dropValidationRaw.summary
@@ -338,6 +348,18 @@ async function main() {
   if (!rows.find((row) => row.loop === "EXPLORATION_BUDGET")) {
     rows.splice(16, 0, explorationBudgetRow);
   }
+  const explorationProposalRow = {
+    loop: "EXPLORATION_PROPOSAL",
+    fresh: artifacts.explorationProposal && artifacts.explorationProposal.fresh === true,
+    cycle_id: String(explorationProposalRaw.cycle_id || explorationProposalRaw.generation_id || "").trim() || null,
+    status: String(explorationProposalSummary.status || "").trim().toUpperCase() === "EXPLORATION_DRY_RUN_READY"
+      ? "PASS"
+      : (String(explorationProposalSummary.status || "").trim().toUpperCase() ? "HOLD" : "N/A"),
+    reason: `top=${explorationProposalSummary.top_market || "N/A"} / stage=${explorationProposalSummary.top_stage || "N/A"} / action=${explorationProposalSummary.top_action || "N/A"} / n=${explorationProposalSummary.proposal_n ?? 0}`,
+  };
+  if (!rows.find((row) => row.loop === "EXPLORATION_PROPOSAL")) {
+    rows.splice(17, 0, explorationProposalRow);
+  }
   const summary = {
     ...(derived.summary || {}),
     drop_validation_status: dropValidationSummary.status || derived.summary && derived.summary.drop_validation_status || null,
@@ -382,6 +404,11 @@ async function main() {
     exploration_budget_deferred_penalty_markets: Array.isArray(explorationBudgetSummary.deferred_penalty_markets)
       ? explorationBudgetSummary.deferred_penalty_markets.slice(0, 6)
       : ((derived.summary && Array.isArray(derived.summary.exploration_budget_deferred_penalty_markets)) ? derived.summary.exploration_budget_deferred_penalty_markets : []),
+    exploration_proposal_status: explorationProposalSummary.status || derived.summary && derived.summary.exploration_proposal_status || null,
+    exploration_proposal_proposal_n: explorationProposalSummary.proposal_n != null ? explorationProposalSummary.proposal_n : derived.summary && derived.summary.exploration_proposal_proposal_n || 0,
+    exploration_proposal_top_market: explorationProposalSummary.top_market || derived.summary && derived.summary.exploration_proposal_top_market || null,
+    exploration_proposal_top_stage: explorationProposalSummary.top_stage || derived.summary && derived.summary.exploration_proposal_top_stage || null,
+    exploration_proposal_top_action: explorationProposalSummary.top_action || derived.summary && derived.summary.exploration_proposal_top_action || null,
     market_objective_status: marketObjectiveSummary.status || derived.summary && derived.summary.market_objective_status || null,
     market_objective_top_recovery_market: marketObjectiveSummary.top_recovery_market || derived.summary && derived.summary.market_objective_top_recovery_market || null,
     market_objective_top_drag_market: marketObjectiveSummary.top_drag_market || derived.summary && derived.summary.market_objective_top_drag_market || null,
