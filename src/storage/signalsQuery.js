@@ -25,6 +25,12 @@ function toBool(v, fallback = false) {
   return fallback;
 }
 
+function isShadowSignal(entry) {
+  if (!entry) return false;
+  const source = String(entry.source || "").trim().toUpperCase();
+  return entry.authoritative !== true && source === "PINE_SHADOW";
+}
+
 function clampMin(raw, fallback, min = 1) {
   const n = Number(raw);
   if (!Number.isFinite(n)) return fallback;
@@ -603,6 +609,7 @@ async function getSignalsFromStorage({
   windowMs = 40 * 1000,
   scanLimit = 4000,
   caller = "getSignalsFromStorage",
+  includeShadow = false,
 }) {
   const ex = String(exchange || "BINANCEFUT").toUpperCase();
   const sym = String(symbol || "").trim();
@@ -657,6 +664,11 @@ async function getSignalsFromStorage({
   }
 
   // drop filter (optional)
+  if (!includeShadow) {
+    signals = signals.filter((row) => !isShadowSignal(row));
+  }
+
+  // drop filter (optional)
   const blocked = await loadDropFilters({ exchange: ex, symbol_or_pair_id: sym, tf: t });
   if (blocked.size > 0) {
     const kept = [];
@@ -708,6 +720,7 @@ async function getSignalsForBar({
   maxLookbackBars,
   maxLookaheadBars = 0,
   caller = "getSignalsForBar",
+  includeShadow = false,
 } = {}) {
   const barMs = toNum(barCloseMs);
   if (!symbol || barMs === null) return [];
@@ -728,6 +741,7 @@ async function getSignalsForBar({
       barCloseTimeUtcMs: barMs,
       scanLimit,
       caller,
+      includeShadow,
     });
     return out.slice(0, Number(limitN) || 200);
   }
@@ -741,6 +755,7 @@ async function getSignalsForBar({
       barCloseTimeUtcMs: barMs,
       scanLimit,
       caller,
+      includeShadow,
     });
     return out.slice(0, Number(limitN) || 200);
   }
@@ -759,6 +774,7 @@ async function getSignalsForBar({
       barCloseTimeUtcMs: targetMs,
       scanLimit,
       caller: `${caller}:lookahead`,
+      includeShadow,
     });
     for (const s of rows) {
       const id = s.signal_id || `${s.exchange || ""}__${s.symbol_or_pair_id || s.symbol || ""}__${s.tf || ""}__${s.bar_close_time_utc_ms || ""}__${s.event || ""}`;
@@ -781,6 +797,7 @@ async function getSignalsForBar({
       barCloseTimeUtcMs: targetMs,
       scanLimit,
       caller: i === 0 ? caller : `${caller}:lookback`,
+      includeShadow,
     });
     for (const s of rows) {
       const id = s.signal_id || `${s.exchange || ""}__${s.symbol_or_pair_id || s.symbol || ""}__${s.tf || ""}__${s.bar_close_time_utc_ms || ""}__${s.event || ""}`;
@@ -804,7 +821,7 @@ async function getSignalsForBar({
   return all.slice(0, Number(limitN) || 200);
 }
 
-async function listSignalsByMarket({ exchange = "BINANCEFUT", market, tf = defaultExecTfFromEnv() || "15m", limit = 50 } = {}) {
+async function listSignalsByMarket({ exchange = "BINANCEFUT", market, tf = defaultExecTfFromEnv() || "15m", limit = 50, includeShadow = false } = {}) {
   const db = getFirestore();
   const ex = String(exchange || "BINANCEFUT").toUpperCase();
   const symRaw = String(market || "").trim();
@@ -875,6 +892,7 @@ async function listSignalsByMarket({ exchange = "BINANCEFUT", market, tf = defau
     if (String(s.tf || "").trim() !== t) continue;
     const evt = String(s.event || "").trim().toUpperCase();
     if (eventList.length && !isAllowedEvent(evt, eventList)) continue;
+    if (!includeShadow && isShadowSignal(s)) continue;
     out.push(s);
     if (out.length >= Number(limit)) break;
   }

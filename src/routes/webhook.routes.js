@@ -27,7 +27,7 @@ const {
 } = require("../utils/selfEvolutionRuntimeState");
 const { runOneMarket } = require("../scheduler/marketRunner");
 const { resolveExecTfForExchange } = require("../utils/resolveExchange");
-const { sendSignalReceivedAlert, sendSignalDroppedAlert } = require("../services/signalLifecycleAlert");
+const { sendSignalDroppedAlert } = require("../services/signalLifecycleAlert");
 const { fetchBinanceFuturesAccount } = require("../exchanges/binanceFuturesPrivate");
 const { resolveBinanceFuturesKeys } = require("../utils/binanceKeyResolver");
 const { canonicalExternalEntryEvent, resolveEntryTimingTier } = require("../utils/liveEntryTaxonomy");
@@ -2177,59 +2177,23 @@ function createWebhookRoutes() {
           tf,
           signalId: saved && saved.signal_id ? saved.signal_id : (p.signal_id || null),
         };
-        setTimeout(() => {
-          triggerImmediateProcess(immediatePayload)
-            .then((res) => {
-              const summary = summarizeImmediateProcessResult(res);
-              console.log("[WEBHOOK_IMMEDIATE_PROCESS]", JSON.stringify({
-                exchange,
-                symbol,
-                tf,
-                signal_id: immediatePayload.signalId,
-                status: summary.status,
-                detail: summary.detail,
-              }));
-              persistWebhookSignalExecutionProbe({
-                requestId,
-                exchange,
-                symbol,
-                tf,
-                signalId: immediatePayload.signalId,
-                phase: "IMMEDIATE_PROCESS",
-                saved: true,
-                summary,
-              });
-            })
-            .catch((err) => {
-              const immediateMeta = err && err.immediate_meta ? err.immediate_meta : null;
-              console.warn("[WEBHOOK_IMMEDIATE_PROCESS_FAIL]", {
-                exchange,
-                symbol,
-                tf,
-                signal_id: immediatePayload.signalId,
-                error: err?.message || String(err),
-                stack: err?.stack || null,
-                retry: immediateMeta,
-              });
-              persistWebhookSignalExecutionProbe({
-                requestId,
-                exchange,
-                symbol,
-                tf,
-                signalId: immediatePayload.signalId,
-                phase: "IMMEDIATE_PROCESS_FAIL",
-                saved: true,
-                summary: {
-                  status: "ERROR",
-                  detail: {
-                    error: err?.message || String(err),
-                    stack: err?.stack || null,
-                    retry: immediateMeta || null,
-                  },
-                },
-              });
-            });
-        }, 0);
+        persistWebhookSignalExecutionProbe({
+          requestId,
+          exchange,
+          symbol,
+          tf,
+          signalId: immediatePayload.signalId,
+          phase: "IMMEDIATE_PROCESS_SKIPPED",
+          saved: true,
+          summary: {
+            status: "SHADOW_ONLY",
+            detail: {
+              source: "PINE_SHADOW",
+              authoritative: false,
+              reason: "PINE_SHADOW_DOES_NOT_ENTER_EXECUTION_CHAIN",
+            },
+          },
+        });
       }
 
       return finalize({
