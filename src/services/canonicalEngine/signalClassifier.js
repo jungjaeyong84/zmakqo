@@ -1,13 +1,22 @@
 "use strict";
 
+const TRANSITION_CORE_QUALITY_RULE = Object.freeze({
+  confidence_min: 0.45,
+  posterior_min: 0.52,
+  wave_conf_min: 0.55,
+  transition_risk_max: 0.48,
+  field_alignment_min: 0.55,
+  coherence_min: 0.52,
+});
+
 function resolveTransitionCoreQuality(snapshot = {}) {
   const checks = [];
-  if (Number.isFinite(snapshot.confidence)) checks.push(snapshot.confidence >= 0.45);
-  if (Number.isFinite(snapshot.posterior)) checks.push(snapshot.posterior >= 0.52);
-  if (Number.isFinite(snapshot.wave_conf)) checks.push(snapshot.wave_conf >= 0.55);
-  if (Number.isFinite(snapshot.transition_risk)) checks.push(snapshot.transition_risk <= 0.48);
-  if (Number.isFinite(snapshot.field_alignment)) checks.push(snapshot.field_alignment >= 0.55);
-  if (Number.isFinite(snapshot.coherence)) checks.push(snapshot.coherence >= 0.52);
+  if (Number.isFinite(snapshot.confidence)) checks.push(snapshot.confidence >= TRANSITION_CORE_QUALITY_RULE.confidence_min);
+  if (Number.isFinite(snapshot.posterior)) checks.push(snapshot.posterior >= TRANSITION_CORE_QUALITY_RULE.posterior_min);
+  if (Number.isFinite(snapshot.wave_conf)) checks.push(snapshot.wave_conf >= TRANSITION_CORE_QUALITY_RULE.wave_conf_min);
+  if (Number.isFinite(snapshot.transition_risk)) checks.push(snapshot.transition_risk <= TRANSITION_CORE_QUALITY_RULE.transition_risk_max);
+  if (Number.isFinite(snapshot.field_alignment)) checks.push(snapshot.field_alignment >= TRANSITION_CORE_QUALITY_RULE.field_alignment_min);
+  if (Number.isFinite(snapshot.coherence)) checks.push(snapshot.coherence >= TRANSITION_CORE_QUALITY_RULE.coherence_min);
   if (!checks.length) return { observed: false, pass: true };
   return { observed: true, pass: checks.every(Boolean) };
 }
@@ -77,5 +86,6 @@ function resolveCanonicalSignalClassification({ snapshot, config } = {}) {
 }
 
 module.exports = {
+  TRANSITION_CORE_QUALITY_RULE,
   resolveCanonicalSignalClassification,
 };

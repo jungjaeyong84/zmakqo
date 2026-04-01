@@ -35,6 +35,7 @@ function buildStepPlan() {
     { id: "server_primary_canary", script: "report-best-self-evolution-server-primary-canary.js" },
     { id: "server_primary_acceptance_watch", script: "report-best-self-evolution-server-primary-acceptance-watch.js" },
     { id: "server_primary_learning_epoch", script: "report-best-self-evolution-server-primary-learning-epoch.js" },
+    { id: "initial_signal_quality_contract", script: "report-best-self-evolution-initial-signal-quality-contract.js" },
     { id: "pine_shadow_drift", script: "report-best-self-evolution-pine-shadow-drift.js" },
     { id: "deployment_probe", script: "report-best-self-evolution-deployment-probe.js" },
     { id: "bundle_activation", script: "report-best-self-evolution-bundle-activation.js" },
