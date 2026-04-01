@@ -41,7 +41,11 @@ const { sendSignalReceivedAlert } = require("../services/signalLifecycleAlert");
 const { sendAlert } = require("../utils/alerts");
 const { estimateTp1ReachProbability } = require("../services/evTp1Probability");
 const { resolveWaitOneBarConfig, evaluateWaitOneBarTiming } = require("../services/waitOneBarPolicy");
-const { buildServerNativeInitialSignals, HTF_TF: SERVER_NATIVE_HTF_TF } = require("../services/serverNativeInitialSignal");
+const {
+  buildServerNativeInitialSignals,
+  HTF_TF: SERVER_NATIVE_HTF_TF,
+  minBaseBarsForDerivedHtf,
+} = require("../services/serverNativeInitialSignal");
 const { placeMarketBuy, placeMarketSell, fetchOrder, calcAveragePrice: calcUpbitAveragePrice } = require("../exchanges/upbitPrivate");
 const { placeOrder: placeKiwoomOrder, fetchAccount: fetchKiwoomAccount } = require("../exchanges/kiwoomRest");
 const { isKrxMarketOpenKst } = require("../utils/krxCalendar");
@@ -2574,10 +2578,17 @@ function finalizeInternalSignals({ signals, posMeta, barCloseMs, fallbackUtc, ex
 async function loadServerNativeInitialSignals({ exchange, symbol, signalTf, barCloseMs } = {}) {
   if (!symbol || !signalTf || !Number.isFinite(Number(barCloseMs))) return [];
   try {
-    const [bars, htfBars] = await Promise.all([
+    let [bars, htfBars] = await Promise.all([
       queryBars({ exchange, symbol, tf: signalTf, limit: 220 }),
       queryBars({ exchange, symbol, tf: SERVER_NATIVE_HTF_TF, limit: 120 }),
     ]);
+    if (!Array.isArray(htfBars) || !htfBars.length) {
+      const requiredBaseBars = minBaseBarsForDerivedHtf({ sourceTf: signalTf });
+      if (requiredBaseBars > 220) {
+        const expandedBars = await queryBars({ exchange, symbol, tf: signalTf, limit: requiredBaseBars });
+        if (Array.isArray(expandedBars) && expandedBars.length > bars.length) bars = expandedBars;
+      }
+    }
     return buildServerNativeInitialSignals({
       exchange,
       symbol,

@@ -4,7 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 const { queryBars } = require("../src/storage/barsSnapshots");
-const { __test, HTF_TF } = require("../src/services/serverNativeInitialSignal");
+const { __test, HTF_TF, minBaseBarsForDerivedHtf } = require("../src/services/serverNativeInitialSignal");
 
 function loadAdcQuotaProject() {
   try {
@@ -122,8 +122,9 @@ async function main() {
   const tf = arg("tf", "15m");
   const rawBarMs = arg("bar-ms", null);
   const barMs = rawBarMs == null || rawBarMs === "" ? NaN : Number(rawBarMs);
-  const bars = await queryBars({ exchange, symbol, tf, limit: 260 });
+  const bars = await queryBars({ exchange, symbol, tf, limit: Math.max(260, minBaseBarsForDerivedHtf({ sourceTf: tf })) });
   const htfBars = await queryBars({ exchange, symbol, tf: HTF_TF, limit: 140 });
+  const effectiveHtfBars = __test.resolveEffectiveHtfBars({ bars, htfBars, tf });
   const evaluated = __test.evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars });
   const selected = Number.isFinite(barMs)
     ? evaluated.filter((row) => Number(row && row.diagnostics && row.diagnostics.timestamp) === barMs)
@@ -148,6 +149,7 @@ async function main() {
     google_cloud_project: process.env.GOOGLE_CLOUD_PROJECT || null,
     bar_count: bars.length,
     htf_bar_count: htfBars.length,
+    effective_htf_bar_count: effectiveHtfBars.length,
     rows: payload,
   }, null, 2));
 }

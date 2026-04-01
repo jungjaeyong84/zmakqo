@@ -17,6 +17,8 @@ const MAX_EXTENSION_LONG = 0.92;
 const MIN_EXTENSION_SHORT = 0.08;
 const EPS = 1e-10;
 const RANGE_EPS = 1e-8;
+const HTF_EMA_SLOW_LEN = 55;
+const DERIVED_HTF_TARGET_BARS = 60;
 
 function msToUtcZ(ms) {
   const n = Number(ms);
@@ -35,6 +37,18 @@ function clamp01(v) {
   if (n <= 0) return 0;
   if (n >= 1) return 1;
   return n;
+}
+
+function tfToMs(tf) {
+  const raw = String(tf || "").trim().toLowerCase();
+  const m = raw.match(/^(\d+)(m|h|d)$/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  if (m[2] === "m") return n * 60 * 1000;
+  if (m[2] === "h") return n * 60 * 60 * 1000;
+  if (m[2] === "d") return n * 24 * 60 * 60 * 1000;
+  return null;
 }
 
 function safeDiv(a, b) {
@@ -196,6 +210,70 @@ function normalizeBars(bars) {
     .filter((bar) => Number.isFinite(bar.open) && Number.isFinite(bar.high) && Number.isFinite(bar.low) && Number.isFinite(bar.close));
 }
 
+function deriveHigherTimeframeBars({ bars, sourceTf, targetTf }) {
+  const normalized = normalizeBars(bars);
+  const sourceTfMs = tfToMs(sourceTf);
+  const targetTfMs = tfToMs(targetTf);
+  if (!normalized.length || !Number.isFinite(sourceTfMs) || !Number.isFinite(targetTfMs)) return [];
+  if (targetTfMs <= sourceTfMs) return [];
+  const ratio = targetTfMs / sourceTfMs;
+  if (!Number.isFinite(ratio) || ratio < 2 || Math.round(ratio) !== ratio) return [];
+
+  const grouped = new Map();
+  for (const bar of normalized) {
+    const ts = Number(bar && bar.timestamp);
+    if (!Number.isFinite(ts)) continue;
+    const bucketCloseMs = Math.ceil(ts / targetTfMs) * targetTfMs;
+    if (!grouped.has(bucketCloseMs)) {
+      grouped.set(bucketCloseMs, {
+        open: bar.open,
+        high: bar.high,
+        low: bar.low,
+        close: bar.close,
+        volume: Number(bar.volume || 0),
+        timestamp: bucketCloseMs,
+        count: 1,
+      });
+      continue;
+    }
+    const agg = grouped.get(bucketCloseMs);
+    agg.high = Math.max(Number(agg.high), Number(bar.high));
+    agg.low = Math.min(Number(agg.low), Number(bar.low));
+    agg.close = bar.close;
+    agg.volume = Number(agg.volume || 0) + Number(bar.volume || 0);
+    agg.count += 1;
+  }
+
+  return Array.from(grouped.values())
+    .filter((row) => Number(row.count) === ratio)
+    .sort((a, b) => Number(a.timestamp) - Number(b.timestamp))
+    .map((row) => ({
+      open: row.open,
+      high: row.high,
+      low: row.low,
+      close: row.close,
+      volume: row.volume,
+      timestamp: row.timestamp,
+      closeTimeUtcMs: row.timestamp,
+    }));
+}
+
+function resolveEffectiveHtfBars({ bars, htfBars, tf }) {
+  const normalizedHtfBars = normalizeBars(htfBars);
+  if (normalizedHtfBars.length) return normalizedHtfBars;
+  return deriveHigherTimeframeBars({ bars, sourceTf: tf, targetTf: HTF_TF });
+}
+
+function minBaseBarsForDerivedHtf({ sourceTf, targetTf = HTF_TF, targetBars = DERIVED_HTF_TARGET_BARS } = {}) {
+  const sourceTfMs = tfToMs(sourceTf);
+  const targetTfMs = tfToMs(targetTf);
+  if (!Number.isFinite(sourceTfMs) || !Number.isFinite(targetTfMs) || targetTfMs <= sourceTfMs) return 0;
+  const ratio = targetTfMs / sourceTfMs;
+  if (!Number.isFinite(ratio) || ratio < 1) return 0;
+  const desiredTargetBars = Math.max(Number(targetBars) || 0, HTF_EMA_SLOW_LEN);
+  return Math.ceil(desiredTargetBars * ratio);
+}
+
 function resolveHtfBias(htfBars, barMs) {
   const bars = normalizeBars(htfBars);
   if (!bars.length) return "NEUTRAL";
@@ -331,6 +409,7 @@ function buildNativeSignal({
 function evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars }) {
   const candles = normalizeBars(bars);
   if (candles.length < 60) return [];
+  const effectiveHtfBars = resolveEffectiveHtfBars({ bars: candles, htfBars, tf });
   const closes = candles.map((bar) => bar.close);
   const highs = candles.map((bar) => bar.high);
   const lows = candles.map((bar) => bar.low);
@@ -375,7 +454,7 @@ function evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars }) {
     const bodyRatio = Math.abs(close - open) / barRange;
     const upperWickRatio = (high - Math.max(open, close)) / barRange;
     const lowerWickRatio = (Math.min(open, close) - low) / barRange;
-    const htfBias = resolveHtfBias(htfBars, candles[i].timestamp);
+    const htfBias = resolveHtfBias(effectiveHtfBars, candles[i].timestamp);
 
     const stateBull = ef > em && em > es && slopeFast > 0 && slopeMid >= 0 && trendStrengthRaw >= STATE_TREND_MIN;
     const stateBear = ef < em && em < es && slopeFast < 0 && slopeMid <= 0 && trendStrengthRaw >= STATE_TREND_MIN;
@@ -726,8 +805,13 @@ module.exports = {
   HTF_TF,
   STRATEGY_ID,
   buildServerNativeInitialSignals,
+  minBaseBarsForDerivedHtf,
   __test: {
     normalizeBars,
+    tfToMs,
+    deriveHigherTimeframeBars,
+    resolveEffectiveHtfBars,
+    resolveHtfBias,
     evaluateSignalsForBars,
   },
 };

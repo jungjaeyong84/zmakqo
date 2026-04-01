@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("assert");
-const { buildServerNativeInitialSignals } = require("../services/serverNativeInitialSignal");
+const { buildServerNativeInitialSignals, HTF_TF, minBaseBarsForDerivedHtf, __test } = require("../services/serverNativeInitialSignal");
 
 function buildBullBars() {
   const bars = [];
@@ -41,6 +41,20 @@ function buildBullHtfBars() {
     const low = open - 0.1;
     bars.push({ open, high, low, close, volume: 3000, closeTimeUtcMs: 14400000 * (i + 1) });
     p = close - 0.02;
+  }
+  return bars;
+}
+
+function buildLongBullBars(totalBars = 960) {
+  const bars = [];
+  let p = 100;
+  for (let i = 0; i < totalBars; i += 1) {
+    const open = p;
+    const close = p + 0.05 + (i % 11 === 0 ? 0.02 : 0);
+    const high = Math.max(open, close) + 0.04;
+    const low = Math.min(open, close) - 0.03;
+    bars.push({ open, high, low, close, volume: 900 + (i * 2), closeTimeUtcMs: 900000 * (i + 1) });
+    p = close - 0.01;
   }
   return bars;
 }
@@ -85,6 +99,22 @@ function buildFlatBars() {
     barCloseMs: flatBars.at(-1).closeTimeUtcMs,
   });
   assert.deepStrictEqual(flatSignals, []);
+
+  const longBullBars = buildLongBullBars(minBaseBarsForDerivedHtf({ sourceTf: "15m" }));
+  const derivedHtfBars = __test.deriveHigherTimeframeBars({
+    bars: longBullBars,
+    sourceTf: "15m",
+    targetTf: HTF_TF,
+  });
+  assert(derivedHtfBars.length >= 55);
+  assert.strictEqual(__test.resolveHtfBias(derivedHtfBars, derivedHtfBars.at(-1).timestamp), "BULL");
+
+  const fallbackBiasBars = __test.resolveEffectiveHtfBars({
+    bars: longBullBars,
+    htfBars: [],
+    tf: "15m",
+  });
+  assert(fallbackBiasBars.length >= 55);
 
   console.log("SERVER_NATIVE_INITIAL_SIGNAL_TEST_OK");
 })();
