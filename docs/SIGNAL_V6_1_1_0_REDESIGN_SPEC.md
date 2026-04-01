@@ -123,19 +123,27 @@ trigger는 setup veto가 아니라 진입 시점 선택기다.
 ## 6. Grade 정의
 
 ### EARLY
-- `score >= 0.60`
-- valid trigger 존재
-- risk pass
+- `score >= 0.56`
+- `RECLAIM/BREAKOUT` 또는 `LOSS/BREAKDOWN` trigger 존재
+- `early risk pass`
+- `TRANSITION`에서는 방향 bias와 anti-chop gate를 함께 본다.
 
 ### CORE
-- `score >= 0.74`
+- `score >= 0.68`
+- `CONTINUATION/BREAKOUT` 또는 `CONTINUATION/BREAKDOWN` trigger 존재
 - 더 강한 구조 정렬과 participation
-- risk pass
+- `core risk pass`
+- `HTF_CONFLICT`는 `EARLY`가 아니라 `CORE`를 주로 제한한다.
 
 ### DIAG_C
-- `score >= 0.86`
+- `score >= 0.82`
 - 내부 고확신 상태
 - 외부 live grade로 직접 쓰지 않는다.
+
+### 재발사 제어
+
+- 같은 방향 재발사는 `same_dir_cooldown_bars = 8` 기준으로 억제한다.
+- 다만 trigger type이 바뀌면 같은 방향이라도 더 일찍 재발사할 수 있다.
 
 ## 7. 설명 가능성 계약
 
@@ -146,9 +154,10 @@ trigger는 setup veto가 아니라 진입 시점 선택기다.
 3. `long_opportunity_score`
 4. `short_opportunity_score`
 5. `trigger_long / trigger_short`
-6. `risk_mode_long / risk_mode_short`
-7. `block_reason_long / block_reason_short`
-8. `live_grade_long / live_grade_short`
+6. `risk_mode_long_early / risk_mode_short_early`
+7. `risk_mode_long_core / risk_mode_short_core`
+8. `block_reason_long / block_reason_short`
+9. `live_grade_long / live_grade_short`
 
 ## 8. 설계상 중요한 차이
 

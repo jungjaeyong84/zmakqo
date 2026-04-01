@@ -1,5 +1,5 @@
 //@version=6
-indicator("돈벌자 :) Ω Full v6.1.1.0 (Clean Redesign)", overlay = true, max_lines_count = 500, max_labels_count = 500)
+indicator("돈벌자 :) Ω Full v6.1.1.0", overlay = true, max_lines_count = 500, max_labels_count = 500)
 
 // External contract intentionally preserved:
 // - direction: LONG / SHORT
@@ -22,9 +22,10 @@ state_trend_min = input.float(0.22, "Trend strength min", minval = 0.0, maxval =
 dead_atr_max = input.float(0.0014, "Dead market ATR max", minval = 0.0, maxval = 0.05, step = 0.0001, group = grp_state)
 panic_atr_min = input.float(0.0350, "Chaos ATR min", minval = 0.0, maxval = 0.20, step = 0.0005, group = grp_state)
 
-thr_early = input.float(0.60, "LONG/SHORT 기본 점수 최소", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_thresholds)
-thr_core = input.float(0.74, "CORE 점수 최소", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_thresholds)
-thr_diag_c = input.float(0.86, "DIAG_C score", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_thresholds)
+thr_early = input.float(0.56, "LONG/SHORT 기본 점수 최소", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_thresholds)
+thr_core = input.float(0.68, "CORE 점수 최소", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_thresholds)
+thr_diag_c = input.float(0.82, "DIAG_C score", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_thresholds)
+same_dir_cooldown_bars = input.int(8, "같은 방향 재발사 쿨다운", minval = 0, maxval = 30, group = grp_thresholds)
 
 min_rr = input.float(1.45, "Minimum reward/risk", minval = 0.5, maxval = 5.0, step = 0.05, group = grp_risk)
 stop_atr = input.float(1.8, "Stop ATR multiple", minval = 0.5, maxval = 5.0, step = 0.1, group = grp_risk)
@@ -123,43 +124,57 @@ market_state = state_chaos ? "CHAOS" : state_bull ? "BULL" : state_bear ? "BEAR"
 //────────────────────────────────────
 // Opportunity Engine
 //────────────────────────────────────
-structure_alignment_long = market_state == "BULL" ? 1.0 : market_state == "TRANSITION" and ema_fast >= ema_mid ? 0.68 : market_state == "RANGE" ? 0.28 : 0.0
-structure_alignment_short = market_state == "BEAR" ? 1.0 : market_state == "TRANSITION" and ema_fast <= ema_mid ? 0.68 : market_state == "RANGE" ? 0.28 : 0.0
+close_pos_in_bar = f_clamp01((close - low) / bar_range)
+bull_close = close > open and close_pos_in_bar >= 0.55
+bear_close = close < open and close_pos_in_bar <= 0.45
+recent_high = ta.highest(high, 5)[1]
+recent_low = ta.lowest(low, 5)[1]
+reclaim_strength_long = f_clamp01(0.45 * (close > ema_fast ? 1.0 : 0.0) + 0.30 * close_pos_in_bar + 0.25 * (low <= ema_fast ? 1.0 : 0.0))
+reclaim_strength_short = f_clamp01(0.45 * (close < ema_fast ? 1.0 : 0.0) + 0.30 * (1.0 - close_pos_in_bar) + 0.25 * (high >= ema_fast ? 1.0 : 0.0))
+transition_bias_long = market_state == "TRANSITION" and ema_fast >= ema_fast[2]
+transition_bias_short = market_state == "TRANSITION" and ema_fast <= ema_fast[2]
+
+structure_alignment_long = market_state == "BULL" ? 1.0 : market_state == "TRANSITION" ? (ema_fast >= ema_mid ? 0.82 : close >= ema_fast ? 0.62 : 0.45) : market_state == "RANGE" ? 0.40 : 0.15
+structure_alignment_short = market_state == "BEAR" ? 1.0 : market_state == "TRANSITION" ? (ema_fast <= ema_mid ? 0.82 : close <= ema_fast ? 0.62 : 0.45) : market_state == "RANGE" ? 0.40 : 0.15
 
 directional_pressure_long = f_clamp01(
-    0.40 * f_clamp01((rsi_val - 45.0) / 25.0) +
-    0.35 * f_clamp01((macd_hist + atr_ratio * 0.6) / (atr_ratio * 1.8 + 1e-6)) +
-    0.25 * f_clamp01((close - ema_mid) / (atr * 1.5 + 1e-6))
+    0.38 * f_clamp01((rsi_val - 45.0) / 25.0) +
+    0.34 * f_clamp01((macd_hist + atr_ratio * 0.6) / (atr_ratio * 1.8 + 1e-6)) +
+    0.28 * f_clamp01((close - ema_mid) / (atr * 1.5 + 1e-6))
 )
 directional_pressure_short = f_clamp01(
-    0.40 * f_clamp01((55.0 - rsi_val) / 25.0) +
-    0.35 * f_clamp01((-macd_hist + atr_ratio * 0.6) / (atr_ratio * 1.8 + 1e-6)) +
-    0.25 * f_clamp01((ema_mid - close) / (atr * 1.5 + 1e-6))
+    0.38 * f_clamp01((55.0 - rsi_val) / 25.0) +
+    0.34 * f_clamp01((-macd_hist + atr_ratio * 0.6) / (atr_ratio * 1.8 + 1e-6)) +
+    0.28 * f_clamp01((ema_mid - close) / (atr * 1.5 + 1e-6))
 )
 
-pullback_quality_long = f_clamp01(1.0 - math.abs(price_position - 0.38) / 0.38)
-pullback_quality_short = f_clamp01(1.0 - math.abs(price_position - 0.62) / 0.38)
+pullback_quality_long = f_clamp01(0.55 * f_clamp01(1.0 - math.abs(price_position - 0.42) / 0.42) + 0.45 * reclaim_strength_long)
+pullback_quality_short = f_clamp01(0.55 * f_clamp01(1.0 - math.abs(price_position - 0.58) / 0.42) + 0.45 * reclaim_strength_short)
 participation = f_clamp01(0.55 * f_clamp01(vol_ratio / 1.8) + 0.45 * f_clamp01(atr_ratio / 0.01))
-continuation_pressure_long = f_clamp01(0.50 * (close > ema_fast ? 1.0 : 0.0) + 0.25 * f_clamp01(body_ratio / 0.7) + 0.25 * (macd_hist >= macd_hist[1] ? 1.0 : 0.0))
-continuation_pressure_short = f_clamp01(0.50 * (close < ema_fast ? 1.0 : 0.0) + 0.25 * f_clamp01(body_ratio / 0.7) + 0.25 * (macd_hist <= macd_hist[1] ? 1.0 : 0.0))
+anti_chop_gate = market_state != "RANGE" or participation >= 0.52 or trend_strength_raw >= state_trend_min * 0.9
+continuation_pressure_long = f_clamp01(0.42 * (close > ema_fast ? 1.0 : 0.0) + 0.28 * f_clamp01(body_ratio / 0.7) + 0.30 * (macd_hist >= macd_hist[1] ? 1.0 : 0.0))
+continuation_pressure_short = f_clamp01(0.42 * (close < ema_fast ? 1.0 : 0.0) + 0.28 * f_clamp01(body_ratio / 0.7) + 0.30 * (macd_hist <= macd_hist[1] ? 1.0 : 0.0))
 risk_efficiency_long = f_clamp01(0.60 * (price_position <= max_extension_long ? 1.0 : 0.0) + 0.40 * (close >= ema_anchor * 0.97 ? 1.0 : 0.35))
 risk_efficiency_short = f_clamp01(0.60 * (price_position >= min_extension_short ? 1.0 : 0.0) + 0.40 * (close <= ema_anchor * 1.03 ? 1.0 : 0.35))
 
-long_opportunity = 0.24 * structure_alignment_long + 0.22 * directional_pressure_long + 0.16 * pullback_quality_long + 0.14 * participation + 0.14 * continuation_pressure_long + 0.10 * risk_efficiency_long
-short_opportunity = 0.24 * structure_alignment_short + 0.22 * directional_pressure_short + 0.16 * pullback_quality_short + 0.14 * participation + 0.14 * continuation_pressure_short + 0.10 * risk_efficiency_short
+long_opportunity = 0.22 * structure_alignment_long + 0.20 * directional_pressure_long + 0.18 * pullback_quality_long + 0.12 * participation + 0.14 * continuation_pressure_long + 0.14 * risk_efficiency_long
+short_opportunity = 0.22 * structure_alignment_short + 0.20 * directional_pressure_short + 0.18 * pullback_quality_short + 0.12 * participation + 0.14 * continuation_pressure_short + 0.14 * risk_efficiency_short
 
 //────────────────────────────────────
 // Trigger Engine
 //────────────────────────────────────
-trigger_breakout_long = close > high[1] and close > open and body_ratio >= 0.48
-trigger_reclaim_long = low < ema_fast and close > ema_fast and close > open and price_position <= 0.62
-trigger_continuation_long = close > ema_fast and close > ema_mid and macd_hist >= macd_hist[1] and body_ratio >= 0.42
-trigger_breakout_short = close < low[1] and close < open and body_ratio >= 0.48
-trigger_reclaim_short = high > ema_fast and close < ema_fast and close < open and price_position >= 0.38
-trigger_continuation_short = close < ema_fast and close < ema_mid and macd_hist <= macd_hist[1] and body_ratio >= 0.42
+pullback_depth_ok_long = price_position >= 0.34 and price_position <= 0.82
+pullback_depth_ok_short = price_position <= 0.66 and price_position >= 0.18
+
+trigger_breakout_long = close > recent_high and close > ema_fast and bull_close and body_ratio >= 0.46
+trigger_reclaim_long = close > ema_fast and low <= ema_fast and close >= ema_mid * 0.998 and reclaim_strength_long >= 0.68 and bull_close and directional_pressure_long >= 0.42 and (market_state != "TRANSITION" or transition_bias_long)
+trigger_continuation_long = close > ema_fast and ema_fast >= ema_mid and pullback_depth_ok_long and bull_close and macd_hist >= macd_hist[1]
+trigger_breakdown_short = close < recent_low and close < ema_fast and bear_close and body_ratio >= 0.46
+trigger_loss_short = close < ema_fast and high >= ema_fast and close <= ema_mid * 1.002 and reclaim_strength_short >= 0.68 and bear_close and directional_pressure_short >= 0.42 and (market_state != "TRANSITION" or transition_bias_short)
+trigger_continuation_short = close < ema_fast and ema_fast <= ema_mid and pullback_depth_ok_short and bear_close and macd_hist <= macd_hist[1]
 
 trigger_type_long = trigger_breakout_long ? "BREAKOUT" : trigger_reclaim_long ? "RECLAIM" : trigger_continuation_long ? "CONTINUATION" : "NONE"
-trigger_type_short = trigger_breakout_short ? "BREAKOUT" : trigger_reclaim_short ? "RECLAIM" : trigger_continuation_short ? "CONTINUATION" : "NONE"
+trigger_type_short = trigger_breakdown_short ? "BREAKDOWN" : trigger_loss_short ? "LOSS" : trigger_continuation_short ? "CONTINUATION" : "NONE"
 trigger_long = trigger_type_long != "NONE"
 trigger_short = trigger_type_short != "NONE"
 
@@ -178,33 +193,60 @@ extension_short_block = price_position < min_extension_short
 htf_conflict_long = htf_bias == "BEAR"
 htf_conflict_short = htf_bias == "BULL"
 
-risk_ok_long = long_rr >= min_rr and not extension_long_block and not state_dead and not state_chaos and not htf_conflict_long
-risk_ok_short = short_rr >= min_rr and not extension_short_block and not state_dead and not state_chaos and not htf_conflict_short
+hard_block_long = long_rr < min_rr or extension_long_block or state_dead or state_chaos
+hard_block_short = short_rr < min_rr or extension_short_block or state_dead or state_chaos
 
-risk_mode_long = not risk_ok_long ? (state_dead ? "DEAD_MARKET" : state_chaos ? "CHAOS_MARKET" : htf_conflict_long ? "HTF_CONFLICT" : extension_long_block ? "EXTREME_EXTENSION" : "RR_FAIL") : "PASS"
-risk_mode_short = not risk_ok_short ? (state_dead ? "DEAD_MARKET" : state_chaos ? "CHAOS_MARKET" : htf_conflict_short ? "HTF_CONFLICT" : extension_short_block ? "EXTREME_EXTENSION" : "RR_FAIL") : "PASS"
+risk_ok_long_early = not hard_block_long
+risk_ok_short_early = not hard_block_short
+risk_ok_long_core = not hard_block_long and not htf_conflict_long
+risk_ok_short_core = not hard_block_short and not htf_conflict_short
+
+risk_mode_long_early = not risk_ok_long_early ? (state_dead ? "DEAD_MARKET" : state_chaos ? "CHAOS_MARKET" : extension_long_block ? "EXTREME_EXTENSION" : "RR_FAIL") : "PASS"
+risk_mode_short_early = not risk_ok_short_early ? (state_dead ? "DEAD_MARKET" : state_chaos ? "CHAOS_MARKET" : extension_short_block ? "EXTREME_EXTENSION" : "RR_FAIL") : "PASS"
+risk_mode_long_core = not risk_ok_long_core ? (state_dead ? "DEAD_MARKET" : state_chaos ? "CHAOS_MARKET" : htf_conflict_long ? "HTF_CONFLICT" : extension_long_block ? "EXTREME_EXTENSION" : "RR_FAIL") : "PASS"
+risk_mode_short_core = not risk_ok_short_core ? (state_dead ? "DEAD_MARKET" : state_chaos ? "CHAOS_MARKET" : htf_conflict_short ? "HTF_CONFLICT" : extension_short_block ? "EXTREME_EXTENSION" : "RR_FAIL") : "PASS"
 
 //────────────────────────────────────
 // Final signals
 //────────────────────────────────────
-long_early = long_opportunity >= thr_early and trigger_long and risk_ok_long
-long_core = long_opportunity >= thr_core and trigger_long and risk_ok_long and structure_alignment_long >= 0.68 and participation >= 0.48
-long_diag_c = long_opportunity >= thr_diag_c and trigger_long and risk_ok_long and structure_alignment_long >= 0.90 and participation >= 0.60 and directional_pressure_long >= 0.68
+long_early_raw = long_opportunity >= thr_early and (trigger_reclaim_long or trigger_breakout_long) and risk_ok_long_early and structure_alignment_long >= 0.40 and directional_pressure_long >= 0.42 and anti_chop_gate
+long_core_raw = long_opportunity >= thr_core and (trigger_continuation_long or trigger_breakout_long) and risk_ok_long_core and structure_alignment_long >= 0.62 and participation >= 0.42
+long_diag_c = long_opportunity >= thr_diag_c and trigger_long and risk_ok_long_core and structure_alignment_long >= 0.82 and participation >= 0.58 and directional_pressure_long >= 0.64
 
-short_early = short_opportunity >= thr_early and trigger_short and risk_ok_short
-short_core = short_opportunity >= thr_core and trigger_short and risk_ok_short and structure_alignment_short >= 0.68 and participation >= 0.48
-short_diag_c = short_opportunity >= thr_diag_c and trigger_short and risk_ok_short and structure_alignment_short >= 0.90 and participation >= 0.60 and directional_pressure_short >= 0.68
+short_early_raw = short_opportunity >= thr_early and (trigger_loss_short or trigger_breakdown_short) and risk_ok_short_early and structure_alignment_short >= 0.40 and directional_pressure_short >= 0.42 and anti_chop_gate
+short_core_raw = short_opportunity >= thr_core and (trigger_continuation_short or trigger_breakdown_short) and risk_ok_short_core and structure_alignment_short >= 0.62 and participation >= 0.42
+short_diag_c = short_opportunity >= thr_diag_c and trigger_short and risk_ok_short_core and structure_alignment_short >= 0.82 and participation >= 0.58 and directional_pressure_short >= 0.64
 
-long_core_pulse = long_core and not long_core[1]
-short_core_pulse = short_core and not short_core[1]
-long_early_pulse = long_early and not long_core and not long_early[1]
-short_early_pulse = short_early and not short_core and not short_early[1]
+var int last_long_signal_bar = na
+var int last_short_signal_bar = na
+var string last_long_trigger = "NONE"
+var string last_short_trigger = "NONE"
+
+long_can_fire = na(last_long_signal_bar) or bar_index - last_long_signal_bar > same_dir_cooldown_bars or trigger_type_long != last_long_trigger
+short_can_fire = na(last_short_signal_bar) or bar_index - last_short_signal_bar > same_dir_cooldown_bars or trigger_type_short != last_short_trigger
+
+long_core_pulse = long_core_raw and long_can_fire
+short_core_pulse = short_core_raw and short_can_fire
+long_early_pulse = long_early_raw and not long_core_pulse and long_can_fire
+short_early_pulse = short_early_raw and not short_core_pulse and short_can_fire
+
+if long_core_pulse or long_early_pulse
+    last_long_signal_bar := bar_index
+    last_long_trigger := trigger_type_long
+if short_core_pulse or short_early_pulse
+    last_short_signal_bar := bar_index
+    last_short_trigger := trigger_type_short
+
+long_early = long_early_raw
+long_core = long_core_raw
+short_early = short_early_raw
+short_core = short_core_raw
 
 long_live_grade = long_core ? "CORE" : long_early ? "EARLY" : "NONE"
 short_live_grade = short_core ? "CORE" : short_early ? "EARLY" : "NONE"
 
-block_reason_long = risk_mode_long != "PASS" ? risk_mode_long : trigger_type_long == "NONE" ? "WAIT_TRIGGER" : long_opportunity < thr_early ? "LONG_SCORE_SHORT" : "PASS"
-block_reason_short = risk_mode_short != "PASS" ? risk_mode_short : trigger_type_short == "NONE" ? "WAIT_TRIGGER" : short_opportunity < thr_early ? "SHORT_SCORE_SHORT" : "PASS"
+block_reason_long = risk_mode_long_early != "PASS" ? risk_mode_long_early : risk_mode_long_core != "PASS" and long_opportunity >= thr_early ? "CORE_ONLY_BLOCKED" : trigger_type_long == "NONE" ? "WAIT_TRIGGER" : long_opportunity < thr_early ? "LONG_SCORE_SHORT" : "PASS"
+block_reason_short = risk_mode_short_early != "PASS" ? risk_mode_short_early : risk_mode_short_core != "PASS" and short_opportunity >= thr_early ? "CORE_ONLY_BLOCKED" : trigger_type_short == "NONE" ? "WAIT_TRIGGER" : short_opportunity < thr_early ? "SHORT_SCORE_SHORT" : "PASS"
 
 //────────────────────────────────────
 // Alert policy
@@ -274,10 +316,10 @@ f_entry_payload(string direction, string grade, float score, string state, strin
     json += "}"
     json
 
-long_core_payload = f_entry_payload("LONG", "CORE", long_opportunity, market_state, htf_bias, trigger_type_long, risk_mode_long, long_rr, long_stop, long_target)
-long_early_payload = f_entry_payload("LONG", "EARLY", long_opportunity, market_state, htf_bias, trigger_type_long, risk_mode_long, long_rr, long_stop, long_target)
-short_core_payload = f_entry_payload("SHORT", "CORE", short_opportunity, market_state, htf_bias, trigger_type_short, risk_mode_short, short_rr, short_stop, short_target)
-short_early_payload = f_entry_payload("SHORT", "EARLY", short_opportunity, market_state, htf_bias, trigger_type_short, risk_mode_short, short_rr, short_stop, short_target)
+long_core_payload = f_entry_payload("LONG", "CORE", long_opportunity, market_state, htf_bias, trigger_type_long, risk_mode_long_core, long_rr, long_stop, long_target)
+long_early_payload = f_entry_payload("LONG", "EARLY", long_opportunity, market_state, htf_bias, trigger_type_long, risk_mode_long_early, long_rr, long_stop, long_target)
+short_core_payload = f_entry_payload("SHORT", "CORE", short_opportunity, market_state, htf_bias, trigger_type_short, risk_mode_short_core, short_rr, short_stop, short_target)
+short_early_payload = f_entry_payload("SHORT", "EARLY", short_opportunity, market_state, htf_bias, trigger_type_short, risk_mode_short_early, short_rr, short_stop, short_target)
 
 //────────────────────────────────────
 // Visualization
@@ -319,9 +361,9 @@ if barstate.islast
         table.cell(diag, 0, 8, "숏 등급", text_color = color.new(color.gray, 5))
         table.cell(diag, 1, 8, short_live_grade == "" ? "-" : short_live_grade, text_color = short_live_grade == "CORE" ? color.red : short_live_grade == "EARLY" ? color.yellow : color.orange)
         table.cell(diag, 0, 9, "롱 리스크", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 9, risk_mode_long, text_color = risk_mode_long == "PASS" ? color.lime : color.orange)
+        table.cell(diag, 1, 9, long_live_grade == "CORE" ? risk_mode_long_core : risk_mode_long_early, text_color = (long_live_grade == "CORE" ? risk_mode_long_core : risk_mode_long_early) == "PASS" ? color.lime : color.orange)
         table.cell(diag, 0, 10, "숏 리스크", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 10, risk_mode_short, text_color = risk_mode_short == "PASS" ? color.red : color.orange)
+        table.cell(diag, 1, 10, short_live_grade == "CORE" ? risk_mode_short_core : risk_mode_short_early, text_color = (short_live_grade == "CORE" ? risk_mode_short_core : risk_mode_short_early) == "PASS" ? color.red : color.orange)
         table.cell(diag, 0, 11, "차단 사유", text_color = color.new(color.gray, 5))
         table.cell(diag, 1, 11, show_block_reason ? (long_live_grade == "" and short_live_grade == "" ? (block_reason_long != "PASS" ? block_reason_long : block_reason_short) : "-") : "-", text_color = color.orange)
     else
