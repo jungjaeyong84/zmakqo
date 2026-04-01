@@ -569,7 +569,7 @@ function evaluateReversePolicyStageGuard({ stage = "", candidate = {}, reversePo
   };
 }
 
-function evaluateExplorationBudgetStageGuard({ stage = "", candidate = {}, explorationBudget = null } = {}) {
+function evaluateExplorationBudgetStageGuard({ stage = "", candidate = {}, explorationBudget = null, explorationApplyCandidate = null } = {}) {
   const stageKey = String(stage || "").trim().toUpperCase();
   if (stageKey !== "EV" && stageKey !== "WAIT") {
     return { allowed: true, blockers: [], target_markets: [] };
@@ -607,6 +607,26 @@ function evaluateExplorationBudgetStageGuard({ stage = "", candidate = {}, explo
   }
   const matchedExploration = targetMarkets.filter((market) => explorationMarkets.has(market));
   if (matchedExploration.length) {
+    const applySummary = explorationApplyCandidate && typeof explorationApplyCandidate === "object" ? explorationApplyCandidate : {};
+    const applyStatus = String(applySummary.status || "").trim().toUpperCase();
+    const applyStage = String(applySummary.top_stage || "").trim().toUpperCase();
+    const applyMarket = String(applySummary.top_market || "").trim().toUpperCase();
+    const autoAllowed = applySummary.auto_apply_allowed === true;
+    const maxApplyPerCycle = Math.max(0, Number(applySummary.max_market_apply_per_cycle || 0));
+    if (applyStatus === "AUTO_APPLY_CANDIDATE_READY"
+      && autoAllowed
+      && applyStage === stageKey
+      && applyMarket
+      && matchedExploration.length === 1
+      && matchedExploration[0] === applyMarket
+      && maxApplyPerCycle >= 1) {
+      return {
+        allowed: true,
+        blockers: [],
+        target_markets: matchedExploration,
+        auto_approved_exploration: true,
+      };
+    }
     return {
       allowed: false,
       blockers: [`EXPLORATION_BUDGET_EXPLORATION_ONLY:${matchedExploration.join("|")}`],
@@ -624,7 +644,7 @@ function deriveExplorationApplyCandidateNote({ stage = "", summary = null } = {}
   const stageKey = String(stage || "").trim().toUpperCase();
   const status = String(summary && summary.status || "").trim().toUpperCase();
   const topStage = String(summary && summary.top_stage || "").trim().toUpperCase();
-  if (status !== "APPLY_CANDIDATE_READY") return null;
+  if (status !== "APPLY_CANDIDATE_READY" && status !== "AUTO_APPLY_CANDIDATE_READY") return null;
   if (topStage && topStage !== stageKey) return null;
   return {
     market: String(summary && summary.top_market || "").trim().toUpperCase() || null,
@@ -632,6 +652,7 @@ function deriveExplorationApplyCandidateNote({ stage = "", summary = null } = {}
     action: String(summary && summary.top_action || "").trim().toUpperCase() || null,
     manual_confirm_required: summary && summary.manual_confirm_required === true,
     auto_apply_allowed: summary && summary.auto_apply_allowed === true,
+    status,
   };
 }
 
@@ -1346,7 +1367,7 @@ function isPreparedPineAligned(latestWeeklyHistory = {}, candidate = {}) {
     || (candidateDisplaySignature && displayRecommendedPatchId === candidateDisplaySignature);
 }
 
-async function applyStageCandidate({ stage, candidate, stageState, history, nowMeta, nowMs, canaryPass, objectiveArtifact, currentSys, snapshotKeys, selfEvolutionRollbackReady = false, overrideAuthority = null, executionQuality = null, reversePolicy = null, explorationBudget = null }) {
+async function applyStageCandidate({ stage, candidate, stageState, history, nowMeta, nowMs, canaryPass, objectiveArtifact, currentSys, snapshotKeys, selfEvolutionRollbackReady = false, overrideAuthority = null, executionQuality = null, reversePolicy = null, explorationBudget = null, explorationApplyCandidate = null }) {
   const snapshot = pickSettingsSnapshot(currentSys, snapshotKeys);
   const changeBudgetOk = stageChangeBudgetOk(history, nowMs, stage);
   const nextHistory = candidate.signature
@@ -1393,6 +1414,7 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
     stage,
     candidate,
     explorationBudget,
+    explorationApplyCandidate,
   });
   const combinedGuard = {
     ready: guard.ready === true && overrideGuard.allowed === true && executionQualityGuard.allowed === true && reversePolicyGuard.allowed === true && explorationBudgetGuard.allowed === true,
@@ -1900,6 +1922,7 @@ async function main() {
     executionQuality: selfEvolutionExecutionQuality,
     reversePolicy: selfEvolutionReversePolicy,
     explorationBudget: selfEvolutionExplorationBudget,
+    explorationApplyCandidate: selfEvolutionExplorationApplyCandidate,
   });
   history = result.history;
   stateData.stages.AI = result.stageState;
@@ -1945,6 +1968,7 @@ async function main() {
     executionQuality: selfEvolutionExecutionQuality,
     reversePolicy: selfEvolutionReversePolicy,
     explorationBudget: selfEvolutionExplorationBudget,
+    explorationApplyCandidate: selfEvolutionExplorationApplyCandidate,
   });
   history = result.history;
   stateData.stages.MARKET = result.stageState;
@@ -2005,6 +2029,7 @@ async function main() {
     executionQuality: selfEvolutionExecutionQuality,
     reversePolicy: selfEvolutionReversePolicy,
     explorationBudget: selfEvolutionExplorationBudget,
+    explorationApplyCandidate: selfEvolutionExplorationApplyCandidate,
   });
   }
   history = result.history;
@@ -2073,6 +2098,7 @@ async function main() {
     executionQuality: selfEvolutionExecutionQuality,
     reversePolicy: selfEvolutionReversePolicy,
     explorationBudget: selfEvolutionExplorationBudget,
+    explorationApplyCandidate: selfEvolutionExplorationApplyCandidate,
   });
   }
   history = result.history;
@@ -2128,6 +2154,7 @@ async function main() {
     executionQuality: selfEvolutionExecutionQuality,
     reversePolicy: selfEvolutionReversePolicy,
     explorationBudget: selfEvolutionExplorationBudget,
+    explorationApplyCandidate: selfEvolutionExplorationApplyCandidate,
   });
   history = result.history;
   stateData.stages.CANONICAL_POLICY = result.stageState;
@@ -2197,6 +2224,7 @@ async function main() {
     executionQuality: selfEvolutionExecutionQuality,
     reversePolicy: selfEvolutionReversePolicy,
     explorationBudget: selfEvolutionExplorationBudget,
+    explorationApplyCandidate: selfEvolutionExplorationApplyCandidate,
   });
   history = result.history;
   stateData.stages.SOURCE_MODE = result.stageState;
