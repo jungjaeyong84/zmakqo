@@ -523,6 +523,46 @@
   </div>
 </section>
 
+<section class="stack" style="margin-top:12px; margin-bottom:16px;">
+  <div class="section-head">
+    <div>
+      <div class="section-title">쉬운 수익 카테고리</div>
+      <div class="subtle">예전처럼 오늘, 최근 7일, 30일, 6개월 기준으로 손익을 바로 읽습니다.</div>
+    </div>
+    <div class="control-actions">
+      <a class="btn ghost slim" href="/dashboard/profit">수익 상세</a>
+      <a class="btn ghost slim" href="/dashboard/cashflow">입출금 상세</a>
+    </div>
+  </div>
+  <div class="metric-grid">
+    <div class="metric-card <%= pnlBadge(home_profit_ranges && home_profit_ranges.today && home_profit_ranges.today.total) %>">
+      <div class="metric-label">오늘 손익</div>
+      <div class="metric-value"><%- renderSignedUnitValue(home_profit_ranges && home_profit_ranges.today && home_profit_ranges.today.total) %></div>
+      <div class="metric-meta">오늘 마감된 거래 기준</div>
+    </div>
+    <div class="metric-card <%= pnlBadge(home_profit_ranges && home_profit_ranges.d7 && home_profit_ranges.d7.total) %>">
+      <div class="metric-label">최근 7일 손익</div>
+      <div class="metric-value"><%- renderSignedUnitValue(home_profit_ranges && home_profit_ranges.d7 && home_profit_ranges.d7.total) %></div>
+      <div class="metric-meta">이번 주 흐름 확인용</div>
+    </div>
+    <div class="metric-card <%= pnlBadge(home_profit_ranges && home_profit_ranges.d30 && home_profit_ranges.d30.total) %>">
+      <div class="metric-label">최근 30일 손익</div>
+      <div class="metric-value"><%- renderSignedUnitValue(home_profit_ranges && home_profit_ranges.d30 && home_profit_ranges.d30.total) %></div>
+      <div class="metric-meta">월간 수익 추세</div>
+    </div>
+    <div class="metric-card <%= pnlBadge(home_profit_ranges && home_profit_ranges.m6 && home_profit_ranges.m6.total) %>">
+      <div class="metric-label">최근 6개월 손익</div>
+      <div class="metric-value"><%- renderSignedUnitValue(home_profit_ranges && home_profit_ranges.m6 && home_profit_ranges.m6.total) %></div>
+      <div class="metric-meta">중기 누적 수익</div>
+    </div>
+    <div class="metric-card <%= pnlBadge(home_profit_ranges && home_profit_ranges.total && home_profit_ranges.total.total) %>">
+      <div class="metric-label">총 손익</div>
+      <div class="metric-value"><%- renderSignedUnitValue(home_profit_ranges && home_profit_ranges.total && home_profit_ranges.total.total) %></div>
+      <div class="metric-meta">실현 + 미실현 합산</div>
+    </div>
+  </div>
+</section>
+
 <details class="details-block" style="margin-top:12px;">
   <summary>
     <span>기존 화면 요약</span>

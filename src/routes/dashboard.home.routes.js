@@ -16,7 +16,7 @@ const { inferExchangeFromMarket } = require("../utils/marketExchange");
 const { isLiveDocForExchange } = require("../utils/liveOnly");
 const { checkCharterConsistency } = require("../services/charterCheck");
 const { resolveEventMapping } = require("../services/signalMapping");
-const { toKstString, kstDateKey } = require("../utils/timeKst");
+const { toKstString, kstDateKey, kstStartOfDay } = require("../utils/timeKst");
 const { normalizeProviderId } = require("../utils/providerUtils");
 const { buildKpiLatestByMarket } = require("../utils/kpiLatestView");
 const { buildExitStageView } = require("../utils/exitStageView");
@@ -48,6 +48,53 @@ const { buildMissionControlViewModel } = require("../utils/controlPlaneViewModel
 
 const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
 const FEBT_PHASE0_LATEST_PATH = path.join(OPS_DAILY_DIR, "febt_phase0_baseline_latest.json");
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function shiftKstMonthsClamped(dayStartMs, deltaMonths) {
+  if (!Number.isFinite(dayStartMs) || !Number.isFinite(deltaMonths)) return dayStartMs;
+  const kstDate = new Date(dayStartMs + 9 * 60 * 60 * 1000);
+  const srcYear = kstDate.getUTCFullYear();
+  const srcMonth = kstDate.getUTCMonth();
+  const srcDay = kstDate.getUTCDate();
+
+  const monthIndex = srcMonth + Math.trunc(deltaMonths);
+  const targetYear = srcYear + Math.floor(monthIndex / 12);
+  let targetMonth = monthIndex % 12;
+  if (targetMonth < 0) targetMonth += 12;
+
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  const targetDay = Math.min(srcDay, lastDay);
+  const iso = `${targetYear}-${pad2(targetMonth + 1)}-${pad2(targetDay)}T00:00:00+09:00`;
+  const out = Date.parse(iso);
+  return Number.isFinite(out) ? out : dayStartMs;
+}
+
+function buildRangeAgg(trades, fromMs, toMs) {
+  let total = 0;
+  let has = false;
+  let tradesN = 0;
+
+  for (const t of trades || []) {
+    const ms = Number(t && t.close_ms);
+    if (Number.isFinite(fromMs) && ms < fromMs) continue;
+    if (Number.isFinite(toMs) && ms >= toMs) continue;
+    const v = Number(t && t.pnl_krw);
+    if (!Number.isFinite(v)) continue;
+    total += v;
+    has = true;
+    tradesN += 1;
+  }
+
+  return {
+    total: has ? total : null,
+    trades_n: tradesN,
+    has_total: has,
+  };
+}
 
 function readJsonSafe(filePath, fallback = null) {
   try {
@@ -924,7 +971,11 @@ router.get("/dashboard/home", async (req, res) => {
     const realizedByMarket = {};
     const asOfMs = Date.now();
     const pnlScopeDays = getPnlScopeDays();
+    const todayStartMs = kstStartOfDay(new Date()).getTime();
+    const todayEndMs = todayStartMs + DAY_MS;
+    const m6FromMs = shiftKstMonthsClamped(todayStartMs, -6);
     const pnlScopeFromMs = getScopeFromMs(asOfMs, pnlScopeDays);
+    const realizedFetchFromMs = Math.min(pnlScopeFromMs, m6FromMs);
     const pnlScopeToMs = asOfMs + 1;
     let realizedSourceExternalN = 0;
     let realizedSourceFallbackN = 0;
@@ -943,7 +994,7 @@ router.get("/dashboard/home", async (req, res) => {
       tf: execTf,
       fallbackTf: signalTf || execTf,
       limitN: fillsLimit,
-      fromMs: pnlScopeFromMs,
+      fromMs: realizedFetchFromMs,
       toMs: pnlScopeToMs,
       mode: pnlMode,
       includeAllIncomeMarkets: true,
@@ -1255,6 +1306,37 @@ router.get("/dashboard/home", async (req, res) => {
       other,
     };
 
+    const realizedRowsAll = [];
+    for (const mk of (resolvedRealized && Array.isArray(resolvedRealized.markets) ? resolvedRealized.markets : [])) {
+      const bucket = resolvedRealized.by_market ? resolvedRealized.by_market[mk] : null;
+      const rows = Array.isArray(bucket && bucket.rows) ? bucket.rows : [];
+      for (const row of rows) realizedRowsAll.push(row);
+    }
+    const home_profit_ranges = {
+      today: {
+        label: "오늘 손익",
+        ...buildRangeAgg(realizedRowsAll, todayStartMs, todayEndMs),
+      },
+      d7: {
+        label: "7일 손익",
+        ...buildRangeAgg(realizedRowsAll, todayStartMs - 6 * DAY_MS, todayEndMs),
+      },
+      d30: {
+        label: "30일 손익",
+        ...buildRangeAgg(realizedRowsAll, todayStartMs - 29 * DAY_MS, todayEndMs),
+      },
+      m6: {
+        label: "6개월 손익",
+        ...buildRangeAgg(realizedRowsAll, m6FromMs, todayEndMs),
+      },
+      total: {
+        label: "총 손익",
+        total: totalPnlKrw,
+        trades_n: Number.isFinite(Number(weeklyRangeAggAll.trades)) ? Number(weeklyRangeAggAll.trades) : 0,
+        has_total: totalPnlKrw != null,
+      },
+    };
+
     // coverage (KPI_MIN_N 기준)
     const KPI_MIN_N = Number(process.env.KPI_MIN_N || 20);
     let minN = Infinity;
@@ -1396,6 +1478,7 @@ router.get("/dashboard/home", async (req, res) => {
       budget_summary,
       budget_perf,
       weekly_range_perf,
+      home_profit_ranges,
       febt_shadow_recent: febtShadowRecent,
       febt_phase0_latest: febtPhase0Latest,
       intent_failures: intentFailures,
