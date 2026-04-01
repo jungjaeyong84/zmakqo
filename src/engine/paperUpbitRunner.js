@@ -9006,6 +9006,8 @@ async function runPaperUpbitForBar({
         reason: s.reason || "INTERNAL_SIGNAL",
         features,
         executionMode: intentExecutionMode,
+        source: "SERVER",
+        authoritative: true,
       });
     }
 
@@ -11827,6 +11829,8 @@ async function runPaperFuturesForBar({
         reason: s.reason || "INTERNAL_SIGNAL",
         features,
         executionMode: intentExecutionMode,
+        source: "SERVER",
+        authoritative: true,
       });
     }
 
