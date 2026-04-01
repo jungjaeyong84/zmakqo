@@ -62,6 +62,12 @@ function meanFinite(arr) {
   return sum / nums.length;
 }
 
+function isShadowSignal(entry) {
+  if (!entry) return false;
+  const source = String(entry.source || "").toUpperCase();
+  return entry.authoritative !== true && source === "PINE_SHADOW";
+}
+
 function normalizeStatus(v) {
   const s = String(v || "").toUpperCase();
   return s || null;
@@ -148,6 +154,7 @@ function createStateRoutes() {
 
   async function renderTrading(req, res) {
     try {
+      const showShadowSignals = String(req.query.shadow || "").trim() === "1";
       const db = getFirestore();
       const { exchange } = await resolveExchangeFromReq(req, 2000);
       const exchangeNorm = normalizeProviderId(exchange);
@@ -181,12 +188,13 @@ function createStateRoutes() {
       const filterByExchange = (arr) => (arr || []).filter((x) => resolveItemExchange(x) === exchangeNorm);
       const filterLiveOnly = (arr) => filterByExchange(arr).filter((x) => isLiveDocForExchange(exchangeNorm, x));
       const signalsFiltered = filterByExchange(signals);
+      const signalsVisible = showShadowSignals ? signalsFiltered : signalsFiltered.filter((x) => !isShadowSignal(x));
       const dropsFiltered = filterByExchange(drops);
       const intentsFiltered = filterLiveOnly(intents);
       const fillsFiltered = filterLiveOnly(fills);
       const intentLookup = buildIntentStatusLookup({ intents: intentsFiltered, exchange: exchangeNorm, tfDefault });
       const signalsMerged = [
-        ...signalsFiltered.map((x) => ({ ...x, _signal_source: "SIGNAL" })),
+        ...signalsVisible.map((x) => ({ ...x, _signal_source: "SIGNAL" })),
         ...dropsFiltered.map((x) => ({ ...x, _signal_source: "DROP" })),
       ].sort((a, b) => {
         const aMs = toMsSafe(a.created_at || a.created_kst || a.bar_close_time_utc_ms) || 0;
@@ -372,7 +380,7 @@ function createStateRoutes() {
       const prevTickMs = tickRuns.length > 1 ? toMsSafe(tickRuns[1]?.started_at) : null;
       const tickIntervalMs = (lastTickMs != null && prevTickMs != null) ? Math.abs(lastTickMs - prevTickMs) : null;
 
-      const lastSignalSavedMs = latestMs(signalsFiltered, ["bar_close_time_utc_ms", "created_at", "created_kst"]);
+      const lastSignalSavedMs = latestMs(signalsVisible, ["bar_close_time_utc_ms", "created_at", "created_kst"]);
       const lastSignalDropMs = latestMs(dropsFiltered, ["bar_close_time_utc_ms", "created_at", "created_kst"]);
       const lastSignalAnyMs = Math.max(
         Number.isFinite(lastSignalSavedMs) ? lastSignalSavedMs : -1,
@@ -694,6 +702,7 @@ function createStateRoutes() {
           : getPnlSourcePolicy(),
         intent_summary: intentSummary,
         kpi_summary: kpiSummary,
+        show_shadow_signals: showShadowSignals,
       });
     } catch (e) {
       return res.status(500).send("STATE_ROUTE_ERROR: " + (e?.message || String(e)));
@@ -707,11 +716,12 @@ function createStateRoutes() {
   // JSON (for debugging/AJAX)
   router.get("/api/state", async (req, res) => {
     try {
+      const showShadowSignals = String(req.query.shadow || "").trim() === "1";
       const db = getFirestore();
       const { exchange } = await resolveExchangeFromReq(req, 2000);
       const exchangeNorm = normalizeProviderId(exchange);
       const { signalTf, execTf } = await resolveRuntimeTfContext(req, exchange, { fallback: defaultExecTfFromEnv() || "15m", ttlMs: 2000 });
-      const cacheKey = `${String(exchange || "BINANCEFUT").toUpperCase()}__${signalTf}__${execTf}`;
+      const cacheKey = `${String(exchange || "BINANCEFUT").toUpperCase()}__${signalTf}__${execTf}__shadow:${showShadowSignals ? "1" : "0"}`;
       const now = Date.now();
       const cached = apiStateCache.get(cacheKey);
       if (cached && Number.isFinite(cached.ts) && (now - cached.ts) < apiStateTtlMs) {
@@ -737,19 +747,20 @@ function createStateRoutes() {
       const filterByExchange = (arr) => (arr || []).filter((x) => resolveItemExchange(x) === exchangeNorm);
       const filterLiveOnly = (arr) => filterByExchange(arr).filter((x) => isLiveDocForExchange(exchange, x));
       const signalsFiltered = filterByExchange(signals);
+      const signalsVisible = showShadowSignals ? signalsFiltered : signalsFiltered.filter((x) => !isShadowSignal(x));
       const dropsFiltered = filterByExchange(drops);
       const intentsFiltered = filterLiveOnly(intents);
       const fillsFiltered = filterLiveOnly(fills);
       const normalizeMarket = (raw) => normalizeMarketSymbolForProvider(raw, exchangeNorm);
       const signalsMerged = [
-        ...signalsFiltered.map((x) => ({ ...x, _signal_source: "SIGNAL" })),
+        ...signalsVisible.map((x) => ({ ...x, _signal_source: "SIGNAL" })),
         ...dropsFiltered.map((x) => ({ ...x, _signal_source: "DROP" })),
       ].sort((a, b) => {
         const aMs = toMsSafe(a.created_at || a.created_kst || a.bar_close_time_utc_ms) || 0;
         const bMs = toMsSafe(b.created_at || b.created_kst || b.bar_close_time_utc_ms) || 0;
         return bMs - aMs;
       });
-      const lastSignalSavedMs = latestMs(signalsFiltered, ["bar_close_time_utc_ms", "created_at", "created_kst"]);
+      const lastSignalSavedMs = latestMs(signalsVisible, ["bar_close_time_utc_ms", "created_at", "created_kst"]);
       const lastSignalDropMs = latestMs(dropsFiltered, ["bar_close_time_utc_ms", "created_at", "created_kst"]);
       const lastSignalAnyMs = Math.max(
         Number.isFinite(lastSignalSavedMs) ? lastSignalSavedMs : -1,
@@ -817,6 +828,7 @@ function createStateRoutes() {
         leverage_summary: leverageSummary,
         rollback_summary: rollbackSummary,
         meta: {
+          show_shadow_signals: showShadowSignals,
           last_signal_saved_ms: lastSignalSavedMs,
           last_signal_drop_ms: lastSignalDropMs,
           last_signal_any_ms: lastSignalAnyMsSafe,

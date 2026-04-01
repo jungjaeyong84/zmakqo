@@ -96,6 +96,12 @@ function buildRangeAgg(trades, fromMs, toMs) {
   };
 }
 
+function isShadowSignal(entry) {
+  if (!entry) return false;
+  const source = String(entry.source || "").toUpperCase();
+  return entry.authoritative !== true && source === "PINE_SHADOW";
+}
+
 function readJsonSafe(filePath, fallback = null) {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -699,8 +705,9 @@ router.get("/dashboard/home", async (req, res) => {
       dropsRaw.push({ id: d.id, _market_norm: mkNorm, ...x, _signal_source: "DROP" });
     });
 
+    const signalsVisible = signalsRaw.filter((x) => !isShadowSignal(x));
     const signalsMerged = [
-      ...signalsRaw.map((x) => ({ ...x, _signal_source: "SIGNAL" })),
+      ...signalsVisible.map((x) => ({ ...x, _signal_source: "SIGNAL" })),
       ...dropsRaw,
     ].sort((a, b) => {
       const aMs = toMsSafe(a.created_at || a.created_kst || a.bar_close_time_utc_ms) || 0;

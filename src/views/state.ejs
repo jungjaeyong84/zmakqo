@@ -647,11 +647,20 @@
 <div class="hr"></div>
 
 <div class="grid cols-2">
-  <div class="tablewrap">
-    <div class="head">
-      <h2>최근 신호</h2>
+<div class="tablewrap">
+  <div class="head">
+    <h2>최근 신호</h2>
+    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
       <div class="subtle">최근 12건</div>
+      <% if (show_shadow_signals) { %>
+        <span class="pill warn">그림자 포함</span>
+        <a class="btn ghost slim" href="?shadow=0">정본만 보기</a>
+      <% } else { %>
+        <span class="pill ok">정본 기준</span>
+        <a class="btn ghost slim" href="?shadow=1">그림자 포함 보기</a>
+      <% } %>
     </div>
+  </div>
     <div class="scroll">
       <table>
         <thead>
