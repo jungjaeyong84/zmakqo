@@ -32,6 +32,8 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const replay = unwrapRawReport(reports.replay) || {};
   const canary = unwrapRawReport(reports.canary) || {};
   const canonicalParity = unwrapRawReport(reports.canonicalParity) || {};
+  const serverSignalAuthority = unwrapRawReport(reports.serverSignalAuthority) || {};
+  const serverSignalQuality = unwrapRawReport(reports.serverSignalQuality) || {};
   const canonicalProvenance = unwrapRawReport(reports.canonicalProvenance) || {};
   const serverPrimaryCanary = unwrapRawReport(reports.serverPrimaryCanary) || {};
   const serverPrimaryAcceptanceWatch = unwrapRawReport(reports.serverPrimaryAcceptanceWatch) || {};
@@ -56,6 +58,8 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const deploymentPlanStatus = String(deploymentPlanSummary.plan_status || "N/A").trim().toUpperCase() || "N/A";
   const canarySummary = canary.summary && typeof canary.summary === "object" ? canary.summary : {};
   const canonicalParitySummary = canonicalParity.summary && typeof canonicalParity.summary === "object" ? canonicalParity.summary : {};
+  const serverSignalAuthoritySummary = serverSignalAuthority.summary && typeof serverSignalAuthority.summary === "object" ? serverSignalAuthority.summary : {};
+  const serverSignalQualitySummary = serverSignalQuality.summary && typeof serverSignalQuality.summary === "object" ? serverSignalQuality.summary : {};
   const canonicalProvenanceSummary = canonicalProvenance.summary && typeof canonicalProvenance.summary === "object" ? canonicalProvenance.summary : {};
   const canonicalProvenanceEligible = canonicalProvenanceSummary.post_cutover_engine_eligible_n != null
     ? canonicalProvenanceSummary.post_cutover_engine_eligible_n
@@ -87,6 +91,8 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(replay)
     || readCycleId(canary)
     || readCycleId(canonicalParity)
+    || readCycleId(serverSignalAuthority)
+    || readCycleId(serverSignalQuality)
     || readCycleId(canonicalProvenance)
     || readCycleId(serverPrimaryCanary)
     || readCycleId(serverPrimaryAcceptanceWatch)
@@ -162,6 +168,26 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
         ? "BLOCK"
         : (Number(canonicalParitySummary.shadow_observed_n || 0) > 0 ? "PASS" : "HOLD"),
       reason: `source=${canonicalParitySummary.source_parity_mismatch_n ?? 0} / downstream=${canonicalParitySummary.final_downstream_mismatch_n ?? 0} / ev=${canonicalParitySummary.by_actual_drop_reason_family && Array.isArray(canonicalParitySummary.by_actual_drop_reason_family) ? ((canonicalParitySummary.by_actual_drop_reason_family.find((row) => row.key === "EV_POLICY") || {}).count ?? 0) : "N/A"}`,
+    },
+    {
+      loop: "SERVER_SIGNAL_AUTHORITY",
+      fresh: artifacts.serverSignalAuthority && artifacts.serverSignalAuthority.fresh === true,
+      cycle_id: readCycleId(serverSignalAuthority),
+      status: String(serverSignalAuthoritySummary.drift_status || "N/A").trim().toUpperCase() === "PARITY_DRIFT"
+        ? "WARN"
+        : (String(serverSignalAuthoritySummary.drift_status || "N/A").trim().toUpperCase() === "PARITY_STABLE"
+        ? "PASS"
+        : (Number(serverSignalAuthoritySummary.authoritative_server_24h_n || 0) > 0 ? "HOLD" : "N/A")),
+      reason: `server_24h=${serverSignalAuthoritySummary.authoritative_server_24h_n ?? 0} / shadow_24h=${serverSignalAuthoritySummary.pine_shadow_24h_n ?? 0} / mismatch=${serverSignalAuthoritySummary.parity_mismatch_n ?? 0} / mode=${serverSignalAuthoritySummary.source_mode || "N/A"}`,
+    },
+    {
+      loop: "SERVER_SIGNAL_QUALITY",
+      fresh: artifacts.serverSignalQuality && artifacts.serverSignalQuality.fresh === true,
+      cycle_id: readCycleId(serverSignalQuality),
+      status: String(serverSignalQualitySummary.quality_status || "N/A").trim().toUpperCase() === "OK"
+        ? "PASS"
+        : (/WATCH|NOT_REACHING_EXECUTION|FILL_SHORT/.test(String(serverSignalQualitySummary.quality_status || "N/A").trim().toUpperCase()) ? "WARN" : "N/A"),
+      reason: `entry=${serverSignalQualitySummary.authoritative_entry_signal_24h_n ?? 0} / intent=${serverSignalQualitySummary.order_intent_24h_n ?? 0} / fill=${serverSignalQualitySummary.fill_24h_n ?? 0} / quality=${serverSignalQualitySummary.quality_status || "N/A"}`,
     },
     {
       loop: "CANONICAL_PROVENANCE",
@@ -330,6 +356,8 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const blockers = [];
   if (objectiveReason) blockers.push(objectiveReason);
   if (Number(canonicalParitySummary.source_parity_mismatch_n || 0) > 0) blockers.push("SELF_EVOLUTION_CANONICAL_SOURCE_MISMATCH");
+  if (String(serverSignalAuthoritySummary.drift_status || "").trim().toUpperCase() === "PARITY_DRIFT") blockers.push("SERVER_SIGNAL_PARITY_DRIFT");
+  if (/NOT_REACHING_EXECUTION/.test(String(serverSignalQualitySummary.quality_status || "").trim().toUpperCase())) blockers.push("SERVER_SIGNAL_EXECUTION_GAP");
   if (String(serverPrimaryAcceptanceSummary.phase_d_status || "").trim().toUpperCase() === "BLOCK") blockers.push("SELF_EVOLUTION_SERVER_PRIMARY_ACCEPTANCE_BLOCK");
   if (Number(serverPrimaryCanarySummary.server_primary_executed_n || 0) > 0 && serverPrimaryCanarySummary.apply_pass === false) {
     blockers.push("SELF_EVOLUTION_SERVER_PRIMARY_CANARY_BLOCK");
@@ -376,6 +404,12 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       cycle_id_absent_loops: cycleIdAbsent,
       critical_blocker_n: uniqueBlockers.length,
       critical_blockers: uniqueBlockers.slice(0, 10),
+      server_signal_drift_status: serverSignalAuthoritySummary.drift_status || null,
+      server_signal_parity_mismatch_rate: toNum(serverSignalAuthoritySummary.parity_mismatch_rate),
+      server_signal_quality_status: serverSignalQualitySummary.quality_status || null,
+      server_signal_entry_24h_n: toNum(serverSignalQualitySummary.authoritative_entry_signal_24h_n),
+      server_signal_intent_24h_n: toNum(serverSignalQualitySummary.order_intent_24h_n),
+      server_signal_fill_24h_n: toNum(serverSignalQualitySummary.fill_24h_n),
       promotion_path_ready: deploymentSummary.deploy_pass === true,
       manual_paste_ready: deploymentPlanSummary.manual_step_required === true,
       applied_confirmed: isAppliedConfirmedLike(deploymentPlanStatus),
