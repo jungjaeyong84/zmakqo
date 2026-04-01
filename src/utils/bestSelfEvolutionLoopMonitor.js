@@ -40,6 +40,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const bundleActivation = unwrapRawReport(reports.bundleActivation) || {};
   const openclawAutonomyContract = unwrapRawReport(reports.openclawAutonomyContract) || {};
   const objectiveRecoveryGovernor = unwrapRawReport(reports.objectiveRecoveryGovernor) || {};
+  const objectiveRecoveryEffect = unwrapRawReport(reports.objectiveRecoveryEffect) || {};
   const deployment = unwrapRawReport(reports.deployment) || {};
   const deploymentPlan = unwrapRawReport(reports.deploymentPlan) || {};
   const weightTuning = unwrapRawReport(reports.weightTuning) || {};
@@ -76,6 +77,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const bundleActivationSummary = bundleActivation.summary && typeof bundleActivation.summary === "object" ? bundleActivation.summary : {};
   const autonomyContractSummary = openclawAutonomyContract.summary && typeof openclawAutonomyContract.summary === "object" ? openclawAutonomyContract.summary : {};
   const objectiveRecoveryGovernorSummary = objectiveRecoveryGovernor.summary && typeof objectiveRecoveryGovernor.summary === "object" ? objectiveRecoveryGovernor.summary : {};
+  const objectiveRecoveryEffectSummary = objectiveRecoveryEffect.summary && typeof objectiveRecoveryEffect.summary === "object" ? objectiveRecoveryEffect.summary : {};
   const candidateSummary = candidates.summary && typeof candidates.summary === "object" ? candidates.summary : {};
   const replaySummary = replay.summary && typeof replay.summary === "object" ? replay.summary : {};
   const memorySummary = memory.summary && typeof memory.summary === "object" ? memory.summary : {};
@@ -93,6 +95,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(bundleActivation)
     || readCycleId(openclawAutonomyContract)
     || readCycleId(objectiveRecoveryGovernor)
+    || readCycleId(objectiveRecoveryEffect)
     || readCycleId(deployment)
     || readCycleId(deploymentPlan)
     || readCycleId(stageAutopilot)
@@ -102,6 +105,10 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const authorityLoopLabel = String(codexPatch.owner || "").trim().toUpperCase() === "CODEX_CLAUDE_ENSEMBLE"
     ? "AUTHORITY_ENSEMBLE"
     : "CODEX_PATCH_ENGINE";
+  const hasObjectiveRecoveryEffect = Boolean(
+    (artifacts.objectiveRecoveryEffect && (artifacts.objectiveRecoveryEffect.exists === true || artifacts.objectiveRecoveryEffect.data != null))
+    || objectiveRecoveryEffect.summary
+  );
   const stageAutopilotCycleId = readCycleId(stageAutopilot);
   const stageAutopilotPending = Boolean(
     stageAutopilotOptional
@@ -236,6 +243,17 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
         : (/BLOCKED/.test(String(objectiveRecoveryGovernorSummary.governor_status || "")) ? "BLOCK" : "HOLD")),
       reason: `candidate=${objectiveRecoveryGovernorSummary.target_candidate_id || "N/A"} / degraded=${objectiveRecoveryGovernorSummary.degraded_authority_eligible ? "YES" : "NO"} / ${objectiveRecoveryGovernorSummary.governor_reason || "N/A"}`,
     },
+    ...(hasObjectiveRecoveryEffect ? [{
+      loop: "OBJECTIVE_RECOVERY_EFFECT",
+      fresh: artifacts.objectiveRecoveryEffect && artifacts.objectiveRecoveryEffect.fresh === true,
+      cycle_id: readCycleId(objectiveRecoveryEffect),
+      status: String(objectiveRecoveryEffectSummary.tracking_status || "N/A").trim().toUpperCase() === "PROJECTED_OBJECTIVE_ON_TRACK"
+        ? "PASS"
+        : (String(objectiveRecoveryEffectSummary.tracking_status || "N/A").trim().toUpperCase() === "PARTIAL_RECOVERY_ONLY"
+        ? "WARN"
+        : (/MISSING|NO_RECOVERY_TARGET|NO_OBJECTIVE_IMPROVEMENT/.test(String(objectiveRecoveryEffectSummary.tracking_status || "").trim().toUpperCase()) ? "BLOCK" : "N/A")),
+      reason: `target=${objectiveRecoveryEffectSummary.target_candidate_id || "N/A"} / delta=${objectiveRecoveryEffectSummary.target_candidate_objective_delta != null ? objectiveRecoveryEffectSummary.target_candidate_objective_delta : "N/A"} / projected=${objectiveRecoveryEffectSummary.projected_objective_score != null ? objectiveRecoveryEffectSummary.projected_objective_score : "N/A"} / gap=${objectiveRecoveryEffectSummary.gap_closure_rate != null ? objectiveRecoveryEffectSummary.gap_closure_rate : "N/A"} / higher_delta=${objectiveRecoveryEffectSummary.higher_delta_candidate_id || "none"}`,
+    }] : []),
     {
       loop: "DEPLOYMENT_GUARDS",
       fresh: artifacts.deployment && artifacts.deployment.fresh === true,

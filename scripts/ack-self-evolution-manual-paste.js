@@ -14,7 +14,10 @@ const {
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
-const { writeSelfEvolutionRuntimeState } = require("../src/utils/selfEvolutionRuntimeState");
+const {
+  resolveSelfEvolutionRuntimeState,
+  writeSelfEvolutionRuntimeState,
+} = require("../src/utils/selfEvolutionRuntimeState");
 const { syncStrategyRuntimeFiles } = require("./lib/self-evolution-version-sync");
 const { syncSelfEvolutionLiveServices } = require("./lib/self-evolution-live-service-sync");
 const { toKstString } = require("../src/utils/timeKst");
@@ -72,12 +75,71 @@ function renderMarkdown(report = {}) {
   return `${lines.join("\n")}\n`;
 }
 
+function pickString(value) {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+function pickBoolean(...values) {
+  for (const value of values) {
+    if (value === true) return true;
+    if (value === false) return false;
+  }
+  return false;
+}
+
+function buildRuntimeCarryforward(summary = {}, currentRuntime = {}) {
+  const liveSignalConfirmed = pickBoolean(
+    summary.live_signal_confirmed,
+    currentRuntime.live_signal_confirmed
+  );
+  const confirmationTimedOut = pickBoolean(
+    summary.confirmation_timed_out,
+    currentRuntime.confirmation_timed_out
+  );
+  return {
+    prepared_stage_ready: summary.prepared_stage_ready === true,
+    ready_for_manual_paste: summary.ready_for_manual_paste === true,
+    plan_status: pickString(summary.plan_status) || pickString(currentRuntime.plan_status),
+    prepared_strategy_id: pickString(summary.prepared_strategy_id) || pickString(currentRuntime.prepared_strategy_id),
+    live_signal_confirmed: liveSignalConfirmed,
+    live_signal_confirmation_pending: !liveSignalConfirmed && !confirmationTimedOut && pickBoolean(
+      summary.live_signal_confirmation_pending,
+      currentRuntime.live_signal_confirmation_pending
+    ),
+    engine_bundle_loaded: pickBoolean(summary.engine_bundle_loaded, currentRuntime.engine_bundle_loaded),
+    policy_bundle_loaded: pickBoolean(summary.policy_bundle_loaded, currentRuntime.policy_bundle_loaded),
+    market_data_flow_ok: pickBoolean(summary.market_data_flow_ok, currentRuntime.market_data_flow_ok),
+    probe_pass: pickBoolean(summary.probe_pass, currentRuntime.probe_pass),
+    probe_status: pickString(summary.probe_status) || pickString(currentRuntime.probe_status),
+    probe_reason: pickString(summary.probe_reason) || pickString(currentRuntime.probe_reason),
+    first_decision_seen: pickBoolean(summary.first_decision_seen, currentRuntime.first_decision_seen),
+    first_decision_kind: pickString(summary.first_decision_kind) || pickString(currentRuntime.first_decision_kind),
+    first_decision_id: pickString(summary.first_decision_id) || pickString(currentRuntime.first_decision_id),
+    first_decision_created_at: pickString(summary.first_decision_created_at) || pickString(currentRuntime.first_decision_created_at),
+    first_decision_event: pickString(summary.first_decision_event) || pickString(currentRuntime.first_decision_event),
+    first_decision_reason: pickString(summary.first_decision_reason) || pickString(currentRuntime.first_decision_reason),
+    confirmation_timed_out: confirmationTimedOut,
+    bundle_activation_confirmed: pickBoolean(summary.activation_confirmed, currentRuntime.bundle_activation_confirmed),
+    bundle_activation_status: pickString(summary.activation_status) || pickString(currentRuntime.bundle_activation_status),
+    bundle_activation_reason: pickString(summary.activation_reason) || pickString(currentRuntime.bundle_activation_reason),
+    confirmed_signal_id: pickString(summary.confirmed_signal_id) || pickString(currentRuntime.confirmed_signal_id),
+    confirmed_signal_created_at: pickString(summary.confirmed_signal_created_at) || pickString(currentRuntime.confirmed_signal_created_at),
+    confirmed_signal_event: pickString(summary.confirmed_signal_event) || pickString(currentRuntime.confirmed_signal_event),
+    confirmed_strategy_id: pickString(summary.confirmed_strategy_id) || pickString(currentRuntime.confirmed_strategy_id),
+  };
+}
+
 async function main() {
   const nowMeta = nowKstMeta();
   const confirmationTimeoutMinutes = Math.max(30, Number(process.env.SELF_EVOLUTION_BUNDLE_CONFIRM_TIMEOUT_MINUTES || 180));
   ensureDir(OPS_RUNTIME_DIR);
   const deploymentPlan = readJsonRawSafe(path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json"), null) || {};
   const summary = deploymentPlan.summary && typeof deploymentPlan.summary === "object" ? deploymentPlan.summary : {};
+  const currentRuntimeResolved = await resolveSelfEvolutionRuntimeState({ ttlMs: 0 });
+  const currentRuntime = currentRuntimeResolved && currentRuntimeResolved.data && typeof currentRuntimeResolved.data === "object"
+    ? currentRuntimeResolved.data
+    : {};
   const handoff = deploymentPlan.handoff && typeof deploymentPlan.handoff === "object" ? deploymentPlan.handoff : {};
   const preparedFilePath = String(summary.prepared_file_path || handoff.prepared_file_path || "").trim() || null;
   const latestGeneratedFilePath = String(summary.latest_generated_file_path || handoff.latest_generated_file_path || "").trim() || null;
@@ -101,6 +163,7 @@ async function main() {
   }
   const strategyId = parseStrategyId(sourceFile);
   const canonicalSync = syncCanonicalSource(sourceFile);
+  const runtimeCarryforward = buildRuntimeCarryforward(summary, currentRuntime);
   const payload = {
     ok: true,
     acknowledged: true,
@@ -114,6 +177,10 @@ async function main() {
     latest_generated_file_path: latestGeneratedFilePath,
     applied_file_path: sourceFile,
     applied_strategy_id: strategyId,
+    prepared_stage_ready: runtimeCarryforward.prepared_stage_ready,
+    ready_for_manual_paste: runtimeCarryforward.ready_for_manual_paste,
+    plan_status: runtimeCarryforward.plan_status,
+    prepared_strategy_id: runtimeCarryforward.prepared_strategy_id,
     canonical_source_path: canonicalSync.canonicalPath,
     canonical_source_synced: canonicalSync.synced,
     authority_required: summary.authority_required === true,
@@ -122,6 +189,28 @@ async function main() {
     external_authority_pending: summary.external_authority_pending === true || summary.authority_bypass_active === true,
     authority_bypass_active: false,
     confirmation_timeout_minutes: confirmationTimeoutMinutes,
+    live_signal_confirmed: runtimeCarryforward.live_signal_confirmed,
+    live_signal_confirmation_pending: runtimeCarryforward.live_signal_confirmation_pending,
+    engine_bundle_loaded: runtimeCarryforward.engine_bundle_loaded,
+    policy_bundle_loaded: runtimeCarryforward.policy_bundle_loaded,
+    market_data_flow_ok: runtimeCarryforward.market_data_flow_ok,
+    probe_pass: runtimeCarryforward.probe_pass,
+    probe_status: runtimeCarryforward.probe_status,
+    probe_reason: runtimeCarryforward.probe_reason,
+    first_decision_seen: runtimeCarryforward.first_decision_seen,
+    first_decision_kind: runtimeCarryforward.first_decision_kind,
+    first_decision_id: runtimeCarryforward.first_decision_id,
+    first_decision_created_at: runtimeCarryforward.first_decision_created_at,
+    first_decision_event: runtimeCarryforward.first_decision_event,
+    first_decision_reason: runtimeCarryforward.first_decision_reason,
+    confirmation_timed_out: runtimeCarryforward.confirmation_timed_out,
+    bundle_activation_confirmed: runtimeCarryforward.bundle_activation_confirmed,
+    bundle_activation_status: runtimeCarryforward.bundle_activation_status,
+    bundle_activation_reason: runtimeCarryforward.bundle_activation_reason,
+    confirmed_signal_id: runtimeCarryforward.confirmed_signal_id,
+    confirmed_signal_created_at: runtimeCarryforward.confirmed_signal_created_at,
+    confirmed_signal_event: runtimeCarryforward.confirmed_signal_event,
+    confirmed_strategy_id: runtimeCarryforward.confirmed_strategy_id,
   };
   const runtimePath = path.join(OPS_RUNTIME_DIR, "self_evolution_manual_paste_ack.json");
   const dailyJsonPath = path.join(OPS_DAILY_DIR, "self_evolution_manual_paste_ack_latest.json");
@@ -131,15 +220,6 @@ async function main() {
   writeText(dailyMdPath, renderMarkdown(payload));
   await writeSelfEvolutionRuntimeState({
     ...payload,
-    engine_bundle_loaded: true,
-    policy_bundle_loaded: false,
-    market_data_flow_ok: false,
-    first_decision_seen: false,
-    first_decision_kind: null,
-    first_decision_id: null,
-    first_decision_created_at: null,
-    first_decision_event: null,
-    first_decision_reason: null,
     confirmation_timeout_minutes: confirmationTimeoutMinutes,
     confirmation_deadline_iso: payload.acknowledged_at_iso
       ? new Date(Date.parse(payload.acknowledged_at_iso) + (confirmationTimeoutMinutes * 60 * 1000)).toISOString()
@@ -147,15 +227,7 @@ async function main() {
     confirmation_deadline_kst: payload.acknowledged_at_iso
       ? toKstString(Date.parse(payload.acknowledged_at_iso) + (confirmationTimeoutMinutes * 60 * 1000), { fallbackToString: true })
       : null,
-    bundle_activation_confirmed: false,
-    bundle_activation_status: "PENDING",
-    bundle_activation_reason: "PENDING_POLICY_BUNDLE_LOAD",
     acknowledged: true,
-    live_signal_confirmed: false,
-    confirmed_signal_id: null,
-    confirmed_signal_created_at: null,
-    confirmed_signal_event: null,
-    confirmed_strategy_id: null,
   }, { updatedBy: "manual_paste_ack" });
   const configSync = syncStrategyRuntimeFiles({ rootDir: process.cwd(), strategyId });
   const syncedEnvText = readTextSafe(path.join(process.cwd(), ".env"));
@@ -194,6 +266,7 @@ if (require.main === module) {
 
 module.exports = {
   __test: {
+    buildRuntimeCarryforward,
     parseStrategyId,
     parseEnvLine,
     renderMarkdown,

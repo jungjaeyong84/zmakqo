@@ -13,6 +13,7 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
       canonicalParity: { fresh: true },
       canonicalProvenance: { fresh: true },
       serverPrimaryCanary: { fresh: true },
+      objectiveRecoveryEffect: { fresh: true, exists: true },
       pineShadowDrift: { fresh: true },
       deployment: { fresh: true },
       deploymentPlan: { fresh: true },
@@ -29,6 +30,7 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
       canonicalParity: { cycle_id: "cycle-1", summary: { shadow_observed_n: 7, source_parity_mismatch_n: 0, final_downstream_mismatch_n: 2, by_actual_drop_reason_family: [{ key: "EV_POLICY", count: 2 }] } },
       canonicalProvenance: { cycle_id: "cycle-1", summary: { eligible_n: 6, complete_n: 6, with_actual_source_decision_n: 6, with_bundle_version_n: 6 } },
       serverPrimaryCanary: { cycle_id: "cycle-1", summary: { server_primary_executed_n: 0, pine_shadow_observed_n: 0, pine_shadow_disagreement_n: 0, rollback_trigger_n: 0, apply_pass: null } },
+      objectiveRecoveryEffect: { cycle_id: "cycle-1", summary: { tracking_status: "PARTIAL_RECOVERY_ONLY", target_candidate_id: "AUTO_CORE", target_candidate_objective_delta: 0.8, projected_objective_score: -0.4, gap_closure_rate: 0.5, higher_delta_candidate_id: "EV_TP1_THRESHOLD_TUNE" } },
       pineShadowDrift: { cycle_id: "cycle-1", summary: { audit_only: true, observed_n: 0, drift_n: 0, top_drift_market: null } },
       deployment: { cycle_id: "cycle-1", summary: { deploy_pass: true, target_candidate_id: "AUTO_CORE", blockers: [] } },
       deploymentPlan: { cycle_id: "cycle-1", summary: { plan_status: "READY_FOR_MANUAL_PASTE", manual_step_required: true, target_candidate_id: "AUTO_CORE" } },
@@ -47,16 +49,19 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
   const parityRow = report.rows.find((row) => row.loop === "CANONICAL_PARITY");
   const provenanceRow = report.rows.find((row) => row.loop === "CANONICAL_PROVENANCE");
   const serverPrimaryRow = report.rows.find((row) => row.loop === "SERVER_PRIMARY_CANARY");
+  const recoveryEffectRow = report.rows.find((row) => row.loop === "OBJECTIVE_RECOVERY_EFFECT");
   const pineShadowDriftRow = report.rows.find((row) => row.loop === "PINE_SHADOW_DRIFT");
   assert.ok(deploymentRow);
   assert.ok(parityRow);
   assert.ok(provenanceRow);
   assert.ok(serverPrimaryRow);
+  assert.ok(recoveryEffectRow);
   assert.ok(pineShadowDriftRow);
   assert.strictEqual(deploymentRow.status, "PASS");
   assert.strictEqual(parityRow.status, "PASS");
   assert.strictEqual(provenanceRow.status, "PASS");
   assert.strictEqual(serverPrimaryRow.status, "N/A");
+  assert.strictEqual(recoveryEffectRow.status, "WARN");
   assert.strictEqual(pineShadowDriftRow.status, "N/A");
 
   const mismatch = deriveLoopMonitor({
