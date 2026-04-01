@@ -73,6 +73,20 @@ function buildFlatBars() {
   return bars;
 }
 
+function buildHistoricalSignalBars() {
+  const bars = buildBullBars();
+  let p = bars.at(-1).close;
+  for (let i = 0; i < 12; i += 1) {
+    const open = p;
+    const close = p + (i % 2 === 0 ? 0.004 : -0.004);
+    const high = Math.max(open, close) + 0.01;
+    const low = Math.min(open, close) - 0.01;
+    bars.push({ open, high, low, close, volume: 420, closeTimeUtcMs: 900000 * (121 + i) });
+    p = close;
+  }
+  return bars;
+}
+
 (() => {
   const bullBars = buildBullBars();
   const bullSignals = buildServerNativeInitialSignals({
@@ -115,6 +129,19 @@ function buildFlatBars() {
     tf: "15m",
   });
   assert(fallbackBiasBars.length >= 55);
+
+  const historicalBars = buildHistoricalSignalBars();
+  const historicalTargetBarMs = buildBullBars().at(-1).closeTimeUtcMs;
+  const historicalSignals = buildServerNativeInitialSignals({
+    exchange: "BINANCEFUT",
+    symbol: "BNBUSDT",
+    tf: "15m",
+    bars: historicalBars,
+    htfBars: buildBullHtfBars(),
+    barCloseMs: historicalTargetBarMs,
+  });
+  assert.strictEqual(historicalSignals.length, 1);
+  assert.strictEqual(historicalSignals[0].event, "LONG");
 
   console.log("SERVER_NATIVE_INITIAL_SIGNAL_TEST_OK");
 })();

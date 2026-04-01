@@ -793,11 +793,13 @@ function evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars }) {
 function buildServerNativeInitialSignals({ exchange, symbol, tf, bars, htfBars, barCloseMs } = {}) {
   const evaluated = evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars });
   if (!evaluated.length) return [];
+  if (Number.isFinite(barCloseMs)) {
+    const matched = evaluated.find((row) => Number(row && row.diagnostics && row.diagnostics.timestamp) === Number(barCloseMs));
+    if (!matched || !Array.isArray(matched.emitted) || !matched.emitted.length) return [];
+    return matched.emitted.filter((signal) => Number(signal && signal.features && signal.features.signal_bar_close_time_utc_ms) === Number(barCloseMs));
+  }
   const last = evaluated[evaluated.length - 1];
   if (!last || !Array.isArray(last.emitted) || !last.emitted.length) return [];
-  if (Number.isFinite(barCloseMs)) {
-    return last.emitted.filter((signal) => Number(signal && signal.features && signal.features.signal_bar_close_time_utc_ms) === Number(barCloseMs));
-  }
   return last.emitted;
 }
 
