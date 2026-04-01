@@ -25,6 +25,7 @@ function buildStepPlan() {
     { id: "server_signal_authority", script: "report-server-signal-authority.js" },
     { id: "server_signal_quality", script: "report-server-signal-quality.js" },
     { id: "server_signal_runtime", script: "report-server-signal-runtime.js" },
+    { id: "server_signal_cutover_readiness", script: "report-server-signal-cutover-readiness.js" },
     { id: "canonical_engine_provenance", script: "report-best-self-evolution-canonical-engine-provenance.js" },
     { id: "server_primary_canary", script: "report-best-self-evolution-server-primary-canary.js" },
     { id: "server_primary_acceptance_watch", script: "report-best-self-evolution-server-primary-acceptance-watch.js" },

@@ -35,6 +35,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const serverSignalAuthority = unwrapRawReport(reports.serverSignalAuthority) || {};
   const serverSignalQuality = unwrapRawReport(reports.serverSignalQuality) || {};
   const serverSignalRuntime = unwrapRawReport(reports.serverSignalRuntime) || {};
+  const serverSignalCutoverReadiness = unwrapRawReport(reports.serverSignalCutoverReadiness) || {};
   const canonicalProvenance = unwrapRawReport(reports.canonicalProvenance) || {};
   const serverPrimaryCanary = unwrapRawReport(reports.serverPrimaryCanary) || {};
   const serverPrimaryAcceptanceWatch = unwrapRawReport(reports.serverPrimaryAcceptanceWatch) || {};
@@ -62,6 +63,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const serverSignalAuthoritySummary = serverSignalAuthority.summary && typeof serverSignalAuthority.summary === "object" ? serverSignalAuthority.summary : {};
   const serverSignalQualitySummary = serverSignalQuality.summary && typeof serverSignalQuality.summary === "object" ? serverSignalQuality.summary : {};
   const serverSignalRuntimeSummary = serverSignalRuntime.summary && typeof serverSignalRuntime.summary === "object" ? serverSignalRuntime.summary : {};
+  const serverSignalCutoverSummary = serverSignalCutoverReadiness.summary && typeof serverSignalCutoverReadiness.summary === "object" ? serverSignalCutoverReadiness.summary : {};
   const canonicalProvenanceSummary = canonicalProvenance.summary && typeof canonicalProvenance.summary === "object" ? canonicalProvenance.summary : {};
   const canonicalProvenanceEligible = canonicalProvenanceSummary.post_cutover_engine_eligible_n != null
     ? canonicalProvenanceSummary.post_cutover_engine_eligible_n
@@ -96,6 +98,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(serverSignalAuthority)
     || readCycleId(serverSignalQuality)
     || readCycleId(serverSignalRuntime)
+    || readCycleId(serverSignalCutoverReadiness)
     || readCycleId(canonicalProvenance)
     || readCycleId(serverPrimaryCanary)
     || readCycleId(serverPrimaryAcceptanceWatch)
@@ -200,6 +203,15 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
         ? "PASS"
         : (String(serverSignalRuntimeSummary.runtime_status || "N/A").trim().toUpperCase() === "HOLD" ? "WARN" : "N/A"),
       reason: `source_mode=${serverSignalRuntimeSummary.canonical_engine_source_mode || "N/A"} / tf=${serverSignalRuntimeSummary.exec_tf || "N/A"} / markets=${serverSignalRuntimeSummary.market_count ?? 0} / transition=${serverSignalRuntimeSummary.pine_shadow_transition_status || "N/A"} ${serverSignalRuntimeSummary.pine_shadow_transition_progress_pct != null ? `(${serverSignalRuntimeSummary.pine_shadow_transition_progress_pct}%)` : ""}`,
+    },
+    {
+      loop: "SERVER_SIGNAL_CUTOVER",
+      fresh: artifacts.serverSignalCutoverReadiness && artifacts.serverSignalCutoverReadiness.fresh === true,
+      cycle_id: readCycleId(serverSignalCutoverReadiness),
+      status: serverSignalCutoverSummary.promotion_ready === true
+        ? "READY"
+        : (String(serverSignalCutoverSummary.readiness_status || "N/A").trim().toUpperCase().includes("ACTIVE") ? "PASS" : "WARN"),
+      reason: `status=${serverSignalCutoverSummary.readiness_status || "N/A"} / source_mode=${serverSignalCutoverSummary.source_mode || "N/A"} / blockers=${Array.isArray(serverSignalCutoverSummary.blockers) && serverSignalCutoverSummary.blockers.length ? serverSignalCutoverSummary.blockers.join("|") : "none"}`,
     },
     {
       loop: "CANONICAL_PROVENANCE",
@@ -371,6 +383,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   if (String(serverSignalAuthoritySummary.drift_status || "").trim().toUpperCase() === "PARITY_DRIFT") blockers.push("SERVER_SIGNAL_PARITY_DRIFT");
   if (/NOT_REACHING_EXECUTION/.test(String(serverSignalQualitySummary.quality_status || "").trim().toUpperCase())) blockers.push("SERVER_SIGNAL_EXECUTION_GAP");
   if (String(serverSignalRuntimeSummary.runtime_status || "").trim().toUpperCase() === "HOLD") blockers.push("SERVER_SIGNAL_RUNTIME_HOLD");
+  if (serverSignalCutoverSummary.promotion_ready !== true && toNum(serverSignalRuntimeSummary.market_count) > 0) blockers.push("SERVER_SIGNAL_CUTOVER_NOT_READY");
   if (String(serverPrimaryAcceptanceSummary.phase_d_status || "").trim().toUpperCase() === "BLOCK") blockers.push("SELF_EVOLUTION_SERVER_PRIMARY_ACCEPTANCE_BLOCK");
   if (Number(serverPrimaryCanarySummary.server_primary_executed_n || 0) > 0 && serverPrimaryCanarySummary.apply_pass === false) {
     blockers.push("SELF_EVOLUTION_SERVER_PRIMARY_CANARY_BLOCK");
@@ -423,6 +436,9 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       server_signal_runtime_status: serverSignalRuntimeSummary.runtime_status || null,
       server_signal_runtime_exec_tf: serverSignalRuntimeSummary.exec_tf || null,
       server_signal_runtime_market_count: toNum(serverSignalRuntimeSummary.market_count),
+      server_signal_cutover_status: serverSignalCutoverSummary.readiness_status || null,
+      server_signal_cutover_ready: serverSignalCutoverSummary.promotion_ready === true,
+      server_signal_cutover_blockers: Array.isArray(serverSignalCutoverSummary.blockers) ? serverSignalCutoverSummary.blockers.slice(0, 6) : [],
       server_signal_entry_24h_n: toNum(serverSignalQualitySummary.authoritative_entry_signal_24h_n),
       server_signal_intent_24h_n: toNum(serverSignalQualitySummary.order_intent_24h_n),
       server_signal_fill_24h_n: toNum(serverSignalQualitySummary.fill_24h_n),

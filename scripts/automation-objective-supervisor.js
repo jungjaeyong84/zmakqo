@@ -67,6 +67,7 @@ const SELF_EVOLUTION_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_ev
 const SELF_EVOLUTION_CANONICAL_PARITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_parity_latest.json");
 const SELF_EVOLUTION_SERVER_SIGNAL_AUTHORITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "server_signal_authority_latest.json");
 const SELF_EVOLUTION_SERVER_SIGNAL_QUALITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "server_signal_quality_latest.json");
+const SELF_EVOLUTION_SERVER_SIGNAL_CUTOVER_READINESS_LATEST_PATH = path.join(OPS_DAILY_DIR, "server_signal_cutover_readiness_latest.json");
 const SELF_EVOLUTION_CANONICAL_PROVENANCE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_provenance_latest.json");
 const SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json");
 const SELF_EVOLUTION_SERVER_PRIMARY_ACCEPTANCE_WATCH_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_acceptance_watch_latest.json");
@@ -106,6 +107,7 @@ const FRESHNESS_HOURS = Object.freeze({
   selfEvolutionCanonicalParity: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_CANONICAL_PARITY_MAX_AGE_HOURS || 36)),
   selfEvolutionServerSignalAuthority: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_SERVER_SIGNAL_AUTHORITY_MAX_AGE_HOURS || 36)),
   selfEvolutionServerSignalQuality: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_SERVER_SIGNAL_QUALITY_MAX_AGE_HOURS || 36)),
+  selfEvolutionServerSignalCutoverReadiness: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_SERVER_SIGNAL_CUTOVER_MAX_AGE_HOURS || 36)),
   selfEvolutionCanonicalProvenance: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_CANONICAL_PROVENANCE_MAX_AGE_HOURS || 36)),
   selfEvolutionServerPrimaryCanary: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_SERVER_PRIMARY_CANARY_MAX_AGE_HOURS || 36)),
   selfEvolutionServerPrimaryAcceptanceWatch: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_SERVER_PRIMARY_ACCEPTANCE_WATCH_MAX_AGE_HOURS || 36)),
@@ -908,6 +910,23 @@ function summarizeSelfEvolutionServerSignalQuality(report = null) {
   };
 }
 
+function summarizeSelfEvolutionServerSignalCutoverReadiness(report = null) {
+  const summary = report && report.summary && typeof report.summary === "object" ? report.summary : {};
+  return {
+    available: !!report,
+    promotion_ready: summary.promotion_ready === true,
+    already_server_primary: summary.already_server_primary === true,
+    readiness_status: String(summary.readiness_status || "").trim().toUpperCase() || null,
+    blockers: Array.isArray(summary.blockers) ? summary.blockers : [],
+    source_mode: String(summary.source_mode || "").trim().toUpperCase() || null,
+    runtime_exec_tf: String(summary.runtime_exec_tf || "").trim() || null,
+    runtime_market_count: toNum(summary.runtime_market_count) || 0,
+    entry_24h_n: toNum(summary.entry_24h_n) || 0,
+    intent_24h_n: toNum(summary.intent_24h_n) || 0,
+    fill_24h_n: toNum(summary.fill_24h_n) || 0,
+  };
+}
+
 function summarizeSelfEvolutionOpenClawAutonomyContract(report = null) {
   const summary = report && report.summary && typeof report.summary === "object" ? report.summary : {};
   const status = report && report.current_status && typeof report.current_status === "object" ? report.current_status : {};
@@ -1613,7 +1632,7 @@ function buildObjectiveSupervisorTelegramAlertSections(report = {}) {
   }));
 }
 
-function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionCanonicalParity, selfEvolutionServerSignalAuthority, selfEvolutionServerSignalQuality, selfEvolutionCanonicalProvenance, selfEvolutionServerPrimaryCanary, selfEvolutionPineShadowDrift, selfEvolutionDeploymentProbe, selfEvolutionBundleActivation, selfEvolutionEvGateRescue, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache, preparedOverride } = {}) {
+function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionCanonicalParity, selfEvolutionServerSignalAuthority, selfEvolutionServerSignalQuality, selfEvolutionServerSignalCutoverReadiness, selfEvolutionCanonicalProvenance, selfEvolutionServerPrimaryCanary, selfEvolutionPineShadowDrift, selfEvolutionDeploymentProbe, selfEvolutionBundleActivation, selfEvolutionEvGateRescue, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache, preparedOverride } = {}) {
   const objective = governance && governance.current && governance.current.objective ? governance.current.objective : {};
   const objectiveCfg = governance && governance.objective ? governance.objective : {};
   const promotion = changeControl && changeControl.auto_promotion ? changeControl.auto_promotion : {};
@@ -1702,6 +1721,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   const selfEvolutionCanonicalParitySummary = deriveCanonicalParityDiagnostics(selfEvolutionCanonicalParity);
   const selfEvolutionServerSignalAuthoritySummary = summarizeSelfEvolutionServerSignalAuthority(selfEvolutionServerSignalAuthority);
   const selfEvolutionServerSignalQualitySummary = summarizeSelfEvolutionServerSignalQuality(selfEvolutionServerSignalQuality);
+  const selfEvolutionServerSignalCutoverReadinessSummary = summarizeSelfEvolutionServerSignalCutoverReadiness(selfEvolutionServerSignalCutoverReadiness);
   const selfEvolutionCanonicalProvenanceSummary = deriveCanonicalProvenanceDiagnostics(selfEvolutionCanonicalProvenance);
   const selfEvolutionServerPrimaryCanarySummary = deriveServerPrimaryCanaryDiagnostics(selfEvolutionServerPrimaryCanary);
   const selfEvolutionPineShadowDriftSummary = derivePineShadowDriftDiagnostics(selfEvolutionPineShadowDrift);
@@ -1802,6 +1822,11 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   if (selfEvolutionCanonicalParitySummary.available && selfEvolutionCanonicalParitySummary.source_quality_pass === false) blockers.push("SELF_EVOLUTION_CANONICAL_SOURCE_MISMATCH");
   if (selfEvolutionServerSignalAuthoritySummary.available && selfEvolutionServerSignalAuthoritySummary.drift_status === "PARITY_DRIFT") blockers.push("SERVER_SIGNAL_PARITY_DRIFT");
   if (selfEvolutionServerSignalQualitySummary.available && selfEvolutionServerSignalQualitySummary.quality_status === "SERVER_SIGNAL_NOT_REACHING_EXECUTION") blockers.push("SERVER_SIGNAL_EXECUTION_GAP");
+  if (
+    selfEvolutionServerSignalCutoverReadinessSummary.available
+    && selfEvolutionServerSignalCutoverReadinessSummary.promotion_ready !== true
+    && selfEvolutionServerSignalCutoverReadinessSummary.already_server_primary !== true
+  ) blockers.push("SERVER_SIGNAL_CUTOVER_NOT_READY");
   const promotionCandidateId = String(effectivePromotion && effectivePromotion.candidate_id || "").trim() || null;
   const promotionReplay = selfEvolutionReplaySummary.validations.find((row) => String(row && row.candidate_id || "").trim() === promotionCandidateId) || null;
   if (promotionReplay && promotionReplay.validation_verdict === "BLOCK") blockers.push("SELF_EVOLUTION_REPLAY_BLOCK");
@@ -2084,6 +2109,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     self_evolution_canonical_parity: selfEvolutionCanonicalParitySummary,
     self_evolution_server_signal_authority: selfEvolutionServerSignalAuthoritySummary,
     self_evolution_server_signal_quality: selfEvolutionServerSignalQualitySummary,
+    self_evolution_server_signal_cutover_readiness: selfEvolutionServerSignalCutoverReadinessSummary,
     self_evolution_canonical_provenance: selfEvolutionCanonicalProvenanceSummary,
     self_evolution_server_primary_canary: selfEvolutionServerPrimaryCanarySummary,
     self_evolution_pine_shadow_drift: selfEvolutionPineShadowDriftSummary,
@@ -2279,6 +2305,7 @@ function renderMarkdown(report = {}) {
     `- canonical_parity: ${report.self_evolution_canonical_parity && report.self_evolution_canonical_parity.available ? `source_mismatch=${report.self_evolution_canonical_parity.source_parity_mismatch_n ?? 0} / downstream=${report.self_evolution_canonical_parity.final_downstream_mismatch_n ?? 0} / ev=${report.self_evolution_canonical_parity.ev_policy_mismatch_n ?? 0} / top=${report.self_evolution_canonical_parity.dominant_mismatch_family || "N/A"}` : "N/A"}`,
     `- server_signal_authority: ${report.self_evolution_server_signal_authority && report.self_evolution_server_signal_authority.available ? `server24h=${report.self_evolution_server_signal_authority.authoritative_server_24h_n ?? 0} / shadow24h=${report.self_evolution_server_signal_authority.pine_shadow_24h_n ?? 0} / drift=${report.self_evolution_server_signal_authority.drift_status || "N/A"} / mismatch=${report.self_evolution_server_signal_authority.parity_mismatch_n ?? 0}` : "N/A"}`,
     `- server_signal_quality: ${report.self_evolution_server_signal_quality && report.self_evolution_server_signal_quality.available ? `entry=${report.self_evolution_server_signal_quality.authoritative_entry_signal_24h_n ?? 0} / intent=${report.self_evolution_server_signal_quality.order_intent_24h_n ?? 0} / fill=${report.self_evolution_server_signal_quality.fill_24h_n ?? 0} / quality=${report.self_evolution_server_signal_quality.quality_status || "N/A"}` : "N/A"}`,
+    `- server_signal_cutover: ${report.self_evolution_server_signal_cutover_readiness && report.self_evolution_server_signal_cutover_readiness.available ? `${report.self_evolution_server_signal_cutover_readiness.readiness_status || "N/A"} / ready ${report.self_evolution_server_signal_cutover_readiness.promotion_ready ? "YES" : "NO"} / blockers ${Array.isArray(report.self_evolution_server_signal_cutover_readiness.blockers) && report.self_evolution_server_signal_cutover_readiness.blockers.length ? report.self_evolution_server_signal_cutover_readiness.blockers.join("|") : "none"}` : "N/A"}`,
     `- canonical_provenance: ${report.self_evolution_canonical_provenance && report.self_evolution_canonical_provenance.available ? `complete=${report.self_evolution_canonical_provenance.complete_n ?? 0}/${report.self_evolution_canonical_provenance.eligible_n ?? 0} / bundle=${report.self_evolution_canonical_provenance.bundle_version_n ?? 0} / threshold=${report.self_evolution_canonical_provenance.threshold_bundle_version_n ?? 0} / source_decision=${report.self_evolution_canonical_provenance.actual_source_decision_n ?? 0}` : "N/A"}`,
     `- server_primary_canary: ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.available ? `executed=${report.self_evolution_server_primary_canary.executed_n ?? 0} / disagreement=${report.self_evolution_server_primary_canary.disagreement_n ?? 0} / rollback=${report.self_evolution_server_primary_canary.rollback_trigger_n ?? 0} / apply=${report.self_evolution_server_primary_canary.apply_pass == null ? "N/A" : (report.self_evolution_server_primary_canary.apply_pass ? "YES" : "NO")} / acceptance=${report.self_evolution_server_primary_canary.acceptance_ready ? "READY" : "PENDING"} ${report.self_evolution_server_primary_canary.acceptance_reason || "N/A"}` : "N/A"}`,
     `- pine_shadow_drift: ${report.self_evolution_pine_shadow_drift && report.self_evolution_pine_shadow_drift.available ? `observed=${report.self_evolution_pine_shadow_drift.observed_n ?? 0} / drift=${report.self_evolution_pine_shadow_drift.drift_n ?? 0} / top=${report.self_evolution_pine_shadow_drift.top_drift_market || "N/A"} / audit=${report.self_evolution_pine_shadow_drift.audit_only ? "YES" : "NO"}` : "N/A"}`,
@@ -2426,6 +2453,7 @@ async function main() {
   const selfEvolutionCanonicalParityArtifact = readArtifact("self_evolution_canonical_parity", SELF_EVOLUTION_CANONICAL_PARITY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCanonicalParity);
   const selfEvolutionServerSignalAuthorityArtifact = readArtifact("self_evolution_server_signal_authority", SELF_EVOLUTION_SERVER_SIGNAL_AUTHORITY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionServerSignalAuthority);
   const selfEvolutionServerSignalQualityArtifact = readArtifact("self_evolution_server_signal_quality", SELF_EVOLUTION_SERVER_SIGNAL_QUALITY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionServerSignalQuality);
+  const selfEvolutionServerSignalCutoverReadinessArtifact = readArtifact("self_evolution_server_signal_cutover_readiness", SELF_EVOLUTION_SERVER_SIGNAL_CUTOVER_READINESS_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionServerSignalCutoverReadiness);
   const selfEvolutionCanonicalProvenanceArtifact = readArtifact("self_evolution_canonical_provenance", SELF_EVOLUTION_CANONICAL_PROVENANCE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCanonicalProvenance);
   const selfEvolutionServerPrimaryCanaryArtifact = readArtifact("self_evolution_server_primary_canary", SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionServerPrimaryCanary);
   const selfEvolutionServerPrimaryAcceptanceWatchArtifact = readArtifact("self_evolution_server_primary_acceptance_watch", SELF_EVOLUTION_SERVER_PRIMARY_ACCEPTANCE_WATCH_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionServerPrimaryAcceptanceWatch);
@@ -2460,6 +2488,7 @@ async function main() {
       canonicalParity: selfEvolutionCanonicalParityArtifact,
       serverSignalAuthority: selfEvolutionServerSignalAuthorityArtifact,
       serverSignalQuality: selfEvolutionServerSignalQualityArtifact,
+      serverSignalCutoverReadiness: selfEvolutionServerSignalCutoverReadinessArtifact,
       canonicalProvenance: selfEvolutionCanonicalProvenanceArtifact,
       serverPrimaryCanary: selfEvolutionServerPrimaryCanaryArtifact,
       serverPrimaryAcceptanceWatch: selfEvolutionServerPrimaryAcceptanceWatchArtifact,
@@ -2503,6 +2532,7 @@ async function main() {
     selfEvolutionCanonicalParity: selfEvolutionCanonicalParityArtifact.exists ? { ...selfEvolutionCanonicalParityArtifact.data, fresh: selfEvolutionCanonicalParityArtifact.fresh } : null,
     selfEvolutionServerSignalAuthority: selfEvolutionServerSignalAuthorityArtifact.exists ? { ...selfEvolutionServerSignalAuthorityArtifact.data, fresh: selfEvolutionServerSignalAuthorityArtifact.fresh } : null,
     selfEvolutionServerSignalQuality: selfEvolutionServerSignalQualityArtifact.exists ? { ...selfEvolutionServerSignalQualityArtifact.data, fresh: selfEvolutionServerSignalQualityArtifact.fresh } : null,
+    selfEvolutionServerSignalCutoverReadiness: selfEvolutionServerSignalCutoverReadinessArtifact.exists ? { ...selfEvolutionServerSignalCutoverReadinessArtifact.data, fresh: selfEvolutionServerSignalCutoverReadinessArtifact.fresh } : null,
     selfEvolutionCanonicalProvenance: selfEvolutionCanonicalProvenanceArtifact.exists ? { ...selfEvolutionCanonicalProvenanceArtifact.data, fresh: selfEvolutionCanonicalProvenanceArtifact.fresh } : null,
     selfEvolutionServerPrimaryCanary: selfEvolutionServerPrimaryCanaryArtifact.exists ? { ...selfEvolutionServerPrimaryCanaryArtifact.data, fresh: selfEvolutionServerPrimaryCanaryArtifact.fresh } : null,
     selfEvolutionPineShadowDrift: selfEvolutionPineShadowDriftArtifact.exists ? { ...selfEvolutionPineShadowDriftArtifact.data, fresh: selfEvolutionPineShadowDriftArtifact.fresh } : null,
@@ -2531,6 +2561,9 @@ async function main() {
       : []),
     ...(evaluation.self_evolution_server_signal_quality && evaluation.self_evolution_server_signal_quality.quality_status
       ? [`SERVER_SIGNAL_QUALITY_STATUS: ${evaluation.self_evolution_server_signal_quality.quality_status} / entry24h=${evaluation.self_evolution_server_signal_quality.authoritative_entry_signal_24h_n ?? 0} / intent24h=${evaluation.self_evolution_server_signal_quality.order_intent_24h_n ?? 0} / fill24h=${evaluation.self_evolution_server_signal_quality.fill_24h_n ?? 0}`]
+      : []),
+    ...(evaluation.self_evolution_server_signal_cutover_readiness && evaluation.self_evolution_server_signal_cutover_readiness.readiness_status
+      ? [`SERVER_SIGNAL_CUTOVER_STATUS: ${evaluation.self_evolution_server_signal_cutover_readiness.readiness_status} / ready=${evaluation.self_evolution_server_signal_cutover_readiness.promotion_ready ? "YES" : "NO"} / blockers=${Array.isArray(evaluation.self_evolution_server_signal_cutover_readiness.blockers) && evaluation.self_evolution_server_signal_cutover_readiness.blockers.length ? evaluation.self_evolution_server_signal_cutover_readiness.blockers.join("|") : "none"}`]
       : []),
     ...(Array.isArray(selfEvolutionObjectiveRecoveryGovernorSummary.next_actions) ? selfEvolutionObjectiveRecoveryGovernorSummary.next_actions : []),
     ...(Array.isArray(selfEvolutionObjectiveRecoveryEffectSummary.next_actions) ? selfEvolutionObjectiveRecoveryEffectSummary.next_actions : []),
@@ -2565,6 +2598,7 @@ async function main() {
     self_evolution_canonical_parity: evaluation.self_evolution_canonical_parity,
     self_evolution_server_signal_authority: evaluation.self_evolution_server_signal_authority,
     self_evolution_server_signal_quality: evaluation.self_evolution_server_signal_quality,
+    self_evolution_server_signal_cutover_readiness: evaluation.self_evolution_server_signal_cutover_readiness,
     self_evolution_canonical_provenance: evaluation.self_evolution_canonical_provenance,
     self_evolution_server_primary_canary: evaluation.self_evolution_server_primary_canary,
     self_evolution_server_primary_acceptance_watch: selfEvolutionServerPrimaryAcceptanceWatchSummary,
@@ -2605,7 +2639,7 @@ async function main() {
     codex_authority: evaluation.codex_authority,
     stage_autopilot: evaluation.stage_autopilot,
     retrospective: evaluation.retrospective,
-    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, phase0Artifact, selfEvolutionDatasetArtifact, selfEvolutionObjectiveArtifact, selfEvolutionAttributionArtifact, selfEvolutionCandidatesArtifact, selfEvolutionReplayArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionServerSignalAuthorityArtifact, selfEvolutionServerSignalQualityArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionServerPrimaryAcceptanceWatchArtifact, selfEvolutionPineShadowDriftArtifact, selfEvolutionBundleActivationArtifact, selfEvolutionOpenclawAutonomyContractArtifact, selfEvolutionObjectiveRecoveryGovernorArtifact, selfEvolutionObjectiveRecoveryEffectArtifact, selfEvolutionEvGateRescueArtifact, selfEvolutionMemoryArtifact, codexArtifact, stageAutopilotArtifact, weeklyPineHistoryArtifact, retrospectiveArtifact].map((row) => ({
+    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, phase0Artifact, selfEvolutionDatasetArtifact, selfEvolutionObjectiveArtifact, selfEvolutionAttributionArtifact, selfEvolutionCandidatesArtifact, selfEvolutionReplayArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionServerSignalAuthorityArtifact, selfEvolutionServerSignalQualityArtifact, selfEvolutionServerSignalCutoverReadinessArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionServerPrimaryAcceptanceWatchArtifact, selfEvolutionPineShadowDriftArtifact, selfEvolutionBundleActivationArtifact, selfEvolutionOpenclawAutonomyContractArtifact, selfEvolutionObjectiveRecoveryGovernorArtifact, selfEvolutionObjectiveRecoveryEffectArtifact, selfEvolutionEvGateRescueArtifact, selfEvolutionMemoryArtifact, codexArtifact, stageAutopilotArtifact, weeklyPineHistoryArtifact, retrospectiveArtifact].map((row) => ({
       name: row.name,
       filePath: row.filePath,
       fresh: row.fresh,
@@ -2622,6 +2656,7 @@ async function main() {
       canonicalParity: selfEvolutionCanonicalParityArtifact,
       serverSignalAuthority: selfEvolutionServerSignalAuthorityArtifact,
       serverSignalQuality: selfEvolutionServerSignalQualityArtifact,
+      serverSignalCutoverReadiness: selfEvolutionServerSignalCutoverReadinessArtifact,
       canonicalProvenance: selfEvolutionCanonicalProvenanceArtifact,
       serverPrimaryCanary: selfEvolutionServerPrimaryCanaryArtifact,
       serverPrimaryAcceptanceWatch: selfEvolutionServerPrimaryAcceptanceWatchArtifact,
@@ -2646,6 +2681,7 @@ async function main() {
       canonicalParity: selfEvolutionCanonicalParityArtifact.data,
       serverSignalAuthority: selfEvolutionServerSignalAuthorityArtifact.data,
       serverSignalQuality: selfEvolutionServerSignalQualityArtifact.data,
+      serverSignalCutoverReadiness: selfEvolutionServerSignalCutoverReadinessArtifact.data,
       canonicalProvenance: selfEvolutionCanonicalProvenanceArtifact.data,
       serverPrimaryCanary: selfEvolutionServerPrimaryCanaryArtifact.data,
       serverPrimaryAcceptanceWatch: selfEvolutionServerPrimaryAcceptanceWatchArtifact.data,

@@ -12,10 +12,11 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
   assert.strictEqual(steps[2].id, "server_signal_authority");
   assert.strictEqual(steps[3].id, "server_signal_quality");
   assert.strictEqual(steps[4].id, "server_signal_runtime");
-  assert.strictEqual(steps[5].id, "canonical_engine_provenance");
-  assert.strictEqual(steps[6].id, "server_primary_canary");
-  assert.strictEqual(steps[7].id, "server_primary_acceptance_watch");
-  assert.strictEqual(steps[8].id, "pine_shadow_drift");
+  assert.strictEqual(steps[5].id, "server_signal_cutover_readiness");
+  assert.strictEqual(steps[6].id, "canonical_engine_provenance");
+  assert.strictEqual(steps[7].id, "server_primary_canary");
+  assert.strictEqual(steps[8].id, "server_primary_acceptance_watch");
+  assert.strictEqual(steps[9].id, "pine_shadow_drift");
   assert.strictEqual(steps.some((row) => row.id === "objective_seed"), true);
   assert.strictEqual(steps.some((row) => row.id === "openclaw_autonomy_contract"), true);
   assert.strictEqual(steps.some((row) => row.id === "objective_recovery_governor"), true);
@@ -36,12 +37,12 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
     generated_at_kst: "2026-03-29 22:00:00 KST",
     cycle_id: "cycle-1",
     status: "PASS",
-    completed_steps: 33,
-    total_steps: 33,
+    completed_steps: 34,
+    total_steps: 34,
     failed_step: null,
     steps: [{ id: "dataset", status: "PASS", script: "x.js", exit_code: 0, summary: "OK" }],
   });
   assert.match(md, /cycle-1/);
-  assert.match(md, /completed_steps: 33 \/ 33/);
+  assert.match(md, /completed_steps: 34 \/ 34/);
   console.log("BEST_SELF_EVOLUTION_LOOP_RUN_TEST_OK");
 })();
