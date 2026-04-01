@@ -56,12 +56,14 @@ function deriveExplorationBudget({
   serverVsPinePerformanceDelta = null,
   executionQuality = null,
   reversePolicy = null,
+  serverPrimaryLearningEpoch = null,
 } = {}) {
   const overrideSummary = readSummary(overrideAuthority);
   const objectiveSummary = readSummary(marketObjectiveScore);
   const deltaSummary = readSummary(serverVsPinePerformanceDelta);
   const executionSummary = readSummary(executionQuality);
   const reverseSummary = readSummary(reversePolicy);
+  const epochSummary = readSummary(serverPrimaryLearningEpoch);
 
   const productionSlotN = clampIntEnv(
     "OPENCLAW_PRODUCTION_SLOT_N",
@@ -71,6 +73,12 @@ function deriveExplorationBudget({
   );
   const explorationSlotN = clampIntEnv("OPENCLAW_EXPLORATION_SLOT_N", 2, 1, 4);
   const serverSignalLearningMode = readBoolEnv("OPENCLAW_SERVER_SIGNAL_LEARNING_MODE", true);
+  const epochActive = epochSummary.active === true || upper(epochSummary.status) === "SERVER_PRIMARY_EPOCH_ACTIVE";
+  const epochExplorationBoost = epochActive ? (toNum(epochSummary.exploration_boost) || 1.15) : 1;
+  const boostedExplorationSlotN = Math.max(
+    explorationSlotN,
+    epochActive ? Math.min(6, Math.round(explorationSlotN * epochExplorationBoost)) : explorationSlotN
+  );
 
   const productionMarkets = collectOrderedUniqueMarkets(
     Array.isArray(overrideSummary.top_priority_markets) ? overrideSummary.top_priority_markets : []
@@ -98,7 +106,7 @@ function deriveExplorationBudget({
       deferredPenaltyMarkets.push(market);
       continue;
     }
-    if (explorationMarkets.length < explorationSlotN) explorationMarkets.push(market);
+    if (explorationMarkets.length < boostedExplorationSlotN) explorationMarkets.push(market);
   }
 
   const watchMarkets = collectOrderedUniqueMarkets(productionMarkets, explorationCandidates).slice(0, 8);
@@ -109,9 +117,14 @@ function deriveExplorationBudget({
   return {
     status,
     production_slot_n: productionSlotN,
-    exploration_slot_n: explorationSlotN,
+    exploration_slot_n: boostedExplorationSlotN,
     server_signal_learning_mode: serverSignalLearningMode,
     penalty_mode: serverSignalLearningMode ? "ADVISORY_ONLY" : "ENFORCED",
+    learning_epoch_status: upper(epochSummary.status),
+    learning_epoch_active: epochActive,
+    learning_epoch_age_days: toNum(epochSummary.age_days),
+    learning_epoch_penalty_weight: toNum(epochSummary.penalty_weight),
+    learning_epoch_exploration_boost: toNum(epochSummary.exploration_boost),
     production_markets: productionMarkets,
     exploration_markets: explorationMarkets,
     deferred_penalty_markets: serverSignalLearningMode ? [] : deferredPenaltyMarkets,

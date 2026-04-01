@@ -21,6 +21,7 @@ const MARKET_OBJECTIVE_SCORE_PATH = path.join(OPS_DAILY_DIR, "best_self_evolutio
 const EXECUTION_QUALITY_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_execution_quality_latest.json");
 const REVERSE_POLICY_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_reverse_policy_latest.json");
 const EXPLORATION_BUDGET_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_budget_latest.json");
+const SERVER_PRIMARY_LEARNING_EPOCH_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_learning_epoch_latest.json");
 
 function renderMarkdown(report = {}) {
   const summary = report.summary || {};
@@ -34,6 +35,7 @@ function renderMarkdown(report = {}) {
     `- reduce: ${summary.top_reduce_market || "N/A"} / ${summary.top_reduce_score != null ? summary.top_reduce_score : "N/A"}`,
     `- quarantine: ${summary.top_quarantine_market || "N/A"} / ${summary.top_quarantine_score != null ? summary.top_quarantine_score : "N/A"}`,
     `- explore: ${summary.top_explore_market || "N/A"} / ${summary.top_explore_score != null ? summary.top_explore_score : "N/A"}`,
+    `- learning_epoch: ${summary.learning_epoch_status || "N/A"} / penalty_weight=${summary.learning_epoch_penalty_weight != null ? summary.learning_epoch_penalty_weight : "N/A"}`,
     "",
     "## Markets",
     ...(Array.isArray(summary.top_watch_markets) && summary.top_watch_markets.length
@@ -50,13 +52,20 @@ function main() {
   const executionQuality = readJsonRawSafe(EXECUTION_QUALITY_PATH, null);
   const reversePolicy = readJsonRawSafe(REVERSE_POLICY_PATH, null);
   const explorationBudget = readJsonRawSafe(EXPLORATION_BUDGET_PATH, null);
+  const serverPrimaryLearningEpoch = readJsonRawSafe(SERVER_PRIMARY_LEARNING_EPOCH_PATH, null);
   const reportCycleId = resolveAnchoredReportCycleId({
     preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
     fallbackCycleId: cycleMeta.cycle_id,
-    sources: [marketObjectiveScore, executionQuality, reversePolicy, explorationBudget],
+    sources: [marketObjectiveScore, executionQuality, reversePolicy, explorationBudget, serverPrimaryLearningEpoch],
   });
 
-  const summary = deriveServerMarketCapitalAllocator({ marketObjectiveScore, executionQuality, reversePolicy, explorationBudget });
+  const summary = deriveServerMarketCapitalAllocator({
+    marketObjectiveScore,
+    executionQuality,
+    reversePolicy,
+    explorationBudget,
+    serverPrimaryLearningEpoch,
+  });
   const report = {
     ok: true,
     generated_at_kst: nowMeta.kst,
@@ -67,6 +76,7 @@ function main() {
       execution_quality: EXECUTION_QUALITY_PATH,
       reverse_policy: REVERSE_POLICY_PATH,
       exploration_budget: EXPLORATION_BUDGET_PATH,
+      server_primary_learning_epoch: SERVER_PRIMARY_LEARNING_EPOCH_PATH,
     },
     summary,
   };

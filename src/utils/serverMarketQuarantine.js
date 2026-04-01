@@ -42,8 +42,14 @@ function deriveSeverity(reasons = []) {
 
 function deriveServerMarketQuarantine({
   serverMarketCapitalAllocator = null,
+  serverPrimaryLearningEpoch = null,
 } = {}) {
   const allocatorRows = readRows(serverMarketCapitalAllocator, "by_market");
+  const epochRaw = serverPrimaryLearningEpoch && typeof serverPrimaryLearningEpoch === "object"
+    ? ((serverPrimaryLearningEpoch.raw && typeof serverPrimaryLearningEpoch.raw === "object") ? serverPrimaryLearningEpoch.raw : serverPrimaryLearningEpoch)
+    : {};
+  const epochSummary = epochRaw.summary && typeof epochRaw.summary === "object" ? epochRaw.summary : epochRaw;
+  const epochActive = epochSummary.active === true || upper(epochSummary.status) === "SERVER_PRIMARY_EPOCH_ACTIVE";
   const quarantineRows = allocatorRows
     .filter((row) => row && row.active === true && upper(row.recommended_action) === "QUARANTINE")
     .map((row) => {
@@ -61,9 +67,10 @@ function deriveServerMarketQuarantine({
         reverse_policy_penalty: row.reverse_policy_penalty === true,
         quarantine_reasons: reasons,
         quarantine_reason: reasons[0] || "CAPITAL_ALLOCATOR_QUARANTINE",
-        quarantine_severity: deriveSeverity(reasons),
-        recommended_action: "WATCH_ONLY_NO_EXCLUDE",
+        quarantine_severity: epochActive ? "MEDIUM" : deriveSeverity(reasons),
+        recommended_action: epochActive ? "WATCH_ONLY_UNTIL_SERVER_EPOCH_MATURES" : "WATCH_ONLY_NO_EXCLUDE",
         release_action: "REVIEW_AFTER_OBJECTIVE_AND_QUALITY_RECOVERY",
+        learning_epoch_active: epochActive,
       };
     })
     .sort((a, b) => (a.allocation_score || 0) - (b.allocation_score || 0) || String(a.market).localeCompare(String(b.market)));
@@ -71,9 +78,13 @@ function deriveServerMarketQuarantine({
   const topQuarantine = quarantineRows[0] || null;
 
   return {
-    status: quarantineRows.length > 0 ? "QUARANTINE_WATCH_ONLY_ACTIVE" : "QUARANTINE_CLEAR",
+    status: quarantineRows.length > 0
+      ? (epochActive ? "QUARANTINE_EPOCH_WATCH_ONLY" : "QUARANTINE_WATCH_ONLY_ACTIVE")
+      : "QUARANTINE_CLEAR",
     enforced: false,
     server_signal_learning_mode: true,
+    learning_epoch_status: upper(epochSummary.status),
+    learning_epoch_active: epochActive,
     quarantine_market_n: quarantineRows.length,
     top_quarantine_market: topQuarantine ? topQuarantine.market : null,
     top_quarantine_reason: topQuarantine ? topQuarantine.quarantine_reason : null,

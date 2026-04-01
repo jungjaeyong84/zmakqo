@@ -22,6 +22,7 @@ const EXPLORATION_BUDGET_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_ex
 const EXECUTION_QUALITY_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_execution_quality_latest.json");
 const REVERSE_POLICY_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_reverse_policy_latest.json");
 const PROVISIONAL_REALIZED_OUTCOME_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_provisional_realized_outcome_latest.json");
+const SERVER_PRIMARY_LEARNING_EPOCH_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_learning_epoch_latest.json");
 
 function renderMarkdown(report = {}) {
   const summary = report.summary || {};
@@ -38,6 +39,7 @@ function renderMarkdown(report = {}) {
     `- manual_confirm_required: ${summary.manual_confirm_required ? "YES" : "NO"}`,
     `- auto_apply_allowed: ${summary.auto_apply_allowed ? "YES" : "NO"}`,
     `- effective_realized_n: ${summary.effective_realized_n ?? "N/A"} / min_required: ${summary.min_effective_realized_n ?? "N/A"}`,
+    `- learning_epoch: ${summary.learning_epoch_status || "N/A"} / active=${summary.learning_epoch_active ? "YES" : "NO"}`,
     `- blockers: ${Array.isArray(summary.blockers) && summary.blockers.length ? summary.blockers.join("|") : "none"}`,
     "",
     "## Candidates",
@@ -56,13 +58,21 @@ function main() {
   const executionQuality = readJsonRawSafe(EXECUTION_QUALITY_PATH, null);
   const reversePolicy = readJsonRawSafe(REVERSE_POLICY_PATH, null);
   const provisionalRealizedOutcome = readJsonRawSafe(PROVISIONAL_REALIZED_OUTCOME_PATH, null);
+  const serverPrimaryLearningEpoch = readJsonRawSafe(SERVER_PRIMARY_LEARNING_EPOCH_PATH, null);
   const reportCycleId = resolveAnchoredReportCycleId({
     preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
     fallbackCycleId: cycleMeta.cycle_id,
-    sources: [explorationProposal, explorationBudget, executionQuality, reversePolicy, provisionalRealizedOutcome],
+    sources: [explorationProposal, explorationBudget, executionQuality, reversePolicy, provisionalRealizedOutcome, serverPrimaryLearningEpoch],
   });
 
-  const summary = deriveExplorationApplyCandidate({ explorationProposal, explorationBudget, executionQuality, reversePolicy, provisionalRealizedOutcome });
+  const summary = deriveExplorationApplyCandidate({
+    explorationProposal,
+    explorationBudget,
+    executionQuality,
+    reversePolicy,
+    provisionalRealizedOutcome,
+    serverPrimaryLearningEpoch,
+  });
   const report = {
     ok: true,
     generated_at_kst: nowMeta.kst,
@@ -74,6 +84,7 @@ function main() {
       execution_quality: EXECUTION_QUALITY_PATH,
       reverse_policy: REVERSE_POLICY_PATH,
       provisional_realized_outcome: PROVISIONAL_REALIZED_OUTCOME_PATH,
+      server_primary_learning_epoch: SERVER_PRIMARY_LEARNING_EPOCH_PATH,
     },
     summary,
   };

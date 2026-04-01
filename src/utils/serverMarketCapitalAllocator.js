@@ -65,12 +65,17 @@ function deriveServerMarketCapitalAllocator({
   executionQuality = null,
   reversePolicy = null,
   explorationBudget = null,
+  serverPrimaryLearningEpoch = null,
 } = {}) {
   const objectiveSummary = readSummary(marketObjectiveScore);
   const objectiveRows = readRows(marketObjectiveScore, "by_market");
   const executionSummary = readSummary(executionQuality);
   const reverseSummary = readSummary(reversePolicy);
   const budgetSummary = readSummary(explorationBudget);
+  const epochSummary = readSummary(serverPrimaryLearningEpoch);
+  const epochActive = epochSummary.active === true || upper(epochSummary.status) === "SERVER_PRIMARY_EPOCH_ACTIVE";
+  const epochPenaltyWeight = epochActive ? (toNum(epochSummary.penalty_weight) || 0.35) : 1;
+  const epochExplorationBoost = epochActive ? (toNum(epochSummary.exploration_boost) || 1.15) : 1;
 
   const productionMarkets = new Set((Array.isArray(budgetSummary.production_markets) ? budgetSummary.production_markets : []).map((row) => upper(row)).filter(Boolean));
   const explorationMarkets = new Set((Array.isArray(budgetSummary.exploration_markets) ? budgetSummary.exploration_markets : []).map((row) => upper(row)).filter(Boolean));
@@ -88,8 +93,8 @@ function deriveServerMarketCapitalAllocator({
     const executionPenalty = executionPenaltyMarkets.has(market);
     const reversePenalty = reversePenaltyMarkets.has(market);
     const baseScore = objectiveScore + clamp(recoveryPriorityScore / 4, -2, 3) + clamp(avgProxy / 20, -1, 2);
-    const slotBoost = production ? 1.25 : (exploration ? 0.5 : 0);
-    const penaltyScore = (executionPenalty ? 1.5 : 0) + (reversePenalty ? 1.0 : 0) + (deferred ? 1.0 : 0);
+    const slotBoost = production ? 1.25 : (exploration ? Number((0.5 * epochExplorationBoost).toFixed(4)) : 0);
+    const penaltyScore = ((executionPenalty ? 1.5 : 0) + (reversePenalty ? 1.0 : 0) + (deferred ? 1.0 : 0)) * epochPenaltyWeight;
     const allocationScore = Number((baseScore + slotBoost - penaltyScore).toFixed(4));
     const action = classifyAction({
       market,
@@ -153,6 +158,9 @@ function deriveServerMarketCapitalAllocator({
     production_markets: Array.from(productionMarkets),
     exploration_markets: Array.from(explorationMarkets),
     deferred_penalty_markets: Array.from(deferredMarkets),
+    learning_epoch_status: upper(epochSummary.status),
+    learning_epoch_active: epochActive,
+    learning_epoch_penalty_weight: epochPenaltyWeight,
     by_market: activeRows,
     top_watch_markets: activeRows.slice(0, 8).map((row) => ({
       market: row.market,

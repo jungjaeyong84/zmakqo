@@ -54,17 +54,26 @@ function deriveExplorationApplyCandidate({
   executionQuality = null,
   reversePolicy = null,
   provisionalRealizedOutcome = null,
+  serverPrimaryLearningEpoch = null,
 } = {}) {
   const proposalSummary = readSummary(explorationProposal);
   const budgetSummary = readSummary(explorationBudget);
   const executionSummary = readSummary(executionQuality);
   const reverseSummary = readSummary(reversePolicy);
   const provisionalSummary = readSummary(provisionalRealizedOutcome);
+  const epochSummary = readSummary(serverPrimaryLearningEpoch);
 
   const proposals = Array.isArray(proposalSummary.proposals) ? proposalSummary.proposals : [];
   const top = proposals[0] || null;
   const maxMarketApplyPerCycle = clampIntEnv("OPENCLAW_EXPLORATION_MAX_MARKET_APPLY_PER_CYCLE", 2, 1, 2);
-  const minEffectiveRealizedN = clampIntEnv("OPENCLAW_EXPLORATION_MIN_EFFECTIVE_REALIZED_N", 6, 1, 100);
+  const epochActive = epochSummary.active === true || upper(epochSummary.status) === "SERVER_PRIMARY_EPOCH_ACTIVE";
+  const floorScale = epochActive ? (toNum(epochSummary.realized_sample_floor_scale) || 0.65) : 1;
+  const minEffectiveRealizedN = clampIntEnv(
+    "OPENCLAW_EXPLORATION_MIN_EFFECTIVE_REALIZED_N",
+    Math.max(1, Math.round(6 * floorScale)),
+    1,
+    100
+  );
 
   if (!top) {
     return {
@@ -126,6 +135,8 @@ function deriveExplorationApplyCandidate({
     auto_apply_allowed: autoApplyAllowed,
     max_market_apply_per_cycle: maxMarketApplyPerCycle,
     penalty_mode: penaltyMode,
+    learning_epoch_status: upper(epochSummary.status),
+    learning_epoch_active: epochActive,
     advisory_warnings: advisoryWarnings,
     dry_run_status: upper(proposalSummary.status),
     objective_score: toNum(top.objective_score),
@@ -148,6 +159,8 @@ function deriveExplorationApplyCandidate({
     top_action: candidate.proposed_action,
     blockers,
     penalty_mode: penaltyMode,
+    learning_epoch_status: upper(epochSummary.status),
+    learning_epoch_active: epochActive,
     advisory_warnings: advisoryWarnings,
     effective_realized_n: Number.isFinite(effectiveRealizedN) ? effectiveRealizedN : null,
     min_effective_realized_n: minEffectiveRealizedN,

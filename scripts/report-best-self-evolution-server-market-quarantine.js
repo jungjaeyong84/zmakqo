@@ -18,6 +18,7 @@ const {
 } = require("./lib/automation-utils");
 
 const SERVER_MARKET_CAPITAL_ALLOCATOR_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_market_capital_allocator_latest.json");
+const SERVER_PRIMARY_LEARNING_EPOCH_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_learning_epoch_latest.json");
 
 function renderMarkdown(report = {}) {
   const summary = report.summary || {};
@@ -31,6 +32,7 @@ function renderMarkdown(report = {}) {
     `- top_quarantine_market: ${summary.top_quarantine_market || "N/A"}`,
     `- top_quarantine_reason: ${summary.top_quarantine_reason || "N/A"}`,
     `- top_quarantine_severity: ${summary.top_quarantine_severity || "N/A"}`,
+    `- learning_epoch: ${summary.learning_epoch_status || "N/A"} / active=${summary.learning_epoch_active ? "YES" : "NO"}`,
     "",
     "## Markets",
     ...(Array.isArray(summary.by_market) && summary.by_market.length
@@ -44,13 +46,14 @@ function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
   const serverMarketCapitalAllocator = readJsonRawSafe(SERVER_MARKET_CAPITAL_ALLOCATOR_PATH, null);
+  const serverPrimaryLearningEpoch = readJsonRawSafe(SERVER_PRIMARY_LEARNING_EPOCH_PATH, null);
   const reportCycleId = resolveAnchoredReportCycleId({
     preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
     fallbackCycleId: cycleMeta.cycle_id,
-    sources: [serverMarketCapitalAllocator],
+    sources: [serverMarketCapitalAllocator, serverPrimaryLearningEpoch],
   });
 
-  const summary = deriveServerMarketQuarantine({ serverMarketCapitalAllocator });
+  const summary = deriveServerMarketQuarantine({ serverMarketCapitalAllocator, serverPrimaryLearningEpoch });
   const report = {
     ok: true,
     generated_at_kst: nowMeta.kst,
@@ -58,6 +61,7 @@ function main() {
     generation_id: reportCycleId,
     inputs: {
       server_market_capital_allocator: SERVER_MARKET_CAPITAL_ALLOCATOR_PATH,
+      server_primary_learning_epoch: SERVER_PRIMARY_LEARNING_EPOCH_PATH,
     },
     summary,
   };

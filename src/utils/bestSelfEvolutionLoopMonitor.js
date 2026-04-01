@@ -13,6 +13,7 @@ const DERIVED_LOOP_KEYS = new Set([
   "OVERRIDE_AUTHORITY",
   "EXECUTION_QUALITY",
   "REVERSE_POLICY",
+  "SERVER_PRIMARY_LEARNING_EPOCH",
   "MARKET_OBJECTIVE_SCORE",
   "SERVER_VS_PINE_DELTA",
   "EXPLORATION_BUDGET",
@@ -66,6 +67,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const overrideAuthority = unwrapRawReport(reports.overrideAuthority) || {};
   const executionQuality = unwrapRawReport(reports.executionQuality) || {};
   const reversePolicy = unwrapRawReport(reports.reversePolicy) || {};
+  const serverPrimaryLearningEpoch = unwrapRawReport(reports.serverPrimaryLearningEpoch) || {};
   const marketObjectiveScore = unwrapRawReport(reports.marketObjectiveScore) || {};
   const serverVsPinePerformanceDelta = unwrapRawReport(reports.serverVsPinePerformanceDelta) || {};
   const explorationBudget = unwrapRawReport(reports.explorationBudget) || {};
@@ -113,6 +115,9 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     : {};
   const reversePolicySummary = reversePolicy.summary && typeof reversePolicy.summary === "object"
     ? reversePolicy.summary
+    : {};
+  const serverPrimaryLearningEpochSummary = serverPrimaryLearningEpoch.summary && typeof serverPrimaryLearningEpoch.summary === "object"
+    ? serverPrimaryLearningEpoch.summary
     : {};
   const marketObjectiveScoreSummary = marketObjectiveScore.summary && typeof marketObjectiveScore.summary === "object" ? marketObjectiveScore.summary : {};
   const serverVsPinePerformanceDeltaSummary = serverVsPinePerformanceDelta.summary && typeof serverVsPinePerformanceDelta.summary === "object"
@@ -163,6 +168,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(overrideAuthority)
     || readCycleId(executionQuality)
     || readCycleId(reversePolicy)
+    || readCycleId(serverPrimaryLearningEpoch)
     || readCycleId(marketObjectiveScore)
     || readCycleId(serverVsPinePerformanceDelta)
     || readCycleId(explorationBudget)
@@ -328,6 +334,13 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
         ? "PASS"
         : (String(reversePolicySummary.status || "").trim().toUpperCase() ? "WARN" : "N/A"),
       reason: `drops=${reversePolicySummary.reverse_drop_n ?? 0} / revive=${reversePolicySummary.reverse_revive_n ?? 0} / rate=${reversePolicySummary.reverse_revive_rate != null ? reversePolicySummary.reverse_revive_rate : "N/A"} / top=${reversePolicySummary.top_watch_market || "N/A"}:${reversePolicySummary.top_watch_reason || "N/A"}:${reversePolicySummary.top_watch_action || "N/A"}`,
+    },
+    {
+      loop: "SERVER_PRIMARY_LEARNING_EPOCH",
+      fresh: artifacts.serverPrimaryLearningEpoch && artifacts.serverPrimaryLearningEpoch.fresh === true,
+      cycle_id: readCycleId(serverPrimaryLearningEpoch),
+      status: String(serverPrimaryLearningEpochSummary.status || "").trim().toUpperCase() || "N/A",
+      reason: `focus=${serverPrimaryLearningEpochSummary.learning_focus || "N/A"} / age_days=${serverPrimaryLearningEpochSummary.age_days != null ? serverPrimaryLearningEpochSummary.age_days : "N/A"} / penalty_weight=${serverPrimaryLearningEpochSummary.penalty_weight != null ? serverPrimaryLearningEpochSummary.penalty_weight : "N/A"}`,
     },
     {
       loop: "SERVER_VS_PINE_DELTA",
@@ -650,6 +663,9 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       reverse_policy_top_watch_market: reversePolicySummary.top_watch_market || null,
       reverse_policy_top_watch_reason: reversePolicySummary.top_watch_reason || null,
       reverse_policy_top_watch_action: reversePolicySummary.top_watch_action || null,
+      server_primary_learning_epoch_status: serverPrimaryLearningEpochSummary.status || null,
+      server_primary_learning_epoch_age_days: toNum(serverPrimaryLearningEpochSummary.age_days),
+      server_primary_learning_epoch_penalty_weight: toNum(serverPrimaryLearningEpochSummary.penalty_weight),
       exploration_budget_status: explorationBudgetSummary.status || null,
       exploration_budget_production_markets: Array.isArray(explorationBudgetSummary.production_markets) ? explorationBudgetSummary.production_markets.slice(0, 6) : [],
       exploration_budget_exploration_markets: Array.isArray(explorationBudgetSummary.exploration_markets) ? explorationBudgetSummary.exploration_markets.slice(0, 6) : [],
