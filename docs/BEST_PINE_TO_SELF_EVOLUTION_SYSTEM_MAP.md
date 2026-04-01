@@ -1,529 +1,220 @@
 # BEST_PINE_TO_SELF_EVOLUTION_SYSTEM_MAP
 
 - 제정: 2026-03-31
+- 업데이트: 2026-04-01
 - 상태: ACTIVE
 - 목적:
-  - `Pine -> webhook -> 1~5차 서버 실행 -> 저장/리포트 -> BEST/FEBT 감독 -> self-evolution -> Codex/Claude authority -> 배포/bundle activation`
-    까지 전체 시스템을 한 문서에서 이해할 수 있게 정리한다.
-  - `OpenClaw cron / ops agent / Telegram transport`까지 포함한 운영 substrate의 현재 정본 경로를 같이 정리한다.
-  - 기존 세부 SSOT 문서를 대체하지 않고, 어떤 문서가 어디를 책임지는지 상위 지도 역할을 한다.
+  - 돈벌자 전체 구조를 `사용자 화면 -> 서버 신호 -> 실행 -> 감독 -> self-evolution -> autonomy contract` 순서로 한 문서에서 이해하게 한다.
+  - Pine 중심 설명이 아니라 `서버 정본 전환 진행 중인 실제 구조`를 기준으로 정리한다.
 - 연계 문서:
-  - `/Users/jeongjaeyong/Projects/donbeolja/docs/PINE_AND_FILTER_STAGE_ROLES.md`
-  - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_FEBT_SYSTEM_ROLLOUT_PLAN.md`
-  - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SERVER_CANONICAL_ENGINE_MIGRATION_PLAN.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/SERVER_SIGNAL_AUTHORITY_SPEC.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/SERVER_SIGNAL_AUTHORITY_MIGRATION_CHECKLIST.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/SERVER_VS_PINE_SHADOW_COMPARISON_RUNBOOK.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/OPENCLAW_AUTONOMY_CONTRACT.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MASTER_SPEC.md`
-  - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DEPLOYMENT_AUTOPILOT_SPEC.md`
-  - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_OPERATIONAL_GUARDS.md`
-  - `/Users/jeongjaeyong/Projects/donbeolja/docs/CLAUDE_FULL_SYSTEM_QUALITY_AUDIT_PROMPT.md`
 
 ## 1. 한 줄 정의
 
-이 시스템은 현재 `bundle-based hybrid canonical + OpenClaw ops substrate + autonomy governor` 상태다. 대부분 시장은 아직 `PINE_PRIMARY`로 움직이지만, 서버 canonical engine이 parity/provenance/probe/activation의 정본을 들고 있고, 일부 승인 시장은 `SERVER_PRIMARY` canary로 승격될 수 있다. 로컬 자동화 scheduler와 텔레그램 알림은 이제 `OpenClaw`가 정본이며, 목표 미달 시 회복 경로는 `OpenClaw autonomy contract`와 `objective recovery governor`가 판정한다.
+돈벌자는 현재 `서버가 봉을 읽고 내부 정본 신호를 생성하며`, `Pine는 비교/시각화 shadow로 강등되는 중인` 자동매매 시스템이다.
 
-## 2. 시스템 최상위 흐름
+현재 source mode는 아직 `PINE_PRIMARY`지만, 운영 판단과 전환 기준은 이미 `서버 정본 기준`으로 이동했다.
+
+## 2. 현재 상태 요약
+
+2026-04-01 latest 기준:
+
+1. `runtime_status = READY`
+2. `canonical_engine_source_mode = PINE_PRIMARY`
+3. `exec_tf = 15m`
+4. `market_count = 7`
+5. `server_signal_transition_progress_pct = 88`
+6. `readiness_status = EV_POLICY_DRIFT_ACTIVE`
+7. 남은 실질 blocker:
+   - `EV_POLICY_DRIFT_ACTIVE`
+   - `COOLDOWN_POLICY_DRIFT_ACTIVE`
+8. `STRATEGY_GATE`는 `historical_only`로 비차단화됨
+
+## 3. 최상위 흐름
 
 ```mermaid
 flowchart LR
-  A["Pine<br/>LONG/SHORT, EARLY/CORE, FIXED"] --> B["Webhook Ingest<br/>strategy gate / schema / integrity"]
-  B --> C["Runtime Engine<br/>1~5차 + FEBT + execution"]
-  C --> D["Signals / Intents / Fills / Trades / Drops"]
-  D --> E["Governance / Objective Supervisor / Canary"]
-  E --> F["BEST Self-Evolution Loop"]
-  F --> G["OpenClaw Autonomy Contract / Recovery Governor"]
-  G --> H["Codex + Claude Authority"]
-  H --> I["Deployment Plan / Stage Autopilot"]
-  I --> J["Bundle Activation / Deployment Probe"]
-  J --> K["Applied Runtime / Next Cycle Feedback"]
-  O["OpenClaw Cron / Ops Agent / Telegram Delivery"] --> E
-  O --> F
-  O --> G
-  I -. legacy .-> L["Optional Manual Pine Paste"]
+  A["Binance 15m OHLCV"] --> B["Server Canonical Engine"]
+  B --> C["Authoritative Signals\nsource=SERVER"]
+  C --> D["Order Intents / Fills / Trades"]
+  D --> E["UI / Telegram / Reports"]
+  C --> F["Authority / Quality / Runtime / Cutover"]
+  F --> G["Self-Evolution Loop"]
+  G --> H["Objective Supervisor / Stage Autopilot"]
+  H --> I["OpenClaw Autonomy Contract"]
+  J["TradingView Pine"] --> K["Webhook Ingest"]
+  K --> L["PINE_SHADOW Store Only"]
+  L --> F
 ```
 
-## 3. 용어 사전
+## 4. 각 레이어의 책임
 
-1. `LONG / SHORT`
-   - 외부 live 엔트리 이벤트명
-   - 현재 운영 웹훅과 runtime은 이 이벤트명만 메인 엔트리로 쓴다.
-2. `EARLY / CORE`
-   - Pine 내부 source timing band
-   - 외부 이벤트명이 아니라, `LONG / SHORT`가 어떤 timing 성격인지 설명하는 band다.
-3. `FIXED`
-   - 현재 active LONG/SHORT 수량 profile 이름
-   - 다만 현재 구현상 `EV` 감산은 억제되지만, `AI/CROSS-ASSET` 같은 다른 reduce 경로는 여전히 최종 수량을 줄일 수 있다.
-4. `FEBT`
-   - `5차 WAIT 타이밍층`의 Pine-native timing core
-   - 초기엔 `SHADOW`, 이후 `SOFT/HARD` 승격 대상으로 본다.
-5. `recommended target`
-   - 현재 self-evolution이 가장 유망하다고 보는 다음 후보
-6. `applied origin`
-   - 현재 실제로 붙여넣어 운영 중인 Pine가 어떤 candidate 출처에서 왔는지
-7. `authority bypass`
-   - 과거 artifact에 남아 있던 legacy 용어다.
-   - 최신 SSOT는 `authority_state=PENDING`과 `*_PENDING_AUTHORITY`만 쓴다.
-8. `OpenClaw cron`
-   - local automation scheduler의 현재 정본이다.
-   - 기존 `launchd`는 fallback이 아니라 legacy diagnostic 대상으로만 남는다.
-9. `OpenClaw-first Telegram`
-   - 텔레그램 알림 전송은 repo alert path 기준으로 먼저 OpenClaw를 사용하고, 필요한 경우에만 direct API fallback을 탄다.
+### 4.1 사용자 화면
 
-## 4. Pine 레이어
+역할:
 
-### 4.1 역할
+1. 자산, 수익, 거래 결과를 먼저 보여준다.
+2. 운영 artifact는 `전략상태`에서 읽게 한다.
+3. 기본 화면은 서버 정본 신호만 보여준다.
 
-Pine는 아래를 책임진다.
+현재 메뉴:
 
-1. `LONG / SHORT` 신호 생성
-2. `EARLY / CORE` timing band 계산
-3. `regime / score / confidence / posterior / wave / EV` 품질 번들 계산
-4. `FEBT phase / edge / calc_ok / calc_reason` 같은 timing telemetry 생성
-5. alert payload에 `strategy_id`, `trace_payload_version`, `features_json.*`를 싣는 일
-
-핵심 문서:
-
-1. `/Users/jeongjaeyong/Projects/donbeolja/docs/PINE_AND_FILTER_STAGE_ROLES.md`
-2. `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_PINE_INTRODUCTION_PLAN.md`
-3. `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_PHASE1_PINE_FIELD_SPEC.md`
+1. `홈`
+2. `수익`
+3. `입출금`
+4. `거래기록`
+5. `전략상태`
+6. `설정`
 
 핵심 파일:
 
-1. `/Users/jeongjaeyong/Projects/donbeolja/code/donbeolja.pine.txt`
-2. `/Users/jeongjaeyong/Projects/donbeolja/code/donbeolja_latest_generated.pine.txt`
-3. `/Users/jeongjaeyong/Projects/donbeolja/code/donbeolja_v*.pine.txt`
+1. `/Users/jeongjaeyong/Projects/donbeolja/src/views/home.ejs`
+2. `/Users/jeongjaeyong/Projects/donbeolja/src/views/partials/topnav5.ejs`
+3. `/Users/jeongjaeyong/Projects/donbeolja/src/utils/controlPlaneViewModels.js`
 
-### 4.2 Pine가 하지 않는 일
+### 4.2 Pine 레이어
 
-1. webhook dedupe
-2. exchange reject 처리
-3. partial fill 복구
-4. 계좌 리스크 한도 강제
-5. 최종 주문 실행
-6. self-evolution 후보 승격
+현재 역할:
 
-## 5. 서버 실행 레이어
+1. 차트 상태 패널
+2. EMA/보조선/마커
+3. 비교용 shadow 신호 생성
+4. 서버와의 drift 진단 근거 제공
 
-### 5.1 진입점
+현재 하지 않는 일:
+
+1. 실행 정본 신호 생성
+2. order intent 생성
+3. Telegram 운영 알림 기준
+4. execution authority
+
+핵심 규칙:
+
+1. webhook로 들어온 Pine 신호는 `source=PINE_SHADOW`
+2. `authoritative=false`
+3. 실행 체인에는 기본 진입하지 않는다.
+
+### 4.3 서버 canonical engine
+
+현재 역할:
+
+1. 바이낸스 15분 봉 읽기
+2. 내부 신호 생성
+3. `source=SERVER`, `authoritative=true` 저장
+4. order intent / fill / trade 연결
+5. execution 품질과 cutover readiness 계산
 
 핵심 파일:
 
-1. `/Users/jeongjaeyong/Projects/donbeolja/src/routes/webhook.routes.js`
+1. `/Users/jeongjaeyong/Projects/donbeolja/src/scheduler/marketRunner.js`
 2. `/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js`
+3. `/Users/jeongjaeyong/Projects/donbeolja/src/routes/webhook.routes.js`
+4. `/Users/jeongjaeyong/Projects/donbeolja/src/storage/signals.js`
+5. `/Users/jeongjaeyong/Projects/donbeolja/src/storage/signalsQuery.js`
 
-웹훅에서 먼저 보는 것:
+### 4.4 관측 artifact
 
-1. `strategy_id` 허용 여부
-2. payload schema / integrity
-3. live/prepared/applied runtime state
-4. duplicate/stale 여부
+현재 정본 artifact:
 
-현재 중요한 사실:
+1. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/server_signal_runtime_latest.json`
+2. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/server_signal_authority_latest.json`
+3. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/server_signal_quality_latest.json`
+4. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/server_signal_cutover_readiness_latest.json`
 
-1. 새 Pine를 붙여넣은 뒤 들어오는 webhook은 `env`만이 아니라 `self_evolution runtime state`와 `prepared target`까지 보고 허용한다.
-2. 따라서 self-evolution이 준비한 다음 버전은 `false STRATEGY_ID_MISMATCH`로 막히지 않아야 한다.
+각 역할:
 
-### 5.2 1~5차 필터
+1. `runtime`: 실제 TF, 활성 마켓, source mode
+2. `authority`: 정본/그림자 수와 parity 규모
+3. `quality`: entry -> intent -> fill 품질
+4. `cutover readiness`: 승격 blocker와 조치 힌트
 
-현재 역할은 `/Users/jeongjaeyong/Projects/donbeolja/docs/PINE_AND_FILTER_STAGE_ROLES.md`가 SSOT다.
+### 4.5 self-evolution / autonomy
 
-정리하면:
+현재 읽는 것:
 
-1. `1차`
-   - payload 무결성 / schema / stale / parse / 안전 가드
-2. `2차`
-   - AI usable / AI block / 기본 허용 여부
-3. `3차`
-   - 시황 방향 prior / sizing
-4. `4차`
-   - TP1 도달 확률 기반 final sizing / kill
-5. `5차`
-   - 늦은 진입을 한 봉 연기할지 판단
+1. `server signal authority`
+2. `server signal quality`
+3. `server signal runtime`
+4. `server signal cutover readiness`
 
-### 5.3 현재 수량 체계에서 주의할 점
+연결 위치:
 
-현재 `FIXED`는 이름 그대로 절대 고정 체결 수량을 뜻하지 않는다.
+1. `loop monitor`
+2. `objective supervisor`
+3. `stage autopilot`
+4. `openclaw autonomy contract`
 
-현재 사실:
+## 5. 현재 전환 상태
 
-1. `EV` 감산은 `FIXED`에서 억제된다.
-2. 하지만 `AI/CROSS-ASSET`, `commission gate`, `MDD reduce` 같은 다른 reduce 경로는 여전히 final qty를 줄일 수 있다.
-3. 따라서 “Pine의 FIXED = 항상 프리리얼 고정 수량 체결”은 현재 구현 사실과 다르다.
+### 5.1 이미 끝난 것
 
-이 문서는 이상 상태가 아니라 현재 시스템 사실을 기록한다.
+1. Pine webhook 신호의 `shadow-only` 강등
+2. 기본 UI의 서버 정본 우선 표시
+3. Telegram의 서버 정본 기준 전환
+4. self-evolution / autopilot / autonomy contract로 server signal artifact 연결
+5. `STRATEGY_GATE` historical-only 비차단화
 
-## 6. 저장/관측 레이어
+### 5.2 아직 진행 중인 것
 
-핵심 저장 산출물:
+1. `EV_POLICY` drift 축소
+2. `COOLDOWN_POLICY` drift 축소
+3. `SERVER_PRIMARY` 승격 acceptance 충족
+4. Pine 완전 shadow 마감
 
-1. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/cache/firestore_recent/signals.json`
-2. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/cache/firestore_recent/signals_dropped.json`
-3. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/cache/firestore_recent/order_intents_paper.json`
-4. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/cache/firestore_recent/fills_paper.json`
-5. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/cache/firestore_recent/trades_paper.json`
-6. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/cache/firestore_recent/webhook_ledger.json`
+## 6. 왜 아직 SERVER_PRIMARY가 아닌가
 
-여기서 보는 것:
-
-1. 실제 신호가 왔는지
-2. 어디서 드롭됐는지
-3. intent가 만들어졌는지
-4. fill이 체결됐는지
-5. 수량이 어느 단계에서 줄었는지
-6. `features_json.strategy_id`, `entry_qty_profile`, `ev_gate_*`, `ai_signal.*`, `febt_*`가 무엇인지
-7. `canonical_engine_*`, `pine_overlay_runtime_role`, `pine_shadow_*` provenance가 무엇인지
-
-## 7. BEST/FEBT 감독 레이어
-
-### 7.1 핵심 감독자
-
-핵심 파일:
-
-1. `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-objective-supervisor.js`
-2. `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-weekly-filter-governance.js`
-3. `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-filter-shadow-canary.js`
-
-핵심 산출물:
-
-1. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/objective_supervisor_latest.json`
-2. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/weekly_filter_governance_latest.json`
-3. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/filter_shadow_canary_latest.json`
-4. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/febt_phase0_baseline_latest.json`
-
-### 7.2 여기서 하는 일
-
-1. 성과가 목표에 맞는지 계산
-2. `MONTHLY_TARGET_NOT_MET`, `OBJECTIVE_NOT_MET`, `LATENCY_FAIL` 같은 blocker 계산
-3. canary drift / system approvals / FEBT phase baseline 추적
-4. self-evolution에 “어떤 문제가 우선인지”를 전달
-
-### 7.3 FEBT 문서 군
-
-FEBT는 아래 문서들이 세부 SSOT다.
-
-1. `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_FEBT_SYSTEM_ROLLOUT_PLAN.md`
-2. `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_CONCEPT.md`
-3. `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_PHASE0_MEASUREMENT_PLAN.md`
-4. `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_PINE_INTRODUCTION_PLAN.md`
-5. `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_OPERATIONAL_GUARDS.md`
-
-## 8. Self-Evolution 레이어
-
-### 8.1 상위 역할
-
-핵심 문서:
-
-1. `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MASTER_SPEC.md`
-2. `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DATASET_SPEC.md`
-3. `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_OBJECTIVE_SCORE_SPEC.md`
-4. `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_ATTRIBUTION_SPEC.md`
-5. `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_CANARY_SPEC.md`
-6. `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DEPLOYMENT_AUTOPILOT_SPEC.md`
-
-### 8.2 실제 루프
-
-실행 파일:
-
-1. `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-self-evolution-loop.js`
-
-현재 루프 단계:
-
-1. `dataset`
-2. `canonical_engine_parity`
-3. `canonical_engine_provenance`
-4. `server_primary_canary`
-5. `server_primary_acceptance_watch`
-6. `pine_shadow_drift`
-7. `deployment_probe`
-8. `bundle_activation`
-9. `objective_seed`
-10. `objective`
-11. `openclaw_autonomy_contract`
-12. `attribution`
-13. `candidates`
-14. `replay`
-15. `filter_shadow_canary`
-16. `ev_gate_rescue`
-17. `canary`
-18. `memory`
-19. `deployment_guards`
-20. `objective_recovery_governor`
-21. `weight_tuning`
-22. `codex_patch_engine`
-23. `claude_patch_engine`
-24. `authority_ensemble`
-25. `deployment_plan`
-26. `objective_integrated`
-27. `objective_final`
-28. `loop_monitor`
-29. `stage_autopilot`
-
-### 8.3 OpenClaw autonomy governor
-
-핵심 산출물:
-
-1. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_openclaw_autonomy_contract_latest.json`
-2. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_server_primary_acceptance_watch_latest.json`
-3. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_objective_recovery_governor_latest.json`
-
-여기서 하는 일:
-
-1. objective miss가 실제 recovery 모드인지 판정
-2. bounded degraded authority policy를 선언
-3. `Phase D` acceptance를 별도 watch로 추적
-4. 회복 candidate가 replay/canary/guards/memory/ops health를 모두 통과했는지 판정
-
-현재 상태:
-
-1. `goal_state = OBJECTIVE_RECOVERY_REQUIRED`
-2. `recovery candidate = AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN`
-3. `governor_status = RECOVERY_PROMOTION_READY`
-4. `degraded_authority_enabled = true`
-5. `degraded_authority_eligible = true`
-6. authority ensemble 실상태는 아직 `DEGRADED_TIMEOUT_CONSENSUS_NOT_PRESENT`
-
-### 8.4 운영 substrate
-
-현재 local 운영 substrate는 아래처럼 정리된다.
-
-1. scheduler of record
-   - `OpenClaw cron`
-2. automation runner
-   - `donbeolja-ops` agent
-3. alert transport
-   - `src/utils/alerts.js`의 `OpenClaw-first Telegram`
-4. watchdog SSOT
-   - `automation_watchdog_latest.json`의 `scheduler_mode=OPENCLAW_CRON`
-5. legacy substrate
-   - `launchd` label은 의도적으로 disabled 상태이며 diagnostic only다.
-
-### 8.3 각 단계의 의미
-
-1. `dataset`
-   - 최근 signals / drops / intents / fills / trades를 학습 row로 정리
-2. `canonical_engine_parity`
-   - Pine source와 canonical engine source의 parity를 시장/티어/regime 기준으로 본다.
-3. `canonical_engine_provenance`
-   - `canonical_engine_*`, `pine_overlay_*`, `pine_shadow_*` 필드가 실제 row에 남는지 검증한다.
-4. `server_primary_canary`
-   - `SERVER_PRIMARY` 시장의 live row, disagreement, rollback trigger를 본다.
-5. `pine_shadow_drift`
-   - source가 `SERVER_PRIMARY`일 때 Pine overlay drift를 audit-only로 본다.
-6. `deployment_probe`
-   - `engine_bundle_loaded / policy_bundle_loaded / market_data_flow_ok / probe_pass`를 점검한다.
-7. `bundle_activation`
-   - deploy가 실제 active 상태인지 probe 기준으로 닫는다.
-8. `objective`
-   - 전역/시장별 목적함수 계산
-9. `attribution`
-   - 손실, fallback, late, void, replacement 문제 분해
-10. `candidates`
-   - 자동 tightening / regime / tuning 후보 생성
-11. `replay`
-   - offline delta 검증
-12. `filter_shadow_canary`
-   - 필터 shadow drift를 본다.
-13. `ev_gate_rescue`
-   - downstream EV mismatch를 후보/튜닝 관점으로 구조화한다.
-14. `canary`
-   - 시장별 wave/stage 적용 가능성 계산
-15. `memory`
-   - 실패 후보 재시도 금지와 TTL 관리
-16. `deployment_guards`
-   - promotion 가능 여부 점검
-17. `weight_tuning`
-   - canary와 memory를 읽는 advisory weight tuning을 계산한다.
-18. `codex/claude/ensemble`
-   - 외부 권위 심사
-19. `deployment_plan`
-   - 다음 `engine_bundle / policy_bundle`과 현재 applied 상태를 정리한다.
-20. `objective_integrated / objective_final`
-   - 최종 integrated objective와 supervisor input을 정리한다.
-21. `loop_monitor`
-   - cycle consistency와 critical blocker를 최종 집계한다.
-22. `stage_autopilot`
-   - `EV / CANONICAL_POLICY / SOURCE_MODE` stage를 갱신한다.
-   - 읽을 때 `display.cycle_id`는 self-evolution main cycle, `display.evaluation_cycle_id`는 post-loop 재평가 cycle로 구분해야 한다.
-   - 따라서 `evaluation_cycle_id`만 다르다고 current cycle mismatch로 판단하면 안 되고, `loop_monitor`의 cycle consistency를 함께 봐야 한다.
-
-## 9. 외부 권위 레이어
-
-### 9.1 현재 구조
-
-권위 owner는 현재 `CODEX_CLAUDE_ENSEMBLE`이다.
-
-핵심 파일:
-
-1. `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-codex-weekly-patch-engine.js`
-2. `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-claude-weekly-patch-engine.js`
-3. `/Users/jeongjaeyong/Projects/donbeolja/scripts/report-self-evolution-authority-ensemble.js`
-4. `/Users/jeongjaeyong/Projects/donbeolja/src/utils/selfEvolutionAuthorityEnsemble.js`
-
-핵심 산출물:
-
-1. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/codex_weekly_patch_engine_latest.json`
-2. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/claude_weekly_patch_engine_latest.json`
-3. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_self_evolution_authority_latest.json`
-
-### 9.2 현재 해석 규칙
-
-1. 자동 promotion은 `Codex + Claude` 합의 없는 상태에서 통과하면 안 된다.
-2. 외부 권위가 아직 안 닫힌 live bundle은 `authority_state=PENDING`으로 별도 표기한다.
-3. 따라서 applied 상태는 두 종류가 있다.
-   - `APPLIED_ACTIVE`
-   - `APPLIED_ACTIVE_PENDING_AUTHORITY`
-4. 과거 artifact의 `*_AUTHORITY_BYPASS`는 내부 호환 입력으로만 취급하고, 최신 SSOT는 `*_PENDING_AUTHORITY`를 쓴다.
-
-## 10. 배포 상태 머신
-
-핵심 파일:
-
-1. `/Users/jeongjaeyong/Projects/donbeolja/src/utils/bestSelfEvolutionDeploymentPlan.js`
-2. `/Users/jeongjaeyong/Projects/donbeolja/scripts/report-best-self-evolution-deployment-plan.js`
-3. `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-stage-autopilot.js`
-4. `/Users/jeongjaeyong/Projects/donbeolja/src/utils/selfEvolutionRuntimeState.js`
-5. `/Users/jeongjaeyong/Projects/donbeolja/scripts/ack-self-evolution-manual-paste.js`
+현재 blocker는 구조 부재가 아니라 품질 drift다.
 
 주요 상태:
 
-1. `HOLD`
-2. `PREPARE_PROMOTION`
-3. `READY_FOR_MANUAL_PASTE`
-4. `APPLIED_PENDING_BUNDLE_ACTIVATION`
-5. `APPLIED_ACTIVE`
-6. `APPLIED_PENDING_BUNDLE_ACTIVATION_PENDING_AUTHORITY`
-7. `APPLIED_ACTIVE_PENDING_AUTHORITY`
-8. `PREPARE_ROLLBACK`
-9. `READY_FOR_MANUAL_ROLLBACK`
+1. `source_parity_mismatch_n = 0`
+2. `final_downstream_mismatch`가 남아 있다.
+3. 그중 가장 큰 family는 `EV_POLICY`
+4. 다음 family는 `COOLDOWN_POLICY`
 
-레거시 호환 상태:
+즉 지금은 `서버가 신호를 못 만들기 때문`이 아니라,
+`서버 정본 신호를 운영 기본으로 승격하기 전 마지막 품질 차이`를 줄이는 단계다.
 
-1. `APPLIED_PENDING_SIGNAL_CONFIRMATION`
-2. `APPLIED_CONFIRMED`
-3. `APPLIED_PENDING_SIGNAL_CONFIRMATION_PENDING_AUTHORITY`
-4. `APPLIED_CONFIRMED_PENDING_AUTHORITY`
+## 7. 사용자가 봐야 하는 흐름
 
-### 10.1 실제 흐름
+1. `홈`
+   - 자산 / 손익 / 최근 거래를 본다.
+2. `수익`
+   - 오늘, 7일, 30일, 6개월, 총 손익을 본다.
+3. `거래기록`
+   - 최근 신호, 주문, 실행 결과를 본다.
+4. `전략상태`
+   - 서버 정본 전환 진행률과 drift 상태를 본다.
 
-1. self-evolution이 다음 deploy unit을 계산한다.
-   - `engine_bundle`
-   - `policy_bundle`
-2. 현재는 호환 경계 때문에 `shadow_pine.prepared_file_path`가 같이 생성될 수 있다.
-3. `ack-self-evolution-manual-paste.js`는 legacy manual 경계가 있는 동안 compatibility runtime state를 기록한다.
-4. `bundle activation proof`
-   - `engine_bundle_loaded`
-   - `policy_bundle_loaded`
-   - `market_data_flow_ok`
-   - `first_decision_seen`
-   를 확인한다.
-5. deployment plan / loop monitor / supervisor는 file path가 아니라 bundle activation 상태를 중심으로 새 applied 상태를 반영한다.
-6. `shadow_pine`는 운영 source가 아니라 overlay audit handoff로만 읽는다.
-7. 최신 applied 상태는 현재 `APPLIED_ACTIVE_PENDING_AUTHORITY`가 SSOT다.
+즉 사용자 화면은 돈과 결과를 먼저 보여주고,
+운영 판단은 `전략상태`에서 읽게 한다.
 
-### 10.3 운영 substrate와 메시지 경로
+## 8. 운영자가 봐야 하는 흐름
 
-핵심 파일:
+1. `server_signal_runtime_latest.json`
+2. `server_signal_authority_latest.json`
+3. `server_signal_quality_latest.json`
+4. `server_signal_cutover_readiness_latest.json`
+5. `best_self_evolution_loop_monitor_latest.json`
+6. `best_self_evolution_openclaw_autonomy_contract_latest.json`
 
-1. `/Users/jeongjaeyong/Projects/donbeolja/src/utils/alerts.js`
-2. `/Users/jeongjaeyong/Projects/donbeolja/scripts/lib/openclaw-cron-manifest.js`
-3. `/Users/jeongjaeyong/Projects/donbeolja/scripts/setup-openclaw-cron.js`
-4. `/Users/jeongjaeyong/Projects/donbeolja/scripts/disable-launchd-automations.js`
-5. `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-automation-watchdog.js`
-6. `/Users/jeongjaeyong/Projects/donbeolja/openclaw-ops-workspace/AGENTS.md`
-7. `/Users/jeongjaeyong/Projects/donbeolja/openclaw-ops-workspace/MEMORY.md`
+이 6개를 보면 현재
+- 서버 정본 전환이 어디까지 왔는지
+- 왜 막히는지
+- 무엇을 먼저 조정해야 하는지
+를 읽을 수 있다.
 
-현재 사실:
+## 9. 지금의 최종 해석
 
-1. `OpenClaw cron`이 local automation 16개를 소유한다.
-2. `automation_watchdog_latest.json`의 `scheduler_mode=OPENCLAW_CRON`, `verdict=PASS`가 현재 scheduler health SSOT다.
-3. `launchd`는 더 이상 실행 정본이 아니고, watchdog에서 `Legacy Launchd (diagnostic only)`로만 보여준다.
-4. 텔레그램 요약/알림은 `sendAlert()` 경로에서 OpenClaw를 먼저 사용한다.
+돈벌자는 더 이상 `Pine가 신호를 만들고 서버가 받아 실행하는 시스템`으로만 설명하면 틀린다.
 
-### 10.2 current applied vs recommended target
+현재 더 정확한 설명은 아래다.
 
-현재 시스템은 아래 둘을 분리해서 기록해야 한다.
-
-1. `applied_origin_candidate_id`
-   - 현재 실제 운영 중인 Pine의 출처
-2. `recommended_target_candidate_id`
-   - 지금 추천되는 다음 self-evolution target
-
-이 둘을 섞으면 rollback, attribution, memory, 감사 리포트가 꼬인다.
-
-## 11. 현재 수동 경계
-
-지금도 사람이 할 수 있는 legacy 경계:
-
-1. TradingView Pine 붙여넣기
-
-중요:
-
-1. 이 경계는 더 이상 bundle activation 정본을 결정하지 않는다.
-2. 최신 applied 상태는 deployment probe와 bundle activation이 닫는다.
-
-사람이 원하면 개입할 수 있지만, 시스템이 기본적으로 자동화하는 일:
-
-1. prepared file 생성
-2. runtime/version sync
-3. webhook strategy gate 확장
-4. deployment probe / bundle activation
-5. objective/canary/self-evolution artifact 갱신
-
-현재 추가로 알아야 할 점:
-
-1. `SERVER_PRIMARY`는 이미 승인 시장 `AXSUSDT`에 적용됐다.
-2. 다만 canary acceptance는 아직 `executed_n = 0`이라 `SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT` 상태다.
-
-## 12. 운영자가 지금 봐야 할 핵심 파일
-
-### 12.1 신호 품질/실행
-
-1. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/cache/firestore_recent/signals.json`
-2. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/cache/firestore_recent/signals_dropped.json`
-3. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/cache/firestore_recent/order_intents_paper.json`
-4. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/cache/firestore_recent/fills_paper.json`
-
-### 12.2 감독/가드
-
-1. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/objective_supervisor_latest.json`
-2. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/weekly_filter_governance_latest.json`
-3. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/filter_shadow_canary_latest.json`
-4. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/febt_phase0_baseline_latest.json`
-
-### 12.3 self-evolution / authority / 배포
-
-1. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_loop_run_latest.json`
-2. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_deployment_plan_latest.json`
-3. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_loop_monitor_latest.json`
-4. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_self_evolution_authority_latest.json`
-5. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/self_evolution_manual_paste_ack_latest.json`
-
-### 12.4 운영 substrate / 메시지
-
-1. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/automation_watchdog_latest.json`
-2. `/Users/jeongjaeyong/Projects/donbeolja/scripts/lib/openclaw-cron-manifest.js`
-3. `/Users/jeongjaeyong/Projects/donbeolja/openclaw-ops-workspace/AGENTS.md`
-
-## 13. 현재 시스템 사실상 중요 주의점
-
-1. `FIXED = 무조건 프리리얼 체결 수량`은 아니다.
-   - 현재는 `EV` 감산만 억제되고, 다른 reduce path는 남아 있다.
-2. `authority verdict = HOLD`인데 applied가 존재할 수 있다.
-   - 이 경우는 버그가 아니라 `EXTERNAL_AUTHORITY_PENDING` 상태다.
-3. self-evolution report의 `latest` alias는 같은 cycle env로 써야 원자적으로 정렬된다.
-4. `objective HOLD`와 `applied confirmed`는 동시에 가능하다.
-   - 하나는 운영 성과 상태이고, 다른 하나는 버전 적용 확인 상태다.
-
-## 14. 권장 문서 읽기 순서
-
-처음 보는 사람 기준:
-
-1. 이 문서
-2. `/Users/jeongjaeyong/Projects/donbeolja/docs/PINE_AND_FILTER_STAGE_ROLES.md`
-3. `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_OPERATIONAL_GUARDS.md`
-4. `/Users/jeongjaeyong/Projects/donbeolja/docs/FEBT_PINE_INTRODUCTION_PLAN.md`
-5. `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_FEBT_SYSTEM_ROLLOUT_PLAN.md`
-6. `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MASTER_SPEC.md`
-7. `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_DEPLOYMENT_AUTOPILOT_SPEC.md`
-
-## 15. 한 줄 결론
-
-이 저장소의 핵심은 “Pine가 품질 telemetry와 overlay를 만들고, 서버 canonical engine이 실행 정본을 책임지고, BEST/FEBT와 self-evolution이 그 결과를 학습해서 다음 engine/policy bundle을 만들며, 자동화와 메시지 전달은 OpenClaw가 운영 substrate로 담당한다”는 점이다.
+1. 서버가 15분 봉을 읽고 내부 정본 신호를 만든다.
+2. Pine는 저장/비교/시각화 shadow로 내려가고 있다.
+3. 운영 판단은 이미 서버 정본 artifact 기준으로 이동했다.
+4. 남은 건 `SERVER_PRIMARY` 승격 전 마지막 drift 제거다.

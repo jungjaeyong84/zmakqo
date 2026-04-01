@@ -1,102 +1,130 @@
 # OPENCLAW_AUTONOMY_CONTRACT
 
 - 제정: 2026-03-31
+- 업데이트: 2026-04-01
 - 상태: ACTIVE
 - 목적:
-  - `OpenClaw`를 단순 스케줄러가 아니라 donbeolja의 상위 운영 control plane으로 고정한다.
-  - `objective miss -> recovery candidate -> bounded degraded authority -> deploy/rollback hold`의 최상위 계약을 문서와 artifact에서 동일하게 유지한다.
+  - `OpenClaw`를 돈벌자의 상위 운영 control plane으로 고정한다.
+  - objective, authority, deployment, server signal cutover를 하나의 계약으로 정렬한다.
 
 ## 1. 한 줄 정의
 
-`OPENCLAW_AUTONOMY_CONTRACT`는 donbeolja가 목표 미달 상태에서 어떤 조건으로 스스로 회복 경로를 열 수 있는지, 어떤 조건에서는 반드시 HOLD해야 하는지를 규정하는 상위 헌법이다.
+`OPENCLAW_AUTONOMY_CONTRACT`는 돈벌자가 목표 미달 상태에서 어떤 회복 경로를 열 수 있는지, 그리고 서버 정본 전환이 아직 어떤 blocker 때문에 승격되지 않는지를 함께 판정하는 상위 계약이다.
 
-## 2. 정본 artifact
+## 2. 현재 정본 artifact
 
 1. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_openclaw_autonomy_contract_latest.json`
-2. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_server_primary_acceptance_watch_latest.json`
-3. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_objective_recovery_governor_latest.json`
-4. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_self_evolution_authority_latest.json`
+2. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/server_signal_authority_latest.json`
+3. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/server_signal_quality_latest.json`
+4. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/server_signal_runtime_latest.json`
+5. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/server_signal_cutover_readiness_latest.json`
+6. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_server_primary_acceptance_watch_latest.json`
+7. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_objective_recovery_governor_latest.json`
+8. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_self_evolution_authority_latest.json`
 
-## 3. Control Plane 정본
+## 3. 현재 control plane 정본
 
 1. `scheduler_sot = OPENCLAW_CRON`
 2. `telegram_transport_sot = OPENCLAW_FIRST`
 3. `execution_sot = SERVER_CANONICAL`
-4. `pine_role = SHADOW_OVERLAY_AUDIT`
+4. `signal_authority_target = SERVER_PRIMARY`
+5. `pine_role = PINE_SHADOW`
 
-## 4. Objective Policy
+## 4. 현재 latest 기준 상태
 
-기본 회복 기준은 아래다.
+### 4.1 autonomy contract summary
 
-1. `min_objective_score = 0`
-2. `min_monthly_run_rate_krw = 1,500,000`
-3. `min_win_rate = 0.60`
-4. `recovery_trigger_objective_score = -0.25`
+현재 latest 기준:
 
-현재 real cycle `best_self_evolution_2026-03-31_2128_1dc17b7c` 기준 상태:
+1. `goal_state = OBJECTIVE_RECOVERY_REQUIRED`
+2. `authority_state = APPROVED`
+3. `phase_d_status = SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT`
+4. `ops_status = PASS`
+5. `server_signal_authority_status = PARITY_DRIFT`
+6. `server_signal_quality_status = WATCH_PARITY_DRIFT`
+7. `server_signal_runtime_status = READY`
+8. `server_signal_transition_status = IN_PROGRESS`
+9. `server_signal_transition_progress_pct = 88`
 
-1. `objective_score = -7.4059`
-2. `monthly_run_rate_krw = -436.19`
-3. `win_rate = 0.4444`
-4. `goal_state = OBJECTIVE_RECOVERY_REQUIRED`
+### 4.2 server signal runtime
 
-## 5. Bounded Degraded Authority Policy
+1. `canonical_engine_source_mode = PINE_PRIMARY`
+2. `exec_tf = 15m`
+3. `market_count = 7`
+4. `scheduler_status = ENABLED`
+5. `watchdog_verdict = PASS`
 
-`Codex + Claude`가 기술적 timeout 교착에 빠질 경우에도, 아래 조건이 모두 닫혀야만 제한적 promote를 고려한다.
+### 4.3 server signal cutover readiness
 
-1. `enabled = true`
-2. `min_timeout_streak = 3`
-3. `require_replay_pass = true`
-4. `require_canary_ready = true`
-5. `require_deployment_guards_pass = true`
-6. `require_memory_clear = true`
-7. `require_openclaw_ops_healthy = true`
-8. `allow_target_deploy_units = [SERVER_SETTINGS, ENGINE_POLICY_BUNDLE]`
+1. `promotion_ready = false`
+2. `readiness_status = EV_POLICY_DRIFT_ACTIVE`
+3. `blockers = [EV_POLICY_DRIFT_ACTIVE, COOLDOWN_POLICY_DRIFT_ACTIVE]`
+4. `dominant_mismatch_family = EV_POLICY`
+5. `recommended_action = LOWER_EV_TP1_MIN_REVIEW`
+6. `strategy_gate_historical_only = true`
 
-즉 degraded authority는 “AI 둘 다 timeout이면 그냥 승격”이 아니라, `replay + canary + guards + memory + ops health`를 모두 통과한 bounded recovery path다.
+## 5. autonomy contract가 지금 보는 것
 
-## 6. Phase D Acceptance Watch
+### 5.1 objective 축
 
-`SERVER_PRIMARY` 확대는 아래 acceptance가 닫혀야만 가능하다.
+1. 목표 점수가 아직 회복 필요 상태인지
+2. recovery candidate가 열려 있는지
+3. replay / canary / guards가 닫혔는지
 
-1. `min_server_primary_executed_n = 2`
-2. `max_server_primary_disagreement_rate = 0.15`
-3. `max_server_primary_rollback_trigger_n = 0`
+### 5.2 deployment 축
 
-현재 real cycle 기준:
+1. authority가 `APPROVED`인지
+2. 배포/활성화 경로가 실제 적용 가능한지
+3. 외부 authority blocker가 rollback을 막고 있는지
 
-1. `configured_server_primary_markets = ["AXSUSDT"]`
-2. `observed_n = 1`
-3. `executed_n = 0`
-4. `phase_d_status = PENDING`
-5. `phase_d_reason = SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT`
+### 5.3 server signal cutover 축
 
-## 7. Objective Recovery Governor
+1. 서버 정본 신호가 실제로 생성되고 있는지
+2. entry -> intent -> fill 품질이 유지되는지
+3. `EV_POLICY`, `COOLDOWN_POLICY` drift가 승격 blocker인지
+4. `SERVER_PRIMARY`로 올릴 준비가 됐는지
 
-`OBJECTIVE_RECOVERY_GOVERNOR`는 현재 회복 경로가 실제로 열려 있는지 최종 판정한다.
+## 6. bounded degraded authority 정책
 
-현재 real cycle 기준:
+`Codex + Claude`가 기술적으로 timeout 교착에 빠져도 아무 후보나 promote하지 않는다.
 
-1. `target_candidate_id = AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN`
-2. `target_deploy_unit = SERVER_SETTINGS`
-3. `replay_pass = true`
-4. `canary_ready = true`
-5. `deployment_guards_pass = true`
-6. `memory_blocked = false`
-7. `unrelated_memory_blocked_candidate_ids = ["AI_AI"]`
-8. `governor_status = RECOVERY_PROMOTION_READY`
-9. `degraded_authority_eligible = true`
+아래가 모두 닫혀야 제한 promote를 고려한다.
 
-즉 현재 governor 관점의 recovery path는 열려 있다. 다만 실제 promote는 `external authority pending`이 닫히거나, 향후 timeout 교착 시 degraded timeout policy가 발동해야 한다.
+1. `replay_pass`
+2. `canary_ready`
+3. `deployment_guards_pass`
+4. `memory_clear`
+5. `openclaw_ops_healthy`
+6. `target_deploy_unit`이 허용 범위 안일 것
 
-## 8. 최종 의미
+즉 degraded authority는 편법이 아니라 `검증된 회복 경로`다.
 
-현재 donbeolja는 이미 대부분의 측정, 후보 생성, 검증, 배포 확인을 자동으로 수행한다.
+## 7. 지금 왜 완전 자율 전환이 아닌가
 
-아직 완전 자율 진화가 아닌 이유는 3개다.
+현재 남은 이유는 구조 부재보다 운영 증거 부족이다.
 
-1. `external authority`가 아직 `PENDING/HOLD` 상태다.
-2. `Phase D acceptance` 표본이 부족하다.
-3. unrelated memory block은 아직 남아 있지만 recovery target을 직접 막고 있지는 않다.
+핵심 3개:
 
-즉 남은 문제는 구조적 자동화 부족이 아니라, `운영 증거와 external authority blocker`다.
+1. `SERVER_PRIMARY` acceptance sample이 아직 짧다.
+2. `EV_POLICY_DRIFT_ACTIVE`가 아직 남아 있다.
+3. `COOLDOWN_POLICY_DRIFT_ACTIVE`가 아직 남아 있다.
+
+반대로 이미 닫힌 것:
+
+1. `STRATEGY_GATE`는 `historical_only`
+2. `server runtime`은 `READY`
+3. `ops substrate`는 `PASS`
+4. `authority_state`는 `APPROVED`
+
+## 8. 현재 최종 의미
+
+지금 돈벌자는 이미 대부분의 자동화와 감독 체계를 갖췄다.
+
+남은 것은 아래다.
+
+1. 서버 정본 신호 품질 drift 축소
+2. `SERVER_PRIMARY` 승격 acceptance 충족
+3. Pine 완전 shadow 마감
+
+즉 지금의 핵심 문제는 자동화 부족이 아니라,
+`서버 정본 전환의 마지막 품질 blocker를 닫는 것`이다.
