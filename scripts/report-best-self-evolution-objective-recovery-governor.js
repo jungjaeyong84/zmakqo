@@ -33,6 +33,7 @@ const INPUTS = Object.freeze({
   dropValidation: path.join(OPS_DAILY_DIR, "best_self_evolution_drop_validation_latest.json"),
   executionQuality: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_quality_latest.json"),
   reversePolicy: path.join(OPS_DAILY_DIR, "best_self_evolution_reverse_policy_latest.json"),
+  explorationBudget: path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_budget_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -52,6 +53,7 @@ function renderMarkdown(report = {}) {
     `- drop_validation: ${summary.drop_validation_status || "N/A"} / ${summary.drop_validation_top_rescue_family || "N/A"} / ${summary.drop_validation_top_rescue_reason || "N/A"} / ${summary.drop_validation_top_rescue_market || "N/A"}`,
     `- execution_quality: ${summary.execution_quality_status || "N/A"} / latency_p95 ${summary.execution_quality_created_to_fill_p95_ms ?? "N/A"} / slippage_p95 ${summary.execution_quality_adverse_slippage_p95_bps ?? "N/A"} / partial ${summary.execution_quality_partial_fill_rate_pct ?? "N/A"} / top ${summary.execution_quality_top_latency_market || summary.execution_quality_top_slippage_market || summary.execution_quality_top_partial_market || "N/A"}`,
     `- reverse_policy: ${summary.reverse_policy_status || "N/A"} / top ${summary.reverse_policy_top_watch_market || "N/A"} / ${summary.reverse_policy_top_watch_reason || "N/A"} / ${summary.reverse_policy_top_watch_action || "N/A"}`,
+    `- exploration_budget: ${summary.exploration_budget_status || "N/A"} / prod ${Array.isArray(summary.exploration_budget_production_markets) && summary.exploration_budget_production_markets.length ? summary.exploration_budget_production_markets.join("|") : "none"} / explore ${Array.isArray(summary.exploration_budget_exploration_markets) && summary.exploration_budget_exploration_markets.length ? summary.exploration_budget_exploration_markets.join("|") : "none"} / deferred ${Array.isArray(summary.exploration_budget_deferred_penalty_markets) && summary.exploration_budget_deferred_penalty_markets.length ? summary.exploration_budget_deferred_penalty_markets.join("|") : "none"}`,
     `- degraded_authority: ${summary.degraded_authority_enabled ? "ENABLED" : "DISABLED"} / eligible=${summary.degraded_authority_eligible ? "YES" : "NO"} / ${summary.degraded_authority_reason || "N/A"}`,
     "",
     "## Next Actions",
@@ -84,6 +86,7 @@ function main() {
     dropValidation: readJsonRawSafe(INPUTS.dropValidation, null),
     executionQuality: readJsonRawSafe(INPUTS.executionQuality, null),
     reversePolicy: readJsonRawSafe(INPUTS.reversePolicy, null),
+    explorationBudget: readJsonRawSafe(INPUTS.explorationBudget, null),
   });
   const output = {
     ok: true,

@@ -161,6 +161,20 @@ function summarizeReversePolicy(reversePolicy = null) {
   };
 }
 
+function summarizeExplorationBudget(explorationBudget = null) {
+  const summary = readSummary(explorationBudget);
+  return {
+    status: toUpper(summary.status),
+    production_slot_n: toNum(summary.production_slot_n) || 0,
+    exploration_slot_n: toNum(summary.exploration_slot_n) || 0,
+    production_markets: Array.isArray(summary.production_markets) ? summary.production_markets : [],
+    exploration_markets: Array.isArray(summary.exploration_markets) ? summary.exploration_markets : [],
+    deferred_penalty_markets: Array.isArray(summary.deferred_penalty_markets) ? summary.deferred_penalty_markets : [],
+    top_production_market: String(summary.top_production_market || "").trim().toUpperCase() || null,
+    top_exploration_market: String(summary.top_exploration_market || "").trim().toUpperCase() || null,
+  };
+}
+
 function deriveObjectiveRecoveryGovernor({
   autonomyContract = null,
   objective = null,
@@ -175,6 +189,7 @@ function deriveObjectiveRecoveryGovernor({
   dropValidation = null,
   executionQuality = null,
   reversePolicy = null,
+  explorationBudget = null,
 } = {}) {
   const contract = unwrapRawReport(autonomyContract) || {};
   const contractStatus = contract.current_status && typeof contract.current_status === "object" ? contract.current_status : {};
@@ -195,6 +210,7 @@ function deriveObjectiveRecoveryGovernor({
   const dropValidationSummary = summarizeDropValidation(dropValidation);
   const executionQualitySummary = summarizeExecutionQuality(executionQuality);
   const reversePolicySummary = summarizeReversePolicy(reversePolicy);
+  const explorationBudgetSummary = summarizeExplorationBudget(explorationBudget);
 
   const targetCandidateId = String(
     promotion.display_candidate_id
@@ -301,6 +317,14 @@ function deriveObjectiveRecoveryGovernor({
       reverse_policy_top_watch_market: reversePolicySummary.top_watch_market,
       reverse_policy_top_watch_reason: reversePolicySummary.top_watch_reason,
       reverse_policy_top_watch_action: reversePolicySummary.top_watch_action,
+      exploration_budget_status: explorationBudgetSummary.status,
+      exploration_budget_production_slot_n: explorationBudgetSummary.production_slot_n,
+      exploration_budget_exploration_slot_n: explorationBudgetSummary.exploration_slot_n,
+      exploration_budget_production_markets: explorationBudgetSummary.production_markets,
+      exploration_budget_exploration_markets: explorationBudgetSummary.exploration_markets,
+      exploration_budget_deferred_penalty_markets: explorationBudgetSummary.deferred_penalty_markets,
+      exploration_budget_top_production_market: explorationBudgetSummary.top_production_market,
+      exploration_budget_top_exploration_market: explorationBudgetSummary.top_exploration_market,
       phase_d_status: String(acceptanceSummary.phase_d_status || "").trim().toUpperCase() || null,
       phase_d_ready: acceptanceSummary.phase_d_ready === true,
       governor_status: governorStatus,
@@ -329,6 +353,11 @@ function deriveObjectiveRecoveryGovernor({
           && reversePolicySummary.status === "REVERSE_POLICY_REVIEW"
           ? [
             `Review reverse policy path first (${reversePolicySummary.top_watch_market || "N/A"} / ${reversePolicySummary.top_watch_reason || "N/A"} / ${reversePolicySummary.top_watch_action || "N/A"} / drop ${reversePolicySummary.reverse_drop_n} / revive ${reversePolicySummary.reverse_revive_n}).`,
+          ]
+          : []),
+        ...(explorationBudgetSummary.status
+          ? [
+            `Use exploration budget explicitly (prod ${explorationBudgetSummary.production_markets.length ? explorationBudgetSummary.production_markets.join("|") : "none"} / explore ${explorationBudgetSummary.exploration_markets.length ? explorationBudgetSummary.exploration_markets.join("|") : "none"} / deferred ${explorationBudgetSummary.deferred_penalty_markets.length ? explorationBudgetSummary.deferred_penalty_markets.join("|") : "none"}).`,
           ]
           : []),
         ...dropValidationSummary.next_actions,
