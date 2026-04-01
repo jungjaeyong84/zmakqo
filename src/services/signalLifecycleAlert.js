@@ -152,6 +152,14 @@ function formatEventTag(event) {
   return ev;
 }
 
+function formatSignalSource(payload = {}) {
+  const source = String(payload.source || "").trim().toUpperCase();
+  if (payload.authoritative === true || source === "SERVER") return "서버 정본";
+  if (source === "PINE_SHADOW") return "파인 그림자";
+  if (source === "WEBHOOK") return "외부 수신";
+  return source || "-";
+}
+
 function buildReceivedMessage(payload = {}) {
   const symbol = String(payload.symbol || "").toUpperCase();
   const event = String(payload.event || "-").toUpperCase();
@@ -160,6 +168,7 @@ function buildReceivedMessage(payload = {}) {
   const title = `${symbol} 신호 수신`;
   const lines = [
     `이벤트: ${formatEventTag(event)}`,
+    `출처: ${formatSignalSource(payload)}`,
     `사이드: ${fmtSide(payload.side)}`,
     `TF: ${String(payload.tf || "-")}`,
     `수량: ${fmtQty(payload.qtyPct)}`,
@@ -185,6 +194,7 @@ function buildDroppedMessage(payload = {}) {
   const title = `${symbol} 신호 ${isTimingDefer ? "연기" : "드롭"}`;
   const lines = [
     `이벤트: ${formatEventTag(event)}`,
+    `출처: ${formatSignalSource(payload)}`,
     `사이드: ${fmtSide(payload.side)}`,
     `TF: ${String(payload.tf || "-")}`,
     `단계: ${stage.text || "미분류"}`,

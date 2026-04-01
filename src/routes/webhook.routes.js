@@ -2131,19 +2131,6 @@ function createWebhookRoutes() {
       } catch (runtimeErr) {
         console.warn("[SELF_EVOLUTION_RUNTIME_CONFIRM_FAIL]", runtimeErr?.message || runtimeErr);
       }
-      sendSignalReceivedAlert({
-        exchange,
-        symbol,
-        tf,
-        event,
-        side,
-        qtyPct: qtyPctFinal,
-        reason,
-        signalId: saved && saved.signal_id ? saved.signal_id : (p.signal_id || null),
-        executionMode,
-      }).catch((err) => {
-        console.warn("[SIGNAL_RECEIVED_ALERT_FAIL]", err?.message || err);
-      });
       emitWebhookTrace(traceOn, {
         decision: "SAVED",
         exchange,

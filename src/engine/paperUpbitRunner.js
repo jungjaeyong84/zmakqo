@@ -37,6 +37,7 @@ const {
   resolveCanonicalEngineConfig: resolveCanonicalEngineConfigShared,
 } = require("../services/canonicalEngine");
 const { sendTradeExecutionAlert, sendTradeExecutionFailureAlert } = require("../services/tradeExecutionAlert");
+const { sendSignalReceivedAlert } = require("../services/signalLifecycleAlert");
 const { sendAlert } = require("../utils/alerts");
 const { estimateTp1ReachProbability } = require("../services/evTp1Probability");
 const { resolveWaitOneBarConfig, evaluateWaitOneBarTiming } = require("../services/waitOneBarPolicy");
@@ -8994,7 +8995,7 @@ async function runPaperUpbitForBar({
 
     // signals 기록은 외부는 이미 저장돼 있으니, 내부 신호만 저장
     if (!externalSignals.some((x) => x.event === s.event && x.side === s.side && x.qty_pct === s.qty_pct)) {
-      await upsertSignal({
+      const savedSignal = await upsertSignal({
         exchange,
         symbol,
         tf,
@@ -9009,6 +9010,23 @@ async function runPaperUpbitForBar({
         source: "SERVER",
         authoritative: true,
       });
+      if (savedSignal && savedSignal.signal_id && savedSignal.decision === "CREATED") {
+        sendSignalReceivedAlert({
+          exchange,
+          symbol,
+          tf,
+          event: s.event,
+          side: s.side,
+          qtyPct: qtyFraction,
+          reason: s.reason || "INTERNAL_SIGNAL",
+          signalId: savedSignal.signal_id,
+          executionMode: intentExecutionMode,
+          source: "SERVER",
+          authoritative: true,
+        }).catch((err) => {
+          console.warn("[SIGNAL_RECEIVED_ALERT_FAIL]", err?.message || err);
+        });
+      }
     }
 
     const isImmediateExit = exitImmediateEnabled && intent === "EXIT";
@@ -11817,7 +11835,7 @@ async function runPaperFuturesForBar({
     }
 
     if (!externalSignals.some((x) => x.event === s.event && x.side === s.side && x.qty_pct === s.qty_pct)) {
-      await upsertSignal({
+      const savedSignal = await upsertSignal({
         exchange,
         symbol,
         tf,
@@ -11832,6 +11850,23 @@ async function runPaperFuturesForBar({
         source: "SERVER",
         authoritative: true,
       });
+      if (savedSignal && savedSignal.signal_id && savedSignal.decision === "CREATED") {
+        sendSignalReceivedAlert({
+          exchange,
+          symbol,
+          tf,
+          event: s.event,
+          side: s.side,
+          qtyPct: qtyFraction,
+          reason: s.reason || "INTERNAL_SIGNAL",
+          signalId: savedSignal.signal_id,
+          executionMode: intentExecutionMode,
+          source: "SERVER",
+          authoritative: true,
+        }).catch((err) => {
+          console.warn("[SIGNAL_RECEIVED_ALERT_FAIL]", err?.message || err);
+        });
+      }
     }
 
     const isImmediateExit = exitImmediateEnabled && intent === "EXIT";
