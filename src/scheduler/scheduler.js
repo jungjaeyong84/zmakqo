@@ -418,7 +418,7 @@ function createScheduler() {
 
     const alertChannel = String(sys.alert_channel || "").trim();
     const alertIntervalMs = Number(process.env.ALERT_MIN_INTERVAL_MS || (15 * 60 * 1000));
-    if (health.gateFail > 0 && alertChannel) {
+    if (String(process.env.HEALTH_ALERT_ENABLED || "0").trim() !== "0" && health.gateFail > 0 && alertChannel) {
       const key = [
         overallGateStr,
         health.gateFail,
@@ -469,7 +469,7 @@ function createScheduler() {
         );
         const alertChannel = resolveExitIntegrityAlertChannel(sys);
         const alertIntervalMs = Math.max(10000, Number(process.env.EXIT_INTEGRITY_ALERT_MIN_INTERVAL_MS || 60000));
-        if (issueCount > 0 && alertChannel) {
+        if (String(process.env.EXIT_INTEGRITY_ALERT_ENABLED || "0").trim() !== "0" && issueCount > 0 && alertChannel) {
           const top = Array.isArray(exitIntegrity.issues) ? exitIntegrity.issues.slice(0, 5) : [];
           const key = top.map((x) => `${x.symbol}:${x.code}`).join("|");
           const lastAt = Number(state.lastExitIntegrityAlertAt);

@@ -240,7 +240,7 @@ function shouldNotifyType(type) {
 }
 
 async function sendSignalLifecycleAlert({ type, ...payload } = {}) {
-  if (!toBool(process.env.SIGNAL_LIFECYCLE_ALERT_ENABLED, true)) {
+  if (!toBool(process.env.SIGNAL_LIFECYCLE_ALERT_ENABLED, false)) {
     return { ok: false, skipped: true, reason: "DISABLED" };
   }
   if (!shouldNotifyType(type)) {
