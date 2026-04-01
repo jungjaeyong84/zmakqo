@@ -17,6 +17,7 @@ const DERIVED_LOOP_KEYS = new Set([
   "SERVER_VS_PINE_DELTA",
   "EXPLORATION_BUDGET",
   "EXPLORATION_PROPOSAL",
+  "EXPLORATION_APPLY_CANDIDATE",
   "OPENCLAW_AUTONOMY_CONTRACT",
   "OBJECTIVE_RECOVERY_GOVERNOR",
   "OBJECTIVE_RECOVERY_EFFECT",
@@ -67,6 +68,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const serverVsPinePerformanceDelta = unwrapRawReport(reports.serverVsPinePerformanceDelta) || {};
   const explorationBudget = unwrapRawReport(reports.explorationBudget) || {};
   const explorationProposal = unwrapRawReport(reports.explorationProposal) || {};
+  const explorationApplyCandidate = unwrapRawReport(reports.explorationApplyCandidate) || {};
   const canonicalProvenance = unwrapRawReport(reports.canonicalProvenance) || {};
   const serverPrimaryCanary = unwrapRawReport(reports.serverPrimaryCanary) || {};
   const serverPrimaryAcceptanceWatch = unwrapRawReport(reports.serverPrimaryAcceptanceWatch) || {};
@@ -114,6 +116,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     : {};
   const explorationBudgetSummary = explorationBudget.summary && typeof explorationBudget.summary === "object" ? explorationBudget.summary : {};
   const explorationProposalSummary = explorationProposal.summary && typeof explorationProposal.summary === "object" ? explorationProposal.summary : {};
+  const explorationApplyCandidateSummary = explorationApplyCandidate.summary && typeof explorationApplyCandidate.summary === "object" ? explorationApplyCandidate.summary : {};
   const canonicalProvenanceSummary = canonicalProvenance.summary && typeof canonicalProvenance.summary === "object" ? canonicalProvenance.summary : {};
   const canonicalProvenanceEligible = canonicalProvenanceSummary.post_cutover_engine_eligible_n != null
     ? canonicalProvenanceSummary.post_cutover_engine_eligible_n
@@ -158,6 +161,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(serverVsPinePerformanceDelta)
     || readCycleId(explorationBudget)
     || readCycleId(explorationProposal)
+    || readCycleId(explorationApplyCandidate)
     || readCycleId(canonicalProvenance)
     || readCycleId(serverPrimaryCanary)
     || readCycleId(serverPrimaryAcceptanceWatch)
@@ -343,6 +347,15 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
         ? "PASS"
         : (String(explorationProposalSummary.status || "").trim().toUpperCase() ? "HOLD" : "N/A"),
       reason: `top=${explorationProposalSummary.top_market || "N/A"} / stage=${explorationProposalSummary.top_stage || "N/A"} / action=${explorationProposalSummary.top_action || "N/A"} / n=${explorationProposalSummary.proposal_n ?? 0}`,
+    },
+    {
+      loop: "EXPLORATION_APPLY_CANDIDATE",
+      fresh: artifacts.explorationApplyCandidate && artifacts.explorationApplyCandidate.fresh === true,
+      cycle_id: readCycleId(explorationApplyCandidate),
+      status: String(explorationApplyCandidateSummary.status || "").trim().toUpperCase() === "APPLY_CANDIDATE_READY"
+        ? "WARN"
+        : (String(explorationApplyCandidateSummary.status || "").trim().toUpperCase() ? "HOLD" : "N/A"),
+      reason: `top=${explorationApplyCandidateSummary.top_market || "N/A"} / stage=${explorationApplyCandidateSummary.top_stage || "N/A"} / action=${explorationApplyCandidateSummary.top_action || "N/A"} / manual=${explorationApplyCandidateSummary.manual_confirm_required === true ? "YES" : "NO"}`,
     },
     {
       loop: "CANONICAL_PROVENANCE",
@@ -629,6 +642,12 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       exploration_proposal_top_market: explorationProposalSummary.top_market || null,
       exploration_proposal_top_stage: explorationProposalSummary.top_stage || null,
       exploration_proposal_top_action: explorationProposalSummary.top_action || null,
+      exploration_apply_candidate_status: explorationApplyCandidateSummary.status || null,
+      exploration_apply_candidate_candidate_n: toNum(explorationApplyCandidateSummary.candidate_n) || 0,
+      exploration_apply_candidate_top_market: explorationApplyCandidateSummary.top_market || null,
+      exploration_apply_candidate_top_stage: explorationApplyCandidateSummary.top_stage || null,
+      exploration_apply_candidate_top_action: explorationApplyCandidateSummary.top_action || null,
+      exploration_apply_candidate_manual_confirm_required: explorationApplyCandidateSummary.manual_confirm_required === true,
       market_objective_status: marketObjectiveScoreSummary.status || null,
       market_objective_top_recovery_market: marketObjectiveScoreSummary.top_recovery_market || null,
       market_objective_top_drag_market: marketObjectiveScoreSummary.top_drag_market || null,
