@@ -175,6 +175,18 @@ function summarizeExplorationBudget(explorationBudget = null) {
   };
 }
 
+function summarizeExplorationProposal(explorationProposal = null) {
+  const summary = readSummary(explorationProposal);
+  return {
+    status: toUpper(summary.status),
+    proposal_n: toNum(summary.proposal_n) || 0,
+    top_market: String(summary.top_market || "").trim().toUpperCase() || null,
+    top_stage: String(summary.top_stage || "").trim().toUpperCase() || null,
+    top_action: String(summary.top_action || "").trim().toUpperCase() || null,
+    proposals: Array.isArray(summary.proposals) ? summary.proposals : [],
+  };
+}
+
 function deriveObjectiveRecoveryGovernor({
   autonomyContract = null,
   objective = null,
@@ -190,6 +202,7 @@ function deriveObjectiveRecoveryGovernor({
   executionQuality = null,
   reversePolicy = null,
   explorationBudget = null,
+  explorationProposal = null,
 } = {}) {
   const contract = unwrapRawReport(autonomyContract) || {};
   const contractStatus = contract.current_status && typeof contract.current_status === "object" ? contract.current_status : {};
@@ -211,6 +224,7 @@ function deriveObjectiveRecoveryGovernor({
   const executionQualitySummary = summarizeExecutionQuality(executionQuality);
   const reversePolicySummary = summarizeReversePolicy(reversePolicy);
   const explorationBudgetSummary = summarizeExplorationBudget(explorationBudget);
+  const explorationProposalSummary = summarizeExplorationProposal(explorationProposal);
 
   const targetCandidateId = String(
     promotion.display_candidate_id
@@ -325,6 +339,11 @@ function deriveObjectiveRecoveryGovernor({
       exploration_budget_deferred_penalty_markets: explorationBudgetSummary.deferred_penalty_markets,
       exploration_budget_top_production_market: explorationBudgetSummary.top_production_market,
       exploration_budget_top_exploration_market: explorationBudgetSummary.top_exploration_market,
+      exploration_proposal_status: explorationProposalSummary.status,
+      exploration_proposal_proposal_n: explorationProposalSummary.proposal_n,
+      exploration_proposal_top_market: explorationProposalSummary.top_market,
+      exploration_proposal_top_stage: explorationProposalSummary.top_stage,
+      exploration_proposal_top_action: explorationProposalSummary.top_action,
       phase_d_status: String(acceptanceSummary.phase_d_status || "").trim().toUpperCase() || null,
       phase_d_ready: acceptanceSummary.phase_d_ready === true,
       governor_status: governorStatus,
@@ -358,6 +377,11 @@ function deriveObjectiveRecoveryGovernor({
         ...(explorationBudgetSummary.status
           ? [
             `Use exploration budget explicitly (prod ${explorationBudgetSummary.production_markets.length ? explorationBudgetSummary.production_markets.join("|") : "none"} / explore ${explorationBudgetSummary.exploration_markets.length ? explorationBudgetSummary.exploration_markets.join("|") : "none"} / deferred ${explorationBudgetSummary.deferred_penalty_markets.length ? explorationBudgetSummary.deferred_penalty_markets.join("|") : "none"}).`,
+          ]
+          : []),
+        ...(explorationProposalSummary.status === "EXPLORATION_DRY_RUN_READY"
+          ? [
+            `Keep exploration proposal as dry-run only for now (${explorationProposalSummary.top_market || "N/A"} / ${explorationProposalSummary.top_stage || "N/A"} / ${explorationProposalSummary.top_action || "N/A"} / n=${explorationProposalSummary.proposal_n}).`,
           ]
           : []),
         ...dropValidationSummary.next_actions,
