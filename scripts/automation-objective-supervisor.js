@@ -245,9 +245,19 @@ const SELF_EVOLUTION_STAGE_KEYS = Object.freeze({
   STANDALONE: ["dataset", "objective", "marketObjectiveScore", "serverVsPinePerformanceDelta", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "serverPrimaryAcceptanceWatch", "pineShadowDrift", "deploymentProbe", "bundleActivation", "openclawAutonomyContract", "objectiveRecoveryGovernor", "objectiveRecoveryEffect", "memory", "codex", "stageAutopilot"],
 });
 
+const SELF_EVOLUTION_DERIVED_CYCLE_KEYS = new Set([
+  "marketObjectiveScore",
+  "serverVsPinePerformanceDelta",
+  "openclawAutonomyContract",
+  "objectiveRecoveryGovernor",
+  "objectiveRecoveryEffect",
+]);
+
 function summarizeSelfEvolutionArtifactCycles({ artifacts = {}, stage = "STANDALONE", preferredCycleId = null } = {}) {
   const normalizedStage = String(stage || "STANDALONE").trim().toUpperCase();
   const keys = SELF_EVOLUTION_STAGE_KEYS[normalizedStage] || SELF_EVOLUTION_STAGE_KEYS.STANDALONE;
+  const coreKeys = keys.filter((key) => !SELF_EVOLUTION_DERIVED_CYCLE_KEYS.has(key));
+  const derivedKeys = keys.filter((key) => SELF_EVOLUTION_DERIVED_CYCLE_KEYS.has(key));
   const rows = keys.map((key) => {
     const artifact = artifacts[key] || {};
     const exists = artifact.exists === true || artifact.data != null;
@@ -274,19 +284,40 @@ function summarizeSelfEvolutionArtifactCycles({ artifacts = {}, stage = "STANDAL
   const cycleIdAbsentKeys = expectedCycleId
     ? rows.filter((row) => row.exists && row.fresh === true && !row.cycle_id).map((row) => row.key)
     : [];
+  const coreMissingKeys = missingKeys.filter((key) => coreKeys.includes(key));
+  const derivedMissingKeys = missingKeys.filter((key) => derivedKeys.includes(key));
+  const coreCycleMismatches = cycleMismatches.filter((row) => coreKeys.includes(row.key));
+  const derivedCycleMismatches = cycleMismatches.filter((row) => derivedKeys.includes(row.key));
+  const coreCycleIdAbsentKeys = cycleIdAbsentKeys.filter((key) => coreKeys.includes(key));
+  const derivedCycleIdAbsentKeys = cycleIdAbsentKeys.filter((key) => derivedKeys.includes(key));
   return {
     available: rows.some((row) => row.exists),
     stage: normalizedStage,
     expected_cycle_id: expectedCycleId,
     required_keys: keys.slice(),
+    core_required_keys: coreKeys,
+    derived_keys: derivedKeys,
     available_n: rows.filter((row) => row.exists).length,
     missing_key_n: missingKeys.length,
     missing_keys: missingKeys,
+    core_missing_key_n: coreMissingKeys.length,
+    core_missing_keys: coreMissingKeys,
+    derived_missing_key_n: derivedMissingKeys.length,
+    derived_missing_keys: derivedMissingKeys,
     cycle_consistent: missingKeys.length === 0 && cycleMismatches.length === 0 && cycleIdAbsentKeys.length === 0,
+    core_cycle_consistent: coreMissingKeys.length === 0 && coreCycleMismatches.length === 0 && coreCycleIdAbsentKeys.length === 0,
     cycle_mismatch_n: cycleMismatches.length,
     cycle_mismatches: cycleMismatches,
+    core_cycle_mismatch_n: coreCycleMismatches.length,
+    core_cycle_mismatches: coreCycleMismatches,
+    derived_cycle_mismatch_n: derivedCycleMismatches.length,
+    derived_cycle_mismatches: derivedCycleMismatches,
     cycle_id_absent_n: cycleIdAbsentKeys.length,
     cycle_id_absent_keys: cycleIdAbsentKeys,
+    core_cycle_id_absent_n: coreCycleIdAbsentKeys.length,
+    core_cycle_id_absent_keys: coreCycleIdAbsentKeys,
+    derived_cycle_id_absent_n: derivedCycleIdAbsentKeys.length,
+    derived_cycle_id_absent_keys: derivedCycleIdAbsentKeys,
     rows,
   };
 }
@@ -925,8 +956,13 @@ function summarizeSelfEvolutionLoopMonitor(report = null) {
     stale_artifact_n: toNum(summary.stale_artifact_n) || 0,
     stale_artifacts: Array.isArray(summary.stale_artifacts) ? summary.stale_artifacts : [],
     cycle_consistent: summary.cycle_consistent === true,
+    core_cycle_consistent: summary.core_cycle_consistent === true || (summary.core_cycle_consistent === undefined && summary.cycle_consistent === true),
     cycle_mismatch_n: toNum(summary.cycle_mismatch_n) || 0,
     cycle_mismatches: Array.isArray(summary.cycle_mismatches) ? summary.cycle_mismatches : [],
+    core_cycle_mismatch_n: toNum(summary.core_cycle_mismatch_n) || 0,
+    core_cycle_mismatches: Array.isArray(summary.core_cycle_mismatches) ? summary.core_cycle_mismatches : [],
+    derived_cycle_mismatch_n: toNum(summary.derived_cycle_mismatch_n) || 0,
+    derived_cycle_mismatches: Array.isArray(summary.derived_cycle_mismatches) ? summary.derived_cycle_mismatches : [],
     critical_blocker_n: toNum(summary.critical_blocker_n) || 0,
     critical_blockers: Array.isArray(summary.critical_blockers) ? summary.critical_blockers : [],
     promotion_path_ready: summary.promotion_path_ready === true,
@@ -1310,7 +1346,7 @@ function assessAutonomy({
       && selfEvolutionReplaySummary
       && selfEvolutionCanarySummary
     ) ? "YES" : "PARTIAL",
-    loop_autonomy: selfEvolutionCycleSummary && selfEvolutionCycleSummary.cycle_consistent === true ? "YES" : "PARTIAL",
+    loop_autonomy: selfEvolutionCycleSummary && selfEvolutionCycleSummary.core_cycle_consistent === true ? "YES" : "PARTIAL",
     operational_autonomy_except_pine: operationalAutonomyExceptPine,
     manual_boundaries: [
       selfEvolutionDeploymentPlanSummary && (
@@ -1364,7 +1400,7 @@ function deriveAutonomousRecoveryPromotion({
     && selfEvolutionObjectiveSummary.count_floor_pass !== false
     && selfEvolutionObjectiveSummary.replacement_floor_pass !== false
     && selfEvolutionObjectiveSummary.latency_budget_pass !== false;
-  const cycleSafe = !selfEvolutionCycleSummary || selfEvolutionCycleSummary.cycle_consistent !== false;
+  const cycleSafe = !selfEvolutionCycleSummary || selfEvolutionCycleSummary.core_cycle_consistent !== false;
   const driftSafe = !canaryDriftContext || ((toNum(canaryDriftContext.shadow_drift) || 0) === 0 && (toNum(canaryDriftContext.golden_drift) || 0) === 0);
   const candidateSafe = candidateId && Number(selfEvolutionCandidatesSummary && selfEvolutionCandidatesSummary.ready_n || 0) > 0 && !blockerIds.has(candidateId);
   if (!(performancePressure && replayPass && (replayDelta == null || replayDelta > 0) && canarySafe && objectiveSafe && cycleSafe && driftSafe && candidateSafe)) {
@@ -1836,7 +1872,29 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   const evTunerContext = summarizeEvTunerContext(filterLayers);
   const selfEvolutionCycleSummary = selfEvolutionCycleState && typeof selfEvolutionCycleState === "object"
     ? selfEvolutionCycleState
-    : { available: false, cycle_consistent: true, cycle_mismatch_n: 0, missing_key_n: 0, cycle_id_absent_n: 0, missing_keys: [], cycle_mismatches: [], cycle_id_absent_keys: [] };
+    : {
+      available: false,
+      cycle_consistent: true,
+      core_cycle_consistent: true,
+      cycle_mismatch_n: 0,
+      core_cycle_mismatch_n: 0,
+      derived_cycle_mismatch_n: 0,
+      missing_key_n: 0,
+      core_missing_key_n: 0,
+      derived_missing_key_n: 0,
+      cycle_id_absent_n: 0,
+      core_cycle_id_absent_n: 0,
+      derived_cycle_id_absent_n: 0,
+      missing_keys: [],
+      core_missing_keys: [],
+      derived_missing_keys: [],
+      cycle_mismatches: [],
+      core_cycle_mismatches: [],
+      derived_cycle_mismatches: [],
+      cycle_id_absent_keys: [],
+      core_cycle_id_absent_keys: [],
+      derived_cycle_id_absent_keys: [],
+    };
   const effectivePromotion = deriveAutonomousRecoveryPromotion({
     promotion,
     objective,
@@ -1944,8 +2002,8 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   if (effectivePromotion.ready === true && selfEvolutionCanarySummary.available && selfEvolutionCanarySummary.apply_pass !== true) blockers.push("SELF_EVOLUTION_CANARY_BLOCK");
   if (selfEvolutionCanarySummary.rollback_ready_n > 0) blockers.push("SELF_EVOLUTION_CANARY_ROLLBACK_READY");
   if (selfEvolutionDeploymentPlanSummary.activation_pending === true) blockers.push("SELF_EVOLUTION_BUNDLE_ACTIVATION_PENDING");
-  if (selfEvolutionCycleSummary.available && selfEvolutionCycleSummary.cycle_consistent === false) blockers.push("SELF_EVOLUTION_ARTIFACT_CYCLE_MISMATCH");
-  if (selfEvolutionLoopMonitorSummary.available && selfEvolutionLoopMonitorSummary.cycle_consistent === false) blockers.push("SELF_EVOLUTION_LOOP_CYCLE_MISMATCH");
+  if (selfEvolutionCycleSummary.available && selfEvolutionCycleSummary.core_cycle_consistent === false) blockers.push("SELF_EVOLUTION_ARTIFACT_CYCLE_MISMATCH");
+  if (selfEvolutionLoopMonitorSummary.available && selfEvolutionLoopMonitorSummary.core_cycle_consistent === false) blockers.push("SELF_EVOLUTION_LOOP_CYCLE_MISMATCH");
   if (effectivePromotion.ready === true && promotionCandidateId && memoryBlockedIds.has(promotionCandidateId)) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK");
   if (effectivePromotion.ready === true && selfEvolutionDeploymentSummary.deploy_pass !== true) {
     const deployReason = Array.isArray(selfEvolutionDeploymentSummary.blockers) && selfEvolutionDeploymentSummary.blockers.length
@@ -1984,9 +2042,9 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
         ? "SELF_EVOLUTION_CANARY_ROLLBACK_READY"
       : selfEvolutionDeploymentPlanSummary.activation_pending === true
         ? "SELF_EVOLUTION_BUNDLE_ACTIVATION_PENDING"
-      : (selfEvolutionCycleSummary.available && selfEvolutionCycleSummary.cycle_consistent === false)
+      : (selfEvolutionCycleSummary.available && selfEvolutionCycleSummary.core_cycle_consistent === false)
         ? "SELF_EVOLUTION_ARTIFACT_CYCLE_MISMATCH"
-      : (selfEvolutionLoopMonitorSummary.available && selfEvolutionLoopMonitorSummary.cycle_consistent === false)
+      : (selfEvolutionLoopMonitorSummary.available && selfEvolutionLoopMonitorSummary.core_cycle_consistent === false)
         ? "SELF_EVOLUTION_LOOP_CYCLE_MISMATCH"
       : (promotion.ready === true && promotionCandidateId && memoryBlockedIds.has(promotionCandidateId))
         ? "SELF_EVOLUTION_MEMORY_BLOCK"
@@ -2689,6 +2747,9 @@ async function main() {
     ) ? [
       "SERVER_SIGNAL_PRIORITY_MODE: parity drift and cutover readiness are secondary while daily/weekly/monthly recovery remains the primary objective.",
     ] : []),
+    ...(evaluation.self_evolution_cycle && evaluation.self_evolution_cycle.derived_cycle_mismatch_n > 0
+      ? [`SELF_EVOLUTION_DERIVED_CYCLE_DRIFT: ${evaluation.self_evolution_cycle.derived_cycle_mismatches.map((row) => `${row.key}:${row.cycle_id}`).join(" | ")}`]
+      : []),
     ...(evaluation.self_evolution_server_signal_authority && evaluation.self_evolution_server_signal_authority.drift_status === "PARITY_DRIFT"
       ? [`SERVER_SIGNAL_AUTHORITY_DRIFT: server24h=${evaluation.self_evolution_server_signal_authority.authoritative_server_24h_n ?? 0} / shadow24h=${evaluation.self_evolution_server_signal_authority.pine_shadow_24h_n ?? 0} / mismatch=${evaluation.self_evolution_server_signal_authority.parity_mismatch_n ?? 0}`]
       : []),

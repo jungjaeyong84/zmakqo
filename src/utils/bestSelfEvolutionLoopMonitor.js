@@ -7,6 +7,22 @@ const {
   isAppliedPendingBundleActivationLike,
 } = require("./selfEvolutionPlanStatus");
 
+const DERIVED_LOOP_KEYS = new Set([
+  "DROP_VALIDATION",
+  "MARKET_OBJECTIVE_SCORE",
+  "SERVER_VS_PINE_DELTA",
+  "OPENCLAW_AUTONOMY_CONTRACT",
+  "OBJECTIVE_RECOVERY_GOVERNOR",
+  "OBJECTIVE_RECOVERY_EFFECT",
+]);
+
+const CYCLE_ID_OPTIONAL_LOOPS = new Set([
+  "SERVER_SIGNAL_AUTHORITY",
+  "SERVER_SIGNAL_QUALITY",
+  "SERVER_SIGNAL_RUNTIME",
+  "SERVER_SIGNAL_CUTOVER",
+]);
+
 function unwrapRawReport(value) {
   if (!value || typeof value !== "object") return value || null;
   if (value.raw && typeof value.raw === "object") return value.raw;
@@ -402,12 +418,17 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       .filter((row) => !(stageAutopilotOptional && row.loop === "STAGE_AUTOPILOT"))
       .map((row) => ({ loop: row.loop, cycle_id: row.cycle_id }))
     : [];
+  const coreCycleMismatches = cycleMismatches.filter((row) => !DERIVED_LOOP_KEYS.has(row.loop));
+  const derivedCycleMismatches = cycleMismatches.filter((row) => DERIVED_LOOP_KEYS.has(row.loop));
   const cycleIdAbsent = expectedCycleId
     ? rows
       .filter((row) => row.fresh === true && !row.cycle_id)
+      .filter((row) => !CYCLE_ID_OPTIONAL_LOOPS.has(row.loop))
       .filter((row) => !(stageAutopilotOptional && row.loop === "STAGE_AUTOPILOT"))
       .map((row) => row.loop)
     : [];
+  const coreCycleIdAbsent = cycleIdAbsent.filter((loop) => !DERIVED_LOOP_KEYS.has(loop));
+  const derivedCycleIdAbsent = cycleIdAbsent.filter((loop) => DERIVED_LOOP_KEYS.has(loop));
   const blockers = [];
   if (objectiveReason) blockers.push(objectiveReason);
   if (Number(canonicalParitySummary.source_parity_mismatch_n || 0) > 0) blockers.push("SELF_EVOLUTION_CANONICAL_SOURCE_MISMATCH");
@@ -428,8 +449,8 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || deploymentPlanSummary.authority_bypass_active === true
   ) blockers.push("SELF_EVOLUTION_EXTERNAL_AUTHORITY_PENDING");
   if (governorMemoryBlocked) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK_PRESENT");
-  if (cycleMismatches.length) blockers.push("SELF_EVOLUTION_CYCLE_MISMATCH");
-  if (cycleIdAbsent.length) blockers.push("SELF_EVOLUTION_CYCLE_ID_ABSENT");
+  if (coreCycleMismatches.length) blockers.push("SELF_EVOLUTION_CYCLE_MISMATCH");
+  if (coreCycleIdAbsent.length) blockers.push("SELF_EVOLUTION_CYCLE_ID_ABSENT");
   const uniqueBlockers = Array.from(new Set(blockers.filter(Boolean)));
 
   let overallStatus = "HEALTHY";
@@ -445,7 +466,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   else if (normalizedDeploymentPlanStatus === "APPLIED_CONFIRMED") overallStatus = "APPLIED_CONFIRMED";
   else if (normalizedDeploymentPlanStatus === "APPLIED_PENDING_SIGNAL_CONFIRMATION") overallStatus = "APPLIED_PENDING_SIGNAL_CONFIRMATION";
   else if (deploymentPlanSummary.manual_step_required === true) overallStatus = "READY_FOR_MANUAL_PASTE";
-  else if (staleArtifacts.length || cycleMismatches.length || cycleIdAbsent.length) overallStatus = "BLOCKED";
+  else if (staleArtifacts.length || coreCycleMismatches.length || coreCycleIdAbsent.length) overallStatus = "BLOCKED";
   else if (uniqueBlockers.length || canarySummary.apply_pass === false || deploymentSummary.deploy_pass === false) overallStatus = "DEGRADED";
 
   return {
@@ -455,10 +476,19 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       stale_artifact_n: staleArtifacts.length,
       stale_artifacts: staleArtifacts,
       cycle_consistent: cycleMismatches.length === 0,
+      core_cycle_consistent: coreCycleMismatches.length === 0 && coreCycleIdAbsent.length === 0,
       cycle_mismatch_n: cycleMismatches.length,
       cycle_mismatches: cycleMismatches,
+      core_cycle_mismatch_n: coreCycleMismatches.length,
+      core_cycle_mismatches: coreCycleMismatches,
+      derived_cycle_mismatch_n: derivedCycleMismatches.length,
+      derived_cycle_mismatches: derivedCycleMismatches,
       cycle_id_absent_n: cycleIdAbsent.length,
       cycle_id_absent_loops: cycleIdAbsent,
+      core_cycle_id_absent_n: coreCycleIdAbsent.length,
+      core_cycle_id_absent_loops: coreCycleIdAbsent,
+      derived_cycle_id_absent_n: derivedCycleIdAbsent.length,
+      derived_cycle_id_absent_loops: derivedCycleIdAbsent,
       critical_blocker_n: uniqueBlockers.length,
       critical_blockers: uniqueBlockers.slice(0, 10),
       server_signal_drift_status: serverSignalAuthoritySummary.drift_status || null,
