@@ -31,6 +31,7 @@ const MAX_AGE_HOURS = Object.freeze({
   serverSignalRuntime: 24,
   serverSignalCutoverReadiness: 24,
   dropValidation: 24,
+  provisionalRealizedOutcome: 24,
   marketObjectiveScore: 24,
   serverVsPinePerformanceDelta: 24,
   canonicalProvenance: 24,
@@ -61,6 +62,7 @@ const INPUTS = Object.freeze({
   serverSignalRuntime: path.join(OPS_DAILY_DIR, "server_signal_runtime_latest.json"),
   serverSignalCutoverReadiness: path.join(OPS_DAILY_DIR, "server_signal_cutover_readiness_latest.json"),
   dropValidation: path.join(OPS_DAILY_DIR, "best_self_evolution_drop_validation_latest.json"),
+  provisionalRealizedOutcome: path.join(OPS_DAILY_DIR, "best_self_evolution_provisional_realized_outcome_latest.json"),
   marketObjectiveScore: path.join(OPS_DAILY_DIR, "best_self_evolution_market_objective_score_latest.json"),
   serverVsPinePerformanceDelta: path.join(OPS_DAILY_DIR, "best_self_evolution_server_vs_pine_performance_delta_latest.json"),
   canonicalProvenance: path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_provenance_latest.json"),
@@ -118,6 +120,7 @@ function renderMarkdown(report = {}) {
     `- server_signal_runtime: ${summary.server_signal_runtime_status || "N/A"} / tf: ${summary.server_signal_runtime_exec_tf || "N/A"} / markets: ${summary.server_signal_runtime_market_count ?? "N/A"}`,
     `- server_signal_cutover: ${summary.server_signal_cutover_status || "N/A"} / ready: ${summary.server_signal_cutover_ready ? "YES" : "NO"} / blockers: ${Array.isArray(summary.server_signal_cutover_blockers) && summary.server_signal_cutover_blockers.length ? summary.server_signal_cutover_blockers.join("|") : "none"}`,
     `- drop_validation: ${summary.drop_validation_status || "N/A"} / top_rescue: ${summary.drop_validation_top_rescue_family || "N/A"} / reason: ${summary.drop_validation_top_rescue_reason || "N/A"} / market: ${summary.drop_validation_top_rescue_market || "N/A"}`,
+    `- provisional_realized: ${summary.provisional_realized_outcome_status || "N/A"} / final: ${summary.provisional_realized_final_n ?? 0} / provisional: ${summary.provisional_realized_provisional_n ?? 0} / effective: ${summary.provisional_realized_effective_n ?? 0} / top: ${summary.provisional_realized_top_market || "N/A"}`,
     `- market_objective: ${summary.market_objective_status || "N/A"} / recovery: ${summary.market_objective_top_recovery_market || "N/A"} / drag: ${summary.market_objective_top_drag_market || "N/A"}`,
     `- server_vs_pine_delta: ${summary.server_vs_pine_delta_status || "N/A"} / shadow_gap: ${summary.server_vs_pine_delta_top_shadow_gap_market || "N/A"} / edge: ${summary.server_vs_pine_delta_top_server_edge_market || "N/A"} / avg_delta: ${summary.server_vs_pine_delta_avg_active_delta_score != null ? summary.server_vs_pine_delta_avg_active_delta_score : "N/A"}`,
     `- promotion_path_ready: ${summary.promotion_path_ready ? "YES" : "NO"} / manual_paste_ready: ${summary.manual_paste_ready ? "YES" : "NO"}`,
@@ -168,6 +171,14 @@ async function main() {
       ? artifacts.dropValidation.data.raw
       : artifacts.dropValidation.data)
     : {};
+  const provisionalRealizedRaw = artifacts.provisionalRealizedOutcome && artifacts.provisionalRealizedOutcome.data
+    ? ((artifacts.provisionalRealizedOutcome.data.raw && typeof artifacts.provisionalRealizedOutcome.data.raw === "object")
+      ? artifacts.provisionalRealizedOutcome.data.raw
+      : artifacts.provisionalRealizedOutcome.data)
+    : {};
+  const provisionalRealizedSummary = provisionalRealizedRaw.summary && typeof provisionalRealizedRaw.summary === "object"
+    ? provisionalRealizedRaw.summary
+    : {};
   const dropValidationSummary = dropValidationRaw.summary && typeof dropValidationRaw.summary === "object"
     ? dropValidationRaw.summary
     : {};
@@ -202,6 +213,18 @@ async function main() {
   if (!rows.find((row) => row.loop === "DROP_VALIDATION")) {
     rows.splice(9, 0, dropValidationRow);
   }
+  const provisionalRealizedRow = {
+    loop: "PROVISIONAL_REALIZED_OUTCOME",
+    fresh: artifacts.provisionalRealizedOutcome && artifacts.provisionalRealizedOutcome.fresh === true,
+    cycle_id: String(provisionalRealizedRaw.cycle_id || provisionalRealizedRaw.generation_id || "").trim() || null,
+    status: String(provisionalRealizedSummary.status || "").trim().toUpperCase() === "PROVISIONAL_ACTIVE"
+      ? "WARN"
+      : (Number(provisionalRealizedSummary.final_realized_n || 0) > 0 ? "PASS" : "HOLD"),
+    reason: `final=${provisionalRealizedSummary.final_realized_n ?? 0} / provisional=${provisionalRealizedSummary.provisional_realized_n ?? 0} / effective=${provisionalRealizedSummary.effective_realized_n ?? 0} / top=${provisionalRealizedSummary.top_provisional_market || "N/A"}`,
+  };
+  if (!rows.find((row) => row.loop === "PROVISIONAL_REALIZED_OUTCOME")) {
+    rows.splice(10, 0, provisionalRealizedRow);
+  }
   const marketObjectiveRow = {
     loop: "MARKET_OBJECTIVE_SCORE",
     fresh: artifacts.marketObjectiveScore && artifacts.marketObjectiveScore.fresh === true,
@@ -212,7 +235,7 @@ async function main() {
     reason: `recovery=${marketObjectiveSummary.top_recovery_market || "N/A"} / drag=${marketObjectiveSummary.top_drag_market || "N/A"} / active=${marketObjectiveSummary.active_market_n ?? 0} / global=${marketObjectiveSummary.global_objective_score != null ? marketObjectiveSummary.global_objective_score : "N/A"}`,
   };
   if (!rows.find((row) => row.loop === "MARKET_OBJECTIVE_SCORE")) {
-    rows.splice(10, 0, marketObjectiveRow);
+    rows.splice(11, 0, marketObjectiveRow);
   }
   const serverVsPineDeltaRow = {
     loop: "SERVER_VS_PINE_DELTA",
@@ -224,7 +247,7 @@ async function main() {
     reason: `shadow_gap=${serverVsPineDeltaSummary.top_shadow_gap_market || "N/A"} / edge=${serverVsPineDeltaSummary.top_server_edge_market || "N/A"} / delta=${serverVsPineDeltaSummary.avg_active_delta_score != null ? serverVsPineDeltaSummary.avg_active_delta_score : "N/A"}`,
   };
   if (!rows.find((row) => row.loop === "SERVER_VS_PINE_DELTA")) {
-    rows.splice(11, 0, serverVsPineDeltaRow);
+    rows.splice(12, 0, serverVsPineDeltaRow);
   }
   const summary = {
     ...(derived.summary || {}),
@@ -232,6 +255,11 @@ async function main() {
     drop_validation_top_rescue_family: dropValidationSummary.top_rescue_family || derived.summary && derived.summary.drop_validation_top_rescue_family || null,
     drop_validation_top_rescue_reason: dropValidationSummary.top_rescue_reason || derived.summary && derived.summary.drop_validation_top_rescue_reason || null,
     drop_validation_top_rescue_market: dropValidationSummary.top_rescue_market || derived.summary && derived.summary.drop_validation_top_rescue_market || null,
+    provisional_realized_outcome_status: provisionalRealizedSummary.status || derived.summary && derived.summary.provisional_realized_outcome_status || null,
+    provisional_realized_final_n: provisionalRealizedSummary.final_realized_n != null ? provisionalRealizedSummary.final_realized_n : derived.summary && derived.summary.provisional_realized_final_n || 0,
+    provisional_realized_provisional_n: provisionalRealizedSummary.provisional_realized_n != null ? provisionalRealizedSummary.provisional_realized_n : derived.summary && derived.summary.provisional_realized_provisional_n || 0,
+    provisional_realized_effective_n: provisionalRealizedSummary.effective_realized_n != null ? provisionalRealizedSummary.effective_realized_n : derived.summary && derived.summary.provisional_realized_effective_n || 0,
+    provisional_realized_top_market: provisionalRealizedSummary.top_provisional_market || derived.summary && derived.summary.provisional_realized_top_market || null,
     market_objective_status: marketObjectiveSummary.status || derived.summary && derived.summary.market_objective_status || null,
     market_objective_top_recovery_market: marketObjectiveSummary.top_recovery_market || derived.summary && derived.summary.market_objective_top_recovery_market || null,
     market_objective_top_drag_market: marketObjectiveSummary.top_drag_market || derived.summary && derived.summary.market_objective_top_drag_market || null,

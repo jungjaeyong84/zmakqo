@@ -328,6 +328,31 @@ function mapPathOutcomeForTune(path = {}) {
   return { outcome: "UNRESOLVED_STALE", resolved: false };
 }
 
+function pickEntryFill(fills = [], side = null) {
+  const targetSide = String(side || "").trim().toUpperCase();
+  return (Array.isArray(fills) ? fills : []).find((row) => {
+    if (isExitEvent(row && row.event)) return false;
+    const fillSide = String(row && row.side || "").trim().toUpperCase();
+    if (!targetSide) return true;
+    return fillSide === (targetSide === "LONG" ? "BUY" : "SELL");
+  }) || null;
+}
+
+function resolveEntryReference(row, fills = [], entryBar = null) {
+  const entryFill = pickEntryFill(fills, resolveSide(row));
+  const execPrice = toNum(entryFill && (entryFill.exec_price ?? entryFill.price));
+  const signalPrice = toNum(row && (row.signal_price ?? row.price));
+  const barClose = toNum(entryBar && entryBar.close);
+  const notionalKrw = toNum(entryFill && (entryFill.notional_krw ?? entryFill.budget_used_krw))
+    ?? toNum(row && (row.budget_used_krw ?? row.budget_max_krw))
+    ?? 1000;
+  return {
+    entry_fill: entryFill,
+    entry_price: execPrice ?? signalPrice ?? barClose,
+    notional_krw: notionalKrw,
+  };
+}
+
 function uniqueBySignalKey(rows = []) {
   const map = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
@@ -511,6 +536,193 @@ async function buildEvResolvedLedger({
     maturity_hours: Math.round(maturityMs / (60 * 60 * 1000)),
     rows,
     summary,
+  };
+}
+
+async function buildProvisionalRealizedOutcomeLedger({
+  provider,
+  tf,
+  fromMs,
+  toMs,
+  nowMs,
+  maturityHours = 12,
+  intents = [],
+  fills = [],
+  sysCfg = {},
+} = {}) {
+  const maturityMs = Math.max(3, Number(maturityHours) || 12) * 60 * 60 * 1000;
+  const intentRows = filterEntryRows(intents, { exchange: provider, tf, fromMs, toMs })
+    .filter((row) => String(row.status || "").trim().toUpperCase() === "FILLED");
+  const fillRows = (Array.isArray(fills) ? fills : []).filter((row) => {
+    const ex = String(row && row.exchange || "").trim().toUpperCase();
+    const rowTf = String(row && row.tf || "").trim();
+    const ms = resolveFillMs(row);
+    if (provider && ex !== provider) return false;
+    if (tf && rowTf && rowTf !== tf) return false;
+    if (Number.isFinite(fromMs) && Number.isFinite(ms) && ms < fromMs) return false;
+    if (Number.isFinite(toMs) && Number.isFinite(ms) && ms >= toMs) return false;
+    return true;
+  });
+
+  const builtTrades = await buildTradesFromFillsWithFunding(fillRows, { exchange: provider });
+  const tradeMap = new Map();
+  for (const row of (builtTrades && Array.isArray(builtTrades.trades)) ? builtTrades.trades : []) {
+    const key = String(row && row.entry_event_id || "").trim();
+    if (!key) continue;
+    if (!tradeMap.has(key)) tradeMap.set(key, row);
+  }
+
+  const fillsByEntryEventId = new Map();
+  for (const row of fillRows) {
+    const entryEventId = String(row && row.entry_event_id || "").trim();
+    if (!entryEventId) continue;
+    if (!fillsByEntryEventId.has(entryEventId)) fillsByEntryEventId.set(entryEventId, []);
+    fillsByEntryEventId.get(entryEventId).push(row);
+  }
+  for (const rows of fillsByEntryEventId.values()) {
+    rows.sort((a, b) => (resolveDocMs(a) || 0) - (resolveDocMs(b) || 0));
+  }
+
+  const barsByMarket = await loadBarsByMarket(intentRows, {
+    exchange: provider,
+    tf,
+    lookbackBars: DEFAULT_LOOKBACK_BARS,
+    horizonMs: maturityMs,
+  });
+
+  const rows = [];
+  for (const row of intentRows) {
+    const outcome = classifyEntryOutcome(row, fillsByEntryEventId, nowMs, maturityMs);
+    const trade = outcome.entryEventId ? tradeMap.get(outcome.entryEventId) : null;
+    const market = String((row.symbol_or_pair_id || row.symbol || row.market) || "").trim().toUpperCase();
+    const bars = barsByMarket.get(market) || [];
+    const entryBar = pickBarByTimestamp(bars, resolveDocMs(row));
+    const reference = resolveEntryReference(row, outcome.entryEventId ? (fillsByEntryEventId.get(outcome.entryEventId) || []) : [], entryBar);
+    const finalRetNet = trade ? toNum(trade.pnl_pct) : null;
+    const finalPnlKrw = trade ? toNum(trade.pnl_krw) : null;
+    let provisional = { ok: false, skip_reason: outcome.status };
+    if (outcome.status === "UNRESOLVED_STALE" && entryBar && Number.isFinite(reference.entry_price)) {
+      provisional = evaluatePathFromEntry({
+        bars,
+        entryBarMs: Number(entryBar.timestamp),
+        entryPrice: Number(reference.entry_price),
+        side: resolveSide(row),
+        rules: resolveRules(row, sysCfg, provider),
+        leverage: resolveLeverage(row, sysCfg),
+        horizonMs: maturityMs,
+        nowMs,
+      });
+    }
+    const provisionalRetNet = provisional.ok === true ? toNum(provisional.selected_ret_net) : null;
+    const provisionalPnlKrw = Number.isFinite(provisionalRetNet) && Number.isFinite(reference.notional_krw)
+      ? Number(reference.notional_krw) * Number(provisionalRetNet)
+      : null;
+    const effectiveSource = Number.isFinite(finalRetNet)
+      ? "FINAL"
+      : (Number.isFinite(provisionalRetNet) ? "PROVISIONAL" : null);
+    const effectiveRetNet = Number.isFinite(finalRetNet) ? finalRetNet : provisionalRetNet;
+    const effectivePnlKrw = Number.isFinite(finalPnlKrw) ? finalPnlKrw : provisionalPnlKrw;
+    rows.push({
+      entry_event_id: outcome.entryEventId,
+      market,
+      tf: String(row.tf || "").trim() || null,
+      event: String(row.event || "").trim().toUpperCase() || null,
+      side: resolveSide(row),
+      entry_bar_ms: resolveDocMs(row),
+      entry_price: Number.isFinite(reference.entry_price) ? Number(reference.entry_price) : null,
+      entry_notional_krw: Number.isFinite(reference.notional_krw) ? Number(reference.notional_krw) : null,
+      outcome_status: outcome.status,
+      final_realized: Number.isFinite(finalRetNet),
+      final_realized_ret_net: finalRetNet,
+      final_realized_pnl_krw: finalPnlKrw,
+      provisional_ready: provisional.ok === true,
+      provisional_outcome: provisional.ok === true ? String(provisional.outcome || "HOLD").trim().toUpperCase() : null,
+      provisional_ret_net: provisionalRetNet,
+      provisional_pnl_krw: provisionalPnlKrw,
+      effective_source: effectiveSource,
+      effective_realized_ret_net: effectiveRetNet,
+      effective_realized_pnl_krw: effectivePnlKrw,
+    });
+  }
+
+  const effectiveRows = rows.filter((row) => Number.isFinite(toNum(row.effective_realized_ret_net)));
+  const finalRows = rows.filter((row) => row.final_realized === true && Number.isFinite(toNum(row.final_realized_ret_net)));
+  const provisionalRows = rows.filter((row) => row.effective_source === "PROVISIONAL" && Number.isFinite(toNum(row.provisional_ret_net)));
+  const byMarketMap = new Map();
+  for (const row of rows) {
+    const market = String(row.market || "").trim().toUpperCase();
+    if (!market) continue;
+    if (!byMarketMap.has(market)) {
+      byMarketMap.set(market, {
+        market,
+        total_entry_n: 0,
+        final_realized_n: 0,
+        provisional_n: 0,
+        unresolved_open_n: 0,
+        unresolved_stale_n: 0,
+        effective_realized_n: 0,
+        win_n: 0,
+        effective_ret_sum: 0,
+        effective_pnl_sum_krw: 0,
+      });
+    }
+    const bucket = byMarketMap.get(market);
+    bucket.total_entry_n += 1;
+    if (row.outcome_status === "UNRESOLVED_OPEN") bucket.unresolved_open_n += 1;
+    if (row.outcome_status === "UNRESOLVED_STALE") bucket.unresolved_stale_n += 1;
+    if (row.final_realized === true && Number.isFinite(toNum(row.final_realized_ret_net))) bucket.final_realized_n += 1;
+    if (row.effective_source === "PROVISIONAL" && Number.isFinite(toNum(row.provisional_ret_net))) bucket.provisional_n += 1;
+    if (Number.isFinite(toNum(row.effective_realized_ret_net))) {
+      bucket.effective_realized_n += 1;
+      bucket.effective_ret_sum += Number(row.effective_realized_ret_net);
+      bucket.effective_pnl_sum_krw += Number(row.effective_realized_pnl_krw || 0);
+      if (Number(row.effective_realized_ret_net) > 0) bucket.win_n += 1;
+    }
+  }
+
+  const by_market = Array.from(byMarketMap.values())
+    .map((row) => ({
+      market: row.market,
+      total_entry_n: row.total_entry_n,
+      final_realized_n: row.final_realized_n,
+      provisional_n: row.provisional_n,
+      unresolved_open_n: row.unresolved_open_n,
+      unresolved_stale_n: row.unresolved_stale_n,
+      effective_realized_n: row.effective_realized_n,
+      effective_win_rate: row.effective_realized_n > 0 ? (row.win_n / row.effective_realized_n) : null,
+      effective_avg_ret_net: row.effective_realized_n > 0 ? (row.effective_ret_sum / row.effective_realized_n) : null,
+      effective_net_pnl_krw: row.effective_realized_n > 0 ? row.effective_pnl_sum_krw : null,
+    }))
+    .sort((a, b) =>
+      (b.provisional_n - a.provisional_n)
+      || (b.effective_realized_n - a.effective_realized_n)
+      || a.market.localeCompare(b.market)
+    );
+
+  const effectiveWinN = effectiveRows.filter((row) => Number(row.effective_realized_ret_net) > 0).length;
+  return {
+    provider,
+    tf,
+    maturity_hours: Math.round(maturityMs / (60 * 60 * 1000)),
+    rows,
+    by_market,
+    summary: {
+      total_entry_n: rows.length,
+      final_realized_n: finalRows.length,
+      provisional_realized_n: provisionalRows.length,
+      unresolved_open_n: rows.filter((row) => row.outcome_status === "UNRESOLVED_OPEN").length,
+      unresolved_stale_n: rows.filter((row) => row.outcome_status === "UNRESOLVED_STALE").length,
+      effective_realized_n: effectiveRows.length,
+      effective_win_rate: effectiveRows.length > 0 ? (effectiveWinN / effectiveRows.length) : null,
+      effective_avg_ret_net: effectiveRows.length > 0
+        ? (effectiveRows.reduce((acc, row) => acc + Number(row.effective_realized_ret_net || 0), 0) / effectiveRows.length)
+        : null,
+      effective_net_pnl_krw: effectiveRows.length > 0
+        ? effectiveRows.reduce((acc, row) => acc + Number(row.effective_realized_pnl_krw || 0), 0)
+        : null,
+      top_provisional_market: provisionalRows.length > 0 && by_market.length > 0 ? by_market[0].market : null,
+      status: provisionalRows.length > 0 ? "PROVISIONAL_ACTIVE" : (finalRows.length > 0 ? "FINAL_ONLY" : "NO_EFFECTIVE_OUTCOME"),
+    },
   };
 }
 
@@ -706,6 +918,7 @@ module.exports = {
   CURRENT_BAR_MODEL,
   buildCoverageGuard,
   buildEvResolvedLedger,
+  buildProvisionalRealizedOutcomeLedger,
   buildWaitStateMachineLedger,
   __test: {
     mapPathOutcomeForTune,

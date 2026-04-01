@@ -9,6 +9,7 @@ const {
 
 const DERIVED_LOOP_KEYS = new Set([
   "DROP_VALIDATION",
+  "PROVISIONAL_REALIZED_OUTCOME",
   "MARKET_OBJECTIVE_SCORE",
   "SERVER_VS_PINE_DELTA",
   "OPENCLAW_AUTONOMY_CONTRACT",
@@ -53,6 +54,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const serverSignalRuntime = unwrapRawReport(reports.serverSignalRuntime) || {};
   const serverSignalCutoverReadiness = unwrapRawReport(reports.serverSignalCutoverReadiness) || {};
   const dropValidation = unwrapRawReport(reports.dropValidation) || {};
+  const provisionalRealizedOutcome = unwrapRawReport(reports.provisionalRealizedOutcome) || {};
   const marketObjectiveScore = unwrapRawReport(reports.marketObjectiveScore) || {};
   const serverVsPinePerformanceDelta = unwrapRawReport(reports.serverVsPinePerformanceDelta) || {};
   const canonicalProvenance = unwrapRawReport(reports.canonicalProvenance) || {};
@@ -84,6 +86,9 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const serverSignalRuntimeSummary = serverSignalRuntime.summary && typeof serverSignalRuntime.summary === "object" ? serverSignalRuntime.summary : {};
   const serverSignalCutoverSummary = serverSignalCutoverReadiness.summary && typeof serverSignalCutoverReadiness.summary === "object" ? serverSignalCutoverReadiness.summary : {};
   const dropValidationSummary = dropValidation.summary && typeof dropValidation.summary === "object" ? dropValidation.summary : {};
+  const provisionalRealizedOutcomeSummary = provisionalRealizedOutcome.summary && typeof provisionalRealizedOutcome.summary === "object"
+    ? provisionalRealizedOutcome.summary
+    : {};
   const marketObjectiveScoreSummary = marketObjectiveScore.summary && typeof marketObjectiveScore.summary === "object" ? marketObjectiveScore.summary : {};
   const serverVsPinePerformanceDeltaSummary = serverVsPinePerformanceDelta.summary && typeof serverVsPinePerformanceDelta.summary === "object"
     ? serverVsPinePerformanceDelta.summary
@@ -124,6 +129,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(serverSignalRuntime)
     || readCycleId(serverSignalCutoverReadiness)
     || readCycleId(dropValidation)
+    || readCycleId(provisionalRealizedOutcome)
     || readCycleId(marketObjectiveScore)
     || readCycleId(serverVsPinePerformanceDelta)
     || readCycleId(canonicalProvenance)
@@ -250,6 +256,15 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
         ? "PASS"
         : (String(dropValidationSummary.status || "N/A").trim().toUpperCase() ? "HOLD" : "N/A")),
       reason: `recent=${dropValidationSummary.recent_drop_n ?? 0} / matured=${dropValidationSummary.matured_reason_n ?? 0} / dominant=${dropValidationSummary.dominant_family || "N/A"}:${dropValidationSummary.dominant_verdict || "N/A"} / rescue=${dropValidationSummary.top_rescue_family || "N/A"}:${dropValidationSummary.top_rescue_reason || "N/A"}:${dropValidationSummary.top_rescue_market || "N/A"}`,
+    },
+    {
+      loop: "PROVISIONAL_REALIZED_OUTCOME",
+      fresh: artifacts.provisionalRealizedOutcome && artifacts.provisionalRealizedOutcome.fresh === true,
+      cycle_id: readCycleId(provisionalRealizedOutcome),
+      status: String(provisionalRealizedOutcomeSummary.status || "").trim().toUpperCase() === "PROVISIONAL_ACTIVE"
+        ? "WARN"
+        : (Number(provisionalRealizedOutcomeSummary.final_realized_n || 0) > 0 ? "PASS" : "HOLD"),
+      reason: `final=${provisionalRealizedOutcomeSummary.final_realized_n ?? 0} / provisional=${provisionalRealizedOutcomeSummary.provisional_realized_n ?? 0} / effective=${provisionalRealizedOutcomeSummary.effective_realized_n ?? 0} / top=${provisionalRealizedOutcomeSummary.top_provisional_market || "N/A"}`,
     },
     {
       loop: "SERVER_VS_PINE_DELTA",
@@ -508,6 +523,11 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       drop_validation_top_watch_markets: Array.isArray(dropValidationSummary.top_watch_markets)
         ? dropValidationSummary.top_watch_markets.slice(0, 6).map((row) => String(row && row.market || "").trim().toUpperCase()).filter(Boolean)
         : [],
+      provisional_realized_outcome_status: provisionalRealizedOutcomeSummary.status || null,
+      provisional_realized_final_n: toNum(provisionalRealizedOutcomeSummary.final_realized_n) || 0,
+      provisional_realized_provisional_n: toNum(provisionalRealizedOutcomeSummary.provisional_realized_n) || 0,
+      provisional_realized_effective_n: toNum(provisionalRealizedOutcomeSummary.effective_realized_n) || 0,
+      provisional_realized_top_market: provisionalRealizedOutcomeSummary.top_provisional_market || null,
       market_objective_status: marketObjectiveScoreSummary.status || null,
       market_objective_top_recovery_market: marketObjectiveScoreSummary.top_recovery_market || null,
       market_objective_top_drag_market: marketObjectiveScoreSummary.top_drag_market || null,
