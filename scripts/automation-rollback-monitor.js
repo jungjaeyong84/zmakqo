@@ -171,10 +171,9 @@ async function main() {
     title: `[롤백] ${report.verdict}`,
     severity: report.verdict === "ROLLBACK_PREPARED" ? "WARN" : "INFO",
     sections: [
-      { header: "현재 상태", lines: [`자동 롤백 준비 상태는 ${report.verdict} 입니다. 사유는 ${report.reason} 입니다.`] },
-      { header: "준비된 파일", lines: [report.rollback_file_path || "현재 준비된 롤백 파일이 없습니다.", report.latest_alias_path || "현재 최신 alias 정보가 없습니다."] },
-      { header: "판단 근거", lines: [`목표 감독관 ${report.objective_supervisor_verdict}`, `변경 제어 ${report.change_control_reason}`, `Codex 검토 ${report.codex_verdict}`] },
-      { header: "파일 열기 상태", lines: [report.open_method || "파일을 연 기록이 없습니다."] },
+      { header: "요약", lines: [`상태: ${report.verdict}`, `사유: ${report.reason}`] },
+      { header: "준비 파일", lines: [report.rollback_file_path || "준비된 롤백 파일 없음", report.latest_alias_path || "최신 alias 정보 없음"] },
+      { header: "판단 근거", lines: [`목표: ${report.objective_supervisor_verdict}`, `변경 제어: ${report.change_control_reason} / 외부 검토: ${report.codex_verdict}`] },
     ],
   });
   if (!alert || (alert.ok !== true && !(alert.skipped && alert.reason === "SKIP_ALERT"))) {

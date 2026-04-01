@@ -1921,45 +1921,31 @@ function buildObjectiveSupervisorTelegramAlertSections(report = {}) {
     : [];
   const sections = [
     {
-      header: "지금 결론",
+      header: "요약",
       lines: [
-        `verdict ${report.verdict || "N/A"} / reason ${report.reason || "N/A"}`,
-        `root ${report.root_cause || "N/A"} / blockers ${blockers.length ? blockers.slice(0, 4).join(", ") : "없음"}`,
+        `현재 판단: ${report.verdict || "N/A"}`,
+        `핵심 사유: ${report.root_cause || report.reason || "N/A"}`,
       ],
     },
     {
-      header: "복구 경로",
+      header: "지금 막는 것",
       lines: [
-        `promotion ${report.promotion && report.promotion.ready ? "READY" : "HOLD"} / ${report.promotion && report.promotion.reason || "N/A"} / candidate ${report.promotion && (report.promotion.display_candidate_id || report.promotion.candidate_id) || "N/A"}`,
-        `recovery ${report.promotion && report.promotion.recovery_mode ? "YES" : "NO"} / replay ${report.promotion && report.promotion.replay_verdict || "N/A"} / delta ${report.promotion && report.promotion.replay_delta != null ? signedNum(report.promotion.replay_delta, 4) : "N/A"}`,
+        blockers.length ? `주요 차단: ${blockers.slice(0, 3).join(", ")}` : "주요 차단: 없음",
+        `배포 상태: ${report.self_evolution_deployment && report.self_evolution_deployment.deploy_pass ? "진행 가능" : "보류"}`,
       ],
     },
     {
-      header: "배포 상태",
+      header: "다음 조치",
       lines: [
-        `deploy ${report.self_evolution_deployment && report.self_evolution_deployment.deploy_pass ? "PASS" : "HOLD"} / plan ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.plan_status || "N/A"}`,
-        `manual_paste ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.ready_for_manual_paste ? "READY" : "NO"} / stage ${report.self_evolution_loop_monitor && report.self_evolution_loop_monitor.overall_status || "N/A"}`,
+        actionPlan.length ? actionPlan[0] : "다음 조치: 없음",
+        actionPlan.length > 1 ? actionPlan[1] : "추가 조치: 없음",
       ],
     },
     {
-      header: "안전 장치",
+      header: "운영 상태",
       lines: [
-        `canary ${report.guards && report.guards.canary_pass ? "PASS" : "BLOCK"} / golden ${report.guards && report.guards.canary_golden_drift != null ? report.guards.canary_golden_drift : "N/A"} / shadow ${report.guards && report.guards.canary_shadow_drift != null ? report.guards.canary_shadow_drift : "N/A"}`,
-        `memory ${report.self_evolution_memory && report.self_evolution_memory.blocked_candidate_n != null ? report.self_evolution_memory.blocked_candidate_n : "N/A"} / tuning ${report.self_evolution_weight_tuning && report.self_evolution_weight_tuning.summary && report.self_evolution_weight_tuning.summary.advisory_mode || "N/A"}`,
-      ],
-    },
-    {
-      header: "운영 회복",
-      lines: [
-        `daily exec/realized ${report.operational_recovery_context && report.operational_recovery_context.daily_executed_n != null ? report.operational_recovery_context.daily_executed_n : "N/A"} / ${report.operational_recovery_context && report.operational_recovery_context.daily_realized_n != null ? report.operational_recovery_context.daily_realized_n : "N/A"} / scheduler ${report.operational_recovery_context && report.operational_recovery_context.recommended_scheduler_policy || "N/A"}`,
-        actionPlan.length ? `next ${actionPlan.slice(0, 2).join(" | ")}` : "next N/A",
-      ],
-    },
-    {
-      header: "자율성",
-      lines: [
-        `engine ${report.autonomy_assessment && report.autonomy_assessment.engine_autonomy || "N/A"} / loop ${report.autonomy_assessment && report.autonomy_assessment.loop_autonomy || "N/A"} / ops_except_pine ${report.autonomy_assessment && report.autonomy_assessment.operational_autonomy_except_pine || "N/A"}`,
-        `manual ${manualBoundaries.length ? manualBoundaries.join(", ") : "없음"} / deferred ${deferredPaths.length ? deferredPaths.join(", ") : "없음"}`,
+        `검증 상태: ${report.guards && report.guards.canary_pass ? "정상" : "차단"}`,
+        `수동 경계: ${manualBoundaries.length ? manualBoundaries.join(", ") : "없음"} / 보류 경로: ${deferredPaths.length ? deferredPaths.join(", ") : "없음"}`,
       ],
     },
   ];

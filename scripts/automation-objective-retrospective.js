@@ -608,11 +608,11 @@ async function main() {
     }),
     sections: [
       {
-        header: "당일 전체 평가",
-        lines: dailyTradeEvaluation.lines.slice(0, 5),
+        header: "오늘 평가",
+        lines: dailyTradeEvaluation.lines.slice(0, 3),
       },
       {
-        header: "기간 상태",
+        header: "목표 대비",
         lines: [
           `당일 ${signedKrw(daily.realized_trades.net_pnl_quote, 0)} / 목표 ${signedKrw(daily.objective.period_target_krw, 0)}`,
           `주간 ${signedKrw(weekly.realized_trades.net_pnl_quote, 0)} / 목표 ${signedKrw(weekly.objective.period_target_krw, 0)}`,
@@ -621,11 +621,11 @@ async function main() {
       },
       {
         header: "반성문",
-        lines: selfCritiqueLines,
+        lines: selfCritiqueLines.slice(0, 3),
       },
       {
         header: "내일 전략",
-        lines: nextDayStrategyLines,
+        lines: nextDayStrategyLines.slice(0, 3),
       },
     ],
   });

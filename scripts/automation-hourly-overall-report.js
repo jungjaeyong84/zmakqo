@@ -599,41 +599,34 @@ async function main() {
     severity: "INFO",
     sections: [
       {
-        header: "현재 자산",
+        header: "자산",
         lines: [
           `총 평가금액 ${roundAmount(totalEquityUsdt)} USDT`,
           `현재 환산 약 ${roundAmount(totalEquityUsdt * usdKrwRate).toLocaleString("ko-KR")} KRW`,
-          `지갑 잔고 ${roundAmount(walletBalanceUsdt)} USDT`,
-          `미실현손익 ${formatSignedRounded(unrealizedUsdt, " USDT")}`,
+          `지갑 잔고 ${roundAmount(walletBalanceUsdt)} USDT / 미실현손익 ${formatSignedRounded(unrealizedUsdt, " USDT")}`,
         ],
       },
       {
         header: "오늘 손익",
         lines: [
-          `실현손익 ${formatSignedRounded(realizedUsdt, " USDT")}`,
-          `수수료 ${formatSignedRounded(commissionUsdt, " USDT")}`,
-          `펀딩비 ${formatSignedRounded(fundingUsdt, " USDT")}`,
           `순손익 ${formatSignedRounded(netUsdt, " USDT")} (${formatSignedPercent(report.pnl_today.net_pnl_pct, 4)})`,
+          `실현 ${formatSignedRounded(realizedUsdt, " USDT")} / 수수료 ${formatSignedRounded(commissionUsdt, " USDT")} / 펀딩비 ${formatSignedRounded(fundingUsdt, " USDT")}`,
           `미실현 포함 총 손익 ${formatSignedRounded(grossUsdt, " USDT")}`,
         ],
       },
       {
-        header: "현재 포지션",
+        header: "포지션",
         lines: positions.length
           ? positions.map((row) => `${row.symbol} ${row.side || ""} · ${positionStatusLabel(row)}${row.status_warning ? " · 상태지연경고" : ""} · 보호주문 ${row.native_status || "N/A"}`.trim())
           : ["현재 활성 포지션 없음"],
       },
       {
-        header: "운영 판정",
+        header: "운영 상태",
         lines: [
           `실행 엔진 ${report.execution_engine.label}`,
-          `운영 가드 상태 ${report.operations.status}`,
-          `운영 가드 모드 ${report.operations.mode}`,
-          `최근 24시간 시스템 오류 ${isFiniteNullable(report.operations.error_count_24h) ? `${report.operations.error_count_24h}건` : "N/A"}`,
-          ...evGateSummary.lines,
+          `운영 가드 ${report.operations.status} / 모드 ${report.operations.mode} / 최근 오류 ${isFiniteNullable(report.operations.error_count_24h) ? `${report.operations.error_count_24h}건` : "N/A"}`,
+          ...evGateSummary.lines.slice(0, 1),
           `${report.comparisons.previous_hour.label} ${comparisonSummaryLines(report.comparisons.previous_hour, "기준 데이터 없음").join(" / ")}`,
-          `${report.comparisons.today_start.label} ${comparisonSummaryLines(report.comparisons.today_start, "기준 데이터 없음").join(" / ")}`,
-          `${report.comparisons.previous_day_latest.label} ${comparisonSummaryLines(report.comparisons.previous_day_latest, "기준 데이터 없음").join(" / ")}`,
         ],
       },
       { header: "보고서", lines: [mdPath] },
