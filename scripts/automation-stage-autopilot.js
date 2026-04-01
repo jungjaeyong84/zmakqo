@@ -84,6 +84,7 @@ const FRESHNESS_HOURS = Object.freeze({
   overrideAuthority: Math.max(4, Number(process.env.STAGE_AUTOPILOT_OVERRIDE_AUTHORITY_MAX_AGE_HOURS || 24)),
   executionQuality: Math.max(4, Number(process.env.STAGE_AUTOPILOT_EXECUTION_QUALITY_MAX_AGE_HOURS || 24)),
   reversePolicy: Math.max(4, Number(process.env.STAGE_AUTOPILOT_REVERSE_POLICY_MAX_AGE_HOURS || 24)),
+  explorationBudget: Math.max(4, Number(process.env.STAGE_AUTOPILOT_EXPLORATION_BUDGET_MAX_AGE_HOURS || 24)),
   serverPrimaryCanary: Math.max(4, Number(process.env.STAGE_AUTOPILOT_SERVER_PRIMARY_CANARY_MAX_AGE_HOURS || 12)),
   codex: Math.max(12, Number(process.env.STAGE_AUTOPILOT_CODEX_MAX_AGE_HOURS || 48)),
 });
@@ -96,6 +97,7 @@ const SELF_EVOLUTION_DROP_VALIDATION_LATEST_PATH = path.join(OPS_DAILY_DIR, "bes
 const SELF_EVOLUTION_OVERRIDE_AUTHORITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_override_authority_latest.json");
 const SELF_EVOLUTION_EXECUTION_QUALITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_execution_quality_latest.json");
 const SELF_EVOLUTION_REVERSE_POLICY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_reverse_policy_latest.json");
+const SELF_EVOLUTION_EXPLORATION_BUDGET_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_budget_latest.json");
 const SELF_EVOLUTION_DEPLOYMENT_PROBE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_probe_latest.json");
 const SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json");
 const SELF_EVOLUTION_OBJECTIVE_SUPERVISOR_LATEST_PATH = selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json");
@@ -1119,6 +1121,7 @@ function renderMarkdown(report = {}) {
     `- override_authority: ${report.self_evolution_override_authority ? `${report.self_evolution_override_authority.status || "N/A"} / max_markets ${report.self_evolution_override_authority.max_market_overrides_per_cycle ?? "N/A"} / risk ${report.self_evolution_override_authority.risk_override_enabled ? "ALLOW" : "BLOCK"}` : "N/A"}`,
     `- execution_quality: ${report.self_evolution_execution_quality ? `${report.self_evolution_execution_quality.status || "N/A"} / latency ${report.self_evolution_execution_quality.created_to_fill_p95_ms ?? "N/A"} / slippage ${report.self_evolution_execution_quality.adverse_slippage_p95_bps ?? "N/A"} / partial ${report.self_evolution_execution_quality.partial_fill_rate_pct ?? "N/A"} / top ${report.self_evolution_execution_quality.top_latency_market || report.self_evolution_execution_quality.top_slippage_market || report.self_evolution_execution_quality.top_partial_market || "N/A"}` : "N/A"}`,
     `- reverse_policy: ${report.self_evolution_reverse_policy ? `${report.self_evolution_reverse_policy.status || "N/A"} / reverse_drop ${report.self_evolution_reverse_policy.reverse_drop_n ?? "N/A"} / revive ${report.self_evolution_reverse_policy.reverse_revive_n ?? "N/A"} / top ${report.self_evolution_reverse_policy.top_watch_market || "N/A"} / action ${report.self_evolution_reverse_policy.top_watch_action || "N/A"}` : "N/A"}`,
+    `- exploration_budget: ${report.self_evolution_exploration_budget ? `${report.self_evolution_exploration_budget.status || "N/A"} / prod ${Array.isArray(report.self_evolution_exploration_budget.production_markets) && report.self_evolution_exploration_budget.production_markets.length ? report.self_evolution_exploration_budget.production_markets.join("|") : "none"} / explore ${Array.isArray(report.self_evolution_exploration_budget.exploration_markets) && report.self_evolution_exploration_budget.exploration_markets.length ? report.self_evolution_exploration_budget.exploration_markets.join("|") : "none"} / deferred ${Array.isArray(report.self_evolution_exploration_budget.deferred_penalty_markets) && report.self_evolution_exploration_budget.deferred_penalty_markets.length ? report.self_evolution_exploration_budget.deferred_penalty_markets.join("|") : "none"}` : "N/A"}`,
     `- server_primary_canary: ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.apply_pass === true ? "PASS" : (report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.apply_pass === false ? "BLOCK" : "N/A")} / executed ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.executed_n != null ? report.self_evolution_server_primary_canary.executed_n : "N/A"} / rollback ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.rollback_trigger_n != null ? report.self_evolution_server_primary_canary.rollback_trigger_n : "N/A"} / acceptance ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.acceptance_ready ? "READY" : "PENDING"}`,
     `- self_evolution_deployment: ${report.self_evolution_deployment && report.self_evolution_deployment.deploy_pass ? "PASS" : "BLOCK"} / target ${report.self_evolution_deployment && report.self_evolution_deployment.target_candidate_id || "N/A"}`,
     `- deployment plan: ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.plan_status || "N/A"} / unit ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.deploy_unit_primary || "N/A"} / authority ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.authority_state || "N/A"}`,
@@ -1750,6 +1753,7 @@ async function main() {
   const selfEvolutionDropValidationArtifact = readArtifact("best_self_evolution_drop_validation", SELF_EVOLUTION_DROP_VALIDATION_LATEST_PATH, FRESHNESS_HOURS.dropValidation);
   const selfEvolutionExecutionQualityArtifact = readArtifact("best_self_evolution_execution_quality", SELF_EVOLUTION_EXECUTION_QUALITY_LATEST_PATH, FRESHNESS_HOURS.executionQuality);
   const selfEvolutionReversePolicyArtifact = readArtifact("best_self_evolution_reverse_policy", SELF_EVOLUTION_REVERSE_POLICY_LATEST_PATH, FRESHNESS_HOURS.reversePolicy);
+  const selfEvolutionExplorationBudgetArtifact = readArtifact("best_self_evolution_exploration_budget", SELF_EVOLUTION_EXPLORATION_BUDGET_LATEST_PATH, FRESHNESS_HOURS.explorationBudget);
   const selfEvolutionServerPrimaryCanaryArtifact = readArtifact("best_self_evolution_server_primary_canary", SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH, FRESHNESS_HOURS.serverPrimaryCanary);
   const selfEvolutionDeploymentPlanArtifact = readArtifact("best_self_evolution_deployment_plan", SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST_PATH, FRESHNESS_HOURS.objective);
   const selfEvolutionLoopMonitorArtifact = readArtifact("best_self_evolution_loop_monitor", SELF_EVOLUTION_LOOP_MONITOR_LATEST_PATH, FRESHNESS_HOURS.objective);
@@ -1803,6 +1807,9 @@ async function main() {
     : {};
   const selfEvolutionReversePolicy = selfEvolutionReversePolicyArtifact && selfEvolutionReversePolicyArtifact.data && selfEvolutionReversePolicyArtifact.data.summary
     ? selfEvolutionReversePolicyArtifact.data.summary
+    : {};
+  const selfEvolutionExplorationBudget = selfEvolutionExplorationBudgetArtifact && selfEvolutionExplorationBudgetArtifact.data && selfEvolutionExplorationBudgetArtifact.data.summary
+    ? selfEvolutionExplorationBudgetArtifact.data.summary
     : {};
   const overrideAuthoritySummary = summarizeOpenclawOverrideAuthority({
     currentSys,
@@ -2349,6 +2356,17 @@ async function main() {
       top_watch_reason: String(selfEvolutionReversePolicy.top_watch_reason || "").trim().toUpperCase() || null,
       top_watch_action: String(selfEvolutionReversePolicy.top_watch_action || "").trim().toUpperCase() || null,
     },
+    self_evolution_exploration_budget: {
+      available: selfEvolutionExplorationBudgetArtifact.exists === true,
+      status: String(selfEvolutionExplorationBudget.status || "").trim().toUpperCase() || null,
+      production_slot_n: toNum(selfEvolutionExplorationBudget.production_slot_n),
+      exploration_slot_n: toNum(selfEvolutionExplorationBudget.exploration_slot_n),
+      production_markets: Array.isArray(selfEvolutionExplorationBudget.production_markets) ? selfEvolutionExplorationBudget.production_markets : [],
+      exploration_markets: Array.isArray(selfEvolutionExplorationBudget.exploration_markets) ? selfEvolutionExplorationBudget.exploration_markets : [],
+      deferred_penalty_markets: Array.isArray(selfEvolutionExplorationBudget.deferred_penalty_markets) ? selfEvolutionExplorationBudget.deferred_penalty_markets : [],
+      top_production_market: String(selfEvolutionExplorationBudget.top_production_market || "").trim().toUpperCase() || null,
+      top_exploration_market: String(selfEvolutionExplorationBudget.top_exploration_market || "").trim().toUpperCase() || null,
+    },
     self_evolution_server_primary_canary: {
       available: selfEvolutionServerPrimaryCanaryArtifact.exists === true,
       executed_n: toNum(selfEvolutionServerPrimaryCanary.server_primary_executed_n),
@@ -2385,7 +2403,7 @@ async function main() {
     best_febt_tuning_contract: bestFebtContract,
     stage_rows: stageRows,
     actions,
-    artifacts: [objectiveArtifactForLoop, mlArtifact, evArtifact, waitArtifact, canaryArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionServerSignalAuthorityArtifact, selfEvolutionServerSignalQualityArtifact, selfEvolutionServerSignalCutoverReadinessArtifact, selfEvolutionDropValidationArtifact, selfEvolutionExecutionQualityArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionLoopMonitorArtifact, selfEvolutionCandidatesArtifact, changeArtifact, codexArtifact].map((row) => ({
+    artifacts: [objectiveArtifactForLoop, mlArtifact, evArtifact, waitArtifact, canaryArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionServerSignalAuthorityArtifact, selfEvolutionServerSignalQualityArtifact, selfEvolutionServerSignalCutoverReadinessArtifact, selfEvolutionDropValidationArtifact, selfEvolutionExecutionQualityArtifact, selfEvolutionReversePolicyArtifact, selfEvolutionExplorationBudgetArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionLoopMonitorArtifact, selfEvolutionCandidatesArtifact, changeArtifact, codexArtifact].map((row) => ({
       name: row.name,
       filePath: row.filePath,
       fresh: row.fresh,
