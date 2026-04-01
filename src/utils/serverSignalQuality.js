@@ -66,6 +66,22 @@ function statusOf({ entrySignals, intents, fills, mismatchRate }) {
   return "OK";
 }
 
+function explainIntentFillRelation({ intents, fills, trades }) {
+  const intentN = Number(intents) || 0;
+  const fillN = Number(fills) || 0;
+  const tradeN = Number(trades) || 0;
+  if (fillN <= intentN) return null;
+  return {
+    status: "FILL_CAN_EXCEED_INTENT",
+    message: "fill_24h_n can exceed order_intent_24h_n when older intents or existing positions generate fills inside the same 24h window.",
+    detail: {
+      order_intent_24h_n: intentN,
+      fill_24h_n: fillN,
+      trade_24h_n: tradeN,
+    },
+  };
+}
+
 function deriveServerSignalQuality({ signalsRecent = null, intentsRecent = null, fillsRecent = null, tradesRecent = null, parityReport = null, nowMs = Date.now() } = {}) {
   const signals = pickDocs(signalsRecent);
   const intents = pickDocs(intentsRecent);
@@ -132,6 +148,11 @@ function deriveServerSignalQuality({ signalsRecent = null, intentsRecent = null,
     intents: summary.order_intent_24h_n,
     fills: summary.fill_24h_n,
     mismatchRate: summary.parity_mismatch_rate,
+  });
+  summary.intent_fill_relation_note = explainIntentFillRelation({
+    intents: summary.order_intent_24h_n,
+    fills: summary.fill_24h_n,
+    trades: summary.trade_24h_n,
   });
 
   return {
