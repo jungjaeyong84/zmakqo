@@ -37,6 +37,7 @@ const MAX_AGE_HOURS = Object.freeze({
   reversePolicy: 24,
   marketObjectiveScore: 24,
   serverVsPinePerformanceDelta: 24,
+  explorationBudget: 24,
   canonicalProvenance: 24,
   serverPrimaryCanary: 24,
   serverPrimaryAcceptanceWatch: 24,
@@ -71,6 +72,7 @@ const INPUTS = Object.freeze({
   reversePolicy: path.join(OPS_DAILY_DIR, "best_self_evolution_reverse_policy_latest.json"),
   marketObjectiveScore: path.join(OPS_DAILY_DIR, "best_self_evolution_market_objective_score_latest.json"),
   serverVsPinePerformanceDelta: path.join(OPS_DAILY_DIR, "best_self_evolution_server_vs_pine_performance_delta_latest.json"),
+  explorationBudget: path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_budget_latest.json"),
   canonicalProvenance: path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_provenance_latest.json"),
   serverPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
   serverPrimaryAcceptanceWatch: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_acceptance_watch_latest.json"),
@@ -203,6 +205,11 @@ async function main() {
       ? artifacts.reversePolicy.data.raw
       : artifacts.reversePolicy.data)
     : {};
+  const explorationBudgetRaw = artifacts.explorationBudget && artifacts.explorationBudget.data
+    ? ((artifacts.explorationBudget.data.raw && typeof artifacts.explorationBudget.data.raw === "object")
+      ? artifacts.explorationBudget.data.raw
+      : artifacts.explorationBudget.data)
+    : {};
   const overrideAuthoritySummary = overrideAuthorityRaw.summary && typeof overrideAuthorityRaw.summary === "object"
     ? overrideAuthorityRaw.summary
     : {};
@@ -211,6 +218,9 @@ async function main() {
     : {};
   const reversePolicySummary = reversePolicyRaw.summary && typeof reversePolicyRaw.summary === "object"
     ? reversePolicyRaw.summary
+    : {};
+  const explorationBudgetSummary = explorationBudgetRaw.summary && typeof explorationBudgetRaw.summary === "object"
+    ? explorationBudgetRaw.summary
     : {};
   const dropValidationSummary = dropValidationRaw.summary && typeof dropValidationRaw.summary === "object"
     ? dropValidationRaw.summary
@@ -316,6 +326,18 @@ async function main() {
   if (!rows.find((row) => row.loop === "SERVER_VS_PINE_DELTA")) {
     rows.splice(15, 0, serverVsPineDeltaRow);
   }
+  const explorationBudgetRow = {
+    loop: "EXPLORATION_BUDGET",
+    fresh: artifacts.explorationBudget && artifacts.explorationBudget.fresh === true,
+    cycle_id: String(explorationBudgetRaw.cycle_id || explorationBudgetRaw.generation_id || "").trim() || null,
+    status: String(explorationBudgetSummary.status || "").trim().toUpperCase() === "EXPLORATION_BUDGET_ACTIVE"
+      ? "PASS"
+      : (String(explorationBudgetSummary.status || "").trim().toUpperCase() === "PRODUCTION_ONLY" ? "WARN" : "N/A"),
+    reason: `prod=${Array.isArray(explorationBudgetSummary.production_markets) && explorationBudgetSummary.production_markets.length ? explorationBudgetSummary.production_markets.join("|") : "N/A"} / explore=${Array.isArray(explorationBudgetSummary.exploration_markets) && explorationBudgetSummary.exploration_markets.length ? explorationBudgetSummary.exploration_markets.join("|") : "N/A"} / deferred=${Array.isArray(explorationBudgetSummary.deferred_penalty_markets) && explorationBudgetSummary.deferred_penalty_markets.length ? explorationBudgetSummary.deferred_penalty_markets.join("|") : "none"}`,
+  };
+  if (!rows.find((row) => row.loop === "EXPLORATION_BUDGET")) {
+    rows.splice(16, 0, explorationBudgetRow);
+  }
   const summary = {
     ...(derived.summary || {}),
     drop_validation_status: dropValidationSummary.status || derived.summary && derived.summary.drop_validation_status || null,
@@ -350,6 +372,16 @@ async function main() {
     reverse_policy_top_watch_market: reversePolicySummary.top_watch_market || derived.summary && derived.summary.reverse_policy_top_watch_market || null,
     reverse_policy_top_watch_reason: reversePolicySummary.top_watch_reason || derived.summary && derived.summary.reverse_policy_top_watch_reason || null,
     reverse_policy_top_watch_action: reversePolicySummary.top_watch_action || derived.summary && derived.summary.reverse_policy_top_watch_action || null,
+    exploration_budget_status: explorationBudgetSummary.status || derived.summary && derived.summary.exploration_budget_status || null,
+    exploration_budget_production_markets: Array.isArray(explorationBudgetSummary.production_markets)
+      ? explorationBudgetSummary.production_markets.slice(0, 6)
+      : ((derived.summary && Array.isArray(derived.summary.exploration_budget_production_markets)) ? derived.summary.exploration_budget_production_markets : []),
+    exploration_budget_exploration_markets: Array.isArray(explorationBudgetSummary.exploration_markets)
+      ? explorationBudgetSummary.exploration_markets.slice(0, 6)
+      : ((derived.summary && Array.isArray(derived.summary.exploration_budget_exploration_markets)) ? derived.summary.exploration_budget_exploration_markets : []),
+    exploration_budget_deferred_penalty_markets: Array.isArray(explorationBudgetSummary.deferred_penalty_markets)
+      ? explorationBudgetSummary.deferred_penalty_markets.slice(0, 6)
+      : ((derived.summary && Array.isArray(derived.summary.exploration_budget_deferred_penalty_markets)) ? derived.summary.exploration_budget_deferred_penalty_markets : []),
     market_objective_status: marketObjectiveSummary.status || derived.summary && derived.summary.market_objective_status || null,
     market_objective_top_recovery_market: marketObjectiveSummary.top_recovery_market || derived.summary && derived.summary.market_objective_top_recovery_market || null,
     market_objective_top_drag_market: marketObjectiveSummary.top_drag_market || derived.summary && derived.summary.market_objective_top_drag_market || null,

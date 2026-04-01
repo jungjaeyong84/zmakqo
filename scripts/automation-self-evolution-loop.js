@@ -41,6 +41,7 @@ function buildStepPlan() {
     { id: "objective", script: "report-best-self-evolution-objective.js" },
     { id: "market_objective_score", script: "report-best-self-evolution-market-objective-score.js" },
     { id: "server_vs_pine_performance_delta", script: "report-best-self-evolution-server-vs-pine-performance-delta.js" },
+    { id: "exploration_budget", script: "report-best-self-evolution-exploration-budget.js" },
     { id: "attribution", script: "report-best-self-evolution-attribution.js" },
     { id: "candidates", script: "report-best-self-evolution-candidates.js" },
     { id: "replay", script: "report-best-self-evolution-replay.js" },

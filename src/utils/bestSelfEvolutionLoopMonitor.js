@@ -15,6 +15,7 @@ const DERIVED_LOOP_KEYS = new Set([
   "REVERSE_POLICY",
   "MARKET_OBJECTIVE_SCORE",
   "SERVER_VS_PINE_DELTA",
+  "EXPLORATION_BUDGET",
   "OPENCLAW_AUTONOMY_CONTRACT",
   "OBJECTIVE_RECOVERY_GOVERNOR",
   "OBJECTIVE_RECOVERY_EFFECT",
@@ -63,6 +64,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const reversePolicy = unwrapRawReport(reports.reversePolicy) || {};
   const marketObjectiveScore = unwrapRawReport(reports.marketObjectiveScore) || {};
   const serverVsPinePerformanceDelta = unwrapRawReport(reports.serverVsPinePerformanceDelta) || {};
+  const explorationBudget = unwrapRawReport(reports.explorationBudget) || {};
   const canonicalProvenance = unwrapRawReport(reports.canonicalProvenance) || {};
   const serverPrimaryCanary = unwrapRawReport(reports.serverPrimaryCanary) || {};
   const serverPrimaryAcceptanceWatch = unwrapRawReport(reports.serverPrimaryAcceptanceWatch) || {};
@@ -108,6 +110,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const serverVsPinePerformanceDeltaSummary = serverVsPinePerformanceDelta.summary && typeof serverVsPinePerformanceDelta.summary === "object"
     ? serverVsPinePerformanceDelta.summary
     : {};
+  const explorationBudgetSummary = explorationBudget.summary && typeof explorationBudget.summary === "object" ? explorationBudget.summary : {};
   const canonicalProvenanceSummary = canonicalProvenance.summary && typeof canonicalProvenance.summary === "object" ? canonicalProvenance.summary : {};
   const canonicalProvenanceEligible = canonicalProvenanceSummary.post_cutover_engine_eligible_n != null
     ? canonicalProvenanceSummary.post_cutover_engine_eligible_n
@@ -150,6 +153,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(reversePolicy)
     || readCycleId(marketObjectiveScore)
     || readCycleId(serverVsPinePerformanceDelta)
+    || readCycleId(explorationBudget)
     || readCycleId(canonicalProvenance)
     || readCycleId(serverPrimaryCanary)
     || readCycleId(serverPrimaryAcceptanceWatch)
@@ -317,6 +321,15 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
         ? "PASS"
         : (String(serverVsPinePerformanceDeltaSummary.status || "").trim().toUpperCase() === "SHADOW_GAP_REVIEW" ? "WARN" : "HOLD"),
       reason: `shadow_gap=${serverVsPinePerformanceDeltaSummary.top_shadow_gap_market || "N/A"} / edge=${serverVsPinePerformanceDeltaSummary.top_server_edge_market || "N/A"} / delta=${serverVsPinePerformanceDeltaSummary.avg_active_delta_score != null ? serverVsPinePerformanceDeltaSummary.avg_active_delta_score : "N/A"} / mismatch=${serverVsPinePerformanceDeltaSummary.parity_mismatch_n ?? 0}`,
+    },
+    {
+      loop: "EXPLORATION_BUDGET",
+      fresh: artifacts.explorationBudget && artifacts.explorationBudget.fresh === true,
+      cycle_id: readCycleId(explorationBudget),
+      status: String(explorationBudgetSummary.status || "").trim().toUpperCase() === "EXPLORATION_BUDGET_ACTIVE"
+        ? "PASS"
+        : (String(explorationBudgetSummary.status || "").trim().toUpperCase() === "PRODUCTION_ONLY" ? "WARN" : "N/A"),
+      reason: `prod=${Array.isArray(explorationBudgetSummary.production_markets) && explorationBudgetSummary.production_markets.length ? explorationBudgetSummary.production_markets.join("|") : "N/A"} / explore=${Array.isArray(explorationBudgetSummary.exploration_markets) && explorationBudgetSummary.exploration_markets.length ? explorationBudgetSummary.exploration_markets.join("|") : "N/A"} / deferred=${Array.isArray(explorationBudgetSummary.deferred_penalty_markets) && explorationBudgetSummary.deferred_penalty_markets.length ? explorationBudgetSummary.deferred_penalty_markets.join("|") : "none"}`,
     },
     {
       loop: "CANONICAL_PROVENANCE",
@@ -594,6 +607,10 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       reverse_policy_top_watch_market: reversePolicySummary.top_watch_market || null,
       reverse_policy_top_watch_reason: reversePolicySummary.top_watch_reason || null,
       reverse_policy_top_watch_action: reversePolicySummary.top_watch_action || null,
+      exploration_budget_status: explorationBudgetSummary.status || null,
+      exploration_budget_production_markets: Array.isArray(explorationBudgetSummary.production_markets) ? explorationBudgetSummary.production_markets.slice(0, 6) : [],
+      exploration_budget_exploration_markets: Array.isArray(explorationBudgetSummary.exploration_markets) ? explorationBudgetSummary.exploration_markets.slice(0, 6) : [],
+      exploration_budget_deferred_penalty_markets: Array.isArray(explorationBudgetSummary.deferred_penalty_markets) ? explorationBudgetSummary.deferred_penalty_markets.slice(0, 6) : [],
       market_objective_status: marketObjectiveScoreSummary.status || null,
       market_objective_top_recovery_market: marketObjectiveScoreSummary.top_recovery_market || null,
       market_objective_top_drag_market: marketObjectiveScoreSummary.top_drag_market || null,
