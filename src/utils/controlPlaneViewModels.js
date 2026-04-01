@@ -158,6 +158,7 @@ const UI_TEXT_MAP = {
   "Phase D": "Phase D",
   "Ops": "운영",
   "Strategic State": "핵심 운영 상태",
+  "Operator Strip": "핵심 운영 상태",
   "Why Blocked": "현재 막힌 이유",
   "Root Cause": "핵심 원인",
   "Failed Checks": "실패 항목",
@@ -173,11 +174,17 @@ const UI_TEXT_MAP = {
   "Engine Bundle": "엔진 번들",
   "Policy Bundle": "정책 번들",
   "Shadow Pine": "그림자 Pine",
+  "Engine Bundle": "엔진 번들",
+  "Policy Bundle": "정책 번들",
+  "Shadow Pine": "그림자 Pine",
   "Role": "역할",
   "Execution SOT": "실행 정본",
   "Telegram": "텔레그램",
   "Scheduler": "스케줄러",
   "Evidence Chain": "증거 체인",
+  "Deployment": "배포",
+  "Execution": "실행",
+  "Evidence": "증거",
   "Plan": "계획",
   "Probe": "프로브",
   "Activation": "활성화",
@@ -194,6 +201,10 @@ const UI_TEXT_MAP = {
   "Provenance": "출처 추적",
   "Open Audit": "감사 보기",
   "Current Score": "현재 점수",
+  "Projected Score": "예상 점수",
+  "Decision": "판단",
+  "Score Path": "점수 경로",
+  "Release Gates": "출시 게이트",
   "Signal Authority": "정본 신호 상태",
   "Authoritative 24h": "정본 신호(24h)",
   "Shadow 24h": "그림자 신호(24h)",
@@ -223,17 +234,15 @@ const UI_TEXT_MAP = {
   "Tier": "등급",
   "Target Delta": "목표 변화폭",
   "Best Replay Delta": "최적 재생 변화폭",
-  "Operator Strip": "핵심 운영 상태",
-  "Decision": "판단",
   "Next": "다음 단계",
   "Weekly Report": "주간 리포트",
-  "Score Path": "점수 경로",
-  "Release Gates": "출시 게이트",
   "Current": "현재",
   "Projected": "예상",
   "Release Evidence": "배포 증거",
   "Recovery Detail": "회복 상세",
   "Target and Alternative": "현재 대상과 대안",
+  "Current Target": "현재 대상",
+  "Alternative": "대안",
   "Deploy Unit": "배포 단위",
   "Projected Win Rate": "예상 승률",
   "Projected Avg Ret": "예상 평균 수익률",
@@ -249,6 +258,7 @@ const UI_TEXT_MAP = {
   "Count Delta": "거래 수 변화",
   "Risk Flags": "리스크 표시",
   "Canary State": "카나리 상태",
+  "Replay Detail": "재생 상세",
   "Ready Wave": "준비 웨이브",
   "Top Ready": "최우선 준비 시장",
   "Scale Allowed": "확장 허용",
@@ -279,6 +289,7 @@ const UI_TEXT_MAP = {
   "Plan Status": "계획 상태",
   "Execution Source": "실행 원천",
   "Execution Evidence": "실행 증거",
+  "Current Runtime": "현재 런타임",
   "Latest Runtime Row": "최신 런타임 행",
   "At": "시각",
   "Market": "마켓",
@@ -318,6 +329,7 @@ const UI_TEXT_MAP = {
   "Phase D Gate": "Phase D 기준",
   "Current Market": "현재 시장",
   "Expand Rule": "확장 기준",
+  "Acceptance Threshold": "수용 기준",
   "Thresholds": "기준치",
   "Min Executed": "최소 실행",
   "Max Disagreement": "최대 불일치",
@@ -349,6 +361,7 @@ const UI_TEXT_MAP = {
   "Focused Target": "집중 대상",
   "Focus": "집중",
   "Next Jump": "다음 이동",
+  "Current Evidence": "현재 증거",
   "current cycle, freshness, wrapper caveat을 함께 점검합니다.": "현재 사이클, 최신성, 래퍼 주의사항을 함께 점검합니다.",
   "current cycle + post-loop re-evaluation": "기본 사이클 + 루프 이후 재평가",
   "main cycle + post-loop re-evaluation": "기본 사이클 + 루프 이후 재평가",
@@ -357,6 +370,7 @@ const UI_TEXT_MAP = {
   "recent runtime evidence across drop/missed/fallback rows": "드롭·미스·대체 행을 포함한 최근 런타임 증거",
   "signals/signals_dropped/order_intents are currently sparse in local cache": "로컬 캐시의 signals/signals_dropped/order_intents 데이터가 아직 적습니다.",
   "source parity와 provenance를 분리해 보여줍니다.": "원천 일치와 출처 추적을 분리해서 보여줍니다.",
+  "Execution/Audit query focus를 그대로 노출합니다.": "실행/기록 점검 화면에서 선택한 집중 대상을 그대로 보여줍니다.",
 };
 
 const VALUE_TEXT_MAP = {
@@ -1415,11 +1429,11 @@ function buildServerPrimaryViewModel() {
   const acceptanceWatch = loadLatestArtifact("best_self_evolution_server_primary_acceptance_watch_latest.json");
   const stageAutopilot = loadLatestArtifact("stage_autopilot_latest.json");
   const sourceMode = buildSourceModeText(stageAutopilot);
-  return {
+  return localizeViewModel({
     active: "server-primary",
-    title: "Server-Primary",
+    title: "전환 진행",
     hero: {
-      eyebrow: "Phase D Acceptance",
+      eyebrow: "서버 우선 전환",
       title: compactText(acceptanceWatch.summary.phase_d_reason || acceptanceWatch.summary.acceptance_reason),
       detail: sourceMode.value,
       tone: statusTone(acceptanceWatch.summary.phase_d_reason || acceptanceWatch.summary.acceptance_reason),
@@ -1525,7 +1539,7 @@ function buildServerPrimaryViewModel() {
         ],
       },
     ],
-  };
+  });
 }
 
 function buildAuditViewModel(query = {}) {
@@ -1539,11 +1553,11 @@ function buildAuditViewModel(query = {}) {
   const focus = String(query.focus || "").trim();
   const collection = String(query.collection || "").trim();
   const source = String(query.source || "").trim();
-  return {
+  return localizeViewModel({
     active: "audit",
-    title: "Audit",
+    title: "기록 점검",
     hero: {
-      eyebrow: "Cycle and Evidence",
+      eyebrow: "기록과 증거",
       title: compactText(loopMonitor.summary.overall_status),
       detail: `${compactText(loopMonitor.summary.cycle_id)} · blockers ${joinList(loopMonitor.summary.critical_blockers || [])}`,
       tone: statusTone(loopMonitor.summary.overall_status),
@@ -1648,7 +1662,7 @@ function buildAuditViewModel(query = {}) {
       },
       {
         title: "Focused Drill-Through",
-        description: "Execution/Audit query focus를 그대로 노출합니다.",
+        description: "실행/기록 점검 화면에서 선택한 집중 대상을 그대로 보여줍니다.",
         columns: 2,
         cards: [
           {
@@ -1674,7 +1688,7 @@ function buildAuditViewModel(query = {}) {
         ],
       },
     ],
-  };
+  });
 }
 
 function buildControlPlaneRouteModel(pageKey, query = {}) {

@@ -4,22 +4,28 @@
   .strategy-status-screen {
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 14px;
   }
   .strategy-subnav {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0;
     flex-wrap: wrap;
+  }
+  .strategy-subnav .subnav {
+    margin: 0 !important;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   }
   .strategy-subnav a {
     text-decoration: none;
-    padding: 9px 12px;
+    padding: 7px 11px;
     border-radius: 999px;
     border: 1px solid var(--trade-border);
     background: #fff;
     color: var(--trade-muted);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
   }
   .strategy-subnav a.active {
@@ -32,33 +38,40 @@
     grid-template-columns: minmax(0, 1.2fr) 340px;
     gap: 16px;
   }
+  .strategy-layout-top.single {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .strategy-status-hero .trade-panel-body {
     display: grid;
     grid-template-columns: minmax(0, 1.1fr) 320px;
     gap: 12px;
   }
+  .strategy-status-hero.compact-hero .trade-panel-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
   .strategy-hero-copy {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
   }
   .strategy-eyebrow {
     color: var(--trade-gold);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     letter-spacing: .08em;
     text-transform: uppercase;
   }
   .strategy-title {
-    font-size: 28px;
-    line-height: 1.08;
+    font-size: 24px;
+    line-height: 1.04;
     font-weight: 800;
     letter-spacing: -.05em;
   }
   .strategy-detail {
     color: var(--trade-muted);
-    font-size: 13px;
-    line-height: 1.55;
+    font-size: 12px;
+    line-height: 1.45;
     max-width: 720px;
   }
   .strategy-actions {
@@ -68,12 +81,12 @@
   }
   .strategy-pill-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
   }
   .strategy-pill {
-    padding: 12px 13px;
-    border-radius: 15px;
+    padding: 10px 11px;
+    border-radius: 14px;
     border: 1px solid var(--trade-border);
     background: #fbfcfd;
   }
@@ -89,8 +102,8 @@
   .strategy-pill .value,
   .status-mini .value,
   .strategy-kpi .value {
-    margin-top: 6px;
-    font-size: 17px;
+    margin-top: 4px;
+    font-size: 15px;
     font-weight: 800;
     letter-spacing: -.04em;
   }
@@ -118,8 +131,8 @@
     gap: 12px;
   }
   .strategy-kpi {
-    padding: 14px 15px;
-    border-radius: 18px;
+    padding: 12px 13px;
+    border-radius: 16px;
     border: 1px solid var(--trade-border);
     background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
   }
@@ -252,6 +265,9 @@
     .strategy-card-grid.cols-2 {
       grid-template-columns: 1fr;
     }
+    .strategy-pill-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
     .strategy-kpis {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -261,6 +277,9 @@
     .strategy-pill-grid,
     .strategy-kv {
       grid-template-columns: 1fr;
+    }
+    .strategy-title {
+      font-size: 20px;
     }
   }
 </style>
@@ -288,6 +307,7 @@
   };
   const topMetrics = metrics.slice(0, 4);
   const sideMetrics = metrics.slice(4, 8);
+  const hasSideMetrics = sideMetrics.length > 0;
 %>
 
 <section class="strategy-status-screen">
@@ -295,8 +315,8 @@
     <%- include('partials/control_surface_nav', { active: vm.active || 'recovery' }) %>
   </nav>
 
-  <section class="strategy-layout-top">
-    <article class="trade-panel soft strategy-status-hero <%= toneClass(hero.tone) %>">
+  <section class="strategy-layout-top <%= hasSideMetrics ? '' : 'single' %>">
+    <article class="trade-panel soft strategy-status-hero compact-hero <%= toneClass(hero.tone) %>">
       <div class="trade-panel-body">
         <div class="strategy-hero-copy">
           <% if (hero.eyebrow) { %><div class="strategy-eyebrow"><%= hero.eyebrow %></div><% } %>
@@ -321,15 +341,17 @@
       </div>
     </article>
 
-    <aside class="status-side-stack">
-      <% sideMetrics.forEach((metric) => { %>
-        <section class="status-mini <%= toneClass(metric.tone) %>">
-          <div class="label"><%= metric.label %></div>
-          <div class="value"><%= metric.value || '-' %></div>
-          <% if (metric.meta) { %><div class="meta"><%= metric.meta %></div><% } %>
-        </section>
-      <% }) %>
-    </aside>
+    <% if (hasSideMetrics) { %>
+      <aside class="status-side-stack">
+        <% sideMetrics.forEach((metric) => { %>
+          <section class="status-mini <%= toneClass(metric.tone) %>">
+            <div class="label"><%= metric.label %></div>
+            <div class="value"><%= metric.value || '-' %></div>
+            <% if (metric.meta) { %><div class="meta"><%= metric.meta %></div><% } %>
+          </section>
+        <% }) %>
+      </aside>
+    <% } %>
   </section>
 
   <% if (topMetrics.length) { %>

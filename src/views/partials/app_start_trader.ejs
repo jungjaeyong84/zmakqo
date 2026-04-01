@@ -15,10 +15,13 @@
     cashflow: { eyebrow: 'Treasury', hint: '입출금과 자금 흐름을 별도 화면으로 확인합니다.' },
     trading: { eyebrow: 'Execution Log', hint: '신호, 드롭, 주문, 포지션, 체결을 거래소형 화면으로 봅니다.' },
     recovery: { eyebrow: 'Strategy Status', hint: '자연 진화 상태와 서버 우선 전환 상태를 확인합니다.' },
+    'server-primary': { eyebrow: '전략상태', hint: '서버 우선 전환 진행과 승격 준비 상태를 확인합니다.' },
+    audit: { eyebrow: '전략상태', hint: '운영 기록, 드리프트, 증거 체인을 점검합니다.' },
     settings: { eyebrow: 'Settings', hint: '거래소, 리스크, 실행 설정을 조정합니다.' },
   };
   const __pageMeta = __pageMetaMap[__active] || { eyebrow: 'DONBEOLJA Trader', hint: '' };
   const __compactTopbar = __active === 'home';
+  const __compactStatusTopbar = ['recovery', 'deployment', 'execution', 'server-primary', 'audit'].includes(__active);
 %>
 <!doctype html>
 <html lang="ko">
@@ -104,6 +107,31 @@
     .trader-topbar.compact-home .trader-top-actions {
       width: 100%;
       justify-content: flex-end;
+    }
+    .trader-topbar.compact-status {
+      min-height: 68px;
+      padding-top: 10px;
+      padding-bottom: 10px;
+      align-items: center;
+    }
+    .trader-topbar.compact-status .trader-page-title {
+      margin: 2px 0 0;
+      font-size: 18px;
+      line-height: 1.1;
+      letter-spacing: -0.04em;
+    }
+    .trader-topbar.compact-status .trader-page-hint {
+      display: none;
+    }
+    .trader-topbar.compact-status .trader-kicker {
+      font-size: 10px;
+    }
+    .trader-topbar.compact-status .trader-top-actions {
+      gap: 8px;
+    }
+    .trader-topbar.compact-status .trade-chip {
+      padding: 6px 10px;
+      font-size: 10px;
     }
     .trader-topbar-copy {
       min-width: 0;
@@ -392,7 +420,7 @@
       <%- include('topnav_trader', { active: __active, envLabel: __envLabel }) %>
     </aside>
     <main class="trader-main">
-      <header class="trader-topbar <%= __compactTopbar ? 'compact-home' : '' %>">
+      <header class="trader-topbar <%= __compactTopbar ? 'compact-home' : (__compactStatusTopbar ? 'compact-status' : '') %>">
         <div class="trader-topbar-copy">
           <div class="trader-kicker"><%= __pageMeta.eyebrow %></div>
           <h1 class="trader-page-title"><%= __pageTitle || 'DONBEOLJA Trader' %></h1>
