@@ -641,6 +641,8 @@ function summarizeSelfEvolutionOverrideAuthority(report = null) {
     max_market_overrides_per_cycle: toNum(summary.max_market_overrides_per_cycle),
     risk_override_enabled: summary.risk_override_enabled === true,
     top_priority_markets: Array.isArray(summary.top_priority_markets) ? summary.top_priority_markets : [],
+    execution_quality_penalty_markets: Array.isArray(summary.execution_quality_penalty_markets) ? summary.execution_quality_penalty_markets : [],
+    reverse_policy_penalty_markets: Array.isArray(summary.reverse_policy_penalty_markets) ? summary.reverse_policy_penalty_markets : [],
   };
 }
 
@@ -2884,6 +2886,12 @@ async function main() {
       : []),
     ...(evaluation.self_evolution_override_authority && evaluation.self_evolution_override_authority.status
       ? [`OVERRIDE_AUTHORITY: ${evaluation.self_evolution_override_authority.status} / max_markets=${evaluation.self_evolution_override_authority.max_market_overrides_per_cycle ?? "N/A"} / risk=${evaluation.self_evolution_override_authority.risk_override_enabled ? "ALLOW" : "BLOCK"} / top=${Array.isArray(evaluation.self_evolution_override_authority.top_priority_markets) && evaluation.self_evolution_override_authority.top_priority_markets.length ? evaluation.self_evolution_override_authority.top_priority_markets.map((row) => row.market).join("|") : "N/A"}`]
+      : []),
+    ...(evaluation.self_evolution_override_authority && Array.isArray(evaluation.self_evolution_override_authority.execution_quality_penalty_markets) && evaluation.self_evolution_override_authority.execution_quality_penalty_markets.length
+      ? [`OVERRIDE_AUTHORITY_EXECUTION_PENALTY: ${evaluation.self_evolution_override_authority.execution_quality_penalty_markets.join("|")}`]
+      : []),
+    ...(evaluation.self_evolution_override_authority && Array.isArray(evaluation.self_evolution_override_authority.reverse_policy_penalty_markets) && evaluation.self_evolution_override_authority.reverse_policy_penalty_markets.length
+      ? [`OVERRIDE_AUTHORITY_REVERSE_PENALTY: ${evaluation.self_evolution_override_authority.reverse_policy_penalty_markets.join("|")}`]
       : []),
     ...(evaluation.self_evolution_execution_quality && evaluation.self_evolution_execution_quality.status
       ? [`EXECUTION_QUALITY: ${evaluation.self_evolution_execution_quality.status} / latency_p95=${evaluation.self_evolution_execution_quality.created_to_fill_p95_ms ?? "N/A"} / slippage_p95=${evaluation.self_evolution_execution_quality.adverse_slippage_p95_bps ?? "N/A"} / partial=${evaluation.self_evolution_execution_quality.partial_fill_rate_pct ?? "N/A"} / top=${evaluation.self_evolution_execution_quality.top_latency_market || evaluation.self_evolution_execution_quality.top_slippage_market || evaluation.self_evolution_execution_quality.top_partial_market || "N/A"}`]
