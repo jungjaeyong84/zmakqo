@@ -2,40 +2,345 @@
   const __tab = (typeof tab !== 'undefined' && tab) ? String(tab) : 'risk';
   const markets = (typeof markets_expected !== 'undefined' && Array.isArray(markets_expected)) ? markets_expected : [];
   const __activeNav = 'settings';
+  const __tabMetaMap = {
+    risk: {
+      title: '리스크 설정',
+      desc: '주문 한도, 진입 강도, EV, WAIT 타이밍을 조정합니다.',
+      badge: '거래 위험',
+      eyebrow: '자금 보호',
+    },
+    system: {
+      title: '시스템 설정',
+      desc: '실행 모드, 스케줄러, 체결 프로파일, 실거래 가드를 관리합니다.',
+      badge: '운영 런타임',
+      eyebrow: '운영 기본',
+    },
+    ai: {
+      title: '리포트 설정',
+      desc: 'AI 리포트와 자금 배분 자동화에 쓰는 모델과 기준을 관리합니다.',
+      badge: '리포트 자동화',
+      eyebrow: '리포트 자동화',
+    },
+    exchanges: {
+      title: '거래소 설정',
+      desc: '거래소 연결, 실행 단위, 거래 대상 마켓을 관리합니다.',
+      badge: '거래 연결',
+      eyebrow: '거래 연결',
+    },
+  };
+  const __tabMeta = __tabMetaMap[__tab] || __tabMetaMap.risk;
 %>
 
 <%- include('partials/app_start_trader', { title: '설정 · DONBEOLJA Trader', pageTitle: '설정', active: __activeNav, bodyClass: 'trader-settings-page' }) %>
 <div class="trader-compat-surface">
 
-<div class="card">
-  <h2>주의</h2>
-  <div class="subtle">
-    설정은 시스템 동작에 직접 영향을 줍니다. 저장은 <b>명시적 버튼 클릭</b>으로만 수행되며, 중복 저장을 방지합니다.<br/>
-    특히 <b>리스크</b>는 “거래 한도”를 바꾸므로 진입 시 경고 확인이 뜹니다.
-  </div>
-</div>
+<style>
+  .settings-overview {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.8fr);
+    gap: 14px;
+  }
+  .settings-hero-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .settings-kicker {
+    color: var(--trade-gold);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .settings-title {
+    font-size: 24px;
+    line-height: 1.08;
+    font-weight: 800;
+    letter-spacing: -.05em;
+  }
+  .settings-desc {
+    color: var(--trade-muted);
+    font-size: 13px;
+    line-height: 1.55;
+    max-width: 760px;
+  }
+  .settings-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .settings-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--trade-border);
+    background: #fff;
+    color: var(--trade-muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .settings-chip.gold {
+    color: #805b00;
+    border-color: #ead8a2;
+    background: linear-gradient(180deg, #fffaf0 0%, #fff2cf 100%);
+  }
+  .settings-principles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .settings-principle {
+    padding: 12px 13px;
+    border-radius: 14px;
+    border: 1px solid var(--trade-border);
+    background: #fbfcfd;
+  }
+  .settings-principle .k {
+    color: var(--trade-muted);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .settings-principle .v {
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .settings-tab-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .settings-section-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .settings-section-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--trade-border);
+    background: #fff;
+    color: var(--trade-muted);
+    font-size: 11px;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .settings-section-pill:hover {
+    color: var(--trade-text);
+    border-color: #ead8a2;
+  }
+  .settings-tab-card {
+    text-decoration: none;
+    display: block;
+    padding: 14px 15px;
+    border-radius: 16px;
+    border: 1px solid var(--trade-border);
+    background: #fff;
+    color: inherit;
+    box-shadow: var(--trade-shadow);
+  }
+  .settings-tab-card.active {
+    border-color: #ead8a2;
+    background: linear-gradient(180deg, #ffffff 0%, #fff9ec 100%);
+  }
+  .settings-tab-card .eyebrow {
+    color: var(--trade-muted);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .settings-tab-card .title {
+    margin-top: 6px;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: -.03em;
+  }
+  .settings-tab-card .desc {
+    margin-top: 6px;
+    color: var(--trade-muted);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .settings-block {
+    padding: 18px;
+    border-radius: 18px;
+    border: 1px solid var(--trade-border);
+    background: linear-gradient(180deg, #ffffff 0%, #fcfcfd 100%);
+    box-shadow: var(--trade-shadow);
+  }
+  .settings-block-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 14px;
+  }
+  .settings-block-header h3 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 800;
+    letter-spacing: -.03em;
+  }
+  .settings-block-header p {
+    margin: 6px 0 0;
+    color: var(--trade-muted);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .settings-block-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .settings-action-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .settings-slim-note {
+    color: var(--trade-muted);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .settings-mini-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .settings-mini-card {
+    padding: 12px 13px;
+    border-radius: 14px;
+    border: 1px solid var(--trade-border);
+    background: #fbfcfd;
+  }
+  .settings-mini-card .k {
+    color: var(--trade-muted);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .settings-mini-card .v {
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 1.5;
+    font-weight: 700;
+  }
+  @media (max-width: 1180px) {
+    .settings-overview,
+    .settings-tab-grid {
+      grid-template-columns: 1fr;
+    }
+    .settings-mini-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 760px) {
+    .settings-principles {
+      grid-template-columns: 1fr;
+    }
+    .settings-title {
+      font-size: 20px;
+    }
+  }
+</style>
 
-<div class="subnav" style="margin-top:12px;">
-  <a href="/dashboard/settings?tab=risk" class="<%= __tab === 'risk' ? 'active' : '' %>">리스크</a>
-  <a href="/dashboard/settings?tab=system" class="<%= __tab === 'system' ? 'active' : '' %>">시스템</a>
-  <a href="/dashboard/settings?tab=ai" class="<%= __tab === 'ai' ? 'active' : '' %>">리포트</a>
-  <a href="/dashboard/settings?tab=exchanges" class="<%= __tab === 'exchanges' ? 'active' : '' %>">거래소</a>
-</div>
+<section class="settings-overview">
+  <article class="card settings-hero-card">
+    <div class="settings-kicker"><%= __tabMeta.eyebrow %></div>
+    <div class="settings-title"><%= __tabMeta.title %></div>
+    <div class="settings-desc"><%= __tabMeta.desc %></div>
+    <div class="settings-chip-row">
+      <span class="settings-chip gold"><%= __tabMeta.badge %></span>
+      <span class="settings-chip">저장은 수동 버튼으로만 적용</span>
+      <span class="settings-chip">일부 항목은 재시작 필요</span>
+    </div>
+  </article>
+  <article class="card">
+    <div class="settings-principles">
+      <div class="settings-principle">
+        <div class="k">저장 원칙</div>
+        <div class="v">중복 저장을 막기 위해 항상 명시적 버튼 클릭으로만 적용합니다.</div>
+      </div>
+      <div class="settings-principle">
+        <div class="k">주의 항목</div>
+        <div class="v">리스크와 실거래 설정은 주문 강도와 실제 실행에 직접 영향을 줍니다.</div>
+      </div>
+      <div class="settings-principle">
+        <div class="k">검증 방식</div>
+        <div class="v">설정 변경 후에는 거래기록과 전략상태에서 실제 반영 여부를 확인해야 합니다.</div>
+      </div>
+      <div class="settings-principle">
+        <div class="k">범위</div>
+        <div class="v">현재 화면은 바이낸스 선물 운영 기준으로 정리되어 있습니다.</div>
+      </div>
+    </div>
+  </article>
+</section>
+
+<nav class="settings-tab-grid">
+  <a href="/dashboard/settings?tab=risk" class="settings-tab-card <%= __tab === 'risk' ? 'active' : '' %>">
+    <div class="eyebrow">자금 보호</div>
+    <div class="title">리스크</div>
+    <div class="desc">주문 강도와 진입 억제 기준을 조정합니다.</div>
+  </a>
+  <a href="/dashboard/settings?tab=system" class="settings-tab-card <%= __tab === 'system' ? 'active' : '' %>">
+    <div class="eyebrow">운영 런타임</div>
+    <div class="title">시스템</div>
+    <div class="desc">실행 모드, 스케줄러, 체결 프로파일을 관리합니다.</div>
+  </a>
+  <a href="/dashboard/settings?tab=ai" class="settings-tab-card <%= __tab === 'ai' ? 'active' : '' %>">
+    <div class="eyebrow">리포트 자동화</div>
+    <div class="title">리포트</div>
+    <div class="desc">AI 리포트와 자금 배분 자동화를 설정합니다.</div>
+  </a>
+  <a href="/dashboard/settings?tab=exchanges" class="settings-tab-card <%= __tab === 'exchanges' ? 'active' : '' %>">
+    <div class="eyebrow">거래 연결</div>
+    <div class="title">거래소</div>
+    <div class="desc">거래 연결과 대상 마켓을 관리합니다.</div>
+  </a>
+</nav>
 
 <% if (__tab === 'system') { %>
   <div class="card" id="system-card">
-    <h2>
-      시스템 설정
-      <span class="help" title="자동 실행, 로깅, 알림, 데이터 보관 같은 운영 설정을 관리합니다.">?</span>
-    </h2>
-    <div class="subtle">
-      API: <span class="mono">/api/settings/system</span><br/>
-      일부 항목은 저장 후 재기동이 필요할 수 있습니다.
-    </div>
+    <div class="settings-block-stack">
+      <section class="settings-block">
+        <div class="settings-block-header">
+          <div>
+            <h3>운영 기본</h3>
+            <p>스케줄러, 로그, 알림, 보관 기간 같은 런타임 기본값을 관리합니다.</p>
+          </div>
+          <div class="settings-chip-row">
+            <span class="settings-chip gold">API <span class="mono">/api/settings/system</span></span>
+            <span class="settings-chip">일부 항목은 저장 후 재시작 필요</span>
+          </div>
+        </div>
+        <div class="settings-section-nav">
+          <a href="#sys-runtime" class="settings-section-pill">운영 기본</a>
+          <a href="#sys-execution" class="settings-section-pill">체결·실거래</a>
+          <a href="#sys-overrides" class="settings-section-pill">시장별 오버라이드</a>
+          <a href="#sys-decision-layers" class="settings-section-pill">진입 판단 계층</a>
+        </div>
+      </section>
 
-    <div class="hr"></div>
+      <section class="settings-block" id="sys-runtime">
+        <div class="settings-block-header">
+          <div>
+            <h3>운영 기본값</h3>
+            <p>자동 실행, 백필, 로그, 알림, 최근 변경 정보를 먼저 관리합니다.</p>
+          </div>
+        </div>
 
-    <div class="grid cols-2">
+        <div class="grid cols-2">
       <div id="sys-provider-wrap">
         <label>거래소</label>
         <select id="sys-provider">
@@ -102,16 +407,38 @@
           <div class="k">변경자</div><div class="v mono" id="sys-upd-by">-</div>
         </div>
       </div>
-    </div>
+        </div>
+      </section>
 
-    <div class="hr"></div>
+      <section class="settings-block" id="sys-execution">
+        <div class="settings-block-header">
+          <div>
+            <h3>체결·실거래 설정</h3>
+            <p>수수료, 슬리피지, 인텐트 만료, 실거래 가드를 한 구역에서 정리합니다.</p>
+          </div>
+        </div>
 
-    <div class="tablewrap">
-      <div class="head">
-        <h2>체결 프로파일</h2>
-        <div class="subtle">수수료/슬리피지/만료 기준을 정의합니다. (시장별 오버라이드 가능)</div>
-      </div>
-      <div class="grid cols-2">
+        <div class="settings-mini-grid" style="margin-bottom:14px;">
+          <div class="settings-mini-card">
+            <div class="k">체결 프로파일</div>
+            <div class="v">수수료·슬리피지·만료</div>
+          </div>
+          <div class="settings-mini-card">
+            <div class="k">실행 모드</div>
+            <div class="v">모의거래 / 실거래 테스트 / 실거래</div>
+          </div>
+          <div class="settings-mini-card">
+            <div class="k">주의</div>
+            <div class="v">실거래는 확인 문구와 가드가 모두 필요</div>
+          </div>
+        </div>
+
+        <div class="tablewrap">
+          <div class="head">
+            <h2>체결 프로파일</h2>
+            <div class="subtle">수수료·슬리피지·만료 기준을 정의합니다. 시장별 오버라이드는 아래에서 별도 관리합니다.</div>
+          </div>
+          <div class="grid cols-2">
         <div>
           <label>수수료 (bps)</label>
           <input id="sys-fee-bps" type="number" min="0" max="10000" step="1" placeholder="예: 5" />
@@ -147,13 +474,13 @@
           <label>인텐트 만료 (bars)</label>
           <input id="sys-ttl-bars" type="number" min="0" step="1" placeholder="예: 2" />
         </div>
-      </div>
-      <div class="hr"></div>
-      <div class="head">
-        <h2>실거래 모드 (선택 거래소)</h2>
-        <div class="subtle">실거래는 안전장치가 켜져 있어야 작동합니다. 확인 문구는 <b>LIVE</b>로 입력하세요.</div>
-      </div>
-      <div class="grid cols-2">
+          </div>
+          <div class="hr"></div>
+          <div class="head">
+            <h2>실거래 모드</h2>
+            <div class="subtle">실거래는 안전장치가 켜져 있어야 작동합니다. 확인 문구는 <b>LIVE</b>로 입력하세요.</div>
+          </div>
+          <div class="grid cols-2">
         <div>
           <label>실행 모드</label>
           <select id="sys-exec-mode">
@@ -214,50 +541,70 @@
           <label>최대 주문 금액(<span id="sys-live-unit-max">원</span>)</label>
           <input id="sys-live-max" type="number" min="0" step="1000" placeholder="예: 300000" />
         </div>
-      </div>
-      <div class="head">
-        <h2>시장별 오버라이드</h2>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button class="btn ghost slim" type="button" id="sys-ov-add">시장 추가</button>
+          </div>
         </div>
-      </div>
-      <div class="scroll" style="max-height:260px;">
-        <table>
-          <thead>
-            <tr>
-              <th style="width:240px;">마켓</th>
-              <th style="width:140px;">수수료 bps</th>
-              <th style="width:140px;">슬리피지 bps</th>
-              <th style="width:90px;">관리</th>
-            </tr>
-          </thead>
-          <tbody id="sys-ov-body">
-            <tr><td colspan="4" class="subtle">로딩 중…</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+      </section>
 
-    <div class="hr"></div>
+      <section class="settings-block" id="sys-overrides">
+        <div class="settings-block-header">
+          <div>
+            <h3>시장별 오버라이드</h3>
+            <p>기본 체결 프로파일에서 벗어나야 하는 시장만 별도로 추가합니다.</p>
+          </div>
+          <div class="settings-action-row">
+            <button class="btn ghost slim" type="button" id="sys-ov-add">시장 추가</button>
+          </div>
+        </div>
+        <div class="scroll" style="max-height:260px;">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:240px;">마켓</th>
+                <th style="width:140px;">수수료 bps</th>
+                <th style="width:140px;">슬리피지 bps</th>
+                <th style="width:90px;">관리</th>
+              </tr>
+            </thead>
+            <tbody id="sys-ov-body">
+              <tr><td colspan="4" class="subtle">로딩 중…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-    <div class="card" style="background:#fafafa;">
-      <h2>진입 판단 계층</h2>
-      <div class="subtle">
-        현재 실행 순서는 <b>1차 상태/무결성</b> → <b>2차 진입 품질</b> → <b>3차 상태 기반 Soft Sizing</b> → <b>4차 EV/시간가치층</b> → <b>5차 WAIT 타이밍층</b> 입니다.
-      </div>
-      <div class="subtle" style="margin-top:6px;">
-        이 탭에서 직접 조정하는 것은 3~5차입니다. 1~2차는 Pine/서버 품질 계층에서 관리되며, 여기서는 의미를 구분해서 볼 수 있도록만 설명합니다.
-      </div>
-    </div>
+      <section class="settings-block" id="sys-decision-layers">
+        <div class="settings-block-header">
+          <div>
+            <h3>진입 판단 계층</h3>
+            <p>현재 실행 순서는 1차 상태·무결성 → 2차 진입 품질 → 3차 상태 기반 Soft Sizing → 4차 EV·시간가치 → 5차 WAIT 타이밍층입니다.</p>
+          </div>
+        </div>
 
-    <div class="hr"></div>
+        <div class="settings-mini-grid" style="margin-bottom:14px;">
+          <div class="settings-mini-card">
+            <div class="k">3차</div>
+            <div class="v">상태 기반 Soft Sizing</div>
+          </div>
+          <div class="settings-mini-card">
+            <div class="k">4차</div>
+            <div class="v">EV / 시간가치</div>
+          </div>
+          <div class="settings-mini-card">
+            <div class="k">5차</div>
+            <div class="v">WAIT 타이밍</div>
+          </div>
+        </div>
 
-    <div class="tablewrap">
-      <div class="head">
-        <h2>3차 상태 기반 Soft Sizing</h2>
-        <div class="subtle">1차 상태/무결성과 2차 진입 품질을 통과한 신호에 대해, 상태층이 반대/중립이면 수량만 줄입니다. 진입 품질 자체는 여기서 다시 판정하지 않습니다.</div>
-      </div>
-      <div class="grid cols-2">
+        <div class="settings-slim-note" style="margin-bottom:12px;">
+          이 탭에서 직접 조정하는 것은 3~5차입니다. 1~2차는 Pine/서버 품질 계층에서 관리하며 여기서는 의미만 구분해서 보여줍니다.
+        </div>
+
+        <div class="tablewrap">
+          <div class="head">
+            <h2>3차 상태 기반 Soft Sizing</h2>
+            <div class="subtle">상태층이 반대·중립이면 수량만 줄이고, 진입 품질 자체는 여기서 다시 판정하지 않습니다.</div>
+          </div>
+          <div class="grid cols-2">
         <div>
           <label>중립 수량 배수</label>
           <input id="sys-ai-bias-neutral-mult" type="number" min="0" max="1" step="0.05" placeholder="예: 0.50" />
@@ -274,17 +621,17 @@
           <label>강한 반대 confidence 기준</label>
           <input id="sys-ai-bias-strong-opposite-conf" type="number" min="0" max="1" step="0.01" placeholder="예: 0.55" />
         </div>
-      </div>
-    </div>
+          </div>
+        </div>
 
-    <div class="hr"></div>
+        <div class="hr"></div>
 
-    <div class="tablewrap">
-      <div class="head">
-        <h2>4차 EV/시간가치층</h2>
-        <div class="subtle">3차까지 통과한 뒤, TP1 도달 확률과 hold-value 관점에서 최종 수량을 조절합니다. kill 미만만 hard drop이며 상태/진입 품질은 여기서 다시 재판정하지 않습니다.</div>
-      </div>
-      <div class="grid cols-2">
+        <div class="tablewrap">
+          <div class="head">
+            <h2>4차 EV/시간가치층</h2>
+            <div class="subtle">3차까지 통과한 뒤, TP1 도달 확률과 hold-value 관점에서 최종 수량을 조절합니다.</div>
+          </div>
+          <div class="grid cols-2">
         <div>
           <label>TP1 확률 full 기준</label>
           <input id="sys-ev-full" type="number" min="0" max="1" step="0.01" placeholder="예: 0.60" />
@@ -301,17 +648,17 @@
           <label>낮은 구간 수량 배수</label>
           <input id="sys-ev-low-scale" type="number" min="0" max="1" step="0.05" placeholder="예: 0.40" />
         </div>
-      </div>
-    </div>
+          </div>
+        </div>
 
-    <div class="hr"></div>
+        <div class="hr"></div>
 
-    <div class="tablewrap">
-      <div class="head">
-        <h2>5차 WAIT 타이밍층</h2>
-        <div class="subtle">1~4차를 통과한 뒤에도 현재 봉이 과열된 추격봉이면 다음 봉까지 진입을 연기합니다. 이 단계는 타이밍만 다루며, 상태/진입 품질/EV는 다시 재판정하지 않고 open/close·wick 구조만 봅니다.</div>
-      </div>
-      <div class="grid cols-2">
+        <div class="tablewrap">
+          <div class="head">
+            <h2>5차 WAIT 타이밍층</h2>
+            <div class="subtle">현재 봉이 과열된 추격봉이면 다음 봉까지 진입을 연기합니다. 이 단계는 타이밍만 다룹니다.</div>
+          </div>
+          <div class="grid cols-2">
         <div>
           <label>최소 같은방향 streak</label>
           <input id="sys-wait-streak" type="number" min="2" max="5" step="1" placeholder="예: 3" />
@@ -340,18 +687,18 @@
           <label>허용 counter-dir bars</label>
           <input id="sys-wait-counter-bars" type="number" min="0" max="3" step="1" placeholder="예: 0" />
         </div>
-      </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-block">
+        <div class="settings-action-row">
+          <button class="btn" type="button" id="sys-save">저장</button>
+          <a class="btn ghost slim" href="/scheduler/status" target="_blank" rel="noopener">스케줄러 상태 보기</a>
+          <div id="sys-status" class="pill dim">상태 대기</div>
+        </div>
+      </section>
     </div>
-
-    <div class="hr"></div>
-
-    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-      <button class="btn" type="button" id="sys-save">저장</button>
-      <a class="btn ghost slim" href="/scheduler/status" target="_blank" rel="noopener">스케줄러 상태 보기</a>
-    </div>
-
-    <div class="hr"></div>
-    <div id="sys-status" class="pill dim">상태 대기</div>
   </div>
 
   <script>
@@ -673,22 +1020,33 @@
 
 <% } else if (__tab === 'ai') { %>
   <div class="card" id="ai-card">
-    <h2>
-      리포트 설정
-      <span class="help" title="리포트의 언어/길이/강조 포인트를 결정합니다.">?</span>
-    </h2>
-    <div class="subtle">
-      API: <span class="mono">/api/settings/ai</span>.<br/>
-      변경 사항은 리포트 생성 시점에 적용됩니다.
-    </div>
-    <div class="subtle" style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap;">
-      <span class="pill dim">대상 <span class="mono" id="ai-provider-label">-</span></span>
-      <span class="pill dim">통화 <span class="mono" id="ai-unit">KRW</span></span>
-    </div>
+    <div class="settings-block-stack">
+      <section class="settings-block">
+        <div class="settings-block-header">
+          <div>
+            <h3>리포트 기본</h3>
+            <p>언어, 길이, 강조 포인트, 경고 표시 방식과 자금 배분 자동화에 쓰는 기준을 조정합니다.</p>
+          </div>
+          <div class="settings-chip-row">
+            <span class="settings-chip gold">API <span class="mono">/api/settings/ai</span></span>
+            <span class="settings-chip">리포트 생성 시점에 반영</span>
+          </div>
+        </div>
+        <div class="settings-chip-row">
+          <span class="settings-chip">대상 <span class="mono" id="ai-provider-label">-</span></span>
+          <span class="settings-chip">통화 <span class="mono" id="ai-unit">KRW</span></span>
+        </div>
+      </section>
 
-    <div class="hr"></div>
+      <section class="settings-block">
+        <div class="settings-block-header">
+          <div>
+            <h3>리포트 표시 방식</h3>
+            <p>요약 길이와 강조 포인트를 정하고, 미리보기로 바로 확인합니다.</p>
+          </div>
+        </div>
 
-    <div class="grid cols-2">
+        <div class="grid cols-2">
       <div>
         <label>언어</label>
         <select id="ai-lang">
@@ -731,19 +1089,24 @@
           <div class="k">변경자</div><div class="v mono" id="ai-upd-by">-</div>
         </div>
       </div>
+        </div>
+      </section>
+
+      <section class="settings-block">
+        <div class="settings-block-header">
+          <div>
+            <h3>미리보기와 저장</h3>
+            <p>현재 조합이 실제 리포트 톤에 어떻게 반영되는지 확인하고 저장합니다.</p>
+          </div>
+        </div>
+        <div class="subtle">미리보기</div>
+        <div id="ai-preview" style="margin-top:8px; padding:12px; border:1px dashed var(--line); border-radius:12px; background:#fafafa; font-size:12px;"></div>
+        <div class="settings-action-row" style="margin-top:12px;">
+          <button class="btn" type="button" id="ai-save">저장</button>
+          <div id="ai-status" class="pill dim">상태 대기</div>
+        </div>
+      </section>
     </div>
-
-    <div class="hr"></div>
-
-    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-      <button class="btn" type="button" id="ai-save">저장</button>
-    </div>
-
-    <div class="hr"></div>
-
-    <div class="subtle">미리보기</div>
-    <div id="ai-preview" style="margin-top:8px; padding:12px; border:1px dashed var(--line); border-radius:12px; background:#fafafa; font-size:12px;"></div>
-    <div style="margin-top:8px;" id="ai-status" class="pill dim">상태 대기</div>
   </div>
 
   <script>
@@ -878,18 +1241,29 @@
 
 <% } else if (__tab === 'exchanges') { %>
   <div class="card" id="ex-card">
-    <h2>
-      거래소
-      <span class="help" title="연동 설정과 마켓/타임프레임을 관리합니다.">?</span>
-    </h2>
-    <div class="subtle">
-      API: <span class="mono">/api/settings/exchanges</span><br/>
-      연결 테스트는 공개 API만 확인합니다. (키 유효성은 검사하지 않음)
-    </div>
+    <div class="settings-block-stack">
+      <section class="settings-block">
+        <div class="settings-block-header">
+          <div>
+            <h3>거래소 연결</h3>
+            <p>사용 여부, 거래소, 대상 마켓, 타임프레임, API 키를 한 화면에서 관리합니다.</p>
+          </div>
+          <div class="settings-chip-row">
+            <span class="settings-chip gold">API <span class="mono">/api/settings/exchanges</span></span>
+            <span class="settings-chip">연결 테스트는 공개 API만 확인</span>
+          </div>
+        </div>
+      </section>
 
-    <div class="hr"></div>
+      <section class="settings-block">
+        <div class="settings-block-header">
+          <div>
+            <h3>연결 기본값</h3>
+            <p>거래 대상 마켓과 실행 타임프레임을 먼저 확정합니다.</p>
+          </div>
+        </div>
 
-    <div class="grid cols-2">
+        <div class="grid cols-2">
       <div>
         <label>사용 여부</label>
         <select id="ex-enabled">
@@ -941,19 +1315,25 @@
           <div class="k">변경자</div><div class="v mono" id="ex-upd-by">-</div>
         </div>
       </div>
+        </div>
+      </section>
+
+      <section class="settings-block">
+        <div class="settings-block-header">
+          <div>
+            <h3>연결 확인</h3>
+            <p>저장 후 공개 API 연결과 실거래 키 상태를 점검합니다.</p>
+          </div>
+        </div>
+        <div class="settings-action-row">
+          <button class="btn" type="button" id="ex-save">저장</button>
+          <button class="btn ghost slim" type="button" id="ex-test">연결 테스트</button>
+          <button class="btn ghost slim" type="button" id="ex-live-test">실거래 키 점검</button>
+          <div id="ex-status" class="pill dim">상태 대기</div>
+        </div>
+        <div id="ex-test-result" class="subtle" style="margin-top:8px;"></div>
+      </section>
     </div>
-
-    <div class="hr"></div>
-
-    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-      <button class="btn" type="button" id="ex-save">저장</button>
-      <button class="btn ghost slim" type="button" id="ex-test">연결 테스트</button>
-      <button class="btn ghost slim" type="button" id="ex-live-test">실거래 키 점검</button>
-    </div>
-
-    <div class="hr"></div>
-    <div id="ex-status" class="pill dim">상태 대기</div>
-    <div id="ex-test-result" class="subtle" style="margin-top:8px;"></div>
   </div>
 
   <script>
@@ -1169,18 +1549,29 @@
   </style>
 
   <div class="card" id="risk-card">
-    <h2>
-      리스크 설정
-      <span class="help" title="총 예산과 마켓별 한도를 정의합니다. 거래소 통화 기준으로 적용됩니다.">?</span>
-    </h2>
-    <div class="subtle">
-      API: <span class="mono">/api/settings/risk-budget</span><br/>
-      저장은 명시적으로만 수행되며, 저장 직후 2초간 버튼이 비활성화됩니다.
-    </div>
+    <div class="settings-block-stack">
+      <section class="settings-block">
+        <div class="settings-block-header">
+          <div>
+            <h3>리스크 기본</h3>
+            <p>총 예산, 기본 마켓 한도, 초과 정책을 먼저 정하고 시장별 한도를 세부 조정합니다.</p>
+          </div>
+          <div class="settings-chip-row">
+            <span class="settings-chip gold">API <span class="mono">/api/settings/risk-budget</span></span>
+            <span class="settings-chip">저장 직후 2초간 버튼 비활성화</span>
+          </div>
+        </div>
+      </section>
 
-    <div class="hr"></div>
+      <section class="settings-block">
+        <div class="settings-block-header">
+          <div>
+            <h3>예산과 한도</h3>
+            <p>총 예산과 기본 한도를 먼저 정해두면 아래 시장별 한도는 예외 케이스만 관리하면 됩니다.</p>
+          </div>
+        </div>
 
-    <div class="grid cols-2">
+        <div class="grid cols-2">
       <div>
         <label>사용 여부</label>
         <select id="rb-enabled">
@@ -1214,44 +1605,41 @@
           <div class="k">변경자</div><div class="v mono" id="rb-upd-by">-</div>
         </div>
       </div>
-    </div>
-
-    <div class="hr"></div>
-
-    <div class="tablewrap">
-      <div class="head">
-        <div>
-          <h2>마켓별 한도</h2>
-          <div class="subtle">미등록 마켓: <span id="rb-missing-count">-</span> · 다른 거래소 숨김: <span id="rb-hidden-count">0</span></div>
         </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button class="btn ghost slim" type="button" id="rb-add">시장 추가</button>
-          <button class="btn ghost slim" type="button" id="rb-add-missing">현재 마켓 자동 추가</button>
-          <button class="btn" type="button" id="rb-save">저장</button>
+      </section>
+
+      <section class="settings-block">
+        <div class="settings-block-header">
+          <div>
+            <h3>마켓별 한도</h3>
+            <p>미등록 마켓은 자동 추가하고, 과한 노출이 필요한 마켓만 별도 한도를 둡니다.</p>
+          </div>
+          <div class="settings-action-row">
+            <button class="btn ghost slim" type="button" id="rb-add">시장 추가</button>
+            <button class="btn ghost slim" type="button" id="rb-add-missing">현재 마켓 자동 추가</button>
+            <button class="btn" type="button" id="rb-save">저장</button>
+          </div>
         </div>
-      </div>
-
-      <div class="scroll" style="max-height:420px;">
-        <table>
-          <thead>
-            <tr>
-              <th style="width:260px;">마켓</th>
-              <th style="width:220px;">최대 금액 (<span id="rb-unit-col">KRW</span>)</th>
-              <th style="width:110px;">관리</th>
-            </tr>
-          </thead>
-          <tbody id="rb-body">
-            <tr><td colspan="3" class="subtle">로딩 중…</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="hr"></div>
-
-    <div id="rb-status" class="pill dim">상태 대기</div>
-    <div class="subtle" style="margin-top:8px;">
-      대상 마켓: <span class="mono"><%= markets.join(', ') %></span>
+        <div class="settings-slim-note" style="margin-bottom:10px;">미등록 마켓: <span id="rb-missing-count">-</span> · 다른 거래소 숨김: <span id="rb-hidden-count">0</span></div>
+        <div class="scroll" style="max-height:420px;">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:260px;">마켓</th>
+                <th style="width:220px;">최대 금액 (<span id="rb-unit-col">KRW</span>)</th>
+                <th style="width:110px;">관리</th>
+              </tr>
+            </thead>
+            <tbody id="rb-body">
+              <tr><td colspan="3" class="subtle">로딩 중…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="settings-action-row" style="margin-top:12px;">
+          <div id="rb-status" class="pill dim">상태 대기</div>
+          <div class="settings-slim-note">대상 마켓: <span class="mono"><%= markets.join(', ') %></span></div>
+        </div>
+      </section>
     </div>
   </div>
 
