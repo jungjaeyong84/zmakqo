@@ -723,7 +723,7 @@ function buildSourceModeStageCandidate({
   const cutoverStatus = String(serverSignalCutoverSummary.readiness_status || "").trim().toUpperCase() || null;
   const cutoverBlockers = Array.isArray(serverSignalCutoverSummary.blockers) ? serverSignalCutoverSummary.blockers.filter(Boolean) : [];
   const cutoverDominantFamily = String(serverSignalCutoverSummary.dominant_mismatch_family || "").trim().toUpperCase() || null;
-  const cutoverRecommendedAction = String(serverSignalCutoverSummary.ev_policy_recommended_action || "").trim().toUpperCase() || null;
+  const cutoverRecommendedAction = String(serverSignalCutoverSummary.recommended_action || serverSignalCutoverSummary.ev_policy_recommended_action || "").trim().toUpperCase() || null;
   const qualityHardBlock = serverSignalQualityStatus === "SERVER_SIGNAL_NOT_REACHING_EXECUTION" || serverSignalQualityStatus === "NO_SERVER_ENTRY_SIGNAL";
   if (!selected) {
     return {
@@ -825,21 +825,29 @@ function readParityFamilyCount(summary = {}, key) {
   return matched ? (toNum(matched.count) || 0) : 0;
 }
 
-function buildEvParityCandidate(parityArtifact, currentSys = {}, objectiveSupervisor = {}) {
+function buildEvParityCandidate(parityArtifact, cutoverArtifact = null, currentSys = {}, objectiveSupervisor = {}) {
   const raw = parityArtifact && parityArtifact.data && typeof parityArtifact.data === "object"
     ? parityArtifact.data
     : {};
   const summary = raw && raw.summary && typeof raw.summary === "object" ? raw.summary : {};
+  const cutoverSummary = cutoverArtifact && cutoverArtifact.data && typeof cutoverArtifact.data === "object"
+    ? (cutoverArtifact.data.summary && typeof cutoverArtifact.data.summary === "object" ? cutoverArtifact.data.summary : cutoverArtifact.data)
+    : {};
   const evPolicyMismatchN = readParityFamilyCount(summary, "EV_POLICY");
   const sourceParityMismatchN = toNum(summary.source_parity_mismatch_n) || 0;
   const shadowObservedN = toNum(summary.shadow_observed_n) || 0;
+  const cutoverRecommendedAction = String(cutoverSummary.recommended_action || cutoverSummary.ev_policy_recommended_action || "").trim().toUpperCase() || null;
   const actionable = evPolicyMismatchN >= 2 && sourceParityMismatchN === 0;
   const currentMin = clampProb(currentSys && currentSys.ev_gate_tp1_prob_min, 0.55);
   const currentFull = clampProb(currentSys && currentSys.ev_gate_tp1_prob_full, 0.60);
+  const currentKill = clampProb(currentSys && currentSys.ev_gate_tp1_prob_kill, 0.50);
+  const minStep = cutoverRecommendedAction === "LOWER_EV_TP1_MIN_REVIEW" ? 0.015 : 0.01;
+  const fullStep = cutoverRecommendedAction === "LOWER_EV_TP1_MIN_REVIEW" ? 0.01 : 0.01;
   const nextSettings = actionable
     ? {
-      ev_gate_tp1_prob_min: Number(Math.max(0.30, currentMin - 0.01).toFixed(4)),
-      ev_gate_tp1_prob_full: Number(Math.max(0.35, currentFull - 0.01).toFixed(4)),
+      ev_gate_tp1_prob_min: Number(Math.max(0.30, currentMin - minStep).toFixed(4)),
+      ev_gate_tp1_prob_full: Number(Math.max(0.35, currentFull - fullStep).toFixed(4)),
+      ev_gate_tp1_prob_kill: Number(Math.max(0.25, currentKill - (cutoverRecommendedAction === "LOWER_EV_TP1_MIN_REVIEW" ? 0.005 : 0)).toFixed(4)),
     }
     : {};
   return {
@@ -847,7 +855,7 @@ function buildEvParityCandidate(parityArtifact, currentSys = {}, objectiveSuperv
     actionable,
     action: actionable ? "AUTO_APPLY" : "HOLD",
     reason: actionable
-      ? "CANONICAL_PARITY_EV_POLICY_RESCUE"
+      ? `CANONICAL_PARITY_EV_POLICY_RESCUE${cutoverRecommendedAction ? `__${cutoverRecommendedAction}` : ""}`
       : "NO_ACTIONABLE_EV_PARITY_RESCUE",
     signature: actionable ? stableSignature(nextSettings) : null,
     nextSettings,
@@ -862,6 +870,7 @@ function buildEvParityCandidate(parityArtifact, currentSys = {}, objectiveSuperv
     source: "CANONICAL_PARITY_EV_POLICY_RESCUE",
     current_ev_policy_mismatch_n: evPolicyMismatchN,
     source_parity_mismatch_n: sourceParityMismatchN,
+    recommended_action: cutoverRecommendedAction,
   };
 }
 
@@ -1671,7 +1680,12 @@ async function main() {
   });
 
   const evObservedCandidate = buildObservedStageCandidate("EV", evArtifact, objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.objective ? objectiveArtifactForLoop.data.objective : null);
-  const evParityCandidate = buildEvParityCandidate(selfEvolutionCanonicalParityArtifact, currentSys, objectiveArtifactForLoop.data || {});
+  const evParityCandidate = buildEvParityCandidate(
+    selfEvolutionCanonicalParityArtifact,
+    selfEvolutionServerSignalCutoverReadinessArtifact,
+    currentSys,
+    objectiveArtifactForLoop.data || {}
+  );
   if (evObservedCandidate.observedUpdate === true) {
     result = await processObservedStage({
       stage: "EV",

@@ -924,6 +924,9 @@ function summarizeSelfEvolutionServerSignalCutoverReadiness(report = null) {
     entry_24h_n: toNum(summary.entry_24h_n) || 0,
     intent_24h_n: toNum(summary.intent_24h_n) || 0,
     fill_24h_n: toNum(summary.fill_24h_n) || 0,
+    dominant_mismatch_family: String(summary.dominant_mismatch_family || "").trim().toUpperCase() || null,
+    recommended_action: String(summary.recommended_action || summary.ev_policy_recommended_action || "").trim().toUpperCase() || null,
+    ev_policy_top_rescue_market: String(summary.ev_policy_top_rescue_market || "").trim().toUpperCase() || null,
   };
 }
 
@@ -2564,6 +2567,9 @@ async function main() {
       : []),
     ...(evaluation.self_evolution_server_signal_cutover_readiness && evaluation.self_evolution_server_signal_cutover_readiness.readiness_status
       ? [`SERVER_SIGNAL_CUTOVER_STATUS: ${evaluation.self_evolution_server_signal_cutover_readiness.readiness_status} / ready=${evaluation.self_evolution_server_signal_cutover_readiness.promotion_ready ? "YES" : "NO"} / blockers=${Array.isArray(evaluation.self_evolution_server_signal_cutover_readiness.blockers) && evaluation.self_evolution_server_signal_cutover_readiness.blockers.length ? evaluation.self_evolution_server_signal_cutover_readiness.blockers.join("|") : "none"}`]
+      : []),
+    ...(evaluation.self_evolution_server_signal_cutover_readiness && evaluation.self_evolution_server_signal_cutover_readiness.recommended_action
+      ? [`SERVER_SIGNAL_CUTOVER_ACTION: ${evaluation.self_evolution_server_signal_cutover_readiness.recommended_action} / family=${evaluation.self_evolution_server_signal_cutover_readiness.dominant_mismatch_family || "N/A"} / top_market=${evaluation.self_evolution_server_signal_cutover_readiness.ev_policy_top_rescue_market || "N/A"}`]
       : []),
     ...(Array.isArray(selfEvolutionObjectiveRecoveryGovernorSummary.next_actions) ? selfEvolutionObjectiveRecoveryGovernorSummary.next_actions : []),
     ...(Array.isArray(selfEvolutionObjectiveRecoveryEffectSummary.next_actions) ? selfEvolutionObjectiveRecoveryEffectSummary.next_actions : []),

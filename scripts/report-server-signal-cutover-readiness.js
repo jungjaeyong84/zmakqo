@@ -37,6 +37,7 @@ function renderMarkdown(report = {}) {
     `- parity_detail: source=${status.source_parity_mismatch_n ?? "N/A"} / downstream=${status.final_downstream_mismatch_n ?? "N/A"} / ev=${status.ev_policy_mismatch_n ?? "N/A"} / cooldown=${status.cooldown_policy_mismatch_n ?? "N/A"} / strategy_gate=${status.strategy_gate_mismatch_n ?? "N/A"}`,
     `- execution: entry=${status.entry_24h_n ?? "N/A"} / intent=${status.intent_24h_n ?? "N/A"} / fill=${status.fill_24h_n ?? "N/A"} / quality=${status.quality_status || "N/A"}`,
     `- dominant_mismatch_family: ${status.dominant_mismatch_family || "N/A"}`,
+    `- recommended_action: ${status.recommended_action || "N/A"}`,
     `- ev_policy_rescue: rate=${status.ev_policy_rescue_rate ?? "N/A"} / top_market=${status.ev_policy_top_rescue_market || "N/A"} / action=${status.ev_policy_recommended_action || "N/A"}`,
     `- canary: ${status.canary_acceptance_ready ? "READY" : "PENDING"} / ${status.canary_acceptance_reason || "N/A"}`,
     `- blockers: ${Array.isArray(summary.blockers) && summary.blockers.length ? summary.blockers.join(", ") : "none"}`,

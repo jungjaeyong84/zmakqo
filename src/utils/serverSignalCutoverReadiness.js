@@ -94,6 +94,13 @@ function deriveServerSignalCutoverReadiness({
         : "HOLD_EV_POLICY_REVIEW"
     )
     : null;
+  const genericRecommendedAction = dominantMismatchFamily === "EV_POLICY"
+    ? evRecommendedAction
+    : (dominantMismatchFamily === "COOLDOWN_POLICY"
+      ? "RELAX_OPPOSITE_COOLDOWN_REVIEW"
+      : (dominantMismatchFamily === "STRATEGY_GATE"
+        ? "ALIGN_STRATEGY_GATE_REVIEW"
+        : (finalDownstreamMismatchN > 0 ? "REVIEW_DOWNSTREAM_POLICY_PARITY" : null)));
   const mismatchMarketCounts = new Map();
   const recentMismatchExamples = parityRows
     .filter((row) => row && row.parity_match === false)
@@ -162,6 +169,7 @@ function deriveServerSignalCutoverReadiness({
       ev_policy_point_fail_count: evPointFailCount,
       ev_policy_top_rescue_market: evTopRescueMarket,
       ev_policy_recommended_action: evRecommendedAction,
+      recommended_action: genericRecommendedAction,
       entry_24h_n: entryN,
       intent_24h_n: intentN,
       fill_24h_n: fillN,
@@ -181,6 +189,7 @@ function deriveServerSignalCutoverReadiness({
       intent_24h_n: intentN,
       fill_24h_n: fillN,
       dominant_mismatch_family: dominantMismatchFamily,
+      recommended_action: genericRecommendedAction,
       ev_policy_recommended_action: evRecommendedAction,
       ev_policy_top_rescue_market: evTopRescueMarket,
     },
