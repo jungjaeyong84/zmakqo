@@ -18,6 +18,25 @@ const OPENCLAW_CRON_JOBS = Object.freeze([
   },
 ]);
 
+const LEGACY_OPENCLAW_CRON_JOB_NAMES = Object.freeze([
+  "donbeolja-automation-watchdog",
+  "donbeolja-hourly-guard",
+  "donbeolja-analytics-cache",
+  "donbeolja-objective-retrospective",
+  "donbeolja-stage-outcome-ledgers",
+  "donbeolja-filter-shadow-canary",
+  "donbeolja-ml-filter-policy",
+  "donbeolja-objective-supervisor",
+  "donbeolja-rollback-monitor",
+  "donbeolja-signal-data-integrity",
+  "donbeolja-stage-autopilot",
+  "donbeolja-ev-tp1-tune",
+  "donbeolja-weekly-filters",
+  "donbeolja-codex-weekly-patch",
+  "donbeolja-weekly-pine",
+  "donbeolja-wait-one-bar-tune",
+]);
+
 function buildOpenClawCronMessage(job) {
   const wrapperName = String(job && job.wrapper || "").split("/").pop() || "run.sh";
   return [
@@ -32,5 +51,6 @@ function buildOpenClawCronMessage(job) {
 module.exports = {
   REPO_ROOT,
   OPENCLAW_CRON_JOBS,
+  LEGACY_OPENCLAW_CRON_JOB_NAMES,
   buildOpenClawCronMessage,
 };

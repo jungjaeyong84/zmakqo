@@ -3,7 +3,12 @@
 
 const { execFileSync } = require("child_process");
 const path = require("path");
-const { OPENCLAW_CRON_JOBS, buildOpenClawCronMessage, REPO_ROOT } = require("./lib/openclaw-cron-manifest");
+const {
+  OPENCLAW_CRON_JOBS,
+  LEGACY_OPENCLAW_CRON_JOB_NAMES,
+  buildOpenClawCronMessage,
+  REPO_ROOT,
+} = require("./lib/openclaw-cron-manifest");
 
 const OPENCLAW_BIN = String(process.env.OPENCLAW_BIN || "openclaw").trim() || "openclaw";
 const TZ = "Asia/Seoul";
@@ -46,6 +51,14 @@ function removeByName(name, existingJobs) {
     if (job && job.id) runText(["cron", "rm", String(job.id)]);
   }
   return matches.length;
+}
+
+function removeLegacyJobs(existingJobs) {
+  let removed = 0;
+  for (const name of LEGACY_OPENCLAW_CRON_JOB_NAMES) {
+    removed += removeByName(name, existingJobs);
+  }
+  return removed;
 }
 
 function buildAddArgs(job) {
@@ -93,6 +106,7 @@ function runJobByName(name, jobs) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const existing = listJobs();
+  const legacyRemoved = removeLegacyJobs(existing);
   const results = [];
   for (const job of OPENCLAW_CRON_JOBS) {
     const removed = removeByName(job.name, existing);
@@ -122,6 +136,7 @@ function main() {
     timezone: TZ,
     dry_run: args.dryRun,
     job_n: OPENCLAW_CRON_JOBS.length,
+    legacy_removed_n: legacyRemoved,
     results,
     run_at_load: runAtLoad,
     installed_jobs: after.map((job) => ({
