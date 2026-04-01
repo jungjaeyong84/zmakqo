@@ -41,8 +41,9 @@ function statusTone(value) {
   const s = String(value || "").toUpperCase();
   if (!s) return "dim";
   if (s.includes("PENDING")) return "warn";
-  if (s.includes("FAIL") || s.includes("BLOCK") || s.includes("ROLLBACK") || s === "HOLD" || s === "TIMEOUT_HOLD" || s === "OBJECTIVE_RECOVERY_REQUIRED") return "bad";
+  if (s.includes("FAIL") || s.includes("BLOCK") || s.includes("ROLLBACK") || s.includes("DRIFT") || s === "HOLD" || s === "TIMEOUT_HOLD" || s === "OBJECTIVE_RECOVERY_REQUIRED") return "bad";
   if (["PASS", "OK", "ACTIVE", "APPROVED", "PROMOTE", "READY", "YES", "TRUE", "ON_TRACK"].includes(s) || s.includes("ACTIVE")) return "ok";
+  if (s.includes("STABLE")) return "ok";
   if (s.includes("WATCH") || s.includes("MONITOR") || s.includes("WARN") || s.includes("PARTIAL") || s.includes("SHORT") || s === "N/A") return "warn";
   return "dim";
 }
@@ -191,6 +192,15 @@ const UI_TEXT_MAP = {
   "Provenance": "출처 추적",
   "Open Audit": "감사 보기",
   "Current Score": "현재 점수",
+  "Signal Authority": "정본 신호 상태",
+  "Authoritative 24h": "정본 신호(24h)",
+  "Shadow 24h": "그림자 신호(24h)",
+  "Latest Server": "최근 정본 신호",
+  "Latest Shadow": "최근 그림자 신호",
+  "Parity Drift": "정합성 드리프트",
+  "Source Mode": "원천 모드",
+  "Top Server Markets": "정본 상위 마켓",
+  "Top Shadow Markets": "그림자 상위 마켓",
   "Target Delta": "목표 변화폭",
   "Best Replay Delta": "최적 재생 변화폭",
   "Operator Strip": "핵심 운영 상태",
@@ -347,6 +357,12 @@ const VALUE_REPLACEMENTS = [
   ["SERVER_PRIMARY", "서버 정본"],
   ["PINE_PRIMARY", "파인 우선"],
   ["PINE_SHADOW", "파인 그림자"],
+  ["SERVER", "서버 정본"],
+  ["PARITY_STABLE", "정합성 안정"],
+  ["PARITY_WATCH", "정합성 주시"],
+  ["PARITY_DRIFT", "정합성 드리프트"],
+  ["PARITY_UNKNOWN", "정합성 미확인"],
+  ["NO_SHADOW_OBSERVED", "그림자 관측 없음"],
   ["APPROVED", "승인"],
   ["PENDING", "대기"],
   ["PROMOTE", "승격"],
@@ -702,6 +718,7 @@ function buildRecoveryViewModel() {
   const replay = loadLatestArtifact("best_self_evolution_replay_latest.json");
   const canary = loadLatestArtifact("best_self_evolution_canary_latest.json");
   const deploymentGuards = loadLatestArtifact("best_self_evolution_deployment_guards_latest.json");
+  const signalAuthority = loadLatestArtifact("server_signal_authority_latest.json");
   const nextAction = Array.isArray(governor.summary.next_actions) && governor.summary.next_actions.length
     ? governor.summary.next_actions[0]
     : null;
@@ -735,6 +752,44 @@ function buildRecoveryViewModel() {
         description: "운영자가 먼저 보는 회복 판단 3가지를 고정합니다.",
         columns: 3,
         cards: [
+          {
+            title: "Signal Authority",
+            tone: statusTone(signalAuthority.summary.drift_status || "PARITY_UNKNOWN"),
+            rows: [
+              { label: "Authoritative 24h", value: numberText(signalAuthority.summary.authoritative_server_24h_n, 0) },
+              { label: "Shadow 24h", value: numberText(signalAuthority.summary.pine_shadow_24h_n, 0) },
+              { label: "Latest Server", value: compactText(signalAuthority.summary.latest_authoritative_signal_at_kst) },
+              { label: "Latest Shadow", value: compactText(signalAuthority.summary.latest_shadow_signal_at_kst) },
+              { label: "Parity Drift", value: compactText(signalAuthority.summary.drift_status) },
+              { label: "Source Mode", value: compactText(signalAuthority.summary.source_mode) },
+            ],
+            table: {
+              columns: [
+                { key: "server", label: "Top Server Markets" },
+                { key: "shadow", label: "Top Shadow Markets" },
+              ],
+              rows: buildRowsPreview(
+                Array.from({
+                  length: Math.max(
+                    Array.isArray(signalAuthority.raw && signalAuthority.raw.rows && signalAuthority.raw.rows.by_market_server)
+                      ? signalAuthority.raw.rows.by_market_server.length
+                      : 0,
+                    Array.isArray(signalAuthority.raw && signalAuthority.raw.rows && signalAuthority.raw.rows.by_market_shadow)
+                      ? signalAuthority.raw.rows.by_market_shadow.length
+                      : 0,
+                  ),
+                }).map((_, idx) => ({
+                  server: signalAuthority.raw && signalAuthority.raw.rows && signalAuthority.raw.rows.by_market_server && signalAuthority.raw.rows.by_market_server[idx],
+                  shadow: signalAuthority.raw && signalAuthority.raw.rows && signalAuthority.raw.rows.by_market_shadow && signalAuthority.raw.rows.by_market_shadow[idx],
+                })),
+                (row) => ({
+                  server: row.server ? `${compactText(row.server.key)} (${numberText(row.server.count, 0)})` : "-",
+                  shadow: row.shadow ? `${compactText(row.shadow.key)} (${numberText(row.shadow.count, 0)})` : "-",
+                }),
+                5,
+              ),
+            },
+          },
           {
             title: "Decision",
             tone: statusTone(governor.summary.governor_status),
