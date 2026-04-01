@@ -93,12 +93,11 @@ function summarizeServerSignalTrace({
   } else if (executionEnabled !== true) {
     status = "SKIPPED";
     reason = "EXECUTION_DISABLED";
-  } else if (!newBar) {
-    status = "SKIPPED";
-    reason = "NO_NEW_BAR";
   } else if (!actorAllowed) {
-    status = "BLOCKED";
-    reason = (gate && Array.isArray(gate.reasonCodes) && gate.reasonCodes[0]) || "GATE_BLOCKED";
+    status = !newBar ? "SKIPPED" : "BLOCKED";
+    reason = !newBar
+      ? "NO_NEW_BAR"
+      : ((gate && Array.isArray(gate.reasonCodes) && gate.reasonCodes[0]) || "GATE_BLOCKED");
   } else if (!paperSafe) {
     status = "BLOCKED";
     reason = "PAPER_RESULT_MISSING";
