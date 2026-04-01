@@ -615,6 +615,9 @@ function buildMissionControlViewModel() {
   const stageAutopilot = loadLatestArtifact("stage_autopilot_latest.json");
   const parity = loadLatestArtifact("best_self_evolution_canonical_engine_parity_latest.json");
   const provenance = loadLatestArtifact("best_self_evolution_canonical_engine_provenance_latest.json");
+  const monthlyStrategy = loadLatestArtifact("objective_monthly_strategy_latest.json");
+  const weeklyStrategy = loadLatestArtifact("objective_weekly_strategy_latest.json");
+  const dailyStrategy = loadLatestArtifact("objective_daily_strategy_latest.json");
 
   const sourceMode = buildSourceModeText(stageAutopilot);
   const policyBundle = buildPolicyBundleLabel(deploymentPlan, stageAutopilot);
@@ -716,6 +719,16 @@ function buildMissionControlViewModel() {
               { label: "Open Recovery", href: "/dashboard/recovery", tone: "ghost" },
             ],
           },
+        ],
+      },
+      {
+        title: "전략 계층",
+        description: "월간 큰 전략, 주간 쪼개기, 오늘 실행 계획을 미션 화면에서 바로 확인합니다.",
+        columns: 3,
+        cards: [
+          buildStrategyCard("월간 전략", monthlyStrategy, "다음달 1일 회고 후 최신 전략이 갱신됩니다."),
+          buildStrategyCard("주간 전략", weeklyStrategy, "다음 월요일 회고 후 최신 전략이 갱신됩니다."),
+          buildStrategyCard("일간 계획", dailyStrategy, "오늘 회고 후 최신 계획이 갱신됩니다."),
         ],
       },
       {
