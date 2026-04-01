@@ -71,6 +71,7 @@ const SELF_EVOLUTION_SERVER_MARKET_CAPITAL_ALLOCATOR_LATEST_PATH = path.join(OPS
 const SELF_EVOLUTION_SERVER_MARKET_QUARANTINE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_market_quarantine_latest.json");
 const SELF_EVOLUTION_EXPLORATION_PROPOSAL_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_proposal_latest.json");
 const SELF_EVOLUTION_EXPLORATION_APPLY_CANDIDATE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_apply_candidate_latest.json");
+const SELF_EVOLUTION_CHANGE_RESULT_ATTRIBUTION_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_change_result_attribution_latest.json");
 const SELF_EVOLUTION_ATTRIBUTION_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_attribution_latest.json");
 const SELF_EVOLUTION_CANDIDATES_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_candidates_latest.json");
 const SELF_EVOLUTION_REPLAY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_replay_latest.json");
@@ -124,6 +125,7 @@ const FRESHNESS_HOURS = Object.freeze({
   selfEvolutionServerMarketQuarantine: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_SERVER_MARKET_QUARANTINE_MAX_AGE_HOURS || 36)),
   selfEvolutionExplorationProposal: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_EXPLORATION_PROPOSAL_MAX_AGE_HOURS || 36)),
   selfEvolutionExplorationApplyCandidate: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_EXPLORATION_APPLY_CANDIDATE_MAX_AGE_HOURS || 36)),
+  selfEvolutionChangeResultAttribution: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_CHANGE_RESULT_ATTRIBUTION_MAX_AGE_HOURS || 36)),
   selfEvolutionAttribution: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_ATTRIBUTION_MAX_AGE_HOURS || 36)),
   selfEvolutionCandidates: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_CANDIDATES_MAX_AGE_HOURS || 36)),
   selfEvolutionReplay: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_REPLAY_MAX_AGE_HOURS || 36)),
@@ -776,6 +778,26 @@ function summarizeSelfEvolutionExplorationApplyCandidate(report = null) {
     top_action: String(summary.top_action || "").trim().toUpperCase() || null,
     blockers: Array.isArray(summary.blockers) ? summary.blockers : [],
     candidates: Array.isArray(summary.candidates) ? summary.candidates : [],
+  };
+}
+
+function summarizeSelfEvolutionChangeResultAttribution(report = null) {
+  const raw = report && typeof report === "object"
+    ? ((report.raw && typeof report.raw === "object") ? report.raw : report)
+    : {};
+  const summary = raw.summary && typeof raw.summary === "object" ? raw.summary : raw;
+  return {
+    available: !!report,
+    status: String(summary.status || "").trim().toUpperCase() || null,
+    tracked_change_n: toNum(summary.tracked_change_n) || 0,
+    evaluated_24h_n: toNum(summary.evaluated_24h_n) || 0,
+    evaluated_72h_n: toNum(summary.evaluated_72h_n) || 0,
+    partial_window_n: toNum(summary.partial_window_n) || 0,
+    pending_window_n: toNum(summary.pending_window_n) || 0,
+    top_positive_change: summary.top_positive_change && typeof summary.top_positive_change === "object" ? summary.top_positive_change : null,
+    top_adverse_change: summary.top_adverse_change && typeof summary.top_adverse_change === "object" ? summary.top_adverse_change : null,
+    top_pending_change: summary.top_pending_change && typeof summary.top_pending_change === "object" ? summary.top_pending_change : null,
+    top_watch_changes: Array.isArray(summary.top_watch_changes) ? summary.top_watch_changes : [],
   };
 }
 
@@ -1950,7 +1972,7 @@ function buildObjectiveSupervisorTelegramAlertSections(report = {}) {
   }));
 }
 
-function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionMarketObjectiveScore, selfEvolutionServerVsPinePerformanceDelta, selfEvolutionExplorationBudget, selfEvolutionServerMarketCapitalAllocator, selfEvolutionServerMarketQuarantine, selfEvolutionExplorationProposal, selfEvolutionExplorationApplyCandidate, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionCanonicalParity, selfEvolutionServerSignalAuthority, selfEvolutionServerSignalQuality, selfEvolutionServerSignalCutoverReadiness, selfEvolutionDropValidation, selfEvolutionProvisionalRealizedOutcome, selfEvolutionOverrideAuthority, selfEvolutionExecutionQuality, selfEvolutionReversePolicy, selfEvolutionServerPrimaryLearningEpoch, selfEvolutionCanonicalProvenance, selfEvolutionServerPrimaryCanary, selfEvolutionPineShadowDrift, selfEvolutionDeploymentProbe, selfEvolutionBundleActivation, selfEvolutionEvGateRescue, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache, preparedOverride } = {}) {
+function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionMarketObjectiveScore, selfEvolutionServerVsPinePerformanceDelta, selfEvolutionExplorationBudget, selfEvolutionServerMarketCapitalAllocator, selfEvolutionServerMarketQuarantine, selfEvolutionExplorationProposal, selfEvolutionExplorationApplyCandidate, selfEvolutionChangeResultAttribution, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionCanonicalParity, selfEvolutionServerSignalAuthority, selfEvolutionServerSignalQuality, selfEvolutionServerSignalCutoverReadiness, selfEvolutionDropValidation, selfEvolutionProvisionalRealizedOutcome, selfEvolutionOverrideAuthority, selfEvolutionExecutionQuality, selfEvolutionReversePolicy, selfEvolutionServerPrimaryLearningEpoch, selfEvolutionCanonicalProvenance, selfEvolutionServerPrimaryCanary, selfEvolutionPineShadowDrift, selfEvolutionDeploymentProbe, selfEvolutionBundleActivation, selfEvolutionEvGateRescue, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache, preparedOverride } = {}) {
   const objective = governance && governance.current && governance.current.objective ? governance.current.objective : {};
   const objectiveCfg = governance && governance.objective ? governance.objective : {};
   const promotion = changeControl && changeControl.auto_promotion ? changeControl.auto_promotion : {};
@@ -2053,6 +2075,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   const selfEvolutionServerMarketQuarantineSummary = selfEvolutionServerMarketQuarantine && selfEvolutionServerMarketQuarantine.summary && typeof selfEvolutionServerMarketQuarantine.summary === "object" ? selfEvolutionServerMarketQuarantine.summary : {};
   const selfEvolutionExplorationProposalSummary = summarizeSelfEvolutionExplorationProposal(selfEvolutionExplorationProposal);
   const selfEvolutionExplorationApplyCandidateSummary = summarizeSelfEvolutionExplorationApplyCandidate(selfEvolutionExplorationApplyCandidate);
+  const selfEvolutionChangeResultAttributionSummary = summarizeSelfEvolutionChangeResultAttribution(selfEvolutionChangeResultAttribution);
   const selfEvolutionCanonicalProvenanceSummary = deriveCanonicalProvenanceDiagnostics(selfEvolutionCanonicalProvenance);
   const selfEvolutionServerPrimaryCanarySummary = deriveServerPrimaryCanaryDiagnostics(selfEvolutionServerPrimaryCanary);
   const selfEvolutionPineShadowDriftSummary = derivePineShadowDriftDiagnostics(selfEvolutionPineShadowDrift);
@@ -2489,6 +2512,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     self_evolution_server_market_quarantine: selfEvolutionServerMarketQuarantineSummary,
     self_evolution_exploration_proposal: selfEvolutionExplorationProposalSummary,
     self_evolution_exploration_apply_candidate: selfEvolutionExplorationApplyCandidateSummary,
+    self_evolution_change_result_attribution: selfEvolutionChangeResultAttributionSummary,
     self_evolution_canonical_provenance: selfEvolutionCanonicalProvenanceSummary,
     self_evolution_server_primary_canary: selfEvolutionServerPrimaryCanarySummary,
     self_evolution_pine_shadow_drift: selfEvolutionPineShadowDriftSummary,
@@ -2834,6 +2858,7 @@ async function main() {
   const selfEvolutionServerMarketQuarantineArtifact = readArtifact("self_evolution_server_market_quarantine", SELF_EVOLUTION_SERVER_MARKET_QUARANTINE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionServerMarketQuarantine);
   const selfEvolutionExplorationProposalArtifact = readArtifact("self_evolution_exploration_proposal", SELF_EVOLUTION_EXPLORATION_PROPOSAL_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionExplorationProposal);
   const selfEvolutionExplorationApplyCandidateArtifact = readArtifact("self_evolution_exploration_apply_candidate", SELF_EVOLUTION_EXPLORATION_APPLY_CANDIDATE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionExplorationApplyCandidate);
+  const selfEvolutionChangeResultAttributionArtifact = readArtifact("self_evolution_change_result_attribution", SELF_EVOLUTION_CHANGE_RESULT_ATTRIBUTION_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionChangeResultAttribution);
   const selfEvolutionAttributionArtifact = readArtifact("self_evolution_attribution", SELF_EVOLUTION_ATTRIBUTION_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionAttribution);
   const selfEvolutionCandidatesArtifact = readArtifact("self_evolution_candidates", SELF_EVOLUTION_CANDIDATES_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCandidates);
   const selfEvolutionReplayArtifact = readArtifact("self_evolution_replay", SELF_EVOLUTION_REPLAY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionReplay);
@@ -2882,6 +2907,7 @@ async function main() {
       serverMarketQuarantine: selfEvolutionServerMarketQuarantineArtifact,
       explorationProposal: selfEvolutionExplorationProposalArtifact,
       explorationApplyCandidate: selfEvolutionExplorationApplyCandidateArtifact,
+      changeResultAttribution: selfEvolutionChangeResultAttributionArtifact,
       attribution: selfEvolutionAttributionArtifact,
       candidates: selfEvolutionCandidatesArtifact,
       replay: selfEvolutionReplayArtifact,
@@ -2940,6 +2966,7 @@ async function main() {
     selfEvolutionServerMarketQuarantine: selfEvolutionServerMarketQuarantineArtifact.exists ? { ...selfEvolutionServerMarketQuarantineArtifact.data, fresh: selfEvolutionServerMarketQuarantineArtifact.fresh } : null,
     selfEvolutionExplorationProposal: selfEvolutionExplorationProposalArtifact.exists ? { ...selfEvolutionExplorationProposalArtifact.data, fresh: selfEvolutionExplorationProposalArtifact.fresh } : null,
     selfEvolutionExplorationApplyCandidate: selfEvolutionExplorationApplyCandidateArtifact.exists ? { ...selfEvolutionExplorationApplyCandidateArtifact.data, fresh: selfEvolutionExplorationApplyCandidateArtifact.fresh } : null,
+    selfEvolutionChangeResultAttribution: selfEvolutionChangeResultAttributionArtifact.exists ? { ...selfEvolutionChangeResultAttributionArtifact.data, fresh: selfEvolutionChangeResultAttributionArtifact.fresh } : null,
     selfEvolutionAttribution: selfEvolutionAttributionArtifact.exists ? { ...selfEvolutionAttributionArtifact.data, fresh: selfEvolutionAttributionArtifact.fresh } : null,
     selfEvolutionCandidates: selfEvolutionCandidatesArtifact.exists ? { ...selfEvolutionCandidatesArtifact.data, fresh: selfEvolutionCandidatesArtifact.fresh } : null,
     selfEvolutionReplay: selfEvolutionReplayArtifact.exists ? { ...selfEvolutionReplayArtifact.data, fresh: selfEvolutionReplayArtifact.fresh } : null,
@@ -3051,6 +3078,18 @@ async function main() {
       : []),
     ...(evaluation.self_evolution_exploration_apply_candidate && Array.isArray(evaluation.self_evolution_exploration_apply_candidate.candidates)
       ? evaluation.self_evolution_exploration_apply_candidate.candidates.slice(0, 2).map((row) => `EXPLORATION_APPLY_CANDIDATE_WATCH: ${row.market || "N/A"} / ${row.stage || "N/A"} / ${row.proposed_action || "N/A"} / source=${row.source_proposed_action || "N/A"} / manual=${row.manual_confirm_required ? "YES" : "NO"} / auto=${row.auto_apply_allowed ? "YES" : "NO"} / blockers=${Array.isArray(row.blockers) && row.blockers.length ? row.blockers.join('|') : 'none'}`)
+      : []),
+    ...(evaluation.self_evolution_change_result_attribution && evaluation.self_evolution_change_result_attribution.status
+      ? [`CHANGE_RESULT_ATTRIBUTION: ${evaluation.self_evolution_change_result_attribution.status} / tracked=${evaluation.self_evolution_change_result_attribution.tracked_change_n ?? 0} / 24h=${evaluation.self_evolution_change_result_attribution.evaluated_24h_n ?? 0} / 72h=${evaluation.self_evolution_change_result_attribution.evaluated_72h_n ?? 0} / partial=${evaluation.self_evolution_change_result_attribution.partial_window_n ?? 0}`]
+      : []),
+    ...(evaluation.self_evolution_change_result_attribution && evaluation.self_evolution_change_result_attribution.top_positive_change
+      ? [`CHANGE_RESULT_TOP_POSITIVE: ${evaluation.self_evolution_change_result_attribution.top_positive_change.stage || "N/A"} / ${evaluation.self_evolution_change_result_attribution.top_positive_change.action || "N/A"} / ${evaluation.self_evolution_change_result_attribution.top_positive_change.primary_impact && evaluation.self_evolution_change_result_attribution.top_positive_change.primary_impact.primary_window || "N/A"} / score=${evaluation.self_evolution_change_result_attribution.top_positive_change.primary_impact && evaluation.self_evolution_change_result_attribution.top_positive_change.primary_impact.impact_score != null ? evaluation.self_evolution_change_result_attribution.top_positive_change.primary_impact.impact_score : "N/A"}`]
+      : []),
+    ...(evaluation.self_evolution_change_result_attribution && evaluation.self_evolution_change_result_attribution.top_adverse_change
+      ? [`CHANGE_RESULT_TOP_ADVERSE: ${evaluation.self_evolution_change_result_attribution.top_adverse_change.stage || "N/A"} / ${evaluation.self_evolution_change_result_attribution.top_adverse_change.action || "N/A"} / ${evaluation.self_evolution_change_result_attribution.top_adverse_change.primary_impact && evaluation.self_evolution_change_result_attribution.top_adverse_change.primary_impact.primary_window || "N/A"} / score=${evaluation.self_evolution_change_result_attribution.top_adverse_change.primary_impact && evaluation.self_evolution_change_result_attribution.top_adverse_change.primary_impact.impact_score != null ? evaluation.self_evolution_change_result_attribution.top_adverse_change.primary_impact.impact_score : "N/A"}`]
+      : []),
+    ...(evaluation.self_evolution_change_result_attribution && Array.isArray(evaluation.self_evolution_change_result_attribution.top_watch_changes)
+      ? evaluation.self_evolution_change_result_attribution.top_watch_changes.slice(0, 3).map((row) => `CHANGE_RESULT_WATCH: ${row.stage || "N/A"} / ${row.action || "N/A"} / ${row.primary_window || "N/A"} / ${row.impact_verdict || "N/A"} / score=${row.impact_score != null ? row.impact_score : "N/A"} / obj=${row.objective_score_delta != null ? row.objective_score_delta : "N/A"} / fill=${row.server_signal_fill_24h_delta != null ? row.server_signal_fill_24h_delta : "N/A"} / mismatch=${row.parity_mismatch_n_delta != null ? row.parity_mismatch_n_delta : "N/A"}`)
       : []),
     ...(evaluation.self_evolution_override_authority && Array.isArray(evaluation.self_evolution_override_authority.execution_quality_penalty_markets) && evaluation.self_evolution_override_authority.execution_quality_penalty_markets.length
       ? [`OVERRIDE_AUTHORITY_EXECUTION_PENALTY: ${evaluation.self_evolution_override_authority.execution_quality_penalty_markets.join("|")}`]
@@ -3187,7 +3226,7 @@ async function main() {
     codex_authority: evaluation.codex_authority,
     stage_autopilot: evaluation.stage_autopilot,
     retrospective: evaluation.retrospective,
-    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, phase0Artifact, selfEvolutionDatasetArtifact, selfEvolutionObjectiveArtifact, selfEvolutionAttributionArtifact, selfEvolutionCandidatesArtifact, selfEvolutionReplayArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionServerSignalAuthorityArtifact, selfEvolutionServerSignalQualityArtifact, selfEvolutionServerSignalCutoverReadinessArtifact, selfEvolutionDropValidationArtifact, selfEvolutionProvisionalRealizedOutcomeArtifact, selfEvolutionOverrideAuthorityArtifact, selfEvolutionExecutionQualityArtifact, selfEvolutionReversePolicyArtifact, selfEvolutionServerPrimaryLearningEpochArtifact, selfEvolutionMarketObjectiveScoreArtifact, selfEvolutionServerVsPinePerformanceDeltaArtifact, selfEvolutionExplorationBudgetArtifact, selfEvolutionServerMarketCapitalAllocatorArtifact, selfEvolutionServerMarketQuarantineArtifact, selfEvolutionExplorationProposalArtifact, selfEvolutionExplorationApplyCandidateArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionServerPrimaryAcceptanceWatchArtifact, selfEvolutionPineShadowDriftArtifact, selfEvolutionBundleActivationArtifact, selfEvolutionOpenclawAutonomyContractArtifact, selfEvolutionObjectiveRecoveryGovernorArtifact, selfEvolutionObjectiveRecoveryEffectArtifact, selfEvolutionEvGateRescueArtifact, selfEvolutionMemoryArtifact, codexArtifact, stageAutopilotArtifact, weeklyPineHistoryArtifact, retrospectiveArtifact].map((row) => ({
+    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, phase0Artifact, selfEvolutionDatasetArtifact, selfEvolutionObjectiveArtifact, selfEvolutionChangeResultAttributionArtifact, selfEvolutionAttributionArtifact, selfEvolutionCandidatesArtifact, selfEvolutionReplayArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionServerSignalAuthorityArtifact, selfEvolutionServerSignalQualityArtifact, selfEvolutionServerSignalCutoverReadinessArtifact, selfEvolutionDropValidationArtifact, selfEvolutionProvisionalRealizedOutcomeArtifact, selfEvolutionOverrideAuthorityArtifact, selfEvolutionExecutionQualityArtifact, selfEvolutionReversePolicyArtifact, selfEvolutionServerPrimaryLearningEpochArtifact, selfEvolutionMarketObjectiveScoreArtifact, selfEvolutionServerVsPinePerformanceDeltaArtifact, selfEvolutionExplorationBudgetArtifact, selfEvolutionServerMarketCapitalAllocatorArtifact, selfEvolutionServerMarketQuarantineArtifact, selfEvolutionExplorationProposalArtifact, selfEvolutionExplorationApplyCandidateArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionServerPrimaryAcceptanceWatchArtifact, selfEvolutionPineShadowDriftArtifact, selfEvolutionBundleActivationArtifact, selfEvolutionOpenclawAutonomyContractArtifact, selfEvolutionObjectiveRecoveryGovernorArtifact, selfEvolutionObjectiveRecoveryEffectArtifact, selfEvolutionEvGateRescueArtifact, selfEvolutionMemoryArtifact, codexArtifact, stageAutopilotArtifact, weeklyPineHistoryArtifact, retrospectiveArtifact].map((row) => ({
       name: row.name,
       filePath: row.filePath,
       fresh: row.fresh,
@@ -3218,6 +3257,7 @@ async function main() {
       serverMarketQuarantine: selfEvolutionServerMarketQuarantineArtifact,
       explorationProposal: selfEvolutionExplorationProposalArtifact,
       explorationApplyCandidate: selfEvolutionExplorationApplyCandidateArtifact,
+      changeResultAttribution: selfEvolutionChangeResultAttributionArtifact,
       canonicalProvenance: selfEvolutionCanonicalProvenanceArtifact,
       serverPrimaryCanary: selfEvolutionServerPrimaryCanaryArtifact,
       serverPrimaryAcceptanceWatch: selfEvolutionServerPrimaryAcceptanceWatchArtifact,
@@ -3256,6 +3296,7 @@ async function main() {
       serverMarketQuarantine: selfEvolutionServerMarketQuarantineArtifact.data,
       explorationProposal: selfEvolutionExplorationProposalArtifact.data,
       explorationApplyCandidate: selfEvolutionExplorationApplyCandidateArtifact.data,
+      changeResultAttribution: selfEvolutionChangeResultAttributionArtifact.data,
       canonicalProvenance: selfEvolutionCanonicalProvenanceArtifact.data,
       serverPrimaryCanary: selfEvolutionServerPrimaryCanaryArtifact.data,
       serverPrimaryAcceptanceWatch: selfEvolutionServerPrimaryAcceptanceWatchArtifact.data,

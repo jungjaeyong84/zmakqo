@@ -21,6 +21,7 @@ const DERIVED_LOOP_KEYS = new Set([
   "SERVER_MARKET_QUARANTINE",
   "EXPLORATION_PROPOSAL",
   "EXPLORATION_APPLY_CANDIDATE",
+  "CHANGE_RESULT_ATTRIBUTION",
   "OPENCLAW_AUTONOMY_CONTRACT",
   "OBJECTIVE_RECOVERY_GOVERNOR",
   "OBJECTIVE_RECOVERY_EFFECT",
@@ -75,6 +76,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const serverMarketQuarantine = unwrapRawReport(reports.serverMarketQuarantine) || {};
   const explorationProposal = unwrapRawReport(reports.explorationProposal) || {};
   const explorationApplyCandidate = unwrapRawReport(reports.explorationApplyCandidate) || {};
+  const changeResultAttribution = unwrapRawReport(reports.changeResultAttribution) || {};
   const canonicalProvenance = unwrapRawReport(reports.canonicalProvenance) || {};
   const serverPrimaryCanary = unwrapRawReport(reports.serverPrimaryCanary) || {};
   const serverPrimaryAcceptanceWatch = unwrapRawReport(reports.serverPrimaryAcceptanceWatch) || {};
@@ -128,6 +130,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const serverMarketQuarantineSummary = serverMarketQuarantine.summary && typeof serverMarketQuarantine.summary === "object" ? serverMarketQuarantine.summary : {};
   const explorationProposalSummary = explorationProposal.summary && typeof explorationProposal.summary === "object" ? explorationProposal.summary : {};
   const explorationApplyCandidateSummary = explorationApplyCandidate.summary && typeof explorationApplyCandidate.summary === "object" ? explorationApplyCandidate.summary : {};
+  const changeResultAttributionSummary = changeResultAttribution.summary && typeof changeResultAttribution.summary === "object" ? changeResultAttribution.summary : {};
   const canonicalProvenanceSummary = canonicalProvenance.summary && typeof canonicalProvenance.summary === "object" ? canonicalProvenance.summary : {};
   const canonicalProvenanceEligible = canonicalProvenanceSummary.post_cutover_engine_eligible_n != null
     ? canonicalProvenanceSummary.post_cutover_engine_eligible_n
@@ -386,6 +389,15 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
         ? "WARN"
         : (String(explorationApplyCandidateSummary.status || "").trim().toUpperCase() ? "HOLD" : "N/A"),
       reason: `top=${explorationApplyCandidateSummary.top_market || "N/A"} / stage=${explorationApplyCandidateSummary.top_stage || "N/A"} / action=${explorationApplyCandidateSummary.top_action || "N/A"} / manual=${explorationApplyCandidateSummary.manual_confirm_required === true ? "YES" : "NO"}`,
+    },
+    {
+      loop: "CHANGE_RESULT_ATTRIBUTION",
+      fresh: artifacts.changeResultAttribution && artifacts.changeResultAttribution.fresh === true,
+      cycle_id: readCycleId(changeResultAttribution),
+      status: String(changeResultAttributionSummary.status || "").trim().toUpperCase() === "CHANGE_RESULT_TRACKING_ACTIVE"
+        ? ((changeResultAttributionSummary.evaluated_24h_n || 0) > 0 || (changeResultAttributionSummary.evaluated_72h_n || 0) > 0 ? "PASS" : "WARN")
+        : "N/A",
+      reason: `tracked=${changeResultAttributionSummary.tracked_change_n ?? 0} / 24h=${changeResultAttributionSummary.evaluated_24h_n ?? 0} / 72h=${changeResultAttributionSummary.evaluated_72h_n ?? 0} / top+=${changeResultAttributionSummary.top_positive_change && changeResultAttributionSummary.top_positive_change.stage || "N/A"} / top-=${changeResultAttributionSummary.top_adverse_change && changeResultAttributionSummary.top_adverse_change.stage || "N/A"}`,
     },
     {
       loop: "CANONICAL_PROVENANCE",
@@ -690,6 +702,16 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       exploration_apply_candidate_top_stage: explorationApplyCandidateSummary.top_stage || null,
       exploration_apply_candidate_top_action: explorationApplyCandidateSummary.top_action || null,
       exploration_apply_candidate_manual_confirm_required: explorationApplyCandidateSummary.manual_confirm_required === true,
+      change_result_attribution_status: changeResultAttributionSummary.status || null,
+      change_result_attribution_tracked_change_n: toNum(changeResultAttributionSummary.tracked_change_n) || 0,
+      change_result_attribution_evaluated_24h_n: toNum(changeResultAttributionSummary.evaluated_24h_n) || 0,
+      change_result_attribution_evaluated_72h_n: toNum(changeResultAttributionSummary.evaluated_72h_n) || 0,
+      change_result_attribution_top_positive_stage: changeResultAttributionSummary.top_positive_change && typeof changeResultAttributionSummary.top_positive_change === "object"
+        ? String(changeResultAttributionSummary.top_positive_change.stage || "").trim().toUpperCase() || null
+        : null,
+      change_result_attribution_top_adverse_stage: changeResultAttributionSummary.top_adverse_change && typeof changeResultAttributionSummary.top_adverse_change === "object"
+        ? String(changeResultAttributionSummary.top_adverse_change.stage || "").trim().toUpperCase() || null
+        : null,
       market_objective_status: marketObjectiveScoreSummary.status || null,
       market_objective_top_recovery_market: marketObjectiveScoreSummary.top_recovery_market || null,
       market_objective_top_drag_market: marketObjectiveScoreSummary.top_drag_market || null,

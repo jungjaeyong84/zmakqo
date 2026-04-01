@@ -46,6 +46,7 @@ function buildStepPlan() {
     { id: "server_market_capital_allocator", script: "report-best-self-evolution-server-market-capital-allocator.js" },
     { id: "exploration_proposal", script: "report-best-self-evolution-exploration-proposal.js" },
     { id: "exploration_apply_candidate", script: "report-best-self-evolution-exploration-apply-candidate.js" },
+    { id: "change_result_attribution", script: "report-best-self-evolution-change-result-attribution.js" },
     { id: "attribution", script: "report-best-self-evolution-attribution.js" },
     { id: "candidates", script: "report-best-self-evolution-candidates.js" },
     { id: "replay", script: "report-best-self-evolution-replay.js" },
