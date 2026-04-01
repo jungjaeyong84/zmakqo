@@ -1,4 +1,4 @@
-<%- include('partials/app_start', { title: '미션 컨트롤 · DONBEOLJA Ω', pageTitle: '미션 컨트롤', active: 'mission' }) %>
+<%- include('partials/app_start', { title: '홈 · DONBEOLJA Ω', pageTitle: '홈', active: 'mission' }) %>
 
 <%
   const budgetUnit = String(
@@ -471,17 +471,42 @@
     }
     return `${main} ${budgetUnit}`;
   };
+  const missionHero = mission_control && mission_control.hero ? mission_control.hero : {};
+  const missionHeroPills = Array.isArray(missionHero.pills) ? missionHero.pills.slice(0, 4) : [];
 %>
 
-<%- include('partials/control_surface_body', { model: mission_control }) %>
-
-<%- include('partials/control_surface_nav', { active: 'mission' }) %>
+<section class="stack" style="margin-bottom:16px;">
+  <div class="card" style="padding:22px;">
+    <div class="section-head" style="margin:0 0 10px;">
+      <div>
+        <div class="section-title" style="font-size:20px;">한눈에 보기</div>
+        <div class="subtle">돈벌자는 자동 전략으로 거래하고, 자산·수익·거래 결과를 한 화면에서 확인하는 서비스입니다.</div>
+      </div>
+      <div class="control-actions">
+        <a class="btn" href="/dashboard/profit">수익 보기</a>
+        <a class="btn ghost" href="/dashboard/cashflow">입출금 보기</a>
+        <a class="btn ghost" href="/dashboard/trading">거래기록</a>
+      </div>
+    </div>
+    <div class="legacy-inline-summary" style="margin-top:2px; margin-bottom:10px;">
+      <span class="pill dim">1. 수익 확인</span>
+      <span class="pill dim">2. 거래기록 확인</span>
+      <span class="pill dim">3. 전략상태 확인</span>
+    </div>
+    <div class="legacy-inline-summary" style="margin-top:8px;">
+      <span class="pill <%= liveStatus(system_settings).badge %>">운영 상태 · <%= liveStatus(system_settings).label %></span>
+      <span class="pill dim">최근 판단 · <%= decisionLabel %></span>
+      <span class="pill <%= gateBadge(gate_latest) %>">데이터 상태 · <%= gateLabel(gate_latest) %></span>
+      <span class="pill <%= pnlBadge(budget_perf && budget_perf.total_pnl_krw) %>">총 손익 · <%= fmtKrwSigned(budget_perf && budget_perf.total_pnl_krw) %> <%= budgetUnit %></span>
+    </div>
+  </div>
+</section>
 
 <section class="stack" style="margin-top:12px; margin-bottom:16px;">
   <div class="section-head">
     <div>
       <div class="section-title">자금과 손익</div>
-      <div class="subtle">현재 자산, 가용 현금, 사용 중 자금, 누적/주간 손익을 한 번에 읽습니다.</div>
+      <div class="subtle">복잡한 운영 용어 없이 현재 자산과 손익 상태를 먼저 읽습니다.</div>
     </div>
   </div>
   <div class="metric-grid">
@@ -527,7 +552,7 @@
   <div class="section-head">
     <div>
       <div class="section-title">쉬운 수익 카테고리</div>
-      <div class="subtle">예전처럼 오늘, 최근 7일, 30일, 6개월 기준으로 손익을 바로 읽습니다.</div>
+      <div class="subtle">예전처럼 기간별 손익을 바로 비교합니다. 수익은 별도 카테고리에서 더 자세히 봅니다.</div>
     </div>
     <div class="control-actions">
       <a class="btn ghost slim" href="/dashboard/profit">수익 상세</a>
@@ -563,29 +588,37 @@
   </div>
 </section>
 
-<details class="details-block" style="margin-top:12px;">
-  <summary>
-    <span>기존 화면 요약</span>
-    <span class="subtle">기존 화면은 링크 중심으로만 남기고, 주 판단은 미션 컨트롤에서 합니다.</span>
-  </summary>
-  <div class="details-body">
-    <div class="card compact">
-      <h2>기존 화면 요약</h2>
-      <div class="subtle">예전 화면은 세부 확인용으로만 남겼습니다. 상태 판정은 위 운영 표면을 기준으로 읽습니다.</div>
-      <div class="hr"></div>
-      <div class="legacy-inline-summary">
-        <span class="pill <%= liveStatus(system_settings).badge %>">운영 · <%= liveStatus(system_settings).label %></span>
-        <span class="pill <%= gateBadge(gate_latest) %>">게이트 · <%= gateLabel(gate_latest) %></span>
-        <span class="pill dim">최근 판단 · <%= decisionLabel %></span>
-        <span class="pill dim">총 손익 · <%= fmtKrwSigned(budget_perf && budget_perf.total_pnl_krw) %> <%= budgetUnit %></span>
+<section class="stack" style="margin-top:12px;">
+  <div class="card compact">
+    <div class="section-head" style="margin:0 0 10px;">
+      <div>
+        <div class="section-title">전략 상태 요약</div>
+        <div class="subtle">자동 전략이 현재 어떤 상태인지 짧게만 보여주고, 자세한 내용은 별도 메뉴에서 확인합니다.</div>
       </div>
-      <div class="control-actions" style="margin-top:12px;">
-        <a class="btn ghost slim" href="/dashboard/trading">거래 상세</a>
-        <a class="btn ghost slim" href="/dashboard/report?mode=weekly">리포트</a>
+      <div class="control-actions">
+        <a class="btn ghost slim" href="/dashboard/recovery">전략상태 보기</a>
       </div>
     </div>
+    <% if (missionHero.title || missionHeroPills.length) { %>
+      <div class="legacy-inline-summary">
+        <% if (missionHero.title) { %>
+          <span class="pill dim">현재 상태 · <%= missionHero.title %></span>
+        <% } %>
+        <% missionHeroPills.forEach((pill) => { %>
+          <span class="pill <%= pill.tone || 'dim' %>"><%= pill.label %> · <%= pill.value || '-' %></span>
+        <% }) %>
+      </div>
+    <% } %>
+    <% if (missionHero.detail) { %>
+      <div class="subtle" style="margin-top:10px;"><%= missionHero.detail %></div>
+    <% } %>
+    <div class="control-actions" style="margin-top:12px;">
+      <a class="btn ghost slim" href="/dashboard/deployment">전략 적용 상태</a>
+      <a class="btn ghost slim" href="/dashboard/audit">기록 점검</a>
+      <a class="btn ghost slim" href="/dashboard/report?mode=weekly">리포트</a>
+    </div>
   </div>
-</details>
+</section>
 
 <%- include('partials/app_end') %>
 

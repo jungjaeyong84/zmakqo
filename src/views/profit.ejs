@@ -371,15 +371,12 @@
   }
 </style>
 
-<%- include('partials/legacy_report_subnav', { activeTab: 'profit' }) %>
-<%- include('partials/legacy_control_surface_bridge', { mode: 'report', surfaceHref: '/dashboard/home', surfaceLabel: '미션', detailHref: '/dashboard/audit', detailLabel: '감사', extraHref: '/dashboard/recovery', extraLabel: '회복' }) %>
-
 <div class="profit-shell">
   <div class="profit-head">
     <div>
       <div class="profit-title">수익 세부 분석</div>
-      <div class="profit-sub"><%= exchange %> · 실현 손익 기반 보조 화면 · <%= basisHint %><% if (customRangeData && customRangeData.start && customRangeData.end) { %> · <%= customRangeData.start %> ~ <%= customRangeData.end %><% } %></div>
-      <div class="profit-sub">목표 상태와 차단 사유 판단은 미션/회복/감사를 우선합니다.</div>
+      <div class="profit-sub"><%= exchange %> · 실현 손익 중심 · <%= basisHint %><% if (customRangeData && customRangeData.start && customRangeData.end) { %> · <%= customRangeData.start %> ~ <%= customRangeData.end %><% } %></div>
+      <div class="profit-sub">오늘, 최근 30일, 6개월 손익과 수익 구조를 읽는 메인 수익 화면입니다.</div>
       <% if (leverageSummary && leverageSummary.enabled) { %>
         <div class="profit-sub">배율 상태 · 2x <%= fmtInt(leverageSummary.tier_2x || 0) %> / 3x <%= fmtInt(leverageSummary.tier_3x || 0) %> (활성 <%= fmtInt(leverageSummary.active_markets || 0) %>)</div>
       <% } %>

@@ -7,11 +7,11 @@
       : 'env';
 
   const __envUpper = __envLabel.toUpperCase();
-  const __missionActive = ['home', 'mission'].includes(__active);
-  const __recoveryActive = ['recovery'].includes(__active);
-  const __deploymentActive = ['deployment'].includes(__active);
-  const __executionActive = ['execution', 'trading', 'server-primary'].includes(__active);
-  const __auditActive = ['audit', 'analysis', 'report', 'eval', 'briefing', 'profit', 'cashflow', 'journal', 'ai', 'risk'].includes(__active);
+  const __homeActive = ['home', 'mission'].includes(__active);
+  const __profitActive = ['profit'].includes(__active);
+  const __cashflowActive = ['cashflow'].includes(__active);
+  const __tradingActive = ['execution', 'trading', 'server-primary', 'journal', 'ai', 'state'].includes(__active);
+  const __automationActive = ['recovery', 'deployment', 'audit', 'analysis', 'report', 'eval', 'briefing', 'risk'].includes(__active);
 %>
 
 <style>
@@ -154,15 +154,15 @@
 
 <div class="topnav5">
   <div class="brand-wrap">
-    <div class="brand">돈벌자 콘솔</div>
-    <div class="brand-meta">OpenClaw 운영 표면</div>
+    <div class="brand">돈벌자</div>
+    <div class="brand-meta">자동 전략으로 거래하고 자산·수익을 관리하는 화면</div>
   </div>
   <div class="nav-primary">
-    <a href="/dashboard/home" class="<%= __missionActive ? 'active' : '' %>">미션</a>
-    <a href="/dashboard/recovery" class="<%= __recoveryActive ? 'active' : '' %>">회복</a>
-    <a href="/dashboard/deployment" class="<%= __deploymentActive ? 'active' : '' %>">배포</a>
-    <a href="/dashboard/execution" class="<%= __executionActive ? 'active' : '' %>">실행</a>
-    <a href="/dashboard/audit" class="<%= __auditActive ? 'active' : '' %>">감사</a>
+    <a href="/dashboard/home" class="<%= __homeActive ? 'active' : '' %>">홈</a>
+    <a href="/dashboard/profit" class="<%= __profitActive ? 'active' : '' %>">수익</a>
+    <a href="/dashboard/cashflow" class="<%= __cashflowActive ? 'active' : '' %>">입출금</a>
+    <a href="/dashboard/trading" class="<%= __tradingActive ? 'active' : '' %>">거래기록</a>
+    <a href="/dashboard/recovery" class="<%= __automationActive ? 'active' : '' %>">전략상태</a>
     <a href="/dashboard/settings" class="<%= __active === 'settings' ? 'active' : '' %>">설정</a>
   </div>
   <div class="spacer"></div>
