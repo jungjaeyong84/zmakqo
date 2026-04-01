@@ -281,10 +281,10 @@ short_early_payload = f_entry_payload("SHORT", "EARLY", short_opportunity, marke
 //────────────────────────────────────
 // Visualization
 //────────────────────────────────────
-plotshape(show_signal_shapes and long_core_pulse, title = "Webhook Long Core", style = shape.triangleup, location = location.belowbar, size = size.tiny, color = color.lime, text = "L", textcolor = color.white)
-plotshape(show_signal_shapes and long_early_pulse, title = "Webhook Long Early", style = shape.circle, location = location.belowbar, size = size.tiny, color = color.new(color.lime, 0), text = "L", textcolor = color.white)
-plotshape(show_signal_shapes and short_core_pulse, title = "Webhook Short Core", style = shape.triangledown, location = location.abovebar, size = size.tiny, color = color.red, text = "S", textcolor = color.white)
-plotshape(show_signal_shapes and short_early_pulse, title = "Webhook Short Early", style = shape.circle, location = location.abovebar, size = size.tiny, color = color.new(color.red, 0), text = "S", textcolor = color.white)
+plotshape(show_signal_shapes and long_core_pulse, title = "Webhook Long Core", style = shape.triangleup, location = location.belowbar, size = size.tiny, color = color.lime, text = "RC", textcolor = color.white)
+plotshape(show_signal_shapes and long_early_pulse, title = "Webhook Long Early", style = shape.circle, location = location.belowbar, size = size.tiny, color = color.new(color.lime, 0), text = "RE", textcolor = color.white)
+plotshape(show_signal_shapes and short_core_pulse, title = "Webhook Short Core", style = shape.triangledown, location = location.abovebar, size = size.tiny, color = color.red, text = "SC", textcolor = color.white)
+plotshape(show_signal_shapes and short_early_pulse, title = "Webhook Short Early", style = shape.circle, location = location.abovebar, size = size.tiny, color = color.new(color.red, 0), text = "SE", textcolor = color.white)
 
 plot(show_opportunity_lines ? long_opportunity : na, title = "Long Opportunity", color = color.new(color.lime, 0), linewidth = 2)
 plot(show_opportunity_lines ? -short_opportunity : na, title = "Short Opportunity (-)", color = color.new(color.red, 0), linewidth = 2)
