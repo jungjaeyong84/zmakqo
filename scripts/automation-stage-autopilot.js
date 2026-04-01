@@ -1810,6 +1810,7 @@ async function main() {
     serverVsPinePerformanceDelta: readJsonRawSafe(path.join(OPS_DAILY_DIR, "best_self_evolution_server_vs_pine_performance_delta_latest.json"), null),
     dropValidation: selfEvolutionDropValidationArtifact.data,
     executionQuality: selfEvolutionExecutionQualityArtifact.data,
+    reversePolicy: selfEvolutionReversePolicyArtifact.data,
   });
   const codexAuthority = objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.codex_authority
     && typeof objectiveArtifactForLoop.data.codex_authority === "object"
@@ -2325,6 +2326,7 @@ async function main() {
       risk_override_enabled: overrideAuthoritySummary.risk_override_enabled === true,
       top_priority_markets: Array.isArray(overrideAuthoritySummary.top_priority_markets) ? overrideAuthoritySummary.top_priority_markets : [],
       execution_quality_penalty_markets: Array.isArray(overrideAuthoritySummary.execution_quality_penalty_markets) ? overrideAuthoritySummary.execution_quality_penalty_markets : [],
+      reverse_policy_penalty_markets: Array.isArray(overrideAuthoritySummary.reverse_policy_penalty_markets) ? overrideAuthoritySummary.reverse_policy_penalty_markets : [],
     },
     self_evolution_execution_quality: {
       available: selfEvolutionExecutionQualityArtifact.exists === true,
