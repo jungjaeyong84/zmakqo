@@ -9222,6 +9222,19 @@ async function runPaperUpbitForBar({
     signals_external: externalSignals.length,
     signals_internal: internalSignals.length,
     signals_external_late: lateSignals,
+    signal_drop_n: signalDrops.length,
+    signal_drop_reason_counts: signalDrops.reduce((acc, row) => {
+      const reason = String(row && (row.drop_reason_code || row.reason) || "UNKNOWN");
+      acc[reason] = (acc[reason] || 0) + 1;
+      return acc;
+    }, {}),
+    top_signal_drop_reason: signalDrops.length
+      ? Object.entries(signalDrops.reduce((acc, row) => {
+        const reason = String(row && (row.drop_reason_code || row.reason) || "UNKNOWN");
+        acc[reason] = (acc[reason] || 0) + 1;
+        return acc;
+      }, {})).sort((a, b) => b[1] - a[1])[0][0]
+      : null,
   };
 }
 

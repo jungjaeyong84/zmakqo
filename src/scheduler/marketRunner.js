@@ -1,5 +1,7 @@
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
 const env = require("../config/env");
 const { fetchBarCloseTime } = require("../utils/barTimeFetch");
 const { fetchCandles } = require("../exchanges");
@@ -13,6 +15,10 @@ const { runPaperMarket, syncFuturesPositionOnly } = require("../engine/paperUpbi
 const { tfToMs, normalizeTf, defaultExecTfFromEnv } = require("../utils/marketConfig");
 const { computeTradingMode: computeGateTradingMode } = require("../utils/tradingMode");
 const { TF_60M } = require("../config/frozen");
+
+const ROOT = path.resolve(__dirname, "../..");
+const OPS_DAILY = path.join(ROOT, "ops", "daily");
+const SERVER_SIGNAL_GENERATION_TRACE_LATEST = path.join(OPS_DAILY, "server_signal_generation_trace_latest.json");
 
 const DEFAULT_EXEC_TF = normalizeTf(defaultExecTfFromEnv()) || "15m";
 
@@ -39,6 +45,104 @@ function pickTf({ stateTf, tfAllowlist } = {}) {
 function buildRunId({ exchange, market, tf, execTf, barCloseMs: barCloseMs_f }) {
   const label = String(execTf || tf || DEFAULT_EXEC_TF);
   return `RUN__${exchange}__${market}__${label}__${barCloseMs_f}`;
+}
+
+function readJsonSafe(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeJsonSafe(filePath, payload) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
+}
+
+function summarizeServerSignalTrace({
+  exchange,
+  market,
+  signalTf,
+  execTf,
+  barCloseMs,
+  barCloseUtc,
+  newBar,
+  actorAllowed,
+  executionEnabled,
+  gate,
+  paper,
+  error,
+} = {}) {
+  const paperSafe = paper && typeof paper === "object" ? paper : null;
+  const dropCounts = paperSafe && paperSafe.signal_drop_reason_counts && typeof paperSafe.signal_drop_reason_counts === "object"
+    ? paperSafe.signal_drop_reason_counts
+    : {};
+  const topDropReason = paperSafe && paperSafe.top_signal_drop_reason
+    ? paperSafe.top_signal_drop_reason
+    : (Object.entries(dropCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null);
+  let status = "UNKNOWN";
+  let reason = "UNKNOWN";
+  if (error) {
+    status = "RUN_ERROR";
+    reason = error;
+  } else if (executionEnabled !== true) {
+    status = "SKIPPED";
+    reason = "EXECUTION_DISABLED";
+  } else if (!newBar) {
+    status = "SKIPPED";
+    reason = "NO_NEW_BAR";
+  } else if (!actorAllowed) {
+    status = "BLOCKED";
+    reason = (gate && Array.isArray(gate.reasonCodes) && gate.reasonCodes[0]) || "GATE_BLOCKED";
+  } else if (!paperSafe) {
+    status = "BLOCKED";
+    reason = "PAPER_RESULT_MISSING";
+  } else if (Number(paperSafe.signals_internal || 0) > 0) {
+    status = "SERVER_SIGNAL_CREATED";
+    reason = Number(paperSafe.intents_created || 0) > 0 ? "INTENT_CREATED" : (topDropReason || "SERVER_SIGNAL_CREATED");
+  } else if (Number(paperSafe.signals_seen || 0) > 0) {
+    status = "NO_SERVER_SIGNAL";
+    reason = topDropReason || "EXTERNAL_ONLY_OR_DROPPED";
+  } else {
+    status = "NO_SERVER_SIGNAL";
+    reason = topDropReason || "NO_SIGNAL_GENERATED";
+  }
+
+  return {
+    generated_at: new Date().toISOString(),
+    exchange: exchange || null,
+    market: market || null,
+    signal_tf: signalTf || null,
+    exec_tf: execTf || null,
+    bar_close_time_utc_ms: Number.isFinite(barCloseMs) ? barCloseMs : null,
+    bar_close_time_utc: barCloseUtc || null,
+    new_bar: !!newBar,
+    actor_allowed: !!actorAllowed,
+    execution_enabled: executionEnabled === true,
+    gate_status: gate && gate.status ? gate.status : null,
+    gate_reason_codes: gate && Array.isArray(gate.reasonCodes) ? gate.reasonCodes : [],
+    signals_seen: Number(paperSafe && paperSafe.signals_seen || 0),
+    signals_internal: Number(paperSafe && paperSafe.signals_internal || 0),
+    signals_external: Number(paperSafe && paperSafe.signals_external || 0),
+    intents_created: Number(paperSafe && paperSafe.intents_created || 0),
+    signal_drop_n: Number(paperSafe && paperSafe.signal_drop_n || 0),
+    signal_drop_reason_counts: dropCounts,
+    top_signal_drop_reason: topDropReason,
+    status,
+    reason,
+  };
+}
+
+function persistServerSignalGenerationTrace(entry) {
+  const existing = readJsonSafe(SERVER_SIGNAL_GENERATION_TRACE_LATEST);
+  const prevEntries = Array.isArray(existing && existing.entries) ? existing.entries : [];
+  const entries = [entry, ...prevEntries].slice(0, 200);
+  writeJsonSafe(SERVER_SIGNAL_GENERATION_TRACE_LATEST, {
+    generated_at: new Date().toISOString(),
+    latest: entry,
+    entries,
+  });
 }
 
 async function refreshLatestBarSnapshot({ exchange, market, tf, runId } = {}) {
@@ -366,6 +470,22 @@ async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHi
     }
   }
 
+  const signalTrace = summarizeServerSignalTrace({
+    exchange,
+    market,
+    signalTf: signalTfFinal,
+    execTf: execTfFinal,
+    barCloseMs: barCloseMs_f,
+    barCloseUtc: Number.isFinite(barCloseMs_f) ? (barCloseIso_f || new Date(barCloseMs_f).toISOString()) : null,
+    newBar,
+    actorAllowed,
+    executionEnabled,
+    gate,
+    paper,
+    error: err,
+  });
+  persistServerSignalGenerationTrace(signalTrace);
+
   return {
     exchange,
     market,
@@ -397,6 +517,7 @@ async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHi
     execution_mode: executionMode,
     error: err,
     error_stack: errStack,
+    signal_trace: signalTrace,
     trading_mode: gate && gate.trading_mode,
     run_id: runIdHint || null,
     last_signal: lastSignal,
@@ -410,4 +531,7 @@ module.exports = {
   refreshLatestBarSnapshot,
   computeGateForMarket,
   runOneMarket,
+  __test: {
+    summarizeServerSignalTrace,
+  },
 };
