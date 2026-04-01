@@ -18,8 +18,11 @@ const {
       score: 34,
       confidence: 0.62,
       zz_wave_conf: 0.71,
+      posterior_long: 0.68,
       regime: "transition",
       sp_transition_risk: 0.41,
+      sp_field_alignment: 0.7,
+      sp_coherence_score: 0.66,
       strategy_id: "donbeolja_v6.0.3.3",
     },
   });
@@ -27,7 +30,8 @@ const {
   assert.strictEqual(snapshot.tier, "CORE");
   assert.strictEqual(snapshot.regime, "transition");
   assert.strictEqual(snapshot.score_abs, 34);
-  assert.strictEqual(snapshot.coherence, null);
+  assert.strictEqual(snapshot.coherence, 0.66);
+  assert.strictEqual(snapshot.posterior, 0.68);
 
   const cfg = resolveCanonicalEngineConfig({
     canonical_engine_enabled: true,
@@ -59,6 +63,12 @@ const {
       entry_grade: "CORE",
       score: 30,
       regime: "transition",
+      confidence: 0.58,
+      posterior_long: 0.64,
+      zz_wave_conf: 0.61,
+      sp_transition_risk: 0.42,
+      sp_field_alignment: 0.68,
+      sp_coherence_score: 0.60,
     },
     event: "LONG",
     side: "BUY",
@@ -83,8 +93,14 @@ const {
   const primary = evaluateCanonicalDecision({
     features: {
       entry_grade: "CORE",
-      score: 30,
+      score: 34,
       regime: "transition",
+      confidence: 0.39,
+      posterior_long: 0.47,
+      zz_wave_conf: 0.49,
+      sp_transition_risk: 0.57,
+      sp_field_alignment: 0.42,
+      sp_coherence_score: 0.44,
     },
     event: "LONG",
     side: "BUY",
@@ -97,7 +113,10 @@ const {
     },
   });
   assert.strictEqual(primary.ok, false);
-  assert.strictEqual(primary.reason, "DROP_CANONICAL_ENGINE_TRANSITION_CORE_SCORE");
+  assert.strictEqual(primary.reason, "DROP_CANONICAL_ENGINE_TRANSITION_CORE_QUALITY");
+  assert.strictEqual(primary.detail.canonical_engine_shadow_reason, "TRANSITION_CORE_QUALITY_FAIL");
+  assert.strictEqual(primary.detail.canonical_engine_transition_core_quality_observed, true);
+  assert.strictEqual(primary.detail.canonical_engine_transition_core_quality_pass, false);
   assert.strictEqual(primary.detail.canonical_engine_execution_source_effective, "SERVER_CANONICAL");
   assert.strictEqual(primary.detail.pine_overlay_runtime_role, "SHADOW_AUDIT");
   assert.strictEqual(primary.detail.pine_overlay_audit_only, true);

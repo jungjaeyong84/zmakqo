@@ -1,5 +1,17 @@
 "use strict";
 
+function resolveTransitionCoreQuality(snapshot = {}) {
+  const checks = [];
+  if (Number.isFinite(snapshot.confidence)) checks.push(snapshot.confidence >= 0.45);
+  if (Number.isFinite(snapshot.posterior)) checks.push(snapshot.posterior >= 0.52);
+  if (Number.isFinite(snapshot.wave_conf)) checks.push(snapshot.wave_conf >= 0.55);
+  if (Number.isFinite(snapshot.transition_risk)) checks.push(snapshot.transition_risk <= 0.48);
+  if (Number.isFinite(snapshot.field_alignment)) checks.push(snapshot.field_alignment >= 0.55);
+  if (Number.isFinite(snapshot.coherence)) checks.push(snapshot.coherence >= 0.52);
+  if (!checks.length) return { observed: false, pass: true };
+  return { observed: true, pass: checks.every(Boolean) };
+}
+
 function resolveCanonicalSignalClassification({ snapshot, config } = {}) {
   const snap = (snapshot && typeof snapshot === "object") ? snapshot : {};
   const cfg = (config && typeof config === "object") ? config : {};
@@ -20,11 +32,36 @@ function resolveCanonicalSignalClassification({ snapshot, config } = {}) {
     return { applicable: true, observed: false, pass: true, reason: "THRESHOLD_MISSING", reason_code: null };
   }
   if (snap.score_abs >= minScoreAbs) {
+    if (inTransition) {
+      const transitionQuality = resolveTransitionCoreQuality(snap);
+      if (transitionQuality.observed && !transitionQuality.pass) {
+        return {
+          applicable: true,
+          observed: true,
+          pass: false,
+          reason: "TRANSITION_CORE_QUALITY_FAIL",
+          reason_code: "DROP_CANONICAL_ENGINE_TRANSITION_CORE_QUALITY",
+          min_score_abs: minScoreAbs,
+          transition_core_quality_observed: true,
+          transition_core_quality_pass: false,
+        };
+      }
+      return {
+        applicable: true,
+        observed: true,
+        pass: true,
+        reason: "TRANSITION_CORE_SCORE_PASS",
+        reason_code: null,
+        min_score_abs: minScoreAbs,
+        transition_core_quality_observed: transitionQuality.observed,
+        transition_core_quality_pass: transitionQuality.pass,
+      };
+    }
     return {
       applicable: true,
       observed: true,
       pass: true,
-      reason: inTransition ? "TRANSITION_CORE_SCORE_PASS" : "CORE_SCORE_PASS",
+      reason: "CORE_SCORE_PASS",
       reason_code: null,
       min_score_abs: minScoreAbs,
     };
