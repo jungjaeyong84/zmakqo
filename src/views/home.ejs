@@ -1,4 +1,4 @@
-<%- include('partials/app_start', { title: 'Mission Control · DONBEOLJA Ω', pageTitle: 'Mission Control', active: 'mission' }) %>
+<%- include('partials/app_start', { title: '미션 컨트롤 · DONBEOLJA Ω', pageTitle: '미션 컨트롤', active: 'mission' }) %>
 
 <%
   const budgetUnit = String(
@@ -443,21 +443,95 @@
   const riskUsedPct = (budget_summary && budget_summary.total_used_pct != null)
     ? budget_summary.total_used_pct
     : null;
+  const accountTotalInitial = (budget_summary && budget_summary.total_max_krw != null) ? budget_summary.total_max_krw : null;
+  const accountUsedInitial = (budget_summary && budget_summary.total_used_krw != null) ? budget_summary.total_used_krw : null;
+  const accountAvailableInitial = (accountTotalInitial != null && accountUsedInitial != null)
+    ? (Number(accountTotalInitial) - Number(accountUsedInitial))
+    : null;
+  const weeklyRealizedInitial = (weekly_range_perf && weekly_range_perf.total_realized_krw != null)
+    ? weekly_range_perf.total_realized_krw
+    : null;
+  const renderUnitValue = (value, opts = {}) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '-';
+    const classes = opts.classes ? ` ${opts.classes}` : '';
+    const main = fmtKrw(value);
+    if (budgetUnit === 'USDT') {
+      return `${main} ${budgetUnit}<span class="usdt-krw${classes}" data-usdt="${n}"></span>`;
+    }
+    return `${main} ${budgetUnit}`;
+  };
+  const renderSignedUnitValue = (value, opts = {}) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '-';
+    const classes = opts.classes ? ` ${opts.classes}` : '';
+    const main = fmtKrwSigned(value);
+    if (budgetUnit === 'USDT') {
+      return `${main} ${budgetUnit}<span class="usdt-krw${classes}" data-usdt="${n}"></span>`;
+    }
+    return `${main} ${budgetUnit}`;
+  };
 %>
 
 <%- include('partials/control_surface_body', { model: mission_control }) %>
 
 <%- include('partials/control_surface_nav', { active: 'mission' }) %>
 
+<section class="stack" style="margin-top:12px; margin-bottom:16px;">
+  <div class="section-head">
+    <div>
+      <div class="section-title">자금과 손익</div>
+      <div class="subtle">현재 자산, 가용 현금, 사용 중 자금, 누적/주간 손익을 한 번에 읽습니다.</div>
+    </div>
+  </div>
+  <div class="metric-grid">
+    <div class="metric-card" id="account-summary-card" data-exchange="<%= exchange %>">
+      <div class="metric-label">현재 총자산</div>
+      <div class="metric-value" id="acc-total-krw"><%- renderUnitValue(accountTotalInitial) %></div>
+      <div class="metric-meta">실시간 계좌 요약으로 갱신됩니다.</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label" id="acc-cash-label">가용 현금(<%= budgetUnit %>)</div>
+      <div class="metric-value" id="acc-cash-krw"><%- renderUnitValue(accountAvailableInitial) %></div>
+      <div class="metric-meta" id="acc-note">계좌 요약 불러오는 중</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">사용 중 자금</div>
+      <div class="metric-value"><%- renderUnitValue(accountUsedInitial) %></div>
+      <div class="metric-meta">사용률 <%= riskUsedPct != null ? fmtPctShort(riskUsedPct) : '-' %></div>
+    </div>
+    <div class="metric-card <%= pnlBadge(budget_perf && budget_perf.total_pnl_krw) %>">
+      <div class="metric-label">총 손익</div>
+      <div class="metric-value"><%- renderSignedUnitValue(budget_perf && budget_perf.total_pnl_krw) %></div>
+      <div class="metric-meta">
+        실현 <%= renderSignedUnitValue(budget_perf && budget_perf.total_realized_krw) %>
+        · 미실현 <%= renderSignedUnitValue(budget_perf && budget_perf.total_unrealized_krw) %>
+      </div>
+    </div>
+    <div class="metric-card <%= pnlBadge(weeklyRealizedInitial) %>">
+      <div class="metric-label">주간 실현손익</div>
+      <div class="metric-value"><%- renderSignedUnitValue(weeklyRealizedInitial) %></div>
+      <div class="metric-meta">체결 수 <%= fmtNum(weekly_range_perf && weekly_range_perf.trades_n) %>건</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">손익 기준</div>
+      <div class="metric-value"><%= budget_perf && budget_perf.pnl_scope_days != null ? `${budget_perf.pnl_scope_days}일` : '-' %></div>
+      <div class="metric-meta">
+        업데이트 <span id="acc-updated-at"><%= fmtKst((budget_summary && budget_summary.updated_at) || null) %></span>
+      </div>
+    </div>
+  </div>
+</section>
+
 <details class="details-block" style="margin-top:12px;">
   <summary>
-    <span>Legacy Ops Snapshot</span>
-    <span class="subtle">기존 화면은 링크 중심으로만 남기고, 주 판단은 Mission Control에서 합니다.</span>
+    <span>기존 화면 요약</span>
+    <span class="subtle">기존 화면은 링크 중심으로만 남기고, 주 판단은 미션 컨트롤에서 합니다.</span>
   </summary>
   <div class="details-body">
     <div class="card compact">
-      <h2>Legacy Summary</h2>
-      <div class="subtle">예전 화면은 세부 확인용으로만 남겼습니다. 상태 판정은 위 control surface를 기준으로 읽습니다.</div>
+      <h2>기존 화면 요약</h2>
+      <div class="subtle">예전 화면은 세부 확인용으로만 남겼습니다. 상태 판정은 위 운영 표면을 기준으로 읽습니다.</div>
       <div class="hr"></div>
       <div class="legacy-inline-summary">
         <span class="pill <%= liveStatus(system_settings).badge %>">운영 · <%= liveStatus(system_settings).label %></span>
@@ -466,8 +540,8 @@
         <span class="pill dim">총 손익 · <%= fmtKrwSigned(budget_perf && budget_perf.total_pnl_krw) %> <%= budgetUnit %></span>
       </div>
       <div class="control-actions" style="margin-top:12px;">
-        <a class="btn ghost slim" href="/dashboard/trading">Trading</a>
-        <a class="btn ghost slim" href="/dashboard/report?mode=weekly">Report</a>
+        <a class="btn ghost slim" href="/dashboard/trading">거래 상세</a>
+        <a class="btn ghost slim" href="/dashboard/report?mode=weekly">리포트</a>
       </div>
     </div>
   </div>

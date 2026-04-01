@@ -135,6 +135,282 @@ function buildLink(label, href) {
   return { label: label || href, href };
 }
 
+const UI_TEXT_MAP = {
+  "Mission Control": "미션 컨트롤",
+  "Objective Recovery": "목표 회복",
+  "Bundle Deployment": "번들 배포",
+  "Canonical Execution": "정본 실행",
+  "Cycle and Evidence": "사이클과 증거",
+  "Cycle Audit": "사이클 감사",
+  "Phase D Acceptance": "Phase D 수용성",
+  "Recovery": "회복",
+  "Deployment": "배포",
+  "Execution": "실행",
+  "Audit": "감사",
+  "Settings": "설정",
+  "Authority": "권한",
+  "Objective Score": "목표 점수",
+  "Source": "원천",
+  "Source Mode": "신호 원천",
+  "Phase D": "Phase D",
+  "Ops": "운영",
+  "Strategic State": "핵심 운영 상태",
+  "Why Blocked": "현재 막힌 이유",
+  "Root Cause": "핵심 원인",
+  "Failed Checks": "실패 항목",
+  "Projected Score": "예상 점수",
+  "Dominant Drag": "주요 악화 마켓",
+  "Next Autonomous Action": "다음 자동 행동",
+  "Target": "대상",
+  "Governor": "거버너",
+  "Replay / Canary": "재생 / 카나리",
+  "Gap Closure": "격차 회복률",
+  "Open Recovery": "회복 보기",
+  "Bundle State": "번들 상태",
+  "Engine Bundle": "엔진 번들",
+  "Policy Bundle": "정책 번들",
+  "Shadow Pine": "그림자 Pine",
+  "Role": "역할",
+  "Execution SOT": "실행 정본",
+  "Telegram": "텔레그램",
+  "Scheduler": "스케줄러",
+  "Evidence Chain": "증거 체인",
+  "Plan": "계획",
+  "Probe": "프로브",
+  "Activation": "활성화",
+  "Primary Unit": "주 배포 단위",
+  "Open Deployment": "배포 보기",
+  "Acceptance": "수용성",
+  "Executed": "실행",
+  "Rollback Trigger": "롤백 트리거",
+  "Open Execution": "실행 보기",
+  "Open Phase D": "Phase D 보기",
+  "Evidence": "증거",
+  "Source Parity": "원천 일치",
+  "Downstream": "하류 차이",
+  "Provenance": "출처 추적",
+  "Open Audit": "감사 보기",
+  "Current Score": "현재 점수",
+  "Target Delta": "목표 변화폭",
+  "Best Replay Delta": "최적 재생 변화폭",
+  "Operator Strip": "핵심 운영 상태",
+  "Decision": "판단",
+  "Next": "다음 단계",
+  "Weekly Report": "주간 리포트",
+  "Score Path": "점수 경로",
+  "Release Gates": "출시 게이트",
+  "Current": "현재",
+  "Projected": "예상",
+  "Release Evidence": "배포 증거",
+  "Recovery Detail": "회복 상세",
+  "Target and Alternative": "현재 대상과 대안",
+  "Deploy Unit": "배포 단위",
+  "Projected Win Rate": "예상 승률",
+  "Projected Avg Ret": "예상 평균 수익률",
+  "Higher Delta": "더 큰 변화폭 후보",
+  "Higher Delta Value": "더 큰 변화폭",
+  "Higher Delta Ready": "자동 적용 가능",
+  "Higher Delta Hold": "보류 사유",
+  "Retrospective Blockers": "회고 기준 차단 사유",
+  "Monthly Failed": "월간 실패 항목",
+  "Top Drop Reason": "주요 드롭 사유",
+  "Validation": "검증",
+  "Objective Delta": "목표 변화폭",
+  "Count Delta": "거래 수 변화",
+  "Risk Flags": "리스크 표시",
+  "Canary State": "카나리 상태",
+  "Ready Wave": "준비 웨이브",
+  "Top Ready": "최우선 준비 시장",
+  "Scale Allowed": "확장 허용",
+  "Scale Block": "확장 차단",
+  "Deployment Guards": "배포 가드",
+  "Promotion Ready": "승격 준비",
+  "Canary Open Wave": "카나리 개방 웨이브",
+  "Memory Blocked": "메모리 차단",
+  "Primary": "주 배포 단위",
+  "Active Runtime": "현재 런타임",
+  "Bundle Pair": "번들 조합",
+  "Prepared and Rollback": "준비/롤백",
+  "Prepared": "준비본",
+  "Rollback": "롤백본",
+  "Origin": "출처",
+  "Manual Step": "수동 단계",
+  "Runtime Evidence": "런타임 증거",
+  "Prepared State": "준비 상태",
+  "Prepare Pass": "준비 통과",
+  "Ack": "확인",
+  "Probe Detail": "프로브 상세",
+  "Engine Loaded": "엔진 적재",
+  "Policy Loaded": "정책 적재",
+  "Data Flow": "데이터 흐름",
+  "Latest Data": "최근 데이터",
+  "Runtime Ack": "런타임 확인",
+  "Acknowledged": "확인됨",
+  "Plan Status": "계획 상태",
+  "Execution Source": "실행 원천",
+  "Execution Evidence": "실행 증거",
+  "Latest Runtime Row": "최신 런타임 행",
+  "At": "시각",
+  "Market": "마켓",
+  "Type": "유형",
+  "Reason": "사유",
+  "Open Report": "리포트 열기",
+  "Policy Alignment": "정책 정렬",
+  "Threshold": "임계값",
+  "Policy Reason": "정책 사유",
+  "Focused Source": "집중 원천",
+  "Parity": "정합성",
+  "Observed": "관측",
+  "Source Mismatch": "원천 불일치",
+  "Downstream Mismatch": "하류 불일치",
+  "Stored Evidence": "저장 증거",
+  "Eligible": "대상 수",
+  "Complete": "완료 수",
+  "By Source": "원천별",
+  "By Overlay": "오버레이별",
+  "Collection": "컬렉션",
+  "Open": "열기",
+  "Market-Level Evidence": "마켓 단위 증거",
+  "Market Parity": "마켓 정합성",
+  "Match": "일치",
+  "Mismatch": "불일치",
+  "Execution Source Breakdown": "실행 원천 분해",
+  "Count": "건수",
+  "Recent Runtime Rows": "최근 런타임 행",
+  "Dataset Preview": "데이터셋 미리보기",
+  "Rows": "행 수",
+  "Focus Source": "집중 원천",
+  "Focus Collection": "집중 컬렉션",
+  "Meaning": "의미",
+  "Interpretation": "해석",
+  "Recent Cache": "최근 캐시",
+  "Fallback SOT": "대체 정본",
+  "Phase D Gate": "Phase D 기준",
+  "Current Market": "현재 시장",
+  "Expand Rule": "확장 기준",
+  "Thresholds": "기준치",
+  "Min Executed": "최소 실행",
+  "Max Disagreement": "최대 불일치",
+  "Max Rollback": "최대 롤백",
+  "Ready": "준비",
+  "Market Evidence": "마켓 증거",
+  "Realized": "실현",
+  "Disagreement": "불일치율",
+  "Cycle": "사이클",
+  "Fresh": "신선도",
+  "Watchdog": "감시기",
+  "Stage Eval": "단계 재평가",
+  "Current Cycle": "현재 사이클",
+  "Critical Blockers": "핵심 차단 수",
+  "Supervisor": "감독기",
+  "Cycle Health": "사이클 상태",
+  "Stale": "지연",
+  "Current Blocker": "현재 차단 사유",
+  "Overall": "종합 상태",
+  "Artifact Timeline": "산출물 타임라인",
+  "Artifact": "산출물",
+  "Generated": "생성 시각",
+  "Status": "상태",
+  "Critical Loops": "핵심 루프",
+  "Loop Rows": "루프 행",
+  "Loop": "루프",
+  "Stage Autopilot Caveat": "단계 자동조종 주의",
+  "Focused Drill-Through": "집중 추적",
+  "Focused Target": "집중 대상",
+  "Focus": "집중",
+  "Next Jump": "다음 이동",
+  "current cycle, freshness, wrapper caveat을 함께 점검합니다.": "현재 사이클, 최신성, 래퍼 주의사항을 함께 점검합니다.",
+  "current cycle + post-loop re-evaluation": "기본 사이클 + 루프 이후 재평가",
+  "main cycle + post-loop re-evaluation": "기본 사이클 + 루프 이후 재평가",
+  "query-scoped drill-through": "질의 범위에 맞춘 세부 추적",
+  "open from Execution tables to focus a target": "실행 표에서 열어 특정 대상을 집중 추적",
+  "recent runtime evidence across drop/missed/fallback rows": "드롭·미스·대체 행을 포함한 최근 런타임 증거",
+  "signals/signals_dropped/order_intents are currently sparse in local cache": "로컬 캐시의 signals/signals_dropped/order_intents 데이터가 아직 적습니다.",
+  "source parity와 provenance를 분리해 보여줍니다.": "원천 일치와 출처 추적을 분리해서 보여줍니다.",
+};
+
+const VALUE_REPLACEMENTS = [
+  ["SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT", "서버 정본 표본 부족"],
+  ["STALE_ARTIFACT_SHADOW_FALLBACK", "오래된 산출물로 인한 그림자 대체"],
+  ["RETROSPECTIVE_OBJECTIVE_FAIL", "회고 성과 미달"],
+  ["OBJECTIVE_RECOVERY_REQUIRED", "목표 회복 필요"],
+  ["RECOVERY_PROMOTION_READY", "회복 승격 준비됨"],
+  ["PARTIAL_RECOVERY_ONLY", "부분 회복만 가능"],
+  ["ACTIVE_BY_PROBE", "프로브 확인으로 활성"],
+  ["ACTIVE_BY_TIMEOUT", "시간 경과로 활성"],
+  ["APPLIED_ACTIVE_PENDING_AUTHORITY", "활성 적용·권한 대기"],
+  ["APPLIED_ACTIVE", "활성 적용"],
+  ["TIMEOUT_HOLD", "타임아웃 보류"],
+  ["SHADOW_OVERLAY_AUDIT", "그림자·오버레이·감사"],
+  ["OPENCLAW_FIRST", "OpenClaw 우선"],
+  ["OPENCLAW_CRON", "OpenClaw 크론"],
+  ["SERVER_PRIMARY", "서버 정본"],
+  ["PINE_PRIMARY", "파인 우선"],
+  ["PINE_SHADOW", "파인 그림자"],
+  ["APPROVED", "승인"],
+  ["PENDING", "대기"],
+  ["PROMOTE", "승격"],
+  ["ACTIVE", "활성"],
+  ["READY", "준비"],
+  ["CLEAR", "해제"],
+  ["CONSISTENT", "일치"],
+  ["MISMATCH", "불일치"],
+  ["PASS", "통과"],
+  ["FAIL", "실패"],
+  ["HOLD", "보류"],
+  ["WARN", "주의"],
+  ["YES", "예"],
+  ["NO", "아니오"],
+  ["TRUE", "예"],
+  ["FALSE", "아니오"],
+  ["LONG", "롱"],
+  ["SHORT", "숏"],
+  ["ENTRY", "진입"],
+  ["DROP", "드롭"],
+];
+
+function translateStaticText(value) {
+  const text = String(value || "");
+  return UI_TEXT_MAP[text] || text;
+}
+
+function translateMixedText(value) {
+  const text = String(value || "");
+  if (!text || text.startsWith("/")) return text;
+  let out = UI_TEXT_MAP[text] || text;
+  for (const [from, to] of VALUE_REPLACEMENTS) {
+    out = out.split(from).join(to);
+  }
+  return out;
+}
+
+function localizeStringByKey(key, value) {
+  if (typeof value !== "string") return value;
+  if (["href", "absPath", "fileName", "active", "key"].includes(key)) return value;
+  if (["title", "label", "description", "eyebrow", "hint"].includes(key)) return translateStaticText(value);
+  if (["value", "meta", "detail", "reason", "status", "type", "event", "verdict", "deploy", "source", "artifact", "loop"].includes(key)) return translateMixedText(value);
+  return value;
+}
+
+function localizeViewModel(node, parentKey = "") {
+  if (Array.isArray(node)) {
+    return node.map((item) => {
+      if (typeof item === "string") return localizeStringByKey(parentKey, item);
+      return localizeViewModel(item, parentKey);
+    });
+  }
+  if (!node || typeof node !== "object") return node;
+  const out = {};
+  Object.entries(node).forEach(([key, value]) => {
+    if (typeof value === "string") {
+      out[key] = localizeStringByKey(key, value);
+      return;
+    }
+    out[key] = localizeViewModel(value, key);
+  });
+  return out;
+}
+
 function buildReportUrl(market) {
   return buildUrl("/dashboard/report", { mode: "weekly", market });
 }
@@ -191,14 +467,14 @@ function pickStageRow(stageArtifact, stageName) {
 
 function buildSourceModeText(stageArtifact) {
   const row = pickStageRow(stageArtifact, "SOURCE_MODE");
-  if (!row) return { value: "-", tone: "dim", detail: "source mode snapshot unavailable" };
+  if (!row) return { value: "-", tone: "dim", detail: "원천 모드 스냅샷이 없습니다." };
   const modes = Array.isArray(row.current_source_modes)
     ? row.current_source_modes.map((item) => `${item.market || "?"} ${item.source_mode || "?"}`)
     : [];
   return {
-    value: modes.length ? modes.join(" / ") : compactText(row.active_display_signature || row.active_signature),
+    value: translateMixedText(modes.length ? modes.join(" / ") : compactText(row.active_display_signature || row.active_signature)),
     tone: statusTone(row.server_primary_acceptance_reason || row.machine_state),
-    detail: compactText(row.server_primary_acceptance_reason || row.display_reason || row.active_reason),
+    detail: translateMixedText(compactText(row.server_primary_acceptance_reason || row.display_reason || row.active_reason)),
   };
 }
 
@@ -212,10 +488,10 @@ function buildPolicyBundleLabel(deploymentPlan, stageAutopilot) {
     ) ||
     extractThresholdPair(deploymentPlan.summary.active_policy_bundle_id) ||
     "-";
-  return {
+  return localizeViewModel({
     primary: `${thresholdPair} · ${sourceMode.value}`,
     detail: compactText((canonicalPolicyRow && canonicalPolicyRow.active_reason) || deploymentPlan.summary.recommended_target_stage_reason),
-  };
+  });
 }
 
 function buildMissionControlViewModel() {
@@ -243,7 +519,7 @@ function buildMissionControlViewModel() {
     ? loopMonitor.summary.critical_blockers[0]
     : compactText(objectiveSupervisor.display && objectiveSupervisor.display.root_cause);
 
-  return {
+  return localizeViewModel({
     active: "mission",
     title: "Mission Control",
     hero: {
@@ -416,7 +692,7 @@ function buildMissionControlViewModel() {
         ],
       },
     ],
-  };
+  });
 }
 
 function buildRecoveryViewModel() {
@@ -432,7 +708,7 @@ function buildRecoveryViewModel() {
   const targetValidation = Array.isArray(replay.raw && replay.raw.validations)
     ? replay.raw.validations.find((row) => row.candidate_id === effect.summary.target_candidate_id || row.display_candidate_id === effect.summary.target_candidate_id)
     : null;
-  return {
+  return localizeViewModel({
     active: "recovery",
     title: "Recovery",
     hero: {
@@ -612,7 +888,7 @@ function buildRecoveryViewModel() {
         ],
       },
     ],
-  };
+  });
 }
 
 function buildDeploymentViewModel() {
@@ -622,7 +898,7 @@ function buildDeploymentViewModel() {
   const stageAutopilot = loadLatestArtifact("stage_autopilot_latest.json");
   const runtimeAck = loadLatestArtifact("self_evolution_manual_paste_ack_latest.json");
   const policyBundle = buildPolicyBundleLabel(deploymentPlan, stageAutopilot);
-  return {
+  return localizeViewModel({
     active: "deployment",
     title: "Deployment",
     hero: {
@@ -723,7 +999,7 @@ function buildDeploymentViewModel() {
         ],
       },
     ],
-  };
+  });
 }
 
 function buildExecutionViewModel(query = {}) {
@@ -739,7 +1015,7 @@ function buildExecutionViewModel(query = {}) {
   const focusedSource = String(query.source || "").trim();
   const recentRuntimeRows = buildRecentRuntimeRows(dataset, 6);
   const latestRuntimeRow = recentRuntimeRows[0] || null;
-  return {
+  return localizeViewModel({
     active: "execution",
     title: "Execution",
     hero: {
@@ -949,7 +1225,7 @@ function buildExecutionViewModel(query = {}) {
         ],
       },
     ],
-  };
+  });
 }
 
 function buildServerPrimaryViewModel() {

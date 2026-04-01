@@ -1,6 +1,6 @@
 <%- include('partials/app_start', { title: '리포트 보조 허브 · DONBEOLJA Ω', pageTitle: '리포트 보조 허브', active: 'analysis' }) %>
 <%- include('partials/legacy_report_subnav', { activeTab: 'analysis' }) %>
-<%- include('partials/legacy_control_surface_bridge', { mode: 'report', surfaceHref: '/dashboard/home', surfaceLabel: 'Mission', detailHref: '/dashboard/audit', detailLabel: 'Audit', extraHref: '/dashboard/recovery', extraLabel: 'Recovery' }) %>
+<%- include('partials/legacy_control_surface_bridge', { mode: 'report', surfaceHref: '/dashboard/home', surfaceLabel: '미션', detailHref: '/dashboard/audit', detailLabel: '감사', extraHref: '/dashboard/recovery', extraLabel: '회복' }) %>
 
 <div class="grid cols-3">
   <div class="card">
@@ -38,7 +38,7 @@
 
 <div class="card">
   <h2>데이터 신선도</h2>
-  <div class="subtle">신호/체결의 최신 도착 시각을 확인합니다. 운영 판단은 Mission/Execution/Audit에서 먼저 읽습니다.</div>
+  <div class="subtle">신호/체결의 최신 도착 시각을 확인합니다. 운영 판단은 미션/실행/감사에서 먼저 읽습니다.</div>
   <div class="hr"></div>
   <div class="grid cols-2">
     <div class="card" style="box-shadow:none;">

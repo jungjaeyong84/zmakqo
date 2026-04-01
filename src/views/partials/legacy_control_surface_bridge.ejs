@@ -1,18 +1,18 @@
 <%
   const __mode = String(typeof mode !== 'undefined' && mode ? mode : 'report');
   const __surfaceHref = String(typeof surfaceHref !== 'undefined' && surfaceHref ? surfaceHref : '/dashboard/home');
-  const __surfaceLabel = String(typeof surfaceLabel !== 'undefined' && surfaceLabel ? surfaceLabel : 'Mission Control');
+  const __surfaceLabel = String(typeof surfaceLabel !== 'undefined' && surfaceLabel ? surfaceLabel : '미션 컨트롤');
   const __detailHref = String(typeof detailHref !== 'undefined' && detailHref ? detailHref : '/dashboard/audit');
-  const __detailLabel = String(typeof detailLabel !== 'undefined' && detailLabel ? detailLabel : 'Audit');
+  const __detailLabel = String(typeof detailLabel !== 'undefined' && detailLabel ? detailLabel : '감사');
   const __extraHref = String(typeof extraHref !== 'undefined' && extraHref ? extraHref : '');
   const __extraLabel = String(typeof extraLabel !== 'undefined' && extraLabel ? extraLabel : '');
   const __kicker = __mode === 'trading' ? '보조 실행 화면' : '보조 리포트 화면';
   const __title = __mode === 'trading'
-    ? '실행 판단의 정본은 Execution/Audit입니다.'
-    : '운영 판단의 정본은 Mission/Recovery/Audit입니다.';
+    ? '실행 판단의 정본은 실행/감사 화면입니다.'
+    : '운영 판단의 정본은 미션/회복/감사 화면입니다.';
   const __summary = __mode === 'trading'
-    ? '이 화면은 포지션, 인텐트, 체결 저널을 세부 확인하는 보조 화면입니다. source mode, authority, deployment 판정은 Mission/Execution/Audit에서 먼저 읽습니다.'
-    : '이 화면은 기간 성과와 평가를 깊게 보는 보조 화면입니다. 목표 상태, authority, deployment, blocker 판단은 Mission/Recovery/Audit에서 먼저 읽습니다.';
+    ? '이 화면은 포지션, 인텐트, 체결 저널을 세부 확인하는 보조 화면입니다. 신호 원천, 권한, 배포 판단은 미션/실행/감사에서 먼저 읽습니다.'
+    : '이 화면은 기간 성과와 평가를 깊게 보는 보조 화면입니다. 목표 상태, 권한, 배포, 차단 사유 판단은 미션/회복/감사에서 먼저 읽습니다.';
 %>
 
 <div class="legacy-bridge">

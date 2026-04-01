@@ -135,7 +135,7 @@
 %>
 
 <%- include('partials/legacy_trading_subnav', { activeTab: 'state' }) %>
-<%- include('partials/legacy_control_surface_bridge', { mode: 'trading', surfaceHref: '/dashboard/execution', surfaceLabel: 'Execution', detailHref: '/dashboard/home', detailLabel: 'Mission', extraHref: '/dashboard/audit', extraLabel: 'Audit' }) %>
+<%- include('partials/legacy_control_surface_bridge', { mode: 'trading', surfaceHref: '/dashboard/execution', surfaceLabel: '실행', detailHref: '/dashboard/home', detailLabel: '미션', extraHref: '/dashboard/audit', extraLabel: '감사' }) %>
 
 <style>
   .trading-kpi-block{
@@ -150,7 +150,7 @@
 
 <div class="section-head">
   <div class="section-title">실행 세부 상태</div>
-  <div class="subtle">Execution 화면 아래에서 포지션, 인텐트, 리스크를 세부 추적합니다.</div>
+  <div class="subtle">실행 화면 아래에서 포지션, 인텐트, 리스크를 세부 추적합니다.</div>
 </div>
 
 <div class="metric-grid trading-kpi-block">
@@ -161,7 +161,7 @@
   </div>
   <div class="metric-card">
     <div class="metric-label">스케줄러</div>
-    <div class="metric-value"><%= health && health.last_tick_kst ? 'RUN' : 'IDLE' %></div>
+    <div class="metric-value"><%= health && health.last_tick_kst ? '가동' : '대기' %></div>
     <div class="metric-meta mono"><%= health && health.last_tick_kst ? health.last_tick_kst : '-' %></div>
   </div>
   <div class="metric-card">
@@ -186,7 +186,7 @@
 <div class="card">
   <h2>요약</h2>
   <div class="subtle">
-    이 페이지는 실행 상태를 세부 확인하는 보조 화면입니다. 운영 판단은 Execution/Audit에서 먼저 보고, 여기서는 마켓별 강제 정리와 대기 취소를 다룹니다.
+    이 페이지는 실행 상태를 세부 확인하는 보조 화면입니다. 운영 판단은 실행/감사에서 먼저 보고, 여기서는 마켓별 강제 정리와 대기 취소를 다룹니다.
   </div>
   <div class="hr"></div>
   <div class="kv">
