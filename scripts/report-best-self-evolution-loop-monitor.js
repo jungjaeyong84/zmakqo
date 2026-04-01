@@ -34,6 +34,7 @@ const MAX_AGE_HOURS = Object.freeze({
   provisionalRealizedOutcome: 24,
   overrideAuthority: 24,
   executionQuality: 24,
+  reversePolicy: 24,
   marketObjectiveScore: 24,
   serverVsPinePerformanceDelta: 24,
   canonicalProvenance: 24,
@@ -67,6 +68,7 @@ const INPUTS = Object.freeze({
   provisionalRealizedOutcome: path.join(OPS_DAILY_DIR, "best_self_evolution_provisional_realized_outcome_latest.json"),
   overrideAuthority: path.join(OPS_DAILY_DIR, "best_self_evolution_override_authority_latest.json"),
   executionQuality: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_quality_latest.json"),
+  reversePolicy: path.join(OPS_DAILY_DIR, "best_self_evolution_reverse_policy_latest.json"),
   marketObjectiveScore: path.join(OPS_DAILY_DIR, "best_self_evolution_market_objective_score_latest.json"),
   serverVsPinePerformanceDelta: path.join(OPS_DAILY_DIR, "best_self_evolution_server_vs_pine_performance_delta_latest.json"),
   canonicalProvenance: path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_provenance_latest.json"),
@@ -127,6 +129,7 @@ function renderMarkdown(report = {}) {
     `- provisional_realized: ${summary.provisional_realized_outcome_status || "N/A"} / final: ${summary.provisional_realized_final_n ?? 0} / provisional: ${summary.provisional_realized_provisional_n ?? 0} / effective: ${summary.provisional_realized_effective_n ?? 0} / top: ${summary.provisional_realized_top_market || "N/A"}`,
     `- override_authority: ${summary.override_authority_status || "N/A"} / max_markets: ${summary.override_authority_max_market_overrides_per_cycle ?? "N/A"} / risk: ${summary.override_authority_risk_override_enabled ? "ALLOW" : "BLOCK"} / top: ${Array.isArray(summary.override_authority_top_markets) && summary.override_authority_top_markets.length ? summary.override_authority_top_markets.join("|") : "N/A"}`,
     `- execution_quality: ${summary.execution_quality_status || "N/A"} / latency_p95: ${summary.execution_quality_created_to_fill_p95_ms ?? "N/A"} / slippage_p95: ${summary.execution_quality_adverse_slippage_p95_bps ?? "N/A"} / partial: ${summary.execution_quality_partial_fill_rate_pct ?? "N/A"} / top: ${summary.execution_quality_top_latency_market || summary.execution_quality_top_slippage_market || summary.execution_quality_top_partial_market || "N/A"}`,
+    `- reverse_policy: ${summary.reverse_policy_status || "N/A"} / drops: ${summary.reverse_policy_drop_n ?? "N/A"} / revive: ${summary.reverse_policy_revive_n ?? "N/A"} / rate: ${summary.reverse_policy_revive_rate ?? "N/A"} / top: ${summary.reverse_policy_top_watch_market || "N/A"}`,
     `- market_objective: ${summary.market_objective_status || "N/A"} / recovery: ${summary.market_objective_top_recovery_market || "N/A"} / drag: ${summary.market_objective_top_drag_market || "N/A"}`,
     `- server_vs_pine_delta: ${summary.server_vs_pine_delta_status || "N/A"} / shadow_gap: ${summary.server_vs_pine_delta_top_shadow_gap_market || "N/A"} / edge: ${summary.server_vs_pine_delta_top_server_edge_market || "N/A"} / avg_delta: ${summary.server_vs_pine_delta_avg_active_delta_score != null ? summary.server_vs_pine_delta_avg_active_delta_score : "N/A"}`,
     `- promotion_path_ready: ${summary.promotion_path_ready ? "YES" : "NO"} / manual_paste_ready: ${summary.manual_paste_ready ? "YES" : "NO"}`,
@@ -195,11 +198,19 @@ async function main() {
       ? artifacts.executionQuality.data.raw
       : artifacts.executionQuality.data)
     : {};
+  const reversePolicyRaw = artifacts.reversePolicy && artifacts.reversePolicy.data
+    ? ((artifacts.reversePolicy.data.raw && typeof artifacts.reversePolicy.data.raw === "object")
+      ? artifacts.reversePolicy.data.raw
+      : artifacts.reversePolicy.data)
+    : {};
   const overrideAuthoritySummary = overrideAuthorityRaw.summary && typeof overrideAuthorityRaw.summary === "object"
     ? overrideAuthorityRaw.summary
     : {};
   const executionQualitySummary = executionQualityRaw.summary && typeof executionQualityRaw.summary === "object"
     ? executionQualityRaw.summary
+    : {};
+  const reversePolicySummary = reversePolicyRaw.summary && typeof reversePolicyRaw.summary === "object"
+    ? reversePolicyRaw.summary
     : {};
   const dropValidationSummary = dropValidationRaw.summary && typeof dropValidationRaw.summary === "object"
     ? dropValidationRaw.summary
@@ -269,6 +280,18 @@ async function main() {
   if (!rows.find((row) => row.loop === "EXECUTION_QUALITY")) {
     rows.splice(12, 0, executionQualityRow);
   }
+  const reversePolicyRow = {
+    loop: "REVERSE_POLICY",
+    fresh: artifacts.reversePolicy && artifacts.reversePolicy.fresh === true,
+    cycle_id: String(reversePolicyRaw.cycle_id || reversePolicyRaw.generation_id || "").trim() || null,
+    status: String(reversePolicySummary.status || "").trim().toUpperCase() === "REVERSE_POLICY_STABLE"
+      ? "PASS"
+      : (String(reversePolicySummary.status || "").trim().toUpperCase() ? "WARN" : "N/A"),
+    reason: `drops=${reversePolicySummary.reverse_drop_n ?? 0} / revive=${reversePolicySummary.reverse_revive_n ?? 0} / rate=${reversePolicySummary.reverse_revive_rate != null ? reversePolicySummary.reverse_revive_rate : "N/A"} / top=${reversePolicySummary.top_watch_market || "N/A"}:${reversePolicySummary.top_watch_reason || "N/A"}:${reversePolicySummary.top_watch_action || "N/A"}`,
+  };
+  if (!rows.find((row) => row.loop === "REVERSE_POLICY")) {
+    rows.splice(13, 0, reversePolicyRow);
+  }
   const marketObjectiveRow = {
     loop: "MARKET_OBJECTIVE_SCORE",
     fresh: artifacts.marketObjectiveScore && artifacts.marketObjectiveScore.fresh === true,
@@ -279,7 +302,7 @@ async function main() {
     reason: `recovery=${marketObjectiveSummary.top_recovery_market || "N/A"} / drag=${marketObjectiveSummary.top_drag_market || "N/A"} / active=${marketObjectiveSummary.active_market_n ?? 0} / global=${marketObjectiveSummary.global_objective_score != null ? marketObjectiveSummary.global_objective_score : "N/A"}`,
   };
   if (!rows.find((row) => row.loop === "MARKET_OBJECTIVE_SCORE")) {
-    rows.splice(13, 0, marketObjectiveRow);
+    rows.splice(14, 0, marketObjectiveRow);
   }
   const serverVsPineDeltaRow = {
     loop: "SERVER_VS_PINE_DELTA",
@@ -291,7 +314,7 @@ async function main() {
     reason: `shadow_gap=${serverVsPineDeltaSummary.top_shadow_gap_market || "N/A"} / edge=${serverVsPineDeltaSummary.top_server_edge_market || "N/A"} / delta=${serverVsPineDeltaSummary.avg_active_delta_score != null ? serverVsPineDeltaSummary.avg_active_delta_score : "N/A"}`,
   };
   if (!rows.find((row) => row.loop === "SERVER_VS_PINE_DELTA")) {
-    rows.splice(14, 0, serverVsPineDeltaRow);
+    rows.splice(15, 0, serverVsPineDeltaRow);
   }
   const summary = {
     ...(derived.summary || {}),
@@ -320,6 +343,13 @@ async function main() {
     execution_quality_review_reasons: Array.isArray(executionQualitySummary.review_reasons)
       ? executionQualitySummary.review_reasons.slice(0, 6)
       : ((derived.summary && Array.isArray(derived.summary.execution_quality_review_reasons)) ? derived.summary.execution_quality_review_reasons : []),
+    reverse_policy_status: reversePolicySummary.status || derived.summary && derived.summary.reverse_policy_status || null,
+    reverse_policy_drop_n: reversePolicySummary.reverse_drop_n != null ? reversePolicySummary.reverse_drop_n : derived.summary && derived.summary.reverse_policy_drop_n || 0,
+    reverse_policy_revive_n: reversePolicySummary.reverse_revive_n != null ? reversePolicySummary.reverse_revive_n : derived.summary && derived.summary.reverse_policy_revive_n || 0,
+    reverse_policy_revive_rate: reversePolicySummary.reverse_revive_rate != null ? reversePolicySummary.reverse_revive_rate : derived.summary && derived.summary.reverse_policy_revive_rate || null,
+    reverse_policy_top_watch_market: reversePolicySummary.top_watch_market || derived.summary && derived.summary.reverse_policy_top_watch_market || null,
+    reverse_policy_top_watch_reason: reversePolicySummary.top_watch_reason || derived.summary && derived.summary.reverse_policy_top_watch_reason || null,
+    reverse_policy_top_watch_action: reversePolicySummary.top_watch_action || derived.summary && derived.summary.reverse_policy_top_watch_action || null,
     market_objective_status: marketObjectiveSummary.status || derived.summary && derived.summary.market_objective_status || null,
     market_objective_top_recovery_market: marketObjectiveSummary.top_recovery_market || derived.summary && derived.summary.market_objective_top_recovery_market || null,
     market_objective_top_drag_market: marketObjectiveSummary.top_drag_market || derived.summary && derived.summary.market_objective_top_drag_market || null,

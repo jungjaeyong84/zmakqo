@@ -12,6 +12,7 @@ const DERIVED_LOOP_KEYS = new Set([
   "PROVISIONAL_REALIZED_OUTCOME",
   "OVERRIDE_AUTHORITY",
   "EXECUTION_QUALITY",
+  "REVERSE_POLICY",
   "MARKET_OBJECTIVE_SCORE",
   "SERVER_VS_PINE_DELTA",
   "OPENCLAW_AUTONOMY_CONTRACT",
@@ -59,6 +60,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const provisionalRealizedOutcome = unwrapRawReport(reports.provisionalRealizedOutcome) || {};
   const overrideAuthority = unwrapRawReport(reports.overrideAuthority) || {};
   const executionQuality = unwrapRawReport(reports.executionQuality) || {};
+  const reversePolicy = unwrapRawReport(reports.reversePolicy) || {};
   const marketObjectiveScore = unwrapRawReport(reports.marketObjectiveScore) || {};
   const serverVsPinePerformanceDelta = unwrapRawReport(reports.serverVsPinePerformanceDelta) || {};
   const canonicalProvenance = unwrapRawReport(reports.canonicalProvenance) || {};
@@ -98,6 +100,9 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     : {};
   const executionQualitySummary = executionQuality.summary && typeof executionQuality.summary === "object"
     ? executionQuality.summary
+    : {};
+  const reversePolicySummary = reversePolicy.summary && typeof reversePolicy.summary === "object"
+    ? reversePolicy.summary
     : {};
   const marketObjectiveScoreSummary = marketObjectiveScore.summary && typeof marketObjectiveScore.summary === "object" ? marketObjectiveScore.summary : {};
   const serverVsPinePerformanceDeltaSummary = serverVsPinePerformanceDelta.summary && typeof serverVsPinePerformanceDelta.summary === "object"
@@ -142,6 +147,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(provisionalRealizedOutcome)
     || readCycleId(overrideAuthority)
     || readCycleId(executionQuality)
+    || readCycleId(reversePolicy)
     || readCycleId(marketObjectiveScore)
     || readCycleId(serverVsPinePerformanceDelta)
     || readCycleId(canonicalProvenance)
@@ -293,6 +299,15 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
         ? "PASS"
         : (String(executionQualitySummary.status || "").trim().toUpperCase() ? "WARN" : "N/A"),
       reason: `latency_p95=${executionQualitySummary.created_to_fill_p95_ms ?? "N/A"} / slippage_p95=${executionQualitySummary.adverse_slippage_p95_bps ?? "N/A"} / partial=${executionQualitySummary.partial_fill_rate_pct ?? "N/A"} / top=${executionQualitySummary.top_latency_market || executionQualitySummary.top_slippage_market || executionQualitySummary.top_partial_market || "N/A"}`,
+    },
+    {
+      loop: "REVERSE_POLICY",
+      fresh: artifacts.reversePolicy && artifacts.reversePolicy.fresh === true,
+      cycle_id: readCycleId(reversePolicy),
+      status: String(reversePolicySummary.status || "").trim().toUpperCase() === "REVERSE_POLICY_STABLE"
+        ? "PASS"
+        : (String(reversePolicySummary.status || "").trim().toUpperCase() ? "WARN" : "N/A"),
+      reason: `drops=${reversePolicySummary.reverse_drop_n ?? 0} / revive=${reversePolicySummary.reverse_revive_n ?? 0} / rate=${reversePolicySummary.reverse_revive_rate != null ? reversePolicySummary.reverse_revive_rate : "N/A"} / top=${reversePolicySummary.top_watch_market || "N/A"}:${reversePolicySummary.top_watch_reason || "N/A"}:${reversePolicySummary.top_watch_action || "N/A"}`,
     },
     {
       loop: "SERVER_VS_PINE_DELTA",
@@ -572,6 +587,13 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       execution_quality_review_reasons: Array.isArray(executionQualitySummary.review_reasons)
         ? executionQualitySummary.review_reasons.slice(0, 6)
         : [],
+      reverse_policy_status: reversePolicySummary.status || null,
+      reverse_policy_drop_n: toNum(reversePolicySummary.reverse_drop_n),
+      reverse_policy_revive_n: toNum(reversePolicySummary.reverse_revive_n),
+      reverse_policy_revive_rate: toNum(reversePolicySummary.reverse_revive_rate),
+      reverse_policy_top_watch_market: reversePolicySummary.top_watch_market || null,
+      reverse_policy_top_watch_reason: reversePolicySummary.top_watch_reason || null,
+      reverse_policy_top_watch_action: reversePolicySummary.top_watch_action || null,
       market_objective_status: marketObjectiveScoreSummary.status || null,
       market_objective_top_recovery_market: marketObjectiveScoreSummary.top_recovery_market || null,
       market_objective_top_drag_market: marketObjectiveScoreSummary.top_drag_market || null,
