@@ -1,5 +1,7 @@
 "use strict";
 
+const { deriveCanonicalParityDiagnostics } = require("./bestSelfEvolutionAnalysis");
+
 function toNum(value) {
   if (value == null || value === "") return null;
   const n = Number(value);
@@ -19,11 +21,13 @@ function readSummary(value) {
 function deriveServerSignalCutoverReadiness({
   authority = null,
   quality = null,
+  parity = null,
   runtime = null,
   serverPrimaryCanary = null,
 } = {}) {
   const authoritySummary = readSummary(authority);
   const qualitySummary = readSummary(quality);
+  const paritySummary = deriveCanonicalParityDiagnostics(parity);
   const runtimeSummary = readSummary(runtime);
   const canarySummary = readSummary(serverPrimaryCanary);
 
@@ -38,6 +42,14 @@ function deriveServerSignalCutoverReadiness({
   const fillN = toNum(qualitySummary.fill_24h_n) || 0;
   const runtimeTf = String(runtimeSummary.exec_tf || "").trim() || null;
   const marketCount = toNum(runtimeSummary.market_count) || 0;
+  const sourceParityMismatchN = toNum(paritySummary.source_parity_mismatch_n) || 0;
+  const finalDownstreamMismatchN = toNum(paritySummary.final_downstream_mismatch_n) || 0;
+  const evPolicyMismatchN = toNum(paritySummary.ev_policy_mismatch_n) || 0;
+  const cooldownPolicyMismatchN = toNum(paritySummary.cooldown_policy_mismatch_n) || 0;
+  const strategyGateMismatchN = toNum(paritySummary.strategy_gate_mismatch_n) || 0;
+  const dominantMismatchFamily = toUpper(paritySummary.dominant_mismatch_family)
+    || toUpper(qualitySummary.top_drop_reason_family && qualitySummary.top_drop_reason_family.key)
+    || null;
   const canaryReady = canarySummary.acceptance_ready === true;
   const canaryReason = String(canarySummary.acceptance_reason || "").trim().toUpperCase() || null;
 
@@ -46,7 +58,15 @@ function deriveServerSignalCutoverReadiness({
   if (runtimeTf !== "15m") blockers.push("SERVER_RUNTIME_TF_NOT_15M");
   if (marketCount <= 0) blockers.push("SERVER_RUNTIME_NO_MARKETS");
   if (shadowObservedN < 3) blockers.push("SHADOW_SAMPLE_SHORT");
-  if (mismatchN > 0 || driftStatus === "PARITY_DRIFT") blockers.push("PARITY_DRIFT_ACTIVE");
+  if (sourceParityMismatchN > 0) blockers.push("SOURCE_PARITY_DRIFT_ACTIVE");
+  if (finalDownstreamMismatchN > 0) {
+    if (evPolicyMismatchN > 0) blockers.push("EV_POLICY_DRIFT_ACTIVE");
+    if (cooldownPolicyMismatchN > 0) blockers.push("COOLDOWN_POLICY_DRIFT_ACTIVE");
+    if (strategyGateMismatchN > 0) blockers.push("STRATEGY_GATE_DRIFT_ACTIVE");
+    if (evPolicyMismatchN <= 0 && cooldownPolicyMismatchN <= 0 && strategyGateMismatchN <= 0) blockers.push("FINAL_DOWNSTREAM_MISMATCH_ACTIVE");
+  } else if (mismatchN > 0 || driftStatus === "PARITY_DRIFT") {
+    blockers.push("PARITY_DRIFT_ACTIVE");
+  }
   if (entryN <= 0) blockers.push("NO_SERVER_ENTRY_SIGNAL");
   if (intentN <= 0) blockers.push("NO_SERVER_INTENT");
   if (fillN <= 0) blockers.push("NO_SERVER_FILL");
@@ -71,6 +91,12 @@ function deriveServerSignalCutoverReadiness({
       runtime_market_count: marketCount,
       shadow_observed_24h_n: shadowObservedN,
       parity_mismatch_n: mismatchN,
+      source_parity_mismatch_n: sourceParityMismatchN,
+      final_downstream_mismatch_n: finalDownstreamMismatchN,
+      ev_policy_mismatch_n: evPolicyMismatchN,
+      cooldown_policy_mismatch_n: cooldownPolicyMismatchN,
+      strategy_gate_mismatch_n: strategyGateMismatchN,
+      dominant_mismatch_family: dominantMismatchFamily,
       entry_24h_n: entryN,
       intent_24h_n: intentN,
       fill_24h_n: fillN,
@@ -89,6 +115,7 @@ function deriveServerSignalCutoverReadiness({
       entry_24h_n: entryN,
       intent_24h_n: intentN,
       fill_24h_n: fillN,
+      dominant_mismatch_family: dominantMismatchFamily,
     },
   };
 }

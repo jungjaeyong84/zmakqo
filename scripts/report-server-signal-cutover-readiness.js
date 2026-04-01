@@ -15,6 +15,7 @@ const { deriveServerSignalCutoverReadiness } = require("../src/utils/serverSigna
 const INPUTS = Object.freeze({
   authority: path.join(OPS_DAILY_DIR, "server_signal_authority_latest.json"),
   quality: path.join(OPS_DAILY_DIR, "server_signal_quality_latest.json"),
+  parity: path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_parity_latest.json"),
   runtime: path.join(OPS_DAILY_DIR, "server_signal_runtime_latest.json"),
   serverPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
 });
@@ -31,7 +32,9 @@ function renderMarkdown(report = {}) {
     `- source_mode: ${summary.source_mode || "N/A"}`,
     `- runtime: ${status.runtime_status || "N/A"} / tf=${status.runtime_exec_tf || "N/A"} / markets=${status.runtime_market_count ?? "N/A"}`,
     `- parity: ${status.drift_status || "N/A"} / shadow=${status.shadow_observed_24h_n ?? "N/A"} / mismatch=${status.parity_mismatch_n ?? "N/A"}`,
+    `- parity_detail: source=${status.source_parity_mismatch_n ?? "N/A"} / downstream=${status.final_downstream_mismatch_n ?? "N/A"} / ev=${status.ev_policy_mismatch_n ?? "N/A"} / cooldown=${status.cooldown_policy_mismatch_n ?? "N/A"} / strategy_gate=${status.strategy_gate_mismatch_n ?? "N/A"}`,
     `- execution: entry=${status.entry_24h_n ?? "N/A"} / intent=${status.intent_24h_n ?? "N/A"} / fill=${status.fill_24h_n ?? "N/A"} / quality=${status.quality_status || "N/A"}`,
+    `- dominant_mismatch_family: ${status.dominant_mismatch_family || "N/A"}`,
     `- canary: ${status.canary_acceptance_ready ? "READY" : "PENDING"} / ${status.canary_acceptance_reason || "N/A"}`,
     `- blockers: ${Array.isArray(summary.blockers) && summary.blockers.length ? summary.blockers.join(", ") : "none"}`,
   ];
@@ -47,6 +50,7 @@ function main() {
     ...deriveServerSignalCutoverReadiness({
       authority: readJsonRawSafe(INPUTS.authority, null),
       quality: readJsonRawSafe(INPUTS.quality, null),
+      parity: readJsonRawSafe(INPUTS.parity, null),
       runtime: readJsonRawSafe(INPUTS.runtime, null),
       serverPrimaryCanary: readJsonRawSafe(INPUTS.serverPrimaryCanary, null),
     }),
