@@ -232,8 +232,8 @@ function applyPreparedOverrideToPineArtifacts({ pineHandoff = null, pineStageRow
 
   const nextStageRow = pineStageRow && typeof pineStageRow === "object" ? { ...pineStageRow } : {};
   nextStageRow.machine_state = "READY";
-  nextStageRow.reason = "MANUAL_PREPARED_OVERRIDE";
-  nextStageRow.last_action = nextStageRow.last_action || "HOLD";
+  nextStageRow.reason = "PINE_SHADOW_COMPARE_ONLY";
+  nextStageRow.last_action = "SHADOW_ONLY";
   nextStageRow.prepared_file_path = override.prepared_file_path || nextStageRow.prepared_file_path || null;
   nextStageRow.prepared_strategy_id = override.prepared_strategy_id || nextStageRow.prepared_strategy_id || null;
   nextStageRow.latest_generated_file_path = override.latest_generated_file_path || nextStageRow.latest_generated_file_path || null;
@@ -1201,61 +1201,13 @@ function bestFebtAutopilotGuard({ stage, candidate, currentSys = {}, bestFebtCon
 
 function buildPineCandidate(objectiveArtifact, codexArtifact, changeArtifact) {
   const objective = objectiveArtifact && objectiveArtifact.data ? objectiveArtifact.data : {};
-  const change = changeArtifact && changeArtifact.data ? changeArtifact.data : {};
-  const codex = codexArtifact && codexArtifact.data ? codexArtifact.data : {};
-  const codexAuthority = objective && objective.codex_authority && typeof objective.codex_authority === "object"
-    ? objective.codex_authority
-    : {};
-  const verdict = String(objective.verdict || "HOLD").toUpperCase();
-  const codexVerdict = String(codexAuthority.verdict || codex.verdict || "HOLD").toUpperCase();
-  const codexFresh = Boolean(
-    (codexArtifact && codexArtifact.fresh === true)
-    || String(codexAuthority.status || "").toUpperCase() === "FRESH"
-  );
-  if (verdict === "PATCH_CANDIDATE") {
-    const candidateId = String(
-      codexAuthority.recommended_candidate_id
-      || objective.promotion && objective.promotion.candidate_id
-      || change.auto_promotion && change.auto_promotion.candidate_id
-      || ""
-    ).trim();
-    const displayCandidateId = String(
-      codexAuthority.display_candidate_id
-      || objective.promotion && objective.promotion.display_candidate_id
-      || change.auto_promotion && change.auto_promotion.display_candidate_id
-      || candidateId
-      || ""
-    ).trim() || null;
-    return {
-      actionable: !!candidateId && codexFresh && codexVerdict === "PROMOTE",
-      kind: "PROMOTE",
-      signature: candidateId || null,
-      display_signature: displayCandidateId,
-      reason: String(objective.reason || "PATCH_CANDIDATE"),
-      detail: displayCandidateId || candidateId || "N/A",
-    };
-  }
-  if (verdict === "ROLLBACK_CANDIDATE") {
-    const rollbackPath = String(
-      codexAuthority.recommended_rollback_file_path
-      || objective.rollback && objective.rollback.rollback_file_path
-      || change.auto_rollback && change.auto_rollback.rollback_file_path
-      || ""
-    ).trim();
-    return {
-      actionable: !!rollbackPath && codexFresh && codexVerdict === "ROLLBACK",
-      kind: "ROLLBACK",
-      signature: rollbackPath || null,
-      reason: String(objective.reason || "ROLLBACK_CANDIDATE"),
-      detail: rollbackPath || "N/A",
-    };
-  }
+  const objectiveReason = String(objective.reason || "SERVER_SIGNAL_PRIMARY__PINE_SHADOW_READ_ONLY");
   return {
     actionable: false,
-    kind: "HOLD",
+    kind: "SHADOW_ONLY",
     signature: null,
-    reason: String(objective.reason || "HOLD"),
-    detail: "N/A",
+    reason: objectiveReason || "SERVER_SIGNAL_PRIMARY__PINE_SHADOW_READ_ONLY",
+    detail: "PINE_SHADOW_READ_ONLY",
   };
 }
 

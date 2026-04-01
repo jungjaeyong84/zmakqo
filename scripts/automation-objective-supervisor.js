@@ -2976,8 +2976,8 @@ async function main() {
       : []),
     ...(evaluation.self_evolution_server_signal_cutover_readiness
       ? [
-        "PINE_SHADOW_REGEN_REQUIRED: server signal change must update SIGNAL_REDESIGN + PRODUCTION_CANDIDATE + TV_IMPORT_FINAL together",
-        "TRADINGVIEW_VISUAL_CHECK_REQUIRED: paste latest TV_IMPORT_FINAL and verify RE/RC/SE/SC distribution before closing signal change",
+        "SERVER_SIGNAL_AUTHORITY_PRIMARY: OpenClaw must tune server signal and downstream server policy first; Pine is not an optimization authority",
+        "PINE_SHADOW_COMPARE_ONLY: keep Pine as manual comparison/visualization shadow only; do not prioritize Pine modification over server signal correction",
       ]
       : []),
     ...(Array.isArray(selfEvolutionObjectiveRecoveryGovernorSummary.next_actions) ? selfEvolutionObjectiveRecoveryGovernorSummary.next_actions : []),
