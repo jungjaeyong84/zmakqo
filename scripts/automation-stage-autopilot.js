@@ -459,6 +459,7 @@ function buildAiStageCandidate(mlArtifact, currentSys = {}, objectiveSupervisor 
     challengerBeatsCurrent: actionable,
     support_n: toNum(rec && rec.support_n),
     support_rate: toNum(rec && rec.support_rate),
+    target_markets: [],
   };
 }
 
@@ -483,6 +484,7 @@ function buildMarketStageCandidate(mlArtifact, currentSys = {}, objectiveSupervi
     objectiveEnoughSample: Boolean(objectiveSupervisor && objectiveSupervisor.objective && objectiveSupervisor.objective.enough_sample === true),
     objectiveDirectionOk: actionable,
     challengerBeatsCurrent: actionable,
+    target_markets: [],
   };
 }
 
@@ -507,6 +509,34 @@ function normalizeCandidateMarkets(markets = []) {
     .map((row) => String(row || "").trim().toUpperCase().replace(/\\.P$/, ""))
     .filter(Boolean);
   return normalized.length ? normalized : ["ALL"];
+}
+
+function resolveCandidateTargetMarkets(candidate = {}) {
+  const directMarkets = normalizeCandidateMarkets(candidate && candidate.markets);
+  if (!(directMarkets.length === 1 && directMarkets[0] === "ALL")) return directMarkets;
+  const targetMarket = String(candidate && candidate.target_market || "").trim().toUpperCase().replace(/\\.P$/, "");
+  return targetMarket ? [targetMarket] : [];
+}
+
+function evaluateExecutionQualityStageGuard({ candidate = {}, executionQuality = null } = {}) {
+  const summary = executionQuality && typeof executionQuality === "object" ? executionQuality : {};
+  const status = String(summary.status || "").trim().toUpperCase();
+  const targetMarkets = resolveCandidateTargetMarkets(candidate);
+  if (!targetMarkets.length || candidate.actionable !== true || status !== "EXECUTION_QUALITY_REVIEW") {
+    return { allowed: true, blockers: [], watched_markets: [] };
+  }
+  const watched = new Set([
+    String(summary.top_latency_market || "").trim().toUpperCase(),
+    String(summary.top_slippage_market || "").trim().toUpperCase(),
+    String(summary.top_partial_market || "").trim().toUpperCase(),
+  ].filter(Boolean));
+  const matched = targetMarkets.filter((market) => watched.has(String(market || "").trim().toUpperCase()));
+  if (!matched.length) return { allowed: true, blockers: [], watched_markets: [] };
+  return {
+    allowed: false,
+    blockers: [`EXECUTION_QUALITY_MARKET_REVIEW:${matched.join("|")}`],
+    watched_markets: matched,
+  };
 }
 
 function sortCanonicalPolicyCandidates(rows = []) {
@@ -687,6 +717,7 @@ function buildCanonicalPolicyStageCandidate(candidatesArtifact, currentSys = {},
     candidate_id: String(selected.candidate_id || "").trim() || null,
     source: String(selected.source || "").trim() || null,
     unsupported_keys: unsupportedKeys,
+    markets: normalizeCandidateMarkets(selected && selected.markets),
   };
 }
 
@@ -829,6 +860,7 @@ function buildSourceModeStageCandidate({
     server_signal_cutover_blockers: cutoverBlockers,
     server_signal_cutover_dominant_family: cutoverDominantFamily,
     server_signal_cutover_recommended_action: cutoverRecommendedAction,
+    markets: normalizeCandidateMarkets(selected && selected.markets),
   };
 }
 
@@ -923,6 +955,10 @@ function buildEvParityCandidate(parityArtifact, cutoverArtifact = null, dropVali
     drop_validation_top_family: dropValidationTopFamily,
     drop_validation_top_reason: dropValidationTopReason,
     drop_validation_rescue_rate: dropValidationRescueRate,
+    target_market: String(dropValidationSummary.top_rescue_market || "").trim().toUpperCase() || null,
+    target_markets: String(dropValidationSummary.top_rescue_market || "").trim()
+      ? [String(dropValidationSummary.top_rescue_market || "").trim().toUpperCase()]
+      : [],
   };
 }
 
@@ -970,6 +1006,10 @@ function buildWaitParityCandidate(cutoverArtifact = null, currentSys = {}, objec
     current_cooldown_policy_mismatch_n: cooldownMismatchN,
     source_parity_mismatch_n: sourceParityMismatchN,
     recommended_action: recommendedAction,
+    target_market: String(cutoverSummary.top_mismatch_market || cutoverStatus.top_mismatch_market || "").trim().toUpperCase() || null,
+    target_markets: String(cutoverSummary.top_mismatch_market || cutoverStatus.top_mismatch_market || "").trim()
+      ? [String(cutoverSummary.top_mismatch_market || cutoverStatus.top_mismatch_market || "").trim().toUpperCase()]
+      : [],
   };
 }
 
@@ -1002,6 +1042,7 @@ function buildObservedStageCandidate(stage, artifact, currentObj = {}) {
       reason: String(data.decision_reason || "N/A"),
       snapshotPath: data.artifacts && data.artifacts.autopilot_snapshot_path,
       objectiveEnoughSample: Boolean(currentObj && currentObj.enough_sample === true),
+      target_markets: [],
     };
   }
   const next = {
@@ -1022,6 +1063,7 @@ function buildObservedStageCandidate(stage, artifact, currentObj = {}) {
     reason: String(data.reason || "N/A"),
     snapshotPath: data.artifacts && data.artifacts.autopilot_snapshot_path,
     objectiveEnoughSample: Boolean(currentObj && currentObj.enough_sample === true),
+    target_markets: [],
   };
 }
 
@@ -1248,7 +1290,7 @@ function isPreparedPineAligned(latestWeeklyHistory = {}, candidate = {}) {
     || (candidateDisplaySignature && displayRecommendedPatchId === candidateDisplaySignature);
 }
 
-async function applyStageCandidate({ stage, candidate, stageState, history, nowMeta, nowMs, canaryPass, objectiveArtifact, currentSys, snapshotKeys, selfEvolutionRollbackReady = false, overrideAuthority = null }) {
+async function applyStageCandidate({ stage, candidate, stageState, history, nowMeta, nowMs, canaryPass, objectiveArtifact, currentSys, snapshotKeys, selfEvolutionRollbackReady = false, overrideAuthority = null, executionQuality = null }) {
   const snapshot = pickSettingsSnapshot(currentSys, snapshotKeys);
   const changeBudgetOk = stageChangeBudgetOk(history, nowMs, stage);
   const nextHistory = candidate.signature
@@ -1282,9 +1324,13 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
     nextSettings: candidate && candidate.nextSettings ? candidate.nextSettings : {},
     authoritySummary: overrideAuthority,
   });
+  const executionQualityGuard = evaluateExecutionQualityStageGuard({
+    candidate,
+    executionQuality,
+  });
   const combinedGuard = {
-    ready: guard.ready === true && overrideGuard.allowed === true,
-    blockers: [...(guard.blockers || []), ...(overrideGuard.blockers || [])],
+    ready: guard.ready === true && overrideGuard.allowed === true && executionQualityGuard.allowed === true,
+    blockers: [...(guard.blockers || []), ...(overrideGuard.blockers || []), ...(executionQualityGuard.blockers || [])],
   };
 
   if (candidate.actionable && combinedGuard.ready && stageState.applied_signature !== candidate.signature) {
@@ -1325,6 +1371,7 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
         override_authority_allowed: true,
         override_authority_blockers: [],
         override_touched_markets: overrideGuard.touched_markets || [],
+        execution_quality_blockers: [],
       },
       history: appendStageHistory(nextHistory, {
         stage,
@@ -1404,6 +1451,7 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
       override_authority_allowed: overrideGuard.allowed === true,
       override_authority_blockers: overrideGuard.blockers || [],
       override_touched_markets: overrideGuard.touched_markets || [],
+      execution_quality_blockers: executionQualityGuard.blockers || [],
     },
     history: nextHistory,
     action: null,
@@ -1759,6 +1807,7 @@ async function main() {
     snapshotKeys: AI_SNAPSHOT_KEYS,
     selfEvolutionRollbackReady,
     overrideAuthority: overrideAuthoritySummary,
+    executionQuality: selfEvolutionExecutionQuality,
   });
   history = result.history;
   stateData.stages.AI = result.stageState;
@@ -1771,6 +1820,7 @@ async function main() {
     last_action: result.stageState.last_action,
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
+    execution_quality_blockers: result.stageState.execution_quality_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
@@ -1798,6 +1848,7 @@ async function main() {
     snapshotKeys: MARKET_SNAPSHOT_KEYS,
     selfEvolutionRollbackReady,
     overrideAuthority: overrideAuthoritySummary,
+    executionQuality: selfEvolutionExecutionQuality,
   });
   history = result.history;
   stateData.stages.MARKET = result.stageState;
@@ -1810,6 +1861,7 @@ async function main() {
     last_action: result.stageState.last_action,
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
+    execution_quality_blockers: result.stageState.execution_quality_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
@@ -1852,6 +1904,7 @@ async function main() {
     snapshotKeys: EV_SNAPSHOT_KEYS,
     selfEvolutionRollbackReady,
     overrideAuthority: overrideAuthoritySummary,
+    executionQuality: selfEvolutionExecutionQuality,
   });
   }
   history = result.history;
@@ -1865,6 +1918,7 @@ async function main() {
     last_action: result.stageState.last_action,
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
+    execution_quality_blockers: result.stageState.execution_quality_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
@@ -1911,6 +1965,7 @@ async function main() {
     snapshotKeys: WAIT_SNAPSHOT_KEYS,
     selfEvolutionRollbackReady,
     overrideAuthority: overrideAuthoritySummary,
+    executionQuality: selfEvolutionExecutionQuality,
   });
   }
   history = result.history;
@@ -1924,6 +1979,7 @@ async function main() {
     last_action: result.stageState.last_action,
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
+    execution_quality_blockers: result.stageState.execution_quality_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
@@ -1957,6 +2013,7 @@ async function main() {
     snapshotKeys: CANONICAL_POLICY_SNAPSHOT_KEYS,
     selfEvolutionRollbackReady,
     overrideAuthority: overrideAuthoritySummary,
+    executionQuality: selfEvolutionExecutionQuality,
   });
   history = result.history;
   stateData.stages.CANONICAL_POLICY = result.stageState;
@@ -1970,6 +2027,7 @@ async function main() {
     last_action: result.stageState.last_action,
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
+    execution_quality_blockers: result.stageState.execution_quality_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
@@ -2020,6 +2078,7 @@ async function main() {
     snapshotKeys: SOURCE_MODE_SNAPSHOT_KEYS,
     selfEvolutionRollbackReady: serverPrimaryRollbackReady,
     overrideAuthority: overrideAuthoritySummary,
+    executionQuality: selfEvolutionExecutionQuality,
   });
   history = result.history;
   stateData.stages.SOURCE_MODE = result.stageState;
@@ -2037,6 +2096,7 @@ async function main() {
     last_action: result.stageState.last_action,
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
+    execution_quality_blockers: result.stageState.execution_quality_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
