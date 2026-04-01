@@ -31,6 +31,7 @@ const MAX_AGE_HOURS = Object.freeze({
   serverSignalRuntime: 24,
   serverSignalCutoverReadiness: 24,
   dropValidation: 24,
+  marketObjectiveScore: 24,
   canonicalProvenance: 24,
   serverPrimaryCanary: 24,
   serverPrimaryAcceptanceWatch: 24,
@@ -59,6 +60,7 @@ const INPUTS = Object.freeze({
   serverSignalRuntime: path.join(OPS_DAILY_DIR, "server_signal_runtime_latest.json"),
   serverSignalCutoverReadiness: path.join(OPS_DAILY_DIR, "server_signal_cutover_readiness_latest.json"),
   dropValidation: path.join(OPS_DAILY_DIR, "best_self_evolution_drop_validation_latest.json"),
+  marketObjectiveScore: path.join(OPS_DAILY_DIR, "best_self_evolution_market_objective_score_latest.json"),
   canonicalProvenance: path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_provenance_latest.json"),
   serverPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
   serverPrimaryAcceptanceWatch: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_acceptance_watch_latest.json"),
@@ -114,6 +116,7 @@ function renderMarkdown(report = {}) {
     `- server_signal_runtime: ${summary.server_signal_runtime_status || "N/A"} / tf: ${summary.server_signal_runtime_exec_tf || "N/A"} / markets: ${summary.server_signal_runtime_market_count ?? "N/A"}`,
     `- server_signal_cutover: ${summary.server_signal_cutover_status || "N/A"} / ready: ${summary.server_signal_cutover_ready ? "YES" : "NO"} / blockers: ${Array.isArray(summary.server_signal_cutover_blockers) && summary.server_signal_cutover_blockers.length ? summary.server_signal_cutover_blockers.join("|") : "none"}`,
     `- drop_validation: ${summary.drop_validation_status || "N/A"} / top_rescue: ${summary.drop_validation_top_rescue_family || "N/A"} / reason: ${summary.drop_validation_top_rescue_reason || "N/A"} / market: ${summary.drop_validation_top_rescue_market || "N/A"}`,
+    `- market_objective: ${summary.market_objective_status || "N/A"} / recovery: ${summary.market_objective_top_recovery_market || "N/A"} / drag: ${summary.market_objective_top_drag_market || "N/A"}`,
     `- promotion_path_ready: ${summary.promotion_path_ready ? "YES" : "NO"} / manual_paste_ready: ${summary.manual_paste_ready ? "YES" : "NO"}`,
     `- ready_candidate: ${summary.ready_candidate_id || "N/A"} / canary_open_wave: ${summary.canary_open_wave ?? "N/A"}`,
     "",
@@ -165,6 +168,14 @@ async function main() {
   const dropValidationSummary = dropValidationRaw.summary && typeof dropValidationRaw.summary === "object"
     ? dropValidationRaw.summary
     : {};
+  const marketObjectiveRaw = artifacts.marketObjectiveScore && artifacts.marketObjectiveScore.data
+    ? ((artifacts.marketObjectiveScore.data.raw && typeof artifacts.marketObjectiveScore.data.raw === "object")
+      ? artifacts.marketObjectiveScore.data.raw
+      : artifacts.marketObjectiveScore.data)
+    : {};
+  const marketObjectiveSummary = marketObjectiveRaw.summary && typeof marketObjectiveRaw.summary === "object"
+    ? marketObjectiveRaw.summary
+    : {};
   const dropValidationRow = {
     loop: "DROP_VALIDATION",
     fresh: artifacts.dropValidation && artifacts.dropValidation.fresh === true,
@@ -180,12 +191,27 @@ async function main() {
   if (!rows.find((row) => row.loop === "DROP_VALIDATION")) {
     rows.splice(9, 0, dropValidationRow);
   }
+  const marketObjectiveRow = {
+    loop: "MARKET_OBJECTIVE_SCORE",
+    fresh: artifacts.marketObjectiveScore && artifacts.marketObjectiveScore.fresh === true,
+    cycle_id: String(marketObjectiveRaw.cycle_id || marketObjectiveRaw.generation_id || "").trim() || null,
+    status: String(marketObjectiveSummary.status || "").trim().toUpperCase() === "RECOVERY_PRIORITY_ACTIVE"
+      ? "WARN"
+      : (String(marketObjectiveSummary.status || "").trim().toUpperCase() ? "PASS" : "N/A"),
+    reason: `recovery=${marketObjectiveSummary.top_recovery_market || "N/A"} / drag=${marketObjectiveSummary.top_drag_market || "N/A"} / active=${marketObjectiveSummary.active_market_n ?? 0} / global=${marketObjectiveSummary.global_objective_score != null ? marketObjectiveSummary.global_objective_score : "N/A"}`,
+  };
+  if (!rows.find((row) => row.loop === "MARKET_OBJECTIVE_SCORE")) {
+    rows.splice(10, 0, marketObjectiveRow);
+  }
   const summary = {
     ...(derived.summary || {}),
     drop_validation_status: dropValidationSummary.status || derived.summary && derived.summary.drop_validation_status || null,
     drop_validation_top_rescue_family: dropValidationSummary.top_rescue_family || derived.summary && derived.summary.drop_validation_top_rescue_family || null,
     drop_validation_top_rescue_reason: dropValidationSummary.top_rescue_reason || derived.summary && derived.summary.drop_validation_top_rescue_reason || null,
     drop_validation_top_rescue_market: dropValidationSummary.top_rescue_market || derived.summary && derived.summary.drop_validation_top_rescue_market || null,
+    market_objective_status: marketObjectiveSummary.status || derived.summary && derived.summary.market_objective_status || null,
+    market_objective_top_recovery_market: marketObjectiveSummary.top_recovery_market || derived.summary && derived.summary.market_objective_top_recovery_market || null,
+    market_objective_top_drag_market: marketObjectiveSummary.top_drag_market || derived.summary && derived.summary.market_objective_top_drag_market || null,
     loop_n: rows.length,
     fresh_loop_n: rows.filter((row) => row.fresh === true).length,
   };

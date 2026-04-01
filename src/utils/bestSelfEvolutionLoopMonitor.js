@@ -37,6 +37,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const serverSignalRuntime = unwrapRawReport(reports.serverSignalRuntime) || {};
   const serverSignalCutoverReadiness = unwrapRawReport(reports.serverSignalCutoverReadiness) || {};
   const dropValidation = unwrapRawReport(reports.dropValidation) || {};
+  const marketObjectiveScore = unwrapRawReport(reports.marketObjectiveScore) || {};
   const canonicalProvenance = unwrapRawReport(reports.canonicalProvenance) || {};
   const serverPrimaryCanary = unwrapRawReport(reports.serverPrimaryCanary) || {};
   const serverPrimaryAcceptanceWatch = unwrapRawReport(reports.serverPrimaryAcceptanceWatch) || {};
@@ -66,6 +67,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const serverSignalRuntimeSummary = serverSignalRuntime.summary && typeof serverSignalRuntime.summary === "object" ? serverSignalRuntime.summary : {};
   const serverSignalCutoverSummary = serverSignalCutoverReadiness.summary && typeof serverSignalCutoverReadiness.summary === "object" ? serverSignalCutoverReadiness.summary : {};
   const dropValidationSummary = dropValidation.summary && typeof dropValidation.summary === "object" ? dropValidation.summary : {};
+  const marketObjectiveScoreSummary = marketObjectiveScore.summary && typeof marketObjectiveScore.summary === "object" ? marketObjectiveScore.summary : {};
   const canonicalProvenanceSummary = canonicalProvenance.summary && typeof canonicalProvenance.summary === "object" ? canonicalProvenance.summary : {};
   const canonicalProvenanceEligible = canonicalProvenanceSummary.post_cutover_engine_eligible_n != null
     ? canonicalProvenanceSummary.post_cutover_engine_eligible_n
@@ -102,6 +104,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(serverSignalRuntime)
     || readCycleId(serverSignalCutoverReadiness)
     || readCycleId(dropValidation)
+    || readCycleId(marketObjectiveScore)
     || readCycleId(canonicalProvenance)
     || readCycleId(serverPrimaryCanary)
     || readCycleId(serverPrimaryAcceptanceWatch)
@@ -461,6 +464,10 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       drop_validation_top_watch_markets: Array.isArray(dropValidationSummary.top_watch_markets)
         ? dropValidationSummary.top_watch_markets.slice(0, 6).map((row) => String(row && row.market || "").trim().toUpperCase()).filter(Boolean)
         : [],
+      market_objective_status: marketObjectiveScoreSummary.status || null,
+      market_objective_top_recovery_market: marketObjectiveScoreSummary.top_recovery_market || null,
+      market_objective_top_drag_market: marketObjectiveScoreSummary.top_drag_market || null,
+      market_objective_top_recovery_avg_horizon_pnl_quote_proxy: toNum(marketObjectiveScoreSummary.top_recovery_avg_horizon_pnl_quote_proxy),
       server_signal_entry_24h_n: toNum(serverSignalQualitySummary.authoritative_entry_signal_24h_n),
       server_signal_intent_24h_n: toNum(serverSignalQualitySummary.order_intent_24h_n),
       server_signal_fill_24h_n: toNum(serverSignalQualitySummary.fill_24h_n),

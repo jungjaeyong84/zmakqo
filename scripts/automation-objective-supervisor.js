@@ -60,6 +60,7 @@ const WAIT_LATEST_PATH = path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json
 const FEBT_PHASE0_LATEST_PATH = path.join(OPS_DAILY_DIR, "febt_phase0_baseline_latest.json");
 const SELF_EVOLUTION_DATASET_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_dataset_latest.json");
 const SELF_EVOLUTION_OBJECTIVE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_objective_latest.json");
+const SELF_EVOLUTION_MARKET_OBJECTIVE_SCORE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_market_objective_score_latest.json");
 const SELF_EVOLUTION_ATTRIBUTION_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_attribution_latest.json");
 const SELF_EVOLUTION_CANDIDATES_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_candidates_latest.json");
 const SELF_EVOLUTION_REPLAY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_replay_latest.json");
@@ -101,6 +102,7 @@ const FRESHNESS_HOURS = Object.freeze({
   phase0: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_FEBT_PHASE0_MAX_AGE_HOURS || 36)),
   selfEvolutionDataset: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_DATASET_MAX_AGE_HOURS || 36)),
   selfEvolutionObjective: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_OBJECTIVE_MAX_AGE_HOURS || 36)),
+  selfEvolutionMarketObjectiveScore: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_MARKET_OBJECTIVE_SCORE_MAX_AGE_HOURS || 36)),
   selfEvolutionAttribution: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_ATTRIBUTION_MAX_AGE_HOURS || 36)),
   selfEvolutionCandidates: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_CANDIDATES_MAX_AGE_HOURS || 36)),
   selfEvolutionReplay: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_REPLAY_MAX_AGE_HOURS || 36)),
@@ -236,9 +238,9 @@ function readCycleId(value = null) {
 
 const SELF_EVOLUTION_STAGE_KEYS = Object.freeze({
   SEED: ["dataset"],
-  INTEGRATED: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "serverPrimaryAcceptanceWatch", "pineShadowDrift", "deploymentProbe", "bundleActivation", "openclawAutonomyContract", "objectiveRecoveryGovernor", "objectiveRecoveryEffect", "memory", "codex"],
-  FINAL: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "serverPrimaryAcceptanceWatch", "pineShadowDrift", "deploymentProbe", "bundleActivation", "openclawAutonomyContract", "objectiveRecoveryGovernor", "objectiveRecoveryEffect", "memory", "codex"],
-  STANDALONE: ["dataset", "objective", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "serverPrimaryAcceptanceWatch", "pineShadowDrift", "deploymentProbe", "bundleActivation", "openclawAutonomyContract", "objectiveRecoveryGovernor", "objectiveRecoveryEffect", "memory", "codex", "stageAutopilot"],
+  INTEGRATED: ["dataset", "objective", "marketObjectiveScore", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "serverPrimaryAcceptanceWatch", "pineShadowDrift", "deploymentProbe", "bundleActivation", "openclawAutonomyContract", "objectiveRecoveryGovernor", "objectiveRecoveryEffect", "memory", "codex"],
+  FINAL: ["dataset", "objective", "marketObjectiveScore", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "serverPrimaryAcceptanceWatch", "pineShadowDrift", "deploymentProbe", "bundleActivation", "openclawAutonomyContract", "objectiveRecoveryGovernor", "objectiveRecoveryEffect", "memory", "codex"],
+  STANDALONE: ["dataset", "objective", "marketObjectiveScore", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "serverPrimaryAcceptanceWatch", "pineShadowDrift", "deploymentProbe", "bundleActivation", "openclawAutonomyContract", "objectiveRecoveryGovernor", "objectiveRecoveryEffect", "memory", "codex", "stageAutopilot"],
 });
 
 function summarizeSelfEvolutionArtifactCycles({ artifacts = {}, stage = "STANDALONE", preferredCycleId = null } = {}) {
@@ -521,6 +523,35 @@ function summarizeSelfEvolutionObjective(report = null) {
     bottom_market: markets.length ? markets[markets.length - 1] : null,
     market_concentration: concentration,
     market_objective_scores: markets,
+  };
+}
+
+function summarizeSelfEvolutionMarketObjectiveScore(report = null) {
+  const summary = report && report.summary && typeof report.summary === "object" ? report.summary : {};
+  const rows = Array.isArray(report && report.by_market) ? report.by_market : [];
+  return {
+    available: !!report,
+    status: String(summary.status || "").trim().toUpperCase() || null,
+    global_objective_score: toNum(summary.global_objective_score),
+    market_n: toNum(summary.market_n) || 0,
+    active_market_n: toNum(summary.active_market_n) || 0,
+    concentration_flag: summary.concentration_flag === true,
+    dominant_negative_market: summary.dominant_negative_market && typeof summary.dominant_negative_market === "object"
+      ? summary.dominant_negative_market
+      : null,
+    dominant_negative_share: toNum(summary.dominant_negative_share),
+    top_positive_market: String(summary.top_positive_market || "").trim().toUpperCase() || null,
+    top_positive_objective_score: toNum(summary.top_positive_objective_score),
+    top_drag_market: String(summary.top_drag_market || "").trim().toUpperCase() || null,
+    top_drag_objective_score: toNum(summary.top_drag_objective_score),
+    top_recovery_market: String(summary.top_recovery_market || "").trim().toUpperCase() || null,
+    top_recovery_objective_score: toNum(summary.top_recovery_objective_score),
+    top_recovery_drop_action: String(summary.top_recovery_drop_action || "").trim().toUpperCase() || null,
+    top_recovery_drop_reason: String(summary.top_recovery_drop_reason || "").trim().toUpperCase() || null,
+    top_recovery_avg_horizon_pnl_quote_proxy: toNum(summary.top_recovery_avg_horizon_pnl_quote_proxy),
+    runtime_exec_tf: String(summary.runtime_exec_tf || "").trim() || null,
+    top_watch_markets: Array.isArray(summary.top_watch_markets) ? summary.top_watch_markets : [],
+    by_market: rows,
   };
 }
 
@@ -1672,7 +1703,7 @@ function buildObjectiveSupervisorTelegramAlertSections(report = {}) {
   }));
 }
 
-function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionCanonicalParity, selfEvolutionServerSignalAuthority, selfEvolutionServerSignalQuality, selfEvolutionServerSignalCutoverReadiness, selfEvolutionDropValidation, selfEvolutionCanonicalProvenance, selfEvolutionServerPrimaryCanary, selfEvolutionPineShadowDrift, selfEvolutionDeploymentProbe, selfEvolutionBundleActivation, selfEvolutionEvGateRescue, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache, preparedOverride } = {}) {
+function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionMarketObjectiveScore, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionCanonicalParity, selfEvolutionServerSignalAuthority, selfEvolutionServerSignalQuality, selfEvolutionServerSignalCutoverReadiness, selfEvolutionDropValidation, selfEvolutionCanonicalProvenance, selfEvolutionServerPrimaryCanary, selfEvolutionPineShadowDrift, selfEvolutionDeploymentProbe, selfEvolutionBundleActivation, selfEvolutionEvGateRescue, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache, preparedOverride } = {}) {
   const objective = governance && governance.current && governance.current.objective ? governance.current.objective : {};
   const objectiveCfg = governance && governance.objective ? governance.objective : {};
   const promotion = changeControl && changeControl.auto_promotion ? changeControl.auto_promotion : {};
@@ -1763,6 +1794,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   const selfEvolutionServerSignalQualitySummary = summarizeSelfEvolutionServerSignalQuality(selfEvolutionServerSignalQuality);
   const selfEvolutionServerSignalCutoverReadinessSummary = summarizeSelfEvolutionServerSignalCutoverReadiness(selfEvolutionServerSignalCutoverReadiness);
   const selfEvolutionDropValidationSummary = summarizeSelfEvolutionDropValidation(selfEvolutionDropValidation);
+  const selfEvolutionMarketObjectiveScoreSummary = summarizeSelfEvolutionMarketObjectiveScore(selfEvolutionMarketObjectiveScore);
   const selfEvolutionCanonicalProvenanceSummary = deriveCanonicalProvenanceDiagnostics(selfEvolutionCanonicalProvenance);
   const selfEvolutionServerPrimaryCanarySummary = deriveServerPrimaryCanaryDiagnostics(selfEvolutionServerPrimaryCanary);
   const selfEvolutionPineShadowDriftSummary = derivePineShadowDriftDiagnostics(selfEvolutionPineShadowDrift);
@@ -2161,6 +2193,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     self_evolution_server_signal_quality: selfEvolutionServerSignalQualitySummary,
     self_evolution_server_signal_cutover_readiness: selfEvolutionServerSignalCutoverReadinessSummary,
     self_evolution_drop_validation: selfEvolutionDropValidationSummary,
+    self_evolution_market_objective_score: selfEvolutionMarketObjectiveScoreSummary,
     self_evolution_canonical_provenance: selfEvolutionCanonicalProvenanceSummary,
     self_evolution_server_primary_canary: selfEvolutionServerPrimaryCanarySummary,
     self_evolution_pine_shadow_drift: selfEvolutionPineShadowDriftSummary,
@@ -2497,6 +2530,7 @@ async function main() {
   const phase0Artifact = readArtifact("febt_phase0", FEBT_PHASE0_LATEST_PATH, FRESHNESS_HOURS.phase0);
   const selfEvolutionDatasetArtifact = readArtifact("self_evolution_dataset", SELF_EVOLUTION_DATASET_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionDataset);
   const selfEvolutionObjectiveArtifact = readArtifact("self_evolution_objective", SELF_EVOLUTION_OBJECTIVE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionObjective);
+  const selfEvolutionMarketObjectiveScoreArtifact = readArtifact("self_evolution_market_objective_score", SELF_EVOLUTION_MARKET_OBJECTIVE_SCORE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionMarketObjectiveScore);
   const selfEvolutionAttributionArtifact = readArtifact("self_evolution_attribution", SELF_EVOLUTION_ATTRIBUTION_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionAttribution);
   const selfEvolutionCandidatesArtifact = readArtifact("self_evolution_candidates", SELF_EVOLUTION_CANDIDATES_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCandidates);
   const selfEvolutionReplayArtifact = readArtifact("self_evolution_replay", SELF_EVOLUTION_REPLAY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionReplay);
@@ -2533,6 +2567,7 @@ async function main() {
     artifacts: {
       dataset: selfEvolutionDatasetArtifact,
       objective: selfEvolutionObjectiveArtifact,
+      marketObjectiveScore: selfEvolutionMarketObjectiveScoreArtifact,
       attribution: selfEvolutionAttributionArtifact,
       candidates: selfEvolutionCandidatesArtifact,
       replay: selfEvolutionReplayArtifact,
@@ -2578,6 +2613,7 @@ async function main() {
     phase0: phase0Artifact.exists ? { ...phase0Artifact.data, fresh: phase0Artifact.fresh } : null,
     selfEvolutionDataset: selfEvolutionDatasetArtifact.exists ? { ...selfEvolutionDatasetArtifact.data, fresh: selfEvolutionDatasetArtifact.fresh } : null,
     selfEvolutionObjective: selfEvolutionObjectiveArtifact.exists ? { ...selfEvolutionObjectiveArtifact.data, fresh: selfEvolutionObjectiveArtifact.fresh } : null,
+    selfEvolutionMarketObjectiveScore: selfEvolutionMarketObjectiveScoreArtifact.exists ? { ...selfEvolutionMarketObjectiveScoreArtifact.data, fresh: selfEvolutionMarketObjectiveScoreArtifact.fresh } : null,
     selfEvolutionAttribution: selfEvolutionAttributionArtifact.exists ? { ...selfEvolutionAttributionArtifact.data, fresh: selfEvolutionAttributionArtifact.fresh } : null,
     selfEvolutionCandidates: selfEvolutionCandidatesArtifact.exists ? { ...selfEvolutionCandidatesArtifact.data, fresh: selfEvolutionCandidatesArtifact.fresh } : null,
     selfEvolutionReplay: selfEvolutionReplayArtifact.exists ? { ...selfEvolutionReplayArtifact.data, fresh: selfEvolutionReplayArtifact.fresh } : null,
@@ -2648,6 +2684,18 @@ async function main() {
       : []),
     ...(evaluation.self_evolution_drop_validation && Array.isArray(evaluation.self_evolution_drop_validation.next_actions)
       ? evaluation.self_evolution_drop_validation.next_actions
+      : []),
+    ...(evaluation.self_evolution_market_objective_score && evaluation.self_evolution_market_objective_score.status
+      ? [`MARKET_OBJECTIVE_STATUS: ${evaluation.self_evolution_market_objective_score.status} / active=${evaluation.self_evolution_market_objective_score.active_market_n ?? 0} / markets=${evaluation.self_evolution_market_objective_score.market_n ?? 0} / global=${evaluation.self_evolution_market_objective_score.global_objective_score != null ? evaluation.self_evolution_market_objective_score.global_objective_score : "N/A"}`]
+      : []),
+    ...(evaluation.self_evolution_market_objective_score && evaluation.self_evolution_market_objective_score.top_recovery_market
+      ? [`MARKET_OBJECTIVE_TOP_RECOVERY: ${evaluation.self_evolution_market_objective_score.top_recovery_market} / score=${evaluation.self_evolution_market_objective_score.top_recovery_objective_score != null ? evaluation.self_evolution_market_objective_score.top_recovery_objective_score : "N/A"} / action=${evaluation.self_evolution_market_objective_score.top_recovery_drop_action || "N/A"} / avg_pnl_proxy=${evaluation.self_evolution_market_objective_score.top_recovery_avg_horizon_pnl_quote_proxy != null ? evaluation.self_evolution_market_objective_score.top_recovery_avg_horizon_pnl_quote_proxy : "N/A"}`]
+      : []),
+    ...(evaluation.self_evolution_market_objective_score && evaluation.self_evolution_market_objective_score.top_drag_market
+      ? [`MARKET_OBJECTIVE_TOP_DRAG: ${evaluation.self_evolution_market_objective_score.top_drag_market} / score=${evaluation.self_evolution_market_objective_score.top_drag_objective_score != null ? evaluation.self_evolution_market_objective_score.top_drag_objective_score : "N/A"} / concentration=${evaluation.self_evolution_market_objective_score.concentration_flag ? "YES" : "NO"}`]
+      : []),
+    ...(evaluation.self_evolution_market_objective_score && Array.isArray(evaluation.self_evolution_market_objective_score.top_watch_markets)
+      ? evaluation.self_evolution_market_objective_score.top_watch_markets.slice(0, 6).map((row) => `MARKET_OBJECTIVE_WATCH: ${row.market || "N/A"} / obj=${row.objective_score != null ? row.objective_score : "N/A"} / band=${row.objective_band || "N/A"} / drop=${row.drop_verdict || "N/A"} / action=${row.drop_action || "N/A"} / prio=${row.recovery_priority_score != null ? row.recovery_priority_score : "N/A"}`)
       : []),
     ...(evaluation.self_evolution_server_signal_cutover_readiness
       ? [
