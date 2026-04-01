@@ -41,6 +41,7 @@ const { sendSignalReceivedAlert } = require("../services/signalLifecycleAlert");
 const { sendAlert } = require("../utils/alerts");
 const { estimateTp1ReachProbability } = require("../services/evTp1Probability");
 const { resolveWaitOneBarConfig, evaluateWaitOneBarTiming } = require("../services/waitOneBarPolicy");
+const { buildServerNativeInitialSignals, HTF_TF: SERVER_NATIVE_HTF_TF } = require("../services/serverNativeInitialSignal");
 const { placeMarketBuy, placeMarketSell, fetchOrder, calcAveragePrice: calcUpbitAveragePrice } = require("../exchanges/upbitPrivate");
 const { placeOrder: placeKiwoomOrder, fetchAccount: fetchKiwoomAccount } = require("../exchanges/kiwoomRest");
 const { isKrxMarketOpenKst } = require("../utils/krxCalendar");
@@ -2568,6 +2569,51 @@ function finalizeInternalSignals({ signals, posMeta, barCloseMs, fallbackUtc, ex
     });
     return acc;
   }, []);
+}
+
+async function loadServerNativeInitialSignals({ exchange, symbol, signalTf, barCloseMs } = {}) {
+  if (!symbol || !signalTf || !Number.isFinite(Number(barCloseMs))) return [];
+  try {
+    const [bars, htfBars] = await Promise.all([
+      queryBars({ exchange, symbol, tf: signalTf, limit: 220 }),
+      queryBars({ exchange, symbol, tf: SERVER_NATIVE_HTF_TF, limit: 120 }),
+    ]);
+    return buildServerNativeInitialSignals({
+      exchange,
+      symbol,
+      tf: signalTf,
+      bars,
+      htfBars,
+      barCloseMs: Number(barCloseMs),
+    });
+  } catch (e) {
+    console.warn("[SERVER_NATIVE_INITIAL_SIGNAL_FAIL]", {
+      exchange,
+      symbol,
+      tf: signalTf,
+      bar_close_ms: Number.isFinite(Number(barCloseMs)) ? Number(barCloseMs) : null,
+      error: e && e.message ? e.message : String(e),
+    });
+    return [];
+  }
+}
+
+function dedupeEntrySignalsByFamily(signals = []) {
+  const rows = Array.isArray(signals) ? signals : [];
+  const seen = new Set();
+  const out = [];
+  for (const s of rows) {
+    const intent = intentFromSignal({ event: s && s.event, side: s && s.side, features: s && s.features });
+    if (intent === "ENTRY" || intent === "ADD") {
+      const dir = directionFromSignal({ event: s && s.event, side: s && s.side });
+      const tier = resolveEntryQualityTier(String(s && s.event || "").toUpperCase(), s && s.features);
+      const family = `${intent}__${dir || "NA"}__${tier || "NA"}`;
+      if (seen.has(family)) continue;
+      seen.add(family);
+    }
+    out.push(s);
+  }
+  return out;
 }
 
 function hasPositionSize(sizePct) {
@@ -8111,6 +8157,14 @@ async function runPaperUpbitForBar({
     ? Number(barCloseMs)
     : (Number.isFinite(fallbackSignalBarMs) ? fallbackSignalBarMs : null);
   const signalBarCloseUtc = Number.isFinite(signalBarCloseMs) ? msToUtcZ(signalBarCloseMs) : null;
+  const nativeInitialSignals = Number.isFinite(signalBarCloseMs)
+    ? await loadServerNativeInitialSignals({
+      exchange,
+      symbol,
+      signalTf,
+      barCloseMs: signalBarCloseMs,
+    })
+    : [];
 
   // 내부 신호(현재 NO_SIGNAL)
   const allowInternalExitSignals = canEvaluateInternalExitSignalsForBar({ posMeta, barCloseMs });
@@ -8121,6 +8175,7 @@ async function runPaperUpbitForBar({
     ? buildTimeStopExitSignal({ position: pos, bar, posMeta, barCloseMs, signalTfMs, maxHoldBars })
     : null;
   const internalSignalsRaw = [
+    ...nativeInitialSignals,
     ...generateSignals({
       exchange,
       symbol,
@@ -8195,7 +8250,7 @@ async function runPaperUpbitForBar({
     };
   });
 
-  const signals = [...internalSignals, ...externalSignals];
+  const signals = dedupeEntrySignalsByFamily([...internalSignals, ...externalSignals]);
   const signalDrops = [];
   const metaUpdates = pendingMetaPatch ? { ...pendingMetaPatch } : {};
   const posSideNow = normalizePositionSide(
@@ -10716,6 +10771,14 @@ async function runPaperFuturesForBar({
     ? Number(barCloseMs)
     : (Number.isFinite(fallbackSignalBarMs) ? fallbackSignalBarMs : null);
   const signalBarCloseUtc = Number.isFinite(signalBarCloseMs) ? msToUtcZ(signalBarCloseMs) : null;
+  const nativeInitialSignals = Number.isFinite(signalBarCloseMs)
+    ? await loadServerNativeInitialSignals({
+      exchange,
+      symbol,
+      signalTf,
+      barCloseMs: signalBarCloseMs,
+    })
+    : [];
 
   const allowInternalExitSignals = canEvaluateInternalExitSignalsForBar({ posMeta, barCloseMs });
   const timeStopSignal = (allowInternalExitSignals && exUpper.includes("BINANCE"))
@@ -10723,6 +10786,7 @@ async function runPaperFuturesForBar({
     : null;
   const signalLeverage = resolvePositionLeverage({ position: pos, fallback: leverage });
   const internalSignalsRaw = [
+    ...nativeInitialSignals,
     ...generateSignals({
       exchange,
       symbol,
@@ -10796,7 +10860,7 @@ async function runPaperFuturesForBar({
     };
   });
 
-  const rawSignals = [...internalSignals, ...externalSignals];
+  const rawSignals = dedupeEntrySignalsByFamily([...internalSignals, ...externalSignals]);
   const signals = [];
   const signalDrops = [];
   const metaUpdates = pendingMetaPatch ? { ...pendingMetaPatch } : {};
