@@ -30,10 +30,6 @@
     { label: '6개월 손익', value: home_profit_ranges && home_profit_ranges.m6 ? home_profit_ranges.m6.total : null },
     { label: '총 손익', value: home_profit_ranges && home_profit_ranges.total ? home_profit_ranges.total.total : null },
   ];
-  const quickMetricAbsMax = quickMetrics.reduce((acc, item) => {
-    const n = Number(item && item.value);
-    return Number.isFinite(n) ? Math.max(acc, Math.abs(n)) : acc;
-  }, 0) || 1;
   const signalPreview = signals.slice(0, 6);
   const signalLongN = signalPreview.filter((signal) => String(signal && signal.event || '').toUpperCase() === 'LONG').length;
   const signalShortN = signalPreview.filter((signal) => String(signal && signal.event || '').toUpperCase() === 'SHORT').length;
@@ -46,21 +42,6 @@
   const signalShortPct = (signalShortN / signalDirectionTotal) * 100;
   const signalCorePct = (signalCoreN / signalDirectionTotal) * 100;
   const signalServerPct = (signalServerN / signalDirectionTotal) * 100;
-  const quickMetricSparkDots = quickMetrics.map((item, idx) => {
-    const n = Number(item && item.value);
-    const scale = Number.isFinite(n) ? (Math.abs(n) / quickMetricAbsMax) : 0;
-    const x = 14 + idx * 52;
-    const y = Number.isFinite(n)
-      ? (n >= 0 ? 22 - (scale * 13) : 22 + (scale * 13))
-      : 22;
-    return {
-      label: item.label,
-      x,
-      y,
-      tone: Number.isFinite(n) ? (n > 0 ? 'up' : n < 0 ? 'down' : 'flat') : 'flat',
-    };
-  });
-  const quickMetricSparkPoints = quickMetricSparkDots.map((dot) => `${dot.x},${dot.y}`).join(' ');
 
   function fmtNum(x, digits = 2) {
     const n = Number(x);
@@ -427,65 +408,6 @@
     border-radius: 16px;
     background: linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);
   }
-  .profit-visual {
-    margin-bottom: 14px;
-    padding: 10px 12px 12px;
-    border: 1px solid var(--trade-border);
-    border-radius: 16px;
-    background: linear-gradient(180deg, #fdfdfd 0%, #fafbfd 100%);
-  }
-  .profit-visual-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 10px;
-  }
-  .profit-visual-title {
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: .04em;
-    text-transform: uppercase;
-    color: var(--trade-muted);
-  }
-  .profit-visual-scale {
-    font-size: 10px;
-    color: var(--trade-muted);
-  }
-  .profit-spark {
-    display: grid;
-    gap: 8px;
-  }
-  .profit-spark svg {
-    width: 100%;
-    height: 44px;
-    display: block;
-  }
-  .profit-spark line.baseline {
-    stroke: #dde3ea;
-    stroke-width: 1;
-  }
-  .profit-spark polyline {
-    fill: none;
-    stroke: #c99618;
-    stroke-width: 2.25;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-  .profit-spark circle.up { fill: var(--trade-up); }
-  .profit-spark circle.down { fill: var(--trade-down); }
-  .profit-spark circle.flat { fill: #c99618; }
-  .profit-spark-labels {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 8px;
-  }
-  .profit-spark-labels span {
-    color: var(--trade-muted);
-    font-size: 10px;
-    font-weight: 700;
-    text-align: center;
-  }
   .metric-card .value {
     font-size: 15px;
   }
@@ -516,7 +438,6 @@
     .overview-mini-grid,
     .metric-row,
     .kpi-strip { grid-template-columns: 1fr; }
-    .profit-spark-labels { grid-template-columns: 1fr; }
     .overview-title { font-size: 24px; }
   }
 </style>
@@ -615,6 +536,51 @@
     </article>
   </section>
 
+  <section class="performance-grid">
+    <article class="trade-panel profit-card compact">
+      <div class="trade-panel-head">
+        <div>
+          <div class="trade-panel-title">쉬운 수익 카테고리</div>
+          <div class="trade-panel-sub">수익 페이지에서 가장 읽기 쉬운 구조만 가져왔습니다.</div>
+        </div>
+      </div>
+      <div class="trade-panel-body">
+        <div class="metric-row">
+          <% quickMetrics.forEach((item) => { %>
+            <div class="metric-card">
+              <div class="label"><%= item.label %></div>
+              <div class="value <%= pnlTone(item.value) %>"><%- renderSignedUnitValue(item.value, { krwHint: true }) %></div>
+              <div class="meta">기간별 손익 요약</div>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+    </article>
+
+    <aside class="trade-panel capital-card compact">
+      <div class="trade-panel-head">
+        <div>
+          <div class="trade-panel-title">자금과 손익</div>
+          <div class="trade-panel-sub">핵심 숫자만 다시 묶었습니다.</div>
+        </div>
+      </div>
+      <div class="trade-panel-body">
+        <div class="summary-list">
+          <div class="summary-item">
+            <div class="label">사용 중 자금</div>
+            <div class="value profit-neutral"><%- renderUnitValue(accountUsedInitial, { krwHint: true }) %></div>
+            <div class="meta">사용률 <%= riskUsedPct != null ? fmtPct(riskUsedPct) : '-' %></div>
+          </div>
+          <div class="summary-item">
+            <div class="label">주간 체결 수</div>
+            <div class="value"><%= weekly_range_perf && weekly_range_perf.trades_n != null ? fmtNum(weekly_range_perf.trades_n, 0) : '-' %>건</div>
+            <div class="meta">이번 주 실현손익과 함께 봅니다.</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </section>
+
   <section class="workspace-grid">
     <article class="trade-panel signal-card compact">
       <div class="trade-panel-head">
@@ -704,95 +670,32 @@
     </article>
 
     <aside class="side-stack">
-      <section class="trade-panel capital-card compact">
+      <section class="trade-panel market-card compact">
         <div class="trade-panel-head">
           <div>
-            <div class="trade-panel-title">자금과 손익</div>
-            <div class="trade-panel-sub">핵심 숫자만 다시 묶었습니다.</div>
+            <div class="trade-panel-title">주간 기여 마켓</div>
+            <div class="trade-panel-sub">이번 주 손익에 영향을 준 마켓</div>
           </div>
         </div>
-        <div class="trade-panel-body summary-list">
-          <div class="summary-item">
-            <div class="label">사용 중 자금</div>
-            <div class="value profit-neutral"><%- renderUnitValue(accountUsedInitial, { krwHint: true }) %></div>
-            <div class="meta">사용률 <%= riskUsedPct != null ? fmtPct(riskUsedPct) : '-' %></div>
-          </div>
-          <div class="summary-item">
-            <div class="label">주간 체결 수</div>
-            <div class="value"><%= weekly_range_perf && weekly_range_perf.trades_n != null ? fmtNum(weekly_range_perf.trades_n, 0) : '-' %>건</div>
-            <div class="meta">이번 주 실현손익과 함께 봅니다.</div>
+        <div class="trade-panel-body">
+          <div class="market-list">
+            <% if (topMarkets.length) { %>
+              <% topMarkets.forEach((row) => { %>
+                <div class="market-row">
+                  <div>
+                    <strong><%= row.market || '-' %></strong>
+                    <span>기여도 <%= row.share_pct != null ? fmtPct(row.share_pct) : '-' %></span>
+                  </div>
+                  <div class="value <%= pnlTone(row.realized_krw) %>"><%- renderSignedUnitValue(row.realized_krw, { krwHint: true }) %></div>
+                </div>
+              <% }) %>
+            <% } else { %>
+              <div class="trade-empty">주간 기여 마켓 데이터가 아직 부족합니다.</div>
+            <% } %>
           </div>
         </div>
       </section>
 
-    </aside>
-  </section>
-
-  <section class="performance-grid">
-    <article class="trade-panel profit-card compact">
-      <div class="trade-panel-head">
-        <div>
-          <div class="trade-panel-title">쉬운 수익 카테고리</div>
-          <div class="trade-panel-sub">수익 페이지에서 가장 읽기 쉬운 구조만 가져왔습니다.</div>
-        </div>
-      </div>
-      <div class="trade-panel-body">
-        <div class="profit-visual">
-          <div class="profit-visual-head">
-            <div class="profit-visual-title">기간 흐름</div>
-            <div class="profit-visual-scale">절대 규모를 같은 축으로 비교</div>
-          </div>
-          <div class="profit-spark">
-            <svg viewBox="0 0 236 44" preserveAspectRatio="none" aria-hidden="true">
-              <line class="baseline" x1="0" y1="22" x2="236" y2="22"></line>
-              <polyline points="<%= quickMetricSparkPoints %>"></polyline>
-              <% quickMetricSparkDots.forEach((dot) => { %>
-                <circle class="<%= dot.tone %>" cx="<%= dot.x %>" cy="<%= dot.y %>" r="3.2"></circle>
-              <% }) %>
-            </svg>
-            <div class="profit-spark-labels">
-              <% quickMetrics.forEach((item) => { %>
-                <span><%= item.label.replace(' 손익', '') %></span>
-              <% }) %>
-            </div>
-          </div>
-        </div>
-        <div class="metric-row">
-          <% quickMetrics.forEach((item) => { %>
-            <div class="metric-card">
-              <div class="label"><%= item.label %></div>
-              <div class="value <%= pnlTone(item.value) %>"><%- renderSignedUnitValue(item.value, { krwHint: true }) %></div>
-              <div class="meta">기간별 손익 요약</div>
-            </div>
-          <% }) %>
-        </div>
-      </div>
-    </article>
-
-    <aside class="trade-panel market-card compact">
-      <div class="trade-panel-head">
-        <div>
-          <div class="trade-panel-title">주간 기여 마켓</div>
-          <div class="trade-panel-sub">이번 주 손익에 영향을 준 마켓</div>
-        </div>
-      </div>
-      <div class="trade-panel-body">
-        <div class="market-list">
-          <% if (topMarkets.length) { %>
-            <% topMarkets.forEach((row) => { %>
-              <div class="market-row">
-                <div>
-                  <strong><%= row.market || '-' %></strong>
-                  <span>기여도 <%= row.share_pct != null ? fmtPct(row.share_pct) : '-' %></span>
-                </div>
-                <div class="value <%= pnlTone(row.realized_krw) %>"><%- renderSignedUnitValue(row.realized_krw, { krwHint: true }) %></div>
-              </div>
-            <% }) %>
-          <% } else { %>
-            <div class="trade-empty">주간 기여 마켓 데이터가 아직 부족합니다.</div>
-          <% } %>
-        </div>
-      </div>
     </aside>
   </section>
 

@@ -10,6 +10,9 @@
   const recentDropN = dropSummary && dropSummary.total != null ? Number(dropSummary.total) : 0;
   const monitoredMarketsN = Array.isArray(markets_expected) ? markets_expected.length : 0;
   const shadowMode = !!show_shadow_signals;
+  const topReasons = Array.isArray(dropSummary && dropSummary.top_reasons) ? dropSummary.top_reasons.slice(0, 4) : [];
+  const serverSignalN = signalRows.filter((row) => row && (row.authoritative === true || String(row.source || '').toUpperCase() === 'SERVER')).length;
+  const pineSignalN = signalRows.filter((row) => row && String(row.source || '').toUpperCase() === 'PINE_SHADOW').length;
   const activePositionsN = marketRows.filter((row) => {
     const state = String(row && row.position_state || '').toUpperCase();
     return state === 'ACTIVE' || state === 'EXIT_ONLY';
@@ -122,6 +125,13 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 12px;
   }
+  .records-strip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
   .records-kpi {
     padding: 14px 15px;
     border-radius: 18px;
@@ -219,6 +229,10 @@
     color: #3f4954;
     background: #f4f6f8;
   }
+  .table-chip.warn {
+    color: #8a6303;
+    background: #fff4d7;
+  }
   .action-stack {
     display: flex;
     gap: 6px;
@@ -267,6 +281,23 @@
     color: var(--trade-muted);
     font-size: 10px;
     font-weight: 700;
+  }
+  .summary-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .table-note {
+    color: var(--trade-muted);
+    font-size: 10px;
+    line-height: 1.45;
+  }
+  .market-status-stack,
+  .signal-status-stack {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
   }
   .right-align { text-align: right; }
   .center-align { text-align: center; }
@@ -378,6 +409,12 @@
       </div>
       <div class="trade-panel-body">
         <% if (signalRows.length) { %>
+          <div class="records-strip">
+            <span class="trade-chip gold">전체 <%= fmtNum(signalRows.length) %></span>
+            <span class="trade-chip soft">서버 <%= fmtNum(serverSignalN) %></span>
+            <span class="trade-chip soft">Pine <%= fmtNum(pineSignalN) %></span>
+            <span class="trade-chip warn">드롭 <%= fmtNum(recentDropN) %></span>
+          </div>
           <table class="trade-table compact-record-table">
             <colgroup>
               <col style="width: 18%">
@@ -401,12 +438,16 @@
                   <td class="mono"><%= fmtKst(s.created_kst || s.created_at) %></td>
                   <td><strong><%= s.symbol_or_pair_id || s.symbol || '-' %></strong><span><%= s.market || s.timeframe || '-' %></span></td>
                   <td>
-                    <span class="table-chip <%= eventTone(s.event) %>"><%= eventLabel(s.event) %></span>
-                    <span class="table-chip <%= gradeLabel(s) === '코어' ? 'core' : 'soft' %>"><%= gradeLabel(s) %></span>
+                    <div class="signal-status-stack">
+                      <span class="table-chip <%= eventTone(s.event) %>"><%= eventLabel(s.event) %></span>
+                      <span class="table-chip <%= gradeLabel(s) === '코어' ? 'core' : 'soft' %>"><%= gradeLabel(s) %></span>
+                    </div>
                   </td>
                   <td>
-                    <span class="table-chip soft"><%= sourceLabel(s) %></span>
-                    <span class="table-chip status"><%= statusLabel(s) %></span>
+                    <div class="signal-status-stack">
+                      <span class="table-chip soft"><%= sourceLabel(s) %></span>
+                      <span class="table-chip status"><%= statusLabel(s) %></span>
+                    </div>
                   </td>
                   <td><span><%= noteShort(s.display_reason_ko || s.display_reason || s.reason || '-') %></span></td>
                 </tr>
@@ -427,6 +468,13 @@
         </div>
       </div>
       <div class="trade-panel-body drop-list">
+        <% if (topReasons.length) { %>
+          <div class="summary-pills" style="margin-bottom:10px;">
+            <% topReasons.forEach((reason) => { %>
+              <span class="subchip"><%= reason %></span>
+            <% }) %>
+          </div>
+        <% } %>
         <% if (topDropMarkets.length) { %>
           <% topDropMarkets.forEach((m) => { %>
             <div class="drop-row">
@@ -478,15 +526,19 @@
               <tr>
                 <td><strong><%= r.market %></strong><span><%= r.tf || tf_default || '-' %></span></td>
                 <td>
-                  <span class="table-chip status"><%= positionStateLabel(r) %></span>
-                  <% if (posSide) { %><span class="table-chip <%= posSide === '롱' ? 'long' : 'short' %>"><%= posSide %></span><% } %>
-                  <span><%= r.position_size_pct != null ? `${fmtNum(r.position_size_pct, 0)}%` : '비중 없음' %> · <%= leverageText(r.position_leverage, r.position_leverage_tier) %></span>
+                  <div class="market-status-stack">
+                    <span class="table-chip status"><%= positionStateLabel(r) %></span>
+                    <% if (posSide) { %><span class="table-chip <%= posSide === '롱' ? 'long' : 'short' %>"><%= posSide %></span><% } %>
+                  </div>
+                  <div class="table-note"><%= r.position_size_pct != null ? `${fmtNum(r.position_size_pct, 0)}% 비중` : '비중 없음' %> · <%= leverageText(r.position_leverage, r.position_leverage_tier) %></div>
                 </td>
                 <td>
                   <% if (r.last_signal) { %>
-                    <span class="table-chip <%= eventTone(r.last_signal.event) %>"><%= eventLabel(r.last_signal.event) %></span>
-                    <span class="table-chip soft"><%= sourceLabel(r.last_signal) %></span>
-                    <span><%= fmtKst(r._view && r._view.last_signal_ts) %></span>
+                    <div class="market-status-stack">
+                      <span class="table-chip <%= eventTone(r.last_signal.event) %>"><%= eventLabel(r.last_signal.event) %></span>
+                      <span class="table-chip soft"><%= sourceLabel(r.last_signal) %></span>
+                    </div>
+                    <div class="table-note"><%= fmtKst(r._view && r._view.last_signal_ts) %></div>
                   <% } else { %>
                     <span>신호 없음</span>
                   <% } %>
@@ -503,7 +555,7 @@
                 <td class="right-align">
                   <% if (r.last_fill && r.last_fill.exec_price != null) { %>
                     <strong class="mono"><%= fmtPrice(r.last_fill.exec_price) %></strong>
-                    <span><%= fmtKst(r._view && r._view.last_fill_ts) %></span>
+                    <span class="table-note"><%= fmtKst(r._view && r._view.last_fill_ts) %></span>
                   <% } else { %>
                     <span>-</span>
                   <% } %>
