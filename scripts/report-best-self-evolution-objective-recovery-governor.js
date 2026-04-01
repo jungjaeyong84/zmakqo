@@ -9,6 +9,7 @@ const {
   loadLocalEnv,
   nowKstMeta,
   readJsonRawSafe,
+  resolveAnchoredReportCycleId,
   resolveAutomationCycleMeta,
   selfEvolutionSnapshotLatestPath,
   writeJson,
@@ -60,10 +61,17 @@ function renderMarkdown(report = {}) {
 function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
+  const objective = readJsonRawSafe(INPUTS.objective, null);
+  const objectiveSupervisor = readJsonRawSafe(INPUTS.objectiveSupervisor, null);
+  const reportCycleId = resolveAnchoredReportCycleId({
+    preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
+    fallbackCycleId: cycleMeta.cycle_id,
+    sources: [objectiveSupervisor, objective],
+  });
   const report = deriveObjectiveRecoveryGovernor({
     autonomyContract: readJsonRawSafe(INPUTS.autonomyContract, null),
-    objective: readJsonRawSafe(INPUTS.objective, null),
-    objectiveSupervisor: readJsonRawSafe(INPUTS.objectiveSupervisor, null),
+    objective,
+    objectiveSupervisor,
     candidates: readJsonRawSafe(INPUTS.candidates, null),
     replay: readJsonRawSafe(INPUTS.replay, null),
     canary: readJsonRawSafe(INPUTS.canary, null),
@@ -77,8 +85,8 @@ function main() {
   const output = {
     ok: true,
     generated_at_kst: nowMeta.kst,
-    cycle_id: cycleMeta.cycle_id,
-    generation_id: cycleMeta.cycle_id,
+    cycle_id: reportCycleId,
+    generation_id: reportCycleId,
     inputs: { ...INPUTS },
     ...report,
   };

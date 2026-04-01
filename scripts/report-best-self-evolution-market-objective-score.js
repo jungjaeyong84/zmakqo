@@ -9,6 +9,7 @@ const {
   copySelfEvolutionLatest,
   nowKstMeta,
   readJsonRawSafe,
+  resolveAnchoredReportCycleId,
   resolveAutomationCycleMeta,
   selfEvolutionSnapshotLatestPath,
   writeJson,
@@ -66,6 +67,11 @@ function main() {
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
   const objective = readJsonRawSafe(OBJECTIVE_LATEST_PATH, null);
   if (!objective) throw new Error(`SELF_EVOLUTION_OBJECTIVE_MISSING:${OBJECTIVE_LATEST_PATH}`);
+  const reportCycleId = resolveAnchoredReportCycleId({
+    preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
+    fallbackCycleId: cycleMeta.cycle_id,
+    sources: [objective],
+  });
   const dropValidation = readJsonRawSafe(DROP_VALIDATION_LATEST_PATH, null) || {};
   const runtime = readJsonRawSafe(SERVER_SIGNAL_RUNTIME_LATEST_PATH, null) || {};
   const rows = buildMarketObjectiveRows({ objective, dropValidation, runtime });
@@ -73,8 +79,8 @@ function main() {
   const report = {
     ok: true,
     generated_at_kst: nowMeta.kst,
-    cycle_id: cycleMeta.cycle_id,
-    generation_id: cycleMeta.generation_id,
+    cycle_id: reportCycleId,
+    generation_id: reportCycleId,
     inputs: {
       objective_latest_path: OBJECTIVE_LATEST_PATH,
       drop_validation_latest_path: DROP_VALIDATION_LATEST_PATH,

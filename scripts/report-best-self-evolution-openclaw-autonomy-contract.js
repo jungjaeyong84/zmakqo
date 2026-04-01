@@ -5,10 +5,12 @@
 const path = require("path");
 const {
   OPS_DAILY_DIR,
+  copyLatest,
   copySelfEvolutionLatest,
   loadLocalEnv,
   nowKstMeta,
   readJsonRawSafe,
+  resolveAnchoredReportCycleId,
   resolveAutomationCycleMeta,
   selfEvolutionSnapshotLatestPath,
   writeJson,
@@ -76,9 +78,16 @@ function renderMarkdown(report = {}) {
 function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
+  const objective = readJsonRawSafe(INPUTS.objective, null);
+  const objectiveSupervisor = readJsonRawSafe(INPUTS.objectiveSupervisor, null);
+  const reportCycleId = resolveAnchoredReportCycleId({
+    preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
+    fallbackCycleId: cycleMeta.cycle_id,
+    sources: [objectiveSupervisor, objective],
+  });
   const report = deriveOpenClawAutonomyContract({
-    objective: readJsonRawSafe(INPUTS.objective, null),
-    objectiveSupervisor: readJsonRawSafe(INPUTS.objectiveSupervisor, null),
+    objective,
+    objectiveSupervisor,
     deploymentPlan: readJsonRawSafe(INPUTS.deploymentPlan, null),
     serverPrimaryCanary: readJsonRawSafe(INPUTS.serverPrimaryCanary, null),
     watchdog: readJsonRawSafe(INPUTS.watchdog, null),
@@ -89,8 +98,8 @@ function main() {
   const output = {
     ok: true,
     generated_at_kst: nowMeta.kst,
-    cycle_id: cycleMeta.cycle_id,
-    generation_id: cycleMeta.cycle_id,
+    cycle_id: reportCycleId,
+    generation_id: reportCycleId,
     inputs: { ...INPUTS },
     ...report,
   };
@@ -99,10 +108,14 @@ function main() {
   const mdPath = path.join(OPS_DAILY_DIR, `${base}_best_self_evolution_openclaw_autonomy_contract.md`);
   const latestJsonPath = path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_autonomy_contract_latest.json");
   const latestMdPath = path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_autonomy_contract_latest.md");
+  const selfEvolutionLatestJson = selfEvolutionSnapshotLatestPath("openclaw_autonomy_contract_latest.json");
+  const selfEvolutionLatestMd = selfEvolutionSnapshotLatestPath("openclaw_autonomy_contract_latest.md");
   writeJson(jsonPath, output);
   writeText(mdPath, renderMarkdown(output));
-  copySelfEvolutionLatest(jsonPath, latestJsonPath);
-  copySelfEvolutionLatest(mdPath, latestMdPath);
+  copyLatest(jsonPath, latestJsonPath);
+  copyLatest(mdPath, latestMdPath);
+  if (selfEvolutionLatestJson && selfEvolutionLatestJson !== latestJsonPath) copySelfEvolutionLatest(jsonPath, selfEvolutionLatestJson);
+  if (selfEvolutionLatestMd && selfEvolutionLatestMd !== latestMdPath) copySelfEvolutionLatest(mdPath, selfEvolutionLatestMd);
   console.log(JSON.stringify({ ok: true, json: jsonPath, markdown: mdPath, latest_json: latestJsonPath, latest_markdown: latestMdPath }));
 }
 

@@ -9,6 +9,7 @@ const {
   loadLocalEnv,
   nowKstMeta,
   readJsonRawSafe,
+  resolveAnchoredReportCycleId,
   resolveAutomationCycleMeta,
   selfEvolutionSnapshotLatestPath,
   writeJson,
@@ -19,6 +20,7 @@ const { summarizeReversePolicy } = require("../src/utils/reversePolicy");
 
 loadLocalEnv();
 
+const OBJECTIVE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_objective_latest.json");
 const DROPPED_SIGNALS_PATH = path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "signals_dropped.json");
 const SIGNALS_PATH = path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "signals.json");
 
@@ -52,6 +54,12 @@ function renderMarkdown(report = {}) {
 async function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
+  const objective = readJsonRawSafe(OBJECTIVE_LATEST_PATH, null);
+  const reportCycleId = resolveAnchoredReportCycleId({
+    preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
+    fallbackCycleId: cycleMeta.cycle_id,
+    sources: [objective],
+  });
   const dropped = readJsonRawSafe(DROPPED_SIGNALS_PATH, null);
   const signals = readJsonRawSafe(SIGNALS_PATH, null);
   const sys = await getSystemSettingsForProvider("BINANCEFUT", 0);
@@ -65,9 +73,10 @@ async function main() {
   const report = {
     ok: true,
     generated_at_kst: nowMeta.kst,
-    cycle_id: cycleMeta.cycle_id,
-    generation_id: cycleMeta.cycle_id,
+    cycle_id: reportCycleId,
+    generation_id: reportCycleId,
     inputs: {
+      objective_latest_path: OBJECTIVE_LATEST_PATH,
       dropped_signals_path: DROPPED_SIGNALS_PATH,
       signals_path: SIGNALS_PATH,
     },
@@ -90,7 +99,7 @@ async function main() {
 
   console.log(JSON.stringify({
     ok: true,
-    cycle_id: cycleMeta.cycle_id,
+    cycle_id: reportCycleId,
     status: report.summary.status,
     reverse_drop_n: report.summary.reverse_drop_n,
     reverse_revive_n: report.summary.reverse_revive_n,

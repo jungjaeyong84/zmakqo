@@ -252,6 +252,24 @@ function resolveAutomationCycleMeta({ envKey = "AUTOMATION_CYCLE_ID", prefix = "
   };
 }
 
+function resolveAnchoredReportCycleId({ preferredCycleId = null, fallbackCycleId = null, sources = [] } = {}) {
+  const fromPreferred = String(preferredCycleId || "").trim();
+  if (fromPreferred) return fromPreferred;
+  for (const source of Array.isArray(sources) ? sources : []) {
+    const row = source && typeof source === "object" ? source : null;
+    if (!row) continue;
+    const cycleId = String(
+      row.source_cycle_id
+      || row.cycle_id
+      || row.generation_id
+      || row.evaluation_cycle_id
+      || ""
+    ).trim();
+    if (cycleId) return cycleId;
+  }
+  return String(fallbackCycleId || "").trim() || null;
+}
+
 function formatPct(value, digits = 2) {
   const n = Number(value);
   if (!Number.isFinite(n)) return "N/A";
@@ -478,6 +496,7 @@ module.exports = {
   loadLocalEnv,
   nowKstMeta,
   resolveAutomationCycleMeta,
+  resolveAnchoredReportCycleId,
   formatPct,
   formatSignedPct,
   formatSignedNumber,

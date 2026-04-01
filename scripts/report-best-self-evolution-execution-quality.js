@@ -8,6 +8,7 @@ const {
   copyLatest,
   nowKstMeta,
   readJsonRawSafe,
+  resolveAnchoredReportCycleId,
   resolveAutomationCycleMeta,
   selfEvolutionSnapshotLatestPath,
   writeJson,
@@ -15,6 +16,7 @@ const {
 } = require("./lib/automation-utils");
 const { summarizeExecutionQuality } = require("../src/utils/executionQuality");
 
+const OBJECTIVE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_objective_latest.json");
 const EXECUTION_MICROSTRUCTURE_PATH = path.join(OPS_DAILY_DIR, "execution_microstructure_latest.json");
 const FEBT_BRIDGE_LATENCY_PATH = path.join(OPS_DAILY_DIR, "febt_bridge_latency_latest.json");
 const FILLS_PATH = path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "fills_paper.json");
@@ -53,6 +55,12 @@ function renderMarkdown(report = {}) {
 function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
+  const objective = readJsonRawSafe(OBJECTIVE_LATEST_PATH, null);
+  const reportCycleId = resolveAnchoredReportCycleId({
+    preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
+    fallbackCycleId: cycleMeta.cycle_id,
+    sources: [objective],
+  });
   const micro = readJsonRawSafe(EXECUTION_MICROSTRUCTURE_PATH, null);
   const bridge = readJsonRawSafe(FEBT_BRIDGE_LATENCY_PATH, null);
   const fills = readJsonRawSafe(FILLS_PATH, null);
@@ -68,9 +76,10 @@ function main() {
   const report = {
     ok: true,
     generated_at_kst: nowMeta.kst,
-    cycle_id: cycleMeta.cycle_id,
-    generation_id: cycleMeta.cycle_id,
+    cycle_id: reportCycleId,
+    generation_id: reportCycleId,
     inputs: {
+      objective_latest_path: OBJECTIVE_LATEST_PATH,
       execution_microstructure_latest_path: EXECUTION_MICROSTRUCTURE_PATH,
       febt_bridge_latency_latest_path: FEBT_BRIDGE_LATENCY_PATH,
       fills_path: FILLS_PATH,

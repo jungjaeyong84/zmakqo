@@ -9,6 +9,7 @@ const {
   copySelfEvolutionLatest,
   nowKstMeta,
   readJsonRawSafe,
+  resolveAnchoredReportCycleId,
   resolveAutomationCycleMeta,
   selfEvolutionSnapshotLatestPath,
   writeJson,
@@ -20,6 +21,7 @@ const {
 } = require("../src/utils/serverVsPinePerformanceDelta");
 
 const MARKET_OBJECTIVE_SCORE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_market_objective_score_latest.json");
+const OBJECTIVE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_objective_latest.json");
 const SERVER_SIGNAL_AUTHORITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "server_signal_authority_latest.json");
 const SERVER_SIGNAL_QUALITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "server_signal_quality_latest.json");
 
@@ -52,21 +54,28 @@ function renderMarkdown(report = {}) {
 function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
+  const objective = readJsonRawSafe(OBJECTIVE_LATEST_PATH, null);
   const marketObjectiveScore = readJsonRawSafe(MARKET_OBJECTIVE_SCORE_LATEST_PATH, null);
   const authority = readJsonRawSafe(SERVER_SIGNAL_AUTHORITY_LATEST_PATH, null);
   const quality = readJsonRawSafe(SERVER_SIGNAL_QUALITY_LATEST_PATH, null);
   if (!marketObjectiveScore) throw new Error(`MARKET_OBJECTIVE_SCORE_MISSING:${MARKET_OBJECTIVE_SCORE_LATEST_PATH}`);
   if (!authority) throw new Error(`SERVER_SIGNAL_AUTHORITY_MISSING:${SERVER_SIGNAL_AUTHORITY_LATEST_PATH}`);
   if (!quality) throw new Error(`SERVER_SIGNAL_QUALITY_MISSING:${SERVER_SIGNAL_QUALITY_LATEST_PATH}`);
+  const reportCycleId = resolveAnchoredReportCycleId({
+    preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
+    fallbackCycleId: cycleMeta.cycle_id,
+    sources: [marketObjectiveScore, objective],
+  });
 
   const rows = buildServerVsPinePerformanceRows({ marketObjectiveScore, authority, quality });
   const summary = buildServerVsPinePerformanceSummary({ authority, quality, rows });
   const report = {
     ok: true,
     generated_at_kst: nowMeta.kst,
-    cycle_id: cycleMeta.cycle_id,
-    generation_id: cycleMeta.generation_id,
+    cycle_id: reportCycleId,
+    generation_id: reportCycleId,
     inputs: {
+      objective_latest_path: OBJECTIVE_LATEST_PATH,
       market_objective_score_latest_path: MARKET_OBJECTIVE_SCORE_LATEST_PATH,
       server_signal_authority_latest_path: SERVER_SIGNAL_AUTHORITY_LATEST_PATH,
       server_signal_quality_latest_path: SERVER_SIGNAL_QUALITY_LATEST_PATH,

@@ -9,6 +9,7 @@ const {
   copySelfEvolutionLatest,
   nowKstMeta,
   readJsonRawSafe,
+  resolveAnchoredReportCycleId,
   resolveAutomationCycleMeta,
   selfEvolutionSnapshotLatestPath,
   writeJson,
@@ -24,6 +25,7 @@ const {
 
 const SIGNAL_DROPS_CACHE_PATH = path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "signals_dropped.json");
 const WEEKLY_GOVERNANCE_LATEST_PATH = path.join(OPS_DAILY_DIR, "weekly_filter_governance_latest.json");
+const OBJECTIVE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_objective_latest.json");
 
 function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -194,9 +196,20 @@ function renderMarkdown(report = {}) {
 function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
+  const objective = readJsonRawSafe(OBJECTIVE_LATEST_PATH, null);
+  const reportCycleId = resolveAnchoredReportCycleId({
+    preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
+    fallbackCycleId: cycleMeta.cycle_id,
+    sources: [objective],
+  });
   const governance = readJsonRawSafe(WEEKLY_GOVERNANCE_LATEST_PATH, {}) || {};
   const dropsWrapper = readJsonRawSafe(SIGNAL_DROPS_CACHE_PATH, {}) || {};
-  const report = buildReport({ governance, dropsWrapper, nowMeta, cycleMeta });
+  const report = buildReport({
+    governance,
+    dropsWrapper,
+    nowMeta,
+    cycleMeta: { cycle_id: reportCycleId, generation_id: reportCycleId },
+  });
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}`;
   const jsonPath = path.join(OPS_DAILY_DIR, `${base}_best_self_evolution_drop_validation.json`);
   const mdPath = path.join(OPS_DAILY_DIR, `${base}_best_self_evolution_drop_validation.md`);
