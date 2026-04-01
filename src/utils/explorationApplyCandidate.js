@@ -22,6 +22,12 @@ function readSummary(value) {
   return raw.summary && typeof raw.summary === "object" ? raw.summary : raw;
 }
 
+function clampIntEnv(name, fallback, min = 0, max = Number.MAX_SAFE_INTEGER) {
+  const value = toNum(process.env[name]);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
 function deriveManualAction(proposedAction = null) {
   const action = upper(proposedAction);
   if (action === "DRYRUN_RELAX_EV_POLICY") return "MANUAL_APPLY_RELAX_EV_POLICY";
@@ -29,17 +35,44 @@ function deriveManualAction(proposedAction = null) {
   return "MANUAL_REVIEW_SERVER_POLICY";
 }
 
-function deriveExplorationApplyCandidate({ explorationProposal = null } = {}) {
+function deriveAutoAction(proposedAction = null) {
+  const action = upper(proposedAction);
+  if (action === "DRYRUN_RELAX_EV_POLICY") return "AUTO_APPLY_RELAX_EV_POLICY";
+  if (action === "DRYRUN_RELAX_COOLDOWN_POLICY") return "AUTO_APPLY_RELAX_COOLDOWN_POLICY";
+  return "AUTO_REVIEW_SERVER_POLICY";
+}
+
+function includesMarket(list = [], market = null) {
+  const key = upper(market);
+  if (!key) return false;
+  return (Array.isArray(list) ? list : []).some((row) => upper(row) === key);
+}
+
+function deriveExplorationApplyCandidate({
+  explorationProposal = null,
+  explorationBudget = null,
+  executionQuality = null,
+  reversePolicy = null,
+  provisionalRealizedOutcome = null,
+} = {}) {
   const proposalSummary = readSummary(explorationProposal);
+  const budgetSummary = readSummary(explorationBudget);
+  const executionSummary = readSummary(executionQuality);
+  const reverseSummary = readSummary(reversePolicy);
+  const provisionalSummary = readSummary(provisionalRealizedOutcome);
+
   const proposals = Array.isArray(proposalSummary.proposals) ? proposalSummary.proposals : [];
   const top = proposals[0] || null;
+  const maxMarketApplyPerCycle = clampIntEnv("OPENCLAW_EXPLORATION_MAX_MARKET_APPLY_PER_CYCLE", 1, 1, 2);
+  const minEffectiveRealizedN = clampIntEnv("OPENCLAW_EXPLORATION_MIN_EFFECTIVE_REALIZED_N", 10, 1, 100);
+
   if (!top) {
     return {
       status: "NO_APPLY_CANDIDATE",
       candidate_n: 0,
       manual_confirm_required: true,
       auto_apply_allowed: false,
-      max_market_apply_per_cycle: 1,
+      max_market_apply_per_cycle: maxMarketApplyPerCycle,
       top_market: null,
       top_stage: null,
       top_action: null,
@@ -48,14 +81,42 @@ function deriveExplorationApplyCandidate({ explorationProposal = null } = {}) {
     };
   }
 
+  const market = upper(top.market);
+  const stage = upper(top.stage);
+  const sourceAction = upper(top.proposed_action);
+  const blockers = [];
+
+  if (!includesMarket(budgetSummary.exploration_markets, market)) blockers.push("NOT_IN_EXPLORATION_SLOT");
+  if (includesMarket(budgetSummary.deferred_penalty_markets, market)) blockers.push("EXPLORATION_DEFERRED_PENALTY");
+
+  const executionPenaltyMarkets = [
+    executionSummary.top_latency_market,
+    executionSummary.top_slippage_market,
+    executionSummary.top_partial_market,
+  ].map((row) => upper(row)).filter(Boolean);
+  if (executionPenaltyMarkets.includes(market)) blockers.push("EXECUTION_QUALITY_REVIEW");
+
+  if (upper(reverseSummary.top_watch_market) === market && upper(reverseSummary.status) === "REVERSE_POLICY_REVIEW") {
+    blockers.push("REVERSE_POLICY_REVIEW");
+  }
+
+  const effectiveRealizedN = toNum(provisionalSummary.effective_realized_n);
+  if (!Number.isFinite(effectiveRealizedN) || effectiveRealizedN < minEffectiveRealizedN) {
+    blockers.push("EFFECTIVE_REALIZED_SAMPLE_THIN");
+  }
+
+  const autoApplyAllowed = blockers.length === 0;
+  const manualConfirmRequired = !autoApplyAllowed;
+  const proposedAction = autoApplyAllowed ? deriveAutoAction(sourceAction) : deriveManualAction(sourceAction);
+
   const candidate = {
-    market: upper(top.market),
-    stage: upper(top.stage),
-    proposed_action: deriveManualAction(top.proposed_action),
-    source_proposed_action: upper(top.proposed_action),
-    manual_confirm_required: true,
-    auto_apply_allowed: false,
-    max_market_apply_per_cycle: 1,
+    market,
+    stage,
+    proposed_action: proposedAction,
+    source_proposed_action: sourceAction,
+    manual_confirm_required: manualConfirmRequired,
+    auto_apply_allowed: autoApplyAllowed,
+    max_market_apply_per_cycle: maxMarketApplyPerCycle,
     dry_run_status: upper(proposalSummary.status),
     objective_score: toNum(top.objective_score),
     recovery_priority_score: toNum(top.recovery_priority_score),
@@ -63,18 +124,21 @@ function deriveExplorationApplyCandidate({ explorationProposal = null } = {}) {
     drop_family: upper(top.drop_family),
     drop_reason: upper(top.drop_reason),
     drop_action: upper(top.drop_action),
+    blockers,
   };
 
   return {
-    status: "APPLY_CANDIDATE_READY",
+    status: autoApplyAllowed ? "AUTO_APPLY_CANDIDATE_READY" : "APPLY_CANDIDATE_READY",
     candidate_n: 1,
-    manual_confirm_required: true,
-    auto_apply_allowed: false,
-    max_market_apply_per_cycle: 1,
+    manual_confirm_required: manualConfirmRequired,
+    auto_apply_allowed: autoApplyAllowed,
+    max_market_apply_per_cycle: maxMarketApplyPerCycle,
     top_market: candidate.market,
     top_stage: candidate.stage,
     top_action: candidate.proposed_action,
-    blockers: ["MANUAL_CONFIRM_REQUIRED", "AUTO_APPLY_DISABLED"],
+    blockers,
+    effective_realized_n: Number.isFinite(effectiveRealizedN) ? effectiveRealizedN : null,
+    min_effective_realized_n: minEffectiveRealizedN,
     candidates: [candidate],
   };
 }

@@ -409,11 +409,15 @@ function deriveObjectiveRecoveryGovernor({
             `Keep exploration proposal as dry-run only for now (${explorationProposalSummary.top_market || "N/A"} / ${explorationProposalSummary.top_stage || "N/A"} / ${explorationProposalSummary.top_action || "N/A"} / n=${explorationProposalSummary.proposal_n}).`,
           ]
           : []),
-        ...(explorationApplyCandidateSummary.status === "APPLY_CANDIDATE_READY"
+        ...(explorationApplyCandidateSummary.status === "AUTO_APPLY_CANDIDATE_READY"
           ? [
-            `Exploration apply candidate remains manual-only (${explorationApplyCandidateSummary.top_market || "N/A"} / ${explorationApplyCandidateSummary.top_stage || "N/A"} / ${explorationApplyCandidateSummary.top_action || "N/A"} / manual=${explorationApplyCandidateSummary.manual_confirm_required ? "YES" : "NO"} / auto=${explorationApplyCandidateSummary.auto_apply_allowed ? "YES" : "NO"}).`,
+            `Exploration apply candidate is auto-eligible (${explorationApplyCandidateSummary.top_market || "N/A"} / ${explorationApplyCandidateSummary.top_stage || "N/A"} / ${explorationApplyCandidateSummary.top_action || "N/A"} / manual=${explorationApplyCandidateSummary.manual_confirm_required ? "YES" : "NO"} / auto=${explorationApplyCandidateSummary.auto_apply_allowed ? "YES" : "NO"}).`,
           ]
-          : []),
+          : (explorationApplyCandidateSummary.status === "APPLY_CANDIDATE_READY"
+            ? [
+              `Exploration apply candidate remains manual-only (${explorationApplyCandidateSummary.top_market || "N/A"} / ${explorationApplyCandidateSummary.top_stage || "N/A"} / ${explorationApplyCandidateSummary.top_action || "N/A"} / manual=${explorationApplyCandidateSummary.manual_confirm_required ? "YES" : "NO"} / auto=${explorationApplyCandidateSummary.auto_apply_allowed ? "YES" : "NO"}).`,
+            ]
+            : [])),
         ...dropValidationSummary.next_actions,
       ],
     },

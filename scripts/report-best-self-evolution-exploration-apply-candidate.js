@@ -18,6 +18,10 @@ const {
 } = require("./lib/automation-utils");
 
 const EXPLORATION_PROPOSAL_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_proposal_latest.json");
+const EXPLORATION_BUDGET_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_budget_latest.json");
+const EXECUTION_QUALITY_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_execution_quality_latest.json");
+const REVERSE_POLICY_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_reverse_policy_latest.json");
+const PROVISIONAL_REALIZED_OUTCOME_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_provisional_realized_outcome_latest.json");
 
 function renderMarkdown(report = {}) {
   const summary = report.summary || {};
@@ -33,10 +37,12 @@ function renderMarkdown(report = {}) {
     `- top_action: ${summary.top_action || "N/A"}`,
     `- manual_confirm_required: ${summary.manual_confirm_required ? "YES" : "NO"}`,
     `- auto_apply_allowed: ${summary.auto_apply_allowed ? "YES" : "NO"}`,
+    `- effective_realized_n: ${summary.effective_realized_n ?? "N/A"} / min_required: ${summary.min_effective_realized_n ?? "N/A"}`,
+    `- blockers: ${Array.isArray(summary.blockers) && summary.blockers.length ? summary.blockers.join("|") : "none"}`,
     "",
     "## Candidates",
     ...(Array.isArray(summary.candidates) && summary.candidates.length
-      ? summary.candidates.map((row) => `- ${row.market}: ${row.stage} / ${row.proposed_action} / dryrun=${row.source_proposed_action || "N/A"} / obj=${row.objective_score ?? "N/A"} / delta=${row.delta_score ?? "N/A"} / drop=${row.drop_family || "N/A"}`)
+      ? summary.candidates.map((row) => `- ${row.market}: ${row.stage} / ${row.proposed_action} / dryrun=${row.source_proposed_action || "N/A"} / obj=${row.objective_score ?? "N/A"} / delta=${row.delta_score ?? "N/A"} / drop=${row.drop_family || "N/A"} / blockers=${Array.isArray(row.blockers) && row.blockers.length ? row.blockers.join("|") : "none"}`)
       : ["- none"]),
   ];
   return `${lines.join("\n")}\n`;
@@ -46,13 +52,17 @@ function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
   const explorationProposal = readJsonRawSafe(EXPLORATION_PROPOSAL_PATH, null);
+  const explorationBudget = readJsonRawSafe(EXPLORATION_BUDGET_PATH, null);
+  const executionQuality = readJsonRawSafe(EXECUTION_QUALITY_PATH, null);
+  const reversePolicy = readJsonRawSafe(REVERSE_POLICY_PATH, null);
+  const provisionalRealizedOutcome = readJsonRawSafe(PROVISIONAL_REALIZED_OUTCOME_PATH, null);
   const reportCycleId = resolveAnchoredReportCycleId({
     preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
     fallbackCycleId: cycleMeta.cycle_id,
-    sources: [explorationProposal],
+    sources: [explorationProposal, explorationBudget, executionQuality, reversePolicy, provisionalRealizedOutcome],
   });
 
-  const summary = deriveExplorationApplyCandidate({ explorationProposal });
+  const summary = deriveExplorationApplyCandidate({ explorationProposal, explorationBudget, executionQuality, reversePolicy, provisionalRealizedOutcome });
   const report = {
     ok: true,
     generated_at_kst: nowMeta.kst,
@@ -60,6 +70,10 @@ function main() {
     generation_id: reportCycleId,
     inputs: {
       exploration_proposal: EXPLORATION_PROPOSAL_PATH,
+      exploration_budget: EXPLORATION_BUDGET_PATH,
+      execution_quality: EXECUTION_QUALITY_PATH,
+      reverse_policy: REVERSE_POLICY_PATH,
+      provisional_realized_outcome: PROVISIONAL_REALIZED_OUTCOME_PATH,
     },
     summary,
   };

@@ -367,21 +367,24 @@ async function main() {
       : (String(explorationProposalSummary.status || "").trim().toUpperCase() ? "HOLD" : "N/A"),
     reason: `top=${explorationProposalSummary.top_market || "N/A"} / stage=${explorationProposalSummary.top_stage || "N/A"} / action=${explorationProposalSummary.top_action || "N/A"} / n=${explorationProposalSummary.proposal_n ?? 0}`,
   };
-  if (!rows.find((row) => row.loop === "EXPLORATION_PROPOSAL")) {
-    rows.splice(17, 0, explorationProposalRow);
-  }
+  const explorationProposalIndex = rows.findIndex((row) => row.loop === "EXPLORATION_PROPOSAL");
+  if (explorationProposalIndex >= 0) rows[explorationProposalIndex] = explorationProposalRow;
+  else rows.splice(17, 0, explorationProposalRow);
+  const explorationApplyCandidateStatus = String(explorationApplyCandidateSummary.status || "").trim().toUpperCase();
   const explorationApplyCandidateRow = {
     loop: "EXPLORATION_APPLY_CANDIDATE",
     fresh: artifacts.explorationApplyCandidate && artifacts.explorationApplyCandidate.fresh === true,
     cycle_id: String(explorationApplyCandidateRaw.cycle_id || explorationApplyCandidateRaw.generation_id || "").trim() || null,
-    status: String(explorationApplyCandidateSummary.status || "").trim().toUpperCase() === "APPLY_CANDIDATE_READY"
-      ? "WARN"
-      : (String(explorationApplyCandidateSummary.status || "").trim().toUpperCase() ? "HOLD" : "N/A"),
-    reason: `top=${explorationApplyCandidateSummary.top_market || "N/A"} / stage=${explorationApplyCandidateSummary.top_stage || "N/A"} / action=${explorationApplyCandidateSummary.top_action || "N/A"} / manual=${explorationApplyCandidateSummary.manual_confirm_required === true ? "YES" : "NO"}`,
+    status: explorationApplyCandidateStatus === "AUTO_APPLY_CANDIDATE_READY"
+      ? "PASS"
+      : (explorationApplyCandidateStatus === "APPLY_CANDIDATE_READY"
+        ? "WARN"
+        : (explorationApplyCandidateStatus ? "HOLD" : "N/A")),
+    reason: `top=${explorationApplyCandidateSummary.top_market || "N/A"} / stage=${explorationApplyCandidateSummary.top_stage || "N/A"} / action=${explorationApplyCandidateSummary.top_action || "N/A"} / manual=${explorationApplyCandidateSummary.manual_confirm_required === true ? "YES" : "NO"} / auto=${explorationApplyCandidateSummary.auto_apply_allowed === true ? "YES" : "NO"}`,
   };
-  if (!rows.find((row) => row.loop === "EXPLORATION_APPLY_CANDIDATE")) {
-    rows.splice(18, 0, explorationApplyCandidateRow);
-  }
+  const explorationApplyCandidateIndex = rows.findIndex((row) => row.loop === "EXPLORATION_APPLY_CANDIDATE");
+  if (explorationApplyCandidateIndex >= 0) rows[explorationApplyCandidateIndex] = explorationApplyCandidateRow;
+  else rows.splice(18, 0, explorationApplyCandidateRow);
   const summary = {
     ...(derived.summary || {}),
     drop_validation_status: dropValidationSummary.status || derived.summary && derived.summary.drop_validation_status || null,
