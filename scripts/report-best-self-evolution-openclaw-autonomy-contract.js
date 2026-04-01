@@ -24,6 +24,8 @@ const INPUTS = Object.freeze({
   deploymentPlan: path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json"),
   serverPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
   watchdog: path.join(OPS_DAILY_DIR, "automation_watchdog_latest.json"),
+  serverSignalAuthority: path.join(OPS_DAILY_DIR, "server_signal_authority_latest.json"),
+  serverSignalQuality: path.join(OPS_DAILY_DIR, "server_signal_quality_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -40,6 +42,9 @@ function renderMarkdown(report = {}) {
     `- authority_state: ${summary.authority_state || "N/A"}`,
     `- phase_d_status: ${summary.phase_d_status || "N/A"}`,
     `- ops_status: ${summary.ops_status || "N/A"}`,
+    `- server_signal_authority: ${summary.server_signal_authority_status || "N/A"}`,
+    `- server_signal_quality: ${summary.server_signal_quality_status || "N/A"}`,
+    `- server_transition: ${summary.server_signal_transition_status || "N/A"} / ${summary.server_signal_transition_progress_pct != null ? `${summary.server_signal_transition_progress_pct}%` : "N/A"}`,
     "",
     "## Objective Policy",
     `- objective_score >= ${report.objective_policy && report.objective_policy.min_objective_score != null ? report.objective_policy.min_objective_score : "N/A"}`,
@@ -56,6 +61,13 @@ function renderMarkdown(report = {}) {
     `- authority_pending: ${status.authority_pending ? "YES" : "NO"}`,
     `- phase_d_ready: ${status.phase_d_acceptance_ready ? "YES" : "NO"} / ${status.phase_d_acceptance_reason || "N/A"}`,
     `- ops_healthy: ${status.ops_healthy ? "YES" : "NO"} / scheduler=${status.scheduler_mode || "N/A"} / watchdog=${status.watchdog_verdict || "N/A"}`,
+    `- server_signal: source=${status.server_signal_source_mode || "N/A"} / drift=${status.server_signal_drift_status || "N/A"} / quality=${status.server_signal_quality_status || "N/A"}`,
+    `- server_signal_flow_24h: authoritative=${status.server_signal_authoritative_24h_n != null ? status.server_signal_authoritative_24h_n : "N/A"} / shadow=${status.server_signal_shadow_24h_n != null ? status.server_signal_shadow_24h_n : "N/A"} / entry=${status.server_signal_entry_24h_n != null ? status.server_signal_entry_24h_n : "N/A"} / intent=${status.server_signal_intent_24h_n != null ? status.server_signal_intent_24h_n : "N/A"} / fill=${status.server_signal_fill_24h_n != null ? status.server_signal_fill_24h_n : "N/A"}`,
+    "",
+    "## Server Transition",
+    ...(report.server_signal_transition && Array.isArray(report.server_signal_transition.phases)
+      ? report.server_signal_transition.phases.map((row) => `- ${row.label}: ${row.status}`)
+      : ["- N/A"]),
   ];
   return `${lines.join("\n")}\n`;
 }
@@ -69,6 +81,8 @@ function main() {
     deploymentPlan: readJsonRawSafe(INPUTS.deploymentPlan, null),
     serverPrimaryCanary: readJsonRawSafe(INPUTS.serverPrimaryCanary, null),
     watchdog: readJsonRawSafe(INPUTS.watchdog, null),
+    serverSignalAuthority: readJsonRawSafe(INPUTS.serverSignalAuthority, null),
+    serverSignalQuality: readJsonRawSafe(INPUTS.serverSignalQuality, null),
   });
   const output = {
     ok: true,

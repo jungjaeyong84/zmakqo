@@ -40,6 +40,8 @@ function loadLatestArtifact(fileName) {
 function statusTone(value) {
   const s = String(value || "").toUpperCase();
   if (!s) return "dim";
+  if (s === "COMPLETE" || s === "DONE") return "ok";
+  if (s === "IN_PROGRESS") return "warn";
   if (s.includes("PENDING")) return "warn";
   if (s.includes("FAIL") || s.includes("BLOCK") || s.includes("ROLLBACK") || s.includes("DRIFT") || s.includes("NOT_REACHING_EXECUTION") || s === "HOLD" || s === "TIMEOUT_HOLD" || s === "OBJECTIVE_RECOVERY_REQUIRED") return "bad";
   if (["PASS", "OK", "ACTIVE", "APPROVED", "PROMOTE", "READY", "YES", "TRUE", "ON_TRACK"].includes(s) || s.includes("ACTIVE")) return "ok";
@@ -378,6 +380,11 @@ const VALUE_TEXT_MAP = {
   EARLY: "얼리",
   PINE_PRIMARY: "파인 우선",
   SERVER_PRIMARY: "서버 우선",
+  COMPLETE: "완료",
+  IN_PROGRESS: "진행 중",
+  NOT_STARTED: "미시작",
+  DONE: "완료",
+  PENDING: "대기",
 };
 
 function valueText(value) {
@@ -767,6 +774,7 @@ function buildRecoveryViewModel() {
   const deploymentGuards = loadLatestArtifact("best_self_evolution_deployment_guards_latest.json");
   const signalAuthority = loadLatestArtifact("server_signal_authority_latest.json");
   const signalQuality = loadLatestArtifact("server_signal_quality_latest.json");
+  const autonomyContract = loadLatestArtifact("best_self_evolution_openclaw_autonomy_contract_latest.json");
   const nextAction = Array.isArray(governor.summary.next_actions) && governor.summary.next_actions.length
     ? governor.summary.next_actions[0]
     : null;
@@ -851,6 +859,32 @@ function buildRecoveryViewModel() {
               { label: "Latest Entry", value: compactText(signalQuality.summary.latest_authoritative_entry_signal_at_kst) },
               { label: "Quality Status", value: compactText(valueText(signalQuality.summary.quality_status)) },
             ],
+          },
+          {
+            title: "서버 우선 전환 진행률",
+            tone: statusTone(autonomyContract.summary.server_signal_transition_status || "IN_PROGRESS"),
+            rows: [
+              { label: "진행률", value: `${numberText(autonomyContract.summary.server_signal_transition_progress_pct, 0)}%` },
+              { label: "상태", value: compactText(valueText(autonomyContract.summary.server_signal_transition_status)) },
+              { label: "현재 단계", value: compactText(autonomyContract.raw && autonomyContract.raw.server_signal_transition && autonomyContract.raw.server_signal_transition.current_label) },
+              { label: "소스 모드", value: compactText(valueText(autonomyContract.currentStatus.server_signal_source_mode)) },
+              { label: "드리프트", value: compactText(valueText(autonomyContract.currentStatus.server_signal_drift_status)) },
+              { label: "실행 품질", value: compactText(valueText(autonomyContract.currentStatus.server_signal_quality_status)) },
+            ],
+            table: autonomyContract.raw && autonomyContract.raw.server_signal_transition && Array.isArray(autonomyContract.raw.server_signal_transition.phases) ? {
+              columns: [
+                { key: "phase", label: "전환 단계" },
+                { key: "status", label: "상태" },
+              ],
+              rows: buildRowsPreview(
+                autonomyContract.raw.server_signal_transition.phases,
+                (row) => ({
+                  phase: compactText(row.label),
+                  status: compactText(valueText(row.status)),
+                }),
+                4,
+              ),
+            } : null,
           },
           {
             title: "Decision",

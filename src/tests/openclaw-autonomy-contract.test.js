@@ -46,3 +46,27 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.current_status.authority_state, "APPROVED");
   assert.strictEqual(report.summary.authority_state, "APPROVED");
 })();
+
+(() => {
+  const report = deriveOpenClawAutonomyContract({
+    objective: { global_objective_score: { objective_score: -0.4, snapshot: { win_rate: 0.58 } } },
+    objectiveSupervisor: {
+      display: {
+        objective: { monthly_run_rate_krw: 1200000 },
+        self_evolution_objective: { objective_score: -0.4, win_rate: 0.58 },
+      },
+    },
+    deploymentPlan: { summary: { plan_status: "APPLIED_ACTIVE", authority_state: "APPROVED", external_authority_pending: false } },
+    serverPrimaryCanary: { summary: { acceptance_ready: false, acceptance_reason: "SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT", server_primary_executed_n: 1, pine_shadow_disagreement_rate: 0.08, rollback_trigger_n: 0 } },
+    watchdog: { display: { verdict: "PASS", scheduler_mode: "OPENCLAW_CRON" } },
+    serverSignalAuthority: { summary: { source_mode: "PINE_PRIMARY", drift_status: "PARITY_WATCH", authoritative_server_24h_n: 12, pine_shadow_24h_n: 2 } },
+    serverSignalQuality: { summary: { quality_status: "WATCH_PARITY_DRIFT", authoritative_entry_signal_24h_n: 10, order_intent_24h_n: 4, fill_24h_n: 3 } },
+  });
+
+  assert.strictEqual(report.current_status.server_signal_source_mode, "PINE_PRIMARY");
+  assert.strictEqual(report.current_status.server_signal_quality_status, "WATCH_PARITY_DRIFT");
+  assert.strictEqual(report.summary.server_signal_transition_status, "IN_PROGRESS");
+  assert.strictEqual(report.summary.server_signal_transition_progress_pct, 88);
+  assert.strictEqual(Array.isArray(report.server_signal_transition.phases), true);
+  assert.strictEqual(report.server_signal_transition.phases.length, 4);
+})();
