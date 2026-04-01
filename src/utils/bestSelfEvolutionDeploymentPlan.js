@@ -255,12 +255,15 @@ function findPreparedPaths({ stageAutopilot = null, weeklyHistory = null, target
     ) || null;
   }
   const latestHistory = matchedHistory || latestWeeklyRow(weeklyHistory) || {};
-  const preparedFilePath = String(pineStage.prepared_file_path || latestHistory.created_file_path || "").trim() || null;
+  const currentVisualPreparedFilePath = String(pineStage.current_source_file_path || "").trim() || null;
+  const currentVisualStrategyId = String(pineStage.current_strategy_id || "").trim() || null;
+  const preparedFilePath = String(currentVisualPreparedFilePath || pineStage.prepared_file_path || latestHistory.created_file_path || "").trim() || null;
   const latestGeneratedFilePath = String(pineStage.latest_generated_file_path || latestHistory.latest_generated_file_path || "").trim() || null;
   const resolved = {
     prepared_file_path: preparedFilePath,
     prepared_strategy_id: String(
-      pineStage.prepared_strategy_id
+      currentVisualStrategyId
+      || pineStage.prepared_strategy_id
       || latestHistory.created_strategy_id
       || extractPineStrategyId(preparedFilePath || latestGeneratedFilePath)
       || ""
@@ -275,7 +278,21 @@ function findPreparedPaths({ stageAutopilot = null, weeklyHistory = null, target
     source_recommended_patch_id: String(latestHistory.recommended_patch_id || "").trim() || null,
   };
   const override = normalizePreparedOverride(preparedOverride);
-  if (!override.active) return resolved;
+  const overrideSuppressedReason = override.active
+    && (
+      (currentVisualStrategyId && override.prepared_strategy_id && override.prepared_strategy_id !== currentVisualStrategyId)
+      || (currentVisualPreparedFilePath && override.prepared_file_path && override.prepared_file_path !== currentVisualPreparedFilePath)
+    )
+    ? "CURRENT_VISUAL_PINE_MISMATCH"
+    : null;
+  if (!override.active || overrideSuppressedReason) {
+    return {
+      ...resolved,
+      override_active: false,
+      override_source: overrideSuppressedReason ? "SUPPRESSED_MANUAL" : null,
+      override_suppressed_reason: overrideSuppressedReason,
+    };
+  }
   return {
     ...resolved,
     prepared_file_path: override.prepared_file_path || resolved.prepared_file_path,
@@ -287,6 +304,7 @@ function findPreparedPaths({ stageAutopilot = null, weeklyHistory = null, target
     prepared_reason: override.prepared_reason || resolved.prepared_reason,
     override_active: true,
     override_source: override.override_source || null,
+    override_suppressed_reason: null,
   };
 }
 
@@ -781,6 +799,7 @@ function deriveDeploymentPlan({
       prepared_stage_ready: prepared.prepared_stage_ready,
       prepared_override_active: prepared.override_active === true,
       prepared_override_source: prepared.override_source || null,
+      prepared_override_suppressed_reason: prepared.override_suppressed_reason || null,
       source_week_key: prepared.source_week_key,
       applied_strategy_id: manualPaste.applied_strategy_id,
       manual_paste_acknowledged_at_kst: manualPaste.acknowledged_at_kst,
@@ -815,6 +834,7 @@ function deriveDeploymentPlan({
       candidate_signature: prepared.prepared_candidate_signature || targetCandidateId,
       applied_origin_candidate_id: appliedOriginCandidateId,
       prepared_reason: prepared.prepared_reason,
+      prepared_override_suppressed_reason: prepared.override_suppressed_reason || null,
       dry_prepare: dryPrepareEligible,
       next_actions: Array.from(new Set(nextActions.filter(Boolean))),
     },

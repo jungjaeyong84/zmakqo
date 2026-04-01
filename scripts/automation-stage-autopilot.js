@@ -2352,9 +2352,15 @@ async function main() {
   };
   const overrideApplied = applyPreparedOverrideToPineArtifacts({ pineHandoff, pineStageRow, preparedOverride });
   if (currentVersionPineSync && currentVersionPineSync.strategy_id) {
+    overrideApplied.pineHandoff.prepared_file_path = String(currentVersionPineSync.source_file_path || "").trim() || overrideApplied.pineHandoff.prepared_file_path || null;
+    overrideApplied.pineHandoff.prepared_strategy_id = String(currentVersionPineSync.strategy_id || "").trim() || overrideApplied.pineHandoff.prepared_strategy_id || null;
+    overrideApplied.pineHandoff.latest_generated_file_path = String(currentVersionPineSync.latest_generated_file_path || "").trim() || overrideApplied.pineHandoff.latest_generated_file_path || null;
     overrideApplied.pineHandoff.current_strategy_id = String(currentVersionPineSync.strategy_id || "").trim() || null;
     overrideApplied.pineHandoff.current_source_file_path = String(currentVersionPineSync.source_file_path || "").trim() || null;
     overrideApplied.pineHandoff.current_latest_generated_file_path = String(currentVersionPineSync.latest_generated_file_path || "").trim() || null;
+    overrideApplied.pineStageRow.prepared_file_path = String(currentVersionPineSync.source_file_path || "").trim() || overrideApplied.pineStageRow.prepared_file_path || null;
+    overrideApplied.pineStageRow.prepared_strategy_id = String(currentVersionPineSync.strategy_id || "").trim() || overrideApplied.pineStageRow.prepared_strategy_id || null;
+    overrideApplied.pineStageRow.latest_generated_file_path = String(currentVersionPineSync.latest_generated_file_path || "").trim() || overrideApplied.pineStageRow.latest_generated_file_path || null;
     overrideApplied.pineStageRow.current_strategy_id = String(currentVersionPineSync.strategy_id || "").trim() || null;
     overrideApplied.pineStageRow.current_source_file_path = String(currentVersionPineSync.source_file_path || "").trim() || null;
   }

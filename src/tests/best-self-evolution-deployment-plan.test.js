@@ -373,6 +373,54 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
 (() => {
   const report = deriveDeploymentPlan({
     objectiveSupervisor: {
+      promotion: { ready: false, candidate_id: null, display_candidate_id: null },
+      rollback: { ready: false },
+      self_evolution_deployment: { deploy_pass: false },
+    },
+    changeControl: {},
+    codexPatchReview: { verdict: "HOLD" },
+    deploymentGuards: { summary: { deploy_pass: false, target_candidate_id: null, canary_open_wave: 1, blockers: [] } },
+    canaryReport: { summary: { open_wave: 1 }, rows: [] },
+    stageAutopilot: {
+      raw: {
+        stage_rows: [
+          {
+            stage: "PINE",
+            machine_state: "READY",
+            prepared_file_path: __filename,
+            prepared_strategy_id: "donbeolja_v6.0.3.3",
+            latest_generated_file_path: "/tmp/latest.pine",
+            current_source_file_path: __filename,
+            current_strategy_id: "donbeolja_v6.1.1.0",
+            signature: "AUTO_CORE_REGIME_TIGHTEN",
+          },
+        ],
+      },
+    },
+    weeklyHistory: { weeks: [] },
+    preparedOverride: {
+      enabled: true,
+      prepared_file_path: __filename,
+      prepared_strategy_id: "donbeolja_v6.0.3.3",
+      latest_generated_file_path: "/tmp/latest.pine",
+      target_candidate_id: "AUTO_CORE_REGIME_TIGHTEN",
+      display_candidate_id: "AUTO_LONG_SHORT_REGIME_TIGHTEN",
+      prepared_stage_ready: true,
+      ready_for_manual_paste: true,
+    },
+  });
+
+  assert.strictEqual(report.summary.prepared_file_path, __filename);
+  assert.strictEqual(report.summary.prepared_strategy_id, "donbeolja_v6.1.1.0");
+  assert.strictEqual(report.summary.prepared_override_active, false);
+  assert.strictEqual(report.summary.prepared_override_source, "SUPPRESSED_MANUAL");
+  assert.strictEqual(report.summary.prepared_override_suppressed_reason, "CURRENT_VISUAL_PINE_MISMATCH");
+  console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_SUPPRESS_STALE_OVERRIDE_TEST_OK");
+})();
+
+(() => {
+  const report = deriveDeploymentPlan({
+    objectiveSupervisor: {
       promotion: { ready: true, recovery_mode: true, candidate_id: "AUTO_CORE_REGIME_TIGHTEN", display_candidate_id: "AUTO_CORE_REGIME_TIGHTEN" },
       rollback: { ready: false },
       self_evolution_deployment: { deploy_pass: true },
