@@ -371,6 +371,86 @@ async function resolveAlertChannel(provider = "BINANCEFUT") {
   return "";
 }
 
+const AUTOMATION_TELEGRAM_TITLE_RULES = Object.freeze([
+  { category: "ESSENTIAL", prefix: "[목표 점검]" },
+  { category: "ESSENTIAL", prefix: "[자동 변경 반영]" },
+  { category: "ESSENTIAL", prefix: "[자동 롤백 점검]" },
+  { category: "ESSENTIAL", prefix: "[일일 운영 점검]" },
+  { category: "ESSENTIAL", prefix: "[시간별 운영 점검]" },
+  { category: "SUMMARY", prefix: "[자동화 상태 점검]" },
+  { category: "SUMMARY", prefix: "[일간·주간·월간 회고]" },
+  { category: "SUMMARY", prefix: "[시간별 자산 현황]" },
+  { category: "SUMMARY", prefix: "[단계별 성과 점검]" },
+  { category: "SUMMARY", prefix: "[무거래 원인 분해]" },
+  { category: "SUMMARY", prefix: "[기회손실 점검]" },
+  { category: "SUMMARY", prefix: "[데이터 누락 복구]" },
+  { category: "SUMMARY", prefix: "[데이터 무결성 점검]" },
+  { category: "SUMMARY", prefix: "[자동화 변경 이상 여부 점검]" },
+  { category: "TUNING", prefix: "[4차 EV/시간가치층 자동 조정]" },
+  { category: "TUNING", prefix: "[5차 진입 타이밍 자동 조정]" },
+  { category: "TUNING", prefix: "[학습 기반 필터 점검]" },
+  { category: "TUNING", prefix: "[주간 전략 점검]" },
+  { category: "TUNING", prefix: "[Codex 주간 패치 엔진]" },
+  { category: "TUNING", prefix: "[Claude 주간 패치 엔진]" },
+  { category: "TUNING", prefix: "[주간 파인 수정 검토]" },
+  { category: "TUNING", prefix: "[주간 파인 파일 준비 완료]" },
+  { category: "TUNING", prefix: "[청산 최적화]" },
+]);
+
+function parseMessagePolicyList(raw) {
+  return String(raw || "")
+    .split(/[\n,]/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function classifyAutomationTelegramTitle(title) {
+  const normalized = String(title || "").trim();
+  if (!normalized) return "UNCLASSIFIED";
+  const matched = AUTOMATION_TELEGRAM_TITLE_RULES.find((row) => normalized.startsWith(row.prefix));
+  return matched ? matched.category : "UNCLASSIFIED";
+}
+
+function resolveAutomationTelegramPolicyMode() {
+  const mode = String(process.env.AUTOMATION_TELEGRAM_POLICY || "ESSENTIAL_ONLY").trim().toUpperCase();
+  if (mode === "ALL" || mode === "SUMMARY" || mode === "ESSENTIAL_ONLY") return mode;
+  return "ESSENTIAL_ONLY";
+}
+
+function resolveAutomationTelegramPolicyDecision({ title, severity } = {}) {
+  const normalizedTitle = String(title || "").trim();
+  const normalizedSeverity = String(severity || "INFO").trim().toUpperCase();
+  const category = classifyAutomationTelegramTitle(normalizedTitle);
+  const allowList = parseMessagePolicyList(process.env.AUTOMATION_TELEGRAM_ALLOW_TITLES);
+  const muteList = parseMessagePolicyList(process.env.AUTOMATION_TELEGRAM_MUTE_TITLES);
+
+  if (allowList.some((token) => normalizedTitle.includes(token))) {
+    return { send: true, category, policy_mode: resolveAutomationTelegramPolicyMode(), reason: "ALLOW_LIST" };
+  }
+  if (muteList.some((token) => normalizedTitle.includes(token))) {
+    return { send: false, category, policy_mode: resolveAutomationTelegramPolicyMode(), reason: "MUTE_LIST" };
+  }
+
+  const mode = resolveAutomationTelegramPolicyMode();
+  if (mode === "ALL") {
+    return { send: true, category, policy_mode: mode, reason: "POLICY_ALL" };
+  }
+  if (mode === "SUMMARY") {
+    if (category === "TUNING" && !["WARN", "ERROR"].includes(normalizedSeverity)) {
+      return { send: false, category, policy_mode: mode, reason: "TUNING_MUTED_IN_SUMMARY" };
+    }
+    return { send: true, category, policy_mode: mode, reason: "SUMMARY_POLICY" };
+  }
+
+  if (category === "ESSENTIAL") {
+    return { send: true, category, policy_mode: mode, reason: "ESSENTIAL_ALLOWED" };
+  }
+  if (["WARN", "ERROR"].includes(normalizedSeverity)) {
+    return { send: true, category, policy_mode: mode, reason: "WARN_OVERRIDE" };
+  }
+  return { send: false, category, policy_mode: mode, reason: `${category}_MUTED` };
+}
+
 async function sendKoreanTelegramSummary({
   title,
   sections,
@@ -382,6 +462,17 @@ async function sendKoreanTelegramSummary({
 } = {}) {
   if (String(process.env.SKIP_ALERT || "").trim() === "1") {
     return { ok: false, skipped: true, reason: "SKIP_ALERT" };
+  }
+  const policyDecision = resolveAutomationTelegramPolicyDecision({ title, severity });
+  if (!policyDecision.send) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "SKIP_ALERT",
+      policy_reason: policyDecision.reason,
+      policy_mode: policyDecision.policy_mode,
+      message_category: policyDecision.category,
+    };
   }
   const channel = await resolveAlertChannel(provider);
   const normalizedTitle = humanizeTelegramText(title);
@@ -514,4 +605,6 @@ module.exports = {
   kstStartOfTodayUtcMs,
   toIso,
   ensureExchangeApiKeys,
-};
+  classifyAutomationTelegramTitle,
+  resolveAutomationTelegramPolicyDecision,
+  };

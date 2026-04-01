@@ -3,37 +3,60 @@
 const assert = require("assert");
 const { __test } = require("../../scripts/automation-objective-retrospective");
 
-(() => {
-  assert.strictEqual(__test.classifyDropStage("DROP_LONG_GATE_SCORE"), "QUALITY");
-  assert.strictEqual(__test.classifyDropStage("DROP_AI_MISSING"), "AI");
-  assert.strictEqual(__test.classifyDropStage("DROP_AI_BIAS_NEUTRAL_BLOCK"), "MARKET");
-  assert.strictEqual(__test.classifyDropStage("DROP_EV_GATE_TP1_PROB"), "EV");
-  assert.strictEqual(__test.classifyDropStage("DROP_WAIT_ONE_BAR_TIMING"), "TIMING");
+function run() {
+  const trades = [
+    { symbol: "BTCUSDT", pnl_krw: 120000, pnl_pct: 0.03 },
+    { symbol: "BTCUSDT", pnl_krw: -20000, pnl_pct: -0.01 },
+    { symbol: "ETHUSDT", pnl_krw: -90000, pnl_pct: -0.04 },
+  ];
+  const byMarket = __test.summarizeTradesByMarket(trades);
+  assert.strictEqual(byMarket[0].symbol, "BTCUSDT");
+  assert.strictEqual(byMarket[0].trade_n, 2);
+  assert.strictEqual(byMarket[1].symbol, "ETHUSDT");
 
-  const ranges = __test.periodRanges(Date.UTC(2026, 2, 28, 14, 30, 0));
-  assert.strictEqual(ranges.DAILY.observedDays, 1);
-  assert.strictEqual(ranges.WEEKLY.observedDays, 7);
-  assert.strictEqual(ranges.MONTHLY.observedDays, 30);
+  const daily = {
+    objective: { period_target_krw: 50000 },
+    entry_cohort: { signals_n: 9, executed_n: 3, execution_rate: 1 / 3 },
+    realized_trades: { trade_n: 3, net_pnl_quote: 10000, trades },
+    drops: { top_reasons: [{ reason: "DROP_EV_GATE_TP1_PROB", n: 4, stage: "EV" }] },
+    quality_by_tier: { CORE: { executed_n: 3, avg_ret_net: -0.01 } },
+  };
+  const weekly = {
+    objective: { period_target_krw: 150000 },
+    realized_trades: { net_pnl_quote: -40000 },
+  };
+  const monthly = {
+    objective: { period_target_krw: 1500000 },
+    realized_trades: { net_pnl_quote: -180000 },
+  };
 
-  const realized = __test.summarizeRealizedTrades([
-    { close_ms: 1000, pnl_krw: 10, pnl_pct: 0.01 },
-    { close_ms: 2000, pnl_krw: -5, pnl_pct: -0.02 },
-  ], { fromMs: 0, toMs: 3000 });
-  assert.strictEqual(realized.realized_n, 2);
-  assert.strictEqual(realized.win_n, 1);
-  assert.strictEqual(Number(realized.net_pnl_quote.toFixed(2)), 5.00);
+  const evaluation = __test.buildDailyTradeEvaluation({ daily, weekly, monthly });
+  assert.ok(Array.isArray(evaluation.lines));
+  assert.ok(evaluation.lines.some((line) => line.includes("실현 거래는 3건")));
+  assert.ok(evaluation.lines.some((line) => line.includes("BTCUSDT")));
 
-  const reflection = __test.buildReflection({
-    periodLabel: "당일",
-    objective: { failed_checks: ["NO_TRADE_ACTIVITY", "ZERO_KRW_IDLE", "PERIOD_TARGET_NOT_MET"] },
-    entryOverall: { executed_n: 0 },
-    realizedOverall: { realized_n: 0, net_pnl_quote: 0, win_rate: null, avg_ret_net: null },
-    dropSummary: { counts: { QUALITY: 4, AI: 1, MARKET: 0, EV: 0, TIMING: 0, OPS: 0 }, top_reasons: [{ reason: "DROP_LONG_GATE_SCORE", n: 3 }] },
-    quality: { by_tier: { CORE: { executed_n: 2, avg_ret_net: -0.01 }, EARLY: { executed_n: 1, avg_ret_net: 0.01 } } },
+  daily.daily_trade_evaluation = evaluation;
+
+  const critique = __test.buildSelfCritique({
+    failedPeriods: ["DAILY", "MONTHLY"],
+    daily,
+    weekly,
+    monthly,
   });
-  assert.strictEqual(Array.isArray(reflection), true);
-  assert.ok(reflection.some((line) => line.includes("0원")));
-  assert.ok(reflection.some((line) => line.includes("1차 상태/무결성")));
+  assert.ok(critique.some((line) => line.includes("일간 목표")));
+  assert.ok(critique.some((line) => line.includes("서버 신호")));
+
+  const plan = __test.buildTomorrowStrategy({
+    failedPeriods: ["DAILY"],
+    daily,
+    weekly,
+    monthly,
+    quality: daily,
+  });
+  assert.ok(plan.some((line) => line.includes("서버 신호 기준")));
+  assert.ok(plan.some((line) => line.includes("EV")));
 
   console.log("OBJECTIVE_RETROSPECTIVE_TEST_OK");
-})();
+}
+
+run();

@@ -205,6 +205,82 @@ function resolveWorstTier(byTier = {}) {
   return rows[0] || null;
 }
 
+function inferTradeSymbol(row = {}) {
+  const direct = [
+    row.symbol,
+    row.market,
+    row.asset,
+    row.ticker,
+  ].map((v) => String(v || "").trim().toUpperCase()).find(Boolean);
+  if (direct) return direct;
+  const sourceTradeId = String(row && row.source_trade_id || "").trim();
+  const fillId = String(row && row.fill_id || "").trim();
+  const joined = `${sourceTradeId} ${fillId}`;
+  const match = joined.match(/(?:^|__|\s)([A-Z0-9]+USDT)(?:__|\s|$)/);
+  return match ? match[1] : "UNKNOWN";
+}
+
+function summarizeTradesByMarket(trades = []) {
+  const byMarket = new Map();
+  for (const row of Array.isArray(trades) ? trades : []) {
+    const symbol = inferTradeSymbol(row);
+    const current = byMarket.get(symbol) || { symbol, trade_n: 0, win_n: 0, net_pnl_krw: 0, avg_ret_net_sum: 0, avg_ret_net_n: 0 };
+    current.trade_n += 1;
+    const pnl = Number(row && row.pnl_krw);
+    if (Number.isFinite(pnl)) current.net_pnl_krw += pnl;
+    if (pnl > 0) current.win_n += 1;
+    const ret = Number(row && row.pnl_pct);
+    if (Number.isFinite(ret)) {
+      current.avg_ret_net_sum += ret;
+      current.avg_ret_net_n += 1;
+    }
+    byMarket.set(symbol, current);
+  }
+  return Array.from(byMarket.values())
+    .map((row) => ({
+      symbol: row.symbol,
+      trade_n: row.trade_n,
+      win_n: row.win_n,
+      win_rate: row.trade_n > 0 ? (row.win_n / row.trade_n) : null,
+      net_pnl_krw: row.net_pnl_krw,
+      avg_ret_net: row.avg_ret_net_n > 0 ? (row.avg_ret_net_sum / row.avg_ret_net_n) : null,
+    }))
+    .sort((a, b) => Number(b.net_pnl_krw || 0) - Number(a.net_pnl_krw || 0) || a.symbol.localeCompare(b.symbol));
+}
+
+function buildDailyTradeEvaluation({ daily, weekly, monthly } = {}) {
+  const trades = Array.isArray(daily && daily.realized_trades && daily.realized_trades.trades)
+    ? daily.realized_trades.trades
+    : [];
+  const byMarket = summarizeTradesByMarket(trades);
+  const bestMarket = byMarket[0] || null;
+  const worstMarket = byMarket.length ? byMarket.slice().sort((a, b) => Number(a.net_pnl_krw || 0) - Number(b.net_pnl_krw || 0) || a.symbol.localeCompare(b.symbol))[0] : null;
+  const activeMarkets = byMarket.filter((row) => Number(row.trade_n || 0) > 0).map((row) => row.symbol);
+  const topDrop = Array.isArray(daily && daily.drops && daily.drops.top_reasons) ? daily.drops.top_reasons[0] || null : null;
+  const lines = [
+    `오늘 실현 거래는 ${daily && daily.realized_trades && daily.realized_trades.trade_n || 0}건이고 순손익은 ${signedKrw(daily && daily.realized_trades && daily.realized_trades.net_pnl_quote, 0)} 입니다.`,
+    `오늘 서버 신호 ${daily && daily.entry_cohort && daily.entry_cohort.signals_n || 0}건 중 실제 진입은 ${daily && daily.entry_cohort && daily.entry_cohort.executed_n || 0}건이었고, 실행률은 ${pct(daily && daily.entry_cohort && daily.entry_cohort.execution_rate)} 입니다.`,
+    activeMarkets.length ? `오늘 실제 거래한 시장은 ${activeMarkets.length}개(${activeMarkets.join(", ")}) 입니다.` : "오늘 실제 거래된 시장은 없습니다.",
+  ];
+  if (bestMarket) {
+    lines.push(`수익 기여 1위는 ${bestMarket.symbol} (${signedKrw(bestMarket.net_pnl_krw, 0)}, 승률 ${pct(bestMarket.win_rate)}) 입니다.`);
+  }
+  if (worstMarket) {
+    lines.push(`손실 기여 1위는 ${worstMarket.symbol} (${signedKrw(worstMarket.net_pnl_krw, 0)}, 승률 ${pct(worstMarket.win_rate)}) 입니다.`);
+  }
+  if (topDrop) {
+    lines.push(`오늘 가장 많이 버린 신호는 ${topDrop.reason} ${topDrop.n}건이며 계층은 ${stageLabel(topDrop.stage)} 입니다.`);
+  }
+  lines.push(`주간 손익은 ${signedKrw(weekly && weekly.realized_trades && weekly.realized_trades.net_pnl_quote, 0)}, 월간 손익은 ${signedKrw(monthly && monthly.realized_trades && monthly.realized_trades.net_pnl_quote, 0)} 입니다.`);
+  return {
+    best_market: bestMarket,
+    worst_market: worstMarket,
+    active_markets: activeMarkets,
+    by_market: byMarket.slice(0, 5),
+    lines,
+  };
+}
+
 function describeTierForUser(tier) {
   const key = String(tier || "").trim().toUpperCase();
   if (key === "EARLY") return "LONG/SHORT 기본 진입";
@@ -259,6 +335,65 @@ function buildReflection({ periodLabel, objective, entryOverall, realizedOverall
   if (topStage && topStage.stage === "MARKET") lines.push("다음 수정에서는 3차 상태 기반 Soft Sizing의 bias neutral/opposite sizing이 과한지 확인해야 합니다.");
   if (topStage && topStage.stage === "EV") lines.push("다음 수정에서는 4차 EV/시간가치층 threshold/band가 목표 대비 과도하게 경직됐는지 확인해야 합니다.");
   if (topStage && topStage.stage === "TIMING") lines.push("다음 수정에서는 5차 WAIT 타이밍층 defer가 과민한지 확인해야 합니다.");
+  return lines;
+}
+
+function buildSelfCritique({ failedPeriods = [], daily, weekly, monthly } = {}) {
+  const lines = [];
+  const failedSet = new Set(Array.isArray(failedPeriods) ? failedPeriods : []);
+  const topDrop = Array.isArray(daily && daily.drops && daily.drops.top_reasons) ? daily.drops.top_reasons[0] || null : null;
+  const bestMarket = daily && daily.daily_trade_evaluation ? daily.daily_trade_evaluation.best_market : null;
+  const worstMarket = daily && daily.daily_trade_evaluation ? daily.daily_trade_evaluation.worst_market : null;
+
+  if (!failedSet.size) {
+    return ["오늘 목표는 충족했습니다. 다만 서버 신호 학습 단계인 만큼 내일도 시장별 편차를 계속 점검해야 합니다."];
+  }
+
+  if (failedSet.has("DAILY")) {
+    lines.push(`오늘 나는 일간 목표 ${signedKrw(daily && daily.objective && daily.objective.period_target_krw, 0)}를 달성하지 못했고 결과는 ${signedKrw(daily && daily.realized_trades && daily.realized_trades.net_pnl_quote, 0)}에 그쳤다.`);
+  }
+  if (failedSet.has("WEEKLY")) {
+    lines.push(`주간 누적도 ${signedKrw(weekly && weekly.realized_trades && weekly.realized_trades.net_pnl_quote, 0)}로 회복 기준을 넘지 못했다.`);
+  }
+  if (failedSet.has("MONTHLY")) {
+    lines.push(`월간 런레이트 역시 목표 ${signedKrw(monthly && monthly.objective && monthly.objective.period_target_krw, 0)} 대비 부족하다.`);
+  }
+  if (worstMarket) {
+    lines.push(`오늘 손실 기여 1위는 ${worstMarket.symbol}였고, 나는 이 시장의 서버 정책이 아직 목표 달성 속도에 맞게 정렬되지 않았다는 점을 인정해야 한다.`);
+  }
+  if (topDrop) {
+    lines.push(`오늘 가장 많이 막은 계층은 ${stageLabel(topDrop.stage)}였고, ${topDrop.reason} ${topDrop.n}건은 과보수인지 재검증이 필요하다.`);
+  }
+  if (bestMarket) {
+    lines.push(`반대로 ${bestMarket.symbol}는 오늘 가장 좋은 기여를 냈는데, 승자 시장을 충분히 증폭하지 못했다.`);
+  }
+  lines.push("나는 파인이 아니라 서버 신호를 기준으로 판단해야 하며, 목표 미달 원인을 시장별 정책과 실행 품질에서 다시 찾겠다.");
+  return lines;
+}
+
+function buildTomorrowStrategy({ failedPeriods = [], daily, weekly, monthly, quality } = {}) {
+  const lines = [];
+  const failed = Array.isArray(failedPeriods) && failedPeriods.length > 0;
+  const topDrop = Array.isArray(daily && daily.drops && daily.drops.top_reasons) ? daily.drops.top_reasons[0] || null : null;
+  const bestMarket = daily && daily.daily_trade_evaluation ? daily.daily_trade_evaluation.best_market : null;
+  const worstMarket = daily && daily.daily_trade_evaluation ? daily.daily_trade_evaluation.worst_market : null;
+  const worstTier = resolveWorstTier(quality && quality.by_tier);
+
+  if (!failed) {
+    return [
+      "내일 전략은 서버 신호 기준 production 시장을 유지하고, exploration 시장은 소규모로만 검증한다.",
+      "목표 달성 상태라도 execution quality와 reverse 리뷰 시장은 계속 감시한다.",
+    ];
+  }
+
+  lines.push("내일도 전체 시장을 계속 학습하되, 판단과 수정은 전부 서버 신호 기준으로 진행한다.");
+  if (topDrop && topDrop.stage === "EV") lines.push("1순위는 4차 EV/시간가치층 재조정이다. 과차단을 줄이되 본선 적용은 production 우선 시장부터 반영한다.");
+  if (topDrop && topDrop.stage === "TIMING") lines.push("1순위는 5차 WAIT 타이밍층 민감도 점검이다. defer가 과민하면 진입 누락을 바로 줄인다.");
+  if (topDrop && topDrop.stage === "QUALITY") lines.push("1순위는 1차 상태/무결성 경계 재검토다. integrity 과차단이면 서버 신호 학습이 왜곡된다.");
+  if (bestMarket) lines.push(`승자 시장 ${bestMarket.symbol}는 production 우선순위를 유지하고 서버 정책 증폭 후보로 둔다.`);
+  if (worstMarket) lines.push(`부진 시장 ${worstMarket.symbol}는 배제하지 않고 watch 상태로 두되, 실행 품질과 reverse 경로를 분리해서 본다.`);
+  if (worstTier) lines.push(`가장 약한 tier는 ${describeTierForUser(worstTier.tier)} 이므로 내일 전략은 이 구간의 서버 신호 품질을 우선 보정한다.`);
+  lines.push(`단기 목표는 일간 ${signedKrw(daily && daily.objective && daily.objective.period_target_krw, 0)}, 중간 목표는 주간 ${signedKrw(weekly && weekly.objective && weekly.objective.period_target_krw, 0)}, 최종 목표는 월간 ${signedKrw(monthly && monthly.objective && monthly.objective.period_target_krw, 0)} 회복이다.`);
   return lines;
 }
 
@@ -329,7 +464,7 @@ async function buildPeriodReport(period, range, context = {}) {
 }
 
 function renderPeriodMarkdown(row = {}) {
-  const title = row.period === "DAILY" ? "Daily" : (row.period === "WEEKLY" ? "Weekly" : "Monthly");
+  const title = row.period === "DAILY" ? "일간" : (row.period === "WEEKLY" ? "주간" : "월간");
   const lines = [
     `## ${title}`,
     `- verdict: ${row.objective && row.objective.verdict || "N/A"}`,
@@ -363,6 +498,15 @@ function renderMarkdown(report = {}) {
     "",
     renderPeriodMarkdown(report.periods && report.periods.MONTHLY || {}),
     "",
+    "## 당일 전체 거래 평가",
+    ...((report.daily_trade_evaluation && report.daily_trade_evaluation.lines) || []).map((line) => `- ${line}`),
+    "",
+    "## OpenClaw 반성문",
+    ...((report.self_critique && report.self_critique.lines) || []).map((line) => `- ${line}`),
+    "",
+    "## 내일 전략",
+    ...((report.next_day_strategy && report.next_day_strategy.lines) || []).map((line) => `- ${line}`),
+    "",
     "## References",
     `- governance: ${report.references && report.references.governance || "N/A"}`,
     `- objective_supervisor: ${report.references && report.references.objective_supervisor || "N/A"}`,
@@ -391,9 +535,13 @@ async function main() {
   const monthly = await buildPeriodReport("MONTHLY", ranges.MONTHLY, { signals, drops, fills, trades });
 
   const failedPeriods = [daily, weekly, monthly].filter((row) => row && row.objective && row.objective.pass !== true).map((row) => row.period);
+  const dailyTradeEvaluation = buildDailyTradeEvaluation({ daily, weekly, monthly });
+  daily.daily_trade_evaluation = dailyTradeEvaluation;
   const reflectionLines = [daily, weekly, monthly]
     .flatMap((row) => (Array.isArray(row.reflection) ? row.reflection.map((line) => `${row.period}: ${line}`) : []))
     .slice(0, 8);
+  const selfCritiqueLines = buildSelfCritique({ failedPeriods, daily, weekly, monthly });
+  const nextDayStrategyLines = buildTomorrowStrategy({ failedPeriods, daily, weekly, monthly, quality: daily });
   const report = {
     generated_at_kst: meta.kst,
     provider: PROVIDER,
@@ -415,6 +563,13 @@ async function main() {
     reflection_summary: {
       failed_periods: failedPeriods,
       lines: reflectionLines,
+    },
+    daily_trade_evaluation: dailyTradeEvaluation,
+    self_critique: {
+      lines: selfCritiqueLines,
+    },
+    next_day_strategy: {
+      lines: nextDayStrategyLines,
     },
     references: {
       governance: path.join(OPS_DAILY_DIR, "weekly_filter_governance_latest.md"),
@@ -453,29 +608,24 @@ async function main() {
     }),
     sections: [
       {
-        header: "당일",
-        lines: [
-          `오늘 손익은 ${signedKrw(daily.realized_trades.net_pnl_quote, 0)} 이고, 오늘 목표는 ${signedKrw(daily.objective.period_target_krw, 0)} 입니다.`,
-          `오늘 신호 ${daily.entry_cohort.signals_n}건, 실제 진입 ${daily.entry_cohort.executed_n}건, 실현 거래 ${daily.realized_trades.trade_n}건입니다.`,
-        ],
+        header: "당일 전체 평가",
+        lines: dailyTradeEvaluation.lines.slice(0, 5),
       },
       {
-        header: "주간",
+        header: "기간 상태",
         lines: [
-          `이번 주 손익은 ${signedKrw(weekly.realized_trades.net_pnl_quote, 0)} 이고, 주간 목표는 ${signedKrw(weekly.objective.period_target_krw, 0)} 입니다.`,
-          `이번 주 신호 ${weekly.entry_cohort.signals_n}건, 실제 진입 ${weekly.entry_cohort.executed_n}건, 실현 거래 ${weekly.realized_trades.trade_n}건입니다.`,
-        ],
-      },
-      {
-        header: "월간",
-        lines: [
-          `이번 달 손익은 ${signedKrw(monthly.realized_trades.net_pnl_quote, 0)} 이고, 월간 목표는 ${signedKrw(monthly.objective.period_target_krw, 0)} 입니다.`,
-          `이번 달 신호 ${monthly.entry_cohort.signals_n}건, 실제 진입 ${monthly.entry_cohort.executed_n}건, 실현 거래 ${monthly.realized_trades.trade_n}건입니다.`,
+          `당일 ${signedKrw(daily.realized_trades.net_pnl_quote, 0)} / 목표 ${signedKrw(daily.objective.period_target_krw, 0)}`,
+          `주간 ${signedKrw(weekly.realized_trades.net_pnl_quote, 0)} / 목표 ${signedKrw(weekly.objective.period_target_krw, 0)}`,
+          `월간 ${signedKrw(monthly.realized_trades.net_pnl_quote, 0)} / 목표 ${signedKrw(monthly.objective.period_target_krw, 0)}`,
         ],
       },
       {
         header: "반성문",
-        lines: reflectionLines.length ? reflectionLines : ["목표 미달 없음"],
+        lines: selfCritiqueLines,
+      },
+      {
+        header: "내일 전략",
+        lines: nextDayStrategyLines,
       },
     ],
   });
@@ -505,6 +655,10 @@ if (require.main === module) {
       aggregateOverallFromQuality,
       summarizeRealizedTrades,
       buildReflection,
+      summarizeTradesByMarket,
+      buildDailyTradeEvaluation,
+      buildSelfCritique,
+      buildTomorrowStrategy,
       periodRanges,
     },
   };
