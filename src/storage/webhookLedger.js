@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const { getFirestore } = require("./firestore");
+const { normalizeTf } = require("../utils/marketConfig");
 
 function nowIso() {
   return new Date().toISOString();
@@ -67,6 +68,82 @@ function pickHeaders(headers = {}) {
     x_forwarded_for: clipString(headers["x-forwarded-for"], 256),
     x_tradingview_signature: clipString(headers["x-tradingview-signature"], 256),
     x_webhook_token_present: !!headers["x-webhook-token"],
+  };
+}
+
+function normalizeLedgerExchange(exchange) {
+  const ex = String(exchange || "").trim().toUpperCase();
+  if (!ex) return "";
+  if (ex.includes("BINANCE")) return "BINANCEFUT";
+  return ex;
+}
+
+function normalizeLedgerSymbol(symbol) {
+  return String(symbol || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\.P$/, "");
+}
+
+async function findRecentWebhookSummaryForBar({
+  exchange,
+  symbol,
+  tf,
+  barCloseMs,
+  lookbackHours = 6,
+  limit = 500,
+} = {}) {
+  const ex = normalizeLedgerExchange(exchange);
+  const sym = normalizeLedgerSymbol(symbol);
+  const tfNorm = normalizeTf(tf);
+  const barMs = Number(barCloseMs);
+  if (!ex || !sym || !tfNorm || !Number.isFinite(barMs)) {
+    return {
+      webhook_seen: false,
+      outcome_n: 0,
+      top_decision: null,
+      top_reason: null,
+      decisions: {},
+      reasons: {},
+    };
+  }
+
+  const db = getFirestore();
+  const fromIso = new Date(Date.now() - Math.max(1, Number(lookbackHours) || 6) * 60 * 60 * 1000).toISOString();
+  const snap = await db.collection("webhook_ledger")
+    .where("created_at", ">=", fromIso)
+    .orderBy("created_at", "desc")
+    .limit(Math.max(50, Number(limit) || 500))
+    .get();
+
+  const decisions = {};
+  const reasons = {};
+  let outcomeN = 0;
+
+  snap.forEach((d) => {
+    const x = d.data() || {};
+    if (String(x.stage || "") !== "OUTCOME") return;
+    if (normalizeLedgerExchange(x.exchange) !== ex) return;
+    if (normalizeLedgerSymbol(x.symbol) !== sym) return;
+    if (normalizeTf(x.tf) !== tfNorm) return;
+    if (Number(x.bar_close_time_utc_ms) !== barMs) return;
+    outcomeN += 1;
+    const decision = String(x.decision || "UNKNOWN");
+    const reason = String(x.reason || "UNKNOWN");
+    decisions[decision] = (decisions[decision] || 0) + 1;
+    reasons[reason] = (reasons[reason] || 0) + 1;
+  });
+
+  const topDecision = Object.entries(decisions).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+  const topReason = Object.entries(reasons).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+
+  return {
+    webhook_seen: outcomeN > 0,
+    outcome_n: outcomeN,
+    top_decision: topDecision,
+    top_reason: topReason,
+    decisions,
+    reasons,
   };
 }
 
@@ -148,4 +225,5 @@ module.exports = {
   buildWebhookRequestId,
   recordWebhookIngress,
   recordWebhookOutcome,
+  findRecentWebhookSummaryForBar,
 };

@@ -1,0 +1,41 @@
+"use strict";
+
+const assert = require("assert");
+const { __test } = require("../services/signalLifecycleAlert");
+
+(() => {
+  assert.strictEqual(
+    __test.shouldSendCompareAlert({
+      webhookSeen: true,
+      serverSignalCreated: false,
+      signalDropN: 0,
+    }),
+    true
+  );
+  assert.strictEqual(
+    __test.shouldSendCompareAlert({
+      webhookSeen: false,
+      serverSignalCreated: false,
+      signalDropN: 0,
+    }),
+    false
+  );
+
+  const msg = __test.buildCompareMessage({
+    symbol: "ETHUSDT",
+    barCloseUtc: "2026-04-01 23:45:00 KST",
+    webhookSeen: true,
+    webhookDecision: "SAVED",
+    serverSignalCreated: false,
+    serverReason: "DROP_EV_GATE_TP1_PROB",
+    topDropReason: "DROP_EV_GATE_TP1_PROB",
+  });
+  assert.ok(msg.title.includes("ETHUSDT"));
+  assert.ok(msg.body.includes("시장: ETHUSDT"));
+  assert.ok(msg.body.includes("웹훅신호: 있음 (SAVED)"));
+  assert.ok(msg.body.includes("서버신호 생성여부: 아니오"));
+  assert.ok(msg.body.includes("미생성 주원인: DROP_EV_GATE_TP1_PROB"));
+  assert.ok(msg.body.includes("드롭상위사유: DROP_EV_GATE_TP1_PROB"));
+
+  console.log("SIGNAL_COMPARE_ALERT_TEST_OK");
+})();

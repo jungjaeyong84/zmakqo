@@ -1,11 +1,16 @@
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { sendAlert } = require("../utils/alerts");
 const { classifySignalReasonStage, explainSignalReason } = require("../utils/signalReasonView");
 const { canonicalExternalEntryEvent } = require("../utils/liveEntryTaxonomy");
 
 const channelCache = new Map();
+const ROOT = path.resolve(__dirname, "../..");
+const OPS_RUNTIME = path.join(ROOT, "ops", "runtime");
+const SIGNAL_COMPARE_STATE_PATH = path.join(OPS_RUNTIME, "signal_compare_alert_state.json");
 
 function toBool(v, def = false) {
   if (v == null) return def;
@@ -230,6 +235,66 @@ function buildDroppedMessage(payload = {}) {
   return { title, body: lines.join("\n"), severity: isTimingDefer ? "INFO" : "WARN" };
 }
 
+function readJsonSafe(filePath, fallback = null) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function writeJsonSafe(filePath, payload) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
+}
+
+function loadCompareState() {
+  return readJsonSafe(SIGNAL_COMPARE_STATE_PATH, { records: {} }) || { records: {} };
+}
+
+function saveCompareState(state) {
+  writeJsonSafe(SIGNAL_COMPARE_STATE_PATH, state || { records: {} });
+}
+
+function buildCompareDedupeKey(payload = {}) {
+  return [
+    normalizeExchange(payload.exchange),
+    String(payload.symbol || "").toUpperCase(),
+    String(payload.tf || ""),
+    Number.isFinite(Number(payload.barCloseMs)) ? Number(payload.barCloseMs) : "NA",
+  ].join("__");
+}
+
+function shouldSendCompareAlert(payload = {}) {
+  return !!(
+    payload.webhookSeen
+    || payload.serverSignalCreated
+    || Number(payload.signalDropN || 0) > 0
+  );
+}
+
+function buildCompareMessage(payload = {}) {
+  const symbol = String(payload.symbol || "").toUpperCase();
+  if (!symbol) return null;
+  const webhookText = payload.webhookSeen
+    ? `있음${payload.webhookDecision ? ` (${payload.webhookDecision})` : ""}`
+    : "없음";
+  const serverCreated = payload.serverSignalCreated ? "예" : "아니오";
+  const lines = [
+    `시장: ${symbol}`,
+    `바시각: ${String(payload.barCloseUtc || "-")}`,
+    `웹훅신호: ${webhookText}`,
+    `서버신호 생성여부: ${serverCreated}`,
+    `미생성 주원인: ${String(payload.serverReason || "-")}`,
+    `드롭상위사유: ${String(payload.topDropReason || "-")}`,
+  ];
+  return {
+    title: `${symbol} 서버 신호 비교`,
+    body: lines.join("\n"),
+    severity: payload.serverSignalCreated ? "INFO" : "WARN",
+  };
+}
+
 function shouldNotifyType(type) {
   if (type === "RECEIVED") {
     return toBool(process.env.SIGNAL_LIFECYCLE_ALERT_RECEIVED_ENABLED, true);
@@ -293,6 +358,54 @@ async function sendSignalLifecycleAlert({ type, ...payload } = {}) {
   return result;
 }
 
+async function sendSignalCompareAlert(payload = {}) {
+  if (!toBool(process.env.SIGNAL_COMPARE_ALERT_ENABLED, true)) {
+    return { ok: false, skipped: true, reason: "DISABLED" };
+  }
+  if (!shouldSendCompareAlert(payload)) {
+    return { ok: false, skipped: true, reason: "NO_RELEVANT_COMPARE" };
+  }
+  const exchange = normalizeExchange(payload.exchange);
+  if (!isAllowedExchange(exchange)) {
+    return { ok: false, skipped: true, reason: "EXCHANGE_FILTERED" };
+  }
+  const msg = buildCompareMessage(payload);
+  if (!msg) return { ok: false, skipped: true, reason: "INVALID_MESSAGE" };
+
+  const dedupeKey = buildCompareDedupeKey(payload);
+  const state = loadCompareState();
+  if (state.records && state.records[dedupeKey]) {
+    return { ok: false, skipped: true, reason: "DEDUPED" };
+  }
+
+  const rawChannel = await resolveAlertChannel(exchange);
+  if (!rawChannel) return { ok: false, skipped: true, reason: "NO_CHANNEL" };
+  const channel = filterTelegramChannels(rawChannel);
+  if (!channel) return { ok: false, skipped: true, reason: "NO_TELEGRAM_CHANNEL" };
+
+  const result = await sendAlert({
+    channel,
+    title: msg.title,
+    body: msg.body,
+    severity: msg.severity,
+  });
+  if (result && result.ok === true) {
+    state.records = state.records || {};
+    state.records[dedupeKey] = { sent_at: new Date().toISOString() };
+    const keys = Object.keys(state.records);
+    if (keys.length > 1000) {
+      keys.sort((a, b) => String(state.records[b]?.sent_at || "").localeCompare(String(state.records[a]?.sent_at || "")));
+      const trimmed = {};
+      keys.slice(0, 500).forEach((key) => {
+        trimmed[key] = state.records[key];
+      });
+      state.records = trimmed;
+    }
+    saveCompareState(state);
+  }
+  return result;
+}
+
 async function sendSignalReceivedAlert(payload = {}) {
   return sendSignalLifecycleAlert({ type: "RECEIVED", ...payload });
 }
@@ -305,10 +418,13 @@ module.exports = {
   sendSignalLifecycleAlert,
   sendSignalReceivedAlert,
   sendSignalDroppedAlert,
+  sendSignalCompareAlert,
   __test: {
     resolveAlertChannelFromSources,
     buildTelegramChannelFromChatId,
     buildReceivedMessage,
     buildDroppedMessage,
+    buildCompareMessage,
+    shouldSendCompareAlert,
   },
 };

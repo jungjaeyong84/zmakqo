@@ -11,9 +11,11 @@ const gateMod = require("../storage/gate");
 const getGateStatus = gateMod.getGateStatusAsync || gateMod.getGateStatus;
 const { getCursor, setCursor } = require("../storage/cursors");
 const { listSignalsByMarket } = require("../storage/signalsQuery");
+const { findRecentWebhookSummaryForBar } = require("../storage/webhookLedger");
 const { runPaperMarket, syncFuturesPositionOnly } = require("../engine/paperUpbitRunner");
 const { tfToMs, normalizeTf, defaultExecTfFromEnv } = require("../utils/marketConfig");
 const { computeTradingMode: computeGateTradingMode } = require("../utils/tradingMode");
+const { sendSignalCompareAlert } = require("../services/signalLifecycleAlert");
 const { TF_60M } = require("../config/frozen");
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -485,6 +487,31 @@ async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHi
     error: err,
   });
   persistServerSignalGenerationTrace(signalTrace);
+  try {
+    const webhookSummary = await findRecentWebhookSummaryForBar({
+      exchange,
+      symbol: market,
+      tf: signalTfFinal,
+      barCloseMs: barCloseMs_f,
+      lookbackHours: 6,
+      limit: 500,
+    });
+    await sendSignalCompareAlert({
+      exchange,
+      symbol: market,
+      tf: signalTfFinal,
+      barCloseMs: barCloseMs_f,
+      barCloseUtc: signalTrace.bar_close_time_utc,
+      webhookSeen: webhookSummary.webhook_seen === true,
+      webhookDecision: webhookSummary.top_decision,
+      serverSignalCreated: signalTrace.status === "SERVER_SIGNAL_CREATED",
+      serverReason: signalTrace.reason,
+      topDropReason: signalTrace.top_signal_drop_reason,
+      signalDropN: signalTrace.signal_drop_n,
+    });
+  } catch (e) {
+    console.warn("[SIGNAL_COMPARE_ALERT_FAIL]", e?.message || e);
+  }
 
   return {
     exchange,
