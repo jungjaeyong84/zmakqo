@@ -57,7 +57,7 @@ function normalizeBounds() {
   };
 }
 
-function collectPriorityMarkets({ marketObjectiveScore = null, serverVsPinePerformanceDelta = null, dropValidation = null } = {}) {
+function collectPriorityMarkets({ marketObjectiveScore = null, serverVsPinePerformanceDelta = null, dropValidation = null, executionQuality = null } = {}) {
   const scores = new Map();
   const addScore = (market, score, reason) => {
     const key = String(market || "").trim().toUpperCase();
@@ -84,14 +84,31 @@ function collectPriorityMarkets({ marketObjectiveScore = null, serverVsPinePerfo
   const rescueMarket = String(dropSummary.top_rescue_market || "").trim().toUpperCase();
   if (rescueMarket) addScore(rescueMarket, 3, "DROP_VALIDATION_TOP_RESCUE");
 
+  const executionSummary = readSummary(executionQuality);
+  const executionReview = String(executionSummary.status || "").trim().toUpperCase() === "EXECUTION_QUALITY_REVIEW";
+  if (executionReview) {
+    const penaltyMarkets = [
+      String(executionSummary.top_latency_market || "").trim().toUpperCase(),
+      String(executionSummary.top_slippage_market || "").trim().toUpperCase(),
+      String(executionSummary.top_partial_market || "").trim().toUpperCase(),
+    ].filter(Boolean);
+    for (const market of Array.from(new Set(penaltyMarkets))) addScore(market, -2, "EXECUTION_QUALITY_PENALTY");
+  }
+
   return Array.from(scores.values())
     .sort((a, b) => (b.score - a.score) || a.market.localeCompare(b.market))
     .map((row) => ({ market: row.market, score: row.score, reasons: Array.from(new Set(row.reasons)) }));
 }
 
-function summarizeOpenclawOverrideAuthority({ currentSys = {}, marketObjectiveScore = null, serverVsPinePerformanceDelta = null, dropValidation = null } = {}) {
+function summarizeOpenclawOverrideAuthority({ currentSys = {}, marketObjectiveScore = null, serverVsPinePerformanceDelta = null, dropValidation = null, executionQuality = null } = {}) {
   const bounds = normalizeBounds();
-  const priorityMarkets = collectPriorityMarkets({ marketObjectiveScore, serverVsPinePerformanceDelta, dropValidation });
+  const executionSummary = readSummary(executionQuality);
+  const executionPenaltyMarkets = Array.from(new Set([
+    String(executionSummary.top_latency_market || "").trim().toUpperCase(),
+    String(executionSummary.top_slippage_market || "").trim().toUpperCase(),
+    String(executionSummary.top_partial_market || "").trim().toUpperCase(),
+  ].filter(Boolean)));
+  const priorityMarkets = collectPriorityMarkets({ marketObjectiveScore, serverVsPinePerformanceDelta, dropValidation, executionQuality });
   return {
     status: "BOUNDED_AUTHORITY_ACTIVE",
     risk_override_enabled: bounds.risk_override_enabled,
@@ -99,6 +116,7 @@ function summarizeOpenclawOverrideAuthority({ currentSys = {}, marketObjectiveSc
     bounds,
     priority_markets: priorityMarkets,
     top_priority_markets: priorityMarkets.slice(0, bounds.max_market_overrides_per_cycle),
+    execution_quality_penalty_markets: executionPenaltyMarkets,
     current_source_mode: String(currentSys && currentSys.canonical_engine_source_mode || "").trim().toUpperCase() || null,
   };
 }

@@ -20,6 +20,7 @@ const PROVIDER = String(process.env.BEST_SELF_EVOLUTION_PROVIDER || "BINANCEFUT"
 const MARKET_OBJECTIVE_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_market_objective_score_latest.json");
 const SERVER_VS_PINE_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_vs_pine_performance_delta_latest.json");
 const DROP_VALIDATION_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_drop_validation_latest.json");
+const EXECUTION_QUALITY_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_execution_quality_latest.json");
 
 function renderMarkdown(report = {}) {
   const summary = report.summary || {};
@@ -35,6 +36,7 @@ function renderMarkdown(report = {}) {
     `- max_market_overrides_per_cycle: ${summary.max_market_overrides_per_cycle ?? "N/A"}`,
     `- risk_override_enabled: ${summary.risk_override_enabled ? "YES" : "NO"}`,
     `- current_source_mode: ${summary.current_source_mode || "N/A"}`,
+    `- execution_quality_penalty_markets: ${Array.isArray(summary.execution_quality_penalty_markets) && summary.execution_quality_penalty_markets.length ? summary.execution_quality_penalty_markets.join("|") : "none"}`,
     "",
     "## Bounds",
   ];
@@ -58,12 +60,14 @@ async function main() {
   const marketObjectiveScore = readJsonRawSafe(MARKET_OBJECTIVE_PATH, null);
   const serverVsPinePerformanceDelta = readJsonRawSafe(SERVER_VS_PINE_PATH, null);
   const dropValidation = readJsonRawSafe(DROP_VALIDATION_PATH, null);
+  const executionQuality = readJsonRawSafe(EXECUTION_QUALITY_PATH, null);
 
   const summary = summarizeOpenclawOverrideAuthority({
     currentSys,
     marketObjectiveScore,
     serverVsPinePerformanceDelta,
     dropValidation,
+    executionQuality,
   });
 
   const report = {
@@ -76,6 +80,7 @@ async function main() {
       market_objective_score: MARKET_OBJECTIVE_PATH,
       server_vs_pine_performance_delta: SERVER_VS_PINE_PATH,
       drop_validation: DROP_VALIDATION_PATH,
+      execution_quality: EXECUTION_QUALITY_PATH,
     },
     summary,
   };
