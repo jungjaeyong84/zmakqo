@@ -155,8 +155,8 @@ function formatEventTag(event) {
 function formatSignalSource(payload = {}) {
   const source = String(payload.source || "").trim().toUpperCase();
   if (payload.authoritative === true || source === "SERVER") return "서버 정본";
-  if (source === "PINE_SHADOW") return "파인 그림자";
   if (source === "WEBHOOK") return "외부 수신";
+  if (source === "PINE_SHADOW") return "외부 수신";
   return source || "-";
 }
 
@@ -188,6 +188,7 @@ function buildReceivedMessage(payload = {}) {
     `TF: ${String(payload.tf || "-")}`,
     `수량: ${fmtQty(payload.qtyPct)}`,
     `실행모드: ${String(payload.executionMode || "-")}`,
+    `다음 단계: 서버 판단 대기`,
   ];
   if (payload.signalId) lines.push(`signal_id: ${payload.signalId}`);
   if (payload.reason) lines.push(`사유: ${String(payload.reason)}`);
@@ -240,7 +241,7 @@ function shouldNotifyType(type) {
 }
 
 async function sendSignalLifecycleAlert({ type, ...payload } = {}) {
-  if (!toBool(process.env.SIGNAL_LIFECYCLE_ALERT_ENABLED, false)) {
+  if (!toBool(process.env.SIGNAL_LIFECYCLE_ALERT_ENABLED, true)) {
     return { ok: false, skipped: true, reason: "DISABLED" };
   }
   if (!shouldNotifyType(type)) {

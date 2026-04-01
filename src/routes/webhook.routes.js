@@ -27,7 +27,7 @@ const {
 } = require("../utils/selfEvolutionRuntimeState");
 const { runOneMarket } = require("../scheduler/marketRunner");
 const { resolveExecTfForExchange } = require("../utils/resolveExchange");
-const { sendSignalDroppedAlert } = require("../services/signalLifecycleAlert");
+const { sendSignalDroppedAlert, sendSignalReceivedAlert } = require("../services/signalLifecycleAlert");
 const { fetchBinanceFuturesAccount } = require("../exchanges/binanceFuturesPrivate");
 const { resolveBinanceFuturesKeys } = require("../utils/binanceKeyResolver");
 const { canonicalExternalEntryEvent, resolveEntryTimingTier } = require("../utils/liveEntryTaxonomy");
@@ -2122,6 +2122,23 @@ function createWebhookRoutes() {
         source: "PINE_SHADOW",
         authoritative: false,
       });
+      if (saved && saved.signal_id && saved.decision === "CREATED") {
+        sendSignalReceivedAlert({
+          exchange,
+          symbol,
+          tf,
+          event,
+          side,
+          qtyPct: qtyPctFinal,
+          reason,
+          signalId: saved.signal_id,
+          executionMode,
+          source: "WEBHOOK",
+          authoritative: false,
+        }).catch((err) => {
+          console.warn("[SIGNAL_RECEIVED_ALERT_FAIL]", err?.message || err);
+        });
+      }
       try {
         const confirmation = await confirmSelfEvolutionRuntimeSignal({
           signalId: saved && saved.signal_id ? saved.signal_id : (p.signal_id || null),
