@@ -73,11 +73,15 @@ const FRESHNESS_HOURS = Object.freeze({
   change: Math.max(12, Number(process.env.STAGE_AUTOPILOT_CHANGE_MAX_AGE_HOURS || 48)),
   canary: Math.max(4, Number(process.env.STAGE_AUTOPILOT_CANARY_MAX_AGE_HOURS || 12)),
   selfEvolutionCanary: Math.max(4, Number(process.env.STAGE_AUTOPILOT_SELF_EVOLUTION_CANARY_MAX_AGE_HOURS || 12)),
+  serverSignalAuthority: Math.max(4, Number(process.env.STAGE_AUTOPILOT_SERVER_SIGNAL_AUTHORITY_MAX_AGE_HOURS || 12)),
+  serverSignalQuality: Math.max(4, Number(process.env.STAGE_AUTOPILOT_SERVER_SIGNAL_QUALITY_MAX_AGE_HOURS || 12)),
   serverPrimaryCanary: Math.max(4, Number(process.env.STAGE_AUTOPILOT_SERVER_PRIMARY_CANARY_MAX_AGE_HOURS || 12)),
   codex: Math.max(12, Number(process.env.STAGE_AUTOPILOT_CODEX_MAX_AGE_HOURS || 48)),
 });
 const SELF_EVOLUTION_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json");
 const SELF_EVOLUTION_CANONICAL_PARITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_parity_latest.json");
+const SELF_EVOLUTION_SERVER_SIGNAL_AUTHORITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "server_signal_authority_latest.json");
+const SELF_EVOLUTION_SERVER_SIGNAL_QUALITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "server_signal_quality_latest.json");
 const SELF_EVOLUTION_DEPLOYMENT_PROBE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_probe_latest.json");
 const SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json");
 const SELF_EVOLUTION_OBJECTIVE_SUPERVISOR_LATEST_PATH = selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json");
@@ -668,6 +672,8 @@ function buildCanonicalPolicyStageCandidate(candidatesArtifact, currentSys = {},
 function buildSourceModeStageCandidate({
   candidatesArtifact,
   parityArtifact,
+  serverSignalAuthorityArtifact,
+  serverSignalQualityArtifact,
   serverPrimaryCanaryArtifact,
   currentSys = {},
   objectiveSupervisor = {},
@@ -690,6 +696,12 @@ function buildSourceModeStageCandidate({
   const serverPrimarySummary = serverPrimaryCanaryArtifact && serverPrimaryCanaryArtifact.data && serverPrimaryCanaryArtifact.data.summary && typeof serverPrimaryCanaryArtifact.data.summary === "object"
     ? serverPrimaryCanaryArtifact.data.summary
     : {};
+  const serverSignalAuthoritySummary = serverSignalAuthorityArtifact && serverSignalAuthorityArtifact.data && serverSignalAuthorityArtifact.data.summary && typeof serverSignalAuthorityArtifact.data.summary === "object"
+    ? serverSignalAuthorityArtifact.data.summary
+    : {};
+  const serverSignalQualitySummary = serverSignalQualityArtifact && serverSignalQualityArtifact.data && serverSignalQualityArtifact.data.summary && typeof serverSignalQualityArtifact.data.summary === "object"
+    ? serverSignalQualityArtifact.data.summary
+    : {};
   const sourceParityMismatchN = toNum(paritySummary.source_parity_mismatch_n) || 0;
   const shadowObservedN = toNum(paritySummary.shadow_observed_n) || 0;
   const shadowObservedMin = Math.max(5, Number(process.env.STAGE_AUTOPILOT_SOURCE_MODE_PARITY_MIN || 5));
@@ -698,6 +710,10 @@ function buildSourceModeStageCandidate({
   const serverPrimaryAcceptanceReady = serverPrimarySummary.acceptance_ready === true;
   const serverPrimaryAcceptanceReason = String(serverPrimarySummary.acceptance_reason || "").trim().toUpperCase() || null;
   const serverPrimaryRollbackTriggerN = toNum(serverPrimarySummary.rollback_trigger_n) || 0;
+  const serverSignalDriftStatus = String(serverSignalAuthoritySummary.drift_status || "").trim().toUpperCase() || null;
+  const serverSignalQualityStatus = String(serverSignalQualitySummary.quality_status || "").trim().toUpperCase() || null;
+  const serverSignalEntryN = toNum(serverSignalQualitySummary.authoritative_entry_signal_24h_n) || 0;
+  const qualityHardBlock = serverSignalQualityStatus === "SERVER_SIGNAL_NOT_REACHING_EXECUTION" || serverSignalQualityStatus === "NO_SERVER_ENTRY_SIGNAL";
   if (!selected) {
     return {
       stage: "SOURCE_MODE",
@@ -724,6 +740,9 @@ function buildSourceModeStageCandidate({
       server_primary_acceptance_ready: serverPrimaryAcceptanceReady,
       server_primary_acceptance_reason: serverPrimaryAcceptanceReason,
       server_primary_rollback_trigger_n: serverPrimaryRollbackTriggerN,
+      server_signal_drift_status: serverSignalDriftStatus,
+      server_signal_quality_status: serverSignalQualityStatus,
+      server_signal_entry_24h_n: serverSignalEntryN,
     };
   }
 
@@ -736,12 +755,14 @@ function buildSourceModeStageCandidate({
   const actionable = !alreadyServerPrimary
     && sourceParityMismatchN === 0
     && shadowObservedN >= shadowObservedMin
+    && qualityHardBlock !== true
     && Object.keys(nextSettings).length > 0;
   let reason = "SOURCE_MODE_NOOP";
   if (actionable) reason = "SERVER_PRIMARY_PROMOTION_READY";
   else if (alreadyServerPrimary && serverPrimaryApplyPass === false) reason = "SERVER_PRIMARY_CANARY_BLOCK";
   else if (alreadyServerPrimary && serverPrimaryAcceptanceReady) reason = "SERVER_PRIMARY_ACTIVE";
   else if (alreadyServerPrimary) reason = serverPrimaryAcceptanceReason || "SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT";
+  else if (qualityHardBlock) reason = "SERVER_SIGNAL_QUALITY_BLOCK";
   else if (sourceParityMismatchN > 0) reason = "SOURCE_MODE_SOURCE_PARITY_BLOCK";
   else if (shadowObservedN < shadowObservedMin) reason = "SOURCE_MODE_PARITY_SAMPLE_SHORT";
   return {
@@ -769,6 +790,9 @@ function buildSourceModeStageCandidate({
     server_primary_acceptance_ready: serverPrimaryAcceptanceReady,
     server_primary_acceptance_reason: alreadyServerPrimary || serverPrimaryExecutedN > 0 ? serverPrimaryAcceptanceReason : null,
     server_primary_rollback_trigger_n: serverPrimaryRollbackTriggerN,
+    server_signal_drift_status: serverSignalDriftStatus,
+    server_signal_quality_status: serverSignalQualityStatus,
+    server_signal_entry_24h_n: serverSignalEntryN,
   };
 }
 
@@ -897,6 +921,8 @@ function renderMarkdown(report = {}) {
     `- objective: ${report.objective_verdict || "N/A"}`,
     `- canary: ${report.canary_pass ? "PASS" : "BLOCK"}`,
     `- self_evolution_canary: ${report.self_evolution_canary && report.self_evolution_canary.apply_pass ? "PASS" : "BLOCK"} / rollback_ready ${report.self_evolution_canary && report.self_evolution_canary.rollback_ready_n != null ? report.self_evolution_canary.rollback_ready_n : "N/A"}`,
+    `- server_signal_authority: ${report.self_evolution_server_signal_authority ? `${report.self_evolution_server_signal_authority.drift_status || "N/A"} / server24h ${report.self_evolution_server_signal_authority.authoritative_server_24h_n ?? "N/A"} / shadow24h ${report.self_evolution_server_signal_authority.pine_shadow_24h_n ?? "N/A"}` : "N/A"}`,
+    `- server_signal_quality: ${report.self_evolution_server_signal_quality ? `${report.self_evolution_server_signal_quality.quality_status || "N/A"} / entry ${report.self_evolution_server_signal_quality.authoritative_entry_signal_24h_n ?? "N/A"} / intent ${report.self_evolution_server_signal_quality.order_intent_24h_n ?? "N/A"} / fill ${report.self_evolution_server_signal_quality.fill_24h_n ?? "N/A"}` : "N/A"}`,
     `- server_primary_canary: ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.apply_pass === true ? "PASS" : (report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.apply_pass === false ? "BLOCK" : "N/A")} / executed ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.executed_n != null ? report.self_evolution_server_primary_canary.executed_n : "N/A"} / rollback ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.rollback_trigger_n != null ? report.self_evolution_server_primary_canary.rollback_trigger_n : "N/A"} / acceptance ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.acceptance_ready ? "READY" : "PENDING"}`,
     `- self_evolution_deployment: ${report.self_evolution_deployment && report.self_evolution_deployment.deploy_pass ? "PASS" : "BLOCK"} / target ${report.self_evolution_deployment && report.self_evolution_deployment.target_candidate_id || "N/A"}`,
     `- deployment plan: ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.plan_status || "N/A"} / unit ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.deploy_unit_primary || "N/A"} / authority ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.authority_state || "N/A"}`,
@@ -913,7 +939,7 @@ function renderMarkdown(report = {}) {
     if (row.signature) lines.push(`  - signature: ${row.signature}`);
     if (row.snapshot_path) lines.push(`  - snapshot: ${row.snapshot_path}`);
     if (row.prepared_engine_bundle_id || row.prepared_policy_bundle_id) lines.push(`  - bundle: engine ${row.prepared_engine_bundle_id || "N/A"} / policy ${row.prepared_policy_bundle_id || "N/A"}`);
-    if (row.stage === "SOURCE_MODE") lines.push(`  - acceptance: executed ${row.server_primary_executed_n ?? "N/A"} / apply ${row.server_primary_apply_pass == null ? "N/A" : (row.server_primary_apply_pass ? "PASS" : "BLOCK")} / ready ${row.server_primary_acceptance_ready ? "YES" : "NO"} / ${row.server_primary_acceptance_reason || "N/A"}`);
+    if (row.stage === "SOURCE_MODE") lines.push(`  - acceptance: executed ${row.server_primary_executed_n ?? "N/A"} / apply ${row.server_primary_apply_pass == null ? "N/A" : (row.server_primary_apply_pass ? "PASS" : "BLOCK")} / ready ${row.server_primary_acceptance_ready ? "YES" : "NO"} / ${row.server_primary_acceptance_reason || "N/A"} / server_quality ${row.server_signal_quality_status || "N/A"} / drift ${row.server_signal_drift_status || "N/A"}`);
     if (row.prepared_file_path || row.latest_generated_file_path) lines.push(`  - pine-overlay: ${row.prepared_file_path || "N/A"} / latest ${row.latest_generated_file_path || "N/A"}`);
   }
   lines.push("");
@@ -1488,6 +1514,8 @@ async function main() {
   const canaryArtifact = readArtifact("filter_shadow_canary", path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json"), FRESHNESS_HOURS.canary);
   const selfEvolutionCanaryArtifact = readArtifact("best_self_evolution_canary", SELF_EVOLUTION_CANARY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCanary);
   const selfEvolutionCanonicalParityArtifact = readArtifact("best_self_evolution_canonical_parity", SELF_EVOLUTION_CANONICAL_PARITY_LATEST_PATH, FRESHNESS_HOURS.objective);
+  const selfEvolutionServerSignalAuthorityArtifact = readArtifact("best_self_evolution_server_signal_authority", SELF_EVOLUTION_SERVER_SIGNAL_AUTHORITY_LATEST_PATH, FRESHNESS_HOURS.serverSignalAuthority);
+  const selfEvolutionServerSignalQualityArtifact = readArtifact("best_self_evolution_server_signal_quality", SELF_EVOLUTION_SERVER_SIGNAL_QUALITY_LATEST_PATH, FRESHNESS_HOURS.serverSignalQuality);
   const selfEvolutionServerPrimaryCanaryArtifact = readArtifact("best_self_evolution_server_primary_canary", SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH, FRESHNESS_HOURS.serverPrimaryCanary);
   const selfEvolutionDeploymentPlanArtifact = readArtifact("best_self_evolution_deployment_plan", SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST_PATH, FRESHNESS_HOURS.objective);
   const selfEvolutionLoopMonitorArtifact = readArtifact("best_self_evolution_loop_monitor", SELF_EVOLUTION_LOOP_MONITOR_LATEST_PATH, FRESHNESS_HOURS.objective);
@@ -1526,6 +1554,12 @@ async function main() {
   const selfEvolutionLoopMonitor = buildLoopMonitorView({ objectiveArtifact: objectiveArtifactForLoop, loopMonitorArtifact: selfEvolutionLoopMonitorArtifact, cycleMeta });
   const selfEvolutionServerPrimaryCanary = selfEvolutionServerPrimaryCanaryArtifact && selfEvolutionServerPrimaryCanaryArtifact.data && selfEvolutionServerPrimaryCanaryArtifact.data.summary
     ? selfEvolutionServerPrimaryCanaryArtifact.data.summary
+    : {};
+  const selfEvolutionServerSignalAuthority = selfEvolutionServerSignalAuthorityArtifact && selfEvolutionServerSignalAuthorityArtifact.data && selfEvolutionServerSignalAuthorityArtifact.data.summary
+    ? selfEvolutionServerSignalAuthorityArtifact.data.summary
+    : {};
+  const selfEvolutionServerSignalQuality = selfEvolutionServerSignalQualityArtifact && selfEvolutionServerSignalQualityArtifact.data && selfEvolutionServerSignalQualityArtifact.data.summary
+    ? selfEvolutionServerSignalQualityArtifact.data.summary
     : {};
   const codexAuthority = objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.codex_authority
     && typeof objectiveArtifactForLoop.data.codex_authority === "object"
@@ -1742,6 +1776,8 @@ async function main() {
   const sourceModeCandidate = buildSourceModeStageCandidate({
     candidatesArtifact: selfEvolutionCandidatesArtifact,
     parityArtifact: selfEvolutionCanonicalParityArtifact,
+    serverSignalAuthorityArtifact: selfEvolutionServerSignalAuthorityArtifact,
+    serverSignalQualityArtifact: selfEvolutionServerSignalQualityArtifact,
     serverPrimaryCanaryArtifact: selfEvolutionServerPrimaryCanaryArtifact,
     currentSys,
     objectiveSupervisor: objectiveArtifactForLoop.data || {},
@@ -1923,6 +1959,22 @@ async function main() {
       top_ready_market: String(selfEvolutionCanary.top_ready_market || "").trim() || null,
       top_rollback_market: String(selfEvolutionCanary.top_rollback_market || "").trim() || null,
     },
+    self_evolution_server_signal_authority: {
+      available: selfEvolutionServerSignalAuthorityArtifact.exists === true,
+      authoritative_server_24h_n: toNum(selfEvolutionServerSignalAuthority.authoritative_server_24h_n),
+      pine_shadow_24h_n: toNum(selfEvolutionServerSignalAuthority.pine_shadow_24h_n),
+      parity_mismatch_n: toNum(selfEvolutionServerSignalAuthority.parity_mismatch_n),
+      parity_mismatch_rate: toNum(selfEvolutionServerSignalAuthority.parity_mismatch_rate),
+      source_mode: String(selfEvolutionServerSignalAuthority.source_mode || "").trim().toUpperCase() || null,
+      drift_status: String(selfEvolutionServerSignalAuthority.drift_status || "").trim().toUpperCase() || null,
+    },
+    self_evolution_server_signal_quality: {
+      available: selfEvolutionServerSignalQualityArtifact.exists === true,
+      authoritative_entry_signal_24h_n: toNum(selfEvolutionServerSignalQuality.authoritative_entry_signal_24h_n),
+      order_intent_24h_n: toNum(selfEvolutionServerSignalQuality.order_intent_24h_n),
+      fill_24h_n: toNum(selfEvolutionServerSignalQuality.fill_24h_n),
+      quality_status: String(selfEvolutionServerSignalQuality.quality_status || "").trim().toUpperCase() || null,
+    },
     self_evolution_server_primary_canary: {
       available: selfEvolutionServerPrimaryCanaryArtifact.exists === true,
       executed_n: toNum(selfEvolutionServerPrimaryCanary.server_primary_executed_n),
@@ -1959,7 +2011,7 @@ async function main() {
     best_febt_tuning_contract: bestFebtContract,
     stage_rows: stageRows,
     actions,
-    artifacts: [objectiveArtifactForLoop, mlArtifact, evArtifact, waitArtifact, canaryArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionLoopMonitorArtifact, selfEvolutionCandidatesArtifact, changeArtifact, codexArtifact].map((row) => ({
+    artifacts: [objectiveArtifactForLoop, mlArtifact, evArtifact, waitArtifact, canaryArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionServerSignalAuthorityArtifact, selfEvolutionServerSignalQualityArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionLoopMonitorArtifact, selfEvolutionCandidatesArtifact, changeArtifact, codexArtifact].map((row) => ({
       name: row.name,
       filePath: row.filePath,
       fresh: row.fresh,
