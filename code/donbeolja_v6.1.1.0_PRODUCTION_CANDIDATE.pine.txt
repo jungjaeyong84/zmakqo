@@ -1,0 +1,348 @@
+//@version=6
+indicator("돈벌자 :) Ω Full v6.1.1.0 (Clean Redesign)", overlay = true, max_lines_count = 500, max_labels_count = 500)
+
+// External contract intentionally preserved:
+// - direction: LONG / SHORT
+// - live grade: EARLY / CORE
+// - qty profile: FIXED
+// Internal logic is fully redesigned.
+
+//────────────────────────────────────
+// Inputs
+//────────────────────────────────────
+grp_state = "═══ BIG TREND / 상태 엔진 ═══"
+grp_risk = "═══ 리스크 엔진 ═══"
+grp_thresholds = "═══ LONG/SHORT 핵심 조건 ═══"
+grp_webhook = "═══ 서버 알림 설정 ═══"
+grp_display = "═══ 표시 설정 ═══"
+grp_dev = "═══ 개발자 옵션 (Debug / Trace) ═══"
+
+htf_tf = input.timeframe("240", "HTF bias timeframe", group = grp_state)
+state_trend_min = input.float(0.22, "Trend strength min", minval = 0.0, maxval = 2.0, step = 0.01, group = grp_state)
+dead_atr_max = input.float(0.0014, "Dead market ATR max", minval = 0.0, maxval = 0.05, step = 0.0001, group = grp_state)
+panic_atr_min = input.float(0.0350, "Chaos ATR min", minval = 0.0, maxval = 0.20, step = 0.0005, group = grp_state)
+
+thr_early = input.float(0.60, "LONG/SHORT 기본 점수 최소", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_thresholds)
+thr_core = input.float(0.74, "CORE 점수 최소", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_thresholds)
+thr_diag_c = input.float(0.86, "DIAG_C score", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_thresholds)
+
+min_rr = input.float(1.45, "Minimum reward/risk", minval = 0.5, maxval = 5.0, step = 0.05, group = grp_risk)
+stop_atr = input.float(1.8, "Stop ATR multiple", minval = 0.5, maxval = 5.0, step = 0.1, group = grp_risk)
+target_atr = input.float(2.8, "Target ATR multiple", minval = 0.5, maxval = 10.0, step = 0.1, group = grp_risk)
+max_extension_long = input.float(0.92, "Max long extension", minval = 0.5, maxval = 1.0, step = 0.01, group = grp_risk)
+min_extension_short = input.float(0.08, "Min short extension", minval = 0.0, maxval = 0.5, step = 0.01, group = grp_risk)
+provider_id = input.string("BINANCEFUT", "Webhook provider", options = ["BINANCEFUT", "UPBIT"], group = grp_webhook)
+webhook_qty_pct = input.float(1.0, "Webhook qtyPct", minval = 0.01, maxval = 1.0, step = 0.01, group = grp_webhook)
+
+show_trend_ribbon = input.bool(true, "EMA 리본 표시", group = grp_display)
+show_signal_shapes = input.bool(true, "LONG/SHORT 표시", group = grp_display)
+show_opportunity_lines = input.bool(false, "기회 점수 라인 표시", group = grp_display)
+show_state_bg = input.bool(false, "상태 배경 강조", group = grp_display)
+show_status_panel = input.bool(true, "상태 패널 표시", group = grp_display)
+show_block_reason = input.bool(true, "차단 사유 표시", group = grp_dev)
+
+//────────────────────────────────────
+// Helpers
+//────────────────────────────────────
+f_clamp01(v) => math.max(0.0, math.min(1.0, v))
+f_safe_div(a, b) => math.abs(b) > 1e-10 ? a / b : 0.0
+f_json_escape(string src) =>
+    string txt = str.tostring(src)
+    txt := str.replace_all(txt, "\\", "\\\\")
+    txt := str.replace_all(txt, '"', '\\"')
+    txt := str.replace_all(txt, "\n", "\\n")
+    txt := str.replace_all(txt, "\r", "\\r")
+    txt := str.replace_all(txt, "\t", "\\t")
+    txt
+f_json_pair_s(string key, string val) => ",\"" + key + "\":\"" + f_json_escape(val) + "\""
+f_json_pair_n(string key, float val) => ",\"" + key + "\":" + str.tostring(val)
+f_bool_text(bool v) => v ? "true" : "false"
+
+//────────────────────────────────────
+// Constants
+//────────────────────────────────────
+string STRATEGY_ID = "donbeolja_v6.1.1.0"
+string ENGINE_MODE = "CLEAN_REDESIGN"
+string QTY_PROFILE = "FIXED"
+
+// Pine 내부 최적화 버그 회피용 더미 플롯(시각 출력 없음)
+plot(close, title = "dummy", display = display.none)
+
+//────────────────────────────────────
+// Base series
+//────────────────────────────────────
+ema_fast = ta.ema(close, 8)
+ema_mid = ta.ema(close, 21)
+ema_slow = ta.ema(close, 55)
+ema_anchor = ta.ema(close, 144)
+
+slope_fast = ema_fast - ema_fast[5]
+slope_mid = ema_mid - ema_mid[5]
+trend_strength_raw = math.abs(f_safe_div(ema_fast - ema_slow, ema_slow)) * 100.0
+
+rsi_val = ta.rsi(close, 14)
+[macd_line, macd_signal, macd_hist] = ta.macd(close, 12, 26, 9)
+atr = ta.atr(14)
+atr_ratio = f_safe_div(atr, close)
+vol_ma = ta.sma(volume, 20)
+vol_ratio = vol_ma > 0 ? volume / vol_ma : 1.0
+
+range_high = ta.highest(high, 20)
+range_low = ta.lowest(low, 20)
+range_span = math.max(range_high - range_low, syminfo.mintick)
+price_position = f_clamp01((close - range_low) / range_span)
+
+bar_range = math.max(high - low, syminfo.mintick)
+body_ratio = math.abs(close - open) / bar_range
+upper_wick_ratio = (high - math.max(open, close)) / bar_range
+lower_wick_ratio = (math.min(open, close) - low) / bar_range
+
+htf_fast = request.security(syminfo.tickerid, htf_tf, ta.ema(close, 21))
+htf_slow = request.security(syminfo.tickerid, htf_tf, ta.ema(close, 55))
+htf_bias_up = htf_fast > htf_slow
+htf_bias_down = htf_fast < htf_slow
+htf_bias = htf_bias_up ? "BULL" : htf_bias_down ? "BEAR" : "NEUTRAL"
+
+p_fast = plot(show_trend_ribbon ? ema_fast : na, "EMA Fast", color = color.new(color.aqua, 0), linewidth = 1)
+p_mid = plot(show_trend_ribbon ? ema_mid : na, "EMA Mid", color = color.new(color.yellow, 0), linewidth = 1)
+p_slow = plot(show_trend_ribbon ? ema_slow : na, "EMA Slow", color = color.new(color.orange, 0), linewidth = 1)
+p_anchor = plot(show_trend_ribbon ? ema_anchor : na, "EMA Anchor", color = color.new(color.fuchsia, 30), linewidth = 1)
+fill(p_fast, p_mid, color = color.new(ema_fast >= ema_mid ? color.lime : color.red, 88))
+fill(p_mid, p_slow, color = color.new(ema_mid >= ema_slow ? color.lime : color.red, 92))
+
+//────────────────────────────────────
+// Market State Engine
+//────────────────────────────────────
+state_bull = ema_fast > ema_mid and ema_mid > ema_slow and slope_fast > 0 and slope_mid >= 0 and trend_strength_raw >= state_trend_min
+state_bear = ema_fast < ema_mid and ema_mid < ema_slow and slope_fast < 0 and slope_mid <= 0 and trend_strength_raw >= state_trend_min
+state_transition = not state_bull and not state_bear and trend_strength_raw >= (state_trend_min * 0.55)
+state_chaos = atr_ratio >= panic_atr_min or (upper_wick_ratio >= 0.44 and lower_wick_ratio >= 0.44 and body_ratio <= 0.28)
+state_dead = atr_ratio <= dead_atr_max and vol_ratio <= 0.72
+market_state = state_chaos ? "CHAOS" : state_bull ? "BULL" : state_bear ? "BEAR" : state_transition ? "TRANSITION" : "RANGE"
+
+//────────────────────────────────────
+// Opportunity Engine
+//────────────────────────────────────
+structure_alignment_long = market_state == "BULL" ? 1.0 : market_state == "TRANSITION" and ema_fast >= ema_mid ? 0.68 : market_state == "RANGE" ? 0.28 : 0.0
+structure_alignment_short = market_state == "BEAR" ? 1.0 : market_state == "TRANSITION" and ema_fast <= ema_mid ? 0.68 : market_state == "RANGE" ? 0.28 : 0.0
+
+directional_pressure_long = f_clamp01(
+    0.40 * f_clamp01((rsi_val - 45.0) / 25.0) +
+    0.35 * f_clamp01((macd_hist + atr_ratio * 0.6) / (atr_ratio * 1.8 + 1e-6)) +
+    0.25 * f_clamp01((close - ema_mid) / (atr * 1.5 + 1e-6))
+)
+directional_pressure_short = f_clamp01(
+    0.40 * f_clamp01((55.0 - rsi_val) / 25.0) +
+    0.35 * f_clamp01((-macd_hist + atr_ratio * 0.6) / (atr_ratio * 1.8 + 1e-6)) +
+    0.25 * f_clamp01((ema_mid - close) / (atr * 1.5 + 1e-6))
+)
+
+pullback_quality_long = f_clamp01(1.0 - math.abs(price_position - 0.38) / 0.38)
+pullback_quality_short = f_clamp01(1.0 - math.abs(price_position - 0.62) / 0.38)
+participation = f_clamp01(0.55 * f_clamp01(vol_ratio / 1.8) + 0.45 * f_clamp01(atr_ratio / 0.01))
+continuation_pressure_long = f_clamp01(0.50 * (close > ema_fast ? 1.0 : 0.0) + 0.25 * f_clamp01(body_ratio / 0.7) + 0.25 * (macd_hist >= macd_hist[1] ? 1.0 : 0.0))
+continuation_pressure_short = f_clamp01(0.50 * (close < ema_fast ? 1.0 : 0.0) + 0.25 * f_clamp01(body_ratio / 0.7) + 0.25 * (macd_hist <= macd_hist[1] ? 1.0 : 0.0))
+risk_efficiency_long = f_clamp01(0.60 * (price_position <= max_extension_long ? 1.0 : 0.0) + 0.40 * (close >= ema_anchor * 0.97 ? 1.0 : 0.35))
+risk_efficiency_short = f_clamp01(0.60 * (price_position >= min_extension_short ? 1.0 : 0.0) + 0.40 * (close <= ema_anchor * 1.03 ? 1.0 : 0.35))
+
+long_opportunity = 0.24 * structure_alignment_long + 0.22 * directional_pressure_long + 0.16 * pullback_quality_long + 0.14 * participation + 0.14 * continuation_pressure_long + 0.10 * risk_efficiency_long
+short_opportunity = 0.24 * structure_alignment_short + 0.22 * directional_pressure_short + 0.16 * pullback_quality_short + 0.14 * participation + 0.14 * continuation_pressure_short + 0.10 * risk_efficiency_short
+
+//────────────────────────────────────
+// Trigger Engine
+//────────────────────────────────────
+trigger_breakout_long = close > high[1] and close > open and body_ratio >= 0.48
+trigger_reclaim_long = low < ema_fast and close > ema_fast and close > open and price_position <= 0.62
+trigger_continuation_long = close > ema_fast and close > ema_mid and macd_hist >= macd_hist[1] and body_ratio >= 0.42
+trigger_breakout_short = close < low[1] and close < open and body_ratio >= 0.48
+trigger_reclaim_short = high > ema_fast and close < ema_fast and close < open and price_position >= 0.38
+trigger_continuation_short = close < ema_fast and close < ema_mid and macd_hist <= macd_hist[1] and body_ratio >= 0.42
+
+trigger_type_long = trigger_breakout_long ? "BREAKOUT" : trigger_reclaim_long ? "RECLAIM" : trigger_continuation_long ? "CONTINUATION" : "NONE"
+trigger_type_short = trigger_breakout_short ? "BREAKOUT" : trigger_reclaim_short ? "RECLAIM" : trigger_continuation_short ? "CONTINUATION" : "NONE"
+trigger_long = trigger_type_long != "NONE"
+trigger_short = trigger_type_short != "NONE"
+
+//────────────────────────────────────
+// Risk Engine
+//────────────────────────────────────
+long_stop = close - atr * stop_atr
+long_target = close + atr * target_atr
+short_stop = close + atr * stop_atr
+short_target = close - atr * target_atr
+long_rr = f_safe_div(long_target - close, close - long_stop)
+short_rr = f_safe_div(close - short_target, short_stop - close)
+
+extension_long_block = price_position > max_extension_long
+extension_short_block = price_position < min_extension_short
+htf_conflict_long = htf_bias == "BEAR"
+htf_conflict_short = htf_bias == "BULL"
+
+risk_ok_long = long_rr >= min_rr and not extension_long_block and not state_dead and not state_chaos and not htf_conflict_long
+risk_ok_short = short_rr >= min_rr and not extension_short_block and not state_dead and not state_chaos and not htf_conflict_short
+
+risk_mode_long = not risk_ok_long ? (state_dead ? "DEAD_MARKET" : state_chaos ? "CHAOS_MARKET" : htf_conflict_long ? "HTF_CONFLICT" : extension_long_block ? "EXTREME_EXTENSION" : "RR_FAIL") : "PASS"
+risk_mode_short = not risk_ok_short ? (state_dead ? "DEAD_MARKET" : state_chaos ? "CHAOS_MARKET" : htf_conflict_short ? "HTF_CONFLICT" : extension_short_block ? "EXTREME_EXTENSION" : "RR_FAIL") : "PASS"
+
+//────────────────────────────────────
+// Final signals
+//────────────────────────────────────
+long_early = long_opportunity >= thr_early and trigger_long and risk_ok_long
+long_core = long_opportunity >= thr_core and trigger_long and risk_ok_long and structure_alignment_long >= 0.68 and participation >= 0.48
+long_diag_c = long_opportunity >= thr_diag_c and trigger_long and risk_ok_long and structure_alignment_long >= 0.90 and participation >= 0.60 and directional_pressure_long >= 0.68
+
+short_early = short_opportunity >= thr_early and trigger_short and risk_ok_short
+short_core = short_opportunity >= thr_core and trigger_short and risk_ok_short and structure_alignment_short >= 0.68 and participation >= 0.48
+short_diag_c = short_opportunity >= thr_diag_c and trigger_short and risk_ok_short and structure_alignment_short >= 0.90 and participation >= 0.60 and directional_pressure_short >= 0.68
+
+long_core_pulse = long_core and not long_core[1]
+short_core_pulse = short_core and not short_core[1]
+long_early_pulse = long_early and not long_core and not long_early[1]
+short_early_pulse = short_early and not short_core and not short_early[1]
+
+long_live_grade = long_core ? "CORE" : long_early ? "EARLY" : "NONE"
+short_live_grade = short_core ? "CORE" : short_early ? "EARLY" : "NONE"
+
+block_reason_long = risk_mode_long != "PASS" ? risk_mode_long : trigger_type_long == "NONE" ? "WAIT_TRIGGER" : long_opportunity < thr_early ? "LONG_SCORE_SHORT" : "PASS"
+block_reason_short = risk_mode_short != "PASS" ? risk_mode_short : trigger_type_short == "NONE" ? "WAIT_TRIGGER" : short_opportunity < thr_early ? "SHORT_SCORE_SHORT" : "PASS"
+
+//────────────────────────────────────
+// Alert policy
+// Only these four external alerts are allowed:
+// - LONG CORE
+// - LONG EARLY
+// - SHORT CORE
+// - SHORT EARLY
+// Internal states such as DIAG_C / market_state / block_reason never emit alerts.
+//────────────────────────────────────
+emit_long_core = long_core_pulse
+emit_long_early = long_early_pulse
+emit_short_core = short_core_pulse
+emit_short_early = short_early_pulse
+
+//────────────────────────────────────
+// Payload builders
+//────────────────────────────────────
+f_entry_payload(string direction, string grade, float score, string state, string htf, string trigger_type, string risk_mode, float rr, float stop_price, float target_price) =>
+    string side = direction == "LONG" ? "BUY" : "SELL"
+    string features = "{"
+    features += "\"strategy_id\":\"" + STRATEGY_ID + "\""
+    features += f_json_pair_s("engine_mode", ENGINE_MODE)
+    features += f_json_pair_s("entry_grade", grade)
+    features += f_json_pair_s("qty_profile", QTY_PROFILE)
+    features += f_json_pair_s("market_state", state)
+    features += f_json_pair_s("htf_bias", htf)
+    features += f_json_pair_s("trigger_type", trigger_type)
+    features += f_json_pair_s("risk_mode", risk_mode)
+    features += f_json_pair_n("opportunity_score", score)
+    features += f_json_pair_n("rr", rr)
+    features += f_json_pair_n("stop_price", stop_price)
+    features += f_json_pair_n("target_price", target_price)
+    features += f_json_pair_s("_event_intent", "ENTRY")
+    features += f_json_pair_s("signal_family", direction)
+    features += f_json_pair_s("source_band", grade)
+    features += "}"
+    string json = "{"
+    json += f_json_pair_s("exchange", provider_id)
+    json += f_json_pair_s("symbol", syminfo.ticker)
+    json += f_json_pair_s("market", syminfo.ticker)
+    json += f_json_pair_s("ticker", syminfo.ticker)
+    json += f_json_pair_s("tf", timeframe.period)
+    json += "\"strategy_id\":\"" + STRATEGY_ID + "\""
+    json += f_json_pair_s("engine_mode", ENGINE_MODE)
+    json += f_json_pair_s("action", "ENTRY")
+    json += f_json_pair_s("event_intent", "ENTRY")
+    json += f_json_pair_s("event", direction)
+    json += f_json_pair_s("side", side)
+    json += f_json_pair_s("direction", direction)
+    json += f_json_pair_s("entry_grade", grade)
+    json += f_json_pair_s("qty_profile", QTY_PROFILE)
+    json += f_json_pair_s("timeframe", timeframe.period)
+    json += f_json_pair_s("market_state", state)
+    json += f_json_pair_s("htf_bias", htf)
+    json += f_json_pair_s("trigger_type", trigger_type)
+    json += f_json_pair_s("risk_mode", risk_mode)
+    json += f_json_pair_n("qtyPct", webhook_qty_pct)
+    json += f_json_pair_n("price", close)
+    json += f_json_pair_n("opportunity_score", score)
+    json += f_json_pair_n("rr", rr)
+    json += f_json_pair_n("stop_price", stop_price)
+    json += f_json_pair_n("target_price", target_price)
+    json += f_json_pair_n("bar_close_time_utc_ms", time_close)
+    json += f_json_pair_n("bar_time", time_close)
+    json += ",\"features\":" + features
+    json += "}"
+    json
+
+long_core_payload = f_entry_payload("LONG", "CORE", long_opportunity, market_state, htf_bias, trigger_type_long, risk_mode_long, long_rr, long_stop, long_target)
+long_early_payload = f_entry_payload("LONG", "EARLY", long_opportunity, market_state, htf_bias, trigger_type_long, risk_mode_long, long_rr, long_stop, long_target)
+short_core_payload = f_entry_payload("SHORT", "CORE", short_opportunity, market_state, htf_bias, trigger_type_short, risk_mode_short, short_rr, short_stop, short_target)
+short_early_payload = f_entry_payload("SHORT", "EARLY", short_opportunity, market_state, htf_bias, trigger_type_short, risk_mode_short, short_rr, short_stop, short_target)
+
+//────────────────────────────────────
+// Visualization
+//────────────────────────────────────
+plotshape(show_signal_shapes and long_core_pulse, title = "Webhook Long Core", style = shape.triangleup, location = location.belowbar, size = size.tiny, color = color.lime, text = "L", textcolor = color.white)
+plotshape(show_signal_shapes and long_early_pulse, title = "Webhook Long Early", style = shape.circle, location = location.belowbar, size = size.tiny, color = color.new(color.lime, 0), text = "L", textcolor = color.white)
+plotshape(show_signal_shapes and short_core_pulse, title = "Webhook Short Core", style = shape.triangledown, location = location.abovebar, size = size.tiny, color = color.red, text = "S", textcolor = color.white)
+plotshape(show_signal_shapes and short_early_pulse, title = "Webhook Short Early", style = shape.circle, location = location.abovebar, size = size.tiny, color = color.new(color.red, 0), text = "S", textcolor = color.white)
+
+plot(show_opportunity_lines ? long_opportunity : na, title = "Long Opportunity", color = color.new(color.lime, 0), linewidth = 2)
+plot(show_opportunity_lines ? -short_opportunity : na, title = "Short Opportunity (-)", color = color.new(color.red, 0), linewidth = 2)
+plot(show_opportunity_lines ? thr_early : na, title = "EARLY Threshold", color = color.new(color.yellow, 0), linewidth = 1, style = plot.style_linebr)
+plot(show_opportunity_lines ? thr_core : na, title = "CORE Threshold", color = color.new(color.green, 10), linewidth = 1, style = plot.style_linebr)
+plot(show_opportunity_lines ? thr_diag_c : na, title = "DIAG_C Threshold", color = color.new(color.aqua, 10), linewidth = 1, style = plot.style_linebr)
+bgcolor(show_state_bg ? (long_core ? color.new(color.green, 92) : short_core ? color.new(color.red, 92) : na) : na)
+
+//────────────────────────────────────
+// Diagnostics table
+//────────────────────────────────────
+var table diag = table.new(position.bottom_left, 2, 12, bgcolor = color.new(color.black, 90), border_width = 1)
+if barstate.islast
+    if show_status_panel
+        table.cell(diag, 0, 0, "돈벌자 Ω", text_color = color.white, bgcolor = color.rgb(24, 52, 92))
+        table.cell(diag, 1, 0, "v6.1.1.0", text_color = color.white, bgcolor = color.rgb(24, 52, 92))
+        table.cell(diag, 0, 1, "시장 상태", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 1, market_state, text_color = market_state == "BULL" ? color.lime : market_state == "BEAR" ? color.red : color.orange)
+        table.cell(diag, 0, 2, "HTF 상태", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 2, htf_bias, text_color = htf_bias == "BULL" ? color.lime : htf_bias == "BEAR" ? color.red : color.white)
+        table.cell(diag, 0, 3, "롱 점수", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 3, str.tostring(long_opportunity, "#.###"), text_color = color.lime)
+        table.cell(diag, 0, 4, "숏 점수", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 4, str.tostring(short_opportunity, "#.###"), text_color = color.red)
+        table.cell(diag, 0, 5, "롱 트리거", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 5, trigger_type_long == "NONE" ? "-" : trigger_type_long, text_color = trigger_type_long == "NONE" ? color.orange : color.lime)
+        table.cell(diag, 0, 6, "숏 트리거", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 6, trigger_type_short == "NONE" ? "-" : trigger_type_short, text_color = trigger_type_short == "NONE" ? color.orange : color.red)
+        table.cell(diag, 0, 7, "롱 등급", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 7, long_live_grade == "" ? "-" : long_live_grade, text_color = long_live_grade == "CORE" ? color.lime : long_live_grade == "EARLY" ? color.yellow : color.orange)
+        table.cell(diag, 0, 8, "숏 등급", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 8, short_live_grade == "" ? "-" : short_live_grade, text_color = short_live_grade == "CORE" ? color.red : short_live_grade == "EARLY" ? color.yellow : color.orange)
+        table.cell(diag, 0, 9, "롱 리스크", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 9, risk_mode_long, text_color = risk_mode_long == "PASS" ? color.lime : color.orange)
+        table.cell(diag, 0, 10, "숏 리스크", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 10, risk_mode_short, text_color = risk_mode_short == "PASS" ? color.red : color.orange)
+        table.cell(diag, 0, 11, "차단 사유", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 11, show_block_reason ? (long_live_grade == "" and short_live_grade == "" ? (block_reason_long != "PASS" ? block_reason_long : block_reason_short) : "-") : "-", text_color = color.orange)
+    else
+        for row = 0 to 11
+            table.cell(diag, 0, row, "", text_color = color.new(color.white, 100), bgcolor = color.new(color.black, 100))
+            table.cell(diag, 1, row, "", text_color = color.new(color.white, 100), bgcolor = color.new(color.black, 100))
+
+//────────────────────────────────────
+// Alerts
+//────────────────────────────────────
+alertcondition(emit_long_core, title = "LONG CORE Alert", message = "LONG CORE pulse")
+alertcondition(emit_long_early, title = "LONG EARLY Alert", message = "LONG EARLY pulse")
+alertcondition(emit_short_core, title = "SHORT CORE Alert", message = "SHORT CORE pulse")
+alertcondition(emit_short_early, title = "SHORT EARLY Alert", message = "SHORT EARLY pulse")
+
+if barstate.isconfirmed
+    if emit_long_core
+        alert(long_core_payload, alert.freq_once_per_bar_close)
+    if emit_long_early
+        alert(long_early_payload, alert.freq_once_per_bar_close)
+    if emit_short_core
+        alert(short_core_payload, alert.freq_once_per_bar_close)
+    if emit_short_early
+        alert(short_early_payload, alert.freq_once_per_bar_close)
