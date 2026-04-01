@@ -9048,8 +9048,8 @@ async function runPaperUpbitForBar({
       }
     }
 
-    // signals 기록은 외부는 이미 저장돼 있으니, 내부 신호만 저장
-    if (!externalSignals.some((x) => x.event === s.event && x.side === s.side && x.qty_pct === s.qty_pct)) {
+    // 서버 내부 최초 신호는 같은 바의 외부 webhook이 있어도 authoritative로 승격한다.
+    if (!s.signal_id) {
       const savedSignal = await upsertSignal({
         exchange,
         symbol,
@@ -9065,7 +9065,7 @@ async function runPaperUpbitForBar({
         source: "SERVER",
         authoritative: true,
       });
-      if (savedSignal && savedSignal.signal_id && savedSignal.decision === "CREATED") {
+      if (savedSignal && savedSignal.signal_id && (savedSignal.decision === "CREATED" || savedSignal.decision === "UPDATED_CHANGED")) {
         sendSignalReceivedAlert({
           exchange,
           symbol,
@@ -11911,7 +11911,7 @@ async function runPaperFuturesForBar({
       }
     }
 
-    if (!externalSignals.some((x) => x.event === s.event && x.side === s.side && x.qty_pct === s.qty_pct)) {
+    if (!s.signal_id) {
       const savedSignal = await upsertSignal({
         exchange,
         symbol,
@@ -11927,7 +11927,7 @@ async function runPaperFuturesForBar({
         source: "SERVER",
         authoritative: true,
       });
-      if (savedSignal && savedSignal.signal_id && savedSignal.decision === "CREATED") {
+      if (savedSignal && savedSignal.signal_id && (savedSignal.decision === "CREATED" || savedSignal.decision === "UPDATED_CHANGED")) {
         sendSignalReceivedAlert({
           exchange,
           symbol,
