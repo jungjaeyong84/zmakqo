@@ -49,12 +49,14 @@ function deriveServerSignalCutoverReadiness({
   quality = null,
   parity = null,
   runtime = null,
+  evGateRescue = null,
   serverPrimaryCanary = null,
 } = {}) {
   const authoritySummary = readSummary(authority);
   const qualitySummary = readSummary(quality);
   const paritySummary = deriveCanonicalParityDiagnostics(parity);
   const runtimeSummary = readSummary(runtime);
+  const evGateRescueSummary = readSummary(evGateRescue);
   const canarySummary = readSummary(serverPrimaryCanary);
   const parityRows = readRows(parity);
 
@@ -79,6 +81,19 @@ function deriveServerSignalCutoverReadiness({
     || null;
   const canaryReady = canarySummary.acceptance_ready === true;
   const canaryReason = String(canarySummary.acceptance_reason || "").trim().toUpperCase() || null;
+  const evRescueRate = toNum(evGateRescueSummary.rescue_rate);
+  const evPointPassLowerFailCount = toNum(evGateRescueSummary.point_pass_lower_fail_count) || 0;
+  const evPointFailCount = toNum(evGateRescueSummary.point_fail_count) || 0;
+  const evTopRescueMarket = Array.isArray(evGateRescueSummary.by_market) && evGateRescueSummary.by_market[0]
+    ? String(evGateRescueSummary.by_market[0].market || "").trim().toUpperCase() || null
+    : null;
+  const evRecommendedAction = dominantMismatchFamily === "EV_POLICY"
+    ? (
+      Number.isFinite(evRescueRate) && evRescueRate >= 0.25 && evPointPassLowerFailCount >= evPointFailCount
+        ? "LOWER_EV_TP1_MIN_REVIEW"
+        : "HOLD_EV_POLICY_REVIEW"
+    )
+    : null;
   const mismatchMarketCounts = new Map();
   const recentMismatchExamples = parityRows
     .filter((row) => row && row.parity_match === false)
@@ -142,6 +157,11 @@ function deriveServerSignalCutoverReadiness({
       cooldown_policy_mismatch_n: cooldownPolicyMismatchN,
       strategy_gate_mismatch_n: strategyGateMismatchN,
       dominant_mismatch_family: dominantMismatchFamily,
+      ev_policy_rescue_rate: evRescueRate,
+      ev_policy_point_pass_lower_fail_count: evPointPassLowerFailCount,
+      ev_policy_point_fail_count: evPointFailCount,
+      ev_policy_top_rescue_market: evTopRescueMarket,
+      ev_policy_recommended_action: evRecommendedAction,
       entry_24h_n: entryN,
       intent_24h_n: intentN,
       fill_24h_n: fillN,
@@ -161,6 +181,8 @@ function deriveServerSignalCutoverReadiness({
       intent_24h_n: intentN,
       fill_24h_n: fillN,
       dominant_mismatch_family: dominantMismatchFamily,
+      ev_policy_recommended_action: evRecommendedAction,
+      ev_policy_top_rescue_market: evTopRescueMarket,
     },
     rows: {
       top_mismatch_market: topRows(mismatchMarketCounts, 5),

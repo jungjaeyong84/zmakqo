@@ -723,6 +723,7 @@ function buildSourceModeStageCandidate({
   const cutoverStatus = String(serverSignalCutoverSummary.readiness_status || "").trim().toUpperCase() || null;
   const cutoverBlockers = Array.isArray(serverSignalCutoverSummary.blockers) ? serverSignalCutoverSummary.blockers.filter(Boolean) : [];
   const cutoverDominantFamily = String(serverSignalCutoverSummary.dominant_mismatch_family || "").trim().toUpperCase() || null;
+  const cutoverRecommendedAction = String(serverSignalCutoverSummary.ev_policy_recommended_action || "").trim().toUpperCase() || null;
   const qualityHardBlock = serverSignalQualityStatus === "SERVER_SIGNAL_NOT_REACHING_EXECUTION" || serverSignalQualityStatus === "NO_SERVER_ENTRY_SIGNAL";
   if (!selected) {
     return {
@@ -770,6 +771,7 @@ function buildSourceModeStageCandidate({
   else if (alreadyServerPrimary && serverPrimaryApplyPass === false) reason = "SERVER_PRIMARY_CANARY_BLOCK";
   else if (alreadyServerPrimary && serverPrimaryAcceptanceReady) reason = "SERVER_PRIMARY_ACTIVE";
   else if (alreadyServerPrimary) reason = serverPrimaryAcceptanceReason || "SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT";
+  else if (cutoverStatus && cutoverDominantFamily && cutoverRecommendedAction) reason = `${cutoverStatus}__${cutoverDominantFamily}__${cutoverRecommendedAction}`;
   else if (cutoverStatus && cutoverDominantFamily) reason = `${cutoverStatus}__${cutoverDominantFamily}`;
   else if (cutoverStatus) reason = cutoverStatus;
   else if (qualityHardBlock) reason = "SERVER_SIGNAL_QUALITY_BLOCK";
@@ -807,6 +809,7 @@ function buildSourceModeStageCandidate({
     server_signal_cutover_status: cutoverStatus,
     server_signal_cutover_blockers: cutoverBlockers,
     server_signal_cutover_dominant_family: cutoverDominantFamily,
+    server_signal_cutover_recommended_action: cutoverRecommendedAction,
   };
 }
 
