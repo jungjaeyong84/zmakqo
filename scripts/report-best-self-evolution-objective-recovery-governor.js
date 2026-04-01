@@ -30,6 +30,7 @@ const INPUTS = Object.freeze({
   serverPrimaryAcceptanceWatch: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_acceptance_watch_latest.json"),
   watchdog: path.join(OPS_DAILY_DIR, "automation_watchdog_latest.json"),
   dropValidation: path.join(OPS_DAILY_DIR, "best_self_evolution_drop_validation_latest.json"),
+  executionQuality: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_quality_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -47,6 +48,7 @@ function renderMarkdown(report = {}) {
     `- replay/canary/guards: ${summary.replay_pass ? "YES" : "NO"} / ${summary.canary_ready ? "YES" : "NO"} / ${summary.deployment_guards_pass ? "YES" : "NO"}`,
     `- memory/ops/phase_d: ${summary.memory_blocked ? "BLOCK" : "CLEAR"} / ${summary.openclaw_ops_healthy ? "PASS" : "WARN"} / ${summary.phase_d_status || "N/A"}`,
     `- drop_validation: ${summary.drop_validation_status || "N/A"} / ${summary.drop_validation_top_rescue_family || "N/A"} / ${summary.drop_validation_top_rescue_reason || "N/A"} / ${summary.drop_validation_top_rescue_market || "N/A"}`,
+    `- execution_quality: ${summary.execution_quality_status || "N/A"} / latency_p95 ${summary.execution_quality_created_to_fill_p95_ms ?? "N/A"} / slippage_p95 ${summary.execution_quality_adverse_slippage_p95_bps ?? "N/A"} / partial ${summary.execution_quality_partial_fill_rate_pct ?? "N/A"} / top ${summary.execution_quality_top_latency_market || summary.execution_quality_top_slippage_market || summary.execution_quality_top_partial_market || "N/A"}`,
     `- degraded_authority: ${summary.degraded_authority_enabled ? "ENABLED" : "DISABLED"} / eligible=${summary.degraded_authority_eligible ? "YES" : "NO"} / ${summary.degraded_authority_reason || "N/A"}`,
     "",
     "## Next Actions",
@@ -70,6 +72,7 @@ function main() {
     serverPrimaryAcceptanceWatch: readJsonRawSafe(INPUTS.serverPrimaryAcceptanceWatch, null),
     watchdog: readJsonRawSafe(INPUTS.watchdog, null),
     dropValidation: readJsonRawSafe(INPUTS.dropValidation, null),
+    executionQuality: readJsonRawSafe(INPUTS.executionQuality, null),
   });
   const output = {
     ok: true,

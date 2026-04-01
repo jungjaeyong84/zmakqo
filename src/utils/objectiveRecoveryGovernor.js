@@ -131,6 +131,22 @@ function summarizeDropValidation(dropValidation = null) {
   };
 }
 
+function summarizeExecutionQuality(executionQuality = null) {
+  const summary = readSummary(executionQuality);
+  return {
+    status: toUpper(summary.status),
+    created_to_fill_p95_ms: toNum(summary.created_to_fill_p95_ms),
+    adverse_slippage_p95_bps: toNum(summary.adverse_slippage_p95_bps),
+    partial_fill_rate_pct: toNum(summary.partial_fill_rate_pct),
+    webhook_to_fill_p95_ms: toNum(summary.webhook_to_fill_p95_ms),
+    top_latency_market: String(summary.top_latency_market || "").trim().toUpperCase() || null,
+    top_slippage_market: String(summary.top_slippage_market || "").trim().toUpperCase() || null,
+    top_partial_market: String(summary.top_partial_market || "").trim().toUpperCase() || null,
+    review_reasons: Array.isArray(summary.review_reasons) ? summary.review_reasons : [],
+    top_watch_markets: Array.isArray(summary.top_watch_markets) ? summary.top_watch_markets : [],
+  };
+}
+
 function deriveObjectiveRecoveryGovernor({
   autonomyContract = null,
   objective = null,
@@ -143,6 +159,7 @@ function deriveObjectiveRecoveryGovernor({
   serverPrimaryAcceptanceWatch = null,
   watchdog = null,
   dropValidation = null,
+  executionQuality = null,
 } = {}) {
   const contract = unwrapRawReport(autonomyContract) || {};
   const contractStatus = contract.current_status && typeof contract.current_status === "object" ? contract.current_status : {};
@@ -161,6 +178,7 @@ function deriveObjectiveRecoveryGovernor({
   const acceptanceSummary = readSummary(serverPrimaryAcceptanceWatch);
   const watchdogSummary = readSummary(watchdog);
   const dropValidationSummary = summarizeDropValidation(dropValidation);
+  const executionQualitySummary = summarizeExecutionQuality(executionQuality);
 
   const targetCandidateId = String(
     promotion.display_candidate_id
@@ -252,6 +270,14 @@ function deriveObjectiveRecoveryGovernor({
       drop_validation_top_rescue_tp1_first_rate: dropValidationSummary.top_rescue_tp1_first_rate,
       drop_validation_top_rescue_sl_first_rate: dropValidationSummary.top_rescue_sl_first_rate,
       drop_validation_ev_policy_action: dropValidationSummary.ev_policy_action,
+      execution_quality_status: executionQualitySummary.status,
+      execution_quality_created_to_fill_p95_ms: executionQualitySummary.created_to_fill_p95_ms,
+      execution_quality_adverse_slippage_p95_bps: executionQualitySummary.adverse_slippage_p95_bps,
+      execution_quality_partial_fill_rate_pct: executionQualitySummary.partial_fill_rate_pct,
+      execution_quality_top_latency_market: executionQualitySummary.top_latency_market,
+      execution_quality_top_slippage_market: executionQualitySummary.top_slippage_market,
+      execution_quality_top_partial_market: executionQualitySummary.top_partial_market,
+      execution_quality_review_reasons: executionQualitySummary.review_reasons,
       phase_d_status: String(acceptanceSummary.phase_d_status || "").trim().toUpperCase() || null,
       phase_d_ready: acceptanceSummary.phase_d_ready === true,
       governor_status: governorStatus,
@@ -268,6 +294,12 @@ function deriveObjectiveRecoveryGovernor({
           && dropValidationSummary.ev_policy_action === "RELAX_EV_POLICY_REVIEW"
           ? [
             `Use drop-validation rescue evidence to relax EV policy first (${dropValidationSummary.top_rescue_reason || "EV_POLICY"} / ${dropValidationSummary.top_rescue_market || "N/A"} / avg_ret ${dropValidationSummary.top_rescue_avg_horizon_ret_net != null ? dropValidationSummary.top_rescue_avg_horizon_ret_net : "N/A"} / avg_pnl_proxy ${dropValidationSummary.top_rescue_avg_horizon_pnl_quote_proxy != null ? dropValidationSummary.top_rescue_avg_horizon_pnl_quote_proxy : "N/A"}).`,
+          ]
+          : []),
+        ...(recoveryRequired
+          && executionQualitySummary.status === "EXECUTION_QUALITY_REVIEW"
+          ? [
+            `Before broad recovery promotion, review execution quality (${executionQualitySummary.top_latency_market || executionQualitySummary.top_slippage_market || executionQualitySummary.top_partial_market || "N/A"} / latency_p95 ${executionQualitySummary.created_to_fill_p95_ms != null ? executionQualitySummary.created_to_fill_p95_ms : "N/A"} / slippage_p95 ${executionQualitySummary.adverse_slippage_p95_bps != null ? executionQualitySummary.adverse_slippage_p95_bps : "N/A"} / partial ${executionQualitySummary.partial_fill_rate_pct != null ? executionQualitySummary.partial_fill_rate_pct : "N/A"}).`,
           ]
           : []),
         ...dropValidationSummary.next_actions,
