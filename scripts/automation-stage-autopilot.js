@@ -83,6 +83,7 @@ const FRESHNESS_HOURS = Object.freeze({
   dropValidation: Math.max(4, Number(process.env.STAGE_AUTOPILOT_DROP_VALIDATION_MAX_AGE_HOURS || 24)),
   overrideAuthority: Math.max(4, Number(process.env.STAGE_AUTOPILOT_OVERRIDE_AUTHORITY_MAX_AGE_HOURS || 24)),
   executionQuality: Math.max(4, Number(process.env.STAGE_AUTOPILOT_EXECUTION_QUALITY_MAX_AGE_HOURS || 24)),
+  reversePolicy: Math.max(4, Number(process.env.STAGE_AUTOPILOT_REVERSE_POLICY_MAX_AGE_HOURS || 24)),
   serverPrimaryCanary: Math.max(4, Number(process.env.STAGE_AUTOPILOT_SERVER_PRIMARY_CANARY_MAX_AGE_HOURS || 12)),
   codex: Math.max(12, Number(process.env.STAGE_AUTOPILOT_CODEX_MAX_AGE_HOURS || 48)),
 });
@@ -94,6 +95,7 @@ const SELF_EVOLUTION_SERVER_SIGNAL_CUTOVER_READINESS_LATEST_PATH = path.join(OPS
 const SELF_EVOLUTION_DROP_VALIDATION_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_drop_validation_latest.json");
 const SELF_EVOLUTION_OVERRIDE_AUTHORITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_override_authority_latest.json");
 const SELF_EVOLUTION_EXECUTION_QUALITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_execution_quality_latest.json");
+const SELF_EVOLUTION_REVERSE_POLICY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_reverse_policy_latest.json");
 const SELF_EVOLUTION_DEPLOYMENT_PROBE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_probe_latest.json");
 const SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json");
 const SELF_EVOLUTION_OBJECTIVE_SUPERVISOR_LATEST_PATH = selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json");
@@ -535,6 +537,28 @@ function evaluateExecutionQualityStageGuard({ candidate = {}, executionQuality =
   return {
     allowed: false,
     blockers: [`EXECUTION_QUALITY_MARKET_REVIEW:${matched.join("|")}`],
+    watched_markets: matched,
+  };
+}
+
+function evaluateReversePolicyStageGuard({ stage = "", candidate = {}, reversePolicy = null } = {}) {
+  if (String(stage || "").trim().toUpperCase() !== "SOURCE_MODE") {
+    return { allowed: true, blockers: [], watched_markets: [] };
+  }
+  const summary = reversePolicy && typeof reversePolicy === "object" ? reversePolicy : {};
+  const status = String(summary.status || "").trim().toUpperCase();
+  const targetMarkets = resolveCandidateTargetMarkets(candidate);
+  if (!targetMarkets.length || candidate.actionable !== true || status !== "REVERSE_POLICY_REVIEW") {
+    return { allowed: true, blockers: [], watched_markets: [] };
+  }
+  const watchedMarkets = (Array.isArray(summary.top_watch_markets) ? summary.top_watch_markets : [])
+    .map((row) => String(row && row.market || "").trim().toUpperCase())
+    .filter(Boolean);
+  const matched = targetMarkets.filter((market) => watchedMarkets.includes(String(market || "").trim().toUpperCase()));
+  if (!matched.length) return { allowed: true, blockers: [], watched_markets: [] };
+  return {
+    allowed: false,
+    blockers: [`REVERSE_POLICY_MARKET_REVIEW:${matched.join("|")}`],
     watched_markets: matched,
   };
 }
@@ -1094,6 +1118,7 @@ function renderMarkdown(report = {}) {
     `- drop_validation: ${report.self_evolution_drop_validation ? `${report.self_evolution_drop_validation.status || "N/A"} / rescue ${report.self_evolution_drop_validation.top_rescue_family || "N/A"} / ${report.self_evolution_drop_validation.top_rescue_reason || "N/A"} / ${report.self_evolution_drop_validation.top_rescue_market || "N/A"}` : "N/A"}`,
     `- override_authority: ${report.self_evolution_override_authority ? `${report.self_evolution_override_authority.status || "N/A"} / max_markets ${report.self_evolution_override_authority.max_market_overrides_per_cycle ?? "N/A"} / risk ${report.self_evolution_override_authority.risk_override_enabled ? "ALLOW" : "BLOCK"}` : "N/A"}`,
     `- execution_quality: ${report.self_evolution_execution_quality ? `${report.self_evolution_execution_quality.status || "N/A"} / latency ${report.self_evolution_execution_quality.created_to_fill_p95_ms ?? "N/A"} / slippage ${report.self_evolution_execution_quality.adverse_slippage_p95_bps ?? "N/A"} / partial ${report.self_evolution_execution_quality.partial_fill_rate_pct ?? "N/A"} / top ${report.self_evolution_execution_quality.top_latency_market || report.self_evolution_execution_quality.top_slippage_market || report.self_evolution_execution_quality.top_partial_market || "N/A"}` : "N/A"}`,
+    `- reverse_policy: ${report.self_evolution_reverse_policy ? `${report.self_evolution_reverse_policy.status || "N/A"} / reverse_drop ${report.self_evolution_reverse_policy.reverse_drop_n ?? "N/A"} / revive ${report.self_evolution_reverse_policy.reverse_revive_n ?? "N/A"} / top ${report.self_evolution_reverse_policy.top_watch_market || "N/A"} / action ${report.self_evolution_reverse_policy.top_watch_action || "N/A"}` : "N/A"}`,
     `- server_primary_canary: ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.apply_pass === true ? "PASS" : (report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.apply_pass === false ? "BLOCK" : "N/A")} / executed ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.executed_n != null ? report.self_evolution_server_primary_canary.executed_n : "N/A"} / rollback ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.rollback_trigger_n != null ? report.self_evolution_server_primary_canary.rollback_trigger_n : "N/A"} / acceptance ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.acceptance_ready ? "READY" : "PENDING"}`,
     `- self_evolution_deployment: ${report.self_evolution_deployment && report.self_evolution_deployment.deploy_pass ? "PASS" : "BLOCK"} / target ${report.self_evolution_deployment && report.self_evolution_deployment.target_candidate_id || "N/A"}`,
     `- deployment plan: ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.plan_status || "N/A"} / unit ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.deploy_unit_primary || "N/A"} / authority ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.authority_state || "N/A"}`,
@@ -1107,6 +1132,8 @@ function renderMarkdown(report = {}) {
   for (const row of report.stage_rows || []) {
     lines.push(`- ${row.stage}: ${row.machine_state} / ${row.reason} / action=${row.last_action || "N/A"} / streak=${row.streak_current || 0}`);
     if (row.blockers && row.blockers.length) lines.push(`  - blockers: ${row.blockers.join(", ")}`);
+    if (row.execution_quality_blockers && row.execution_quality_blockers.length) lines.push(`  - execution_quality: ${row.execution_quality_blockers.join(", ")}`);
+    if (row.reverse_policy_blockers && row.reverse_policy_blockers.length) lines.push(`  - reverse_policy: ${row.reverse_policy_blockers.join(", ")}`);
     if (row.override_authority_blockers && row.override_authority_blockers.length) lines.push(`  - override_authority: ${row.override_authority_blockers.join(", ")}`);
     if (row.override_touched_markets && row.override_touched_markets.length) lines.push(`  - touched_markets: ${row.override_touched_markets.join(", ")}`);
     if (row.signature) lines.push(`  - signature: ${row.signature}`);
@@ -1290,7 +1317,7 @@ function isPreparedPineAligned(latestWeeklyHistory = {}, candidate = {}) {
     || (candidateDisplaySignature && displayRecommendedPatchId === candidateDisplaySignature);
 }
 
-async function applyStageCandidate({ stage, candidate, stageState, history, nowMeta, nowMs, canaryPass, objectiveArtifact, currentSys, snapshotKeys, selfEvolutionRollbackReady = false, overrideAuthority = null, executionQuality = null }) {
+async function applyStageCandidate({ stage, candidate, stageState, history, nowMeta, nowMs, canaryPass, objectiveArtifact, currentSys, snapshotKeys, selfEvolutionRollbackReady = false, overrideAuthority = null, executionQuality = null, reversePolicy = null }) {
   const snapshot = pickSettingsSnapshot(currentSys, snapshotKeys);
   const changeBudgetOk = stageChangeBudgetOk(history, nowMs, stage);
   const nextHistory = candidate.signature
@@ -1328,9 +1355,14 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
     candidate,
     executionQuality,
   });
+  const reversePolicyGuard = evaluateReversePolicyStageGuard({
+    stage,
+    candidate,
+    reversePolicy,
+  });
   const combinedGuard = {
-    ready: guard.ready === true && overrideGuard.allowed === true && executionQualityGuard.allowed === true,
-    blockers: [...(guard.blockers || []), ...(overrideGuard.blockers || []), ...(executionQualityGuard.blockers || [])],
+    ready: guard.ready === true && overrideGuard.allowed === true && executionQualityGuard.allowed === true && reversePolicyGuard.allowed === true,
+    blockers: [...(guard.blockers || []), ...(overrideGuard.blockers || []), ...(executionQualityGuard.blockers || []), ...(reversePolicyGuard.blockers || [])],
   };
 
   if (candidate.actionable && combinedGuard.ready && stageState.applied_signature !== candidate.signature) {
@@ -1372,6 +1404,7 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
         override_authority_blockers: [],
         override_touched_markets: overrideGuard.touched_markets || [],
         execution_quality_blockers: [],
+        reverse_policy_blockers: [],
       },
       history: appendStageHistory(nextHistory, {
         stage,
@@ -1452,6 +1485,7 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
       override_authority_blockers: overrideGuard.blockers || [],
       override_touched_markets: overrideGuard.touched_markets || [],
       execution_quality_blockers: executionQualityGuard.blockers || [],
+      reverse_policy_blockers: reversePolicyGuard.blockers || [],
     },
     history: nextHistory,
     action: null,
@@ -1715,6 +1749,7 @@ async function main() {
   const selfEvolutionServerSignalCutoverReadinessArtifact = readArtifact("best_self_evolution_server_signal_cutover_readiness", SELF_EVOLUTION_SERVER_SIGNAL_CUTOVER_READINESS_LATEST_PATH, FRESHNESS_HOURS.serverSignalCutoverReadiness);
   const selfEvolutionDropValidationArtifact = readArtifact("best_self_evolution_drop_validation", SELF_EVOLUTION_DROP_VALIDATION_LATEST_PATH, FRESHNESS_HOURS.dropValidation);
   const selfEvolutionExecutionQualityArtifact = readArtifact("best_self_evolution_execution_quality", SELF_EVOLUTION_EXECUTION_QUALITY_LATEST_PATH, FRESHNESS_HOURS.executionQuality);
+  const selfEvolutionReversePolicyArtifact = readArtifact("best_self_evolution_reverse_policy", SELF_EVOLUTION_REVERSE_POLICY_LATEST_PATH, FRESHNESS_HOURS.reversePolicy);
   const selfEvolutionServerPrimaryCanaryArtifact = readArtifact("best_self_evolution_server_primary_canary", SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH, FRESHNESS_HOURS.serverPrimaryCanary);
   const selfEvolutionDeploymentPlanArtifact = readArtifact("best_self_evolution_deployment_plan", SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST_PATH, FRESHNESS_HOURS.objective);
   const selfEvolutionLoopMonitorArtifact = readArtifact("best_self_evolution_loop_monitor", SELF_EVOLUTION_LOOP_MONITOR_LATEST_PATH, FRESHNESS_HOURS.objective);
@@ -1766,6 +1801,9 @@ async function main() {
   const selfEvolutionExecutionQuality = selfEvolutionExecutionQualityArtifact && selfEvolutionExecutionQualityArtifact.data && selfEvolutionExecutionQualityArtifact.data.summary
     ? selfEvolutionExecutionQualityArtifact.data.summary
     : {};
+  const selfEvolutionReversePolicy = selfEvolutionReversePolicyArtifact && selfEvolutionReversePolicyArtifact.data && selfEvolutionReversePolicyArtifact.data.summary
+    ? selfEvolutionReversePolicyArtifact.data.summary
+    : {};
   const overrideAuthoritySummary = summarizeOpenclawOverrideAuthority({
     currentSys,
     marketObjectiveScore: readJsonRawSafe(path.join(OPS_DAILY_DIR, "best_self_evolution_market_objective_score_latest.json"), null),
@@ -1808,6 +1846,7 @@ async function main() {
     selfEvolutionRollbackReady,
     overrideAuthority: overrideAuthoritySummary,
     executionQuality: selfEvolutionExecutionQuality,
+    reversePolicy: selfEvolutionReversePolicy,
   });
   history = result.history;
   stateData.stages.AI = result.stageState;
@@ -1821,6 +1860,7 @@ async function main() {
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
     execution_quality_blockers: result.stageState.execution_quality_blockers || [],
+    reverse_policy_blockers: result.stageState.reverse_policy_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
@@ -1849,6 +1889,7 @@ async function main() {
     selfEvolutionRollbackReady,
     overrideAuthority: overrideAuthoritySummary,
     executionQuality: selfEvolutionExecutionQuality,
+    reversePolicy: selfEvolutionReversePolicy,
   });
   history = result.history;
   stateData.stages.MARKET = result.stageState;
@@ -1862,6 +1903,7 @@ async function main() {
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
     execution_quality_blockers: result.stageState.execution_quality_blockers || [],
+    reverse_policy_blockers: result.stageState.reverse_policy_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
@@ -1905,6 +1947,7 @@ async function main() {
     selfEvolutionRollbackReady,
     overrideAuthority: overrideAuthoritySummary,
     executionQuality: selfEvolutionExecutionQuality,
+    reversePolicy: selfEvolutionReversePolicy,
   });
   }
   history = result.history;
@@ -1919,6 +1962,7 @@ async function main() {
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
     execution_quality_blockers: result.stageState.execution_quality_blockers || [],
+    reverse_policy_blockers: result.stageState.reverse_policy_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
@@ -1966,6 +2010,7 @@ async function main() {
     selfEvolutionRollbackReady,
     overrideAuthority: overrideAuthoritySummary,
     executionQuality: selfEvolutionExecutionQuality,
+    reversePolicy: selfEvolutionReversePolicy,
   });
   }
   history = result.history;
@@ -1980,6 +2025,7 @@ async function main() {
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
     execution_quality_blockers: result.stageState.execution_quality_blockers || [],
+    reverse_policy_blockers: result.stageState.reverse_policy_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
@@ -2014,6 +2060,7 @@ async function main() {
     selfEvolutionRollbackReady,
     overrideAuthority: overrideAuthoritySummary,
     executionQuality: selfEvolutionExecutionQuality,
+    reversePolicy: selfEvolutionReversePolicy,
   });
   history = result.history;
   stateData.stages.CANONICAL_POLICY = result.stageState;
@@ -2028,6 +2075,7 @@ async function main() {
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
     execution_quality_blockers: result.stageState.execution_quality_blockers || [],
+    reverse_policy_blockers: result.stageState.reverse_policy_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
@@ -2079,6 +2127,7 @@ async function main() {
     selfEvolutionRollbackReady: serverPrimaryRollbackReady,
     overrideAuthority: overrideAuthoritySummary,
     executionQuality: selfEvolutionExecutionQuality,
+    reversePolicy: selfEvolutionReversePolicy,
   });
   history = result.history;
   stateData.stages.SOURCE_MODE = result.stageState;
@@ -2097,6 +2146,7 @@ async function main() {
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
     execution_quality_blockers: result.stageState.execution_quality_blockers || [],
+    reverse_policy_blockers: result.stageState.reverse_policy_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
@@ -2284,6 +2334,16 @@ async function main() {
       top_slippage_market: String(selfEvolutionExecutionQuality.top_slippage_market || "").trim().toUpperCase() || null,
       top_partial_market: String(selfEvolutionExecutionQuality.top_partial_market || "").trim().toUpperCase() || null,
       review_reasons: Array.isArray(selfEvolutionExecutionQuality.review_reasons) ? selfEvolutionExecutionQuality.review_reasons : [],
+    },
+    self_evolution_reverse_policy: {
+      available: selfEvolutionReversePolicyArtifact.exists === true,
+      status: String(selfEvolutionReversePolicy.status || "").trim().toUpperCase() || null,
+      reverse_drop_n: toNum(selfEvolutionReversePolicy.reverse_drop_n),
+      reverse_revive_n: toNum(selfEvolutionReversePolicy.reverse_revive_n),
+      reverse_revive_rate: toNum(selfEvolutionReversePolicy.reverse_revive_rate),
+      top_watch_market: String(selfEvolutionReversePolicy.top_watch_market || "").trim().toUpperCase() || null,
+      top_watch_reason: String(selfEvolutionReversePolicy.top_watch_reason || "").trim().toUpperCase() || null,
+      top_watch_action: String(selfEvolutionReversePolicy.top_watch_action || "").trim().toUpperCase() || null,
     },
     self_evolution_server_primary_canary: {
       available: selfEvolutionServerPrimaryCanaryArtifact.exists === true,
