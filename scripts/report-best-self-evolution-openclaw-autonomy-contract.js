@@ -26,6 +26,7 @@ const INPUTS = Object.freeze({
   watchdog: path.join(OPS_DAILY_DIR, "automation_watchdog_latest.json"),
   serverSignalAuthority: path.join(OPS_DAILY_DIR, "server_signal_authority_latest.json"),
   serverSignalQuality: path.join(OPS_DAILY_DIR, "server_signal_quality_latest.json"),
+  serverSignalRuntime: path.join(OPS_DAILY_DIR, "server_signal_runtime_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -83,6 +84,7 @@ function main() {
     watchdog: readJsonRawSafe(INPUTS.watchdog, null),
     serverSignalAuthority: readJsonRawSafe(INPUTS.serverSignalAuthority, null),
     serverSignalQuality: readJsonRawSafe(INPUTS.serverSignalQuality, null),
+    serverSignalRuntime: readJsonRawSafe(INPUTS.serverSignalRuntime, null),
   });
   const output = {
     ok: true,

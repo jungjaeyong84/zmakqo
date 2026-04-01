@@ -34,6 +34,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const canonicalParity = unwrapRawReport(reports.canonicalParity) || {};
   const serverSignalAuthority = unwrapRawReport(reports.serverSignalAuthority) || {};
   const serverSignalQuality = unwrapRawReport(reports.serverSignalQuality) || {};
+  const serverSignalRuntime = unwrapRawReport(reports.serverSignalRuntime) || {};
   const canonicalProvenance = unwrapRawReport(reports.canonicalProvenance) || {};
   const serverPrimaryCanary = unwrapRawReport(reports.serverPrimaryCanary) || {};
   const serverPrimaryAcceptanceWatch = unwrapRawReport(reports.serverPrimaryAcceptanceWatch) || {};
@@ -60,6 +61,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const canonicalParitySummary = canonicalParity.summary && typeof canonicalParity.summary === "object" ? canonicalParity.summary : {};
   const serverSignalAuthoritySummary = serverSignalAuthority.summary && typeof serverSignalAuthority.summary === "object" ? serverSignalAuthority.summary : {};
   const serverSignalQualitySummary = serverSignalQuality.summary && typeof serverSignalQuality.summary === "object" ? serverSignalQuality.summary : {};
+  const serverSignalRuntimeSummary = serverSignalRuntime.summary && typeof serverSignalRuntime.summary === "object" ? serverSignalRuntime.summary : {};
   const canonicalProvenanceSummary = canonicalProvenance.summary && typeof canonicalProvenance.summary === "object" ? canonicalProvenance.summary : {};
   const canonicalProvenanceEligible = canonicalProvenanceSummary.post_cutover_engine_eligible_n != null
     ? canonicalProvenanceSummary.post_cutover_engine_eligible_n
@@ -93,6 +95,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(canonicalParity)
     || readCycleId(serverSignalAuthority)
     || readCycleId(serverSignalQuality)
+    || readCycleId(serverSignalRuntime)
     || readCycleId(canonicalProvenance)
     || readCycleId(serverPrimaryCanary)
     || readCycleId(serverPrimaryAcceptanceWatch)
@@ -188,6 +191,15 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
         ? "PASS"
         : (/WATCH|NOT_REACHING_EXECUTION|FILL_SHORT/.test(String(serverSignalQualitySummary.quality_status || "N/A").trim().toUpperCase()) ? "WARN" : "N/A"),
       reason: `entry=${serverSignalQualitySummary.authoritative_entry_signal_24h_n ?? 0} / intent=${serverSignalQualitySummary.order_intent_24h_n ?? 0} / fill=${serverSignalQualitySummary.fill_24h_n ?? 0} / quality=${serverSignalQualitySummary.quality_status || "N/A"}`,
+    },
+    {
+      loop: "SERVER_SIGNAL_RUNTIME",
+      fresh: artifacts.serverSignalRuntime && artifacts.serverSignalRuntime.fresh === true,
+      cycle_id: readCycleId(serverSignalRuntime),
+      status: String(serverSignalRuntimeSummary.runtime_status || "N/A").trim().toUpperCase() === "READY"
+        ? "PASS"
+        : (String(serverSignalRuntimeSummary.runtime_status || "N/A").trim().toUpperCase() === "HOLD" ? "WARN" : "N/A"),
+      reason: `source_mode=${serverSignalRuntimeSummary.canonical_engine_source_mode || "N/A"} / tf=${serverSignalRuntimeSummary.exec_tf || "N/A"} / markets=${serverSignalRuntimeSummary.market_count ?? 0} / transition=${serverSignalRuntimeSummary.pine_shadow_transition_status || "N/A"} ${serverSignalRuntimeSummary.pine_shadow_transition_progress_pct != null ? `(${serverSignalRuntimeSummary.pine_shadow_transition_progress_pct}%)` : ""}`,
     },
     {
       loop: "CANONICAL_PROVENANCE",
@@ -358,6 +370,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   if (Number(canonicalParitySummary.source_parity_mismatch_n || 0) > 0) blockers.push("SELF_EVOLUTION_CANONICAL_SOURCE_MISMATCH");
   if (String(serverSignalAuthoritySummary.drift_status || "").trim().toUpperCase() === "PARITY_DRIFT") blockers.push("SERVER_SIGNAL_PARITY_DRIFT");
   if (/NOT_REACHING_EXECUTION/.test(String(serverSignalQualitySummary.quality_status || "").trim().toUpperCase())) blockers.push("SERVER_SIGNAL_EXECUTION_GAP");
+  if (String(serverSignalRuntimeSummary.runtime_status || "").trim().toUpperCase() === "HOLD") blockers.push("SERVER_SIGNAL_RUNTIME_HOLD");
   if (String(serverPrimaryAcceptanceSummary.phase_d_status || "").trim().toUpperCase() === "BLOCK") blockers.push("SELF_EVOLUTION_SERVER_PRIMARY_ACCEPTANCE_BLOCK");
   if (Number(serverPrimaryCanarySummary.server_primary_executed_n || 0) > 0 && serverPrimaryCanarySummary.apply_pass === false) {
     blockers.push("SELF_EVOLUTION_SERVER_PRIMARY_CANARY_BLOCK");
@@ -407,6 +420,9 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       server_signal_drift_status: serverSignalAuthoritySummary.drift_status || null,
       server_signal_parity_mismatch_rate: toNum(serverSignalAuthoritySummary.parity_mismatch_rate),
       server_signal_quality_status: serverSignalQualitySummary.quality_status || null,
+      server_signal_runtime_status: serverSignalRuntimeSummary.runtime_status || null,
+      server_signal_runtime_exec_tf: serverSignalRuntimeSummary.exec_tf || null,
+      server_signal_runtime_market_count: toNum(serverSignalRuntimeSummary.market_count),
       server_signal_entry_24h_n: toNum(serverSignalQualitySummary.authoritative_entry_signal_24h_n),
       server_signal_intent_24h_n: toNum(serverSignalQualitySummary.order_intent_24h_n),
       server_signal_fill_24h_n: toNum(serverSignalQualitySummary.fill_24h_n),

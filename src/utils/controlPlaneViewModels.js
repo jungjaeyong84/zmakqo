@@ -774,6 +774,7 @@ function buildRecoveryViewModel() {
   const deploymentGuards = loadLatestArtifact("best_self_evolution_deployment_guards_latest.json");
   const signalAuthority = loadLatestArtifact("server_signal_authority_latest.json");
   const signalQuality = loadLatestArtifact("server_signal_quality_latest.json");
+  const signalRuntime = loadLatestArtifact("server_signal_runtime_latest.json");
   const autonomyContract = loadLatestArtifact("best_self_evolution_openclaw_autonomy_contract_latest.json");
   const nextAction = Array.isArray(governor.summary.next_actions) && governor.summary.next_actions.length
     ? governor.summary.next_actions[0]
@@ -867,6 +868,8 @@ function buildRecoveryViewModel() {
               { label: "진행률", value: `${numberText(autonomyContract.summary.server_signal_transition_progress_pct, 0)}%` },
               { label: "상태", value: compactText(valueText(autonomyContract.summary.server_signal_transition_status)) },
               { label: "현재 단계", value: compactText(autonomyContract.raw && autonomyContract.raw.server_signal_transition && autonomyContract.raw.server_signal_transition.current_label) },
+              { label: "실행 TF", value: compactText(signalRuntime.summary.exec_tf || autonomyContract.currentStatus.server_signal_runtime_exec_tf) },
+              { label: "활성 마켓 수", value: numberText(signalRuntime.summary.market_count || autonomyContract.currentStatus.server_signal_runtime_market_count, 0) },
               { label: "소스 모드", value: compactText(valueText(autonomyContract.currentStatus.server_signal_source_mode)) },
               { label: "드리프트", value: compactText(valueText(autonomyContract.currentStatus.server_signal_drift_status)) },
               { label: "실행 품질", value: compactText(valueText(autonomyContract.currentStatus.server_signal_quality_status)) },

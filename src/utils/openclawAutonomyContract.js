@@ -153,6 +153,7 @@ function deriveOpenClawAutonomyContract({
   watchdog = null,
   serverSignalAuthority = null,
   serverSignalQuality = null,
+  serverSignalRuntime = null,
 } = {}) {
   const objectiveSummary = readSummary(objective);
   const objectiveSupervisorRaw = unwrapRawReport(objectiveSupervisor) || {};
@@ -161,6 +162,7 @@ function deriveOpenClawAutonomyContract({
   const watchdogSummary = readSummary(watchdog);
   const serverSignalAuthoritySummary = readSummary(serverSignalAuthority);
   const serverSignalQualitySummary = readSummary(serverSignalQuality);
+  const serverSignalRuntimeSummary = readSummary(serverSignalRuntime);
 
   const objectivePolicy = {
     min_objective_score: envNum("OPENCLAW_AUTONOMY_MIN_OBJECTIVE_SCORE", 0),
@@ -261,6 +263,15 @@ function deriveOpenClawAutonomyContract({
     authoritySummary: serverSignalAuthoritySummary,
     qualitySummary: serverSignalQualitySummary,
   });
+  const runtimeTransitionPct = toNum(serverSignalRuntimeSummary.pine_shadow_transition_progress_pct);
+  if (runtimeTransitionPct != null) {
+    serverSignalTransition.progress_pct = Math.max(serverSignalTransition.progress_pct, runtimeTransitionPct);
+    serverSignalTransition.status = serverSignalTransition.progress_pct >= 100 ? "COMPLETE" : "IN_PROGRESS";
+  }
+  if (toUpper(serverSignalRuntimeSummary.canonical_engine_source_mode) === "SERVER_PRIMARY") {
+    serverSignalTransition.current_phase = "PINE_SHADOW_DEMOTION";
+    serverSignalTransition.current_label = "파인은 그림자 관측으로만 동작";
+  }
 
   return {
     contract_version: "OPENCLAW_AUTONOMY_CONTRACT_V1",
@@ -293,6 +304,9 @@ function deriveOpenClawAutonomyContract({
       server_signal_source_mode: toUpper(serverSignalAuthoritySummary.source_mode),
       server_signal_drift_status: toUpper(serverSignalAuthoritySummary.drift_status),
       server_signal_quality_status: toUpper(serverSignalQualitySummary.quality_status),
+      server_signal_runtime_status: toUpper(serverSignalRuntimeSummary.runtime_status),
+      server_signal_runtime_exec_tf: String(serverSignalRuntimeSummary.exec_tf || "").trim() || null,
+      server_signal_runtime_market_count: toNum(serverSignalRuntimeSummary.market_count) || 0,
       server_signal_authoritative_24h_n: toNum(serverSignalAuthoritySummary.authoritative_server_24h_n) || 0,
       server_signal_shadow_24h_n: toNum(serverSignalAuthoritySummary.pine_shadow_24h_n) || 0,
       server_signal_entry_24h_n: toNum(serverSignalQualitySummary.authoritative_entry_signal_24h_n) || 0,
@@ -308,6 +322,7 @@ function deriveOpenClawAutonomyContract({
       degraded_authority_min_timeout_streak: authorityPolicy.degraded_timeout_policy.min_timeout_streak,
       server_signal_authority_status: toUpper(serverSignalAuthoritySummary.drift_status) || "PARITY_UNKNOWN",
       server_signal_quality_status: toUpper(serverSignalQualitySummary.quality_status) || "N_A",
+      server_signal_runtime_status: toUpper(serverSignalRuntimeSummary.runtime_status) || "N_A",
       server_signal_transition_status: serverSignalTransition.status,
       server_signal_transition_progress_pct: serverSignalTransition.progress_pct,
     },
