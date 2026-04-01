@@ -594,7 +594,7 @@ async function main() {
   copyLatest(mdPath, REPORT_LATEST_MD);
 
   const alert = await sendKoreanTelegramSummary({
-    title: `[일간·주간·월간 회고] ${failedPeriods.length ? failedPeriods.join("/") : "PASS"}`,
+    title: `[회고] ${failedPeriods.length ? failedPeriods.join("/") : "PASS"}`,
     severity: failedPeriods.length ? "WARN" : "INFO",
     dedupeKey: `objective_retrospective:${failedPeriods.join("_") || "PASS"}:${daily.entry_cohort.executed_n || 0}:${daily.realized_trades.trade_n || 0}`,
     dedupeWindowSec: 18 * 60 * 60,

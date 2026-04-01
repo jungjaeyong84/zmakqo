@@ -2563,7 +2563,7 @@ async function main() {
 
   if (actions.length && String(process.env.STAGE_AUTOPILOT_SKIP_TELEGRAM || "").trim() !== "1") {
     const alert = await sendKoreanTelegramSummary({
-      title: `[자동 변경 반영] ${actions.length}건 처리`,
+      title: `[변경] ${actions.length}건 처리`,
       provider: PROVIDER,
       severity: actions.some((row) => row.type === "AUTO_ROLLBACK") ? "WARN" : "INFO",
       sections: [

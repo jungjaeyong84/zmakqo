@@ -168,7 +168,7 @@ async function main() {
   copyLatest(mdPath, REPORT_LATEST_MD);
 
   const alert = await sendKoreanTelegramSummary({
-    title: `[자동 롤백 점검] ${report.verdict}`,
+    title: `[롤백] ${report.verdict}`,
     severity: report.verdict === "ROLLBACK_PREPARED" ? "WARN" : "INFO",
     sections: [
       { header: "현재 상태", lines: [`자동 롤백 준비 상태는 ${report.verdict} 입니다. 사유는 ${report.reason} 입니다.`] },

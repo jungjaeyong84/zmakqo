@@ -595,7 +595,7 @@ async function main() {
   copyLatest(mdPath, latestMd);
 
   const alertResult = await sendKoreanTelegramSummary({
-    title: "[시간별 자산 현황] BINANCEFUT",
+    title: "[자산] BINANCEFUT",
     severity: "INFO",
     sections: [
       {

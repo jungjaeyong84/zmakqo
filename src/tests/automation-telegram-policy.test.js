@@ -13,9 +13,9 @@ function run() {
   delete process.env.AUTOMATION_TELEGRAM_ALLOW_TITLES;
   delete process.env.AUTOMATION_TELEGRAM_MUTE_TITLES;
 
-  assert.strictEqual(classifyAutomationTelegramTitle("[목표 점검] HOLD"), "ESSENTIAL");
+  assert.strictEqual(classifyAutomationTelegramTitle("[목표] HOLD"), "ESSENTIAL");
   assert.strictEqual(classifyAutomationTelegramTitle("[4차 EV/시간가치층 자동 조정] BINANCEFUT"), "TUNING");
-  assert.strictEqual(classifyAutomationTelegramTitle("[시간별 자산 현황] BINANCEFUT"), "ESSENTIAL");
+  assert.strictEqual(classifyAutomationTelegramTitle("[자산] BINANCEFUT"), "ESSENTIAL");
 
   let decision = resolveAutomationTelegramPolicyDecision({
     title: "[4차 EV/시간가치층 자동 조정] BINANCEFUT",
@@ -25,7 +25,7 @@ function run() {
   assert.strictEqual(decision.policy_mode, "ESSENTIAL_ONLY");
 
   decision = resolveAutomationTelegramPolicyDecision({
-    title: "[목표 점검] PATCH_CANDIDATE",
+    title: "[목표] PATCH_CANDIDATE",
     severity: "INFO",
   });
   assert.strictEqual(decision.send, true);

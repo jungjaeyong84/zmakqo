@@ -3331,7 +3331,7 @@ async function main() {
 
   if (String(process.env.OBJECTIVE_SUPERVISOR_SKIP_TELEGRAM || "").trim() !== "1") {
     const alert = await sendKoreanTelegramSummary({
-      title: `[목표 점검] ${report.verdict}`,
+      title: `[목표] ${report.verdict}`,
       severity: report.verdict === "ROLLBACK_CANDIDATE" ? "WARN" : (report.verdict === "PATCH_CANDIDATE" ? "INFO" : "INFO"),
       dedupeKey: `objective_supervisor:${report.verdict}:${report.reason}`,
       dedupeWindowSec: 18 * 60 * 60,

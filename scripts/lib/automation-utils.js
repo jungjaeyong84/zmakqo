@@ -429,11 +429,11 @@ async function resolveAlertChannel(provider = "BINANCEFUT") {
 }
 
 const AUTOMATION_TELEGRAM_TITLE_RULES = Object.freeze([
-  { category: "ESSENTIAL", prefix: "[목표 점검]" },
-  { category: "ESSENTIAL", prefix: "[자동 변경 반영]" },
-  { category: "ESSENTIAL", prefix: "[자동 롤백 점검]" },
-  { category: "ESSENTIAL", prefix: "[일간·주간·월간 회고]" },
-  { category: "ESSENTIAL", prefix: "[시간별 자산 현황]" },
+  { category: "ESSENTIAL", prefix: "[목표]" },
+  { category: "ESSENTIAL", prefix: "[변경]" },
+  { category: "ESSENTIAL", prefix: "[롤백]" },
+  { category: "ESSENTIAL", prefix: "[회고]" },
+  { category: "ESSENTIAL", prefix: "[자산]" },
   { category: "SUMMARY", prefix: "[일일 운영 점검]" },
   { category: "SUMMARY", prefix: "[시간별 운영 점검]" },
   { category: "SUMMARY", prefix: "[자동화 상태 점검]" },
