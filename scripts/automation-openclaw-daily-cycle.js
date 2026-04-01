@@ -31,27 +31,81 @@ function extractJson(stdout = "") {
   return null;
 }
 
+function runScript(script, env = {}) {
+  const scriptPath = path.join(REPO_ROOT, "scripts", script);
+  const child = spawnSync(process.execPath, [scriptPath], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    env: { ...process.env, ...env },
+    maxBuffer: 1024 * 1024 * 16,
+  });
+  return {
+    ok: child.status === 0,
+    exit_code: child.status,
+    parsed: extractJson(child.stdout),
+    stdout_tail: String(child.stdout || "").trim().split(/\r?\n/).filter(Boolean).slice(-5),
+    stderr_tail: String(child.stderr || "").trim().split(/\r?\n/).filter(Boolean).slice(-5),
+  };
+}
+
 function renderMarkdown(report = {}) {
-  return `# OpenClaw Daily Cycle\n\n- generated_at_kst: ${report.generated_at_kst || "N/A"}\n- status: ${report.status || "N/A"}\n- retrospective: ${report.retrospective_status || "N/A"}\n`;
+  const lines = [
+    "# OpenClaw Daily Cycle",
+    "",
+    `- generated_at_kst: ${report.generated_at_kst || "N/A"}`,
+    `- status: ${report.status || "N/A"}`,
+    `- retrospective: ${report.retrospective_status || "N/A"}`,
+    `- supervisor: ${report.supervisor_status || "N/A"}`,
+    "",
+    "## Steps",
+  ];
+  for (const row of Array.isArray(report.steps) ? report.steps : []) {
+    lines.push(`- ${row.id}: ${row.status} / summary=${row.summary || "N/A"}`);
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 function main() {
   const meta = nowKstMeta();
-  const scriptPath = path.join(REPO_ROOT, "scripts", "automation-objective-retrospective.js");
-  const child = spawnSync(process.execPath, [scriptPath], {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-    env: { ...process.env },
-    maxBuffer: 1024 * 1024 * 16,
+  const steps = [];
+
+  const retrospective = runScript("automation-objective-retrospective.js");
+  steps.push({
+    id: "objective_retrospective",
+    status: retrospective.ok ? "PASS" : "FAIL",
+    summary: retrospective.parsed && (retrospective.parsed.failed_periods ? retrospective.parsed.failed_periods.join("/") : null)
+      || retrospective.parsed && retrospective.parsed.status
+      || "OK",
   });
-  const parsed = extractJson(child.stdout);
+
+  const supervisor = retrospective.ok
+    ? runScript("automation-objective-supervisor.js", { SKIP_ALERT: process.env.SKIP_ALERT || "" })
+    : { ok: false, parsed: null, stdout_tail: [], stderr_tail: ["RETROSPECTIVE_FAILED"] };
+  steps.push({
+    id: "objective_supervisor",
+    status: supervisor.ok ? "PASS" : "FAIL",
+    summary: supervisor.parsed && (supervisor.parsed.verdict || supervisor.parsed.reason || supervisor.parsed.status) || (supervisor.ok ? "OK" : "FAIL"),
+  });
+
   const report = {
-    ok: child.status === 0,
+    ok: steps.every((row) => row.status !== "FAIL"),
     generated_at_kst: meta.kst,
-    status: child.status === 0 ? "PASS" : "FAIL",
-    retrospective_status: parsed && (parsed.status || parsed.reason || parsed.ok === true && "OK") || (child.status === 0 ? "OK" : "FAIL"),
-    stdout_tail: String(child.stdout || "").trim().split(/\r?\n/).filter(Boolean).slice(-5),
-    stderr_tail: String(child.stderr || "").trim().split(/\r?\n/).filter(Boolean).slice(-5),
+    status: steps.every((row) => row.status !== "FAIL") ? "PASS" : "FAIL",
+    retrospective_status: retrospective.parsed && (retrospective.parsed.failed_periods ? retrospective.parsed.failed_periods.join("/") : null)
+      || retrospective.parsed && (retrospective.parsed.status || retrospective.parsed.reason || retrospective.parsed.ok === true && "OK")
+      || (retrospective.ok ? "OK" : "FAIL"),
+    supervisor_status: supervisor.parsed && (supervisor.parsed.verdict || supervisor.parsed.reason || supervisor.parsed.status)
+      || (supervisor.ok ? "OK" : "FAIL"),
+    learning_applied: retrospective.ok && supervisor.ok,
+    steps,
+    stdout_tail: {
+      retrospective: retrospective.stdout_tail,
+      supervisor: supervisor.stdout_tail,
+    },
+    stderr_tail: {
+      retrospective: retrospective.stderr_tail,
+      supervisor: supervisor.stderr_tail,
+    },
   };
 
   const base = `${meta.dateKey}_${meta.hhmm}`;
@@ -65,6 +119,7 @@ function main() {
   console.log(JSON.stringify({
     ok: report.ok,
     status: report.status,
+    learning_applied: report.learning_applied,
     jsonPath,
     mdPath,
   }, null, 2));

@@ -258,20 +258,20 @@ function buildDailyTradeEvaluation({ daily, weekly, monthly } = {}) {
   const activeMarkets = byMarket.filter((row) => Number(row.trade_n || 0) > 0).map((row) => row.symbol);
   const topDrop = Array.isArray(daily && daily.drops && daily.drops.top_reasons) ? daily.drops.top_reasons[0] || null : null;
   const lines = [
-    `오늘 실현 거래는 ${daily && daily.realized_trades && daily.realized_trades.trade_n || 0}건이고 순손익은 ${signedKrw(daily && daily.realized_trades && daily.realized_trades.net_pnl_quote, 0)} 입니다.`,
-    `오늘 서버 신호 ${daily && daily.entry_cohort && daily.entry_cohort.signals_n || 0}건 중 실제 진입은 ${daily && daily.entry_cohort && daily.entry_cohort.executed_n || 0}건이었고, 실행률은 ${pct(daily && daily.entry_cohort && daily.entry_cohort.execution_rate)} 입니다.`,
-    activeMarkets.length ? `오늘 실제 거래한 시장은 ${activeMarkets.length}개(${activeMarkets.join(", ")}) 입니다.` : "오늘 실제 거래된 시장은 없습니다.",
+    `오늘 실현 거래는 ${daily && daily.realized_trades && daily.realized_trades.trade_n || 0}건, 순손익은 ${signedKrw(daily && daily.realized_trades && daily.realized_trades.net_pnl_quote, 0)} 입니다.`,
+    `오늘 서버 신호는 ${daily && daily.entry_cohort && daily.entry_cohort.signals_n || 0}건, 실제 진입은 ${daily && daily.entry_cohort && daily.entry_cohort.executed_n || 0}건, 실행률은 ${pct(daily && daily.entry_cohort && daily.entry_cohort.execution_rate)} 입니다.`,
+    activeMarkets.length ? `오늘 실제 거래한 시장은 ${activeMarkets.join(", ")} 입니다.` : "오늘 실제 거래된 시장은 없습니다.",
   ];
   if (bestMarket) {
-    lines.push(`수익 기여 1위는 ${bestMarket.symbol} (${signedKrw(bestMarket.net_pnl_krw, 0)}, 승률 ${pct(bestMarket.win_rate)}) 입니다.`);
+    lines.push(`가장 좋았던 시장은 ${bestMarket.symbol} (${signedKrw(bestMarket.net_pnl_krw, 0)}, 승률 ${pct(bestMarket.win_rate)}) 입니다.`);
   }
   if (worstMarket) {
-    lines.push(`손실 기여 1위는 ${worstMarket.symbol} (${signedKrw(worstMarket.net_pnl_krw, 0)}, 승률 ${pct(worstMarket.win_rate)}) 입니다.`);
+    lines.push(`가장 아쉬웠던 시장은 ${worstMarket.symbol} (${signedKrw(worstMarket.net_pnl_krw, 0)}, 승률 ${pct(worstMarket.win_rate)}) 입니다.`);
   }
   if (topDrop) {
-    lines.push(`오늘 가장 많이 버린 신호는 ${topDrop.reason} ${topDrop.n}건이며 계층은 ${stageLabel(topDrop.stage)} 입니다.`);
+    lines.push(`가장 많이 막힌 이유는 ${topDrop.reason} ${topDrop.n}건이며, 계층은 ${stageLabel(topDrop.stage)} 입니다.`);
   }
-  lines.push(`주간 손익은 ${signedKrw(weekly && weekly.realized_trades && weekly.realized_trades.net_pnl_quote, 0)}, 월간 손익은 ${signedKrw(monthly && monthly.realized_trades && monthly.realized_trades.net_pnl_quote, 0)} 입니다.`);
+  lines.push(`누적 기준으로 주간 손익은 ${signedKrw(weekly && weekly.realized_trades && weekly.realized_trades.net_pnl_quote, 0)}, 월간 손익은 ${signedKrw(monthly && monthly.realized_trades && monthly.realized_trades.net_pnl_quote, 0)} 입니다.`);
   return {
     best_market: bestMarket,
     worst_market: worstMarket,
@@ -346,28 +346,31 @@ function buildSelfCritique({ failedPeriods = [], daily, weekly, monthly } = {}) 
   const worstMarket = daily && daily.daily_trade_evaluation ? daily.daily_trade_evaluation.worst_market : null;
 
   if (!failedSet.size) {
-    return ["오늘 목표는 충족했습니다. 다만 서버 신호 학습 단계인 만큼 내일도 시장별 편차를 계속 점검해야 합니다."];
+    return [
+      "OpenClaw 판단: 오늘 목표는 충족했지만, 아직 서버 신호 학습 단계라 시장별 편차를 계속 확인해야 합니다.",
+      "성과가 난 시장을 유지하되 과도한 자신감 없이 내일도 실행 품질과 드롭 구조를 같이 보겠습니다.",
+    ];
   }
 
   if (failedSet.has("DAILY")) {
-    lines.push(`오늘 나는 일간 목표 ${signedKrw(daily && daily.objective && daily.objective.period_target_krw, 0)}를 달성하지 못했고 결과는 ${signedKrw(daily && daily.realized_trades && daily.realized_trades.net_pnl_quote, 0)}에 그쳤다.`);
+    lines.push(`OpenClaw 판단: 오늘 일간 목표 ${signedKrw(daily && daily.objective && daily.objective.period_target_krw, 0)}를 넘지 못했고 결과는 ${signedKrw(daily && daily.realized_trades && daily.realized_trades.net_pnl_quote, 0)}였습니다.`);
   }
   if (failedSet.has("WEEKLY")) {
-    lines.push(`주간 누적도 ${signedKrw(weekly && weekly.realized_trades && weekly.realized_trades.net_pnl_quote, 0)}로 회복 기준을 넘지 못했다.`);
+    lines.push(`주간 누적 손익도 ${signedKrw(weekly && weekly.realized_trades && weekly.realized_trades.net_pnl_quote, 0)}라 회복 속도가 충분하지 않았습니다.`);
   }
   if (failedSet.has("MONTHLY")) {
-    lines.push(`월간 런레이트 역시 목표 ${signedKrw(monthly && monthly.objective && monthly.objective.period_target_krw, 0)} 대비 부족하다.`);
+    lines.push(`월간 기준도 목표 ${signedKrw(monthly && monthly.objective && monthly.objective.period_target_krw, 0)} 대비 아직 부족합니다.`);
   }
   if (worstMarket) {
-    lines.push(`오늘 손실 기여 1위는 ${worstMarket.symbol}였고, 나는 이 시장의 서버 정책이 아직 목표 달성 속도에 맞게 정렬되지 않았다는 점을 인정해야 한다.`);
+    lines.push(`오늘 가장 아쉬운 시장은 ${worstMarket.symbol}였고, 이 시장의 서버 정책과 실행 품질을 다시 봐야 합니다.`);
   }
   if (topDrop) {
-    lines.push(`오늘 가장 많이 막은 계층은 ${stageLabel(topDrop.stage)}였고, ${topDrop.reason} ${topDrop.n}건은 과보수인지 재검증이 필요하다.`);
+    lines.push(`가장 많이 막은 구간은 ${stageLabel(topDrop.stage)}였고, ${topDrop.reason} ${topDrop.n}건이 과보수였는지 다시 검증해야 합니다.`);
   }
   if (bestMarket) {
-    lines.push(`반대로 ${bestMarket.symbol}는 오늘 가장 좋은 기여를 냈는데, 승자 시장을 충분히 증폭하지 못했다.`);
+    lines.push(`반대로 ${bestMarket.symbol}는 가장 좋은 기여를 냈는데, 승자 시장을 더 적극적으로 활용하지 못했습니다.`);
   }
-  lines.push("나는 파인이 아니라 서버 신호를 기준으로 판단해야 하며, 목표 미달 원인을 시장별 정책과 실행 품질에서 다시 찾겠다.");
+  lines.push("내 판단 기준은 서버 신호이며, 목표 미달 원인은 시장별 정책 강도와 실행 품질에서 다시 찾겠습니다.");
   return lines;
 }
 
@@ -381,19 +384,19 @@ function buildTomorrowStrategy({ failedPeriods = [], daily, weekly, monthly, qua
 
   if (!failed) {
     return [
-      "내일 전략은 서버 신호 기준 production 시장을 유지하고, exploration 시장은 소규모로만 검증한다.",
-      "목표 달성 상태라도 execution quality와 reverse 리뷰 시장은 계속 감시한다.",
+      "내일은 서버 신호 기준으로 현재 production 시장을 유지하고, exploration 시장은 소규모로 검증합니다.",
+      "목표를 달성했더라도 실행 품질과 reverse 리뷰 시장은 계속 감시합니다.",
     ];
   }
 
-  lines.push("내일도 전체 시장을 계속 학습하되, 판단과 수정은 전부 서버 신호 기준으로 진행한다.");
-  if (topDrop && topDrop.stage === "EV") lines.push("1순위는 4차 EV/시간가치층 재조정이다. 과차단을 줄이되 본선 적용은 production 우선 시장부터 반영한다.");
-  if (topDrop && topDrop.stage === "TIMING") lines.push("1순위는 5차 WAIT 타이밍층 민감도 점검이다. defer가 과민하면 진입 누락을 바로 줄인다.");
-  if (topDrop && topDrop.stage === "QUALITY") lines.push("1순위는 1차 상태/무결성 경계 재검토다. integrity 과차단이면 서버 신호 학습이 왜곡된다.");
-  if (bestMarket) lines.push(`승자 시장 ${bestMarket.symbol}는 production 우선순위를 유지하고 서버 정책 증폭 후보로 둔다.`);
-  if (worstMarket) lines.push(`부진 시장 ${worstMarket.symbol}는 배제하지 않고 watch 상태로 두되, 실행 품질과 reverse 경로를 분리해서 본다.`);
-  if (worstTier) lines.push(`가장 약한 tier는 ${describeTierForUser(worstTier.tier)} 이므로 내일 전략은 이 구간의 서버 신호 품질을 우선 보정한다.`);
-  lines.push(`단기 목표는 일간 ${signedKrw(daily && daily.objective && daily.objective.period_target_krw, 0)}, 중간 목표는 주간 ${signedKrw(weekly && weekly.objective && weekly.objective.period_target_krw, 0)}, 최종 목표는 월간 ${signedKrw(monthly && monthly.objective && monthly.objective.period_target_krw, 0)} 회복이다.`);
+  lines.push("내일도 전체 시장을 계속 학습하되, 모든 판단과 수정은 서버 신호 기준으로 진행합니다.");
+  if (topDrop && topDrop.stage === "EV") lines.push("내일 1순위는 4차 EV/시간가치층입니다. 과차단을 줄이되 production 우선 시장부터 반영합니다.");
+  if (topDrop && topDrop.stage === "TIMING") lines.push("내일 1순위는 5차 WAIT 타이밍층입니다. defer가 과민하면 진입 누락을 먼저 줄입니다.");
+  if (topDrop && topDrop.stage === "QUALITY") lines.push("내일 1순위는 1차 상태/무결성 경계입니다. integrity 과차단이면 서버 신호 학습이 왜곡됩니다.");
+  if (bestMarket) lines.push(`유지할 시장은 ${bestMarket.symbol}입니다. 이 시장은 production 우선순위를 유지합니다.`);
+  if (worstMarket) lines.push(`집중 점검할 시장은 ${worstMarket.symbol}입니다. 배제하지 않고 watch 상태로 두고 실행 품질과 reverse 경로를 분리해 봅니다.`);
+  if (worstTier) lines.push(`가장 약한 구간은 ${describeTierForUser(worstTier.tier)}입니다. 이 구간의 서버 신호 품질을 우선 보정합니다.`);
+  lines.push(`회복 목표는 일간 ${signedKrw(daily && daily.objective && daily.objective.period_target_krw, 0)}, 주간 ${signedKrw(weekly && weekly.objective && weekly.objective.period_target_krw, 0)}, 월간 ${signedKrw(monthly && monthly.objective && monthly.objective.period_target_krw, 0)} 입니다.`);
   return lines;
 }
 
@@ -608,19 +611,25 @@ async function main() {
     }),
     sections: [
       {
-        header: "오늘 평가",
+        header: "일간",
         lines: dailyTradeEvaluation.lines.slice(0, 3),
       },
       {
-        header: "목표 대비",
+        header: "주간",
         lines: [
-          `당일 ${signedKrw(daily.realized_trades.net_pnl_quote, 0)} / 목표 ${signedKrw(daily.objective.period_target_krw, 0)}`,
-          `주간 ${signedKrw(weekly.realized_trades.net_pnl_quote, 0)} / 목표 ${signedKrw(weekly.objective.period_target_krw, 0)}`,
-          `월간 ${signedKrw(monthly.realized_trades.net_pnl_quote, 0)} / 목표 ${signedKrw(monthly.objective.period_target_krw, 0)}`,
+          `주간 손익 ${signedKrw(weekly.realized_trades.net_pnl_quote, 0)} / 목표 ${signedKrw(weekly.objective.period_target_krw, 0)}`,
+          Array.isArray(weekly.reflection) && weekly.reflection.length ? weekly.reflection[0] : "주간 기준 핵심 원인은 계속 추적 중입니다.",
         ],
       },
       {
-        header: "반성문",
+        header: "월간",
+        lines: [
+          `월간 손익 ${signedKrw(monthly.realized_trades.net_pnl_quote, 0)} / 목표 ${signedKrw(monthly.objective.period_target_krw, 0)}`,
+          Array.isArray(monthly.reflection) && monthly.reflection.length ? monthly.reflection[0] : "월간 기준 핵심 원인은 계속 추적 중입니다.",
+        ],
+      },
+      {
+        header: "OpenClaw 판단",
         lines: selfCritiqueLines.slice(0, 3),
       },
       {
