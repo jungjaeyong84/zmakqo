@@ -936,6 +936,7 @@ function summarizeSelfEvolutionServerSignalCutoverReadiness(report = null) {
 function summarizeSelfEvolutionDropValidation(report = null) {
   const summary = report && report.summary && typeof report.summary === "object" ? report.summary : {};
   const byFamily = Array.isArray(report && report.by_family) ? report.by_family : [];
+  const byMarket = Array.isArray(report && report.by_market) ? report.by_market : [];
   return {
     available: !!report,
     status: String(summary.status || "").trim().toUpperCase() || null,
@@ -956,6 +957,10 @@ function summarizeSelfEvolutionDropValidation(report = null) {
     recommended_actions: Array.isArray(summary.recommended_actions) ? summary.recommended_actions : [],
     next_actions: Array.isArray(summary.next_actions) ? summary.next_actions : [],
     by_family: byFamily,
+    by_market: byMarket,
+    top_watch_markets: Array.isArray(summary.top_watch_markets) ? summary.top_watch_markets : [],
+    top_rescue_markets: Array.isArray(summary.top_rescue_markets) ? summary.top_rescue_markets : [],
+    top_keep_drop_markets: Array.isArray(summary.top_keep_drop_markets) ? summary.top_keep_drop_markets : [],
   };
 }
 
@@ -2632,6 +2637,11 @@ async function main() {
       : []),
     ...(evaluation.self_evolution_drop_validation && evaluation.self_evolution_drop_validation.top_rescue_family
       ? [`DROP_VALIDATION_TOP_RESCUE: ${evaluation.self_evolution_drop_validation.top_rescue_family} / ${evaluation.self_evolution_drop_validation.top_rescue_reason || "N/A"} / ${evaluation.self_evolution_drop_validation.top_rescue_market || "N/A"} / avg_ret=${evaluation.self_evolution_drop_validation.top_rescue_avg_horizon_ret_net != null ? evaluation.self_evolution_drop_validation.top_rescue_avg_horizon_ret_net : "N/A"}`]
+      : []),
+    ...(evaluation.self_evolution_drop_validation && Array.isArray(evaluation.self_evolution_drop_validation.top_watch_markets)
+      ? evaluation.self_evolution_drop_validation.top_watch_markets
+        .slice(0, 6)
+        .map((row) => `DROP_VALIDATION_MARKET_WATCH: ${row.market || "N/A"} / ${row.verdict || "N/A"} / ${row.dominant_family || "N/A"} / ${row.dominant_reason || "N/A"} / next=${row.recommended_action || "N/A"} / recent_drop=${row.recent_drop_n ?? 0} / matured=${row.matured_n ?? 0}`)
       : []),
     ...(evaluation.self_evolution_drop_validation && Array.isArray(evaluation.self_evolution_drop_validation.next_actions)
       ? evaluation.self_evolution_drop_validation.next_actions

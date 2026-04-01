@@ -457,6 +457,9 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       drop_validation_top_rescue_family: dropValidationSummary.top_rescue_family || null,
       drop_validation_top_rescue_reason: dropValidationSummary.top_rescue_reason || null,
       drop_validation_top_rescue_market: dropValidationSummary.top_rescue_market || null,
+      drop_validation_top_watch_markets: Array.isArray(dropValidationSummary.top_watch_markets)
+        ? dropValidationSummary.top_watch_markets.slice(0, 6).map((row) => String(row && row.market || "").trim().toUpperCase()).filter(Boolean)
+        : [],
       server_signal_entry_24h_n: toNum(serverSignalQualitySummary.authoritative_entry_signal_24h_n),
       server_signal_intent_24h_n: toNum(serverSignalQualitySummary.order_intent_24h_n),
       server_signal_fill_24h_n: toNum(serverSignalQualitySummary.fill_24h_n),

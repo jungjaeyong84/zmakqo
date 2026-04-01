@@ -187,6 +187,97 @@ function deriveRecommendedActions(familyRows = []) {
   return actions;
 }
 
+function deriveActionFromVerdictAndFamily({ verdict = null, family = null } = {}) {
+  const v = String(verdict || "").trim().toUpperCase();
+  const f = String(family || "").trim().toUpperCase();
+  if (v === "FAVOR_RESCUE") {
+    if (f === "EV_POLICY") return "RELAX_EV_POLICY_REVIEW";
+    if (f === "COOLDOWN_POLICY") return "RELAX_COOLDOWN_POLICY_REVIEW";
+    if (f === "ENTRY_QUALITY") return "RECHECK_ENTRY_QUALITY_GATE";
+    return "REVIEW_DROP_RULE";
+  }
+  if (v === "KEEP_DROP") return "KEEP_DROP_RULE";
+  if (v === "MIXED") return "MONITOR_WITH_MORE_SAMPLE";
+  return "HOLD_SAMPLE";
+}
+
+function buildMarketRows(reasonRows = [], byReasonMarket = [], droppedDocs = []) {
+  const recentMarketCounts = new Map();
+  for (const row of Array.isArray(droppedDocs) ? droppedDocs : []) {
+    const market = String(row.symbol_or_pair_id || row.symbol || row.market || "").trim().toUpperCase() || "UNKNOWN";
+    const reason = String(row.drop_reason_code || row.reason || "").trim().toUpperCase() || "UNKNOWN";
+    const family = normalizeFamily(reason);
+    const bucket = recentMarketCounts.get(market) || {
+      recent_drop_n: 0,
+      family_counts: new Map(),
+      reason_counts: new Map(),
+    };
+    bucket.recent_drop_n += 1;
+    bucket.family_counts.set(family, (bucket.family_counts.get(family) || 0) + 1);
+    bucket.reason_counts.set(reason, (bucket.reason_counts.get(reason) || 0) + 1);
+    recentMarketCounts.set(market, bucket);
+  }
+
+  const marketNames = new Set();
+  for (const row of Array.isArray(byReasonMarket) ? byReasonMarket : []) {
+    marketNames.add(String(row.market || "").trim().toUpperCase() || "UNKNOWN");
+  }
+  for (const market of recentMarketCounts.keys()) marketNames.add(market);
+
+  const rows = [];
+  for (const market of marketNames) {
+    const marketReasonRows = (Array.isArray(byReasonMarket) ? byReasonMarket : [])
+      .filter((row) => (String(row.market || "").trim().toUpperCase() || "UNKNOWN") === market)
+      .map((row) => ({
+        family: normalizeFamily(row.reason),
+        reason: String(row.reason || "").trim().toUpperCase() || "UNKNOWN",
+        matured_n: toNum(row.matured_n) || 0,
+        tp1_first_n: toNum(row.tp1_first_n) || 0,
+        sl_first_n: toNum(row.sl_first_n) || 0,
+        ambiguous_both_n: toNum(row.ambiguous_both_n) || 0,
+        hold_n: toNum(row.hold_n) || 0,
+        horizon_pos_n: toNum(row.horizon_pos_n) || 0,
+        horizon_neg_n: toNum(row.horizon_neg_n) || 0,
+        avg_horizon_ret_net_sum: toNum(row.avg_horizon_ret_net_sum) || 0,
+        avg_horizon_ret_net_n: toNum(row.avg_horizon_ret_net_n) || 0,
+      }));
+    const stats = aggregateRows(marketReasonRows);
+    const recent = recentMarketCounts.get(market) || { recent_drop_n: 0, family_counts: new Map(), reason_counts: new Map() };
+    const dominantReasonRow = marketReasonRows
+      .slice()
+      .sort((a, b) => b.matured_n - a.matured_n || a.reason.localeCompare(b.reason))[0] || null;
+    const dominantFamily = dominantReasonRow
+      ? dominantReasonRow.family
+      : Array.from(recent.family_counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] || null;
+    const dominantReason = dominantReasonRow
+      ? dominantReasonRow.reason
+      : Array.from(recent.reason_counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] || null;
+    const verdict = classifyCounterfactual(stats);
+    rows.push({
+      market,
+      recent_drop_n: recent.recent_drop_n || 0,
+      matured_n: stats.matured_n,
+      tp1_first_rate: stats.tp1_first_rate,
+      sl_first_rate: stats.sl_first_rate,
+      hold_rate: stats.hold_rate,
+      horizon_pos_rate: stats.horizon_pos_rate,
+      avg_horizon_ret_net: stats.avg_horizon_ret_net,
+      dominant_family: dominantFamily,
+      dominant_reason: dominantReason,
+      verdict,
+      recommended_action: deriveActionFromVerdictAndFamily({ verdict, family: dominantFamily }),
+    });
+  }
+
+  return rows.sort((a, b) => {
+    const verdictOrder = { FAVOR_RESCUE: 0, MIXED: 1, KEEP_DROP: 2, HOLD_SAMPLE: 3 };
+    return (verdictOrder[a.verdict] ?? 9) - (verdictOrder[b.verdict] ?? 9)
+      || b.recent_drop_n - a.recent_drop_n
+      || b.matured_n - a.matured_n
+      || a.market.localeCompare(b.market);
+  });
+}
+
 module.exports = {
   toNum,
   normalizeFamily,
@@ -195,4 +286,6 @@ module.exports = {
   buildReasonRows,
   buildFamilyRows,
   deriveRecommendedActions,
+  buildMarketRows,
+  deriveActionFromVerdictAndFamily,
 };

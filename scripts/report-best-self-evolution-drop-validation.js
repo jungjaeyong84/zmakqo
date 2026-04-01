@@ -18,6 +18,7 @@ const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
 const {
   buildReasonRows,
   buildFamilyRows,
+  buildMarketRows,
   deriveRecommendedActions,
 } = require("../src/utils/dropValidation");
 
@@ -53,12 +54,16 @@ function buildReport({ governance = {}, dropsWrapper = {}, nowMeta = nowKstMeta(
   const droppedDocs = Array.isArray(dropsWrapper.docs) ? dropsWrapper.docs : [];
   const reasonRows = buildReasonRows(dropCounterfactual);
   const familyRows = buildFamilyRows(reasonRows, dropCounterfactual.by_reason_market, droppedDocs);
+  const marketRows = buildMarketRows(reasonRows, dropCounterfactual.by_reason_market, droppedDocs);
   const recommendedActions = deriveRecommendedActions(familyRows);
   const rescueFamilies = familyRows.filter((row) => row.verdict === "FAVOR_RESCUE");
   const keepFamilies = familyRows.filter((row) => row.verdict === "KEEP_DROP");
   const mixedFamilies = familyRows.filter((row) => row.verdict === "MIXED");
   const topRescueFamily = rescueFamilies[0] || null;
   const dominantFamily = familyRows[0] || null;
+  const topRescueMarkets = marketRows.filter((row) => row.verdict === "FAVOR_RESCUE").slice(0, 6);
+  const topKeepDropMarkets = marketRows.filter((row) => row.verdict === "KEEP_DROP").slice(0, 6);
+  const topWatchMarkets = marketRows.slice(0, 10);
   const status = topRescueFamily
     ? "ACTIONABLE_RESCUE_REVIEW"
     : (mixedFamilies.length ? "MIXED_REVIEW" : (keepFamilies.length ? "KEEP_DROP_CONFIRMED" : "HOLD_SAMPLE"));
@@ -73,6 +78,7 @@ function buildReport({ governance = {}, dropsWrapper = {}, nowMeta = nowKstMeta(
       recent_drop_n: droppedDocs.length,
       matured_reason_n: reasonRows.reduce((sum, row) => sum + (row.matured_n || 0), 0),
       family_n: familyRows.length,
+      market_n: marketRows.length,
       rescue_family_n: rescueFamilies.length,
       keep_drop_family_n: keepFamilies.length,
       mixed_family_n: mixedFamilies.length,
@@ -84,6 +90,33 @@ function buildReport({ governance = {}, dropsWrapper = {}, nowMeta = nowKstMeta(
       top_rescue_avg_horizon_ret_net: topRescueFamily ? topRescueFamily.avg_horizon_ret_net : null,
       top_rescue_tp1_first_rate: topRescueFamily ? topRescueFamily.tp1_first_rate : null,
       top_rescue_sl_first_rate: topRescueFamily ? topRescueFamily.sl_first_rate : null,
+      top_watch_markets: topWatchMarkets.map((row) => ({
+        market: row.market,
+        verdict: row.verdict,
+        dominant_family: row.dominant_family,
+        dominant_reason: row.dominant_reason,
+        recommended_action: row.recommended_action,
+        recent_drop_n: row.recent_drop_n,
+        matured_n: row.matured_n,
+      })),
+      top_rescue_markets: topRescueMarkets.map((row) => ({
+        market: row.market,
+        dominant_family: row.dominant_family,
+        dominant_reason: row.dominant_reason,
+        recommended_action: row.recommended_action,
+        recent_drop_n: row.recent_drop_n,
+        matured_n: row.matured_n,
+        avg_horizon_ret_net: row.avg_horizon_ret_net,
+      })),
+      top_keep_drop_markets: topKeepDropMarkets.map((row) => ({
+        market: row.market,
+        dominant_family: row.dominant_family,
+        dominant_reason: row.dominant_reason,
+        recommended_action: row.recommended_action,
+        recent_drop_n: row.recent_drop_n,
+        matured_n: row.matured_n,
+        avg_horizon_ret_net: row.avg_horizon_ret_net,
+      })),
       recommended_actions: recommendedActions,
       next_actions: recommendedActions.map((row) => `DROP_VALIDATION_ACTION: ${row.family} -> ${row.action}`),
       cache_meta: {
@@ -97,6 +130,7 @@ function buildReport({ governance = {}, dropsWrapper = {}, nowMeta = nowKstMeta(
       },
     },
     by_family: familyRows,
+    by_market: marketRows,
     by_reason: reasonRows
       .sort((a, b) => {
         const order = { FAVOR_RESCUE: 0, MIXED: 1, KEEP_DROP: 2, HOLD_SAMPLE: 3 };
@@ -131,6 +165,11 @@ function renderMarkdown(report = {}) {
     "## By Family",
     ...((Array.isArray(report.by_family) && report.by_family.length)
       ? report.by_family.map((row) => `- ${row.family}: ${row.verdict} / matured ${row.matured_n} / tp1 ${pct(row.tp1_first_rate)} / sl ${pct(row.sl_first_rate)} / horizon_win ${pct(row.horizon_pos_rate)} / avg_ret ${signedPct(row.avg_horizon_ret_net)} / top_reason ${row.top_reason || "N/A"} / top_market ${row.top_market || "N/A"}`)
+      : ["- none"]),
+    "",
+    "## By Market",
+    ...((Array.isArray(report.by_market) && report.by_market.length)
+      ? report.by_market.slice(0, 16).map((row) => `- ${row.market}: ${row.verdict} / family ${row.dominant_family || "N/A"} / reason ${row.dominant_reason || "N/A"} / recent_drop ${row.recent_drop_n} / matured ${row.matured_n} / avg_ret ${signedPct(row.avg_horizon_ret_net)} / next ${row.recommended_action || "N/A"}`)
       : ["- none"]),
     "",
     "## By Reason",
