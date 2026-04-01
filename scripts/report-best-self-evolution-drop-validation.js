@@ -43,6 +43,12 @@ function signedPct(value, digits = 2) {
   return `${n > 0 ? "+" : ""}${(n * 100).toFixed(digits)}%`;
 }
 
+function signedNum(value, digits = 2) {
+  const n = toNum(value);
+  if (!Number.isFinite(n)) return "N/A";
+  return `${n > 0 ? "+" : ""}${n.toFixed(digits)}`;
+}
+
 function buildReport({ governance = {}, dropsWrapper = {}, nowMeta = nowKstMeta(), cycleMeta = null } = {}) {
   const governanceRaw = governance && governance.raw && typeof governance.raw === "object" ? governance.raw : governance;
   const dropCounterfactual = governanceRaw
@@ -88,8 +94,11 @@ function buildReport({ governance = {}, dropsWrapper = {}, nowMeta = nowKstMeta(
       top_rescue_reason: topRescueFamily ? topRescueFamily.top_reason : null,
       top_rescue_market: topRescueFamily ? topRescueFamily.top_market : null,
       top_rescue_avg_horizon_ret_net: topRescueFamily ? topRescueFamily.avg_horizon_ret_net : null,
+      top_rescue_avg_horizon_pnl_quote_proxy: topRescueFamily ? topRescueFamily.avg_horizon_pnl_quote_proxy : null,
+      top_rescue_net_horizon_pnl_quote_proxy_sum: topRescueFamily ? topRescueFamily.net_horizon_pnl_quote_proxy_sum : null,
       top_rescue_tp1_first_rate: topRescueFamily ? topRescueFamily.tp1_first_rate : null,
       top_rescue_sl_first_rate: topRescueFamily ? topRescueFamily.sl_first_rate : null,
+      proxy_notional_quote: topRescueFamily ? topRescueFamily.proxy_notional_quote : null,
       top_watch_markets: topWatchMarkets.map((row) => ({
         market: row.market,
         verdict: row.verdict,
@@ -107,6 +116,7 @@ function buildReport({ governance = {}, dropsWrapper = {}, nowMeta = nowKstMeta(
         recent_drop_n: row.recent_drop_n,
         matured_n: row.matured_n,
         avg_horizon_ret_net: row.avg_horizon_ret_net,
+        avg_horizon_pnl_quote_proxy: row.avg_horizon_pnl_quote_proxy,
       })),
       top_keep_drop_markets: topKeepDropMarkets.map((row) => ({
         market: row.market,
@@ -116,6 +126,7 @@ function buildReport({ governance = {}, dropsWrapper = {}, nowMeta = nowKstMeta(
         recent_drop_n: row.recent_drop_n,
         matured_n: row.matured_n,
         avg_horizon_ret_net: row.avg_horizon_ret_net,
+        avg_horizon_pnl_quote_proxy: row.avg_horizon_pnl_quote_proxy,
       })),
       recommended_actions: recommendedActions,
       next_actions: recommendedActions.map((row) => `DROP_VALIDATION_ACTION: ${row.family} -> ${row.action}`),
@@ -159,22 +170,22 @@ function renderMarkdown(report = {}) {
     `- recent_drop_n: ${summary.recent_drop_n ?? 0}`,
     `- matured_reason_n: ${summary.matured_reason_n ?? 0}`,
     `- dominant_family: ${summary.dominant_family || "N/A"} / ${summary.dominant_verdict || "N/A"}`,
-    `- top_rescue: ${summary.top_rescue_family || "N/A"} / ${summary.top_rescue_reason || "N/A"} / ${summary.top_rescue_market || "N/A"} / avg_ret ${signedPct(summary.top_rescue_avg_horizon_ret_net)} / tp1 ${pct(summary.top_rescue_tp1_first_rate)} / sl ${pct(summary.top_rescue_sl_first_rate)}`,
+    `- top_rescue: ${summary.top_rescue_family || "N/A"} / ${summary.top_rescue_reason || "N/A"} / ${summary.top_rescue_market || "N/A"} / avg_ret ${signedPct(summary.top_rescue_avg_horizon_ret_net)} / avg_pnl_proxy ${summary.top_rescue_avg_horizon_pnl_quote_proxy != null ? signedNum(summary.top_rescue_avg_horizon_pnl_quote_proxy, 2) : "N/A"} / tp1 ${pct(summary.top_rescue_tp1_first_rate)} / sl ${pct(summary.top_rescue_sl_first_rate)}`,
     `- next_actions: ${Array.isArray(summary.next_actions) && summary.next_actions.length ? summary.next_actions.join(" | ") : "none"}`,
     "",
     "## By Family",
     ...((Array.isArray(report.by_family) && report.by_family.length)
-      ? report.by_family.map((row) => `- ${row.family}: ${row.verdict} / matured ${row.matured_n} / tp1 ${pct(row.tp1_first_rate)} / sl ${pct(row.sl_first_rate)} / horizon_win ${pct(row.horizon_pos_rate)} / avg_ret ${signedPct(row.avg_horizon_ret_net)} / top_reason ${row.top_reason || "N/A"} / top_market ${row.top_market || "N/A"}`)
+      ? report.by_family.map((row) => `- ${row.family}: ${row.verdict} / matured ${row.matured_n} / tp1 ${pct(row.tp1_first_rate)} / sl ${pct(row.sl_first_rate)} / horizon_win ${pct(row.horizon_pos_rate)} / avg_ret ${signedPct(row.avg_horizon_ret_net)} / avg_pnl_proxy ${row.avg_horizon_pnl_quote_proxy != null ? signedNum(row.avg_horizon_pnl_quote_proxy, 2) : "N/A"} / top_reason ${row.top_reason || "N/A"} / top_market ${row.top_market || "N/A"}`)
       : ["- none"]),
     "",
     "## By Market",
     ...((Array.isArray(report.by_market) && report.by_market.length)
-      ? report.by_market.slice(0, 16).map((row) => `- ${row.market}: ${row.verdict} / family ${row.dominant_family || "N/A"} / reason ${row.dominant_reason || "N/A"} / recent_drop ${row.recent_drop_n} / matured ${row.matured_n} / avg_ret ${signedPct(row.avg_horizon_ret_net)} / next ${row.recommended_action || "N/A"}`)
+      ? report.by_market.slice(0, 16).map((row) => `- ${row.market}: ${row.verdict} / family ${row.dominant_family || "N/A"} / reason ${row.dominant_reason || "N/A"} / recent_drop ${row.recent_drop_n} / matured ${row.matured_n} / avg_ret ${signedPct(row.avg_horizon_ret_net)} / avg_pnl_proxy ${row.avg_horizon_pnl_quote_proxy != null ? signedNum(row.avg_horizon_pnl_quote_proxy, 2) : "N/A"} / next ${row.recommended_action || "N/A"}`)
       : ["- none"]),
     "",
     "## By Reason",
     ...((Array.isArray(report.by_reason) && report.by_reason.length)
-      ? report.by_reason.map((row) => `- ${row.reason}: ${row.verdict} / family ${row.family} / matured ${row.matured_n} / tp1 ${pct(row.tp1_first_rate)} / sl ${pct(row.sl_first_rate)} / horizon_win ${pct(row.horizon_pos_rate)} / avg_ret ${signedPct(row.avg_horizon_ret_net)}`)
+      ? report.by_reason.map((row) => `- ${row.reason}: ${row.verdict} / family ${row.family} / matured ${row.matured_n} / tp1 ${pct(row.tp1_first_rate)} / sl ${pct(row.sl_first_rate)} / horizon_win ${pct(row.horizon_pos_rate)} / avg_ret ${signedPct(row.avg_horizon_ret_net)} / avg_pnl_proxy ${row.avg_horizon_pnl_quote_proxy != null ? signedNum(row.avg_horizon_pnl_quote_proxy, 2) : "N/A"}`)
       : ["- none"]),
   ];
   return `${lines.join("\n")}\n`;

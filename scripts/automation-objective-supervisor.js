@@ -952,6 +952,9 @@ function summarizeSelfEvolutionDropValidation(report = null) {
     top_rescue_reason: String(summary.top_rescue_reason || "").trim().toUpperCase() || null,
     top_rescue_market: String(summary.top_rescue_market || "").trim().toUpperCase() || null,
     top_rescue_avg_horizon_ret_net: toNum(summary.top_rescue_avg_horizon_ret_net),
+    top_rescue_avg_horizon_pnl_quote_proxy: toNum(summary.top_rescue_avg_horizon_pnl_quote_proxy),
+    top_rescue_net_horizon_pnl_quote_proxy_sum: toNum(summary.top_rescue_net_horizon_pnl_quote_proxy_sum),
+    proxy_notional_quote: toNum(summary.proxy_notional_quote),
     top_rescue_tp1_first_rate: toNum(summary.top_rescue_tp1_first_rate),
     top_rescue_sl_first_rate: toNum(summary.top_rescue_sl_first_rate),
     recommended_actions: Array.isArray(summary.recommended_actions) ? summary.recommended_actions : [],
@@ -2636,7 +2639,7 @@ async function main() {
       ? [`DROP_VALIDATION_STATUS: ${evaluation.self_evolution_drop_validation.status} / recent_drop=${evaluation.self_evolution_drop_validation.recent_drop_n ?? 0} / matured=${evaluation.self_evolution_drop_validation.matured_reason_n ?? 0} / dominant=${evaluation.self_evolution_drop_validation.dominant_family || "N/A"}:${evaluation.self_evolution_drop_validation.dominant_verdict || "N/A"}`]
       : []),
     ...(evaluation.self_evolution_drop_validation && evaluation.self_evolution_drop_validation.top_rescue_family
-      ? [`DROP_VALIDATION_TOP_RESCUE: ${evaluation.self_evolution_drop_validation.top_rescue_family} / ${evaluation.self_evolution_drop_validation.top_rescue_reason || "N/A"} / ${evaluation.self_evolution_drop_validation.top_rescue_market || "N/A"} / avg_ret=${evaluation.self_evolution_drop_validation.top_rescue_avg_horizon_ret_net != null ? evaluation.self_evolution_drop_validation.top_rescue_avg_horizon_ret_net : "N/A"}`]
+      ? [`DROP_VALIDATION_TOP_RESCUE: ${evaluation.self_evolution_drop_validation.top_rescue_family} / ${evaluation.self_evolution_drop_validation.top_rescue_reason || "N/A"} / ${evaluation.self_evolution_drop_validation.top_rescue_market || "N/A"} / avg_ret=${evaluation.self_evolution_drop_validation.top_rescue_avg_horizon_ret_net != null ? evaluation.self_evolution_drop_validation.top_rescue_avg_horizon_ret_net : "N/A"} / avg_pnl_proxy=${evaluation.self_evolution_drop_validation.top_rescue_avg_horizon_pnl_quote_proxy != null ? evaluation.self_evolution_drop_validation.top_rescue_avg_horizon_pnl_quote_proxy : "N/A"}`]
       : []),
     ...(evaluation.self_evolution_drop_validation && Array.isArray(evaluation.self_evolution_drop_validation.top_watch_markets)
       ? evaluation.self_evolution_drop_validation.top_watch_markets

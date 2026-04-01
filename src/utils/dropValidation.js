@@ -1,5 +1,10 @@
 "use strict";
 
+const DROP_VALIDATION_PROXY_NOTIONAL_QUOTE = (() => {
+  const n = Number(process.env.DROP_VALIDATION_PROXY_NOTIONAL_QUOTE || 1000);
+  return Number.isFinite(n) && n > 0 ? n : 1000;
+})();
+
 function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
@@ -66,6 +71,7 @@ function aggregateRows(rows = []) {
     horizon_neg_n: 0,
     avg_horizon_ret_net_sum: 0,
     avg_horizon_ret_net_n: 0,
+    net_horizon_pnl_quote_proxy_sum: 0,
   };
   for (const row of Array.isArray(rows) ? rows : []) {
     total.matured_n += toNum(row.matured_n) || 0;
@@ -77,6 +83,7 @@ function aggregateRows(rows = []) {
     total.horizon_neg_n += toNum(row.horizon_neg_n) || 0;
     total.avg_horizon_ret_net_sum += toNum(row.avg_horizon_ret_net_sum) || 0;
     total.avg_horizon_ret_net_n += toNum(row.avg_horizon_ret_net_n) || 0;
+    total.net_horizon_pnl_quote_proxy_sum += toNum(row.net_horizon_pnl_quote_proxy_sum) || 0;
   }
   total.tp1_first_rate = total.matured_n > 0 ? total.tp1_first_n / total.matured_n : null;
   total.sl_first_rate = total.matured_n > 0 ? total.sl_first_n / total.matured_n : null;
@@ -84,6 +91,10 @@ function aggregateRows(rows = []) {
   total.hold_rate = total.matured_n > 0 ? total.hold_n / total.matured_n : null;
   total.horizon_pos_rate = total.matured_n > 0 ? total.horizon_pos_n / total.matured_n : null;
   total.avg_horizon_ret_net = total.avg_horizon_ret_net_n > 0 ? total.avg_horizon_ret_net_sum / total.avg_horizon_ret_net_n : null;
+  total.proxy_notional_quote = DROP_VALIDATION_PROXY_NOTIONAL_QUOTE;
+  total.avg_horizon_pnl_quote_proxy = total.avg_horizon_ret_net_n > 0
+    ? total.net_horizon_pnl_quote_proxy_sum / total.avg_horizon_ret_net_n
+    : null;
   return total;
 }
 
@@ -106,6 +117,13 @@ function buildReasonRows(dropCounterfactual = {}) {
     hold_rate: toNum(row.hold_rate),
     horizon_pos_rate: toNum(row.horizon_pos_rate),
     avg_horizon_ret_net: toNum(row.avg_horizon_ret_net),
+    proxy_notional_quote: toNum(row.proxy_notional_quote) || DROP_VALIDATION_PROXY_NOTIONAL_QUOTE,
+    net_horizon_pnl_quote_proxy_sum: toNum(row.net_horizon_pnl_quote_proxy_sum)
+      ?? ((toNum(row.avg_horizon_ret_net_sum) || 0) * DROP_VALIDATION_PROXY_NOTIONAL_QUOTE),
+    avg_horizon_pnl_quote_proxy: toNum(row.avg_horizon_pnl_quote_proxy)
+      ?? (Number.isFinite(toNum(row.avg_horizon_ret_net))
+        ? toNum(row.avg_horizon_ret_net) * DROP_VALIDATION_PROXY_NOTIONAL_QUOTE
+        : null),
     verdict: classifyCounterfactual(row),
   }));
 }
@@ -156,6 +174,9 @@ function buildFamilyRows(reasonRows = [], byReasonMarket = [], droppedDocs = [])
       top_market: topMarket ? topMarket.market : null,
       top_market_reason: topMarket ? topMarket.reason : null,
       top_market_matured_n: topMarket ? topMarket.matured_n : 0,
+      proxy_notional_quote: familyStats.proxy_notional_quote,
+      net_horizon_pnl_quote_proxy_sum: familyStats.net_horizon_pnl_quote_proxy_sum,
+      avg_horizon_pnl_quote_proxy: familyStats.avg_horizon_pnl_quote_proxy,
     });
   }
 
@@ -240,6 +261,8 @@ function buildMarketRows(reasonRows = [], byReasonMarket = [], droppedDocs = [])
         horizon_neg_n: toNum(row.horizon_neg_n) || 0,
         avg_horizon_ret_net_sum: toNum(row.avg_horizon_ret_net_sum) || 0,
         avg_horizon_ret_net_n: toNum(row.avg_horizon_ret_net_n) || 0,
+        net_horizon_pnl_quote_proxy_sum: toNum(row.net_horizon_pnl_quote_proxy_sum)
+          ?? ((toNum(row.avg_horizon_ret_net_sum) || 0) * DROP_VALIDATION_PROXY_NOTIONAL_QUOTE),
       }));
     const stats = aggregateRows(marketReasonRows);
     const recent = recentMarketCounts.get(market) || { recent_drop_n: 0, family_counts: new Map(), reason_counts: new Map() };
@@ -262,6 +285,9 @@ function buildMarketRows(reasonRows = [], byReasonMarket = [], droppedDocs = [])
       hold_rate: stats.hold_rate,
       horizon_pos_rate: stats.horizon_pos_rate,
       avg_horizon_ret_net: stats.avg_horizon_ret_net,
+      proxy_notional_quote: stats.proxy_notional_quote,
+      net_horizon_pnl_quote_proxy_sum: stats.net_horizon_pnl_quote_proxy_sum,
+      avg_horizon_pnl_quote_proxy: stats.avg_horizon_pnl_quote_proxy,
       dominant_family: dominantFamily,
       dominant_reason: dominantReason,
       verdict,
@@ -279,6 +305,7 @@ function buildMarketRows(reasonRows = [], byReasonMarket = [], droppedDocs = [])
 }
 
 module.exports = {
+  DROP_VALIDATION_PROXY_NOTIONAL_QUOTE,
   toNum,
   normalizeFamily,
   classifyCounterfactual,

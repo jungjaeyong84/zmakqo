@@ -121,6 +121,9 @@ function summarizeDropValidation(dropValidation = null) {
     top_rescue_reason: String(summary.top_rescue_reason || "").trim() || null,
     top_rescue_market: String(summary.top_rescue_market || "").trim() || null,
     top_rescue_avg_horizon_ret_net: toNum(summary.top_rescue_avg_horizon_ret_net),
+    top_rescue_avg_horizon_pnl_quote_proxy: toNum(summary.top_rescue_avg_horizon_pnl_quote_proxy),
+    top_rescue_net_horizon_pnl_quote_proxy_sum: toNum(summary.top_rescue_net_horizon_pnl_quote_proxy_sum),
+    proxy_notional_quote: toNum(summary.proxy_notional_quote),
     top_rescue_tp1_first_rate: toNum(summary.top_rescue_tp1_first_rate),
     top_rescue_sl_first_rate: toNum(summary.top_rescue_sl_first_rate),
     ev_policy_action: toUpper(evRescueRow && evRescueRow.action),
@@ -245,6 +248,7 @@ function deriveObjectiveRecoveryGovernor({
       drop_validation_top_rescue_reason: dropValidationSummary.top_rescue_reason,
       drop_validation_top_rescue_market: dropValidationSummary.top_rescue_market,
       drop_validation_top_rescue_avg_horizon_ret_net: dropValidationSummary.top_rescue_avg_horizon_ret_net,
+      drop_validation_top_rescue_avg_horizon_pnl_quote_proxy: dropValidationSummary.top_rescue_avg_horizon_pnl_quote_proxy,
       drop_validation_top_rescue_tp1_first_rate: dropValidationSummary.top_rescue_tp1_first_rate,
       drop_validation_top_rescue_sl_first_rate: dropValidationSummary.top_rescue_sl_first_rate,
       drop_validation_ev_policy_action: dropValidationSummary.ev_policy_action,
@@ -263,7 +267,7 @@ function deriveObjectiveRecoveryGovernor({
           && dropValidationSummary.top_rescue_family === "EV_POLICY"
           && dropValidationSummary.ev_policy_action === "RELAX_EV_POLICY_REVIEW"
           ? [
-            `Use drop-validation rescue evidence to relax EV policy first (${dropValidationSummary.top_rescue_reason || "EV_POLICY"} / ${dropValidationSummary.top_rescue_market || "N/A"} / avg_ret ${dropValidationSummary.top_rescue_avg_horizon_ret_net != null ? dropValidationSummary.top_rescue_avg_horizon_ret_net : "N/A"}).`,
+            `Use drop-validation rescue evidence to relax EV policy first (${dropValidationSummary.top_rescue_reason || "EV_POLICY"} / ${dropValidationSummary.top_rescue_market || "N/A"} / avg_ret ${dropValidationSummary.top_rescue_avg_horizon_ret_net != null ? dropValidationSummary.top_rescue_avg_horizon_ret_net : "N/A"} / avg_pnl_proxy ${dropValidationSummary.top_rescue_avg_horizon_pnl_quote_proxy != null ? dropValidationSummary.top_rescue_avg_horizon_pnl_quote_proxy : "N/A"}).`,
           ]
           : []),
         ...dropValidationSummary.next_actions,
