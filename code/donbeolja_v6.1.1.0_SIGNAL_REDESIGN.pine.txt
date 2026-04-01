@@ -287,12 +287,12 @@ f_entry_payload(string direction, string grade, float score, string state, strin
     features += f_json_pair_s("source_band", grade)
     features += "}"
     string json = "{"
-    json += f_json_pair_s("exchange", provider_id)
+    json += "\"exchange\":\"" + f_json_escape(provider_id) + "\""
     json += f_json_pair_s("symbol", syminfo.ticker)
     json += f_json_pair_s("market", syminfo.ticker)
     json += f_json_pair_s("ticker", syminfo.ticker)
     json += f_json_pair_s("tf", timeframe.period)
-    json += "\"strategy_id\":\"" + STRATEGY_ID + "\""
+    json += f_json_pair_s("strategy_id", STRATEGY_ID)
     json += f_json_pair_s("engine_mode", ENGINE_MODE)
     json += f_json_pair_s("action", "ENTRY")
     json += f_json_pair_s("event_intent", "ENTRY")

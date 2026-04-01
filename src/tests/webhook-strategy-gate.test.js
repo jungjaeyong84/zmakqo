@@ -3,7 +3,13 @@
 const assert = require("assert");
 const createWebhookRoutes = require("../../src/routes/webhook.routes");
 
-const { buildRuntimeStrategyGate, parseAllowedStrategyIds, resolvePayloadStrategyIdentity } = createWebhookRoutes.__test;
+const {
+  buildRuntimeStrategyGate,
+  parseAllowedStrategyIds,
+  resolvePayloadStrategyIdentity,
+  repairMalformedWebhookJson,
+  parseWebhookBody,
+} = createWebhookRoutes.__test;
 
 (() => {
   const ids = parseAllowedStrategyIds("donbeolja_v6.0.3.0,donbeolja_v6.0.3.0,STRAT_v010");
@@ -91,6 +97,18 @@ const { buildRuntimeStrategyGate, parseAllowedStrategyIds, resolvePayloadStrateg
   assert.strictEqual(aliasOnly.canonicalId, null);
   assert.strictEqual(aliasOnly.aliasId, "donbeolja_v6.0.3.1");
   assert.strictEqual(aliasOnly.effectiveStrategyId, "donbeolja_v6.0.3.1");
+
+  const malformed = '{,"exchange":"BINANCEFUT","tf":"15""strategy_id":"donbeolja_v6.1.1.0"}';
+  assert.strictEqual(
+    repairMalformedWebhookJson(malformed),
+    '{"exchange":"BINANCEFUT","tf":"15","strategy_id":"donbeolja_v6.1.1.0"}'
+  );
+  const parsedMalformed = parseWebhookBody(malformed);
+  assert.strictEqual(parsedMalformed.repaired, true);
+  assert.strictEqual(parsedMalformed.parseError, null);
+  assert.strictEqual(parsedMalformed.parsed.exchange, "BINANCEFUT");
+  assert.strictEqual(parsedMalformed.parsed.tf, "15");
+  assert.strictEqual(parsedMalformed.parsed.strategy_id, "donbeolja_v6.1.1.0");
 
   console.log("WEBHOOK_STRATEGY_GATE_TEST_OK");
 })();

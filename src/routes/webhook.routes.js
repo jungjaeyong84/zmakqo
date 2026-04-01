@@ -70,6 +70,54 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function repairMalformedWebhookJson(raw) {
+  let text = String(raw ?? "");
+  if (!text) return text;
+  text = text.trim();
+  if (!text) return text;
+  text = text.replace(/^\{\s*,/, "{");
+  text = text.replace(/"(?="[A-Za-z0-9_]+":)/g, '",');
+  return text;
+}
+
+function parseWebhookBody(raw) {
+  if (!raw) return { parsed: {}, repaired: false, parseError: null, rawText: "" };
+  if (typeof raw === "object") {
+    return { parsed: raw, repaired: false, parseError: null, rawText: "" };
+  }
+  if (typeof raw !== "string") {
+    return { parsed: {}, repaired: false, parseError: null, rawText: "" };
+  }
+  const rawText = raw.trim();
+  if (!rawText) return { parsed: {}, repaired: false, parseError: null, rawText };
+  try {
+    return {
+      parsed: JSON.parse(rawText),
+      repaired: false,
+      parseError: null,
+      rawText,
+    };
+  } catch (err) {
+    const repairedText = repairMalformedWebhookJson(rawText);
+    if (repairedText && repairedText !== rawText) {
+      try {
+        return {
+          parsed: JSON.parse(repairedText),
+          repaired: true,
+          parseError: null,
+          rawText,
+        };
+      } catch (_) {}
+    }
+    return {
+      parsed: {},
+      repaired: false,
+      parseError: err?.message || String(err),
+      rawText,
+    };
+  }
+}
+
 function toKstString(iso = null) {
   const date = iso ? new Date(iso) : new Date();
   const parts = new Intl.DateTimeFormat("sv-SE", {
@@ -746,20 +794,14 @@ function createWebhookRoutes() {
   }
 
   function parseBody(req) {
-    const b = req.body;
-    if (!b) return {};
-    if (typeof b === "object") return b;
-    if (typeof b === "string") {
-      const s = b.trim();
-      if (!s) return {};
-      try {
-        return JSON.parse(s);
-      } catch (err) {
-        console.warn("[WEBHOOK_PARSE_FAIL]", err?.message || err);
-        return {};
-      }
+    const result = parseWebhookBody(req?.body);
+    if (result.parseError) {
+      console.warn("[WEBHOOK_PARSE_FAIL]", result.parseError);
     }
-    return {};
+    if (result.repaired) {
+      console.log("[WEBHOOK_PARSE_REPAIRED]");
+    }
+    return result.parsed;
   }
 
   function pickPayloadValue(payload, keys = []) {
@@ -883,6 +925,7 @@ function createWebhookRoutes() {
       const rawBody = (typeof req.body === "string")
         ? req.body
         : (req.body == null ? "" : JSON.stringify(req.body));
+      const parsedResult = parseWebhookBody(rawBody);
       // fire-and-forget: 인그레스 기록을 기다리지 않음 (TradingView 타임아웃 방지)
       recordWebhookIngress({
         requestId,
@@ -890,7 +933,7 @@ function createWebhookRoutes() {
         method: req.method || "POST",
         headers: req.headers || {},
         rawBody,
-        parsedBody: p,
+        parsedBody: parsedResult.parsed,
       }).catch(e => console.warn("[WEBHOOK_LEDGER_INGRESS_FAIL]", e?.message || e));
       const finalize = ({ httpStatus = 200, body = {}, decision = null, reason = null, context = null } = {}) => {
         // 응답을 먼저 보내고, outcome 기록은 fire-and-forget (TradingView 타임아웃 방지)
@@ -907,6 +950,27 @@ function createWebhookRoutes() {
       if (WEBHOOK_JITTER_MS > 0) {
         const waitMs = Math.floor(Math.random() * (WEBHOOK_JITTER_MS + 1));
         if (waitMs > 0) await sleep(waitMs);
+      }
+
+      const parseFailed = !!parsedResult.parseError;
+      if (parseFailed) {
+        emitWebhookTrace(traceOn, {
+          decision: "DROP",
+          reason: "WEBHOOK_PARSE_FAIL",
+          raw_body_len: rawBody.length,
+          parse_repair_attempted: true,
+        });
+        return finalize({
+          httpStatus: 202,
+          body: { ok: true, dropped: true, reason: "WEBHOOK_PARSE_FAIL" },
+          decision: "DROP",
+          reason: "WEBHOOK_PARSE_FAIL",
+          context: {
+            parseError: parsedResult.parseError,
+            rawBodyLen: rawBody.length,
+            parseRepaired: parsedResult.repaired,
+          },
+        });
       }
 
       const symbolRaw =
@@ -2268,4 +2332,6 @@ module.exports.__test = {
   buildRuntimeStrategyGate,
   parseAllowedStrategyIds,
   resolvePayloadStrategyIdentity,
+  repairMalformedWebhookJson,
+  parseWebhookBody,
 };
