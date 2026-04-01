@@ -10,6 +10,7 @@ const {
   copyLatest,
   nowKstMeta,
   readJsonRawSafe,
+  resolveAnchoredReportCycleId,
   resolveAutomationCycleMeta,
   selfEvolutionSnapshotLatestPath,
   writeJson,
@@ -64,6 +65,11 @@ async function main() {
   const dropValidation = readJsonRawSafe(DROP_VALIDATION_PATH, null);
   const executionQuality = readJsonRawSafe(EXECUTION_QUALITY_PATH, null);
   const reversePolicy = readJsonRawSafe(REVERSE_POLICY_PATH, null);
+  const reportCycleId = resolveAnchoredReportCycleId({
+    preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
+    fallbackCycleId: cycleMeta.cycle_id,
+    sources: [marketObjectiveScore, serverVsPinePerformanceDelta, dropValidation, executionQuality, reversePolicy],
+  });
 
   const summary = summarizeOpenclawOverrideAuthority({
     currentSys,
@@ -77,8 +83,8 @@ async function main() {
   const report = {
     ok: true,
     generated_at_kst: nowMeta.kst,
-    cycle_id: cycleMeta.cycle_id,
-    generation_id: cycleMeta.cycle_id,
+    cycle_id: reportCycleId,
+    generation_id: reportCycleId,
     provider: PROVIDER,
     inputs: {
       market_objective_score: MARKET_OBJECTIVE_PATH,
@@ -105,7 +111,7 @@ async function main() {
 
   console.log(JSON.stringify({
     ok: true,
-    cycle_id: cycleMeta.cycle_id,
+    cycle_id: report.cycle_id,
     status: summary.status,
     max_market_overrides_per_cycle: summary.max_market_overrides_per_cycle,
     top_priority_markets: (summary.top_priority_markets || []).map((row) => row.market),
