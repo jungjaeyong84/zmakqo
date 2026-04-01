@@ -147,6 +147,20 @@ function summarizeExecutionQuality(executionQuality = null) {
   };
 }
 
+function summarizeReversePolicy(reversePolicy = null) {
+  const summary = readSummary(reversePolicy);
+  return {
+    status: toUpper(summary.status),
+    reverse_drop_n: toNum(summary.reverse_drop_n) || 0,
+    reverse_revive_n: toNum(summary.reverse_revive_n) || 0,
+    reverse_revive_rate: toNum(summary.reverse_revive_rate),
+    top_watch_market: String(summary.top_watch_market || "").trim().toUpperCase() || null,
+    top_watch_reason: String(summary.top_watch_reason || "").trim().toUpperCase() || null,
+    top_watch_action: String(summary.top_watch_action || "").trim().toUpperCase() || null,
+    top_watch_markets: Array.isArray(summary.top_watch_markets) ? summary.top_watch_markets : [],
+  };
+}
+
 function deriveObjectiveRecoveryGovernor({
   autonomyContract = null,
   objective = null,
@@ -160,6 +174,7 @@ function deriveObjectiveRecoveryGovernor({
   watchdog = null,
   dropValidation = null,
   executionQuality = null,
+  reversePolicy = null,
 } = {}) {
   const contract = unwrapRawReport(autonomyContract) || {};
   const contractStatus = contract.current_status && typeof contract.current_status === "object" ? contract.current_status : {};
@@ -179,6 +194,7 @@ function deriveObjectiveRecoveryGovernor({
   const watchdogSummary = readSummary(watchdog);
   const dropValidationSummary = summarizeDropValidation(dropValidation);
   const executionQualitySummary = summarizeExecutionQuality(executionQuality);
+  const reversePolicySummary = summarizeReversePolicy(reversePolicy);
 
   const targetCandidateId = String(
     promotion.display_candidate_id
@@ -278,6 +294,13 @@ function deriveObjectiveRecoveryGovernor({
       execution_quality_top_slippage_market: executionQualitySummary.top_slippage_market,
       execution_quality_top_partial_market: executionQualitySummary.top_partial_market,
       execution_quality_review_reasons: executionQualitySummary.review_reasons,
+      reverse_policy_status: reversePolicySummary.status,
+      reverse_policy_drop_n: reversePolicySummary.reverse_drop_n,
+      reverse_policy_revive_n: reversePolicySummary.reverse_revive_n,
+      reverse_policy_revive_rate: reversePolicySummary.reverse_revive_rate,
+      reverse_policy_top_watch_market: reversePolicySummary.top_watch_market,
+      reverse_policy_top_watch_reason: reversePolicySummary.top_watch_reason,
+      reverse_policy_top_watch_action: reversePolicySummary.top_watch_action,
       phase_d_status: String(acceptanceSummary.phase_d_status || "").trim().toUpperCase() || null,
       phase_d_ready: acceptanceSummary.phase_d_ready === true,
       governor_status: governorStatus,
@@ -300,6 +323,12 @@ function deriveObjectiveRecoveryGovernor({
           && executionQualitySummary.status === "EXECUTION_QUALITY_REVIEW"
           ? [
             `Before broad recovery promotion, review execution quality (${executionQualitySummary.top_latency_market || executionQualitySummary.top_slippage_market || executionQualitySummary.top_partial_market || "N/A"} / latency_p95 ${executionQualitySummary.created_to_fill_p95_ms != null ? executionQualitySummary.created_to_fill_p95_ms : "N/A"} / slippage_p95 ${executionQualitySummary.adverse_slippage_p95_bps != null ? executionQualitySummary.adverse_slippage_p95_bps : "N/A"} / partial ${executionQualitySummary.partial_fill_rate_pct != null ? executionQualitySummary.partial_fill_rate_pct : "N/A"}).`,
+          ]
+          : []),
+        ...(recoveryRequired
+          && reversePolicySummary.status === "REVERSE_POLICY_REVIEW"
+          ? [
+            `Review reverse policy path first (${reversePolicySummary.top_watch_market || "N/A"} / ${reversePolicySummary.top_watch_reason || "N/A"} / ${reversePolicySummary.top_watch_action || "N/A"} / drop ${reversePolicySummary.reverse_drop_n} / revive ${reversePolicySummary.reverse_revive_n}).`,
           ]
           : []),
         ...dropValidationSummary.next_actions,
