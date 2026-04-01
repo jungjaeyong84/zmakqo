@@ -121,6 +121,7 @@ function deriveServerSignalAuthority({ signalsRecent = null, parityReport = null
 
 module.exports = {
   deriveServerSignalAuthority,
+  sourceOf,
   __test: {
     sourceOf,
     driftStatus,

@@ -41,10 +41,10 @@ function statusTone(value) {
   const s = String(value || "").toUpperCase();
   if (!s) return "dim";
   if (s.includes("PENDING")) return "warn";
-  if (s.includes("FAIL") || s.includes("BLOCK") || s.includes("ROLLBACK") || s.includes("DRIFT") || s === "HOLD" || s === "TIMEOUT_HOLD" || s === "OBJECTIVE_RECOVERY_REQUIRED") return "bad";
+  if (s.includes("FAIL") || s.includes("BLOCK") || s.includes("ROLLBACK") || s.includes("DRIFT") || s.includes("NOT_REACHING_EXECUTION") || s === "HOLD" || s === "TIMEOUT_HOLD" || s === "OBJECTIVE_RECOVERY_REQUIRED") return "bad";
   if (["PASS", "OK", "ACTIVE", "APPROVED", "PROMOTE", "READY", "YES", "TRUE", "ON_TRACK"].includes(s) || s.includes("ACTIVE")) return "ok";
   if (s.includes("STABLE")) return "ok";
-  if (s.includes("WATCH") || s.includes("MONITOR") || s.includes("WARN") || s.includes("PARTIAL") || s.includes("SHORT") || s === "N/A") return "warn";
+  if (s.includes("WATCH") || s.includes("MONITOR") || s.includes("WARN") || s.includes("PARTIAL") || s.includes("SHORT") || s.includes("FILL_SHORT") || s === "N/A") return "warn";
   return "dim";
 }
 
@@ -201,6 +201,24 @@ const UI_TEXT_MAP = {
   "Source Mode": "원천 모드",
   "Top Server Markets": "정본 상위 마켓",
   "Top Shadow Markets": "그림자 상위 마켓",
+  "Signal Quality": "정본 실행 품질",
+  "Entry 24h": "엔트리 신호(24h)",
+  "Intent 24h": "주문 의도(24h)",
+  "Fill 24h": "체결(24h)",
+  "Trade 24h": "거래 완료(24h)",
+  "Intent Conversion": "주문 전환율",
+  "Fill Conversion": "체결 전환율",
+  "Latest Entry": "최근 정본 엔트리",
+  "Top Signal Reasons": "주요 신호 사유",
+  "Top Entry Markets": "주요 엔트리 마켓",
+  "Recent Drift Cases": "최근 드리프트 사례",
+  "Main Drift Reason": "주요 드리프트 이유",
+  "Main Drop Family": "주요 차단 계열",
+  "Mismatch Count": "불일치 수",
+  "Quality Status": "품질 상태",
+  "Observed": "관측 시각",
+  "Market": "마켓",
+  "Tier": "등급",
   "Target Delta": "목표 변화폭",
   "Best Replay Delta": "최적 재생 변화폭",
   "Operator Strip": "핵심 운영 상태",
@@ -338,6 +356,35 @@ const UI_TEXT_MAP = {
   "signals/signals_dropped/order_intents are currently sparse in local cache": "로컬 캐시의 signals/signals_dropped/order_intents 데이터가 아직 적습니다.",
   "source parity와 provenance를 분리해 보여줍니다.": "원천 일치와 출처 추적을 분리해서 보여줍니다.",
 };
+
+const VALUE_TEXT_MAP = {
+  PARITY_STABLE: "정본과 그림자가 거의 일치함",
+  PARITY_WATCH: "정본과 그림자 차이를 지켜봐야 함",
+  PARITY_DRIFT: "정본과 그림자 차이가 큼",
+  PARITY_UNKNOWN: "정합성 자료가 아직 부족함",
+  NO_SHADOW_OBSERVED: "최근 그림자 비교가 없음",
+  WATCH_PARITY_DRIFT: "정본과 그림자 차이가 커서 점검이 필요함",
+  SERVER_SIGNAL_NOT_REACHING_EXECUTION: "정본 신호가 주문 단계로 거의 이어지지 않음",
+  SERVER_SIGNAL_FILL_SHORT: "정본 신호는 나오지만 체결이 부족함",
+  NO_SERVER_ENTRY_SIGNAL: "최근 정본 엔트리 신호가 없음",
+  FINAL_DOWNSTREAM_MISMATCH: "최종 실행 결과가 다름",
+  SOURCE_DECISION_MISMATCH: "정본 판단 단계가 다름",
+  EV_POLICY: "기대값 정책",
+  DROP_EV_GATE_TP1_PROB: "기대값 게이트(TP1 확률)",
+  PINE_DROP_STALE_POS_TO_ENTRY: "기존 포지션 영향으로 엔트리 미진행",
+  COOLDOWN_POLICY: "쿨다운 정책",
+  STRATEGY_GATE: "전략 게이트",
+  CORE: "코어",
+  EARLY: "얼리",
+  PINE_PRIMARY: "파인 우선",
+  SERVER_PRIMARY: "서버 우선",
+};
+
+function valueText(value) {
+  const s = String(value || "").trim();
+  if (!s) return "-";
+  return VALUE_TEXT_MAP[s] || s;
+}
 
 const VALUE_REPLACEMENTS = [
   ["SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT", "서버 정본 표본 부족"],
@@ -719,6 +766,7 @@ function buildRecoveryViewModel() {
   const canary = loadLatestArtifact("best_self_evolution_canary_latest.json");
   const deploymentGuards = loadLatestArtifact("best_self_evolution_deployment_guards_latest.json");
   const signalAuthority = loadLatestArtifact("server_signal_authority_latest.json");
+  const signalQuality = loadLatestArtifact("server_signal_quality_latest.json");
   const nextAction = Array.isArray(governor.summary.next_actions) && governor.summary.next_actions.length
     ? governor.summary.next_actions[0]
     : null;
@@ -760,7 +808,7 @@ function buildRecoveryViewModel() {
               { label: "Shadow 24h", value: numberText(signalAuthority.summary.pine_shadow_24h_n, 0) },
               { label: "Latest Server", value: compactText(signalAuthority.summary.latest_authoritative_signal_at_kst) },
               { label: "Latest Shadow", value: compactText(signalAuthority.summary.latest_shadow_signal_at_kst) },
-              { label: "Parity Drift", value: compactText(signalAuthority.summary.drift_status) },
+              { label: "Parity Drift", value: compactText(valueText(signalAuthority.summary.drift_status)) },
               { label: "Source Mode", value: compactText(signalAuthority.summary.source_mode) },
             ],
             table: {
@@ -789,6 +837,20 @@ function buildRecoveryViewModel() {
                 5,
               ),
             },
+          },
+          {
+            title: "Signal Quality",
+            tone: statusTone(signalQuality.summary.quality_status || "N/A"),
+            rows: [
+              { label: "Entry 24h", value: numberText(signalQuality.summary.authoritative_entry_signal_24h_n, 0) },
+              { label: "Intent 24h", value: numberText(signalQuality.summary.order_intent_24h_n, 0) },
+              { label: "Fill 24h", value: numberText(signalQuality.summary.fill_24h_n, 0) },
+              { label: "Trade 24h", value: numberText(signalQuality.summary.trade_24h_n, 0) },
+              { label: "Intent Conversion", value: toDisplayPercent(signalQuality.summary.intent_conversion_rate, 0) },
+              { label: "Fill Conversion", value: toDisplayPercent(signalQuality.summary.fill_conversion_rate, 0) },
+              { label: "Latest Entry", value: compactText(signalQuality.summary.latest_authoritative_entry_signal_at_kst) },
+              { label: "Quality Status", value: compactText(valueText(signalQuality.summary.quality_status)) },
+            ],
           },
           {
             title: "Decision",
@@ -828,6 +890,35 @@ function buildRecoveryViewModel() {
         description: "현재 target, 대안 candidate, retrospective blocker를 같은 레벨에서 봅니다.",
         columns: 2,
         cards: [
+          {
+            title: "Recent Drift Cases",
+            tone: statusTone(signalAuthority.summary.drift_status || signalQuality.summary.quality_status || "N/A"),
+            rows: [
+              { label: "Main Drift Reason", value: compactText(valueText(signalQuality.summary.top_mismatch_scope && signalQuality.summary.top_mismatch_scope.key)) },
+              { label: "Main Drop Family", value: compactText(valueText(signalQuality.summary.top_drop_reason_family && signalQuality.summary.top_drop_reason_family.key)) },
+              { label: "Mismatch Count", value: numberText(signalQuality.summary.parity_mismatch_n, 0) },
+            ],
+            table: {
+              columns: [
+                { key: "market", label: "Market" },
+                { key: "tier", label: "Tier" },
+                { key: "scope", label: "Main Drift Reason" },
+                { key: "reason", label: "Main Drop Family" },
+                { key: "observed", label: "Observed" },
+              ],
+              rows: buildRowsPreview(
+                signalQuality.raw && signalQuality.raw.rows && signalQuality.raw.rows.mismatch_examples,
+                (row) => ({
+                  market: compactText(row.market),
+                  tier: compactText(row.tier),
+                  scope: compactText(valueText(row.scope)),
+                  reason: compactText(valueText(row.reason)),
+                  observed: compactText(row.observed_at_kst),
+                }),
+                5,
+              ),
+            },
+          },
           {
             title: "Target and Alternative",
             tone: "warn",
