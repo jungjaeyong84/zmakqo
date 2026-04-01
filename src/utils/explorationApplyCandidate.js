@@ -63,8 +63,8 @@ function deriveExplorationApplyCandidate({
 
   const proposals = Array.isArray(proposalSummary.proposals) ? proposalSummary.proposals : [];
   const top = proposals[0] || null;
-  const maxMarketApplyPerCycle = clampIntEnv("OPENCLAW_EXPLORATION_MAX_MARKET_APPLY_PER_CYCLE", 1, 1, 2);
-  const minEffectiveRealizedN = clampIntEnv("OPENCLAW_EXPLORATION_MIN_EFFECTIVE_REALIZED_N", 10, 1, 100);
+  const maxMarketApplyPerCycle = clampIntEnv("OPENCLAW_EXPLORATION_MAX_MARKET_APPLY_PER_CYCLE", 2, 1, 2);
+  const minEffectiveRealizedN = clampIntEnv("OPENCLAW_EXPLORATION_MIN_EFFECTIVE_REALIZED_N", 6, 1, 100);
 
   if (!top) {
     return {
@@ -86,6 +86,7 @@ function deriveExplorationApplyCandidate({
   const sourceAction = upper(top.proposed_action);
   const blockers = [];
   const penaltyMode = upper(budgetSummary.penalty_mode) || "ENFORCED";
+  const advisoryWarnings = [];
 
   if (!includesMarket(budgetSummary.exploration_markets, market)) blockers.push("NOT_IN_EXPLORATION_SLOT");
   if (penaltyMode === "ENFORCED" && includesMarket(budgetSummary.deferred_penalty_markets, market)) {
@@ -97,10 +98,14 @@ function deriveExplorationApplyCandidate({
     executionSummary.top_slippage_market,
     executionSummary.top_partial_market,
   ].map((row) => upper(row)).filter(Boolean);
-  if (executionPenaltyMarkets.includes(market)) blockers.push("EXECUTION_QUALITY_REVIEW");
+  if (executionPenaltyMarkets.includes(market)) {
+    if (penaltyMode === "ADVISORY_ONLY") advisoryWarnings.push("EXECUTION_QUALITY_REVIEW");
+    else blockers.push("EXECUTION_QUALITY_REVIEW");
+  }
 
   if (upper(reverseSummary.top_watch_market) === market && upper(reverseSummary.status) === "REVERSE_POLICY_REVIEW") {
-    blockers.push("REVERSE_POLICY_REVIEW");
+    if (penaltyMode === "ADVISORY_ONLY") advisoryWarnings.push("REVERSE_POLICY_REVIEW");
+    else blockers.push("REVERSE_POLICY_REVIEW");
   }
 
   const effectiveRealizedN = toNum(provisionalSummary.effective_realized_n);
@@ -121,6 +126,7 @@ function deriveExplorationApplyCandidate({
     auto_apply_allowed: autoApplyAllowed,
     max_market_apply_per_cycle: maxMarketApplyPerCycle,
     penalty_mode: penaltyMode,
+    advisory_warnings: advisoryWarnings,
     dry_run_status: upper(proposalSummary.status),
     objective_score: toNum(top.objective_score),
     recovery_priority_score: toNum(top.recovery_priority_score),
@@ -142,6 +148,7 @@ function deriveExplorationApplyCandidate({
     top_action: candidate.proposed_action,
     blockers,
     penalty_mode: penaltyMode,
+    advisory_warnings: advisoryWarnings,
     effective_realized_n: Number.isFinite(effectiveRealizedN) ? effectiveRealizedN : null,
     min_effective_realized_n: minEffectiveRealizedN,
     candidates: [candidate],

@@ -41,18 +41,18 @@ function stableSignature(value) {
 
 function normalizeBounds() {
   return {
-    max_market_overrides_per_cycle: clampIntEnv("OPENCLAW_MAX_MARKET_OVERRIDES_PER_CYCLE", 2, 1, 10),
-    ev_gate_tp1_prob_min_step_max: clampNumEnv("OPENCLAW_EV_GATE_TP1_PROB_MIN_STEP_MAX", 0.02, 0.001, 0.1),
-    ev_gate_tp1_prob_full_step_max: clampNumEnv("OPENCLAW_EV_GATE_TP1_PROB_FULL_STEP_MAX", 0.02, 0.001, 0.1),
-    ev_gate_tp1_prob_kill_step_max: clampNumEnv("OPENCLAW_EV_GATE_TP1_PROB_KILL_STEP_MAX", 0.01, 0.001, 0.1),
-    ev_gate_qty_scale_step_max: clampNumEnv("OPENCLAW_EV_GATE_QTY_SCALE_STEP_MAX", 0.10, 0.01, 0.5),
-    wait_same_dir_streak_step_max: clampIntEnv("OPENCLAW_WAIT_SAME_DIR_STREAK_STEP_MAX", 1, 1, 3),
-    wait_chase_ratio_step_max: clampNumEnv("OPENCLAW_WAIT_CHASE_RATIO_STEP_MAX", 0.20, 0.01, 1),
-    wait_last_close_control_step_max: clampNumEnv("OPENCLAW_WAIT_LAST_CLOSE_CONTROL_STEP_MAX", 0.08, 0.01, 0.3),
-    wait_last_dir_body_step_max: clampNumEnv("OPENCLAW_WAIT_LAST_DIR_BODY_STEP_MAX", 0.10, 0.01, 0.3),
-    wait_last_opposite_wick_step_max: clampNumEnv("OPENCLAW_WAIT_LAST_OPPOSITE_WICK_STEP_MAX", 0.08, 0.01, 0.3),
-    wait_recent_move1_pct_step_max: clampNumEnv("OPENCLAW_WAIT_RECENT_MOVE1_PCT_STEP_MAX", 0.20, 0.01, 1),
-    wait_counter_dir_bars_step_max: clampIntEnv("OPENCLAW_WAIT_COUNTER_DIR_BARS_STEP_MAX", 1, 1, 3),
+    max_market_overrides_per_cycle: clampIntEnv("OPENCLAW_MAX_MARKET_OVERRIDES_PER_CYCLE", 4, 1, 10),
+    ev_gate_tp1_prob_min_step_max: clampNumEnv("OPENCLAW_EV_GATE_TP1_PROB_MIN_STEP_MAX", 0.035, 0.001, 0.1),
+    ev_gate_tp1_prob_full_step_max: clampNumEnv("OPENCLAW_EV_GATE_TP1_PROB_FULL_STEP_MAX", 0.03, 0.001, 0.1),
+    ev_gate_tp1_prob_kill_step_max: clampNumEnv("OPENCLAW_EV_GATE_TP1_PROB_KILL_STEP_MAX", 0.02, 0.001, 0.1),
+    ev_gate_qty_scale_step_max: clampNumEnv("OPENCLAW_EV_GATE_QTY_SCALE_STEP_MAX", 0.15, 0.01, 0.5),
+    wait_same_dir_streak_step_max: clampIntEnv("OPENCLAW_WAIT_SAME_DIR_STREAK_STEP_MAX", 2, 1, 3),
+    wait_chase_ratio_step_max: clampNumEnv("OPENCLAW_WAIT_CHASE_RATIO_STEP_MAX", 0.35, 0.01, 1),
+    wait_last_close_control_step_max: clampNumEnv("OPENCLAW_WAIT_LAST_CLOSE_CONTROL_STEP_MAX", 0.12, 0.01, 0.3),
+    wait_last_dir_body_step_max: clampNumEnv("OPENCLAW_WAIT_LAST_DIR_BODY_STEP_MAX", 0.14, 0.01, 0.3),
+    wait_last_opposite_wick_step_max: clampNumEnv("OPENCLAW_WAIT_LAST_OPPOSITE_WICK_STEP_MAX", 0.12, 0.01, 0.3),
+    wait_recent_move1_pct_step_max: clampNumEnv("OPENCLAW_WAIT_RECENT_MOVE1_PCT_STEP_MAX", 0.30, 0.01, 1),
+    wait_counter_dir_bars_step_max: clampIntEnv("OPENCLAW_WAIT_COUNTER_DIR_BARS_STEP_MAX", 2, 1, 3),
     risk_override_enabled: String(process.env.OPENCLAW_RISK_OVERRIDE_ENABLED || "").trim() === "1",
   };
 }

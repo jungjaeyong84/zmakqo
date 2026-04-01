@@ -65,11 +65,11 @@ function deriveExplorationBudget({
 
   const productionSlotN = clampIntEnv(
     "OPENCLAW_PRODUCTION_SLOT_N",
-    Math.max(1, toNum(overrideSummary.max_market_overrides_per_cycle) || 2),
+    Math.max(3, toNum(overrideSummary.max_market_overrides_per_cycle) || 4),
     1,
     8
   );
-  const explorationSlotN = clampIntEnv("OPENCLAW_EXPLORATION_SLOT_N", 1, 1, 4);
+  const explorationSlotN = clampIntEnv("OPENCLAW_EXPLORATION_SLOT_N", 2, 1, 4);
   const serverSignalLearningMode = readBoolEnv("OPENCLAW_SERVER_SIGNAL_LEARNING_MODE", true);
 
   const productionMarkets = collectOrderedUniqueMarkets(
