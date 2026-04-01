@@ -56,6 +56,7 @@ async function upsertSignal({
   features = {},
   executionMode,
   source = "webhook",
+  authoritative = null,
 } = {}) {
   const db = getFirestore();
 
@@ -102,6 +103,7 @@ async function upsertSignal({
     features_json: normalizedFeatures,
     price: toNum(feat.price),
     source,
+    authoritative: authoritative == null ? null : authoritative === true,
     execution_mode: execMode,
     event_intent: finalIntent || null,
     event_group: eventGroup || null,
@@ -136,6 +138,8 @@ async function upsertSignal({
         reason: incomingCore.reason,
         features_json: incomingCore.features_json,
         price: incomingCore.price,
+        source: incomingCore.source,
+        authoritative: incomingCore.authoritative,
         execution_mode: incomingCore.execution_mode,
         event_intent: incomingCore.event_intent,
         event_group: incomingCore.event_group,
@@ -191,6 +195,8 @@ async function upsertSignal({
       reason: incomingCore.reason,
       features_json: incomingCore.features_json,
       price: incomingCore.price,
+      source: incomingCore.source,
+      authoritative: incomingCore.authoritative,
       execution_mode: incomingCore.execution_mode,
       event_intent: incomingCore.event_intent,
       event_group: incomingCore.event_group,

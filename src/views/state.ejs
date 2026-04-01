@@ -64,6 +64,22 @@
     if (s === 'HOLD') return '대기';
     return side || '-';
   };
+  const signalOriginLabel = (signal) => {
+    if (!signal) return null;
+    const source = String(signal.source || '').toUpperCase();
+    if (signal.authoritative === true || source === 'SERVER') return '정본';
+    if (source === 'PINE_SHADOW') return '그림자';
+    if (source === 'WEBHOOK') return '외부수신';
+    return null;
+  };
+  const signalOriginTone = (signal) => {
+    if (!signal) return 'dim';
+    const source = String(signal.source || '').toUpperCase();
+    if (signal.authoritative === true || source === 'SERVER') return 'ok';
+    if (source === 'PINE_SHADOW') return 'dim';
+    if (source === 'WEBHOOK') return 'warn';
+    return 'dim';
+  };
   const guardrailLabel = (s) => {
     const x = String(s || '').toUpperCase();
     if (x === 'ALERT') return '경고';
@@ -435,6 +451,10 @@
                 <%= fmtKst((r._view && r._view.last_signal_ts) ? r._view.last_signal_ts : (r.last_signal.created_kst || r.last_signal.created_at)) %>
                 · <%= sideLabel(r.last_signal.side) %>
                 · <%= eventDisplay(r.last_signal.event) %>
+                <% const lastSignalOriginLabel = signalOriginLabel(r.last_signal); %>
+                <% if (lastSignalOriginLabel) { %>
+                  · <span class="pill <%= signalOriginTone(r.last_signal) %>"><%= lastSignalOriginLabel %></span>
+                <% } %>
                 <% if (r.last_signal.event_intent) { %> · <span class="subtle"><%= r.last_signal.event_intent %></span><% } %>
                 <% if (r.last_signal.qty_pct != null || r.last_signal.qtyPct != null) { %>
                   · 비중 <%= fmtNum(r.last_signal.qty_pct ?? r.last_signal.qtyPct) %>
@@ -646,6 +666,12 @@
               <td class="mono"><%= s.symbol_or_pair_id || s.symbol || '-' %></td>
               <td>
                 <%= eventDisplay(s.event) %>
+                <% const signalListOriginLabel = signalOriginLabel(s); %>
+                <% if (signalListOriginLabel) { %>
+                  <div style="margin-top:4px;">
+                    <span class="pill <%= signalOriginTone(s) %>"><%= signalListOriginLabel %></span>
+                  </div>
+                <% } %>
               </td>
               <td class="mono"><%= s.event_intent || '-' %></td>
               <td><%= sideLabel(s.side) %></td>

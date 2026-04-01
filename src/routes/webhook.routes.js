@@ -2111,6 +2111,8 @@ function createWebhookRoutes() {
         reason,
         features,
         executionMode,
+        source: "PINE_SHADOW",
+        authoritative: false,
       });
       try {
         const confirmation = await confirmSelfEvolutionRuntimeSignal({

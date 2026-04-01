@@ -440,6 +440,22 @@
   const decisionLabel = (decisionState === "EXECUTED")
     ? "실행됨"
     : (decisionState === "SIGNAL_ONLY" ? "신호만" : "대기");
+  const signalOriginLabel = (signal) => {
+    if (!signal) return null;
+    const source = String(signal.source || '').toUpperCase();
+    if (signal.authoritative === true || source === 'SERVER') return '정본';
+    if (source === 'PINE_SHADOW') return '그림자';
+    if (source === 'WEBHOOK') return '외부수신';
+    return null;
+  };
+  const signalOriginTone = (signal) => {
+    if (!signal) return 'dim';
+    const source = String(signal.source || '').toUpperCase();
+    if (signal.authoritative === true || source === 'SERVER') return 'ok';
+    if (source === 'PINE_SHADOW') return 'dim';
+    if (source === 'WEBHOOK') return 'warn';
+    return 'dim';
+  };
   const riskUsedPct = (budget_summary && budget_summary.total_used_pct != null)
     ? budget_summary.total_used_pct
     : null;
@@ -611,6 +627,18 @@
     <% } %>
     <% if (missionHero.detail) { %>
       <div class="subtle" style="margin-top:10px;"><%= missionHero.detail %></div>
+    <% } %>
+    <% if (latestSignal) { %>
+      <div class="legacy-inline-summary" style="margin-top:10px;">
+        <span class="pill dim">최근 신호 · <%= eventDisplay(latestSignal.event) %></span>
+        <% const latestSignalOriginLabel = signalOriginLabel(latestSignal); %>
+        <% if (latestSignalOriginLabel) { %>
+          <span class="pill <%= signalOriginTone(latestSignal) %>">신호 구분 · <%= latestSignalOriginLabel %></span>
+        <% } %>
+        <% if (latestSignal.created_kst || latestSignal.created_at) { %>
+          <span class="pill dim">최근 수신 · <%= fmtKst(latestSignal.created_kst || latestSignal.created_at) %></span>
+        <% } %>
+      </div>
     <% } %>
     <div class="control-actions" style="margin-top:12px;">
       <a class="btn ghost slim" href="/dashboard/deployment">전략 적용 상태</a>
