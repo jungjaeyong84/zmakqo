@@ -8491,6 +8491,7 @@ async function runPaperUpbitForBar({
       }
     }
 
+    const features = (it.features_json && typeof it.features_json === "object") ? { ...it.features_json } : {};
     if (intentIsEntry && !manualRetryIntent) {
       const canonical = evaluateCanonicalEntryGate({
         intent,
@@ -8601,7 +8602,6 @@ async function runPaperUpbitForBar({
     let immediateReason = null;
     let coreProbePatch = null;
     let coreProbeClear = null;
-    const features = (s.features && typeof s.features === "object") ? { ...s.features } : {};
     if (signalDocId && !features.signal_doc_id) {
       features.signal_doc_id = signalDocId;
     }
@@ -9450,6 +9450,7 @@ async function runPaperFuturesForBar({
       await markIntentStatus(it.intent_id, "CANCELED", { cancel_reason: "DROP_TRADEABLE_SIGNAL_TYPES", status_reason: "DROP_TRADEABLE_SIGNAL_TYPES" });
       continue;
     }
+    const features = (it.features_json && typeof it.features_json === "object") ? { ...it.features_json } : {};
     if (intentIsEntry) {
       const canonical = evaluateCanonicalEntryGate({
         intent,
@@ -11368,6 +11369,7 @@ async function runPaperFuturesForBar({
       }
     }
 
+    const features = (s.features && typeof s.features === "object") ? { ...s.features } : {};
     if (intentIsEntry) {
       const canonical = evaluateCanonicalEntryGate({
         intent,
@@ -11471,7 +11473,6 @@ async function runPaperFuturesForBar({
     let immediateReason = null;
     let coreProbePatch = null;
     let coreProbeClear = null;
-    const features = (s.features && typeof s.features === "object") ? { ...s.features } : {};
     const signalTimingTier = resolveSignalTier(eventUpper, s.features);
     const isRealEvent = signalTimingTier === "REAL";
     const isPreRealEvent = signalTimingTier === "PRE_REAL";

@@ -270,6 +270,7 @@ async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHi
 
   let paper = null;
   let err = null;
+  let errStack = null;
 
   if (executionEnabled && actorAllowed) {
     try {
@@ -361,6 +362,7 @@ async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHi
       });
     } catch (e) {
       err = (e && e.message) ? e.message : String(e);
+      errStack = (e && e.stack) ? String(e.stack) : null;
     }
   }
 
@@ -391,8 +393,10 @@ async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHi
     new_bar: !!newBar,
     actor_allowed: !!actorAllowed,
     paper_enabled: executionEnabled,
+    paper,
     execution_mode: executionMode,
     error: err,
+    error_stack: errStack,
     trading_mode: gate && gate.trading_mode,
     run_id: runIdHint || null,
     last_signal: lastSignal,

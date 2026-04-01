@@ -27,7 +27,7 @@ const {
 } = require("../utils/selfEvolutionRuntimeState");
 const { runOneMarket } = require("../scheduler/marketRunner");
 const { resolveExecTfForExchange } = require("../utils/resolveExchange");
-const { sendSignalReceivedAlert } = require("../services/signalLifecycleAlert");
+const { sendSignalReceivedAlert, sendSignalDroppedAlert } = require("../services/signalLifecycleAlert");
 const { fetchBinanceFuturesAccount } = require("../exchanges/binanceFuturesPrivate");
 const { resolveBinanceFuturesKeys } = require("../utils/binanceKeyResolver");
 const { canonicalExternalEntryEvent, resolveEntryTimingTier } = require("../utils/liveEntryTaxonomy");
@@ -45,6 +45,7 @@ const ROOT = path.resolve(__dirname, "../..");
 const OPS_DAILY = path.join(ROOT, "ops", "daily");
 const SELF_EVOLUTION_MANUAL_PASTE_ACK_LATEST = path.join(OPS_DAILY, "self_evolution_manual_paste_ack_latest.json");
 const SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST = path.join(OPS_DAILY, "best_self_evolution_deployment_plan_latest.json");
+const WEBHOOK_SIGNAL_EXECUTION_PROBE_LATEST = path.join(OPS_DAILY, "webhook_signal_execution_probe_latest.json");
 const DEFAULT_STRATEGY_ID = process.env.DONBEOLJA_STRATEGY_ID || "STRAT_v010";
 
 function readJsonSafe(filePath) {
@@ -53,6 +54,70 @@ function readJsonSafe(filePath) {
   } catch (_err) {
     return null;
   }
+}
+
+function writeJsonSafe(filePath, payload) {
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
+    return true;
+  } catch (_err) {
+    return false;
+  }
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function toKstString(iso = null) {
+  const date = iso ? new Date(iso) : new Date();
+  const parts = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date).reduce((acc, part) => {
+    if (part.type !== "literal") acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second} KST`;
+}
+
+function persistWebhookSignalExecutionProbe({
+  requestId = null,
+  exchange = null,
+  symbol = null,
+  tf = null,
+  signalId = null,
+  phase = null,
+  summary = null,
+  saved = null,
+} = {}) {
+  const generatedAt = nowIso();
+  const payload = {
+    generated_at: generatedAt,
+    generated_at_kst: toKstString(generatedAt),
+    request_id: requestId || null,
+    exchange: exchange || null,
+    symbol: symbol || null,
+    tf: tf || null,
+    signal_id: signalId || null,
+    phase: phase || null,
+    saved: saved === true,
+    summary: summary && typeof summary === "object" ? summary : null,
+  };
+  writeJsonSafe(WEBHOOK_SIGNAL_EXECUTION_PROBE_LATEST, payload);
+}
+
+function fireSignalDroppedAlert(payload = {}) {
+  sendSignalDroppedAlert(payload).catch((err) => {
+    console.warn("[SIGNAL_DROPPED_ALERT_FAIL]", err?.message || err);
+  });
 }
 
 function parseAllowedStrategyIds(raw) {
@@ -448,15 +513,27 @@ function createWebhookRoutes() {
 
   function summarizeImmediateProcessResult(res) {
     const result = res && res.result ? res.result : null;
+    const paper = result && result.paper && typeof result.paper === "object" ? result.paper : null;
+    const paperSignalsSeen = paper && Number.isFinite(Number(paper.signals_seen)) ? Number(paper.signals_seen) : 0;
+    const paperIntentsCreated = paper && Number.isFinite(Number(paper.intents_created)) ? Number(paper.intents_created) : 0;
+    const noDownstreamArtifact = !!(paper && paperSignalsSeen > 0 && paperIntentsCreated === 0 && !paper.error);
     if (result && result.ok === true) {
       return {
-        status: "OK",
+        status: noDownstreamArtifact ? "SAVED_WITHOUT_INTENT" : "OK",
         detail: {
           actor_allowed: result.actor_allowed === true,
           new_bar: result.new_bar === true,
           gate_status: result.gate && result.gate.status || null,
           gate_reason_codes: result.gate && Array.isArray(result.gate.reasonCodes) ? result.gate.reasonCodes : [],
           trading_mode: result.trading_mode || null,
+          paper_ok: paper ? paper.ok === true : null,
+          paper_error: paper && paper.error ? String(paper.error) : null,
+          intents_created: paper ? paperIntentsCreated : null,
+          signals_seen: paper ? paperSignalsSeen : null,
+          signals_external: paper && Number.isFinite(Number(paper.signals_external)) ? Number(paper.signals_external) : null,
+          signals_internal: paper && Number.isFinite(Number(paper.signals_internal)) ? Number(paper.signals_internal) : null,
+          signals_external_late: paper && Number.isFinite(Number(paper.signals_external_late)) ? Number(paper.signals_external_late) : null,
+          no_downstream_artifact: noDownstreamArtifact,
           error: null,
         },
       };
@@ -480,7 +557,16 @@ function createWebhookRoutes() {
         gate_status: gateStatus || null,
         gate_reason_codes: result && result.gate && Array.isArray(result.gate.reasonCodes) ? result.gate.reasonCodes : [],
         trading_mode: result && result.trading_mode ? result.trading_mode : null,
+        paper_ok: paper ? paper.ok === true : null,
+        paper_error: paper && paper.error ? String(paper.error) : null,
+        intents_created: paper ? paperIntentsCreated : null,
+        signals_seen: paper ? paperSignalsSeen : null,
+        signals_external: paper && Number.isFinite(Number(paper.signals_external)) ? Number(paper.signals_external) : null,
+        signals_internal: paper && Number.isFinite(Number(paper.signals_internal)) ? Number(paper.signals_internal) : null,
+        signals_external_late: paper && Number.isFinite(Number(paper.signals_external_late)) ? Number(paper.signals_external_late) : null,
+        no_downstream_artifact: noDownstreamArtifact,
         error: runtimeError || null,
+        error_stack: result && result.error_stack ? String(result.error_stack) : null,
       },
     };
   }
@@ -944,6 +1030,18 @@ function createWebhookRoutes() {
           bar_close_time_utc_ms: barCloseMs,
           signal_late_bars: signalLateBars,
           signal_id: p.signal_id || null,
+        });
+        fireSignalDroppedAlert({
+          exchange,
+          symbol,
+          tf,
+          event: p.event || null,
+          side: p.side || null,
+          qtyPct: Number(p.qtyPct ?? p.qty_pct ?? p.qty ?? p.qtyPercent ?? p.qty_percent ?? null),
+          reason: "DROP_SIGNAL_TOO_OLD",
+          dropReasonCode: "SIGNAL_TOO_OLD",
+          signalId: p.signal_id || null,
+          executionMode: executionMode,
         });
         return finalize({
           httpStatus: 202,
@@ -1567,6 +1665,41 @@ function createWebhookRoutes() {
           strategy_id: strategyId,
           signal_id: p.signal_id || null,
         });
+        fireSignalDroppedAlert({
+          exchange,
+          symbol,
+          tf,
+          event,
+          side,
+          qtyPct,
+          reason: reasonText,
+          dropReasonCode: reasonCode,
+          signalId: p.signal_id || null,
+          executionMode: executionMode,
+        });
+        persistWebhookSignalExecutionProbe({
+          requestId,
+          exchange,
+          symbol,
+          tf,
+          signalId: p.signal_id || null,
+          phase: "DROP_STRATEGY_GATE",
+          saved: false,
+          summary: {
+            status: reasonCode,
+            detail: {
+              strategy_id_received: strategyIdPresent ? strategyId : null,
+              strategy_id_present: strategyIdPresent,
+              strategy_default_id: strategyGate.defaultStrategyId,
+              strategy_allowed_ids: strategyGate.allowedStrategyIds,
+              strategy_gate_source: strategyGate.source,
+              mapping_ok: mapping.ok === true,
+              event,
+              side,
+              execution_mode: executionMode || null,
+            },
+          },
+        });
         return finalize({
           httpStatus: 202,
           body: {
@@ -1854,6 +1987,18 @@ function createWebhookRoutes() {
             exchange_side_allowed: exchangeSideAllowed,
             signal_id: p.signal_id || null,
           });
+          fireSignalDroppedAlert({
+            exchange,
+            symbol,
+            tf,
+            event,
+            side,
+            qtyPct,
+            reason: "AI_BLOCK",
+            dropReasonCode: "AI_BLOCK",
+            signalId: p.signal_id || null,
+            executionMode: executionMode,
+          });
           return finalize({
             body: { ok: true, dropped: true, reason: "AI_BLOCK", signal_id: p.signal_id || null },
             decision: "DROP",
@@ -1920,6 +2065,18 @@ function createWebhookRoutes() {
           mapping_ok: mapping.ok === true,
           exchange_side_allowed: exchangeSideAllowed,
           signal_id: p.signal_id || null,
+        });
+        fireSignalDroppedAlert({
+          exchange,
+          symbol,
+          tf,
+          event,
+          side,
+          qtyPct: qtyPctFinal,
+          reason,
+          dropReasonCode: normalizeReasonCode(reasonRaw) || normalizeReasonCode(reason) || null,
+          signalId: p.signal_id || null,
+          executionMode: executionMode,
         });
         return finalize({
           body: { ok: true, dropped: true, signal_id: p.signal_id || null },
@@ -2001,6 +2158,28 @@ function createWebhookRoutes() {
         exchange_side_allowed: exchangeSideAllowed,
         signal_id: saved && saved.signal_id ? saved.signal_id : (p.signal_id || null),
       });
+      persistWebhookSignalExecutionProbe({
+        requestId,
+        exchange,
+        symbol,
+        tf,
+        signalId: saved && saved.signal_id ? saved.signal_id : (p.signal_id || null),
+        phase: "SAVED",
+        saved: true,
+        summary: {
+          status: "SAVED",
+          detail: {
+            strategy_id: strategyId || null,
+            event,
+            side,
+            reason,
+            execution_mode: executionMode || null,
+            febt_payload_missing: features.febt_payload_missing === true,
+            mapping_ok: mapping.ok === true,
+            intent: intent || null,
+          },
+        },
+      });
 
       if (WEBHOOK_IMMEDIATE_PROCESS) {
         const immediatePayload = {
@@ -2021,6 +2200,16 @@ function createWebhookRoutes() {
                 status: summary.status,
                 detail: summary.detail,
               }));
+              persistWebhookSignalExecutionProbe({
+                requestId,
+                exchange,
+                symbol,
+                tf,
+                signalId: immediatePayload.signalId,
+                phase: "IMMEDIATE_PROCESS",
+                saved: true,
+                summary,
+              });
             })
             .catch((err) => {
               const immediateMeta = err && err.immediate_meta ? err.immediate_meta : null;
@@ -2030,7 +2219,25 @@ function createWebhookRoutes() {
                 tf,
                 signal_id: immediatePayload.signalId,
                 error: err?.message || String(err),
+                stack: err?.stack || null,
                 retry: immediateMeta,
+              });
+              persistWebhookSignalExecutionProbe({
+                requestId,
+                exchange,
+                symbol,
+                tf,
+                signalId: immediatePayload.signalId,
+                phase: "IMMEDIATE_PROCESS_FAIL",
+                saved: true,
+                summary: {
+                  status: "ERROR",
+                  detail: {
+                    error: err?.message || String(err),
+                    stack: err?.stack || null,
+                    retry: immediateMeta || null,
+                  },
+                },
               });
             });
         }, 0);
