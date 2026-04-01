@@ -18,6 +18,32 @@ function readSummary(value) {
   return value;
 }
 
+function readRows(value) {
+  if (!value || typeof value !== "object") return [];
+  if (Array.isArray(value.rows)) return value.rows;
+  if (value.raw && Array.isArray(value.raw.rows)) return value.raw.rows;
+  return [];
+}
+
+function toKstString(ms) {
+  const n = toNum(ms);
+  if (!Number.isFinite(n)) return null;
+  const kst = new Date(n + (9 * 60 * 60 * 1000));
+  const pad = (x) => String(x).padStart(2, "0");
+  return `${kst.getUTCFullYear()}-${pad(kst.getUTCMonth() + 1)}-${pad(kst.getUTCDate())} ${pad(kst.getUTCHours())}:${pad(kst.getUTCMinutes())}:${pad(kst.getUTCSeconds())} KST`;
+}
+
+function bump(map, key) {
+  map.set(key, Number(map.get(key) || 0) + 1);
+}
+
+function topRows(map, limit = 5) {
+  return Array.from(map.entries())
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+    .slice(0, Math.max(0, limit))
+    .map(([key, count]) => ({ key, count }));
+}
+
 function deriveServerSignalCutoverReadiness({
   authority = null,
   quality = null,
@@ -30,6 +56,7 @@ function deriveServerSignalCutoverReadiness({
   const paritySummary = deriveCanonicalParityDiagnostics(parity);
   const runtimeSummary = readSummary(runtime);
   const canarySummary = readSummary(serverPrimaryCanary);
+  const parityRows = readRows(parity);
 
   const driftStatus = toUpper(authoritySummary.drift_status) || "PARITY_UNKNOWN";
   const qualityStatus = toUpper(qualitySummary.quality_status) || "N_A";
@@ -52,6 +79,24 @@ function deriveServerSignalCutoverReadiness({
     || null;
   const canaryReady = canarySummary.acceptance_ready === true;
   const canaryReason = String(canarySummary.acceptance_reason || "").trim().toUpperCase() || null;
+  const mismatchMarketCounts = new Map();
+  const recentMismatchExamples = parityRows
+    .filter((row) => row && row.parity_match === false)
+    .sort((a, b) => (toNum(b.observation_ms) || 0) - (toNum(a.observation_ms) || 0))
+    .slice(0, 5)
+    .map((row) => ({
+      market: String(row.market || row.symbol || "-").trim() || "-",
+      tier: String(row.tier || "-").trim() || "-",
+      regime: String(row.regime || "-").trim() || "-",
+      family: String(row.actual_drop_reason_family || "-").trim().toUpperCase() || "-",
+      reason: String(row.actual_drop_reason || row.shadow_reason || "-").trim() || "-",
+      scope: String(row.mismatch_scope || "-").trim().toUpperCase() || "-",
+      observed_at_kst: toKstString(row.observation_ms),
+    }));
+  for (const row of parityRows) {
+    if (!row || row.parity_match !== false) continue;
+    bump(mismatchMarketCounts, String(row.market || row.symbol || "UNKNOWN").trim() || "UNKNOWN");
+  }
 
   const blockers = [];
   if (runtimeStatus !== "READY") blockers.push("SERVER_RUNTIME_NOT_READY");
@@ -116,6 +161,10 @@ function deriveServerSignalCutoverReadiness({
       intent_24h_n: intentN,
       fill_24h_n: fillN,
       dominant_mismatch_family: dominantMismatchFamily,
+    },
+    rows: {
+      top_mismatch_market: topRows(mismatchMarketCounts, 5),
+      mismatch_examples: recentMismatchExamples,
     },
   };
 }

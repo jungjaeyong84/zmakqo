@@ -722,6 +722,7 @@ function buildSourceModeStageCandidate({
   const cutoverReady = serverSignalCutoverSummary.promotion_ready === true;
   const cutoverStatus = String(serverSignalCutoverSummary.readiness_status || "").trim().toUpperCase() || null;
   const cutoverBlockers = Array.isArray(serverSignalCutoverSummary.blockers) ? serverSignalCutoverSummary.blockers.filter(Boolean) : [];
+  const cutoverDominantFamily = String(serverSignalCutoverSummary.dominant_mismatch_family || "").trim().toUpperCase() || null;
   const qualityHardBlock = serverSignalQualityStatus === "SERVER_SIGNAL_NOT_REACHING_EXECUTION" || serverSignalQualityStatus === "NO_SERVER_ENTRY_SIGNAL";
   if (!selected) {
     return {
@@ -769,6 +770,7 @@ function buildSourceModeStageCandidate({
   else if (alreadyServerPrimary && serverPrimaryApplyPass === false) reason = "SERVER_PRIMARY_CANARY_BLOCK";
   else if (alreadyServerPrimary && serverPrimaryAcceptanceReady) reason = "SERVER_PRIMARY_ACTIVE";
   else if (alreadyServerPrimary) reason = serverPrimaryAcceptanceReason || "SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT";
+  else if (cutoverStatus && cutoverDominantFamily) reason = `${cutoverStatus}__${cutoverDominantFamily}`;
   else if (cutoverStatus) reason = cutoverStatus;
   else if (qualityHardBlock) reason = "SERVER_SIGNAL_QUALITY_BLOCK";
   else if (sourceParityMismatchN > 0) reason = "SOURCE_MODE_SOURCE_PARITY_BLOCK";
@@ -804,6 +806,7 @@ function buildSourceModeStageCandidate({
     server_signal_cutover_ready: cutoverReady,
     server_signal_cutover_status: cutoverStatus,
     server_signal_cutover_blockers: cutoverBlockers,
+    server_signal_cutover_dominant_family: cutoverDominantFamily,
   };
 }
 

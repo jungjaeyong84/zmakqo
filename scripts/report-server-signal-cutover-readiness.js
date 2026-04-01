@@ -23,6 +23,7 @@ const INPUTS = Object.freeze({
 function renderMarkdown(report = {}) {
   const summary = report.summary || {};
   const status = report.current_status || {};
+  const rows = report.rows || {};
   const lines = [
     "# Server Signal Cutover Readiness",
     "",
@@ -37,7 +38,14 @@ function renderMarkdown(report = {}) {
     `- dominant_mismatch_family: ${status.dominant_mismatch_family || "N/A"}`,
     `- canary: ${status.canary_acceptance_ready ? "READY" : "PENDING"} / ${status.canary_acceptance_reason || "N/A"}`,
     `- blockers: ${Array.isArray(summary.blockers) && summary.blockers.length ? summary.blockers.join(", ") : "none"}`,
+    `- top_mismatch_market: ${Array.isArray(rows.top_mismatch_market) && rows.top_mismatch_market.length ? rows.top_mismatch_market.map((row) => `${row.key}=${row.count}`).join(", ") : "none"}`,
   ];
+  if (Array.isArray(rows.mismatch_examples) && rows.mismatch_examples.length) {
+    lines.push("", "## Recent Mismatch Examples");
+    for (const row of rows.mismatch_examples) {
+      lines.push(`- ${row.market} / ${row.tier} / ${row.regime} / ${row.family} / ${row.reason} / ${row.scope} / ${row.observed_at_kst || "N/A"}`);
+    }
+  }
   return `${lines.join("\n")}\n`;
 }
 
