@@ -27,7 +27,7 @@
 
 ## 1. 한 줄 정의
 
-`BEST Self-Evolution`은 Pine, 서버 canonical engine, 필터, 자동화, 감독관이 하나의 목적함수와 하나의 변경 헌법 아래에서 스스로 측정하고, 스스로 후보를 만들고, 스스로 검증하고, 조건부로만 적용하며, 실패하면 자동으로 되돌리는 운영 체계다.
+`BEST Self-Evolution`은 서버 canonical engine, downstream policy, OpenClaw 감독관이 하나의 목적함수와 하나의 변경 헌법 아래에서 스스로 측정하고, 스스로 후보를 만들고, 스스로 검증하고, 조건부로만 적용하며, 실패하면 자동으로 되돌리는 운영 체계다. Pine는 shadow compare 역할만 가진다.
 
 ## 2. 최종 목적
 
@@ -39,8 +39,8 @@
 
 ## 3. 닫혀야 할 루프
 
-1. Pine가 신호와 timing telemetry를 보낸다.
-2. 서버 canonical engine이 parity/provenance/source mode를 함께 계산한다.
+1. 서버 canonical engine이 정본 신호를 만든다.
+2. Pine는 shadow compare와 차트 확인용 telemetry만 남긴다.
 3. 서버가 실행, 드롭, reject, partial fill, fallback을 모두 기록한다.
 4. 데이터 통합층이 하나의 학습 row를 만든다.
 5. 감독관이 목적함수와 원인분해 결과로 현재 상태를 진단한다.
@@ -100,10 +100,10 @@
    - `/Users/jeongjaeyong/Projects/donbeolja/src/storage/fillsPaper.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/src/storage/tradesPaper.js`
 3. 자동화/감독
-   - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-weekly-filter-governance.js`
+   - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-openclaw-hourly-cycle.js`
+   - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-openclaw-daily-cycle.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-objective-supervisor.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-stage-autopilot.js`
-   - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-codex-weekly-patch-engine.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-automation-watchdog.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/backfill-canonical-engine-provenance.js`
    - `/Users/jeongjaeyong/Projects/donbeolja/scripts/report-best-self-evolution-deployment-probe.js`
@@ -145,6 +145,10 @@
 25. OpenClaw autonomy contract
 26. server-primary acceptance watch
 27. objective recovery governor
+28. server-primary learning epoch
+29. change-result attribution
+30. exploration budget / proposal / apply candidate
+31. server market capital allocator / quarantine
 
 현재 migration 상태:
 
@@ -158,12 +162,21 @@
 현재 운영 substrate 상태:
 
 1. `Automation Scheduler`: `PASS`
-   - `OpenClaw cron`이 local automation 16개를 소유한다.
+   - 개별 자동화는 제거되었고 `OpenClaw hourly/daily cycle`만 남는다.
    - watchdog는 `scheduler_mode=OPENCLAW_CRON`, `verdict=PASS`다.
 2. `Telegram Delivery`: `PASS`
    - repo alert path는 `OpenClaw-first`로 동작한다.
 3. `External Authority`: `PENDING`
    - applied runtime은 active지만 authority verdict는 아직 `HOLD`다.
+
+현재 server signal 상태:
+
+1. `runtime = READY`
+2. `source_mode = SERVER_PRIMARY`
+3. `scheduler = ENABLED`
+4. `pine_shadow_transition = COMPLETE`
+5. `parity_drift = ACTIVE`
+6. `cutover = SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT`
 
 현재 autonomy governor 상태:
 

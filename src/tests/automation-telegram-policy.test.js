@@ -4,6 +4,8 @@ const assert = require("assert");
 const {
   classifyAutomationTelegramTitle,
   resolveAutomationTelegramPolicyDecision,
+  sanitizeTelegramTitle,
+  sanitizeTelegramSections,
 } = require("../../scripts/lib/automation-utils");
 
 function run() {
@@ -47,6 +49,28 @@ function run() {
   });
   assert.strictEqual(decision.send, true);
   delete process.env.AUTOMATION_TELEGRAM_ALLOW_TITLES;
+
+  assert.strictEqual(sanitizeTelegramTitle("[Pine shadow 점검]"), "[OpenClaw 업데이트]");
+  const sanitized = sanitizeTelegramSections([
+    {
+      header: "OpenClaw 요약",
+      lines: [
+        "server ready",
+        "PINE_SHADOW_COMPARE_ONLY",
+        "shadow gap review",
+      ],
+    },
+    {
+      header: "pine details",
+      lines: ["pine primary"],
+    },
+  ]);
+  assert.deepStrictEqual(sanitized, [
+    {
+      header: "OpenClaw 요약",
+      lines: ["server ready"],
+    },
+  ]);
 
   console.log("AUTOMATION_TELEGRAM_POLICY_TEST_OK");
 }

@@ -100,6 +100,63 @@ function humanizeTelegramText(raw) {
   return text;
 }
 
+function stripPineTerms(raw) {
+  let text = String(raw == null ? "" : raw);
+  if (!text) return "";
+  text = text
+    .replace(/\bSERVER_VS_PINE\b/gi, "SERVER")
+    .replace(/\bPINE_SHADOW_COMPARE_ONLY\b/gi, "SERVER_COMPARE_ONLY")
+    .replace(/\bPINE_PRIMARY\b/gi, "SERVER_PRIMARY")
+    .replace(/\bSHADOW_ONLY\b/gi, "COMPARE_ONLY")
+    .replace(/\bSHADOW_GAP_REVIEW\b/gi, "SERVER_GAP_REVIEW")
+    .replace(/\bpine_shadow\b/gi, "server_compare")
+    .replace(/\bshadow\b/gi, "compare")
+    .replace(/\bpine\b/gi, "")
+    .replace(/\s{2,}/g, " ");
+  return text.trim();
+}
+
+function shouldKeepTelegramLine(raw) {
+  const text = String(raw == null ? "" : raw).trim();
+  if (!text) return false;
+  if (/\bpine\b/i.test(text)) return false;
+  if (/\bshadow\b/i.test(text)) return false;
+  if (/PINE_/i.test(text)) return false;
+  if (/SHADOW_/i.test(text)) return false;
+  return true;
+}
+
+function sanitizeTelegramTitle(raw) {
+  const original = String(raw == null ? "" : raw).trim();
+  if (/\bpine\b/i.test(original) || /\bshadow\b/i.test(original) || /PINE_/i.test(original) || /SHADOW_/i.test(original)) {
+    return "[OpenClaw 업데이트]";
+  }
+  const text = stripPineTerms(raw)
+    .replace(/\[\s*\]/g, "")
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return text || "[OpenClaw 업데이트]";
+}
+
+function sanitizeTelegramSections(sections = []) {
+  return (Array.isArray(sections) ? sections : [])
+    .map((row) => {
+      const headerRaw = String(row && row.header || "").trim();
+      const linesRaw = Array.isArray(row && row.lines) ? row.lines : [];
+      const lines = linesRaw
+        .filter((line) => shouldKeepTelegramLine(line))
+        .map((line) => humanizeTelegramText(stripPineTerms(line)))
+        .filter(Boolean);
+      const header = shouldKeepTelegramLine(headerRaw)
+        ? humanizeTelegramText(stripPineTerms(headerRaw))
+        : "";
+      if (!header && lines.length === 0) return null;
+      return { header, lines };
+    })
+    .filter(Boolean);
+}
+
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -475,11 +532,8 @@ async function sendKoreanTelegramSummary({
     };
   }
   const channel = await resolveAlertChannel(provider);
-  const normalizedTitle = humanizeTelegramText(title);
-  const normalizedSections = (Array.isArray(sections) ? sections : []).map((row) => ({
-    header: humanizeTelegramText(String(row && row.header || "").trim()),
-    lines: (Array.isArray(row && row.lines) ? row.lines : []).map((line) => humanizeTelegramText(line)),
-  }));
+  const normalizedTitle = humanizeTelegramText(sanitizeTelegramTitle(title));
+  const normalizedSections = sanitizeTelegramSections(sections);
   const body = normalizedSections
     .map((row) => {
       const header = String(row && row.header || "").trim();
@@ -607,4 +661,6 @@ module.exports = {
   ensureExchangeApiKeys,
   classifyAutomationTelegramTitle,
   resolveAutomationTelegramPolicyDecision,
-  };
+  sanitizeTelegramTitle,
+  sanitizeTelegramSections,
+};

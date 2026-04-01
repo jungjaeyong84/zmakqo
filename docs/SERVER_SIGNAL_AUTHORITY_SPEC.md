@@ -240,11 +240,11 @@ Pine shadow mismatch는 성과 평가의 정본이 아니라 `diagnostic evidenc
 
 ### Phase 3. 서버 직접 signal generation
 
-상태: 진행 중
+상태: 완료
 
 1. 서버가 authoritative signal을 생성한다.
 2. signals에 `source=SERVER`, `authoritative=true`로 기록한다.
-3. 다만 아직 source mode는 `PINE_PRIMARY`다.
+3. 현재 source mode는 `SERVER_PRIMARY`다.
 
 ### Phase 4. Pine shadow 강등
 
@@ -257,6 +257,39 @@ Pine shadow mismatch는 성과 평가의 정본이 아니라 `diagnostic evidenc
 ### Phase 5. Pine 운영 의존 제거
 
 상태: 진행 중
+
+1. Pine는 운영 정본이 아니다.
+2. Pine는 `shadow compare / chart display` 역할만 가진다.
+3. OpenClaw는 Pine 수정이 아니라 `서버 신호 / 서버 downstream policy`만 조정한다.
+
+## 11. 2026-04-01 현재 상태
+
+현재 latest 기준:
+
+1. `runtime_status = READY`
+2. `scheduler_status = ENABLED`
+3. `canonical_engine_source_mode = SERVER_PRIMARY`
+4. `pine_shadow_transition_status = COMPLETE`
+5. `pine_shadow_transition_progress_pct = 100`
+6. `authoritative_server_24h_n = 7`
+7. `pine_shadow_24h_n = 14`
+8. `parity_mismatch_rate = 0.5384`
+9. `quality_status = WATCH_PARITY_DRIFT`
+10. `cutover_status = SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT`
+
+즉 정본 전환 자체는 끝났고, 남은 문제는 `운영 source mode`가 아니라 `표본 부족`과 `후단 drift`다.
+
+## 12. 현재 핵심 blocker
+
+1. `EV_POLICY_DRIFT_ACTIVE`
+2. `COOLDOWN_POLICY_DRIFT_ACTIVE`
+3. `SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT`
+
+추가 해석:
+
+1. `source_parity_mismatch_n = 0`
+2. 대부분의 mismatch는 `FINAL_DOWNSTREAM_MISMATCH`다.
+3. 즉 생성기 자체보다 `후단 EV/COOLDOWN`이 더 큰 병목이다.
 
 1. 구조상 shadow-only로 거의 내려왔다.
 2. 최종 완료는 `SERVER_PRIMARY` 승격과 2주 비교 운영 종료 이후로 본다.

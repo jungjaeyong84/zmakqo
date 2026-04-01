@@ -43,6 +43,7 @@
 3. `execution_sot = SERVER_CANONICAL`
 4. `signal_authority_target = SERVER_PRIMARY`
 5. `pine_role = PINE_SHADOW`
+6. `automation_mode = OPENCLAW_ONLY`
 
 ## 4. 현재 latest 기준 상태
 
@@ -51,18 +52,18 @@
 현재 latest 기준:
 
 1. `goal_state = OBJECTIVE_RECOVERY_REQUIRED`
-2. `authority_state = APPROVED`
+2. `authority_state = HOLD`
 3. `phase_d_status = SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT`
 4. `ops_status = PASS`
 5. `server_signal_authority_status = PARITY_DRIFT`
 6. `server_signal_quality_status = WATCH_PARITY_DRIFT`
 7. `server_signal_runtime_status = READY`
-8. `server_signal_transition_status = IN_PROGRESS`
-9. `server_signal_transition_progress_pct = 88`
+8. `server_signal_transition_status = COMPLETE`
+9. `server_signal_transition_progress_pct = 100`
 
 ### 4.2 server signal runtime
 
-1. `canonical_engine_source_mode = PINE_PRIMARY`
+1. `canonical_engine_source_mode = SERVER_PRIMARY`
 2. `exec_tf = 15m`
 3. `market_count = 7`
 4. `scheduler_status = ENABLED`
@@ -71,11 +72,18 @@
 ### 4.3 server signal cutover readiness
 
 1. `promotion_ready = false`
-2. `readiness_status = EV_POLICY_DRIFT_ACTIVE`
-3. `blockers = [EV_POLICY_DRIFT_ACTIVE, COOLDOWN_POLICY_DRIFT_ACTIVE]`
+2. `readiness_status = SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT`
+3. `blockers = [EV_POLICY_DRIFT_ACTIVE, COOLDOWN_POLICY_DRIFT_ACTIVE, SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT]`
 4. `dominant_mismatch_family = EV_POLICY`
 5. `recommended_action = LOWER_EV_TP1_MIN_REVIEW`
 6. `strategy_gate_historical_only = true`
+
+### 4.4 supervisor / loop monitor
+
+1. `objective_supervisor.verdict = HOLD`
+2. `objective_supervisor.root_cause = EXTERNAL_AUTHORITY_BLOCK_ROLLBACK`
+3. `loop_monitor.cycle_consistent = true`
+4. `loop_monitor.critical_blockers = [EXTERNAL_AUTHORITY_BLOCK_ROLLBACK, SERVER_SIGNAL_PARITY_DRIFT, SERVER_SIGNAL_CUTOVER_NOT_READY, SELF_EVOLUTION_CANARY_APPLY_BLOCK]`
 
 ## 5. autonomy contract가 지금 보는 것
 
@@ -115,20 +123,23 @@
 
 ## 7. 지금 왜 완전 자율 전환이 아닌가
 
-현재 남은 이유는 구조 부재보다 운영 증거 부족이다.
+현재 남은 이유는 구조 부재보다 운영 증거 부족과 외부 authority hold다.
 
-핵심 3개:
+핵심 4개:
 
 1. `SERVER_PRIMARY` acceptance sample이 아직 짧다.
 2. `EV_POLICY_DRIFT_ACTIVE`가 아직 남아 있다.
 3. `COOLDOWN_POLICY_DRIFT_ACTIVE`가 아직 남아 있다.
+4. `EXTERNAL_AUTHORITY_BLOCK_ROLLBACK`가 아직 남아 있다.
 
 반대로 이미 닫힌 것:
 
 1. `STRATEGY_GATE`는 `historical_only`
 2. `server runtime`은 `READY`
 3. `ops substrate`는 `PASS`
-4. `authority_state`는 `APPROVED`
+4. `scheduler`는 `ENABLED`
+5. `source mode`는 `SERVER_PRIMARY`
+6. `Pine shadow transition`은 `COMPLETE`
 
 ## 8. 현재 최종 의미
 
@@ -138,7 +149,8 @@
 
 1. 서버 정본 신호 품질 drift 축소
 2. `SERVER_PRIMARY` 승격 acceptance 충족
-3. Pine 완전 shadow 마감
+3. canary apply block 해소
+4. external authority hold 해소
 
 즉 지금의 핵심 문제는 자동화 부족이 아니라,
 `서버 정본 전환의 마지막 품질 blocker를 닫는 것`이다.
