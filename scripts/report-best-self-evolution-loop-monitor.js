@@ -38,6 +38,7 @@ const MAX_AGE_HOURS = Object.freeze({
   marketObjectiveScore: 24,
   serverVsPinePerformanceDelta: 24,
   explorationBudget: 24,
+  serverMarketCapitalAllocator: 24,
   explorationProposal: 24,
   explorationApplyCandidate: 24,
   canonicalProvenance: 24,
@@ -75,6 +76,7 @@ const INPUTS = Object.freeze({
   marketObjectiveScore: path.join(OPS_DAILY_DIR, "best_self_evolution_market_objective_score_latest.json"),
   serverVsPinePerformanceDelta: path.join(OPS_DAILY_DIR, "best_self_evolution_server_vs_pine_performance_delta_latest.json"),
   explorationBudget: path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_budget_latest.json"),
+  serverMarketCapitalAllocator: path.join(OPS_DAILY_DIR, "best_self_evolution_server_market_capital_allocator_latest.json"),
   explorationProposal: path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_proposal_latest.json"),
   explorationApplyCandidate: path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_apply_candidate_latest.json"),
   canonicalProvenance: path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_provenance_latest.json"),
@@ -214,6 +216,11 @@ async function main() {
       ? artifacts.explorationBudget.data.raw
       : artifacts.explorationBudget.data)
     : {};
+  const serverMarketCapitalAllocatorRaw = artifacts.serverMarketCapitalAllocator && artifacts.serverMarketCapitalAllocator.data
+    ? ((artifacts.serverMarketCapitalAllocator.data.raw && typeof artifacts.serverMarketCapitalAllocator.data.raw === "object")
+      ? artifacts.serverMarketCapitalAllocator.data.raw
+      : artifacts.serverMarketCapitalAllocator.data)
+    : {};
   const explorationProposalRaw = artifacts.explorationProposal && artifacts.explorationProposal.data
     ? ((artifacts.explorationProposal.data.raw && typeof artifacts.explorationProposal.data.raw === "object")
       ? artifacts.explorationProposal.data.raw
@@ -235,6 +242,9 @@ async function main() {
     : {};
   const explorationBudgetSummary = explorationBudgetRaw.summary && typeof explorationBudgetRaw.summary === "object"
     ? explorationBudgetRaw.summary
+    : {};
+  const serverMarketCapitalAllocatorSummary = serverMarketCapitalAllocatorRaw.summary && typeof serverMarketCapitalAllocatorRaw.summary === "object"
+    ? serverMarketCapitalAllocatorRaw.summary
     : {};
   const explorationProposalSummary = explorationProposalRaw.summary && typeof explorationProposalRaw.summary === "object"
     ? explorationProposalRaw.summary
@@ -358,6 +368,18 @@ async function main() {
   if (!rows.find((row) => row.loop === "EXPLORATION_BUDGET")) {
     rows.splice(16, 0, explorationBudgetRow);
   }
+  const serverMarketCapitalAllocatorRow = {
+    loop: "SERVER_MARKET_CAPITAL_ALLOCATOR",
+    fresh: artifacts.serverMarketCapitalAllocator && artifacts.serverMarketCapitalAllocator.fresh === true,
+    cycle_id: String(serverMarketCapitalAllocatorRaw.cycle_id || serverMarketCapitalAllocatorRaw.generation_id || "").trim() || null,
+    status: String(serverMarketCapitalAllocatorSummary.status || "").trim().toUpperCase() === "CAPITAL_ALLOCATION_ACTIVE"
+      ? "PASS"
+      : (String(serverMarketCapitalAllocatorSummary.status || "").trim().toUpperCase() === "QUARANTINE_REVIEW" ? "WARN" : "N/A"),
+    reason: `increase=${serverMarketCapitalAllocatorSummary.top_increase_market || "N/A"} / reduce=${serverMarketCapitalAllocatorSummary.top_reduce_market || "N/A"} / quarantine=${serverMarketCapitalAllocatorSummary.top_quarantine_market || "N/A"} / explore=${serverMarketCapitalAllocatorSummary.top_explore_market || "N/A"}`,
+  };
+  if (!rows.find((row) => row.loop === "SERVER_MARKET_CAPITAL_ALLOCATOR")) {
+    rows.splice(17, 0, serverMarketCapitalAllocatorRow);
+  }
   const explorationProposalRow = {
     loop: "EXPLORATION_PROPOSAL",
     fresh: artifacts.explorationProposal && artifacts.explorationProposal.fresh === true,
@@ -429,6 +451,11 @@ async function main() {
     exploration_budget_deferred_penalty_markets: Array.isArray(explorationBudgetSummary.deferred_penalty_markets)
       ? explorationBudgetSummary.deferred_penalty_markets.slice(0, 6)
       : ((derived.summary && Array.isArray(derived.summary.exploration_budget_deferred_penalty_markets)) ? derived.summary.exploration_budget_deferred_penalty_markets : []),
+    server_market_capital_allocator_status: serverMarketCapitalAllocatorSummary.status || derived.summary && derived.summary.server_market_capital_allocator_status || null,
+    server_market_capital_allocator_top_increase_market: serverMarketCapitalAllocatorSummary.top_increase_market || derived.summary && derived.summary.server_market_capital_allocator_top_increase_market || null,
+    server_market_capital_allocator_top_reduce_market: serverMarketCapitalAllocatorSummary.top_reduce_market || derived.summary && derived.summary.server_market_capital_allocator_top_reduce_market || null,
+    server_market_capital_allocator_top_quarantine_market: serverMarketCapitalAllocatorSummary.top_quarantine_market || derived.summary && derived.summary.server_market_capital_allocator_top_quarantine_market || null,
+    server_market_capital_allocator_top_explore_market: serverMarketCapitalAllocatorSummary.top_explore_market || derived.summary && derived.summary.server_market_capital_allocator_top_explore_market || null,
     exploration_proposal_status: explorationProposalSummary.status || derived.summary && derived.summary.exploration_proposal_status || null,
     exploration_proposal_proposal_n: explorationProposalSummary.proposal_n != null ? explorationProposalSummary.proposal_n : derived.summary && derived.summary.exploration_proposal_proposal_n || 0,
     exploration_proposal_top_market: explorationProposalSummary.top_market || derived.summary && derived.summary.exploration_proposal_top_market || null,
