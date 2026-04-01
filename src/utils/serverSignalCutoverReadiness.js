@@ -140,6 +140,11 @@ function deriveServerSignalCutoverReadiness({
   if (qualityStatus === "SERVER_SIGNAL_NOT_REACHING_EXECUTION") blockers.push("SERVER_SIGNAL_NOT_REACHING_EXECUTION");
   if (sourceMode === "SERVER_PRIMARY" && canaryReady !== true) blockers.push(canaryReason || "SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT");
 
+  const blockerActions = [];
+  if (evPolicyMismatchN > 0) blockerActions.push({ family: "EV_POLICY", action: evRecommendedAction || "HOLD_EV_POLICY_REVIEW" });
+  if (cooldownPolicyMismatchN > 0) blockerActions.push({ family: "COOLDOWN_POLICY", action: "RELAX_OPPOSITE_COOLDOWN_REVIEW" });
+  if (strategyGateMismatchN > 0) blockerActions.push({ family: "STRATEGY_GATE", action: "ALIGN_STRATEGY_GATE_REVIEW" });
+
   const promotionReady = blockers.length === 0 && sourceMode !== "SERVER_PRIMARY";
   const alreadyServerPrimary = sourceMode === "SERVER_PRIMARY";
   const status = promotionReady
@@ -170,6 +175,7 @@ function deriveServerSignalCutoverReadiness({
       ev_policy_top_rescue_market: evTopRescueMarket,
       ev_policy_recommended_action: evRecommendedAction,
       recommended_action: genericRecommendedAction,
+      blocker_actions: blockerActions,
       entry_24h_n: entryN,
       intent_24h_n: intentN,
       fill_24h_n: fillN,
@@ -190,6 +196,7 @@ function deriveServerSignalCutoverReadiness({
       fill_24h_n: fillN,
       dominant_mismatch_family: dominantMismatchFamily,
       recommended_action: genericRecommendedAction,
+      blocker_actions: blockerActions,
       ev_policy_recommended_action: evRecommendedAction,
       ev_policy_top_rescue_market: evTopRescueMarket,
     },

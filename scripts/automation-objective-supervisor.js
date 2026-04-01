@@ -927,6 +927,7 @@ function summarizeSelfEvolutionServerSignalCutoverReadiness(report = null) {
     dominant_mismatch_family: String(summary.dominant_mismatch_family || "").trim().toUpperCase() || null,
     recommended_action: String(summary.recommended_action || summary.ev_policy_recommended_action || "").trim().toUpperCase() || null,
     ev_policy_top_rescue_market: String(summary.ev_policy_top_rescue_market || "").trim().toUpperCase() || null,
+    blocker_actions: Array.isArray(summary.blocker_actions) ? summary.blocker_actions : [],
   };
 }
 
@@ -2570,6 +2571,9 @@ async function main() {
       : []),
     ...(evaluation.self_evolution_server_signal_cutover_readiness && evaluation.self_evolution_server_signal_cutover_readiness.recommended_action
       ? [`SERVER_SIGNAL_CUTOVER_ACTION: ${evaluation.self_evolution_server_signal_cutover_readiness.recommended_action} / family=${evaluation.self_evolution_server_signal_cutover_readiness.dominant_mismatch_family || "N/A"} / top_market=${evaluation.self_evolution_server_signal_cutover_readiness.ev_policy_top_rescue_market || "N/A"}`]
+      : []),
+    ...(evaluation.self_evolution_server_signal_cutover_readiness && Array.isArray(evaluation.self_evolution_server_signal_cutover_readiness.blocker_actions)
+      ? evaluation.self_evolution_server_signal_cutover_readiness.blocker_actions.map((row) => `SERVER_SIGNAL_BLOCKER_ACTION: ${row.family || "N/A"} -> ${row.action || "N/A"}`)
       : []),
     ...(Array.isArray(selfEvolutionObjectiveRecoveryGovernorSummary.next_actions) ? selfEvolutionObjectiveRecoveryGovernorSummary.next_actions : []),
     ...(Array.isArray(selfEvolutionObjectiveRecoveryEffectSummary.next_actions) ? selfEvolutionObjectiveRecoveryEffectSummary.next_actions : []),

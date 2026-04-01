@@ -126,6 +126,15 @@ const EV_SNAPSHOT_KEYS = Object.freeze([
   "ev_gate_qty_scale_mid",
   "ev_gate_qty_scale_low",
 ]);
+const WAIT_SNAPSHOT_KEYS = Object.freeze([
+  "wait_one_bar_same_dir_streak_min",
+  "wait_one_bar_chase_ratio_min",
+  "wait_one_bar_last_close_control_min",
+  "wait_one_bar_last_dir_body_min",
+  "wait_one_bar_last_opposite_wick_max",
+  "wait_one_bar_recent_move1_pct_min",
+  "wait_one_bar_counter_dir_bars_max",
+]);
 
 function buildLoopMonitorView({ objectiveArtifact = null, loopMonitorArtifact = null, cycleMeta = null } = {}) {
   const expectedCycleId = String(cycleMeta && cycleMeta.cycle_id || "").trim() || null;
@@ -871,6 +880,53 @@ function buildEvParityCandidate(parityArtifact, cutoverArtifact = null, currentS
     current_ev_policy_mismatch_n: evPolicyMismatchN,
     source_parity_mismatch_n: sourceParityMismatchN,
     recommended_action: cutoverRecommendedAction,
+  };
+}
+
+function buildWaitParityCandidate(cutoverArtifact = null, currentSys = {}, objectiveSupervisor = {}) {
+  const cutoverData = cutoverArtifact && cutoverArtifact.data && typeof cutoverArtifact.data === "object"
+    ? cutoverArtifact.data
+    : {};
+  const cutoverSummary = cutoverData.summary && typeof cutoverData.summary === "object" ? cutoverData.summary : cutoverData;
+  const cutoverStatus = cutoverData.current_status && typeof cutoverData.current_status === "object" ? cutoverData.current_status : cutoverSummary;
+  const cooldownMismatchN = toNum(cutoverStatus.cooldown_policy_mismatch_n) || 0;
+  const sourceParityMismatchN = toNum(cutoverStatus.source_parity_mismatch_n) || 0;
+  const blockerActions = Array.isArray(cutoverSummary.blocker_actions) ? cutoverSummary.blocker_actions : [];
+  const cooldownActionRow = blockerActions.find((row) => String(row && row.family || "").trim().toUpperCase() === "COOLDOWN_POLICY") || null;
+  const recommendedAction = String(cooldownActionRow && cooldownActionRow.action || "").trim().toUpperCase() || null;
+  const actionable = cooldownMismatchN > 0 && sourceParityMismatchN === 0;
+  const currentStreak = Math.max(2, Math.min(5, Math.round(toNum(currentSys && currentSys.wait_one_bar_same_dir_streak_min) || 3)));
+  const currentChase = Math.max(0.8, Math.min(3.2, toNum(currentSys && currentSys.wait_one_bar_chase_ratio_min) || 1.75));
+  const currentCloseControl = Math.max(0.6, Math.min(0.95, toNum(currentSys && currentSys.wait_one_bar_last_close_control_min) || 0.80));
+  const currentCounterBars = Math.max(0, Math.min(2, Math.round(toNum(currentSys && currentSys.wait_one_bar_counter_dir_bars_max) || 0)));
+  const nextSettings = actionable
+    ? {
+      wait_one_bar_same_dir_streak_min: Math.max(2, currentStreak - 1),
+      wait_one_bar_chase_ratio_min: Number(Math.max(0.8, currentChase - 0.1).toFixed(3)),
+      wait_one_bar_last_close_control_min: Number(Math.max(0.6, currentCloseControl - 0.03).toFixed(3)),
+      wait_one_bar_counter_dir_bars_max: Math.min(2, currentCounterBars + 1),
+    }
+    : {};
+  return {
+    stage: "WAIT",
+    actionable,
+    action: actionable ? "AUTO_APPLY" : "HOLD",
+    reason: actionable
+      ? `CANONICAL_PARITY_COOLDOWN_RESCUE${recommendedAction ? `__${recommendedAction}` : ""}`
+      : "NO_ACTIONABLE_WAIT_PARITY_RESCUE",
+    signature: actionable ? stableSignature(nextSettings) : null,
+    nextSettings,
+    streakRequired: STREAK_REQUIRED,
+    sampleSufficient: cooldownMismatchN >= 1,
+    coverageSufficient: sourceParityMismatchN === 0,
+    objectiveEnoughSample: Boolean(objectiveSupervisor && objectiveSupervisor.objective && objectiveSupervisor.objective.enough_sample === true),
+    objectiveDirectionOk: actionable,
+    challengerBeatsCurrent: actionable,
+    support_n: cooldownMismatchN,
+    source: "CANONICAL_PARITY_COOLDOWN_RESCUE",
+    current_cooldown_policy_mismatch_n: cooldownMismatchN,
+    source_parity_mismatch_n: sourceParityMismatchN,
+    recommended_action: recommendedAction,
   };
 }
 
@@ -1731,18 +1787,40 @@ async function main() {
     support_n: evObservedCandidate.observedUpdate === true ? null : evParityCandidate.support_n,
   });
 
-  result = await processObservedStage({
-    stage: "WAIT",
-    artifact: waitArtifact,
-    stateData,
-    history,
+  const waitObservedCandidate = buildObservedStageCandidate("WAIT", waitArtifact, objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.objective ? objectiveArtifactForLoop.data.objective : null);
+  const waitParityCandidate = buildWaitParityCandidate(
+    selfEvolutionServerSignalCutoverReadinessArtifact,
     currentSys,
-    objectiveArtifact: objectiveArtifactForLoop,
-    canaryPass,
-    nowMeta,
-    nowMs,
-    selfEvolutionRollbackReady,
-  });
+    objectiveArtifactForLoop.data || {}
+  );
+  if (waitObservedCandidate.observedUpdate === true) {
+    result = await processObservedStage({
+      stage: "WAIT",
+      artifact: waitArtifact,
+      stateData,
+      history,
+      currentSys,
+      objectiveArtifact: objectiveArtifactForLoop,
+      canaryPass,
+      nowMeta,
+      nowMs,
+      selfEvolutionRollbackReady,
+    });
+  } else {
+    result = await applyStageCandidate({
+      stage: "WAIT",
+      candidate: waitParityCandidate,
+      stageState: getStageState(stateData, "WAIT"),
+      history,
+      nowMeta,
+      nowMs,
+      canaryPass,
+      objectiveArtifact: objectiveArtifactForLoop,
+      currentSys,
+      snapshotKeys: WAIT_SNAPSHOT_KEYS,
+      selfEvolutionRollbackReady,
+    });
+  }
   history = result.history;
   stateData.stages.WAIT = result.stageState;
   if (result.action) actions.push(result.action);
@@ -1756,6 +1834,8 @@ async function main() {
     blockers: result.stageState.blockers || [],
     signature: result.stageState.last_signature,
     snapshot_path: result.stageState.last_snapshot_path || null,
+    source: waitObservedCandidate.observedUpdate === true ? "WAIT_TUNER" : waitParityCandidate.source,
+    support_n: waitObservedCandidate.observedUpdate === true ? null : waitParityCandidate.support_n,
   });
 
   const canonicalPolicyCandidate = buildCanonicalPolicyStageCandidate(selfEvolutionCandidatesArtifact, currentSys, objectiveArtifactForLoop.data || {});
@@ -2167,6 +2247,7 @@ module.exports = {
     mergeStageNextSettings,
     buildSourceModeStageCandidate,
     buildEvParityCandidate,
+    buildWaitParityCandidate,
     resolveStageRollbackInputs,
   },
 };

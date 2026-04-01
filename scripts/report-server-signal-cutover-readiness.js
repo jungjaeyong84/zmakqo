@@ -39,6 +39,7 @@ function renderMarkdown(report = {}) {
     `- dominant_mismatch_family: ${status.dominant_mismatch_family || "N/A"}`,
     `- recommended_action: ${status.recommended_action || "N/A"}`,
     `- ev_policy_rescue: rate=${status.ev_policy_rescue_rate ?? "N/A"} / top_market=${status.ev_policy_top_rescue_market || "N/A"} / action=${status.ev_policy_recommended_action || "N/A"}`,
+    `- blocker_actions: ${Array.isArray(status.blocker_actions) && status.blocker_actions.length ? status.blocker_actions.map((row) => `${row.family}:${row.action}`).join(", ") : "none"}`,
     `- canary: ${status.canary_acceptance_ready ? "READY" : "PENDING"} / ${status.canary_acceptance_reason || "N/A"}`,
     `- blockers: ${Array.isArray(summary.blockers) && summary.blockers.length ? summary.blockers.join(", ") : "none"}`,
     `- top_mismatch_market: ${Array.isArray(rows.top_mismatch_market) && rows.top_mismatch_market.length ? rows.top_mismatch_market.map((row) => `${row.key}=${row.count}`).join(", ") : "none"}`,
