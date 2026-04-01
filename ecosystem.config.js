@@ -12,9 +12,9 @@ module.exports = {
         BASE_URL: "http://localhost:3000",
 
         RUNTIME_MODE: "local",
-        ENGINE_VERSION: "6.0.3.3",
-        DONBEOLJA_STRATEGY_ID: "donbeolja_v6.0.3.3",
-        WEBHOOK_ALLOWED_STRATEGY_IDS: "donbeolja_v6.0.3.3,donbeolja_v6.0.3.2,donbeolja_v6.0.3.1,donbeolja_v6.0.3.0,donbeolja_v6.0.2.2,donbeolja_v6.0.2.1,donbeolja_v6.0.2.0,donbeolja_v6.0.1.2,STRAT_v010,STRAT_v002,donbeolja_v5.6.0.2,donbeolja_v5.5.9.1,donbeolja_v5.5.9.0,donbeolja_v5.5.8.0,donbeolja_v5.5.6.0,donbeolja_v5.5.5.9,donbeolja_v5.6.0.4,donbeolja_v5.6.0.3,donbeolja_v6.0.0.0,donbeolja_v5.6.0.7,donbeolja_v5.6.0.6",
+        ENGINE_VERSION: "6.1.1.0",
+        DONBEOLJA_STRATEGY_ID: "donbeolja_v6.1.1.0",
+        WEBHOOK_ALLOWED_STRATEGY_IDS: "donbeolja_v6.1.1.0,donbeolja_v6.0.3.3,donbeolja_v6.0.3.2,donbeolja_v6.0.3.1,donbeolja_v6.0.3.0,donbeolja_v6.0.2.2,donbeolja_v6.0.2.1,donbeolja_v6.0.2.0,donbeolja_v6.0.1.2,STRAT_v010,STRAT_v002,donbeolja_v5.6.0.2,donbeolja_v5.5.9.1,donbeolja_v5.5.9.0,donbeolja_v5.5.8.0,donbeolja_v5.5.6.0,donbeolja_v5.5.5.9,donbeolja_v5.6.0.4,donbeolja_v5.6.0.3,donbeolja_v6.0.0.0,donbeolja_v5.6.0.7,donbeolja_v5.6.0.6",
 
         // 스케줄
         SCHEDULE_POLL_MS: 10000,
