@@ -178,10 +178,12 @@ function graceMs() {
 
 function computeMaxLagMs(tf) {
   const maxLag = Number(env.gate.maxLagMs);
-  if (Number.isFinite(maxLag) && maxLag > 0) return maxLag;
   const tfMs = tfToMs(tf);
-  if (!Number.isFinite(tfMs) || tfMs <= 0) return 6 * 60 * 1000;
-  return Math.max(6 * 60 * 1000, Math.round(tfMs * 1.1));
+  const tfAware = (!Number.isFinite(tfMs) || tfMs <= 0)
+    ? 6 * 60 * 1000
+    : Math.max(6 * 60 * 1000, Math.round(tfMs * 1.1));
+  if (Number.isFinite(maxLag) && maxLag > 0) return Math.max(maxLag, tfAware);
+  return tfAware;
 }
 
 function paperEnabled() {

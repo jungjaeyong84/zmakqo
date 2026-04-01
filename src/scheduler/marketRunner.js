@@ -31,10 +31,12 @@ function graceMs() {
 
 function computeMaxLagMs(tf) {
   const envMax = Number(env.gate.maxLagMs);
-  if (Number.isFinite(envMax) && envMax > 0) return envMax;
   const tfMs = tfToMs(tf);
-  if (!Number.isFinite(tfMs) || tfMs <= 0) return 6 * 60 * 1000;
-  return Math.max(6 * 60 * 1000, Math.round(tfMs * 1.1));
+  const tfAware = (!Number.isFinite(tfMs) || tfMs <= 0)
+    ? 6 * 60 * 1000
+    : Math.max(6 * 60 * 1000, Math.round(tfMs * 1.1));
+  if (Number.isFinite(envMax) && envMax > 0) return Math.max(envMax, tfAware);
+  return tfAware;
 }
 
 function pickTf({ stateTf, tfAllowlist } = {}) {
