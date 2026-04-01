@@ -24,8 +24,10 @@
   <div class="legacy-bridge-actions">
     <a class="btn ghost slim" href="<%= __surfaceHref %>"><%= __surfaceLabel %></a>
     <a class="btn ghost slim" href="<%= __detailHref %>"><%= __detailLabel %></a>
-    <% if (__extraHref && __extraLabel) { %>
-      <a class="btn ghost slim" href="<%= __extraHref %>"><%= __extraLabel %></a>
-    <% } %>
   </div>
+  <% if (__extraHref && __extraLabel) { %>
+    <div class="legacy-bridge-extra">
+      <a href="<%= __extraHref %>" class="legacy-bridge-inline-link"><%= __extraLabel %></a>
+    </div>
+  <% } %>
 </div>

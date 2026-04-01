@@ -2,7 +2,7 @@
 
 - 제정: 2026-03-31
 - 업데이트: 2026-04-01
-- 상태: IN_PROGRESS
+- 상태: COMPLETE
 - 목적:
   - 현재 `bundle-based hybrid canonical + OpenClaw ops substrate + autonomy governor` 구조에 맞게 운영 UI를 다시 설계한다.
   - 기존 `대시보드/거래/리포트/설정` 중심 IA를 `goal/authority/deployment/execution/audit` 중심 control surface로 재편한다.
@@ -49,9 +49,10 @@
    - 대부분 완료
    - `/dashboard/execution`, `/dashboard/server-primary`, `/dashboard/audit`에 operator strip, runtime preview, artifact timeline, focus drill-through가 들어갔다.
 6. `Phase 6. Legacy Screen Demotion`
-   - 마무리 단계
+   - 완료
    - legacy report/trading 화면은 새 IA 아래의 보조 화면으로 강등했고, control surface로 복귀하는 bridge CTA와 family subnav를 공통 partial로 적용했다.
-   - 남은 일은 화면별 copy polish와 시각 정리 정도이며, 구조적 migration은 사실상 끝났다.
+   - 중복 CTA와 과한 보조 통계를 줄였고, legacy footer는 링크 중심 요약으로 축소했다.
+   - 구조적 migration과 copy/visual polish는 완료로 본다.
 
 ## 3. 상위 원칙
 

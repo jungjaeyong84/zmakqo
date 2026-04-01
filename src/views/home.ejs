@@ -455,28 +455,19 @@
     <span class="subtle">기존 화면은 링크 중심으로만 남기고, 주 판단은 Mission Control에서 합니다.</span>
   </summary>
   <div class="details-body">
-    <div class="grid cols-2">
-      <div class="card compact">
-        <h2>Legacy Quick Links</h2>
-        <div class="subtle">정말 필요한 예전 화면만 남겼습니다.</div>
-        <div class="control-actions" style="margin-top:12px;">
-          <a class="btn ghost slim" href="/dashboard/trading">Trading</a>
-          <a class="btn ghost slim" href="/dashboard/report?mode=weekly">Report</a>
-        </div>
+    <div class="card compact">
+      <h2>Legacy Summary</h2>
+      <div class="subtle">예전 화면은 세부 확인용으로만 남겼습니다. 상태 판정은 위 control surface를 기준으로 읽습니다.</div>
+      <div class="hr"></div>
+      <div class="legacy-inline-summary">
+        <span class="pill <%= liveStatus(system_settings).badge %>">운영 · <%= liveStatus(system_settings).label %></span>
+        <span class="pill <%= gateBadge(gate_latest) %>">게이트 · <%= gateLabel(gate_latest) %></span>
+        <span class="pill dim">최근 판단 · <%= decisionLabel %></span>
+        <span class="pill dim">총 손익 · <%= fmtKrwSigned(budget_perf && budget_perf.total_pnl_krw) %> <%= budgetUnit %></span>
       </div>
-      <div class="card compact">
-        <h2>Legacy Snapshot Summary</h2>
-        <div class="kv">
-          <div class="k">운영 상태</div>
-          <div class="v"><span class="pill <%= liveStatus(system_settings).badge %>"><%= liveStatus(system_settings).label %></span></div>
-          <div class="k">게이트</div>
-          <div class="v"><span class="pill <%= gateBadge(gate_latest) %>"><%= gateLabel(gate_latest) %></span></div>
-          <div class="k">최근 판단</div>
-          <div class="v"><%= decisionLabel %></div>
-          <div class="k">총 손익</div>
-          <div class="v"><%= fmtKrwSigned(budget_perf && budget_perf.total_pnl_krw) %> <%= budgetUnit %></div>
-        </div>
-        <div class="subtle" style="margin-top:10px;">설정과 상세 감사는 상단 `Settings`, `Audit`에서 바로 여는 쪽이 정본입니다.</div>
+      <div class="control-actions" style="margin-top:12px;">
+        <a class="btn ghost slim" href="/dashboard/trading">Trading</a>
+        <a class="btn ghost slim" href="/dashboard/report?mode=weekly">Report</a>
       </div>
     </div>
   </div>

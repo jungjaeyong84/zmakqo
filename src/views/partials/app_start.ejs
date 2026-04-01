@@ -65,7 +65,9 @@
       margin:0;
       font-family: "Google Sans Text", "Google Sans", "Noto Sans KR", "Apple SD Gothic Neo", system-ui, sans-serif;
       color: var(--text);
-      background: var(--bg);
+      background:
+        radial-gradient(circle at top left, rgba(26,115,232,.06), transparent 20%),
+        linear-gradient(180deg, #fbfcfe 0%, #f5f7fb 100%);
     }
 
     a{ color: inherit; }
@@ -165,7 +167,7 @@
       border: 1px solid var(--line);
       border-radius: var(--radius);
       padding: 18px;
-      box-shadow: var(--shadow);
+      box-shadow: 0 8px 22px rgba(60,64,67,.06), 0 2px 4px rgba(60,64,67,.04);
     }
 
     .card h2{
@@ -440,10 +442,11 @@
       align-items:center;
       margin: 12px 0 16px 0;
       padding: 6px;
-      border: 1px solid var(--line);
-      background: #ffffff;
+      border: 1px solid rgba(195,207,223,.8);
+      background: rgba(255,255,255,.86);
+      backdrop-filter: blur(10px);
       border-radius: 18px;
-      box-shadow: 0 1px 2px rgba(60,64,67,.05);
+      box-shadow: 0 10px 24px rgba(60,64,67,.05);
     }
     .subnav a{
       display:inline-flex;
@@ -476,11 +479,11 @@
       justify-content:space-between;
       gap:16px;
       flex-wrap:wrap;
-      padding:16px 18px;
-      border:1px solid var(--line);
+      padding:14px 16px;
+      border:1px solid rgba(195,207,223,.8);
       border-radius: 20px;
-      background: linear-gradient(135deg, #f8fbff 0%, #ffffff 100%);
-      box-shadow: var(--shadow);
+      background: linear-gradient(135deg, rgba(248,251,255,.92) 0%, rgba(255,255,255,.96) 100%);
+      box-shadow: 0 8px 18px rgba(60,64,67,.05);
       margin: 12px 0 16px 0;
     }
     .legacy-bridge-copy{
@@ -512,6 +515,22 @@
     }
     .legacy-bridge-actions .btn{
       min-width: 92px;
+    }
+    .legacy-bridge-extra{
+      width: 100%;
+      display:flex;
+      justify-content:flex-end;
+      margin-top: -4px;
+    }
+    .legacy-bridge-inline-link{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .legacy-bridge-inline-link:hover{
+      color: var(--accentText);
+      text-decoration: underline;
     }
 
     .status-strip{
@@ -646,7 +665,7 @@
       background:
         radial-gradient(circle at top left, rgba(26,115,232,.10), transparent 44%),
         linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-      box-shadow: var(--shadow);
+      box-shadow: 0 16px 36px rgba(60,64,67,.08), 0 4px 8px rgba(60,64,67,.04);
     }
     .control-hero.ok{
       background:
@@ -709,7 +728,7 @@
       border-radius: 18px;
       border: 1px solid var(--line);
       background: rgba(255,255,255,.92);
-      box-shadow: 0 1px 2px rgba(60,64,67,.05);
+      box-shadow: 0 8px 16px rgba(60,64,67,.04);
       display:flex;
       flex-direction:column;
       justify-content:space-between;
@@ -776,6 +795,7 @@
       border-radius: 16px;
       overflow: hidden;
       background: rgba(255,255,255,.9);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.6);
     }
     .control-table-wrap table{
       font-size: 11px;
@@ -794,6 +814,11 @@
     }
     .control-table-link:hover{
       text-decoration: underline;
+    }
+    .legacy-inline-summary{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
     }
 
     /* Tooltip (simple) */
