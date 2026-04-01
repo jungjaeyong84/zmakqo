@@ -90,6 +90,13 @@ function main() {
     summary: loop.reason || (loop.parsed && (loop.parsed.status || loop.parsed.reason)) || "OK",
   });
 
+  const pineSync = runScript("automation-sync-current-version-pine.js");
+  steps.push({
+    id: "current_version_pine_sync",
+    status: pineSync.ok ? "PASS" : "FAIL",
+    summary: pineSync.parsed && (pineSync.parsed.status || pineSync.parsed.reason) || (pineSync.ok ? "OK" : "FAIL"),
+  });
+
   const hourly = runScript("automation-hourly-overall-report.js", { SKIP_ALERT: process.env.SKIP_ALERT || "" });
   steps.push({
     id: "hourly_overall_report",
@@ -130,4 +137,3 @@ if (require.main === module) {
     process.exit(1);
   }
 }
-

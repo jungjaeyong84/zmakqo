@@ -88,6 +88,7 @@ const FRESHNESS_HOURS = Object.freeze({
   explorationProposal: Math.max(4, Number(process.env.STAGE_AUTOPILOT_EXPLORATION_PROPOSAL_MAX_AGE_HOURS || 24)),
   explorationApplyCandidate: Math.max(4, Number(process.env.STAGE_AUTOPILOT_EXPLORATION_APPLY_CANDIDATE_MAX_AGE_HOURS || 24)),
   serverPrimaryCanary: Math.max(4, Number(process.env.STAGE_AUTOPILOT_SERVER_PRIMARY_CANARY_MAX_AGE_HOURS || 12)),
+  currentVersionPineSync: Math.max(4, Number(process.env.STAGE_AUTOPILOT_CURRENT_VERSION_PINE_SYNC_MAX_AGE_HOURS || 24)),
   codex: Math.max(12, Number(process.env.STAGE_AUTOPILOT_CODEX_MAX_AGE_HOURS || 48)),
 });
 const SELF_EVOLUTION_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json");
@@ -104,6 +105,7 @@ const SELF_EVOLUTION_EXPLORATION_PROPOSAL_LATEST_PATH = path.join(OPS_DAILY_DIR,
 const SELF_EVOLUTION_EXPLORATION_APPLY_CANDIDATE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_apply_candidate_latest.json");
 const SELF_EVOLUTION_DEPLOYMENT_PROBE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_probe_latest.json");
 const SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json");
+const CURRENT_VERSION_PINE_SYNC_LATEST_PATH = path.join(OPS_DAILY_DIR, "current_version_pine_sync_latest.json");
 const SELF_EVOLUTION_OBJECTIVE_SUPERVISOR_LATEST_PATH = selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json");
 const SELF_EVOLUTION_LOOP_MONITOR_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_loop_monitor_latest.json");
 const SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json");
@@ -1812,6 +1814,7 @@ async function main() {
   const selfEvolutionExplorationProposalArtifact = readArtifact("best_self_evolution_exploration_proposal", SELF_EVOLUTION_EXPLORATION_PROPOSAL_LATEST_PATH, FRESHNESS_HOURS.explorationProposal);
   const selfEvolutionExplorationApplyCandidateArtifact = readArtifact("best_self_evolution_exploration_apply_candidate", SELF_EVOLUTION_EXPLORATION_APPLY_CANDIDATE_LATEST_PATH, FRESHNESS_HOURS.explorationApplyCandidate);
   const selfEvolutionServerPrimaryCanaryArtifact = readArtifact("best_self_evolution_server_primary_canary", SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH, FRESHNESS_HOURS.serverPrimaryCanary);
+  const currentVersionPineSyncArtifact = readArtifact("current_version_pine_sync", CURRENT_VERSION_PINE_SYNC_LATEST_PATH, FRESHNESS_HOURS.currentVersionPineSync);
   const selfEvolutionDeploymentPlanArtifact = readArtifact("best_self_evolution_deployment_plan", SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST_PATH, FRESHNESS_HOURS.objective);
   const selfEvolutionLoopMonitorArtifact = readArtifact("best_self_evolution_loop_monitor", SELF_EVOLUTION_LOOP_MONITOR_LATEST_PATH, FRESHNESS_HOURS.objective);
   const selfEvolutionCandidatesArtifact = readArtifact("best_self_evolution_candidates", SELF_EVOLUTION_CANDIDATES_LATEST_PATH, FRESHNESS_HOURS.objective);
@@ -1873,6 +1876,9 @@ async function main() {
     : {};
   const selfEvolutionExplorationApplyCandidate = selfEvolutionExplorationApplyCandidateArtifact && selfEvolutionExplorationApplyCandidateArtifact.data && selfEvolutionExplorationApplyCandidateArtifact.data.summary
     ? selfEvolutionExplorationApplyCandidateArtifact.data.summary
+    : {};
+  const currentVersionPineSync = currentVersionPineSyncArtifact && currentVersionPineSyncArtifact.data
+    ? currentVersionPineSyncArtifact.data
     : {};
   const evExplorationApplyCandidateNote = deriveExplorationApplyCandidateNote({ stage: "EV", summary: selfEvolutionExplorationApplyCandidate });
   const waitExplorationApplyCandidateNote = deriveExplorationApplyCandidateNote({ stage: "WAIT", summary: selfEvolutionExplorationApplyCandidate });
@@ -2345,6 +2351,13 @@ async function main() {
     candidate_signature: result.stageState.last_signature || null,
   };
   const overrideApplied = applyPreparedOverrideToPineArtifacts({ pineHandoff, pineStageRow, preparedOverride });
+  if (currentVersionPineSync && currentVersionPineSync.strategy_id) {
+    overrideApplied.pineHandoff.current_strategy_id = String(currentVersionPineSync.strategy_id || "").trim() || null;
+    overrideApplied.pineHandoff.current_source_file_path = String(currentVersionPineSync.source_file_path || "").trim() || null;
+    overrideApplied.pineHandoff.current_latest_generated_file_path = String(currentVersionPineSync.latest_generated_file_path || "").trim() || null;
+    overrideApplied.pineStageRow.current_strategy_id = String(currentVersionPineSync.strategy_id || "").trim() || null;
+    overrideApplied.pineStageRow.current_source_file_path = String(currentVersionPineSync.source_file_path || "").trim() || null;
+  }
   stageRows.push(overrideApplied.pineStageRow);
 
   const reportCycleId = resolveReportCycleId({
@@ -2473,6 +2486,15 @@ async function main() {
       top_market: String(selfEvolutionExplorationApplyCandidate.top_market || "").trim().toUpperCase() || null,
       top_stage: String(selfEvolutionExplorationApplyCandidate.top_stage || "").trim().toUpperCase() || null,
       top_action: String(selfEvolutionExplorationApplyCandidate.top_action || "").trim().toUpperCase() || null,
+    },
+    current_visual_pine: {
+      available: currentVersionPineSyncArtifact.exists === true,
+      strategy_id: String(currentVersionPineSync.strategy_id || process.env.DONBEOLJA_STRATEGY_ID || "").trim() || null,
+      source_file_path: String(currentVersionPineSync.source_file_path || "").trim() || null,
+      latest_generated_file_path: String(currentVersionPineSync.latest_generated_file_path || "").trim() || null,
+      synced: currentVersionPineSync.synced === true,
+      opened: currentVersionPineSync.opened === true,
+      status: String(currentVersionPineSync.status || "").trim().toUpperCase() || null,
     },
     self_evolution_server_primary_canary: {
       available: selfEvolutionServerPrimaryCanaryArtifact.exists === true,

@@ -105,6 +105,15 @@ function main() {
     summary: autopilot.parsed && (autopilot.parsed.status || autopilot.parsed.reason || autopilot.parsed.objective) || (autopilot.ok ? "OK" : "FAIL"),
   });
 
+  const pineSync = retrospective.ok && governor.ok && supervisor.ok && autopilot.ok
+    ? runScript("automation-sync-current-version-pine.js")
+    : { ok: false, parsed: null, stdout_tail: [], stderr_tail: ["AUTOPILOT_FAILED"] };
+  steps.push({
+    id: "current_version_pine_sync",
+    status: pineSync.ok ? "PASS" : "FAIL",
+    summary: pineSync.parsed && (pineSync.parsed.status || pineSync.parsed.reason) || (pineSync.ok ? "OK" : "FAIL"),
+  });
+
   const report = {
     ok: steps.every((row) => row.status !== "FAIL"),
     generated_at_kst: meta.kst,
@@ -125,12 +134,14 @@ function main() {
       governor: governor.stdout_tail,
       supervisor: supervisor.stdout_tail,
       autopilot: autopilot.stdout_tail,
+      pine_sync: pineSync.stdout_tail,
     },
     stderr_tail: {
       retrospective: retrospective.stderr_tail,
       governor: governor.stderr_tail,
       supervisor: supervisor.stderr_tail,
       autopilot: autopilot.stderr_tail,
+      pine_sync: pineSync.stderr_tail,
     },
   };
 

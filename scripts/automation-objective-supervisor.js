@@ -90,6 +90,7 @@ const SELF_EVOLUTION_CANONICAL_PROVENANCE_LATEST_PATH = path.join(OPS_DAILY_DIR,
 const SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json");
 const SELF_EVOLUTION_SERVER_PRIMARY_ACCEPTANCE_WATCH_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_acceptance_watch_latest.json");
 const SELF_EVOLUTION_PINE_SHADOW_DRIFT_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_pine_shadow_drift_latest.json");
+const CURRENT_VERSION_PINE_SYNC_LATEST_PATH = path.join(OPS_DAILY_DIR, "current_version_pine_sync_latest.json");
 const SELF_EVOLUTION_DEPLOYMENT_PROBE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_probe_latest.json");
 const SELF_EVOLUTION_BUNDLE_ACTIVATION_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_bundle_activation_latest.json");
 const SELF_EVOLUTION_OPENCLAW_AUTONOMY_CONTRACT_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_autonomy_contract_latest.json");
@@ -144,6 +145,7 @@ const FRESHNESS_HOURS = Object.freeze({
   selfEvolutionServerPrimaryCanary: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_SERVER_PRIMARY_CANARY_MAX_AGE_HOURS || 36)),
   selfEvolutionServerPrimaryAcceptanceWatch: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_SERVER_PRIMARY_ACCEPTANCE_WATCH_MAX_AGE_HOURS || 36)),
   selfEvolutionPineShadowDrift: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_PINE_SHADOW_DRIFT_MAX_AGE_HOURS || 36)),
+  currentVersionPineSync: Math.max(4, Number(process.env.OBJECTIVE_SUPERVISOR_CURRENT_VERSION_PINE_SYNC_MAX_AGE_HOURS || 24)),
   selfEvolutionBundleActivation: Math.max(6, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_BUNDLE_ACTIVATION_MAX_AGE_HOURS || 24)),
   selfEvolutionOpenclawAutonomyContract: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_OPENCLAW_AUTONOMY_CONTRACT_MAX_AGE_HOURS || 36)),
   selfEvolutionObjectiveRecoveryGovernor: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_OBJECTIVE_RECOVERY_GOVERNOR_MAX_AGE_HOURS || 36)),
@@ -2863,6 +2865,7 @@ async function main() {
   const selfEvolutionServerPrimaryCanaryArtifact = readArtifact("self_evolution_server_primary_canary", SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionServerPrimaryCanary);
   const selfEvolutionServerPrimaryAcceptanceWatchArtifact = readArtifact("self_evolution_server_primary_acceptance_watch", SELF_EVOLUTION_SERVER_PRIMARY_ACCEPTANCE_WATCH_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionServerPrimaryAcceptanceWatch);
   const selfEvolutionPineShadowDriftArtifact = readArtifact("self_evolution_pine_shadow_drift", SELF_EVOLUTION_PINE_SHADOW_DRIFT_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionPineShadowDrift);
+  const currentVersionPineSyncArtifact = readArtifact("current_version_pine_sync", CURRENT_VERSION_PINE_SYNC_LATEST_PATH, FRESHNESS_HOURS.currentVersionPineSync);
   const selfEvolutionDeploymentProbeArtifact = readArtifact("self_evolution_deployment_probe", SELF_EVOLUTION_DEPLOYMENT_PROBE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionBundleActivation);
   const selfEvolutionBundleActivationArtifact = readArtifact("self_evolution_bundle_activation", SELF_EVOLUTION_BUNDLE_ACTIVATION_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionBundleActivation);
   const selfEvolutionOpenclawAutonomyContractArtifact = readArtifact("self_evolution_openclaw_autonomy_contract", SELF_EVOLUTION_OPENCLAW_AUTONOMY_CONTRACT_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionOpenclawAutonomyContract);
@@ -2988,6 +2991,9 @@ async function main() {
   const selfEvolutionServerPrimaryAcceptanceWatchSummary = summarizeSelfEvolutionServerPrimaryAcceptanceWatch(selfEvolutionServerPrimaryAcceptanceWatchArtifact.data);
   const selfEvolutionObjectiveRecoveryGovernorSummary = summarizeSelfEvolutionObjectiveRecoveryGovernor(selfEvolutionObjectiveRecoveryGovernorArtifact.data);
   const selfEvolutionObjectiveRecoveryEffectSummary = summarizeSelfEvolutionObjectiveRecoveryEffect(selfEvolutionObjectiveRecoveryEffectArtifact.data);
+  const currentVisualPine = currentVersionPineSyncArtifact.exists && currentVersionPineSyncArtifact.data
+    ? currentVersionPineSyncArtifact.data
+    : null;
   const objectiveRecoveryPriorityActiveForPlan = Boolean(
     evaluation && evaluation.objective && (evaluation.objective.monthly_pass === false || evaluation.objective.pass === false)
     || evaluation && evaluation.retrospective && evaluation.retrospective.any_fail
@@ -3125,6 +3131,9 @@ async function main() {
         "PINE_SHADOW_COMPARE_ONLY: keep Pine as manual comparison/visualization shadow only; do not prioritize Pine modification over server signal correction",
       ]
       : []),
+    ...(currentVisualPine && currentVisualPine.strategy_id
+      ? [`CURRENT_VISUAL_PINE: ${currentVisualPine.strategy_id} / status=${currentVisualPine.status || "N/A"} / source=${currentVisualPine.source_file_path || "N/A"} / latest=${currentVisualPine.latest_generated_file_path || "N/A"}`]
+      : []),
     ...(Array.isArray(selfEvolutionObjectiveRecoveryGovernorSummary.next_actions) ? selfEvolutionObjectiveRecoveryGovernorSummary.next_actions : []),
     ...(Array.isArray(selfEvolutionObjectiveRecoveryEffectSummary.next_actions) ? selfEvolutionObjectiveRecoveryEffectSummary.next_actions : []),
   ].filter(Boolean)));
@@ -3176,6 +3185,21 @@ async function main() {
     self_evolution_server_primary_canary: evaluation.self_evolution_server_primary_canary,
     self_evolution_server_primary_acceptance_watch: selfEvolutionServerPrimaryAcceptanceWatchSummary,
     self_evolution_pine_shadow_drift: evaluation.self_evolution_pine_shadow_drift,
+    current_visual_pine: currentVisualPine ? {
+      strategy_id: String(currentVisualPine.strategy_id || "").trim() || null,
+      status: String(currentVisualPine.status || "").trim().toUpperCase() || null,
+      source_file_path: String(currentVisualPine.source_file_path || "").trim() || null,
+      latest_generated_file_path: String(currentVisualPine.latest_generated_file_path || "").trim() || null,
+      synced: currentVisualPine.synced === true,
+      opened: currentVisualPine.opened === true,
+    } : {
+      strategy_id: String(process.env.DONBEOLJA_STRATEGY_ID || "").trim() || null,
+      status: null,
+      source_file_path: null,
+      latest_generated_file_path: null,
+      synced: false,
+      opened: false,
+    },
     self_evolution_openclaw_autonomy_contract: selfEvolutionOpenclawAutonomyContractSummary,
     self_evolution_bundle_activation: evaluation.self_evolution_bundle_activation,
     self_evolution_objective_recovery_governor: selfEvolutionObjectiveRecoveryGovernorSummary,
@@ -3212,7 +3236,7 @@ async function main() {
     codex_authority: evaluation.codex_authority,
     stage_autopilot: evaluation.stage_autopilot,
     retrospective: evaluation.retrospective,
-    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, phase0Artifact, selfEvolutionDatasetArtifact, selfEvolutionObjectiveArtifact, selfEvolutionChangeResultAttributionArtifact, selfEvolutionAttributionArtifact, selfEvolutionCandidatesArtifact, selfEvolutionReplayArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionServerSignalAuthorityArtifact, selfEvolutionServerSignalQualityArtifact, selfEvolutionServerSignalCutoverReadinessArtifact, selfEvolutionDropValidationArtifact, selfEvolutionProvisionalRealizedOutcomeArtifact, selfEvolutionOverrideAuthorityArtifact, selfEvolutionExecutionQualityArtifact, selfEvolutionReversePolicyArtifact, selfEvolutionServerPrimaryLearningEpochArtifact, selfEvolutionMarketObjectiveScoreArtifact, selfEvolutionServerVsPinePerformanceDeltaArtifact, selfEvolutionExplorationBudgetArtifact, selfEvolutionServerMarketCapitalAllocatorArtifact, selfEvolutionServerMarketQuarantineArtifact, selfEvolutionExplorationProposalArtifact, selfEvolutionExplorationApplyCandidateArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionServerPrimaryAcceptanceWatchArtifact, selfEvolutionPineShadowDriftArtifact, selfEvolutionBundleActivationArtifact, selfEvolutionOpenclawAutonomyContractArtifact, selfEvolutionObjectiveRecoveryGovernorArtifact, selfEvolutionObjectiveRecoveryEffectArtifact, selfEvolutionEvGateRescueArtifact, selfEvolutionMemoryArtifact, codexArtifact, stageAutopilotArtifact, weeklyPineHistoryArtifact, retrospectiveArtifact].map((row) => ({
+    artifacts: [governanceArtifact, changeArtifact, canaryArtifact, mlArtifact, evArtifact, waitArtifact, phase0Artifact, selfEvolutionDatasetArtifact, selfEvolutionObjectiveArtifact, selfEvolutionChangeResultAttributionArtifact, selfEvolutionAttributionArtifact, selfEvolutionCandidatesArtifact, selfEvolutionReplayArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionServerSignalAuthorityArtifact, selfEvolutionServerSignalQualityArtifact, selfEvolutionServerSignalCutoverReadinessArtifact, selfEvolutionDropValidationArtifact, selfEvolutionProvisionalRealizedOutcomeArtifact, selfEvolutionOverrideAuthorityArtifact, selfEvolutionExecutionQualityArtifact, selfEvolutionReversePolicyArtifact, selfEvolutionServerPrimaryLearningEpochArtifact, selfEvolutionMarketObjectiveScoreArtifact, selfEvolutionServerVsPinePerformanceDeltaArtifact, selfEvolutionExplorationBudgetArtifact, selfEvolutionServerMarketCapitalAllocatorArtifact, selfEvolutionServerMarketQuarantineArtifact, selfEvolutionExplorationProposalArtifact, selfEvolutionExplorationApplyCandidateArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionServerPrimaryAcceptanceWatchArtifact, selfEvolutionPineShadowDriftArtifact, currentVersionPineSyncArtifact, selfEvolutionBundleActivationArtifact, selfEvolutionOpenclawAutonomyContractArtifact, selfEvolutionObjectiveRecoveryGovernorArtifact, selfEvolutionObjectiveRecoveryEffectArtifact, selfEvolutionEvGateRescueArtifact, selfEvolutionMemoryArtifact, codexArtifact, stageAutopilotArtifact, weeklyPineHistoryArtifact, retrospectiveArtifact].map((row) => ({
       name: row.name,
       filePath: row.filePath,
       fresh: row.fresh,
