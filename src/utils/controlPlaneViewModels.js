@@ -138,6 +138,29 @@ function buildLink(label, href) {
   return { label: label || href, href };
 }
 
+function buildStrategyCard(title, artifact, fallbackStatus) {
+  const lines = Array.isArray(artifact && artifact.raw && artifact.raw.lines)
+    ? artifact.raw.lines.filter(Boolean)
+    : [];
+  const hasStrategy = lines.length > 0;
+  const rows = hasStrategy
+    ? lines.slice(0, 4).map((line, index) => ({
+        label: `${index + 1}`,
+        value: compactText(line, 180),
+      }))
+    : [{ label: "안내", value: compactText(fallbackStatus || "아직 생성되지 않았습니다.", 180) }];
+  return {
+    title,
+    tone: hasStrategy ? "ok" : "warn",
+    rows: [
+      { label: "상태", value: hasStrategy ? "READY" : "PENDING" },
+      { label: "기준", value: compactText(artifact && artifact.raw && artifact.raw.source) },
+      { label: "갱신 시각", value: compactText(artifact && artifact.raw && artifact.raw.generated_at_kst) },
+      ...rows,
+    ],
+  };
+}
+
 const UI_TEXT_MAP = {
   "Mission Control": "미션 컨트롤",
   "Objective Recovery": "목표 회복",
@@ -790,6 +813,9 @@ function buildRecoveryViewModel() {
   const signalQuality = loadLatestArtifact("server_signal_quality_latest.json");
   const signalRuntime = loadLatestArtifact("server_signal_runtime_latest.json");
   const autonomyContract = loadLatestArtifact("best_self_evolution_openclaw_autonomy_contract_latest.json");
+  const monthlyStrategy = loadLatestArtifact("objective_monthly_strategy_latest.json");
+  const weeklyStrategy = loadLatestArtifact("objective_weekly_strategy_latest.json");
+  const dailyStrategy = loadLatestArtifact("objective_daily_strategy_latest.json");
   const nextAction = Array.isArray(governor.summary.next_actions) && governor.summary.next_actions.length
     ? governor.summary.next_actions[0]
     : null;
@@ -995,6 +1021,16 @@ function buildRecoveryViewModel() {
             ],
             notes: sliceList(objectiveSupervisor.display && objectiveSupervisor.display.blockers, 4),
           },
+        ],
+      },
+      {
+        title: "전략 계층",
+        description: "월간 큰 전략, 주간 쪼개기, 오늘 실행 계획을 같은 화면에서 바로 읽습니다.",
+        columns: 3,
+        cards: [
+          buildStrategyCard("월간 전략", monthlyStrategy, "다음달 1일 회고 후 최신 전략이 갱신됩니다."),
+          buildStrategyCard("주간 전략", weeklyStrategy, "다음 월요일 회고 후 최신 전략이 갱신됩니다."),
+          buildStrategyCard("일간 계획", dailyStrategy, "오늘 회고 후 최신 계획이 갱신됩니다."),
         ],
       },
       {
