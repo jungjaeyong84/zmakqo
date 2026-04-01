@@ -565,6 +565,57 @@ function evaluateReversePolicyStageGuard({ stage = "", candidate = {}, reversePo
   };
 }
 
+function evaluateExplorationBudgetStageGuard({ stage = "", candidate = {}, explorationBudget = null } = {}) {
+  const stageKey = String(stage || "").trim().toUpperCase();
+  if (stageKey !== "EV" && stageKey !== "WAIT") {
+    return { allowed: true, blockers: [], target_markets: [] };
+  }
+  const summary = explorationBudget && typeof explorationBudget === "object" ? explorationBudget : {};
+  const status = String(summary.status || "").trim().toUpperCase();
+  const targetMarkets = resolveCandidateTargetMarkets(candidate);
+  if (!targetMarkets.length || candidate.actionable !== true || status !== "EXPLORATION_BUDGET_ACTIVE") {
+    return { allowed: true, blockers: [], target_markets: [] };
+  }
+  const productionMarkets = new Set(
+    (Array.isArray(summary.production_markets) ? summary.production_markets : [])
+      .map((row) => String(row || "").trim().toUpperCase())
+      .filter(Boolean)
+  );
+  const explorationMarkets = new Set(
+    (Array.isArray(summary.exploration_markets) ? summary.exploration_markets : [])
+      .map((row) => String(row || "").trim().toUpperCase())
+      .filter(Boolean)
+  );
+  const deferredMarkets = new Set(
+    (Array.isArray(summary.deferred_penalty_markets) ? summary.deferred_penalty_markets : [])
+      .map((row) => String(row || "").trim().toUpperCase())
+      .filter(Boolean)
+  );
+  const matchedProduction = targetMarkets.filter((market) => productionMarkets.has(market));
+  if (matchedProduction.length) return { allowed: true, blockers: [], target_markets: matchedProduction };
+  const matchedDeferred = targetMarkets.filter((market) => deferredMarkets.has(market));
+  if (matchedDeferred.length) {
+    return {
+      allowed: false,
+      blockers: [`EXPLORATION_BUDGET_DEFERRED:${matchedDeferred.join("|")}`],
+      target_markets: matchedDeferred,
+    };
+  }
+  const matchedExploration = targetMarkets.filter((market) => explorationMarkets.has(market));
+  if (matchedExploration.length) {
+    return {
+      allowed: false,
+      blockers: [`EXPLORATION_BUDGET_EXPLORATION_ONLY:${matchedExploration.join("|")}`],
+      target_markets: matchedExploration,
+    };
+  }
+  return {
+    allowed: false,
+    blockers: [`EXPLORATION_BUDGET_NOT_ALLOCATED:${targetMarkets.join("|")}`],
+    target_markets: targetMarkets,
+  };
+}
+
 function sortCanonicalPolicyCandidates(rows = []) {
   return rows.slice().sort((a, b) => {
     const priorityDelta = (toNum(b && b.evidence && b.evidence.priority_score) ?? -Infinity) - (toNum(a && a.evidence && a.evidence.priority_score) ?? -Infinity);
@@ -1137,6 +1188,7 @@ function renderMarkdown(report = {}) {
     if (row.blockers && row.blockers.length) lines.push(`  - blockers: ${row.blockers.join(", ")}`);
     if (row.execution_quality_blockers && row.execution_quality_blockers.length) lines.push(`  - execution_quality: ${row.execution_quality_blockers.join(", ")}`);
     if (row.reverse_policy_blockers && row.reverse_policy_blockers.length) lines.push(`  - reverse_policy: ${row.reverse_policy_blockers.join(", ")}`);
+    if (row.exploration_budget_blockers && row.exploration_budget_blockers.length) lines.push(`  - exploration_budget: ${row.exploration_budget_blockers.join(", ")}`);
     if (row.override_authority_blockers && row.override_authority_blockers.length) lines.push(`  - override_authority: ${row.override_authority_blockers.join(", ")}`);
     if (row.override_touched_markets && row.override_touched_markets.length) lines.push(`  - touched_markets: ${row.override_touched_markets.join(", ")}`);
     if (row.signature) lines.push(`  - signature: ${row.signature}`);
@@ -1272,7 +1324,7 @@ function isPreparedPineAligned(latestWeeklyHistory = {}, candidate = {}) {
     || (candidateDisplaySignature && displayRecommendedPatchId === candidateDisplaySignature);
 }
 
-async function applyStageCandidate({ stage, candidate, stageState, history, nowMeta, nowMs, canaryPass, objectiveArtifact, currentSys, snapshotKeys, selfEvolutionRollbackReady = false, overrideAuthority = null, executionQuality = null, reversePolicy = null }) {
+async function applyStageCandidate({ stage, candidate, stageState, history, nowMeta, nowMs, canaryPass, objectiveArtifact, currentSys, snapshotKeys, selfEvolutionRollbackReady = false, overrideAuthority = null, executionQuality = null, reversePolicy = null, explorationBudget = null }) {
   const snapshot = pickSettingsSnapshot(currentSys, snapshotKeys);
   const changeBudgetOk = stageChangeBudgetOk(history, nowMs, stage);
   const nextHistory = candidate.signature
@@ -1315,9 +1367,14 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
     candidate,
     reversePolicy,
   });
+  const explorationBudgetGuard = evaluateExplorationBudgetStageGuard({
+    stage,
+    candidate,
+    explorationBudget,
+  });
   const combinedGuard = {
-    ready: guard.ready === true && overrideGuard.allowed === true && executionQualityGuard.allowed === true && reversePolicyGuard.allowed === true,
-    blockers: [...(guard.blockers || []), ...(overrideGuard.blockers || []), ...(executionQualityGuard.blockers || []), ...(reversePolicyGuard.blockers || [])],
+    ready: guard.ready === true && overrideGuard.allowed === true && executionQualityGuard.allowed === true && reversePolicyGuard.allowed === true && explorationBudgetGuard.allowed === true,
+    blockers: [...(guard.blockers || []), ...(overrideGuard.blockers || []), ...(executionQualityGuard.blockers || []), ...(reversePolicyGuard.blockers || []), ...(explorationBudgetGuard.blockers || [])],
   };
 
   if (candidate.actionable && combinedGuard.ready && stageState.applied_signature !== candidate.signature) {
@@ -1360,6 +1417,7 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
         override_touched_markets: overrideGuard.touched_markets || [],
         execution_quality_blockers: [],
         reverse_policy_blockers: [],
+        exploration_budget_blockers: [],
       },
       history: appendStageHistory(nextHistory, {
         stage,
@@ -1441,6 +1499,7 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
       override_touched_markets: overrideGuard.touched_markets || [],
       execution_quality_blockers: executionQualityGuard.blockers || [],
       reverse_policy_blockers: reversePolicyGuard.blockers || [],
+      exploration_budget_blockers: explorationBudgetGuard.blockers || [],
     },
     history: nextHistory,
     action: null,
@@ -1808,6 +1867,7 @@ async function main() {
     overrideAuthority: overrideAuthoritySummary,
     executionQuality: selfEvolutionExecutionQuality,
     reversePolicy: selfEvolutionReversePolicy,
+    explorationBudget: selfEvolutionExplorationBudget,
   });
   history = result.history;
   stateData.stages.AI = result.stageState;
@@ -1823,6 +1883,7 @@ async function main() {
     execution_quality_blockers: result.stageState.execution_quality_blockers || [],
     reverse_policy_blockers: result.stageState.reverse_policy_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
+    exploration_budget_blockers: result.stageState.exploration_budget_blockers || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
     snapshot_path: result.stageState.last_snapshot_path || null,
@@ -1851,6 +1912,7 @@ async function main() {
     overrideAuthority: overrideAuthoritySummary,
     executionQuality: selfEvolutionExecutionQuality,
     reversePolicy: selfEvolutionReversePolicy,
+    explorationBudget: selfEvolutionExplorationBudget,
   });
   history = result.history;
   stateData.stages.MARKET = result.stageState;
@@ -1866,6 +1928,7 @@ async function main() {
     execution_quality_blockers: result.stageState.execution_quality_blockers || [],
     reverse_policy_blockers: result.stageState.reverse_policy_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
+    exploration_budget_blockers: result.stageState.exploration_budget_blockers || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
     snapshot_path: result.stageState.last_snapshot_path || null,
@@ -1909,6 +1972,7 @@ async function main() {
     overrideAuthority: overrideAuthoritySummary,
     executionQuality: selfEvolutionExecutionQuality,
     reversePolicy: selfEvolutionReversePolicy,
+    explorationBudget: selfEvolutionExplorationBudget,
   });
   }
   history = result.history;
@@ -1925,6 +1989,7 @@ async function main() {
     execution_quality_blockers: result.stageState.execution_quality_blockers || [],
     reverse_policy_blockers: result.stageState.reverse_policy_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
+    exploration_budget_blockers: result.stageState.exploration_budget_blockers || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
     snapshot_path: result.stageState.last_snapshot_path || null,
@@ -1972,6 +2037,7 @@ async function main() {
     overrideAuthority: overrideAuthoritySummary,
     executionQuality: selfEvolutionExecutionQuality,
     reversePolicy: selfEvolutionReversePolicy,
+    explorationBudget: selfEvolutionExplorationBudget,
   });
   }
   history = result.history;
@@ -1988,6 +2054,7 @@ async function main() {
     execution_quality_blockers: result.stageState.execution_quality_blockers || [],
     reverse_policy_blockers: result.stageState.reverse_policy_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
+    exploration_budget_blockers: result.stageState.exploration_budget_blockers || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
     snapshot_path: result.stageState.last_snapshot_path || null,
@@ -2022,6 +2089,7 @@ async function main() {
     overrideAuthority: overrideAuthoritySummary,
     executionQuality: selfEvolutionExecutionQuality,
     reversePolicy: selfEvolutionReversePolicy,
+    explorationBudget: selfEvolutionExplorationBudget,
   });
   history = result.history;
   stateData.stages.CANONICAL_POLICY = result.stageState;
@@ -2038,6 +2106,7 @@ async function main() {
     execution_quality_blockers: result.stageState.execution_quality_blockers || [],
     reverse_policy_blockers: result.stageState.reverse_policy_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
+    exploration_budget_blockers: result.stageState.exploration_budget_blockers || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
     active_signature: result.stageState.applied_signature || activeCanonicalPolicySignature,
@@ -2089,6 +2158,7 @@ async function main() {
     overrideAuthority: overrideAuthoritySummary,
     executionQuality: selfEvolutionExecutionQuality,
     reversePolicy: selfEvolutionReversePolicy,
+    explorationBudget: selfEvolutionExplorationBudget,
   });
   history = result.history;
   stateData.stages.SOURCE_MODE = result.stageState;
@@ -2109,6 +2179,7 @@ async function main() {
     execution_quality_blockers: result.stageState.execution_quality_blockers || [],
     reverse_policy_blockers: result.stageState.reverse_policy_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
+    exploration_budget_blockers: result.stageState.exploration_budget_blockers || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
     active_signature: result.stageState.applied_signature || activeSourceModeSignature,
