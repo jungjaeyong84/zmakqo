@@ -18,6 +18,7 @@ const INPUTS = Object.freeze({
   parity: path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_parity_latest.json"),
   runtime: path.join(OPS_DAILY_DIR, "server_signal_runtime_latest.json"),
   evGateRescue: path.join(OPS_DAILY_DIR, "best_self_evolution_ev_gate_rescue_latest.json"),
+  strategyAlignment: path.join(OPS_DAILY_DIR, "strategy_id_alignment_latest.json"),
   serverPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
 });
 
@@ -40,6 +41,7 @@ function renderMarkdown(report = {}) {
     `- recommended_action: ${status.recommended_action || "N/A"}`,
     `- ev_policy_rescue: rate=${status.ev_policy_rescue_rate ?? "N/A"} / top_market=${status.ev_policy_top_rescue_market || "N/A"} / action=${status.ev_policy_recommended_action || "N/A"}`,
     `- blocker_actions: ${Array.isArray(status.blocker_actions) && status.blocker_actions.length ? status.blocker_actions.map((row) => `${row.family}:${row.action}`).join(", ") : "none"}`,
+    `- strategy_gate_alignment: historical_only=${status.strategy_gate_historical_only ? "YES" : "NO"} / fresh_status=${status.strategy_gate_freshness_status || "N/A"} / guard=${status.strategy_gate_guard_count ?? "N/A"} / after_live_revision=${status.strategy_gate_after_live_revision_count ?? "N/A"}`,
     `- canary: ${status.canary_acceptance_ready ? "READY" : "PENDING"} / ${status.canary_acceptance_reason || "N/A"}`,
     `- blockers: ${Array.isArray(summary.blockers) && summary.blockers.length ? summary.blockers.join(", ") : "none"}`,
     `- top_mismatch_market: ${Array.isArray(rows.top_mismatch_market) && rows.top_mismatch_market.length ? rows.top_mismatch_market.map((row) => `${row.key}=${row.count}`).join(", ") : "none"}`,
@@ -65,6 +67,7 @@ function main() {
       parity: readJsonRawSafe(INPUTS.parity, null),
       runtime: readJsonRawSafe(INPUTS.runtime, null),
       evGateRescue: readJsonRawSafe(INPUTS.evGateRescue, null),
+      strategyAlignment: readJsonRawSafe(INPUTS.strategyAlignment, null),
       serverPrimaryCanary: readJsonRawSafe(INPUTS.serverPrimaryCanary, null),
     }),
   };

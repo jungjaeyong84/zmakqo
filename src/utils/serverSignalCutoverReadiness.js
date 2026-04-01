@@ -50,6 +50,7 @@ function deriveServerSignalCutoverReadiness({
   parity = null,
   runtime = null,
   evGateRescue = null,
+  strategyAlignment = null,
   serverPrimaryCanary = null,
 } = {}) {
   const authoritySummary = readSummary(authority);
@@ -57,6 +58,7 @@ function deriveServerSignalCutoverReadiness({
   const paritySummary = deriveCanonicalParityDiagnostics(parity);
   const runtimeSummary = readSummary(runtime);
   const evGateRescueSummary = readSummary(evGateRescue);
+  const strategyAlignmentData = strategyAlignment && typeof strategyAlignment === "object" ? strategyAlignment : {};
   const canarySummary = readSummary(serverPrimaryCanary);
   const parityRows = readRows(parity);
 
@@ -81,6 +83,18 @@ function deriveServerSignalCutoverReadiness({
     || null;
   const canaryReady = canarySummary.acceptance_ready === true;
   const canaryReason = String(canarySummary.acceptance_reason || "").trim().toUpperCase() || null;
+  const strategyMismatch = strategyAlignmentData.mismatch && typeof strategyAlignmentData.mismatch === "object" ? strategyAlignmentData.mismatch : {};
+  const strategyFreshness = strategyAlignmentData.mismatch_freshness && typeof strategyAlignmentData.mismatch_freshness === "object" ? strategyAlignmentData.mismatch_freshness : {};
+  const strategyAlignmentSummary = strategyAlignmentData.alignment && typeof strategyAlignmentData.alignment === "object" ? strategyAlignmentData.alignment : {};
+  const strategyGuardCount = toNum(strategyMismatch.guard_count) || 0;
+  const strategyAfterLiveRevisionCount = toNum(strategyMismatch.after_live_revision_count) || 0;
+  const strategyFreshnessStatus = toUpper(strategyFreshness.status) || null;
+  const strategyLiveSyncNeeded = strategyAlignmentSummary.live_sync_needed === true;
+  const strategyGateHistoricalOnly = strategyGateMismatchN > 0
+    && strategyGuardCount <= 0
+    && strategyAfterLiveRevisionCount <= 0
+    && strategyFreshnessStatus === "HISTORICAL_ONLY"
+    && strategyLiveSyncNeeded !== true;
   const evRescueRate = toNum(evGateRescueSummary.rescue_rate);
   const evPointPassLowerFailCount = toNum(evGateRescueSummary.point_pass_lower_fail_count) || 0;
   const evPointFailCount = toNum(evGateRescueSummary.point_fail_count) || 0;
@@ -129,7 +143,7 @@ function deriveServerSignalCutoverReadiness({
   if (finalDownstreamMismatchN > 0) {
     if (evPolicyMismatchN > 0) blockers.push("EV_POLICY_DRIFT_ACTIVE");
     if (cooldownPolicyMismatchN > 0) blockers.push("COOLDOWN_POLICY_DRIFT_ACTIVE");
-    if (strategyGateMismatchN > 0) blockers.push("STRATEGY_GATE_DRIFT_ACTIVE");
+    if (strategyGateMismatchN > 0 && !strategyGateHistoricalOnly) blockers.push("STRATEGY_GATE_DRIFT_ACTIVE");
     if (evPolicyMismatchN <= 0 && cooldownPolicyMismatchN <= 0 && strategyGateMismatchN <= 0) blockers.push("FINAL_DOWNSTREAM_MISMATCH_ACTIVE");
   } else if (mismatchN > 0 || driftStatus === "PARITY_DRIFT") {
     blockers.push("PARITY_DRIFT_ACTIVE");
@@ -143,7 +157,7 @@ function deriveServerSignalCutoverReadiness({
   const blockerActions = [];
   if (evPolicyMismatchN > 0) blockerActions.push({ family: "EV_POLICY", action: evRecommendedAction || "HOLD_EV_POLICY_REVIEW" });
   if (cooldownPolicyMismatchN > 0) blockerActions.push({ family: "COOLDOWN_POLICY", action: "RELAX_OPPOSITE_COOLDOWN_REVIEW" });
-  if (strategyGateMismatchN > 0) blockerActions.push({ family: "STRATEGY_GATE", action: "ALIGN_STRATEGY_GATE_REVIEW" });
+  if (strategyGateMismatchN > 0) blockerActions.push({ family: "STRATEGY_GATE", action: strategyGateHistoricalOnly ? "MONITOR_HISTORICAL_STRATEGY_GATE" : "ALIGN_STRATEGY_GATE_REVIEW" });
 
   const promotionReady = blockers.length === 0 && sourceMode !== "SERVER_PRIMARY";
   const alreadyServerPrimary = sourceMode === "SERVER_PRIMARY";
@@ -168,6 +182,10 @@ function deriveServerSignalCutoverReadiness({
       ev_policy_mismatch_n: evPolicyMismatchN,
       cooldown_policy_mismatch_n: cooldownPolicyMismatchN,
       strategy_gate_mismatch_n: strategyGateMismatchN,
+      strategy_gate_historical_only: strategyGateHistoricalOnly,
+      strategy_gate_guard_count: strategyGuardCount,
+      strategy_gate_after_live_revision_count: strategyAfterLiveRevisionCount,
+      strategy_gate_freshness_status: strategyFreshnessStatus,
       dominant_mismatch_family: dominantMismatchFamily,
       ev_policy_rescue_rate: evRescueRate,
       ev_policy_point_pass_lower_fail_count: evPointPassLowerFailCount,
@@ -179,6 +197,7 @@ function deriveServerSignalCutoverReadiness({
       entry_24h_n: entryN,
       intent_24h_n: intentN,
       fill_24h_n: fillN,
+      strategy_gate_historical_only: strategyGateHistoricalOnly,
       canary_acceptance_ready: canaryReady,
       canary_acceptance_reason: canaryReason,
     },
@@ -194,6 +213,7 @@ function deriveServerSignalCutoverReadiness({
       entry_24h_n: entryN,
       intent_24h_n: intentN,
       fill_24h_n: fillN,
+      strategy_gate_historical_only: strategyGateHistoricalOnly,
       dominant_mismatch_family: dominantMismatchFamily,
       recommended_action: genericRecommendedAction,
       blocker_actions: blockerActions,
