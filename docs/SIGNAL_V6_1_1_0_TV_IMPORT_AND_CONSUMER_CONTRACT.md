@@ -5,6 +5,8 @@
   - `/Users/jeongjaeyong/Projects/donbeolja/code/donbeolja_v6.1.1.0_TV_IMPORT_FINAL.pine.txt`
 - webhook consumer:
   - `/Users/jeongjaeyong/Projects/donbeolja/src/routes/webhook.routes.js`
+- canary checklist:
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/SIGNAL_V6_1_1_0_CANARY_APPLY_CHECKLIST.md`
 
 ## 1. 목적
 

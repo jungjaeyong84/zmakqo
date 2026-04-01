@@ -30,7 +30,6 @@ function buildStepPlan() {
     { id: "bundle_activation", script: "report-best-self-evolution-bundle-activation.js" },
     { id: "objective_seed", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SKIP_TELEGRAM: "1", OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "SEED" } },
     { id: "objective", script: "report-best-self-evolution-objective.js" },
-    { id: "openclaw_autonomy_contract", script: "report-best-self-evolution-openclaw-autonomy-contract.js" },
     { id: "attribution", script: "report-best-self-evolution-attribution.js" },
     { id: "candidates", script: "report-best-self-evolution-candidates.js" },
     { id: "replay", script: "report-best-self-evolution-replay.js" },
@@ -40,6 +39,7 @@ function buildStepPlan() {
     { id: "memory", script: "report-best-self-evolution-memory-ledger.js" },
     { id: "deployment_guards", script: "report-best-self-evolution-deployment-guards.js" },
     { id: "objective_recovery_governor", script: "report-best-self-evolution-objective-recovery-governor.js" },
+    { id: "objective_recovery_effect", script: "report-best-self-evolution-objective-recovery-effect.js" },
     { id: "weight_tuning", script: "report-best-self-evolution-weight-tuning.js" },
     {
       id: "codex_patch_engine",
@@ -58,6 +58,7 @@ function buildStepPlan() {
     },
     { id: "authority_ensemble", script: "report-self-evolution-authority-ensemble.js" },
     { id: "deployment_plan", script: "report-best-self-evolution-deployment-plan.js", env: { SELF_EVOLUTION_SYNC_LIVE_SERVICES: "0" } },
+    { id: "openclaw_autonomy_contract", script: "report-best-self-evolution-openclaw-autonomy-contract.js" },
     { id: "objective_integrated", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SKIP_TELEGRAM: "1", OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "INTEGRATED" } },
     { id: "objective_final", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "FINAL" } },
     { id: "loop_monitor", script: "report-best-self-evolution-loop-monitor.js" },

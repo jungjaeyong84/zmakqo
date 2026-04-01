@@ -27,3 +27,22 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.authority_policy.degraded_timeout_policy.enabled, true);
   console.log("OPENCLAW_AUTONOMY_CONTRACT_TEST_OK");
 })();
+
+(() => {
+  const report = deriveOpenClawAutonomyContract({
+    objective: { global_objective_score: { objective_score: -1.2, snapshot: { win_rate: 0.5 } } },
+    objectiveSupervisor: {
+      display: {
+        objective: { monthly_run_rate_krw: 1000 },
+        self_evolution_objective: { objective_score: -1.2, win_rate: 0.5 },
+      },
+    },
+    deploymentPlan: { summary: { plan_status: "APPLIED_ACTIVE", authority_state: "APPROVED", external_authority_pending: false, authority_approved: true } },
+    serverPrimaryCanary: { summary: { acceptance_ready: false, acceptance_reason: "SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT", server_primary_executed_n: 0, pine_shadow_disagreement_rate: 0, rollback_trigger_n: 0 } },
+    watchdog: { display: { verdict: "PASS", scheduler_mode: "OPENCLAW_CRON" } },
+  });
+
+  assert.strictEqual(report.current_status.authority_pending, false);
+  assert.strictEqual(report.current_status.authority_state, "APPROVED");
+  assert.strictEqual(report.summary.authority_state, "APPROVED");
+})();
