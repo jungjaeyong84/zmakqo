@@ -62,7 +62,7 @@ function deriveServerMarketQuarantine({
         quarantine_reasons: reasons,
         quarantine_reason: reasons[0] || "CAPITAL_ALLOCATOR_QUARANTINE",
         quarantine_severity: deriveSeverity(reasons),
-        recommended_action: "QUARANTINE_SERVER_MARKET",
+        recommended_action: "WATCH_ONLY_NO_EXCLUDE",
         release_action: "REVIEW_AFTER_OBJECTIVE_AND_QUALITY_RECOVERY",
       };
     })
@@ -71,7 +71,9 @@ function deriveServerMarketQuarantine({
   const topQuarantine = quarantineRows[0] || null;
 
   return {
-    status: quarantineRows.length > 0 ? "QUARANTINE_ACTIVE" : "QUARANTINE_CLEAR",
+    status: quarantineRows.length > 0 ? "QUARANTINE_WATCH_ONLY_ACTIVE" : "QUARANTINE_CLEAR",
+    enforced: false,
+    server_signal_learning_mode: true,
     quarantine_market_n: quarantineRows.length,
     top_quarantine_market: topQuarantine ? topQuarantine.market : null,
     top_quarantine_reason: topQuarantine ? topQuarantine.quarantine_reason : null,

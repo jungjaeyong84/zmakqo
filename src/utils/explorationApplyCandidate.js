@@ -85,9 +85,12 @@ function deriveExplorationApplyCandidate({
   const stage = upper(top.stage);
   const sourceAction = upper(top.proposed_action);
   const blockers = [];
+  const penaltyMode = upper(budgetSummary.penalty_mode) || "ENFORCED";
 
   if (!includesMarket(budgetSummary.exploration_markets, market)) blockers.push("NOT_IN_EXPLORATION_SLOT");
-  if (includesMarket(budgetSummary.deferred_penalty_markets, market)) blockers.push("EXPLORATION_DEFERRED_PENALTY");
+  if (penaltyMode === "ENFORCED" && includesMarket(budgetSummary.deferred_penalty_markets, market)) {
+    blockers.push("EXPLORATION_DEFERRED_PENALTY");
+  }
 
   const executionPenaltyMarkets = [
     executionSummary.top_latency_market,
@@ -117,6 +120,7 @@ function deriveExplorationApplyCandidate({
     manual_confirm_required: manualConfirmRequired,
     auto_apply_allowed: autoApplyAllowed,
     max_market_apply_per_cycle: maxMarketApplyPerCycle,
+    penalty_mode: penaltyMode,
     dry_run_status: upper(proposalSummary.status),
     objective_score: toNum(top.objective_score),
     recovery_priority_score: toNum(top.recovery_priority_score),
@@ -137,6 +141,7 @@ function deriveExplorationApplyCandidate({
     top_stage: candidate.stage,
     top_action: candidate.proposed_action,
     blockers,
+    penalty_mode: penaltyMode,
     effective_realized_n: Number.isFinite(effectiveRealizedN) ? effectiveRealizedN : null,
     min_effective_realized_n: minEffectiveRealizedN,
     candidates: [candidate],

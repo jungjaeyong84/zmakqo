@@ -351,7 +351,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       loop: "SERVER_MARKET_QUARANTINE",
       fresh: artifacts.serverMarketQuarantine && artifacts.serverMarketQuarantine.fresh === true,
       cycle_id: readCycleId(serverMarketQuarantine),
-      status: String(serverMarketQuarantineSummary.status || "").trim().toUpperCase() === "QUARANTINE_ACTIVE"
+      status: ["QUARANTINE_ACTIVE", "QUARANTINE_WATCH_ONLY_ACTIVE"].includes(String(serverMarketQuarantineSummary.status || "").trim().toUpperCase())
         ? "WARN"
         : (String(serverMarketQuarantineSummary.status || "").trim().toUpperCase() === "QUARANTINE_CLEAR" ? "PASS" : "N/A"),
       reason: `quarantine=${serverMarketQuarantineSummary.quarantine_market_n ?? 0} / top=${serverMarketQuarantineSummary.top_quarantine_market || "N/A"} / reason=${serverMarketQuarantineSummary.top_quarantine_reason || "N/A"} / severity=${serverMarketQuarantineSummary.top_quarantine_severity || "N/A"}`,

@@ -395,7 +395,7 @@ async function main() {
     loop: "SERVER_MARKET_QUARANTINE",
     fresh: artifacts.serverMarketQuarantine && artifacts.serverMarketQuarantine.fresh === true,
     cycle_id: String(serverMarketQuarantineRaw.cycle_id || serverMarketQuarantineRaw.generation_id || "").trim() || null,
-    status: String(serverMarketQuarantineSummary.status || "").trim().toUpperCase() === "QUARANTINE_ACTIVE"
+    status: ["QUARANTINE_ACTIVE", "QUARANTINE_WATCH_ONLY_ACTIVE"].includes(String(serverMarketQuarantineSummary.status || "").trim().toUpperCase())
       ? "WARN"
       : (String(serverMarketQuarantineSummary.status || "").trim().toUpperCase() === "QUARANTINE_CLEAR" ? "PASS" : "N/A"),
     reason: `quarantine=${serverMarketQuarantineSummary.quarantine_market_n ?? 0} / top=${serverMarketQuarantineSummary.top_quarantine_market || "N/A"} / reason=${serverMarketQuarantineSummary.top_quarantine_reason || "N/A"} / severity=${serverMarketQuarantineSummary.top_quarantine_severity || "N/A"}`,

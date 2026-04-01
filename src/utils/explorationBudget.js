@@ -12,6 +12,14 @@ function clampIntEnv(name, fallback, min = 0, max = Number.MAX_SAFE_INTEGER) {
   return Math.max(min, Math.min(max, Math.round(value)));
 }
 
+function readBoolEnv(name, fallback = false) {
+  const raw = String(process.env[name] || "").trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
+  return fallback;
+}
+
 function unwrapRawReport(value) {
   if (!value || typeof value !== "object") return value || null;
   if (value.raw && typeof value.raw === "object") return value.raw;
@@ -62,6 +70,7 @@ function deriveExplorationBudget({
     8
   );
   const explorationSlotN = clampIntEnv("OPENCLAW_EXPLORATION_SLOT_N", 1, 1, 4);
+  const serverSignalLearningMode = readBoolEnv("OPENCLAW_SERVER_SIGNAL_LEARNING_MODE", true);
 
   const productionMarkets = collectOrderedUniqueMarkets(
     Array.isArray(overrideSummary.top_priority_markets) ? overrideSummary.top_priority_markets : []
@@ -85,7 +94,7 @@ function deriveExplorationBudget({
   const deferredPenaltyMarkets = [];
   for (const market of explorationCandidates) {
     if (productionMarkets.includes(market)) continue;
-    if (penaltyMarkets.includes(market)) {
+    if (!serverSignalLearningMode && penaltyMarkets.includes(market)) {
       deferredPenaltyMarkets.push(market);
       continue;
     }
@@ -101,9 +110,12 @@ function deriveExplorationBudget({
     status,
     production_slot_n: productionSlotN,
     exploration_slot_n: explorationSlotN,
+    server_signal_learning_mode: serverSignalLearningMode,
+    penalty_mode: serverSignalLearningMode ? "ADVISORY_ONLY" : "ENFORCED",
     production_markets: productionMarkets,
     exploration_markets: explorationMarkets,
-    deferred_penalty_markets: deferredPenaltyMarkets,
+    deferred_penalty_markets: serverSignalLearningMode ? [] : deferredPenaltyMarkets,
+    advisory_penalty_markets: penaltyMarkets,
     execution_quality_penalty_markets: Array.isArray(overrideSummary.execution_quality_penalty_markets)
       ? overrideSummary.execution_quality_penalty_markets
       : [],
