@@ -673,7 +673,7 @@ router.get("/dashboard/home", async (req, res) => {
     if (cached) {
       const cachedPayload = { ...cached, mission_control: buildMissionControlViewModel() };
       setHomeCache(cacheKey, cachedPayload);
-      return res.render(String(req.query.legacy || "").trim() === "1" ? "home.legacy" : "home", cachedPayload);
+      return res.render(String(req.query.legacy || "").trim() === "1" ? "home.legacy.ejs" : "home", cachedPayload);
     }
 
     const [sigSnap, dropSnap, fillSnap, intentSnap] = await Promise.all([
@@ -1496,7 +1496,7 @@ router.get("/dashboard/home", async (req, res) => {
       mission_control: buildMissionControlViewModel(),
     };
     setHomeCache(cacheKey, payload);
-    return res.render(String(req.query.legacy || "").trim() === "1" ? "home.legacy" : "home", payload);
+    return res.render(String(req.query.legacy || "").trim() === "1" ? "home.legacy.ejs" : "home", payload);
   } catch (e) {
     const errorRef = buildRouteErrorRef("HOME");
     logRouteError("HOME_ROUTE_ERROR", errorRef, e, {

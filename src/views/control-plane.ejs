@@ -1,4 +1,425 @@
-<%- include('partials/app_start', { title: `${model && model.title ? model.title : 'Control Plane'} · DONBEOLJA Ω`, pageTitle: model && model.title ? model.title : 'Control Plane', active: model && model.active ? model.active : 'mission' }) %>
-<%- include('partials/control_surface_nav', { active: model && model.active ? model.active : 'mission' }) %>
-<%- include('partials/control_surface_body', { model }) %>
-<%- include('partials/app_end') %>
+<%- include('partials/app_start_trader', { title: `${model && model.title ? model.title : '전략상태'} · DONBEOLJA Trader`, pageTitle: model && model.title ? model.title : '전략상태', active: model && model.active ? model.active : 'recovery' }) %>
+
+<style>
+  .strategy-status-screen {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .strategy-subnav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .strategy-subnav a {
+    text-decoration: none;
+    padding: 9px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--trade-border);
+    background: #fff;
+    color: var(--trade-muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .strategy-subnav a.active {
+    color: #805b00;
+    border-color: #ead8a2;
+    background: linear-gradient(180deg, #fffaf0 0%, #fff2cf 100%);
+  }
+  .strategy-layout-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) 340px;
+    gap: 16px;
+  }
+  .strategy-status-hero .trade-panel-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) 320px;
+    gap: 12px;
+  }
+  .strategy-hero-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .strategy-eyebrow {
+    color: var(--trade-gold);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .strategy-title {
+    font-size: 28px;
+    line-height: 1.08;
+    font-weight: 800;
+    letter-spacing: -.05em;
+  }
+  .strategy-detail {
+    color: var(--trade-muted);
+    font-size: 13px;
+    line-height: 1.55;
+    max-width: 720px;
+  }
+  .strategy-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .strategy-pill-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .strategy-pill {
+    padding: 12px 13px;
+    border-radius: 15px;
+    border: 1px solid var(--trade-border);
+    background: #fbfcfd;
+  }
+  .strategy-pill .label,
+  .status-mini .label,
+  .strategy-kpi .label {
+    color: var(--trade-muted);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+  }
+  .strategy-pill .value,
+  .status-mini .value,
+  .strategy-kpi .value {
+    margin-top: 6px;
+    font-size: 17px;
+    font-weight: 800;
+    letter-spacing: -.04em;
+  }
+  .status-side-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .status-mini {
+    padding: 12px 13px;
+    border: 1px solid var(--trade-border);
+    border-radius: 15px;
+    background: #fbfcfd;
+  }
+  .status-mini .meta,
+  .strategy-kpi .meta {
+    margin-top: 5px;
+    color: var(--trade-muted);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .strategy-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .strategy-kpi {
+    padding: 14px 15px;
+    border-radius: 18px;
+    border: 1px solid var(--trade-border);
+    background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
+  }
+  .strategy-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .strategy-section-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .strategy-section-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: -.03em;
+  }
+  .strategy-section-desc {
+    margin-top: 4px;
+    color: var(--trade-muted);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .strategy-card-grid.cols-3 {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .strategy-card-grid.cols-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .strategy-card {
+    border-radius: 20px;
+    border: 1px solid var(--trade-border);
+    background: #fff;
+    box-shadow: var(--trade-shadow);
+    overflow: hidden;
+  }
+  .strategy-card-head {
+    padding: 14px 16px 0;
+  }
+  .strategy-card-head h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: -.03em;
+  }
+  .strategy-card-body {
+    padding: 14px 16px 16px;
+  }
+  .strategy-kv {
+    display: grid;
+    grid-template-columns: 110px minmax(0, 1fr);
+    gap: 8px 10px;
+  }
+  .strategy-kv .k {
+    color: var(--trade-muted);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .strategy-kv .v {
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .strategy-note-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+  }
+  .strategy-note-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 8px;
+    border-radius: 999px;
+    background: #f4f6f8;
+    color: var(--trade-muted);
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .strategy-table-wrap {
+    margin-top: 12px;
+  }
+  .strategy-table-wrap table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+  .strategy-table-wrap th,
+  .strategy-table-wrap td {
+    padding: 8px 7px;
+    border-bottom: 1px solid #edf1f5;
+    text-align: left;
+    vertical-align: top;
+  }
+  .strategy-table-wrap th {
+    color: var(--trade-muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    font-weight: 700;
+  }
+  .strategy-table-wrap tbody tr:last-child td { border-bottom: 0; }
+  .strategy-card-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+  .tone-ok .strategy-title,
+  .tone-ok .strategy-pill .value,
+  .tone-ok .strategy-kpi .value { color: var(--trade-up); }
+  .tone-bad .strategy-title,
+  .tone-bad .strategy-pill .value,
+  .tone-bad .strategy-kpi .value { color: var(--trade-down); }
+  .tone-warn .strategy-title,
+  .tone-warn .strategy-pill .value,
+  .tone-warn .strategy-kpi .value { color: #8a6303; }
+  @media (max-width: 1260px) {
+    .strategy-layout-top,
+    .strategy-status-hero .trade-panel-body,
+    .strategy-card-grid.cols-3,
+    .strategy-card-grid.cols-2 {
+      grid-template-columns: 1fr;
+    }
+    .strategy-kpis {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 860px) {
+    .strategy-kpis,
+    .strategy-pill-grid,
+    .strategy-kv {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<%
+  const vm = model || {};
+  const hero = vm.hero || {};
+  const metrics = Array.isArray(vm.metrics) ? vm.metrics : [];
+  const sections = Array.isArray(vm.sections) ? vm.sections : [];
+  const toneClass = (value) => {
+    const s = String(value || '').trim();
+    return s ? `tone-${s}` : 'tone-dim';
+  };
+  const buttonClass = (tone) => {
+    const s = String(tone || '').toLowerCase();
+    if (s === 'primary') return 'trade-btn primary';
+    if (s === 'secondary') return 'trade-btn gold';
+    return 'trade-btn';
+  };
+  const sectionColsClass = (section) => Number(section && section.columns) === 3 ? 'cols-3' : 'cols-2';
+  const cellText = (value) => {
+    if (value == null || value === '') return '-';
+    if (typeof value === 'object' && value && value.label) return value.label;
+    return value;
+  };
+  const topMetrics = metrics.slice(0, 4);
+  const sideMetrics = metrics.slice(4, 8);
+%>
+
+<section class="strategy-status-screen">
+  <nav class="strategy-subnav">
+    <%- include('partials/control_surface_nav', { active: vm.active || 'recovery' }) %>
+  </nav>
+
+  <section class="strategy-layout-top">
+    <article class="trade-panel soft strategy-status-hero <%= toneClass(hero.tone) %>">
+      <div class="trade-panel-body">
+        <div class="strategy-hero-copy">
+          <% if (hero.eyebrow) { %><div class="strategy-eyebrow"><%= hero.eyebrow %></div><% } %>
+          <div class="strategy-title"><%= hero.title || '-' %></div>
+          <% if (hero.detail) { %><div class="strategy-detail"><%= hero.detail %></div><% } %>
+          <% if (Array.isArray(hero.actions) && hero.actions.length) { %>
+            <div class="strategy-actions">
+              <% hero.actions.forEach((action) => { %>
+                <a href="<%= action.href %>" class="<%= buttonClass(action.tone) %>"><%= action.label %></a>
+              <% }) %>
+            </div>
+          <% } %>
+        </div>
+        <div class="strategy-pill-grid">
+          <% (Array.isArray(hero.pills) ? hero.pills : []).forEach((pill) => { %>
+            <div class="strategy-pill <%= toneClass(pill.tone) %>">
+              <div class="label"><%= pill.label %></div>
+              <div class="value"><%= pill.value || '-' %></div>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+    </article>
+
+    <aside class="status-side-stack">
+      <% sideMetrics.forEach((metric) => { %>
+        <section class="status-mini <%= toneClass(metric.tone) %>">
+          <div class="label"><%= metric.label %></div>
+          <div class="value"><%= metric.value || '-' %></div>
+          <% if (metric.meta) { %><div class="meta"><%= metric.meta %></div><% } %>
+        </section>
+      <% }) %>
+    </aside>
+  </section>
+
+  <% if (topMetrics.length) { %>
+    <section class="strategy-kpis">
+      <% topMetrics.forEach((metric) => { %>
+        <article class="strategy-kpi <%= toneClass(metric.tone) %>">
+          <div class="label"><%= metric.label %></div>
+          <div class="value"><%= metric.value || '-' %></div>
+          <% if (metric.meta) { %><div class="meta"><%= metric.meta %></div><% } %>
+        </article>
+      <% }) %>
+    </section>
+  <% } %>
+
+  <section class="strategy-sections">
+    <% sections.forEach((section) => { %>
+      <section>
+        <div class="strategy-section-head">
+          <div>
+            <div class="strategy-section-title"><%= section.title %></div>
+            <% if (section.description) { %><div class="strategy-section-desc"><%= section.description %></div><% } %>
+          </div>
+        </div>
+        <div class="strategy-card-grid <%= sectionColsClass(section) %>">
+          <% (section.cards || []).forEach((card) => { %>
+            <article class="strategy-card <%= toneClass(card.tone) %>">
+              <div class="strategy-card-head">
+                <h2><%= card.title %></h2>
+              </div>
+              <div class="strategy-card-body">
+                <% if (Array.isArray(card.rows) && card.rows.length) { %>
+                  <div class="strategy-kv">
+                    <% card.rows.forEach((row) => { %>
+                      <div class="k"><%= row.label %></div>
+                      <div class="v"><%= row.value || '-' %></div>
+                    <% }) %>
+                  </div>
+                <% } %>
+                <% if (Array.isArray(card.notes) && card.notes.length) { %>
+                  <div class="strategy-note-list">
+                    <% card.notes.forEach((note) => { %>
+                      <span class="strategy-note-pill"><%= note %></span>
+                    <% }) %>
+                  </div>
+                <% } %>
+                <% if (card.table && Array.isArray(card.table.columns) && Array.isArray(card.table.rows) && card.table.rows.length) { %>
+                  <div class="strategy-table-wrap">
+                    <div class="scroll">
+                      <table>
+                        <thead>
+                          <tr>
+                            <% card.table.columns.forEach((column) => { %>
+                              <th><%= column.label %></th>
+                            <% }) %>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <% card.table.rows.forEach((tableRow) => { %>
+                            <tr>
+                              <% card.table.columns.forEach((column) => { %>
+                                <% const cell = tableRow[column.key]; %>
+                                <td>
+                                  <% if (cell && typeof cell === 'object' && cell.href) { %>
+                                    <a href="<%= cell.href %>"><%= cellText(cell) %></a>
+                                  <% } else { %>
+                                    <%= cellText(cell) %>
+                                  <% } %>
+                                </td>
+                              <% }) %>
+                            </tr>
+                          <% }) %>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                <% } %>
+                <% if (Array.isArray(card.actions) && card.actions.length) { %>
+                  <div class="strategy-card-actions">
+                    <% card.actions.forEach((action) => { %>
+                      <a href="<%= action.href %>" class="<%= buttonClass(action.tone) %>"><%= action.label %></a>
+                    <% }) %>
+                  </div>
+                <% } %>
+              </div>
+            </article>
+          <% }) %>
+        </div>
+      </section>
+    <% }) %>
+  </section>
+</section>
+
+<%- include('partials/app_end_trader') %>

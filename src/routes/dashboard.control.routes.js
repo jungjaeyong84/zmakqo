@@ -5,7 +5,7 @@ const { buildControlPlaneRouteModel } = require("../utils/controlPlaneViewModels
 function renderControlPlane(pageKey) {
   return (req, res) => {
     const model = buildControlPlaneRouteModel(pageKey, req.query || {});
-    return res.render("control-plane", { model });
+    return res.render(String(req.query.legacy || "").trim() === "1" ? "control-plane.legacy.ejs" : "control-plane", { model });
   };
 }
 
