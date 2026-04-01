@@ -10,6 +10,7 @@ const {
 const DERIVED_LOOP_KEYS = new Set([
   "DROP_VALIDATION",
   "PROVISIONAL_REALIZED_OUTCOME",
+  "OVERRIDE_AUTHORITY",
   "MARKET_OBJECTIVE_SCORE",
   "SERVER_VS_PINE_DELTA",
   "OPENCLAW_AUTONOMY_CONTRACT",
@@ -55,6 +56,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const serverSignalCutoverReadiness = unwrapRawReport(reports.serverSignalCutoverReadiness) || {};
   const dropValidation = unwrapRawReport(reports.dropValidation) || {};
   const provisionalRealizedOutcome = unwrapRawReport(reports.provisionalRealizedOutcome) || {};
+  const overrideAuthority = unwrapRawReport(reports.overrideAuthority) || {};
   const marketObjectiveScore = unwrapRawReport(reports.marketObjectiveScore) || {};
   const serverVsPinePerformanceDelta = unwrapRawReport(reports.serverVsPinePerformanceDelta) || {};
   const canonicalProvenance = unwrapRawReport(reports.canonicalProvenance) || {};
@@ -88,6 +90,9 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const dropValidationSummary = dropValidation.summary && typeof dropValidation.summary === "object" ? dropValidation.summary : {};
   const provisionalRealizedOutcomeSummary = provisionalRealizedOutcome.summary && typeof provisionalRealizedOutcome.summary === "object"
     ? provisionalRealizedOutcome.summary
+    : {};
+  const overrideAuthoritySummary = overrideAuthority.summary && typeof overrideAuthority.summary === "object"
+    ? overrideAuthority.summary
     : {};
   const marketObjectiveScoreSummary = marketObjectiveScore.summary && typeof marketObjectiveScore.summary === "object" ? marketObjectiveScore.summary : {};
   const serverVsPinePerformanceDeltaSummary = serverVsPinePerformanceDelta.summary && typeof serverVsPinePerformanceDelta.summary === "object"
@@ -130,6 +135,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(serverSignalCutoverReadiness)
     || readCycleId(dropValidation)
     || readCycleId(provisionalRealizedOutcome)
+    || readCycleId(overrideAuthority)
     || readCycleId(marketObjectiveScore)
     || readCycleId(serverVsPinePerformanceDelta)
     || readCycleId(canonicalProvenance)
@@ -265,6 +271,13 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
         ? "WARN"
         : (Number(provisionalRealizedOutcomeSummary.final_realized_n || 0) > 0 ? "PASS" : "HOLD"),
       reason: `final=${provisionalRealizedOutcomeSummary.final_realized_n ?? 0} / provisional=${provisionalRealizedOutcomeSummary.provisional_realized_n ?? 0} / effective=${provisionalRealizedOutcomeSummary.effective_realized_n ?? 0} / top=${provisionalRealizedOutcomeSummary.top_provisional_market || "N/A"}`,
+    },
+    {
+      loop: "OVERRIDE_AUTHORITY",
+      fresh: artifacts.overrideAuthority && artifacts.overrideAuthority.fresh === true,
+      cycle_id: readCycleId(overrideAuthority),
+      status: String(overrideAuthoritySummary.status || "").trim().toUpperCase() === "BOUNDED_AUTHORITY_ACTIVE" ? "PASS" : "HOLD",
+      reason: `max_markets=${overrideAuthoritySummary.max_market_overrides_per_cycle ?? "N/A"} / risk=${overrideAuthoritySummary.risk_override_enabled === true ? "ALLOW" : "BLOCK"} / top=${Array.isArray(overrideAuthoritySummary.top_priority_markets) && overrideAuthoritySummary.top_priority_markets.length ? overrideAuthoritySummary.top_priority_markets.map((row) => row.market).join("|") : "N/A"}`,
     },
     {
       loop: "SERVER_VS_PINE_DELTA",
@@ -528,6 +541,12 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       provisional_realized_provisional_n: toNum(provisionalRealizedOutcomeSummary.provisional_realized_n) || 0,
       provisional_realized_effective_n: toNum(provisionalRealizedOutcomeSummary.effective_realized_n) || 0,
       provisional_realized_top_market: provisionalRealizedOutcomeSummary.top_provisional_market || null,
+      override_authority_status: overrideAuthoritySummary.status || null,
+      override_authority_max_market_overrides_per_cycle: toNum(overrideAuthoritySummary.max_market_overrides_per_cycle) || 0,
+      override_authority_risk_override_enabled: overrideAuthoritySummary.risk_override_enabled === true,
+      override_authority_top_markets: Array.isArray(overrideAuthoritySummary.top_priority_markets)
+        ? overrideAuthoritySummary.top_priority_markets.map((row) => String(row && row.market || "").trim().toUpperCase()).filter(Boolean)
+        : [],
       market_objective_status: marketObjectiveScoreSummary.status || null,
       market_objective_top_recovery_market: marketObjectiveScoreSummary.top_recovery_market || null,
       market_objective_top_drag_market: marketObjectiveScoreSummary.top_drag_market || null,

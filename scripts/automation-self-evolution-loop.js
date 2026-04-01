@@ -28,6 +28,7 @@ function buildStepPlan() {
     { id: "server_signal_cutover_readiness", script: "report-server-signal-cutover-readiness.js" },
     { id: "drop_validation", script: "report-best-self-evolution-drop-validation.js" },
     { id: "provisional_realized_outcome", script: "report-best-self-evolution-provisional-realized-outcome.js" },
+    { id: "override_authority", script: "report-best-self-evolution-override-authority.js" },
     { id: "canonical_engine_provenance", script: "report-best-self-evolution-canonical-engine-provenance.js" },
     { id: "server_primary_canary", script: "report-best-self-evolution-server-primary-canary.js" },
     { id: "server_primary_acceptance_watch", script: "report-best-self-evolution-server-primary-acceptance-watch.js" },

@@ -8,6 +8,10 @@ const { spawnSync } = require("child_process");
 const { getSystemSettingsForProvider } = require("../src/storage/settings");
 const { normalizeCanonicalEngineMarketOverrides } = require("../src/services/canonicalEngine");
 const {
+  summarizeOpenclawOverrideAuthority,
+  evaluateOpenclawOverrideAuthority,
+} = require("../src/utils/openclawOverrideAuthority");
+const {
   OPS_DAILY_DIR,
   OPS_RUNTIME_DIR,
   copyLatest,
@@ -77,6 +81,7 @@ const FRESHNESS_HOURS = Object.freeze({
   serverSignalQuality: Math.max(4, Number(process.env.STAGE_AUTOPILOT_SERVER_SIGNAL_QUALITY_MAX_AGE_HOURS || 12)),
   serverSignalCutoverReadiness: Math.max(4, Number(process.env.STAGE_AUTOPILOT_SERVER_SIGNAL_CUTOVER_MAX_AGE_HOURS || 12)),
   dropValidation: Math.max(4, Number(process.env.STAGE_AUTOPILOT_DROP_VALIDATION_MAX_AGE_HOURS || 24)),
+  overrideAuthority: Math.max(4, Number(process.env.STAGE_AUTOPILOT_OVERRIDE_AUTHORITY_MAX_AGE_HOURS || 24)),
   serverPrimaryCanary: Math.max(4, Number(process.env.STAGE_AUTOPILOT_SERVER_PRIMARY_CANARY_MAX_AGE_HOURS || 12)),
   codex: Math.max(12, Number(process.env.STAGE_AUTOPILOT_CODEX_MAX_AGE_HOURS || 48)),
 });
@@ -86,6 +91,7 @@ const SELF_EVOLUTION_SERVER_SIGNAL_AUTHORITY_LATEST_PATH = path.join(OPS_DAILY_D
 const SELF_EVOLUTION_SERVER_SIGNAL_QUALITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "server_signal_quality_latest.json");
 const SELF_EVOLUTION_SERVER_SIGNAL_CUTOVER_READINESS_LATEST_PATH = path.join(OPS_DAILY_DIR, "server_signal_cutover_readiness_latest.json");
 const SELF_EVOLUTION_DROP_VALIDATION_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_drop_validation_latest.json");
+const SELF_EVOLUTION_OVERRIDE_AUTHORITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_override_authority_latest.json");
 const SELF_EVOLUTION_DEPLOYMENT_PROBE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_probe_latest.json");
 const SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json");
 const SELF_EVOLUTION_OBJECTIVE_SUPERVISOR_LATEST_PATH = selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json");
@@ -1042,6 +1048,7 @@ function renderMarkdown(report = {}) {
     `- server_signal_quality: ${report.self_evolution_server_signal_quality ? `${report.self_evolution_server_signal_quality.quality_status || "N/A"} / entry ${report.self_evolution_server_signal_quality.authoritative_entry_signal_24h_n ?? "N/A"} / intent ${report.self_evolution_server_signal_quality.order_intent_24h_n ?? "N/A"} / fill ${report.self_evolution_server_signal_quality.fill_24h_n ?? "N/A"}` : "N/A"}`,
     `- server_signal_cutover: ${report.self_evolution_server_signal_cutover_readiness ? `${report.self_evolution_server_signal_cutover_readiness.readiness_status || "N/A"} / ready ${report.self_evolution_server_signal_cutover_readiness.promotion_ready ? "YES" : "NO"} / blockers ${Array.isArray(report.self_evolution_server_signal_cutover_readiness.blockers) && report.self_evolution_server_signal_cutover_readiness.blockers.length ? report.self_evolution_server_signal_cutover_readiness.blockers.join("|") : "none"}` : "N/A"}`,
     `- drop_validation: ${report.self_evolution_drop_validation ? `${report.self_evolution_drop_validation.status || "N/A"} / rescue ${report.self_evolution_drop_validation.top_rescue_family || "N/A"} / ${report.self_evolution_drop_validation.top_rescue_reason || "N/A"} / ${report.self_evolution_drop_validation.top_rescue_market || "N/A"}` : "N/A"}`,
+    `- override_authority: ${report.self_evolution_override_authority ? `${report.self_evolution_override_authority.status || "N/A"} / max_markets ${report.self_evolution_override_authority.max_market_overrides_per_cycle ?? "N/A"} / risk ${report.self_evolution_override_authority.risk_override_enabled ? "ALLOW" : "BLOCK"}` : "N/A"}`,
     `- server_primary_canary: ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.apply_pass === true ? "PASS" : (report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.apply_pass === false ? "BLOCK" : "N/A")} / executed ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.executed_n != null ? report.self_evolution_server_primary_canary.executed_n : "N/A"} / rollback ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.rollback_trigger_n != null ? report.self_evolution_server_primary_canary.rollback_trigger_n : "N/A"} / acceptance ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.acceptance_ready ? "READY" : "PENDING"}`,
     `- self_evolution_deployment: ${report.self_evolution_deployment && report.self_evolution_deployment.deploy_pass ? "PASS" : "BLOCK"} / target ${report.self_evolution_deployment && report.self_evolution_deployment.target_candidate_id || "N/A"}`,
     `- deployment plan: ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.plan_status || "N/A"} / unit ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.deploy_unit_primary || "N/A"} / authority ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.authority_state || "N/A"}`,
@@ -1055,6 +1062,8 @@ function renderMarkdown(report = {}) {
   for (const row of report.stage_rows || []) {
     lines.push(`- ${row.stage}: ${row.machine_state} / ${row.reason} / action=${row.last_action || "N/A"} / streak=${row.streak_current || 0}`);
     if (row.blockers && row.blockers.length) lines.push(`  - blockers: ${row.blockers.join(", ")}`);
+    if (row.override_authority_blockers && row.override_authority_blockers.length) lines.push(`  - override_authority: ${row.override_authority_blockers.join(", ")}`);
+    if (row.override_touched_markets && row.override_touched_markets.length) lines.push(`  - touched_markets: ${row.override_touched_markets.join(", ")}`);
     if (row.signature) lines.push(`  - signature: ${row.signature}`);
     if (row.snapshot_path) lines.push(`  - snapshot: ${row.snapshot_path}`);
     if (row.stage === "EV" && (row.drop_validation_status || row.drop_validation_top_reason)) lines.push(`  - drop-validation: ${row.drop_validation_status || "N/A"} / ${row.drop_validation_top_family || "N/A"} / ${row.drop_validation_top_reason || "N/A"} / action ${row.drop_validation_action || "N/A"} / ret ${row.drop_validation_rescue_rate != null ? row.drop_validation_rescue_rate : "N/A"}`);
@@ -1236,7 +1245,7 @@ function isPreparedPineAligned(latestWeeklyHistory = {}, candidate = {}) {
     || (candidateDisplaySignature && displayRecommendedPatchId === candidateDisplaySignature);
 }
 
-async function applyStageCandidate({ stage, candidate, stageState, history, nowMeta, nowMs, canaryPass, objectiveArtifact, currentSys, snapshotKeys, selfEvolutionRollbackReady = false }) {
+async function applyStageCandidate({ stage, candidate, stageState, history, nowMeta, nowMs, canaryPass, objectiveArtifact, currentSys, snapshotKeys, selfEvolutionRollbackReady = false, overrideAuthority = null }) {
   const snapshot = pickSettingsSnapshot(currentSys, snapshotKeys);
   const changeBudgetOk = stageChangeBudgetOk(history, nowMs, stage);
   const nextHistory = candidate.signature
@@ -1264,8 +1273,18 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
     challengerBeatsCurrent: candidate.challengerBeatsCurrent === true,
     rollbackPrepared: buildRollbackPrepared(snapshot),
   });
+  const overrideGuard = evaluateOpenclawOverrideAuthority({
+    stage,
+    currentSys,
+    nextSettings: candidate && candidate.nextSettings ? candidate.nextSettings : {},
+    authoritySummary: overrideAuthority,
+  });
+  const combinedGuard = {
+    ready: guard.ready === true && overrideGuard.allowed === true,
+    blockers: [...(guard.blockers || []), ...(overrideGuard.blockers || [])],
+  };
 
-  if (candidate.actionable && guard.ready && stageState.applied_signature !== candidate.signature) {
+  if (candidate.actionable && combinedGuard.ready && stageState.applied_signature !== candidate.signature) {
     const liveCurrentSys = await getRawProviderSettings(PROVIDER);
     const liveSnapshot = pickSettingsSnapshot(liveCurrentSys, snapshotKeys);
     const effectiveNextSettings = mergeStageNextSettings(liveCurrentSys, candidate.nextSettings || {});
@@ -1300,6 +1319,9 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
         monitor_window_runs: 0,
         last_snapshot_path: snapshotWrite.filePath,
         blockers: [],
+        override_authority_allowed: true,
+        override_authority_blockers: [],
+        override_touched_markets: overrideGuard.touched_markets || [],
       },
       history: appendStageHistory(nextHistory, {
         stage,
@@ -1361,8 +1383,8 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
 
   let machineState = STATE_MACHINE.HOLD;
   if (stageState.applied_signature) machineState = STATE_MACHINE.MONITOR;
-  else if (candidate.actionable && guard.blockers.length && guard.blockers.every((row) => row.endsWith("_STREAK_SHORT"))) machineState = STATE_MACHINE.WATCH;
-  else if (candidate.actionable && guard.blockers.filter((row) => !row.endsWith("_STREAK_SHORT")).length === 0) machineState = STATE_MACHINE.WATCH;
+  else if (candidate.actionable && combinedGuard.blockers.length && combinedGuard.blockers.every((row) => row.endsWith("_STREAK_SHORT"))) machineState = STATE_MACHINE.WATCH;
+  else if (candidate.actionable && combinedGuard.blockers.filter((row) => !row.endsWith("_STREAK_SHORT")).length === 0) machineState = STATE_MACHINE.WATCH;
 
   return {
     stageState: {
@@ -1371,11 +1393,14 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
       machine_state: machineState,
       last_signature: candidate.signature,
       last_action: candidate.action || stageState.last_action || "HOLD",
-      last_reason: candidate.actionable ? (guard.ready ? candidate.reason : (guard.blockers[0] || candidate.reason)) : candidate.reason,
+      last_reason: candidate.actionable ? (combinedGuard.ready ? candidate.reason : (combinedGuard.blockers[0] || candidate.reason)) : candidate.reason,
       streak_current: streakCurrent,
       adverse_streak_n: rollback.nextAdverseStreak || 0,
       monitor_window_runs: stageState.applied_signature ? Number(stageState.monitor_window_runs || 0) + 1 : Number(stageState.monitor_window_runs || 0),
-      blockers: guard.blockers,
+      blockers: combinedGuard.blockers,
+      override_authority_allowed: overrideGuard.allowed === true,
+      override_authority_blockers: overrideGuard.blockers || [],
+      override_touched_markets: overrideGuard.touched_markets || [],
     },
     history: nextHistory,
     action: null,
@@ -1686,6 +1711,12 @@ async function main() {
   const selfEvolutionServerSignalCutoverReadiness = selfEvolutionServerSignalCutoverReadinessArtifact && selfEvolutionServerSignalCutoverReadinessArtifact.data && selfEvolutionServerSignalCutoverReadinessArtifact.data.summary
     ? selfEvolutionServerSignalCutoverReadinessArtifact.data.summary
     : {};
+  const overrideAuthoritySummary = summarizeOpenclawOverrideAuthority({
+    currentSys,
+    marketObjectiveScore: readJsonRawSafe(path.join(OPS_DAILY_DIR, "best_self_evolution_market_objective_score_latest.json"), null),
+    serverVsPinePerformanceDelta: readJsonRawSafe(path.join(OPS_DAILY_DIR, "best_self_evolution_server_vs_pine_performance_delta_latest.json"), null),
+    dropValidation: selfEvolutionDropValidationArtifact.data,
+  });
   const codexAuthority = objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.codex_authority
     && typeof objectiveArtifactForLoop.data.codex_authority === "object"
       ? objectiveArtifactForLoop.data.codex_authority
@@ -1720,6 +1751,7 @@ async function main() {
     currentSys,
     snapshotKeys: AI_SNAPSHOT_KEYS,
     selfEvolutionRollbackReady,
+    overrideAuthority: overrideAuthoritySummary,
   });
   history = result.history;
   stateData.stages.AI = result.stageState;
@@ -1732,6 +1764,8 @@ async function main() {
     last_action: result.stageState.last_action,
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
+    override_authority_blockers: result.stageState.override_authority_blockers || [],
+    override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
     snapshot_path: result.stageState.last_snapshot_path || null,
     best_febt_guard: aiBestFebtGuard.reason,
@@ -1756,6 +1790,7 @@ async function main() {
     currentSys,
     snapshotKeys: MARKET_SNAPSHOT_KEYS,
     selfEvolutionRollbackReady,
+    overrideAuthority: overrideAuthoritySummary,
   });
   history = result.history;
   stateData.stages.MARKET = result.stageState;
@@ -1768,6 +1803,8 @@ async function main() {
     last_action: result.stageState.last_action,
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
+    override_authority_blockers: result.stageState.override_authority_blockers || [],
+    override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
     snapshot_path: result.stageState.last_snapshot_path || null,
     best_febt_guard: marketBestFebtGuard.reason,
@@ -1803,11 +1840,12 @@ async function main() {
       nowMeta,
       nowMs,
       canaryPass,
-      objectiveArtifact: objectiveArtifactForLoop,
-      currentSys,
-      snapshotKeys: EV_SNAPSHOT_KEYS,
-      selfEvolutionRollbackReady,
-    });
+    objectiveArtifact: objectiveArtifactForLoop,
+    currentSys,
+    snapshotKeys: EV_SNAPSHOT_KEYS,
+    selfEvolutionRollbackReady,
+    overrideAuthority: overrideAuthoritySummary,
+  });
   }
   history = result.history;
   stateData.stages.EV = result.stageState;
@@ -1820,6 +1858,8 @@ async function main() {
     last_action: result.stageState.last_action,
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
+    override_authority_blockers: result.stageState.override_authority_blockers || [],
+    override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
     snapshot_path: result.stageState.last_snapshot_path || null,
     source: evObservedCandidate.observedUpdate === true ? "EV_TUNER" : evParityCandidate.source,
@@ -1859,11 +1899,12 @@ async function main() {
       nowMeta,
       nowMs,
       canaryPass,
-      objectiveArtifact: objectiveArtifactForLoop,
-      currentSys,
-      snapshotKeys: WAIT_SNAPSHOT_KEYS,
-      selfEvolutionRollbackReady,
-    });
+    objectiveArtifact: objectiveArtifactForLoop,
+    currentSys,
+    snapshotKeys: WAIT_SNAPSHOT_KEYS,
+    selfEvolutionRollbackReady,
+    overrideAuthority: overrideAuthoritySummary,
+  });
   }
   history = result.history;
   stateData.stages.WAIT = result.stageState;
@@ -1876,6 +1917,8 @@ async function main() {
     last_action: result.stageState.last_action,
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
+    override_authority_blockers: result.stageState.override_authority_blockers || [],
+    override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
     snapshot_path: result.stageState.last_snapshot_path || null,
     source: waitObservedCandidate.observedUpdate === true ? "WAIT_TUNER" : waitParityCandidate.source,
@@ -1906,6 +1949,7 @@ async function main() {
     currentSys,
     snapshotKeys: CANONICAL_POLICY_SNAPSHOT_KEYS,
     selfEvolutionRollbackReady,
+    overrideAuthority: overrideAuthoritySummary,
   });
   history = result.history;
   stateData.stages.CANONICAL_POLICY = result.stageState;
@@ -1919,6 +1963,8 @@ async function main() {
     last_action: result.stageState.last_action,
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
+    override_authority_blockers: result.stageState.override_authority_blockers || [],
+    override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
     active_signature: result.stageState.applied_signature || activeCanonicalPolicySignature,
     next_signature: canonicalPolicyCandidate.signature || null,
@@ -1966,6 +2012,7 @@ async function main() {
     currentSys,
     snapshotKeys: SOURCE_MODE_SNAPSHOT_KEYS,
     selfEvolutionRollbackReady: serverPrimaryRollbackReady,
+    overrideAuthority: overrideAuthoritySummary,
   });
   history = result.history;
   stateData.stages.SOURCE_MODE = result.stageState;
@@ -1983,6 +2030,8 @@ async function main() {
     last_action: result.stageState.last_action,
     streak_current: result.stageState.streak_current,
     blockers: result.stageState.blockers || [],
+    override_authority_blockers: result.stageState.override_authority_blockers || [],
+    override_touched_markets: result.stageState.override_touched_markets || [],
     signature: result.stageState.last_signature,
     active_signature: result.stageState.applied_signature || activeSourceModeSignature,
     next_signature: sourceModeCandidate.signature || null,
@@ -2150,6 +2199,13 @@ async function main() {
       top_rescue_reason: String(selfEvolutionDropValidationArtifact.data && selfEvolutionDropValidationArtifact.data.summary && selfEvolutionDropValidationArtifact.data.summary.top_rescue_reason || "").trim().toUpperCase() || null,
       top_rescue_market: String(selfEvolutionDropValidationArtifact.data && selfEvolutionDropValidationArtifact.data.summary && selfEvolutionDropValidationArtifact.data.summary.top_rescue_market || "").trim().toUpperCase() || null,
       top_rescue_avg_horizon_ret_net: toNum(selfEvolutionDropValidationArtifact.data && selfEvolutionDropValidationArtifact.data.summary && selfEvolutionDropValidationArtifact.data.summary.top_rescue_avg_horizon_ret_net),
+    },
+    self_evolution_override_authority: {
+      available: true,
+      status: String(overrideAuthoritySummary.status || "").trim().toUpperCase() || null,
+      max_market_overrides_per_cycle: toNum(overrideAuthoritySummary.max_market_overrides_per_cycle),
+      risk_override_enabled: overrideAuthoritySummary.risk_override_enabled === true,
+      top_priority_markets: Array.isArray(overrideAuthoritySummary.top_priority_markets) ? overrideAuthoritySummary.top_priority_markets : [],
     },
     self_evolution_server_primary_canary: {
       available: selfEvolutionServerPrimaryCanaryArtifact.exists === true,
