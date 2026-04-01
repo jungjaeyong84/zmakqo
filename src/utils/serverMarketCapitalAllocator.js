@@ -153,6 +153,7 @@ function deriveServerMarketCapitalAllocator({
     production_markets: Array.from(productionMarkets),
     exploration_markets: Array.from(explorationMarkets),
     deferred_penalty_markets: Array.from(deferredMarkets),
+    by_market: activeRows,
     top_watch_markets: activeRows.slice(0, 8).map((row) => ({
       market: row.market,
       allocation_score: row.allocation_score,

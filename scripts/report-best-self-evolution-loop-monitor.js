@@ -39,6 +39,7 @@ const MAX_AGE_HOURS = Object.freeze({
   serverVsPinePerformanceDelta: 24,
   explorationBudget: 24,
   serverMarketCapitalAllocator: 24,
+  serverMarketQuarantine: 24,
   explorationProposal: 24,
   explorationApplyCandidate: 24,
   canonicalProvenance: 24,
@@ -77,6 +78,7 @@ const INPUTS = Object.freeze({
   serverVsPinePerformanceDelta: path.join(OPS_DAILY_DIR, "best_self_evolution_server_vs_pine_performance_delta_latest.json"),
   explorationBudget: path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_budget_latest.json"),
   serverMarketCapitalAllocator: path.join(OPS_DAILY_DIR, "best_self_evolution_server_market_capital_allocator_latest.json"),
+  serverMarketQuarantine: path.join(OPS_DAILY_DIR, "best_self_evolution_server_market_quarantine_latest.json"),
   explorationProposal: path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_proposal_latest.json"),
   explorationApplyCandidate: path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_apply_candidate_latest.json"),
   canonicalProvenance: path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_provenance_latest.json"),
@@ -140,6 +142,7 @@ function renderMarkdown(report = {}) {
     `- reverse_policy: ${summary.reverse_policy_status || "N/A"} / drops: ${summary.reverse_policy_drop_n ?? "N/A"} / revive: ${summary.reverse_policy_revive_n ?? "N/A"} / rate: ${summary.reverse_policy_revive_rate ?? "N/A"} / top: ${summary.reverse_policy_top_watch_market || "N/A"}`,
     `- market_objective: ${summary.market_objective_status || "N/A"} / recovery: ${summary.market_objective_top_recovery_market || "N/A"} / drag: ${summary.market_objective_top_drag_market || "N/A"}`,
     `- server_vs_pine_delta: ${summary.server_vs_pine_delta_status || "N/A"} / shadow_gap: ${summary.server_vs_pine_delta_top_shadow_gap_market || "N/A"} / edge: ${summary.server_vs_pine_delta_top_server_edge_market || "N/A"} / avg_delta: ${summary.server_vs_pine_delta_avg_active_delta_score != null ? summary.server_vs_pine_delta_avg_active_delta_score : "N/A"}`,
+    `- server_market_quarantine: ${summary.server_market_quarantine_status || "N/A"} / n: ${summary.server_market_quarantine_market_n ?? 0} / top: ${summary.server_market_quarantine_top_market || "N/A"} / reason: ${summary.server_market_quarantine_top_reason || "N/A"}`,
     `- promotion_path_ready: ${summary.promotion_path_ready ? "YES" : "NO"} / manual_paste_ready: ${summary.manual_paste_ready ? "YES" : "NO"}`,
     `- ready_candidate: ${summary.ready_candidate_id || "N/A"} / canary_open_wave: ${summary.canary_open_wave ?? "N/A"}`,
     "",
@@ -221,6 +224,11 @@ async function main() {
       ? artifacts.serverMarketCapitalAllocator.data.raw
       : artifacts.serverMarketCapitalAllocator.data)
     : {};
+  const serverMarketQuarantineRaw = artifacts.serverMarketQuarantine && artifacts.serverMarketQuarantine.data
+    ? ((artifacts.serverMarketQuarantine.data.raw && typeof artifacts.serverMarketQuarantine.data.raw === "object")
+      ? artifacts.serverMarketQuarantine.data.raw
+      : artifacts.serverMarketQuarantine.data)
+    : {};
   const explorationProposalRaw = artifacts.explorationProposal && artifacts.explorationProposal.data
     ? ((artifacts.explorationProposal.data.raw && typeof artifacts.explorationProposal.data.raw === "object")
       ? artifacts.explorationProposal.data.raw
@@ -245,6 +253,9 @@ async function main() {
     : {};
   const serverMarketCapitalAllocatorSummary = serverMarketCapitalAllocatorRaw.summary && typeof serverMarketCapitalAllocatorRaw.summary === "object"
     ? serverMarketCapitalAllocatorRaw.summary
+    : {};
+  const serverMarketQuarantineSummary = serverMarketQuarantineRaw.summary && typeof serverMarketQuarantineRaw.summary === "object"
+    ? serverMarketQuarantineRaw.summary
     : {};
   const explorationProposalSummary = explorationProposalRaw.summary && typeof explorationProposalRaw.summary === "object"
     ? explorationProposalRaw.summary
@@ -380,6 +391,18 @@ async function main() {
   if (!rows.find((row) => row.loop === "SERVER_MARKET_CAPITAL_ALLOCATOR")) {
     rows.splice(17, 0, serverMarketCapitalAllocatorRow);
   }
+  const serverMarketQuarantineRow = {
+    loop: "SERVER_MARKET_QUARANTINE",
+    fresh: artifacts.serverMarketQuarantine && artifacts.serverMarketQuarantine.fresh === true,
+    cycle_id: String(serverMarketQuarantineRaw.cycle_id || serverMarketQuarantineRaw.generation_id || "").trim() || null,
+    status: String(serverMarketQuarantineSummary.status || "").trim().toUpperCase() === "QUARANTINE_ACTIVE"
+      ? "WARN"
+      : (String(serverMarketQuarantineSummary.status || "").trim().toUpperCase() === "QUARANTINE_CLEAR" ? "PASS" : "N/A"),
+    reason: `quarantine=${serverMarketQuarantineSummary.quarantine_market_n ?? 0} / top=${serverMarketQuarantineSummary.top_quarantine_market || "N/A"} / reason=${serverMarketQuarantineSummary.top_quarantine_reason || "N/A"} / severity=${serverMarketQuarantineSummary.top_quarantine_severity || "N/A"}`,
+  };
+  if (!rows.find((row) => row.loop === "SERVER_MARKET_QUARANTINE")) {
+    rows.splice(18, 0, serverMarketQuarantineRow);
+  }
   const explorationProposalRow = {
     loop: "EXPLORATION_PROPOSAL",
     fresh: artifacts.explorationProposal && artifacts.explorationProposal.fresh === true,
@@ -391,7 +414,7 @@ async function main() {
   };
   const explorationProposalIndex = rows.findIndex((row) => row.loop === "EXPLORATION_PROPOSAL");
   if (explorationProposalIndex >= 0) rows[explorationProposalIndex] = explorationProposalRow;
-  else rows.splice(17, 0, explorationProposalRow);
+  else rows.splice(19, 0, explorationProposalRow);
   const explorationApplyCandidateStatus = String(explorationApplyCandidateSummary.status || "").trim().toUpperCase();
   const explorationApplyCandidateRow = {
     loop: "EXPLORATION_APPLY_CANDIDATE",
@@ -406,7 +429,7 @@ async function main() {
   };
   const explorationApplyCandidateIndex = rows.findIndex((row) => row.loop === "EXPLORATION_APPLY_CANDIDATE");
   if (explorationApplyCandidateIndex >= 0) rows[explorationApplyCandidateIndex] = explorationApplyCandidateRow;
-  else rows.splice(18, 0, explorationApplyCandidateRow);
+  else rows.splice(20, 0, explorationApplyCandidateRow);
   const summary = {
     ...(derived.summary || {}),
     drop_validation_status: dropValidationSummary.status || derived.summary && derived.summary.drop_validation_status || null,
@@ -456,6 +479,10 @@ async function main() {
     server_market_capital_allocator_top_reduce_market: serverMarketCapitalAllocatorSummary.top_reduce_market || derived.summary && derived.summary.server_market_capital_allocator_top_reduce_market || null,
     server_market_capital_allocator_top_quarantine_market: serverMarketCapitalAllocatorSummary.top_quarantine_market || derived.summary && derived.summary.server_market_capital_allocator_top_quarantine_market || null,
     server_market_capital_allocator_top_explore_market: serverMarketCapitalAllocatorSummary.top_explore_market || derived.summary && derived.summary.server_market_capital_allocator_top_explore_market || null,
+    server_market_quarantine_status: serverMarketQuarantineSummary.status || derived.summary && derived.summary.server_market_quarantine_status || null,
+    server_market_quarantine_market_n: serverMarketQuarantineSummary.quarantine_market_n != null ? serverMarketQuarantineSummary.quarantine_market_n : derived.summary && derived.summary.server_market_quarantine_market_n || 0,
+    server_market_quarantine_top_market: serverMarketQuarantineSummary.top_quarantine_market || derived.summary && derived.summary.server_market_quarantine_top_market || null,
+    server_market_quarantine_top_reason: serverMarketQuarantineSummary.top_quarantine_reason || derived.summary && derived.summary.server_market_quarantine_top_reason || null,
     exploration_proposal_status: explorationProposalSummary.status || derived.summary && derived.summary.exploration_proposal_status || null,
     exploration_proposal_proposal_n: explorationProposalSummary.proposal_n != null ? explorationProposalSummary.proposal_n : derived.summary && derived.summary.exploration_proposal_proposal_n || 0,
     exploration_proposal_top_market: explorationProposalSummary.top_market || derived.summary && derived.summary.exploration_proposal_top_market || null,

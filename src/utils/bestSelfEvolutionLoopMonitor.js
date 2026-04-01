@@ -17,6 +17,7 @@ const DERIVED_LOOP_KEYS = new Set([
   "SERVER_VS_PINE_DELTA",
   "EXPLORATION_BUDGET",
   "SERVER_MARKET_CAPITAL_ALLOCATOR",
+  "SERVER_MARKET_QUARANTINE",
   "EXPLORATION_PROPOSAL",
   "EXPLORATION_APPLY_CANDIDATE",
   "OPENCLAW_AUTONOMY_CONTRACT",
@@ -69,6 +70,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const serverVsPinePerformanceDelta = unwrapRawReport(reports.serverVsPinePerformanceDelta) || {};
   const explorationBudget = unwrapRawReport(reports.explorationBudget) || {};
   const serverMarketCapitalAllocator = unwrapRawReport(reports.serverMarketCapitalAllocator) || {};
+  const serverMarketQuarantine = unwrapRawReport(reports.serverMarketQuarantine) || {};
   const explorationProposal = unwrapRawReport(reports.explorationProposal) || {};
   const explorationApplyCandidate = unwrapRawReport(reports.explorationApplyCandidate) || {};
   const canonicalProvenance = unwrapRawReport(reports.canonicalProvenance) || {};
@@ -118,6 +120,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     : {};
   const explorationBudgetSummary = explorationBudget.summary && typeof explorationBudget.summary === "object" ? explorationBudget.summary : {};
   const serverMarketCapitalAllocatorSummary = serverMarketCapitalAllocator.summary && typeof serverMarketCapitalAllocator.summary === "object" ? serverMarketCapitalAllocator.summary : {};
+  const serverMarketQuarantineSummary = serverMarketQuarantine.summary && typeof serverMarketQuarantine.summary === "object" ? serverMarketQuarantine.summary : {};
   const explorationProposalSummary = explorationProposal.summary && typeof explorationProposal.summary === "object" ? explorationProposal.summary : {};
   const explorationApplyCandidateSummary = explorationApplyCandidate.summary && typeof explorationApplyCandidate.summary === "object" ? explorationApplyCandidate.summary : {};
   const canonicalProvenanceSummary = canonicalProvenance.summary && typeof canonicalProvenance.summary === "object" ? canonicalProvenance.summary : {};
@@ -164,6 +167,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(serverVsPinePerformanceDelta)
     || readCycleId(explorationBudget)
     || readCycleId(serverMarketCapitalAllocator)
+    || readCycleId(serverMarketQuarantine)
     || readCycleId(explorationProposal)
     || readCycleId(explorationApplyCandidate)
     || readCycleId(canonicalProvenance)
@@ -342,6 +346,15 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
         ? "PASS"
         : (String(explorationBudgetSummary.status || "").trim().toUpperCase() === "PRODUCTION_ONLY" ? "WARN" : "N/A"),
       reason: `prod=${Array.isArray(explorationBudgetSummary.production_markets) && explorationBudgetSummary.production_markets.length ? explorationBudgetSummary.production_markets.join("|") : "N/A"} / explore=${Array.isArray(explorationBudgetSummary.exploration_markets) && explorationBudgetSummary.exploration_markets.length ? explorationBudgetSummary.exploration_markets.join("|") : "N/A"} / deferred=${Array.isArray(explorationBudgetSummary.deferred_penalty_markets) && explorationBudgetSummary.deferred_penalty_markets.length ? explorationBudgetSummary.deferred_penalty_markets.join("|") : "none"}`,
+    },
+    {
+      loop: "SERVER_MARKET_QUARANTINE",
+      fresh: artifacts.serverMarketQuarantine && artifacts.serverMarketQuarantine.fresh === true,
+      cycle_id: readCycleId(serverMarketQuarantine),
+      status: String(serverMarketQuarantineSummary.status || "").trim().toUpperCase() === "QUARANTINE_ACTIVE"
+        ? "WARN"
+        : (String(serverMarketQuarantineSummary.status || "").trim().toUpperCase() === "QUARANTINE_CLEAR" ? "PASS" : "N/A"),
+      reason: `quarantine=${serverMarketQuarantineSummary.quarantine_market_n ?? 0} / top=${serverMarketQuarantineSummary.top_quarantine_market || "N/A"} / reason=${serverMarketQuarantineSummary.top_quarantine_reason || "N/A"} / severity=${serverMarketQuarantineSummary.top_quarantine_severity || "N/A"}`,
     },
     {
       loop: "EXPLORATION_PROPOSAL",
@@ -646,6 +659,10 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       server_market_capital_allocator_top_reduce_market: serverMarketCapitalAllocatorSummary.top_reduce_market || null,
       server_market_capital_allocator_top_quarantine_market: serverMarketCapitalAllocatorSummary.top_quarantine_market || null,
       server_market_capital_allocator_top_explore_market: serverMarketCapitalAllocatorSummary.top_explore_market || null,
+      server_market_quarantine_status: serverMarketQuarantineSummary.status || null,
+      server_market_quarantine_market_n: serverMarketQuarantineSummary.quarantine_market_n != null ? serverMarketQuarantineSummary.quarantine_market_n : 0,
+      server_market_quarantine_top_market: serverMarketQuarantineSummary.top_quarantine_market || null,
+      server_market_quarantine_top_reason: serverMarketQuarantineSummary.top_quarantine_reason || null,
       exploration_proposal_status: explorationProposalSummary.status || null,
       exploration_proposal_proposal_n: toNum(explorationProposalSummary.proposal_n) || 0,
       exploration_proposal_top_market: explorationProposalSummary.top_market || null,
