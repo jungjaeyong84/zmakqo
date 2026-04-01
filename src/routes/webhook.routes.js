@@ -1042,6 +1042,8 @@ function createWebhookRoutes() {
           dropReasonCode: "SIGNAL_TOO_OLD",
           signalId: p.signal_id || null,
           executionMode: executionMode,
+          source: "WEBHOOK",
+          authoritative: false,
         });
         return finalize({
           httpStatus: 202,
@@ -1676,6 +1678,8 @@ function createWebhookRoutes() {
           dropReasonCode: reasonCode,
           signalId: p.signal_id || null,
           executionMode: executionMode,
+          source: "WEBHOOK",
+          authoritative: false,
         });
         persistWebhookSignalExecutionProbe({
           requestId,
@@ -1998,6 +2002,8 @@ function createWebhookRoutes() {
             dropReasonCode: "AI_BLOCK",
             signalId: p.signal_id || null,
             executionMode: executionMode,
+            source: "WEBHOOK",
+            authoritative: false,
           });
           return finalize({
             body: { ok: true, dropped: true, reason: "AI_BLOCK", signal_id: p.signal_id || null },
@@ -2077,6 +2083,8 @@ function createWebhookRoutes() {
           dropReasonCode: normalizeReasonCode(reasonRaw) || normalizeReasonCode(reason) || null,
           signalId: p.signal_id || null,
           executionMode: executionMode,
+          source: "WEBHOOK",
+          authoritative: false,
         });
         return finalize({
           body: { ok: true, dropped: true, signal_id: p.signal_id || null },

@@ -11,6 +11,20 @@
 
 `OPENCLAW_AUTONOMY_CONTRACT`는 돈벌자가 목표 미달 상태에서 어떤 회복 경로를 열 수 있는지, 그리고 서버 정본 전환이 아직 어떤 blocker 때문에 승격되지 않는지를 함께 판정하는 상위 계약이다.
 
+## 1.1 우선순위 원칙
+
+`OpenClaw`의 최상위 목적은 `월간 목표 달성`이다.  
+판단 우선순위는 아래 순서를 따른다.
+
+1. `월간 목표 달성 가능성`
+2. `주간 회복 진행`
+3. `일간 손실/활동 통제`
+4. `드롭 검증과 기회비용 확인`
+5. `서버 신호 품질`
+6. `server signal parity drift / cutover readiness`
+
+즉 `parity drift`와 `cutover readiness`는 중요하지만, 목표 회복이 필요한 동안에는 `주목표`가 아니라 `보조 운영 제약`으로 다룬다.
+
 ## 2. 현재 정본 artifact
 
 1. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_openclaw_autonomy_contract_latest.json`

@@ -111,6 +111,23 @@ function buildNextActions({ status = null, candidateId = null, reason = null } =
   return actions;
 }
 
+function summarizeDropValidation(dropValidation = null) {
+  const summary = readSummary(dropValidation);
+  const recommendedActions = Array.isArray(summary.recommended_actions) ? summary.recommended_actions : [];
+  const evRescueRow = recommendedActions.find((row) => toUpper(row && row.family) === "EV_POLICY") || null;
+  return {
+    status: toUpper(summary.status),
+    top_rescue_family: toUpper(summary.top_rescue_family),
+    top_rescue_reason: String(summary.top_rescue_reason || "").trim() || null,
+    top_rescue_market: String(summary.top_rescue_market || "").trim() || null,
+    top_rescue_avg_horizon_ret_net: toNum(summary.top_rescue_avg_horizon_ret_net),
+    top_rescue_tp1_first_rate: toNum(summary.top_rescue_tp1_first_rate),
+    top_rescue_sl_first_rate: toNum(summary.top_rescue_sl_first_rate),
+    ev_policy_action: toUpper(evRescueRow && evRescueRow.action),
+    next_actions: Array.isArray(summary.next_actions) ? summary.next_actions : [],
+  };
+}
+
 function deriveObjectiveRecoveryGovernor({
   autonomyContract = null,
   objective = null,
@@ -122,6 +139,7 @@ function deriveObjectiveRecoveryGovernor({
   memory = null,
   serverPrimaryAcceptanceWatch = null,
   watchdog = null,
+  dropValidation = null,
 } = {}) {
   const contract = unwrapRawReport(autonomyContract) || {};
   const contractStatus = contract.current_status && typeof contract.current_status === "object" ? contract.current_status : {};
@@ -139,6 +157,7 @@ function deriveObjectiveRecoveryGovernor({
   const deploymentGuardsSummary = readSummary(deploymentGuards);
   const acceptanceSummary = readSummary(serverPrimaryAcceptanceWatch);
   const watchdogSummary = readSummary(watchdog);
+  const dropValidationSummary = summarizeDropValidation(dropValidation);
 
   const targetCandidateId = String(
     promotion.display_candidate_id
@@ -221,6 +240,14 @@ function deriveObjectiveRecoveryGovernor({
       unrelated_memory_blocked_candidate_n: memoryContext.unrelated_blocked_candidate_n,
       unrelated_memory_blocked_candidate_ids: memoryContext.unrelated_blocked_candidate_ids,
       openclaw_ops_healthy: watchdogPass,
+      drop_validation_status: dropValidationSummary.status,
+      drop_validation_top_rescue_family: dropValidationSummary.top_rescue_family,
+      drop_validation_top_rescue_reason: dropValidationSummary.top_rescue_reason,
+      drop_validation_top_rescue_market: dropValidationSummary.top_rescue_market,
+      drop_validation_top_rescue_avg_horizon_ret_net: dropValidationSummary.top_rescue_avg_horizon_ret_net,
+      drop_validation_top_rescue_tp1_first_rate: dropValidationSummary.top_rescue_tp1_first_rate,
+      drop_validation_top_rescue_sl_first_rate: dropValidationSummary.top_rescue_sl_first_rate,
+      drop_validation_ev_policy_action: dropValidationSummary.ev_policy_action,
       phase_d_status: String(acceptanceSummary.phase_d_status || "").trim().toUpperCase() || null,
       phase_d_ready: acceptanceSummary.phase_d_ready === true,
       governor_status: governorStatus,
@@ -230,7 +257,17 @@ function deriveObjectiveRecoveryGovernor({
       degraded_authority_reason: degradedPolicy.enabled === true && governorStatus === "RECOVERY_PROMOTION_READY"
         ? governorReason
         : governorStatus,
-      next_actions: buildNextActions({ status: governorStatus, candidateId: targetCandidateId, reason: governorReason }),
+      next_actions: [
+        ...buildNextActions({ status: governorStatus, candidateId: targetCandidateId, reason: governorReason }),
+        ...(recoveryRequired
+          && dropValidationSummary.top_rescue_family === "EV_POLICY"
+          && dropValidationSummary.ev_policy_action === "RELAX_EV_POLICY_REVIEW"
+          ? [
+            `Use drop-validation rescue evidence to relax EV policy first (${dropValidationSummary.top_rescue_reason || "EV_POLICY"} / ${dropValidationSummary.top_rescue_market || "N/A"} / avg_ret ${dropValidationSummary.top_rescue_avg_horizon_ret_net != null ? dropValidationSummary.top_rescue_avg_horizon_ret_net : "N/A"}).`,
+          ]
+          : []),
+        ...dropValidationSummary.next_actions,
+      ],
     },
   };
 }

@@ -160,12 +160,27 @@ function formatSignalSource(payload = {}) {
   return source || "-";
 }
 
+function buildLifecycleTitle(payload = {}, kind = "RECEIVED") {
+  const symbol = String(payload.symbol || "").toUpperCase();
+  const source = String(payload.source || "").trim().toUpperCase();
+  const authoritative = payload.authoritative === true || source === "SERVER";
+  const isWebhook = source === "WEBHOOK";
+  if (kind === "RECEIVED") {
+    if (authoritative) return `${symbol} 서버 신호 생성`;
+    if (isWebhook) return `${symbol} 웹훅 신호 수신`;
+    return `${symbol} 신호 수신`;
+  }
+  if (authoritative) return `${symbol} 서버 신호 드롭`;
+  if (isWebhook) return `${symbol} 웹훅 신호 드롭`;
+  return `${symbol} 신호 드롭`;
+}
+
 function buildReceivedMessage(payload = {}) {
   const symbol = String(payload.symbol || "").toUpperCase();
   const event = String(payload.event || "-").toUpperCase();
   if (!symbol || !event) return null;
 
-  const title = `${symbol} 신호 수신`;
+  const title = buildLifecycleTitle(payload, "RECEIVED");
   const lines = [
     `이벤트: ${formatEventTag(event)}`,
     `출처: ${formatSignalSource(payload)}`,
@@ -190,14 +205,21 @@ function buildDroppedMessage(payload = {}) {
   const stage = classifySignalReasonStage(dropReason);
   const reasonKo = explainSignalReason(dropReason);
   const isTimingDefer = stage && stage.key === "TIMING";
+  const dropGroup = String(payload.dropGroup || payload.eventGroup || "").trim().toUpperCase() || null;
+  const dropSubtype = String(payload.dropSubtype || payload.eventSubtype || "").trim().toUpperCase() || null;
+  const dropLocation = [
+    stage && stage.text ? stage.text : null,
+    dropGroup,
+    dropSubtype,
+  ].filter(Boolean).join(" / ");
 
-  const title = `${symbol} 신호 ${isTimingDefer ? "연기" : "드롭"}`;
+  const title = isTimingDefer ? `${symbol} 신호 연기` : buildLifecycleTitle(payload, "DROPPED");
   const lines = [
     `이벤트: ${formatEventTag(event)}`,
     `출처: ${formatSignalSource(payload)}`,
     `사이드: ${fmtSide(payload.side)}`,
     `TF: ${String(payload.tf || "-")}`,
-    `단계: ${stage.text || "미분류"}`,
+    `드롭 위치: ${dropLocation || stage.text || "미분류"}`,
     `사유: ${dropReason}`,
     `해석: ${reasonKo || "현재 조건상 신호를 보류했습니다."}`,
     `수량: ${fmtQty(payload.qtyPct)}`,

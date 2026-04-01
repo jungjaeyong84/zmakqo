@@ -5,7 +5,7 @@
 const path = require("path");
 const {
   OPS_DAILY_DIR,
-  copySelfEvolutionLatest,
+  copyLatest,
   loadLocalEnv,
   nowKstMeta,
   readJsonRawSafe,
@@ -29,6 +29,7 @@ const INPUTS = Object.freeze({
   memory: path.join(OPS_DAILY_DIR, "best_self_evolution_memory_latest.json"),
   serverPrimaryAcceptanceWatch: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_acceptance_watch_latest.json"),
   watchdog: path.join(OPS_DAILY_DIR, "automation_watchdog_latest.json"),
+  dropValidation: path.join(OPS_DAILY_DIR, "best_self_evolution_drop_validation_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -45,6 +46,7 @@ function renderMarkdown(report = {}) {
     `- deploy_unit: ${summary.target_deploy_unit || "N/A"}`,
     `- replay/canary/guards: ${summary.replay_pass ? "YES" : "NO"} / ${summary.canary_ready ? "YES" : "NO"} / ${summary.deployment_guards_pass ? "YES" : "NO"}`,
     `- memory/ops/phase_d: ${summary.memory_blocked ? "BLOCK" : "CLEAR"} / ${summary.openclaw_ops_healthy ? "PASS" : "WARN"} / ${summary.phase_d_status || "N/A"}`,
+    `- drop_validation: ${summary.drop_validation_status || "N/A"} / ${summary.drop_validation_top_rescue_family || "N/A"} / ${summary.drop_validation_top_rescue_reason || "N/A"} / ${summary.drop_validation_top_rescue_market || "N/A"}`,
     `- degraded_authority: ${summary.degraded_authority_enabled ? "ENABLED" : "DISABLED"} / eligible=${summary.degraded_authority_eligible ? "YES" : "NO"} / ${summary.degraded_authority_reason || "N/A"}`,
     "",
     "## Next Actions",
@@ -67,6 +69,7 @@ function main() {
     memory: readJsonRawSafe(INPUTS.memory, null),
     serverPrimaryAcceptanceWatch: readJsonRawSafe(INPUTS.serverPrimaryAcceptanceWatch, null),
     watchdog: readJsonRawSafe(INPUTS.watchdog, null),
+    dropValidation: readJsonRawSafe(INPUTS.dropValidation, null),
   });
   const output = {
     ok: true,
@@ -83,8 +86,8 @@ function main() {
   const latestMdPath = path.join(OPS_DAILY_DIR, "best_self_evolution_objective_recovery_governor_latest.md");
   writeJson(jsonPath, output);
   writeText(mdPath, renderMarkdown(output));
-  copySelfEvolutionLatest(jsonPath, latestJsonPath);
-  copySelfEvolutionLatest(mdPath, latestMdPath);
+  copyLatest(jsonPath, latestJsonPath);
+  copyLatest(mdPath, latestMdPath);
   console.log(JSON.stringify({ ok: true, json: jsonPath, markdown: mdPath, latest_json: latestJsonPath, latest_markdown: latestMdPath }));
 }
 

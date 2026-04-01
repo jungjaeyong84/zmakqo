@@ -76,6 +76,7 @@ const FRESHNESS_HOURS = Object.freeze({
   serverSignalAuthority: Math.max(4, Number(process.env.STAGE_AUTOPILOT_SERVER_SIGNAL_AUTHORITY_MAX_AGE_HOURS || 12)),
   serverSignalQuality: Math.max(4, Number(process.env.STAGE_AUTOPILOT_SERVER_SIGNAL_QUALITY_MAX_AGE_HOURS || 12)),
   serverSignalCutoverReadiness: Math.max(4, Number(process.env.STAGE_AUTOPILOT_SERVER_SIGNAL_CUTOVER_MAX_AGE_HOURS || 12)),
+  dropValidation: Math.max(4, Number(process.env.STAGE_AUTOPILOT_DROP_VALIDATION_MAX_AGE_HOURS || 24)),
   serverPrimaryCanary: Math.max(4, Number(process.env.STAGE_AUTOPILOT_SERVER_PRIMARY_CANARY_MAX_AGE_HOURS || 12)),
   codex: Math.max(12, Number(process.env.STAGE_AUTOPILOT_CODEX_MAX_AGE_HOURS || 48)),
 });
@@ -84,6 +85,7 @@ const SELF_EVOLUTION_CANONICAL_PARITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "be
 const SELF_EVOLUTION_SERVER_SIGNAL_AUTHORITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "server_signal_authority_latest.json");
 const SELF_EVOLUTION_SERVER_SIGNAL_QUALITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "server_signal_quality_latest.json");
 const SELF_EVOLUTION_SERVER_SIGNAL_CUTOVER_READINESS_LATEST_PATH = path.join(OPS_DAILY_DIR, "server_signal_cutover_readiness_latest.json");
+const SELF_EVOLUTION_DROP_VALIDATION_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_drop_validation_latest.json");
 const SELF_EVOLUTION_DEPLOYMENT_PROBE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_probe_latest.json");
 const SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json");
 const SELF_EVOLUTION_OBJECTIVE_SUPERVISOR_LATEST_PATH = selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json");
@@ -834,7 +836,13 @@ function readParityFamilyCount(summary = {}, key) {
   return matched ? (toNum(matched.count) || 0) : 0;
 }
 
-function buildEvParityCandidate(parityArtifact, cutoverArtifact = null, currentSys = {}, objectiveSupervisor = {}) {
+function readDropValidationAction(summary = {}, family) {
+  const rows = Array.isArray(summary && summary.recommended_actions) ? summary.recommended_actions : [];
+  const matched = rows.find((row) => String(row && row.family || "").trim().toUpperCase() === String(family || "").trim().toUpperCase());
+  return matched ? (String(matched.action || "").trim().toUpperCase() || null) : null;
+}
+
+function buildEvParityCandidate(parityArtifact, cutoverArtifact = null, dropValidationArtifact = null, currentSys = {}, objectiveSupervisor = {}) {
   const raw = parityArtifact && parityArtifact.data && typeof parityArtifact.data === "object"
     ? parityArtifact.data
     : {};
@@ -842,44 +850,71 @@ function buildEvParityCandidate(parityArtifact, cutoverArtifact = null, currentS
   const cutoverSummary = cutoverArtifact && cutoverArtifact.data && typeof cutoverArtifact.data === "object"
     ? (cutoverArtifact.data.summary && typeof cutoverArtifact.data.summary === "object" ? cutoverArtifact.data.summary : cutoverArtifact.data)
     : {};
+  const dropValidationSummary = dropValidationArtifact && dropValidationArtifact.data && typeof dropValidationArtifact.data === "object"
+    ? (dropValidationArtifact.data.summary && typeof dropValidationArtifact.data.summary === "object" ? dropValidationArtifact.data.summary : dropValidationArtifact.data)
+    : {};
   const evPolicyMismatchN = readParityFamilyCount(summary, "EV_POLICY");
   const sourceParityMismatchN = toNum(summary.source_parity_mismatch_n) || 0;
   const shadowObservedN = toNum(summary.shadow_observed_n) || 0;
   const cutoverRecommendedAction = String(cutoverSummary.recommended_action || cutoverSummary.ev_policy_recommended_action || "").trim().toUpperCase() || null;
-  const actionable = evPolicyMismatchN >= 2 && sourceParityMismatchN === 0;
+  const dropValidationStatus = String(dropValidationSummary.status || "").trim().toUpperCase() || null;
+  const dropValidationTopFamily = String(dropValidationSummary.top_rescue_family || "").trim().toUpperCase() || null;
+  const dropValidationTopReason = String(dropValidationSummary.top_rescue_reason || "").trim().toUpperCase() || null;
+  const dropValidationAction = readDropValidationAction(dropValidationSummary, "EV_POLICY");
+  const dropValidationSupportN = toNum(dropValidationSummary.matured_reason_n) || 0;
+  const dropValidationRescueRate = toNum(dropValidationSummary.top_rescue_avg_horizon_ret_net);
+  const evRescueBackedByDrops = dropValidationTopFamily === "EV_POLICY"
+    && dropValidationAction === "RELAX_EV_POLICY_REVIEW"
+    && (
+      dropValidationStatus === "ACTIONABLE_RESCUE_REVIEW"
+      || dropValidationStatus === "WARN"
+      || dropValidationStatus === "ACTIONABLE"
+    );
+  const actionable = (evPolicyMismatchN >= 2 || evRescueBackedByDrops) && sourceParityMismatchN === 0;
   const currentMin = clampProb(currentSys && currentSys.ev_gate_tp1_prob_min, 0.55);
   const currentFull = clampProb(currentSys && currentSys.ev_gate_tp1_prob_full, 0.60);
   const currentKill = clampProb(currentSys && currentSys.ev_gate_tp1_prob_kill, 0.50);
-  const minStep = cutoverRecommendedAction === "LOWER_EV_TP1_MIN_REVIEW" ? 0.015 : 0.01;
-  const fullStep = cutoverRecommendedAction === "LOWER_EV_TP1_MIN_REVIEW" ? 0.01 : 0.01;
+  const useAggressiveRescue = cutoverRecommendedAction === "LOWER_EV_TP1_MIN_REVIEW" || evRescueBackedByDrops;
+  const minStep = useAggressiveRescue ? 0.015 : 0.01;
+  const fullStep = useAggressiveRescue ? 0.01 : 0.01;
   const nextSettings = actionable
     ? {
       ev_gate_tp1_prob_min: Number(Math.max(0.30, currentMin - minStep).toFixed(4)),
       ev_gate_tp1_prob_full: Number(Math.max(0.35, currentFull - fullStep).toFixed(4)),
-      ev_gate_tp1_prob_kill: Number(Math.max(0.25, currentKill - (cutoverRecommendedAction === "LOWER_EV_TP1_MIN_REVIEW" ? 0.005 : 0)).toFixed(4)),
+      ev_gate_tp1_prob_kill: Number(Math.max(0.25, currentKill - (useAggressiveRescue ? 0.005 : 0)).toFixed(4)),
     }
     : {};
+  const reasonSuffix = [
+    cutoverRecommendedAction,
+    evRescueBackedByDrops ? "DROP_VALIDATION_RESCUE" : null,
+    evRescueBackedByDrops ? dropValidationTopReason : null,
+  ].filter(Boolean).join("__");
   return {
     stage: "EV",
     actionable,
     action: actionable ? "AUTO_APPLY" : "HOLD",
     reason: actionable
-      ? `CANONICAL_PARITY_EV_POLICY_RESCUE${cutoverRecommendedAction ? `__${cutoverRecommendedAction}` : ""}`
+      ? `CANONICAL_PARITY_EV_POLICY_RESCUE${reasonSuffix ? `__${reasonSuffix}` : ""}`
       : "NO_ACTIONABLE_EV_PARITY_RESCUE",
     signature: actionable ? stableSignature(nextSettings) : null,
     nextSettings,
     streakRequired: STREAK_REQUIRED,
-    sampleSufficient: evPolicyMismatchN >= 2,
+    sampleSufficient: evPolicyMismatchN >= 2 || evRescueBackedByDrops,
     coverageSufficient: shadowObservedN >= evPolicyMismatchN && sourceParityMismatchN === 0,
     objectiveEnoughSample: actionable,
     objectiveDirectionOk: actionable,
     challengerBeatsCurrent: actionable,
-    support_n: evPolicyMismatchN,
+    support_n: Math.max(evPolicyMismatchN, evRescueBackedByDrops ? dropValidationSupportN : 0),
     support_rate: summary && toNum(summary.parity_mismatch_rate),
     source: "CANONICAL_PARITY_EV_POLICY_RESCUE",
     current_ev_policy_mismatch_n: evPolicyMismatchN,
     source_parity_mismatch_n: sourceParityMismatchN,
     recommended_action: cutoverRecommendedAction,
+    drop_validation_status: dropValidationStatus,
+    drop_validation_action: dropValidationAction,
+    drop_validation_top_family: dropValidationTopFamily,
+    drop_validation_top_reason: dropValidationTopReason,
+    drop_validation_rescue_rate: dropValidationRescueRate,
   };
 }
 
@@ -1006,6 +1041,7 @@ function renderMarkdown(report = {}) {
     `- server_signal_authority: ${report.self_evolution_server_signal_authority ? `${report.self_evolution_server_signal_authority.drift_status || "N/A"} / server24h ${report.self_evolution_server_signal_authority.authoritative_server_24h_n ?? "N/A"} / shadow24h ${report.self_evolution_server_signal_authority.pine_shadow_24h_n ?? "N/A"}` : "N/A"}`,
     `- server_signal_quality: ${report.self_evolution_server_signal_quality ? `${report.self_evolution_server_signal_quality.quality_status || "N/A"} / entry ${report.self_evolution_server_signal_quality.authoritative_entry_signal_24h_n ?? "N/A"} / intent ${report.self_evolution_server_signal_quality.order_intent_24h_n ?? "N/A"} / fill ${report.self_evolution_server_signal_quality.fill_24h_n ?? "N/A"}` : "N/A"}`,
     `- server_signal_cutover: ${report.self_evolution_server_signal_cutover_readiness ? `${report.self_evolution_server_signal_cutover_readiness.readiness_status || "N/A"} / ready ${report.self_evolution_server_signal_cutover_readiness.promotion_ready ? "YES" : "NO"} / blockers ${Array.isArray(report.self_evolution_server_signal_cutover_readiness.blockers) && report.self_evolution_server_signal_cutover_readiness.blockers.length ? report.self_evolution_server_signal_cutover_readiness.blockers.join("|") : "none"}` : "N/A"}`,
+    `- drop_validation: ${report.self_evolution_drop_validation ? `${report.self_evolution_drop_validation.status || "N/A"} / rescue ${report.self_evolution_drop_validation.top_rescue_family || "N/A"} / ${report.self_evolution_drop_validation.top_rescue_reason || "N/A"} / ${report.self_evolution_drop_validation.top_rescue_market || "N/A"}` : "N/A"}`,
     `- server_primary_canary: ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.apply_pass === true ? "PASS" : (report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.apply_pass === false ? "BLOCK" : "N/A")} / executed ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.executed_n != null ? report.self_evolution_server_primary_canary.executed_n : "N/A"} / rollback ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.rollback_trigger_n != null ? report.self_evolution_server_primary_canary.rollback_trigger_n : "N/A"} / acceptance ${report.self_evolution_server_primary_canary && report.self_evolution_server_primary_canary.acceptance_ready ? "READY" : "PENDING"}`,
     `- self_evolution_deployment: ${report.self_evolution_deployment && report.self_evolution_deployment.deploy_pass ? "PASS" : "BLOCK"} / target ${report.self_evolution_deployment && report.self_evolution_deployment.target_candidate_id || "N/A"}`,
     `- deployment plan: ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.plan_status || "N/A"} / unit ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.deploy_unit_primary || "N/A"} / authority ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.authority_state || "N/A"}`,
@@ -1021,6 +1057,7 @@ function renderMarkdown(report = {}) {
     if (row.blockers && row.blockers.length) lines.push(`  - blockers: ${row.blockers.join(", ")}`);
     if (row.signature) lines.push(`  - signature: ${row.signature}`);
     if (row.snapshot_path) lines.push(`  - snapshot: ${row.snapshot_path}`);
+    if (row.stage === "EV" && (row.drop_validation_status || row.drop_validation_top_reason)) lines.push(`  - drop-validation: ${row.drop_validation_status || "N/A"} / ${row.drop_validation_top_family || "N/A"} / ${row.drop_validation_top_reason || "N/A"} / action ${row.drop_validation_action || "N/A"} / ret ${row.drop_validation_rescue_rate != null ? row.drop_validation_rescue_rate : "N/A"}`);
     if (row.prepared_engine_bundle_id || row.prepared_policy_bundle_id) lines.push(`  - bundle: engine ${row.prepared_engine_bundle_id || "N/A"} / policy ${row.prepared_policy_bundle_id || "N/A"}`);
     if (row.stage === "SOURCE_MODE") lines.push(`  - acceptance: executed ${row.server_primary_executed_n ?? "N/A"} / apply ${row.server_primary_apply_pass == null ? "N/A" : (row.server_primary_apply_pass ? "PASS" : "BLOCK")} / ready ${row.server_primary_acceptance_ready ? "YES" : "NO"} / ${row.server_primary_acceptance_reason || "N/A"} / server_quality ${row.server_signal_quality_status || "N/A"} / drift ${row.server_signal_drift_status || "N/A"}`);
     if (row.prepared_file_path || row.latest_generated_file_path) lines.push(`  - pine-overlay: ${row.prepared_file_path || "N/A"} / latest ${row.latest_generated_file_path || "N/A"}`);
@@ -1600,6 +1637,7 @@ async function main() {
   const selfEvolutionServerSignalAuthorityArtifact = readArtifact("best_self_evolution_server_signal_authority", SELF_EVOLUTION_SERVER_SIGNAL_AUTHORITY_LATEST_PATH, FRESHNESS_HOURS.serverSignalAuthority);
   const selfEvolutionServerSignalQualityArtifact = readArtifact("best_self_evolution_server_signal_quality", SELF_EVOLUTION_SERVER_SIGNAL_QUALITY_LATEST_PATH, FRESHNESS_HOURS.serverSignalQuality);
   const selfEvolutionServerSignalCutoverReadinessArtifact = readArtifact("best_self_evolution_server_signal_cutover_readiness", SELF_EVOLUTION_SERVER_SIGNAL_CUTOVER_READINESS_LATEST_PATH, FRESHNESS_HOURS.serverSignalCutoverReadiness);
+  const selfEvolutionDropValidationArtifact = readArtifact("best_self_evolution_drop_validation", SELF_EVOLUTION_DROP_VALIDATION_LATEST_PATH, FRESHNESS_HOURS.dropValidation);
   const selfEvolutionServerPrimaryCanaryArtifact = readArtifact("best_self_evolution_server_primary_canary", SELF_EVOLUTION_SERVER_PRIMARY_CANARY_LATEST_PATH, FRESHNESS_HOURS.serverPrimaryCanary);
   const selfEvolutionDeploymentPlanArtifact = readArtifact("best_self_evolution_deployment_plan", SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST_PATH, FRESHNESS_HOURS.objective);
   const selfEvolutionLoopMonitorArtifact = readArtifact("best_self_evolution_loop_monitor", SELF_EVOLUTION_LOOP_MONITOR_LATEST_PATH, FRESHNESS_HOURS.objective);
@@ -1739,6 +1777,7 @@ async function main() {
   const evParityCandidate = buildEvParityCandidate(
     selfEvolutionCanonicalParityArtifact,
     selfEvolutionServerSignalCutoverReadinessArtifact,
+    selfEvolutionDropValidationArtifact,
     currentSys,
     objectiveArtifactForLoop.data || {}
   );
@@ -1785,6 +1824,11 @@ async function main() {
     snapshot_path: result.stageState.last_snapshot_path || null,
     source: evObservedCandidate.observedUpdate === true ? "EV_TUNER" : evParityCandidate.source,
     support_n: evObservedCandidate.observedUpdate === true ? null : evParityCandidate.support_n,
+    drop_validation_status: evObservedCandidate.observedUpdate === true ? null : evParityCandidate.drop_validation_status,
+    drop_validation_action: evObservedCandidate.observedUpdate === true ? null : evParityCandidate.drop_validation_action,
+    drop_validation_top_family: evObservedCandidate.observedUpdate === true ? null : evParityCandidate.drop_validation_top_family,
+    drop_validation_top_reason: evObservedCandidate.observedUpdate === true ? null : evParityCandidate.drop_validation_top_reason,
+    drop_validation_rescue_rate: evObservedCandidate.observedUpdate === true ? null : evParityCandidate.drop_validation_rescue_rate,
   });
 
   const waitObservedCandidate = buildObservedStageCandidate("WAIT", waitArtifact, objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.objective ? objectiveArtifactForLoop.data.objective : null);
@@ -2099,6 +2143,14 @@ async function main() {
       blockers: Array.isArray(selfEvolutionServerSignalCutoverReadiness.blockers) ? selfEvolutionServerSignalCutoverReadiness.blockers : [],
       source_mode: String(selfEvolutionServerSignalCutoverReadiness.source_mode || "").trim().toUpperCase() || null,
     },
+    self_evolution_drop_validation: {
+      available: selfEvolutionDropValidationArtifact.exists === true,
+      status: String(selfEvolutionDropValidationArtifact.data && selfEvolutionDropValidationArtifact.data.summary && selfEvolutionDropValidationArtifact.data.summary.status || "").trim().toUpperCase() || null,
+      top_rescue_family: String(selfEvolutionDropValidationArtifact.data && selfEvolutionDropValidationArtifact.data.summary && selfEvolutionDropValidationArtifact.data.summary.top_rescue_family || "").trim().toUpperCase() || null,
+      top_rescue_reason: String(selfEvolutionDropValidationArtifact.data && selfEvolutionDropValidationArtifact.data.summary && selfEvolutionDropValidationArtifact.data.summary.top_rescue_reason || "").trim().toUpperCase() || null,
+      top_rescue_market: String(selfEvolutionDropValidationArtifact.data && selfEvolutionDropValidationArtifact.data.summary && selfEvolutionDropValidationArtifact.data.summary.top_rescue_market || "").trim().toUpperCase() || null,
+      top_rescue_avg_horizon_ret_net: toNum(selfEvolutionDropValidationArtifact.data && selfEvolutionDropValidationArtifact.data.summary && selfEvolutionDropValidationArtifact.data.summary.top_rescue_avg_horizon_ret_net),
+    },
     self_evolution_server_primary_canary: {
       available: selfEvolutionServerPrimaryCanaryArtifact.exists === true,
       executed_n: toNum(selfEvolutionServerPrimaryCanary.server_primary_executed_n),
@@ -2135,7 +2187,7 @@ async function main() {
     best_febt_tuning_contract: bestFebtContract,
     stage_rows: stageRows,
     actions,
-    artifacts: [objectiveArtifactForLoop, mlArtifact, evArtifact, waitArtifact, canaryArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionServerSignalAuthorityArtifact, selfEvolutionServerSignalQualityArtifact, selfEvolutionServerSignalCutoverReadinessArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionLoopMonitorArtifact, selfEvolutionCandidatesArtifact, changeArtifact, codexArtifact].map((row) => ({
+    artifacts: [objectiveArtifactForLoop, mlArtifact, evArtifact, waitArtifact, canaryArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionServerSignalAuthorityArtifact, selfEvolutionServerSignalQualityArtifact, selfEvolutionServerSignalCutoverReadinessArtifact, selfEvolutionDropValidationArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionLoopMonitorArtifact, selfEvolutionCandidatesArtifact, changeArtifact, codexArtifact].map((row) => ({
       name: row.name,
       filePath: row.filePath,
       fresh: row.fresh,

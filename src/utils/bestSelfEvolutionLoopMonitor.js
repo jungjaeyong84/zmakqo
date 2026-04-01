@@ -36,6 +36,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const serverSignalQuality = unwrapRawReport(reports.serverSignalQuality) || {};
   const serverSignalRuntime = unwrapRawReport(reports.serverSignalRuntime) || {};
   const serverSignalCutoverReadiness = unwrapRawReport(reports.serverSignalCutoverReadiness) || {};
+  const dropValidation = unwrapRawReport(reports.dropValidation) || {};
   const canonicalProvenance = unwrapRawReport(reports.canonicalProvenance) || {};
   const serverPrimaryCanary = unwrapRawReport(reports.serverPrimaryCanary) || {};
   const serverPrimaryAcceptanceWatch = unwrapRawReport(reports.serverPrimaryAcceptanceWatch) || {};
@@ -64,6 +65,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const serverSignalQualitySummary = serverSignalQuality.summary && typeof serverSignalQuality.summary === "object" ? serverSignalQuality.summary : {};
   const serverSignalRuntimeSummary = serverSignalRuntime.summary && typeof serverSignalRuntime.summary === "object" ? serverSignalRuntime.summary : {};
   const serverSignalCutoverSummary = serverSignalCutoverReadiness.summary && typeof serverSignalCutoverReadiness.summary === "object" ? serverSignalCutoverReadiness.summary : {};
+  const dropValidationSummary = dropValidation.summary && typeof dropValidation.summary === "object" ? dropValidation.summary : {};
   const canonicalProvenanceSummary = canonicalProvenance.summary && typeof canonicalProvenance.summary === "object" ? canonicalProvenance.summary : {};
   const canonicalProvenanceEligible = canonicalProvenanceSummary.post_cutover_engine_eligible_n != null
     ? canonicalProvenanceSummary.post_cutover_engine_eligible_n
@@ -99,6 +101,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(serverSignalQuality)
     || readCycleId(serverSignalRuntime)
     || readCycleId(serverSignalCutoverReadiness)
+    || readCycleId(dropValidation)
     || readCycleId(canonicalProvenance)
     || readCycleId(serverPrimaryCanary)
     || readCycleId(serverPrimaryAcceptanceWatch)
@@ -212,6 +215,17 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
         ? "READY"
         : (String(serverSignalCutoverSummary.readiness_status || "N/A").trim().toUpperCase().includes("ACTIVE") ? "PASS" : "WARN"),
       reason: `status=${serverSignalCutoverSummary.readiness_status || "N/A"} / source_mode=${serverSignalCutoverSummary.source_mode || "N/A"} / blockers=${Array.isArray(serverSignalCutoverSummary.blockers) && serverSignalCutoverSummary.blockers.length ? serverSignalCutoverSummary.blockers.join("|") : "none"}`,
+    },
+    {
+      loop: "DROP_VALIDATION",
+      fresh: artifacts.dropValidation && artifacts.dropValidation.fresh === true,
+      cycle_id: readCycleId(dropValidation),
+      status: String(dropValidationSummary.status || "N/A").trim().toUpperCase() === "ACTIONABLE_RESCUE_REVIEW"
+        ? "WARN"
+        : (String(dropValidationSummary.status || "N/A").trim().toUpperCase() === "KEEP_DROP_CONFIRMED"
+        ? "PASS"
+        : (String(dropValidationSummary.status || "N/A").trim().toUpperCase() ? "HOLD" : "N/A")),
+      reason: `recent=${dropValidationSummary.recent_drop_n ?? 0} / matured=${dropValidationSummary.matured_reason_n ?? 0} / dominant=${dropValidationSummary.dominant_family || "N/A"}:${dropValidationSummary.dominant_verdict || "N/A"} / rescue=${dropValidationSummary.top_rescue_family || "N/A"}:${dropValidationSummary.top_rescue_reason || "N/A"}:${dropValidationSummary.top_rescue_market || "N/A"}`,
     },
     {
       loop: "CANONICAL_PROVENANCE",
@@ -439,6 +453,10 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       server_signal_cutover_status: serverSignalCutoverSummary.readiness_status || null,
       server_signal_cutover_ready: serverSignalCutoverSummary.promotion_ready === true,
       server_signal_cutover_blockers: Array.isArray(serverSignalCutoverSummary.blockers) ? serverSignalCutoverSummary.blockers.slice(0, 6) : [],
+      drop_validation_status: dropValidationSummary.status || null,
+      drop_validation_top_rescue_family: dropValidationSummary.top_rescue_family || null,
+      drop_validation_top_rescue_reason: dropValidationSummary.top_rescue_reason || null,
+      drop_validation_top_rescue_market: dropValidationSummary.top_rescue_market || null,
       server_signal_entry_24h_n: toNum(serverSignalQualitySummary.authoritative_entry_signal_24h_n),
       server_signal_intent_24h_n: toNum(serverSignalQualitySummary.order_intent_24h_n),
       server_signal_fill_24h_n: toNum(serverSignalQualitySummary.fill_24h_n),

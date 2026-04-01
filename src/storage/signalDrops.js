@@ -132,6 +132,10 @@ async function recordSignalDrops({ exchange, symbol, tf, drops = [] } = {}) {
       dropReasonCode: d.drop_reason_code,
       signalId: d.signal_id,
       executionMode: d.execution_mode,
+      source: "SERVER",
+      authoritative: true,
+      dropGroup: d.event_group,
+      dropSubtype: d.event_subtype,
     })
   );
   await Promise.allSettled(alerts);
