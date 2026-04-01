@@ -1,0 +1,124 @@
+<%- include('partials/app_start_trader', { title: `${model && model.title ? model.title : '전략 원문'} · DONBEOLJA Trader`, pageTitle: model && model.title ? model.title : '전략 원문', active: model && model.active ? model.active : 'recovery' }) %>
+
+<style>
+  .strategy-latest-screen {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .strategy-latest-meta {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .strategy-latest-box {
+    padding: 14px 16px;
+    border-radius: 18px;
+    border: 1px solid var(--trade-border);
+    background: #fff;
+    box-shadow: var(--trade-shadow);
+  }
+  .strategy-latest-label {
+    color: var(--trade-muted);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+  .strategy-latest-value {
+    margin-top: 6px;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: -.03em;
+  }
+  .strategy-latest-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .strategy-latest-line {
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: #f7f9fb;
+    border: 1px solid #edf1f5;
+    line-height: 1.6;
+    font-size: 13px;
+  }
+  .strategy-latest-markdown {
+    white-space: pre-wrap;
+    word-break: keep-all;
+    line-height: 1.65;
+    font-size: 13px;
+    color: var(--trade-ink);
+    margin: 0;
+  }
+  @media (max-width: 860px) {
+    .strategy-latest-meta {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<%
+  const vm = model || {};
+  const latest = vm.latest || null;
+  const lines = Array.isArray(latest && latest.lines) ? latest.lines : [];
+  const markdown = String(vm.markdown || '').trim();
+%>
+
+<section class="strategy-latest-screen">
+  <nav class="strategy-subnav">
+    <%- include('partials/control_surface_nav', { active: vm.active || 'recovery' }) %>
+  </nav>
+
+  <article class="trade-panel soft">
+    <div class="trade-panel-body" style="display:flex; flex-direction:column; gap:12px;">
+      <div>
+        <div class="strategy-eyebrow">OpenClaw Strategy Latest</div>
+        <div class="strategy-title"><%= vm.title || '전략 원문' %></div>
+        <div class="strategy-detail">회고에서 만든 최신 전략 원문을 그대로 읽는 화면입니다.</div>
+      </div>
+      <div class="strategy-actions">
+        <a href="/dashboard/recovery" class="trade-btn primary">회복 보기</a>
+        <a href="/dashboard/home" class="trade-btn">홈 보기</a>
+      </div>
+    </div>
+  </article>
+
+  <section class="strategy-latest-meta">
+    <div class="strategy-latest-box">
+      <div class="strategy-latest-label">기간</div>
+      <div class="strategy-latest-value"><%= vm.period || '-' %></div>
+    </div>
+    <div class="strategy-latest-box">
+      <div class="strategy-latest-label">기준</div>
+      <div class="strategy-latest-value"><%= latest && latest.source ? latest.source : '-' %></div>
+    </div>
+    <div class="strategy-latest-box">
+      <div class="strategy-latest-label">갱신 시각</div>
+      <div class="strategy-latest-value"><%= latest && latest.generated_at_kst ? latest.generated_at_kst : '-' %></div>
+    </div>
+  </section>
+
+  <article class="strategy-latest-box">
+    <div class="strategy-section-title">핵심 줄</div>
+    <div class="strategy-section-desc">최신 strategy json에 저장된 핵심 문장을 먼저 읽습니다.</div>
+    <div class="strategy-latest-lines" style="margin-top:12px;">
+      <% if (lines.length) { %>
+        <% lines.forEach((line, index) => { %>
+          <div class="strategy-latest-line"><strong><%= index + 1 %>.</strong> <%= line %></div>
+        <% }) %>
+      <% } else { %>
+        <div class="strategy-latest-line">아직 최신 전략이 생성되지 않았습니다.</div>
+      <% } %>
+    </div>
+  </article>
+
+  <article class="strategy-latest-box">
+    <div class="strategy-section-title">원문</div>
+    <div class="strategy-section-desc">markdown snapshot이 있으면 그대로 보여줍니다.</div>
+    <pre class="strategy-latest-markdown" style="margin-top:12px;"><%= markdown || '아직 원문 markdown이 없습니다.' %></pre>
+  </article>
+</section>
+
+<%- include('partials/app_end_trader') %>

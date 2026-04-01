@@ -138,7 +138,13 @@ function buildLink(label, href) {
   return { label: label || href, href };
 }
 
-function buildStrategyCard(title, artifact, fallbackStatus) {
+function buildStrategyLatestHref(period) {
+  const key = String(period || "").trim().toLowerCase();
+  if (!key) return null;
+  return `/dashboard/strategy-latest?period=${encodeURIComponent(key)}`;
+}
+
+function buildStrategyCard(title, artifact, fallbackStatus, period) {
   const lines = Array.isArray(artifact && artifact.raw && artifact.raw.lines)
     ? artifact.raw.lines.filter(Boolean)
     : [];
@@ -158,6 +164,7 @@ function buildStrategyCard(title, artifact, fallbackStatus) {
       { label: "갱신 시각", value: compactText(artifact && artifact.raw && artifact.raw.generated_at_kst) },
       ...rows,
     ],
+    actions: hasStrategy && period ? [{ label: "원문 보기", href: buildStrategyLatestHref(period), tone: "ghost" }] : [],
   };
 }
 
@@ -726,9 +733,9 @@ function buildMissionControlViewModel() {
         description: "월간 큰 전략, 주간 쪼개기, 오늘 실행 계획을 미션 화면에서 바로 확인합니다.",
         columns: 3,
         cards: [
-          buildStrategyCard("월간 전략", monthlyStrategy, "다음달 1일 회고 후 최신 전략이 갱신됩니다."),
-          buildStrategyCard("주간 전략", weeklyStrategy, "다음 월요일 회고 후 최신 전략이 갱신됩니다."),
-          buildStrategyCard("일간 계획", dailyStrategy, "오늘 회고 후 최신 계획이 갱신됩니다."),
+          buildStrategyCard("월간 전략", monthlyStrategy, "다음달 1일 회고 후 최신 전략이 갱신됩니다.", "monthly"),
+          buildStrategyCard("주간 전략", weeklyStrategy, "다음 월요일 회고 후 최신 전략이 갱신됩니다.", "weekly"),
+          buildStrategyCard("일간 계획", dailyStrategy, "오늘 회고 후 최신 계획이 갱신됩니다.", "daily"),
         ],
       },
       {
@@ -1041,9 +1048,9 @@ function buildRecoveryViewModel() {
         description: "월간 큰 전략, 주간 쪼개기, 오늘 실행 계획을 같은 화면에서 바로 읽습니다.",
         columns: 3,
         cards: [
-          buildStrategyCard("월간 전략", monthlyStrategy, "다음달 1일 회고 후 최신 전략이 갱신됩니다."),
-          buildStrategyCard("주간 전략", weeklyStrategy, "다음 월요일 회고 후 최신 전략이 갱신됩니다."),
-          buildStrategyCard("일간 계획", dailyStrategy, "오늘 회고 후 최신 계획이 갱신됩니다."),
+          buildStrategyCard("월간 전략", monthlyStrategy, "다음달 1일 회고 후 최신 전략이 갱신됩니다.", "monthly"),
+          buildStrategyCard("주간 전략", weeklyStrategy, "다음 월요일 회고 후 최신 전략이 갱신됩니다.", "weekly"),
+          buildStrategyCard("일간 계획", dailyStrategy, "오늘 회고 후 최신 계획이 갱신됩니다.", "daily"),
         ],
       },
       {

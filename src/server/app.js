@@ -83,6 +83,7 @@ const ensureAuthMaybe = (req, res, next) => {
     const uiAllowed = [
       "/dashboard/home",
       "/dashboard/mission",
+      "/dashboard/strategy-latest",
       "/dashboard/recovery",
       "/dashboard/deployment",
       "/dashboard/execution",
