@@ -133,12 +133,14 @@ const MARKET_SNAPSHOT_KEYS = Object.freeze([
 const CANONICAL_POLICY_SNAPSHOT_KEYS = Object.freeze([
   "canonical_engine_enabled",
   "canonical_engine_shadow_enabled",
-  "canonical_engine_source_mode",
   "canonical_engine_core_score_abs",
   "canonical_engine_transition_core_score_abs",
   "canonical_engine_market_overrides",
 ]);
-const SOURCE_MODE_SNAPSHOT_KEYS = CANONICAL_POLICY_SNAPSHOT_KEYS;
+const SOURCE_MODE_SNAPSHOT_KEYS = Object.freeze([
+  ...CANONICAL_POLICY_SNAPSHOT_KEYS,
+  "canonical_engine_source_mode",
+]);
 const EV_SNAPSHOT_KEYS = Object.freeze([
   "ev_gate_tp1_prob_min",
   "ev_gate_tp1_prob_full",
@@ -983,6 +985,12 @@ function buildSourceModeStageCandidate({
   };
 }
 
+function shouldSuppressStageRollback(stage) {
+  const normalized = String(stage || "").trim().toUpperCase();
+  if (normalized === "SOURCE_MODE") return true;
+  return false;
+}
+
 function clampProb(value, fallback) {
   const n = toNum(value);
   if (!Number.isFinite(n)) return fallback;
@@ -1491,6 +1499,32 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
     canaryPass: rollbackInputs.canaryPass,
     selfEvolutionRollbackReady: rollbackInputs.selfEvolutionRollbackReady,
   });
+  if (rollback.rollback && shouldSuppressStageRollback(stage)) {
+    return {
+      stageState: {
+        ...stageState,
+        stage,
+        machine_state: STATE_MACHINE.MONITOR,
+        last_signature: candidate.signature || stageState.last_signature,
+        last_action: stageState.last_action || "HOLD",
+        last_reason: "ROLLBACK_SUPPRESSED",
+        streak_current: streakCurrent,
+        adverse_streak_n: rollback.nextAdverseStreak || 0,
+        monitor_window_runs: Number(stageState.monitor_window_runs || 0) + 1,
+        blockers: ["ROLLBACK_SUPPRESSED_SOURCE_MODE"],
+      },
+      history: appendStageHistory(nextHistory, {
+        stage,
+        run_key: `${nowMeta.kst}__ROLLBACK_SUPPRESSED`,
+        signature: stageState.applied_signature || candidate.signature,
+        action: "ROLLBACK_SUPPRESSED",
+        reason: "SOURCE_MODE_STAYS_SERVER_PRIMARY",
+        ts_ms: nowMs,
+        budget_scope: resolveStageBudgetScope(stage),
+      }),
+      action: null,
+    };
+  }
   if (rollback.rollback && stageState.pre_apply_snapshot && Object.keys(stageState.pre_apply_snapshot).length) {
     await updateProviderSettings({
       provider: PROVIDER,
@@ -1608,6 +1642,31 @@ async function processObservedStage({ stage, artifact, stateData, history: curre
     canaryPass,
     selfEvolutionRollbackReady,
   });
+  if (rollback.rollback && shouldSuppressStageRollback(stage)) {
+    return {
+      stageState: {
+        ...stageState,
+        stage,
+        machine_state: STATE_MACHINE.MONITOR,
+        last_signature: candidate.signature || stageState.last_signature,
+        last_action: stageState.last_action || "HOLD",
+        last_reason: "ROLLBACK_SUPPRESSED",
+        adverse_streak_n: rollback.nextAdverseStreak || 0,
+        monitor_window_runs: Number(stageState.monitor_window_runs || 0) + 1,
+        blockers: ["ROLLBACK_SUPPRESSED_SOURCE_MODE"],
+      },
+      history: appendStageHistory(history, {
+        stage,
+        run_key: `${nowMeta.kst}__ROLLBACK_SUPPRESSED`,
+        signature: stageState.applied_signature || candidate.signature,
+        action: "ROLLBACK_SUPPRESSED",
+        reason: "SOURCE_MODE_STAYS_SERVER_PRIMARY",
+        ts_ms: nowMs,
+        budget_scope: resolveStageBudgetScope(stage),
+      }),
+      action: null,
+    };
+  }
   if (rollback.rollback && stageState.pre_apply_snapshot && Object.keys(stageState.pre_apply_snapshot).length) {
     await updateProviderSettings({
       provider: PROVIDER,
