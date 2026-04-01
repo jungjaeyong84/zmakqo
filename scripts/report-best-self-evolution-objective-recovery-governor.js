@@ -35,6 +35,7 @@ const INPUTS = Object.freeze({
   reversePolicy: path.join(OPS_DAILY_DIR, "best_self_evolution_reverse_policy_latest.json"),
   explorationBudget: path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_budget_latest.json"),
   explorationProposal: path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_proposal_latest.json"),
+  explorationApplyCandidate: path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_apply_candidate_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -56,6 +57,7 @@ function renderMarkdown(report = {}) {
     `- reverse_policy: ${summary.reverse_policy_status || "N/A"} / top ${summary.reverse_policy_top_watch_market || "N/A"} / ${summary.reverse_policy_top_watch_reason || "N/A"} / ${summary.reverse_policy_top_watch_action || "N/A"}`,
     `- exploration_budget: ${summary.exploration_budget_status || "N/A"} / prod ${Array.isArray(summary.exploration_budget_production_markets) && summary.exploration_budget_production_markets.length ? summary.exploration_budget_production_markets.join("|") : "none"} / explore ${Array.isArray(summary.exploration_budget_exploration_markets) && summary.exploration_budget_exploration_markets.length ? summary.exploration_budget_exploration_markets.join("|") : "none"} / deferred ${Array.isArray(summary.exploration_budget_deferred_penalty_markets) && summary.exploration_budget_deferred_penalty_markets.length ? summary.exploration_budget_deferred_penalty_markets.join("|") : "none"}`,
     `- exploration_proposal: ${summary.exploration_proposal_status || "N/A"} / top ${summary.exploration_proposal_top_market || "N/A"} / ${summary.exploration_proposal_top_stage || "N/A"} / ${summary.exploration_proposal_top_action || "N/A"} / n ${summary.exploration_proposal_proposal_n ?? 0}`,
+    `- exploration_apply_candidate: ${summary.exploration_apply_candidate_status || "N/A"} / top ${summary.exploration_apply_candidate_top_market || "N/A"} / ${summary.exploration_apply_candidate_top_stage || "N/A"} / ${summary.exploration_apply_candidate_top_action || "N/A"} / manual ${summary.exploration_apply_candidate_manual_confirm_required ? "YES" : "NO"} / auto ${summary.exploration_apply_candidate_auto_apply_allowed ? "YES" : "NO"}`,
     `- degraded_authority: ${summary.degraded_authority_enabled ? "ENABLED" : "DISABLED"} / eligible=${summary.degraded_authority_eligible ? "YES" : "NO"} / ${summary.degraded_authority_reason || "N/A"}`,
     "",
     "## Next Actions",
@@ -90,6 +92,7 @@ function main() {
     reversePolicy: readJsonRawSafe(INPUTS.reversePolicy, null),
     explorationBudget: readJsonRawSafe(INPUTS.explorationBudget, null),
     explorationProposal: readJsonRawSafe(INPUTS.explorationProposal, null),
+    explorationApplyCandidate: readJsonRawSafe(INPUTS.explorationApplyCandidate, null),
   });
   const output = {
     ok: true,

@@ -187,6 +187,22 @@ function summarizeExplorationProposal(explorationProposal = null) {
   };
 }
 
+function summarizeExplorationApplyCandidate(explorationApplyCandidate = null) {
+  const summary = readSummary(explorationApplyCandidate);
+  return {
+    status: toUpper(summary.status),
+    candidate_n: toNum(summary.candidate_n) || 0,
+    manual_confirm_required: summary.manual_confirm_required === true,
+    auto_apply_allowed: summary.auto_apply_allowed === true,
+    max_market_apply_per_cycle: toNum(summary.max_market_apply_per_cycle) || 0,
+    top_market: String(summary.top_market || "").trim().toUpperCase() || null,
+    top_stage: String(summary.top_stage || "").trim().toUpperCase() || null,
+    top_action: String(summary.top_action || "").trim().toUpperCase() || null,
+    blockers: Array.isArray(summary.blockers) ? summary.blockers : [],
+    candidates: Array.isArray(summary.candidates) ? summary.candidates : [],
+  };
+}
+
 function deriveObjectiveRecoveryGovernor({
   autonomyContract = null,
   objective = null,
@@ -203,6 +219,7 @@ function deriveObjectiveRecoveryGovernor({
   reversePolicy = null,
   explorationBudget = null,
   explorationProposal = null,
+  explorationApplyCandidate = null,
 } = {}) {
   const contract = unwrapRawReport(autonomyContract) || {};
   const contractStatus = contract.current_status && typeof contract.current_status === "object" ? contract.current_status : {};
@@ -225,6 +242,7 @@ function deriveObjectiveRecoveryGovernor({
   const reversePolicySummary = summarizeReversePolicy(reversePolicy);
   const explorationBudgetSummary = summarizeExplorationBudget(explorationBudget);
   const explorationProposalSummary = summarizeExplorationProposal(explorationProposal);
+  const explorationApplyCandidateSummary = summarizeExplorationApplyCandidate(explorationApplyCandidate);
 
   const targetCandidateId = String(
     promotion.display_candidate_id
@@ -344,6 +362,13 @@ function deriveObjectiveRecoveryGovernor({
       exploration_proposal_top_market: explorationProposalSummary.top_market,
       exploration_proposal_top_stage: explorationProposalSummary.top_stage,
       exploration_proposal_top_action: explorationProposalSummary.top_action,
+      exploration_apply_candidate_status: explorationApplyCandidateSummary.status,
+      exploration_apply_candidate_candidate_n: explorationApplyCandidateSummary.candidate_n,
+      exploration_apply_candidate_manual_confirm_required: explorationApplyCandidateSummary.manual_confirm_required,
+      exploration_apply_candidate_auto_apply_allowed: explorationApplyCandidateSummary.auto_apply_allowed,
+      exploration_apply_candidate_top_market: explorationApplyCandidateSummary.top_market,
+      exploration_apply_candidate_top_stage: explorationApplyCandidateSummary.top_stage,
+      exploration_apply_candidate_top_action: explorationApplyCandidateSummary.top_action,
       phase_d_status: String(acceptanceSummary.phase_d_status || "").trim().toUpperCase() || null,
       phase_d_ready: acceptanceSummary.phase_d_ready === true,
       governor_status: governorStatus,
@@ -382,6 +407,11 @@ function deriveObjectiveRecoveryGovernor({
         ...(explorationProposalSummary.status === "EXPLORATION_DRY_RUN_READY"
           ? [
             `Keep exploration proposal as dry-run only for now (${explorationProposalSummary.top_market || "N/A"} / ${explorationProposalSummary.top_stage || "N/A"} / ${explorationProposalSummary.top_action || "N/A"} / n=${explorationProposalSummary.proposal_n}).`,
+          ]
+          : []),
+        ...(explorationApplyCandidateSummary.status === "APPLY_CANDIDATE_READY"
+          ? [
+            `Exploration apply candidate remains manual-only (${explorationApplyCandidateSummary.top_market || "N/A"} / ${explorationApplyCandidateSummary.top_stage || "N/A"} / ${explorationApplyCandidateSummary.top_action || "N/A"} / manual=${explorationApplyCandidateSummary.manual_confirm_required ? "YES" : "NO"} / auto=${explorationApplyCandidateSummary.auto_apply_allowed ? "YES" : "NO"}).`,
           ]
           : []),
         ...dropValidationSummary.next_actions,
