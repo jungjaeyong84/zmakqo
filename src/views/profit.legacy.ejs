@@ -1,5 +1,4 @@
-<%- include('partials/app_start_trader', { title: '수익 · DONBEOLJA Trader', pageTitle: '수익', active: 'profit', bodyClass: 'trader-profit-page' }) %>
-<div class="trader-compat-surface">
+<%- include('partials/app_start', { title: '수익 · DONBEOLJA Ω', pageTitle: '수익', active: 'profit' }) %>
 
 <%
   const unit = (profit && profit.unit) ? profit.unit : 'USDT';
@@ -450,7 +449,7 @@
 
   <div class="profit-grid" style="margin-top:12px;">
     <div class="profit-chart">
-      <h3 id="cum-title">누적 손익 (<%= fmtRangeLabel(ranges[defaultRangeKey]) %>)</h3>
+      <h3 id="cum-title">Cumulative PNL (<%= fmtRangeLabel(ranges[defaultRangeKey]) %>)</h3>
       <div class="profit-lines">
         <div class="axis"></div>
         <svg viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -779,8 +778,8 @@
 
     const dailyTitle = document.getElementById('daily-title');
     const cumTitle = document.getElementById('cum-title');
-    if (dailyTitle) dailyTitle.textContent = `일별 손익 (${rangeLabel})`;
-    if (cumTitle) cumTitle.textContent = `누적 손익 (${rangeLabel})`;
+    if (dailyTitle) dailyTitle.textContent = `Daily PNL (${rangeLabel})`;
+    if (cumTitle) cumTitle.textContent = `Cumulative PNL (${rangeLabel})`;
 
     renderDaily(daily);
     renderCumulative(cum);
@@ -815,5 +814,3 @@
   refreshUsdtKrw();
 })();
 </script>
- </div>
-<%- include('partials/app_end_trader') %>

@@ -66,7 +66,7 @@ router.get("/dashboard/cashflow", async (req, res) => {
     const supported = ex.includes("BINANCE");
 
     if (!supported) {
-      return res.render("cashflow", {
+      return res.render(String(req.query.legacy || "").trim() === "1" ? "cashflow.legacy.ejs" : "cashflow", {
         exchange: ex,
         supported: false,
         cashflow: null,
@@ -83,7 +83,7 @@ router.get("/dashboard/cashflow", async (req, res) => {
       : `${CASHFLOW_POLICY_VERSION}:${ex}:${range.key}`;
     const cached = getCache(cacheKey);
     if (cached) {
-      return res.render("cashflow", {
+      return res.render(String(req.query.legacy || "").trim() === "1" ? "cashflow.legacy.ejs" : "cashflow", {
         exchange: ex,
         supported: true,
         cashflow: cached,
@@ -99,7 +99,7 @@ router.get("/dashboard/cashflow", async (req, res) => {
       ? await getBinanceWalletCashflow({ startMs: customStartMs, endMs: customEndMs })
       : await getBinanceWalletCashflow({ rangeDays: range.days });
     setCache(cacheKey, cashflow);
-    return res.render("cashflow", {
+    return res.render(String(req.query.legacy || "").trim() === "1" ? "cashflow.legacy.ejs" : "cashflow", {
       exchange: ex,
       supported: true,
       cashflow,
@@ -110,7 +110,7 @@ router.get("/dashboard/cashflow", async (req, res) => {
       error: null,
     });
   } catch (e) {
-    return res.render("cashflow", {
+    return res.render(String(req.query.legacy || "").trim() === "1" ? "cashflow.legacy.ejs" : "cashflow", {
       exchange: resolvedExchange,
       supported: resolvedExchange.includes("BINANCE"),
       cashflow: null,

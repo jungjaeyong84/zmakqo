@@ -4,8 +4,7 @@
   const __activeNav = 'settings';
 %>
 
-<%- include('partials/app_start_trader', { title: '설정 · DONBEOLJA Trader', pageTitle: '설정', active: __activeNav, bodyClass: 'trader-settings-page' }) %>
-<div class="trader-compat-surface">
+<%- include('partials/app_start', { title: '설정 · DONBEOLJA Ω', pageTitle: '설정', active: __activeNav }) %>
 
 <div class="card">
   <h2>주의</h2>
@@ -2403,5 +2402,4 @@
 
 <% } %>
 
-</div>
-<%- include('partials/app_end_trader') %>
+<%- include('partials/app_end') %>

@@ -1,5 +1,4 @@
-<%- include('partials/app_start_trader', { title: '입출금 · DONBEOLJA Trader', pageTitle: '입출금', active: 'cashflow', bodyClass: 'trader-cashflow-page' }) %>
-<div class="trader-compat-surface">
+<%- include('partials/app_start', { title: '입출금 · DONBEOLJA Ω', pageTitle: '입출금', active: 'cashflow' }) %>
 
 <%
   const entries = (cashflow && Array.isArray(cashflow.entries)) ? cashflow.entries : [];
@@ -96,7 +95,7 @@
   <div class="cashflow-head">
     <div>
       <div class="cashflow-title">입출금 세부 분석</div>
-      <div class="cashflow-sub"><%= exchange %> · 바이낸스 지갑 · <%= rangeLabel %> · USDT는 당시 1h 시세로 환산</div>
+      <div class="cashflow-sub"><%= exchange %> · BINANCE Wallet · <%= rangeLabel %> · USDT는 당시 1h 시세로 환산</div>
       <div class="cashflow-sub">입금, 출금, 순유입과 자금 이동 로그를 별도 카테고리로 확인합니다.</div>
     </div>
     <div class="cashflow-controls">
@@ -556,5 +555,4 @@
 })();
 </script>
 
-</div>
-<%- include('partials/app_end_trader') %>
+<%- include('partials/app_end') %>

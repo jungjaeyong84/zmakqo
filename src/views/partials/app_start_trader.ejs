@@ -48,6 +48,16 @@
       --radius-lg: 22px;
       --radius-md: 16px;
       --mono: "JetBrains Mono", "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+      --bg: var(--trade-bg);
+      --bg-2: #f7f9fb;
+      --card: var(--trade-panel);
+      --card-muted: var(--trade-panel-soft);
+      --text: var(--trade-text);
+      --muted: var(--trade-muted);
+      --line: var(--trade-border);
+      --line-strong: var(--trade-border-strong);
+      --shadow: var(--trade-shadow);
+      --accent: var(--trade-gold);
     }
 
     * { box-sizing: border-box; }
@@ -272,6 +282,157 @@
       font-size: 13px;
       line-height: 1.6;
     }
+    .trader-compat-surface {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .card {
+      background: var(--trade-panel);
+      border: 1px solid var(--trade-border);
+      border-radius: 18px;
+      box-shadow: var(--trade-shadow);
+      padding: 16px;
+    }
+    .subtle {
+      color: var(--trade-muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .hr {
+      height: 1px;
+      background: #edf1f5;
+      margin: 14px 0;
+    }
+    .head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .subnav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 0;
+    }
+    .subnav a {
+      text-decoration: none;
+      padding: 8px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--trade-border);
+      background: #fff;
+      color: var(--trade-muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .subnav a.active {
+      color: #805b00;
+      border-color: #ead8a2;
+      background: linear-gradient(180deg, #fffaf0 0%, #fff2cf 100%);
+    }
+    .grid {
+      display: grid;
+      gap: 12px;
+    }
+    .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .kv {
+      display: grid;
+      grid-template-columns: 120px minmax(0, 1fr);
+      gap: 8px 12px;
+      font-size: 12px;
+    }
+    .kv .k {
+      color: var(--trade-muted);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+    .kv .v {
+      color: var(--trade-text);
+      line-height: 1.5;
+    }
+    .tablewrap,
+    .scroll {
+      overflow: auto;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--trade-border);
+      background: #fff;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .pill.dim {
+      color: var(--trade-muted);
+      background: #f7f8fa;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      text-decoration: none;
+      padding: 9px 13px;
+      border-radius: 12px;
+      border: 1px solid var(--trade-border);
+      background: #fff;
+      color: var(--trade-text);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn.ghost,
+    .btn.secondary {
+      background: #fff;
+    }
+    .btn.slim {
+      padding: 7px 10px;
+      font-size: 11px;
+    }
+    label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--trade-muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+    input, select, textarea {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--trade-border-strong);
+      padding: 9px 10px;
+      background: #fff;
+      font-size: 12px;
+      color: var(--trade-text);
+      outline: none;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 9px 8px;
+      border-bottom: 1px solid #edf1f5;
+      text-align: left;
+      vertical-align: top;
+      font-size: 12px;
+    }
+    th {
+      color: var(--trade-muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      font-weight: 700;
+    }
+    tbody tr:last-child td { border-bottom: 0; }
 
     .trade-rail-shell { display: flex; flex-direction: column; gap: 14px; }
     .trade-rail-brand {
@@ -408,6 +569,11 @@
       }
       .trader-page-title { font-size: 28px; }
       .trade-rail-nav { grid-template-columns: 1fr 1fr; }
+      .grid.cols-2,
+      .grid.cols-3,
+      .kv {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
   <% if (typeof extraHead !== 'undefined' && extraHead) { %>
