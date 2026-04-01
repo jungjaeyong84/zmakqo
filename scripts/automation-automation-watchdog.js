@@ -470,7 +470,7 @@ async function main() {
         }] : []),
       ],
     });
-    if (!alertResult || (alertResult.ok !== true && !(alertResult.skipped && alertResult.reason === "DEDUPED"))) {
+    if (!alertResult || (alertResult.ok !== true && !alertResult.skipped && !(alertResult.skipped && alertResult.reason === "DEDUPED"))) {
       throw new Error(`TELEGRAM_SEND_FAILED:${JSON.stringify(alertResult || {})}`);
     }
   }
