@@ -36,6 +36,7 @@ const INPUTS = Object.freeze({
   explorationBudget: path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_budget_latest.json"),
   explorationProposal: path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_proposal_latest.json"),
   explorationApplyCandidate: path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_apply_candidate_latest.json"),
+  retrospective: path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -93,6 +94,7 @@ function main() {
     explorationBudget: readJsonRawSafe(INPUTS.explorationBudget, null),
     explorationProposal: readJsonRawSafe(INPUTS.explorationProposal, null),
     explorationApplyCandidate: readJsonRawSafe(INPUTS.explorationApplyCandidate, null),
+    retrospective: readJsonRawSafe(INPUTS.retrospective, null),
   });
   const output = {
     ok: true,

@@ -78,13 +78,31 @@ function main() {
       || "OK",
   });
 
-  const supervisor = retrospective.ok
-    ? runScript("automation-objective-supervisor.js", { SKIP_ALERT: process.env.SKIP_ALERT || "" })
+  const governor = retrospective.ok
+    ? runScript("report-best-self-evolution-objective-recovery-governor.js", { SKIP_ALERT: process.env.SKIP_ALERT || "" })
     : { ok: false, parsed: null, stdout_tail: [], stderr_tail: ["RETROSPECTIVE_FAILED"] };
+  steps.push({
+    id: "objective_recovery_governor",
+    status: governor.ok ? "PASS" : "FAIL",
+    summary: governor.parsed && (governor.parsed.ok === true ? "OK" : governor.parsed.status) || (governor.ok ? "OK" : "FAIL"),
+  });
+
+  const supervisor = retrospective.ok && governor.ok
+    ? runScript("automation-objective-supervisor.js", { SKIP_ALERT: process.env.SKIP_ALERT || "" })
+    : { ok: false, parsed: null, stdout_tail: [], stderr_tail: ["RETROSPECTIVE_OR_GOVERNOR_FAILED"] };
   steps.push({
     id: "objective_supervisor",
     status: supervisor.ok ? "PASS" : "FAIL",
     summary: supervisor.parsed && (supervisor.parsed.verdict || supervisor.parsed.reason || supervisor.parsed.status) || (supervisor.ok ? "OK" : "FAIL"),
+  });
+
+  const autopilot = retrospective.ok && governor.ok && supervisor.ok
+    ? runScript("automation-stage-autopilot.js", { SKIP_ALERT: process.env.SKIP_ALERT || "" })
+    : { ok: false, parsed: null, stdout_tail: [], stderr_tail: ["RETROSPECTIVE_OR_GOVERNOR_OR_SUPERVISOR_FAILED"] };
+  steps.push({
+    id: "stage_autopilot",
+    status: autopilot.ok ? "PASS" : "FAIL",
+    summary: autopilot.parsed && (autopilot.parsed.status || autopilot.parsed.reason || autopilot.parsed.objective) || (autopilot.ok ? "OK" : "FAIL"),
   });
 
   const report = {
@@ -96,15 +114,23 @@ function main() {
       || (retrospective.ok ? "OK" : "FAIL"),
     supervisor_status: supervisor.parsed && (supervisor.parsed.verdict || supervisor.parsed.reason || supervisor.parsed.status)
       || (supervisor.ok ? "OK" : "FAIL"),
-    learning_applied: retrospective.ok && supervisor.ok,
+    governor_status: governor.parsed && (governor.parsed.status || (governor.parsed.ok === true ? "OK" : null))
+      || (governor.ok ? "OK" : "FAIL"),
+    autopilot_status: autopilot.parsed && (autopilot.parsed.status || autopilot.parsed.reason || autopilot.parsed.objective)
+      || (autopilot.ok ? "OK" : "FAIL"),
+    learning_applied: retrospective.ok && governor.ok && supervisor.ok && autopilot.ok,
     steps,
     stdout_tail: {
       retrospective: retrospective.stdout_tail,
+      governor: governor.stdout_tail,
       supervisor: supervisor.stdout_tail,
+      autopilot: autopilot.stdout_tail,
     },
     stderr_tail: {
       retrospective: retrospective.stderr_tail,
+      governor: governor.stderr_tail,
       supervisor: supervisor.stderr_tail,
+      autopilot: autopilot.stderr_tail,
     },
   };
 

@@ -203,6 +203,27 @@ function summarizeExplorationApplyCandidate(explorationApplyCandidate = null) {
   };
 }
 
+function summarizeRetrospective(retrospective = null) {
+  const raw = unwrapRawReport(retrospective) || {};
+  const activePeriods = Array.isArray(raw.active_periods) ? raw.active_periods : ["DAILY"];
+  const selfCritique = raw.self_critique && Array.isArray(raw.self_critique.lines) ? raw.self_critique.lines : [];
+  const nextDayStrategy = raw.next_day_strategy && Array.isArray(raw.next_day_strategy.lines) ? raw.next_day_strategy.lines : [];
+  const dailyEval = raw.daily_trade_evaluation && typeof raw.daily_trade_evaluation === "object" ? raw.daily_trade_evaluation : {};
+  const bestMarket = dailyEval.best_market && String(dailyEval.best_market.symbol || "").trim().toUpperCase() || null;
+  const worstMarket = dailyEval.worst_market && String(dailyEval.worst_market.symbol || "").trim().toUpperCase() || null;
+  const failedPeriods = raw.reflection_summary && Array.isArray(raw.reflection_summary.failed_periods)
+    ? raw.reflection_summary.failed_periods
+    : [];
+  return {
+    active_periods: activePeriods,
+    failed_periods: failedPeriods,
+    best_market: bestMarket,
+    worst_market: worstMarket,
+    self_critique_lines: selfCritique,
+    next_day_strategy_lines: nextDayStrategy,
+  };
+}
+
 function deriveObjectiveRecoveryGovernor({
   autonomyContract = null,
   objective = null,
@@ -220,6 +241,7 @@ function deriveObjectiveRecoveryGovernor({
   explorationBudget = null,
   explorationProposal = null,
   explorationApplyCandidate = null,
+  retrospective = null,
 } = {}) {
   const contract = unwrapRawReport(autonomyContract) || {};
   const contractStatus = contract.current_status && typeof contract.current_status === "object" ? contract.current_status : {};
@@ -243,6 +265,7 @@ function deriveObjectiveRecoveryGovernor({
   const explorationBudgetSummary = summarizeExplorationBudget(explorationBudget);
   const explorationProposalSummary = summarizeExplorationProposal(explorationProposal);
   const explorationApplyCandidateSummary = summarizeExplorationApplyCandidate(explorationApplyCandidate);
+  const retrospectiveSummary = summarizeRetrospective(retrospective);
 
   const targetCandidateId = String(
     promotion.display_candidate_id
@@ -369,6 +392,10 @@ function deriveObjectiveRecoveryGovernor({
       exploration_apply_candidate_top_market: explorationApplyCandidateSummary.top_market,
       exploration_apply_candidate_top_stage: explorationApplyCandidateSummary.top_stage,
       exploration_apply_candidate_top_action: explorationApplyCandidateSummary.top_action,
+      retrospective_active_periods: retrospectiveSummary.active_periods,
+      retrospective_failed_periods: retrospectiveSummary.failed_periods,
+      retrospective_best_market: retrospectiveSummary.best_market,
+      retrospective_worst_market: retrospectiveSummary.worst_market,
       phase_d_status: String(acceptanceSummary.phase_d_status || "").trim().toUpperCase() || null,
       phase_d_ready: acceptanceSummary.phase_d_ready === true,
       governor_status: governorStatus,
@@ -418,6 +445,12 @@ function deriveObjectiveRecoveryGovernor({
               `Exploration apply candidate remains manual-only (${explorationApplyCandidateSummary.top_market || "N/A"} / ${explorationApplyCandidateSummary.top_stage || "N/A"} / ${explorationApplyCandidateSummary.top_action || "N/A"} / manual=${explorationApplyCandidateSummary.manual_confirm_required ? "YES" : "NO"} / auto=${explorationApplyCandidateSummary.auto_apply_allowed ? "YES" : "NO"}).`,
             ]
             : [])),
+        ...(retrospectiveSummary.failed_periods.length
+          ? [
+            `Retrospective priority says focus on ${retrospectiveSummary.worst_market || "the weakest market"} first, while keeping ${retrospectiveSummary.best_market || "the strongest market"} as the lead production market.`,
+          ]
+          : []),
+        ...retrospectiveSummary.next_day_strategy_lines.slice(0, 3),
         ...dropValidationSummary.next_actions,
       ],
     },

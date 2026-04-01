@@ -17,6 +17,7 @@ const {
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
+const { KST_OFFSET_MS } = require("../src/utils/timeKst");
 const {
   DEFAULT_MIN_MONTHLY_NET_KRW,
   DEFAULT_MIN_WIN_RATE,
@@ -44,6 +45,12 @@ const SCAN_LIMIT = Math.max(4000, Number(process.env.OBJECTIVE_RETRO_SCAN_LIMIT 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const REPORT_LATEST_JSON = path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json");
 const REPORT_LATEST_MD = path.join(OPS_DAILY_DIR, "objective_retrospective_latest.md");
+const MONTHLY_STRATEGY_LATEST_JSON = path.join(OPS_DAILY_DIR, "objective_monthly_strategy_latest.json");
+const MONTHLY_STRATEGY_LATEST_MD = path.join(OPS_DAILY_DIR, "objective_monthly_strategy_latest.md");
+const WEEKLY_STRATEGY_LATEST_JSON = path.join(OPS_DAILY_DIR, "objective_weekly_strategy_latest.json");
+const WEEKLY_STRATEGY_LATEST_MD = path.join(OPS_DAILY_DIR, "objective_weekly_strategy_latest.md");
+const DAILY_STRATEGY_LATEST_JSON = path.join(OPS_DAILY_DIR, "objective_daily_strategy_latest.json");
+const DAILY_STRATEGY_LATEST_MD = path.join(OPS_DAILY_DIR, "objective_daily_strategy_latest.md");
 const RETROSPECTIVE_DOC_PATH = path.join("/Users/jeongjaeyong/Projects/donbeolja/docs", "OBJECTIVE_RETROSPECTIVE_POLICY.md");
 
 function toNum(v) {
@@ -400,13 +407,99 @@ function buildTomorrowStrategy({ failedPeriods = [], daily, weekly, monthly, qua
   return lines;
 }
 
-function periodRanges(nowMs) {
+function readLatestStrategyLines(filePath) {
+  const raw = readJsonSafe(filePath, null);
+  const lines = raw && Array.isArray(raw.lines) ? raw.lines : [];
+  return lines.filter(Boolean);
+}
+
+function renderStrategyMarkdown(title, lines = [], meta = {}) {
+  return [
+    `# ${title}`,
+    "",
+    `- generated_at_kst: ${meta.generated_at_kst || "N/A"}`,
+    `- source: ${meta.source || "N/A"}`,
+    "",
+    ...(Array.isArray(lines) && lines.length ? lines.map((line) => `- ${line}`) : ["- none"]),
+    "",
+  ].join("\n");
+}
+
+function writeStrategySnapshot({ jsonPath, mdPath, title, lines, meta }) {
+  writeJson(jsonPath, { ...meta, lines: Array.isArray(lines) ? lines : [] });
+  writeText(mdPath, renderStrategyMarkdown(title, lines, meta));
+}
+
+function buildMonthlyMasterStrategy({ monthly, weekly, daily } = {}) {
+  const lines = [];
+  const monthlyNet = signedKrw(monthly && monthly.realized_trades && monthly.realized_trades.net_pnl_quote, 0);
+  const monthlyTarget = signedKrw(monthly && monthly.objective && monthly.objective.period_target_krw, 0);
+  lines.push(`이번 달 큰 전략의 출발점은 월간 손익 ${monthlyNet}와 목표 ${monthlyTarget}의 차이를 줄이는 것입니다.`);
+  lines.push("서버 신호 기준으로 production 시장을 다시 정렬하고, 과차단 계층은 단계적으로 완화합니다.");
+  lines.push("월간 전략은 승자 시장 증폭, 부진 시장 watch 유지, 실행 품질 악화 시장 보정의 3축으로 운영합니다.");
+  if (daily && daily.daily_trade_evaluation && daily.daily_trade_evaluation.best_market) {
+    lines.push(`이번 달 우선 증폭 후보는 ${daily.daily_trade_evaluation.best_market.symbol}입니다.`);
+  }
+  if (daily && daily.daily_trade_evaluation && daily.daily_trade_evaluation.worst_market) {
+    lines.push(`이번 달 집중 점검 시장은 ${daily.daily_trade_evaluation.worst_market.symbol}입니다.`);
+  }
+  return lines;
+}
+
+function buildWeeklyBreakdownStrategy({ weekly, monthlyStrategyLines = [], daily } = {}) {
+  const lines = [];
+  const weeklyNet = signedKrw(weekly && weekly.realized_trades && weekly.realized_trades.net_pnl_quote, 0);
+  const weeklyTarget = signedKrw(weekly && weekly.objective && weekly.objective.period_target_krw, 0);
+  lines.push(`이번 주 전략은 주간 손익 ${weeklyNet}를 목표 ${weeklyTarget}에 맞추도록 월간 전략을 주간 단위로 쪼개 실행하는 것입니다.`);
+  if (monthlyStrategyLines.length) lines.push(`월간 전략 핵심은 '${monthlyStrategyLines[0]}' 입니다.`);
+  lines.push("이번 주는 서버 신호 수를 늘리면서도 execution quality 악화를 막는 균형에 집중합니다.");
+  if (daily && daily.daily_trade_evaluation && daily.daily_trade_evaluation.best_market) {
+    lines.push(`주간 production 우선 시장은 ${daily.daily_trade_evaluation.best_market.symbol}입니다.`);
+  }
+  return lines;
+}
+
+function buildDailyExecutionPlan({ nextDayStrategyLines = [], weeklyStrategyLines = [], monthlyStrategyLines = [] } = {}) {
+  const lines = [];
+  if (monthlyStrategyLines.length) lines.push(`월간 기준: ${monthlyStrategyLines[0]}`);
+  if (weeklyStrategyLines.length) lines.push(`주간 기준: ${weeklyStrategyLines[0]}`);
+  lines.push(...(Array.isArray(nextDayStrategyLines) ? nextDayStrategyLines.slice(0, 3) : []));
+  return lines.filter(Boolean);
+}
+
+function kstMonthStartUtcMs(nowMs) {
+  const kstDate = new Date(nowMs + KST_OFFSET_MS);
+  return Date.UTC(kstDate.getUTCFullYear(), kstDate.getUTCMonth(), 1, 0, 0, 0) - KST_OFFSET_MS;
+}
+
+function buildRetrospectiveCadence(nowMs) {
   const todayStart = kstStartOfTodayUtcMs(nowMs);
+  const kstDate = new Date(nowMs + KST_OFFSET_MS);
+  const kstDay = kstDate.getUTCDay();
+  const isMonday = kstDay === 1;
+  const isFirstDayOfMonth = kstDate.getUTCDate() === 1;
+  const currentWeekStart = todayStart - (((kstDay + 6) % 7) * DAY_MS);
+  const currentMonthStart = kstMonthStartUtcMs(nowMs);
+  const previousMonthAnchor = currentMonthStart - DAY_MS;
+  const previousMonthStart = kstMonthStartUtcMs(previousMonthAnchor);
   return {
-    DAILY: { fromMs: todayStart, toMs: nowMs, observedDays: 1, targetKrw: TARGET_DAILY_KRW },
-    WEEKLY: { fromMs: todayStart - (6 * DAY_MS), toMs: nowMs, observedDays: 7, targetKrw: TARGET_WEEKLY_KRW },
-    MONTHLY: { fromMs: todayStart - (29 * DAY_MS), toMs: nowMs, observedDays: 30, targetKrw: TARGET_MONTHLY_KRW },
+    include_weekly: isMonday,
+    include_monthly: isFirstDayOfMonth,
+    active_periods: [
+      "DAILY",
+      ...(isMonday ? ["WEEKLY"] : []),
+      ...(isFirstDayOfMonth ? ["MONTHLY"] : []),
+    ],
+    ranges: {
+      DAILY: { fromMs: todayStart, toMs: nowMs, observedDays: 1, targetKrw: TARGET_DAILY_KRW },
+      WEEKLY: { fromMs: currentWeekStart - (7 * DAY_MS), toMs: currentWeekStart, observedDays: 7, targetKrw: TARGET_WEEKLY_KRW },
+      MONTHLY: { fromMs: previousMonthStart, toMs: currentMonthStart, observedDays: 30, targetKrw: TARGET_MONTHLY_KRW },
+    },
   };
+}
+
+function periodRanges(nowMs) {
+  return buildRetrospectiveCadence(nowMs).ranges;
 }
 
 async function buildPeriodReport(period, range, context = {}) {
@@ -485,6 +578,9 @@ function renderPeriodMarkdown(row = {}) {
 }
 
 function renderMarkdown(report = {}) {
+  const activePeriods = Array.isArray(report.active_periods) && report.active_periods.length
+    ? report.active_periods
+    : ["DAILY"];
   const lines = [
     "# Objective Retrospective",
     "",
@@ -494,13 +590,12 @@ function renderMarkdown(report = {}) {
     `- 일간 목표: ${Number(report.objective && report.objective.daily_target_krw || TARGET_DAILY_KRW).toLocaleString("ko-KR")} KRW`,
     `- 주간 목표: ${Number(report.objective && report.objective.weekly_target_krw || TARGET_WEEKLY_KRW).toLocaleString("ko-KR")} KRW`,
     `- 월간 목표: ${Number(report.objective && report.objective.monthly_target_krw || TARGET_MONTHLY_KRW).toLocaleString("ko-KR")} KRW`,
+    `- 발송 구간: ${activePeriods.join(", ")}`,
     "",
     renderPeriodMarkdown(report.periods && report.periods.DAILY || {}),
     "",
-    renderPeriodMarkdown(report.periods && report.periods.WEEKLY || {}),
-    "",
-    renderPeriodMarkdown(report.periods && report.periods.MONTHLY || {}),
-    "",
+    ...(activePeriods.includes("WEEKLY") ? [renderPeriodMarkdown(report.periods && report.periods.WEEKLY || {}), ""] : []),
+    ...(activePeriods.includes("MONTHLY") ? [renderPeriodMarkdown(report.periods && report.periods.MONTHLY || {}), ""] : []),
     "## 당일 전체 거래 평가",
     ...((report.daily_trade_evaluation && report.daily_trade_evaluation.lines) || []).map((line) => `- ${line}`),
     "",
@@ -521,7 +616,8 @@ function renderMarkdown(report = {}) {
 
 async function main() {
   const meta = nowKstMeta();
-  const ranges = periodRanges(meta.nowMs);
+  const cadence = buildRetrospectiveCadence(meta.nowMs);
+  const ranges = cadence.ranges;
   const [signalsRes, dropsRes, fillsRes] = await Promise.all([
     getCachedRecentByCreatedAt("signals", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: true }),
     getCachedRecentByCreatedAt("signals_dropped", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: true }),
@@ -537,7 +633,10 @@ async function main() {
   const weekly = await buildPeriodReport("WEEKLY", ranges.WEEKLY, { signals, drops, fills, trades });
   const monthly = await buildPeriodReport("MONTHLY", ranges.MONTHLY, { signals, drops, fills, trades });
 
-  const failedPeriods = [daily, weekly, monthly].filter((row) => row && row.objective && row.objective.pass !== true).map((row) => row.period);
+  const failedPeriods = cadence.active_periods
+    .map((period) => ({ period, row: period === "DAILY" ? daily : (period === "WEEKLY" ? weekly : monthly) }))
+    .filter(({ row }) => row && row.objective && row.objective.pass !== true)
+    .map(({ period }) => period);
   const dailyTradeEvaluation = buildDailyTradeEvaluation({ daily, weekly, monthly });
   daily.daily_trade_evaluation = dailyTradeEvaluation;
   const reflectionLines = [daily, weekly, monthly]
@@ -545,6 +644,19 @@ async function main() {
     .slice(0, 8);
   const selfCritiqueLines = buildSelfCritique({ failedPeriods, daily, weekly, monthly });
   const nextDayStrategyLines = buildTomorrowStrategy({ failedPeriods, daily, weekly, monthly, quality: daily });
+  const priorMonthlyStrategyLines = readLatestStrategyLines(MONTHLY_STRATEGY_LATEST_JSON);
+  const priorWeeklyStrategyLines = readLatestStrategyLines(WEEKLY_STRATEGY_LATEST_JSON);
+  const monthlyStrategyLines = cadence.include_monthly
+    ? buildMonthlyMasterStrategy({ monthly, weekly, daily })
+    : priorMonthlyStrategyLines;
+  const weeklyStrategyLines = cadence.include_weekly
+    ? buildWeeklyBreakdownStrategy({ weekly, monthlyStrategyLines, daily })
+    : priorWeeklyStrategyLines;
+  const dailyExecutionPlanLines = buildDailyExecutionPlan({
+    nextDayStrategyLines,
+    weeklyStrategyLines,
+    monthlyStrategyLines,
+  });
   const report = {
     generated_at_kst: meta.kst,
     provider: PROVIDER,
@@ -563,6 +675,9 @@ async function main() {
       WEEKLY: weekly,
       MONTHLY: monthly,
     },
+    active_periods: cadence.active_periods,
+    include_weekly: cadence.include_weekly,
+    include_monthly: cadence.include_monthly,
     reflection_summary: {
       failed_periods: failedPeriods,
       lines: reflectionLines,
@@ -573,6 +688,20 @@ async function main() {
     },
     next_day_strategy: {
       lines: nextDayStrategyLines,
+    },
+    strategy_hierarchy: {
+      monthly_master_strategy: {
+        active: cadence.include_monthly,
+        lines: monthlyStrategyLines,
+      },
+      weekly_breakdown_strategy: {
+        active: cadence.include_weekly,
+        lines: weeklyStrategyLines,
+      },
+      daily_execution_plan: {
+        active: true,
+        lines: dailyExecutionPlanLines,
+      },
     },
     references: {
       governance: path.join(OPS_DAILY_DIR, "weekly_filter_governance_latest.md"),
@@ -595,6 +724,31 @@ async function main() {
   writeText(mdPath, renderMarkdown(report));
   copyLatest(jsonPath, REPORT_LATEST_JSON);
   copyLatest(mdPath, REPORT_LATEST_MD);
+  if (cadence.include_monthly) {
+    writeStrategySnapshot({
+      jsonPath: MONTHLY_STRATEGY_LATEST_JSON,
+      mdPath: MONTHLY_STRATEGY_LATEST_MD,
+      title: "Objective Monthly Strategy",
+      lines: monthlyStrategyLines,
+      meta: { generated_at_kst: meta.kst, source: "MONTHLY_RETROSPECTIVE" },
+    });
+  }
+  if (cadence.include_weekly) {
+    writeStrategySnapshot({
+      jsonPath: WEEKLY_STRATEGY_LATEST_JSON,
+      mdPath: WEEKLY_STRATEGY_LATEST_MD,
+      title: "Objective Weekly Strategy",
+      lines: weeklyStrategyLines,
+      meta: { generated_at_kst: meta.kst, source: "WEEKLY_RETROSPECTIVE" },
+    });
+  }
+  writeStrategySnapshot({
+    jsonPath: DAILY_STRATEGY_LATEST_JSON,
+    mdPath: DAILY_STRATEGY_LATEST_MD,
+    title: "Objective Daily Strategy",
+    lines: dailyExecutionPlanLines,
+    meta: { generated_at_kst: meta.kst, source: "DAILY_RETROSPECTIVE" },
+  });
 
   const alert = await sendKoreanTelegramSummary({
     title: `[회고] ${failedPeriods.length ? failedPeriods.join("/") : "PASS"}`,
@@ -603,6 +757,7 @@ async function main() {
     dedupeWindowSec: 18 * 60 * 60,
     dedupeFingerprint: JSON.stringify({
       failedPeriods,
+      activePeriods: cadence.active_periods,
       dailyExecuted: daily.entry_cohort.executed_n || 0,
       dailyRealized: daily.realized_trades.trade_n || 0,
       dailyNet: daily.realized_trades.net_pnl_quote || 0,
@@ -614,27 +769,35 @@ async function main() {
         header: "일간",
         lines: dailyTradeEvaluation.lines.slice(0, 3),
       },
-      {
+      ...(cadence.include_weekly ? [{
         header: "주간",
         lines: [
           `주간 손익 ${signedKrw(weekly.realized_trades.net_pnl_quote, 0)} / 목표 ${signedKrw(weekly.objective.period_target_krw, 0)}`,
           Array.isArray(weekly.reflection) && weekly.reflection.length ? weekly.reflection[0] : "주간 기준 핵심 원인은 계속 추적 중입니다.",
         ],
-      },
-      {
+      }] : []),
+      ...(cadence.include_monthly ? [{
         header: "월간",
         lines: [
           `월간 손익 ${signedKrw(monthly.realized_trades.net_pnl_quote, 0)} / 목표 ${signedKrw(monthly.objective.period_target_krw, 0)}`,
           Array.isArray(monthly.reflection) && monthly.reflection.length ? monthly.reflection[0] : "월간 기준 핵심 원인은 계속 추적 중입니다.",
         ],
-      },
+      }] : []),
       {
         header: "OpenClaw 판단",
         lines: selfCritiqueLines.slice(0, 3),
       },
+      ...(cadence.include_monthly ? [{
+        header: "월간 전략",
+        lines: monthlyStrategyLines.slice(0, 3),
+      }] : []),
+      ...(cadence.include_weekly ? [{
+        header: "주간 전략",
+        lines: weeklyStrategyLines.slice(0, 3),
+      }] : []),
       {
-        header: "내일 전략",
-        lines: nextDayStrategyLines.slice(0, 3),
+        header: "일간 계획",
+        lines: dailyExecutionPlanLines.slice(0, 3),
       },
     ],
   });
@@ -645,6 +808,7 @@ async function main() {
   console.log(JSON.stringify({
     ok: true,
     provider: PROVIDER,
+    active_periods: cadence.active_periods,
     failed_periods: failedPeriods,
     jsonPath,
     mdPath,
@@ -668,6 +832,7 @@ if (require.main === module) {
       buildDailyTradeEvaluation,
       buildSelfCritique,
       buildTomorrowStrategy,
+      buildRetrospectiveCadence,
       periodRanges,
     },
   };
