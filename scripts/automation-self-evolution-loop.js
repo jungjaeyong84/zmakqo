@@ -36,6 +36,7 @@ function buildStepPlan() {
     { id: "objective_seed", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SKIP_TELEGRAM: "1", OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "SEED" } },
     { id: "objective", script: "report-best-self-evolution-objective.js" },
     { id: "market_objective_score", script: "report-best-self-evolution-market-objective-score.js" },
+    { id: "server_vs_pine_performance_delta", script: "report-best-self-evolution-server-vs-pine-performance-delta.js" },
     { id: "attribution", script: "report-best-self-evolution-attribution.js" },
     { id: "candidates", script: "report-best-self-evolution-candidates.js" },
     { id: "replay", script: "report-best-self-evolution-replay.js" },

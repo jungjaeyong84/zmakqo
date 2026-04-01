@@ -61,6 +61,7 @@ const FEBT_PHASE0_LATEST_PATH = path.join(OPS_DAILY_DIR, "febt_phase0_baseline_l
 const SELF_EVOLUTION_DATASET_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_dataset_latest.json");
 const SELF_EVOLUTION_OBJECTIVE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_objective_latest.json");
 const SELF_EVOLUTION_MARKET_OBJECTIVE_SCORE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_market_objective_score_latest.json");
+const SELF_EVOLUTION_SERVER_VS_PINE_PERFORMANCE_DELTA_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_vs_pine_performance_delta_latest.json");
 const SELF_EVOLUTION_ATTRIBUTION_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_attribution_latest.json");
 const SELF_EVOLUTION_CANDIDATES_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_candidates_latest.json");
 const SELF_EVOLUTION_REPLAY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_replay_latest.json");
@@ -103,6 +104,7 @@ const FRESHNESS_HOURS = Object.freeze({
   selfEvolutionDataset: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_DATASET_MAX_AGE_HOURS || 36)),
   selfEvolutionObjective: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_OBJECTIVE_MAX_AGE_HOURS || 36)),
   selfEvolutionMarketObjectiveScore: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_MARKET_OBJECTIVE_SCORE_MAX_AGE_HOURS || 36)),
+  selfEvolutionServerVsPinePerformanceDelta: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_SERVER_VS_PINE_PERFORMANCE_DELTA_MAX_AGE_HOURS || 36)),
   selfEvolutionAttribution: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_ATTRIBUTION_MAX_AGE_HOURS || 36)),
   selfEvolutionCandidates: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_CANDIDATES_MAX_AGE_HOURS || 36)),
   selfEvolutionReplay: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_REPLAY_MAX_AGE_HOURS || 36)),
@@ -238,9 +240,9 @@ function readCycleId(value = null) {
 
 const SELF_EVOLUTION_STAGE_KEYS = Object.freeze({
   SEED: ["dataset"],
-  INTEGRATED: ["dataset", "objective", "marketObjectiveScore", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "serverPrimaryAcceptanceWatch", "pineShadowDrift", "deploymentProbe", "bundleActivation", "openclawAutonomyContract", "objectiveRecoveryGovernor", "objectiveRecoveryEffect", "memory", "codex"],
-  FINAL: ["dataset", "objective", "marketObjectiveScore", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "serverPrimaryAcceptanceWatch", "pineShadowDrift", "deploymentProbe", "bundleActivation", "openclawAutonomyContract", "objectiveRecoveryGovernor", "objectiveRecoveryEffect", "memory", "codex"],
-  STANDALONE: ["dataset", "objective", "marketObjectiveScore", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "serverPrimaryAcceptanceWatch", "pineShadowDrift", "deploymentProbe", "bundleActivation", "openclawAutonomyContract", "objectiveRecoveryGovernor", "objectiveRecoveryEffect", "memory", "codex", "stageAutopilot"],
+  INTEGRATED: ["dataset", "objective", "marketObjectiveScore", "serverVsPinePerformanceDelta", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "serverPrimaryAcceptanceWatch", "pineShadowDrift", "deploymentProbe", "bundleActivation", "openclawAutonomyContract", "objectiveRecoveryGovernor", "objectiveRecoveryEffect", "memory", "codex"],
+  FINAL: ["dataset", "objective", "marketObjectiveScore", "serverVsPinePerformanceDelta", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "serverPrimaryAcceptanceWatch", "pineShadowDrift", "deploymentProbe", "bundleActivation", "openclawAutonomyContract", "objectiveRecoveryGovernor", "objectiveRecoveryEffect", "memory", "codex"],
+  STANDALONE: ["dataset", "objective", "marketObjectiveScore", "serverVsPinePerformanceDelta", "attribution", "candidates", "replay", "canary", "canonicalParity", "canonicalProvenance", "serverPrimaryCanary", "serverPrimaryAcceptanceWatch", "pineShadowDrift", "deploymentProbe", "bundleActivation", "openclawAutonomyContract", "objectiveRecoveryGovernor", "objectiveRecoveryEffect", "memory", "codex", "stageAutopilot"],
 });
 
 function summarizeSelfEvolutionArtifactCycles({ artifacts = {}, stage = "STANDALONE", preferredCycleId = null } = {}) {
@@ -550,6 +552,32 @@ function summarizeSelfEvolutionMarketObjectiveScore(report = null) {
     top_recovery_drop_reason: String(summary.top_recovery_drop_reason || "").trim().toUpperCase() || null,
     top_recovery_avg_horizon_pnl_quote_proxy: toNum(summary.top_recovery_avg_horizon_pnl_quote_proxy),
     runtime_exec_tf: String(summary.runtime_exec_tf || "").trim() || null,
+    top_watch_markets: Array.isArray(summary.top_watch_markets) ? summary.top_watch_markets : [],
+    by_market: rows,
+  };
+}
+
+function summarizeSelfEvolutionServerVsPinePerformanceDelta(report = null) {
+  const summary = report && report.summary && typeof report.summary === "object" ? report.summary : {};
+  const rows = Array.isArray(report && report.by_market) ? report.by_market : [];
+  return {
+    available: !!report,
+    status: String(summary.status || "").trim().toUpperCase() || null,
+    active_market_n: toNum(summary.active_market_n) || 0,
+    parity_mismatch_rate: toNum(summary.parity_mismatch_rate),
+    parity_mismatch_n: toNum(summary.parity_mismatch_n) || 0,
+    authoritative_server_24h_n: toNum(summary.authoritative_server_24h_n) || 0,
+    pine_shadow_24h_n: toNum(summary.pine_shadow_24h_n) || 0,
+    authoritative_entry_signal_24h_n: toNum(summary.authoritative_entry_signal_24h_n) || 0,
+    order_intent_24h_n: toNum(summary.order_intent_24h_n) || 0,
+    fill_24h_n: toNum(summary.fill_24h_n) || 0,
+    avg_active_delta_score: toNum(summary.avg_active_delta_score),
+    top_server_edge_market: String(summary.top_server_edge_market || "").trim().toUpperCase() || null,
+    top_server_edge_score: toNum(summary.top_server_edge_score),
+    top_shadow_gap_market: String(summary.top_shadow_gap_market || "").trim().toUpperCase() || null,
+    top_shadow_gap_score: toNum(summary.top_shadow_gap_score),
+    top_shadow_gap_reason: String(summary.top_shadow_gap_reason || "").trim().toUpperCase() || null,
+    top_shadow_gap_action: String(summary.top_shadow_gap_action || "").trim().toUpperCase() || null,
     top_watch_markets: Array.isArray(summary.top_watch_markets) ? summary.top_watch_markets : [],
     by_market: rows,
   };
@@ -1703,7 +1731,7 @@ function buildObjectiveSupervisorTelegramAlertSections(report = {}) {
   }));
 }
 
-function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionMarketObjectiveScore, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionCanonicalParity, selfEvolutionServerSignalAuthority, selfEvolutionServerSignalQuality, selfEvolutionServerSignalCutoverReadiness, selfEvolutionDropValidation, selfEvolutionCanonicalProvenance, selfEvolutionServerPrimaryCanary, selfEvolutionPineShadowDrift, selfEvolutionDeploymentProbe, selfEvolutionBundleActivation, selfEvolutionEvGateRescue, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache, preparedOverride } = {}) {
+function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionMarketObjectiveScore, selfEvolutionServerVsPinePerformanceDelta, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionCanonicalParity, selfEvolutionServerSignalAuthority, selfEvolutionServerSignalQuality, selfEvolutionServerSignalCutoverReadiness, selfEvolutionDropValidation, selfEvolutionCanonicalProvenance, selfEvolutionServerPrimaryCanary, selfEvolutionPineShadowDrift, selfEvolutionDeploymentProbe, selfEvolutionBundleActivation, selfEvolutionEvGateRescue, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache, preparedOverride } = {}) {
   const objective = governance && governance.current && governance.current.objective ? governance.current.objective : {};
   const objectiveCfg = governance && governance.objective ? governance.objective : {};
   const promotion = changeControl && changeControl.auto_promotion ? changeControl.auto_promotion : {};
@@ -1795,6 +1823,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   const selfEvolutionServerSignalCutoverReadinessSummary = summarizeSelfEvolutionServerSignalCutoverReadiness(selfEvolutionServerSignalCutoverReadiness);
   const selfEvolutionDropValidationSummary = summarizeSelfEvolutionDropValidation(selfEvolutionDropValidation);
   const selfEvolutionMarketObjectiveScoreSummary = summarizeSelfEvolutionMarketObjectiveScore(selfEvolutionMarketObjectiveScore);
+  const selfEvolutionServerVsPinePerformanceDeltaSummary = summarizeSelfEvolutionServerVsPinePerformanceDelta(selfEvolutionServerVsPinePerformanceDelta);
   const selfEvolutionCanonicalProvenanceSummary = deriveCanonicalProvenanceDiagnostics(selfEvolutionCanonicalProvenance);
   const selfEvolutionServerPrimaryCanarySummary = deriveServerPrimaryCanaryDiagnostics(selfEvolutionServerPrimaryCanary);
   const selfEvolutionPineShadowDriftSummary = derivePineShadowDriftDiagnostics(selfEvolutionPineShadowDrift);
@@ -2194,6 +2223,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     self_evolution_server_signal_cutover_readiness: selfEvolutionServerSignalCutoverReadinessSummary,
     self_evolution_drop_validation: selfEvolutionDropValidationSummary,
     self_evolution_market_objective_score: selfEvolutionMarketObjectiveScoreSummary,
+    self_evolution_server_vs_pine_performance_delta: selfEvolutionServerVsPinePerformanceDeltaSummary,
     self_evolution_canonical_provenance: selfEvolutionCanonicalProvenanceSummary,
     self_evolution_server_primary_canary: selfEvolutionServerPrimaryCanarySummary,
     self_evolution_pine_shadow_drift: selfEvolutionPineShadowDriftSummary,
@@ -2531,6 +2561,7 @@ async function main() {
   const selfEvolutionDatasetArtifact = readArtifact("self_evolution_dataset", SELF_EVOLUTION_DATASET_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionDataset);
   const selfEvolutionObjectiveArtifact = readArtifact("self_evolution_objective", SELF_EVOLUTION_OBJECTIVE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionObjective);
   const selfEvolutionMarketObjectiveScoreArtifact = readArtifact("self_evolution_market_objective_score", SELF_EVOLUTION_MARKET_OBJECTIVE_SCORE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionMarketObjectiveScore);
+  const selfEvolutionServerVsPinePerformanceDeltaArtifact = readArtifact("self_evolution_server_vs_pine_performance_delta", SELF_EVOLUTION_SERVER_VS_PINE_PERFORMANCE_DELTA_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionServerVsPinePerformanceDelta);
   const selfEvolutionAttributionArtifact = readArtifact("self_evolution_attribution", SELF_EVOLUTION_ATTRIBUTION_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionAttribution);
   const selfEvolutionCandidatesArtifact = readArtifact("self_evolution_candidates", SELF_EVOLUTION_CANDIDATES_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCandidates);
   const selfEvolutionReplayArtifact = readArtifact("self_evolution_replay", SELF_EVOLUTION_REPLAY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionReplay);
@@ -2568,6 +2599,7 @@ async function main() {
       dataset: selfEvolutionDatasetArtifact,
       objective: selfEvolutionObjectiveArtifact,
       marketObjectiveScore: selfEvolutionMarketObjectiveScoreArtifact,
+      serverVsPinePerformanceDelta: selfEvolutionServerVsPinePerformanceDeltaArtifact,
       attribution: selfEvolutionAttributionArtifact,
       candidates: selfEvolutionCandidatesArtifact,
       replay: selfEvolutionReplayArtifact,
@@ -2614,6 +2646,7 @@ async function main() {
     selfEvolutionDataset: selfEvolutionDatasetArtifact.exists ? { ...selfEvolutionDatasetArtifact.data, fresh: selfEvolutionDatasetArtifact.fresh } : null,
     selfEvolutionObjective: selfEvolutionObjectiveArtifact.exists ? { ...selfEvolutionObjectiveArtifact.data, fresh: selfEvolutionObjectiveArtifact.fresh } : null,
     selfEvolutionMarketObjectiveScore: selfEvolutionMarketObjectiveScoreArtifact.exists ? { ...selfEvolutionMarketObjectiveScoreArtifact.data, fresh: selfEvolutionMarketObjectiveScoreArtifact.fresh } : null,
+    selfEvolutionServerVsPinePerformanceDelta: selfEvolutionServerVsPinePerformanceDeltaArtifact.exists ? { ...selfEvolutionServerVsPinePerformanceDeltaArtifact.data, fresh: selfEvolutionServerVsPinePerformanceDeltaArtifact.fresh } : null,
     selfEvolutionAttribution: selfEvolutionAttributionArtifact.exists ? { ...selfEvolutionAttributionArtifact.data, fresh: selfEvolutionAttributionArtifact.fresh } : null,
     selfEvolutionCandidates: selfEvolutionCandidatesArtifact.exists ? { ...selfEvolutionCandidatesArtifact.data, fresh: selfEvolutionCandidatesArtifact.fresh } : null,
     selfEvolutionReplay: selfEvolutionReplayArtifact.exists ? { ...selfEvolutionReplayArtifact.data, fresh: selfEvolutionReplayArtifact.fresh } : null,
@@ -2696,6 +2729,15 @@ async function main() {
       : []),
     ...(evaluation.self_evolution_market_objective_score && Array.isArray(evaluation.self_evolution_market_objective_score.top_watch_markets)
       ? evaluation.self_evolution_market_objective_score.top_watch_markets.slice(0, 6).map((row) => `MARKET_OBJECTIVE_WATCH: ${row.market || "N/A"} / obj=${row.objective_score != null ? row.objective_score : "N/A"} / band=${row.objective_band || "N/A"} / drop=${row.drop_verdict || "N/A"} / action=${row.drop_action || "N/A"} / prio=${row.recovery_priority_score != null ? row.recovery_priority_score : "N/A"}`)
+      : []),
+    ...(evaluation.self_evolution_server_vs_pine_performance_delta && evaluation.self_evolution_server_vs_pine_performance_delta.status
+      ? [`SERVER_VS_PINE_DELTA_STATUS: ${evaluation.self_evolution_server_vs_pine_performance_delta.status} / active=${evaluation.self_evolution_server_vs_pine_performance_delta.active_market_n ?? 0} / avg_delta=${evaluation.self_evolution_server_vs_pine_performance_delta.avg_active_delta_score != null ? evaluation.self_evolution_server_vs_pine_performance_delta.avg_active_delta_score : "N/A"} / mismatch=${evaluation.self_evolution_server_vs_pine_performance_delta.parity_mismatch_n ?? 0}`]
+      : []),
+    ...(evaluation.self_evolution_server_vs_pine_performance_delta && evaluation.self_evolution_server_vs_pine_performance_delta.top_shadow_gap_market
+      ? [`SERVER_VS_PINE_TOP_SHADOW_GAP: ${evaluation.self_evolution_server_vs_pine_performance_delta.top_shadow_gap_market} / score=${evaluation.self_evolution_server_vs_pine_performance_delta.top_shadow_gap_score != null ? evaluation.self_evolution_server_vs_pine_performance_delta.top_shadow_gap_score : "N/A"} / action=${evaluation.self_evolution_server_vs_pine_performance_delta.top_shadow_gap_action || "N/A"} / reason=${evaluation.self_evolution_server_vs_pine_performance_delta.top_shadow_gap_reason || "N/A"}`]
+      : []),
+    ...(evaluation.self_evolution_server_vs_pine_performance_delta && Array.isArray(evaluation.self_evolution_server_vs_pine_performance_delta.top_watch_markets)
+      ? evaluation.self_evolution_server_vs_pine_performance_delta.top_watch_markets.slice(0, 6).map((row) => `SERVER_VS_PINE_WATCH: ${row.market || "N/A"} / verdict=${row.verdict || "N/A"} / delta=${row.performance_delta_score != null ? row.performance_delta_score : "N/A"} / obj=${row.objective_score != null ? row.objective_score : "N/A"} / mismatch=${row.mismatch_count != null ? row.mismatch_count : "N/A"} / action=${row.recommended_action || "N/A"}`)
       : []),
     ...(evaluation.self_evolution_server_signal_cutover_readiness
       ? [

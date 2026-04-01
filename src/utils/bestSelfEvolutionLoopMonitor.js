@@ -38,6 +38,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const serverSignalCutoverReadiness = unwrapRawReport(reports.serverSignalCutoverReadiness) || {};
   const dropValidation = unwrapRawReport(reports.dropValidation) || {};
   const marketObjectiveScore = unwrapRawReport(reports.marketObjectiveScore) || {};
+  const serverVsPinePerformanceDelta = unwrapRawReport(reports.serverVsPinePerformanceDelta) || {};
   const canonicalProvenance = unwrapRawReport(reports.canonicalProvenance) || {};
   const serverPrimaryCanary = unwrapRawReport(reports.serverPrimaryCanary) || {};
   const serverPrimaryAcceptanceWatch = unwrapRawReport(reports.serverPrimaryAcceptanceWatch) || {};
@@ -68,6 +69,9 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const serverSignalCutoverSummary = serverSignalCutoverReadiness.summary && typeof serverSignalCutoverReadiness.summary === "object" ? serverSignalCutoverReadiness.summary : {};
   const dropValidationSummary = dropValidation.summary && typeof dropValidation.summary === "object" ? dropValidation.summary : {};
   const marketObjectiveScoreSummary = marketObjectiveScore.summary && typeof marketObjectiveScore.summary === "object" ? marketObjectiveScore.summary : {};
+  const serverVsPinePerformanceDeltaSummary = serverVsPinePerformanceDelta.summary && typeof serverVsPinePerformanceDelta.summary === "object"
+    ? serverVsPinePerformanceDelta.summary
+    : {};
   const canonicalProvenanceSummary = canonicalProvenance.summary && typeof canonicalProvenance.summary === "object" ? canonicalProvenance.summary : {};
   const canonicalProvenanceEligible = canonicalProvenanceSummary.post_cutover_engine_eligible_n != null
     ? canonicalProvenanceSummary.post_cutover_engine_eligible_n
@@ -105,6 +109,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
     || readCycleId(serverSignalCutoverReadiness)
     || readCycleId(dropValidation)
     || readCycleId(marketObjectiveScore)
+    || readCycleId(serverVsPinePerformanceDelta)
     || readCycleId(canonicalProvenance)
     || readCycleId(serverPrimaryCanary)
     || readCycleId(serverPrimaryAcceptanceWatch)
@@ -229,6 +234,15 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
         ? "PASS"
         : (String(dropValidationSummary.status || "N/A").trim().toUpperCase() ? "HOLD" : "N/A")),
       reason: `recent=${dropValidationSummary.recent_drop_n ?? 0} / matured=${dropValidationSummary.matured_reason_n ?? 0} / dominant=${dropValidationSummary.dominant_family || "N/A"}:${dropValidationSummary.dominant_verdict || "N/A"} / rescue=${dropValidationSummary.top_rescue_family || "N/A"}:${dropValidationSummary.top_rescue_reason || "N/A"}:${dropValidationSummary.top_rescue_market || "N/A"}`,
+    },
+    {
+      loop: "SERVER_VS_PINE_DELTA",
+      fresh: artifacts.serverVsPinePerformanceDelta && artifacts.serverVsPinePerformanceDelta.fresh === true,
+      cycle_id: readCycleId(serverVsPinePerformanceDelta),
+      status: String(serverVsPinePerformanceDeltaSummary.status || "").trim().toUpperCase() === "SERVER_EDGE_STABLE"
+        ? "PASS"
+        : (String(serverVsPinePerformanceDeltaSummary.status || "").trim().toUpperCase() === "SHADOW_GAP_REVIEW" ? "WARN" : "HOLD"),
+      reason: `shadow_gap=${serverVsPinePerformanceDeltaSummary.top_shadow_gap_market || "N/A"} / edge=${serverVsPinePerformanceDeltaSummary.top_server_edge_market || "N/A"} / delta=${serverVsPinePerformanceDeltaSummary.avg_active_delta_score != null ? serverVsPinePerformanceDeltaSummary.avg_active_delta_score : "N/A"} / mismatch=${serverVsPinePerformanceDeltaSummary.parity_mismatch_n ?? 0}`,
     },
     {
       loop: "CANONICAL_PROVENANCE",
@@ -468,6 +482,10 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       market_objective_top_recovery_market: marketObjectiveScoreSummary.top_recovery_market || null,
       market_objective_top_drag_market: marketObjectiveScoreSummary.top_drag_market || null,
       market_objective_top_recovery_avg_horizon_pnl_quote_proxy: toNum(marketObjectiveScoreSummary.top_recovery_avg_horizon_pnl_quote_proxy),
+      server_vs_pine_delta_status: serverVsPinePerformanceDeltaSummary.status || null,
+      server_vs_pine_delta_top_shadow_gap_market: serverVsPinePerformanceDeltaSummary.top_shadow_gap_market || null,
+      server_vs_pine_delta_top_server_edge_market: serverVsPinePerformanceDeltaSummary.top_server_edge_market || null,
+      server_vs_pine_delta_avg_active_delta_score: toNum(serverVsPinePerformanceDeltaSummary.avg_active_delta_score),
       server_signal_entry_24h_n: toNum(serverSignalQualitySummary.authoritative_entry_signal_24h_n),
       server_signal_intent_24h_n: toNum(serverSignalQualitySummary.order_intent_24h_n),
       server_signal_fill_24h_n: toNum(serverSignalQualitySummary.fill_24h_n),
