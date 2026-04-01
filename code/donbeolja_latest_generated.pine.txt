@@ -156,6 +156,8 @@ continuation_pressure_long = f_clamp01(0.42 * (close > ema_fast ? 1.0 : 0.0) + 0
 continuation_pressure_short = f_clamp01(0.42 * (close < ema_fast ? 1.0 : 0.0) + 0.28 * f_clamp01(body_ratio / 0.7) + 0.30 * (macd_hist <= macd_hist[1] ? 1.0 : 0.0))
 risk_efficiency_long = f_clamp01(0.60 * (price_position <= max_extension_long ? 1.0 : 0.0) + 0.40 * (close >= ema_anchor * 0.97 ? 1.0 : 0.35))
 risk_efficiency_short = f_clamp01(0.60 * (price_position >= min_extension_short ? 1.0 : 0.0) + 0.40 * (close <= ema_anchor * 1.03 ? 1.0 : 0.35))
+transition_core_quality_long = market_state != "TRANSITION" or (transition_bias_long and structure_alignment_long >= 0.82 and participation >= 0.54 and directional_pressure_long >= 0.52 and continuation_pressure_long >= 0.58 and body_ratio >= 0.50 and price_position >= 0.38 and price_position <= 0.74)
+transition_core_quality_short = market_state != "TRANSITION" or (transition_bias_short and structure_alignment_short >= 0.82 and participation >= 0.54 and directional_pressure_short >= 0.52 and continuation_pressure_short >= 0.58 and body_ratio >= 0.50 and price_position <= 0.62 and price_position >= 0.26)
 
 long_opportunity = 0.22 * structure_alignment_long + 0.20 * directional_pressure_long + 0.18 * pullback_quality_long + 0.12 * participation + 0.14 * continuation_pressure_long + 0.14 * risk_efficiency_long
 short_opportunity = 0.22 * structure_alignment_short + 0.20 * directional_pressure_short + 0.18 * pullback_quality_short + 0.12 * participation + 0.14 * continuation_pressure_short + 0.14 * risk_efficiency_short
@@ -210,11 +212,11 @@ risk_mode_short_core = not risk_ok_short_core ? (state_dead ? "DEAD_MARKET" : st
 // Final signals
 //────────────────────────────────────
 long_early_raw = long_opportunity >= thr_early and (trigger_reclaim_long or trigger_breakout_long) and risk_ok_long_early and structure_alignment_long >= 0.40 and directional_pressure_long >= 0.42 and anti_chop_gate
-long_core_raw = long_opportunity >= thr_core and (trigger_continuation_long or trigger_breakout_long) and risk_ok_long_core and structure_alignment_long >= 0.62 and participation >= 0.42
+long_core_raw = long_opportunity >= thr_core and (trigger_continuation_long or trigger_breakout_long) and risk_ok_long_core and structure_alignment_long >= 0.62 and participation >= 0.42 and transition_core_quality_long
 long_diag_c = long_opportunity >= thr_diag_c and trigger_long and risk_ok_long_core and structure_alignment_long >= 0.82 and participation >= 0.58 and directional_pressure_long >= 0.64
 
 short_early_raw = short_opportunity >= thr_early and (trigger_loss_short or trigger_breakdown_short) and risk_ok_short_early and structure_alignment_short >= 0.40 and directional_pressure_short >= 0.42 and anti_chop_gate
-short_core_raw = short_opportunity >= thr_core and (trigger_continuation_short or trigger_breakdown_short) and risk_ok_short_core and structure_alignment_short >= 0.62 and participation >= 0.42
+short_core_raw = short_opportunity >= thr_core and (trigger_continuation_short or trigger_breakdown_short) and risk_ok_short_core and structure_alignment_short >= 0.62 and participation >= 0.42 and transition_core_quality_short
 short_diag_c = short_opportunity >= thr_diag_c and trigger_short and risk_ok_short_core and structure_alignment_short >= 0.82 and participation >= 0.58 and directional_pressure_short >= 0.64
 
 var int last_long_signal_bar = na

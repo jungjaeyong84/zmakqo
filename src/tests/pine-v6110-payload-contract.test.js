@@ -21,6 +21,10 @@ function assertAlertSurface(text) {
   assert.ok(text.includes('f_json_pair_s("event", direction)'), "payload must emit event as LONG|SHORT direction");
   assert.ok(text.includes('f_json_pair_n("qtyPct", webhook_qty_pct)'), "payload must emit qtyPct");
   assert.ok(text.includes('f_json_pair_n("bar_close_time_utc_ms", time_close)'), "payload must emit bar_close_time_utc_ms");
+  assert.ok(text.includes('transition_core_quality_long = market_state != "TRANSITION" or ('), "transition core quality gate should exist for long");
+  assert.ok(text.includes('transition_core_quality_short = market_state != "TRANSITION" or ('), "transition core quality gate should exist for short");
+  assert.ok(text.includes('and transition_core_quality_long'), "long core should use transition quality gate");
+  assert.ok(text.includes('and transition_core_quality_short'), "short core should use transition quality gate");
 }
 
 (function testPineAlertPayloadContract() {
