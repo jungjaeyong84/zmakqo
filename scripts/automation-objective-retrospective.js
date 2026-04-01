@@ -52,6 +52,7 @@ const WEEKLY_STRATEGY_LATEST_MD = path.join(OPS_DAILY_DIR, "objective_weekly_str
 const DAILY_STRATEGY_LATEST_JSON = path.join(OPS_DAILY_DIR, "objective_daily_strategy_latest.json");
 const DAILY_STRATEGY_LATEST_MD = path.join(OPS_DAILY_DIR, "objective_daily_strategy_latest.md");
 const RETROSPECTIVE_DOC_PATH = path.join("/Users/jeongjaeyong/Projects/donbeolja/docs", "OBJECTIVE_RETROSPECTIVE_POLICY.md");
+const RETROSPECTIVE_PRIMARY_SEND_HHMM = "2330";
 
 function toNum(v) {
   if (v === null || v === undefined || v === "") return null;
@@ -75,6 +76,11 @@ function signedKrw(v, digits = 0) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "N/A";
   return `${n > 0 ? "+" : ""}${n.toLocaleString("ko-KR", { maximumFractionDigits: digits, minimumFractionDigits: digits })} KRW`;
+}
+
+function shouldSendPrimaryRetrospectiveAlert(meta) {
+  if (String(process.env.FORCE_RETROSPECTIVE_ALERT || "").trim() === "1") return true;
+  return String(meta && meta.hhmm || "").trim() === RETROSPECTIVE_PRIMARY_SEND_HHMM;
 }
 
 function resolveBarMs(row) {
@@ -750,57 +756,66 @@ async function main() {
     meta: { generated_at_kst: meta.kst, source: "DAILY_RETROSPECTIVE" },
   });
 
-  const alert = await sendKoreanTelegramSummary({
-    title: `[회고] ${failedPeriods.length ? failedPeriods.join("/") : "PASS"}`,
-    severity: failedPeriods.length ? "WARN" : "INFO",
-    dedupeKey: `objective_retrospective:${failedPeriods.join("_") || "PASS"}:${daily.entry_cohort.executed_n || 0}:${daily.realized_trades.trade_n || 0}`,
-    dedupeWindowSec: 18 * 60 * 60,
-    dedupeFingerprint: JSON.stringify({
-      failedPeriods,
-      activePeriods: cadence.active_periods,
-      dailyExecuted: daily.entry_cohort.executed_n || 0,
-      dailyRealized: daily.realized_trades.trade_n || 0,
-      dailyNet: daily.realized_trades.net_pnl_quote || 0,
-      weeklyNet: weekly.realized_trades.net_pnl_quote || 0,
-      monthlyNet: monthly.realized_trades.net_pnl_quote || 0,
-    }),
-    sections: [
-      {
-        header: "일간",
-        lines: dailyTradeEvaluation.lines.slice(0, 3),
-      },
-      ...(cadence.include_weekly ? [{
-        header: "주간",
-        lines: [
-          `주간 손익 ${signedKrw(weekly.realized_trades.net_pnl_quote, 0)} / 목표 ${signedKrw(weekly.objective.period_target_krw, 0)}`,
-          Array.isArray(weekly.reflection) && weekly.reflection.length ? weekly.reflection[0] : "주간 기준 핵심 원인은 계속 추적 중입니다.",
-        ],
-      }] : []),
-      ...(cadence.include_monthly ? [{
-        header: "월간",
-        lines: [
-          `월간 손익 ${signedKrw(monthly.realized_trades.net_pnl_quote, 0)} / 목표 ${signedKrw(monthly.objective.period_target_krw, 0)}`,
-          Array.isArray(monthly.reflection) && monthly.reflection.length ? monthly.reflection[0] : "월간 기준 핵심 원인은 계속 추적 중입니다.",
-        ],
-      }] : []),
-      {
-        header: "OpenClaw 판단",
-        lines: selfCritiqueLines.slice(0, 3),
-      },
-      ...(cadence.include_monthly ? [{
-        header: "월간 전략",
-        lines: monthlyStrategyLines.slice(0, 3),
-      }] : []),
-      ...(cadence.include_weekly ? [{
-        header: "주간 전략",
-        lines: weeklyStrategyLines.slice(0, 3),
-      }] : []),
-      {
-        header: "일간 계획",
-        lines: dailyExecutionPlanLines.slice(0, 3),
-      },
-    ],
-  });
+  const alert = shouldSendPrimaryRetrospectiveAlert(meta)
+    ? await sendKoreanTelegramSummary({
+      title: `[회고] ${failedPeriods.length ? failedPeriods.join("/") : "PASS"}`,
+      severity: failedPeriods.length ? "WARN" : "INFO",
+      dedupeKey: `objective_retrospective:${meta.dateKey}:${cadence.active_periods.join("_")}:${failedPeriods.join("_") || "PASS"}`,
+      dedupeWindowSec: 18 * 60 * 60,
+      dedupeFingerprint: JSON.stringify({
+        dateKey: meta.dateKey,
+        failedPeriods,
+        activePeriods: cadence.active_periods,
+        dailyExecuted: daily.entry_cohort.executed_n || 0,
+        dailyRealized: daily.realized_trades.trade_n || 0,
+        dailyNet: daily.realized_trades.net_pnl_quote || 0,
+        weeklyNet: weekly.realized_trades.net_pnl_quote || 0,
+        monthlyNet: monthly.realized_trades.net_pnl_quote || 0,
+      }),
+      sections: [
+        {
+          header: "일간",
+          lines: dailyTradeEvaluation.lines.slice(0, 3),
+        },
+        ...(cadence.include_weekly ? [{
+          header: "주간",
+          lines: [
+            `주간 손익 ${signedKrw(weekly.realized_trades.net_pnl_quote, 0)} / 목표 ${signedKrw(weekly.objective.period_target_krw, 0)}`,
+            Array.isArray(weekly.reflection) && weekly.reflection.length ? weekly.reflection[0] : "주간 기준 핵심 원인은 계속 추적 중입니다.",
+          ],
+        }] : []),
+        ...(cadence.include_monthly ? [{
+          header: "월간",
+          lines: [
+            `월간 손익 ${signedKrw(monthly.realized_trades.net_pnl_quote, 0)} / 목표 ${signedKrw(monthly.objective.period_target_krw, 0)}`,
+            Array.isArray(monthly.reflection) && monthly.reflection.length ? monthly.reflection[0] : "월간 기준 핵심 원인은 계속 추적 중입니다.",
+          ],
+        }] : []),
+        {
+          header: "OpenClaw 판단",
+          lines: selfCritiqueLines.slice(0, 3),
+        },
+        ...(cadence.include_monthly ? [{
+          header: "월간 전략",
+          lines: monthlyStrategyLines.slice(0, 3),
+        }] : []),
+        ...(cadence.include_weekly ? [{
+          header: "주간 전략",
+          lines: weeklyStrategyLines.slice(0, 3),
+        }] : []),
+        {
+          header: "일간 계획",
+          lines: dailyExecutionPlanLines.slice(0, 3),
+        },
+      ],
+    })
+    : {
+      ok: true,
+      skipped: true,
+      reason: "OUTSIDE_PRIMARY_SEND_WINDOW",
+      send_hhmm: RETROSPECTIVE_PRIMARY_SEND_HHMM,
+      current_hhmm: meta.hhmm,
+    };
   if (!alert || (alert.ok !== true && alert.skipped !== true)) {
     throw new Error(`TELEGRAM_SEND_FAILED:${JSON.stringify(alert || {})}`);
   }
