@@ -706,8 +706,15 @@ router.get("/dashboard/home", async (req, res) => {
     });
 
     const signalsVisible = signalsRaw.filter((x) => x && (x.authoritative === true || String(x.source || "").toUpperCase() === "SERVER"));
+    const signalsVisibleSorted = signalsVisible
+      .map((x) => ({ ...x, _signal_source: "SIGNAL" }))
+      .sort((a, b) => {
+        const aMs = toMsSafe(a.created_at || a.created_kst || a.bar_close_time_utc_ms) || 0;
+        const bMs = toMsSafe(b.created_at || b.created_kst || b.bar_close_time_utc_ms) || 0;
+        return bMs - aMs;
+      });
     const signalsMerged = [
-      ...signalsVisible.map((x) => ({ ...x, _signal_source: "SIGNAL" })),
+      ...signalsVisibleSorted,
       ...dropsRaw,
     ].sort((a, b) => {
       const aMs = toMsSafe(a.created_at || a.created_kst || a.bar_close_time_utc_ms) || 0;
@@ -1364,7 +1371,7 @@ router.get("/dashboard/home", async (req, res) => {
 
     // signals/fills list view (12개)
     const nowMs = Date.now();
-    const signals12 = signalsMerged.slice(0, 12).map((x) => {
+    const signals12 = signalsVisibleSorted.slice(0, 12).map((x) => {
       const matched = intentLookup.resolveForSignal(x);
       const schedMs = Number(matched && matched.scheduled_exec_bar_close_time_utc_ms);
       const execPlan = matched ? {
