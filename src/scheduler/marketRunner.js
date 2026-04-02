@@ -503,6 +503,8 @@ async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHi
       tf: signalTfFinal,
       barCloseMs: barCloseMs_f,
       barCloseUtc: signalTrace.bar_close_time_utc,
+      newBar: signalTrace.new_bar,
+      actorAllowed: signalTrace.actor_allowed,
       webhookSeen: webhookSummary.webhook_seen === true,
       webhookDecision: webhookSummary.top_decision,
       serverSignalCreated: signalTrace.status === "SERVER_SIGNAL_CREATED",

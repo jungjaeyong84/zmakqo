@@ -266,6 +266,8 @@ function buildCompareDedupeKey(payload = {}) {
 }
 
 function shouldSendCompareAlert(payload = {}) {
+  if (payload.newBar === false) return false;
+  if (String(payload.serverReason || "").trim().toUpperCase() === "NO_NEW_BAR") return false;
   return !!(
     payload.webhookSeen
     || payload.serverSignalCreated

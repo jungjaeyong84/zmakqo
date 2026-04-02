@@ -20,6 +20,16 @@ const { __test } = require("../services/signalLifecycleAlert");
     }),
     false
   );
+  assert.strictEqual(
+    __test.shouldSendCompareAlert({
+      newBar: false,
+      webhookSeen: true,
+      serverSignalCreated: false,
+      serverReason: "NO_NEW_BAR",
+      signalDropN: 0,
+    }),
+    false
+  );
 
   const msg = __test.buildCompareMessage({
     symbol: "ETHUSDT",
