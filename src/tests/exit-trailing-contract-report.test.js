@@ -13,6 +13,8 @@ const { __test } = require("../../scripts/report-best-self-evolution-exit-traili
   });
   assert.strictEqual(summary.status, "EXIT_TRAILING_CONTRACT_ACTIVE");
   assert.strictEqual(summary.canonical_mode, "TRAIL_R_MULTIPLE");
+  assert.strictEqual(summary.r_basis, "STRUCTURE_STOP");
+  assert.strictEqual(summary.leverage_invariant_r, true);
   assert.strictEqual(summary.generic_trail_event_when_r_enabled, true);
   assert.ok(Array.isArray(summary.exchange_contracts) && summary.exchange_contracts.length >= 3);
   const binance = summary.exchange_contracts.find((row) => row.exchange === "BINANCEFUT");

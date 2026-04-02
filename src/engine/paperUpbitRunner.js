@@ -1040,7 +1040,51 @@ function cloneExitRules(rules) {
   return { ...(rules && typeof rules === "object" ? rules : {}) };
 }
 
-function computeInitialStopPriceForEntry({ avgPrice, leverage, side, slRatio } = {}) {
+function resolveStructureInitialStopPrice({ avgPrice, side, features, nativeProtectionStopPrice } = {}) {
+  const avg = Number(avgPrice);
+  const sideUpper = String(side || "").toUpperCase() === "SHORT" ? "SHORT" : "LONG";
+  const f = (features && typeof features === "object") ? features : {};
+  const featureStop = Number(
+    f.stop_price
+    ?? f.stopPrice
+    ?? f.entry_stop_price
+    ?? f.entryStopPrice
+  );
+  const nativeStop = Number(nativeProtectionStopPrice);
+  const candidates = [featureStop, nativeStop];
+  for (const candidate of candidates) {
+    if (!Number.isFinite(candidate) || !Number.isFinite(avg) || avg <= 0) continue;
+    if (sideUpper === "SHORT" && candidate > avg) return candidate;
+    if (sideUpper === "LONG" && candidate < avg) return candidate;
+  }
+  return null;
+}
+
+function resolveInitialStopSource({ avgPrice, side, features, nativeProtectionStopPrice } = {}) {
+  const structureStop = resolveStructureInitialStopPrice({ avgPrice, side, features, nativeProtectionStopPrice });
+  if (!Number.isFinite(structureStop)) return "LEVERAGED_SL_FALLBACK";
+  const featureStop = Number(
+    features && (
+      features.stop_price
+      ?? features.stopPrice
+      ?? features.entry_stop_price
+      ?? features.entryStopPrice
+    )
+  );
+  if (Number.isFinite(featureStop) && Math.abs(featureStop - structureStop) <= 1e-9) return "STRUCTURE_STOP_FEATURE";
+  const nativeStop = Number(nativeProtectionStopPrice);
+  if (Number.isFinite(nativeStop) && Math.abs(nativeStop - structureStop) <= 1e-9) return "STRUCTURE_STOP_NATIVE";
+  return "LEVERAGED_SL_FALLBACK";
+}
+
+function computeInitialStopPriceForEntry({ avgPrice, leverage, side, slRatio, features, nativeProtectionStopPrice } = {}) {
+  const structureStop = resolveStructureInitialStopPrice({
+    avgPrice,
+    side,
+    features,
+    nativeProtectionStopPrice,
+  });
+  if (Number.isFinite(structureStop)) return structureStop;
   const avg = Number(avgPrice);
   const lev = Number(leverage);
   const sl = Number(slRatio);
@@ -10548,6 +10592,14 @@ async function runPaperFuturesForBar({
         leverage: appliedLeverage,
         side: nextPosSide,
         slRatio: appliedExitRules && appliedExitRules.SL,
+        features: it.features_json,
+        nativeProtectionStopPrice: it && it.features_json && it.features_json.stop_price,
+      });
+      const initialStopSource = resolveInitialStopSource({
+        avgPrice: fillPrice,
+        side: nextPosSide,
+        features: it.features_json,
+        nativeProtectionStopPrice: it && it.features_json && it.features_json.stop_price,
       });
       const entryRDistance = (Number.isFinite(initialStopPrice) && Number.isFinite(fillPrice))
         ? Math.abs(Number(initialStopPrice) - Number(fillPrice))
@@ -10563,6 +10615,7 @@ async function runPaperFuturesForBar({
         entry_exec_bar_ms: Number(execBarCloseMs) || null,
         entry_exec_tf_ms: Number.isFinite(signalTfMs) ? signalTfMs : null,
         initial_stop_price: Number.isFinite(initialStopPrice) ? initialStopPrice : null,
+        initial_stop_source: initialStopSource || null,
         entry_r_distance: Number.isFinite(entryRDistance) ? entryRDistance : null,
         trail_r_multiple: Number.isFinite(Number(appliedExitRules && appliedExitRules.TRAIL_R_MULTIPLE))
           ? Number(appliedExitRules.TRAIL_R_MULTIPLE)
@@ -12338,6 +12391,8 @@ module.exports = {
     applyAddAndProtectionMetaOnFill,
     resolveManualRetryQtyBase,
     resolveEventRefMs,
+    resolveStructureInitialStopPrice,
+    resolveInitialStopSource,
     sendRescueAddRepriceAlert,
     notifyNativeProtectionResult,
     normalizeSignalStateToken,

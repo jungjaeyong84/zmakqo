@@ -51,6 +51,9 @@ function deriveSummary({ runtime } = {}) {
     status: mismatch ? "EXIT_TRAILING_CONTRACT_MISMATCH" : "EXIT_TRAILING_CONTRACT_ACTIVE",
     runtime_source_mode: String(runtimeSummary.source_mode || runtimeSummary.canonical_engine_source_mode || "").trim() || null,
     canonical_mode: "TRAIL_R_MULTIPLE",
+    r_basis: "STRUCTURE_STOP",
+    leverage_invariant_r: true,
+    r_fallback_basis: "LEVERAGED_SL_FALLBACK",
     legacy_pct_fallback_enabled: true,
     generic_trail_event_when_r_enabled: true,
     exchange_n: contracts.length,
@@ -59,13 +62,15 @@ function deriveSummary({ runtime } = {}) {
     exchange_contracts: contracts,
     notes: [
       "Server trailing must use TRAIL_R_MULTIPLE as the canonical contract.",
+      "Entry R distance must be anchored to structure stop_price first, not leverage-scaled SL distance.",
       "TRAIL_PCT is retained only as a legacy fallback and display compatibility field.",
       "When TRAIL_R_MULTIPLE is active, new trailing exits should emit generic EXIT_TRAIL instead of percent-token events.",
     ],
     next_actions: [
-      "keep trailing exit stop computation anchored to entry R distance",
+      "keep trailing exit stop computation anchored to structure stop-based entry R distance",
       "prefer TRAIL_R_MULTIPLE in alerts, dashboards, and audits",
       "do not reintroduce percent-token trailing events for new R-based exits",
+      "allow leveraged SL distance only as a missing-structure fallback",
     ],
   };
 }
@@ -80,6 +85,9 @@ function renderMarkdown(report = {}) {
     `- status: ${s.status || "N/A"}`,
     `- runtime_source_mode: ${s.runtime_source_mode || "N/A"}`,
     `- canonical_mode: ${s.canonical_mode || "N/A"}`,
+    `- r_basis: ${s.r_basis || "N/A"}`,
+    `- leverage_invariant_r: ${s.leverage_invariant_r ? "YES" : "NO"}`,
+    `- r_fallback_basis: ${s.r_fallback_basis || "N/A"}`,
     `- legacy_pct_fallback_enabled: ${s.legacy_pct_fallback_enabled ? "YES" : "NO"}`,
     `- generic_trail_event_when_r_enabled: ${s.generic_trail_event_when_r_enabled ? "YES" : "NO"}`,
     "",
