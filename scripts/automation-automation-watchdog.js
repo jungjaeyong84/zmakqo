@@ -4,7 +4,10 @@
 
 const fs = require("fs");
 const path = require("path");
+const http = require("http");
+const https = require("https");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
+const { tfToMs } = require("../src/utils/marketConfig");
 const { OPENCLAW_CRON_JOBS } = require("./lib/openclaw-cron-manifest");
 const {
   OPS_DAILY_DIR,
@@ -32,14 +35,16 @@ const STATE_PATH = path.join(OPS_RUNTIME_DIR, "automation_watchdog_state.json");
 const DATA_BACKFILL_SCRIPT = path.join(REPO_ROOT, "ops", "launchd", "run_data_backfill_recovery.sh");
 const DATA_BACKFILL_LATEST_JSON = path.join(OPS_DAILY_DIR, "data_backfill_recovery_latest.json");
 const DATA_BACKFILL_MIN_INTERVAL_MS = 30 * 60 * 1000;
+const SCHEDULER_RECOVERY_MIN_INTERVAL_MS = 10 * 60 * 1000;
 
 const ARTIFACT_SPECS = Object.freeze([
   { name: "analytics_local_cache_refresh", filePath: path.join(OPS_DAILY_DIR, "analytics_local_cache_refresh_latest.json"), maxAgeHours: 4, severity: "WARN" },
   { name: "openclaw_hourly_cycle", filePath: path.join(OPS_DAILY_DIR, "openclaw_hourly_cycle_latest.json"), maxAgeHours: 2, severity: "FAIL" },
   { name: "openclaw_daily_cycle", filePath: path.join(OPS_DAILY_DIR, "openclaw_daily_cycle_latest.json"), maxAgeHours: 30, severity: "FAIL" },
   { name: "objective_retrospective", filePath: path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json"), maxAgeHours: 30, severity: "FAIL" },
-  { name: "objective_supervisor", filePath: path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json"), maxAgeHours: 8, severity: "FAIL" },
-  { name: "stage_autopilot", filePath: path.join(OPS_DAILY_DIR, "stage_autopilot_latest.json"), maxAgeHours: 8, severity: "FAIL" },
+  // Objective supervisor/stage autopilot now run inside daily cycle; freshness should follow daily cadence.
+  { name: "objective_supervisor", filePath: path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json"), maxAgeHours: 30, severity: "FAIL" },
+  { name: "stage_autopilot", filePath: path.join(OPS_DAILY_DIR, "stage_autopilot_latest.json"), maxAgeHours: 30, severity: "FAIL" },
   { name: "filter_shadow_canary", filePath: path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json"), maxAgeHours: 12, severity: "WARN" },
   { name: "weekly_filter_governance", filePath: path.join(OPS_DAILY_DIR, "weekly_filter_governance_latest.json"), maxAgeHours: 36, severity: "WARN" },
   { name: "ev_tp1_threshold_tune", filePath: path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json"), maxAgeHours: 96, severity: "WARN" },
@@ -74,6 +79,11 @@ const AUTOMATION_SPECS = Object.freeze(
     severity: AUTOMATION_SEVERITY_BY_LABEL[job.label] || "WARN",
   }))
 );
+
+const CRON_JOB_TO_ARTIFACT = Object.freeze({
+  "donbeolja-openclaw-hourly-cycle": "openclaw_hourly_cycle",
+  "donbeolja-openclaw-daily-cycle": "openclaw_daily_cycle",
+});
 
 function ageHoursFromStat(stat) {
   return (Date.now() - Number(stat.mtimeMs || 0)) / (60 * 60 * 1000);
@@ -200,7 +210,323 @@ function assessLaunchdPresence(spec, launchctlRows) {
   };
 }
 
-function buildIssueSignature(artifactRows, agentRows) {
+function reconcileSchedulerRowsWithArtifacts(rows, artifacts) {
+  const artifactFresh = new Map(
+    (Array.isArray(artifacts) ? artifacts : [])
+      .map((row) => [String(row && row.name || "").trim(), row && row.fresh === true])
+  );
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    const name = String(row && row.name || "").trim();
+    const artifactName = CRON_JOB_TO_ARTIFACT[name] || null;
+    if (!artifactName) return row;
+    const isFresh = artifactFresh.get(artifactName) === true;
+    const issueCode = String(row && row.issueCode || "");
+    if (isFresh && issueCode.includes("_STATUS_")) {
+      return {
+        ...row,
+        issueCode: null,
+        issueSeverity: null,
+        statusSuppressedByFreshArtifact: true,
+      };
+    }
+    return row;
+  });
+}
+
+function parseBoolean(value, fallback = false) {
+  const raw = String(value == null ? "" : value).trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
+  return fallback;
+}
+
+function parseNumber(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function parseIsoMs(value) {
+  const ms = Date.parse(String(value || ""));
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function resolveSchedulerBaseUrl() {
+  const fromEnv = String(
+    process.env.AUTOMATION_WATCHDOG_SCHEDULER_BASE_URL
+    || process.env.SCHEDULER_BASE_URL
+    || ""
+  ).trim();
+  const base = fromEnv || `http://127.0.0.1:${Number(process.env.PORT || 3000) || 3000}`;
+  return base.replace(/\/+$/, "");
+}
+
+function resolveSchedulerTimeoutMs() {
+  return Math.max(500, parseNumber(process.env.AUTOMATION_WATCHDOG_SCHEDULER_TIMEOUT_MS, 5000));
+}
+
+function shouldRestartLocalServer() {
+  return parseBoolean(process.env.AUTOMATION_WATCHDOG_RESTART_LOCAL_SERVER, true);
+}
+
+function localServerLaunchdLabel() {
+  return String(process.env.AUTOMATION_WATCHDOG_SERVER_LABEL || "com.jeongjaeyong.donbeolja.server").trim();
+}
+
+function computeSchedulerSlaMs({ signalTf, pollMs } = {}) {
+  const tfMs = tfToMs(signalTf);
+  const factor = Math.max(1, parseNumber(process.env.AUTOMATION_WATCHDOG_SCHEDULER_SLA_FACTOR, 1.8));
+  const graceMs = Math.max(0, parseNumber(process.env.AUTOMATION_WATCHDOG_SCHEDULER_SLA_GRACE_MS, 2 * 60 * 1000));
+  const minMs = Math.max(60 * 1000, parseNumber(process.env.AUTOMATION_WATCHDOG_SCHEDULER_SLA_MIN_MS, 15 * 60 * 1000));
+  if (Number.isFinite(tfMs) && tfMs > 0) {
+    return Math.max(minMs, Math.round(tfMs * factor) + graceMs);
+  }
+  const poll = Number.isFinite(Number(pollMs)) ? Number(pollMs) : minMs;
+  return Math.max(minMs, (poll * 3) + graceMs);
+}
+
+function httpRequestJson({ method = "GET", url, headers = {}, body = null, timeoutMs = 5000 } = {}) {
+  return new Promise((resolve) => {
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(String(url || ""));
+    } catch (_err) {
+      resolve({ ok: false, statusCode: null, data: null, error: "INVALID_URL" });
+      return;
+    }
+    const transport = parsedUrl.protocol === "https:" ? https : http;
+    const req = transport.request({
+      method,
+      protocol: parsedUrl.protocol,
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port,
+      path: `${parsedUrl.pathname}${parsedUrl.search}`,
+      headers,
+      timeout: Math.max(500, Number(timeoutMs) || 5000),
+    }, (res) => {
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => {
+        const text = Buffer.concat(chunks).toString("utf8");
+        let data = null;
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch (_err) {
+          data = null;
+        }
+        const ok = res.statusCode >= 200 && res.statusCode < 300;
+        resolve({
+          ok,
+          statusCode: res.statusCode || null,
+          data,
+          raw: text,
+          error: ok ? null : `HTTP_${res.statusCode || "ERR"}`,
+        });
+      });
+    });
+    req.on("timeout", () => {
+      req.destroy(new Error("REQUEST_TIMEOUT"));
+    });
+    req.on("error", (err) => {
+      resolve({
+        ok: false,
+        statusCode: null,
+        data: null,
+        raw: "",
+        error: err && err.message ? String(err.message) : "REQUEST_FAILED",
+      });
+    });
+    if (body != null) {
+      req.write(typeof body === "string" ? body : JSON.stringify(body));
+    }
+    req.end();
+  });
+}
+
+async function fetchSchedulerStatus({ baseUrl, token, timeoutMs }) {
+  const url = `${String(baseUrl || "").replace(/\/+$/, "")}/scheduler/status`;
+  const headers = {};
+  if (token) headers["x-scheduler-token"] = token;
+  const res = await httpRequestJson({ method: "GET", url, headers, timeoutMs });
+  return {
+    ...res,
+    baseUrl: String(baseUrl || ""),
+  };
+}
+
+async function triggerSchedulerTick({ baseUrl, token, timeoutMs }) {
+  const url = `${String(baseUrl || "").replace(/\/+$/, "")}/scheduler/tick`;
+  const headers = {
+    "content-type": "application/json",
+  };
+  if (token) headers["x-scheduler-token"] = token;
+  const res = await httpRequestJson({ method: "POST", url, headers, body: "{}", timeoutMs });
+  const tickResult = res && res.data && typeof res.data === "object" ? res.data : null;
+  const ok = !!(res.ok && tickResult && tickResult.ok === true);
+  return {
+    ...res,
+    ok,
+    runId: tickResult && (tickResult.run_id || tickResult.runId) || null,
+    reason: ok ? null : (
+      tickResult && (tickResult.error || tickResult.message)
+      ? String(tickResult.error || tickResult.message)
+      : (res.error || "SCHEDULER_TICK_FAILED")
+    ),
+  };
+}
+
+function restartLocalServerLaunchd() {
+  const label = localServerLaunchdLabel();
+  if (!label) {
+    return { ok: false, label: null, command: null, error: "SERVER_LABEL_MISSING" };
+  }
+  if (typeof process.getuid !== "function") {
+    return { ok: false, label, command: null, error: "UID_UNAVAILABLE" };
+  }
+  const uid = String(process.getuid());
+  const command = `launchctl kickstart -k gui/${uid}/${label}`;
+  const res = execText(command, { cwd: REPO_ROOT, maxBuffer: 1024 * 1024 });
+  return {
+    ok: !!res.ok,
+    label,
+    command,
+    error: res.ok ? null : String(res.error || "LAUNCHCTL_KICKSTART_FAILED"),
+  };
+}
+
+function assessSchedulerTickSla(statusRes) {
+  const nowMs = Date.now();
+  const base = {
+    name: "scheduler_tick_sla",
+    severity: "FAIL",
+    checkedAtMs: nowMs,
+    baseUrl: statusRes && statusRes.baseUrl || null,
+    issueCode: null,
+    issueSeverity: null,
+    reachable: false,
+    statusCode: statusRes && statusRes.statusCode || null,
+    signalTf: null,
+    pollMs: null,
+    lastTickMs: null,
+    lastTickIso: null,
+    ageMs: null,
+    slaMs: null,
+    schedulerManagedExternally: null,
+    running: null,
+  };
+
+  if (!statusRes || !statusRes.ok) {
+    const code = statusRes && statusRes.statusCode === 401
+      ? "SCHEDULER_STATUS_UNAUTHORIZED"
+      : (statusRes && statusRes.statusCode === 404 ? "SCHEDULER_STATUS_NOT_FOUND" : "SCHEDULER_STATUS_UNREACHABLE");
+    return {
+      ...base,
+      issueCode: code,
+      issueSeverity: "FAIL",
+      error: statusRes && statusRes.error ? String(statusRes.error) : "STATUS_REQUEST_FAILED",
+    };
+  }
+
+  const payload = statusRes.data && typeof statusRes.data === "object" ? statusRes.data : null;
+  const scheduler = payload && payload.scheduler && typeof payload.scheduler === "object" ? payload.scheduler : null;
+  const runtime = payload && payload.runtime && typeof payload.runtime === "object" ? payload.runtime : null;
+  const lastTick = scheduler && scheduler.lastTick && typeof scheduler.lastTick === "object" ? scheduler.lastTick : null;
+  const signalTf = scheduler && (scheduler.signal_tf || scheduler.tf) || null;
+  const pollMs = scheduler && scheduler.pollMs != null ? Number(scheduler.pollMs) : null;
+  const schedulerManagedExternally = runtime && runtime.scheduler_managed_externally === true;
+  const running = scheduler && scheduler.running === true;
+  const lastTickMs = parseIsoMs(
+    (lastTick && (lastTick.finished_at || lastTick.started_at))
+    || ""
+  );
+  const slaMs = computeSchedulerSlaMs({ signalTf, pollMs });
+  const ageMs = Number.isFinite(lastTickMs) ? (nowMs - lastTickMs) : null;
+
+  let issueCode = null;
+  let issueSeverity = null;
+  if (!lastTick || !Number.isFinite(lastTickMs)) {
+    issueCode = "SCHEDULER_LAST_TICK_MISSING";
+    issueSeverity = "FAIL";
+  } else if (Number.isFinite(ageMs) && ageMs > slaMs) {
+    issueCode = "SCHEDULER_TICK_STALE";
+    issueSeverity = "FAIL";
+  } else if (schedulerManagedExternally !== true && running !== true) {
+    issueCode = "SCHEDULER_NOT_RUNNING";
+    issueSeverity = "WARN";
+  }
+
+  return {
+    ...base,
+    reachable: true,
+    signalTf: signalTf || null,
+    pollMs: Number.isFinite(pollMs) ? pollMs : null,
+    lastTickMs: Number.isFinite(lastTickMs) ? lastTickMs : null,
+    lastTickIso: Number.isFinite(lastTickMs) ? new Date(lastTickMs).toISOString() : null,
+    ageMs: Number.isFinite(ageMs) ? ageMs : null,
+    slaMs,
+    schedulerManagedExternally,
+    running,
+    issueCode,
+    issueSeverity,
+  };
+}
+
+function shouldAttemptSchedulerRecovery(previous, issueSignature) {
+  if (!issueSignature) return false;
+  const lastAttemptMs = Number(previous && previous.last_scheduler_recovery_attempt_ms || 0);
+  const lastSignature = String(previous && previous.last_scheduler_recovery_issue_signature || "");
+  const nowMs = Date.now();
+  if (!lastAttemptMs || (nowMs - lastAttemptMs) >= SCHEDULER_RECOVERY_MIN_INTERVAL_MS) return true;
+  return lastSignature !== issueSignature;
+}
+
+async function attemptSchedulerRecovery({ baseUrl, token, timeoutMs }) {
+  const actions = [];
+  const firstTick = await triggerSchedulerTick({ baseUrl, token, timeoutMs });
+  actions.push({
+    id: "scheduler_tick_force",
+    ok: !!firstTick.ok,
+    statusCode: firstTick.statusCode || null,
+    runId: firstTick.runId || null,
+    reason: firstTick.reason || null,
+  });
+  if (firstTick.ok) {
+    return { attempted: true, ok: true, reason: "TICK_RECOVERED", actions };
+  }
+
+  if (!shouldRestartLocalServer()) {
+    return { attempted: true, ok: false, reason: "TICK_FAILED_RESTART_DISABLED", actions };
+  }
+
+  const restart = restartLocalServerLaunchd();
+  actions.push({
+    id: "local_server_kickstart",
+    ok: !!restart.ok,
+    label: restart.label || null,
+    reason: restart.error || null,
+  });
+  if (!restart.ok) {
+    return { attempted: true, ok: false, reason: "TICK_FAILED_RESTART_FAILED", actions };
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, Math.max(500, parseNumber(process.env.AUTOMATION_WATCHDOG_RESTART_WAIT_MS, 3000))));
+  const secondTick = await triggerSchedulerTick({ baseUrl, token, timeoutMs });
+  actions.push({
+    id: "scheduler_tick_retry",
+    ok: !!secondTick.ok,
+    statusCode: secondTick.statusCode || null,
+    runId: secondTick.runId || null,
+    reason: secondTick.reason || null,
+  });
+  return {
+    attempted: true,
+    ok: !!secondTick.ok,
+    reason: secondTick.ok ? "TICK_RECOVERED_AFTER_RESTART" : "TICK_FAILED_AFTER_RESTART",
+    actions,
+  };
+}
+
+function buildIssueSignature(artifactRows, agentRows, extraRows = []) {
   const issues = [];
   for (const row of artifactRows) {
     if (row.issueCode) issues.push(`${row.issueSeverity}:${row.issueCode}`);
@@ -208,11 +534,14 @@ function buildIssueSignature(artifactRows, agentRows) {
   for (const row of agentRows) {
     if (row.issueCode) issues.push(`${row.issueSeverity}:${row.issueCode}`);
   }
+  for (const row of extraRows) {
+    if (row && row.issueCode) issues.push(`${row.issueSeverity}:${row.issueCode}`);
+  }
   return issues.sort().join("|");
 }
 
-function computeVerdict(artifactRows, agentRows) {
-  const severities = [...artifactRows, ...agentRows]
+function computeVerdict(artifactRows, agentRows, extraRows = []) {
+  const severities = [...artifactRows, ...agentRows, ...extraRows]
     .map((row) => row.issueSeverity)
     .filter(Boolean);
   if (severities.includes("FAIL")) return "FAIL";
@@ -234,16 +563,17 @@ function isRecoveryExecutionAllowed(mode, rawAllow) {
   return flag === "1" || flag === "true" || flag === "yes" || flag === "on";
 }
 
-function buildSnapshot(artifactRows, agentRows) {
+function buildSnapshot(artifactRows, agentRows, extraRows = []) {
   const issues = [
     ...artifactRows.filter((row) => row.issueCode).map((row) => ({ severity: row.issueSeverity, code: row.issueCode })),
     ...agentRows.filter((row) => row.issueCode).map((row) => ({ severity: row.issueSeverity, code: row.issueCode })),
+    ...extraRows.filter((row) => row && row.issueCode).map((row) => ({ severity: row.issueSeverity, code: row.issueCode })),
   ];
   return {
-    verdict: computeVerdict(artifactRows, agentRows),
+    verdict: computeVerdict(artifactRows, agentRows, extraRows),
     issues,
     issueCount: issues.length,
-    issueSignature: buildIssueSignature(artifactRows, agentRows),
+    issueSignature: buildIssueSignature(artifactRows, agentRows, extraRows),
   };
 }
 
@@ -315,6 +645,11 @@ function renderMarkdown(report) {
       lines.push(`- post_recovery_verdict: ${postRecovery.verdict} (${postRecovery.issueCount})`);
     }
   }
+  if (report.scheduler_tick_recovery && report.scheduler_tick_recovery.attempted) {
+    lines.push(`- scheduler_tick_recovery: ${report.scheduler_tick_recovery.ok ? "OK" : "FAIL"}`);
+    lines.push(`- scheduler_tick_recovery_reason: ${report.scheduler_tick_recovery.reason || "N/A"}`);
+    lines.push(`- scheduler_tick_recovery_steps: ${Array.isArray(report.scheduler_tick_recovery.actions) ? report.scheduler_tick_recovery.actions.length : 0}`);
+  }
   lines.push("", "## Artifacts");
   for (const row of report.artifacts) {
     lines.push(`- ${row.name}: ${row.exists ? (row.fresh ? "fresh" : "stale") : "missing"} / age=${row.ageHours == null ? "N/A" : row.ageHours.toFixed(2)}h / max=${row.maxAgeHours}h`);
@@ -323,6 +658,16 @@ function renderMarkdown(report) {
   lines.push("", "## Automation Scheduler");
   for (const row of report.scheduler_jobs || []) {
     lines.push(`- ${row.name}: ${row.configured ? (row.enabled ? "enabled" : "disabled") : "missing"} / last=${row.lastStatus || "N/A"} / next=${row.nextRunAtMs == null ? "N/A" : row.nextRunAtMs}`);
+  }
+  lines.push("", "## Scheduler Tick SLA");
+  const sla = report.scheduler_tick_sla || {};
+  lines.push(`- status: ${sla.issueCode ? `${sla.issueSeverity || "FAIL"} / ${sla.issueCode}` : "PASS"}`);
+  lines.push(`- base_url: ${sla.baseUrl || "N/A"} / http_status=${sla.statusCode == null ? "N/A" : sla.statusCode}`);
+  lines.push(`- signal_tf: ${sla.signalTf || "N/A"} / poll_ms=${sla.pollMs == null ? "N/A" : sla.pollMs}`);
+  lines.push(`- last_tick: ${sla.lastTickIso || "N/A"} / age_ms=${sla.ageMs == null ? "N/A" : sla.ageMs} / sla_ms=${sla.slaMs == null ? "N/A" : sla.slaMs}`);
+  if (report.scheduler_tick_sla_post_recovery) {
+    const slaPost = report.scheduler_tick_sla_post_recovery || {};
+    lines.push(`- post_recovery: ${slaPost.issueCode ? `${slaPost.issueSeverity || "FAIL"} / ${slaPost.issueCode}` : "PASS"} / age_ms=${slaPost.ageMs == null ? "N/A" : slaPost.ageMs}`);
   }
   lines.push("", "## Legacy Launchd (diagnostic only)");
   for (const row of report.launchd_legacy || []) {
@@ -357,18 +702,31 @@ async function main() {
   const recoveryAllowed = isRecoveryExecutionAllowed(recoveryMode, process.env.AUTOMATION_WATCHDOG_ALLOW_RECOVERY);
 
   const artifactRows = ARTIFACT_SPECS.map(assessArtifact);
-  const schedulerRows = AUTOMATION_SPECS.map((spec) => (
+  let schedulerRows = AUTOMATION_SPECS.map((spec) => (
     schedulerMode === "OPENCLAW_CRON"
       ? assessSchedulerJob(spec, cronRows)
       : assessLaunchdPresence(spec, launchctlRows)
   ));
+  schedulerRows = reconcileSchedulerRowsWithArtifacts(schedulerRows, artifactRows);
   const launchdLegacyRows = AUTOMATION_SPECS.map((spec) => assessLaunchdPresence(spec, launchctlRows));
-  const preSnapshot = buildSnapshot(artifactRows, schedulerRows);
+
+  const schedulerBaseUrl = resolveSchedulerBaseUrl();
+  const schedulerTimeoutMs = resolveSchedulerTimeoutMs();
+  const schedulerToken = String(process.env.SCHEDULER_TOKEN || "").trim();
+  const schedulerStatusPre = await fetchSchedulerStatus({
+    baseUrl: schedulerBaseUrl,
+    token: schedulerToken || null,
+    timeoutMs: schedulerTimeoutMs,
+  });
+  const schedulerTickSla = assessSchedulerTickSla(schedulerStatusPre);
+  const preSnapshot = buildSnapshot(artifactRows, schedulerRows, [schedulerTickSla]);
 
   let postArtifactRows = artifactRows;
   let postSchedulerRows = schedulerRows;
+  let postSchedulerTickSla = schedulerTickSla;
   let postSnapshot = null;
-  let recovery = {
+
+  let backfillRecovery = {
     mode: recoveryMode,
     allowed: recoveryAllowed,
     attempted: false,
@@ -385,7 +743,7 @@ async function main() {
       maxBuffer: 30 * 1024 * 1024,
     });
     const latestRecovery = summarizeBackfillRecovery(readArtifactReport(DATA_BACKFILL_LATEST_JSON));
-    recovery = {
+    backfillRecovery = {
       mode: recoveryMode,
       allowed: recoveryAllowed,
       attempted: true,
@@ -400,7 +758,39 @@ async function main() {
         ? assessSchedulerJob(spec, cronRows)
         : assessLaunchdPresence(spec, launchctlRows)
     ));
-    postSnapshot = buildSnapshot(postArtifactRows, postSchedulerRows);
+    postSchedulerRows = reconcileSchedulerRowsWithArtifacts(postSchedulerRows, postArtifactRows);
+  }
+
+  const schedulerIssueSignature = schedulerTickSla && schedulerTickSla.issueCode
+    ? `SLA:${schedulerTickSla.issueCode}`
+    : "";
+  let schedulerTickRecovery = {
+    mode: recoveryMode,
+    allowed: recoveryAllowed,
+    attempted: false,
+    ok: null,
+    reason: null,
+    actions: [],
+  };
+  if (recoveryAllowed && shouldAttemptSchedulerRecovery(previous, schedulerIssueSignature)) {
+    if (schedulerTickSla && schedulerTickSla.issueCode) {
+      schedulerTickRecovery = await attemptSchedulerRecovery({
+        baseUrl: schedulerBaseUrl,
+        token: schedulerToken || null,
+        timeoutMs: schedulerTimeoutMs,
+      });
+      const schedulerStatusPost = await fetchSchedulerStatus({
+        baseUrl: schedulerBaseUrl,
+        token: schedulerToken || null,
+        timeoutMs: schedulerTimeoutMs,
+      });
+      postSchedulerTickSla = assessSchedulerTickSla(schedulerStatusPost);
+    }
+  }
+
+  const anyRecoveryAttempted = Boolean(backfillRecovery.attempted || schedulerTickRecovery.attempted);
+  if (anyRecoveryAttempted) {
+    postSnapshot = buildSnapshot(postArtifactRows, postSchedulerRows, [postSchedulerTickSla]);
   }
 
   const report = {
@@ -412,12 +802,22 @@ async function main() {
     verdict: preSnapshot.verdict,
     issue_count: preSnapshot.issueCount,
     issue_signature: preSnapshot.issueSignature,
-    data_backfill_recovery: recovery,
+    scheduler_status_probe: {
+      base_url: schedulerBaseUrl,
+      timeout_ms: schedulerTimeoutMs,
+      token_present: !!schedulerToken,
+      status_code: schedulerStatusPre && schedulerStatusPre.statusCode || null,
+      ok: !!(schedulerStatusPre && schedulerStatusPre.ok),
+    },
+    data_backfill_recovery: backfillRecovery,
+    scheduler_tick_recovery: schedulerTickRecovery,
+    scheduler_tick_sla: schedulerTickSla,
+    scheduler_tick_sla_post_recovery: anyRecoveryAttempted ? postSchedulerTickSla : null,
     artifacts: artifactRows,
     scheduler_jobs: schedulerRows,
     launchd_legacy: launchdLegacyRows,
-    artifacts_post_recovery: recovery.attempted ? postArtifactRows : null,
-    scheduler_jobs_post_recovery: recovery.attempted ? postSchedulerRows : null,
+    artifacts_post_recovery: anyRecoveryAttempted ? postArtifactRows : null,
+    scheduler_jobs_post_recovery: anyRecoveryAttempted ? postSchedulerRows : null,
     issues: preSnapshot.issues,
     issues_post_recovery: postSnapshot ? postSnapshot.issues : null,
     pre_recovery: preSnapshot,
@@ -455,15 +855,32 @@ async function main() {
           header: "핵심 이슈",
           lines: preSnapshot.issues.length ? preSnapshot.issues.slice(0, 6).map((row) => `[${row.severity}] ${row.code}`) : ["지금은 바로 조치할 이슈가 없습니다."],
         },
-        ...(recovery && recovery.attempted ? [{
+        {
+          header: "스케줄러 Tick SLA",
+          lines: [
+            `상태: ${schedulerTickSla.issueCode ? `${schedulerTickSla.issueSeverity || "FAIL"} / ${schedulerTickSla.issueCode}` : "PASS"}`,
+            `기준 URL: ${schedulerBaseUrl}`,
+            `최근 tick: ${schedulerTickSla.lastTickIso || "정보 없음"} / age_ms=${schedulerTickSla.ageMs == null ? "정보 없음" : schedulerTickSla.ageMs} / sla_ms=${schedulerTickSla.slaMs == null ? "정보 없음" : schedulerTickSla.slaMs}`,
+          ],
+        },
+        ...(backfillRecovery && backfillRecovery.attempted ? [{
           header: "백필 복구",
           lines: [
-            `복구 발동 이유: ${recovery.reason || "정보 없음"}`,
-            `복구 결과: ${recovery.ok ? "정상적으로 끝났습니다." : `실패했습니다. (${recovery.error || "원인 불명"})`}`,
-            `완료된 단계 수: ${recovery.summary ? `${recovery.summary.succeeded_n}/${recovery.summary.total_n}` : "정보 없음"}`,
+            `복구 발동 이유: ${backfillRecovery.reason || "정보 없음"}`,
+            `복구 결과: ${backfillRecovery.ok ? "정상적으로 끝났습니다." : `실패했습니다. (${backfillRecovery.error || "원인 불명"})`}`,
+            `완료된 단계 수: ${backfillRecovery.summary ? `${backfillRecovery.summary.succeeded_n}/${backfillRecovery.summary.total_n}` : "정보 없음"}`,
             `복구 전 verdict: ${preSnapshot.verdict} (${preSnapshot.issueCount}건)`,
             ...(postSnapshot ? [`복구 후 verdict: ${postSnapshot.verdict} (${postSnapshot.issueCount}건)`] : []),
-            ...(recovery.summary && recovery.summary.failed_step ? [`실패한 단계: ${recovery.summary.failed_step}`] : []),
+            ...(backfillRecovery.summary && backfillRecovery.summary.failed_step ? [`실패한 단계: ${backfillRecovery.summary.failed_step}`] : []),
+          ],
+        }] : []),
+        ...(schedulerTickRecovery && schedulerTickRecovery.attempted ? [{
+          header: "스케줄러 자동 복구",
+          lines: [
+            `복구 결과: ${schedulerTickRecovery.ok ? "정상적으로 끝났습니다." : "복구에 실패했습니다."}`,
+            `복구 사유: ${schedulerTickRecovery.reason || "정보 없음"}`,
+            ...((schedulerTickRecovery.actions || []).slice(0, 4).map((row) => `${row.id}: ${row.ok ? "OK" : `FAIL (${row.reason || "오류"})`}`)),
+            ...(postSnapshot ? [`복구 후 verdict: ${postSnapshot.verdict} (${postSnapshot.issueCount}건)`] : []),
           ],
         }] : []),
       ],
@@ -476,8 +893,10 @@ async function main() {
   writeJson(STATE_PATH, {
     last_verdict: preSnapshot.verdict,
     last_issue_signature: preSnapshot.issueSignature,
-    last_backfill_attempt_ms: recovery && recovery.attempted ? Date.now() : Number(previous.last_backfill_attempt_ms || 0),
-    last_backfill_issue_signature: recovery && recovery.attempted ? backfillTriggerSignature : String(previous.last_backfill_issue_signature || ""),
+    last_backfill_attempt_ms: backfillRecovery && backfillRecovery.attempted ? Date.now() : Number(previous.last_backfill_attempt_ms || 0),
+    last_backfill_issue_signature: backfillRecovery && backfillRecovery.attempted ? backfillTriggerSignature : String(previous.last_backfill_issue_signature || ""),
+    last_scheduler_recovery_attempt_ms: schedulerTickRecovery && schedulerTickRecovery.attempted ? Date.now() : Number(previous.last_scheduler_recovery_attempt_ms || 0),
+    last_scheduler_recovery_issue_signature: schedulerTickRecovery && schedulerTickRecovery.attempted ? schedulerIssueSignature : String(previous.last_scheduler_recovery_issue_signature || ""),
     last_generated_at_kst: meta.kst,
   });
 
@@ -503,11 +922,15 @@ if (require.main === module) {
       parseOpenClawCronList,
       assessSchedulerJob,
       assessLaunchdPresence,
+      reconcileSchedulerRowsWithArtifacts,
       computeVerdict,
       buildIssueSignature,
       normalizeRecoveryMode,
       isRecoveryExecutionAllowed,
       buildSnapshot,
+      computeSchedulerSlaMs,
+      assessSchedulerTickSla,
+      shouldAttemptSchedulerRecovery,
     },
   };
 }

@@ -68,6 +68,24 @@ const { __test } = require("../../scripts/automation-automation-watchdog");
   assert.strictEqual(schedulerDisabled.enabled, false);
   assert.strictEqual(schedulerDisabled.issueCode, "donbeolja-weekly-pine_DISABLED");
 
+  const reconciled = __test.reconcileSchedulerRowsWithArtifacts(
+    [
+      {
+        name: "donbeolja-openclaw-hourly-cycle",
+        issueCode: "donbeolja-openclaw-hourly-cycle_STATUS_ERROR",
+        issueSeverity: "WARN",
+      },
+    ],
+    [
+      {
+        name: "openclaw_hourly_cycle",
+        fresh: true,
+      },
+    ]
+  );
+  assert.strictEqual(reconciled[0].issueCode, null);
+  assert.strictEqual(reconciled[0].issueSeverity, null);
+
   const launchdMissing = __test.assessLaunchdPresence(
     {
       label: "com.jeongjaeyong.donbeolja.rollbackmonitor",
@@ -121,6 +139,61 @@ const { __test } = require("../../scripts/automation-automation-watchdog");
   assert.strictEqual(snapshot.verdict, "FAIL");
   assert.strictEqual(snapshot.issueCount, 2);
   assert.strictEqual(snapshot.issueSignature, "FAIL:ROW_FAIL|WARN:ROW_WARN");
+
+  const tfSla = __test.computeSchedulerSlaMs({ signalTf: "1h", pollMs: 300000 });
+  assert.ok(tfSla >= (60 * 60 * 1000));
+
+  const staleRow = __test.assessSchedulerTickSla({
+    ok: true,
+    statusCode: 200,
+    baseUrl: "http://127.0.0.1:3000",
+    data: {
+      scheduler: {
+        signal_tf: "1h",
+        pollMs: 300000,
+        running: true,
+        lastTick: {
+          finished_at: new Date(Date.now() - (3 * 60 * 60 * 1000)).toISOString(),
+        },
+      },
+      runtime: {
+        scheduler_managed_externally: false,
+      },
+    },
+  });
+  assert.strictEqual(staleRow.issueCode, "SCHEDULER_TICK_STALE");
+  assert.strictEqual(staleRow.issueSeverity, "FAIL");
+
+  const passRow = __test.assessSchedulerTickSla({
+    ok: true,
+    statusCode: 200,
+    baseUrl: "http://127.0.0.1:3000",
+    data: {
+      scheduler: {
+        signal_tf: "1h",
+        pollMs: 300000,
+        running: true,
+        lastTick: {
+          finished_at: new Date(Date.now() - (5 * 60 * 1000)).toISOString(),
+        },
+      },
+      runtime: {
+        scheduler_managed_externally: false,
+      },
+    },
+  });
+  assert.strictEqual(passRow.issueCode, null);
+
+  assert.strictEqual(
+    __test.shouldAttemptSchedulerRecovery(
+      {
+        last_scheduler_recovery_attempt_ms: Date.now(),
+        last_scheduler_recovery_issue_signature: "SLA:SCHEDULER_TICK_STALE",
+      },
+      "SLA:SCHEDULER_TICK_STALE"
+    ),
+    false
+  );
 
   console.log("AUTOMATION_WATCHDOG_TEST_OK");
 })();
