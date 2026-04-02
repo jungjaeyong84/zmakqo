@@ -705,7 +705,7 @@ router.get("/dashboard/home", async (req, res) => {
       dropsRaw.push({ id: d.id, _market_norm: mkNorm, ...x, _signal_source: "DROP" });
     });
 
-    const signalsVisible = signalsRaw;
+    const signalsVisible = signalsRaw.filter((x) => x && (x.authoritative === true || String(x.source || "").toUpperCase() === "SERVER"));
     const signalsMerged = [
       ...signalsVisible.map((x) => ({ ...x, _signal_source: "SIGNAL" })),
       ...dropsRaw,
