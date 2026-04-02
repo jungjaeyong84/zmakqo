@@ -59,7 +59,20 @@ const { deriveServerSignalQuality } = require("../utils/serverSignalQuality");
     intentsRecent,
     fillsRecent,
     tradesRecent,
-    parityReport: { summary: { parity_mismatch_rate: 0, parity_mismatch_n: 0 } },
+    parityReport: {
+      summary: {
+        parity_mismatch_rate: 0.2,
+        parity_mismatch_n: 3,
+        by_mismatch_scope: {
+          FINAL_DOWNSTREAM_MISMATCH: 3,
+        },
+      },
+      rows: [
+        { parity_match: false, mismatch_scope: "FINAL_DOWNSTREAM_MISMATCH", actual_drop_reason_family: "EV_POLICY" },
+        { parity_match: false, mismatch_scope: "FINAL_DOWNSTREAM_MISMATCH", actual_drop_reason_family: "EV_POLICY" },
+        { parity_match: false, mismatch_scope: "FINAL_DOWNSTREAM_MISMATCH", actual_drop_reason_family: "COOLDOWN_POLICY" },
+      ],
+    },
     nowMs: Date.parse("2026-04-02T00:00:00.000Z"),
   });
 
@@ -68,6 +81,12 @@ const { deriveServerSignalQuality } = require("../utils/serverSignalQuality");
   assert.strictEqual(report.summary.fill_24h_n, 1);
   assert.strictEqual(report.summary.trade_24h_n, 1);
   assert.strictEqual(report.summary.quality_status, "OK");
+  assert.strictEqual(report.summary.final_downstream_mismatch_n, 3);
+  assert.strictEqual(report.summary.top_final_downstream_drop_reason_family.key, "EV_POLICY");
+  assert.strictEqual(report.rows.final_downstream_family_actions[0].family, "EV_POLICY");
+  assert.strictEqual(report.rows.final_downstream_family_actions[0].recommended_action, "RELAX_EV_POLICY_REVIEW");
+  assert.strictEqual(report.rows.final_downstream_family_actions[1].family, "COOLDOWN_POLICY");
+  assert.strictEqual(report.rows.final_downstream_family_actions[1].recommended_action, "RELAX_OPPOSITE_COOLDOWN_REVIEW");
 
   console.log("SERVER_SIGNAL_QUALITY_TEST_OK");
 })();

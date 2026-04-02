@@ -30,6 +30,10 @@ function bump(map, key) {
   map.set(key, Number(map.get(key) || 0) + 1);
 }
 
+function upper(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
 function topRows(map, limit = 5) {
   return Array.from(map.entries())
     .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
@@ -85,6 +89,16 @@ function explainIntentFillRelation({ intents, fills, trades }) {
 function normalizeKey(value) {
   const text = String(value || "").trim();
   return text || null;
+}
+
+function finalDownstreamFamilyAction(family) {
+  const key = upper(family);
+  if (key === "EV_POLICY") return "RELAX_EV_POLICY_REVIEW";
+  if (key === "COOLDOWN_POLICY") return "RELAX_OPPOSITE_COOLDOWN_REVIEW";
+  if (key === "OTHER_SERVER_POLICY") return "WATCH_ONLY_REVIEW";
+  if (key === "ENTRY_QUALITY") return "KEEP_DROP_RULE";
+  if (key === "RISK_POLICY") return "KEEP_DROP_RULE";
+  return "MONITOR_ONLY";
 }
 
 function collectSignalRefs(row) {
@@ -182,6 +196,22 @@ function deriveServerSignalQuality({ signalsRecent = null, intentsRecent = null,
 
   const paritySummary = (parityReport && parityReport.summary) || {};
   const parityRows = Array.isArray(parityReport && parityReport.rows) ? parityReport.rows : [];
+  const finalDownstreamRows = parityRows.filter((row) =>
+    row
+    && row.parity_match === false
+    && upper(row.mismatch_scope) === "FINAL_DOWNSTREAM_MISMATCH"
+  );
+  const finalDownstreamByFamily = new Map();
+  for (const row of finalDownstreamRows) {
+    const family = upper(row.actual_drop_reason_family || row.actual_drop_reason || "UNKNOWN");
+    bump(finalDownstreamByFamily, family);
+  }
+  const finalDownstreamFamilyActions = topRows(finalDownstreamByFamily, 16)
+    .map((row) => ({
+      family: row.key,
+      mismatch_n: Number(row.count) || 0,
+      recommended_action: finalDownstreamFamilyAction(row.key),
+    }));
   const mismatchExamples = parityRows
     .filter((row) => row && row.parity_match === false)
     .slice(0, 5)
@@ -203,8 +233,14 @@ function deriveServerSignalQuality({ signalsRecent = null, intentsRecent = null,
     latest_authoritative_entry_signal_at_kst: toKstString(latestSignalMs),
     parity_mismatch_rate: Number.isFinite(Number(paritySummary.parity_mismatch_rate)) ? Number(paritySummary.parity_mismatch_rate) : null,
     parity_mismatch_n: Number(paritySummary.parity_mismatch_n) || 0,
+    final_downstream_mismatch_n: Number(paritySummary.final_downstream_mismatch_n)
+      || Number((paritySummary.by_mismatch_scope && paritySummary.by_mismatch_scope.FINAL_DOWNSTREAM_MISMATCH) || 0)
+      || finalDownstreamRows.length,
     top_mismatch_scope: topObjectRows(paritySummary.by_mismatch_scope || {}, 1)[0] || null,
     top_drop_reason_family: topObjectRows(paritySummary.by_actual_drop_reason_family || {}, 1)[0] || null,
+    top_final_downstream_drop_reason_family: finalDownstreamFamilyActions[0]
+      ? { key: finalDownstreamFamilyActions[0].family, count: finalDownstreamFamilyActions[0].mismatch_n }
+      : null,
   };
   summary.quality_status = statusOf({
     entrySignals: summary.authoritative_entry_signal_24h_n,
@@ -225,6 +261,7 @@ function deriveServerSignalQuality({ signalsRecent = null, intentsRecent = null,
       top_reason: topRows(reasonCounts, 5),
       top_market: topRows(marketCounts, 5),
       mismatch_examples: mismatchExamples,
+      final_downstream_family_actions: finalDownstreamFamilyActions,
     },
   };
 }
