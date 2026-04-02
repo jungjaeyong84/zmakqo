@@ -35,14 +35,12 @@ const DATA_BACKFILL_MIN_INTERVAL_MS = 30 * 60 * 1000;
 
 const ARTIFACT_SPECS = Object.freeze([
   { name: "analytics_local_cache_refresh", filePath: path.join(OPS_DAILY_DIR, "analytics_local_cache_refresh_latest.json"), maxAgeHours: 4, severity: "WARN" },
+  { name: "openclaw_hourly_cycle", filePath: path.join(OPS_DAILY_DIR, "openclaw_hourly_cycle_latest.json"), maxAgeHours: 2, severity: "FAIL" },
+  { name: "openclaw_daily_cycle", filePath: path.join(OPS_DAILY_DIR, "openclaw_daily_cycle_latest.json"), maxAgeHours: 30, severity: "FAIL" },
   { name: "objective_retrospective", filePath: path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json"), maxAgeHours: 30, severity: "FAIL" },
   { name: "objective_supervisor", filePath: path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json"), maxAgeHours: 8, severity: "FAIL" },
-  { name: "rollback_monitor", filePath: path.join(OPS_DAILY_DIR, "rollback_monitor_latest.json"), maxAgeHours: 8, severity: "FAIL" },
-  { name: "signal_data_integrity", filePath: path.join(OPS_DAILY_DIR, "signal_data_integrity_latest.json"), maxAgeHours: 8, severity: "FAIL" },
   { name: "stage_autopilot", filePath: path.join(OPS_DAILY_DIR, "stage_autopilot_latest.json"), maxAgeHours: 8, severity: "FAIL" },
-  { name: "stage_outcome_ledgers", filePath: path.join(OPS_DAILY_DIR, "stage_outcome_ledgers_latest.json"), maxAgeHours: 8, severity: "WARN" },
   { name: "filter_shadow_canary", filePath: path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json"), maxAgeHours: 12, severity: "WARN" },
-  { name: "ml_filter_policy", filePath: path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.json"), maxAgeHours: 12, severity: "WARN" },
   { name: "weekly_filter_governance", filePath: path.join(OPS_DAILY_DIR, "weekly_filter_governance_latest.json"), maxAgeHours: 36, severity: "WARN" },
   { name: "ev_tp1_threshold_tune", filePath: path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json"), maxAgeHours: 96, severity: "WARN" },
   { name: "wait_one_bar_tune", filePath: path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json"), maxAgeHours: 144, severity: "WARN" },
@@ -500,6 +498,7 @@ if (require.main === module) {
 } else {
   module.exports = {
     __test: {
+      ARTIFACT_SPECS,
       parseLaunchctlList,
       parseOpenClawCronList,
       assessSchedulerJob,

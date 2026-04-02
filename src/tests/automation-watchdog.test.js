@@ -4,6 +4,14 @@ const assert = require("assert");
 const { __test } = require("../../scripts/automation-automation-watchdog");
 
 (() => {
+  const artifactNames = __test.ARTIFACT_SPECS.map((row) => row.name);
+  assert.ok(artifactNames.includes("openclaw_hourly_cycle"));
+  assert.ok(artifactNames.includes("openclaw_daily_cycle"));
+  assert.ok(!artifactNames.includes("rollback_monitor"));
+  assert.ok(!artifactNames.includes("signal_data_integrity"));
+  assert.ok(!artifactNames.includes("stage_outcome_ledgers"));
+  assert.ok(!artifactNames.includes("ml_filter_policy"));
+
   const rows = __test.parseLaunchctlList([
     "123\t0\tcom.jeongjaeyong.donbeolja.objectivesupervisor",
     "-\t0\tcom.jeongjaeyong.donbeolja.weeklypine",
