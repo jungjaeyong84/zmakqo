@@ -1388,7 +1388,11 @@ router.get("/dashboard/home", async (req, res) => {
 
     // signals/fills list view (12개)
     const nowMs = Date.now();
-    const signals12 = entrySignalsVisibleSorted.slice(0, 12).map((x) => {
+    const recentSignalsWithDrops = signalsMerged
+      .filter((x) => isEntrySignal(x))
+      .slice(0, 12);
+
+    const signals12 = recentSignalsWithDrops.map((x) => {
       const matched = intentLookup.resolveForSignal(x);
       const schedMs = Number(matched && matched.scheduled_exec_bar_close_time_utc_ms);
       const execPlan = matched ? {
@@ -1412,6 +1416,7 @@ router.get("/dashboard/home", async (req, res) => {
         event: x.event || null,
         side: x.side || null,
         source: x.source || null,
+        signal_source: x._signal_source || "SIGNAL",
         authoritative: x.authoritative === true,
         qty_pct: (x.qty_pct === undefined ? (x.qtyPct === undefined ? null : x.qtyPct) : x.qty_pct),
         reason: x.reason || null,

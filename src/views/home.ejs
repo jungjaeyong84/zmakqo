@@ -90,6 +90,7 @@
   }
   function statusDisplay(signal) {
     if (!signal) return '-';
+    if (String(signal.signal_source || '').toUpperCase() === 'DROP') return '드롭';
     if (signal.exec_plan && signal.exec_plan.status) {
       const s = String(signal.exec_plan.status).toUpperCase();
       if (s === 'PENDING') return '주문 대기';
