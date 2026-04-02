@@ -7,6 +7,11 @@ const { spawnSync } = require("child_process");
 const { callClaude } = require("../src/services/claudeClient");
 const { callGemini } = require("../src/services/geminiClient");
 const {
+  runOpenAICodexFallback,
+  shouldUseOpenAICodexFallback,
+  summarizeCliFailure,
+} = require("./lib/codex-openai-fallback");
+const {
   ensureDir,
   loadLocalEnv,
   nowKstMeta,
@@ -219,6 +224,91 @@ function runProvider({ providerName, providerCfg, prompt, cwd, outputPath, dryRu
   };
 }
 
+async function runCodexProviderWithFallback({ providerCfg, prompt, cwd, outputPath, dryRun = false }) {
+  const cliResult = runProvider({
+    providerName: "codex",
+    providerCfg,
+    prompt,
+    cwd,
+    outputPath,
+    dryRun,
+  });
+  if (cliResult.ok && cliResult.parsed) return cliResult;
+  const cliMissing = cliResult.reason === "COMMAND_NOT_FOUND";
+  if (!shouldUseOpenAICodexFallback({
+    cliMissing,
+    cliResult: {
+      parsed: cliResult.parsed || null,
+      res: {
+        status: cliResult.exit_code,
+        error: cliResult.reason && cliResult.reason !== "COMMAND_NOT_FOUND"
+          ? { code: cliResult.reason, message: cliResult.reason }
+          : null,
+        stdout: Array.isArray(cliResult.stdout_tail) ? cliResult.stdout_tail.join("\n") : "",
+        stderr: Array.isArray(cliResult.stderr_tail) ? cliResult.stderr_tail.join("\n") : "",
+        timedOut: false,
+      },
+    },
+  })) {
+    return cliResult;
+  }
+  const apiResult = await runOpenAICodexFallback({
+    prompt,
+    system: "You are Codex, the lead orchestrator for DONBEOLJA. Return valid JSON only.",
+    model: String(providerCfg.api_fallback_model || "").trim(),
+    reasoningEffort: String(process.env.OPENAI_CODEX_FALLBACK_REASONING_EFFORT || "high").trim().toLowerCase(),
+    maxTokens: 2200,
+  });
+  if (!apiResult.parsed) {
+    return {
+      ...cliResult,
+      fallback_attempted: true,
+      fallback_reason: summarizeCliFailure({
+        cliMissing,
+        cliResult: {
+          parsed: cliResult.parsed || null,
+          res: {
+            status: cliResult.exit_code,
+            error: cliResult.reason && cliResult.reason !== "COMMAND_NOT_FOUND"
+              ? { code: cliResult.reason, message: cliResult.reason }
+              : null,
+            stdout: Array.isArray(cliResult.stdout_tail) ? cliResult.stdout_tail.join("\n") : "",
+            stderr: Array.isArray(cliResult.stderr_tail) ? cliResult.stderr_tail.join("\n") : "",
+            timedOut: false,
+          },
+        },
+      }),
+      fallback_failure_reason: apiResult.reason,
+    };
+  }
+  writeText(outputPath, apiResult.finalRaw || "");
+  return {
+    provider: "codex",
+    ok: true,
+    reason: null,
+    model: apiResult.execution_model,
+    execution_provider: apiResult.execution_provider,
+    fallback_reason: summarizeCliFailure({
+      cliMissing,
+      cliResult: {
+        parsed: cliResult.parsed || null,
+        res: {
+          status: cliResult.exit_code,
+          error: cliResult.reason && cliResult.reason !== "COMMAND_NOT_FOUND"
+            ? { code: cliResult.reason, message: cliResult.reason }
+            : null,
+          stdout: Array.isArray(cliResult.stdout_tail) ? cliResult.stdout_tail.join("\n") : "",
+          stderr: Array.isArray(cliResult.stderr_tail) ? cliResult.stderr_tail.join("\n") : "",
+          timedOut: false,
+        },
+      },
+    }),
+    parsed: apiResult.parsed,
+    stdout_tail: String(apiResult.finalRaw || "").trim().split(/\r?\n/).slice(-20),
+    stderr_tail: [],
+  };
+}
+
 async function runProviderAsync({ providerName, providerCfg, prompt, cwd, outputPath, dryRun = false }) {
   const type = String(providerCfg.type || "command").trim() || "command";
   if (type === "command") {
@@ -404,8 +494,7 @@ async function main() {
 
   const leadPrompt = buildCodexLeadPrompt({ workflow, taskPrompt, subagentResults: subResults.map((r) => ({ provider: r.provider, parsed: r.parsed || null, reason: r.reason || null, ok: !!r.ok })) });
   const codexProviderCfg = (((cfg || {}).providers || {}).codex) || {};
-  const leadResult = runProvider({
-    providerName: "codex",
+  const leadResult = await runCodexProviderWithFallback({
     providerCfg: {
       ...codexProviderCfg,
       args: [
@@ -442,6 +531,8 @@ async function main() {
     })),
     codex: {
       ok: !!leadResult.ok,
+      execution_provider: leadResult.execution_provider || "CODEX_CLI",
+      fallback_reason: leadResult.fallback_reason || null,
       parsed: codexParsed,
     },
     paths: {

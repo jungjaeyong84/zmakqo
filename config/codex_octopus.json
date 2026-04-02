@@ -17,7 +17,8 @@
         "--cd",
         "{cwd}"
       ],
-      "model": "gpt-5.4"
+      "model": "gpt-5.4",
+      "api_fallback_model": "gpt-5.2-codex"
     },
     "claude": {
       "type": "claude_api",

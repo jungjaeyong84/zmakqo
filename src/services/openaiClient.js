@@ -22,7 +22,16 @@ function extractResponseText(json) {
   return chunks.join("\n").trim();
 }
 
-async function callOpenAI({ apiKey, model, prompt, temperature = 0.2, maxTokens = 600, jsonMode = true } = {}) {
+async function callOpenAI({
+  apiKey,
+  model,
+  prompt,
+  system = "You are a risk-aware quant assistant. Return JSON only.",
+  temperature = 0.2,
+  maxTokens = 600,
+  jsonMode = true,
+  reasoningEffort = null,
+} = {}) {
   const out = { ok: false, reason: null, text: null, raw: null };
   if (!apiKey) {
     out.reason = "NO_API_KEY";
@@ -41,10 +50,13 @@ async function callOpenAI({ apiKey, model, prompt, temperature = 0.2, maxTokens 
         temperature,
         max_output_tokens: maxTokens,
         input: [
-          { role: "system", content: "You are a risk-aware quant assistant. Return JSON only." },
+          { role: "system", content: system },
           { role: "user", content: prompt },
         ],
       };
+      if (reasoningEffort) {
+        payload.reasoning = { effort: String(reasoningEffort).trim().toLowerCase() };
+      }
       if (jsonMode) {
         payload.text = { format: { type: "json_object" } };
       }
@@ -75,7 +87,7 @@ async function callOpenAI({ apiKey, model, prompt, temperature = 0.2, maxTokens 
       temperature,
       max_tokens: maxTokens,
       messages: [
-        { role: "system", content: "You are a risk-aware quant assistant. Return JSON only." },
+        { role: "system", content: system },
         { role: "user", content: prompt },
       ],
     };

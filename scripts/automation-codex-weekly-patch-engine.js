@@ -26,6 +26,11 @@ const {
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
+const {
+  runOpenAICodexFallback,
+  shouldUseOpenAICodexFallback,
+  summarizeCliFailure,
+} = require("./lib/codex-openai-fallback");
 const { buildSelfEvolutionPolicySpec } = require("./lib/best-febt-supervisor");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
 
@@ -861,15 +866,6 @@ async function main() {
     return;
   }
 
-  if (!fs.existsSync(CODEX_BIN)) {
-    const failed = { ...baseReport, ok: false, status: "FAILED", reason: "CODEX_BIN_MISSING", summary: CODEX_BIN };
-    writeJson(jsonPath, wrapDisplayAndRawReport(failed));
-    writeText(mdPath, renderMarkdown(failed));
-    copyLatest(jsonPath, REPORT_LATEST_JSON);
-    copyLatest(mdPath, REPORT_LATEST_MD);
-    throw new Error(`CODEX_BIN_MISSING:${CODEX_BIN}`);
-  }
-
   const schemaPath = path.join("/tmp", `codex_patch_engine_schema_${process.pid}.json`);
   const lastMessagePath = path.join("/tmp", `codex_patch_engine_last_${process.pid}.json`);
   const schema = {
@@ -926,7 +922,54 @@ async function main() {
     "-",
   );
   const promptNormalized = replaceCandidateIdsInText(prompt, candidateDisplayMap);
-  const execResult = await runCodexExec({ args, prompt: promptNormalized, lastMessagePath });
+  const cliAvailable = fs.existsSync(CODEX_BIN);
+  let execResult = cliAvailable
+    ? await runCodexExec({ args, prompt: promptNormalized, lastMessagePath })
+    : {
+        res: {
+          status: null,
+          signal: null,
+          error: Object.assign(new Error(`CODEX_BIN_MISSING:${CODEX_BIN}`), { code: "ENOENT" }),
+          stdout: "",
+          stderr: "",
+          timedOut: false,
+          finalRaw: "",
+        },
+        parsed: null,
+        finalRaw: "",
+        attempts: 0,
+      };
+  let executionProvider = "CODEX_CLI";
+  let executionModel = CODEX_MODEL || null;
+  let fallbackReason = null;
+  if (shouldUseOpenAICodexFallback({ cliResult: execResult, cliMissing: !cliAvailable })) {
+    fallbackReason = summarizeCliFailure({ cliResult: execResult, cliMissing: !cliAvailable });
+    const apiResult = await runOpenAICodexFallback({
+      prompt: promptNormalized,
+      system: "You are Codex, the external patch-review authority for DONBEOLJA. Return valid JSON only.",
+      schema,
+      reasoningEffort: CODEX_REASONING_EFFORT || "high",
+      maxTokens: 2800,
+    });
+    if (apiResult && apiResult.parsed) {
+      execResult = {
+        res: {
+          status: 0,
+          signal: null,
+          error: null,
+          stdout: apiResult.finalRaw,
+          stderr: "",
+          timedOut: false,
+          finalRaw: apiResult.finalRaw,
+        },
+        parsed: apiResult.parsed,
+        finalRaw: apiResult.finalRaw,
+        attempts: Math.max(1, Number(execResult.attempts || 0)) + 1,
+      };
+      executionProvider = apiResult.execution_provider;
+      executionModel = apiResult.execution_model;
+    }
+  }
   const { res, parsed, finalRaw, attempts } = execResult;
   if (!parsed && res && (res.timedOut === true || (res.error && res.error.code === "ETIMEDOUT"))) {
     const timeoutHold = {
@@ -949,11 +992,14 @@ async function main() {
         "Codex CLI review did not complete within timeout; authority uses conservative HOLD for this cycle.",
       ],
       review_unit: "ENGINE_POLICY_BUNDLE",
+      execution_provider: executionProvider,
+      execution_model: executionModel,
+      fallback_reason: fallbackReason,
       source_mode_change: String(sourceModeStage.signature || "").trim() || null,
       canonical_threshold_signature: String(canonicalPolicyStage.signature || deploymentPlanSummary.recommended_target_stage_signature || "").trim() || null,
       inputs: baseReport.inputs,
       attempts,
-      command: [CODEX_BIN, ...args].join(" "),
+      command: executionProvider === "CODEX_CLI" ? [CODEX_BIN, ...args].join(" ") : `OPENAI_API:${executionModel || "N/A"}`,
       stderr_tail: String(res.stderr || "").trim().split(/\r?\n/).filter(Boolean).slice(-20),
     };
     writeJson(jsonPath, wrapDisplayAndRawReport(timeoutHold));
@@ -984,11 +1030,14 @@ async function main() {
     checks: parsed && Array.isArray(parsed.checks) ? parsed.checks.map((row) => replaceCandidateIdsInText(String(row), candidateDisplayMap)) : [],
     risks: parsed && Array.isArray(parsed.risks) ? parsed.risks.map((row) => replaceCandidateIdsInText(String(row), candidateDisplayMap)) : [],
     review_unit: "ENGINE_POLICY_BUNDLE",
+    execution_provider: executionProvider,
+    execution_model: executionModel,
+    fallback_reason: fallbackReason,
     source_mode_change: String(sourceModeStage.signature || "").trim() || null,
     canonical_threshold_signature: String(canonicalPolicyStage.signature || deploymentPlanSummary.recommended_target_stage_signature || "").trim() || null,
     inputs: baseReport.inputs,
     attempts,
-    command: [CODEX_BIN, ...args].join(" "),
+    command: executionProvider === "CODEX_CLI" ? [CODEX_BIN, ...args].join(" ") : `OPENAI_API:${executionModel || "N/A"}`,
     stderr_tail: String(res.stderr || "").trim().split(/\r?\n/).filter(Boolean).slice(-20),
   };
 
