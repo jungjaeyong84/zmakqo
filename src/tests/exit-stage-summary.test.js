@@ -25,6 +25,7 @@ const { buildExitStageView } = require("../utils/exitStageView");
           SL: 0.0165,
           TP_P1: 0.0325,
           TP_P1_QTY: 0.5,
+          TRAIL_R_MULTIPLE: 0.9,
           TRAIL_PCT: 0.01,
           BE_PCT: 0.0025,
         },
@@ -59,6 +60,7 @@ const { buildExitStageView } = require("../utils/exitStageView");
           SL: 0.0165,
           TP_P1: 0.0325,
           TP_P1_QTY: 0.5,
+          TRAIL_R_MULTIPLE: 0.9,
           TRAIL_PCT: 0.01,
           BE_PCT: 0.0025,
         },
@@ -66,8 +68,9 @@ const { buildExitStageView } = require("../utils/exitStageView");
     },
   });
   assert(stage, "stage must exist for trailing position");
+  assert.equal(stage.trail_r_multiple, 0.9);
   assert.equal(stage.compact_headline.left_label, "Trail");
-  assert.equal(stage.compact_headline.left_price, 108.9);
+  assert.equal(stage.compact_headline.left_price, 109.2575);
   assert.equal(stage.compact_headline.right_label, "SL");
   assert.equal(stage.compact_headline.right_price, 98.35);
 })();

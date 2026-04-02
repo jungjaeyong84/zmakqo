@@ -1,6 +1,6 @@
 "use strict";
 
-const { resolveExitRulesForPosition, computeRunnerExitStopPrice } = require("../engine/signalEngine");
+const { resolveExitRulesForPosition, computeRunnerExitStopPrice, resolveEntryRDistance } = require("../engine/signalEngine");
 
 function toNum(v) {
   const n = Number(v);
@@ -75,6 +75,13 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
   const trailActive = meta.trail_active === true;
   const tpSkipReason = meta.tp_p1_skip_reason ? String(meta.tp_p1_skip_reason) : null;
   const trailRef = side === "SHORT" ? toNum(meta.trail_low) : toNum(meta.trail_high);
+  const entryRDistance = resolveEntryRDistance({
+    avg,
+    leverageEff: leverage,
+    side,
+    meta,
+    rules,
+  });
   const runnerExit = computeRunnerExitStopPrice({
     avg,
     leverageEff: leverage,
@@ -84,6 +91,7 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     trailActive,
     trailHigh: toNum(meta.trail_high),
     trailLow: toNum(meta.trail_low),
+    entryRDistance,
   });
   const trailStop = runnerExit.stopPrice;
   const runnerFloorStop = runnerExit.runnerFloorStop;
@@ -155,6 +163,7 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     sl_price: slPrice,
     be_price: bePrice,
     tp1_qty_pct: toNum(rules.TP_P1_QTY),
+    trail_r_multiple: toNum(rules.TRAIL_R_MULTIPLE),
     trail_pct: toNum(rules.TRAIL_PCT),
     tp1_done: tpP1Done,
     tp1_pending: tpP1Pending,

@@ -839,6 +839,9 @@ router.get("/dashboard/home", async (req, res) => {
       tp_qty_pct: exitRules.TP_P1_QTY,
       tp_qty_pct_min: exitRules.TP_P1_QTY,
       tp_qty_pct_max: exitRules.TP_P1_QTY,
+      trail_r_multiple: exitRules.TRAIL_R_MULTIPLE,
+      trail_r_multiple_min: exitRules.TRAIL_R_MULTIPLE,
+      trail_r_multiple_max: exitRules.TRAIL_R_MULTIPLE,
       trail_pct: exitRules.TRAIL_PCT,
       trail_pct_min: exitRules.TRAIL_PCT,
       trail_pct_max: exitRules.TRAIL_PCT,
@@ -895,6 +898,7 @@ router.get("/dashboard/home", async (req, res) => {
     if (activeResolvedRules.length > 0) {
       const thresholdSummary = summarizeExitRuleValue(activeResolvedRules, "TP_P1", tpThreshold);
       const tpQtySummary = summarizeExitRuleValue(activeResolvedRules, "TP_P1_QTY", exitRules.TP_P1_QTY);
+      const trailRSummary = summarizeExitRuleValue(activeResolvedRules, "TRAIL_R_MULTIPLE", exitRules.TRAIL_R_MULTIPLE);
       const trailSummary = summarizeExitRuleValue(activeResolvedRules, "TRAIL_PCT", exitRules.TRAIL_PCT);
       const runnerSummary = summarizeExitRuleValue(activeResolvedRules, "RUNNER_MIN_PROFIT_PCT", exitRules.RUNNER_MIN_PROFIT_PCT);
       const slSummary = summarizeExitRuleValue(activeResolvedRules, "SL", exitRules.SL);
@@ -904,6 +908,9 @@ router.get("/dashboard/home", async (req, res) => {
       tpStatus.tp_qty_pct = tpQtySummary.value;
       tpStatus.tp_qty_pct_min = tpQtySummary.min;
       tpStatus.tp_qty_pct_max = tpQtySummary.max;
+      tpStatus.trail_r_multiple = trailRSummary.value;
+      tpStatus.trail_r_multiple_min = trailRSummary.min;
+      tpStatus.trail_r_multiple_max = trailRSummary.max;
       tpStatus.trail_pct = trailSummary.value;
       tpStatus.trail_pct_min = trailSummary.min;
       tpStatus.trail_pct_max = trailSummary.max;

@@ -723,7 +723,11 @@ function buildExitEventByKind(kind, rules) {
   const trailLabel = pctLabel(rules && rules.TRAIL_PCT);
   if (k === "SL") return slLabel ? `EXIT_SL_${slLabel}P` : "EXIT_SL";
   if (k === "TP1") return tpLabel ? `EXIT_TP_P1_${tpLabel}P` : "EXIT_TP_P1";
-  if (k === "TRAIL") return trailLabel ? `EXIT_TRAIL_${trailLabel}P` : "EXIT_TRAIL";
+  if (k === "TRAIL") {
+    const trailR = Number(rules && rules.TRAIL_R_MULTIPLE);
+    if (Number.isFinite(trailR) && trailR > 0) return "EXIT_TRAIL";
+    return trailLabel ? `EXIT_TRAIL_${trailLabel}P` : "EXIT_TRAIL";
+  }
   return "EXIT_EXTERNAL_SYNC";
 }
 

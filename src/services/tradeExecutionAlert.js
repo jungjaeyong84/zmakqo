@@ -181,6 +181,8 @@ function parseExitEventMeta(event) {
   if (m) return { token: `TP1_${m[1]}`, label: `익절(TP1) ${m[1]}%` };
   m = ev.match(/^EXIT_TRAIL_([0-9]+(?:\.[0-9]+)?)P$/);
   if (m) return { token: `TRAIL_${m[1]}`, label: `트레일링 ${m[1]}%` };
+  m = ev.match(/^EXIT_TRAIL_([0-9]+(?:\.[0-9]+)?)R$/);
+  if (m) return { token: `TRAIL_${m[1]}R`, label: `트레일링 ${m[1]}R` };
   m = ev.match(/^EXIT_SL_([0-9]+(?:\.[0-9]+)?)P$/);
   if (m) return { token: `SL_${m[1]}`, label: `손절 ${m[1]}%` };
   m = ev.match(/^EXIT_BE_([0-9]+(?:\.[0-9]+)?)P$/);
@@ -210,7 +212,10 @@ function formatExitRulesCompact(exitRules) {
   if (!exitRules || typeof exitRules !== "object") return null;
   const sl = ratioToPctToken(exitRules.SL, { abs: true });
   const tp1 = ratioToPctToken(exitRules.TP_P1);
-  const trail = ratioToPctToken(exitRules.TRAIL_PCT);
+  const trailR = Number(exitRules.TRAIL_R_MULTIPLE);
+  const trail = Number.isFinite(trailR) && trailR > 0
+    ? `${String(trailR).replace(/\.?0+$/, "")}R`
+    : ratioToPctToken(exitRules.TRAIL_PCT);
   const runnerMin = ratioToPctToken(exitRules.RUNNER_MIN_PROFIT_PCT);
   const be = ratioToPctToken(exitRules.BE_PCT);
   const parts = [];

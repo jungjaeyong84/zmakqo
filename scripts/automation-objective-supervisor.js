@@ -87,6 +87,7 @@ const SELF_EVOLUTION_EXECUTION_QUALITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "b
 const SELF_EVOLUTION_REVERSE_POLICY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_reverse_policy_latest.json");
 const SELF_EVOLUTION_SERVER_PRIMARY_LEARNING_EPOCH_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_learning_epoch_latest.json");
 const SELF_EVOLUTION_INITIAL_SIGNAL_QUALITY_CONTRACT_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_initial_signal_quality_contract_latest.json");
+const SELF_EVOLUTION_EXIT_TRAILING_CONTRACT_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_exit_trailing_contract_latest.json");
 const SELF_EVOLUTION_SERVER_NATIVE_HTF_MODE_COMPARISON_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_native_htf_mode_comparison_latest.json");
 const SELF_EVOLUTION_SERVER_NATIVE_HTF_MODE_GOVERNOR_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_native_htf_mode_governor_latest.json");
 const SELF_EVOLUTION_CANONICAL_PROVENANCE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_provenance_latest.json");
@@ -145,6 +146,7 @@ const FRESHNESS_HOURS = Object.freeze({
   selfEvolutionReversePolicy: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_REVERSE_POLICY_MAX_AGE_HOURS || 36)),
   selfEvolutionServerPrimaryLearningEpoch: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_SERVER_PRIMARY_LEARNING_EPOCH_MAX_AGE_HOURS || 36)),
   selfEvolutionInitialSignalQualityContract: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_INITIAL_SIGNAL_QUALITY_CONTRACT_MAX_AGE_HOURS || 36)),
+  selfEvolutionExitTrailingContract: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_EXIT_TRAILING_CONTRACT_MAX_AGE_HOURS || 36)),
   selfEvolutionServerNativeHtfModeComparison: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_SERVER_NATIVE_HTF_MODE_COMPARISON_MAX_AGE_HOURS || 36)),
   selfEvolutionServerNativeHtfModeGovernor: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_SERVER_NATIVE_HTF_MODE_GOVERNOR_MAX_AGE_HOURS || 36)),
   selfEvolutionCanonicalProvenance: Math.max(12, Number(process.env.OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_CANONICAL_PROVENANCE_MAX_AGE_HOURS || 36)),
@@ -1966,7 +1968,7 @@ function buildObjectiveSupervisorTelegramAlertSections(report = {}) {
   }));
 }
 
-function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionMarketObjectiveScore, selfEvolutionServerVsPinePerformanceDelta, selfEvolutionExplorationBudget, selfEvolutionServerMarketCapitalAllocator, selfEvolutionServerMarketQuarantine, selfEvolutionExplorationProposal, selfEvolutionExplorationApplyCandidate, selfEvolutionChangeResultAttribution, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionCanonicalParity, selfEvolutionServerSignalAuthority, selfEvolutionServerSignalQuality, selfEvolutionServerSignalCutoverReadiness, selfEvolutionDropValidation, selfEvolutionProvisionalRealizedOutcome, selfEvolutionOverrideAuthority, selfEvolutionExecutionQuality, selfEvolutionReversePolicy, selfEvolutionServerPrimaryLearningEpoch, selfEvolutionInitialSignalQualityContract, selfEvolutionServerNativeHtfModeComparison, selfEvolutionServerNativeHtfModeGovernor, selfEvolutionCanonicalProvenance, selfEvolutionServerPrimaryCanary, selfEvolutionPineShadowDrift, selfEvolutionDeploymentProbe, selfEvolutionBundleActivation, selfEvolutionEvGateRescue, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache, preparedOverride } = {}) {
+function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionMarketObjectiveScore, selfEvolutionServerVsPinePerformanceDelta, selfEvolutionExplorationBudget, selfEvolutionServerMarketCapitalAllocator, selfEvolutionServerMarketQuarantine, selfEvolutionExplorationProposal, selfEvolutionExplorationApplyCandidate, selfEvolutionChangeResultAttribution, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionCanonicalParity, selfEvolutionServerSignalAuthority, selfEvolutionServerSignalQuality, selfEvolutionServerSignalCutoverReadiness, selfEvolutionDropValidation, selfEvolutionProvisionalRealizedOutcome, selfEvolutionOverrideAuthority, selfEvolutionExecutionQuality, selfEvolutionReversePolicy, selfEvolutionServerPrimaryLearningEpoch, selfEvolutionInitialSignalQualityContract, selfEvolutionExitTrailingContract, selfEvolutionServerNativeHtfModeComparison, selfEvolutionServerNativeHtfModeGovernor, selfEvolutionCanonicalProvenance, selfEvolutionServerPrimaryCanary, selfEvolutionPineShadowDrift, selfEvolutionDeploymentProbe, selfEvolutionBundleActivation, selfEvolutionEvGateRescue, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache, preparedOverride } = {}) {
   const objective = governance && governance.current && governance.current.objective ? governance.current.objective : {};
   const objectiveCfg = governance && governance.objective ? governance.objective : {};
   const promotion = changeControl && changeControl.auto_promotion ? changeControl.auto_promotion : {};
@@ -2064,6 +2066,9 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   const selfEvolutionServerPrimaryLearningEpochSummary = summarizeSelfEvolutionServerPrimaryLearningEpoch(selfEvolutionServerPrimaryLearningEpoch);
   const selfEvolutionInitialSignalQualityContractSummary = selfEvolutionInitialSignalQualityContract && selfEvolutionInitialSignalQualityContract.summary && typeof selfEvolutionInitialSignalQualityContract.summary === "object"
     ? selfEvolutionInitialSignalQualityContract.summary
+    : {};
+  const selfEvolutionExitTrailingContractSummary = selfEvolutionExitTrailingContract && selfEvolutionExitTrailingContract.summary && typeof selfEvolutionExitTrailingContract.summary === "object"
+    ? selfEvolutionExitTrailingContract.summary
     : {};
   const selfEvolutionServerNativeHtfModeComparisonSummary = selfEvolutionServerNativeHtfModeComparison && selfEvolutionServerNativeHtfModeComparison.summary && typeof selfEvolutionServerNativeHtfModeComparison.summary === "object"
     ? selfEvolutionServerNativeHtfModeComparison.summary
@@ -2509,6 +2514,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     self_evolution_reverse_policy: selfEvolutionReversePolicySummary,
     self_evolution_server_primary_learning_epoch: selfEvolutionServerPrimaryLearningEpochSummary,
     self_evolution_initial_signal_quality_contract: selfEvolutionInitialSignalQualityContractSummary,
+    self_evolution_exit_trailing_contract: selfEvolutionExitTrailingContractSummary,
     self_evolution_server_native_htf_mode_comparison: selfEvolutionServerNativeHtfModeComparisonSummary,
     self_evolution_server_native_htf_mode_governor: selfEvolutionServerNativeHtfModeGovernorSummary,
     self_evolution_market_objective_score: selfEvolutionMarketObjectiveScoreSummary,
@@ -2880,6 +2886,7 @@ async function main() {
   const selfEvolutionReversePolicyArtifact = readArtifact("self_evolution_reverse_policy", SELF_EVOLUTION_REVERSE_POLICY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionReversePolicy);
   const selfEvolutionServerPrimaryLearningEpochArtifact = readArtifact("self_evolution_server_primary_learning_epoch", SELF_EVOLUTION_SERVER_PRIMARY_LEARNING_EPOCH_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionServerPrimaryLearningEpoch);
   const selfEvolutionInitialSignalQualityContractArtifact = readArtifact("self_evolution_initial_signal_quality_contract", SELF_EVOLUTION_INITIAL_SIGNAL_QUALITY_CONTRACT_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionInitialSignalQualityContract);
+  const selfEvolutionExitTrailingContractArtifact = readArtifact("self_evolution_exit_trailing_contract", SELF_EVOLUTION_EXIT_TRAILING_CONTRACT_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionExitTrailingContract);
   const selfEvolutionServerNativeHtfModeComparisonArtifact = readArtifact("self_evolution_server_native_htf_mode_comparison", SELF_EVOLUTION_SERVER_NATIVE_HTF_MODE_COMPARISON_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionServerNativeHtfModeComparison);
   const selfEvolutionServerNativeHtfModeGovernorArtifact = readArtifact("self_evolution_server_native_htf_mode_governor", SELF_EVOLUTION_SERVER_NATIVE_HTF_MODE_GOVERNOR_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionServerNativeHtfModeGovernor);
   const selfEvolutionCanonicalProvenanceArtifact = readArtifact("self_evolution_canonical_provenance", SELF_EVOLUTION_CANONICAL_PROVENANCE_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCanonicalProvenance);
@@ -2995,6 +3002,7 @@ async function main() {
     selfEvolutionReversePolicy: selfEvolutionReversePolicyArtifact.exists ? { ...selfEvolutionReversePolicyArtifact.data, fresh: selfEvolutionReversePolicyArtifact.fresh } : null,
     selfEvolutionServerPrimaryLearningEpoch: selfEvolutionServerPrimaryLearningEpochArtifact.exists ? { ...selfEvolutionServerPrimaryLearningEpochArtifact.data, fresh: selfEvolutionServerPrimaryLearningEpochArtifact.fresh } : null,
     selfEvolutionInitialSignalQualityContract: selfEvolutionInitialSignalQualityContractArtifact.exists ? { ...selfEvolutionInitialSignalQualityContractArtifact.data, fresh: selfEvolutionInitialSignalQualityContractArtifact.fresh } : null,
+    selfEvolutionExitTrailingContract: selfEvolutionExitTrailingContractArtifact.exists ? { ...selfEvolutionExitTrailingContractArtifact.data, fresh: selfEvolutionExitTrailingContractArtifact.fresh } : null,
     selfEvolutionServerNativeHtfModeComparison: selfEvolutionServerNativeHtfModeComparisonArtifact.exists ? { ...selfEvolutionServerNativeHtfModeComparisonArtifact.data, fresh: selfEvolutionServerNativeHtfModeComparisonArtifact.fresh } : null,
     selfEvolutionServerNativeHtfModeGovernor: selfEvolutionServerNativeHtfModeGovernorArtifact.exists ? { ...selfEvolutionServerNativeHtfModeGovernorArtifact.data, fresh: selfEvolutionServerNativeHtfModeGovernorArtifact.fresh } : null,
     selfEvolutionCanonicalProvenance: selfEvolutionCanonicalProvenanceArtifact.exists ? { ...selfEvolutionCanonicalProvenanceArtifact.data, fresh: selfEvolutionCanonicalProvenanceArtifact.fresh } : null,
@@ -3134,6 +3142,9 @@ async function main() {
     ...(evaluation.self_evolution_initial_signal_quality_contract && evaluation.self_evolution_initial_signal_quality_contract.server_canonical_transition_core_quality
       ? [`INITIAL_SIGNAL_SERVER_CANONICAL: conf>=${evaluation.self_evolution_initial_signal_quality_contract.server_canonical_transition_core_quality.confidence_min ?? "N/A"} / posterior>=${evaluation.self_evolution_initial_signal_quality_contract.server_canonical_transition_core_quality.posterior_min ?? "N/A"} / wave>=${evaluation.self_evolution_initial_signal_quality_contract.server_canonical_transition_core_quality.wave_conf_min ?? "N/A"} / trisk<=${evaluation.self_evolution_initial_signal_quality_contract.server_canonical_transition_core_quality.transition_risk_max ?? "N/A"} / align>=${evaluation.self_evolution_initial_signal_quality_contract.server_canonical_transition_core_quality.field_alignment_min ?? "N/A"} / coh>=${evaluation.self_evolution_initial_signal_quality_contract.server_canonical_transition_core_quality.coherence_min ?? "N/A"}`]
       : []),
+    ...(evaluation.self_evolution_exit_trailing_contract && evaluation.self_evolution_exit_trailing_contract.status
+      ? [`EXIT_TRAILING_CONTRACT: ${evaluation.self_evolution_exit_trailing_contract.status} / canonical=${evaluation.self_evolution_exit_trailing_contract.canonical_mode || "N/A"} / legacy_pct=${evaluation.self_evolution_exit_trailing_contract.legacy_pct_fallback_enabled ? "YES" : "NO"} / generic_event=${evaluation.self_evolution_exit_trailing_contract.generic_trail_event_when_r_enabled ? "YES" : "NO"} / mismatch=${evaluation.self_evolution_exit_trailing_contract.mismatch_exchange || "none"}`]
+      : []),
     ...(evaluation.self_evolution_server_native_htf_mode_comparison && evaluation.self_evolution_server_native_htf_mode_comparison.status
       ? [`SERVER_NATIVE_HTF_MODE: ${evaluation.self_evolution_server_native_htf_mode_comparison.status} / selected=${evaluation.self_evolution_server_native_htf_mode_comparison.selected_mode || "N/A"} / divergence=${evaluation.self_evolution_server_native_htf_mode_comparison.divergence_bar_n ?? 0} / compared=${evaluation.self_evolution_server_native_htf_mode_comparison.compared_bar_n ?? 0} / top=${evaluation.self_evolution_server_native_htf_mode_comparison.top_divergence_symbol || "N/A"}`]
       : []),
@@ -3214,6 +3225,7 @@ async function main() {
     self_evolution_reverse_policy: evaluation.self_evolution_reverse_policy,
     self_evolution_server_primary_learning_epoch: evaluation.self_evolution_server_primary_learning_epoch,
     self_evolution_initial_signal_quality_contract: evaluation.self_evolution_initial_signal_quality_contract,
+    self_evolution_exit_trailing_contract: evaluation.self_evolution_exit_trailing_contract,
     self_evolution_market_objective_score: evaluation.self_evolution_market_objective_score,
     self_evolution_server_vs_pine_performance_delta: evaluation.self_evolution_server_vs_pine_performance_delta,
     self_evolution_exploration_budget: evaluation.self_evolution_exploration_budget,
@@ -3339,6 +3351,7 @@ async function main() {
       executionQuality: selfEvolutionExecutionQualityArtifact.data,
       reversePolicy: selfEvolutionReversePolicyArtifact.data,
       serverPrimaryLearningEpoch: selfEvolutionServerPrimaryLearningEpochArtifact.data,
+      exitTrailingContract: selfEvolutionExitTrailingContractArtifact.data,
       marketObjectiveScore: selfEvolutionMarketObjectiveScoreArtifact.data,
       serverVsPinePerformanceDelta: selfEvolutionServerVsPinePerformanceDeltaArtifact.data,
       explorationBudget: selfEvolutionExplorationBudgetArtifact.data,

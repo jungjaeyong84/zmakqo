@@ -201,7 +201,12 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
     }
 
     if (internalActive) {
-      if (!rules || !Number.isFinite(Number(rules.SL)) || !Number.isFinite(Number(rules.TP_P1)) || !Number.isFinite(Number(rules.TRAIL_PCT))) {
+      if (
+        !rules ||
+        !Number.isFinite(Number(rules.SL)) ||
+        !Number.isFinite(Number(rules.TP_P1)) ||
+        (!Number.isFinite(Number(rules.TRAIL_R_MULTIPLE)) && !Number.isFinite(Number(rules.TRAIL_PCT)))
+      ) {
         marketIssues.push(makeIssue({
           symbol: sym,
           code: "EXIT_RULES_INVALID",

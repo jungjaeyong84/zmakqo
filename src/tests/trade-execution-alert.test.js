@@ -21,7 +21,7 @@ async function run() {
     execPrice: 84.12,
     appliedLeverage: 2,
     leverageReason: "REGIME_NOT_TREND",
-    exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
+    exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
     features: {
       market_bias_mult: 0.5,
       ev_mult: 0.7,
@@ -37,6 +37,7 @@ async function run() {
   assert.ok(shortEntry.body.includes("이벤트: SHORT"), "entry event tag should be canonical SHORT");
   assert.ok(shortEntry.body.includes("수량조정: 시황 50% × EV 70%"), "entry alert should include sizing reductions");
   assert.ok(shortEntry.body.includes("최종비중: 35%"), "entry alert should include final sizing");
+  assert.ok(shortEntry.body.includes("TRAIL_0.9R"), "entry alert should prefer R-based trailing contract");
 
   const timeStop = __test.buildMessage({
     exchange: "BINANCEFUT",
@@ -52,7 +53,7 @@ async function run() {
     realizedPnl: -0.018,
     appliedLeverage: 2,
     leverageReason: "BINANCE_USER_TRADES_SYNC",
-    exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
+    exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
   });
   assert.ok(timeStop, "time stop message should exist");
   assert.strictEqual(timeStop.title, "SOLUSDT TIME_STOP_18B 전량 청산");
@@ -72,12 +73,13 @@ async function run() {
     closeRatio: 0.5,
     appliedLeverage: 2,
     leverageReason: "REGIME_NOT_TREND",
-    exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
+    exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
   });
   assert.ok(tp1Failure, "tp1 failure message should exist");
   assert.strictEqual(tp1Failure.title, "SOLUSDT 익절(TP1) 3.25% 주문 실패");
   assert.ok(tp1Failure.body.includes("방향: 숏 청산"), "failure message should include exit direction");
   assert.ok(tp1Failure.body.includes("주문비율: 50%"), "failure message should include close ratio");
+  assert.ok(tp1Failure.body.includes("TRAIL_0.9R"), "failure message should include R-based trailing rule");
   assert.ok(tp1Failure.body.includes("RUNNER_MIN_2"), "failure message should include runner floor rule");
   assert.ok(tp1Failure.body.includes("실패사유: MARGIN_TYPE_SET_FAILED"), "failure reason should be explicit");
   assert.ok(tp1Failure.body.includes("메모: margin type change rejected"), "failure note should be explicit");

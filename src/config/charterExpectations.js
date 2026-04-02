@@ -6,6 +6,7 @@ const CHARTER_EXPECTATIONS = {
       TP_P1_QTY: 0.3,
       TP_C: null,
       BE_PCT: null,
+      TRAIL_R_MULTIPLE: 1.0,
       TRAIL_PCT: 0.015,
     },
     by_exchange: {
@@ -15,6 +16,7 @@ const CHARTER_EXPECTATIONS = {
         TP_P1_QTY: 0.3,
         TP_C: null,
         BE_PCT: null,
+        TRAIL_R_MULTIPLE: 1.0,
         TRAIL_PCT: 0.015,
       },
       BINANCEFUT: {
@@ -23,6 +25,7 @@ const CHARTER_EXPECTATIONS = {
         TP_P1_QTY: 0.5,
         TP_C: null,
         BE_PCT: 0.0025,
+        TRAIL_R_MULTIPLE: 0.9,
         TRAIL_PCT: 0.01,
       },
       KIWOOM: {
@@ -31,6 +34,7 @@ const CHARTER_EXPECTATIONS = {
         TP_P1_QTY: 0.5,
         TP_C: null,
         BE_PCT: null,
+        TRAIL_R_MULTIPLE: 1.0,
         TRAIL_PCT: 0.03,
       },
     },

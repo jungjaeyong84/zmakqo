@@ -26,10 +26,11 @@ function run() {
     },
   });
   assert.strictEqual(shortSignals.length, 1, "short runner floor should emit one trailing exit");
-  assert.strictEqual(shortSignals[0].event, "EXIT_TRAIL_1P");
+  assert.strictEqual(shortSignals[0].event, "EXIT_TRAIL");
   assert.strictEqual(shortSignals[0].reason, "EXIT_TRAIL_STOP_RUNNER_FLOOR");
   assert.ok(Math.abs(shortSignals[0].features.runner_stop_px - 99) < 1e-9);
   assert.strictEqual(shortSignals[0].features.runner_stop_source, "RUNNER_FLOOR");
+  assert.strictEqual(shortSignals[0].features.trail_r_multiple, 0.9);
 
   const longSignals = generateSignals({
     exchange: "BINANCEFUT",
@@ -69,6 +70,7 @@ function run() {
       SL: -0.0165,
       TP_P1: 0.0325,
       TP_P1_QTY: 0.5,
+      TRAIL_R_MULTIPLE: 0.9,
       TRAIL_PCT: 0.01,
       RUNNER_MIN_PROFIT_PCT: 0.02,
       BE_ENABLE: true,
@@ -98,6 +100,7 @@ function run() {
           SL: -0.0165,
           TP_P1: 0.0325,
           TP_P1_QTY: 0.5,
+          TRAIL_R_MULTIPLE: 0.9,
           TRAIL_PCT: 0.01,
           RUNNER_MIN_PROFIT_PCT: 0.02,
           BE_PCT: 0.0025,
@@ -108,9 +111,10 @@ function run() {
   });
   assert(stage, "exit stage view should be built");
   assert.strictEqual(stage.runner_stop_source, "RUNNER_FLOOR");
+  assert.strictEqual(stage.trail_r_multiple, 0.9);
   assert.strictEqual(stage.compact_headline.left_label, "Runner");
   assert.ok(Math.abs(stage.trail_stop - 99) < 1e-9, "displayed runner stop should reflect the floor");
-  assert.ok(Math.abs(stage.trail_stop_raw - 99.283) < 1e-9, "raw trail stop should remain visible for debugging");
+  assert.ok(Math.abs(stage.trail_stop_raw - 99.0425) < 1e-9, "raw trail stop should remain visible for debugging");
 }
 
 try {

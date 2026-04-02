@@ -35,6 +35,7 @@ function formatRuleValue(kind, v) {
   if (kind === "TP_P1_QTY") return Number.isFinite(v) ? formatPct(v, { abs: true }) : "비활성";
   if (kind === "TP_C") return Number.isFinite(v) ? formatPct(v, { sign: true }) : "비활성";
   if (kind === "BE_PCT") return Number.isFinite(v) ? formatPct(v, { sign: true }) : "비활성";
+  if (kind === "TRAIL_R_MULTIPLE") return Number.isFinite(v) ? `${String(v).replace(/\.?0+$/, "")}R` : "비활성";
   if (kind === "TRAIL_PCT") return Number.isFinite(v) ? formatPct(v, { abs: true }) : "비활성";
   if (kind === "SL") return Number.isFinite(v) ? formatPct(v) : "비활성";
   if (kind === "TP_P1") return Number.isFinite(v) ? formatPct(v, { sign: true }) : "비활성";
@@ -106,17 +107,27 @@ function checkCharterConsistency(exchange) {
     actual_label: formatRuleValue("BE_PCT", actRules.BE_PCT),
     ok: nearlyEqual(expResolved.BE_PCT, actRules.BE_PCT),
   });
-  const trailLabel = Number.isFinite(expResolved.TRAIL_PCT)
-    ? `트레일링(${formatPct(expResolved.TRAIL_PCT, { abs: true })})`
-    : "트레일링(비활성)";
+  const trailLabel = Number.isFinite(expResolved.TRAIL_R_MULTIPLE)
+    ? `트레일링(${formatRuleValue("TRAIL_R_MULTIPLE", expResolved.TRAIL_R_MULTIPLE)})`
+    : (Number.isFinite(expResolved.TRAIL_PCT)
+      ? `트레일링(${formatPct(expResolved.TRAIL_PCT, { abs: true })})`
+      : "트레일링(비활성)");
   out.push({
-    id: pctId("TRAIL", expResolved.TRAIL_PCT, { abs: true }),
+    id: Number.isFinite(expResolved.TRAIL_R_MULTIPLE)
+      ? `TRAIL_${String(expResolved.TRAIL_R_MULTIPLE).replace(/\./g, "_")}R`
+      : pctId("TRAIL", expResolved.TRAIL_PCT, { abs: true }),
     label: trailLabel,
-    expected: expResolved.TRAIL_PCT,
-    actual: actRules.TRAIL_PCT,
-    expected_label: formatRuleValue("TRAIL_PCT", expResolved.TRAIL_PCT),
-    actual_label: formatRuleValue("TRAIL_PCT", actRules.TRAIL_PCT),
-    ok: nearlyEqual(expResolved.TRAIL_PCT, actRules.TRAIL_PCT),
+    expected: Number.isFinite(expResolved.TRAIL_R_MULTIPLE) ? expResolved.TRAIL_R_MULTIPLE : expResolved.TRAIL_PCT,
+    actual: Number.isFinite(expResolved.TRAIL_R_MULTIPLE) ? actRules.TRAIL_R_MULTIPLE : actRules.TRAIL_PCT,
+    expected_label: Number.isFinite(expResolved.TRAIL_R_MULTIPLE)
+      ? formatRuleValue("TRAIL_R_MULTIPLE", expResolved.TRAIL_R_MULTIPLE)
+      : formatRuleValue("TRAIL_PCT", expResolved.TRAIL_PCT),
+    actual_label: Number.isFinite(expResolved.TRAIL_R_MULTIPLE)
+      ? formatRuleValue("TRAIL_R_MULTIPLE", actRules.TRAIL_R_MULTIPLE)
+      : formatRuleValue("TRAIL_PCT", actRules.TRAIL_PCT),
+    ok: Number.isFinite(expResolved.TRAIL_R_MULTIPLE)
+      ? nearlyEqual(expResolved.TRAIL_R_MULTIPLE, actRules.TRAIL_R_MULTIPLE)
+      : nearlyEqual(expResolved.TRAIL_PCT, actRules.TRAIL_PCT),
   });
   out.push({
     id: "TP_P1_QTY",

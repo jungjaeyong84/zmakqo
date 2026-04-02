@@ -533,7 +533,7 @@ function computeExitTriggers({ pos, rules, leverageEff, nativeProtectionState } 
   }
 
   const trailEnabled = meta.trail_active === true || tpP1Pending;
-  if ((tpP1Done || tpP1Pending) && trailEnabled && Number.isFinite(rules.TRAIL_PCT)) {
+  if ((tpP1Done || tpP1Pending) && trailEnabled && (Number.isFinite(rules.TRAIL_R_MULTIPLE) || Number.isFinite(rules.TRAIL_PCT))) {
     const runnerExit = computeRunnerExitStopPrice({
       avg,
       leverageEff,
@@ -543,6 +543,7 @@ function computeExitTriggers({ pos, rules, leverageEff, nativeProtectionState } 
       trailActive: meta.trail_active === true,
       trailHigh: Number(meta.trail_high),
       trailLow: Number(meta.trail_low),
+      entryRDistance: Number(meta.entry_r_distance),
     });
     if (Number.isFinite(runnerExit.stopPrice)) {
       out.push({ kind: "TRAIL", price: runnerExit.stopPrice, source: runnerExit.stopSource });

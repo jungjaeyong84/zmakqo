@@ -27,6 +27,7 @@ function kinds(list) {
   const rules = {
     SL: -0.0165,
     TP_P1: 0.0325,
+    TRAIL_R_MULTIPLE: 0.9,
     TRAIL_PCT: 0.01,
     BE_ENABLE: true,
   };
@@ -55,6 +56,7 @@ function kinds(list) {
   const rules = {
     SL: -0.0165,
     TP_P1: 0.0325,
+    TRAIL_R_MULTIPLE: 0.9,
     TRAIL_PCT: 0.01,
     BE_ENABLE: true,
   };
@@ -87,6 +89,7 @@ function kinds(list) {
   const rules = {
     SL: -0.0165,
     TP_P1: 0.0325,
+    TRAIL_R_MULTIPLE: 0.9,
     TRAIL_PCT: 0.01,
     BE_ENABLE: true,
   };

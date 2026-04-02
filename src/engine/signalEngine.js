@@ -108,6 +108,7 @@ const DEFAULT_RULES = (CHARTER_EXPECTATIONS && CHARTER_EXPECTATIONS.signal_engin
     TP_C: null,
     BE_ENABLE: true,
     BE_PCT: null,
+    TRAIL_R_MULTIPLE: 1.0,
     TRAIL_PCT: 0.025,
     RUNNER_MIN_PROFIT_PCT: null,
   };
@@ -119,6 +120,7 @@ const SIGNAL_ENGINE_RULES = {
   TP_C: parseNumEnv("ENGINE_TP_C", DEFAULT_RULES.TP_C),
   BE_ENABLE: parseBoolEnv("ENGINE_BE_ENABLE", DEFAULT_RULES.BE_ENABLE),
   BE_PCT: parseNumEnv("ENGINE_BE_PCT", DEFAULT_RULES.BE_PCT),
+  TRAIL_R_MULTIPLE: parseNumEnv("ENGINE_TRAIL_R_MULTIPLE", DEFAULT_RULES.TRAIL_R_MULTIPLE),
   TRAIL_PCT: parseNumEnv("ENGINE_TRAIL_PCT", DEFAULT_RULES.TRAIL_PCT),
   RUNNER_MIN_PROFIT_PCT: parseNumEnv("ENGINE_RUNNER_MIN_PROFIT_PCT", DEFAULT_RULES.RUNNER_MIN_PROFIT_PCT),
 };
@@ -133,6 +135,7 @@ const EXCHANGE_RULES = {
     TP_C: null,
     BE_ENABLE: true,
     BE_PCT: null,
+    TRAIL_R_MULTIPLE: 1.0,
     TRAIL_PCT: 0.015,
   },
   BINANCEFUT: {
@@ -143,7 +146,8 @@ const EXCHANGE_RULES = {
     BE_ENABLE: true,
     // Keep small realized edge after TP1; prevents many short winners from reverting to losses.
     BE_PCT: 0.0025,
-    // Short-hold futures flow: tighter trail protects gains sooner.
+    TRAIL_R_MULTIPLE: 0.9,
+    // Legacy fallback for positions without entry R metadata.
     TRAIL_PCT: 0.01,
     RUNNER_MIN_PROFIT_PCT: 0.02,
   },
@@ -154,6 +158,7 @@ const EXCHANGE_RULES = {
     TP_C: null,
     BE_ENABLE: true,
     BE_PCT: null,
+    TRAIL_R_MULTIPLE: 1.0,
     TRAIL_PCT: 0.03,
   },
 };
@@ -165,6 +170,7 @@ const BINANCE_FUTURES_AGGRESSIVE_RULES = {
   TP_C: null,
   BE_ENABLE: true,
   BE_PCT: 0.0025,
+  TRAIL_R_MULTIPLE: 1.0,
   TRAIL_PCT: 0.015,
   RUNNER_MIN_PROFIT_PCT: 0.02,
 };
@@ -218,6 +224,7 @@ function normalizeExitRules(rules, fallbackRules) {
     TP_P1_QTY: pickNum("TP_P1_QTY"),
     TP_C: pickNum("TP_C"),
     BE_PCT: pickNum("BE_PCT"),
+    TRAIL_R_MULTIPLE: pickNum("TRAIL_R_MULTIPLE"),
     TRAIL_PCT: pickNum("TRAIL_PCT"),
     RUNNER_MIN_PROFIT_PCT: pickNum("RUNNER_MIN_PROFIT_PCT"),
     BE_ENABLE: src.BE_ENABLE == null ? (fb.BE_ENABLE !== false) : !!src.BE_ENABLE,
@@ -225,6 +232,7 @@ function normalizeExitRules(rules, fallbackRules) {
   if (!Number.isFinite(out.SL)) out.SL = fb.SL;
   if (!Number.isFinite(out.TP_P1)) out.TP_P1 = fb.TP_P1;
   if (!Number.isFinite(out.TP_P1_QTY)) out.TP_P1_QTY = fb.TP_P1_QTY;
+  if (!Number.isFinite(out.TRAIL_R_MULTIPLE) || out.TRAIL_R_MULTIPLE <= 0) out.TRAIL_R_MULTIPLE = null;
   if (!Number.isFinite(out.TRAIL_PCT)) out.TRAIL_PCT = fb.TRAIL_PCT;
   if (!Number.isFinite(out.RUNNER_MIN_PROFIT_PCT) || out.RUNNER_MIN_PROFIT_PCT <= 0) out.RUNNER_MIN_PROFIT_PCT = null;
   if (!Number.isFinite(out.TP_C)) out.TP_C = null;
@@ -276,6 +284,38 @@ function computeTrailingStopPrice({ side, trailHigh, trailLow, trailPct } = {}) 
   return high === null ? null : (high * (1 - pctNum));
 }
 
+function computeTrailingStopPriceFromR({ side, trailHigh, trailLow, entryRDistance, trailRMultiple } = {}) {
+  const r = toNum(entryRDistance);
+  const multiple = toNum(trailRMultiple);
+  if (r === null || r <= 0 || multiple === null || multiple <= 0) return null;
+  const sideUpper = String(side || "").toUpperCase();
+  if (sideUpper === "SHORT") {
+    const low = toNum(trailLow);
+    return low === null ? null : (low + (r * multiple));
+  }
+  const high = toNum(trailHigh);
+  return high === null ? null : (high - (r * multiple));
+}
+
+function resolveEntryRDistance({ avg, leverageEff, side, meta, rules } = {}) {
+  const metaSafe = meta && typeof meta === "object" ? meta : {};
+  const storedR = toNum(metaSafe.entry_r_distance);
+  if (storedR !== null && storedR > 0) return storedR;
+  const initialStop = toNum(metaSafe.initial_stop_price);
+  const avgNum = toNum(avg);
+  if (initialStop !== null && avgNum !== null && avgNum > 0) {
+    const dist = Math.abs(initialStop - avgNum);
+    if (dist > 0) return dist;
+  }
+  const sl = toNum(rules && rules.SL);
+  const lev = toNum(leverageEff);
+  if (avgNum === null || avgNum <= 0 || sl === null || lev === null || lev <= 0) return null;
+  const fallbackStop = pnlToPrice({ avg: avgNum, pnlPct: sl / lev, side });
+  if (!Number.isFinite(fallbackStop)) return null;
+  const dist = Math.abs(fallbackStop - avgNum);
+  return dist > 0 ? dist : null;
+}
+
 function computeRunnerMinProfitStopPrice({ avg, leverageEff, side, runnerMinProfitPct, tpP1Done, trailActive } = {}) {
   if (tpP1Done !== true || trailActive !== true) return null;
   const floorPct = toNum(runnerMinProfitPct);
@@ -293,14 +333,23 @@ function computeRunnerExitStopPrice({
   trailActive,
   trailHigh,
   trailLow,
+  entryRDistance,
 } = {}) {
   const sideUpper = String(side || "").toUpperCase() === "SHORT" ? "SHORT" : "LONG";
-  const trailStop = computeTrailingStopPrice({
+  const trailStopByR = computeTrailingStopPriceFromR({
+    side: sideUpper,
+    trailHigh,
+    trailLow,
+    entryRDistance,
+    trailRMultiple: rules && rules.TRAIL_R_MULTIPLE,
+  });
+  const trailStopByPct = computeTrailingStopPrice({
     side: sideUpper,
     trailHigh,
     trailLow,
     trailPct: rules && rules.TRAIL_PCT,
   });
+  const trailStop = Number.isFinite(trailStopByR) ? trailStopByR : trailStopByPct;
   const runnerFloorStop = computeRunnerMinProfitStopPrice({
     avg,
     leverageEff,
@@ -335,6 +384,8 @@ function computeRunnerExitStopPrice({
     stopPrice: Number.isFinite(stopPrice) ? stopPrice : null,
     stopSource,
     trailStop: Number.isFinite(trailStop) ? trailStop : null,
+    trailStopByR: Number.isFinite(trailStopByR) ? trailStopByR : null,
+    trailStopByPct: Number.isFinite(trailStopByPct) ? trailStopByPct : null,
     runnerFloorStop: Number.isFinite(runnerFloorStop) ? runnerFloorStop : null,
   };
 }
@@ -399,8 +450,16 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
   const BE_ENABLE = rules.BE_ENABLE !== false;
   let BE_PCT = rules.BE_PCT;
   const TP_P1_QTY = rules.TP_P1_QTY;
+  const TRAIL_R_MULTIPLE = rules.TRAIL_R_MULTIPLE;
   const TRAIL_PCT = rules.TRAIL_PCT;
   const RUNNER_MIN_PROFIT_PCT = rules.RUNNER_MIN_PROFIT_PCT;
+  const entryRDistance = resolveEntryRDistance({
+    avg,
+    leverageEff,
+    side: positionSide,
+    meta,
+    rules,
+  });
   const exitSide = positionSide === "SHORT" ? "BUY" : "SELL";
   if (!BE_ENABLE) BE_PCT = null;
   if (BE_ENABLE && !Number.isFinite(BE_PCT) && ex.includes("BINANCE") && Number.isFinite(leverageEff) && leverageEff > 0) {
@@ -417,7 +476,9 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
   const slEvent = slPctLabel ? `EXIT_SL_${slPctLabel}P` : "EXIT_SL";
   const tpP1Event = tpP1Label ? `EXIT_TP_P1_${tpP1Label}P` : "EXIT_TP_P1";
   const tpCEvent = tpCLabel ? `EXIT_TP_C_${tpCLabel}P` : "EXIT_TP_C";
-  const trailEvent = trailLabel ? `EXIT_TRAIL_${trailLabel}P` : "EXIT_TRAIL";
+  const trailEvent = Number.isFinite(TRAIL_R_MULTIPLE) && TRAIL_R_MULTIPLE > 0
+    ? "EXIT_TRAIL"
+    : (trailLabel ? `EXIT_TRAIL_${trailLabel}P` : "EXIT_TRAIL");
   const beEvent = beLabel ? `EXIT_BE_${beLabel}P` : "EXIT_BE";
   const exitProfile = String(rules.exit_profile || "BASE").toUpperCase() === "AGGRESSIVE" ? "AGGRESSIVE" : "BASE";
 
@@ -474,7 +535,7 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
   }
 
   // Zone B 이후: 트레일링 스탑
-  if (tpP1Done && trailActive && Number.isFinite(TRAIL_PCT)) {
+  if (tpP1Done && trailActive && (Number.isFinite(TRAIL_R_MULTIPLE) || Number.isFinite(TRAIL_PCT))) {
     const runnerExit = computeRunnerExitStopPrice({
       avg,
       leverageEff,
@@ -484,6 +545,7 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
       trailActive,
       trailHigh,
       trailLow,
+      entryRDistance,
     });
     const triggerPx = runnerExit.stopPrice;
     const crossed = positionSide === "SHORT"
@@ -504,9 +566,13 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
           avg_px: avg,
           position_side: positionSide,
           exit_profile: exitProfile,
+          trail_r_multiple: Number.isFinite(TRAIL_R_MULTIPLE) ? TRAIL_R_MULTIPLE : null,
           trail_pct: TRAIL_PCT,
+          entry_r_distance: entryRDistance,
           trail_ref: trailRef,
           trail_stop_px: runnerExit.trailStop,
+          trail_stop_r_px: runnerExit.trailStopByR,
+          trail_stop_pct_px: runnerExit.trailStopByPct,
           runner_floor_pct: Number.isFinite(RUNNER_MIN_PROFIT_PCT) ? RUNNER_MIN_PROFIT_PCT : null,
           runner_floor_px: runnerExit.runnerFloorStop,
           runner_stop_px: runnerExit.stopPrice,
@@ -540,4 +606,5 @@ module.exports = {
   normalizeExchangeKey,
   computeRunnerExitStopPrice,
   computeTrailingStopPrice,
+  resolveEntryRDistance,
 };

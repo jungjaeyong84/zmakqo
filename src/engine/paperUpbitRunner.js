@@ -554,7 +554,10 @@ function computeTrailingMetaUpdate({ exchange, bar, position, posMeta, positionS
   if (!posMeta || posMeta.tp_p1_done !== true) return null;
   const posWithMeta = { ...(position || {}), meta: posMeta };
   const rules = resolveExitRulesForPosition({ exchange, position: posWithMeta });
-  if (!Number.isFinite(rules && rules.TRAIL_PCT)) return null;
+  if (
+    !Number.isFinite(Number(rules && rules.TRAIL_R_MULTIPLE))
+    && !Number.isFinite(Number(rules && rules.TRAIL_PCT))
+  ) return null;
   const closePx = Number(bar && (bar.close ?? bar.closePrice ?? bar.c));
   if (!Number.isFinite(closePx)) return null;
   const side = String(
@@ -647,7 +650,10 @@ function formatExitRulesCompactLocal(exitRules) {
   const parts = [];
   const sl = formatRatioPctToken(exitRules.SL, { abs: true });
   const tp1 = formatRatioPctToken(exitRules.TP_P1);
-  const trail = formatRatioPctToken(exitRules.TRAIL_PCT);
+  const trailR = Number(exitRules.TRAIL_R_MULTIPLE);
+  const trail = Number.isFinite(trailR) && trailR > 0
+    ? `${String(trailR).replace(/\.?0+$/, "")}R`
+    : formatRatioPctToken(exitRules.TRAIL_PCT);
   const runnerMin = formatRatioPctToken(exitRules.RUNNER_MIN_PROFIT_PCT);
   const be = formatRatioPctToken(exitRules.BE_PCT);
   if (sl) parts.push(`SL_${sl}`);
@@ -1034,6 +1040,17 @@ function cloneExitRules(rules) {
   return { ...(rules && typeof rules === "object" ? rules : {}) };
 }
 
+function computeInitialStopPriceForEntry({ avgPrice, leverage, side, slRatio } = {}) {
+  const avg = Number(avgPrice);
+  const lev = Number(leverage);
+  const sl = Number(slRatio);
+  const sideUpper = String(side || "").toUpperCase() === "SHORT" ? "SHORT" : "LONG";
+  if (!Number.isFinite(avg) || avg <= 0 || !Number.isFinite(lev) || lev <= 0 || !Number.isFinite(sl)) return null;
+  const pnlPct = sl / lev;
+  if (sideUpper === "SHORT") return avg * (1 - pnlPct);
+  return avg * (1 + pnlPct);
+}
+
 function buildExitProfileDecision(profile, reason, extra = {}) {
   const base = profile && profile.rules ? profile : FUTURES_EXIT_PROFILE_BASE;
   return {
@@ -1053,6 +1070,7 @@ function applySignalExitPolicyOverrides(exitRules, features) {
   const dynTp1 = Number(f.exit_policy_tp1_pct);
   const dynBe = Number(f.exit_policy_be_pct);
   const dynTrail = Number(f.exit_policy_trail_pct);
+  const dynTrailR = Number(f.exit_policy_trail_r_multiple);
   const dynRunnerMin = Number(
     f.exit_policy_runner_min_profit_pct ??
     f.exit_policy_runner_floor_pct ??
@@ -1070,6 +1088,9 @@ function applySignalExitPolicyOverrides(exitRules, features) {
   }
   if (Number.isFinite(dynTrail) && dynTrail > 0) {
     nextRules.TRAIL_PCT = dynTrail / 100;
+  }
+  if (Number.isFinite(dynTrailR) && dynTrailR > 0) {
+    nextRules.TRAIL_R_MULTIPLE = dynTrailR;
   }
   if (Number.isFinite(dynRunnerMin) && dynRunnerMin > 0) {
     nextRules.RUNNER_MIN_PROFIT_PCT = dynRunnerMin / 100;
@@ -4006,6 +4027,7 @@ function resolveEvGateTradePlan({ cfg, exitRules, features } = {}) {
     tp1QtyRatio: null,
     bePct: null,
     trailPct: null,
+    trailRMultiple: null,
     runnerMinProfitPct: null,
   };
   if (!exitRules || typeof exitRules !== "object") return fallback;
@@ -4016,6 +4038,7 @@ function resolveEvGateTradePlan({ cfg, exitRules, features } = {}) {
   const beEnabled = normalizeBool(rules.BE_ENABLE, false);
   const beAbs = Math.abs(Number(rules.BE_PCT));
   const trailAbs = Math.abs(Number(rules.TRAIL_PCT));
+  const trailRMultiple = normalizeNumber(rules.TRAIL_R_MULTIPLE, null);
   const runnerMinAbs = Math.abs(Number(rules.RUNNER_MIN_PROFIT_PCT));
   if (!Number.isFinite(slAbs) || slAbs <= 0 || !Number.isFinite(tp1Abs) || tp1Abs <= 0) {
     return fallback;
@@ -4027,6 +4050,7 @@ function resolveEvGateTradePlan({ cfg, exitRules, features } = {}) {
     tp1QtyRatio,
     bePct: beEnabled && Number.isFinite(beAbs) ? (beAbs * 100) : null,
     trailPct: Number.isFinite(trailAbs) && trailAbs > 0 ? (trailAbs * 100) : null,
+    trailRMultiple: Number.isFinite(trailRMultiple) && trailRMultiple > 0 ? trailRMultiple : null,
     runnerMinProfitPct: Number.isFinite(runnerMinAbs) && runnerMinAbs > 0 ? (runnerMinAbs * 100) : null,
   };
 }
@@ -4079,6 +4103,7 @@ async function evaluateEvEntryGate({
     ev_gate_tp1_qty_ratio: Number.isFinite(Number(plan.tp1QtyRatio)) ? Number(plan.tp1QtyRatio) : null,
     ev_gate_be_pct: Number.isFinite(Number(plan.bePct)) ? Number(plan.bePct) : null,
     ev_gate_trail_pct: Number.isFinite(Number(plan.trailPct)) ? Number(plan.trailPct) : null,
+    ev_gate_trail_r_multiple: Number.isFinite(Number(plan.trailRMultiple)) ? Number(plan.trailRMultiple) : null,
     ev_gate_runner_min_profit_pct: Number.isFinite(Number(plan.runnerMinProfitPct)) ? Number(plan.runnerMinProfitPct) : null,
     ev_gate_exit_profile: exitProfile ? String(exitProfile).toUpperCase() : null,
     ev_gate_exit_profile_reason: exitProfileReason ? String(exitProfileReason) : null,
@@ -7896,6 +7921,9 @@ async function runPaperUpbitForBar({
         trail_high: null,
         trail_low: null,
         trail_active: false,
+        initial_stop_price: null,
+        entry_r_distance: null,
+        trail_r_multiple: null,
         tp_p1_pending: false,
         tp_p1_pending_at_ms: null,
         tp_p1_pending_until_ms: null,
@@ -7968,10 +7996,11 @@ async function runPaperUpbitForBar({
         const dynSl = Number(it.features_json.exit_policy_sl_pct);
         const dynTp1 = Number(it.features_json.exit_policy_tp1_pct);
         const dynBe = Number(it.features_json.exit_policy_be_pct);
-        const dynTrail = Number(it.features_json.exit_policy_trail_pct);
-        const dynRunnerMin = Number(
-          it.features_json.exit_policy_runner_min_profit_pct
-          ?? it.features_json.exit_policy_runner_floor_pct
+      const dynTrail = Number(it.features_json.exit_policy_trail_pct);
+      const dynTrailR = Number(it.features_json.exit_policy_trail_r_multiple);
+      const dynRunnerMin = Number(
+        it.features_json.exit_policy_runner_min_profit_pct
+        ?? it.features_json.exit_policy_runner_floor_pct
           ?? it.features_json.exit_policy_runner_min_pct
         );
         if (Number.isFinite(dynSl) && dynSl > 0) {
@@ -7984,9 +8013,12 @@ async function runPaperUpbitForBar({
           appliedExitRules.BE_ENABLE = true;
           appliedExitRules.BE_PCT = dynBe / 100;
         }
-        if (Number.isFinite(dynTrail) && dynTrail > 0) {
-          appliedExitRules.TRAIL_PCT = dynTrail / 100;
-        }
+      if (Number.isFinite(dynTrail) && dynTrail > 0) {
+        appliedExitRules.TRAIL_PCT = dynTrail / 100;
+      }
+      if (Number.isFinite(dynTrailR) && dynTrailR > 0) {
+        appliedExitRules.TRAIL_R_MULTIPLE = dynTrailR;
+      }
         if (Number.isFinite(dynRunnerMin) && dynRunnerMin > 0) {
           appliedExitRules.RUNNER_MIN_PROFIT_PCT = dynRunnerMin / 100;
         }
@@ -10511,6 +10543,15 @@ async function runPaperFuturesForBar({
       });
     }
     if (opening) {
+      const initialStopPrice = computeInitialStopPriceForEntry({
+        avgPrice: fillPrice,
+        leverage: appliedLeverage,
+        side: nextPosSide,
+        slRatio: appliedExitRules && appliedExitRules.SL,
+      });
+      const entryRDistance = (Number.isFinite(initialStopPrice) && Number.isFinite(fillPrice))
+        ? Math.abs(Number(initialStopPrice) - Number(fillPrice))
+        : null;
       nextMeta = mergeMeta(nextMeta, {
         leverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
         leverage_reason: appliedLeverageReason || null,
@@ -10521,6 +10562,11 @@ async function runPaperFuturesForBar({
         entry_signal_bar_ms: Number(it.signal_bar_close_time_utc_ms) || null,
         entry_exec_bar_ms: Number(execBarCloseMs) || null,
         entry_exec_tf_ms: Number.isFinite(signalTfMs) ? signalTfMs : null,
+        initial_stop_price: Number.isFinite(initialStopPrice) ? initialStopPrice : null,
+        entry_r_distance: Number.isFinite(entryRDistance) ? entryRDistance : null,
+        trail_r_multiple: Number.isFinite(Number(appliedExitRules && appliedExitRules.TRAIL_R_MULTIPLE))
+          ? Number(appliedExitRules.TRAIL_R_MULTIPLE)
+          : null,
         add_chain_base_qty_pct: Number.isFinite(newSize) ? Number(newSize) : null,
         last_exit_bar_ms: null,
         last_exit_dir: null,
@@ -10537,6 +10583,7 @@ async function runPaperFuturesForBar({
         const dynTp1 = Number(it.features_json.exit_policy_tp1_pct);
         const dynBe = Number(it.features_json.exit_policy_be_pct);
         const dynTrail = Number(it.features_json.exit_policy_trail_pct);
+        const dynTrailR = Number(it.features_json.exit_policy_trail_r_multiple);
         const dynRunnerMin = Number(
           it.features_json.exit_policy_runner_min_profit_pct
           ?? it.features_json.exit_policy_runner_floor_pct
@@ -10554,6 +10601,9 @@ async function runPaperFuturesForBar({
         }
         if (Number.isFinite(dynTrail) && dynTrail > 0) {
           appliedExitRules.TRAIL_PCT = dynTrail / 100;
+        }
+        if (Number.isFinite(dynTrailR) && dynTrailR > 0) {
+          appliedExitRules.TRAIL_R_MULTIPLE = dynTrailR;
         }
         if (Number.isFinite(dynRunnerMin) && dynRunnerMin > 0) {
           appliedExitRules.RUNNER_MIN_PROFIT_PCT = dynRunnerMin / 100;
