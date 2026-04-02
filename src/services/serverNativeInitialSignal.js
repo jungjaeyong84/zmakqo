@@ -20,6 +20,9 @@ const RANGE_EPS = 1e-8;
 const HTF_EMA_FAST_LEN = 21;
 const HTF_EMA_SLOW_LEN = 55;
 const DERIVED_HTF_TARGET_BARS = 180;
+const DERIVED_HTF_SOURCE_BARS_MAX = 1200;
+const HTF_MODE_PINE_PARITY = "PINE_PARITY";
+const HTF_MODE_FULL_HISTORY = "FULL_HISTORY";
 
 function msToUtcZ(ms) {
   const n = Number(ms);
@@ -211,8 +214,26 @@ function normalizeBars(bars) {
     .filter((bar) => Number.isFinite(bar.open) && Number.isFinite(bar.high) && Number.isFinite(bar.low) && Number.isFinite(bar.close));
 }
 
-function deriveHigherTimeframeBars({ bars, sourceTf, targetTf }) {
+function limitSourceBarsForDerivedHtf(bars) {
   const normalized = normalizeBars(bars);
+  if (normalized.length <= DERIVED_HTF_SOURCE_BARS_MAX) return normalized;
+  return normalized.slice(-DERIVED_HTF_SOURCE_BARS_MAX);
+}
+
+function normalizeHtfMode(mode) {
+  const raw = String(mode || "").trim().toUpperCase();
+  if (raw === HTF_MODE_FULL_HISTORY) return HTF_MODE_FULL_HISTORY;
+  return HTF_MODE_PINE_PARITY;
+}
+
+function currentHtfMode() {
+  return normalizeHtfMode(process.env.SERVER_NATIVE_HTF_MODE);
+}
+
+function deriveHigherTimeframeBars({ bars, sourceTf, targetTf, maxSourceBars = DERIVED_HTF_SOURCE_BARS_MAX }) {
+  const normalized = Number.isFinite(Number(maxSourceBars)) && Number(maxSourceBars) > 0
+    ? normalizeBars(Array.isArray(bars) ? bars.slice(-Number(maxSourceBars)) : bars)
+    : normalizeBars(bars);
   const sourceTfMs = tfToMs(sourceTf);
   const targetTfMs = tfToMs(targetTf);
   if (!normalized.length || !Number.isFinite(sourceTfMs) || !Number.isFinite(targetTfMs)) return [];
@@ -259,14 +280,19 @@ function deriveHigherTimeframeBars({ bars, sourceTf, targetTf }) {
     }));
 }
 
-function resolveEffectiveHtfBars({ bars, htfBars, tf }) {
+function resolveEffectiveHtfBars({ bars, htfBars, tf, maxSourceBars = DERIVED_HTF_SOURCE_BARS_MAX }) {
   const normalizedHtfBars = normalizeBars(htfBars);
   if (normalizedHtfBars.length) return normalizedHtfBars;
-  return deriveHigherTimeframeBars({ bars, sourceTf: tf, targetTf: HTF_TF });
+  return deriveHigherTimeframeBars({ bars, sourceTf: tf, targetTf: HTF_TF, maxSourceBars });
 }
 
-function buildAlignedDerivedHtfBiasSeries({ bars, sourceTf, targetTf = HTF_TF } = {}) {
-  const normalizedBars = normalizeBars(bars);
+function buildAlignedDerivedHtfBiasSeries({ bars, sourceTf, targetTf = HTF_TF, maxSourceBars = DERIVED_HTF_SOURCE_BARS_MAX } = {}) {
+  const allBars = normalizeBars(bars);
+  const limit = Number.isFinite(Number(maxSourceBars)) && Number(maxSourceBars) > 0
+    ? Number(maxSourceBars)
+    : allBars.length;
+  const offset = Math.max(0, allBars.length - limit);
+  const normalizedBars = allBars.slice(offset);
   const sourceTfMs = tfToMs(sourceTf);
   const targetTfMs = tfToMs(targetTf);
   if (!normalizedBars.length || !Number.isFinite(sourceTfMs) || !Number.isFinite(targetTfMs) || targetTfMs <= sourceTfMs) {
@@ -275,7 +301,7 @@ function buildAlignedDerivedHtfBiasSeries({ bars, sourceTf, targetTf = HTF_TF } 
 
   const alphaFast = 2 / (HTF_EMA_FAST_LEN + 1);
   const alphaSlow = 2 / (HTF_EMA_SLOW_LEN + 1);
-  const biasByIndex = new Array(normalizedBars.length).fill("NEUTRAL");
+  const biasByIndex = new Array(allBars.length).fill("NEUTRAL");
   let currentBucketMs = null;
   let effectiveBarCount = 0;
   let prevCompletedFast = null;
@@ -285,6 +311,7 @@ function buildAlignedDerivedHtfBiasSeries({ bars, sourceTf, targetTf = HTF_TF } 
 
   for (let i = 0; i < normalizedBars.length; i += 1) {
     const bar = normalizedBars[i];
+    const targetIndex = offset + i;
     const barMs = Number(bar.timestamp);
     const close = Number(bar.close);
     if (!Number.isFinite(barMs) || !Number.isFinite(close)) continue;
@@ -303,9 +330,9 @@ function buildAlignedDerivedHtfBiasSeries({ bars, sourceTf, targetTf = HTF_TF } 
       ? (alphaSlow * close) + ((1 - alphaSlow) * prevCompletedSlow)
       : close;
 
-    if (currentFast > currentSlow) biasByIndex[i] = "BULL";
-    else if (currentFast < currentSlow) biasByIndex[i] = "BEAR";
-    else biasByIndex[i] = "NEUTRAL";
+    if (currentFast > currentSlow) biasByIndex[targetIndex] = "BULL";
+    else if (currentFast < currentSlow) biasByIndex[targetIndex] = "BEAR";
+    else biasByIndex[targetIndex] = "NEUTRAL";
   }
 
   return { biasByIndex, effectiveBarCount };
@@ -318,7 +345,7 @@ function minBaseBarsForDerivedHtf({ sourceTf, targetTf = HTF_TF, targetBars = DE
   const ratio = targetTfMs / sourceTfMs;
   if (!Number.isFinite(ratio) || ratio < 1) return 0;
   const desiredTargetBars = Math.max(Number(targetBars) || 0, HTF_EMA_SLOW_LEN);
-  return Math.ceil(desiredTargetBars * ratio);
+  return Math.min(DERIVED_HTF_SOURCE_BARS_MAX, Math.ceil(desiredTargetBars * ratio));
 }
 
 function resolveHtfBias(htfBars, barMs) {
@@ -373,6 +400,9 @@ function buildNativeSignal({
   domainWallDensity,
   freeEnergy,
   susceptibility,
+  htfMode,
+  htfBiasParity,
+  htfBiasFullHistory,
 }) {
   const dir = String(direction || "").toUpperCase();
   const opp = Number(opportunity);
@@ -403,6 +433,9 @@ function buildNativeSignal({
     regime: regimeForMarketState(marketState),
     market_regime: regimeForMarketState(marketState),
     htf_bias: htfBias,
+    htf_mode: htfMode || currentHtfMode(),
+    htf_bias_pine_parity: htfBiasParity || htfBias,
+    htf_bias_full_history: htfBiasFullHistory || htfBias,
     trigger_type: triggerType,
     risk_mode: riskMode,
     opportunity_score: opp,
@@ -456,10 +489,36 @@ function buildNativeSignal({
 function evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars }) {
   const candles = normalizeBars(bars);
   if (candles.length < 60) return [];
-  const effectiveHtfBars = resolveEffectiveHtfBars({ bars: candles, htfBars, tf });
-  const alignedDerivedHtf = effectiveHtfBars.length
-    ? { biasByIndex: [], effectiveBarCount: effectiveHtfBars.length }
-    : buildAlignedDerivedHtfBiasSeries({ bars: candles, sourceTf: tf, targetTf: HTF_TF });
+  const htfMode = currentHtfMode();
+  const directHtfBars = normalizeBars(htfBars);
+  const effectiveHtfBarsParity = resolveEffectiveHtfBars({
+    bars: candles,
+    htfBars: directHtfBars,
+    tf,
+    maxSourceBars: DERIVED_HTF_SOURCE_BARS_MAX,
+  });
+  const effectiveHtfBarsFullHistory = resolveEffectiveHtfBars({
+    bars: candles,
+    htfBars: directHtfBars,
+    tf,
+    maxSourceBars: null,
+  });
+  const alignedDerivedHtfParity = effectiveHtfBarsParity.length
+    ? { biasByIndex: [], effectiveBarCount: effectiveHtfBarsParity.length }
+    : buildAlignedDerivedHtfBiasSeries({
+      bars: candles,
+      sourceTf: tf,
+      targetTf: HTF_TF,
+      maxSourceBars: DERIVED_HTF_SOURCE_BARS_MAX,
+    });
+  const alignedDerivedHtfFullHistory = effectiveHtfBarsFullHistory.length
+    ? { biasByIndex: [], effectiveBarCount: effectiveHtfBarsFullHistory.length }
+    : buildAlignedDerivedHtfBiasSeries({
+      bars: candles,
+      sourceTf: tf,
+      targetTf: HTF_TF,
+      maxSourceBars: null,
+    });
   const closes = candles.map((bar) => bar.close);
   const highs = candles.map((bar) => bar.high);
   const lows = candles.map((bar) => bar.low);
@@ -504,7 +563,9 @@ function evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars }) {
     const bodyRatio = Math.abs(close - open) / barRange;
     const upperWickRatio = (high - Math.max(open, close)) / barRange;
     const lowerWickRatio = (Math.min(open, close) - low) / barRange;
-    const htfBias = alignedDerivedHtf.biasByIndex[i] || resolveHtfBias(effectiveHtfBars, candles[i].timestamp);
+    const htfBiasParity = alignedDerivedHtfParity.biasByIndex[i] || resolveHtfBias(effectiveHtfBarsParity, candles[i].timestamp);
+    const htfBiasFullHistory = alignedDerivedHtfFullHistory.biasByIndex[i] || resolveHtfBias(effectiveHtfBarsFullHistory, candles[i].timestamp);
+    const htfBias = htfMode === HTF_MODE_FULL_HISTORY ? htfBiasFullHistory : htfBiasParity;
 
     const stateBull = ef > em && em > es && slopeFast > 0 && slopeMid >= 0 && trendStrengthRaw >= STATE_TREND_MIN;
     const stateBear = ef < em && em < es && slopeFast < 0 && slopeMid <= 0 && trendStrengthRaw >= STATE_TREND_MIN;
@@ -643,6 +704,9 @@ function evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars }) {
         opportunity: longOpportunity,
         marketState,
         htfBias,
+        htfMode,
+        htfBiasParity,
+        htfBiasFullHistory,
         triggerType: triggerTypeLong,
         riskMode: riskModeLongCore,
         rr: longRr,
@@ -672,6 +736,9 @@ function evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars }) {
         opportunity: longOpportunity,
         marketState,
         htfBias,
+        htfMode,
+        htfBiasParity,
+        htfBiasFullHistory,
         triggerType: triggerTypeLong,
         riskMode: riskModeLongEarly,
         rr: longRr,
@@ -703,6 +770,9 @@ function evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars }) {
         opportunity: shortOpportunity,
         marketState,
         htfBias,
+        htfMode,
+        htfBiasParity,
+        htfBiasFullHistory,
         triggerType: triggerTypeShort,
         riskMode: riskModeShortCore,
         rr: shortRr,
@@ -732,6 +802,9 @@ function evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars }) {
         opportunity: shortOpportunity,
         marketState,
         htfBias,
+        htfMode,
+        htfBiasParity,
+        htfBiasFullHistory,
         triggerType: triggerTypeShort,
         riskMode: riskModeShortEarly,
         rr: shortRr,
@@ -756,6 +829,9 @@ function evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars }) {
       emitted,
       marketState,
       htfBias,
+      htfBiasParity,
+      htfBiasFullHistory,
+      htfMode,
       longOpportunity,
       shortOpportunity,
       triggerTypeLong,
@@ -774,6 +850,9 @@ function evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars }) {
         bodyRatio,
         upperWickRatio,
         lowerWickRatio,
+        htfBiasParity,
+        htfBiasFullHistory,
+        htfMode,
         stateBull,
         stateBear,
         stateTransition,
@@ -856,10 +935,15 @@ function buildServerNativeInitialSignals({ exchange, symbol, tf, bars, htfBars, 
 module.exports = {
   HTF_TF,
   STRATEGY_ID,
+  HTF_MODE_PINE_PARITY,
+  HTF_MODE_FULL_HISTORY,
   buildServerNativeInitialSignals,
   minBaseBarsForDerivedHtf,
   __test: {
     normalizeBars,
+    limitSourceBarsForDerivedHtf,
+    normalizeHtfMode,
+    currentHtfMode,
     tfToMs,
     deriveHigherTimeframeBars,
     buildAlignedDerivedHtfBiasSeries,

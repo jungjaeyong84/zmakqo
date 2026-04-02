@@ -87,6 +87,28 @@ function buildHistoricalSignalBars() {
   return bars;
 }
 
+function buildMixedTrendBars() {
+  const bars = [];
+  let p = 300;
+  for (let i = 0; i < 900; i += 1) {
+    const open = p;
+    const close = p - 0.12;
+    const high = Math.max(open, close) + 0.03;
+    const low = Math.min(open, close) - 0.04;
+    bars.push({ open, high, low, close, volume: 900, closeTimeUtcMs: 900000 * (i + 1) });
+    p = close + 0.01;
+  }
+  for (let i = 900; i < 2200; i += 1) {
+    const open = p;
+    const close = p + 0.10;
+    const high = Math.max(open, close) + 0.04;
+    const low = Math.min(open, close) - 0.03;
+    bars.push({ open, high, low, close, volume: 1100, closeTimeUtcMs: 900000 * (i + 1) });
+    p = close - 0.01;
+  }
+  return bars;
+}
+
 (() => {
   const bullBars = buildBullBars();
   const bullSignals = buildServerNativeInitialSignals({
@@ -102,6 +124,10 @@ function buildHistoricalSignalBars() {
   assert.strictEqual(bullSignals[0].features.entry_grade, "CORE");
   assert.strictEqual(bullSignals[0].features.server_native_initial_signal, true);
   assert.strictEqual(bullSignals[0].features.canonical_engine_candidate_source, "SERVER_NATIVE");
+  assert.strictEqual(bullSignals[0].features.htf_mode, "PINE_PARITY");
+  assert.strictEqual(bullSignals[0].features.htf_bias, "BULL");
+  assert.strictEqual(bullSignals[0].features.htf_bias_pine_parity, "BULL");
+  assert.strictEqual(bullSignals[0].features.htf_bias_full_history, "BULL");
 
   const flatBars = buildFlatBars();
   const flatSignals = buildServerNativeInitialSignals({
@@ -136,6 +162,22 @@ function buildHistoricalSignalBars() {
   });
   assert(alignedBias.effectiveBarCount >= 55);
   assert.strictEqual(alignedBias.biasByIndex.at(-1), "BULL");
+
+  const mixedTrendBars = buildMixedTrendBars();
+  const limitedMixedBars = __test.limitSourceBarsForDerivedHtf(mixedTrendBars);
+  assert.strictEqual(limitedMixedBars.length, 1200);
+  const mixedAlignedBias = __test.buildAlignedDerivedHtfBiasSeries({
+    bars: mixedTrendBars,
+    sourceTf: "15m",
+  });
+  assert.strictEqual(mixedAlignedBias.biasByIndex.length, mixedTrendBars.length);
+  assert.strictEqual(mixedAlignedBias.biasByIndex.at(-1), "BULL");
+  const mixedFullBias = __test.buildAlignedDerivedHtfBiasSeries({
+    bars: mixedTrendBars,
+    sourceTf: "15m",
+    maxSourceBars: null,
+  });
+  assert.strictEqual(mixedFullBias.biasByIndex.at(-1), "BULL");
 
   const historicalBars = buildHistoricalSignalBars();
   const historicalTargetBarMs = buildBullBars().at(-1).closeTimeUtcMs;
