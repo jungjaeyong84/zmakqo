@@ -40,6 +40,38 @@ function readJsonSafe(filePath) {
   }
 }
 
+function pickDocs(input) {
+  if (Array.isArray(input)) return input.slice();
+  if (input && Array.isArray(input.docs)) return input.docs.slice();
+  if (input && Array.isArray(input.rows)) return input.rows.slice();
+  if (input && Array.isArray(input.data)) return input.data.slice();
+  return [];
+}
+
+function docDateKey(row) {
+  const candidates = [
+    row && row.created_at,
+    row && row.updated_at,
+    row && row.closed_at,
+    row && row.bar_close_time_utc_ms,
+  ];
+  for (const value of candidates) {
+    const key = kstDateKey(value);
+    if (key) return key;
+  }
+  return null;
+}
+
+function countDocsForDate(input, dateKey, predicate = null) {
+  let count = 0;
+  for (const row of pickDocs(input)) {
+    if (docDateKey(row) !== dateKey) continue;
+    if (typeof predicate === "function" && !predicate(row)) continue;
+    count += 1;
+  }
+  return count;
+}
+
 function escapeRegex(text) {
   return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -79,6 +111,7 @@ function sumPairPrefix(pairs, prefix) {
 
 function loadExecutionHealth({ repoRoot, dateKey }) {
   const dailyDir = path.join(repoRoot, "ops", "daily");
+  const recentDir = path.join(dailyDir, "cache", "firestore_recent");
   const escapedDate = escapeRegex(dateKey);
   const signalsPath = pickLatestCycleFile(
     dailyDir,
@@ -93,6 +126,10 @@ function loadExecutionHealth({ repoRoot, dateKey }) {
     available: false,
     signals_source_path: signalsPath || null,
     audit_source_path: auditPath || null,
+    recent_signals_source_path: path.join(recentDir, "signals.json"),
+    recent_intents_source_path: path.join(recentDir, "order_intents_paper.json"),
+    recent_fills_source_path: path.join(recentDir, "fills_paper.json"),
+    recent_trades_source_path: path.join(recentDir, "trades_paper.json"),
     firestore_dns_ok: null,
     firestore_dns_host: null,
     signals_count: null,
@@ -100,7 +137,9 @@ function loadExecutionHealth({ repoRoot, dateKey }) {
     drop_tp1_pending_count: null,
     tp1_signal_count: null,
     trailing_signal_count: null,
+    intents_count: null,
     fills_count: null,
+    trades_count: null,
     audit_issue_count: null,
     qty_pct_non_positive_count: null,
     duplicate_signal_fill_count: null,
@@ -139,6 +178,28 @@ function loadExecutionHealth({ repoRoot, dateKey }) {
     }
   }
 
+  const recentSignalsRead = readJsonSafe(out.recent_signals_source_path);
+  const recentIntentsRead = readJsonSafe(out.recent_intents_source_path);
+  const recentFillsRead = readJsonSafe(out.recent_fills_source_path);
+  const recentTradesRead = readJsonSafe(out.recent_trades_source_path);
+  const recentSignalsCount = recentSignalsRead.ok ? countDocsForDate(recentSignalsRead.data, dateKey) : null;
+  const recentIntentsCount = recentIntentsRead.ok ? countDocsForDate(recentIntentsRead.data, dateKey) : null;
+  const recentFillsCount = recentFillsRead.ok ? countDocsForDate(recentFillsRead.data, dateKey) : null;
+  const recentTradesCount = recentTradesRead.ok ? countDocsForDate(recentTradesRead.data, dateKey) : null;
+
+  if (
+    Number.isFinite(recentSignalsCount)
+    || Number.isFinite(recentIntentsCount)
+    || Number.isFinite(recentFillsCount)
+    || Number.isFinite(recentTradesCount)
+  ) {
+    out.available = true;
+    if (!Number.isFinite(out.signals_count)) out.signals_count = recentSignalsCount;
+    if (!Number.isFinite(out.intents_count)) out.intents_count = recentIntentsCount;
+    if (!Number.isFinite(out.fills_count)) out.fills_count = recentFillsCount;
+    if (!Number.isFinite(out.trades_count)) out.trades_count = recentTradesCount;
+  }
+
   return out;
 }
 
@@ -152,6 +213,8 @@ function hasExecutionFlowCoverage(health) {
   );
   const hasFillSide = (
     Number.isFinite(health.fills_count)
+    || Number.isFinite(health.intents_count)
+    || Number.isFinite(health.trades_count)
     || Number.isFinite(health.audit_issue_count)
     || Number.isFinite(health.qty_pct_non_positive_count)
     || Number.isFinite(health.duplicate_signal_fill_count)
@@ -303,6 +366,7 @@ function buildMarkdown({
    - 오류(24h): \`${summary.error_count == null ? "N/A" : summary.error_count}\`건
 4. 주문 경로 건강도 점검 완료
    - Firestore DNS: \`${health.firestore_dns_ok === null ? "N/A" : (health.firestore_dns_ok ? "정상" : "실패")}\` (${health.firestore_dns_host || "host N/A"})
+   - 신호/인텐트/체결/트레이드: \`${health.signals_count == null ? "N/A" : health.signals_count}\` / \`${health.intents_count == null ? "N/A" : health.intents_count}\` / \`${health.fills_count == null ? "N/A" : health.fills_count}\` / \`${health.trades_count == null ? "N/A" : health.trades_count}\`
    - TP1/트레일링 신호: \`${health.tp1_signal_count == null ? "N/A" : health.tp1_signal_count}\` / \`${health.trailing_signal_count == null ? "N/A" : health.trailing_signal_count}\`
    - DROP_TP_P1_PENDING: \`${health.drop_tp1_pending_count == null ? "N/A" : health.drop_tp1_pending_count}\`건
    - 감사 이슈/중복체결: \`${health.audit_issue_count == null ? "N/A" : health.audit_issue_count}\`건 / \`${health.duplicate_signal_fill_count == null ? "N/A" : health.duplicate_signal_fill_count}\`건
@@ -449,9 +513,21 @@ function main() {
   }, null, 2));
 }
 
-try {
-  main();
-} catch (err) {
-  console.error("daily-system-ops-check failed:", err && err.message ? err.message : err);
-  process.exit(1);
+if (require.main === module) {
+  try {
+    main();
+  } catch (err) {
+    console.error("daily-system-ops-check failed:", err && err.message ? err.message : err);
+    process.exit(1);
+  }
 }
+
+module.exports = {
+  __test: {
+    pickDocs,
+    docDateKey,
+    countDocsForDate,
+    loadExecutionHealth,
+    hasExecutionFlowCoverage,
+  },
+};
