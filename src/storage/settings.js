@@ -195,8 +195,27 @@ function applyEvGateDefaultsForProvider(data = {}, provider = "BINANCEFUT") {
   if (out.ev_gate_tp1_prob_min_core === undefined || out.ev_gate_tp1_prob_min_core === null || out.ev_gate_tp1_prob_min_core === "") out.ev_gate_tp1_prob_min_core = out.ev_gate_tp1_prob_min;
   if (out.ev_gate_tp1_prob_min_pre_real === undefined || out.ev_gate_tp1_prob_min_pre_real === null || out.ev_gate_tp1_prob_min_pre_real === "") out.ev_gate_tp1_prob_min_pre_real = out.ev_gate_tp1_prob_min;
   if (out.ev_gate_tp1_prob_min_real === undefined || out.ev_gate_tp1_prob_min_real === null || out.ev_gate_tp1_prob_min_real === "") out.ev_gate_tp1_prob_min_real = out.ev_gate_tp1_prob_min;
+  const tp1ProbMinCandidates = [
+    out.ev_gate_tp1_prob_min,
+    out.ev_gate_tp1_prob_min_early,
+    out.ev_gate_tp1_prob_min_core,
+    out.ev_gate_tp1_prob_min_pre_real,
+    out.ev_gate_tp1_prob_min_real,
+  ]
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
+  if (tp1ProbMinCandidates.length > 0) {
+    const normalizedMin = Math.min(...tp1ProbMinCandidates);
+    out.ev_gate_tp1_prob_min = normalizedMin;
+    out.ev_gate_tp1_prob_min_early = Math.min(Number(out.ev_gate_tp1_prob_min_early), normalizedMin) || normalizedMin;
+    out.ev_gate_tp1_prob_min_core = Math.min(Number(out.ev_gate_tp1_prob_min_core), normalizedMin) || normalizedMin;
+    out.ev_gate_tp1_prob_min_pre_real = Math.min(Number(out.ev_gate_tp1_prob_min_pre_real), normalizedMin) || normalizedMin;
+    out.ev_gate_tp1_prob_min_real = Math.min(Number(out.ev_gate_tp1_prob_min_real), normalizedMin) || normalizedMin;
+  }
   if (out.ev_gate_tp1_prob_full === undefined || out.ev_gate_tp1_prob_full === null || out.ev_gate_tp1_prob_full === "") out.ev_gate_tp1_prob_full = 0.60;
   if (out.ev_gate_tp1_prob_kill === undefined || out.ev_gate_tp1_prob_kill === null || out.ev_gate_tp1_prob_kill === "") out.ev_gate_tp1_prob_kill = 0.50;
+  out.ev_gate_tp1_prob_full = Math.max(Number(out.ev_gate_tp1_prob_min), Number(out.ev_gate_tp1_prob_full));
+  out.ev_gate_tp1_prob_kill = Math.min(Number(out.ev_gate_tp1_prob_min), Number(out.ev_gate_tp1_prob_kill));
   if (out.ev_gate_qty_scale_mid === undefined || out.ev_gate_qty_scale_mid === null || out.ev_gate_qty_scale_mid === "") out.ev_gate_qty_scale_mid = 0.70;
   if (out.ev_gate_qty_scale_low === undefined || out.ev_gate_qty_scale_low === null || out.ev_gate_qty_scale_low === "") out.ev_gate_qty_scale_low = 0.40;
   if (out.ev_gate_lookback_bars === undefined || out.ev_gate_lookback_bars === null || out.ev_gate_lookback_bars === "") out.ev_gate_lookback_bars = 12;
@@ -622,4 +641,7 @@ module.exports = {
   getExchangesSettingsCached,
   invalidateRiskBudgetCache,
   invalidateSettingsCache,
+  __test: {
+    applyEvGateDefaultsForProvider,
+  },
 };

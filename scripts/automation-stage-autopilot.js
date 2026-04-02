@@ -1038,15 +1038,31 @@ function buildEvParityCandidate(parityArtifact, cutoverArtifact = null, dropVali
       || dropValidationStatus === "ACTIONABLE"
     );
   const actionable = (evPolicyMismatchN >= 2 || evRescueBackedByDrops) && sourceParityMismatchN === 0;
-  const currentMin = clampProb(currentSys && currentSys.ev_gate_tp1_prob_min, 0.55);
+  const currentMinCandidates = [
+    currentSys && currentSys.ev_gate_tp1_prob_min,
+    currentSys && currentSys.ev_gate_tp1_prob_min_early,
+    currentSys && currentSys.ev_gate_tp1_prob_min_core,
+    currentSys && currentSys.ev_gate_tp1_prob_min_pre_real,
+    currentSys && currentSys.ev_gate_tp1_prob_min_real,
+  ]
+    .map((value) => clampProb(value, null))
+    .filter((value) => Number.isFinite(value));
+  const currentMin = currentMinCandidates.length > 0
+    ? Math.min(...currentMinCandidates)
+    : clampProb(currentSys && currentSys.ev_gate_tp1_prob_min, 0.55);
   const currentFull = clampProb(currentSys && currentSys.ev_gate_tp1_prob_full, 0.60);
   const currentKill = clampProb(currentSys && currentSys.ev_gate_tp1_prob_kill, 0.50);
   const useAggressiveRescue = cutoverRecommendedAction === "LOWER_EV_TP1_MIN_REVIEW" || evRescueBackedByDrops;
   const minStep = useAggressiveRescue ? 0.015 : 0.01;
   const fullStep = useAggressiveRescue ? 0.01 : 0.01;
+  const nextMin = Number(Math.max(0.30, currentMin - minStep).toFixed(4));
   const nextSettings = actionable
     ? {
-      ev_gate_tp1_prob_min: Number(Math.max(0.30, currentMin - minStep).toFixed(4)),
+      ev_gate_tp1_prob_min: nextMin,
+      ev_gate_tp1_prob_min_early: nextMin,
+      ev_gate_tp1_prob_min_core: nextMin,
+      ev_gate_tp1_prob_min_pre_real: nextMin,
+      ev_gate_tp1_prob_min_real: nextMin,
       ev_gate_tp1_prob_full: Number(Math.max(0.35, currentFull - fullStep).toFixed(4)),
       ev_gate_tp1_prob_kill: Number(Math.max(0.25, currentKill - (useAggressiveRescue ? 0.005 : 0)).toFixed(4)),
     }
