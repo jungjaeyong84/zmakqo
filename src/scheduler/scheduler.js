@@ -176,6 +176,29 @@ function graceMs() {
   return Number.isFinite(v) && v >= 0 ? v : 15000;
 }
 
+function computeNextLoopDelayMs({ nowMs, intervalMs, signalTf, graceMs: graceMsValue } = {}) {
+  const baseIntervalMs = Number(intervalMs);
+  const now = Number(nowMs);
+  const tfMs = tfToMs(signalTf);
+  const grace = Number.isFinite(Number(graceMsValue)) ? Math.max(0, Number(graceMsValue)) : graceMs();
+
+  if (
+    Number.isFinite(now) &&
+    Number.isFinite(baseIntervalMs) &&
+    baseIntervalMs > 0 &&
+    Number.isFinite(tfMs) &&
+    tfMs > 0 &&
+    baseIntervalMs >= tfMs
+  ) {
+    const nextBoundaryMs = (Math.floor(now / tfMs) + 1) * tfMs;
+    const alignedTargetMs = nextBoundaryMs + grace;
+    const delayMs = alignedTargetMs - now;
+    return Math.max(1000, delayMs);
+  }
+
+  return Number.isFinite(baseIntervalMs) && baseIntervalMs > 0 ? baseIntervalMs : pollMs();
+}
+
 function computeMaxLagMs(tf) {
   const maxLag = Number(env.gate.maxLagMs);
   const tfMs = tfToMs(tf);
@@ -591,7 +614,15 @@ function createScheduler() {
       } catch (err) {
         console.warn("[SCHEDULER_LOOP_FAIL]", err?.message || err);
       } finally {
-        if (state.running) state.timer = setTimeout(loop, state.pollMs || pollMs());
+        if (state.running) {
+          const delayMs = computeNextLoopDelayMs({
+            nowMs: nowUtcMs(),
+            intervalMs: state.pollMs || pollMs(),
+            signalTf: state.signal_tf || state.tf,
+            graceMs: graceMs(),
+          });
+          state.timer = setTimeout(loop, delayMs);
+        }
       }
     };
 
@@ -643,4 +674,7 @@ function createScheduler() {
 
 module.exports = {
   createScheduler,
+  __test: {
+    computeNextLoopDelayMs,
+  },
 };
