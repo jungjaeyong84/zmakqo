@@ -102,6 +102,15 @@ function isShadowSignal(entry) {
   return entry.authoritative !== true && source === "PINE_SHADOW";
 }
 
+function isEntrySignal(entry) {
+  if (!entry) return false;
+  const intent = String(entry.event_intent || "").toUpperCase();
+  const event = String(entry.event || "").toUpperCase();
+  if (intent === "EXIT") return false;
+  if (event.startsWith("EXIT_")) return false;
+  return event === "LONG" || event === "SHORT";
+}
+
 function readJsonSafe(filePath, fallback = null) {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -713,6 +722,7 @@ router.get("/dashboard/home", async (req, res) => {
         const bMs = toMsSafe(b.created_at || b.created_kst || b.bar_close_time_utc_ms) || 0;
         return bMs - aMs;
       });
+    const entrySignalsVisibleSorted = signalsVisibleSorted.filter((x) => isEntrySignal(x));
     const signalsMerged = [
       ...signalsVisibleSorted,
       ...dropsRaw,
@@ -1371,7 +1381,7 @@ router.get("/dashboard/home", async (req, res) => {
 
     // signals/fills list view (12개)
     const nowMs = Date.now();
-    const signals12 = signalsVisibleSorted.slice(0, 12).map((x) => {
+    const signals12 = entrySignalsVisibleSorted.slice(0, 12).map((x) => {
       const matched = intentLookup.resolveForSignal(x);
       const schedMs = Number(matched && matched.scheduled_exec_bar_close_time_utc_ms);
       const execPlan = matched ? {
