@@ -4,6 +4,12 @@ function shouldUseResponses(model) {
   return m.startsWith("gpt-5");
 }
 
+function supportsTemperature(model) {
+  const m = String(model || "").trim().toLowerCase();
+  if (!m) return true;
+  return !m.startsWith("gpt-5");
+}
+
 function extractResponseText(json) {
   if (!json) return "";
   if (typeof json.output_text === "string") return json.output_text.trim();
@@ -47,13 +53,15 @@ async function callOpenAI({
     if (useResponses) {
       const payload = {
         model: model || "gpt-5.2",
-        temperature,
         max_output_tokens: maxTokens,
         input: [
           { role: "system", content: system },
           { role: "user", content: prompt },
         ],
       };
+      if (supportsTemperature(payload.model)) {
+        payload.temperature = temperature;
+      }
       if (reasoningEffort) {
         payload.reasoning = { effort: String(reasoningEffort).trim().toLowerCase() };
       }
