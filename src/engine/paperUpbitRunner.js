@@ -9076,6 +9076,12 @@ async function runPaperUpbitForBar({
         source: "SERVER",
         authoritative: true,
       });
+      if (savedSignal && savedSignal.signal_id) {
+        s.signal_id = savedSignal.signal_id;
+        if (!s.signal_doc_id) s.signal_doc_id = savedSignal.signal_id;
+        if (!features.signal_id) features.signal_id = savedSignal.signal_id;
+        if (!features.signal_doc_id) features.signal_doc_id = s.signal_doc_id;
+      }
       if (savedSignal && savedSignal.signal_id && (savedSignal.decision === "CREATED" || savedSignal.decision === "UPDATED_CHANGED")) {
         sendSignalReceivedAlert({
           exchange,
@@ -9176,6 +9182,7 @@ async function runPaperUpbitForBar({
       qtyPct: qtyFraction,
       reason: s.reason || "SIGNAL",
       features,
+      signalId: s.signal_id || (features && features.signal_id) || null,
       runId,
       executionMode: intentExecutionMode,
       budgetMaxKrw: useBudget ? riskBudget.maxKrw : null,
@@ -10739,6 +10746,8 @@ async function runPaperFuturesForBar({
       execMs: tradeExecMs,
       intentId: it.intent_id,
       fillId: fillWrite && fillWrite.fill_id,
+      signalId: intentSignalId,
+      signalDocId: intentSignalDocId,
       entryEventId: entryEventIdForFill,
       entrySignalType: entrySignalTypeForFill,
       execPrice: fillPrice,
@@ -11938,6 +11947,12 @@ async function runPaperFuturesForBar({
         source: "SERVER",
         authoritative: true,
       });
+      if (savedSignal && savedSignal.signal_id) {
+        s.signal_id = savedSignal.signal_id;
+        if (!s.signal_doc_id) s.signal_doc_id = savedSignal.signal_id;
+        if (!features.signal_id) features.signal_id = savedSignal.signal_id;
+        if (!features.signal_doc_id) features.signal_doc_id = s.signal_doc_id;
+      }
       if (savedSignal && savedSignal.signal_id && (savedSignal.decision === "CREATED" || savedSignal.decision === "UPDATED_CHANGED")) {
         sendSignalReceivedAlert({
           exchange,
@@ -12067,6 +12082,7 @@ async function runPaperFuturesForBar({
       qtyPct: qtyFraction,
       reason: s.reason || "SIGNAL",
       features,
+      signalId: s.signal_id || (features && features.signal_id) || null,
       runId,
       executionMode: intentExecutionMode,
       budgetMaxKrw: useBudget ? riskBudget.maxKrw : null,

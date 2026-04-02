@@ -1,5 +1,6 @@
 // src/storage/tradesPaper.js
 const { getFirestore } = require("./firestore");
+const { deriveSignalDocId } = require("../utils/signalDocId");
 
 function nowIso() {
   return new Date().toISOString();
@@ -19,6 +20,47 @@ function buildTradeId({ exchange, symbol, event, execBarCloseMs, execMs }) {
   return `TRADE__${exchange}__${symbol}__${event}__${execBarCloseMs}${execSuffix}`;
 }
 
+function resolveTradeSignalRefs({
+  exchange,
+  symbol,
+  tf,
+  execBarCloseTimeUtcMs,
+  event,
+  entrySignalType = null,
+  signalId = null,
+  signalDocId = null,
+  featuresJson = null,
+} = {}) {
+  const normalizedFeaturesJson = normalizeFeaturesJson(featuresJson);
+  const resolvedSignalId = String(
+    signalId
+    || (normalizedFeaturesJson && normalizedFeaturesJson.signal_id)
+    || ""
+  ).trim() || null;
+  const resolvedSignalDocId = String(
+    signalDocId
+    || (normalizedFeaturesJson && normalizedFeaturesJson.signal_doc_id)
+    || deriveSignalDocId({
+      exchange,
+      symbol,
+      tf,
+      barCloseMs: execBarCloseTimeUtcMs,
+      event: entrySignalType || event,
+      signalId: resolvedSignalId,
+    })
+    || ""
+  ).trim() || null;
+  if (normalizedFeaturesJson) {
+    if (resolvedSignalId && !normalizedFeaturesJson.signal_id) normalizedFeaturesJson.signal_id = resolvedSignalId;
+    if (resolvedSignalDocId && !normalizedFeaturesJson.signal_doc_id) normalizedFeaturesJson.signal_doc_id = resolvedSignalDocId;
+  }
+  return {
+    signalId: resolvedSignalId,
+    signalDocId: resolvedSignalDocId,
+    featuresJson: normalizedFeaturesJson,
+  };
+}
+
 async function upsertTradeEvent({
   runId,
   exchange,
@@ -31,6 +73,8 @@ async function upsertTradeEvent({
   execMs = null,
   intentId = null,
   fillId = null,
+  signalId = null,
+  signalDocId = null,
   entryEventId = null,
   entrySignalType = null,
   execPrice,
@@ -64,12 +108,27 @@ async function upsertTradeEvent({
     if (existing.exists) createdAt = existing.data()?.created_at || createdAt;
   } catch (_) {}
 
-  const normalizedFeaturesJson = normalizeFeaturesJson(featuresJson);
+  const resolvedSignalRefs = resolveTradeSignalRefs({
+    exchange,
+    symbol,
+    tf,
+    execBarCloseTimeUtcMs,
+    event,
+    entrySignalType,
+    signalId,
+    signalDocId,
+    featuresJson,
+  });
+  const resolvedSignalId = resolvedSignalRefs.signalId;
+  const resolvedSignalDocId = resolvedSignalRefs.signalDocId;
+  const normalizedFeaturesJson = resolvedSignalRefs.featuresJson;
   const payload = {
     trade_id: id,
     run_id: runId || null,
     intent_id: intentId || null,
     fill_id: fillId || null,
+    signal_id: resolvedSignalId,
+    signal_doc_id: resolvedSignalDocId,
     exchange,
     symbol_or_pair_id: symbol,
     tf,
@@ -112,5 +171,6 @@ module.exports = {
   upsertTradeEvent,
   __test: {
     tradeId: buildTradeId,
+    resolveTradeSignalRefs,
   },
 };

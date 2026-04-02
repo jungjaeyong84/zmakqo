@@ -2,6 +2,7 @@ const { getFirestore } = require("./firestore");
 const { tfToMs } = require("../utils/marketConfig");
 const { enrichFeaturesWithRegime } = require("../utils/regime");
 const { resolveEventMapping } = require("../services/signalMapping");
+const { deriveSignalDocId } = require("../utils/signalDocId");
 
 function nowIso(){ return new Date().toISOString(); }
 function isTpP1Event(event) {
@@ -28,11 +29,45 @@ function intentTtlMs(tf) {
   return 2 * 60 * 60 * 1000;
 }
 
+function resolveIntentSignalRefs({
+  exchange,
+  symbol,
+  tf,
+  signalBarCloseTimeUtcMs,
+  event,
+  signalId = null,
+  signalDocId = null,
+  features = {},
+} = {}) {
+  const resolvedSignalId = String(signalId || features.signal_id || "").trim() || null;
+  const resolvedSignalDocId = String(
+    signalDocId
+    || features.signal_doc_id
+    || deriveSignalDocId({
+      exchange,
+      symbol,
+      tf,
+      barCloseMs: signalBarCloseTimeUtcMs,
+      event,
+      signalId: resolvedSignalId,
+    })
+    || ""
+  ).trim() || null;
+  if (resolvedSignalId && !features.signal_id) features.signal_id = resolvedSignalId;
+  if (resolvedSignalDocId && !features.signal_doc_id) features.signal_doc_id = resolvedSignalDocId;
+  return {
+    signalId: resolvedSignalId,
+    signalDocId: resolvedSignalDocId,
+    features,
+  };
+}
+
 async function upsertIntent({
   exchange, symbol, tf,
   signalBarCloseTimeUtc, signalBarCloseTimeUtcMs,
   scheduledExecBarCloseUtc, scheduledExecBarCloseUtcMs,
   event, side, qtyPct, reason, features = {}, runId,
+  signalId = null,
   budgetMaxKrw, budgetUsedKrw, qtyFraction,
   signalPrice,
   signalDocId,
@@ -45,6 +80,18 @@ async function upsertIntent({
   const db = getFirestore();
   const regimeMeta = enrichFeaturesWithRegime(features || {});
   const normalizedFeatures = regimeMeta.features;
+  const resolvedSignalRefs = resolveIntentSignalRefs({
+    exchange,
+    symbol,
+    tf,
+    signalBarCloseTimeUtcMs,
+    event,
+    signalId,
+    signalDocId,
+    features: normalizedFeatures,
+  });
+  const resolvedSignalId = resolvedSignalRefs.signalId;
+  const resolvedSignalDocId = resolvedSignalRefs.signalDocId;
   const mapping = resolveEventMapping({ event, side });
   const hintedIntent = String(normalizedFeatures && normalizedFeatures._event_intent || "").trim().toUpperCase();
   const useHintedIntent = hintedIntent === "ENTRY" || hintedIntent === "ADD" || hintedIntent === "EXIT";
@@ -111,7 +158,8 @@ async function upsertIntent({
         event_intent: eventIntent || cur.event_intent || null,
         signal_price: (signalPrice == null ? cur.signal_price : Number(signalPrice)),
         signal_price_source: signalPrice == null ? cur.signal_price_source : "BAR_CLOSE",
-        signal_doc_id: signalDocId || cur.signal_doc_id || null,
+        signal_id: resolvedSignalId || cur.signal_id || null,
+        signal_doc_id: resolvedSignalDocId || cur.signal_doc_id || null,
         entry_event_id: featureEntryEventId || cur.entry_event_id || null,
         entry_signal_type: featureEntrySignalType || cur.entry_signal_type || null,
         pending_reason: pendingReason || cur.pending_reason || "WAIT_NEXT_BAR",
@@ -150,7 +198,8 @@ async function upsertIntent({
       execution_mode: executionMode || null,
       signal_price: (signalPrice == null ? null : Number(signalPrice)),
       signal_price_source: signalPrice == null ? null : "BAR_CLOSE",
-      signal_doc_id: signalDocId || null,
+      signal_id: resolvedSignalId,
+      signal_doc_id: resolvedSignalDocId,
       entry_event_id: featureEntryEventId,
       entry_signal_type: featureEntrySignalType,
       budget_max_krw: (budgetMaxKrw == null ? null : Number(budgetMaxKrw)),
@@ -431,4 +480,7 @@ module.exports = {
   markIntentStatus,
   patchIntent,
   cancelPendingIntentsByMarket,
+  __test: {
+    resolveIntentSignalRefs,
+  },
 };
