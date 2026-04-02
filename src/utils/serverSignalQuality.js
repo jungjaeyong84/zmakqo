@@ -82,6 +82,54 @@ function explainIntentFillRelation({ intents, fills, trades }) {
   };
 }
 
+function normalizeKey(value) {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+function collectSignalRefs(row) {
+  const refs = new Set();
+  const features = row && row.features_json && typeof row.features_json === "object"
+    ? row.features_json
+    : null;
+  const candidates = [
+    row && row.id,
+    row && row.signal_id,
+    row && row.signal_doc_id,
+    features && features.signal_id,
+    features && features.signal_doc_id,
+  ];
+  for (const candidate of candidates) {
+    const key = normalizeKey(candidate);
+    if (key) refs.add(key);
+  }
+  return refs;
+}
+
+function intersectsRefs(refSet, row) {
+  if (!(refSet instanceof Set) || refSet.size <= 0) return false;
+  const rowRefs = collectSignalRefs(row);
+  for (const key of rowRefs) {
+    if (refSet.has(key)) return true;
+  }
+  return false;
+}
+
+function dedupeRows(rows, keys = []) {
+  const seen = new Set();
+  const out = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const parts = keys
+      .map((key) => normalizeKey(row && row[key]))
+      .filter(Boolean);
+    const signature = parts.join("||") || JSON.stringify(row);
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    out.push(row);
+  }
+  return out;
+}
+
 function deriveServerSignalQuality({ signalsRecent = null, intentsRecent = null, fillsRecent = null, tradesRecent = null, parityReport = null, nowMs = Date.now() } = {}) {
   const signals = pickDocs(signalsRecent);
   const intents = pickDocs(intentsRecent);
@@ -100,11 +148,26 @@ function deriveServerSignalQuality({ signalsRecent = null, intentsRecent = null,
     return reason.includes("ENTRY");
   });
 
-  const signalIds = new Set(recentServerEntrySignals.map((row) => row.signal_id).filter(Boolean));
-  const intentsFromSignals = intents.filter((row) => signalIds.has(row.signal_doc_id));
-  const intentIds = new Set(intentsFromSignals.map((row) => row.intent_id).filter(Boolean));
-  const fillsFromIntents = fills.filter((row) => intentIds.has(row.intent_id));
-  const tradeIds = new Set(fillsFromIntents.map((row) => row.trade_id).filter(Boolean));
+  const signalRefs = new Set();
+  for (const row of recentServerEntrySignals) {
+    for (const key of collectSignalRefs(row)) signalRefs.add(key);
+  }
+
+  const intentsFromSignals = intents.filter((row) => intersectsRefs(signalRefs, row));
+  const fillsDirectFromSignals = fills.filter((row) => intersectsRefs(signalRefs, row));
+  const fillLinkedIntentIds = new Set(
+    fillsDirectFromSignals.map((row) => normalizeKey(row.intent_id)).filter(Boolean)
+  );
+  const inferredIntentsFromFills = intents.filter((row) => fillLinkedIntentIds.has(normalizeKey(row.intent_id || row.id)));
+  const intentsLinked = dedupeRows([...intentsFromSignals, ...inferredIntentsFromFills], ["intent_id", "id"]);
+  const intentIds = new Set(intentsLinked.map((row) => normalizeKey(row.intent_id || row.id)).filter(Boolean));
+  for (const row of fillsDirectFromSignals) {
+    const intentId = normalizeKey(row.intent_id);
+    if (intentId) intentIds.add(intentId);
+  }
+  const fillsFromIntents = fills.filter((row) => intentIds.has(normalizeKey(row.intent_id)));
+  const fillsLinked = dedupeRows([...fillsDirectFromSignals, ...fillsFromIntents], ["fill_id", "id", "intent_id", "trade_id"]);
+  const tradeIds = new Set(fillsLinked.map((row) => normalizeKey(row.trade_id)).filter(Boolean));
   const tradesFromFills = trades.filter((row) => tradeIds.has(row.trade_id));
 
   const reasonCounts = new Map();
@@ -132,11 +195,11 @@ function deriveServerSignalQuality({ signalsRecent = null, intentsRecent = null,
 
   const summary = {
     authoritative_entry_signal_24h_n: recentServerEntrySignals.length,
-    order_intent_24h_n: intentsFromSignals.length,
-    fill_24h_n: fillsFromIntents.length,
+    order_intent_24h_n: intentsLinked.length,
+    fill_24h_n: fillsLinked.length,
     trade_24h_n: tradesFromFills.length,
-    intent_conversion_rate: rate(intentsFromSignals.length, recentServerEntrySignals.length),
-    fill_conversion_rate: rate(fillsFromIntents.length, recentServerEntrySignals.length),
+    intent_conversion_rate: rate(intentsLinked.length, recentServerEntrySignals.length),
+    fill_conversion_rate: rate(fillsLinked.length, recentServerEntrySignals.length),
     latest_authoritative_entry_signal_at_kst: toKstString(latestSignalMs),
     parity_mismatch_rate: Number.isFinite(Number(paritySummary.parity_mismatch_rate)) ? Number(paritySummary.parity_mismatch_rate) : null,
     parity_mismatch_n: Number(paritySummary.parity_mismatch_n) || 0,
