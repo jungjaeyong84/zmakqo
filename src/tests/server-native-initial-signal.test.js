@@ -130,6 +130,13 @@ function buildHistoricalSignalBars() {
   });
   assert(fallbackBiasBars.length >= 55);
 
+  const alignedBias = __test.buildAlignedDerivedHtfBiasSeries({
+    bars: longBullBars,
+    sourceTf: "15m",
+  });
+  assert(alignedBias.effectiveBarCount >= 55);
+  assert.strictEqual(alignedBias.biasByIndex.at(-1), "BULL");
+
   const historicalBars = buildHistoricalSignalBars();
   const historicalTargetBarMs = buildBullBars().at(-1).closeTimeUtcMs;
   const historicalSignals = buildServerNativeInitialSignals({

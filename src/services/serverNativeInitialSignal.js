@@ -17,8 +17,9 @@ const MAX_EXTENSION_LONG = 0.92;
 const MIN_EXTENSION_SHORT = 0.08;
 const EPS = 1e-10;
 const RANGE_EPS = 1e-8;
+const HTF_EMA_FAST_LEN = 21;
 const HTF_EMA_SLOW_LEN = 55;
-const DERIVED_HTF_TARGET_BARS = 60;
+const DERIVED_HTF_TARGET_BARS = 180;
 
 function msToUtcZ(ms) {
   const n = Number(ms);
@@ -264,6 +265,52 @@ function resolveEffectiveHtfBars({ bars, htfBars, tf }) {
   return deriveHigherTimeframeBars({ bars, sourceTf: tf, targetTf: HTF_TF });
 }
 
+function buildAlignedDerivedHtfBiasSeries({ bars, sourceTf, targetTf = HTF_TF } = {}) {
+  const normalizedBars = normalizeBars(bars);
+  const sourceTfMs = tfToMs(sourceTf);
+  const targetTfMs = tfToMs(targetTf);
+  if (!normalizedBars.length || !Number.isFinite(sourceTfMs) || !Number.isFinite(targetTfMs) || targetTfMs <= sourceTfMs) {
+    return { biasByIndex: [], effectiveBarCount: 0 };
+  }
+
+  const alphaFast = 2 / (HTF_EMA_FAST_LEN + 1);
+  const alphaSlow = 2 / (HTF_EMA_SLOW_LEN + 1);
+  const biasByIndex = new Array(normalizedBars.length).fill("NEUTRAL");
+  let currentBucketMs = null;
+  let effectiveBarCount = 0;
+  let prevCompletedFast = null;
+  let prevCompletedSlow = null;
+  let currentFast = null;
+  let currentSlow = null;
+
+  for (let i = 0; i < normalizedBars.length; i += 1) {
+    const bar = normalizedBars[i];
+    const barMs = Number(bar.timestamp);
+    const close = Number(bar.close);
+    if (!Number.isFinite(barMs) || !Number.isFinite(close)) continue;
+    const bucketMs = Math.ceil(barMs / targetTfMs) * targetTfMs;
+    const bucketChanged = bucketMs !== currentBucketMs;
+    if (bucketChanged) {
+      if (Number.isFinite(currentFast)) prevCompletedFast = currentFast;
+      if (Number.isFinite(currentSlow)) prevCompletedSlow = currentSlow;
+      currentBucketMs = bucketMs;
+      effectiveBarCount += 1;
+    }
+    currentFast = Number.isFinite(prevCompletedFast)
+      ? (alphaFast * close) + ((1 - alphaFast) * prevCompletedFast)
+      : close;
+    currentSlow = Number.isFinite(prevCompletedSlow)
+      ? (alphaSlow * close) + ((1 - alphaSlow) * prevCompletedSlow)
+      : close;
+
+    if (currentFast > currentSlow) biasByIndex[i] = "BULL";
+    else if (currentFast < currentSlow) biasByIndex[i] = "BEAR";
+    else biasByIndex[i] = "NEUTRAL";
+  }
+
+  return { biasByIndex, effectiveBarCount };
+}
+
 function minBaseBarsForDerivedHtf({ sourceTf, targetTf = HTF_TF, targetBars = DERIVED_HTF_TARGET_BARS } = {}) {
   const sourceTfMs = tfToMs(sourceTf);
   const targetTfMs = tfToMs(targetTf);
@@ -410,6 +457,9 @@ function evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars }) {
   const candles = normalizeBars(bars);
   if (candles.length < 60) return [];
   const effectiveHtfBars = resolveEffectiveHtfBars({ bars: candles, htfBars, tf });
+  const alignedDerivedHtf = effectiveHtfBars.length
+    ? { biasByIndex: [], effectiveBarCount: effectiveHtfBars.length }
+    : buildAlignedDerivedHtfBiasSeries({ bars: candles, sourceTf: tf, targetTf: HTF_TF });
   const closes = candles.map((bar) => bar.close);
   const highs = candles.map((bar) => bar.high);
   const lows = candles.map((bar) => bar.low);
@@ -454,7 +504,7 @@ function evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars }) {
     const bodyRatio = Math.abs(close - open) / barRange;
     const upperWickRatio = (high - Math.max(open, close)) / barRange;
     const lowerWickRatio = (Math.min(open, close) - low) / barRange;
-    const htfBias = resolveHtfBias(effectiveHtfBars, candles[i].timestamp);
+    const htfBias = alignedDerivedHtf.biasByIndex[i] || resolveHtfBias(effectiveHtfBars, candles[i].timestamp);
 
     const stateBull = ef > em && em > es && slopeFast > 0 && slopeMid >= 0 && trendStrengthRaw >= STATE_TREND_MIN;
     const stateBear = ef < em && em < es && slopeFast < 0 && slopeMid <= 0 && trendStrengthRaw >= STATE_TREND_MIN;
@@ -812,6 +862,7 @@ module.exports = {
     normalizeBars,
     tfToMs,
     deriveHigherTimeframeBars,
+    buildAlignedDerivedHtfBiasSeries,
     resolveEffectiveHtfBars,
     resolveHtfBias,
     evaluateSignalsForBars,
