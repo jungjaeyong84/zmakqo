@@ -33,11 +33,12 @@ function renderMarkdown({ nowMeta, collections }) {
 async function main() {
   loadLocalEnv();
   const nowMeta = nowKstMeta();
-  const [signals, drops, fills, intents] = await Promise.all([
+  const [signals, drops, fills, intents, trades] = await Promise.all([
     getCachedRecentByCreatedAt("signals", { limit: DEFAULT_LIMIT, maxDocs: DEFAULT_LIMIT, overlapDocs: 400, pageSize: PAGE_SIZE, refresh: true }),
     getCachedRecentByCreatedAt("signals_dropped", { limit: DEFAULT_LIMIT, maxDocs: DEFAULT_LIMIT, overlapDocs: 400, pageSize: PAGE_SIZE, refresh: true }),
     getCachedRecentByCreatedAt("fills_paper", { limit: FILL_LIMIT, maxDocs: FILL_LIMIT, overlapDocs: 800, pageSize: PAGE_SIZE, refresh: true }),
     getCachedRecentByCreatedAt("order_intents_paper", { limit: FILL_LIMIT, maxDocs: FILL_LIMIT, overlapDocs: 800, pageSize: PAGE_SIZE, refresh: true }),
+    getCachedRecentByCreatedAt("trades_paper", { limit: FILL_LIMIT, maxDocs: FILL_LIMIT, overlapDocs: 800, pageSize: PAGE_SIZE, refresh: true }),
   ]);
 
   const collections = [
@@ -45,6 +46,7 @@ async function main() {
     { name: "signals_dropped", ...drops.meta },
     { name: "fills_paper", ...fills.meta },
     { name: "order_intents_paper", ...intents.meta },
+    { name: "trades_paper", ...trades.meta },
   ];
 
   const report = {
@@ -68,4 +70,3 @@ if (require.main === module) {
     process.exit(1);
   });
 }
-
