@@ -181,6 +181,11 @@ function buildSnapshot({
     qualityRows: [{ market: "ETHUSDT", avg_created_to_fill_ms: 1000, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }],
     driftRemediationApply: {
       applied: true,
+      effective: {
+        other_server_policy_watch_only_markets_by_reason: {
+          LIVE_RESCUE_ADD_LOSS_WINDOW_BLOCKED: ["ETHUSDT"],
+        },
+      },
       changes: {
         other_server_policy_watch_only_markets: {
           next: ["ETHUSDT"],
@@ -200,6 +205,8 @@ function buildSnapshot({
   });
   assert.strictEqual(res.ok, false);
   assert.strictEqual(res.reason, "LIVE_POLICY_OTHER_SERVER_POLICY_WATCH_ONLY_BLOCK");
+  assert.deepStrictEqual(res.policy.other_server_policy_watch_only_reasons, ["LIVE_RESCUE_ADD_LOSS_WINDOW_BLOCKED"]);
+  assert.deepStrictEqual(res.featuresPatch._live_exec_policy_other_server_policy_watch_only_reasons, ["LIVE_RESCUE_ADD_LOSS_WINDOW_BLOCKED"]);
 })();
 
 (() => {

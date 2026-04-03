@@ -36,6 +36,18 @@ const DATA_BACKFILL_SCRIPT = path.join(REPO_ROOT, "ops", "launchd", "run_data_ba
 const DATA_BACKFILL_LATEST_JSON = path.join(OPS_DAILY_DIR, "data_backfill_recovery_latest.json");
 const DATA_BACKFILL_MIN_INTERVAL_MS = 30 * 60 * 1000;
 const SCHEDULER_RECOVERY_MIN_INTERVAL_MS = 10 * 60 * 1000;
+const OPENCLAW_AUTH_RECOVERY_MIN_INTERVAL_MS = Math.max(
+  60 * 1000,
+  parseNumber(process.env.AUTOMATION_WATCHDOG_OPENCLAW_AUTH_RECOVERY_MIN_INTERVAL_MS, 10 * 60 * 1000)
+);
+const OPENCLAW_AUTH_RECOVERY_ALWAYS_ON = parseBoolean(
+  process.env.AUTOMATION_WATCHDOG_OPENCLAW_AUTH_RECOVERY_ALWAYS_ON,
+  true
+);
+const STATUS_SUPPRESSION_MAX_CONSECUTIVE_ERRORS = Math.max(
+  0,
+  parseNumber(process.env.AUTOMATION_WATCHDOG_STATUS_SUPPRESSION_MAX_CONSEC_ERRORS, 0)
+);
 
 const ARTIFACT_SPECS = Object.freeze([
   { name: "analytics_local_cache_refresh", filePath: path.join(OPS_DAILY_DIR, "analytics_local_cache_refresh_latest.json"), maxAgeHours: 4, severity: "WARN" },
@@ -46,7 +58,8 @@ const ARTIFACT_SPECS = Object.freeze([
   { name: "objective_supervisor", filePath: path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json"), maxAgeHours: 30, severity: "FAIL" },
   { name: "stage_autopilot", filePath: path.join(OPS_DAILY_DIR, "stage_autopilot_latest.json"), maxAgeHours: 30, severity: "FAIL" },
   { name: "filter_shadow_canary", filePath: path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json"), maxAgeHours: 12, severity: "WARN" },
-  { name: "weekly_filter_governance", filePath: path.join(OPS_DAILY_DIR, "weekly_filter_governance_latest.json"), maxAgeHours: 36, severity: "WARN" },
+  // This artifact is produced by the weekly governance lane, not the hourly/daily cron path.
+  { name: "weekly_filter_governance", filePath: path.join(OPS_DAILY_DIR, "weekly_filter_governance_latest.json"), maxAgeHours: 192, severity: "WARN" },
   { name: "ev_tp1_threshold_tune", filePath: path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json"), maxAgeHours: 96, severity: "WARN" },
   { name: "wait_one_bar_tune", filePath: path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json"), maxAgeHours: 144, severity: "WARN" },
   { name: "codex_weekly_patch_engine", filePath: path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.json"), maxAgeHours: 192, severity: "WARN" },
@@ -164,6 +177,8 @@ function assessSchedulerJob(spec, cronRows) {
   const enabled = row.enabled === true;
   const lastStatus = String(row && row.state && (row.state.lastStatus || row.state.lastRunStatus) || "").trim() || null;
   const consecutiveErrors = Number(row && row.state && row.state.consecutiveErrors || 0);
+  const lastErrorReason = String(row && row.state && row.state.lastErrorReason || "").trim() || null;
+  const lastError = String(row && row.state && row.state.lastError || "").trim() || null;
   const badStatus = Boolean(lastStatus) && !["ok", "not-delivered"].includes(String(lastStatus).toLowerCase());
   let issueCode = null;
   let issueSeverity = null;
@@ -181,6 +196,9 @@ function assessSchedulerJob(spec, cronRows) {
     enabled,
     cronId: String(row.id || "").trim() || null,
     lastStatus,
+    consecutiveErrors,
+    lastErrorReason,
+    lastError,
     nextRunAtMs: Number(row && row.state && row.state.nextRunAtMs || 0) || null,
     issueCode,
     issueSeverity,
@@ -221,12 +239,20 @@ function reconcileSchedulerRowsWithArtifacts(rows, artifacts) {
     if (!artifactName) return row;
     const isFresh = artifactFresh.get(artifactName) === true;
     const issueCode = String(row && row.issueCode || "");
-    if (isFresh && issueCode.includes("_STATUS_")) {
+    const consecutiveErrors = Number(row && row.consecutiveErrors || 0);
+    const suppressionAllowed = consecutiveErrors <= STATUS_SUPPRESSION_MAX_CONSECUTIVE_ERRORS;
+    if (isFresh && issueCode.includes("_STATUS_") && suppressionAllowed) {
       return {
         ...row,
         issueCode: null,
         issueSeverity: null,
         statusSuppressedByFreshArtifact: true,
+      };
+    }
+    if (isFresh && issueCode.includes("_STATUS_") && !suppressionAllowed) {
+      return {
+        ...row,
+        statusSuppressionDeniedByConsecutiveErrors: true,
       };
     }
     return row;
@@ -526,6 +552,86 @@ async function attemptSchedulerRecovery({ baseUrl, token, timeoutMs }) {
   };
 }
 
+function isOpenClawAuthFailureRow(row) {
+  if (!row || row.scheduler !== "OPENCLAW_CRON") return false;
+  const status = String(row.lastStatus || "").trim().toLowerCase();
+  const reason = String(row.lastErrorReason || "").trim().toLowerCase();
+  const msg = String(row.lastError || "").trim().toLowerCase();
+  if (status !== "error") return false;
+  if (reason === "auth") return true;
+  if (msg.includes("oauth token refresh failed")) return true;
+  if (msg.includes("failed to refresh")) return true;
+  return false;
+}
+
+function shouldAttemptOpenClawAuthRecovery(previous, signature) {
+  if (!signature) return false;
+  const lastAttemptMs = Number(previous && previous.last_openclaw_auth_recovery_attempt_ms || 0);
+  const lastSignature = String(previous && previous.last_openclaw_auth_recovery_issue_signature || "");
+  const nowMs = Date.now();
+  if (!lastAttemptMs || (nowMs - lastAttemptMs) >= OPENCLAW_AUTH_RECOVERY_MIN_INTERVAL_MS) return true;
+  return lastSignature !== signature;
+}
+
+function attemptOpenClawAuthRecovery({ rows = [] } = {}) {
+  const actions = [];
+  const doctor = execText("openclaw doctor --fix", { cwd: REPO_ROOT, maxBuffer: 16 * 1024 * 1024 });
+  actions.push({
+    id: "openclaw_doctor_fix",
+    ok: !!doctor.ok,
+    reason: doctor.ok ? null : String(doctor.error || "OPENCLAW_DOCTOR_FIX_FAILED"),
+  });
+  const gateway = execText("openclaw gateway install --force", { cwd: REPO_ROOT, maxBuffer: 4 * 1024 * 1024 });
+  actions.push({
+    id: "openclaw_gateway_install_force",
+    ok: !!gateway.ok,
+    reason: gateway.ok ? null : String(gateway.error || "OPENCLAW_GATEWAY_INSTALL_FAILED"),
+  });
+  for (const row of rows) {
+    if (!row || !row.cronId) continue;
+    const runRes = execJson(`openclaw cron run ${row.cronId} --expect-final --timeout 180000`, {
+      cwd: REPO_ROOT,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    actions.push({
+      id: `openclaw_cron_run_${row.name || row.cronId}`,
+      ok: !!runRes.ok,
+      cronId: row.cronId,
+      reason: runRes.ok ? null : String(runRes.error || "OPENCLAW_CRON_RUN_FAILED"),
+    });
+  }
+
+  const cronRes = execJson("openclaw cron list --json", { cwd: REPO_ROOT, maxBuffer: 8 * 1024 * 1024 });
+  if (!cronRes.ok) {
+    return {
+      attempted: true,
+      ok: false,
+      reason: "OPENCLAW_CRON_LIST_FAILED",
+      actions,
+      cronRes: null,
+    };
+  }
+  const cronRows = parseOpenClawCronList(cronRes.data);
+  let recovered = true;
+  for (const row of rows) {
+    if (!row || !row.name) continue;
+    const live = cronRows.get(row.name);
+    const st = String(live && live.state && (live.state.lastStatus || live.state.lastRunStatus) || "").trim().toLowerCase();
+    const errN = Number(live && live.state && live.state.consecutiveErrors || 0);
+    if (!(st === "ok" && errN === 0)) {
+      recovered = false;
+      break;
+    }
+  }
+  return {
+    attempted: true,
+    ok: recovered,
+    reason: recovered ? "OPENCLAW_AUTH_RECOVERED" : "OPENCLAW_AUTH_STILL_DEGRADED",
+    actions,
+    cronRes: cronRes.data,
+  };
+}
+
 function buildIssueSignature(artifactRows, agentRows, extraRows = []) {
   const issues = [];
   for (const row of artifactRows) {
@@ -650,6 +756,12 @@ function renderMarkdown(report) {
     lines.push(`- scheduler_tick_recovery_reason: ${report.scheduler_tick_recovery.reason || "N/A"}`);
     lines.push(`- scheduler_tick_recovery_steps: ${Array.isArray(report.scheduler_tick_recovery.actions) ? report.scheduler_tick_recovery.actions.length : 0}`);
   }
+  if (report.openclaw_auth_recovery && report.openclaw_auth_recovery.attempted) {
+    lines.push(`- openclaw_auth_recovery: ${report.openclaw_auth_recovery.ok ? "OK" : "FAIL"}`);
+    lines.push(`- openclaw_auth_recovery_reason: ${report.openclaw_auth_recovery.reason || "N/A"}`);
+    lines.push(`- openclaw_auth_recovery_steps: ${Array.isArray(report.openclaw_auth_recovery.actions) ? report.openclaw_auth_recovery.actions.length : 0}`);
+    lines.push(`- openclaw_auth_affected_jobs: ${Array.isArray(report.openclaw_auth_recovery.affected_jobs) && report.openclaw_auth_recovery.affected_jobs.length ? report.openclaw_auth_recovery.affected_jobs.join(", ") : "none"}`);
+  }
   lines.push("", "## Artifacts");
   for (const row of report.artifacts) {
     lines.push(`- ${row.name}: ${row.exists ? (row.fresh ? "fresh" : "stale") : "missing"} / age=${row.ageHours == null ? "N/A" : row.ageHours.toFixed(2)}h / max=${row.maxAgeHours}h`);
@@ -720,11 +832,26 @@ async function main() {
   });
   const schedulerTickSla = assessSchedulerTickSla(schedulerStatusPre);
   const preSnapshot = buildSnapshot(artifactRows, schedulerRows, [schedulerTickSla]);
+  const openClawAuthFailureRows = schedulerRows.filter((row) => isOpenClawAuthFailureRow(row));
+  const openClawAuthIssueSignature = openClawAuthFailureRows
+    .map((row) => `${row.name || row.label || "UNKNOWN"}:${row.cronId || "NO_ID"}`)
+    .sort()
+    .join("|");
+  const allowOpenClawAuthRecovery = recoveryAllowed || OPENCLAW_AUTH_RECOVERY_ALWAYS_ON;
 
   let postArtifactRows = artifactRows;
   let postSchedulerRows = schedulerRows;
   let postSchedulerTickSla = schedulerTickSla;
   let postSnapshot = null;
+  let openclawAuthRecovery = {
+    mode: recoveryMode,
+    allowed: allowOpenClawAuthRecovery,
+    attempted: false,
+    ok: null,
+    reason: null,
+    affected_jobs: openClawAuthFailureRows.map((row) => row.name),
+    actions: [],
+  };
 
   let backfillRecovery = {
     mode: recoveryMode,
@@ -761,6 +888,19 @@ async function main() {
     postSchedulerRows = reconcileSchedulerRowsWithArtifacts(postSchedulerRows, postArtifactRows);
   }
 
+  if (allowOpenClawAuthRecovery && openClawAuthFailureRows.length > 0 && shouldAttemptOpenClawAuthRecovery(previous, openClawAuthIssueSignature)) {
+    openclawAuthRecovery = attemptOpenClawAuthRecovery({ rows: openClawAuthFailureRows });
+    if (openclawAuthRecovery && openclawAuthRecovery.cronRes) {
+      const refreshedCronRows = parseOpenClawCronList(openclawAuthRecovery.cronRes);
+      postSchedulerRows = AUTOMATION_SPECS.map((spec) => (
+        schedulerMode === "OPENCLAW_CRON"
+          ? assessSchedulerJob(spec, refreshedCronRows)
+          : assessLaunchdPresence(spec, launchctlRows)
+      ));
+      postSchedulerRows = reconcileSchedulerRowsWithArtifacts(postSchedulerRows, postArtifactRows);
+    }
+  }
+
   const schedulerIssueSignature = schedulerTickSla && schedulerTickSla.issueCode
     ? `SLA:${schedulerTickSla.issueCode}`
     : "";
@@ -788,7 +928,7 @@ async function main() {
     }
   }
 
-  const anyRecoveryAttempted = Boolean(backfillRecovery.attempted || schedulerTickRecovery.attempted);
+  const anyRecoveryAttempted = Boolean(backfillRecovery.attempted || schedulerTickRecovery.attempted || openclawAuthRecovery.attempted);
   if (anyRecoveryAttempted) {
     postSnapshot = buildSnapshot(postArtifactRows, postSchedulerRows, [postSchedulerTickSla]);
   }
@@ -810,6 +950,7 @@ async function main() {
       ok: !!(schedulerStatusPre && schedulerStatusPre.ok),
     },
     data_backfill_recovery: backfillRecovery,
+    openclaw_auth_recovery: openclawAuthRecovery,
     scheduler_tick_recovery: schedulerTickRecovery,
     scheduler_tick_sla: schedulerTickSla,
     scheduler_tick_sla_post_recovery: anyRecoveryAttempted ? postSchedulerTickSla : null,
@@ -883,6 +1024,16 @@ async function main() {
             ...(postSnapshot ? [`복구 후 verdict: ${postSnapshot.verdict} (${postSnapshot.issueCount}건)`] : []),
           ],
         }] : []),
+        ...(openclawAuthRecovery && openclawAuthRecovery.attempted ? [{
+          header: "OpenClaw 인증 복구",
+          lines: [
+            `대상 잡 수: ${Array.isArray(openclawAuthRecovery.affected_jobs) ? openclawAuthRecovery.affected_jobs.length : 0}`,
+            `복구 결과: ${openclawAuthRecovery.ok ? "정상적으로 끝났습니다." : "복구에 실패했습니다."}`,
+            `복구 사유: ${openclawAuthRecovery.reason || "정보 없음"}`,
+            ...((openclawAuthRecovery.actions || []).slice(0, 6).map((row) => `${row.id}: ${row.ok ? "OK" : `FAIL (${row.reason || "오류"})`}`)),
+            ...(postSnapshot ? [`복구 후 verdict: ${postSnapshot.verdict} (${postSnapshot.issueCount}건)`] : []),
+          ],
+        }] : []),
       ],
     });
     if (!alertResult || (alertResult.ok !== true && !alertResult.skipped && !(alertResult.skipped && alertResult.reason === "DEDUPED"))) {
@@ -897,13 +1048,22 @@ async function main() {
     last_backfill_issue_signature: backfillRecovery && backfillRecovery.attempted ? backfillTriggerSignature : String(previous.last_backfill_issue_signature || ""),
     last_scheduler_recovery_attempt_ms: schedulerTickRecovery && schedulerTickRecovery.attempted ? Date.now() : Number(previous.last_scheduler_recovery_attempt_ms || 0),
     last_scheduler_recovery_issue_signature: schedulerTickRecovery && schedulerTickRecovery.attempted ? schedulerIssueSignature : String(previous.last_scheduler_recovery_issue_signature || ""),
+    last_openclaw_auth_recovery_attempt_ms: openclawAuthRecovery && openclawAuthRecovery.attempted ? Date.now() : Number(previous.last_openclaw_auth_recovery_attempt_ms || 0),
+    last_openclaw_auth_recovery_issue_signature: openclawAuthRecovery && openclawAuthRecovery.attempted ? openClawAuthIssueSignature : String(previous.last_openclaw_auth_recovery_issue_signature || ""),
     last_generated_at_kst: meta.kst,
+  });
+
+  // Keep server_signal_runtime_latest in sync with the most recent watchdog verdict.
+  const runtimeRefresh = execText(`'${process.execPath}' '${path.join(REPO_ROOT, "scripts", "report-server-signal-runtime.js")}'`, {
+    cwd: REPO_ROOT,
+    maxBuffer: 4 * 1024 * 1024,
   });
 
   console.log(JSON.stringify({
     ok: true,
     verdict: preSnapshot.verdict,
     issue_count: preSnapshot.issueCount,
+    runtime_refresh_ok: !!runtimeRefresh.ok,
     jsonPath,
     mdPath,
   }, null, 2));
@@ -931,6 +1091,8 @@ if (require.main === module) {
       computeSchedulerSlaMs,
       assessSchedulerTickSla,
       shouldAttemptSchedulerRecovery,
+      isOpenClawAuthFailureRow,
+      shouldAttemptOpenClawAuthRecovery,
     },
   };
 }

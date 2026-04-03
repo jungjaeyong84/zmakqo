@@ -185,6 +185,28 @@ function normalizeUpperList(raw = null) {
   ));
 }
 
+function normalizeUpperMapOfLists(raw = null) {
+  let src = raw;
+  if (typeof src === "string") {
+    const s = String(src || "").trim();
+    if (!s) return {};
+    try {
+      src = JSON.parse(s);
+    } catch (_err) {
+      return {};
+    }
+  }
+  if (!src || typeof src !== "object" || Array.isArray(src)) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(src)) {
+    const key = String(k || "").trim().toUpperCase();
+    const rows = normalizeUpperList(v);
+    if (!key || rows.length <= 0) continue;
+    out[key] = rows;
+  }
+  return out;
+}
+
 async function getRawProviderSettings(provider) {
   const db = getFirestore();
   const snap = await db.collection("settings").doc("system").get();
@@ -219,7 +241,11 @@ async function main() {
   const watchByFamily = patch.watch_only_review_markets_by_family && typeof patch.watch_only_review_markets_by_family === "object"
     ? patch.watch_only_review_markets_by_family
     : {};
+  const watchBySubreason = patch.watch_only_review_markets_by_subreason && typeof patch.watch_only_review_markets_by_subreason === "object"
+    ? patch.watch_only_review_markets_by_subreason
+    : {};
   const otherPolicyWatchPatch = normalizeUpperList(watchByFamily.OTHER_SERVER_POLICY);
+  const otherPolicyWatchByReasonPatch = normalizeUpperMapOfLists(watchBySubreason.OTHER_SERVER_POLICY);
 
   const [sysRes, rawProvider] = await Promise.all([
     getSystemSettingsForProvider(PROVIDER, 0),
@@ -235,9 +261,26 @@ async function main() {
       || current.other_server_policy_watch_only_markets
       || (current.watch_only_review_markets_by_family && current.watch_only_review_markets_by_family.OTHER_SERVER_POLICY)
   );
+  const otherPolicyWatchByReasonCurrent = normalizeUpperMapOfLists(
+    rawProvider.other_server_policy_watch_only_markets_by_reason
+      || (rawProvider.watch_only_review_markets_by_subreason && rawProvider.watch_only_review_markets_by_subreason.OTHER_SERVER_POLICY)
+      || current.other_server_policy_watch_only_markets_by_reason
+      || (current.watch_only_review_markets_by_subreason && current.watch_only_review_markets_by_subreason.OTHER_SERVER_POLICY)
+  );
   const evNext = { ...evCurrent, ...evPatch };
   const cooldownNext = { ...cooldownCurrent, ...cooldownPatch };
-  const otherPolicyWatchNext = Array.from(new Set([...otherPolicyWatchCurrent, ...otherPolicyWatchPatch]));
+  const otherPolicyWatchByReasonNext = { ...otherPolicyWatchByReasonCurrent };
+  for (const [reason, markets] of Object.entries(otherPolicyWatchByReasonPatch)) {
+    otherPolicyWatchByReasonNext[reason] = Array.from(new Set([
+      ...(Array.isArray(otherPolicyWatchByReasonCurrent[reason]) ? otherPolicyWatchByReasonCurrent[reason] : []),
+      ...markets,
+    ]));
+  }
+  const otherPolicyWatchNext = Array.from(new Set([
+    ...otherPolicyWatchCurrent,
+    ...otherPolicyWatchPatch,
+    ...Object.values(otherPolicyWatchByReasonNext).flat(),
+  ]));
 
   const result = {
     ok: true,
@@ -270,9 +313,18 @@ async function main() {
         patch: otherPolicyWatchPatch,
         next: otherPolicyWatchNext,
       },
+      other_server_policy_watch_only_markets_by_reason: {
+        current_n: Object.keys(otherPolicyWatchByReasonCurrent).length,
+        patch_n: Object.keys(otherPolicyWatchByReasonPatch).length,
+        next_n: Object.keys(otherPolicyWatchByReasonNext).length,
+        current: otherPolicyWatchByReasonCurrent,
+        patch: otherPolicyWatchByReasonPatch,
+        next: otherPolicyWatchByReasonNext,
+      },
     },
     effective: {
       other_server_policy_watch_only_markets: otherPolicyWatchCurrent,
+      other_server_policy_watch_only_markets_by_reason: otherPolicyWatchByReasonCurrent,
     },
     applied: false,
     last_applied_at_kst: lastAppliedMeta.at_kst || null,
@@ -297,7 +349,7 @@ async function main() {
     }
   }
 
-  if (APPLY && (Object.keys(evPatch).length > 0 || Object.keys(cooldownPatch).length > 0 || otherPolicyWatchPatch.length > 0)) {
+  if (APPLY && (Object.keys(evPatch).length > 0 || Object.keys(cooldownPatch).length > 0 || otherPolicyWatchPatch.length > 0 || Object.keys(otherPolicyWatchByReasonPatch).length > 0)) {
     const db = getFirestore();
     const ref = db.collection("settings").doc("system");
     const prefix = `providers.${PROVIDER}`;
@@ -314,13 +366,16 @@ async function main() {
         [`${prefix}.ev_gate_tp1_prob_min_by_market`]: evNext,
         [`${prefix}.opposite_signal_cooldown_bars_by_market`]: cooldownNext,
         [`${prefix}.other_server_policy_watch_only_markets`]: otherPolicyWatchNext,
+        [`${prefix}.other_server_policy_watch_only_markets_by_reason`]: otherPolicyWatchByReasonNext,
         [`${prefix}.watch_only_review_markets_by_family.OTHER_SERVER_POLICY`]: otherPolicyWatchNext,
+        [`${prefix}.watch_only_review_markets_by_subreason.OTHER_SERVER_POLICY`]: otherPolicyWatchByReasonNext,
         updated_at: updatedAt,
       });
     });
     invalidateSettingsCache("system");
     result.applied = true;
     result.effective.other_server_policy_watch_only_markets = otherPolicyWatchNext;
+    result.effective.other_server_policy_watch_only_markets_by_reason = otherPolicyWatchByReasonNext;
     result.last_applied_at_kst = meta.kst;
     result.last_applied_at = new Date(meta.nowMs).toISOString();
     result.last_applied_at_ms = meta.nowMs;
@@ -339,6 +394,7 @@ async function main() {
     ev_patch_n: Object.keys(evPatch).length,
     cooldown_patch_n: Object.keys(cooldownPatch).length,
     other_server_policy_watch_only_patch_n: otherPolicyWatchPatch.length,
+    other_server_policy_watch_only_reason_patch_n: Object.keys(otherPolicyWatchByReasonPatch).length,
   }));
 }
 

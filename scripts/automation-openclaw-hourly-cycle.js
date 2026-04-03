@@ -115,6 +115,7 @@ function main() {
     "report-server-signal-quality.js",
     "report-server-signal-runtime.js",
     "report-server-signal-cutover-readiness.js",
+    "report-server-signal-observation-24h.js",
   ];
   const postRemediationResults = postRemediationReports.map((script) => runScript(script));
   const postRemediationOk = postRemediationResults.every((row) => row.ok);

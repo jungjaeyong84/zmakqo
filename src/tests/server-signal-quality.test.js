@@ -71,6 +71,8 @@ const { deriveServerSignalQuality } = require("../utils/serverSignalQuality");
         { parity_match: false, mismatch_scope: "FINAL_DOWNSTREAM_MISMATCH", actual_drop_reason_family: "EV_POLICY" },
         { parity_match: false, mismatch_scope: "FINAL_DOWNSTREAM_MISMATCH", actual_drop_reason_family: "EV_POLICY" },
         { parity_match: false, mismatch_scope: "FINAL_DOWNSTREAM_MISMATCH", actual_drop_reason_family: "COOLDOWN_POLICY" },
+        { parity_match: false, mismatch_scope: "FINAL_DOWNSTREAM_MISMATCH", market: "ETHUSDT", actual_drop_reason_family: "OTHER_SERVER_POLICY", actual_drop_reason: "LIVE_RESCUE_ADD_LOSS_WINDOW_BLOCKED" },
+        { parity_match: false, mismatch_scope: "FINAL_DOWNSTREAM_MISMATCH", market: "BNBUSDT", actual_drop_reason_family: "OTHER_SERVER_POLICY", actual_drop_reason: "LIVE_RESCUE_ADD_POST_TP1_BLOCKED" },
       ],
     },
     nowMs: Date.parse("2026-04-02T00:00:00.000Z"),
@@ -85,8 +87,13 @@ const { deriveServerSignalQuality } = require("../utils/serverSignalQuality");
   assert.strictEqual(report.summary.top_final_downstream_drop_reason_family.key, "EV_POLICY");
   assert.strictEqual(report.rows.final_downstream_family_actions[0].family, "EV_POLICY");
   assert.strictEqual(report.rows.final_downstream_family_actions[0].recommended_action, "RELAX_EV_POLICY_REVIEW");
-  assert.strictEqual(report.rows.final_downstream_family_actions[1].family, "COOLDOWN_POLICY");
-  assert.strictEqual(report.rows.final_downstream_family_actions[1].recommended_action, "RELAX_OPPOSITE_COOLDOWN_REVIEW");
+  const cooldownFamily = report.rows.final_downstream_family_actions.find((row) => row.family === "COOLDOWN_POLICY");
+  assert.ok(cooldownFamily);
+  assert.strictEqual(cooldownFamily.recommended_action, "RELAX_OPPOSITE_COOLDOWN_REVIEW");
+  assert.strictEqual(report.summary.other_server_policy_mismatch_n, 2);
+  assert.strictEqual(report.summary.top_other_server_policy_reason_action.reason, "LIVE_RESCUE_ADD_LOSS_WINDOW_BLOCKED");
+  assert.strictEqual(report.rows.other_server_policy_reason_actions[0].recommended_action, "WATCH_ONLY_REVIEW");
+  assert.strictEqual(report.rows.other_server_policy_reason_actions[1].recommended_action, "MONITOR_POST_TP1_GUARD");
 
   console.log("SERVER_SIGNAL_QUALITY_TEST_OK");
 })();

@@ -307,6 +307,30 @@ function extractOtherServerPolicyWatchOnlyMarkets(doc = null) {
   return normalizeUpperList(other.current);
 }
 
+function extractOtherServerPolicyWatchOnlyMarketsByReason(doc = null) {
+  const raw = unwrapRaw(doc);
+  if (!raw || typeof raw !== "object") return {};
+  const effective = raw.effective && typeof raw.effective === "object" ? raw.effective : {};
+  const changes = raw.changes && typeof raw.changes === "object" ? raw.changes : {};
+  const byReason = changes.other_server_policy_watch_only_markets_by_reason && typeof changes.other_server_policy_watch_only_markets_by_reason === "object"
+    ? changes.other_server_policy_watch_only_markets_by_reason
+    : {};
+  const current = byReason.current && typeof byReason.current === "object" ? byReason.current : {};
+  const next = byReason.next && typeof byReason.next === "object" ? byReason.next : {};
+  const selected = effective.other_server_policy_watch_only_markets_by_reason && typeof effective.other_server_policy_watch_only_markets_by_reason === "object"
+    ? effective.other_server_policy_watch_only_markets_by_reason
+    : (raw.applied === true ? next : current);
+  if (!selected || typeof selected !== "object" || Array.isArray(selected)) return {};
+  const out = {};
+  for (const [reason, markets] of Object.entries(selected)) {
+    const key = upper(reason);
+    const rows = normalizeUpperList(markets);
+    if (!key || rows.length <= 0) continue;
+    out[key] = rows;
+  }
+  return out;
+}
+
 function buildSnapshotFromArtifacts({
   allocatorDoc = null,
   quarantineDoc = null,
@@ -328,6 +352,15 @@ function buildSnapshotFromArtifacts({
   const qualityRows = readRows(executionQualityDoc, "by_market");
   const policyPlanRows = readPolicyPlanMarketRows(policyParameterPlanDoc);
   const driftOtherServerPolicyWatchOnlyMarkets = extractOtherServerPolicyWatchOnlyMarkets(driftRemediationApplyDoc);
+  const driftOtherServerPolicyWatchOnlyByReason = extractOtherServerPolicyWatchOnlyMarketsByReason(driftRemediationApplyDoc);
+  const driftOtherServerPolicyReasonByMarket = new Map();
+  for (const [reason, markets] of Object.entries(driftOtherServerPolicyWatchOnlyByReason)) {
+    for (const market of markets) {
+      if (!market) continue;
+      if (!driftOtherServerPolicyReasonByMarket.has(market)) driftOtherServerPolicyReasonByMarket.set(market, []);
+      driftOtherServerPolicyReasonByMarket.get(market).push(reason);
+    }
+  }
 
   const allocatorByMarket = new Map();
   for (const row of allocatorRows) {
@@ -376,6 +409,8 @@ function buildSnapshotFromArtifacts({
     policyPlanByMarket,
     driftOtherServerPolicyWatchOnlyMarkets,
     driftOtherServerPolicyWatchOnlySet: new Set(driftOtherServerPolicyWatchOnlyMarkets),
+    driftOtherServerPolicyWatchOnlyByReason,
+    driftOtherServerPolicyReasonByMarket,
   };
 }
 
@@ -735,6 +770,7 @@ function evaluateLiveEntryPolicy({
 
   if (otherServerPolicyWatchOnlyBlocked) {
     const reason = "LIVE_POLICY_OTHER_SERVER_POLICY_WATCH_ONLY_BLOCK";
+    const watchReasons = snapshot && snapshot.driftOtherServerPolicyReasonByMarket && snapshot.driftOtherServerPolicyReasonByMarket.get(market);
     return {
       ok: false,
       qtyPctFinal: 0,
@@ -745,6 +781,7 @@ function evaluateLiveEntryPolicy({
         _live_exec_policy_reason: reason,
         _live_exec_policy_market: market,
         _live_exec_policy_other_server_policy_watch_only_block: true,
+        _live_exec_policy_other_server_policy_watch_only_reasons: Array.isArray(watchReasons) ? watchReasons : [],
       },
       policy: {
         stage,
@@ -752,6 +789,7 @@ function evaluateLiveEntryPolicy({
         market,
         blocked: true,
         reason,
+        other_server_policy_watch_only_reasons: Array.isArray(watchReasons) ? watchReasons : [],
       },
     };
   }

@@ -101,6 +101,13 @@ function finalDownstreamFamilyAction(family) {
   return "MONITOR_ONLY";
 }
 
+function otherServerPolicyReasonAction(reason) {
+  const key = upper(reason);
+  if (key === "LIVE_RESCUE_ADD_LOSS_WINDOW_BLOCKED") return "WATCH_ONLY_REVIEW";
+  if (key === "LIVE_RESCUE_ADD_POST_TP1_BLOCKED") return "MONITOR_POST_TP1_GUARD";
+  return "MONITOR_ONLY";
+}
+
 function collectSignalRefs(row) {
   const refs = new Set();
   const features = row && row.features_json && typeof row.features_json === "object"
@@ -201,6 +208,9 @@ function deriveServerSignalQuality({ signalsRecent = null, intentsRecent = null,
     && row.parity_match === false
     && upper(row.mismatch_scope) === "FINAL_DOWNSTREAM_MISMATCH"
   );
+  const otherServerPolicyRows = finalDownstreamRows.filter((row) =>
+    upper(row.actual_drop_reason_family || row.actual_drop_reason) === "OTHER_SERVER_POLICY"
+  );
   const finalDownstreamByFamily = new Map();
   for (const row of finalDownstreamRows) {
     const family = upper(row.actual_drop_reason_family || row.actual_drop_reason || "UNKNOWN");
@@ -211,6 +221,26 @@ function deriveServerSignalQuality({ signalsRecent = null, intentsRecent = null,
       family: row.key,
       mismatch_n: Number(row.count) || 0,
       recommended_action: finalDownstreamFamilyAction(row.key),
+    }));
+  const otherServerPolicyByReason = new Map();
+  const otherServerPolicyReasonMarkets = new Map();
+  for (const row of otherServerPolicyRows) {
+    const reason = upper(row.actual_drop_reason || row.server_drop_reason || "UNKNOWN");
+    const market = upper(row.market || row.symbol || "UNKNOWN");
+    bump(otherServerPolicyByReason, reason);
+    if (!otherServerPolicyReasonMarkets.has(reason)) otherServerPolicyReasonMarkets.set(reason, new Map());
+    bump(otherServerPolicyReasonMarkets.get(reason), market);
+  }
+  const otherServerPolicyReasonActions = topRows(otherServerPolicyByReason, 16)
+    .map((row) => ({
+      reason: row.key,
+      mismatch_n: Number(row.count) || 0,
+      recommended_action: otherServerPolicyReasonAction(row.key),
+      top_markets: topRows(otherServerPolicyReasonMarkets.get(row.key) || new Map(), 4)
+        .map((marketRow) => ({
+          market: marketRow.key,
+          mismatch_n: Number(marketRow.count) || 0,
+        })),
     }));
   const mismatchExamples = parityRows
     .filter((row) => row && row.parity_match === false)
@@ -241,6 +271,14 @@ function deriveServerSignalQuality({ signalsRecent = null, intentsRecent = null,
     top_final_downstream_drop_reason_family: finalDownstreamFamilyActions[0]
       ? { key: finalDownstreamFamilyActions[0].family, count: finalDownstreamFamilyActions[0].mismatch_n }
       : null,
+    other_server_policy_mismatch_n: otherServerPolicyRows.length,
+    top_other_server_policy_reason_action: otherServerPolicyReasonActions[0]
+      ? {
+        reason: otherServerPolicyReasonActions[0].reason,
+        mismatch_n: otherServerPolicyReasonActions[0].mismatch_n,
+        recommended_action: otherServerPolicyReasonActions[0].recommended_action,
+      }
+      : null,
   };
   summary.quality_status = statusOf({
     entrySignals: summary.authoritative_entry_signal_24h_n,
@@ -262,6 +300,7 @@ function deriveServerSignalQuality({ signalsRecent = null, intentsRecent = null,
       top_market: topRows(marketCounts, 5),
       mismatch_examples: mismatchExamples,
       final_downstream_family_actions: finalDownstreamFamilyActions,
+      other_server_policy_reason_actions: otherServerPolicyReasonActions,
     },
   };
 }

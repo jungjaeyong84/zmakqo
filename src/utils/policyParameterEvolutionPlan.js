@@ -36,6 +36,28 @@ function readRows(value, key = "by_market") {
   return [];
 }
 
+function normalizeListMap(raw = null) {
+  let src = raw;
+  if (typeof src === "string") {
+    const s = String(src || "").trim();
+    if (!s) return {};
+    try {
+      src = JSON.parse(s);
+    } catch (_err) {
+      return {};
+    }
+  }
+  if (!src || typeof src !== "object" || Array.isArray(src)) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(src)) {
+    const key = upper(k);
+    if (!key) continue;
+    const values = Array.from(new Set((Array.isArray(v) ? v : []).map((value) => upper(value)).filter(Boolean)));
+    if (values.length > 0) out[key] = values;
+  }
+  return out;
+}
+
 function baseScaleByAction(action) {
   const normalized = upper(action);
   if (normalized === "INCREASE") return 1.1;
@@ -116,8 +138,15 @@ function derivePolicyParameterEvolutionPlan({
   const driftWatchByFamily = driftPatch && typeof driftPatch.watch_only_review_markets_by_family === "object"
     ? driftPatch.watch_only_review_markets_by_family
     : {};
+  const driftWatchBySubreason = driftPatch && typeof driftPatch.watch_only_review_markets_by_subreason === "object"
+    ? driftPatch.watch_only_review_markets_by_subreason
+    : {};
+  const driftOtherWatchByReason = normalizeListMap(driftWatchBySubreason.OTHER_SERVER_POLICY);
   const driftOtherWatchOnlyMarkets = Array.from(new Set(
-    (Array.isArray(driftWatchByFamily.OTHER_SERVER_POLICY) ? driftWatchByFamily.OTHER_SERVER_POLICY : [])
+    [
+      ...(Array.isArray(driftWatchByFamily.OTHER_SERVER_POLICY) ? driftWatchByFamily.OTHER_SERVER_POLICY : []),
+      ...Object.values(driftOtherWatchByReason).flat(),
+    ]
       .map((value) => upper(value))
       .filter(Boolean)
   ));
@@ -227,6 +256,10 @@ function derivePolicyParameterEvolutionPlan({
       quarantine_market_n: quarantined.length,
       top_quarantine_markets: quarantined.slice(0, 6),
       other_server_policy_watch_only_market_n: driftOtherWatchOnlyMarkets.length,
+      other_server_policy_watch_only_reason_n: Object.keys(driftOtherWatchByReason).length,
+      top_other_server_policy_watch_only_reasons: Object.entries(driftOtherWatchByReason)
+        .slice(0, 6)
+        .map(([reason, markets]) => ({ reason, markets: markets.slice(0, 6) })),
       top_other_server_policy_watch_only_markets: driftOtherWatchOnlyMarkets.slice(0, 6),
       market_action_n: marketActions.length,
       top_market_actions: topMarketActions,
@@ -241,6 +274,9 @@ function derivePolicyParameterEvolutionPlan({
         driftOtherWatchOnlyMarkets.length
           ? `Force WATCH_ONLY for OTHER_SERVER_POLICY review markets: ${driftOtherWatchOnlyMarkets.join("|")}.`
           : "No OTHER_SERVER_POLICY watch-only review market now.",
+        Object.keys(driftOtherWatchByReason).length
+          ? `OTHER_SERVER_POLICY sub-reasons in WATCH_ONLY: ${Object.keys(driftOtherWatchByReason).join("|")}.`
+          : "No OTHER_SERVER_POLICY watch-only sub-reason now.",
       ],
     },
     recommendations: {

@@ -134,6 +134,11 @@ const { derivePolicyParameterEvolutionPlan } = require("../../src/utils/policyPa
           watch_only_review_markets_by_family: {
             OTHER_SERVER_POLICY: ["ETHUSDT", "XRPUSDT"],
           },
+          watch_only_review_markets_by_subreason: {
+            OTHER_SERVER_POLICY: {
+              LIVE_RESCUE_ADD_LOSS_WINDOW_BLOCKED: ["ETHUSDT"],
+            },
+          },
         },
       },
     },
@@ -148,6 +153,8 @@ const { derivePolicyParameterEvolutionPlan } = require("../../src/utils/policyPa
   assert.strictEqual(xrp.mode, "WATCH_ONLY");
   assert.strictEqual(xrp.qty_scale, 0);
   assert.strictEqual(driftWatchPlan.summary.other_server_policy_watch_only_market_n, 2);
+  assert.strictEqual(driftWatchPlan.summary.other_server_policy_watch_only_reason_n, 1);
+  assert.strictEqual(driftWatchPlan.summary.top_other_server_policy_watch_only_reasons[0].reason, "LIVE_RESCUE_ADD_LOSS_WINDOW_BLOCKED");
 
   console.log("POLICY_PARAMETER_EVOLUTION_PLAN_TEST_OK");
 })();
