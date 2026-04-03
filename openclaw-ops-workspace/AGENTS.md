@@ -14,3 +14,7 @@ Environment:
 - Repo root: `/Users/jeongjaeyong/Projects/donbeolja`
 - Scheduler of record: OpenClaw cron. Legacy launchd labels are intentionally disabled.
 - Telegram/OpenClaw delivery is already configured; scripts should use the repo's own alert path.
+- Runtime SSOT:
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/DONBEOLJA_SYSTEM_SSOT_FOR_REVIEW_2026-04-03.md`
+- OpenClaw review runbook:
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/OPENCLAW_SYSTEM_REVIEW_RUNBOOK_2026-04-03.md`

@@ -25,6 +25,8 @@ Read these first for any substantial audit:
 1. `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_PINE_TO_SELF_EVOLUTION_SYSTEM_MAP.md`
 2. `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SERVER_CANONICAL_ENGINE_MIGRATION_PLAN.md`
 3. `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_MASTER_SPEC.md`
+4. `/Users/jeongjaeyong/Projects/donbeolja/docs/DONBEOLJA_SYSTEM_SSOT_FOR_REVIEW_2026-04-03.md`
+5. `/Users/jeongjaeyong/Projects/donbeolja/docs/OPENCLAW_SYSTEM_REVIEW_RUNBOOK_2026-04-03.md`
 
 Then read the relevant latest artifacts under:
 
@@ -50,6 +52,8 @@ Prefer `*_latest.json` over dated artifacts.
   - downstream policy mismatch
 - Do not treat sample shortage as a code bug.
 - Do not mutate live settings, deployment state, or trading behavior unless explicitly instructed.
+- During the current learning epoch, do not treat released market exceptions as accidental drift.
+- When `server_signal_observation_24h_latest.json` shows `learning_epoch_exception_release=true`, interpret market-level watch-only removal as intentional data-collection policy.
 
 ## Current System Focus
 
@@ -62,6 +66,7 @@ Audit these areas carefully:
 3. bundle activation / deployment probe
 4. authority state and rollback gating
 5. doc/code/artifact drift
+6. learning-epoch exception release vs. fresh-data collection intent
 
 ## Output Contract
 

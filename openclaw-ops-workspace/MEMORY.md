@@ -5,3 +5,22 @@
 - Automation watchdog treats OpenClaw cron as the scheduler SSOT and launchd only as legacy diagnostics.
 - Current sender policy: Telegram alerts should flow through OpenClaw-first transport in `src/utils/alerts.js`.
 - Do not rewrite schedules during a run; only execute the requested wrapper and summarize the outcome.
+- Current review SSOT:
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/DONBEOLJA_SYSTEM_SSOT_FOR_REVIEW_2026-04-03.md`
+- OpenClaw review runbook:
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/OPENCLAW_SYSTEM_REVIEW_RUNBOOK_2026-04-03.md`
+- Current runtime truth:
+  - `automation_watchdog_latest.json -> PASS`
+  - `openclaw_hourly_cycle_latest.json -> PASS`
+  - `server_signal_observation_24h_latest.json -> DRIFT_MONITORING`
+  - `server_signal_drift_remediation_apply_latest.json -> learning_epoch_exception_release=true`
+  - `best_self_evolution_openclaw_autonomy_contract_latest.json -> authority_state=PENDING`
+- Live execution policy runtime flags that OpenClaw must understand:
+  - `LIVE_EXEC_POLICY_POLICY_PLAN_ENABLED`
+  - `LIVE_EXEC_POLICY_POLICY_PLAN_APPLY`
+  - `LIVE_EXEC_POLICY_POLICY_PLAN_WATCH_ONLY_BLOCK`
+  - `LIVE_EXEC_POLICY_LEARNING_EPOCH_EXCEPTION_RELEASE_ENABLED`
+- Review rule:
+  - During the current learning epoch, market-level historical exceptions are intentionally released to collect fresh server-native data.
+  - OpenClaw must not reapply market-level watch-only or quarantine conclusions from stale narrative alone.
+  - Prefer current `*_latest.json` artifacts over MEMORY text whenever they disagree.
