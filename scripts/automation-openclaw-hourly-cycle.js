@@ -76,6 +76,56 @@ function main() {
     summary: analytics.reason || (analytics.parsed && (analytics.parsed.reason || analytics.parsed.status)) || "OK",
   });
 
+  const lineageHealth = runScript("report-signal-lineage-health.js");
+  steps.push({
+    id: "signal_lineage_health",
+    status: lineageHealth.ok ? "PASS" : "FAIL",
+    summary: lineageHealth.parsed && (lineageHealth.parsed.verdict || lineageHealth.parsed.reason || lineageHealth.parsed.status) || "OK",
+  });
+
+  const docArtifactParity = runScript("check-doc-artifact-parity.js");
+  steps.push({
+    id: "doc_artifact_parity",
+    status: docArtifactParity.ok ? "PASS" : "FAIL",
+    summary: docArtifactParity.parsed
+      ? `mismatch_n=${docArtifactParity.parsed.mismatch_n ?? "N/A"}`
+      : "N/A",
+  });
+
+  const driftRemediationPlan = runScript("report-server-signal-drift-remediation-plan.js");
+  steps.push({
+    id: "server_signal_drift_remediation_plan",
+    status: driftRemediationPlan.ok ? "PASS" : "FAIL",
+    summary: driftRemediationPlan.parsed && (driftRemediationPlan.parsed.status || driftRemediationPlan.parsed.reason || driftRemediationPlan.parsed.ok === true && "OK") || "OK",
+  });
+
+  const driftRemediationApply = runScript("apply-server-signal-drift-remediation-plan.js", {
+    APPLY: String(process.env.OPENCLAW_DRIFT_REMEDIATION_APPLY || "0"),
+  });
+  steps.push({
+    id: "server_signal_drift_remediation_apply",
+    status: driftRemediationApply.ok ? "PASS" : "FAIL",
+    summary: driftRemediationApply.parsed
+      && (`applied=${driftRemediationApply.parsed.applied ? "YES" : "NO"} ev_patch=${driftRemediationApply.parsed.ev_patch_n ?? "N/A"} cooldown_patch=${driftRemediationApply.parsed.cooldown_patch_n ?? "N/A"} other_watch_only_patch=${driftRemediationApply.parsed.other_server_policy_watch_only_patch_n ?? "N/A"}`),
+  });
+
+  const postRemediationReports = [
+    "report-best-self-evolution-canonical-engine-parity.js",
+    "report-server-signal-authority.js",
+    "report-server-signal-quality.js",
+    "report-server-signal-runtime.js",
+    "report-server-signal-cutover-readiness.js",
+  ];
+  const postRemediationResults = postRemediationReports.map((script) => runScript(script));
+  const postRemediationOk = postRemediationResults.every((row) => row.ok);
+  steps.push({
+    id: "server_signal_post_remediation_refresh",
+    status: postRemediationOk ? "PASS" : "FAIL",
+    summary: postRemediationResults
+      .map((row, idx) => `${postRemediationReports[idx]}=${row.ok ? "OK" : "FAIL"}`)
+      .join(" / "),
+  });
+
   const watchdog = runScript("automation-automation-watchdog.js", { SKIP_ALERT: process.env.SKIP_ALERT || "" });
   steps.push({
     id: "automation_watchdog",
