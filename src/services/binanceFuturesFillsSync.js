@@ -12,6 +12,8 @@ const { sendTradeExecutionAlert } = require("./tradeExecutionAlert");
 const { ensureExitWorkerOn } = require("./exitWorkerScale");
 const { sendAlert } = require("../utils/alerts");
 const { resolvePositionSideFromPosition } = require("../utils/positionSide");
+const { isIntentCanceledLikeStatus } = require("../utils/intentStatus");
+const { deriveSignalDocId } = require("../utils/signalDocId");
 
 const DEFAULT_LOOKBACK_MS = 72 * 60 * 60 * 1000;
 const DEFAULT_MIN_INTERVAL_MS = 3 * 60 * 1000;
@@ -517,6 +519,129 @@ function normalizeSymbol(raw) {
   return normalizeMarketSymbolForProvider(raw, "BINANCEFUT");
 }
 
+function parseEntryEventId(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return null;
+  const parts = text.split("|");
+  if (parts.length < 6) return null;
+  const ex = String(parts[0] || "").trim().toUpperCase();
+  const sym = String(parts[1] || "").trim().toUpperCase();
+  const tf = String(parts[2] || "").trim();
+  const barMs = Number(parts[3]);
+  const event = String(parts[4] || "").trim().toUpperCase();
+  if (!ex || !sym || !tf || !Number.isFinite(barMs) || !event) return null;
+  return { exchange: ex, symbol: sym, tf, barMs, event };
+}
+
+function resolveSignalRefsForExternalFill({
+  intent = null,
+  positionCtx = null,
+  exchange = "BINANCEFUT",
+  symbol = null,
+  execTf = "15m",
+} = {}) {
+  const intentSignalId = intent ? (intent.signal_id || (intent.features_json && intent.features_json.signal_id)) : null;
+  const intentSignalDocId = intent ? (intent.signal_doc_id || (intent.features_json && intent.features_json.signal_doc_id)) : null;
+  const normalizedIntentSignalId = String(intentSignalId || "").trim() || null;
+  const normalizedIntentSignalDocId = String(intentSignalDocId || "").trim() || null;
+  if (normalizedIntentSignalId || normalizedIntentSignalDocId) {
+    return {
+      signalId: normalizedIntentSignalId || normalizedIntentSignalDocId || null,
+      signalDocId: normalizedIntentSignalDocId || normalizedIntentSignalId || null,
+      signalBarCloseMs: Number.isFinite(Number(intent && intent.signal_bar_close_time_utc_ms))
+        ? Number(intent.signal_bar_close_time_utc_ms)
+        : null,
+      signalTf: String(intent && intent.tf || "").trim() || null,
+      source: "INTENT",
+    };
+  }
+
+  const parsedEntry = parseEntryEventId(positionCtx && positionCtx.entryEventId);
+  const fallbackTf = (parsedEntry && parsedEntry.tf) || String(execTf || "").trim() || "15m";
+  const fallbackBarMs = (parsedEntry && Number.isFinite(parsedEntry.barMs)) ? parsedEntry.barMs : null;
+  const fallbackEvent = (parsedEntry && parsedEntry.event)
+    || (String(positionCtx && positionCtx.entrySignalType || "").trim().toUpperCase() || null);
+  const fallbackDocId = deriveSignalDocId({
+    exchange,
+    symbol,
+    tf: fallbackTf,
+    barCloseMs: fallbackBarMs,
+    event: fallbackEvent,
+    signalId: null,
+  });
+  return {
+    signalId: fallbackDocId || null,
+    signalDocId: fallbackDocId || null,
+    signalBarCloseMs: fallbackBarMs,
+    signalTf: fallbackTf,
+    source: fallbackDocId ? "POSITION_ENTRY_EVENT" : "UNAVAILABLE",
+  };
+}
+
+function buildSyntheticIntentId({ exchange, symbol, tf, barMs, event } = {}) {
+  const ex = String(exchange || "").trim().toUpperCase();
+  const sym = String(symbol || "").trim().toUpperCase();
+  const tfSafe = String(tf || "").trim() || "15m";
+  const ms = Number(barMs);
+  const ev = String(event || "").trim().toUpperCase() || "EXIT_EXTERNAL_SYNC";
+  if (!ex || !sym || !Number.isFinite(ms) || ms <= 0) return null;
+  return `INTENT__${ex}__${sym}__${tfSafe}__${Math.trunc(ms)}__${ev}`;
+}
+
+async function ensureSyntheticExternalIntent({
+  exchange = "BINANCEFUT",
+  symbol = null,
+  tf = "15m",
+  event = null,
+  side = null,
+  tradeMs = null,
+  execTimeIso = null,
+  signalId = null,
+  signalDocId = null,
+  signalBarCloseMs = null,
+} = {}) {
+  const refMs = Number.isFinite(Number(signalBarCloseMs)) ? Number(signalBarCloseMs) : Number(tradeMs);
+  const intentId = buildSyntheticIntentId({
+    exchange,
+    symbol,
+    tf,
+    barMs: refMs,
+    event,
+  });
+  if (!intentId) return null;
+  const eventUpper = String(event || "").trim().toUpperCase();
+  const eventIntent = eventUpper.startsWith("EXIT_") ? "EXIT" : "ENTRY";
+  await patchIntent(intentId, {
+    intent_id: intentId,
+    exchange: String(exchange || "").trim().toUpperCase() || null,
+    symbol_or_pair_id: String(symbol || "").trim() || null,
+    tf: String(tf || "").trim() || null,
+    event: eventUpper || null,
+    side: String(side || "").trim().toUpperCase() || null,
+    event_intent: eventIntent,
+    reason: "EXTERNAL_FILL_SYNC",
+    decision_reason: "EXTERNAL_FILL_RECONCILED",
+    status: "FILLED",
+    status_reason: "EXTERNAL_FILL_RECONCILED",
+    execution_mode: "LIVE",
+    signal_id: String(signalId || signalDocId || "").trim() || null,
+    signal_doc_id: String(signalDocId || signalId || "").trim() || null,
+    signal_bar_close_time_utc_ms: Number.isFinite(refMs) ? refMs : null,
+    scheduled_exec_bar_close_time_utc_ms: Number.isFinite(Number(tradeMs)) ? Number(tradeMs) : null,
+    filled_at: execTimeIso || nowIso(),
+    filled_via: "BINANCE_USER_TRADES",
+    external_sync_synthetic_intent: true,
+    created_at: execTimeIso || nowIso(),
+    features_json: {
+      external_sync_synthetic_intent: true,
+      signal_id: String(signalId || signalDocId || "").trim() || null,
+      signal_doc_id: String(signalDocId || signalId || "").trim() || null,
+      source: "BINANCE_USER_TRADES",
+    },
+  });
+  return intentId;
+}
+
 function pickIntentForTrade(trade, intents, matchWindowMs, intentFutureAllowMs = DEFAULT_INTENT_FUTURE_ALLOW_MS) {
   if (!trade) return null;
   const sym = normalizeSymbol(trade.symbol || "");
@@ -530,6 +655,7 @@ function pickIntentForTrade(trade, intents, matchWindowMs, intentFutureAllowMs =
     if (String(it.exchange || "").toUpperCase() !== "BINANCEFUT") continue;
     const itSym = normalizeSymbol(it.symbol_or_pair_id || it.symbol || it.market || "");
     if (itSym !== sym) continue;
+    if (it.external_sync_synthetic_intent === true || (it.features_json && it.features_json.external_sync_synthetic_intent === true)) continue;
     const itSide = String(it.side || "").toUpperCase();
     if (itSide && itSide !== side) continue;
     const createdAtMs = Date.parse(String(it.created_at || ""));
@@ -559,7 +685,7 @@ function extractEntryContextFromIntent(intent) {
 function canRecoverCanceledIntent(intent) {
   if (!intent || typeof intent !== "object") return false;
   const status = String(intent.status || "").toUpperCase();
-  if (status !== "CANCELED") return false;
+  if (!isIntentCanceledLikeStatus(status)) return false;
   const reason = String(intent.cancel_reason || intent.status_reason || "").toUpperCase();
   return reason === "LIVE_EXCEPTION" || reason === "LIVE_FAILED" || reason.startsWith("LIVE_");
 }
@@ -1055,9 +1181,16 @@ async function syncMarketTrades({
         recentTp1,
         rules: exitRules,
       });
-      const intentId = intent ? intent.intent_id : null;
-      const signalId = intent ? (intent.signal_id || (intent.features_json && intent.features_json.signal_id)) : null;
-      const signalDocId = intent ? (intent.signal_doc_id || (intent.features_json && intent.features_json.signal_doc_id)) : null;
+      let intentId = intent ? intent.intent_id : null;
+      const signalRefs = resolveSignalRefsForExternalFill({
+        intent,
+        positionCtx,
+        exchange: "BINANCEFUT",
+        symbol: sym,
+        execTf,
+      });
+      const signalId = signalRefs.signalId;
+      const signalDocId = signalRefs.signalDocId;
       const execPrice = Number(t.price);
       const execQtyBase = Number(t.qty);
       const notional = Number(t.quoteQty) || (Number.isFinite(execPrice) && Number.isFinite(execQtyBase) ? execPrice * execQtyBase : null);
@@ -1099,6 +1232,21 @@ async function syncMarketTrades({
 
       const fillId = `EXT__BINANCEFUT__${sym}__${Number.isFinite(tradeId) ? tradeId : String(t.id || t.time || now)}`;
       const execTimeIso = Number.isFinite(tradeMs) ? new Date(tradeMs).toISOString() : nowIso();
+      const looksLikeExit = Number.isFinite(realizedPnl) && Math.abs(realizedPnl) > 1e-12;
+      if (!intentId && looksLikeExit) {
+        intentId = await ensureSyntheticExternalIntent({
+          exchange: "BINANCEFUT",
+          symbol: sym,
+          tf: execTf,
+          event,
+          side: String(t.side || "").toUpperCase(),
+          tradeMs,
+          execTimeIso,
+          signalId,
+          signalDocId,
+          signalBarCloseMs: signalRefs.signalBarCloseMs,
+        });
+      }
       const linkedTradeId = Number.isFinite(tradeMs)
         ? buildTradeId({
           exchange: "BINANCEFUT",
@@ -1108,7 +1256,6 @@ async function syncMarketTrades({
           execMs: tradeMs,
         })
         : null;
-      const looksLikeExit = Number.isFinite(realizedPnl) && Math.abs(realizedPnl) > 1e-12;
       let inferredEntryCtx = { entryEventId: null, entrySignalType: null };
       if (looksLikeExit && !intentEntryCtx.entryEventId) {
         inferredEntryCtx = await loadPositionEntryContext("BINANCEFUT", sym, positionEntryCache);
@@ -1154,10 +1301,15 @@ async function syncMarketTrades({
         entrySignalType,
         signalId,
         signalDocId,
+        signalBarCloseTimeUtcMs: Number.isFinite(Number(signalRefs.signalBarCloseMs))
+          ? Number(signalRefs.signalBarCloseMs)
+          : null,
         leverageApplied: Number.isFinite(intentLeverage) && intentLeverage > 0 ? intentLeverage : null,
         leverageReason: intentLeverageReason || null,
         featuresJson: (intent && intent.features_json && typeof intent.features_json === "object") ? intent.features_json : null,
         createdAt: execTimeIso,
+        runId: intent ? (intent.run_id || null) : null,
+        decisionReason: intent ? (intent.reason || intent.event || "EXTERNAL_FILL_RECONCILED") : "EXTERNAL_FILL_RECONCILED",
         extra: {
           external: true,
           external_source: "BINANCE_USER_TRADES",
