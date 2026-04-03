@@ -118,3 +118,4 @@ Current reality:
 1. `/Users/jeongjaeyong/Projects/donbeolja/docs/DONBEOLJA_SYSTEM_SSOT_FOR_REVIEW_2026-04-03.md`
 2. `/Users/jeongjaeyong/Projects/donbeolja/docs/OPENCLAW_SYSTEM_REVIEW_RUNBOOK_2026-04-03.md`
 3. `/Users/jeongjaeyong/Projects/donbeolja/docs/RELEASE_NOTES_2026-04-03.md`
+4. `/Users/jeongjaeyong/Projects/donbeolja/docs/OPENCLAW_MANIFEST_LITE_AND_STEP_REGISTRY_PROPOSAL_2026-04-03.md`

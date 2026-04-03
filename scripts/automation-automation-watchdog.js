@@ -8,7 +8,11 @@ const http = require("http");
 const https = require("https");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
 const { tfToMs } = require("../src/utils/marketConfig");
-const { OPENCLAW_CRON_JOBS } = require("./lib/openclaw-cron-manifest");
+const {
+  OPENCLAW_CRON_ARTIFACT_MAP,
+  OPENCLAW_CRON_JOBS,
+  OPENCLAW_SCHEDULER_SOT,
+} = require("./lib/openclaw-cron-manifest");
 const {
   OPS_DAILY_DIR,
   OPS_RUNTIME_DIR,
@@ -86,17 +90,20 @@ const AUTOMATION_SEVERITY_BY_LABEL = Object.freeze({
 
 const AUTOMATION_SPECS = Object.freeze(
   OPENCLAW_CRON_JOBS.map((job) => ({
+    job_id: job.job_id,
     label: job.label,
     name: job.name,
     wrapper: job.wrapper,
+    owner: job.owner || "openclaw",
+    criticality: job.criticality || "HIGH",
+    produces_artifact: job.produces_artifact || null,
+    artifact_sla_hours: Number(job.artifact_sla_hours || 0) || null,
+    depends_on: Array.isArray(job.depends_on) ? job.depends_on : [],
+    recovery_strategy: job.recovery_strategy || null,
+    scheduler_sot: job.scheduler_sot || OPENCLAW_SCHEDULER_SOT,
     severity: AUTOMATION_SEVERITY_BY_LABEL[job.label] || "WARN",
   }))
 );
-
-const CRON_JOB_TO_ARTIFACT = Object.freeze({
-  "donbeolja-openclaw-hourly-cycle": "openclaw_hourly_cycle",
-  "donbeolja-openclaw-daily-cycle": "openclaw_daily_cycle",
-});
 
 function ageHoursFromStat(stat) {
   return (Date.now() - Number(stat.mtimeMs || 0)) / (60 * 60 * 1000);
@@ -164,7 +171,7 @@ function assessSchedulerJob(spec, cronRows) {
   if (!row) {
     return {
       ...spec,
-      scheduler: "OPENCLAW_CRON",
+      scheduler: spec.scheduler_sot || OPENCLAW_SCHEDULER_SOT,
       configured: false,
       enabled: false,
       cronId: null,
@@ -191,7 +198,7 @@ function assessSchedulerJob(spec, cronRows) {
   }
   return {
     ...spec,
-    scheduler: "OPENCLAW_CRON",
+    scheduler: spec.scheduler_sot || OPENCLAW_SCHEDULER_SOT,
     configured: true,
     enabled,
     cronId: String(row.id || "").trim() || null,
@@ -235,7 +242,11 @@ function reconcileSchedulerRowsWithArtifacts(rows, artifacts) {
   );
   return (Array.isArray(rows) ? rows : []).map((row) => {
     const name = String(row && row.name || "").trim();
-    const artifactName = CRON_JOB_TO_ARTIFACT[name] || null;
+    const artifactName = (
+      String(row && row.produces_artifact || "").trim().replace(/_latest\.json$/i, "")
+      || OPENCLAW_CRON_ARTIFACT_MAP[name]
+      || null
+    );
     if (!artifactName) return row;
     const isFresh = artifactFresh.get(artifactName) === true;
     const issueCode = String(row && row.issueCode || "");
@@ -1078,6 +1089,7 @@ if (require.main === module) {
   module.exports = {
     __test: {
       ARTIFACT_SPECS,
+      AUTOMATION_SPECS,
       parseLaunchctlList,
       parseOpenClawCronList,
       assessSchedulerJob,

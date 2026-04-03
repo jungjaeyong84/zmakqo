@@ -50,6 +50,182 @@ function runScript(script, env = {}) {
   };
 }
 
+function toStepResult(step, result = {}) {
+  return {
+    id: step.id,
+    status: result.status || "FAIL",
+    summary: result.summary || "N/A",
+    criticality: step.criticality || "HIGH",
+    depends_on: Array.isArray(step.depends_on) ? step.depends_on : [],
+    produces_artifact: step.produces_artifact || null,
+  };
+}
+
+function buildStepRegistry() {
+  const postRemediationReports = [
+    "report-best-self-evolution-canonical-engine-parity.js",
+    "report-server-signal-authority.js",
+    "report-server-signal-quality.js",
+    "report-server-signal-runtime.js",
+    "report-server-signal-cutover-readiness.js",
+    "report-server-signal-observation-24h.js",
+  ];
+
+  return [
+    {
+      id: "analytics_local_cache",
+      kind: "inline",
+      criticality: "MEDIUM",
+      depends_on: [],
+      produces_artifact: "analytics_local_cache_refresh_latest.json",
+      run() {
+        const analytics = runAnalyticsLocalCacheRefresh({ trigger: "openclaw_hourly_cycle", force: false });
+        return toStepResult(this, {
+          status: analytics.ok ? (analytics.skipped ? "SKIP" : "PASS") : "FAIL",
+          summary: analytics.reason || (analytics.parsed && (analytics.parsed.reason || analytics.parsed.status)) || "OK",
+        });
+      },
+    },
+    {
+      id: "signal_lineage_health",
+      kind: "script",
+      script: "report-signal-lineage-health.js",
+      criticality: "HIGH",
+      depends_on: [],
+      produces_artifact: "signal_lineage_health_latest.json",
+      run() {
+        const res = runScript(this.script);
+        return toStepResult(this, {
+          status: res.ok ? "PASS" : "FAIL",
+          summary: res.parsed && (res.parsed.verdict || res.parsed.reason || res.parsed.status) || "OK",
+        });
+      },
+    },
+    {
+      id: "doc_artifact_parity",
+      kind: "script",
+      script: "check-doc-artifact-parity.js",
+      criticality: "HIGH",
+      depends_on: [],
+      produces_artifact: "doc_artifact_parity_latest.json",
+      run() {
+        const res = runScript(this.script);
+        return toStepResult(this, {
+          status: res.ok ? "PASS" : "FAIL",
+          summary: res.parsed ? `mismatch_n=${res.parsed.mismatch_n ?? "N/A"}` : "N/A",
+        });
+      },
+    },
+    {
+      id: "server_signal_drift_remediation_plan",
+      kind: "script",
+      script: "report-server-signal-drift-remediation-plan.js",
+      criticality: "HIGH",
+      depends_on: [],
+      produces_artifact: "server_signal_drift_remediation_plan_latest.json",
+      run() {
+        const res = runScript(this.script);
+        return toStepResult(this, {
+          status: res.ok ? "PASS" : "FAIL",
+          summary: res.parsed && (res.parsed.status || res.parsed.reason || (res.parsed.ok === true ? "OK" : null)) || "OK",
+        });
+      },
+    },
+    {
+      id: "server_signal_drift_remediation_apply",
+      kind: "script",
+      script: "apply-server-signal-drift-remediation-plan.js",
+      criticality: "HIGH",
+      depends_on: ["server_signal_drift_remediation_plan"],
+      produces_artifact: "server_signal_drift_remediation_apply_latest.json",
+      run() {
+        const res = runScript(this.script, {
+          APPLY: String(process.env.OPENCLAW_DRIFT_REMEDIATION_APPLY || "0"),
+        });
+        return toStepResult(this, {
+          status: res.ok ? "PASS" : "FAIL",
+          summary: res.parsed
+            && (`applied=${res.parsed.applied ? "YES" : "NO"} ev_patch=${res.parsed.ev_patch_n ?? "N/A"} cooldown_patch=${res.parsed.cooldown_patch_n ?? "N/A"} other_watch_only_patch=${res.parsed.other_server_policy_watch_only_patch_n ?? "N/A"}`),
+        });
+      },
+    },
+    {
+      id: "server_signal_post_remediation_refresh",
+      kind: "script_bundle",
+      criticality: "HIGH",
+      depends_on: ["server_signal_drift_remediation_apply"],
+      produces_artifact: "server_signal_observation_24h_latest.json",
+      run() {
+        const results = postRemediationReports.map((script) => runScript(script));
+        const ok = results.every((row) => row.ok);
+        return toStepResult(this, {
+          status: ok ? "PASS" : "FAIL",
+          summary: results.map((row, idx) => `${postRemediationReports[idx]}=${row.ok ? "OK" : "FAIL"}`).join(" / "),
+        });
+      },
+    },
+    {
+      id: "automation_watchdog",
+      kind: "script",
+      script: "automation-automation-watchdog.js",
+      criticality: "HIGH",
+      depends_on: ["server_signal_post_remediation_refresh"],
+      produces_artifact: "automation_watchdog_latest.json",
+      run() {
+        const res = runScript(this.script, { SKIP_ALERT: process.env.SKIP_ALERT || "" });
+        return toStepResult(this, {
+          status: res.ok ? "PASS" : "FAIL",
+          summary: res.parsed && (res.parsed.verdict || res.parsed.reason || res.parsed.status) || "OK",
+        });
+      },
+    },
+    {
+      id: "self_evolution_loop",
+      kind: "inline",
+      criticality: "HIGH",
+      depends_on: ["automation_watchdog"],
+      produces_artifact: null,
+      run() {
+        const loop = runSelfEvolutionLoop({ trigger: "openclaw_hourly_cycle", force: false });
+        return toStepResult(this, {
+          status: loop.ok ? (loop.skipped ? "SKIP" : "PASS") : "FAIL",
+          summary: loop.reason || (loop.parsed && (loop.parsed.status || loop.parsed.reason)) || "OK",
+        });
+      },
+    },
+    {
+      id: "current_version_pine_sync",
+      kind: "script",
+      script: "automation-sync-current-version-pine.js",
+      criticality: "MEDIUM",
+      depends_on: ["self_evolution_loop"],
+      produces_artifact: null,
+      run() {
+        const res = runScript(this.script);
+        return toStepResult(this, {
+          status: res.ok ? "PASS" : "FAIL",
+          summary: res.parsed && (res.parsed.status || res.parsed.reason) || (res.ok ? "OK" : "FAIL"),
+        });
+      },
+    },
+    {
+      id: "hourly_overall_report",
+      kind: "script",
+      script: "automation-hourly-overall-report.js",
+      criticality: "MEDIUM",
+      depends_on: ["current_version_pine_sync"],
+      produces_artifact: "hourly_overall_report_latest.json",
+      run() {
+        const res = runScript(this.script, { SKIP_ALERT: process.env.SKIP_ALERT || "" });
+        return toStepResult(this, {
+          status: res.ok ? "PASS" : "FAIL",
+          summary: res.parsed && (res.parsed.status || res.parsed.reason || (res.parsed.ok === true ? "OK" : null)) || "OK",
+        });
+      },
+    },
+  ];
+}
+
 function renderMarkdown(report = {}) {
   const lines = [
     "# OpenClaw Hourly Cycle",
@@ -67,93 +243,8 @@ function renderMarkdown(report = {}) {
 
 function main() {
   const meta = nowKstMeta();
-  const steps = [];
-
-  const analytics = runAnalyticsLocalCacheRefresh({ trigger: "openclaw_hourly_cycle", force: false });
-  steps.push({
-    id: "analytics_local_cache",
-    status: analytics.ok ? (analytics.skipped ? "SKIP" : "PASS") : "FAIL",
-    summary: analytics.reason || (analytics.parsed && (analytics.parsed.reason || analytics.parsed.status)) || "OK",
-  });
-
-  const lineageHealth = runScript("report-signal-lineage-health.js");
-  steps.push({
-    id: "signal_lineage_health",
-    status: lineageHealth.ok ? "PASS" : "FAIL",
-    summary: lineageHealth.parsed && (lineageHealth.parsed.verdict || lineageHealth.parsed.reason || lineageHealth.parsed.status) || "OK",
-  });
-
-  const docArtifactParity = runScript("check-doc-artifact-parity.js");
-  steps.push({
-    id: "doc_artifact_parity",
-    status: docArtifactParity.ok ? "PASS" : "FAIL",
-    summary: docArtifactParity.parsed
-      ? `mismatch_n=${docArtifactParity.parsed.mismatch_n ?? "N/A"}`
-      : "N/A",
-  });
-
-  const driftRemediationPlan = runScript("report-server-signal-drift-remediation-plan.js");
-  steps.push({
-    id: "server_signal_drift_remediation_plan",
-    status: driftRemediationPlan.ok ? "PASS" : "FAIL",
-    summary: driftRemediationPlan.parsed && (driftRemediationPlan.parsed.status || driftRemediationPlan.parsed.reason || driftRemediationPlan.parsed.ok === true && "OK") || "OK",
-  });
-
-  const driftRemediationApply = runScript("apply-server-signal-drift-remediation-plan.js", {
-    APPLY: String(process.env.OPENCLAW_DRIFT_REMEDIATION_APPLY || "0"),
-  });
-  steps.push({
-    id: "server_signal_drift_remediation_apply",
-    status: driftRemediationApply.ok ? "PASS" : "FAIL",
-    summary: driftRemediationApply.parsed
-      && (`applied=${driftRemediationApply.parsed.applied ? "YES" : "NO"} ev_patch=${driftRemediationApply.parsed.ev_patch_n ?? "N/A"} cooldown_patch=${driftRemediationApply.parsed.cooldown_patch_n ?? "N/A"} other_watch_only_patch=${driftRemediationApply.parsed.other_server_policy_watch_only_patch_n ?? "N/A"}`),
-  });
-
-  const postRemediationReports = [
-    "report-best-self-evolution-canonical-engine-parity.js",
-    "report-server-signal-authority.js",
-    "report-server-signal-quality.js",
-    "report-server-signal-runtime.js",
-    "report-server-signal-cutover-readiness.js",
-    "report-server-signal-observation-24h.js",
-  ];
-  const postRemediationResults = postRemediationReports.map((script) => runScript(script));
-  const postRemediationOk = postRemediationResults.every((row) => row.ok);
-  steps.push({
-    id: "server_signal_post_remediation_refresh",
-    status: postRemediationOk ? "PASS" : "FAIL",
-    summary: postRemediationResults
-      .map((row, idx) => `${postRemediationReports[idx]}=${row.ok ? "OK" : "FAIL"}`)
-      .join(" / "),
-  });
-
-  const watchdog = runScript("automation-automation-watchdog.js", { SKIP_ALERT: process.env.SKIP_ALERT || "" });
-  steps.push({
-    id: "automation_watchdog",
-    status: watchdog.ok ? "PASS" : "FAIL",
-    summary: watchdog.parsed && (watchdog.parsed.verdict || watchdog.parsed.reason || watchdog.parsed.status) || "OK",
-  });
-
-  const loop = runSelfEvolutionLoop({ trigger: "openclaw_hourly_cycle", force: false });
-  steps.push({
-    id: "self_evolution_loop",
-    status: loop.ok ? (loop.skipped ? "SKIP" : "PASS") : "FAIL",
-    summary: loop.reason || (loop.parsed && (loop.parsed.status || loop.parsed.reason)) || "OK",
-  });
-
-  const pineSync = runScript("automation-sync-current-version-pine.js");
-  steps.push({
-    id: "current_version_pine_sync",
-    status: pineSync.ok ? "PASS" : "FAIL",
-    summary: pineSync.parsed && (pineSync.parsed.status || pineSync.parsed.reason) || (pineSync.ok ? "OK" : "FAIL"),
-  });
-
-  const hourly = runScript("automation-hourly-overall-report.js", { SKIP_ALERT: process.env.SKIP_ALERT || "" });
-  steps.push({
-    id: "hourly_overall_report",
-    status: hourly.ok ? "PASS" : "FAIL",
-    summary: hourly.parsed && (hourly.parsed.status || hourly.parsed.reason || hourly.parsed.ok === true && "OK") || "OK",
-  });
+  const registry = buildStepRegistry();
+  const steps = registry.map((step) => step.run());
 
   const report = {
     ok: steps.every((row) => row.status !== "FAIL"),
@@ -187,4 +278,11 @@ if (require.main === module) {
     console.error("automation-openclaw-hourly-cycle failed:", err && err.stack ? err.stack : err);
     process.exit(1);
   }
+} else {
+  module.exports = {
+    __test: {
+      buildStepRegistry,
+      toStepResult,
+    },
+  };
 }

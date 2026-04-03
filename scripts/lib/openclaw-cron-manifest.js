@@ -1,20 +1,37 @@
 "use strict";
 
 const REPO_ROOT = "/Users/jeongjaeyong/Projects/donbeolja";
+const OPENCLAW_SCHEDULER_SOT = "OPENCLAW_CRON";
 
 const OPENCLAW_CRON_JOBS = Object.freeze([
   {
+    job_id: "openclaw_hourly_cycle",
     label: "com.jeongjaeyong.donbeolja.openclawhourly",
     name: "donbeolja-openclaw-hourly-cycle",
     wrapper: `${REPO_ROOT}/ops/launchd/run_openclaw_hourly_cycle.sh`,
     cron: "0 * * * *",
     runAtLoad: true,
+    owner: "openclaw",
+    criticality: "HIGH",
+    produces_artifact: "openclaw_hourly_cycle_latest.json",
+    artifact_sla_hours: 2,
+    depends_on: [],
+    recovery_strategy: "re-run-once",
+    scheduler_sot: OPENCLAW_SCHEDULER_SOT,
   },
   {
+    job_id: "openclaw_daily_cycle",
     label: "com.jeongjaeyong.donbeolja.openclawdaily",
     name: "donbeolja-openclaw-daily-cycle",
     wrapper: `${REPO_ROOT}/ops/launchd/run_openclaw_daily_cycle.sh`,
     cron: "30 23 * * *",
+    owner: "openclaw",
+    criticality: "HIGH",
+    produces_artifact: "openclaw_daily_cycle_latest.json",
+    artifact_sla_hours: 30,
+    depends_on: ["openclaw_hourly_cycle"],
+    recovery_strategy: "re-run-once",
+    scheduler_sot: OPENCLAW_SCHEDULER_SOT,
   },
 ]);
 
@@ -48,9 +65,29 @@ function buildOpenClawCronMessage(job) {
   ].join("\n");
 }
 
+function buildCronArtifactMap(jobs = OPENCLAW_CRON_JOBS) {
+  return Object.freeze(
+    Object.fromEntries(
+      (Array.isArray(jobs) ? jobs : [])
+        .map((job) => {
+          const name = String(job && job.name || "").trim();
+          const artifact = String(job && job.produces_artifact || "").trim();
+          if (!name || !artifact) return null;
+          return [name, artifact.replace(/_latest\.json$/i, "")];
+        })
+        .filter(Boolean)
+    )
+  );
+}
+
+const OPENCLAW_CRON_ARTIFACT_MAP = buildCronArtifactMap();
+
 module.exports = {
   REPO_ROOT,
+  OPENCLAW_SCHEDULER_SOT,
   OPENCLAW_CRON_JOBS,
+  OPENCLAW_CRON_ARTIFACT_MAP,
   LEGACY_OPENCLAW_CRON_JOB_NAMES,
+  buildCronArtifactMap,
   buildOpenClawCronMessage,
 };

@@ -12,6 +12,11 @@ const { __test } = require("../../scripts/automation-automation-watchdog");
   assert.ok(!artifactNames.includes("stage_outcome_ledgers"));
   assert.ok(!artifactNames.includes("ml_filter_policy"));
 
+  assert.strictEqual(__test.AUTOMATION_SPECS.length, 2);
+  assert.strictEqual(__test.AUTOMATION_SPECS[0].job_id, "openclaw_hourly_cycle");
+  assert.strictEqual(__test.AUTOMATION_SPECS[0].produces_artifact, "openclaw_hourly_cycle_latest.json");
+  assert.strictEqual(__test.AUTOMATION_SPECS[0].scheduler_sot, "OPENCLAW_CRON");
+
   const rows = __test.parseLaunchctlList([
     "123\t0\tcom.jeongjaeyong.donbeolja.objectivesupervisor",
     "-\t0\tcom.jeongjaeyong.donbeolja.weeklypine",
@@ -47,8 +52,11 @@ const { __test } = require("../../scripts/automation-automation-watchdog");
 
   const schedulerPass = __test.assessSchedulerJob(
     {
+      job_id: "objective_supervisor",
       label: "com.jeongjaeyong.donbeolja.objectivesupervisor",
       name: "donbeolja-objective-supervisor",
+      produces_artifact: "objective_supervisor_latest.json",
+      scheduler_sot: "OPENCLAW_CRON",
       severity: "FAIL",
     },
     cronRows
@@ -56,11 +64,15 @@ const { __test } = require("../../scripts/automation-automation-watchdog");
   assert.strictEqual(schedulerPass.configured, true);
   assert.strictEqual(schedulerPass.enabled, true);
   assert.strictEqual(schedulerPass.issueCode, null);
+  assert.strictEqual(schedulerPass.scheduler, "OPENCLAW_CRON");
 
   const schedulerDisabled = __test.assessSchedulerJob(
     {
+      job_id: "weekly_pine",
       label: "com.jeongjaeyong.donbeolja.weeklypine",
       name: "donbeolja-weekly-pine",
+      produces_artifact: "weekly_pine_latest.json",
+      scheduler_sot: "OPENCLAW_CRON",
       severity: "WARN",
     },
     cronRows
@@ -72,6 +84,7 @@ const { __test } = require("../../scripts/automation-automation-watchdog");
     [
       {
         name: "donbeolja-openclaw-hourly-cycle",
+        produces_artifact: "openclaw_hourly_cycle_latest.json",
         issueCode: "donbeolja-openclaw-hourly-cycle_STATUS_ERROR",
         issueSeverity: "WARN",
       },
