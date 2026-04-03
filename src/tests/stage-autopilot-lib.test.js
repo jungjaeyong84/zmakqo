@@ -49,5 +49,29 @@ const { __test } = require("../../scripts/lib/stage-autopilot");
   assert.strictEqual(selfEvolutionAdverse.nextAdverseStreak, 2);
   assert.strictEqual(selfEvolutionAdverse.rollback, true);
 
+  const marketScopedRecovery = __test.shouldAutoRollback({
+    stageState: {
+      applied_signature: "SIG_OLD",
+      pre_apply_snapshot: { foo: 1 },
+      adverse_streak_n: 1,
+    },
+    objectiveSupervisor: {
+      objective: {
+        enough_sample: true,
+        pass: false,
+        monthly_pass: false,
+      },
+    },
+    canaryPass: true,
+    selfEvolutionRollbackReady: false,
+    candidate: {
+      source: "CANONICAL_PARITY_EV_POLICY_MARKET_RESCUE",
+      target_markets: ["SOLUSDT", "ETHUSDT"],
+    },
+  });
+  assert.strictEqual(marketScopedRecovery.adverse, false);
+  assert.strictEqual(marketScopedRecovery.nextAdverseStreak, 0);
+  assert.strictEqual(marketScopedRecovery.rollback, false);
+
   console.log("STAGE_AUTOPILOT_LIB_TEST_OK");
 })();

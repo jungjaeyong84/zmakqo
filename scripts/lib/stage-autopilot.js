@@ -216,12 +216,17 @@ function evaluateCommonAutoApply({
   };
 }
 
-function shouldAutoRollback({ stageState = {}, objectiveSupervisor = {}, canaryPass = true, selfEvolutionRollbackReady = false } = {}) {
+function shouldAutoRollback({ stageState = {}, objectiveSupervisor = {}, canaryPass = true, selfEvolutionRollbackReady = false, candidate = null } = {}) {
   if (!stageState || !stageState.applied_signature || !hasSnapshot(stageState.pre_apply_snapshot)) return { rollback: false, adverse: false };
   const objective = objectiveSupervisor && objectiveSupervisor.objective ? objectiveSupervisor.objective : {};
+  const marketScopedRecoveryCandidate = candidate
+    && String(candidate.source || "").trim().toUpperCase() === "CANONICAL_PARITY_EV_POLICY_MARKET_RESCUE"
+    && Array.isArray(candidate.target_markets)
+    && candidate.target_markets.length > 0;
+  const objectiveAdverse = objective.enough_sample === true &&
+    (objective.pass === false || objective.monthly_pass === false);
   const adverse = canaryPass !== true || selfEvolutionRollbackReady === true || (
-    objective.enough_sample === true &&
-    (objective.pass === false || objective.monthly_pass === false)
+    marketScopedRecoveryCandidate ? false : objectiveAdverse
   );
   const nextAdverseStreak = adverse ? (Number(stageState.adverse_streak_n || 0) + 1) : 0;
   return {

@@ -1575,6 +1575,7 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
     objectiveSupervisor: rollbackInputs.objectiveSupervisor,
     canaryPass: rollbackInputs.canaryPass,
     selfEvolutionRollbackReady: rollbackInputs.selfEvolutionRollbackReady,
+    candidate,
   });
   if (rollback.rollback && shouldSuppressStageRollback(stage)) {
     return {
@@ -1718,6 +1719,7 @@ async function processObservedStage({ stage, artifact, stateData, history: curre
     objectiveSupervisor: objectiveArtifact && objectiveArtifact.data ? objectiveArtifact.data : {},
     canaryPass,
     selfEvolutionRollbackReady,
+    candidate,
   });
   if (rollback.rollback && shouldSuppressStageRollback(stage)) {
     return {
