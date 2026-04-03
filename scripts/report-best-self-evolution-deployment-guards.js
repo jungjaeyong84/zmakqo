@@ -24,6 +24,8 @@ const INPUTS = Object.freeze({
   replay: path.join(OPS_DAILY_DIR, "best_self_evolution_replay_latest.json"),
   canary: path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json"),
   memory: path.join(OPS_DAILY_DIR, "best_self_evolution_memory_latest.json"),
+  serverPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
+  serverPrimaryAcceptanceWatch: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_acceptance_watch_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -70,6 +72,8 @@ async function main() {
       replayReport: readJsonRawSafe(INPUTS.replay, null),
       canaryReport: readJsonRawSafe(INPUTS.canary, null),
       memoryLedger: readJsonRawSafe(INPUTS.memory, null),
+      serverPrimaryCanary: readJsonRawSafe(INPUTS.serverPrimaryCanary, null),
+      serverPrimaryAcceptanceWatch: readJsonRawSafe(INPUTS.serverPrimaryAcceptanceWatch, null),
     }),
   };
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}`;

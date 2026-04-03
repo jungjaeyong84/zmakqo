@@ -256,5 +256,26 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
   assert.strictEqual(activeButBlockedPromotion.summary.server_signal_cutover_promotion_gate_status, "BLOCKED");
   assert.ok(activeButBlockedPromotion.summary.server_signal_cutover_blockers.includes("ARTIFACT_GENERATED_AT_SKEW_EXCEEDED"));
   assert.ok(activeButBlockedPromotion.summary.critical_blockers.includes("SERVER_SIGNAL_CUTOVER_NOT_READY"));
+
+  const serverPrimaryLearningParityMonitorOnly = deriveLoopMonitor({
+    artifacts: {
+      objectiveSupervisor: { fresh: true },
+      serverSignalAuthority: { fresh: true },
+      serverSignalCutoverReadiness: { fresh: true },
+      serverPrimaryLearningEpoch: { fresh: true },
+      marketObjectiveScore: { fresh: true },
+      objectiveRecoveryGovernor: { fresh: true },
+    },
+    reports: {
+      objectiveSupervisor: { cycle_id: "cycle-s", verdict: "HOLD", reason: "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK" },
+      serverSignalAuthority: { cycle_id: "cycle-s", summary: { drift_status: "PARITY_DRIFT", parity_mismatch_rate: 0.73 } },
+      serverSignalCutoverReadiness: { cycle_id: "cycle-s", summary: { readiness_status: "SERVER_PRIMARY_ACTIVE", promotion_gate_status: "READY", promotion_ready: false, already_server_primary: true } },
+      serverPrimaryLearningEpoch: { cycle_id: "cycle-s", summary: { status: "SERVER_PRIMARY_EPOCH_ACTIVE", age_days: 1.5 } },
+      marketObjectiveScore: { cycle_id: "cycle-s", summary: { status: "RECOVERY_PRIORITY_ACTIVE", top_recovery_market: "SOLUSDT" } },
+      objectiveRecoveryGovernor: { cycle_id: "cycle-s", summary: { recovery_required: true } },
+    },
+  });
+  assert.strictEqual(serverPrimaryLearningParityMonitorOnly.summary.server_signal_drift_status, "PARITY_DRIFT");
+  assert.strictEqual(serverPrimaryLearningParityMonitorOnly.summary.critical_blockers.includes("SERVER_SIGNAL_PARITY_DRIFT"), false);
   console.log("BEST_SELF_EVOLUTION_LOOP_MONITOR_TEST_OK");
 })();

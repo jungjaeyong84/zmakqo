@@ -68,5 +68,27 @@ const { deriveObjectiveRecoveryGovernor } = require("../../src/utils/objectiveRe
   assert.strictEqual(unrelatedBlocked.summary.governor_status, "RECOVERY_PROMOTION_READY");
   assert.strictEqual(unrelatedBlocked.summary.memory_blocked, false);
   assert.strictEqual(unrelatedBlocked.summary.unrelated_memory_blocked_candidate_n, 1);
+
+  const serverPrimaryAcceptanceReady = deriveObjectiveRecoveryGovernor({
+    autonomyContract: {
+      summary: { goal_state: "OBJECTIVE_RECOVERY_REQUIRED" },
+      current_status: { recovery_required: true },
+      authority_policy: { degraded_timeout_policy: { enabled: true, require_replay_pass: true, require_canary_ready: true, require_deployment_guards_pass: true, require_memory_clear: true, require_openclaw_ops_healthy: true, allow_target_deploy_units: ["SERVER_SETTINGS", "ENGINE_POLICY_BUNDLE"] } },
+    },
+    objective: { global_objective_score: { objective_score: -2 } },
+    objectiveSupervisor: { promotion: { display_candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN", replay_verdict: "PASS" } },
+    candidates: { rows: [{ candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN", target_deploy_unit: "SERVER_SETTINGS", canonical_migration_class: "PINE_THRESHOLD", memory_blocked: false }] },
+    replay: { validations: [{ candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN", validation_verdict: "PASS" }] },
+    canary: { summary: { apply_pass: false, ready_n: 0 } },
+    deploymentGuards: { summary: { deploy_pass: true } },
+    memory: { summary: { blocked_candidate_n: 0 } },
+    serverPrimaryCanary: { summary: { apply_pass: true, server_primary_executed_n: 3 } },
+    serverPrimaryAcceptanceWatch: { summary: { phase_d_status: "READY", phase_d_ready: true } },
+    watchdog: { display: { verdict: "PASS" } },
+  });
+  assert.strictEqual(serverPrimaryAcceptanceReady.summary.canary_ready, true);
+  assert.strictEqual(serverPrimaryAcceptanceReady.summary.canary_ready_mode, "SERVER_PRIMARY_ACCEPTANCE");
+  assert.strictEqual(serverPrimaryAcceptanceReady.summary.governor_status, "RECOVERY_PROMOTION_READY");
+
   console.log("OBJECTIVE_RECOVERY_GOVERNOR_TEST_OK");
 })();

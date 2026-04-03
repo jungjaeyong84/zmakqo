@@ -202,6 +202,15 @@ function summarizeRetrospective(retrospective = null) {
   };
 }
 
+function summarizeServerPrimaryCanary(serverPrimaryCanary = null) {
+  const summary = readSummary(serverPrimaryCanary);
+  return {
+    apply_pass: summary.apply_pass === true,
+    server_primary_executed_n: toNum(summary.server_primary_executed_n) || 0,
+    acceptance_ready: summary.acceptance_ready === true,
+  };
+}
+
 function deriveObjectiveRecoveryGovernor({
   autonomyContract = null,
   objective = null,
@@ -211,6 +220,7 @@ function deriveObjectiveRecoveryGovernor({
   canary = null,
   deploymentGuards = null,
   memory = null,
+  serverPrimaryCanary = null,
   serverPrimaryAcceptanceWatch = null,
   watchdog = null,
   dropValidation = null,
@@ -235,6 +245,8 @@ function deriveObjectiveRecoveryGovernor({
   const replaySummary = readSummary(replayReport);
   const canarySummary = readSummary(canary);
   const deploymentGuardsSummary = readSummary(deploymentGuards);
+  const deploymentGuardBlockers = Array.isArray(deploymentGuardsSummary.blockers) ? deploymentGuardsSummary.blockers.filter(Boolean) : [];
+  const serverPrimaryCanarySummary = summarizeServerPrimaryCanary(serverPrimaryCanary);
   const acceptanceSummary = readSummary(serverPrimaryAcceptanceWatch);
   const watchdogSummary = readSummary(watchdog);
   const dropValidationSummary = summarizeDropValidation(dropValidation);
@@ -262,17 +274,26 @@ function deriveObjectiveRecoveryGovernor({
   });
   const objectiveScore = objectiveScoreSnapshot.objective_score;
   const recoveryRequired = contractStatus.recovery_required === true || (objectiveScore != null && objectiveScore < 0);
+  const targetDeployUnit = toUpper(candidateRow && candidateRow.target_deploy_unit);
   const replayPass = String(
     promotion.replay_verdict
     || (replayRow && replayRow.validation_verdict)
     || replaySummary.best_verdict
     || ""
   ).trim().toUpperCase() === "PASS";
-  const canaryReady = canarySummary.apply_pass === true && (toNum(canarySummary.ready_n) || 0) > 0;
-  const deploymentPass = deploymentGuardsSummary.deploy_pass === true;
+  const effectiveCanaryReady = canarySummary.apply_pass === true && (toNum(canarySummary.ready_n) || 0) > 0
+    || (
+      targetDeployUnit === "SERVER_SETTINGS"
+      && (
+        serverPrimaryCanarySummary.apply_pass === true
+        || acceptanceSummary.phase_d_ready === true
+        || acceptanceSummary.acceptance_ready === true
+        || serverPrimaryCanarySummary.acceptance_ready === true
+      )
+    );
+  const deploymentPass = deploymentGuardsSummary.deploy_pass === true || deploymentGuardBlockers.length === 0;
   const targetMemoryBlocked = memoryContext.target_blocked === true;
   const watchdogPass = toUpper(watchdogSummary.verdict || watchdogSummary.status || watchdogSummary.summary_verdict) === "PASS";
-  const targetDeployUnit = toUpper(candidateRow && candidateRow.target_deploy_unit);
   const targetDeployUnitAllowed = Array.isArray(degradedPolicy.allow_target_deploy_units) && degradedPolicy.allow_target_deploy_units.length
     ? degradedPolicy.allow_target_deploy_units.includes(targetDeployUnit)
     : true;
@@ -286,7 +307,7 @@ function deriveObjectiveRecoveryGovernor({
     } else if (!replayPass && degradedPolicy.require_replay_pass !== false) {
       governorStatus = "RECOVERY_REPLAY_BLOCKED";
       governorReason = "RECOVERY_REPLAY_BLOCKED";
-    } else if (!canaryReady && degradedPolicy.require_canary_ready !== false) {
+    } else if (!effectiveCanaryReady && degradedPolicy.require_canary_ready !== false) {
       governorStatus = "RECOVERY_CANARY_BLOCKED";
       governorReason = "RECOVERY_CANARY_BLOCKED";
     } else if (!deploymentPass && degradedPolicy.require_deployment_guards_pass !== false) {
@@ -320,8 +341,22 @@ function deriveObjectiveRecoveryGovernor({
       target_deploy_unit: targetDeployUnit,
       target_migration_class: toUpper(candidateRow && candidateRow.canonical_migration_class),
       replay_pass: replayPass,
-      canary_ready: canaryReady,
+      canary_ready: effectiveCanaryReady,
+      canary_ready_mode: canarySummary.apply_pass === true && (toNum(canarySummary.ready_n) || 0) > 0
+        ? "LEGACY_CANARY"
+        : (
+          targetDeployUnit === "SERVER_SETTINGS"
+          && (
+            serverPrimaryCanarySummary.apply_pass === true
+            || acceptanceSummary.phase_d_ready === true
+            || acceptanceSummary.acceptance_ready === true
+            || serverPrimaryCanarySummary.acceptance_ready === true
+          )
+            ? "SERVER_PRIMARY_ACCEPTANCE"
+            : "BLOCKED"
+        ),
       deployment_guards_pass: deploymentPass,
+      deployment_guard_blockers: deploymentGuardBlockers,
       memory_blocked: targetMemoryBlocked,
       memory_blocked_candidate_n: memoryContext.blocked_candidate_n,
       memory_blocked_candidate_ids: memoryContext.blocked_candidate_ids,

@@ -12,6 +12,11 @@ function unwrapRawReport(value) {
   return value;
 }
 
+function readSummary(value) {
+  const raw = unwrapRawReport(value) || {};
+  return raw.summary && typeof raw.summary === "object" ? raw.summary : raw;
+}
+
 function deriveDeploymentRootCause(blockers = []) {
   return Array.isArray(blockers) && blockers.length ? String(blockers[0] || "").trim() || null : null;
 }
@@ -93,6 +98,8 @@ function deriveDeploymentGuards({
   replayReport = null,
   canaryReport = null,
   memoryLedger = null,
+  serverPrimaryCanary = null,
+  serverPrimaryAcceptanceWatch = null,
 } = {}) {
   const supervisor = unwrapRawReport(objectiveSupervisor) || {};
   const promotion = supervisor.promotion && typeof supervisor.promotion === "object" ? supervisor.promotion : {};
@@ -108,13 +115,16 @@ function deriveDeploymentGuards({
   const canary = unwrapRawReport(canaryReport);
   const canarySummary = canary && canary.summary && typeof canary.summary === "object" ? canary.summary : {};
   const canaryRows = Array.isArray(canary && canary.rows) ? canary.rows : [];
+  const serverPrimaryCanarySummary = readSummary(serverPrimaryCanary);
+  const acceptanceSummary = readSummary(serverPrimaryAcceptanceWatch);
   const memory = unwrapRawReport(memoryLedger);
   const memorySummary = memory && memory.summary && typeof memory.summary === "object" ? memory.summary : {};
 
   const targetCandidateId = String(
-    promotion.candidate_id
-    || replaySummary.best_candidate_id
+    promotion.display_candidate_id
+    || promotion.candidate_id
     || candidateSummary.top_candidate_id
+    || replaySummary.best_candidate_id
     || ""
   ).trim() || null;
   const targetReplay = targetCandidateId
@@ -132,6 +142,24 @@ function deriveDeploymentGuards({
   const goldenGlobalDrift = toNum(canarySummary.golden_global_drift) || 0;
   const promotionReady = promotion.ready === true;
   const promotionNotReadyReason = promotionReady ? null : derivePromotionNotReadyReason(promotion);
+  const targetCandidateRow = targetCandidateId
+    ? ((Array.isArray(candidates && candidates.rows) ? candidates.rows : [])
+      .find((row) => String(row && row.candidate_id || "").trim() === targetCandidateId) || null)
+    : null;
+  const targetDeployUnit = String(
+    promotion.target_deploy_unit
+    || (targetCandidateRow && targetCandidateRow.target_deploy_unit)
+    || ""
+  ).trim().toUpperCase() || null;
+  const serverPrimaryCanaryPass = serverPrimaryCanarySummary.apply_pass === true
+    && Number(serverPrimaryCanarySummary.server_primary_executed_n || 0) > 0;
+  const serverPrimaryAcceptanceReady = acceptanceSummary.phase_d_ready === true
+    || acceptanceSummary.acceptance_ready === true;
+  const effectiveCanaryApplyPass = canarySummary.apply_pass === true
+    || (
+      targetDeployUnit === "SERVER_SETTINGS"
+      && (serverPrimaryCanaryPass || serverPrimaryAcceptanceReady)
+    );
 
   const blockers = [];
   if (!targetCandidateId) blockers.push("NO_TARGET_CANDIDATE");
@@ -140,13 +168,10 @@ function deriveDeploymentGuards({
   if (objective.latency_budget_pass === false) blockers.push("SELF_EVOLUTION_LATENCY_BUDGET_FAIL");
   if (!targetReplay) blockers.push("SELF_EVOLUTION_REPLAY_MISSING");
   else if (String(targetReplay.validation_verdict || "").trim().toUpperCase() !== "PASS") blockers.push("SELF_EVOLUTION_REPLAY_NOT_PASS");
-  if (canarySummary.apply_pass !== true) blockers.push("SELF_EVOLUTION_CANARY_APPLY_BLOCK");
+  if (effectiveCanaryApplyPass !== true) blockers.push("SELF_EVOLUTION_CANARY_APPLY_BLOCK");
   if (Number(canarySummary.rollback_ready_n || 0) > 0) blockers.push("SELF_EVOLUTION_CANARY_ROLLBACK_READY");
   if (memoryBlockedIds.has(targetCandidateId)) blockers.push("SELF_EVOLUTION_MEMORY_BLOCK");
-  const hasExplicitGlobalCanaryPass = canarySummary.global_canary_pass === true || canarySummary.global_canary_pass === false;
-  const globalCanaryPass = hasExplicitGlobalCanaryPass
-    ? canarySummary.global_canary_pass === true
-    : (shadowGlobalDrift === 0 && goldenGlobalDrift === 0);
+  const globalCanaryPass = shadowGlobalDrift === 0 && goldenGlobalDrift === 0;
   if (globalCanaryPass !== true) blockers.push("FILTER_CANARY_DRIFT");
   const rootCause = deriveDeploymentRootCause(blockers) || promotionNotReadyReason;
   const nextActions = deriveDeploymentNextActions({
@@ -184,6 +209,17 @@ function deriveDeploymentGuards({
       promotion_ready: promotionReady,
       promotion_not_ready_reason: promotionNotReadyReason,
       replay_verdict: String(targetReplay && targetReplay.validation_verdict || "").trim().toUpperCase() || null,
+      effective_canary_apply_pass: effectiveCanaryApplyPass,
+      effective_canary_mode: canarySummary.apply_pass === true
+        ? "LEGACY_CANARY"
+        : (
+          targetDeployUnit === "SERVER_SETTINGS" && (serverPrimaryCanaryPass || serverPrimaryAcceptanceReady)
+            ? "SERVER_PRIMARY_ACCEPTANCE"
+            : "BLOCKED"
+        ),
+      server_primary_canary_pass: serverPrimaryCanaryPass,
+      server_primary_acceptance_ready: serverPrimaryAcceptanceReady,
+      target_deploy_unit: targetDeployUnit,
       canary_open_wave: toNum(canarySummary.open_wave) || 1,
       market_ready_n: rows.filter((row) => row.deploy_pass).length,
       market_total_n: rows.length,

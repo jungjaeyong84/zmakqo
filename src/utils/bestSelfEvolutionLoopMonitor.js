@@ -230,6 +230,13 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const unrelatedMemoryBlockedIds = Array.isArray(objectiveRecoveryGovernorSummary.unrelated_memory_blocked_candidate_ids)
     ? objectiveRecoveryGovernorSummary.unrelated_memory_blocked_candidate_ids.filter(Boolean)
     : [];
+  const serverPrimaryEpochActive = String(serverPrimaryLearningEpochSummary.status || "").trim().toUpperCase() === "SERVER_PRIMARY_EPOCH_ACTIVE";
+  const recoveryPriorityActive = String(marketObjectiveScoreSummary.status || "").trim().toUpperCase() === "RECOVERY_PRIORITY_ACTIVE"
+    || objectiveRecoveryGovernorSummary.recovery_required === true;
+  const cutoverAlreadyServerPrimary = String(serverSignalCutoverSummary.readiness_status || "").trim().toUpperCase() === "SERVER_PRIMARY_ACTIVE"
+    || serverSignalCutoverSummary.already_server_primary === true;
+  const parityDriftBlocking = String(serverSignalAuthoritySummary.drift_status || "").trim().toUpperCase() === "PARITY_DRIFT"
+    && !(cutoverAlreadyServerPrimary && (serverPrimaryEpochActive || recoveryPriorityActive));
 
   const rows = [
     {
@@ -585,7 +592,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const blockers = [];
   if (objectiveReason) blockers.push(objectiveReason);
   if (Number(canonicalParitySummary.source_parity_mismatch_n || 0) > 0) blockers.push("SELF_EVOLUTION_CANONICAL_SOURCE_MISMATCH");
-  if (String(serverSignalAuthoritySummary.drift_status || "").trim().toUpperCase() === "PARITY_DRIFT") blockers.push("SERVER_SIGNAL_PARITY_DRIFT");
+  if (parityDriftBlocking) blockers.push("SERVER_SIGNAL_PARITY_DRIFT");
   if (/NOT_REACHING_EXECUTION/.test(String(serverSignalQualitySummary.quality_status || "").trim().toUpperCase())) blockers.push("SERVER_SIGNAL_EXECUTION_GAP");
   if (String(serverSignalRuntimeSummary.runtime_status || "").trim().toUpperCase() === "HOLD") blockers.push("SERVER_SIGNAL_RUNTIME_HOLD");
   if (cutoverPromotionGateStatus !== "READY" && toNum(serverSignalRuntimeSummary.market_count) > 0) blockers.push("SERVER_SIGNAL_CUTOVER_NOT_READY");

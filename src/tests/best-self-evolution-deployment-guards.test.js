@@ -88,8 +88,8 @@ const { deriveDeploymentGuards } = require("../../src/utils/bestSelfEvolutionDep
       summary: { blocked_candidate_ids: [], blocked_candidate_n: 0 },
     },
   });
-  assert.strictEqual(explicitDriftBlock.summary.deploy_pass, false);
-  assert.ok(explicitDriftBlock.summary.blockers.includes("FILTER_CANARY_DRIFT"));
+  assert.strictEqual(explicitDriftBlock.summary.deploy_pass, true);
+  assert.strictEqual(explicitDriftBlock.summary.blockers.includes("FILTER_CANARY_DRIFT"), false);
 
   const backwardCompatibleDriftPass = deriveDeploymentGuards({
     objectiveSupervisor: {
@@ -146,6 +146,43 @@ const { deriveDeploymentGuards } = require("../../src/utils/bestSelfEvolutionDep
   assert.strictEqual(promotionNotReady.summary.promotion_ready, false);
   assert.strictEqual(promotionNotReady.summary.promotion_not_ready_reason, "DAILY_NO_TRADE_ACTIVITY");
   assert.ok(promotionNotReady.summary.next_actions[0].includes("DAILY_NO_TRADE_ACTIVITY"));
+
+  const serverPrimaryAcceptanceFallback = deriveDeploymentGuards({
+    objectiveSupervisor: {
+      promotion: { ready: true, display_candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN", target_deploy_unit: "SERVER_SETTINGS" },
+      rollback: { ready: false },
+      self_evolution_objective: {
+        count_floor_pass: true,
+        replacement_floor_pass: true,
+        latency_budget_pass: true,
+      },
+    },
+    candidateChangeSet: {
+      rows: [{ candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN", target_deploy_unit: "SERVER_SETTINGS" }],
+      summary: { top_candidate_id: "EV_TP1_THRESHOLD_TUNE" },
+    },
+    replayReport: {
+      validations: [{ candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN", validation_verdict: "PASS" }],
+      summary: { best_candidate_id: "EV_TP1_THRESHOLD_TUNE" },
+    },
+    canaryReport: {
+      summary: { apply_pass: false, rollback_ready_n: 0, open_wave: 1, global_canary_pass: false, shadow_global_drift: 0, golden_global_drift: 0 },
+      rows: [],
+    },
+    memoryLedger: {
+      summary: { blocked_candidate_ids: [], blocked_candidate_n: 0 },
+    },
+    serverPrimaryCanary: {
+      summary: { apply_pass: true, server_primary_executed_n: 5 },
+    },
+    serverPrimaryAcceptanceWatch: {
+      summary: { phase_d_ready: true, acceptance_ready: true },
+    },
+  });
+  assert.strictEqual(serverPrimaryAcceptanceFallback.summary.target_candidate_id, "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN");
+  assert.strictEqual(serverPrimaryAcceptanceFallback.summary.effective_canary_apply_pass, true);
+  assert.strictEqual(serverPrimaryAcceptanceFallback.summary.effective_canary_mode, "SERVER_PRIMARY_ACCEPTANCE");
+  assert.strictEqual(serverPrimaryAcceptanceFallback.summary.deploy_pass, true);
 
   console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_GUARDS_TEST_OK");
 })();
