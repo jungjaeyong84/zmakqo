@@ -70,6 +70,7 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.match(journal.summary.current_verification_focus, /ev_policy_post_apply_comparable_n/);
   assert.strictEqual(journal.summary.entry_n, 4);
   assert.strictEqual(journal.summary.verified_n, 1);
+  assert.strictEqual(journal.summary.fast_track_verified_n, 0);
   assert.strictEqual(journal.summary.not_met_n, 1);
   assert.strictEqual(journal.summary.unknown_n, 1);
   assert.strictEqual(journal.summary.verification_rate, 0.5);
@@ -122,6 +123,28 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(__test.evaluateExpected(">= 3", 4).status, "VERIFIED");
   assert.strictEqual(__test.evaluateExpected("< baseline", 3, 2).status, "NOT_MET");
   assert.strictEqual(__test.evaluateExpected("toward READY with parity evidence", "PENDING").status, "UNKNOWN");
+  assert.strictEqual(
+    __test.resolveVerificationOutcome(
+      {
+        cycle_id: "cycle-fast",
+        pending_verification: {
+          metric: "ev_policy_post_apply_comparable_n",
+          expected: ">= 3",
+          baseline_value: 0,
+          fast_track: {
+            metric: "final_downstream_mismatch_n",
+            expected: "< baseline",
+            baseline_value: 15,
+          },
+        },
+      },
+      {
+        ev_policy_post_apply_comparable_n: 1,
+        final_downstream_mismatch_n: 12,
+      }
+    ).status,
+    "VERIFIED_FAST_TRACK"
+  );
   assert.deepStrictEqual(
     __test.collectCurrentVerificationState({
       cutover: { summary: { ev_policy_post_apply_comparable_n: 5, final_downstream_mismatch_n: 8 } },

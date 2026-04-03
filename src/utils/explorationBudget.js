@@ -57,6 +57,8 @@ function deriveExplorationBudget({
   executionQuality = null,
   reversePolicy = null,
   serverPrimaryLearningEpoch = null,
+  changeResultAttribution = null,
+  reasoningJournal = null,
 } = {}) {
   const overrideSummary = readSummary(overrideAuthority);
   const objectiveSummary = readSummary(marketObjectiveScore);
@@ -64,21 +66,44 @@ function deriveExplorationBudget({
   const executionSummary = readSummary(executionQuality);
   const reverseSummary = readSummary(reversePolicy);
   const epochSummary = readSummary(serverPrimaryLearningEpoch);
+  const changeResultSummary = readSummary(changeResultAttribution);
+  const reasoningSummary = readSummary(reasoningJournal);
 
-  const productionSlotN = clampIntEnv(
+  const baseProductionSlotN = clampIntEnv(
     "OPENCLAW_PRODUCTION_SLOT_N",
     Math.max(3, toNum(overrideSummary.max_market_overrides_per_cycle) || 4),
     1,
     8
   );
-  const explorationSlotN = clampIntEnv("OPENCLAW_EXPLORATION_SLOT_N", 2, 1, 4);
+  const baseExplorationSlotN = clampIntEnv("OPENCLAW_EXPLORATION_SLOT_N", 2, 1, 4);
   const serverSignalLearningMode = readBoolEnv("OPENCLAW_SERVER_SIGNAL_LEARNING_MODE", true);
   const epochActive = epochSummary.active === true || upper(epochSummary.status) === "SERVER_PRIMARY_EPOCH_ACTIVE";
   const epochExplorationBoost = epochActive ? (toNum(epochSummary.exploration_boost) || 1.15) : 1;
-  const boostedExplorationSlotN = Math.max(
-    explorationSlotN,
-    epochActive ? Math.min(6, Math.round(explorationSlotN * epochExplorationBoost)) : explorationSlotN
+  let productionSlotN = baseProductionSlotN;
+  let explorationSlotN = Math.max(
+    baseExplorationSlotN,
+    epochActive ? Math.min(6, Math.round(baseExplorationSlotN * epochExplorationBoost)) : baseExplorationSlotN
   );
+  const adaptiveReasons = [];
+  const successRate = toNum(changeResultSummary.success_rate);
+  const positiveN = toNum(changeResultSummary.positive_change_n) || 0;
+  const adverseN = toNum(changeResultSummary.adverse_change_n) || 0;
+  const verificationRate = toNum(reasoningSummary.verification_rate);
+  const verifiedN = toNum(reasoningSummary.verified_n) || 0;
+
+  if (serverSignalLearningMode && epochActive && verifiedN < 2 && (verificationRate == null || verificationRate < 0.25)) {
+    explorationSlotN = Math.min(6, explorationSlotN + 1);
+    adaptiveReasons.push("LOW_VERIFICATION_RATE_EXPLORE_UP");
+  }
+  if (successRate != null && positiveN >= 4 && successRate >= 0.6) {
+    explorationSlotN = Math.min(6, explorationSlotN + 1);
+    adaptiveReasons.push("POSITIVE_ATTRIBUTION_STREAK_EXPLORE_UP");
+  }
+  if (successRate != null && adverseN >= 4 && successRate <= 0.35) {
+    explorationSlotN = Math.max(1, explorationSlotN - 1);
+    productionSlotN = Math.max(2, productionSlotN - 1);
+    adaptiveReasons.push("ADVERSE_ATTRIBUTION_STREAK_BUDGET_DOWN");
+  }
 
   const productionMarkets = collectOrderedUniqueMarkets(
     Array.isArray(overrideSummary.top_priority_markets) ? overrideSummary.top_priority_markets : []
@@ -106,7 +131,7 @@ function deriveExplorationBudget({
       deferredPenaltyMarkets.push(market);
       continue;
     }
-    if (explorationMarkets.length < boostedExplorationSlotN) explorationMarkets.push(market);
+    if (explorationMarkets.length < explorationSlotN) explorationMarkets.push(market);
   }
 
   const watchMarkets = collectOrderedUniqueMarkets(productionMarkets, explorationCandidates).slice(0, 8);
@@ -116,8 +141,10 @@ function deriveExplorationBudget({
 
   return {
     status,
+    base_production_slot_n: baseProductionSlotN,
+    base_exploration_slot_n: baseExplorationSlotN,
     production_slot_n: productionSlotN,
-    exploration_slot_n: boostedExplorationSlotN,
+    exploration_slot_n: explorationSlotN,
     server_signal_learning_mode: serverSignalLearningMode,
     penalty_mode: serverSignalLearningMode ? "ADVISORY_ONLY" : "ENFORCED",
     learning_epoch_status: upper(epochSummary.status),
@@ -125,6 +152,12 @@ function deriveExplorationBudget({
     learning_epoch_age_days: toNum(epochSummary.age_days),
     learning_epoch_penalty_weight: toNum(epochSummary.penalty_weight),
     learning_epoch_exploration_boost: toNum(epochSummary.exploration_boost),
+    change_result_success_rate: successRate,
+    change_result_positive_n: positiveN,
+    change_result_adverse_n: adverseN,
+    reasoning_verification_rate: verificationRate,
+    reasoning_verified_n: verifiedN,
+    adaptive_budget_reasons: adaptiveReasons,
     production_markets: productionMarkets,
     exploration_markets: explorationMarkets,
     deferred_penalty_markets: serverSignalLearningMode ? [] : deferredPenaltyMarkets,

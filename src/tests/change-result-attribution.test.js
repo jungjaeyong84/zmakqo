@@ -64,6 +64,19 @@ function wrapStage({ t, rows }) {
   assert.strictEqual(report.top_positive_change.window_24h.server_signal_fill_24h_delta, 2);
   assert.strictEqual(report.top_positive_change.window_24h.parity_mismatch_n_delta, -1);
   assert.strictEqual(report.top_positive_change.window_72h.impact_verdict, "POSITIVE");
+  assert.strictEqual(report.impact_weights.tuning_status, "INSUFFICIENT_SAMPLE");
+  assert.strictEqual(report.positive_change_n, 1);
+  assert.strictEqual(report.adverse_change_n, 0);
+
+  const tunedWeights = require("../utils/changeResultAttribution").__test.deriveAdaptiveImpactWeights([
+    { window_24h: { status: "COMPLETE", objective_score_delta: 1.2, server_signal_fill_24h_delta: 8, server_signal_intent_24h_delta: 5, server_signal_entry_24h_delta: 4, parity_mismatch_n_delta: 1 } },
+    { window_24h: { status: "COMPLETE", objective_score_delta: 0.8, server_signal_fill_24h_delta: 7, server_signal_intent_24h_delta: 4, server_signal_entry_24h_delta: 3, parity_mismatch_n_delta: 0 } },
+    { window_24h: { status: "COMPLETE", objective_score_delta: -0.9, server_signal_fill_24h_delta: 1, server_signal_intent_24h_delta: 0, server_signal_entry_24h_delta: 0, parity_mismatch_n_delta: 6 } },
+    { window_24h: { status: "COMPLETE", objective_score_delta: -1.1, server_signal_fill_24h_delta: 2, server_signal_intent_24h_delta: 1, server_signal_entry_24h_delta: 0, parity_mismatch_n_delta: 7 } },
+  ]);
+  assert.strictEqual(tunedWeights.tuning_status, "ADAPTIVE");
+  assert.ok(tunedWeights.server_signal_fill_24h_delta > require("../utils/changeResultAttribution").__test.BASE_IMPACT_WEIGHTS.server_signal_fill_24h_delta);
+  assert.ok(tunedWeights.parity_mismatch_n_delta > require("../utils/changeResultAttribution").__test.BASE_IMPACT_WEIGHTS.parity_mismatch_n_delta);
 
   console.log("CHANGE_RESULT_ATTRIBUTION_TEST_OK");
 })();

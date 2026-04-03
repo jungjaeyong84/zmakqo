@@ -56,6 +56,8 @@ function renderMarkdown(report = {}) {
     `- evaluated_24h_n: ${summary.evaluated_24h_n != null ? summary.evaluated_24h_n : "N/A"}`,
     `- evaluated_72h_n: ${summary.evaluated_72h_n != null ? summary.evaluated_72h_n : "N/A"}`,
     `- partial_window_n: ${summary.partial_window_n != null ? summary.partial_window_n : "N/A"}`,
+    `- success_rate: ${summary.success_rate != null ? summary.success_rate : "N/A"} / positive=${summary.positive_change_n != null ? summary.positive_change_n : "N/A"} / adverse=${summary.adverse_change_n != null ? summary.adverse_change_n : "N/A"}`,
+    `- impact_weights: fill=${summary.impact_weights && summary.impact_weights.server_signal_fill_24h_delta != null ? summary.impact_weights.server_signal_fill_24h_delta : "N/A"} / intent=${summary.impact_weights && summary.impact_weights.server_signal_intent_24h_delta != null ? summary.impact_weights.server_signal_intent_24h_delta : "N/A"} / entry=${summary.impact_weights && summary.impact_weights.server_signal_entry_24h_delta != null ? summary.impact_weights.server_signal_entry_24h_delta : "N/A"} / mismatch=${summary.impact_weights && summary.impact_weights.parity_mismatch_n_delta != null ? summary.impact_weights.parity_mismatch_n_delta : "N/A"} / mode=${summary.impact_weights && summary.impact_weights.tuning_status || "N/A"}`,
     "",
     "## Top Positive",
     summary.top_positive_change ? renderChangeRow(summary.top_positive_change) : "- none",

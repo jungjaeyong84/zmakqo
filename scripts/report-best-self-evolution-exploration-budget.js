@@ -23,6 +23,8 @@ const SERVER_VS_PINE_DELTA_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_
 const EXECUTION_QUALITY_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_execution_quality_latest.json");
 const REVERSE_POLICY_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_reverse_policy_latest.json");
 const SERVER_PRIMARY_LEARNING_EPOCH_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_learning_epoch_latest.json");
+const CHANGE_RESULT_ATTRIBUTION_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_change_result_attribution_latest.json");
+const REASONING_JOURNAL_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_reasoning_journal_latest.json");
 
 function renderMarkdown(report = {}) {
   const summary = report.summary || {};
@@ -34,6 +36,9 @@ function renderMarkdown(report = {}) {
     `- status: ${summary.status || "N/A"}`,
     `- production_slot_n: ${summary.production_slot_n ?? "N/A"}`,
     `- exploration_slot_n: ${summary.exploration_slot_n ?? "N/A"}`,
+    `- change_result_success_rate: ${summary.change_result_success_rate != null ? summary.change_result_success_rate : "N/A"} / positive=${summary.change_result_positive_n ?? 0} / adverse=${summary.change_result_adverse_n ?? 0}`,
+    `- reasoning_verification_rate: ${summary.reasoning_verification_rate != null ? summary.reasoning_verification_rate : "N/A"} / verified=${summary.reasoning_verified_n ?? 0}`,
+    `- adaptive_budget_reasons: ${Array.isArray(summary.adaptive_budget_reasons) && summary.adaptive_budget_reasons.length ? summary.adaptive_budget_reasons.join("|") : "none"}`,
     `- production_markets: ${Array.isArray(summary.production_markets) && summary.production_markets.length ? summary.production_markets.join("|") : "none"}`,
     `- exploration_markets: ${Array.isArray(summary.exploration_markets) && summary.exploration_markets.length ? summary.exploration_markets.join("|") : "none"}`,
     `- deferred_penalty_markets: ${Array.isArray(summary.deferred_penalty_markets) && summary.deferred_penalty_markets.length ? summary.deferred_penalty_markets.join("|") : "none"}`,
@@ -53,10 +58,12 @@ function main() {
   const executionQuality = readJsonRawSafe(EXECUTION_QUALITY_PATH, null);
   const reversePolicy = readJsonRawSafe(REVERSE_POLICY_PATH, null);
   const serverPrimaryLearningEpoch = readJsonRawSafe(SERVER_PRIMARY_LEARNING_EPOCH_PATH, null);
+  const changeResultAttribution = readJsonRawSafe(CHANGE_RESULT_ATTRIBUTION_PATH, null);
+  const reasoningJournal = readJsonRawSafe(REASONING_JOURNAL_PATH, null);
   const reportCycleId = resolveAnchoredReportCycleId({
     preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
     fallbackCycleId: cycleMeta.cycle_id,
-    sources: [overrideAuthority, marketObjectiveScore, serverVsPinePerformanceDelta, executionQuality, reversePolicy, serverPrimaryLearningEpoch],
+    sources: [overrideAuthority, marketObjectiveScore, serverVsPinePerformanceDelta, executionQuality, reversePolicy, serverPrimaryLearningEpoch, changeResultAttribution, reasoningJournal],
   });
 
   const summary = deriveExplorationBudget({
@@ -66,6 +73,8 @@ function main() {
     executionQuality,
     reversePolicy,
     serverPrimaryLearningEpoch,
+    changeResultAttribution,
+    reasoningJournal,
   });
 
   const report = {
@@ -80,6 +89,8 @@ function main() {
       execution_quality: EXECUTION_QUALITY_PATH,
       reverse_policy: REVERSE_POLICY_PATH,
       server_primary_learning_epoch: SERVER_PRIMARY_LEARNING_EPOCH_PATH,
+      change_result_attribution: CHANGE_RESULT_ATTRIBUTION_PATH,
+      reasoning_journal: REASONING_JOURNAL_PATH,
     },
     summary,
   };

@@ -44,6 +44,7 @@ function renderMarkdown(report = {}) {
     `- entry_n: ${summary.entry_n ?? 0}`,
     `- contradiction_n: ${summary.contradiction_n ?? 0}`,
     `- verified_n: ${summary.verified_n ?? 0}`,
+    `- fast_track_verified_n: ${summary.fast_track_verified_n ?? 0}`,
     `- not_met_n: ${summary.not_met_n ?? 0}`,
     `- unknown_n: ${summary.unknown_n ?? 0}`,
     `- verification_rate: ${summary.verification_rate != null ? summary.verification_rate : "N/A"}`,
@@ -109,6 +110,7 @@ function main() {
     recommended_action: output.summary.current_recommended_action,
     contradiction_n: output.summary.contradiction_n,
     verified_n: output.summary.verified_n,
+    fast_track_verified_n: output.summary.fast_track_verified_n,
     verification_rate: output.summary.verification_rate,
     latest_json: latestJsonPath,
   }));

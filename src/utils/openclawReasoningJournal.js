@@ -101,6 +101,11 @@ function derivePendingVerification({ cutover = null, quality = null, autonomyCon
       expected: `>= ${toNum(cutoverSummary.ev_policy_remediation_min_post_samples) || 3}`,
       deadline_hint: "NEXT_24H",
       baseline_value: toNum(cutoverSummary.ev_policy_post_apply_comparable_n),
+      fast_track: {
+        metric: "final_downstream_mismatch_n",
+        expected: "< baseline",
+        baseline_value: finalMismatchN,
+      },
     };
   }
   if (dominantFamily === "OTHER_SERVER_POLICY") {
@@ -149,7 +154,10 @@ function describeVerificationTarget(pendingVerification = null) {
   if (!pendingVerification || !pendingVerification.metric) return "No verification target.";
   const expected = pendingVerification.expected || "N/A";
   const baseline = pendingVerification.baseline_value != null ? ` (baseline=${pendingVerification.baseline_value})` : "";
-  return `${pendingVerification.metric} ${expected}${baseline}`;
+  const fastTrack = pendingVerification.fast_track && pendingVerification.fast_track.metric
+    ? ` | fast=${pendingVerification.fast_track.metric} ${pendingVerification.fast_track.expected || "N/A"}${pendingVerification.fast_track.baseline_value != null ? ` (baseline=${pendingVerification.fast_track.baseline_value})` : ""}`
+    : "";
+  return `${pendingVerification.metric} ${expected}${baseline}${fastTrack}`;
 }
 
 function deriveVerificationFriendlyHypothesis({
@@ -271,25 +279,45 @@ function resolveVerificationOutcome(entry, currentState = {}) {
   const pv = entry && entry.pending_verification;
   if (!pv || !pv.metric) return null;
   const currentValue = currentState[pv.metric];
-  if (currentValue == null) {
-    return {
-      status: "UNKNOWN",
-      metric: pv.metric,
-      expected: pv.expected || null,
-      actual: null,
-      baseline_value: pv.baseline_value != null ? pv.baseline_value : null,
-      reason: "metric not available",
-      cycle_id: entry && entry.cycle_id || null,
-    };
+  const evaluation = currentValue == null
+    ? { status: "UNKNOWN", reason: "metric not available" }
+    : evaluateExpected(pv.expected, currentValue, pv.baseline_value);
+  const fastTrackDef = pv.fast_track && pv.fast_track.metric ? pv.fast_track : null;
+  const fastTrackValue = fastTrackDef ? currentState[fastTrackDef.metric] : null;
+  const fastTrackEvaluation = fastTrackDef
+    ? (fastTrackValue == null
+      ? { status: "UNKNOWN", reason: "metric not available" }
+      : evaluateExpected(fastTrackDef.expected, fastTrackValue, fastTrackDef.baseline_value))
+    : null;
+  let status = evaluation.status;
+  let reason = evaluation.reason || null;
+  if (fastTrackEvaluation && fastTrackEvaluation.status === "VERIFIED" && evaluation.status !== "VERIFIED") {
+    status = "VERIFIED_FAST_TRACK";
+    reason = "fast_track_verified";
+  } else if (evaluation.status === "UNKNOWN" && fastTrackEvaluation && fastTrackEvaluation.status === "NOT_MET") {
+    status = "NOT_MET";
+    reason = fastTrackEvaluation.reason || "fast_track_not_met";
+  } else if (evaluation.status === "NOT_MET" && fastTrackEvaluation && fastTrackEvaluation.status === "UNKNOWN") {
+    status = "UNKNOWN";
+    reason = fastTrackEvaluation.reason || evaluation.reason || "mixed_unknown";
   }
-  const evaluation = evaluateExpected(pv.expected, currentValue, pv.baseline_value);
   return {
-    status: evaluation.status,
+    status,
     metric: pv.metric,
     expected: pv.expected || null,
     actual: currentValue,
     baseline_value: pv.baseline_value != null ? pv.baseline_value : null,
-    reason: evaluation.reason || null,
+    reason,
+    fast_track: fastTrackDef
+      ? {
+        metric: fastTrackDef.metric,
+        expected: fastTrackDef.expected || null,
+        actual: fastTrackValue,
+        baseline_value: fastTrackDef.baseline_value != null ? fastTrackDef.baseline_value : null,
+        status: fastTrackEvaluation && fastTrackEvaluation.status || "UNKNOWN",
+        reason: fastTrackEvaluation && fastTrackEvaluation.reason || null,
+      }
+      : null,
     cycle_id: entry && entry.cycle_id || null,
   };
 }
@@ -310,12 +338,14 @@ function buildVerificationStats(entries = []) {
   const resolved = (Array.isArray(entries) ? entries : [])
     .map((row) => row && row.verification_outcome && row.verification_outcome.status)
     .filter(Boolean);
-  const verified_n = resolved.filter((status) => status === "VERIFIED").length;
+  const verified_n = resolved.filter((status) => status === "VERIFIED" || status === "VERIFIED_FAST_TRACK").length;
+  const fast_track_verified_n = resolved.filter((status) => status === "VERIFIED_FAST_TRACK").length;
   const not_met_n = resolved.filter((status) => status === "NOT_MET").length;
   const unknown_n = resolved.filter((status) => status === "UNKNOWN").length;
   const denominator = verified_n + not_met_n;
   return {
     verified_n,
+    fast_track_verified_n,
     not_met_n,
     unknown_n,
     verification_rate: denominator > 0 ? Number((verified_n / denominator).toFixed(4)) : null,
@@ -393,6 +423,7 @@ function buildReasoningJournal({
       current_verification_focus: currentEntry.verification_focus,
       pending_verification_n: deduped.filter((row) => row && row.pending_verification && row.pending_verification.metric).length,
       verified_n: verificationStats.verified_n,
+      fast_track_verified_n: verificationStats.fast_track_verified_n,
       not_met_n: verificationStats.not_met_n,
       unknown_n: verificationStats.unknown_n,
       verification_rate: verificationStats.verification_rate,
