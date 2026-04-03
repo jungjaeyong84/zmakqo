@@ -1,6 +1,6 @@
 "use strict";
 
-const { isPendingAuthorityPlanStatus } = require("./selfEvolutionPlanStatus");
+const { isPendingAuthorityPlanStatus, normalizePlanStatus } = require("./selfEvolutionPlanStatus");
 
 function unwrapRawReport(value) {
   if (!value || typeof value !== "object") return value || null;
@@ -73,11 +73,23 @@ function derivePendingAuthorityClosureDecision({
     || String(planSummary.authority_state || "").trim().toUpperCase() === "PENDING"
     || isPendingAuthorityPlanStatus(planStatus)
   );
-  const activationReady = planSummary.activation_confirmed === true
+  const phaseDAcceptanceReady = Boolean(
+    contractStatus.phase_d_acceptance_ready === true
+    || String(contractSummary.phase_d_status || "").trim().toUpperCase() === "READY"
+  );
+  const serverPrimaryRuntimeAck = Boolean(
+    planSummary.activation_confirmed !== true
     && planSummary.activation_pending !== true
     && planSummary.engine_bundle_loaded === true
     && planSummary.policy_bundle_loaded === true
-    && planSummary.probe_pass === true;
+    && planSummary.probe_pass === true
+    && planSummary.live_signal_confirmed === true
+    && phaseDAcceptanceReady
+  );
+  const activationReady = Boolean(
+    planSummary.activation_confirmed === true
+    || serverPrimaryRuntimeAck
+  );
   const targetCandidateId = String(
     governorSummary.target_candidate_id
     || governorSummary.display_candidate_id
@@ -86,7 +98,23 @@ function derivePendingAuthorityClosureDecision({
     || ""
   ).trim() || null;
   const appliedOriginCandidateId = String(planSummary.applied_origin_candidate_id || "").trim() || null;
-  const targetMatchesApplied = Boolean(targetCandidateId && appliedOriginCandidateId && targetCandidateId === appliedOriginCandidateId);
+  const normalizedPlanStatus = normalizePlanStatus(planStatus);
+  const targetMatchesAppliedOrigin = Boolean(targetCandidateId && appliedOriginCandidateId && targetCandidateId === appliedOriginCandidateId);
+  const targetMatchesPlanTarget = Boolean(
+    targetCandidateId
+    && String(planSummary.target_candidate_id || planSummary.recommended_target_candidate_id || "").trim() === targetCandidateId
+  );
+  const targetAppliedByServerPrimaryRuntime = Boolean(
+    targetMatchesPlanTarget
+    && (
+      normalizedPlanStatus === "APPLIED_ACTIVE_PENDING_AUTHORITY"
+      || normalizedPlanStatus === "APPLIED_ACTIVE"
+      || normalizedPlanStatus === "APPLIED_CONFIRMED_PENDING_AUTHORITY"
+      || normalizedPlanStatus === "APPLIED_CONFIRMED"
+    )
+    && activationReady
+  );
+  const targetMatchesApplied = targetMatchesAppliedOrigin || targetAppliedByServerPrimaryRuntime;
   const targetDeployUnit = String(
     governorSummary.target_deploy_unit
     || planSummary.recommended_target_deploy_unit
@@ -156,8 +184,8 @@ function derivePendingAuthorityClosureDecision({
     governor_status: String(governorSummary.governor_status || "").trim().toUpperCase() || null,
     checks: [
       `authority_pending=${authorityPending ? "YES" : "NO"}`,
-      `activation_ready=${activationReady ? "YES" : "NO"}`,
-      `target=${targetCandidateId || "N/A"} / applied=${appliedOriginCandidateId || "N/A"}`,
+      `activation_ready=${activationReady ? "YES" : "NO"} / phase_d=${phaseDAcceptanceReady ? "YES" : "NO"} / runtime_ack=${serverPrimaryRuntimeAck ? "YES" : "NO"}`,
+      `target=${targetCandidateId || "N/A"} / applied=${appliedOriginCandidateId || "N/A"} / plan_target=${String(planSummary.target_candidate_id || planSummary.recommended_target_candidate_id || "").trim() || "N/A"}`,
       `governor=${governorSummary.governor_status || "N/A"} / eligible=${governorEligible ? "YES" : "NO"}`,
       `blockers=${blockers.length ? blockers.join("|") : "none"}`,
     ],
