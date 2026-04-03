@@ -56,6 +56,7 @@ function buildAutonomyParity({
   const journalEntryN = toNum(journalSummary.entry_n) ?? 0;
   const verifiedN = toNum(journalSummary.verified_n) ?? 0;
   const notMetN = toNum(journalSummary.not_met_n) ?? 0;
+  const deferredN = toNum(journalSummary.deferred_n) ?? 0;
   const verificationRate = toNum(journalSummary.verification_rate);
   const objectiveVerdict = toUpper(objective.verdict);
 
@@ -87,10 +88,12 @@ function buildAutonomyParity({
     statusRow({
       id: "reasoning_verification_quality",
       criterion: "verification_rate >= 0.5 with verified_n >= 5",
-      current: `rate=${verificationRate != null ? verificationRate : "N/A"}, verified=${verifiedN}, not_met=${notMetN}`,
+      current: `rate=${verificationRate != null ? verificationRate : "N/A"}, verified=${verifiedN}, not_met=${notMetN}, deferred=${deferredN}`,
       done: verifiedN >= 5 && verificationRate != null && verificationRate >= 0.5,
-      partial: verifiedN >= 1,
-      blocker: verifiedN < 5 ? "INSUFFICIENT_VERIFICATION_SAMPLE" : (verificationRate != null && verificationRate < 0.5 ? "LOW_VERIFICATION_RATE" : null),
+      partial: verifiedN >= 1 || deferredN >= 1,
+      blocker: verifiedN < 5
+        ? (deferredN > 0 ? "DEFERRED_BY_LEARNING_EPOCH" : "INSUFFICIENT_VERIFICATION_SAMPLE")
+        : (verificationRate != null && verificationRate < 0.5 ? "LOW_VERIFICATION_RATE" : null),
     }),
     statusRow({
       id: "server_primary_active",

@@ -20,6 +20,8 @@ const PROVIDER = String(process.env.SERVER_SIGNAL_DRIFT_PLAN_PROVIDER || "BINANC
 const APPLY = String(process.env.APPLY || "0").trim() === "1";
 const PLAN_PATH = path.join(OPS_DAILY_DIR, "server_signal_drift_remediation_plan_latest.json");
 const RESULT_LATEST = path.join(OPS_DAILY_DIR, "server_signal_drift_remediation_apply_latest.json");
+const QUARANTINE_LATEST = path.join(OPS_DAILY_DIR, "best_self_evolution_server_market_quarantine_latest.json");
+const LEARNING_EPOCH_EXCEPTION_RELEASE_ENABLED = String(process.env.SERVER_SIGNAL_LEARNING_EPOCH_EXCEPTION_RELEASE_ENABLED || "1").trim() !== "0";
 
 function parseDateMs(value) {
   if (value == null || value === "") return null;
@@ -207,6 +209,64 @@ function normalizeUpperMapOfLists(raw = null) {
   return out;
 }
 
+function derivePatchState({
+  evCurrent = {},
+  evPatch = {},
+  cooldownCurrent = {},
+  cooldownPatch = {},
+  otherPolicyWatchCurrent = [],
+  otherPolicyWatchPatch = [],
+  otherPolicyWatchByReasonCurrent = {},
+  otherPolicyWatchByReasonPatch = {},
+  releaseExceptions = false,
+} = {}) {
+  const evNext = releaseExceptions ? {} : { ...evCurrent, ...evPatch };
+  const evReportOnlyNext = releaseExceptions ? { ...evPatch } : {};
+  const cooldownNext = releaseExceptions ? {} : { ...cooldownCurrent, ...cooldownPatch };
+  const otherPolicyWatchByReasonNext = releaseExceptions ? {} : { ...otherPolicyWatchByReasonCurrent };
+  if (!releaseExceptions) {
+    for (const [reason, markets] of Object.entries(otherPolicyWatchByReasonPatch)) {
+      otherPolicyWatchByReasonNext[reason] = Array.from(new Set([
+        ...(Array.isArray(otherPolicyWatchByReasonCurrent[reason]) ? otherPolicyWatchByReasonCurrent[reason] : []),
+        ...markets,
+      ]));
+    }
+  }
+  const otherPolicyWatchNext = releaseExceptions
+    ? []
+    : Array.from(new Set([
+      ...otherPolicyWatchCurrent,
+      ...otherPolicyWatchPatch,
+      ...Object.values(otherPolicyWatchByReasonNext).flat(),
+    ]));
+
+  return {
+    evNext,
+    evReportOnlyNext,
+    cooldownNext,
+    otherPolicyWatchNext,
+    otherPolicyWatchByReasonNext,
+    exception_release_applied: releaseExceptions === true,
+    ev_policy_patch_requested_n: Object.keys(evPatch).length,
+    ev_policy_patch_applied_n: Object.keys(evNext).length,
+    ev_policy_patch_applied: Object.keys(evNext).length > 0,
+    ev_policy_patch_report_only_applied_n: Object.keys(evReportOnlyNext).length,
+    ev_policy_patch_report_only_applied: Object.keys(evReportOnlyNext).length > 0,
+    cooldown_policy_patch_requested_n: Object.keys(cooldownPatch).length,
+    cooldown_policy_patch_applied_n: Object.keys(cooldownNext).length,
+    cooldown_policy_patch_applied: Object.keys(cooldownNext).length > 0,
+    other_server_policy_watch_only_requested_n: otherPolicyWatchPatch.length + Object.keys(otherPolicyWatchByReasonPatch).length,
+    other_server_policy_watch_only_applied_n: otherPolicyWatchNext.length,
+    other_server_policy_watch_only_applied: otherPolicyWatchNext.length > 0,
+  };
+}
+
+function readLearningEpochActive(doc = null) {
+  if (!doc || typeof doc !== "object") return false;
+  const summary = doc.summary && typeof doc.summary === "object" ? doc.summary : doc;
+  return summary.learning_epoch_active === true;
+}
+
 async function getRawProviderSettings(provider) {
   const db = getFirestore();
   const snap = await db.collection("settings").doc("system").get();
@@ -224,6 +284,7 @@ async function main() {
     return findLatestAppliedHistoryMeta();
   })();
   const planDoc = readJsonRawSafe(PLAN_PATH, null);
+  const quarantineDoc = readJsonRawSafe(QUARANTINE_LATEST, null);
   const planCycleId = String(
     (planDoc && (planDoc.cycle_id || planDoc.source_cycle_id))
     || (planDoc && planDoc.summary && (planDoc.summary.cycle_id || planDoc.summary.source_cycle_id))
@@ -246,6 +307,8 @@ async function main() {
     : {};
   const otherPolicyWatchPatch = normalizeUpperList(watchByFamily.OTHER_SERVER_POLICY);
   const otherPolicyWatchByReasonPatch = normalizeUpperMapOfLists(watchBySubreason.OTHER_SERVER_POLICY);
+  const learningEpochActive = readLearningEpochActive(quarantineDoc);
+  const releaseExceptions = LEARNING_EPOCH_EXCEPTION_RELEASE_ENABLED && learningEpochActive;
 
   const [sysRes, rawProvider] = await Promise.all([
     getSystemSettingsForProvider(PROVIDER, 0),
@@ -267,20 +330,36 @@ async function main() {
       || current.other_server_policy_watch_only_markets_by_reason
       || (current.watch_only_review_markets_by_subreason && current.watch_only_review_markets_by_subreason.OTHER_SERVER_POLICY)
   );
-  const evNext = { ...evCurrent, ...evPatch };
-  const cooldownNext = { ...cooldownCurrent, ...cooldownPatch };
-  const otherPolicyWatchByReasonNext = { ...otherPolicyWatchByReasonCurrent };
-  for (const [reason, markets] of Object.entries(otherPolicyWatchByReasonPatch)) {
-    otherPolicyWatchByReasonNext[reason] = Array.from(new Set([
-      ...(Array.isArray(otherPolicyWatchByReasonCurrent[reason]) ? otherPolicyWatchByReasonCurrent[reason] : []),
-      ...markets,
-    ]));
-  }
-  const otherPolicyWatchNext = Array.from(new Set([
-    ...otherPolicyWatchCurrent,
-    ...otherPolicyWatchPatch,
-    ...Object.values(otherPolicyWatchByReasonNext).flat(),
-  ]));
+  const patchState = derivePatchState({
+    evCurrent,
+    evPatch,
+    cooldownCurrent,
+    cooldownPatch,
+    otherPolicyWatchCurrent,
+    otherPolicyWatchPatch,
+    otherPolicyWatchByReasonCurrent,
+    otherPolicyWatchByReasonPatch,
+    releaseExceptions,
+  });
+  const {
+    evNext,
+    evReportOnlyNext,
+    cooldownNext,
+    otherPolicyWatchNext,
+    otherPolicyWatchByReasonNext,
+    exception_release_applied,
+    ev_policy_patch_requested_n,
+    ev_policy_patch_applied_n,
+    ev_policy_patch_applied,
+    ev_policy_patch_report_only_applied_n,
+    ev_policy_patch_report_only_applied,
+    cooldown_policy_patch_requested_n,
+    cooldown_policy_patch_applied_n,
+    cooldown_policy_patch_applied,
+    other_server_policy_watch_only_requested_n,
+    other_server_policy_watch_only_applied_n,
+    other_server_policy_watch_only_applied,
+  } = patchState;
 
   const result = {
     ok: true,
@@ -291,26 +370,46 @@ async function main() {
       plan_path: PLAN_PATH,
       plan_status: planDoc && planDoc.summary ? planDoc.summary.status : null,
       plan_cycle_id: planCycleId,
+      learning_epoch_active: learningEpochActive,
+      learning_epoch_exception_release: releaseExceptions,
     },
+    exception_release_applied,
+    ev_policy_patch_requested_n,
+    ev_policy_patch_applied_n,
+    ev_policy_patch_applied,
+    ev_policy_patch_report_only_applied_n,
+    ev_policy_patch_report_only_applied,
+    cooldown_policy_patch_requested_n,
+    cooldown_policy_patch_applied_n,
+    cooldown_policy_patch_applied,
+    other_server_policy_watch_only_requested_n,
+    other_server_policy_watch_only_applied_n,
+    other_server_policy_watch_only_applied,
     changes: {
       ev_gate_tp1_prob_min_by_market: {
         current_n: Object.keys(evCurrent).length,
         patch_n: Object.keys(evPatch).length,
         next_n: Object.keys(evNext).length,
-        patch: evPatch,
+        patch: releaseExceptions ? {} : evPatch,
+      },
+      ev_gate_tp1_prob_min_by_market_report_only: {
+        current_n: Object.keys(normalizeMap(rawProvider.ev_gate_tp1_prob_min_by_market_report_only || current.ev_gate_tp1_prob_min_by_market_report_only, { asInt: false })).length,
+        patch_n: Object.keys(evPatch).length,
+        next_n: Object.keys(evReportOnlyNext).length,
+        patch: releaseExceptions ? evPatch : {},
       },
       opposite_signal_cooldown_bars_by_market: {
         current_n: Object.keys(cooldownCurrent).length,
         patch_n: Object.keys(cooldownPatch).length,
         next_n: Object.keys(cooldownNext).length,
-        patch: cooldownPatch,
+        patch: releaseExceptions ? {} : cooldownPatch,
       },
       other_server_policy_watch_only_markets: {
         current_n: otherPolicyWatchCurrent.length,
         patch_n: otherPolicyWatchPatch.length,
         next_n: otherPolicyWatchNext.length,
         current: otherPolicyWatchCurrent,
-        patch: otherPolicyWatchPatch,
+        patch: releaseExceptions ? [] : otherPolicyWatchPatch,
         next: otherPolicyWatchNext,
       },
       other_server_policy_watch_only_markets_by_reason: {
@@ -318,7 +417,7 @@ async function main() {
         patch_n: Object.keys(otherPolicyWatchByReasonPatch).length,
         next_n: Object.keys(otherPolicyWatchByReasonNext).length,
         current: otherPolicyWatchByReasonCurrent,
-        patch: otherPolicyWatchByReasonPatch,
+        patch: releaseExceptions ? {} : otherPolicyWatchByReasonPatch,
         next: otherPolicyWatchByReasonNext,
       },
     },
@@ -349,7 +448,16 @@ async function main() {
     }
   }
 
-  if (APPLY && (Object.keys(evPatch).length > 0 || Object.keys(cooldownPatch).length > 0 || otherPolicyWatchPatch.length > 0 || Object.keys(otherPolicyWatchByReasonPatch).length > 0)) {
+  const hasPatchInput = Object.keys(evPatch).length > 0
+    || Object.keys(cooldownPatch).length > 0
+    || otherPolicyWatchPatch.length > 0
+    || Object.keys(otherPolicyWatchByReasonPatch).length > 0;
+  const hasCurrentException = Object.keys(evCurrent).length > 0
+    || Object.keys(cooldownCurrent).length > 0
+    || otherPolicyWatchCurrent.length > 0
+    || Object.keys(otherPolicyWatchByReasonCurrent).length > 0;
+
+  if (APPLY && (hasPatchInput || (releaseExceptions && hasCurrentException))) {
     const db = getFirestore();
     const ref = db.collection("settings").doc("system");
     const prefix = `providers.${PROVIDER}`;
@@ -364,6 +472,8 @@ async function main() {
         [`${prefix}.updated_at`]: updatedAt,
         [`${prefix}.updated_by`]: "apply-server-signal-drift-remediation-plan",
         [`${prefix}.ev_gate_tp1_prob_min_by_market`]: evNext,
+        [`${prefix}.ev_gate_tp1_prob_min_by_market_report_only`]: evReportOnlyNext,
+        [`${prefix}.ev_gate_tp1_prob_min_by_market_report_only_enabled`]: Object.keys(evReportOnlyNext).length > 0,
         [`${prefix}.opposite_signal_cooldown_bars_by_market`]: cooldownNext,
         [`${prefix}.other_server_policy_watch_only_markets`]: otherPolicyWatchNext,
         [`${prefix}.other_server_policy_watch_only_markets_by_reason`]: otherPolicyWatchByReasonNext,
@@ -381,21 +491,23 @@ async function main() {
     result.last_applied_at_ms = meta.nowMs;
     result.last_applied_source_cycle_id = planCycleId;
     result.last_applied_target_cycle_id = planCycleId;
-    result.last_applied_ev_patch_n = Object.keys(evPatch).length;
-    result.last_applied_cooldown_patch_n = Object.keys(cooldownPatch).length;
+    result.last_applied_ev_patch_n = releaseExceptions ? Object.keys(evCurrent).length : Object.keys(evPatch).length;
+    result.last_applied_cooldown_patch_n = releaseExceptions ? Object.keys(cooldownCurrent).length : Object.keys(cooldownPatch).length;
   }
 
   writeJson(RESULT_LATEST, result);
-  console.log(JSON.stringify({
-    ok: true,
-    apply: APPLY,
-    applied: result.applied,
-    result_path: RESULT_LATEST,
-    ev_patch_n: Object.keys(evPatch).length,
-    cooldown_patch_n: Object.keys(cooldownPatch).length,
-    other_server_policy_watch_only_patch_n: otherPolicyWatchPatch.length,
-    other_server_policy_watch_only_reason_patch_n: Object.keys(otherPolicyWatchByReasonPatch).length,
-  }));
+    console.log(JSON.stringify({
+      ok: true,
+      apply: APPLY,
+      applied: result.applied,
+      result_path: RESULT_LATEST,
+      learning_epoch_exception_release: releaseExceptions,
+      ev_patch_n: releaseExceptions ? Object.keys(evCurrent).length : Object.keys(evPatch).length,
+      ev_patch_report_only_n: Object.keys(evReportOnlyNext).length,
+      cooldown_patch_n: releaseExceptions ? Object.keys(cooldownCurrent).length : Object.keys(cooldownPatch).length,
+      other_server_policy_watch_only_patch_n: releaseExceptions ? otherPolicyWatchCurrent.length : otherPolicyWatchPatch.length,
+      other_server_policy_watch_only_reason_patch_n: releaseExceptions ? Object.keys(otherPolicyWatchByReasonCurrent).length : Object.keys(otherPolicyWatchByReasonPatch).length,
+    }));
 }
 
 if (require.main === module) {
@@ -404,3 +516,9 @@ if (require.main === module) {
     process.exit(1);
   });
 }
+
+module.exports = {
+  __test: {
+    derivePatchState,
+  },
+};

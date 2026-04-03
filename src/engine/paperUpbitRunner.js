@@ -3938,18 +3938,22 @@ function resolveEvGateConfig(sysCfg = {}, exchange = "", market = "") {
   const marketKey = String(market || "").trim().toUpperCase();
   const tp1ProbMinGlobal = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_min, 0.55), 0, 1);
   const tp1ProbMinByMarket = normalizeMarketProbMap(sysCfg.ev_gate_tp1_prob_min_by_market);
+  const tp1ProbMinByMarketReportOnly = normalizeMarketProbMap(sysCfg.ev_gate_tp1_prob_min_by_market_report_only);
+  const reportOnlyEnabled = normalizeBool(sysCfg.ev_gate_tp1_prob_min_by_market_report_only_enabled, false);
   const marketOverrideActive = marketKey && Number.isFinite(tp1ProbMinByMarket[marketKey]);
+  const marketReportOnlyOverrideActive = !marketOverrideActive && reportOnlyEnabled && marketKey && Number.isFinite(tp1ProbMinByMarketReportOnly[marketKey]);
   const tp1ProbMin = marketOverrideActive
     ? tp1ProbMinByMarket[marketKey]
-    : tp1ProbMinGlobal;
+    : (marketReportOnlyOverrideActive ? tp1ProbMinByMarketReportOnly[marketKey] : tp1ProbMinGlobal);
   const tierEarly = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_min_early, tp1ProbMin), 0, 1);
   const tierCore = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_min_core, tp1ProbMin), 0, 1);
   const tierPreReal = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_min_pre_real, tp1ProbMin), 0, 1);
   const tierReal = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_min_real, tp1ProbMin), 0, 1);
-  const tp1ProbMinEarly = marketOverrideActive ? Math.min(tierEarly, tp1ProbMin) : tierEarly;
-  const tp1ProbMinCore = marketOverrideActive ? Math.min(tierCore, tp1ProbMin) : tierCore;
-  const tp1ProbMinPreReal = marketOverrideActive ? Math.min(tierPreReal, tp1ProbMin) : tierPreReal;
-  const tp1ProbMinReal = marketOverrideActive ? Math.min(tierReal, tp1ProbMin) : tierReal;
+  const effectiveMarketOverrideActive = marketOverrideActive || marketReportOnlyOverrideActive;
+  const tp1ProbMinEarly = effectiveMarketOverrideActive ? Math.min(tierEarly, tp1ProbMin) : tierEarly;
+  const tp1ProbMinCore = effectiveMarketOverrideActive ? Math.min(tierCore, tp1ProbMin) : tierCore;
+  const tp1ProbMinPreReal = effectiveMarketOverrideActive ? Math.min(tierPreReal, tp1ProbMin) : tierPreReal;
+  const tp1ProbMinReal = effectiveMarketOverrideActive ? Math.min(tierReal, tp1ProbMin) : tierReal;
   const tp1ProbFull = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_full, Math.max(0.60, tp1ProbMin)), 0, 1);
   const tp1ProbKill = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_kill, 0.50), 0, 1);
   const qtyScaleMid = clamp(normalizeNumber(sysCfg.ev_gate_qty_scale_mid, 0.70), 0, 1);
@@ -3971,7 +3975,10 @@ function resolveEvGateConfig(sysCfg = {}, exchange = "", market = "") {
     tp1ProbMin: Number.isFinite(tp1ProbMin) ? tp1ProbMin : 0.55,
     tp1ProbMinGlobal: Number.isFinite(tp1ProbMinGlobal) ? tp1ProbMinGlobal : 0.55,
     tp1ProbMinMarketOverride: marketOverrideActive ? tp1ProbMinByMarket[marketKey] : null,
+    tp1ProbMinMarketReportOnlyOverride: marketReportOnlyOverrideActive ? tp1ProbMinByMarketReportOnly[marketKey] : null,
     tp1ProbMinByMarket,
+    tp1ProbMinByMarketReportOnly,
+    tp1ProbMinReportOnlyEnabled: reportOnlyEnabled,
     tp1ProbMinEarly: Number.isFinite(tp1ProbMinEarly) ? tp1ProbMinEarly : (Number.isFinite(tp1ProbMin) ? tp1ProbMin : 0.55),
     tp1ProbMinCore: Number.isFinite(tp1ProbMinCore) ? tp1ProbMinCore : (Number.isFinite(tp1ProbMin) ? tp1ProbMin : 0.55),
     tp1ProbMinPreReal: Number.isFinite(tp1ProbMinCore) ? tp1ProbMinCore : (Number.isFinite(tp1ProbMin) ? tp1ProbMin : 0.55),

@@ -23,3 +23,27 @@ const { buildAutonomyParity } = require("../../src/utils/openclawAutonomyParity"
 
   console.log("OPENCLAW_AUTONOMY_PARITY_TEST_OK");
 })();
+
+(() => {
+  const report = buildAutonomyParity({
+    autonomyContract: { summary: { authority_state: "PENDING" } },
+    objectiveSupervisor: { verdict: "HOLD", root_cause: "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK" },
+    quality: { summary: { final_downstream_mismatch_n: 12 } },
+    cutover: { summary: { readiness_status: "SERVER_PRIMARY_ACTIVE" } },
+    policyPlan: { summary: { current_objective_score: -2.5 } },
+    reasoningJournal: {
+      summary: {
+        entry_n: 12,
+        contradiction_n: 0,
+        verified_n: 0,
+        not_met_n: 0,
+        deferred_n: 11,
+        verification_rate: null,
+      },
+    },
+  });
+
+  const row = report.requirements.find((item) => item.id === "reasoning_verification_quality");
+  assert.strictEqual(row.status, "PARTIAL");
+  assert.strictEqual(row.blocker, "DEFERRED_BY_LEARNING_EPOCH");
+})();

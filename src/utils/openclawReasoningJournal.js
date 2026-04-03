@@ -89,6 +89,9 @@ function derivePendingVerification({ cutover = null, quality = null, autonomyCon
   const autonomySummary = readSummary(autonomyContract);
   const dominantFamily = toUpper(cutoverSummary.dominant_mismatch_family);
   const authorityState = toUpper(autonomySummary.authority_state);
+  const evPolicyPatchApplied = cutoverSummary.ev_policy_effective_patch_applied === true
+    || cutoverSummary.ev_policy_patch_applied === true
+    || cutoverSummary.ev_policy_patch_report_only_applied === true;
   const finalMismatchN = toNum(
     qualitySummary.final_downstream_mismatch_n != null
       ? qualitySummary.final_downstream_mismatch_n
@@ -96,6 +99,15 @@ function derivePendingVerification({ cutover = null, quality = null, autonomyCon
   );
 
   if (dominantFamily === "EV_POLICY") {
+    if (evPolicyPatchApplied !== true) {
+      return {
+        metric: "ev_policy_effective_patch_applied",
+        expected: "= TRUE",
+        deadline_hint: "NEXT_CYCLE",
+        baseline_value: evPolicyPatchApplied ? "TRUE" : "FALSE",
+        qualitative_goal: "materialize EV remediation patch before post-apply verification",
+      };
+    }
     return {
       metric: "ev_policy_post_apply_comparable_n",
       expected: `>= ${toNum(cutoverSummary.ev_policy_remediation_min_post_samples) || 3}`,
@@ -215,6 +227,13 @@ function collectCurrentVerificationState({ quality = null, cutover = null, auton
   const autonomySummary = readSummary(autonomyContract);
   return {
     ev_policy_post_apply_comparable_n: toNum(cutoverSummary.ev_policy_post_apply_comparable_n),
+    ev_policy_effective_patch_applied: (cutoverSummary.ev_policy_effective_patch_applied === true
+      || cutoverSummary.ev_policy_patch_applied === true
+      || cutoverSummary.ev_policy_patch_report_only_applied === true)
+      ? "TRUE"
+      : "FALSE",
+    learning_epoch_exception_release_applied: cutoverSummary.learning_epoch_exception_release_applied === true ? "TRUE" : "FALSE",
+    ev_policy_patch_report_only_applied: cutoverSummary.ev_policy_patch_report_only_applied === true ? "TRUE" : "FALSE",
     other_server_policy_mismatch_n: toNum(
       qualitySummary.other_server_policy_mismatch_n != null
         ? qualitySummary.other_server_policy_mismatch_n
@@ -275,9 +294,42 @@ function evaluateExpected(expected, actualValue, baselineValue = null) {
   return { status: "UNKNOWN", reason: "expected not machine-readable" };
 }
 
+function shouldDeferByPolicy(entry, currentState = {}) {
+  const pv = entry && entry.pending_verification;
+  if (!pv || !pv.metric) return false;
+  const learningEpochRelease = currentState.learning_epoch_exception_release_applied === "TRUE";
+  const evReportOnly = currentState.ev_policy_patch_report_only_applied === "TRUE";
+  if (!learningEpochRelease || !evReportOnly) return false;
+  if (pv.metric === "ev_policy_post_apply_comparable_n") return true;
+  if (pv.metric === "final_downstream_mismatch_n") return true;
+  if (pv.fast_track && pv.fast_track.metric === "final_downstream_mismatch_n") return true;
+  return false;
+}
+
 function resolveVerificationOutcome(entry, currentState = {}) {
   const pv = entry && entry.pending_verification;
   if (!pv || !pv.metric) return null;
+  if (shouldDeferByPolicy(entry, currentState)) {
+    return {
+      status: "DEFERRED_LEARNING_EPOCH",
+      metric: pv.metric,
+      expected: pv.expected || null,
+      actual: currentState[pv.metric],
+      baseline_value: pv.baseline_value != null ? pv.baseline_value : null,
+      reason: "DEFERRED_BY_LEARNING_EPOCH",
+      fast_track: pv.fast_track && pv.fast_track.metric
+        ? {
+          metric: pv.fast_track.metric,
+          expected: pv.fast_track.expected || null,
+          actual: currentState[pv.fast_track.metric],
+          baseline_value: pv.fast_track.baseline_value != null ? pv.fast_track.baseline_value : null,
+          status: "DEFERRED_LEARNING_EPOCH",
+          reason: "DEFERRED_BY_LEARNING_EPOCH",
+        }
+        : null,
+      cycle_id: entry && entry.cycle_id || null,
+    };
+  }
   const currentValue = currentState[pv.metric];
   const evaluation = currentValue == null
     ? { status: "UNKNOWN", reason: "metric not available" }
@@ -342,12 +394,14 @@ function buildVerificationStats(entries = []) {
   const fast_track_verified_n = resolved.filter((status) => status === "VERIFIED_FAST_TRACK").length;
   const not_met_n = resolved.filter((status) => status === "NOT_MET").length;
   const unknown_n = resolved.filter((status) => status === "UNKNOWN").length;
+  const deferred_n = resolved.filter((status) => status === "DEFERRED_LEARNING_EPOCH").length;
   const denominator = verified_n + not_met_n;
   return {
     verified_n,
     fast_track_verified_n,
     not_met_n,
     unknown_n,
+    deferred_n,
     verification_rate: denominator > 0 ? Number((verified_n / denominator).toFixed(4)) : null,
   };
 }
@@ -426,6 +480,7 @@ function buildReasoningJournal({
       fast_track_verified_n: verificationStats.fast_track_verified_n,
       not_met_n: verificationStats.not_met_n,
       unknown_n: verificationStats.unknown_n,
+      deferred_n: verificationStats.deferred_n,
       verification_rate: verificationStats.verification_rate,
     },
     compacted_context,
@@ -446,6 +501,7 @@ module.exports = {
     deriveRecommendedAction,
     derivePendingVerification,
     describeVerificationTarget,
+    shouldDeferByPolicy,
     resolveVerificationOutcome,
     resolvePreviousEntries,
     buildVerificationStats,

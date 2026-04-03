@@ -1,0 +1,56 @@
+"use strict";
+
+const assert = require("assert");
+const { __test } = require("../../scripts/apply-server-signal-drift-remediation-plan");
+
+(() => {
+  const out = __test.derivePatchState({
+    evCurrent: { SOLUSDT: 0.515 },
+    evPatch: { SOLUSDT: 0.501, ETHUSDT: 0.501 },
+    cooldownCurrent: { XRPUSDT: 3 },
+    cooldownPatch: { XRPUSDT: 2 },
+    otherPolicyWatchCurrent: [],
+    otherPolicyWatchPatch: ["ETHUSDT"],
+    otherPolicyWatchByReasonCurrent: {},
+    otherPolicyWatchByReasonPatch: { LIVE_RESCUE_ADD_LOSS_WINDOW_BLOCKED: ["ETHUSDT"] },
+    releaseExceptions: true,
+  });
+
+  assert.deepStrictEqual(out.evNext, {});
+  assert.deepStrictEqual(out.evReportOnlyNext, { SOLUSDT: 0.501, ETHUSDT: 0.501 });
+  assert.deepStrictEqual(out.cooldownNext, {});
+  assert.deepStrictEqual(out.otherPolicyWatchNext, []);
+  assert.strictEqual(out.exception_release_applied, true);
+  assert.strictEqual(out.ev_policy_patch_requested_n, 2);
+  assert.strictEqual(out.ev_policy_patch_applied_n, 0);
+  assert.strictEqual(out.ev_policy_patch_applied, false);
+  assert.strictEqual(out.ev_policy_patch_report_only_applied_n, 2);
+  assert.strictEqual(out.ev_policy_patch_report_only_applied, true);
+})();
+
+(() => {
+  const out = __test.derivePatchState({
+    evCurrent: { SOLUSDT: 0.515 },
+    evPatch: { SOLUSDT: 0.501, ETHUSDT: 0.501 },
+    cooldownCurrent: { XRPUSDT: 3 },
+    cooldownPatch: { XRPUSDT: 2 },
+    otherPolicyWatchCurrent: [],
+    otherPolicyWatchPatch: ["ETHUSDT"],
+    otherPolicyWatchByReasonCurrent: {},
+    otherPolicyWatchByReasonPatch: { LIVE_RESCUE_ADD_LOSS_WINDOW_BLOCKED: ["ETHUSDT"] },
+    releaseExceptions: false,
+  });
+
+  assert.deepStrictEqual(out.evNext, { SOLUSDT: 0.501, ETHUSDT: 0.501 });
+  assert.deepStrictEqual(out.evReportOnlyNext, {});
+  assert.deepStrictEqual(out.cooldownNext, { XRPUSDT: 2 });
+  assert.deepStrictEqual(out.otherPolicyWatchNext, ["ETHUSDT"]);
+  assert.strictEqual(out.exception_release_applied, false);
+  assert.strictEqual(out.ev_policy_patch_requested_n, 2);
+  assert.strictEqual(out.ev_policy_patch_applied_n, 2);
+  assert.strictEqual(out.ev_policy_patch_applied, true);
+  assert.strictEqual(out.ev_policy_patch_report_only_applied_n, 0);
+  assert.strictEqual(out.ev_policy_patch_report_only_applied, false);
+})();
+
+console.log("APPLY_SERVER_SIGNAL_DRIFT_REMEDIATION_PLAN_TEST_OK");

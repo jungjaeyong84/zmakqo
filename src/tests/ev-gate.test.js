@@ -95,6 +95,26 @@ async function run() {
   assert.strictEqual(marketCfg.tp1ProbMinEarly, 0.50);
   assert.strictEqual(marketCfg.tp1ProbMinCore, 0.50);
 
+  const reportOnlyMarketCfg = __test.resolveEvGateConfig({
+    ev_gate_enabled: true,
+    ev_gate_tp1_prob_min: 0.55,
+    ev_gate_tp1_prob_min_early: 0.60,
+    ev_gate_tp1_prob_min_core: 0.57,
+    ev_gate_tp1_prob_min_by_market_report_only_enabled: true,
+    ev_gate_tp1_prob_min_by_market_report_only: {
+      SOLUSDT: 0.501,
+    },
+    ev_gate_tp1_prob_full: 0.60,
+    ev_gate_tp1_prob_kill: 0.50,
+  }, "BINANCEFUT", "SOLUSDT");
+  assert.strictEqual(reportOnlyMarketCfg.tp1ProbMinGlobal, 0.55);
+  assert.strictEqual(reportOnlyMarketCfg.tp1ProbMinMarketOverride, null);
+  assert.strictEqual(reportOnlyMarketCfg.tp1ProbMinMarketReportOnlyOverride, 0.501);
+  assert.strictEqual(reportOnlyMarketCfg.tp1ProbMinReportOnlyEnabled, true);
+  assert.strictEqual(reportOnlyMarketCfg.tp1ProbMin, 0.501);
+  assert.strictEqual(reportOnlyMarketCfg.tp1ProbMinEarly, 0.501);
+  assert.strictEqual(reportOnlyMarketCfg.tp1ProbMinCore, 0.501);
+
   const rescuedDecision = __test.resolveEvGateDecision({
     cfg,
     tp1ProbMin: 0.55,

@@ -269,4 +269,44 @@ function buildBaseInputs({ nowMs, parityGeneratedMs }) {
   assert.ok(out.summary.promotion_block_reasons.includes("SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT"));
 })();
 
+(() => {
+  const nowMs = Date.now();
+  const inputs = buildBaseInputs({ nowMs, parityGeneratedMs: nowMs - 1000 });
+  inputs.authority.summary.source_mode = "SERVER_PRIMARY";
+  inputs.runtime.summary.canonical_engine_source_mode = "SERVER_PRIMARY";
+  inputs.parity.rows = [
+    {
+      observation_ms: nowMs - 500,
+      parity_match: false,
+      actual_drop_reason_family: "EV_POLICY",
+      actual_drop_reason: "DROP_EV_GATE_TP1_PROB",
+    },
+  ];
+  inputs.parity.summary.final_downstream_mismatch_n = 1;
+  inputs.parity.summary.by_actual_drop_reason_family = [
+    { key: "EV_POLICY", count: 1 },
+  ];
+  inputs.driftRemediationApply = {
+    applied: true,
+    generated_at_kst: toKstStringFromMs(nowMs - 1000),
+    exception_release_applied: true,
+    ev_policy_patch_applied: false,
+    ev_policy_patch_report_only_applied: true,
+    ev_policy_patch_requested_n: 2,
+    ev_policy_patch_applied_n: 0,
+    ev_policy_patch_report_only_applied_n: 2,
+  };
+  const out = deriveServerSignalCutoverReadiness(inputs);
+  assert.strictEqual(out.current_status.ev_policy_remediation_applied, true);
+  assert.strictEqual(out.current_status.learning_epoch_exception_release_applied, true);
+  assert.strictEqual(out.current_status.ev_policy_patch_applied, false);
+  assert.strictEqual(out.current_status.ev_policy_patch_report_only_applied, true);
+  assert.strictEqual(out.current_status.ev_policy_effective_patch_applied, true);
+  assert.strictEqual(out.current_status.ev_policy_patch_requested_n, 2);
+  assert.strictEqual(out.current_status.ev_policy_patch_applied_n, 0);
+  assert.strictEqual(out.current_status.ev_policy_patch_report_only_applied_n, 2);
+  assert.strictEqual(out.current_status.ev_policy_post_apply_tracking_active, true);
+  assert.strictEqual(out.current_status.ev_policy_post_apply_comparable_n, 1);
+})();
+
 console.log("SERVER_SIGNAL_CUTOVER_READINESS_TEST_OK");

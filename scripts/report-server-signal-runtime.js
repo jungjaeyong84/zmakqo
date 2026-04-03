@@ -14,11 +14,32 @@ const {
 const { getSystemSettingsForProvider } = require("../src/storage/settings");
 const { getExchangeSettingsForProvider } = require("../src/utils/exchangeSettings");
 const { deriveServerSignalRuntime } = require("../src/utils/serverSignalRuntime");
+const { getLiveExecutionPolicyRuntimeConfig } = require("../src/utils/liveExecutionPolicy");
 
 loadLocalEnv();
 
 const PROVIDER = String(process.env.SERVER_SIGNAL_RUNTIME_PROVIDER || "BINANCEFUT").trim().toUpperCase() || "BINANCEFUT";
 const WATCHDOG_PATH = path.join(OPS_DAILY_DIR, "automation_watchdog_latest.json");
+const OBJECTIVE_SUPERVISOR_PATH = path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json");
+const PARITY_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_parity_latest.json");
+
+function readCycleId(doc = null) {
+  if (!doc || typeof doc !== "object") return null;
+  const candidates = [
+    doc.cycle_id,
+    doc.source_cycle_id,
+    doc.generation_id,
+    doc.raw && doc.raw.cycle_id,
+    doc.raw && doc.raw.source_cycle_id,
+    doc.raw && doc.raw.generation_id,
+    doc.summary && doc.summary.cycle_id,
+  ];
+  for (const value of candidates) {
+    const s = String(value || "").trim();
+    if (s) return s;
+  }
+  return null;
+}
 
 function renderMarkdown(report = {}) {
   const summary = report.summary || {};
@@ -33,6 +54,10 @@ function renderMarkdown(report = {}) {
     `- exec_tf: ${summary.exec_tf || "N/A"}`,
     `- market_count: ${summary.market_count != null ? summary.market_count : "N/A"}`,
     `- scheduler: ${summary.scheduler_status || "N/A"} / watchdog=${summary.watchdog_verdict || "N/A"}`,
+    `- cycle_id: ${summary.cycle_id || "N/A"}`,
+    `- watchdog_generated_at_kst: ${summary.watchdog_generated_at_kst || "N/A"}`,
+    `- live_exec_policy: mode=${summary.live_execution_policy_mode || "N/A"} / enabled=${summary.live_execution_policy_enabled ? "YES" : "NO"} / plan_apply=${summary.live_execution_policy_policy_plan_apply ? "YES" : "NO"} / quarantine_hard_block=${summary.live_execution_policy_quarantine_hard_block ? "YES" : "NO"} / quality_hard_block=${summary.live_execution_policy_quality_hard_block ? "YES" : "NO"}`,
+    `- ev_report_only_patch: enabled=${summary.ev_gate_tp1_prob_min_by_market_report_only_enabled ? "YES" : "NO"} / report_only_n=${summary.ev_gate_tp1_prob_min_by_market_report_only_n ?? "N/A"} / direct_n=${summary.ev_gate_tp1_prob_min_by_market_n ?? "N/A"}`,
     `- pine_shadow_transition: ${summary.pine_shadow_transition_status || "N/A"} / ${summary.pine_shadow_transition_progress_pct != null ? `${summary.pine_shadow_transition_progress_pct}%` : "N/A"}`,
     "",
     "## Current Status",
@@ -40,6 +65,8 @@ function renderMarkdown(report = {}) {
     `- canonical_engine_shadow_enabled: ${status.canonical_engine_shadow_enabled ? "YES" : "NO"}`,
     `- execution_shadow_policy: ${status.execution_shadow_policy || "N/A"}`,
     `- pine_ingress_shadow_only: ${status.pine_ingress_shadow_only ? "YES" : "NO"}`,
+    `- live_execution_policy.profile: ${status.live_execution_policy && status.live_execution_policy.policy_profile ? status.live_execution_policy.policy_profile : "N/A"}`,
+    `- live_execution_policy.flags: ${status.live_execution_policy ? `enabled=${status.live_execution_policy.enabled ? "YES" : "NO"}, plan_enabled=${status.live_execution_policy.policy_plan_enabled ? "YES" : "NO"}, plan_apply=${status.live_execution_policy.policy_plan_apply ? "YES" : "NO"}, watch_only_block=${status.live_execution_policy.policy_plan_watch_only_block ? "YES" : "NO"}, hold_block=${status.live_execution_policy.policy_plan_hold_block ? "YES" : "NO"}, mode=${status.live_execution_policy.effective_mode || "N/A"}` : "N/A"}`,
     `- tf_allowlist: ${Array.isArray(status.tf_allowlist) && status.tf_allowlist.length ? status.tf_allowlist.join(", ") : "N/A"}`,
     `- markets_preview: ${Array.isArray(status.markets_preview) && status.markets_preview.length ? status.markets_preview.join(", ") : "N/A"}`,
   ];
@@ -52,11 +79,16 @@ async function main() {
     getSystemSettingsForProvider(PROVIDER, 0),
     getExchangeSettingsForProvider(PROVIDER, 0),
   ]);
+  const objectiveSupervisor = readJsonRawSafe(OBJECTIVE_SUPERVISOR_PATH, null);
+  const parity = readJsonRawSafe(PARITY_PATH, null);
+  const cycleId = readCycleId(parity) || readCycleId(objectiveSupervisor);
   const report = deriveServerSignalRuntime({
     provider: PROVIDER,
     systemSettings: systemRes && systemRes.data ? systemRes.data : {},
     exchangeSettings: exchangeSettings || {},
     watchdog: readJsonRawSafe(WATCHDOG_PATH, null),
+    livePolicyConfig: getLiveExecutionPolicyRuntimeConfig(),
+    cycleId,
   });
   const payload = {
     ok: true,
@@ -64,6 +96,8 @@ async function main() {
     inputs: {
       provider: PROVIDER,
       watchdog: WATCHDOG_PATH,
+      objective_supervisor: OBJECTIVE_SUPERVISOR_PATH,
+      parity: PARITY_PATH,
     },
     ...report,
   };

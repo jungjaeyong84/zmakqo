@@ -47,6 +47,7 @@ function renderMarkdown(report = {}) {
     `- fast_track_verified_n: ${summary.fast_track_verified_n ?? 0}`,
     `- not_met_n: ${summary.not_met_n ?? 0}`,
     `- unknown_n: ${summary.unknown_n ?? 0}`,
+    `- deferred_n: ${summary.deferred_n ?? 0}`,
     `- verification_rate: ${summary.verification_rate != null ? summary.verification_rate : "N/A"}`,
     `- objective_verdict: ${summary.current_objective_verdict || "N/A"}`,
     `- authority_state: ${summary.current_authority_state || "N/A"}`,

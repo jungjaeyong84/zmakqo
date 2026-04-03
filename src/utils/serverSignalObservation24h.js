@@ -57,12 +57,21 @@ function deriveServerSignalObservation24h({
   const cutoverSummary = firstObject(cutover && cutover.summary);
   const planSummary = firstObject(policyPlan && policyPlan.summary);
   const remediationEffective = firstObject(remediationApply && remediationApply.effective);
+  const remediationInputs = firstObject(remediationApply && remediationApply.inputs);
   const qualityRows = firstObject(quality && quality.rows);
+  const learningEpochExceptionRelease = remediationInputs.learning_epoch_exception_release === true;
+  const evPolicyPatchRequestedN = toNum(remediationApply && remediationApply.ev_policy_patch_requested_n) || 0;
+  const evPolicyPatchApplied = remediationApply && remediationApply.ev_policy_patch_applied === true;
+  const evPolicyPatchReportOnlyApplied = remediationApply && remediationApply.ev_policy_patch_report_only_applied === true;
 
-  const watchOnlyMarkets = dedupeStrings([
-    ...firstArray(remediationEffective.other_server_policy_watch_only_markets),
-    ...firstArray(planSummary.top_other_server_policy_watch_only_markets),
-  ]);
+  const watchOnlyMarkets = learningEpochExceptionRelease
+    ? dedupeStrings([
+      ...firstArray(remediationEffective.other_server_policy_watch_only_markets),
+    ])
+    : dedupeStrings([
+      ...firstArray(remediationEffective.other_server_policy_watch_only_markets),
+      ...firstArray(planSummary.top_other_server_policy_watch_only_markets),
+    ]);
   const familyActions = firstArray(qualityRows.final_downstream_family_actions);
   const otherServerPolicyReasonActions = firstArray(qualityRows.other_server_policy_reason_actions);
   const topFamilyAction = familyActions.length > 0 ? familyActions[0] : null;
@@ -92,6 +101,10 @@ function deriveServerSignalObservation24h({
     cutover_blocker_n: toNum(cutoverSummary.blocker_n) || 0,
     drift_remediation_applied: remediationApply && remediationApply.applied === true,
     drift_remediation_last_applied_at_kst: remediationApply && remediationApply.last_applied_at_kst || null,
+    learning_epoch_exception_release: learningEpochExceptionRelease,
+    ev_policy_patch_requested_n: evPolicyPatchRequestedN,
+    ev_policy_patch_applied: evPolicyPatchApplied,
+    ev_policy_patch_report_only_applied: evPolicyPatchReportOnlyApplied,
     execution_quality_status: planSummary.execution_quality_status || null,
     policy_plan_status: planSummary.status || null,
     policy_plan_mode: planSummary.mode || null,
@@ -122,7 +135,12 @@ function deriveServerSignalObservation24h({
       `Review ${summary.top_final_downstream_family_action.family} mismatch family first (${summary.top_final_downstream_family_action.recommended_action}).`
     );
   }
-  if (summary.other_server_policy_watch_only_market_n > 0) {
+  if (summary.learning_epoch_exception_release) {
+    nextActions.push("Historical market exceptions are released during the current learning epoch; collect fresh server-native data before reapplying market-level blocks.");
+    if (summary.ev_policy_patch_report_only_applied) {
+      nextActions.push("EV market rescue is active in REPORT_ONLY mode during the learning epoch; judge parity delta against fresh market-scoped samples.");
+    }
+  } else if (summary.other_server_policy_watch_only_market_n > 0) {
     nextActions.push(`Keep WATCH_ONLY review on ${watchOnlyMarkets.join("|")} until mismatch family clears.`);
   }
   if (summary.top_other_server_policy_reason_action && summary.top_other_server_policy_reason_action.recommended_action) {

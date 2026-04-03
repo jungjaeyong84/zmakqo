@@ -288,6 +288,43 @@ function deriveServerSignalCutoverReadiness({
     )
     : false;
   const remediationApplied = remediationAppliedNow || Number.isFinite(remediationLastAppliedAtMs);
+  const remediationExceptionReleaseApplied = toBool(
+    (driftRemediationApply && driftRemediationApply.exception_release_applied)
+      ?? remediationApplySummary.exception_release_applied,
+    false
+  );
+  const remediationEvPatchApplied = toBool(
+    (driftRemediationApply && driftRemediationApply.ev_policy_patch_applied)
+      ?? remediationApplySummary.ev_policy_patch_applied,
+    false
+  );
+  const remediationEvPatchReportOnlyApplied = toBool(
+    (driftRemediationApply && driftRemediationApply.ev_policy_patch_report_only_applied)
+      ?? remediationApplySummary.ev_policy_patch_report_only_applied,
+    false
+  );
+  const remediationEvPatchAppliedN = Math.max(
+    0,
+    toNum(
+      (driftRemediationApply && driftRemediationApply.ev_policy_patch_applied_n)
+      ?? remediationApplySummary.ev_policy_patch_applied_n
+    ) || 0
+  );
+  const remediationEvPatchRequestedN = Math.max(
+    0,
+    toNum(
+      (driftRemediationApply && driftRemediationApply.ev_policy_patch_requested_n)
+      ?? remediationApplySummary.ev_policy_patch_requested_n
+    ) || 0
+  );
+  const remediationEvPatchReportOnlyAppliedN = Math.max(
+    0,
+    toNum(
+      (driftRemediationApply && driftRemediationApply.ev_policy_patch_report_only_applied_n)
+      ?? remediationApplySummary.ev_policy_patch_report_only_applied_n
+    ) || 0
+  );
+  const remediationEvPatchEffectiveApplied = remediationEvPatchApplied || remediationEvPatchReportOnlyApplied;
   const remediationAppliedAtMs = remediationApplied
     ? (
       remediationAppliedNow
@@ -314,7 +351,8 @@ function deriveServerSignalCutoverReadiness({
   const remediationWindowActive = remediationApplied
     && Number.isFinite(remediationAppliedAtMs)
     && (nowMs - remediationAppliedAtMs) <= remediationGraceWindowMs;
-  const postApplyComparableRows = Number.isFinite(remediationAppliedAtMs)
+  const postApplyComparableTrackingActive = remediationEvPatchEffectiveApplied && Number.isFinite(remediationAppliedAtMs);
+  const postApplyComparableRows = postApplyComparableTrackingActive
     ? parityRows.filter((row) => {
       const ms = toNum(row && row.observation_ms);
       if (!Number.isFinite(ms)) return false;
@@ -472,8 +510,16 @@ function deriveServerSignalCutoverReadiness({
       ev_policy_drift_blocked_effective: evPolicyDriftBlockedEffective,
       ev_policy_grace_active: evPolicyGraceActive,
       ev_policy_remediation_applied: remediationApplied,
+      ev_policy_patch_applied: remediationEvPatchApplied,
+      ev_policy_patch_applied_n: remediationEvPatchAppliedN,
+      ev_policy_patch_requested_n: remediationEvPatchRequestedN,
+      ev_policy_patch_report_only_applied: remediationEvPatchReportOnlyApplied,
+      ev_policy_patch_report_only_applied_n: remediationEvPatchReportOnlyAppliedN,
+      ev_policy_effective_patch_applied: remediationEvPatchEffectiveApplied,
+      learning_epoch_exception_release_applied: remediationExceptionReleaseApplied,
       ev_policy_remediation_applied_at_kst: Number.isFinite(remediationAppliedAtMs) ? toKstString(remediationAppliedAtMs) : null,
       ev_policy_remediation_min_post_samples: remediationMinPostSamples,
+      ev_policy_post_apply_tracking_active: postApplyComparableTrackingActive,
       ev_policy_post_apply_comparable_n: postApplyComparableN,
       ev_policy_post_apply_mismatch_n: postApplyEvPolicyMismatchN,
       cooldown_policy_mismatch_n: cooldownPolicyMismatchN,
@@ -549,8 +595,16 @@ function deriveServerSignalCutoverReadiness({
       ev_policy_drift_blocked_effective: evPolicyDriftBlockedEffective,
       ev_policy_grace_active: evPolicyGraceActive,
       ev_policy_remediation_applied: remediationApplied,
+      ev_policy_patch_applied: remediationEvPatchApplied,
+      ev_policy_patch_applied_n: remediationEvPatchAppliedN,
+      ev_policy_patch_requested_n: remediationEvPatchRequestedN,
+      ev_policy_patch_report_only_applied: remediationEvPatchReportOnlyApplied,
+      ev_policy_patch_report_only_applied_n: remediationEvPatchReportOnlyAppliedN,
+      ev_policy_effective_patch_applied: remediationEvPatchEffectiveApplied,
+      learning_epoch_exception_release_applied: remediationExceptionReleaseApplied,
       ev_policy_remediation_applied_at_kst: Number.isFinite(remediationAppliedAtMs) ? toKstString(remediationAppliedAtMs) : null,
       ev_policy_remediation_min_post_samples: remediationMinPostSamples,
+      ev_policy_post_apply_tracking_active: postApplyComparableTrackingActive,
       ev_policy_post_apply_comparable_n: postApplyComparableN,
       ev_policy_post_apply_mismatch_n: postApplyEvPolicyMismatchN,
       cooldown_policy_block_min: cooldownPolicyBlockMin,

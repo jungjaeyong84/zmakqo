@@ -30,6 +30,7 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         readiness_status: "SERVER_PRIMARY_ACTIVE",
         dominant_mismatch_family: "EV_POLICY",
         recommended_action: "HOLD_EV_POLICY_REVIEW",
+        ev_policy_effective_patch_applied: true,
         ev_policy_remediation_min_post_samples: 3,
         ev_policy_post_apply_comparable_n: 4,
       },
@@ -73,6 +74,7 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.fast_track_verified_n, 0);
   assert.strictEqual(journal.summary.not_met_n, 1);
   assert.strictEqual(journal.summary.unknown_n, 1);
+  assert.strictEqual(journal.summary.deferred_n, 0);
   assert.strictEqual(journal.summary.verification_rate, 0.5);
   assert.ok(journal.compacted_context.includes("cycle-1"));
   assert.strictEqual(journal.entries.find((row) => row.cycle_id === "cycle-0").verification_outcome.status, "VERIFIED");
@@ -89,9 +91,16 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
 
   assert.strictEqual(
     __test.derivePendingVerification({
-      cutover: { summary: { dominant_mismatch_family: "EV_POLICY", ev_policy_remediation_min_post_samples: 4 } },
+      cutover: { summary: { dominant_mismatch_family: "EV_POLICY", ev_policy_patch_applied: true, ev_policy_remediation_min_post_samples: 4 } },
     }).metric,
     "ev_policy_post_apply_comparable_n"
+  );
+
+  assert.strictEqual(
+    __test.derivePendingVerification({
+      cutover: { summary: { dominant_mismatch_family: "EV_POLICY", ev_policy_patch_applied: false, ev_policy_remediation_min_post_samples: 4 } },
+    }).metric,
+    "ev_policy_effective_patch_applied"
   );
 
   assert.strictEqual(
@@ -145,14 +154,41 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
     ).status,
     "VERIFIED_FAST_TRACK"
   );
+  assert.strictEqual(
+    __test.resolveVerificationOutcome(
+      {
+        cycle_id: "cycle-deferred",
+        pending_verification: {
+          metric: "ev_policy_post_apply_comparable_n",
+          expected: ">= 3",
+          baseline_value: 0,
+          fast_track: {
+            metric: "final_downstream_mismatch_n",
+            expected: "< baseline",
+            baseline_value: 17,
+          },
+        },
+      },
+      {
+        ev_policy_post_apply_comparable_n: 0,
+        final_downstream_mismatch_n: 17,
+        learning_epoch_exception_release_applied: "TRUE",
+        ev_policy_patch_report_only_applied: "TRUE",
+      }
+    ).status,
+    "DEFERRED_LEARNING_EPOCH"
+  );
   assert.deepStrictEqual(
     __test.collectCurrentVerificationState({
-      cutover: { summary: { ev_policy_post_apply_comparable_n: 5, final_downstream_mismatch_n: 8 } },
+      cutover: { summary: { ev_policy_post_apply_comparable_n: 5, ev_policy_patch_report_only_applied: true, learning_epoch_exception_release_applied: true, final_downstream_mismatch_n: 8 } },
       quality: { summary: { other_server_policy_mismatch_n: 2, final_downstream_mismatch_n: 7 } },
       autonomyContract: { summary: { authority_state: "PENDING" } },
     }),
     {
       ev_policy_post_apply_comparable_n: 5,
+      ev_policy_effective_patch_applied: "TRUE",
+      learning_epoch_exception_release_applied: "TRUE",
+      ev_policy_patch_report_only_applied: "TRUE",
       other_server_policy_mismatch_n: 2,
       final_downstream_mismatch_n: 7,
       authority_state: "PENDING",
