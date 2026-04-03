@@ -63,6 +63,37 @@ function candidateChangeKeys(candidate = {}) {
     .filter(Boolean);
 }
 
+function effectiveChangeDirections(candidate = {}) {
+  const rows = Array.isArray(candidate && candidate.changes) ? candidate.changes : [];
+  const out = new Set();
+  for (const row of rows) {
+    const explicit = String(row && row.direction || "").trim().toUpperCase();
+    const current = toNum(row && row.current);
+    const next = toNum(row && row.next);
+    if (explicit === "TIGHTEN" || explicit === "LOOSEN") {
+      out.add(explicit);
+      continue;
+    }
+    if (current != null && next != null && current !== next) {
+      const inferred = explicit === "SHIFT"
+        ? resolveDirectionalChange(row && row.key, current, next)
+        : null;
+      if (inferred) out.add(inferred);
+    }
+  }
+  return out;
+}
+
+function resolveDirectionalChange(key, current, next) {
+  const curr = toNum(current);
+  const nxt = toNum(next);
+  if (curr == null || nxt == null || curr === nxt) return null;
+  const keyUpper = String(key || "").trim().toUpperCase();
+  const isMaxLike = keyUpper.includes("_MAX") || keyUpper.includes("KILL");
+  if (nxt > curr) return isMaxLike ? "LOOSEN" : "TIGHTEN";
+  return isMaxLike ? "TIGHTEN" : "LOOSEN";
+}
+
 function matchesKeyFamily(keys = [], token) {
   return keys.some((row) => row.includes(token));
 }
@@ -207,6 +238,9 @@ function deriveMarketReplayDeltas(candidate = {}, beforeRows = [], afterRows = [
 function buildHistoricalReplayRows(candidate = {}, dataset = null) {
   const rows = Array.isArray(dataset && dataset.rows) ? dataset.rows : [];
   const direction = String(candidate.direction || "SHIFT").trim().toUpperCase();
+  const effectiveDirections = effectiveChangeDirections(candidate);
+  const applyTighten = direction === "TIGHTEN" || (direction === "SHIFT" && effectiveDirections.has("TIGHTEN"));
+  const applyLoosen = direction === "LOOSEN" || (direction === "SHIFT" && effectiveDirections.has("LOOSEN"));
   const blockers = [];
   const matchedRows = rows.filter((row) => candidateTargetsRow(candidate, row));
   const matchedExecutedRealized = matchedRows.filter((row) => isExecutedLike(row) && Number.isFinite(toNum(row.realized_ret_net)));
@@ -215,13 +249,13 @@ function buildHistoricalReplayRows(candidate = {}, dataset = null) {
   let replayRows = rows.slice();
   let historicalAppliedN = 0;
 
-  if (direction === "TIGHTEN") {
+  if (applyTighten && !applyLoosen) {
     const removable = matchedExecutedRealized.filter((row) => Number(row.realized_ret_net) <= 0);
     historicalAppliedN = removable.length;
     if (!historicalAppliedN) blockers.push("NO_HISTORICAL_TIGHTEN_MATCH");
     const removeKeys = new Set(removable.map((row) => String(row.signal_key || row.signal_id || "")));
     replayRows = rows.filter((row) => !removeKeys.has(String(row.signal_key || row.signal_id || "")));
-  } else if (direction === "LOOSEN") {
+  } else if (applyLoosen && !applyTighten) {
     const addable = matchedDropRealized.map((row) => ({
       ...row,
       source_row_type: "EXECUTED",
@@ -229,6 +263,17 @@ function buildHistoricalReplayRows(candidate = {}, dataset = null) {
     historicalAppliedN = addable.length;
     if (!historicalAppliedN) blockers.push("NO_REALIZED_COUNTERFACTUAL");
     replayRows = rows.concat(addable);
+  } else if (applyLoosen && applyTighten) {
+    const removable = matchedExecutedRealized.filter((row) => Number(row.realized_ret_net) <= 0);
+    const removeKeys = new Set(removable.map((row) => String(row.signal_key || row.signal_id || "")));
+    const baseRows = rows.filter((row) => !removeKeys.has(String(row.signal_key || row.signal_id || "")));
+    const addable = matchedDropRealized.map((row) => ({
+      ...row,
+      source_row_type: "EXECUTED",
+    }));
+    historicalAppliedN = removable.length + addable.length;
+    if (!historicalAppliedN) blockers.push("NO_EFFECT_CHANGESET");
+    replayRows = baseRows.concat(addable);
   } else {
     blockers.push("NO_EFFECT_CHANGESET");
   }

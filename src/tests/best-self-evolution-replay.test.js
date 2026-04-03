@@ -181,6 +181,35 @@ function run() {
   assert.strictEqual(shadowFallbackNoCounterfactual.validation_verdict, "WARN");
   assert.deepStrictEqual(shadowFallbackNoCounterfactual.blockers, ["SHADOW_COUNTERFACTUAL_MISSING"]);
 
+  const mixedEvShift = deriveCandidateObjectiveDelta({
+    candidate_id: "EV_TP1_THRESHOLD_TUNE",
+    display_candidate_id: "EV_TP1_THRESHOLD_TUNE",
+    scope: "EV",
+    direction: "SHIFT",
+    markets: ["BTCUSDT"],
+    changes: [
+      { key: "ev_gate_tp1_prob_full", current: 0.6, next: 0.58, direction: "LOOSEN" },
+      { key: "ev_gate_tp1_prob_kill", current: 0.5, next: 0.45, direction: "TIGHTEN" },
+      { key: "ev_gate_qty_scale_mid", current: 0.7, next: 0.6, direction: "LOOSEN" },
+      { key: "ev_gate_qty_scale_low", current: 0.35, next: 0.5, direction: "TIGHTEN" },
+    ],
+    risk_flags: ["EV_TUNER_INSUFFICIENT_SAMPLE"],
+    evidence: { rationale: "mixed EV threshold shift" },
+  }, {
+    objective,
+    attribution,
+    dataset: {
+      rows: [
+        { signal_id: "drop-1", market: "BTCUSDT", event: "CORE_LONG", source_row_type: "DROP", drop_stage_key: "EV", ev_verdict: "DROP", realized_ret_net: 0.04, entry_grade: "CORE" },
+        { signal_id: "exec-1", market: "BTCUSDT", event: "CORE_LONG", source_row_type: "EXECUTED", ev_verdict: "ALLOW", realized_ret_net: -0.03, entry_grade: "CORE" },
+      ],
+    },
+  });
+  assert.strictEqual(mixedEvShift.validation_verdict, "PASS");
+  assert.strictEqual(mixedEvShift.historical_applied_n, 2);
+  assert.strictEqual(mixedEvShift.candidate_objective_delta > 0, true);
+  assert.deepStrictEqual(mixedEvShift.blockers, []);
+
   console.log("BEST_SELF_EVOLUTION_REPLAY_TEST_OK");
 }
 
