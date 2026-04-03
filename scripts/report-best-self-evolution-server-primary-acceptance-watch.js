@@ -5,7 +5,7 @@
 const path = require("path");
 const {
   OPS_DAILY_DIR,
-  copySelfEvolutionLatest,
+  copyLatest,
   loadLocalEnv,
   nowKstMeta,
   readJsonRawSafe,
@@ -20,6 +20,8 @@ loadLocalEnv();
 const INPUTS = Object.freeze({
   autonomyContract: path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_autonomy_contract_latest.json"),
   serverPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
+  cutoverReadiness: path.join(OPS_DAILY_DIR, "server_signal_cutover_readiness_latest.json"),
+  serverRuntime: path.join(OPS_DAILY_DIR, "server_signal_runtime_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -46,6 +48,8 @@ function main() {
   const report = deriveServerPrimaryAcceptanceWatch({
     autonomyContract: readJsonRawSafe(INPUTS.autonomyContract, null),
     serverPrimaryCanary: readJsonRawSafe(INPUTS.serverPrimaryCanary, null),
+    cutoverReadiness: readJsonRawSafe(INPUTS.cutoverReadiness, null),
+    serverRuntime: readJsonRawSafe(INPUTS.serverRuntime, null),
   });
   const output = {
     ok: true,
@@ -62,8 +66,8 @@ function main() {
   const latestMdPath = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_acceptance_watch_latest.md");
   writeJson(jsonPath, output);
   writeText(mdPath, renderMarkdown(output));
-  copySelfEvolutionLatest(jsonPath, latestJsonPath);
-  copySelfEvolutionLatest(mdPath, latestMdPath);
+  copyLatest(jsonPath, latestJsonPath);
+  copyLatest(mdPath, latestMdPath);
   console.log(JSON.stringify({ ok: true, json: jsonPath, markdown: mdPath, latest_json: latestJsonPath, latest_markdown: latestMdPath }));
 }
 

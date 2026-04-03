@@ -18,13 +18,17 @@ function toNum(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-function deriveServerPrimaryAcceptanceWatch({ autonomyContract = null, serverPrimaryCanary = null } = {}) {
+function deriveServerPrimaryAcceptanceWatch({ autonomyContract = null, serverPrimaryCanary = null, cutoverReadiness = null, serverRuntime = null } = {}) {
   const contract = unwrapRawReport(autonomyContract) || {};
   const contractSummary = contract.summary && typeof contract.summary === "object" ? contract.summary : {};
   const phaseDPolicy = contract.phase_d_policy && typeof contract.phase_d_policy === "object"
     ? contract.phase_d_policy
     : {};
   const canary = unwrapRawReport(serverPrimaryCanary) || {};
+  const cutover = unwrapRawReport(cutoverReadiness) || {};
+  const runtime = unwrapRawReport(serverRuntime) || {};
+  const cutoverSummary = cutover.summary && typeof cutover.summary === "object" ? cutover.summary : cutover;
+  const runtimeSummary = runtime.summary && typeof runtime.summary === "object" ? runtime.summary : runtime;
   const summary = readSummary(canary);
   const rows = Array.isArray(canary.rows) ? canary.rows : [];
 
@@ -38,12 +42,20 @@ function deriveServerPrimaryAcceptanceWatch({ autonomyContract = null, serverPri
   const configuredMarkets = Array.isArray(summary.configured_server_primary_markets)
     ? summary.configured_server_primary_markets.filter(Boolean)
     : [];
+  const fallbackConfiguredCount = Math.max(
+    0,
+    toNum(summary.configured_server_primary_markets_n) || 0,
+    toNum(summary.server_primary_markets_n) || 0,
+    toNum(cutoverSummary.runtime_market_count) || 0,
+    toNum(runtimeSummary.market_count) || 0
+  );
+  const effectiveConfiguredCount = configuredMarkets.length || fallbackConfiguredCount;
   const applyPass = summary.apply_pass === true;
 
   let phaseDStatus = "PENDING";
   let phaseDReason = String(summary.acceptance_reason || "").trim().toUpperCase() || null;
 
-  if (!configuredMarkets.length) {
+  if (!effectiveConfiguredCount) {
     phaseDStatus = "N/A";
     phaseDReason = "NO_SERVER_PRIMARY_MARKETS";
   } else if (applyPass === false) {
@@ -66,7 +78,7 @@ function deriveServerPrimaryAcceptanceWatch({ autonomyContract = null, serverPri
   return {
     summary: {
       contract_goal_state: String(contractSummary.goal_state || "").trim().toUpperCase() || null,
-      configured_server_primary_markets_n: configuredMarkets.length,
+      configured_server_primary_markets_n: effectiveConfiguredCount,
       configured_server_primary_markets: configuredMarkets,
       observed_n: toNum(summary.row_n) || 0,
       executed_n: executedN,

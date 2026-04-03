@@ -9,6 +9,13 @@ const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
 const SCRIPT_PATH = path.join(REPO_ROOT, "scripts", "automation-self-evolution-loop.js");
 const LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_loop_run_latest.json");
 const LOCK_PATH = path.join(OPS_DAILY_DIR, ".best_self_evolution_loop.lock.json");
+const SERVER_CORE_LATEST_PATHS = Object.freeze([
+  path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_parity_latest.json"),
+  path.join(OPS_DAILY_DIR, "server_signal_authority_latest.json"),
+  path.join(OPS_DAILY_DIR, "server_signal_quality_latest.json"),
+  path.join(OPS_DAILY_DIR, "server_signal_runtime_latest.json"),
+  path.join(OPS_DAILY_DIR, "server_signal_cutover_readiness_latest.json"),
+]);
 
 function toMs(value) {
   const n = Number(value);
@@ -105,10 +112,33 @@ function readLatestSelfEvolutionRun() {
   return readJsonSafe(LATEST_PATH);
 }
 
+function readCycleId(report = null) {
+  if (!report || typeof report !== "object") return null;
+  const cycleId = String(report.cycle_id || report.generation_id || "").trim();
+  return cycleId || null;
+}
+
+function readLatestServerCoreCycleId(paths = SERVER_CORE_LATEST_PATHS) {
+  for (const filePath of Array.isArray(paths) ? paths : []) {
+    const report = readJsonSafe(filePath);
+    const cycleId = readCycleId(report);
+    if (cycleId) return cycleId;
+  }
+  return null;
+}
+
+function shouldForceSelfEvolutionRefresh({ latest = null, serverCoreCycleId = null } = {}) {
+  const latestCycleId = readCycleId(latest);
+  if (!latestCycleId || !serverCoreCycleId) return false;
+  return latestCycleId !== serverCoreCycleId;
+}
+
 function runSelfEvolutionLoop({ trigger = "manual", force = false, maxAgeMs = 4 * 60 * 60 * 1000, staleLockMs = 2 * 60 * 60 * 1000 } = {}) {
   const nowMs = Date.now();
   const latest = readLatestSelfEvolutionRun();
-  if (!force && isFreshSelfEvolutionLatest(latest, nowMs, maxAgeMs)) {
+  const serverCoreCycleId = readLatestServerCoreCycleId();
+  const forceDueToServerCoreDrift = shouldForceSelfEvolutionRefresh({ latest, serverCoreCycleId });
+  if (!force && !forceDueToServerCoreDrift && isFreshSelfEvolutionLatest(latest, nowMs, maxAgeMs)) {
     return {
       ok: true,
       skipped: true,
@@ -161,5 +191,7 @@ module.exports = {
     latestGeneratedAtMs,
     parseLastJsonLine,
     isFreshSelfEvolutionLatest,
+    readCycleId,
+    shouldForceSelfEvolutionRefresh,
   },
 };

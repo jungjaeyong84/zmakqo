@@ -5,7 +5,7 @@
 const path = require("path");
 const {
   OPS_DAILY_DIR,
-  copySelfEvolutionLatest,
+  copyLatest,
   loadLocalEnv,
   nowKstMeta,
   readJsonRawSafe,
@@ -21,6 +21,7 @@ const INPUTS = Object.freeze({
   signals: path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "signals.json"),
   drops: path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "signals_dropped.json"),
   intents: path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "order_intents_paper.json"),
+  cutoverReadiness: path.join(OPS_DAILY_DIR, "server_signal_cutover_readiness_latest.json"),
   sourceModeSnapshot: path.join(OPS_DAILY_DIR, "source_mode_BINANCEFUT_autopilot_snapshot_latest.json"),
   canonicalPolicySnapshot: path.join(OPS_DAILY_DIR, "canonical_policy_BINANCEFUT_autopilot_snapshot_latest.json"),
 });
@@ -31,7 +32,11 @@ function readCacheDocs(filePath) {
 }
 
 function toMs(value) {
-  const parsed = Date.parse(String(value || ""));
+  const raw = String(value || "").trim();
+  const normalized = /KST$/i.test(raw)
+    ? raw.replace(/\s*KST$/i, "+09:00").replace(" ", "T")
+    : raw;
+  const parsed = Date.parse(normalized);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -182,8 +187,15 @@ function buildSummary(rows = []) {
   };
 }
 
-function deriveCutoverReference({ sourceModeSnapshot = null, canonicalPolicySnapshot = null } = {}) {
+function deriveCutoverReference({ cutoverReadiness = null, sourceModeSnapshot = null, canonicalPolicySnapshot = null } = {}) {
   const candidates = [
+    {
+      key: "CUTOVER_READINESS",
+      generated_at:
+        (cutoverReadiness && (cutoverReadiness.generated_at || cutoverReadiness.generated_at_kst))
+        || (cutoverReadiness && cutoverReadiness.summary && (cutoverReadiness.summary.generated_at || cutoverReadiness.summary.generated_at_kst))
+        || null,
+    },
     { key: "SOURCE_MODE", generated_at: sourceModeSnapshot && sourceModeSnapshot.generated_at || null },
     { key: "CANONICAL_POLICY", generated_at: canonicalPolicySnapshot && canonicalPolicySnapshot.generated_at || null },
   ]
@@ -336,6 +348,7 @@ async function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
   const cutoverReference = deriveCutoverReference({
+    cutoverReadiness: readJsonRawSafe(INPUTS.cutoverReadiness, null),
     sourceModeSnapshot: readJsonRawSafe(INPUTS.sourceModeSnapshot, null),
     canonicalPolicySnapshot: readJsonRawSafe(INPUTS.canonicalPolicySnapshot, null),
   });
@@ -361,8 +374,8 @@ async function main() {
   const latestMdPath = path.join(OPS_DAILY_DIR, "best_self_evolution_canonical_engine_provenance_latest.md");
   writeJson(jsonPath, output);
   writeText(mdPath, renderMarkdown(output));
-  copySelfEvolutionLatest(jsonPath, latestJsonPath);
-  copySelfEvolutionLatest(mdPath, latestMdPath);
+  copyLatest(jsonPath, latestJsonPath);
+  copyLatest(mdPath, latestMdPath);
   console.log(JSON.stringify({ ok: true, json: jsonPath, markdown: mdPath, latest_json: latestJsonPath, latest_markdown: latestMdPath }));
 }
 

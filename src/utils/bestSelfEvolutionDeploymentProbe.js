@@ -98,12 +98,24 @@ function deriveDeploymentProbe({
   signalsCache = null,
   dropsCache = null,
   postApplyProbe = null,
+  serverRuntime = null,
+  cutoverReadiness = null,
+  serverPrimaryCanary = null,
   provider = "BINANCEFUT",
   nowMs = Date.now(),
   flowMaxAgeMinutes = 360,
 } = {}) {
   const ack = manualPasteAck && typeof manualPasteAck === "object" ? manualPasteAck : {};
   const acknowledged = ack.acknowledged === true;
+  const runtimeSummary = serverRuntime && typeof serverRuntime === "object"
+    ? (serverRuntime.summary && typeof serverRuntime.summary === "object" ? serverRuntime.summary : serverRuntime)
+    : {};
+  const cutoverSummary = cutoverReadiness && typeof cutoverReadiness === "object"
+    ? (cutoverReadiness.summary && typeof cutoverReadiness.summary === "object" ? cutoverReadiness.summary : cutoverReadiness)
+    : {};
+  const serverPrimaryCanarySummary = serverPrimaryCanary && typeof serverPrimaryCanary === "object"
+    ? (serverPrimaryCanary.summary && typeof serverPrimaryCanary.summary === "object" ? serverPrimaryCanary.summary : serverPrimaryCanary)
+    : {};
   const appliedStrategyId = pickString(ack.applied_strategy_id);
   const policy = derivePolicyBundle(systemSettings);
   const latestSignalsMs = findLatestCreatedMs(signalsCache && signalsCache.docs);
@@ -114,17 +126,27 @@ function deriveDeploymentProbe({
     .sort((a, b) => b - a)[0] || null;
   const flowMaxAgeMs = Math.max(15, Number(flowMaxAgeMinutes || 360)) * 60 * 1000;
   const marketDataFlowOk = latestFlowMs != null ? (nowMs - latestFlowMs) <= flowMaxAgeMs : false;
+  const serverPrimaryActive = String(cutoverSummary.readiness_status || "").trim().toUpperCase() === "SERVER_PRIMARY_ACTIVE"
+    || (
+      String(runtimeSummary.runtime_status || "").trim().toUpperCase() === "READY"
+      && String(runtimeSummary.canonical_engine_source_mode || "").trim().toUpperCase() === "SERVER_PRIMARY"
+    );
+  const canaryAcceptanceReady = serverPrimaryCanarySummary.acceptance_ready === true
+    || serverPrimaryCanarySummary.apply_pass === true;
+  const deploymentAckSatisfied = acknowledged || serverPrimaryActive || canaryAcceptanceReady;
+  const ackMode = acknowledged
+    ? "MANUAL_PASTE_ACK"
+    : (serverPrimaryActive ? "SERVER_PRIMARY_RUNTIME" : (canaryAcceptanceReady ? "SERVER_PRIMARY_CANARY" : "NONE"));
   const engineBundleLoaded = Boolean(
-    acknowledged
-    && appliedStrategyId
-    && ack.canonical_source_synced !== false
+    (acknowledged && appliedStrategyId && ack.canonical_source_synced !== false)
+    || serverPrimaryActive
   );
   const featureSnapshotReady = Boolean(engineBundleLoaded && policy.loaded && marketDataFlowOk);
   const canonicalDecisionReady = featureSnapshotReady;
-  const probePass = Boolean(featureSnapshotReady && canonicalDecisionReady);
+  const probePass = Boolean(featureSnapshotReady && canonicalDecisionReady && deploymentAckSatisfied);
   let probeStatus = "N/A";
-  let probeReason = "NO_ACKNOWLEDGEMENT";
-  if (acknowledged) {
+  let probeReason = "NO_DEPLOYMENT_ACK";
+  if (deploymentAckSatisfied) {
     if (!engineBundleLoaded) {
       probeStatus = "PENDING";
       probeReason = "PENDING_ENGINE_BUNDLE_LOAD";
@@ -136,13 +158,18 @@ function deriveDeploymentProbe({
       probeReason = "PENDING_MARKET_DATA_FLOW";
     } else {
       probeStatus = "PASS";
-      probeReason = "PROBE_PASS";
+      probeReason = serverPrimaryActive ? "PROBE_PASS_SERVER_PRIMARY" : "PROBE_PASS";
     }
   }
   return {
     summary: {
       provider: pickString(provider),
       acknowledged,
+      manual_paste_acknowledged: acknowledged,
+      deployment_ack_satisfied: deploymentAckSatisfied,
+      deployment_ack_mode: ackMode,
+      server_primary_active: serverPrimaryActive,
+      canary_acceptance_ready: canaryAcceptanceReady,
       applied_strategy_id: appliedStrategyId,
       engine_bundle_id: appliedStrategyId ? `strategy:${appliedStrategyId}` : null,
       policy_bundle_id: policy.policy_bundle_id,

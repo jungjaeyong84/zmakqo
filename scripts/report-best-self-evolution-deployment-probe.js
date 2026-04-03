@@ -25,6 +25,9 @@ const INPUTS = Object.freeze({
   signalsCache: path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "signals.json"),
   dropsCache: path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "signals_dropped.json"),
   postApplyProbe: path.join(OPS_DAILY_DIR, "post_apply_signal_probe_latest.json"),
+  serverRuntime: path.join(OPS_DAILY_DIR, "server_signal_runtime_latest.json"),
+  cutoverReadiness: path.join(OPS_DAILY_DIR, "server_signal_cutover_readiness_latest.json"),
+  serverPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -63,6 +66,9 @@ async function main() {
       signalsCache: readJsonRawSafe(INPUTS.signalsCache, null),
       dropsCache: readJsonRawSafe(INPUTS.dropsCache, null),
       postApplyProbe: readJsonRawSafe(INPUTS.postApplyProbe, null),
+      serverRuntime: readJsonRawSafe(INPUTS.serverRuntime, null),
+      cutoverReadiness: readJsonRawSafe(INPUTS.cutoverReadiness, null),
+      serverPrimaryCanary: readJsonRawSafe(INPUTS.serverPrimaryCanary, null),
       provider: PROVIDER,
       flowMaxAgeMinutes: Math.max(30, Number(process.env.SELF_EVOLUTION_MARKET_DATA_FLOW_MAX_AGE_MINUTES || 360)),
     }),

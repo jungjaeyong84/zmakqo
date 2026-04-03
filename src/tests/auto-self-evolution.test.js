@@ -20,6 +20,20 @@ function run() {
   assert.strictEqual(runner.isFreshSelfEvolutionLatest(stale, Date.now(), 4 * 60 * 60 * 1000), false);
   assert.strictEqual(autoSelfEvolution.__test.shouldRunSelfEvolutionLoop(fresh, Date.now(), 4 * 60 * 60 * 1000), false);
   assert.strictEqual(autoSelfEvolution.__test.shouldRunSelfEvolutionLoop(stale, Date.now(), 4 * 60 * 60 * 1000), true);
+  assert.strictEqual(
+    runner.__test.shouldForceSelfEvolutionRefresh({
+      latest: { cycle_id: "cycle-old" },
+      serverCoreCycleId: "cycle-new",
+    }),
+    true
+  );
+  assert.strictEqual(
+    runner.__test.shouldForceSelfEvolutionRefresh({
+      latest: { cycle_id: "cycle-same" },
+      serverCoreCycleId: "cycle-same",
+    }),
+    false
+  );
 
   const parsed = runner.__test.parseLastJsonLine("hello\n{\"ok\":true,\"cycle_id\":\"cycle-1\"}\n");
   assert.strictEqual(parsed.ok, true);

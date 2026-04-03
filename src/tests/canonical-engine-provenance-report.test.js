@@ -93,6 +93,7 @@ const { __test } = require("../../scripts/report-best-self-evolution-canonical-e
   assert.ok(md.includes("signals_dropped / ETHUSDT / SHORT / DROP__ETH"));
 
   const cutoverReference = __test.deriveCutoverReference({
+    cutoverReadiness: { generated_at_kst: "2026-03-31 15:00:00 KST" },
     sourceModeSnapshot: { generated_at: "2026-03-31T06:00:00.000Z" },
     canonicalPolicySnapshot: { generated_at: "2026-03-31T05:59:00.000Z" },
   });
@@ -118,7 +119,7 @@ const { __test } = require("../../scripts/report-best-self-evolution-canonical-e
     intents: [],
     cutoverReference,
   });
-  assert.strictEqual(cutoverReport.summary.cutover_reference_source, "SOURCE_MODE");
+  assert.strictEqual(cutoverReport.summary.cutover_reference_source, "CUTOVER_READINESS");
   assert.strictEqual(cutoverReport.summary.post_cutover_engine_eligible_n, 0);
   assert.strictEqual(cutoverReport.summary.post_cutover_status, "NO_ENGINE_ROWS_AFTER_CUTOVER");
   assert.strictEqual(cutoverReport.summary.effective_eligible_n, 0);
