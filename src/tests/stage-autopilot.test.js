@@ -170,6 +170,14 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
         },
       },
     },
+    serverSignalCutoverReadinessArtifact: {
+      data: {
+        summary: {
+          promotion_ready: true,
+          readiness_status: "SERVER_PRIMARY_ACTIVE",
+        },
+      },
+    },
     currentSys: {
       canonical_engine_source_mode: "PINE_PRIMARY",
       canonical_engine_market_overrides: {
@@ -292,13 +300,66 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
   assert.strictEqual(evParityCandidate.nextSettings.ev_gate_tp1_prob_full, 0.59);
   assert.strictEqual(evParityCandidate.support_n, 2);
 
+  const evParityMarketCandidate = __test.buildEvParityCandidate({
+    data: {
+      summary: {
+        shadow_observed_n: 17,
+        source_parity_mismatch_n: 0,
+        parity_mismatch_rate: 0.73,
+        by_actual_drop_reason_family: [
+          { key: "EV_POLICY", count: 12 },
+        ],
+      },
+    },
+  }, {
+    data: {
+      summary: {
+        recommended_action: "LOWER_EV_TP1_MIN_REVIEW",
+      },
+    },
+  }, {
+    data: {
+      summary: {
+        status: "ACTIONABLE_RESCUE_REVIEW",
+        top_rescue_family: "EV_POLICY",
+        top_rescue_reason: "DROP_EV_GATE_TP1_PROB",
+        top_rescue_market: "SOLUSDT",
+        matured_reason_n: 95,
+        top_rescue_markets: [
+          { market: "SOLUSDT" },
+          { market: "ETHUSDT" },
+        ],
+        recommended_actions: [
+          { family: "EV_POLICY", action: "RELAX_EV_POLICY_REVIEW" },
+        ],
+      },
+    },
+  }, {
+    ev_gate_tp1_prob_min: 0.55,
+    ev_gate_tp1_prob_min_by_market: {
+      SOLUSDT: 0.55,
+      ETHUSDT: 0.54,
+    },
+    ev_gate_tp1_prob_full: 0.60,
+    ev_gate_tp1_prob_kill: 0.50,
+  }, {
+    objective: { enough_sample: false },
+  });
+  assert.strictEqual(evParityMarketCandidate.actionable, true);
+  assert.strictEqual(evParityMarketCandidate.source, "CANONICAL_PARITY_EV_POLICY_MARKET_RESCUE");
+  assert.deepStrictEqual(evParityMarketCandidate.target_markets, ["SOLUSDT", "ETHUSDT"]);
+  assert.strictEqual(evParityMarketCandidate.nextSettings.ev_gate_tp1_prob_min_by_market.SOLUSDT, 0.535);
+  assert.strictEqual(evParityMarketCandidate.nextSettings.ev_gate_tp1_prob_min_by_market.ETHUSDT, 0.525);
+  assert.strictEqual(evParityMarketCandidate.nextSettings.ev_gate_tp1_prob_min, undefined);
+
   const pinePromote = __test.buildPineCandidate(
     { data: { verdict: "PATCH_CANDIDATE", promotion: { candidate_id: "AUTO_CORE_SCORE_TIGHTEN" }, codex_authority: { status: "FRESH", verdict: "PROMOTE", recommended_candidate_id: "AUTO_CORE_SCORE_TIGHTEN" }, reason: "AUTO_PROMOTION_READY" } },
     { data: { verdict: "PROMOTE" }, fresh: true },
     { data: {} },
   );
-  assert.strictEqual(pinePromote.actionable, true);
-  assert.strictEqual(pinePromote.kind, "PROMOTE");
+  assert.strictEqual(pinePromote.actionable, false);
+  assert.strictEqual(pinePromote.kind, "SHADOW_ONLY");
+  assert.strictEqual(pinePromote.detail, "PINE_SHADOW_READ_ONLY");
 
   const pineRecoveryPromote = __test.buildPineCandidate(
     { data: { verdict: "PATCH_CANDIDATE", promotion: { candidate_id: "AUTO_CORE_SCORE_TIGHTEN", display_candidate_id: "AUTO_LONG_SHORT_SCORE_TIGHTEN", recovery_mode: true }, codex_authority: { status: "FRESH", verdict: "HOLD" }, reason: "AUTONOMOUS_RECOVERY_PROMOTION_READY" } },
@@ -306,9 +367,8 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
     { data: {} },
   );
   assert.strictEqual(pineRecoveryPromote.actionable, false);
-  assert.strictEqual(pineRecoveryPromote.kind, "PROMOTE");
-  assert.strictEqual(pineRecoveryPromote.signature, "AUTO_CORE_SCORE_TIGHTEN");
-  assert.strictEqual(pineRecoveryPromote.display_signature, "AUTO_LONG_SHORT_SCORE_TIGHTEN");
+  assert.strictEqual(pineRecoveryPromote.kind, "SHADOW_ONLY");
+  assert.strictEqual(pineRecoveryPromote.signature, null);
 
   const pineRollbackBlocked = __test.buildPineCandidate(
     { data: { verdict: "ROLLBACK_CANDIDATE", rollback: { rollback_file_path: "/tmp/rb.pine" }, reason: "AUTO_ROLLBACK_READY" } },
@@ -316,7 +376,7 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
     { data: {} },
   );
   assert.strictEqual(pineRollbackBlocked.actionable, false);
-  assert.strictEqual(pineRollbackBlocked.kind, "ROLLBACK");
+  assert.strictEqual(pineRollbackBlocked.kind, "SHADOW_ONLY");
 
   const pendingLoopMonitor = __test.buildLoopMonitorView({
     cycleMeta: { cycle_id: "cycle-new" },
@@ -369,7 +429,7 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
   assert.strictEqual(overrideApplied.pineHandoff.stage_ready, true);
   assert.strictEqual(overrideApplied.pineHandoff.prepared_strategy_id, "donbeolja_v6.0.3.3");
   assert.strictEqual(overrideApplied.pineStageRow.machine_state, "READY");
-  assert.strictEqual(overrideApplied.pineStageRow.reason, "MANUAL_PREPARED_OVERRIDE");
+  assert.strictEqual(overrideApplied.pineStageRow.reason, "PINE_SHADOW_COMPARE_ONLY");
   assert.strictEqual(overrideApplied.pineStageRow.signature, "AUTO_CORE_REGIME_TIGHTEN");
 
   const budgetBlocked = __test.stageChangeBudgetOk([

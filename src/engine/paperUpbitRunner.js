@@ -3920,14 +3920,36 @@ function resolveEntryQualityTier(eventUpper, features) {
   return null;
 }
 
-function resolveEvGateConfig(sysCfg = {}, exchange = "") {
+function normalizeMarketProbMap(raw = null) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [market, value] of Object.entries(raw)) {
+    const key = String(market || "").trim().toUpperCase();
+    const n = clamp(normalizeNumber(value, null), 0, 1);
+    if (!key || !Number.isFinite(n)) continue;
+    out[key] = n;
+  }
+  return out;
+}
+
+function resolveEvGateConfig(sysCfg = {}, exchange = "", market = "") {
   const ex = String(exchange || "").toUpperCase();
   const defaultEnabled = ex.includes("BINANCE");
-  const tp1ProbMin = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_min, 0.55), 0, 1);
-  const tp1ProbMinEarly = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_min_early, tp1ProbMin), 0, 1);
-  const tp1ProbMinCore = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_min_core, tp1ProbMin), 0, 1);
-  const tp1ProbMinPreReal = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_min_pre_real, tp1ProbMin), 0, 1);
-  const tp1ProbMinReal = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_min_real, tp1ProbMin), 0, 1);
+  const marketKey = String(market || "").trim().toUpperCase();
+  const tp1ProbMinGlobal = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_min, 0.55), 0, 1);
+  const tp1ProbMinByMarket = normalizeMarketProbMap(sysCfg.ev_gate_tp1_prob_min_by_market);
+  const marketOverrideActive = marketKey && Number.isFinite(tp1ProbMinByMarket[marketKey]);
+  const tp1ProbMin = marketOverrideActive
+    ? tp1ProbMinByMarket[marketKey]
+    : tp1ProbMinGlobal;
+  const tierEarly = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_min_early, tp1ProbMin), 0, 1);
+  const tierCore = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_min_core, tp1ProbMin), 0, 1);
+  const tierPreReal = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_min_pre_real, tp1ProbMin), 0, 1);
+  const tierReal = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_min_real, tp1ProbMin), 0, 1);
+  const tp1ProbMinEarly = marketOverrideActive ? Math.min(tierEarly, tp1ProbMin) : tierEarly;
+  const tp1ProbMinCore = marketOverrideActive ? Math.min(tierCore, tp1ProbMin) : tierCore;
+  const tp1ProbMinPreReal = marketOverrideActive ? Math.min(tierPreReal, tp1ProbMin) : tierPreReal;
+  const tp1ProbMinReal = marketOverrideActive ? Math.min(tierReal, tp1ProbMin) : tierReal;
   const tp1ProbFull = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_full, Math.max(0.60, tp1ProbMin)), 0, 1);
   const tp1ProbKill = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_kill, 0.50), 0, 1);
   const qtyScaleMid = clamp(normalizeNumber(sysCfg.ev_gate_qty_scale_mid, 0.70), 0, 1);
@@ -3947,6 +3969,9 @@ function resolveEvGateConfig(sysCfg = {}, exchange = "") {
     applyReal: false,
     applyEarly: normalizeBool(sysCfg.ev_gate_early_enabled, true),
     tp1ProbMin: Number.isFinite(tp1ProbMin) ? tp1ProbMin : 0.55,
+    tp1ProbMinGlobal: Number.isFinite(tp1ProbMinGlobal) ? tp1ProbMinGlobal : 0.55,
+    tp1ProbMinMarketOverride: marketOverrideActive ? tp1ProbMinByMarket[marketKey] : null,
+    tp1ProbMinByMarket,
     tp1ProbMinEarly: Number.isFinite(tp1ProbMinEarly) ? tp1ProbMinEarly : (Number.isFinite(tp1ProbMin) ? tp1ProbMin : 0.55),
     tp1ProbMinCore: Number.isFinite(tp1ProbMinCore) ? tp1ProbMinCore : (Number.isFinite(tp1ProbMin) ? tp1ProbMin : 0.55),
     tp1ProbMinPreReal: Number.isFinite(tp1ProbMinCore) ? tp1ProbMinCore : (Number.isFinite(tp1ProbMin) ? tp1ProbMin : 0.55),
@@ -7178,7 +7203,7 @@ async function runPaperUpbitForBar({
   const immediateCfg = resolveImmediateEntryConfig(sysCfgEffective);
   const shortGateCfg = resolveShortEntryGateConfig(sysCfgEffective, exchange);
   const aiBiasGateCfg = resolveAiBiasEntryGateConfig(sysCfgEffective, exchange);
-  const evGateCfg = resolveEvGateConfig(sysCfgEffective, exchange);
+  const evGateCfg = resolveEvGateConfig(sysCfgEffective, exchange, symbol);
   const waitOneBarCfg = resolveWaitOneBarConfig(sysCfgEffective, exchange);
   const entryQualityCfg = resolveEntryQualityGateConfig(sysCfgEffective, exchange);
   const addRiskCfgRaw = resolveAddRiskConfig(sysCfgEffective, exchange);
@@ -9497,7 +9522,7 @@ async function runPaperFuturesForBar({
   const immediateCfg = resolveImmediateEntryConfig(sysCfgEffective);
   const shortGateCfg = resolveShortEntryGateConfig(sysCfgEffective, exchange);
   const aiBiasGateCfg = resolveAiBiasEntryGateConfig(sysCfgEffective, exchange);
-  const evGateCfg = resolveEvGateConfig(sysCfgEffective, exchange);
+  const evGateCfg = resolveEvGateConfig(sysCfgEffective, exchange, symbol);
   const waitOneBarCfg = resolveWaitOneBarConfig(sysCfgEffective, exchange);
   const entryQualityCfg = resolveEntryQualityGateConfig(sysCfgEffective, exchange);
   const addRiskCfgRaw = resolveAddRiskConfig(sysCfgEffective, exchange);

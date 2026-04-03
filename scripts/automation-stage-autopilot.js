@@ -1030,6 +1030,11 @@ function buildEvParityCandidate(parityArtifact, cutoverArtifact = null, dropVali
   const dropValidationAction = readDropValidationAction(dropValidationSummary, "EV_POLICY");
   const dropValidationSupportN = toNum(dropValidationSummary.matured_reason_n) || 0;
   const dropValidationRescueRate = toNum(dropValidationSummary.top_rescue_avg_horizon_ret_net);
+  const topRescueMarkets = Array.isArray(dropValidationSummary.top_rescue_markets)
+    ? dropValidationSummary.top_rescue_markets
+      .map((row) => String(row && row.market || "").trim().toUpperCase())
+      .filter(Boolean)
+    : [];
   const evRescueBackedByDrops = dropValidationTopFamily === "EV_POLICY"
     && dropValidationAction === "RELAX_EV_POLICY_REVIEW"
     && (
@@ -1038,6 +1043,9 @@ function buildEvParityCandidate(parityArtifact, cutoverArtifact = null, dropVali
       || dropValidationStatus === "ACTIONABLE"
     );
   const actionable = (evPolicyMismatchN >= 2 || evRescueBackedByDrops) && sourceParityMismatchN === 0;
+  const currentMinByMarket = currentSys && currentSys.ev_gate_tp1_prob_min_by_market && typeof currentSys.ev_gate_tp1_prob_min_by_market === "object"
+    ? currentSys.ev_gate_tp1_prob_min_by_market
+    : {};
   const currentMinCandidates = [
     currentSys && currentSys.ev_gate_tp1_prob_min,
     currentSys && currentSys.ev_gate_tp1_prob_min_early,
@@ -1056,8 +1064,19 @@ function buildEvParityCandidate(parityArtifact, cutoverArtifact = null, dropVali
   const minStep = useAggressiveRescue ? 0.015 : 0.01;
   const fullStep = useAggressiveRescue ? 0.01 : 0.01;
   const nextMin = Number(Math.max(0.30, currentMin - minStep).toFixed(4));
+  const marketScopedRescue = actionable && topRescueMarkets.length > 0;
   const nextSettings = actionable
-    ? {
+    ? (marketScopedRescue
+      ? {
+        ev_gate_tp1_prob_min_by_market: Object.fromEntries(
+          topRescueMarkets.map((market) => {
+            const currentMarketMin = clampProb(currentMinByMarket[market], currentMin);
+            const proposedMin = Number(Math.max(0.30, currentMarketMin - minStep).toFixed(4));
+            return [market, proposedMin];
+          })
+        ),
+      }
+      : {
       ev_gate_tp1_prob_min: nextMin,
       ev_gate_tp1_prob_min_early: nextMin,
       ev_gate_tp1_prob_min_core: nextMin,
@@ -1065,7 +1084,7 @@ function buildEvParityCandidate(parityArtifact, cutoverArtifact = null, dropVali
       ev_gate_tp1_prob_min_real: nextMin,
       ev_gate_tp1_prob_full: Number(Math.max(0.35, currentFull - fullStep).toFixed(4)),
       ev_gate_tp1_prob_kill: Number(Math.max(0.25, currentKill - (useAggressiveRescue ? 0.005 : 0)).toFixed(4)),
-    }
+    })
     : {};
   const reasonSuffix = [
     cutoverRecommendedAction,
@@ -1089,7 +1108,7 @@ function buildEvParityCandidate(parityArtifact, cutoverArtifact = null, dropVali
     challengerBeatsCurrent: actionable,
     support_n: Math.max(evPolicyMismatchN, evRescueBackedByDrops ? dropValidationSupportN : 0),
     support_rate: summary && toNum(summary.parity_mismatch_rate),
-    source: "CANONICAL_PARITY_EV_POLICY_RESCUE",
+    source: marketScopedRescue ? "CANONICAL_PARITY_EV_POLICY_MARKET_RESCUE" : "CANONICAL_PARITY_EV_POLICY_RESCUE",
     current_ev_policy_mismatch_n: evPolicyMismatchN,
     source_parity_mismatch_n: sourceParityMismatchN,
     recommended_action: cutoverRecommendedAction,
@@ -1099,9 +1118,11 @@ function buildEvParityCandidate(parityArtifact, cutoverArtifact = null, dropVali
     drop_validation_top_reason: dropValidationTopReason,
     drop_validation_rescue_rate: dropValidationRescueRate,
     target_market: String(dropValidationSummary.top_rescue_market || "").trim().toUpperCase() || null,
-    target_markets: String(dropValidationSummary.top_rescue_market || "").trim()
-      ? [String(dropValidationSummary.top_rescue_market || "").trim().toUpperCase()]
-      : [],
+    target_markets: topRescueMarkets.length
+      ? topRescueMarkets
+      : (String(dropValidationSummary.top_rescue_market || "").trim()
+        ? [String(dropValidationSummary.top_rescue_market || "").trim().toUpperCase()]
+        : []),
   };
 }
 
