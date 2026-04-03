@@ -239,6 +239,15 @@ function readJsonSafe(filePath, fallback = null) {
   }
 }
 
+function readFileMtimeMs(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    return Number.isFinite(stat && stat.mtimeMs) ? Math.floor(stat.mtimeMs) : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
 function unwrapRaw(value) {
   if (!value || typeof value !== "object") return value || {};
   if (value.raw && typeof value.raw === "object") return value.raw;
@@ -339,6 +348,7 @@ function buildSnapshotFromArtifacts({
   policyParameterPlanDoc = null,
   objectiveSupervisorDoc = null,
   lineageHealthDoc = null,
+  lineageHealthMtimeMs = null,
   driftRemediationApplyDoc = null,
 } = {}) {
   const allocatorSummary = readSummary(allocatorDoc);
@@ -391,6 +401,13 @@ function buildSnapshotFromArtifacts({
     policyPlanByMarket.set(market, row);
   }
 
+  const lineageGeneratedAtParsedMs = parseDateMs(
+    (lineageHealthDoc && (lineageHealthDoc.generated_at || lineageHealthDoc.generated_at_kst))
+    || lineageSummary.generated_at
+    || lineageSummary.generated_at_kst
+    || null
+  );
+
   return {
     allocator: allocatorSummary,
     quarantine: quarantineSummary,
@@ -398,12 +415,18 @@ function buildSnapshotFromArtifacts({
     policyPlan: policyPlanSummary,
     objective: objectiveSummary,
     lineage: lineageSummary,
-    lineageGeneratedAtMs: parseDateMs(
-      (lineageHealthDoc && (lineageHealthDoc.generated_at || lineageHealthDoc.generated_at_kst))
-      || lineageSummary.generated_at
-      || lineageSummary.generated_at_kst
-      || null
-    ),
+    lineageGeneratedAtKst:
+      String(
+        (lineageHealthDoc && (lineageHealthDoc.generated_at_kst || lineageHealthDoc.generated_at))
+        || lineageSummary.generated_at_kst
+        || lineageSummary.generated_at
+        || ""
+      ).trim() || null,
+    lineageGeneratedAtMs: lineageGeneratedAtParsedMs || toNum(lineageHealthMtimeMs),
+    lineageGeneratedAtSource: lineageGeneratedAtParsedMs != null
+      ? "ARTIFACT_TIMESTAMP"
+      : (Number.isFinite(toNum(lineageHealthMtimeMs)) ? "FILE_MTIME" : null),
+    lineageReportPath: SIGNAL_LINEAGE_HEALTH_PATH,
     allocatorByMarket,
     quarantineByMarket,
     qualityByMarket,
@@ -426,6 +449,7 @@ function loadPolicySnapshot({ force = false } = {}) {
   const policyParameterPlanDoc = POLICY_PLAN_ENABLED ? readJsonSafe(POLICY_PARAMETER_PLAN_PATH, null) : null;
   const objectiveSupervisorDoc = OBJECTIVE_SCALE_ENABLED ? readJsonSafe(OBJECTIVE_SUPERVISOR_PATH, null) : null;
   const lineageHealthDoc = LINEAGE_SLO_ENABLED ? readJsonSafe(SIGNAL_LINEAGE_HEALTH_PATH, null) : null;
+  const lineageHealthMtimeMs = LINEAGE_SLO_ENABLED ? readFileMtimeMs(SIGNAL_LINEAGE_HEALTH_PATH) : null;
   const driftRemediationApplyDoc = DRIFT_REMEDIATION_ENABLED ? readJsonSafe(DRIFT_REMEDIATION_APPLY_PATH, null) : null;
   const snapshot = buildSnapshotFromArtifacts({
     allocatorDoc,
@@ -434,6 +458,7 @@ function loadPolicySnapshot({ force = false } = {}) {
     policyParameterPlanDoc,
     objectiveSupervisorDoc,
     lineageHealthDoc,
+    lineageHealthMtimeMs,
     driftRemediationApplyDoc,
   });
   cache = { ts: now, snapshot };
@@ -571,14 +596,37 @@ function deriveLineageSloBlock(snapshot = null) {
   if (!LINEAGE_SLO_ENABLED) return { blocked: false, reason: null, stale: false };
   const summary = snapshot && snapshot.lineage && typeof snapshot.lineage === "object" ? snapshot.lineage : {};
   const reportMs = toNum(snapshot && snapshot.lineageGeneratedAtMs);
+  const reportGeneratedAtKst = String(snapshot && snapshot.lineageGeneratedAtKst || "").trim() || null;
+  const reportPath = String(snapshot && snapshot.lineageReportPath || "").trim() || null;
+  const reportSource = String(snapshot && snapshot.lineageGeneratedAtSource || "").trim() || null;
   const nowMs = Date.now();
+  const reportAgeMs = Number.isFinite(reportMs) ? Math.max(0, nowMs - reportMs) : null;
   if (LINEAGE_SLO_REQUIRE_FRESH) {
-    const fresh = Number.isFinite(reportMs) && (nowMs - reportMs) <= LINEAGE_SLO_MAX_REPORT_AGE_MS;
+    if (!Number.isFinite(reportMs)) {
+      return {
+        blocked: LINEAGE_SLO_FAIL_CLOSED,
+        reason: "LINEAGE_SLO_REPORT_MISSING",
+        stale: false,
+        report_generated_at_kst: reportGeneratedAtKst,
+        report_age_ms: reportAgeMs,
+        report_path: reportPath,
+        report_source: reportSource,
+        report_missing: true,
+        max_report_age_ms: LINEAGE_SLO_MAX_REPORT_AGE_MS,
+      };
+    }
+    const fresh = Number.isFinite(reportMs) && reportAgeMs <= LINEAGE_SLO_MAX_REPORT_AGE_MS;
     if (!fresh) {
       return {
         blocked: LINEAGE_SLO_FAIL_CLOSED,
         reason: "LINEAGE_SLO_REPORT_STALE",
         stale: true,
+        report_generated_at_kst: reportGeneratedAtKst,
+        report_age_ms: reportAgeMs,
+        report_path: reportPath,
+        report_source: reportSource,
+        report_missing: false,
+        max_report_age_ms: LINEAGE_SLO_MAX_REPORT_AGE_MS,
       };
     }
   }
@@ -698,6 +746,12 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_quality_global_slippage_p95_bps: toNum(qualitySummary.adverse_slippage_p95_bps),
     _live_exec_policy_lineage_slo_enabled: LINEAGE_SLO_ENABLED,
     _live_exec_policy_lineage_slo_fail_closed: LINEAGE_SLO_FAIL_CLOSED,
+    _live_exec_policy_lineage_report_generated_at_kst: String(lineageSlo.report_generated_at_kst || snapshot && snapshot.lineageGeneratedAtKst || "").trim() || null,
+    _live_exec_policy_lineage_report_age_ms: toNum(lineageSlo.report_age_ms),
+    _live_exec_policy_lineage_report_path: String(lineageSlo.report_path || snapshot && snapshot.lineageReportPath || "").trim() || null,
+    _live_exec_policy_lineage_report_source: String(lineageSlo.report_source || snapshot && snapshot.lineageGeneratedAtSource || "").trim() || null,
+    _live_exec_policy_lineage_report_missing: lineageSlo.report_missing === true,
+    _live_exec_policy_lineage_slo_max_report_age_ms: LINEAGE_SLO_MAX_REPORT_AGE_MS,
     _live_exec_policy_drift_remediation_enabled: DRIFT_REMEDIATION_ENABLED,
     _live_exec_policy_other_server_policy_watch_only_block_enabled: DRIFT_REMEDIATION_WATCH_ONLY_BLOCK,
     _live_exec_policy_other_server_policy_watch_only_market: !!(snapshot && snapshot.driftOtherServerPolicyWatchOnlySet && snapshot.driftOtherServerPolicyWatchOnlySet.has(market)),
@@ -796,6 +850,12 @@ function evaluateLiveEntryPolicy({
         market,
         blocked: true,
         reason,
+        lineage_report_generated_at_kst: String(lineageSlo.report_generated_at_kst || "").trim() || null,
+        lineage_report_age_ms: toNum(lineageSlo.report_age_ms),
+        lineage_report_path: String(lineageSlo.report_path || "").trim() || null,
+        lineage_report_source: String(lineageSlo.report_source || "").trim() || null,
+        lineage_report_missing: lineageSlo.report_missing === true,
+        lineage_slo_max_report_age_ms: LINEAGE_SLO_MAX_REPORT_AGE_MS,
       },
     };
   }
