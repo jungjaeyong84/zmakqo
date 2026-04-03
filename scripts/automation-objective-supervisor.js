@@ -2241,7 +2241,15 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       : "SELF_EVOLUTION_DEPLOYMENT_BLOCK";
     if (!blockers.includes(deployReason)) blockers.push(deployReason);
   }
-  if ((effectivePromotion.ready === true || rollback.ready === true) && selfEvolutionDeploymentPlanSummary.prepare_pass !== true) {
+  if (
+    (effectivePromotion.ready === true || rollback.ready === true)
+    && selfEvolutionDeploymentPlanSummary.prepare_pass !== true
+    && !(
+      selfEvolutionDeploymentPlanSummary.authority_approved === true
+      && selfEvolutionDeploymentPlanSummary.external_authority_pending !== true
+      && normalizePlanStatus(selfEvolutionDeploymentPlanSummary.plan_status) === "APPLIED_ACTIVE"
+    )
+  ) {
     blockers.push("SELF_EVOLUTION_DEPLOYMENT_PLAN_BLOCK");
   }
   if (codex && codexStatus === "FAILED" && (effectivePromotion.ready === true || rollback.ready === true)) {
@@ -2302,6 +2310,11 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     ? null
     : objectiveBlockReason;
   const normalizedDeploymentPlanStatus = normalizePlanStatus(selfEvolutionDeploymentPlanSummary.plan_status);
+  const deploymentPlanActiveApproved = Boolean(
+    selfEvolutionDeploymentPlanSummary.authority_approved === true
+    && selfEvolutionDeploymentPlanSummary.external_authority_pending !== true
+    && normalizedDeploymentPlanStatus === "APPLIED_ACTIVE"
+  );
   const recoveryPromotionActiveApproved = Boolean(
     effectivePromotion
     && effectivePromotion.ready === true
@@ -2309,9 +2322,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     && codex
     && codexFresh
     && codexVerdict === "PROMOTE"
-    && selfEvolutionDeploymentPlanSummary.authority_approved === true
-    && selfEvolutionDeploymentPlanSummary.external_authority_pending !== true
-    && normalizedDeploymentPlanStatus === "APPLIED_ACTIVE"
+    && deploymentPlanActiveApproved
     && (
       !promotionCandidateId
       || !selfEvolutionDeploymentPlanSummary.target_candidate_id
@@ -2336,6 +2347,9 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       verdict = "HOLD";
       reason = "STAGE_AUTOPILOT_REQUIRED_ROLLBACK";
       blockers.push("STAGE_AUTOPILOT_REQUIRED_ROLLBACK");
+    } else if (deploymentPlanActiveApproved) {
+      verdict = "HOLD";
+      reason = objectiveBlockReason || "OBJECTIVE_RECOVERY_ACTIVE";
     } else if (codexVerdict === "ROLLBACK") {
       verdict = "ROLLBACK_CANDIDATE";
       reason = "AUTO_ROLLBACK_READY";

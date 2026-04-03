@@ -619,6 +619,17 @@ function deriveDeploymentPlan({
   const authorityState = !authorityRequired
     ? "NOT_REQUIRED"
     : (appliedAuthorityApproved ? "APPROVED" : (externalAuthorityPending ? "PENDING" : "REQUIRED"));
+  const runtimeActivationSatisfied = Boolean(
+    bundleActivationSummary.activation_confirmed === true
+    || (
+      bundleActivationSummary.activation_pending !== true
+      && bundleActivationSummary.engine_bundle_loaded === true
+      && bundleActivationSummary.policy_bundle_loaded === true
+      && bundleActivationSummary.market_data_flow_ok === true
+      && bundleActivationSummary.probe_pass === true
+      && bundleActivationSummary.first_decision_seen === true
+    )
+  );
   const deployUnits = deriveDeployUnits({
     prepared,
     manualPaste,
@@ -635,7 +646,7 @@ function deriveDeploymentPlan({
       ? "APPLIED_BUNDLE_ACTIVATION_TIMEOUT_PENDING_AUTHORITY"
       : "APPLIED_BUNDLE_ACTIVATION_TIMEOUT";
   }
-  else if (bundleActivationSummary.activation_confirmed) planStatus = externalAuthorityPending ? "APPLIED_ACTIVE_PENDING_AUTHORITY" : "APPLIED_ACTIVE";
+  else if (runtimeActivationSatisfied) planStatus = externalAuthorityPending ? "APPLIED_ACTIVE_PENDING_AUTHORITY" : "APPLIED_ACTIVE";
   else if (manualPaste.acknowledged) planStatus = externalAuthorityPending ? "APPLIED_PENDING_BUNDLE_ACTIVATION_PENDING_AUTHORITY" : "APPLIED_PENDING_BUNDLE_ACTIVATION";
   else if (readyForManualPaste) planStatus = "READY_FOR_MANUAL_PASTE";
   else if (promotionPreparePass) planStatus = dryPrepareEligible ? "PREPARE_PROMOTION_DRY" : "PREPARE_PROMOTION";

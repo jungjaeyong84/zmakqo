@@ -282,6 +282,62 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
 (() => {
   const report = deriveDeploymentPlan({
     objectiveSupervisor: {
+      promotion: { ready: false, candidate_id: null, display_candidate_id: null },
+      rollback: { ready: true, reason: "AUTO_ROLLBACK_READY", rollback_file_path: "/tmp/rollback.pine" },
+      self_evolution_deployment: { deploy_pass: true },
+    },
+    changeControl: {},
+    codexPatchReview: { verdict: "PROMOTE", recommended_candidate_id: "AUTO_CORE_REGIME_TIGHTEN" },
+    deploymentGuards: { summary: { deploy_pass: true, target_candidate_id: "AUTO_CORE_REGIME_TIGHTEN", canary_open_wave: 1 } },
+    canaryReport: { summary: { open_wave: 1 }, rows: [] },
+    stageAutopilot: { raw: { stage_rows: [] } },
+    weeklyHistory: { weeks: [] },
+    manualPasteAck: {
+      acknowledged: false,
+      target_candidate_id: "AUTO_CORE_REGIME_TIGHTEN",
+      candidate_signature: "AUTO_CORE_REGIME_TIGHTEN",
+      applied_strategy_id: "donbeolja_v6.1.1.0",
+    },
+    bundleActivation: {
+      summary: {
+        activation_confirmed: false,
+        activation_pending: false,
+        activation_status: "N/A",
+        activation_reason: "NO_ACKNOWLEDGEMENT",
+        engine_bundle_loaded: true,
+        policy_bundle_loaded: true,
+        market_data_flow_ok: true,
+        probe_pass: true,
+        probe_status: "PASS",
+        probe_reason: "PROBE_PASS_SERVER_PRIMARY",
+        first_decision_seen: true,
+        first_decision_kind: "SIGNAL",
+        first_decision_id: "SIG__BINANCEFUT__BTCUSDT__15m__1774998000000__LONG",
+        first_decision_created_at: "2026-04-01T01:07:18.958Z",
+      },
+    },
+    signalsCache: {
+      docs: [
+        {
+          signal_id: "SIG__BINANCEFUT__BTCUSDT__15m__1774998000000__LONG",
+          created_at: "2026-04-01T01:07:18.958Z",
+          event: "LONG",
+          features_json: { strategy_id: "donbeolja_v6.1.1.0", event: "LONG" },
+        },
+      ],
+    },
+  });
+
+  assert.strictEqual(report.summary.plan_status, "APPLIED_ACTIVE");
+  assert.strictEqual(report.summary.authority_approved, true);
+  assert.strictEqual(report.summary.external_authority_pending, false);
+  assert.strictEqual(report.summary.live_signal_confirmed, true);
+  console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_SERVER_PRIMARY_RUNTIME_ACTIVE_TEST_OK");
+})();
+
+(() => {
+  const report = deriveDeploymentPlan({
+    objectiveSupervisor: {
       promotion: { ready: true, candidate_id: "EV_TP1_THRESHOLD_TUNE", display_candidate_id: "EV_TP1_THRESHOLD_TUNE" },
       rollback: { ready: false },
       self_evolution_deployment: { deploy_pass: true },

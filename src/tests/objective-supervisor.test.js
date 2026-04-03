@@ -918,6 +918,85 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(activeApprovedRecoveryDoesNotReopenAuthorityBlock.self_evolution_deployment_plan.external_authority_pending, false);
   assert.strictEqual(activeApprovedRecoveryDoesNotReopenAuthorityBlock.blockers.includes("EXTERNAL_AUTHORITY_BLOCK_ROLLBACK"), false);
 
+  const serverPrimaryRuntimeApprovedRecoveryDoesNotReopenAuthorityBlock = __test.evaluateSupervisor({
+    ...base,
+    changeControl: {
+      verdict: "REVIEW",
+      auto_promotion: {
+        ready: false,
+        reason: "CANDIDATE_NOT_READY",
+        candidate_id: "AUTO_CORE_SCORE_TIGHTEN",
+        streak_current: 0,
+        streak_required: 2,
+      },
+      auto_rollback: {
+        ready: true,
+        reason: "AUTO_ROLLBACK_READY",
+        rollback_file_path: "/tmp/rollback.pine",
+      },
+      coverage_guard: {
+        pass: true,
+        ai: { pass: true },
+        market: { pass: true },
+      },
+    },
+    selfEvolutionCanary: {
+      summary: { total_n: 1, ready_n: 1, blocked_n: 0, rollback_ready_n: 0, apply_pass: true, global_canary_pass: true, current_open_wave: 1, open_wave: 1 },
+      rows: [{ market: "BTCUSDT", wave: 1, current_stage: "SOFT", candidate_id: "AUTO_CORE_SCORE_TIGHTEN", canary_verdict: "READY", blockers: [] }],
+    },
+    selfEvolutionBundleActivation: {
+      summary: {
+        activation_confirmed: false,
+        activation_pending: false,
+        activation_status: "N/A",
+        activation_reason: "NO_ACKNOWLEDGEMENT",
+        engine_bundle_loaded: true,
+        policy_bundle_loaded: true,
+        market_data_flow_ok: true,
+        probe_pass: true,
+        probe_status: "PASS",
+        probe_reason: "PROBE_PASS_SERVER_PRIMARY",
+        first_decision_seen: true,
+        first_decision_kind: "SIGNAL",
+        first_decision_id: "SIG__BINANCEFUT__BTCUSDT__15m__1774998000000__LONG",
+        first_decision_created_at: "2026-04-01T01:07:18.958Z",
+      },
+    },
+    manualPasteAck: {
+      acknowledged: false,
+      target_candidate_id: "AUTO_CORE_SCORE_TIGHTEN",
+      candidate_signature: "AUTO_CORE_SCORE_TIGHTEN",
+      applied_strategy_id: "donbeolja_v6.1.1.0",
+    },
+    signalsCache: {
+      docs: [
+        {
+          signal_id: "SIG__BINANCEFUT__BTCUSDT__15m__1774998000000__LONG",
+          created_at: "2026-04-01T01:07:18.958Z",
+          event: "LONG",
+          features_json: { strategy_id: "donbeolja_v6.1.1.0", event: "LONG" },
+        },
+      ],
+    },
+    codex: {
+      status: "FRESH",
+      verdict: "PROMOTE",
+      recommended_candidate_id: "AUTO_CORE_SCORE_TIGHTEN",
+    },
+    stageAutopilot: {
+      fresh: true,
+      objective_verdict: "HOLD",
+      actions: [],
+    },
+  });
+  assert.strictEqual(serverPrimaryRuntimeApprovedRecoveryDoesNotReopenAuthorityBlock.verdict, "HOLD");
+  assert.notStrictEqual(serverPrimaryRuntimeApprovedRecoveryDoesNotReopenAuthorityBlock.reason, "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK");
+  assert.strictEqual(serverPrimaryRuntimeApprovedRecoveryDoesNotReopenAuthorityBlock.self_evolution_deployment_plan.plan_status, "APPLIED_ACTIVE");
+  assert.strictEqual(serverPrimaryRuntimeApprovedRecoveryDoesNotReopenAuthorityBlock.self_evolution_deployment_plan.authority_approved, true);
+  assert.strictEqual(serverPrimaryRuntimeApprovedRecoveryDoesNotReopenAuthorityBlock.self_evolution_deployment_plan.external_authority_pending, false);
+  assert.strictEqual(serverPrimaryRuntimeApprovedRecoveryDoesNotReopenAuthorityBlock.blockers.includes("EXTERNAL_AUTHORITY_BLOCK_ROLLBACK"), false);
+  assert.strictEqual(serverPrimaryRuntimeApprovedRecoveryDoesNotReopenAuthorityBlock.blockers.includes("SELF_EVOLUTION_DEPLOYMENT_PLAN_BLOCK"), false);
+
   const autonomousRecoveryPromotionWithoutCodexPromote = __test.evaluateSupervisor({
     ...base,
     changeControl: {
