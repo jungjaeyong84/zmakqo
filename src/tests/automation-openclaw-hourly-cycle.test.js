@@ -40,16 +40,44 @@ const { __test } = require("../../scripts/automation-openclaw-hourly-cycle");
     {
       status: "PASS",
       summary: "OK",
+      reason: "DONE",
+    },
+    {
+      runId: "run-1",
+      durationMs: 12,
     }
   );
   assert.deepStrictEqual(result, {
     id: "x",
     status: "PASS",
     summary: "OK",
+    reason: "DONE",
+    run_id: "run-1",
+    duration_ms: 12,
     criticality: "HIGH",
     depends_on: ["a"],
     produces_artifact: "foo.json",
   });
+
+  const executed = __test.executeStep(
+    {
+      id: "y",
+      criticality: "MEDIUM",
+      depends_on: [],
+      produces_artifact: null,
+      run() {
+        return {
+          status: "PASS",
+          summary: "OK",
+          reason: "INLINE_DONE",
+        };
+      },
+    },
+    { runId: "run-2" }
+  );
+  assert.strictEqual(executed.run_id, "run-2");
+  assert.strictEqual(executed.reason, "INLINE_DONE");
+  assert.ok(Number.isFinite(executed.duration_ms));
 
   console.log("AUTOMATION_OPENCLAW_HOURLY_CYCLE_TEST_OK");
 })();

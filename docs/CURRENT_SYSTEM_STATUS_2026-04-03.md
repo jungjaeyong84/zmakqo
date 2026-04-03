@@ -46,6 +46,10 @@
 7. `best_self_evolution_openclaw_autonomy_contract_latest`
    - `authority_state=PENDING`
    - `ops_status=PASS`
+8. `best_self_evolution_reasoning_journal_latest`
+   - cycle 간 판단 근거를 compacted context로 누적
+9. `best_self_evolution_openclaw_autonomy_parity_latest`
+   - `authority_state=READY`까지 남은 gap을 requirement 단위로 추적
 
 ## 4. Learning Epoch Exception Release
 
@@ -98,6 +102,7 @@ Current reality:
 2. OpenClaw uses MEMORY and AGENTS as review guidance
 3. OpenClaw can produce operational judgments from those summaries
 4. OpenClaw is not yet the final autonomous authority because `authority_state=PENDING`
+5. OpenClaw now keeps a compacted reasoning journal and a parity gap artifact, but those are still early-stage evidence, not proof of READY
 
 ## 8. Current Risks
 
@@ -105,6 +110,7 @@ Current reality:
 2. `objective_supervisor` remains `HOLD`
 3. `authority_state=PENDING` means full autonomy is not achieved
 4. learning-epoch exception release still requires fresh evidence validation
+5. reasoning_journal history is still short, so parity evidence is not yet mature
 
 ## 9. Next Correct Actions
 
@@ -112,6 +118,7 @@ Current reality:
 2. re-evaluate mismatch families with new evidence
 3. reintroduce market-level exceptions only if fresh data justifies it
 4. keep OpenClaw/Claude reviews artifact-first
+5. grow reasoning_journal continuity until autonomy parity can move from PARTIAL to DONE
 
 ## 10. Must-Read References
 
@@ -119,3 +126,5 @@ Current reality:
 2. `/Users/jeongjaeyong/Projects/donbeolja/docs/OPENCLAW_SYSTEM_REVIEW_RUNBOOK_2026-04-03.md`
 3. `/Users/jeongjaeyong/Projects/donbeolja/docs/RELEASE_NOTES_2026-04-03.md`
 4. `/Users/jeongjaeyong/Projects/donbeolja/docs/OPENCLAW_MANIFEST_LITE_AND_STEP_REGISTRY_PROPOSAL_2026-04-03.md`
+5. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_reasoning_journal_latest.json`
+6. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_openclaw_autonomy_parity_latest.json`

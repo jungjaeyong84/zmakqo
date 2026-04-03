@@ -9,6 +9,7 @@ const {
   copyLatest,
   loadLocalEnv,
   nowKstMeta,
+  readJsonRawSafe,
   resolveAutomationCycleMeta,
   writeJson,
   writeText,
@@ -17,9 +18,60 @@ const {
 loadLocalEnv();
 
 const REPO_ROOT = path.resolve(__dirname, "..");
+const PLANNING_INPUTS = Object.freeze({
+  objectiveSupervisor: path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json"),
+  serverSignalQuality: path.join(OPS_DAILY_DIR, "server_signal_quality_latest.json"),
+  serverSignalCutoverReadiness: path.join(OPS_DAILY_DIR, "server_signal_cutover_readiness_latest.json"),
+  reasoningJournal: path.join(OPS_DAILY_DIR, "best_self_evolution_reasoning_journal_latest.json"),
+  autonomyParity: path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_autonomy_parity_latest.json"),
+});
 
-function buildStepPlan() {
-  return [
+function readSummary(value) {
+  if (!value || typeof value !== "object") return value || {};
+  if (value.summary && typeof value.summary === "object") return value.summary;
+  return value.raw && typeof value.raw === "object" && value.raw.summary && typeof value.raw.summary === "object"
+    ? value.raw.summary
+    : value;
+}
+
+function buildPlanningContext() {
+  const objectiveSupervisor = readJsonRawSafe(PLANNING_INPUTS.objectiveSupervisor, null) || {};
+  const quality = readJsonRawSafe(PLANNING_INPUTS.serverSignalQuality, null) || {};
+  const cutover = readJsonRawSafe(PLANNING_INPUTS.serverSignalCutoverReadiness, null) || {};
+  const reasoningJournal = readJsonRawSafe(PLANNING_INPUTS.reasoningJournal, null) || {};
+  const autonomyParity = readJsonRawSafe(PLANNING_INPUTS.autonomyParity, null) || {};
+
+  const qualitySummary = readSummary(quality);
+  const cutoverSummary = readSummary(cutover);
+  const journalSummary = readSummary(reasoningJournal);
+  const paritySummary = readSummary(autonomyParity);
+  const dominantMismatchFamily = String(
+    cutoverSummary.dominant_mismatch_family
+    || (qualitySummary.top_final_downstream_drop_reason_family && qualitySummary.top_final_downstream_drop_reason_family.key)
+    || (qualitySummary.top_drop_reason_family && qualitySummary.top_drop_reason_family.key)
+    || ""
+  ).trim().toUpperCase() || null;
+
+  const qualityStatus = String(qualitySummary.quality_status || "").trim().toUpperCase() || null;
+  const needsSignalDeepDive = Boolean(
+    ["EV_POLICY", "OTHER_SERVER_POLICY", "COOLDOWN_POLICY"].includes(dominantMismatchFamily)
+    || qualityStatus === "WATCH_PARITY_DRIFT"
+  );
+
+  return {
+    objective_verdict: String(objectiveSupervisor.verdict || "").trim().toUpperCase() || null,
+    objective_root_cause: String(objectiveSupervisor.root_cause || "").trim().toUpperCase() || null,
+    dominant_mismatch_family: dominantMismatchFamily,
+    quality_status: qualityStatus,
+    needs_signal_deep_dive: needsSignalDeepDive,
+    needs_ev_policy_deep_dive: dominantMismatchFamily === "EV_POLICY",
+    reasoning_entry_n: Number(journalSummary.entry_n || 0) || 0,
+    autonomy_progress_pct: Number(paritySummary.overall_progress_pct || 0) || 0,
+  };
+}
+
+function buildStepPlan(context = {}) {
+  const steps = [
     { id: "dataset", script: "report-best-self-evolution-dataset.js" },
     { id: "canonical_engine_parity", script: "report-best-self-evolution-canonical-engine-parity.js" },
     { id: "server_signal_authority", script: "report-server-signal-authority.js" },
@@ -49,6 +101,7 @@ function buildStepPlan() {
     { id: "exploration_budget", script: "report-best-self-evolution-exploration-budget.js" },
     { id: "server_market_capital_allocator", script: "report-best-self-evolution-server-market-capital-allocator.js" },
     { id: "server_market_quarantine", script: "report-best-self-evolution-server-market-quarantine.js" },
+    { id: "policy_parameter_plan", script: "report-best-self-evolution-policy-parameter-plan.js" },
     { id: "exploration_proposal", script: "report-best-self-evolution-exploration-proposal.js" },
     { id: "exploration_apply_candidate", script: "report-best-self-evolution-exploration-apply-candidate.js" },
     { id: "change_result_attribution", script: "report-best-self-evolution-change-result-attribution.js" },
@@ -56,7 +109,6 @@ function buildStepPlan() {
     { id: "candidates", script: "report-best-self-evolution-candidates.js" },
     { id: "replay", script: "report-best-self-evolution-replay.js" },
     { id: "filter_shadow_canary", script: "automation-filter-shadow-canary.js" },
-    { id: "ev_gate_rescue", script: "report-best-self-evolution-ev-gate-rescue.js" },
     { id: "canary", script: "report-best-self-evolution-canary.js" },
     { id: "memory", script: "report-best-self-evolution-memory-ledger.js" },
     { id: "deployment_guards", script: "report-best-self-evolution-deployment-guards.js" },
@@ -83,9 +135,30 @@ function buildStepPlan() {
     { id: "openclaw_autonomy_contract", script: "report-best-self-evolution-openclaw-autonomy-contract.js" },
     { id: "objective_integrated", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SKIP_TELEGRAM: "1", OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "INTEGRATED" } },
     { id: "objective_final", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "FINAL" } },
+    { id: "reasoning_journal", script: "report-best-self-evolution-reasoning-journal.js" },
+    { id: "openclaw_autonomy_parity", script: "report-best-self-evolution-openclaw-autonomy-parity.js" },
     { id: "loop_monitor", script: "report-best-self-evolution-loop-monitor.js" },
     { id: "stage_autopilot", script: "automation-stage-autopilot.js", env: { STAGE_AUTOPILOT_SKIP_TELEGRAM: "1" } },
   ];
+
+  if (context && context.needs_signal_deep_dive) {
+    const insertAt = steps.findIndex((row) => row.id === "drop_validation");
+    const extra = [
+      { id: "server_signal_observation_24h_context", script: "report-server-signal-observation-24h.js", contextual: true, trigger_reason: context.dominant_mismatch_family || context.quality_status || "SIGNAL_DEEP_DIVE" },
+      { id: "server_signal_drift_remediation_plan_context", script: "report-server-signal-drift-remediation-plan.js", contextual: true, trigger_reason: context.dominant_mismatch_family || context.quality_status || "SIGNAL_DEEP_DIVE" },
+    ];
+    if (insertAt >= 0) {
+      steps.splice(insertAt, 0, ...extra);
+    }
+  }
+
+  if (context && context.needs_ev_policy_deep_dive) {
+    const replayIndex = steps.findIndex((row) => row.id === "replay");
+    const evStep = { id: "ev_gate_rescue", script: "report-best-self-evolution-ev-gate-rescue.js", contextual: true, trigger_reason: "EV_POLICY" };
+    if (replayIndex >= 0) steps.splice(replayIndex + 1, 0, evStep);
+  }
+
+  return steps;
 }
 
 function extractJson(stdout = "") {
@@ -121,7 +194,8 @@ function renderMarkdown(report = {}) {
 function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
-  const steps = buildStepPlan();
+  const planningContext = buildPlanningContext();
+  const steps = buildStepPlan(planningContext);
   const results = [];
   let failedStep = null;
 
@@ -144,6 +218,8 @@ function main() {
       script: scriptPath,
       status: child.status === 0 ? "PASS" : "FAIL",
       exit_code: child.status,
+      contextual: step.contextual === true,
+      trigger_reason: step.trigger_reason || null,
       summary: parsed && (parsed.reason || parsed.verdict || parsed.latest_json || parsed.json || parsed.ok === true && "OK") || null,
       stdout_tail: String(child.stdout || "").trim().split(/\r?\n/).slice(-5),
       stderr_tail: String(child.stderr || "").trim().split(/\r?\n/).slice(-5),
@@ -160,6 +236,7 @@ function main() {
     generated_at_kst: nowMeta.kst,
     cycle_id: cycleMeta.cycle_id,
     generation_id: cycleMeta.generation_id,
+    planning_context: planningContext,
     status: failedStep == null ? "PASS" : "FAIL",
     completed_steps: results.filter((row) => row.status === "PASS").length,
     total_steps: steps.length,
@@ -202,6 +279,7 @@ if (require.main === module) {
 
 module.exports = {
   __test: {
+    buildPlanningContext,
     buildStepPlan,
     extractJson,
     renderMarkdown,

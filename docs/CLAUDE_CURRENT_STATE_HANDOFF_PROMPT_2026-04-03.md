@@ -12,6 +12,8 @@ Read in this exact order:
 4. /Users/jeongjaeyong/Projects/donbeolja/openclaw-workspace/MEMORY.md
 5. /Users/jeongjaeyong/Projects/donbeolja/openclaw-ops-workspace/MEMORY.md
 6. latest artifacts under /Users/jeongjaeyong/Projects/donbeolja/ops/daily
+   - include `best_self_evolution_reasoning_journal_latest.json`
+   - include `best_self_evolution_openclaw_autonomy_parity_latest.json`
 7. code only when you need to explain why the current artifact state exists
 
 Current context you must preserve:
@@ -21,6 +23,8 @@ Current context you must preserve:
 - objective supervisor is still HOLD
 - autonomy authority is still PENDING
 - learning_epoch_exception_release=true is active
+- reasoning journal compaction is now active
+- autonomy parity tracking is now active
 - historical market-level exception blocks were intentionally released to collect fresh server-native data
 - do not call released historical exceptions a regression by default
 - do not infer full autonomy from healthy automation alone
@@ -36,6 +40,8 @@ Current operating facts you must verify from latest artifacts:
 - server_signal_drift_remediation_apply_latest -> effective other_server_policy_watch_only_markets=[]
 - objective_supervisor_latest -> HOLD
 - best_self_evolution_openclaw_autonomy_contract_latest -> authority_state=PENDING
+- best_self_evolution_reasoning_journal_latest -> compacted_context present
+- best_self_evolution_openclaw_autonomy_parity_latest -> progress tracked by requirement rows
 
 Interpretation rules:
 1. Prefer latest artifacts over narrative or old retrospectives.

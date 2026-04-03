@@ -13,10 +13,10 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
   assert.strictEqual(steps[3].id, "server_signal_quality");
   assert.strictEqual(steps[4].id, "server_signal_runtime");
   assert.strictEqual(steps[5].id, "server_signal_cutover_readiness");
-  assert.strictEqual(steps[6].id, "canonical_engine_provenance");
-  assert.strictEqual(steps[7].id, "server_primary_canary");
-  assert.strictEqual(steps[8].id, "server_primary_acceptance_watch");
-  assert.strictEqual(steps[9].id, "pine_shadow_drift");
+  assert.strictEqual(steps.some((row) => row.id === "canonical_engine_provenance"), true);
+  assert.strictEqual(steps.some((row) => row.id === "server_primary_canary"), true);
+  assert.strictEqual(steps.some((row) => row.id === "server_primary_acceptance_watch"), true);
+  assert.strictEqual(steps.some((row) => row.id === "pine_shadow_drift"), true);
   assert.strictEqual(steps.some((row) => row.id === "objective_seed"), true);
   assert.strictEqual(steps.some((row) => row.id === "openclaw_autonomy_contract"), true);
   assert.strictEqual(steps.some((row) => row.id === "objective_recovery_governor"), true);
@@ -26,9 +26,33 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
   assert.strictEqual(steps.some((row) => row.id === "authority_ensemble"), true);
   assert.strictEqual(steps.some((row) => row.id === "filter_shadow_canary"), true);
   assert.strictEqual(steps.some((row) => row.id === "objective_final"), true);
+  assert.strictEqual(steps.some((row) => row.id === "reasoning_journal"), true);
   assert.strictEqual(steps.find((row) => row.id === "deployment_plan").env.SELF_EVOLUTION_SYNC_LIVE_SERVICES, "0");
   assert.strictEqual(steps.findIndex((row) => row.id === "loop_monitor") < steps.findIndex((row) => row.id === "stage_autopilot"), true);
   assert.strictEqual(steps.findIndex((row) => row.id === "authority_ensemble") < steps.findIndex((row) => row.id === "deployment_plan"), true);
+  assert.strictEqual(steps.findIndex((row) => row.id === "objective_final") < steps.findIndex((row) => row.id === "reasoning_journal"), true);
+  assert.strictEqual(steps.findIndex((row) => row.id === "reasoning_journal") < steps.findIndex((row) => row.id === "loop_monitor"), true);
+
+  const evSteps = __test.buildStepPlan({
+    dominant_mismatch_family: "EV_POLICY",
+    quality_status: "WATCH_PARITY_DRIFT",
+    needs_signal_deep_dive: true,
+    needs_ev_policy_deep_dive: true,
+  });
+  assert.strictEqual(evSteps.some((row) => row.id === "server_signal_observation_24h_context"), true);
+  assert.strictEqual(evSteps.some((row) => row.id === "server_signal_drift_remediation_plan_context"), true);
+  assert.strictEqual(evSteps.some((row) => row.id === "ev_gate_rescue"), true);
+  assert.strictEqual(evSteps.find((row) => row.id === "ev_gate_rescue").contextual, true);
+  assert.strictEqual(evSteps.findIndex((row) => row.id === "server_signal_observation_24h_context") < evSteps.findIndex((row) => row.id === "drop_validation"), true);
+
+  const neutralSteps = __test.buildStepPlan({
+    dominant_mismatch_family: "NONE",
+    quality_status: "PASS",
+    needs_signal_deep_dive: false,
+    needs_ev_policy_deep_dive: false,
+  });
+  assert.strictEqual(neutralSteps.some((row) => row.id === "server_signal_observation_24h_context"), false);
+  assert.strictEqual(neutralSteps.some((row) => row.id === "ev_gate_rescue"), false);
 
   const parsed = __test.extractJson("x\n{\"ok\":true,\"step\":\"dataset\"}\n");
   assert.deepStrictEqual(parsed, { ok: true, step: "dataset" });

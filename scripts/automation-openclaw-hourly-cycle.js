@@ -50,15 +50,28 @@ function runScript(script, env = {}) {
   };
 }
 
-function toStepResult(step, result = {}) {
+function toStepResult(step, result = {}, context = {}) {
   return {
     id: step.id,
     status: result.status || "FAIL",
     summary: result.summary || "N/A",
+    reason: result.reason || null,
+    run_id: context.runId || null,
+    duration_ms: Number.isFinite(Number(context.durationMs)) ? Number(context.durationMs) : null,
     criticality: step.criticality || "HIGH",
     depends_on: Array.isArray(step.depends_on) ? step.depends_on : [],
     produces_artifact: step.produces_artifact || null,
   };
+}
+
+function executeStep(step, context = {}) {
+  const startedAtMs = Date.now();
+  const result = step.run();
+  const durationMs = Date.now() - startedAtMs;
+  return toStepResult(step, result, {
+    runId: context.runId || null,
+    durationMs,
+  });
 }
 
 function buildStepRegistry() {
@@ -80,10 +93,11 @@ function buildStepRegistry() {
       produces_artifact: "analytics_local_cache_refresh_latest.json",
       run() {
         const analytics = runAnalyticsLocalCacheRefresh({ trigger: "openclaw_hourly_cycle", force: false });
-        return toStepResult(this, {
+        return {
           status: analytics.ok ? (analytics.skipped ? "SKIP" : "PASS") : "FAIL",
           summary: analytics.reason || (analytics.parsed && (analytics.parsed.reason || analytics.parsed.status)) || "OK",
-        });
+          reason: analytics.reason || null,
+        };
       },
     },
     {
@@ -95,10 +109,11 @@ function buildStepRegistry() {
       produces_artifact: "signal_lineage_health_latest.json",
       run() {
         const res = runScript(this.script);
-        return toStepResult(this, {
+        return {
           status: res.ok ? "PASS" : "FAIL",
           summary: res.parsed && (res.parsed.verdict || res.parsed.reason || res.parsed.status) || "OK",
-        });
+          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+        };
       },
     },
     {
@@ -110,10 +125,11 @@ function buildStepRegistry() {
       produces_artifact: "doc_artifact_parity_latest.json",
       run() {
         const res = runScript(this.script);
-        return toStepResult(this, {
+        return {
           status: res.ok ? "PASS" : "FAIL",
           summary: res.parsed ? `mismatch_n=${res.parsed.mismatch_n ?? "N/A"}` : "N/A",
-        });
+          reason: res.parsed && (res.parsed.reason || res.parsed.status) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+        };
       },
     },
     {
@@ -125,10 +141,11 @@ function buildStepRegistry() {
       produces_artifact: "server_signal_drift_remediation_plan_latest.json",
       run() {
         const res = runScript(this.script);
-        return toStepResult(this, {
+        return {
           status: res.ok ? "PASS" : "FAIL",
           summary: res.parsed && (res.parsed.status || res.parsed.reason || (res.parsed.ok === true ? "OK" : null)) || "OK",
-        });
+          reason: res.parsed && (res.parsed.reason || res.parsed.status) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+        };
       },
     },
     {
@@ -142,11 +159,12 @@ function buildStepRegistry() {
         const res = runScript(this.script, {
           APPLY: String(process.env.OPENCLAW_DRIFT_REMEDIATION_APPLY || "0"),
         });
-        return toStepResult(this, {
+        return {
           status: res.ok ? "PASS" : "FAIL",
           summary: res.parsed
             && (`applied=${res.parsed.applied ? "YES" : "NO"} ev_patch=${res.parsed.ev_patch_n ?? "N/A"} cooldown_patch=${res.parsed.cooldown_patch_n ?? "N/A"} other_watch_only_patch=${res.parsed.other_server_policy_watch_only_patch_n ?? "N/A"}`),
-        });
+          reason: res.parsed && (res.parsed.reason || (res.parsed.applied ? "APPLIED" : "DRY_RUN")) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+        };
       },
     },
     {
@@ -158,10 +176,11 @@ function buildStepRegistry() {
       run() {
         const results = postRemediationReports.map((script) => runScript(script));
         const ok = results.every((row) => row.ok);
-        return toStepResult(this, {
+        return {
           status: ok ? "PASS" : "FAIL",
           summary: results.map((row, idx) => `${postRemediationReports[idx]}=${row.ok ? "OK" : "FAIL"}`).join(" / "),
-        });
+          reason: ok ? null : "POST_REMEDIATION_REFRESH_FAILED",
+        };
       },
     },
     {
@@ -173,10 +192,11 @@ function buildStepRegistry() {
       produces_artifact: "automation_watchdog_latest.json",
       run() {
         const res = runScript(this.script, { SKIP_ALERT: process.env.SKIP_ALERT || "" });
-        return toStepResult(this, {
+        return {
           status: res.ok ? "PASS" : "FAIL",
           summary: res.parsed && (res.parsed.verdict || res.parsed.reason || res.parsed.status) || "OK",
-        });
+          reason: res.parsed && (res.parsed.reason || res.parsed.verdict || res.parsed.status) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+        };
       },
     },
     {
@@ -187,10 +207,11 @@ function buildStepRegistry() {
       produces_artifact: null,
       run() {
         const loop = runSelfEvolutionLoop({ trigger: "openclaw_hourly_cycle", force: false });
-        return toStepResult(this, {
+        return {
           status: loop.ok ? (loop.skipped ? "SKIP" : "PASS") : "FAIL",
           summary: loop.reason || (loop.parsed && (loop.parsed.status || loop.parsed.reason)) || "OK",
-        });
+          reason: loop.reason || (loop.parsed && (loop.parsed.reason || loop.parsed.status)) || null,
+        };
       },
     },
     {
@@ -202,10 +223,11 @@ function buildStepRegistry() {
       produces_artifact: null,
       run() {
         const res = runScript(this.script);
-        return toStepResult(this, {
+        return {
           status: res.ok ? "PASS" : "FAIL",
           summary: res.parsed && (res.parsed.status || res.parsed.reason) || (res.ok ? "OK" : "FAIL"),
-        });
+          reason: res.parsed && (res.parsed.reason || res.parsed.status) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+        };
       },
     },
     {
@@ -217,10 +239,11 @@ function buildStepRegistry() {
       produces_artifact: "hourly_overall_report_latest.json",
       run() {
         const res = runScript(this.script, { SKIP_ALERT: process.env.SKIP_ALERT || "" });
-        return toStepResult(this, {
+        return {
           status: res.ok ? "PASS" : "FAIL",
           summary: res.parsed && (res.parsed.status || res.parsed.reason || (res.parsed.ok === true ? "OK" : null)) || "OK",
-        });
+          reason: res.parsed && (res.parsed.reason || res.parsed.status) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+        };
       },
     },
   ];
@@ -232,23 +255,26 @@ function renderMarkdown(report = {}) {
     "",
     `- generated_at_kst: ${report.generated_at_kst || "N/A"}`,
     `- status: ${report.status || "N/A"}`,
+    `- run_id: ${report.run_id || "N/A"}`,
     "",
     "## Steps",
   ];
   for (const row of Array.isArray(report.steps) ? report.steps : []) {
-    lines.push(`- ${row.id}: ${row.status} / summary=${row.summary || "N/A"}`);
+    lines.push(`- ${row.id}: ${row.status} / duration_ms=${row.duration_ms == null ? "N/A" : row.duration_ms} / reason=${row.reason || "N/A"} / summary=${row.summary || "N/A"}`);
   }
   return `${lines.join("\n")}\n`;
 }
 
 function main() {
   const meta = nowKstMeta();
+  const runId = `openclaw_hourly_cycle_${Date.now()}`;
   const registry = buildStepRegistry();
-  const steps = registry.map((step) => step.run());
+  const steps = registry.map((step) => executeStep(step, { runId }));
 
   const report = {
     ok: steps.every((row) => row.status !== "FAIL"),
     generated_at_kst: meta.kst,
+    run_id: runId,
     status: steps.every((row) => row.status !== "FAIL") ? "PASS" : "FAIL",
     steps,
   };
@@ -283,6 +309,7 @@ if (require.main === module) {
     __test: {
       buildStepRegistry,
       toStepResult,
+      executeStep,
     },
   };
 }
