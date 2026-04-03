@@ -1457,6 +1457,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
 
   const wrappedRetrospective = {
     display: {
+      active_periods: ["DAILY"],
       periods: {
         DAILY: {
           objective: {
@@ -1493,10 +1494,29 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   };
   const retrospectiveSummary = __test.summarizeRetrospective(wrappedRetrospective);
   assert.strictEqual(retrospectiveSummary.available, true);
+  assert.deepStrictEqual(retrospectiveSummary.active_periods, ["DAILY"]);
   assert.strictEqual(retrospectiveSummary.daily.pass, false);
   assert.strictEqual(retrospectiveSummary.weekly.pass, true);
   assert.strictEqual(retrospectiveSummary.monthly.pass, true);
   assert.strictEqual(retrospectiveSummary.daily_no_trade, true);
+
+  const scopedRetrospectiveHold = __test.evaluateSupervisor({
+    ...base,
+    retrospective: {
+      display: {
+        active_periods: ["DAILY"],
+        periods: {
+          DAILY: { objective: { verdict: "FAIL", pass: false, executed_n: 1, realized_n: 1, failed_checks: ["PERIOD_TARGET_NOT_MET"] }, realized_trades: { net_pnl_quote: 12 } },
+          WEEKLY: { objective: { verdict: "FAIL", pass: false, executed_n: 2, realized_n: 1, failed_checks: ["PERIOD_TARGET_NOT_MET"] }, realized_trades: { net_pnl_quote: -24 } },
+          MONTHLY: { objective: { verdict: "FAIL", pass: false, executed_n: 4, realized_n: 2, failed_checks: ["PERIOD_TARGET_NOT_MET"] }, realized_trades: { net_pnl_quote: -48 } },
+        },
+      },
+    },
+    codex: null,
+  });
+  assert.strictEqual(scopedRetrospectiveHold.blockers.includes("DAILY_OBJECTIVE_FAIL"), true);
+  assert.strictEqual(scopedRetrospectiveHold.blockers.includes("WEEKLY_OBJECTIVE_FAIL"), false);
+  assert.strictEqual(scopedRetrospectiveHold.blockers.includes("RETROSPECTIVE_MONTHLY_FAIL"), false);
 
   const wrappedGovernanceHold = __test.evaluateSupervisor({
     ...base,

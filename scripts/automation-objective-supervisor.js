@@ -374,6 +374,9 @@ function summarizeSelfEvolutionArtifactCycles({ artifacts = {}, stage = "STANDAL
 
 function summarizeRetrospective(retrospective = null) {
   const source = unwrapArtifactPayload(retrospective);
+  const activePeriods = Array.isArray(source && source.active_periods)
+    ? source.active_periods.map((value) => String(value || "").trim().toUpperCase()).filter(Boolean)
+    : ["DAILY"];
   const periods = source && source.periods && typeof source.periods === "object"
     ? source.periods
     : {};
@@ -391,18 +394,24 @@ function summarizeRetrospective(retrospective = null) {
   const dailyRow = buildRow(daily);
   const weeklyRow = buildRow(weekly);
   const monthlyRow = buildRow(monthly);
+  const activePeriodSet = new Set(activePeriods);
+  const scopedRows = [];
+  if (activePeriodSet.has("DAILY")) scopedRows.push(dailyRow);
+  if (activePeriodSet.has("WEEKLY")) scopedRows.push(weeklyRow);
+  if (activePeriodSet.has("MONTHLY")) scopedRows.push(monthlyRow);
   return {
     available: !!source,
+    active_periods: activePeriods,
     daily: dailyRow,
     weekly: weeklyRow,
     monthly: monthlyRow,
-    any_fail: [dailyRow, weeklyRow, monthlyRow].some((row) => row.pass === false),
-    daily_no_trade: dailyRow.failed_checks.includes("NO_TRADE_ACTIVITY"),
-    daily_zero_idle: dailyRow.failed_checks.includes("ZERO_KRW_IDLE"),
-    daily_scope_no_trade: dailyRow.failed_checks.includes("NO_TRADE_ACTIVITY"),
-    daily_scope_zero_idle: dailyRow.failed_checks.includes("ZERO_KRW_IDLE"),
-    any_no_trade: dailyRow.failed_checks.includes("NO_TRADE_ACTIVITY"),
-    any_zero_idle: dailyRow.failed_checks.includes("ZERO_KRW_IDLE"),
+    any_fail: scopedRows.some((row) => row.pass === false),
+    daily_no_trade: activePeriodSet.has("DAILY") && dailyRow.failed_checks.includes("NO_TRADE_ACTIVITY"),
+    daily_zero_idle: activePeriodSet.has("DAILY") && dailyRow.failed_checks.includes("ZERO_KRW_IDLE"),
+    daily_scope_no_trade: activePeriodSet.has("DAILY") && dailyRow.failed_checks.includes("NO_TRADE_ACTIVITY"),
+    daily_scope_zero_idle: activePeriodSet.has("DAILY") && dailyRow.failed_checks.includes("ZERO_KRW_IDLE"),
+    any_no_trade: scopedRows.some((row) => row.failed_checks.includes("NO_TRADE_ACTIVITY")),
+    any_zero_idle: scopedRows.some((row) => row.failed_checks.includes("ZERO_KRW_IDLE")),
   };
 }
 
@@ -2254,9 +2263,9 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   if (objective && objective.monthly_pass === false) blockers.push("MONTHLY_TARGET_NOT_MET");
   if (objective && objective.pass === false) blockers.push("OBJECTIVE_NOT_MET");
   if (!retrospectiveSummary.available) blockers.push("RETROSPECTIVE_MISSING");
-  if (retrospectiveSummary.daily.pass === false) blockers.push("DAILY_OBJECTIVE_FAIL");
-  if (retrospectiveSummary.weekly.pass === false) blockers.push("WEEKLY_OBJECTIVE_FAIL");
-  if (retrospectiveSummary.monthly.pass === false) blockers.push("RETROSPECTIVE_MONTHLY_FAIL");
+  if (retrospectiveSummary.active_periods.includes("DAILY") && retrospectiveSummary.daily.pass === false) blockers.push("DAILY_OBJECTIVE_FAIL");
+  if (retrospectiveSummary.active_periods.includes("WEEKLY") && retrospectiveSummary.weekly.pass === false) blockers.push("WEEKLY_OBJECTIVE_FAIL");
+  if (retrospectiveSummary.active_periods.includes("MONTHLY") && retrospectiveSummary.monthly.pass === false) blockers.push("RETROSPECTIVE_MONTHLY_FAIL");
   if (retrospectiveSummary.daily_scope_no_trade) blockers.push("DAILY_NO_TRADE_ACTIVITY");
   if (retrospectiveSummary.daily_scope_zero_idle) blockers.push("ZERO_KRW_IDLE");
   if (
