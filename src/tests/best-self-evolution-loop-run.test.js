@@ -65,17 +65,31 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
   assert.strictEqual(otherPolicySteps.some((row) => row.id === "other_server_policy_review"), true);
   assert.strictEqual(otherPolicySteps.find((row) => row.id === "other_server_policy_review").capability_id, "other_server_policy_review");
 
+  const cooldownSteps = __test.buildStepPlan({
+    dominant_mismatch_family: "COOLDOWN_POLICY",
+    quality_status: "WATCH_PARITY_DRIFT",
+    needs_signal_deep_dive: true,
+    needs_ev_policy_deep_dive: false,
+    needs_other_server_policy_deep_dive: false,
+    needs_cooldown_policy_deep_dive: true,
+    authority_state: "PENDING",
+  });
+  assert.strictEqual(cooldownSteps.some((row) => row.id === "cooldown_policy_review"), true);
+  assert.strictEqual(cooldownSteps.find((row) => row.id === "cooldown_policy_review").capability_id, "cooldown_policy_review");
+
   const neutralSteps = __test.buildStepPlan({
     dominant_mismatch_family: "NONE",
     quality_status: "PASS",
     needs_signal_deep_dive: false,
     needs_ev_policy_deep_dive: false,
     needs_other_server_policy_deep_dive: false,
+    needs_cooldown_policy_deep_dive: false,
     authority_state: "PENDING",
   });
   assert.strictEqual(neutralSteps.some((row) => row.id === "server_signal_observation_24h_context"), false);
   assert.strictEqual(neutralSteps.some((row) => row.id === "ev_gate_rescue"), false);
   assert.strictEqual(neutralSteps.some((row) => row.id === "other_server_policy_review"), false);
+  assert.strictEqual(neutralSteps.some((row) => row.id === "cooldown_policy_review"), false);
 
   assert.strictEqual(
     __test.capabilityMatches(

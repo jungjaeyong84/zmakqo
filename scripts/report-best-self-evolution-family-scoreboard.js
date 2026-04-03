@@ -25,6 +25,8 @@ const INPUTS = Object.freeze({
   observation: path.join(OPS_DAILY_DIR, "server_signal_observation_24h_latest.json"),
   reasoningJournal: path.join(OPS_DAILY_DIR, "best_self_evolution_reasoning_journal_latest.json"),
   autonomyParity: path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_autonomy_parity_latest.json"),
+  otherServerPolicyReview: path.join(OPS_DAILY_DIR, "best_self_evolution_other_server_policy_review_latest.json"),
+  cooldownPolicyReview: path.join(OPS_DAILY_DIR, "best_self_evolution_cooldown_policy_review_latest.json"),
   capabilities: path.join(__dirname, "..", "ops", "manifests", "openclaw-evolution-capabilities.json"),
 });
 
@@ -42,7 +44,7 @@ function renderMarkdown(report = {}) {
     "## Families",
   ];
   for (const row of rows) {
-    lines.push(`- ${row.family}: mismatch_n=${row.mismatch_n} / status=${row.status} / action=${row.recommended_action || "N/A"} / capabilities=${(row.capability_ids || []).join("|") || "none"} / verification=${row.verification_hint || "N/A"}`);
+    lines.push(`- ${row.family}: mismatch_n=${row.mismatch_n} / status=${row.status} / action=${row.recommended_action || "N/A"} / review_status=${row.review_status || "N/A"} / review_action=${row.review_action || "N/A"} / capabilities=${(row.capability_ids || []).join("|") || "none"} / verification=${row.verification_hint || "N/A"}`);
   }
   return `${lines.join("\n")}\n`;
 }
@@ -57,6 +59,8 @@ function main() {
     observation: readJsonRawSafe(INPUTS.observation, null),
     reasoningJournal: readJsonRawSafe(INPUTS.reasoningJournal, null),
     autonomyParity: readJsonRawSafe(INPUTS.autonomyParity, null),
+    otherServerPolicyReview: readJsonRawSafe(INPUTS.otherServerPolicyReview, null),
+    cooldownPolicyReview: readJsonRawSafe(INPUTS.cooldownPolicyReview, null),
     capabilities: Array.isArray(capabilitiesPayload.capabilities) ? capabilitiesPayload.capabilities : [],
   });
 

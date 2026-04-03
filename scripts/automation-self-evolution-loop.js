@@ -67,6 +67,7 @@ function buildPlanningContext() {
     needs_signal_deep_dive: needsSignalDeepDive,
     needs_ev_policy_deep_dive: dominantMismatchFamily === "EV_POLICY",
     needs_other_server_policy_deep_dive: dominantMismatchFamily === "OTHER_SERVER_POLICY",
+    needs_cooldown_policy_deep_dive: dominantMismatchFamily === "COOLDOWN_POLICY",
     reasoning_entry_n: Number(journalSummary.entry_n || 0) || 0,
     autonomy_progress_pct: Number(paritySummary.overall_progress_pct || 0) || 0,
     authority_state: String(paritySummary.current_authority_state || "").trim().toUpperCase() || null,
@@ -99,6 +100,9 @@ function capabilityMatches(capability = {}, context = {}) {
     return false;
   }
   if (typeof trigger.needs_other_server_policy_deep_dive === "boolean" && trigger.needs_other_server_policy_deep_dive !== Boolean(context.needs_other_server_policy_deep_dive)) {
+    return false;
+  }
+  if (typeof trigger.needs_cooldown_policy_deep_dive === "boolean" && trigger.needs_cooldown_policy_deep_dive !== Boolean(context.needs_cooldown_policy_deep_dive)) {
     return false;
   }
   if (familyIn.length && !familyIn.includes(String(context.dominant_mismatch_family || "").trim().toUpperCase())) {

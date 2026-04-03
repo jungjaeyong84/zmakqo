@@ -27,6 +27,15 @@ function unique(values = []) {
   return Array.from(new Set((Array.isArray(values) ? values : []).filter(Boolean)));
 }
 
+function pickVerificationHint({ family, reviewSummary, fallbackHint }) {
+  const target = firstObject(reviewSummary && reviewSummary.verification_target);
+  if (target.metric && target.expected) {
+    const baseline = target.baseline_value == null ? "" : ` (baseline=${target.baseline_value})`;
+    return `${target.metric} ${target.expected}${baseline}`;
+  }
+  return fallbackHint;
+}
+
 function familyStatus(mismatchN, dominantFamily, family) {
   if ((toNum(mismatchN) || 0) <= 0) return "CLEAR";
   if (upper(dominantFamily) === upper(family)) return "PRIORITY";
@@ -39,6 +48,8 @@ function buildFamilyScoreboard({
   observation = null,
   reasoningJournal = null,
   autonomyParity = null,
+  otherServerPolicyReview = null,
+  cooldownPolicyReview = null,
   capabilities = [],
 } = {}) {
   const qualitySummary = firstObject(quality && quality.summary);
@@ -47,6 +58,8 @@ function buildFamilyScoreboard({
   const observationSummary = firstObject(observation && observation.summary);
   const journalSummary = firstObject(reasoningJournal && reasoningJournal.summary);
   const paritySummary = firstObject(autonomyParity && autonomyParity.summary);
+  const otherPolicyReviewSummary = firstObject(otherServerPolicyReview && otherServerPolicyReview.summary);
+  const cooldownPolicyReviewSummary = firstObject(cooldownPolicyReview && cooldownPolicyReview.summary);
 
   const families = new Map();
   for (const row of firstArray(qualityRows.final_downstream_family_actions)) {
@@ -74,17 +87,29 @@ function buildFamilyScoreboard({
         return triggerFamilies.includes(row.family) || triggerFamilies.length === 0;
       }).map((cap) => cap.id)
     );
+    const reviewSummary = firstObject(row.family === "OTHER_SERVER_POLICY"
+      ? otherPolicyReviewSummary
+      : row.family === "COOLDOWN_POLICY"
+        ? cooldownPolicyReviewSummary
+        : null);
+    const fallbackVerificationHint = row.family === "OTHER_SERVER_POLICY"
+      ? "other_server_policy_mismatch_n < baseline"
+      : row.family === "EV_POLICY"
+        ? "ev_policy_post_apply_comparable_n >= min_post_samples"
+        : "final_downstream_mismatch_n < baseline";
     return {
       family: row.family,
       mismatch_n: row.mismatch_n,
       recommended_action: row.recommended_action,
       status: familyStatus(row.mismatch_n, cutoverSummary.dominant_mismatch_family, row.family),
       capability_ids: capabilityIds,
-      verification_hint: row.family === "OTHER_SERVER_POLICY"
-        ? "other_server_policy_mismatch_n < baseline"
-        : row.family === "EV_POLICY"
-          ? "ev_policy_post_apply_comparable_n >= min_post_samples"
-          : "final_downstream_mismatch_n < baseline",
+      review_status: reviewSummary.status || null,
+      review_action: reviewSummary.top_reason_recommended_action || reviewSummary.recommended_action || null,
+      verification_hint: pickVerificationHint({
+        family: row.family,
+        reviewSummary,
+        fallbackHint: fallbackVerificationHint,
+      }),
     };
   }).sort((a, b) => b.mismatch_n - a.mismatch_n || String(a.family).localeCompare(String(b.family)));
 

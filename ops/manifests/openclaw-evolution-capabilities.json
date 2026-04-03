@@ -49,6 +49,19 @@
         "dominant_mismatch_family_in": ["OTHER_SERVER_POLICY"],
         "authority_state_in": ["PENDING", "READY"]
       }
+    },
+    {
+      "id": "cooldown_policy_review",
+      "type": "analysis",
+      "script": "report-best-self-evolution-cooldown-policy-review.js",
+      "insert_after": "server_signal_drift_remediation_plan_context",
+      "side_effect": "ADVISORY",
+      "trigger_reason": "COOLDOWN_POLICY",
+      "trigger": {
+        "needs_cooldown_policy_deep_dive": true,
+        "dominant_mismatch_family_in": ["COOLDOWN_POLICY"],
+        "authority_state_in": ["PENDING", "READY"]
+      }
     }
   ]
 }
