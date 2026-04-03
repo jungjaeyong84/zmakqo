@@ -1126,6 +1126,12 @@ function buildEvParityCandidate(parityArtifact, cutoverArtifact = null, dropVali
   };
 }
 
+function shouldPreferEvParityCandidate(observedCandidate = {}, parityCandidate = {}) {
+  if (parityCandidate.actionable !== true) return false;
+  if (String(parityCandidate.source || "").trim().toUpperCase() !== "CANONICAL_PARITY_EV_POLICY_MARKET_RESCUE") return false;
+  return Array.isArray(parityCandidate.target_markets) && parityCandidate.target_markets.length > 0;
+}
+
 function buildWaitParityCandidate(cutoverArtifact = null, currentSys = {}, objectiveSupervisor = {}) {
   const cutoverData = cutoverArtifact && cutoverArtifact.data && typeof cutoverArtifact.data === "object"
     ? cutoverArtifact.data
@@ -1228,6 +1234,30 @@ function buildObservedStageCandidate(stage, artifact, currentObj = {}) {
     snapshotPath: data.artifacts && data.artifacts.autopilot_snapshot_path,
     objectiveEnoughSample: Boolean(currentObj && currentObj.enough_sample === true),
     target_markets: [],
+  };
+}
+
+function summarizeFilterCanaryDriftContext(data = null) {
+  const golden = data && data.golden && data.golden.summary && typeof data.golden.summary === "object"
+    ? data.golden.summary
+    : {};
+  const shadow = data && data.shadow && data.shadow.summary && typeof data.shadow.summary === "object"
+    ? data.shadow.summary
+    : {};
+  const shadowStageEntries = Object.entries(shadow.byStage || {});
+  const shadowDriftStages = shadowStageEntries
+    .filter(([, value]) => (toNum(value && value.drift) || 0) > 0)
+    .map(([key]) => String(key || "").trim().toUpperCase())
+    .filter(Boolean);
+  const shadowNonAiDrift = shadowStageEntries
+    .filter(([key]) => String(key || "").trim().toUpperCase() !== "AI")
+    .reduce((acc, [, value]) => acc + (toNum(value && value.drift) || 0), 0);
+  return {
+    shadow_drift: toNum(shadow.drift) || 0,
+    golden_drift: toNum(golden.drift) || 0,
+    shadow_ai_only_drift: (toNum(shadow.drift) || 0) > 0 && (toNum(golden.drift) || 0) === 0 && shadowDriftStages.length > 0 && shadowDriftStages.every((key) => key === "AI"),
+    shadow_non_ai_drift: shadowNonAiDrift,
+    shadow_drift_stages: shadowDriftStages,
   };
 }
 
@@ -1922,10 +1952,14 @@ async function main() {
   const autopilotStore = readAutopilotState();
   const stateData = autopilotStore.data || { stages: {}, history: [] };
   let history = Array.isArray(stateData.history) ? stateData.history : [];
+  const canaryDriftContext = summarizeFilterCanaryDriftContext(canaryArtifact && canaryArtifact.data ? canaryArtifact.data : null);
   const shadowCanaryPass = Boolean(
     canaryArtifact && canaryArtifact.data
-    && canaryArtifact.data.golden && canaryArtifact.data.golden.summary && Number(canaryArtifact.data.golden.summary.drift || 0) === 0
-    && canaryArtifact.data.shadow && canaryArtifact.data.shadow.summary && Number(canaryArtifact.data.shadow.summary.drift || 0) === 0
+    && (canaryDriftContext.golden_drift || 0) === 0
+    && (
+      (canaryDriftContext.shadow_drift || 0) === 0
+      || canaryDriftContext.shadow_ai_only_drift === true
+    )
   );
   const selfEvolutionCanary = selfEvolutionCanaryArtifact && selfEvolutionCanaryArtifact.data && selfEvolutionCanaryArtifact.data.summary
     ? selfEvolutionCanaryArtifact.data.summary
@@ -2101,7 +2135,8 @@ async function main() {
     currentSys,
     objectiveArtifactForLoop.data || {}
   );
-  if (evObservedCandidate.observedUpdate === true) {
+  const preferEvParityCandidate = shouldPreferEvParityCandidate(evObservedCandidate, evParityCandidate);
+  if (evObservedCandidate.observedUpdate === true && !preferEvParityCandidate) {
     result = await processObservedStage({
       stage: "EV",
       artifact: evArtifact,
@@ -2155,13 +2190,14 @@ async function main() {
       : null,
     signature: result.stageState.last_signature,
     snapshot_path: result.stageState.last_snapshot_path || null,
-    source: evObservedCandidate.observedUpdate === true ? "EV_TUNER" : evParityCandidate.source,
-    support_n: evObservedCandidate.observedUpdate === true ? null : evParityCandidate.support_n,
-    drop_validation_status: evObservedCandidate.observedUpdate === true ? null : evParityCandidate.drop_validation_status,
-    drop_validation_action: evObservedCandidate.observedUpdate === true ? null : evParityCandidate.drop_validation_action,
-    drop_validation_top_family: evObservedCandidate.observedUpdate === true ? null : evParityCandidate.drop_validation_top_family,
-    drop_validation_top_reason: evObservedCandidate.observedUpdate === true ? null : evParityCandidate.drop_validation_top_reason,
-    drop_validation_rescue_rate: evObservedCandidate.observedUpdate === true ? null : evParityCandidate.drop_validation_rescue_rate,
+    source: evObservedCandidate.observedUpdate === true && !preferEvParityCandidate ? "EV_TUNER" : evParityCandidate.source,
+    support_n: evObservedCandidate.observedUpdate === true && !preferEvParityCandidate ? null : evParityCandidate.support_n,
+    drop_validation_status: evObservedCandidate.observedUpdate === true && !preferEvParityCandidate ? null : evParityCandidate.drop_validation_status,
+    drop_validation_action: evObservedCandidate.observedUpdate === true && !preferEvParityCandidate ? null : evParityCandidate.drop_validation_action,
+    drop_validation_top_family: evObservedCandidate.observedUpdate === true && !preferEvParityCandidate ? null : evParityCandidate.drop_validation_top_family,
+    drop_validation_top_reason: evObservedCandidate.observedUpdate === true && !preferEvParityCandidate ? null : evParityCandidate.drop_validation_top_reason,
+    drop_validation_rescue_rate: evObservedCandidate.observedUpdate === true && !preferEvParityCandidate ? null : evParityCandidate.drop_validation_rescue_rate,
+    target_markets: evObservedCandidate.observedUpdate === true && !preferEvParityCandidate ? [] : (evParityCandidate.target_markets || []),
   });
 
   const waitObservedCandidate = buildObservedStageCandidate("WAIT", waitArtifact, objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.objective ? objectiveArtifactForLoop.data.objective : null);
@@ -2729,6 +2765,7 @@ module.exports = {
     buildAiStageCandidate,
     buildMarketStageCandidate,
     buildObservedStageCandidate,
+    summarizeFilterCanaryDriftContext,
     buildPineCandidate,
     buildLoopMonitorView,
     resolveReportCycleId,
@@ -2743,6 +2780,7 @@ module.exports = {
     mergeStageNextSettings,
     buildSourceModeStageCandidate,
     buildEvParityCandidate,
+    shouldPreferEvParityCandidate,
     buildWaitParityCandidate,
     resolveStageRollbackInputs,
   },
