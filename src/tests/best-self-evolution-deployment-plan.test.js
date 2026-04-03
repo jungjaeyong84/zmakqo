@@ -338,6 +338,53 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
 (() => {
   const report = deriveDeploymentPlan({
     objectiveSupervisor: {
+      promotion: { ready: false, candidate_id: null, display_candidate_id: null },
+      rollback: { ready: true, reason: "AUTO_ROLLBACK_READY", rollback_file_path: "/tmp/rollback.pine" },
+      self_evolution_deployment: { deploy_pass: true },
+    },
+    changeControl: {},
+    codexPatchReview: { verdict: "ROLLBACK", recommended_rollback_file_path: "/tmp/rollback.pine" },
+    deploymentGuards: { summary: { deploy_pass: false, target_candidate_id: "ML_GATE_CORE_SCORE_ABS", canary_open_wave: 1, blockers: ["SELF_EVOLUTION_REPLAY_NOT_PASS"] } },
+    canaryReport: { summary: { open_wave: 1 }, rows: [] },
+    stageAutopilot: {
+      raw: {
+        stage_rows: [
+          {
+            stage: "PINE",
+            machine_state: "READY",
+            prepared_file_path: "/tmp/prepared.pine",
+            prepared_strategy_id: "donbeolja_v6.1.1.0",
+            latest_generated_file_path: "/tmp/latest.pine",
+            rollback_source_file_path: "/tmp/rollback.pine",
+            signature: "ML_GATE_CORE_SCORE_ABS",
+          },
+        ],
+      },
+    },
+    weeklyHistory: {
+      weeks: [
+        {
+          week_key: "2026W13",
+          rollback_source_file_path: "/tmp/rollback.pine",
+          created_file_path: "/tmp/prepared.pine",
+          created_strategy_id: "donbeolja_v6.1.1.0",
+          latest_generated_file_path: "/tmp/latest.pine",
+        },
+      ],
+    },
+  });
+
+  assert.strictEqual(report.summary.plan_status, "READY_FOR_MANUAL_ROLLBACK");
+  assert.strictEqual(report.summary.authority_approved, true);
+  assert.strictEqual(report.summary.authority_state, "APPROVED");
+  assert.strictEqual(report.summary.external_authority_pending, false);
+  assert.strictEqual(report.summary.blockers.includes("EXTERNAL_AUTHORITY_PENDING"), false);
+  console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_ROLLBACK_AUTHORITY_TEST_OK");
+})();
+
+(() => {
+  const report = deriveDeploymentPlan({
+    objectiveSupervisor: {
       promotion: { ready: true, candidate_id: "EV_TP1_THRESHOLD_TUNE", display_candidate_id: "EV_TP1_THRESHOLD_TUNE" },
       rollback: { ready: false },
       self_evolution_deployment: { deploy_pass: true },

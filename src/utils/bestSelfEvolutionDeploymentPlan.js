@@ -594,6 +594,8 @@ function deriveDeploymentPlan({
       || codexCandidateId === appliedOriginCandidateId
     )
   );
+  const rollbackAuthorityApproved = Boolean(rollbackPreparePass);
+  const authorityApproved = appliedAuthorityApproved || rollbackAuthorityApproved;
   const preparedStrategyApplied = Boolean(
     prepared.prepared_stage_ready === true
     && (
@@ -609,16 +611,16 @@ function deriveDeploymentPlan({
   const authorityBypassActive = Boolean(
     (prepared.override_active === true || preparedStrategyApplied)
     && (manualPaste.acknowledged === true || liveSignalConfirmation.confirmed === true)
-    && !appliedAuthorityApproved
+    && !authorityApproved
   );
   const externalAuthorityPending = Boolean(
     authorityRequired
-    && !appliedAuthorityApproved
+    && !authorityApproved
     && (manualPaste.acknowledged === true || bundleActivationSummary.activation_confirmed === true || preparedStrategyApplied)
   );
   const authorityState = !authorityRequired
     ? "NOT_REQUIRED"
-    : (appliedAuthorityApproved ? "APPROVED" : (externalAuthorityPending ? "PENDING" : "REQUIRED"));
+    : (authorityApproved ? "APPROVED" : (externalAuthorityPending ? "PENDING" : "REQUIRED"));
   const runtimeActivationSatisfied = Boolean(
     bundleActivationSummary.activation_confirmed === true
     || (
@@ -819,7 +821,7 @@ function deriveDeploymentPlan({
       confirmed_signal_created_at: bundleActivationSummary.first_decision_created_at || liveSignalConfirmation.created_at,
       codex_verdict: codexVerdict,
       authority_required: authorityRequired,
-      authority_approved: appliedAuthorityApproved,
+      authority_approved: authorityApproved,
       authority_state: authorityState,
       external_authority_pending: externalAuthorityPending,
       authority_bypass_active: false,
