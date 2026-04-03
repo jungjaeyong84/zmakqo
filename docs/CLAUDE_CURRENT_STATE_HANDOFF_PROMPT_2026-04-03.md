@@ -27,6 +27,8 @@ Current context you must preserve:
 - reasoning journal verification outcome resolution is now active
 - autonomy parity tracking is now active
 - contextual deep-dive/remediation steps are now declared through a capability manifest
+- OTHER_SERVER_POLICY has its own dedicated review artifact and capability
+- family scoreboard tracking is now active
 - historical market-level exception blocks were intentionally released to collect fresh server-native data
 - do not call released historical exceptions a regression by default
 - do not infer full autonomy from healthy automation alone
@@ -47,6 +49,8 @@ Current operating facts you must verify from latest artifacts:
 - best_self_evolution_openclaw_autonomy_parity_latest -> progress tracked by requirement rows
 - best_self_evolution_openclaw_autonomy_parity_latest -> includes `reasoning_verification_quality`
 - /Users/jeongjaeyong/Projects/donbeolja/ops/manifests/openclaw-evolution-capabilities.json -> contextual capabilities registry
+- best_self_evolution_other_server_policy_review_latest -> top OTHER_SERVER_POLICY sub-reason and verification target
+- best_self_evolution_family_scoreboard_latest -> family-to-capability mapping and priority status
 
 Interpretation rules:
 1. Prefer latest artifacts over narrative or old retrospectives.

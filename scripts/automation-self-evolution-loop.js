@@ -66,9 +66,11 @@ function buildPlanningContext() {
     quality_status: qualityStatus,
     needs_signal_deep_dive: needsSignalDeepDive,
     needs_ev_policy_deep_dive: dominantMismatchFamily === "EV_POLICY",
+    needs_other_server_policy_deep_dive: dominantMismatchFamily === "OTHER_SERVER_POLICY",
     reasoning_entry_n: Number(journalSummary.entry_n || 0) || 0,
     autonomy_progress_pct: Number(paritySummary.overall_progress_pct || 0) || 0,
     authority_state: String(paritySummary.current_authority_state || "").trim().toUpperCase() || null,
+    other_server_policy_mismatch_n: Number(qualitySummary.other_server_policy_mismatch_n || 0) || 0,
   };
 }
 
@@ -94,6 +96,9 @@ function capabilityMatches(capability = {}, context = {}) {
     return false;
   }
   if (typeof trigger.needs_ev_policy_deep_dive === "boolean" && trigger.needs_ev_policy_deep_dive !== Boolean(context.needs_ev_policy_deep_dive)) {
+    return false;
+  }
+  if (typeof trigger.needs_other_server_policy_deep_dive === "boolean" && trigger.needs_other_server_policy_deep_dive !== Boolean(context.needs_other_server_policy_deep_dive)) {
     return false;
   }
   if (familyIn.length && !familyIn.includes(String(context.dominant_mismatch_family || "").trim().toUpperCase())) {
@@ -217,6 +222,7 @@ function buildStepPlan(context = {}, capabilityDefs = null) {
     { id: "objective_final", script: "automation-objective-supervisor.js", env: { OBJECTIVE_SUPERVISOR_SELF_EVOLUTION_STAGE: "FINAL" } },
     { id: "reasoning_journal", script: "report-best-self-evolution-reasoning-journal.js" },
     { id: "openclaw_autonomy_parity", script: "report-best-self-evolution-openclaw-autonomy-parity.js" },
+    { id: "family_scoreboard", script: "report-best-self-evolution-family-scoreboard.js" },
     { id: "loop_monitor", script: "report-best-self-evolution-loop-monitor.js" },
     { id: "stage_autopilot", script: "automation-stage-autopilot.js", env: { STAGE_AUTOPILOT_SKIP_TELEGRAM: "1" } },
   ];

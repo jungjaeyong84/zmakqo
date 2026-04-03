@@ -89,6 +89,11 @@ function derivePendingVerification({ cutover = null, quality = null, autonomyCon
   const autonomySummary = readSummary(autonomyContract);
   const dominantFamily = toUpper(cutoverSummary.dominant_mismatch_family);
   const authorityState = toUpper(autonomySummary.authority_state);
+  const finalMismatchN = toNum(
+    qualitySummary.final_downstream_mismatch_n != null
+      ? qualitySummary.final_downstream_mismatch_n
+      : cutoverSummary.final_downstream_mismatch_n
+  );
 
   if (dominantFamily === "EV_POLICY") {
     return {
@@ -108,11 +113,11 @@ function derivePendingVerification({ cutover = null, quality = null, autonomyCon
   }
   if (authorityState === "PENDING") {
     return {
-      metric: "authority_state",
-      expected: "= READY",
+      metric: "final_downstream_mismatch_n",
+      expected: "< baseline",
       deadline_hint: "NEXT_24H_TO_48H",
       qualitative_goal: "toward READY with parity evidence",
-      baseline_value: authorityState,
+      baseline_value: finalMismatchN,
     };
   }
   return {
@@ -138,6 +143,29 @@ function deriveHypothesis({ dominantIssue = null, dominantIssueSource = null, re
     return `Authority is still ${authorityState}; recommendation ${recommendedAction || "MONITOR_ONLY"} must accumulate evidence before READY.`;
   }
   return `Current dominant issue is ${dominantIssueSource || "UNKNOWN"}:${dominantIssue || "UNKNOWN"}; continue ${recommendedAction || "MONITOR_ONLY"} while gathering fresh evidence.`;
+}
+
+function describeVerificationTarget(pendingVerification = null) {
+  if (!pendingVerification || !pendingVerification.metric) return "No verification target.";
+  const expected = pendingVerification.expected || "N/A";
+  const baseline = pendingVerification.baseline_value != null ? ` (baseline=${pendingVerification.baseline_value})` : "";
+  return `${pendingVerification.metric} ${expected}${baseline}`;
+}
+
+function deriveVerificationFriendlyHypothesis({
+  dominantIssue = null,
+  dominantIssueSource = null,
+  recommendedAction = null,
+  pendingVerification = null,
+  autonomyContract = null,
+} = {}) {
+  const base = deriveHypothesis({ dominantIssue, dominantIssueSource, recommendedAction, autonomyContract });
+  const target = describeVerificationTarget(pendingVerification);
+  return {
+    text: `${base} Verification target: ${target}.`,
+    verification_focus: target,
+    hypothesis_class: pendingVerification && pendingVerification.metric ? "MEASURABLE" : "NARRATIVE",
+  };
 }
 
 function countContradictions(entries = []) {
@@ -312,10 +340,11 @@ function buildReasoningJournal({
   const issue = deriveDominantIssue({ objectiveSupervisor, autonomyContract, quality, cutover });
   const recommendedAction = deriveRecommendedAction({ quality, cutover, policyPlan });
   const pendingVerification = derivePendingVerification({ cutover, quality, autonomyContract });
-  const hypothesis = deriveHypothesis({
+  const hypothesisInfo = deriveVerificationFriendlyHypothesis({
     dominantIssue: issue.dominant_issue,
     dominantIssueSource: issue.dominant_issue_source,
     recommendedAction,
+    pendingVerification,
     autonomyContract,
   });
 
@@ -329,7 +358,9 @@ function buildReasoningJournal({
     dominant_issue_source: issue.dominant_issue_source,
     secondary_issue: issue.secondary_issue,
     recommended_action: recommendedAction,
-    hypothesis,
+    hypothesis: hypothesisInfo.text,
+    verification_focus: hypothesisInfo.verification_focus,
+    hypothesis_class: hypothesisInfo.hypothesis_class,
     pending_verification: pendingVerification,
     current_snapshot: {
       quality_status: String(qualitySummary.quality_status || "").trim() || null,
@@ -359,6 +390,7 @@ function buildReasoningJournal({
       current_dominant_issue: currentEntry.dominant_issue,
       current_dominant_issue_source: currentEntry.dominant_issue_source,
       current_recommended_action: currentEntry.recommended_action,
+      current_verification_focus: currentEntry.verification_focus,
       pending_verification_n: deduped.filter((row) => row && row.pending_verification && row.pending_verification.metric).length,
       verified_n: verificationStats.verified_n,
       not_met_n: verificationStats.not_met_n,
@@ -377,9 +409,12 @@ module.exports = {
     countContradictions,
     collectCurrentVerificationState,
     deriveDominantIssue,
+    deriveHypothesis,
+    deriveVerificationFriendlyHypothesis,
     evaluateExpected,
     deriveRecommendedAction,
     derivePendingVerification,
+    describeVerificationTarget,
     resolveVerificationOutcome,
     resolvePreviousEntries,
     buildVerificationStats,

@@ -67,6 +67,7 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.latest_cycle_id, "cycle-1");
   assert.strictEqual(journal.summary.current_dominant_issue, "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK");
   assert.strictEqual(journal.summary.current_recommended_action, "HOLD_EV_POLICY_REVIEW");
+  assert.match(journal.summary.current_verification_focus, /ev_policy_post_apply_comparable_n/);
   assert.strictEqual(journal.summary.entry_n, 4);
   assert.strictEqual(journal.summary.verified_n, 1);
   assert.strictEqual(journal.summary.not_met_n, 1);
@@ -91,6 +92,24 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
     }).metric,
     "ev_policy_post_apply_comparable_n"
   );
+
+  assert.strictEqual(
+    __test.derivePendingVerification({
+      autonomyContract: { summary: { authority_state: "PENDING" } },
+      quality: { summary: { final_downstream_mismatch_n: 11 } },
+    }).metric,
+    "final_downstream_mismatch_n"
+  );
+
+  const friendlyHypothesis = __test.deriveVerificationFriendlyHypothesis({
+    dominantIssue: "OTHER_SERVER_POLICY",
+    dominantIssueSource: "SERVER_SIGNAL",
+    recommendedAction: "WATCH_ONLY_REVIEW",
+    pendingVerification: { metric: "other_server_policy_mismatch_n", expected: "< baseline", baseline_value: 3 },
+    autonomyContract: { summary: { authority_state: "PENDING" } },
+  });
+  assert.strictEqual(friendlyHypothesis.hypothesis_class, "MEASURABLE");
+  assert.match(friendlyHypothesis.verification_focus, /other_server_policy_mismatch_n/);
 
   assert.strictEqual(
     __test.countContradictions([

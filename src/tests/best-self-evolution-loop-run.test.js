@@ -31,12 +31,14 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
   assert.strictEqual(steps.some((row) => row.id === "filter_shadow_canary"), true);
   assert.strictEqual(steps.some((row) => row.id === "objective_final"), true);
   assert.strictEqual(steps.some((row) => row.id === "reasoning_journal"), true);
+  assert.strictEqual(steps.some((row) => row.id === "family_scoreboard"), true);
   assert.strictEqual(steps.some((row) => row.id === "server_signal_observation_24h_context"), false);
   assert.strictEqual(steps.find((row) => row.id === "deployment_plan").env.SELF_EVOLUTION_SYNC_LIVE_SERVICES, "0");
   assert.strictEqual(steps.findIndex((row) => row.id === "loop_monitor") < steps.findIndex((row) => row.id === "stage_autopilot"), true);
   assert.strictEqual(steps.findIndex((row) => row.id === "authority_ensemble") < steps.findIndex((row) => row.id === "deployment_plan"), true);
   assert.strictEqual(steps.findIndex((row) => row.id === "objective_final") < steps.findIndex((row) => row.id === "reasoning_journal"), true);
-  assert.strictEqual(steps.findIndex((row) => row.id === "reasoning_journal") < steps.findIndex((row) => row.id === "loop_monitor"), true);
+  assert.strictEqual(steps.findIndex((row) => row.id === "reasoning_journal") < steps.findIndex((row) => row.id === "family_scoreboard"), true);
+  assert.strictEqual(steps.findIndex((row) => row.id === "family_scoreboard") < steps.findIndex((row) => row.id === "loop_monitor"), true);
 
   const evSteps = __test.buildStepPlan({
     dominant_mismatch_family: "EV_POLICY",
@@ -52,15 +54,28 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
   assert.strictEqual(evSteps.findIndex((row) => row.id === "server_signal_observation_24h_context") < evSteps.findIndex((row) => row.id === "drop_validation"), true);
   assert.strictEqual(evSteps.find((row) => row.id === "ev_gate_rescue").capability_id, "ev_gate_rescue");
 
+  const otherPolicySteps = __test.buildStepPlan({
+    dominant_mismatch_family: "OTHER_SERVER_POLICY",
+    quality_status: "WATCH_PARITY_DRIFT",
+    needs_signal_deep_dive: true,
+    needs_ev_policy_deep_dive: false,
+    needs_other_server_policy_deep_dive: true,
+    authority_state: "PENDING",
+  });
+  assert.strictEqual(otherPolicySteps.some((row) => row.id === "other_server_policy_review"), true);
+  assert.strictEqual(otherPolicySteps.find((row) => row.id === "other_server_policy_review").capability_id, "other_server_policy_review");
+
   const neutralSteps = __test.buildStepPlan({
     dominant_mismatch_family: "NONE",
     quality_status: "PASS",
     needs_signal_deep_dive: false,
     needs_ev_policy_deep_dive: false,
+    needs_other_server_policy_deep_dive: false,
     authority_state: "PENDING",
   });
   assert.strictEqual(neutralSteps.some((row) => row.id === "server_signal_observation_24h_context"), false);
   assert.strictEqual(neutralSteps.some((row) => row.id === "ev_gate_rescue"), false);
+  assert.strictEqual(neutralSteps.some((row) => row.id === "other_server_policy_review"), false);
 
   assert.strictEqual(
     __test.capabilityMatches(
