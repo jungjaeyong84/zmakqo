@@ -1,11 +1,11 @@
 # BEST_PINE_TO_SELF_EVOLUTION_SYSTEM_MAP
 
 - 제정: 2026-03-31
-- 업데이트: 2026-04-01
+- 업데이트: 2026-04-03
 - 상태: ACTIVE
 - 목적:
   - 돈벌자 전체 구조를 `사용자 화면 -> 서버 신호 -> 실행 -> 감독 -> self-evolution -> autonomy contract` 순서로 한 문서에서 이해하게 한다.
-  - Pine 중심 설명이 아니라 `서버 정본 전환 진행 중인 실제 구조`를 기준으로 정리한다.
+  - Pine 중심 설명이 아니라 `서버 정본 전환 이후의 실제 구조`를 기준으로 정리한다.
 - 연계 문서:
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/SERVER_SIGNAL_AUTHORITY_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/SERVER_SIGNAL_AUTHORITY_MIGRATION_CHECKLIST.md`
@@ -15,24 +15,26 @@
 
 ## 1. 한 줄 정의
 
-돈벌자는 현재 `서버가 봉을 읽고 내부 정본 신호를 생성하며`, `Pine는 비교/시각화 shadow로 강등되는 중인` 자동매매 시스템이다.
+돈벌자는 현재 `서버가 봉을 읽고 내부 정본 신호를 생성하며`, `Pine는 비교/시각화 shadow로 남는` 자동매매 시스템이다.
 
-현재 source mode는 아직 `PINE_PRIMARY`지만, 운영 판단과 전환 기준은 이미 `서버 정본 기준`으로 이동했다.
+현재 source mode는 이미 `SERVER_PRIMARY`이며, Pine는 운영 정본이 아니다.
 
 ## 2. 현재 상태 요약
 
-2026-04-01 latest 기준:
+2026-04-03 15:00 latest 기준:
 
 1. `runtime_status = READY`
-2. `canonical_engine_source_mode = PINE_PRIMARY`
+2. `canonical_engine_source_mode = SERVER_PRIMARY`
 3. `exec_tf = 15m`
 4. `market_count = 7`
-5. `server_signal_transition_progress_pct = 88`
-6. `readiness_status = EV_POLICY_DRIFT_ACTIVE`
-7. 남은 실질 blocker:
-   - `EV_POLICY_DRIFT_ACTIVE`
-   - `COOLDOWN_POLICY_DRIFT_ACTIVE`
-8. `STRATEGY_GATE`는 `historical_only`로 비차단화됨
+5. `server_signal_transition_progress_pct = 100`
+6. `readiness_status = SERVER_PRIMARY_ACTIVE`
+7. `promotion_gate_status = READY`
+8. 남은 실질 blocker:
+   - `objective_supervisor = HOLD`
+   - `authority_state = PENDING`
+   - `final_downstream_mismatch_n = 17`
+9. `STRATEGY_GATE`는 `historical_only`로 비차단화됨
 
 ## 3. 최상위 흐름
 
@@ -130,7 +132,7 @@ flowchart LR
 1. `runtime`: 실제 TF, 활성 마켓, source mode
 2. `authority`: 정본/그림자 수와 parity 규모
 3. `quality`: entry -> intent -> fill 품질
-4. `cutover readiness`: 승격 blocker와 조치 힌트
+4. `cutover readiness`: coherence gate, blocker, 조치 힌트
 
 ### 4.5 self-evolution / autonomy
 
@@ -157,27 +159,31 @@ flowchart LR
 3. Telegram의 서버 정본 기준 전환
 4. self-evolution / autopilot / autonomy contract로 server signal artifact 연결
 5. `STRATEGY_GATE` historical-only 비차단화
+6. `SERVER_PRIMARY_ACTIVE` 달성
+7. cutover `promotion_gate_status = READY` 달성
 
 ### 5.2 아직 진행 중인 것
 
 1. `EV_POLICY` drift 축소
 2. `COOLDOWN_POLICY` drift 축소
-3. `SERVER_PRIMARY` 승격 acceptance 충족
-4. Pine 완전 shadow 마감
+3. autonomy verification rate 개선
+4. objective recovery / authority pending 해소
 
-## 6. 왜 아직 SERVER_PRIMARY가 아닌가
+## 6. 왜 아직 완전 자율 전환이 아닌가
 
-현재 blocker는 구조 부재가 아니라 품질 drift다.
+현재 blocker는 source mode 부재가 아니라 autonomy와 성과 증거 부족이다.
 
 주요 상태:
 
-1. `source_parity_mismatch_n = 0`
-2. `final_downstream_mismatch`가 남아 있다.
-3. 그중 가장 큰 family는 `EV_POLICY`
-4. 다음 family는 `COOLDOWN_POLICY`
+1. `canonical_engine_source_mode = SERVER_PRIMARY`
+2. `readiness_status = SERVER_PRIMARY_ACTIVE`
+3. `promotion_gate_status = READY`
+4. `final_downstream_mismatch_n = 17`
+5. `authority_state = PENDING`
+6. `objective_supervisor = HOLD`
 
 즉 지금은 `서버가 신호를 못 만들기 때문`이 아니라,
-`서버 정본 신호를 운영 기본으로 승격하기 전 마지막 품질 차이`를 줄이는 단계다.
+`서버 정본 이후 autonomy와 objective를 닫기 전 마지막 품질/검증 단계`다.
 
 ## 7. 사용자가 봐야 하는 흐름
 
@@ -188,7 +194,7 @@ flowchart LR
 3. `거래기록`
    - 최근 신호, 주문, 실행 결과를 본다.
 4. `전략상태`
-   - 서버 정본 전환 진행률과 drift 상태를 본다.
+   - 서버 정본 상태와 drift 상태를 본다.
 
 즉 사용자 화면은 돈과 결과를 먼저 보여주고,
 운영 판단은 `전략상태`에서 읽게 한다.
@@ -203,8 +209,8 @@ flowchart LR
 6. `best_self_evolution_openclaw_autonomy_contract_latest.json`
 
 이 6개를 보면 현재
-- 서버 정본 전환이 어디까지 왔는지
-- 왜 막히는지
+- 서버 정본과 cutover coherence가 어디까지 왔는지
+- autonomy가 왜 아직 pending인지
 - 무엇을 먼저 조정해야 하는지
 를 읽을 수 있다.
 
@@ -215,6 +221,6 @@ flowchart LR
 현재 더 정확한 설명은 아래다.
 
 1. 서버가 15분 봉을 읽고 내부 정본 신호를 만든다.
-2. Pine는 저장/비교/시각화 shadow로 내려가고 있다.
+2. Pine는 저장/비교/시각화 shadow로 남아 있다.
 3. 운영 판단은 이미 서버 정본 artifact 기준으로 이동했다.
-4. 남은 건 `SERVER_PRIMARY` 승격 전 마지막 drift 제거다.
+4. 남은 건 `SERVER_PRIMARY` 승격이 아니라, 그 이후 autonomy/verification/objective를 닫는 일이다.

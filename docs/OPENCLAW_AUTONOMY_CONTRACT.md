@@ -29,7 +29,7 @@
 4. `signal_authority_target = SERVER_PRIMARY`
 5. `pine_role = PINE_SHADOW`
 
-## 4. 현재 latest 기준 상태 (as-of 2026-04-03 14:11 KST)
+## 4. 현재 latest 기준 상태 (as-of 2026-04-03 15:00 KST)
 
 ### 4.1 autonomy contract summary
 
@@ -47,11 +47,12 @@
 ### 4.2 cutover truth
 
 1. `readiness_status = SERVER_PRIMARY_ACTIVE`
-2. `promotion_gate_status = BLOCKED`
-3. `promotion_block_reasons = [ARTIFACT_GENERATED_AT_SKEW_EXCEEDED]`
-4. `artifact_coherence_status = BLOCKED`
-5. `dominant_mismatch_family = EV_POLICY`
-6. `recommended_action = HOLD_EV_POLICY_REVIEW`
+2. `promotion_gate_status = READY`
+3. `promotion_block_reasons = []`
+4. `artifact_coherence_status = READY`
+5. `artifact_generated_at_skew_ms = 1496`
+6. `dominant_mismatch_family = EV_POLICY`
+7. `recommended_action = HOLD_EV_POLICY_REVIEW`
 
 ### 4.3 governor / plan
 
@@ -68,7 +69,7 @@
 1. objective recovery가 아직 필요한지
 2. authority가 아직 `PENDING`인지
 3. source-mode는 이미 `SERVER_PRIMARY`인지
-4. promotion gate가 별도 blocker 없이 cleared인지
+4. promotion coherence gate가 별도 blocker 없이 cleared인지
 5. parity drift와 downstream mismatch가 monitor-only인지 blocker인지
 
 ## 6. 지금 왜 완전 자율 전환이 아닌가
@@ -78,11 +79,11 @@
 1. `authority_state=PENDING`
 2. `objective_supervisor.verdict=HOLD`
 3. `governor_status=RECOVERY_CANARY_BLOCKED`
-4. `promotion_gate_status=BLOCKED` because `ARTIFACT_GENERATED_AT_SKEW_EXCEEDED`
+4. `reasoning_verification_quality=FAIL` and `objective_score=-9.5532`
 
 ## 7. 현재 최종 의미
 
 1. OpenClaw substrate는 healthy다.
 2. source-mode cutover는 operationally complete다.
-3. promotion-grade coherence와 autonomy authority는 아직 닫히지 않았다.
-4. 따라서 현재 병목은 자동화 부재가 아니라 objective/coherence/authority의 최종 증거 부족이다.
+3. promotion-grade coherence는 latest aligned set에서 ready지만 autonomy authority는 아직 닫히지 않았다.
+4. 따라서 현재 병목은 자동화 부재가 아니라 objective/verification/authority의 최종 증거 부족이다.

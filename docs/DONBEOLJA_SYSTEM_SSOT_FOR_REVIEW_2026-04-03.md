@@ -2,8 +2,8 @@
 
 - 제정: 2026-04-03
 - 상태: ACTIVE
-- 기준 시각: 2026-04-03 14:28 KST
-- primary aligned cycle: `best_self_evolution_2026-04-03_1427_bb6cb98d`
+- 기준 시각: 2026-04-03 15:00 KST
+- primary aligned cycle: `best_self_evolution_2026-04-03_1500_159d26a3`
 - 목적:
   - Claude/Codex/OpenClaw가 2026-04-03 latest artifact 기준으로 동일한 판정을 내리도록 운영 SSOT를 고정한다.
   - `SERVER_PRIMARY_ACTIVE`, `promotion_gate_status`, `promotion_ready`를 서로 다른 판정 레이어로 분리해 오판을 막는다.
@@ -18,7 +18,7 @@
 5. `learning_epoch_exception_release=true`는 버그가 아니라 fresh-data 수집 정책이다.
 6. cutover/runtime/quality가 최신 aligned cycle이고 autonomy/family artifacts가 이전 cycle이면, 이를 `artifact lag`로 보고 separate finding 또는 interpretation으로 적어라.
 
-## 2. 현재 운영 스냅샷 (as-of 2026-04-03 14:28 KST)
+## 2. 현재 운영 스냅샷 (as-of 2026-04-03 15:00 KST)
 
 ### 2.1 배포
 
@@ -37,9 +37,10 @@
    - `display.verdict=PASS`
    - `display.issue_count=0`
    - `display.scheduler_mode=OPENCLAW_CRON`
+   - `display.generated_at_kst=2026-04-03 15:00:54 KST`
 2. runtime
    - `server_signal_runtime_latest`
-   - `summary.cycle_id=best_self_evolution_2026-04-03_1427_bb6cb98d`
+   - `summary.cycle_id=best_self_evolution_2026-04-03_1500_159d26a3`
    - `runtime_status=READY`
    - `canonical_engine_source_mode=SERVER_PRIMARY`
    - `watchdog_verdict=PASS`
@@ -50,7 +51,7 @@
    - `promotion_gate_status=READY`
    - `promotion_block_reasons=[]`
    - `artifact_coherence_status=READY`
-   - `artifact_generated_at_skew_ms=3000`
+   - `artifact_generated_at_skew_ms=1496`
    - `artifact_generated_at_skew_exceeded=false`
    - `artifact_cycle_alignment_status=ALIGNED`
 4. quality
@@ -69,10 +70,11 @@
    - `verdict=HOLD`
    - `root_cause=EXTERNAL_AUTHORITY_BLOCK_ROLLBACK`
 2. `best_self_evolution_openclaw_autonomy_contract_latest`
+   - `generated_at_kst=2026-04-03 15:00:50 KST`
    - `authority_state=PENDING`
    - `ops_status=PASS`
    - `objective_score=-9.5532`
-   - note: this artifact is older than the aligned 14:27 cutover/runtime/quality set
+   - note: this artifact is older than the aligned 15:00 cutover/runtime/quality set
 3. objective score SSOT
    - current unified objective score snapshot remains `-9.5532`
    - score identity is unified inside the current objective snapshot family even if not every artifact shares the newest cutover cycle

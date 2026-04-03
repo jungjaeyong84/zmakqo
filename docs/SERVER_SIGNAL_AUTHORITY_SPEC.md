@@ -27,7 +27,7 @@
 3. execution authority를 만들지 않음
 4. parity/visualization에만 사용
 
-## 3. 현재 운영 truth (as-of 2026-04-03 14:11 KST)
+## 3. 현재 운영 truth (as-of 2026-04-03 15:00 KST)
 
 1. `server_signal_runtime_latest`
    - `runtime_status=READY`
@@ -35,25 +35,26 @@
    - `watchdog_verdict=PASS`
 2. `server_signal_cutover_readiness_latest`
    - `readiness_status=SERVER_PRIMARY_ACTIVE`
-   - `promotion_gate_status=BLOCKED`
-   - `promotion_block_reasons=[ARTIFACT_GENERATED_AT_SKEW_EXCEEDED]`
-   - `artifact_coherence_status=BLOCKED`
+   - `promotion_gate_status=READY`
+   - `promotion_block_reasons=[]`
+   - `artifact_coherence_status=READY`
 3. `server_signal_quality_latest`
    - `quality_status=WATCH_PARITY_DRIFT`
-   - `parity_mismatch_n=15`
-   - `final_downstream_mismatch_n=15`
+   - `parity_mismatch_n=17`
+   - `final_downstream_mismatch_n=17`
    - `other_server_policy_mismatch_n=3`
 4. `automation_watchdog_latest`
-   - `scheduler_mode=OPENCLAW_CRON`
-   - `verdict=PASS`
+   - `display.scheduler_mode=OPENCLAW_CRON`
+   - `display.verdict=PASS`
 
 ## 4. 해석 규칙
 
 1. `SERVER_PRIMARY_ACTIVE`는 source-mode truth다.
-2. promotion 판정은 `promotion_gate_status`로 읽는다.
-3. `artifact_coherence_status!=READY`면 cutover promotion은 cleared로 읽지 않는다.
-4. Pine 관련 판정은 `PINE_SHADOW/SHADOW_ONLY` 유지 여부만 본다.
-5. 운영 정본 판단에는 Pine를 포함하지 않는다.
+2. promotion coherence 판정은 `promotion_gate_status`로 읽는다.
+3. business-level promotion decision은 `promotion_ready`와 분리해서 읽는다.
+4. `artifact_coherence_status!=READY`면 cutover promotion은 cleared로 읽지 않는다.
+5. Pine 관련 판정은 `PINE_SHADOW/SHADOW_ONLY` 유지 여부만 본다.
+6. 운영 정본 판단에는 Pine를 포함하지 않는다.
 
 ## 5. 데이터 계약 보강
 
@@ -79,4 +80,5 @@ intent/fill/drop에는 아래 top-level trace가 관측 가능해야 한다.
 1. server is the only execution authority
 2. Pine is still shadow-only
 3. source-mode cutover는 운영 기준으로 완료
-4. promotion gate는 artifact skew 때문에 아직 blocked
+4. promotion coherence gate는 latest aligned set에서 ready다.
+5. business-level promotion decision과 autonomy hold는 별도 레이어로 남아 있다.
