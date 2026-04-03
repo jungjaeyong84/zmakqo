@@ -43,6 +43,10 @@ function renderMarkdown(report = {}) {
     "## Summary",
     `- entry_n: ${summary.entry_n ?? 0}`,
     `- contradiction_n: ${summary.contradiction_n ?? 0}`,
+    `- verified_n: ${summary.verified_n ?? 0}`,
+    `- not_met_n: ${summary.not_met_n ?? 0}`,
+    `- unknown_n: ${summary.unknown_n ?? 0}`,
+    `- verification_rate: ${summary.verification_rate != null ? summary.verification_rate : "N/A"}`,
     `- objective_verdict: ${summary.current_objective_verdict || "N/A"}`,
     `- authority_state: ${summary.current_authority_state || "N/A"}`,
     `- dominant_issue: ${summary.current_dominant_issue || "N/A"} / source=${summary.current_dominant_issue_source || "N/A"}`,
@@ -55,7 +59,7 @@ function renderMarkdown(report = {}) {
     lines.push("- none");
   } else {
     for (const row of entries.slice(0, 10)) {
-      lines.push(`- ${row.cycle_id || "N/A"}: issue=${row.dominant_issue || "UNKNOWN"} / action=${row.recommended_action || "MONITOR_ONLY"} / objective=${row.objective_verdict || "N/A"} / authority=${row.authority_state || "N/A"} / pending=${row.pending_verification && row.pending_verification.metric || "none"} / hypothesis=${row.hypothesis || "N/A"}`);
+      lines.push(`- ${row.cycle_id || "N/A"}: issue=${row.dominant_issue || "UNKNOWN"} / action=${row.recommended_action || "MONITOR_ONLY"} / objective=${row.objective_verdict || "N/A"} / authority=${row.authority_state || "N/A"} / pending=${row.pending_verification && row.pending_verification.metric || "none"} / verification=${row.verification_outcome && row.verification_outcome.status || "UNRESOLVED"} / hypothesis=${row.hypothesis || "N/A"}`);
     }
   }
   return `${lines.join("\n")}\n`;
@@ -104,6 +108,8 @@ function main() {
     dominant_issue: output.summary.current_dominant_issue,
     recommended_action: output.summary.current_recommended_action,
     contradiction_n: output.summary.contradiction_n,
+    verified_n: output.summary.verified_n,
+    verification_rate: output.summary.verification_rate,
     latest_json: latestJsonPath,
   }));
 }

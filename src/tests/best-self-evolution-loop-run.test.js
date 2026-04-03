@@ -4,6 +4,10 @@ const assert = require("assert");
 const { __test } = require("../../scripts/automation-self-evolution-loop");
 
 (() => {
+  const capabilities = __test.loadCapabilityManifest();
+  assert.strictEqual(Array.isArray(capabilities), true);
+  assert.strictEqual(capabilities.some((row) => row.id === "ev_gate_rescue"), true);
+
   const steps = __test.buildStepPlan();
   assert.strictEqual(Array.isArray(steps), true);
   assert.strictEqual(steps[0].id, "dataset");
@@ -27,6 +31,7 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
   assert.strictEqual(steps.some((row) => row.id === "filter_shadow_canary"), true);
   assert.strictEqual(steps.some((row) => row.id === "objective_final"), true);
   assert.strictEqual(steps.some((row) => row.id === "reasoning_journal"), true);
+  assert.strictEqual(steps.some((row) => row.id === "server_signal_observation_24h_context"), false);
   assert.strictEqual(steps.find((row) => row.id === "deployment_plan").env.SELF_EVOLUTION_SYNC_LIVE_SERVICES, "0");
   assert.strictEqual(steps.findIndex((row) => row.id === "loop_monitor") < steps.findIndex((row) => row.id === "stage_autopilot"), true);
   assert.strictEqual(steps.findIndex((row) => row.id === "authority_ensemble") < steps.findIndex((row) => row.id === "deployment_plan"), true);
@@ -38,21 +43,42 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
     quality_status: "WATCH_PARITY_DRIFT",
     needs_signal_deep_dive: true,
     needs_ev_policy_deep_dive: true,
+    authority_state: "PENDING",
   });
   assert.strictEqual(evSteps.some((row) => row.id === "server_signal_observation_24h_context"), true);
   assert.strictEqual(evSteps.some((row) => row.id === "server_signal_drift_remediation_plan_context"), true);
   assert.strictEqual(evSteps.some((row) => row.id === "ev_gate_rescue"), true);
   assert.strictEqual(evSteps.find((row) => row.id === "ev_gate_rescue").contextual, true);
   assert.strictEqual(evSteps.findIndex((row) => row.id === "server_signal_observation_24h_context") < evSteps.findIndex((row) => row.id === "drop_validation"), true);
+  assert.strictEqual(evSteps.find((row) => row.id === "ev_gate_rescue").capability_id, "ev_gate_rescue");
 
   const neutralSteps = __test.buildStepPlan({
     dominant_mismatch_family: "NONE",
     quality_status: "PASS",
     needs_signal_deep_dive: false,
     needs_ev_policy_deep_dive: false,
+    authority_state: "PENDING",
   });
   assert.strictEqual(neutralSteps.some((row) => row.id === "server_signal_observation_24h_context"), false);
   assert.strictEqual(neutralSteps.some((row) => row.id === "ev_gate_rescue"), false);
+
+  assert.strictEqual(
+    __test.capabilityMatches(
+      {
+        trigger: {
+          needs_signal_deep_dive: true,
+          authority_state_in: ["PENDING"],
+          dominant_mismatch_family_in: ["EV_POLICY"],
+        },
+      },
+      {
+        needs_signal_deep_dive: true,
+        authority_state: "PENDING",
+        dominant_mismatch_family: "EV_POLICY",
+      }
+    ),
+    true
+  );
 
   const parsed = __test.extractJson("x\n{\"ok\":true,\"step\":\"dataset\"}\n");
   assert.deepStrictEqual(parsed, { ok: true, step: "dataset" });

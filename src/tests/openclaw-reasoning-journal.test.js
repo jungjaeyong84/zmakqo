@@ -21,6 +21,7 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         quality_status: "WATCH_PARITY_DRIFT",
         final_downstream_mismatch_n: 15,
         parity_mismatch_n: 15,
+        other_server_policy_mismatch_n: 2,
         top_drop_reason_family: { key: "EV_POLICY", count: 10 },
       },
     },
@@ -30,6 +31,7 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         dominant_mismatch_family: "EV_POLICY",
         recommended_action: "HOLD_EV_POLICY_REVIEW",
         ev_policy_remediation_min_post_samples: 3,
+        ev_policy_post_apply_comparable_n: 4,
       },
     },
     policyPlan: {
@@ -44,7 +46,19 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
           cycle_id: "cycle-0",
           dominant_issue: "EV_POLICY",
           recommended_action: "RELAX_EV_POLICY_REVIEW",
-          pending_verification: { metric: "ev_policy_post_apply_comparable_n", expected: ">= 3" },
+          pending_verification: { metric: "ev_policy_post_apply_comparable_n", expected: ">= 3", baseline_value: 0 },
+        },
+        {
+          cycle_id: "cycle-neg",
+          dominant_issue: "OTHER_SERVER_POLICY",
+          recommended_action: "WATCH_ONLY_REVIEW",
+          pending_verification: { metric: "other_server_policy_mismatch_n", expected: "< baseline", baseline_value: 2 },
+        },
+        {
+          cycle_id: "cycle-unknown",
+          dominant_issue: "AUTHORITY_PENDING",
+          recommended_action: "MONITOR_ONLY",
+          pending_verification: { metric: "authority_state", expected: "toward READY with parity evidence" },
         },
       ],
     },
@@ -53,8 +67,15 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.latest_cycle_id, "cycle-1");
   assert.strictEqual(journal.summary.current_dominant_issue, "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK");
   assert.strictEqual(journal.summary.current_recommended_action, "HOLD_EV_POLICY_REVIEW");
-  assert.strictEqual(journal.summary.entry_n, 2);
+  assert.strictEqual(journal.summary.entry_n, 4);
+  assert.strictEqual(journal.summary.verified_n, 1);
+  assert.strictEqual(journal.summary.not_met_n, 1);
+  assert.strictEqual(journal.summary.unknown_n, 1);
+  assert.strictEqual(journal.summary.verification_rate, 0.5);
   assert.ok(journal.compacted_context.includes("cycle-1"));
+  assert.strictEqual(journal.entries.find((row) => row.cycle_id === "cycle-0").verification_outcome.status, "VERIFIED");
+  assert.strictEqual(journal.entries.find((row) => row.cycle_id === "cycle-neg").verification_outcome.status, "NOT_MET");
+  assert.strictEqual(journal.entries.find((row) => row.cycle_id === "cycle-unknown").verification_outcome.status, "UNKNOWN");
 
   assert.strictEqual(
     __test.deriveDominantIssue({
@@ -77,6 +98,23 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
       { dominant_issue: "EV_POLICY", recommended_action: "B" },
     ]),
     1
+  );
+
+  assert.strictEqual(__test.evaluateExpected(">= 3", 4).status, "VERIFIED");
+  assert.strictEqual(__test.evaluateExpected("< baseline", 3, 2).status, "NOT_MET");
+  assert.strictEqual(__test.evaluateExpected("toward READY with parity evidence", "PENDING").status, "UNKNOWN");
+  assert.deepStrictEqual(
+    __test.collectCurrentVerificationState({
+      cutover: { summary: { ev_policy_post_apply_comparable_n: 5, final_downstream_mismatch_n: 8 } },
+      quality: { summary: { other_server_policy_mismatch_n: 2, final_downstream_mismatch_n: 7 } },
+      autonomyContract: { summary: { authority_state: "PENDING" } },
+    }),
+    {
+      ev_policy_post_apply_comparable_n: 5,
+      other_server_policy_mismatch_n: 2,
+      final_downstream_mismatch_n: 7,
+      authority_state: "PENDING",
+    }
   );
 
   console.log("OPENCLAW_REASONING_JOURNAL_TEST_OK");

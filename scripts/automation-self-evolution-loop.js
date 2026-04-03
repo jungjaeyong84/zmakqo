@@ -18,6 +18,7 @@ const {
 loadLocalEnv();
 
 const REPO_ROOT = path.resolve(__dirname, "..");
+const CAPABILITY_MANIFEST_PATH = path.join(REPO_ROOT, "ops", "manifests", "openclaw-evolution-capabilities.json");
 const PLANNING_INPUTS = Object.freeze({
   objectiveSupervisor: path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json"),
   serverSignalQuality: path.join(OPS_DAILY_DIR, "server_signal_quality_latest.json"),
@@ -67,10 +68,89 @@ function buildPlanningContext() {
     needs_ev_policy_deep_dive: dominantMismatchFamily === "EV_POLICY",
     reasoning_entry_n: Number(journalSummary.entry_n || 0) || 0,
     autonomy_progress_pct: Number(paritySummary.overall_progress_pct || 0) || 0,
+    authority_state: String(paritySummary.current_authority_state || "").trim().toUpperCase() || null,
   };
 }
 
-function buildStepPlan(context = {}) {
+function normalizeArray(value) {
+  return Array.isArray(value) ? value.map((row) => String(row || "").trim().toUpperCase()).filter(Boolean) : [];
+}
+
+function loadCapabilityManifest(manifestPath = CAPABILITY_MANIFEST_PATH) {
+  const payload = readJsonRawSafe(manifestPath, null) || {};
+  return Array.isArray(payload.capabilities) ? payload.capabilities : [];
+}
+
+function capabilityMatches(capability = {}, context = {}) {
+  const trigger = capability && capability.trigger && typeof capability.trigger === "object"
+    ? capability.trigger
+    : {};
+  const familyIn = normalizeArray(trigger.dominant_mismatch_family_in);
+  const qualityIn = normalizeArray(trigger.quality_status_in);
+  const verdictIn = normalizeArray(trigger.objective_verdict_in);
+  const authorityIn = normalizeArray(trigger.authority_state_in);
+
+  if (typeof trigger.needs_signal_deep_dive === "boolean" && trigger.needs_signal_deep_dive !== Boolean(context.needs_signal_deep_dive)) {
+    return false;
+  }
+  if (typeof trigger.needs_ev_policy_deep_dive === "boolean" && trigger.needs_ev_policy_deep_dive !== Boolean(context.needs_ev_policy_deep_dive)) {
+    return false;
+  }
+  if (familyIn.length && !familyIn.includes(String(context.dominant_mismatch_family || "").trim().toUpperCase())) {
+    return false;
+  }
+  if (qualityIn.length && !qualityIn.includes(String(context.quality_status || "").trim().toUpperCase())) {
+    return false;
+  }
+  if (verdictIn.length && !verdictIn.includes(String(context.objective_verdict || "").trim().toUpperCase())) {
+    return false;
+  }
+  if (authorityIn.length && !authorityIn.includes(String(context.authority_state || "").trim().toUpperCase())) {
+    return false;
+  }
+  return true;
+}
+
+function applyCapabilityManifest(steps = [], context = {}, capabilities = []) {
+  const rows = Array.isArray(steps) ? [...steps] : [];
+  for (const capability of Array.isArray(capabilities) ? capabilities : []) {
+    if (!capability || !capability.id || !capability.script) continue;
+    if (!capabilityMatches(capability, context)) continue;
+    if (rows.some((row) => row.id === capability.id)) continue;
+
+    const step = {
+      id: capability.id,
+      script: capability.script,
+      contextual: true,
+      trigger_reason: capability.trigger_reason
+        || String(context.dominant_mismatch_family || context.quality_status || "CAPABILITY_TRIGGER"),
+      capability_id: capability.id,
+      capability_side_effect: capability.side_effect || null,
+      capability_type: capability.type || null,
+    };
+
+    const insertBefore = String(capability.insert_before || "").trim();
+    const insertAfter = String(capability.insert_after || "").trim();
+    if (insertBefore) {
+      const idx = rows.findIndex((row) => row.id === insertBefore);
+      if (idx >= 0) {
+        rows.splice(idx, 0, step);
+        continue;
+      }
+    }
+    if (insertAfter) {
+      const idx = rows.findIndex((row) => row.id === insertAfter);
+      if (idx >= 0) {
+        rows.splice(idx + 1, 0, step);
+        continue;
+      }
+    }
+    rows.push(step);
+  }
+  return rows;
+}
+
+function buildStepPlan(context = {}, capabilityDefs = null) {
   const steps = [
     { id: "dataset", script: "report-best-self-evolution-dataset.js" },
     { id: "canonical_engine_parity", script: "report-best-self-evolution-canonical-engine-parity.js" },
@@ -141,24 +221,8 @@ function buildStepPlan(context = {}) {
     { id: "stage_autopilot", script: "automation-stage-autopilot.js", env: { STAGE_AUTOPILOT_SKIP_TELEGRAM: "1" } },
   ];
 
-  if (context && context.needs_signal_deep_dive) {
-    const insertAt = steps.findIndex((row) => row.id === "drop_validation");
-    const extra = [
-      { id: "server_signal_observation_24h_context", script: "report-server-signal-observation-24h.js", contextual: true, trigger_reason: context.dominant_mismatch_family || context.quality_status || "SIGNAL_DEEP_DIVE" },
-      { id: "server_signal_drift_remediation_plan_context", script: "report-server-signal-drift-remediation-plan.js", contextual: true, trigger_reason: context.dominant_mismatch_family || context.quality_status || "SIGNAL_DEEP_DIVE" },
-    ];
-    if (insertAt >= 0) {
-      steps.splice(insertAt, 0, ...extra);
-    }
-  }
-
-  if (context && context.needs_ev_policy_deep_dive) {
-    const replayIndex = steps.findIndex((row) => row.id === "replay");
-    const evStep = { id: "ev_gate_rescue", script: "report-best-self-evolution-ev-gate-rescue.js", contextual: true, trigger_reason: "EV_POLICY" };
-    if (replayIndex >= 0) steps.splice(replayIndex + 1, 0, evStep);
-  }
-
-  return steps;
+  const capabilities = Array.isArray(capabilityDefs) ? capabilityDefs : loadCapabilityManifest();
+  return applyCapabilityManifest(steps, context, capabilities);
 }
 
 function extractJson(stdout = "") {
@@ -280,8 +344,11 @@ if (require.main === module) {
 module.exports = {
   __test: {
     buildPlanningContext,
+    applyCapabilityManifest,
     buildStepPlan,
+    capabilityMatches,
     extractJson,
+    loadCapabilityManifest,
     renderMarkdown,
   },
 };

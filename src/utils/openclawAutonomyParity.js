@@ -54,6 +54,9 @@ function buildAutonomyParity({
   const finalMismatchN = toNum(qualitySummary.final_downstream_mismatch_n);
   const contradictionN = toNum(journalSummary.contradiction_n) ?? 0;
   const journalEntryN = toNum(journalSummary.entry_n) ?? 0;
+  const verifiedN = toNum(journalSummary.verified_n) ?? 0;
+  const notMetN = toNum(journalSummary.not_met_n) ?? 0;
+  const verificationRate = toNum(journalSummary.verification_rate);
   const objectiveVerdict = toUpper(objective.verdict);
 
   const requirements = [
@@ -80,6 +83,14 @@ function buildAutonomyParity({
       done: journalEntryN >= 10 && contradictionN === 0,
       partial: journalEntryN >= 1 && contradictionN === 0,
       blocker: journalEntryN < 10 ? "REASONING_HISTORY_TOO_SHORT" : (contradictionN > 0 ? "REASONING_CONTRADICTION" : null),
+    }),
+    statusRow({
+      id: "reasoning_verification_quality",
+      criterion: "verification_rate >= 0.5 with verified_n >= 5",
+      current: `rate=${verificationRate != null ? verificationRate : "N/A"}, verified=${verifiedN}, not_met=${notMetN}`,
+      done: verifiedN >= 5 && verificationRate != null && verificationRate >= 0.5,
+      partial: verifiedN >= 1,
+      blocker: verifiedN < 5 ? "INSUFFICIENT_VERIFICATION_SAMPLE" : (verificationRate != null && verificationRate < 0.5 ? "LOW_VERIFICATION_RATE" : null),
     }),
     statusRow({
       id: "server_primary_active",

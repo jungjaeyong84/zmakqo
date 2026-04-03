@@ -21,6 +21,10 @@ function toNum(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function toComparableString(value) {
+  return String(value || "").trim().toUpperCase() || null;
+}
+
 function deriveDominantIssue({ objectiveSupervisor = null, autonomyContract = null, quality = null, cutover = null } = {}) {
   const objective = unwrapRawReport(objectiveSupervisor) || {};
   const autonomy = readSummary(autonomyContract);
@@ -91,26 +95,31 @@ function derivePendingVerification({ cutover = null, quality = null, autonomyCon
       metric: "ev_policy_post_apply_comparable_n",
       expected: `>= ${toNum(cutoverSummary.ev_policy_remediation_min_post_samples) || 3}`,
       deadline_hint: "NEXT_24H",
+      baseline_value: toNum(cutoverSummary.ev_policy_post_apply_comparable_n),
     };
   }
   if (dominantFamily === "OTHER_SERVER_POLICY") {
     return {
       metric: "other_server_policy_mismatch_n",
-      expected: "< current",
+      expected: "< baseline",
       deadline_hint: "NEXT_24H",
+      baseline_value: toNum(qualitySummary.other_server_policy_mismatch_n),
     };
   }
   if (authorityState === "PENDING") {
     return {
       metric: "authority_state",
-      expected: "toward READY with parity evidence",
+      expected: "= READY",
       deadline_hint: "NEXT_24H_TO_48H",
+      qualitative_goal: "toward READY with parity evidence",
+      baseline_value: authorityState,
     };
   }
   return {
     metric: "final_downstream_mismatch_n",
-    expected: `< ${toNum(qualitySummary.final_downstream_mismatch_n) || "current"}`,
+    expected: "< baseline",
     deadline_hint: "NEXT_24H",
+    baseline_value: toNum(qualitySummary.final_downstream_mismatch_n),
   };
 }
 
@@ -157,8 +166,132 @@ function buildCompactedContext(entries = []) {
     const pending = row.pending_verification && row.pending_verification.metric
       ? `${row.pending_verification.metric}:${row.pending_verification.expected || "N/A"}`
       : "none";
-    return `${idx + 1}) ${row.cycle_id || "N/A"} issue=${row.dominant_issue || "UNKNOWN"} action=${row.recommended_action || "MONITOR_ONLY"} pending=${pending}`;
+    const verification = row.verification_outcome && row.verification_outcome.status
+      ? row.verification_outcome.status
+      : "UNRESOLVED";
+    return `${idx + 1}) ${row.cycle_id || "N/A"} issue=${row.dominant_issue || "UNKNOWN"} action=${row.recommended_action || "MONITOR_ONLY"} pending=${pending} verification=${verification}`;
   }).join(" | ");
+}
+
+function collectCurrentVerificationState({ quality = null, cutover = null, autonomyContract = null } = {}) {
+  const qualitySummary = readSummary(quality);
+  const cutoverSummary = readSummary(cutover);
+  const autonomySummary = readSummary(autonomyContract);
+  return {
+    ev_policy_post_apply_comparable_n: toNum(cutoverSummary.ev_policy_post_apply_comparable_n),
+    other_server_policy_mismatch_n: toNum(
+      qualitySummary.other_server_policy_mismatch_n != null
+        ? qualitySummary.other_server_policy_mismatch_n
+        : cutoverSummary.other_server_policy_mismatch_n
+    ),
+    final_downstream_mismatch_n: toNum(
+      qualitySummary.final_downstream_mismatch_n != null
+        ? qualitySummary.final_downstream_mismatch_n
+        : cutoverSummary.final_downstream_mismatch_n
+    ),
+    authority_state: toComparableString(autonomySummary.authority_state),
+  };
+}
+
+function evaluateExpected(expected, actualValue, baselineValue = null) {
+  const raw = String(expected || "").trim();
+  if (!raw) return { status: "UNKNOWN", reason: "expected missing" };
+
+  const numericActual = toNum(actualValue);
+  const normalizedActual = toComparableString(actualValue);
+
+  const gte = raw.match(/^>=\s*(-?\d+(?:\.\d+)?)$/);
+  if (gte) {
+    if (numericActual == null) return { status: "UNKNOWN", reason: "actual not numeric" };
+    return { status: numericActual >= Number(gte[1]) ? "VERIFIED" : "NOT_MET" };
+  }
+
+  const lte = raw.match(/^<=\s*(-?\d+(?:\.\d+)?)$/);
+  if (lte) {
+    if (numericActual == null) return { status: "UNKNOWN", reason: "actual not numeric" };
+    return { status: numericActual <= Number(lte[1]) ? "VERIFIED" : "NOT_MET" };
+  }
+
+  const lt = raw.match(/^<\s*(-?\d+(?:\.\d+)?)$/);
+  if (lt) {
+    if (numericActual == null) return { status: "UNKNOWN", reason: "actual not numeric" };
+    return { status: numericActual < Number(lt[1]) ? "VERIFIED" : "NOT_MET" };
+  }
+
+  const eq = raw.match(/^=\s*(.+)$/);
+  if (eq) {
+    if (!normalizedActual) return { status: "UNKNOWN", reason: "actual missing" };
+    return { status: normalizedActual === toComparableString(eq[1]) ? "VERIFIED" : "NOT_MET" };
+  }
+
+  if (raw === "< baseline") {
+    const numericBaseline = toNum(baselineValue);
+    if (numericActual == null || numericBaseline == null) return { status: "UNKNOWN", reason: "baseline comparison unavailable" };
+    return { status: numericActual < numericBaseline ? "VERIFIED" : "NOT_MET" };
+  }
+
+  if (raw === "> baseline") {
+    const numericBaseline = toNum(baselineValue);
+    if (numericActual == null || numericBaseline == null) return { status: "UNKNOWN", reason: "baseline comparison unavailable" };
+    return { status: numericActual > numericBaseline ? "VERIFIED" : "NOT_MET" };
+  }
+
+  return { status: "UNKNOWN", reason: "expected not machine-readable" };
+}
+
+function resolveVerificationOutcome(entry, currentState = {}) {
+  const pv = entry && entry.pending_verification;
+  if (!pv || !pv.metric) return null;
+  const currentValue = currentState[pv.metric];
+  if (currentValue == null) {
+    return {
+      status: "UNKNOWN",
+      metric: pv.metric,
+      expected: pv.expected || null,
+      actual: null,
+      baseline_value: pv.baseline_value != null ? pv.baseline_value : null,
+      reason: "metric not available",
+      cycle_id: entry && entry.cycle_id || null,
+    };
+  }
+  const evaluation = evaluateExpected(pv.expected, currentValue, pv.baseline_value);
+  return {
+    status: evaluation.status,
+    metric: pv.metric,
+    expected: pv.expected || null,
+    actual: currentValue,
+    baseline_value: pv.baseline_value != null ? pv.baseline_value : null,
+    reason: evaluation.reason || null,
+    cycle_id: entry && entry.cycle_id || null,
+  };
+}
+
+function resolvePreviousEntries(entries = [], currentState = {}) {
+  return (Array.isArray(entries) ? entries : []).map((row) => {
+    if (!row || typeof row !== "object") return row;
+    if (row.verification_outcome && row.verification_outcome.status) return row;
+    if (!row.pending_verification || !row.pending_verification.metric) return row;
+    return {
+      ...row,
+      verification_outcome: resolveVerificationOutcome(row, currentState),
+    };
+  });
+}
+
+function buildVerificationStats(entries = []) {
+  const resolved = (Array.isArray(entries) ? entries : [])
+    .map((row) => row && row.verification_outcome && row.verification_outcome.status)
+    .filter(Boolean);
+  const verified_n = resolved.filter((status) => status === "VERIFIED").length;
+  const not_met_n = resolved.filter((status) => status === "NOT_MET").length;
+  const unknown_n = resolved.filter((status) => status === "UNKNOWN").length;
+  const denominator = verified_n + not_met_n;
+  return {
+    verified_n,
+    not_met_n,
+    unknown_n,
+    verification_rate: denominator > 0 ? Number((verified_n / denominator).toFixed(4)) : null,
+  };
 }
 
 function buildReasoningJournal({
@@ -209,8 +342,11 @@ function buildReasoningJournal({
   };
 
   const previousEntries = Array.isArray(previousJournal && previousJournal.entries) ? previousJournal.entries : [];
-  const deduped = [currentEntry, ...previousEntries.filter((row) => String(row && row.cycle_id || "") !== String(cycleId || ""))].slice(0, 12);
+  const currentVerificationState = collectCurrentVerificationState({ quality, cutover, autonomyContract });
+  const resolvedPreviousEntries = resolvePreviousEntries(previousEntries, currentVerificationState);
+  const deduped = [currentEntry, ...resolvedPreviousEntries.filter((row) => String(row && row.cycle_id || "") !== String(cycleId || ""))].slice(0, 12);
   const contradiction_n = countContradictions(deduped);
+  const verificationStats = buildVerificationStats(deduped);
   const compacted_context = buildCompactedContext(deduped);
 
   return {
@@ -224,6 +360,10 @@ function buildReasoningJournal({
       current_dominant_issue_source: currentEntry.dominant_issue_source,
       current_recommended_action: currentEntry.recommended_action,
       pending_verification_n: deduped.filter((row) => row && row.pending_verification && row.pending_verification.metric).length,
+      verified_n: verificationStats.verified_n,
+      not_met_n: verificationStats.not_met_n,
+      unknown_n: verificationStats.unknown_n,
+      verification_rate: verificationStats.verification_rate,
     },
     compacted_context,
     entries: deduped,
@@ -235,8 +375,13 @@ module.exports = {
   __test: {
     buildCompactedContext,
     countContradictions,
+    collectCurrentVerificationState,
     deriveDominantIssue,
+    evaluateExpected,
     deriveRecommendedAction,
     derivePendingVerification,
+    resolveVerificationOutcome,
+    resolvePreviousEntries,
+    buildVerificationStats,
   },
 };

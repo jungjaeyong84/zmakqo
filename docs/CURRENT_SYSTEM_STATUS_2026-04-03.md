@@ -1,7 +1,7 @@
 # CURRENT_SYSTEM_STATUS_2026-04-03
 
 - status: ACTIVE
-- updated_at_kst: 2026-04-03 10:23 KST
+- updated_at_kst: 2026-04-03 11:33 KST
 - purpose:
   - Provide a concise human-readable summary of the current donbeolja system state.
   - Act as the top-level handoff document for Claude, Codex, OpenClaw, and manual operators.
@@ -48,8 +48,13 @@
    - `ops_status=PASS`
 8. `best_self_evolution_reasoning_journal_latest`
    - cycle 간 판단 근거를 compacted context로 누적
+   - 이전 cycle의 `pending_verification`을 현재 artifact 값으로 resolve
+   - `verified_n`, `not_met_n`, `unknown_n`, `verification_rate` 제공
 9. `best_self_evolution_openclaw_autonomy_parity_latest`
    - `authority_state=READY`까지 남은 gap을 requirement 단위로 추적
+   - `reasoning_verification_quality` requirement 포함
+10. `ops/manifests/openclaw-evolution-capabilities.json`
+   - contextual deep-dive/remediation step이 capability manifest로 선언됨
 
 ## 4. Learning Epoch Exception Release
 
@@ -102,7 +107,8 @@ Current reality:
 2. OpenClaw uses MEMORY and AGENTS as review guidance
 3. OpenClaw can produce operational judgments from those summaries
 4. OpenClaw is not yet the final autonomous authority because `authority_state=PENDING`
-5. OpenClaw now keeps a compacted reasoning journal and a parity gap artifact, but those are still early-stage evidence, not proof of READY
+5. OpenClaw now keeps a compacted reasoning journal, resolves prior verification outcomes, and tracks a parity gap artifact, but those are still early-stage evidence, not proof of READY
+6. contextual server-signal deep-dive/remediation steps are now declared through a capability manifest rather than only hardcoded branch logic
 
 ## 8. Current Risks
 
@@ -111,6 +117,7 @@ Current reality:
 3. `authority_state=PENDING` means full autonomy is not achieved
 4. learning-epoch exception release still requires fresh evidence validation
 5. reasoning_journal history is still short, so parity evidence is not yet mature
+6. verification_rate is currently low, so OpenClaw still lacks strong proof that its recent hypotheses were correct
 
 ## 9. Next Correct Actions
 
@@ -119,6 +126,7 @@ Current reality:
 3. reintroduce market-level exceptions only if fresh data justifies it
 4. keep OpenClaw/Claude reviews artifact-first
 5. grow reasoning_journal continuity until autonomy parity can move from PARTIAL to DONE
+6. improve verification quality until `reasoning_verification_quality` can move from FAIL to PARTIAL/DONE
 
 ## 10. Must-Read References
 
@@ -128,3 +136,4 @@ Current reality:
 4. `/Users/jeongjaeyong/Projects/donbeolja/docs/OPENCLAW_MANIFEST_LITE_AND_STEP_REGISTRY_PROPOSAL_2026-04-03.md`
 5. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_reasoning_journal_latest.json`
 6. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_openclaw_autonomy_parity_latest.json`
+7. `/Users/jeongjaeyong/Projects/donbeolja/ops/manifests/openclaw-evolution-capabilities.json`

@@ -24,7 +24,9 @@ Current context you must preserve:
 - autonomy authority is still PENDING
 - learning_epoch_exception_release=true is active
 - reasoning journal compaction is now active
+- reasoning journal verification outcome resolution is now active
 - autonomy parity tracking is now active
+- contextual deep-dive/remediation steps are now declared through a capability manifest
 - historical market-level exception blocks were intentionally released to collect fresh server-native data
 - do not call released historical exceptions a regression by default
 - do not infer full autonomy from healthy automation alone
@@ -41,7 +43,10 @@ Current operating facts you must verify from latest artifacts:
 - objective_supervisor_latest -> HOLD
 - best_self_evolution_openclaw_autonomy_contract_latest -> authority_state=PENDING
 - best_self_evolution_reasoning_journal_latest -> compacted_context present
+- best_self_evolution_reasoning_journal_latest -> verification stats present (`verified_n`, `not_met_n`, `unknown_n`, `verification_rate`)
 - best_self_evolution_openclaw_autonomy_parity_latest -> progress tracked by requirement rows
+- best_self_evolution_openclaw_autonomy_parity_latest -> includes `reasoning_verification_quality`
+- /Users/jeongjaeyong/Projects/donbeolja/ops/manifests/openclaw-evolution-capabilities.json -> contextual capabilities registry
 
 Interpretation rules:
 1. Prefer latest artifacts over narrative or old retrospectives.

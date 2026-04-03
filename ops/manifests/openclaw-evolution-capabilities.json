@@ -1,0 +1,41 @@
+{
+  "capabilities": [
+    {
+      "id": "server_signal_observation_24h_context",
+      "type": "analysis",
+      "script": "report-server-signal-observation-24h.js",
+      "insert_before": "drop_validation",
+      "side_effect": "READ_ONLY",
+      "trigger_reason": "SIGNAL_DEEP_DIVE",
+      "trigger": {
+        "needs_signal_deep_dive": true,
+        "authority_state_in": ["PENDING", "READY"]
+      }
+    },
+    {
+      "id": "server_signal_drift_remediation_plan_context",
+      "type": "analysis",
+      "script": "report-server-signal-drift-remediation-plan.js",
+      "insert_before": "drop_validation",
+      "side_effect": "ADVISORY",
+      "trigger_reason": "SIGNAL_DEEP_DIVE",
+      "trigger": {
+        "needs_signal_deep_dive": true,
+        "authority_state_in": ["PENDING", "READY"]
+      }
+    },
+    {
+      "id": "ev_gate_rescue",
+      "type": "remediation",
+      "script": "report-best-self-evolution-ev-gate-rescue.js",
+      "insert_after": "replay",
+      "side_effect": "ADVISORY",
+      "trigger_reason": "EV_POLICY",
+      "trigger": {
+        "needs_ev_policy_deep_dive": true,
+        "dominant_mismatch_family_in": ["EV_POLICY"],
+        "authority_state_in": ["PENDING", "READY"]
+      }
+    }
+  ]
+}
