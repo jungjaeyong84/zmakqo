@@ -385,6 +385,55 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
 (() => {
   const report = deriveDeploymentPlan({
     objectiveSupervisor: {
+      promotion: {
+        ready: true,
+        recovery_mode: true,
+        candidate_id: "EV_TP1_THRESHOLD_TUNE",
+        display_candidate_id: "EV_TP1_THRESHOLD_TUNE",
+      },
+      rollback: { ready: true, reason: "AUTO_ROLLBACK_READY", rollback_file_path: "/tmp/rollback.pine" },
+      self_evolution_deployment: { deploy_pass: true },
+    },
+    changeControl: {},
+    codexPatchReview: { verdict: "PROMOTE", recommended_candidate_id: "EV_TP1_THRESHOLD_TUNE" },
+    deploymentGuards: { summary: { deploy_pass: true, target_candidate_id: "EV_TP1_THRESHOLD_TUNE", canary_open_wave: 1 } },
+    canaryReport: { summary: { open_wave: 1 }, rows: [] },
+    stageAutopilot: {
+      raw: {
+        stage_rows: [
+          {
+            stage: "PINE",
+            machine_state: "READY",
+            prepared_file_path: "/tmp/prepared-ev.pine",
+            prepared_strategy_id: "donbeolja_v6.1.1.0",
+            latest_generated_file_path: "/tmp/latest-ev.pine",
+            rollback_source_file_path: "/tmp/rollback.pine",
+            signature: "EV_TP1_THRESHOLD_TUNE",
+          },
+        ],
+      },
+    },
+    weeklyHistory: {
+      weeks: [
+        {
+          week_key: "2026W13",
+          rollback_source_file_path: "/tmp/rollback.pine",
+          created_file_path: "/tmp/prepared-ev.pine",
+          created_strategy_id: "donbeolja_v6.1.1.0",
+          latest_generated_file_path: "/tmp/latest-ev.pine",
+        },
+      ],
+    },
+  });
+
+  assert.strictEqual(report.summary.plan_status, "READY_FOR_MANUAL_PASTE");
+  assert.strictEqual(report.summary.target_candidate_id, "EV_TP1_THRESHOLD_TUNE");
+  console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_RECOVERY_PROMOTION_PRIORITY_TEST_OK");
+})();
+
+(() => {
+  const report = deriveDeploymentPlan({
+    objectiveSupervisor: {
       promotion: { ready: true, candidate_id: "EV_TP1_THRESHOLD_TUNE", display_candidate_id: "EV_TP1_THRESHOLD_TUNE" },
       rollback: { ready: false },
       self_evolution_deployment: { deploy_pass: true },

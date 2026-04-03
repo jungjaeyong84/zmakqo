@@ -994,7 +994,8 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
     },
     signalsCache: { docs: [] },
   });
-  assert.strictEqual(activeApprovedRecoveryDoesNotReopenAuthorityBlock.verdict, "HOLD");
+  assert.strictEqual(activeApprovedRecoveryDoesNotReopenAuthorityBlock.verdict, "PATCH_CANDIDATE");
+  assert.strictEqual(activeApprovedRecoveryDoesNotReopenAuthorityBlock.reason, "AUTONOMOUS_RECOVERY_PROMOTION_READY");
   assert.notStrictEqual(activeApprovedRecoveryDoesNotReopenAuthorityBlock.reason, "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK");
   assert.strictEqual(activeApprovedRecoveryDoesNotReopenAuthorityBlock.self_evolution_deployment_plan.authority_approved, true);
   assert.strictEqual(activeApprovedRecoveryDoesNotReopenAuthorityBlock.self_evolution_deployment_plan.external_authority_pending, false);

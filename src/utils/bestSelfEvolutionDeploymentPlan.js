@@ -569,6 +569,12 @@ function deriveDeploymentPlan({
     && !!rollbackFilePath
     && codexVerdict === "ROLLBACK"
     && (!codexRollbackPath || codexRollbackPath === rollbackFilePath);
+  const prioritizeRecoveryPromotion = Boolean(
+    promotion.ready === true
+    && recoveryPromotion
+    && codexVerdict === "PROMOTE"
+    && promotionPreparePass
+  );
   const dryPrepareEligible = promotionPreparePass
     && prepared.prepared_stage_ready !== true
     && String(prepared.prepared_reason || "").trim().toUpperCase() === "DAILY_NO_TRADE_ACTIVITY";
@@ -641,7 +647,9 @@ function deriveDeploymentPlan({
   });
 
   let planStatus = "HOLD";
-  if (readyForManualRollback) planStatus = "READY_FOR_MANUAL_ROLLBACK";
+  if (prioritizeRecoveryPromotion && readyForManualPaste) planStatus = "READY_FOR_MANUAL_PASTE";
+  else if (prioritizeRecoveryPromotion && promotionPreparePass) planStatus = dryPrepareEligible ? "PREPARE_PROMOTION_DRY" : "PREPARE_PROMOTION";
+  else if (readyForManualRollback) planStatus = "READY_FOR_MANUAL_ROLLBACK";
   else if (rollbackPreparePass) planStatus = "PREPARE_ROLLBACK";
   else if (bundleActivationSummary.activation_status === "TIMEOUT") {
     planStatus = externalAuthorityPending

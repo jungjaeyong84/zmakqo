@@ -2363,12 +2363,26 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       || selfEvolutionDeploymentPlanSummary.target_candidate_id === promotionCandidateId
     )
   );
+  const recoveryPromotionPreferred = Boolean(
+    effectivePromotion
+    && effectivePromotion.ready === true
+    && effectivePromotion.recovery_mode === true
+    && !promotionObjectiveBlockReason
+    && codex
+    && codexFresh
+    && codexVerdict === "PROMOTE"
+    && stageAutopilotFresh
+    && selfEvolutionDeploymentPlanSummary.prepare_pass === true
+  );
 
   let verdict = "HOLD";
   let reason = "NO_ACTION_READY";
   if (recoveryPromotionActiveApproved) {
     verdict = "HOLD";
     reason = objectiveBlockReason || "OBJECTIVE_RECOVERY_ACTIVE";
+  } else if (recoveryPromotionPreferred) {
+    verdict = "PATCH_CANDIDATE";
+    reason = "AUTONOMOUS_RECOVERY_PROMOTION_READY";
   } else if (rollback && rollback.ready === true) {
     if (selfEvolutionDeploymentPlanSummary.activation_pending === true) {
       verdict = "HOLD";
