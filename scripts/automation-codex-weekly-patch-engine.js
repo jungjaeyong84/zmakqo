@@ -76,6 +76,7 @@ const INPUT_PATHS = Object.freeze({
   selfEvolutionBundleActivation: path.join(OPS_DAILY_DIR, "best_self_evolution_bundle_activation_latest.json"),
   selfEvolutionOpenclawAutonomyContract: path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_autonomy_contract_latest.json"),
   selfEvolutionObjectiveRecoveryGovernor: path.join(OPS_DAILY_DIR, "best_self_evolution_objective_recovery_governor_latest.json"),
+  deploymentGuards: path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_guards_latest.json"),
   deploymentPlan: path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json"),
   loopMonitor: path.join(OPS_DAILY_DIR, "best_self_evolution_loop_monitor_latest.json"),
   retrospective: path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json"),
@@ -201,6 +202,97 @@ function derivePendingAuthorityClosure({ deploymentPlan = null, autonomyContract
     recoveryGovernor,
     loopMonitor,
   });
+}
+
+function deriveRecoveryPromotionApproval({ deploymentPlan = null, deploymentGuards = null, autonomyContract = null, recoveryGovernor = null, loopMonitor = null } = {}) {
+  const planSummary = deploymentPlan && deploymentPlan.summary && typeof deploymentPlan.summary === "object"
+    ? deploymentPlan.summary
+    : (deploymentPlan && typeof deploymentPlan === "object" ? deploymentPlan : {});
+  const guardsSummary = deploymentGuards && deploymentGuards.summary && typeof deploymentGuards.summary === "object"
+    ? deploymentGuards.summary
+    : (deploymentGuards && typeof deploymentGuards === "object" ? deploymentGuards : {});
+  const contract = autonomyContract && typeof autonomyContract === "object" ? autonomyContract : {};
+  const contractSummary = contract.summary && typeof contract.summary === "object" ? contract.summary : {};
+  const contractStatus = contract.current_status && typeof contract.current_status === "object" ? contract.current_status : {};
+  const governorSummary = recoveryGovernor && recoveryGovernor.summary && typeof recoveryGovernor.summary === "object"
+    ? recoveryGovernor.summary
+    : (recoveryGovernor && typeof recoveryGovernor === "object" ? recoveryGovernor : {});
+  const loopSummary = loopMonitor && loopMonitor.summary && typeof loopMonitor.summary === "object"
+    ? loopMonitor.summary
+    : (loopMonitor && typeof loopMonitor === "object" ? loopMonitor : {});
+  const degradedPolicy = contract.authority_policy && contract.authority_policy.degraded_timeout_policy && typeof contract.authority_policy.degraded_timeout_policy === "object"
+    ? contract.authority_policy.degraded_timeout_policy
+    : {};
+  const targetCandidateId = String(
+    governorSummary.target_candidate_id
+    || governorSummary.display_candidate_id
+    || guardsSummary.target_candidate_id
+    || planSummary.recommended_target_candidate_id
+    || planSummary.target_candidate_id
+    || ""
+  ).trim() || null;
+  const planTargetCandidateId = String(
+    planSummary.recommended_target_candidate_id
+    || planSummary.target_candidate_id
+    || ""
+  ).trim() || null;
+  const governorReady = String(governorSummary.governor_status || "").trim().toUpperCase() === "RECOVERY_PROMOTION_READY"
+    && governorSummary.replay_pass === true
+    && governorSummary.canary_ready === true
+    && governorSummary.deployment_guards_pass === true
+    && governorSummary.target_memory_blocked !== true;
+  const opsHealthy = contractStatus.ops_healthy === true
+    || String(contractSummary.ops_status || "").trim().toUpperCase() === "PASS";
+  const cycleConsistent = loopSummary.cycle_consistent !== false;
+  const blockers = Array.isArray(loopSummary.critical_blockers)
+    ? loopSummary.critical_blockers.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean)
+    : [];
+  const allowedBlockers = new Set([
+    "AUTO_ROLLBACK_READY",
+    "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK",
+    "EXTERNAL_AUTHORITY_BLOCK_PROMOTION",
+    "SELF_EVOLUTION_EXTERNAL_AUTHORITY_PENDING",
+  ]);
+  const blockingIssues = blockers.filter((item) => !allowedBlockers.has(item));
+  const guardTargetCandidateId = String(guardsSummary.target_candidate_id || "").trim() || null;
+  const targetMatchesCurrentPlan = !planTargetCandidateId || !targetCandidateId || targetCandidateId === planTargetCandidateId;
+  const targetMatchesCurrentGuards = !guardTargetCandidateId || !targetCandidateId || targetCandidateId === guardTargetCandidateId;
+  const confidenceFloor = Math.max(0.51, Math.min(0.8, toNum(degradedPolicy.confidence_floor) || 0.55));
+
+  let eligible = false;
+  let reason = "RECOVERY_PROMOTION_NOT_READY";
+  if (!governorReady) {
+    reason = String(governorSummary.governor_reason || governorSummary.governor_status || "RECOVERY_PROMOTION_NOT_READY").trim().toUpperCase() || "RECOVERY_PROMOTION_NOT_READY";
+  } else if (!targetCandidateId) {
+    reason = "RECOVERY_PROMOTION_TARGET_MISSING";
+  } else if (!targetMatchesCurrentPlan || !targetMatchesCurrentGuards) {
+    reason = "RECOVERY_PROMOTION_TARGET_MISMATCH";
+  } else if (!opsHealthy) {
+    reason = "RECOVERY_PROMOTION_OPENCLAW_OPS_UNHEALTHY";
+  } else if (!cycleConsistent) {
+    reason = "RECOVERY_PROMOTION_CYCLE_MISMATCH";
+  } else if (blockingIssues.length) {
+    reason = `RECOVERY_PROMOTION_BLOCKERS:${blockingIssues.join("|")}`;
+  } else {
+    eligible = true;
+    reason = "RECOVERY_PROMOTION_LOCAL_APPROVAL_READY";
+  }
+
+  return {
+    eligible,
+    applied: eligible,
+    reason,
+    target_candidate_id: targetCandidateId,
+    confidence_floor: confidenceFloor,
+    plan_status: String(planSummary.plan_status || "").trim().toUpperCase() || null,
+    governor_status: String(governorSummary.governor_status || "").trim().toUpperCase() || null,
+    blockers: blockingIssues,
+    checks: [
+      `governor=${governorSummary.governor_status || "N/A"} / replay=${governorSummary.replay_pass === true ? "PASS" : "BLOCK"} / canary=${governorSummary.canary_ready === true ? "PASS" : "BLOCK"} / guards=${governorSummary.deployment_guards_pass === true ? "PASS" : "BLOCK"}`,
+      `target=${targetCandidateId || "N/A"} / plan_target=${planTargetCandidateId || "N/A"} / guards_target=${guardTargetCandidateId || "N/A"} / governor_deploy_guards=${governorSummary.deployment_guards_pass === true ? "PASS" : "BLOCK"}`,
+      `cycle_consistent=${cycleConsistent ? "YES" : "NO"} / blockers=${blockers.length ? blockers.join("|") : "none"}`,
+    ],
+  };
 }
 
 function readFreshJson(filePath, maxAgeHours = MAX_AGE_HOURS) {
@@ -690,6 +782,7 @@ async function main() {
   const selfEvolutionBundleActivationArtifact = readFreshJson(INPUT_PATHS.selfEvolutionBundleActivation, MAX_AGE_HOURS);
   const selfEvolutionOpenclawAutonomyContractArtifact = readFreshJson(INPUT_PATHS.selfEvolutionOpenclawAutonomyContract, MAX_AGE_HOURS);
   const selfEvolutionObjectiveRecoveryGovernorArtifact = readFreshJson(INPUT_PATHS.selfEvolutionObjectiveRecoveryGovernor, MAX_AGE_HOURS);
+  const deploymentGuardsArtifact = readFreshJson(INPUT_PATHS.deploymentGuards, MAX_AGE_HOURS);
   const deploymentPlan = readFreshJson(INPUT_PATHS.deploymentPlan, MAX_AGE_HOURS);
   const loopMonitor = readFreshJson(INPUT_PATHS.loopMonitor, MAX_AGE_HOURS);
   const retrospective = readFreshJson(INPUT_PATHS.retrospective, MAX_AGE_HOURS);
@@ -707,7 +800,7 @@ async function main() {
   const sourceModeStage = stageRows.find((row) => String(row && row.stage || "").trim().toUpperCase() === "SOURCE_MODE") || {};
   const canonicalPolicyStage = stageRows.find((row) => String(row && row.stage || "").trim().toUpperCase() === "CANONICAL_POLICY") || {};
   const candidateDisplayMap = buildCandidateDisplayMap(changeControl.data, patchCandidates.data);
-  const inputs = [objectiveSupervisor, governance, changeControl, patchCandidates, ml, ev, wait, canary, stageAutopilot, selfEvolutionCandidatesArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionBundleActivationArtifact, selfEvolutionOpenclawAutonomyContractArtifact, selfEvolutionObjectiveRecoveryGovernorArtifact, deploymentPlan, loopMonitor, retrospective];
+  const inputs = [objectiveSupervisor, governance, changeControl, patchCandidates, ml, ev, wait, canary, stageAutopilot, selfEvolutionCandidatesArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionBundleActivationArtifact, selfEvolutionOpenclawAutonomyContractArtifact, selfEvolutionObjectiveRecoveryGovernorArtifact, deploymentGuardsArtifact, deploymentPlan, loopMonitor, retrospective];
   const reviewReadiness = deriveReviewReadiness({
     changeControl: changeControl.data,
     selfEvolutionCanary: selfEvolutionCanaryData,
@@ -727,6 +820,13 @@ async function main() {
   const anyWatchlist = Boolean(patchCandidates.data && Array.isArray(patchCandidates.data.candidates) && patchCandidates.data.candidates.length > 0);
   const pendingAuthorityClosure = derivePendingAuthorityClosure({
     deploymentPlan: deploymentPlan.data,
+    autonomyContract: selfEvolutionOpenclawAutonomyContractArtifact.data,
+    recoveryGovernor: selfEvolutionObjectiveRecoveryGovernorArtifact.data,
+    loopMonitor: loopMonitorData,
+  });
+  const recoveryPromotionApproval = deriveRecoveryPromotionApproval({
+    deploymentPlan: deploymentPlan.data,
+    deploymentGuards: deploymentGuardsArtifact.data,
     autonomyContract: selfEvolutionOpenclawAutonomyContractArtifact.data,
     recoveryGovernor: selfEvolutionObjectiveRecoveryGovernorArtifact.data,
     loopMonitor: loopMonitorData,
@@ -799,6 +899,34 @@ async function main() {
       risks: [
         "Phase D acceptance sample remains short; authority closure does not imply server-primary acceptance is complete.",
         "Objective remains below target; this approval only closes pending external authority for the already-applied recovery target.",
+      ],
+    };
+    writeJson(jsonPath, wrapDisplayAndRawReport(localPromote));
+    writeText(mdPath, renderMarkdown(localPromote));
+    copyLatest(jsonPath, REPORT_LATEST_JSON);
+    copyLatest(mdPath, REPORT_LATEST_MD);
+    console.log(JSON.stringify({ ok: true, status: localPromote.status, verdict: localPromote.verdict, candidate: localPromote.display_candidate_id || localPromote.recommended_candidate_id }));
+    return;
+  }
+
+  if (recoveryPromotionApproval.applied) {
+    const localPromote = {
+      ...baseReport,
+      status: "LOCAL_PROMOTE",
+      verdict: "PROMOTE",
+      recommended_candidate_id: recoveryPromotionApproval.target_candidate_id,
+      display_candidate_id: toDisplayCandidateId(recoveryPromotionApproval.target_candidate_id, candidateDisplayMap),
+      confidence: recoveryPromotionApproval.confidence_floor,
+      reason: "RECOVERY_PROMOTION_LOCAL_APPROVAL",
+      summary: "server-primary recovery target가 replay/canary/deployment guard를 모두 통과해 Codex가 bounded local promotion policy로 승격 승인했습니다.",
+      checks: [
+        `plan_status=${deploymentPlanSummary.plan_status || "N/A"}`,
+        `target=${recoveryPromotionApproval.target_candidate_id || "N/A"}`,
+        ...recoveryPromotionApproval.checks,
+      ],
+      risks: [
+        "Objective remains below target; this approval prefers the replay/canary-ready recovery path over stale rollback bias.",
+        "If subsequent self-evolution loop evidence flips away from the current recovery target, this approval must be recomputed.",
       ],
     };
     writeJson(jsonPath, wrapDisplayAndRawReport(localPromote));
@@ -1083,6 +1211,7 @@ if (require.main === module) {
     buildCandidateDisplayMap,
     deriveReviewReadiness,
     derivePendingAuthorityClosure,
+    deriveRecoveryPromotionApproval,
     replaceCandidateIdsInText,
     buildObjectiveSupervisorLayerLines,
     buildBestFebtMarketContractLines,
@@ -1098,6 +1227,7 @@ if (require.main === module) {
     deriveInlineLoopMonitorSummary,
     deriveReviewReadiness,
     derivePendingAuthorityClosure,
+    deriveRecoveryPromotionApproval,
   },
 };
 }

@@ -20,6 +20,7 @@ const {
   buildCandidateDisplayMap,
   deriveReviewReadiness,
   derivePendingAuthorityClosure,
+  deriveRecoveryPromotionApproval,
   replaceCandidateIdsInText,
   renderMarkdown,
 } = require("./automation-codex-weekly-patch-engine");
@@ -96,6 +97,7 @@ const INPUT_PATHS = Object.freeze({
   selfEvolutionBundleActivation: path.join(OPS_DAILY_DIR, "best_self_evolution_bundle_activation_latest.json"),
   selfEvolutionOpenclawAutonomyContract: path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_autonomy_contract_latest.json"),
   selfEvolutionObjectiveRecoveryGovernor: path.join(OPS_DAILY_DIR, "best_self_evolution_objective_recovery_governor_latest.json"),
+  deploymentGuards: path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_guards_latest.json"),
   deploymentPlan: path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json"),
   loopMonitor: path.join(OPS_DAILY_DIR, "best_self_evolution_loop_monitor_latest.json"),
   retrospective: path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json"),
@@ -121,6 +123,7 @@ async function main() {
   const selfEvolutionBundleActivationArtifact = readFreshJson(INPUT_PATHS.selfEvolutionBundleActivation, MAX_AGE_HOURS);
   const selfEvolutionOpenclawAutonomyContractArtifact = readFreshJson(INPUT_PATHS.selfEvolutionOpenclawAutonomyContract, MAX_AGE_HOURS);
   const selfEvolutionObjectiveRecoveryGovernorArtifact = readFreshJson(INPUT_PATHS.selfEvolutionObjectiveRecoveryGovernor, MAX_AGE_HOURS);
+  const deploymentGuards = readFreshJson(INPUT_PATHS.deploymentGuards, MAX_AGE_HOURS);
   const deploymentPlan = readFreshJson(INPUT_PATHS.deploymentPlan, MAX_AGE_HOURS);
   const loopMonitor = readFreshJson(INPUT_PATHS.loopMonitor, MAX_AGE_HOURS);
   const retrospective = readFreshJson(INPUT_PATHS.retrospective, MAX_AGE_HOURS);
@@ -132,7 +135,7 @@ async function main() {
   const stageRows = Array.isArray(stageAutopilotData && stageAutopilotData.stage_rows) ? stageAutopilotData.stage_rows : [];
   const sourceModeStage = stageRows.find((row) => String(row && row.stage || "").trim().toUpperCase() === "SOURCE_MODE") || {};
   const canonicalPolicyStage = stageRows.find((row) => String(row && row.stage || "").trim().toUpperCase() === "CANONICAL_POLICY") || {};
-  const inputs = [objectiveSupervisor, governance, changeControl, patchCandidates, ml, ev, wait, canary, stageAutopilot, selfEvolutionCandidatesArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionBundleActivationArtifact, selfEvolutionOpenclawAutonomyContractArtifact, selfEvolutionObjectiveRecoveryGovernorArtifact, deploymentPlan, loopMonitor, retrospective];
+  const inputs = [objectiveSupervisor, governance, changeControl, patchCandidates, ml, ev, wait, canary, stageAutopilot, selfEvolutionCandidatesArtifact, selfEvolutionCanaryArtifact, selfEvolutionCanonicalParityArtifact, selfEvolutionCanonicalProvenanceArtifact, selfEvolutionServerPrimaryCanaryArtifact, selfEvolutionBundleActivationArtifact, selfEvolutionOpenclawAutonomyContractArtifact, selfEvolutionObjectiveRecoveryGovernorArtifact, deploymentGuards, deploymentPlan, loopMonitor, retrospective];
   const reviewReadiness = deriveReviewReadiness({
     changeControl: changeControl.data,
     selfEvolutionCanary: selfEvolutionCanaryData,
@@ -152,6 +155,13 @@ async function main() {
   const anyWatchlist = Boolean(patchCandidates.data && Array.isArray(patchCandidates.data.candidates) && patchCandidates.data.candidates.length > 0);
   const pendingAuthorityClosure = derivePendingAuthorityClosure({
     deploymentPlan: deploymentPlan.data,
+    autonomyContract: selfEvolutionOpenclawAutonomyContractArtifact.data,
+    recoveryGovernor: selfEvolutionObjectiveRecoveryGovernorArtifact.data,
+    loopMonitor: unwrapRawReport(loopMonitor.data),
+  });
+  const recoveryPromotionApproval = deriveRecoveryPromotionApproval({
+    deploymentPlan: deploymentPlan.data,
+    deploymentGuards: deploymentGuards.data,
     autonomyContract: selfEvolutionOpenclawAutonomyContractArtifact.data,
     recoveryGovernor: selfEvolutionObjectiveRecoveryGovernorArtifact.data,
     loopMonitor: unwrapRawReport(loopMonitor.data),
@@ -223,6 +233,34 @@ async function main() {
       risks: [
         "Phase D acceptance sample remains short; authority closure does not imply server-primary acceptance is complete.",
         "Objective remains below target; this approval only closes pending external authority for the already-applied recovery target.",
+      ],
+    };
+    writeJson(jsonPath, wrapDisplayAndRawReport(localPromote));
+    writeText(mdPath, renderMarkdown(localPromote));
+    copyLatest(jsonPath, REPORT_LATEST_JSON);
+    copyLatest(mdPath, REPORT_LATEST_MD);
+    console.log(JSON.stringify({ ok: true, status: localPromote.status, verdict: localPromote.verdict, candidate: localPromote.display_candidate_id || localPromote.recommended_candidate_id }));
+    return;
+  }
+
+  if (recoveryPromotionApproval.applied) {
+    const localPromote = {
+      ...baseReport,
+      status: "LOCAL_PROMOTE",
+      verdict: "PROMOTE",
+      recommended_candidate_id: recoveryPromotionApproval.target_candidate_id,
+      display_candidate_id: candidateDisplayMap.get(String(recoveryPromotionApproval.target_candidate_id || "").trim()) || recoveryPromotionApproval.target_candidate_id,
+      confidence: recoveryPromotionApproval.confidence_floor,
+      reason: "RECOVERY_PROMOTION_LOCAL_APPROVAL",
+      summary: "server-primary recovery target가 replay/canary/deployment guard를 모두 통과해 Claude가 bounded local promotion policy로 승격 승인했습니다.",
+      checks: [
+        `plan_status=${String((unwrapRawReport(deploymentPlan.data) && unwrapRawReport(deploymentPlan.data).summary && unwrapRawReport(deploymentPlan.data).summary.plan_status) || (unwrapRawReport(deploymentPlan.data) && unwrapRawReport(deploymentPlan.data).plan_status) || "N/A")}`,
+        `target=${recoveryPromotionApproval.target_candidate_id || "N/A"}`,
+        ...recoveryPromotionApproval.checks,
+      ],
+      risks: [
+        "Objective remains below target; this approval prefers the replay/canary-ready recovery path over stale rollback bias.",
+        "If subsequent self-evolution loop evidence flips away from the current recovery target, this approval must be recomputed.",
       ],
     };
     writeJson(jsonPath, wrapDisplayAndRawReport(localPromote));
@@ -372,6 +410,7 @@ module.exports = {
   __test: {
     deriveReviewReadiness,
     derivePendingAuthorityClosure,
+    deriveRecoveryPromotionApproval,
     parseClaudeJson,
   },
 };

@@ -498,7 +498,17 @@ function deriveDeploymentPlan({
   const codexVerdict = String(codex.verdict || "HOLD").trim().toUpperCase();
   const codexCandidateId = String(codex.recommended_candidate_id || "").trim() || null;
   const codexRollbackPath = String(codex.recommended_rollback_file_path || "").trim() || null;
-  const recoveryPromotion = promotion.ready === true && promotion.recovery_mode === true;
+  const authorityTargetPromote = Boolean(
+    codexVerdict === "PROMOTE"
+    && targetCandidateId
+    && (!codexCandidateId || codexCandidateId === targetCandidateId)
+  );
+  const effectivePromotionReady = Boolean(
+    promotion.ready === true
+    || (guardSummary.deploy_pass === true && authorityTargetPromote)
+  );
+  const recoveryPromotion = (promotion.ready === true && promotion.recovery_mode === true)
+    || (effectivePromotionReady && authorityTargetPromote);
   const openWave = toNum(guardSummary.canary_open_wave) || toNum(canarySummary.open_wave) || 1;
   const canonicalPolicyRecommendation = deriveCanonicalPolicyRecommendation({
     candidateChangeSet,
@@ -558,11 +568,8 @@ function deriveDeploymentPlan({
     || ""
   ).trim() || null;
 
-  const promotionAuthorityPass = (
-    codexVerdict === "PROMOTE"
-    && (!codexCandidateId || codexCandidateId === targetCandidateId)
-  ) || recoveryPromotion;
-  const promotionPreparePass = promotion.ready === true
+  const promotionAuthorityPass = authorityTargetPromote || recoveryPromotion;
+  const promotionPreparePass = effectivePromotionReady
     && guardSummary.deploy_pass === true
     && promotionAuthorityPass;
   const rollbackPreparePass = rollback.ready === true
@@ -592,6 +599,14 @@ function deriveDeploymentPlan({
     && prepared.prepared_stage_ready === true
     && (!!prepared.rollback_source_file_path || !!rollbackFilePath);
   const changeControlRelevant = promotion.ready === true || rollback.ready === true;
+  const targetAuthorityApproved = Boolean(
+    codexVerdict === "PROMOTE"
+    && (
+      !targetCandidateId
+      || !codexCandidateId
+      || codexCandidateId === targetCandidateId
+    )
+  );
   const appliedAuthorityApproved = Boolean(
     codexVerdict === "PROMOTE"
     && (
@@ -601,7 +616,7 @@ function deriveDeploymentPlan({
     )
   );
   const rollbackAuthorityApproved = Boolean(rollbackPreparePass);
-  const authorityApproved = appliedAuthorityApproved || rollbackAuthorityApproved;
+  const authorityApproved = targetAuthorityApproved || appliedAuthorityApproved || rollbackAuthorityApproved;
   const preparedStrategyApplied = Boolean(
     prepared.prepared_stage_ready === true
     && (

@@ -322,6 +322,97 @@ const { __test } = require("../../scripts/automation-codex-weekly-patch-engine")
   assert.strictEqual(pendingAuthorityClosure.reason, "PENDING_AUTHORITY_CLOSURE_READY");
   assert.strictEqual(pendingAuthorityClosure.target_candidate_id, "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN");
 
+  const pendingAuthorityClosureByServerPrimaryRuntime = __test.derivePendingAuthorityClosure({
+    deploymentPlan: {
+      summary: {
+        plan_status: "HOLD",
+        external_authority_pending: true,
+        authority_state: "PENDING",
+        activation_confirmed: false,
+        activation_pending: false,
+        engine_bundle_loaded: true,
+        policy_bundle_loaded: true,
+        probe_pass: true,
+        live_signal_confirmed: true,
+        applied_origin_candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN",
+        recommended_target_candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN",
+      },
+    },
+    autonomyContract: {
+      current_status: { ops_healthy: true, phase_d_acceptance_ready: true },
+      summary: { ops_status: "PASS", phase_d_status: "READY" },
+      authority_policy: {
+        degraded_timeout_policy: {
+          enabled: true,
+          allow_target_deploy_units: ["SERVER_SETTINGS", "ENGINE_POLICY_BUNDLE"],
+          confidence_floor: 0.51,
+        },
+      },
+    },
+    recoveryGovernor: {
+      summary: {
+        target_candidate_id: "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN",
+        target_deploy_unit: "SERVER_SETTINGS",
+        governor_status: "RECOVERY_PROMOTION_READY",
+        degraded_authority_eligible: true,
+        replay_pass: true,
+        canary_ready: true,
+        deployment_guards_pass: true,
+        target_memory_blocked: false,
+      },
+    },
+    loopMonitor: {
+      summary: {
+        cycle_consistent: true,
+        critical_blockers: [
+          "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK",
+          "SELF_EVOLUTION_EXTERNAL_AUTHORITY_PENDING",
+        ],
+      },
+    },
+  });
+  assert.strictEqual(pendingAuthorityClosureByServerPrimaryRuntime.applied, true);
+  assert.strictEqual(pendingAuthorityClosureByServerPrimaryRuntime.reason, "PENDING_AUTHORITY_CLOSURE_READY");
+
+  const recoveryPromotionApproval = __test.deriveRecoveryPromotionApproval({
+    deploymentPlan: {
+      summary: {
+        plan_status: "READY_FOR_MANUAL_ROLLBACK",
+        recommended_target_candidate_id: "EV_TP1_THRESHOLD_TUNE",
+        target_candidate_id: "EV_TP1_THRESHOLD_TUNE",
+        prepare_pass: true,
+      },
+    },
+    autonomyContract: {
+      current_status: { ops_healthy: true },
+      summary: { ops_status: "PASS" },
+      authority_policy: {
+        degraded_timeout_policy: {
+          confidence_floor: 0.55,
+        },
+      },
+    },
+    recoveryGovernor: {
+      summary: {
+        target_candidate_id: "EV_TP1_THRESHOLD_TUNE",
+        governor_status: "RECOVERY_PROMOTION_READY",
+        replay_pass: true,
+        canary_ready: true,
+        deployment_guards_pass: true,
+        target_memory_blocked: false,
+      },
+    },
+    loopMonitor: {
+      summary: {
+        cycle_consistent: true,
+        critical_blockers: ["AUTO_ROLLBACK_READY"],
+      },
+    },
+  });
+  assert.strictEqual(recoveryPromotionApproval.applied, true);
+  assert.strictEqual(recoveryPromotionApproval.reason, "RECOVERY_PROMOTION_LOCAL_APPROVAL_READY");
+  assert.strictEqual(recoveryPromotionApproval.target_candidate_id, "EV_TP1_THRESHOLD_TUNE");
+
   const inlineLoopMonitor = __test.deriveInlineLoopMonitorSummary(
     {
       self_evolution_loop_monitor: {

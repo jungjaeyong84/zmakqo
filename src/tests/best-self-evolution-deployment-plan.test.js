@@ -386,10 +386,10 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
   const report = deriveDeploymentPlan({
     objectiveSupervisor: {
       promotion: {
-        ready: true,
-        recovery_mode: true,
-        candidate_id: "EV_TP1_THRESHOLD_TUNE",
-        display_candidate_id: "EV_TP1_THRESHOLD_TUNE",
+        ready: false,
+        recovery_mode: false,
+        candidate_id: null,
+        display_candidate_id: null,
       },
       rollback: { ready: true, reason: "AUTO_ROLLBACK_READY", rollback_file_path: "/tmp/rollback.pine" },
       self_evolution_deployment: { deploy_pass: true },
@@ -428,6 +428,8 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
 
   assert.strictEqual(report.summary.plan_status, "READY_FOR_MANUAL_PASTE");
   assert.strictEqual(report.summary.target_candidate_id, "EV_TP1_THRESHOLD_TUNE");
+  assert.strictEqual(report.summary.authority_approved, true);
+  assert.strictEqual(report.summary.authority_state, "APPROVED");
   console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_RECOVERY_PROMOTION_PRIORITY_TEST_OK");
 })();
 
