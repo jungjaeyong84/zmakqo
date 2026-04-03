@@ -381,6 +381,14 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
   assert.strictEqual(canaryCtx.golden_drift, 0);
   assert.strictEqual(canaryCtx.shadow_drift, 4);
   assert.strictEqual(canaryCtx.shadow_ai_only_drift, true);
+  assert.strictEqual(
+    __test.resolveStageAutopilotCanaryPass({
+      shadowCanaryPass: true,
+      selfEvolutionCanary: { apply_pass: false },
+      selfEvolutionServerPrimaryCanary: { apply_pass: true },
+    }),
+    true
+  );
 
   const pinePromote = __test.buildPineCandidate(
     { data: { verdict: "PATCH_CANDIDATE", promotion: { candidate_id: "AUTO_CORE_SCORE_TIGHTEN" }, codex_authority: { status: "FRESH", verdict: "PROMOTE", recommended_candidate_id: "AUTO_CORE_SCORE_TIGHTEN" }, reason: "AUTO_PROMOTION_READY" } },

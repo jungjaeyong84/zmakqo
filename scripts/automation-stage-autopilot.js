@@ -1261,6 +1261,16 @@ function summarizeFilterCanaryDriftContext(data = null) {
   };
 }
 
+function resolveStageAutopilotCanaryPass({
+  shadowCanaryPass = false,
+  selfEvolutionCanary = {},
+  selfEvolutionServerPrimaryCanary = {},
+} = {}) {
+  const selfEvolutionApplyPass = selfEvolutionCanary && selfEvolutionCanary.apply_pass === true;
+  const serverPrimaryApplyPass = selfEvolutionServerPrimaryCanary && selfEvolutionServerPrimaryCanary.apply_pass === true;
+  return Boolean(shadowCanaryPass && (selfEvolutionApplyPass || serverPrimaryApplyPass));
+}
+
 function readSnapshotFromArtifactPath(filePath) {
   const data = readJsonRawSafe(String(filePath || ""), null);
   return data && data.snapshot && typeof data.snapshot === "object" ? data.snapshot : null;
@@ -2024,10 +2034,14 @@ async function main() {
     && typeof objectiveArtifactForLoop.data.codex_authority === "object"
       ? objectiveArtifactForLoop.data.codex_authority
       : {};
-  const canaryPass = shadowCanaryPass && Boolean(selfEvolutionCanary.apply_pass === true);
+  const canaryPass = resolveStageAutopilotCanaryPass({
+    shadowCanaryPass,
+    selfEvolutionCanary,
+    selfEvolutionServerPrimaryCanary,
+  });
   const canaryReason = !shadowCanaryPass
     ? "CANARY_DRIFT"
-    : (selfEvolutionCanary.apply_pass === true ? null : "SELF_EVOLUTION_CANARY_BLOCK");
+    : (canaryPass === true ? null : "SELF_EVOLUTION_CANARY_BLOCK");
   const selfEvolutionRollbackReady = Number(selfEvolutionCanary.rollback_ready_n || 0) > 0;
   const serverPrimaryRollbackReady = Number(selfEvolutionServerPrimaryCanary.rollback_trigger_n || 0) > 0 && selfEvolutionServerPrimaryCanary.apply_pass === false;
   const preparedOverride = normalizePreparedOverride(readJsonRawSafe(SELF_EVOLUTION_PREPARED_OVERRIDE_PATH, null));
@@ -2766,6 +2780,7 @@ module.exports = {
     buildMarketStageCandidate,
     buildObservedStageCandidate,
     summarizeFilterCanaryDriftContext,
+    resolveStageAutopilotCanaryPass,
     buildPineCandidate,
     buildLoopMonitorView,
     resolveReportCycleId,
