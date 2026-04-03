@@ -1434,5 +1434,70 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(btcContract.mode, "NORMAL");
   assert.strictEqual(dogeContract.mode, "COUNT_GUARD_ACTIVE");
 
+  const wrappedRetrospective = {
+    display: {
+      periods: {
+        DAILY: {
+          objective: {
+            verdict: "FAIL",
+            pass: false,
+            executed_n: 2,
+            realized_n: 1,
+            failed_checks: ["NO_TRADE_ACTIVITY"],
+          },
+          realized_trades: { net_pnl_quote: -12.5 },
+        },
+        WEEKLY: {
+          objective: {
+            verdict: "PASS",
+            pass: true,
+            executed_n: 8,
+            realized_n: 4,
+            failed_checks: [],
+          },
+          realized_trades: { net_pnl_quote: 21.5 },
+        },
+        MONTHLY: {
+          objective: {
+            verdict: "PASS",
+            pass: true,
+            executed_n: 16,
+            realized_n: 7,
+            failed_checks: [],
+          },
+          realized_trades: { net_pnl_quote: 48.1 },
+        },
+      },
+    },
+  };
+  const retrospectiveSummary = __test.summarizeRetrospective(wrappedRetrospective);
+  assert.strictEqual(retrospectiveSummary.available, true);
+  assert.strictEqual(retrospectiveSummary.daily.pass, false);
+  assert.strictEqual(retrospectiveSummary.weekly.pass, true);
+  assert.strictEqual(retrospectiveSummary.monthly.pass, true);
+  assert.strictEqual(retrospectiveSummary.daily_no_trade, true);
+
+  const wrappedGovernanceHold = __test.evaluateSupervisor({
+    ...base,
+    governance: {
+      display: base.governance,
+    },
+    retrospective: {
+      display: {
+        periods: {
+          DAILY: { objective: { verdict: "PASS", pass: true, executed_n: 1, realized_n: 1, failed_checks: [] }, realized_trades: { net_pnl_quote: 12 } },
+          WEEKLY: { objective: { verdict: "PASS", pass: true, executed_n: 2, realized_n: 1, failed_checks: [] }, realized_trades: { net_pnl_quote: 24 } },
+          MONTHLY: { objective: { verdict: "PASS", pass: true, executed_n: 4, realized_n: 2, failed_checks: [] }, realized_trades: { net_pnl_quote: 48 } },
+        },
+      },
+    },
+    codex: null,
+  });
+  assert.strictEqual(wrappedGovernanceHold.blockers.includes("MONTHLY_TARGET_NOT_MET"), false);
+  assert.strictEqual(wrappedGovernanceHold.blockers.includes("OBJECTIVE_NOT_MET"), false);
+  assert.strictEqual(wrappedGovernanceHold.blockers.includes("DAILY_OBJECTIVE_FAIL"), false);
+  assert.strictEqual(wrappedGovernanceHold.blockers.includes("WEEKLY_OBJECTIVE_FAIL"), false);
+  assert.strictEqual(wrappedGovernanceHold.blockers.includes("RETROSPECTIVE_MONTHLY_FAIL"), false);
+
   console.log("OBJECTIVE_SUPERVISOR_TEST_OK");
 })();

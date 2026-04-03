@@ -268,6 +268,13 @@ function readArtifact(name, filePath, maxAgeHours) {
   }
 }
 
+function unwrapArtifactPayload(artifact = null) {
+  if (!artifact || typeof artifact !== "object" || Array.isArray(artifact)) return artifact;
+  if (artifact.raw && typeof artifact.raw === "object" && !Array.isArray(artifact.raw)) return artifact.raw;
+  if (artifact.display && typeof artifact.display === "object" && !Array.isArray(artifact.display)) return artifact.display;
+  return artifact;
+}
+
 function readCycleId(value = null) {
   const raw = value && value.raw && typeof value.raw === "object" ? value.raw : value;
   const cycleId = String(raw && (raw.cycle_id || raw.generation_id) || "").trim();
@@ -366,8 +373,9 @@ function summarizeSelfEvolutionArtifactCycles({ artifacts = {}, stage = "STANDAL
 }
 
 function summarizeRetrospective(retrospective = null) {
-  const periods = retrospective && retrospective.periods && typeof retrospective.periods === "object"
-    ? retrospective.periods
+  const source = unwrapArtifactPayload(retrospective);
+  const periods = source && source.periods && typeof source.periods === "object"
+    ? source.periods
     : {};
   const daily = periods.DAILY || null;
   const weekly = periods.WEEKLY || null;
@@ -384,7 +392,7 @@ function summarizeRetrospective(retrospective = null) {
   const weeklyRow = buildRow(weekly);
   const monthlyRow = buildRow(monthly);
   return {
-    available: !!retrospective,
+    available: !!source,
     daily: dailyRow,
     weekly: weeklyRow,
     monthly: monthlyRow,
@@ -2003,6 +2011,8 @@ function buildObjectiveSupervisorTelegramAlertSections(report = {}) {
 }
 
 function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionMarketObjectiveScore, selfEvolutionServerVsPinePerformanceDelta, selfEvolutionExplorationBudget, selfEvolutionServerMarketCapitalAllocator, selfEvolutionServerMarketQuarantine, selfEvolutionExplorationProposal, selfEvolutionExplorationApplyCandidate, selfEvolutionChangeResultAttribution, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionCanonicalParity, selfEvolutionServerSignalAuthority, selfEvolutionServerSignalQuality, selfEvolutionServerSignalCutoverReadiness, selfEvolutionDropValidation, selfEvolutionProvisionalRealizedOutcome, selfEvolutionOverrideAuthority, selfEvolutionExecutionQuality, selfEvolutionReversePolicy, selfEvolutionServerPrimaryLearningEpoch, selfEvolutionInitialSignalQualityContract, selfEvolutionExitTrailingContract, selfEvolutionServerNativeHtfModeComparison, selfEvolutionServerNativeHtfModeGovernor, selfEvolutionCanonicalProvenance, selfEvolutionServerPrimaryCanary, selfEvolutionServerPrimaryAcceptanceWatch, selfEvolutionPineShadowDrift, selfEvolutionDeploymentProbe, selfEvolutionBundleActivation, selfEvolutionEvGateRescue, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache, preparedOverride } = {}) {
+  governance = unwrapArtifactPayload(governance);
+  retrospective = unwrapArtifactPayload(retrospective);
   const objective = governance && governance.current && governance.current.objective ? governance.current.objective : {};
   const objectiveCfg = governance && governance.objective ? governance.objective : {};
   const promotion = changeControl && changeControl.auto_promotion ? changeControl.auto_promotion : {};
@@ -3499,6 +3509,7 @@ module.exports = {
     buildObjectiveSupervisorTelegramSections,
     buildObjectiveSupervisorTelegramAlertSections,
     buildFilterLayerSummary,
+    summarizeRetrospective,
     deriveBestFebtTuningContract,
     deriveBestFebtMarketContracts,
     formatBestFebtMarketContractLine,
