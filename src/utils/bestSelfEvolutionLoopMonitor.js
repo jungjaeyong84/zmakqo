@@ -105,6 +105,20 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const serverSignalQualitySummary = serverSignalQuality.summary && typeof serverSignalQuality.summary === "object" ? serverSignalQuality.summary : {};
   const serverSignalRuntimeSummary = serverSignalRuntime.summary && typeof serverSignalRuntime.summary === "object" ? serverSignalRuntime.summary : {};
   const serverSignalCutoverSummary = serverSignalCutoverReadiness.summary && typeof serverSignalCutoverReadiness.summary === "object" ? serverSignalCutoverReadiness.summary : {};
+  const cutoverPromotionBlockReasons = Array.isArray(serverSignalCutoverSummary.promotion_block_reasons)
+    ? serverSignalCutoverSummary.promotion_block_reasons.slice(0, 12).filter(Boolean)
+    : (Array.isArray(serverSignalCutoverSummary.blockers) ? serverSignalCutoverSummary.blockers.slice(0, 12).filter(Boolean) : []);
+  const cutoverPromotionGateReady = serverSignalCutoverSummary.promotion_gate_ready === true
+    || String(serverSignalCutoverSummary.promotion_gate_status || "").trim().toUpperCase() === "READY"
+    || (
+      serverSignalCutoverSummary.promotion_gate_ready == null
+      && !serverSignalCutoverSummary.promotion_gate_status
+      && serverSignalCutoverSummary.promotion_ready === true
+    );
+  const cutoverPromotionGateStatus = String(
+    serverSignalCutoverSummary.promotion_gate_status
+    || (cutoverPromotionGateReady ? "READY" : "BLOCKED")
+  ).trim().toUpperCase() || null;
   const dropValidationSummary = dropValidation.summary && typeof dropValidation.summary === "object" ? dropValidation.summary : {};
   const provisionalRealizedOutcomeSummary = provisionalRealizedOutcome.summary && typeof provisionalRealizedOutcome.summary === "object"
     ? provisionalRealizedOutcome.summary
@@ -288,10 +302,10 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       loop: "SERVER_SIGNAL_CUTOVER",
       fresh: artifacts.serverSignalCutoverReadiness && artifacts.serverSignalCutoverReadiness.fresh === true,
       cycle_id: readCycleId(serverSignalCutoverReadiness),
-      status: serverSignalCutoverSummary.promotion_ready === true
-        ? "READY"
-        : (String(serverSignalCutoverSummary.readiness_status || "N/A").trim().toUpperCase().includes("ACTIVE") ? "PASS" : "WARN"),
-      reason: `status=${serverSignalCutoverSummary.readiness_status || "N/A"} / source_mode=${serverSignalCutoverSummary.source_mode || "N/A"} / blockers=${Array.isArray(serverSignalCutoverSummary.blockers) && serverSignalCutoverSummary.blockers.length ? serverSignalCutoverSummary.blockers.join("|") : "none"}`,
+      status: cutoverPromotionGateReady
+        ? (serverSignalCutoverSummary.promotion_ready === true ? "READY" : "PASS")
+        : "WARN",
+      reason: `status=${serverSignalCutoverSummary.readiness_status || "N/A"} / source_mode=${serverSignalCutoverSummary.source_mode || "N/A"} / promotion_gate=${cutoverPromotionGateStatus || "N/A"} / blockers=${cutoverPromotionBlockReasons.length ? cutoverPromotionBlockReasons.join("|") : "none"}`,
     },
     {
       loop: "DROP_VALIDATION",
@@ -574,7 +588,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   if (String(serverSignalAuthoritySummary.drift_status || "").trim().toUpperCase() === "PARITY_DRIFT") blockers.push("SERVER_SIGNAL_PARITY_DRIFT");
   if (/NOT_REACHING_EXECUTION/.test(String(serverSignalQualitySummary.quality_status || "").trim().toUpperCase())) blockers.push("SERVER_SIGNAL_EXECUTION_GAP");
   if (String(serverSignalRuntimeSummary.runtime_status || "").trim().toUpperCase() === "HOLD") blockers.push("SERVER_SIGNAL_RUNTIME_HOLD");
-  if (serverSignalCutoverSummary.promotion_ready !== true && toNum(serverSignalRuntimeSummary.market_count) > 0) blockers.push("SERVER_SIGNAL_CUTOVER_NOT_READY");
+  if (cutoverPromotionGateStatus !== "READY" && toNum(serverSignalRuntimeSummary.market_count) > 0) blockers.push("SERVER_SIGNAL_CUTOVER_NOT_READY");
   if (String(serverPrimaryAcceptanceSummary.phase_d_status || "").trim().toUpperCase() === "BLOCK") blockers.push("SELF_EVOLUTION_SERVER_PRIMARY_ACCEPTANCE_BLOCK");
   if (Number(serverPrimaryCanarySummary.server_primary_executed_n || 0) > 0 && serverPrimaryCanarySummary.apply_pass === false) {
     blockers.push("SELF_EVOLUTION_SERVER_PRIMARY_CANARY_BLOCK");
@@ -637,8 +651,10 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       server_signal_runtime_exec_tf: serverSignalRuntimeSummary.exec_tf || null,
       server_signal_runtime_market_count: toNum(serverSignalRuntimeSummary.market_count),
       server_signal_cutover_status: serverSignalCutoverSummary.readiness_status || null,
-      server_signal_cutover_ready: serverSignalCutoverSummary.promotion_ready === true,
-      server_signal_cutover_blockers: Array.isArray(serverSignalCutoverSummary.blockers) ? serverSignalCutoverSummary.blockers.slice(0, 6) : [],
+      server_signal_cutover_ready: cutoverPromotionGateReady,
+      server_signal_cutover_promotion_ready: serverSignalCutoverSummary.promotion_ready === true,
+      server_signal_cutover_promotion_gate_status: cutoverPromotionGateStatus,
+      server_signal_cutover_blockers: cutoverPromotionBlockReasons.slice(0, 6),
       drop_validation_status: dropValidationSummary.status || null,
       drop_validation_top_rescue_family: dropValidationSummary.top_rescue_family || null,
       drop_validation_top_rescue_reason: dropValidationSummary.top_rescue_reason || null,

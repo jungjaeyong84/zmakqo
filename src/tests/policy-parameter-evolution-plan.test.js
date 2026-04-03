@@ -5,6 +5,9 @@ const { derivePolicyParameterEvolutionPlan } = require("../../src/utils/policyPa
 
 (() => {
   const holdPlan = derivePolicyParameterEvolutionPlan({
+    objective: { global_objective_score: { objective_score: -10.5 } },
+    objectiveSupervisor: { self_evolution_objective: { objective_score: -10.1 } },
+    autonomyContract: { current_status: { objective_score: -9.9 } },
     objectiveRecoveryGovernor: {
       summary: {
         governor_status: "RECOVERY_CANARY_BLOCKED",
@@ -55,6 +58,11 @@ const { derivePolicyParameterEvolutionPlan } = require("../../src/utils/policyPa
 
   assert.strictEqual(holdPlan.summary.status, "HOLD");
   assert.strictEqual(holdPlan.summary.mode, "ADVISORY_ONLY");
+  assert.strictEqual(holdPlan.summary.current_objective_score, -10.5);
+  assert.strictEqual(holdPlan.summary.current_objective_score_source, "OBJECTIVE");
+  assert.strictEqual(holdPlan.summary.quarantine_market_n, 1);
+  assert.strictEqual(holdPlan.summary.watch_only_review_market_n, 1);
+  assert.strictEqual(holdPlan.summary.other_server_policy_watch_only_market_n, 0);
   assert.ok(holdPlan.summary.blockers.includes("GOVERNOR_BLOCKED"));
   assert.ok(holdPlan.summary.blockers.includes("MANUAL_CONFIRM_REQUIRED"));
   assert.ok(holdPlan.summary.blockers.includes("DEGRADED_AUTHORITY_NOT_ELIGIBLE"));
@@ -64,6 +72,7 @@ const { derivePolicyParameterEvolutionPlan } = require("../../src/utils/policyPa
   assert.strictEqual(holdPlan.recommendations.by_market[0].mode, "WATCH_ONLY");
 
   const readyPlan = derivePolicyParameterEvolutionPlan({
+    objective: { global_objective_score: { objective_score: 0.7 } },
     objectiveRecoveryGovernor: {
       summary: {
         governor_status: "RECOVERY_ACTIVE",
@@ -108,11 +117,13 @@ const { derivePolicyParameterEvolutionPlan } = require("../../src/utils/policyPa
 
   assert.strictEqual(readyPlan.summary.status, "READY");
   assert.strictEqual(readyPlan.summary.mode, "APPLY_READY");
+  assert.strictEqual(readyPlan.summary.current_objective_score, 0.7);
   assert.strictEqual(readyPlan.summary.ev_policy_action, "HOLD_EV_POLICY");
   assert.ok(readyPlan.summary.global_qty_scale >= 0.95);
   assert.strictEqual(readyPlan.recommendations.by_market[0].qty_scale, 1.1);
 
   const driftWatchPlan = derivePolicyParameterEvolutionPlan({
+    objective: { global_objective_score: { objective_score: 0.2 } },
     objectiveRecoveryGovernor: {
       summary: {
         governor_status: "RECOVERY_ACTIVE",
@@ -153,8 +164,26 @@ const { derivePolicyParameterEvolutionPlan } = require("../../src/utils/policyPa
   assert.strictEqual(xrp.mode, "WATCH_ONLY");
   assert.strictEqual(xrp.qty_scale, 0);
   assert.strictEqual(driftWatchPlan.summary.other_server_policy_watch_only_market_n, 2);
+  assert.strictEqual(driftWatchPlan.summary.watch_only_review_market_n, 2);
   assert.strictEqual(driftWatchPlan.summary.other_server_policy_watch_only_reason_n, 1);
   assert.strictEqual(driftWatchPlan.summary.top_other_server_policy_watch_only_reasons[0].reason, "LIVE_RESCUE_ADD_LOSS_WINDOW_BLOCKED");
+
+  const objective = { global_objective_score: { objective_score: -3.25 } };
+  const objectiveSupervisor = { self_evolution_objective: { objective_score: -1.2 } };
+  const autonomyContract = { current_status: { objective_score: -0.8 } };
+  const governor = derivePolicyParameterEvolutionPlan({
+    objective,
+    objectiveSupervisor,
+    autonomyContract,
+    objectiveRecoveryGovernor: { summary: { governor_status: "RECOVERY_ACTIVE", governor_reason: "RECOVERY_ACTIVE", recovery_required: true } },
+    objectiveRecoveryEffect: { summary: { current_objective_score: -2.1, projected_objective_score: -1.0, projected_on_track: false } },
+    executionQuality: { summary: { status: "EXECUTION_QUALITY_PASS" }, by_market: [] },
+    serverMarketCapitalAllocator: { summary: { by_market: [] } },
+    serverMarketQuarantine: { summary: { by_market: [] } },
+    explorationApplyCandidate: { summary: { manual_confirm_required: false, auto_apply_allowed: false } },
+  });
+  assert.strictEqual(governor.summary.current_objective_score, -3.25);
+  assert.strictEqual(governor.summary.current_objective_score_source, "OBJECTIVE");
 
   console.log("POLICY_PARAMETER_EVOLUTION_PLAN_TEST_OK");
 })();

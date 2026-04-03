@@ -1,36 +1,13 @@
 "use strict";
-
-function unwrapRawReport(value) {
-  if (!value || typeof value !== "object") return value || null;
-  if (value.raw && typeof value.raw === "object") return value.raw;
-  if (value.display && typeof value.display === "object") return value.display;
-  return value;
-}
+const { unwrapRawReport, toNum, extractObjectiveScore, deriveObjectiveScoreSnapshot } = require("./objectiveScoreSnapshot");
 
 function readSummary(value) {
   const raw = unwrapRawReport(value) || {};
   return raw.summary && typeof raw.summary === "object" ? raw.summary : raw;
 }
 
-function toNum(value) {
-  if (value === null || value === undefined || value === "") return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
 function toUpper(value) {
   return String(value || "").trim().toUpperCase() || null;
-}
-
-function extractObjectiveScore(value) {
-  const summary = value && typeof value === "object" ? value : {};
-  const nested = summary.global_objective_score && typeof summary.global_objective_score === "object"
-    ? summary.global_objective_score
-    : null;
-  return toNum(summary.global_score)
-    ?? toNum(summary.objective_score)
-    ?? toNum(summary.global_objective_score)
-    ?? toNum(nested && nested.objective_score);
 }
 
 function findCandidateRow(candidates = null, candidateId = null) {
@@ -161,7 +138,13 @@ function deriveObjectiveRecoveryEffect({
   const recoveryRequired = governorSummary.recovery_required === true
     || contractStatus.recovery_required === true
     || ((extractObjectiveScore(objectiveReport) ?? toNum(contractStatus.objective_score)) < 0);
-  const currentObjectiveScore = toNum(governorSummary.objective_score) ?? toNum(contractStatus.objective_score) ?? extractObjectiveScore(objectiveReport);
+  const objectiveScoreSnapshot = deriveObjectiveScoreSnapshot({
+    objective: objectiveReport,
+    objectiveSupervisor: supervisor,
+    autonomyContract: contract,
+    objectiveRecoveryGovernor: governor,
+  });
+  const currentObjectiveScore = objectiveScoreSnapshot.objective_score;
   const targetCandidateId = String(
     governorSummary.target_candidate_id
     || supervisor.promotion && (supervisor.promotion.candidate_id || supervisor.promotion.display_candidate_id)
@@ -263,6 +246,7 @@ function deriveObjectiveRecoveryEffect({
       target_ready_for_auto_apply: isReadyCandidate(targetCandidateRow),
       target_replay_pass: toUpper(targetReplayRow && targetReplayRow.validation_verdict) === "PASS",
       current_objective_score: currentObjectiveScore,
+      current_objective_score_source: objectiveScoreSnapshot.objective_score_source,
       target_candidate_objective_delta: targetReplayDelta,
       projected_objective_score: targetProjectedScore,
       current_gap_to_zero: gap.current_gap_to_zero,

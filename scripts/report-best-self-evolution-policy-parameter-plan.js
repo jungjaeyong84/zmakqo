@@ -21,6 +21,9 @@ const {
 loadLocalEnv();
 
 const INPUTS = Object.freeze({
+  objective: path.join(OPS_DAILY_DIR, "best_self_evolution_objective_latest.json"),
+  objectiveSupervisor: selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json"),
+  autonomyContract: path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_autonomy_contract_latest.json"),
   objectiveRecoveryGovernor: path.join(OPS_DAILY_DIR, "best_self_evolution_objective_recovery_governor_latest.json"),
   objectiveRecoveryEffect: path.join(OPS_DAILY_DIR, "best_self_evolution_objective_recovery_effect_latest.json"),
   executionQuality: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_quality_latest.json"),
@@ -45,7 +48,9 @@ function renderMarkdown(report = {}) {
     `- ev_policy_action: ${summary.ev_policy_action || "N/A"}`,
     `- objective score (cur -> proj): ${summary.current_objective_score != null ? summary.current_objective_score : "N/A"} -> ${summary.projected_objective_score != null ? summary.projected_objective_score : "N/A"}`,
     `- execution_quality: ${summary.execution_quality_status || "N/A"}`,
-    `- quarantine markets: ${summary.quarantine_market_n ?? 0} / ${Array.isArray(summary.top_quarantine_markets) && summary.top_quarantine_markets.length ? summary.top_quarantine_markets.join("|") : "none"}`,
+    `- quarantine/watch-only/other-policy: ${summary.quarantine_market_n ?? 0} / ${summary.watch_only_review_market_n ?? 0} / ${summary.other_server_policy_watch_only_market_n ?? 0}`,
+    `- quarantine markets: ${Array.isArray(summary.top_quarantine_markets) && summary.top_quarantine_markets.length ? summary.top_quarantine_markets.join("|") : "none"}`,
+    `- watch-only review markets: ${Array.isArray(summary.top_watch_only_review_markets) && summary.top_watch_only_review_markets.length ? summary.top_watch_only_review_markets.join("|") : "none"}`,
     "",
     "## Global Recommendations",
     ...(globalRows.length
@@ -68,6 +73,9 @@ function main() {
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
   const objectiveRecoveryGovernor = readJsonRawSafe(INPUTS.objectiveRecoveryGovernor, null);
   const objectiveRecoveryEffect = readJsonRawSafe(INPUTS.objectiveRecoveryEffect, null);
+  const objective = readJsonRawSafe(INPUTS.objective, null);
+  const objectiveSupervisor = readJsonRawSafe(INPUTS.objectiveSupervisor, null);
+  const autonomyContract = readJsonRawSafe(INPUTS.autonomyContract, null);
   const executionQuality = readJsonRawSafe(INPUTS.executionQuality, null);
   const serverMarketCapitalAllocator = readJsonRawSafe(INPUTS.serverMarketCapitalAllocator, null);
   const serverMarketQuarantine = readJsonRawSafe(INPUTS.serverMarketQuarantine, null);
@@ -80,6 +88,9 @@ function main() {
     sources: [
       objectiveRecoveryGovernor,
       objectiveRecoveryEffect,
+      objective,
+      objectiveSupervisor,
+      autonomyContract,
       executionQuality,
       serverMarketCapitalAllocator,
       serverMarketQuarantine,
@@ -91,6 +102,9 @@ function main() {
   const plan = derivePolicyParameterEvolutionPlan({
     objectiveRecoveryGovernor,
     objectiveRecoveryEffect,
+    objective,
+    objectiveSupervisor,
+    autonomyContract,
     executionQuality,
     serverMarketCapitalAllocator,
     serverMarketQuarantine,

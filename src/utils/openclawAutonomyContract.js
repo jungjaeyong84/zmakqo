@@ -1,21 +1,9 @@
 "use strict";
-
-function unwrapRawReport(value) {
-  if (!value || typeof value !== "object") return value || null;
-  if (value.raw && typeof value.raw === "object") return value.raw;
-  if (value.display && typeof value.display === "object") return value.display;
-  return value;
-}
+const { unwrapRawReport, toNum, extractObjectiveScore, deriveObjectiveScoreSnapshot } = require("./objectiveScoreSnapshot");
 
 function readSummary(value) {
   const raw = unwrapRawReport(value) || {};
   return raw.summary && typeof raw.summary === "object" ? raw.summary : raw;
-}
-
-function toNum(value) {
-  if (value === null || value === undefined || value === "") return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
 }
 
 function toUpper(value) {
@@ -40,17 +28,6 @@ function envList(name, fallback = []) {
   const raw = String(process.env[name] || "").trim();
   if (!raw) return Array.isArray(fallback) ? fallback.slice() : [];
   return raw.split(",").map((item) => String(item || "").trim().toUpperCase()).filter(Boolean);
-}
-
-function extractObjectiveScore(value) {
-  const summary = value && typeof value === "object" ? value : {};
-  const nested = summary.global_objective_score && typeof summary.global_objective_score === "object"
-    ? summary.global_objective_score
-    : null;
-  return toNum(summary.global_score)
-    ?? toNum(summary.objective_score)
-    ?? toNum(summary.global_objective_score)
-    ?? toNum(nested && nested.objective_score);
 }
 
 function extractMonthlyRunRate(value) {
@@ -218,9 +195,11 @@ function deriveOpenClawAutonomyContract({
   const governanceObjectiveSummary = objectiveSupervisorRaw.objective && typeof objectiveSupervisorRaw.objective === "object"
     ? objectiveSupervisorRaw.objective
     : {};
-  const currentObjectiveScore = extractObjectiveScore(objectiveSummary)
-    ?? extractObjectiveScore(objectiveSupervisorSummary)
-    ?? extractObjectiveScore(governanceObjectiveSummary);
+  const objectiveScoreSnapshot = deriveObjectiveScoreSnapshot({
+    objective: objectiveSummary,
+    objectiveSupervisor: objectiveSupervisorRaw,
+  });
+  const currentObjectiveScore = objectiveScoreSnapshot.objective_score;
   const currentMonthlyRunRate = extractMonthlyRunRate(objectiveSummary)
     ?? extractMonthlyRunRate(objectiveSupervisorSummary)
     ?? extractMonthlyRunRate(governanceObjectiveSummary);
@@ -285,6 +264,7 @@ function deriveOpenClawAutonomyContract({
     phase_d_policy: phaseDPolicy,
     current_status: {
       objective_score: currentObjectiveScore,
+      objective_score_source: objectiveScoreSnapshot.objective_score_source,
       monthly_run_rate_krw: currentMonthlyRunRate,
       win_rate: currentWinRate,
       objective_met: objectiveMet,

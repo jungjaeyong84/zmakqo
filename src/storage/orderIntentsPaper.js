@@ -3,6 +3,11 @@ const { tfToMs } = require("../utils/marketConfig");
 const { enrichFeaturesWithRegime } = require("../utils/regime");
 const { resolveEventMapping } = require("../services/signalMapping");
 const { deriveSignalDocId } = require("../utils/signalDocId");
+const { isIntentCanceledLikeStatus, classifyIntentTerminalStatus } = require("../utils/intentStatus");
+const { buildEventEnvelope } = require("../utils/eventEnvelope");
+const { extractLiveExecutionPolicyTrace, toLiveExecutionPolicyTopLevel } = require("../utils/liveExecutionPolicyTrace");
+
+const LINEAGE_STRICT_ENABLED = String(process.env.LINEAGE_STRICT_ENABLED || "1").trim() !== "0";
 
 function nowIso(){ return new Date().toISOString(); }
 function isTpP1Event(event) {
@@ -18,6 +23,37 @@ function intentScopeKey({ exchange, symbol, tf }) {
 function execKey({ exchange, symbol, tf, execBarCloseMs }) {
   if (!Number.isFinite(Number(execBarCloseMs))) return null;
   return `${exchange}__${symbol}__${tf}__${execBarCloseMs}`;
+}
+
+function canonicalEventId({ exchange, symbol, tf, signalBarCloseMs, event, side }) {
+  return [
+    "EVENT",
+    String(exchange || "").trim().toUpperCase(),
+    String(symbol || "").trim().toUpperCase(),
+    String(tf || "").trim(),
+    String(signalBarCloseMs || "").trim(),
+    String(event || "").trim().toUpperCase(),
+    String(side || "").trim().toUpperCase(),
+  ].join("__");
+}
+
+function shouldRequireLineageForEvent(event) {
+  const ev = String(event || "").trim().toUpperCase();
+  if (!ev) return false;
+  if (ev.startsWith("EXIT_")) return false;
+  if (ev.startsWith("FORCE_EXIT")) return false;
+  if (ev.includes("EXTERNAL_SYNC")) return false;
+  return true;
+}
+
+function buildTraceMeta({ signalId = null, intentId = null, runId = null, requestId = null, decisionReason = null } = {}) {
+  return [
+    signalId ? `signal:${signalId}` : null,
+    intentId ? `intent:${intentId}` : null,
+    runId ? `run:${runId}` : null,
+    requestId ? `req:${requestId}` : null,
+    decisionReason ? `reason:${decisionReason}` : null,
+  ].filter(Boolean).join(" | ") || null;
 }
 
 function intentTtlMs(tf) {
@@ -39,7 +75,7 @@ function resolveIntentSignalRefs({
   signalDocId = null,
   features = {},
 } = {}) {
-  const resolvedSignalId = String(signalId || features.signal_id || "").trim() || null;
+  let resolvedSignalId = String(signalId || features.signal_id || "").trim() || null;
   const resolvedSignalDocId = String(
     signalDocId
     || features.signal_doc_id
@@ -53,6 +89,9 @@ function resolveIntentSignalRefs({
     })
     || ""
   ).trim() || null;
+  if (!resolvedSignalId && String(resolvedSignalDocId || "").startsWith("SIG__")) {
+    resolvedSignalId = resolvedSignalDocId;
+  }
   if (resolvedSignalId && !features.signal_id) features.signal_id = resolvedSignalId;
   if (resolvedSignalDocId && !features.signal_doc_id) features.signal_doc_id = resolvedSignalDocId;
   return {
@@ -76,6 +115,8 @@ async function upsertIntent({
   ttlMs,
   execTf,
   executionMode,
+  requestId = null,
+  decisionReason = null,
 } = {}) {
   const db = getFirestore();
   const regimeMeta = enrichFeaturesWithRegime(features || {});
@@ -90,9 +131,20 @@ async function upsertIntent({
     signalDocId,
     features: normalizedFeatures,
   });
-  const resolvedSignalId = resolvedSignalRefs.signalId;
+  let resolvedSignalId = resolvedSignalRefs.signalId;
   const resolvedSignalDocId = resolvedSignalRefs.signalDocId;
+  if (!resolvedSignalId && resolvedSignalDocId) resolvedSignalId = resolvedSignalDocId;
+  if (LINEAGE_STRICT_ENABLED && shouldRequireLineageForEvent(event)) {
+    if (!resolvedSignalDocId) {
+      throw new Error("LINEAGE_SIGNAL_DOC_ID_REQUIRED");
+    }
+    if (!resolvedSignalId) {
+      throw new Error("LINEAGE_SIGNAL_ID_REQUIRED");
+    }
+  }
   const mapping = resolveEventMapping({ event, side });
+  const liveExecPolicyTrace = extractLiveExecutionPolicyTrace(normalizedFeatures);
+  const liveExecPolicyTopLevel = toLiveExecutionPolicyTopLevel(liveExecPolicyTrace);
   const hintedIntent = String(normalizedFeatures && normalizedFeatures._event_intent || "").trim().toUpperCase();
   const useHintedIntent = hintedIntent === "ENTRY" || hintedIntent === "ADD" || hintedIntent === "EXIT";
   const eventIntent = useHintedIntent ? hintedIntent : (mapping.intent || null);
@@ -144,12 +196,30 @@ async function upsertIntent({
       const st = String(cur.status || "PENDING").toUpperCase();
 
       // ✅ FILLED/CANCELED는 절대 되돌리지 않는다
-      if (st === "FILLED" || st === "CANCELED") return cur;
+      if (st === "FILLED" || isIntentCanceledLikeStatus(st)) return cur;
 
       // ✅ status는 건드리지 않고 부가정보만 갱신
       const patch = {
+        ...buildEventEnvelope({
+          requestId: requestId || cur.request_id || null,
+          runId: runId || cur.run_id || null,
+          signalId: resolvedSignalId || cur.signal_id || null,
+          intentId: id,
+          event,
+          exchange,
+          symbol,
+          tf,
+          decisionReason: decisionReason || reason || cur.decision_reason || null,
+          action: eventIntent || cur.event_intent || null,
+          intent: eventIntent || cur.event_intent || null,
+          executionMode: executionMode || cur.execution_mode || null,
+          source: "INTENT",
+          barCloseMs: signalBarCloseTimeUtcMs,
+        }),
         run_id: runId || cur.run_id || null,
+        request_id: requestId || cur.request_id || null,
         reason: reason || cur.reason || null,
+        decision_reason: String(decisionReason || reason || cur.decision_reason || "").trim() || null,
         features_json: normalizedFeatures,
         execution_mode: executionMode || cur.execution_mode || null,
         budget_max_krw: (budgetMaxKrw == null ? cur.budget_max_krw : Number(budgetMaxKrw)),
@@ -160,6 +230,7 @@ async function upsertIntent({
         signal_price_source: signalPrice == null ? cur.signal_price_source : "BAR_CLOSE",
         signal_id: resolvedSignalId || cur.signal_id || null,
         signal_doc_id: resolvedSignalDocId || cur.signal_doc_id || null,
+        canonical_event_id: cur.canonical_event_id || canonicalEventId({ exchange, symbol, tf, signalBarCloseMs: signalBarCloseTimeUtcMs, event, side }),
         entry_event_id: featureEntryEventId || cur.entry_event_id || null,
         entry_signal_type: featureEntrySignalType || cur.entry_signal_type || null,
         pending_reason: pendingReason || cur.pending_reason || "WAIT_NEXT_BAR",
@@ -172,6 +243,14 @@ async function upsertIntent({
         regime: regimeMeta.regime || cur.regime || null,
         market_regime: regimeMeta.market_regime || cur.market_regime || null,
         regime_source: regimeMeta.regime_source || cur.regime_source || null,
+        ...liveExecPolicyTopLevel,
+        trace_meta: buildTraceMeta({
+          signalId: resolvedSignalId || cur.signal_id || null,
+          intentId: id,
+          runId: runId || cur.run_id || null,
+          requestId: requestId || cur.request_id || null,
+          decisionReason: decisionReason || reason || cur.decision_reason || null,
+        }),
         updated_at: t,
       };
       tx.set(ref, patch, { merge: true });
@@ -180,7 +259,25 @@ async function upsertIntent({
 
     const payload = {
       intent_id: id,
+      ...buildEventEnvelope({
+        requestId,
+        runId,
+        signalId: resolvedSignalId,
+        intentId: id,
+        event,
+        exchange,
+        symbol,
+        tf,
+        decisionReason: decisionReason || reason || null,
+        action: eventIntent,
+        intent: eventIntent,
+        executionMode,
+        source: "INTENT",
+        barCloseMs: signalBarCloseTimeUtcMs,
+        createdAt: t,
+      }),
       run_id: runId || null,
+      request_id: requestId || null,
       exchange,
       symbol_or_pair_id: symbol,
       tf,
@@ -194,12 +291,14 @@ async function upsertIntent({
       qty_fraction: (qtyFraction == null ? null : Number(qtyFraction)),
       event_intent: eventIntent,
       reason: reason || null,
+      decision_reason: String(decisionReason || reason || "").trim() || null,
       features_json: normalizedFeatures,
       execution_mode: executionMode || null,
       signal_price: (signalPrice == null ? null : Number(signalPrice)),
       signal_price_source: signalPrice == null ? null : "BAR_CLOSE",
       signal_id: resolvedSignalId,
       signal_doc_id: resolvedSignalDocId,
+      canonical_event_id: canonicalEventId({ exchange, symbol, tf, signalBarCloseMs: signalBarCloseTimeUtcMs, event, side }),
       entry_event_id: featureEntryEventId,
       entry_signal_type: featureEntrySignalType,
       budget_max_krw: (budgetMaxKrw == null ? null : Number(budgetMaxKrw)),
@@ -214,6 +313,14 @@ async function upsertIntent({
       regime: regimeMeta.regime,
       market_regime: regimeMeta.market_regime,
       regime_source: regimeMeta.regime_source,
+      ...liveExecPolicyTopLevel,
+      trace_meta: buildTraceMeta({
+        signalId: resolvedSignalId,
+        intentId: id,
+        runId,
+        requestId,
+        decisionReason: decisionReason || reason || null,
+      }),
       status: "PENDING",
       created_at: t,
       updated_at: t,
@@ -341,13 +448,11 @@ async function cancelExpiredPendingIntents({ exchange, symbol, tf, lookbackLimit
     const expMs = Number(x.expires_at_ms);
     if (!Number.isFinite(expMs) || expMs > nowMs) return;
     tasks.push(
-      db.collection("order_intents_paper").doc(d.id).set({
-        status: "CANCELED",
+      markIntentStatus(d.id, "CANCELED", {
         canceled_at: nowIso(),
-        updated_at: nowIso(),
         cancel_reason: "INTENT_EXPIRED",
         status_reason: "INTENT_EXPIRED",
-      }, { merge: true })
+      })
         .then(() => { canceled += 1; })
     );
   });
@@ -366,10 +471,60 @@ async function cancelExpiredPendingIntents({ exchange, symbol, tf, lookbackLimit
 async function markIntentStatus(intentIdValue, status, patch = {}) {
   const db = getFirestore();
   const ref = db.collection("order_intents_paper").doc(intentIdValue);
-  await ref.set({ status, updated_at: nowIso(), ...patch }, { merge: true });
+  let current = null;
+  try {
+    const snap = await ref.get();
+    current = snap.exists ? (snap.data() || {}) : null;
+  } catch (_) {
+    current = null;
+  }
+  const resolved = classifyIntentTerminalStatus(status, patch);
+  const statusToWrite = resolved.status || String(status || "").toUpperCase() || null;
+  const runId = patch.run_id || (current && current.run_id) || null;
+  const requestId = patch.request_id || (current && current.request_id) || null;
+  const signalId = patch.signal_id || (current && current.signal_id) || null;
+  const event = patch.event || (current && current.event) || null;
+  const exchange = patch.exchange || (current && current.exchange) || null;
+  const symbol = patch.symbol_or_pair_id || patch.symbol || (current && (current.symbol_or_pair_id || current.symbol)) || null;
+  const tf = patch.tf || (current && current.tf) || null;
+  const decisionReason = patch.decision_reason || patch.status_reason || patch.cancel_reason || (current && current.decision_reason) || null;
+  const eventIntent = patch.event_intent || (current && current.event_intent) || null;
+  const executionMode = patch.execution_mode || (current && current.execution_mode) || null;
+  await ref.set({
+    ...buildEventEnvelope({
+      requestId,
+      runId,
+      signalId,
+      intentId: intentIdValue,
+      event,
+      exchange,
+      symbol,
+      tf,
+      decisionReason,
+      action: eventIntent,
+      intent: eventIntent,
+      executionMode,
+      source: "INTENT_STATUS",
+      barCloseMs: current && current.signal_bar_close_time_utc_ms ? current.signal_bar_close_time_utc_ms : null,
+    }),
+    status: statusToWrite,
+    status_family: resolved.statusFamily || null,
+    terminal_failure_status: resolved.terminalFailureStatus || null,
+    request_id: requestId,
+    run_id: runId,
+    decision_reason: String(decisionReason || "").trim() || null,
+    trace_meta: buildTraceMeta({
+      signalId,
+      intentId: intentIdValue,
+      runId,
+      requestId,
+      decisionReason,
+    }),
+    updated_at: nowIso(),
+    ...patch,
+  }, { merge: true });
 
-  const st = String(status || "").toUpperCase();
-  if (st !== "CANCELED") return;
+  if (!isIntentCanceledLikeStatus(statusToWrite)) return;
 
   // TP1 cancel should immediately release pending lock; otherwise TP1 can stay blocked for too long.
   try {
@@ -396,7 +551,26 @@ async function markIntentStatus(intentIdValue, status, patch = {}) {
 async function patchIntent(intentIdValue, patch = {}) {
   const db = getFirestore();
   const ref = db.collection("order_intents_paper").doc(intentIdValue);
-  await ref.set({ updated_at: nowIso(), ...patch }, { merge: true });
+  const currentSnap = await ref.get().catch(() => null);
+  const current = currentSnap && currentSnap.exists ? (currentSnap.data() || {}) : null;
+  const runId = patch.run_id || (current && current.run_id) || null;
+  const requestId = patch.request_id || (current && current.request_id) || null;
+  const signalId = patch.signal_id || (current && current.signal_id) || null;
+  const decisionReason = patch.decision_reason || patch.status_reason || patch.cancel_reason || patch.reason || (current && current.decision_reason) || null;
+  await ref.set({
+    request_id: requestId,
+    run_id: runId,
+    decision_reason: String(decisionReason || "").trim() || null,
+    trace_meta: buildTraceMeta({
+      signalId,
+      intentId: intentIdValue,
+      runId,
+      requestId,
+      decisionReason,
+    }),
+    updated_at: nowIso(),
+    ...patch,
+  }, { merge: true });
 }
 
 async function cancelPendingIntentsByMarket({
@@ -449,14 +623,12 @@ async function cancelPendingIntentsByMarket({
     scanned += 1;
     if (typeof filterFn === "function" && !filterFn(doc.data)) continue;
     tasks.push(
-      db.collection("order_intents_paper").doc(doc.id).set({
-        status: "CANCELED",
+      markIntentStatus(doc.id, "CANCELED", {
         canceled_at: nowIso(),
-        updated_at: nowIso(),
         cancel_reason: reason,
         status_reason: reason,
         cancel_note: note || null,
-      }, { merge: true })
+      })
         .then(() => { canceled += 1; })
     );
   }
@@ -482,5 +654,8 @@ module.exports = {
   cancelPendingIntentsByMarket,
   __test: {
     resolveIntentSignalRefs,
+    buildTraceMeta,
+    shouldRequireLineageForEvent,
+    canonicalEventId,
   },
 };

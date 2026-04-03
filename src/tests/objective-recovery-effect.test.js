@@ -86,6 +86,8 @@ const { deriveObjectiveRecoveryEffect } = require("../../src/utils/objectiveReco
     },
   });
 
+  assert.strictEqual(report.summary.current_objective_score, -7.4059);
+  assert.strictEqual(report.summary.current_objective_score_source, "OBJECTIVE");
   assert.strictEqual(report.summary.tracking_status, "PARTIAL_RECOVERY_ONLY");
   assert.strictEqual(report.summary.target_matches_dominant_negative_market, true);
   assert.strictEqual(report.summary.best_ready_candidate_id, "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN");

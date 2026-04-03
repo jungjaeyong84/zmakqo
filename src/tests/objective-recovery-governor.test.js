@@ -21,6 +21,7 @@ const { deriveObjectiveRecoveryGovernor } = require("../../src/utils/objectiveRe
     watchdog: { display: { verdict: "PASS" } },
   });
   assert.strictEqual(blocked.summary.objective_score, -2);
+  assert.strictEqual(blocked.summary.objective_score_source, "OBJECTIVE");
   assert.strictEqual(blocked.summary.governor_status, "RECOVERY_TARGET_MEMORY_BLOCKED");
   assert.strictEqual(blocked.summary.degraded_authority_eligible, false);
   assert.strictEqual(blocked.summary.target_memory_blocked, true);

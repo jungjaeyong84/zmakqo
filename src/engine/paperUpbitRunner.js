@@ -30,6 +30,7 @@ const {
   resolveRegimeRecord,
 } = require("../utils/regime");
 const { resolveMarketStateSummary } = require("../utils/marketStateSummary");
+const { evaluateLiveEntryPolicy } = require("../utils/liveExecutionPolicy");
 const { resolveEventMapping } = require("../services/signalMapping");
 const { normalizeEvent } = require("../services/signalStandard");
 const {
@@ -7576,6 +7577,26 @@ async function runPaperUpbitForBar({
       }
     }
 
+    if (intentIsEntry) {
+      const policyEval = evaluateLiveEntryPolicy({
+        exchange,
+        symbol,
+        intent,
+        qtyPct: qtyFraction,
+        features: it.features_json,
+        stage: "RUNNER_INTENT_EXEC",
+        applyScale: false,
+      });
+      if (policyEval && policyEval.featuresPatch && typeof policyEval.featuresPatch === "object") {
+        it.features_json = policyEval.featuresPatch;
+      }
+      if (!policyEval || policyEval.ok !== true) {
+        const reason = String(policyEval && policyEval.reason || "LIVE_POLICY_BLOCK").trim().toUpperCase() || "LIVE_POLICY_BLOCK";
+        await markIntentStatus(it.intent_id, "CANCELED", { cancel_reason: reason, status_reason: reason });
+        continue;
+      }
+    }
+
     const nextOpen = Number(bar.open);
     let fillPrice = null;
     let execPriceSource = "BAR_OPEN";
@@ -7911,6 +7932,7 @@ async function runPaperUpbitForBar({
       featuresJson: it.features_json && typeof it.features_json === "object" ? it.features_json : null,
       exitProfile: appliedExitProfile || null,
       exitProfileReason: appliedExitProfileReason || null,
+      decisionReason: it.reason || it.event || null,
     });
     sendTradeExecutionAlert({
       exchange,
@@ -8199,6 +8221,8 @@ async function runPaperUpbitForBar({
       execMs: tradeExecMs,
       intentId: it.intent_id,
       fillId: fillWrite && fillWrite.fill_id,
+      signalId: intentSignalId,
+      signalDocId: intentSignalDocId,
       entryEventId: entryEventIdForFill,
       entrySignalType: entrySignalTypeForFill,
       execPrice: fillPrice,
@@ -8213,6 +8237,8 @@ async function runPaperUpbitForBar({
       meta: { trading_mode, execution_mode: executionMode },
       executionMode,
       featuresJson: it.features_json && typeof it.features_json === "object" ? it.features_json : null,
+      requestId: it.request_id || null,
+      decisionReason: it.decision_reason || it.reason || it.event || null,
     });
 
       fillsExecuted += 1;
@@ -8634,7 +8660,7 @@ async function runPaperUpbitForBar({
       }
     }
 
-    const features = (it.features_json && typeof it.features_json === "object") ? { ...it.features_json } : {};
+    const features = (s.features && typeof s.features === "object") ? { ...s.features } : {};
     if (intentIsEntry && !manualRetryIntent) {
       const canonical = evaluateCanonicalEntryGate({
         intent,
@@ -9006,6 +9032,36 @@ async function runPaperUpbitForBar({
       }
     }
 
+    if (intentIsEntry) {
+      const policyEval = evaluateLiveEntryPolicy({
+        exchange,
+        symbol,
+        intent,
+        qtyPct: qtyFraction,
+        features: s.features,
+        stage: "RUNNER_SIGNAL",
+        applyScale: true,
+      });
+      if (policyEval && policyEval.featuresPatch && typeof policyEval.featuresPatch === "object") {
+        s.features = policyEval.featuresPatch;
+        Object.assign(features, policyEval.featuresPatch);
+      }
+      if (!policyEval || policyEval.ok !== true || !Number.isFinite(Number(policyEval.qtyPctFinal)) || Number(policyEval.qtyPctFinal) <= 0) {
+        const reason = String(policyEval && policyEval.reason || "DROP_LIVE_POLICY_BLOCK").trim().toUpperCase() || "DROP_LIVE_POLICY_BLOCK";
+        signalDrops.push({
+          ...s,
+          bar_close_time_utc_ms: effectiveBarMs,
+          qty_pct: qtyFraction,
+          reason,
+          drop_reason_code: reason,
+          features_json: { ...(s.features || {}) },
+          event_intent: intent,
+        });
+        continue;
+      }
+      qtyFraction = Number(policyEval.qtyPctFinal);
+    }
+
     if (intentIsEntry && immediateCfg.enabled && (isRealEvent || isPreRealEvent || isCoreEvent || isEarlyEvent)) {
       const { coreBuy, realBuy, coreSell, realSell } = resolveScoreLevels({ exchange, features });
       const score = pickSignalScoreExtended(features);
@@ -9151,6 +9207,8 @@ async function runPaperUpbitForBar({
         executionMode: intentExecutionMode,
         source: "SERVER",
         authoritative: true,
+        runId,
+        decisionReason: s.reason || "INTERNAL_SIGNAL",
       });
       if (savedSignal && savedSignal.signal_id) {
         s.signal_id = savedSignal.signal_id;
@@ -9270,6 +9328,7 @@ async function runPaperUpbitForBar({
       pendingNote,
       ttlMs,
       execTf: execTfFinal,
+      decisionReason: s.reason || "INTENT_CREATED",
     });
 
     // external signal consumed mark (operational-B)
@@ -9297,7 +9356,13 @@ async function runPaperUpbitForBar({
       exchange,
       symbol,
       tf: signalTf,
-      drops: signalDrops.map((d) => ({ ...d, execution_mode: intentExecutionMode })),
+      runId,
+      drops: signalDrops.map((d) => ({
+        ...d,
+        execution_mode: intentExecutionMode,
+        signal_id: d.signal_id || (d.features_json && d.features_json.signal_id) || (d.features && d.features.signal_id) || null,
+        signal_doc_id: d.signal_doc_id || (d.features_json && d.features_json.signal_doc_id) || (d.features && d.features.signal_doc_id) || null,
+      })),
     });
     await consumeDroppedSignals({
       drops: signalDrops,
@@ -9793,6 +9858,26 @@ async function runPaperFuturesForBar({
         continue;
       }
       qtyFraction = 1;
+    }
+
+    if (intentIsEntry) {
+      const policyEval = evaluateLiveEntryPolicy({
+        exchange,
+        symbol,
+        intent,
+        qtyPct: qtyFraction,
+        features: it.features_json,
+        stage: "RUNNER_INTENT_EXEC",
+        applyScale: false,
+      });
+      if (policyEval && policyEval.featuresPatch && typeof policyEval.featuresPatch === "object") {
+        it.features_json = policyEval.featuresPatch;
+      }
+      if (!policyEval || policyEval.ok !== true) {
+        const reason = String(policyEval && policyEval.reason || "LIVE_POLICY_BLOCK").trim().toUpperCase() || "LIVE_POLICY_BLOCK";
+        await markIntentStatus(it.intent_id, "CANCELED", { cancel_reason: reason, status_reason: reason });
+        continue;
+      }
     }
 
     let actionSide = null;
@@ -10484,6 +10569,7 @@ async function runPaperFuturesForBar({
       featuresJson: it.features_json && typeof it.features_json === "object" ? it.features_json : null,
       exitProfile: appliedExitProfile || null,
       exitProfileReason: appliedExitProfileReason || null,
+      decisionReason: it.reason || it.event || null,
     });
     sendTradeExecutionAlert({
       exchange,
@@ -10874,6 +10960,8 @@ async function runPaperFuturesForBar({
       },
       executionMode,
       featuresJson: it.features_json && typeof it.features_json === "object" ? it.features_json : null,
+      requestId: it.request_id || null,
+      decisionReason: it.decision_reason || it.reason || it.event || null,
     });
 
       fillsExecuted += 1;
@@ -11905,6 +11993,36 @@ async function runPaperFuturesForBar({
       }
     }
 
+    if (intentIsEntry) {
+      const policyEval = evaluateLiveEntryPolicy({
+        exchange,
+        symbol,
+        intent,
+        qtyPct: qtyFraction,
+        features: s.features,
+        stage: "RUNNER_SIGNAL",
+        applyScale: true,
+      });
+      if (policyEval && policyEval.featuresPatch && typeof policyEval.featuresPatch === "object") {
+        s.features = policyEval.featuresPatch;
+        Object.assign(features, policyEval.featuresPatch);
+      }
+      if (!policyEval || policyEval.ok !== true || !Number.isFinite(Number(policyEval.qtyPctFinal)) || Number(policyEval.qtyPctFinal) <= 0) {
+        const reason = String(policyEval && policyEval.reason || "DROP_LIVE_POLICY_BLOCK").trim().toUpperCase() || "DROP_LIVE_POLICY_BLOCK";
+        signalDrops.push({
+          ...s,
+          bar_close_time_utc_ms: effectiveBarMs,
+          qty_pct: qtyFraction,
+          reason,
+          drop_reason_code: reason,
+          features_json: { ...(s.features || {}) },
+          event_intent: intent,
+        });
+        continue;
+      }
+      qtyFraction = Number(policyEval.qtyPctFinal);
+    }
+
     if (intentIsEntry && immediateCfg.enabled && (isRealEvent || isPreRealEvent || isCoreEvent || isEarlyEvent)) {
       const { coreBuy, realBuy, coreSell, realSell } = resolveScoreLevels({ exchange, features });
       const score = pickSignalScoreExtended(features);
@@ -12049,6 +12167,8 @@ async function runPaperFuturesForBar({
         executionMode: intentExecutionMode,
         source: "SERVER",
         authoritative: true,
+        runId,
+        decisionReason: s.reason || "INTERNAL_SIGNAL",
       });
       if (savedSignal && savedSignal.signal_id) {
         s.signal_id = savedSignal.signal_id;
@@ -12197,6 +12317,7 @@ async function runPaperFuturesForBar({
       pendingNote,
       ttlMs,
       execTf: execTfFinal,
+      decisionReason: s.reason || "INTENT_CREATED",
     });
 
     if (intent === "ADD" && (s.features._rescue_add_applied === true || s.features._replay_rescue_add_applied === true)) {
@@ -12229,6 +12350,7 @@ async function runPaperFuturesForBar({
       exchange,
       symbol,
       tf: signalTf,
+      runId,
       drops: signalDrops.map((d) => ({ ...d, execution_mode: intentExecutionMode })),
     });
     await consumeDroppedSignals({

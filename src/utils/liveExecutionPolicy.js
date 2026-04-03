@@ -64,6 +64,7 @@ const LINEAGE_SLO_FAIL_CLOSED = String(process.env.LIVE_EXEC_POLICY_LINEAGE_SLO_
 const LINEAGE_SLO_REQUIRE_FRESH = String(process.env.LIVE_EXEC_POLICY_LINEAGE_SLO_REQUIRE_FRESH || "1").trim() !== "0";
 const DRIFT_REMEDIATION_ENABLED = String(process.env.LIVE_EXEC_POLICY_DRIFT_REMEDIATION_ENABLED || "1").trim() !== "0";
 const DRIFT_REMEDIATION_WATCH_ONLY_BLOCK = String(process.env.LIVE_EXEC_POLICY_DRIFT_REMEDIATION_WATCH_ONLY_BLOCK || "1").trim() !== "0";
+const LEARNING_EPOCH_EXCEPTION_RELEASE_ENABLED = String(process.env.LIVE_EXEC_POLICY_LEARNING_EPOCH_EXCEPTION_RELEASE_ENABLED || "1").trim() !== "0";
 
 const ACTION_SCALE_REDUCE = (() => {
   const n = Number(process.env.LIVE_EXEC_POLICY_SCALE_ACTION_REDUCE);
@@ -596,6 +597,16 @@ function deriveLineageSloBlock(snapshot = null) {
   return { blocked: false, reason: null, stale: false };
 }
 
+function deriveLearningEpochRelease(snapshot = null) {
+  const quarantineSummary = snapshot && snapshot.quarantine && typeof snapshot.quarantine === "object" ? snapshot.quarantine : {};
+  const allocatorSummary = snapshot && snapshot.allocator && typeof snapshot.allocator === "object" ? snapshot.allocator : {};
+  const learningEpochActive = quarantineSummary.learning_epoch_active === true || allocatorSummary.learning_epoch_active === true;
+  return {
+    active: LEARNING_EPOCH_EXCEPTION_RELEASE_ENABLED && learningEpochActive,
+    learning_epoch_active: learningEpochActive,
+  };
+}
+
 function evaluateLiveEntryPolicy({
   exchange,
   symbol,
@@ -653,17 +664,57 @@ function evaluateLiveEntryPolicy({
   const qualityHard = deriveQualityHardBlock(qualityRow);
   const qualityGlobalHard = deriveGlobalQualityHardBlock(qualitySummary, market);
   const lineageSlo = deriveLineageSloBlock(snapshot);
+  const learningEpochRelease = deriveLearningEpochRelease(snapshot);
   const otherServerPolicyWatchOnlyBlocked = DRIFT_REMEDIATION_ENABLED
     && DRIFT_REMEDIATION_WATCH_ONLY_BLOCK
+    && !learningEpochRelease.active
     && !!(snapshot && snapshot.driftOtherServerPolicyWatchOnlySet && snapshot.driftOtherServerPolicyWatchOnlySet.has(market));
-  const quarantineBlocked = QUARANTINE_HARD_BLOCK && !!(quarantineRow || action === "QUARANTINE");
+  const quarantineBlocked = QUARANTINE_HARD_BLOCK && !learningEpochRelease.active && !!(quarantineRow || action === "QUARANTINE");
   const qualityBlocked = QUALITY_HARD_BLOCK && qualityHard.blocked;
   const qualityGlobalBlocked = QUALITY_HARD_BLOCK && qualityGlobalHard.blocked;
-  const policyPlanWatchOnlyBlocked = applyPolicyPlan && POLICY_PLAN_WATCH_ONLY_BLOCK && policyPlanMarketMode === "WATCH_ONLY";
+  const policyPlanWatchOnlyBlocked = applyPolicyPlan
+    && POLICY_PLAN_WATCH_ONLY_BLOCK
+    && !learningEpochRelease.active
+    && policyPlanMarketMode === "WATCH_ONLY";
   const policyPlanHoldBlocked = applyPolicyPlan
     && POLICY_PLAN_HOLD_BLOCK
+    && !learningEpochRelease.active
     && policyPlanStatus === "HOLD"
     && (policyPlanMarketMode === "WATCH_ONLY" || (Number.isFinite(policyPlanMarketScale) && policyPlanMarketScale <= 0));
+
+  const commonTracePatch = {
+    ...baseFeatures,
+    _live_exec_policy_stage: stage,
+    _live_exec_policy_market: market,
+    _live_exec_policy_action: action || null,
+    _live_exec_policy_allocation_score: allocationScore,
+    _live_exec_policy_quarantine_reason: quarantineReason || null,
+    _live_exec_policy_quality_latency_ms: toNum(qualityRow && qualityRow.avg_created_to_fill_ms),
+    _live_exec_policy_quality_partial_pct: toNum(qualityRow && qualityRow.partial_fill_rate_pct),
+    _live_exec_policy_quality_slippage_bps: toNum(qualityRow && qualityRow.avg_slippage_bps),
+    _live_exec_policy_quality_global_status: upper(qualitySummary.status),
+    _live_exec_policy_quality_global_latency_p95_ms: toNum(qualitySummary.created_to_fill_p95_ms),
+    _live_exec_policy_quality_global_partial_pct: toNum(qualitySummary.partial_fill_rate_pct),
+    _live_exec_policy_quality_global_slippage_p95_bps: toNum(qualitySummary.adverse_slippage_p95_bps),
+    _live_exec_policy_lineage_slo_enabled: LINEAGE_SLO_ENABLED,
+    _live_exec_policy_lineage_slo_fail_closed: LINEAGE_SLO_FAIL_CLOSED,
+    _live_exec_policy_drift_remediation_enabled: DRIFT_REMEDIATION_ENABLED,
+    _live_exec_policy_other_server_policy_watch_only_block_enabled: DRIFT_REMEDIATION_WATCH_ONLY_BLOCK,
+    _live_exec_policy_other_server_policy_watch_only_market: !!(snapshot && snapshot.driftOtherServerPolicyWatchOnlySet && snapshot.driftOtherServerPolicyWatchOnlySet.has(market)),
+    _live_exec_policy_plan_enabled: POLICY_PLAN_ENABLED,
+    _live_exec_policy_plan_apply: applyPolicyPlan === true,
+    _live_exec_policy_plan_status: policyPlanStatus,
+    _live_exec_policy_plan_mode: policyPlanMarketMode || upper(policyPlanSummary.mode),
+    _live_exec_policy_plan_global_scale: policyPlanGlobalScale,
+    _live_exec_policy_plan_market_scale: policyPlanMarketScale,
+    _live_exec_policy_learning_epoch_active: learningEpochRelease.learning_epoch_active,
+    _live_exec_policy_learning_epoch_exception_release_enabled: LEARNING_EPOCH_EXCEPTION_RELEASE_ENABLED,
+    _live_exec_policy_learning_epoch_exception_release_active: learningEpochRelease.active,
+    _live_exec_policy_objective_scale: objectiveScale.scale,
+    _live_exec_policy_objective_verdict: objectiveScale.verdict,
+    _live_exec_policy_objective_score: objectiveScale.objectiveScore,
+    _live_exec_policy_objective_constrained: objectiveScale.constrained,
+  };
 
   if (quarantineBlocked) {
     const reason = "LIVE_POLICY_QUARANTINE_HARD_BLOCK";
@@ -672,13 +723,9 @@ function evaluateLiveEntryPolicy({
       qtyPctFinal: 0,
       reason,
       featuresPatch: {
-        ...baseFeatures,
-        _live_exec_policy_stage: stage,
+        ...commonTracePatch,
         _live_exec_policy_reason: reason,
-        _live_exec_policy_market: market,
         _live_exec_policy_quarantine_reason: quarantineReason || "QUARANTINE",
-        _live_exec_policy_action: action || "QUARANTINE",
-        _live_exec_policy_allocation_score: allocationScore,
       },
       policy: {
         stage,
@@ -700,13 +747,8 @@ function evaluateLiveEntryPolicy({
       qtyPctFinal: 0,
       reason,
       featuresPatch: {
-        ...baseFeatures,
-        _live_exec_policy_stage: stage,
+        ...commonTracePatch,
         _live_exec_policy_reason: reason,
-        _live_exec_policy_market: market,
-        _live_exec_policy_quality_latency_ms: toNum(qualityRow && qualityRow.avg_created_to_fill_ms),
-        _live_exec_policy_quality_partial_pct: toNum(qualityRow && qualityRow.partial_fill_rate_pct),
-        _live_exec_policy_quality_slippage_bps: toNum(qualityRow && qualityRow.avg_slippage_bps),
       },
       policy: {
         stage,
@@ -725,14 +767,8 @@ function evaluateLiveEntryPolicy({
       qtyPctFinal: 0,
       reason,
       featuresPatch: {
-        ...baseFeatures,
-        _live_exec_policy_stage: stage,
+        ...commonTracePatch,
         _live_exec_policy_reason: reason,
-        _live_exec_policy_market: market,
-        _live_exec_policy_quality_global_status: upper(qualitySummary.status),
-        _live_exec_policy_quality_global_latency_p95_ms: toNum(qualitySummary.created_to_fill_p95_ms),
-        _live_exec_policy_quality_global_partial_pct: toNum(qualitySummary.partial_fill_rate_pct),
-        _live_exec_policy_quality_global_slippage_p95_bps: toNum(qualitySummary.adverse_slippage_p95_bps),
       },
       policy: {
         stage,
@@ -751,12 +787,8 @@ function evaluateLiveEntryPolicy({
       qtyPctFinal: 0,
       reason,
       featuresPatch: {
-        ...baseFeatures,
-        _live_exec_policy_stage: stage,
+        ...commonTracePatch,
         _live_exec_policy_reason: reason,
-        _live_exec_policy_market: market,
-        _live_exec_policy_lineage_slo_enabled: LINEAGE_SLO_ENABLED,
-        _live_exec_policy_lineage_slo_fail_closed: LINEAGE_SLO_FAIL_CLOSED,
       },
       policy: {
         stage,
@@ -776,10 +808,8 @@ function evaluateLiveEntryPolicy({
       qtyPctFinal: 0,
       reason,
       featuresPatch: {
-        ...baseFeatures,
-        _live_exec_policy_stage: stage,
+        ...commonTracePatch,
         _live_exec_policy_reason: reason,
-        _live_exec_policy_market: market,
         _live_exec_policy_other_server_policy_watch_only_block: true,
         _live_exec_policy_other_server_policy_watch_only_reasons: Array.isArray(watchReasons) ? watchReasons : [],
       },
@@ -801,15 +831,8 @@ function evaluateLiveEntryPolicy({
       qtyPctFinal: 0,
       reason,
       featuresPatch: {
-        ...baseFeatures,
-        _live_exec_policy_stage: stage,
+        ...commonTracePatch,
         _live_exec_policy_reason: reason,
-        _live_exec_policy_market: market,
-        _live_exec_policy_plan_mode: policyPlanMarketMode,
-        _live_exec_policy_plan_status: policyPlanStatus,
-        _live_exec_policy_plan_global_scale: policyPlanGlobalScale,
-        _live_exec_policy_plan_market_scale: policyPlanMarketScale,
-        _live_exec_policy_plan_apply: applyPolicyPlan === true,
       },
       policy: {
         stage,
@@ -830,15 +853,8 @@ function evaluateLiveEntryPolicy({
       qtyPctFinal: 0,
       reason,
       featuresPatch: {
-        ...baseFeatures,
-        _live_exec_policy_stage: stage,
+        ...commonTracePatch,
         _live_exec_policy_reason: reason,
-        _live_exec_policy_market: market,
-        _live_exec_policy_plan_mode: policyPlanMarketMode,
-        _live_exec_policy_plan_status: policyPlanStatus,
-        _live_exec_policy_plan_global_scale: policyPlanGlobalScale,
-        _live_exec_policy_plan_market_scale: policyPlanMarketScale,
-        _live_exec_policy_plan_apply: applyPolicyPlan === true,
       },
       policy: {
         stage,
@@ -906,41 +922,14 @@ function evaluateLiveEntryPolicy({
   const featureScaledFlag = alreadyScaled || (applyScale && !alreadyScaled);
 
   const featuresPatch = {
-    ...baseFeatures,
-    _live_exec_policy_stage: stage,
-    _live_exec_policy_market: market,
-    _live_exec_policy_action: action || null,
-    _live_exec_policy_allocation_score: allocationScore,
-    _live_exec_policy_quarantine_reason: quarantineReason || null,
-    _live_exec_policy_quality_latency_ms: toNum(qualityRow && qualityRow.avg_created_to_fill_ms),
-    _live_exec_policy_quality_partial_pct: toNum(qualityRow && qualityRow.partial_fill_rate_pct),
-    _live_exec_policy_quality_slippage_bps: toNum(qualityRow && qualityRow.avg_slippage_bps),
+    ...commonTracePatch,
     _live_exec_policy_action_scale: featureActionScale,
     _live_exec_policy_score_scale: featureScoreScale,
     _live_exec_policy_quality_scale: featureQualityScale,
     _live_exec_policy_quality_global_scale: qualityGlobalQtyScale,
-    _live_exec_policy_objective_scale: objectiveQtyScale,
-    _live_exec_policy_objective_verdict: objectiveScale.verdict,
-    _live_exec_policy_objective_score: objectiveScale.objectiveScore,
-    _live_exec_policy_objective_constrained: objectiveScale.constrained,
-    _live_exec_policy_quality_global_status: upper(qualitySummary.status),
-    _live_exec_policy_quality_global_latency_p95_ms: toNum(qualitySummary.created_to_fill_p95_ms),
-    _live_exec_policy_quality_global_partial_pct: toNum(qualitySummary.partial_fill_rate_pct),
-    _live_exec_policy_quality_global_slippage_p95_bps: toNum(qualitySummary.adverse_slippage_p95_bps),
-    _live_exec_policy_lineage_slo_enabled: LINEAGE_SLO_ENABLED,
-    _live_exec_policy_lineage_slo_fail_closed: LINEAGE_SLO_FAIL_CLOSED,
-    _live_exec_policy_drift_remediation_enabled: DRIFT_REMEDIATION_ENABLED,
-    _live_exec_policy_other_server_policy_watch_only_block_enabled: DRIFT_REMEDIATION_WATCH_ONLY_BLOCK,
-    _live_exec_policy_other_server_policy_watch_only_market: !!(snapshot && snapshot.driftOtherServerPolicyWatchOnlySet && snapshot.driftOtherServerPolicyWatchOnlySet.has(market)),
     _live_exec_policy_scale_applied: featureScaledFlag,
     _live_exec_policy_scale: featureScaleApplied,
     _live_exec_policy_profile: POLICY_PROFILE,
-    _live_exec_policy_plan_enabled: POLICY_PLAN_ENABLED,
-    _live_exec_policy_plan_apply: applyPolicyPlan === true,
-    _live_exec_policy_plan_status: policyPlanStatus,
-    _live_exec_policy_plan_mode: policyPlanMarketMode || upper(policyPlanSummary.mode),
-    _live_exec_policy_plan_global_scale: policyPlanGlobalScale,
-    _live_exec_policy_plan_market_scale: policyPlanMarketScale,
     _live_exec_policy_qty_before: featureQtyBefore,
     _live_exec_policy_qty_after: featureQtyAfter,
     _live_exec_policy_allocator_generated_at_kst: snapshot && snapshot.allocator ? snapshot.allocator.generated_at_kst || null : null,
@@ -975,6 +964,8 @@ function evaluateLiveEntryPolicy({
       plan_mode: policyPlanMarketMode || upper(policyPlanSummary.mode),
       plan_global_scale: policyPlanGlobalScale,
       plan_market_scale: policyPlanMarketScale,
+      learning_epoch_active: learningEpochRelease.learning_epoch_active,
+      learning_epoch_exception_release_active: learningEpochRelease.active,
       drift_remediation_enabled: DRIFT_REMEDIATION_ENABLED,
       drift_remediation_watch_only_block: DRIFT_REMEDIATION_WATCH_ONLY_BLOCK,
       profile: POLICY_PROFILE,
@@ -1005,6 +996,7 @@ module.exports = {
     lineage_slo_require_fresh: LINEAGE_SLO_REQUIRE_FRESH,
     drift_remediation_enabled: DRIFT_REMEDIATION_ENABLED,
     drift_remediation_watch_only_block: DRIFT_REMEDIATION_WATCH_ONLY_BLOCK,
+    learning_epoch_exception_release_enabled: LEARNING_EPOCH_EXCEPTION_RELEASE_ENABLED,
     cache_ttl_ms: CACHE_TTL_MS,
     scale_min: SCALE_MIN,
     scale_max: SCALE_MAX,

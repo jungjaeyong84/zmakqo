@@ -18,6 +18,7 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   });
 
   assert.strictEqual(report.current_status.objective_score, -7.4);
+  assert.strictEqual(report.current_status.objective_score_source, "OBJECTIVE");
   assert.strictEqual(report.current_status.monthly_run_rate_krw, -436.19);
   assert.strictEqual(report.current_status.win_rate, 0.44);
   assert.strictEqual(report.summary.goal_state, "OBJECTIVE_RECOVERY_REQUIRED");

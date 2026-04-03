@@ -12,16 +12,31 @@ function toUpper(value) {
   return String(value || "").trim().toUpperCase() || null;
 }
 
+function toBool(value, fallback = false) {
+  if (value == null || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  const s = String(value).trim().toLowerCase();
+  if (!s) return fallback;
+  if (["1", "true", "yes", "y", "on"].includes(s)) return true;
+  if (["0", "false", "no", "n", "off"].includes(s)) return false;
+  return fallback;
+}
+
 function readSummary(value) {
   if (!value || typeof value !== "object") return {};
-  if (value.summary && typeof value.summary === "object") return value.summary;
-  return value;
+  const base = (value.raw && typeof value.raw === "object")
+    ? value.raw
+    : ((value.display && typeof value.display === "object") ? value.display : value);
+  if (base.summary && typeof base.summary === "object") return base.summary;
+  return base;
 }
 
 function readRows(value) {
   if (!value || typeof value !== "object") return [];
-  if (Array.isArray(value.rows)) return value.rows;
-  if (value.raw && Array.isArray(value.raw.rows)) return value.raw.rows;
+  const base = (value.raw && typeof value.raw === "object")
+    ? value.raw
+    : ((value.display && typeof value.display === "object") ? value.display : value);
+  if (Array.isArray(base.rows)) return base.rows;
   return [];
 }
 
@@ -31,6 +46,67 @@ function toKstString(ms) {
   const kst = new Date(n + (9 * 60 * 60 * 1000));
   const pad = (x) => String(x).padStart(2, "0");
   return `${kst.getUTCFullYear()}-${pad(kst.getUTCMonth() + 1)}-${pad(kst.getUTCDate())} ${pad(kst.getUTCHours())}:${pad(kst.getUTCMinutes())}:${pad(kst.getUTCSeconds())} KST`;
+}
+
+function parseDateMs(value) {
+  if (value == null || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value > 1e12 ? Math.floor(value) : Math.floor(value * 1000);
+  }
+  const s = String(value || "").trim();
+  if (!s) return null;
+  const kstMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})\s*KST$/i);
+  if (kstMatch) {
+    const [, y, mo, d, h, mi, sec] = kstMatch;
+    const utcMs = Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h) - 9, Number(mi), Number(sec));
+    return Number.isFinite(utcMs) ? utcMs : null;
+  }
+  const isoMs = Date.parse(s);
+  return Number.isFinite(isoMs) ? isoMs : null;
+}
+
+function pickGeneratedAtMs(doc = null) {
+  if (!doc || typeof doc !== "object") return null;
+  const summary = readSummary(doc);
+  const candidates = [
+    doc.generated_at_ms,
+    doc.generated_at,
+    doc.generated_at_kst,
+    summary.generated_at_ms,
+    summary.generated_at,
+    summary.generated_at_kst,
+  ];
+  let maxMs = null;
+  for (const value of candidates) {
+    const ms = parseDateMs(value);
+    if (!Number.isFinite(ms)) continue;
+    if (!Number.isFinite(maxMs) || ms > maxMs) maxMs = ms;
+  }
+  return Number.isFinite(maxMs) ? maxMs : null;
+}
+
+function pickCycleId(doc = null) {
+  if (!doc || typeof doc !== "object") return null;
+  const summary = readSummary(doc);
+  const base = (doc.raw && typeof doc.raw === "object")
+    ? doc.raw
+    : ((doc.display && typeof doc.display === "object") ? doc.display : doc);
+  const candidates = [
+    base.cycle_id,
+    base.source_cycle_id,
+    base.generation_id,
+    doc.cycle_id,
+    doc.source_cycle_id,
+    doc.generation_id,
+    summary.cycle_id,
+    summary.source_cycle_id,
+    summary.generation_id,
+  ];
+  for (const value of candidates) {
+    const s = String(value || "").trim();
+    if (s) return s;
+  }
+  return null;
 }
 
 function bump(map, key) {
@@ -44,7 +120,7 @@ function topRows(map, limit = 5) {
     .map(([key, count]) => ({ key, count }));
 }
 
-function deriveServerSignalCutoverReadiness({
+function deriveArtifactCoherence({
   authority = null,
   quality = null,
   parity = null,
@@ -53,6 +129,108 @@ function deriveServerSignalCutoverReadiness({
   strategyAlignment = null,
   serverPrimaryCanary = null,
 } = {}) {
+  const nowMs = Date.now();
+  const freshnessSlaMs = Math.max(
+    60 * 1000,
+    toNum(process.env.SERVER_SIGNAL_CUTOVER_ARTIFACT_FRESHNESS_SLA_MS) || (2 * 60 * 60 * 1000)
+  );
+  const skewMaxMs = Math.max(
+    60 * 1000,
+    toNum(process.env.SERVER_SIGNAL_CUTOVER_ARTIFACT_SKEW_MAX_MS) || (45 * 60 * 1000)
+  );
+  const enforceFreshness = toBool(process.env.SERVER_SIGNAL_CUTOVER_REQUIRE_ARTIFACT_FRESHNESS, true);
+  const enforceCycleAlignment = toBool(process.env.SERVER_SIGNAL_CUTOVER_REQUIRE_CYCLE_ALIGNMENT, true);
+
+  const artifacts = [
+    { key: "authority", doc: authority, required: true },
+    { key: "quality", doc: quality, required: true },
+    { key: "parity", doc: parity, required: true },
+    { key: "runtime", doc: runtime, required: true },
+    { key: "ev_gate_rescue", doc: evGateRescue, required: false },
+    { key: "strategy_alignment", doc: strategyAlignment, required: false },
+    { key: "server_primary_canary", doc: serverPrimaryCanary, required: false },
+  ];
+
+  const rows = artifacts.map(({ key, doc, required }) => {
+    const generatedAtMs = pickGeneratedAtMs(doc);
+    const ageMs = Number.isFinite(generatedAtMs) ? Math.max(0, nowMs - generatedAtMs) : null;
+    const fresh = Number.isFinite(ageMs) ? ageMs <= freshnessSlaMs : false;
+    return {
+      key,
+      required,
+      generated_at_kst: Number.isFinite(generatedAtMs) ? toKstString(generatedAtMs) : null,
+      generated_at_ms: Number.isFinite(generatedAtMs) ? generatedAtMs : null,
+      age_ms: Number.isFinite(ageMs) ? ageMs : null,
+      fresh,
+      cycle_id: pickCycleId(doc),
+    };
+  });
+
+  const requiredRows = rows.filter((row) => row.required);
+  const missingGeneratedRequired = requiredRows.filter((row) => !Number.isFinite(row.generated_at_ms));
+  const staleRequired = requiredRows.filter((row) => Number.isFinite(row.age_ms) && row.fresh !== true);
+  const validGeneratedRows = requiredRows.filter((row) => Number.isFinite(row.generated_at_ms));
+  const generatedMsList = validGeneratedRows.map((row) => Number(row.generated_at_ms));
+  const minGeneratedMs = generatedMsList.length ? Math.min(...generatedMsList) : null;
+  const maxGeneratedMs = generatedMsList.length ? Math.max(...generatedMsList) : null;
+  const skewMs = Number.isFinite(minGeneratedMs) && Number.isFinite(maxGeneratedMs)
+    ? Math.max(0, maxGeneratedMs - minGeneratedMs)
+    : null;
+  const skewExceeded = Number.isFinite(skewMs) ? skewMs > skewMaxMs : true;
+
+  const requiredCycleIds = requiredRows.map((row) => String(row.cycle_id || "").trim()).filter(Boolean);
+  const cycleUnique = Array.from(new Set(requiredCycleIds));
+  const cycleAligned = requiredCycleIds.length > 0 && cycleUnique.length === 1;
+  const cycleAlignmentStatus = requiredCycleIds.length <= 0 ? "UNAVAILABLE" : (cycleAligned ? "ALIGNED" : "MIXED");
+  const skewBypassedByCycleAlignment = false;
+  const skewExceededEffective = skewExceeded;
+  const staleRequiredEffective = staleRequired.filter((row) => !(enforceCycleAlignment && cycleAligned && String(row.cycle_id || "").trim()));
+
+  const freshnessReady = missingGeneratedRequired.length === 0
+    && staleRequiredEffective.length === 0
+    && skewExceededEffective === false;
+  const ready = (enforceFreshness ? freshnessReady : true) && (enforceCycleAlignment ? cycleAligned : true);
+
+  const blockers = [
+    ...(missingGeneratedRequired.length > 0 ? ["ARTIFACT_GENERATED_AT_MISSING"] : []),
+    ...(staleRequiredEffective.length > 0 ? ["ARTIFACT_FRESHNESS_STALE"] : []),
+    ...(skewExceededEffective ? ["ARTIFACT_GENERATED_AT_SKEW_EXCEEDED"] : []),
+    ...(enforceCycleAlignment && !cycleAligned ? ["ARTIFACT_CYCLE_ALIGNMENT_MISMATCH"] : []),
+  ];
+
+  return {
+    status: ready ? "READY" : "BLOCKED",
+    ready,
+    coherence_reason: ready ? "READY" : (blockers[0] || "ARTIFACT_COHERENCE_BLOCKED"),
+    blockers,
+    freshness_sla_ms: freshnessSlaMs,
+    skew_max_ms: skewMaxMs,
+    enforce_freshness: enforceFreshness,
+    enforce_cycle_alignment: enforceCycleAlignment,
+    missing_generated_required_n: missingGeneratedRequired.length,
+    stale_required_n: staleRequired.length,
+    stale_required_effective_n: staleRequiredEffective.length,
+    generated_at_skew_ms: Number.isFinite(skewMs) ? skewMs : null,
+    generated_at_skew_exceeded: skewExceeded,
+    generated_at_skew_exceeded_effective: skewExceededEffective,
+    generated_at_skew_bypassed_by_cycle_alignment: skewBypassedByCycleAlignment,
+    cycle_alignment_status: cycleAlignmentStatus,
+    cycle_unique_n: cycleUnique.length,
+    required_artifact_n: requiredRows.length,
+    rows,
+  };
+}
+
+function deriveServerSignalCutoverReadiness({
+  authority = null,
+  quality = null,
+  parity = null,
+  runtime = null,
+  evGateRescue = null,
+  strategyAlignment = null,
+  serverPrimaryCanary = null,
+  driftRemediationApply = null,
+} = {}) {
   const authoritySummary = readSummary(authority);
   const qualitySummary = readSummary(quality);
   const paritySummary = deriveCanonicalParityDiagnostics(parity);
@@ -60,6 +238,7 @@ function deriveServerSignalCutoverReadiness({
   const evGateRescueSummary = readSummary(evGateRescue);
   const strategyAlignmentData = strategyAlignment && typeof strategyAlignment === "object" ? strategyAlignment : {};
   const canarySummary = readSummary(serverPrimaryCanary);
+  const remediationApplySummary = readSummary(driftRemediationApply);
   const parityRows = readRows(parity);
 
   const driftStatus = toUpper(authoritySummary.drift_status) || "PARITY_UNKNOWN";
@@ -78,6 +257,82 @@ function deriveServerSignalCutoverReadiness({
   const evPolicyMismatchN = toNum(paritySummary.ev_policy_mismatch_n) || 0;
   const cooldownPolicyMismatchN = toNum(paritySummary.cooldown_policy_mismatch_n) || 0;
   const strategyGateMismatchN = toNum(paritySummary.strategy_gate_mismatch_n) || 0;
+  const otherServerPolicyMismatchN = toNum(paritySummary.other_server_policy_mismatch_n) || 0;
+  const evPolicyBlockMin = Math.max(1, toNum(process.env.SERVER_SIGNAL_CUTOVER_BLOCK_EV_POLICY_MISMATCH_MIN) || 1);
+  const cooldownPolicyBlockMin = Math.max(1, toNum(process.env.SERVER_SIGNAL_CUTOVER_BLOCK_COOLDOWN_POLICY_MISMATCH_MIN) || 2);
+  const strategyGateBlockMin = Math.max(1, toNum(process.env.SERVER_SIGNAL_CUTOVER_BLOCK_STRATEGY_GATE_MISMATCH_MIN) || 1);
+  const otherServerPolicyBlockMin = Math.max(1, toNum(process.env.SERVER_SIGNAL_CUTOVER_BLOCK_OTHER_SERVER_POLICY_MISMATCH_MIN) || 2);
+  const finalMismatchBlockInPrimary = toBool(process.env.SERVER_SIGNAL_CUTOVER_FINAL_MISMATCH_BLOCK_IN_PRIMARY, false);
+  const otherServerPolicyBlockInPrimary = toBool(process.env.SERVER_SIGNAL_CUTOVER_BLOCK_OTHER_SERVER_POLICY_IN_PRIMARY, false);
+  const evPolicyDriftBlocked = evPolicyMismatchN >= evPolicyBlockMin;
+  const cooldownPolicyDriftBlocked = cooldownPolicyMismatchN >= cooldownPolicyBlockMin;
+  const strategyGateDriftBlocked = strategyGateMismatchN >= strategyGateBlockMin;
+  const otherServerPolicyDriftBlocked = otherServerPolicyMismatchN >= otherServerPolicyBlockMin
+    && (sourceMode !== "SERVER_PRIMARY" || otherServerPolicyBlockInPrimary);
+  const otherServerPolicyMonitorOnly = otherServerPolicyMismatchN > 0 && !otherServerPolicyDriftBlocked;
+  const remediationLastAppliedAtMs = parseDateMs(
+    (driftRemediationApply && (
+      driftRemediationApply.last_applied_at_ms
+      || driftRemediationApply.last_applied_at_kst
+      || driftRemediationApply.last_applied_at
+    ))
+    || remediationApplySummary.last_applied_at_ms
+    || remediationApplySummary.last_applied_at_kst
+    || remediationApplySummary.last_applied_at
+    || null
+  );
+  const remediationAppliedNow = driftRemediationApply && typeof driftRemediationApply === "object"
+    ? (
+      driftRemediationApply.applied === true
+      || remediationApplySummary.applied === true
+    )
+    : false;
+  const remediationApplied = remediationAppliedNow || Number.isFinite(remediationLastAppliedAtMs);
+  const remediationAppliedAtMs = remediationApplied
+    ? (
+      remediationAppliedNow
+        ? parseDateMs(
+          (driftRemediationApply && (driftRemediationApply.generated_at_kst || driftRemediationApply.generated_at))
+          || remediationApplySummary.generated_at_kst
+          || remediationApplySummary.generated_at
+          || remediationLastAppliedAtMs
+          || null
+        )
+        : remediationLastAppliedAtMs
+    )
+    : null;
+  const remediationGraceEnabled = toBool(process.env.SERVER_SIGNAL_CUTOVER_REMEDIATION_GRACE_ENABLED, true);
+  const remediationGraceWindowMs = Math.max(
+    60 * 1000,
+    toNum(process.env.SERVER_SIGNAL_CUTOVER_REMEDIATION_GRACE_WINDOW_MS) || (6 * 60 * 60 * 1000)
+  );
+  const remediationMinPostSamples = Math.max(
+    1,
+    toNum(process.env.SERVER_SIGNAL_CUTOVER_REMEDIATION_MIN_POST_SAMPLES) || 3
+  );
+  const nowMs = Date.now();
+  const remediationWindowActive = remediationApplied
+    && Number.isFinite(remediationAppliedAtMs)
+    && (nowMs - remediationAppliedAtMs) <= remediationGraceWindowMs;
+  const postApplyComparableRows = Number.isFinite(remediationAppliedAtMs)
+    ? parityRows.filter((row) => {
+      const ms = toNum(row && row.observation_ms);
+      if (!Number.isFinite(ms)) return false;
+      return ms >= remediationAppliedAtMs;
+    })
+    : [];
+  const postApplyEvPolicyMismatchN = postApplyComparableRows.filter((row) =>
+    row
+    && row.parity_match === false
+    && toUpper(row.actual_drop_reason_family) === "EV_POLICY"
+    && toUpper(row.actual_drop_reason) === "DROP_EV_GATE_TP1_PROB"
+  ).length;
+  const postApplyComparableN = postApplyComparableRows.length;
+  const evPolicyGraceActive = remediationGraceEnabled
+    && evPolicyDriftBlocked
+    && remediationWindowActive
+    && postApplyComparableN < remediationMinPostSamples;
+  const evPolicyDriftBlockedEffective = evPolicyDriftBlocked && !evPolicyGraceActive;
   const dominantMismatchFamily = toUpper(paritySummary.dominant_mismatch_family)
     || toUpper(qualitySummary.top_drop_reason_family && qualitySummary.top_drop_reason_family.key)
     || null;
@@ -115,6 +370,15 @@ function deriveServerSignalCutoverReadiness({
       : (dominantMismatchFamily === "STRATEGY_GATE"
         ? "ALIGN_STRATEGY_GATE_REVIEW"
         : (finalDownstreamMismatchN > 0 ? "REVIEW_DOWNSTREAM_POLICY_PARITY" : null)));
+  const artifactCoherence = deriveArtifactCoherence({
+    authority,
+    quality,
+    parity,
+    runtime,
+    evGateRescue,
+    strategyAlignment,
+    serverPrimaryCanary,
+  });
   const mismatchMarketCounts = new Map();
   const recentMismatchExamples = parityRows
     .filter((row) => row && row.parity_match === false)
@@ -133,18 +397,38 @@ function deriveServerSignalCutoverReadiness({
     if (!row || row.parity_match !== false) continue;
     bump(mismatchMarketCounts, String(row.market || row.symbol || "UNKNOWN").trim() || "UNKNOWN");
   }
+  const genericFinalDownstreamMismatchBlocked = (
+    finalDownstreamMismatchN > 0
+    && !evPolicyDriftBlockedEffective
+    && !cooldownPolicyDriftBlocked
+    && (!strategyGateDriftBlocked || strategyGateHistoricalOnly)
+    && !otherServerPolicyDriftBlocked
+    && (sourceMode !== "SERVER_PRIMARY" || finalMismatchBlockInPrimary)
+  );
+  const finalDownstreamMismatchMonitorOnly = (
+    finalDownstreamMismatchN > 0
+    && !evPolicyDriftBlockedEffective
+    && !cooldownPolicyDriftBlocked
+    && (!strategyGateDriftBlocked || strategyGateHistoricalOnly)
+    && !otherServerPolicyDriftBlocked
+    && !genericFinalDownstreamMismatchBlocked
+  );
 
   const blockers = [];
+  if (artifactCoherence.ready !== true) {
+    blockers.push(...artifactCoherence.blockers);
+  }
   if (runtimeStatus !== "READY") blockers.push("SERVER_RUNTIME_NOT_READY");
   if (runtimeTf !== "15m") blockers.push("SERVER_RUNTIME_TF_NOT_15M");
   if (marketCount <= 0) blockers.push("SERVER_RUNTIME_NO_MARKETS");
   if (shadowObservedN < 3) blockers.push("SHADOW_SAMPLE_SHORT");
   if (sourceParityMismatchN > 0) blockers.push("SOURCE_PARITY_DRIFT_ACTIVE");
   if (finalDownstreamMismatchN > 0) {
-    if (evPolicyMismatchN > 0) blockers.push("EV_POLICY_DRIFT_ACTIVE");
-    if (cooldownPolicyMismatchN > 0) blockers.push("COOLDOWN_POLICY_DRIFT_ACTIVE");
-    if (strategyGateMismatchN > 0 && !strategyGateHistoricalOnly) blockers.push("STRATEGY_GATE_DRIFT_ACTIVE");
-    if (evPolicyMismatchN <= 0 && cooldownPolicyMismatchN <= 0 && strategyGateMismatchN <= 0) blockers.push("FINAL_DOWNSTREAM_MISMATCH_ACTIVE");
+    if (evPolicyDriftBlockedEffective) blockers.push("EV_POLICY_DRIFT_ACTIVE");
+    if (cooldownPolicyDriftBlocked) blockers.push("COOLDOWN_POLICY_DRIFT_ACTIVE");
+    if (strategyGateDriftBlocked && !strategyGateHistoricalOnly) blockers.push("STRATEGY_GATE_DRIFT_ACTIVE");
+    if (otherServerPolicyDriftBlocked) blockers.push("OTHER_SERVER_POLICY_DRIFT_ACTIVE");
+    if (genericFinalDownstreamMismatchBlocked) blockers.push("FINAL_DOWNSTREAM_MISMATCH_ACTIVE");
   } else if (mismatchN > 0 || driftStatus === "PARITY_DRIFT") {
     blockers.push("PARITY_DRIFT_ACTIVE");
   }
@@ -155,11 +439,16 @@ function deriveServerSignalCutoverReadiness({
   if (sourceMode === "SERVER_PRIMARY" && canaryReady !== true) blockers.push(canaryReason || "SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT");
 
   const blockerActions = [];
-  if (evPolicyMismatchN > 0) blockerActions.push({ family: "EV_POLICY", action: evRecommendedAction || "HOLD_EV_POLICY_REVIEW" });
-  if (cooldownPolicyMismatchN > 0) blockerActions.push({ family: "COOLDOWN_POLICY", action: "RELAX_OPPOSITE_COOLDOWN_REVIEW" });
-  if (strategyGateMismatchN > 0) blockerActions.push({ family: "STRATEGY_GATE", action: strategyGateHistoricalOnly ? "MONITOR_HISTORICAL_STRATEGY_GATE" : "ALIGN_STRATEGY_GATE_REVIEW" });
+  if (evPolicyDriftBlockedEffective) blockerActions.push({ family: "EV_POLICY", action: evRecommendedAction || "HOLD_EV_POLICY_REVIEW" });
+  if (cooldownPolicyDriftBlocked) blockerActions.push({ family: "COOLDOWN_POLICY", action: "RELAX_OPPOSITE_COOLDOWN_REVIEW" });
+  if (strategyGateDriftBlocked) blockerActions.push({ family: "STRATEGY_GATE", action: strategyGateHistoricalOnly ? "MONITOR_HISTORICAL_STRATEGY_GATE" : "ALIGN_STRATEGY_GATE_REVIEW" });
+  if (otherServerPolicyDriftBlocked) blockerActions.push({ family: "OTHER_SERVER_POLICY", action: "FORCE_POLICY_HARDENING_REVIEW" });
+  if (otherServerPolicyMonitorOnly) blockerActions.push({ family: "OTHER_SERVER_POLICY", action: "MONITOR_OTHER_SERVER_POLICY_ON_SERVER_PRIMARY" });
+  if (finalDownstreamMismatchMonitorOnly) blockerActions.push({ family: "FINAL_DOWNSTREAM_MISMATCH", action: "MONITOR_ON_SERVER_PRIMARY" });
 
-  const promotionReady = blockers.length === 0 && sourceMode !== "SERVER_PRIMARY";
+  const promotionGateReady = blockers.length === 0;
+  const promotionBlockReasons = promotionGateReady ? [] : blockers.slice(0, 12);
+  const promotionReady = promotionGateReady && sourceMode !== "SERVER_PRIMARY";
   const alreadyServerPrimary = sourceMode === "SERVER_PRIMARY";
   const status = promotionReady
     ? "SERVER_PRIMARY_PROMOTION_READY"
@@ -180,8 +469,28 @@ function deriveServerSignalCutoverReadiness({
       source_parity_mismatch_n: sourceParityMismatchN,
       final_downstream_mismatch_n: finalDownstreamMismatchN,
       ev_policy_mismatch_n: evPolicyMismatchN,
+      ev_policy_drift_blocked_effective: evPolicyDriftBlockedEffective,
+      ev_policy_grace_active: evPolicyGraceActive,
+      ev_policy_remediation_applied: remediationApplied,
+      ev_policy_remediation_applied_at_kst: Number.isFinite(remediationAppliedAtMs) ? toKstString(remediationAppliedAtMs) : null,
+      ev_policy_remediation_min_post_samples: remediationMinPostSamples,
+      ev_policy_post_apply_comparable_n: postApplyComparableN,
+      ev_policy_post_apply_mismatch_n: postApplyEvPolicyMismatchN,
       cooldown_policy_mismatch_n: cooldownPolicyMismatchN,
       strategy_gate_mismatch_n: strategyGateMismatchN,
+      other_server_policy_mismatch_n: otherServerPolicyMismatchN,
+      ev_policy_block_min: evPolicyBlockMin,
+      cooldown_policy_block_min: cooldownPolicyBlockMin,
+      strategy_gate_block_min: strategyGateBlockMin,
+      other_server_policy_block_min: otherServerPolicyBlockMin,
+      final_mismatch_block_in_primary: finalMismatchBlockInPrimary,
+      other_server_policy_block_in_primary: otherServerPolicyBlockInPrimary,
+      final_downstream_mismatch_monitor_only: finalDownstreamMismatchMonitorOnly,
+      ev_policy_drift_blocked: evPolicyDriftBlocked,
+      cooldown_policy_drift_blocked: cooldownPolicyDriftBlocked,
+      strategy_gate_drift_blocked: strategyGateDriftBlocked,
+      other_server_policy_drift_blocked: otherServerPolicyDriftBlocked,
+      other_server_policy_monitor_only: otherServerPolicyMonitorOnly,
       strategy_gate_historical_only: strategyGateHistoricalOnly,
       strategy_gate_guard_count: strategyGuardCount,
       strategy_gate_after_live_revision_count: strategyAfterLiveRevisionCount,
@@ -200,9 +509,29 @@ function deriveServerSignalCutoverReadiness({
       strategy_gate_historical_only: strategyGateHistoricalOnly,
       canary_acceptance_ready: canaryReady,
       canary_acceptance_reason: canaryReason,
+      artifact_coherence_status: artifactCoherence.status,
+      artifact_coherence_ready: artifactCoherence.ready === true,
+      artifact_coherence_reason: artifactCoherence.coherence_reason,
+      artifact_freshness_sla_ms: artifactCoherence.freshness_sla_ms,
+      artifact_skew_max_ms: artifactCoherence.skew_max_ms,
+      artifact_generated_at_skew_ms: artifactCoherence.generated_at_skew_ms,
+      artifact_generated_at_skew_exceeded: artifactCoherence.generated_at_skew_exceeded === true,
+      artifact_generated_at_skew_exceeded_effective: artifactCoherence.generated_at_skew_exceeded_effective === true,
+      artifact_stale_required_n: artifactCoherence.stale_required_n,
+      artifact_missing_generated_required_n: artifactCoherence.missing_generated_required_n,
+      artifact_cycle_alignment_status: artifactCoherence.cycle_alignment_status,
+      artifact_cycle_unique_n: artifactCoherence.cycle_unique_n,
+      promotion_gate_ready: promotionGateReady,
+      promotion_gate_status: promotionGateReady ? "READY" : "BLOCKED",
+      promotion_blocker_n: promotionBlockReasons.length,
+      promotion_block_reasons: promotionBlockReasons,
     },
     summary: {
       promotion_ready: promotionReady,
+      promotion_gate_ready: promotionGateReady,
+      promotion_gate_status: promotionGateReady ? "READY" : "BLOCKED",
+      promotion_blocker_n: promotionBlockReasons.length,
+      promotion_block_reasons: promotionBlockReasons,
       already_server_primary: alreadyServerPrimary,
       readiness_status: status,
       blocker_n: blockers.length,
@@ -216,13 +545,35 @@ function deriveServerSignalCutoverReadiness({
       strategy_gate_historical_only: strategyGateHistoricalOnly,
       dominant_mismatch_family: dominantMismatchFamily,
       recommended_action: genericRecommendedAction,
+      ev_policy_block_min: evPolicyBlockMin,
+      ev_policy_drift_blocked_effective: evPolicyDriftBlockedEffective,
+      ev_policy_grace_active: evPolicyGraceActive,
+      ev_policy_remediation_applied: remediationApplied,
+      ev_policy_remediation_applied_at_kst: Number.isFinite(remediationAppliedAtMs) ? toKstString(remediationAppliedAtMs) : null,
+      ev_policy_remediation_min_post_samples: remediationMinPostSamples,
+      ev_policy_post_apply_comparable_n: postApplyComparableN,
+      ev_policy_post_apply_mismatch_n: postApplyEvPolicyMismatchN,
+      cooldown_policy_block_min: cooldownPolicyBlockMin,
+      strategy_gate_block_min: strategyGateBlockMin,
+      other_server_policy_block_min: otherServerPolicyBlockMin,
+      final_mismatch_block_in_primary: finalMismatchBlockInPrimary,
+      other_server_policy_block_in_primary: otherServerPolicyBlockInPrimary,
+      final_downstream_mismatch_monitor_only: finalDownstreamMismatchMonitorOnly,
       blocker_actions: blockerActions,
       ev_policy_recommended_action: evRecommendedAction,
       ev_policy_top_rescue_market: evTopRescueMarket,
+      artifact_coherence_status: artifactCoherence.status,
+      artifact_coherence_ready: artifactCoherence.ready === true,
+      artifact_coherence_reason: artifactCoherence.coherence_reason,
+      artifact_generated_at_skew_ms: artifactCoherence.generated_at_skew_ms,
+      artifact_generated_at_skew_exceeded: artifactCoherence.generated_at_skew_exceeded === true,
+      artifact_generated_at_skew_exceeded_effective: artifactCoherence.generated_at_skew_exceeded_effective === true,
+      artifact_cycle_alignment_status: artifactCoherence.cycle_alignment_status,
     },
     rows: {
       top_mismatch_market: topRows(mismatchMarketCounts, 5),
       mismatch_examples: recentMismatchExamples,
+      artifact_coherence: artifactCoherence.rows,
     },
   };
 }

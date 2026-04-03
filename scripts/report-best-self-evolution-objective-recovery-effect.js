@@ -5,10 +5,12 @@
 const path = require("path");
 const {
   OPS_DAILY_DIR,
+  copyLatest,
   copySelfEvolutionLatest,
   loadLocalEnv,
   nowKstMeta,
   readJsonRawSafe,
+  resolveAnchoredReportCycleId,
   resolveAutomationCycleMeta,
   selfEvolutionSnapshotLatestPath,
   writeJson,
@@ -69,20 +71,32 @@ function renderMarkdown(report = {}) {
 function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
+  const autonomyContract = readJsonRawSafe(INPUTS.autonomyContract, null);
+  const objective = readJsonRawSafe(INPUTS.objective, null);
+  const objectiveSupervisor = readJsonRawSafe(INPUTS.objectiveSupervisor, null);
+  const objectiveRecoveryGovernor = readJsonRawSafe(INPUTS.objectiveRecoveryGovernor, null);
+  const candidates = readJsonRawSafe(INPUTS.candidates, null);
+  const replay = readJsonRawSafe(INPUTS.replay, null);
+  const retrospective = readJsonRawSafe(INPUTS.retrospective, null);
+  const reportCycleId = resolveAnchoredReportCycleId({
+    preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
+    fallbackCycleId: cycleMeta.cycle_id,
+    sources: [objectiveRecoveryGovernor, objectiveSupervisor, objective],
+  });
   const report = deriveObjectiveRecoveryEffect({
-    autonomyContract: readJsonRawSafe(INPUTS.autonomyContract, null),
-    objective: readJsonRawSafe(INPUTS.objective, null),
-    objectiveSupervisor: readJsonRawSafe(INPUTS.objectiveSupervisor, null),
-    objectiveRecoveryGovernor: readJsonRawSafe(INPUTS.objectiveRecoveryGovernor, null),
-    candidates: readJsonRawSafe(INPUTS.candidates, null),
-    replay: readJsonRawSafe(INPUTS.replay, null),
-    retrospective: readJsonRawSafe(INPUTS.retrospective, null),
+    autonomyContract,
+    objective,
+    objectiveSupervisor,
+    objectiveRecoveryGovernor,
+    candidates,
+    replay,
+    retrospective,
   });
   const output = {
     ok: true,
     generated_at_kst: nowMeta.kst,
-    cycle_id: cycleMeta.cycle_id,
-    generation_id: cycleMeta.cycle_id,
+    cycle_id: reportCycleId,
+    generation_id: reportCycleId,
     inputs: { ...INPUTS },
     ...report,
   };
@@ -91,10 +105,14 @@ function main() {
   const mdPath = path.join(OPS_DAILY_DIR, `${base}_best_self_evolution_objective_recovery_effect.md`);
   const latestJsonPath = path.join(OPS_DAILY_DIR, "best_self_evolution_objective_recovery_effect_latest.json");
   const latestMdPath = path.join(OPS_DAILY_DIR, "best_self_evolution_objective_recovery_effect_latest.md");
+  const selfEvolutionLatestJson = selfEvolutionSnapshotLatestPath("objective_recovery_effect_latest.json");
+  const selfEvolutionLatestMd = selfEvolutionSnapshotLatestPath("objective_recovery_effect_latest.md");
   writeJson(jsonPath, output);
   writeText(mdPath, renderMarkdown(output));
-  copySelfEvolutionLatest(jsonPath, latestJsonPath);
-  copySelfEvolutionLatest(mdPath, latestMdPath);
+  copyLatest(jsonPath, latestJsonPath);
+  copyLatest(mdPath, latestMdPath);
+  if (selfEvolutionLatestJson && selfEvolutionLatestJson !== latestJsonPath) copySelfEvolutionLatest(jsonPath, selfEvolutionLatestJson);
+  if (selfEvolutionLatestMd && selfEvolutionLatestMd !== latestMdPath) copySelfEvolutionLatest(mdPath, selfEvolutionLatestMd);
   console.log(JSON.stringify({ ok: true, json: jsonPath, markdown: mdPath, latest_json: latestJsonPath, latest_markdown: latestMdPath }));
 }
 

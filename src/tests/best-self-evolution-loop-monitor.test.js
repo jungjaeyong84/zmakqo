@@ -222,5 +222,39 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
   assert.ok(postCutoverProvenanceRow);
   assert.strictEqual(postCutoverProvenanceRow.status, "N/A");
   assert.strictEqual(postCutoverProvenanceRow.reason, "cutover=SOURCE_MODE / eligible=0");
+
+  const activeButBlockedPromotion = deriveLoopMonitor({
+    artifacts: {
+      objectiveSupervisor: { fresh: true },
+      serverSignalRuntime: { fresh: true },
+      serverSignalCutoverReadiness: { fresh: true },
+    },
+    reports: {
+      objectiveSupervisor: { cycle_id: "cycle-cutover", verdict: "HOLD", reason: "X" },
+      serverSignalRuntime: {
+        cycle_id: "cycle-cutover",
+        summary: { runtime_status: "READY", canonical_engine_source_mode: "SERVER_PRIMARY", exec_tf: "15m", market_count: 4 },
+      },
+      serverSignalCutoverReadiness: {
+        cycle_id: "cycle-cutover",
+        summary: {
+          readiness_status: "SERVER_PRIMARY_ACTIVE",
+          source_mode: "SERVER_PRIMARY",
+          promotion_gate_ready: false,
+          promotion_gate_status: "BLOCKED",
+          promotion_ready: false,
+          already_server_primary: true,
+          promotion_block_reasons: ["ARTIFACT_GENERATED_AT_SKEW_EXCEEDED", "COOLDOWN_POLICY_DRIFT_ACTIVE"],
+        },
+      },
+    },
+  });
+  const cutoverRow = activeButBlockedPromotion.rows.find((row) => row.loop === "SERVER_SIGNAL_CUTOVER");
+  assert.ok(cutoverRow);
+  assert.strictEqual(cutoverRow.status, "WARN");
+  assert.strictEqual(activeButBlockedPromotion.summary.server_signal_cutover_ready, false);
+  assert.strictEqual(activeButBlockedPromotion.summary.server_signal_cutover_promotion_gate_status, "BLOCKED");
+  assert.ok(activeButBlockedPromotion.summary.server_signal_cutover_blockers.includes("ARTIFACT_GENERATED_AT_SKEW_EXCEEDED"));
+  assert.ok(activeButBlockedPromotion.summary.critical_blockers.includes("SERVER_SIGNAL_CUTOVER_NOT_READY"));
   console.log("BEST_SELF_EVOLUTION_LOOP_MONITOR_TEST_OK");
 })();

@@ -1,5 +1,7 @@
 "use strict";
 
+const { deriveObjectiveScoreSnapshot } = require("./objectiveScoreSnapshot");
+
 function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
@@ -117,6 +119,9 @@ function deriveGlobalQtyScale({
 }
 
 function derivePolicyParameterEvolutionPlan({
+  objective = null,
+  objectiveSupervisor = null,
+  autonomyContract = null,
   objectiveRecoveryGovernor = null,
   objectiveRecoveryEffect = null,
   executionQuality = null,
@@ -127,6 +132,13 @@ function derivePolicyParameterEvolutionPlan({
 } = {}) {
   const governor = readSummary(objectiveRecoveryGovernor);
   const recoveryEffect = readSummary(objectiveRecoveryEffect);
+  const objectiveScoreSnapshot = deriveObjectiveScoreSnapshot({
+    objective,
+    objectiveSupervisor,
+    autonomyContract,
+    objectiveRecoveryGovernor,
+    objectiveRecoveryEffect,
+  });
   const executionSummary = readSummary(executionQuality);
   const allocatorRows = readRows(serverMarketCapitalAllocator, "by_market");
   const quarantineRows = readRows(serverMarketQuarantine, "by_market");
@@ -157,6 +169,7 @@ function derivePolicyParameterEvolutionPlan({
       .filter((row) => row[0])
   );
   const quarantineSet = new Set(quarantineRows.map((row) => upper(row && row.market)).filter(Boolean));
+  const driftOtherWatchOnlySet = new Set(driftOtherWatchOnlyMarkets);
 
   const marketActions = allocatorRows
     .filter((row) => row && row.active === true && upper(row.market))
@@ -236,7 +249,12 @@ function derivePolicyParameterEvolutionPlan({
   const evPolicyAction = deriveEvPolicyAction({ governor, recoveryEffect });
 
   const topMarketActions = marketActions.slice(0, 12);
-  const quarantined = marketActions.filter((row) => row.in_quarantine === true).map((row) => row.market);
+  const quarantined = Array.from(quarantineSet);
+  const watchOnlyReviewMarkets = Array.from(new Set([
+    ...quarantined,
+    ...driftOtherWatchOnlyMarkets,
+  ]));
+  const watchOnlyReviewOverlapMarkets = quarantined.filter((market) => driftOtherWatchOnlySet.has(market));
 
   return {
     summary: {
@@ -250,11 +268,15 @@ function derivePolicyParameterEvolutionPlan({
       governor_status: upper(governor.governor_status),
       governor_reason: upper(governor.governor_reason),
       projected_on_track: recoveryEffect.projected_on_track === true,
-      current_objective_score: toNum(recoveryEffect.current_objective_score),
+      current_objective_score: objectiveScoreSnapshot.objective_score,
+      current_objective_score_source: objectiveScoreSnapshot.objective_score_source,
       projected_objective_score: toNum(recoveryEffect.projected_objective_score),
       execution_quality_status: upper(executionSummary.status),
       quarantine_market_n: quarantined.length,
+      watch_only_review_market_n: watchOnlyReviewMarkets.length,
+      watch_only_review_overlap_market_n: watchOnlyReviewOverlapMarkets.length,
       top_quarantine_markets: quarantined.slice(0, 6),
+      top_watch_only_review_markets: watchOnlyReviewMarkets.slice(0, 6),
       other_server_policy_watch_only_market_n: driftOtherWatchOnlyMarkets.length,
       other_server_policy_watch_only_reason_n: Object.keys(driftOtherWatchByReason).length,
       top_other_server_policy_watch_only_reasons: Object.entries(driftOtherWatchByReason)
@@ -271,6 +293,9 @@ function derivePolicyParameterEvolutionPlan({
         quarantined.length
           ? `Keep quarantine/watch-only for ${quarantined.join("|")} until objective+quality recovers.`
           : "No quarantine override markets right now.",
+        watchOnlyReviewMarkets.length
+          ? `Combined watch-only review markets: ${watchOnlyReviewMarkets.join("|")} (overlap=${watchOnlyReviewOverlapMarkets.length}).`
+          : "No watch-only review market now.",
         driftOtherWatchOnlyMarkets.length
           ? `Force WATCH_ONLY for OTHER_SERVER_POLICY review markets: ${driftOtherWatchOnlyMarkets.join("|")}.`
           : "No OTHER_SERVER_POLICY watch-only review market now.",

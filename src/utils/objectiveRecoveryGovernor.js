@@ -1,36 +1,14 @@
 "use strict";
 
-function unwrapRawReport(value) {
-  if (!value || typeof value !== "object") return value || null;
-  if (value.raw && typeof value.raw === "object") return value.raw;
-  if (value.display && typeof value.display === "object") return value.display;
-  return value;
-}
+const { unwrapRawReport, toNum, extractObjectiveScore, deriveObjectiveScoreSnapshot } = require("./objectiveScoreSnapshot");
 
 function readSummary(value) {
   const raw = unwrapRawReport(value) || {};
   return raw.summary && typeof raw.summary === "object" ? raw.summary : raw;
 }
 
-function toNum(value) {
-  if (value === null || value === undefined || value === "") return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
 function toUpper(value) {
   return String(value || "").trim().toUpperCase() || null;
-}
-
-function extractObjectiveScore(value) {
-  const summary = value && typeof value === "object" ? value : {};
-  const nested = summary.global_objective_score && typeof summary.global_objective_score === "object"
-    ? summary.global_objective_score
-    : null;
-  return toNum(summary.global_score)
-    ?? toNum(summary.objective_score)
-    ?? toNum(summary.global_objective_score)
-    ?? toNum(nested && nested.objective_score);
 }
 
 function findCandidateRow(candidates = null, candidateId = null) {
@@ -277,7 +255,12 @@ function deriveObjectiveRecoveryGovernor({
   const candidateRow = findCandidateRow(candidateReport, targetCandidateId);
   const replayRow = findReplayRow(replayReport, targetCandidateId);
   const memoryContext = deriveMemoryBlockContext(memory, targetCandidateId, candidateRow);
-  const objectiveScore = toNum(contractStatus.objective_score) ?? extractObjectiveScore(objectiveSummary);
+  const objectiveScoreSnapshot = deriveObjectiveScoreSnapshot({
+    objective: objectiveSummary,
+    objectiveSupervisor: supervisor,
+    autonomyContract: contract,
+  });
+  const objectiveScore = objectiveScoreSnapshot.objective_score;
   const recoveryRequired = contractStatus.recovery_required === true || (objectiveScore != null && objectiveScore < 0);
   const replayPass = String(
     promotion.replay_verdict
@@ -331,6 +314,7 @@ function deriveObjectiveRecoveryGovernor({
       contract_goal_state: String(contract.summary && contract.summary.goal_state || "").trim().toUpperCase() || null,
       recovery_required: recoveryRequired,
       objective_score: objectiveScore,
+      objective_score_source: objectiveScoreSnapshot.objective_score_source,
       target_candidate_id: targetCandidateId,
       display_candidate_id: String(promotion.display_candidate_id || targetCandidateId || "").trim() || null,
       target_deploy_unit: targetDeployUnit,

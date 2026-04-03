@@ -38,6 +38,18 @@ function run() {
   assert.strictEqual(__test.pickDropStrategyId(topLevelStrategy), "donbeolja_v6.0.3.1");
   assert.strictEqual(__test.shouldConfirmSelfEvolutionFromDrop(topLevelStrategy), true);
 
+  assert.strictEqual(
+    __test.deriveCanonicalEventId({
+      exchange: "BINANCEFUT",
+      symbol: "XRPUSDT",
+      tf: "15m",
+      barCloseMs: 1774860300000,
+      event: "LONG",
+      side: "BUY",
+    }),
+    "EVENT__BINANCEFUT__XRPUSDT__15m__1774860300000__LONG__BUY"
+  );
+
   console.log("SIGNAL_DROPS_TEST_OK");
 }
 

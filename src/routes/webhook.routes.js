@@ -16,6 +16,7 @@ const { normalizeExchangeId } = require("../exchanges");
 const { getFirestore } = require("../storage/firestore");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { buildWebhookRequestId, recordWebhookIngress, recordWebhookOutcome } = require("../storage/webhookLedger");
+const { buildEventEnvelope } = require("../utils/eventEnvelope");
 const { normalizeProviderId, pickProviderEntry } = require("../utils/providerUtils");
 const { normalizePositionSide } = require("../utils/positionSide");
 const { alignBarCloseMs } = require("../utils/alignBarCloseMs");
@@ -40,6 +41,7 @@ const {
   normalizeReasonCode,
   sideToPositionDir,
 } = require("../services/webhookReverseException");
+const { evaluateLiveEntryPolicy } = require("../utils/liveExecutionPolicy");
 
 const ROOT = path.resolve(__dirname, "../..");
 const OPS_DAILY = path.join(ROOT, "ops", "daily");
@@ -938,6 +940,22 @@ function createWebhookRoutes() {
       const finalize = ({ httpStatus = 200, body = {}, decision = null, reason = null, context = null } = {}) => {
         // 응답을 먼저 보내고, outcome 기록은 fire-and-forget (TradingView 타임아웃 방지)
         res.status(httpStatus).json(body);
+        const envelope = buildEventEnvelope({
+          requestId,
+          runId: context && context.runId ? context.runId : null,
+          signalId: context && (context.signalId || context.signal_id) ? (context.signalId || context.signal_id) : null,
+          intentId: context && (context.intentId || context.intent_id) ? (context.intentId || context.intent_id) : null,
+          event: context && context.event ? context.event : null,
+          exchange: context && context.exchange ? context.exchange : null,
+          symbol: context && context.symbol ? context.symbol : null,
+          tf: context && context.tf ? context.tf : null,
+          decisionReason: reason || (context && (context.decisionReason || context.decision_reason)) || null,
+          action: context && context.action ? context.action : null,
+          intent: context && context.intent ? context.intent : null,
+          executionMode: context && (context.executionMode || context.execution_mode) ? (context.executionMode || context.execution_mode) : null,
+          source: context && context.source ? context.source : "WEBHOOK",
+          barCloseMs: context && (context.barCloseMs || context.bar_close_time_utc_ms) ? (context.barCloseMs || context.bar_close_time_utc_ms) : null,
+        });
         recordWebhookOutcome({
           requestId,
           httpStatus,
@@ -945,6 +963,7 @@ function createWebhookRoutes() {
           reason,
           detail: context || undefined,
           ...(context || {}),
+          ...envelope,
         }).catch(e => console.warn("[WEBHOOK_LEDGER_OUTCOME_FAIL]", e?.message || e));
       };
       if (WEBHOOK_JITTER_MS > 0) {
@@ -1055,6 +1074,7 @@ function createWebhookRoutes() {
           exchange,
           symbol,
           tf,
+          requestId,
           drops: [{
             event: p.event || null,
             side: p.side || null,
@@ -1159,6 +1179,7 @@ function createWebhookRoutes() {
             exchange,
             symbol,
             tf,
+            requestId,
             drops: [{
               event: p.event || null,
               side: p.side || null,
@@ -1217,6 +1238,7 @@ function createWebhookRoutes() {
             exchange,
             symbol,
             tf,
+            requestId,
             drops: [{
               event: p.event || null,
               side: p.side || null,
@@ -1302,6 +1324,7 @@ function createWebhookRoutes() {
             exchange,
             symbol,
             tf,
+            requestId,
             drops: [{
               event: eventFinal,
               side: sideCandidate,
@@ -1371,6 +1394,7 @@ function createWebhookRoutes() {
               exchange,
               symbol,
               tf,
+              requestId,
               drops: [{
                 event: eventFinal,
                 side: sideCandidate,
@@ -1450,6 +1474,7 @@ function createWebhookRoutes() {
       let posSnap = null;
       let intentOverrideReason = null;
       let reverseExceptionDetail = null;
+      let reverseExceptionAttempt = null;
       const featureObj = (p.features && typeof p.features === "object") ? p.features : {};
       const featureJsonObj = (p.features_json && typeof p.features_json === "object") ? p.features_json : {};
       const entryTimingTier = resolveEntryTimingTier({ event: eventUpper, features_json: featureObj });
@@ -1510,7 +1535,16 @@ function createWebhookRoutes() {
         if (oppositeDir) {
           const sysRes = await getSystemSettingsForProvider(exchange, 5000);
           const reverseCfg = resolveReverseExceptionConfig(sysRes && sysRes.data ? sysRes.data : {}, exchange);
-          if (reverseCfg.enabled === true && isReverseExceptionTierEvent(event, reverseCfg)) {
+          if (reverseCfg.enabled === true) {
+            const tierAllowed = isReverseExceptionTierEvent({ event, features_json: featureObj }, reverseCfg);
+            if (!tierAllowed) {
+              reverseExceptionAttempt = {
+                attempted: true,
+                ok: false,
+                reason: "REVERSE_EXCEPTION_TIER_BLOCKED",
+                raw_reason: normalizeReasonCode(reasonRaw),
+              };
+            } else {
             const entryExecBarMs = Number(pos && pos.meta && pos.meta.entry_exec_bar_ms);
             const rows = await loadRecentDroppedSignalsSince(entryExecBarMs, 300);
             const reverseDropState = summarizeOppositeReverseDrops({
@@ -1532,10 +1566,24 @@ function createWebhookRoutes() {
               intentBeforeOverride,
               posSnap,
               event,
+              eventFeatures: featureObj,
               side,
               priorDropCount: reverseDropState.count,
               effectivePnlPct: livePnlState && livePnlState.ok ? livePnlState.pnlPct : null,
             });
+            reverseExceptionAttempt = {
+              attempted: true,
+              ok: reverseRevive.ok === true,
+              reason: reverseRevive.ok === true
+                ? "REVERSE_EXCEPTION_APPLIED"
+                : String(reverseRevive && reverseRevive.reason || "REVERSE_EXCEPTION_BLOCKED"),
+              raw_reason: normalizeReasonCode(reasonRaw),
+              matched_drop_count: reverseDropState.count,
+              matched_signal_ids: reverseDropState.matches.slice(0, 5).map((row) => row.signal_id).filter(Boolean),
+              pnl_source: livePnlState && livePnlState.ok ? "BINANCE_LIVE" : (livePnlState && livePnlState.reason ? livePnlState.reason : null),
+              live_pnl_detail: livePnlState && livePnlState.detail ? livePnlState.detail : null,
+              detail: reverseRevive && reverseRevive.detail ? reverseRevive.detail : null,
+            };
             if (reverseRevive.ok) {
               intent = "ENTRY";
               actionFinal = "ENTRY";
@@ -1550,6 +1598,7 @@ function createWebhookRoutes() {
                 pnl_source: livePnlState && livePnlState.ok ? "BINANCE_LIVE" : (livePnlState && livePnlState.reason ? livePnlState.reason : null),
                 live_pnl_detail: livePnlState && livePnlState.detail ? livePnlState.detail : null,
               };
+            }
             }
           }
         }
@@ -1686,6 +1735,7 @@ function createWebhookRoutes() {
           exchange,
           symbol,
           tf,
+          requestId,
           drops: [{
             event,
             side,
@@ -1930,6 +1980,9 @@ function createWebhookRoutes() {
         features._reverse_exception_applied = true;
         features._reverse_exception = reverseExceptionDetail;
       }
+      if (reverseExceptionAttempt) {
+        features._reverse_exception_attempt = reverseExceptionAttempt;
+      }
       if (Number.isFinite(price)) features.price = price;
       if (strategyId) features.strategy_id = strategyId;
       features._strategy_gate_enabled = WEBHOOK_STRATEGY_GATE_ENABLED;
@@ -2021,6 +2074,7 @@ function createWebhookRoutes() {
             exchange,
             symbol,
             tf,
+            requestId,
             drops: [{
               event,
               side,
@@ -2093,6 +2147,99 @@ function createWebhookRoutes() {
           qtyPctFinal = aiRes.qty_pct_final;
         }
       }
+      const intentUpperForPolicy = String(intent || "").trim().toUpperCase();
+      const policyEntryIntent = intentUpperForPolicy === "ENTRY" || intentUpperForPolicy === "ADD";
+      if (!isDrop && policyEntryIntent) {
+        const policyEval = evaluateLiveEntryPolicy({
+          exchange,
+          symbol,
+          intent: intentUpperForPolicy,
+          qtyPct: qtyPctFinal,
+          features,
+          stage: "WEBHOOK_SIGNAL",
+          applyScale: true,
+        });
+        if (policyEval && policyEval.featuresPatch && typeof policyEval.featuresPatch === "object") {
+          Object.assign(features, policyEval.featuresPatch);
+        }
+        if (!policyEval || policyEval.ok !== true || !Number.isFinite(Number(policyEval.qtyPctFinal)) || Number(policyEval.qtyPctFinal) <= 0) {
+          const policyReason = String(policyEval && policyEval.reason || "LIVE_POLICY_BLOCK").trim().toUpperCase() || "LIVE_POLICY_BLOCK";
+          await recordSignalDrops({
+            exchange,
+            symbol,
+            tf,
+            requestId,
+            drops: [{
+              event,
+              side,
+              bar_close_time_utc_ms: barCloseMs,
+              qty_pct: qtyPctFinal,
+              reason: policyReason,
+              execution_mode: executionMode,
+              features_json: features,
+              event_group: group,
+              event_subtype: subtype,
+              drop_reason_code: policyReason,
+              signal_id: p.signal_id || null,
+              signal_doc_id: p.signal_id || features.signal_doc_id || null,
+              event_intent: intent,
+              mapping_ok: mapping.ok === true,
+              mapping_version: SIGNAL_MAPPING_VERSION,
+            }],
+          });
+          emitWebhookTrace(traceOn, {
+            decision: "DROP",
+            reason: policyReason,
+            exchange,
+            symbol,
+            tf_raw: tfRaw,
+            tf_final: tf,
+            event,
+            side,
+            action: actionFinal,
+            intent,
+            qty_pct: qtyPctFinal,
+            bar_close_time_utc_ms: barCloseMs,
+            mapping_ok: mapping.ok === true,
+            exchange_side_allowed: exchangeSideAllowed,
+            signal_id: p.signal_id || null,
+          });
+          fireSignalDroppedAlert({
+            exchange,
+            symbol,
+            tf,
+            event,
+            side,
+            qtyPct: qtyPctFinal,
+            reason: policyReason,
+            dropReasonCode: policyReason,
+            signalId: p.signal_id || null,
+            executionMode: executionMode,
+            source: "WEBHOOK",
+            authoritative: false,
+          });
+          return finalize({
+            body: { ok: true, dropped: true, reason: policyReason, signal_id: p.signal_id || null },
+            decision: "DROP",
+            reason: policyReason,
+            context: {
+              exchange,
+              symbol,
+              tf,
+              event,
+              side,
+              action: actionFinal || null,
+              intent: intent || null,
+              qtyPct: qtyPctFinal,
+              signalId: p.signal_id || null,
+              barCloseMs,
+              mappingOk: mapping.ok === true,
+              exchangeSideAllowed,
+            },
+          });
+        }
+        qtyPctFinal = Number(policyEval.qtyPctFinal);
+      }
       if (features._qty_pct_final == null) {
         features._qty_pct_final = qtyPctFinal;
       }
@@ -2102,6 +2249,7 @@ function createWebhookRoutes() {
           exchange,
           symbol,
           tf,
+          requestId,
           drops: [{
             event,
             side,
@@ -2114,6 +2262,7 @@ function createWebhookRoutes() {
             event_subtype: subtype,
             drop_reason_code: normalizeReasonCode(reasonRaw) || normalizeReasonCode(reason) || null,
             signal_id: p.signal_id || null,
+            signal_doc_id: p.signal_id || features.signal_doc_id || null,
             event_intent: "DROP",
             mapping_ok: mapping.ok === true,
             mapping_version: SIGNAL_MAPPING_VERSION,
@@ -2185,6 +2334,8 @@ function createWebhookRoutes() {
         executionMode,
         source: "PINE_SHADOW",
         authoritative: false,
+        requestId,
+        decisionReason: reason,
       });
       if (saved && saved.signal_id && saved.decision === "CREATED") {
         sendSignalReceivedAlert({

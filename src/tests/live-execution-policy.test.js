@@ -3,7 +3,9 @@ const { evaluateLiveEntryPolicy, __test } = require("../utils/liveExecutionPolic
 
 function buildSnapshot({
   allocatorRows = [],
+  allocatorSummary = null,
   quarantineRows = [],
+  quarantineSummary = null,
   qualityRows = [],
   policyPlanSummary = null,
   policyPlanRows = [],
@@ -13,8 +15,8 @@ function buildSnapshot({
 } = {}) {
   const nowIso = new Date().toISOString();
   return __test.buildSnapshotFromArtifacts({
-    allocatorDoc: { summary: { by_market: allocatorRows } },
-    quarantineDoc: { summary: { by_market: quarantineRows } },
+    allocatorDoc: { summary: { ...(allocatorSummary || {}), by_market: allocatorRows } },
+    quarantineDoc: { summary: { ...(quarantineSummary || {}), by_market: quarantineRows } },
     executionQualityDoc: { summary: { by_market: qualityRows } },
     policyParameterPlanDoc: { summary: { ...(policyPlanSummary || {}) }, recommendations: { by_market: policyPlanRows } },
     objectiveSupervisorDoc: { summary: { ...(objectiveSummary || {}) } },
@@ -48,6 +50,33 @@ function buildSnapshot({
   });
   assert.strictEqual(res.ok, false);
   assert.strictEqual(res.reason, "LIVE_POLICY_QUARANTINE_HARD_BLOCK");
+  assert.strictEqual(res.featuresPatch._live_exec_policy_plan_enabled, true);
+  assert.strictEqual(res.featuresPatch._live_exec_policy_plan_status, null);
+  assert.strictEqual(res.featuresPatch._live_exec_policy_quarantine_reason, "EXECUTION_QUALITY_PENALTY");
+  assert.strictEqual(res.featuresPatch._live_exec_policy_quality_global_status, null);
+})();
+
+(() => {
+  const snap = buildSnapshot({
+    allocatorRows: [{ market: "AXSUSDT", allocation_score: -8.1, recommended_action: "QUARANTINE" }],
+    allocatorSummary: { learning_epoch_active: true },
+    quarantineRows: [{ market: "AXSUSDT", quarantine_reason: "EXECUTION_QUALITY_PENALTY" }],
+    quarantineSummary: { learning_epoch_active: true },
+    qualityRows: [{ market: "AXSUSDT", avg_created_to_fill_ms: 100000, partial_fill_rate_pct: 30, avg_slippage_bps: 1 }],
+  });
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "AXSUSDT",
+    intent: "ENTRY",
+    qtyPct: 0.8,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.policy.learning_epoch_exception_release_active, true);
+  assert.strictEqual(res.featuresPatch._live_exec_policy_learning_epoch_exception_release_active, true);
 })();
 
 (() => {
@@ -71,6 +100,30 @@ function buildSnapshot({
 
 (() => {
   const snap = buildSnapshot({
+    allocatorRows: [{ market: "AXSUSDT", allocation_score: -8.0, recommended_action: "HOLD" }],
+    allocatorSummary: { learning_epoch_active: true },
+    quarantineSummary: { learning_epoch_active: true },
+    qualityRows: [{ market: "AXSUSDT", avg_created_to_fill_ms: 100000, partial_fill_rate_pct: 30, avg_slippage_bps: 1 }],
+    policyPlanSummary: { status: "HOLD", mode: "ADVISORY_ONLY", global_qty_scale: 0.55 },
+    policyPlanRows: [{ market: "AXSUSDT", qty_scale: 0, mode: "WATCH_ONLY" }],
+  });
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "AXSUSDT",
+    intent: "ENTRY",
+    qtyPct: 0.5,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    applyPolicyPlan: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.policy.learning_epoch_exception_release_active, true);
+})();
+
+(() => {
+  const snap = buildSnapshot({
     allocatorRows: [{ market: "ETHUSDT", allocation_score: -1.2, recommended_action: "HOLD" }],
     qualityRows: [{ market: "ETHUSDT", avg_created_to_fill_ms: 350000, partial_fill_rate_pct: 68, avg_slippage_bps: 0 }],
   });
@@ -87,6 +140,40 @@ function buildSnapshot({
   assert.strictEqual(res.ok, true);
   assert.ok(Number.isFinite(Number(res.qtyPctFinal)));
   assert.ok(res.qtyPctFinal > 0 && res.qtyPctFinal < 1);
+})();
+
+(() => {
+  const snap = buildSnapshot({
+    allocatorRows: [{ market: "ETHUSDT", allocation_score: 0.5, recommended_action: "HOLD" }],
+    allocatorSummary: { learning_epoch_active: true },
+    quarantineSummary: { learning_epoch_active: true },
+    qualityRows: [{ market: "ETHUSDT", avg_created_to_fill_ms: 1000, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }],
+    driftRemediationApply: {
+      applied: true,
+      effective: {
+        other_server_policy_watch_only_markets_by_reason: {
+          LIVE_RESCUE_ADD_LOSS_WINDOW_BLOCKED: ["ETHUSDT"],
+        },
+      },
+      changes: {
+        other_server_policy_watch_only_markets: {
+          next: ["ETHUSDT"],
+        },
+      },
+    },
+  });
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    intent: "ENTRY",
+    qtyPct: 0.5,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.policy.learning_epoch_exception_release_active, true);
 })();
 
 (() => {
@@ -131,6 +218,9 @@ function buildSnapshot({
   });
   assert.strictEqual(res.ok, false);
   assert.strictEqual(res.reason, "LIVE_POLICY_PLAN_WATCH_ONLY_BLOCK");
+  assert.strictEqual(res.featuresPatch._live_exec_policy_plan_status, "HOLD");
+  assert.strictEqual(res.featuresPatch._live_exec_policy_plan_mode, "WATCH_ONLY");
+  assert.strictEqual(res.featuresPatch._live_exec_policy_plan_global_scale, 0.55);
 })();
 
 (() => {
