@@ -6,7 +6,7 @@
 이 감사는 donbeolja 전체 시스템의 최신 end-to-end 품질 검사다.
 대상 범위는 아래를 모두 포함한다.
 
-Pine -> webhook -> 1~5차 서버 실행 -> 저장/리포트 -> BEST/FEBT 감독 -> self-evolution loop -> OpenClaw autonomy contract / recovery governor / reasoning journal / autonomy parity -> Codex/Claude authority -> deployment plan -> bundle activation/probe -> OpenClaw automation scheduler -> Telegram delivery
+Server canonical signal generation -> webhook ingress / shadow ingest -> 1~5차 서버 실행 -> 저장/리포트 -> BEST/FEBT 감독 -> self-evolution loop -> OpenClaw autonomy contract / recovery governor / reasoning journal / autonomy parity -> Codex/Claude authority -> deployment plan -> bundle activation/probe -> OpenClaw automation scheduler -> Telegram delivery
 
 절대 규칙:
 1. 과거 감사 문서나 과거 dated artifact를 현재 근거로 직접 쓰지 마라.
@@ -15,10 +15,10 @@ Pine -> webhook -> 1~5차 서버 실행 -> 저장/리포트 -> BEST/FEBT 감독 
 4. 문서 설명과 실제 코드/산출물이 다르면 반드시 finding으로 올려라.
 5. top-level이 null처럼 보이는 latest는 `display/raw wrapper` 구조를 먼저 확인한 뒤 판단하라.
 6. `launchd label missing`을 곧바로 장애로 판단하지 마라. 현재 local automation scheduler SSOT는 `OpenClaw cron`이다.
-7. Pine 수동 붙여넣기 경계는 따로 분리해서 적고, 그것만으로 전체 자동화가 깨졌다고 쓰지 마라.
+7. Pine는 current execution source가 아니다. Pine 관련 평가는 shadow-only / legacy-compatibility sanity check로만 다루고, 그것만으로 전체 자동화가 깨졌다고 쓰지 마라.
 8. mixed-generation 여부는 실제 current cycle table을 먼저 만든 뒤에만 판단하라.
 9. 코드를 수정하거나 배포, 거래, sync, purge, migrate, cron add/rm/run, scheduler 실행은 하지 마라. 읽기 전용 감사만 수행하라.
-10. 현재 시스템은 `bundle-based hybrid canonical + OpenClaw ops substrate` 상태라는 점을 전제로 감사하라.
+10. 현재 시스템은 `server-primary canonical execution + OpenClaw ops substrate` 상태라는 점을 전제로 감사하라.
 11. `stage_autopilot_latest.json`은 `display.cycle_id`와 `display.evaluation_cycle_id`를 분리해서 읽어라. post-loop 재실행으로 `evaluation_cycle_id`가 달라도 `display.cycle_id`가 current cycle과 같고 loop_monitor가 mismatch 0이면 cycle mismatch로 올리지 마라.
 12. `SERVER_PRIMARY_ACTIVE`, `promotion_gate_status`, `promotion_ready`를 동일 의미로 읽지 마라.
 13. cutover/runtime/quality가 최신 aligned cycle이고 autonomy/family artifact가 lagging cycle이면, 이를 분리해 적어라.
@@ -135,52 +135,58 @@ Pine -> webhook -> 1~5차 서버 실행 -> 저장/리포트 -> BEST/FEBT 감독 
 
 반드시 step-by-step으로 아래를 점검하라.
 
-1. Pine
-- LONG/SHORT, EARLY/CORE, strategy_id, features_json, FEBT telemetry가 문서와 일치하는가
-- 차트 overlay 의미와 서버 execution 의미가 섞이지 않는가
+1. Server Canonical Primary
+- 현재 execution source가 실제로 `SERVER_PRIMARY`인지
+- runtime / quality / cutover aligned cycle이 current truth인지
+- `promotion_gate_status`, `promotion_ready`, `SERVER_PRIMARY_ACTIVE`를 혼동 없이 읽고 있는가
 
-2. Webhook
+2. Pine Shadow / Legacy Compatibility
+- LONG/SHORT, EARLY/CORE, strategy_id, features_json, FEBT telemetry가 문서와 일치하는가
+- Pine overlay 의미와 서버 execution 의미가 섞이지 않는가
+- Pine가 execution authority처럼 서술되거나 구현되지 않았는가
+
+3. Webhook
 - strategy gate가 applied/prepared/runtime state를 반영하는가
 - canonical strategy_id가 alias보다 우선되는가
 - false STRATEGY_ID_MISMATCH 경로가 남아 있는가
 
-3. 1~5차 서버 실행
+4. 1~5차 서버 실행
 - 드롭 사유가 stage 정책 문서와 일치하는가
 - EV/WAIT/AI/시장 경로가 signals, drops, intents, fills에 일관되게 남는가
 - 수량 정책은 현재 구현 사실과 문서가 일치하는가
 
-4. 저장/리포트
+5. 저장/리포트
 - signals -> intents -> fills 연결이 가능한가
 - signals -> drops 직접 join이 가능한가
 - duplicate, reject, stale, latency, provenance 근거가 실제로 측정되는가
 - wrapper 구조 때문에 잘못 읽기 쉬운 latest 파일이 있는가
 
-5. BEST/FEBT 감독
+6. BEST/FEBT 감독
 - weekly governance, objective supervisor, filter shadow canary, phase0 baseline이 서로 모순되지 않는가
 - readiness blocker가 계측 문제인지 실제 성과 문제인지 분리 가능한가
 
-6. self-evolution loop
+7. self-evolution loop
 - loop run PASS와 latest artifact current cycle이 같은 generation으로 publish되는가
 - dataset/objective/candidates/replay/canary/deployment/loop monitor가 실제로 연결되는가
 - autonomy contract / reasoning journal / autonomy parity / family scoreboard / recovery governor가 loop와 실제로 연결되는가
 - stage_autopilot_latest는 `display.cycle_id`를 main cycle, `display.evaluation_cycle_id`를 post-loop evaluation으로 구분해서 읽는가
 
-7. Codex/Claude authority
+8. Codex/Claude authority
 - codex/claude/ensemble verdict가 deployment plan과 supervisor에서 실제 decision gate로 쓰이는가
 - external authority pending이 숨지지 않고 명시되는가
 
-8. deployment plan -> bundle activation -> live runtime
+9. deployment plan -> bundle activation -> live runtime
 - prepared target, applied origin, recommended target이 분리돼 추적되는가
 - bundle activation은 `ACTIVE_BY_PROBE` 또는 actual decision 근거로만 닫히는가
 - manual paste ack가 runtime state를 stale overwrite하지 않는가
 
-9. OpenClaw automation substrate
+10. OpenClaw automation substrate
 - local automation scheduler 정본이 실제로 `OpenClaw cron`인가
 - watchdog가 `launchd missing`을 false failure로 보고 있지 않은가
 - legacy launchd는 diagnostic only로 처리되는가
 - manifest-lite / step registry / capability manifest가 현재 코드와 artifact에 반영되는가
 
-10. Telegram / outbound messaging
+11. Telegram / outbound messaging
 - repo alert path가 OpenClaw-first transport를 쓰는가
 - direct Telegram API만을 정본으로 가정하는 코드/문서가 남아 있는가
 
@@ -196,7 +202,8 @@ Pine -> webhook -> 1~5차 서버 실행 -> 저장/리포트 -> BEST/FEBT 감독 
   - 영향 범위
 
 2. Layer-by-Layer Check
-- Pine
+- Server Canonical Primary
+- Pine Shadow / Legacy Compatibility
 - Webhook
 - 1~5차 서버 실행
 - 저장/리포트

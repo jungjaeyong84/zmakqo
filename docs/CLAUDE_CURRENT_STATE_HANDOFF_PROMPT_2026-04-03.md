@@ -5,6 +5,8 @@ Use the prompt below when handing the current donbeolja state to Claude.
 ```md
 Audit and explain the current donbeolja system state using latest artifacts first, then code only when needed.
 
+Assume the current primary execution path is `SERVER_PRIMARY`. Treat Pine only as shadow/legacy-compatibility context unless an artifact explicitly shows otherwise.
+
 Read in this exact order:
 1. /Users/jeongjaeyong/Projects/donbeolja/docs/CURRENT_SYSTEM_STATUS_2026-04-03.md
 2. /Users/jeongjaeyong/Projects/donbeolja/docs/DONBEOLJA_SYSTEM_SSOT_FOR_REVIEW_2026-04-03.md
@@ -26,7 +28,7 @@ Read in this exact order:
 
 Current context you must preserve:
 - server canonical execution is active
-- Pine is shadow-only
+- Pine is shadow-only and not the primary execution path
 - OpenClaw automation is healthy
 - objective supervisor is still HOLD
 - autonomy authority is still PENDING
