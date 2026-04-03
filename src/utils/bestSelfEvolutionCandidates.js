@@ -321,7 +321,10 @@ function buildEvCandidate({ ev, tf = "15m", contract = null, marketGuard = null,
   const insufficientSample = evReason === "INSUFFICIENT_SAMPLE" || evLayerReason === "INSUFFICIENT_SAMPLE";
   const evMissedRecovery = String(missedRecovery.key || "").trim().toUpperCase() === "DROP_EV_GATE_TP1_PROB";
   const evMissedRecoveryN = toNum(missedRecovery.count) || 0;
-  const allowShadowFallback = (staleEvTuner || insufficientSample) && evMissedRecovery && evMissedRecoveryN >= 3;
+  const allowShadowFallback = raw.settings_updated !== true
+    && (staleEvTuner || insufficientSample)
+    && evMissedRecovery
+    && evMissedRecoveryN >= 3;
   const currentBand = raw.current_band && typeof raw.current_band === "object" ? raw.current_band : {};
   const nextBand = raw.next_band && typeof raw.next_band === "object" ? raw.next_band : {};
   const fallbackBand = allowShadowFallback

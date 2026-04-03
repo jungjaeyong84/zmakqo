@@ -774,6 +774,88 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(autonomousRecoveryPromotion.promotion.recovery_mode, true);
   assert.strictEqual(autonomousRecoveryPromotion.promotion.reason, "AUTONOMOUS_RECOVERY_PROMOTION");
 
+  const autonomousRecoveryPrefersBestReadyReplay = __test.evaluateSupervisor({
+    ...base,
+    changeControl: {
+      verdict: "REVIEW",
+      auto_promotion: {
+        ready: false,
+        reason: "CANDIDATE_NOT_READY",
+        candidate_id: null,
+        streak_current: 0,
+        streak_required: 2,
+      },
+      auto_rollback: {
+        ready: false,
+        reason: "NO_PATCHED_HISTORY",
+      },
+      coverage_guard: {
+        pass: true,
+        ai: { pass: true },
+        market: { pass: true },
+      },
+    },
+    phase0: {
+      fresh: true,
+      provider: "BINANCEFUT",
+      tf: "15m",
+      legacy_wait_baseline: {},
+      bridge_latency: { webhook_to_fill_ms: { p95: 1420 }, duplicate_count: 0, reject_count: 0 },
+    },
+    selfEvolutionDataset: {
+      fresh: true,
+      summary: { rows_n: 10, executed_n: 5, drop_n: 3, missed_n: 1, features_coverage_rate: 0.9, febt_coverage_rate: 0.8 },
+    },
+    selfEvolutionCandidates: {
+      summary: { total_n: 2, ready_n: 2, blocked_n: 0, top_candidate_id: "ML_GATE_CORE_SCORE_ABS", top_scope: "ML" },
+      rows: [
+        { candidate_id: "ML_GATE_CORE_SCORE_ABS", scope: "ML", ready_for_auto_apply: true, memory_blocked: false, failed_fingerprint_repeat: false },
+        { candidate_id: "EV_TP1_THRESHOLD_TUNE", scope: "EV", ready_for_auto_apply: true, memory_blocked: false, failed_fingerprint_repeat: false },
+      ],
+    },
+    selfEvolutionReplay: {
+      validation_mode: "HISTORICAL_ENTRY_COHORT_V1",
+      summary: { total_n: 2, pass_n: 1, warn_n: 0, block_n: 1, best_candidate_id: "EV_TP1_THRESHOLD_TUNE", best_verdict: "PASS", best_objective_delta: 2.5 },
+      validations: [
+        { candidate_id: "ML_GATE_CORE_SCORE_ABS", validation_verdict: "BLOCK", candidate_objective_delta: 0.1, blockers: ["NO_HISTORICAL_TIGHTEN_MATCH"] },
+        { candidate_id: "EV_TP1_THRESHOLD_TUNE", validation_verdict: "PASS", candidate_objective_delta: 2.5, blockers: [] },
+      ],
+    },
+    selfEvolutionCanary: {
+      summary: { total_n: 1, ready_n: 1, blocked_n: 0, rollback_ready_n: 0, apply_pass: true, global_canary_pass: true, current_open_wave: 1, open_wave: 1 },
+      rows: [{ market: "BTCUSDT", wave: 1, current_stage: "SOFT", candidate_id: "EV_TP1_THRESHOLD_TUNE", canary_verdict: "READY", blockers: [] }],
+    },
+    selfEvolutionMemory: {
+      summary: { total_n: 0, current_n: 0, success_n: 0, neutral_n: 0, fail_n: 0, rolled_back_n: 0, blocked_candidate_n: 0, blocked_candidate_ids: [] },
+      current_rows: [],
+      rows: [],
+    },
+    selfEvolutionLoopMonitor: {
+      summary: { cycle_id: "cycle-r2", overall_status: "DEGRADED", cycle_consistent: true, stale_artifact_n: 0, cycle_mismatch_n: 0, critical_blocker_n: 0, critical_blockers: [], promotion_path_ready: false, manual_paste_ready: false, ready_candidate_id: "EV_TP1_THRESHOLD_TUNE", canary_open_wave: 1, loop_n: 10, fresh_loop_n: 10 },
+      rows: [],
+    },
+    retrospective: {
+      periods: {
+        DAILY: { objective: { verdict: "FAIL", pass: false, executed_n: 0, realized_n: 0, failed_checks: ["NO_TRADE_ACTIVITY"] }, realized_trades: { net_pnl_quote: 0 } },
+        WEEKLY: { objective: { verdict: "FAIL", pass: false, executed_n: 3, realized_n: 2, failed_checks: ["PERIOD_TARGET_NOT_MET"] }, realized_trades: { net_pnl_quote: -10 } },
+        MONTHLY: { objective: { verdict: "FAIL", pass: false, executed_n: 8, realized_n: 7, failed_checks: ["MONTHLY_TARGET_NOT_MET"] }, realized_trades: { net_pnl_quote: -20 } },
+      },
+    },
+    codex: {
+      status: "FRESH",
+      verdict: "PROMOTE",
+      recommended_candidate_id: "EV_TP1_THRESHOLD_TUNE",
+    },
+    stageAutopilot: {
+      fresh: true,
+      objective_verdict: "HOLD",
+      actions: [],
+    },
+  });
+  assert.strictEqual(autonomousRecoveryPrefersBestReadyReplay.promotion.candidate_id, "EV_TP1_THRESHOLD_TUNE");
+  assert.strictEqual(autonomousRecoveryPrefersBestReadyReplay.promotion.replay_verdict, "PASS");
+  assert.strictEqual(autonomousRecoveryPrefersBestReadyReplay.reason, "AUTONOMOUS_RECOVERY_PROMOTION_READY");
+
   const activeApprovedRecoveryDoesNotReopenAuthorityBlock = __test.evaluateSupervisor({
     ...base,
     changeControl: {

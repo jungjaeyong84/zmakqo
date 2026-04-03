@@ -17,6 +17,43 @@ function readSummary(value) {
   return raw.summary && typeof raw.summary === "object" ? raw.summary : raw;
 }
 
+function isReadyCandidate(candidateRow = null) {
+  if (!candidateRow || typeof candidateRow !== "object") return false;
+  if (candidateRow.ready_for_auto_apply !== true) return false;
+  if (candidateRow.memory_blocked === true) return false;
+  if (candidateRow.failed_fingerprint_repeat === true) return false;
+  return true;
+}
+
+function resolveCandidateRows(candidateChangeSet = null) {
+  const raw = unwrapRawReport(candidateChangeSet) || {};
+  return Array.isArray(raw.rows) ? raw.rows : [];
+}
+
+function findCandidateRow(candidateChangeSet = null, candidateId = null) {
+  const target = String(candidateId || "").trim();
+  if (!target) return null;
+  return resolveCandidateRows(candidateChangeSet).find((row) => String(row && row.candidate_id || "").trim() === target) || null;
+}
+
+function findBestReadyReplayCandidateId(replay = null, candidateChangeSet = null) {
+  const rows = Array.isArray(replay && replay.validations) ? replay.validations : [];
+  const ranked = rows
+    .map((row) => {
+      const candidateId = String(row && row.candidate_id || "").trim() || null;
+      const candidateRow = findCandidateRow(candidateChangeSet, candidateId);
+      return {
+        candidate_id: candidateId,
+        verdict: String(row && row.validation_verdict || "").trim().toUpperCase() || null,
+        delta: toNum(row && row.candidate_objective_delta),
+        ready: isReadyCandidate(candidateRow),
+      };
+    })
+    .filter((row) => row.candidate_id && row.verdict === "PASS" && row.ready)
+    .sort((a, b) => (b.delta ?? -Infinity) - (a.delta ?? -Infinity));
+  return ranked.length ? ranked[0].candidate_id : null;
+}
+
 function deriveDeploymentRootCause(blockers = []) {
   return Array.isArray(blockers) && blockers.length ? String(blockers[0] || "").trim() || null : null;
 }
@@ -120,9 +157,15 @@ function deriveDeploymentGuards({
   const memory = unwrapRawReport(memoryLedger);
   const memorySummary = memory && memory.summary && typeof memory.summary === "object" ? memory.summary : {};
 
-  const targetCandidateId = String(
+  const explicitPromotionCandidateId = String(
     promotion.display_candidate_id
     || promotion.candidate_id
+    || ""
+  ).trim() || null;
+  const bestReadyReplayCandidateId = findBestReadyReplayCandidateId(replay, candidates);
+  const targetCandidateId = String(
+    explicitPromotionCandidateId
+    || bestReadyReplayCandidateId
     || candidateSummary.top_candidate_id
     || replaySummary.best_candidate_id
     || ""
@@ -142,10 +185,7 @@ function deriveDeploymentGuards({
   const goldenGlobalDrift = toNum(canarySummary.golden_global_drift) || 0;
   const promotionReady = promotion.ready === true;
   const promotionNotReadyReason = promotionReady ? null : derivePromotionNotReadyReason(promotion);
-  const targetCandidateRow = targetCandidateId
-    ? ((Array.isArray(candidates && candidates.rows) ? candidates.rows : [])
-      .find((row) => String(row && row.candidate_id || "").trim() === targetCandidateId) || null)
-    : null;
+  const targetCandidateRow = findCandidateRow(candidates, targetCandidateId);
   const targetDeployUnit = String(
     promotion.target_deploy_unit
     || (targetCandidateRow && targetCandidateRow.target_deploy_unit)

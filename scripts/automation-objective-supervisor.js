@@ -1595,8 +1595,34 @@ function deriveAutonomousRecoveryPromotion({
 } = {}) {
   const basePromotion = promotion && typeof promotion === "object" ? promotion : {};
   if (basePromotion.ready === true) return { ...basePromotion, recovery_mode: false };
+  const candidateRows = Array.isArray(selfEvolutionCandidatesSummary && selfEvolutionCandidatesSummary.rows)
+    ? selfEvolutionCandidatesSummary.rows
+    : [];
+  const replayRows = Array.isArray(selfEvolutionReplaySummary && selfEvolutionReplaySummary.validations)
+    ? selfEvolutionReplaySummary.validations
+    : [];
+  const isReadyCandidate = (row) => Boolean(
+    row
+    && row.ready_for_auto_apply === true
+    && row.memory_blocked !== true
+    && row.failed_fingerprint_repeat !== true
+  );
+  const bestReadyReplayCandidateId = replayRows
+    .map((row) => {
+      const candidateId = String(row && row.candidate_id || "").trim() || null;
+      const candidateRow = candidateRows.find((candidate) => String(candidate && candidate.candidate_id || "").trim() === candidateId) || null;
+      return {
+        candidate_id: candidateId,
+        ready: isReadyCandidate(candidateRow),
+        verdict: String(row && row.validation_verdict || "").trim().toUpperCase() || null,
+        delta: toNum(row && row.candidate_objective_delta),
+      };
+    })
+    .filter((row) => row.candidate_id && row.ready && row.verdict === "PASS")
+    .sort((a, b) => (b.delta ?? -Infinity) - (a.delta ?? -Infinity))[0]?.candidate_id || null;
   const candidateId = String(
     basePromotion.candidate_id
+    || bestReadyReplayCandidateId
     || selfEvolutionCandidatesSummary && selfEvolutionCandidatesSummary.top_candidate_id
     || selfEvolutionReplaySummary && selfEvolutionReplaySummary.best_candidate_id
     || ""
@@ -1606,8 +1632,16 @@ function deriveAutonomousRecoveryPromotion({
     retrospectiveSummary && (retrospectiveSummary.daily_scope_no_trade || retrospectiveSummary.any_fail)
     || objective && (objective.pass === false || objective.monthly_pass === false)
   );
-  const replayPass = String(selfEvolutionReplaySummary && selfEvolutionReplaySummary.best_verdict || "").trim().toUpperCase() === "PASS";
-  const replayDelta = toNum(selfEvolutionReplaySummary && selfEvolutionReplaySummary.best_objective_delta);
+  const candidateReplayRow = replayRows.find((row) => String(row && row.candidate_id || "").trim() === candidateId) || null;
+  const candidateRow = candidateRows.find((row) => String(row && row.candidate_id || "").trim() === candidateId) || null;
+  const replayPass = String(
+    candidateReplayRow && candidateReplayRow.validation_verdict
+    || selfEvolutionReplaySummary && selfEvolutionReplaySummary.best_verdict
+    || ""
+  ).trim().toUpperCase() === "PASS";
+  const replayDelta = toNum(
+    candidateReplayRow && candidateReplayRow.candidate_objective_delta
+  );
   const canarySafe = selfEvolutionCanarySummary
     && selfEvolutionCanarySummary.apply_pass === true
     && Number(selfEvolutionCanarySummary.ready_n || 0) > 0;
@@ -1617,7 +1651,7 @@ function deriveAutonomousRecoveryPromotion({
     && selfEvolutionObjectiveSummary.latency_budget_pass !== false;
   const cycleSafe = !selfEvolutionCycleSummary || selfEvolutionCycleSummary.core_cycle_consistent !== false;
   const driftSafe = !canaryDriftContext || ((toNum(canaryDriftContext.shadow_drift) || 0) === 0 && (toNum(canaryDriftContext.golden_drift) || 0) === 0);
-  const candidateSafe = candidateId && Number(selfEvolutionCandidatesSummary && selfEvolutionCandidatesSummary.ready_n || 0) > 0 && !blockerIds.has(candidateId);
+  const candidateSafe = Boolean(candidateId && isReadyCandidate(candidateRow) && !blockerIds.has(candidateId));
   if (!(performancePressure && replayPass && (replayDelta == null || replayDelta > 0) && canarySafe && objectiveSafe && cycleSafe && driftSafe && candidateSafe)) {
     return { ...basePromotion, recovery_mode: false };
   }

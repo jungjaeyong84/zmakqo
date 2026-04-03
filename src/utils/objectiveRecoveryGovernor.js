@@ -27,6 +27,32 @@ function findReplayRow(replay = null, candidateId = null) {
   return rows.find((row) => String(row && row.candidate_id || "").trim() === target) || null;
 }
 
+function isReadyCandidate(candidateRow = null) {
+  if (!candidateRow || typeof candidateRow !== "object") return false;
+  if (candidateRow.ready_for_auto_apply !== true) return false;
+  if (candidateRow.memory_blocked === true) return false;
+  if (candidateRow.failed_fingerprint_repeat === true) return false;
+  return true;
+}
+
+function findBestReadyReplayCandidateId(replay = null, candidates = null) {
+  const rows = Array.isArray(replay && replay.validations) ? replay.validations : [];
+  const ranked = rows
+    .map((row) => {
+      const candidateId = String(row && row.candidate_id || "").trim() || null;
+      const candidateRow = findCandidateRow(candidates, candidateId);
+      return {
+        candidate_id: candidateId,
+        verdict: toUpper(row && row.validation_verdict),
+        delta: toNum(row && row.candidate_objective_delta),
+        ready: isReadyCandidate(candidateRow),
+      };
+    })
+    .filter((row) => row.candidate_id && row.verdict === "PASS" && row.ready)
+    .sort((a, b) => (b.delta ?? -Infinity) - (a.delta ?? -Infinity));
+  return ranked.length ? ranked[0].candidate_id : null;
+}
+
 function deriveMemoryBlockContext(memory = null, candidateId = null, candidateRow = null) {
   const memoryReport = unwrapRawReport(memory) || {};
   const memorySummary = readSummary(memoryReport);
@@ -257,9 +283,15 @@ function deriveObjectiveRecoveryGovernor({
   const explorationApplyCandidateSummary = summarizeExplorationApplyCandidate(explorationApplyCandidate);
   const retrospectiveSummary = summarizeRetrospective(retrospective);
 
-  const targetCandidateId = String(
+  const explicitPromotionCandidateId = String(
     promotion.display_candidate_id
     || promotion.candidate_id
+    || ""
+  ).trim() || null;
+  const bestReadyReplayCandidateId = findBestReadyReplayCandidateId(replayReport, candidateReport);
+  const targetCandidateId = String(
+    explicitPromotionCandidateId
+    || bestReadyReplayCandidateId
     || candidateSummary.top_candidate_id
     || replaySummary.best_candidate_id
     || ""

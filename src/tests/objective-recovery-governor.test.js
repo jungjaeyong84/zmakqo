@@ -90,5 +90,36 @@ const { deriveObjectiveRecoveryGovernor } = require("../../src/utils/objectiveRe
   assert.strictEqual(serverPrimaryAcceptanceReady.summary.canary_ready_mode, "SERVER_PRIMARY_ACCEPTANCE");
   assert.strictEqual(serverPrimaryAcceptanceReady.summary.governor_status, "RECOVERY_PROMOTION_READY");
 
+  const prefersBestReadyReplay = deriveObjectiveRecoveryGovernor({
+    autonomyContract: {
+      summary: { goal_state: "OBJECTIVE_RECOVERY_REQUIRED" },
+      current_status: { recovery_required: true },
+      authority_policy: { degraded_timeout_policy: { enabled: true, require_replay_pass: true, require_canary_ready: true, require_deployment_guards_pass: true, require_memory_clear: true, require_openclaw_ops_healthy: true, allow_target_deploy_units: ["SERVER_SETTINGS"] } },
+    },
+    objective: { global_objective_score: { objective_score: -2 } },
+    objectiveSupervisor: { promotion: { ready: false, candidate_id: null, display_candidate_id: null } },
+    candidates: {
+      summary: { top_candidate_id: "ML_GATE_CORE_SCORE_ABS" },
+      rows: [
+        { candidate_id: "ML_GATE_CORE_SCORE_ABS", target_deploy_unit: "SERVER_SETTINGS", ready_for_auto_apply: true, memory_blocked: false, failed_fingerprint_repeat: false },
+        { candidate_id: "EV_TP1_THRESHOLD_TUNE", target_deploy_unit: "SERVER_SETTINGS", ready_for_auto_apply: true, memory_blocked: false, failed_fingerprint_repeat: false },
+      ],
+    },
+    replay: {
+      summary: { best_candidate_id: "EV_TP1_THRESHOLD_TUNE", best_verdict: "PASS" },
+      validations: [
+        { candidate_id: "ML_GATE_CORE_SCORE_ABS", validation_verdict: "BLOCK", candidate_objective_delta: 0.1 },
+        { candidate_id: "EV_TP1_THRESHOLD_TUNE", validation_verdict: "PASS", candidate_objective_delta: 2.5 },
+      ],
+    },
+    canary: { summary: { apply_pass: true, ready_n: 1 } },
+    deploymentGuards: { summary: { deploy_pass: true } },
+    memory: { summary: { blocked_candidate_n: 0 } },
+    watchdog: { display: { verdict: "PASS" } },
+  });
+  assert.strictEqual(prefersBestReadyReplay.summary.target_candidate_id, "EV_TP1_THRESHOLD_TUNE");
+  assert.strictEqual(prefersBestReadyReplay.summary.replay_pass, true);
+  assert.strictEqual(prefersBestReadyReplay.summary.governor_status, "RECOVERY_PROMOTION_READY");
+
   console.log("OBJECTIVE_RECOVERY_GOVERNOR_TEST_OK");
 })();

@@ -184,5 +184,41 @@ const { deriveDeploymentGuards } = require("../../src/utils/bestSelfEvolutionDep
   assert.strictEqual(serverPrimaryAcceptanceFallback.summary.effective_canary_mode, "SERVER_PRIMARY_ACCEPTANCE");
   assert.strictEqual(serverPrimaryAcceptanceFallback.summary.deploy_pass, true);
 
+  const prefersBestReadyReplay = deriveDeploymentGuards({
+    objectiveSupervisor: {
+      promotion: { ready: true, candidate_id: null, display_candidate_id: null },
+      rollback: { ready: false },
+      self_evolution_objective: {
+        count_floor_pass: true,
+        replacement_floor_pass: true,
+        latency_budget_pass: true,
+      },
+    },
+    candidateChangeSet: {
+      summary: { top_candidate_id: "ML_GATE_CORE_SCORE_ABS" },
+      rows: [
+        { candidate_id: "ML_GATE_CORE_SCORE_ABS", target_deploy_unit: "SERVER_SETTINGS", ready_for_auto_apply: true, memory_blocked: false, failed_fingerprint_repeat: false },
+        { candidate_id: "EV_TP1_THRESHOLD_TUNE", target_deploy_unit: "SERVER_SETTINGS", ready_for_auto_apply: true, memory_blocked: false, failed_fingerprint_repeat: false },
+      ],
+    },
+    replayReport: {
+      summary: { best_candidate_id: "EV_TP1_THRESHOLD_TUNE" },
+      validations: [
+        { candidate_id: "ML_GATE_CORE_SCORE_ABS", validation_verdict: "BLOCK", candidate_objective_delta: 0.1, blockers: ["NO_HISTORICAL_TIGHTEN_MATCH"] },
+        { candidate_id: "EV_TP1_THRESHOLD_TUNE", validation_verdict: "PASS", candidate_objective_delta: 2.5, blockers: [] },
+      ],
+    },
+    canaryReport: {
+      summary: { apply_pass: true, rollback_ready_n: 0, open_wave: 1, shadow_global_drift: 0, golden_global_drift: 0 },
+      rows: [{ market: "BTCUSDT", wave: 1, current_stage: "SOFT", candidate_id: "EV_TP1_THRESHOLD_TUNE", canary_verdict: "READY", blockers: [] }],
+    },
+    memoryLedger: {
+      summary: { blocked_candidate_ids: [], blocked_candidate_n: 0 },
+    },
+  });
+  assert.strictEqual(prefersBestReadyReplay.summary.target_candidate_id, "EV_TP1_THRESHOLD_TUNE");
+  assert.strictEqual(prefersBestReadyReplay.summary.replay_verdict, "PASS");
+  assert.strictEqual(prefersBestReadyReplay.summary.deploy_pass, true);
+
   console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_GUARDS_TEST_OK");
 })();
