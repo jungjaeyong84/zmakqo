@@ -1528,10 +1528,21 @@ function summarizeCanaryDriftContext(canary = null) {
   const shadowTopStage = pickTop(shadow.byStage);
   const goldenTopMarket = pickTop(golden.byMarket);
   const goldenTopStage = pickTop(golden.byStage);
+  const shadowStageEntries = Object.entries(shadow.byStage || {});
+  const shadowDriftStages = shadowStageEntries
+    .filter(([, value]) => (toNum(value && value.drift) || 0) > 0)
+    .map(([key]) => String(key || "").trim().toUpperCase())
+    .filter(Boolean);
+  const shadowNonAiDrift = shadowStageEntries
+    .filter(([key]) => String(key || "").trim().toUpperCase() !== "AI")
+    .reduce((acc, [, value]) => acc + (toNum(value && value.drift) || 0), 0);
   const primary = goldenTopStage || goldenTopMarket || shadowTopStage || shadowTopMarket;
   return {
     shadow_drift: toNum(shadow.drift) || 0,
     golden_drift: toNum(golden.drift) || 0,
+    shadow_ai_only_drift: (toNum(shadow.drift) || 0) > 0 && (toNum(golden.drift) || 0) === 0 && shadowDriftStages.length > 0 && shadowDriftStages.every((key) => key === "AI"),
+    shadow_non_ai_drift: shadowNonAiDrift,
+    shadow_drift_stages: shadowDriftStages,
     shadow_top_market: shadowTopMarket ? shadowTopMarket.key : null,
     shadow_top_stage: shadowTopStage ? shadowTopStage.key : null,
     golden_top_market: goldenTopMarket ? goldenTopMarket.key : null,
@@ -2032,6 +2043,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   const stageAutopilotFresh = Boolean(stageAutopilot && (stageAutopilot.fresh === true || stageAutopilotStatus === "FRESH"));
   const retrospectiveSummary = summarizeRetrospective(retrospective);
   const physicsSummary = summarizeGovernancePhysics(governance);
+  const canaryDriftContext = summarizeCanaryDriftContext(canary);
   const filterLayers = buildFilterLayerSummary({
     governance,
     changeControl,
@@ -2136,7 +2148,6 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   const selfEvolutionEvGateRescueSummary = summarizeSelfEvolutionEvGateRescue(selfEvolutionEvGateRescue);
   const selfEvolutionMemorySummary = summarizeSelfEvolutionMemory(selfEvolutionMemory);
   const memoryBlockedIds = new Set(selfEvolutionMemorySummary.blocked_candidate_ids || []);
-  const canaryDriftContext = summarizeCanaryDriftContext(canary);
   const evTunerContext = summarizeEvTunerContext(filterLayers);
   const selfEvolutionCycleSummary = selfEvolutionCycleState && typeof selfEvolutionCycleState === "object"
     ? selfEvolutionCycleState
@@ -2248,7 +2259,11 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   if (retrospectiveSummary.monthly.pass === false) blockers.push("RETROSPECTIVE_MONTHLY_FAIL");
   if (retrospectiveSummary.daily_scope_no_trade) blockers.push("DAILY_NO_TRADE_ACTIVITY");
   if (retrospectiveSummary.daily_scope_zero_idle) blockers.push("ZERO_KRW_IDLE");
-  if (!canary || canarySummary.drift > 0 || canaryGolden.drift > 0) blockers.push("CANARY_DRIFT");
+  if (
+    !canary
+    || (canaryDriftContext.golden_drift || 0) > 0
+    || ((canaryDriftContext.shadow_drift || 0) > 0 && canaryDriftContext.shadow_ai_only_drift !== true)
+  ) blockers.push("CANARY_DRIFT");
   if (changeControlRelevant && (!changeControl || String(changeControl.verdict || "").toUpperCase() === "HOLD")) {
     blockers.push("CHANGE_CONTROL_HOLD");
   }
