@@ -396,4 +396,28 @@ function buildSnapshot({
   assert.strictEqual(res.ok, true);
 })();
 
+(() => {
+  const olderLocalIso = new Date(Date.now() - (3 * 60 * 60 * 1000)).toISOString();
+  const newerSharedIso = new Date(Date.now() - (5 * 60 * 1000)).toISOString();
+  const selected = __test.selectPreferredLineageInput({
+    localDoc: { generated_at: olderLocalIso, summary: { fills_intent_id_null_rate: 0.03 } },
+    localMtimeMs: Date.parse(olderLocalIso),
+    sharedSnapshot: __test.normalizeSharedLineageSnapshot({
+      updated_at: newerSharedIso,
+      report: {
+        generated_at: newerSharedIso,
+        summary: {
+          intents_signal_doc_id_null_rate: 0,
+          fills_signal_doc_id_null_rate: 0,
+          fills_intent_id_null_rate: 0.01,
+        },
+      },
+    }),
+  });
+  assert.strictEqual(selected.path, "firestore:report_latest/LATEST__signal_lineage_health__GLOBAL");
+  assert.strictEqual(selected.source, "FIRESTORE_REPORT_LATEST");
+  assert.strictEqual(selected.mtimeMs, null);
+  assert.strictEqual(selected.doc.summary.fills_intent_id_null_rate, 0.01);
+})();
+
 console.log("LIVE_EXECUTION_POLICY_TEST_OK");

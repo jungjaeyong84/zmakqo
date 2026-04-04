@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { getFirestore } = require("../storage/firestore");
 
 const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
 const CAPITAL_ALLOCATOR_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_market_capital_allocator_latest.json");
@@ -11,6 +12,8 @@ const POLICY_PARAMETER_PLAN_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution
 const OBJECTIVE_SUPERVISOR_PATH = path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json");
 const SIGNAL_LINEAGE_HEALTH_PATH = path.join(OPS_DAILY_DIR, "signal_lineage_health_latest.json");
 const DRIFT_REMEDIATION_APPLY_PATH = path.join(OPS_DAILY_DIR, "server_signal_drift_remediation_apply_latest.json");
+const LINEAGE_REPORT_LATEST_COLLECTION = String(process.env.LIVE_EXEC_POLICY_LINEAGE_REPORT_LATEST_COLLECTION || "report_latest").trim() || "report_latest";
+const LINEAGE_REPORT_LATEST_DOC_ID = String(process.env.LIVE_EXEC_POLICY_LINEAGE_REPORT_LATEST_DOC_ID || "LATEST__signal_lineage_health__GLOBAL").trim() || "LATEST__signal_lineage_health__GLOBAL";
 
 const CACHE_TTL_MS = (() => {
   const n = Number(process.env.LIVE_EXEC_POLICY_CACHE_TTL_MS);
@@ -181,9 +184,21 @@ const LINEAGE_SLO_MAX_REPORT_AGE_MS = (() => {
   return 3 * 60 * 60 * 1000;
 })();
 
+const LINEAGE_SHARED_REFRESH_MS = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_LINEAGE_SHARED_REFRESH_MS);
+  if (Number.isFinite(n) && n >= 1000) return n;
+  return 30 * 1000;
+})();
+
 let cache = {
   ts: 0,
   snapshot: null,
+};
+
+let sharedLineageCache = {
+  ts: 0,
+  snapshot: null,
+  refreshPromise: null,
 };
 
 function toNum(value) {
@@ -246,6 +261,10 @@ function readFileMtimeMs(filePath) {
   } catch (_err) {
     return null;
   }
+}
+
+function buildSharedLineageDocPath() {
+  return `firestore:${LINEAGE_REPORT_LATEST_COLLECTION}/${LINEAGE_REPORT_LATEST_DOC_ID}`;
 }
 
 function unwrapRaw(value) {
@@ -349,6 +368,8 @@ function buildSnapshotFromArtifacts({
   objectiveSupervisorDoc = null,
   lineageHealthDoc = null,
   lineageHealthMtimeMs = null,
+  lineageHealthPath = null,
+  lineageHealthSource = null,
   driftRemediationApplyDoc = null,
 } = {}) {
   const allocatorSummary = readSummary(allocatorDoc);
@@ -423,10 +444,10 @@ function buildSnapshotFromArtifacts({
         || ""
       ).trim() || null,
     lineageGeneratedAtMs: lineageGeneratedAtParsedMs || toNum(lineageHealthMtimeMs),
-    lineageGeneratedAtSource: lineageGeneratedAtParsedMs != null
+    lineageGeneratedAtSource: String(lineageHealthSource || "").trim() || (lineageGeneratedAtParsedMs != null
       ? "ARTIFACT_TIMESTAMP"
-      : (Number.isFinite(toNum(lineageHealthMtimeMs)) ? "FILE_MTIME" : null),
-    lineageReportPath: SIGNAL_LINEAGE_HEALTH_PATH,
+      : (Number.isFinite(toNum(lineageHealthMtimeMs)) ? "FILE_MTIME" : null)),
+    lineageReportPath: String(lineageHealthPath || "").trim() || SIGNAL_LINEAGE_HEALTH_PATH,
     allocatorByMarket,
     quarantineByMarket,
     qualityByMarket,
@@ -438,18 +459,95 @@ function buildSnapshotFromArtifacts({
   };
 }
 
+function normalizeSharedLineageSnapshot(raw = null) {
+  if (!raw || typeof raw !== "object") return null;
+  const report = raw.report && typeof raw.report === "object" ? raw.report : raw;
+  if (!report || typeof report !== "object") return null;
+  return {
+    doc: report,
+    path: buildSharedLineageDocPath(),
+    source: "FIRESTORE_REPORT_LATEST",
+    generatedAtMs: parseDateMs(
+      report.generated_at
+      || report.generated_at_kst
+      || raw.generated_at
+      || raw.generated_at_kst
+      || raw.updated_at
+      || null
+    ),
+  };
+}
+
+function maybeRefreshSharedLineageSnapshot(now = Date.now()) {
+  if (!LINEAGE_SLO_ENABLED) return;
+  if (sharedLineageCache.refreshPromise) return;
+  if (sharedLineageCache.ts && (now - sharedLineageCache.ts) < LINEAGE_SHARED_REFRESH_MS) return;
+  sharedLineageCache.refreshPromise = Promise.resolve()
+    .then(async () => {
+      const db = getFirestore();
+      const snap = await db.collection(LINEAGE_REPORT_LATEST_COLLECTION).doc(LINEAGE_REPORT_LATEST_DOC_ID).get();
+      sharedLineageCache = {
+        ts: Date.now(),
+        snapshot: snap.exists ? normalizeSharedLineageSnapshot(snap.data() || {}) : null,
+        refreshPromise: null,
+      };
+    })
+    .catch(() => {
+      sharedLineageCache = {
+        ts: Date.now(),
+        snapshot: sharedLineageCache.snapshot || null,
+        refreshPromise: null,
+      };
+    });
+}
+
+function selectPreferredLineageInput({
+  localDoc = null,
+  localMtimeMs = null,
+  sharedSnapshot = null,
+} = {}) {
+  const localGeneratedAtMs = parseDateMs(
+    (localDoc && (localDoc.generated_at || localDoc.generated_at_kst))
+    || null
+  ) || toNum(localMtimeMs);
+  const sharedGeneratedAtMs = toNum(sharedSnapshot && sharedSnapshot.generatedAtMs);
+  const useShared = !!(sharedSnapshot
+    && sharedSnapshot.doc
+    && (!Number.isFinite(localGeneratedAtMs) || (Number.isFinite(sharedGeneratedAtMs) && sharedGeneratedAtMs > localGeneratedAtMs)));
+  if (useShared) {
+    return {
+      doc: sharedSnapshot.doc,
+      mtimeMs: null,
+      path: sharedSnapshot.path,
+      source: sharedSnapshot.source,
+    };
+  }
+  return {
+    doc: localDoc,
+    mtimeMs: localMtimeMs,
+    path: SIGNAL_LINEAGE_HEALTH_PATH,
+    source: null,
+  };
+}
+
 function loadPolicySnapshot({ force = false } = {}) {
   const now = Date.now();
   if (!force && cache.snapshot && (now - cache.ts) < CACHE_TTL_MS) {
     return cache.snapshot;
   }
+  maybeRefreshSharedLineageSnapshot(now);
   const allocatorDoc = readJsonSafe(CAPITAL_ALLOCATOR_PATH, null);
   const quarantineDoc = readJsonSafe(QUARANTINE_PATH, null);
   const executionQualityDoc = readJsonSafe(EXECUTION_QUALITY_PATH, null);
   const policyParameterPlanDoc = POLICY_PLAN_ENABLED ? readJsonSafe(POLICY_PARAMETER_PLAN_PATH, null) : null;
   const objectiveSupervisorDoc = OBJECTIVE_SCALE_ENABLED ? readJsonSafe(OBJECTIVE_SUPERVISOR_PATH, null) : null;
-  const lineageHealthDoc = LINEAGE_SLO_ENABLED ? readJsonSafe(SIGNAL_LINEAGE_HEALTH_PATH, null) : null;
-  const lineageHealthMtimeMs = LINEAGE_SLO_ENABLED ? readFileMtimeMs(SIGNAL_LINEAGE_HEALTH_PATH) : null;
+  const localLineageHealthDoc = LINEAGE_SLO_ENABLED ? readJsonSafe(SIGNAL_LINEAGE_HEALTH_PATH, null) : null;
+  const localLineageHealthMtimeMs = LINEAGE_SLO_ENABLED ? readFileMtimeMs(SIGNAL_LINEAGE_HEALTH_PATH) : null;
+  const selectedLineageInput = selectPreferredLineageInput({
+    localDoc: localLineageHealthDoc,
+    localMtimeMs: localLineageHealthMtimeMs,
+    sharedSnapshot: sharedLineageCache.snapshot,
+  });
   const driftRemediationApplyDoc = DRIFT_REMEDIATION_ENABLED ? readJsonSafe(DRIFT_REMEDIATION_APPLY_PATH, null) : null;
   const snapshot = buildSnapshotFromArtifacts({
     allocatorDoc,
@@ -457,8 +555,10 @@ function loadPolicySnapshot({ force = false } = {}) {
     executionQualityDoc,
     policyParameterPlanDoc,
     objectiveSupervisorDoc,
-    lineageHealthDoc,
-    lineageHealthMtimeMs,
+    lineageHealthDoc: selectedLineageInput.doc,
+    lineageHealthMtimeMs: selectedLineageInput.mtimeMs,
+    lineageHealthPath: selectedLineageInput.path,
+    lineageHealthSource: selectedLineageInput.source,
     driftRemediationApplyDoc,
   });
   cache = { ts: now, snapshot };
@@ -1073,6 +1173,8 @@ module.exports = {
   }),
   __test: {
     buildSnapshotFromArtifacts,
+    normalizeSharedLineageSnapshot,
+    selectPreferredLineageInput,
     extractOtherServerPolicyWatchOnlyMarkets,
     deriveAllocatorActionScale,
     deriveAllocatorScoreScale,
