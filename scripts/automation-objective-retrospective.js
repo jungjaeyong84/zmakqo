@@ -43,6 +43,7 @@ const TARGET_DAILY_KRW = Number(periodTargetKrw("DAILY", { minMonthlyNetKrw: TAR
 const TARGET_WEEKLY_KRW = Number(periodTargetKrw("WEEKLY", { minMonthlyNetKrw: TARGET_MONTHLY_KRW, monthDays: MONTH_DAYS }));
 const SCAN_LIMIT = Math.max(4000, Number(process.env.OBJECTIVE_RETRO_SCAN_LIMIT || 16000));
 const DAY_MS = 24 * 60 * 60 * 1000;
+const FALLBACK_USD_KRW = Math.max(1000, Number(process.env.USD_KRW_FALLBACK || 1480));
 const REPORT_LATEST_JSON = path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json");
 const REPORT_LATEST_MD = path.join(OPS_DAILY_DIR, "objective_retrospective_latest.md");
 const MONTHLY_STRATEGY_LATEST_JSON = path.join(OPS_DAILY_DIR, "objective_monthly_strategy_latest.json");
@@ -76,6 +77,56 @@ function signedKrw(v, digits = 0) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "N/A";
   return `${n > 0 ? "+" : ""}${n.toLocaleString("ko-KR", { maximumFractionDigits: digits, minimumFractionDigits: digits })} KRW`;
+}
+
+async function fetchUsdKrwRate() {
+  try {
+    const res = await fetch("https://open.er-api.com/v6/latest/USD", { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) throw new Error(`HTTP_${res.status}`);
+    const json = await res.json();
+    const rate = Number(json && json.rates && json.rates.KRW);
+    if (!Number.isFinite(rate) || rate <= 0) throw new Error("INVALID_KRW_RATE");
+    return { rate, source: "open.er-api.com" };
+  } catch (_err) {
+    return { rate: FALLBACK_USD_KRW, source: "fallback" };
+  }
+}
+
+function isUsdQuoteProvider(provider) {
+  const key = String(provider || "").trim().toUpperCase();
+  return key === "BINANCEFUT" || key === "BINANCE" || key.startsWith("BINANCE");
+}
+
+function buildPnlNormalizer(provider, usdKrw = null) {
+  const quoteCurrency = isUsdQuoteProvider(provider) ? "USDT" : "KRW";
+  const rate = quoteCurrency === "USDT" ? Number(usdKrw) : 1;
+  return {
+    provider: String(provider || "").trim().toUpperCase(),
+    quote_currency: quoteCurrency,
+    quote_to_krw_rate: Number.isFinite(rate) && rate > 0 ? rate : 1,
+    enabled: quoteCurrency !== "KRW",
+  };
+}
+
+function normalizePnlToKrw(value, normalizer) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  const multiplier = Number(normalizer && normalizer.quote_to_krw_rate);
+  return Number.isFinite(multiplier) ? Number((n * multiplier).toFixed(2)) : n;
+}
+
+function normalizeTradesToKrw(trades = [], normalizer = {}) {
+  return (Array.isArray(trades) ? trades : []).map((row) => {
+    const rawPnlQuote = toNum(row && row.pnl_krw);
+    const normalizedPnlKrw = normalizePnlToKrw(rawPnlQuote, normalizer);
+    return {
+      ...row,
+      pnl_quote_raw: rawPnlQuote,
+      pnl_quote_currency: normalizer.quote_currency || "KRW",
+      pnl_krw_normalized: normalizedPnlKrw,
+      pnl_krw: normalizedPnlKrw,
+    };
+  });
 }
 
 function shouldSendPrimaryRetrospectiveAlert(meta) {
@@ -148,8 +199,9 @@ function summarizeRealizedTrades(trades = [], { fromMs, toMs } = {}) {
     return Number.isFinite(closeMs) && closeMs >= fromMs && closeMs < toMs;
   });
   const realizedN = rows.length;
-  const winN = rows.filter((row) => Number(row && row.pnl_krw) > 0).length;
-  const netPnl = rows.reduce((acc, row) => acc + (Number(row && row.pnl_krw) || 0), 0);
+  const winN = rows.filter((row) => Number(row && (row.pnl_krw_normalized != null ? row.pnl_krw_normalized : row.pnl_krw)) > 0).length;
+  const netPnl = rows.reduce((acc, row) => acc + (Number(row && (row.pnl_krw_normalized != null ? row.pnl_krw_normalized : row.pnl_krw)) || 0), 0);
+  const netPnlRawQuote = rows.reduce((acc, row) => acc + (Number(row && (row.pnl_quote_raw != null ? row.pnl_quote_raw : row.pnl_krw)) || 0), 0);
   const avgRet = realizedN > 0
     ? rows.reduce((acc, row) => acc + (Number(row && row.pnl_pct) || 0), 0) / realizedN
     : null;
@@ -159,6 +211,9 @@ function summarizeRealizedTrades(trades = [], { fromMs, toMs } = {}) {
     win_rate: realizedN > 0 ? (winN / realizedN) : null,
     avg_ret_net: avgRet,
     net_pnl_quote: netPnl,
+    net_pnl_krw_normalized: netPnl,
+    net_pnl_raw_quote: netPnlRawQuote,
+    quote_currency: rows[0] && rows[0].pnl_quote_currency ? rows[0].pnl_quote_currency : "KRW",
     trades: rows,
   };
 }
@@ -237,10 +292,12 @@ function summarizeTradesByMarket(trades = []) {
   const byMarket = new Map();
   for (const row of Array.isArray(trades) ? trades : []) {
     const symbol = inferTradeSymbol(row);
-    const current = byMarket.get(symbol) || { symbol, trade_n: 0, win_n: 0, net_pnl_krw: 0, avg_ret_net_sum: 0, avg_ret_net_n: 0 };
+    const current = byMarket.get(symbol) || { symbol, trade_n: 0, win_n: 0, net_pnl_krw: 0, net_pnl_raw_quote: 0, avg_ret_net_sum: 0, avg_ret_net_n: 0 };
     current.trade_n += 1;
-    const pnl = Number(row && row.pnl_krw);
+    const pnl = Number(row && (row.pnl_krw_normalized != null ? row.pnl_krw_normalized : row.pnl_krw));
+    const rawPnlQuote = Number(row && (row.pnl_quote_raw != null ? row.pnl_quote_raw : row.pnl_krw));
     if (Number.isFinite(pnl)) current.net_pnl_krw += pnl;
+    if (Number.isFinite(rawPnlQuote)) current.net_pnl_raw_quote += rawPnlQuote;
     if (pnl > 0) current.win_n += 1;
     const ret = Number(row && row.pnl_pct);
     if (Number.isFinite(ret)) {
@@ -256,6 +313,7 @@ function summarizeTradesByMarket(trades = []) {
       win_n: row.win_n,
       win_rate: row.trade_n > 0 ? (row.win_n / row.trade_n) : null,
       net_pnl_krw: row.net_pnl_krw,
+      net_pnl_raw_quote: row.net_pnl_raw_quote,
       avg_ret_net: row.avg_ret_net_n > 0 ? (row.avg_ret_net_sum / row.avg_ret_net_n) : null,
     }))
     .sort((a, b) => Number(b.net_pnl_krw || 0) - Number(a.net_pnl_krw || 0) || a.symbol.localeCompare(b.symbol));
@@ -593,6 +651,7 @@ function renderMarkdown(report = {}) {
     `- 실행 시각: ${report.generated_at_kst || "N/A"}`,
     `- provider/tf: ${report.provider || "N/A"} / ${report.tf || "N/A"}`,
     `- 목표: 승률 ${(Number(report.objective && report.objective.min_win_rate || DEFAULT_MIN_WIN_RATE) * 100).toFixed(0)}%+, 기대값+, 순수익+, 월간 ${Number(report.objective && report.objective.min_monthly_net_krw || TARGET_MONTHLY_KRW).toLocaleString("ko-KR")} KRW+`,
+    `- 손익 환산: ${(report.pnl_normalization && report.pnl_normalization.quote_currency) || "KRW"} -> ${(report.pnl_normalization && report.pnl_normalization.display_currency) || "KRW"}${report.pnl_normalization && report.pnl_normalization.enabled ? ` (rate=${Number(report.pnl_normalization.usd_krw_rate || 0).toLocaleString("ko-KR", { maximumFractionDigits: 2 })}, source=${report.pnl_normalization.usd_krw_rate_source || "N/A"})` : ""}`,
     `- 일간 목표: ${Number(report.objective && report.objective.daily_target_krw || TARGET_DAILY_KRW).toLocaleString("ko-KR")} KRW`,
     `- 주간 목표: ${Number(report.objective && report.objective.weekly_target_krw || TARGET_WEEKLY_KRW).toLocaleString("ko-KR")} KRW`,
     `- 월간 목표: ${Number(report.objective && report.objective.monthly_target_krw || TARGET_MONTHLY_KRW).toLocaleString("ko-KR")} KRW`,
@@ -624,6 +683,8 @@ async function main() {
   const meta = nowKstMeta();
   const cadence = buildRetrospectiveCadence(meta.nowMs);
   const ranges = cadence.ranges;
+  const usdKrw = await fetchUsdKrwRate();
+  const pnlNormalizer = buildPnlNormalizer(PROVIDER, usdKrw.rate);
   const [signalsRes, dropsRes, fillsRes] = await Promise.all([
     getCachedRecentByCreatedAt("signals", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: true }),
     getCachedRecentByCreatedAt("signals_dropped", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: true }),
@@ -633,7 +694,8 @@ async function main() {
   const signals = signalsRes.rows;
   const drops = dropsRes.rows;
   const fills = fillsRes.rows.filter((row) => isLiveDocForExchange(PROVIDER, row));
-  const { trades } = await buildTradesFromFillsWithFunding(fills, { exchange: PROVIDER });
+  const { trades: rawTrades } = await buildTradesFromFillsWithFunding(fills, { exchange: PROVIDER });
+  const trades = normalizeTradesToKrw(rawTrades, pnlNormalizer);
 
   const daily = await buildPeriodReport("DAILY", ranges.DAILY, { signals, drops, fills, trades });
   const weekly = await buildPeriodReport("WEEKLY", ranges.WEEKLY, { signals, drops, fills, trades });
@@ -675,6 +737,14 @@ async function main() {
       monthly_target_krw: TARGET_MONTHLY_KRW,
       zero_trade_is_failure: true,
       zero_krw_is_failure: true,
+    },
+    pnl_normalization: {
+      provider: pnlNormalizer.provider,
+      quote_currency: pnlNormalizer.quote_currency,
+      display_currency: "KRW",
+      usd_krw_rate: pnlNormalizer.enabled ? pnlNormalizer.quote_to_krw_rate : 1,
+      usd_krw_rate_source: pnlNormalizer.enabled ? usdKrw.source : "identity",
+      enabled: pnlNormalizer.enabled,
     },
     periods: {
       DAILY: daily,
@@ -841,6 +911,9 @@ if (require.main === module) {
     __test: {
       classifyDropStage,
       aggregateOverallFromQuality,
+      buildPnlNormalizer,
+      normalizePnlToKrw,
+      normalizeTradesToKrw,
       summarizeRealizedTrades,
       buildReflection,
       summarizeTradesByMarket,

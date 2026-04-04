@@ -4,6 +4,14 @@ const assert = require("assert");
 const { __test } = require("../../scripts/automation-objective-retrospective");
 
 function run() {
+  const usdNormalizer = __test.buildPnlNormalizer("BINANCEFUT", 1400);
+  const normalizedTrades = __test.normalizeTradesToKrw([
+    { symbol: "BTCUSDT", pnl_krw: 10, pnl_pct: 0.03 },
+    { symbol: "ETHUSDT", pnl_krw: -5, pnl_pct: -0.01 },
+  ], usdNormalizer);
+  assert.strictEqual(normalizedTrades[0].pnl_krw, 14000);
+  assert.strictEqual(normalizedTrades[1].pnl_krw, -7000);
+
   const trades = [
     { symbol: "BTCUSDT", pnl_krw: 120000, pnl_pct: 0.03 },
     { symbol: "BTCUSDT", pnl_krw: -20000, pnl_pct: -0.01 },
