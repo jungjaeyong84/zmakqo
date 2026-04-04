@@ -48,6 +48,43 @@ const {
   assert.strictEqual(allowed.allowed, true);
   assert.deepStrictEqual(allowed.blockers, []);
 
+  const expandedAllowed = evaluateOpenclawOverrideAuthority({
+    stage: "MARKET",
+    currentSys: {
+      ai_missing_reduce_pct: 0.5,
+      ai_bias_gate_score_threshold: 0.02,
+      ai_bias_gate_conf_min: 0.1,
+      ai_bias_gate_neutral_mult: 0.5,
+      ai_bias_gate_opposite_mult: 0.35,
+      ai_bias_gate_strong_opposite_score: 0.12,
+      ai_bias_gate_strong_opposite_conf: 0.2,
+      canonical_engine_core_score_abs: 33,
+      canonical_engine_transition_core_score_abs: 29,
+      ev_gate_tp1_prob_min_early: 0.55,
+      ev_gate_tp1_prob_min_core: 0.55,
+      ev_gate_tp1_prob_min_pre_real: 0.55,
+      ev_gate_tp1_prob_min_real: 0.55,
+    },
+    nextSettings: {
+      ai_missing_reduce_pct: 0.4,
+      ai_bias_gate_score_threshold: 0.03,
+      ai_bias_gate_conf_min: 0.15,
+      ai_bias_gate_neutral_mult: 0.45,
+      ai_bias_gate_opposite_mult: 0.3,
+      ai_bias_gate_strong_opposite_score: 0.18,
+      ai_bias_gate_strong_opposite_conf: 0.25,
+      canonical_engine_core_score_abs: 31,
+      canonical_engine_transition_core_score_abs: 27,
+      ev_gate_tp1_prob_min_early: 0.53,
+      ev_gate_tp1_prob_min_core: 0.53,
+      ev_gate_tp1_prob_min_pre_real: 0.53,
+      ev_gate_tp1_prob_min_real: 0.53,
+    },
+    authoritySummary: summary,
+  });
+  assert.strictEqual(expandedAllowed.allowed, true);
+  assert.deepStrictEqual(expandedAllowed.non_allowlist_changed_keys, []);
+
   const blocked = evaluateOpenclawOverrideAuthority({
     stage: "SOURCE_MODE",
     currentSys: {

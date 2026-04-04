@@ -47,7 +47,26 @@ function stableSignature(value) {
 
 function normalizeBounds() {
   const liveAutoApplyKeyAllowlist = readListEnv("OPENCLAW_LIVE_AUTO_APPLY_KEY_ALLOWLIST", [
+    "ai_missing_policy",
+    "ai_missing_reduce_pct",
+    "ai_bias_gate_enabled",
+    "ai_bias_gate_neutral_policy",
+    "ai_bias_gate_score_threshold",
+    "ai_bias_gate_conf_min",
+    "ai_bias_gate_core_enabled",
+    "ai_bias_gate_pre_real_enabled",
+    "ai_bias_gate_real_enabled",
+    "ai_bias_gate_early_enabled",
+    "ai_bias_gate_emo_enabled",
+    "ai_bias_gate_neutral_mult",
+    "ai_bias_gate_opposite_mult",
+    "ai_bias_gate_strong_opposite_score",
+    "ai_bias_gate_strong_opposite_conf",
     "ev_gate_tp1_prob_min",
+    "ev_gate_tp1_prob_min_early",
+    "ev_gate_tp1_prob_min_core",
+    "ev_gate_tp1_prob_min_pre_real",
+    "ev_gate_tp1_prob_min_real",
     "ev_gate_tp1_prob_full",
     "ev_gate_tp1_prob_kill",
     "ev_gate_qty_scale_mid",
@@ -59,6 +78,10 @@ function normalizeBounds() {
     "wait_one_bar_last_opposite_wick_max",
     "wait_one_bar_recent_move1_pct_min",
     "wait_one_bar_counter_dir_bars_max",
+    "canonical_engine_enabled",
+    "canonical_engine_shadow_enabled",
+    "canonical_engine_core_score_abs",
+    "canonical_engine_transition_core_score_abs",
     "ev_gate_tp1_prob_min_by_market",
     "ev_gate_tp1_prob_min_by_market_report_only",
     "ev_gate_tp1_prob_min_report_only_cohort",
@@ -77,8 +100,14 @@ function normalizeBounds() {
     wait_last_opposite_wick_step_max: clampNumEnv("OPENCLAW_WAIT_LAST_OPPOSITE_WICK_STEP_MAX", 0.12, 0.01, 0.3),
     wait_recent_move1_pct_step_max: clampNumEnv("OPENCLAW_WAIT_RECENT_MOVE1_PCT_STEP_MAX", 0.30, 0.01, 1),
     wait_counter_dir_bars_step_max: clampIntEnv("OPENCLAW_WAIT_COUNTER_DIR_BARS_STEP_MAX", 2, 1, 3),
+    ai_missing_reduce_pct_step_max: clampNumEnv("OPENCLAW_AI_MISSING_REDUCE_PCT_STEP_MAX", 0.25, 0.01, 0.5),
+    ai_bias_gate_score_step_max: clampNumEnv("OPENCLAW_AI_BIAS_GATE_SCORE_STEP_MAX", 0.05, 0.001, 0.2),
+    ai_bias_gate_conf_step_max: clampNumEnv("OPENCLAW_AI_BIAS_GATE_CONF_STEP_MAX", 0.10, 0.001, 0.3),
+    ai_bias_gate_mult_step_max: clampNumEnv("OPENCLAW_AI_BIAS_GATE_MULT_STEP_MAX", 0.20, 0.01, 0.5),
+    ai_bias_gate_strong_step_max: clampNumEnv("OPENCLAW_AI_BIAS_GATE_STRONG_STEP_MAX", 0.10, 0.01, 0.3),
+    canonical_engine_core_score_step_max: clampNumEnv("OPENCLAW_CANONICAL_ENGINE_CORE_SCORE_STEP_MAX", 4, 1, 12),
     risk_override_enabled: String(process.env.OPENCLAW_RISK_OVERRIDE_ENABLED || "").trim() === "1",
-    live_mutation_key_budget: clampIntEnv("OPENCLAW_LIVE_MUTATION_KEY_BUDGET", 10, 1, 64),
+    live_mutation_key_budget: clampIntEnv("OPENCLAW_LIVE_MUTATION_KEY_BUDGET", 20, 1, 64),
     live_auto_apply_key_allowlist: liveAutoApplyKeyAllowlist,
   };
 }
@@ -220,10 +249,23 @@ function evaluateOpenclawOverrideAuthority({ stage = null, currentSys = {}, next
   if (riskKeys.length && bounds.risk_override_enabled !== true) blockers.push("RISK_OVERRIDE_DISABLED");
 
   pushDeltaIfExceeded(blockers, "EV_GATE_TP1_PROB_MIN", currentSys && currentSys.ev_gate_tp1_prob_min, nextSettings && nextSettings.ev_gate_tp1_prob_min, bounds.ev_gate_tp1_prob_min_step_max);
+  pushDeltaIfExceeded(blockers, "EV_GATE_TP1_PROB_MIN_EARLY", currentSys && currentSys.ev_gate_tp1_prob_min_early, nextSettings && nextSettings.ev_gate_tp1_prob_min_early, bounds.ev_gate_tp1_prob_min_step_max);
+  pushDeltaIfExceeded(blockers, "EV_GATE_TP1_PROB_MIN_CORE", currentSys && currentSys.ev_gate_tp1_prob_min_core, nextSettings && nextSettings.ev_gate_tp1_prob_min_core, bounds.ev_gate_tp1_prob_min_step_max);
+  pushDeltaIfExceeded(blockers, "EV_GATE_TP1_PROB_MIN_PRE_REAL", currentSys && currentSys.ev_gate_tp1_prob_min_pre_real, nextSettings && nextSettings.ev_gate_tp1_prob_min_pre_real, bounds.ev_gate_tp1_prob_min_step_max);
+  pushDeltaIfExceeded(blockers, "EV_GATE_TP1_PROB_MIN_REAL", currentSys && currentSys.ev_gate_tp1_prob_min_real, nextSettings && nextSettings.ev_gate_tp1_prob_min_real, bounds.ev_gate_tp1_prob_min_step_max);
   pushDeltaIfExceeded(blockers, "EV_GATE_TP1_PROB_FULL", currentSys && currentSys.ev_gate_tp1_prob_full, nextSettings && nextSettings.ev_gate_tp1_prob_full, bounds.ev_gate_tp1_prob_full_step_max);
   pushDeltaIfExceeded(blockers, "EV_GATE_TP1_PROB_KILL", currentSys && currentSys.ev_gate_tp1_prob_kill, nextSettings && nextSettings.ev_gate_tp1_prob_kill, bounds.ev_gate_tp1_prob_kill_step_max);
   pushDeltaIfExceeded(blockers, "EV_GATE_QTY_SCALE_MID", currentSys && currentSys.ev_gate_qty_scale_mid, nextSettings && nextSettings.ev_gate_qty_scale_mid, bounds.ev_gate_qty_scale_step_max);
   pushDeltaIfExceeded(blockers, "EV_GATE_QTY_SCALE_LOW", currentSys && currentSys.ev_gate_qty_scale_low, nextSettings && nextSettings.ev_gate_qty_scale_low, bounds.ev_gate_qty_scale_step_max);
+  pushDeltaIfExceeded(blockers, "AI_MISSING_REDUCE_PCT", currentSys && currentSys.ai_missing_reduce_pct, nextSettings && nextSettings.ai_missing_reduce_pct, bounds.ai_missing_reduce_pct_step_max);
+  pushDeltaIfExceeded(blockers, "AI_BIAS_GATE_SCORE_THRESHOLD", currentSys && currentSys.ai_bias_gate_score_threshold, nextSettings && nextSettings.ai_bias_gate_score_threshold, bounds.ai_bias_gate_score_step_max);
+  pushDeltaIfExceeded(blockers, "AI_BIAS_GATE_CONF_MIN", currentSys && currentSys.ai_bias_gate_conf_min, nextSettings && nextSettings.ai_bias_gate_conf_min, bounds.ai_bias_gate_conf_step_max);
+  pushDeltaIfExceeded(blockers, "AI_BIAS_GATE_NEUTRAL_MULT", currentSys && currentSys.ai_bias_gate_neutral_mult, nextSettings && nextSettings.ai_bias_gate_neutral_mult, bounds.ai_bias_gate_mult_step_max);
+  pushDeltaIfExceeded(blockers, "AI_BIAS_GATE_OPPOSITE_MULT", currentSys && currentSys.ai_bias_gate_opposite_mult, nextSettings && nextSettings.ai_bias_gate_opposite_mult, bounds.ai_bias_gate_mult_step_max);
+  pushDeltaIfExceeded(blockers, "AI_BIAS_GATE_STRONG_OPPOSITE_SCORE", currentSys && currentSys.ai_bias_gate_strong_opposite_score, nextSettings && nextSettings.ai_bias_gate_strong_opposite_score, bounds.ai_bias_gate_strong_step_max);
+  pushDeltaIfExceeded(blockers, "AI_BIAS_GATE_STRONG_OPPOSITE_CONF", currentSys && currentSys.ai_bias_gate_strong_opposite_conf, nextSettings && nextSettings.ai_bias_gate_strong_opposite_conf, bounds.ai_bias_gate_strong_step_max);
+  pushDeltaIfExceeded(blockers, "CANONICAL_ENGINE_CORE_SCORE_ABS", currentSys && currentSys.canonical_engine_core_score_abs, nextSettings && nextSettings.canonical_engine_core_score_abs, bounds.canonical_engine_core_score_step_max);
+  pushDeltaIfExceeded(blockers, "CANONICAL_ENGINE_TRANSITION_CORE_SCORE_ABS", currentSys && currentSys.canonical_engine_transition_core_score_abs, nextSettings && nextSettings.canonical_engine_transition_core_score_abs, bounds.canonical_engine_core_score_step_max);
 
   pushDeltaIfExceeded(blockers, "WAIT_ONE_BAR_SAME_DIR_STREAK", currentSys && currentSys.wait_one_bar_same_dir_streak_min, nextSettings && nextSettings.wait_one_bar_same_dir_streak_min, bounds.wait_same_dir_streak_step_max);
   pushDeltaIfExceeded(blockers, "WAIT_ONE_BAR_CHASE_RATIO", currentSys && currentSys.wait_one_bar_chase_ratio_min, nextSettings && nextSettings.wait_one_bar_chase_ratio_min, bounds.wait_chase_ratio_step_max);
