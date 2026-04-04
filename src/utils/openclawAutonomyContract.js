@@ -131,6 +131,7 @@ function deriveOpenClawAutonomyContract({
   serverSignalAuthority = null,
   serverSignalQuality = null,
   serverSignalRuntime = null,
+  marketRegimeBoard = null,
 } = {}) {
   const objectiveSummary = readSummary(objective);
   const objectiveSupervisorRaw = unwrapRawReport(objectiveSupervisor) || {};
@@ -140,6 +141,7 @@ function deriveOpenClawAutonomyContract({
   const serverSignalAuthoritySummary = readSummary(serverSignalAuthority);
   const serverSignalQualitySummary = readSummary(serverSignalQuality);
   const serverSignalRuntimeSummary = readSummary(serverSignalRuntime);
+  const marketRegimeBoardSummary = readSummary(marketRegimeBoard);
 
   const objectivePolicy = {
     min_objective_score: envNum("OPENCLAW_AUTONOMY_MIN_OBJECTIVE_SCORE", 0),
@@ -292,6 +294,11 @@ function deriveOpenClawAutonomyContract({
       server_signal_entry_24h_n: toNum(serverSignalQualitySummary.authoritative_entry_signal_24h_n) || 0,
       server_signal_intent_24h_n: toNum(serverSignalQualitySummary.order_intent_24h_n) || 0,
       server_signal_fill_24h_n: toNum(serverSignalQualitySummary.fill_24h_n) || 0,
+      market_regime_board_status: toUpper(marketRegimeBoardSummary.status),
+      market_regime_rescue_n: toNum(marketRegimeBoardSummary.rescue_market_n) || 0,
+      market_regime_keep_drop_n: toNum(marketRegimeBoardSummary.keep_drop_market_n) || 0,
+      market_regime_top_rescue_market: String(marketRegimeBoardSummary.top_rescue_market || "").trim() || null,
+      market_regime_top_keep_drop_market: String(marketRegimeBoardSummary.top_keep_drop_market || "").trim() || null,
     },
     summary: {
       goal_state: objectiveMet ? "OBJECTIVE_ON_TRACK" : "OBJECTIVE_RECOVERY_REQUIRED",
@@ -305,6 +312,11 @@ function deriveOpenClawAutonomyContract({
       server_signal_runtime_status: toUpper(serverSignalRuntimeSummary.runtime_status) || "N_A",
       server_signal_transition_status: serverSignalTransition.status,
       server_signal_transition_progress_pct: serverSignalTransition.progress_pct,
+      market_regime_board_status: toUpper(marketRegimeBoardSummary.status) || "N_A",
+      market_regime_rescue_n: toNum(marketRegimeBoardSummary.rescue_market_n) || 0,
+      market_regime_keep_drop_n: toNum(marketRegimeBoardSummary.keep_drop_market_n) || 0,
+      market_regime_top_rescue_market: String(marketRegimeBoardSummary.top_rescue_market || "").trim() || null,
+      market_regime_top_keep_drop_market: String(marketRegimeBoardSummary.top_keep_drop_market || "").trim() || null,
     },
     server_signal_transition: serverSignalTransition,
   };

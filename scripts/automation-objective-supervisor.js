@@ -44,6 +44,10 @@ const { resolveStatPhysFeatures } = require("../src/utils/statPhysFeatures");
 const { normalizePreparedOverride } = require("../src/utils/selfEvolutionPreparedOverride");
 const { normalizePlanStatus } = require("../src/utils/selfEvolutionPlanStatus");
 const { resolveSelfEvolutionRuntimeState } = require("../src/utils/selfEvolutionRuntimeState");
+const {
+  buildOpenClawMarketRegimeRows,
+  buildOpenClawMarketRegimeSummary,
+} = require("../src/utils/openclawMarketRegimeBoard");
 
 loadLocalEnv();
 
@@ -2143,6 +2147,18 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     : {};
   const selfEvolutionMarketObjectiveScoreSummary = summarizeSelfEvolutionMarketObjectiveScore(selfEvolutionMarketObjectiveScore);
   const selfEvolutionServerVsPinePerformanceDeltaSummary = summarizeSelfEvolutionServerVsPinePerformanceDelta(selfEvolutionServerVsPinePerformanceDelta);
+  const selfEvolutionMarketRegimeBoardRows = buildOpenClawMarketRegimeRows({
+    marketObjectiveScore: selfEvolutionMarketObjectiveScore,
+    serverVsPinePerformanceDelta: selfEvolutionServerVsPinePerformanceDelta,
+    dropValidation: selfEvolutionDropValidation,
+    executionQuality: selfEvolutionExecutionQuality,
+    reversePolicy: selfEvolutionReversePolicy,
+    serverMarketCapitalAllocator: selfEvolutionServerMarketCapitalAllocator,
+    serverMarketQuarantine: selfEvolutionServerMarketQuarantine,
+  });
+  const selfEvolutionMarketRegimeBoardSummary = buildOpenClawMarketRegimeSummary({
+    rows: selfEvolutionMarketRegimeBoardRows,
+  });
   const selfEvolutionExplorationBudgetSummary = summarizeSelfEvolutionExplorationBudget(selfEvolutionExplorationBudget);
   const selfEvolutionServerMarketCapitalAllocatorSummary = selfEvolutionServerMarketCapitalAllocator && selfEvolutionServerMarketCapitalAllocator.summary && typeof selfEvolutionServerMarketCapitalAllocator.summary === "object" ? selfEvolutionServerMarketCapitalAllocator.summary : {};
   const selfEvolutionServerMarketQuarantineSummary = selfEvolutionServerMarketQuarantine && selfEvolutionServerMarketQuarantine.summary && typeof selfEvolutionServerMarketQuarantine.summary === "object" ? selfEvolutionServerMarketQuarantine.summary : {};
@@ -2617,6 +2633,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     self_evolution_server_native_htf_mode_governor: selfEvolutionServerNativeHtfModeGovernorSummary,
     self_evolution_market_objective_score: selfEvolutionMarketObjectiveScoreSummary,
     self_evolution_server_vs_pine_performance_delta: selfEvolutionServerVsPinePerformanceDeltaSummary,
+    self_evolution_market_regime_board: selfEvolutionMarketRegimeBoardSummary,
     self_evolution_exploration_budget: selfEvolutionExplorationBudgetSummary,
     self_evolution_server_market_capital_allocator: selfEvolutionServerMarketCapitalAllocatorSummary,
     self_evolution_server_market_quarantine: selfEvolutionServerMarketQuarantineSummary,
@@ -3273,6 +3290,15 @@ async function main() {
     ...(evaluation.self_evolution_server_vs_pine_performance_delta && Array.isArray(evaluation.self_evolution_server_vs_pine_performance_delta.top_watch_markets)
       ? evaluation.self_evolution_server_vs_pine_performance_delta.top_watch_markets.slice(0, 6).map((row) => `SERVER_VS_PINE_WATCH: ${row.market || "N/A"} / verdict=${row.verdict || "N/A"} / delta=${row.performance_delta_score != null ? row.performance_delta_score : "N/A"} / obj=${row.objective_score != null ? row.objective_score : "N/A"} / mismatch=${row.mismatch_count != null ? row.mismatch_count : "N/A"} / action=${row.recommended_action || "N/A"}`)
       : []),
+    ...(evaluation.self_evolution_market_regime_board && evaluation.self_evolution_market_regime_board.status
+      ? [`MARKET_REGIME_BOARD: ${evaluation.self_evolution_market_regime_board.status} / rescue=${evaluation.self_evolution_market_regime_board.rescue_market_n ?? 0} / mixed=${evaluation.self_evolution_market_regime_board.mixed_market_n ?? 0} / keep_drop=${evaluation.self_evolution_market_regime_board.keep_drop_market_n ?? 0} / hold_sample=${evaluation.self_evolution_market_regime_board.hold_sample_market_n ?? 0}`]
+      : []),
+    ...(evaluation.self_evolution_market_regime_board && evaluation.self_evolution_market_regime_board.top_rescue_market
+      ? [`MARKET_REGIME_TOP_RESCUE: ${evaluation.self_evolution_market_regime_board.top_rescue_market} / top_keep_drop=${evaluation.self_evolution_market_regime_board.top_keep_drop_market || "N/A"} / top_drag=${evaluation.self_evolution_market_regime_board.top_drag_market || "N/A"} / split=${evaluation.self_evolution_market_regime_board.has_market_split ? "YES" : "NO"}`]
+      : []),
+    ...(evaluation.self_evolution_market_regime_board && Array.isArray(evaluation.self_evolution_market_regime_board.top_watch_markets)
+      ? evaluation.self_evolution_market_regime_board.top_watch_markets.slice(0, 6).map((row) => `MARKET_REGIME_WATCH: ${row.market || "N/A"} / cohort=${row.cohort || "N/A"} / obj=${row.objective_score != null ? row.objective_score : "N/A"} / drop=${row.drop_verdict || "N/A"} / delta=${row.delta_verdict || "N/A"} / alloc=${row.allocation_action || "N/A"} / quarantine=${row.quarantine_reason || "N/A"}`)
+      : []),
     ...(evaluation.self_evolution_server_signal_cutover_readiness
       ? [
         "SERVER_SIGNAL_AUTHORITY_PRIMARY: OpenClaw must tune server signal and downstream server policy first; Pine is not an optimization authority",
@@ -3326,6 +3352,7 @@ async function main() {
     self_evolution_exit_trailing_contract: evaluation.self_evolution_exit_trailing_contract,
     self_evolution_market_objective_score: evaluation.self_evolution_market_objective_score,
     self_evolution_server_vs_pine_performance_delta: evaluation.self_evolution_server_vs_pine_performance_delta,
+    self_evolution_market_regime_board: evaluation.self_evolution_market_regime_board,
     self_evolution_exploration_budget: evaluation.self_evolution_exploration_budget,
     self_evolution_server_market_capital_allocator: evaluation.self_evolution_server_market_capital_allocator,
     self_evolution_server_market_quarantine: evaluation.self_evolution_server_market_quarantine,

@@ -22,6 +22,7 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
   assert.strictEqual(steps.some((row) => row.id === "server_primary_acceptance_watch"), true);
   assert.strictEqual(steps.some((row) => row.id === "pine_shadow_drift"), true);
   assert.strictEqual(steps.some((row) => row.id === "objective_seed"), true);
+  assert.strictEqual(steps.some((row) => row.id === "openclaw_market_regime_board"), true);
   assert.strictEqual(steps.some((row) => row.id === "openclaw_autonomy_contract"), true);
   assert.strictEqual(steps.some((row) => row.id === "objective_recovery_governor"), true);
   assert.strictEqual(steps.some((row) => row.id === "objective_recovery_effect"), true);
@@ -37,6 +38,8 @@ const { __test } = require("../../scripts/automation-self-evolution-loop");
   assert.strictEqual(steps.findIndex((row) => row.id === "loop_monitor") < steps.findIndex((row) => row.id === "stage_autopilot"), true);
   assert.strictEqual(steps.findIndex((row) => row.id === "authority_ensemble") < steps.findIndex((row) => row.id === "deployment_plan"), true);
   assert.strictEqual(steps.findIndex((row) => row.id === "objective_final") < steps.findIndex((row) => row.id === "reasoning_journal"), true);
+  assert.strictEqual(steps.findIndex((row) => row.id === "server_vs_pine_performance_delta") < steps.findIndex((row) => row.id === "openclaw_market_regime_board"), true);
+  assert.strictEqual(steps.findIndex((row) => row.id === "openclaw_market_regime_board") < steps.findIndex((row) => row.id === "exploration_budget"), true);
   assert.strictEqual(steps.findIndex((row) => row.id === "reasoning_journal") < steps.findIndex((row) => row.id === "family_scoreboard"), true);
   assert.strictEqual(steps.findIndex((row) => row.id === "family_scoreboard") < steps.findIndex((row) => row.id === "loop_monitor"), true);
 

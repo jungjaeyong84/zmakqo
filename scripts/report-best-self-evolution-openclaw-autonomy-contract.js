@@ -29,6 +29,7 @@ const INPUTS = Object.freeze({
   serverSignalAuthority: path.join(OPS_DAILY_DIR, "server_signal_authority_latest.json"),
   serverSignalQuality: path.join(OPS_DAILY_DIR, "server_signal_quality_latest.json"),
   serverSignalRuntime: path.join(OPS_DAILY_DIR, "server_signal_runtime_latest.json"),
+  marketRegimeBoard: path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_market_regime_board_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -66,6 +67,7 @@ function renderMarkdown(report = {}) {
     `- ops_healthy: ${status.ops_healthy ? "YES" : "NO"} / scheduler=${status.scheduler_mode || "N/A"} / watchdog=${status.watchdog_verdict || "N/A"}`,
     `- server_signal: source=${status.server_signal_source_mode || "N/A"} / drift=${status.server_signal_drift_status || "N/A"} / quality=${status.server_signal_quality_status || "N/A"}`,
     `- server_signal_flow_24h: authoritative=${status.server_signal_authoritative_24h_n != null ? status.server_signal_authoritative_24h_n : "N/A"} / shadow=${status.server_signal_shadow_24h_n != null ? status.server_signal_shadow_24h_n : "N/A"} / entry=${status.server_signal_entry_24h_n != null ? status.server_signal_entry_24h_n : "N/A"} / intent=${status.server_signal_intent_24h_n != null ? status.server_signal_intent_24h_n : "N/A"} / fill=${status.server_signal_fill_24h_n != null ? status.server_signal_fill_24h_n : "N/A"}`,
+    `- market_regime: ${summary.market_regime_board_status || "N/A"} / rescue=${summary.market_regime_rescue_n != null ? summary.market_regime_rescue_n : "N/A"} / keep_drop=${summary.market_regime_keep_drop_n != null ? summary.market_regime_keep_drop_n : "N/A"} / top_rescue=${summary.market_regime_top_rescue_market || "N/A"} / top_keep_drop=${summary.market_regime_top_keep_drop_market || "N/A"}`,
     "",
     "## Server Transition",
     ...(report.server_signal_transition && Array.isArray(report.server_signal_transition.phases)
@@ -94,6 +96,7 @@ function main() {
     serverSignalAuthority: readJsonRawSafe(INPUTS.serverSignalAuthority, null),
     serverSignalQuality: readJsonRawSafe(INPUTS.serverSignalQuality, null),
     serverSignalRuntime: readJsonRawSafe(INPUTS.serverSignalRuntime, null),
+    marketRegimeBoard: readJsonRawSafe(INPUTS.marketRegimeBoard, null),
   });
   const output = {
     ok: true,

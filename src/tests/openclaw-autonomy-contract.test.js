@@ -15,6 +15,7 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
     deploymentPlan: { summary: { plan_status: "APPLIED_ACTIVE_PENDING_AUTHORITY", authority_state: "PENDING", external_authority_pending: true } },
     serverPrimaryCanary: { summary: { acceptance_ready: false, acceptance_reason: "SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT", server_primary_executed_n: 0, pine_shadow_disagreement_rate: 0, rollback_trigger_n: 0 } },
     watchdog: { display: { verdict: "PASS", scheduler_mode: "OPENCLAW_CRON" } },
+    marketRegimeBoard: { summary: { status: "RESCUE_COHORT_ACTIVE", rescue_market_n: 2, keep_drop_market_n: 3, top_rescue_market: "SOLUSDT", top_keep_drop_market: "AXSUSDT" } },
   });
 
   assert.strictEqual(report.current_status.objective_score, -7.4);
@@ -25,6 +26,8 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.summary.authority_state, "PENDING");
   assert.strictEqual(report.summary.phase_d_status, "SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT");
   assert.strictEqual(report.summary.ops_status, "PASS");
+  assert.strictEqual(report.summary.market_regime_board_status, "RESCUE_COHORT_ACTIVE");
+  assert.strictEqual(report.current_status.market_regime_top_rescue_market, "SOLUSDT");
   assert.strictEqual(report.authority_policy.degraded_timeout_policy.enabled, true);
   console.log("OPENCLAW_AUTONOMY_CONTRACT_TEST_OK");
 })();

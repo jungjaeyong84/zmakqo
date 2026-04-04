@@ -187,6 +187,7 @@ function buildStepPlan(context = {}, capabilityDefs = null) {
     { id: "objective", script: "report-best-self-evolution-objective.js" },
     { id: "market_objective_score", script: "report-best-self-evolution-market-objective-score.js" },
     { id: "server_vs_pine_performance_delta", script: "report-best-self-evolution-server-vs-pine-performance-delta.js" },
+    { id: "openclaw_market_regime_board", script: "report-best-self-evolution-openclaw-market-regime-board.js" },
     { id: "exploration_budget", script: "report-best-self-evolution-exploration-budget.js" },
     { id: "server_market_capital_allocator", script: "report-best-self-evolution-server-market-capital-allocator.js" },
     { id: "server_market_quarantine", script: "report-best-self-evolution-server-market-quarantine.js" },

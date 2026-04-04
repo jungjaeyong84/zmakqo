@@ -1540,5 +1540,63 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(wrappedGovernanceHold.blockers.includes("WEEKLY_OBJECTIVE_FAIL"), false);
   assert.strictEqual(wrappedGovernanceHold.blockers.includes("RETROSPECTIVE_MONTHLY_FAIL"), false);
 
+  const marketRegimeBoardEval = __test.evaluateSupervisor({
+    ...base,
+    selfEvolutionMarketObjectiveScore: {
+      summary: {},
+      by_market: [
+        { market: "SOLUSDT", active: true, objective_score: -5.9, objective_band: "SEVERE_DRAG", drop_verdict: "FAVOR_RESCUE", drop_action: "RELAX_EV_POLICY_REVIEW" },
+        { market: "AXSUSDT", active: true, objective_score: -8.5, objective_band: "SEVERE_DRAG", drop_verdict: "KEEP_DROP", drop_action: "KEEP_DROP_RULE" },
+      ],
+    },
+    selfEvolutionServerVsPinePerformanceDelta: {
+      summary: {},
+      by_market: [
+        { market: "SOLUSDT", active: true, verdict: "SHADOW_GAP_REVIEW", performance_delta_score: -11.2, recommended_action: "RELAX_EV_POLICY_REVIEW", mismatch_count: 1 },
+        { market: "AXSUSDT", active: true, verdict: "SHADOW_GAP_REVIEW", performance_delta_score: -8.8, recommended_action: "KEEP_DROP_RULE", mismatch_count: 0 },
+      ],
+    },
+    selfEvolutionDropValidation: {
+      summary: {},
+      by_market: [
+        { market: "SOLUSDT", verdict: "FAVOR_RESCUE", recommended_action: "RELAX_EV_POLICY_REVIEW", dominant_family: "EV_POLICY", dominant_reason: "DROP_EV_GATE_TP1_PROB" },
+        { market: "AXSUSDT", verdict: "KEEP_DROP", recommended_action: "KEEP_DROP_RULE", dominant_family: "EV_POLICY", dominant_reason: "DROP_EV_GATE_TP1_PROB" },
+      ],
+    },
+    selfEvolutionExecutionQuality: {
+      summary: {},
+      by_market: [
+        { market: "AXSUSDT", avg_created_to_fill_ms: 720000, partial_fill_rate_pct: 75 },
+      ],
+    },
+    selfEvolutionReversePolicy: {
+      summary: {},
+      by_market: [
+        { market: "SOLUSDT", verdict: "MONITOR", recommended_action: "MONITOR_REVERSE_POLICY" },
+        { market: "AXSUSDT", verdict: "REVIEW_REVERSE_EXCEPTION_PATH", recommended_action: "REVIEW_REVERSE_EXCEPTION_PATH" },
+      ],
+    },
+    selfEvolutionServerMarketCapitalAllocator: {
+      summary: {
+        by_market: [
+          { market: "SOLUSDT", allocation_score: -1.68, recommended_action: "HOLD", execution_quality_penalty: false, reverse_policy_penalty: false, production_slot: true, exploration_slot: false },
+          { market: "AXSUSDT", allocation_score: -8.57, recommended_action: "QUARANTINE", execution_quality_penalty: true, reverse_policy_penalty: true, production_slot: false, exploration_slot: true },
+        ],
+      },
+    },
+    selfEvolutionServerMarketQuarantine: {
+      summary: {
+        by_market: [
+          { market: "AXSUSDT", quarantine_reason: "EXECUTION_QUALITY_PENALTY", quarantine_severity: "MEDIUM", recommended_action: "WATCH_ONLY_UNTIL_SERVER_EPOCH_MATURES", execution_quality_penalty: true, reverse_policy_penalty: true, learning_epoch_active: true },
+        ],
+      },
+    },
+    codex: null,
+  });
+  assert.strictEqual(marketRegimeBoardEval.self_evolution_market_regime_board.top_rescue_market, "SOLUSDT");
+  assert.strictEqual(marketRegimeBoardEval.self_evolution_market_regime_board.top_keep_drop_market, "AXSUSDT");
+  assert.strictEqual(marketRegimeBoardEval.self_evolution_market_regime_board.rescue_market_n, 1);
+  assert.strictEqual(marketRegimeBoardEval.self_evolution_market_regime_board.keep_drop_market_n, 1);
+
   console.log("OBJECTIVE_SUPERVISOR_TEST_OK");
 })();
