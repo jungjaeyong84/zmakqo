@@ -309,4 +309,39 @@ function buildBaseInputs({ nowMs, parityGeneratedMs }) {
   assert.strictEqual(out.current_status.ev_policy_post_apply_comparable_n, 1);
 })();
 
+(() => {
+  const nowMs = Date.now();
+  const lastAppliedMs = nowMs - (2 * 60 * 60 * 1000);
+  const generatedMs = nowMs - (30 * 1000);
+  const inputs = buildBaseInputs({ nowMs, parityGeneratedMs: nowMs - 1000 });
+  inputs.authority.summary.source_mode = "SERVER_PRIMARY";
+  inputs.runtime.summary.canonical_engine_source_mode = "SERVER_PRIMARY";
+  inputs.parity.rows = [
+    {
+      observation_ms: lastAppliedMs + 60 * 1000,
+      parity_match: false,
+      actual_drop_reason_family: "EV_POLICY",
+      actual_drop_reason: "DROP_EV_GATE_TP1_PROB",
+    },
+  ];
+  inputs.parity.summary.final_downstream_mismatch_n = 1;
+  inputs.parity.summary.by_actual_drop_reason_family = [
+    { key: "EV_POLICY", count: 1 },
+  ];
+  inputs.driftRemediationApply = {
+    applied: true,
+    generated_at_kst: toKstStringFromMs(generatedMs),
+    last_applied_at_kst: toKstStringFromMs(lastAppliedMs),
+    exception_release_applied: true,
+    ev_policy_patch_applied: false,
+    ev_policy_patch_report_only_applied: true,
+    ev_policy_patch_requested_n: 2,
+    ev_policy_patch_applied_n: 0,
+    ev_policy_patch_report_only_applied_n: 2,
+  };
+  const out = deriveServerSignalCutoverReadiness(inputs);
+  assert.strictEqual(out.current_status.ev_policy_remediation_applied_at_kst, toKstStringFromMs(lastAppliedMs));
+  assert.strictEqual(out.current_status.ev_policy_post_apply_comparable_n, 1);
+})();
+
 console.log("SERVER_SIGNAL_CUTOVER_READINESS_TEST_OK");

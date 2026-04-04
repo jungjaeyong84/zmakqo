@@ -325,17 +325,21 @@ function deriveServerSignalCutoverReadiness({
     ) || 0
   );
   const remediationEvPatchEffectiveApplied = remediationEvPatchApplied || remediationEvPatchReportOnlyApplied;
+  const remediationGeneratedAtMs = parseDateMs(
+    (driftRemediationApply && (driftRemediationApply.generated_at_kst || driftRemediationApply.generated_at))
+    || remediationApplySummary.generated_at_kst
+    || remediationApplySummary.generated_at
+    || null
+  );
   const remediationAppliedAtMs = remediationApplied
     ? (
-      remediationAppliedNow
-        ? parseDateMs(
-          (driftRemediationApply && (driftRemediationApply.generated_at_kst || driftRemediationApply.generated_at))
-          || remediationApplySummary.generated_at_kst
-          || remediationApplySummary.generated_at
-          || remediationLastAppliedAtMs
-          || null
+      Number.isFinite(remediationLastAppliedAtMs)
+        ? remediationLastAppliedAtMs
+        : (
+          remediationAppliedNow
+            ? remediationGeneratedAtMs
+            : null
         )
-        : remediationLastAppliedAtMs
     )
     : null;
   const remediationGraceEnabled = toBool(process.env.SERVER_SIGNAL_CUTOVER_REMEDIATION_GRACE_ENABLED, true);
