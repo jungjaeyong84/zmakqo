@@ -343,7 +343,10 @@ function resolveVerificationOutcome(entry, currentState = {}) {
     : null;
   let status = evaluation.status;
   let reason = evaluation.reason || null;
-  if (fastTrackEvaluation && fastTrackEvaluation.status === "VERIFIED" && evaluation.status !== "VERIFIED") {
+  if (evaluation.status === "VERIFIED" && fastTrackDef && fastTrackEvaluation && fastTrackEvaluation.status !== "VERIFIED") {
+    status = "VERIFIED_SAMPLE_FORMATION";
+    reason = "sample_formation_verified";
+  } else if (fastTrackEvaluation && fastTrackEvaluation.status === "VERIFIED" && evaluation.status !== "VERIFIED") {
     status = "VERIFIED_FAST_TRACK";
     reason = "fast_track_verified";
   } else if (evaluation.status === "UNKNOWN" && fastTrackEvaluation && fastTrackEvaluation.status === "NOT_MET") {
@@ -390,7 +393,8 @@ function buildVerificationStats(entries = []) {
   const resolved = (Array.isArray(entries) ? entries : [])
     .map((row) => row && row.verification_outcome && row.verification_outcome.status)
     .filter(Boolean);
-  const verified_n = resolved.filter((status) => status === "VERIFIED" || status === "VERIFIED_FAST_TRACK").length;
+  const verified_n = resolved.filter((status) => status === "VERIFIED" || status === "VERIFIED_SAMPLE_FORMATION" || status === "VERIFIED_FAST_TRACK").length;
+  const sample_formation_verified_n = resolved.filter((status) => status === "VERIFIED_SAMPLE_FORMATION").length;
   const fast_track_verified_n = resolved.filter((status) => status === "VERIFIED_FAST_TRACK").length;
   const not_met_n = resolved.filter((status) => status === "NOT_MET").length;
   const unknown_n = resolved.filter((status) => status === "UNKNOWN").length;
@@ -398,6 +402,7 @@ function buildVerificationStats(entries = []) {
   const denominator = verified_n + not_met_n;
   return {
     verified_n,
+    sample_formation_verified_n,
     fast_track_verified_n,
     not_met_n,
     unknown_n,
@@ -477,6 +482,7 @@ function buildReasoningJournal({
       current_verification_focus: currentEntry.verification_focus,
       pending_verification_n: deduped.filter((row) => row && row.pending_verification && row.pending_verification.metric).length,
       verified_n: verificationStats.verified_n,
+      sample_formation_verified_n: verificationStats.sample_formation_verified_n,
       fast_track_verified_n: verificationStats.fast_track_verified_n,
       not_met_n: verificationStats.not_met_n,
       unknown_n: verificationStats.unknown_n,

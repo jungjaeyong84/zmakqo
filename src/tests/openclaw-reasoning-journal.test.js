@@ -47,7 +47,16 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
           cycle_id: "cycle-0",
           dominant_issue: "EV_POLICY",
           recommended_action: "RELAX_EV_POLICY_REVIEW",
-          pending_verification: { metric: "ev_policy_post_apply_comparable_n", expected: ">= 3", baseline_value: 0 },
+          pending_verification: {
+            metric: "ev_policy_post_apply_comparable_n",
+            expected: ">= 3",
+            baseline_value: 0,
+            fast_track: {
+              metric: "final_downstream_mismatch_n",
+              expected: "< baseline",
+              baseline_value: 15,
+            },
+          },
         },
         {
           cycle_id: "cycle-neg",
@@ -71,13 +80,14 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.match(journal.summary.current_verification_focus, /ev_policy_post_apply_comparable_n/);
   assert.strictEqual(journal.summary.entry_n, 4);
   assert.strictEqual(journal.summary.verified_n, 1);
+  assert.strictEqual(journal.summary.sample_formation_verified_n, 1);
   assert.strictEqual(journal.summary.fast_track_verified_n, 0);
   assert.strictEqual(journal.summary.not_met_n, 1);
   assert.strictEqual(journal.summary.unknown_n, 1);
   assert.strictEqual(journal.summary.deferred_n, 0);
   assert.strictEqual(journal.summary.verification_rate, 0.5);
   assert.ok(journal.compacted_context.includes("cycle-1"));
-  assert.strictEqual(journal.entries.find((row) => row.cycle_id === "cycle-0").verification_outcome.status, "VERIFIED");
+  assert.strictEqual(journal.entries.find((row) => row.cycle_id === "cycle-0").verification_outcome.status, "VERIFIED_SAMPLE_FORMATION");
   assert.strictEqual(journal.entries.find((row) => row.cycle_id === "cycle-neg").verification_outcome.status, "NOT_MET");
   assert.strictEqual(journal.entries.find((row) => row.cycle_id === "cycle-unknown").verification_outcome.status, "UNKNOWN");
 
@@ -153,6 +163,28 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
       }
     ).status,
     "VERIFIED_FAST_TRACK"
+  );
+  assert.strictEqual(
+    __test.resolveVerificationOutcome(
+      {
+        cycle_id: "cycle-sample",
+        pending_verification: {
+          metric: "ev_policy_post_apply_comparable_n",
+          expected: ">= 3",
+          baseline_value: 0,
+          fast_track: {
+            metric: "final_downstream_mismatch_n",
+            expected: "< baseline",
+            baseline_value: 15,
+          },
+        },
+      },
+      {
+        ev_policy_post_apply_comparable_n: 4,
+        final_downstream_mismatch_n: 15,
+      }
+    ).status,
+    "VERIFIED_SAMPLE_FORMATION"
   );
   assert.strictEqual(
     __test.resolveVerificationOutcome(
