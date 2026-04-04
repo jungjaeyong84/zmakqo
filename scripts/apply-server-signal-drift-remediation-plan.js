@@ -47,6 +47,35 @@ function toKstString(ms) {
   return `${kst.getUTCFullYear()}-${pad(kst.getUTCMonth() + 1)}-${pad(kst.getUTCDate())} ${pad(kst.getUTCHours())}:${pad(kst.getUTCMinutes())}:${pad(kst.getUTCSeconds())} KST`;
 }
 
+function stableClone(value) {
+  if (Array.isArray(value)) return value.map((item) => stableClone(item));
+  if (!value || typeof value !== "object") return value;
+  return Object.keys(value)
+    .sort((a, b) => String(a).localeCompare(String(b)))
+    .reduce((acc, key) => {
+      acc[key] = stableClone(value[key]);
+      return acc;
+    }, {});
+}
+
+function computeAppliedSignature({
+  exception_release_applied = false,
+  evNext = {},
+  evReportOnlyNext = {},
+  cooldownNext = {},
+  otherPolicyWatchNext = [],
+  otherPolicyWatchByReasonNext = {},
+} = {}) {
+  return JSON.stringify(stableClone({
+    exception_release_applied: exception_release_applied === true,
+    ev_next: evNext || {},
+    ev_report_only_next: evReportOnlyNext || {},
+    cooldown_next: cooldownNext || {},
+    other_server_policy_watch_only_next: Array.isArray(otherPolicyWatchNext) ? [...otherPolicyWatchNext].sort() : [],
+    other_server_policy_watch_only_by_reason_next: otherPolicyWatchByReasonNext || {},
+  }));
+}
+
 function deriveLastAppliedMeta(previous = null) {
   if (!previous || typeof previous !== "object") return {};
   const rawLastAppliedMs = previous.last_applied_at_ms;
@@ -66,6 +95,7 @@ function deriveLastAppliedMeta(previous = null) {
     cooldown_patch_n: (rawLastCooldownPatchN == null || rawLastCooldownPatchN === "" || !Number.isFinite(Number(rawLastCooldownPatchN)))
       ? null
       : Number(rawLastCooldownPatchN),
+    signature: String(previous.last_applied_signature || "").trim() || null,
   };
   const fromCurrentApplied = previous.applied === true
     ? {
@@ -84,6 +114,7 @@ function deriveLastAppliedMeta(previous = null) {
       cooldown_patch_n: Number.isFinite(Number(previous.changes && previous.changes.opposite_signal_cooldown_bars_by_market && previous.changes.opposite_signal_cooldown_bars_by_market.patch_n))
         ? Number(previous.changes.opposite_signal_cooldown_bars_by_market.patch_n)
         : null,
+      signature: String(previous.applied_signature || previous.last_applied_signature || "").trim() || null,
     }
     : {};
   const meta = {};
@@ -94,6 +125,7 @@ function deriveLastAppliedMeta(previous = null) {
   meta.target_cycle_id = fromLast.target_cycle_id || fromCurrentApplied.target_cycle_id || null;
   meta.ev_patch_n = Number.isFinite(fromLast.ev_patch_n) ? fromLast.ev_patch_n : (Number.isFinite(fromCurrentApplied.ev_patch_n) ? fromCurrentApplied.ev_patch_n : null);
   meta.cooldown_patch_n = Number.isFinite(fromLast.cooldown_patch_n) ? fromLast.cooldown_patch_n : (Number.isFinite(fromCurrentApplied.cooldown_patch_n) ? fromCurrentApplied.cooldown_patch_n : null);
+  meta.signature = fromLast.signature || fromCurrentApplied.signature || null;
   if (!Number.isFinite(meta.at_ms)) return {};
   return meta;
 }
@@ -360,6 +392,14 @@ async function main() {
     other_server_policy_watch_only_applied_n,
     other_server_policy_watch_only_applied,
   } = patchState;
+  const appliedSignature = computeAppliedSignature({
+    exception_release_applied,
+    evNext,
+    evReportOnlyNext,
+    cooldownNext,
+    otherPolicyWatchNext,
+    otherPolicyWatchByReasonNext,
+  });
 
   const result = {
     ok: true,
@@ -433,6 +473,8 @@ async function main() {
     last_applied_target_cycle_id: lastAppliedMeta.target_cycle_id || null,
     last_applied_ev_patch_n: Number.isFinite(lastAppliedMeta.ev_patch_n) ? lastAppliedMeta.ev_patch_n : null,
     last_applied_cooldown_patch_n: Number.isFinite(lastAppliedMeta.cooldown_patch_n) ? lastAppliedMeta.cooldown_patch_n : null,
+    last_applied_signature: lastAppliedMeta.signature || null,
+    applied_signature: appliedSignature,
   };
 
   // Recover last-applied timestamp from provider metadata if latest apply report was overwritten by a NO_CHANGE run.
@@ -486,13 +528,30 @@ async function main() {
     result.applied = true;
     result.effective.other_server_policy_watch_only_markets = otherPolicyWatchNext;
     result.effective.other_server_policy_watch_only_markets_by_reason = otherPolicyWatchByReasonNext;
-    result.last_applied_at_kst = meta.kst;
-    result.last_applied_at = new Date(meta.nowMs).toISOString();
-    result.last_applied_at_ms = meta.nowMs;
-    result.last_applied_source_cycle_id = planCycleId;
-    result.last_applied_target_cycle_id = planCycleId;
-    result.last_applied_ev_patch_n = releaseExceptions ? Object.keys(evCurrent).length : Object.keys(evPatch).length;
-    result.last_applied_cooldown_patch_n = releaseExceptions ? Object.keys(cooldownCurrent).length : Object.keys(cooldownPatch).length;
+    const preserveAppliedWindow = String(lastAppliedMeta.signature || "").trim() === appliedSignature
+      && Number.isFinite(lastAppliedMeta.at_ms);
+    if (preserveAppliedWindow) {
+      result.last_applied_at_kst = lastAppliedMeta.at_kst || toKstString(lastAppliedMeta.at_ms);
+      result.last_applied_at = lastAppliedMeta.at || new Date(lastAppliedMeta.at_ms).toISOString();
+      result.last_applied_at_ms = lastAppliedMeta.at_ms;
+      result.last_applied_source_cycle_id = lastAppliedMeta.source_cycle_id || null;
+      result.last_applied_target_cycle_id = lastAppliedMeta.target_cycle_id || lastAppliedMeta.source_cycle_id || null;
+      result.last_applied_ev_patch_n = Number.isFinite(lastAppliedMeta.ev_patch_n)
+        ? lastAppliedMeta.ev_patch_n
+        : (releaseExceptions ? Object.keys(evCurrent).length : Object.keys(evPatch).length);
+      result.last_applied_cooldown_patch_n = Number.isFinite(lastAppliedMeta.cooldown_patch_n)
+        ? lastAppliedMeta.cooldown_patch_n
+        : (releaseExceptions ? Object.keys(cooldownCurrent).length : Object.keys(cooldownPatch).length);
+    } else {
+      result.last_applied_at_kst = meta.kst;
+      result.last_applied_at = new Date(meta.nowMs).toISOString();
+      result.last_applied_at_ms = meta.nowMs;
+      result.last_applied_source_cycle_id = planCycleId;
+      result.last_applied_target_cycle_id = planCycleId;
+      result.last_applied_ev_patch_n = releaseExceptions ? Object.keys(evCurrent).length : Object.keys(evPatch).length;
+      result.last_applied_cooldown_patch_n = releaseExceptions ? Object.keys(cooldownCurrent).length : Object.keys(cooldownPatch).length;
+    }
+    result.last_applied_signature = appliedSignature;
   }
 
   writeJson(RESULT_LATEST, result);
@@ -520,5 +579,6 @@ if (require.main === module) {
 module.exports = {
   __test: {
     derivePatchState,
+    computeAppliedSignature,
   },
 };

@@ -53,4 +53,24 @@ const { __test } = require("../../scripts/apply-server-signal-drift-remediation-
   assert.strictEqual(out.ev_policy_patch_report_only_applied, false);
 })();
 
+(() => {
+  const a = __test.computeAppliedSignature({
+    exception_release_applied: true,
+    evNext: {},
+    evReportOnlyNext: { ETHUSDT: 0.501, SOLUSDT: 0.501 },
+    cooldownNext: {},
+    otherPolicyWatchNext: ["ETHUSDT"],
+    otherPolicyWatchByReasonNext: { LIVE_RESCUE_ADD_LOSS_WINDOW_BLOCKED: ["ETHUSDT"] },
+  });
+  const b = __test.computeAppliedSignature({
+    exception_release_applied: true,
+    evNext: {},
+    evReportOnlyNext: { SOLUSDT: 0.501, ETHUSDT: 0.501 },
+    cooldownNext: {},
+    otherPolicyWatchNext: ["ETHUSDT"],
+    otherPolicyWatchByReasonNext: { LIVE_RESCUE_ADD_LOSS_WINDOW_BLOCKED: ["ETHUSDT"] },
+  });
+  assert.strictEqual(a, b);
+})();
+
 console.log("APPLY_SERVER_SIGNAL_DRIFT_REMEDIATION_PLAN_TEST_OK");
