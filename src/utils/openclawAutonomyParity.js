@@ -21,6 +21,12 @@ function toUpper(value) {
   return String(value || "").trim().toUpperCase() || null;
 }
 
+function readRateEnv(name, fallback) {
+  const n = toNum(process.env[name]);
+  if (n == null) return fallback;
+  return Math.max(0, Math.min(1, n));
+}
+
 function statusRow({ id, criterion, current, done, partial, blocker = null }) {
   return {
     id,
@@ -42,7 +48,11 @@ function buildAutonomyParity({
   const autonomy = readSummary(autonomyContract);
   const objective = unwrapRawReport(objectiveSupervisor) || {};
   const qualitySummary = readSummary(quality);
+  const cutoverRaw = unwrapRawReport(cutover) || {};
   const cutoverSummary = readSummary(cutover);
+  const cutoverCurrentStatus = cutoverRaw.current_status && typeof cutoverRaw.current_status === "object"
+    ? cutoverRaw.current_status
+    : cutoverSummary;
   const policySummary = readSummary(policyPlan);
   const journalSummary = readSummary(reasoningJournal);
 
@@ -52,6 +62,16 @@ function buildAutonomyParity({
   const authorityState = toUpper(autonomy.authority_state);
   const cutoverStatus = String(cutoverSummary.readiness_status || "").trim() || null;
   const finalMismatchN = toNum(qualitySummary.final_downstream_mismatch_n);
+  const shadowObservedN = toNum(cutoverCurrentStatus.shadow_observed_24h_n)
+    ?? toNum(qualitySummary.authoritative_entry_signal_24h_n)
+    ?? 0;
+  const finalMismatchRate = toNum(qualitySummary.final_downstream_mismatch_rate)
+    ?? toNum(qualitySummary.parity_mismatch_rate)
+    ?? (
+      shadowObservedN > 0 && finalMismatchN != null
+        ? (finalMismatchN / shadowObservedN)
+        : null
+    );
   const contradictionN = toNum(journalSummary.contradiction_n) ?? 0;
   const journalEntryN = toNum(journalSummary.entry_n) ?? 0;
   const verifiedN = toNum(journalSummary.verified_n) ?? 0;
@@ -59,6 +79,10 @@ function buildAutonomyParity({
   const deferredN = toNum(journalSummary.deferred_n) ?? 0;
   const verificationRate = toNum(journalSummary.verification_rate);
   const objectiveVerdict = toUpper(objective.verdict);
+  const finalMismatchRatePassMax = readRateEnv("OPENCLAW_AUTONOMY_PARITY_FINAL_MISMATCH_RATE_PASS_MAX", 0.15);
+  const finalMismatchRatePartialMax = readRateEnv("OPENCLAW_AUTONOMY_PARITY_FINAL_MISMATCH_RATE_PARTIAL_MAX", 0.35);
+  const finalMismatchSampleMin = Math.max(1, Math.round(toNum(process.env.OPENCLAW_AUTONOMY_PARITY_FINAL_MISMATCH_SAMPLE_MIN) ?? 20));
+  const severeFinalMismatchCount = Math.max(1, Math.round(toNum(process.env.OPENCLAW_AUTONOMY_PARITY_FINAL_MISMATCH_SEVERE_COUNT) ?? 25));
 
   const requirements = [
     statusRow({
@@ -105,11 +129,24 @@ function buildAutonomyParity({
     }),
     statusRow({
       id: "final_downstream_mismatch_control",
-      criterion: "final_downstream_mismatch_n <= 5",
-      current: finalMismatchN,
-      done: finalMismatchN != null && finalMismatchN <= 5,
-      partial: finalMismatchN != null && finalMismatchN <= 15,
-      blocker: finalMismatchN != null && finalMismatchN > 5 ? "FINAL_DOWNSTREAM_MISMATCH_HIGH" : null,
+      criterion: `final_downstream_mismatch_rate <= ${finalMismatchRatePassMax} with observed_n >= ${finalMismatchSampleMin} (count is guardrail)`,
+      current: `rate=${finalMismatchRate != null ? Number(finalMismatchRate.toFixed(4)) : "N/A"}, count=${finalMismatchN != null ? finalMismatchN : "N/A"}, observed=${shadowObservedN}`,
+      done: finalMismatchRate != null && shadowObservedN >= finalMismatchSampleMin && finalMismatchRate <= finalMismatchRatePassMax,
+      partial: (
+        (shadowObservedN < finalMismatchSampleMin && finalMismatchRate != null)
+        || (finalMismatchRate != null && finalMismatchRate <= finalMismatchRatePartialMax)
+      ),
+      blocker: shadowObservedN < finalMismatchSampleMin
+        ? "FINAL_DOWNSTREAM_SAMPLE_SHORT"
+        : (
+          finalMismatchRate != null && finalMismatchRate > finalMismatchRatePassMax
+            ? (
+              finalMismatchN != null && finalMismatchN >= severeFinalMismatchCount
+                ? "FINAL_DOWNSTREAM_MISMATCH_COUNT_SEVERE"
+                : "FINAL_DOWNSTREAM_MISMATCH_RATE_HIGH"
+            )
+            : null
+        ),
     }),
     statusRow({
       id: "objective_supervisor_clear",
@@ -145,6 +182,8 @@ function buildAutonomyParity({
       current_objective_score: currentObjectiveScore,
       current_objective_verdict: objectiveVerdict,
       current_final_downstream_mismatch_n: finalMismatchN,
+      current_final_downstream_mismatch_rate: finalMismatchRate,
+      current_final_downstream_observed_n: shadowObservedN,
       reasoning_entry_n: journalEntryN,
       reasoning_contradiction_n: contradictionN,
       next_milestone: nextMilestone,

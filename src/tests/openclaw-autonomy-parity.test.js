@@ -7,8 +7,8 @@ const { buildAutonomyParity } = require("../../src/utils/openclawAutonomyParity"
   const report = buildAutonomyParity({
     autonomyContract: { summary: { authority_state: "PENDING" } },
     objectiveSupervisor: { verdict: "HOLD", root_cause: "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK" },
-    quality: { summary: { final_downstream_mismatch_n: 12 } },
-    cutover: { summary: { readiness_status: "SERVER_PRIMARY_ACTIVE" } },
+    quality: { summary: { final_downstream_mismatch_n: 12, parity_mismatch_rate: 0.3, authoritative_entry_signal_24h_n: 24 } },
+    cutover: { summary: { readiness_status: "SERVER_PRIMARY_ACTIVE", shadow_observed_24h_n: 24 } },
     policyPlan: { summary: { current_objective_score: -2.5 } },
     reasoningJournal: { summary: { entry_n: 3, contradiction_n: 0, verified_n: 2, not_met_n: 1, verification_rate: 0.6667 } },
   });
@@ -20,6 +20,8 @@ const { buildAutonomyParity } = require("../../src/utils/openclawAutonomyParity"
   assert.strictEqual(report.requirements.find((row) => row.id === "reasoning_journal_consistency").status, "PARTIAL");
   assert.strictEqual(report.requirements.find((row) => row.id === "reasoning_verification_quality").status, "PARTIAL");
   assert.strictEqual(report.requirements.find((row) => row.id === "authority_state_ready").status, "PARTIAL");
+  assert.strictEqual(report.requirements.find((row) => row.id === "final_downstream_mismatch_control").status, "PARTIAL");
+  assert.strictEqual(report.summary.current_final_downstream_mismatch_rate, 0.3);
 
   console.log("OPENCLAW_AUTONOMY_PARITY_TEST_OK");
 })();
@@ -46,4 +48,34 @@ const { buildAutonomyParity } = require("../../src/utils/openclawAutonomyParity"
   const row = report.requirements.find((item) => item.id === "reasoning_verification_quality");
   assert.strictEqual(row.status, "PARTIAL");
   assert.strictEqual(row.blocker, "DEFERRED_BY_LEARNING_EPOCH");
+})();
+
+(() => {
+  const report = buildAutonomyParity({
+    autonomyContract: { summary: { authority_state: "PENDING" } },
+    objectiveSupervisor: { verdict: "HOLD", root_cause: "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK" },
+    quality: { summary: { final_downstream_mismatch_n: 19, parity_mismatch_rate: 0.76, authoritative_entry_signal_24h_n: 22 } },
+    cutover: { summary: { readiness_status: "SERVER_PRIMARY_ACTIVE", shadow_observed_24h_n: 22 } },
+    policyPlan: { summary: { current_objective_score: -2.5 } },
+    reasoningJournal: { summary: { entry_n: 12, contradiction_n: 0, verified_n: 0, not_met_n: 0, deferred_n: 11, verification_rate: null } },
+  });
+
+  const row = report.requirements.find((item) => item.id === "final_downstream_mismatch_control");
+  assert.strictEqual(row.status, "FAIL");
+  assert.strictEqual(row.blocker, "FINAL_DOWNSTREAM_MISMATCH_RATE_HIGH");
+})();
+
+(() => {
+  const report = buildAutonomyParity({
+    autonomyContract: { summary: { authority_state: "PENDING" } },
+    objectiveSupervisor: { verdict: "HOLD", root_cause: "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK" },
+    quality: { summary: { final_downstream_mismatch_n: 3, parity_mismatch_rate: 0.12, authoritative_entry_signal_24h_n: 8 } },
+    cutover: { summary: { readiness_status: "SERVER_PRIMARY_ACTIVE", shadow_observed_24h_n: 8 } },
+    policyPlan: { summary: { current_objective_score: -2.5 } },
+    reasoningJournal: { summary: { entry_n: 12, contradiction_n: 0, verified_n: 0, not_met_n: 0, deferred_n: 0, verification_rate: null } },
+  });
+
+  const row = report.requirements.find((item) => item.id === "final_downstream_mismatch_control");
+  assert.strictEqual(row.status, "PARTIAL");
+  assert.strictEqual(row.blocker, "FINAL_DOWNSTREAM_SAMPLE_SHORT");
 })();
