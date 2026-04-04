@@ -1283,6 +1283,43 @@ function summarizeTransition(prevState, nextState) {
   return `${before} -> ${after}`;
 }
 
+function collectApprovalRequestRows(stageRows = [], deploymentPlan = {}) {
+  const strategicBlockers = new Set([
+    "STRATEGIC_MUTATION_REQUIRES_APPROVAL",
+    "LIVE_MUTATION_KEY_BUDGET_EXCEEDED",
+    "RISK_OVERRIDE_DISABLED",
+  ]);
+  const rows = [];
+  for (const row of Array.isArray(stageRows) ? stageRows : []) {
+    const blockers = Array.isArray(row && row.override_authority_blockers) ? row.override_authority_blockers : [];
+    const matched = blockers.filter((item) => strategicBlockers.has(String(item || "").trim().toUpperCase()));
+    if (!matched.length) continue;
+    rows.push({
+      stage: String(row && row.stage || "").trim().toUpperCase() || "N/A",
+      blockers: matched,
+      changed_keys: Array.isArray(row && row.override_authority_changed_keys) ? row.override_authority_changed_keys : [],
+      non_allowlist_changed_keys: Array.isArray(row && row.override_authority_non_allowlist_changed_keys) ? row.override_authority_non_allowlist_changed_keys : [],
+      touched_markets: Array.isArray(row && row.override_touched_markets) ? row.override_touched_markets : [],
+      paper_only_mutation_required: row && row.paper_only_mutation_required === true,
+    });
+  }
+  const plan = deploymentPlan && typeof deploymentPlan === "object" ? deploymentPlan : {};
+  if (plan.manual_promote_required === true) {
+    rows.push({
+      stage: "DEPLOYMENT_PLAN",
+      blockers: ["STRATEGIC_CHANGE_MANUAL_APPROVAL_REQUIRED"],
+      changed_keys: [],
+      non_allowlist_changed_keys: [],
+      touched_markets: [],
+      paper_only_mutation_required: plan.live_auto_mutation_allowed !== true,
+      mutation_class: String(plan.target_mutation_class || "").trim().toUpperCase() || null,
+      mutation_deploy_unit: String(plan.target_mutation_deploy_unit || "").trim().toUpperCase() || null,
+      target_candidate_id: String(plan.target_candidate_id || "").trim() || null,
+    });
+  }
+  return rows;
+}
+
 function renderMarkdown(report = {}) {
   const lines = [
     "# Stage Autopilot",
@@ -1320,6 +1357,8 @@ function renderMarkdown(report = {}) {
     if (row.exploration_budget_blockers && row.exploration_budget_blockers.length) lines.push(`  - exploration_budget: ${row.exploration_budget_blockers.join(", ")}`);
     if (row.exploration_apply_candidate_note) lines.push(`  - exploration_apply_candidate: ${row.exploration_apply_candidate_note}`);
     if (row.override_authority_blockers && row.override_authority_blockers.length) lines.push(`  - override_authority: ${row.override_authority_blockers.join(", ")}`);
+    if (row.override_authority_changed_keys && row.override_authority_changed_keys.length) lines.push(`  - changed_keys: ${row.override_authority_changed_keys.join(", ")}`);
+    if (row.override_authority_non_allowlist_changed_keys && row.override_authority_non_allowlist_changed_keys.length) lines.push(`  - approval_keys: ${row.override_authority_non_allowlist_changed_keys.join(", ")}`);
     if (row.override_touched_markets && row.override_touched_markets.length) lines.push(`  - touched_markets: ${row.override_touched_markets.join(", ")}`);
     if (row.signature) lines.push(`  - signature: ${row.signature}`);
     if (row.snapshot_path) lines.push(`  - snapshot: ${row.snapshot_path}`);
@@ -1545,7 +1584,10 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
         blockers: [],
         override_authority_allowed: true,
         override_authority_blockers: [],
+        override_authority_changed_keys: overrideGuard.changed_keys || [],
+        override_authority_non_allowlist_changed_keys: overrideGuard.non_allowlist_changed_keys || [],
         override_touched_markets: overrideGuard.touched_markets || [],
+        paper_only_mutation_required: overrideGuard.paper_only_mutation_required === true,
         execution_quality_blockers: [],
         reverse_policy_blockers: [],
         exploration_budget_blockers: [],
@@ -1654,7 +1696,10 @@ async function applyStageCandidate({ stage, candidate, stageState, history, nowM
       blockers: combinedGuard.blockers,
       override_authority_allowed: overrideGuard.allowed === true,
       override_authority_blockers: overrideGuard.blockers || [],
+      override_authority_changed_keys: overrideGuard.changed_keys || [],
+      override_authority_non_allowlist_changed_keys: overrideGuard.non_allowlist_changed_keys || [],
       override_touched_markets: overrideGuard.touched_markets || [],
+      paper_only_mutation_required: overrideGuard.paper_only_mutation_required === true,
       execution_quality_blockers: executionQualityGuard.blockers || [],
       reverse_policy_blockers: reversePolicyGuard.blockers || [],
       exploration_budget_blockers: explorationBudgetGuard.blockers || [],
@@ -2091,7 +2136,10 @@ async function main() {
     reverse_policy_blockers: result.stageState.reverse_policy_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
     exploration_budget_blockers: result.stageState.exploration_budget_blockers || [],
+    override_authority_changed_keys: result.stageState.override_authority_changed_keys || [],
+    override_authority_non_allowlist_changed_keys: result.stageState.override_authority_non_allowlist_changed_keys || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
+    paper_only_mutation_required: result.stageState.paper_only_mutation_required === true,
     signature: result.stageState.last_signature,
     snapshot_path: result.stageState.last_snapshot_path || null,
     best_febt_guard: aiBestFebtGuard.reason,
@@ -2137,7 +2185,10 @@ async function main() {
     reverse_policy_blockers: result.stageState.reverse_policy_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
     exploration_budget_blockers: result.stageState.exploration_budget_blockers || [],
+    override_authority_changed_keys: result.stageState.override_authority_changed_keys || [],
+    override_authority_non_allowlist_changed_keys: result.stageState.override_authority_non_allowlist_changed_keys || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
+    paper_only_mutation_required: result.stageState.paper_only_mutation_required === true,
     signature: result.stageState.last_signature,
     snapshot_path: result.stageState.last_snapshot_path || null,
     best_febt_guard: marketBestFebtGuard.reason,
@@ -2200,7 +2251,10 @@ async function main() {
     reverse_policy_blockers: result.stageState.reverse_policy_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
     exploration_budget_blockers: result.stageState.exploration_budget_blockers || [],
+    override_authority_changed_keys: result.stageState.override_authority_changed_keys || [],
+    override_authority_non_allowlist_changed_keys: result.stageState.override_authority_non_allowlist_changed_keys || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
+    paper_only_mutation_required: result.stageState.paper_only_mutation_required === true,
     exploration_apply_candidate_note: evExplorationApplyCandidateNote
       ? `${evExplorationApplyCandidateNote.market || "N/A"} / ${evExplorationApplyCandidateNote.action || "N/A"} / manual ${evExplorationApplyCandidateNote.manual_confirm_required ? "YES" : "NO"} / auto ${evExplorationApplyCandidateNote.auto_apply_allowed ? "YES" : "NO"}`
       : null,
@@ -2270,7 +2324,10 @@ async function main() {
     reverse_policy_blockers: result.stageState.reverse_policy_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
     exploration_budget_blockers: result.stageState.exploration_budget_blockers || [],
+    override_authority_changed_keys: result.stageState.override_authority_changed_keys || [],
+    override_authority_non_allowlist_changed_keys: result.stageState.override_authority_non_allowlist_changed_keys || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
+    paper_only_mutation_required: result.stageState.paper_only_mutation_required === true,
     exploration_apply_candidate_note: waitExplorationApplyCandidateNote
       ? `${waitExplorationApplyCandidateNote.market || "N/A"} / ${waitExplorationApplyCandidateNote.action || "N/A"} / manual ${waitExplorationApplyCandidateNote.manual_confirm_required ? "YES" : "NO"} / auto ${waitExplorationApplyCandidateNote.auto_apply_allowed ? "YES" : "NO"}`
       : null,
@@ -2326,7 +2383,10 @@ async function main() {
     reverse_policy_blockers: result.stageState.reverse_policy_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
     exploration_budget_blockers: result.stageState.exploration_budget_blockers || [],
+    override_authority_changed_keys: result.stageState.override_authority_changed_keys || [],
+    override_authority_non_allowlist_changed_keys: result.stageState.override_authority_non_allowlist_changed_keys || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
+    paper_only_mutation_required: result.stageState.paper_only_mutation_required === true,
     signature: result.stageState.last_signature,
     active_signature: result.stageState.applied_signature || activeCanonicalPolicySignature,
     next_signature: canonicalPolicyCandidate.signature || null,
@@ -2400,7 +2460,10 @@ async function main() {
     reverse_policy_blockers: result.stageState.reverse_policy_blockers || [],
     override_authority_blockers: result.stageState.override_authority_blockers || [],
     exploration_budget_blockers: result.stageState.exploration_budget_blockers || [],
+    override_authority_changed_keys: result.stageState.override_authority_changed_keys || [],
+    override_authority_non_allowlist_changed_keys: result.stageState.override_authority_non_allowlist_changed_keys || [],
     override_touched_markets: result.stageState.override_touched_markets || [],
+    paper_only_mutation_required: result.stageState.paper_only_mutation_required === true,
     signature: result.stageState.last_signature,
     active_signature: result.stageState.applied_signature || activeSourceModeSignature,
     next_signature: sourceModeCandidate.signature || null,
@@ -2754,6 +2817,49 @@ async function main() {
     });
     if (!alert || (alert.ok !== true && !(alert.skipped && alert.reason === "SKIP_ALERT"))) {
       throw new Error(`TELEGRAM_SEND_FAILED:${JSON.stringify(alert || {})}`);
+    }
+  }
+
+  const approvalRequestRows = collectApprovalRequestRows(stageRows, report.self_evolution_deployment_plan);
+  if (approvalRequestRows.length && String(process.env.STAGE_AUTOPILOT_SKIP_TELEGRAM || "").trim() !== "1") {
+    const requestAlert = await sendKoreanTelegramSummary({
+      title: `[요청] 전략 변경 승인 필요`,
+      provider: PROVIDER,
+      severity: "WARN",
+      sections: [
+        {
+          header: "요약",
+          lines: [
+            `승인 필요 건수: ${approvalRequestRows.length}`,
+            `목표 상태: ${report.objective_verdict}`,
+            `배포 계획: ${report.self_evolution_deployment_plan && report.self_evolution_deployment_plan.plan_status || "N/A"}`,
+          ],
+        },
+        {
+          header: "승인 필요 변경",
+          lines: approvalRequestRows.slice(0, 6).map((row) => {
+            const mutation = row.mutation_class || row.mutation_deploy_unit
+              ? ` / ${row.mutation_deploy_unit || "N/A"}:${row.mutation_class || "N/A"}`
+              : "";
+            const target = row.target_candidate_id ? ` / target ${row.target_candidate_id}` : "";
+            const keys = row.non_allowlist_changed_keys && row.non_allowlist_changed_keys.length
+              ? ` / 승인키 ${row.non_allowlist_changed_keys.join("|")}`
+              : (row.changed_keys && row.changed_keys.length ? ` / 변경키 ${row.changed_keys.join("|")}` : "");
+            const markets = row.touched_markets && row.touched_markets.length ? ` / 시장 ${row.touched_markets.join("|")}` : "";
+            return `${row.stage}: ${row.blockers.join("|")}${mutation}${target}${keys}${markets}`;
+          }),
+        },
+        {
+          header: "진행 조건",
+          lines: [
+            "승인 전까지 live auto-apply 보류",
+            "승인 후 다음 cycle에서 promote/apply 재평가",
+          ],
+        },
+      ],
+    });
+    if (!requestAlert || (requestAlert.ok !== true && !(requestAlert.skipped && requestAlert.reason === "SKIP_ALERT"))) {
+      throw new Error(`TELEGRAM_APPROVAL_REQUEST_FAILED:${JSON.stringify(requestAlert || {})}`);
     }
   }
 

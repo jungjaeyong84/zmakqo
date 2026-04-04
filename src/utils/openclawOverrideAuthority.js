@@ -18,6 +18,12 @@ function clampNumEnv(name, fallback, min = -Number.MAX_SAFE_INTEGER, max = Numbe
   return Math.max(min, Math.min(max, value));
 }
 
+function readListEnv(name, fallback = []) {
+  const raw = String(process.env[name] || "").trim();
+  if (!raw) return Array.isArray(fallback) ? fallback.slice() : [];
+  return raw.split(",").map((item) => String(item || "").trim().toLowerCase()).filter(Boolean);
+}
+
 function unwrapRawReport(value) {
   if (!value || typeof value !== "object") return value || null;
   if (value.raw && typeof value.raw === "object") return value.raw;
@@ -40,6 +46,24 @@ function stableSignature(value) {
 }
 
 function normalizeBounds() {
+  const liveAutoApplyKeyAllowlist = readListEnv("OPENCLAW_LIVE_AUTO_APPLY_KEY_ALLOWLIST", [
+    "ev_gate_tp1_prob_min",
+    "ev_gate_tp1_prob_full",
+    "ev_gate_tp1_prob_kill",
+    "ev_gate_qty_scale_mid",
+    "ev_gate_qty_scale_low",
+    "wait_one_bar_same_dir_streak_min",
+    "wait_one_bar_chase_ratio_min",
+    "wait_one_bar_last_close_control_min",
+    "wait_one_bar_last_dir_body_min",
+    "wait_one_bar_last_opposite_wick_max",
+    "wait_one_bar_recent_move1_pct_min",
+    "wait_one_bar_counter_dir_bars_max",
+    "ev_gate_tp1_prob_min_by_market",
+    "ev_gate_tp1_prob_min_by_market_report_only",
+    "ev_gate_tp1_prob_min_report_only_cohort",
+    "canonical_engine_market_overrides",
+  ]);
   return {
     max_market_overrides_per_cycle: clampIntEnv("OPENCLAW_MAX_MARKET_OVERRIDES_PER_CYCLE", 4, 1, 10),
     ev_gate_tp1_prob_min_step_max: clampNumEnv("OPENCLAW_EV_GATE_TP1_PROB_MIN_STEP_MAX", 0.035, 0.001, 0.1),
@@ -54,7 +78,19 @@ function normalizeBounds() {
     wait_recent_move1_pct_step_max: clampNumEnv("OPENCLAW_WAIT_RECENT_MOVE1_PCT_STEP_MAX", 0.30, 0.01, 1),
     wait_counter_dir_bars_step_max: clampIntEnv("OPENCLAW_WAIT_COUNTER_DIR_BARS_STEP_MAX", 2, 1, 3),
     risk_override_enabled: String(process.env.OPENCLAW_RISK_OVERRIDE_ENABLED || "").trim() === "1",
+    live_mutation_key_budget: clampIntEnv("OPENCLAW_LIVE_MUTATION_KEY_BUDGET", 10, 1, 64),
+    live_auto_apply_key_allowlist: liveAutoApplyKeyAllowlist,
   };
+}
+
+function computeChangedKeys(currentSys = {}, nextSettings = {}) {
+  const current = currentSys && typeof currentSys === "object" ? currentSys : {};
+  const next = nextSettings && typeof nextSettings === "object" ? nextSettings : {};
+  return Object.keys(next)
+    .filter((key) => stableSignature(current[key]) !== stableSignature(next[key]))
+    .map((key) => String(key || "").trim().toLowerCase())
+    .filter(Boolean)
+    .sort();
 }
 
 function collectPriorityMarkets({ marketObjectiveScore = null, serverVsPinePerformanceDelta = null, dropValidation = null, executionQuality = null, reversePolicy = null } = {}) {
@@ -165,7 +201,16 @@ function evaluateOpenclawOverrideAuthority({ stage = null, currentSys = {}, next
   const bounds = summary.bounds || normalizeBounds();
   const blockers = [];
   const touchedMarkets = computeMarketOverrideTouched({ currentSys, nextSettings });
+  const changedKeys = computeChangedKeys(currentSys, nextSettings);
+  const allowlist = new Set(
+    (Array.isArray(bounds.live_auto_apply_key_allowlist) ? bounds.live_auto_apply_key_allowlist : [])
+      .map((key) => String(key || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+  const nonAllowlistChangedKeys = changedKeys.filter((key) => !allowlist.has(key));
   if (touchedMarkets.length > bounds.max_market_overrides_per_cycle) blockers.push("MARKET_OVERRIDE_LIMIT_EXCEEDED");
+  if (changedKeys.length > bounds.live_mutation_key_budget) blockers.push("LIVE_MUTATION_KEY_BUDGET_EXCEEDED");
+  if (nonAllowlistChangedKeys.length) blockers.push("STRATEGIC_MUTATION_REQUIRES_APPROVAL");
 
   const riskKeys = Object.keys(nextSettings || {}).filter((key) =>
     /^risk_/i.test(key)
@@ -191,6 +236,10 @@ function evaluateOpenclawOverrideAuthority({ stage = null, currentSys = {}, next
   return {
     allowed: blockers.length === 0,
     blockers,
+    changed_keys: changedKeys,
+    non_allowlist_changed_keys: nonAllowlistChangedKeys,
+    live_auto_mutation_allowed: blockers.length === 0,
+    paper_only_mutation_required: nonAllowlistChangedKeys.length > 0,
     touched_markets: touchedMarkets,
     touched_market_n: touchedMarkets.length,
     top_priority_markets: Array.isArray(summary.top_priority_markets) ? summary.top_priority_markets : [],

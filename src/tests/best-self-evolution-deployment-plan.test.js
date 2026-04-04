@@ -683,3 +683,34 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
   assert.strictEqual(report.summary.next_actions.some((row) => row.includes("change-control 상태를 재평가")), false);
   console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_RECOVERY_TEST_OK");
 })();
+
+(() => {
+  const report = deriveDeploymentPlan({
+    objectiveSupervisor: {
+      promotion: { ready: true, candidate_id: "PINE_LOGIC_SHIFT", display_candidate_id: "PINE_LOGIC_SHIFT" },
+      rollback: { ready: false },
+      self_evolution_deployment: { deploy_pass: true },
+    },
+    changeControl: {},
+    codexPatchReview: { verdict: "PROMOTE", recommended_candidate_id: "PINE_LOGIC_SHIFT" },
+    deploymentGuards: { summary: { deploy_pass: true, target_candidate_id: "PINE_LOGIC_SHIFT", canary_open_wave: 1 } },
+    canaryReport: { summary: { open_wave: 1 }, rows: [] },
+    stageAutopilot: { raw: { stage_rows: [] } },
+    weeklyHistory: { weeks: [] },
+    candidateChangeSet: {
+      rows: [
+        {
+          candidate_id: "PINE_LOGIC_SHIFT",
+          display_candidate_id: "PINE_LOGIC_SHIFT",
+          target_deploy_unit: "PINE_FILE",
+          canonical_migration_class: "PINE_LOGIC",
+        },
+      ],
+    },
+  });
+
+  assert.strictEqual(report.summary.live_auto_mutation_allowed, false);
+  assert.strictEqual(report.summary.manual_promote_required, true);
+  assert.ok(report.summary.blockers.includes("STRATEGIC_CHANGE_MANUAL_APPROVAL_REQUIRED"));
+  console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_MANUAL_APPROVAL_REQUIRED_TEST_OK");
+})();

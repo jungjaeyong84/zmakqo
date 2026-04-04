@@ -493,6 +493,7 @@ function deriveDeploymentPlan({
     ? supervisor.rollback
     : (change.auto_rollback && typeof change.auto_rollback === "object" ? change.auto_rollback : {});
   const targetCandidateId = String(guardSummary.target_candidate_id || promotion.candidate_id || "").trim() || null;
+  const targetCandidateRow = findCandidateRow(candidateChangeSet, targetCandidateId);
   const displayCandidateId = String(promotion.display_candidate_id || targetCandidateId || "").trim() || null;
   const rollbackFilePath = String(rollback.rollback_file_path || "").trim() || null;
   const codexVerdict = String(codex.verdict || "HOLD").trim().toUpperCase();
@@ -660,6 +661,25 @@ function deriveDeploymentPlan({
     canonicalPolicyRecommendation,
     rollbackFilePath,
   });
+  const targetMutationDeployUnit = String(
+    (targetCandidateRow && targetCandidateRow.target_deploy_unit)
+    || (canonicalPolicyRecommendation && canonicalPolicyRecommendation.target_deploy_unit)
+    || ""
+  ).trim().toUpperCase() || null;
+  const targetMutationClass = String(
+    (targetCandidateRow && targetCandidateRow.canonical_migration_class)
+    || (canonicalPolicyRecommendation && canonicalPolicyRecommendation.canonical_migration_class)
+    || ""
+  ).trim().toUpperCase() || null;
+  const liveAutoMutationAllowed = Boolean(
+    targetMutationDeployUnit === "SERVER_SETTINGS"
+    && targetMutationClass !== "PINE_LOGIC"
+  );
+  const manualPromoteRequired = Boolean(
+    targetCandidateId
+    && !liveAutoMutationAllowed
+    && manualPaste.acknowledged !== true
+  );
 
   let planStatus = "HOLD";
   if (prioritizeRecoveryPromotion && readyForManualPaste) planStatus = "READY_FOR_MANUAL_PASTE";
@@ -684,6 +704,7 @@ function deriveDeploymentPlan({
   if (promotionPreparePass && !readyForManualPaste && !dryPrepareEligible) blockers.push("PINE_PREPARE_PENDING");
   if (dryPrepareEligible) blockers.push("DRY_PREPARE_ONLY");
   if (rollbackPreparePass && !readyForManualRollback) blockers.push("ROLLBACK_PREPARE_PENDING");
+  if (manualPromoteRequired) blockers.push("STRATEGIC_CHANGE_MANUAL_APPROVAL_REQUIRED");
 
   const checklist = rollbackPreparePass
     ? [
@@ -749,6 +770,9 @@ function deriveDeploymentPlan({
   if (authorityBypassActive) {
     nextActions.push("bundle은 활성화됐지만 외부 권위는 아직 미승인 상태이므로 authority_state=PENDING 으로 추적");
   }
+  if (manualPromoteRequired) {
+    nextActions.push("전략 구조 또는 비허용 live mutation 변경이므로 텔레그램/수동 승인 후에만 promote 진행");
+  }
   if (bundleActivationSummary.activation_confirmed) {
     nextActions.length = 0;
     if (authorityBypassActive) {
@@ -776,6 +800,10 @@ function deriveDeploymentPlan({
       recommended_target_stage_state: canonicalPolicyRecommendation && canonicalPolicyRecommendation.stage_state || null,
       recommended_target_stage_reason: canonicalPolicyRecommendation && canonicalPolicyRecommendation.stage_reason || null,
       recommended_target_stage_signature: canonicalPolicyRecommendation && canonicalPolicyRecommendation.stage_signature || null,
+      target_mutation_deploy_unit: targetMutationDeployUnit,
+      target_mutation_class: targetMutationClass,
+      live_auto_mutation_allowed: liveAutoMutationAllowed,
+      manual_promote_required: manualPromoteRequired,
       applied_origin_candidate_id: appliedOriginCandidateId,
       applied_origin_display_candidate_id: appliedOriginDisplayCandidateId,
       prepared_origin_candidate_id: preparedOriginCandidateId,
