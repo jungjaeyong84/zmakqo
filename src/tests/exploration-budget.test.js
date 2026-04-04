@@ -61,6 +61,7 @@ const { deriveExplorationBudget } = require("../../src/utils/explorationBudget")
     assert.strictEqual(boosted.exploration_slot_n, 3);
     assert.ok(boosted.adaptive_budget_reasons.includes("LOW_VERIFICATION_RATE_EXPLORE_UP"));
     assert.ok(boosted.adaptive_budget_reasons.includes("ADVERSE_ATTRIBUTION_STREAK_BUDGET_DOWN"));
+    assert.strictEqual(boosted.learning_epoch_exploration_min, 3);
 
     const positive = deriveExplorationBudget({
       overrideAuthority: {
@@ -105,6 +106,33 @@ const { deriveExplorationBudget } = require("../../src/utils/explorationBudget")
 
     assert.ok(positive.exploration_slot_n >= 4);
     assert.ok(positive.adaptive_budget_reasons.includes("POSITIVE_ATTRIBUTION_STREAK_EXPLORE_UP"));
+
+    const floored = deriveExplorationBudget({
+      overrideAuthority: { summary: { max_market_overrides_per_cycle: 4 } },
+      marketObjectiveScore: { summary: { top_watch_markets: ["XRPUSDT", "AXSUSDT", "DOGEUSDT"] } },
+      serverVsPinePerformanceDelta: { summary: { top_watch_markets: ["XRPUSDT", "AXSUSDT", "DOGEUSDT"] } },
+      serverPrimaryLearningEpoch: {
+        summary: {
+          status: "SERVER_PRIMARY_EPOCH_ACTIVE",
+          active: true,
+          exploration_boost: 1.0,
+        },
+      },
+      changeResultAttribution: {
+        summary: {
+          success_rate: 0.1,
+          positive_change_n: 0,
+          adverse_change_n: 9,
+        },
+      },
+      reasoningJournal: {
+        summary: {
+          verification_rate: 1,
+          verified_n: 5,
+        },
+      },
+    });
+    assert.strictEqual(floored.exploration_slot_n, 3);
 
     console.log("EXPLORATION_BUDGET_TEST_OK");
   } finally {

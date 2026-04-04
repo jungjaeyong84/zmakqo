@@ -76,6 +76,7 @@ function deriveExplorationBudget({
     8
   );
   const baseExplorationSlotN = clampIntEnv("OPENCLAW_EXPLORATION_SLOT_N", 2, 1, 4);
+  const learningEpochExplorationMin = clampIntEnv("OPENCLAW_LEARNING_EPOCH_EXPLORATION_MIN", 3, 1, 6);
   const serverSignalLearningMode = readBoolEnv("OPENCLAW_SERVER_SIGNAL_LEARNING_MODE", true);
   const epochActive = epochSummary.active === true || upper(epochSummary.status) === "SERVER_PRIMARY_EPOCH_ACTIVE";
   const epochExplorationBoost = epochActive ? (toNum(epochSummary.exploration_boost) || 1.15) : 1;
@@ -103,6 +104,9 @@ function deriveExplorationBudget({
     explorationSlotN = Math.max(1, explorationSlotN - 1);
     productionSlotN = Math.max(2, productionSlotN - 1);
     adaptiveReasons.push("ADVERSE_ATTRIBUTION_STREAK_BUDGET_DOWN");
+  }
+  if (serverSignalLearningMode && epochActive) {
+    explorationSlotN = Math.max(learningEpochExplorationMin, explorationSlotN);
   }
 
   const productionMarkets = collectOrderedUniqueMarkets(
@@ -152,6 +156,7 @@ function deriveExplorationBudget({
     learning_epoch_age_days: toNum(epochSummary.age_days),
     learning_epoch_penalty_weight: toNum(epochSummary.penalty_weight),
     learning_epoch_exploration_boost: toNum(epochSummary.exploration_boost),
+    learning_epoch_exploration_min: learningEpochExplorationMin,
     change_result_success_rate: successRate,
     change_result_positive_n: positiveN,
     change_result_adverse_n: adverseN,

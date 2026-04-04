@@ -252,8 +252,17 @@ function derivePatchState({
   otherPolicyWatchByReasonPatch = {},
   releaseExceptions = false,
 } = {}) {
+  const cohortValues = Object.values(evPatch)
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value >= 0 && value <= 1);
+  const evReportOnlyCohortThreshold = cohortValues.length > 0
+    ? Number((cohortValues.reduce((sum, value) => sum + value, 0) / cohortValues.length).toFixed(4))
+    : null;
   const evNext = releaseExceptions ? {} : { ...evCurrent, ...evPatch };
   const evReportOnlyNext = releaseExceptions ? { ...evPatch } : {};
+  const evReportOnlyCohortNext = releaseExceptions && Number.isFinite(evReportOnlyCohortThreshold)
+    ? evReportOnlyCohortThreshold
+    : null;
   const cooldownNext = releaseExceptions ? {} : { ...cooldownCurrent, ...cooldownPatch };
   const otherPolicyWatchByReasonNext = releaseExceptions ? {} : { ...otherPolicyWatchByReasonCurrent };
   if (!releaseExceptions) {
@@ -275,6 +284,7 @@ function derivePatchState({
   return {
     evNext,
     evReportOnlyNext,
+    evReportOnlyCohortNext,
     cooldownNext,
     otherPolicyWatchNext,
     otherPolicyWatchByReasonNext,
@@ -284,6 +294,8 @@ function derivePatchState({
     ev_policy_patch_applied: Object.keys(evNext).length > 0,
     ev_policy_patch_report_only_applied_n: Object.keys(evReportOnlyNext).length,
     ev_policy_patch_report_only_applied: Object.keys(evReportOnlyNext).length > 0,
+    ev_policy_patch_report_only_cohort_applied: Number.isFinite(evReportOnlyCohortNext),
+    ev_policy_patch_report_only_cohort_threshold: Number.isFinite(evReportOnlyCohortNext) ? evReportOnlyCohortNext : null,
     cooldown_policy_patch_requested_n: Object.keys(cooldownPatch).length,
     cooldown_policy_patch_applied_n: Object.keys(cooldownNext).length,
     cooldown_policy_patch_applied: Object.keys(cooldownNext).length > 0,
@@ -376,6 +388,7 @@ async function main() {
   const {
     evNext,
     evReportOnlyNext,
+    evReportOnlyCohortNext,
     cooldownNext,
     otherPolicyWatchNext,
     otherPolicyWatchByReasonNext,
@@ -385,6 +398,8 @@ async function main() {
     ev_policy_patch_applied,
     ev_policy_patch_report_only_applied_n,
     ev_policy_patch_report_only_applied,
+    ev_policy_patch_report_only_cohort_applied,
+    ev_policy_patch_report_only_cohort_threshold,
     cooldown_policy_patch_requested_n,
     cooldown_policy_patch_applied_n,
     cooldown_policy_patch_applied,
@@ -419,6 +434,8 @@ async function main() {
     ev_policy_patch_applied,
     ev_policy_patch_report_only_applied_n,
     ev_policy_patch_report_only_applied,
+    ev_policy_patch_report_only_cohort_applied,
+    ev_policy_patch_report_only_cohort_threshold,
     cooldown_policy_patch_requested_n,
     cooldown_policy_patch_applied_n,
     cooldown_policy_patch_applied,
@@ -437,6 +454,14 @@ async function main() {
         patch_n: Object.keys(evPatch).length,
         next_n: Object.keys(evReportOnlyNext).length,
         patch: releaseExceptions ? evPatch : {},
+      },
+      ev_gate_tp1_prob_min_report_only_cohort: {
+        current: Number.isFinite(Number(rawProvider.ev_gate_tp1_prob_min_report_only_cohort))
+          ? Number(rawProvider.ev_gate_tp1_prob_min_report_only_cohort)
+          : (Number.isFinite(Number(current.ev_gate_tp1_prob_min_report_only_cohort)) ? Number(current.ev_gate_tp1_prob_min_report_only_cohort) : null),
+        patch: Number.isFinite(evReportOnlyCohortNext) ? evReportOnlyCohortNext : null,
+        next: Number.isFinite(evReportOnlyCohortNext) ? evReportOnlyCohortNext : null,
+        enabled: Number.isFinite(evReportOnlyCohortNext),
       },
       opposite_signal_cooldown_bars_by_market: {
         current_n: Object.keys(cooldownCurrent).length,
@@ -516,6 +541,8 @@ async function main() {
         [`${prefix}.ev_gate_tp1_prob_min_by_market`]: evNext,
         [`${prefix}.ev_gate_tp1_prob_min_by_market_report_only`]: evReportOnlyNext,
         [`${prefix}.ev_gate_tp1_prob_min_by_market_report_only_enabled`]: Object.keys(evReportOnlyNext).length > 0,
+        [`${prefix}.ev_gate_tp1_prob_min_report_only_cohort`]: Number.isFinite(evReportOnlyCohortNext) ? evReportOnlyCohortNext : null,
+        [`${prefix}.ev_gate_tp1_prob_min_report_only_cohort_enabled`]: Number.isFinite(evReportOnlyCohortNext),
         [`${prefix}.opposite_signal_cooldown_bars_by_market`]: cooldownNext,
         [`${prefix}.other_server_policy_watch_only_markets`]: otherPolicyWatchNext,
         [`${prefix}.other_server_policy_watch_only_markets_by_reason`]: otherPolicyWatchByReasonNext,
@@ -563,6 +590,7 @@ async function main() {
       learning_epoch_exception_release: releaseExceptions,
       ev_patch_n: releaseExceptions ? Object.keys(evCurrent).length : Object.keys(evPatch).length,
       ev_patch_report_only_n: Object.keys(evReportOnlyNext).length,
+      ev_patch_report_only_cohort_threshold: Number.isFinite(evReportOnlyCohortNext) ? evReportOnlyCohortNext : null,
       cooldown_patch_n: releaseExceptions ? Object.keys(cooldownCurrent).length : Object.keys(cooldownPatch).length,
       other_server_policy_watch_only_patch_n: releaseExceptions ? otherPolicyWatchCurrent.length : otherPolicyWatchPatch.length,
       other_server_policy_watch_only_reason_patch_n: releaseExceptions ? Object.keys(otherPolicyWatchByReasonCurrent).length : Object.keys(otherPolicyWatchByReasonPatch).length,

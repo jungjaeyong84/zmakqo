@@ -18,6 +18,7 @@ const { __test } = require("../../scripts/apply-server-signal-drift-remediation-
 
   assert.deepStrictEqual(out.evNext, {});
   assert.deepStrictEqual(out.evReportOnlyNext, { SOLUSDT: 0.501, ETHUSDT: 0.501 });
+  assert.strictEqual(out.evReportOnlyCohortNext, 0.501);
   assert.deepStrictEqual(out.cooldownNext, {});
   assert.deepStrictEqual(out.otherPolicyWatchNext, []);
   assert.strictEqual(out.exception_release_applied, true);
@@ -26,6 +27,8 @@ const { __test } = require("../../scripts/apply-server-signal-drift-remediation-
   assert.strictEqual(out.ev_policy_patch_applied, false);
   assert.strictEqual(out.ev_policy_patch_report_only_applied_n, 2);
   assert.strictEqual(out.ev_policy_patch_report_only_applied, true);
+  assert.strictEqual(out.ev_policy_patch_report_only_cohort_applied, true);
+  assert.strictEqual(out.ev_policy_patch_report_only_cohort_threshold, 0.501);
 })();
 
 (() => {
@@ -43,6 +46,7 @@ const { __test } = require("../../scripts/apply-server-signal-drift-remediation-
 
   assert.deepStrictEqual(out.evNext, { SOLUSDT: 0.501, ETHUSDT: 0.501 });
   assert.deepStrictEqual(out.evReportOnlyNext, {});
+  assert.strictEqual(out.evReportOnlyCohortNext, null);
   assert.deepStrictEqual(out.cooldownNext, { XRPUSDT: 2 });
   assert.deepStrictEqual(out.otherPolicyWatchNext, ["ETHUSDT"]);
   assert.strictEqual(out.exception_release_applied, false);
@@ -51,6 +55,8 @@ const { __test } = require("../../scripts/apply-server-signal-drift-remediation-
   assert.strictEqual(out.ev_policy_patch_applied, true);
   assert.strictEqual(out.ev_policy_patch_report_only_applied_n, 0);
   assert.strictEqual(out.ev_policy_patch_report_only_applied, false);
+  assert.strictEqual(out.ev_policy_patch_report_only_cohort_applied, false);
+  assert.strictEqual(out.ev_policy_patch_report_only_cohort_threshold, null);
 })();
 
 (() => {
