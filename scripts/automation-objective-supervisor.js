@@ -3080,6 +3080,7 @@ async function main() {
       candidateChangeSet: selfEvolutionCandidatesArtifact.data,
       replayReport: selfEvolutionReplayArtifact.data,
       canaryReport: selfEvolutionCanaryArtifact.data,
+      sampleReadiness: selfEvolutionServerSignalCutoverReadinessArtifact.data,
       previousLedger: null,
       nowMeta,
     });

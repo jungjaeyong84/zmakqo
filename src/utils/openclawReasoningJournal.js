@@ -25,6 +25,12 @@ function toComparableString(value) {
   return String(value || "").trim().toUpperCase() || null;
 }
 
+function resolveEvVerificationMinSamples(cutoverSummary = {}) {
+  const configured = toNum(cutoverSummary.ev_policy_remediation_min_post_samples);
+  const floor = Math.max(3, Number(process.env.OPENCLAW_EV_POLICY_VERIFICATION_MIN_SAMPLES || 5));
+  return Math.max(configured || 3, floor);
+}
+
 function deriveDominantIssue({ objectiveSupervisor = null, autonomyContract = null, quality = null, cutover = null } = {}) {
   const objective = unwrapRawReport(objectiveSupervisor) || {};
   const autonomy = readSummary(autonomyContract);
@@ -110,13 +116,13 @@ function derivePendingVerification({ cutover = null, quality = null, autonomyCon
     }
     return {
       metric: "ev_policy_post_apply_comparable_n",
-      expected: `>= ${toNum(cutoverSummary.ev_policy_remediation_min_post_samples) || 3}`,
+      expected: `>= ${resolveEvVerificationMinSamples(cutoverSummary)}`,
       deadline_hint: "NEXT_24H",
       baseline_value: toNum(cutoverSummary.ev_policy_post_apply_comparable_n),
       fast_track: {
-        metric: "final_downstream_mismatch_n",
-        expected: "< baseline",
-        baseline_value: finalMismatchN,
+        metric: "ev_policy_post_apply_mismatch_rate",
+        expected: `<= ${Number(process.env.OPENCLAW_EV_POLICY_POST_APPLY_MISMATCH_RATE_MAX || 0.6)}`,
+        baseline_value: toNum(cutoverSummary.ev_policy_post_apply_mismatch_rate),
       },
     };
   }
@@ -234,6 +240,14 @@ function collectCurrentVerificationState({ quality = null, cutover = null, auton
       : "FALSE",
     learning_epoch_exception_release_applied: cutoverSummary.learning_epoch_exception_release_applied === true ? "TRUE" : "FALSE",
     ev_policy_patch_report_only_applied: cutoverSummary.ev_policy_patch_report_only_applied === true ? "TRUE" : "FALSE",
+    ev_policy_remediation_min_post_samples: resolveEvVerificationMinSamples(cutoverSummary),
+    ev_policy_post_apply_mismatch_n: toNum(cutoverSummary.ev_policy_post_apply_mismatch_n),
+    ev_policy_post_apply_mismatch_rate: (() => {
+      const comparableN = toNum(cutoverSummary.ev_policy_post_apply_comparable_n);
+      const mismatchN = toNum(cutoverSummary.ev_policy_post_apply_mismatch_n);
+      if (comparableN == null || mismatchN == null || comparableN <= 0) return null;
+      return Number((mismatchN / comparableN).toFixed(4));
+    })(),
     other_server_policy_mismatch_n: toNum(
       qualitySummary.other_server_policy_mismatch_n != null
         ? qualitySummary.other_server_policy_mismatch_n
@@ -306,6 +320,17 @@ function shouldDeferByPolicy(entry, currentState = {}) {
   return false;
 }
 
+function shouldDeferLowSample(entry, currentState = {}) {
+  const pv = entry && entry.pending_verification;
+  if (!pv || pv.metric !== "ev_policy_post_apply_comparable_n") return false;
+  const actualComparable = toNum(currentState.ev_policy_post_apply_comparable_n);
+  const requiredComparable = toNum(currentState.ev_policy_remediation_min_post_samples)
+    || toNum(String(pv.expected || "").replace(/[^\d.-]/g, ""))
+    || 5;
+  if (actualComparable == null) return true;
+  return actualComparable < requiredComparable;
+}
+
 function resolveVerificationOutcome(entry, currentState = {}) {
   const pv = entry && entry.pending_verification;
   if (!pv || !pv.metric) return null;
@@ -325,6 +350,27 @@ function resolveVerificationOutcome(entry, currentState = {}) {
           baseline_value: pv.fast_track.baseline_value != null ? pv.fast_track.baseline_value : null,
           status: "DEFERRED_LEARNING_EPOCH",
           reason: "DEFERRED_BY_LEARNING_EPOCH",
+        }
+        : null,
+      cycle_id: entry && entry.cycle_id || null,
+    };
+  }
+  if (shouldDeferLowSample(entry, currentState)) {
+    return {
+      status: "DEFERRED_LOW_SAMPLE",
+      metric: pv.metric,
+      expected: pv.expected || null,
+      actual: currentState[pv.metric],
+      baseline_value: pv.baseline_value != null ? pv.baseline_value : null,
+      reason: "DEFERRED_BY_LOW_SAMPLE",
+      fast_track: pv.fast_track && pv.fast_track.metric
+        ? {
+          metric: pv.fast_track.metric,
+          expected: pv.fast_track.expected || null,
+          actual: currentState[pv.fast_track.metric],
+          baseline_value: pv.fast_track.baseline_value != null ? pv.fast_track.baseline_value : null,
+          status: "DEFERRED_LOW_SAMPLE",
+          reason: "DEFERRED_BY_LOW_SAMPLE",
         }
         : null,
       cycle_id: entry && entry.cycle_id || null,
@@ -398,7 +444,7 @@ function buildVerificationStats(entries = []) {
   const fast_track_verified_n = resolved.filter((status) => status === "VERIFIED_FAST_TRACK").length;
   const not_met_n = resolved.filter((status) => status === "NOT_MET").length;
   const unknown_n = resolved.filter((status) => status === "UNKNOWN").length;
-  const deferred_n = resolved.filter((status) => status === "DEFERRED_LEARNING_EPOCH").length;
+  const deferred_n = resolved.filter((status) => status === "DEFERRED_LEARNING_EPOCH" || status === "DEFERRED_LOW_SAMPLE").length;
   const denominator = verified_n + not_met_n;
   return {
     verified_n,
@@ -508,6 +554,7 @@ module.exports = {
     derivePendingVerification,
     describeVerificationTarget,
     shouldDeferByPolicy,
+    shouldDeferLowSample,
     resolveVerificationOutcome,
     resolvePreviousEntries,
     buildVerificationStats,

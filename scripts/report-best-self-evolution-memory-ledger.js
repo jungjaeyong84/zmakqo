@@ -22,6 +22,7 @@ const INPUTS = Object.freeze({
   replay: path.join(OPS_DAILY_DIR, "best_self_evolution_replay_latest.json"),
   canary: path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json"),
   previousLedger: path.join(OPS_DAILY_DIR, "best_self_evolution_memory_latest.json"),
+  cutover: path.join(OPS_DAILY_DIR, "server_signal_cutover_readiness_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -35,7 +36,7 @@ function renderMarkdown(report = {}) {
     "",
     "## Summary",
     `- total/current: ${summary.total_n ?? 0} / ${summary.current_n ?? 0}`,
-    `- success/neutral/fail/rolled_back: ${summary.success_n ?? 0} / ${summary.neutral_n ?? 0} / ${summary.fail_n ?? 0} / ${summary.rolled_back_n ?? 0}`,
+    `- success/provisional/neutral/fail/rolled_back: ${summary.success_n ?? 0} / ${summary.provisional_fail_n ?? 0} / ${summary.neutral_n ?? 0} / ${summary.fail_n ?? 0} / ${summary.rolled_back_n ?? 0}`,
     `- blocked_candidate_n: ${summary.blocked_candidate_n ?? 0} / ttl_weeks=${summary.fingerprint_block_ttl_weeks ?? "N/A"}`,
     `- avg objective/count/replacement/ret: ${summary.avg_objective_delta != null ? Number(summary.avg_objective_delta).toFixed(4) : "N/A"} / ${summary.avg_count_delta != null ? Number(summary.avg_count_delta).toFixed(4) : "N/A"} / ${summary.avg_replacement_delta != null ? Number(summary.avg_replacement_delta).toFixed(4) : "N/A"} / ${summary.avg_ret_net_delta != null ? Number(summary.avg_ret_net_delta).toFixed(4) : "N/A"}`,
     `- top success: ${summary.top_success_candidate_id || "N/A"} / top failed: ${summary.top_failed_candidate_id || "N/A"}`,
@@ -61,6 +62,7 @@ async function main() {
     replayReport: readJsonRawSafe(INPUTS.replay, null),
     canaryReport: readJsonRawSafe(INPUTS.canary, null),
     previousLedger: readJsonRawSafe(INPUTS.previousLedger, null),
+    sampleReadiness: readJsonRawSafe(INPUTS.cutover, null),
     nowMeta,
   });
   const output = {

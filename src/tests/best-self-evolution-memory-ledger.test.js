@@ -213,3 +213,45 @@ const { buildMemoryLedger } = require("../utils/bestSelfEvolutionMemoryLedger");
 
   console.log("BEST_SELF_EVOLUTION_MEMORY_LEDGER_TEST_OK");
 })();
+
+(() => {
+  const ledger = buildMemoryLedger({
+    candidateChangeSet: {
+      rows: [
+        {
+          candidate_id: "EV_TP1_THRESHOLD_TUNE",
+          display_candidate_id: "EV_TP1_THRESHOLD_TUNE",
+          scope: "EV",
+          markets: ["SOLUSDT", "ETHUSDT"],
+          changes: [{ key: "ev_gate_tp1_prob_min", current: 0.515, next: 0.501, direction: "LOOSEN" }],
+        },
+      ],
+    },
+    replayReport: {
+      validations: [
+        {
+          candidate_id: "EV_TP1_THRESHOLD_TUNE",
+          validation_verdict: "BLOCK",
+          candidate_objective_delta: -0.2,
+          blockers: ["POST_APPLY_MISMATCH"],
+        },
+      ],
+    },
+    canaryReport: { rows: [] },
+    previousLedger: null,
+    sampleReadiness: {
+      summary: {
+        ev_policy_post_apply_comparable_n: 2,
+        ev_policy_post_apply_mismatch_n: 2,
+        ev_policy_remediation_min_post_samples: 3,
+      },
+    },
+    nowMeta: { dateKey: "2026-04-05", kst: "2026-04-05 09:00:00 KST" },
+  });
+
+  const row = ledger.current_rows[0];
+  assert.strictEqual(row.verdict, "PROVISIONAL_FAIL");
+  assert.strictEqual(row.memory_blocked, false);
+  assert.strictEqual(row.provisional_fail, true);
+  assert.strictEqual(ledger.summary.provisional_fail_n, 1);
+})();

@@ -79,15 +79,15 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_recommended_action, "HOLD_EV_POLICY_REVIEW");
   assert.match(journal.summary.current_verification_focus, /ev_policy_post_apply_comparable_n/);
   assert.strictEqual(journal.summary.entry_n, 4);
-  assert.strictEqual(journal.summary.verified_n, 1);
-  assert.strictEqual(journal.summary.sample_formation_verified_n, 1);
+  assert.strictEqual(journal.summary.verified_n, 0);
+  assert.strictEqual(journal.summary.sample_formation_verified_n, 0);
   assert.strictEqual(journal.summary.fast_track_verified_n, 0);
   assert.strictEqual(journal.summary.not_met_n, 1);
   assert.strictEqual(journal.summary.unknown_n, 1);
-  assert.strictEqual(journal.summary.deferred_n, 0);
-  assert.strictEqual(journal.summary.verification_rate, 0.5);
+  assert.strictEqual(journal.summary.deferred_n, 1);
+  assert.strictEqual(journal.summary.verification_rate, 0);
   assert.ok(journal.compacted_context.includes("cycle-1"));
-  assert.strictEqual(journal.entries.find((row) => row.cycle_id === "cycle-0").verification_outcome.status, "VERIFIED_SAMPLE_FORMATION");
+  assert.strictEqual(journal.entries.find((row) => row.cycle_id === "cycle-0").verification_outcome.status, "DEFERRED_LOW_SAMPLE");
   assert.strictEqual(journal.entries.find((row) => row.cycle_id === "cycle-neg").verification_outcome.status, "NOT_MET");
   assert.strictEqual(journal.entries.find((row) => row.cycle_id === "cycle-unknown").verification_outcome.status, "UNKNOWN");
 
@@ -148,21 +148,68 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         cycle_id: "cycle-fast",
         pending_verification: {
           metric: "ev_policy_post_apply_comparable_n",
-          expected: ">= 3",
+          expected: ">= 5",
           baseline_value: 0,
           fast_track: {
-            metric: "final_downstream_mismatch_n",
-            expected: "< baseline",
-            baseline_value: 15,
+            metric: "ev_policy_post_apply_mismatch_rate",
+            expected: "<= 0.6",
+            baseline_value: 1,
           },
         },
       },
       {
         ev_policy_post_apply_comparable_n: 1,
-        final_downstream_mismatch_n: 12,
+        ev_policy_post_apply_mismatch_rate: 0.4,
+        ev_policy_remediation_min_post_samples: 5,
       }
     ).status,
-    "VERIFIED_FAST_TRACK"
+    "DEFERRED_LOW_SAMPLE"
+  );
+  assert.strictEqual(
+    __test.resolveVerificationOutcome(
+      {
+        cycle_id: "cycle-fast-verified",
+        pending_verification: {
+          metric: "ev_policy_post_apply_comparable_n",
+          expected: ">= 5",
+          baseline_value: 2,
+          fast_track: {
+            metric: "ev_policy_post_apply_mismatch_rate",
+            expected: "<= 0.6",
+            baseline_value: 1,
+          },
+        },
+      },
+      {
+        ev_policy_post_apply_comparable_n: 4,
+        ev_policy_post_apply_mismatch_rate: 0.4,
+        ev_policy_remediation_min_post_samples: 5,
+      }
+    ).status,
+    "DEFERRED_LOW_SAMPLE"
+  );
+  assert.strictEqual(
+    __test.resolveVerificationOutcome(
+      {
+        cycle_id: "cycle-fast-ready",
+        pending_verification: {
+          metric: "ev_policy_post_apply_comparable_n",
+          expected: ">= 5",
+          baseline_value: 2,
+          fast_track: {
+            metric: "ev_policy_post_apply_mismatch_rate",
+            expected: "<= 0.6",
+            baseline_value: 1,
+          },
+        },
+      },
+      {
+        ev_policy_post_apply_comparable_n: 5,
+        ev_policy_post_apply_mismatch_rate: 0.4,
+        ev_policy_remediation_min_post_samples: 5,
+      }
+    ).status,
+    "VERIFIED"
   );
   assert.strictEqual(
     __test.resolveVerificationOutcome(
@@ -181,7 +228,31 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
       },
       {
         ev_policy_post_apply_comparable_n: 4,
-        final_downstream_mismatch_n: 15,
+        ev_policy_post_apply_mismatch_rate: 1,
+        ev_policy_remediation_min_post_samples: 5,
+      }
+    ).status,
+    "DEFERRED_LOW_SAMPLE"
+  );
+  assert.strictEqual(
+    __test.resolveVerificationOutcome(
+      {
+        cycle_id: "cycle-sample-verified",
+        pending_verification: {
+          metric: "ev_policy_post_apply_comparable_n",
+          expected: ">= 5",
+          baseline_value: 2,
+          fast_track: {
+            metric: "ev_policy_post_apply_mismatch_rate",
+            expected: "<= 0.6",
+            baseline_value: 1,
+          },
+        },
+      },
+      {
+        ev_policy_post_apply_comparable_n: 5,
+        ev_policy_post_apply_mismatch_rate: 1,
+        ev_policy_remediation_min_post_samples: 5,
       }
     ).status,
     "VERIFIED_SAMPLE_FORMATION"
@@ -203,7 +274,8 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
       },
       {
         ev_policy_post_apply_comparable_n: 0,
-        final_downstream_mismatch_n: 17,
+        ev_policy_post_apply_mismatch_rate: null,
+        ev_policy_remediation_min_post_samples: 5,
         learning_epoch_exception_release_applied: "TRUE",
         ev_policy_patch_report_only_applied: "TRUE",
       }
@@ -221,6 +293,9 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
       ev_policy_effective_patch_applied: "TRUE",
       learning_epoch_exception_release_applied: "TRUE",
       ev_policy_patch_report_only_applied: "TRUE",
+      ev_policy_remediation_min_post_samples: 5,
+      ev_policy_post_apply_mismatch_n: null,
+      ev_policy_post_apply_mismatch_rate: null,
       other_server_policy_mismatch_n: 2,
       final_downstream_mismatch_n: 7,
       authority_state: "PENDING",

@@ -252,11 +252,14 @@ function derivePatchState({
   otherPolicyWatchByReasonPatch = {},
   releaseExceptions = false,
 } = {}) {
+  const cohortRelaxDelta = Math.max(0, Number(process.env.SERVER_SIGNAL_REPORT_ONLY_COHORT_RELAX_DELTA || 0.006));
+  const cohortFloor = Math.max(0, Number(process.env.SERVER_SIGNAL_REPORT_ONLY_COHORT_MIN || 0.48));
   const cohortValues = Object.values(evPatch)
     .map((value) => Number(value))
     .filter((value) => Number.isFinite(value) && value >= 0 && value <= 1);
-  const evReportOnlyCohortThreshold = cohortValues.length > 0
-    ? Number((cohortValues.reduce((sum, value) => sum + value, 0) / cohortValues.length).toFixed(4))
+  const cohortMin = cohortValues.length > 0 ? Math.min(...cohortValues) : null;
+  const evReportOnlyCohortThreshold = Number.isFinite(cohortMin)
+    ? Number(Math.max(cohortFloor, cohortMin - cohortRelaxDelta).toFixed(4))
     : null;
   const evNext = releaseExceptions ? {} : { ...evCurrent, ...evPatch };
   const evReportOnlyNext = releaseExceptions ? { ...evPatch } : {};

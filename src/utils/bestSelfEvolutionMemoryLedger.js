@@ -127,12 +127,29 @@ function average(values = []) {
   return scoped.reduce((acc, row) => acc + row, 0) / scoped.length;
 }
 
+function readSummary(value) {
+  const raw = unwrapRawReport(value) || {};
+  return raw.summary && typeof raw.summary === "object" ? raw.summary : raw;
+}
+
+function buildSampleReadinessContext(cutover = null) {
+  const summary = readSummary(cutover);
+  const configuredMin = toNum(summary.ev_policy_remediation_min_post_samples);
+  const floorMin = Math.max(3, Number(process.env.OPENCLAW_EV_POLICY_VERIFICATION_MIN_SAMPLES || 5));
+  return {
+    ev_policy_post_apply_comparable_n: toNum(summary.ev_policy_post_apply_comparable_n),
+    ev_policy_post_apply_mismatch_n: toNum(summary.ev_policy_post_apply_mismatch_n),
+    ev_policy_min_samples: Math.max(configuredMin || 3, floorMin),
+  };
+}
+
 function buildCurrentRows({
   candidateChangeSet = null,
   replayReport = null,
   canaryReport = null,
   nowMeta = null,
   previousLedger = null,
+  sampleReadiness = null,
 } = {}) {
   const candidateRows = [
     ...(Array.isArray(candidateChangeSet && candidateChangeSet.rows) ? candidateChangeSet.rows : []),
@@ -163,6 +180,7 @@ function buildCurrentRows({
     previousFailMap.get(fingerprint).push(row);
   }
 
+  const sampleContext = buildSampleReadinessContext(sampleReadiness);
   return candidateRows.map((candidate) => {
     const candidateId = String(candidate && candidate.candidate_id || "").trim() || null;
     const fingerprint = candidateFingerprint(candidate);
@@ -182,7 +200,13 @@ function buildCurrentRows({
     const avgRetNetDelta = toNum(replay && replay.avg_ret_net_delta);
     const previousFails = previousFailMap.get(fingerprint) || [];
     const successReleased = previousSuccessFingerprintSet.has(fingerprint);
-    const memoryBlocked = previousFails.length > 0 && !successReleased;
+    const isEvScope = String(candidate && candidate.scope || "").trim().toUpperCase() === "EV";
+    const lowSampleEvContext = isEvScope
+      && Number.isFinite(sampleContext.ev_policy_post_apply_comparable_n)
+      && sampleContext.ev_policy_post_apply_comparable_n < sampleContext.ev_policy_min_samples;
+    const provisionalFail = lowSampleEvContext
+      && (derived.verdict === "FAIL" || derived.verdict === "ROLLED_BACK");
+    const memoryBlocked = previousFails.length > 0 && !successReleased && !provisionalFail;
     const latestFail = previousFails[0] || null;
     const previousFailAgeWeeks = latestFail ? isoWeekDistance(weekKey, String(latestFail.applied_week_key || "").trim()) : null;
     return {
@@ -197,13 +221,15 @@ function buildCurrentRows({
       count_delta: countDelta,
       replacement_delta: replacementDelta,
       avg_ret_net_delta: avgRetNetDelta,
-      verdict: derived.verdict,
-      rollback_reason: derived.rollback_reason,
+      verdict: provisionalFail ? "PROVISIONAL_FAIL" : derived.verdict,
+      rollback_reason: provisionalFail ? "LOW_SAMPLE_POST_APPLY" : derived.rollback_reason,
       replay_verdict: String(replay && replay.validation_verdict || "").trim().toUpperCase() || null,
       canary_stage: perCandidateCanary.map((row) => String(row && row.current_stage || "").trim().toUpperCase()).filter(Boolean)[0] || "SHADOW",
       canary_action: perCandidateCanary.map((row) => String(row && row.canary_action || "").trim().toUpperCase()).filter(Boolean)[0] || "KEEP",
       memory_blocked: memoryBlocked,
-      memory_block_reason: memoryBlocked ? "RECENT_FAIL_FINGERPRINT_WITHIN_TTL" : null,
+      memory_block_reason: provisionalFail ? null : (memoryBlocked ? "RECENT_FAIL_FINGERPRINT_WITHIN_TTL" : null),
+      provisional_fail: provisionalFail,
+      provisional_fail_reason: provisionalFail ? "LOW_SAMPLE_POST_APPLY" : null,
       previous_fail_week_key: memoryBlocked ? String(latestFail && latestFail.applied_week_key || "").trim() || null : null,
       previous_fail_verdict: memoryBlocked ? String(latestFail && latestFail.verdict || "").trim().toUpperCase() || null : null,
       previous_fail_age_weeks: memoryBlocked ? previousFailAgeWeeks : null,
@@ -238,6 +264,7 @@ function buildMemoryLedger({
   canaryReport = null,
   previousLedger = null,
   nowMeta = null,
+  sampleReadiness = null,
 } = {}) {
   const previousRows = Array.isArray(previousLedger && previousLedger.rows) ? previousLedger.rows : [];
   const currentRows = buildCurrentRows({
@@ -246,9 +273,11 @@ function buildMemoryLedger({
     canaryReport,
     nowMeta,
     previousLedger,
+    sampleReadiness,
   });
   const rows = mergeLedgerRows(previousRows, currentRows);
   const successRows = rows.filter((row) => row.verdict === "SUCCESS");
+  const provisionalFailRows = rows.filter((row) => row.verdict === "PROVISIONAL_FAIL");
   const failRows = rows.filter((row) => row.verdict === "FAIL");
   const rolledBackRows = rows.filter((row) => row.verdict === "ROLLED_BACK");
   const neutralRows = rows.filter((row) => row.verdict === "NEUTRAL");
@@ -258,6 +287,7 @@ function buildMemoryLedger({
       total_n: rows.length,
       current_n: currentRows.length,
       success_n: successRows.length,
+      provisional_fail_n: provisionalFailRows.length,
       neutral_n: neutralRows.length,
       fail_n: failRows.length,
       rolled_back_n: rolledBackRows.length,
