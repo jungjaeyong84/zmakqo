@@ -370,6 +370,8 @@ function buildSnapshotFromArtifacts({
   lineageHealthMtimeMs = null,
   lineageHealthPath = null,
   lineageHealthSource = null,
+  lineageSharedRefreshPending = false,
+  lineageSharedSnapshotAvailable = false,
   driftRemediationApplyDoc = null,
 } = {}) {
   const allocatorSummary = readSummary(allocatorDoc);
@@ -448,6 +450,8 @@ function buildSnapshotFromArtifacts({
       ? "ARTIFACT_TIMESTAMP"
       : (Number.isFinite(toNum(lineageHealthMtimeMs)) ? "FILE_MTIME" : null)),
     lineageReportPath: String(lineageHealthPath || "").trim() || SIGNAL_LINEAGE_HEALTH_PATH,
+    lineageSharedRefreshPending: lineageSharedRefreshPending === true,
+    lineageSharedSnapshotAvailable: lineageSharedSnapshotAvailable === true,
     allocatorByMarket,
     quarantineByMarket,
     qualityByMarket,
@@ -559,6 +563,8 @@ function loadPolicySnapshot({ force = false } = {}) {
     lineageHealthMtimeMs: selectedLineageInput.mtimeMs,
     lineageHealthPath: selectedLineageInput.path,
     lineageHealthSource: selectedLineageInput.source,
+    lineageSharedRefreshPending: !sharedLineageCache.snapshot && !!sharedLineageCache.refreshPromise,
+    lineageSharedSnapshotAvailable: !!sharedLineageCache.snapshot,
     driftRemediationApplyDoc,
   });
   cache = { ts: now, snapshot };
@@ -699,6 +705,8 @@ function deriveLineageSloBlock(snapshot = null) {
   const reportGeneratedAtKst = String(snapshot && snapshot.lineageGeneratedAtKst || "").trim() || null;
   const reportPath = String(snapshot && snapshot.lineageReportPath || "").trim() || null;
   const reportSource = String(snapshot && snapshot.lineageGeneratedAtSource || "").trim() || null;
+  const sharedRefreshPending = snapshot && snapshot.lineageSharedRefreshPending === true;
+  const sharedSnapshotAvailable = snapshot && snapshot.lineageSharedSnapshotAvailable === true;
   const nowMs = Date.now();
   const reportAgeMs = Number.isFinite(reportMs) ? Math.max(0, nowMs - reportMs) : null;
   if (LINEAGE_SLO_REQUIRE_FRESH) {
@@ -717,10 +725,25 @@ function deriveLineageSloBlock(snapshot = null) {
     }
     const fresh = Number.isFinite(reportMs) && reportAgeMs <= LINEAGE_SLO_MAX_REPORT_AGE_MS;
     if (!fresh) {
+      if (!sharedSnapshotAvailable && sharedRefreshPending && reportSource !== "FIRESTORE_REPORT_LATEST") {
+        return {
+          blocked: false,
+          reason: "LINEAGE_SLO_SHARED_REFRESH_PENDING",
+          stale: true,
+          shared_refresh_pending: true,
+          report_generated_at_kst: reportGeneratedAtKst,
+          report_age_ms: reportAgeMs,
+          report_path: reportPath,
+          report_source: reportSource,
+          report_missing: false,
+          max_report_age_ms: LINEAGE_SLO_MAX_REPORT_AGE_MS,
+        };
+      }
       return {
         blocked: LINEAGE_SLO_FAIL_CLOSED,
         reason: "LINEAGE_SLO_REPORT_STALE",
         stale: true,
+        shared_refresh_pending: false,
         report_generated_at_kst: reportGeneratedAtKst,
         report_age_ms: reportAgeMs,
         report_path: reportPath,
@@ -851,6 +874,7 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_lineage_report_path: String(lineageSlo.report_path || snapshot && snapshot.lineageReportPath || "").trim() || null,
     _live_exec_policy_lineage_report_source: String(lineageSlo.report_source || snapshot && snapshot.lineageGeneratedAtSource || "").trim() || null,
     _live_exec_policy_lineage_report_missing: lineageSlo.report_missing === true,
+    _live_exec_policy_lineage_shared_refresh_pending: lineageSlo.shared_refresh_pending === true,
     _live_exec_policy_lineage_slo_max_report_age_ms: LINEAGE_SLO_MAX_REPORT_AGE_MS,
     _live_exec_policy_drift_remediation_enabled: DRIFT_REMEDIATION_ENABLED,
     _live_exec_policy_other_server_policy_watch_only_block_enabled: DRIFT_REMEDIATION_WATCH_ONLY_BLOCK,
@@ -1126,6 +1150,7 @@ function evaluateLiveEntryPolicy({
       plan_market_scale: policyPlanMarketScale,
       learning_epoch_active: learningEpochRelease.learning_epoch_active,
       learning_epoch_exception_release_active: learningEpochRelease.active,
+      lineage_shared_refresh_pending: lineageSlo.shared_refresh_pending === true,
       drift_remediation_enabled: DRIFT_REMEDIATION_ENABLED,
       drift_remediation_watch_only_block: DRIFT_REMEDIATION_WATCH_ONLY_BLOCK,
       profile: POLICY_PROFILE,

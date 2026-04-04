@@ -397,6 +397,40 @@ function buildSnapshot({
 })();
 
 (() => {
+  const nowMs = Date.now();
+  const snap = __test.buildSnapshotFromArtifacts({
+    allocatorDoc: { summary: { by_market: [{ market: "BTCUSDT", allocation_score: 1, recommended_action: "HOLD" }] } },
+    quarantineDoc: { summary: { by_market: [] } },
+    executionQualityDoc: { summary: { by_market: [{ market: "BTCUSDT", avg_created_to_fill_ms: 100, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }] } },
+    lineageHealthMtimeMs: nowMs - (5 * 60 * 60 * 1000),
+    lineageHealthDoc: {
+      generated_at: new Date(nowMs - (5 * 60 * 60 * 1000)).toISOString(),
+      summary: {
+        intents_signal_doc_id_null_rate: 0,
+        fills_signal_doc_id_null_rate: 0,
+        fills_intent_id_null_rate: 0,
+      },
+    },
+    lineageHealthSource: "FILE_MTIME",
+    lineageSharedRefreshPending: true,
+    lineageSharedSnapshotAvailable: false,
+  });
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    intent: "ENTRY",
+    qtyPct: 0.5,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.featuresPatch._live_exec_policy_lineage_shared_refresh_pending, true);
+  assert.strictEqual(res.policy.lineage_shared_refresh_pending, true);
+})();
+
+(() => {
   const olderLocalIso = new Date(Date.now() - (3 * 60 * 60 * 1000)).toISOString();
   const newerSharedIso = new Date(Date.now() - (5 * 60 * 1000)).toISOString();
   const selected = __test.selectPreferredLineageInput({
