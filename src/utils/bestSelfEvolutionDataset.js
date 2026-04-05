@@ -8,6 +8,7 @@ const {
   resolveActiveEntryFamily,
   resolveLegacyEntryFamily,
 } = require("./liveEntryTaxonomy");
+const { isMlPrimarySignalTierAllowed } = require("./mlSignalScope");
 
 function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -1266,8 +1267,10 @@ async function buildBestSelfEvolutionDataset({
     qualitySummary: quality,
     evTunerReport,
   });
-  const exitOnlyRows = rows.filter((row) => row.source_row_type === "EXIT_ONLY");
-  const learningRows = rows.filter((row) => row.source_row_type !== "EXIT_ONLY");
+  const scopedRows = rows.filter((row) => isMlPrimarySignalTierAllowed(row));
+  const filteredOutN = Math.max(0, rows.length - scopedRows.length);
+  const exitOnlyRows = scopedRows.filter((row) => row.source_row_type === "EXIT_ONLY");
+  const learningRows = scopedRows.filter((row) => row.source_row_type !== "EXIT_ONLY");
   const learningSummary = summarizeBestSelfEvolutionDataset(learningRows);
   const exitOnlySummary = summarizeExitOnlyDiagnostics(exitOnlyRows);
   return {
@@ -1276,6 +1279,8 @@ async function buildBestSelfEvolutionDataset({
     exit_only_rows: exitOnlyRows,
     summary: {
       ...learningSummary,
+      signal_scope_filter: "EARLY_CORE_ONLY",
+      filtered_out_non_primary_signal_n: filteredOutN,
       executed_exit_only_n: exitOnlySummary.rows_n,
       exit_only_n: exitOnlySummary.rows_n,
       exit_only_realized_n: exitOnlySummary.realized_n,

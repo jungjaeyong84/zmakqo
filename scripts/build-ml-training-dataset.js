@@ -19,6 +19,7 @@ const {
 const { buildBestSelfEvolutionDataset } = require("../src/utils/bestSelfEvolutionDataset");
 const { backfillRecentEntryLineage } = require("../src/utils/entryLineageBackfill");
 const { buildArtifactVersion } = require("../src/utils/mlArtifactVersion");
+const { isMlPrimarySignalTierAllowed } = require("../src/utils/mlSignalScope");
 
 const DATASET_LATEST_JSON = path.join(OPS_DAILY_DIR, "best_self_evolution_dataset_latest.json");
 const EV_TUNER_LATEST_JSON = path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json");
@@ -152,7 +153,8 @@ function main() {
   }
 
   return Promise.resolve(source).then((resolved) => {
-    const rows = resolved.rows.map((row) => buildMlTrainingRow(row));
+    const builtRows = resolved.rows.map((row) => buildMlTrainingRow(row));
+    const rows = builtRows.filter((row) => isMlPrimarySignalTierAllowed(row));
     const summary = summarizeMlTrainingRows(rows);
     const version = buildArtifactVersion({
       artifactType: "ML_TRAINING_DATASET",
@@ -172,6 +174,8 @@ function main() {
       source_window: resolved.window || null,
       dataset_version: version,
       summary,
+      signal_scope_filter: "EARLY_CORE_ONLY",
+      filtered_out_non_primary_signal_n: Math.max(0, builtRows.length - rows.length),
       rows,
     };
 
@@ -199,6 +203,7 @@ function main() {
       rows_n: summary.rows_n,
       valid_n: summary.valid_n,
       invalid_n: summary.invalid_n,
+      filtered_out_non_primary_signal_n: Math.max(0, builtRows.length - rows.length),
     }));
   });
 }

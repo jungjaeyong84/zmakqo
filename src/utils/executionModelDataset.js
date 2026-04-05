@@ -1,6 +1,7 @@
 "use strict";
 
 const EXECUTION_MODEL_DATASET_SCHEMA_VERSION = "2026-04-05.v1";
+const { isMlPrimarySignalTierAllowed } = require("./mlSignalScope");
 
 function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -602,7 +603,13 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
       },
       features,
     };
-  }).filter((row) => row.row_id && row.context.market && row.context.tf && row.context.event);
+  }).filter((row) => (
+    row.row_id
+    && row.context.market
+    && row.context.tf
+    && row.context.event
+    && isMlPrimarySignalTierAllowed(row)
+  ));
 }
 
 function summarizeExecutionModelRows(rows = []) {
@@ -778,6 +785,7 @@ function summarizeExecutionModelRows(rows = []) {
   }
   return {
     rows_n: scoped.length,
+    signal_scope_filter: "EARLY_CORE_ONLY",
     entry_rows_n: entryRowsN,
     exit_rows_n: exitRowsN,
     filled_n: filledN,

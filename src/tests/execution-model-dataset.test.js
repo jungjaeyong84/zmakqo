@@ -9,11 +9,11 @@ const intents = {
       id: 'I1', intent_id: 'I1', signal_id: 'S1', entry_event_id: 'E1', exchange: 'BINANCEFUT', symbol: 'ETHUSDT', tf: '15m', event: 'SHORT', side: 'SELL',
       execution_mode: 'PAPER',
       created_at: '2026-04-05T00:00:00.000Z', live_exec_policy_quality_latency_ms: 1200, live_exec_policy_quality_slippage_bps: 4, live_exec_policy_quality_partial_pct: 0,
-      features_json: { score_abs: 70.1 }, status: 'FILLED'
+      features_json: { score_abs: 70.1, entry_grade: 'CORE' }, status: 'FILLED'
     },
     {
       id: 'I2', intent_id: 'I2', signal_id: 'S2', entry_event_id: 'E2', exchange: 'BINANCEFUT', symbol: 'SOLUSDT', tf: '15m', event: 'SHORT', side: 'SELL',
-      created_at: '2026-04-05T01:00:00.000Z', terminal_failure_status: 'REJECTED', status_reason: 'MARGIN', features_json: { score_abs: 80.2 }, status: 'FAILED'
+      created_at: '2026-04-05T01:00:00.000Z', terminal_failure_status: 'REJECTED', status_reason: 'MARGIN', features_json: { score_abs: 80.2, entry_grade: 'EARLY' }, status: 'FAILED'
     }
   ]
 };
@@ -78,7 +78,7 @@ const recomputedRows = buildExecutionModelRows({
         id: 'I3', intent_id: 'I3', signal_id: 'SIG__BINANCEFUT__BNBUSDT__15m__1743818340000__LONG', signal_doc_id: 'SIG__BINANCEFUT__BNBUSDT__15m__1743818340000__LONG', exchange: 'BINANCEFUT', symbol: 'BNBUSDT', tf: '15m', event: 'LONG', side: 'BUY',
         reason: 'TV_WEBHOOK',
         execution_mode: 'LIVE',
-        created_at: '2026-04-05T02:00:00.000Z', signal_price: 100, signal_bar_close_time_utc_ms: Date.parse('2026-04-05T01:59:00.000Z'), status: 'FILLED'
+        created_at: '2026-04-05T02:00:00.000Z', signal_price: 100, signal_bar_close_time_utc_ms: Date.parse('2026-04-05T01:59:00.000Z'), status: 'FILLED', features_json: { entry_grade: 'EARLY' }
       }
     ]
   },
@@ -90,6 +90,24 @@ const recomputedRows = buildExecutionModelRows({
   webhooks,
   webhookProbes,
 });
+const filteredRows = buildExecutionModelRows({
+  intents: {
+    rows: [
+      {
+        id: "I4", intent_id: "I4", exchange: "BINANCEFUT", symbol: "AXSUSDT", tf: "15m", event: "EMO_SHORT", side: "SELL",
+        created_at: "2026-04-05T03:00:00.000Z", status: "FAILED", terminal_failure_status: "FAILED", features_json: {}
+      },
+      {
+        id: "I5", intent_id: "I5", exchange: "BINANCEFUT", symbol: "BNBUSDT", tf: "15m", event: "LONG", side: "BUY",
+        created_at: "2026-04-05T03:01:00.000Z", status: "FILLED", features_json: { entry_grade: "EARLY" }
+      }
+    ]
+  },
+  fills: { rows: [] },
+});
+assert.strictEqual(filteredRows.length, 1);
+assert.strictEqual(filteredRows[0].context.market, "BNBUSDT");
+assert.strictEqual(filteredRows[0].features.entry_grade, "EARLY");
 assert.ok(recomputedRows[0].execution.slippage_bps > 0, 'signal-price fallback must recompute positive adverse slippage');
 assert.strictEqual(recomputedRows[0].context.source, 'TV_WEBHOOK');
 assert.strictEqual(recomputedRows[0].execution.signal_to_intent_ms, 60000);
