@@ -14,6 +14,7 @@ const SIGNAL_LINEAGE_HEALTH_PATH = path.join(OPS_DAILY_DIR, "signal_lineage_heal
 const DRIFT_REMEDIATION_APPLY_PATH = path.join(OPS_DAILY_DIR, "server_signal_drift_remediation_apply_latest.json");
 const LINEAGE_REPORT_LATEST_COLLECTION = String(process.env.LIVE_EXEC_POLICY_LINEAGE_REPORT_LATEST_COLLECTION || "report_latest").trim() || "report_latest";
 const LINEAGE_REPORT_LATEST_DOC_ID = String(process.env.LIVE_EXEC_POLICY_LINEAGE_REPORT_LATEST_DOC_ID || "LATEST__signal_lineage_health__GLOBAL").trim() || "LATEST__signal_lineage_health__GLOBAL";
+const POSITIONS_COLLECTION = String(process.env.LIVE_EXEC_POLICY_POSITIONS_COLLECTION || "positions_paper").trim() || "positions_paper";
 
 const CACHE_TTL_MS = (() => {
   const n = Number(process.env.LIVE_EXEC_POLICY_CACHE_TTL_MS);
@@ -190,12 +191,60 @@ const LINEAGE_SHARED_REFRESH_MS = (() => {
   return 30 * 1000;
 })();
 
+const PORTFOLIO_CLUSTER_ENABLED = String(process.env.LIVE_EXEC_POLICY_PORTFOLIO_CLUSTER_ENABLED || "1").trim() !== "0";
+const PORTFOLIO_CLUSTER_REFRESH_MS = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_PORTFOLIO_CLUSTER_REFRESH_MS);
+  if (Number.isFinite(n) && n >= 1000) return n;
+  return 30 * 1000;
+})();
+const PORTFOLIO_CLUSTER_REDUCE_SAME_SIDE_AFTER = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_PORTFOLIO_CLUSTER_REDUCE_SAME_SIDE_AFTER);
+  if (Number.isFinite(n) && n >= 2) return Math.floor(n);
+  return 3;
+})();
+const PORTFOLIO_CLUSTER_BLOCK_SAME_SIDE_AFTER = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_PORTFOLIO_CLUSTER_BLOCK_SAME_SIDE_AFTER);
+  if (Number.isFinite(n) && n >= 2) return Math.floor(n);
+  return 4;
+})();
+const PORTFOLIO_CLUSTER_REDUCE_CORRELATED_AFTER = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_PORTFOLIO_CLUSTER_REDUCE_CORRELATED_AFTER);
+  if (Number.isFinite(n) && n >= 2) return Math.floor(n);
+  return 3;
+})();
+const PORTFOLIO_CLUSTER_BLOCK_CORRELATED_AFTER = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_PORTFOLIO_CLUSTER_BLOCK_CORRELATED_AFTER);
+  if (Number.isFinite(n) && n >= 2) return Math.floor(n);
+  return 4;
+})();
+const PORTFOLIO_CLUSTER_REDUCE_SCALE = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_PORTFOLIO_CLUSTER_REDUCE_SCALE);
+  if (Number.isFinite(n) && n > 0 && n <= 1) return n;
+  return 0.5;
+})();
+const PORTFOLIO_CLUSTER_CORRELATED_MARKETS = normalizeUpperList(
+  process.env.LIVE_EXEC_POLICY_PORTFOLIO_CLUSTER_CORRELATED_MARKETS
+  || "BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT,XRPUSDT,DOGEUSDT,AXSUSDT"
+);
+const PORTFOLIO_CLUSTER_BENCHMARK_MARKETS = normalizeUpperList(
+  process.env.LIVE_EXEC_POLICY_PORTFOLIO_CLUSTER_BENCHMARK_MARKETS
+  || "BTCUSDT"
+);
+const PORTFOLIO_CLUSTER_CORRELATED_SET = new Set(PORTFOLIO_CLUSTER_CORRELATED_MARKETS);
+const PORTFOLIO_CLUSTER_BENCHMARK_SET = new Set(PORTFOLIO_CLUSTER_BENCHMARK_MARKETS);
+
 let cache = {
   ts: 0,
   snapshot: null,
 };
 
 let sharedLineageCache = {
+  ts: 0,
+  snapshot: null,
+  refreshPromise: null,
+};
+
+let activePositionsCache = {
   ts: 0,
   snapshot: null,
   refreshPromise: null,
@@ -317,6 +366,168 @@ function normalizeUpperList(value) {
     }
   }
   return [];
+}
+
+function normalizePositionSide(value) {
+  const x = upper(value);
+  if (x === "BUY" || x === "LONG") return "LONG";
+  if (x === "SELL" || x === "SHORT") return "SHORT";
+  return null;
+}
+
+function deriveDesiredPositionSide({ features = null } = {}) {
+  const f = features && typeof features === "object" ? features : {};
+  const candidates = [
+    f.position_side,
+    f.direction,
+    f.event,
+    f.signal_event,
+    f.side,
+    f.signal_side,
+  ];
+  for (const candidate of candidates) {
+    const side = normalizePositionSide(candidate);
+    if (side) return side;
+    const raw = upper(candidate);
+    if (!raw) continue;
+    if (raw.includes("SHORT")) return "SHORT";
+    if (raw.includes("LONG")) return "LONG";
+  }
+  return null;
+}
+
+function normalizeActivePositionRow(row = null, id = null) {
+  if (!row || typeof row !== "object") return null;
+  const posId = String(row.pos_id || id || "").trim();
+  if (posId && !posId.startsWith("POS__")) return null;
+  const exchange = upper(row.exchange);
+  const market = upper(row.symbol_or_pair_id || row.symbol);
+  const side = normalizePositionSide(row.position_side || row.side);
+  const state = upper(row.state || row.position_state);
+  const sizePct = toNum(row.size_pct);
+  if (!exchange || !market || !side) return null;
+  if (state === "FLAT") return null;
+  if (Number.isFinite(sizePct) && sizePct <= 0) return null;
+  return {
+    pos_id: posId || null,
+    exchange,
+    market,
+    side,
+    state: state || null,
+    size_pct: sizePct,
+  };
+}
+
+function buildActivePositionsSnapshot(rows = []) {
+  const activePositions = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const normalized = normalizeActivePositionRow(row && row.data, row && row.id);
+    if (!normalized) continue;
+    activePositions.push(normalized);
+  }
+  return {
+    activePositions,
+    generatedAtMs: Date.now(),
+  };
+}
+
+function maybeRefreshActivePositionsSnapshot(now = Date.now()) {
+  if (!PORTFOLIO_CLUSTER_ENABLED) return;
+  if (activePositionsCache.refreshPromise) return;
+  if (activePositionsCache.ts && (now - activePositionsCache.ts) < PORTFOLIO_CLUSTER_REFRESH_MS) return;
+  activePositionsCache.refreshPromise = Promise.resolve()
+    .then(async () => {
+      const db = getFirestore();
+      const snap = await db.collection(POSITIONS_COLLECTION).get();
+      const rows = [];
+      snap.forEach((doc) => {
+        rows.push({ id: doc.id, data: doc.data() || {} });
+      });
+      activePositionsCache = {
+        ts: Date.now(),
+        snapshot: buildActivePositionsSnapshot(rows),
+        refreshPromise: null,
+      };
+    })
+    .catch(() => {
+      activePositionsCache = {
+        ts: Date.now(),
+        snapshot: activePositionsCache.snapshot || null,
+        refreshPromise: null,
+      };
+    });
+}
+
+function isCorrelatedClusterPair(currentMarket, otherMarket) {
+  const a = upper(currentMarket);
+  const b = upper(otherMarket);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return PORTFOLIO_CLUSTER_CORRELATED_SET.has(a) && PORTFOLIO_CLUSTER_CORRELATED_SET.has(b);
+}
+
+function derivePortfolioClusterGuard({
+  snapshot = null,
+  exchange = null,
+  market = null,
+  desiredSide = null,
+} = {}) {
+  const ex = upper(exchange);
+  const mk = upper(market);
+  const side = normalizePositionSide(desiredSide);
+  const positionsSnapshot = snapshot && snapshot.activePositionsSnapshot && typeof snapshot.activePositionsSnapshot === "object"
+    ? snapshot.activePositionsSnapshot
+    : null;
+  const activePositions = Array.isArray(positionsSnapshot && positionsSnapshot.activePositions)
+    ? positionsSnapshot.activePositions
+    : [];
+  const snapshotAvailable = activePositions.length > 0;
+  if (!PORTFOLIO_CLUSTER_ENABLED || !ex || !mk || !side) {
+    return {
+      enabled: PORTFOLIO_CLUSTER_ENABLED,
+      snapshotAvailable,
+      blocked: false,
+      reduce: false,
+      scale: 1,
+      desiredSide: side,
+      sameSideAfter: null,
+      correlatedSameSideAfter: null,
+      altSameSideAfter: null,
+    };
+  }
+  const sameExchangePositions = activePositions.filter((row) => row.exchange === ex && row.market !== mk);
+  const sameSidePositions = sameExchangePositions.filter((row) => row.side === side);
+  const correlatedSameSidePositions = sameSidePositions.filter((row) => isCorrelatedClusterPair(mk, row.market));
+  const altSameSidePositions = correlatedSameSidePositions.filter((row) => !PORTFOLIO_CLUSTER_BENCHMARK_SET.has(row.market));
+  const selfCorrelated = PORTFOLIO_CLUSTER_CORRELATED_SET.has(mk);
+  const selfAlt = selfCorrelated && !PORTFOLIO_CLUSTER_BENCHMARK_SET.has(mk);
+  const sameSideAfter = sameSidePositions.length + 1;
+  const correlatedSameSideAfter = correlatedSameSidePositions.length + (selfCorrelated ? 1 : 0);
+  const altSameSideAfter = altSameSidePositions.length + (selfAlt ? 1 : 0);
+  const blocked = sameSideAfter >= PORTFOLIO_CLUSTER_BLOCK_SAME_SIDE_AFTER
+    || correlatedSameSideAfter >= PORTFOLIO_CLUSTER_BLOCK_CORRELATED_AFTER;
+  const reduce = !blocked && (
+    sameSideAfter >= PORTFOLIO_CLUSTER_REDUCE_SAME_SIDE_AFTER
+    || correlatedSameSideAfter >= PORTFOLIO_CLUSTER_REDUCE_CORRELATED_AFTER
+  );
+  let reason = null;
+  if (blocked) reason = "LIVE_POLICY_PORTFOLIO_CLUSTER_BLOCK";
+  else if (reduce) reason = "LIVE_POLICY_PORTFOLIO_CLUSTER_REDUCE";
+  return {
+    enabled: PORTFOLIO_CLUSTER_ENABLED,
+    snapshotAvailable,
+    blocked,
+    reduce,
+    reason,
+    scale: reduce ? PORTFOLIO_CLUSTER_REDUCE_SCALE : 1,
+    desiredSide: side,
+    sameSideAfter,
+    correlatedSameSideAfter,
+    altSameSideAfter,
+    activeSameSideMarkets: sameSidePositions.map((row) => row.market),
+    activeCorrelatedSameSideMarkets: correlatedSameSidePositions.map((row) => row.market),
+    activeAltSameSideMarkets: altSameSidePositions.map((row) => row.market),
+  };
 }
 
 function extractOtherServerPolicyWatchOnlyMarkets(doc = null) {
@@ -540,6 +751,7 @@ function loadPolicySnapshot({ force = false } = {}) {
     return cache.snapshot;
   }
   maybeRefreshSharedLineageSnapshot(now);
+  maybeRefreshActivePositionsSnapshot(now);
   const allocatorDoc = readJsonSafe(CAPITAL_ALLOCATOR_PATH, null);
   const quarantineDoc = readJsonSafe(QUARANTINE_PATH, null);
   const executionQualityDoc = readJsonSafe(EXECUTION_QUALITY_PATH, null);
@@ -567,6 +779,7 @@ function loadPolicySnapshot({ force = false } = {}) {
     lineageSharedSnapshotAvailable: !!sharedLineageCache.snapshot,
     driftRemediationApplyDoc,
   });
+  snapshot.activePositionsSnapshot = activePositionsCache.snapshot || null;
   cache = { ts: now, snapshot };
   return snapshot;
 }
@@ -836,6 +1049,13 @@ function evaluateLiveEntryPolicy({
   const qualityGlobalHard = deriveGlobalQualityHardBlock(qualitySummary, market);
   const lineageSlo = deriveLineageSloBlock(snapshot);
   const learningEpochRelease = deriveLearningEpochRelease(snapshot);
+  const desiredSide = deriveDesiredPositionSide({ features: baseFeatures });
+  const portfolioCluster = derivePortfolioClusterGuard({
+    snapshot,
+    exchange: ex,
+    market,
+    desiredSide,
+  });
   const otherServerPolicyWatchOnlyBlocked = DRIFT_REMEDIATION_ENABLED
     && DRIFT_REMEDIATION_WATCH_ONLY_BLOCK
     && !learningEpochRelease.active
@@ -892,6 +1112,14 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_objective_verdict: objectiveScale.verdict,
     _live_exec_policy_objective_score: objectiveScale.objectiveScore,
     _live_exec_policy_objective_constrained: objectiveScale.constrained,
+    _live_exec_policy_portfolio_cluster_enabled: PORTFOLIO_CLUSTER_ENABLED,
+    _live_exec_policy_portfolio_cluster_snapshot_available: portfolioCluster.snapshotAvailable,
+    _live_exec_policy_portfolio_cluster_desired_side: portfolioCluster.desiredSide,
+    _live_exec_policy_portfolio_cluster_same_side_after: portfolioCluster.sameSideAfter,
+    _live_exec_policy_portfolio_cluster_correlated_same_side_after: portfolioCluster.correlatedSameSideAfter,
+    _live_exec_policy_portfolio_cluster_alt_same_side_after: portfolioCluster.altSameSideAfter,
+    _live_exec_policy_portfolio_cluster_active_same_side_markets: portfolioCluster.activeSameSideMarkets || [],
+    _live_exec_policy_portfolio_cluster_active_correlated_same_side_markets: portfolioCluster.activeCorrelatedSameSideMarkets || [],
   };
 
   if (quarantineBlocked) {
@@ -1052,6 +1280,29 @@ function evaluateLiveEntryPolicy({
     };
   }
 
+  if (portfolioCluster.blocked) {
+    const reason = portfolioCluster.reason || "LIVE_POLICY_PORTFOLIO_CLUSTER_BLOCK";
+    return {
+      ok: false,
+      qtyPctFinal: 0,
+      reason,
+      featuresPatch: {
+        ...commonTracePatch,
+        _live_exec_policy_reason: reason,
+      },
+      policy: {
+        stage,
+        exchange: ex,
+        market,
+        blocked: true,
+        reason,
+        portfolio_cluster_same_side_after: portfolioCluster.sameSideAfter,
+        portfolio_cluster_correlated_same_side_after: portfolioCluster.correlatedSameSideAfter,
+        portfolio_cluster_alt_same_side_after: portfolioCluster.altSameSideAfter,
+      },
+    };
+  }
+
   let qtyPctFinal = qty;
   let scaleApplied = 1.0;
   let actionScale = 1.0;
@@ -1059,6 +1310,7 @@ function evaluateLiveEntryPolicy({
   let qualityScale = 1.0;
   let objectiveQtyScale = objectiveScale.scale;
   let qualityGlobalQtyScale = qualityGlobalScale;
+  let portfolioClusterScale = 1.0;
   const alreadyScaled = baseFeatures._live_exec_policy_scale_applied === true;
 
   if (applyScale && !alreadyScaled) {
@@ -1071,12 +1323,14 @@ function evaluateLiveEntryPolicy({
     const planMarketScale = (applyPolicyPlan && Number.isFinite(policyPlanMarketScale))
       ? policyPlanMarketScale
       : 1;
+    portfolioClusterScale = portfolioCluster.reduce ? portfolioCluster.scale : 1;
     scaleApplied = clamp(
       actionScale
       * scoreScale
       * qualityScale
       * qualityGlobalQtyScale
       * objectiveQtyScale
+      * portfolioClusterScale
       * planGlobalScale
       * planMarketScale,
       SCALE_MIN,
@@ -1094,6 +1348,9 @@ function evaluateLiveEntryPolicy({
   const featureQualityScale = Number.isFinite(toNum(baseFeatures._live_exec_policy_quality_scale))
     ? Number(baseFeatures._live_exec_policy_quality_scale)
     : qualityScale;
+  const featurePortfolioClusterScale = Number.isFinite(toNum(baseFeatures._live_exec_policy_portfolio_cluster_scale))
+    ? Number(baseFeatures._live_exec_policy_portfolio_cluster_scale)
+    : portfolioClusterScale;
   const featureScaleApplied = Number.isFinite(toNum(baseFeatures._live_exec_policy_scale))
     ? Number(baseFeatures._live_exec_policy_scale)
     : scaleApplied;
@@ -1111,6 +1368,8 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_score_scale: featureScoreScale,
     _live_exec_policy_quality_scale: featureQualityScale,
     _live_exec_policy_quality_global_scale: qualityGlobalQtyScale,
+    _live_exec_policy_portfolio_cluster_scale: featurePortfolioClusterScale,
+    _live_exec_policy_portfolio_cluster_reduce: portfolioCluster.reduce,
     _live_exec_policy_scale_applied: featureScaledFlag,
     _live_exec_policy_scale: featureScaleApplied,
     _live_exec_policy_profile: POLICY_PROFILE,
@@ -1138,6 +1397,8 @@ function evaluateLiveEntryPolicy({
       score_scale: scoreScale,
       quality_scale: qualityScale,
       quality_global_scale: qualityGlobalQtyScale,
+      portfolio_cluster_scale: featurePortfolioClusterScale,
+      portfolio_cluster_reduce: portfolioCluster.reduce,
       objective_scale: objectiveQtyScale,
       objective_verdict: objectiveScale.verdict,
       objective_score: objectiveScale.objectiveScore,
@@ -1181,6 +1442,11 @@ module.exports = {
     lineage_slo_require_fresh: LINEAGE_SLO_REQUIRE_FRESH,
     drift_remediation_enabled: DRIFT_REMEDIATION_ENABLED,
     drift_remediation_watch_only_block: DRIFT_REMEDIATION_WATCH_ONLY_BLOCK,
+    portfolio_cluster_enabled: PORTFOLIO_CLUSTER_ENABLED,
+    portfolio_cluster_reduce_same_side_after: PORTFOLIO_CLUSTER_REDUCE_SAME_SIDE_AFTER,
+    portfolio_cluster_block_same_side_after: PORTFOLIO_CLUSTER_BLOCK_SAME_SIDE_AFTER,
+    portfolio_cluster_reduce_correlated_after: PORTFOLIO_CLUSTER_REDUCE_CORRELATED_AFTER,
+    portfolio_cluster_block_correlated_after: PORTFOLIO_CLUSTER_BLOCK_CORRELATED_AFTER,
     learning_epoch_exception_release_enabled: LEARNING_EPOCH_EXCEPTION_RELEASE_ENABLED,
     cache_ttl_ms: CACHE_TTL_MS,
     scale_min: SCALE_MIN,
@@ -1201,6 +1467,9 @@ module.exports = {
     normalizeSharedLineageSnapshot,
     selectPreferredLineageInput,
     extractOtherServerPolicyWatchOnlyMarkets,
+    deriveDesiredPositionSide,
+    buildActivePositionsSnapshot,
+    derivePortfolioClusterGuard,
     deriveAllocatorActionScale,
     deriveAllocatorScoreScale,
     deriveQualityScale,
