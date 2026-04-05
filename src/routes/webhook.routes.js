@@ -48,6 +48,8 @@ const OPS_DAILY = path.join(ROOT, "ops", "daily");
 const SELF_EVOLUTION_MANUAL_PASTE_ACK_LATEST = path.join(OPS_DAILY, "self_evolution_manual_paste_ack_latest.json");
 const SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST = path.join(OPS_DAILY, "best_self_evolution_deployment_plan_latest.json");
 const WEBHOOK_SIGNAL_EXECUTION_PROBE_LATEST = path.join(OPS_DAILY, "webhook_signal_execution_probe_latest.json");
+const WEBHOOK_SIGNAL_EXECUTION_PROBE_HISTORY_LATEST = path.join(OPS_DAILY, "webhook_signal_execution_probe_history_latest.json");
+const WEBHOOK_SIGNAL_EXECUTION_PROBE_HISTORY_MAX = 2000;
 const DEFAULT_STRATEGY_ID = process.env.DONBEOLJA_STRATEGY_ID || "STRAT_v010";
 
 function readJsonSafe(filePath) {
@@ -162,6 +164,14 @@ function persistWebhookSignalExecutionProbe({
     summary: summary && typeof summary === "object" ? summary : null,
   };
   writeJsonSafe(WEBHOOK_SIGNAL_EXECUTION_PROBE_LATEST, payload);
+  const existingHistory = readJsonSafe(WEBHOOK_SIGNAL_EXECUTION_PROBE_HISTORY_LATEST);
+  const rows = Array.isArray(existingHistory && existingHistory.rows) ? existingHistory.rows.slice() : [];
+  rows.push(payload);
+  writeJsonSafe(WEBHOOK_SIGNAL_EXECUTION_PROBE_HISTORY_LATEST, {
+    updated_at: generatedAt,
+    updated_at_kst: toKstString(generatedAt),
+    rows: rows.slice(-WEBHOOK_SIGNAL_EXECUTION_PROBE_HISTORY_MAX),
+  });
 }
 
 function fireSignalDroppedAlert(payload = {}) {

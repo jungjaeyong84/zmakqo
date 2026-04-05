@@ -29,6 +29,11 @@ const webhooks = {
     { stage: 'OUTCOME', request_id: 'WH1', created_at: '2026-04-05T01:59:40.000Z', exchange: 'BINANCEFUT', symbol: 'BNBUSDT', tf: '15m', event: 'LONG', signal_id: 'SIG__BINANCEFUT__BNBUSDT__15m__1743818340000__LONG', bar_close_time_utc_ms: Date.parse('2026-04-05T01:59:00.000Z'), decision: 'SAVED', reason: 'TV_WEBHOOK' },
   ]
 };
+const webhookProbes = {
+  rows: [
+    { request_id: 'WH1', phase: 'IMMEDIATE_PROCESS_RESULT', created_at: '2026-04-05T02:00:01.000Z', summary: { status: 'OK' } },
+  ]
+};
 
 const rows = buildExecutionModelRows({ intents, fills });
 assert.equal(rows.length, 2);
@@ -83,6 +88,7 @@ const recomputedRows = buildExecutionModelRows({
     ]
   },
   webhooks,
+  webhookProbes,
 });
 assert.ok(recomputedRows[0].execution.slippage_bps > 0, 'signal-price fallback must recompute positive adverse slippage');
 assert.strictEqual(recomputedRows[0].context.source, 'TV_WEBHOOK');
@@ -90,6 +96,9 @@ assert.strictEqual(recomputedRows[0].execution.signal_to_intent_ms, 60000);
 assert.strictEqual(recomputedRows[0].execution.signal_to_fill_ms, 61000);
 assert.strictEqual(recomputedRows[0].execution.webhook_to_intent_ms, 30000);
 assert.strictEqual(recomputedRows[0].execution.webhook_to_outcome_ms, 10000);
+assert.strictEqual(recomputedRows[0].execution.webhook_has_immediate_probe, true);
+assert.strictEqual(recomputedRows[0].execution.webhook_immediate_phase, 'IMMEDIATE_PROCESS_RESULT');
+assert.strictEqual(recomputedRows[0].execution.webhook_immediate_status, 'OK');
 assert.strictEqual(recomputedRows[0].execution.entry_schedule_reason, null);
 const recomputedSummary = summarizeExecutionModelRows(recomputedRows);
 assert.strictEqual(recomputedSummary.signal_to_intent_p95_ms, 60000);
@@ -110,8 +119,9 @@ assert.strictEqual(__test.deriveNoFillSubtype({ reason: 'LIVE_EXCEPTION', detail
 assert.strictEqual(__test.deriveEntryScheduleReason({ pending_reason: 'WAIT_NEXT_BAR' }), 'WAIT_NEXT_BAR');
 assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'TV_WEBHOOK' }, execution: { entry_schedule_reason: 'WAIT_NEXT_BAR' } }), 'SCHEDULED_WAIT_NEXT_BAR');
 assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'TV_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_bar_close_ms: 1000, scheduled_exec_bar_close_ms: 2000, signal_to_intent_ms: 420000, webhook_to_intent_ms: 430000 }, labels: { was_filled: true } }), 'IMMEDIATE_EXEC_NEXT_EXEC_BAR');
-assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'TV_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_to_intent_ms: 420000, webhook_to_intent_ms: 430000, webhook_decision: 'DROP' }, labels: { was_filled: true } }), 'IMMEDIATE_EXEC_WEBHOOK_DROP_LATER_INTENT');
-assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'TV_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_to_intent_ms: 420000, webhook_to_intent_ms: 430000, webhook_decision: 'SAVED' }, labels: { was_filled: true } }), 'IMMEDIATE_EXEC_WEBHOOK_SAVED_LATE_INTENT');
+assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'TV_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_to_intent_ms: 420000, webhook_to_intent_ms: 430000, webhook_decision: 'SAVED', webhook_has_immediate_probe: false }, labels: { was_filled: true } }), 'LEGACY_WEBHOOK_OUTCOME_ONLY');
+assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'TV_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_to_intent_ms: 420000, webhook_to_intent_ms: 430000, webhook_decision: 'DROP', webhook_has_immediate_probe: true }, labels: { was_filled: true } }), 'IMMEDIATE_EXEC_WEBHOOK_DROP_LATER_INTENT');
+assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'TV_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_to_intent_ms: 420000, webhook_to_intent_ms: 430000, webhook_decision: 'SAVED', webhook_has_immediate_probe: true }, labels: { was_filled: true } }), 'IMMEDIATE_EXEC_WEBHOOK_SAVED_LATE_INTENT');
 assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'PINE_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_to_intent_ms: 420000, webhook_to_intent_ms: 430000 }, labels: { was_filled: true } }), 'IMMEDIATE_EXEC_TRUE_INTENT_DELAY');
 assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'PINE_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_to_intent_ms: 80000, webhook_to_intent_ms: 500000 }, labels: { was_filled: true } }), 'IMMEDIATE_EXEC_STALE_WEBHOOK_MATCH');
 assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'PINE_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_to_intent_ms: -120000, webhook_to_intent_ms: 230000 }, labels: { was_filled: true } }), 'IMMEDIATE_EXEC_BEFORE_BAR_CLOSE');
@@ -127,6 +137,8 @@ const webhookMatch = __test.resolveWebhookMatch({
   intent: { exchange: 'BINANCEFUT', symbol: 'BNBUSDT', tf: '15m', event: 'LONG', signal_doc_id: 'SIG__BINANCEFUT__BNBUSDT__15m__1743818340000__LONG', signal_bar_close_time_utc_ms: Date.parse('2026-04-05T01:59:00.000Z') },
   webhookOutcomes: webhookIndex,
   webhookIngressByRequestId: ingressIndex,
+  webhookProbeByRequestId: __test.buildWebhookProbeIndex(webhookProbes),
 });
 assert.strictEqual(webhookMatch.webhook_request_id, 'WH1');
+assert.strictEqual(webhookMatch.webhook_has_immediate_probe, true);
 console.log('EXECUTION_MODEL_DATASET_TEST_OK');

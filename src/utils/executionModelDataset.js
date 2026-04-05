@@ -75,6 +75,7 @@ function deriveWebhookDelayCause(row = null) {
   const noFillSubtype = toUpper(row && row.execution && row.execution.no_fill_subtype);
   const noFillDetail = toUpper(row && row.execution && row.execution.no_fill_detail);
   const webhookDecision = toUpper(row && row.execution && row.execution.webhook_decision);
+  const hasImmediateProbe = row && row.execution && row.execution.webhook_has_immediate_probe === true;
   const runId = toUpper(row && row.run_id);
   const wasFilled = row && row.labels && row.labels.was_filled === true;
   const signalToIntentMs = toNum(row && row.execution && row.execution.signal_to_intent_ms);
@@ -97,6 +98,9 @@ function deriveWebhookDelayCause(row = null) {
     if (Number.isFinite(signalToIntentMs) && signalToIntentMs < 0) return "IMMEDIATE_EXEC_BEFORE_BAR_CLOSE";
     if (Number.isFinite(webhookSignalGapMs) && webhookSignalGapMs > 300000) return "IMMEDIATE_EXEC_STALE_WEBHOOK_MATCH";
     if (Number.isFinite(signalToIntentMs) && signalToIntentMs > 300000) {
+      if ((source === "TV_WEBHOOK" || source === "PINE_WEBHOOK") && webhookDecision && hasImmediateProbe === false) {
+        return "LEGACY_WEBHOOK_OUTCOME_ONLY";
+      }
       if (webhookDecision === "DROP") return "IMMEDIATE_EXEC_WEBHOOK_DROP_LATER_INTENT";
       if (webhookDecision === "SAVED") return "IMMEDIATE_EXEC_WEBHOOK_SAVED_LATE_INTENT";
       return "IMMEDIATE_EXEC_TRUE_INTENT_DELAY";
@@ -271,7 +275,22 @@ function buildWebhookIngressIndex(webhooks = []) {
   return byRequestId;
 }
 
-function resolveWebhookMatch({ intent = null, webhookOutcomes = null, webhookIngressByRequestId = null } = {}) {
+function buildWebhookProbeIndex(webhookProbes = []) {
+  const rows = readDocs(webhookProbes).filter((row) => row && typeof row === "object");
+  const byRequestId = new Map();
+  for (const row of rows) {
+    const requestId = String(row.request_id || "").trim();
+    if (!requestId) continue;
+    if (!byRequestId.has(requestId)) byRequestId.set(requestId, []);
+    byRequestId.get(requestId).push(row);
+  }
+  for (const arr of byRequestId.values()) {
+    arr.sort((a, b) => (parseMs(a.created_at || a.generated_at) || 0) - (parseMs(b.created_at || b.generated_at) || 0));
+  }
+  return byRequestId;
+}
+
+function resolveWebhookMatch({ intent = null, webhookOutcomes = null, webhookIngressByRequestId = null, webhookProbeByRequestId = null } = {}) {
   const signalDocId = String(intent && (intent.signal_doc_id || intent.signal_id) || "").trim();
   const compositeKey = [
     toUpper(intent && intent.exchange),
@@ -298,12 +317,20 @@ function resolveWebhookMatch({ intent = null, webhookOutcomes = null, webhookIng
   }
   const requestId = String(candidate.row.request_id || "").trim() || null;
   const ingress = requestId && webhookIngressByRequestId ? webhookIngressByRequestId.get(requestId) : null;
+  const probes = requestId && webhookProbeByRequestId ? (webhookProbeByRequestId.get(requestId) || []) : [];
+  const immediateProbe = probes.find((row) => {
+    const phase = toUpper(row.phase);
+    return phase === "IMMEDIATE_PROCESS_RESULT" || phase === "IMMEDIATE_PROCESS_SKIPPED" || phase === "IMMEDIATE_PROCESS";
+  }) || null;
   return {
     webhook_request_id: requestId,
     webhook_ingress_at_ms: ingress ? ingress.createdAtMs : null,
     webhook_outcome_at_ms: candidate.createdAtMs,
     webhook_decision: String(candidate.row.decision || "").trim() || null,
     webhook_reason: String(candidate.row.reason || "").trim() || null,
+    webhook_has_immediate_probe: !!immediateProbe,
+    webhook_immediate_phase: immediateProbe ? toUpper(immediateProbe.phase) : null,
+    webhook_immediate_status: immediateProbe && immediateProbe.summary ? toUpper(immediateProbe.summary.status) : null,
   };
 }
 
@@ -372,11 +399,12 @@ function summarizeFillAggregate(fills = [], intent = null) {
   };
 }
 
-function buildExecutionModelRows({ intents = [], fills = [], webhooks = [] } = {}) {
+function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webhookProbes = [] } = {}) {
   const intentRows = readDocs(intents).filter((row) => row && typeof row === "object");
   const fillRows = readDocs(fills).filter((row) => row && typeof row === "object");
   const webhookOutcomes = buildWebhookOutcomeIndex(webhooks);
   const webhookIngressByRequestId = buildWebhookIngressIndex(webhooks);
+  const webhookProbeByRequestId = buildWebhookProbeIndex(webhookProbes);
   const fillsByIntent = new Map();
   for (const fill of fillRows) {
     const key = String(fill.intent_id || fill.intentId || "").trim();
@@ -394,7 +422,7 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [] } = {
     const intentFilledAtMs = parseMs(intent.filled_at);
     const filledAtMs = fillDocAtMs ?? intentFilledAtMs;
     const signalBarCloseMs = resolveSignalBarCloseMs(intent);
-    const webhook = resolveWebhookMatch({ intent, webhookOutcomes, webhookIngressByRequestId });
+    const webhook = resolveWebhookMatch({ intent, webhookOutcomes, webhookIngressByRequestId, webhookProbeByRequestId });
     const measuredCreatedToFillMs = Number.isFinite(intentCreatedAtMs) && Number.isFinite(filledAtMs)
       ? (filledAtMs - intentCreatedAtMs)
       : null;
@@ -471,6 +499,9 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [] } = {
         webhook_outcome_at_ms: webhook.webhook_outcome_at_ms,
         webhook_decision: webhook.webhook_decision,
         webhook_reason: webhook.webhook_reason,
+        webhook_has_immediate_probe: webhook.webhook_has_immediate_probe,
+        webhook_immediate_phase: webhook.webhook_immediate_phase,
+        webhook_immediate_status: webhook.webhook_immediate_status,
         webhook_to_intent_ms: webhookToIntentMs,
         webhook_to_outcome_ms: webhookToOutcomeMs,
         exec_price: agg.exec_price ?? toNum(intent.exec_price),
@@ -839,6 +870,7 @@ module.exports = {
     isOperationalSource,
     buildWebhookOutcomeIndex,
     buildWebhookIngressIndex,
+    buildWebhookProbeIndex,
     resolveWebhookMatch,
   },
 };
