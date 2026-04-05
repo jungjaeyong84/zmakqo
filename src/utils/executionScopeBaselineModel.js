@@ -11,6 +11,13 @@ const CLASS_WEIGHT_MULTIPLIERS = Object.freeze({
   POLICY_BLOCKED: { positive: 1.04, negative: 1.0 },
   RUNTIME_EXCEPTION: { positive: 1.0, negative: 1.0 },
 });
+const TIER_TARGET_WEIGHT_MULTIPLIERS = Object.freeze({
+  EARLY: {
+    FILLABLE: { positive: 1.04, negative: 1.0 },
+    RUNTIME_EXCEPTION: { positive: 0.92, negative: 1.08 },
+  },
+  CORE: {},
+});
 const NUMERIC_FEATURES = Object.freeze([
   "execution.signal_to_intent_ms",
   "execution.webhook_to_intent_ms",
@@ -51,6 +58,7 @@ const CATEGORICAL_FEATURES = Object.freeze([
   "features.runtime_exception_without_no_fill_reason",
   "features.stale_pos_entry_profile",
   "features.stale_pos_entry_latency_profile",
+  "features.stale_pos_webhook_profile",
   "features.source_origin",
   "features.signal_family",
   "features.entry_grade",
@@ -332,7 +340,17 @@ function applyClassWeightMultiplier(classWeights = {}, targetLabel = null) {
   };
 }
 
-function trainWeightedBinaryLogistic(examples = [], labels = [], targetLabel = null, { epochs = 250, learningRate = 0.08, l2 = 0.0005 } = {}) {
+function resolveTierTargetWeight(row = null, targetLabel = null, label = null) {
+  const tier = resolveEntryTier(row);
+  const tierOverride = tier ? TIER_TARGET_WEIGHT_MULTIPLIERS[tier] : null;
+  const targetOverride = tierOverride && targetLabel ? tierOverride[targetLabel] : null;
+  if (!targetOverride) return 1;
+  return label === 1
+    ? (toNum(targetOverride.positive) || 1)
+    : (toNum(targetOverride.negative) || 1);
+}
+
+function trainWeightedBinaryLogistic(examples = [], labels = [], targetLabel = null, rows = [], { epochs = 250, learningRate = 0.08, l2 = 0.0005 } = {}) {
   const dims = examples[0] ? examples[0].length : 0;
   const weights = new Array(dims).fill(0);
   let bias = 0;
@@ -346,7 +364,8 @@ function trainWeightedBinaryLogistic(examples = [], labels = [], targetLabel = n
     for (let i = 0; i < examples.length; i += 1) {
       const x = examples[i];
       const y = labels[i];
-      const sampleWeight = y === 1 ? classWeights.positive_weight : classWeights.negative_weight;
+      const tierWeight = resolveTierTargetWeight(rows[i], targetLabel, y);
+      const sampleWeight = (y === 1 ? classWeights.positive_weight : classWeights.negative_weight) * tierWeight;
       const err = (sigmoid(bias + dot(weights, x)) - y) * sampleWeight;
       totalWeight += sampleWeight;
       biasGrad += err;
@@ -496,7 +515,7 @@ function buildExecutionScopeBaselineModel({
   const modelByClass = {};
   for (const label of TARGET_CLASSES) {
     const binaryLabels = split.trainRows.map((row) => deriveTargetClass(row) === label ? 1 : 0);
-    modelByClass[label] = trainWeightedBinaryLogistic(trainX, binaryLabels, label);
+    modelByClass[label] = trainWeightedBinaryLogistic(trainX, binaryLabels, label, split.trainRows);
   }
   const trainPred = scoreRows(split.trainRows, spec, modelByClass);
   const validationPred = scoreRows(split.validationRows, spec, modelByClass);

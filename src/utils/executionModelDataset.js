@@ -180,6 +180,27 @@ function deriveStalePosEntryLatencyProfile({
   return "STALE_POS_OTHER";
 }
 
+function deriveStalePosWebhookProfile({
+  features = null,
+  webhookDecision = null,
+  webhookHasImmediateProbe = false,
+  webhookImmediateStatus = null,
+  signalToIntentMs = null,
+} = {}) {
+  const bag = normalizeFeatureBag(features);
+  if (toUpper(bag.reason) !== "PINE_DROP_STALE_POS_TO_ENTRY") return "NOT_STALE_POS_ENTRY";
+  const decision = toUpper(webhookDecision) || "UNKNOWN";
+  const immediateStatus = toUpper(webhookImmediateStatus) || "UNKNOWN";
+  const latency = toNum(signalToIntentMs);
+  const latencyProfile = Number.isFinite(latency) && latency > 120000
+    ? "DELAYED"
+    : (Number.isFinite(latency) && latency <= 30000 ? "FAST" : "MID");
+  if (webhookHasImmediateProbe === true) {
+    return ["STALE_POS", decision, immediateStatus, latencyProfile].join("_");
+  }
+  return ["STALE_POS", decision, "NO_PROBE", latencyProfile].join("_");
+}
+
 function derivePolicyBlockHint({
   noFillReason = null,
   noFillReasonFamily = null,
@@ -714,6 +735,13 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
       noFillReason,
       signalToIntentMs,
     });
+    features.stale_pos_webhook_profile = deriveStalePosWebhookProfile({
+      features,
+      webhookDecision: webhook.webhook_decision,
+      webhookHasImmediateProbe: webhook.webhook_has_immediate_probe,
+      webhookImmediateStatus: webhook.webhook_immediate_status,
+      signalToIntentMs,
+    });
     return {
       schema_version: EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
       row_id: intentId || String(intent.signal_id || intent.id || "").trim() || null,
@@ -1140,6 +1168,7 @@ module.exports = {
     deriveRuntimeExceptionWithoutNoFillReasonFlag,
     deriveStalePosEntryProfile,
     deriveStalePosEntryLatencyProfile,
+    deriveStalePosWebhookProfile,
     deriveWebhookDelayCause,
     isOperationalSource,
     buildWebhookOutcomeIndex,
