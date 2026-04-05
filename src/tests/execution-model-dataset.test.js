@@ -119,6 +119,9 @@ assert.strictEqual(recomputedRows[0].execution.webhook_has_immediate_probe, true
 assert.strictEqual(recomputedRows[0].execution.webhook_immediate_phase, 'IMMEDIATE_PROCESS_RESULT');
 assert.strictEqual(recomputedRows[0].execution.webhook_immediate_status, 'OK');
 assert.strictEqual(recomputedRows[0].execution.entry_schedule_reason, null);
+assert.strictEqual(recomputedRows[0].execution.signal_to_intent_bucket, '30S_2M');
+assert.strictEqual(recomputedRows[0].features.entry_reason_profile, 'UNKNOWN|UNKNOWN|UNKNOWN');
+assert.strictEqual(recomputedRows[0].features.policy_block_hint, 'NONE');
 const recomputedSummary = summarizeExecutionModelRows(recomputedRows);
 assert.strictEqual(recomputedSummary.signal_to_intent_p95_ms, 60000);
 assert.strictEqual(recomputedSummary.signal_to_fill_p95_ms, 61000);
@@ -136,6 +139,10 @@ assert.strictEqual(__test.deriveNoFillReasonFamily('INTENT_EXPIRED'), 'CONTROL_F
 assert.strictEqual(__test.deriveNoFillSubtype({ reason: 'LIVE_EXCEPTION', detail: 'late_exec_from=2026-02-07T07:15:00.000Z' }), 'TIMING_LATE_EXEC');
 assert.strictEqual(__test.deriveNoFillSubtype({ reason: 'LIVE_EXCEPTION', detail: 'immediate_exec=2026-02-06T14:00:00.000Z' }), 'TIMING_IMMEDIATE_EXEC');
 assert.strictEqual(__test.deriveEntryScheduleReason({ pending_reason: 'WAIT_NEXT_BAR' }), 'WAIT_NEXT_BAR');
+assert.strictEqual(__test.deriveSignalToIntentBucket(3000), 'LT_5S');
+assert.strictEqual(__test.deriveSignalToIntentBucket(40000), '30S_2M');
+assert.strictEqual(__test.deriveNormalizedProConflict({ features: { pro_conflict_short: true }, side: 'SELL', event: 'CORE_SHORT' }), true);
+assert.strictEqual(__test.derivePolicyBlockHint({ noFillReason: 'TOTAL_BUDGET_EXCEEDED', noFillReasonFamily: 'POLICY_OR_CAPACITY', features: { reason: 'PINE_DROP_STALE_POS_TO_ENTRY', cost_shield_block_add: true } }), 'TOTAL_BUDGET_STALE_POS_COST_SHIELD');
 assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'TV_WEBHOOK' }, execution: { entry_schedule_reason: 'WAIT_NEXT_BAR' } }), 'SCHEDULED_WAIT_NEXT_BAR');
 assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'TV_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_bar_close_ms: 1000, scheduled_exec_bar_close_ms: 2000, signal_to_intent_ms: 420000, webhook_to_intent_ms: 430000 }, labels: { was_filled: true } }), 'IMMEDIATE_EXEC_NEXT_EXEC_BAR');
 assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'TV_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_to_intent_ms: 420000, webhook_to_intent_ms: 430000, webhook_decision: 'SAVED', webhook_has_immediate_probe: false }, labels: { was_filled: true } }), 'LEGACY_WEBHOOK_OUTCOME_ONLY');

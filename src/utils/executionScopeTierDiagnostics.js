@@ -7,7 +7,8 @@ function toNum(value) {
 }
 
 function normalizeText(value) {
-  const text = String(value || "").trim();
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
   return text || null;
 }
 

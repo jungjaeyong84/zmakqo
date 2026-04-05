@@ -43,4 +43,6 @@ assert.strictEqual(report.summary.top_false_negative_group, "FILLABLE|POLICY_BLO
 assert.strictEqual(report.summary.policy_blocked_top_source, "PINE_WEBHOOK");
 assert.strictEqual(report.summary.policy_blocked_top_no_fill_reason, "TOTAL_BUDGET_EXCEEDED");
 assert.strictEqual(typeof report.summary.policy_blocked_lowest_coverage_feature, "string");
+const proConflictCoverage = report.summary.policy_blocked_coverage.find((row) => row.path === "features.pro_conflict");
+assert.strictEqual(proConflictCoverage.present_n, 1);
 console.log("EXECUTION_SCOPE_TIER_DIAGNOSTICS_TEST_OK");

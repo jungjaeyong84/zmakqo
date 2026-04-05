@@ -35,6 +35,7 @@ const CATEGORICAL_FEATURES = Object.freeze([
   "execution.entry_schedule_reason",
   "execution.entry_schedule_note_kind",
   "execution.entry_schedule_profile",
+  "execution.signal_to_intent_bucket",
   "execution.webhook_decision",
   "execution.webhook_reason",
   "features.reason",
@@ -42,6 +43,8 @@ const CATEGORICAL_FEATURES = Object.freeze([
   "features.pos_state",
   "features.pro_conflict",
   "features.score_bucket",
+  "features.entry_reason_profile",
+  "features.policy_block_hint",
   "features.source_origin",
   "features.signal_family",
   "features.entry_grade",
@@ -69,7 +72,8 @@ function toNum(value) {
 }
 
 function toUpper(value) {
-  return String(value || "").trim().toUpperCase() || null;
+  if (value === null || value === undefined) return null;
+  return String(value).trim().toUpperCase() || null;
 }
 
 function resolveEntryTier(row = null) {

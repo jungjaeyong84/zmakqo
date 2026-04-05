@@ -89,6 +89,62 @@ function deriveScoreBucket(score = null) {
   return "20+";
 }
 
+function deriveSignalToIntentBucket(value = null) {
+  const ms = toNum(value);
+  if (!Number.isFinite(ms)) return "UNKNOWN";
+  if (ms < 5000) return "LT_5S";
+  if (ms < 30000) return "5S_30S";
+  if (ms < 120000) return "30S_2M";
+  if (ms < 900000) return "2M_15M";
+  return "GE_15M";
+}
+
+function deriveNormalizedProConflict({ features = null, side = null, event = null } = {}) {
+  const bag = normalizeFeatureBag(features);
+  if (bag.pro_conflict != null) return !!bag.pro_conflict;
+  const normalizedSide = toUpper(side);
+  const normalizedEvent = toUpper(event);
+  if (normalizedSide === "BUY" || (normalizedEvent && normalizedEvent.endsWith("_LONG"))) {
+    if (bag.pro_conflict_long != null) return !!bag.pro_conflict_long;
+  }
+  if (normalizedSide === "SELL" || (normalizedEvent && normalizedEvent.endsWith("_SHORT"))) {
+    if (bag.pro_conflict_short != null) return !!bag.pro_conflict_short;
+  }
+  if (bag.pro_conflict_long != null) return !!bag.pro_conflict_long;
+  if (bag.pro_conflict_short != null) return !!bag.pro_conflict_short;
+  return null;
+}
+
+function deriveEntryReasonProfile(features = null) {
+  const bag = normalizeFeatureBag(features);
+  return [
+    toUpper(bag.reason) || "UNKNOWN",
+    toUpper(bag.action) || "UNKNOWN",
+    toUpper(bag.pos_state) || "UNKNOWN",
+  ].join("|");
+}
+
+function derivePolicyBlockHint({
+  noFillReason = null,
+  noFillReasonFamily = null,
+  features = null,
+} = {}) {
+  const bag = normalizeFeatureBag(features);
+  const normalizedReason = toUpper(noFillReason);
+  const normalizedFamily = toUpper(noFillReasonFamily);
+  const entryReason = toUpper(bag.reason);
+  const costShieldBlockAdd = bag.cost_shield_block_add === true;
+  if (normalizedReason === "TOTAL_BUDGET_EXCEEDED") {
+    if (entryReason === "PINE_DROP_STALE_POS_TO_ENTRY" && costShieldBlockAdd) return "TOTAL_BUDGET_STALE_POS_COST_SHIELD";
+    if (costShieldBlockAdd) return "TOTAL_BUDGET_COST_SHIELD";
+    return "TOTAL_BUDGET_EXCEEDED";
+  }
+  if (normalizedReason === "RISK_BUDGET_DISABLED") return "RISK_BUDGET_DISABLED";
+  if (normalizedFamily === "POLICY_OR_CAPACITY" && costShieldBlockAdd) return "POLICY_OR_CAPACITY_COST_SHIELD";
+  if (normalizedFamily === "POLICY_OR_CAPACITY") return "POLICY_OR_CAPACITY_OTHER";
+  return "NONE";
+}
+
 function deriveEntryScheduleProfile({ reason = null, noteKind = null, gapMs = null, wasFilled = false, createdToFillMs = null } = {}) {
   const scheduleReason = toUpper(reason);
   const scheduleNoteKind = toUpper(noteKind);
@@ -511,8 +567,6 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
     const scheduledExecGapMs = Number.isFinite(signalBarCloseMs) && Number.isFinite(scheduledExecBarCloseMs)
       ? scheduledExecBarCloseMs - signalBarCloseMs
       : null;
-    features.score_bucket = deriveScoreBucket(features.score);
-    features.pro_conflict = features.pro_conflict == null ? null : !!features.pro_conflict;
     const restoredPrimaryEvent = isExitEvent(intent.event)
       ? null
       : resolveMlPrimarySignalEvent({
@@ -522,6 +576,18 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
         entry_event_id: String(intent.entry_event_id || "").trim() || null,
         features_json: features,
       });
+    features.score_bucket = deriveScoreBucket(features.score);
+    features.pro_conflict = deriveNormalizedProConflict({
+      features,
+      side: intent.side,
+      event: restoredPrimaryEvent || intent.event,
+    });
+    features.entry_reason_profile = deriveEntryReasonProfile(features);
+    features.policy_block_hint = derivePolicyBlockHint({
+      noFillReason,
+      noFillReasonFamily,
+      features,
+    });
     const entryScheduleProfile = deriveEntryScheduleProfile({
       reason: entryScheduleReason,
       noteKind: entryScheduleNoteKind,
@@ -584,6 +650,7 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
         entry_schedule_note: entryScheduleNote,
         entry_schedule_note_kind: entryScheduleNoteKind,
         entry_schedule_profile: entryScheduleProfile,
+        signal_to_intent_bucket: deriveSignalToIntentBucket(signalToIntentMs),
         signal_to_intent_ms: signalToIntentMs,
         signal_to_fill_ms: signalToFillMs,
         fill_source_counts: agg.fill_source_counts,
@@ -945,6 +1012,9 @@ module.exports = {
     deriveNoFillReasonFamily,
     deriveNoFillSubtype,
     deriveEntryScheduleReason,
+    deriveSignalToIntentBucket,
+    deriveNormalizedProConflict,
+    derivePolicyBlockHint,
     deriveWebhookDelayCause,
     isOperationalSource,
     buildWebhookOutcomeIndex,

@@ -43,6 +43,7 @@ function makeRow(index, scope) {
     features: {
       score: scope === "FILLABLE" ? 0.9 : (scope === "POLICY_BLOCKED" ? 0.2 : 0.45),
       zz_wave_conf: scope === "FILLABLE" ? 0.8 : (scope === "POLICY_BLOCKED" ? 0.15 : 0.35),
+      pro_conflict: scope === "RUNTIME_EXCEPTION",
     },
   };
 }
@@ -83,6 +84,8 @@ function makeRow(index, scope) {
   assert.strictEqual(Array.isArray(built.trainRun.target_classes), true);
   assert.strictEqual(built.trainRun.metrics_snapshot.test.rows_n > 0, true);
   assert.strictEqual(built.trainRun.metrics_by_entry_grade.test.CORE.rows_n > 0, true);
+  assert.ok(built.modelArtifact.model_params.categorical_vocab["features.pro_conflict"].includes("FALSE"));
+  assert.ok(built.modelArtifact.model_params.categorical_vocab["features.pro_conflict"].includes("TRUE"));
   const scored = scoreExecutionScopeBaselineRows(filtered.slice(0, 5), { summary: built.modelArtifact, model: built.modelArtifact.model_params });
   assert.strictEqual(scored.length, 5);
   assert.strictEqual(typeof scored[0].class_probs.FILLABLE, "number");
