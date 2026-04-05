@@ -1,5 +1,9 @@
 # DONBEOLJA System Architecture
 
+- 업데이트: 2026-04-05 KST
+- 검수 SSOT:
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/DONBEOLJA_SYSTEM_SSOT_FOR_REVIEW_2026-04-02.md`
+
 ## 개요
 돈벌자는 자동 코인 선물 거래 시스템이다. 현재 아키텍처의 핵심 방향은 `서버 정본 신호 생성`이다. TradingView Pine는 보조 실행 경로가 아니라 시각화 및 비교 검증용 shadow 역할로 유지한다.
 
@@ -66,6 +70,38 @@
 
 의미:
 - 실제 성과와 수익 집계의 근거가 된다.
+
+### 6.1 Live Execution Policy (P2 Canary)
+역할:
+- `execution quality + allocator + quarantine + policy parameter plan`을 결합해 실주문 진입 수량을 조정한다.
+- `WATCH_ONLY` 시장은 진입 차단할 수 있다.
+- `portfolio cluster risk`를 계산해 same-side correlated cluster를 축소하거나 차단한다.
+
+핵심 경로:
+- `src/utils/liveExecutionPolicy.js`
+- `ops/daily/best_self_evolution_policy_parameter_plan_latest.json`
+
+현재 운용:
+- `LIVE_EXEC_POLICY_POLICY_PLAN_ENABLED=1`
+- `LIVE_EXEC_POLICY_POLICY_PLAN_APPLY=1` (canary)
+- `LIVE_EXEC_POLICY_POLICY_PLAN_WATCH_ONLY_BLOCK=1`
+- `LIVE_EXEC_POLICY_PORTFOLIO_CLUSTER_ENABLED=1`
+- 기본 군집 규칙:
+  - `3번째 same-side cluster -> REDUCE_SIZE`
+  - `4번째 correlated cluster -> BLOCK`
+
+### 6.2 EV Probability Calibration
+역할:
+- `DROP_EV_GATE_TP1_PROB`가 쓰는 `tp1_prob lower bound`를 empirical outcome으로 보정한다.
+- 과신된 probability/lower bound를 실측 ceiling으로 clamp한다.
+
+핵심 경로:
+- `src/services/evTp1Probability.js`
+- `src/utils/evTp1ProbabilityCalibration.js`
+- `ops/daily/best_self_evolution_ev_probability_calibration_latest.json`
+
+의미:
+- EV gate 문제를 단순 threshold 완화로만 다루지 않고, 확률 모델 calibration부터 바로잡는다.
 
 ### 7. 수익 집계
 역할:
@@ -157,7 +193,7 @@
 - 서버 vs Pine parity 비교
 
 ## 현재 전환 상태
-현재 시스템은 `Pine 중심 -> Server 중심` 전환 중이다.
+현재 시스템은 `Pine 중심 -> Server 중심` 전환을 완료했고, 이후 acceptance/품질 안정화 단계다.
 
 이미 된 것:
 - 서버 내부 신호는 정본으로 기록된다.
@@ -167,9 +203,9 @@
 - self-evolution과 autonomy contract는 server signal authority/quality/runtime/cutover를 읽는다.
 
 아직 남은 것:
-- 일부 drift family를 더 줄여야 한다.
-- 최종 `SERVER_PRIMARY` 승격 acceptance를 닫아야 한다.
-- Pine는 계속 유지하지만 운영 정본 역할에서는 완전히 빠져야 한다.
+- 일부 drift family(`EV_POLICY`, `COOLDOWN_POLICY`)를 더 줄여야 한다.
+- `SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT`를 닫아 승격 acceptance를 충족해야 한다.
+- objective recovery와 실행 품질을 동시 회복해야 한다.
 
 ## 왜 비교 운영이 계속 필요한가
 서버가 정본이더라도 Pine shadow 비교는 당분간 필요하다.

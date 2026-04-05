@@ -1,8 +1,11 @@
 # BEST_SELF_EVOLUTION_MASTER_SPEC
 
 - 제정: 2026-03-29
+- 업데이트: 2026-04-05
 - 상태: ACTIVE
 - 목적: `BEST/FEBT`를 단순 튜닝 루프가 아니라 `측정 -> 원인분해 -> 후보생성 -> 오프라인 검증 -> canary -> 자동 롤백 -> 패치 메모리`까지 닫힌 자기 진화 시스템으로 확장하기 위한 상위 SSOT
+- 검수 SSOT:
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/DONBEOLJA_SYSTEM_SSOT_FOR_REVIEW_2026-04-02.md`
 - 연계 문서:
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_PINE_TO_SELF_EVOLUTION_SYSTEM_MAP.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SERVER_CANONICAL_ENGINE_MIGRATION_PLAN.md`
@@ -149,6 +152,13 @@
 29. change-result attribution
 30. exploration budget / proposal / apply candidate
 31. server market capital allocator / quarantine
+32. policy parameter evolution plan report
+33. live execution policy canary integration (report-only/active switch)
+34. market regime board / rescue-mixed-keep_drop cohort tracking
+35. sample-aware verification / deferred low-sample handling
+36. empirical EV probability calibration
+37. portfolio cluster risk live guard
+38. objective retrospective FX normalization (`USDT -> KRW`)
 
 현재 migration 상태:
 
@@ -178,30 +188,56 @@
 5. `parity_drift = ACTIVE`
 6. `cutover = SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT`
 
-현재 autonomy governor 상태:
+현재 autonomy governor / verification / memory 상태는 고정 문장이 아니라 아래 latest artifact를 정본으로 본다.
 
-1. `Goal State`: `OBJECTIVE_RECOVERY_REQUIRED`
-2. `Recovery Candidate`: `AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN`
-3. `Governor Status`: `RECOVERY_PROMOTION_READY`
-4. `Degraded Authority`: `ENABLED and ELIGIBLE`
-5. `Phase D`: `SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT`
-6. `Memory Ledger`: unrelated block `AI_AI` remains `WARN` only
+- `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_objective_recovery_governor_latest.json`
+- `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_reasoning_journal_latest.json`
+- `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_memory_latest.json`
+- `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_openclaw_market_regime_board_latest.json`
+- `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_ev_probability_calibration_latest.json`
 
-## 8. 다음 고도화 범위
+## 8. 운영 규칙 최신화
+
+1. `verification`
+   - `DEFERRED_LEARNING_EPOCH`와 `DEFERRED_LOW_SAMPLE`를 공식 상태로 사용한다.
+   - `ev_policy_post_apply_comparable_n`는 저표본일 때 실패로 확정하지 않는다.
+   - `sample formation`과 `effect verification`은 분리한다.
+
+2. `autonomy parity`
+   - `final_downstream_mismatch_control`은 절대 count 단독이 아니라 `rate + sample floor + count guardrail`로 판정한다.
+
+3. `memory ledger`
+   - 저표본 EV remediation 실패는 즉시 fingerprint block으로 확정하지 않는다.
+   - `PROVISIONAL_FAIL`을 거쳐 충분한 표본 뒤에만 fail fingerprint로 승격한다.
+
+4. `EV policy`
+   - live global threshold는 학습 epoch 동안 직접 완화하지 않는다.
+   - report-only market/cohort threshold와 empirical calibration layer로 관측/보정을 수행한다.
+   - `tp1_prob lower bound`는 empirical calibration ceiling으로 clamp될 수 있다.
+
+5. `market regime`
+   - OpenClaw는 global score만 보지 않고 `RESCUE / MIXED / KEEP_DROP / HOLD_SAMPLE` cohort를 함께 본다.
+
+6. `portfolio risk`
+   - live entry policy는 단일 심볼만이 아니라 same-side correlated cluster를 본다.
+   - 기본 규칙은 `3번째 same-side cluster -> reduce`, `4번째 correlated cluster -> block`이다.
+
+## 9. 다음 고도화 범위
 
 1. `SERVER_PRIMARY` acceptance sample 축적
 2. external authority pending 해소
 3. timeout authority degraded-policy 발동 검증
 4. downstream parity mismatch, 특히 `EV_POLICY` 압력 완화
 5. 시장별 objective score 정교화
+6. policy parameter plan을 advisory에서 apply-ready로 승격
 
-## 9. 다음 구현 우선순위
+## 10. 다음 구현 우선순위
 
 1. `Server-Primary Acceptance`
 2. `External Authority Closure`
 3. `Degraded Timeout Authority Validation`
 4. `Downstream Policy Pressure Reduction`
 
-## 10. 한 줄 결론
+## 11. 한 줄 결론
 
 자기 진화 시스템의 핵심은 “AI가 막 바꾸는 것”이 아니라, `감독관 헌법 아래에서 측정-검증-적용-롤백-기억`이 닫힌 하나의 시스템을 만드는 것이다.

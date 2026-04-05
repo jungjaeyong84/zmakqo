@@ -1,10 +1,13 @@
 # OBJECTIVE_RETROSPECTIVE_POLICY
 
 - 제정: 2026-03-28
+- 업데이트: 2026-04-05
 - 상태: ACTIVE
 - 목적:
   - 데일리/주간/월간 성과를 하나의 공통 목표 함수로 회고한다.
   - 목표 미달 시 원인과 반성문을 남겨, 이후 서버 신호 및 downstream policy 수정의 공통 근거로 사용한다.
+- 검수 SSOT:
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/DONBEOLJA_SYSTEM_SSOT_FOR_REVIEW_2026-04-02.md`
 
 ## 공통 목표
 
@@ -52,6 +55,8 @@
    - win rate
    - avg_ret_net
    - net_pnl_quote
+   - `BINANCEFUT`는 quote PnL을 그대로 KRW로 표기하지 않는다.
+   - `BINANCEFUT` retrospective는 `USDT -> KRW` 환산 후 목표와 비교한다.
 2. entry cohort 활동
    - signals_n
    - executed_n
@@ -66,6 +71,8 @@
    - stage autopilot
    - change-result attribution
    - server signal authority / quality / cutover
+   - policy parameter plan (`best_self_evolution_policy_parameter_plan_latest`)
+   - live execution policy canary 상태 (`LIVE_EXEC_POLICY_POLICY_PLAN_*`)
 
 ## 반성문 규칙
 
@@ -101,3 +108,15 @@
    - `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/objective_retrospective_latest.md`
 3. 텔레그램:
    - 데일리 실행마다 당일/주간/월간 상태와 반성문 요약을 발송한다.
+
+## 통화 정규화 규칙
+
+1. 목표 통화는 운영 정본상 `KRW`다.
+2. `UPBIT`, `KIWOOM` 실현 손익은 원래 `KRW`로 기록한다.
+3. `BINANCEFUT` 실현 손익은 기본 quote currency가 `USDT`이므로 retrospective에서 `KRW`로 환산한다.
+4. retrospective artifact는 최소 아래 메타를 같이 남긴다.
+   - `quote_currency`
+   - `display_currency`
+   - `usd_krw_rate`
+   - `usd_krw_rate_source`
+5. 목표 비교는 항상 `display_currency=KRW` 기준으로 수행한다.

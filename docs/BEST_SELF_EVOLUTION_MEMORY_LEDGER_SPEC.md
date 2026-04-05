@@ -1,6 +1,7 @@
 # BEST_SELF_EVOLUTION_MEMORY_LEDGER_SPEC
 
 - 제정: 2026-03-29
+- 업데이트: 2026-04-05
 - 상태: ACTIVE
 - 목적: 과거 패치와 결과를 기억해 실패 후보의 반복을 막는 ledger 규격
 
@@ -35,6 +36,9 @@
 5. `verdict`
    - `SUCCESS`, `NEUTRAL`, `FAIL`, `ROLLED_BACK`
 6. `rollback_reason`
+7. `verification_sample_n`
+8. `memory_verdict`
+   - `SUCCESS`, `NEUTRAL`, `PROVISIONAL_FAIL`, `FAIL`, `ROLLED_BACK`
 
 ## 3. 사용 규칙
 
@@ -42,3 +46,5 @@
 2. 시장별로 성공 패치 우선 재사용
 3. ledger는 Codex 후보 프롬프트에 반드시 주입
 4. `blocked_candidate_ids`는 감독관과 patch engine이 그대로 소비할 수 있어야 한다
+5. `verification_sample_n`이 부족한 EV remediation 실패는 즉시 `FAIL`로 확정하지 않는다.
+6. 저표본 EV remediation 실패는 `PROVISIONAL_FAIL`로 기록하고, 동일 fingerprint 2주 block을 바로 걸지 않는다.

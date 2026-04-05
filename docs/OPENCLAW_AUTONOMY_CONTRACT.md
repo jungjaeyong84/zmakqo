@@ -1,7 +1,7 @@
 # OPENCLAW_AUTONOMY_CONTRACT
 
 - 제정: 2026-03-31
-- 업데이트: 2026-04-03
+- 업데이트: 2026-04-05
 - 상태: ACTIVE
 - 검수 SSOT:
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/DONBEOLJA_SYSTEM_SSOT_FOR_REVIEW_2026-04-03.md`
@@ -20,6 +20,7 @@
 6. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_objective_recovery_governor_latest.json`
 7. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_objective_recovery_effect_latest.json`
 8. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_policy_parameter_plan_latest.json`
+9. `/Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_openclaw_market_regime_board_latest.json`
 
 ## 3. 현재 control plane 정본
 
@@ -29,40 +30,45 @@
 4. `signal_authority_target = SERVER_PRIMARY`
 5. `pine_role = PINE_SHADOW`
 
-## 4. 현재 latest 기준 상태 (as-of 2026-04-03 15:00 KST)
+## 4. 현재 latest 기준 상태
 
 ### 4.1 autonomy contract summary
 
-1. `goal_state = OBJECTIVE_RECOVERY_REQUIRED`
-2. `authority_state = PENDING`
-3. `phase_d_status = READY`
-4. `ops_status = PASS`
-5. `server_signal_authority_status = PARITY_DRIFT`
-6. `server_signal_quality_status = WATCH_PARITY_DRIFT`
-7. `server_signal_runtime_status = READY`
-8. `server_signal_transition_status = COMPLETE`
-9. `objective_score = -9.5532`
-10. `objective_score_source = OBJECTIVE`
+아래 고정 숫자 대신 latest artifact를 정본으로 읽는다.
+
+1. `goal_state`
+2. `authority_state`
+3. `phase_d_status`
+4. `ops_status`
+5. `server_signal_authority_status`
+6. `server_signal_quality_status`
+7. `server_signal_runtime_status`
+8. `server_signal_transition_status`
+9. `objective_score`
+10. `market_regime_board_status`
 
 ### 4.2 cutover truth
 
-1. `readiness_status = SERVER_PRIMARY_ACTIVE`
-2. `promotion_gate_status = READY`
-3. `promotion_block_reasons = []`
-4. `artifact_coherence_status = READY`
-5. `artifact_generated_at_skew_ms = 1496`
-6. `dominant_mismatch_family = EV_POLICY`
-7. `recommended_action = HOLD_EV_POLICY_REVIEW`
+1. `readiness_status`
+2. `promotion_gate_status`
+3. `promotion_block_reasons`
+4. `artifact_coherence_status`
+5. `dominant_mismatch_family`
+6. `recommended_action`
+7. `ev_policy_post_apply_comparable_n`
+8. `ev_policy_post_apply_mismatch_rate`
 
 ### 4.3 governor / plan
 
-1. `governor_status = RECOVERY_CANARY_BLOCKED`
-2. `policy_parameter_plan.status = HOLD`
-3. `policy_parameter_plan.mode = ADVISORY_ONLY`
-4. `policy_parameter_plan.current_objective_score = -9.5532`
-5. `quarantine_market_n = 3`
-6. `watch_only_review_market_n = 4`
-7. `other_server_policy_watch_only_market_n = 1`
+1. `governor_status`
+2. `policy_parameter_plan.status`
+3. `policy_parameter_plan.mode`
+4. `policy_parameter_plan.current_objective_score`
+5. `quarantine_market_n`
+6. `watch_only_review_market_n`
+7. `other_server_policy_watch_only_market_n`
+8. `market_regime_rescue_n`
+9. `market_regime_keep_drop_n`
 
 ## 5. autonomy contract가 지금 보는 것
 
@@ -71,6 +77,8 @@
 3. source-mode는 이미 `SERVER_PRIMARY`인지
 4. promotion coherence gate가 별도 blocker 없이 cleared인지
 5. parity drift와 downstream mismatch가 monitor-only인지 blocker인지
+6. `market regime board`가 rescue cohort를 열어야 하는지
+7. `final_downstream_mismatch_control`이 count가 아니라 `rate` 기준으로 fail인지
 
 ## 6. 지금 왜 완전 자율 전환이 아닌가
 
@@ -78,12 +86,12 @@
 
 1. `authority_state=PENDING`
 2. `objective_supervisor.verdict=HOLD`
-3. `governor_status=RECOVERY_CANARY_BLOCKED`
-4. `reasoning_verification_quality=FAIL` and `objective_score=-9.5532`
+3. `governor_status`가 promotion-ready가 아니거나 external authority가 남아 있음
+4. `reasoning_verification_quality`와 `final_downstream_mismatch_control`이 아직 PASS가 아님
 
 ## 7. 현재 최종 의미
 
 1. OpenClaw substrate는 healthy다.
 2. source-mode cutover는 operationally complete다.
-3. promotion-grade coherence는 latest aligned set에서 ready지만 autonomy authority는 아직 닫히지 않았다.
-4. 따라서 현재 병목은 자동화 부재가 아니라 objective/verification/authority의 최종 증거 부족이다.
+3. promotion-grade coherence는 artifact 정합성과 시장군 상태를 함께 본다.
+4. 따라서 현재 병목은 자동화 부재가 아니라 objective/verification/authority/EV policy calibration의 최종 증거 부족이다.
