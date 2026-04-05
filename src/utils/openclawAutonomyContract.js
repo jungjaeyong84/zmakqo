@@ -538,6 +538,12 @@ function deriveOpenClawAutonomyContract({
       execution_scope_tier_weaker_tier: String(executionQualitySummary.execution_scope_tier_weaker_tier || "").trim() || null,
       execution_scope_tier_mismatch_rate_gap: toNum(executionQualitySummary.execution_scope_tier_mismatch_rate_gap),
       execution_scope_tier_macro_recall_gap: toNum(executionQualitySummary.execution_scope_tier_macro_recall_gap),
+      execution_scope_tier_diagnostics_status: String(executionQualitySummary.execution_scope_tier_diagnostics_status || "").trim() || null,
+      execution_scope_tier_diagnostics_top_false_positive_group: String(executionQualitySummary.execution_scope_tier_diagnostics_top_false_positive_group || "").trim() || null,
+      execution_scope_tier_diagnostics_top_false_negative_group: String(executionQualitySummary.execution_scope_tier_diagnostics_top_false_negative_group || "").trim() || null,
+      execution_scope_tier_diagnostics_policy_blocked_top_source: String(executionQualitySummary.execution_scope_tier_diagnostics_policy_blocked_top_source || "").trim() || null,
+      execution_scope_tier_diagnostics_policy_blocked_top_no_fill_reason: String(executionQualitySummary.execution_scope_tier_diagnostics_policy_blocked_top_no_fill_reason || "").trim() || null,
+      execution_scope_tier_diagnostics_policy_blocked_lowest_coverage_feature: String(executionQualitySummary.execution_scope_tier_diagnostics_policy_blocked_lowest_coverage_feature || "").trim() || null,
       execution_scope_train_run_status: mlTrainRunScopeStatus,
       execution_scope_train_run_id: String(mlTrainRunScopeSummary.train_run_id || "").trim() || null,
       execution_scope_train_run_model_artifact_id: String(mlTrainRunScopeSummary.model_artifact_id || "").trim() || null,
@@ -698,6 +704,12 @@ function deriveOpenClawAutonomyContract({
       execution_scope_tier_weaker_tier: String(executionQualitySummary.execution_scope_tier_weaker_tier || "").trim() || null,
       execution_scope_tier_mismatch_rate_gap: toNum(executionQualitySummary.execution_scope_tier_mismatch_rate_gap),
       execution_scope_tier_macro_recall_gap: toNum(executionQualitySummary.execution_scope_tier_macro_recall_gap),
+      execution_scope_tier_diagnostics_status: String(executionQualitySummary.execution_scope_tier_diagnostics_status || "").trim() || null,
+      execution_scope_tier_diagnostics_top_false_positive_group: String(executionQualitySummary.execution_scope_tier_diagnostics_top_false_positive_group || "").trim() || null,
+      execution_scope_tier_diagnostics_top_false_negative_group: String(executionQualitySummary.execution_scope_tier_diagnostics_top_false_negative_group || "").trim() || null,
+      execution_scope_tier_diagnostics_policy_blocked_top_source: String(executionQualitySummary.execution_scope_tier_diagnostics_policy_blocked_top_source || "").trim() || null,
+      execution_scope_tier_diagnostics_policy_blocked_top_no_fill_reason: String(executionQualitySummary.execution_scope_tier_diagnostics_policy_blocked_top_no_fill_reason || "").trim() || null,
+      execution_scope_tier_diagnostics_policy_blocked_lowest_coverage_feature: String(executionQualitySummary.execution_scope_tier_diagnostics_policy_blocked_lowest_coverage_feature || "").trim() || null,
       execution_model_dataset_version_id: String(
         executionModelSummary.version_id
         || (executionModelDataset && executionModelDataset.execution_dataset_version && executionModelDataset.execution_dataset_version.version_id)

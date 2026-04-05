@@ -31,6 +31,7 @@ function summarizeExecutionQuality({
   executionScopeTrainRun = null,
   executionScopeFalsePositiveDiagnostics = null,
   executionScopeTierComparison = null,
+  executionScopeTierDiagnostics = null,
 } = {}) {
   const micro = microstructure && typeof microstructure === "object" ? microstructure : {};
   const metrics = micro.metrics && typeof micro.metrics === "object" ? micro.metrics : {};
@@ -58,6 +59,11 @@ function summarizeExecutionQuality({
     ? (executionScopeTierComparison.summary && typeof executionScopeTierComparison.summary === "object"
       ? executionScopeTierComparison.summary
       : executionScopeTierComparison)
+    : {};
+  const executionScopeTierDiagnosticsSummary = executionScopeTierDiagnostics && typeof executionScopeTierDiagnostics === "object"
+    ? (executionScopeTierDiagnostics.summary && typeof executionScopeTierDiagnostics.summary === "object"
+      ? executionScopeTierDiagnostics.summary
+      : executionScopeTierDiagnostics)
     : {};
   const executionScopeTierMetrics = executionScopeTrainRunSummary.metrics_by_entry_grade && typeof executionScopeTrainRunSummary.metrics_by_entry_grade === "object"
     ? executionScopeTrainRunSummary.metrics_by_entry_grade
@@ -215,6 +221,14 @@ function summarizeExecutionQuality({
       execution_scope_tier_weaker_tier: String(executionScopeTierSummary.weaker_tier || "").trim() || null,
       execution_scope_tier_mismatch_rate_gap: toNum(executionScopeTierSummary.mismatch_rate_gap),
       execution_scope_tier_macro_recall_gap: toNum(executionScopeTierSummary.macro_recall_gap),
+      execution_scope_tier_diagnostics_status: String(executionScopeTierDiagnosticsSummary.status || "").trim() || null,
+      execution_scope_tier_diagnostics_target_tier: String(executionScopeTierDiagnosticsSummary.target_tier || "").trim() || null,
+      execution_scope_tier_diagnostics_top_false_positive_group: String(executionScopeTierDiagnosticsSummary.top_false_positive_group || "").trim() || null,
+      execution_scope_tier_diagnostics_top_false_negative_group: String(executionScopeTierDiagnosticsSummary.top_false_negative_group || "").trim() || null,
+      execution_scope_tier_diagnostics_policy_blocked_top_source: String(executionScopeTierDiagnosticsSummary.policy_blocked_top_source || "").trim() || null,
+      execution_scope_tier_diagnostics_policy_blocked_top_no_fill_reason: String(executionScopeTierDiagnosticsSummary.policy_blocked_top_no_fill_reason || "").trim() || null,
+      execution_scope_tier_diagnostics_policy_blocked_lowest_coverage_feature: String(executionScopeTierDiagnosticsSummary.policy_blocked_lowest_coverage_feature || "").trim() || null,
+      execution_scope_tier_diagnostics_policy_blocked_lowest_coverage_rate: toNum(executionScopeTierDiagnosticsSummary.policy_blocked_lowest_coverage_rate),
       review_reasons: reviewReasons,
       market_n: rows.length,
       top_watch_markets: rows.slice(0, 6).map((row) => ({
