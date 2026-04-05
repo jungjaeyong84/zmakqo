@@ -111,10 +111,12 @@
 현재 원칙:
 - `FAST_TP0`는 `절대 % floor + ATR 보정`으로 계산한다.
 - `TP1`은 `openclaw_market_regime_cohort`에 따라 `RESCUE=2.8%`, `MIXED=3.0%`, `KEEP_DROP=base`로 분기할 수 있다.
+- 이미 열린 포지션도 `/Users/jeongjaeyong/Projects/donbeolja/scripts/apply-open-position-cohort-backfill.js`로 cohort/meta를 주입해 새 TP1 규칙을 소급 적용할 수 있다.
 - `TP1` 직후에는 trail을 즉시 켜지 않고 `1봉 또는 추가 MFE` 조건을 기록한다.
 - `pre-TP1 time stop`은 `EARLY=4 bars`, `CORE=6 bars`, `TP1 progress < 50%`일 때만 발동한다.
 - 같은 방향 포지션 군집은 count뿐 아니라 total exposure cap으로도 제어한다.
 - recent FILLED entry 직후 외부 futures snapshot이 `0`으로 튀더라도 `external flat sync grace` 동안은 내부 포지션을 즉시 `FLAT`으로 덮지 않는다.
+- active sync는 `openclaw_market_regime_cohort/objective_score/drop_verdict`를 보존해 외부 포지션 동기화가 cohort TP1 메타를 지우지 않도록 한다.
 
 ### 7. 수익 집계
 역할:
@@ -244,6 +246,7 @@
 - 기록
 - 수익 집계
 - Telegram 알림
+- Telegram 알림은 단순 체결 통보만이 아니라 `cohort`, `pre-TP1 time stop`, `TP0`, `운영 드롭 사유 한글 설명`까지 포함한 실행 의미 계층이다.
 
 ### Pine
 - 차트 시각화

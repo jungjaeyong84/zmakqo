@@ -105,6 +105,7 @@
    - 초기 소이익은 `절대 % floor + ATR 보정`으로 일부 청산한다.
 2. `cohort TP1`
    - `RESCUE=2.8%`, `MIXED=3.0%`, `KEEP_DROP=base` 규칙으로 TP1 거리를 분기한다.
+   - 이미 열린 포지션도 cohort backfill을 통해 이 규칙을 소급 적용할 수 있다.
 3. `delayed trail`
    - `TP1` 직후 trail을 즉시 활성화하지 않고 `1봉 또는 추가 MFE` 충족 후 활성화한다.
    - 두 조건은 artifact/meta에 모두 기록한다.
@@ -116,3 +117,13 @@
    - same-side cluster는 count뿐 아니라 total exposure cap도 함께 본다.
 7. `external flat sync grace`
    - recent FILLED entry 직후 외부 `positionAmt=0` snapshot이 잠깐 들어와도 내부 포지션 `FLAT` overwrite를 바로 허용하지 않는다.
+   - active sync는 `openclaw_market_regime_cohort/objective_score/drop_verdict`를 유지해 현재 포지션이 cohort TP1 규칙을 잃지 않도록 한다.
+
+## 9. 운영 알림 계약
+
+1. `execution semantics`
+   - Telegram/운영 알림은 `TP0`, `pre-TP1 time stop`, `cohort`, `portfolio cluster reduce/block`를 구분해서 노출한다.
+2. `operator readability`
+   - `LIVE_RESCUE_ADD_*`, `LIVE_POLICY_*`, `LINEAGE_SLO_*`, `DROP_CHASE_ENTRY_QUALITY` 등 운영 드롭/보류 사유는 한국어 설명을 기본 제공한다.
+3. `meaning parity`
+   - 사람 운영자가 읽는 알림 의미와 OpenClaw가 읽는 artifact 의미가 어긋나지 않도록 동일한 사유 분류를 유지한다.

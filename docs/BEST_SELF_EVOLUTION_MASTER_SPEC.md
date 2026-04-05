@@ -223,14 +223,20 @@
 
 6. `exit microstructure`
    - `FAST_TP0`는 `절대 % + ATR 보정`을 함께 사용한다.
+   - 이미 열린 포지션도 `/Users/jeongjaeyong/Projects/donbeolja/scripts/apply-open-position-cohort-backfill.js`로 `openclaw_market_regime_cohort`를 주입해 cohort TP1을 소급 적용할 수 있다.
    - `TP1 이후 trail`은 즉시 활성화하지 않고 `1봉 경과 또는 추가 MFE` 조건을 기록/학습한다.
    - `same-side cluster cap`은 count뿐 아니라 total exposure 상한도 함께 본다.
    - `external flat sync grace`는 recent FILLED entry 직후 외부 `positionAmt=0` snapshot이 들어와도 즉시 `FLAT` overwrite하지 않도록 보호한다.
+   - external active sync는 `openclaw_market_regime_cohort/objective_score/drop_verdict`를 보존해 현재 포지션의 TP1 cohort 메타가 동기화 중 사라지지 않도록 한다.
 
 6. `portfolio risk`
    - live entry policy는 단일 심볼만이 아니라 same-side correlated cluster를 본다.
    - 기본 규칙은 `3번째 same-side cluster -> reduce`, `4번째 correlated cluster -> block`이다.
    - count cap과 별도로 `same-side exposure cap`, `correlated same-side exposure cap`을 함께 본다.
+
+7. `alert semantics`
+   - Telegram/운영 알림은 `TP0`, `pre-TP1 time stop`, `cohort`, `DROP_CHASE_ENTRY_QUALITY`, `LIVE_RESCUE_ADD_*`, `LINEAGE_SLO_*`, `LIVE_POLICY_*`를 사람이 읽기 쉬운 한글 설명으로 노출한다.
+   - 알림 계층은 실행 성공/실패뿐 아니라 운영 보류 이유를 OpenClaw와 사람 운영자가 같은 의미로 읽도록 유지한다.
 
 ## 9. 다음 고도화 범위
 
