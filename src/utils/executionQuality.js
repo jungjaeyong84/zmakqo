@@ -71,6 +71,14 @@ function summarizeExecutionQuality({
       ? executionScopeTierRawDiff.summary
       : executionScopeTierRawDiff)
     : {};
+  const mismatchWebhookProfiles = Array.isArray(executionScopeTierRawDiffSummary.mismatch_top_webhook_execution_profiles)
+    ? executionScopeTierRawDiffSummary.mismatch_top_webhook_execution_profiles
+    : [];
+  const topWebhookProfile = mismatchWebhookProfiles[0] || null;
+  const savedNoProbeProfile = mismatchWebhookProfiles.find((row) => String(row && row.key || "").trim() === "WEBHOOK_SAVED_NO_PROBE") || null;
+  const preBarCloseRowsN = mismatchWebhookProfiles
+    .filter((row) => String(row && row.key || "").trim().startsWith("WEBHOOK_PRE_BAR_CLOSE_"))
+    .reduce((sum, row) => sum + (toNum(row && row.rows_n) || 0), 0);
   const executionScopeTierMetrics = executionScopeTrainRunSummary.metrics_by_entry_grade && typeof executionScopeTrainRunSummary.metrics_by_entry_grade === "object"
     ? executionScopeTrainRunSummary.metrics_by_entry_grade
     : {};
@@ -251,6 +259,9 @@ function summarizeExecutionQuality({
       execution_scope_tier_raw_diff_top_policy_block_hint: String(executionScopeTierRawDiffSummary.mismatch_profile && executionScopeTierRawDiffSummary.mismatch_profile.top_policy_block_hint || "").trim() || null,
       execution_scope_tier_raw_diff_top_webhook_execution_profile: String(executionScopeTierRawDiffSummary.mismatch_profile && executionScopeTierRawDiffSummary.mismatch_profile.top_webhook_execution_profile || "").trim() || null,
       execution_scope_tier_raw_diff_top_webhook_bar_timing_profile: String(executionScopeTierRawDiffSummary.mismatch_profile && executionScopeTierRawDiffSummary.mismatch_profile.top_webhook_bar_timing_profile || "").trim() || null,
+      execution_scope_tier_raw_diff_top_webhook_execution_profile_rows_n: toNum(topWebhookProfile && topWebhookProfile.rows_n),
+      execution_scope_tier_raw_diff_saved_no_probe_rows_n: toNum(savedNoProbeProfile && savedNoProbeProfile.rows_n),
+      execution_scope_tier_raw_diff_pre_bar_close_rows_n: preBarCloseRowsN || 0,
       review_reasons: reviewReasons,
       market_n: rows.length,
       top_watch_markets: rows.slice(0, 6).map((row) => ({

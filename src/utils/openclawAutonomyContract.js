@@ -556,6 +556,11 @@ function deriveOpenClawAutonomyContract({
       execution_scope_tier_raw_diff_top_schedule_profile: String(executionQualitySummary.execution_scope_tier_raw_diff_top_schedule_profile || "").trim() || null,
       execution_scope_tier_raw_diff_top_signal_to_intent_bucket: String(executionQualitySummary.execution_scope_tier_raw_diff_top_signal_to_intent_bucket || "").trim() || null,
       execution_scope_tier_raw_diff_top_policy_block_hint: String(executionQualitySummary.execution_scope_tier_raw_diff_top_policy_block_hint || "").trim() || null,
+      execution_scope_tier_raw_diff_top_webhook_execution_profile: String(executionQualitySummary.execution_scope_tier_raw_diff_top_webhook_execution_profile || "").trim() || null,
+      execution_scope_tier_raw_diff_top_webhook_bar_timing_profile: String(executionQualitySummary.execution_scope_tier_raw_diff_top_webhook_bar_timing_profile || "").trim() || null,
+      execution_scope_tier_raw_diff_top_webhook_execution_profile_rows_n: toNum(executionQualitySummary.execution_scope_tier_raw_diff_top_webhook_execution_profile_rows_n),
+      execution_scope_tier_raw_diff_saved_no_probe_rows_n: toNum(executionQualitySummary.execution_scope_tier_raw_diff_saved_no_probe_rows_n),
+      execution_scope_tier_raw_diff_pre_bar_close_rows_n: toNum(executionQualitySummary.execution_scope_tier_raw_diff_pre_bar_close_rows_n),
       execution_scope_train_run_status: mlTrainRunScopeStatus,
       execution_scope_train_run_id: String(mlTrainRunScopeSummary.train_run_id || "").trim() || null,
       execution_scope_train_run_model_artifact_id: String(mlTrainRunScopeSummary.model_artifact_id || "").trim() || null,
@@ -734,6 +739,11 @@ function deriveOpenClawAutonomyContract({
       execution_scope_tier_raw_diff_top_schedule_profile: String(executionQualitySummary.execution_scope_tier_raw_diff_top_schedule_profile || "").trim() || null,
       execution_scope_tier_raw_diff_top_signal_to_intent_bucket: String(executionQualitySummary.execution_scope_tier_raw_diff_top_signal_to_intent_bucket || "").trim() || null,
       execution_scope_tier_raw_diff_top_policy_block_hint: String(executionQualitySummary.execution_scope_tier_raw_diff_top_policy_block_hint || "").trim() || null,
+      execution_scope_tier_raw_diff_top_webhook_execution_profile: String(executionQualitySummary.execution_scope_tier_raw_diff_top_webhook_execution_profile || "").trim() || null,
+      execution_scope_tier_raw_diff_top_webhook_bar_timing_profile: String(executionQualitySummary.execution_scope_tier_raw_diff_top_webhook_bar_timing_profile || "").trim() || null,
+      execution_scope_tier_raw_diff_top_webhook_execution_profile_rows_n: toNum(executionQualitySummary.execution_scope_tier_raw_diff_top_webhook_execution_profile_rows_n),
+      execution_scope_tier_raw_diff_saved_no_probe_rows_n: toNum(executionQualitySummary.execution_scope_tier_raw_diff_saved_no_probe_rows_n),
+      execution_scope_tier_raw_diff_pre_bar_close_rows_n: toNum(executionQualitySummary.execution_scope_tier_raw_diff_pre_bar_close_rows_n),
       execution_model_dataset_version_id: String(
         executionModelSummary.version_id
         || (executionModelDataset && executionModelDataset.execution_dataset_version && executionModelDataset.execution_dataset_version.version_id)

@@ -25,6 +25,11 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         execution_scope_inference_status: "EXECUTION_SCOPE_INFERENCE_READY",
         execution_scope_inference_mismatch_rate: 0.29,
         execution_scope_inference_top_false_positive_group: "FILLABLE|POLICY_BLOCKED|LIVE_RUNTIME|EMO_LONG|KRW-BCH",
+        execution_scope_tier_raw_diff_top_webhook_execution_profile: "WEBHOOK_PRE_BAR_CLOSE_FILLED",
+        execution_scope_tier_raw_diff_top_webhook_bar_timing_profile: "PRE_BAR_CLOSE_GT_5M",
+        execution_scope_tier_raw_diff_top_webhook_execution_profile_rows_n: 2,
+        execution_scope_tier_raw_diff_saved_no_probe_rows_n: 2,
+        execution_scope_tier_raw_diff_pre_bar_close_rows_n: 2,
         execution_scope_fp_diagnostics_status: "EXECUTION_SCOPE_FP_DIAGNOSTICS_READY",
         execution_scope_fp_diagnostics_top_shared_feature: "execution.entry_schedule_reason=LATE_EXEC",
         execution_scope_fp_diagnostics_top_context_profile: "IN_POSITION_SAME_DIR|ADD|SHORT|-20-0|SAME_BAR_FAST_FILL",
@@ -222,6 +227,9 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_execution_scope_inference_status, "EXECUTION_SCOPE_INFERENCE_READY");
   assert.strictEqual(journal.summary.current_execution_scope_inference_mismatch_rate, 0.29);
   assert.strictEqual(journal.summary.current_execution_scope_inference_top_false_positive_group, "FILLABLE|POLICY_BLOCKED|LIVE_RUNTIME|EMO_LONG|KRW-BCH");
+  assert.strictEqual(journal.summary.current_execution_scope_tier_raw_diff_top_webhook_execution_profile, "WEBHOOK_PRE_BAR_CLOSE_FILLED");
+  assert.strictEqual(journal.summary.current_execution_scope_tier_raw_diff_saved_no_probe_rows_n, 2);
+  assert.strictEqual(journal.summary.current_execution_scope_tier_raw_diff_pre_bar_close_rows_n, 2);
   assert.strictEqual(journal.summary.current_execution_scope_fp_diagnostics_status, "EXECUTION_SCOPE_FP_DIAGNOSTICS_READY");
   assert.strictEqual(journal.summary.current_execution_scope_fp_diagnostics_top_shared_feature, "execution.entry_schedule_reason=LATE_EXEC");
   assert.strictEqual(journal.summary.current_execution_scope_fp_diagnostics_top_context_profile, "IN_POSITION_SAME_DIR|ADD|SHORT|-20-0|SAME_BAR_FAST_FILL");

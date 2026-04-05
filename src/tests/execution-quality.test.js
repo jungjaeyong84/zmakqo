@@ -73,6 +73,11 @@ const { summarizeExecutionQuality } = require("../utils/executionQuality");
           top_webhook_execution_profile: "WEBHOOK_OTHER",
           top_webhook_bar_timing_profile: "POST_BAR_CLOSE_FAST",
         },
+        mismatch_top_webhook_execution_profiles: [
+          { key: "WEBHOOK_OTHER", rows_n: 2 },
+          { key: "WEBHOOK_SAVED_NO_PROBE", rows_n: 1 },
+          { key: "WEBHOOK_PRE_BAR_CLOSE_FILLED", rows_n: 3 },
+        ],
       },
     },
     intents: [
@@ -117,6 +122,9 @@ const { summarizeExecutionQuality } = require("../utils/executionQuality");
   assert.strictEqual(report.summary.execution_scope_tier_raw_diff_top_pos_state, "SHORT");
   assert.strictEqual(report.summary.execution_scope_tier_raw_diff_top_webhook_execution_profile, "WEBHOOK_OTHER");
   assert.strictEqual(report.summary.execution_scope_tier_raw_diff_top_webhook_bar_timing_profile, "POST_BAR_CLOSE_FAST");
+  assert.strictEqual(report.summary.execution_scope_tier_raw_diff_top_webhook_execution_profile_rows_n, 2);
+  assert.strictEqual(report.summary.execution_scope_tier_raw_diff_saved_no_probe_rows_n, 1);
+  assert.strictEqual(report.summary.execution_scope_tier_raw_diff_pre_bar_close_rows_n, 3);
   assert.strictEqual(report.by_market[0].market, "BTCUSDT");
   assert.strictEqual(report.by_market[1].market, "SOLUSDT");
 })();
