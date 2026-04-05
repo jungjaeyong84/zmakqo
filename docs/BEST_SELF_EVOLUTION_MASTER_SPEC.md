@@ -223,10 +223,12 @@
    - `FAST_TP0`는 `절대 % + ATR 보정`을 함께 사용한다.
    - `TP1 이후 trail`은 즉시 활성화하지 않고 `1봉 경과 또는 추가 MFE` 조건을 기록/학습한다.
    - `same-side cluster cap`은 count뿐 아니라 total exposure 상한도 함께 본다.
+   - `external flat sync grace`는 recent FILLED entry 직후 외부 `positionAmt=0` snapshot이 들어와도 즉시 `FLAT` overwrite하지 않도록 보호한다.
 
 6. `portfolio risk`
    - live entry policy는 단일 심볼만이 아니라 same-side correlated cluster를 본다.
    - 기본 규칙은 `3번째 same-side cluster -> reduce`, `4번째 correlated cluster -> block`이다.
+   - count cap과 별도로 `same-side exposure cap`, `correlated same-side exposure cap`을 함께 본다.
 
 ## 9. 다음 고도화 범위
 

@@ -69,6 +69,8 @@
 7. `other_server_policy_watch_only_market_n`
 8. `market_regime_rescue_n`
 9. `market_regime_keep_drop_n`
+10. `execution_microstructure_status`
+11. `portfolio_cluster_risk_status`
 
 ## 5. autonomy contract가 지금 보는 것
 
@@ -79,6 +81,7 @@
 5. parity drift와 downstream mismatch가 monitor-only인지 blocker인지
 6. `market regime board`가 rescue cohort를 열어야 하는지
 7. `final_downstream_mismatch_control`이 count가 아니라 `rate` 기준으로 fail인지
+8. `FAST_TP0 / delayed trail / portfolio cluster cap / external flat sync grace`가 실행 미세구조 병목을 완화하는지
 
 ## 6. 지금 왜 완전 자율 전환이 아닌가
 
@@ -94,4 +97,16 @@
 1. OpenClaw substrate는 healthy다.
 2. source-mode cutover는 operationally complete다.
 3. promotion-grade coherence는 artifact 정합성과 시장군 상태를 함께 본다.
-4. 따라서 현재 병목은 자동화 부재가 아니라 objective/verification/authority/EV policy calibration의 최종 증거 부족이다.
+4. 따라서 현재 병목은 자동화 부재가 아니라 objective/verification/authority/EV policy calibration과 execution microstructure의 최종 증거 부족이다.
+
+## 8. 실행 미세구조 계약
+
+1. `FAST_TP0`
+   - 초기 소이익은 `절대 % floor + ATR 보정`으로 일부 청산한다.
+2. `delayed trail`
+   - `TP1` 직후 trail을 즉시 활성화하지 않고 `1봉 또는 추가 MFE` 충족 후 활성화한다.
+   - 두 조건은 artifact/meta에 모두 기록한다.
+3. `portfolio cluster cap`
+   - same-side cluster는 count뿐 아니라 total exposure cap도 함께 본다.
+4. `external flat sync grace`
+   - recent FILLED entry 직후 외부 `positionAmt=0` snapshot이 잠깐 들어와도 내부 포지션 `FLAT` overwrite를 바로 허용하지 않는다.

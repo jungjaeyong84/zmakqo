@@ -112,6 +112,7 @@
 - `FAST_TP0`는 `절대 % floor + ATR 보정`으로 계산한다.
 - `TP1` 직후에는 trail을 즉시 켜지 않고 `1봉 또는 추가 MFE` 조건을 기록한다.
 - 같은 방향 포지션 군집은 count뿐 아니라 total exposure cap으로도 제어한다.
+- recent FILLED entry 직후 외부 futures snapshot이 `0`으로 튀더라도 `external flat sync grace` 동안은 내부 포지션을 즉시 `FLAT`으로 덮지 않는다.
 
 ### 7. 수익 집계
 역할:
