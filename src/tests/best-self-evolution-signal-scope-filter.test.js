@@ -48,6 +48,7 @@ async function run() {
   assert.strictEqual(report.rows.length, 1);
   assert.strictEqual(report.rows[0].market, "BTCUSDT");
   assert.strictEqual(report.rows[0].entry_grade, "EARLY");
+  assert.strictEqual(report.rows[0].event, "EARLY_LONG");
   console.log("BEST_SELF_EVOLUTION_SIGNAL_SCOPE_FILTER_TEST_OK");
 }
 

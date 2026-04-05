@@ -1,7 +1,7 @@
 "use strict";
 
 const EXECUTION_MODEL_DATASET_SCHEMA_VERSION = "2026-04-05.v1";
-const { isMlPrimarySignalTierAllowed } = require("./mlSignalScope");
+const { isMlPrimarySignalTierAllowed, resolveMlPrimarySignalEvent } = require("./mlSignalScope");
 
 function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -513,6 +513,15 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
       : null;
     features.score_bucket = deriveScoreBucket(features.score);
     features.pro_conflict = features.pro_conflict == null ? null : !!features.pro_conflict;
+    const restoredPrimaryEvent = isExitEvent(intent.event)
+      ? null
+      : resolveMlPrimarySignalEvent({
+        event: intent.event,
+        side: intent.side,
+        signal_id: String(intent.signal_id || "").trim() || null,
+        entry_event_id: String(intent.entry_event_id || "").trim() || null,
+        features_json: features,
+      });
     const entryScheduleProfile = deriveEntryScheduleProfile({
       reason: entryScheduleReason,
       noteKind: entryScheduleNoteKind,
@@ -533,7 +542,7 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
         exchange: toUpper(intent.exchange),
         market: toUpper(intent.symbol || intent.symbol_or_pair_id || intent.market),
         tf: String(intent.tf || "").trim() || null,
-        event: toUpper(intent.event),
+        event: restoredPrimaryEvent || toUpper(intent.event),
         side: toUpper(intent.side),
         regime: toUpper(intent.regime || intent.market_regime),
         source: deriveIntentSource(intent),

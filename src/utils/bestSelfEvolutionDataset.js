@@ -8,7 +8,7 @@ const {
   resolveActiveEntryFamily,
   resolveLegacyEntryFamily,
 } = require("./liveEntryTaxonomy");
-const { isMlPrimarySignalTierAllowed } = require("./mlSignalScope");
+const { isMlPrimarySignalTierAllowed, resolveMlPrimarySignalEvent } = require("./mlSignalScope");
 
 function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -918,6 +918,14 @@ function buildUnifiedLearningRows({
       signal_key: signalKey,
     });
 
+    const restoredPrimaryEvent = resolveMlPrimarySignalEvent({
+      event,
+      side: resolveSide(baseRow),
+      signal_id: signalId,
+      entry_event_id: entryEventId,
+      features_json: featuresWithIdentity,
+    });
+
     return {
       signal_id: signalId,
       signal_key: signalKey,
@@ -925,7 +933,7 @@ function buildUnifiedLearningRows({
       market: resolveMarket(baseRow),
       tf: resolveTf(baseRow),
       side: resolveSide(baseRow),
-      event,
+      event: restoredPrimaryEvent || event,
       entry_event_id: entryEventId,
       signal_bar_close_time_utc_ms: resolveSignalBarCloseMs(baseRow),
       source_row_type: sourceRowType,

@@ -1,6 +1,7 @@
 "use strict";
 
 const { labelOutcome } = require("../services/outcomeLabeler");
+const { resolveMlPrimarySignalEvent } = require("./mlSignalScope");
 
 const ML_DATASET_SCHEMA_VERSION = "2026-04-05.v1";
 
@@ -27,6 +28,14 @@ function normalizeFeatureBag(features = null) {
 function buildMlTrainingRow(row = {}) {
   const features = normalizeFeatureBag(row.features_json);
   const labels = labelOutcome(row);
+  const restoredPrimaryEvent = resolveMlPrimarySignalEvent({
+    event: row.event,
+    side: row.side,
+    signal_id: row.signal_id,
+    entry_event_id: row.entry_event_id,
+    entry_grade: row.entry_grade,
+    features_json: features,
+  });
   const rowId = String(
     row.entry_event_id
     || row.signal_id
@@ -47,7 +56,7 @@ function buildMlTrainingRow(row = {}) {
       market: toUpper(row.market),
       tf: String(row.tf || "").trim() || null,
       side: toUpper(row.side),
-      event: toUpper(row.event),
+      event: restoredPrimaryEvent || toUpper(row.event),
       source_row_type: toUpper(row.source_row_type),
       signal_bar_close_time_utc_ms: toNum(row.signal_bar_close_time_utc_ms),
     },
