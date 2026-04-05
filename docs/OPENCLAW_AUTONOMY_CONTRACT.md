@@ -99,7 +99,16 @@
 3. promotion-grade coherence는 artifact 정합성과 시장군 상태를 함께 본다.
 4. 따라서 현재 병목은 자동화 부재가 아니라 objective/verification/authority/EV policy calibration과 execution microstructure의 최종 증거 부족이다.
 
-## 8. 실행 미세구조 계약
+## 8. 권한 계약
+
+1. `bounded auto-mutation`
+   - OpenClaw는 allowlist 안의 live mutation만 자동 반영한다.
+2. `manual approval`
+   - allowlist 밖 키, 전략 구조 변경, 과도한 delta는 자동 승격하지 않고 승인 요청 경로로 보낸다.
+3. `rollback priority`
+   - rollback/guard fail-close 계열은 promote보다 더 강한 자동 권한을 가진다.
+
+## 9. 실행 미세구조 계약
 
 1. `FAST_TP0`
    - 초기 소이익은 `절대 % floor + ATR 보정`으로 일부 청산한다.
@@ -119,7 +128,7 @@
    - recent FILLED entry 직후 외부 `positionAmt=0` snapshot이 잠깐 들어와도 내부 포지션 `FLAT` overwrite를 바로 허용하지 않는다.
    - active sync는 `openclaw_market_regime_cohort/objective_score/drop_verdict`를 유지해 현재 포지션이 cohort TP1 규칙을 잃지 않도록 한다.
 
-## 9. 운영 알림 계약
+## 10. 운영 알림 계약
 
 1. `execution semantics`
    - Telegram/운영 알림은 `TP0`, `pre-TP1 time stop`, `cohort`, `portfolio cluster reduce/block`를 구분해서 노출한다.
@@ -127,3 +136,5 @@
    - `LIVE_RESCUE_ADD_*`, `LIVE_POLICY_*`, `LINEAGE_SLO_*`, `DROP_CHASE_ENTRY_QUALITY` 등 운영 드롭/보류 사유는 한국어 설명을 기본 제공한다.
 3. `meaning parity`
    - 사람 운영자가 읽는 알림 의미와 OpenClaw가 읽는 artifact 의미가 어긋나지 않도록 동일한 사유 분류를 유지한다.
+4. `approval split`
+   - 승인 필요 변경은 일반 변경 알림과 섞지 않고 별도 `[요청]` 알림으로 분리한다.
