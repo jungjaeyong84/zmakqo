@@ -127,6 +127,7 @@ assert.strictEqual(recomputedRows[0].features.same_dir_add, false);
 assert.strictEqual(recomputedRows[0].features.current_bar_fast_fill, false);
 assert.strictEqual(recomputedRows[0].features.runtime_exception_without_no_fill_reason, false);
 assert.strictEqual(recomputedRows[0].features.stale_pos_entry_profile, 'NOT_STALE_POS_ENTRY');
+assert.strictEqual(recomputedRows[0].features.stale_pos_entry_latency_profile, 'NOT_STALE_POS_ENTRY');
 const recomputedSummary = summarizeExecutionModelRows(recomputedRows);
 assert.strictEqual(recomputedSummary.signal_to_intent_p95_ms, 60000);
 assert.strictEqual(recomputedSummary.signal_to_fill_p95_ms, 61000);
@@ -157,6 +158,10 @@ assert.strictEqual(__test.deriveRuntimeExceptionWithoutNoFillReasonFlag({ noFill
 assert.strictEqual(__test.deriveStalePosEntryProfile({ features: { reason: 'PINE_DROP_STALE_POS_TO_ENTRY' }, wasFilled: true, signalToIntentMs: 90000 }), 'STALE_POS_FILLED');
 assert.strictEqual(__test.deriveStalePosEntryProfile({ features: { reason: 'PINE_DROP_STALE_POS_TO_ENTRY' }, wasFilled: true, signalToIntentMs: 180000 }), 'STALE_POS_DELAYED_INTENT_FILLED');
 assert.strictEqual(__test.deriveStalePosEntryProfile({ features: { reason: 'PINE_DROP_STALE_POS_TO_ENTRY' }, wasFilled: false, noFillReason: 'TOTAL_BUDGET_EXCEEDED', signalToIntentMs: 80000 }), 'STALE_POS_BLOCKED');
+assert.strictEqual(__test.deriveStalePosEntryLatencyProfile({ features: { reason: 'PINE_DROP_STALE_POS_TO_ENTRY' }, wasFilled: true, signalToIntentMs: 15000 }), 'STALE_POS_FAST_INTENT_FILLED');
+assert.strictEqual(__test.deriveStalePosEntryLatencyProfile({ features: { reason: 'PINE_DROP_STALE_POS_TO_ENTRY' }, wasFilled: true, signalToIntentMs: 90000 }), 'STALE_POS_MEDIUM_INTENT_FILLED');
+assert.strictEqual(__test.deriveStalePosEntryLatencyProfile({ features: { reason: 'PINE_DROP_STALE_POS_TO_ENTRY' }, wasFilled: true, signalToIntentMs: 180000 }), 'STALE_POS_DELAYED_INTENT_FILLED');
+assert.strictEqual(__test.deriveStalePosEntryLatencyProfile({ features: { reason: 'PINE_DROP_STALE_POS_TO_ENTRY' }, wasFilled: false, noFillReason: 'TOTAL_BUDGET_EXCEEDED', signalToIntentMs: 80000 }), 'STALE_POS_BLOCKED');
 assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'TV_WEBHOOK' }, execution: { entry_schedule_reason: 'WAIT_NEXT_BAR' } }), 'SCHEDULED_WAIT_NEXT_BAR');
 assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'TV_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_bar_close_ms: 1000, scheduled_exec_bar_close_ms: 2000, signal_to_intent_ms: 420000, webhook_to_intent_ms: 430000 }, labels: { was_filled: true } }), 'IMMEDIATE_EXEC_NEXT_EXEC_BAR');
 assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'TV_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_to_intent_ms: 420000, webhook_to_intent_ms: 430000, webhook_decision: 'SAVED', webhook_has_immediate_probe: false }, labels: { was_filled: true } }), 'LEGACY_WEBHOOK_OUTCOME_ONLY');
