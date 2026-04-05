@@ -64,6 +64,43 @@ function deriveIntentSource(intent = null) {
   return null;
 }
 
+function deriveEntryScheduleReason(intent = null) {
+  return toUpper(intent && intent.pending_reason);
+}
+
+function deriveWebhookDelayCause(row = null) {
+  const source = toUpper(row && row.context && row.context.source);
+  const scheduleReason = toUpper(row && row.execution && row.execution.entry_schedule_reason);
+  const noFillReason = toUpper(row && row.execution && row.execution.no_fill_reason);
+  const noFillSubtype = toUpper(row && row.execution && row.execution.no_fill_subtype);
+  const noFillDetail = toUpper(row && row.execution && row.execution.no_fill_detail);
+  const runId = toUpper(row && row.run_id);
+  const wasFilled = row && row.labels && row.labels.was_filled === true;
+  if (source === "MANUAL_REPLAY") return "MANUAL_REPLAY";
+  if (runId && runId.includes("MANUAL_EARLY_RETRY")) return "MANUAL_RETRY";
+  if (scheduleReason === "WAIT_NEXT_BAR") return "SCHEDULED_WAIT_NEXT_BAR";
+  if (scheduleReason === "LATE_EXEC" && wasFilled) return "LATE_EXEC_DELAYED_INTENT_FILLED";
+  if (scheduleReason === "LATE_EXEC" && noFillReason === "INTENT_EXPIRED") return "LATE_EXEC_EXPIRED";
+  if (scheduleReason === "LATE_EXEC") return "LATE_EXEC_WINDOW";
+  if (scheduleReason === "EXEC_CURRENT_BAR" && wasFilled) return "IMMEDIATE_EXEC_DELAYED_INTENT_FILLED";
+  if (
+    scheduleReason === "EXEC_CURRENT_BAR"
+    && (noFillReason === "BINANCEFUT_KEYS_MISSING" || noFillSubtype === "KEYS_MISSING" || (noFillDetail && noFillDetail.includes("KEYS_MISSING")))
+  ) {
+    return "IMMEDIATE_EXEC_KEYS_MISSING";
+  }
+  if (scheduleReason === "EXEC_CURRENT_BAR" && noFillReason === "LIVE_EXCEPTION" && noFillSubtype === "TIMING_IMMEDIATE_EXEC") {
+    return "IMMEDIATE_EXEC_RUNTIME_EXCEPTION";
+  }
+  if (scheduleReason === "EXEC_CURRENT_BAR" && noFillReason === "POSITION_FULL") {
+    return "IMMEDIATE_EXEC_POSITION_FULL";
+  }
+  if (scheduleReason === "EXEC_CURRENT_BAR") return "IMMEDIATE_EXEC_OTHER";
+  if (noFillReason === "INTENT_EXPIRED") return "INTENT_EXPIRED";
+  if (noFillReason) return noFillReason;
+  return "UNKNOWN";
+}
+
 function isExitEvent(event) {
   return String(event || "").trim().toUpperCase().startsWith("EXIT_");
 }
@@ -374,6 +411,7 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [] } = {
     const noFillDetail = wasFilled ? null : deriveNoFillDetail(intent);
     const noFillReasonFamily = wasFilled ? null : deriveNoFillReasonFamily(noFillReason);
     const noFillSubtype = wasFilled ? null : deriveNoFillSubtype({ reason: noFillReason, detail: noFillDetail });
+    const entryScheduleReason = deriveEntryScheduleReason(intent);
     return {
       schema_version: EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
       row_id: intentId || String(intent.signal_id || intent.id || "").trim() || null,
@@ -420,6 +458,8 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [] } = {
         live_policy_latency_ms: toNum(intent.live_exec_policy_quality_latency_ms),
         live_policy_slippage_bps: toNum(intent.live_exec_policy_quality_slippage_bps),
         live_policy_partial_pct: toNum(intent.live_exec_policy_quality_partial_pct),
+        entry_schedule_reason: entryScheduleReason,
+        entry_schedule_note: String(intent.pending_note || "").trim() || null,
         signal_to_intent_ms: signalToIntentMs,
         signal_to_fill_ms: signalToFillMs,
         fill_source_counts: agg.fill_source_counts,
@@ -532,6 +572,8 @@ function summarizeExecutionModelRows(rows = []) {
   const bySignalToIntentGroup = new Map();
   const byOperationalSignalToIntentGroup = new Map();
   const byWebhookToIntentGroup = new Map();
+  const byWebhookDelayReason = new Map();
+  const byWebhookDelayCause = new Map();
   const byMeasuredEntryLatencyGroup = new Map();
   const byFallbackEntryLatencyGroup = new Map();
   for (const row of scoped) {
@@ -585,6 +627,18 @@ function summarizeExecutionModelRows(rows = []) {
       const webhookBucket = byWebhookToIntentGroup.get(webhookKey);
       webhookBucket.rows_n += 1;
       webhookBucket.latency_values.push(webhookToIntentMs);
+      if (webhookToIntentMs >= 60000) {
+        const delayReason = String(row.execution && row.execution.entry_schedule_reason || "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
+        const delayCause = deriveWebhookDelayCause(row);
+        if (!byWebhookDelayReason.has(delayReason)) {
+          byWebhookDelayReason.set(delayReason, { key: delayReason, rows_n: 0 });
+        }
+        byWebhookDelayReason.get(delayReason).rows_n += 1;
+        if (!byWebhookDelayCause.has(delayCause)) {
+          byWebhookDelayCause.set(delayCause, { key: delayCause, rows_n: 0 });
+        }
+        byWebhookDelayCause.get(delayCause).rows_n += 1;
+      }
     }
   }
   return {
@@ -695,6 +749,12 @@ function summarizeExecutionModelRows(rows = []) {
       }))
       .sort((a, b) => ((b.webhook_to_intent_p95_ms || 0) - (a.webhook_to_intent_p95_ms || 0)) || (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
       .slice(0, 12),
+    top_webhook_delay_reasons: Array.from(byWebhookDelayReason.values())
+      .sort((a, b) => (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
+      .slice(0, 12),
+    top_webhook_delay_causes: Array.from(byWebhookDelayCause.values())
+      .sort((a, b) => (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
+      .slice(0, 12),
     status: scoped.length > 0 ? 'EXECUTION_MODEL_DATASET_READY' : 'EXECUTION_MODEL_DATASET_EMPTY',
   };
 }
@@ -718,6 +778,8 @@ module.exports = {
     deriveNoFillDetail,
     deriveNoFillReasonFamily,
     deriveNoFillSubtype,
+    deriveEntryScheduleReason,
+    deriveWebhookDelayCause,
     isOperationalSource,
     buildWebhookOutcomeIndex,
     buildWebhookIngressIndex,
