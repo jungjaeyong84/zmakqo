@@ -208,6 +208,8 @@ async function run() {
   assert.strictEqual(summary.chain_rows[0].febt_payload_missing, false);
   assert.strictEqual(summary.chain_rows[0].entry_price, 100);
   assert.strictEqual(summary.chain_rows[0].tp1_ms, 2000);
+  assert.strictEqual(summary.chain_rows[0].tp0_hit, false);
+  assert.strictEqual(summary.chain_rows[0].time_stop_hit, false);
   assert.strictEqual(summary.chain_rows[0].first_exit_ms, 2000);
   assert.strictEqual(summary.chain_rows[0].mfe, 0.04);
   assert.strictEqual(summary.chain_rows[0].mae, -0.01);
@@ -231,6 +233,7 @@ async function run() {
   assert.strictEqual(summary.by_tier.EARLY.executed_n, 1);
   assert.strictEqual(summary.by_tier.EARLY.sl_before_tp1_n, 1);
   assert.strictEqual(summary.by_tier.EARLY.realized_chains_n, 1);
+  assert.strictEqual(summary.chain_rows[1].time_stop_hit, false);
   assert.strictEqual(summary.by_tier.EARLY.win_n, 0);
   assert.strictEqual(summary.by_tier.EARLY.avg_entropy_score, 0.71);
   assert.strictEqual(summary.by_tier.EARLY.avg_coherence_score, 0.33);

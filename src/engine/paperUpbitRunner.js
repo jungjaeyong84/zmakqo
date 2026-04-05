@@ -5069,6 +5069,200 @@ function resolveRecentExternalFlatSyncGuard({
   };
 }
 
+function normalizeEntryLineage(meta = {}) {
+  const state = (meta && typeof meta === "object") ? meta : {};
+  const entryEventId = String(
+    state.entry_event_id
+    || state.origin_entry_event_id
+    || state.tp_p1_entry_event_id
+    || ""
+  ).trim() || null;
+  const entrySignalType = String(
+    state.entry_signal_type
+    || state.origin_entry_signal_type
+    || ""
+  ).trim().toUpperCase() || null;
+  const entryGrade = String(
+    state.entry_grade
+    || state.origin_entry_grade
+    || ""
+  ).trim().toUpperCase() || null;
+  const entryQtyProfile = String(
+    state.entry_qty_profile
+    || state.origin_entry_qty_profile
+    || ""
+  ).trim().toUpperCase() || null;
+  const entrySignalBarMs = Number(state.entry_signal_bar_ms ?? state.origin_entry_signal_bar_ms);
+  const entryExecBarMs = Number(state.entry_exec_bar_ms ?? state.origin_entry_exec_bar_ms);
+  return {
+    entry_event_id: entryEventId,
+    entry_signal_type: entrySignalType,
+    entry_grade: entryGrade,
+    entry_qty_profile: entryQtyProfile,
+    entry_signal_bar_ms: Number.isFinite(entrySignalBarMs) ? entrySignalBarMs : null,
+    entry_exec_bar_ms: Number.isFinite(entryExecBarMs) ? entryExecBarMs : null,
+  };
+}
+
+function buildEntryLineageMetaPatch(lineage = {}, {
+  includeCurrent = true,
+  includeOrigin = true,
+} = {}) {
+  const patch = {};
+  const entryEventId = String(lineage.entry_event_id || "").trim() || null;
+  const entrySignalType = String(lineage.entry_signal_type || "").trim().toUpperCase() || null;
+  const entryGrade = String(lineage.entry_grade || "").trim().toUpperCase() || null;
+  const entryQtyProfile = String(lineage.entry_qty_profile || "").trim().toUpperCase() || null;
+  const entrySignalBarMs = Number(lineage.entry_signal_bar_ms);
+  const entryExecBarMs = Number(lineage.entry_exec_bar_ms);
+  if (includeCurrent) {
+    patch.entry_event_id = entryEventId;
+    patch.entry_signal_type = entrySignalType;
+    patch.entry_grade = entryGrade;
+    patch.entry_qty_profile = entryQtyProfile;
+    patch.entry_signal_bar_ms = Number.isFinite(entrySignalBarMs) ? entrySignalBarMs : null;
+    patch.entry_exec_bar_ms = Number.isFinite(entryExecBarMs) ? entryExecBarMs : null;
+  }
+  if (includeOrigin) {
+    patch.origin_entry_event_id = entryEventId;
+    patch.origin_entry_signal_type = entrySignalType;
+    patch.origin_entry_grade = entryGrade;
+    patch.origin_entry_qty_profile = entryQtyProfile;
+    patch.origin_entry_signal_bar_ms = Number.isFinite(entrySignalBarMs) ? entrySignalBarMs : null;
+    patch.origin_entry_exec_bar_ms = Number.isFinite(entryExecBarMs) ? entryExecBarMs : null;
+  }
+  return patch;
+}
+
+function resolveEntryLineageForFill({
+  opening = false,
+  entryEventIdFromIntent = null,
+  entrySignalTypeFromIntent = null,
+  intentEntryEventId = null,
+  intentEntrySignalType = null,
+  posMeta = null,
+} = {}) {
+  if (opening) {
+    return {
+      entryEventId: String(entryEventIdFromIntent || "").trim() || null,
+      entrySignalType: String(entrySignalTypeFromIntent || "").trim().toUpperCase() || null,
+    };
+  }
+  const persisted = normalizeEntryLineage(posMeta);
+  return {
+    entryEventId: String(intentEntryEventId || persisted.entry_event_id || "").trim() || null,
+    entrySignalType: String(intentEntrySignalType || persisted.entry_signal_type || "").trim().toUpperCase() || null,
+  };
+}
+
+function extractEntryLineageCandidate(row = {}, {
+  exchange = null,
+  symbol = null,
+  side = null,
+} = {}) {
+  const raw = (row && typeof row === "object") ? row : {};
+  const ex = String(exchange || "").toUpperCase();
+  const sym = String(symbol || "").toUpperCase();
+  const rowExchange = String(raw.exchange || "").toUpperCase();
+  const rowSymbol = String(raw.symbol || raw.symbol_or_pair_id || raw.market || "").toUpperCase();
+  if (ex && rowExchange && rowExchange !== ex) return null;
+  if (sym && rowSymbol && rowSymbol !== sym) return null;
+  const ev = String(raw.event || "").toUpperCase();
+  if (!ev || ev.startsWith("EXIT_")) return null;
+  const rowDir = directionFromSignal({ event: raw.event, side: raw.side });
+  if (side && rowDir && String(side).toUpperCase() !== rowDir) return null;
+  const entryEventId = String(
+    raw.entry_event_id
+    || raw.entryEventId
+    || (raw.features_json && raw.features_json.entry_event_id)
+    || ""
+  ).trim() || null;
+  const entrySignalType = String(
+    raw.entry_signal_type
+    || raw.entrySignalType
+    || (raw.features_json && raw.features_json.entry_signal_type)
+    || normalizeEvent(raw.event)
+    || ""
+  ).trim().toUpperCase() || null;
+  if (!entryEventId && !entrySignalType) return null;
+  const entryGrade = String(
+    raw.entry_grade
+    || (raw.features_json && (raw.features_json.entry_grade || raw.features_json.entry_timing_tier || raw.features_json.entry_tier))
+    || ""
+  ).trim().toUpperCase() || null;
+  const entryQtyProfile = String(
+    raw.entry_qty_profile
+    || (raw.features_json && (raw.features_json.entry_qty_profile || raw.features_json.entry_qty_tier || raw.features_json.qty_profile))
+    || ""
+  ).trim().toUpperCase() || null;
+  const entrySignalBarMs = Number(raw.signal_bar_close_time_utc_ms || raw.bar_close_time_utc_ms);
+  const entryExecBarMs = Number(raw.exec_bar_close_time_utc_ms);
+  const createdAtMs = Date.parse(String(raw.created_at || raw.updated_at || ""));
+  return {
+    entry_event_id: entryEventId,
+    entry_signal_type: entrySignalType,
+    entry_grade: entryGrade,
+    entry_qty_profile: entryQtyProfile,
+    entry_signal_bar_ms: Number.isFinite(entrySignalBarMs) ? entrySignalBarMs : null,
+    entry_exec_bar_ms: Number.isFinite(entryExecBarMs) ? entryExecBarMs : null,
+    created_at_ms: Number.isFinite(createdAtMs) ? createdAtMs : null,
+    source_event: ev || null,
+  };
+}
+
+async function recoverRecentEntryLineage({
+  exchange,
+  symbol,
+  side,
+  lookbackMs = 48 * 3600 * 1000,
+  scanLimit = 240,
+  nowMs = Date.now(),
+} = {}) {
+  try {
+    const db = getFirestore();
+    const refMs = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+    const cutoffMs = refMs - (Number.isFinite(Number(lookbackMs)) ? Number(lookbackMs) : (48 * 3600 * 1000));
+    const maxRows = Math.max(40, Number(scanLimit) || 240);
+    const collectBest = (rows) => {
+      let best = null;
+      let bestMs = -Infinity;
+      for (const row of rows || []) {
+        const candidate = extractEntryLineageCandidate(row, { exchange, symbol, side });
+        if (!candidate) continue;
+        const candidateMs = Number(candidate.entry_exec_bar_ms ?? candidate.entry_signal_bar_ms ?? candidate.created_at_ms);
+        if (!Number.isFinite(candidateMs) || candidateMs < cutoffMs) continue;
+        if (!best || candidateMs > bestMs) {
+          best = candidate;
+          bestMs = candidateMs;
+        }
+      }
+      return best;
+    };
+
+    const fillsSnap = await db.collection("fills_paper")
+      .orderBy("created_at", "desc")
+      .limit(maxRows)
+      .get();
+    const bestFill = collectBest(fillsSnap.docs.map((d) => d.data() || {}));
+    if (bestFill) return bestFill;
+
+    const tradesSnap = await db.collection("trades_paper")
+      .orderBy("created_at", "desc")
+      .limit(maxRows)
+      .get();
+    const bestTrade = collectBest(tradesSnap.docs.map((d) => d.data() || {}));
+    if (bestTrade) return bestTrade;
+
+    const intentsSnap = await db.collection("order_intents_paper")
+      .orderBy("created_at", "desc")
+      .limit(maxRows)
+      .get();
+    return collectBest(intentsSnap.docs.map((d) => d.data() || {}));
+  } catch (_) {
+    return null;
+  }
+}
+
 async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget, liveCfg, forceRefresh } = {}) {
   const ex = String(exchange || "").toUpperCase();
   if (!ex.includes("BINANCE")) return { ok: false, skipped: true };
@@ -5282,6 +5476,15 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     });
   }
   const externalEntryTransition = active && (!prevActive || (prevSide && side && prevSide !== side));
+  const persistedEntryLineage = normalizeEntryLineage(prevMeta);
+  const recoveredEntryLineage = externalEntryTransition
+    ? await recoverRecentEntryLineage({ exchange, symbol, side, nowMs: syncEventMs })
+    : null;
+  const activeEntryLineage = (
+    (persistedEntryLineage && persistedEntryLineage.entry_event_id)
+      ? persistedEntryLineage
+      : (recoveredEntryLineage || persistedEntryLineage)
+  );
   if (externalEntryTransition) {
     meta = mergeMeta(meta, {
       tp_p0_done: false,
@@ -5318,13 +5521,7 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
       opposite_transition_seen_ms: null,
       position_side: side,
       intent: "ENTRY",
-      entry_exec_bar_ms: syncEventMs,
       entry_exec_tf_ms: null,
-      entry_event_id: null,
-      entry_signal_type: null,
-      entry_grade: null,
-      entry_qty_profile: null,
-      entry_signal_bar_ms: null,
       last_exit_bar_ms: null,
       last_exit_dir: null,
       last_exit_wall_ms: null,
@@ -5343,7 +5540,16 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
       add_chain_last_qty_base: null,
       add_chain_last_loss_pct: null,
       add_chain_base_qty_pct: Number.isFinite(syncedAddChainBaseQtyPct) ? syncedAddChainBaseQtyPct : null,
+      ...buildEntryLineageMetaPatch({
+        ...activeEntryLineage,
+        entry_exec_bar_ms: Number.isFinite(Number(activeEntryLineage && activeEntryLineage.entry_exec_bar_ms))
+          ? Number(activeEntryLineage.entry_exec_bar_ms)
+          : syncEventMs,
+      }),
     });
+  }
+  if (active && !externalEntryTransition && activeEntryLineage && activeEntryLineage.entry_event_id && !String(meta.entry_event_id || "").trim()) {
+    meta = mergeMeta(meta, buildEntryLineageMetaPatch(activeEntryLineage, { includeOrigin: true }));
   }
   if (
     active
@@ -5404,6 +5610,12 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
         opposite_transition_until_ms: null,
         opposite_transition_stage: null,
         opposite_transition_seen_ms: null,
+        origin_entry_event_id: null,
+        origin_entry_signal_type: null,
+        origin_entry_grade: null,
+        origin_entry_qty_profile: null,
+        origin_entry_signal_bar_ms: null,
+        origin_entry_exec_bar_ms: null,
       });
     }
   }
@@ -8264,12 +8476,16 @@ async function runPaperUpbitForBar({
     const intentEntrySignalType = String(
       (it.entry_signal_type || (it.features_json && it.features_json.entry_signal_type) || "")
     ).toUpperCase() || null;
-    const entryEventIdForFill = opening
-      ? entryEventIdFromIntent
-      : (intentEntryEventId || (posMeta && posMeta.entry_event_id) || null);
-    const entrySignalTypeForFill = opening
-      ? entrySignalTypeFromIntent
-      : (intentEntrySignalType || (posMeta && posMeta.entry_signal_type) || null);
+    const fillEntryLineage = resolveEntryLineageForFill({
+      opening,
+      entryEventIdFromIntent,
+      entrySignalTypeFromIntent,
+      intentEntryEventId,
+      intentEntrySignalType,
+      posMeta,
+    });
+    const entryEventIdForFill = fillEntryLineage.entryEventId;
+    const entrySignalTypeForFill = fillEntryLineage.entrySignalType;
     const tradeExecMs = (() => {
       const n = Date.parse(String(it.created_at || ""));
       return Number.isFinite(n) ? n : null;
@@ -8441,16 +8657,10 @@ async function runPaperUpbitForBar({
     if (opening) {
       nextMeta = mergeMeta(nextMeta, {
         leverage,
-        entry_exec_bar_ms: Number(execBarCloseMs) || null,
         entry_exec_tf_ms: Number.isFinite(signalTfMs) ? signalTfMs : null,
         last_exit_bar_ms: null,
         last_exit_dir: null,
         last_exit_wall_ms: null,
-        entry_event_id: entryEventIdFromIntent || null,
-        entry_signal_type: entrySignalTypeFromIntent || null,
-        entry_grade: entryGradeFromIntent || null,
-        entry_qty_profile: entryQtyProfileFromIntent || null,
-        entry_signal_bar_ms: Number(it.signal_bar_close_time_utc_ms) || null,
         add_chain_base_qty_pct: Number.isFinite(newSize) ? Number(newSize) : null,
         ev_gate_atr_pct: Number.isFinite(Number(it.features_json && it.features_json.ev_gate_atr_pct))
           ? Number(it.features_json.ev_gate_atr_pct)
@@ -8460,6 +8670,14 @@ async function runPaperUpbitForBar({
           ? Number(marketRegimeRow.objective_score)
           : null,
         openclaw_market_regime_drop_verdict: marketRegimeRow ? String(marketRegimeRow.drop_verdict || "").trim().toUpperCase() || null : null,
+        ...buildEntryLineageMetaPatch({
+          entry_event_id: entryEventIdFromIntent || null,
+          entry_signal_type: entrySignalTypeFromIntent || null,
+          entry_grade: entryGradeFromIntent || null,
+          entry_qty_profile: entryQtyProfileFromIntent || null,
+          entry_signal_bar_ms: Number(it.signal_bar_close_time_utc_ms) || null,
+          entry_exec_bar_ms: Number(execBarCloseMs) || null,
+        }),
       });
     }
     if (openingOrAdd) {
@@ -8524,6 +8742,12 @@ async function runPaperUpbitForBar({
         entry_grade: null,
         entry_qty_profile: null,
         entry_signal_bar_ms: null,
+        origin_entry_event_id: null,
+        origin_entry_signal_type: null,
+        origin_entry_grade: null,
+        origin_entry_qty_profile: null,
+        origin_entry_signal_bar_ms: null,
+        origin_entry_exec_bar_ms: null,
         openclaw_market_regime_cohort: null,
         openclaw_market_regime_objective_score: null,
         openclaw_market_regime_drop_verdict: null,
@@ -10951,12 +11175,16 @@ async function runPaperFuturesForBar({
     const intentEntrySignalType = String(
       (it.entry_signal_type || (it.features_json && it.features_json.entry_signal_type) || "")
     ).toUpperCase() || null;
-    const entryEventIdForFill = opening
-      ? entryEventIdFromIntent
-      : (intentEntryEventId || (posMeta && posMeta.entry_event_id) || null);
-    const entrySignalTypeForFill = opening
-      ? entrySignalTypeFromIntent
-      : (intentEntrySignalType || (posMeta && posMeta.entry_signal_type) || null);
+    const fillEntryLineage = resolveEntryLineageForFill({
+      opening,
+      entryEventIdFromIntent,
+      entrySignalTypeFromIntent,
+      intentEntryEventId,
+      intentEntrySignalType,
+      posMeta,
+    });
+    const entryEventIdForFill = fillEntryLineage.entryEventId;
+    const entrySignalTypeForFill = fillEntryLineage.entrySignalType;
     const tradeExecMs = (() => {
       const n = Date.parse(String(it.created_at || ""));
       return Number.isFinite(n) ? n : null;
@@ -11144,12 +11372,6 @@ async function runPaperFuturesForBar({
       nextMeta = mergeMeta(nextMeta, {
         leverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
         leverage_reason: appliedLeverageReason || null,
-        entry_event_id: entryEventIdFromIntent || null,
-        entry_signal_type: entrySignalTypeFromIntent || null,
-        entry_grade: entryGradeFromIntent || null,
-        entry_qty_profile: entryQtyProfileFromIntent || null,
-        entry_signal_bar_ms: Number(it.signal_bar_close_time_utc_ms) || null,
-        entry_exec_bar_ms: Number(execBarCloseMs) || null,
         entry_exec_tf_ms: Number.isFinite(signalTfMs) ? signalTfMs : null,
         initial_stop_price: Number.isFinite(initialStopPrice) ? initialStopPrice : null,
         initial_stop_source: initialStopSource || null,
@@ -11169,6 +11391,14 @@ async function runPaperFuturesForBar({
           ? Number(marketRegimeRow.objective_score)
           : null,
         openclaw_market_regime_drop_verdict: marketRegimeRow ? String(marketRegimeRow.drop_verdict || "").trim().toUpperCase() || null : null,
+        ...buildEntryLineageMetaPatch({
+          entry_event_id: entryEventIdFromIntent || null,
+          entry_signal_type: entrySignalTypeFromIntent || null,
+          entry_grade: entryGradeFromIntent || null,
+          entry_qty_profile: entryQtyProfileFromIntent || null,
+          entry_signal_bar_ms: Number(it.signal_bar_close_time_utc_ms) || null,
+          entry_exec_bar_ms: Number(execBarCloseMs) || null,
+        }),
       });
     }
     if (openingOrAdd) {
@@ -11236,6 +11466,12 @@ async function runPaperFuturesForBar({
         entry_grade: null,
         entry_qty_profile: null,
         entry_signal_bar_ms: null,
+        origin_entry_event_id: null,
+        origin_entry_signal_type: null,
+        origin_entry_grade: null,
+        origin_entry_qty_profile: null,
+        origin_entry_signal_bar_ms: null,
+        origin_entry_exec_bar_ms: null,
         openclaw_market_regime_cohort: null,
         openclaw_market_regime_objective_score: null,
         openclaw_market_regime_drop_verdict: null,
@@ -13011,6 +13247,10 @@ module.exports = {
     isBinanceMultiAssetsIsolatedMarginBlocked,
     isBinanceMarginTypeOpenOrdersConflict,
     resolveRecentExternalFlatSyncGuard,
+    normalizeEntryLineage,
+    buildEntryLineageMetaPatch,
+    resolveEntryLineageForFill,
+    extractEntryLineageCandidate,
   },
 };
 

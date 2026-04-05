@@ -95,6 +95,7 @@ function classifyExitEvent(eventRaw) {
   if (!ev) return null;
   if (ev.startsWith("EXIT_TP_P0")) return "TP0";
   if (ev.startsWith("EXIT_TP_P1")) return "TP1";
+  if (ev.startsWith("EXIT_TIME_STOP")) return "TIME_STOP";
   if (ev.startsWith("EXIT_TRAIL")) return "TRAIL";
   if (ev.startsWith("EXIT_SL")) return "SL";
   if (ev.startsWith("EXIT_BE")) return "BE";
@@ -387,20 +388,31 @@ async function summarizePineSignalQuality({
     const fillsSorted = chain.fills
       .slice()
       .sort((a, b) => resolveExecMs(a) - resolveExecMs(b));
-    const exitRows = fillsSorted.filter((row) => classifyExitEvent(row && row.event));
-    const lastExit = exitRows.length > 0 ? exitRows[exitRows.length - 1] : null;
+    const exitRows = fillsSorted
+      .map((row) => ({ kind: classifyExitEvent(row && row.event), ms: resolveExecMs(row), event: toUpper(row && row.event) }))
+      .filter((row) => row.kind && Number.isFinite(row.ms));
+    const chainTrades = tradesByEntry.get(chain.entry_event_id) || [];
+    const tradeExitRows = chainTrades
+      .map((row) => ({
+        kind: classifyExitEvent(row && (row.exit_event || row.event)),
+        ms: toNum(row && (row.close_ms || row.exec_bar_close_time_utc_ms)) ?? parseMs(row && row.created_at),
+        event: toUpper(row && (row.exit_event || row.event)),
+      }))
+      .filter((row) => row.kind && Number.isFinite(row.ms));
+    const scopedExits = (exitRows.length > 0 ? exitRows : tradeExitRows).sort((a, b) => a.ms - b.ms);
+    const lastExit = scopedExits.length > 0 ? scopedExits[scopedExits.length - 1] : null;
     return {
       market: chain.market,
       entry_bar_ms: chain.entry_bar_ms,
-      path_end_ms: lastExit ? resolveExecMs(lastExit) : null,
-      first_exit_ms: exitRows.length > 0 ? resolveExecMs(exitRows[0]) : null,
+      path_end_ms: lastExit ? lastExit.ms : null,
+      first_exit_ms: scopedExits.length > 0 ? scopedExits[0].ms : null,
       tp1_ms: (() => {
-        const tp1Row = exitRows.find((row) => classifyExitEvent(row && row.event) === "TP1");
-        return tp1Row ? resolveExecMs(tp1Row) : null;
+        const tp1Row = scopedExits.find((row) => row.kind === "TP1");
+        return tp1Row ? tp1Row.ms : null;
       })(),
       sl_ms: (() => {
-        const slRow = exitRows.find((row) => classifyExitEvent(row && row.event) === "SL");
-        return slRow ? resolveExecMs(slRow) : null;
+        const slRow = scopedExits.find((row) => row.kind === "SL");
+        return slRow ? slRow.ms : null;
       })(),
     };
   });
@@ -417,16 +429,40 @@ async function summarizePineSignalQuality({
     const fillsSorted = chain.fills
       .slice()
       .sort((a, b) => resolveExecMs(a) - resolveExecMs(b));
-    const exitKinds = fillsSorted
+    const exitKindsFromFills = fillsSorted
       .map((row) => ({ kind: classifyExitEvent(row && row.event), ms: resolveExecMs(row), event: toUpper(row && row.event) }))
-      .filter((row) => row.kind);
+      .filter((row) => row.kind && Number.isFinite(row.ms));
+    const chainTrades = tradesByEntry.get(chain.entry_event_id) || [];
+    const exitKindsFromTrades = chainTrades
+      .map((row) => ({
+        kind: classifyExitEvent(row && (row.exit_event || row.event)),
+        ms: toNum(row && (row.close_ms || row.exec_bar_close_time_utc_ms)) ?? parseMs(row && row.created_at),
+        event: toUpper(row && (row.exit_event || row.event)),
+      }))
+      .filter((row) => row.kind && Number.isFinite(row.ms));
+    const exitKinds = (exitKindsFromFills.length > 0 ? exitKindsFromFills : exitKindsFromTrades)
+      .slice()
+      .sort((a, b) => a.ms - b.ms);
 
     const hasExits = exitKinds.length > 0;
     const firstExit = hasExits ? exitKinds[0] : null;
+    const firstTp0Idx = exitKinds.findIndex((x) => x.kind === "TP0");
     const firstTp1Idx = exitKinds.findIndex((x) => x.kind === "TP1");
+    const firstTimeStopIdx = exitKinds.findIndex((x) => x.kind === "TIME_STOP");
+    const hasTp0 = firstTp0Idx >= 0;
     const hasTp1 = firstTp1Idx >= 0;
+    const hasTimeStop = firstTimeStopIdx >= 0;
     const hasTrailAfterTp1 = hasTp1 && exitKinds.slice(firstTp1Idx + 1).some((x) => x.kind === "TRAIL");
     const slBeforeTp1 = exitKinds.some((x, idx) => x.kind === "SL" && (firstTp1Idx < 0 || idx < firstTp1Idx));
+    const tp0First = firstTp0Idx >= 0 && [firstTp1Idx, firstTimeStopIdx]
+      .filter((value) => value >= 0)
+      .every((value) => firstTp0Idx < value);
+    const timeStopFirst = firstTimeStopIdx >= 0 && [firstTp0Idx, firstTp1Idx]
+      .filter((value) => value >= 0)
+      .every((value) => firstTimeStopIdx < value);
+    const tp0ToTp1Converted = hasTp0 && hasTp1 && firstTp0Idx < firstTp1Idx;
+    const preTp1TimeStop = hasTimeStop && !hasTp1;
+    const firstTp0 = hasTp0 ? exitKinds[firstTp0Idx] : null;
     const firstTp1 = hasTp1 ? exitKinds[firstTp1Idx] : null;
     const firstSl = exitKinds.find((x) => x.kind === "SL") || null;
     const signalKey = `${chain.market}__${chain.tf}__${chain.entry_bar_ms}__${chain.entry_signal_type}`;
@@ -508,7 +544,6 @@ async function summarizePineSignalQuality({
       tierStats.febt_edge_n += 1;
     }
 
-    const chainTrades = tradesByEntry.get(chain.entry_event_id) || [];
     let pnlQuote = 0;
     let notional = 0;
     for (const trade of chainTrades) {
@@ -613,12 +648,21 @@ async function summarizePineSignalQuality({
       entry_exec_ms: chain.entry_exec_ms,
       entry_price: Number.isFinite(chain.entry_price) ? chain.entry_price : null,
       exits_seen: hasExits,
+      tp0_hit: hasTp0,
+      tp0_first: tp0First,
+      tp0_to_tp1_converted: tp0ToTp1Converted,
       first_exit_kind: firstExit ? firstExit.kind : null,
       first_exit_event: firstExit ? firstExit.event : null,
       first_exit_ms: firstExit ? firstExit.ms : null,
       last_exit_ms: pathEndMs,
       tp1_hit: hasTp1,
+      tp1_first: hasTp1 && (!hasTp0 || firstTp1Idx < firstTp0Idx),
+      time_stop_hit: hasTimeStop,
+      time_stop_first: timeStopFirst,
+      pre_tp1_time_stop: preTp1TimeStop,
+      time_to_tp0_minutes: Number.isFinite(chain.entry_exec_ms) && firstTp0 ? ((firstTp0.ms - chain.entry_exec_ms) / 60000) : null,
       tp1_ms: firstTp1 ? firstTp1.ms : null,
+      time_to_tp1_minutes: Number.isFinite(chain.entry_exec_ms) && firstTp1 ? ((firstTp1.ms - chain.entry_exec_ms) / 60000) : null,
       sl_before_tp1: slBeforeTp1,
       sl_ms: firstSl ? firstSl.ms : null,
       trail_after_tp1: hasTrailAfterTp1,

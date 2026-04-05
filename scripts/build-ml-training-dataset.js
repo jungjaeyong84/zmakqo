@@ -17,6 +17,7 @@ const {
   ML_DATASET_SCHEMA_VERSION,
 } = require("../src/utils/mlDatasetSchema");
 const { buildBestSelfEvolutionDataset } = require("../src/utils/bestSelfEvolutionDataset");
+const { backfillRecentEntryLineage } = require("../src/utils/entryLineageBackfill");
 
 const DATASET_LATEST_JSON = path.join(OPS_DAILY_DIR, "best_self_evolution_dataset_latest.json");
 const EV_TUNER_LATEST_JSON = path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json");
@@ -70,9 +71,9 @@ async function buildDatasetFromRawCache({
   const dataset = await buildBestSelfEvolutionDataset({
     signals: readRecentCacheDocs(recentCaches.signals),
     drops: readRecentCacheDocs(recentCaches.drops),
-    intents: readRecentCacheDocs(recentCaches.intents),
-    fills: readRecentCacheDocs(recentCaches.fills),
-    trades: readRecentCacheDocs(recentCaches.trades),
+    intents: backfillRecentEntryLineage(readRecentCacheDocs(recentCaches.intents)),
+    fills: backfillRecentEntryLineage(readRecentCacheDocs(recentCaches.fills)),
+    trades: backfillRecentEntryLineage(readRecentCacheDocs(recentCaches.trades)),
     provider,
     tf,
     fromMs: windowMeta.fromMs,
@@ -194,5 +195,6 @@ module.exports = {
   __test: {
     readRecentCacheDocs,
     resolveReferenceWindow,
+    buildDatasetFromRawCache,
   },
 };

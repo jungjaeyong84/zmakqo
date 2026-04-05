@@ -776,19 +776,19 @@ function buildUnifiedLearningRows({
     const firstTp1Idx = exitKinds.findIndex((row) => row.kind === "TP1");
     const firstSlIdx = exitKinds.findIndex((row) => row.kind === "SL");
     const firstTimeStopIdx = exitKinds.findIndex((row) => row.kind === "TIME_STOP");
-    const tp0Hit = firstTp0Idx >= 0;
-    const tp1Hit = firstTp1Idx >= 0;
-    const tp1First = firstTp1Idx >= 0 && (firstSlIdx < 0 || firstTp1Idx < firstSlIdx);
-    const slFirst = firstSlIdx >= 0 && (firstTp1Idx < 0 || firstSlIdx < firstTp1Idx);
-    const tp0First = firstTp0Idx >= 0 && [firstTp1Idx, firstSlIdx, firstTimeStopIdx]
+    const directTp0Hit = firstTp0Idx >= 0;
+    const directTp1Hit = firstTp1Idx >= 0;
+    const directTp1First = firstTp1Idx >= 0 && (firstSlIdx < 0 || firstTp1Idx < firstSlIdx);
+    const directSlFirst = firstSlIdx >= 0 && (firstTp1Idx < 0 || firstSlIdx < firstTp1Idx);
+    const directTp0First = firstTp0Idx >= 0 && [firstTp1Idx, firstSlIdx, firstTimeStopIdx]
       .filter((value) => value >= 0)
       .every((value) => firstTp0Idx < value);
-    const timeStopHit = firstTimeStopIdx >= 0;
-    const timeStopFirst = firstTimeStopIdx >= 0 && [firstTp0Idx, firstTp1Idx, firstSlIdx]
+    const directTimeStopHit = firstTimeStopIdx >= 0;
+    const directTimeStopFirst = firstTimeStopIdx >= 0 && [firstTp0Idx, firstTp1Idx, firstSlIdx]
       .filter((value) => value >= 0)
       .every((value) => firstTimeStopIdx < value);
-    const tp0ToTp1Converted = tp0Hit && tp1Hit && firstTp0Idx < firstTp1Idx;
-    const preTp1TimeStop = timeStopHit && !tp1Hit;
+    const directTp0ToTp1Converted = directTp0Hit && directTp1Hit && firstTp0Idx < firstTp1Idx;
+    const directPreTp1TimeStop = directTimeStopHit && !directTp1Hit;
 
     const fillCreatedAtMs = parseMs(entryFill && entryFill.created_at);
     const firstTp0Ms = firstTp0Idx >= 0 ? toNum(exitKinds[firstTp0Idx] && exitKinds[firstTp0Idx].ms) : null;
@@ -869,12 +869,24 @@ function buildUnifiedLearningRows({
     const holdMinutes = Number.isFinite(holdStartMs) && Number.isFinite(tradeClosedAtMs)
       ? ((tradeClosedAtMs - holdStartMs) / 60000)
       : null;
-    const timeToTp0Minutes = Number.isFinite(holdStartMs) && Number.isFinite(firstTp0Ms)
+    const directTimeToTp0Minutes = Number.isFinite(holdStartMs) && Number.isFinite(firstTp0Ms)
       ? ((firstTp0Ms - holdStartMs) / 60000)
       : null;
-    const timeToTp1Minutes = Number.isFinite(holdStartMs) && Number.isFinite(firstTp1Ms)
+    const directTimeToTp1Minutes = Number.isFinite(holdStartMs) && Number.isFinite(firstTp1Ms)
       ? ((firstTp1Ms - holdStartMs) / 60000)
       : null;
+    const useChainExitBackfill = exitKinds.length <= 0 && !!matchedChainRow;
+    const tp0Hit = useChainExitBackfill ? (matchedChainRow.tp0_hit === true) : directTp0Hit;
+    const tp1Hit = useChainExitBackfill ? (matchedChainRow.tp1_hit === true) : directTp1Hit;
+    const tp1First = useChainExitBackfill ? (matchedChainRow.tp1_first === true || String(matchedChainRow.first_exit_kind || "").toUpperCase() === "TP1") : directTp1First;
+    const slFirst = useChainExitBackfill ? (matchedChainRow.sl_before_tp1 === true) : directSlFirst;
+    const tp0First = useChainExitBackfill ? (matchedChainRow.tp0_first === true) : directTp0First;
+    const timeStopHit = useChainExitBackfill ? (matchedChainRow.time_stop_hit === true) : directTimeStopHit;
+    const timeStopFirst = useChainExitBackfill ? (matchedChainRow.time_stop_first === true) : directTimeStopFirst;
+    const tp0ToTp1Converted = useChainExitBackfill ? (matchedChainRow.tp0_to_tp1_converted === true) : directTp0ToTp1Converted;
+    const preTp1TimeStop = useChainExitBackfill ? (matchedChainRow.pre_tp1_time_stop === true) : directPreTp1TimeStop;
+    const timeToTp0Minutes = useChainExitBackfill ? toNum(matchedChainRow.time_to_tp0_minutes) : directTimeToTp0Minutes;
+    const timeToTp1Minutes = useChainExitBackfill ? toNum(matchedChainRow.time_to_tp1_minutes) : directTimeToTp1Minutes;
     const verdicts = resolveVerdictByStage(dropStageKey, features, hasTrade || hasFill);
     const tradeExitKind = classifyExitEvent(realizedTradeRow && (realizedTradeRow.exit_event || realizedTradeRow.event));
     const outcomeState = resolveOutcomeState({
