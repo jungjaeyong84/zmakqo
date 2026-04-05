@@ -66,6 +66,7 @@ const CATEGORICAL_FEATURES = Object.freeze([
   "features.stale_pos_entry_profile",
   "features.stale_pos_entry_latency_profile",
   "features.stale_pos_webhook_profile",
+  "features.webhook_execution_profile",
   "features.source_origin",
   "features.signal_family",
   "features.entry_grade",

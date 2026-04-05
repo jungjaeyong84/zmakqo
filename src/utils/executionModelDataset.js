@@ -201,6 +201,46 @@ function deriveStalePosWebhookProfile({
   return ["STALE_POS", decision, "NO_PROBE", latencyProfile].join("_");
 }
 
+function deriveWebhookExecutionProfile({
+  source = null,
+  entryScheduleProfile = null,
+  webhookDecision = null,
+  webhookHasImmediateProbe = false,
+  webhookImmediateStatus = null,
+  signalToIntentMs = null,
+  webhookToIntentMs = null,
+  wasFilled = false,
+} = {}) {
+  const normalizedSource = toUpper(source);
+  if (normalizedSource !== "TV_WEBHOOK" && normalizedSource !== "PINE_WEBHOOK") return "NOT_WEBHOOK_SOURCE";
+  const decision = toUpper(webhookDecision) || "UNKNOWN";
+  const immediateStatus = toUpper(webhookImmediateStatus) || "UNKNOWN";
+  const scheduleProfile = toUpper(entryScheduleProfile) || "UNKNOWN";
+  const signalLatency = toNum(signalToIntentMs);
+  const webhookLatency = toNum(webhookToIntentMs);
+
+  if (Number.isFinite(signalLatency) && signalLatency < 0) {
+    return wasFilled === true
+      ? "WEBHOOK_PRE_BAR_CLOSE_FILLED"
+      : "WEBHOOK_PRE_BAR_CLOSE_NO_FILL";
+  }
+  if (decision === "DROP") {
+    return wasFilled === true ? "WEBHOOK_DROP_LATER_FILL" : "WEBHOOK_DROP_NO_FILL";
+  }
+  if (decision === "SAVED" && webhookHasImmediateProbe === false) {
+    return "WEBHOOK_SAVED_NO_PROBE";
+  }
+  if (decision === "SAVED" && webhookHasImmediateProbe === true) {
+    const latencyProfile = Number.isFinite(signalLatency) && signalLatency <= 30000
+      ? "FAST"
+      : (Number.isFinite(signalLatency) && signalLatency <= 120000 ? "MID" : "DELAYED");
+    return ["WEBHOOK_SAVED", immediateStatus, latencyProfile].join("_");
+  }
+  if (Number.isFinite(webhookLatency) && webhookLatency > 120000) return "WEBHOOK_DELAYED_MATCH";
+  if (scheduleProfile === "EXEC_CURRENT_BAR") return "WEBHOOK_EXEC_CURRENT_BAR";
+  return "WEBHOOK_OTHER";
+}
+
 function derivePolicyBlockHint({
   noFillReason = null,
   noFillReasonFamily = null,
@@ -742,6 +782,16 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
       webhookImmediateStatus: webhook.webhook_immediate_status,
       signalToIntentMs,
     });
+    features.webhook_execution_profile = deriveWebhookExecutionProfile({
+      source: deriveIntentSource(intent),
+      entryScheduleProfile,
+      webhookDecision: webhook.webhook_decision,
+      webhookHasImmediateProbe: webhook.webhook_has_immediate_probe,
+      webhookImmediateStatus: webhook.webhook_immediate_status,
+      signalToIntentMs,
+      webhookToIntentMs,
+      wasFilled,
+    });
     return {
       schema_version: EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
       row_id: intentId || String(intent.signal_id || intent.id || "").trim() || null,
@@ -1169,6 +1219,7 @@ module.exports = {
     deriveStalePosEntryProfile,
     deriveStalePosEntryLatencyProfile,
     deriveStalePosWebhookProfile,
+    deriveWebhookExecutionProfile,
     deriveWebhookDelayCause,
     isOperationalSource,
     buildWebhookOutcomeIndex,
