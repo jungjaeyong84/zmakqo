@@ -214,7 +214,9 @@
    - live global threshold는 학습 epoch 동안 직접 완화하지 않는다.
    - report-only market/cohort threshold와 empirical calibration layer로 관측/보정을 수행한다.
    - `tp1_prob lower bound`는 empirical calibration ceiling으로 clamp될 수 있다.
-   - `DROP_EV_GATE_TP1_PROB` 완화보다 먼저 probability calibration과 실행 미세구조(`FAST_TP0`, chase reject, pre-TP1 time stop)를 우선 검증한다.
+   - `DROP_EV_GATE_TP1_PROB` 완화보다 먼저 probability calibration과 실행 미세구조(`FAST_TP0`, cohort TP1, chase reject, pre-TP1 time stop)를 우선 검증한다.
+   - `BINANCEFUT` TP1은 전역 고정값만 쓰지 않고 `RESCUE=2.8%`, `MIXED=3.0%`, `KEEP_DROP=base` cohort 분기를 허용한다.
+   - `pre-TP1 time stop`은 `EARLY=4 bars`, `CORE=6 bars`, `TP1 progress < 50%`일 때만 작동한다.
 
 5. `market regime`
    - OpenClaw는 global score만 보지 않고 `RESCUE / MIXED / KEEP_DROP / HOLD_SAMPLE` cohort를 함께 본다.

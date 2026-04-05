@@ -170,6 +170,33 @@ function evaluateWaitOneBarTiming({
     && lastCloseControl >= Math.max(0.5, Number(cfg.lastCloseControlMin) - 0.08)
     && lastDirBody >= Math.max(0.05, Number(cfg.lastDirBodyMin) - 0.08);
 
+  const hardRejectChaseRatioMin = Math.max(0.5, Number(cfg.chaseRatioMin) * 1.15);
+  const hardRejectRecentMove1PctMin = Math.max(0.05, Number(cfg.recentMove1PctMin) * 1.15);
+  const hardRejectLastCloseControlMin = Math.min(1, Number(cfg.lastCloseControlMin) + 0.08);
+  const shouldHardReject = marketState.physicsAction === "DROP"
+    && sameDirStreak >= (Number(cfg.sameDirStreakMin) + 1)
+    && chaseRatio >= hardRejectChaseRatioMin
+    && lastCloseControl >= hardRejectLastCloseControlMin
+    && recentMove1Pct >= hardRejectRecentMove1PctMin;
+
+  if (shouldHardReject) {
+    return {
+      ok: false,
+      action: "DROP",
+      reason: "DROP_CHASE_ENTRY_QUALITY",
+      detail: withFebtShadow({
+        ...detail,
+        wait_one_bar_action: "DROP",
+        wait_one_bar_triggered: true,
+        wait_one_bar_trigger_path: "CHASE_REJECT",
+        wait_one_bar_physics_assist: physicsAssist,
+        wait_one_bar_chase_reject: true,
+        wait_one_bar_chase_reject_ratio_min: hardRejectChaseRatioMin,
+        wait_one_bar_chase_reject_recent_move1_pct_min: hardRejectRecentMove1PctMin,
+      }, "WAIT_ONE_BAR", "CHASE_REJECT"),
+    };
+  }
+
   if (!shouldWaitBase && !shouldWaitPhysicsAssist && !shouldWaitPhysicsHard) {
     return { ok: true, action: "ALLOW", detail: withFebtShadow(detail, "ALLOW", "UNKNOWN") };
   }

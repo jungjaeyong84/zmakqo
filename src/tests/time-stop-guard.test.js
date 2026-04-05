@@ -49,8 +49,11 @@ function run() {
     },
   });
   assert.ok(allowed, "matching entry metadata should allow time stop");
-  assert.strictEqual(allowed.event, "EXIT_TIME_STOP_18B");
+  assert.strictEqual(allowed.event, "EXIT_TIME_STOP_4B");
   assert.strictEqual(allowed.side, "SELL");
+  assert.strictEqual(allowed.reason, "EXIT_TIME_STOP_PRE_TP1");
+  assert.strictEqual(allowed.features.time_stop_scope, "PRE_TP1");
+  assert.strictEqual(allowed.features.pre_tp1_time_stop_entry_grade, "EARLY");
 }
 
 try {

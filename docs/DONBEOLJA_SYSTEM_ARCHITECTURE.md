@@ -106,11 +106,13 @@
 
 ### 6.3 Exit Microstructure
 역할:
-- TP1 이전 생존력을 높이기 위해 `FAST_TP0`, `지연 trail`, `추격 진입 차단`, `pre-TP1 time stop`을 단계적으로 적용한다.
+- TP1 이전 생존력을 높이기 위해 `FAST_TP0`, `cohort TP1`, `지연 trail`, `추격 진입 차단`, `pre-TP1 time stop`을 단계적으로 적용한다.
 
 현재 원칙:
 - `FAST_TP0`는 `절대 % floor + ATR 보정`으로 계산한다.
+- `TP1`은 `openclaw_market_regime_cohort`에 따라 `RESCUE=2.8%`, `MIXED=3.0%`, `KEEP_DROP=base`로 분기할 수 있다.
 - `TP1` 직후에는 trail을 즉시 켜지 않고 `1봉 또는 추가 MFE` 조건을 기록한다.
+- `pre-TP1 time stop`은 `EARLY=4 bars`, `CORE=6 bars`, `TP1 progress < 50%`일 때만 발동한다.
 - 같은 방향 포지션 군집은 count뿐 아니라 total exposure cap으로도 제어한다.
 - recent FILLED entry 직후 외부 futures snapshot이 `0`으로 튀더라도 `external flat sync grace` 동안은 내부 포지션을 즉시 `FLAT`으로 덮지 않는다.
 

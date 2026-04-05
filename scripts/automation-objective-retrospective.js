@@ -262,6 +262,75 @@ function summarizeDrops(rows = []) {
   };
 }
 
+function resolveChainKey(row) {
+  return String(
+    row && (
+      row.entry_event_id
+      || row.trade_id
+      || row.intent_id
+      || row.fill_id
+      || row.signal_id
+    )
+    || ""
+  ).trim() || null;
+}
+
+function filterFills(rows = [], { fromMs, toMs, provider, tf } = {}) {
+  return (Array.isArray(rows) ? rows : []).filter((row) => {
+    if (!isLiveDocForExchange(provider, row)) return false;
+    const ex = String(row && row.exchange || "").trim().toUpperCase();
+    if (provider && ex && ex !== provider) return false;
+    const rowTf = String(row && row.tf || "").trim();
+    if (tf && rowTf && rowTf !== tf) return false;
+    const ms = docCreatedMs(row) ?? resolveBarMs(row);
+    return Number.isFinite(ms) && ms >= fromMs && ms < toMs;
+  });
+}
+
+function summarizeExecutionMicrostructure({ fills = [], signals = [], drops = [] } = {}) {
+  const fillRows = Array.isArray(fills) ? fills : [];
+  const signalRows = Array.isArray(signals) ? signals : [];
+  const dropRows = Array.isArray(drops) ? drops : [];
+  const entryChains = new Set();
+  const tp0Chains = new Set();
+  const tp1Chains = new Set();
+  const preTp1TimeStopChains = new Set();
+  for (const row of fillRows) {
+    const event = String(row && row.event || "").trim().toUpperCase();
+    const chainKey = resolveChainKey(row);
+    if (isEntryTierEvent(event) && chainKey) entryChains.add(chainKey);
+    if ((event === "EXIT_TP_P0" || event.startsWith("EXIT_TP_P0_")) && chainKey) tp0Chains.add(chainKey);
+    if ((event === "EXIT_TP_P1" || event.startsWith("EXIT_TP_P1_")) && chainKey) tp1Chains.add(chainKey);
+    const scope = String(row && row.time_stop_scope || row && row.reason || "").trim().toUpperCase();
+    if ((scope === "PRE_TP1" || scope === "EXIT_TIME_STOP_PRE_TP1") && chainKey) preTp1TimeStopChains.add(chainKey);
+    const features = row && row.features_json && typeof row.features_json === "object" ? row.features_json : {};
+    if (features.pre_tp1_time_stop === true && chainKey) preTp1TimeStopChains.add(chainKey);
+  }
+  let portfolioClusterReduceN = 0;
+  for (const row of signalRows) {
+    const features = row && row.features_json && typeof row.features_json === "object" ? row.features_json : {};
+    if (features._live_exec_policy_portfolio_cluster_reduce === true) portfolioClusterReduceN += 1;
+  }
+  let portfolioClusterBlockN = 0;
+  for (const row of dropRows) {
+    const reason = String(row && (row.drop_reason_code || row.reason) || "").trim().toUpperCase();
+    if (reason.startsWith("LIVE_POLICY_PORTFOLIO_CLUSTER")) portfolioClusterBlockN += 1;
+  }
+  const tp0AndTp1Chains = [...tp0Chains].filter((key) => tp1Chains.has(key)).length;
+  return {
+    entry_chain_n: entryChains.size,
+    tp0_exit_n: tp0Chains.size,
+    tp1_exit_n: tp1Chains.size,
+    tp0_hit_rate: entryChains.size > 0 ? (tp0Chains.size / entryChains.size) : null,
+    tp1_hit_rate: entryChains.size > 0 ? (tp1Chains.size / entryChains.size) : null,
+    tp0_to_tp1_conversion_rate: tp0Chains.size > 0 ? (tp0AndTp1Chains / tp0Chains.size) : null,
+    pre_tp1_time_stop_n: preTp1TimeStopChains.size,
+    pre_tp1_time_stop_rate: entryChains.size > 0 ? (preTp1TimeStopChains.size / entryChains.size) : null,
+    portfolio_cluster_reduce_n: portfolioClusterReduceN,
+    portfolio_cluster_block_n: portfolioClusterBlockN,
+  };
+}
+
 function resolveWorstTier(byTier = {}) {
   const rows = Object.entries(byTier || {}).map(([tier, stats]) => ({ tier, ...stats }));
   rows.sort((a, b) => {
@@ -569,6 +638,7 @@ function periodRanges(nowMs) {
 async function buildPeriodReport(period, range, context = {}) {
   const filteredSignals = filterSignals(context.signals, { ...range, provider: PROVIDER, tf: TF });
   const filteredDrops = filterDrops(context.drops, { ...range, provider: PROVIDER, tf: TF });
+  const filteredFills = filterFills(context.fills, { ...range, provider: PROVIDER, tf: TF });
   const quality = await summarizePineSignalQuality({
     signals: filteredSignals,
     fills: context.fills,
@@ -579,6 +649,11 @@ async function buildPeriodReport(period, range, context = {}) {
   });
   const entryOverall = aggregateOverallFromQuality(quality);
   const realizedOverall = summarizeRealizedTrades(context.trades, { fromMs: range.fromMs, toMs: range.toMs });
+  const executionMicrostructure = summarizeExecutionMicrostructure({
+    fills: filteredFills,
+    signals: filteredSignals,
+    drops: filteredDrops,
+  });
   const objective = buildPeriodObjectiveVerdict(period, {
     executed_n: entryOverall.executed_n,
     realized_n: realizedOverall.realized_n,
@@ -613,6 +688,7 @@ async function buildPeriodReport(period, range, context = {}) {
     },
     objective,
     entry_cohort: entryOverall,
+    execution_microstructure: executionMicrostructure,
     realized_trades: {
       ...realizedOverall,
       trade_n: realizedOverall.realized_n,
@@ -632,6 +708,7 @@ function renderPeriodMarkdown(row = {}) {
     `- target_krw: ${signedKrw(row.objective && row.objective.period_target_krw, 0)}`,
     `- realized: trades=${row.realized_trades && row.realized_trades.trade_n != null ? row.realized_trades.trade_n : "N/A"} / win=${pct(row.realized_trades && row.realized_trades.win_rate)} / avg_ret_net=${signedPct(row.realized_trades && row.realized_trades.avg_ret_net)} / net=${signedKrw(row.realized_trades && row.realized_trades.net_pnl_quote, 0)}`,
     `- activity: signals=${row.entry_cohort && row.entry_cohort.signals_n != null ? row.entry_cohort.signals_n : "N/A"} / executed=${row.entry_cohort && row.entry_cohort.executed_n != null ? row.entry_cohort.executed_n : "N/A"} / execution_rate=${pct(row.entry_cohort && row.entry_cohort.execution_rate)}`,
+    `- microstructure: tp0_hit=${pct(row.execution_microstructure && row.execution_microstructure.tp0_hit_rate)} / tp1_hit=${pct(row.execution_microstructure && row.execution_microstructure.tp1_hit_rate)} / tp0_to_tp1=${pct(row.execution_microstructure && row.execution_microstructure.tp0_to_tp1_conversion_rate)} / pre_tp1_time_stop=${pct(row.execution_microstructure && row.execution_microstructure.pre_tp1_time_stop_rate)} / cluster_reduce=${row.execution_microstructure && row.execution_microstructure.portfolio_cluster_reduce_n != null ? row.execution_microstructure.portfolio_cluster_reduce_n : "N/A"} / cluster_block=${row.execution_microstructure && row.execution_microstructure.portfolio_cluster_block_n != null ? row.execution_microstructure.portfolio_cluster_block_n : "N/A"}`,
     `- monthly_run_rate_krw: ${signedKrw(row.objective && row.objective.monthly_run_rate_krw, 0)}`,
     `- drops: total=${row.drops && row.drops.total != null ? row.drops.total : 0} / ops=${row.drops && row.drops.counts ? row.drops.counts.OPS : 0} / integrity=${row.drops && row.drops.counts ? row.drops.counts.QUALITY : 0} / ai=${row.drops && row.drops.counts ? row.drops.counts.AI : 0} / market=${row.drops && row.drops.counts ? row.drops.counts.MARKET : 0} / ev=${row.drops && row.drops.counts ? row.drops.counts.EV : 0} / timing=${row.drops && row.drops.counts ? row.drops.counts.TIMING : 0}`,
   ];

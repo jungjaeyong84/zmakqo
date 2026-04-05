@@ -6,9 +6,14 @@ const { __test } = require("../services/binanceTickExit");
 function run() {
   const rules = {
     SL: -0.0165,
+    TP_P0: 0.008,
+    TP_P0_QTY: 0.25,
+    TP_P0_ATR_MULTIPLE: 0.8,
     TP_P1: 0.0325,
     TRAIL_PCT: 0.01,
     BE_ENABLE: true,
+    TRAIL_DELAY_BARS: 1,
+    TRAIL_DELAY_MFE_PCT: 0.005,
   };
 
   const shortPos = {
@@ -79,6 +84,20 @@ function run() {
     },
   };
   const noTrailTriggers = __test.computeExitTriggers({ pos: noTrailPos, rules, leverageEff: 2 });
+  assert.ok(
+    noTrailTriggers.some((t) => t.kind === "TP_P0"),
+    "pre-TP1 live tick triggers must include TP0"
+  );
+  assert.strictEqual(
+    __test.shouldCheckNear({
+      price: 99.61,
+      triggers: noTrailTriggers,
+      nearPct: 0.003,
+      side: "LONG",
+    }),
+    true,
+    "TP0 should be treated as take-profit trigger for near/cross detection"
+  );
   assert.strictEqual(
     __test.shouldActivateFastLane({
       pos: noTrailPos,

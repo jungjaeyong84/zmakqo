@@ -116,6 +116,37 @@ function resolveTpP0Pct({ rules = null, meta = null } = {}) {
   return Number.isFinite(basePct) && basePct > 0 ? basePct : null;
 }
 
+function normalizeOpenClawCohort(value) {
+  const upper = String(value || "").trim().toUpperCase();
+  if (upper === "RESCUE" || upper === "MIXED" || upper === "KEEP_DROP" || upper === "HOLD_SAMPLE") return upper;
+  return null;
+}
+
+function applyCohortTp1Adjustment({ rules = null, meta = null, exchange = "" } = {}) {
+  const ex = normalizeExchangeKey(exchange);
+  if (ex !== "BINANCEFUT" || !rules || typeof rules !== "object") return rules;
+  const metaSafe = meta && typeof meta === "object" ? meta : {};
+  const exitPolicySource = String(metaSafe.exit_policy_source || "").trim().toUpperCase();
+  if (exitPolicySource && exitPolicySource !== "BINANCE_DEFAULT") return rules;
+  const cohort = normalizeOpenClawCohort(
+    metaSafe.openclaw_market_regime_cohort
+    || metaSafe.market_regime_cohort
+  );
+  if (!cohort || cohort === "KEEP_DROP" || cohort === "HOLD_SAMPLE") return rules;
+  const rescueTp1 = toNum(rules.TP_P1_RESCUE_COHORT);
+  const mixedTp1 = toNum(rules.TP_P1_MIXED_COHORT);
+  const currentTp1 = toNum(rules.TP_P1);
+  if (!Number.isFinite(currentTp1) || currentTp1 <= 0) return rules;
+  const cohortTp1 = cohort === "RESCUE" ? rescueTp1 : mixedTp1;
+  if (!Number.isFinite(cohortTp1) || cohortTp1 <= 0) return rules;
+  return {
+    ...rules,
+    TP_P1: Math.min(currentTp1, cohortTp1),
+    tp_p1_cohort_adjusted: true,
+    tp_p1_cohort: cohort,
+  };
+}
+
 function resolveTrailDelayState({
   meta = null,
   tpP1Done = false,
@@ -181,10 +212,15 @@ const DEFAULT_RULES = (CHARTER_EXPECTATIONS && CHARTER_EXPECTATIONS.signal_engin
     TP_P0_QTY: 0.25,
     TP_P0_ATR_MULTIPLE: 0.8,
     TP_P1: 0.06,
+    TP_P1_RESCUE_COHORT: 0.028,
+    TP_P1_MIXED_COHORT: 0.03,
     TP_P1_QTY: 0.5,
     TP_C: null,
     BE_ENABLE: true,
     BE_PCT: null,
+    PRE_TP1_TIME_STOP_BARS_EARLY: 4,
+    PRE_TP1_TIME_STOP_BARS_CORE: 6,
+    PRE_TP1_TIME_STOP_PROGRESS_FRACTION: 0.5,
     TRAIL_DELAY_BARS: 1,
     TRAIL_DELAY_MFE_PCT: 0.005,
     TRAIL_R_MULTIPLE: 1.0,
@@ -198,10 +234,15 @@ const SIGNAL_ENGINE_RULES = {
   TP_P0_QTY: parseNumEnv("ENGINE_TP_P0_QTY", DEFAULT_RULES.TP_P0_QTY),
   TP_P0_ATR_MULTIPLE: parseNumEnv("ENGINE_TP_P0_ATR_MULTIPLE", DEFAULT_RULES.TP_P0_ATR_MULTIPLE),
   TP_P1: parseNumEnv("ENGINE_TP_P1", DEFAULT_RULES.TP_P1),
+  TP_P1_RESCUE_COHORT: parseNumEnv("ENGINE_TP_P1_RESCUE_COHORT", DEFAULT_RULES.TP_P1_RESCUE_COHORT),
+  TP_P1_MIXED_COHORT: parseNumEnv("ENGINE_TP_P1_MIXED_COHORT", DEFAULT_RULES.TP_P1_MIXED_COHORT),
   TP_P1_QTY: parseNumEnv("ENGINE_TP_P1_QTY", DEFAULT_RULES.TP_P1_QTY),
   TP_C: parseNumEnv("ENGINE_TP_C", DEFAULT_RULES.TP_C),
   BE_ENABLE: parseBoolEnv("ENGINE_BE_ENABLE", DEFAULT_RULES.BE_ENABLE),
   BE_PCT: parseNumEnv("ENGINE_BE_PCT", DEFAULT_RULES.BE_PCT),
+  PRE_TP1_TIME_STOP_BARS_EARLY: parseNumEnv("ENGINE_PRE_TP1_TIME_STOP_BARS_EARLY", DEFAULT_RULES.PRE_TP1_TIME_STOP_BARS_EARLY),
+  PRE_TP1_TIME_STOP_BARS_CORE: parseNumEnv("ENGINE_PRE_TP1_TIME_STOP_BARS_CORE", DEFAULT_RULES.PRE_TP1_TIME_STOP_BARS_CORE),
+  PRE_TP1_TIME_STOP_PROGRESS_FRACTION: parseNumEnv("ENGINE_PRE_TP1_TIME_STOP_PROGRESS_FRACTION", DEFAULT_RULES.PRE_TP1_TIME_STOP_PROGRESS_FRACTION),
   TRAIL_DELAY_BARS: parseNumEnv("ENGINE_TRAIL_DELAY_BARS", DEFAULT_RULES.TRAIL_DELAY_BARS),
   TRAIL_DELAY_MFE_PCT: parseNumEnv("ENGINE_TRAIL_DELAY_MFE_PCT", DEFAULT_RULES.TRAIL_DELAY_MFE_PCT),
   TRAIL_R_MULTIPLE: parseNumEnv("ENGINE_TRAIL_R_MULTIPLE", DEFAULT_RULES.TRAIL_R_MULTIPLE),
@@ -218,10 +259,15 @@ const EXCHANGE_RULES = {
     TP_P0_QTY: 0.25,
     TP_P0_ATR_MULTIPLE: 0.8,
     TP_P1: 0.03,
+    TP_P1_RESCUE_COHORT: 0.028,
+    TP_P1_MIXED_COHORT: 0.03,
     TP_P1_QTY: 0.3,
     TP_C: null,
     BE_ENABLE: true,
     BE_PCT: null,
+    PRE_TP1_TIME_STOP_BARS_EARLY: 4,
+    PRE_TP1_TIME_STOP_BARS_CORE: 6,
+    PRE_TP1_TIME_STOP_PROGRESS_FRACTION: 0.5,
     TRAIL_DELAY_BARS: 1,
     TRAIL_DELAY_MFE_PCT: 0.005,
     TRAIL_R_MULTIPLE: 1.0,
@@ -233,11 +279,16 @@ const EXCHANGE_RULES = {
     TP_P0_QTY: 0.25,
     TP_P0_ATR_MULTIPLE: 0.8,
     TP_P1: 0.0325,
+    TP_P1_RESCUE_COHORT: 0.028,
+    TP_P1_MIXED_COHORT: 0.03,
     TP_P1_QTY: 0.5,
     TP_C: null,
     BE_ENABLE: true,
     // Keep small realized edge after TP1; prevents many short winners from reverting to losses.
     BE_PCT: 0.0025,
+    PRE_TP1_TIME_STOP_BARS_EARLY: 4,
+    PRE_TP1_TIME_STOP_BARS_CORE: 6,
+    PRE_TP1_TIME_STOP_PROGRESS_FRACTION: 0.5,
     TRAIL_DELAY_BARS: 1,
     TRAIL_DELAY_MFE_PCT: 0.005,
     TRAIL_R_MULTIPLE: 0.9,
@@ -268,10 +319,15 @@ const BINANCE_FUTURES_AGGRESSIVE_RULES = {
   TP_P0_QTY: 0.25,
   TP_P0_ATR_MULTIPLE: 0.8,
   TP_P1: 0.03,
+  TP_P1_RESCUE_COHORT: 0.028,
+  TP_P1_MIXED_COHORT: 0.03,
   TP_P1_QTY: 0.5,
   TP_C: null,
   BE_ENABLE: true,
   BE_PCT: 0.0025,
+  PRE_TP1_TIME_STOP_BARS_EARLY: 4,
+  PRE_TP1_TIME_STOP_BARS_CORE: 6,
+  PRE_TP1_TIME_STOP_PROGRESS_FRACTION: 0.5,
   TRAIL_DELAY_BARS: 1,
   TRAIL_DELAY_MFE_PCT: 0.005,
   TRAIL_R_MULTIPLE: 1.0,
@@ -328,9 +384,14 @@ function normalizeExitRules(rules, fallbackRules) {
     TP_P0_QTY: pickNum("TP_P0_QTY"),
     TP_P0_ATR_MULTIPLE: pickNum("TP_P0_ATR_MULTIPLE"),
     TP_P1: pickNum("TP_P1"),
+    TP_P1_RESCUE_COHORT: pickNum("TP_P1_RESCUE_COHORT"),
+    TP_P1_MIXED_COHORT: pickNum("TP_P1_MIXED_COHORT"),
     TP_P1_QTY: pickNum("TP_P1_QTY"),
     TP_C: pickNum("TP_C"),
     BE_PCT: pickNum("BE_PCT"),
+    PRE_TP1_TIME_STOP_BARS_EARLY: pickNum("PRE_TP1_TIME_STOP_BARS_EARLY"),
+    PRE_TP1_TIME_STOP_BARS_CORE: pickNum("PRE_TP1_TIME_STOP_BARS_CORE"),
+    PRE_TP1_TIME_STOP_PROGRESS_FRACTION: pickNum("PRE_TP1_TIME_STOP_PROGRESS_FRACTION"),
     TRAIL_DELAY_BARS: pickNum("TRAIL_DELAY_BARS"),
     TRAIL_DELAY_MFE_PCT: pickNum("TRAIL_DELAY_MFE_PCT"),
     TRAIL_R_MULTIPLE: pickNum("TRAIL_R_MULTIPLE"),
@@ -343,7 +404,12 @@ function normalizeExitRules(rules, fallbackRules) {
   if (!Number.isFinite(out.TP_P0_QTY) || out.TP_P0_QTY <= 0) out.TP_P0_QTY = fb.TP_P0_QTY;
   if (!Number.isFinite(out.TP_P0_ATR_MULTIPLE) || out.TP_P0_ATR_MULTIPLE <= 0) out.TP_P0_ATR_MULTIPLE = fb.TP_P0_ATR_MULTIPLE;
   if (!Number.isFinite(out.TP_P1)) out.TP_P1 = fb.TP_P1;
+  if (!Number.isFinite(out.TP_P1_RESCUE_COHORT) || out.TP_P1_RESCUE_COHORT <= 0) out.TP_P1_RESCUE_COHORT = fb.TP_P1_RESCUE_COHORT;
+  if (!Number.isFinite(out.TP_P1_MIXED_COHORT) || out.TP_P1_MIXED_COHORT <= 0) out.TP_P1_MIXED_COHORT = fb.TP_P1_MIXED_COHORT;
   if (!Number.isFinite(out.TP_P1_QTY)) out.TP_P1_QTY = fb.TP_P1_QTY;
+  if (!Number.isFinite(out.PRE_TP1_TIME_STOP_BARS_EARLY) || out.PRE_TP1_TIME_STOP_BARS_EARLY < 0) out.PRE_TP1_TIME_STOP_BARS_EARLY = fb.PRE_TP1_TIME_STOP_BARS_EARLY;
+  if (!Number.isFinite(out.PRE_TP1_TIME_STOP_BARS_CORE) || out.PRE_TP1_TIME_STOP_BARS_CORE < 0) out.PRE_TP1_TIME_STOP_BARS_CORE = fb.PRE_TP1_TIME_STOP_BARS_CORE;
+  if (!Number.isFinite(out.PRE_TP1_TIME_STOP_PROGRESS_FRACTION) || out.PRE_TP1_TIME_STOP_PROGRESS_FRACTION <= 0) out.PRE_TP1_TIME_STOP_PROGRESS_FRACTION = fb.PRE_TP1_TIME_STOP_PROGRESS_FRACTION;
   if (!Number.isFinite(out.TRAIL_DELAY_BARS) || out.TRAIL_DELAY_BARS < 0) out.TRAIL_DELAY_BARS = fb.TRAIL_DELAY_BARS;
   if (!Number.isFinite(out.TRAIL_DELAY_MFE_PCT) || out.TRAIL_DELAY_MFE_PCT < 0) out.TRAIL_DELAY_MFE_PCT = fb.TRAIL_DELAY_MFE_PCT;
   if (!Number.isFinite(out.TRAIL_R_MULTIPLE) || out.TRAIL_R_MULTIPLE <= 0) out.TRAIL_R_MULTIPLE = null;
@@ -374,12 +440,13 @@ function resolveExitRulesForPosition({ exchange, position, exitProfileMode } = {
     ? base
     : (metaProfile === "AGGRESSIVE" ? getExitRulesForProfile(exchange, "AGGRESSIVE") : base);
   const resolved = normalizeExitRules(override, fallbackBase);
+  const adjusted = applyCohortTp1Adjustment({ rules: resolved, meta, exchange });
   if (metaProfile) {
-    resolved.exit_profile = metaProfile;
+    adjusted.exit_profile = metaProfile;
   } else {
-    resolved.exit_profile = profileMode;
+    adjusted.exit_profile = profileMode;
   }
-  return resolved;
+  return adjusted;
 }
 
 function tpP1ForExchange(exchange) {

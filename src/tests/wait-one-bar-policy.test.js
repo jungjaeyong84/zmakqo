@@ -118,6 +118,35 @@ const { __test } = require("../engine/paperUpbitRunner");
   assert.strictEqual(physicsHard.detail.wait_one_bar_market_state_wait_hard, true);
   assert.strictEqual(physicsHard.detail.febt_shadow_fallback_to_legacy, true);
 
+  const hardReject = __test.evaluateWaitOneBarTiming({
+    intent: "ENTRY",
+    intentDir: "LONG",
+    eventUpper: "LONG",
+    cfg,
+    features: {
+      ev_gate_same_dir_streak: 4,
+      ev_gate_chase_ratio: 2.15,
+      ev_gate_last_close_control: 0.92,
+      ev_gate_last_dir_body: 0.62,
+      ev_gate_last_opposite_wick: 0.08,
+      ev_gate_recent_move_1_pct: 0.62,
+      ev_gate_counter_dir_bars: 0,
+      sp_entropy_score: 0.61,
+      sp_coherence_score: 0.46,
+      sp_transition_risk: 0.69,
+      sp_field_alignment: 0.41,
+      sp_domain_wall_density: 0.62,
+      sp_susceptibility: 0.74,
+      sp_free_energy: 0.77,
+      sp_state: "CRITICAL",
+    },
+  });
+  assert.strictEqual(hardReject.ok, false);
+  assert.strictEqual(hardReject.action, "DROP");
+  assert.strictEqual(hardReject.reason, "DROP_CHASE_ENTRY_QUALITY");
+  assert.strictEqual(hardReject.detail.wait_one_bar_trigger_path, "CHASE_REJECT");
+  assert.strictEqual(hardReject.detail.wait_one_bar_chase_reject, true);
+
   const skip = __test.evaluateWaitOneBarTiming({
     intent: "ENTRY",
     intentDir: "SHORT",

@@ -59,6 +59,29 @@ function run() {
   assert.strictEqual(delayedTrail[0].event, "EXIT_TRAIL");
   assert.strictEqual(delayedTrail[0].features.trail_delay_bars_ready, true);
   assert.strictEqual(delayedTrail[0].features.trail_delay_release_reason, "BAR_DELAY_RELEASE");
+
+  const rescueTp1 = generateSignals({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    trading_mode: "EXIT_ONLY",
+    leverage: 2,
+    currentBarCloseMs: 1_800_100_000_000,
+    bar: { close: 101.45, c: 101.45 },
+    position: {
+      state: "ACTIVE",
+      size_pct: 1,
+      avg_price: 100,
+      position_side: "LONG",
+      meta: {
+        external_leverage: 2,
+        tp_p0_done: true,
+        tp_p1_done: false,
+        openclaw_market_regime_cohort: "RESCUE",
+      },
+    },
+  });
+  assert.strictEqual(rescueTp1.length, 1, "rescue cohort should shorten tp1");
+  assert.strictEqual(rescueTp1[0].event, "EXIT_TP_P1_2.8P");
 }
 
 try {

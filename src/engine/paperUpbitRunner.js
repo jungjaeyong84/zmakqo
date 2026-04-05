@@ -1,4 +1,6 @@
 // src/engine/paperUpbitRunner.js
+const fs = require("fs");
+const path = require("path");
 const crypto = require("crypto");
 const { generateSignals, resolveExitRulesForPosition } = require("./signalEngine");
 const { computeFillPrice, computeFeeValue } = require("./paperExecution");
@@ -79,6 +81,14 @@ const recentFillsCache = {
   ts: 0,
   rows: [],
 };
+const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
+const OPENCLAW_MARKET_REGIME_BOARD_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_market_regime_board_latest.json");
+const OPENCLAW_MARKET_REGIME_CACHE_TTL_MS = 15 * 1000;
+const openclawMarketRegimeCache = {
+  ts: 0,
+  mtimeMs: null,
+  byMarket: new Map(),
+};
 
 const TP_P1_SKIP_REASONS = new Set([
   "ORDER_TOO_SMALL",
@@ -90,6 +100,50 @@ const TP_P1_SKIP_REASONS = new Set([
   "TP_P1_REMAINDER_BELOW_MIN_QTY",
   "MARGIN_TYPE_SET_FAILED",
 ]);
+
+function normalizeOpenClawCohort(value) {
+  const upper = String(value || "").trim().toUpperCase();
+  if (upper === "RESCUE" || upper === "MIXED" || upper === "KEEP_DROP" || upper === "HOLD_SAMPLE") return upper;
+  return null;
+}
+
+function loadOpenClawMarketRegimeBoard(force = false) {
+  const now = Date.now();
+  if (!force && openclawMarketRegimeCache.ts && (now - openclawMarketRegimeCache.ts) < OPENCLAW_MARKET_REGIME_CACHE_TTL_MS) {
+    return openclawMarketRegimeCache.byMarket;
+  }
+  try {
+    const stat = fs.statSync(OPENCLAW_MARKET_REGIME_BOARD_PATH);
+    const mtimeMs = Number(stat.mtimeMs || 0);
+    if (!force && openclawMarketRegimeCache.mtimeMs && openclawMarketRegimeCache.mtimeMs === mtimeMs) {
+      openclawMarketRegimeCache.ts = now;
+      return openclawMarketRegimeCache.byMarket;
+    }
+    const parsed = JSON.parse(fs.readFileSync(OPENCLAW_MARKET_REGIME_BOARD_PATH, "utf8"));
+    const rows = Array.isArray(parsed && parsed.by_market) ? parsed.by_market : [];
+    const map = new Map();
+    for (const row of rows) {
+      const market = String(row && row.market || "").trim().toUpperCase();
+      if (!market) continue;
+      map.set(market, row);
+    }
+    openclawMarketRegimeCache.ts = now;
+    openclawMarketRegimeCache.mtimeMs = mtimeMs;
+    openclawMarketRegimeCache.byMarket = map;
+    return map;
+  } catch (_) {
+    openclawMarketRegimeCache.ts = now;
+    if (!openclawMarketRegimeCache.byMarket) openclawMarketRegimeCache.byMarket = new Map();
+    return openclawMarketRegimeCache.byMarket;
+  }
+}
+
+function readOpenClawMarketRegimeRow(market) {
+  const key = String(market || "").trim().toUpperCase();
+  if (!key) return null;
+  const map = loadOpenClawMarketRegimeBoard(false);
+  return map.get(key) || null;
+}
 
 // --- Commission Gate v2 (ENFORCE) + MDD reduction gate ---
 const PERF_GATE_TTL_MS = 60_000;
@@ -2588,23 +2642,65 @@ function buildTimeStopExitSignal({ position, bar, posMeta, barCloseMs, signalTfM
   ) || "LONG";
   const entryMetaDir = inferEntryMetaDirection(posMeta);
   if (entryMetaDir && entryMetaDir !== positionSide) return null;
+  const rules = resolveExitRulesForPosition({
+    exchange: pos.exchange || "BINANCEFUT",
+    position: { ...pos, meta: posMeta || {} },
+  });
+  const preTp1Done = posMeta && posMeta.tp_p1_done === true;
+  const rawEntryGrade = String(posMeta && (posMeta.entry_grade || posMeta.entry_timing_tier || posMeta.entry_tier) || "").trim().toUpperCase();
+  const entryGrade = rawEntryGrade === "CORE" ? "CORE" : "EARLY";
+  const preTp1MaxHoldBars = Number(
+    entryGrade === "CORE"
+      ? rules && rules.PRE_TP1_TIME_STOP_BARS_CORE
+      : rules && rules.PRE_TP1_TIME_STOP_BARS_EARLY
+  );
+  const progressFraction = Number(rules && rules.PRE_TP1_TIME_STOP_PROGRESS_FRACTION);
+  const leverageEff = resolvePositionLeverage({ position: pos, fallback: 1 });
+  const requiredHoldBars = (preTp1Done !== true && Number.isFinite(preTp1MaxHoldBars) && preTp1MaxHoldBars > 0)
+    ? preTp1MaxHoldBars
+    : maxHoldBars;
   const barsHeld = Math.floor((Number(barCloseMs) - entryMs) / signalTfMs);
-  if (!Number.isFinite(barsHeld) || barsHeld < maxHoldBars) return null;
-  const pnlPct = computeUnrealizedPnlPct({ position: pos, bar, positionSide });
-  if (!Number.isFinite(pnlPct) || pnlPct > 0) return null;
+  if (!Number.isFinite(barsHeld) || barsHeld < requiredHoldBars) return null;
+  const pnlPctRaw = computeUnrealizedPnlPct({ position: pos, bar, positionSide });
+  if (!Number.isFinite(pnlPctRaw)) return null;
+  const pnlPct = pnlPctRaw * (Number.isFinite(leverageEff) && leverageEff > 0 ? leverageEff : 1);
+  const preTp1TimeStopActive = preTp1Done !== true
+    && Number.isFinite(preTp1MaxHoldBars)
+    && preTp1MaxHoldBars > 0
+    && barsHeld >= preTp1MaxHoldBars;
+  if (!preTp1TimeStopActive && pnlPct > 0) return null;
+  let preTp1ProgressRequired = null;
+  if (preTp1TimeStopActive) {
+    const tp1Pct = Number(rules && rules.TP_P1);
+    preTp1ProgressRequired = Number.isFinite(tp1Pct) && tp1Pct > 0 && Number.isFinite(progressFraction) && progressFraction > 0
+      ? tp1Pct * progressFraction
+      : null;
+    if (Number.isFinite(preTp1ProgressRequired) && pnlPct >= preTp1ProgressRequired) return null;
+  } else if (pnlPct > 0) {
+    return null;
+  }
   const exitSide = positionSide === "SHORT" ? "BUY" : "SELL";
   return {
-    event: `EXIT_TIME_STOP_${maxHoldBars}B`,
+    event: `EXIT_TIME_STOP_${requiredHoldBars}B`,
     side: exitSide,
     qty_pct: size,
-    reason: "EXIT_TIME_STOP",
+    reason: preTp1TimeStopActive ? "EXIT_TIME_STOP_PRE_TP1" : "EXIT_TIME_STOP",
     features: {
       bars_held: barsHeld,
-      max_hold_bars: maxHoldBars,
+      max_hold_bars: requiredHoldBars,
       pnl_pct: pnlPct,
+      pnl_pct_raw: pnlPctRaw,
       avg_px: Number(pos.avg_price),
       ref_px: Number(bar && (bar.close ?? bar.c ?? bar.closePrice)),
       position_side: positionSide,
+      time_stop_scope: preTp1TimeStopActive ? "PRE_TP1" : "STANDARD",
+      pre_tp1_time_stop: preTp1TimeStopActive,
+      pre_tp1_time_stop_entry_grade: preTp1TimeStopActive ? entryGrade : null,
+      pre_tp1_time_stop_max_hold_bars: preTp1TimeStopActive ? preTp1MaxHoldBars : null,
+      pre_tp1_progress_fraction_required: preTp1TimeStopActive && Number.isFinite(progressFraction) ? progressFraction : null,
+      pre_tp1_progress_pct_required: preTp1TimeStopActive && Number.isFinite(preTp1ProgressRequired) ? preTp1ProgressRequired : null,
+      pre_tp1_progress_pct_actual: preTp1TimeStopActive ? pnlPct : null,
+      openclaw_market_regime_cohort: normalizeOpenClawCohort(posMeta && posMeta.openclaw_market_regime_cohort),
     },
   };
 }
@@ -8180,6 +8276,8 @@ async function runPaperUpbitForBar({
     const closing = newState === "FLAT";
     const openingOrAdd = (intent === "ENTRY" || intent === "ADD") && newState === "ACTIVE";
     const metaSide = String(pos.position_side || "LONG").toUpperCase();
+    const marketRegimeRow = opening ? readOpenClawMarketRegimeRow(symbol) : null;
+    const marketRegimeCohort = normalizeOpenClawCohort(marketRegimeRow && marketRegimeRow.cohort);
     let nextMeta = mergeMeta(posMeta, {
       last_fill_intent: it.intent_id,
       last_fill_side: it.side,
@@ -8270,6 +8368,11 @@ async function runPaperUpbitForBar({
         ev_gate_atr_pct: Number.isFinite(Number(it.features_json && it.features_json.ev_gate_atr_pct))
           ? Number(it.features_json.ev_gate_atr_pct)
           : null,
+        openclaw_market_regime_cohort: marketRegimeCohort || null,
+        openclaw_market_regime_objective_score: marketRegimeRow && Number.isFinite(Number(marketRegimeRow.objective_score))
+          ? Number(marketRegimeRow.objective_score)
+          : null,
+        openclaw_market_regime_drop_verdict: marketRegimeRow ? String(marketRegimeRow.drop_verdict || "").trim().toUpperCase() || null : null,
       });
     }
     if (openingOrAdd) {
@@ -8308,6 +8411,11 @@ async function runPaperUpbitForBar({
           appliedExitRules.RUNNER_MIN_PROFIT_PCT = dynRunnerMin / 100;
         }
       }
+      if (!exitPolicySrc && marketRegimeCohort === "RESCUE" && Number.isFinite(Number(appliedExitRules.TP_P1_RESCUE_COHORT)) && Number(appliedExitRules.TP_P1_RESCUE_COHORT) > 0) {
+        appliedExitRules.TP_P1 = Math.min(Number(appliedExitRules.TP_P1), Number(appliedExitRules.TP_P1_RESCUE_COHORT));
+      } else if (!exitPolicySrc && marketRegimeCohort === "MIXED" && Number.isFinite(Number(appliedExitRules.TP_P1_MIXED_COHORT)) && Number(appliedExitRules.TP_P1_MIXED_COHORT) > 0) {
+        appliedExitRules.TP_P1 = Math.min(Number(appliedExitRules.TP_P1), Number(appliedExitRules.TP_P1_MIXED_COHORT));
+      }
       nextMeta = mergeMeta(nextMeta, {
         exit_profile: appliedExitProfile || "BASE",
         exit_profile_reason: (exitPolicySrc && exitPolicySrc !== "BINANCE_DEFAULT")
@@ -8329,6 +8437,9 @@ async function runPaperUpbitForBar({
         entry_grade: null,
         entry_qty_profile: null,
         entry_signal_bar_ms: null,
+        openclaw_market_regime_cohort: null,
+        openclaw_market_regime_objective_score: null,
+        openclaw_market_regime_drop_verdict: null,
         exit_profile: null,
         exit_profile_reason: null,
         exit_rules_override: null,
@@ -10852,6 +10963,8 @@ async function runPaperFuturesForBar({
     const closing = newState === "FLAT";
     const openingOrAdd = (intent === "ENTRY" || intent === "ADD") && newState === "ACTIVE";
     const metaSide = String(posSide || nextPosSide || "LONG").toUpperCase();
+    const marketRegimeRow = opening ? readOpenClawMarketRegimeRow(symbol) : null;
+    const marketRegimeCohort = normalizeOpenClawCohort(marketRegimeRow && marketRegimeRow.cohort);
     let nextMeta = mergeMeta(posMeta, {
       last_fill_intent: it.intent_id,
       last_fill_side: actionSide,
@@ -10964,6 +11077,11 @@ async function runPaperFuturesForBar({
         last_exit_bar_ms: null,
         last_exit_dir: null,
         last_exit_wall_ms: null,
+        openclaw_market_regime_cohort: marketRegimeCohort || null,
+        openclaw_market_regime_objective_score: marketRegimeRow && Number.isFinite(Number(marketRegimeRow.objective_score))
+          ? Number(marketRegimeRow.objective_score)
+          : null,
+        openclaw_market_regime_drop_verdict: marketRegimeRow ? String(marketRegimeRow.drop_verdict || "").trim().toUpperCase() || null : null,
       });
     }
     if (openingOrAdd) {
@@ -11002,6 +11120,11 @@ async function runPaperFuturesForBar({
           appliedExitRules.RUNNER_MIN_PROFIT_PCT = dynRunnerMin / 100;
         }
       }
+      if (!exitPolicySrc && marketRegimeCohort === "RESCUE" && Number.isFinite(Number(appliedExitRules.TP_P1_RESCUE_COHORT)) && Number(appliedExitRules.TP_P1_RESCUE_COHORT) > 0) {
+        appliedExitRules.TP_P1 = Math.min(Number(appliedExitRules.TP_P1), Number(appliedExitRules.TP_P1_RESCUE_COHORT));
+      } else if (!exitPolicySrc && marketRegimeCohort === "MIXED" && Number.isFinite(Number(appliedExitRules.TP_P1_MIXED_COHORT)) && Number(appliedExitRules.TP_P1_MIXED_COHORT) > 0) {
+        appliedExitRules.TP_P1 = Math.min(Number(appliedExitRules.TP_P1), Number(appliedExitRules.TP_P1_MIXED_COHORT));
+      }
       nextMeta = mergeMeta(nextMeta, {
         exit_profile: appliedExitProfile || "BASE",
         exit_profile_reason: (exitPolicySrc && exitPolicySrc !== "BINANCE_DEFAULT")
@@ -11026,6 +11149,9 @@ async function runPaperFuturesForBar({
         entry_grade: null,
         entry_qty_profile: null,
         entry_signal_bar_ms: null,
+        openclaw_market_regime_cohort: null,
+        openclaw_market_regime_objective_score: null,
+        openclaw_market_regime_drop_verdict: null,
         exit_profile: null,
         exit_profile_reason: null,
         exit_rules_override: null,
