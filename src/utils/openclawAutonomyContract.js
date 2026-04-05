@@ -333,7 +333,8 @@ function deriveOpenClawAutonomyContract({
       : (retrospectiveDisplay.generated_at_kst ? "MONITORING" : "N_A"));
   const modelReadinessStatus = toUpper(modelReadinessSummary.status) || "N_A";
   const featureStoreStatus = toUpper(featureStoreSummary.status) || "N_A";
-  const topEntryLatencyGroup = firstArrayRow(executionModelSummary.top_entry_latency_groups);
+  const topEntryLatencyGroup = firstArrayRow(executionModelSummary.top_entry_measured_latency_groups);
+  const topFallbackEntryLatencyGroup = firstArrayRow(executionModelSummary.top_entry_fallback_latency_groups);
   const topFillSourceBucket = firstArrayRow(executionModelSummary.by_primary_fill_source);
 
   return {
@@ -438,11 +439,16 @@ function deriveOpenClawAutonomyContract({
       execution_model_dataset_rejected_n: toNum(executionModelSummary.rejected_n),
       execution_model_dataset_partial_n: toNum(executionModelSummary.partial_n),
       execution_model_dataset_latency_p95_ms: toNum(executionModelSummary.created_to_fill_p95_ms),
+      execution_model_dataset_measured_latency_p95_ms: toNum(executionModelSummary.created_to_fill_measured_p95_ms),
       execution_model_dataset_slippage_p95_bps: toNum(executionModelSummary.slippage_p95_bps),
       execution_model_dataset_top_entry_latency_group: topEntryLatencyGroup ? String(topEntryLatencyGroup.key || "").trim() || null : null,
       execution_model_dataset_top_entry_latency_market: topEntryLatencyGroup ? String(topEntryLatencyGroup.market || "").trim() || null : null,
       execution_model_dataset_top_entry_latency_source: topEntryLatencyGroup ? String(topEntryLatencyGroup.primary_fill_source || topEntryLatencyGroup.source || "").trim() || null : null,
       execution_model_dataset_top_entry_latency_p95_ms: toNum(topEntryLatencyGroup && topEntryLatencyGroup.created_to_fill_p95_ms),
+      execution_model_dataset_top_fallback_latency_group: topFallbackEntryLatencyGroup ? String(topFallbackEntryLatencyGroup.key || "").trim() || null : null,
+      execution_model_dataset_top_fallback_latency_market: topFallbackEntryLatencyGroup ? String(topFallbackEntryLatencyGroup.market || "").trim() || null : null,
+      execution_model_dataset_top_fallback_latency_source: topFallbackEntryLatencyGroup ? String(topFallbackEntryLatencyGroup.primary_fill_source || topFallbackEntryLatencyGroup.source || "").trim() || null : null,
+      execution_model_dataset_top_fallback_latency_p95_ms: toNum(topFallbackEntryLatencyGroup && topFallbackEntryLatencyGroup.created_to_fill_p95_ms),
       execution_model_dataset_top_fill_source: topFillSourceBucket ? String(topFillSourceBucket.key || "").trim() || null : null,
       execution_model_dataset_top_fill_source_rows_n: toNum(topFillSourceBucket && topFillSourceBucket.rows_n),
       execution_model_dataset_top_fill_source_slippage_zero_rate: toNum(topFillSourceBucket && topFillSourceBucket.slippage_zero_rate),
@@ -482,6 +488,7 @@ function deriveOpenClawAutonomyContract({
       feature_store_status: featureStoreStatus,
       execution_model_dataset_status: executionModelStatus,
       execution_model_dataset_top_entry_latency_group: topEntryLatencyGroup ? String(topEntryLatencyGroup.key || "").trim() || null : null,
+      execution_model_dataset_top_fallback_latency_group: topFallbackEntryLatencyGroup ? String(topFallbackEntryLatencyGroup.key || "").trim() || null : null,
       execution_model_dataset_top_fill_source: topFillSourceBucket ? String(topFillSourceBucket.key || "").trim() || null : null,
       execution_quality_status: executionQualityStatus,
       lineage_status: lineageVerdict,

@@ -134,9 +134,14 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
     const agg = summarizeFillAggregate(linkedFills, intent);
     const intentCreatedAtMs = parseMs(intent.created_at);
     const filledAtMs = agg.first_fill_at_ms ?? parseMs(intent.filled_at);
-    const createdToFillMs = Number.isFinite(intentCreatedAtMs) && Number.isFinite(filledAtMs)
+    const measuredCreatedToFillMs = Number.isFinite(intentCreatedAtMs) && Number.isFinite(filledAtMs)
       ? (filledAtMs - intentCreatedAtMs)
-      : (toNum(intent.live_exec_policy_quality_latency_ms) ?? agg.avg_latency_ms);
+      : null;
+    const fallbackCreatedToFillMs = toNum(intent.live_exec_policy_quality_latency_ms) ?? agg.avg_latency_ms;
+    const createdToFillMs = measuredCreatedToFillMs ?? fallbackCreatedToFillMs;
+    const createdToFillSource = Number.isFinite(measuredCreatedToFillMs)
+      ? "FILL_CHAIN"
+      : (Number.isFinite(fallbackCreatedToFillMs) ? "LIVE_POLICY_FALLBACK" : null);
     const partialFillPct = agg.max_partial_fill_pct ?? toNum(intent.live_exec_policy_quality_partial_pct);
     const slippageBps = agg.avg_slippage_bps ?? toNum(intent.live_exec_policy_quality_slippage_bps);
     const status = toUpper(intent.status);
@@ -175,6 +180,7 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
         intent_created_at_ms: intentCreatedAtMs,
         filled_at_ms: filledAtMs,
         created_to_fill_ms: createdToFillMs,
+        created_to_fill_source: createdToFillSource,
         slippage_bps: slippageBps,
         partial_fill_pct: partialFillPct,
         fill_n: agg.fill_n,
@@ -196,6 +202,7 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
         time_stop_hit: isTimeStopEvent,
         pre_tp1_time_stop: preTp1TimeStop,
         created_to_fill_ms: createdToFillMs,
+        created_to_fill_measured: Number.isFinite(measuredCreatedToFillMs),
         slippage_bps: slippageBps,
         partial_fill_pct: partialFillPct,
       },
@@ -212,6 +219,10 @@ function summarizeExecutionModelRows(rows = []) {
   const partialN = scoped.filter((row) => row.labels && row.labels.was_partial === true).length;
   const rejectedN = scoped.filter((row) => row.labels && row.labels.was_rejected === true).length;
   const latencyVals = scoped.map((row) => toNum(row.labels && row.labels.created_to_fill_ms)).filter((v) => Number.isFinite(v));
+  const measuredLatencyVals = scoped
+    .filter((row) => row && row.labels && row.labels.created_to_fill_measured === true)
+    .map((row) => toNum(row.labels && row.labels.created_to_fill_ms))
+    .filter((v) => Number.isFinite(v));
   const slippageVals = scoped.map((row) => toNum(row.labels && row.labels.slippage_bps)).filter((v) => Number.isFinite(v));
   const timeStopN = scoped.filter((row) => row && row.labels && row.labels.time_stop_hit === true).length;
   const preTp1TimeStopN = scoped.filter((row) => row && row.labels && row.labels.pre_tp1_time_stop === true).length;
@@ -253,6 +264,8 @@ function summarizeExecutionModelRows(rows = []) {
     return sorted[idx];
   };
   const byEntryLatencyGroup = new Map();
+  const byMeasuredEntryLatencyGroup = new Map();
+  const byFallbackEntryLatencyGroup = new Map();
   for (const row of scoped) {
     if (!row || !row.context || row.context.is_exit_event === true) continue;
     const latencyMs = toNum(row.labels && row.labels.created_to_fill_ms);
@@ -268,6 +281,14 @@ function summarizeExecutionModelRows(rows = []) {
     const bucket = byEntryLatencyGroup.get(key);
     bucket.rows_n += 1;
     bucket.latency_values.push(latencyMs);
+    const measured = row && row.labels && row.labels.created_to_fill_measured === true;
+    const targetMap = measured ? byMeasuredEntryLatencyGroup : byFallbackEntryLatencyGroup;
+    if (!targetMap.has(key)) {
+      targetMap.set(key, { key, event, source, primary_fill_source: fillSource, market, rows_n: 0, latency_values: [] });
+    }
+    const target = targetMap.get(key);
+    target.rows_n += 1;
+    target.latency_values.push(latencyMs);
   }
   return {
     rows_n: scoped.length,
@@ -282,6 +303,7 @@ function summarizeExecutionModelRows(rows = []) {
     partial_rate: scoped.length > 0 ? (partialN / scoped.length) : null,
     reject_rate: scoped.length > 0 ? (rejectedN / scoped.length) : null,
     created_to_fill_p95_ms: p95(latencyVals),
+    created_to_fill_measured_p95_ms: p95(measuredLatencyVals),
     slippage_p95_bps: p95(slippageVals),
     feature_keys_n: Array.from(new Set(scoped.flatMap((row) => Object.keys(row.features || {})))).length,
     by_primary_fill_source: Array.from(byPrimaryFillSource.values())
@@ -292,6 +314,30 @@ function summarizeExecutionModelRows(rows = []) {
       }))
       .sort((a, b) => (b.rows_n - a.rows_n) || a.key.localeCompare(b.key)),
     top_entry_latency_groups: Array.from(byEntryLatencyGroup.values())
+      .map((row) => ({
+        key: row.key,
+        event: row.event,
+        source: row.source,
+        primary_fill_source: row.primary_fill_source,
+        market: row.market,
+        rows_n: row.rows_n,
+        created_to_fill_p95_ms: p95(row.latency_values),
+      }))
+      .sort((a, b) => ((b.created_to_fill_p95_ms || 0) - (a.created_to_fill_p95_ms || 0)) || (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
+      .slice(0, 12),
+    top_entry_measured_latency_groups: Array.from(byMeasuredEntryLatencyGroup.values())
+      .map((row) => ({
+        key: row.key,
+        event: row.event,
+        source: row.source,
+        primary_fill_source: row.primary_fill_source,
+        market: row.market,
+        rows_n: row.rows_n,
+        created_to_fill_p95_ms: p95(row.latency_values),
+      }))
+      .sort((a, b) => ((b.created_to_fill_p95_ms || 0) - (a.created_to_fill_p95_ms || 0)) || (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
+      .slice(0, 12),
+    top_entry_fallback_latency_groups: Array.from(byFallbackEntryLatencyGroup.values())
       .map((row) => ({
         key: row.key,
         event: row.event,

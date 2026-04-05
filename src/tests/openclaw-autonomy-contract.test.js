@@ -39,7 +39,7 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
     signalLineageHealth: { summary: { verdict: "PASS", fills_intent_id_null_rate: 0, fills_signal_doc_id_null_rate: 0, intents_signal_doc_id_null_rate: 0 } },
     modelReadiness: { summary: { status: "MODEL_READINESS_READY", rows_n: 344, realized_n: 18, invalid_n: 0, mfe_mae_labeled_n: 7, mfe_mae_label_rate: 0.0203, tp1_time_labeled_n: 1, tp1_time_label_rate: 0.0029, tp0_time_labeled_n: 0, tp0_time_label_rate: 0, tp0_to_tp1_converted_n: 0, pre_tp1_time_stop_n: 0, schema_version: "2026-04-05.v1" } },
     featureStore: { summary: { status: "FEATURE_STORE_READY", rows_n: 344, feature_keys_n: 287, schema_version: "2026-04-05.v1" } },
-    executionModelDataset: { summary: { status: "EXECUTION_MODEL_DATASET_READY", rows_n: 4112, entry_rows_n: 1325, exit_rows_n: 2787, filled_n: 2058, rejected_n: 3, partial_n: 14, created_to_fill_p95_ms: 966453, slippage_p95_bps: 12.4, top_entry_latency_groups: [{ key: "CORE_LONG|UNKNOWN|BINANCE_ORDER|XRPUSDT", market: "XRPUSDT", primary_fill_source: "BINANCE_ORDER", created_to_fill_p95_ms: 7580368 }], by_primary_fill_source: [{ key: "NO_FILL", rows_n: 2054, slippage_zero_rate: 1, slippage_measured_rate: 0.0004 }] } },
+    executionModelDataset: { summary: { status: "EXECUTION_MODEL_DATASET_READY", rows_n: 4112, entry_rows_n: 1325, exit_rows_n: 2787, filled_n: 2058, rejected_n: 3, partial_n: 14, created_to_fill_p95_ms: 966453, created_to_fill_measured_p95_ms: 61234, slippage_p95_bps: 12.4, top_entry_measured_latency_groups: [{ key: "EARLY_LONG|UNKNOWN|BINANCE_USER_TRADES|BTCUSDT", market: "BTCUSDT", primary_fill_source: "BINANCE_USER_TRADES", created_to_fill_p95_ms: 6315271 }], top_entry_fallback_latency_groups: [{ key: "CORE_LONG|UNKNOWN|BINANCE_ORDER|XRPUSDT", market: "XRPUSDT", primary_fill_source: "BINANCE_ORDER", created_to_fill_p95_ms: 7580368 }], by_primary_fill_source: [{ key: "NO_FILL", rows_n: 2054, slippage_zero_rate: 1, slippage_measured_rate: 0.0004 }] } },
   });
 
   assert.strictEqual(report.current_status.objective_score, -7.4);
@@ -70,9 +70,10 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.current_status.feature_store_rows_n, 344);
   assert.strictEqual(report.current_status.feature_store_keys_n, 287);
   assert.strictEqual(report.current_status.portfolio_cluster_reduce_n, 2);
-  assert.strictEqual(report.current_status.execution_model_dataset_top_entry_latency_market, "XRPUSDT");
+  assert.strictEqual(report.current_status.execution_model_dataset_top_entry_latency_market, "BTCUSDT");
   assert.strictEqual(report.current_status.execution_model_dataset_top_fill_source, "NO_FILL");
-  assert.strictEqual(report.summary.execution_model_dataset_top_entry_latency_group, "CORE_LONG|UNKNOWN|BINANCE_ORDER|XRPUSDT");
+  assert.strictEqual(report.summary.execution_model_dataset_top_entry_latency_group, "EARLY_LONG|UNKNOWN|BINANCE_USER_TRADES|BTCUSDT");
+  assert.strictEqual(report.current_status.execution_model_dataset_top_fallback_latency_group, "CORE_LONG|UNKNOWN|BINANCE_ORDER|XRPUSDT");
   assert.strictEqual(report.authority_policy.degraded_timeout_policy.enabled, true);
   console.log("OPENCLAW_AUTONOMY_CONTRACT_TEST_OK");
 })();
