@@ -5261,6 +5261,26 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     }
   }
   let meta = mergeMeta(prevMeta, metaPatch);
+  const syncMarketRegimeRow = active ? readOpenClawMarketRegimeRow(symbol) : null;
+  const syncMarketRegimeCohort = normalizeOpenClawCohort(
+    (syncMarketRegimeRow && syncMarketRegimeRow.cohort)
+    || (prevMeta && prevMeta.openclaw_market_regime_cohort)
+  );
+  if (active && (syncMarketRegimeCohort || syncMarketRegimeRow || (prevMeta && prevMeta.openclaw_market_regime_cohort))) {
+    meta = mergeMeta(meta, {
+      openclaw_market_regime_cohort: syncMarketRegimeCohort || null,
+      openclaw_market_regime_objective_score: syncMarketRegimeRow && Number.isFinite(Number(syncMarketRegimeRow.objective_score))
+        ? Number(syncMarketRegimeRow.objective_score)
+        : (Number.isFinite(Number(prevMeta && prevMeta.openclaw_market_regime_objective_score))
+          ? Number(prevMeta.openclaw_market_regime_objective_score)
+          : null),
+      openclaw_market_regime_drop_verdict: syncMarketRegimeRow
+        ? (String(syncMarketRegimeRow.drop_verdict || "").trim().toUpperCase() || null)
+        : (prevMeta && prevMeta.openclaw_market_regime_drop_verdict
+          ? String(prevMeta.openclaw_market_regime_drop_verdict).trim().toUpperCase() || null
+          : null),
+    });
+  }
   const externalEntryTransition = active && (!prevActive || (prevSide && side && prevSide !== side));
   if (externalEntryTransition) {
     meta = mergeMeta(meta, {
