@@ -57,6 +57,22 @@ const { summarizeExecutionQuality } = require("../utils/executionQuality");
         weakness_scores: { EARLY: 0.49, CORE: 0.38 },
       },
     },
+    executionScopeTierRawDiff: {
+      summary: {
+        status: "EXECUTION_SCOPE_TIER_RAW_DIFF_READY",
+        target_tier: "EARLY",
+        top_false_positive_group: "FILLABLE|RUNTIME_EXCEPTION|LIVE_RUNTIME|EARLY_SHORT|BNBUSDT",
+        reference_group_mode: "EXACT_SOURCE_EVENT_MARKET",
+        mismatch_profile: {
+          top_reason: "IN_POSITION_SAME_DIR",
+          top_action: "ADD",
+          top_pos_state: "SHORT",
+          top_schedule_profile: "EXEC_CURRENT_BAR",
+          top_signal_to_intent_bucket: "5S_30S",
+          top_policy_block_hint: "NONE",
+        },
+      },
+    },
     intents: [
       { intent_id: "i1", created_at: "2026-04-01T00:00:00.000Z" },
       { intent_id: "i2", created_at: "2026-04-01T00:10:00.000Z" },
@@ -93,6 +109,10 @@ const { summarizeExecutionQuality } = require("../utils/executionQuality");
   assert.strictEqual(report.summary.execution_scope_tier_weaker_tier_by_macro_recall, "EARLY");
   assert.strictEqual(report.summary.execution_scope_tier_early_weakness_score, 0.49);
   assert.strictEqual(report.summary.execution_scope_tier_core_weakness_score, 0.38);
+  assert.strictEqual(report.summary.execution_scope_tier_raw_diff_status, "EXECUTION_SCOPE_TIER_RAW_DIFF_READY");
+  assert.strictEqual(report.summary.execution_scope_tier_raw_diff_top_reason, "IN_POSITION_SAME_DIR");
+  assert.strictEqual(report.summary.execution_scope_tier_raw_diff_top_action, "ADD");
+  assert.strictEqual(report.summary.execution_scope_tier_raw_diff_top_pos_state, "SHORT");
   assert.strictEqual(report.by_market[0].market, "BTCUSDT");
   assert.strictEqual(report.by_market[1].market, "SOLUSDT");
 })();

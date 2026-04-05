@@ -32,6 +32,7 @@ function summarizeExecutionQuality({
   executionScopeFalsePositiveDiagnostics = null,
   executionScopeTierComparison = null,
   executionScopeTierDiagnostics = null,
+  executionScopeTierRawDiff = null,
 } = {}) {
   const micro = microstructure && typeof microstructure === "object" ? microstructure : {};
   const metrics = micro.metrics && typeof micro.metrics === "object" ? micro.metrics : {};
@@ -64,6 +65,11 @@ function summarizeExecutionQuality({
     ? (executionScopeTierDiagnostics.summary && typeof executionScopeTierDiagnostics.summary === "object"
       ? executionScopeTierDiagnostics.summary
       : executionScopeTierDiagnostics)
+    : {};
+  const executionScopeTierRawDiffSummary = executionScopeTierRawDiff && typeof executionScopeTierRawDiff === "object"
+    ? (executionScopeTierRawDiff.summary && typeof executionScopeTierRawDiff.summary === "object"
+      ? executionScopeTierRawDiff.summary
+      : executionScopeTierRawDiff)
     : {};
   const executionScopeTierMetrics = executionScopeTrainRunSummary.metrics_by_entry_grade && typeof executionScopeTrainRunSummary.metrics_by_entry_grade === "object"
     ? executionScopeTrainRunSummary.metrics_by_entry_grade
@@ -233,6 +239,16 @@ function summarizeExecutionQuality({
       execution_scope_tier_diagnostics_policy_blocked_top_no_fill_reason: String(executionScopeTierDiagnosticsSummary.policy_blocked_top_no_fill_reason || "").trim() || null,
       execution_scope_tier_diagnostics_policy_blocked_lowest_coverage_feature: String(executionScopeTierDiagnosticsSummary.policy_blocked_lowest_coverage_feature || "").trim() || null,
       execution_scope_tier_diagnostics_policy_blocked_lowest_coverage_rate: toNum(executionScopeTierDiagnosticsSummary.policy_blocked_lowest_coverage_rate),
+      execution_scope_tier_raw_diff_status: String(executionScopeTierRawDiffSummary.status || "").trim() || null,
+      execution_scope_tier_raw_diff_target_tier: String(executionScopeTierRawDiffSummary.target_tier || "").trim() || null,
+      execution_scope_tier_raw_diff_top_false_positive_group: String(executionScopeTierRawDiffSummary.top_false_positive_group || "").trim() || null,
+      execution_scope_tier_raw_diff_reference_group_mode: String(executionScopeTierRawDiffSummary.reference_group_mode || "").trim() || null,
+      execution_scope_tier_raw_diff_top_reason: String(executionScopeTierRawDiffSummary.mismatch_profile && executionScopeTierRawDiffSummary.mismatch_profile.top_reason || "").trim() || null,
+      execution_scope_tier_raw_diff_top_action: String(executionScopeTierRawDiffSummary.mismatch_profile && executionScopeTierRawDiffSummary.mismatch_profile.top_action || "").trim() || null,
+      execution_scope_tier_raw_diff_top_pos_state: String(executionScopeTierRawDiffSummary.mismatch_profile && executionScopeTierRawDiffSummary.mismatch_profile.top_pos_state || "").trim() || null,
+      execution_scope_tier_raw_diff_top_schedule_profile: String(executionScopeTierRawDiffSummary.mismatch_profile && executionScopeTierRawDiffSummary.mismatch_profile.top_schedule_profile || "").trim() || null,
+      execution_scope_tier_raw_diff_top_signal_to_intent_bucket: String(executionScopeTierRawDiffSummary.mismatch_profile && executionScopeTierRawDiffSummary.mismatch_profile.top_signal_to_intent_bucket || "").trim() || null,
+      execution_scope_tier_raw_diff_top_policy_block_hint: String(executionScopeTierRawDiffSummary.mismatch_profile && executionScopeTierRawDiffSummary.mismatch_profile.top_policy_block_hint || "").trim() || null,
       review_reasons: reviewReasons,
       market_n: rows.length,
       top_watch_markets: rows.slice(0, 6).map((row) => ({
