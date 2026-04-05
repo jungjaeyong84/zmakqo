@@ -68,6 +68,7 @@ function buildMlExperimentRegistry({
   executionStageLatency = null,
   executionModelDataset = null,
   trainRun = null,
+  modelContract = null,
 } = {}) {
   const dataset = trainingDataset && typeof trainingDataset === "object" ? trainingDataset : {};
   const feature = featureStore && typeof featureStore === "object" ? featureStore : {};
@@ -76,6 +77,7 @@ function buildMlExperimentRegistry({
   const stageLatency = readSummary(executionStageLatency);
   const executionModel = readSummary(executionModelDataset);
   const trainRunSummary = readSummary(trainRun);
+  const modelContractSummary = readSummary(modelContract);
   const {
     datasetVersionId,
     featureStoreVersionId,
@@ -111,6 +113,7 @@ function buildMlExperimentRegistry({
     train_run_status: String(trainRunSummary.status || "").trim().toUpperCase() || null,
     train_run_id: String(trainRunSummary.train_run_id || "").trim() || null,
     train_run_model_kind: String(trainRunSummary.model_kind || "").trim() || null,
+    train_run_model_artifact_id: String(trainRunSummary.model_artifact_id || "").trim() || null,
     train_run_split_strategy: String(trainRunSummary.split_strategy || "").trim() || null,
     train_run_train_split_pct: toNum(trainRunSummary.train_split_pct),
     train_run_validation_split_pct: toNum(trainRunSummary.validation_split_pct),
@@ -118,6 +121,10 @@ function buildMlExperimentRegistry({
     train_run_metrics_snapshot: trainRunSummary.metrics_snapshot && typeof trainRunSummary.metrics_snapshot === "object"
       ? trainRunSummary.metrics_snapshot
       : null,
+    model_contract_status: String(modelContractSummary.status || "").trim().toUpperCase() || null,
+    model_contract_deployment_stage: String(modelContractSummary.deployment_stage || "").trim().toUpperCase() || null,
+    model_contract_canary_gate_status: String(modelContractSummary.canary_gate_status || "").trim().toUpperCase() || null,
+    model_contract_promotion_status: String(modelContractSummary.promotion_status || "").trim().toUpperCase() || null,
   };
 }
 

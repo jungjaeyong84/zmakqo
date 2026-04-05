@@ -23,6 +23,7 @@ const { buildMlTrainRun } = require("../utils/mlTrainRun");
       summary: {
         status: "ML_TRAIN_RUN_REPORTED",
         train_run_id: "TRAIN__001",
+        model_artifact_id: "MODEL__001",
         model_kind: "LOGISTIC_REGRESSION",
         split_strategy: "TIME_SERIES_HOLDOUT",
         train_split_pct: 70,
@@ -34,6 +35,7 @@ const { buildMlTrainRun } = require("../utils/mlTrainRun");
   });
   assert.strictEqual(reported.status, "ML_TRAIN_RUN_REPORTED");
   assert.strictEqual(reported.train_run_id, "TRAIN__001");
+  assert.strictEqual(reported.model_artifact_id, "MODEL__001");
   assert.strictEqual(reported.model_kind, "LOGISTIC_REGRESSION");
   assert.strictEqual(reported.metrics_snapshot.brier, 0.18);
   assert.strictEqual(reported.execution_dataset_version_id, "EXECUTION_MODEL_DATASET__xyz789");

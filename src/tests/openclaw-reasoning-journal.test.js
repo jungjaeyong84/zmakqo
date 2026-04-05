@@ -41,6 +41,12 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         ml_experiment_registry_experiment_id: "ML_BASELINE_ENV__abc123def4567890",
         ml_experiment_registry_execution_dataset_version_id: "EXECUTION_MODEL_DATASET__xyz789",
         ml_train_run_status: "ML_TRAIN_RUN_NOT_STARTED",
+        ml_train_run_model_artifact_id: null,
+        ml_model_contract_status: "ML_MODEL_CONTRACT_OFFLINE_ONLY",
+        ml_model_contract_deployment_stage: "OFFLINE_ONLY",
+        ml_model_contract_canary_gate_status: "BLOCK_GLOBAL_CANARY",
+        ml_model_contract_promotion_status: "HOLD_OFFLINE_ONLY",
+        ml_model_contract_model_artifact_id: null,
         execution_bottleneck_delta_status: "EXECUTION_BOTTLENECK_DELTA_READY",
         execution_bottleneck_delta_comparable: true,
         execution_bottleneck_delta_interpretation: "USE_DELTA_SIGNAL",
@@ -182,6 +188,8 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_ml_experiment_registry_experiment_id, "ML_BASELINE_ENV__abc123def4567890");
   assert.strictEqual(journal.summary.current_ml_experiment_registry_execution_dataset_version_id, "EXECUTION_MODEL_DATASET__xyz789");
   assert.strictEqual(journal.summary.current_ml_train_run_status, "ML_TRAIN_RUN_NOT_STARTED");
+  assert.strictEqual(journal.summary.current_ml_model_contract_status, "ML_MODEL_CONTRACT_OFFLINE_ONLY");
+  assert.strictEqual(journal.summary.current_ml_model_contract_deployment_stage, "OFFLINE_ONLY");
   assert.strictEqual(journal.summary.current_execution_bottleneck_delta_status, "EXECUTION_BOTTLENECK_DELTA_READY");
   assert.strictEqual(journal.summary.current_execution_bottleneck_delta_comparable, true);
   assert.strictEqual(journal.summary.current_execution_bottleneck_delta_interpretation, "USE_DELTA_SIGNAL");

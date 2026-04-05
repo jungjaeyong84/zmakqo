@@ -49,6 +49,7 @@ function buildMlTrainRun({
   ).trim() || null;
   const experimentId = String(existing.experiment_id || identity.experimentId || registry.experiment_id || "").trim() || null;
   const trainRunId = String(existing.train_run_id || "").trim() || null;
+  const modelArtifactId = String(existing.model_artifact_id || "").trim() || null;
   const modelKind = String(existing.model_kind || "").trim() || null;
   const splitStrategy = String(existing.split_strategy || "").trim() || null;
   const status = String(existing.status || "").trim().toUpperCase()
@@ -61,6 +62,7 @@ function buildMlTrainRun({
     feature_store_version_id: featureStoreVersionId,
     execution_dataset_version_id: executionDatasetVersionId,
     train_run_id: trainRunId,
+    model_artifact_id: modelArtifactId,
     model_kind: modelKind,
     split_strategy: splitStrategy,
     train_split_pct: toNum(existing.train_split_pct),

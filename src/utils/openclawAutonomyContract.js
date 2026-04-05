@@ -166,6 +166,7 @@ function deriveOpenClawAutonomyContract({
   mlExperimentRegistry = null,
   executionBottleneckDelta = null,
   mlTrainRun = null,
+  mlModelContract = null,
 } = {}) {
   const objectiveSummary = readSummary(objective);
   const objectiveSupervisorRaw = unwrapRawReport(objectiveSupervisor) || {};
@@ -191,11 +192,13 @@ function deriveOpenClawAutonomyContract({
   const mlExperimentRegistrySummary = readSummary(mlExperimentRegistry);
   const executionBottleneckDeltaSummary = readSummary(executionBottleneckDelta);
   const mlTrainRunSummary = readSummary(mlTrainRun);
+  const mlModelContractSummary = readSummary(mlModelContract);
   const executionModelStatus = toUpper(executionModelSummary.status) || "N_A";
   const executionStageLatencyStatus = toUpper(executionStageLatencySummary.status) || "N_A";
   const mlExperimentRegistryStatus = toUpper(mlExperimentRegistrySummary.status) || "N_A";
   const executionBottleneckDeltaStatus = toUpper(executionBottleneckDeltaSummary.status) || "N_A";
   const mlTrainRunStatus = toUpper(mlTrainRunSummary.status) || "N_A";
+  const mlModelContractStatus = toUpper(mlModelContractSummary.status) || "N_A";
   const executionBottleneckDeltaComparable = executionBottleneckDeltaStatus === "EXECUTION_BOTTLENECK_DELTA_READY";
   const executionBottleneckDeltaInterpretation = executionBottleneckDeltaComparable
     ? "USE_DELTA_SIGNAL"
@@ -487,8 +490,14 @@ function deriveOpenClawAutonomyContract({
       ml_experiment_registry_execution_dataset_version_id: String(mlExperimentRegistrySummary.execution_dataset_version_id || "").trim() || null,
       ml_train_run_status: mlTrainRunStatus,
       ml_train_run_id: String(mlTrainRunSummary.train_run_id || "").trim() || null,
+      ml_train_run_model_artifact_id: String(mlTrainRunSummary.model_artifact_id || "").trim() || null,
       ml_train_run_model_kind: String(mlTrainRunSummary.model_kind || "").trim() || null,
       ml_train_run_split_strategy: String(mlTrainRunSummary.split_strategy || "").trim() || null,
+      ml_model_contract_status: mlModelContractStatus,
+      ml_model_contract_deployment_stage: String(mlModelContractSummary.deployment_stage || "").trim() || null,
+      ml_model_contract_canary_gate_status: String(mlModelContractSummary.canary_gate_status || "").trim() || null,
+      ml_model_contract_promotion_status: String(mlModelContractSummary.promotion_status || "").trim() || null,
+      ml_model_contract_model_artifact_id: String(mlModelContractSummary.model_artifact_id || "").trim() || null,
       execution_bottleneck_delta_status: executionBottleneckDeltaStatus,
       execution_bottleneck_delta_comparable: executionBottleneckDeltaComparable,
       execution_bottleneck_delta_interpretation: executionBottleneckDeltaInterpretation,
@@ -598,7 +607,13 @@ function deriveOpenClawAutonomyContract({
       ml_experiment_registry_execution_dataset_version_id: String(mlExperimentRegistrySummary.execution_dataset_version_id || "").trim() || null,
       ml_train_run_status: mlTrainRunStatus,
       ml_train_run_id: String(mlTrainRunSummary.train_run_id || "").trim() || null,
+      ml_train_run_model_artifact_id: String(mlTrainRunSummary.model_artifact_id || "").trim() || null,
       ml_train_run_model_kind: String(mlTrainRunSummary.model_kind || "").trim() || null,
+      ml_model_contract_status: mlModelContractStatus,
+      ml_model_contract_deployment_stage: String(mlModelContractSummary.deployment_stage || "").trim() || null,
+      ml_model_contract_canary_gate_status: String(mlModelContractSummary.canary_gate_status || "").trim() || null,
+      ml_model_contract_promotion_status: String(mlModelContractSummary.promotion_status || "").trim() || null,
+      ml_model_contract_model_artifact_id: String(mlModelContractSummary.model_artifact_id || "").trim() || null,
       execution_stage_latency_status: executionStageLatencyStatus,
       execution_stage_latency_top_signal_to_intent_group: String(firstArrayRow(executionStageLatencySummary.top_signal_to_intent_groups)?.key || "").trim() || null,
       execution_stage_latency_top_operational_signal_to_intent_group: String(firstArrayRow(executionStageLatencySummary.top_operational_signal_to_intent_groups)?.key || "").trim() || null,

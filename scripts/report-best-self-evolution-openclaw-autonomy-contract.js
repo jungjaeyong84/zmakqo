@@ -43,6 +43,7 @@ const INPUTS = Object.freeze({
   mlExperimentRegistry: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_experiment_registry_latest.json"),
   executionBottleneckDelta: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_bottleneck_delta_latest.json"),
   mlTrainRun: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_train_run_latest.json"),
+  mlModelContract: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_model_contract_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -88,6 +89,7 @@ function renderMarkdown(report = {}) {
     `- model_readiness: ${summary.model_readiness_status || "N/A"} / rows=${status.model_readiness_rows_n != null ? status.model_readiness_rows_n : "N/A"} / realized=${status.model_readiness_realized_n != null ? status.model_readiness_realized_n : "N/A"} / invalid=${status.model_readiness_invalid_n != null ? status.model_readiness_invalid_n : "N/A"}`,
     `- feature_store: ${summary.feature_store_status || "N/A"} / rows=${status.feature_store_rows_n != null ? status.feature_store_rows_n : "N/A"} / keys=${status.feature_store_keys_n != null ? status.feature_store_keys_n : "N/A"}`,
     `- ml_train_run: ${status.ml_train_run_status || "N/A"} / ${status.ml_train_run_model_kind || "N/A"} / ${status.ml_train_run_id || "N/A"}`,
+    `- ml_model_contract: ${status.ml_model_contract_status || "N/A"} / ${status.ml_model_contract_deployment_stage || "N/A"} / ${status.ml_model_contract_canary_gate_status || "N/A"}`,
     `- execution_model_dataset: ${summary.execution_model_dataset_status || "N/A"} / rows=${status.execution_model_dataset_rows_n != null ? status.execution_model_dataset_rows_n : "N/A"} / filled=${status.execution_model_dataset_filled_n != null ? status.execution_model_dataset_filled_n : "N/A"} / rejected=${status.execution_model_dataset_rejected_n != null ? status.execution_model_dataset_rejected_n : "N/A"}`,
     `- execution_bottleneck_delta: ${summary.execution_bottleneck_delta_status || "N/A"} / comparable=${status.execution_bottleneck_delta_comparable ? "YES" : "NO"} / interpretation=${status.execution_bottleneck_delta_interpretation || "N/A"}`,
     "",
@@ -131,6 +133,7 @@ function main() {
     mlExperimentRegistry: readJsonRawSafe(INPUTS.mlExperimentRegistry, null),
     executionBottleneckDelta: readJsonRawSafe(INPUTS.executionBottleneckDelta, null),
     mlTrainRun: readJsonRawSafe(INPUTS.mlTrainRun, null),
+    mlModelContract: readJsonRawSafe(INPUTS.mlModelContract, null),
   });
   const output = {
     ok: true,

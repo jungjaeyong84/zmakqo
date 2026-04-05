@@ -19,7 +19,8 @@ const { buildMlExperimentRegistry } = require("../utils/mlExperimentRegistry");
     executionQuality: { summary: { status: "EXECUTION_QUALITY_REVIEW", top_operational_webhook_delay_cause: "IMMEDIATE_EXEC_WEBHOOK_SAVED_LATE_INTENT" } },
     executionStageLatency: { summary: { status: "EXECUTION_STAGE_LATENCY_READY", top_operational_signal_to_intent_groups: [{ key: "TV_WEBHOOK|EARLY_SHORT|XRPUSDT" }] } },
     executionModelDataset: { summary: { status: "EXECUTION_MODEL_DATASET_READY", version_id: "EXECUTION_MODEL_DATASET__xyz789" } },
-    trainRun: { summary: { status: "ML_TRAIN_RUN_NOT_STARTED" } },
+    trainRun: { summary: { status: "ML_TRAIN_RUN_NOT_STARTED", model_artifact_id: null } },
+    modelContract: { summary: { status: "ML_MODEL_CONTRACT_OFFLINE_ONLY", deployment_stage: "OFFLINE_ONLY", canary_gate_status: "BLOCK_GLOBAL_CANARY", promotion_status: "HOLD_OFFLINE_ONLY" } },
   });
 
   assert.strictEqual(report.status, "ML_EXPERIMENT_REGISTRY_READY");
@@ -31,6 +32,8 @@ const { buildMlExperimentRegistry } = require("../utils/mlExperimentRegistry");
   assert.strictEqual(report.execution_stage_latency_top_operational_signal_to_intent_group, "TV_WEBHOOK|EARLY_SHORT|XRPUSDT");
   assert.strictEqual(report.train_run_status, "ML_TRAIN_RUN_NOT_STARTED");
   assert.strictEqual(report.train_run_id, null);
+  assert.strictEqual(report.model_contract_status, "ML_MODEL_CONTRACT_OFFLINE_ONLY");
+  assert.strictEqual(report.model_contract_deployment_stage, "OFFLINE_ONLY");
 
   console.log("ML_EXPERIMENT_REGISTRY_TEST_OK");
 })();

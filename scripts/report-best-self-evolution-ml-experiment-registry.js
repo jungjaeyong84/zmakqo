@@ -21,6 +21,7 @@ const INPUTS = Object.freeze({
   executionStageLatency: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_stage_latency_latest.json"),
   executionModelDataset: path.join(OPS_DAILY_DIR, "execution_model_dataset_latest.json"),
   trainRun: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_train_run_latest.json"),
+  modelContract: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_model_contract_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -42,6 +43,7 @@ function renderMarkdown(report = {}) {
     `- execution_quality_status: ${summary.execution_quality_status || "N/A"}`,
     `- execution_stage_latency_status: ${summary.execution_stage_latency_status || "N/A"}`,
     `- train_run_status: ${summary.train_run_status || "N/A"} / ${summary.train_run_model_kind || "N/A"} / ${summary.train_run_id || "N/A"}`,
+    `- model_contract: ${summary.model_contract_status || "N/A"} / ${summary.model_contract_deployment_stage || "N/A"} / ${summary.model_contract_canary_gate_status || "N/A"}`,
     `- top_operational_webhook_delay_cause: ${summary.execution_quality_top_operational_webhook_delay_cause || "N/A"}`,
     `- top_operational_signal_to_intent_group: ${summary.execution_stage_latency_top_operational_signal_to_intent_group || "N/A"}`,
     "",
@@ -58,6 +60,7 @@ function main() {
     executionStageLatency: readJsonRawSafe(INPUTS.executionStageLatency, null),
     executionModelDataset: readJsonRawSafe(INPUTS.executionModelDataset, null),
     trainRun: readJsonRawSafe(INPUTS.trainRun, null),
+    modelContract: readJsonRawSafe(INPUTS.modelContract, null),
   });
   const payload = { ok: true, generated_at_kst: nowMeta.kst, inputs: INPUTS, summary };
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}_best_self_evolution_ml_experiment_registry`;

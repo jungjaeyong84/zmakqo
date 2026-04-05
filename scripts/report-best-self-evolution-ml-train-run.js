@@ -19,6 +19,7 @@ const INPUTS = Object.freeze({
   modelReadiness: path.join(OPS_DAILY_DIR, "best_self_evolution_model_readiness_latest.json"),
   executionModelDataset: path.join(OPS_DAILY_DIR, "execution_model_dataset_latest.json"),
   experimentRegistry: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_experiment_registry_latest.json"),
+  trainRunResult: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_train_run_result_latest.json"),
   existingTrainRun: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_train_run_manual_latest.json"),
 });
 
@@ -34,6 +35,7 @@ function renderMarkdown(report = {}) {
     `- feature_store_version_id: ${summary.feature_store_version_id || "N/A"}`,
     `- execution_dataset_version_id: ${summary.execution_dataset_version_id || "N/A"}`,
     `- train_run_id: ${summary.train_run_id || "N/A"}`,
+    `- model_artifact_id: ${summary.model_artifact_id || "N/A"}`,
     `- model_kind: ${summary.model_kind || "N/A"}`,
     `- split_strategy: ${summary.split_strategy || "N/A"}`,
     `- train/val/test: ${summary.train_split_pct != null ? summary.train_split_pct : "N/A"} / ${summary.validation_split_pct != null ? summary.validation_split_pct : "N/A"} / ${summary.test_split_pct != null ? summary.test_split_pct : "N/A"}`,
@@ -49,7 +51,7 @@ function main() {
     modelReadiness: readJsonRawSafe(INPUTS.modelReadiness, null),
     executionModelDataset: readJsonRawSafe(INPUTS.executionModelDataset, null),
     experimentRegistry: readJsonRawSafe(INPUTS.experimentRegistry, null),
-    existingTrainRun: readJsonRawSafe(INPUTS.existingTrainRun, null),
+    existingTrainRun: readJsonRawSafe(INPUTS.trainRunResult, null) || readJsonRawSafe(INPUTS.existingTrainRun, null),
   });
   const payload = { ok: true, generated_at_kst: nowMeta.kst, inputs: INPUTS, summary };
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}_best_self_evolution_ml_train_run`;
