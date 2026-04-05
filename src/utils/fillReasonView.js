@@ -17,6 +17,9 @@ function classifyFillExecution(event) {
     };
   }
 
+  if (code.startsWith("EXIT_TP_P0_") || code === "EXIT_TP_P0") {
+    return { key: "TP0", label: "0차 익절", text: "0차 익절 체결", code };
+  }
   if (code.startsWith("EXIT_TP_P1_") || code.startsWith("EXIT_TP_C_") || code === "EXIT_TP_P1" || code === "EXIT_TP_C") {
     return { key: "TP1", label: "1차 익절", text: "1차 익절 체결", code };
   }
@@ -64,6 +67,9 @@ function explainFillExecution(event) {
   };
   if (direct[code]) return direct[code];
 
+  if (code.startsWith("EXIT_TP_P0_") || code === "EXIT_TP_P0") {
+    return "초기 소이익 구간이 충족되어 일부 청산이 체결됐습니다.";
+  }
   if (code.startsWith("EXIT_TP_P1_") || code.startsWith("EXIT_TP_C_") || code === "EXIT_TP_P1" || code === "EXIT_TP_C") {
     return "1차 익절 조건이 충족되어 부분 또는 전량 청산이 체결됐습니다.";
   }

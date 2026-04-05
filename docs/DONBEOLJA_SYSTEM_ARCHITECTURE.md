@@ -89,6 +89,7 @@
 - 기본 군집 규칙:
   - `3번째 same-side cluster -> REDUCE_SIZE`
   - `4번째 correlated cluster -> BLOCK`
+  - `same-side / correlated same-side total exposure cap` 초과 시 추가 축소 또는 차단
 
 ### 6.2 EV Probability Calibration
 역할:
@@ -102,6 +103,15 @@
 
 의미:
 - EV gate 문제를 단순 threshold 완화로만 다루지 않고, 확률 모델 calibration부터 바로잡는다.
+
+### 6.3 Exit Microstructure
+역할:
+- TP1 이전 생존력을 높이기 위해 `FAST_TP0`, `지연 trail`, `추격 진입 차단`, `pre-TP1 time stop`을 단계적으로 적용한다.
+
+현재 원칙:
+- `FAST_TP0`는 `절대 % floor + ATR 보정`으로 계산한다.
+- `TP1` 직후에는 trail을 즉시 켜지 않고 `1봉 또는 추가 MFE` 조건을 기록한다.
+- 같은 방향 포지션 군집은 count뿐 아니라 total exposure cap으로도 제어한다.
 
 ### 7. 수익 집계
 역할:

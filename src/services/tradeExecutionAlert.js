@@ -175,7 +175,9 @@ function ratioToPctToken(rawRatio, { abs = false } = {}) {
 
 function parseExitEventMeta(event) {
   const ev = String(event || "").toUpperCase();
-  let m = ev.match(/^EXIT_TP_P1_([0-9]+(?:\.[0-9]+)?)P$/);
+  let m = ev.match(/^EXIT_TP_P0_([0-9]+(?:\.[0-9]+)?)P$/);
+  if (m) return { token: `TP0_${m[1]}`, label: `익절(TP0) ${m[1]}%` };
+  m = ev.match(/^EXIT_TP_P1_([0-9]+(?:\.[0-9]+)?)P$/);
   if (m) return { token: `TP1_${m[1]}`, label: `익절(TP1) ${m[1]}%` };
   m = ev.match(/^EXIT_TP_C_([0-9]+(?:\.[0-9]+)?)P$/);
   if (m) return { token: `TP1_${m[1]}`, label: `익절(TP1) ${m[1]}%` };
@@ -189,6 +191,7 @@ function parseExitEventMeta(event) {
   if (m) return { token: `BE_${m[1]}`, label: `브레이크이븐 ${m[1]}%` };
   m = ev.match(/^EXIT_TIME_STOP_(\d+)B$/);
   if (m) return { token: `TIME_STOP_${m[1]}B`, label: `시간청산 ${m[1]}봉` };
+  if (ev.startsWith("EXIT_TP_P0")) return { token: "TP0", label: "익절(TP0)" };
   if (ev.startsWith("EXIT_TP_P1")) return { token: "TP1", label: "익절(TP1)" };
   if (ev.startsWith("EXIT_TP_C")) return { token: "TP1", label: "익절(TP1)" };
   if (ev.startsWith("EXIT_TRAIL")) return { token: "TRAIL", label: "트레일링" };

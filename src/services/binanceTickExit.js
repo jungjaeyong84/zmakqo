@@ -7,7 +7,7 @@ const { getFirestore } = require("../storage/firestore");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { getPosition } = require("../storage/positions");
 const { clearTpP1PendingIfUnchanged, posId } = require("../storage/positionsPaper");
-const { resolveExitRulesForPosition, computeRunnerExitStopPrice } = require("../engine/signalEngine");
+const { resolveExitRulesForPosition, computeRunnerExitStopPrice, resolveTrailDelayState } = require("../engine/signalEngine");
 const { runPaperMarket } = require("../engine/paperUpbitRunner");
 const { resolveCloseSide, resolvePositionSideFromPosition } = require("../utils/positionSide");
 const {
@@ -19,6 +19,8 @@ const {
   __test: binancePrivateTest,
 } = require("../exchanges/binanceFuturesPrivate");
 const { sendAlert } = require("../utils/alerts");
+const { runActionPreHooks, runActionPostHooks, emitActionEvent } = require("../utils/actionExecutionHooks");
+const { auditBinanceExitIntegrity } = require("./exitIntegrityAudit");
 
 function nowMs() {
   return Date.now();
@@ -98,6 +100,10 @@ function structuredLog(event, payload = {}, level = "log") {
   } catch (_) {
     console[fn](`[${event}] ${JSON.stringify(payload)}`);
   }
+}
+
+function structuredLogWriter(event, payload = {}, level = "log") {
+  structuredLog(event, payload, level);
 }
 
 async function resolveTickExitAlertChannel(exchange = "BINANCEFUT") {
@@ -532,7 +538,16 @@ function computeExitTriggers({ pos, rules, leverageEff, nativeProtectionState } 
     if (Number.isFinite(bePx)) out.push({ kind: "BE", price: bePx });
   }
 
-  const trailEnabled = meta.trail_active === true || tpP1Pending;
+  const trailDelay = resolveTrailDelayState({
+    meta,
+    tpP1Done,
+    currentBarMs: Date.now(),
+    closePx: null,
+    side,
+    leverageEff,
+    rules,
+  });
+  const trailEnabled = trailDelay.trailActive || tpP1Pending;
   if ((tpP1Done || tpP1Pending) && trailEnabled && (Number.isFinite(rules.TRAIL_R_MULTIPLE) || Number.isFinite(rules.TRAIL_PCT))) {
     const runnerExit = computeRunnerExitStopPrice({
       avg,
@@ -540,7 +555,7 @@ function computeExitTriggers({ pos, rules, leverageEff, nativeProtectionState } 
       side,
       rules,
       tpP1Done,
-      trailActive: meta.trail_active === true,
+      trailActive: trailDelay.trailActive,
       trailHigh: Number(meta.trail_high),
       trailLow: Number(meta.trail_low),
       entryRDistance: Number(meta.entry_r_distance),
@@ -581,7 +596,17 @@ function shouldActivateFastLane({ pos, price, triggers, fastLanePct, side } = {}
   const pct = Number(fastLanePct);
   if (!Number.isFinite(pct) || pct <= 0) return false;
   const meta = (pos && typeof pos.meta === "object") ? pos.meta : {};
-  const trailEnabled = meta.trail_active === true || meta.tp_p1_pending === true;
+  const rules = resolveExitRulesForPosition({ exchange: pos.exchange, position: pos });
+  const trailDelay = resolveTrailDelayState({
+    meta,
+    tpP1Done: meta.tp_p1_done === true,
+    currentBarMs: Date.now(),
+    closePx: price,
+    side,
+    leverageEff: Number(meta.external_leverage || pos.leverage || 1),
+    rules,
+  });
+  const trailEnabled = trailDelay.trailActive || meta.tp_p1_pending === true;
   const trailReady = meta.tp_p1_done === true || meta.tp_p1_pending === true;
   if (!trailReady || !trailEnabled) return false;
 
@@ -813,6 +838,20 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
         v: 0,
       };
       const runId = `RUN__BINANCEFUT__${symbol}__TICK_EXIT__${now}`;
+      const pre = runActionPreHooks({
+        action: "BINANCE_TICK_EXIT_MARKET_RUN",
+        runId,
+        exchange: "BINANCEFUT",
+        symbol,
+        tf: signalTf,
+        signalEvent: "TICK_EXIT",
+        decisionReason: pendingForced ? "PENDING_INTENT_FORCED" : "NEAR_TRIGGER",
+        source: "BINANCE_TICK_EXIT",
+        executionMode: "LIVE",
+        intent: "EXIT",
+        writer: structuredLogWriter,
+        persist: true,
+      });
       const runResult = await runPaperMarket({
         exchange: "BINANCEFUT",
         symbol,
@@ -826,6 +865,56 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
         backfillExitOnly: true,
         runId,
       });
+      runActionPostHooks({
+        envelope: pre.envelope,
+        ok: true,
+        reason: "TICK_EXIT_MARKET_RUN_COMPLETED",
+        writer: structuredLogWriter,
+        persist: true,
+        result: {
+          fills_executed: Number(runResult && runResult.fills_executed) || 0,
+          intents_created: Number(runResult && runResult.intents_created) || 0,
+          pending_forced: pendingForced === true,
+        },
+      });
+      if ((Number(runResult && runResult.fills_executed) || 0) > 0 || (Number(runResult && runResult.intents_created) || 0) > 0) {
+        try {
+          const integrity = await auditBinanceExitIntegrity({ symbols: [symbol], includeFlat: true });
+          const issueCount = Number(integrity && integrity.issue_count) || 0;
+          const topIssue = Array.isArray(integrity && integrity.issues) && integrity.issues.length
+            ? integrity.issues[0]
+            : null;
+          emitActionEvent({
+            event: "action_post_integrity",
+            envelope: pre.envelope,
+            writer: structuredLogWriter,
+            persist: true,
+            extra: {
+              hook: "post",
+              ok: integrity && integrity.ok === true,
+              issue_count: issueCount,
+              top_issue_code: topIssue && topIssue.code ? String(topIssue.code).toUpperCase() : null,
+              top_issue_severity: topIssue && topIssue.severity ? String(topIssue.severity).toUpperCase() : null,
+              audit_scope: "EXIT_INTEGRITY_SYMBOL",
+            },
+            level: issueCount > 0 ? "warn" : "log",
+          });
+        } catch (auditErr) {
+          emitActionEvent({
+            event: "action_post_integrity",
+            envelope: pre.envelope,
+            writer: structuredLogWriter,
+            persist: true,
+            extra: {
+              hook: "post",
+              ok: false,
+              audit_scope: "EXIT_INTEGRITY_SYMBOL",
+              error: String(auditErr && auditErr.message || auditErr).slice(0, 240),
+            },
+            level: "warn",
+          });
+        }
+      }
       try {
         const fillsExecuted = Number(runResult && runResult.fills_executed);
         const intentsCreated = Number(runResult && runResult.intents_created);
@@ -840,6 +929,30 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
       triggered += 1;
     } catch (symbolErr) {
       const errText = String(symbolErr && (symbolErr.stack || symbolErr.message) || symbolErr).slice(0, 500);
+      runActionPostHooks({
+        envelope: {
+          run_id: null,
+          signal_id: null,
+          intent_id: null,
+          signal_event: "TICK_EXIT",
+          ts: new Date().toISOString(),
+          exchange: "BINANCEFUT",
+          symbol: String(symbol || "").toUpperCase() || null,
+          tf: signalTf || null,
+          decision_reason: "SYMBOL_LOOP_ERROR",
+          source: "BINANCE_TICK_EXIT",
+          execution_mode: "LIVE",
+          action: "BINANCE_TICK_EXIT_MARKET_RUN",
+        },
+        ok: false,
+        reason: "TICK_EXIT_MARKET_RUN_FAILED",
+        writer: structuredLogWriter,
+        persist: true,
+        result: null,
+        extra: {
+          error: errText,
+        },
+      });
       structuredLog("tick_exit_symbol_fail", {
         exchange: "BINANCEFUT",
         symbol: String(symbol).toUpperCase(),

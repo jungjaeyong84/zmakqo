@@ -222,6 +222,16 @@ const PORTFOLIO_CLUSTER_REDUCE_SCALE = (() => {
   if (Number.isFinite(n) && n > 0 && n <= 1) return n;
   return 0.5;
 })();
+const PORTFOLIO_CLUSTER_MAX_SAME_SIDE_EXPOSURE = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_PORTFOLIO_CLUSTER_MAX_SAME_SIDE_EXPOSURE);
+  if (Number.isFinite(n) && n > 0) return n;
+  return 2.5;
+})();
+const PORTFOLIO_CLUSTER_MAX_CORRELATED_SAME_SIDE_EXPOSURE = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_PORTFOLIO_CLUSTER_MAX_CORRELATED_SAME_SIDE_EXPOSURE);
+  if (Number.isFinite(n) && n > 0) return n;
+  return 2.0;
+})();
 const PORTFOLIO_CLUSTER_CORRELATED_MARKETS = normalizeUpperList(
   process.env.LIVE_EXEC_POLICY_PORTFOLIO_CLUSTER_CORRELATED_MARKETS
   || "BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT,XRPUSDT,DOGEUSDT,AXSUSDT"
@@ -471,6 +481,7 @@ function derivePortfolioClusterGuard({
   exchange = null,
   market = null,
   desiredSide = null,
+  qtyPct = null,
 } = {}) {
   const ex = upper(exchange);
   const mk = upper(market);
@@ -499,19 +510,39 @@ function derivePortfolioClusterGuard({
   const sameSidePositions = sameExchangePositions.filter((row) => row.side === side);
   const correlatedSameSidePositions = sameSidePositions.filter((row) => isCorrelatedClusterPair(mk, row.market));
   const altSameSidePositions = correlatedSameSidePositions.filter((row) => !PORTFOLIO_CLUSTER_BENCHMARK_SET.has(row.market));
+  const sameSideExposure = sameSidePositions.reduce((sum, row) => sum + (toNum(row.size_pct) || 1), 0);
+  const correlatedSameSideExposure = correlatedSameSidePositions.reduce((sum, row) => sum + (toNum(row.size_pct) || 1), 0);
+  const incomingExposure = Number.isFinite(toNum(qtyPct)) && Number(qtyPct) > 0 ? Number(qtyPct) : 1;
   const selfCorrelated = PORTFOLIO_CLUSTER_CORRELATED_SET.has(mk);
   const selfAlt = selfCorrelated && !PORTFOLIO_CLUSTER_BENCHMARK_SET.has(mk);
   const sameSideAfter = sameSidePositions.length + 1;
   const correlatedSameSideAfter = correlatedSameSidePositions.length + (selfCorrelated ? 1 : 0);
   const altSameSideAfter = altSameSidePositions.length + (selfAlt ? 1 : 0);
+  const sameSideExposureAfter = sameSideExposure + incomingExposure;
+  const correlatedSameSideExposureAfter = correlatedSameSideExposure + (selfCorrelated ? incomingExposure : 0);
+  const exceedsSameSideExposureCap = sameSideExposureAfter > PORTFOLIO_CLUSTER_MAX_SAME_SIDE_EXPOSURE;
+  const exceedsCorrelatedExposureCap = correlatedSameSideExposureAfter > PORTFOLIO_CLUSTER_MAX_CORRELATED_SAME_SIDE_EXPOSURE;
   const blocked = sameSideAfter >= PORTFOLIO_CLUSTER_BLOCK_SAME_SIDE_AFTER
-    || correlatedSameSideAfter >= PORTFOLIO_CLUSTER_BLOCK_CORRELATED_AFTER;
+    || correlatedSameSideAfter >= PORTFOLIO_CLUSTER_BLOCK_CORRELATED_AFTER
+    || (exceedsSameSideExposureCap && sameSideExposure >= PORTFOLIO_CLUSTER_MAX_SAME_SIDE_EXPOSURE)
+    || (exceedsCorrelatedExposureCap && correlatedSameSideExposure >= PORTFOLIO_CLUSTER_MAX_CORRELATED_SAME_SIDE_EXPOSURE);
+  const sameSideCapScale = exceedsSameSideExposureCap
+    ? clamp((PORTFOLIO_CLUSTER_MAX_SAME_SIDE_EXPOSURE - sameSideExposure) / Math.max(incomingExposure, 1e-9), 0, 1)
+    : 1;
+  const correlatedCapScale = exceedsCorrelatedExposureCap
+    ? clamp((PORTFOLIO_CLUSTER_MAX_CORRELATED_SAME_SIDE_EXPOSURE - correlatedSameSideExposure) / Math.max(selfCorrelated ? incomingExposure : 1, 1e-9), 0, 1)
+    : 1;
+  const capScale = Math.min(sameSideCapScale, correlatedCapScale);
   const reduce = !blocked && (
     sameSideAfter >= PORTFOLIO_CLUSTER_REDUCE_SAME_SIDE_AFTER
     || correlatedSameSideAfter >= PORTFOLIO_CLUSTER_REDUCE_CORRELATED_AFTER
+    || exceedsSameSideExposureCap
+    || exceedsCorrelatedExposureCap
   );
   let reason = null;
-  if (blocked) reason = "LIVE_POLICY_PORTFOLIO_CLUSTER_BLOCK";
+  if (blocked && (exceedsSameSideExposureCap || exceedsCorrelatedExposureCap)) reason = "LIVE_POLICY_PORTFOLIO_CLUSTER_CAP_BLOCK";
+  else if (blocked) reason = "LIVE_POLICY_PORTFOLIO_CLUSTER_BLOCK";
+  else if (reduce && (exceedsSameSideExposureCap || exceedsCorrelatedExposureCap)) reason = "LIVE_POLICY_PORTFOLIO_CLUSTER_CAP_REDUCE";
   else if (reduce) reason = "LIVE_POLICY_PORTFOLIO_CLUSTER_REDUCE";
   return {
     enabled: PORTFOLIO_CLUSTER_ENABLED,
@@ -519,11 +550,13 @@ function derivePortfolioClusterGuard({
     blocked,
     reduce,
     reason,
-    scale: reduce ? PORTFOLIO_CLUSTER_REDUCE_SCALE : 1,
+    scale: reduce ? Math.min(PORTFOLIO_CLUSTER_REDUCE_SCALE, capScale) : 1,
     desiredSide: side,
     sameSideAfter,
     correlatedSameSideAfter,
     altSameSideAfter,
+    sameSideExposureAfter,
+    correlatedSameSideExposureAfter,
     activeSameSideMarkets: sameSidePositions.map((row) => row.market),
     activeCorrelatedSameSideMarkets: correlatedSameSidePositions.map((row) => row.market),
     activeAltSameSideMarkets: altSameSidePositions.map((row) => row.market),
@@ -1055,6 +1088,7 @@ function evaluateLiveEntryPolicy({
     exchange: ex,
     market,
     desiredSide,
+    qtyPct: qty,
   });
   const otherServerPolicyWatchOnlyBlocked = DRIFT_REMEDIATION_ENABLED
     && DRIFT_REMEDIATION_WATCH_ONLY_BLOCK
@@ -1118,6 +1152,8 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_portfolio_cluster_same_side_after: portfolioCluster.sameSideAfter,
     _live_exec_policy_portfolio_cluster_correlated_same_side_after: portfolioCluster.correlatedSameSideAfter,
     _live_exec_policy_portfolio_cluster_alt_same_side_after: portfolioCluster.altSameSideAfter,
+    _live_exec_policy_portfolio_cluster_same_side_exposure_after: portfolioCluster.sameSideExposureAfter,
+    _live_exec_policy_portfolio_cluster_correlated_same_side_exposure_after: portfolioCluster.correlatedSameSideExposureAfter,
     _live_exec_policy_portfolio_cluster_active_same_side_markets: portfolioCluster.activeSameSideMarkets || [],
     _live_exec_policy_portfolio_cluster_active_correlated_same_side_markets: portfolioCluster.activeCorrelatedSameSideMarkets || [],
   };
@@ -1299,6 +1335,8 @@ function evaluateLiveEntryPolicy({
         portfolio_cluster_same_side_after: portfolioCluster.sameSideAfter,
         portfolio_cluster_correlated_same_side_after: portfolioCluster.correlatedSameSideAfter,
         portfolio_cluster_alt_same_side_after: portfolioCluster.altSameSideAfter,
+        portfolio_cluster_same_side_exposure_after: portfolioCluster.sameSideExposureAfter,
+        portfolio_cluster_correlated_same_side_exposure_after: portfolioCluster.correlatedSameSideExposureAfter,
       },
     };
   }
@@ -1447,6 +1485,8 @@ module.exports = {
     portfolio_cluster_block_same_side_after: PORTFOLIO_CLUSTER_BLOCK_SAME_SIDE_AFTER,
     portfolio_cluster_reduce_correlated_after: PORTFOLIO_CLUSTER_REDUCE_CORRELATED_AFTER,
     portfolio_cluster_block_correlated_after: PORTFOLIO_CLUSTER_BLOCK_CORRELATED_AFTER,
+    portfolio_cluster_max_same_side_exposure: PORTFOLIO_CLUSTER_MAX_SAME_SIDE_EXPOSURE,
+    portfolio_cluster_max_correlated_same_side_exposure: PORTFOLIO_CLUSTER_MAX_CORRELATED_SAME_SIDE_EXPOSURE,
     learning_epoch_exception_release_enabled: LEARNING_EPOCH_EXCEPTION_RELEASE_ENABLED,
     cache_ttl_ms: CACHE_TTL_MS,
     scale_min: SCALE_MIN,

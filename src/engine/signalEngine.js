@@ -99,15 +99,94 @@ function resolveTpP1State(meta = {}) {
   };
 }
 
+function resolveTpP0State(meta = {}) {
+  return { tpP0Done: meta.tp_p0_done === true };
+}
+
+function resolveTpP0Pct({ rules = null, meta = null } = {}) {
+  const ruleSafe = rules && typeof rules === "object" ? rules : {};
+  const metaSafe = meta && typeof meta === "object" ? meta : {};
+  const basePct = toNum(ruleSafe.TP_P0);
+  const atrPct = Math.abs(toNum(metaSafe.ev_gate_atr_pct));
+  const atrMultiple = toNum(ruleSafe.TP_P0_ATR_MULTIPLE);
+  if (Number.isFinite(atrPct) && atrPct > 0 && Number.isFinite(atrMultiple) && atrMultiple > 0) {
+    if (Number.isFinite(basePct) && basePct > 0) return Math.max(basePct, atrPct * atrMultiple);
+    return atrPct * atrMultiple;
+  }
+  return Number.isFinite(basePct) && basePct > 0 ? basePct : null;
+}
+
+function resolveTrailDelayState({
+  meta = null,
+  tpP1Done = false,
+  currentBarMs = null,
+  closePx = null,
+  side = null,
+  leverageEff = null,
+  rules = null,
+} = {}) {
+  const metaSafe = meta && typeof meta === "object" ? meta : {};
+  const rawTrailActive = metaSafe.trail_active === true;
+  const barsRequired = Math.max(0, Math.round(toNum(metaSafe.trail_delay_bars_required) ?? toNum(rules && rules.TRAIL_DELAY_BARS) ?? 0));
+  const mfePctRequired = toNum(metaSafe.trail_delay_mfe_pct_required) ?? toNum(rules && rules.TRAIL_DELAY_MFE_PCT);
+  const tp1BarMs = toNum(metaSafe.tp_p1_bar_ms) ?? parseIsoMs(metaSafe.tp_p1_at);
+  const tfMs = Math.max(0, Math.round(toNum(metaSafe.entry_exec_tf_ms) || 0));
+  const tp1Price = toNum(metaSafe.tp_p1_price);
+  const sideUpper = String(side || "").toUpperCase() === "SHORT" ? "SHORT" : "LONG";
+  const lev = toNum(leverageEff);
+  const currentMs = toNum(currentBarMs);
+  const barsReady = rawTrailActive || (
+    tpP1Done === true
+    && barsRequired > 0
+    && Number.isFinite(currentMs)
+    && Number.isFinite(tp1BarMs)
+    && Number.isFinite(tfMs)
+    && tfMs > 0
+    && currentMs >= (tp1BarMs + (barsRequired * tfMs))
+  );
+  const mfeMove = Number.isFinite(mfePctRequired) && mfePctRequired > 0 && Number.isFinite(lev) && lev > 0
+    ? (mfePctRequired / lev)
+    : null;
+  let mfeReady = rawTrailActive;
+  if (!mfeReady && tpP1Done === true && Number.isFinite(mfeMove) && Number.isFinite(tp1Price) && tp1Price > 0 && Number.isFinite(closePx) && closePx > 0) {
+    const targetPx = sideUpper === "SHORT"
+      ? (tp1Price * (1 - mfeMove))
+      : (tp1Price * (1 + mfeMove));
+    mfeReady = sideUpper === "SHORT" ? (closePx <= targetPx) : (closePx >= targetPx);
+  }
+  const delayActive = tpP1Done === true && !rawTrailActive;
+  const trailActive = rawTrailActive || (delayActive && (barsReady || mfeReady));
+  let releaseReason = null;
+  if (rawTrailActive) releaseReason = "TRAIL_ALREADY_ACTIVE";
+  else if (barsReady && mfeReady) releaseReason = "BAR_OR_MFE_BOTH";
+  else if (barsReady) releaseReason = "BAR_DELAY_RELEASE";
+  else if (mfeReady) releaseReason = "MFE_DELAY_RELEASE";
+  return {
+    rawTrailActive,
+    delayActive,
+    barsRequired,
+    mfePctRequired,
+    barsReady,
+    mfeReady,
+    trailActive,
+    releaseReason,
+  };
+}
+
 const DEFAULT_RULES = (CHARTER_EXPECTATIONS && CHARTER_EXPECTATIONS.signal_engine)
   ? (CHARTER_EXPECTATIONS.signal_engine.default || CHARTER_EXPECTATIONS.signal_engine)
   : {
     SL: -0.04,
+    TP_P0: 0.008,
+    TP_P0_QTY: 0.25,
+    TP_P0_ATR_MULTIPLE: 0.8,
     TP_P1: 0.06,
     TP_P1_QTY: 0.5,
     TP_C: null,
     BE_ENABLE: true,
     BE_PCT: null,
+    TRAIL_DELAY_BARS: 1,
+    TRAIL_DELAY_MFE_PCT: 0.005,
     TRAIL_R_MULTIPLE: 1.0,
     TRAIL_PCT: 0.025,
     RUNNER_MIN_PROFIT_PCT: null,
@@ -115,11 +194,16 @@ const DEFAULT_RULES = (CHARTER_EXPECTATIONS && CHARTER_EXPECTATIONS.signal_engin
 
 const SIGNAL_ENGINE_RULES = {
   SL: parseNumEnv("ENGINE_SL", DEFAULT_RULES.SL),
+  TP_P0: parseNumEnv("ENGINE_TP_P0", DEFAULT_RULES.TP_P0),
+  TP_P0_QTY: parseNumEnv("ENGINE_TP_P0_QTY", DEFAULT_RULES.TP_P0_QTY),
+  TP_P0_ATR_MULTIPLE: parseNumEnv("ENGINE_TP_P0_ATR_MULTIPLE", DEFAULT_RULES.TP_P0_ATR_MULTIPLE),
   TP_P1: parseNumEnv("ENGINE_TP_P1", DEFAULT_RULES.TP_P1),
   TP_P1_QTY: parseNumEnv("ENGINE_TP_P1_QTY", DEFAULT_RULES.TP_P1_QTY),
   TP_C: parseNumEnv("ENGINE_TP_C", DEFAULT_RULES.TP_C),
   BE_ENABLE: parseBoolEnv("ENGINE_BE_ENABLE", DEFAULT_RULES.BE_ENABLE),
   BE_PCT: parseNumEnv("ENGINE_BE_PCT", DEFAULT_RULES.BE_PCT),
+  TRAIL_DELAY_BARS: parseNumEnv("ENGINE_TRAIL_DELAY_BARS", DEFAULT_RULES.TRAIL_DELAY_BARS),
+  TRAIL_DELAY_MFE_PCT: parseNumEnv("ENGINE_TRAIL_DELAY_MFE_PCT", DEFAULT_RULES.TRAIL_DELAY_MFE_PCT),
   TRAIL_R_MULTIPLE: parseNumEnv("ENGINE_TRAIL_R_MULTIPLE", DEFAULT_RULES.TRAIL_R_MULTIPLE),
   TRAIL_PCT: parseNumEnv("ENGINE_TRAIL_PCT", DEFAULT_RULES.TRAIL_PCT),
   RUNNER_MIN_PROFIT_PCT: parseNumEnv("ENGINE_RUNNER_MIN_PROFIT_PCT", DEFAULT_RULES.RUNNER_MIN_PROFIT_PCT),
@@ -130,22 +214,32 @@ const TP_P1_DEBUG = parseBoolEnv("TP_P1_DEBUG", false);
 const EXCHANGE_RULES = {
   UPBIT: {
     SL: -0.015,
+    TP_P0: 0.008,
+    TP_P0_QTY: 0.25,
+    TP_P0_ATR_MULTIPLE: 0.8,
     TP_P1: 0.03,
     TP_P1_QTY: 0.3,
     TP_C: null,
     BE_ENABLE: true,
     BE_PCT: null,
+    TRAIL_DELAY_BARS: 1,
+    TRAIL_DELAY_MFE_PCT: 0.005,
     TRAIL_R_MULTIPLE: 1.0,
     TRAIL_PCT: 0.015,
   },
   BINANCEFUT: {
     SL: -0.0165,
+    TP_P0: 0.008,
+    TP_P0_QTY: 0.25,
+    TP_P0_ATR_MULTIPLE: 0.8,
     TP_P1: 0.0325,
     TP_P1_QTY: 0.5,
     TP_C: null,
     BE_ENABLE: true,
     // Keep small realized edge after TP1; prevents many short winners from reverting to losses.
     BE_PCT: 0.0025,
+    TRAIL_DELAY_BARS: 1,
+    TRAIL_DELAY_MFE_PCT: 0.005,
     TRAIL_R_MULTIPLE: 0.9,
     // Legacy fallback for positions without entry R metadata.
     TRAIL_PCT: 0.01,
@@ -153,11 +247,16 @@ const EXCHANGE_RULES = {
   },
   KIWOOM: {
     SL: -0.03,
+    TP_P0: 0.008,
+    TP_P0_QTY: 0.25,
+    TP_P0_ATR_MULTIPLE: 0.8,
     TP_P1: 0.05,
     TP_P1_QTY: 0.5,
     TP_C: null,
     BE_ENABLE: true,
     BE_PCT: null,
+    TRAIL_DELAY_BARS: 1,
+    TRAIL_DELAY_MFE_PCT: 0.005,
     TRAIL_R_MULTIPLE: 1.0,
     TRAIL_PCT: 0.03,
   },
@@ -165,11 +264,16 @@ const EXCHANGE_RULES = {
 
 const BINANCE_FUTURES_AGGRESSIVE_RULES = {
   SL: -0.02,
+  TP_P0: 0.008,
+  TP_P0_QTY: 0.25,
+  TP_P0_ATR_MULTIPLE: 0.8,
   TP_P1: 0.03,
   TP_P1_QTY: 0.5,
   TP_C: null,
   BE_ENABLE: true,
   BE_PCT: 0.0025,
+  TRAIL_DELAY_BARS: 1,
+  TRAIL_DELAY_MFE_PCT: 0.005,
   TRAIL_R_MULTIPLE: 1.0,
   TRAIL_PCT: 0.015,
   RUNNER_MIN_PROFIT_PCT: 0.02,
@@ -220,18 +324,28 @@ function normalizeExitRules(rules, fallbackRules) {
   };
   const out = {
     SL: pickNum("SL"),
+    TP_P0: pickNum("TP_P0"),
+    TP_P0_QTY: pickNum("TP_P0_QTY"),
+    TP_P0_ATR_MULTIPLE: pickNum("TP_P0_ATR_MULTIPLE"),
     TP_P1: pickNum("TP_P1"),
     TP_P1_QTY: pickNum("TP_P1_QTY"),
     TP_C: pickNum("TP_C"),
     BE_PCT: pickNum("BE_PCT"),
+    TRAIL_DELAY_BARS: pickNum("TRAIL_DELAY_BARS"),
+    TRAIL_DELAY_MFE_PCT: pickNum("TRAIL_DELAY_MFE_PCT"),
     TRAIL_R_MULTIPLE: pickNum("TRAIL_R_MULTIPLE"),
     TRAIL_PCT: pickNum("TRAIL_PCT"),
     RUNNER_MIN_PROFIT_PCT: pickNum("RUNNER_MIN_PROFIT_PCT"),
     BE_ENABLE: src.BE_ENABLE == null ? (fb.BE_ENABLE !== false) : !!src.BE_ENABLE,
   };
   if (!Number.isFinite(out.SL)) out.SL = fb.SL;
+  if (!Number.isFinite(out.TP_P0) || out.TP_P0 <= 0) out.TP_P0 = fb.TP_P0;
+  if (!Number.isFinite(out.TP_P0_QTY) || out.TP_P0_QTY <= 0) out.TP_P0_QTY = fb.TP_P0_QTY;
+  if (!Number.isFinite(out.TP_P0_ATR_MULTIPLE) || out.TP_P0_ATR_MULTIPLE <= 0) out.TP_P0_ATR_MULTIPLE = fb.TP_P0_ATR_MULTIPLE;
   if (!Number.isFinite(out.TP_P1)) out.TP_P1 = fb.TP_P1;
   if (!Number.isFinite(out.TP_P1_QTY)) out.TP_P1_QTY = fb.TP_P1_QTY;
+  if (!Number.isFinite(out.TRAIL_DELAY_BARS) || out.TRAIL_DELAY_BARS < 0) out.TRAIL_DELAY_BARS = fb.TRAIL_DELAY_BARS;
+  if (!Number.isFinite(out.TRAIL_DELAY_MFE_PCT) || out.TRAIL_DELAY_MFE_PCT < 0) out.TRAIL_DELAY_MFE_PCT = fb.TRAIL_DELAY_MFE_PCT;
   if (!Number.isFinite(out.TRAIL_R_MULTIPLE) || out.TRAIL_R_MULTIPLE <= 0) out.TRAIL_R_MULTIPLE = null;
   if (!Number.isFinite(out.TRAIL_PCT)) out.TRAIL_PCT = fb.TRAIL_PCT;
   if (!Number.isFinite(out.RUNNER_MIN_PROFIT_PCT) || out.RUNNER_MIN_PROFIT_PCT <= 0) out.RUNNER_MIN_PROFIT_PCT = null;
@@ -424,10 +538,11 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
   }
   const positionSide = resolvePositionSideFromPosition(pos, meta, "LONG");
   const tpP1State = resolveTpP1State(meta);
+  const tpP0State = resolveTpP0State(meta);
   const tpP1Done = tpP1State.tpP1Done;
+  const tpP0Done = tpP0State.tpP0Done || tpP1Done;
   const trailHigh = toNum(meta.trail_high);
   const trailLow = toNum(meta.trail_low);
-  const trailActive = tpP1State.trailActive;
 
   // 포지션 없으면 내부 신호 없음
   if (state !== "ACTIVE" || !size || size <= 0) return [];
@@ -445,6 +560,8 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
   // 손절/익절 규칙
   const rules = resolveExitRulesForPosition({ exchange: ex, position: pos, exitProfileMode });
   const SL = rules.SL;
+  const TP_P0 = resolveTpP0Pct({ rules, meta });
+  const TP_P0_QTY = rules.TP_P0_QTY;
   const TP_P1 = rules.TP_P1;
   const TP_C = rules.TP_C;
   const BE_ENABLE = rules.BE_ENABLE !== false;
@@ -460,6 +577,16 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
     meta,
     rules,
   });
+  const trailDelay = resolveTrailDelayState({
+    meta,
+    tpP1Done,
+    currentBarMs,
+    closePx,
+    side: positionSide,
+    leverageEff,
+    rules,
+  });
+  const trailActive = trailDelay.trailActive;
   const exitSide = positionSide === "SHORT" ? "BUY" : "SELL";
   if (!BE_ENABLE) BE_PCT = null;
   if (BE_ENABLE && !Number.isFinite(BE_PCT) && ex.includes("BINANCE") && Number.isFinite(leverageEff) && leverageEff > 0) {
@@ -469,11 +596,13 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
     BE_PCT = -((roundTripBps * 2) / 10000) * leverageEff;
   }
   const slPctLabel = pctLabel(SL);
+  const tpP0Label = pctLabel(TP_P0);
   const tpP1Label = pctLabel(TP_P1);
   const tpCLabel = pctLabel(TP_C);
   const trailLabel = pctLabel(TRAIL_PCT);
   const beLabel = pctLabel(BE_PCT);
   const slEvent = slPctLabel ? `EXIT_SL_${slPctLabel}P` : "EXIT_SL";
+  const tpP0Event = tpP0Label ? `EXIT_TP_P0_${tpP0Label}P` : "EXIT_TP_P0";
   const tpP1Event = tpP1Label ? `EXIT_TP_P1_${tpP1Label}P` : "EXIT_TP_P1";
   const tpCEvent = tpCLabel ? `EXIT_TP_C_${tpCLabel}P` : "EXIT_TP_C";
   const trailEvent = Number.isFinite(TRAIL_R_MULTIPLE) && TRAIL_R_MULTIPLE > 0
@@ -513,6 +642,29 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
       qty_pct: size,
       reason: "EXIT_TAKE_PROFIT_C",
       features: { pnl_pct: pnlPctEffective, pnl_pct_raw: pnlPct, leverage: leverageEff, ref_px: closePx, avg_px: avg, position_side: positionSide, exit_profile: exitProfile, tp_c_pct: TP_C }
+    }];
+  }
+
+  if (!tpP0Done && !tpP1Done && Number.isFinite(TP_P0) && pnlPctEffective >= TP_P0) {
+    const rawQty = Number.isFinite(TP_P0_QTY) ? (size * TP_P0_QTY) : size;
+    const qty = Math.min(size, Math.max(0, Number(rawQty) || 0));
+    return [{
+      event: tpP0Event,
+      side: exitSide,
+      qty_pct: qty,
+      reason: "EXIT_TAKE_PROFIT_P0",
+      features: {
+        pnl_pct: pnlPctEffective,
+        pnl_pct_raw: pnlPct,
+        leverage: leverageEff,
+        ref_px: closePx,
+        avg_px: avg,
+        position_side: positionSide,
+        exit_profile: exitProfile,
+        tp_p0_pct: TP_P0,
+        tp_p0_atr_pct: toNum(meta.ev_gate_atr_pct),
+        tp_p0_atr_multiple: toNum(rules.TP_P0_ATR_MULTIPLE),
+      }
     }];
   }
 
@@ -577,6 +729,11 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
           runner_floor_px: runnerExit.runnerFloorStop,
           runner_stop_px: runnerExit.stopPrice,
           runner_stop_source: runnerExit.stopSource,
+          trail_delay_bars_ready: trailDelay.barsReady,
+          trail_delay_mfe_ready: trailDelay.mfeReady,
+          trail_delay_bars_required: trailDelay.barsRequired,
+          trail_delay_mfe_pct_required: trailDelay.mfePctRequired,
+          trail_delay_release_reason: trailDelay.releaseReason,
         }
       }];
     }
@@ -607,4 +764,6 @@ module.exports = {
   computeRunnerExitStopPrice,
   computeTrailingStopPrice,
   resolveEntryRDistance,
+  resolveTrailDelayState,
+  resolveTpP0Pct,
 };

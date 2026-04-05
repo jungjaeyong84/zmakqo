@@ -88,6 +88,7 @@ function resolveEntryEventId(row) {
 function classifyExitEvent(eventRaw) {
   const ev = toUpper(eventRaw);
   if (!ev) return null;
+  if (ev.startsWith("EXIT_TP_P0")) return "TP0";
   if (ev.startsWith("EXIT_TP_P1")) return "TP1";
   if (ev.startsWith("EXIT_TRAIL")) return "TRAIL";
   if (ev.startsWith("EXIT_SL")) return "SL";

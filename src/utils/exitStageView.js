@@ -1,6 +1,6 @@
 "use strict";
 
-const { resolveExitRulesForPosition, computeRunnerExitStopPrice, resolveEntryRDistance } = require("../engine/signalEngine");
+const { resolveExitRulesForPosition, computeRunnerExitStopPrice, resolveEntryRDistance, resolveTrailDelayState, resolveTpP0Pct } = require("../engine/signalEngine");
 
 function toNum(v) {
   const n = Number(v);
@@ -64,15 +64,28 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
   const meta = position && typeof position.meta === "object" ? position.meta : {};
   const side = normalizeSide(position);
   const leverage = resolveLeverage(position, leverageFallback);
+  const close = toNum(closePrice);
   const rules = resolveExitRulesForPosition({ exchange, position });
 
+  const tp0Pct = resolveTpP0Pct({ rules, meta });
+  const tp0Price = pctToPrice({ avg, pct: tp0Pct, leverage, side, kind: "TP1" });
   const tp1Price = pctToPrice({ avg, pct: rules.TP_P1, leverage, side, kind: "TP1" });
   const slPrice = pctToPrice({ avg, pct: rules.SL, leverage, side, kind: "SL" });
   const bePrice = pctToPrice({ avg, pct: rules.BE_PCT, leverage, side, kind: "BE" });
 
+  const tpP0Done = meta.tp_p0_done === true;
   const tpP1Done = meta.tp_p1_done === true;
   const tpP1Pending = meta.tp_p1_pending === true;
-  const trailActive = meta.trail_active === true;
+  const trailDelay = resolveTrailDelayState({
+    meta,
+    tpP1Done,
+    currentBarMs: toNum(meta.last_bar_close_ms) ?? null,
+    closePx: close,
+    side,
+    leverageEff: leverage,
+    rules,
+  });
+  const trailActive = trailDelay.trailActive;
   const tpSkipReason = meta.tp_p1_skip_reason ? String(meta.tp_p1_skip_reason) : null;
   const trailRef = side === "SHORT" ? toNum(meta.trail_low) : toNum(meta.trail_high);
   const entryRDistance = resolveEntryRDistance({
@@ -113,12 +126,15 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     nativeTpStatus,
   });
 
-  const close = toNum(closePrice);
   const tp1GapPct = buildGapPct({ currentPrice: close, targetPrice: tp1Price, side });
   const tp1Near = !tpP1Done && !tpP1Pending && Number.isFinite(tp1GapPct) && tp1GapPct >= 0 && tp1GapPct <= 0.5;
 
   let label = "TP1 대기";
   let pill = "dim";
+  if (tpP0Done && !tpP1Done) {
+    label = "TP0 완료";
+    pill = "warn";
+  }
   if (tpSkipReason) {
     label = "TP1 스킵";
     pill = "bad";
@@ -132,7 +148,7 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     pill = "warn";
   }
   if (tpP1Done) {
-    label = trailActive ? "트레일링" : "TP1 완료";
+    label = trailActive ? "트레일링" : "TP1 후 대기";
     pill = "ok";
   }
 
@@ -159,15 +175,20 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     leverage,
     avg_price: avg,
     current_price: close,
+    tp0_price: tp0Price,
     tp1_price: tp1Price,
     sl_price: slPrice,
     be_price: bePrice,
     tp1_qty_pct: toNum(rules.TP_P1_QTY),
     trail_r_multiple: toNum(rules.TRAIL_R_MULTIPLE),
     trail_pct: toNum(rules.TRAIL_PCT),
+    tp0_done: tpP0Done,
     tp1_done: tpP1Done,
     tp1_pending: tpP1Pending,
     trail_active: trailActive,
+    trail_delay_bars_ready: trailDelay.barsReady,
+    trail_delay_mfe_ready: trailDelay.mfeReady,
+    trail_delay_release_reason: trailDelay.releaseReason,
     tp1_gap_pct: tp1GapPct,
     tp1_skip_reason: tpSkipReason,
     trail_ref: trailRef,

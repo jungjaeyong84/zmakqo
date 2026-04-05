@@ -460,14 +460,14 @@ function buildSnapshot({
     qualityRows: [{ market: "XRPUSDT", avg_created_to_fill_ms: 1000, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }],
   });
   snap.activePositionsSnapshot = __test.buildActivePositionsSnapshot([
-    { id: "POS__BINANCEFUT__DOGEUSDT", data: { pos_id: "POS__BINANCEFUT__DOGEUSDT", exchange: "BINANCEFUT", symbol_or_pair_id: "DOGEUSDT", position_side: "LONG", state: "COMMIT", size_pct: 1 } },
-    { id: "POS__BINANCEFUT__SOLUSDT", data: { pos_id: "POS__BINANCEFUT__SOLUSDT", exchange: "BINANCEFUT", symbol_or_pair_id: "SOLUSDT", position_side: "LONG", state: "COMMIT", size_pct: 1 } },
+    { id: "POS__BINANCEFUT__DOGEUSDT", data: { pos_id: "POS__BINANCEFUT__DOGEUSDT", exchange: "BINANCEFUT", symbol_or_pair_id: "DOGEUSDT", position_side: "LONG", state: "COMMIT", size_pct: 0.4 } },
+    { id: "POS__BINANCEFUT__SOLUSDT", data: { pos_id: "POS__BINANCEFUT__SOLUSDT", exchange: "BINANCEFUT", symbol_or_pair_id: "SOLUSDT", position_side: "LONG", state: "COMMIT", size_pct: 0.4 } },
   ]);
   const res = evaluateLiveEntryPolicy({
     exchange: "BINANCEFUT",
     symbol: "XRPUSDT",
     intent: "ENTRY",
-    qtyPct: 1,
+    qtyPct: 0.4,
     features: { event: "LONG", side: "BUY" },
     stage: "TEST",
     applyScale: true,
@@ -503,9 +503,37 @@ function buildSnapshot({
     snapshotOverride: snap,
   });
   assert.strictEqual(res.ok, false);
-  assert.strictEqual(res.reason, "LIVE_POLICY_PORTFOLIO_CLUSTER_BLOCK");
+  assert.strictEqual(res.reason, "LIVE_POLICY_PORTFOLIO_CLUSTER_CAP_BLOCK");
   assert.strictEqual(res.policy.portfolio_cluster_same_side_after, 4);
   assert.strictEqual(res.policy.portfolio_cluster_correlated_same_side_after, 4);
+})();
+
+(() => {
+  const snap = buildSnapshot({
+    allocatorRows: [{ market: "DOGEUSDT", allocation_score: 1.0, recommended_action: "HOLD" }],
+    qualityRows: [{ market: "DOGEUSDT", avg_created_to_fill_ms: 1000, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }],
+  });
+  snap.activePositionsSnapshot = __test.buildActivePositionsSnapshot([
+    { id: "POS__BINANCEFUT__BTCUSDT", data: { pos_id: "POS__BINANCEFUT__BTCUSDT", exchange: "BINANCEFUT", symbol_or_pair_id: "BTCUSDT", position_side: "LONG", state: "COMMIT", size_pct: 0.9 } },
+    { id: "POS__BINANCEFUT__ETHUSDT", data: { pos_id: "POS__BINANCEFUT__ETHUSDT", exchange: "BINANCEFUT", symbol_or_pair_id: "ETHUSDT", position_side: "LONG", state: "COMMIT", size_pct: 0.8 } },
+  ]);
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "DOGEUSDT",
+    intent: "ENTRY",
+    qtyPct: 1,
+    features: { event: "LONG", side: "BUY" },
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.reason, "LIVE_POLICY_OK");
+  assert.strictEqual(res.featuresPatch._live_exec_policy_portfolio_cluster_reduce, true);
+  assert.strictEqual(res.featuresPatch._live_exec_policy_reason, undefined);
+  assert.strictEqual(res.policy.reason, undefined);
+  assert.ok(Number(res.featuresPatch._live_exec_policy_portfolio_cluster_scale) < 0.35);
+  assert.ok(Number(res.featuresPatch._live_exec_policy_portfolio_cluster_same_side_exposure_after) > 2.5);
 })();
 
 console.log("LIVE_EXECUTION_POLICY_TEST_OK");

@@ -2716,6 +2716,31 @@ function isTpP1EventLocal(ev) {
   return e === "EXIT_TP_P1" || e.startsWith("EXIT_TP_P1_");
 }
 
+function isTpP0EventLocal(ev) {
+  const e = String(ev || "").toUpperCase();
+  return e === "EXIT_TP_P0" || e.startsWith("EXIT_TP_P0_");
+}
+
+function resolveTrailDelayConfigForMeta({ exchange = null, pos = null, posMeta = null } = {}) {
+  const mergedMeta = posMeta && typeof posMeta === "object"
+    ? posMeta
+    : ((pos && typeof pos.meta === "object") ? pos.meta : {});
+  const rules = resolveExitRulesForPosition({
+    exchange,
+    position: pos && typeof pos === "object"
+      ? { ...pos, meta: mergedMeta }
+      : { meta: mergedMeta },
+  });
+  return {
+    barsRequired: Number.isFinite(Number(rules && rules.TRAIL_DELAY_BARS))
+      ? Math.max(0, Math.round(Number(rules.TRAIL_DELAY_BARS)))
+      : null,
+    mfePctRequired: Number.isFinite(Number(rules && rules.TRAIL_DELAY_MFE_PCT))
+      ? Math.max(0, Number(rules.TRAIL_DELAY_MFE_PCT))
+      : null,
+  };
+}
+
 async function loadRecentFillsCache(db) {
   const now = Date.now();
   if (recentFillsCache.ts && (now - recentFillsCache.ts) < TP_P1_FILL_CACHE_TTL_MS) {
@@ -2762,6 +2787,11 @@ function reconcileTpP1MetaFromFill({ posMeta, pos, fill } = {}) {
     return posMeta;
   }
   const execPrice = Number(fill.exec_price);
+  const trailDelayCfg = resolveTrailDelayConfigForMeta({
+    exchange: pos && pos.exchange ? pos.exchange : (posMeta && posMeta.exchange ? posMeta.exchange : null),
+    pos,
+    posMeta,
+  });
   const side = String(
     (pos && (pos.position_side || pos.side)) ||
     posMeta.position_side ||
@@ -2772,15 +2802,21 @@ function reconcileTpP1MetaFromFill({ posMeta, pos, fill } = {}) {
   const patch = {
     tp_p1_done: true,
     tp_p1_price: Number.isFinite(execPrice) ? execPrice : (posMeta.tp_p1_price ?? null),
-    trail_active: true,
+    trail_active: false,
     tp_p1_pending: false,
     tp_p1_pending_at_ms: null,
     tp_p1_pending_until_ms: null,
     tp_p1_pending_event: null,
+    tp_p1_bar_ms: Number.isFinite(fillMs) ? fillMs : null,
     tp_p1_at: fill.created_at || new Date().toISOString(),
     tp_p1_source: "FILL_RECONCILE",
     tp_p1_entry_event_id: metaEntry || fillEntry || null,
     tp_p1_entry_exec_bar_ms: Number.isFinite(entryExecMs) ? entryExecMs : null,
+    trail_delay_bars_required: trailDelayCfg.barsRequired,
+    trail_delay_mfe_pct_required: trailDelayCfg.mfePctRequired,
+    trail_delay_release_reason: null,
+    trail_delay_release_at: null,
+    trail_delay_mode: "ONE_BAR_OR_MFE",
   };
   if (side === "SHORT") {
     if (Number.isFinite(execPrice)) patch.trail_low = execPrice;
@@ -2830,21 +2866,30 @@ async function applyTpP1SkipOnCancel({
   const trailLow = side === "SHORT"
     ? (Number.isFinite(refPx) ? refPx : (Number.isFinite(prevTrailLow) ? prevTrailLow : null))
     : null;
+  const trailDelayCfg = keepFullAndTrail
+    ? resolveTrailDelayConfigForMeta({ exchange, pos, posMeta })
+    : { barsRequired: null, mfePctRequired: null };
 
   const merged = mergeMeta(posMeta, {
     tp_p1_done: true,
     tp_p1_price: keepFullAndTrail && Number.isFinite(refPx) ? refPx : null,
     trail_high: keepFullAndTrail ? trailHigh : null,
     trail_low: keepFullAndTrail ? trailLow : null,
-    trail_active: keepFullAndTrail,
+    trail_active: false,
     tp_p1_pending: false,
     tp_p1_pending_at_ms: null,
     tp_p1_pending_until_ms: null,
     tp_p1_pending_event: null,
+    tp_p1_bar_ms: Number(bar && (bar.bar_close_time_utc_ms || bar.bar_close_time_utc || bar.t)) || null,
     tp_p1_at: keepFullAndTrail ? nowIso : null,
     tp_p1_source: keepFullAndTrail ? "TP1_SKIP_PROTECT" : null,
     tp_p1_entry_event_id: keepFullAndTrail ? entryEventId : null,
     tp_p1_entry_exec_bar_ms: keepFullAndTrail && Number.isFinite(entryExecMs) ? entryExecMs : null,
+    trail_delay_bars_required: trailDelayCfg.barsRequired,
+    trail_delay_mfe_pct_required: trailDelayCfg.mfePctRequired,
+    trail_delay_release_reason: null,
+    trail_delay_release_at: null,
+    trail_delay_mode: keepFullAndTrail ? "ONE_BAR_OR_MFE" : null,
     tp_p1_skip_reason: reasonKey,
     tp_p1_skip_note: note || null,
     tp_p1_skip_at: nowIso,
@@ -5050,6 +5095,11 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     external_leverage: Number.isFinite(leverageRaw) ? leverageRaw : null,
   };
   if (!active) {
+    metaPatch.tp_p0_done = false;
+    metaPatch.tp_p0_price = null;
+    metaPatch.tp_p0_at = null;
+    metaPatch.tp_p0_source = null;
+    metaPatch.tp_p0_qty_ratio = null;
     metaPatch.tp_p1_done = false;
     metaPatch.tp_p1_price = null;
     metaPatch.trail_high = null;
@@ -5059,6 +5109,7 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     metaPatch.tp_p1_pending_at_ms = null;
     metaPatch.tp_p1_pending_until_ms = null;
     metaPatch.tp_p1_pending_event = null;
+    metaPatch.tp_p1_bar_ms = null;
     metaPatch.tp_p1_at = null;
     metaPatch.tp_p1_source = null;
     metaPatch.tp_p1_entry_event_id = null;
@@ -5066,6 +5117,11 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     metaPatch.tp_p1_skip_reason = null;
     metaPatch.tp_p1_skip_note = null;
     metaPatch.tp_p1_skip_at = null;
+    metaPatch.trail_delay_bars_required = null;
+    metaPatch.trail_delay_mfe_pct_required = null;
+    metaPatch.trail_delay_release_reason = null;
+    metaPatch.trail_delay_release_at = null;
+    metaPatch.trail_delay_mode = null;
     metaPatch.opposite_transition_dir = null;
     metaPatch.opposite_transition_event = null;
     metaPatch.opposite_transition_until_ms = null;
@@ -5112,6 +5168,11 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
   const externalEntryTransition = active && (!prevActive || (prevSide && side && prevSide !== side));
   if (externalEntryTransition) {
     meta = mergeMeta(meta, {
+      tp_p0_done: false,
+      tp_p0_price: null,
+      tp_p0_at: null,
+      tp_p0_source: null,
+      tp_p0_qty_ratio: null,
       tp_p1_done: false,
       tp_p1_price: null,
       trail_high: null,
@@ -5121,10 +5182,16 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
       tp_p1_pending_at_ms: null,
       tp_p1_pending_until_ms: null,
       tp_p1_pending_event: null,
+      tp_p1_bar_ms: null,
       tp_p1_at: null,
       tp_p1_source: null,
       tp_p1_entry_event_id: null,
       tp_p1_entry_exec_bar_ms: null,
+      trail_delay_bars_required: null,
+      trail_delay_mfe_pct_required: null,
+      trail_delay_release_reason: null,
+      trail_delay_release_at: null,
+      trail_delay_mode: null,
       tp_p1_skip_reason: null,
       tp_p1_skip_note: null,
       tp_p1_skip_at: null,
@@ -5192,6 +5259,11 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     }
     if (!linkedToEntry) {
       meta = mergeMeta(meta, {
+        tp_p0_done: false,
+        tp_p0_price: null,
+        tp_p0_at: null,
+        tp_p0_source: null,
+        tp_p0_qty_ratio: null,
         tp_p1_done: false,
         tp_p1_price: null,
         trail_high: null,
@@ -5201,10 +5273,16 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
         tp_p1_pending_at_ms: null,
         tp_p1_pending_until_ms: null,
         tp_p1_pending_event: null,
+        tp_p1_bar_ms: null,
         tp_p1_at: null,
         tp_p1_source: null,
         tp_p1_entry_event_id: null,
         tp_p1_entry_exec_bar_ms: null,
+        trail_delay_bars_required: null,
+        trail_delay_mfe_pct_required: null,
+        trail_delay_release_reason: null,
+        trail_delay_release_at: null,
+        trail_delay_mode: null,
         opposite_transition_dir: null,
         opposite_transition_event: null,
         opposite_transition_until_ms: null,
@@ -8109,6 +8187,11 @@ async function runPaperUpbitForBar({
 
     if (opening || closing) {
       nextMeta = mergeMeta(nextMeta, {
+        tp_p0_done: false,
+        tp_p0_price: null,
+        tp_p0_at: null,
+        tp_p0_source: null,
+        tp_p0_qty_ratio: null,
         tp_p1_done: false,
         tp_p1_price: null,
         trail_high: null,
@@ -8121,10 +8204,16 @@ async function runPaperUpbitForBar({
         tp_p1_pending_at_ms: null,
         tp_p1_pending_until_ms: null,
         tp_p1_pending_event: null,
+        tp_p1_bar_ms: null,
         tp_p1_at: null,
         tp_p1_source: null,
         tp_p1_entry_event_id: null,
         tp_p1_entry_exec_bar_ms: null,
+        trail_delay_bars_required: null,
+        trail_delay_mfe_pct_required: null,
+        trail_delay_release_reason: null,
+        trail_delay_release_at: null,
+        trail_delay_mode: null,
         tp_p1_skip_reason: null,
         tp_p1_skip_note: null,
         tp_p1_skip_at: null,
@@ -8178,6 +8267,9 @@ async function runPaperUpbitForBar({
         entry_qty_profile: entryQtyProfileFromIntent || null,
         entry_signal_bar_ms: Number(it.signal_bar_close_time_utc_ms) || null,
         add_chain_base_qty_pct: Number.isFinite(newSize) ? Number(newSize) : null,
+        ev_gate_atr_pct: Number.isFinite(Number(it.features_json && it.features_json.ev_gate_atr_pct))
+          ? Number(it.features_json.ev_gate_atr_pct)
+          : null,
       });
     }
     if (openingOrAdd) {
@@ -8253,7 +8345,21 @@ async function runPaperUpbitForBar({
         nextMeta = mergeMeta(nextMeta, profitableTrailCooldownMeta);
       }
     }
+    if (isTpP0EventLocal(ev) && newState === "ACTIVE") {
+      nextMeta = mergeMeta(nextMeta, {
+        tp_p0_done: true,
+        tp_p0_price: fillPrice,
+        tp_p0_at: new Date().toISOString(),
+        tp_p0_source: "INTENT_FILL",
+        tp_p0_qty_ratio: qtyFraction,
+      });
+    }
     if ((ev === "EXIT_TP_P1" || ev.startsWith("EXIT_TP_P1_")) && newState === "ACTIVE") {
+      const trailDelayCfg = resolveTrailDelayConfigForMeta({
+        exchange,
+        pos: { ...pos, meta: nextMeta },
+        posMeta: nextMeta,
+      });
       const nextTrailHigh = metaSide === "SHORT"
         ? null
         : (Number.isFinite(fillPrice) ? fillPrice : null);
@@ -8261,19 +8367,26 @@ async function runPaperUpbitForBar({
         ? (Number.isFinite(fillPrice) ? fillPrice : null)
         : null;
       nextMeta = mergeMeta(nextMeta, {
+        tp_p0_done: nextMeta.tp_p0_done === true,
         tp_p1_done: true,
         tp_p1_price: fillPrice,
         trail_high: nextTrailHigh,
         trail_low: nextTrailLow,
-        trail_active: true,
+        trail_active: false,
         tp_p1_pending: false,
         tp_p1_pending_at_ms: null,
         tp_p1_pending_until_ms: null,
         tp_p1_pending_event: null,
+        tp_p1_bar_ms: Number(execBarCloseMs) || null,
         tp_p1_at: new Date().toISOString(),
         tp_p1_source: "INTENT_FILL",
         tp_p1_entry_event_id: (entryEventIdForFill || nextMeta.entry_event_id || null),
         tp_p1_entry_exec_bar_ms: Number(nextMeta.entry_exec_bar_ms || execBarCloseMs) || null,
+        trail_delay_bars_required: trailDelayCfg.barsRequired,
+        trail_delay_mfe_pct_required: trailDelayCfg.mfePctRequired,
+        trail_delay_release_reason: null,
+        trail_delay_release_at: null,
+        trail_delay_mode: "ONE_BAR_OR_MFE",
         tp_p1_skip_reason: null,
         tp_p1_skip_note: null,
         tp_p1_skip_at: null,
@@ -10747,6 +10860,11 @@ async function runPaperFuturesForBar({
     });
     if (opening || closing) {
       nextMeta = mergeMeta(nextMeta, {
+        tp_p0_done: false,
+        tp_p0_price: null,
+        tp_p0_at: null,
+        tp_p0_source: null,
+        tp_p0_qty_ratio: null,
         tp_p1_done: false,
         tp_p1_price: null,
         trail_high: null,
@@ -10756,10 +10874,16 @@ async function runPaperFuturesForBar({
         tp_p1_pending_at_ms: null,
         tp_p1_pending_until_ms: null,
         tp_p1_pending_event: null,
+        tp_p1_bar_ms: null,
         tp_p1_at: null,
         tp_p1_source: null,
         tp_p1_entry_event_id: null,
         tp_p1_entry_exec_bar_ms: null,
+        trail_delay_bars_required: null,
+        trail_delay_mfe_pct_required: null,
+        trail_delay_release_reason: null,
+        trail_delay_release_at: null,
+        trail_delay_mode: null,
         tp_p1_skip_reason: null,
         tp_p1_skip_note: null,
         tp_p1_skip_at: null,
@@ -10830,6 +10954,9 @@ async function runPaperFuturesForBar({
         initial_stop_price: Number.isFinite(initialStopPrice) ? initialStopPrice : null,
         initial_stop_source: initialStopSource || null,
         entry_r_distance: Number.isFinite(entryRDistance) ? entryRDistance : null,
+        ev_gate_atr_pct: Number.isFinite(Number(it.features_json && it.features_json.ev_gate_atr_pct))
+          ? Number(it.features_json.ev_gate_atr_pct)
+          : null,
         trail_r_multiple: Number.isFinite(Number(appliedExitRules && appliedExitRules.TRAIL_R_MULTIPLE))
           ? Number(appliedExitRules.TRAIL_R_MULTIPLE)
           : null,
@@ -10918,7 +11045,21 @@ async function runPaperFuturesForBar({
         nextMeta = mergeMeta(nextMeta, profitableTrailCooldownMeta);
       }
     }
+    if (isTpP0EventLocal(ev) && newState === "ACTIVE") {
+      nextMeta = mergeMeta(nextMeta, {
+        tp_p0_done: true,
+        tp_p0_price: fillPrice,
+        tp_p0_at: new Date().toISOString(),
+        tp_p0_source: "INTENT_FILL",
+        tp_p0_qty_ratio: qtyFraction,
+      });
+    }
     if ((ev === "EXIT_TP_P1" || ev.startsWith("EXIT_TP_P1_")) && newState === "ACTIVE") {
+      const trailDelayCfg = resolveTrailDelayConfigForMeta({
+        exchange,
+        pos: { ...pos, meta: nextMeta },
+        posMeta: nextMeta,
+      });
       const nextTrailHigh = metaSide === "SHORT"
         ? null
         : (Number.isFinite(fillPrice) ? fillPrice : null);
@@ -10926,19 +11067,26 @@ async function runPaperFuturesForBar({
         ? (Number.isFinite(fillPrice) ? fillPrice : null)
         : null;
       nextMeta = mergeMeta(nextMeta, {
+        tp_p0_done: nextMeta.tp_p0_done === true,
         tp_p1_done: true,
         tp_p1_price: fillPrice,
         trail_high: nextTrailHigh,
         trail_low: nextTrailLow,
-        trail_active: true,
+        trail_active: false,
         tp_p1_pending: false,
         tp_p1_pending_at_ms: null,
         tp_p1_pending_until_ms: null,
         tp_p1_pending_event: null,
+        tp_p1_bar_ms: Number(execBarCloseMs) || null,
         tp_p1_at: new Date().toISOString(),
         tp_p1_source: "INTENT_FILL",
         tp_p1_entry_event_id: (entryEventIdForFill || nextMeta.entry_event_id || null),
         tp_p1_entry_exec_bar_ms: Number(nextMeta.entry_exec_bar_ms || execBarCloseMs) || null,
+        trail_delay_bars_required: trailDelayCfg.barsRequired,
+        trail_delay_mfe_pct_required: trailDelayCfg.mfePctRequired,
+        trail_delay_release_reason: null,
+        trail_delay_release_at: null,
+        trail_delay_mode: "ONE_BAR_OR_MFE",
         tp_p1_skip_reason: null,
         tp_p1_skip_note: null,
         tp_p1_skip_at: null,
