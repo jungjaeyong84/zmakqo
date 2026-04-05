@@ -377,11 +377,13 @@ function resolveFillSyncAlertFullExit({ event, orderMeta, closeRatio } = {}) {
   return false;
 }
 
-function buildFillSyncAlertKey({ symbol, event, intent, side, orderMeta, tradeMs } = {}) {
+function buildFillSyncAlertKey({ symbol, event, intent, side, orderMeta, tradeMs, payload } = {}) {
   const sym = normalizeSymbol(symbol) || String(symbol || "").trim().toUpperCase() || "UNKNOWN";
   const ev = String(event || "").trim().toUpperCase() || "UNKNOWN";
   const it = String(intent || "").trim().toUpperCase() || "UNKNOWN";
   const tradeSide = String(side || "").trim().toUpperCase() || "NA";
+  const entryEventId = String(payload && payload.entryEventId || "").trim() || "NA";
+  const positionSideBefore = String(payload && payload.positionSideBefore || "").trim().toUpperCase() || "NA";
   const orderId = Number.isFinite(Number(orderMeta && orderMeta.orderId))
     ? String(Number(orderMeta.orderId))
     : "NA";
@@ -389,6 +391,9 @@ function buildFillSyncAlertKey({ symbol, event, intent, side, orderMeta, tradeMs
   const tradeBucket = Number.isFinite(Number(tradeMs))
     ? String(Math.floor(Number(tradeMs) / 60000))
     : "NA";
+  if (ev === "EXIT_OPPOSITE_SIGNAL") {
+    return [sym, ev, it, tradeSide, entryEventId, positionSideBefore, tradeBucket].join("|");
+  }
   return [sym, ev, it, tradeSide, orderId, clientOrderId, tradeBucket].join("|");
 }
 
@@ -402,7 +407,7 @@ function queueFillSyncAlertBatch(batchMap, {
   payload,
 } = {}) {
   if (!(batchMap instanceof Map) || !payload || typeof payload !== "object") return;
-  const key = buildFillSyncAlertKey({ symbol, event, intent, side, orderMeta, tradeMs });
+  const key = buildFillSyncAlertKey({ symbol, event, intent, side, orderMeta, tradeMs, payload });
   const current = batchMap.get(key);
   if (!current) {
     batchMap.set(key, {
@@ -1454,6 +1459,7 @@ async function syncMarketTrades({
                 : (positionCtx && Number.isFinite(positionCtx.leverage) ? positionCtx.leverage : null),
               leverageReason: intentLeverageReason || "BINANCE_USER_TRADES_SYNC",
               exitRules,
+              entryEventId: entryEventId || null,
               features: (intent && intent.features_json && typeof intent.features_json === "object") ? intent.features_json : {},
               runId: `FILL_SYNC__${sym}`,
               },

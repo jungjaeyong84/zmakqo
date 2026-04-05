@@ -161,6 +161,96 @@ async function run() {
   assert.ok(msg.body.includes("종류: 익절(TP1) 3.25%"), "TP1 label must be preserved");
   assert.ok(msg.body.includes("청산규모: 402.37 USDT"), "aggregated notional must be visible");
 
+  const oppositeBatches = new Map();
+  fillsSyncTest.queueFillSyncAlertBatch(oppositeBatches, {
+    symbol: "BTCUSDT",
+    event: "EXIT_OPPOSITE_SIGNAL",
+    intent: "EXIT",
+    side: "BUY",
+    orderMeta: { orderId: 1001, clientOrderId: "first_partial" },
+    tradeMs: 1_777_888_100_000,
+    payload: {
+      exchange: "BINANCEFUT",
+      symbol: "BTCUSDT",
+      event: "EXIT_OPPOSITE_SIGNAL",
+      side: "BUY",
+      intent: "EXIT",
+      executionMode: "LIVE",
+      notional: 535.82,
+      execPrice: 66977.2,
+      closeRatio: 0.5,
+      fullExit: true,
+      realizedPnl: -0.062,
+      positionSideBefore: "SHORT",
+      entryEventId: "BINANCEFUT|BTCUSDT|15m|1775372400000|SHORT|SHORT",
+      appliedLeverage: 2,
+      leverageReason: "BINANCE_USER_TRADES_SYNC",
+      exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
+      runId: "FILL_SYNC__BTCUSDT",
+    },
+  });
+  fillsSyncTest.queueFillSyncAlertBatch(oppositeBatches, {
+    symbol: "BTCUSDT",
+    event: "EXIT_OPPOSITE_SIGNAL",
+    intent: "EXIT",
+    side: "BUY",
+    orderMeta: { orderId: 1002, clientOrderId: "second_partial" },
+    tradeMs: 1_777_888_100_200,
+    payload: {
+      exchange: "BINANCEFUT",
+      symbol: "BTCUSDT",
+      event: "EXIT_OPPOSITE_SIGNAL",
+      side: "BUY",
+      intent: "EXIT",
+      executionMode: "LIVE",
+      notional: 267.92,
+      execPrice: 66979.6,
+      closeRatio: 0.25,
+      fullExit: true,
+      realizedPnl: -0.041,
+      positionSideBefore: "SHORT",
+      entryEventId: "BINANCEFUT|BTCUSDT|15m|1775372400000|SHORT|SHORT",
+      appliedLeverage: 2,
+      leverageReason: "BINANCE_USER_TRADES_SYNC",
+      exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
+      runId: "FILL_SYNC__BTCUSDT",
+    },
+  });
+  fillsSyncTest.queueFillSyncAlertBatch(oppositeBatches, {
+    symbol: "BTCUSDT",
+    event: "EXIT_OPPOSITE_SIGNAL",
+    intent: "EXIT",
+    side: "BUY",
+    orderMeta: { orderId: 1003, clientOrderId: "third_partial" },
+    tradeMs: 1_777_888_100_350,
+    payload: {
+      exchange: "BINANCEFUT",
+      symbol: "BTCUSDT",
+      event: "EXIT_OPPOSITE_SIGNAL",
+      side: "BUY",
+      intent: "EXIT",
+      executionMode: "LIVE",
+      notional: 267.92,
+      execPrice: 66979.6,
+      closeRatio: 0.25,
+      fullExit: true,
+      realizedPnl: -0.041,
+      positionSideBefore: "SHORT",
+      entryEventId: "BINANCEFUT|BTCUSDT|15m|1775372400000|SHORT|SHORT",
+      appliedLeverage: 2,
+      leverageReason: "BINANCE_USER_TRADES_SYNC",
+      exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
+      runId: "FILL_SYNC__BTCUSDT",
+    },
+  });
+
+  assert.strictEqual(oppositeBatches.size, 1, "split opposite-signal fills from the same entry must be aggregated into one alert");
+  const mergedOpposite = Array.from(oppositeBatches.values())[0];
+  assert.ok(approxEqual(mergedOpposite.payload.notional, 1071.66), "aggregated opposite close notional must be summed");
+  assert.ok(approxEqual(mergedOpposite.payload.realizedPnl, -0.144), "aggregated opposite close pnl must be summed");
+  assert.ok(approxEqual(mergedOpposite.payload.closeRatio, 1), "aggregated opposite close ratio must clamp to full exit");
+  assert.strictEqual(mergedOpposite.payload.fullExit, true, "aggregated opposite close must remain full exit");
+
   const rescueTrailMsg = alertTest.buildMessage({
     exchange: "BINANCEFUT",
     symbol: "ETHUSDT",
