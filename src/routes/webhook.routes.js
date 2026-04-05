@@ -317,6 +317,16 @@ async function resolveRuntimeStrategyGate() {
   return gate;
 }
 
+function shouldTriggerImmediateWebhookProcess({ enabled, savedSignalId, authoritative, source } = {}) {
+  if (enabled !== true) return { ok: false, reason: "IMMEDIATE_DISABLED" };
+  if (!savedSignalId) return { ok: false, reason: "IMMEDIATE_MISSING_SIGNAL_ID" };
+  const sourceText = String(source || "").trim().toUpperCase();
+  if (authoritative === false && sourceText === "PINE_SHADOW") {
+    return { ok: true, reason: "ALLOW_PINE_SHADOW_IMMEDIATE" };
+  }
+  return { ok: true, reason: "ALLOW_IMMEDIATE" };
+}
+
 function createWebhookRoutes() {
   const router = express.Router();
   const WEBHOOK_STRATEGY_GATE_ENABLED = ["1", "true", "yes", "y", "on"].includes(
@@ -2410,13 +2420,50 @@ function createWebhookRoutes() {
         },
       });
 
-      if (WEBHOOK_IMMEDIATE_PROCESS) {
-        const immediatePayload = {
-          exchange,
-          symbol,
-          tf,
-          signalId: saved && saved.signal_id ? saved.signal_id : (p.signal_id || null),
-        };
+      const immediatePayload = {
+        exchange,
+        symbol,
+        tf,
+        signalId: saved && saved.signal_id ? saved.signal_id : (p.signal_id || null),
+      };
+      const immediateDecision = shouldTriggerImmediateWebhookProcess({
+        enabled: WEBHOOK_IMMEDIATE_PROCESS,
+        savedSignalId: immediatePayload.signalId,
+        authoritative: false,
+        source: "PINE_SHADOW",
+      });
+      if (immediateDecision.ok) {
+        try {
+          const immediateResult = await triggerImmediateProcess(immediatePayload);
+          persistWebhookSignalExecutionProbe({
+            requestId,
+            exchange,
+            symbol,
+            tf,
+            signalId: immediatePayload.signalId,
+            phase: "IMMEDIATE_PROCESS_RESULT",
+            saved: true,
+            summary: summarizeImmediateProcessResult(immediateResult),
+          });
+        } catch (immediateErr) {
+          persistWebhookSignalExecutionProbe({
+            requestId,
+            exchange,
+            symbol,
+            tf,
+            signalId: immediatePayload.signalId,
+            phase: "IMMEDIATE_PROCESS_RESULT",
+            saved: true,
+            summary: {
+              status: "ERROR",
+              detail: {
+                error: immediateErr?.message || String(immediateErr),
+                error_stack: immediateErr?.stack ? String(immediateErr.stack) : null,
+              },
+            },
+          });
+        }
+      } else {
         persistWebhookSignalExecutionProbe({
           requestId,
           exchange,
@@ -2426,11 +2473,11 @@ function createWebhookRoutes() {
           phase: "IMMEDIATE_PROCESS_SKIPPED",
           saved: true,
           summary: {
-            status: "SHADOW_ONLY",
+            status: "SKIPPED",
             detail: {
               source: "PINE_SHADOW",
               authoritative: false,
-              reason: "PINE_SHADOW_DOES_NOT_ENTER_EXECUTION_CHAIN",
+              reason: immediateDecision.reason,
             },
           },
         });
@@ -2485,4 +2532,5 @@ module.exports.__test = {
   resolvePayloadStrategyIdentity,
   repairMalformedWebhookJson,
   parseWebhookBody,
+  shouldTriggerImmediateWebhookProcess,
 };
