@@ -158,6 +158,7 @@
 35. sample-aware verification / deferred low-sample handling
 36. empirical EV probability calibration
 37. portfolio cluster risk live guard
+38. 기관급 ML 자동 퀀트 확장 계획은 `/Users/jeongjaeyong/Projects/donbeolja/docs/GOOGLE_GRADE_ML_QUANT_PLAN_2026-04-05.md`를 기준 문서로 삼는다.
 38. objective retrospective FX normalization (`USDT -> KRW`)
 
 현재 migration 상태:

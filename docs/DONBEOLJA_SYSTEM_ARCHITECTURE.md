@@ -76,6 +76,7 @@
 - `execution quality + allocator + quarantine + policy parameter plan`을 결합해 실주문 진입 수량을 조정한다.
 - `WATCH_ONLY` 시장은 진입 차단할 수 있다.
 - `portfolio cluster risk`를 계산해 same-side correlated cluster를 축소하거나 차단한다.
+- 중장기적으로는 위 live guard를 `effective exposure` 기반 portfolio optimizer로 승격하며, 상세 계획은 `/Users/jeongjaeyong/Projects/donbeolja/docs/GOOGLE_GRADE_ML_QUANT_PLAN_2026-04-05.md`를 따른다.
 
 핵심 경로:
 - `src/utils/liveExecutionPolicy.js`
