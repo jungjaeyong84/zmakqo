@@ -10,6 +10,7 @@ const {
   loadLocalEnv,
   nowKstMeta,
   readJsonRawSafe,
+  readJsonSafe,
   resolveAnchoredReportCycleId,
   resolveAutomationCycleMeta,
   selfEvolutionSnapshotLatestPath,
@@ -30,6 +31,10 @@ const INPUTS = Object.freeze({
   serverSignalQuality: path.join(OPS_DAILY_DIR, "server_signal_quality_latest.json"),
   serverSignalRuntime: path.join(OPS_DAILY_DIR, "server_signal_runtime_latest.json"),
   marketRegimeBoard: path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_market_regime_board_latest.json"),
+  executionQuality: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_quality_latest.json"),
+  objectiveRetrospective: path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json"),
+  overallAccountReport: path.join(OPS_DAILY_DIR, "overall_account_report_latest.json"),
+  signalLineageHealth: path.join(OPS_DAILY_DIR, "signal_lineage_health_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -68,6 +73,9 @@ function renderMarkdown(report = {}) {
     `- server_signal: source=${status.server_signal_source_mode || "N/A"} / drift=${status.server_signal_drift_status || "N/A"} / quality=${status.server_signal_quality_status || "N/A"}`,
     `- server_signal_flow_24h: authoritative=${status.server_signal_authoritative_24h_n != null ? status.server_signal_authoritative_24h_n : "N/A"} / shadow=${status.server_signal_shadow_24h_n != null ? status.server_signal_shadow_24h_n : "N/A"} / entry=${status.server_signal_entry_24h_n != null ? status.server_signal_entry_24h_n : "N/A"} / intent=${status.server_signal_intent_24h_n != null ? status.server_signal_intent_24h_n : "N/A"} / fill=${status.server_signal_fill_24h_n != null ? status.server_signal_fill_24h_n : "N/A"}`,
     `- market_regime: ${summary.market_regime_board_status || "N/A"} / rescue=${summary.market_regime_rescue_n != null ? summary.market_regime_rescue_n : "N/A"} / keep_drop=${summary.market_regime_keep_drop_n != null ? summary.market_regime_keep_drop_n : "N/A"} / top_rescue=${summary.market_regime_top_rescue_market || "N/A"} / top_keep_drop=${summary.market_regime_top_keep_drop_market || "N/A"}`,
+    `- execution_quality: ${summary.execution_quality_status || "N/A"} / latency_p95=${status.execution_quality_latency_p95_ms != null ? status.execution_quality_latency_p95_ms : "N/A"} / slippage_p95=${status.execution_quality_slippage_p95_bps != null ? status.execution_quality_slippage_p95_bps : "N/A"} / partial=${status.execution_quality_partial_fill_rate_pct != null ? status.execution_quality_partial_fill_rate_pct : "N/A"}`,
+    `- lineage/account: ${summary.lineage_status || "N/A"} / account=${summary.account_integrity_status || "N/A"} / account_issues=${status.account_integrity_issue_n != null ? status.account_integrity_issue_n : "N/A"} / ops=${status.account_ops_status || "N/A"}:${status.account_ops_mode || "N/A"}`,
+    `- microstructure: ${summary.execution_microstructure_status || "N/A"} / tp0_hit=${status.tp0_hit_rate != null ? status.tp0_hit_rate : "N/A"} / tp1_hit=${status.tp1_hit_rate != null ? status.tp1_hit_rate : "N/A"} / cluster=${summary.portfolio_cluster_risk_status || "N/A"}`,
     "",
     "## Server Transition",
     ...(report.server_signal_transition && Array.isArray(report.server_signal_transition.phases)
@@ -97,6 +105,10 @@ function main() {
     serverSignalQuality: readJsonRawSafe(INPUTS.serverSignalQuality, null),
     serverSignalRuntime: readJsonRawSafe(INPUTS.serverSignalRuntime, null),
     marketRegimeBoard: readJsonRawSafe(INPUTS.marketRegimeBoard, null),
+    executionQuality: readJsonRawSafe(INPUTS.executionQuality, null),
+    objectiveRetrospective: readJsonSafe(INPUTS.objectiveRetrospective, null),
+    overallAccountReport: readJsonRawSafe(INPUTS.overallAccountReport, null),
+    signalLineageHealth: readJsonRawSafe(INPUTS.signalLineageHealth, null),
   });
   const output = {
     ok: true,

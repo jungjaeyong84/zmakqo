@@ -16,6 +16,10 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
     serverPrimaryCanary: { summary: { acceptance_ready: false, acceptance_reason: "SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT", server_primary_executed_n: 0, pine_shadow_disagreement_rate: 0, rollback_trigger_n: 0 } },
     watchdog: { display: { verdict: "PASS", scheduler_mode: "OPENCLAW_CRON" } },
     marketRegimeBoard: { summary: { status: "RESCUE_COHORT_ACTIVE", rescue_market_n: 2, keep_drop_market_n: 3, top_rescue_market: "SOLUSDT", top_keep_drop_market: "AXSUSDT" } },
+    executionQuality: { summary: { status: "EXECUTION_QUALITY_REVIEW", created_to_fill_p95_ms: 59871, adverse_slippage_p95_bps: 81.37, partial_fill_rate_pct: 67.57, top_latency_market: "AXSUSDT" } },
+    objectiveRetrospective: { display: { generated_at_kst: "2026-04-05 15:33:52 KST", execution_microstructure: { tp0_hit_rate: 0.85, tp1_hit_rate: 0, pre_tp1_time_stop_rate: 0, chase_reject_n: 1, portfolio_cluster_reduce_n: 2, portfolio_cluster_block_n: 0 } } },
+    overallAccountReport: { integrity: { ok: false, issue_count: 4, active_market_count: 3, position_doc_count: 3 }, operations: { status: "보류", mode: "비용 차단" } },
+    signalLineageHealth: { summary: { verdict: "PASS", fills_intent_id_null_rate: 0, fills_signal_doc_id_null_rate: 0, intents_signal_doc_id_null_rate: 0 } },
   });
 
   assert.strictEqual(report.current_status.objective_score, -7.4);
@@ -27,7 +31,16 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.summary.phase_d_status, "SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT");
   assert.strictEqual(report.summary.ops_status, "PASS");
   assert.strictEqual(report.summary.market_regime_board_status, "RESCUE_COHORT_ACTIVE");
+  assert.strictEqual(report.summary.execution_quality_status, "EXECUTION_QUALITY_REVIEW");
+  assert.strictEqual(report.summary.lineage_status, "PASS");
+  assert.strictEqual(report.summary.account_integrity_status, "WARN");
+  assert.strictEqual(report.summary.execution_microstructure_status, "ACTIVE");
+  assert.strictEqual(report.summary.portfolio_cluster_risk_status, "REDUCING");
   assert.strictEqual(report.current_status.market_regime_top_rescue_market, "SOLUSDT");
+  assert.strictEqual(report.current_status.execution_quality_latency_p95_ms, 59871);
+  assert.strictEqual(report.current_status.account_integrity_issue_n, 4);
+  assert.strictEqual(report.current_status.tp0_hit_rate, 0.85);
+  assert.strictEqual(report.current_status.portfolio_cluster_reduce_n, 2);
   assert.strictEqual(report.authority_policy.degraded_timeout_policy.enabled, true);
   console.log("OPENCLAW_AUTONOMY_CONTRACT_TEST_OK");
 })();

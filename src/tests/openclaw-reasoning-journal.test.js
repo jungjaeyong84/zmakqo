@@ -41,6 +41,35 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         ev_policy_action: "PRIORITIZE_EV_TP1_THRESHOLD_TUNE",
       },
     },
+    objectiveRetrospective: {
+      display: {
+        execution_microstructure: {
+          tp0_hit_rate: 0.85,
+          tp1_hit_rate: 0,
+          tp0_to_tp1_conversion_rate: 0,
+          pre_tp1_time_stop_rate: 0,
+          chase_reject_n: 1,
+          portfolio_cluster_reduce_n: 2,
+          portfolio_cluster_block_n: 0,
+        },
+      },
+    },
+    overallAccountReport: {
+      integrity: { ok: false, issue_count: 4 },
+      operations: { status: "보류", mode: "비용 차단" },
+    },
+    signalLineageHealth: {
+      summary: {
+        verdict: "PASS",
+        fills_intent_id_null_rate: 0,
+      },
+    },
+    executionQuality: {
+      summary: {
+        status: "EXECUTION_QUALITY_REVIEW",
+        created_to_fill_p95_ms: 59871,
+      },
+    },
     previousJournal: {
       entries: [
         {
@@ -78,6 +107,11 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_dominant_issue, "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK");
   assert.strictEqual(journal.summary.current_recommended_action, "HOLD_EV_POLICY_REVIEW");
   assert.match(journal.summary.current_verification_focus, /ev_policy_post_apply_comparable_n/);
+  assert.strictEqual(journal.summary.current_execution_quality_status, "EXECUTION_QUALITY_REVIEW");
+  assert.strictEqual(journal.summary.current_lineage_status, "PASS");
+  assert.strictEqual(journal.summary.current_account_integrity_status, "WARN");
+  assert.strictEqual(journal.summary.current_microstructure_tp0_hit_rate, 0.85);
+  assert.strictEqual(journal.summary.current_microstructure_cluster_reduce_n, 2);
   assert.strictEqual(journal.summary.entry_n, 4);
   assert.strictEqual(journal.summary.verified_n, 0);
   assert.strictEqual(journal.summary.sample_formation_verified_n, 0);

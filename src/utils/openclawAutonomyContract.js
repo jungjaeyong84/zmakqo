@@ -6,6 +6,24 @@ function readSummary(value) {
   return raw.summary && typeof raw.summary === "object" ? raw.summary : raw;
 }
 
+function readDisplay(value) {
+  return value && value.display && typeof value.display === "object" ? value.display : null;
+}
+
+function readRetrospectiveMicrostructure(value) {
+  const display = readDisplay(value) || {};
+  if (display.execution_microstructure && typeof display.execution_microstructure === "object") {
+    return display.execution_microstructure;
+  }
+  const daily = display.periods && display.periods.DAILY && typeof display.periods.DAILY === "object"
+    ? display.periods.DAILY
+    : null;
+  if (daily && daily.execution_microstructure && typeof daily.execution_microstructure === "object") {
+    return daily.execution_microstructure;
+  }
+  return {};
+}
+
 function toUpper(value) {
   return String(value || "").trim().toUpperCase() || null;
 }
@@ -132,6 +150,10 @@ function deriveOpenClawAutonomyContract({
   serverSignalQuality = null,
   serverSignalRuntime = null,
   marketRegimeBoard = null,
+  executionQuality = null,
+  objectiveRetrospective = null,
+  overallAccountReport = null,
+  signalLineageHealth = null,
 } = {}) {
   const objectiveSummary = readSummary(objective);
   const objectiveSupervisorRaw = unwrapRawReport(objectiveSupervisor) || {};
@@ -142,6 +164,13 @@ function deriveOpenClawAutonomyContract({
   const serverSignalQualitySummary = readSummary(serverSignalQuality);
   const serverSignalRuntimeSummary = readSummary(serverSignalRuntime);
   const marketRegimeBoardSummary = readSummary(marketRegimeBoard);
+  const executionQualitySummary = readSummary(executionQuality);
+  const retrospectiveDisplay = readDisplay(objectiveRetrospective) || {};
+  const retrospectiveMicro = readRetrospectiveMicrostructure(objectiveRetrospective);
+  const overallAccount = overallAccountReport && typeof overallAccountReport === "object" ? overallAccountReport : {};
+  const overallIntegrity = overallAccount.integrity && typeof overallAccount.integrity === "object" ? overallAccount.integrity : {};
+  const overallOperations = overallAccount.operations && typeof overallAccount.operations === "object" ? overallAccount.operations : {};
+  const signalLineageSummary = readSummary(signalLineageHealth);
 
   const objectivePolicy = {
     min_objective_score: envNum("OPENCLAW_AUTONOMY_MIN_OBJECTIVE_SCORE", 0),
@@ -254,6 +283,26 @@ function deriveOpenClawAutonomyContract({
     serverSignalTransition.current_label = "파인은 그림자 관측으로만 동작";
   }
 
+  const tp0HitRate = toNum(retrospectiveMicro.tp0_hit_rate);
+  const tp1HitRate = toNum(retrospectiveMicro.tp1_hit_rate);
+  const preTp1TimeStopRate = toNum(retrospectiveMicro.pre_tp1_time_stop_rate);
+  const chaseRejectN = toNum(retrospectiveMicro.chase_reject_n) || 0;
+  const clusterReduceN = toNum(retrospectiveMicro.portfolio_cluster_reduce_n) || 0;
+  const clusterBlockN = toNum(retrospectiveMicro.portfolio_cluster_block_n) || 0;
+  const accountIntegrityIssueN = toNum(overallIntegrity.issue_count) || 0;
+  const lineageVerdict = toUpper(signalLineageSummary.verdict) || "N_A";
+  const executionQualityStatus = toUpper(executionQualitySummary.status) || "N_A";
+  const executionMicrostructureStatus = retrospectiveDisplay.generated_at_kst
+    ? ((tp0HitRate != null || tp1HitRate != null || preTp1TimeStopRate != null || chaseRejectN > 0)
+      ? "ACTIVE"
+      : "OBSERVED")
+    : "N_A";
+  const portfolioClusterRiskStatus = clusterBlockN > 0
+    ? "BLOCKING"
+    : (clusterReduceN > 0
+      ? "REDUCING"
+      : (retrospectiveDisplay.generated_at_kst ? "MONITORING" : "N_A"));
+
   return {
     contract_version: "OPENCLAW_AUTONOMY_CONTRACT_V1",
     goal_id: "DONBEOLJA_OBJECTIVE_AUTONOMY",
@@ -299,6 +348,35 @@ function deriveOpenClawAutonomyContract({
       market_regime_keep_drop_n: toNum(marketRegimeBoardSummary.keep_drop_market_n) || 0,
       market_regime_top_rescue_market: String(marketRegimeBoardSummary.top_rescue_market || "").trim() || null,
       market_regime_top_keep_drop_market: String(marketRegimeBoardSummary.top_keep_drop_market || "").trim() || null,
+      execution_quality_status: executionQualityStatus,
+      execution_quality_latency_p95_ms: toNum(executionQualitySummary.created_to_fill_p95_ms),
+      execution_quality_slippage_p95_bps: toNum(executionQualitySummary.adverse_slippage_p95_bps),
+      execution_quality_partial_fill_rate_pct: toNum(executionQualitySummary.partial_fill_rate_pct),
+      execution_quality_top_watch_market: String(
+        executionQualitySummary.top_latency_market
+        || executionQualitySummary.top_slippage_market
+        || executionQualitySummary.top_partial_market
+        || ""
+      ).trim() || null,
+      lineage_status: lineageVerdict,
+      lineage_fills_intent_null_rate: toNum(signalLineageSummary.fills_intent_id_null_rate),
+      lineage_fills_signal_null_rate: toNum(signalLineageSummary.fills_signal_doc_id_null_rate),
+      lineage_intents_signal_null_rate: toNum(signalLineageSummary.intents_signal_doc_id_null_rate),
+      account_integrity_ok: overallIntegrity.ok === true,
+      account_integrity_issue_n: accountIntegrityIssueN,
+      account_active_market_count: toNum(overallIntegrity.active_market_count) || 0,
+      account_position_doc_count: toNum(overallIntegrity.position_doc_count) || 0,
+      account_ops_status: String(overallOperations.status || "").trim() || null,
+      account_ops_mode: String(overallOperations.mode || "").trim() || null,
+      execution_microstructure_status: executionMicrostructureStatus,
+      tp0_hit_rate: tp0HitRate,
+      tp1_hit_rate: tp1HitRate,
+      tp0_to_tp1_conversion_rate: toNum(retrospectiveMicro.tp0_to_tp1_conversion_rate),
+      pre_tp1_time_stop_rate: preTp1TimeStopRate,
+      chase_reject_n: chaseRejectN,
+      portfolio_cluster_reduce_n: clusterReduceN,
+      portfolio_cluster_block_n: clusterBlockN,
+      portfolio_cluster_risk_status: portfolioClusterRiskStatus,
     },
     summary: {
       goal_state: objectiveMet ? "OBJECTIVE_ON_TRACK" : "OBJECTIVE_RECOVERY_REQUIRED",
@@ -317,6 +395,11 @@ function deriveOpenClawAutonomyContract({
       market_regime_keep_drop_n: toNum(marketRegimeBoardSummary.keep_drop_market_n) || 0,
       market_regime_top_rescue_market: String(marketRegimeBoardSummary.top_rescue_market || "").trim() || null,
       market_regime_top_keep_drop_market: String(marketRegimeBoardSummary.top_keep_drop_market || "").trim() || null,
+      execution_microstructure_status: executionMicrostructureStatus,
+      portfolio_cluster_risk_status: portfolioClusterRiskStatus,
+      execution_quality_status: executionQualityStatus,
+      lineage_status: lineageVerdict,
+      account_integrity_status: overallIntegrity.ok === true ? "PASS" : (overallIntegrity.issue_count != null ? "WARN" : "N_A"),
     },
     server_signal_transition: serverSignalTransition,
   };

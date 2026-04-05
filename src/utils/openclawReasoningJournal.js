@@ -72,6 +72,24 @@ function deriveDominantIssue({ objectiveSupervisor = null, autonomyContract = nu
   };
 }
 
+function readDisplay(value) {
+  return value && value.display && typeof value.display === "object" ? value.display : {};
+}
+
+function readRetrospectiveMicrostructure(value) {
+  const display = readDisplay(value);
+  if (display.execution_microstructure && typeof display.execution_microstructure === "object") {
+    return display.execution_microstructure;
+  }
+  const daily = display.periods && display.periods.DAILY && typeof display.periods.DAILY === "object"
+    ? display.periods.DAILY
+    : null;
+  if (daily && daily.execution_microstructure && typeof daily.execution_microstructure === "object") {
+    return daily.execution_microstructure;
+  }
+  return {};
+}
+
 function deriveRecommendedAction({ quality = null, cutover = null, policyPlan = null } = {}) {
   const qualitySummary = readSummary(quality);
   const cutoverSummary = readSummary(cutover);
@@ -465,6 +483,10 @@ function buildReasoningJournal({
   quality = null,
   cutover = null,
   policyPlan = null,
+  objectiveRetrospective = null,
+  overallAccountReport = null,
+  signalLineageHealth = null,
+  executionQuality = null,
   previousJournal = null,
 } = {}) {
   const objective = unwrapRawReport(objectiveSupervisor) || {};
@@ -472,6 +494,12 @@ function buildReasoningJournal({
   const qualitySummary = readSummary(quality);
   const cutoverSummary = readSummary(cutover);
   const policySummary = readSummary(policyPlan);
+  const retrospectiveMicro = readRetrospectiveMicrostructure(objectiveRetrospective);
+  const overallAccount = overallAccountReport && typeof overallAccountReport === "object" ? overallAccountReport : {};
+  const overallIntegrity = overallAccount.integrity && typeof overallAccount.integrity === "object" ? overallAccount.integrity : {};
+  const overallOperations = overallAccount.operations && typeof overallAccount.operations === "object" ? overallAccount.operations : {};
+  const lineageSummary = readSummary(signalLineageHealth);
+  const executionQualitySummary = readSummary(executionQuality);
   const issue = deriveDominantIssue({ objectiveSupervisor, autonomyContract, quality, cutover });
   const recommendedAction = deriveRecommendedAction({ quality, cutover, policyPlan });
   const pendingVerification = derivePendingVerification({ cutover, quality, autonomyContract });
@@ -504,6 +532,23 @@ function buildReasoningJournal({
       cutover_status: String(cutoverSummary.readiness_status || "").trim() || null,
       cutover_blocker_n: toNum(cutoverSummary.blocker_n),
       policy_plan_status: String(policySummary.status || "").trim() || null,
+      execution_quality_status: String(executionQualitySummary.status || "").trim() || null,
+      execution_quality_latency_p95_ms: toNum(executionQualitySummary.created_to_fill_p95_ms),
+      execution_quality_slippage_p95_bps: toNum(executionQualitySummary.adverse_slippage_p95_bps),
+      execution_quality_partial_fill_rate_pct: toNum(executionQualitySummary.partial_fill_rate_pct),
+      lineage_verdict: String(lineageSummary.verdict || "").trim() || null,
+      lineage_fills_intent_null_rate: toNum(lineageSummary.fills_intent_id_null_rate),
+      account_integrity_ok: overallIntegrity.ok === true,
+      account_integrity_issue_n: toNum(overallIntegrity.issue_count),
+      account_ops_status: String(overallOperations.status || "").trim() || null,
+      account_ops_mode: String(overallOperations.mode || "").trim() || null,
+      tp0_hit_rate: toNum(retrospectiveMicro.tp0_hit_rate),
+      tp1_hit_rate: toNum(retrospectiveMicro.tp1_hit_rate),
+      tp0_to_tp1_conversion_rate: toNum(retrospectiveMicro.tp0_to_tp1_conversion_rate),
+      pre_tp1_time_stop_rate: toNum(retrospectiveMicro.pre_tp1_time_stop_rate),
+      chase_reject_n: toNum(retrospectiveMicro.chase_reject_n),
+      portfolio_cluster_reduce_n: toNum(retrospectiveMicro.portfolio_cluster_reduce_n),
+      portfolio_cluster_block_n: toNum(retrospectiveMicro.portfolio_cluster_block_n),
     },
   };
 
@@ -526,6 +571,17 @@ function buildReasoningJournal({
       current_dominant_issue_source: currentEntry.dominant_issue_source,
       current_recommended_action: currentEntry.recommended_action,
       current_verification_focus: currentEntry.verification_focus,
+      current_execution_quality_status: currentEntry.current_snapshot.execution_quality_status,
+      current_lineage_status: currentEntry.current_snapshot.lineage_verdict,
+      current_account_integrity_status: currentEntry.current_snapshot.account_integrity_ok === true
+        ? "PASS"
+        : (currentEntry.current_snapshot.account_integrity_issue_n != null ? "WARN" : null),
+      current_microstructure_tp0_hit_rate: currentEntry.current_snapshot.tp0_hit_rate,
+      current_microstructure_tp1_hit_rate: currentEntry.current_snapshot.tp1_hit_rate,
+      current_microstructure_pre_tp1_time_stop_rate: currentEntry.current_snapshot.pre_tp1_time_stop_rate,
+      current_microstructure_chase_reject_n: currentEntry.current_snapshot.chase_reject_n,
+      current_microstructure_cluster_reduce_n: currentEntry.current_snapshot.portfolio_cluster_reduce_n,
+      current_microstructure_cluster_block_n: currentEntry.current_snapshot.portfolio_cluster_block_n,
       pending_verification_n: deduped.filter((row) => row && row.pending_verification && row.pending_verification.metric).length,
       verified_n: verificationStats.verified_n,
       sample_formation_verified_n: verificationStats.sample_formation_verified_n,

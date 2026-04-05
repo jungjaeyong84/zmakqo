@@ -27,6 +27,10 @@ const INPUTS = Object.freeze({
   serverSignalQuality: path.join(OPS_DAILY_DIR, "server_signal_quality_latest.json"),
   cutover: path.join(OPS_DAILY_DIR, "server_signal_cutover_readiness_latest.json"),
   policyPlan: path.join(OPS_DAILY_DIR, "best_self_evolution_policy_parameter_plan_latest.json"),
+  objectiveRetrospective: path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json"),
+  overallAccountReport: path.join(OPS_DAILY_DIR, "overall_account_report_latest.json"),
+  signalLineageHealth: path.join(OPS_DAILY_DIR, "signal_lineage_health_latest.json"),
+  executionQuality: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_quality_latest.json"),
 });
 
 const RUNTIME_JOURNAL_PATH = path.join(OPS_RUNTIME_DIR, "openclaw_reasoning_journal.json");
@@ -53,6 +57,8 @@ function renderMarkdown(report = {}) {
     `- authority_state: ${summary.current_authority_state || "N/A"}`,
     `- dominant_issue: ${summary.current_dominant_issue || "N/A"} / source=${summary.current_dominant_issue_source || "N/A"}`,
     `- recommended_action: ${summary.current_recommended_action || "N/A"}`,
+    `- execution_quality/lineage/account: ${summary.current_execution_quality_status || "N/A"} / ${summary.current_lineage_status || "N/A"} / ${summary.current_account_integrity_status || "N/A"}`,
+    `- microstructure: tp0_hit=${summary.current_microstructure_tp0_hit_rate != null ? summary.current_microstructure_tp0_hit_rate : "N/A"} / tp1_hit=${summary.current_microstructure_tp1_hit_rate != null ? summary.current_microstructure_tp1_hit_rate : "N/A"} / pre_tp1_time_stop=${summary.current_microstructure_pre_tp1_time_stop_rate != null ? summary.current_microstructure_pre_tp1_time_stop_rate : "N/A"} / chase_reject=${summary.current_microstructure_chase_reject_n != null ? summary.current_microstructure_chase_reject_n : "N/A"} / cluster_reduce=${summary.current_microstructure_cluster_reduce_n != null ? summary.current_microstructure_cluster_reduce_n : "N/A"} / cluster_block=${summary.current_microstructure_cluster_block_n != null ? summary.current_microstructure_cluster_block_n : "N/A"}`,
     `- compacted_context: ${report.compacted_context || "N/A"}`,
     "",
     "## Entries",
@@ -78,6 +84,10 @@ function main() {
     quality: readJsonRawSafe(INPUTS.serverSignalQuality, null),
     cutover: readJsonRawSafe(INPUTS.cutover, null),
     policyPlan: readJsonRawSafe(INPUTS.policyPlan, null),
+    objectiveRetrospective: readJsonSafe(INPUTS.objectiveRetrospective, null),
+    overallAccountReport: readJsonRawSafe(INPUTS.overallAccountReport, null),
+    signalLineageHealth: readJsonRawSafe(INPUTS.signalLineageHealth, null),
+    executionQuality: readJsonRawSafe(INPUTS.executionQuality, null),
     previousJournal: readJsonSafe(RUNTIME_JOURNAL_PATH, null),
   });
 
