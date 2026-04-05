@@ -25,6 +25,8 @@ function renderMarkdown(payload = {}) {
     `- rows: ${summary.rows_n || 0} / valid ${summary.valid_n || 0} / invalid ${summary.invalid_n || 0} / realized ${summary.realized_n || 0}`,
     `- thresholds: rows>=${summary.min_rows || "N/A"} / realized>=${summary.min_realized_n || "N/A"}`,
     `- readiness: row=${summary.row_ready ? "YES" : "NO"} / realized=${summary.realized_ready ? "YES" : "NO"} / integrity=${summary.integrity_ready ? "YES" : "NO"}`,
+    `- coverage: mfe_mae ${summary.mfe_mae_labeled_n || 0} (${summary.mfe_mae_label_rate == null ? "N/A" : summary.mfe_mae_label_rate.toFixed(4)}) / tp1_time ${summary.tp1_time_labeled_n || 0} (${summary.tp1_time_label_rate == null ? "N/A" : summary.tp1_time_label_rate.toFixed(4)}) / tp0_time ${summary.tp0_time_labeled_n || 0} (${summary.tp0_time_label_rate == null ? "N/A" : summary.tp0_time_label_rate.toFixed(4)})`,
+    `- microstructure outcomes: tp0->tp1 ${summary.tp0_to_tp1_converted_n || 0} / pre_tp1_time_stop ${summary.pre_tp1_time_stop_n || 0}`,
   ].join("\n") + "\n";
 }
 

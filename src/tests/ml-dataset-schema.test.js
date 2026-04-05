@@ -33,9 +33,15 @@ function run() {
     outcome_state: "REALIZED",
     tp0_hit: true,
     tp0_first: true,
+    tp0_to_tp1_converted: true,
     tp1_first: true,
     time_stop_hit: false,
     time_stop_first: false,
+    pre_tp1_time_stop: false,
+    time_to_tp0_minutes: 4,
+    time_to_tp1_minutes: 11,
+    mfe_pct: 0.03,
+    mae_pct: -0.01,
     realized_ret_net: 0.012,
     realized_pnl_quote: 1000,
     features_json: {
@@ -48,7 +54,10 @@ function run() {
   assert.strictEqual(row.context.market, "BTCUSDT");
   assert.strictEqual(row.labels.is_realized, true);
   assert.strictEqual(row.lifecycle.tp0_hit, true);
+  assert.strictEqual(row.lifecycle.tp0_to_tp1_converted, true);
   assert.strictEqual(row.lifecycle.tp1_first, true);
+  assert.strictEqual(row.lifecycle.time_to_tp0_minutes, 4);
+  assert.strictEqual(row.lifecycle.mfe_pct, 0.03);
   assert.strictEqual(row.features.some_feature, 7);
 
   const validation = validateMlTrainingRow(row);

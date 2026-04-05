@@ -5,6 +5,22 @@ const { deriveModelReadiness } = require("../utils/modelReadiness");
 
 function run() {
   const ready = deriveModelReadiness({
+    rows: [
+      {
+        lifecycle: {
+          mfe_pct: 0.02,
+          mae_pct: -0.01,
+          time_to_tp1_minutes: 12,
+          tp0_to_tp1_converted: true,
+        },
+      },
+      {
+        lifecycle: {
+          time_to_tp0_minutes: 4,
+          pre_tp1_time_stop: true,
+        },
+      },
+    ],
     summary: {
       rows_n: 200,
       valid_n: 200,
@@ -14,6 +30,11 @@ function run() {
     },
   });
   assert.strictEqual(ready.status, "MODEL_READINESS_READY");
+  assert.strictEqual(ready.mfe_mae_labeled_n, 1);
+  assert.strictEqual(ready.tp1_time_labeled_n, 1);
+  assert.strictEqual(ready.tp0_time_labeled_n, 1);
+  assert.strictEqual(ready.tp0_to_tp1_converted_n, 1);
+  assert.strictEqual(ready.pre_tp1_time_stop_n, 1);
 
   const bootstrapping = deriveModelReadiness({
     summary: {

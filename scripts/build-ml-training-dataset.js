@@ -78,6 +78,7 @@ async function buildDatasetFromRawCache({
     fromMs: windowMeta.fromMs,
     toMs: windowMeta.toMs,
     evTunerReport,
+    loadPathMetrics: true,
   });
   return {
     provider,

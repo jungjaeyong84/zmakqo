@@ -314,6 +314,8 @@ function run() {
           realized_ret_net: 0.05,
           first_exit_kind: "TP1",
           tp1_hit: true,
+          mfe: 0.06,
+          mae: -0.02,
           sl_before_tp1: false,
           trail_after_tp1: false,
         },
@@ -356,6 +358,9 @@ function run() {
 
   assert.strictEqual(executed.source_row_type, "EXECUTED");
   assert.strictEqual(executed.tp1_first, true);
+  assert.strictEqual(executed.tp0_to_tp1_converted, false);
+  assert.strictEqual(executed.mfe_pct, 0.06);
+  assert.strictEqual(executed.mae_pct, -0.02);
   assert.strictEqual(executed.realized_ret_net, 0.05);
   assert.strictEqual(executed.outcome_state, "REALIZED");
   assert.strictEqual(executed.wait_verdict, "ALLOW");
@@ -387,8 +392,11 @@ function run() {
   assert.strictEqual(tp0Timed.source_row_type, "EXECUTED");
   assert.strictEqual(tp0Timed.tp0_hit, true);
   assert.strictEqual(tp0Timed.tp0_first, true);
+  assert.strictEqual(tp0Timed.tp0_to_tp1_converted, false);
   assert.strictEqual(tp0Timed.time_stop_hit, true);
   assert.strictEqual(tp0Timed.time_stop_first, false);
+  assert.strictEqual(tp0Timed.pre_tp1_time_stop, true);
+  assert.ok(tp0Timed.time_to_tp0_minutes > 0);
   assert.strictEqual(tp0Timed.outcome_state, "EXIT_PRESENT_UNLABELED");
   assert.strictEqual(exitOnlySync.source_row_type, "EXIT_ONLY");
   assert.strictEqual(exitOnlySync.outcome_state, "EXIT_PRESENT_UNLABELED");

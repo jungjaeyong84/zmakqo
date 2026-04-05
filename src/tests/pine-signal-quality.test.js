@@ -150,6 +150,17 @@ async function run() {
     tf: "60m",
     fromMs: 0,
     toMs: 10000,
+    barsByMarket: new Map([
+      ["KRW-BTC", [
+        { timestamp: 1500, high: 104, low: 99 },
+        { timestamp: 2500, high: 103, low: 100 },
+        { timestamp: 3000, high: 102.5, low: 100.5 },
+      ]],
+      ["KRW-ETH", [
+        { timestamp: 4500, high: 201, low: 196 },
+        { timestamp: 5000, high: 200, low: 195 },
+      ]],
+    ]),
   });
 
   assert.strictEqual(summary.by_tier.CORE.signals_n, 1);
@@ -198,6 +209,9 @@ async function run() {
   assert.strictEqual(summary.chain_rows[0].entry_price, 100);
   assert.strictEqual(summary.chain_rows[0].tp1_ms, 2000);
   assert.strictEqual(summary.chain_rows[0].first_exit_ms, 2000);
+  assert.strictEqual(summary.chain_rows[0].mfe, 0.04);
+  assert.strictEqual(summary.chain_rows[0].mae, -0.01);
+  assert.strictEqual(summary.chain_rows[0].path_bars_n, 3);
   assert.strictEqual(summary.by_tier.CORE.avg_entropy_score, 0.32);
   assert.strictEqual(summary.by_tier.CORE.avg_coherence_score, 0.74);
   assert.strictEqual(summary.by_tier.CORE.avg_transition_risk, 0.28);
@@ -227,6 +241,9 @@ async function run() {
   assert.strictEqual(summary.by_tier.EARLY.avg_free_energy, 0.73);
   assert.strictEqual(summary.by_tier.EARLY.febt_fallback_legacy_n, 1);
   assert.strictEqual(summary.by_tier.EARLY.febt_payload_missing_n, 1);
+  assert.strictEqual(summary.chain_rows[1].mfe, 0.005);
+  assert.strictEqual(summary.chain_rows[1].mae, -0.025);
+  assert.strictEqual(summary.chain_rows[1].path_bars_n, 2);
 
   const summaryWithIntentFallback = await summarizePineSignalQuality({
     signals: [

@@ -1,6 +1,11 @@
 const { buildTradesFromFillsWithFunding } = require("./tradesFromFills");
 const { buildFilterFeatureSignature } = require("../utils/filterFeatureBuckets");
 const { resolveEntryTimingTier } = require("../utils/liveEntryTaxonomy");
+const {
+  computeMfeMae,
+  loadBarsForChainRows,
+  normalizeBarsByMarket,
+} = require("../utils/barPathMetrics");
 
 function toNum(v) {
   if (v === null || v === undefined || v === "") return null;
@@ -189,6 +194,8 @@ async function summarizePineSignalQuality({
   tf = null,
   fromMs = null,
   toMs = null,
+  barsByMarket = null,
+  loadPathMetrics = false,
 } = {}) {
   const exchangeNorm = normalizeExchange(exchange);
   const tfNorm = String(tf || "").trim();
@@ -376,6 +383,35 @@ async function summarizePineSignalQuality({
     tradesByEntry.get(key).push(trade);
   }
 
+  const selectedChainInputs = selectedChains.map((chain) => {
+    const fillsSorted = chain.fills
+      .slice()
+      .sort((a, b) => resolveExecMs(a) - resolveExecMs(b));
+    const exitRows = fillsSorted.filter((row) => classifyExitEvent(row && row.event));
+    const lastExit = exitRows.length > 0 ? exitRows[exitRows.length - 1] : null;
+    return {
+      market: chain.market,
+      entry_bar_ms: chain.entry_bar_ms,
+      path_end_ms: lastExit ? resolveExecMs(lastExit) : null,
+      first_exit_ms: exitRows.length > 0 ? resolveExecMs(exitRows[0]) : null,
+      tp1_ms: (() => {
+        const tp1Row = exitRows.find((row) => classifyExitEvent(row && row.event) === "TP1");
+        return tp1Row ? resolveExecMs(tp1Row) : null;
+      })(),
+      sl_ms: (() => {
+        const slRow = exitRows.find((row) => classifyExitEvent(row && row.event) === "SL");
+        return slRow ? resolveExecMs(slRow) : null;
+      })(),
+    };
+  });
+  let pathBarsByMarket = normalizeBarsByMarket(barsByMarket);
+  if (pathBarsByMarket.size <= 0 && loadPathMetrics) {
+    pathBarsByMarket = await loadBarsForChainRows(selectedChainInputs, {
+      exchange: exchangeNorm,
+      tf: tfNorm,
+    });
+  }
+
   const chainRows = [];
   for (const chain of selectedChains) {
     const fillsSorted = chain.fills
@@ -489,6 +525,27 @@ async function summarizePineSignalQuality({
       tierStats.avg_ret_net += retNet;
       tierStats.avg_pnl_quote += pnlQuote;
     }
+    const entryRow = fillsSorted.find((row) => isEntryTierEvent(row && row.event)) || null;
+    const inferredSide = normalizeSide(
+      signalMeta.side
+      || (entryRow && entryRow.side)
+      || (chain && chain.side)
+    );
+    const pathEndMs = firstExit ? resolveExecMs(fillsSorted[fillsSorted.length - 1]) : null;
+    const marketBars = pathBarsByMarket.get(chain.market) || [];
+    const pathBars = marketBars.filter((bar) => {
+      const ts = toNum(bar && (bar.timestamp ?? bar.closeTimeUtcMs));
+      return Number.isFinite(ts)
+        && Number.isFinite(chain.entry_bar_ms)
+        && ts > Number(chain.entry_bar_ms)
+        && Number.isFinite(pathEndMs)
+        && ts <= Number(pathEndMs);
+    });
+    const pathMetrics = computeMfeMae({
+      entry: chain.entry_price,
+      bars: pathBars,
+      side: inferredSide,
+    });
 
     chainRows.push({
       entry_event_id: chain.entry_event_id,
@@ -559,11 +616,15 @@ async function summarizePineSignalQuality({
       first_exit_kind: firstExit ? firstExit.kind : null,
       first_exit_event: firstExit ? firstExit.event : null,
       first_exit_ms: firstExit ? firstExit.ms : null,
+      last_exit_ms: pathEndMs,
       tp1_hit: hasTp1,
       tp1_ms: firstTp1 ? firstTp1.ms : null,
       sl_before_tp1: slBeforeTp1,
       sl_ms: firstSl ? firstSl.ms : null,
       trail_after_tp1: hasTrailAfterTp1,
+      mfe: Number.isFinite(pathMetrics.mfe) ? pathMetrics.mfe : null,
+      mae: Number.isFinite(pathMetrics.mae) ? pathMetrics.mae : null,
+      path_bars_n: pathBars.length,
       realized_ret_net: retNet,
       realized_pnl_quote: realized ? pnlQuote : null,
       realized: realized,

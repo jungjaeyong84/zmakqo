@@ -752,12 +752,21 @@ function buildUnifiedLearningRows({
     else if (intentStatus === "CANCELED" || intentStatus === "REJECTED" || intentStatus === "FAILED") sourceRowType = "REJECTED";
 
     const exitKindsFromFills = exitFills
-      .map((row) => ({ kind: classifyExitEvent(row && row.event), ms: toNum(row && row.exec_bar_close_time_utc_ms) }))
+      .map((row) => ({
+        kind: classifyExitEvent(row && row.event),
+        ms:
+          parseMs(row && row.created_at)
+          ?? toNum(row && row.exec_bar_close_time_utc_ms)
+          ?? toNum(row && row.signal_bar_close_time_utc_ms)
+          ,
+      }))
       .filter((row) => row.kind);
     const exitKindsFromTrades = realizedTradeRows
       .map((row) => ({
         kind: classifyExitEvent(row && (row.exit_event || row.event)),
-        ms: toNum(row && (row.close_ms || row.exec_bar_close_time_utc_ms)),
+        ms:
+          toNum(row && (row.close_ms || row.exec_bar_close_time_utc_ms))
+          ?? parseMs(row && row.created_at),
       }))
       .filter((row) => row.kind);
     const exitKinds = (exitKindsFromFills.length ? exitKindsFromFills : exitKindsFromTrades)
@@ -768,6 +777,7 @@ function buildUnifiedLearningRows({
     const firstSlIdx = exitKinds.findIndex((row) => row.kind === "SL");
     const firstTimeStopIdx = exitKinds.findIndex((row) => row.kind === "TIME_STOP");
     const tp0Hit = firstTp0Idx >= 0;
+    const tp1Hit = firstTp1Idx >= 0;
     const tp1First = firstTp1Idx >= 0 && (firstSlIdx < 0 || firstTp1Idx < firstSlIdx);
     const slFirst = firstSlIdx >= 0 && (firstTp1Idx < 0 || firstSlIdx < firstTp1Idx);
     const tp0First = firstTp0Idx >= 0 && [firstTp1Idx, firstSlIdx, firstTimeStopIdx]
@@ -777,8 +787,12 @@ function buildUnifiedLearningRows({
     const timeStopFirst = firstTimeStopIdx >= 0 && [firstTp0Idx, firstTp1Idx, firstSlIdx]
       .filter((value) => value >= 0)
       .every((value) => firstTimeStopIdx < value);
+    const tp0ToTp1Converted = tp0Hit && tp1Hit && firstTp0Idx < firstTp1Idx;
+    const preTp1TimeStop = timeStopHit && !tp1Hit;
 
     const fillCreatedAtMs = parseMs(entryFill && entryFill.created_at);
+    const firstTp0Ms = firstTp0Idx >= 0 ? toNum(exitKinds[firstTp0Idx] && exitKinds[firstTp0Idx].ms) : null;
+    const firstTp1Ms = firstTp1Idx >= 0 ? toNum(exitKinds[firstTp1Idx] && exitKinds[firstTp1Idx].ms) : null;
     const lastExitFill = exitFills[exitFills.length - 1] || null;
     const lastExitFillMs = toNum(lastExitFill && (lastExitFill.exec_bar_close_time_utc_ms || lastExitFill.signal_bar_close_time_utc_ms))
       ?? parseMs(lastExitFill && lastExitFill.created_at);
@@ -855,6 +869,12 @@ function buildUnifiedLearningRows({
     const holdMinutes = Number.isFinite(holdStartMs) && Number.isFinite(tradeClosedAtMs)
       ? ((tradeClosedAtMs - holdStartMs) / 60000)
       : null;
+    const timeToTp0Minutes = Number.isFinite(holdStartMs) && Number.isFinite(firstTp0Ms)
+      ? ((firstTp0Ms - holdStartMs) / 60000)
+      : null;
+    const timeToTp1Minutes = Number.isFinite(holdStartMs) && Number.isFinite(firstTp1Ms)
+      ? ((firstTp1Ms - holdStartMs) / 60000)
+      : null;
     const verdicts = resolveVerdictByStage(dropStageKey, features, hasTrade || hasFill);
     const tradeExitKind = classifyExitEvent(realizedTradeRow && (realizedTradeRow.exit_event || realizedTradeRow.event));
     const outcomeState = resolveOutcomeState({
@@ -925,12 +945,16 @@ function buildUnifiedLearningRows({
 
       tp0_hit: tp0Hit,
       tp0_first: tp0First,
+      tp0_to_tp1_converted: tp0ToTp1Converted,
       tp1_first: tp1First,
       sl_first: slFirst,
       time_stop_hit: timeStopHit,
       time_stop_first: timeStopFirst,
-      mfe_pct: null,
-      mae_pct: null,
+      pre_tp1_time_stop: preTp1TimeStop,
+      time_to_tp0_minutes: timeToTp0Minutes,
+      time_to_tp1_minutes: timeToTp1Minutes,
+      mfe_pct: toNum(matchedChainRow && matchedChainRow.mfe),
+      mae_pct: toNum(matchedChainRow && matchedChainRow.mae),
       realized_ret_net: realizedRetNet,
       realized_pnl_quote: realizedPnlQuoteFinal,
       realized_source: realizedSource,
@@ -1195,6 +1219,7 @@ async function buildBestSelfEvolutionDataset({
   fromMs = null,
   toMs = null,
   evTunerReport = null,
+  loadPathMetrics = false,
 } = {}) {
   const quality = await summarizePineSignalQuality({
     signals,
@@ -1204,6 +1229,7 @@ async function buildBestSelfEvolutionDataset({
     tf,
     fromMs,
     toMs,
+    loadPathMetrics,
   });
   const rows = buildUnifiedLearningRows({
     signals,
