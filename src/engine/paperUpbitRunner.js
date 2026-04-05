@@ -1571,6 +1571,7 @@ const futuresMarginCache = new Map();
 const FUTURES_LEVERAGE_TTL_MS = 60 * 60 * 1000;
 const FUTURES_MARGIN_TTL_MS = 60 * 60 * 1000;
 const FUTURES_POSITION_TTL_MS = 10 * 1000;
+const FUTURES_EXTERNAL_FLAT_ENTRY_GRACE_MS = Number(process.env.FUTURES_EXTERNAL_FLAT_ENTRY_GRACE_MS || 30 * 1000);
 const futuresPositionCache = { at: 0, positions: null };
 const FUTURES_POSITION_MODE_TTL_MS = 10 * 1000;
 const futuresPositionModeCache = { at: 0, value: null, keyHint: null };
@@ -4884,6 +4885,49 @@ async function getBinancePositionsSnapshot({ apiKey, apiSecret, forceRefresh } =
   return map;
 }
 
+function resolveRecentExternalFlatSyncGuard({
+  active = false,
+  prevActive = false,
+  prevPos = null,
+  prevMeta = null,
+  syncEventMs = null,
+  graceMs = FUTURES_EXTERNAL_FLAT_ENTRY_GRACE_MS,
+  nowMs = Date.now(),
+} = {}) {
+  if (active || !prevActive) return { defer: false, reason: "NOT_EXTERNAL_FLAT" };
+  const graceWindowMs = Number.isFinite(Number(graceMs)) && Number(graceMs) > 0
+    ? Number(graceMs)
+    : FUTURES_EXTERNAL_FLAT_ENTRY_GRACE_MS;
+  const meta = (prevMeta && typeof prevMeta === "object") ? prevMeta : {};
+  const updatedAtMs = Date.parse(String(prevPos && prevPos.updated_at || ""));
+  const refreshAtMs = Number(meta.native_protection_refresh_at_ms);
+  const entryRefMs = Number.isFinite(refreshAtMs) && refreshAtMs > 0 ? refreshAtMs : updatedAtMs;
+  if (!Number.isFinite(entryRefMs) || entryRefMs <= 0) {
+    return { defer: false, reason: "NO_RECENT_ENTRY_REF" };
+  }
+  const ageMs = Math.max(0, nowMs - entryRefMs);
+  if (ageMs > graceWindowMs) {
+    return { defer: false, reason: "ENTRY_GRACE_EXPIRED", ageMs, graceWindowMs };
+  }
+  const recentEntryLike = (
+    String(meta.intent || "").toUpperCase() === "ENTRY"
+    || String(meta.native_protection_refresh_context || "").toUpperCase() === "ENTRY"
+    || String(meta.native_protection_refresh_status || "").toUpperCase() === "OK"
+    || !!String(meta.last_fill_intent || "").trim()
+  );
+  if (!recentEntryLike) {
+    return { defer: false, reason: "NO_RECENT_ENTRY_SIGNAL", ageMs, graceWindowMs };
+  }
+  return {
+    defer: true,
+    reason: "RECENT_ENTRY_GRACE",
+    ageMs,
+    graceWindowMs,
+    entryRefMs,
+    syncEventMs: Number.isFinite(Number(syncEventMs)) ? Number(syncEventMs) : nowMs,
+  };
+}
+
 async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget, liveCfg, forceRefresh } = {}) {
   const ex = String(exchange || "").toUpperCase();
   if (!ex.includes("BINANCE")) return { ok: false, skipped: true };
@@ -4942,6 +4986,13 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
   const state = active ? "ACTIVE" : "FLAT";
   const syncUpdateMsRaw = Number(posRaw && posRaw.updateTime);
   const syncEventMs = Number.isFinite(syncUpdateMsRaw) && syncUpdateMsRaw > 0 ? syncUpdateMsRaw : Date.now();
+  const externalFlatSyncGuard = resolveRecentExternalFlatSyncGuard({
+    active,
+    prevActive,
+    prevPos,
+    prevMeta,
+    syncEventMs,
+  });
   const budgetMaxKrw = (riskBudget && riskBudget.enabled) ? riskBudget.maxKrw : null;
   const budgetUsedKrw = (riskBudget && riskBudget.enabled)
     ? (active
@@ -4954,6 +5005,34 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
       })
       : 0)
     : null;
+  if (externalFlatSyncGuard.defer) {
+    const deferMeta = mergeMeta(prevMeta, {
+      external_flat_sync_deferred: true,
+      external_flat_sync_deferred_reason: externalFlatSyncGuard.reason,
+      external_flat_sync_deferred_at_ms: syncEventMs,
+      external_flat_sync_deferred_age_ms: externalFlatSyncGuard.ageMs,
+      external_flat_sync_deferred_grace_ms: externalFlatSyncGuard.graceWindowMs,
+      external_flat_sync_snapshot_qty_base: qtyBase,
+      external_flat_sync_snapshot_entry_price: Number.isFinite(entryPrice) ? entryPrice : null,
+      external_flat_sync_snapshot_mark_price: Number.isFinite(markPrice) ? markPrice : null,
+    });
+    const payload = await upsertPosition({
+      exchange,
+      symbol,
+      state: prevPos && prevPos.state ? prevPos.state : (prevState || "ACTIVE"),
+      positionSide: prevSide || (prevPos && prevPos.position_side) || null,
+      sizePct: Number.isFinite(prevSizePct) ? prevSizePct : 1,
+      avgPrice: prevPos && prevPos.avg_price != null ? prevPos.avg_price : null,
+      qtyBase: Number.isFinite(prevQtyBase) ? prevQtyBase : null,
+      runId,
+      executionMode: liveCfg.executionMode || "LIVE",
+      budgetMaxKrw: prevPos && prevPos.budget_max_krw != null ? prevPos.budget_max_krw : budgetMaxKrw,
+      budgetUsedKrw: prevPos && prevPos.budget_used_krw != null ? prevPos.budget_used_krw : budgetUsedKrw,
+      budgetSource: prevPos && prevPos.budget_source != null ? prevPos.budget_source : ((riskBudget && riskBudget.enabled) ? riskBudget.source : null),
+      meta: deferMeta,
+    });
+    return { ok: true, position: payload, active: true, deferredFlatSync: true };
+  }
   const syncedAddChainBaseQtyPct = resolveSyncedAddChainBaseQtyPct({
     active,
     posMeta: prevMeta,
@@ -12569,6 +12648,7 @@ module.exports = {
     pickSignalRegime,
     isBinanceMultiAssetsIsolatedMarginBlocked,
     isBinanceMarginTypeOpenOrdersConflict,
+    resolveRecentExternalFlatSyncGuard,
   },
 };
 
