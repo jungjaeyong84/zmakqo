@@ -51,6 +51,41 @@ function run() {
 
   assert.strictEqual(__test.describeEvDecisionReasonForUser("INSUFFICIENT_SAMPLE"), "판단에 필요한 표본이 아직 부족합니다");
 
+  const markdown = __test.renderMarkdown({
+    nowMeta: { kst: "2026-04-06 08:00:00 KST" },
+    windowDays: 9,
+    maturityHours: 12,
+    currentThreshold: 0.55,
+    currentTierThresholds: { EARLY: 0.55, CORE: 0.56 },
+    nextTierThresholds: { EARLY: 0.56, CORE: 0.57 },
+    plan: {
+      current: { hitRate: 0.6, wilsonLower: 0.5, monthlyRunRateKrw: 100000, n: 12 },
+      best: null,
+      next: 0.56,
+      changed: true,
+      reason: "TARGET_NUDGE",
+      candidates: [{ threshold: 0.55, hitRate: 0.6, wilsonLower: 0.5, n: 12 }],
+    },
+    bandPlan: {
+      reason: "BAND_OBJECTIVE_SEARCH",
+      current: { hitRate: 0.6, avgRetNet: 0.01, netPnlQuote: 1000, monthlyRunRateKrw: 5000, negPnlAbs: 200 },
+      best: { hitRate: 0.62, avgRetNet: 0.02, netPnlQuote: 1200, monthlyRunRateKrw: 6000, negPnlAbs: 100 },
+      next: { fullThreshold: 0.6, killThreshold: 0.5, midScale: 0.7, lowScale: 0.4 },
+    },
+    resolvedEntries: [],
+    unresolvedOpenCount: 0,
+    unresolvedStaleCount: 0,
+    provider: "BINANCEFUT",
+    tf: "15m",
+    cacheMeta: null,
+    mlPolicyReport: null,
+    mlHint: { applied: false },
+    stageLedger: { source: "LATEST", filePath: "/tmp/ledger.json" },
+    bestFebtContract: null,
+    bestFebtMarketGuard: null,
+  });
+  assert.match(markdown, /EV Composite Threshold Tune/);
+
   const thresholdRows = __test.buildTierThresholdRows({
     EARLY: {
       current: { n: 1, hitRate: 0, wilsonLower: 0 },

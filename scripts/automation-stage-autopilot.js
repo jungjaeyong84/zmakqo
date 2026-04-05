@@ -257,6 +257,11 @@ function toNum(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+function displayCandidateId(row = null) {
+  if (!row || typeof row !== "object") return null;
+  return String(row.canonical_candidate_id || row.display_candidate_id || row.candidate_id || "").trim() || null;
+}
+
 function pct(v, digits = 2) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "N/A";
@@ -826,7 +831,7 @@ function buildCanonicalPolicyStageCandidate(candidatesArtifact, currentSys = {},
       ? String(selected.status || selected.source || selected.candidate_id || "CANONICAL_POLICY_READY")
       : (unsupportedKeys.length ? `UNSUPPORTED_CANONICAL_THRESHOLD_KEYS:${unsupportedKeys.join("|")}` : "CANONICAL_POLICY_NOOP"),
     signature: actionable ? stableSignature(nextSettings) : null,
-    display_signature: String(selected.display_candidate_id || selected.candidate_id || "").trim() || null,
+    display_signature: displayCandidateId(selected),
     nextSettings,
     streakRequired: STREAK_REQUIRED,
     sampleSufficient: true,
@@ -954,7 +959,7 @@ function buildSourceModeStageCandidate({
     action: actionable ? "AUTO_APPLY" : "HOLD",
     reason,
     signature: actionable ? stableSignature(nextSettings) : null,
-    display_signature: String(selected.display_candidate_id || selected.candidate_id || "").trim() || null,
+    display_signature: displayCandidateId(selected),
     nextSettings,
     streakRequired: STREAK_REQUIRED,
     sampleSufficient: shadowObservedN >= shadowObservedMin,

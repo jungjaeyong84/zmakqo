@@ -25,6 +25,7 @@ function run() {
       {
         candidate_id: "AUTO_CORE_REGIME_TIGHTEN",
         scope: "PINE",
+        canonical_candidate_id: null,
         canonical_migration_class: "PINE_THRESHOLD",
         current_deploy_unit: "PINE_FILE",
         target_deploy_unit: "SERVER_SETTINGS",
@@ -40,6 +41,7 @@ function run() {
       {
         candidate_id: "ML_GATE_CORE_SCORE_ABS",
         scope: "ML",
+        canonical_candidate_id: null,
         canonical_migration_class: "SERVER_POLICY",
         current_deploy_unit: "SERVER_SETTINGS",
         target_deploy_unit: "SERVER_SETTINGS",
@@ -57,9 +59,10 @@ function run() {
   assert.match(markdown, /by_migration_class_active: PINE_THRESHOLD=1, SERVER_POLICY=2/);
   assert.match(markdown, /by_target_deploy_unit_generated: SERVER_SETTINGS=3/);
   assert.match(markdown, /by_target_deploy_unit_active: SERVER_SETTINGS=3/);
-  assert.match(markdown, /AUTO_CORE_REGIME_TIGHTEN: PINE\/TIGHTEN \/ class=PINE_THRESHOLD \/ deploy=PINE_FILE->SERVER_SETTINGS/);
+  assert.match(markdown, /top_candidate: AUTO_CORE_REGIME_TIGHTEN \/ legacy=AUTO_CORE_REGIME_TIGHTEN/);
+  assert.match(markdown, /AUTO_CORE_REGIME_TIGHTEN: legacy=AUTO_CORE_REGIME_TIGHTEN \/ PINE\/TIGHTEN \/ class=PINE_THRESHOLD \/ deploy=PINE_FILE->SERVER_SETTINGS/);
   assert.match(markdown, /Memory Blocked/);
-  assert.match(markdown, /ML_GATE_CORE_SCORE_ABS: ML\/TIGHTEN \/ class=SERVER_POLICY \/ deploy=SERVER_SETTINGS->SERVER_SETTINGS/);
+  assert.match(markdown, /ML_GATE_CORE_SCORE_ABS: legacy=ML_GATE_CORE_SCORE_ABS \/ ML\/TIGHTEN \/ class=SERVER_POLICY \/ deploy=SERVER_SETTINGS->SERVER_SETTINGS/);
   console.log("BEST_SELF_EVOLUTION_CANDIDATES_REPORT_TEST_OK");
 }
 

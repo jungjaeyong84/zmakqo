@@ -750,7 +750,7 @@ async function getRawProviderSettings(provider) {
 
 function renderMarkdown({ nowMeta, windowDays, maturityHours, currentThreshold, currentTierThresholds, nextTierThresholds, plan, bandPlan, resolvedEntries, unresolvedOpenCount, unresolvedStaleCount, provider, tf, cacheMeta, mlPolicyReport, mlHint, stageLedger, bestFebtContract, bestFebtMarketGuard }) {
   const lines = [];
-  lines.push(`# EV TP1 Threshold Tune`);
+  lines.push(`# EV Composite Threshold Tune`);
   lines.push("");
   lines.push(`- 실행 시각: ${nowMeta.kst}`);
   lines.push(`- 대상: ${provider} ${tf}`);
@@ -1092,6 +1092,12 @@ async function main() {
   const report = {
     ok: true,
     generated_at_kst: nowMeta.kst,
+    canonical_artifact_name: "ev_composite_threshold_tune",
+    legacy_artifact_alias: "ev_tp1_threshold_tune",
+    canonical_candidate_id: "EV_COMPOSITE_THRESHOLD_TUNE",
+    compatibility_candidate_id: "EV_TP1_THRESHOLD_TUNE",
+    policy_basis: "TP_COMPOSITE_EXIT_VALUE_V1",
+    threshold_metric: "exit_value_lower_bound",
     provider: PROVIDER,
     tf: TF,
     model: CURRENT_BAR_MODEL,
@@ -1172,11 +1178,11 @@ async function main() {
 
   const jsonPath = path.join(
     OPS_DAILY_DIR,
-    `${nowMeta.dateKey}_${nowMeta.hhmm}_ev_tp1_threshold_tune.json`
+    `${nowMeta.dateKey}_${nowMeta.hhmm}_ev_composite_threshold_tune.json`
   );
   const mdPath = path.join(
     OPS_DAILY_DIR,
-    `${nowMeta.dateKey}_${nowMeta.hhmm}_ev_tp1_threshold_tune.md`
+    `${nowMeta.dateKey}_${nowMeta.hhmm}_ev_composite_threshold_tune.md`
   );
   writeJson(jsonPath, wrapDisplayAndRawReport(report));
   writeText(mdPath, renderMarkdown({
@@ -1200,10 +1206,10 @@ async function main() {
     bestFebtContract,
     bestFebtMarketGuard,
   }));
-  copyLatest(jsonPath, path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json"));
-  copyLatest(mdPath, path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.md"));
   copyLatest(jsonPath, path.join(OPS_DAILY_DIR, "ev_composite_threshold_tune_latest.json"));
   copyLatest(mdPath, path.join(OPS_DAILY_DIR, "ev_composite_threshold_tune_latest.md"));
+  copyLatest(jsonPath, path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json"));
+  copyLatest(mdPath, path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.md"));
 
   const severity = (
     effectivePlan.reason === "TARGET_THRESHOLD_SEARCH"
@@ -1212,7 +1218,7 @@ async function main() {
   ) ? "INFO" : "WARN";
 
   await sendKoreanTelegramSummary({
-    title: `[4차 EV/시간가치층 자동 조정] ${PROVIDER}`,
+    title: `[4차 EV/시간가치층 복합 기대값 자동 조정] ${PROVIDER}`,
     severity,
     provider: PROVIDER,
     sections: [
@@ -1308,6 +1314,7 @@ module.exports = {
     isEvBandHardening,
     applyBestFebtEvGuard,
     describeEvDecisionReasonForUser,
+    renderMarkdown,
     buildEntryEventId,
     classifyEntryOutcome,
     compareThresholdPlans,

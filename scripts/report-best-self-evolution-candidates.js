@@ -31,10 +31,17 @@ const INPUTS = Object.freeze({
   memory: path.join(OPS_DAILY_DIR, "best_self_evolution_memory_latest.json"),
 });
 
+function displayCandidateId(row = null) {
+  if (!row || typeof row !== "object") return "N/A";
+  return row.canonical_candidate_id || row.display_candidate_id || row.candidate_id || "N/A";
+}
+
 function renderMarkdown(report = {}) {
   const summary = report.summary || {};
   const rows = Array.isArray(report.rows) ? report.rows : [];
   const blockedRows = Array.isArray(report.blocked_rows) ? report.blocked_rows : [];
+  const topRow = rows.find((row) => row && row.candidate_id === summary.top_candidate_id) || null;
+  const topDisplayCandidateId = topRow ? displayCandidateId(topRow) : (summary.top_candidate_id || "N/A");
   const lines = [
     "# BEST Self-Evolution Candidate Change Sets",
     "",
@@ -49,7 +56,7 @@ function renderMarkdown(report = {}) {
     `- by_migration_class_active: ${summary.by_canonical_migration_class ? Object.entries(summary.by_canonical_migration_class).map(([k, v]) => `${k}=${v}`).join(", ") : "N/A"}`,
     `- by_target_deploy_unit_generated: ${summary.by_target_deploy_unit_generated ? Object.entries(summary.by_target_deploy_unit_generated).map(([k, v]) => `${k}=${v}`).join(", ") : "N/A"}`,
     `- by_target_deploy_unit_active: ${summary.by_target_deploy_unit ? Object.entries(summary.by_target_deploy_unit).map(([k, v]) => `${k}=${v}`).join(", ") : "N/A"}`,
-    `- top_candidate: ${summary.top_candidate_id || "N/A"} / scope=${summary.top_scope || "N/A"} / class=${summary.top_candidate_migration_class || "N/A"} / target=${summary.top_candidate_target_deploy_unit || "N/A"}`,
+    `- top_candidate: ${topDisplayCandidateId} / legacy=${summary.top_candidate_id || "N/A"} / scope=${summary.top_scope || "N/A"} / class=${summary.top_candidate_migration_class || "N/A"} / target=${summary.top_candidate_target_deploy_unit || "N/A"}`,
     "",
     "## Active Candidates",
   ];
@@ -57,7 +64,7 @@ function renderMarkdown(report = {}) {
     lines.push("- none");
   } else {
     for (const row of rows.slice(0, 20)) {
-      lines.push(`- ${row.candidate_id}: ${row.scope}/${row.direction} / class=${row.canonical_migration_class || "N/A"} / deploy=${row.current_deploy_unit || "N/A"}->${row.target_deploy_unit || "N/A"} / canonical=${row.canonical_candidate_id || "N/A"} / status=${row.status} / ready=${row.ready_for_auto_apply ? "YES" : "NO"} / count=${row.count_guard_effect && row.count_guard_effect.projected_count_ratio_global != null ? Number(row.count_guard_effect.projected_count_ratio_global).toFixed(2) : "N/A"} / replacement=${row.replacement_effect && row.replacement_effect.projected_replacement_ratio != null ? Number(row.replacement_effect.projected_replacement_ratio).toFixed(2) : "N/A"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
+      lines.push(`- ${displayCandidateId(row)}: legacy=${row.candidate_id || "N/A"} / ${row.scope}/${row.direction} / class=${row.canonical_migration_class || "N/A"} / deploy=${row.current_deploy_unit || "N/A"}->${row.target_deploy_unit || "N/A"} / status=${row.status} / ready=${row.ready_for_auto_apply ? "YES" : "NO"} / count=${row.count_guard_effect && row.count_guard_effect.projected_count_ratio_global != null ? Number(row.count_guard_effect.projected_count_ratio_global).toFixed(2) : "N/A"} / replacement=${row.replacement_effect && row.replacement_effect.projected_replacement_ratio != null ? Number(row.replacement_effect.projected_replacement_ratio).toFixed(2) : "N/A"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
     }
   }
   lines.push("");
@@ -66,7 +73,7 @@ function renderMarkdown(report = {}) {
     lines.push("- none");
   } else {
     for (const row of blockedRows.slice(0, 20)) {
-      lines.push(`- ${row.candidate_id}: ${row.scope}/${row.direction} / class=${row.canonical_migration_class || "N/A"} / deploy=${row.current_deploy_unit || "N/A"}->${row.target_deploy_unit || "N/A"} / canonical=${row.canonical_candidate_id || "N/A"} / reason=${row.memory_block_reason || "N/A"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
+      lines.push(`- ${displayCandidateId(row)}: legacy=${row.candidate_id || "N/A"} / ${row.scope}/${row.direction} / class=${row.canonical_migration_class || "N/A"} / deploy=${row.current_deploy_unit || "N/A"}->${row.target_deploy_unit || "N/A"} / reason=${row.memory_block_reason || "N/A"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
     }
   }
   return `${lines.join("\n")}\n`;
@@ -116,6 +123,7 @@ if (require.main === module) {
 module.exports = {
   main,
   __test: {
+    displayCandidateId,
     renderMarkdown,
     unwrapRawReport,
   },
