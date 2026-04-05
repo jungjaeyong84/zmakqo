@@ -68,6 +68,15 @@ function deriveEntryScheduleReason(intent = null) {
   return toUpper(intent && intent.pending_reason);
 }
 
+function deriveEntryScheduleNoteKind(intent = null) {
+  const note = toUpper(intent && intent.pending_note);
+  if (!note) return null;
+  if (note.includes("LATE_EXEC_FROM")) return "LATE_EXEC_FROM";
+  if (note.includes("NEXT_EXEC")) return "NEXT_EXEC";
+  if (note.includes("IMMEDIATE")) return "IMMEDIATE_HINT";
+  return "OTHER";
+}
+
 function deriveWebhookDelayCause(row = null) {
   const source = toUpper(row && row.context && row.context.source);
   const scheduleReason = toUpper(row && row.execution && row.execution.entry_schedule_reason);
@@ -460,6 +469,11 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
     const noFillReasonFamily = wasFilled ? null : deriveNoFillReasonFamily(noFillReason);
     const noFillSubtype = wasFilled ? null : deriveNoFillSubtype({ reason: noFillReason, detail: noFillDetail });
     const entryScheduleReason = deriveEntryScheduleReason(intent);
+    const entryScheduleNote = String(intent.pending_note || "").trim() || null;
+    const scheduledExecBarCloseMs = toNum(intent.scheduled_exec_bar_close_time_utc_ms);
+    const scheduledExecGapMs = Number.isFinite(signalBarCloseMs) && Number.isFinite(scheduledExecBarCloseMs)
+      ? scheduledExecBarCloseMs - signalBarCloseMs
+      : null;
     return {
       schema_version: EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
       row_id: intentId || String(intent.signal_id || intent.id || "").trim() || null,
@@ -493,7 +507,8 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
         fill_n: agg.fill_n,
         signal_price: toNum(intent.signal_price),
         signal_bar_close_ms: signalBarCloseMs,
-        scheduled_exec_bar_close_ms: toNum(intent.scheduled_exec_bar_close_time_utc_ms),
+        scheduled_exec_bar_close_ms: scheduledExecBarCloseMs,
+        scheduled_exec_gap_ms: scheduledExecGapMs,
         webhook_request_id: webhook.webhook_request_id,
         webhook_ingress_at_ms: webhook.webhook_ingress_at_ms,
         webhook_outcome_at_ms: webhook.webhook_outcome_at_ms,
@@ -511,7 +526,8 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
         live_policy_slippage_bps: toNum(intent.live_exec_policy_quality_slippage_bps),
         live_policy_partial_pct: toNum(intent.live_exec_policy_quality_partial_pct),
         entry_schedule_reason: entryScheduleReason,
-        entry_schedule_note: String(intent.pending_note || "").trim() || null,
+        entry_schedule_note: entryScheduleNote,
+        entry_schedule_note_kind: deriveEntryScheduleNoteKind(intent),
         signal_to_intent_ms: signalToIntentMs,
         signal_to_fill_ms: signalToFillMs,
         fill_source_counts: agg.fill_source_counts,
