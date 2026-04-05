@@ -21,7 +21,7 @@ function p95(values = []) {
 
 function isOperationalSource(source = null) {
   const normalized = String(source || "").trim().toUpperCase();
-  return normalized !== "MANUAL_REPLAY" && normalized !== "PAPER_RUNTIME";
+  return normalized === "TV_WEBHOOK" || normalized === "LIVE_RUNTIME" || normalized === "SERVER_SIGNAL";
 }
 
 function topGroups(rows = [], valueKey, filters = () => true, limit = 8) {

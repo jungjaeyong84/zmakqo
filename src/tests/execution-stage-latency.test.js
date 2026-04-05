@@ -37,18 +37,31 @@ const { summarizeExecutionStageLatency } = require("../utils/executionStageLaten
           created_to_fill_measured: true,
         },
       },
+      {
+        context: { source: "PINE_WEBHOOK", event: "CORE_LONG", market: "BTCUSDT", is_exit_event: false },
+        execution: { webhook_decision: "SAVED" },
+        labels: {
+          signal_to_intent_ms: 9999999,
+          webhook_to_outcome_ms: 100,
+          webhook_to_intent_ms: 9999000,
+          created_to_fill_ms: 1000,
+          created_to_fill_measured: true,
+        },
+      },
     ],
   });
 
   assert.strictEqual(report.status, "EXECUTION_STAGE_LATENCY_READY");
-  assert.strictEqual(report.entry_rows_n, 3);
-  assert.strictEqual(report.signal_to_intent_p95_ms, 900000);
-  assert.strictEqual(report.webhook_saved_to_intent_p95_ms, 890000);
+  assert.strictEqual(report.entry_rows_n, 4);
+  assert.strictEqual(report.signal_to_intent_p95_ms, 9999999);
+  assert.strictEqual(report.webhook_saved_to_intent_p95_ms, 9999000);
   assert.strictEqual(report.webhook_to_outcome_p95_ms, 1300);
   assert.strictEqual(report.intent_to_fill_measured_p95_ms, 45000);
   assert.strictEqual(report.intent_to_fill_fallback_p95_ms, 47000);
-  assert.strictEqual(report.top_webhook_saved_to_intent_groups[0].key, "TV_WEBHOOK|EARLY_SHORT|XRPUSDT");
+  assert.strictEqual(report.top_webhook_saved_to_intent_groups[0].key, "PINE_WEBHOOK|CORE_LONG|BTCUSDT");
   assert.strictEqual(report.top_intent_to_fill_measured_groups[0].key, "TV_WEBHOOK|EARLY_SHORT|XRPUSDT");
+  assert.strictEqual(report.top_operational_signal_to_intent_groups[0].key, "TV_WEBHOOK|EARLY_SHORT|XRPUSDT");
+  assert.strictEqual(report.top_operational_webhook_saved_to_intent_groups[0].key, "TV_WEBHOOK|EARLY_SHORT|XRPUSDT");
 
   console.log("EXECUTION_STAGE_LATENCY_TEST_OK");
 })();

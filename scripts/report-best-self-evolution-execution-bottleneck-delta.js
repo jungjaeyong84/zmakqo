@@ -16,6 +16,7 @@ const { buildExecutionBottleneckDelta } = require("../src/utils/executionBottlen
 
 const QUALITY_LATEST = path.join(OPS_DAILY_DIR, "best_self_evolution_execution_quality_latest.json");
 const STAGE_LATEST = path.join(OPS_DAILY_DIR, "best_self_evolution_execution_stage_latency_latest.json");
+const REGISTRY_LATEST = path.join(OPS_DAILY_DIR, "best_self_evolution_ml_experiment_registry_latest.json");
 
 function listTimestamped(pattern) {
   const matcher = new RegExp(pattern);
@@ -38,6 +39,7 @@ function renderMarkdown(report = {}) {
     `- generated_at_kst: ${report.generated_at_kst || "N/A"}`,
     `- status: ${summary.status || "N/A"}`,
     `- comparable: ${summary.comparable ? "YES" : "NO"}`,
+    `- same_experiment: ${summary.same_experiment ? "YES" : "NO"}`,
     `- current_top_operational_webhook_delay_cause: ${summary.current_top_operational_webhook_delay_cause || "N/A"}`,
     `- previous_top_operational_webhook_delay_cause: ${summary.previous_top_operational_webhook_delay_cause || "N/A"}`,
     `- current_top_operational_signal_to_intent_group: ${summary.current_top_operational_signal_to_intent_group || "N/A"}`,
@@ -54,11 +56,14 @@ function main() {
   const nowMeta = nowKstMeta();
   const previousQualityPath = previousJson(/^20\d{2}-\d{2}-\d{2}_\d{4}_best_self_evolution_execution_quality\.json$/);
   const previousStagePath = previousJson(/^20\d{2}-\d{2}-\d{2}_\d{4}_best_self_evolution_execution_stage_latency\.json$/);
+  const previousRegistryPath = previousJson(/^20\d{2}-\d{2}-\d{2}_\d{4}_best_self_evolution_ml_experiment_registry\.json$/);
   const summary = buildExecutionBottleneckDelta({
     currentExecutionQuality: readJsonRawSafe(QUALITY_LATEST, null),
     previousExecutionQuality: readJsonRawSafe(previousQualityPath, null),
     currentStageLatency: readJsonRawSafe(STAGE_LATEST, null),
     previousStageLatency: readJsonRawSafe(previousStagePath, null),
+    currentExperimentRegistry: readJsonRawSafe(REGISTRY_LATEST, null),
+    previousExperimentRegistry: readJsonRawSafe(previousRegistryPath, null),
   });
   const payload = {
     ok: true,
@@ -68,6 +73,8 @@ function main() {
       previous_execution_quality: previousQualityPath,
       current_stage_latency: STAGE_LATEST,
       previous_stage_latency: previousStagePath,
+      current_experiment_registry: REGISTRY_LATEST,
+      previous_experiment_registry: previousRegistryPath,
     },
     summary,
   };

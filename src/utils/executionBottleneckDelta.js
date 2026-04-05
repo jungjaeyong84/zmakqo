@@ -27,11 +27,15 @@ function buildExecutionBottleneckDelta({
   previousExecutionQuality = null,
   currentStageLatency = null,
   previousStageLatency = null,
+  currentExperimentRegistry = null,
+  previousExperimentRegistry = null,
 } = {}) {
   const currentQuality = readSummary(currentExecutionQuality);
   const previousQuality = readSummary(previousExecutionQuality);
   const currentLatency = readSummary(currentStageLatency);
   const previousLatency = readSummary(previousStageLatency);
+  const currentRegistry = readSummary(currentExperimentRegistry);
+  const previousRegistry = readSummary(previousExperimentRegistry);
 
   const currentCause = String(currentQuality.top_operational_webhook_delay_cause || "").trim() || null;
   const previousCause = String(previousQuality.top_operational_webhook_delay_cause || "").trim() || null;
@@ -58,16 +62,42 @@ function buildExecutionBottleneckDelta({
     currentQuality.created_to_fill_p95_ms,
     previousQuality.created_to_fill_p95_ms
   );
+  const currentExperimentId = String(currentRegistry.experiment_id || "").trim() || null;
+  const previousExperimentId = String(previousRegistry.experiment_id || "").trim() || null;
+  const currentDatasetVersionId = String(currentRegistry.dataset_version_id || "").trim() || null;
+  const previousDatasetVersionId = String(previousRegistry.dataset_version_id || "").trim() || null;
+  const currentFeatureStoreVersionId = String(currentRegistry.feature_store_version_id || "").trim() || null;
+  const previousFeatureStoreVersionId = String(previousRegistry.feature_store_version_id || "").trim() || null;
+  const sameExperiment =
+    Boolean(currentExperimentId && previousExperimentId && currentExperimentId === previousExperimentId)
+    || Boolean(
+      currentDatasetVersionId
+      && previousDatasetVersionId
+      && currentFeatureStoreVersionId
+      && previousFeatureStoreVersionId
+      && currentDatasetVersionId === previousDatasetVersionId
+      && currentFeatureStoreVersionId === previousFeatureStoreVersionId
+    );
 
   const comparable =
     previousCause != null
     || previousSignalGroup != null
     || previousQuality.status != null
-    || previousLatency.status != null;
+    || previousLatency.status != null
+    || previousExperimentId != null;
 
   return {
-    status: comparable ? "EXECUTION_BOTTLENECK_DELTA_READY" : "EXECUTION_BOTTLENECK_DELTA_INSUFFICIENT_HISTORY",
+    status: !comparable
+      ? "EXECUTION_BOTTLENECK_DELTA_INSUFFICIENT_HISTORY"
+      : (sameExperiment ? "EXECUTION_BOTTLENECK_DELTA_STALE_COMPARISON" : "EXECUTION_BOTTLENECK_DELTA_READY"),
     comparable,
+    same_experiment: sameExperiment,
+    current_experiment_id: currentExperimentId,
+    previous_experiment_id: previousExperimentId,
+    current_dataset_version_id: currentDatasetVersionId,
+    previous_dataset_version_id: previousDatasetVersionId,
+    current_feature_store_version_id: currentFeatureStoreVersionId,
+    previous_feature_store_version_id: previousFeatureStoreVersionId,
     current_execution_quality_status: toUpper(currentQuality.status),
     previous_execution_quality_status: toUpper(previousQuality.status),
     current_stage_latency_status: toUpper(currentLatency.status),
