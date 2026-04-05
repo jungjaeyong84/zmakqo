@@ -88,12 +88,16 @@ function deriveScoreBucket(score = null) {
   return "20+";
 }
 
-function deriveEntryScheduleProfile({ reason = null, noteKind = null, gapMs = null } = {}) {
+function deriveEntryScheduleProfile({ reason = null, noteKind = null, gapMs = null, wasFilled = false, createdToFillMs = null } = {}) {
   const scheduleReason = toUpper(reason);
   const scheduleNoteKind = toUpper(noteKind);
   const gap = toNum(gapMs);
+  const fillLatencyMs = toNum(createdToFillMs);
   if (scheduleReason === "LATE_EXEC") {
-    if (Number.isFinite(gap) && gap <= 0) return "LATE_EXEC_CURRENT_BAR";
+    if (Number.isFinite(gap) && gap <= 0) {
+      if (wasFilled === true) return Number.isFinite(fillLatencyMs) && fillLatencyMs <= 5000 ? "SAME_BAR_FAST_FILL" : "SAME_BAR_DELAYED_FILL";
+      return "SAME_BAR_NO_FILL";
+    }
     if (Number.isFinite(gap) && gap <= 900000) return "LATE_EXEC_ONE_BAR";
     if (Number.isFinite(gap) && gap > 900000) return "LATE_EXEC_MULTI_BAR";
     if (scheduleNoteKind === "LATE_EXEC_FROM") return "LATE_EXEC_NOTE_ONLY";
@@ -508,6 +512,13 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
       : null;
     features.score_bucket = deriveScoreBucket(features.score);
     features.pro_conflict = features.pro_conflict == null ? null : !!features.pro_conflict;
+    const entryScheduleProfile = deriveEntryScheduleProfile({
+      reason: entryScheduleReason,
+      noteKind: entryScheduleNoteKind,
+      gapMs: scheduledExecGapMs,
+      wasFilled,
+      createdToFillMs,
+    });
     return {
       schema_version: EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
       row_id: intentId || String(intent.signal_id || intent.id || "").trim() || null,
@@ -562,11 +573,7 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
         entry_schedule_reason: entryScheduleReason,
         entry_schedule_note: entryScheduleNote,
         entry_schedule_note_kind: entryScheduleNoteKind,
-        entry_schedule_profile: deriveEntryScheduleProfile({
-          reason: entryScheduleReason,
-          noteKind: entryScheduleNoteKind,
-          gapMs: scheduledExecGapMs,
-        }),
+        entry_schedule_profile: entryScheduleProfile,
         signal_to_intent_ms: signalToIntentMs,
         signal_to_fill_ms: signalToFillMs,
         fill_source_counts: agg.fill_source_counts,
