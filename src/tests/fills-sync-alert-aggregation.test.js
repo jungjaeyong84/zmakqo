@@ -9,6 +9,19 @@ function approxEqual(actual, expected, epsilon = 1e-9) {
 }
 
 async function run() {
+  const rescueExitRules = fillsSyncTest.resolveAlertExitRules({
+    position: {
+      meta: {
+        openclaw_market_regime_cohort: "RESCUE",
+        exit_rules_override: { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
+      },
+    },
+  }, { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 });
+  assert.ok(approxEqual(rescueExitRules.TP_P1, 0.0165), "rescue cohort alert must use current TP1");
+  assert.ok(approxEqual(rescueExitRules.TRAIL_R_MULTIPLE, 0.6), "rescue cohort alert must use current trailing R");
+  assert.ok(approxEqual(rescueExitRules.RUNNER_MIN_PROFIT_PCT, 0.012), "rescue cohort alert must use current runner floor");
+  assert.ok(approxEqual(rescueExitRules.BE_PCT, 0.0015), "rescue cohort alert must use current BE");
+
   const firstCloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({
     event: "EXIT_TP_P1_3.25P",
     intent: { qty_fraction: 0.5 },
@@ -142,6 +155,26 @@ async function run() {
   assert.strictEqual(msg.title, "XRPUSDT TP1_3.25 50% 청산");
   assert.ok(msg.body.includes("종류: 익절(TP1) 3.25%"), "TP1 label must be preserved");
   assert.ok(msg.body.includes("청산규모: 402.37 USDT"), "aggregated notional must be visible");
+
+  const rescueTrailMsg = alertTest.buildMessage({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_TRAIL",
+    side: "BUY",
+    intent: "EXIT",
+    executionMode: "LIVE",
+    notional: 743.89,
+    execPrice: 2038.06,
+    fullExit: true,
+    realizedPnl: 5.92,
+    positionSideBefore: "SHORT",
+    positionSideAfter: null,
+    appliedLeverage: 2,
+    leverageReason: "BINANCE_USER_TRADES_SYNC",
+    features: { openclaw_market_regime_cohort: "RESCUE" },
+    exitRules: rescueExitRules,
+  });
+  assert.ok(rescueTrailMsg.body.includes("청산규칙: SL_1.65 / TP1_1.65 / TRAIL_0.6R / RUNNER_MIN_1.2 / BE_0.15"), "trail alert must reflect current rescue cohort rules");
 
   const sameOrderAsRecentTp1 = fillsSyncTest.isSameOrderAsRecentTp1(
     { orderId: 14608292413, clientOrderId: "dbj_same_order" },

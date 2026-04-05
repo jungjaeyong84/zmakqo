@@ -788,6 +788,7 @@ async function loadPositionEntryContext(exchange, symbol, cacheMap) {
     leverage: null,
     tpP1Done: false,
     trailActive: false,
+    position: null,
   };
   try {
     const pos = await getPosition({ exchange, symbol });
@@ -808,6 +809,7 @@ async function loadPositionEntryContext(exchange, symbol, cacheMap) {
       leverage: Number.isFinite(leverageRaw) && leverageRaw > 0 ? leverageRaw : null,
       tpP1Done: meta.tp_p1_done === true,
       trailActive: meta.trail_active === true,
+      position: pos || null,
       nativeProtectionStale: meta.native_protection_stale === true,
       nativeProtectionRefreshStatus: String(meta.native_protection_refresh_status || "").toUpperCase() || null,
       nativeProtectionRefreshContext: String(meta.native_protection_refresh_context || "").toUpperCase() || null,
@@ -827,6 +829,19 @@ async function loadPositionEntryContext(exchange, symbol, cacheMap) {
   } catch (_) {}
   if (cacheMap) cacheMap.set(key, ctx);
   return ctx;
+}
+
+function resolveAlertExitRules(positionCtx, defaultExitRules) {
+  if (positionCtx && positionCtx.position) {
+    return resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: positionCtx.position });
+  }
+  if (positionCtx && positionCtx.exitRulesOverride) {
+    return resolveExitRulesForPosition({
+      exchange: "BINANCEFUT",
+      position: { meta: { exit_rules_override: positionCtx.exitRulesOverride } },
+    });
+  }
+  return defaultExitRules;
 }
 
 async function loadRecentIntents(limit = 1000) {
@@ -1162,9 +1177,7 @@ async function syncMarketTrades({
 
       const intent = pickIntentForTrade(t, intents, matchWindowMs || DEFAULT_MATCH_WINDOW_MS, intentFutureAllowMs);
       const positionCtx = await loadPositionEntryContext("BINANCEFUT", sym, positionEntryCache);
-      const exitRules = (positionCtx && positionCtx.exitRulesOverride)
-        ? resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: { meta: { exit_rules_override: positionCtx.exitRulesOverride } } })
-        : defaultExitRules;
+      const exitRules = resolveAlertExitRules(positionCtx, defaultExitRules);
       const recentTp1 = recentTp1BySymbol.get(sym) || null;
       const orderMeta = await resolveExternalOrderMeta({
         trade: t,
@@ -1559,6 +1572,7 @@ module.exports = {
     computeSyncedQtyPct,
     resolveIntentNotional,
     resolveIntentQtyBase,
+    resolveAlertExitRules,
     resolveFillSyncAlertCloseRatio,
     resolveFillSyncAlertFullExit,
     queueFillSyncAlertBatch,
