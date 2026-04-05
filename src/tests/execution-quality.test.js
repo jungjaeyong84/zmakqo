@@ -23,6 +23,20 @@ const { summarizeExecutionQuality } = require("../utils/executionQuality");
         top_no_fill_subtypes: [{ key: "TIMING_IMMEDIATE_EXEC", rows_n: 4 }],
       },
     },
+    executionScopeTrainRun: {
+      summary: {
+        status: "ML_TRAIN_RUN_REPORTED",
+        quality_gate_status: "POLICY_BLOCKED_RECALL_TOO_LOW",
+        quality_gate_ready: false,
+      },
+    },
+    executionScopeInference: {
+      summary: {
+        status: "EXECUTION_SCOPE_INFERENCE_READY",
+        mismatch_rate: 0.29,
+        top_false_positive_groups: [{ key: "FILLABLE|POLICY_BLOCKED|LIVE_RUNTIME|EMO_LONG|KRW-BCH", rows_n: 9 }],
+      },
+    },
     intents: [
       { intent_id: "i1", created_at: "2026-04-01T00:00:00.000Z" },
       { intent_id: "i2", created_at: "2026-04-01T00:10:00.000Z" },
@@ -46,6 +60,10 @@ const { summarizeExecutionQuality } = require("../utils/executionQuality");
   assert.strictEqual(report.summary.top_operational_immediate_intent_delay_group, "TV_WEBHOOK|EARLY_LONG|BTCUSDT");
   assert.strictEqual(report.summary.top_no_fill_reason, "LIVE_EXCEPTION");
   assert.strictEqual(report.summary.top_no_fill_subtype, "TIMING_IMMEDIATE_EXEC");
+  assert.strictEqual(report.summary.execution_scope_quality_gate_status, "POLICY_BLOCKED_RECALL_TOO_LOW");
+  assert.strictEqual(report.summary.execution_scope_quality_gate_ready, false);
+  assert.strictEqual(report.summary.execution_scope_inference_mismatch_rate, 0.29);
+  assert.strictEqual(report.summary.execution_scope_top_false_positive_group, "FILLABLE|POLICY_BLOCKED|LIVE_RUNTIME|EMO_LONG|KRW-BCH");
   assert.strictEqual(report.by_market[0].market, "BTCUSDT");
   assert.strictEqual(report.by_market[1].market, "SOLUSDT");
 })();

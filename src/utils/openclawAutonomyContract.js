@@ -163,10 +163,12 @@ function deriveOpenClawAutonomyContract({
   featureStore = null,
   executionModelDataset = null,
   executionFillInference = null,
+  executionScopeInference = null,
   executionStageLatency = null,
   mlExperimentRegistry = null,
   executionBottleneckDelta = null,
   mlTrainRun = null,
+  mlTrainRunScope = null,
   mlModelContract = null,
 } = {}) {
   const objectiveSummary = readSummary(objective);
@@ -190,17 +192,21 @@ function deriveOpenClawAutonomyContract({
   const featureStoreSummary = readSummary(featureStore);
   const executionModelSummary = readSummary(executionModelDataset);
   const executionFillInferenceSummary = readSummary(executionFillInference);
+  const executionScopeInferenceSummary = readSummary(executionScopeInference);
   const executionStageLatencySummary = readSummary(executionStageLatency);
   const mlExperimentRegistrySummary = readSummary(mlExperimentRegistry);
   const executionBottleneckDeltaSummary = readSummary(executionBottleneckDelta);
   const mlTrainRunSummary = readSummary(mlTrainRun);
+  const mlTrainRunScopeSummary = readSummary(mlTrainRunScope);
   const mlModelContractSummary = readSummary(mlModelContract);
   const executionModelStatus = toUpper(executionModelSummary.status) || "N_A";
   const executionFillInferenceStatus = toUpper(executionFillInferenceSummary.status) || "N_A";
+  const executionScopeInferenceStatus = toUpper(executionScopeInferenceSummary.status) || "N_A";
   const executionStageLatencyStatus = toUpper(executionStageLatencySummary.status) || "N_A";
   const mlExperimentRegistryStatus = toUpper(mlExperimentRegistrySummary.status) || "N_A";
   const executionBottleneckDeltaStatus = toUpper(executionBottleneckDeltaSummary.status) || "N_A";
   const mlTrainRunStatus = toUpper(mlTrainRunSummary.status) || "N_A";
+  const mlTrainRunScopeStatus = toUpper(mlTrainRunScopeSummary.status) || "N_A";
   const mlModelContractStatus = toUpper(mlModelContractSummary.status) || "N_A";
   const executionBottleneckDeltaComparable = executionBottleneckDeltaStatus === "EXECUTION_BOTTLENECK_DELTA_READY";
   const executionBottleneckDeltaInterpretation = executionBottleneckDeltaComparable
@@ -517,6 +523,16 @@ function deriveOpenClawAutonomyContract({
       execution_fill_inference_mismatch_rate: toNum(executionFillInferenceSummary.mismatch_rate),
       execution_fill_inference_filled_avg_pred_fill_prob: toNum(firstArrayRow((executionFillInferenceSummary.by_scope || []).filter((row) => String(row.key || "").trim().toUpperCase() === "FILLED"))?.avg_pred_fill_prob),
       execution_fill_inference_policy_blocked_avg_pred_fill_prob: toNum(firstArrayRow((executionFillInferenceSummary.by_scope || []).filter((row) => String(row.key || "").trim().toUpperCase() === "POLICY_BLOCKED"))?.avg_pred_fill_prob),
+      execution_scope_inference_status: executionScopeInferenceStatus,
+      execution_scope_inference_model_artifact_id: String(executionScopeInferenceSummary.model_artifact_id || "").trim() || null,
+      execution_scope_inference_mismatch_rate: toNum(executionScopeInferenceSummary.mismatch_rate),
+      execution_scope_inference_top_false_positive_group: String(firstArrayRow(executionScopeInferenceSummary.top_false_positive_groups)?.key || "").trim() || null,
+      execution_scope_train_run_status: mlTrainRunScopeStatus,
+      execution_scope_train_run_id: String(mlTrainRunScopeSummary.train_run_id || "").trim() || null,
+      execution_scope_train_run_model_artifact_id: String(mlTrainRunScopeSummary.model_artifact_id || "").trim() || null,
+      execution_scope_train_run_model_kind: String(mlTrainRunScopeSummary.model_kind || "").trim() || null,
+      execution_scope_train_run_quality_gate_status: String(mlTrainRunScopeSummary.quality_gate_status || "").trim() || null,
+      execution_scope_train_run_quality_gate_ready: mlTrainRunScopeSummary.quality_gate_ready === true,
       execution_model_dataset_version_id: String(
         executionModelSummary.version_id
         || (executionModelDataset && executionModelDataset.execution_dataset_version && executionModelDataset.execution_dataset_version.version_id)
@@ -621,6 +637,12 @@ function deriveOpenClawAutonomyContract({
       ml_train_run_model_kind: String(mlTrainRunSummary.model_kind || "").trim() || null,
       ml_train_run_quality_gate_status: String(mlTrainRunSummary.quality_gate_status || "").trim() || null,
       ml_train_run_quality_gate_ready: mlTrainRunSummary.quality_gate_ready === true,
+      execution_scope_train_run_status: mlTrainRunScopeStatus,
+      execution_scope_train_run_id: String(mlTrainRunScopeSummary.train_run_id || "").trim() || null,
+      execution_scope_train_run_model_artifact_id: String(mlTrainRunScopeSummary.model_artifact_id || "").trim() || null,
+      execution_scope_train_run_model_kind: String(mlTrainRunScopeSummary.model_kind || "").trim() || null,
+      execution_scope_train_run_quality_gate_status: String(mlTrainRunScopeSummary.quality_gate_status || "").trim() || null,
+      execution_scope_train_run_quality_gate_ready: mlTrainRunScopeSummary.quality_gate_ready === true,
       ml_model_contract_status: mlModelContractStatus,
       ml_model_contract_deployment_stage: String(mlModelContractSummary.deployment_stage || "").trim() || null,
       ml_model_contract_canary_gate_status: String(mlModelContractSummary.canary_gate_status || "").trim() || null,
@@ -642,6 +664,10 @@ function deriveOpenClawAutonomyContract({
       execution_fill_inference_mismatch_rate: toNum(executionFillInferenceSummary.mismatch_rate),
       execution_fill_inference_filled_avg_pred_fill_prob: toNum(firstArrayRow((executionFillInferenceSummary.by_scope || []).filter((row) => String(row.key || "").trim().toUpperCase() === "FILLED"))?.avg_pred_fill_prob),
       execution_fill_inference_policy_blocked_avg_pred_fill_prob: toNum(firstArrayRow((executionFillInferenceSummary.by_scope || []).filter((row) => String(row.key || "").trim().toUpperCase() === "POLICY_BLOCKED"))?.avg_pred_fill_prob),
+      execution_scope_inference_status: executionScopeInferenceStatus,
+      execution_scope_inference_model_artifact_id: String(executionScopeInferenceSummary.model_artifact_id || "").trim() || null,
+      execution_scope_inference_mismatch_rate: toNum(executionScopeInferenceSummary.mismatch_rate),
+      execution_scope_inference_top_false_positive_group: String(firstArrayRow(executionScopeInferenceSummary.top_false_positive_groups)?.key || "").trim() || null,
       execution_model_dataset_version_id: String(
         executionModelSummary.version_id
         || (executionModelDataset && executionModelDataset.execution_dataset_version && executionModelDataset.execution_dataset_version.version_id)

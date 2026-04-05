@@ -27,6 +27,8 @@ function summarizeExecutionQuality({
   fills = [],
   intents = [],
   executionModelDataset = null,
+  executionScopeInference = null,
+  executionScopeTrainRun = null,
 } = {}) {
   const micro = microstructure && typeof microstructure === "object" ? microstructure : {};
   const metrics = micro.metrics && typeof micro.metrics === "object" ? micro.metrics : {};
@@ -38,6 +40,12 @@ function summarizeExecutionQuality({
   const intentDocs = (Array.isArray(intents) ? intents : []).filter((row) => allowVenue(normalizeVenue(row)));
   const executionModelSummary = executionModelDataset && typeof executionModelDataset === "object"
     ? (executionModelDataset.summary && typeof executionModelDataset.summary === "object" ? executionModelDataset.summary : executionModelDataset)
+    : {};
+  const executionScopeInferenceSummary = executionScopeInference && typeof executionScopeInference === "object"
+    ? (executionScopeInference.summary && typeof executionScopeInference.summary === "object" ? executionScopeInference.summary : executionScopeInference)
+    : {};
+  const executionScopeTrainRunSummary = executionScopeTrainRun && typeof executionScopeTrainRun === "object"
+    ? (executionScopeTrainRun.summary && typeof executionScopeTrainRun.summary === "object" ? executionScopeTrainRun.summary : executionScopeTrainRun)
     : {};
 
   const intentsById = new Map();
@@ -129,6 +137,9 @@ function summarizeExecutionQuality({
   const topNoFillSubtype = Array.isArray(executionModelSummary.top_no_fill_subtypes)
     ? executionModelSummary.top_no_fill_subtypes[0]
     : null;
+  const topScopeFalsePositiveGroup = Array.isArray(executionScopeInferenceSummary.top_false_positive_groups)
+    ? executionScopeInferenceSummary.top_false_positive_groups[0]
+    : null;
 
   const reviewReasons = [];
   if (createdToFillP95 != null && createdToFillP95 > 60000) reviewReasons.push("CREATED_TO_FILL_P95_HIGH");
@@ -140,6 +151,9 @@ function summarizeExecutionQuality({
   }
   if ((topNoFillReason && String(topNoFillReason.key || "").trim()) || String(executionModelSummary.top_no_fill_reason || "").trim()) {
     reviewReasons.push("NO_FILL_REASON_PRESENT");
+  }
+  if (String(executionScopeTrainRunSummary.quality_gate_status || "").trim()) {
+    reviewReasons.push("EXECUTION_SCOPE_MODEL_PRESENT");
   }
 
   return {
@@ -158,6 +172,15 @@ function summarizeExecutionQuality({
       top_operational_immediate_intent_delay_group: topOperationalIntentDelayGroup && topOperationalIntentDelayGroup.key ? topOperationalIntentDelayGroup.key : null,
       top_no_fill_reason: topNoFillReason && topNoFillReason.key ? topNoFillReason.key : null,
       top_no_fill_subtype: topNoFillSubtype && topNoFillSubtype.key ? topNoFillSubtype.key : null,
+      execution_scope_train_run_status: String(executionScopeTrainRunSummary.status || "").trim() || null,
+      execution_scope_quality_gate_status: String(executionScopeTrainRunSummary.quality_gate_status || "").trim() || null,
+      execution_scope_quality_gate_ready: executionScopeTrainRunSummary.quality_gate_ready === true,
+      execution_scope_inference_status: String(executionScopeInferenceSummary.status || "").trim() || null,
+      execution_scope_inference_mismatch_rate: toNum(executionScopeInferenceSummary.mismatch_rate),
+      execution_scope_top_false_positive_group: topScopeFalsePositiveGroup && topScopeFalsePositiveGroup.key ? topScopeFalsePositiveGroup.key : null,
+      execution_scope_top_false_positive_rows_n: topScopeFalsePositiveGroup && Number.isFinite(toNum(topScopeFalsePositiveGroup.rows_n))
+        ? toNum(topScopeFalsePositiveGroup.rows_n)
+        : null,
       review_reasons: reviewReasons,
       market_n: rows.length,
       top_watch_markets: rows.slice(0, 6).map((row) => ({
