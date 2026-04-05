@@ -135,13 +135,21 @@ function applyCohortTp1Adjustment({ rules = null, meta = null, exchange = "" } =
   if (!cohort || cohort === "KEEP_DROP" || cohort === "HOLD_SAMPLE") return rules;
   const rescueTp1 = toNum(rules.TP_P1_RESCUE_COHORT);
   const mixedTp1 = toNum(rules.TP_P1_MIXED_COHORT);
+  const rescueBe = toNum(rules.BE_PCT_RESCUE_COHORT);
+  const mixedBe = toNum(rules.BE_PCT_MIXED_COHORT);
+  const rescueRunner = toNum(rules.RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT);
+  const mixedRunner = toNum(rules.RUNNER_MIN_PROFIT_PCT_MIXED_COHORT);
   const currentTp1 = toNum(rules.TP_P1);
   if (!Number.isFinite(currentTp1) || currentTp1 <= 0) return rules;
   const cohortTp1 = cohort === "RESCUE" ? rescueTp1 : mixedTp1;
+  const cohortBe = cohort === "RESCUE" ? rescueBe : mixedBe;
+  const cohortRunner = cohort === "RESCUE" ? rescueRunner : mixedRunner;
   if (!Number.isFinite(cohortTp1) || cohortTp1 <= 0) return rules;
   return {
     ...rules,
     TP_P1: Math.min(currentTp1, cohortTp1),
+    BE_PCT: Number.isFinite(cohortBe) && cohortBe > 0 ? cohortBe : rules.BE_PCT,
+    RUNNER_MIN_PROFIT_PCT: Number.isFinite(cohortRunner) && cohortRunner > 0 ? cohortRunner : rules.RUNNER_MIN_PROFIT_PCT,
     tp_p1_cohort_adjusted: true,
     tp_p1_cohort: cohort,
   };
@@ -216,6 +224,10 @@ const DEFAULT_RULES = (CHARTER_EXPECTATIONS && CHARTER_EXPECTATIONS.signal_engin
     TP_P1_MIXED_COHORT: 0.025,
     TP_P1_QTY: 0.5,
     TP_C: null,
+    BE_PCT_RESCUE_COHORT: 0.0015,
+    BE_PCT_MIXED_COHORT: 0.002,
+    RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: 0.012,
+    RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: 0.0165,
     BE_ENABLE: true,
     BE_PCT: null,
     PRE_TP1_TIME_STOP_BARS_EARLY: 4,
@@ -238,6 +250,10 @@ const SIGNAL_ENGINE_RULES = {
   TP_P1_MIXED_COHORT: parseNumEnv("ENGINE_TP_P1_MIXED_COHORT", DEFAULT_RULES.TP_P1_MIXED_COHORT),
   TP_P1_QTY: parseNumEnv("ENGINE_TP_P1_QTY", DEFAULT_RULES.TP_P1_QTY),
   TP_C: parseNumEnv("ENGINE_TP_C", DEFAULT_RULES.TP_C),
+  BE_PCT_RESCUE_COHORT: parseNumEnv("ENGINE_BE_PCT_RESCUE_COHORT", DEFAULT_RULES.BE_PCT_RESCUE_COHORT),
+  BE_PCT_MIXED_COHORT: parseNumEnv("ENGINE_BE_PCT_MIXED_COHORT", DEFAULT_RULES.BE_PCT_MIXED_COHORT),
+  RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: parseNumEnv("ENGINE_RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT", DEFAULT_RULES.RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT),
+  RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: parseNumEnv("ENGINE_RUNNER_MIN_PROFIT_PCT_MIXED_COHORT", DEFAULT_RULES.RUNNER_MIN_PROFIT_PCT_MIXED_COHORT),
   BE_ENABLE: parseBoolEnv("ENGINE_BE_ENABLE", DEFAULT_RULES.BE_ENABLE),
   BE_PCT: parseNumEnv("ENGINE_BE_PCT", DEFAULT_RULES.BE_PCT),
   PRE_TP1_TIME_STOP_BARS_EARLY: parseNumEnv("ENGINE_PRE_TP1_TIME_STOP_BARS_EARLY", DEFAULT_RULES.PRE_TP1_TIME_STOP_BARS_EARLY),
@@ -263,6 +279,10 @@ const EXCHANGE_RULES = {
     TP_P1_MIXED_COHORT: 0.025,
     TP_P1_QTY: 0.3,
     TP_C: null,
+    BE_PCT_RESCUE_COHORT: 0.0015,
+    BE_PCT_MIXED_COHORT: 0.002,
+    RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: null,
+    RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: null,
     BE_ENABLE: true,
     BE_PCT: null,
     PRE_TP1_TIME_STOP_BARS_EARLY: 4,
@@ -283,6 +303,10 @@ const EXCHANGE_RULES = {
     TP_P1_MIXED_COHORT: 0.025,
     TP_P1_QTY: 0.5,
     TP_C: null,
+    BE_PCT_RESCUE_COHORT: 0.0015,
+    BE_PCT_MIXED_COHORT: 0.002,
+    RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: 0.012,
+    RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: 0.0165,
     BE_ENABLE: true,
     // Keep small realized edge after TP1; prevents many short winners from reverting to losses.
     BE_PCT: 0.0025,
@@ -323,6 +347,10 @@ const BINANCE_FUTURES_AGGRESSIVE_RULES = {
   TP_P1_MIXED_COHORT: 0.025,
   TP_P1_QTY: 0.5,
   TP_C: null,
+  BE_PCT_RESCUE_COHORT: 0.0015,
+  BE_PCT_MIXED_COHORT: 0.002,
+  RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: 0.012,
+  RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: 0.0165,
   BE_ENABLE: true,
   BE_PCT: 0.0025,
   PRE_TP1_TIME_STOP_BARS_EARLY: 4,
@@ -388,6 +416,8 @@ function normalizeExitRules(rules, fallbackRules) {
     TP_P1_MIXED_COHORT: pickNum("TP_P1_MIXED_COHORT"),
     TP_P1_QTY: pickNum("TP_P1_QTY"),
     TP_C: pickNum("TP_C"),
+    BE_PCT_RESCUE_COHORT: pickNum("BE_PCT_RESCUE_COHORT"),
+    BE_PCT_MIXED_COHORT: pickNum("BE_PCT_MIXED_COHORT"),
     BE_PCT: pickNum("BE_PCT"),
     PRE_TP1_TIME_STOP_BARS_EARLY: pickNum("PRE_TP1_TIME_STOP_BARS_EARLY"),
     PRE_TP1_TIME_STOP_BARS_CORE: pickNum("PRE_TP1_TIME_STOP_BARS_CORE"),
@@ -397,6 +427,8 @@ function normalizeExitRules(rules, fallbackRules) {
     TRAIL_R_MULTIPLE: pickNum("TRAIL_R_MULTIPLE"),
     TRAIL_PCT: pickNum("TRAIL_PCT"),
     RUNNER_MIN_PROFIT_PCT: pickNum("RUNNER_MIN_PROFIT_PCT"),
+    RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: pickNum("RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT"),
+    RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: pickNum("RUNNER_MIN_PROFIT_PCT_MIXED_COHORT"),
     BE_ENABLE: src.BE_ENABLE == null ? (fb.BE_ENABLE !== false) : !!src.BE_ENABLE,
   };
   if (!Number.isFinite(out.SL)) out.SL = fb.SL;
@@ -407,6 +439,8 @@ function normalizeExitRules(rules, fallbackRules) {
   if (!Number.isFinite(out.TP_P1_RESCUE_COHORT) || out.TP_P1_RESCUE_COHORT <= 0) out.TP_P1_RESCUE_COHORT = fb.TP_P1_RESCUE_COHORT;
   if (!Number.isFinite(out.TP_P1_MIXED_COHORT) || out.TP_P1_MIXED_COHORT <= 0) out.TP_P1_MIXED_COHORT = fb.TP_P1_MIXED_COHORT;
   if (!Number.isFinite(out.TP_P1_QTY)) out.TP_P1_QTY = fb.TP_P1_QTY;
+  if (!Number.isFinite(out.BE_PCT_RESCUE_COHORT) || out.BE_PCT_RESCUE_COHORT <= 0) out.BE_PCT_RESCUE_COHORT = fb.BE_PCT_RESCUE_COHORT;
+  if (!Number.isFinite(out.BE_PCT_MIXED_COHORT) || out.BE_PCT_MIXED_COHORT <= 0) out.BE_PCT_MIXED_COHORT = fb.BE_PCT_MIXED_COHORT;
   if (!Number.isFinite(out.PRE_TP1_TIME_STOP_BARS_EARLY) || out.PRE_TP1_TIME_STOP_BARS_EARLY < 0) out.PRE_TP1_TIME_STOP_BARS_EARLY = fb.PRE_TP1_TIME_STOP_BARS_EARLY;
   if (!Number.isFinite(out.PRE_TP1_TIME_STOP_BARS_CORE) || out.PRE_TP1_TIME_STOP_BARS_CORE < 0) out.PRE_TP1_TIME_STOP_BARS_CORE = fb.PRE_TP1_TIME_STOP_BARS_CORE;
   if (!Number.isFinite(out.PRE_TP1_TIME_STOP_PROGRESS_FRACTION) || out.PRE_TP1_TIME_STOP_PROGRESS_FRACTION <= 0) out.PRE_TP1_TIME_STOP_PROGRESS_FRACTION = fb.PRE_TP1_TIME_STOP_PROGRESS_FRACTION;
@@ -414,6 +448,8 @@ function normalizeExitRules(rules, fallbackRules) {
   if (!Number.isFinite(out.TRAIL_DELAY_MFE_PCT) || out.TRAIL_DELAY_MFE_PCT < 0) out.TRAIL_DELAY_MFE_PCT = fb.TRAIL_DELAY_MFE_PCT;
   if (!Number.isFinite(out.TRAIL_R_MULTIPLE) || out.TRAIL_R_MULTIPLE <= 0) out.TRAIL_R_MULTIPLE = null;
   if (!Number.isFinite(out.TRAIL_PCT)) out.TRAIL_PCT = fb.TRAIL_PCT;
+  if (!Number.isFinite(out.RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT) || out.RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT <= 0) out.RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT = fb.RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT;
+  if (!Number.isFinite(out.RUNNER_MIN_PROFIT_PCT_MIXED_COHORT) || out.RUNNER_MIN_PROFIT_PCT_MIXED_COHORT <= 0) out.RUNNER_MIN_PROFIT_PCT_MIXED_COHORT = fb.RUNNER_MIN_PROFIT_PCT_MIXED_COHORT;
   if (!Number.isFinite(out.RUNNER_MIN_PROFIT_PCT) || out.RUNNER_MIN_PROFIT_PCT <= 0) out.RUNNER_MIN_PROFIT_PCT = null;
   if (!Number.isFinite(out.TP_C)) out.TP_C = null;
   if (out.BE_ENABLE !== false && !Number.isFinite(out.BE_PCT)) out.BE_PCT = null;

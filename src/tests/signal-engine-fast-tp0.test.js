@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("assert");
-const { generateSignals } = require("../engine/signalEngine");
+const { generateSignals, resolveExitRulesForPosition } = require("../engine/signalEngine");
 
 function run() {
   const tp0Signals = generateSignals({
@@ -82,6 +82,30 @@ function run() {
   });
   assert.strictEqual(rescueTp1.length, 1, "rescue cohort should shorten tp1");
   assert.strictEqual(rescueTp1[0].event, "EXIT_TP_P1_1.65P");
+
+  const rescueRules = resolveExitRulesForPosition({
+    exchange: "BINANCEFUT",
+    position: {
+      meta: {
+        openclaw_market_regime_cohort: "RESCUE",
+      },
+    },
+  });
+  assert.strictEqual(rescueRules.TP_P1, 0.0165);
+  assert.strictEqual(rescueRules.BE_PCT, 0.0015);
+  assert.strictEqual(rescueRules.RUNNER_MIN_PROFIT_PCT, 0.012);
+
+  const mixedRules = resolveExitRulesForPosition({
+    exchange: "BINANCEFUT",
+    position: {
+      meta: {
+        openclaw_market_regime_cohort: "MIXED",
+      },
+    },
+  });
+  assert.strictEqual(mixedRules.TP_P1, 0.025);
+  assert.strictEqual(mixedRules.BE_PCT, 0.002);
+  assert.strictEqual(mixedRules.RUNNER_MIN_PROFIT_PCT, 0.0165);
 }
 
 try {
