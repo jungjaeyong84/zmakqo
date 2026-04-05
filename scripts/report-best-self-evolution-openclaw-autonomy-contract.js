@@ -37,6 +37,7 @@ const INPUTS = Object.freeze({
   overallAccountReport: path.join(OPS_DAILY_DIR, "overall_account_report_latest.json"),
   signalLineageHealth: path.join(OPS_DAILY_DIR, "signal_lineage_health_latest.json"),
   modelReadiness: path.join(OPS_DAILY_DIR, "best_self_evolution_model_readiness_latest.json"),
+  featureStore: path.join(OPS_DAILY_DIR, "ml_feature_store_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -80,6 +81,7 @@ function renderMarkdown(report = {}) {
     `- lineage/account: ${summary.lineage_status || "N/A"} / account=${summary.account_integrity_status || "N/A"} / account_issues=${status.account_integrity_issue_n != null ? status.account_integrity_issue_n : "N/A"} / ops=${status.account_ops_status || "N/A"}:${status.account_ops_mode || "N/A"}`,
     `- microstructure: ${summary.execution_microstructure_status || "N/A"} / tp0_hit=${status.tp0_hit_rate != null ? status.tp0_hit_rate : "N/A"} / tp1_hit=${status.tp1_hit_rate != null ? status.tp1_hit_rate : "N/A"} / cluster=${summary.portfolio_cluster_risk_status || "N/A"}`,
     `- model_readiness: ${summary.model_readiness_status || "N/A"} / rows=${status.model_readiness_rows_n != null ? status.model_readiness_rows_n : "N/A"} / realized=${status.model_readiness_realized_n != null ? status.model_readiness_realized_n : "N/A"} / invalid=${status.model_readiness_invalid_n != null ? status.model_readiness_invalid_n : "N/A"}`,
+    `- feature_store: ${summary.feature_store_status || "N/A"} / rows=${status.feature_store_rows_n != null ? status.feature_store_rows_n : "N/A"} / keys=${status.feature_store_keys_n != null ? status.feature_store_keys_n : "N/A"}`,
     "",
     "## Server Transition",
     ...(report.server_signal_transition && Array.isArray(report.server_signal_transition.phases)
@@ -115,6 +117,7 @@ function main() {
     overallAccountReport: readJsonRawSafe(INPUTS.overallAccountReport, null),
     signalLineageHealth: readJsonRawSafe(INPUTS.signalLineageHealth, null),
     modelReadiness: readJsonRawSafe(INPUTS.modelReadiness, null),
+    featureStore: readJsonRawSafe(INPUTS.featureStore, null),
   });
   const output = {
     ok: true,

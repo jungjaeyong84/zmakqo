@@ -371,8 +371,10 @@ function hasFallback(features, row) {
 function classifyExitEvent(eventRaw) {
   const ev = toUpper(eventRaw, "");
   if (!ev) return null;
+  if (ev.startsWith("EXIT_TP_P0")) return "TP0";
   if (ev.startsWith("EXIT_TP_P1")) return "TP1";
   if (ev.startsWith("EXIT_SL")) return "SL";
+  if (ev.startsWith("EXIT_TIME_STOP")) return "TIME_STOP";
   if (ev.startsWith("EXIT_TRAIL")) return "TRAIL";
   if (ev.startsWith("EXIT_BE")) return "BE";
   if (ev.startsWith("EXIT_")) return "EXIT_OTHER";
@@ -761,10 +763,20 @@ function buildUnifiedLearningRows({
     const exitKinds = (exitKindsFromFills.length ? exitKindsFromFills : exitKindsFromTrades)
       .slice()
       .sort((a, b) => (Number(a.ms || 0) - Number(b.ms || 0)));
+    const firstTp0Idx = exitKinds.findIndex((row) => row.kind === "TP0");
     const firstTp1Idx = exitKinds.findIndex((row) => row.kind === "TP1");
     const firstSlIdx = exitKinds.findIndex((row) => row.kind === "SL");
+    const firstTimeStopIdx = exitKinds.findIndex((row) => row.kind === "TIME_STOP");
+    const tp0Hit = firstTp0Idx >= 0;
     const tp1First = firstTp1Idx >= 0 && (firstSlIdx < 0 || firstTp1Idx < firstSlIdx);
     const slFirst = firstSlIdx >= 0 && (firstTp1Idx < 0 || firstSlIdx < firstTp1Idx);
+    const tp0First = firstTp0Idx >= 0 && [firstTp1Idx, firstSlIdx, firstTimeStopIdx]
+      .filter((value) => value >= 0)
+      .every((value) => firstTp0Idx < value);
+    const timeStopHit = firstTimeStopIdx >= 0;
+    const timeStopFirst = firstTimeStopIdx >= 0 && [firstTp0Idx, firstTp1Idx, firstSlIdx]
+      .filter((value) => value >= 0)
+      .every((value) => firstTimeStopIdx < value);
 
     const fillCreatedAtMs = parseMs(entryFill && entryFill.created_at);
     const lastExitFill = exitFills[exitFills.length - 1] || null;
@@ -911,8 +923,12 @@ function buildUnifiedLearningRows({
       partial_fill: partialFill,
       reject_reason: resolveRejectReason(latestIntent),
 
+      tp0_hit: tp0Hit,
+      tp0_first: tp0First,
       tp1_first: tp1First,
       sl_first: slFirst,
+      time_stop_hit: timeStopHit,
+      time_stop_first: timeStopFirst,
       mfe_pct: null,
       mae_pct: null,
       realized_ret_net: realizedRetNet,

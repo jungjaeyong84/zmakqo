@@ -156,6 +156,7 @@ function deriveOpenClawAutonomyContract({
   overallAccountReport = null,
   signalLineageHealth = null,
   modelReadiness = null,
+  featureStore = null,
 } = {}) {
   const objectiveSummary = readSummary(objective);
   const objectiveSupervisorRaw = unwrapRawReport(objectiveSupervisor) || {};
@@ -175,6 +176,7 @@ function deriveOpenClawAutonomyContract({
   const overallOperations = overallAccount.operations && typeof overallAccount.operations === "object" ? overallAccount.operations : {};
   const signalLineageSummary = readSummary(signalLineageHealth);
   const modelReadinessSummary = readSummary(modelReadiness);
+  const featureStoreSummary = readSummary(featureStore);
 
   const objectivePolicy = {
     min_objective_score: envNum("OPENCLAW_AUTONOMY_MIN_OBJECTIVE_SCORE", 0),
@@ -323,6 +325,7 @@ function deriveOpenClawAutonomyContract({
       ? "REDUCING"
       : (retrospectiveDisplay.generated_at_kst ? "MONITORING" : "N_A"));
   const modelReadinessStatus = toUpper(modelReadinessSummary.status) || "N_A";
+  const featureStoreStatus = toUpper(featureStoreSummary.status) || "N_A";
 
   return {
     contract_version: "OPENCLAW_AUTONOMY_CONTRACT_V1",
@@ -406,6 +409,10 @@ function deriveOpenClawAutonomyContract({
       model_readiness_realized_n: toNum(modelReadinessSummary.realized_n),
       model_readiness_invalid_n: toNum(modelReadinessSummary.invalid_n),
       model_readiness_schema_version: String(modelReadinessSummary.schema_version || "").trim() || null,
+      feature_store_status: featureStoreStatus,
+      feature_store_rows_n: toNum(featureStoreSummary.rows_n),
+      feature_store_keys_n: toNum(featureStoreSummary.feature_keys_n),
+      feature_store_schema_version: String(featureStoreSummary.schema_version || "").trim() || null,
     },
     summary: {
       goal_state: objectiveMet ? "OBJECTIVE_ON_TRACK" : "OBJECTIVE_RECOVERY_REQUIRED",
@@ -430,6 +437,7 @@ function deriveOpenClawAutonomyContract({
       execution_microstructure_status: executionMicrostructureStatus,
       portfolio_cluster_risk_status: portfolioClusterRiskStatus,
       model_readiness_status: modelReadinessStatus,
+      feature_store_status: featureStoreStatus,
       execution_quality_status: executionQualityStatus,
       lineage_status: lineageVerdict,
       account_integrity_status: overallIntegrity.ok === true ? "PASS" : (overallIntegrity.issue_count != null ? "WARN" : "N_A"),

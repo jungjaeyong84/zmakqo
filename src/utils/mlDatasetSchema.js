@@ -86,6 +86,14 @@ function buildMlTrainingRow(row = {}) {
       failure_risk: toNum(row.febt_failure_risk),
       edge: toNum(row.febt_edge),
     },
+    lifecycle: {
+      tp0_hit: row.tp0_hit === true,
+      tp0_first: row.tp0_first === true,
+      tp1_first: row.tp1_first === true,
+      sl_first: row.sl_first === true,
+      time_stop_hit: row.time_stop_hit === true,
+      time_stop_first: row.time_stop_first === true,
+    },
     labels,
     features,
   };

@@ -37,6 +37,7 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
     objectiveRetrospective: { display: { generated_at_kst: "2026-04-05 15:33:52 KST", execution_microstructure: { tp0_hit_rate: 0.85, tp1_hit_rate: 0, pre_tp1_time_stop_rate: 0, chase_reject_n: 1, portfolio_cluster_reduce_n: 2, portfolio_cluster_block_n: 0 } } },
     overallAccountReport: { integrity: { ok: false, issue_count: 4, active_market_count: 3, position_doc_count: 3 }, operations: { status: "보류", mode: "비용 차단" } },
     signalLineageHealth: { summary: { verdict: "PASS", fills_intent_id_null_rate: 0, fills_signal_doc_id_null_rate: 0, intents_signal_doc_id_null_rate: 0 } },
+    featureStore: { summary: { status: "FEATURE_STORE_READY", rows_n: 344, feature_keys_n: 287, schema_version: "2026-04-05.v1" } },
   });
 
   assert.strictEqual(report.current_status.objective_score, -7.4);
@@ -57,10 +58,13 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.summary.account_integrity_status, "WARN");
   assert.strictEqual(report.summary.execution_microstructure_status, "ACTIVE");
   assert.strictEqual(report.summary.portfolio_cluster_risk_status, "REDUCING");
+  assert.strictEqual(report.summary.feature_store_status, "FEATURE_STORE_READY");
   assert.strictEqual(report.current_status.market_regime_top_rescue_market, "SOLUSDT");
   assert.strictEqual(report.current_status.execution_quality_latency_p95_ms, 59871);
   assert.strictEqual(report.current_status.account_integrity_issue_n, 4);
   assert.strictEqual(report.current_status.tp0_hit_rate, 0.85);
+  assert.strictEqual(report.current_status.feature_store_rows_n, 344);
+  assert.strictEqual(report.current_status.feature_store_keys_n, 287);
   assert.strictEqual(report.current_status.portfolio_cluster_reduce_n, 2);
   assert.strictEqual(report.authority_policy.degraded_timeout_policy.enabled, true);
   console.log("OPENCLAW_AUTONOMY_CONTRACT_TEST_OK");

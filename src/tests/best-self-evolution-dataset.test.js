@@ -15,6 +15,8 @@ function run() {
   const legacySignalDocId = "SIG__BINANCEFUT__SOLUSDT__15m__6000__EARLY_SHORT";
   const chainOnlySignalId = "SIG__BINANCEFUT__XRPUSDT__15m__8000__CORE_LONG";
   const chainOnlyEntryEventId = "ENTRY__BINANCEFUT__XRPUSDT__15m__8000__CORE_LONG";
+  const tp0SignalId = "SIG__BINANCEFUT__ETHUSDT__15m__9000__CORE_SHORT";
+  const tp0EntryEventId = "ENTRY__BINANCEFUT__ETHUSDT__15m__9000__CORE_SHORT";
   const rows = buildUnifiedLearningRows({
     signals: [
       {
@@ -82,6 +84,19 @@ function run() {
         bar_close_time_utc_ms: 8000,
         features_json: {
           signal_id: chainOnlySignalId,
+        },
+      },
+      {
+        exchange: "BINANCEFUT",
+        symbol_or_pair_id: "ETHUSDT",
+        tf: "15m",
+        event: "CORE_SHORT",
+        side: "SELL",
+        signal_id: tp0SignalId,
+        bar_close_time_utc_ms: 9000,
+        features_json: {
+          signal_id: tp0SignalId,
+          febt_phase: "FIRE",
         },
       },
     ],
@@ -209,6 +224,45 @@ function run() {
           febt_phase: "FIRE",
         },
       },
+      {
+        exchange: "BINANCEFUT",
+        symbol: "ETHUSDT",
+        tf: "15m",
+        side: "SELL",
+        event: "CORE_SHORT",
+        signal_id: tp0SignalId,
+        entry_event_id: tp0EntryEventId,
+        entry_signal_type: "CORE_SHORT",
+        signal_bar_close_time_utc_ms: 9000,
+        exec_bar_close_time_utc_ms: 9000,
+        created_at: "2026-03-29T00:55:00.000Z",
+      },
+      {
+        exchange: "BINANCEFUT",
+        symbol: "ETHUSDT",
+        tf: "15m",
+        side: "BUY",
+        event: "EXIT_TP_P0_0.8P",
+        signal_id: tp0SignalId,
+        entry_event_id: tp0EntryEventId,
+        entry_signal_type: "CORE_SHORT",
+        signal_bar_close_time_utc_ms: 9000,
+        exec_bar_close_time_utc_ms: 9200,
+        created_at: "2026-03-29T00:58:00.000Z",
+      },
+      {
+        exchange: "BINANCEFUT",
+        symbol: "ETHUSDT",
+        tf: "15m",
+        side: "BUY",
+        event: "EXIT_TIME_STOP_4B",
+        signal_id: tp0SignalId,
+        entry_event_id: tp0EntryEventId,
+        entry_signal_type: "CORE_SHORT",
+        signal_bar_close_time_utc_ms: 9000,
+        exec_bar_close_time_utc_ms: 9500,
+        created_at: "2026-03-29T01:01:00.000Z",
+      },
     ],
     trades: [
       {
@@ -297,6 +351,7 @@ function run() {
   const tradeOnly = byId.get(tradeOnlySignalId);
   const legacyLinked = byId.get(legacySignalDocId);
   const chainOnly = byId.get(chainOnlySignalId);
+  const tp0Timed = byId.get(tp0SignalId);
   const exitOnlySync = rows.find((row) => row.event === "EXIT_EXTERNAL_SYNC");
 
   assert.strictEqual(executed.source_row_type, "EXECUTED");
@@ -329,12 +384,18 @@ function run() {
   assert.strictEqual(chainOnly.febt_phase, "ARMED");
   assert.strictEqual(chainOnly.febt_edge, 0.42);
   assert.strictEqual(chainOnly.febt_lock_score, 0.77);
+  assert.strictEqual(tp0Timed.source_row_type, "EXECUTED");
+  assert.strictEqual(tp0Timed.tp0_hit, true);
+  assert.strictEqual(tp0Timed.tp0_first, true);
+  assert.strictEqual(tp0Timed.time_stop_hit, true);
+  assert.strictEqual(tp0Timed.time_stop_first, false);
+  assert.strictEqual(tp0Timed.outcome_state, "EXIT_PRESENT_UNLABELED");
   assert.strictEqual(exitOnlySync.source_row_type, "EXIT_ONLY");
   assert.strictEqual(exitOnlySync.outcome_state, "EXIT_PRESENT_UNLABELED");
 
   const summary = summarizeBestSelfEvolutionDataset(rows);
-  assert.strictEqual(summary.rows_n, 8);
-  assert.strictEqual(summary.executed_n, 3);
+  assert.strictEqual(summary.rows_n, 9);
+  assert.strictEqual(summary.executed_n, 4);
   assert.strictEqual(summary.drop_n, 1);
   assert.strictEqual(summary.missed_n, 2);
   assert.strictEqual(summary.rejected_n, 1);
@@ -342,16 +403,16 @@ function run() {
   assert.strictEqual(summary.realized_n, 3);
   assert.strictEqual(summary.all_realized_n, 4);
   assert.strictEqual(summary.ev_counterfactual_n, 1);
-  assert.strictEqual(summary.entry_pending_total_n, 0);
-  assert.strictEqual(summary.entry_executed_null_realized_n, 0);
+  assert.strictEqual(summary.entry_pending_total_n, 1);
+  assert.strictEqual(summary.entry_executed_null_realized_n, 1);
   assert.strictEqual(summary.entry_fallback_pending_n, 0);
-  assert.strictEqual(summary.entry_exit_present_unlabeled_n, 0);
+  assert.strictEqual(summary.entry_exit_present_unlabeled_n, 1);
   assert.strictEqual(summary.entry_open_pending_n, 0);
   assert.strictEqual(summary.entry_link_missing_n, 0);
   assert.ok(Array.isArray(summary.entry_fallback_pending_by_reason));
   assert.ok(Array.isArray(summary.febt_eligible_by_market));
   assert.ok(Array.isArray(summary.febt_eligible_by_event));
-  assert.strictEqual(summary.active_entry_n, 7);
+  assert.strictEqual(summary.active_entry_n, 8);
   assert.strictEqual(summary.legacy_entry_n, 0);
   assert.ok(summary.active_entry_family_counts.some((item) => item.key === "CORE_LONG" && item.count === 3));
   assert.ok(summary.active_entry_family_counts.some((item) => item.key === "EARLY_LONG" && item.count === 2));
@@ -364,7 +425,7 @@ function run() {
   assert.deepStrictEqual(summary.entry_fallback_payload_missing_by_event, []);
   assert.deepStrictEqual(summary.entry_fallback_payload_missing_by_family, []);
   assert.deepStrictEqual(summary.entry_fallback_pending_active_by_event, []);
-  assert.strictEqual(summary.febt_active_eligible_n, 6);
+  assert.strictEqual(summary.febt_active_eligible_n, 7);
   assert.strictEqual(summary.febt_active_missing_n, 0);
   assert.strictEqual(summary.febt_coverage_rate_active_eligible, 1);
   assert.ok(summary.febt_active_eligible_by_family.some((item) => item.key === "CORE_LONG" && item.eligible_n === 2));
@@ -393,7 +454,9 @@ function run() {
     bar_close_time_utc_ms: 5000,
   }), tradeOnlyEntryEventId);
   assert.strictEqual(__test.buildDropStageKey("DROP_EV_GATE_TP1_PROB"), "EV");
+  assert.strictEqual(__test.classifyExitEvent("EXIT_TP_P0_0.8P"), "TP0");
   assert.strictEqual(__test.classifyExitEvent("EXIT_TP_P1"), "TP1");
+  assert.strictEqual(__test.classifyExitEvent("EXIT_TIME_STOP_4B"), "TIME_STOP");
 
   const priceOnlyRows = buildUnifiedLearningRows({
     signals: [

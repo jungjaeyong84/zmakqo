@@ -31,7 +31,11 @@ function run() {
     drops_n: 0,
     fill_status: "FILLED",
     outcome_state: "REALIZED",
+    tp0_hit: true,
+    tp0_first: true,
     tp1_first: true,
+    time_stop_hit: false,
+    time_stop_first: false,
     realized_ret_net: 0.012,
     realized_pnl_quote: 1000,
     features_json: {
@@ -43,6 +47,8 @@ function run() {
   assert.strictEqual(row.schema_version, ML_DATASET_SCHEMA_VERSION);
   assert.strictEqual(row.context.market, "BTCUSDT");
   assert.strictEqual(row.labels.is_realized, true);
+  assert.strictEqual(row.lifecycle.tp0_hit, true);
+  assert.strictEqual(row.lifecycle.tp1_first, true);
   assert.strictEqual(row.features.some_feature, 7);
 
   const validation = validateMlTrainingRow(row);
