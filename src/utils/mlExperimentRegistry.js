@@ -1,0 +1,62 @@
+"use strict";
+
+const crypto = require("crypto");
+
+function readSummary(value) {
+  if (!value || typeof value !== "object") return {};
+  return value.summary && typeof value.summary === "object" ? value.summary : value;
+}
+
+function sha1(value) {
+  return crypto.createHash("sha1").update(String(value || "")).digest("hex");
+}
+
+function buildMlExperimentRegistry({
+  trainingDataset = null,
+  featureStore = null,
+  modelReadiness = null,
+  executionQuality = null,
+  executionStageLatency = null,
+} = {}) {
+  const dataset = trainingDataset && typeof trainingDataset === "object" ? trainingDataset : {};
+  const feature = featureStore && typeof featureStore === "object" ? featureStore : {};
+  const readiness = readSummary(modelReadiness);
+  const quality = readSummary(executionQuality);
+  const stageLatency = readSummary(executionStageLatency);
+
+  const datasetVersionId = String(dataset.dataset_version && dataset.dataset_version.version_id || "").trim() || null;
+  const featureStoreVersionId = String(feature.feature_store_version && feature.feature_store_version.version_id || feature.summary && feature.summary.version_id || "").trim() || null;
+  const sourceCycleId = String(dataset.source_cycle_id || feature.source_cycle_id || readiness.source_cycle_id || "").trim() || null;
+  const sourceWindow = dataset.source_window && typeof dataset.source_window === "object" ? dataset.source_window : null;
+  const experimentKey = JSON.stringify({
+    dataset_version_id: datasetVersionId,
+    feature_store_version_id: featureStoreVersionId,
+    source_cycle_id: sourceCycleId,
+    source_window_source: sourceWindow && sourceWindow.source ? String(sourceWindow.source).trim().toUpperCase() : null,
+    rows_n: readiness.rows_n || null,
+    feature_keys_n: feature.summary && feature.summary.feature_keys_n || null,
+  });
+  const experimentId = `ML_BASELINE_ENV__${sha1(experimentKey).slice(0, 16)}`;
+
+  return {
+    status: datasetVersionId && featureStoreVersionId ? "ML_EXPERIMENT_REGISTRY_READY" : "ML_EXPERIMENT_REGISTRY_INCOMPLETE",
+    experiment_id: experimentId,
+    dataset_version_id: datasetVersionId,
+    feature_store_version_id: featureStoreVersionId,
+    source_cycle_id: sourceCycleId,
+    source_mode: String(dataset.source_mode || readiness.source_mode || "").trim().toUpperCase() || null,
+    source_window: sourceWindow,
+    rows_n: Number.isFinite(Number(readiness.rows_n)) ? Number(readiness.rows_n) : null,
+    realized_n: Number.isFinite(Number(readiness.realized_n)) ? Number(readiness.realized_n) : null,
+    feature_keys_n: Number.isFinite(Number(feature.summary && feature.summary.feature_keys_n)) ? Number(feature.summary.feature_keys_n) : null,
+    model_readiness_status: String(readiness.status || "").trim().toUpperCase() || null,
+    execution_quality_status: String(quality.status || "").trim().toUpperCase() || null,
+    execution_quality_top_operational_webhook_delay_cause: String(quality.top_operational_webhook_delay_cause || "").trim() || null,
+    execution_stage_latency_status: String(stageLatency.status || "").trim().toUpperCase() || null,
+    execution_stage_latency_top_operational_signal_to_intent_group: String(stageLatency.top_operational_signal_to_intent_groups && stageLatency.top_operational_signal_to_intent_groups[0] && stageLatency.top_operational_signal_to_intent_groups[0].key || "").trim() || null,
+  };
+}
+
+module.exports = {
+  buildMlExperimentRegistry,
+};

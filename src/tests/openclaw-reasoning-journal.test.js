@@ -31,6 +31,16 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         execution_model_dataset_top_no_fill_reason: "LIVE_EXCEPTION",
         execution_model_dataset_top_no_fill_reason_family: "RUNTIME_ERROR",
         execution_model_dataset_top_no_fill_subtype: "TIMING_IMMEDIATE_EXEC",
+        execution_stage_latency_status: "EXECUTION_STAGE_LATENCY_READY",
+        execution_stage_latency_top_signal_to_intent_group: "MANUAL_REPLAY|EARLY_LONG|XRPUSDT",
+        execution_stage_latency_top_operational_signal_to_intent_group: "TV_WEBHOOK|EARLY_LONG|BTCUSDT",
+        execution_stage_latency_top_webhook_saved_to_intent_group: "MANUAL_REPLAY|EARLY_LONG|XRPUSDT",
+        execution_stage_latency_top_operational_webhook_saved_to_intent_group: "TV_WEBHOOK|EARLY_LONG|BTCUSDT",
+        ml_experiment_registry_status: "ML_EXPERIMENT_REGISTRY_READY",
+        ml_experiment_registry_experiment_id: "ML_BASELINE_ENV__abc123def4567890",
+        execution_bottleneck_delta_status: "EXECUTION_BOTTLENECK_DELTA_READY",
+        execution_bottleneck_delta_top_operational_webhook_delay_cause: "IMMEDIATE_EXEC_WEBHOOK_SAVED_LATE_INTENT",
+        execution_bottleneck_delta_top_operational_signal_to_intent_group: "TV_WEBHOOK|EARLY_LONG|BTCUSDT",
         model_readiness_dataset_version_id: "ML_TRAINING_DATASET__abc123",
         feature_store_version_id: "ML_FEATURE_STORE__def456",
         model_readiness_mfe_mae_label_rate: 0.0203,
@@ -157,6 +167,16 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_execution_model_top_no_fill_reason, "LIVE_EXCEPTION");
   assert.strictEqual(journal.summary.current_execution_model_top_no_fill_reason_family, "RUNTIME_ERROR");
   assert.strictEqual(journal.summary.current_execution_model_top_no_fill_subtype, "TIMING_IMMEDIATE_EXEC");
+  assert.strictEqual(journal.summary.current_execution_stage_latency_status, "EXECUTION_STAGE_LATENCY_READY");
+  assert.strictEqual(journal.summary.current_execution_stage_latency_top_signal_to_intent_group, "MANUAL_REPLAY|EARLY_LONG|XRPUSDT");
+  assert.strictEqual(journal.summary.current_execution_stage_latency_top_operational_signal_to_intent_group, "TV_WEBHOOK|EARLY_LONG|BTCUSDT");
+  assert.strictEqual(journal.summary.current_execution_stage_latency_top_webhook_saved_to_intent_group, "MANUAL_REPLAY|EARLY_LONG|XRPUSDT");
+  assert.strictEqual(journal.summary.current_execution_stage_latency_top_operational_webhook_saved_to_intent_group, "TV_WEBHOOK|EARLY_LONG|BTCUSDT");
+  assert.strictEqual(journal.summary.current_ml_experiment_registry_status, "ML_EXPERIMENT_REGISTRY_READY");
+  assert.strictEqual(journal.summary.current_ml_experiment_registry_experiment_id, "ML_BASELINE_ENV__abc123def4567890");
+  assert.strictEqual(journal.summary.current_execution_bottleneck_delta_status, "EXECUTION_BOTTLENECK_DELTA_READY");
+  assert.strictEqual(journal.summary.current_execution_bottleneck_delta_top_operational_webhook_delay_cause, "IMMEDIATE_EXEC_WEBHOOK_SAVED_LATE_INTENT");
+  assert.strictEqual(journal.summary.current_execution_bottleneck_delta_top_operational_signal_to_intent_group, "TV_WEBHOOK|EARLY_LONG|BTCUSDT");
   assert.strictEqual(journal.summary.current_microstructure_tp0_hit_rate, 0.85);
   assert.strictEqual(journal.summary.current_microstructure_cluster_reduce_n, 2);
   assert.strictEqual(journal.summary.entry_n, 4);

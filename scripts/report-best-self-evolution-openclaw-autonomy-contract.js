@@ -39,6 +39,9 @@ const INPUTS = Object.freeze({
   modelReadiness: path.join(OPS_DAILY_DIR, "best_self_evolution_model_readiness_latest.json"),
   featureStore: path.join(OPS_DAILY_DIR, "ml_feature_store_latest.json"),
   executionModelDataset: path.join(OPS_DAILY_DIR, "execution_model_dataset_latest.json"),
+  executionStageLatency: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_stage_latency_latest.json"),
+  mlExperimentRegistry: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_experiment_registry_latest.json"),
+  executionBottleneckDelta: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_bottleneck_delta_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -121,6 +124,9 @@ function main() {
     modelReadiness: readJsonRawSafe(INPUTS.modelReadiness, null),
     featureStore: readJsonRawSafe(INPUTS.featureStore, null),
     executionModelDataset: readJsonRawSafe(INPUTS.executionModelDataset, null),
+    executionStageLatency: readJsonRawSafe(INPUTS.executionStageLatency, null),
+    mlExperimentRegistry: readJsonRawSafe(INPUTS.mlExperimentRegistry, null),
+    executionBottleneckDelta: readJsonRawSafe(INPUTS.executionBottleneckDelta, null),
   });
   const output = {
     ok: true,
