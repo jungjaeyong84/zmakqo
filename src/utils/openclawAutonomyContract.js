@@ -165,6 +165,7 @@ function deriveOpenClawAutonomyContract({
   executionStageLatency = null,
   mlExperimentRegistry = null,
   executionBottleneckDelta = null,
+  mlTrainRun = null,
 } = {}) {
   const objectiveSummary = readSummary(objective);
   const objectiveSupervisorRaw = unwrapRawReport(objectiveSupervisor) || {};
@@ -189,10 +190,20 @@ function deriveOpenClawAutonomyContract({
   const executionStageLatencySummary = readSummary(executionStageLatency);
   const mlExperimentRegistrySummary = readSummary(mlExperimentRegistry);
   const executionBottleneckDeltaSummary = readSummary(executionBottleneckDelta);
+  const mlTrainRunSummary = readSummary(mlTrainRun);
   const executionModelStatus = toUpper(executionModelSummary.status) || "N_A";
   const executionStageLatencyStatus = toUpper(executionStageLatencySummary.status) || "N_A";
   const mlExperimentRegistryStatus = toUpper(mlExperimentRegistrySummary.status) || "N_A";
   const executionBottleneckDeltaStatus = toUpper(executionBottleneckDeltaSummary.status) || "N_A";
+  const mlTrainRunStatus = toUpper(mlTrainRunSummary.status) || "N_A";
+  const executionBottleneckDeltaComparable = executionBottleneckDeltaStatus === "EXECUTION_BOTTLENECK_DELTA_READY";
+  const executionBottleneckDeltaInterpretation = executionBottleneckDeltaComparable
+    ? "USE_DELTA_SIGNAL"
+    : (executionBottleneckDeltaStatus === "EXECUTION_BOTTLENECK_DELTA_STALE_COMPARISON"
+      ? "SKIP_STALE_COMPARISON"
+      : (executionBottleneckDeltaStatus === "EXECUTION_BOTTLENECK_DELTA_INSUFFICIENT_HISTORY"
+        ? "SKIP_INSUFFICIENT_HISTORY"
+        : "DELTA_STATUS_UNKNOWN"));
 
   const objectivePolicy = {
     min_objective_score: envNum("OPENCLAW_AUTONOMY_MIN_OBJECTIVE_SCORE", 0),
@@ -473,13 +484,25 @@ function deriveOpenClawAutonomyContract({
       ml_experiment_registry_experiment_id: String(mlExperimentRegistrySummary.experiment_id || "").trim() || null,
       ml_experiment_registry_dataset_version_id: String(mlExperimentRegistrySummary.dataset_version_id || "").trim() || null,
       ml_experiment_registry_feature_store_version_id: String(mlExperimentRegistrySummary.feature_store_version_id || "").trim() || null,
+      ml_experiment_registry_execution_dataset_version_id: String(mlExperimentRegistrySummary.execution_dataset_version_id || "").trim() || null,
+      ml_train_run_status: mlTrainRunStatus,
+      ml_train_run_id: String(mlTrainRunSummary.train_run_id || "").trim() || null,
+      ml_train_run_model_kind: String(mlTrainRunSummary.model_kind || "").trim() || null,
+      ml_train_run_split_strategy: String(mlTrainRunSummary.split_strategy || "").trim() || null,
       execution_bottleneck_delta_status: executionBottleneckDeltaStatus,
-      execution_bottleneck_delta_signal_to_intent_p95_delta_ms: toNum(executionBottleneckDeltaSummary.signal_to_intent_p95_delta_ms),
-      execution_bottleneck_delta_webhook_saved_to_intent_p95_delta_ms: toNum(executionBottleneckDeltaSummary.webhook_saved_to_intent_p95_delta_ms),
-      execution_bottleneck_delta_created_to_fill_p95_delta_ms: toNum(executionBottleneckDeltaSummary.created_to_fill_p95_delta_ms),
-      execution_bottleneck_delta_top_operational_webhook_delay_cause: String(executionBottleneckDeltaSummary.current_top_operational_webhook_delay_cause || "").trim() || null,
-      execution_bottleneck_delta_top_operational_signal_to_intent_group: String(executionBottleneckDeltaSummary.current_top_operational_signal_to_intent_group || "").trim() || null,
+      execution_bottleneck_delta_comparable: executionBottleneckDeltaComparable,
+      execution_bottleneck_delta_interpretation: executionBottleneckDeltaInterpretation,
+      execution_bottleneck_delta_signal_to_intent_p95_delta_ms: executionBottleneckDeltaComparable ? toNum(executionBottleneckDeltaSummary.signal_to_intent_p95_delta_ms) : null,
+      execution_bottleneck_delta_webhook_saved_to_intent_p95_delta_ms: executionBottleneckDeltaComparable ? toNum(executionBottleneckDeltaSummary.webhook_saved_to_intent_p95_delta_ms) : null,
+      execution_bottleneck_delta_created_to_fill_p95_delta_ms: executionBottleneckDeltaComparable ? toNum(executionBottleneckDeltaSummary.created_to_fill_p95_delta_ms) : null,
+      execution_bottleneck_delta_top_operational_webhook_delay_cause: executionBottleneckDeltaComparable ? (String(executionBottleneckDeltaSummary.current_top_operational_webhook_delay_cause || "").trim() || null) : null,
+      execution_bottleneck_delta_top_operational_signal_to_intent_group: executionBottleneckDeltaComparable ? (String(executionBottleneckDeltaSummary.current_top_operational_signal_to_intent_group || "").trim() || null) : null,
       execution_model_dataset_status: executionModelStatus,
+      execution_model_dataset_version_id: String(
+        executionModelSummary.version_id
+        || (executionModelDataset && executionModelDataset.execution_dataset_version && executionModelDataset.execution_dataset_version.version_id)
+        || ""
+      ).trim() || null,
       execution_model_dataset_rows_n: toNum(executionModelSummary.rows_n),
       execution_model_dataset_entry_rows_n: toNum(executionModelSummary.entry_rows_n),
       execution_model_dataset_exit_rows_n: toNum(executionModelSummary.exit_rows_n),
@@ -572,15 +595,26 @@ function deriveOpenClawAutonomyContract({
       ).trim() || null,
       ml_experiment_registry_status: mlExperimentRegistryStatus,
       ml_experiment_registry_experiment_id: String(mlExperimentRegistrySummary.experiment_id || "").trim() || null,
+      ml_experiment_registry_execution_dataset_version_id: String(mlExperimentRegistrySummary.execution_dataset_version_id || "").trim() || null,
+      ml_train_run_status: mlTrainRunStatus,
+      ml_train_run_id: String(mlTrainRunSummary.train_run_id || "").trim() || null,
+      ml_train_run_model_kind: String(mlTrainRunSummary.model_kind || "").trim() || null,
       execution_stage_latency_status: executionStageLatencyStatus,
       execution_stage_latency_top_signal_to_intent_group: String(firstArrayRow(executionStageLatencySummary.top_signal_to_intent_groups)?.key || "").trim() || null,
       execution_stage_latency_top_operational_signal_to_intent_group: String(firstArrayRow(executionStageLatencySummary.top_operational_signal_to_intent_groups)?.key || "").trim() || null,
       execution_stage_latency_top_webhook_saved_to_intent_group: String(firstArrayRow(executionStageLatencySummary.top_webhook_saved_to_intent_groups)?.key || "").trim() || null,
       execution_stage_latency_top_operational_webhook_saved_to_intent_group: String(firstArrayRow(executionStageLatencySummary.top_operational_webhook_saved_to_intent_groups)?.key || "").trim() || null,
       execution_bottleneck_delta_status: executionBottleneckDeltaStatus,
-      execution_bottleneck_delta_top_operational_webhook_delay_cause: String(executionBottleneckDeltaSummary.current_top_operational_webhook_delay_cause || "").trim() || null,
-      execution_bottleneck_delta_top_operational_signal_to_intent_group: String(executionBottleneckDeltaSummary.current_top_operational_signal_to_intent_group || "").trim() || null,
+      execution_bottleneck_delta_comparable: executionBottleneckDeltaComparable,
+      execution_bottleneck_delta_interpretation: executionBottleneckDeltaInterpretation,
+      execution_bottleneck_delta_top_operational_webhook_delay_cause: executionBottleneckDeltaComparable ? (String(executionBottleneckDeltaSummary.current_top_operational_webhook_delay_cause || "").trim() || null) : null,
+      execution_bottleneck_delta_top_operational_signal_to_intent_group: executionBottleneckDeltaComparable ? (String(executionBottleneckDeltaSummary.current_top_operational_signal_to_intent_group || "").trim() || null) : null,
       execution_model_dataset_status: executionModelStatus,
+      execution_model_dataset_version_id: String(
+        executionModelSummary.version_id
+        || (executionModelDataset && executionModelDataset.execution_dataset_version && executionModelDataset.execution_dataset_version.version_id)
+        || ""
+      ).trim() || null,
       execution_model_dataset_top_webhook_to_intent_latency_group: topWebhookToIntentLatencyGroup ? String(topWebhookToIntentLatencyGroup.key || "").trim() || null : null,
       execution_model_dataset_top_webhook_delay_reason: topWebhookDelayReason ? String(topWebhookDelayReason.key || "").trim() || null : null,
       execution_model_dataset_top_webhook_delay_cause: topWebhookDelayCause ? String(topWebhookDelayCause.key || "").trim() || null : null,

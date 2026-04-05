@@ -16,6 +16,7 @@ const {
   summarizeExecutionModelRows,
   splitExecutionModelRows,
 } = require("../src/utils/executionModelDataset");
+const { buildArtifactVersion } = require("../src/utils/mlArtifactVersion");
 
 const RECENT_CACHE_DIR = path.join(OPS_DAILY_DIR, "cache", "firestore_recent");
 const INTENTS = path.join(RECENT_CACHE_DIR, "order_intents_paper.json");
@@ -53,11 +54,34 @@ function main() {
   const summary = summarizeExecutionModelRows(rows);
   const entrySummary = summarizeExecutionModelRows(split.entry_rows);
   const exitSummary = summarizeExecutionModelRows(split.exit_rows);
+  const datasetVersion = buildArtifactVersion({
+    artifactType: "EXECUTION_MODEL_DATASET",
+    schemaVersion: EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
+    sourceMode: "RAW_CACHE",
+    rows,
+  });
+  const entryVersion = buildArtifactVersion({
+    artifactType: "EXECUTION_MODEL_ENTRY_DATASET",
+    schemaVersion: EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
+    sourceMode: "RAW_CACHE",
+    rows: split.entry_rows,
+  });
+  const exitVersion = buildArtifactVersion({
+    artifactType: "EXECUTION_MODEL_EXIT_DATASET",
+    schemaVersion: EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
+    sourceMode: "RAW_CACHE",
+    rows: split.exit_rows,
+  });
   const payload = {
     ok: true,
     generated_at_kst: nowMeta.kst,
     schema_version: EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
-    summary,
+    dataset_scope: "ALL",
+    execution_dataset_version: datasetVersion,
+    summary: {
+      ...summary,
+      version_id: datasetVersion.version_id,
+    },
     rows,
   };
   const entryPayload = {
@@ -65,7 +89,11 @@ function main() {
     generated_at_kst: nowMeta.kst,
     schema_version: EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
     dataset_scope: 'ENTRY_ONLY',
-    summary: entrySummary,
+    execution_dataset_version: entryVersion,
+    summary: {
+      ...entrySummary,
+      version_id: entryVersion.version_id,
+    },
     rows: split.entry_rows,
   };
   const exitPayload = {
@@ -73,7 +101,11 @@ function main() {
     generated_at_kst: nowMeta.kst,
     schema_version: EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
     dataset_scope: 'EXIT_ONLY',
-    summary: exitSummary,
+    execution_dataset_version: exitVersion,
+    summary: {
+      ...exitSummary,
+      version_id: exitVersion.version_id,
+    },
     rows: split.exit_rows,
   };
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}`;

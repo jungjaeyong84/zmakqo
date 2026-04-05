@@ -42,6 +42,7 @@ const { buildExecutionBottleneckDelta } = require("../utils/executionBottleneckD
         experiment_id: "ML_BASELINE_ENV__new123",
         dataset_version_id: "ML_TRAINING_DATASET__new",
         feature_store_version_id: "ML_FEATURE_STORE__new",
+        execution_dataset_version_id: "EXECUTION_MODEL_DATASET__new",
       },
     },
     previousExperimentRegistry: {
@@ -49,6 +50,7 @@ const { buildExecutionBottleneckDelta } = require("../utils/executionBottleneckD
         experiment_id: "ML_BASELINE_ENV__old123",
         dataset_version_id: "ML_TRAINING_DATASET__old",
         feature_store_version_id: "ML_FEATURE_STORE__old",
+        execution_dataset_version_id: "EXECUTION_MODEL_DATASET__old",
       },
     },
   });
@@ -67,8 +69,8 @@ const { buildExecutionBottleneckDelta } = require("../utils/executionBottleneckD
     previousExecutionQuality: { summary: { status: "EXECUTION_QUALITY_REVIEW", created_to_fill_p95_ms: 70000, top_operational_webhook_delay_cause: "A" } },
     currentStageLatency: { summary: { status: "EXECUTION_STAGE_LATENCY_READY", signal_to_intent_p95_ms: 1000, webhook_saved_to_intent_p95_ms: 1000 } },
     previousStageLatency: { summary: { status: "EXECUTION_STAGE_LATENCY_READY", signal_to_intent_p95_ms: 1000, webhook_saved_to_intent_p95_ms: 1000 } },
-    currentExperimentRegistry: { summary: { experiment_id: "ML_BASELINE_ENV__same", dataset_version_id: "D1", feature_store_version_id: "F1" } },
-    previousExperimentRegistry: { summary: { experiment_id: "ML_BASELINE_ENV__same", dataset_version_id: "D1", feature_store_version_id: "F1" } },
+    currentExperimentRegistry: { summary: { experiment_id: "ML_BASELINE_ENV__same", dataset_version_id: "D1", feature_store_version_id: "F1", execution_dataset_version_id: "E1" } },
+    previousExperimentRegistry: { summary: { experiment_id: "ML_BASELINE_ENV__same", dataset_version_id: "D1", feature_store_version_id: "F1", execution_dataset_version_id: "E1" } },
   });
   assert.strictEqual(stale.status, "EXECUTION_BOTTLENECK_DELTA_STALE_COMPARISON");
   assert.strictEqual(stale.same_experiment, true);

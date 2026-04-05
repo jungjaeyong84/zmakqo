@@ -68,6 +68,8 @@ function buildExecutionBottleneckDelta({
   const previousDatasetVersionId = String(previousRegistry.dataset_version_id || "").trim() || null;
   const currentFeatureStoreVersionId = String(currentRegistry.feature_store_version_id || "").trim() || null;
   const previousFeatureStoreVersionId = String(previousRegistry.feature_store_version_id || "").trim() || null;
+  const currentExecutionDatasetVersionId = String(currentRegistry.execution_dataset_version_id || "").trim() || null;
+  const previousExecutionDatasetVersionId = String(previousRegistry.execution_dataset_version_id || "").trim() || null;
   const sameExperiment =
     Boolean(currentExperimentId && previousExperimentId && currentExperimentId === previousExperimentId)
     || Boolean(
@@ -75,8 +77,11 @@ function buildExecutionBottleneckDelta({
       && previousDatasetVersionId
       && currentFeatureStoreVersionId
       && previousFeatureStoreVersionId
+      && currentExecutionDatasetVersionId
+      && previousExecutionDatasetVersionId
       && currentDatasetVersionId === previousDatasetVersionId
       && currentFeatureStoreVersionId === previousFeatureStoreVersionId
+      && currentExecutionDatasetVersionId === previousExecutionDatasetVersionId
     );
 
   const comparable =
@@ -98,6 +103,8 @@ function buildExecutionBottleneckDelta({
     previous_dataset_version_id: previousDatasetVersionId,
     current_feature_store_version_id: currentFeatureStoreVersionId,
     previous_feature_store_version_id: previousFeatureStoreVersionId,
+    current_execution_dataset_version_id: currentExecutionDatasetVersionId,
+    previous_execution_dataset_version_id: previousExecutionDatasetVersionId,
     current_execution_quality_status: toUpper(currentQuality.status),
     previous_execution_quality_status: toUpper(previousQuality.status),
     current_stage_latency_status: toUpper(currentLatency.status),

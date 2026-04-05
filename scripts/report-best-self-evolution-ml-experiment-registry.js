@@ -19,6 +19,8 @@ const INPUTS = Object.freeze({
   modelReadiness: path.join(OPS_DAILY_DIR, "best_self_evolution_model_readiness_latest.json"),
   executionQuality: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_quality_latest.json"),
   executionStageLatency: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_stage_latency_latest.json"),
+  executionModelDataset: path.join(OPS_DAILY_DIR, "execution_model_dataset_latest.json"),
+  trainRun: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_train_run_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -31,6 +33,7 @@ function renderMarkdown(report = {}) {
     `- experiment_id: ${summary.experiment_id || "N/A"}`,
     `- dataset_version_id: ${summary.dataset_version_id || "N/A"}`,
     `- feature_store_version_id: ${summary.feature_store_version_id || "N/A"}`,
+    `- execution_dataset_version_id: ${summary.execution_dataset_version_id || "N/A"}`,
     `- source_cycle_id: ${summary.source_cycle_id || "N/A"}`,
     `- source_mode: ${summary.source_mode || "N/A"}`,
     `- rows_n: ${summary.rows_n != null ? summary.rows_n : "N/A"} / realized_n: ${summary.realized_n != null ? summary.realized_n : "N/A"}`,
@@ -38,6 +41,7 @@ function renderMarkdown(report = {}) {
     `- model_readiness_status: ${summary.model_readiness_status || "N/A"}`,
     `- execution_quality_status: ${summary.execution_quality_status || "N/A"}`,
     `- execution_stage_latency_status: ${summary.execution_stage_latency_status || "N/A"}`,
+    `- train_run_status: ${summary.train_run_status || "N/A"} / ${summary.train_run_model_kind || "N/A"} / ${summary.train_run_id || "N/A"}`,
     `- top_operational_webhook_delay_cause: ${summary.execution_quality_top_operational_webhook_delay_cause || "N/A"}`,
     `- top_operational_signal_to_intent_group: ${summary.execution_stage_latency_top_operational_signal_to_intent_group || "N/A"}`,
     "",
@@ -52,6 +56,8 @@ function main() {
     modelReadiness: readJsonRawSafe(INPUTS.modelReadiness, null),
     executionQuality: readJsonRawSafe(INPUTS.executionQuality, null),
     executionStageLatency: readJsonRawSafe(INPUTS.executionStageLatency, null),
+    executionModelDataset: readJsonRawSafe(INPUTS.executionModelDataset, null),
+    trainRun: readJsonRawSafe(INPUTS.trainRun, null),
   });
   const payload = { ok: true, generated_at_kst: nowMeta.kst, inputs: INPUTS, summary };
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}_best_self_evolution_ml_experiment_registry`;
