@@ -23,6 +23,12 @@ const fills = {
     { fill_id: 'F2', intent_id: 'I1', exchange: 'BINANCEFUT', symbol: 'ETHUSDT', tf: '15m', event: 'SHORT', created_at: '2026-04-05T00:00:03.000Z', exec_price: 101, slippage_bps: 5, live_exec_policy_quality_partial_pct: 25 },
   ]
 };
+const webhooks = {
+  rows: [
+    { stage: 'INGRESS', request_id: 'WH1', created_at: '2026-04-05T01:59:30.000Z' },
+    { stage: 'OUTCOME', request_id: 'WH1', created_at: '2026-04-05T01:59:40.000Z', exchange: 'BINANCEFUT', symbol: 'BNBUSDT', tf: '15m', event: 'LONG', signal_id: 'SIG__BINANCEFUT__BNBUSDT__15m__1743818340000__LONG', bar_close_time_utc_ms: Date.parse('2026-04-05T01:59:00.000Z'), decision: 'SAVED', reason: 'TV_WEBHOOK' },
+  ]
+};
 
 const rows = buildExecutionModelRows({ intents, fills });
 assert.equal(rows.length, 2);
@@ -64,7 +70,8 @@ const recomputedRows = buildExecutionModelRows({
   intents: {
     rows: [
       {
-        id: 'I3', intent_id: 'I3', signal_id: 'S3', exchange: 'BINANCEFUT', symbol: 'BNBUSDT', tf: '15m', event: 'LONG', side: 'BUY',
+        id: 'I3', intent_id: 'I3', signal_id: 'SIG__BINANCEFUT__BNBUSDT__15m__1743818340000__LONG', signal_doc_id: 'SIG__BINANCEFUT__BNBUSDT__15m__1743818340000__LONG', exchange: 'BINANCEFUT', symbol: 'BNBUSDT', tf: '15m', event: 'LONG', side: 'BUY',
+        reason: 'TV_WEBHOOK',
         execution_mode: 'LIVE',
         created_at: '2026-04-05T02:00:00.000Z', signal_price: 100, signal_bar_close_time_utc_ms: Date.parse('2026-04-05T01:59:00.000Z'), status: 'FILLED'
       }
@@ -74,17 +81,22 @@ const recomputedRows = buildExecutionModelRows({
     rows: [
       { fill_id: 'F3', intent_id: 'I3', exchange: 'BINANCEFUT', symbol: 'BNBUSDT', tf: '15m', event: 'LONG', side: 'BUY', created_at: '2026-04-05T02:00:01.000Z', exec_price: 101, slippage_bps: 0 }
     ]
-  }
+  },
+  webhooks,
 });
 assert.ok(recomputedRows[0].execution.slippage_bps > 0, 'signal-price fallback must recompute positive adverse slippage');
-assert.strictEqual(recomputedRows[0].context.source, 'LIVE_RUNTIME');
+assert.strictEqual(recomputedRows[0].context.source, 'TV_WEBHOOK');
 assert.strictEqual(recomputedRows[0].execution.signal_to_intent_ms, 60000);
 assert.strictEqual(recomputedRows[0].execution.signal_to_fill_ms, 61000);
+assert.strictEqual(recomputedRows[0].execution.webhook_to_intent_ms, 30000);
+assert.strictEqual(recomputedRows[0].execution.webhook_to_outcome_ms, 10000);
 const recomputedSummary = summarizeExecutionModelRows(recomputedRows);
 assert.strictEqual(recomputedSummary.signal_to_intent_p95_ms, 60000);
 assert.strictEqual(recomputedSummary.signal_to_fill_p95_ms, 61000);
-assert.strictEqual(recomputedSummary.top_signal_to_intent_latency_groups[0].key, 'LONG|LIVE_RUNTIME|BNBUSDT');
-assert.strictEqual(recomputedSummary.top_operational_signal_to_intent_latency_groups[0].key, 'LONG|LIVE_RUNTIME|BNBUSDT');
+assert.strictEqual(recomputedSummary.top_signal_to_intent_latency_groups[0].key, 'LONG|TV_WEBHOOK|BNBUSDT');
+assert.strictEqual(recomputedSummary.top_operational_signal_to_intent_latency_groups[0].key, 'LONG|TV_WEBHOOK|BNBUSDT');
+assert.strictEqual(recomputedSummary.webhook_to_intent_p95_ms, 30000);
+assert.strictEqual(recomputedSummary.top_webhook_to_intent_latency_groups[0].key, 'LONG|TV_WEBHOOK|BNBUSDT');
 assert.strictEqual(__test.deriveNoFillReasonFamily('DROP_EV_GATE_TP1_PROB'), 'FILTER_DROP');
 assert.strictEqual(__test.deriveNoFillReasonFamily('POSITION_FULL'), 'POLICY_OR_CAPACITY');
 assert.strictEqual(__test.deriveNoFillReasonFamily('INTENT_EXPIRED'), 'CONTROL_FLOW');
@@ -92,4 +104,13 @@ assert.strictEqual(__test.deriveNoFillSubtype({ reason: 'LIVE_EXCEPTION', detail
 assert.strictEqual(__test.deriveNoFillSubtype({ reason: 'LIVE_EXCEPTION', detail: 'immediate_exec=2026-02-06T14:00:00.000Z' }), 'TIMING_IMMEDIATE_EXEC');
 assert.strictEqual(__test.isOperationalSource('MANUAL_REPLAY'), false);
 assert.strictEqual(__test.isOperationalSource('LIVE_RUNTIME'), true);
+assert.strictEqual(__test.isOperationalSource('TV_WEBHOOK'), true);
+const webhookIndex = __test.buildWebhookOutcomeIndex(webhooks);
+const ingressIndex = __test.buildWebhookIngressIndex(webhooks);
+const webhookMatch = __test.resolveWebhookMatch({
+  intent: { exchange: 'BINANCEFUT', symbol: 'BNBUSDT', tf: '15m', event: 'LONG', signal_doc_id: 'SIG__BINANCEFUT__BNBUSDT__15m__1743818340000__LONG', signal_bar_close_time_utc_ms: Date.parse('2026-04-05T01:59:00.000Z') },
+  webhookOutcomes: webhookIndex,
+  webhookIngressByRequestId: ingressIndex,
+});
+assert.strictEqual(webhookMatch.webhook_request_id, 'WH1');
 console.log('EXECUTION_MODEL_DATASET_TEST_OK');

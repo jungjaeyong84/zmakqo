@@ -584,6 +584,7 @@ function buildReasoningJournal({
       current_model_readiness_status: toUpper(autonomySummary.model_readiness_status),
       current_feature_store_status: toUpper(autonomySummary.feature_store_status),
       current_execution_model_dataset_status: toUpper(autonomySummary.execution_model_dataset_status),
+      current_execution_model_top_webhook_to_intent_latency_group: String(autonomySummary.execution_model_dataset_top_webhook_to_intent_latency_group || "").trim() || null,
       current_execution_model_top_signal_to_intent_latency_group: String(autonomySummary.execution_model_dataset_top_signal_to_intent_latency_group || "").trim() || null,
       current_execution_model_top_operational_signal_to_intent_latency_group: String(autonomySummary.execution_model_dataset_top_operational_signal_to_intent_latency_group || "").trim() || null,
       current_execution_model_top_entry_latency_group: String(autonomySummary.execution_model_dataset_top_entry_latency_group || "").trim() || null,

@@ -18,6 +18,7 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         model_readiness_status: "MODEL_READINESS_READY",
         feature_store_status: "FEATURE_STORE_READY",
         execution_model_dataset_status: "EXECUTION_MODEL_DATASET_READY",
+        execution_model_dataset_top_webhook_to_intent_latency_group: "EARLY_LONG|TV_WEBHOOK|BTCUSDT",
         execution_model_dataset_top_signal_to_intent_latency_group: "EARLY_LONG|MANUAL_REPLAY|XRPUSDT",
         execution_model_dataset_top_operational_signal_to_intent_latency_group: "EARLY_LONG|TV_WEBHOOK|BTCUSDT",
         execution_model_dataset_top_entry_latency_group: "EARLY_LONG|UNKNOWN|BINANCE_USER_TRADES|BTCUSDT",
@@ -129,6 +130,7 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_account_integrity_status, "WARN");
   assert.strictEqual(journal.summary.current_model_readiness_status, "MODEL_READINESS_READY");
   assert.strictEqual(journal.summary.current_model_readiness_mfe_mae_label_rate, 0.0203);
+  assert.strictEqual(journal.summary.current_execution_model_top_webhook_to_intent_latency_group, "EARLY_LONG|TV_WEBHOOK|BTCUSDT");
   assert.strictEqual(journal.summary.current_execution_model_top_signal_to_intent_latency_group, "EARLY_LONG|MANUAL_REPLAY|XRPUSDT");
   assert.strictEqual(journal.summary.current_execution_model_top_operational_signal_to_intent_latency_group, "EARLY_LONG|TV_WEBHOOK|BTCUSDT");
   assert.strictEqual(journal.summary.current_execution_model_top_entry_latency_group, "EARLY_LONG|UNKNOWN|BINANCE_USER_TRADES|BTCUSDT");

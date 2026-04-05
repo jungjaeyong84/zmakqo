@@ -173,6 +173,83 @@ function readDocs(value) {
   return [];
 }
 
+function buildWebhookOutcomeIndex(webhooks = []) {
+  const outcomeRows = readDocs(webhooks).filter((row) => row && row.stage === "OUTCOME");
+  const bySignalId = new Map();
+  const byComposite = new Map();
+  for (const row of outcomeRows) {
+    const createdAtMs = parseMs(row.created_at);
+    const signalId = String(row.signal_id || "").trim();
+    if (signalId) {
+      if (!bySignalId.has(signalId)) bySignalId.set(signalId, []);
+      bySignalId.get(signalId).push({ row, createdAtMs });
+    }
+    const compositeKey = [
+      toUpper(row.exchange),
+      toUpper(row.symbol),
+      String(row.tf || "").trim(),
+      toNum(row.bar_close_time_utc_ms),
+      toUpper(row.event),
+    ].join("|");
+    if (!byComposite.has(compositeKey)) byComposite.set(compositeKey, []);
+    byComposite.get(compositeKey).push({ row, createdAtMs });
+  }
+  for (const arr of bySignalId.values()) arr.sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0));
+  for (const arr of byComposite.values()) arr.sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0));
+  return { bySignalId, byComposite };
+}
+
+function buildWebhookIngressIndex(webhooks = []) {
+  const ingressRows = readDocs(webhooks).filter((row) => row && row.stage === "INGRESS");
+  const byRequestId = new Map();
+  for (const row of ingressRows) {
+    const requestId = String(row.request_id || "").trim();
+    if (!requestId) continue;
+    const createdAtMs = parseMs(row.created_at);
+    const prev = byRequestId.get(requestId);
+    if (!prev || ((createdAtMs || 0) < (prev.createdAtMs || 0))) {
+      byRequestId.set(requestId, { row, createdAtMs });
+    }
+  }
+  return byRequestId;
+}
+
+function resolveWebhookMatch({ intent = null, webhookOutcomes = null, webhookIngressByRequestId = null } = {}) {
+  const signalDocId = String(intent && (intent.signal_doc_id || intent.signal_id) || "").trim();
+  const compositeKey = [
+    toUpper(intent && intent.exchange),
+    toUpper(intent && (intent.symbol || intent.symbol_or_pair_id || intent.market)),
+    String(intent && intent.tf || "").trim(),
+    toNum(intent && intent.signal_bar_close_time_utc_ms),
+    toUpper(intent && intent.event),
+  ].join("|");
+  let candidate = null;
+  if (signalDocId && webhookOutcomes && webhookOutcomes.bySignalId.has(signalDocId)) {
+    candidate = webhookOutcomes.bySignalId.get(signalDocId)[0] || null;
+  }
+  if (!candidate && webhookOutcomes && webhookOutcomes.byComposite.has(compositeKey)) {
+    candidate = webhookOutcomes.byComposite.get(compositeKey)[0] || null;
+  }
+  if (!candidate) {
+    return {
+      webhook_request_id: null,
+      webhook_ingress_at_ms: null,
+      webhook_outcome_at_ms: null,
+      webhook_decision: null,
+      webhook_reason: null,
+    };
+  }
+  const requestId = String(candidate.row.request_id || "").trim() || null;
+  const ingress = requestId && webhookIngressByRequestId ? webhookIngressByRequestId.get(requestId) : null;
+  return {
+    webhook_request_id: requestId,
+    webhook_ingress_at_ms: ingress ? ingress.createdAtMs : null,
+    webhook_outcome_at_ms: candidate.createdAtMs,
+    webhook_decision: String(candidate.row.decision || "").trim() || null,
+    webhook_reason: String(candidate.row.reason || "").trim() || null,
+  };
+}
+
 function summarizeFillAggregate(fills = [], intent = null) {
   const scoped = (Array.isArray(fills) ? fills : []).filter((row) => row && typeof row === "object");
   if (!scoped.length) {
@@ -238,9 +315,11 @@ function summarizeFillAggregate(fills = [], intent = null) {
   };
 }
 
-function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
+function buildExecutionModelRows({ intents = [], fills = [], webhooks = [] } = {}) {
   const intentRows = readDocs(intents).filter((row) => row && typeof row === "object");
   const fillRows = readDocs(fills).filter((row) => row && typeof row === "object");
+  const webhookOutcomes = buildWebhookOutcomeIndex(webhooks);
+  const webhookIngressByRequestId = buildWebhookIngressIndex(webhooks);
   const fillsByIntent = new Map();
   for (const fill of fillRows) {
     const key = String(fill.intent_id || fill.intentId || "").trim();
@@ -258,6 +337,7 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
     const intentFilledAtMs = parseMs(intent.filled_at);
     const filledAtMs = fillDocAtMs ?? intentFilledAtMs;
     const signalBarCloseMs = resolveSignalBarCloseMs(intent);
+    const webhook = resolveWebhookMatch({ intent, webhookOutcomes, webhookIngressByRequestId });
     const measuredCreatedToFillMs = Number.isFinite(intentCreatedAtMs) && Number.isFinite(filledAtMs)
       ? (filledAtMs - intentCreatedAtMs)
       : null;
@@ -266,6 +346,12 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
       : null;
     const signalToFillMs = Number.isFinite(signalBarCloseMs) && Number.isFinite(filledAtMs)
       ? (filledAtMs - signalBarCloseMs)
+      : null;
+    const webhookToIntentMs = Number.isFinite(webhook.webhook_ingress_at_ms) && Number.isFinite(intentCreatedAtMs)
+      ? (intentCreatedAtMs - webhook.webhook_ingress_at_ms)
+      : null;
+    const webhookToOutcomeMs = Number.isFinite(webhook.webhook_ingress_at_ms) && Number.isFinite(webhook.webhook_outcome_at_ms)
+      ? (webhook.webhook_outcome_at_ms - webhook.webhook_ingress_at_ms)
       : null;
     const fallbackCreatedToFillMs = toNum(intent.live_exec_policy_quality_latency_ms) ?? agg.avg_latency_ms;
     const createdToFillMs = measuredCreatedToFillMs ?? fallbackCreatedToFillMs;
@@ -321,6 +407,13 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
         fill_n: agg.fill_n,
         signal_price: toNum(intent.signal_price),
         signal_bar_close_ms: signalBarCloseMs,
+        webhook_request_id: webhook.webhook_request_id,
+        webhook_ingress_at_ms: webhook.webhook_ingress_at_ms,
+        webhook_outcome_at_ms: webhook.webhook_outcome_at_ms,
+        webhook_decision: webhook.webhook_decision,
+        webhook_reason: webhook.webhook_reason,
+        webhook_to_intent_ms: webhookToIntentMs,
+        webhook_to_outcome_ms: webhookToOutcomeMs,
         exec_price: agg.exec_price ?? toNum(intent.exec_price),
         qty_pct: toNum(intent.qty_pct),
         qty_fraction: toNum(intent.qty_fraction),
@@ -348,6 +441,8 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
         created_to_fill_source: createdToFillSource,
         signal_to_intent_ms: signalToIntentMs,
         signal_to_fill_ms: signalToFillMs,
+        webhook_to_intent_ms: webhookToIntentMs,
+        webhook_to_outcome_ms: webhookToOutcomeMs,
         slippage_bps: slippageBps,
         partial_fill_pct: partialFillPct,
       },
@@ -371,6 +466,8 @@ function summarizeExecutionModelRows(rows = []) {
   const slippageVals = scoped.map((row) => toNum(row.labels && row.labels.slippage_bps)).filter((v) => Number.isFinite(v));
   const signalToIntentVals = scoped.map((row) => toNum(row.labels && row.labels.signal_to_intent_ms)).filter((v) => Number.isFinite(v));
   const signalToFillVals = scoped.map((row) => toNum(row.labels && row.labels.signal_to_fill_ms)).filter((v) => Number.isFinite(v));
+  const webhookToIntentVals = scoped.map((row) => toNum(row.labels && row.labels.webhook_to_intent_ms)).filter((v) => Number.isFinite(v));
+  const webhookToOutcomeVals = scoped.map((row) => toNum(row.labels && row.labels.webhook_to_outcome_ms)).filter((v) => Number.isFinite(v));
   const timeStopN = scoped.filter((row) => row && row.labels && row.labels.time_stop_hit === true).length;
   const preTp1TimeStopN = scoped.filter((row) => row && row.labels && row.labels.pre_tp1_time_stop === true).length;
   const byPrimaryFillSource = new Map();
@@ -434,12 +531,14 @@ function summarizeExecutionModelRows(rows = []) {
   const byEntryLatencyGroup = new Map();
   const bySignalToIntentGroup = new Map();
   const byOperationalSignalToIntentGroup = new Map();
+  const byWebhookToIntentGroup = new Map();
   const byMeasuredEntryLatencyGroup = new Map();
   const byFallbackEntryLatencyGroup = new Map();
   for (const row of scoped) {
     if (!row || !row.context || row.context.is_exit_event === true) continue;
     const latencyMs = toNum(row.labels && row.labels.created_to_fill_ms);
     const signalToIntentMs = toNum(row.labels && row.labels.signal_to_intent_ms);
+    const webhookToIntentMs = toNum(row.labels && row.labels.webhook_to_intent_ms);
     if (!Number.isFinite(latencyMs)) continue;
     const event = String(row.context.event || "").trim().toUpperCase() || "UNKNOWN";
     const source = String(row.context.source || "").trim().toUpperCase() || "UNKNOWN";
@@ -478,6 +577,15 @@ function summarizeExecutionModelRows(rows = []) {
         operationalBucket.latency_values.push(signalToIntentMs);
       }
     }
+    if (Number.isFinite(webhookToIntentMs)) {
+      const webhookKey = [event, source, market].join("|");
+      if (!byWebhookToIntentGroup.has(webhookKey)) {
+        byWebhookToIntentGroup.set(webhookKey, { key: webhookKey, event, source, market, rows_n: 0, latency_values: [] });
+      }
+      const webhookBucket = byWebhookToIntentGroup.get(webhookKey);
+      webhookBucket.rows_n += 1;
+      webhookBucket.latency_values.push(webhookToIntentMs);
+    }
   }
   return {
     rows_n: scoped.length,
@@ -495,6 +603,8 @@ function summarizeExecutionModelRows(rows = []) {
     created_to_fill_measured_p95_ms: p95(measuredLatencyVals),
     signal_to_intent_p95_ms: p95(signalToIntentVals),
     signal_to_fill_p95_ms: p95(signalToFillVals),
+    webhook_to_intent_p95_ms: p95(webhookToIntentVals),
+    webhook_to_outcome_p95_ms: p95(webhookToOutcomeVals),
     slippage_p95_bps: p95(slippageVals),
     feature_keys_n: Array.from(new Set(scoped.flatMap((row) => Object.keys(row.features || {})))).length,
     by_primary_fill_source: Array.from(byPrimaryFillSource.values())
@@ -574,6 +684,17 @@ function summarizeExecutionModelRows(rows = []) {
       }))
       .sort((a, b) => ((b.signal_to_intent_p95_ms || 0) - (a.signal_to_intent_p95_ms || 0)) || (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
       .slice(0, 12),
+    top_webhook_to_intent_latency_groups: Array.from(byWebhookToIntentGroup.values())
+      .map((row) => ({
+        key: row.key,
+        event: row.event,
+        source: row.source,
+        market: row.market,
+        rows_n: row.rows_n,
+        webhook_to_intent_p95_ms: p95(row.latency_values),
+      }))
+      .sort((a, b) => ((b.webhook_to_intent_p95_ms || 0) - (a.webhook_to_intent_p95_ms || 0)) || (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
+      .slice(0, 12),
     status: scoped.length > 0 ? 'EXECUTION_MODEL_DATASET_READY' : 'EXECUTION_MODEL_DATASET_EMPTY',
   };
 }
@@ -598,5 +719,8 @@ module.exports = {
     deriveNoFillReasonFamily,
     deriveNoFillSubtype,
     isOperationalSource,
+    buildWebhookOutcomeIndex,
+    buildWebhookIngressIndex,
+    resolveWebhookMatch,
   },
 };

@@ -20,6 +20,7 @@ const {
 const RECENT_CACHE_DIR = path.join(OPS_DAILY_DIR, "cache", "firestore_recent");
 const INTENTS = path.join(RECENT_CACHE_DIR, "order_intents_paper.json");
 const FILLS = path.join(RECENT_CACHE_DIR, "fills_paper.json");
+const WEBHOOKS = path.join(RECENT_CACHE_DIR, "webhook_ledger.json");
 
 function renderMarkdown(payload = {}) {
   const s = payload.summary || {};
@@ -44,6 +45,7 @@ function main() {
   const rows = buildExecutionModelRows({
     intents: readJsonRawSafe(INTENTS, null),
     fills: readJsonRawSafe(FILLS, null),
+    webhooks: readJsonRawSafe(WEBHOOKS, null),
   });
   const split = splitExecutionModelRows(rows);
   const summary = summarizeExecutionModelRows(rows);
