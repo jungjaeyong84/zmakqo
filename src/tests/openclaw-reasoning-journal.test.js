@@ -18,6 +18,10 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         model_readiness_status: "MODEL_READINESS_READY",
         feature_store_status: "FEATURE_STORE_READY",
         execution_model_dataset_status: "EXECUTION_MODEL_DATASET_READY",
+        execution_fill_inference_status: "EXECUTION_FILL_INFERENCE_READY",
+        execution_fill_inference_mismatch_rate: 0.19,
+        execution_fill_inference_filled_avg_pred_fill_prob: 0.41,
+        execution_fill_inference_policy_blocked_avg_pred_fill_prob: 0.27,
         execution_model_dataset_version_id: "EXECUTION_MODEL_DATASET__xyz789",
         execution_model_dataset_top_webhook_to_intent_latency_group: "EARLY_LONG|TV_WEBHOOK|BTCUSDT",
         execution_model_dataset_top_webhook_delay_reason: "WAIT_NEXT_BAR",
@@ -180,6 +184,8 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_execution_model_top_no_fill_reason, "LIVE_EXCEPTION");
   assert.strictEqual(journal.summary.current_execution_model_top_no_fill_reason_family, "RUNTIME_ERROR");
   assert.strictEqual(journal.summary.current_execution_model_top_no_fill_subtype, "TIMING_IMMEDIATE_EXEC");
+  assert.strictEqual(journal.summary.current_execution_fill_inference_status, "EXECUTION_FILL_INFERENCE_READY");
+  assert.strictEqual(journal.summary.current_execution_fill_inference_mismatch_rate, 0.19);
   assert.strictEqual(journal.summary.current_execution_model_dataset_version_id, "EXECUTION_MODEL_DATASET__xyz789");
   assert.strictEqual(journal.summary.current_execution_stage_latency_status, "EXECUTION_STAGE_LATENCY_READY");
   assert.strictEqual(journal.summary.current_execution_stage_latency_top_signal_to_intent_group, "MANUAL_REPLAY|EARLY_LONG|XRPUSDT");

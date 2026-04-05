@@ -168,6 +168,24 @@ function encodeRow(row, spec) {
   return vector;
 }
 
+function buildScoringSpec(modelParams = {}) {
+  const featureKeys = Array.isArray(modelParams.feature_keys) ? modelParams.feature_keys : [];
+  return {
+    features: featureKeys.map((key) => {
+      if (key.endsWith("__missing")) {
+        return { kind: "numeric_missing", path: key.slice(0, -10), key };
+      }
+      if (key.includes("=")) {
+        const eq = key.indexOf("=");
+        return { kind: "categorical", path: key.slice(0, eq), value: key.slice(eq + 1), key };
+      }
+      return { kind: "numeric", path: key, key };
+    }),
+    numericStats: modelParams.numeric_stats && typeof modelParams.numeric_stats === "object" ? modelParams.numeric_stats : {},
+    categoricalVocab: modelParams.categorical_vocab && typeof modelParams.categorical_vocab === "object" ? modelParams.categorical_vocab : {},
+  };
+}
+
 function dot(weights = [], vector = []) {
   let total = 0;
   const len = Math.min(weights.length, vector.length);
@@ -360,6 +378,32 @@ function deriveQualityGate(metrics = {}, decisionThreshold = 0.5) {
   return { status: "QUALITY_GATE_PASS", ready: true };
 }
 
+function scoreExecutionFillBaselineRows(rows = [], modelArtifact = null) {
+  const summary = modelArtifact && modelArtifact.summary && typeof modelArtifact.summary === "object"
+    ? modelArtifact.summary
+    : (modelArtifact || {});
+  const params = modelArtifact && modelArtifact.model && typeof modelArtifact.model === "object"
+    ? modelArtifact.model
+    : (summary.model_params && typeof summary.model_params === "object" ? summary.model_params : null);
+  if (!params) {
+    throw new Error("EXECUTION_FILL_MODEL_PARAMS_MISSING");
+  }
+  const spec = buildScoringSpec(params);
+  const weights = Array.isArray(params.weights) ? params.weights : [];
+  const bias = toNum(params.bias) || 0;
+  const threshold = toNum(summary.decision_threshold) ?? 0.5;
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    const vector = encodeRow(row, spec);
+    const prob = sigmoid(bias + dot(weights, vector));
+    return {
+      row_id: String(row && row.row_id || "").trim() || null,
+      pred_fill_prob: prob,
+      pred_fill_label: prob >= threshold,
+      decision_threshold: threshold,
+    };
+  });
+}
+
 function buildExecutionFillBaselineModel({
   rows = [],
   experimentId = null,
@@ -478,5 +522,6 @@ module.exports = {
   deriveClassWeights,
   selectDecisionThreshold,
   deriveQualityGate,
+  scoreExecutionFillBaselineRows,
   buildExecutionFillBaselineModel,
 };

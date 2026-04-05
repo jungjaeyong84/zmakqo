@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("assert");
-const { buildExecutionFillBaselineModel } = require("../utils/executionFillBaselineModel");
+const { buildExecutionFillBaselineModel, scoreExecutionFillBaselineRows } = require("../utils/executionFillBaselineModel");
 
 function makeRow(index, filled, overrides = {}) {
   return {
@@ -56,6 +56,9 @@ function makeRow(index, filled, overrides = {}) {
   assert.strictEqual(typeof built.trainRun.quality_gate_status, "string");
   assert.strictEqual(typeof built.trainRun.quality_gate_ready, "boolean");
   assert.strictEqual(Array.isArray(built.modelArtifact.weight_summary.top_positive), true);
+  const scored = scoreExecutionFillBaselineRows(rows.slice(0, 3), { summary: built.modelArtifact, model: built.modelArtifact.model_params });
+  assert.strictEqual(scored.length, 3);
+  assert.strictEqual(scored.every((row) => row.pred_fill_prob >= 0 && row.pred_fill_prob <= 1), true);
 
   console.log("EXECUTION_FILL_BASELINE_MODEL_TEST_OK");
 })();

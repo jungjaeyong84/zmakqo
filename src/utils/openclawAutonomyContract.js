@@ -162,6 +162,7 @@ function deriveOpenClawAutonomyContract({
   modelReadiness = null,
   featureStore = null,
   executionModelDataset = null,
+  executionFillInference = null,
   executionStageLatency = null,
   mlExperimentRegistry = null,
   executionBottleneckDelta = null,
@@ -188,12 +189,14 @@ function deriveOpenClawAutonomyContract({
   const modelReadinessSummary = readSummary(modelReadiness);
   const featureStoreSummary = readSummary(featureStore);
   const executionModelSummary = readSummary(executionModelDataset);
+  const executionFillInferenceSummary = readSummary(executionFillInference);
   const executionStageLatencySummary = readSummary(executionStageLatency);
   const mlExperimentRegistrySummary = readSummary(mlExperimentRegistry);
   const executionBottleneckDeltaSummary = readSummary(executionBottleneckDelta);
   const mlTrainRunSummary = readSummary(mlTrainRun);
   const mlModelContractSummary = readSummary(mlModelContract);
   const executionModelStatus = toUpper(executionModelSummary.status) || "N_A";
+  const executionFillInferenceStatus = toUpper(executionFillInferenceSummary.status) || "N_A";
   const executionStageLatencyStatus = toUpper(executionStageLatencySummary.status) || "N_A";
   const mlExperimentRegistryStatus = toUpper(mlExperimentRegistrySummary.status) || "N_A";
   const executionBottleneckDeltaStatus = toUpper(executionBottleneckDeltaSummary.status) || "N_A";
@@ -509,6 +512,11 @@ function deriveOpenClawAutonomyContract({
       execution_bottleneck_delta_top_operational_webhook_delay_cause: executionBottleneckDeltaComparable ? (String(executionBottleneckDeltaSummary.current_top_operational_webhook_delay_cause || "").trim() || null) : null,
       execution_bottleneck_delta_top_operational_signal_to_intent_group: executionBottleneckDeltaComparable ? (String(executionBottleneckDeltaSummary.current_top_operational_signal_to_intent_group || "").trim() || null) : null,
       execution_model_dataset_status: executionModelStatus,
+      execution_fill_inference_status: executionFillInferenceStatus,
+      execution_fill_inference_model_artifact_id: String(executionFillInferenceSummary.model_artifact_id || "").trim() || null,
+      execution_fill_inference_mismatch_rate: toNum(executionFillInferenceSummary.mismatch_rate),
+      execution_fill_inference_filled_avg_pred_fill_prob: toNum(firstArrayRow((executionFillInferenceSummary.by_scope || []).filter((row) => String(row.key || "").trim().toUpperCase() === "FILLED"))?.avg_pred_fill_prob),
+      execution_fill_inference_policy_blocked_avg_pred_fill_prob: toNum(firstArrayRow((executionFillInferenceSummary.by_scope || []).filter((row) => String(row.key || "").trim().toUpperCase() === "POLICY_BLOCKED"))?.avg_pred_fill_prob),
       execution_model_dataset_version_id: String(
         executionModelSummary.version_id
         || (executionModelDataset && executionModelDataset.execution_dataset_version && executionModelDataset.execution_dataset_version.version_id)
@@ -629,6 +637,11 @@ function deriveOpenClawAutonomyContract({
       execution_bottleneck_delta_top_operational_webhook_delay_cause: executionBottleneckDeltaComparable ? (String(executionBottleneckDeltaSummary.current_top_operational_webhook_delay_cause || "").trim() || null) : null,
       execution_bottleneck_delta_top_operational_signal_to_intent_group: executionBottleneckDeltaComparable ? (String(executionBottleneckDeltaSummary.current_top_operational_signal_to_intent_group || "").trim() || null) : null,
       execution_model_dataset_status: executionModelStatus,
+      execution_fill_inference_status: executionFillInferenceStatus,
+      execution_fill_inference_model_artifact_id: String(executionFillInferenceSummary.model_artifact_id || "").trim() || null,
+      execution_fill_inference_mismatch_rate: toNum(executionFillInferenceSummary.mismatch_rate),
+      execution_fill_inference_filled_avg_pred_fill_prob: toNum(firstArrayRow((executionFillInferenceSummary.by_scope || []).filter((row) => String(row.key || "").trim().toUpperCase() === "FILLED"))?.avg_pred_fill_prob),
+      execution_fill_inference_policy_blocked_avg_pred_fill_prob: toNum(firstArrayRow((executionFillInferenceSummary.by_scope || []).filter((row) => String(row.key || "").trim().toUpperCase() === "POLICY_BLOCKED"))?.avg_pred_fill_prob),
       execution_model_dataset_version_id: String(
         executionModelSummary.version_id
         || (executionModelDataset && executionModelDataset.execution_dataset_version && executionModelDataset.execution_dataset_version.version_id)
