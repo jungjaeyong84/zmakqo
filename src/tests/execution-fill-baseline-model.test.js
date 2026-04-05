@@ -53,6 +53,8 @@ function makeRow(index, filled, overrides = {}) {
   assert.strictEqual(built.modelArtifact.feature_count > 0, true);
   assert.strictEqual(built.trainRun.metrics_snapshot.test.rows_n > 0, true);
   assert.strictEqual(built.trainRun.metrics_snapshot.test.brier_score < 0.3, true);
+  assert.strictEqual(typeof built.trainRun.quality_gate_status, "string");
+  assert.strictEqual(typeof built.trainRun.quality_gate_ready, "boolean");
   assert.strictEqual(Array.isArray(built.modelArtifact.weight_summary.top_positive), true);
 
   console.log("EXECUTION_FILL_BASELINE_MODEL_TEST_OK");

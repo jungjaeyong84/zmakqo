@@ -11,6 +11,8 @@ const { buildMlModelContract } = require("../utils/mlModelContract");
         train_run_id: "TRAIN__001",
         model_artifact_id: "MODEL__001",
         model_kind: "EXECUTION_FILL_LOGISTIC_V1",
+        quality_gate_status: "DEGENERATE_THRESHOLD_EXTREME",
+        quality_gate_ready: false,
       },
     },
     experimentRegistry: { summary: { experiment_id: "ML_BASELINE_ENV__abc123" } },
@@ -18,8 +20,8 @@ const { buildMlModelContract } = require("../utils/mlModelContract");
     serverPrimaryCanary: { summary: { apply_pass: true, acceptance_ready: true } },
   });
   assert.strictEqual(offlineOnly.status, "ML_MODEL_CONTRACT_OFFLINE_ONLY");
-  assert.strictEqual(offlineOnly.canary_gate_status, "BLOCK_GLOBAL_CANARY");
-  assert.strictEqual(offlineOnly.promotion_status, "HOLD_OFFLINE_ONLY");
+  assert.strictEqual(offlineOnly.canary_gate_status, "BLOCK_MODEL_QUALITY");
+  assert.strictEqual(offlineOnly.promotion_status, "HOLD_MODEL_QUALITY");
 
   const canaryReady = buildMlModelContract({
     trainRun: {
@@ -27,6 +29,8 @@ const { buildMlModelContract } = require("../utils/mlModelContract");
         status: "ML_TRAIN_RUN_REPORTED",
         train_run_id: "TRAIN__002",
         model_artifact_id: "MODEL__002",
+        quality_gate_status: "QUALITY_GATE_PASS",
+        quality_gate_ready: true,
       },
     },
     canary: { summary: { global_canary_pass: true, apply_pass: true, rollback_ready_n: 1 } },

@@ -43,8 +43,8 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
     executionStageLatency: { summary: { status: "EXECUTION_STAGE_LATENCY_READY", signal_to_intent_p95_ms: 81234, webhook_saved_to_intent_p95_ms: 42000, intent_to_fill_measured_p95_ms: 61234, top_signal_to_intent_groups: [{ key: "MANUAL_REPLAY|EARLY_LONG|XRPUSDT" }], top_operational_signal_to_intent_groups: [{ key: "TV_WEBHOOK|EARLY_LONG|BTCUSDT" }], top_webhook_saved_to_intent_groups: [{ key: "MANUAL_REPLAY|EARLY_LONG|XRPUSDT" }], top_operational_webhook_saved_to_intent_groups: [{ key: "TV_WEBHOOK|EARLY_LONG|BTCUSDT" }], top_intent_to_fill_measured_groups: [{ key: "LIVE_RUNTIME|CORE_LONG|ETHUSDT" }] } },
     mlExperimentRegistry: { summary: { status: "ML_EXPERIMENT_REGISTRY_READY", experiment_id: "ML_BASELINE_ENV__abc123def4567890", dataset_version_id: "ML_TRAINING_DATASET__abc123", feature_store_version_id: "ML_FEATURE_STORE__def456", execution_dataset_version_id: "EXECUTION_MODEL_DATASET__xyz789" } },
     executionBottleneckDelta: { summary: { status: "EXECUTION_BOTTLENECK_DELTA_READY", signal_to_intent_p95_delta_ms: -15000, webhook_saved_to_intent_p95_delta_ms: -9000, created_to_fill_p95_delta_ms: -3000, current_top_operational_webhook_delay_cause: "IMMEDIATE_EXEC_WEBHOOK_SAVED_LATE_INTENT", current_top_operational_signal_to_intent_group: "TV_WEBHOOK|EARLY_LONG|BTCUSDT" } },
-    mlTrainRun: { summary: { status: "ML_TRAIN_RUN_NOT_STARTED", model_artifact_id: null } },
-    mlModelContract: { summary: { status: "ML_MODEL_CONTRACT_OFFLINE_ONLY", deployment_stage: "OFFLINE_ONLY", canary_gate_status: "BLOCK_GLOBAL_CANARY", promotion_status: "HOLD_OFFLINE_ONLY", model_artifact_id: null } },
+    mlTrainRun: { summary: { status: "ML_TRAIN_RUN_NOT_STARTED", model_artifact_id: null, quality_gate_status: null, quality_gate_ready: false } },
+    mlModelContract: { summary: { status: "ML_MODEL_CONTRACT_OFFLINE_ONLY", deployment_stage: "OFFLINE_ONLY", canary_gate_status: "BLOCK_MODEL_QUALITY", promotion_status: "HOLD_MODEL_QUALITY", model_artifact_id: null } },
   });
 
   assert.strictEqual(report.current_status.objective_score, -7.4);
@@ -122,6 +122,7 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.summary.ml_experiment_registry_experiment_id, "ML_BASELINE_ENV__abc123def4567890");
   assert.strictEqual(report.summary.ml_experiment_registry_execution_dataset_version_id, "EXECUTION_MODEL_DATASET__xyz789");
   assert.strictEqual(report.summary.ml_train_run_status, "ML_TRAIN_RUN_NOT_STARTED");
+  assert.strictEqual(report.summary.ml_train_run_quality_gate_ready, false);
   assert.strictEqual(report.summary.ml_model_contract_status, "ML_MODEL_CONTRACT_OFFLINE_ONLY");
   assert.strictEqual(report.summary.ml_model_contract_deployment_stage, "OFFLINE_ONLY");
   assert.strictEqual(report.summary.execution_bottleneck_delta_status, "EXECUTION_BOTTLENECK_DELTA_READY");

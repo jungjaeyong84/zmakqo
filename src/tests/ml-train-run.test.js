@@ -26,6 +26,8 @@ const { buildMlTrainRun } = require("../utils/mlTrainRun");
         model_artifact_id: "MODEL__001",
         model_kind: "LOGISTIC_REGRESSION",
         split_strategy: "TIME_SERIES_HOLDOUT",
+        quality_gate_status: "QUALITY_GATE_PASS",
+        quality_gate_ready: true,
         train_split_pct: 70,
         validation_split_pct: 15,
         test_split_pct: 15,
@@ -37,6 +39,8 @@ const { buildMlTrainRun } = require("../utils/mlTrainRun");
   assert.strictEqual(reported.train_run_id, "TRAIN__001");
   assert.strictEqual(reported.model_artifact_id, "MODEL__001");
   assert.strictEqual(reported.model_kind, "LOGISTIC_REGRESSION");
+  assert.strictEqual(reported.quality_gate_status, "QUALITY_GATE_PASS");
+  assert.strictEqual(reported.quality_gate_ready, true);
   assert.strictEqual(reported.metrics_snapshot.brier, 0.18);
   assert.strictEqual(reported.execution_dataset_version_id, "EXECUTION_MODEL_DATASET__xyz789");
 

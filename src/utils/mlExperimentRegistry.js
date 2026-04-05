@@ -115,6 +115,8 @@ function buildMlExperimentRegistry({
     train_run_model_kind: String(trainRunSummary.model_kind || "").trim() || null,
     train_run_model_artifact_id: String(trainRunSummary.model_artifact_id || "").trim() || null,
     train_run_split_strategy: String(trainRunSummary.split_strategy || "").trim() || null,
+    train_run_quality_gate_status: String(trainRunSummary.quality_gate_status || "").trim().toUpperCase() || null,
+    train_run_quality_gate_ready: trainRunSummary.quality_gate_ready === true,
     train_run_train_split_pct: toNum(trainRunSummary.train_split_pct),
     train_run_validation_split_pct: toNum(trainRunSummary.validation_split_pct),
     train_run_test_split_pct: toNum(trainRunSummary.test_split_pct),

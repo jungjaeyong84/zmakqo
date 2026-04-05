@@ -65,6 +65,8 @@ function buildMlTrainRun({
     model_artifact_id: modelArtifactId,
     model_kind: modelKind,
     split_strategy: splitStrategy,
+    quality_gate_status: String(existing.quality_gate_status || "").trim().toUpperCase() || null,
+    quality_gate_ready: existing.quality_gate_ready === true,
     train_split_pct: toNum(existing.train_split_pct),
     validation_split_pct: toNum(existing.validation_split_pct),
     test_split_pct: toNum(existing.test_split_pct),

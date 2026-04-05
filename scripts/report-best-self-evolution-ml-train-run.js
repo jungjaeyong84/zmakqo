@@ -38,6 +38,7 @@ function renderMarkdown(report = {}) {
     `- model_artifact_id: ${summary.model_artifact_id || "N/A"}`,
     `- model_kind: ${summary.model_kind || "N/A"}`,
     `- split_strategy: ${summary.split_strategy || "N/A"}`,
+    `- quality_gate: ${summary.quality_gate_status || "N/A"} / ready=${summary.quality_gate_ready ? "YES" : "NO"}`,
     `- train/val/test: ${summary.train_split_pct != null ? summary.train_split_pct : "N/A"} / ${summary.validation_split_pct != null ? summary.validation_split_pct : "N/A"} / ${summary.test_split_pct != null ? summary.test_split_pct : "N/A"}`,
     "",
   ].join("\n");

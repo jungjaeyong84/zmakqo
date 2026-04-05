@@ -27,6 +27,8 @@ function buildMlModelContract({
 
   const trainRunStatus = toUpper(trainRunSummary.status) || "N_A";
   const hasTrainRun = trainRunStatus === "ML_TRAIN_RUN_REPORTED" && String(trainRunSummary.train_run_id || "").trim();
+  const qualityGateReady = trainRunSummary.quality_gate_ready === true;
+  const qualityGateStatus = toUpper(trainRunSummary.quality_gate_status) || "N_A";
   const globalCanaryPass = canarySummary.global_canary_pass === true && canarySummary.apply_pass === true;
   const serverPrimaryPass = serverPrimarySummary.apply_pass === true && serverPrimarySummary.acceptance_ready === true;
   const rollbackReadyN = toNum(canarySummary.rollback_ready_n) || 0;
@@ -38,7 +40,10 @@ function buildMlModelContract({
   if (hasTrainRun) {
     status = "ML_MODEL_CONTRACT_OFFLINE_ONLY";
     deploymentStage = "OFFLINE_ONLY";
-    if (globalCanaryPass && serverPrimaryPass) {
+    if (!qualityGateReady) {
+      canaryGateStatus = "BLOCK_MODEL_QUALITY";
+      promotionStatus = "HOLD_MODEL_QUALITY";
+    } else if (globalCanaryPass && serverPrimaryPass) {
       status = "ML_MODEL_CONTRACT_CANARY_READY";
       deploymentStage = "CANARY_READY";
       canaryGateStatus = "PASS";
@@ -63,6 +68,8 @@ function buildMlModelContract({
     train_run_id: String(trainRunSummary.train_run_id || "").trim() || null,
     model_kind: String(trainRunSummary.model_kind || "").trim() || null,
     model_artifact_id: String(trainRunSummary.model_artifact_id || "").trim() || null,
+    quality_gate_status: qualityGateStatus,
+    quality_gate_ready: qualityGateReady,
     canary_gate_status: canaryGateStatus,
     server_primary_gate_status: serverPrimaryPass ? "PASS" : "BLOCK",
     rollback_status: rollbackReadyN > 0 ? "READY" : "NOT_ARMED",

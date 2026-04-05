@@ -614,6 +614,8 @@ function buildReasoningJournal({
       current_ml_train_run_id: String(autonomySummary.ml_train_run_id || "").trim() || null,
       current_ml_train_run_model_artifact_id: String(autonomySummary.ml_train_run_model_artifact_id || "").trim() || null,
       current_ml_train_run_model_kind: String(autonomySummary.ml_train_run_model_kind || "").trim() || null,
+      current_ml_train_run_quality_gate_status: String(autonomySummary.ml_train_run_quality_gate_status || "").trim() || null,
+      current_ml_train_run_quality_gate_ready: autonomySummary.ml_train_run_quality_gate_ready === true,
       current_ml_model_contract_status: String(autonomySummary.ml_model_contract_status || "").trim() || null,
       current_ml_model_contract_deployment_stage: String(autonomySummary.ml_model_contract_deployment_stage || "").trim() || null,
       current_ml_model_contract_canary_gate_status: String(autonomySummary.ml_model_contract_canary_gate_status || "").trim() || null,
