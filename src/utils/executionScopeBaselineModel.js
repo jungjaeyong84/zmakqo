@@ -4,7 +4,7 @@ const { sha1, stableStringify } = require("./mlArtifactVersion");
 const { deriveExecutionEntryLabelScope } = require("./executionEntryLabelScope");
 
 const EXECUTION_SCOPE_MODEL_KIND = "EXECUTION_SCOPE_OVR_LOGISTIC_V1";
-const EXECUTION_SCOPE_SPLIT_STRATEGY = "TIME_SERIES_70_15_15";
+const EXECUTION_SCOPE_SPLIT_STRATEGY = "SOURCE_AWARE_TIME_SERIES_70_15_15";
 const TARGET_CLASSES = Object.freeze(["FILLABLE", "POLICY_BLOCKED", "RUNTIME_EXCEPTION"]);
 const NUMERIC_FEATURES = Object.freeze([
   "execution.signal_to_intent_ms",
@@ -121,6 +121,58 @@ function buildChronologicalSplit(rows = []) {
     train_split_pct: 70,
     validation_split_pct: 15,
     test_split_pct: 15,
+  };
+}
+
+function splitGroupCounts(n) {
+  if (n <= 3) return { trainN: n, validationN: 0, testN: 0 };
+  if (n <= 6) return { trainN: n - 1, validationN: 0, testN: 1 };
+  let trainN = Math.max(1, Math.floor(n * 0.7));
+  let validationN = Math.max(1, Math.floor(n * 0.15));
+  let testN = n - trainN - validationN;
+  if (testN <= 0) {
+    testN = 1;
+    if (validationN > 1) validationN -= 1;
+    else trainN = Math.max(1, trainN - 1);
+  }
+  if (validationN <= 0 && n >= 8) {
+    validationN = 1;
+    trainN = Math.max(1, trainN - 1);
+    testN = n - trainN - validationN;
+  }
+  return { trainN, validationN, testN };
+}
+
+function buildSourceAwareChronologicalSplit(rows = []) {
+  const groups = new Map();
+  const ordered = (Array.isArray(rows) ? rows : [])
+    .filter((row) => row && typeof row === "object")
+    .slice()
+    .sort((a, b) => rowTimestampMs(a) - rowTimestampMs(b));
+  for (const row of ordered) {
+    const key = `${deriveTargetClass(row) || "UNKNOWN"}|${getContextSource(row)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+  const trainRows = [];
+  const validationRows = [];
+  const testRows = [];
+  for (const rowsForKey of groups.values()) {
+    const { trainN, validationN } = splitGroupCounts(rowsForKey.length);
+    trainRows.push(...rowsForKey.slice(0, trainN));
+    validationRows.push(...rowsForKey.slice(trainN, trainN + validationN));
+    testRows.push(...rowsForKey.slice(trainN + validationN));
+  }
+  const sortRows = (list) => list.slice().sort((a, b) => rowTimestampMs(a) - rowTimestampMs(b));
+  const total = ordered.length || 1;
+  return {
+    ordered,
+    trainRows: sortRows(trainRows),
+    validationRows: sortRows(validationRows),
+    testRows: sortRows(testRows),
+    train_split_pct: Number(((trainRows.length / total) * 100).toFixed(2)),
+    validation_split_pct: Number(((validationRows.length / total) * 100).toFixed(2)),
+    test_split_pct: Number(((testRows.length / total) * 100).toFixed(2)),
   };
 }
 
@@ -351,7 +403,7 @@ function buildExecutionScopeBaselineModel({
   trainedAtKst = null,
 } = {}) {
   const filteredRows = filterTrainingRows(rows);
-  const split = buildChronologicalSplit(filteredRows);
+  const split = buildSourceAwareChronologicalSplit(filteredRows);
   const numericStats = buildNumericStats(split.trainRows);
   const categoricalVocab = buildCategoricalVocab(split.trainRows);
   const spec = buildFeatureIndex(numericStats, categoricalVocab);
@@ -459,4 +511,5 @@ module.exports = {
   scoreExecutionScopeBaselineRows,
   deriveQualityGate,
   deriveSourceDriftDiagnostics,
+  buildSourceAwareChronologicalSplit,
 };

@@ -25,6 +25,9 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         execution_scope_inference_status: "EXECUTION_SCOPE_INFERENCE_READY",
         execution_scope_inference_mismatch_rate: 0.29,
         execution_scope_inference_top_false_positive_group: "FILLABLE|POLICY_BLOCKED|LIVE_RUNTIME|EMO_LONG|KRW-BCH",
+        execution_scope_fp_diagnostics_status: "EXECUTION_SCOPE_FP_DIAGNOSTICS_READY",
+        execution_scope_fp_diagnostics_top_shared_feature: "execution.entry_schedule_reason=LATE_EXEC",
+        execution_scope_fp_diagnostics_reference_rows_n: 4,
         execution_model_dataset_version_id: "EXECUTION_MODEL_DATASET__xyz789",
         execution_model_dataset_top_webhook_to_intent_latency_group: "EARLY_LONG|TV_WEBHOOK|BTCUSDT",
         execution_model_dataset_top_webhook_delay_reason: "WAIT_NEXT_BAR",
@@ -138,6 +141,9 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         execution_scope_quality_gate_ready: false,
         execution_scope_inference_mismatch_rate: 0.29,
         execution_scope_top_false_positive_group: "FILLABLE|POLICY_BLOCKED|LIVE_RUNTIME|EMO_LONG|KRW-BCH",
+        execution_scope_fp_diagnostics_status: "EXECUTION_SCOPE_FP_DIAGNOSTICS_READY",
+        execution_scope_fp_diagnostics_top_shared_feature: "execution.entry_schedule_reason=LATE_EXEC",
+        execution_scope_fp_diagnostics_reference_rows_n: 4,
       },
     },
     previousJournal: {
@@ -192,6 +198,9 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_execution_quality_scope_quality_gate_ready, false);
   assert.strictEqual(journal.summary.current_execution_quality_scope_inference_mismatch_rate, 0.29);
   assert.strictEqual(journal.summary.current_execution_quality_scope_top_false_positive_group, "FILLABLE|POLICY_BLOCKED|LIVE_RUNTIME|EMO_LONG|KRW-BCH");
+  assert.strictEqual(journal.summary.current_execution_quality_scope_fp_diagnostics_status, "EXECUTION_SCOPE_FP_DIAGNOSTICS_READY");
+  assert.strictEqual(journal.summary.current_execution_quality_scope_fp_top_shared_feature, "execution.entry_schedule_reason=LATE_EXEC");
+  assert.strictEqual(journal.summary.current_execution_quality_scope_fp_reference_rows_n, 4);
   assert.strictEqual(journal.summary.current_execution_model_top_webhook_to_intent_latency_group, "EARLY_LONG|TV_WEBHOOK|BTCUSDT");
   assert.strictEqual(journal.summary.current_execution_model_top_webhook_delay_reason, "WAIT_NEXT_BAR");
   assert.strictEqual(journal.summary.current_execution_model_top_webhook_delay_cause, "SCHEDULED_WAIT_NEXT_BAR");
@@ -210,6 +219,9 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_execution_scope_inference_status, "EXECUTION_SCOPE_INFERENCE_READY");
   assert.strictEqual(journal.summary.current_execution_scope_inference_mismatch_rate, 0.29);
   assert.strictEqual(journal.summary.current_execution_scope_inference_top_false_positive_group, "FILLABLE|POLICY_BLOCKED|LIVE_RUNTIME|EMO_LONG|KRW-BCH");
+  assert.strictEqual(journal.summary.current_execution_scope_fp_diagnostics_status, "EXECUTION_SCOPE_FP_DIAGNOSTICS_READY");
+  assert.strictEqual(journal.summary.current_execution_scope_fp_diagnostics_top_shared_feature, "execution.entry_schedule_reason=LATE_EXEC");
+  assert.strictEqual(journal.summary.current_execution_scope_fp_diagnostics_reference_rows_n, 4);
   assert.strictEqual(journal.summary.current_execution_model_dataset_version_id, "EXECUTION_MODEL_DATASET__xyz789");
   assert.strictEqual(journal.summary.current_execution_stage_latency_status, "EXECUTION_STAGE_LATENCY_READY");
   assert.strictEqual(journal.summary.current_execution_stage_latency_top_signal_to_intent_group, "MANUAL_REPLAY|EARLY_LONG|XRPUSDT");

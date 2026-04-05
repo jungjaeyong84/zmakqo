@@ -7,6 +7,7 @@ const {
   filterTrainingRows,
   deriveQualityGate,
   deriveSourceDriftDiagnostics,
+  buildSourceAwareChronologicalSplit,
 } = require("../utils/executionScopeBaselineModel");
 
 function makeRow(index, scope) {
@@ -45,6 +46,21 @@ function makeRow(index, scope) {
     },
   };
 }
+
+(() => {
+  const rows = [];
+  for (let i = 0; i < 12; i += 1) rows.push(makeRow(i, "FILLABLE"));
+  for (let i = 12; i < 24; i += 1) {
+    const row = makeRow(i, "POLICY_BLOCKED");
+    row.context.source = "PINE_WEBHOOK";
+    rows.push(row);
+  }
+  const split = buildSourceAwareChronologicalSplit(rows);
+  const diagnostics = deriveSourceDriftDiagnostics({ trainRows: split.trainRows, testRows: split.testRows });
+  assert.ok((diagnostics.policy_blocked_train_support_by_source.PINE_WEBHOOK || 0) >= 3);
+  assert.ok((diagnostics.policy_blocked_test_support_by_source.PINE_WEBHOOK || 0) >= 1);
+  console.log("EXECUTION_SCOPE_BASELINE_SPLIT_TEST_OK");
+})();
 
 (() => {
   const rows = [];

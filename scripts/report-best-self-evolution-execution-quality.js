@@ -22,6 +22,7 @@ const FEBT_BRIDGE_LATENCY_PATH = path.join(OPS_DAILY_DIR, "febt_bridge_latency_l
 const EXECUTION_MODEL_DATASET_PATH = path.join(OPS_DAILY_DIR, "execution_model_dataset_latest.json");
 const EXECUTION_SCOPE_INFERENCE_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_execution_scope_inference_latest.json");
 const EXECUTION_SCOPE_TRAIN_RUN_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_ml_train_run_scope_result_latest.json");
+const EXECUTION_SCOPE_FP_DIAGNOSTICS_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_execution_scope_fp_diagnostics_latest.json");
 const FILLS_PATH = path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "fills_paper.json");
 const INTENTS_PATH = path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "order_intents_paper.json");
 
@@ -51,6 +52,7 @@ function renderMarkdown(report = {}) {
     `- execution_scope_quality_gate: ${summary.execution_scope_quality_gate_status || "N/A"} / ready=${summary.execution_scope_quality_gate_ready ? "YES" : "NO"}`,
     `- execution_scope_mismatch_rate: ${summary.execution_scope_inference_mismatch_rate ?? "N/A"}`,
     `- execution_scope_top_false_positive_group: ${summary.execution_scope_top_false_positive_group || "N/A"}`,
+    `- execution_scope_fp_diagnostics: ${summary.execution_scope_fp_diagnostics_status || "N/A"} / top_shared=${summary.execution_scope_fp_diagnostics_top_shared_feature || "N/A"} / reference_rows=${summary.execution_scope_fp_diagnostics_reference_rows_n ?? "N/A"}`,
     `- review_reasons: ${Array.isArray(summary.review_reasons) && summary.review_reasons.length ? summary.review_reasons.join("|") : "none"}`,
     "",
     "## Markets",
@@ -76,6 +78,7 @@ function main() {
   const executionModelDataset = readJsonRawSafe(EXECUTION_MODEL_DATASET_PATH, null);
   const executionScopeInference = readJsonRawSafe(EXECUTION_SCOPE_INFERENCE_PATH, null);
   const executionScopeTrainRun = readJsonRawSafe(EXECUTION_SCOPE_TRAIN_RUN_PATH, null);
+  const executionScopeFalsePositiveDiagnostics = readJsonRawSafe(EXECUTION_SCOPE_FP_DIAGNOSTICS_PATH, null);
   const fills = readJsonRawSafe(FILLS_PATH, null);
   const intents = readJsonRawSafe(INTENTS_PATH, null);
 
@@ -85,6 +88,7 @@ function main() {
     executionModelDataset,
     executionScopeInference,
     executionScopeTrainRun,
+    executionScopeFalsePositiveDiagnostics,
     fills: fills && Array.isArray(fills.docs) ? fills.docs : [],
     intents: intents && Array.isArray(intents.docs) ? intents.docs : [],
   });
@@ -101,6 +105,7 @@ function main() {
       execution_model_dataset_latest_path: EXECUTION_MODEL_DATASET_PATH,
       execution_scope_inference_latest_path: EXECUTION_SCOPE_INFERENCE_PATH,
       execution_scope_train_run_latest_path: EXECUTION_SCOPE_TRAIN_RUN_PATH,
+      execution_scope_fp_diagnostics_latest_path: EXECUTION_SCOPE_FP_DIAGNOSTICS_PATH,
       fills_path: FILLS_PATH,
       intents_path: INTENTS_PATH,
     },

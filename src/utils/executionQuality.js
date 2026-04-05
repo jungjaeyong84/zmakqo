@@ -29,6 +29,7 @@ function summarizeExecutionQuality({
   executionModelDataset = null,
   executionScopeInference = null,
   executionScopeTrainRun = null,
+  executionScopeFalsePositiveDiagnostics = null,
 } = {}) {
   const micro = microstructure && typeof microstructure === "object" ? microstructure : {};
   const metrics = micro.metrics && typeof micro.metrics === "object" ? micro.metrics : {};
@@ -46,6 +47,11 @@ function summarizeExecutionQuality({
     : {};
   const executionScopeTrainRunSummary = executionScopeTrainRun && typeof executionScopeTrainRun === "object"
     ? (executionScopeTrainRun.summary && typeof executionScopeTrainRun.summary === "object" ? executionScopeTrainRun.summary : executionScopeTrainRun)
+    : {};
+  const executionScopeFpSummary = executionScopeFalsePositiveDiagnostics && typeof executionScopeFalsePositiveDiagnostics === "object"
+    ? (executionScopeFalsePositiveDiagnostics.summary && typeof executionScopeFalsePositiveDiagnostics.summary === "object"
+      ? executionScopeFalsePositiveDiagnostics.summary
+      : executionScopeFalsePositiveDiagnostics)
     : {};
 
   const intentsById = new Map();
@@ -181,6 +187,10 @@ function summarizeExecutionQuality({
       execution_scope_top_false_positive_rows_n: topScopeFalsePositiveGroup && Number.isFinite(toNum(topScopeFalsePositiveGroup.rows_n))
         ? toNum(topScopeFalsePositiveGroup.rows_n)
         : null,
+      execution_scope_fp_diagnostics_status: String(executionScopeFpSummary.status || "").trim() || null,
+      execution_scope_fp_diagnostics_top_shared_feature: String(executionScopeFpSummary.top_shared_feature || "").trim() || null,
+      execution_scope_fp_diagnostics_reference_rows_n: toNum(executionScopeFpSummary.reference_rows_n),
+      execution_scope_fp_diagnostics_reference_group_mode: String(executionScopeFpSummary.reference_group_mode || "").trim() || null,
       review_reasons: reviewReasons,
       market_n: rows.length,
       top_watch_markets: rows.slice(0, 6).map((row) => ({
