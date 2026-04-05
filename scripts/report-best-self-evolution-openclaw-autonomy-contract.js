@@ -38,6 +38,7 @@ const INPUTS = Object.freeze({
   signalLineageHealth: path.join(OPS_DAILY_DIR, "signal_lineage_health_latest.json"),
   modelReadiness: path.join(OPS_DAILY_DIR, "best_self_evolution_model_readiness_latest.json"),
   featureStore: path.join(OPS_DAILY_DIR, "ml_feature_store_latest.json"),
+  executionModelDataset: path.join(OPS_DAILY_DIR, "execution_model_dataset_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -82,6 +83,7 @@ function renderMarkdown(report = {}) {
     `- microstructure: ${summary.execution_microstructure_status || "N/A"} / tp0_hit=${status.tp0_hit_rate != null ? status.tp0_hit_rate : "N/A"} / tp1_hit=${status.tp1_hit_rate != null ? status.tp1_hit_rate : "N/A"} / cluster=${summary.portfolio_cluster_risk_status || "N/A"}`,
     `- model_readiness: ${summary.model_readiness_status || "N/A"} / rows=${status.model_readiness_rows_n != null ? status.model_readiness_rows_n : "N/A"} / realized=${status.model_readiness_realized_n != null ? status.model_readiness_realized_n : "N/A"} / invalid=${status.model_readiness_invalid_n != null ? status.model_readiness_invalid_n : "N/A"}`,
     `- feature_store: ${summary.feature_store_status || "N/A"} / rows=${status.feature_store_rows_n != null ? status.feature_store_rows_n : "N/A"} / keys=${status.feature_store_keys_n != null ? status.feature_store_keys_n : "N/A"}`,
+    `- execution_model_dataset: ${summary.execution_model_dataset_status || "N/A"} / rows=${status.execution_model_dataset_rows_n != null ? status.execution_model_dataset_rows_n : "N/A"} / filled=${status.execution_model_dataset_filled_n != null ? status.execution_model_dataset_filled_n : "N/A"} / rejected=${status.execution_model_dataset_rejected_n != null ? status.execution_model_dataset_rejected_n : "N/A"}`,
     "",
     "## Server Transition",
     ...(report.server_signal_transition && Array.isArray(report.server_signal_transition.phases)
@@ -118,6 +120,7 @@ function main() {
     signalLineageHealth: readJsonRawSafe(INPUTS.signalLineageHealth, null),
     modelReadiness: readJsonRawSafe(INPUTS.modelReadiness, null),
     featureStore: readJsonRawSafe(INPUTS.featureStore, null),
+    executionModelDataset: readJsonRawSafe(INPUTS.executionModelDataset, null),
   });
   const output = {
     ok: true,

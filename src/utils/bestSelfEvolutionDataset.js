@@ -875,18 +875,28 @@ function buildUnifiedLearningRows({
     const directTimeToTp1Minutes = Number.isFinite(holdStartMs) && Number.isFinite(firstTp1Ms)
       ? ((firstTp1Ms - holdStartMs) / 60000)
       : null;
-    const useChainExitBackfill = exitKinds.length <= 0 && !!matchedChainRow;
-    const tp0Hit = useChainExitBackfill ? (matchedChainRow.tp0_hit === true) : directTp0Hit;
-    const tp1Hit = useChainExitBackfill ? (matchedChainRow.tp1_hit === true) : directTp1Hit;
-    const tp1First = useChainExitBackfill ? (matchedChainRow.tp1_first === true || String(matchedChainRow.first_exit_kind || "").toUpperCase() === "TP1") : directTp1First;
-    const slFirst = useChainExitBackfill ? (matchedChainRow.sl_before_tp1 === true) : directSlFirst;
-    const tp0First = useChainExitBackfill ? (matchedChainRow.tp0_first === true) : directTp0First;
-    const timeStopHit = useChainExitBackfill ? (matchedChainRow.time_stop_hit === true) : directTimeStopHit;
-    const timeStopFirst = useChainExitBackfill ? (matchedChainRow.time_stop_first === true) : directTimeStopFirst;
-    const tp0ToTp1Converted = useChainExitBackfill ? (matchedChainRow.tp0_to_tp1_converted === true) : directTp0ToTp1Converted;
-    const preTp1TimeStop = useChainExitBackfill ? (matchedChainRow.pre_tp1_time_stop === true) : directPreTp1TimeStop;
-    const timeToTp0Minutes = useChainExitBackfill ? toNum(matchedChainRow.time_to_tp0_minutes) : directTimeToTp0Minutes;
-    const timeToTp1Minutes = useChainExitBackfill ? toNum(matchedChainRow.time_to_tp1_minutes) : directTimeToTp1Minutes;
+    const chainTp0Hit = matchedChainRow ? (matchedChainRow.tp0_hit === true) : false;
+    const chainTp1Hit = matchedChainRow ? (matchedChainRow.tp1_hit === true) : false;
+    const chainTp1First = matchedChainRow ? (matchedChainRow.tp1_first === true || String(matchedChainRow.first_exit_kind || "").toUpperCase() === "TP1") : false;
+    const chainSlFirst = matchedChainRow ? (matchedChainRow.sl_before_tp1 === true) : false;
+    const chainTp0First = matchedChainRow ? (matchedChainRow.tp0_first === true) : false;
+    const chainTimeStopHit = matchedChainRow ? (matchedChainRow.time_stop_hit === true) : false;
+    const chainTimeStopFirst = matchedChainRow ? (matchedChainRow.time_stop_first === true) : false;
+    const chainTp0ToTp1Converted = matchedChainRow ? (matchedChainRow.tp0_to_tp1_converted === true) : false;
+    const chainPreTp1TimeStop = matchedChainRow ? (matchedChainRow.pre_tp1_time_stop === true) : false;
+    const chainTimeToTp0Minutes = matchedChainRow ? toNum(matchedChainRow.time_to_tp0_minutes) : null;
+    const chainTimeToTp1Minutes = matchedChainRow ? toNum(matchedChainRow.time_to_tp1_minutes) : null;
+    const tp0Hit = directTp0Hit || chainTp0Hit;
+    const tp1Hit = directTp1Hit || chainTp1Hit;
+    const tp1First = directTp1First || chainTp1First;
+    const slFirst = directSlFirst || chainSlFirst;
+    const tp0First = directTp0First || chainTp0First;
+    const timeStopHit = directTimeStopHit || chainTimeStopHit;
+    const timeStopFirst = directTimeStopFirst || chainTimeStopFirst;
+    const tp0ToTp1Converted = directTp0ToTp1Converted || chainTp0ToTp1Converted;
+    const preTp1TimeStop = directPreTp1TimeStop || chainPreTp1TimeStop;
+    const timeToTp0Minutes = directTimeToTp0Minutes != null ? directTimeToTp0Minutes : chainTimeToTp0Minutes;
+    const timeToTp1Minutes = directTimeToTp1Minutes != null ? directTimeToTp1Minutes : chainTimeToTp1Minutes;
     const verdicts = resolveVerdictByStage(dropStageKey, features, hasTrade || hasFill);
     const tradeExitKind = classifyExitEvent(realizedTradeRow && (realizedTradeRow.exit_event || realizedTradeRow.event));
     const outcomeState = resolveOutcomeState({

@@ -58,6 +58,7 @@ function renderMarkdown(report = {}) {
     `- dominant_issue: ${summary.current_dominant_issue || "N/A"} / source=${summary.current_dominant_issue_source || "N/A"}`,
     `- recommended_action: ${summary.current_recommended_action || "N/A"}`,
     `- execution_quality/lineage/account: ${summary.current_execution_quality_status || "N/A"} / ${summary.current_lineage_status || "N/A"} / ${summary.current_account_integrity_status || "N/A"}`,
+    `- execution_model_dataset: ${summary.current_execution_model_dataset_status || "N/A"}`,
     `- microstructure: tp0_hit=${summary.current_microstructure_tp0_hit_rate != null ? summary.current_microstructure_tp0_hit_rate : "N/A"} / tp1_hit=${summary.current_microstructure_tp1_hit_rate != null ? summary.current_microstructure_tp1_hit_rate : "N/A"} / pre_tp1_time_stop=${summary.current_microstructure_pre_tp1_time_stop_rate != null ? summary.current_microstructure_pre_tp1_time_stop_rate : "N/A"} / chase_reject=${summary.current_microstructure_chase_reject_n != null ? summary.current_microstructure_chase_reject_n : "N/A"} / cluster_reduce=${summary.current_microstructure_cluster_reduce_n != null ? summary.current_microstructure_cluster_reduce_n : "N/A"} / cluster_block=${summary.current_microstructure_cluster_block_n != null ? summary.current_microstructure_cluster_block_n : "N/A"}`,
     `- compacted_context: ${report.compacted_context || "N/A"}`,
     "",

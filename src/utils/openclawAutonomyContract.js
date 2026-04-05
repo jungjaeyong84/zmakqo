@@ -157,6 +157,7 @@ function deriveOpenClawAutonomyContract({
   signalLineageHealth = null,
   modelReadiness = null,
   featureStore = null,
+  executionModelDataset = null,
 } = {}) {
   const objectiveSummary = readSummary(objective);
   const objectiveSupervisorRaw = unwrapRawReport(objectiveSupervisor) || {};
@@ -177,6 +178,8 @@ function deriveOpenClawAutonomyContract({
   const signalLineageSummary = readSummary(signalLineageHealth);
   const modelReadinessSummary = readSummary(modelReadiness);
   const featureStoreSummary = readSummary(featureStore);
+  const executionModelSummary = readSummary(executionModelDataset);
+  const executionModelStatus = toUpper(executionModelSummary.status) || "N_A";
 
   const objectivePolicy = {
     min_objective_score: envNum("OPENCLAW_AUTONOMY_MIN_OBJECTIVE_SCORE", 0),
@@ -421,6 +424,15 @@ function deriveOpenClawAutonomyContract({
       feature_store_rows_n: toNum(featureStoreSummary.rows_n),
       feature_store_keys_n: toNum(featureStoreSummary.feature_keys_n),
       feature_store_schema_version: String(featureStoreSummary.schema_version || "").trim() || null,
+      execution_model_dataset_status: executionModelStatus,
+      execution_model_dataset_rows_n: toNum(executionModelSummary.rows_n),
+      execution_model_dataset_entry_rows_n: toNum(executionModelSummary.entry_rows_n),
+      execution_model_dataset_exit_rows_n: toNum(executionModelSummary.exit_rows_n),
+      execution_model_dataset_filled_n: toNum(executionModelSummary.filled_n),
+      execution_model_dataset_rejected_n: toNum(executionModelSummary.rejected_n),
+      execution_model_dataset_partial_n: toNum(executionModelSummary.partial_n),
+      execution_model_dataset_latency_p95_ms: toNum(executionModelSummary.created_to_fill_p95_ms),
+      execution_model_dataset_slippage_p95_bps: toNum(executionModelSummary.slippage_p95_bps),
     },
     summary: {
       goal_state: objectiveMet ? "OBJECTIVE_ON_TRACK" : "OBJECTIVE_RECOVERY_REQUIRED",
@@ -454,6 +466,7 @@ function deriveOpenClawAutonomyContract({
       model_readiness_tp0_to_tp1_converted_n: toNum(modelReadinessSummary.tp0_to_tp1_converted_n),
       model_readiness_pre_tp1_time_stop_n: toNum(modelReadinessSummary.pre_tp1_time_stop_n),
       feature_store_status: featureStoreStatus,
+      execution_model_dataset_status: executionModelStatus,
       execution_quality_status: executionQualityStatus,
       lineage_status: lineageVerdict,
       account_integrity_status: overallIntegrity.ok === true ? "PASS" : (overallIntegrity.issue_count != null ? "WARN" : "N_A"),

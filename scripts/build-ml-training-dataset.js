@@ -33,6 +33,7 @@ const SOURCE_MODE = String(process.env.ML_TRAINING_DATASET_SOURCE_MODE || "ARTIF
 const DEFAULT_PROVIDER = String(process.env.BEST_SELF_EVOLUTION_PROVIDER || "BINANCEFUT").trim().toUpperCase();
 const DEFAULT_TF = String(process.env.BEST_SELF_EVOLUTION_TF || "15m").trim();
 const DEFAULT_WINDOW_DAYS = Math.max(1, Number(process.env.BEST_SELF_EVOLUTION_WINDOW_DAYS || 7));
+const DEFAULT_REFERENCE_STALE_MS = Math.max(5 * 60 * 1000, Number(process.env.ML_TRAINING_DATASET_REFERENCE_STALE_MS || (60 * 60 * 1000)));
 
 function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -52,7 +53,17 @@ function resolveReferenceWindow(reference = null, nowMs = Date.now()) {
   const fromMs = toNum(window.from_ms);
   const toMs = toNum(window.to_ms);
   if (Number.isFinite(fromMs) && Number.isFinite(toMs) && toMs > fromMs) {
-    return { fromMs, toMs, source: "REFERENCE_DATASET" };
+    const staleMs = nowMs - toMs;
+    if (staleMs <= DEFAULT_REFERENCE_STALE_MS) {
+      return { fromMs, toMs, source: "REFERENCE_DATASET" };
+    }
+    const spanMs = Math.max(1, toMs - fromMs);
+    return {
+      fromMs: nowMs - spanMs,
+      toMs: nowMs,
+      source: "REFERENCE_DATASET_ROLLING_REFRESH",
+      stale_ms: staleMs,
+    };
   }
   const rollingToMs = nowMs;
   const rollingFromMs = rollingToMs - (DEFAULT_WINDOW_DAYS * 24 * 60 * 60 * 1000);
