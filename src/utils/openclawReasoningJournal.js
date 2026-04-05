@@ -34,6 +34,7 @@ function resolveEvVerificationMinSamples(cutoverSummary = {}) {
 function deriveDominantIssue({ objectiveSupervisor = null, autonomyContract = null, quality = null, cutover = null } = {}) {
   const objective = unwrapRawReport(objectiveSupervisor) || {};
   const autonomy = readSummary(autonomyContract);
+  const runtimeAuthorityState = toUpper(autonomy.runtime_authority_state || autonomy.authority_state);
   const qualitySummary = readSummary(quality);
   const cutoverSummary = readSummary(cutover);
 
@@ -55,12 +56,12 @@ function deriveDominantIssue({ objectiveSupervisor = null, autonomyContract = nu
     return {
       dominant_issue: dominantMismatchFamily,
       dominant_issue_source: "SERVER_SIGNAL",
-      secondary_issue: toUpper(autonomy.authority_state),
+      secondary_issue: runtimeAuthorityState,
     };
   }
-  if (toUpper(autonomy.authority_state)) {
+  if (runtimeAuthorityState) {
     return {
-      dominant_issue: `AUTHORITY_${toUpper(autonomy.authority_state)}`,
+      dominant_issue: `AUTHORITY_${runtimeAuthorityState}`,
       dominant_issue_source: "AUTONOMY_CONTRACT",
       secondary_issue: null,
     };
@@ -112,7 +113,7 @@ function derivePendingVerification({ cutover = null, quality = null, autonomyCon
   const qualitySummary = readSummary(quality);
   const autonomySummary = readSummary(autonomyContract);
   const dominantFamily = toUpper(cutoverSummary.dominant_mismatch_family);
-  const authorityState = toUpper(autonomySummary.authority_state);
+  const changeAuthorityState = toUpper(autonomySummary.change_authority_state || autonomySummary.authority_state);
   const evPolicyPatchApplied = cutoverSummary.ev_policy_effective_patch_applied === true
     || cutoverSummary.ev_policy_patch_applied === true
     || cutoverSummary.ev_policy_patch_report_only_applied === true;
@@ -152,7 +153,7 @@ function derivePendingVerification({ cutover = null, quality = null, autonomyCon
       baseline_value: toNum(qualitySummary.other_server_policy_mismatch_n),
     };
   }
-  if (authorityState === "PENDING") {
+  if (changeAuthorityState === "PENDING") {
     return {
       metric: "final_downstream_mismatch_n",
       expected: "< baseline",
@@ -170,7 +171,9 @@ function derivePendingVerification({ cutover = null, quality = null, autonomyCon
 }
 
 function deriveHypothesis({ dominantIssue = null, dominantIssueSource = null, recommendedAction = null, autonomyContract = null } = {}) {
-  const authorityState = toUpper(readSummary(autonomyContract).authority_state);
+  const autonomySummary = readSummary(autonomyContract);
+  const runtimeAuthorityState = toUpper(autonomySummary.runtime_authority_state || autonomySummary.authority_state);
+  const changeAuthorityState = toUpper(autonomySummary.change_authority_state || autonomySummary.authority_state);
   if (dominantIssue === "EXTERNAL_AUTHORITY_BLOCK_ROLLBACK") {
     return "Ops substrate is healthy, but autonomous recovery remains blocked by external authority hold.";
   }
@@ -180,8 +183,8 @@ function deriveHypothesis({ dominantIssue = null, dominantIssueSource = null, re
   if (dominantIssue === "OTHER_SERVER_POLICY") {
     return "Other server policy mismatches remain localized and should be judged on fresh evidence before reapplying market-specific blocks.";
   }
-  if (authorityState === "PENDING") {
-    return `Authority is still ${authorityState}; recommendation ${recommendedAction || "MONITOR_ONLY"} must accumulate evidence before READY.`;
+  if (changeAuthorityState === "PENDING") {
+    return `Runtime authority is ${runtimeAuthorityState || "N/A"} while strategic change approval remains ${changeAuthorityState}; recommendation ${recommendedAction || "MONITOR_ONLY"} must accumulate evidence before READY.`;
   }
   return `Current dominant issue is ${dominantIssueSource || "UNKNOWN"}:${dominantIssue || "UNKNOWN"}; continue ${recommendedAction || "MONITOR_ONLY"} while gathering fresh evidence.`;
 }
@@ -276,7 +279,7 @@ function collectCurrentVerificationState({ quality = null, cutover = null, auton
         ? qualitySummary.final_downstream_mismatch_n
         : cutoverSummary.final_downstream_mismatch_n
     ),
-    authority_state: toComparableString(autonomySummary.authority_state),
+    authority_state: toComparableString(autonomySummary.runtime_authority_state || autonomySummary.authority_state),
   };
 }
 
@@ -516,7 +519,8 @@ function buildReasoningJournal({
     generated_at_kst: nowKst || null,
     objective_verdict: String(objective.verdict || "").trim() || null,
     objective_root_cause: String(objective.root_cause || "").trim() || null,
-    authority_state: toUpper(autonomySummary.authority_state),
+    authority_state: toUpper(autonomySummary.runtime_authority_state || autonomySummary.authority_state),
+    change_authority_state: toUpper(autonomySummary.change_authority_state || autonomySummary.authority_state),
     dominant_issue: issue.dominant_issue,
     dominant_issue_source: issue.dominant_issue_source,
     secondary_issue: issue.secondary_issue,
@@ -567,6 +571,7 @@ function buildReasoningJournal({
       contradiction_n,
       current_objective_verdict: currentEntry.objective_verdict,
       current_authority_state: currentEntry.authority_state,
+      current_change_authority_state: currentEntry.change_authority_state,
       current_dominant_issue: currentEntry.dominant_issue,
       current_dominant_issue_source: currentEntry.dominant_issue_source,
       current_recommended_action: currentEntry.recommended_action,

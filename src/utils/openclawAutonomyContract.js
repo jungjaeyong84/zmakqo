@@ -143,6 +143,7 @@ function deriveServerSignalTransition({ authoritySummary = {}, qualitySummary = 
 function deriveOpenClawAutonomyContract({
   objective = null,
   objectiveSupervisor = null,
+  objectiveRecoveryGovernor = null,
   deploymentPlan = null,
   serverPrimaryCanary = null,
   watchdog = null,
@@ -157,6 +158,7 @@ function deriveOpenClawAutonomyContract({
 } = {}) {
   const objectiveSummary = readSummary(objective);
   const objectiveSupervisorRaw = unwrapRawReport(objectiveSupervisor) || {};
+  const objectiveRecoveryGovernorSummary = readSummary(objectiveRecoveryGovernor);
   const deploymentPlanSummary = readSummary(deploymentPlan);
   const serverPrimarySummary = readSummary(serverPrimaryCanary);
   const watchdogSummary = readSummary(watchdog);
@@ -253,9 +255,25 @@ function deriveOpenClawAutonomyContract({
     || deploymentAuthorityState === "PENDING"
     || toUpper(deploymentPlanSummary.plan_status) === "APPLIED_ACTIVE_PENDING_AUTHORITY"
   );
-  const authorityState = deploymentAuthorityState
+  const changeAuthorityState = deploymentAuthorityState
     || (deploymentPlanSummary.authority_approved === true ? "APPROVED" : null)
     || (authorityPending ? "PENDING" : "CLEAR");
+  const activationActive = Boolean(
+    deploymentPlanSummary.activation_confirmed === true
+    || toUpper(deploymentPlanSummary.activation_status) === "ACTIVE"
+  );
+  const degradedAuthorityEligible = Boolean(
+    objectiveRecoveryGovernorSummary.degraded_authority_enabled === true
+    && objectiveRecoveryGovernorSummary.degraded_authority_eligible === true
+    && toUpper(objectiveRecoveryGovernorSummary.governor_status) === "RECOVERY_PROMOTION_READY"
+  );
+  const runtimeAuthorityState = authorityPending
+    ? (
+      activationActive
+        ? (degradedAuthorityEligible ? "DEGRADED_ACTIVE" : "ACTIVE_PENDING_REVIEW")
+        : "PENDING"
+    )
+    : changeAuthorityState;
 
   const executedN = toNum(serverPrimarySummary.server_primary_executed_n) || 0;
   const disagreementRate = toNum(serverPrimarySummary.pine_shadow_disagreement_rate) || 0;
@@ -321,7 +339,10 @@ function deriveOpenClawAutonomyContract({
       objective_met: objectiveMet,
       recovery_required: recoveryRequired,
       authority_pending: authorityPending,
-      authority_state: authorityState,
+      authority_state: runtimeAuthorityState,
+      runtime_authority_state: runtimeAuthorityState,
+      change_authority_state: changeAuthorityState,
+      degraded_authority_runtime_eligible: degradedAuthorityEligible,
       plan_status: toUpper(deploymentPlanSummary.plan_status),
       phase_d_acceptance_ready: phaseDReady,
       phase_d_acceptance_reason: String(serverPrimarySummary.acceptance_reason || "").trim() || null,
@@ -380,7 +401,10 @@ function deriveOpenClawAutonomyContract({
     },
     summary: {
       goal_state: objectiveMet ? "OBJECTIVE_ON_TRACK" : "OBJECTIVE_RECOVERY_REQUIRED",
-      authority_state: authorityState,
+      authority_state: runtimeAuthorityState,
+      runtime_authority_state: runtimeAuthorityState,
+      change_authority_state: changeAuthorityState,
+      change_authority_pending: authorityPending,
       phase_d_status: phaseDReady ? "READY" : (String(serverPrimarySummary.acceptance_reason || "PENDING").trim().toUpperCase() || "PENDING"),
       ops_status: opsHealthy ? "PASS" : "WARN",
       degraded_authority_enabled: authorityPolicy.degraded_timeout_policy.enabled === true,

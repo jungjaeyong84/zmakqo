@@ -12,7 +12,24 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
         self_evolution_objective: { objective_score: -7.4, win_rate: 0.44 },
       },
     },
-    deploymentPlan: { summary: { plan_status: "APPLIED_ACTIVE_PENDING_AUTHORITY", authority_state: "PENDING", external_authority_pending: true } },
+    objectiveRecoveryGovernor: {
+      summary: {
+        degraded_authority_enabled: true,
+        degraded_authority_eligible: true,
+        governor_status: "RECOVERY_PROMOTION_READY",
+      },
+    },
+    deploymentPlan: {
+      summary: {
+        plan_status: "APPLIED_ACTIVE_PENDING_AUTHORITY",
+        authority_state: "PENDING",
+        external_authority_pending: true,
+        activation_confirmed: true,
+        activation_status: "ACTIVE",
+        live_auto_mutation_allowed: true,
+        manual_promote_required: false,
+      },
+    },
     serverPrimaryCanary: { summary: { acceptance_ready: false, acceptance_reason: "SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT", server_primary_executed_n: 0, pine_shadow_disagreement_rate: 0, rollback_trigger_n: 0 } },
     watchdog: { display: { verdict: "PASS", scheduler_mode: "OPENCLAW_CRON" } },
     marketRegimeBoard: { summary: { status: "RESCUE_COHORT_ACTIVE", rescue_market_n: 2, keep_drop_market_n: 3, top_rescue_market: "SOLUSDT", top_keep_drop_market: "AXSUSDT" } },
@@ -27,7 +44,11 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.current_status.monthly_run_rate_krw, -436.19);
   assert.strictEqual(report.current_status.win_rate, 0.44);
   assert.strictEqual(report.summary.goal_state, "OBJECTIVE_RECOVERY_REQUIRED");
-  assert.strictEqual(report.summary.authority_state, "PENDING");
+  assert.strictEqual(report.summary.authority_state, "DEGRADED_ACTIVE");
+  assert.strictEqual(report.summary.change_authority_state, "PENDING");
+  assert.strictEqual(report.summary.change_authority_pending, true);
+  assert.strictEqual(report.current_status.runtime_authority_state, "DEGRADED_ACTIVE");
+  assert.strictEqual(report.current_status.change_authority_state, "PENDING");
   assert.strictEqual(report.summary.phase_d_status, "SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT");
   assert.strictEqual(report.summary.ops_status, "PASS");
   assert.strictEqual(report.summary.market_regime_board_status, "RESCUE_COHORT_ACTIVE");

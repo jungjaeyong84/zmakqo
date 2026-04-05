@@ -109,6 +109,12 @@ function normalizeOrderTriggerPrice(order) {
   return Number(order && (order.stopPrice || order.activatePrice || order.triggerPrice));
 }
 
+function resolveExpectedNativeTrigger({ meta, fallbackExpected } = {}) {
+  const tracked = Number(meta);
+  if (Number.isFinite(tracked) && tracked > 0) return tracked;
+  return Number.isFinite(Number(fallbackExpected)) ? Number(fallbackExpected) : null;
+}
+
 function hasTrackedNativeProtectionMeta(meta) {
   const ctx = meta && typeof meta === "object" ? meta : {};
   const stopOrderId = String(ctx.native_protection_stop_order_id || "").trim();
@@ -314,7 +320,11 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
             detail: "실포지션은 있는데 Binance 보호주문 STOP이 없음",
           }));
         } else if (rules && entryPrice && leverage) {
-          const expectedStop = computeExpectedNativeStopPx({ positionSide: externalSide, entryPrice, leverage, rules });
+          const meta = (internal && typeof internal.meta === "object") ? internal.meta : {};
+          const expectedStop = resolveExpectedNativeTrigger({
+            meta: meta.native_protection_stop_price,
+            fallbackExpected: computeExpectedNativeStopPx({ positionSide: externalSide, entryPrice, leverage, rules }),
+          });
           const info = await fetchFuturesExchangeInfo(sym).catch(() => null);
           const tickSize = Number(info && info.tickSize);
           const stopPx = normalizeOrderTriggerPrice(stopCandidates[0]);
@@ -349,7 +359,10 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
               detail: "실포지션은 있는데 Binance 보호주문 TP1이 없음",
             }));
           } else if (rules && entryPrice && leverage) {
-            const expectedTp = computeExpectedNativeTpPx({ positionSide: externalSide, entryPrice, leverage, rules });
+            const expectedTp = resolveExpectedNativeTrigger({
+              meta: meta.native_protection_tp_price,
+              fallbackExpected: computeExpectedNativeTpPx({ positionSide: externalSide, entryPrice, leverage, rules }),
+            });
             const info = await fetchFuturesExchangeInfo(sym).catch(() => null);
             const tickSize = Number(info && info.tickSize);
             const tpPx = normalizeOrderTriggerPrice(tpCandidates[0]);
@@ -400,5 +413,6 @@ module.exports = {
     hasTrackedNativeProtectionMeta,
     normalizeOrderType,
     normalizeOrderTriggerPrice,
+    resolveExpectedNativeTrigger,
   },
 };

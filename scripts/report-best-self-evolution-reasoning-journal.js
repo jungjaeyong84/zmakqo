@@ -54,7 +54,7 @@ function renderMarkdown(report = {}) {
     `- deferred_n: ${summary.deferred_n ?? 0}`,
     `- verification_rate: ${summary.verification_rate != null ? summary.verification_rate : "N/A"}`,
     `- objective_verdict: ${summary.current_objective_verdict || "N/A"}`,
-    `- authority_state: ${summary.current_authority_state || "N/A"}`,
+    `- authority_state: ${summary.current_authority_state || "N/A"} / change=${summary.current_change_authority_state || "N/A"}`,
     `- dominant_issue: ${summary.current_dominant_issue || "N/A"} / source=${summary.current_dominant_issue_source || "N/A"}`,
     `- recommended_action: ${summary.current_recommended_action || "N/A"}`,
     `- execution_quality/lineage/account: ${summary.current_execution_quality_status || "N/A"} / ${summary.current_lineage_status || "N/A"} / ${summary.current_account_integrity_status || "N/A"}`,
@@ -67,7 +67,7 @@ function renderMarkdown(report = {}) {
     lines.push("- none");
   } else {
     for (const row of entries.slice(0, 10)) {
-      lines.push(`- ${row.cycle_id || "N/A"}: issue=${row.dominant_issue || "UNKNOWN"} / action=${row.recommended_action || "MONITOR_ONLY"} / objective=${row.objective_verdict || "N/A"} / authority=${row.authority_state || "N/A"} / pending=${row.pending_verification && row.pending_verification.metric || "none"} / verification=${row.verification_outcome && row.verification_outcome.status || "UNRESOLVED"} / hypothesis=${row.hypothesis || "N/A"}`);
+      lines.push(`- ${row.cycle_id || "N/A"}: issue=${row.dominant_issue || "UNKNOWN"} / action=${row.recommended_action || "MONITOR_ONLY"} / objective=${row.objective_verdict || "N/A"} / authority=${row.authority_state || "N/A"} / change=${row.change_authority_state || "N/A"} / pending=${row.pending_verification && row.pending_verification.metric || "none"} / verification=${row.verification_outcome && row.verification_outcome.status || "UNRESOLVED"} / hypothesis=${row.hypothesis || "N/A"}`);
     }
   }
   return `${lines.join("\n")}\n`;

@@ -24,6 +24,7 @@ loadLocalEnv();
 const INPUTS = Object.freeze({
   objective: path.join(OPS_DAILY_DIR, "best_self_evolution_objective_latest.json"),
   objectiveSupervisor: selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json"),
+  objectiveRecoveryGovernor: path.join(OPS_DAILY_DIR, "best_self_evolution_objective_recovery_governor_latest.json"),
   deploymentPlan: path.join(OPS_DAILY_DIR, "best_self_evolution_deployment_plan_latest.json"),
   serverPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
   watchdog: path.join(OPS_DAILY_DIR, "automation_watchdog_latest.json"),
@@ -49,6 +50,7 @@ function renderMarkdown(report = {}) {
     `- goal_id: ${report.goal_id || "N/A"}`,
     `- goal_state: ${summary.goal_state || "N/A"}`,
     `- authority_state: ${summary.authority_state || "N/A"}`,
+    `- change_authority_state: ${summary.change_authority_state || "N/A"} / pending ${summary.change_authority_pending ? "YES" : "NO"}`,
     `- phase_d_status: ${summary.phase_d_status || "N/A"}`,
     `- ops_status: ${summary.ops_status || "N/A"}`,
     `- server_signal_authority: ${summary.server_signal_authority_status || "N/A"}`,
@@ -98,6 +100,7 @@ function main() {
   const report = deriveOpenClawAutonomyContract({
     objective,
     objectiveSupervisor,
+    objectiveRecoveryGovernor: readJsonRawSafe(INPUTS.objectiveRecoveryGovernor, null),
     deploymentPlan: readJsonRawSafe(INPUTS.deploymentPlan, null),
     serverPrimaryCanary: readJsonRawSafe(INPUTS.serverPrimaryCanary, null),
     watchdog: readJsonRawSafe(INPUTS.watchdog, null),

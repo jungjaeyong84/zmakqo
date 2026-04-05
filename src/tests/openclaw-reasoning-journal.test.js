@@ -13,7 +13,8 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
     },
     autonomyContract: {
       summary: {
-        authority_state: "PENDING",
+        authority_state: "DEGRADED_ACTIVE",
+        change_authority_state: "PENDING",
       },
     },
     quality: {
@@ -108,6 +109,8 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_recommended_action, "HOLD_EV_POLICY_REVIEW");
   assert.match(journal.summary.current_verification_focus, /ev_policy_post_apply_comparable_n/);
   assert.strictEqual(journal.summary.current_execution_quality_status, "EXECUTION_QUALITY_REVIEW");
+  assert.strictEqual(journal.summary.current_authority_state, "DEGRADED_ACTIVE");
+  assert.strictEqual(journal.summary.current_change_authority_state, "PENDING");
   assert.strictEqual(journal.summary.current_lineage_status, "PASS");
   assert.strictEqual(journal.summary.current_account_integrity_status, "WARN");
   assert.strictEqual(journal.summary.current_microstructure_tp0_hit_rate, 0.85);
@@ -149,7 +152,7 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
 
   assert.strictEqual(
     __test.derivePendingVerification({
-      autonomyContract: { summary: { authority_state: "PENDING" } },
+      autonomyContract: { summary: { authority_state: "DEGRADED_ACTIVE", change_authority_state: "PENDING" } },
       quality: { summary: { final_downstream_mismatch_n: 11 } },
     }).metric,
     "final_downstream_mismatch_n"
@@ -160,7 +163,7 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
     dominantIssueSource: "SERVER_SIGNAL",
     recommendedAction: "WATCH_ONLY_REVIEW",
     pendingVerification: { metric: "other_server_policy_mismatch_n", expected: "< baseline", baseline_value: 3 },
-    autonomyContract: { summary: { authority_state: "PENDING" } },
+    autonomyContract: { summary: { authority_state: "DEGRADED_ACTIVE", change_authority_state: "PENDING" } },
   });
   assert.strictEqual(friendlyHypothesis.hypothesis_class, "MEASURABLE");
   assert.match(friendlyHypothesis.verification_focus, /other_server_policy_mismatch_n/);
