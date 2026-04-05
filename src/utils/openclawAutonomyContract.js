@@ -160,6 +160,7 @@ function deriveOpenClawAutonomyContract({
   overallAccountReport = null,
   signalLineageHealth = null,
   modelReadiness = null,
+  truthPreservationAudit = null,
   featureStore = null,
   executionModelDataset = null,
   executionFillInference = null,
@@ -169,7 +170,9 @@ function deriveOpenClawAutonomyContract({
   executionBottleneckDelta = null,
   mlTrainRun = null,
   mlTrainRunScope = null,
+  executionServingContract = null,
   mlModelContract = null,
+  mlPromotionGate = null,
 } = {}) {
   const objectiveSummary = readSummary(objective);
   const objectiveSupervisorRaw = unwrapRawReport(objectiveSupervisor) || {};
@@ -189,6 +192,7 @@ function deriveOpenClawAutonomyContract({
   const overallOperations = overallAccount.operations && typeof overallAccount.operations === "object" ? overallAccount.operations : {};
   const signalLineageSummary = readSummary(signalLineageHealth);
   const modelReadinessSummary = readSummary(modelReadiness);
+  const truthPreservationSummary = readSummary(truthPreservationAudit);
   const featureStoreSummary = readSummary(featureStore);
   const executionModelSummary = readSummary(executionModelDataset);
   const executionFillInferenceSummary = readSummary(executionFillInference);
@@ -198,7 +202,9 @@ function deriveOpenClawAutonomyContract({
   const executionBottleneckDeltaSummary = readSummary(executionBottleneckDelta);
   const mlTrainRunSummary = readSummary(mlTrainRun);
   const mlTrainRunScopeSummary = readSummary(mlTrainRunScope);
+  const executionServingContractSummary = readSummary(executionServingContract);
   const mlModelContractSummary = readSummary(mlModelContract);
+  const mlPromotionGateSummary = readSummary(mlPromotionGate);
   const executionModelStatus = toUpper(executionModelSummary.status) || "N_A";
   const executionFillInferenceStatus = toUpper(executionFillInferenceSummary.status) || "N_A";
   const executionScopeInferenceStatus = toUpper(executionScopeInferenceSummary.status) || "N_A";
@@ -207,7 +213,9 @@ function deriveOpenClawAutonomyContract({
   const executionBottleneckDeltaStatus = toUpper(executionBottleneckDeltaSummary.status) || "N_A";
   const mlTrainRunStatus = toUpper(mlTrainRunSummary.status) || "N_A";
   const mlTrainRunScopeStatus = toUpper(mlTrainRunScopeSummary.status) || "N_A";
+  const executionServingContractStatus = toUpper(executionServingContractSummary.status) || "N_A";
   const mlModelContractStatus = toUpper(mlModelContractSummary.status) || "N_A";
+  const mlPromotionGateStatus = toUpper(mlPromotionGateSummary.status) || "N_A";
   const executionBottleneckDeltaComparable = executionBottleneckDeltaStatus === "EXECUTION_BOTTLENECK_DELTA_READY";
   const executionBottleneckDeltaInterpretation = executionBottleneckDeltaComparable
     ? "USE_DELTA_SIGNAL"
@@ -364,6 +372,7 @@ function deriveOpenClawAutonomyContract({
       ? "REDUCING"
       : (retrospectiveDisplay.generated_at_kst ? "MONITORING" : "N_A"));
   const modelReadinessStatus = toUpper(modelReadinessSummary.status) || "N_A";
+  const truthPreservationAuditStatus = toUpper(truthPreservationSummary.status) || "N_A";
   const featureStoreStatus = toUpper(featureStoreSummary.status) || "N_A";
   const topEntryLatencyGroup = firstArrayRow(executionModelSummary.top_entry_measured_latency_groups);
   const topFallbackEntryLatencyGroup = firstArrayRow(executionModelSummary.top_entry_fallback_latency_groups);
@@ -474,6 +483,16 @@ function deriveOpenClawAutonomyContract({
       model_readiness_pre_tp1_time_stop_n: toNum(modelReadinessSummary.pre_tp1_time_stop_n),
       model_readiness_dataset_version_id: String(modelReadinessSummary.dataset_version_id || "").trim() || null,
       model_readiness_schema_version: String(modelReadinessSummary.schema_version || "").trim() || null,
+      truth_preservation_audit_status: truthPreservationAuditStatus,
+      truth_preservation_ready: truthPreservationSummary.truth_preservation_ready === true,
+      truth_preservation_dataset_version_id: String(truthPreservationSummary.dataset_version_id || "").trim() || null,
+      truth_preservation_feature_store_version_id: String(truthPreservationSummary.feature_store_version_id || "").trim() || null,
+      truth_preservation_execution_dataset_version_id: String(truthPreservationSummary.execution_dataset_version_id || "").trim() || null,
+      truth_preservation_lineage_status: String(truthPreservationSummary.lineage_status || "").trim() || null,
+      truth_preservation_stale_comparison_active: truthPreservationSummary.stale_comparison_active === true,
+      truth_preservation_legacy_webhook_outcome_only_rows_n: toNum(truthPreservationSummary.legacy_webhook_outcome_only_rows_n),
+      truth_preservation_blocking_reason_n: toNum(truthPreservationSummary.blocking_reason_n),
+      truth_preservation_warning_reason_n: toNum(truthPreservationSummary.warning_reason_n),
       feature_store_status: featureStoreStatus,
       feature_store_rows_n: toNum(featureStoreSummary.rows_n),
       feature_store_keys_n: toNum(featureStoreSummary.feature_keys_n),
@@ -504,11 +523,23 @@ function deriveOpenClawAutonomyContract({
       ml_train_run_split_strategy: String(mlTrainRunSummary.split_strategy || "").trim() || null,
       ml_train_run_quality_gate_status: String(mlTrainRunSummary.quality_gate_status || "").trim() || null,
       ml_train_run_quality_gate_ready: mlTrainRunSummary.quality_gate_ready === true,
+      execution_serving_contract_status: executionServingContractStatus,
+      execution_serving_stage: String(executionServingContractSummary.serving_stage || "").trim() || null,
+      execution_serving_decision: String(executionServingContractSummary.serving_decision || "").trim() || null,
+      execution_serving_shadow_ready: executionServingContractSummary.shadow_ready === true,
+      execution_serving_preferred_model_family: String(executionServingContractSummary.preferred_model_family || "").trim() || null,
+      execution_serving_preferred_model_kind: String(executionServingContractSummary.preferred_model_kind || "").trim() || null,
+      execution_serving_preferred_model_artifact_id: String(executionServingContractSummary.preferred_model_artifact_id || "").trim() || null,
       ml_model_contract_status: mlModelContractStatus,
       ml_model_contract_deployment_stage: String(mlModelContractSummary.deployment_stage || "").trim() || null,
       ml_model_contract_canary_gate_status: String(mlModelContractSummary.canary_gate_status || "").trim() || null,
       ml_model_contract_promotion_status: String(mlModelContractSummary.promotion_status || "").trim() || null,
       ml_model_contract_model_artifact_id: String(mlModelContractSummary.model_artifact_id || "").trim() || null,
+      ml_promotion_gate_status: mlPromotionGateStatus,
+      ml_promotion_stage: String(mlPromotionGateSummary.promotion_stage || "").trim() || null,
+      ml_promotion_decision: String(mlPromotionGateSummary.promotion_decision || "").trim() || null,
+      ml_promotion_preferred_model_family: String(mlPromotionGateSummary.preferred_model_family || "").trim() || null,
+      ml_promotion_preferred_model_artifact_id: String(mlPromotionGateSummary.preferred_model_artifact_id || "").trim() || null,
       execution_bottleneck_delta_status: executionBottleneckDeltaStatus,
       execution_bottleneck_delta_comparable: executionBottleneckDeltaComparable,
       execution_bottleneck_delta_interpretation: executionBottleneckDeltaInterpretation,
@@ -660,6 +691,13 @@ function deriveOpenClawAutonomyContract({
       model_readiness_tp0_to_tp1_converted_n: toNum(modelReadinessSummary.tp0_to_tp1_converted_n),
       model_readiness_pre_tp1_time_stop_n: toNum(modelReadinessSummary.pre_tp1_time_stop_n),
       model_readiness_dataset_version_id: String(modelReadinessSummary.dataset_version_id || "").trim() || null,
+      truth_preservation_audit_status: truthPreservationAuditStatus,
+      truth_preservation_ready: truthPreservationSummary.truth_preservation_ready === true,
+      truth_preservation_lineage_status: String(truthPreservationSummary.lineage_status || "").trim() || null,
+      truth_preservation_stale_comparison_active: truthPreservationSummary.stale_comparison_active === true,
+      truth_preservation_legacy_webhook_outcome_only_rows_n: toNum(truthPreservationSummary.legacy_webhook_outcome_only_rows_n),
+      truth_preservation_blocking_reason_n: toNum(truthPreservationSummary.blocking_reason_n),
+      truth_preservation_warning_reason_n: toNum(truthPreservationSummary.warning_reason_n),
       feature_store_status: featureStoreStatus,
       feature_store_version_id: String(
         featureStoreSummary.version_id
@@ -675,6 +713,13 @@ function deriveOpenClawAutonomyContract({
       ml_train_run_model_kind: String(mlTrainRunSummary.model_kind || "").trim() || null,
       ml_train_run_quality_gate_status: String(mlTrainRunSummary.quality_gate_status || "").trim() || null,
       ml_train_run_quality_gate_ready: mlTrainRunSummary.quality_gate_ready === true,
+      execution_serving_contract_status: executionServingContractStatus,
+      execution_serving_stage: String(executionServingContractSummary.serving_stage || "").trim() || null,
+      execution_serving_decision: String(executionServingContractSummary.serving_decision || "").trim() || null,
+      execution_serving_shadow_ready: executionServingContractSummary.shadow_ready === true,
+      execution_serving_preferred_model_family: String(executionServingContractSummary.preferred_model_family || "").trim() || null,
+      execution_serving_preferred_model_kind: String(executionServingContractSummary.preferred_model_kind || "").trim() || null,
+      execution_serving_preferred_model_artifact_id: String(executionServingContractSummary.preferred_model_artifact_id || "").trim() || null,
       execution_scope_train_run_status: mlTrainRunScopeStatus,
       execution_scope_train_run_id: String(mlTrainRunScopeSummary.train_run_id || "").trim() || null,
       execution_scope_train_run_model_artifact_id: String(mlTrainRunScopeSummary.model_artifact_id || "").trim() || null,
@@ -690,6 +735,11 @@ function deriveOpenClawAutonomyContract({
       ml_model_contract_canary_gate_status: String(mlModelContractSummary.canary_gate_status || "").trim() || null,
       ml_model_contract_promotion_status: String(mlModelContractSummary.promotion_status || "").trim() || null,
       ml_model_contract_model_artifact_id: String(mlModelContractSummary.model_artifact_id || "").trim() || null,
+      ml_promotion_gate_status: mlPromotionGateStatus,
+      ml_promotion_stage: String(mlPromotionGateSummary.promotion_stage || "").trim() || null,
+      ml_promotion_decision: String(mlPromotionGateSummary.promotion_decision || "").trim() || null,
+      ml_promotion_preferred_model_family: String(mlPromotionGateSummary.preferred_model_family || "").trim() || null,
+      ml_promotion_preferred_model_artifact_id: String(mlPromotionGateSummary.preferred_model_artifact_id || "").trim() || null,
       execution_stage_latency_status: executionStageLatencyStatus,
       execution_stage_latency_top_signal_to_intent_group: String(firstArrayRow(executionStageLatencySummary.top_signal_to_intent_groups)?.key || "").trim() || null,
       execution_stage_latency_top_operational_signal_to_intent_group: String(firstArrayRow(executionStageLatencySummary.top_operational_signal_to_intent_groups)?.key || "").trim() || null,

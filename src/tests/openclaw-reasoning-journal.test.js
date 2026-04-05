@@ -60,6 +60,12 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         ml_train_run_model_artifact_id: null,
         ml_train_run_quality_gate_status: null,
         ml_train_run_quality_gate_ready: false,
+        execution_serving_contract_status: "EXECUTION_SERVING_CONTRACT_READY",
+        execution_serving_stage: "SHADOW_READY",
+        execution_serving_decision: "ENABLE_SCOPE_SHADOW",
+        execution_serving_shadow_ready: true,
+        execution_serving_preferred_model_family: "EXECUTION_SCOPE",
+        execution_serving_preferred_model_artifact_id: "MODEL_EXEC_SCOPE__s1",
         execution_scope_train_run_status: "ML_TRAIN_RUN_REPORTED",
         execution_scope_train_run_id: "TRAIN_EXEC_SCOPE__s1",
         execution_scope_train_run_model_artifact_id: "MODEL_EXEC_SCOPE__s1",
@@ -75,11 +81,23 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         ml_model_contract_canary_gate_status: "BLOCK_MODEL_QUALITY",
         ml_model_contract_promotion_status: "HOLD_MODEL_QUALITY",
         ml_model_contract_model_artifact_id: null,
+        ml_promotion_gate_status: "ML_PROMOTION_GATE_READY",
+        ml_promotion_stage: "SHADOW_READY",
+        ml_promotion_decision: "HOLD_GLOBAL_CANARY",
+        ml_promotion_preferred_model_family: "EXECUTION_SCOPE",
+        ml_promotion_preferred_model_artifact_id: "MODEL_EXEC_SCOPE__s1",
         execution_bottleneck_delta_status: "EXECUTION_BOTTLENECK_DELTA_READY",
         execution_bottleneck_delta_comparable: true,
         execution_bottleneck_delta_interpretation: "USE_DELTA_SIGNAL",
         execution_bottleneck_delta_top_operational_webhook_delay_cause: "IMMEDIATE_EXEC_WEBHOOK_SAVED_LATE_INTENT",
         execution_bottleneck_delta_top_operational_signal_to_intent_group: "TV_WEBHOOK|EARLY_LONG|BTCUSDT",
+        truth_preservation_audit_status: "TRUTH_PRESERVATION_AUDIT_READY",
+        truth_preservation_ready: true,
+        truth_preservation_lineage_status: "PASS",
+        truth_preservation_stale_comparison_active: true,
+        truth_preservation_legacy_webhook_outcome_only_rows_n: 15,
+        truth_preservation_blocking_reason_n: 0,
+        truth_preservation_warning_reason_n: 2,
         model_readiness_dataset_version_id: "ML_TRAINING_DATASET__abc123",
         feature_store_version_id: "ML_FEATURE_STORE__def456",
         model_readiness_mfe_mae_label_rate: 0.0203,
@@ -196,9 +214,18 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_lineage_status, "PASS");
   assert.strictEqual(journal.summary.current_account_integrity_status, "WARN");
   assert.strictEqual(journal.summary.current_model_readiness_status, "MODEL_READINESS_READY");
+  assert.strictEqual(journal.summary.current_truth_preservation_audit_status, "TRUTH_PRESERVATION_AUDIT_READY");
+  assert.strictEqual(journal.summary.current_truth_preservation_ready, true);
+  assert.strictEqual(journal.summary.current_truth_preservation_lineage_status, "PASS");
+  assert.strictEqual(journal.summary.current_truth_preservation_stale_comparison_active, true);
+  assert.strictEqual(journal.summary.current_truth_preservation_legacy_webhook_outcome_only_rows_n, 15);
   assert.strictEqual(journal.summary.current_model_readiness_mfe_mae_label_rate, 0.0203);
   assert.strictEqual(journal.summary.current_model_readiness_dataset_version_id, "ML_TRAINING_DATASET__abc123");
   assert.strictEqual(journal.summary.current_feature_store_version_id, "ML_FEATURE_STORE__def456");
+  assert.strictEqual(journal.summary.current_execution_serving_contract_status, "EXECUTION_SERVING_CONTRACT_READY");
+  assert.strictEqual(journal.summary.current_execution_serving_stage, "SHADOW_READY");
+  assert.strictEqual(journal.summary.current_execution_serving_shadow_ready, true);
+  assert.strictEqual(journal.summary.current_execution_serving_preferred_model_family, "EXECUTION_SCOPE");
   assert.strictEqual(journal.summary.current_execution_quality_top_operational_webhook_delay_cause, "IMMEDIATE_EXEC_TRUE_INTENT_DELAY");
   assert.strictEqual(journal.summary.current_execution_quality_top_operational_immediate_intent_delay_group, "TV_WEBHOOK|EARLY_LONG|BTCUSDT");
   assert.strictEqual(journal.summary.current_execution_quality_scope_quality_gate_status, "POLICY_BLOCKED_RECALL_TOO_LOW");
@@ -252,6 +279,9 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_execution_scope_train_run_top_policy_blocked_test_source_train_n, 1);
   assert.strictEqual(journal.summary.current_ml_model_contract_status, "ML_MODEL_CONTRACT_OFFLINE_ONLY");
   assert.strictEqual(journal.summary.current_ml_model_contract_deployment_stage, "OFFLINE_ONLY");
+  assert.strictEqual(journal.summary.current_ml_promotion_gate_status, "ML_PROMOTION_GATE_READY");
+  assert.strictEqual(journal.summary.current_ml_promotion_stage, "SHADOW_READY");
+  assert.strictEqual(journal.summary.current_ml_promotion_decision, "HOLD_GLOBAL_CANARY");
   assert.strictEqual(journal.summary.current_execution_bottleneck_delta_status, "EXECUTION_BOTTLENECK_DELTA_READY");
   assert.strictEqual(journal.summary.current_execution_bottleneck_delta_comparable, true);
   assert.strictEqual(journal.summary.current_execution_bottleneck_delta_interpretation, "USE_DELTA_SIGNAL");

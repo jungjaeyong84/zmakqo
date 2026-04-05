@@ -67,6 +67,9 @@ function buildMlExperimentRegistry({
   executionQuality = null,
   executionStageLatency = null,
   executionModelDataset = null,
+  truthPreservationAudit = null,
+  executionServingContract = null,
+  mlPromotionGate = null,
   trainRun = null,
   modelContract = null,
 } = {}) {
@@ -76,6 +79,9 @@ function buildMlExperimentRegistry({
   const quality = readSummary(executionQuality);
   const stageLatency = readSummary(executionStageLatency);
   const executionModel = readSummary(executionModelDataset);
+  const truthAudit = readSummary(truthPreservationAudit);
+  const servingContract = readSummary(executionServingContract);
+  const promotionGate = readSummary(mlPromotionGate);
   const trainRunSummary = readSummary(trainRun);
   const modelContractSummary = readSummary(modelContract);
   const {
@@ -110,6 +116,19 @@ function buildMlExperimentRegistry({
     execution_stage_latency_status: String(stageLatency.status || "").trim().toUpperCase() || null,
     execution_stage_latency_top_operational_signal_to_intent_group: String(stageLatency.top_operational_signal_to_intent_groups && stageLatency.top_operational_signal_to_intent_groups[0] && stageLatency.top_operational_signal_to_intent_groups[0].key || "").trim() || null,
     execution_model_dataset_status: String(executionModel.status || "").trim().toUpperCase() || null,
+    truth_preservation_audit_status: String(truthAudit.status || "").trim().toUpperCase() || null,
+    truth_preservation_ready: truthAudit.truth_preservation_ready === true,
+    truth_preservation_blocking_reason_n: toNum(truthAudit.blocking_reason_n),
+    truth_preservation_warning_reason_n: toNum(truthAudit.warning_reason_n),
+    truth_preservation_stale_comparison_active: truthAudit.stale_comparison_active === true,
+    execution_serving_contract_status: String(servingContract.status || "").trim().toUpperCase() || null,
+    execution_serving_stage: String(servingContract.serving_stage || "").trim().toUpperCase() || null,
+    execution_serving_shadow_ready: servingContract.shadow_ready === true,
+    execution_serving_preferred_model_family: String(servingContract.preferred_model_family || "").trim() || null,
+    execution_serving_preferred_model_artifact_id: String(servingContract.preferred_model_artifact_id || "").trim() || null,
+    ml_promotion_gate_status: String(promotionGate.status || "").trim().toUpperCase() || null,
+    ml_promotion_stage: String(promotionGate.promotion_stage || "").trim().toUpperCase() || null,
+    ml_promotion_decision: String(promotionGate.promotion_decision || "").trim().toUpperCase() || null,
     train_run_status: String(trainRunSummary.status || "").trim().toUpperCase() || null,
     train_run_id: String(trainRunSummary.train_run_id || "").trim() || null,
     train_run_model_kind: String(trainRunSummary.model_kind || "").trim() || null,

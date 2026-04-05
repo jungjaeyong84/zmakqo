@@ -37,6 +37,7 @@ const INPUTS = Object.freeze({
   overallAccountReport: path.join(OPS_DAILY_DIR, "overall_account_report_latest.json"),
   signalLineageHealth: path.join(OPS_DAILY_DIR, "signal_lineage_health_latest.json"),
   modelReadiness: path.join(OPS_DAILY_DIR, "best_self_evolution_model_readiness_latest.json"),
+  truthPreservationAudit: path.join(OPS_DAILY_DIR, "best_self_evolution_truth_preservation_audit_latest.json"),
   featureStore: path.join(OPS_DAILY_DIR, "ml_feature_store_latest.json"),
   executionModelDataset: path.join(OPS_DAILY_DIR, "execution_model_dataset_latest.json"),
   executionFillInference: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_fill_inference_latest.json"),
@@ -46,7 +47,9 @@ const INPUTS = Object.freeze({
   executionBottleneckDelta: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_bottleneck_delta_latest.json"),
   mlTrainRun: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_train_run_latest.json"),
   mlTrainRunScope: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_train_run_scope_result_latest.json"),
+  executionServingContract: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_serving_contract_latest.json"),
   mlModelContract: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_model_contract_latest.json"),
+  mlPromotionGate: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_promotion_gate_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -90,9 +93,12 @@ function renderMarkdown(report = {}) {
     `- lineage/account: ${summary.lineage_status || "N/A"} / account=${summary.account_integrity_status || "N/A"} / account_issues=${status.account_integrity_issue_n != null ? status.account_integrity_issue_n : "N/A"} / ops=${status.account_ops_status || "N/A"}:${status.account_ops_mode || "N/A"}`,
     `- microstructure: ${summary.execution_microstructure_status || "N/A"} / tp0_hit=${status.tp0_hit_rate != null ? status.tp0_hit_rate : "N/A"} / tp1_hit=${status.tp1_hit_rate != null ? status.tp1_hit_rate : "N/A"} / cluster=${summary.portfolio_cluster_risk_status || "N/A"}`,
     `- model_readiness: ${summary.model_readiness_status || "N/A"} / rows=${status.model_readiness_rows_n != null ? status.model_readiness_rows_n : "N/A"} / realized=${status.model_readiness_realized_n != null ? status.model_readiness_realized_n : "N/A"} / invalid=${status.model_readiness_invalid_n != null ? status.model_readiness_invalid_n : "N/A"}`,
+    `- truth_preservation: ${summary.truth_preservation_audit_status || "N/A"} / ready=${status.truth_preservation_ready ? "YES" : "NO"} / blocks=${status.truth_preservation_blocking_reason_n != null ? status.truth_preservation_blocking_reason_n : "N/A"} / warnings=${status.truth_preservation_warning_reason_n != null ? status.truth_preservation_warning_reason_n : "N/A"}`,
     `- feature_store: ${summary.feature_store_status || "N/A"} / rows=${status.feature_store_rows_n != null ? status.feature_store_rows_n : "N/A"} / keys=${status.feature_store_keys_n != null ? status.feature_store_keys_n : "N/A"}`,
     `- ml_train_run: ${status.ml_train_run_status || "N/A"} / ${status.ml_train_run_model_kind || "N/A"} / ${status.ml_train_run_id || "N/A"}`,
+    `- execution_serving: ${status.execution_serving_contract_status || "N/A"} / ${status.execution_serving_stage || "N/A"} / shadow_ready=${status.execution_serving_shadow_ready ? "YES" : "NO"} / model=${status.execution_serving_preferred_model_family || "N/A"}`,
     `- ml_model_contract: ${status.ml_model_contract_status || "N/A"} / ${status.ml_model_contract_deployment_stage || "N/A"} / ${status.ml_model_contract_canary_gate_status || "N/A"}`,
+    `- ml_promotion_gate: ${status.ml_promotion_gate_status || "N/A"} / ${status.ml_promotion_stage || "N/A"} / ${status.ml_promotion_decision || "N/A"}`,
     `- execution_fill_inference: ${status.execution_fill_inference_status || "N/A"} / mismatch=${status.execution_fill_inference_mismatch_rate != null ? status.execution_fill_inference_mismatch_rate : "N/A"}`,
     `- execution_scope_inference: ${status.execution_scope_inference_status || "N/A"} / mismatch=${status.execution_scope_inference_mismatch_rate != null ? status.execution_scope_inference_mismatch_rate : "N/A"} / gate=${status.execution_scope_train_run_quality_gate_status || "N/A"}`,
     `- execution_model_dataset: ${summary.execution_model_dataset_status || "N/A"} / rows=${status.execution_model_dataset_rows_n != null ? status.execution_model_dataset_rows_n : "N/A"} / filled=${status.execution_model_dataset_filled_n != null ? status.execution_model_dataset_filled_n : "N/A"} / rejected=${status.execution_model_dataset_rejected_n != null ? status.execution_model_dataset_rejected_n : "N/A"}`,
@@ -132,6 +138,7 @@ function main() {
     overallAccountReport: readJsonRawSafe(INPUTS.overallAccountReport, null),
     signalLineageHealth: readJsonRawSafe(INPUTS.signalLineageHealth, null),
     modelReadiness: readJsonRawSafe(INPUTS.modelReadiness, null),
+    truthPreservationAudit: readJsonRawSafe(INPUTS.truthPreservationAudit, null),
     featureStore: readJsonRawSafe(INPUTS.featureStore, null),
     executionModelDataset: readJsonRawSafe(INPUTS.executionModelDataset, null),
     executionFillInference: readJsonRawSafe(INPUTS.executionFillInference, null),
@@ -141,7 +148,9 @@ function main() {
     executionBottleneckDelta: readJsonRawSafe(INPUTS.executionBottleneckDelta, null),
     mlTrainRun: readJsonRawSafe(INPUTS.mlTrainRun, null),
     mlTrainRunScope: readJsonRawSafe(INPUTS.mlTrainRunScope, null),
+    executionServingContract: readJsonRawSafe(INPUTS.executionServingContract, null),
     mlModelContract: readJsonRawSafe(INPUTS.mlModelContract, null),
+    mlPromotionGate: readJsonRawSafe(INPUTS.mlPromotionGate, null),
   });
   const output = {
     ok: true,

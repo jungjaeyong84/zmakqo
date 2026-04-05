@@ -19,6 +19,9 @@ const { buildMlExperimentRegistry } = require("../utils/mlExperimentRegistry");
     executionQuality: { summary: { status: "EXECUTION_QUALITY_REVIEW", top_operational_webhook_delay_cause: "IMMEDIATE_EXEC_WEBHOOK_SAVED_LATE_INTENT" } },
     executionStageLatency: { summary: { status: "EXECUTION_STAGE_LATENCY_READY", top_operational_signal_to_intent_groups: [{ key: "TV_WEBHOOK|EARLY_SHORT|XRPUSDT" }] } },
     executionModelDataset: { summary: { status: "EXECUTION_MODEL_DATASET_READY", version_id: "EXECUTION_MODEL_DATASET__xyz789" } },
+    truthPreservationAudit: { summary: { status: "TRUTH_PRESERVATION_AUDIT_READY", truth_preservation_ready: true, blocking_reason_n: 0, warning_reason_n: 2, stale_comparison_active: true } },
+    executionServingContract: { summary: { status: "EXECUTION_SERVING_CONTRACT_READY", serving_stage: "SHADOW_READY", shadow_ready: true, preferred_model_family: "EXECUTION_SCOPE", preferred_model_artifact_id: "MODEL_SCOPE__1" } },
+    mlPromotionGate: { summary: { status: "ML_PROMOTION_GATE_READY", promotion_stage: "SHADOW_READY", promotion_decision: "HOLD_GLOBAL_CANARY" } },
     trainRun: { summary: { status: "ML_TRAIN_RUN_NOT_STARTED", model_artifact_id: null, quality_gate_status: null, quality_gate_ready: false } },
     modelContract: { summary: { status: "ML_MODEL_CONTRACT_OFFLINE_ONLY", deployment_stage: "OFFLINE_ONLY", canary_gate_status: "BLOCK_MODEL_QUALITY", promotion_status: "HOLD_MODEL_QUALITY" } },
   });
@@ -33,6 +36,15 @@ const { buildMlExperimentRegistry } = require("../utils/mlExperimentRegistry");
   assert.strictEqual(report.train_run_status, "ML_TRAIN_RUN_NOT_STARTED");
   assert.strictEqual(report.train_run_id, null);
   assert.strictEqual(report.train_run_quality_gate_ready, false);
+  assert.strictEqual(report.truth_preservation_audit_status, "TRUTH_PRESERVATION_AUDIT_READY");
+  assert.strictEqual(report.truth_preservation_ready, true);
+  assert.strictEqual(report.truth_preservation_warning_reason_n, 2);
+  assert.strictEqual(report.truth_preservation_stale_comparison_active, true);
+  assert.strictEqual(report.execution_serving_contract_status, "EXECUTION_SERVING_CONTRACT_READY");
+  assert.strictEqual(report.execution_serving_stage, "SHADOW_READY");
+  assert.strictEqual(report.execution_serving_shadow_ready, true);
+  assert.strictEqual(report.ml_promotion_gate_status, "ML_PROMOTION_GATE_READY");
+  assert.strictEqual(report.ml_promotion_stage, "SHADOW_READY");
   assert.strictEqual(report.model_contract_status, "ML_MODEL_CONTRACT_OFFLINE_ONLY");
   assert.strictEqual(report.model_contract_deployment_stage, "OFFLINE_ONLY");
 
