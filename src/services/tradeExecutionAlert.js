@@ -203,6 +203,53 @@ function parseExitEventMeta(event) {
   return { token: "EXIT", label: "청산" };
 }
 
+function normalizeCohort(value) {
+  const upper = String(value || "").trim().toUpperCase();
+  if (upper === "RESCUE" || upper === "MIXED" || upper === "KEEP_DROP" || upper === "HOLD_SAMPLE") return upper;
+  return null;
+}
+
+function cohortLabel(cohort) {
+  if (cohort === "RESCUE") return "RESCUE";
+  if (cohort === "MIXED") return "MIXED";
+  if (cohort === "KEEP_DROP") return "KEEP_DROP";
+  if (cohort === "HOLD_SAMPLE") return "HOLD_SAMPLE";
+  return null;
+}
+
+function resolveMarketRegimeLines(payload = {}, features = {}) {
+  const cohort = normalizeCohort(
+    payload.openclawMarketRegimeCohort
+    || payload.marketRegimeCohort
+    || features.openclaw_market_regime_cohort
+    || features.market_regime_cohort
+  );
+  const verdict = String(
+    payload.openclawMarketRegimeDropVerdict
+    || payload.marketRegimeDropVerdict
+    || features.openclaw_market_regime_drop_verdict
+    || features.market_regime_drop_verdict
+    || ""
+  ).trim().toUpperCase();
+  const lines = [];
+  const cohortText = cohortLabel(cohort);
+  if (cohortText) lines.push(`시장군: ${cohortText}`);
+  if (verdict) lines.push(`시장판정: ${verdict}`);
+  return lines;
+}
+
+function resolveExitLabel(payload = {}, exitMeta = {}) {
+  const feat = (payload.features && typeof payload.features === "object")
+    ? payload.features
+    : ((payload.features_json && typeof payload.features_json === "object") ? payload.features_json : {});
+  const reason = String(payload.reason || payload.statusReason || payload.cancelReason || feat.reason || "").trim().toUpperCase();
+  const scope = String(feat.time_stop_scope || "").trim().toUpperCase();
+  if (String(exitMeta.token || "").startsWith("TIME_STOP_") && (scope === "PRE_TP1" || reason === "EXIT_TIME_STOP_PRE_TP1")) {
+    return `${exitMeta.label} (pre-TP1)`;
+  }
+  return exitMeta.label;
+}
+
 function formatEventTag(event) {
   const ev = String(event || "").trim().toUpperCase();
   if (!ev) return "-";
@@ -296,8 +343,10 @@ async function resolveFailureAlertChannel(exchange) {
 function isExitFailureEvent(event) {
   const ev = String(event || "").trim().toUpperCase();
   if (!ev) return false;
+  if (ev.startsWith("EXIT_TP_P0")) return true;
   return ev.startsWith("EXIT_TP_P1")
     || ev.startsWith("EXIT_TP_C")
+    || ev.startsWith("EXIT_TIME_STOP")
     || ev.startsWith("EXIT_TRAIL")
     || ev.startsWith("EXIT_SL");
 }
@@ -350,6 +399,7 @@ function buildMessage(payload) {
       lines.push(`배율: ${leverageLabel}${leverageReason ? ` (${leverageReason})` : ""}`);
     }
     lines.push(...resolveSizingLines(payload));
+    lines.push(...resolveMarketRegimeLines(payload, feat));
     const rulesTxt = formatExitRulesCompact(payload.exitRules || payload.exit_rules);
     if (rulesTxt) lines.push(`청산규칙: ${rulesTxt}`);
     lines.push(`이벤트: ${formatEventTag(event)}`);
@@ -358,10 +408,11 @@ function buildMessage(payload) {
 
   if (intent === "EXIT") {
     const exitMeta = parseExitEventMeta(event);
+    const exitLabel = resolveExitLabel(payload, exitMeta);
     const qtyText = fullExit ? "전량" : (formatPercent(closeRatio) || "부분");
     const title = `${symbol} ${exitMeta.token} ${qtyText} 청산`;
     const lines = [];
-    lines.push(`종류: ${exitMeta.label}`);
+    lines.push(`종류: ${exitLabel}`);
     if (Number.isFinite(notional)) lines.push(`청산규모: ${formatMoney(notional, { unit })} ${unit}`);
     if (Number.isFinite(pnl)) {
       const pnlLabel = pnl >= 0 ? "수익" : "손익";
@@ -371,6 +422,7 @@ function buildMessage(payload) {
     if (leverageLabel) {
       lines.push(`배율: ${leverageLabel}${leverageReason ? ` (${leverageReason})` : ""}`);
     }
+    lines.push(...resolveMarketRegimeLines(payload, feat));
     const rulesTxt = formatExitRulesCompact(payload.exitRules || payload.exit_rules);
     if (rulesTxt) lines.push(`청산규칙: ${rulesTxt}`);
     lines.push(`이벤트: ${formatEventTag(event)}`);
@@ -386,9 +438,13 @@ function buildFailureMessage(payload) {
   const event = normalizeTpP1EventForExchange(payload.event, exchange);
   const intent = resolveIntent(payload);
   if (!symbol || intent !== "EXIT" || !isExitFailureEvent(event)) return null;
+  const feat = (payload.features && typeof payload.features === "object")
+    ? payload.features
+    : ((payload.features_json && typeof payload.features_json === "object") ? payload.features_json : {});
 
   const unit = exchange.includes("BINANCE") ? "USDT" : "KRW";
   const exitMeta = parseExitEventMeta(event);
+  const exitLabel = resolveExitLabel(payload, exitMeta);
   const closeRatio = Number(payload.closeRatio);
   const qtyPct = Number(payload.qtyPct);
   const execPrice = Number(payload.execPrice);
@@ -409,14 +465,15 @@ function buildFailureMessage(payload) {
     ? "전량"
     : (formatPercent(closeRatio) || formatPercent(qtyPct) || null);
 
-  const title = `${symbol} ${exitMeta.label} 주문 실패`;
-  const lines = [`종류: ${exitMeta.label}`];
+  const title = `${symbol} ${exitLabel} 주문 실패`;
+  const lines = [`종류: ${exitLabel}`];
   if (directionKo) lines.push(`방향: ${directionKo} 청산`);
   if (qtyLabel) lines.push(`주문비율: ${qtyLabel}`);
   if (Number.isFinite(execPrice)) lines.push(`기준가: ${formatMoney(execPrice, { unit })} ${unit}`);
   if (leverageLabel) {
     lines.push(`배율: ${leverageLabel}${leverageReason ? ` (${leverageReason})` : ""}`);
   }
+  lines.push(...resolveMarketRegimeLines(payload, feat));
   const rulesTxt = formatExitRulesCompact(payload.exitRules || payload.exit_rules);
   if (rulesTxt) lines.push(`청산규칙: ${rulesTxt}`);
   lines.push(`실패사유: ${reason}`);

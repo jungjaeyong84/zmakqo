@@ -1,4 +1,5 @@
 const { classifyStage1IntegrityReason, explainStage1IntegrityReason } = require("./stage1IntegrityReason");
+const { resolveIntentStatusFamily } = require("./intentStatus");
 
 function normalizeReason(value) {
   const text = String(value || "").trim();
@@ -91,6 +92,16 @@ function classifySignalReasonStage(reason) {
     };
   }
 
+  if (code === "DROP_CHASE_ENTRY_QUALITY") {
+    return {
+      step: 5,
+      key: "TIMING",
+      label: "WAIT 타이밍층",
+      text: "5차 WAIT 타이밍층",
+      code,
+    };
+  }
+
   if (code.startsWith("DROP_AI_BIAS_")) {
     return {
       step: 3,
@@ -134,6 +145,7 @@ function explainSignalReason(reason) {
     DROP_EV_GATE_TP1_PROB: "TP1 도달 확률 하한이 기준보다 낮아 진입을 보류했습니다.",
     DROP_EV_GATE_BARS_MISSING: "EV 판단에 필요한 최근 봉 데이터가 부족해 진입을 보류했습니다.",
     DROP_WAIT_ONE_BAR_TIMING: "현재 봉이 과열된 추격봉으로 보여 다음 봉까지 진입을 연기했습니다.",
+    DROP_CHASE_ENTRY_QUALITY: "최근 봉이 과확장 추격 구간으로 판단되어 진입을 보류했습니다.",
 
     DROP_OPPOSITE_COOLDOWN: "직전 반대 방향 종료 후 쿨다운 구간이라 진입을 보류했습니다.",
     DROP_OPPOSITE_TIME_COOLDOWN: "반대 방향 시간 쿨다운이 남아 있어 진입을 보류했습니다.",
@@ -165,6 +177,9 @@ function explainSignalReason(reason) {
   if (code.startsWith("DROP_WAIT_ONE_BAR_")) {
     return "최근 봉 구조상 지금은 늦은 추격으로 판단되어 다음 봉까지 진입을 연기했습니다.";
   }
+  if (code === "DROP_CHASE_ENTRY_QUALITY") {
+    return "최근 봉 구조상 과확장 추격 진입으로 판단되어 진입을 보류했습니다.";
+  }
   if (code.startsWith("DROP_")) {
     return "운영 필터에서 현재 조건상 진입을 보류했습니다.";
   }
@@ -174,6 +189,7 @@ function explainSignalReason(reason) {
 function buildSignalDisplayReason(signal, execPlan) {
   const rawReason = normalizeReason(signal && signal.reason);
   const status = normalizeReason(execPlan && execPlan.status);
+  const statusFamily = resolveIntentStatusFamily(status);
   const cancelReason = normalizeReason(execPlan && execPlan.cancel_reason);
   const statusReason = normalizeReason(execPlan && execPlan.status_reason);
   const pendingReason = normalizeReason(execPlan && execPlan.pending_reason);
@@ -184,12 +200,12 @@ function buildSignalDisplayReason(signal, execPlan) {
 
   let primary = rawReason;
   if (externalFill) primary = "EXTERNAL_FILL_RECONCILED";
-  else if (status === "CANCELED" && cancelReason) primary = cancelReason;
+  else if (statusFamily === "CANCELED" && cancelReason) primary = cancelReason;
   else if (statusReason) primary = statusReason;
   else if (pendingReason) primary = pendingReason;
   else if (cancelReason) primary = cancelReason;
 
-  const detail = status === "CANCELED"
+  const detail = statusFamily === "CANCELED"
     ? (lastError || cancelNote || null)
     : (cancelNote || null);
   const stage = classifySignalReasonStage(primary || rawReason);

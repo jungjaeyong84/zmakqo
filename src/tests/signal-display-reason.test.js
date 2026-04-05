@@ -5,7 +5,8 @@ const { buildSignalDisplayReason, classifySignalReasonStage } = require('../util
   const failed = buildSignalDisplayReason(
     { reason: 'PINE_DROP_STALE_POS_TO_ENTRY' },
     {
-      status: 'CANCELED',
+      status: 'FAILED_INTERNAL',
+      status_family: 'CANCELED',
       pending_reason: 'EXEC_CURRENT_BAR',
       status_reason: 'LIVE_FAILED',
       cancel_reason: 'MARGIN_TYPE_SET_FAILED',
@@ -103,6 +104,16 @@ const { buildSignalDisplayReason, classifySignalReasonStage } = require('../util
     {}
   );
   assert.strictEqual(waitReason.reason_ko, '현재 봉이 과열된 추격봉으로 보여 다음 봉까지 진입을 연기했습니다.');
+
+  const chaseStage = classifySignalReasonStage('DROP_CHASE_ENTRY_QUALITY');
+  assert.strictEqual(chaseStage.step, 5);
+  assert.strictEqual(chaseStage.key, 'TIMING');
+
+  const chaseReason = buildSignalDisplayReason(
+    { reason: 'DROP_CHASE_ENTRY_QUALITY' },
+    {}
+  );
+  assert.strictEqual(chaseReason.reason_ko, '최근 봉이 과확장 추격 구간으로 판단되어 진입을 보류했습니다.');
 
   console.log('SIGNAL_DISPLAY_REASON_TEST_OK');
 })();
