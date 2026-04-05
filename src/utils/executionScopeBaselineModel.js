@@ -45,6 +45,7 @@ const CATEGORICAL_FEATURES = Object.freeze([
   "features.score_bucket",
   "features.entry_reason_profile",
   "features.policy_block_hint",
+  "features.policy_capacity_profile",
   "features.same_dir_add",
   "features.current_bar_fast_fill",
   "features.runtime_exception_without_no_fill_reason",

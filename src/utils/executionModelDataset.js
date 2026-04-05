@@ -179,6 +179,42 @@ function derivePolicyBlockHint({
   return "NONE";
 }
 
+function derivePolicyCapacityProfile({
+  noFillReason = null,
+  noFillReasonFamily = null,
+  features = null,
+} = {}) {
+  const bag = normalizeFeatureBag(features);
+  const normalizedReason = toUpper(noFillReason);
+  const normalizedFamily = toUpper(noFillReasonFamily);
+  const entryReason = toUpper(bag.reason);
+  const action = toUpper(bag.action);
+  const sameDirAdd = entryReason === "IN_POSITION_SAME_DIR" && action === "ADD";
+  const stalePosEntry = entryReason === "PINE_DROP_STALE_POS_TO_ENTRY";
+  const costShieldBlockAdd = bag.cost_shield_block_add === true;
+
+  if (normalizedReason === "TOTAL_BUDGET_EXCEEDED") {
+    if (stalePosEntry && costShieldBlockAdd) return "TOTAL_BUDGET_STALE_POS_COST_SHIELD";
+    if (sameDirAdd) return "TOTAL_BUDGET_SAME_DIR_ADD";
+    if (action === "ADD") return "TOTAL_BUDGET_ADD";
+    if (action === "ENTRY") return "TOTAL_BUDGET_ENTRY";
+    return "TOTAL_BUDGET_OTHER";
+  }
+  if (normalizedReason === "RISK_BUDGET_DISABLED") {
+    if (sameDirAdd) return "RISK_BUDGET_SAME_DIR_ADD";
+    if (action === "ADD") return "RISK_BUDGET_ADD";
+    if (action === "ENTRY") return "RISK_BUDGET_ENTRY";
+    return "RISK_BUDGET_OTHER";
+  }
+  if (normalizedFamily === "POLICY_OR_CAPACITY") {
+    if (costShieldBlockAdd) return "POLICY_CAPACITY_COST_SHIELD";
+    if (sameDirAdd) return "POLICY_CAPACITY_SAME_DIR_ADD";
+    if (stalePosEntry) return "POLICY_CAPACITY_STALE_POS_ENTRY";
+    return "POLICY_CAPACITY_OTHER";
+  }
+  return "NOT_POLICY_CAPACITY";
+}
+
 function deriveEntryScheduleProfile({ reason = null, noteKind = null, gapMs = null, wasFilled = false, createdToFillMs = null } = {}) {
   const scheduleReason = toUpper(reason);
   const scheduleNoteKind = toUpper(noteKind);
@@ -618,6 +654,11 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
     });
     features.entry_reason_profile = deriveEntryReasonProfile(features);
     features.policy_block_hint = derivePolicyBlockHint({
+      noFillReason,
+      noFillReasonFamily,
+      features,
+    });
+    features.policy_capacity_profile = derivePolicyCapacityProfile({
       noFillReason,
       noFillReasonFamily,
       features,
@@ -1065,6 +1106,7 @@ module.exports = {
     deriveSignalToIntentBucket,
     deriveNormalizedProConflict,
     derivePolicyBlockHint,
+    derivePolicyCapacityProfile,
     deriveSameDirAddFlag,
     deriveCurrentBarFastFillFlag,
     deriveRuntimeExceptionWithoutNoFillReasonFlag,
