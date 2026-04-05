@@ -584,6 +584,8 @@ function summarizeExecutionModelRows(rows = []) {
   const byWebhookToIntentGroup = new Map();
   const byWebhookDelayReason = new Map();
   const byWebhookDelayCause = new Map();
+  const byOperationalWebhookDelayCause = new Map();
+  const byOperationalImmediateIntentDelayGroup = new Map();
   const byMeasuredEntryLatencyGroup = new Map();
   const byFallbackEntryLatencyGroup = new Map();
   for (const row of scoped) {
@@ -648,6 +650,21 @@ function summarizeExecutionModelRows(rows = []) {
           byWebhookDelayCause.set(delayCause, { key: delayCause, rows_n: 0 });
         }
         byWebhookDelayCause.get(delayCause).rows_n += 1;
+        if (isOperationalSource(source)) {
+          if (!byOperationalWebhookDelayCause.has(delayCause)) {
+            byOperationalWebhookDelayCause.set(delayCause, { key: delayCause, rows_n: 0 });
+          }
+          byOperationalWebhookDelayCause.get(delayCause).rows_n += 1;
+          if (delayCause === "IMMEDIATE_EXEC_TRUE_INTENT_DELAY") {
+            const causeKey = [source, event, market].join("|");
+            if (!byOperationalImmediateIntentDelayGroup.has(causeKey)) {
+              byOperationalImmediateIntentDelayGroup.set(causeKey, { key: causeKey, source, event, market, rows_n: 0, latency_values: [] });
+            }
+            const causeBucket = byOperationalImmediateIntentDelayGroup.get(causeKey);
+            causeBucket.rows_n += 1;
+            causeBucket.latency_values.push(webhookToIntentMs);
+          }
+        }
       }
     }
   }
@@ -764,6 +781,20 @@ function summarizeExecutionModelRows(rows = []) {
       .slice(0, 12),
     top_webhook_delay_causes: Array.from(byWebhookDelayCause.values())
       .sort((a, b) => (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
+      .slice(0, 12),
+    top_operational_webhook_delay_causes: Array.from(byOperationalWebhookDelayCause.values())
+      .sort((a, b) => (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
+      .slice(0, 12),
+    top_operational_immediate_intent_delay_groups: Array.from(byOperationalImmediateIntentDelayGroup.values())
+      .map((row) => ({
+        key: row.key,
+        source: row.source,
+        event: row.event,
+        market: row.market,
+        rows_n: row.rows_n,
+        webhook_to_intent_p95_ms: p95(row.latency_values),
+      }))
+      .sort((a, b) => ((b.webhook_to_intent_p95_ms || 0) - (a.webhook_to_intent_p95_ms || 0)) || (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
       .slice(0, 12),
     status: scoped.length > 0 ? 'EXECUTION_MODEL_DATASET_READY' : 'EXECUTION_MODEL_DATASET_EMPTY',
   };

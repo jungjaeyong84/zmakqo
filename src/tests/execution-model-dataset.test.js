@@ -100,6 +100,8 @@ assert.strictEqual(recomputedSummary.webhook_to_intent_p95_ms, 30000);
 assert.strictEqual(recomputedSummary.top_webhook_to_intent_latency_groups[0].key, 'LONG|TV_WEBHOOK|BNBUSDT');
 assert.strictEqual(Array.isArray(recomputedSummary.top_webhook_delay_reasons), true);
 assert.strictEqual(Array.isArray(recomputedSummary.top_webhook_delay_causes), true);
+assert.strictEqual(Array.isArray(recomputedSummary.top_operational_webhook_delay_causes), true);
+assert.strictEqual(Array.isArray(recomputedSummary.top_operational_immediate_intent_delay_groups), true);
 assert.strictEqual(__test.deriveNoFillReasonFamily('DROP_EV_GATE_TP1_PROB'), 'FILTER_DROP');
 assert.strictEqual(__test.deriveNoFillReasonFamily('POSITION_FULL'), 'POLICY_OR_CAPACITY');
 assert.strictEqual(__test.deriveNoFillReasonFamily('INTENT_EXPIRED'), 'CONTROL_FLOW');

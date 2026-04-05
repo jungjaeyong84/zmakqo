@@ -340,6 +340,8 @@ function deriveOpenClawAutonomyContract({
   const topWebhookToIntentLatencyGroup = firstArrayRow(executionModelSummary.top_webhook_to_intent_latency_groups);
   const topWebhookDelayReason = firstArrayRow(executionModelSummary.top_webhook_delay_reasons);
   const topWebhookDelayCause = firstArrayRow(executionModelSummary.top_webhook_delay_causes);
+  const topOperationalWebhookDelayCause = firstArrayRow(executionModelSummary.top_operational_webhook_delay_causes);
+  const topOperationalImmediateIntentDelayGroup = firstArrayRow(executionModelSummary.top_operational_immediate_intent_delay_groups);
   const topFillSourceBucket = firstArrayRow(executionModelSummary.by_primary_fill_source);
   const topNoFillReason = firstArrayRow(executionModelSummary.top_no_fill_reasons);
   const topNoFillReasonFamily = firstArrayRow(executionModelSummary.top_no_fill_reason_families);
@@ -461,6 +463,10 @@ function deriveOpenClawAutonomyContract({
       execution_model_dataset_top_webhook_delay_reason_rows_n: toNum(topWebhookDelayReason && topWebhookDelayReason.rows_n),
       execution_model_dataset_top_webhook_delay_cause: topWebhookDelayCause ? String(topWebhookDelayCause.key || "").trim() || null : null,
       execution_model_dataset_top_webhook_delay_cause_rows_n: toNum(topWebhookDelayCause && topWebhookDelayCause.rows_n),
+      execution_model_dataset_top_operational_webhook_delay_cause: topOperationalWebhookDelayCause ? String(topOperationalWebhookDelayCause.key || "").trim() || null : null,
+      execution_model_dataset_top_operational_webhook_delay_cause_rows_n: toNum(topOperationalWebhookDelayCause && topOperationalWebhookDelayCause.rows_n),
+      execution_model_dataset_top_operational_immediate_intent_delay_group: topOperationalImmediateIntentDelayGroup ? String(topOperationalImmediateIntentDelayGroup.key || "").trim() || null : null,
+      execution_model_dataset_top_operational_immediate_intent_delay_p95_ms: toNum(topOperationalImmediateIntentDelayGroup && topOperationalImmediateIntentDelayGroup.webhook_to_intent_p95_ms),
       execution_model_dataset_top_signal_to_intent_latency_group: topSignalToIntentLatencyGroup ? String(topSignalToIntentLatencyGroup.key || "").trim() || null : null,
       execution_model_dataset_top_operational_signal_to_intent_latency_group: topOperationalSignalToIntentLatencyGroup ? String(topOperationalSignalToIntentLatencyGroup.key || "").trim() || null : null,
       execution_model_dataset_top_operational_signal_to_intent_latency_market: topOperationalSignalToIntentLatencyGroup ? String(topOperationalSignalToIntentLatencyGroup.market || "").trim() || null : null,
@@ -524,6 +530,8 @@ function deriveOpenClawAutonomyContract({
       execution_model_dataset_top_webhook_to_intent_latency_group: topWebhookToIntentLatencyGroup ? String(topWebhookToIntentLatencyGroup.key || "").trim() || null : null,
       execution_model_dataset_top_webhook_delay_reason: topWebhookDelayReason ? String(topWebhookDelayReason.key || "").trim() || null : null,
       execution_model_dataset_top_webhook_delay_cause: topWebhookDelayCause ? String(topWebhookDelayCause.key || "").trim() || null : null,
+      execution_model_dataset_top_operational_webhook_delay_cause: topOperationalWebhookDelayCause ? String(topOperationalWebhookDelayCause.key || "").trim() || null : null,
+      execution_model_dataset_top_operational_immediate_intent_delay_group: topOperationalImmediateIntentDelayGroup ? String(topOperationalImmediateIntentDelayGroup.key || "").trim() || null : null,
       execution_model_dataset_top_signal_to_intent_latency_group: topSignalToIntentLatencyGroup ? String(topSignalToIntentLatencyGroup.key || "").trim() || null : null,
       execution_model_dataset_top_operational_signal_to_intent_latency_group: topOperationalSignalToIntentLatencyGroup ? String(topOperationalSignalToIntentLatencyGroup.key || "").trim() || null : null,
       execution_model_dataset_top_entry_latency_group: topEntryLatencyGroup ? String(topEntryLatencyGroup.key || "").trim() || null : null,
