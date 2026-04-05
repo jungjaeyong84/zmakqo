@@ -140,6 +140,24 @@ function deriveRuntimeExceptionWithoutNoFillReasonFlag({ noFillReasonFamily = nu
   return toUpper(noFillReasonFamily) === "RUNTIME_ERROR" && !toUpper(noFillReason);
 }
 
+function deriveStalePosEntryProfile({
+  features = null,
+  wasFilled = false,
+  noFillReason = null,
+  signalToIntentMs = null,
+} = {}) {
+  const bag = normalizeFeatureBag(features);
+  if (toUpper(bag.reason) !== "PINE_DROP_STALE_POS_TO_ENTRY") return "NOT_STALE_POS_ENTRY";
+  if (wasFilled === true) {
+    const latency = toNum(signalToIntentMs);
+    if (Number.isFinite(latency) && latency > 120000) return "STALE_POS_DELAYED_INTENT_FILLED";
+    return "STALE_POS_FILLED";
+  }
+  if (toUpper(noFillReason)) return "STALE_POS_BLOCKED";
+  if (Number.isFinite(toNum(signalToIntentMs)) && toNum(signalToIntentMs) > 120000) return "STALE_POS_DELAYED_INTENT";
+  return "STALE_POS_OTHER";
+}
+
 function derivePolicyBlockHint({
   noFillReason = null,
   noFillReasonFamily = null,
@@ -621,6 +639,12 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
       noFillReasonFamily,
       noFillReason,
     });
+    features.stale_pos_entry_profile = deriveStalePosEntryProfile({
+      features,
+      wasFilled,
+      noFillReason,
+      signalToIntentMs,
+    });
     return {
       schema_version: EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
       row_id: intentId || String(intent.signal_id || intent.id || "").trim() || null,
@@ -1044,6 +1068,7 @@ module.exports = {
     deriveSameDirAddFlag,
     deriveCurrentBarFastFillFlag,
     deriveRuntimeExceptionWithoutNoFillReasonFlag,
+    deriveStalePosEntryProfile,
     deriveWebhookDelayCause,
     isOperationalSource,
     buildWebhookOutcomeIndex,

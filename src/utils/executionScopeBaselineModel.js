@@ -48,6 +48,7 @@ const CATEGORICAL_FEATURES = Object.freeze([
   "features.same_dir_add",
   "features.current_bar_fast_fill",
   "features.runtime_exception_without_no_fill_reason",
+  "features.stale_pos_entry_profile",
   "features.source_origin",
   "features.signal_family",
   "features.entry_grade",
