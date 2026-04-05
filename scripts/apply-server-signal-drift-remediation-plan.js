@@ -252,7 +252,7 @@ function derivePatchState({
   otherPolicyWatchByReasonPatch = {},
   releaseExceptions = false,
 } = {}) {
-  const cohortRelaxDelta = Math.max(0, Number(process.env.SERVER_SIGNAL_REPORT_ONLY_COHORT_RELAX_DELTA || 0.006));
+  const cohortRelaxDelta = Math.max(0, Number(process.env.SERVER_SIGNAL_REPORT_ONLY_COHORT_RELAX_DELTA || 0.011));
   const cohortFloor = Math.max(0, Number(process.env.SERVER_SIGNAL_REPORT_ONLY_COHORT_MIN || 0.48));
   const cohortValues = Object.values(evPatch)
     .map((value) => Number(value))
