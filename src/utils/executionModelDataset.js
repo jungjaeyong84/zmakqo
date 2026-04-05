@@ -29,6 +29,18 @@ function normalizeFeatureBag(features = null) {
   return out;
 }
 
+function computeAdverseSlippageBps({ side = null, signalPrice = null, execPrice = null } = {}) {
+  const ref = toNum(signalPrice);
+  const fill = toNum(execPrice);
+  if (!Number.isFinite(ref) || ref <= 0 || !Number.isFinite(fill) || fill <= 0) return null;
+  const normalizedSide = String(side || "").trim().toUpperCase();
+  const adverseBps = normalizedSide === "SELL"
+    ? ((ref - fill) / ref) * 10000
+    : ((fill - ref) / ref) * 10000;
+  if (!Number.isFinite(adverseBps)) return null;
+  return Math.max(0, adverseBps);
+}
+
 function isExitEvent(event) {
   return String(event || "").trim().toUpperCase().startsWith("EXIT_");
 }
@@ -40,15 +52,40 @@ function readDocs(value) {
   return [];
 }
 
-function summarizeFillAggregate(fills = []) {
+function summarizeFillAggregate(fills = [], intent = null) {
   const scoped = (Array.isArray(fills) ? fills : []).filter((row) => row && typeof row === "object");
+  if (!scoped.length) {
+    return {
+      fill_n: 0,
+      fill_id: null,
+      first_fill_at_ms: null,
+      avg_slippage_bps: null,
+      slippage_measured_n: 0,
+      slippage_missing_n: 0,
+      max_partial_fill_pct: null,
+      avg_latency_ms: null,
+      exec_price: null,
+      primary_fill_source: "NO_FILL",
+      fill_source_counts: {},
+    };
+  }
   const firstFill = scoped
     .map((row) => ({ row, ms: parseMs(row.created_at) ?? toNum(row.exec_bar_close_time_utc_ms) }))
     .filter((row) => Number.isFinite(row.ms))
     .sort((a, b) => a.ms - b.ms)[0] || null;
+  const intentSignalPrice = toNum(intent && (intent.signal_price || (intent.features_json && intent.features_json.signal_price)));
   const slippageValues = scoped
-    .map((row) => toNum(row.slippage_bps) ?? toNum(row.live_exec_policy_quality_slippage_bps))
+    .map((row) => {
+      const computed = computeAdverseSlippageBps({
+        side: row.side || (intent && intent.side),
+        signalPrice: toNum(row.signal_price) ?? intentSignalPrice,
+        execPrice: row.exec_price,
+      });
+      if (Number.isFinite(computed)) return computed;
+      return toNum(row.slippage_bps) ?? toNum(row.live_exec_policy_quality_slippage_bps);
+    })
     .filter((value) => Number.isFinite(value));
+  const slippageMissingN = scoped.length - slippageValues.length;
   const partialValues = scoped
     .map((row) => toNum(row.live_exec_policy_quality_partial_pct))
     .filter((value) => Number.isFinite(value));
@@ -70,6 +107,8 @@ function summarizeFillAggregate(fills = []) {
     fill_id: String(firstFill && firstFill.row && (firstFill.row.fill_id || firstFill.row.id) || "").trim() || null,
     first_fill_at_ms: firstFill ? firstFill.ms : null,
     avg_slippage_bps: slippageValues.length ? (slippageValues.reduce((acc, value) => acc + value, 0) / slippageValues.length) : null,
+    slippage_measured_n: slippageValues.length,
+    slippage_missing_n: slippageMissingN,
     max_partial_fill_pct: partialValues.length ? Math.max(...partialValues) : null,
     avg_latency_ms: latencyValues.length ? (latencyValues.reduce((acc, value) => acc + value, 0) / latencyValues.length) : null,
     exec_price: execPriceValues.length ? execPriceValues[execPriceValues.length - 1] : null,
@@ -92,7 +131,7 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
   return intentRows.map((intent) => {
     const intentId = String(intent.intent_id || intent.id || "").trim() || null;
     const linkedFills = intentId ? (fillsByIntent.get(intentId) || []) : [];
-    const agg = summarizeFillAggregate(linkedFills);
+    const agg = summarizeFillAggregate(linkedFills, intent);
     const intentCreatedAtMs = parseMs(intent.created_at);
     const filledAtMs = agg.first_fill_at_ms ?? parseMs(intent.filled_at);
     const createdToFillMs = Number.isFinite(intentCreatedAtMs) && Number.isFinite(filledAtMs)
@@ -147,6 +186,8 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
         live_policy_slippage_bps: toNum(intent.live_exec_policy_quality_slippage_bps),
         live_policy_partial_pct: toNum(intent.live_exec_policy_quality_partial_pct),
         fill_source_counts: agg.fill_source_counts,
+        slippage_measured_n: agg.slippage_measured_n,
+        slippage_missing_n: agg.slippage_missing_n,
       },
       labels: {
         was_filled: agg.fill_n > 0 || status === "FILLED",
@@ -176,11 +217,32 @@ function summarizeExecutionModelRows(rows = []) {
   const preTp1TimeStopN = scoped.filter((row) => row && row.labels && row.labels.pre_tp1_time_stop === true).length;
   const byPrimaryFillSource = new Map();
   for (const row of scoped) {
-    const key = String(row && row.context && row.context.primary_fill_source || row && row.context && row.context.source || "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
-    if (!byPrimaryFillSource.has(key)) byPrimaryFillSource.set(key, { key, rows_n: 0, slippage_zero_n: 0, entry_rows_n: 0, exit_rows_n: 0 });
+    const key = String(
+      row && row.context && row.context.primary_fill_source
+      || (row && row.labels && row.labels.was_filled === false ? "NO_FILL" : null)
+      || row && row.context && row.context.source
+      || "UNKNOWN"
+    ).trim().toUpperCase() || "UNKNOWN";
+    if (!byPrimaryFillSource.has(key)) {
+      byPrimaryFillSource.set(key, {
+        key,
+        rows_n: 0,
+        slippage_zero_n: 0,
+        slippage_measured_n: 0,
+        slippage_missing_n: 0,
+        entry_rows_n: 0,
+        exit_rows_n: 0,
+      });
+    }
     const bucket = byPrimaryFillSource.get(key);
     bucket.rows_n += 1;
-    if (toNum(row && row.labels && row.labels.slippage_bps) === 0) bucket.slippage_zero_n += 1;
+    const slippage = toNum(row && row.labels && row.labels.slippage_bps);
+    if (Number.isFinite(slippage)) {
+      bucket.slippage_measured_n += 1;
+      if (slippage === 0) bucket.slippage_zero_n += 1;
+    } else {
+      bucket.slippage_missing_n += 1;
+    }
     if (row && row.context && row.context.is_exit_event === true) bucket.exit_rows_n += 1;
     else bucket.entry_rows_n += 1;
   }
@@ -190,6 +252,23 @@ function summarizeExecutionModelRows(rows = []) {
     const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * 0.95) - 1));
     return sorted[idx];
   };
+  const byEntryLatencyGroup = new Map();
+  for (const row of scoped) {
+    if (!row || !row.context || row.context.is_exit_event === true) continue;
+    const latencyMs = toNum(row.labels && row.labels.created_to_fill_ms);
+    if (!Number.isFinite(latencyMs)) continue;
+    const event = String(row.context.event || "").trim().toUpperCase() || "UNKNOWN";
+    const source = String(row.context.source || "").trim().toUpperCase() || "UNKNOWN";
+    const fillSource = String(row.context.primary_fill_source || "NO_FILL").trim().toUpperCase() || "UNKNOWN";
+    const market = String(row.context.market || "").trim().toUpperCase() || "UNKNOWN";
+    const key = [event, source, fillSource, market].join("|");
+    if (!byEntryLatencyGroup.has(key)) {
+      byEntryLatencyGroup.set(key, { key, event, source, primary_fill_source: fillSource, market, rows_n: 0, latency_values: [] });
+    }
+    const bucket = byEntryLatencyGroup.get(key);
+    bucket.rows_n += 1;
+    bucket.latency_values.push(latencyMs);
+  }
   return {
     rows_n: scoped.length,
     entry_rows_n: entryRowsN,
@@ -208,9 +287,22 @@ function summarizeExecutionModelRows(rows = []) {
     by_primary_fill_source: Array.from(byPrimaryFillSource.values())
       .map((row) => ({
         ...row,
-        slippage_zero_rate: row.rows_n > 0 ? (row.slippage_zero_n / row.rows_n) : null,
+        slippage_zero_rate: row.slippage_measured_n > 0 ? (row.slippage_zero_n / row.slippage_measured_n) : null,
+        slippage_measured_rate: row.rows_n > 0 ? (row.slippage_measured_n / row.rows_n) : null,
       }))
       .sort((a, b) => (b.rows_n - a.rows_n) || a.key.localeCompare(b.key)),
+    top_entry_latency_groups: Array.from(byEntryLatencyGroup.values())
+      .map((row) => ({
+        key: row.key,
+        event: row.event,
+        source: row.source,
+        primary_fill_source: row.primary_fill_source,
+        market: row.market,
+        rows_n: row.rows_n,
+        created_to_fill_p95_ms: p95(row.latency_values),
+      }))
+      .sort((a, b) => ((b.created_to_fill_p95_ms || 0) - (a.created_to_fill_p95_ms || 0)) || (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
+      .slice(0, 12),
     status: scoped.length > 0 ? 'EXECUTION_MODEL_DATASET_READY' : 'EXECUTION_MODEL_DATASET_EMPTY',
   };
 }

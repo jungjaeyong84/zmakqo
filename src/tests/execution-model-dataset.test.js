@@ -38,7 +38,28 @@ assert.equal(summary.exit_rows_n, 0);
 assert.equal(summary.filled_n, 1);
 assert.equal(summary.partial_n, 1);
 assert.equal(summary.rejected_n, 1);
+assert.equal(summary.by_primary_fill_source[0].key, 'NO_FILL');
+assert.equal(summary.by_primary_fill_source[0].slippage_missing_n, 1);
+assert.equal(summary.by_primary_fill_source[1].key, 'UNKNOWN');
+assert.equal(summary.by_primary_fill_source[1].slippage_measured_n, 1);
 const split = splitExecutionModelRows(rows);
 assert.equal(split.entry_rows.length, 2);
 assert.equal(split.exit_rows.length, 0);
+
+const recomputedRows = buildExecutionModelRows({
+  intents: {
+    rows: [
+      {
+        id: 'I3', intent_id: 'I3', signal_id: 'S3', exchange: 'BINANCEFUT', symbol: 'BNBUSDT', tf: '15m', event: 'LONG', side: 'BUY',
+        created_at: '2026-04-05T02:00:00.000Z', signal_price: 100, status: 'FILLED'
+      }
+    ]
+  },
+  fills: {
+    rows: [
+      { fill_id: 'F3', intent_id: 'I3', exchange: 'BINANCEFUT', symbol: 'BNBUSDT', tf: '15m', event: 'LONG', side: 'BUY', created_at: '2026-04-05T02:00:01.000Z', exec_price: 101, slippage_bps: 0 }
+    ]
+  }
+});
+assert.ok(recomputedRows[0].execution.slippage_bps > 0, 'signal-price fallback must recompute positive adverse slippage');
 console.log('EXECUTION_MODEL_DATASET_TEST_OK');

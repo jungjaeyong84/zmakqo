@@ -9,6 +9,12 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function normalizeOptionalNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function normalizeFeaturesJson(featuresJson) {
   if (!featuresJson || typeof featuresJson !== "object" || Array.isArray(featuresJson)) return null;
   try {
@@ -180,7 +186,7 @@ async function upsertFill({
     exec_price: Number(execPrice),
 
     fee_bps: Number(feeBps || 0),
-    slippage_bps: Number(slippageBps || 0),
+    slippage_bps: normalizeOptionalNumber(slippageBps),
     fee_value: (feeValue === null || feeValue === undefined) ? null : Number(feeValue),
     notional: (notional === null || notional === undefined) ? null : Number(notional),
     notional_krw: (notionalKrw === null || notionalKrw === undefined) ? null : Number(notionalKrw),
@@ -334,7 +340,7 @@ async function upsertExternalFill({
     exec_price: Number(execPrice),
 
     fee_bps: Number(feeBps || 0),
-    slippage_bps: Number(slippageBps || 0),
+    slippage_bps: normalizeOptionalNumber(slippageBps),
     fee_value: (feeValue === null || feeValue === undefined) ? null : Number(feeValue),
     notional: (notional === null || notional === undefined) ? null : Number(notional),
     notional_krw: (notionalKrw === null || notionalKrw === undefined) ? null : Number(notionalKrw),

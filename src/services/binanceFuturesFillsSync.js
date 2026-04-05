@@ -203,6 +203,18 @@ function pctLabel(v) {
   return String(rounded).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
 }
 
+function computeAdverseSlippageBps({ side, signalPrice, execPrice } = {}) {
+  const ref = Number(signalPrice);
+  const fill = Number(execPrice);
+  if (!Number.isFinite(ref) || ref <= 0 || !Number.isFinite(fill) || fill <= 0) return null;
+  const normalizedSide = String(side || "").trim().toUpperCase();
+  const adverseBps = normalizedSide === "SELL"
+    ? ((ref - fill) / ref) * 10000
+    : ((fill - ref) / ref) * 10000;
+  if (!Number.isFinite(adverseBps)) return null;
+  return Math.max(0, adverseBps);
+}
+
 async function markTpP1DoneFromExternalFill({ exchange, symbol, execPrice, execTimeIso, entryEventId } = {}) {
   const pos = await getPosition({ exchange, symbol });
   const state = String(pos && (pos.position_state || pos.state) || "").toUpperCase();
@@ -1229,6 +1241,18 @@ async function syncMarketTrades({
       const qtyPct = qtyScale.qtyPct;
       const qtyFraction = intent ? intent.qty_fraction : null;
       const intentEntryCtx = extractEntryContextFromIntent(intent);
+      const signalPrice = intent
+        ? Number(intent.signal_price ?? (intent.features_json && intent.features_json.signal_price))
+        : null;
+      const signalPriceDiff = Number.isFinite(signalPrice) ? (execPrice - signalPrice) : null;
+      const signalPriceDiffPct = (Number.isFinite(signalPrice) && signalPrice !== 0)
+        ? (signalPriceDiff / signalPrice)
+        : null;
+      const slippageBps = computeAdverseSlippageBps({
+        side: String(t.side || "").toUpperCase(),
+        signalPrice,
+        execPrice,
+      });
       const intentLeverage = intent
         ? Number(
           intent.leverage_applied ??
@@ -1315,7 +1339,7 @@ async function syncMarketTrades({
         qtyPct,
         execPrice,
         feeBps: 0,
-        slippageBps: 0,
+        slippageBps,
         feeValue,
         notional,
         notionalKrw: notional,
@@ -1331,6 +1355,10 @@ async function syncMarketTrades({
         signalBarCloseTimeUtcMs: Number.isFinite(Number(signalRefs.signalBarCloseMs))
           ? Number(signalRefs.signalBarCloseMs)
           : null,
+        signalPrice: Number.isFinite(signalPrice) ? signalPrice : null,
+        signalPriceDiff,
+        signalPriceDiffPct,
+        signalPriceSource: intent ? (intent.signal_price_source || null) : null,
         leverageApplied: Number.isFinite(intentLeverage) && intentLeverage > 0 ? intentLeverage : null,
         leverageReason: intentLeverageReason || null,
         featuresJson: (intent && intent.features_json && typeof intent.features_json === "object") ? intent.features_json : null,
