@@ -18,6 +18,7 @@ const {
 } = require("../src/utils/mlDatasetSchema");
 const { buildBestSelfEvolutionDataset } = require("../src/utils/bestSelfEvolutionDataset");
 const { backfillRecentEntryLineage } = require("../src/utils/entryLineageBackfill");
+const { buildArtifactVersion } = require("../src/utils/mlArtifactVersion");
 
 const DATASET_LATEST_JSON = path.join(OPS_DAILY_DIR, "best_self_evolution_dataset_latest.json");
 const EV_TUNER_LATEST_JSON = path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json");
@@ -153,6 +154,14 @@ function main() {
   return Promise.resolve(source).then((resolved) => {
     const rows = resolved.rows.map((row) => buildMlTrainingRow(row));
     const summary = summarizeMlTrainingRows(rows);
+    const version = buildArtifactVersion({
+      artifactType: "ML_TRAINING_DATASET",
+      schemaVersion: ML_DATASET_SCHEMA_VERSION,
+      sourceMode: resolved.source_mode,
+      sourceCycleId: resolved.source_cycle_id,
+      window: resolved.window,
+      rows,
+    });
     const payload = {
       ok: true,
       generated_at_kst: nowMeta.kst,
@@ -160,6 +169,8 @@ function main() {
       source_mode: resolved.source_mode,
       source_dataset_path: resolved.source_dataset_path,
       source_cycle_id: resolved.source_cycle_id,
+      source_window: resolved.window || null,
+      dataset_version: version,
       summary,
       rows,
     };

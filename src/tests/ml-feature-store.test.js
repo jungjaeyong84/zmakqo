@@ -10,6 +10,7 @@ function run() {
   const store = buildMlFeatureStore({
     schema_version: "2026-04-05.v1",
     source_cycle_id: "best_self_evolution_foo",
+    dataset_version: { version_id: "ML_TRAINING_DATASET__abc123" },
     rows: [
       {
         row_id: "ROW_1",
@@ -31,6 +32,8 @@ function run() {
   assert.strictEqual(store.summary.boolean_feature_keys_n, 1);
   assert.strictEqual(store.summary.categorical_feature_keys_n, 1);
   assert.strictEqual(store.summary.status, "FEATURE_STORE_READY");
+  assert.ok(String(store.feature_store_version.version_id || "").startsWith("ML_FEATURE_STORE__"));
+  assert.ok(String(store.source_dataset_version_id || "").startsWith("ML_TRAINING_DATASET__"));
   assert.strictEqual(store.feature_catalog[0].key, "action");
   assert.strictEqual(store.row_index[0].feature_keys_n, 3);
 

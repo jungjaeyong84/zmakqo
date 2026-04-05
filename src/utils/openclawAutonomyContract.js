@@ -405,6 +405,10 @@ function deriveOpenClawAutonomyContract({
         || executionQualitySummary.top_partial_market
         || ""
       ).trim() || null,
+      execution_quality_top_operational_webhook_delay_cause: String(executionQualitySummary.top_operational_webhook_delay_cause || "").trim() || null,
+      execution_quality_top_operational_immediate_intent_delay_group: String(executionQualitySummary.top_operational_immediate_intent_delay_group || "").trim() || null,
+      execution_quality_top_no_fill_reason: String(executionQualitySummary.top_no_fill_reason || "").trim() || null,
+      execution_quality_top_no_fill_subtype: String(executionQualitySummary.top_no_fill_subtype || "").trim() || null,
       lineage_status: lineageVerdict,
       lineage_fills_intent_null_rate: toNum(signalLineageSummary.fills_intent_id_null_rate),
       lineage_fills_signal_null_rate: toNum(signalLineageSummary.fills_signal_doc_id_null_rate),
@@ -436,10 +440,16 @@ function deriveOpenClawAutonomyContract({
       model_readiness_tp0_time_label_rate: toNum(modelReadinessSummary.tp0_time_label_rate),
       model_readiness_tp0_to_tp1_converted_n: toNum(modelReadinessSummary.tp0_to_tp1_converted_n),
       model_readiness_pre_tp1_time_stop_n: toNum(modelReadinessSummary.pre_tp1_time_stop_n),
+      model_readiness_dataset_version_id: String(modelReadinessSummary.dataset_version_id || "").trim() || null,
       model_readiness_schema_version: String(modelReadinessSummary.schema_version || "").trim() || null,
       feature_store_status: featureStoreStatus,
       feature_store_rows_n: toNum(featureStoreSummary.rows_n),
       feature_store_keys_n: toNum(featureStoreSummary.feature_keys_n),
+      feature_store_version_id: String(
+        featureStoreSummary.version_id
+        || (featureStore && featureStore.feature_store_version && featureStore.feature_store_version.version_id)
+        || ""
+      ).trim() || null,
       feature_store_schema_version: String(featureStoreSummary.schema_version || "").trim() || null,
       execution_model_dataset_status: executionModelStatus,
       execution_model_dataset_rows_n: toNum(executionModelSummary.rows_n),
@@ -525,7 +535,13 @@ function deriveOpenClawAutonomyContract({
       model_readiness_tp0_time_label_rate: toNum(modelReadinessSummary.tp0_time_label_rate),
       model_readiness_tp0_to_tp1_converted_n: toNum(modelReadinessSummary.tp0_to_tp1_converted_n),
       model_readiness_pre_tp1_time_stop_n: toNum(modelReadinessSummary.pre_tp1_time_stop_n),
+      model_readiness_dataset_version_id: String(modelReadinessSummary.dataset_version_id || "").trim() || null,
       feature_store_status: featureStoreStatus,
+      feature_store_version_id: String(
+        featureStoreSummary.version_id
+        || (featureStore && featureStore.feature_store_version && featureStore.feature_store_version.version_id)
+        || ""
+      ).trim() || null,
       execution_model_dataset_status: executionModelStatus,
       execution_model_dataset_top_webhook_to_intent_latency_group: topWebhookToIntentLatencyGroup ? String(topWebhookToIntentLatencyGroup.key || "").trim() || null : null,
       execution_model_dataset_top_webhook_delay_reason: topWebhookDelayReason ? String(topWebhookDelayReason.key || "").trim() || null : null,

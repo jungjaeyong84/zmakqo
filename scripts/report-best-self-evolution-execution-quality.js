@@ -19,6 +19,7 @@ const { summarizeExecutionQuality } = require("../src/utils/executionQuality");
 const OBJECTIVE_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_objective_latest.json");
 const EXECUTION_MICROSTRUCTURE_PATH = path.join(OPS_DAILY_DIR, "execution_microstructure_latest.json");
 const FEBT_BRIDGE_LATENCY_PATH = path.join(OPS_DAILY_DIR, "febt_bridge_latency_latest.json");
+const EXECUTION_MODEL_DATASET_PATH = path.join(OPS_DAILY_DIR, "execution_model_dataset_latest.json");
 const FILLS_PATH = path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "fills_paper.json");
 const INTENTS_PATH = path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "order_intents_paper.json");
 
@@ -41,6 +42,10 @@ function renderMarkdown(report = {}) {
     `- top_latency_market: ${summary.top_latency_market || "N/A"}`,
     `- top_slippage_market: ${summary.top_slippage_market || "N/A"}`,
     `- top_partial_market: ${summary.top_partial_market || "N/A"}`,
+    `- top_operational_webhook_delay_cause: ${summary.top_operational_webhook_delay_cause || "N/A"}`,
+    `- top_operational_immediate_intent_delay_group: ${summary.top_operational_immediate_intent_delay_group || "N/A"}`,
+    `- top_no_fill_reason: ${summary.top_no_fill_reason || "N/A"}`,
+    `- top_no_fill_subtype: ${summary.top_no_fill_subtype || "N/A"}`,
     `- review_reasons: ${Array.isArray(summary.review_reasons) && summary.review_reasons.length ? summary.review_reasons.join("|") : "none"}`,
     "",
     "## Markets",
@@ -63,12 +68,14 @@ function main() {
   });
   const micro = readJsonRawSafe(EXECUTION_MICROSTRUCTURE_PATH, null);
   const bridge = readJsonRawSafe(FEBT_BRIDGE_LATENCY_PATH, null);
+  const executionModelDataset = readJsonRawSafe(EXECUTION_MODEL_DATASET_PATH, null);
   const fills = readJsonRawSafe(FILLS_PATH, null);
   const intents = readJsonRawSafe(INTENTS_PATH, null);
 
   const result = summarizeExecutionQuality({
     microstructure: micro,
     bridgeLatency: bridge,
+    executionModelDataset,
     fills: fills && Array.isArray(fills.docs) ? fills.docs : [],
     intents: intents && Array.isArray(intents.docs) ? intents.docs : [],
   });
@@ -82,6 +89,7 @@ function main() {
       objective_latest_path: OBJECTIVE_LATEST_PATH,
       execution_microstructure_latest_path: EXECUTION_MICROSTRUCTURE_PATH,
       febt_bridge_latency_latest_path: FEBT_BRIDGE_LATENCY_PATH,
+      execution_model_dataset_latest_path: EXECUTION_MODEL_DATASET_PATH,
       fills_path: FILLS_PATH,
       intents_path: INTENTS_PATH,
     },

@@ -28,6 +28,10 @@ function run() {
       realized_n: 20,
       schema_version: "2026-04-05.v1",
     },
+    dataset_version: { version_id: "ML_TRAINING_DATASET__abc123" },
+    source_mode: "RAW_CACHE",
+    source_cycle_id: "cycle-1",
+    source_window: { source: "REFERENCE_DATASET_ROLLING_REFRESH" },
   });
   assert.strictEqual(ready.status, "MODEL_READINESS_READY");
   assert.strictEqual(ready.mfe_mae_labeled_n, 1);
@@ -35,6 +39,9 @@ function run() {
   assert.strictEqual(ready.tp0_time_labeled_n, 1);
   assert.strictEqual(ready.tp0_to_tp1_converted_n, 1);
   assert.strictEqual(ready.pre_tp1_time_stop_n, 1);
+  assert.strictEqual(ready.dataset_version_id, "ML_TRAINING_DATASET__abc123");
+  assert.strictEqual(ready.source_mode, "RAW_CACHE");
+  assert.strictEqual(ready.source_window_source, "REFERENCE_DATASET_ROLLING_REFRESH");
 
   const bootstrapping = deriveModelReadiness({
     summary: {

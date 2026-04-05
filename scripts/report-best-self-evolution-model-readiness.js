@@ -22,6 +22,8 @@ function renderMarkdown(payload = {}) {
     `- generated_at_kst: ${payload.generated_at_kst || "N/A"}`,
     `- status: ${summary.status || "N/A"}`,
     `- schema_version: ${summary.schema_version || "N/A"}`,
+    `- dataset_version_id: ${summary.dataset_version_id || "N/A"}`,
+    `- source_mode: ${summary.source_mode || "N/A"} / source_window: ${summary.source_window_source || "N/A"}`,
     `- rows: ${summary.rows_n || 0} / valid ${summary.valid_n || 0} / invalid ${summary.invalid_n || 0} / realized ${summary.realized_n || 0}`,
     `- thresholds: rows>=${summary.min_rows || "N/A"} / realized>=${summary.min_realized_n || "N/A"}`,
     `- readiness: row=${summary.row_ready ? "YES" : "NO"} / realized=${summary.realized_ready ? "YES" : "NO"} / integrity=${summary.integrity_ready ? "YES" : "NO"}`,

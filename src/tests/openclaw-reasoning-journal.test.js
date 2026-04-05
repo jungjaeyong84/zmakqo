@@ -31,6 +31,8 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         execution_model_dataset_top_no_fill_reason: "LIVE_EXCEPTION",
         execution_model_dataset_top_no_fill_reason_family: "RUNTIME_ERROR",
         execution_model_dataset_top_no_fill_subtype: "TIMING_IMMEDIATE_EXEC",
+        model_readiness_dataset_version_id: "ML_TRAINING_DATASET__abc123",
+        feature_store_version_id: "ML_FEATURE_STORE__def456",
         model_readiness_mfe_mae_label_rate: 0.0203,
         model_readiness_tp1_time_label_rate: 0.0029,
         model_readiness_tp0_time_label_rate: 0,
@@ -88,6 +90,10 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
       summary: {
         status: "EXECUTION_QUALITY_REVIEW",
         created_to_fill_p95_ms: 59871,
+        top_operational_webhook_delay_cause: "IMMEDIATE_EXEC_TRUE_INTENT_DELAY",
+        top_operational_immediate_intent_delay_group: "TV_WEBHOOK|EARLY_LONG|BTCUSDT",
+        top_no_fill_reason: "LIVE_EXCEPTION",
+        top_no_fill_subtype: "TIMING_IMMEDIATE_EXEC",
       },
     },
     previousJournal: {
@@ -134,6 +140,10 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_account_integrity_status, "WARN");
   assert.strictEqual(journal.summary.current_model_readiness_status, "MODEL_READINESS_READY");
   assert.strictEqual(journal.summary.current_model_readiness_mfe_mae_label_rate, 0.0203);
+  assert.strictEqual(journal.summary.current_model_readiness_dataset_version_id, "ML_TRAINING_DATASET__abc123");
+  assert.strictEqual(journal.summary.current_feature_store_version_id, "ML_FEATURE_STORE__def456");
+  assert.strictEqual(journal.summary.current_execution_quality_top_operational_webhook_delay_cause, "IMMEDIATE_EXEC_TRUE_INTENT_DELAY");
+  assert.strictEqual(journal.summary.current_execution_quality_top_operational_immediate_intent_delay_group, "TV_WEBHOOK|EARLY_LONG|BTCUSDT");
   assert.strictEqual(journal.summary.current_execution_model_top_webhook_to_intent_latency_group, "EARLY_LONG|TV_WEBHOOK|BTCUSDT");
   assert.strictEqual(journal.summary.current_execution_model_top_webhook_delay_reason, "WAIT_NEXT_BAR");
   assert.strictEqual(journal.summary.current_execution_model_top_webhook_delay_cause, "SCHEDULED_WAIT_NEXT_BAR");

@@ -26,6 +26,7 @@ function summarizeExecutionQuality({
   bridgeLatency = null,
   fills = [],
   intents = [],
+  executionModelDataset = null,
 } = {}) {
   const micro = microstructure && typeof microstructure === "object" ? microstructure : {};
   const metrics = micro.metrics && typeof micro.metrics === "object" ? micro.metrics : {};
@@ -35,6 +36,9 @@ function summarizeExecutionQuality({
   const bridge = bridgeLatency && typeof bridgeLatency === "object" ? bridgeLatency : {};
   const fillDocs = (Array.isArray(fills) ? fills : []).filter((row) => allowVenue(normalizeVenue(row)));
   const intentDocs = (Array.isArray(intents) ? intents : []).filter((row) => allowVenue(normalizeVenue(row)));
+  const executionModelSummary = executionModelDataset && typeof executionModelDataset === "object"
+    ? (executionModelDataset.summary && typeof executionModelDataset.summary === "object" ? executionModelDataset.summary : executionModelDataset)
+    : {};
 
   const intentsById = new Map();
   for (const row of intentDocs) {
@@ -113,11 +117,30 @@ function summarizeExecutionQuality({
     ? toNum(bridge.webhook_to_fill_ms.p95)
     : null;
 
+  const topOperationalDelay = Array.isArray(executionModelSummary.top_operational_webhook_delay_causes)
+    ? executionModelSummary.top_operational_webhook_delay_causes[0]
+    : null;
+  const topOperationalIntentDelayGroup = Array.isArray(executionModelSummary.top_operational_immediate_intent_delay_groups)
+    ? executionModelSummary.top_operational_immediate_intent_delay_groups[0]
+    : null;
+  const topNoFillReason = Array.isArray(executionModelSummary.top_no_fill_reasons)
+    ? executionModelSummary.top_no_fill_reasons[0]
+    : null;
+  const topNoFillSubtype = Array.isArray(executionModelSummary.top_no_fill_subtypes)
+    ? executionModelSummary.top_no_fill_subtypes[0]
+    : null;
+
   const reviewReasons = [];
   if (createdToFillP95 != null && createdToFillP95 > 60000) reviewReasons.push("CREATED_TO_FILL_P95_HIGH");
   if (adverseSlippageP95 != null && adverseSlippageP95 > 80) reviewReasons.push("ADVERSE_SLIPPAGE_P95_HIGH");
   if (partialRate != null && partialRate > 60) reviewReasons.push("PARTIAL_FILL_RATE_HIGH");
   if (webhookToFillP95 != null && webhookToFillP95 > 60000) reviewReasons.push("WEBHOOK_TO_FILL_P95_HIGH");
+  if ((topOperationalDelay && String(topOperationalDelay.key || "").trim()) || String(executionModelSummary.top_operational_webhook_delay_cause || "").trim()) {
+    reviewReasons.push("OPERATIONAL_WEBHOOK_DELAY_PRESENT");
+  }
+  if ((topNoFillReason && String(topNoFillReason.key || "").trim()) || String(executionModelSummary.top_no_fill_reason || "").trim()) {
+    reviewReasons.push("NO_FILL_REASON_PRESENT");
+  }
 
   return {
     summary: {
@@ -130,6 +153,11 @@ function summarizeExecutionQuality({
       top_latency_market: topLatency ? topLatency.market : null,
       top_slippage_market: topSlippage ? topSlippage.market : null,
       top_partial_market: topPartial ? topPartial.market : null,
+      top_operational_webhook_delay_cause: topOperationalDelay && topOperationalDelay.key ? topOperationalDelay.key : null,
+      top_operational_webhook_delay_rows_n: topOperationalDelay && Number.isFinite(toNum(topOperationalDelay.rows_n)) ? toNum(topOperationalDelay.rows_n) : null,
+      top_operational_immediate_intent_delay_group: topOperationalIntentDelayGroup && topOperationalIntentDelayGroup.key ? topOperationalIntentDelayGroup.key : null,
+      top_no_fill_reason: topNoFillReason && topNoFillReason.key ? topNoFillReason.key : null,
+      top_no_fill_subtype: topNoFillSubtype && topNoFillSubtype.key ? topNoFillSubtype.key : null,
       review_reasons: reviewReasons,
       market_n: rows.length,
       top_watch_markets: rows.slice(0, 6).map((row) => ({

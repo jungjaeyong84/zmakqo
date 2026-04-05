@@ -1,5 +1,7 @@
 "use strict";
 
+const { buildArtifactVersion } = require("./mlArtifactVersion");
+
 const ML_FEATURE_STORE_SCHEMA_VERSION = "2026-04-05.v1";
 
 function toNum(value) {
@@ -80,10 +82,21 @@ function buildMlFeatureStore(value = null) {
     }))
     .sort((a, b) => (b.presence_n - a.presence_n) || a.key.localeCompare(b.key));
 
+  const version = buildArtifactVersion({
+    artifactType: "ML_FEATURE_STORE",
+    schemaVersion: ML_FEATURE_STORE_SCHEMA_VERSION,
+    sourceMode: value && value.source_mode,
+    sourceCycleId: value && value.source_cycle_id,
+    window: value && value.source_window,
+    rows: rowIndex.map((row) => ({ row_id: row.row_id })),
+  });
+
   return {
     schema_version: ML_FEATURE_STORE_SCHEMA_VERSION,
     source_schema_version: String(value && value.schema_version || "").trim() || null,
     source_cycle_id: String(value && value.source_cycle_id || "").trim() || null,
+    source_dataset_version_id: String(value && value.dataset_version && value.dataset_version.version_id || "").trim() || null,
+    feature_store_version: version,
     summary: {
       rows_n: rows.length,
       feature_keys_n: featureCatalog.length,
@@ -95,6 +108,7 @@ function buildMlFeatureStore(value = null) {
       sparse_row_n: rowIndex.filter((row) => (toNum(row.feature_keys_n) || 0) === 0).length,
       status: rows.length > 0 && featureCatalog.length > 0 ? "FEATURE_STORE_READY" : "FEATURE_STORE_EMPTY",
       schema_version: ML_FEATURE_STORE_SCHEMA_VERSION,
+      version_id: version.version_id,
     },
     feature_catalog: featureCatalog,
     row_index: rowIndex,

@@ -77,6 +77,10 @@ function deriveModelReadiness(value = null) {
     tp1_time_label_rate: rowsN > 0 ? (tp1TimeLabeledN / rowsN) : null,
     mfe_mae_label_rate: rowsN > 0 ? (mfeMaeLabeledN / rowsN) : null,
     schema_version: String(value && value.schema_version || "").trim() || null,
+    dataset_version_id: String(value && value.dataset_version && value.dataset_version.version_id || "").trim() || null,
+    source_mode: String(value && value.source_mode || "").trim().toUpperCase() || null,
+    source_cycle_id: String(value && value.source_cycle_id || "").trim() || null,
+    source_window_source: String(value && value.source_window && value.source_window.source || "").trim().toUpperCase() || null,
   };
 }
 
