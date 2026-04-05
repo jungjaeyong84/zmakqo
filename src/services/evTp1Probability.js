@@ -1,9 +1,14 @@
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
 const {
   buildEntryMicroSnapshotFromBars,
   normalizeBar: normalizeEntryMicroBar,
 } = require("../utils/entryMicroSnapshot");
+const {
+  applyTp1ProbabilityCalibration,
+} = require("../utils/evTp1ProbabilityCalibration");
 
 function toNum(v) {
   const n = Number(v);
@@ -33,6 +38,13 @@ const DEFAULT_TP1_COMPONENT_WEIGHTS = Object.freeze({
   reversal_safety: 0.95,
   impulse_freshness: 0.70,
 });
+
+const DEFAULT_CALIBRATION_PATH = path.join(process.cwd(), "ops", "daily", "best_self_evolution_ev_probability_calibration_latest.json");
+let calibrationCache = {
+  path: null,
+  mtimeMs: null,
+  report: null,
+};
 
 function sanitizeWeight(rawWeight, fallback) {
   const parsed = toNum(rawWeight);
@@ -80,6 +92,31 @@ function resolveTp1ProbabilityPolicySource(rawOverride = null) {
   if (hasRecognizedWeightOverride(rawOverride)) return "DIRECT_OVERRIDE";
   if (hasRecognizedWeightOverride(process.env.EV_TP1_COMPONENT_WEIGHTS_JSON || null)) return "ENV_OVERRIDE";
   return "DEFAULT";
+}
+
+function readCalibrationArtifact(calibrationPath = DEFAULT_CALIBRATION_PATH) {
+  try {
+    if (!calibrationPath || !fs.existsSync(calibrationPath)) return null;
+    const stat = fs.statSync(calibrationPath);
+    if (calibrationCache.path === calibrationPath && calibrationCache.mtimeMs === Number(stat.mtimeMs || 0)) {
+      return calibrationCache.report;
+    }
+    const parsed = JSON.parse(fs.readFileSync(calibrationPath, "utf8"));
+    const report = parsed && parsed.raw ? parsed.raw : parsed;
+    calibrationCache = {
+      path: calibrationPath,
+      mtimeMs: Number(stat.mtimeMs || 0),
+      report,
+    };
+    return report;
+  } catch (_) {
+    return null;
+  }
+}
+
+function shouldUseCalibrationArtifact() {
+  const raw = String(process.env.EV_TP1_PROBABILITY_CALIBRATION_ENABLED || "1").trim().toUpperCase();
+  return raw !== "0" && raw !== "FALSE" && raw !== "OFF";
 }
 
 function sigmoid(z) {
@@ -232,6 +269,7 @@ function estimateTp1ReachProbability({
   atrBars = 8,
   confidenceZ = 1.2815515655446004,
   componentWeights = null,
+  calibrationReport = null,
 } = {}) {
   const direction = String(dir || "").toUpperCase();
   if (direction !== "LONG" && direction !== "SHORT") {
@@ -329,6 +367,13 @@ function estimateTp1ReachProbability({
   const stderr = Math.sqrt(Math.max(variance, 0) / nEff);
   const lowerBound = clamp01(mean - (confidenceZ * stderr));
 
+  const calibration = applyTp1ProbabilityCalibration({
+    probability: clamp01(mean),
+    lowerBound,
+    calibrationReport: calibrationReport || (shouldUseCalibrationArtifact() ? readCalibrationArtifact() : null),
+  });
+  const calibratedProbability = Number.isFinite(calibration.probability) ? calibration.probability : clamp01(mean);
+  const calibratedLowerBound = Number.isFinite(calibration.lowerBound) ? calibration.lowerBound : lowerBound;
   return {
     ok: true,
     model: "TP1_REACH_RECENT_BARS_V1",
@@ -350,13 +395,20 @@ function estimateTp1ReachProbability({
     prevCloseControl,
     prevOppWick,
     prevDirBody,
-    probability: clamp01(mean),
-    lowerBound,
+    probability: calibratedProbability,
+    lowerBound: calibratedLowerBound,
     stderr,
     effectiveN: nEff,
     confidenceZ,
     policy_version: policyVersion,
     policy_source: policySource,
+    calibration_applied: calibration.applied === true,
+    calibration_bucket_min: calibration.bucket ? calibration.bucket.bucket_min : null,
+    calibration_bucket_max: calibration.bucket ? calibration.bucket.bucket_max : null,
+    calibration_probability_ceiling: calibration.bucket ? calibration.bucket.calibration_probability_ceiling : null,
+    calibration_lower_bound_ceiling: calibration.bucket ? calibration.bucket.calibration_lower_bound_ceiling : null,
+    raw_probability: clamp01(mean),
+    raw_lower_bound: lowerBound,
     componentWeights: weights,
     components: Object.fromEntries(components.map((x) => [x.key, x.value])),
   };
@@ -371,5 +423,7 @@ module.exports = {
     resolveTp1ProbabilityWeights,
     resolveTp1ProbabilityPolicySource,
     DEFAULT_TP1_COMPONENT_WEIGHTS,
+    readCalibrationArtifact,
+    applyTp1ProbabilityCalibration,
   },
 };

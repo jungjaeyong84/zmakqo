@@ -168,6 +168,7 @@ function buildStepPlan(context = {}, capabilityDefs = null) {
     { id: "server_signal_runtime", script: "report-server-signal-runtime.js" },
     { id: "server_signal_cutover_readiness", script: "report-server-signal-cutover-readiness.js" },
     { id: "drop_validation", script: "report-best-self-evolution-drop-validation.js" },
+    { id: "ev_probability_calibration", script: "report-best-self-evolution-ev-probability-calibration.js" },
     { id: "provisional_realized_outcome", script: "report-best-self-evolution-provisional-realized-outcome.js" },
     { id: "override_authority", script: "report-best-self-evolution-override-authority.js" },
     { id: "execution_quality", script: "report-best-self-evolution-execution-quality.js" },

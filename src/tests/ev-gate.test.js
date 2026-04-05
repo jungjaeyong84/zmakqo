@@ -38,6 +38,7 @@ function makeBars({
 }
 
 async function run() {
+  process.env.EV_TP1_PROBABILITY_CALIBRATION_ENABLED = "0";
   assert.strictEqual(typeof __test.resolveEvGateConfig, "function", "resolveEvGateConfig export missing");
   assert.strictEqual(typeof __test.resolveEvGateDecision, "function", "resolveEvGateDecision export missing");
   assert.strictEqual(typeof __test.resolveEvGateTradePlan, "function", "resolveEvGateTradePlan export missing");

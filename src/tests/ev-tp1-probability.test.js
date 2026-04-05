@@ -38,6 +38,7 @@ function makeBars({
 }
 
 function run() {
+  process.env.EV_TP1_PROBABILITY_CALIBRATION_ENABLED = "0";
   assert.strictEqual(typeof __test.estimateTp1ReachProbability, "function");
 
   const strongLong = __test.estimateTp1ReachProbability({
@@ -113,6 +114,31 @@ function run() {
   assert.strictEqual(weightedRun.policy_source, "DIRECT_OVERRIDE");
   assert.strictEqual(weightedRun.componentWeights.target_ease, 2.4);
   assert.strictEqual(weightedRun.componentWeights.chase_safety, 0.5);
+
+  const calibratedRun = __test.estimateTp1ReachProbability({
+    bars: makeBars({ direction: "LONG", driftPct: 0.50, rangePct: 1.80, closeControl: 0.92, adverseEvery: 0 }),
+    dir: "LONG",
+    tp1Pct: 3.25,
+    slPct: 1.65,
+    lookbackBars: 12,
+    atrBars: 8,
+    calibrationReport: {
+      summary: { recommended_action: "APPLY_EMPIRICAL_CALIBRATION" },
+      buckets: [
+        {
+          bucket_min: 0.55,
+          bucket_max: 0.60,
+          apply_recommended: true,
+          calibration_probability_ceiling: 0.52,
+          calibration_lower_bound_ceiling: 0.51,
+        },
+      ],
+    },
+  });
+  assert.strictEqual(calibratedRun.ok, true);
+  assert.strictEqual(calibratedRun.calibration_applied, true);
+  assert.ok(calibratedRun.probability <= 0.52);
+  assert.ok(calibratedRun.lowerBound <= 0.51);
 
   console.log("EV_TP1_PROBABILITY_TEST_OK");
 }
