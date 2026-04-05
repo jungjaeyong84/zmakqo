@@ -7,6 +7,7 @@ const intents = {
   rows: [
     {
       id: 'I1', intent_id: 'I1', signal_id: 'S1', entry_event_id: 'E1', exchange: 'BINANCEFUT', symbol: 'ETHUSDT', tf: '15m', event: 'SHORT', side: 'SELL',
+      execution_mode: 'PAPER',
       created_at: '2026-04-05T00:00:00.000Z', live_exec_policy_quality_latency_ms: 1200, live_exec_policy_quality_slippage_bps: 4, live_exec_policy_quality_partial_pct: 0,
       features_json: { score_abs: 70.1 }, status: 'FILLED'
     },
@@ -29,8 +30,9 @@ assert.equal(rows[0].labels.was_filled, true);
 assert.equal(rows[0].labels.was_partial, true);
 assert.equal(rows[0].labels.was_rejected, false);
 assert.equal(rows[0].execution.created_to_fill_ms, 2000);
-assert.equal(rows[0].execution.created_to_fill_source, 'FILL_CHAIN');
+assert.equal(rows[0].execution.created_to_fill_source, 'FILL_DOC');
 assert.equal(rows[0].labels.created_to_fill_measured, true);
+assert.equal(rows[0].context.source, 'PAPER_RUNTIME');
 assert.equal(rows[0].execution.slippage_bps, 4);
 assert.equal(rows[1].labels.was_rejected, true);
 const summary = summarizeExecutionModelRows(rows);
@@ -41,10 +43,10 @@ assert.equal(summary.filled_n, 1);
 assert.equal(summary.partial_n, 1);
 assert.equal(summary.rejected_n, 1);
 assert.equal(summary.created_to_fill_measured_p95_ms, 2000);
-assert.equal(summary.by_primary_fill_source[0].key, 'NO_FILL');
-assert.equal(summary.by_primary_fill_source[0].slippage_missing_n, 1);
-assert.equal(summary.by_primary_fill_source[1].key, 'UNKNOWN');
-assert.equal(summary.by_primary_fill_source[1].slippage_measured_n, 1);
+const noFillBucket = summary.by_primary_fill_source.find((row) => row.key === 'NO_FILL');
+const unknownBucket = summary.by_primary_fill_source.find((row) => row.key === 'UNKNOWN');
+assert.equal(noFillBucket.slippage_missing_n, 1);
+assert.equal(unknownBucket.slippage_measured_n, 1);
 const split = splitExecutionModelRows(rows);
 assert.equal(split.entry_rows.length, 2);
 assert.equal(split.exit_rows.length, 0);
@@ -54,6 +56,7 @@ const recomputedRows = buildExecutionModelRows({
     rows: [
       {
         id: 'I3', intent_id: 'I3', signal_id: 'S3', exchange: 'BINANCEFUT', symbol: 'BNBUSDT', tf: '15m', event: 'LONG', side: 'BUY',
+        execution_mode: 'LIVE',
         created_at: '2026-04-05T02:00:00.000Z', signal_price: 100, status: 'FILLED'
       }
     ]
@@ -65,4 +68,5 @@ const recomputedRows = buildExecutionModelRows({
   }
 });
 assert.ok(recomputedRows[0].execution.slippage_bps > 0, 'signal-price fallback must recompute positive adverse slippage');
+assert.strictEqual(recomputedRows[0].context.source, 'LIVE_RUNTIME');
 console.log('EXECUTION_MODEL_DATASET_TEST_OK');

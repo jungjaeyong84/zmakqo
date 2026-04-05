@@ -41,6 +41,21 @@ function computeAdverseSlippageBps({ side = null, signalPrice = null, execPrice 
   return Math.max(0, adverseBps);
 }
 
+function deriveIntentSource(intent = null) {
+  const explicit = toUpper(intent && intent.source);
+  if (explicit) return explicit;
+  const runId = String(intent && intent.run_id || "").trim().toUpperCase();
+  const reason = String(intent && (intent.reason || intent.decision_reason) || "").trim().toUpperCase();
+  const executionMode = toUpper(intent && intent.execution_mode);
+  if (runId.includes("REPLAY")) return "MANUAL_REPLAY";
+  if (reason.includes("SERVER_NATIVE")) return "SERVER_SIGNAL";
+  if (reason.includes("TV_WEBHOOK")) return "TV_WEBHOOK";
+  if (runId.includes("WEBHOOK") || reason.includes("PINE_")) return "PINE_WEBHOOK";
+  if (executionMode === "PAPER") return "PAPER_RUNTIME";
+  if (executionMode === "LIVE") return "LIVE_RUNTIME";
+  return null;
+}
+
 function isExitEvent(event) {
   return String(event || "").trim().toUpperCase().startsWith("EXIT_");
 }
@@ -133,14 +148,16 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
     const linkedFills = intentId ? (fillsByIntent.get(intentId) || []) : [];
     const agg = summarizeFillAggregate(linkedFills, intent);
     const intentCreatedAtMs = parseMs(intent.created_at);
-    const filledAtMs = agg.first_fill_at_ms ?? parseMs(intent.filled_at);
+    const fillDocAtMs = agg.first_fill_at_ms;
+    const intentFilledAtMs = parseMs(intent.filled_at);
+    const filledAtMs = fillDocAtMs ?? intentFilledAtMs;
     const measuredCreatedToFillMs = Number.isFinite(intentCreatedAtMs) && Number.isFinite(filledAtMs)
       ? (filledAtMs - intentCreatedAtMs)
       : null;
     const fallbackCreatedToFillMs = toNum(intent.live_exec_policy_quality_latency_ms) ?? agg.avg_latency_ms;
     const createdToFillMs = measuredCreatedToFillMs ?? fallbackCreatedToFillMs;
     const createdToFillSource = Number.isFinite(measuredCreatedToFillMs)
-      ? "FILL_CHAIN"
+      ? (Number.isFinite(fillDocAtMs) ? "FILL_DOC" : "INTENT_FILLED_AT")
       : (Number.isFinite(fallbackCreatedToFillMs) ? "LIVE_POLICY_FALLBACK" : null);
     const partialFillPct = agg.max_partial_fill_pct ?? toNum(intent.live_exec_policy_quality_partial_pct);
     const slippageBps = agg.avg_slippage_bps ?? toNum(intent.live_exec_policy_quality_slippage_bps);
@@ -169,7 +186,7 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
         event: toUpper(intent.event),
         side: toUpper(intent.side),
         regime: toUpper(intent.regime || intent.market_regime),
-        source: toUpper(intent.source),
+        source: deriveIntentSource(intent),
         primary_fill_source: agg.primary_fill_source,
         is_exit_event: isExitEvent(intent.event),
       },
@@ -203,6 +220,7 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
         pre_tp1_time_stop: preTp1TimeStop,
         created_to_fill_ms: createdToFillMs,
         created_to_fill_measured: Number.isFinite(measuredCreatedToFillMs),
+        created_to_fill_source: createdToFillSource,
         slippage_bps: slippageBps,
         partial_fill_pct: partialFillPct,
       },
@@ -273,10 +291,11 @@ function summarizeExecutionModelRows(rows = []) {
     const event = String(row.context.event || "").trim().toUpperCase() || "UNKNOWN";
     const source = String(row.context.source || "").trim().toUpperCase() || "UNKNOWN";
     const fillSource = String(row.context.primary_fill_source || "NO_FILL").trim().toUpperCase() || "UNKNOWN";
+    const latencySource = String(row.labels && row.labels.created_to_fill_source || "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
     const market = String(row.context.market || "").trim().toUpperCase() || "UNKNOWN";
-    const key = [event, source, fillSource, market].join("|");
+    const key = [event, source, fillSource, latencySource, market].join("|");
     if (!byEntryLatencyGroup.has(key)) {
-      byEntryLatencyGroup.set(key, { key, event, source, primary_fill_source: fillSource, market, rows_n: 0, latency_values: [] });
+      byEntryLatencyGroup.set(key, { key, event, source, primary_fill_source: fillSource, latency_source: latencySource, market, rows_n: 0, latency_values: [] });
     }
     const bucket = byEntryLatencyGroup.get(key);
     bucket.rows_n += 1;
@@ -284,7 +303,7 @@ function summarizeExecutionModelRows(rows = []) {
     const measured = row && row.labels && row.labels.created_to_fill_measured === true;
     const targetMap = measured ? byMeasuredEntryLatencyGroup : byFallbackEntryLatencyGroup;
     if (!targetMap.has(key)) {
-      targetMap.set(key, { key, event, source, primary_fill_source: fillSource, market, rows_n: 0, latency_values: [] });
+      targetMap.set(key, { key, event, source, primary_fill_source: fillSource, latency_source: latencySource, market, rows_n: 0, latency_values: [] });
     }
     const target = targetMap.get(key);
     target.rows_n += 1;
@@ -319,6 +338,7 @@ function summarizeExecutionModelRows(rows = []) {
         event: row.event,
         source: row.source,
         primary_fill_source: row.primary_fill_source,
+        latency_source: row.latency_source,
         market: row.market,
         rows_n: row.rows_n,
         created_to_fill_p95_ms: p95(row.latency_values),
@@ -331,6 +351,7 @@ function summarizeExecutionModelRows(rows = []) {
         event: row.event,
         source: row.source,
         primary_fill_source: row.primary_fill_source,
+        latency_source: row.latency_source,
         market: row.market,
         rows_n: row.rows_n,
         created_to_fill_p95_ms: p95(row.latency_values),
@@ -343,6 +364,7 @@ function summarizeExecutionModelRows(rows = []) {
         event: row.event,
         source: row.source,
         primary_fill_source: row.primary_fill_source,
+        latency_source: row.latency_source,
         market: row.market,
         rows_n: row.rows_n,
         created_to_fill_p95_ms: p95(row.latency_values),
