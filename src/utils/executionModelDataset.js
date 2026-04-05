@@ -76,13 +76,23 @@ function deriveWebhookDelayCause(row = null) {
   const noFillDetail = toUpper(row && row.execution && row.execution.no_fill_detail);
   const runId = toUpper(row && row.run_id);
   const wasFilled = row && row.labels && row.labels.was_filled === true;
+  const signalToIntentMs = toNum(row && row.execution && row.execution.signal_to_intent_ms);
+  const webhookToIntentMs = toNum(row && row.execution && row.execution.webhook_to_intent_ms);
+  const webhookSignalGapMs = Number.isFinite(webhookToIntentMs) && Number.isFinite(signalToIntentMs)
+    ? (webhookToIntentMs - signalToIntentMs)
+    : null;
   if (source === "MANUAL_REPLAY") return "MANUAL_REPLAY";
   if (runId && runId.includes("MANUAL_EARLY_RETRY")) return "MANUAL_RETRY";
   if (scheduleReason === "WAIT_NEXT_BAR") return "SCHEDULED_WAIT_NEXT_BAR";
   if (scheduleReason === "LATE_EXEC" && wasFilled) return "LATE_EXEC_DELAYED_INTENT_FILLED";
   if (scheduleReason === "LATE_EXEC" && noFillReason === "INTENT_EXPIRED") return "LATE_EXEC_EXPIRED";
   if (scheduleReason === "LATE_EXEC") return "LATE_EXEC_WINDOW";
-  if (scheduleReason === "EXEC_CURRENT_BAR" && wasFilled) return "IMMEDIATE_EXEC_DELAYED_INTENT_FILLED";
+  if (scheduleReason === "EXEC_CURRENT_BAR" && wasFilled) {
+    if (Number.isFinite(signalToIntentMs) && signalToIntentMs < 0) return "IMMEDIATE_EXEC_BEFORE_BAR_CLOSE";
+    if (Number.isFinite(webhookSignalGapMs) && webhookSignalGapMs > 300000) return "IMMEDIATE_EXEC_STALE_WEBHOOK_MATCH";
+    if (Number.isFinite(signalToIntentMs) && signalToIntentMs > 300000) return "IMMEDIATE_EXEC_TRUE_INTENT_DELAY";
+    return "IMMEDIATE_EXEC_DELAYED_INTENT_FILLED";
+  }
   if (
     scheduleReason === "EXEC_CURRENT_BAR"
     && (noFillReason === "BINANCEFUT_KEYS_MISSING" || noFillSubtype === "KEYS_MISSING" || (noFillDetail && noFillDetail.includes("KEYS_MISSING")))

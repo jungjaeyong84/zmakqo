@@ -107,7 +107,10 @@ assert.strictEqual(__test.deriveNoFillSubtype({ reason: 'LIVE_EXCEPTION', detail
 assert.strictEqual(__test.deriveNoFillSubtype({ reason: 'LIVE_EXCEPTION', detail: 'immediate_exec=2026-02-06T14:00:00.000Z' }), 'TIMING_IMMEDIATE_EXEC');
 assert.strictEqual(__test.deriveEntryScheduleReason({ pending_reason: 'WAIT_NEXT_BAR' }), 'WAIT_NEXT_BAR');
 assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'TV_WEBHOOK' }, execution: { entry_schedule_reason: 'WAIT_NEXT_BAR' } }), 'SCHEDULED_WAIT_NEXT_BAR');
-assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'PINE_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR' }, labels: { was_filled: true } }), 'IMMEDIATE_EXEC_DELAYED_INTENT_FILLED');
+assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'PINE_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_to_intent_ms: 420000, webhook_to_intent_ms: 430000 }, labels: { was_filled: true } }), 'IMMEDIATE_EXEC_TRUE_INTENT_DELAY');
+assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'PINE_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_to_intent_ms: 80000, webhook_to_intent_ms: 500000 }, labels: { was_filled: true } }), 'IMMEDIATE_EXEC_STALE_WEBHOOK_MATCH');
+assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'PINE_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_to_intent_ms: -120000, webhook_to_intent_ms: 230000 }, labels: { was_filled: true } }), 'IMMEDIATE_EXEC_BEFORE_BAR_CLOSE');
+assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'PINE_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_to_intent_ms: 80000, webhook_to_intent_ms: 120000 }, labels: { was_filled: true } }), 'IMMEDIATE_EXEC_DELAYED_INTENT_FILLED');
 assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'PINE_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', no_fill_reason: 'BINANCEFUT_KEYS_MISSING' } }), 'IMMEDIATE_EXEC_KEYS_MISSING');
 assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'PINE_WEBHOOK' }, execution: { entry_schedule_reason: 'LATE_EXEC', no_fill_reason: 'INTENT_EXPIRED' } }), 'LATE_EXEC_EXPIRED');
 assert.strictEqual(__test.isOperationalSource('MANUAL_REPLAY'), false);
