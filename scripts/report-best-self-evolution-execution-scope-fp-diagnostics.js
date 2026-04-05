@@ -29,6 +29,7 @@ function renderMarkdown(report = {}) {
     `- top_false_positive_group: ${summary.top_false_positive_group || "N/A"}`,
     `- top_false_positive_rows_n: ${summary.top_false_positive_rows_n ?? "N/A"}`,
     `- top_shared_feature: ${summary.top_shared_feature || "N/A"}`,
+    `- top_context_profile: ${summary.top_context_profile || "N/A"}`,
     `- reference_group_mode: ${summary.reference_group_mode || "N/A"}`,
     `- reference_rows_n: ${summary.reference_rows_n ?? "N/A"}`,
     `- reference_top_shared_feature: ${summary.reference_top_shared_feature || "N/A"}`,

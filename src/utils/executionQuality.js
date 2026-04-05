@@ -189,6 +189,7 @@ function summarizeExecutionQuality({
         : null,
       execution_scope_fp_diagnostics_status: String(executionScopeFpSummary.status || "").trim() || null,
       execution_scope_fp_diagnostics_top_shared_feature: String(executionScopeFpSummary.top_shared_feature || "").trim() || null,
+      execution_scope_fp_diagnostics_top_context_profile: String(executionScopeFpSummary.top_context_profile || "").trim() || null,
       execution_scope_fp_diagnostics_reference_rows_n: toNum(executionScopeFpSummary.reference_rows_n),
       execution_scope_fp_diagnostics_reference_group_mode: String(executionScopeFpSummary.reference_group_mode || "").trim() || null,
       review_reasons: reviewReasons,

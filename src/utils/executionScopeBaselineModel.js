@@ -6,6 +6,11 @@ const { deriveExecutionEntryLabelScope } = require("./executionEntryLabelScope")
 const EXECUTION_SCOPE_MODEL_KIND = "EXECUTION_SCOPE_OVR_LOGISTIC_V1";
 const EXECUTION_SCOPE_SPLIT_STRATEGY = "SOURCE_AWARE_TIME_SERIES_70_15_15";
 const TARGET_CLASSES = Object.freeze(["FILLABLE", "POLICY_BLOCKED", "RUNTIME_EXCEPTION"]);
+const CLASS_WEIGHT_MULTIPLIERS = Object.freeze({
+  FILLABLE: { positive: 1.12, negative: 0.98 },
+  POLICY_BLOCKED: { positive: 1.04, negative: 1.0 },
+  RUNTIME_EXCEPTION: { positive: 1.0, negative: 1.0 },
+});
 const NUMERIC_FEATURES = Object.freeze([
   "execution.signal_to_intent_ms",
   "execution.webhook_to_intent_ms",
@@ -29,8 +34,14 @@ const CATEGORICAL_FEATURES = Object.freeze([
   "context.market",
   "execution.entry_schedule_reason",
   "execution.entry_schedule_note_kind",
+  "execution.entry_schedule_profile",
   "execution.webhook_decision",
   "execution.webhook_reason",
+  "features.reason",
+  "features.action",
+  "features.pos_state",
+  "features.pro_conflict",
+  "features.score_bucket",
   "features.source_origin",
   "features.signal_family",
   "features.entry_grade",
@@ -292,6 +303,45 @@ function trainBinaryLogistic(examples = [], labels = [], { epochs = 250, learnin
   return { weights, bias, class_weights: classWeights };
 }
 
+function applyClassWeightMultiplier(classWeights = {}, targetLabel = null) {
+  const base = classWeights && typeof classWeights === "object" ? classWeights : { positive_weight: 1, negative_weight: 1 };
+  const override = CLASS_WEIGHT_MULTIPLIERS[targetLabel] || null;
+  if (!override) return base;
+  return {
+    positive_weight: (toNum(base.positive_weight) || 1) * (toNum(override.positive) || 1),
+    negative_weight: (toNum(base.negative_weight) || 1) * (toNum(override.negative) || 1),
+  };
+}
+
+function trainWeightedBinaryLogistic(examples = [], labels = [], targetLabel = null, { epochs = 250, learningRate = 0.08, l2 = 0.0005 } = {}) {
+  const dims = examples[0] ? examples[0].length : 0;
+  const weights = new Array(dims).fill(0);
+  let bias = 0;
+  const baseClassWeights = deriveClassWeights(labels);
+  const classWeights = applyClassWeightMultiplier(baseClassWeights, targetLabel);
+  if (!dims || !labels.length) return { weights, bias, class_weights: classWeights };
+  for (let epoch = 0; epoch < epochs; epoch += 1) {
+    const grad = new Array(dims).fill(0);
+    let biasGrad = 0;
+    let totalWeight = 0;
+    for (let i = 0; i < examples.length; i += 1) {
+      const x = examples[i];
+      const y = labels[i];
+      const sampleWeight = y === 1 ? classWeights.positive_weight : classWeights.negative_weight;
+      const err = (sigmoid(bias + dot(weights, x)) - y) * sampleWeight;
+      totalWeight += sampleWeight;
+      biasGrad += err;
+      for (let j = 0; j < dims; j += 1) grad[j] += err * x[j];
+    }
+    const scale = totalWeight > 0 ? 1 / totalWeight : 1 / examples.length;
+    bias -= learningRate * biasGrad * scale;
+    for (let j = 0; j < dims; j += 1) {
+      weights[j] -= learningRate * ((grad[j] * scale) + (l2 * weights[j]));
+    }
+  }
+  return { weights, bias, class_weights: classWeights };
+}
+
 function scoreRows(rows = [], spec, modelByClass = {}) {
   return rows.map((row) => {
     const x = encodeRow(row, spec);
@@ -413,7 +463,7 @@ function buildExecutionScopeBaselineModel({
   const modelByClass = {};
   for (const label of TARGET_CLASSES) {
     const binaryLabels = split.trainRows.map((row) => deriveTargetClass(row) === label ? 1 : 0);
-    modelByClass[label] = trainBinaryLogistic(trainX, binaryLabels);
+    modelByClass[label] = trainWeightedBinaryLogistic(trainX, binaryLabels, label);
   }
   const trainPred = scoreRows(split.trainRows, spec, modelByClass);
   const validationPred = scoreRows(split.validationRows, spec, modelByClass);

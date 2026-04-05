@@ -77,6 +77,37 @@ function deriveEntryScheduleNoteKind(intent = null) {
   return "OTHER";
 }
 
+function deriveScoreBucket(score = null) {
+  const n = toNum(score);
+  if (!Number.isFinite(n)) return "UNKNOWN";
+  if (n < -60) return "<-60";
+  if (n < -40) return "-60--40";
+  if (n < -20) return "-40--20";
+  if (n < 0) return "-20-0";
+  if (n < 20) return "0-20";
+  return "20+";
+}
+
+function deriveEntryScheduleProfile({ reason = null, noteKind = null, gapMs = null } = {}) {
+  const scheduleReason = toUpper(reason);
+  const scheduleNoteKind = toUpper(noteKind);
+  const gap = toNum(gapMs);
+  if (scheduleReason === "LATE_EXEC") {
+    if (Number.isFinite(gap) && gap <= 0) return "LATE_EXEC_CURRENT_BAR";
+    if (Number.isFinite(gap) && gap <= 900000) return "LATE_EXEC_ONE_BAR";
+    if (Number.isFinite(gap) && gap > 900000) return "LATE_EXEC_MULTI_BAR";
+    if (scheduleNoteKind === "LATE_EXEC_FROM") return "LATE_EXEC_NOTE_ONLY";
+    return "LATE_EXEC_OTHER";
+  }
+  if (scheduleReason === "WAIT_NEXT_BAR") {
+    if (Number.isFinite(gap) && gap <= 900000) return "WAIT_NEXT_BAR_ONE_BAR";
+    if (Number.isFinite(gap) && gap > 900000) return "WAIT_NEXT_BAR_MULTI_BAR";
+    return "WAIT_NEXT_BAR_OTHER";
+  }
+  if (scheduleReason === "EXEC_CURRENT_BAR") return "EXEC_CURRENT_BAR";
+  return scheduleReason || null;
+}
+
 function deriveWebhookDelayCause(row = null) {
   const source = toUpper(row && row.context && row.context.source);
   const scheduleReason = toUpper(row && row.execution && row.execution.entry_schedule_reason);
@@ -470,10 +501,13 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
     const noFillSubtype = wasFilled ? null : deriveNoFillSubtype({ reason: noFillReason, detail: noFillDetail });
     const entryScheduleReason = deriveEntryScheduleReason(intent);
     const entryScheduleNote = String(intent.pending_note || "").trim() || null;
+    const entryScheduleNoteKind = deriveEntryScheduleNoteKind(intent);
     const scheduledExecBarCloseMs = toNum(intent.scheduled_exec_bar_close_time_utc_ms);
     const scheduledExecGapMs = Number.isFinite(signalBarCloseMs) && Number.isFinite(scheduledExecBarCloseMs)
       ? scheduledExecBarCloseMs - signalBarCloseMs
       : null;
+    features.score_bucket = deriveScoreBucket(features.score);
+    features.pro_conflict = features.pro_conflict == null ? null : !!features.pro_conflict;
     return {
       schema_version: EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
       row_id: intentId || String(intent.signal_id || intent.id || "").trim() || null,
@@ -527,7 +561,12 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
         live_policy_partial_pct: toNum(intent.live_exec_policy_quality_partial_pct),
         entry_schedule_reason: entryScheduleReason,
         entry_schedule_note: entryScheduleNote,
-        entry_schedule_note_kind: deriveEntryScheduleNoteKind(intent),
+        entry_schedule_note_kind: entryScheduleNoteKind,
+        entry_schedule_profile: deriveEntryScheduleProfile({
+          reason: entryScheduleReason,
+          noteKind: entryScheduleNoteKind,
+          gapMs: scheduledExecGapMs,
+        }),
         signal_to_intent_ms: signalToIntentMs,
         signal_to_fill_ms: signalToFillMs,
         fill_source_counts: agg.fill_source_counts,

@@ -45,6 +45,7 @@ const { summarizeExecutionScopeFalsePositiveDiagnostics } = require("../utils/ex
   assert.strictEqual(report.summary.top_false_positive_group, "FILLABLE|RUNTIME_EXCEPTION|LIVE_RUNTIME|EMO_SHORT|BTCUSDT");
   assert.strictEqual(report.summary.top_false_positive_rows_n, 2);
   assert.strictEqual(report.summary.top_shared_feature, "execution.entry_schedule_reason=LATE_EXEC");
+  assert.strictEqual(report.summary.top_context_profile, "IN_POSITION_SAME_DIR|ADD|UNKNOWN|UNKNOWN|UNKNOWN");
   assert.strictEqual(report.summary.reference_group_mode, "EXACT_SOURCE_EVENT_MARKET");
   assert.strictEqual(report.summary.reference_rows_n, 1);
   assert.strictEqual(report.summary.reference_top_shared_feature, "execution.entry_schedule_reason=LATE_EXEC");

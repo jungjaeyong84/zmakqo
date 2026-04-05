@@ -51,12 +51,17 @@ function parseGroupKey(key = "") {
 }
 
 const SHARED_FEATURE_PATHS = Object.freeze([
+  "execution.entry_schedule_profile",
   "execution.entry_schedule_reason",
+  "execution.entry_schedule_note_kind",
   "execution.status",
   "context.primary_fill_source",
-  "features._entry_exec_timing",
   "features.reason",
   "features.action",
+  "features.pos_state",
+  "features.pro_conflict",
+  "features.score_bucket",
+  "features._entry_exec_timing",
   "features.ai_signal.ai_decision",
   "features.signal_family",
   "features.source_origin",
@@ -132,6 +137,24 @@ function summarizeNumericProfile(rows = []) {
   };
 }
 
+function summarizeContextProfiles(rows = [], limit = 5) {
+  const counts = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const key = [
+      normalizeText(getPath(row, "features.reason")) || "UNKNOWN",
+      normalizeText(getPath(row, "features.action")) || "UNKNOWN",
+      normalizeText(getPath(row, "features.pos_state")) || "UNKNOWN",
+      normalizeText(getPath(row, "features.score_bucket")) || "UNKNOWN",
+      normalizeText(getPath(row, "execution.entry_schedule_profile")) || "UNKNOWN",
+    ].join("|");
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([key, rows_n]) => ({ key, rows_n }))
+    .sort((a, b) => b.rows_n - a.rows_n)
+    .slice(0, limit);
+}
+
 function buildRowMap(rows = []) {
   const map = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
@@ -203,6 +226,7 @@ function summarizeExecutionScopeFalsePositiveDiagnostics({
   const referenceSharedFeatures = summarizeSharedFeatures(reference.rows).slice(0, 4);
   const topMeaningfulSharedFeature = pickTopMeaningfulSharedFeature(topSharedFeatures);
   const topMeaningfulReferenceFeature = pickTopMeaningfulSharedFeature(referenceSharedFeatures);
+  const topContextProfiles = summarizeContextProfiles(groupRows);
   const groupProfile = summarizeNumericProfile(groupRows);
   const referenceProfile = summarizeNumericProfile(reference.rows);
 
@@ -220,6 +244,8 @@ function summarizeExecutionScopeFalsePositiveDiagnostics({
         ? `${topMeaningfulSharedFeature.path}=${topMeaningfulSharedFeature.value}`
         : null,
       top_shared_features: topSharedFeatures,
+      top_context_profile: topContextProfiles[0] ? topContextProfiles[0].key : null,
+      top_context_profiles: topContextProfiles,
       reference_group_mode: reference.mode,
       reference_rows_n: referenceProfile.rows_n,
       reference_top_shared_feature: topMeaningfulReferenceFeature

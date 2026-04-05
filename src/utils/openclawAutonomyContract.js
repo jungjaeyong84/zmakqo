@@ -529,6 +529,7 @@ function deriveOpenClawAutonomyContract({
       execution_scope_inference_top_false_positive_group: String(firstArrayRow(executionScopeInferenceSummary.top_false_positive_groups)?.key || "").trim() || null,
       execution_scope_fp_diagnostics_status: String(executionQualitySummary.execution_scope_fp_diagnostics_status || "").trim() || null,
       execution_scope_fp_diagnostics_top_shared_feature: String(executionQualitySummary.execution_scope_fp_diagnostics_top_shared_feature || "").trim() || null,
+      execution_scope_fp_diagnostics_top_context_profile: String(executionQualitySummary.execution_scope_fp_diagnostics_top_context_profile || "").trim() || null,
       execution_scope_fp_diagnostics_reference_rows_n: toNum(executionQualitySummary.execution_scope_fp_diagnostics_reference_rows_n),
       execution_scope_fp_diagnostics_reference_group_mode: String(executionQualitySummary.execution_scope_fp_diagnostics_reference_group_mode || "").trim() || null,
       execution_scope_train_run_status: mlTrainRunScopeStatus,
@@ -682,6 +683,7 @@ function deriveOpenClawAutonomyContract({
       execution_scope_inference_top_false_positive_group: String(firstArrayRow(executionScopeInferenceSummary.top_false_positive_groups)?.key || "").trim() || null,
       execution_scope_fp_diagnostics_status: String(executionQualitySummary.execution_scope_fp_diagnostics_status || "").trim() || null,
       execution_scope_fp_diagnostics_top_shared_feature: String(executionQualitySummary.execution_scope_fp_diagnostics_top_shared_feature || "").trim() || null,
+      execution_scope_fp_diagnostics_top_context_profile: String(executionQualitySummary.execution_scope_fp_diagnostics_top_context_profile || "").trim() || null,
       execution_scope_fp_diagnostics_reference_rows_n: toNum(executionQualitySummary.execution_scope_fp_diagnostics_reference_rows_n),
       execution_scope_fp_diagnostics_reference_group_mode: String(executionQualitySummary.execution_scope_fp_diagnostics_reference_group_mode || "").trim() || null,
       execution_model_dataset_version_id: String(

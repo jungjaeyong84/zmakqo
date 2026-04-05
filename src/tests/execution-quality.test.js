@@ -37,6 +37,15 @@ const { summarizeExecutionQuality } = require("../utils/executionQuality");
         top_false_positive_groups: [{ key: "FILLABLE|POLICY_BLOCKED|LIVE_RUNTIME|EMO_LONG|KRW-BCH", rows_n: 9 }],
       },
     },
+    executionScopeFalsePositiveDiagnostics: {
+      summary: {
+        status: "EXECUTION_SCOPE_FP_DIAGNOSTICS_READY",
+        top_shared_feature: "execution.entry_schedule_reason=LATE_EXEC",
+        top_context_profile: "IN_POSITION_SAME_DIR|ADD|SHORT|-20-0|LATE_EXEC_CURRENT_BAR",
+        reference_rows_n: 4,
+        reference_group_mode: "EXACT_SOURCE_EVENT_MARKET",
+      },
+    },
     intents: [
       { intent_id: "i1", created_at: "2026-04-01T00:00:00.000Z" },
       { intent_id: "i2", created_at: "2026-04-01T00:10:00.000Z" },
@@ -64,6 +73,10 @@ const { summarizeExecutionQuality } = require("../utils/executionQuality");
   assert.strictEqual(report.summary.execution_scope_quality_gate_ready, false);
   assert.strictEqual(report.summary.execution_scope_inference_mismatch_rate, 0.29);
   assert.strictEqual(report.summary.execution_scope_top_false_positive_group, "FILLABLE|POLICY_BLOCKED|LIVE_RUNTIME|EMO_LONG|KRW-BCH");
+  assert.strictEqual(report.summary.execution_scope_fp_diagnostics_status, "EXECUTION_SCOPE_FP_DIAGNOSTICS_READY");
+  assert.strictEqual(report.summary.execution_scope_fp_diagnostics_top_shared_feature, "execution.entry_schedule_reason=LATE_EXEC");
+  assert.strictEqual(report.summary.execution_scope_fp_diagnostics_top_context_profile, "IN_POSITION_SAME_DIR|ADD|SHORT|-20-0|LATE_EXEC_CURRENT_BAR");
+  assert.strictEqual(report.summary.execution_scope_fp_diagnostics_reference_rows_n, 4);
   assert.strictEqual(report.by_market[0].market, "BTCUSDT");
   assert.strictEqual(report.by_market[1].market, "SOLUSDT");
 })();

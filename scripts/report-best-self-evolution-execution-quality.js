@@ -52,7 +52,7 @@ function renderMarkdown(report = {}) {
     `- execution_scope_quality_gate: ${summary.execution_scope_quality_gate_status || "N/A"} / ready=${summary.execution_scope_quality_gate_ready ? "YES" : "NO"}`,
     `- execution_scope_mismatch_rate: ${summary.execution_scope_inference_mismatch_rate ?? "N/A"}`,
     `- execution_scope_top_false_positive_group: ${summary.execution_scope_top_false_positive_group || "N/A"}`,
-    `- execution_scope_fp_diagnostics: ${summary.execution_scope_fp_diagnostics_status || "N/A"} / top_shared=${summary.execution_scope_fp_diagnostics_top_shared_feature || "N/A"} / reference_rows=${summary.execution_scope_fp_diagnostics_reference_rows_n ?? "N/A"}`,
+    `- execution_scope_fp_diagnostics: ${summary.execution_scope_fp_diagnostics_status || "N/A"} / top_shared=${summary.execution_scope_fp_diagnostics_top_shared_feature || "N/A"} / top_profile=${summary.execution_scope_fp_diagnostics_top_context_profile || "N/A"} / reference_rows=${summary.execution_scope_fp_diagnostics_reference_rows_n ?? "N/A"}`,
     `- review_reasons: ${Array.isArray(summary.review_reasons) && summary.review_reasons.length ? summary.review_reasons.join("|") : "none"}`,
     "",
     "## Markets",
