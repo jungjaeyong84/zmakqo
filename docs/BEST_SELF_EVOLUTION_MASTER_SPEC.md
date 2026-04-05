@@ -25,6 +25,7 @@
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_WORK_BREAKDOWN.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/BEST_SELF_EVOLUTION_CLAUDE_AUDIT_SPEC.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/CLAUDE_SELF_EVOLUTION_VALIDATION_PROMPT.md`
+  - `/Users/jeongjaeyong/Projects/donbeolja/docs/CLAUDE_GOOGLE_GRADE_ML_QUANT_AUDIT_PROMPT_2026-04-05.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/OPENCLAW_AUTONOMY_CONTRACT.md`
   - `/Users/jeongjaeyong/Projects/donbeolja/docs/DONBEOLJA_UIUX_CONTROL_SURFACE_PLAN.md`
 
@@ -159,7 +160,9 @@
 36. empirical EV probability calibration
 37. portfolio cluster risk live guard
 38. 기관급 ML 자동 퀀트 확장 계획은 `/Users/jeongjaeyong/Projects/donbeolja/docs/GOOGLE_GRADE_ML_QUANT_PLAN_2026-04-05.md`를 기준 문서로 삼는다.
-38. objective retrospective FX normalization (`USDT -> KRW`)
+39. `ml training dataset / feature store / execution model dataset / experiment registry / execution stage latency / execution bottleneck delta`를 Phase 1 foundation artifact로 사용한다.
+40. `webhook immediate probe history`를 execution bottleneck 해석의 보조 증거로 사용한다.
+41. objective retrospective FX normalization (`USDT -> KRW`)
 
 현재 migration 상태:
 
@@ -244,6 +247,11 @@
    - Telegram/운영 알림은 `TP0`, `pre-TP1 time stop`, `cohort`, `DROP_CHASE_ENTRY_QUALITY`, `LIVE_RESCUE_ADD_*`, `LINEAGE_SLO_*`, `LIVE_POLICY_*`를 사람이 읽기 쉬운 한글 설명으로 노출한다.
    - 알림 계층은 실행 성공/실패뿐 아니라 운영 보류 이유를 OpenClaw와 사람 운영자가 같은 의미로 읽도록 유지한다.
    - 승인 필요 변경은 일반 `[변경]` 알림과 분리해 별도 `[요청]` 알림으로 보낸다.
+
+10. `ML foundation interpretation`
+   - `execution_model_dataset`의 `LEGACY_WEBHOOK_OUTCOME_ONLY`는 current runtime bottleneck이 아니라 historical webhook observation gap을 뜻할 수 있다.
+   - `execution_bottleneck_delta`가 `STALE_COMPARISON`이면 같은 experiment/dataset 재생성으로 보고 trend 증거로 사용하지 않는다.
+   - `dataset_version_id / feature_store_version_id / experiment_id`를 함께 읽지 않으면 ML foundation 상태를 잘못 해석할 수 있다.
 
 ## 9. 다음 고도화 범위
 

@@ -92,6 +92,27 @@
   - `4번째 correlated cluster -> BLOCK`
   - `same-side / correlated same-side total exposure cap` 초과 시 추가 축소 또는 차단
 
+### 6.1.1 ML Foundation Artifacts
+역할:
+- 구글급 ML 퀀트 확장을 위한 학습용 바닥공사를 제공한다.
+- 현재는 모델 서빙이 아니라 `dataset / feature / execution observation / experiment metadata`를 정형화하는 단계다.
+
+핵심 artifact:
+- `ops/daily/ml_training_dataset_latest.json`
+- `ops/daily/ml_feature_store_latest.json`
+- `ops/daily/execution_model_dataset_latest.json`
+- `ops/daily/execution_model_entry_dataset_latest.json`
+- `ops/daily/execution_model_exit_dataset_latest.json`
+- `ops/daily/best_self_evolution_model_readiness_latest.json`
+- `ops/daily/best_self_evolution_execution_stage_latency_latest.json`
+- `ops/daily/best_self_evolution_ml_experiment_registry_latest.json`
+- `ops/daily/best_self_evolution_execution_bottleneck_delta_latest.json`
+
+해석 주의:
+- `execution_model_dataset`는 current operational bottleneck와 legacy webhook observation gap을 구분해서 읽어야 한다.
+- `LEGACY_WEBHOOK_OUTCOME_ONLY`는 current live runtime issue가 아니라 `immediate probe history`가 없던 과거 샘플일 수 있다.
+- `execution_bottleneck_delta`가 `STALE_COMPARISON`이면 새 샘플이 아닌 같은 experiment 재생성이다.
+
 ### 6.2 EV Probability Calibration
 역할:
 - `DROP_EV_GATE_TP1_PROB`가 쓰는 `tp1_prob lower bound`를 empirical outcome으로 보정한다.
@@ -132,6 +153,10 @@
 - 전략 후보를 생성한다.
 - replay, canary, validation을 통해 후보를 검증한다.
 - 성과와 정합성 기준으로 다음 조치를 선택한다.
+
+현재 추가된 ML foundation 연결:
+- OpenClaw와 reasoning journal은 `dataset_version_id`, `feature_store_version_id`, `execution bottleneck`, `experiment registry`, `execution quality`를 읽는다.
+- 따라서 자연 진화 루프는 단순 policy loop가 아니라 `model-ready ops foundation`을 같이 감독한다.
 
 ### 9. Objective Supervisor
 역할:
