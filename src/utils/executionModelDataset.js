@@ -74,10 +74,13 @@ function deriveWebhookDelayCause(row = null) {
   const noFillReason = toUpper(row && row.execution && row.execution.no_fill_reason);
   const noFillSubtype = toUpper(row && row.execution && row.execution.no_fill_subtype);
   const noFillDetail = toUpper(row && row.execution && row.execution.no_fill_detail);
+  const webhookDecision = toUpper(row && row.execution && row.execution.webhook_decision);
   const runId = toUpper(row && row.run_id);
   const wasFilled = row && row.labels && row.labels.was_filled === true;
   const signalToIntentMs = toNum(row && row.execution && row.execution.signal_to_intent_ms);
   const webhookToIntentMs = toNum(row && row.execution && row.execution.webhook_to_intent_ms);
+  const signalBarCloseMs = toNum(row && row.execution && row.execution.signal_bar_close_ms);
+  const scheduledExecBarCloseMs = toNum(row && row.execution && row.execution.scheduled_exec_bar_close_ms);
   const webhookSignalGapMs = Number.isFinite(webhookToIntentMs) && Number.isFinite(signalToIntentMs)
     ? (webhookToIntentMs - signalToIntentMs)
     : null;
@@ -88,9 +91,16 @@ function deriveWebhookDelayCause(row = null) {
   if (scheduleReason === "LATE_EXEC" && noFillReason === "INTENT_EXPIRED") return "LATE_EXEC_EXPIRED";
   if (scheduleReason === "LATE_EXEC") return "LATE_EXEC_WINDOW";
   if (scheduleReason === "EXEC_CURRENT_BAR" && wasFilled) {
+    if (Number.isFinite(signalBarCloseMs) && Number.isFinite(scheduledExecBarCloseMs) && scheduledExecBarCloseMs > signalBarCloseMs) {
+      return "IMMEDIATE_EXEC_NEXT_EXEC_BAR";
+    }
     if (Number.isFinite(signalToIntentMs) && signalToIntentMs < 0) return "IMMEDIATE_EXEC_BEFORE_BAR_CLOSE";
     if (Number.isFinite(webhookSignalGapMs) && webhookSignalGapMs > 300000) return "IMMEDIATE_EXEC_STALE_WEBHOOK_MATCH";
-    if (Number.isFinite(signalToIntentMs) && signalToIntentMs > 300000) return "IMMEDIATE_EXEC_TRUE_INTENT_DELAY";
+    if (Number.isFinite(signalToIntentMs) && signalToIntentMs > 300000) {
+      if (webhookDecision === "DROP") return "IMMEDIATE_EXEC_WEBHOOK_DROP_LATER_INTENT";
+      if (webhookDecision === "SAVED") return "IMMEDIATE_EXEC_WEBHOOK_SAVED_LATE_INTENT";
+      return "IMMEDIATE_EXEC_TRUE_INTENT_DELAY";
+    }
     return "IMMEDIATE_EXEC_DELAYED_INTENT_FILLED";
   }
   if (
@@ -455,6 +465,7 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [] } = {
         fill_n: agg.fill_n,
         signal_price: toNum(intent.signal_price),
         signal_bar_close_ms: signalBarCloseMs,
+        scheduled_exec_bar_close_ms: toNum(intent.scheduled_exec_bar_close_time_utc_ms),
         webhook_request_id: webhook.webhook_request_id,
         webhook_ingress_at_ms: webhook.webhook_ingress_at_ms,
         webhook_outcome_at_ms: webhook.webhook_outcome_at_ms,
@@ -655,7 +666,11 @@ function summarizeExecutionModelRows(rows = []) {
             byOperationalWebhookDelayCause.set(delayCause, { key: delayCause, rows_n: 0 });
           }
           byOperationalWebhookDelayCause.get(delayCause).rows_n += 1;
-          if (delayCause === "IMMEDIATE_EXEC_TRUE_INTENT_DELAY") {
+          if ([
+            "IMMEDIATE_EXEC_TRUE_INTENT_DELAY",
+            "IMMEDIATE_EXEC_WEBHOOK_SAVED_LATE_INTENT",
+            "IMMEDIATE_EXEC_WEBHOOK_DROP_LATER_INTENT",
+          ].includes(delayCause)) {
             const causeKey = [source, event, market].join("|");
             if (!byOperationalImmediateIntentDelayGroup.has(causeKey)) {
               byOperationalImmediateIntentDelayGroup.set(causeKey, { key: causeKey, source, event, market, rows_n: 0, latency_values: [] });
