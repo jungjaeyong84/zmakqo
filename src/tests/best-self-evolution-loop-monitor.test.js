@@ -25,7 +25,7 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
     reports: {
       objectiveSupervisor: { cycle_id: "cycle-1", verdict: "PATCH_CANDIDATE", reason: "AUTO_PROMOTION_READY" },
       candidates: { cycle_id: "cycle-1", summary: { ready_n: 1, blocked_n: 0, top_candidate_id: "AUTO_CORE" } },
-      replay: { cycle_id: "cycle-1", summary: { pass_n: 1, block_n: 0, best_candidate_id: "AUTO_CORE" } },
+      replay: { cycle_id: "cycle-1", summary: { pass_n: 1, block_n: 0, best_candidate_id: "AUTO_CORE" }, validations: [{ candidate_id: "AUTO_CORE", display_candidate_id: "AUTO_CORE_DISPLAY" }] },
       canary: { cycle_id: "cycle-1", summary: { apply_pass: true, open_wave: 1, blocked_n: 0 } },
       canonicalParity: { cycle_id: "cycle-1", summary: { shadow_observed_n: 7, source_parity_mismatch_n: 0, final_downstream_mismatch_n: 2, by_actual_drop_reason_family: [{ key: "EV_POLICY", count: 2 }] } },
       canonicalProvenance: { cycle_id: "cycle-1", summary: { eligible_n: 6, complete_n: 6, with_actual_source_decision_n: 6, with_bundle_version_n: 6 } },
@@ -63,6 +63,9 @@ const { deriveLoopMonitor } = require("../../src/utils/bestSelfEvolutionLoopMoni
   assert.strictEqual(serverPrimaryRow.status, "N/A");
   assert.strictEqual(recoveryEffectRow.status, "WARN");
   assert.strictEqual(pineShadowDriftRow.status, "N/A");
+  const replayRow = report.rows.find((row) => row.loop === "REPLAY");
+  assert.ok(replayRow);
+  assert.strictEqual(replayRow.reason, "best=AUTO_CORE_DISPLAY / pass=1 / block=0");
 
   const mismatch = deriveLoopMonitor({
     artifacts: {

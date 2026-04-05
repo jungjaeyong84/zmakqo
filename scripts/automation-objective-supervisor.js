@@ -918,6 +918,10 @@ function summarizeSelfEvolutionCandidates(report = null) {
 function summarizeSelfEvolutionReplay(report = null) {
   const summary = report && report.summary && typeof report.summary === "object" ? report.summary : {};
   const rows = Array.isArray(report && report.validations) ? report.validations : [];
+  const bestCandidateId = String(summary.best_candidate_id || "").trim() || null;
+  const bestRow = bestCandidateId
+    ? (rows.find((row) => String(row && row.candidate_id || "").trim() === bestCandidateId) || null)
+    : null;
   return {
     available: !!report,
     validation_mode: String(report && report.validation_mode || "N/A"),
@@ -925,7 +929,8 @@ function summarizeSelfEvolutionReplay(report = null) {
     pass_n: toNum(summary.pass_n) || 0,
     warn_n: toNum(summary.warn_n) || 0,
     block_n: toNum(summary.block_n) || 0,
-    best_candidate_id: String(summary.best_candidate_id || "").trim() || null,
+    best_candidate_id: bestCandidateId,
+    best_display_candidate_id: String(bestRow && (bestRow.display_candidate_id || bestRow.candidate_id) || bestCandidateId || "").trim() || null,
     best_verdict: String(summary.best_verdict || "").trim() || null,
     best_objective_delta: toNum(summary.best_objective_delta),
     validations: rows,
@@ -1389,9 +1394,12 @@ function summarizeSelfEvolutionObjectiveRecoveryEffect(report = null) {
     target_market: String(summary.target_market || "").trim() || null,
     target_matches_dominant_negative_market: summary.target_matches_dominant_negative_market === true,
     best_ready_candidate_id: String(summary.best_ready_candidate_id || "").trim() || null,
+    best_ready_display_candidate_id: String(summary.best_ready_display_candidate_id || summary.best_ready_candidate_id || "").trim() || null,
     best_replay_candidate_id: String(summary.best_replay_candidate_id || "").trim() || null,
+    best_replay_display_candidate_id: String(summary.best_replay_display_candidate_id || summary.best_replay_candidate_id || "").trim() || null,
     higher_delta_candidate_available: summary.higher_delta_candidate_available === true,
     higher_delta_candidate_id: String(summary.higher_delta_candidate_id || "").trim() || null,
+    higher_delta_display_candidate_id: String(summary.higher_delta_display_candidate_id || summary.higher_delta_candidate_id || "").trim() || null,
     higher_delta_candidate_hold_reason: String(summary.higher_delta_candidate_hold_reason || "").trim().toUpperCase() || null,
     retrospective_monthly_failed_checks: Array.isArray(summary.retrospective_monthly_failed_checks) ? summary.retrospective_monthly_failed_checks : [],
     retrospective_monthly_top_drop_reason: String(summary.retrospective_monthly_top_drop_reason || "").trim() || null,
@@ -1902,7 +1910,7 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
       header: "자기 진화 리플레이",
       lines: [
         `mode ${report.self_evolution_replay && report.self_evolution_replay.validation_mode || "N/A"} / pass ${report.self_evolution_replay && report.self_evolution_replay.pass_n != null ? report.self_evolution_replay.pass_n : "N/A"} / warn ${report.self_evolution_replay && report.self_evolution_replay.warn_n != null ? report.self_evolution_replay.warn_n : "N/A"} / block ${report.self_evolution_replay && report.self_evolution_replay.block_n != null ? report.self_evolution_replay.block_n : "N/A"}`,
-        `best ${report.self_evolution_replay && report.self_evolution_replay.best_candidate_id || "N/A"} / verdict ${report.self_evolution_replay && report.self_evolution_replay.best_verdict || "N/A"} / delta ${report.self_evolution_replay && report.self_evolution_replay.best_objective_delta != null ? signedNum(report.self_evolution_replay.best_objective_delta, 4) : "N/A"}`,
+        `best ${report.self_evolution_replay && (report.self_evolution_replay.best_display_candidate_id || report.self_evolution_replay.best_candidate_id) || "N/A"} / verdict ${report.self_evolution_replay && report.self_evolution_replay.best_verdict || "N/A"} / delta ${report.self_evolution_replay && report.self_evolution_replay.best_objective_delta != null ? signedNum(report.self_evolution_replay.best_objective_delta, 4) : "N/A"}`,
       ],
     },
     {
@@ -2857,7 +2865,7 @@ function renderMarkdown(report = {}) {
     "## Self-Evolution Replay",
     `- mode: ${report.self_evolution_replay && report.self_evolution_replay.validation_mode || "N/A"}`,
     `- total/pass/warn/block: ${report.self_evolution_replay && report.self_evolution_replay.total_n != null ? report.self_evolution_replay.total_n : "N/A"} / ${report.self_evolution_replay && report.self_evolution_replay.pass_n != null ? report.self_evolution_replay.pass_n : "N/A"} / ${report.self_evolution_replay && report.self_evolution_replay.warn_n != null ? report.self_evolution_replay.warn_n : "N/A"} / ${report.self_evolution_replay && report.self_evolution_replay.block_n != null ? report.self_evolution_replay.block_n : "N/A"}`,
-    `- best_candidate: ${report.self_evolution_replay && report.self_evolution_replay.best_candidate_id || "N/A"} / verdict=${report.self_evolution_replay && report.self_evolution_replay.best_verdict || "N/A"} / objective_delta=${signedNum(report.self_evolution_replay && report.self_evolution_replay.best_objective_delta, 4)}`,
+    `- best_candidate: ${report.self_evolution_replay && (report.self_evolution_replay.best_display_candidate_id || report.self_evolution_replay.best_candidate_id) || "N/A"} / verdict=${report.self_evolution_replay && report.self_evolution_replay.best_verdict || "N/A"} / objective_delta=${signedNum(report.self_evolution_replay && report.self_evolution_replay.best_objective_delta, 4)}`,
     "",
     "## Self-Evolution Canary",
     `- total/shadow/soft/hard: ${report.self_evolution_canary && report.self_evolution_canary.total_n != null ? report.self_evolution_canary.total_n : "N/A"} / ${report.self_evolution_canary && report.self_evolution_canary.shadow_n != null ? report.self_evolution_canary.shadow_n : "N/A"} / ${report.self_evolution_canary && report.self_evolution_canary.soft_n != null ? report.self_evolution_canary.soft_n : "N/A"} / ${report.self_evolution_canary && report.self_evolution_canary.hard_n != null ? report.self_evolution_canary.hard_n : "N/A"}`,
@@ -2926,7 +2934,7 @@ function renderMarkdown(report = {}) {
     `- tracking: ${report.self_evolution_objective_recovery_effect && report.self_evolution_objective_recovery_effect.tracking_status || "N/A"} / ${report.self_evolution_objective_recovery_effect && report.self_evolution_objective_recovery_effect.tracking_reason || "N/A"}`,
     `- objective delta/projected/gap: ${signedNum(report.self_evolution_objective_recovery_effect && report.self_evolution_objective_recovery_effect.target_candidate_objective_delta, 4)} / ${signedNum(report.self_evolution_objective_recovery_effect && report.self_evolution_objective_recovery_effect.projected_objective_score, 4)} / ${signedPct(report.self_evolution_objective_recovery_effect && report.self_evolution_objective_recovery_effect.gap_closure_rate, 2)}`,
     `- target/dominant match: ${report.self_evolution_objective_recovery_effect && (report.self_evolution_objective_recovery_effect.display_candidate_id || report.self_evolution_objective_recovery_effect.target_candidate_id) || "N/A"} / ${report.self_evolution_objective_recovery_effect && report.self_evolution_objective_recovery_effect.dominant_negative_market || "N/A"} / ${report.self_evolution_objective_recovery_effect && report.self_evolution_objective_recovery_effect.target_matches_dominant_negative_market ? "YES" : "NO"}`,
-    `- best ready/replay/higher delta: ${report.self_evolution_objective_recovery_effect && report.self_evolution_objective_recovery_effect.best_ready_candidate_id || "N/A"} / ${report.self_evolution_objective_recovery_effect && report.self_evolution_objective_recovery_effect.best_replay_candidate_id || "N/A"} / ${report.self_evolution_objective_recovery_effect && report.self_evolution_objective_recovery_effect.higher_delta_candidate_available ? `${report.self_evolution_objective_recovery_effect.higher_delta_candidate_id || "N/A"} ${report.self_evolution_objective_recovery_effect.higher_delta_candidate_hold_reason || "N/A"}` : "none"}`,
+    `- best ready/replay/higher delta: ${report.self_evolution_objective_recovery_effect && (report.self_evolution_objective_recovery_effect.best_ready_display_candidate_id || report.self_evolution_objective_recovery_effect.best_ready_candidate_id) || "N/A"} / ${report.self_evolution_objective_recovery_effect && (report.self_evolution_objective_recovery_effect.best_replay_display_candidate_id || report.self_evolution_objective_recovery_effect.best_replay_candidate_id) || "N/A"} / ${report.self_evolution_objective_recovery_effect && report.self_evolution_objective_recovery_effect.higher_delta_candidate_available ? `${report.self_evolution_objective_recovery_effect.higher_delta_display_candidate_id || report.self_evolution_objective_recovery_effect.higher_delta_candidate_id || "N/A"} ${report.self_evolution_objective_recovery_effect.higher_delta_candidate_hold_reason || "N/A"}` : "none"}`,
     "",
     "## BEST/FEBT Market Contracts",
     ...((Array.isArray(report.best_febt_market_contracts) && report.best_febt_market_contracts.length)

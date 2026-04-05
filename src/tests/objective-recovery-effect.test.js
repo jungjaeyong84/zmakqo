@@ -40,7 +40,8 @@ const { deriveObjectiveRecoveryEffect } = require("../../src/utils/objectiveReco
         },
         {
           candidate_id: "EV_TP1_THRESHOLD_TUNE",
-          display_candidate_id: "EV_TP1_THRESHOLD_TUNE",
+          display_candidate_id: null,
+          canonical_candidate_id: "EV_COMPOSITE_THRESHOLD_TUNE",
           target_deploy_unit: "SERVER_SETTINGS",
           canonical_migration_class: "SERVER_POLICY",
           ready_for_auto_apply: false,
@@ -64,7 +65,7 @@ const { deriveObjectiveRecoveryEffect } = require("../../src/utils/objectiveReco
         },
         {
           candidate_id: "EV_TP1_THRESHOLD_TUNE",
-          display_candidate_id: "EV_TP1_THRESHOLD_TUNE",
+          display_candidate_id: null,
           validation_verdict: "PASS",
           candidate_objective_delta: 2.7902,
           projected_objective_score: -4.6157,
@@ -78,7 +79,7 @@ const { deriveObjectiveRecoveryEffect } = require("../../src/utils/objectiveReco
           objective: { failed_checks: ["MONTHLY_TARGET_NOT_MET", "NET_NOT_POSITIVE"] },
           drops: {
             top_reasons: [
-              { display_reason: "TP1 도달 확률 하한이 기준보다 낮아 진입을 보류했습니다." },
+              { display_reason: "TP0/TP1/시간청산을 함께 반영한 기대값 하한이 기준보다 낮아 진입을 보류했습니다." },
             ],
           },
         },
@@ -93,6 +94,7 @@ const { deriveObjectiveRecoveryEffect } = require("../../src/utils/objectiveReco
   assert.strictEqual(report.summary.best_ready_candidate_id, "AUTO_MARKET_AXSUSDT_REGIME_TIGHTEN");
   assert.strictEqual(report.summary.best_ready_matches_target, true);
   assert.strictEqual(report.summary.best_replay_candidate_id, "EV_TP1_THRESHOLD_TUNE");
+  assert.strictEqual(report.summary.best_replay_display_candidate_id, "EV_COMPOSITE_THRESHOLD_TUNE");
   assert.strictEqual(report.summary.higher_delta_candidate_available, true);
   assert.strictEqual(report.summary.higher_delta_candidate_hold_reason, "STALE_ARTIFACT_SHADOW_FALLBACK");
   assert.strictEqual(report.summary.projected_win_rate_target_pass, true);

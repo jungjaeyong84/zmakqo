@@ -163,6 +163,7 @@ function run() {
 
   const shadowFallbackNoCounterfactual = deriveCandidateObjectiveDelta({
     candidate_id: "EV_TP1_THRESHOLD_TUNE",
+    display_candidate_id: "EV_TP1_THRESHOLD_TUNE",
     canonical_candidate_id: "EV_COMPOSITE_THRESHOLD_TUNE",
     scope: "EV",
     direction: "LOOSEN",

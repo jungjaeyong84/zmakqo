@@ -831,7 +831,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
       summary: { total_n: 2, ready_n: 2, blocked_n: 0, top_candidate_id: "ML_GATE_CORE_SCORE_ABS", top_scope: "ML" },
       rows: [
         { candidate_id: "ML_GATE_CORE_SCORE_ABS", scope: "ML", ready_for_auto_apply: true, memory_blocked: false, failed_fingerprint_repeat: false },
-        { candidate_id: "EV_TP1_THRESHOLD_TUNE", scope: "EV", ready_for_auto_apply: true, memory_blocked: false, failed_fingerprint_repeat: false },
+        { candidate_id: "EV_TP1_THRESHOLD_TUNE", display_candidate_id: "EV_COMPOSITE_THRESHOLD_TUNE", canonical_candidate_id: "EV_COMPOSITE_THRESHOLD_TUNE", scope: "EV", ready_for_auto_apply: true, memory_blocked: false, failed_fingerprint_repeat: false },
       ],
     },
     selfEvolutionReplay: {
@@ -839,7 +839,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
       summary: { total_n: 2, pass_n: 1, warn_n: 0, block_n: 1, best_candidate_id: "EV_TP1_THRESHOLD_TUNE", best_verdict: "PASS", best_objective_delta: 2.5 },
       validations: [
         { candidate_id: "ML_GATE_CORE_SCORE_ABS", validation_verdict: "BLOCK", candidate_objective_delta: 0.1, blockers: ["NO_HISTORICAL_TIGHTEN_MATCH"] },
-        { candidate_id: "EV_TP1_THRESHOLD_TUNE", validation_verdict: "PASS", candidate_objective_delta: 2.5, blockers: [] },
+        { candidate_id: "EV_TP1_THRESHOLD_TUNE", display_candidate_id: "EV_COMPOSITE_THRESHOLD_TUNE", validation_verdict: "PASS", candidate_objective_delta: 2.5, blockers: [] },
       ],
     },
     selfEvolutionCanary: {
@@ -876,6 +876,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(autonomousRecoveryPrefersBestReadyReplay.promotion.candidate_id, "EV_TP1_THRESHOLD_TUNE");
   assert.strictEqual(autonomousRecoveryPrefersBestReadyReplay.promotion.replay_verdict, "PASS");
   assert.strictEqual(autonomousRecoveryPrefersBestReadyReplay.reason, "AUTONOMOUS_RECOVERY_PROMOTION_READY");
+  assert.strictEqual(autonomousRecoveryPrefersBestReadyReplay.self_evolution_replay.best_display_candidate_id, "EV_COMPOSITE_THRESHOLD_TUNE");
 
   const activeApprovedRecoveryDoesNotReopenAuthorityBlock = __test.evaluateSupervisor({
     ...base,

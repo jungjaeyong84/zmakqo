@@ -102,7 +102,7 @@ const { deriveObjectiveRecoveryGovernor } = require("../../src/utils/objectiveRe
       summary: { top_candidate_id: "ML_GATE_CORE_SCORE_ABS" },
       rows: [
         { candidate_id: "ML_GATE_CORE_SCORE_ABS", target_deploy_unit: "SERVER_SETTINGS", ready_for_auto_apply: true, memory_blocked: false, failed_fingerprint_repeat: false },
-        { candidate_id: "EV_TP1_THRESHOLD_TUNE", target_deploy_unit: "SERVER_SETTINGS", ready_for_auto_apply: true, memory_blocked: false, failed_fingerprint_repeat: false },
+        { candidate_id: "EV_TP1_THRESHOLD_TUNE", canonical_candidate_id: "EV_COMPOSITE_THRESHOLD_TUNE", display_candidate_id: null, target_deploy_unit: "SERVER_SETTINGS", ready_for_auto_apply: true, memory_blocked: false, failed_fingerprint_repeat: false },
       ],
     },
     replay: {
@@ -118,6 +118,7 @@ const { deriveObjectiveRecoveryGovernor } = require("../../src/utils/objectiveRe
     watchdog: { display: { verdict: "PASS" } },
   });
   assert.strictEqual(prefersBestReadyReplay.summary.target_candidate_id, "EV_TP1_THRESHOLD_TUNE");
+  assert.strictEqual(prefersBestReadyReplay.summary.display_candidate_id, "EV_COMPOSITE_THRESHOLD_TUNE");
   assert.strictEqual(prefersBestReadyReplay.summary.replay_pass, true);
   assert.strictEqual(prefersBestReadyReplay.summary.governor_status, "RECOVERY_PROMOTION_READY");
 

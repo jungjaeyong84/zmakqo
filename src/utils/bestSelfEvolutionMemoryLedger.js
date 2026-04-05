@@ -82,6 +82,17 @@ function normalizeMarkets(value) {
     : [];
 }
 
+function canonicalDisplayCandidateId(candidateId = null, displayCandidateId = null, canonicalCandidateId = null) {
+  const canonical = String(canonicalCandidateId || "").trim();
+  if (canonical) return canonical;
+  const display = String(displayCandidateId || "").trim();
+  if (display === "EV_TP1_THRESHOLD_TUNE") return "EV_COMPOSITE_THRESHOLD_TUNE";
+  if (display) return display;
+  const candidate = String(candidateId || "").trim();
+  if (candidate === "EV_TP1_THRESHOLD_TUNE") return "EV_COMPOSITE_THRESHOLD_TUNE";
+  return candidate || null;
+}
+
 function mapByCandidateId(rows = [], idField = "candidate_id") {
   const out = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
@@ -211,7 +222,11 @@ function buildCurrentRows({
     const previousFailAgeWeeks = latestFail ? isoWeekDistance(weekKey, String(latestFail.applied_week_key || "").trim()) : null;
     return {
       candidate_id: candidateId,
-      display_candidate_id: String(candidate && (candidate.display_candidate_id || candidate.candidate_id) || "").trim() || null,
+      display_candidate_id: canonicalDisplayCandidateId(
+        candidateId,
+        candidate && candidate.display_candidate_id,
+        candidate && candidate.canonical_candidate_id
+      ),
       applied_week_key: weekKey,
       scope: String(candidate && candidate.scope || "").trim().toUpperCase() || "UNKNOWN",
       markets: normalizeMarkets(candidate && candidate.markets),
@@ -245,12 +260,19 @@ function mergeLedgerRows(previousRows = [], currentRows = []) {
   for (const row of Array.isArray(previousRows) ? previousRows : []) {
     const key = `${String(row && row.candidate_id || "").trim()}__${String(row && row.applied_week_key || "").trim()}__${String(row && row.change_fingerprint || "").trim()}`;
     if (!key.replace(/_/g, "")) continue;
-    merged.set(key, { ...row, current_week: false });
+    merged.set(key, {
+      ...row,
+      display_candidate_id: canonicalDisplayCandidateId(row && row.candidate_id, row && row.display_candidate_id, row && row.canonical_candidate_id),
+      current_week: false,
+    });
   }
   for (const row of Array.isArray(currentRows) ? currentRows : []) {
     const key = `${String(row && row.candidate_id || "").trim()}__${String(row && row.applied_week_key || "").trim()}__${String(row && row.change_fingerprint || "").trim()}`;
     if (!key.replace(/_/g, "")) continue;
-    merged.set(key, row);
+    merged.set(key, {
+      ...row,
+      display_candidate_id: canonicalDisplayCandidateId(row && row.candidate_id, row && row.display_candidate_id, row && row.canonical_candidate_id),
+    });
   }
   return Array.from(merged.values()).sort((a, b) =>
     String(b.applied_week_key || "").localeCompare(String(a.applied_week_key || ""))

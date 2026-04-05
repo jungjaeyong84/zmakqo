@@ -35,6 +35,14 @@ function isReadyCandidate(candidateRow = null) {
   return true;
 }
 
+function displayCandidateId(candidateRow = null, fallback = null) {
+  return String(
+    candidateRow && (candidateRow.display_candidate_id || candidateRow.canonical_candidate_id || candidateRow.candidate_id)
+    || fallback
+    || ""
+  ).trim() || null;
+}
+
 function findBestReadyReplayCandidateId(replay = null, candidates = null) {
   const rows = Array.isArray(replay && replay.validations) ? replay.validations : [];
   const ranked = rows
@@ -87,14 +95,15 @@ function deriveMemoryBlockContext(memory = null, candidateId = null, candidateRo
   };
 }
 
-function buildNextActions({ status = null, candidateId = null, reason = null } = {}) {
+function buildNextActions({ status = null, candidateId = null, candidateDisplayId = null, reason = null } = {}) {
   const actions = [];
+  const target = candidateDisplayId || candidateId || "the recovery candidate";
   switch (status) {
     case "RECOVERY_TARGET_MEMORY_BLOCKED":
-      actions.push(`Clear the recovery-target memory blocker for ${candidateId || "the recovery candidate"} before allowing degraded authority promotion.`);
+      actions.push(`Clear the recovery-target memory blocker for ${target} before allowing degraded authority promotion.`);
       break;
     case "RECOVERY_REPLAY_BLOCKED":
-      actions.push(`Resolve replay blockers for ${candidateId || "the recovery candidate"} before any promote path.`);
+      actions.push(`Resolve replay blockers for ${target} before any promote path.`);
       break;
     case "RECOVERY_CANARY_BLOCKED":
       actions.push("Keep the candidate in canary until open-wave readiness closes.");
@@ -106,7 +115,7 @@ function buildNextActions({ status = null, candidateId = null, reason = null } =
       actions.push("Restore OpenClaw scheduler/watchdog health before relying on autonomous recovery.");
       break;
     case "RECOVERY_PROMOTION_READY":
-      actions.push(`Promote ${candidateId || "the recovery candidate"} when degraded timeout policy conditions are satisfied.`);
+      actions.push(`Promote ${target} when degraded timeout policy conditions are satisfied.`);
       break;
     default:
       if (reason) actions.push(`Review governor blocker '${reason}' before the next cycle.`);
@@ -284,8 +293,8 @@ function deriveObjectiveRecoveryGovernor({
   const retrospectiveSummary = summarizeRetrospective(retrospective);
 
   const explicitPromotionCandidateId = String(
-    promotion.display_candidate_id
-    || promotion.candidate_id
+    promotion.candidate_id
+    || promotion.display_candidate_id
     || ""
   ).trim() || null;
   const bestReadyReplayCandidateId = findBestReadyReplayCandidateId(replayReport, candidateReport);
@@ -307,6 +316,12 @@ function deriveObjectiveRecoveryGovernor({
   const objectiveScore = objectiveScoreSnapshot.objective_score;
   const recoveryRequired = contractStatus.recovery_required === true || (objectiveScore != null && objectiveScore < 0);
   const targetDeployUnit = toUpper(candidateRow && candidateRow.target_deploy_unit);
+  const targetDisplayId = String(
+    promotion.display_candidate_id
+    || displayCandidateId(candidateRow, targetCandidateId)
+    || targetCandidateId
+    || ""
+  ).trim() || null;
   const replayPass = String(
     promotion.replay_verdict
     || (replayRow && replayRow.validation_verdict)
@@ -369,7 +384,7 @@ function deriveObjectiveRecoveryGovernor({
       objective_score: objectiveScore,
       objective_score_source: objectiveScoreSnapshot.objective_score_source,
       target_candidate_id: targetCandidateId,
-      display_candidate_id: String(promotion.display_candidate_id || targetCandidateId || "").trim() || null,
+      display_candidate_id: targetDisplayId,
       target_deploy_unit: targetDeployUnit,
       target_migration_class: toUpper(candidateRow && candidateRow.canonical_migration_class),
       replay_pass: replayPass,
@@ -457,7 +472,7 @@ function deriveObjectiveRecoveryGovernor({
         ? governorReason
         : governorStatus,
       next_actions: [
-        ...buildNextActions({ status: governorStatus, candidateId: targetCandidateId, reason: governorReason }),
+        ...buildNextActions({ status: governorStatus, candidateId: targetCandidateId, candidateDisplayId: targetDisplayId, reason: governorReason }),
         ...(recoveryRequired
           && dropValidationSummary.top_rescue_family === "EV_POLICY"
           && dropValidationSummary.ev_policy_action === "RELAX_EV_POLICY_REVIEW"

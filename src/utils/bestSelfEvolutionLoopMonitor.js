@@ -169,6 +169,16 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
   const objectiveRecoveryEffectSummary = objectiveRecoveryEffect.summary && typeof objectiveRecoveryEffect.summary === "object" ? objectiveRecoveryEffect.summary : {};
   const candidateSummary = candidates.summary && typeof candidates.summary === "object" ? candidates.summary : {};
   const replaySummary = replay.summary && typeof replay.summary === "object" ? replay.summary : {};
+  const replayRows = Array.isArray(replay.validations) ? replay.validations : [];
+  const replayBestCandidateId = String(replaySummary.best_candidate_id || "").trim() || null;
+  const replayBestRow = replayBestCandidateId
+    ? (replayRows.find((row) => String(row && row.candidate_id || "").trim() === replayBestCandidateId) || null)
+    : null;
+  const replayBestDisplayCandidateId = String(
+    replayBestRow && (replayBestRow.display_candidate_id || replayBestRow.candidate_id)
+    || replayBestCandidateId
+    || ""
+  ).trim() || null;
   const memorySummary = memory.summary && typeof memory.summary === "object" ? memory.summary : {};
   const weightSummary = weightTuning.summary && typeof weightTuning.summary === "object" ? weightTuning.summary : {};
   const expectedCycleId = readCycleId(objectiveSupervisor)
@@ -258,7 +268,7 @@ function deriveLoopMonitor({ artifacts = {}, reports = {} } = {}) {
       fresh: artifacts.replay && artifacts.replay.fresh === true,
       cycle_id: readCycleId(replay),
       status: Number(replaySummary.pass_n || 0) > 0 ? "PASS" : "HOLD",
-      reason: `best=${replaySummary.best_candidate_id || "N/A"} / pass=${replaySummary.pass_n ?? 0} / block=${replaySummary.block_n ?? 0}`,
+      reason: `best=${replayBestDisplayCandidateId || "N/A"} / pass=${replaySummary.pass_n ?? 0} / block=${replaySummary.block_n ?? 0}`,
     },
     {
       loop: "CANARY",

@@ -36,6 +36,14 @@ function isReadyCandidate(candidateRow = null) {
   return true;
 }
 
+function displayCandidateId(candidateRow = null, fallback = null) {
+  return String(
+    candidateRow && (candidateRow.display_candidate_id || candidateRow.canonical_candidate_id || candidateRow.candidate_id)
+    || fallback
+    || ""
+  ).trim() || null;
+}
+
 function normalizeReplayRows(replay = null, candidates = null) {
   const rows = Array.isArray(replay && replay.validations) ? replay.validations : [];
   return rows
@@ -45,7 +53,7 @@ function normalizeReplayRows(replay = null, candidates = null) {
       return {
         row,
         candidate_id: candidateId,
-        display_candidate_id: String(row && row.display_candidate_id || candidateId || "").trim() || null,
+        display_candidate_id: String(row && row.display_candidate_id || displayCandidateId(candidateRow, candidateId) || "").trim() || null,
         candidate_row: candidateRow,
         delta: toNum(row && row.candidate_objective_delta),
         verdict: toUpper(row && row.validation_verdict),
@@ -222,7 +230,7 @@ function deriveObjectiveRecoveryEffect({
   const bestReadyReplayDelta = toNum(bestReadyReplay && bestReadyReplay.row && bestReadyReplay.row.candidate_objective_delta);
   const targetDisplayId = String(
     governorSummary.display_candidate_id
-    || targetCandidateRow && targetCandidateRow.display_candidate_id
+    || displayCandidateId(targetCandidateRow, targetCandidateId)
     || targetCandidateId
     || ""
   ).trim() || null;
