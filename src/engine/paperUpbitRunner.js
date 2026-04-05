@@ -6147,6 +6147,47 @@ async function refreshBinanceNativeProtectionWithRetry({
   return lastResult || { ok: false, reason: "UNKNOWN", attempts: totalAttempts, max_attempts: totalAttempts };
 }
 
+function isBinanceImmediateTriggerError(error) {
+  const text = String(error && error.message ? error.message : error || "").toUpperCase();
+  return text.includes("CODE\":-2021") || text.includes("ORDER WOULD IMMEDIATELY TRIGGER");
+}
+
+async function placeNativeTpMarketFallback({
+  liveCfg,
+  exchange,
+  symbol,
+  positionSide,
+  closeSide,
+  entryPrice,
+  leverage,
+  triggerPrice,
+  quantity,
+} = {}) {
+  const tpIdempotencyKey = buildBinanceNativeProtectionIdempotencyKey({
+    exchange,
+    symbol,
+    positionSide,
+    closeSide,
+    entryPrice,
+    leverage,
+    triggerPrice,
+    kind: "TP1_MARKET",
+  });
+  const marketOrder = await placeFuturesMarketOrder({
+    apiKey: liveCfg.apiKey,
+    apiSecret: liveCfg.apiSecret,
+    symbol,
+    side: closeSide,
+    quantity,
+    reduceOnly: true,
+    idempotencyKey: tpIdempotencyKey,
+  });
+  return {
+    order: marketOrder,
+    client_order_mode: "MARKET_FALLBACK",
+  };
+}
+
 function buildNativeProtectionMetaPatch({
   nativeProtection,
   intent,
@@ -6292,6 +6333,7 @@ async function refreshBinanceNativeProtection({
     let tpOrder = null;
     let tpQtyBase = null;
     let tpQtyRatio = null;
+    let desiredTpQtyPlaced = null;
     let tpStatus = BINANCE_NATIVE_TP_ENABLED ? "SKIPPED" : "DISABLED";
     let tpReason = BINANCE_NATIVE_TP_ENABLED ? "TP_TRIGGER_INVALID" : "NATIVE_TP_DISABLED";
     if (BINANCE_NATIVE_TP_ENABLED && Number.isFinite(prices.tpTriggerPx) && prices.tpTriggerPx > 0) {
@@ -6313,6 +6355,7 @@ async function refreshBinanceNativeProtection({
           tpStatus = "SKIPPED";
           tpReason = "TP_QTY_FULL_POSITION";
         } else {
+          desiredTpQtyPlaced = tpQtyInfo.qty;
           const tpIdempotencyKey = buildBinanceNativeProtectionIdempotencyKey({
             exchange,
             symbol,
@@ -6342,8 +6385,32 @@ async function refreshBinanceNativeProtection({
           tpReason = null;
         }
       } catch (tpErr) {
-        tpStatus = "FAILED";
-        tpReason = tpErr && tpErr.message ? tpErr.message : String(tpErr);
+        if (isBinanceImmediateTriggerError(tpErr) && Number.isFinite(desiredTpQtyPlaced) && desiredTpQtyPlaced > 0) {
+          try {
+            const fallback = await placeNativeTpMarketFallback({
+              liveCfg,
+              exchange,
+              symbol,
+              positionSide,
+              closeSide: prices.closeSide,
+              entryPrice,
+              leverage,
+              triggerPrice: prices.tpTriggerPx,
+              quantity: desiredTpQtyPlaced,
+            });
+            tpOrder = fallback.order;
+            tpQtyBase = desiredTpQtyPlaced;
+            tpQtyRatio = Number(context.qtyBase) > 0 ? Math.min(1, desiredTpQtyPlaced / Number(context.qtyBase)) : null;
+            tpStatus = "OK";
+            tpReason = "MARKET_FALLBACK";
+          } catch (fallbackErr) {
+            tpStatus = "FAILED";
+            tpReason = fallbackErr && fallbackErr.message ? fallbackErr.message : String(fallbackErr);
+          }
+        } else {
+          tpStatus = "FAILED";
+          tpReason = tpErr && tpErr.message ? tpErr.message : String(tpErr);
+        }
       }
     }
     return {
@@ -12932,6 +12999,7 @@ module.exports = {
     evaluateCommittedRescueAddGate,
     collectActivePendingAddIntentState,
     applyAddAndProtectionMetaOnFill,
+    isBinanceImmediateTriggerError,
     resolveManualRetryQtyBase,
     resolveEventRefMs,
     resolveStructureInitialStopPrice,

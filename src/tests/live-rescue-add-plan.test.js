@@ -575,6 +575,33 @@ function run() {
   assert.strictEqual(nativeProtectionTpMeta.native_protection_tp_qty_base, 0.05);
   assert.strictEqual(nativeProtectionTpMeta.native_protection_tp_qty_ratio, 0.5);
   assert.strictEqual(nativeProtectionTpMeta.native_protection_tp_status, "OK");
+  assert.strictEqual(nativeProtectionTpMeta.native_protection_tp_reason, null);
+
+  assert.strictEqual(
+    __test.isBinanceImmediateTriggerError('BINANCEFUT_HTTP_400: {"code":-2021,"msg":"Order would immediately trigger."}'),
+    true
+  );
+  assert.strictEqual(__test.isBinanceImmediateTriggerError("other error"), false);
+
+  const nativeProtectionFallbackMeta = __test.buildNativeProtectionMetaPatch({
+    nativeProtection: {
+      ok: true,
+      stop_order_id: "stop-2",
+      tp_order_id: "tp-market-1",
+      stop_price: 98.5,
+      tp_price: 101.65,
+      tp_qty_base: 0.03,
+      tp_qty_ratio: 0.3,
+      tp_status: "OK",
+      tp_reason: "MARKET_FALLBACK",
+      entry_price: 100,
+      position_side: "SHORT",
+    },
+    intent: "ADD",
+    execBarCloseMs: Date.parse("2026-03-11T02:05:00Z"),
+  });
+  assert.strictEqual(nativeProtectionFallbackMeta.native_protection_tp_status, "OK");
+  assert.strictEqual(nativeProtectionFallbackMeta.native_protection_tp_reason, "MARKET_FALLBACK");
 
   const mergedAddProtectionMeta = __test.applyAddAndProtectionMetaOnFill({
     posMeta: {

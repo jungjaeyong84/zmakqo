@@ -93,6 +93,7 @@ function run() {
   });
   assert.strictEqual(rescueRules.TP_P1, 0.0165);
   assert.strictEqual(rescueRules.BE_PCT, 0.0015);
+  assert.strictEqual(rescueRules.TRAIL_R_MULTIPLE, 0.6);
   assert.strictEqual(rescueRules.RUNNER_MIN_PROFIT_PCT, 0.012);
 
   const mixedRules = resolveExitRulesForPosition({
@@ -105,6 +106,7 @@ function run() {
   });
   assert.strictEqual(mixedRules.TP_P1, 0.025);
   assert.strictEqual(mixedRules.BE_PCT, 0.002);
+  assert.strictEqual(mixedRules.TRAIL_R_MULTIPLE, 0.75);
   assert.strictEqual(mixedRules.RUNNER_MIN_PROFIT_PCT, 0.0165);
 }
 
