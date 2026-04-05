@@ -7,7 +7,8 @@ function toNum(value) {
 }
 
 function toUpper(value) {
-  return String(value || "").trim().toUpperCase() || null;
+  if (value === null || value === undefined) return null;
+  return String(value).trim().toUpperCase() || null;
 }
 
 function resolveTierFromEvent(event = null) {
@@ -16,6 +17,28 @@ function resolveTierFromEvent(event = null) {
   if (normalized.startsWith("EARLY_")) return "EARLY";
   if (normalized.startsWith("CORE_")) return "CORE";
   return null;
+}
+
+function resolveWeakerTierByMismatch(earlyMismatch = null, coreMismatch = null) {
+  if (earlyMismatch != null && coreMismatch != null && earlyMismatch !== coreMismatch) {
+    return earlyMismatch > coreMismatch ? "EARLY" : "CORE";
+  }
+  return null;
+}
+
+function resolveWeakerTierByMacroRecall(earlyMacroRecall = null, coreMacroRecall = null) {
+  if (earlyMacroRecall != null && coreMacroRecall != null && earlyMacroRecall !== coreMacroRecall) {
+    return earlyMacroRecall < coreMacroRecall ? "EARLY" : "CORE";
+  }
+  return null;
+}
+
+function computeWeaknessScore({ mismatchRate = null, macroRecall = null } = {}) {
+  const parts = [];
+  if (mismatchRate != null) parts.push(mismatchRate);
+  if (macroRecall != null) parts.push(1 - macroRecall);
+  if (!parts.length) return null;
+  return parts.reduce((sum, value) => sum + value, 0) / parts.length;
 }
 
 function summarizeExecutionScopeTierComparison({ inference = null, trainRun = null } = {}) {
@@ -56,13 +79,16 @@ function summarizeExecutionScopeTierComparison({ inference = null, trainRun = nu
   const coreMismatch = toNum(core.inference_mismatch_rate);
   const earlyMacroRecall = toNum(early.test_macro_recall);
   const coreMacroRecall = toNum(core.test_macro_recall);
+  const weakerTierByMismatch = resolveWeakerTierByMismatch(earlyMismatch, coreMismatch);
+  const weakerTierByMacroRecall = resolveWeakerTierByMacroRecall(earlyMacroRecall, coreMacroRecall);
+  const earlyWeaknessScore = computeWeaknessScore({ mismatchRate: earlyMismatch, macroRecall: earlyMacroRecall });
+  const coreWeaknessScore = computeWeaknessScore({ mismatchRate: coreMismatch, macroRecall: coreMacroRecall });
   const weakerTier = (() => {
-    if (earlyMismatch != null && coreMismatch != null && earlyMismatch !== coreMismatch) {
-      return earlyMismatch > coreMismatch ? "EARLY" : "CORE";
+    if (earlyWeaknessScore != null && coreWeaknessScore != null && earlyWeaknessScore !== coreWeaknessScore) {
+      return earlyWeaknessScore > coreWeaknessScore ? "EARLY" : "CORE";
     }
-    if (earlyMacroRecall != null && coreMacroRecall != null && earlyMacroRecall !== coreMacroRecall) {
-      return earlyMacroRecall < coreMacroRecall ? "EARLY" : "CORE";
-    }
+    if (weakerTierByMismatch) return weakerTierByMismatch;
+    if (weakerTierByMacroRecall) return weakerTierByMacroRecall;
     return null;
   })();
 
@@ -73,8 +99,14 @@ function summarizeExecutionScopeTierComparison({ inference = null, trainRun = nu
       train_run_id: String(inferenceSummary.train_run_id || trainRunSummary.train_run_id || "").trim() || null,
       tiers,
       weaker_tier: weakerTier,
+      weaker_tier_by_mismatch: weakerTierByMismatch,
+      weaker_tier_by_macro_recall: weakerTierByMacroRecall,
       mismatch_rate_gap: earlyMismatch != null && coreMismatch != null ? Math.abs(earlyMismatch - coreMismatch) : null,
       macro_recall_gap: earlyMacroRecall != null && coreMacroRecall != null ? Math.abs(earlyMacroRecall - coreMacroRecall) : null,
+      weakness_scores: {
+        EARLY: earlyWeaknessScore,
+        CORE: coreWeaknessScore,
+      },
     },
   };
 }
