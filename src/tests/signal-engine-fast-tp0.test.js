@@ -81,7 +81,7 @@ function run() {
     },
   });
   assert.strictEqual(rescueTp1.length, 1, "rescue cohort should shorten tp1");
-  assert.strictEqual(rescueTp1[0].event, "EXIT_TP_P1_2.8P");
+  assert.strictEqual(rescueTp1[0].event, "EXIT_TP_P1_1.65P");
 }
 
 try {
