@@ -21,6 +21,11 @@ async function run() {
   assert.ok(approxEqual(rescueExitRules.TRAIL_R_MULTIPLE, 0.6), "rescue cohort alert must use current trailing R");
   assert.ok(approxEqual(rescueExitRules.RUNNER_MIN_PROFIT_PCT, 0.012), "rescue cohort alert must use current runner floor");
   assert.ok(approxEqual(rescueExitRules.BE_PCT, 0.0015), "rescue cohort alert must use current BE");
+  assert.strictEqual(
+    fillsSyncTest.normalizeExitEventForRules("EXIT_TP_P1_3.25P", rescueExitRules),
+    "EXIT_TP_P1_1.65P",
+    "legacy TP1 event label must be normalized to current cohort rule"
+  );
 
   const firstCloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({
     event: "EXIT_TP_P1_3.25P",

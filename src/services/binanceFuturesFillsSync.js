@@ -872,6 +872,15 @@ function buildExitEventByKind(kind, rules) {
   return "EXIT_EXTERNAL_SYNC";
 }
 
+function normalizeExitEventForRules(event, rules) {
+  const ev = String(event || "").trim().toUpperCase();
+  if (!ev) return ev;
+  if (ev.startsWith("EXIT_TP_P1")) return buildExitEventByKind("TP1", rules);
+  if (ev.startsWith("EXIT_TRAIL")) return buildExitEventByKind("TRAIL", rules);
+  if (ev.startsWith("EXIT_SL")) return buildExitEventByKind("SL", rules);
+  return ev;
+}
+
 function isSyntheticExternalFillExitEvent(event) {
   const ev = String(event || "").toUpperCase();
   if (!ev) return false;
@@ -1066,7 +1075,7 @@ async function resolveExternalExitEvent({
       );
       return "EXIT_EXTERNAL_SYNC";
     }
-    return intentEvent;
+    return normalizeExitEventForRules(intentEvent, rules);
   }
 
   if (sameOrderAsRecentTp1 && isTpP1Event(recentTp1 && recentTp1.event)) {
@@ -1573,6 +1582,7 @@ module.exports = {
     resolveIntentNotional,
     resolveIntentQtyBase,
     resolveAlertExitRules,
+    normalizeExitEventForRules,
     resolveFillSyncAlertCloseRatio,
     resolveFillSyncAlertFullExit,
     queueFillSyncAlertBatch,
