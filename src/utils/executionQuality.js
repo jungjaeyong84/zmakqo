@@ -249,6 +249,8 @@ function summarizeExecutionQuality({
       execution_scope_tier_raw_diff_top_schedule_profile: String(executionScopeTierRawDiffSummary.mismatch_profile && executionScopeTierRawDiffSummary.mismatch_profile.top_schedule_profile || "").trim() || null,
       execution_scope_tier_raw_diff_top_signal_to_intent_bucket: String(executionScopeTierRawDiffSummary.mismatch_profile && executionScopeTierRawDiffSummary.mismatch_profile.top_signal_to_intent_bucket || "").trim() || null,
       execution_scope_tier_raw_diff_top_policy_block_hint: String(executionScopeTierRawDiffSummary.mismatch_profile && executionScopeTierRawDiffSummary.mismatch_profile.top_policy_block_hint || "").trim() || null,
+      execution_scope_tier_raw_diff_top_webhook_execution_profile: String(executionScopeTierRawDiffSummary.mismatch_profile && executionScopeTierRawDiffSummary.mismatch_profile.top_webhook_execution_profile || "").trim() || null,
+      execution_scope_tier_raw_diff_top_webhook_bar_timing_profile: String(executionScopeTierRawDiffSummary.mismatch_profile && executionScopeTierRawDiffSummary.mismatch_profile.top_webhook_bar_timing_profile || "").trim() || null,
       review_reasons: reviewReasons,
       market_n: rows.length,
       top_watch_markets: rows.slice(0, 6).map((row) => ({

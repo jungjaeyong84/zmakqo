@@ -82,6 +82,7 @@ function profileRows(rows = []) {
     top_stale_pos_entry_latency_profile: countBy(scoped, (row) => getPath(row, "features.stale_pos_entry_latency_profile"), 1)[0]?.key || null,
     top_stale_pos_webhook_profile: countBy(scoped, (row) => getPath(row, "features.stale_pos_webhook_profile"), 1)[0]?.key || null,
     top_webhook_execution_profile: countBy(scoped, (row) => getPath(row, "features.webhook_execution_profile"), 1)[0]?.key || null,
+    top_webhook_bar_timing_profile: countBy(scoped, (row) => getPath(row, "features.webhook_bar_timing_profile"), 1)[0]?.key || null,
   };
 }
 
@@ -160,6 +161,8 @@ function summarizeExecutionScopeTierRawDiff({
       reference_profile: profileRows(reference.rows),
       mismatch_top_policy_block_hints: countBy(mismatchRows, (row) => getPath(row, "features.policy_block_hint")),
       reference_top_policy_block_hints: countBy(reference.rows, (row) => getPath(row, "features.policy_block_hint")),
+      mismatch_top_webhook_execution_profiles: countBy(mismatchRows, (row) => getPath(row, "features.webhook_execution_profile")),
+      reference_top_webhook_execution_profiles: countBy(reference.rows, (row) => getPath(row, "features.webhook_execution_profile")),
     },
     rows: mismatchInferenceRows.map((row) => {
       const doc = rowMap.get(row.row_id);
@@ -181,6 +184,7 @@ function summarizeExecutionScopeTierRawDiff({
         stale_pos_entry_latency_profile: getPath(doc, "features.stale_pos_entry_latency_profile"),
         stale_pos_webhook_profile: getPath(doc, "features.stale_pos_webhook_profile"),
         webhook_execution_profile: getPath(doc, "features.webhook_execution_profile"),
+        webhook_bar_timing_profile: getPath(doc, "features.webhook_bar_timing_profile"),
         entry_schedule_profile: getPath(doc, "execution.entry_schedule_profile"),
         signal_to_intent_bucket: getPath(doc, "execution.signal_to_intent_bucket"),
         signal_to_intent_ms: getPath(doc, "execution.signal_to_intent_ms"),

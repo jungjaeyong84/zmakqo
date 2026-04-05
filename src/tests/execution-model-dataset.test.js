@@ -130,6 +130,7 @@ assert.strictEqual(recomputedRows[0].features.stale_pos_entry_profile, 'NOT_STAL
 assert.strictEqual(recomputedRows[0].features.stale_pos_entry_latency_profile, 'NOT_STALE_POS_ENTRY');
 assert.strictEqual(recomputedRows[0].features.stale_pos_webhook_profile, 'NOT_STALE_POS_ENTRY');
 assert.strictEqual(recomputedRows[0].features.webhook_execution_profile, 'WEBHOOK_SAVED_OK_MID');
+assert.strictEqual(recomputedRows[0].features.webhook_bar_timing_profile, 'POST_BAR_CLOSE_MID');
 const recomputedSummary = summarizeExecutionModelRows(recomputedRows);
 assert.strictEqual(recomputedSummary.signal_to_intent_p95_ms, 60000);
 assert.strictEqual(recomputedSummary.signal_to_fill_p95_ms, 61000);
@@ -169,6 +170,10 @@ assert.strictEqual(__test.deriveStalePosWebhookProfile({ features: { reason: 'PI
 assert.strictEqual(__test.deriveWebhookExecutionProfile({ source: 'TV_WEBHOOK', entryScheduleProfile: 'EXEC_CURRENT_BAR', webhookDecision: 'SAVED', webhookHasImmediateProbe: true, webhookImmediateStatus: 'OK', signalToIntentMs: 15000, wasFilled: true }), 'WEBHOOK_SAVED_OK_FAST');
 assert.strictEqual(__test.deriveWebhookExecutionProfile({ source: 'TV_WEBHOOK', entryScheduleProfile: 'EXEC_CURRENT_BAR', webhookDecision: 'SAVED', webhookHasImmediateProbe: false, signalToIntentMs: 15000, wasFilled: true }), 'WEBHOOK_SAVED_NO_PROBE');
 assert.strictEqual(__test.deriveWebhookExecutionProfile({ source: 'TV_WEBHOOK', entryScheduleProfile: 'EXEC_CURRENT_BAR', webhookDecision: 'SAVED', webhookHasImmediateProbe: true, webhookImmediateStatus: 'OK', signalToIntentMs: -5000, wasFilled: true }), 'WEBHOOK_PRE_BAR_CLOSE_FILLED');
+assert.strictEqual(__test.deriveWebhookBarTimingProfile({ source: 'TV_WEBHOOK', signalToIntentMs: -600000 }), 'PRE_BAR_CLOSE_GT_5M');
+assert.strictEqual(__test.deriveWebhookBarTimingProfile({ source: 'TV_WEBHOOK', signalToIntentMs: -45000 }), 'PRE_BAR_CLOSE_30S_5M');
+assert.strictEqual(__test.deriveWebhookBarTimingProfile({ source: 'TV_WEBHOOK', signalToIntentMs: -5000 }), 'PRE_BAR_CLOSE_LT_30S');
+assert.strictEqual(__test.deriveWebhookBarTimingProfile({ source: 'TV_WEBHOOK', signalToIntentMs: 15000 }), 'POST_BAR_CLOSE_FAST');
 assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'TV_WEBHOOK' }, execution: { entry_schedule_reason: 'WAIT_NEXT_BAR' } }), 'SCHEDULED_WAIT_NEXT_BAR');
 assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'TV_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_bar_close_ms: 1000, scheduled_exec_bar_close_ms: 2000, signal_to_intent_ms: 420000, webhook_to_intent_ms: 430000 }, labels: { was_filled: true } }), 'IMMEDIATE_EXEC_NEXT_EXEC_BAR');
 assert.strictEqual(__test.deriveWebhookDelayCause({ context: { source: 'TV_WEBHOOK' }, execution: { entry_schedule_reason: 'EXEC_CURRENT_BAR', signal_to_intent_ms: 420000, webhook_to_intent_ms: 430000, webhook_decision: 'SAVED', webhook_has_immediate_probe: false }, labels: { was_filled: true } }), 'LEGACY_WEBHOOK_OUTCOME_ONLY');

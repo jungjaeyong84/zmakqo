@@ -241,6 +241,22 @@ function deriveWebhookExecutionProfile({
   return "WEBHOOK_OTHER";
 }
 
+function deriveWebhookBarTimingProfile({
+  source = null,
+  signalToIntentMs = null,
+} = {}) {
+  const normalizedSource = toUpper(source);
+  if (normalizedSource !== "TV_WEBHOOK" && normalizedSource !== "PINE_WEBHOOK") return "NOT_WEBHOOK_SOURCE";
+  const latency = toNum(signalToIntentMs);
+  if (!Number.isFinite(latency)) return "WEBHOOK_TIMING_UNKNOWN";
+  if (latency < -300000) return "PRE_BAR_CLOSE_GT_5M";
+  if (latency < -30000) return "PRE_BAR_CLOSE_30S_5M";
+  if (latency < 0) return "PRE_BAR_CLOSE_LT_30S";
+  if (latency <= 30000) return "POST_BAR_CLOSE_FAST";
+  if (latency <= 120000) return "POST_BAR_CLOSE_MID";
+  return "POST_BAR_CLOSE_DELAYED";
+}
+
 function derivePolicyBlockHint({
   noFillReason = null,
   noFillReasonFamily = null,
@@ -792,6 +808,10 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
       webhookToIntentMs,
       wasFilled,
     });
+    features.webhook_bar_timing_profile = deriveWebhookBarTimingProfile({
+      source: deriveIntentSource(intent),
+      signalToIntentMs,
+    });
     return {
       schema_version: EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
       row_id: intentId || String(intent.signal_id || intent.id || "").trim() || null,
@@ -1220,6 +1240,7 @@ module.exports = {
     deriveStalePosEntryLatencyProfile,
     deriveStalePosWebhookProfile,
     deriveWebhookExecutionProfile,
+    deriveWebhookBarTimingProfile,
     deriveWebhookDelayCause,
     isOperationalSource,
     buildWebhookOutcomeIndex,
