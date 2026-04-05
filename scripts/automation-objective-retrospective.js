@@ -312,9 +312,11 @@ function summarizeExecutionMicrostructure({ fills = [], signals = [], drops = []
     if (features._live_exec_policy_portfolio_cluster_reduce === true) portfolioClusterReduceN += 1;
   }
   let portfolioClusterBlockN = 0;
+  let chaseRejectN = 0;
   for (const row of dropRows) {
     const reason = String(row && (row.drop_reason_code || row.reason) || "").trim().toUpperCase();
     if (reason.startsWith("LIVE_POLICY_PORTFOLIO_CLUSTER")) portfolioClusterBlockN += 1;
+    if (reason === "DROP_CHASE_ENTRY_QUALITY") chaseRejectN += 1;
   }
   const tp0AndTp1Chains = [...tp0Chains].filter((key) => tp1Chains.has(key)).length;
   return {
@@ -326,6 +328,7 @@ function summarizeExecutionMicrostructure({ fills = [], signals = [], drops = []
     tp0_to_tp1_conversion_rate: tp0Chains.size > 0 ? (tp0AndTp1Chains / tp0Chains.size) : null,
     pre_tp1_time_stop_n: preTp1TimeStopChains.size,
     pre_tp1_time_stop_rate: entryChains.size > 0 ? (preTp1TimeStopChains.size / entryChains.size) : null,
+    chase_reject_n: chaseRejectN,
     portfolio_cluster_reduce_n: portfolioClusterReduceN,
     portfolio_cluster_block_n: portfolioClusterBlockN,
   };
@@ -708,7 +711,7 @@ function renderPeriodMarkdown(row = {}) {
     `- target_krw: ${signedKrw(row.objective && row.objective.period_target_krw, 0)}`,
     `- realized: trades=${row.realized_trades && row.realized_trades.trade_n != null ? row.realized_trades.trade_n : "N/A"} / win=${pct(row.realized_trades && row.realized_trades.win_rate)} / avg_ret_net=${signedPct(row.realized_trades && row.realized_trades.avg_ret_net)} / net=${signedKrw(row.realized_trades && row.realized_trades.net_pnl_quote, 0)}`,
     `- activity: signals=${row.entry_cohort && row.entry_cohort.signals_n != null ? row.entry_cohort.signals_n : "N/A"} / executed=${row.entry_cohort && row.entry_cohort.executed_n != null ? row.entry_cohort.executed_n : "N/A"} / execution_rate=${pct(row.entry_cohort && row.entry_cohort.execution_rate)}`,
-    `- microstructure: tp0_hit=${pct(row.execution_microstructure && row.execution_microstructure.tp0_hit_rate)} / tp1_hit=${pct(row.execution_microstructure && row.execution_microstructure.tp1_hit_rate)} / tp0_to_tp1=${pct(row.execution_microstructure && row.execution_microstructure.tp0_to_tp1_conversion_rate)} / pre_tp1_time_stop=${pct(row.execution_microstructure && row.execution_microstructure.pre_tp1_time_stop_rate)} / cluster_reduce=${row.execution_microstructure && row.execution_microstructure.portfolio_cluster_reduce_n != null ? row.execution_microstructure.portfolio_cluster_reduce_n : "N/A"} / cluster_block=${row.execution_microstructure && row.execution_microstructure.portfolio_cluster_block_n != null ? row.execution_microstructure.portfolio_cluster_block_n : "N/A"}`,
+    `- microstructure: tp0_hit=${pct(row.execution_microstructure && row.execution_microstructure.tp0_hit_rate)} / tp1_hit=${pct(row.execution_microstructure && row.execution_microstructure.tp1_hit_rate)} / tp0_to_tp1=${pct(row.execution_microstructure && row.execution_microstructure.tp0_to_tp1_conversion_rate)} / pre_tp1_time_stop=${pct(row.execution_microstructure && row.execution_microstructure.pre_tp1_time_stop_rate)} / chase_reject=${row.execution_microstructure && row.execution_microstructure.chase_reject_n != null ? row.execution_microstructure.chase_reject_n : "N/A"} / cluster_reduce=${row.execution_microstructure && row.execution_microstructure.portfolio_cluster_reduce_n != null ? row.execution_microstructure.portfolio_cluster_reduce_n : "N/A"} / cluster_block=${row.execution_microstructure && row.execution_microstructure.portfolio_cluster_block_n != null ? row.execution_microstructure.portfolio_cluster_block_n : "N/A"}`,
     `- monthly_run_rate_krw: ${signedKrw(row.objective && row.objective.monthly_run_rate_krw, 0)}`,
     `- drops: total=${row.drops && row.drops.total != null ? row.drops.total : 0} / ops=${row.drops && row.drops.counts ? row.drops.counts.OPS : 0} / integrity=${row.drops && row.drops.counts ? row.drops.counts.QUALITY : 0} / ai=${row.drops && row.drops.counts ? row.drops.counts.AI : 0} / market=${row.drops && row.drops.counts ? row.drops.counts.MARKET : 0} / ev=${row.drops && row.drops.counts ? row.drops.counts.EV : 0} / timing=${row.drops && row.drops.counts ? row.drops.counts.TIMING : 0}`,
   ];

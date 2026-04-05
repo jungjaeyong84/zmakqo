@@ -48,9 +48,11 @@
 4. `blocked_candidate_ids`는 감독관과 patch engine이 그대로 소비할 수 있어야 한다
 5. `verification_sample_n`이 부족한 EV remediation 실패는 즉시 `FAIL`로 확정하지 않는다.
 6. 저표본 EV remediation 실패는 `PROVISIONAL_FAIL`로 기록하고, 동일 fingerprint 2주 block을 바로 걸지 않는다.
-7. 실행 미세구조 계열 후보(`FAST_TP0`, `TRAIL_DELAY`, `PORTFOLIO_CLUSTER_CAP`, `EXTERNAL_FLAT_SYNC_GRACE`)는 EV calibration 후보와 분리해 fingerprint를 만든다.
+7. 실행 미세구조 계열 후보(`FAST_TP0`, `COHORT_TP1`, `TRAIL_DELAY`, `PRE_TP1_TIME_STOP`, `CHASE_REJECT`, `PORTFOLIO_CLUSTER_CAP`, `EXTERNAL_FLAT_SYNC_GRACE`)는 EV calibration 후보와 분리해 fingerprint를 만든다.
 8. `FAST_TP0` 계열 후보는 최소 아래 KPI를 함께 기록한다.
    - `tp0_hit_rate`
    - `tp0_to_tp1_conversion_rate`
    - `pre_tp1_stop_rate`
+   - `pre_tp1_time_stop_rate`
+   - `chase_reject_n`
    - `fee_adjusted_avg_ret_net`

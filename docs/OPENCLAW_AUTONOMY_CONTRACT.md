@@ -81,7 +81,7 @@
 5. parity drift와 downstream mismatch가 monitor-only인지 blocker인지
 6. `market regime board`가 rescue cohort를 열어야 하는지
 7. `final_downstream_mismatch_control`이 count가 아니라 `rate` 기준으로 fail인지
-8. `FAST_TP0 / delayed trail / portfolio cluster cap / external flat sync grace`가 실행 미세구조 병목을 완화하는지
+8. `FAST_TP0 / cohort TP1 / delayed trail / pre-TP1 time stop / chase reject / portfolio cluster cap / external flat sync grace`가 실행 미세구조 병목을 완화하는지
 
 ## 6. 지금 왜 완전 자율 전환이 아닌가
 
@@ -103,10 +103,16 @@
 
 1. `FAST_TP0`
    - 초기 소이익은 `절대 % floor + ATR 보정`으로 일부 청산한다.
-2. `delayed trail`
+2. `cohort TP1`
+   - `RESCUE=2.8%`, `MIXED=3.0%`, `KEEP_DROP=base` 규칙으로 TP1 거리를 분기한다.
+3. `delayed trail`
    - `TP1` 직후 trail을 즉시 활성화하지 않고 `1봉 또는 추가 MFE` 충족 후 활성화한다.
    - 두 조건은 artifact/meta에 모두 기록한다.
-3. `portfolio cluster cap`
+4. `pre-TP1 time stop`
+   - `EARLY=4 bars`, `CORE=6 bars`, `TP1 progress < 50%`일 때만 시간손절을 허용한다.
+5. `chase reject`
+   - 과확장 진입은 `DROP_CHASE_ENTRY_QUALITY`로 차단하고, 회고/학습에서 별도 드롭 패밀리로 본다.
+6. `portfolio cluster cap`
    - same-side cluster는 count뿐 아니라 total exposure cap도 함께 본다.
-4. `external flat sync grace`
+7. `external flat sync grace`
    - recent FILLED entry 직후 외부 `positionAmt=0` snapshot이 잠깐 들어와도 내부 포지션 `FLAT` overwrite를 바로 허용하지 않는다.

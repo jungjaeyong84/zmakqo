@@ -79,6 +79,7 @@
    - `tp0_to_tp1_conversion_rate`
    - `pre_tp1_stop_rate`
    - `pre_tp1_time_stop_rate`
+   - `chase_reject_n`
    - `portfolio_cluster_reduce_n`
    - `portfolio_cluster_block_n`
 
@@ -91,7 +92,7 @@
    - 무거래/0원이었는가
    - 주요 차단 단계는 어디였는가
    - 서버 신호가 부족했는가, 드롭이 과했는가, 실행 품질이 나빴는가
-   - `TP1 이전 생존력`이 부족했는가 (`FAST_TP0`, chase reject, delayed trail, time stop, cluster risk)
+   - `TP1 이전 생존력`이 부족했는가 (`FAST_TP0`, cohort TP1, chase reject, delayed trail, pre-TP1 time stop, cluster risk)
    - 다음날 먼저 수정할 서버 정책 축은 무엇인가
 
 ## 회고 작성자
