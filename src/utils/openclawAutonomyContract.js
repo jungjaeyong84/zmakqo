@@ -340,6 +340,7 @@ function deriveOpenClawAutonomyContract({
   const topFillSourceBucket = firstArrayRow(executionModelSummary.by_primary_fill_source);
   const topNoFillReason = firstArrayRow(executionModelSummary.top_no_fill_reasons);
   const topNoFillReasonFamily = firstArrayRow(executionModelSummary.top_no_fill_reason_families);
+  const topNoFillSubtype = firstArrayRow(executionModelSummary.top_no_fill_subtypes);
 
   return {
     contract_version: "OPENCLAW_AUTONOMY_CONTRACT_V1",
@@ -471,6 +472,8 @@ function deriveOpenClawAutonomyContract({
       execution_model_dataset_top_no_fill_reason_rows_n: toNum(topNoFillReason && topNoFillReason.rows_n),
       execution_model_dataset_top_no_fill_reason_family: topNoFillReasonFamily ? String(topNoFillReasonFamily.key || "").trim() || null : null,
       execution_model_dataset_top_no_fill_reason_family_rows_n: toNum(topNoFillReasonFamily && topNoFillReasonFamily.rows_n),
+      execution_model_dataset_top_no_fill_subtype: topNoFillSubtype ? String(topNoFillSubtype.key || "").trim() || null : null,
+      execution_model_dataset_top_no_fill_subtype_rows_n: toNum(topNoFillSubtype && topNoFillSubtype.rows_n),
     },
     summary: {
       goal_state: objectiveMet ? "OBJECTIVE_ON_TRACK" : "OBJECTIVE_RECOVERY_REQUIRED",
@@ -512,6 +515,7 @@ function deriveOpenClawAutonomyContract({
       execution_model_dataset_top_fill_source: topFillSourceBucket ? String(topFillSourceBucket.key || "").trim() || null : null,
       execution_model_dataset_top_no_fill_reason: topNoFillReason ? String(topNoFillReason.key || "").trim() || null : null,
       execution_model_dataset_top_no_fill_reason_family: topNoFillReasonFamily ? String(topNoFillReasonFamily.key || "").trim() || null : null,
+      execution_model_dataset_top_no_fill_subtype: topNoFillSubtype ? String(topNoFillSubtype.key || "").trim() || null : null,
       execution_quality_status: executionQualityStatus,
       lineage_status: lineageVerdict,
       account_integrity_status: overallIntegrity.ok === true ? "PASS" : (overallIntegrity.issue_count != null ? "WARN" : "N_A"),

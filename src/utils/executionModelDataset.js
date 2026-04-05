@@ -83,6 +83,24 @@ function deriveNoFillReason(intent = null) {
   return null;
 }
 
+function deriveNoFillDetail(intent = null) {
+  const candidates = [
+    intent && intent.pending_note,
+    intent && intent.exception_message,
+    intent && intent.error_message,
+    intent && intent.last_error_message,
+    intent && intent.status_detail,
+    intent && intent.exception_code,
+    intent && intent.error_code,
+    intent && intent.last_error_code,
+  ];
+  for (const value of candidates) {
+    const text = String(value || "").trim();
+    if (text) return text;
+  }
+  return null;
+}
+
 function deriveNoFillReasonFamily(reason = null) {
   const normalized = toUpper(reason);
   if (!normalized) return null;
@@ -125,6 +143,22 @@ function deriveNoFillReasonFamily(reason = null) {
     return "FILTER_DROP";
   }
   return "UNKNOWN";
+}
+
+function deriveNoFillSubtype({ reason = null, detail = null } = {}) {
+  const normalizedReason = toUpper(reason);
+  const normalizedDetail = toUpper(detail);
+  if (normalizedReason === "LIVE_EXCEPTION") {
+    if (normalizedDetail && normalizedDetail.includes("IMMEDIATE_EXEC")) return "TIMING_IMMEDIATE_EXEC";
+    if (normalizedDetail && normalizedDetail.includes("LATE_EXEC_FROM")) return "TIMING_LATE_EXEC";
+    if (normalizedDetail && normalizedDetail.includes("MARGIN")) return "MARGIN";
+    if (normalizedDetail && normalizedDetail.includes("KEYS_MISSING")) return "KEYS_MISSING";
+    if (normalizedDetail && normalizedDetail.includes("HTTP_4")) return "HTTP_4XX";
+    if (normalizedDetail && normalizedDetail.includes("HTTP_5")) return "HTTP_5XX";
+    return "LIVE_EXCEPTION_OTHER";
+  }
+  if (!normalizedReason) return null;
+  return normalizedReason;
 }
 
 function isOperationalSource(source = null) {
@@ -251,7 +285,9 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
     const preTp1TimeStop = isTimeStopEvent && features.tp_p1_done !== true;
     const wasFilled = agg.fill_n > 0 || status === "FILLED";
     const noFillReason = wasFilled ? null : deriveNoFillReason(intent);
+    const noFillDetail = wasFilled ? null : deriveNoFillDetail(intent);
     const noFillReasonFamily = wasFilled ? null : deriveNoFillReasonFamily(noFillReason);
+    const noFillSubtype = wasFilled ? null : deriveNoFillSubtype({ reason: noFillReason, detail: noFillDetail });
     return {
       schema_version: EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
       row_id: intentId || String(intent.signal_id || intent.id || "").trim() || null,
@@ -297,7 +333,9 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
         slippage_measured_n: agg.slippage_measured_n,
         slippage_missing_n: agg.slippage_missing_n,
         no_fill_reason: noFillReason,
+        no_fill_detail: noFillDetail,
         no_fill_reason_family: noFillReasonFamily,
+        no_fill_subtype: noFillSubtype,
       },
       labels: {
         was_filled: wasFilled,
@@ -338,6 +376,7 @@ function summarizeExecutionModelRows(rows = []) {
   const byPrimaryFillSource = new Map();
   const byNoFillReason = new Map();
   const byNoFillReasonFamily = new Map();
+  const byNoFillSubtype = new Map();
   for (const row of scoped) {
     const key = String(
       row && row.context && row.context.primary_fill_source
@@ -377,8 +416,13 @@ function summarizeExecutionModelRows(rows = []) {
       if (!byNoFillReasonFamily.has(noFillReasonFamily)) {
         byNoFillReasonFamily.set(noFillReasonFamily, { key: noFillReasonFamily, rows_n: 0 });
       }
+      const noFillSubtype = String(row.execution && row.execution.no_fill_subtype || "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
+      if (!byNoFillSubtype.has(noFillSubtype)) {
+        byNoFillSubtype.set(noFillSubtype, { key: noFillSubtype, rows_n: 0 });
+      }
       byNoFillReason.get(noFillReason).rows_n += 1;
       byNoFillReasonFamily.get(noFillReasonFamily).rows_n += 1;
+      byNoFillSubtype.get(noFillSubtype).rows_n += 1;
     }
   }
   const p95 = (values) => {
@@ -466,6 +510,9 @@ function summarizeExecutionModelRows(rows = []) {
     top_no_fill_reason_families: Array.from(byNoFillReasonFamily.values())
       .sort((a, b) => (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
       .slice(0, 12),
+    top_no_fill_subtypes: Array.from(byNoFillSubtype.values())
+      .sort((a, b) => (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
+      .slice(0, 12),
     top_entry_latency_groups: Array.from(byEntryLatencyGroup.values())
       .map((row) => ({
         key: row.key,
@@ -547,7 +594,9 @@ module.exports = {
   __test: {
     summarizeFillAggregate,
     deriveNoFillReason,
+    deriveNoFillDetail,
     deriveNoFillReasonFamily,
+    deriveNoFillSubtype,
     isOperationalSource,
   },
 };

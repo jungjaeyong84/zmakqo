@@ -591,6 +591,7 @@ function buildReasoningJournal({
       current_execution_model_top_fill_source: String(autonomySummary.execution_model_dataset_top_fill_source || "").trim() || null,
       current_execution_model_top_no_fill_reason: String(autonomySummary.execution_model_dataset_top_no_fill_reason || "").trim() || null,
       current_execution_model_top_no_fill_reason_family: String(autonomySummary.execution_model_dataset_top_no_fill_reason_family || "").trim() || null,
+      current_execution_model_top_no_fill_subtype: String(autonomySummary.execution_model_dataset_top_no_fill_subtype || "").trim() || null,
       current_model_readiness_mfe_mae_label_rate: toNum(autonomySummary.model_readiness_mfe_mae_label_rate),
       current_model_readiness_tp1_time_label_rate: toNum(autonomySummary.model_readiness_tp1_time_label_rate),
       current_model_readiness_tp0_time_label_rate: toNum(autonomySummary.model_readiness_tp0_time_label_rate),
