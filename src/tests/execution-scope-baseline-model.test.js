@@ -6,6 +6,7 @@ const {
   scoreExecutionScopeBaselineRows,
   filterTrainingRows,
   deriveQualityGate,
+  deriveSourceDriftDiagnostics,
 } = require("../utils/executionScopeBaselineModel");
 
 function makeRow(index, scope) {
@@ -84,4 +85,31 @@ function makeRow(index, scope) {
   assert.strictEqual(gate.ready, false);
   assert.strictEqual(gate.status, "POLICY_BLOCKED_RECALL_TOO_LOW");
   console.log("EXECUTION_SCOPE_BASELINE_GATE_TEST_OK");
+})();
+
+(() => {
+  const trainRows = [];
+  const testRows = [];
+  for (let i = 0; i < 10; i += 1) trainRows.push(makeRow(i, "FILLABLE"));
+  trainRows.push(makeRow(100, "POLICY_BLOCKED"));
+  trainRows[trainRows.length - 1].context.source = "LIVE_RUNTIME";
+  for (let i = 0; i < 6; i += 1) {
+    const row = makeRow(200 + i, "POLICY_BLOCKED");
+    row.context.source = "PINE_WEBHOOK";
+    testRows.push(row);
+  }
+  const diagnostics = deriveSourceDriftDiagnostics({ trainRows, testRows });
+  const gate = deriveQualityGate({
+    accuracy: 0.8,
+    macro_recall: 0.7,
+    recall_by_class: {
+      FILLABLE: 0.8,
+      POLICY_BLOCKED: 0.5,
+      RUNTIME_EXCEPTION: 0.8,
+    },
+  }, diagnostics);
+  assert.strictEqual(diagnostics.top_policy_blocked_test_source, "PINE_WEBHOOK");
+  assert.strictEqual(gate.ready, false);
+  assert.strictEqual(gate.status, "POLICY_BLOCKED_SOURCE_SUPPORT_TOO_LOW");
+  console.log("EXECUTION_SCOPE_BASELINE_DRIFT_TEST_OK");
 })();

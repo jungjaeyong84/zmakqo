@@ -57,6 +57,10 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         execution_scope_train_run_model_kind: "EXECUTION_SCOPE_OVR_LOGISTIC_V1",
         execution_scope_train_run_quality_gate_status: "POLICY_BLOCKED_RECALL_TOO_LOW",
         execution_scope_train_run_quality_gate_ready: false,
+        execution_scope_train_run_top_policy_blocked_test_source: "PINE_WEBHOOK",
+        execution_scope_train_run_top_policy_blocked_test_source_train_n: 1,
+        execution_scope_train_run_top_policy_blocked_test_source_test_n: 13,
+        execution_scope_train_run_top_policy_blocked_test_source_test_share: 0.8667,
         ml_model_contract_status: "ML_MODEL_CONTRACT_OFFLINE_ONLY",
         ml_model_contract_deployment_stage: "OFFLINE_ONLY",
         ml_model_contract_canary_gate_status: "BLOCK_MODEL_QUALITY",
@@ -220,6 +224,8 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_execution_scope_train_run_status, "ML_TRAIN_RUN_REPORTED");
   assert.strictEqual(journal.summary.current_execution_scope_train_run_quality_gate_status, "POLICY_BLOCKED_RECALL_TOO_LOW");
   assert.strictEqual(journal.summary.current_execution_scope_train_run_quality_gate_ready, false);
+  assert.strictEqual(journal.summary.current_execution_scope_train_run_top_policy_blocked_test_source, "PINE_WEBHOOK");
+  assert.strictEqual(journal.summary.current_execution_scope_train_run_top_policy_blocked_test_source_train_n, 1);
   assert.strictEqual(journal.summary.current_ml_model_contract_status, "ML_MODEL_CONTRACT_OFFLINE_ONLY");
   assert.strictEqual(journal.summary.current_ml_model_contract_deployment_stage, "OFFLINE_ONLY");
   assert.strictEqual(journal.summary.current_execution_bottleneck_delta_status, "EXECUTION_BOTTLENECK_DELTA_READY");

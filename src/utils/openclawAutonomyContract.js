@@ -533,6 +533,10 @@ function deriveOpenClawAutonomyContract({
       execution_scope_train_run_model_kind: String(mlTrainRunScopeSummary.model_kind || "").trim() || null,
       execution_scope_train_run_quality_gate_status: String(mlTrainRunScopeSummary.quality_gate_status || "").trim() || null,
       execution_scope_train_run_quality_gate_ready: mlTrainRunScopeSummary.quality_gate_ready === true,
+      execution_scope_train_run_top_policy_blocked_test_source: String(mlTrainRunScopeSummary.split_diagnostics && mlTrainRunScopeSummary.split_diagnostics.top_policy_blocked_test_source || "").trim() || null,
+      execution_scope_train_run_top_policy_blocked_test_source_train_n: toNum(mlTrainRunScopeSummary.split_diagnostics && mlTrainRunScopeSummary.split_diagnostics.top_policy_blocked_test_source_train_n),
+      execution_scope_train_run_top_policy_blocked_test_source_test_n: toNum(mlTrainRunScopeSummary.split_diagnostics && mlTrainRunScopeSummary.split_diagnostics.top_policy_blocked_test_source_test_n),
+      execution_scope_train_run_top_policy_blocked_test_source_test_share: toNum(mlTrainRunScopeSummary.split_diagnostics && mlTrainRunScopeSummary.split_diagnostics.top_policy_blocked_test_source_test_share),
       execution_model_dataset_version_id: String(
         executionModelSummary.version_id
         || (executionModelDataset && executionModelDataset.execution_dataset_version && executionModelDataset.execution_dataset_version.version_id)
@@ -643,6 +647,10 @@ function deriveOpenClawAutonomyContract({
       execution_scope_train_run_model_kind: String(mlTrainRunScopeSummary.model_kind || "").trim() || null,
       execution_scope_train_run_quality_gate_status: String(mlTrainRunScopeSummary.quality_gate_status || "").trim() || null,
       execution_scope_train_run_quality_gate_ready: mlTrainRunScopeSummary.quality_gate_ready === true,
+      execution_scope_train_run_top_policy_blocked_test_source: String(mlTrainRunScopeSummary.split_diagnostics && mlTrainRunScopeSummary.split_diagnostics.top_policy_blocked_test_source || "").trim() || null,
+      execution_scope_train_run_top_policy_blocked_test_source_train_n: toNum(mlTrainRunScopeSummary.split_diagnostics && mlTrainRunScopeSummary.split_diagnostics.top_policy_blocked_test_source_train_n),
+      execution_scope_train_run_top_policy_blocked_test_source_test_n: toNum(mlTrainRunScopeSummary.split_diagnostics && mlTrainRunScopeSummary.split_diagnostics.top_policy_blocked_test_source_test_n),
+      execution_scope_train_run_top_policy_blocked_test_source_test_share: toNum(mlTrainRunScopeSummary.split_diagnostics && mlTrainRunScopeSummary.split_diagnostics.top_policy_blocked_test_source_test_share),
       ml_model_contract_status: mlModelContractStatus,
       ml_model_contract_deployment_stage: String(mlModelContractSummary.deployment_stage || "").trim() || null,
       ml_model_contract_canary_gate_status: String(mlModelContractSummary.canary_gate_status || "").trim() || null,

@@ -46,7 +46,7 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
     mlExperimentRegistry: { summary: { status: "ML_EXPERIMENT_REGISTRY_READY", experiment_id: "ML_BASELINE_ENV__abc123def4567890", dataset_version_id: "ML_TRAINING_DATASET__abc123", feature_store_version_id: "ML_FEATURE_STORE__def456", execution_dataset_version_id: "EXECUTION_MODEL_DATASET__xyz789" } },
     executionBottleneckDelta: { summary: { status: "EXECUTION_BOTTLENECK_DELTA_READY", signal_to_intent_p95_delta_ms: -15000, webhook_saved_to_intent_p95_delta_ms: -9000, created_to_fill_p95_delta_ms: -3000, current_top_operational_webhook_delay_cause: "IMMEDIATE_EXEC_WEBHOOK_SAVED_LATE_INTENT", current_top_operational_signal_to_intent_group: "TV_WEBHOOK|EARLY_LONG|BTCUSDT" } },
     mlTrainRun: { summary: { status: "ML_TRAIN_RUN_NOT_STARTED", model_artifact_id: null, quality_gate_status: null, quality_gate_ready: false } },
-    mlTrainRunScope: { summary: { status: "ML_TRAIN_RUN_REPORTED", train_run_id: "TRAIN_EXEC_SCOPE__s1", model_artifact_id: "MODEL_EXEC_SCOPE__s1", model_kind: "EXECUTION_SCOPE_OVR_LOGISTIC_V1", quality_gate_status: "POLICY_BLOCKED_RECALL_TOO_LOW", quality_gate_ready: false } },
+    mlTrainRunScope: { summary: { status: "ML_TRAIN_RUN_REPORTED", train_run_id: "TRAIN_EXEC_SCOPE__s1", model_artifact_id: "MODEL_EXEC_SCOPE__s1", model_kind: "EXECUTION_SCOPE_OVR_LOGISTIC_V1", quality_gate_status: "POLICY_BLOCKED_RECALL_TOO_LOW", quality_gate_ready: false, split_diagnostics: { top_policy_blocked_test_source: "PINE_WEBHOOK", top_policy_blocked_test_source_train_n: 1, top_policy_blocked_test_source_test_n: 13, top_policy_blocked_test_source_test_share: 0.8667 } } },
     mlModelContract: { summary: { status: "ML_MODEL_CONTRACT_OFFLINE_ONLY", deployment_stage: "OFFLINE_ONLY", canary_gate_status: "BLOCK_MODEL_QUALITY", promotion_status: "HOLD_MODEL_QUALITY", model_artifact_id: null } },
   });
 
@@ -114,6 +114,8 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.current_status.execution_scope_inference_model_artifact_id, "MODEL_EXEC_SCOPE__s1");
   assert.strictEqual(report.current_status.execution_scope_train_run_quality_gate_status, "POLICY_BLOCKED_RECALL_TOO_LOW");
   assert.strictEqual(report.current_status.execution_scope_train_run_quality_gate_ready, false);
+  assert.strictEqual(report.current_status.execution_scope_train_run_top_policy_blocked_test_source, "PINE_WEBHOOK");
+  assert.strictEqual(report.current_status.execution_scope_train_run_top_policy_blocked_test_source_train_n, 1);
   assert.strictEqual(report.current_status.execution_model_dataset_version_id, "EXECUTION_MODEL_DATASET__xyz789");
   assert.strictEqual(report.summary.execution_model_dataset_top_entry_latency_group, "EARLY_LONG|UNKNOWN|BINANCE_USER_TRADES|BTCUSDT");
   assert.strictEqual(report.summary.execution_model_dataset_top_signal_to_intent_latency_group, "EARLY_LONG|MANUAL_REPLAY|XRPUSDT");
@@ -138,6 +140,7 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.summary.execution_scope_train_run_status, "ML_TRAIN_RUN_REPORTED");
   assert.strictEqual(report.summary.execution_scope_train_run_quality_gate_status, "POLICY_BLOCKED_RECALL_TOO_LOW");
   assert.strictEqual(report.summary.execution_scope_train_run_quality_gate_ready, false);
+  assert.strictEqual(report.summary.execution_scope_train_run_top_policy_blocked_test_source, "PINE_WEBHOOK");
   assert.strictEqual(report.summary.ml_model_contract_status, "ML_MODEL_CONTRACT_OFFLINE_ONLY");
   assert.strictEqual(report.summary.ml_model_contract_deployment_stage, "OFFLINE_ONLY");
   assert.strictEqual(report.summary.execution_bottleneck_delta_status, "EXECUTION_BOTTLENECK_DELTA_READY");

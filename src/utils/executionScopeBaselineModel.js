@@ -12,6 +12,14 @@ const NUMERIC_FEATURES = Object.freeze([
   "execution.qty_fraction",
   "features.score",
   "features.zz_wave_conf",
+  "features.ev_gate_tp1_prob_full",
+  "features.ev_gate_qty_scale_applied",
+  "features.ev_gate_qty_before",
+  "features.ev_gate_qty_after_suggested",
+  "features.posterior",
+  "features.risk_efficiency",
+  "features.canonical_engine_score",
+  "features.commission_ratio",
 ]);
 const CATEGORICAL_FEATURES = Object.freeze([
   "context.source",
@@ -21,6 +29,24 @@ const CATEGORICAL_FEATURES = Object.freeze([
   "execution.entry_schedule_reason",
   "execution.webhook_decision",
   "execution.webhook_reason",
+  "features.source_origin",
+  "features.signal_family",
+  "features.entry_grade",
+  "features.risk_mode",
+  "features.htf_mode",
+  "features.ev_gate_action",
+  "features.canonical_engine_execution_source",
+  "features.canonical_engine_source_mode_effective",
+  "features.pine_overlay_runtime_role",
+  "features.strategy_id",
+  "features.ai_signal.ai_decision",
+  "features._entry_exec_timing",
+  "features.cost_shield_block_add",
+  "features.pine_shadow_pass",
+  "features._live_exec_policy_objective_constrained",
+  "features._live_exec_policy_portfolio_cluster_enabled",
+  "features._live_exec_policy_quality_scale",
+  "features._live_exec_policy_action_scale",
 ]);
 
 function toNum(value) {
@@ -73,6 +99,10 @@ function deriveTargetClass(row) {
   if (scope.scope === "POLICY_BLOCKED") return "POLICY_BLOCKED";
   if (scope.scope === "RUNTIME_EXCEPTION") return "RUNTIME_EXCEPTION";
   return null;
+}
+
+function getContextSource(row) {
+  return toUpper(getPath(row, "context.source")) || "UNKNOWN";
 }
 
 function buildChronologicalSplit(rows = []) {
@@ -248,7 +278,45 @@ function computeMulticlassMetrics(rows = [], predictions = []) {
   };
 }
 
-function deriveQualityGate(metrics = {}) {
+function buildSplitSupport(rows = []) {
+  const byClassSource = {};
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const klass = deriveTargetClass(row);
+    const source = getContextSource(row);
+    if (!klass) continue;
+    if (!byClassSource[klass]) byClassSource[klass] = {};
+    byClassSource[klass][source] = (byClassSource[klass][source] || 0) + 1;
+  }
+  return byClassSource;
+}
+
+function deriveSourceDriftDiagnostics({ trainRows = [], testRows = [] } = {}) {
+  const trainSupport = buildSplitSupport(trainRows);
+  const testSupport = buildSplitSupport(testRows);
+  const policyTrain = trainSupport.POLICY_BLOCKED || {};
+  const policyTest = testSupport.POLICY_BLOCKED || {};
+  const totalPolicyTest = Object.values(policyTest).reduce((sum, value) => sum + value, 0);
+  const rows = Object.entries(policyTest)
+    .map(([source, test_n]) => ({
+      source,
+      test_n,
+      train_n: policyTrain[source] || 0,
+      test_share: totalPolicyTest > 0 ? test_n / totalPolicyTest : null,
+    }))
+    .sort((a, b) => b.test_n - a.test_n);
+  const top = rows[0] || null;
+  return {
+    policy_blocked_train_support_by_source: policyTrain,
+    policy_blocked_test_support_by_source: policyTest,
+    policy_blocked_source_rows: rows,
+    top_policy_blocked_test_source: top ? top.source : null,
+    top_policy_blocked_test_source_train_n: top ? top.train_n : null,
+    top_policy_blocked_test_source_test_n: top ? top.test_n : null,
+    top_policy_blocked_test_source_test_share: top ? top.test_share : null,
+  };
+}
+
+function deriveQualityGate(metrics = {}, diagnostics = {}) {
   const macroRecall = toNum(metrics.macro_recall);
   const accuracy = toNum(metrics.accuracy);
   const recallByClass = metrics && metrics.recall_by_class && typeof metrics.recall_by_class === "object"
@@ -257,6 +325,11 @@ function deriveQualityGate(metrics = {}) {
   const fillableRecall = toNum(recallByClass.FILLABLE);
   const policyBlockedRecall = toNum(recallByClass.POLICY_BLOCKED);
   const runtimeExceptionRecall = toNum(recallByClass.RUNTIME_EXCEPTION);
+  const topPolicySourceTrainN = toNum(diagnostics.top_policy_blocked_test_source_train_n);
+  const topPolicySourceTestShare = toNum(diagnostics.top_policy_blocked_test_source_test_share);
+  if (topPolicySourceTestShare != null && topPolicySourceTestShare >= 0.5 && (topPolicySourceTrainN == null || topPolicySourceTrainN < 3)) {
+    return { status: "POLICY_BLOCKED_SOURCE_SUPPORT_TOO_LOW", ready: false };
+  }
   if (macroRecall == null || macroRecall < 0.45) return { status: "MACRO_RECALL_TOO_LOW", ready: false };
   if (accuracy == null || accuracy < 0.55) return { status: "ACCURACY_TOO_LOW", ready: false };
   if (fillableRecall == null || fillableRecall < 0.6) return { status: "FILLABLE_RECALL_TOO_LOW", ready: false };
@@ -294,7 +367,11 @@ function buildExecutionScopeBaselineModel({
   const trainMetrics = computeMulticlassMetrics(split.trainRows, trainPred);
   const validationMetrics = computeMulticlassMetrics(split.validationRows, validationPred);
   const testMetrics = computeMulticlassMetrics(split.testRows, testPred);
-  const qualityGate = deriveQualityGate(testMetrics);
+  const splitDiagnostics = deriveSourceDriftDiagnostics({
+    trainRows: split.trainRows,
+    testRows: split.testRows,
+  });
+  const qualityGate = deriveQualityGate(testMetrics, splitDiagnostics);
   const trainedAt = String(trainedAtKst || "").trim() || null;
   const trainRunSeed = stableStringify({
     experiment_id: experimentId,
@@ -330,6 +407,7 @@ function buildExecutionScopeBaselineModel({
       validation_split_pct: split.validation_split_pct,
       test_split_pct: split.test_split_pct,
       metrics_snapshot: { train: trainMetrics, validation: validationMetrics, test: testMetrics },
+      split_diagnostics: splitDiagnostics,
       trained_at_kst: trainedAt,
     },
     modelArtifact: {
@@ -347,6 +425,7 @@ function buildExecutionScopeBaselineModel({
       quality_gate_ready: qualityGate.ready,
       feature_count: spec.features.length,
       metrics_snapshot: { train: trainMetrics, validation: validationMetrics, test: testMetrics },
+      split_diagnostics: splitDiagnostics,
       model_params: {
         feature_keys: spec.features.map((row) => row.key),
         numeric_stats: numericStats,
@@ -379,4 +458,5 @@ module.exports = {
   buildExecutionScopeBaselineModel,
   scoreExecutionScopeBaselineRows,
   deriveQualityGate,
+  deriveSourceDriftDiagnostics,
 };
