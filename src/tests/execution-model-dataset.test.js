@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("assert");
-const { buildExecutionModelRows, summarizeExecutionModelRows } = require("../utils/executionModelDataset");
+const { buildExecutionModelRows, summarizeExecutionModelRows, splitExecutionModelRows } = require("../utils/executionModelDataset");
 
 const intents = {
   rows: [
@@ -33,7 +33,12 @@ assert.equal(rows[0].execution.slippage_bps, 4);
 assert.equal(rows[1].labels.was_rejected, true);
 const summary = summarizeExecutionModelRows(rows);
 assert.equal(summary.rows_n, 2);
+assert.equal(summary.entry_rows_n, 2);
+assert.equal(summary.exit_rows_n, 0);
 assert.equal(summary.filled_n, 1);
 assert.equal(summary.partial_n, 1);
 assert.equal(summary.rejected_n, 1);
+const split = splitExecutionModelRows(rows);
+assert.equal(split.entry_rows.length, 2);
+assert.equal(split.exit_rows.length, 0);
 console.log('EXECUTION_MODEL_DATASET_TEST_OK');

@@ -58,6 +58,13 @@ function summarizeFillAggregate(fills = []) {
   const execPriceValues = scoped
     .map((row) => toNum(row.exec_price))
     .filter((value) => Number.isFinite(value));
+  const fillSourceCounts = new Map();
+  for (const row of scoped) {
+    const source = toUpper(row.source || row.fill_source || row.exec_price_source) || "UNKNOWN";
+    fillSourceCounts.set(source, (fillSourceCounts.get(source) || 0) + 1);
+  }
+  const primaryFillSource = Array.from(fillSourceCounts.entries())
+    .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))[0]?.[0] || null;
   return {
     fill_n: scoped.length,
     fill_id: String(firstFill && firstFill.row && (firstFill.row.fill_id || firstFill.row.id) || "").trim() || null,
@@ -66,6 +73,8 @@ function summarizeFillAggregate(fills = []) {
     max_partial_fill_pct: partialValues.length ? Math.max(...partialValues) : null,
     avg_latency_ms: latencyValues.length ? (latencyValues.reduce((acc, value) => acc + value, 0) / latencyValues.length) : null,
     exec_price: execPriceValues.length ? execPriceValues[execPriceValues.length - 1] : null,
+    primary_fill_source: primaryFillSource,
+    fill_source_counts: Object.fromEntries(fillSourceCounts),
   };
 }
 
@@ -98,6 +107,8 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
       ? (String(intent.status_reason || intent.reject_reason || intent.pending_reason || "").trim() || null)
       : null;
     const features = normalizeFeatureBag(intent.features_json);
+    const isTimeStopEvent = String(intent.event || "").trim().toUpperCase().startsWith("EXIT_TIME_STOP");
+    const preTp1TimeStop = isTimeStopEvent && features.tp_p1_done !== true;
     return {
       schema_version: EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
       row_id: intentId || String(intent.signal_id || intent.id || "").trim() || null,
@@ -115,6 +126,7 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
         side: toUpper(intent.side),
         regime: toUpper(intent.regime || intent.market_regime),
         source: toUpper(intent.source),
+        primary_fill_source: agg.primary_fill_source,
         is_exit_event: isExitEvent(intent.event),
       },
       execution: {
@@ -134,11 +146,14 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
         live_policy_latency_ms: toNum(intent.live_exec_policy_quality_latency_ms),
         live_policy_slippage_bps: toNum(intent.live_exec_policy_quality_slippage_bps),
         live_policy_partial_pct: toNum(intent.live_exec_policy_quality_partial_pct),
+        fill_source_counts: agg.fill_source_counts,
       },
       labels: {
         was_filled: agg.fill_n > 0 || status === "FILLED",
         was_partial: Number.isFinite(partialFillPct) && partialFillPct > 0,
         was_rejected: rejected,
+        time_stop_hit: isTimeStopEvent,
+        pre_tp1_time_stop: preTp1TimeStop,
         created_to_fill_ms: createdToFillMs,
         slippage_bps: slippageBps,
         partial_fill_pct: partialFillPct,
@@ -157,6 +172,18 @@ function summarizeExecutionModelRows(rows = []) {
   const rejectedN = scoped.filter((row) => row.labels && row.labels.was_rejected === true).length;
   const latencyVals = scoped.map((row) => toNum(row.labels && row.labels.created_to_fill_ms)).filter((v) => Number.isFinite(v));
   const slippageVals = scoped.map((row) => toNum(row.labels && row.labels.slippage_bps)).filter((v) => Number.isFinite(v));
+  const timeStopN = scoped.filter((row) => row && row.labels && row.labels.time_stop_hit === true).length;
+  const preTp1TimeStopN = scoped.filter((row) => row && row.labels && row.labels.pre_tp1_time_stop === true).length;
+  const byPrimaryFillSource = new Map();
+  for (const row of scoped) {
+    const key = String(row && row.context && row.context.primary_fill_source || row && row.context && row.context.source || "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
+    if (!byPrimaryFillSource.has(key)) byPrimaryFillSource.set(key, { key, rows_n: 0, slippage_zero_n: 0, entry_rows_n: 0, exit_rows_n: 0 });
+    const bucket = byPrimaryFillSource.get(key);
+    bucket.rows_n += 1;
+    if (toNum(row && row.labels && row.labels.slippage_bps) === 0) bucket.slippage_zero_n += 1;
+    if (row && row.context && row.context.is_exit_event === true) bucket.exit_rows_n += 1;
+    else bucket.entry_rows_n += 1;
+  }
   const p95 = (values) => {
     if (!values.length) return null;
     const sorted = values.slice().sort((a,b)=>a-b);
@@ -170,13 +197,29 @@ function summarizeExecutionModelRows(rows = []) {
     filled_n: filledN,
     partial_n: partialN,
     rejected_n: rejectedN,
+    time_stop_n: timeStopN,
+    pre_tp1_time_stop_n: preTp1TimeStopN,
     fill_rate: scoped.length > 0 ? (filledN / scoped.length) : null,
     partial_rate: scoped.length > 0 ? (partialN / scoped.length) : null,
     reject_rate: scoped.length > 0 ? (rejectedN / scoped.length) : null,
     created_to_fill_p95_ms: p95(latencyVals),
     slippage_p95_bps: p95(slippageVals),
     feature_keys_n: Array.from(new Set(scoped.flatMap((row) => Object.keys(row.features || {})))).length,
+    by_primary_fill_source: Array.from(byPrimaryFillSource.values())
+      .map((row) => ({
+        ...row,
+        slippage_zero_rate: row.rows_n > 0 ? (row.slippage_zero_n / row.rows_n) : null,
+      }))
+      .sort((a, b) => (b.rows_n - a.rows_n) || a.key.localeCompare(b.key)),
     status: scoped.length > 0 ? 'EXECUTION_MODEL_DATASET_READY' : 'EXECUTION_MODEL_DATASET_EMPTY',
+  };
+}
+
+function splitExecutionModelRows(rows = []) {
+  const scoped = Array.isArray(rows) ? rows : [];
+  return {
+    entry_rows: scoped.filter((row) => row && row.context && row.context.is_exit_event !== true),
+    exit_rows: scoped.filter((row) => row && row.context && row.context.is_exit_event === true),
   };
 }
 
@@ -184,6 +227,7 @@ module.exports = {
   EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
   buildExecutionModelRows,
   summarizeExecutionModelRows,
+  splitExecutionModelRows,
   __test: {
     summarizeFillAggregate,
   },
