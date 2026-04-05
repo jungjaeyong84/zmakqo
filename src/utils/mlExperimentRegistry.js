@@ -11,22 +11,24 @@ function sha1(value) {
   return crypto.createHash("sha1").update(String(value || "")).digest("hex");
 }
 
-function buildMlExperimentRegistry({
+function toNum(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function buildMlExperimentIdentity({
   trainingDataset = null,
   featureStore = null,
   modelReadiness = null,
-  executionQuality = null,
-  executionStageLatency = null,
   executionModelDataset = null,
-  trainRun = null,
 } = {}) {
   const dataset = trainingDataset && typeof trainingDataset === "object" ? trainingDataset : {};
   const feature = featureStore && typeof featureStore === "object" ? featureStore : {};
   const readiness = readSummary(modelReadiness);
-  const quality = readSummary(executionQuality);
-  const stageLatency = readSummary(executionStageLatency);
-  const executionModel = readSummary(executionModelDataset);
-  const trainRunSummary = readSummary(trainRun);
+  const executionModel = executionModelDataset && typeof executionModelDataset === "object"
+    ? readSummary(executionModelDataset)
+    : {};
 
   const datasetVersionId = String(dataset.dataset_version && dataset.dataset_version.version_id || "").trim() || null;
   const featureStoreVersionId = String(feature.feature_store_version && feature.feature_store_version.version_id || feature.summary && feature.summary.version_id || "").trim() || null;
@@ -47,6 +49,46 @@ function buildMlExperimentRegistry({
     feature_keys_n: feature.summary && feature.summary.feature_keys_n || null,
   });
   const experimentId = `ML_BASELINE_ENV__${sha1(experimentKey).slice(0, 16)}`;
+
+  return {
+    datasetVersionId,
+    featureStoreVersionId,
+    executionDatasetVersionId,
+    sourceCycleId,
+    sourceWindow,
+    experimentId,
+  };
+}
+
+function buildMlExperimentRegistry({
+  trainingDataset = null,
+  featureStore = null,
+  modelReadiness = null,
+  executionQuality = null,
+  executionStageLatency = null,
+  executionModelDataset = null,
+  trainRun = null,
+} = {}) {
+  const dataset = trainingDataset && typeof trainingDataset === "object" ? trainingDataset : {};
+  const feature = featureStore && typeof featureStore === "object" ? featureStore : {};
+  const readiness = readSummary(modelReadiness);
+  const quality = readSummary(executionQuality);
+  const stageLatency = readSummary(executionStageLatency);
+  const executionModel = readSummary(executionModelDataset);
+  const trainRunSummary = readSummary(trainRun);
+  const {
+    datasetVersionId,
+    featureStoreVersionId,
+    executionDatasetVersionId,
+    sourceCycleId,
+    sourceWindow,
+    experimentId,
+  } = buildMlExperimentIdentity({
+    trainingDataset,
+    featureStore,
+    modelReadiness,
+    executionModelDataset,
+  });
 
   return {
     status: datasetVersionId && featureStoreVersionId ? "ML_EXPERIMENT_REGISTRY_READY" : "ML_EXPERIMENT_REGISTRY_INCOMPLETE",
@@ -70,9 +112,9 @@ function buildMlExperimentRegistry({
     train_run_id: String(trainRunSummary.train_run_id || "").trim() || null,
     train_run_model_kind: String(trainRunSummary.model_kind || "").trim() || null,
     train_run_split_strategy: String(trainRunSummary.split_strategy || "").trim() || null,
-    train_run_train_split_pct: Number.isFinite(Number(trainRunSummary.train_split_pct)) ? Number(trainRunSummary.train_split_pct) : null,
-    train_run_validation_split_pct: Number.isFinite(Number(trainRunSummary.validation_split_pct)) ? Number(trainRunSummary.validation_split_pct) : null,
-    train_run_test_split_pct: Number.isFinite(Number(trainRunSummary.test_split_pct)) ? Number(trainRunSummary.test_split_pct) : null,
+    train_run_train_split_pct: toNum(trainRunSummary.train_split_pct),
+    train_run_validation_split_pct: toNum(trainRunSummary.validation_split_pct),
+    train_run_test_split_pct: toNum(trainRunSummary.test_split_pct),
     train_run_metrics_snapshot: trainRunSummary.metrics_snapshot && typeof trainRunSummary.metrics_snapshot === "object"
       ? trainRunSummary.metrics_snapshot
       : null,
@@ -80,5 +122,6 @@ function buildMlExperimentRegistry({
 }
 
 module.exports = {
+  buildMlExperimentIdentity,
   buildMlExperimentRegistry,
 };

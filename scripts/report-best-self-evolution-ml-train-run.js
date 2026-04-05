@@ -16,6 +16,8 @@ const { buildMlTrainRun } = require("../src/utils/mlTrainRun");
 const INPUTS = Object.freeze({
   trainingDataset: path.join(OPS_DAILY_DIR, "ml_training_dataset_latest.json"),
   featureStore: path.join(OPS_DAILY_DIR, "ml_feature_store_latest.json"),
+  modelReadiness: path.join(OPS_DAILY_DIR, "best_self_evolution_model_readiness_latest.json"),
+  executionModelDataset: path.join(OPS_DAILY_DIR, "execution_model_dataset_latest.json"),
   experimentRegistry: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_experiment_registry_latest.json"),
   existingTrainRun: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_train_run_manual_latest.json"),
 });
@@ -30,6 +32,7 @@ function renderMarkdown(report = {}) {
     `- experiment_id: ${summary.experiment_id || "N/A"}`,
     `- dataset_version_id: ${summary.dataset_version_id || "N/A"}`,
     `- feature_store_version_id: ${summary.feature_store_version_id || "N/A"}`,
+    `- execution_dataset_version_id: ${summary.execution_dataset_version_id || "N/A"}`,
     `- train_run_id: ${summary.train_run_id || "N/A"}`,
     `- model_kind: ${summary.model_kind || "N/A"}`,
     `- split_strategy: ${summary.split_strategy || "N/A"}`,
@@ -43,6 +46,8 @@ function main() {
   const summary = buildMlTrainRun({
     trainingDataset: readJsonRawSafe(INPUTS.trainingDataset, null),
     featureStore: readJsonRawSafe(INPUTS.featureStore, null),
+    modelReadiness: readJsonRawSafe(INPUTS.modelReadiness, null),
+    executionModelDataset: readJsonRawSafe(INPUTS.executionModelDataset, null),
     experimentRegistry: readJsonRawSafe(INPUTS.experimentRegistry, null),
     existingTrainRun: readJsonRawSafe(INPUTS.existingTrainRun, null),
   });
