@@ -1,6 +1,7 @@
 "use strict";
 
 const { getFirestore } = require("../../src/storage/firestore");
+const { isIntentCanceledLikeStatus } = require("../../src/utils/intentStatus");
 
 const DEFAULT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_FETCH_LIMIT = 1500;
@@ -22,6 +23,23 @@ function normalizeOperationalReason(raw) {
   if (reason.includes("ERROR")) return reason;
   if (reason.includes("UNAVAILABLE")) return reason;
   return null;
+}
+
+function isNonRuntimeLiveReject(row = {}) {
+  const reason = String(row.cancel_reason || row.status_reason || row.reason || "").trim().toUpperCase();
+  if (reason !== "LIVE_EXCEPTION" && reason !== "LIVE_FAILED") return false;
+  const note = String(row.cancel_note || row.last_error || "").trim().toUpperCase();
+  if (!note) return false;
+  if (note.includes("MARGIN IS INSUFFICIENT")) return true;
+  if (note.includes("INSUFFICIENT MARGIN")) return true;
+  if (note.includes('"CODE":-2019')) return true;
+  if (note.includes("CODE=-2019")) return true;
+  return false;
+}
+
+function resolveIntentCancelOperationalFamily(row = {}) {
+  if (isNonRuntimeLiveReject(row)) return null;
+  return normalizeOperationalReason(row && (row.cancel_reason || row.status_reason || row.reason));
 }
 
 function upsertFamily(map, family, { source, at, symbol, reason } = {}) {
@@ -74,7 +92,7 @@ function summarizeRuntimeErrorFamilies({
   const families = new Map();
 
   for (const row of intentCancels || []) {
-    const family = normalizeOperationalReason(row && (row.cancel_reason || row.status_reason || row.reason));
+    const family = resolveIntentCancelOperationalFamily(row);
     if (!family) continue;
     upsertFamily(families, family, {
       source: "order_intents_paper",
@@ -186,7 +204,7 @@ async function fetchRuntimeErrorSummary24h({
     fetchRecentDocs({ collection: "ai_allocation_runs", orderByField: "created_at", limit: Math.min(fetchLimit, 200), sinceMs }),
   ]);
 
-  const intentCancels = intentRows.filter((row) => String(row.status || "").toUpperCase() === "CANCELED");
+  const intentCancels = intentRows.filter((row) => isIntentCanceledLikeStatus(row && row.status));
   const summary = summarizeRuntimeErrorFamilies({
     intentCancels,
     droppedSignals: dropRows,
@@ -204,7 +222,9 @@ async function fetchRuntimeErrorSummary24h({
 }
 
 module.exports = {
+  isNonRuntimeLiveReject,
   normalizeOperationalReason,
+  resolveIntentCancelOperationalFamily,
   summarizeRuntimeErrorFamilies,
   fetchRuntimeErrorSummary24h,
 };

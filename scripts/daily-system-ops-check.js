@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { toKstString, kstDateKey } = require("../src/utils/timeKst");
 const { parseErrorCount } = require("./lib/report-metrics");
+const { fetchRuntimeErrorSummary24h } = require("./lib/runtime-error-counter");
 
 function toNum(value, fallback = 0) {
   const n = Number(value);
@@ -38,6 +39,56 @@ function readJsonSafe(filePath) {
       raw: "",
     };
   }
+}
+
+function isLearningEpochActive(summary = {}) {
+  if (!summary || typeof summary !== "object") return false;
+  if (summary.active === true) return true;
+  const status = String(summary.status || "").trim().toUpperCase();
+  return status.includes("EPOCH_ACTIVE");
+}
+
+function resolveRelaxedCostLimitPct({
+  repoRoot,
+  baseCostLimitPct,
+} = {}) {
+  const out = {
+    cost_limit_pct: baseCostLimitPct,
+    relaxed: false,
+    learning_epoch_active: false,
+    microstructure_active: false,
+    reason: "BASE_LIMIT",
+  };
+  const objectiveRetrospective = readJsonSafe(path.join(repoRoot, "ops", "daily", "objective_retrospective_latest.json"));
+  const learningEpoch = readJsonSafe(path.join(repoRoot, "ops", "daily", "best_self_evolution_server_primary_learning_epoch_latest.json"));
+  const display = objectiveRetrospective.ok && objectiveRetrospective.data && objectiveRetrospective.data.display && typeof objectiveRetrospective.data.display === "object"
+    ? objectiveRetrospective.data.display
+    : {};
+  const daily = display.periods && display.periods.DAILY && typeof display.periods.DAILY === "object"
+    ? display.periods.DAILY
+    : {};
+  const micro = daily.execution_microstructure && typeof daily.execution_microstructure === "object"
+    ? daily.execution_microstructure
+    : (display.execution_microstructure && typeof display.execution_microstructure === "object" ? display.execution_microstructure : {});
+  const tp0HitRate = toNum(micro.tp0_hit_rate, null);
+  const learningSummary = learningEpoch.ok && learningEpoch.data && typeof learningEpoch.data === "object"
+    ? (learningEpoch.data.summary && typeof learningEpoch.data.summary === "object" ? learningEpoch.data.summary : learningEpoch.data)
+    : {};
+  const learningEpochActive = isLearningEpochActive(learningSummary);
+  const microstructureActive = Number.isFinite(tp0HitRate) && tp0HitRate >= toNum(process.env.DAILY_COST_LIMIT_RELAX_TP0_HIT_RATE_MIN, 0.75);
+  if (!learningEpochActive || !microstructureActive) {
+    out.learning_epoch_active = learningEpochActive;
+    out.microstructure_active = microstructureActive;
+    out.reason = learningEpochActive ? "MICROSTRUCTURE_NOT_READY" : "LEARNING_EPOCH_INACTIVE";
+    return out;
+  }
+  const relaxedLimit = toNum(process.env.DAILY_COST_LIMIT_PCT_LEARNING_EPOCH, 0.4);
+  out.learning_epoch_active = true;
+  out.microstructure_active = true;
+  out.relaxed = Number.isFinite(relaxedLimit) && relaxedLimit > baseCostLimitPct;
+  out.cost_limit_pct = out.relaxed ? relaxedLimit : baseCostLimitPct;
+  out.reason = out.relaxed ? "LEARNING_EPOCH_MICROSTRUCTURE_RELAX" : "BASE_LIMIT";
+  return out;
 }
 
 function pickDocs(input) {
@@ -398,7 +449,7 @@ ${issueLines.join("\n")}
 `;
 }
 
-function main() {
+async function main() {
   const repoRoot = path.resolve(__dirname, "..");
   const snapshotPath = process.argv[2] || path.join(repoRoot, "noye", "binance_snapshot_latest.json");
   const reportPath = process.argv[3] || path.join(repoRoot, "noye", "report.md");
@@ -407,7 +458,12 @@ function main() {
   const reportRaw = fs.readFileSync(reportPath, "utf8");
   const snapshot = JSON.parse(snapshotRaw);
 
-  const costLimitPct = toNum(process.env.DAILY_COST_LIMIT_PCT, 0.20);
+  const baseCostLimitPct = toNum(process.env.DAILY_COST_LIMIT_PCT, 0.20);
+  const costLimitDecision = resolveRelaxedCostLimitPct({
+    repoRoot,
+    baseCostLimitPct,
+  });
+  const costLimitPct = toNum(costLimitDecision.cost_limit_pct, baseCostLimitPct);
   const lossStopPct = toNum(process.env.DAILY_LOSS_STOP_PCT, -1.5);
   const monthlyTargetPct = toNum(process.env.MONTHLY_TARGET_PCT, 5.0);
   const stopErrorCount = toNum(process.env.STOP_ERROR_COUNT, 2);
@@ -427,9 +483,13 @@ function main() {
   const requiredDailyPct = monthlyTargetPct / 30;
   const gapPct = Number.isFinite(netPnlPct) ? (netPnlPct - requiredDailyPct) : null;
 
+  const runtimeErrorSummary = await fetchRuntimeErrorSummary24h({}).catch(() => null);
+  const runtimeErrorCount = toNum(runtimeErrorSummary && runtimeErrorSummary.error_count_24h, null);
   const snapshotErrorCount = toNum(snapshot && snapshot.derived && snapshot.derived.error_count_24h, null);
   const reportErrorCount = parseErrorCount(reportRaw);
-  const errorCount = Number.isFinite(snapshotErrorCount) ? snapshotErrorCount : reportErrorCount;
+  const errorCount = Number.isFinite(runtimeErrorCount)
+    ? runtimeErrorCount
+    : (Number.isFinite(snapshotErrorCount) ? snapshotErrorCount : reportErrorCount);
 
   const nowIso = new Date().toISOString();
   const generatedAtKst = toKstString(nowIso, { fallbackToString: true });
@@ -454,9 +514,17 @@ function main() {
     required_daily_pct: round(requiredDailyPct, 4),
     gap_pct: round(gapPct, 4),
     cost_limit_pct: round(costLimitPct, 4),
+    cost_limit_base_pct: round(baseCostLimitPct, 4),
+    cost_limit_relaxed: costLimitDecision.relaxed === true,
+    cost_limit_reason: costLimitDecision.reason,
+    learning_epoch_active: costLimitDecision.learning_epoch_active,
+    microstructure_cost_relax_ready: costLimitDecision.microstructure_active,
     loss_stop_pct: round(lossStopPct, 4),
     stop_error_count: stopErrorCount,
     error_count: Number.isFinite(errorCount) ? errorCount : null,
+    error_count_source: Number.isFinite(runtimeErrorCount)
+      ? "runtime_error_counter"
+      : (Number.isFinite(snapshotErrorCount) ? "snapshot.derived.error_count_24h" : (Number.isFinite(reportErrorCount) ? "report_parse" : "unresolved")),
     mode: "수익 확대 가능",
     execution_health: executionHealth,
     approvals: [],
@@ -514,12 +582,10 @@ function main() {
 }
 
 if (require.main === module) {
-  try {
-    main();
-  } catch (err) {
+  main().catch((err) => {
     console.error("daily-system-ops-check failed:", err && err.message ? err.message : err);
     process.exit(1);
-  }
+  });
 }
 
 module.exports = {
@@ -529,5 +595,7 @@ module.exports = {
     countDocsForDate,
     loadExecutionHealth,
     hasExecutionFlowCoverage,
+    isLearningEpochActive,
+    resolveRelaxedCostLimitPct,
   },
 };

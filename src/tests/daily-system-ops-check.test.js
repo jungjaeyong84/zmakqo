@@ -46,5 +46,32 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
   assert.strictEqual(health.trades_count, 1);
   assert.strictEqual(dailySystemOpsCheck.__test.hasExecutionFlowCoverage(health), true);
 
+  fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "objective_retrospective_latest.json"), JSON.stringify({
+    display: {
+      periods: {
+        DAILY: {
+          execution_microstructure: {
+            tp0_hit_rate: 0.86,
+          },
+        },
+      },
+    },
+  }), "utf8");
+  fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "best_self_evolution_server_primary_learning_epoch_latest.json"), JSON.stringify({
+    summary: {
+      status: "SERVER_PRIMARY_EPOCH_ACTIVE",
+      active: true,
+    },
+  }), "utf8");
+
+  const relaxed = dailySystemOpsCheck.__test.resolveRelaxedCostLimitPct({
+    repoRoot: tmpRoot,
+    baseCostLimitPct: 0.2,
+  });
+  assert.strictEqual(relaxed.relaxed, true);
+  assert.strictEqual(relaxed.learning_epoch_active, true);
+  assert.strictEqual(relaxed.microstructure_active, true);
+  assert.strictEqual(relaxed.cost_limit_pct, 0.4);
+
   console.log("DAILY_SYSTEM_OPS_CHECK_TEST_OK");
 })();

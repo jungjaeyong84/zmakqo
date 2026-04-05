@@ -2,7 +2,9 @@
 
 const assert = require("assert");
 const {
+  isNonRuntimeLiveReject,
   normalizeOperationalReason,
+  resolveIntentCancelOperationalFamily,
   summarizeRuntimeErrorFamilies,
 } = require("../../scripts/lib/runtime-error-counter");
 
@@ -11,26 +13,47 @@ function run() {
   assert.strictEqual(normalizeOperationalReason("DROP_COMMISSION_GATE_ERROR"), "DROP_COMMISSION_GATE_ERROR");
   assert.strictEqual(normalizeOperationalReason("TV_WEBHOOK"), null);
   assert.strictEqual(normalizeOperationalReason("DROP_SHORT_GATE_SCORE"), null);
+  assert.strictEqual(
+    isNonRuntimeLiveReject({
+      cancel_reason: "LIVE_EXCEPTION",
+      cancel_note: "msg=BINANCEFUT_HTTP_400: {\"code\":-2019,\"msg\":\"Margin is insufficient.\"}",
+    }),
+    true
+  );
+  assert.strictEqual(
+    resolveIntentCancelOperationalFamily({
+      cancel_reason: "LIVE_EXCEPTION",
+      cancel_note: "msg=BINANCEFUT_HTTP_400: {\"code\":-2019,\"msg\":\"Margin is insufficient.\"}",
+    }),
+    null
+  );
 
   const summary = summarizeRuntimeErrorFamilies({
     intentCancels: [
       {
-        status: "CANCELED",
+        status: "FAILED_INTERNAL",
         cancel_reason: "BINANCEFUT_KEYS_MISSING",
         symbol_or_pair_id: "ETHUSDT",
         updated_at: "2026-03-23T03:54:27.000Z",
       },
       {
-        status: "CANCELED",
+        status: "TIMEOUT_PROVIDER",
         cancel_reason: "BINANCEFUT_KEYS_MISSING",
         symbol_or_pair_id: "AXSUSDT",
         updated_at: "2026-03-23T03:55:35.000Z",
       },
       {
-        status: "CANCELED",
+        status: "REJECTED_PROVIDER",
         cancel_reason: "MARGIN_TYPE_SET_FAILED",
         symbol_or_pair_id: "SOLUSDT",
         updated_at: "2026-03-23T06:21:39.000Z",
+      },
+      {
+        status: "CANCELED",
+        cancel_reason: "LIVE_EXCEPTION",
+        cancel_note: "msg=BINANCEFUT_HTTP_400: {\"code\":-2019,\"msg\":\"Margin is insufficient.\"}",
+        symbol_or_pair_id: "SOLUSDT",
+        updated_at: "2026-03-23T06:22:39.000Z",
       },
     ],
     droppedSignals: [
