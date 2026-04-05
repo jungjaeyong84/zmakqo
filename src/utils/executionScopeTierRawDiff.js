@@ -79,6 +79,8 @@ function profileRows(rows = []) {
     top_signal_to_intent_bucket: countBy(scoped, (row) => getPath(row, "execution.signal_to_intent_bucket"), 1)[0]?.key || null,
     top_score_bucket: countBy(scoped, (row) => getPath(row, "features.score_bucket"), 1)[0]?.key || null,
     top_policy_block_hint: countBy(scoped, (row) => getPath(row, "features.policy_block_hint"), 1)[0]?.key || null,
+    top_stale_pos_entry_latency_profile: countBy(scoped, (row) => getPath(row, "features.stale_pos_entry_latency_profile"), 1)[0]?.key || null,
+    top_stale_pos_webhook_profile: countBy(scoped, (row) => getPath(row, "features.stale_pos_webhook_profile"), 1)[0]?.key || null,
   };
 }
 
@@ -174,6 +176,9 @@ function summarizeExecutionScopeTierRawDiff({
         pro_conflict: getPath(doc, "features.pro_conflict"),
         score_bucket: getPath(doc, "features.score_bucket"),
         policy_block_hint: getPath(doc, "features.policy_block_hint"),
+        stale_pos_entry_profile: getPath(doc, "features.stale_pos_entry_profile"),
+        stale_pos_entry_latency_profile: getPath(doc, "features.stale_pos_entry_latency_profile"),
+        stale_pos_webhook_profile: getPath(doc, "features.stale_pos_webhook_profile"),
         entry_schedule_profile: getPath(doc, "execution.entry_schedule_profile"),
         signal_to_intent_bucket: getPath(doc, "execution.signal_to_intent_bucket"),
         signal_to_intent_ms: getPath(doc, "execution.signal_to_intent_ms"),

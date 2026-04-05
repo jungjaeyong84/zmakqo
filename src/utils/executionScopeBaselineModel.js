@@ -18,6 +18,13 @@ const TIER_TARGET_WEIGHT_MULTIPLIERS = Object.freeze({
   },
   CORE: {},
 });
+const TIER_SCORE_CALIBRATION = Object.freeze({
+  EARLY: {
+    FILLABLE: 0.012,
+    RUNTIME_EXCEPTION: -0.012,
+  },
+  CORE: {},
+});
 const NUMERIC_FEATURES = Object.freeze([
   "execution.signal_to_intent_ms",
   "execution.webhook_to_intent_ms",
@@ -106,6 +113,10 @@ function clip(value, low, high) {
 function sigmoid(value) {
   const x = clip(Number(value) || 0, -40, 40);
   return 1 / (1 + Math.exp(-x));
+}
+
+function clipProbability(value) {
+  return clip(Number(value) || 0, 0, 1);
 }
 
 function getPath(row, path) {
@@ -383,9 +394,13 @@ function trainWeightedBinaryLogistic(examples = [], labels = [], targetLabel = n
 function scoreRows(rows = [], spec, modelByClass = {}) {
   return rows.map((row) => {
     const x = encodeRow(row, spec);
+    const tier = resolveEntryTier(row);
+    const tierCalibration = tier ? TIER_SCORE_CALIBRATION[tier] : null;
     const rawScores = Object.fromEntries(TARGET_CLASSES.map((label) => {
       const model = modelByClass[label] || { weights: [], bias: 0 };
-      return [label, sigmoid((model.bias || 0) + dot(model.weights || [], x))];
+      const base = sigmoid((model.bias || 0) + dot(model.weights || [], x));
+      const offset = tierCalibration ? (toNum(tierCalibration[label]) || 0) : 0;
+      return [label, clipProbability(base + offset)];
     }));
     const ranked = Object.entries(rawScores).sort((a, b) => b[1] - a[1]);
     return {
