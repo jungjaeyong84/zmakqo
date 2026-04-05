@@ -155,6 +155,7 @@ function deriveOpenClawAutonomyContract({
   objectiveRetrospective = null,
   overallAccountReport = null,
   signalLineageHealth = null,
+  modelReadiness = null,
 } = {}) {
   const objectiveSummary = readSummary(objective);
   const objectiveSupervisorRaw = unwrapRawReport(objectiveSupervisor) || {};
@@ -173,6 +174,7 @@ function deriveOpenClawAutonomyContract({
   const overallIntegrity = overallAccount.integrity && typeof overallAccount.integrity === "object" ? overallAccount.integrity : {};
   const overallOperations = overallAccount.operations && typeof overallAccount.operations === "object" ? overallAccount.operations : {};
   const signalLineageSummary = readSummary(signalLineageHealth);
+  const modelReadinessSummary = readSummary(modelReadiness);
 
   const objectivePolicy = {
     min_objective_score: envNum("OPENCLAW_AUTONOMY_MIN_OBJECTIVE_SCORE", 0),
@@ -320,6 +322,7 @@ function deriveOpenClawAutonomyContract({
     : (clusterReduceN > 0
       ? "REDUCING"
       : (retrospectiveDisplay.generated_at_kst ? "MONITORING" : "N_A"));
+  const modelReadinessStatus = toUpper(modelReadinessSummary.status) || "N_A";
 
   return {
     contract_version: "OPENCLAW_AUTONOMY_CONTRACT_V1",
@@ -398,6 +401,11 @@ function deriveOpenClawAutonomyContract({
       portfolio_cluster_reduce_n: clusterReduceN,
       portfolio_cluster_block_n: clusterBlockN,
       portfolio_cluster_risk_status: portfolioClusterRiskStatus,
+      model_readiness_status: modelReadinessStatus,
+      model_readiness_rows_n: toNum(modelReadinessSummary.rows_n),
+      model_readiness_realized_n: toNum(modelReadinessSummary.realized_n),
+      model_readiness_invalid_n: toNum(modelReadinessSummary.invalid_n),
+      model_readiness_schema_version: String(modelReadinessSummary.schema_version || "").trim() || null,
     },
     summary: {
       goal_state: objectiveMet ? "OBJECTIVE_ON_TRACK" : "OBJECTIVE_RECOVERY_REQUIRED",
@@ -421,6 +429,7 @@ function deriveOpenClawAutonomyContract({
       market_regime_top_keep_drop_market: String(marketRegimeBoardSummary.top_keep_drop_market || "").trim() || null,
       execution_microstructure_status: executionMicrostructureStatus,
       portfolio_cluster_risk_status: portfolioClusterRiskStatus,
+      model_readiness_status: modelReadinessStatus,
       execution_quality_status: executionQualityStatus,
       lineage_status: lineageVerdict,
       account_integrity_status: overallIntegrity.ok === true ? "PASS" : (overallIntegrity.issue_count != null ? "WARN" : "N_A"),

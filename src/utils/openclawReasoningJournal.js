@@ -581,6 +581,7 @@ function buildReasoningJournal({
       current_account_integrity_status: currentEntry.current_snapshot.account_integrity_ok === true
         ? "PASS"
         : (currentEntry.current_snapshot.account_integrity_issue_n != null ? "WARN" : null),
+      current_model_readiness_status: toUpper(autonomySummary.model_readiness_status),
       current_microstructure_tp0_hit_rate: currentEntry.current_snapshot.tp0_hit_rate,
       current_microstructure_tp1_hit_rate: currentEntry.current_snapshot.tp1_hit_rate,
       current_microstructure_pre_tp1_time_stop_rate: currentEntry.current_snapshot.pre_tp1_time_stop_rate,

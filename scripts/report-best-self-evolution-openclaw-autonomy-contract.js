@@ -36,6 +36,7 @@ const INPUTS = Object.freeze({
   objectiveRetrospective: path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json"),
   overallAccountReport: path.join(OPS_DAILY_DIR, "overall_account_report_latest.json"),
   signalLineageHealth: path.join(OPS_DAILY_DIR, "signal_lineage_health_latest.json"),
+  modelReadiness: path.join(OPS_DAILY_DIR, "best_self_evolution_model_readiness_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -78,6 +79,7 @@ function renderMarkdown(report = {}) {
     `- execution_quality: ${summary.execution_quality_status || "N/A"} / latency_p95=${status.execution_quality_latency_p95_ms != null ? status.execution_quality_latency_p95_ms : "N/A"} / slippage_p95=${status.execution_quality_slippage_p95_bps != null ? status.execution_quality_slippage_p95_bps : "N/A"} / partial=${status.execution_quality_partial_fill_rate_pct != null ? status.execution_quality_partial_fill_rate_pct : "N/A"}`,
     `- lineage/account: ${summary.lineage_status || "N/A"} / account=${summary.account_integrity_status || "N/A"} / account_issues=${status.account_integrity_issue_n != null ? status.account_integrity_issue_n : "N/A"} / ops=${status.account_ops_status || "N/A"}:${status.account_ops_mode || "N/A"}`,
     `- microstructure: ${summary.execution_microstructure_status || "N/A"} / tp0_hit=${status.tp0_hit_rate != null ? status.tp0_hit_rate : "N/A"} / tp1_hit=${status.tp1_hit_rate != null ? status.tp1_hit_rate : "N/A"} / cluster=${summary.portfolio_cluster_risk_status || "N/A"}`,
+    `- model_readiness: ${summary.model_readiness_status || "N/A"} / rows=${status.model_readiness_rows_n != null ? status.model_readiness_rows_n : "N/A"} / realized=${status.model_readiness_realized_n != null ? status.model_readiness_realized_n : "N/A"} / invalid=${status.model_readiness_invalid_n != null ? status.model_readiness_invalid_n : "N/A"}`,
     "",
     "## Server Transition",
     ...(report.server_signal_transition && Array.isArray(report.server_signal_transition.phases)
@@ -112,6 +114,7 @@ function main() {
     objectiveRetrospective: readJsonSafe(INPUTS.objectiveRetrospective, null),
     overallAccountReport: readJsonRawSafe(INPUTS.overallAccountReport, null),
     signalLineageHealth: readJsonRawSafe(INPUTS.signalLineageHealth, null),
+    modelReadiness: readJsonRawSafe(INPUTS.modelReadiness, null),
   });
   const output = {
     ok: true,
