@@ -19,6 +19,14 @@ function parseMs(value) {
   return Number.isFinite(ms) ? ms : null;
 }
 
+function resolveSignalBarCloseMs(intent = null) {
+  return (
+    toNum(intent && intent.signal_bar_close_time_utc_ms)
+    ?? parseMs(intent && intent.signal_bar_close_time_utc)
+    ?? parseMs(intent && intent.bar_close_time_utc)
+  );
+}
+
 function normalizeFeatureBag(features = null) {
   if (!features || typeof features !== "object" || Array.isArray(features)) return {};
   const out = {};
@@ -58,6 +66,70 @@ function deriveIntentSource(intent = null) {
 
 function isExitEvent(event) {
   return String(event || "").trim().toUpperCase().startsWith("EXIT_");
+}
+
+function deriveNoFillReason(intent = null) {
+  const candidates = [
+    intent && intent.cancel_reason,
+    intent && intent.status_reason,
+    intent && intent.reject_reason,
+    intent && intent.pending_reason,
+    intent && intent.terminal_failure_status,
+  ];
+  for (const value of candidates) {
+    const normalized = toUpper(value);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function deriveNoFillReasonFamily(reason = null) {
+  const normalized = toUpper(reason);
+  if (!normalized) return null;
+  if (
+    normalized === "LIVE_EXCEPTION"
+    || normalized.includes("KEYS_MISSING")
+    || normalized.includes("MARGIN")
+    || normalized.includes("LEVERAGE")
+    || normalized.includes("HTTP_")
+    || normalized.endsWith("_FAILED")
+    || normalized.includes("SET_FAILED")
+  ) {
+    return "RUNTIME_ERROR";
+  }
+  if (
+    normalized === "NO_POSITION"
+    || normalized === "POSITION_FULL"
+    || normalized === "TOTAL_BUDGET_EXCEEDED"
+    || normalized === "RISK_BUDGET_DISABLED"
+    || normalized === "ORDER_TOO_SMALL"
+    || normalized === "MIN_ORDER_EXCEEDS_BUDGET"
+    || normalized === "INSUFFICIENT_BUDGET"
+  ) {
+    return "POLICY_OR_CAPACITY";
+  }
+  if (
+    normalized === "INTENT_EXPIRED"
+    || normalized.startsWith("MODE_")
+    || normalized.startsWith("BACKFILL_")
+    || normalized === "INTENT_STATUS"
+    || normalized === "SUPERSEDED"
+  ) {
+    return "CONTROL_FLOW";
+  }
+  if (
+    normalized.startsWith("DROP_")
+    || normalized.startsWith("LIVE_POLICY_")
+    || normalized.startsWith("LINEAGE_SLO_")
+  ) {
+    return "FILTER_DROP";
+  }
+  return "UNKNOWN";
+}
+
+function isOperationalSource(source = null) {
+  const normalized = toUpper(source);
+  return normalized !== "MANUAL_REPLAY" && normalized !== "PAPER_RUNTIME";
 }
 
 function readDocs(value) {
@@ -151,8 +223,15 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
     const fillDocAtMs = agg.first_fill_at_ms;
     const intentFilledAtMs = parseMs(intent.filled_at);
     const filledAtMs = fillDocAtMs ?? intentFilledAtMs;
+    const signalBarCloseMs = resolveSignalBarCloseMs(intent);
     const measuredCreatedToFillMs = Number.isFinite(intentCreatedAtMs) && Number.isFinite(filledAtMs)
       ? (filledAtMs - intentCreatedAtMs)
+      : null;
+    const signalToIntentMs = Number.isFinite(signalBarCloseMs) && Number.isFinite(intentCreatedAtMs)
+      ? (intentCreatedAtMs - signalBarCloseMs)
+      : null;
+    const signalToFillMs = Number.isFinite(signalBarCloseMs) && Number.isFinite(filledAtMs)
+      ? (filledAtMs - signalBarCloseMs)
       : null;
     const fallbackCreatedToFillMs = toNum(intent.live_exec_policy_quality_latency_ms) ?? agg.avg_latency_ms;
     const createdToFillMs = measuredCreatedToFillMs ?? fallbackCreatedToFillMs;
@@ -170,6 +249,9 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
     const features = normalizeFeatureBag(intent.features_json);
     const isTimeStopEvent = String(intent.event || "").trim().toUpperCase().startsWith("EXIT_TIME_STOP");
     const preTp1TimeStop = isTimeStopEvent && features.tp_p1_done !== true;
+    const wasFilled = agg.fill_n > 0 || status === "FILLED";
+    const noFillReason = wasFilled ? null : deriveNoFillReason(intent);
+    const noFillReasonFamily = wasFilled ? null : deriveNoFillReasonFamily(noFillReason);
     return {
       schema_version: EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
       row_id: intentId || String(intent.signal_id || intent.id || "").trim() || null,
@@ -202,18 +284,23 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
         partial_fill_pct: partialFillPct,
         fill_n: agg.fill_n,
         signal_price: toNum(intent.signal_price),
+        signal_bar_close_ms: signalBarCloseMs,
         exec_price: agg.exec_price ?? toNum(intent.exec_price),
         qty_pct: toNum(intent.qty_pct),
         qty_fraction: toNum(intent.qty_fraction),
         live_policy_latency_ms: toNum(intent.live_exec_policy_quality_latency_ms),
         live_policy_slippage_bps: toNum(intent.live_exec_policy_quality_slippage_bps),
         live_policy_partial_pct: toNum(intent.live_exec_policy_quality_partial_pct),
+        signal_to_intent_ms: signalToIntentMs,
+        signal_to_fill_ms: signalToFillMs,
         fill_source_counts: agg.fill_source_counts,
         slippage_measured_n: agg.slippage_measured_n,
         slippage_missing_n: agg.slippage_missing_n,
+        no_fill_reason: noFillReason,
+        no_fill_reason_family: noFillReasonFamily,
       },
       labels: {
-        was_filled: agg.fill_n > 0 || status === "FILLED",
+        was_filled: wasFilled,
         was_partial: Number.isFinite(partialFillPct) && partialFillPct > 0,
         was_rejected: rejected,
         time_stop_hit: isTimeStopEvent,
@@ -221,6 +308,8 @@ function buildExecutionModelRows({ intents = [], fills = [] } = {}) {
         created_to_fill_ms: createdToFillMs,
         created_to_fill_measured: Number.isFinite(measuredCreatedToFillMs),
         created_to_fill_source: createdToFillSource,
+        signal_to_intent_ms: signalToIntentMs,
+        signal_to_fill_ms: signalToFillMs,
         slippage_bps: slippageBps,
         partial_fill_pct: partialFillPct,
       },
@@ -242,9 +331,13 @@ function summarizeExecutionModelRows(rows = []) {
     .map((row) => toNum(row.labels && row.labels.created_to_fill_ms))
     .filter((v) => Number.isFinite(v));
   const slippageVals = scoped.map((row) => toNum(row.labels && row.labels.slippage_bps)).filter((v) => Number.isFinite(v));
+  const signalToIntentVals = scoped.map((row) => toNum(row.labels && row.labels.signal_to_intent_ms)).filter((v) => Number.isFinite(v));
+  const signalToFillVals = scoped.map((row) => toNum(row.labels && row.labels.signal_to_fill_ms)).filter((v) => Number.isFinite(v));
   const timeStopN = scoped.filter((row) => row && row.labels && row.labels.time_stop_hit === true).length;
   const preTp1TimeStopN = scoped.filter((row) => row && row.labels && row.labels.pre_tp1_time_stop === true).length;
   const byPrimaryFillSource = new Map();
+  const byNoFillReason = new Map();
+  const byNoFillReasonFamily = new Map();
   for (const row of scoped) {
     const key = String(
       row && row.context && row.context.primary_fill_source
@@ -274,6 +367,19 @@ function summarizeExecutionModelRows(rows = []) {
     }
     if (row && row.context && row.context.is_exit_event === true) bucket.exit_rows_n += 1;
     else bucket.entry_rows_n += 1;
+
+    if (row && row.labels && row.labels.was_filled === false) {
+      const noFillReason = String(row.execution && row.execution.no_fill_reason || "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
+      const noFillReasonFamily = String(row.execution && row.execution.no_fill_reason_family || "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
+      if (!byNoFillReason.has(noFillReason)) {
+        byNoFillReason.set(noFillReason, { key: noFillReason, rows_n: 0 });
+      }
+      if (!byNoFillReasonFamily.has(noFillReasonFamily)) {
+        byNoFillReasonFamily.set(noFillReasonFamily, { key: noFillReasonFamily, rows_n: 0 });
+      }
+      byNoFillReason.get(noFillReason).rows_n += 1;
+      byNoFillReasonFamily.get(noFillReasonFamily).rows_n += 1;
+    }
   }
   const p95 = (values) => {
     if (!values.length) return null;
@@ -282,11 +388,14 @@ function summarizeExecutionModelRows(rows = []) {
     return sorted[idx];
   };
   const byEntryLatencyGroup = new Map();
+  const bySignalToIntentGroup = new Map();
+  const byOperationalSignalToIntentGroup = new Map();
   const byMeasuredEntryLatencyGroup = new Map();
   const byFallbackEntryLatencyGroup = new Map();
   for (const row of scoped) {
     if (!row || !row.context || row.context.is_exit_event === true) continue;
     const latencyMs = toNum(row.labels && row.labels.created_to_fill_ms);
+    const signalToIntentMs = toNum(row.labels && row.labels.signal_to_intent_ms);
     if (!Number.isFinite(latencyMs)) continue;
     const event = String(row.context.event || "").trim().toUpperCase() || "UNKNOWN";
     const source = String(row.context.source || "").trim().toUpperCase() || "UNKNOWN";
@@ -308,6 +417,23 @@ function summarizeExecutionModelRows(rows = []) {
     const target = targetMap.get(key);
     target.rows_n += 1;
     target.latency_values.push(latencyMs);
+    if (Number.isFinite(signalToIntentMs)) {
+      const preKey = [event, source, market].join("|");
+      if (!bySignalToIntentGroup.has(preKey)) {
+        bySignalToIntentGroup.set(preKey, { key: preKey, event, source, market, rows_n: 0, latency_values: [] });
+      }
+      const preBucket = bySignalToIntentGroup.get(preKey);
+      preBucket.rows_n += 1;
+      preBucket.latency_values.push(signalToIntentMs);
+      if (isOperationalSource(source)) {
+        if (!byOperationalSignalToIntentGroup.has(preKey)) {
+          byOperationalSignalToIntentGroup.set(preKey, { key: preKey, event, source, market, rows_n: 0, latency_values: [] });
+        }
+        const operationalBucket = byOperationalSignalToIntentGroup.get(preKey);
+        operationalBucket.rows_n += 1;
+        operationalBucket.latency_values.push(signalToIntentMs);
+      }
+    }
   }
   return {
     rows_n: scoped.length,
@@ -323,6 +449,8 @@ function summarizeExecutionModelRows(rows = []) {
     reject_rate: scoped.length > 0 ? (rejectedN / scoped.length) : null,
     created_to_fill_p95_ms: p95(latencyVals),
     created_to_fill_measured_p95_ms: p95(measuredLatencyVals),
+    signal_to_intent_p95_ms: p95(signalToIntentVals),
+    signal_to_fill_p95_ms: p95(signalToFillVals),
     slippage_p95_bps: p95(slippageVals),
     feature_keys_n: Array.from(new Set(scoped.flatMap((row) => Object.keys(row.features || {})))).length,
     by_primary_fill_source: Array.from(byPrimaryFillSource.values())
@@ -332,6 +460,12 @@ function summarizeExecutionModelRows(rows = []) {
         slippage_measured_rate: row.rows_n > 0 ? (row.slippage_measured_n / row.rows_n) : null,
       }))
       .sort((a, b) => (b.rows_n - a.rows_n) || a.key.localeCompare(b.key)),
+    top_no_fill_reasons: Array.from(byNoFillReason.values())
+      .sort((a, b) => (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
+      .slice(0, 12),
+    top_no_fill_reason_families: Array.from(byNoFillReasonFamily.values())
+      .sort((a, b) => (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
+      .slice(0, 12),
     top_entry_latency_groups: Array.from(byEntryLatencyGroup.values())
       .map((row) => ({
         key: row.key,
@@ -371,6 +505,28 @@ function summarizeExecutionModelRows(rows = []) {
       }))
       .sort((a, b) => ((b.created_to_fill_p95_ms || 0) - (a.created_to_fill_p95_ms || 0)) || (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
       .slice(0, 12),
+    top_signal_to_intent_latency_groups: Array.from(bySignalToIntentGroup.values())
+      .map((row) => ({
+        key: row.key,
+        event: row.event,
+        source: row.source,
+        market: row.market,
+        rows_n: row.rows_n,
+        signal_to_intent_p95_ms: p95(row.latency_values),
+      }))
+      .sort((a, b) => ((b.signal_to_intent_p95_ms || 0) - (a.signal_to_intent_p95_ms || 0)) || (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
+      .slice(0, 12),
+    top_operational_signal_to_intent_latency_groups: Array.from(byOperationalSignalToIntentGroup.values())
+      .map((row) => ({
+        key: row.key,
+        event: row.event,
+        source: row.source,
+        market: row.market,
+        rows_n: row.rows_n,
+        signal_to_intent_p95_ms: p95(row.latency_values),
+      }))
+      .sort((a, b) => ((b.signal_to_intent_p95_ms || 0) - (a.signal_to_intent_p95_ms || 0)) || (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
+      .slice(0, 12),
     status: scoped.length > 0 ? 'EXECUTION_MODEL_DATASET_READY' : 'EXECUTION_MODEL_DATASET_EMPTY',
   };
 }
@@ -390,5 +546,8 @@ module.exports = {
   splitExecutionModelRows,
   __test: {
     summarizeFillAggregate,
+    deriveNoFillReason,
+    deriveNoFillReasonFamily,
+    isOperationalSource,
   },
 };

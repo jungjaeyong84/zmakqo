@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("assert");
-const { buildExecutionModelRows, summarizeExecutionModelRows, splitExecutionModelRows } = require("../utils/executionModelDataset");
+const { buildExecutionModelRows, summarizeExecutionModelRows, splitExecutionModelRows, __test } = require("../utils/executionModelDataset");
 
 const intents = {
   rows: [
@@ -31,10 +31,14 @@ assert.equal(rows[0].labels.was_partial, true);
 assert.equal(rows[0].labels.was_rejected, false);
 assert.equal(rows[0].execution.created_to_fill_ms, 2000);
 assert.equal(rows[0].execution.created_to_fill_source, 'FILL_DOC');
+assert.equal(rows[0].execution.signal_to_intent_ms, null);
+assert.equal(rows[0].execution.signal_to_fill_ms, null);
 assert.equal(rows[0].labels.created_to_fill_measured, true);
 assert.equal(rows[0].context.source, 'PAPER_RUNTIME');
 assert.equal(rows[0].execution.slippage_bps, 4);
 assert.equal(rows[1].labels.was_rejected, true);
+assert.equal(rows[1].execution.no_fill_reason, 'MARGIN');
+assert.equal(rows[1].execution.no_fill_reason_family, 'RUNTIME_ERROR');
 const summary = summarizeExecutionModelRows(rows);
 assert.equal(summary.rows_n, 2);
 assert.equal(summary.entry_rows_n, 2);
@@ -47,6 +51,8 @@ const noFillBucket = summary.by_primary_fill_source.find((row) => row.key === 'N
 const unknownBucket = summary.by_primary_fill_source.find((row) => row.key === 'UNKNOWN');
 assert.equal(noFillBucket.slippage_missing_n, 1);
 assert.equal(unknownBucket.slippage_measured_n, 1);
+assert.equal(summary.top_no_fill_reasons[0].key, 'MARGIN');
+assert.equal(summary.top_no_fill_reason_families[0].key, 'RUNTIME_ERROR');
 const split = splitExecutionModelRows(rows);
 assert.equal(split.entry_rows.length, 2);
 assert.equal(split.exit_rows.length, 0);
@@ -57,7 +63,7 @@ const recomputedRows = buildExecutionModelRows({
       {
         id: 'I3', intent_id: 'I3', signal_id: 'S3', exchange: 'BINANCEFUT', symbol: 'BNBUSDT', tf: '15m', event: 'LONG', side: 'BUY',
         execution_mode: 'LIVE',
-        created_at: '2026-04-05T02:00:00.000Z', signal_price: 100, status: 'FILLED'
+        created_at: '2026-04-05T02:00:00.000Z', signal_price: 100, signal_bar_close_time_utc_ms: Date.parse('2026-04-05T01:59:00.000Z'), status: 'FILLED'
       }
     ]
   },
@@ -69,4 +75,16 @@ const recomputedRows = buildExecutionModelRows({
 });
 assert.ok(recomputedRows[0].execution.slippage_bps > 0, 'signal-price fallback must recompute positive adverse slippage');
 assert.strictEqual(recomputedRows[0].context.source, 'LIVE_RUNTIME');
+assert.strictEqual(recomputedRows[0].execution.signal_to_intent_ms, 60000);
+assert.strictEqual(recomputedRows[0].execution.signal_to_fill_ms, 61000);
+const recomputedSummary = summarizeExecutionModelRows(recomputedRows);
+assert.strictEqual(recomputedSummary.signal_to_intent_p95_ms, 60000);
+assert.strictEqual(recomputedSummary.signal_to_fill_p95_ms, 61000);
+assert.strictEqual(recomputedSummary.top_signal_to_intent_latency_groups[0].key, 'LONG|LIVE_RUNTIME|BNBUSDT');
+assert.strictEqual(recomputedSummary.top_operational_signal_to_intent_latency_groups[0].key, 'LONG|LIVE_RUNTIME|BNBUSDT');
+assert.strictEqual(__test.deriveNoFillReasonFamily('DROP_EV_GATE_TP1_PROB'), 'FILTER_DROP');
+assert.strictEqual(__test.deriveNoFillReasonFamily('POSITION_FULL'), 'POLICY_OR_CAPACITY');
+assert.strictEqual(__test.deriveNoFillReasonFamily('INTENT_EXPIRED'), 'CONTROL_FLOW');
+assert.strictEqual(__test.isOperationalSource('MANUAL_REPLAY'), false);
+assert.strictEqual(__test.isOperationalSource('LIVE_RUNTIME'), true);
 console.log('EXECUTION_MODEL_DATASET_TEST_OK');

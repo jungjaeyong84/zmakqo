@@ -18,9 +18,13 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         model_readiness_status: "MODEL_READINESS_READY",
         feature_store_status: "FEATURE_STORE_READY",
         execution_model_dataset_status: "EXECUTION_MODEL_DATASET_READY",
+        execution_model_dataset_top_signal_to_intent_latency_group: "EARLY_LONG|MANUAL_REPLAY|XRPUSDT",
+        execution_model_dataset_top_operational_signal_to_intent_latency_group: "EARLY_LONG|TV_WEBHOOK|BTCUSDT",
         execution_model_dataset_top_entry_latency_group: "EARLY_LONG|UNKNOWN|BINANCE_USER_TRADES|BTCUSDT",
         execution_model_dataset_top_fallback_latency_group: "CORE_LONG|UNKNOWN|BINANCE_ORDER|XRPUSDT",
         execution_model_dataset_top_fill_source: "NO_FILL",
+        execution_model_dataset_top_no_fill_reason: "LIVE_EXCEPTION",
+        execution_model_dataset_top_no_fill_reason_family: "RUNTIME_ERROR",
         model_readiness_mfe_mae_label_rate: 0.0203,
         model_readiness_tp1_time_label_rate: 0.0029,
         model_readiness_tp0_time_label_rate: 0,
@@ -124,9 +128,13 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_account_integrity_status, "WARN");
   assert.strictEqual(journal.summary.current_model_readiness_status, "MODEL_READINESS_READY");
   assert.strictEqual(journal.summary.current_model_readiness_mfe_mae_label_rate, 0.0203);
+  assert.strictEqual(journal.summary.current_execution_model_top_signal_to_intent_latency_group, "EARLY_LONG|MANUAL_REPLAY|XRPUSDT");
+  assert.strictEqual(journal.summary.current_execution_model_top_operational_signal_to_intent_latency_group, "EARLY_LONG|TV_WEBHOOK|BTCUSDT");
   assert.strictEqual(journal.summary.current_execution_model_top_entry_latency_group, "EARLY_LONG|UNKNOWN|BINANCE_USER_TRADES|BTCUSDT");
   assert.strictEqual(journal.summary.current_execution_model_top_fallback_latency_group, "CORE_LONG|UNKNOWN|BINANCE_ORDER|XRPUSDT");
   assert.strictEqual(journal.summary.current_execution_model_top_fill_source, "NO_FILL");
+  assert.strictEqual(journal.summary.current_execution_model_top_no_fill_reason, "LIVE_EXCEPTION");
+  assert.strictEqual(journal.summary.current_execution_model_top_no_fill_reason_family, "RUNTIME_ERROR");
   assert.strictEqual(journal.summary.current_microstructure_tp0_hit_rate, 0.85);
   assert.strictEqual(journal.summary.current_microstructure_cluster_reduce_n, 2);
   assert.strictEqual(journal.summary.entry_n, 4);
