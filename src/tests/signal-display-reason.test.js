@@ -115,5 +115,12 @@ const { buildSignalDisplayReason, classifySignalReasonStage } = require('../util
   );
   assert.strictEqual(chaseReason.reason_ko, '최근 봉이 과확장 추격 구간으로 판단되어 진입을 보류했습니다.');
 
+  const rescueAddBlocked = buildSignalDisplayReason(
+    { reason: 'LIVE_RESCUE_ADD_LOSS_WINDOW_BLOCKED' },
+    {}
+  );
+  assert.strictEqual(rescueAddBlocked.stage_key, 'OPS');
+  assert.strictEqual(rescueAddBlocked.reason_ko, '현재 손실 폭이 구조보강 ADD 허용 구간 밖이라 추가 진입을 보류했습니다.');
+
   console.log('SIGNAL_DISPLAY_REASON_TEST_OK');
 })();

@@ -159,6 +159,33 @@ function explainSignalReason(reason) {
     DROP_TRADEABLE_SIGNAL_TYPES: "현재 허용된 신호 타입이 아니라 진입을 보류했습니다.",
     DROP_TRAIL_ACTIVE_NO_ADD: "트레일링 활성 구간에서는 추가진입을 허용하지 않아 보류했습니다.",
     DROP_IN_POSITION_NO_ADD: "이미 포지션이 있고 ADD 조건이 아니어서 진입을 보류했습니다.",
+    LIVE_RESCUE_ADD_DISABLED: "현재 구조에서는 구조보강 ADD가 비활성이라 추가 진입을 보류했습니다.",
+    LIVE_RESCUE_ADD_TIER_BLOCKED: "이번 신호 티어는 구조보강 ADD 허용 구간이 아니라 추가 진입을 보류했습니다.",
+    LIVE_RESCUE_ADD_SIDE_BLOCKED: "현재 포지션 방향과 맞지 않아 구조보강 ADD를 보류했습니다.",
+    LIVE_RESCUE_ADD_POST_TP1_BLOCKED: "이미 TP1 이후 구간이라 구조보강 ADD를 허용하지 않았습니다.",
+    LIVE_RESCUE_ADD_SAME_BAR_BLOCKED: "같은 봉에서 중복 구조보강 ADD는 허용하지 않아 보류했습니다.",
+    LIVE_RESCUE_ADD_OPPOSITE_TRANSITION_BLOCKED: "직전 반대 방향 전환 영향 구간이라 구조보강 ADD를 보류했습니다.",
+    LIVE_RESCUE_ADD_LOSS_WINDOW_BLOCKED: "현재 손실 폭이 구조보강 ADD 허용 구간 밖이라 추가 진입을 보류했습니다.",
+    LIVE_RESCUE_ADD_STOP_GAP_BLOCKED: "손절 여유가 너무 좁아 구조보강 ADD를 보류했습니다.",
+    LIVE_RESCUE_ADD_POSITION_FULL: "현재 포지션 여유가 없어 구조보강 ADD를 보류했습니다.",
+    LIVE_RESCUE_ADD_LIMIT_BLOCKED: "당일 또는 연속 ADD 한도에 걸려 추가 진입을 보류했습니다.",
+    LIVE_RESCUE_ADD_BLOCKED: "구조보강 ADD 조건이 충족되지 않아 추가 진입을 보류했습니다.",
+    LIVE_POLICY_PORTFOLIO_CLUSTER_BLOCK: "같은 방향 포지션 군집이 과도해 신규 진입을 막았습니다.",
+    LIVE_POLICY_PORTFOLIO_CLUSTER_CAP_BLOCK: "같은 방향 총노출 한도를 넘어 신규 진입을 막았습니다.",
+    LIVE_POLICY_PORTFOLIO_CLUSTER_REDUCE: "같은 방향 포지션 군집이 커서 진입 수량을 줄였습니다.",
+    LIVE_POLICY_PORTFOLIO_CLUSTER_CAP_REDUCE: "같은 방향 총노출이 높아 진입 수량을 줄였습니다.",
+    LIVE_POLICY_OTHER_SERVER_POLICY_WATCH_ONLY_BLOCK: "현재 서버 정책상 관찰 전용 구간이라 진입을 보류했습니다.",
+    LIVE_POLICY_PLAN_HOLD_BLOCK: "현재 운영 계획이 HOLD 상태라 진입을 보류했습니다.",
+    LIVE_POLICY_PLAN_WATCH_ONLY_BLOCK: "현재 운영 계획이 WATCH_ONLY 상태라 진입을 보류했습니다.",
+    LIVE_POLICY_QUARANTINE_HARD_BLOCK: "현재 시장이 격리(quarantine) 상태라 진입을 보류했습니다.",
+    LIVE_POLICY_EXECUTION_QUALITY_HARD_BLOCK: "최근 실행 품질이 나빠 진입을 보류했습니다.",
+    LIVE_POLICY_EXECUTION_QUALITY_GLOBAL_HARD_BLOCK: "전체 실행 품질 경보가 걸려 진입을 보류했습니다.",
+    LINEAGE_SLO_REPORT_STALE: "참조한 추적 리포트가 오래돼 안전하게 진입을 보류했습니다.",
+    LINEAGE_SLO_REPORT_MISSING: "필수 추적 리포트를 찾지 못해 안전하게 진입을 보류했습니다.",
+    LINEAGE_SLO_INTENT_SIGNAL_NULL_RATE: "주문 의도와 신호 연결 누락 비율이 높아 진입을 보류했습니다.",
+    LINEAGE_SLO_FILL_SIGNAL_NULL_RATE: "체결과 신호 연결 누락 비율이 높아 진입을 보류했습니다.",
+    LINEAGE_SLO_FILL_INTENT_NULL_RATE: "체결과 주문 의도 연결 누락 비율이 높아 진입을 보류했습니다.",
+    LINEAGE_SLO_FAIL_CLOSED: "추적 무결성을 확신할 수 없어 fail-closed로 진입을 보류했습니다.",
   };
   if (direct[code]) return direct[code];
 
@@ -182,6 +209,15 @@ function explainSignalReason(reason) {
   }
   if (code.startsWith("DROP_")) {
     return "운영 필터에서 현재 조건상 진입을 보류했습니다.";
+  }
+  if (code.startsWith("LIVE_RESCUE_ADD_")) {
+    return "구조보강 ADD 운영 가드에서 현재 조건상 추가 진입을 보류했습니다.";
+  }
+  if (code.startsWith("LIVE_POLICY_")) {
+    return "라이브 운영 정책에서 현재 조건상 진입을 보류했습니다.";
+  }
+  if (code.startsWith("LINEAGE_SLO_")) {
+    return "추적 무결성 기준을 만족하지 못해 안전하게 진입을 보류했습니다.";
   }
   return null;
 }
