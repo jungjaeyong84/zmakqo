@@ -485,6 +485,39 @@ const { deriveDeploymentPlan } = require("../../src/utils/bestSelfEvolutionDeplo
 (() => {
   const report = deriveDeploymentPlan({
     objectiveSupervisor: {
+      promotion: { ready: true, candidate_id: "EV_TP1_THRESHOLD_TUNE", display_candidate_id: null },
+      rollback: { ready: false },
+      self_evolution_deployment: { deploy_pass: true },
+    },
+    changeControl: {},
+    codexPatchReview: { verdict: "PROMOTE", recommended_candidate_id: "EV_TP1_THRESHOLD_TUNE" },
+    deploymentGuards: { summary: { deploy_pass: true, target_candidate_id: "EV_TP1_THRESHOLD_TUNE", canary_open_wave: 1 } },
+    candidateChangeSet: {
+      rows: [
+        {
+          candidate_id: "EV_TP1_THRESHOLD_TUNE",
+          canonical_candidate_id: "EV_COMPOSITE_THRESHOLD_TUNE",
+          display_candidate_id: null,
+          canonical_migration_class: "SERVER_POLICY",
+          target_deploy_unit: "SERVER_SETTINGS",
+          ready_for_auto_apply: true,
+          memory_blocked: false,
+        },
+      ],
+    },
+    canaryReport: { summary: { open_wave: 1 }, rows: [] },
+    stageAutopilot: { raw: { stage_rows: [] } },
+    weeklyHistory: { weeks: [] },
+  });
+
+  assert.strictEqual(report.summary.target_candidate_id, "EV_TP1_THRESHOLD_TUNE");
+  assert.strictEqual(report.summary.display_candidate_id, "EV_COMPOSITE_THRESHOLD_TUNE");
+  console.log("BEST_SELF_EVOLUTION_DEPLOYMENT_PLAN_EV_DISPLAY_FALLBACK_TEST_OK");
+})();
+
+(() => {
+  const report = deriveDeploymentPlan({
+    objectiveSupervisor: {
       promotion: { ready: false, candidate_id: null, display_candidate_id: null },
       rollback: { ready: false },
       self_evolution_deployment: { deploy_pass: false },

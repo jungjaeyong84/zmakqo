@@ -163,7 +163,7 @@ function run() {
 
   const shadowFallbackNoCounterfactual = deriveCandidateObjectiveDelta({
     candidate_id: "EV_TP1_THRESHOLD_TUNE",
-    display_candidate_id: "EV_TP1_THRESHOLD_TUNE",
+    canonical_candidate_id: "EV_COMPOSITE_THRESHOLD_TUNE",
     scope: "EV",
     direction: "LOOSEN",
     markets: ["ALL"],
@@ -179,6 +179,7 @@ function run() {
     },
   });
   assert.strictEqual(shadowFallbackNoCounterfactual.validation_verdict, "WARN");
+  assert.strictEqual(shadowFallbackNoCounterfactual.display_candidate_id, "EV_COMPOSITE_THRESHOLD_TUNE");
   assert.deepStrictEqual(shadowFallbackNoCounterfactual.blockers, ["SHADOW_COUNTERFACTUAL_MISSING"]);
 
   const mixedEvShift = deriveCandidateObjectiveDelta({

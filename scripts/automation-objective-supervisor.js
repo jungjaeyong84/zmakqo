@@ -245,6 +245,7 @@ function resolveDisplayCandidateId(candidateId, changeControl = null) {
     display
     && String(changeControl && changeControl.auto_promotion && changeControl.auto_promotion.candidate_id || "").trim() === raw
   ) return display;
+  if (raw === "EV_TP1_THRESHOLD_TUNE") return "EV_COMPOSITE_THRESHOLD_TUNE";
   return raw;
 }
 

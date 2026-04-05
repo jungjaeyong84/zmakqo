@@ -313,7 +313,7 @@ function deriveCandidateObjectiveDelta(candidate = {}, context = {}) {
     return {
       validation_mode: "HISTORICAL_ENTRY_COHORT_V1",
       candidate_id: candidate.candidate_id || null,
-      display_candidate_id: candidate.display_candidate_id || candidate.candidate_id || null,
+      display_candidate_id: candidate.display_candidate_id || candidate.canonical_candidate_id || candidate.candidate_id || null,
       scope,
       direction,
       current_objective_score: Number(currentObjectiveScore.toFixed(4)),
@@ -354,7 +354,7 @@ function deriveCandidateObjectiveDelta(candidate = {}, context = {}) {
   return {
     validation_mode: "HISTORICAL_ENTRY_COHORT_V1",
     candidate_id: candidate.candidate_id || null,
-    display_candidate_id: candidate.display_candidate_id || candidate.candidate_id || null,
+    display_candidate_id: candidate.display_candidate_id || candidate.canonical_candidate_id || candidate.candidate_id || null,
     scope,
     direction,
     current_objective_score: Number(currentObjectiveScore.toFixed(4)),

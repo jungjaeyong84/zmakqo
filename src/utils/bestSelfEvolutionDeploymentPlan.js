@@ -50,7 +50,7 @@ function deriveCanonicalPolicyRecommendation({ candidateChangeSet = null, stageA
     ) {
       return {
         candidate_id: stageCandidateId,
-        display_candidate_id: String(candidateRow.display_candidate_id || candidateRow.candidate_id || "").trim() || null,
+        display_candidate_id: String(candidateRow.display_candidate_id || candidateRow.canonical_candidate_id || candidateRow.candidate_id || "").trim() || null,
         canonical_migration_class: String(candidateRow.canonical_migration_class || "").trim().toUpperCase() || null,
         target_deploy_unit: String(candidateRow.target_deploy_unit || "").trim().toUpperCase() || null,
         stage_state: String(canonicalStage.machine_state || "").trim().toUpperCase() || null,
@@ -70,7 +70,7 @@ function deriveCanonicalPolicyRecommendation({ candidateChangeSet = null, stageA
   if (!fallback) return null;
   return {
     candidate_id: String(fallback.candidate_id || "").trim() || null,
-    display_candidate_id: String(fallback.display_candidate_id || fallback.candidate_id || "").trim() || null,
+    display_candidate_id: String(fallback.display_candidate_id || fallback.canonical_candidate_id || fallback.candidate_id || "").trim() || null,
     canonical_migration_class: "PINE_THRESHOLD",
     target_deploy_unit: "SERVER_SETTINGS",
     stage_state: null,
@@ -494,7 +494,12 @@ function deriveDeploymentPlan({
     : (change.auto_rollback && typeof change.auto_rollback === "object" ? change.auto_rollback : {});
   const targetCandidateId = String(guardSummary.target_candidate_id || promotion.candidate_id || "").trim() || null;
   const targetCandidateRow = findCandidateRow(candidateChangeSet, targetCandidateId);
-  const displayCandidateId = String(promotion.display_candidate_id || targetCandidateId || "").trim() || null;
+  const displayCandidateId = String(
+    promotion.display_candidate_id
+    || (targetCandidateRow && (targetCandidateRow.display_candidate_id || targetCandidateRow.canonical_candidate_id || targetCandidateRow.candidate_id))
+    || targetCandidateId
+    || ""
+  ).trim() || null;
   const rollbackFilePath = String(rollback.rollback_file_path || "").trim() || null;
   const codexVerdict = String(codex.verdict || "HOLD").trim().toUpperCase();
   const codexCandidateId = String(codex.recommended_candidate_id || "").trim() || null;
