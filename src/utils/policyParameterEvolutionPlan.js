@@ -98,6 +98,20 @@ function deriveEvPolicyAction({ governor = {}, recoveryEffect = {} } = {}) {
   return "HOLD_EV_POLICY";
 }
 
+function canonicalizeEvPolicyAction(action) {
+  const normalized = upper(action);
+  if (normalized === "PRIORITIZE_EV_TP1_THRESHOLD_TUNE") {
+    return "PRIORITIZE_EV_COMPOSITE_THRESHOLD_TUNE";
+  }
+  if (normalized === "REVIEW_RELAX_EV_TP1_MIN") {
+    return "REVIEW_RELAX_EV_COMPOSITE_MIN";
+  }
+  if (normalized === "REVIEW_TIGHTEN_EV_TP1_MIN") {
+    return "REVIEW_TIGHTEN_EV_COMPOSITE_MIN";
+  }
+  return normalized || "HOLD_EV_POLICY";
+}
+
 function deriveGlobalQtyScale({
   governor = {},
   recoveryEffect = {},
@@ -247,6 +261,7 @@ function derivePolicyParameterEvolutionPlan({
   const status = blockers.length ? "HOLD" : "READY";
   const mode = blockers.length ? "ADVISORY_ONLY" : "APPLY_READY";
   const evPolicyAction = deriveEvPolicyAction({ governor, recoveryEffect });
+  const evPolicyActionCanonical = canonicalizeEvPolicyAction(evPolicyAction);
 
   const topMarketActions = marketActions.slice(0, 12);
   const quarantined = Array.from(quarantineSet);
@@ -264,6 +279,7 @@ function derivePolicyParameterEvolutionPlan({
       blockers,
       global_qty_scale: globalQtyScale,
       ev_policy_action: evPolicyAction,
+      ev_policy_action_canonical: evPolicyActionCanonical,
       recovery_required: governor.recovery_required === true,
       governor_status: upper(governor.governor_status),
       governor_reason: upper(governor.governor_reason),
@@ -287,9 +303,9 @@ function derivePolicyParameterEvolutionPlan({
       top_market_actions: topMarketActions,
       next_actions: [
         `Apply global qty scale ${globalQtyScale} in report-only mode first, then live apply after one cycle verification.`,
-        evPolicyAction === "HOLD_EV_POLICY"
-          ? "Keep EV TP1 policy unchanged; continue monitoring recovery effect."
-          : `Set EV policy to ${evPolicyAction} and track objective delta impact.`,
+        evPolicyActionCanonical === "HOLD_EV_POLICY"
+          ? "Keep EV composite policy unchanged; continue monitoring recovery effect."
+          : `Set EV policy to ${evPolicyActionCanonical} and track objective delta impact.`,
         quarantined.length
           ? `Keep quarantine/watch-only for ${quarantined.join("|")} until objective+quality recovers.`
           : "No quarantine override markets right now.",
@@ -312,8 +328,8 @@ function derivePolicyParameterEvolutionPlan({
           reason: "objective + execution quality + governor status composite",
         },
         {
-          key: "EV_TP1_POLICY_ACTION",
-          recommended_value: evPolicyAction,
+          key: "EV_COMPOSITE_POLICY_ACTION",
+          recommended_value: evPolicyActionCanonical,
           reason: "drop-validation + recovery-effect candidate priority",
         },
       ],

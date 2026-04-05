@@ -67,6 +67,7 @@ const { derivePolicyParameterEvolutionPlan } = require("../../src/utils/policyPa
   assert.ok(holdPlan.summary.blockers.includes("MANUAL_CONFIRM_REQUIRED"));
   assert.ok(holdPlan.summary.blockers.includes("DEGRADED_AUTHORITY_NOT_ELIGIBLE"));
   assert.strictEqual(holdPlan.summary.ev_policy_action, "PRIORITIZE_EV_TP1_THRESHOLD_TUNE");
+  assert.strictEqual(holdPlan.summary.ev_policy_action_canonical, "PRIORITIZE_EV_COMPOSITE_THRESHOLD_TUNE");
   assert.ok(holdPlan.summary.global_qty_scale <= 0.8);
   assert.strictEqual(holdPlan.recommendations.by_market[0].market, "AXSUSDT");
   assert.strictEqual(holdPlan.recommendations.by_market[0].mode, "WATCH_ONLY");
@@ -118,6 +119,7 @@ const { derivePolicyParameterEvolutionPlan } = require("../../src/utils/policyPa
   assert.strictEqual(readyPlan.summary.status, "READY");
   assert.strictEqual(readyPlan.summary.mode, "APPLY_READY");
   assert.strictEqual(readyPlan.summary.current_objective_score, 0.7);
+  assert.strictEqual(readyPlan.summary.ev_policy_action_canonical, "HOLD_EV_POLICY");
   assert.strictEqual(readyPlan.summary.ev_policy_action, "HOLD_EV_POLICY");
   assert.ok(readyPlan.summary.global_qty_scale >= 0.95);
   assert.strictEqual(readyPlan.recommendations.by_market[0].qty_scale, 1.1);

@@ -102,6 +102,7 @@ function deriveRecommendedAction({ quality = null, cutover = null, policyPlan = 
       && qualitySummary.top_other_server_policy_reason_action.recommended_action
       || ""
     ).trim()
+    || String(policySummary.ev_policy_action_canonical || "").trim()
     || String(policySummary.ev_policy_action || "").trim()
     || (String(policySummary.status || "").trim() ? `PLAN_${String(policySummary.status).trim().toUpperCase()}` : "")
     || "MONITOR_ONLY"

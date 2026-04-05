@@ -354,7 +354,9 @@ function buildEvCandidate({ ev, tf = "15m", contract = null, marketGuard = null,
   const direction = aggregateDirection(changes);
   const candidate = {
     candidate_id: "EV_TP1_THRESHOLD_TUNE",
-    display_candidate_id: "EV_TP1_THRESHOLD_TUNE",
+    display_candidate_id: "EV_COMPOSITE_THRESHOLD_TUNE",
+    canonical_candidate_id: "EV_COMPOSITE_THRESHOLD_TUNE",
+    compatibility_candidate_id: "EV_TP1_THRESHOLD_TUNE",
     scope: "EV",
     source: allowShadowFallback ? "EV_TUNER_SHADOW_FALLBACK" : "EV_TUNER",
     // Filter-4 softening is a shared policy change, not a market-local override.
@@ -370,6 +372,14 @@ function buildEvCandidate({ ev, tf = "15m", contract = null, marketGuard = null,
       ? (staleEvTuner ? "STALE_ARTIFACT_SHADOW_FALLBACK" : "INSUFFICIENT_SAMPLE_SHADOW_FALLBACK")
       : String(raw.decision_reason || "N/A"),
     ready_for_auto_apply: raw.settings_updated === true && !allowShadowFallback,
+    policy_basis: "TP_COMPOSITE_EXIT_VALUE_V1",
+    threshold_metric: "exit_value_lower_bound",
+    compatibility_drop_reason: "DROP_EV_GATE_TP1_PROB",
+    legacy_threshold_setting_keys: [
+      "ev_gate_tp1_prob_min",
+      "ev_gate_tp1_prob_full",
+      "ev_gate_tp1_prob_kill",
+    ],
     evidence: {
       support_n: allowShadowFallback ? evMissedRecoveryN : null,
       support_rate: null,

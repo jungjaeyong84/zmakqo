@@ -125,6 +125,10 @@ function run() {
   assert.strictEqual(blockedPine.ready_for_auto_apply, false);
   const ev = report.rows.find((row) => row.candidate_id === "EV_TP1_THRESHOLD_TUNE");
   assert.strictEqual(ev.scope, "EV");
+  assert.strictEqual(ev.display_candidate_id, "EV_COMPOSITE_THRESHOLD_TUNE");
+  assert.strictEqual(ev.canonical_candidate_id, "EV_COMPOSITE_THRESHOLD_TUNE");
+  assert.strictEqual(ev.policy_basis, "TP_COMPOSITE_EXIT_VALUE_V1");
+  assert.strictEqual(ev.threshold_metric, "exit_value_lower_bound");
   assert.strictEqual(ev.canonical_migration_class, "SERVER_POLICY");
   assert.strictEqual(ev.current_deploy_unit, "SERVER_SETTINGS");
   assert.strictEqual(ev.target_deploy_unit, "SERVER_SETTINGS");
@@ -240,6 +244,8 @@ function run() {
   });
   const fallbackEv = fallbackEvReport.rows.find((row) => row.candidate_id === "EV_TP1_THRESHOLD_TUNE");
   assert.strictEqual(fallbackEv.scope, "EV");
+  assert.strictEqual(fallbackEv.display_candidate_id, "EV_COMPOSITE_THRESHOLD_TUNE");
+  assert.strictEqual(fallbackEv.canonical_candidate_id, "EV_COMPOSITE_THRESHOLD_TUNE");
   assert.strictEqual(fallbackEv.canonical_migration_class, "SERVER_POLICY");
   assert.deepStrictEqual(fallbackEv.markets, ["ALL"]);
   assert.strictEqual(fallbackEv.source, "EV_TUNER_SHADOW_FALLBACK");

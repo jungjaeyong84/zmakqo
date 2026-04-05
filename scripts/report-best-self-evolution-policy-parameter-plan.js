@@ -45,7 +45,7 @@ function renderMarkdown(report = {}) {
     `- status/mode: ${summary.status || "N/A"} / ${summary.mode || "N/A"}`,
     `- blocker_n: ${summary.blocker_n ?? 0} / ${Array.isArray(summary.blockers) && summary.blockers.length ? summary.blockers.join("|") : "none"}`,
     `- global_qty_scale: ${summary.global_qty_scale != null ? summary.global_qty_scale : "N/A"}`,
-    `- ev_policy_action: ${summary.ev_policy_action || "N/A"}`,
+    `- ev_policy_action: ${summary.ev_policy_action_canonical || summary.ev_policy_action || "N/A"} / legacy=${summary.ev_policy_action || "N/A"}`,
     `- objective score (cur -> proj): ${summary.current_objective_score != null ? summary.current_objective_score : "N/A"} -> ${summary.projected_objective_score != null ? summary.projected_objective_score : "N/A"}`,
     `- execution_quality: ${summary.execution_quality_status || "N/A"}`,
     `- quarantine/watch-only/other-policy: ${summary.quarantine_market_n ?? 0} / ${summary.watch_only_review_market_n ?? 0} / ${summary.other_server_policy_watch_only_market_n ?? 0}`,
