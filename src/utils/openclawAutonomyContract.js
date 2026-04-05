@@ -532,6 +532,12 @@ function deriveOpenClawAutonomyContract({
       execution_scope_fp_diagnostics_top_context_profile: String(executionQualitySummary.execution_scope_fp_diagnostics_top_context_profile || "").trim() || null,
       execution_scope_fp_diagnostics_reference_rows_n: toNum(executionQualitySummary.execution_scope_fp_diagnostics_reference_rows_n),
       execution_scope_fp_diagnostics_reference_group_mode: String(executionQualitySummary.execution_scope_fp_diagnostics_reference_group_mode || "").trim() || null,
+      execution_scope_test_early_macro_recall: toNum(executionQualitySummary.execution_scope_test_early_macro_recall),
+      execution_scope_test_core_macro_recall: toNum(executionQualitySummary.execution_scope_test_core_macro_recall),
+      execution_scope_tier_comparison_status: String(executionQualitySummary.execution_scope_tier_comparison_status || "").trim() || null,
+      execution_scope_tier_weaker_tier: String(executionQualitySummary.execution_scope_tier_weaker_tier || "").trim() || null,
+      execution_scope_tier_mismatch_rate_gap: toNum(executionQualitySummary.execution_scope_tier_mismatch_rate_gap),
+      execution_scope_tier_macro_recall_gap: toNum(executionQualitySummary.execution_scope_tier_macro_recall_gap),
       execution_scope_train_run_status: mlTrainRunScopeStatus,
       execution_scope_train_run_id: String(mlTrainRunScopeSummary.train_run_id || "").trim() || null,
       execution_scope_train_run_model_artifact_id: String(mlTrainRunScopeSummary.model_artifact_id || "").trim() || null,
@@ -686,6 +692,12 @@ function deriveOpenClawAutonomyContract({
       execution_scope_fp_diagnostics_top_context_profile: String(executionQualitySummary.execution_scope_fp_diagnostics_top_context_profile || "").trim() || null,
       execution_scope_fp_diagnostics_reference_rows_n: toNum(executionQualitySummary.execution_scope_fp_diagnostics_reference_rows_n),
       execution_scope_fp_diagnostics_reference_group_mode: String(executionQualitySummary.execution_scope_fp_diagnostics_reference_group_mode || "").trim() || null,
+      execution_scope_test_early_macro_recall: toNum(executionQualitySummary.execution_scope_test_early_macro_recall),
+      execution_scope_test_core_macro_recall: toNum(executionQualitySummary.execution_scope_test_core_macro_recall),
+      execution_scope_tier_comparison_status: String(executionQualitySummary.execution_scope_tier_comparison_status || "").trim() || null,
+      execution_scope_tier_weaker_tier: String(executionQualitySummary.execution_scope_tier_weaker_tier || "").trim() || null,
+      execution_scope_tier_mismatch_rate_gap: toNum(executionQualitySummary.execution_scope_tier_mismatch_rate_gap),
+      execution_scope_tier_macro_recall_gap: toNum(executionQualitySummary.execution_scope_tier_macro_recall_gap),
       execution_model_dataset_version_id: String(
         executionModelSummary.version_id
         || (executionModelDataset && executionModelDataset.execution_dataset_version && executionModelDataset.execution_dataset_version.version_id)

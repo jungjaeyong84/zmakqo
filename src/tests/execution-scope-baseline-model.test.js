@@ -82,6 +82,7 @@ function makeRow(index, scope) {
   assert.ok(String(built.modelArtifact.model_artifact_id || "").startsWith("MODEL_EXEC_SCOPE__"));
   assert.strictEqual(Array.isArray(built.trainRun.target_classes), true);
   assert.strictEqual(built.trainRun.metrics_snapshot.test.rows_n > 0, true);
+  assert.strictEqual(built.trainRun.metrics_by_entry_grade.test.CORE.rows_n > 0, true);
   const scored = scoreExecutionScopeBaselineRows(filtered.slice(0, 5), { summary: built.modelArtifact, model: built.modelArtifact.model_params });
   assert.strictEqual(scored.length, 5);
   assert.strictEqual(typeof scored[0].class_probs.FILLABLE, "number");

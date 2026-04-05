@@ -30,6 +30,7 @@ function summarizeExecutionQuality({
   executionScopeInference = null,
   executionScopeTrainRun = null,
   executionScopeFalsePositiveDiagnostics = null,
+  executionScopeTierComparison = null,
 } = {}) {
   const micro = microstructure && typeof microstructure === "object" ? microstructure : {};
   const metrics = micro.metrics && typeof micro.metrics === "object" ? micro.metrics : {};
@@ -52,6 +53,20 @@ function summarizeExecutionQuality({
     ? (executionScopeFalsePositiveDiagnostics.summary && typeof executionScopeFalsePositiveDiagnostics.summary === "object"
       ? executionScopeFalsePositiveDiagnostics.summary
       : executionScopeFalsePositiveDiagnostics)
+    : {};
+  const executionScopeTierSummary = executionScopeTierComparison && typeof executionScopeTierComparison === "object"
+    ? (executionScopeTierComparison.summary && typeof executionScopeTierComparison.summary === "object"
+      ? executionScopeTierComparison.summary
+      : executionScopeTierComparison)
+    : {};
+  const executionScopeTierMetrics = executionScopeTrainRunSummary.metrics_by_entry_grade && typeof executionScopeTrainRunSummary.metrics_by_entry_grade === "object"
+    ? executionScopeTrainRunSummary.metrics_by_entry_grade
+    : {};
+  const earlyTestMetrics = executionScopeTierMetrics.test && typeof executionScopeTierMetrics.test.EARLY === "object"
+    ? executionScopeTierMetrics.test.EARLY
+    : {};
+  const coreTestMetrics = executionScopeTierMetrics.test && typeof executionScopeTierMetrics.test.CORE === "object"
+    ? executionScopeTierMetrics.test.CORE
     : {};
 
   const intentsById = new Map();
@@ -192,6 +207,14 @@ function summarizeExecutionQuality({
       execution_scope_fp_diagnostics_top_context_profile: String(executionScopeFpSummary.top_context_profile || "").trim() || null,
       execution_scope_fp_diagnostics_reference_rows_n: toNum(executionScopeFpSummary.reference_rows_n),
       execution_scope_fp_diagnostics_reference_group_mode: String(executionScopeFpSummary.reference_group_mode || "").trim() || null,
+      execution_scope_test_early_macro_recall: toNum(earlyTestMetrics.macro_recall),
+      execution_scope_test_core_macro_recall: toNum(coreTestMetrics.macro_recall),
+      execution_scope_test_early_rows_n: toNum(earlyTestMetrics.rows_n),
+      execution_scope_test_core_rows_n: toNum(coreTestMetrics.rows_n),
+      execution_scope_tier_comparison_status: String(executionScopeTierSummary.status || "").trim() || null,
+      execution_scope_tier_weaker_tier: String(executionScopeTierSummary.weaker_tier || "").trim() || null,
+      execution_scope_tier_mismatch_rate_gap: toNum(executionScopeTierSummary.mismatch_rate_gap),
+      execution_scope_tier_macro_recall_gap: toNum(executionScopeTierSummary.macro_recall_gap),
       review_reasons: reviewReasons,
       market_n: rows.length,
       top_watch_markets: rows.slice(0, 6).map((row) => ({

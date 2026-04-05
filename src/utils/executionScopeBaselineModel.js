@@ -72,6 +72,15 @@ function toUpper(value) {
   return String(value || "").trim().toUpperCase() || null;
 }
 
+function resolveEntryTier(row = null) {
+  const event = toUpper(getPath(row, "context.event"));
+  if (event && event.startsWith("EARLY_")) return "EARLY";
+  if (event && event.startsWith("CORE_")) return "CORE";
+  const grade = toUpper(getPath(row, "features.entry_grade"));
+  if (grade === "EARLY" || grade === "CORE") return grade;
+  return null;
+}
+
 function clip(value, low, high) {
   return Math.min(high, Math.max(low, value));
 }
@@ -382,6 +391,20 @@ function computeMulticlassMetrics(rows = [], predictions = []) {
   };
 }
 
+function computeTierMetrics(rows = [], predictions = []) {
+  const tiers = ["EARLY", "CORE"];
+  return Object.fromEntries(tiers.map((tier) => {
+    const scopedRows = [];
+    const scopedPredictions = [];
+    for (let i = 0; i < rows.length; i += 1) {
+      if (resolveEntryTier(rows[i]) !== tier) continue;
+      scopedRows.push(rows[i]);
+      scopedPredictions.push(predictions[i]);
+    }
+    return [tier, computeMulticlassMetrics(scopedRows, scopedPredictions)];
+  }));
+}
+
 function buildSplitSupport(rows = []) {
   const byClassSource = {};
   for (const row of Array.isArray(rows) ? rows : []) {
@@ -471,6 +494,9 @@ function buildExecutionScopeBaselineModel({
   const trainMetrics = computeMulticlassMetrics(split.trainRows, trainPred);
   const validationMetrics = computeMulticlassMetrics(split.validationRows, validationPred);
   const testMetrics = computeMulticlassMetrics(split.testRows, testPred);
+  const trainTierMetrics = computeTierMetrics(split.trainRows, trainPred);
+  const validationTierMetrics = computeTierMetrics(split.validationRows, validationPred);
+  const testTierMetrics = computeTierMetrics(split.testRows, testPred);
   const splitDiagnostics = deriveSourceDriftDiagnostics({
     trainRows: split.trainRows,
     testRows: split.testRows,
@@ -511,6 +537,7 @@ function buildExecutionScopeBaselineModel({
       validation_split_pct: split.validation_split_pct,
       test_split_pct: split.test_split_pct,
       metrics_snapshot: { train: trainMetrics, validation: validationMetrics, test: testMetrics },
+      metrics_by_entry_grade: { train: trainTierMetrics, validation: validationTierMetrics, test: testTierMetrics },
       split_diagnostics: splitDiagnostics,
       trained_at_kst: trainedAt,
     },
@@ -529,6 +556,7 @@ function buildExecutionScopeBaselineModel({
       quality_gate_ready: qualityGate.ready,
       feature_count: spec.features.length,
       metrics_snapshot: { train: trainMetrics, validation: validationMetrics, test: testMetrics },
+      metrics_by_entry_grade: { train: trainTierMetrics, validation: validationTierMetrics, test: testTierMetrics },
       split_diagnostics: splitDiagnostics,
       model_params: {
         feature_keys: spec.features.map((row) => row.key),
@@ -564,4 +592,8 @@ module.exports = {
   deriveQualityGate,
   deriveSourceDriftDiagnostics,
   buildSourceAwareChronologicalSplit,
+  __test: {
+    resolveEntryTier,
+    computeTierMetrics,
+  },
 };
