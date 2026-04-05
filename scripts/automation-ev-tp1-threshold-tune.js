@@ -1202,6 +1202,8 @@ async function main() {
   }));
   copyLatest(jsonPath, path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json"));
   copyLatest(mdPath, path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.md"));
+  copyLatest(jsonPath, path.join(OPS_DAILY_DIR, "ev_composite_threshold_tune_latest.json"));
+  copyLatest(mdPath, path.join(OPS_DAILY_DIR, "ev_composite_threshold_tune_latest.md"));
 
   const severity = (
     effectivePlan.reason === "TARGET_THRESHOLD_SEARCH"

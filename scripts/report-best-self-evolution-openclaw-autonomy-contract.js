@@ -50,6 +50,8 @@ const INPUTS = Object.freeze({
   executionServingContract: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_serving_contract_latest.json"),
   mlModelContract: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_model_contract_latest.json"),
   mlPromotionGate: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_promotion_gate_latest.json"),
+  evGateCompositePolicy: path.join(OPS_DAILY_DIR, "best_self_evolution_ev_gate_composite_policy_latest.json"),
+  candidates: path.join(OPS_DAILY_DIR, "best_self_evolution_candidates_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -99,6 +101,8 @@ function renderMarkdown(report = {}) {
     `- execution_serving: ${status.execution_serving_contract_status || "N/A"} / ${status.execution_serving_stage || "N/A"} / shadow_ready=${status.execution_serving_shadow_ready ? "YES" : "NO"} / model=${status.execution_serving_preferred_model_family || "N/A"}`,
     `- ml_model_contract: ${status.ml_model_contract_status || "N/A"} / ${status.ml_model_contract_deployment_stage || "N/A"} / ${status.ml_model_contract_canary_gate_status || "N/A"}`,
     `- ml_promotion_gate: ${status.ml_promotion_gate_status || "N/A"} / ${status.ml_promotion_stage || "N/A"} / ${status.ml_promotion_decision || "N/A"}`,
+    `- ev_gate_policy: ${summary.ev_gate_policy_status || "N/A"} / basis=${status.ev_gate_policy_basis || "N/A"} / canonical=${status.ev_gate_canonical_policy_version || "N/A"} / metric=${status.ev_gate_threshold_metric || "N/A"} / compat=${status.ev_gate_compatibility_drop_reason || "N/A"}`,
+    `- ev_candidate: ${status.ev_candidate_id || "N/A"} / canonical=${status.ev_candidate_canonical_id || "N/A"} / top=${status.self_evolution_top_candidate_id || "N/A"}`,
     `- execution_fill_inference: ${status.execution_fill_inference_status || "N/A"} / mismatch=${status.execution_fill_inference_mismatch_rate != null ? status.execution_fill_inference_mismatch_rate : "N/A"}`,
     `- execution_scope_inference: ${status.execution_scope_inference_status || "N/A"} / mismatch=${status.execution_scope_inference_mismatch_rate != null ? status.execution_scope_inference_mismatch_rate : "N/A"} / gate=${status.execution_scope_train_run_quality_gate_status || "N/A"}`,
     `- execution_model_dataset: ${summary.execution_model_dataset_status || "N/A"} / rows=${status.execution_model_dataset_rows_n != null ? status.execution_model_dataset_rows_n : "N/A"} / filled=${status.execution_model_dataset_filled_n != null ? status.execution_model_dataset_filled_n : "N/A"} / rejected=${status.execution_model_dataset_rejected_n != null ? status.execution_model_dataset_rejected_n : "N/A"}`,
@@ -151,6 +155,8 @@ function main() {
     executionServingContract: readJsonRawSafe(INPUTS.executionServingContract, null),
     mlModelContract: readJsonRawSafe(INPUTS.mlModelContract, null),
     mlPromotionGate: readJsonRawSafe(INPUTS.mlPromotionGate, null),
+    evGateCompositePolicy: readJsonRawSafe(INPUTS.evGateCompositePolicy, null),
+    candidates: readJsonRawSafe(INPUTS.candidates, null),
   });
   const output = {
     ok: true,

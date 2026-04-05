@@ -2,6 +2,7 @@
 /* eslint-disable no-console */
 "use strict";
 
+const fs = require("fs");
 const path = require("path");
 const {
   OPS_DAILY_DIR,
@@ -22,7 +23,9 @@ const INPUTS = Object.freeze({
   objectiveSupervisor: selfEvolutionSnapshotLatestPath("objective_supervisor_latest.json"),
   patchCandidates: path.join(OPS_DAILY_DIR, "pine_quality_patch_candidates_latest.json"),
   ml: path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.json"),
-  ev: path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json"),
+  ev: fs.existsSync(path.join(OPS_DAILY_DIR, "ev_composite_threshold_tune_latest.json"))
+    ? path.join(OPS_DAILY_DIR, "ev_composite_threshold_tune_latest.json")
+    : path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json"),
   wait: path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json"),
   changeControl: path.join(OPS_DAILY_DIR, "pine_quality_change_control_latest.json"),
   memory: path.join(OPS_DAILY_DIR, "best_self_evolution_memory_latest.json"),
@@ -54,7 +57,7 @@ function renderMarkdown(report = {}) {
     lines.push("- none");
   } else {
     for (const row of rows.slice(0, 20)) {
-      lines.push(`- ${row.candidate_id}: ${row.scope}/${row.direction} / class=${row.canonical_migration_class || "N/A"} / deploy=${row.current_deploy_unit || "N/A"}->${row.target_deploy_unit || "N/A"} / status=${row.status} / ready=${row.ready_for_auto_apply ? "YES" : "NO"} / count=${row.count_guard_effect && row.count_guard_effect.projected_count_ratio_global != null ? Number(row.count_guard_effect.projected_count_ratio_global).toFixed(2) : "N/A"} / replacement=${row.replacement_effect && row.replacement_effect.projected_replacement_ratio != null ? Number(row.replacement_effect.projected_replacement_ratio).toFixed(2) : "N/A"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
+      lines.push(`- ${row.candidate_id}: ${row.scope}/${row.direction} / class=${row.canonical_migration_class || "N/A"} / deploy=${row.current_deploy_unit || "N/A"}->${row.target_deploy_unit || "N/A"} / canonical=${row.canonical_candidate_id || "N/A"} / status=${row.status} / ready=${row.ready_for_auto_apply ? "YES" : "NO"} / count=${row.count_guard_effect && row.count_guard_effect.projected_count_ratio_global != null ? Number(row.count_guard_effect.projected_count_ratio_global).toFixed(2) : "N/A"} / replacement=${row.replacement_effect && row.replacement_effect.projected_replacement_ratio != null ? Number(row.replacement_effect.projected_replacement_ratio).toFixed(2) : "N/A"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
     }
   }
   lines.push("");
@@ -63,7 +66,7 @@ function renderMarkdown(report = {}) {
     lines.push("- none");
   } else {
     for (const row of blockedRows.slice(0, 20)) {
-      lines.push(`- ${row.candidate_id}: ${row.scope}/${row.direction} / class=${row.canonical_migration_class || "N/A"} / deploy=${row.current_deploy_unit || "N/A"}->${row.target_deploy_unit || "N/A"} / reason=${row.memory_block_reason || "N/A"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
+      lines.push(`- ${row.candidate_id}: ${row.scope}/${row.direction} / class=${row.canonical_migration_class || "N/A"} / deploy=${row.current_deploy_unit || "N/A"}->${row.target_deploy_unit || "N/A"} / canonical=${row.canonical_candidate_id || "N/A"} / reason=${row.memory_block_reason || "N/A"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
     }
   }
   return `${lines.join("\n")}\n`;

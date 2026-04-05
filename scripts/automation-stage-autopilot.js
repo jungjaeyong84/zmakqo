@@ -1100,6 +1100,18 @@ function buildEvParityCandidate(parityArtifact, cutoverArtifact = null, dropVali
       : "NO_ACTIONABLE_EV_PARITY_RESCUE",
     signature: actionable ? stableSignature(nextSettings) : null,
     nextSettings,
+    canonical_policy_basis: "TP_COMPOSITE_EXIT_VALUE_V1",
+    threshold_metric: "exit_value_lower_bound",
+    compatibility_drop_reason: "DROP_EV_GATE_TP1_PROB",
+    legacy_threshold_setting_keys: [
+      "ev_gate_tp1_prob_min",
+      "ev_gate_tp1_prob_min_early",
+      "ev_gate_tp1_prob_min_core",
+      "ev_gate_tp1_prob_min_pre_real",
+      "ev_gate_tp1_prob_min_real",
+      "ev_gate_tp1_prob_full",
+      "ev_gate_tp1_prob_kill",
+    ],
     streakRequired: STREAK_REQUIRED,
     sampleSufficient: evPolicyMismatchN >= 2 || evRescueBackedByDrops,
     coverageSufficient: shadowObservedN >= evPolicyMismatchN && sourceParityMismatchN === 0,
@@ -1209,6 +1221,14 @@ function buildObservedStageCandidate(stage, artifact, currentObj = {}) {
       observedUpdate: data.settings_updated === true,
       signature: stableSignature(next),
       nextSettings: next,
+      canonical_policy_basis: "TP_COMPOSITE_EXIT_VALUE_V1",
+      threshold_metric: "exit_value_lower_bound",
+      compatibility_drop_reason: "DROP_EV_GATE_TP1_PROB",
+      legacy_threshold_setting_keys: [
+        "ev_gate_tp1_prob_min",
+        "ev_gate_tp1_prob_full",
+        "ev_gate_tp1_prob_kill",
+      ],
       reason: String(data.decision_reason || "N/A"),
       snapshotPath: data.artifacts && data.artifacts.autopilot_snapshot_path,
       objectiveEnoughSample: Boolean(currentObj && currentObj.enough_sample === true),
@@ -1982,7 +2002,10 @@ async function main() {
   const objectiveArtifact = readArtifact("objective_supervisor", path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json"), FRESHNESS_HOURS.objective);
   const selfEvolutionObjectiveArtifact = readArtifact("self_evolution_objective_supervisor", SELF_EVOLUTION_OBJECTIVE_SUPERVISOR_LATEST_PATH, FRESHNESS_HOURS.objective);
   const mlArtifact = readArtifact("ml_filter_policy", path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.json"), FRESHNESS_HOURS.ml);
-  const evArtifact = readArtifact("ev_tp1_threshold_tune", path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json"), FRESHNESS_HOURS.ev);
+  const evArtifactPath = fs.existsSync(path.join(OPS_DAILY_DIR, "ev_composite_threshold_tune_latest.json"))
+    ? path.join(OPS_DAILY_DIR, "ev_composite_threshold_tune_latest.json")
+    : path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json");
+  const evArtifact = readArtifact("ev_tp1_threshold_tune", evArtifactPath, FRESHNESS_HOURS.ev);
   const waitArtifact = readArtifact("wait_one_bar_tune", path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json"), FRESHNESS_HOURS.wait);
   const canaryArtifact = readArtifact("filter_shadow_canary", path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json"), FRESHNESS_HOURS.canary);
   const selfEvolutionCanaryArtifact = readArtifact("best_self_evolution_canary", SELF_EVOLUTION_CANARY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCanary);

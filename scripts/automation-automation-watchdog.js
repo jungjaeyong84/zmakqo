@@ -53,6 +53,14 @@ const STATUS_SUPPRESSION_MAX_CONSECUTIVE_ERRORS = Math.max(
   parseNumber(process.env.AUTOMATION_WATCHDOG_STATUS_SUPPRESSION_MAX_CONSEC_ERRORS, 0)
 );
 
+function resolveLatestArtifactPath(...names) {
+  for (const name of names) {
+    const filePath = path.join(OPS_DAILY_DIR, name);
+    if (fs.existsSync(filePath)) return filePath;
+  }
+  return path.join(OPS_DAILY_DIR, names[0]);
+}
+
 const ARTIFACT_SPECS = Object.freeze([
   { name: "analytics_local_cache_refresh", filePath: path.join(OPS_DAILY_DIR, "analytics_local_cache_refresh_latest.json"), maxAgeHours: 4, severity: "WARN" },
   { name: "openclaw_hourly_cycle", filePath: path.join(OPS_DAILY_DIR, "openclaw_hourly_cycle_latest.json"), maxAgeHours: 2, severity: "FAIL" },
@@ -64,7 +72,7 @@ const ARTIFACT_SPECS = Object.freeze([
   { name: "filter_shadow_canary", filePath: path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json"), maxAgeHours: 12, severity: "WARN" },
   // This artifact is produced by the weekly governance lane, not the hourly/daily cron path.
   { name: "weekly_filter_governance", filePath: path.join(OPS_DAILY_DIR, "weekly_filter_governance_latest.json"), maxAgeHours: 192, severity: "WARN" },
-  { name: "ev_tp1_threshold_tune", filePath: path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json"), maxAgeHours: 96, severity: "WARN" },
+  { name: "ev_tp1_threshold_tune", filePath: resolveLatestArtifactPath("ev_composite_threshold_tune_latest.json", "ev_tp1_threshold_tune_latest.json"), maxAgeHours: 96, severity: "WARN" },
   { name: "wait_one_bar_tune", filePath: path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json"), maxAgeHours: 144, severity: "WARN" },
   { name: "codex_weekly_patch_engine", filePath: path.join(OPS_DAILY_DIR, "codex_weekly_patch_engine_latest.json"), maxAgeHours: 192, severity: "WARN" },
 ]);

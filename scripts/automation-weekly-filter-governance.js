@@ -121,11 +121,11 @@ function buildUserFacingSettingsSnapshot(settings = {}) {
       value: `enabled ${formatBool(settings.ai_bias_gate_enabled)} / neutral ${settings.ai_bias_gate_neutral_policy} / score ${pct(settings.ai_bias_gate_score_threshold)} / conf ${pct(settings.ai_bias_gate_conf_min)}`,
     },
     {
-      label: "4차 EV/시간가치층 기본 threshold",
+      label: "4차 EV/시간가치층 복합 기대값 하한 threshold",
       value: `${pct(settings.ev_gate_tp1_prob_min)} / live ${pct(settings.ev_gate_tp1_prob_min_early)}`,
     },
     {
-      label: "4차 EV/시간가치층 size band",
+      label: "4차 EV/시간가치층 복합 기대값 size band",
       value: `full ${pct(settings.ev_gate_tp1_prob_full)} / kill ${pct(settings.ev_gate_tp1_prob_kill)} / mid ${pct(settings.ev_gate_qty_scale_mid)} / low ${pct(settings.ev_gate_qty_scale_low)}`,
     },
     {
@@ -254,8 +254,8 @@ function buildWeeklyTelegramLayerLines({ current = {}, recommendations = {}, set
     `3차 상태 기반 Soft Sizing ${recommendations.MARKET && recommendations.MARKET.action || "N/A"} / ${recommendations.MARKET && recommendations.MARKET.reason || "N/A"}`,
     `3차 상태 분포 ${marketState || "N/A"}`,
     `3차 상태 action ${marketAction || "N/A"}`,
-    `4차 EV/시간가치층 threshold 기본 ${pct(settings.ev_gate_tp1_prob_min)} / ${LIVE_ENTRY_LABEL} ${pct(settings.ev_gate_tp1_prob_min_early)}`,
-    `4차 EV/시간가치층 band full ${pct(settings.ev_gate_tp1_prob_full)} / kill ${pct(settings.ev_gate_tp1_prob_kill)} / mid ${pct(settings.ev_gate_qty_scale_mid)} / low ${pct(settings.ev_gate_qty_scale_low)}`,
+    `4차 EV/시간가치층 복합 기대값 하한 기본 ${pct(settings.ev_gate_tp1_prob_min)} / ${LIVE_ENTRY_LABEL} ${pct(settings.ev_gate_tp1_prob_min_early)}`,
+    `4차 EV/시간가치층 복합 기대값 band full ${pct(settings.ev_gate_tp1_prob_full)} / kill ${pct(settings.ev_gate_tp1_prob_kill)} / mid ${pct(settings.ev_gate_qty_scale_mid)} / low ${pct(settings.ev_gate_qty_scale_low)}`,
     `4차 EV/시간가치층 policy ${evPolicy || "N/A"}`,
     `5차 WAIT 타이밍층 streak ${settings.wait_one_bar_same_dir_streak_min} / chase ${ratioX(settings.wait_one_bar_chase_ratio_min)} / close ${pct(settings.wait_one_bar_last_close_control_min)} / body ${pct(settings.wait_one_bar_last_dir_body_min)} / wick ${pct(settings.wait_one_bar_last_opposite_wick_max)} / move1 ${pct(settings.wait_one_bar_recent_move1_pct_min)} / counter ${settings.wait_one_bar_counter_dir_bars_max}${febtShadow.sampled_n > 0 ? ` / disagree ${febtShadow.disagree_n} / fallback ${febtShadow.fallback_n}` : ""}`,
   ];
@@ -828,6 +828,8 @@ function summarizeEvEvaluatedEntries(intents = [], drops = [], { exchange, tf, f
     if (
       f.ev_gate_tp1_reach_prob !== undefined
       || f.ev_gate_tp1_reach_prob_lower_bound !== undefined
+      || f.ev_gate_exit_value_prob !== undefined
+      || f.ev_gate_exit_value_prob_lower_bound !== undefined
       || f.ev_gate_action !== undefined
     ) {
       evaluatedN += 1;
@@ -2647,9 +2649,9 @@ function renderMarkdown({ nowMeta, current, previous, recommendations, settings,
   lines.push(`- 1차 상태/무결성: ${recommendations.QUALITY.action} / ${recommendations.QUALITY.reason}`);
   lines.push(`- 2차 진입 품질: ${recommendations.AI.action} / ${recommendations.AI.reason}`);
   lines.push(`- 3차 상태 기반 Soft Sizing: ${recommendations.MARKET.action} / ${recommendations.MARKET.reason}`);
-  lines.push(`- 4차 EV/시간가치층 참조: 기본 threshold ${pct(settings.ev_gate_tp1_prob_min)} / ${LIVE_ENTRY_LABEL} threshold ${pct(settings.ev_gate_tp1_prob_min_early)}`);
+  lines.push(`- 4차 EV/시간가치층 참조: 복합 기대값 하한 기본 ${pct(settings.ev_gate_tp1_prob_min)} / ${LIVE_ENTRY_LABEL} threshold ${pct(settings.ev_gate_tp1_prob_min_early)}`);
   lines.push(`- 3차 상태 기반 Soft Sizing 세부: neutral ${pct(settings.ai_bias_gate_neutral_mult)} / opposite ${pct(settings.ai_bias_gate_opposite_mult)} / strong score ${pct(settings.ai_bias_gate_strong_opposite_score)} / strong conf ${pct(settings.ai_bias_gate_strong_opposite_conf)}`);
-  lines.push(`- 4차 EV/시간가치층 band: full ${pct(settings.ev_gate_tp1_prob_full)} / kill ${pct(settings.ev_gate_tp1_prob_kill)} / mid ${pct(settings.ev_gate_qty_scale_mid)} / low ${pct(settings.ev_gate_qty_scale_low)}`);
+  lines.push(`- 4차 EV/시간가치층 복합 기대값 band: full ${pct(settings.ev_gate_tp1_prob_full)} / kill ${pct(settings.ev_gate_tp1_prob_kill)} / mid ${pct(settings.ev_gate_qty_scale_mid)} / low ${pct(settings.ev_gate_qty_scale_low)}`);
   lines.push(`- 5차 WAIT 타이밍층: streak ${settings.wait_one_bar_same_dir_streak_min} / chase ${ratioX(settings.wait_one_bar_chase_ratio_min)} / close ${pct(settings.wait_one_bar_last_close_control_min)} / body ${pct(settings.wait_one_bar_last_dir_body_min)} / wick ${pct(settings.wait_one_bar_last_opposite_wick_max)} / move1 ${pct(settings.wait_one_bar_recent_move1_pct_min)} / counter ${settings.wait_one_bar_counter_dir_bars_max}`);
   if (artifacts.febt_phase0_summary) {
     lines.push(`- FEBT Phase0: coverage ${pct(artifacts.febt_phase0_summary.legacy_wait_coverage_rate)} / observed ${artifacts.febt_phase0_summary.legacy_wait_observed_chain_n || 0} / immediate win ${pct(artifacts.febt_phase0_summary.immediate_win_rate)} / saved_loss ${pct(artifacts.febt_phase0_summary.saved_loss_pct)} / missed_gain ${pct(artifacts.febt_phase0_summary.missed_gain_pct)} / delta ${signedPct(artifacts.febt_phase0_summary.saved_loss_minus_missed_gain)}`);
@@ -2948,9 +2950,13 @@ async function main() {
   }
 
   const weeklyPineReport = findLatestFile(/_weekly_pine_upgrade\.md$/);
-  const evTuneReport = fs.existsSync(path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.md"))
-    ? { filePath: path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.md") }
-    : findLatestFile(/_ev_tp1_threshold_tune\.md$/);
+  const evCompositeTuneLatestMd = path.join(OPS_DAILY_DIR, "ev_composite_threshold_tune_latest.md");
+  const evLegacyTuneLatestMd = path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.md");
+  const evTuneReport = fs.existsSync(evCompositeTuneLatestMd)
+    ? { filePath: evCompositeTuneLatestMd }
+    : (fs.existsSync(evLegacyTuneLatestMd)
+      ? { filePath: evLegacyTuneLatestMd }
+      : findLatestFile(/_ev_(tp1|composite)_threshold_tune\.md$/));
   const waitTuneReport = fs.existsSync(path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.md"))
     ? { filePath: path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.md") }
     : findLatestFile(/_wait_one_bar_tune\.md$/);

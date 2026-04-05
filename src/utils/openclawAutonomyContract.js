@@ -173,6 +173,8 @@ function deriveOpenClawAutonomyContract({
   executionServingContract = null,
   mlModelContract = null,
   mlPromotionGate = null,
+  evGateCompositePolicy = null,
+  candidates = null,
 } = {}) {
   const objectiveSummary = readSummary(objective);
   const objectiveSupervisorRaw = unwrapRawReport(objectiveSupervisor) || {};
@@ -205,6 +207,13 @@ function deriveOpenClawAutonomyContract({
   const executionServingContractSummary = readSummary(executionServingContract);
   const mlModelContractSummary = readSummary(mlModelContract);
   const mlPromotionGateSummary = readSummary(mlPromotionGate);
+  const evGateCompositePolicySummary = readSummary(evGateCompositePolicy);
+  const candidatesRaw = unwrapRawReport(candidates) || {};
+  const candidatesSummary = readSummary(candidates);
+  const candidateRows = Array.isArray(candidatesRaw.rows) ? candidatesRaw.rows : [];
+  const topCandidateId = String(candidatesSummary.top_candidate_id || "").trim() || null;
+  const topCandidateRow = candidateRows.find((row) => String(row && row.candidate_id || "").trim() === topCandidateId) || null;
+  const evCandidateRow = candidateRows.find((row) => String(row && row.scope || "").trim().toUpperCase() === "EV") || null;
   const executionModelStatus = toUpper(executionModelSummary.status) || "N_A";
   const executionFillInferenceStatus = toUpper(executionFillInferenceSummary.status) || "N_A";
   const executionScopeInferenceStatus = toUpper(executionScopeInferenceSummary.status) || "N_A";
@@ -527,9 +536,33 @@ function deriveOpenClawAutonomyContract({
       execution_serving_stage: String(executionServingContractSummary.serving_stage || "").trim() || null,
       execution_serving_decision: String(executionServingContractSummary.serving_decision || "").trim() || null,
       execution_serving_shadow_ready: executionServingContractSummary.shadow_ready === true,
+      execution_serving_scope_train_run_aligned: executionServingContractSummary.scope_train_run_aligned === true,
+      execution_serving_scope_registry_aligned: executionServingContractSummary.scope_registry_aligned === true,
       execution_serving_preferred_model_family: String(executionServingContractSummary.preferred_model_family || "").trim() || null,
       execution_serving_preferred_model_kind: String(executionServingContractSummary.preferred_model_kind || "").trim() || null,
       execution_serving_preferred_model_artifact_id: String(executionServingContractSummary.preferred_model_artifact_id || "").trim() || null,
+      ev_gate_policy_status: String(evGateCompositePolicySummary.status || "").trim() || null,
+      ev_gate_policy_basis: String(evGateCompositePolicySummary.policy_basis || "").trim() || null,
+      ev_gate_canonical_policy_version: String(evGateCompositePolicySummary.canonical_policy_version || "").trim() || null,
+      ev_gate_compatibility_policy_version: String(evGateCompositePolicySummary.compatibility_policy_version || "").trim() || null,
+      ev_gate_threshold_metric: String(evGateCompositePolicySummary.threshold_metric || "").trim() || null,
+      ev_gate_threshold_metric_family: String(evGateCompositePolicySummary.threshold_metric_family || "").trim() || null,
+      ev_gate_compatibility_drop_reason: String(evGateCompositePolicySummary.compatibility_drop_reason || "").trim() || null,
+      ev_gate_default_tp0_pct: toNum(evGateCompositePolicySummary.default_tp0_pct),
+      ev_gate_default_tp0_qty_ratio: toNum(evGateCompositePolicySummary.default_tp0_qty_ratio),
+      ev_gate_default_tp1_pct: toNum(evGateCompositePolicySummary.default_tp1_pct),
+      ev_gate_default_sl_pct: toNum(evGateCompositePolicySummary.default_sl_pct),
+      ev_gate_legacy_threshold_setting_keys: Array.isArray(evGateCompositePolicySummary.legacy_threshold_setting_keys)
+        ? evGateCompositePolicySummary.legacy_threshold_setting_keys.map((row) => String(row || "").trim()).filter(Boolean)
+        : [],
+      ev_gate_tp1_prob_min_global: toNum(evGateCompositePolicySummary.tp1_prob_min_global),
+      ev_gate_tp1_prob_min_early: toNum(evGateCompositePolicySummary.tp1_prob_min_early),
+      ev_gate_tp1_prob_min_core: toNum(evGateCompositePolicySummary.tp1_prob_min_core),
+      self_evolution_top_candidate_id: topCandidateId,
+      self_evolution_top_candidate_canonical_id: String(topCandidateRow && topCandidateRow.canonical_candidate_id || "").trim() || null,
+      self_evolution_top_candidate_scope: String(topCandidateRow && topCandidateRow.scope || "").trim() || null,
+      ev_candidate_id: String(evCandidateRow && evCandidateRow.candidate_id || "").trim() || null,
+      ev_candidate_canonical_id: String(evCandidateRow && evCandidateRow.canonical_candidate_id || "").trim() || null,
       ml_model_contract_status: mlModelContractStatus,
       ml_model_contract_deployment_stage: String(mlModelContractSummary.deployment_stage || "").trim() || null,
       ml_model_contract_canary_gate_status: String(mlModelContractSummary.canary_gate_status || "").trim() || null,
@@ -538,6 +571,8 @@ function deriveOpenClawAutonomyContract({
       ml_promotion_gate_status: mlPromotionGateStatus,
       ml_promotion_stage: String(mlPromotionGateSummary.promotion_stage || "").trim() || null,
       ml_promotion_decision: String(mlPromotionGateSummary.promotion_decision || "").trim() || null,
+      ml_promotion_model_specific_canary_gate_status: String(mlPromotionGateSummary.model_specific_canary_gate_status || "").trim() || null,
+      ml_promotion_model_specific_canary_ready: mlPromotionGateSummary.model_specific_canary_ready === true,
       ml_promotion_preferred_model_family: String(mlPromotionGateSummary.preferred_model_family || "").trim() || null,
       ml_promotion_preferred_model_artifact_id: String(mlPromotionGateSummary.preferred_model_artifact_id || "").trim() || null,
       execution_bottleneck_delta_status: executionBottleneckDeltaStatus,
@@ -717,9 +752,33 @@ function deriveOpenClawAutonomyContract({
       execution_serving_stage: String(executionServingContractSummary.serving_stage || "").trim() || null,
       execution_serving_decision: String(executionServingContractSummary.serving_decision || "").trim() || null,
       execution_serving_shadow_ready: executionServingContractSummary.shadow_ready === true,
+      execution_serving_scope_train_run_aligned: executionServingContractSummary.scope_train_run_aligned === true,
+      execution_serving_scope_registry_aligned: executionServingContractSummary.scope_registry_aligned === true,
       execution_serving_preferred_model_family: String(executionServingContractSummary.preferred_model_family || "").trim() || null,
       execution_serving_preferred_model_kind: String(executionServingContractSummary.preferred_model_kind || "").trim() || null,
       execution_serving_preferred_model_artifact_id: String(executionServingContractSummary.preferred_model_artifact_id || "").trim() || null,
+      ev_gate_policy_status: String(evGateCompositePolicySummary.status || "").trim() || null,
+      ev_gate_policy_basis: String(evGateCompositePolicySummary.policy_basis || "").trim() || null,
+      ev_gate_canonical_policy_version: String(evGateCompositePolicySummary.canonical_policy_version || "").trim() || null,
+      ev_gate_compatibility_policy_version: String(evGateCompositePolicySummary.compatibility_policy_version || "").trim() || null,
+      ev_gate_threshold_metric: String(evGateCompositePolicySummary.threshold_metric || "").trim() || null,
+      ev_gate_threshold_metric_family: String(evGateCompositePolicySummary.threshold_metric_family || "").trim() || null,
+      ev_gate_compatibility_drop_reason: String(evGateCompositePolicySummary.compatibility_drop_reason || "").trim() || null,
+      ev_gate_default_tp0_pct: toNum(evGateCompositePolicySummary.default_tp0_pct),
+      ev_gate_default_tp0_qty_ratio: toNum(evGateCompositePolicySummary.default_tp0_qty_ratio),
+      ev_gate_default_tp1_pct: toNum(evGateCompositePolicySummary.default_tp1_pct),
+      ev_gate_default_sl_pct: toNum(evGateCompositePolicySummary.default_sl_pct),
+      ev_gate_legacy_threshold_setting_keys: Array.isArray(evGateCompositePolicySummary.legacy_threshold_setting_keys)
+        ? evGateCompositePolicySummary.legacy_threshold_setting_keys.map((row) => String(row || "").trim()).filter(Boolean)
+        : [],
+      ev_gate_tp1_prob_min_global: toNum(evGateCompositePolicySummary.tp1_prob_min_global),
+      ev_gate_tp1_prob_min_early: toNum(evGateCompositePolicySummary.tp1_prob_min_early),
+      ev_gate_tp1_prob_min_core: toNum(evGateCompositePolicySummary.tp1_prob_min_core),
+      self_evolution_top_candidate_id: topCandidateId,
+      self_evolution_top_candidate_canonical_id: String(topCandidateRow && topCandidateRow.canonical_candidate_id || "").trim() || null,
+      self_evolution_top_candidate_scope: String(topCandidateRow && topCandidateRow.scope || "").trim() || null,
+      ev_candidate_id: String(evCandidateRow && evCandidateRow.candidate_id || "").trim() || null,
+      ev_candidate_canonical_id: String(evCandidateRow && evCandidateRow.canonical_candidate_id || "").trim() || null,
       execution_scope_train_run_status: mlTrainRunScopeStatus,
       execution_scope_train_run_id: String(mlTrainRunScopeSummary.train_run_id || "").trim() || null,
       execution_scope_train_run_model_artifact_id: String(mlTrainRunScopeSummary.model_artifact_id || "").trim() || null,
@@ -738,6 +797,8 @@ function deriveOpenClawAutonomyContract({
       ml_promotion_gate_status: mlPromotionGateStatus,
       ml_promotion_stage: String(mlPromotionGateSummary.promotion_stage || "").trim() || null,
       ml_promotion_decision: String(mlPromotionGateSummary.promotion_decision || "").trim() || null,
+      ml_promotion_model_specific_canary_gate_status: String(mlPromotionGateSummary.model_specific_canary_gate_status || "").trim() || null,
+      ml_promotion_model_specific_canary_ready: mlPromotionGateSummary.model_specific_canary_ready === true,
       ml_promotion_preferred_model_family: String(mlPromotionGateSummary.preferred_model_family || "").trim() || null,
       ml_promotion_preferred_model_artifact_id: String(mlPromotionGateSummary.preferred_model_artifact_id || "").trim() || null,
       execution_stage_latency_status: executionStageLatencyStatus,
