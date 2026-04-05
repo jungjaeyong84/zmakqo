@@ -124,6 +124,22 @@ function deriveEntryReasonProfile(features = null) {
   ].join("|");
 }
 
+function deriveSameDirAddFlag(features = null) {
+  const bag = normalizeFeatureBag(features);
+  return toUpper(bag.reason) === "IN_POSITION_SAME_DIR" && toUpper(bag.action) === "ADD";
+}
+
+function deriveCurrentBarFastFillFlag({ entryScheduleProfile = null, wasFilled = false, createdToFillMs = null } = {}) {
+  return toUpper(entryScheduleProfile) === "EXEC_CURRENT_BAR"
+    && wasFilled === true
+    && Number.isFinite(toNum(createdToFillMs))
+    && toNum(createdToFillMs) <= 5000;
+}
+
+function deriveRuntimeExceptionWithoutNoFillReasonFlag({ noFillReasonFamily = null, noFillReason = null } = {}) {
+  return toUpper(noFillReasonFamily) === "RUNTIME_ERROR" && !toUpper(noFillReason);
+}
+
 function derivePolicyBlockHint({
   noFillReason = null,
   noFillReasonFamily = null,
@@ -595,6 +611,16 @@ function buildExecutionModelRows({ intents = [], fills = [], webhooks = [], webh
       wasFilled,
       createdToFillMs,
     });
+    features.same_dir_add = deriveSameDirAddFlag(features);
+    features.current_bar_fast_fill = deriveCurrentBarFastFillFlag({
+      entryScheduleProfile,
+      wasFilled,
+      createdToFillMs,
+    });
+    features.runtime_exception_without_no_fill_reason = deriveRuntimeExceptionWithoutNoFillReasonFlag({
+      noFillReasonFamily,
+      noFillReason,
+    });
     return {
       schema_version: EXECUTION_MODEL_DATASET_SCHEMA_VERSION,
       row_id: intentId || String(intent.signal_id || intent.id || "").trim() || null,
@@ -1015,6 +1041,9 @@ module.exports = {
     deriveSignalToIntentBucket,
     deriveNormalizedProConflict,
     derivePolicyBlockHint,
+    deriveSameDirAddFlag,
+    deriveCurrentBarFastFillFlag,
+    deriveRuntimeExceptionWithoutNoFillReasonFlag,
     deriveWebhookDelayCause,
     isOperationalSource,
     buildWebhookOutcomeIndex,
