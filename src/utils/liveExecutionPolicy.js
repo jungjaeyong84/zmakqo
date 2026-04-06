@@ -1095,53 +1095,124 @@ function evaluateLiveEntryPolicy({
     };
   }
 
-  const snapshot = snapshotOverride || loadPolicySnapshot();
-  const allocatorRow = snapshot && snapshot.allocatorByMarket ? snapshot.allocatorByMarket.get(market) : null;
-  const quarantineRow = snapshot && snapshot.quarantineByMarket ? snapshot.quarantineByMarket.get(market) : null;
-  const qualityRow = snapshot && snapshot.qualityByMarket ? snapshot.qualityByMarket.get(market) : null;
-  const qualitySummary = snapshot && snapshot.quality && typeof snapshot.quality === "object" ? snapshot.quality : {};
-  const objectiveSummary = snapshot && snapshot.objective && typeof snapshot.objective === "object" ? snapshot.objective : {};
-  const policyPlanSummary = snapshot && snapshot.policyPlan && typeof snapshot.policyPlan === "object" ? snapshot.policyPlan : {};
-  const policyPlanRow = snapshot && snapshot.policyPlanByMarket ? snapshot.policyPlanByMarket.get(market) : null;
-
-  const action = upper(allocatorRow && allocatorRow.recommended_action);
-  const allocationScore = toNum(allocatorRow && allocatorRow.allocation_score);
-  const quarantineReason = upper((quarantineRow && (quarantineRow.quarantine_reason || (Array.isArray(quarantineRow.quarantine_reasons) ? quarantineRow.quarantine_reasons[0] : null))) || null);
-  const policyPlanGlobalScale = toNum(policyPlanSummary.global_qty_scale);
-  const policyPlanMarketScale = toNum(policyPlanRow && policyPlanRow.qty_scale);
-  const policyPlanMarketMode = upper(policyPlanRow && policyPlanRow.mode);
-  const policyPlanStatus = upper(policyPlanSummary.status);
-  const objectiveScale = deriveObjectiveScale(objectiveSummary);
-  const qualityGlobalScale = deriveGlobalExecutionQualityScale(qualitySummary);
-
-  const qualityHard = deriveQualityHardBlock(qualityRow);
-  const qualityGlobalHard = deriveGlobalQualityHardBlock(qualitySummary, market);
-  const lineageSlo = deriveLineageSloBlock(snapshot);
-  const learningEpochRelease = deriveLearningEpochRelease(snapshot);
   const desiredSide = deriveDesiredPositionSide({ features: baseFeatures });
-  const portfolioCluster = derivePortfolioClusterGuard({
-    snapshot,
-    exchange: ex,
-    market,
-    desiredSide,
-    qtyPct: qty,
-  });
-  const otherServerPolicyWatchOnlyBlocked = DRIFT_REMEDIATION_ENABLED
-    && DRIFT_REMEDIATION_WATCH_ONLY_BLOCK
-    && !learningEpochRelease.active
-    && !!(snapshot && snapshot.driftOtherServerPolicyWatchOnlySet && snapshot.driftOtherServerPolicyWatchOnlySet.has(market));
-  const quarantineBlocked = QUARANTINE_HARD_BLOCK && !learningEpochRelease.active && !!(quarantineRow || action === "QUARANTINE");
-  const qualityBlocked = QUALITY_HARD_BLOCK && qualityHard.blocked;
-  const qualityGlobalBlocked = QUALITY_HARD_BLOCK && qualityGlobalHard.blocked;
-  const policyPlanWatchOnlyBlocked = applyPolicyPlan
-    && POLICY_PLAN_WATCH_ONLY_BLOCK
-    && !learningEpochRelease.active
-    && policyPlanMarketMode === "WATCH_ONLY";
-  const policyPlanHoldBlocked = applyPolicyPlan
-    && POLICY_PLAN_HOLD_BLOCK
-    && !learningEpochRelease.active
-    && policyPlanStatus === "HOLD"
-    && (policyPlanMarketMode === "WATCH_ONLY" || (Number.isFinite(policyPlanMarketScale) && policyPlanMarketScale <= 0));
+  function derivePolicyState(activeSnapshot) {
+    const allocatorRow = activeSnapshot && activeSnapshot.allocatorByMarket ? activeSnapshot.allocatorByMarket.get(market) : null;
+    const quarantineRow = activeSnapshot && activeSnapshot.quarantineByMarket ? activeSnapshot.quarantineByMarket.get(market) : null;
+    const qualityRow = activeSnapshot && activeSnapshot.qualityByMarket ? activeSnapshot.qualityByMarket.get(market) : null;
+    const qualitySummary = activeSnapshot && activeSnapshot.quality && typeof activeSnapshot.quality === "object" ? activeSnapshot.quality : {};
+    const objectiveSummary = activeSnapshot && activeSnapshot.objective && typeof activeSnapshot.objective === "object" ? activeSnapshot.objective : {};
+    const policyPlanSummary = activeSnapshot && activeSnapshot.policyPlan && typeof activeSnapshot.policyPlan === "object" ? activeSnapshot.policyPlan : {};
+    const policyPlanRow = activeSnapshot && activeSnapshot.policyPlanByMarket ? activeSnapshot.policyPlanByMarket.get(market) : null;
+    const action = upper(allocatorRow && allocatorRow.recommended_action);
+    const allocationScore = toNum(allocatorRow && allocatorRow.allocation_score);
+    const quarantineReason = upper((quarantineRow && (quarantineRow.quarantine_reason || (Array.isArray(quarantineRow.quarantine_reasons) ? quarantineRow.quarantine_reasons[0] : null))) || null);
+    const policyPlanGlobalScale = toNum(policyPlanSummary.global_qty_scale);
+    const policyPlanMarketScale = toNum(policyPlanRow && policyPlanRow.qty_scale);
+    const policyPlanMarketMode = upper(policyPlanRow && policyPlanRow.mode);
+    const policyPlanStatus = upper(policyPlanSummary.status);
+    const objectiveScale = deriveObjectiveScale(objectiveSummary);
+    const qualityGlobalScale = deriveGlobalExecutionQualityScale(qualitySummary);
+    const qualityHard = deriveQualityHardBlock(qualityRow);
+    const qualityGlobalHard = deriveGlobalQualityHardBlock(qualitySummary, market);
+    const lineageSlo = deriveLineageSloBlock(activeSnapshot);
+    const learningEpochRelease = deriveLearningEpochRelease(activeSnapshot);
+    const portfolioCluster = derivePortfolioClusterGuard({
+      snapshot: activeSnapshot,
+      exchange: ex,
+      market,
+      desiredSide,
+      qtyPct: qty,
+    });
+    const otherServerPolicyWatchOnlyBlocked = DRIFT_REMEDIATION_ENABLED
+      && DRIFT_REMEDIATION_WATCH_ONLY_BLOCK
+      && !learningEpochRelease.active
+      && !!(activeSnapshot && activeSnapshot.driftOtherServerPolicyWatchOnlySet && activeSnapshot.driftOtherServerPolicyWatchOnlySet.has(market));
+    const quarantineBlocked = QUARANTINE_HARD_BLOCK && !learningEpochRelease.active && !!(quarantineRow || action === "QUARANTINE");
+    const qualityBlocked = QUALITY_HARD_BLOCK && qualityHard.blocked;
+    const qualityGlobalBlocked = QUALITY_HARD_BLOCK && qualityGlobalHard.blocked;
+    const policyPlanWatchOnlyBlocked = applyPolicyPlan
+      && POLICY_PLAN_WATCH_ONLY_BLOCK
+      && !learningEpochRelease.active
+      && policyPlanMarketMode === "WATCH_ONLY";
+    const policyPlanHoldBlocked = applyPolicyPlan
+      && POLICY_PLAN_HOLD_BLOCK
+      && !learningEpochRelease.active
+      && policyPlanStatus === "HOLD"
+      && (policyPlanMarketMode === "WATCH_ONLY" || (Number.isFinite(policyPlanMarketScale) && policyPlanMarketScale <= 0));
+    return {
+      allocatorRow,
+      quarantineRow,
+      qualityRow,
+      qualitySummary,
+      objectiveSummary,
+      policyPlanSummary,
+      policyPlanRow,
+      action,
+      allocationScore,
+      quarantineReason,
+      policyPlanGlobalScale,
+      policyPlanMarketScale,
+      policyPlanMarketMode,
+      policyPlanStatus,
+      objectiveScale,
+      qualityGlobalScale,
+      qualityHard,
+      qualityGlobalHard,
+      lineageSlo,
+      learningEpochRelease,
+      portfolioCluster,
+      otherServerPolicyWatchOnlyBlocked,
+      quarantineBlocked,
+      qualityBlocked,
+      qualityGlobalBlocked,
+      policyPlanWatchOnlyBlocked,
+      policyPlanHoldBlocked,
+    };
+  }
+
+  let snapshot = snapshotOverride || loadPolicySnapshot();
+  let derived = derivePolicyState(snapshot);
+  if (
+    !snapshotOverride
+    && derived.lineageSlo
+    && derived.lineageSlo.blocked === true
+    && String(derived.lineageSlo.reason || "").trim().toUpperCase() === "LINEAGE_SLO_FILL_INTENT_NULL_RATE"
+    && derived.lineageSlo.has_entry_fill_intent_metric !== true
+  ) {
+    snapshot = loadPolicySnapshot({ force: true });
+    derived = derivePolicyState(snapshot);
+  }
+
+  const {
+    allocatorRow,
+    quarantineRow,
+    qualityRow,
+    qualitySummary,
+    objectiveSummary,
+    policyPlanSummary,
+    policyPlanRow,
+    action,
+    allocationScore,
+    quarantineReason,
+    policyPlanGlobalScale,
+    policyPlanMarketScale,
+    policyPlanMarketMode,
+    policyPlanStatus,
+    objectiveScale,
+    qualityGlobalScale,
+    qualityHard,
+    qualityGlobalHard,
+    lineageSlo,
+    learningEpochRelease,
+    portfolioCluster,
+    otherServerPolicyWatchOnlyBlocked,
+    quarantineBlocked,
+    qualityBlocked,
+    qualityGlobalBlocked,
+    policyPlanWatchOnlyBlocked,
+    policyPlanHoldBlocked,
+  } = derived;
 
   const commonTracePatch = {
     ...baseFeatures,
