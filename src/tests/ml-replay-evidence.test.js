@@ -18,6 +18,13 @@ const { buildMlReplayEvidence } = require("../utils/mlReplayEvidence");
         {
           candidate_id: "EV_TP1_THRESHOLD_TUNE",
           display_candidate_id: "EV_COMPOSITE_THRESHOLD_TUNE",
+          canonical_candidate_id: "EV_COMPOSITE_THRESHOLD_TUNE",
+          ev_policy_review_mode: "PROFILE_CONDITIONAL_REVIEW",
+          ev_profile_review_target_n: 2,
+          ev_profile_top_return_drag_profile: "EARLY|LONG|PINE_DROP_STALE_POS_TO_ENTRY|PREPARE",
+          ev_profile_top_return_drag_driver: "FAILURE_RISK_HEAVY",
+          ev_profile_top_mixed_profile: "EARLY|SHORT|PINE_DROP_STALE_POS_TO_ENTRY|ARMED",
+          ev_profile_top_mixed_driver: "DELAY_LATE_RISK_HEAVY",
           validation_verdict: "WARN",
           candidate_objective_delta: -0.0584,
           risk_flags: ["EV_TUNER_STALE", "EV_TUNER_INSUFFICIENT_SAMPLE"],
@@ -36,6 +43,10 @@ const { buildMlReplayEvidence } = require("../utils/mlReplayEvidence");
   assert.strictEqual(blocked.replay_ready, false);
   assert.strictEqual(blocked.evidence_status, "REPLAY_WARN_INSUFFICIENT_SAMPLE");
   assert.strictEqual(blocked.dominant_issue, "EV_TUNER_INSUFFICIENT_SAMPLE");
+  assert.strictEqual(blocked.best_candidate_review_mode, "PROFILE_CONDITIONAL_REVIEW");
+  assert.strictEqual(blocked.best_candidate_profile_target_n, 2);
+  assert.strictEqual(blocked.best_candidate_top_return_drag_driver, "FAILURE_RISK_HEAVY");
+  assert.strictEqual(blocked.best_candidate_top_mixed_driver, "DELAY_LATE_RISK_HEAVY");
   assert.ok(blocked.blocking_reasons.includes("REPLAY_VERDICT_WARN"));
 
   const ready = buildMlReplayEvidence({

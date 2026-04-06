@@ -93,6 +93,15 @@ function run() {
         reason: "RECOVERY_FIRST",
       },
     },
+    policyParameterPlan: {
+      summary: {
+        ev_policy_review_mode: "PROFILE_CONDITIONAL_REVIEW",
+        ev_policy_top_return_drag_profile: "EARLY|LONG|PINE_DROP_STALE_POS_TO_ENTRY|PREPARE",
+        ev_policy_top_return_drag_driver: "FAILURE_RISK_HEAVY",
+        ev_policy_top_mixed_profile: "EARLY|SHORT|PINE_DROP_STALE_POS_TO_ENTRY|ARMED",
+        ev_policy_top_mixed_driver: "DELAY_LATE_RISK_HEAVY",
+      },
+    },
     changeControl: { raw: { auto_rollback: { rollback_file_path: "/tmp/rollback.json" } } },
     memoryLedger: {
       raw: {
@@ -129,6 +138,13 @@ function run() {
   assert.strictEqual(ev.canonical_candidate_id, "EV_COMPOSITE_THRESHOLD_TUNE");
   assert.strictEqual(ev.policy_basis, "TP_COMPOSITE_EXIT_VALUE_V1");
   assert.strictEqual(ev.threshold_metric, "exit_value_lower_bound");
+  assert.strictEqual(ev.ev_policy_review_mode, "PROFILE_CONDITIONAL_REVIEW");
+  assert.strictEqual(ev.ev_profile_review_target_n, 2);
+  assert.strictEqual(ev.ev_profile_top_return_drag_profile, "EARLY|LONG|PINE_DROP_STALE_POS_TO_ENTRY|PREPARE");
+  assert.strictEqual(ev.ev_profile_top_return_drag_driver, "FAILURE_RISK_HEAVY");
+  assert.strictEqual(ev.ev_profile_top_mixed_profile, "EARLY|SHORT|PINE_DROP_STALE_POS_TO_ENTRY|ARMED");
+  assert.strictEqual(ev.ev_profile_top_mixed_driver, "DELAY_LATE_RISK_HEAVY");
+  assert.ok(ev.risk_flags.includes("EV_PROFILE_CONDITIONAL_REVIEW"));
   assert.strictEqual(ev.canonical_migration_class, "SERVER_POLICY");
   assert.strictEqual(ev.current_deploy_unit, "SERVER_SETTINGS");
   assert.strictEqual(ev.target_deploy_unit, "SERVER_SETTINGS");

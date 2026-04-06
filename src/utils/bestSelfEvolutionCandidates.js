@@ -20,6 +20,11 @@ function unwrapRawReport(value) {
   return value;
 }
 
+function readSummary(value) {
+  const raw = unwrapRawReport(value) || {};
+  return raw.summary && typeof raw.summary === "object" ? raw.summary : raw;
+}
+
 function normalizeArray(value, fallback = ["ALL"]) {
   if (Array.isArray(value) && value.length) {
     return value.map((row) => String(row || "").trim().toUpperCase()).filter(Boolean);
@@ -191,6 +196,52 @@ function applyMemoryGuards(candidate = {}, memoryContext = null) {
   return next;
 }
 
+function classifyStalePosDriver(row = {}) {
+  const failure = toNum(row.failure_risk);
+  const delay = toNum(row.delay_cost);
+  const late = toNum(row.late_risk);
+  if (failure != null && delay != null && late != null) {
+    if (failure >= Math.max(delay, late)) return "FAILURE_RISK_HEAVY";
+    if ((delay + late) / 2 >= failure) return "DELAY_LATE_RISK_HEAVY";
+  }
+  if (failure != null && failure >= 0.5) return "FAILURE_RISK_HEAVY";
+  if ((delay != null && delay >= 0.4) || (late != null && late >= 0.35)) return "DELAY_LATE_RISK_HEAVY";
+  return "MIXED_STALE_POS_RISK";
+}
+
+function buildEvProfileReviewTargets(policyParameterPlan = null) {
+  const summary = readSummary(policyParameterPlan);
+  const reviewMode = String(summary.ev_policy_review_mode || "").trim().toUpperCase() || "GLOBAL_REVIEW_ONLY";
+  const targets = [];
+  const topReturnDragProfile = String(summary.ev_policy_top_return_drag_profile || "").trim().toUpperCase() || null;
+  const topReturnDragDriver = String(summary.ev_policy_top_return_drag_driver || "").trim().toUpperCase() || null;
+  const topMixedProfile = String(summary.ev_policy_top_mixed_profile || "").trim().toUpperCase() || null;
+  const topMixedDriver = String(summary.ev_policy_top_mixed_driver || "").trim().toUpperCase() || null;
+  if (topReturnDragProfile) {
+    targets.push({
+      role: "TOP_RETURN_DRAG",
+      profile: topReturnDragProfile,
+      driver: topReturnDragDriver || classifyStalePosDriver({}),
+    });
+  }
+  if (topMixedProfile) {
+    targets.push({
+      role: "TOP_MIXED",
+      profile: topMixedProfile,
+      driver: topMixedDriver || classifyStalePosDriver({}),
+    });
+  }
+  return {
+    review_mode: reviewMode,
+    target_n: targets.length,
+    targets,
+    top_return_drag_profile: topReturnDragProfile,
+    top_return_drag_driver: topReturnDragDriver,
+    top_mixed_profile: topMixedProfile,
+    top_mixed_driver: topMixedDriver,
+  };
+}
+
 function buildPineCandidates({ patchCandidates, tf = "15m", contract = null, marketGuard = null, changeControl = null } = {}) {
   const raw = unwrapRawReport(patchCandidates);
   const rows = Array.isArray(raw && raw.candidates) ? raw.candidates : [];
@@ -299,7 +350,7 @@ function buildMlCandidates({ ml, tf = "15m", contract = null, marketGuard = null
   return out;
 }
 
-function buildEvCandidate({ ev, tf = "15m", contract = null, marketGuard = null, objectiveSupervisor = null } = {}) {
+function buildEvCandidate({ ev, tf = "15m", contract = null, marketGuard = null, objectiveSupervisor = null, policyParameterPlan = null } = {}) {
   const raw = unwrapRawReport(ev);
   if (!raw || typeof raw !== "object") return [];
   const supervisor = unwrapRawReport(objectiveSupervisor) || {};
@@ -319,6 +370,7 @@ function buildEvCandidate({ ev, tf = "15m", contract = null, marketGuard = null,
   const evLayerReason = String(evLayer.tuner_reason || "").trim().toUpperCase();
   const staleEvTuner = evLayerReason === "STALE_ARTIFACT" || raw.fresh === false;
   const insufficientSample = evReason === "INSUFFICIENT_SAMPLE" || evLayerReason === "INSUFFICIENT_SAMPLE";
+  const profileReview = buildEvProfileReviewTargets(policyParameterPlan);
   const evMissedRecovery = String(missedRecovery.key || "").trim().toUpperCase() === "DROP_EV_GATE_TP1_PROB";
   const evMissedRecoveryN = toNum(missedRecovery.count) || 0;
   const allowShadowFallback = raw.settings_updated !== true
@@ -375,6 +427,13 @@ function buildEvCandidate({ ev, tf = "15m", contract = null, marketGuard = null,
     policy_basis: "TP_COMPOSITE_EXIT_VALUE_V1",
     threshold_metric: "exit_value_lower_bound",
     compatibility_drop_reason: "DROP_EV_GATE_TP1_PROB",
+    ev_policy_review_mode: profileReview.review_mode,
+    ev_profile_review_target_n: profileReview.target_n,
+    ev_profile_review_targets: profileReview.targets,
+    ev_profile_top_return_drag_profile: profileReview.top_return_drag_profile,
+    ev_profile_top_return_drag_driver: profileReview.top_return_drag_driver,
+    ev_profile_top_mixed_profile: profileReview.top_mixed_profile,
+    ev_profile_top_mixed_driver: profileReview.top_mixed_driver,
     legacy_threshold_setting_keys: [
       "ev_gate_tp1_prob_min",
       "ev_gate_tp1_prob_full",
@@ -394,6 +453,9 @@ function buildEvCandidate({ ev, tf = "15m", contract = null, marketGuard = null,
   if (allowShadowFallback && !candidate.risk_flags.includes("EV_SHADOW_FALLBACK")) candidate.risk_flags.push("EV_SHADOW_FALLBACK");
   if (staleEvTuner && !candidate.risk_flags.includes("EV_TUNER_STALE")) candidate.risk_flags.push("EV_TUNER_STALE");
   if (insufficientSample && !candidate.risk_flags.includes("EV_TUNER_INSUFFICIENT_SAMPLE")) candidate.risk_flags.push("EV_TUNER_INSUFFICIENT_SAMPLE");
+  if (profileReview.review_mode === "PROFILE_CONDITIONAL_REVIEW" && !candidate.risk_flags.includes("EV_PROFILE_CONDITIONAL_REVIEW")) {
+    candidate.risk_flags.push("EV_PROFILE_CONDITIONAL_REVIEW");
+  }
   return [candidate];
 }
 
@@ -519,6 +581,7 @@ function buildCandidateChangeSets({
   ml = null,
   ev = null,
   wait = null,
+  policyParameterPlan = null,
   changeControl = null,
   memoryLedger = null,
 } = {}) {
@@ -535,7 +598,7 @@ function buildCandidateChangeSets({
     ...buildPineCandidates({ patchCandidates, tf, contract, marketGuard, changeControl: unwrapRawReport(changeControl) }),
     ...buildMarketConcentrationCandidate({ objectiveSupervisor: supervisor, tf, contract }),
     ...buildMlCandidates({ ml, tf, contract, marketGuard }),
-    ...buildEvCandidate({ ev, tf, contract, marketGuard, objectiveSupervisor: supervisor }),
+    ...buildEvCandidate({ ev, tf, contract, marketGuard, objectiveSupervisor: supervisor, policyParameterPlan }),
     ...buildWaitCandidate({ wait, tf, contract, marketGuard }),
   ]
     .filter((row) => row && row.candidate_id)

@@ -186,8 +186,15 @@ function run() {
   const mixedEvShift = deriveCandidateObjectiveDelta({
     candidate_id: "EV_TP1_THRESHOLD_TUNE",
     display_candidate_id: "EV_TP1_THRESHOLD_TUNE",
+    canonical_candidate_id: "EV_COMPOSITE_THRESHOLD_TUNE",
     scope: "EV",
     direction: "SHIFT",
+    ev_policy_review_mode: "PROFILE_CONDITIONAL_REVIEW",
+    ev_profile_review_target_n: 2,
+    ev_profile_top_return_drag_profile: "EARLY|LONG|PINE_DROP_STALE_POS_TO_ENTRY|PREPARE",
+    ev_profile_top_return_drag_driver: "FAILURE_RISK_HEAVY",
+    ev_profile_top_mixed_profile: "EARLY|SHORT|PINE_DROP_STALE_POS_TO_ENTRY|ARMED",
+    ev_profile_top_mixed_driver: "DELAY_LATE_RISK_HEAVY",
     markets: ["BTCUSDT"],
     changes: [
       { key: "ev_gate_tp1_prob_full", current: 0.6, next: 0.58, direction: "LOOSEN" },
@@ -208,6 +215,9 @@ function run() {
     },
   });
   assert.strictEqual(mixedEvShift.validation_verdict, "PASS");
+  assert.strictEqual(mixedEvShift.display_candidate_id, "EV_COMPOSITE_THRESHOLD_TUNE");
+  assert.strictEqual(mixedEvShift.ev_policy_review_mode, "PROFILE_CONDITIONAL_REVIEW");
+  assert.strictEqual(mixedEvShift.ev_profile_review_target_n, 2);
   assert.strictEqual(mixedEvShift.historical_applied_n, 2);
   assert.strictEqual(mixedEvShift.candidate_objective_delta > 0, true);
   assert.deepStrictEqual(mixedEvShift.blockers, []);

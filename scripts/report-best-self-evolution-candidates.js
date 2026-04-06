@@ -27,6 +27,7 @@ const INPUTS = Object.freeze({
     ? path.join(OPS_DAILY_DIR, "ev_composite_threshold_tune_latest.json")
     : path.join(OPS_DAILY_DIR, "ev_tp1_threshold_tune_latest.json"),
   wait: path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json"),
+  policyParameterPlan: path.join(OPS_DAILY_DIR, "best_self_evolution_policy_parameter_plan_latest.json"),
   changeControl: path.join(OPS_DAILY_DIR, "pine_quality_change_control_latest.json"),
   memory: path.join(OPS_DAILY_DIR, "best_self_evolution_memory_latest.json"),
 });
@@ -64,7 +65,10 @@ function renderMarkdown(report = {}) {
     lines.push("- none");
   } else {
     for (const row of rows.slice(0, 20)) {
-      lines.push(`- ${displayCandidateId(row)}: legacy=${row.candidate_id || "N/A"} / ${row.scope}/${row.direction} / class=${row.canonical_migration_class || "N/A"} / deploy=${row.current_deploy_unit || "N/A"}->${row.target_deploy_unit || "N/A"} / status=${row.status} / ready=${row.ready_for_auto_apply ? "YES" : "NO"} / count=${row.count_guard_effect && row.count_guard_effect.projected_count_ratio_global != null ? Number(row.count_guard_effect.projected_count_ratio_global).toFixed(2) : "N/A"} / replacement=${row.replacement_effect && row.replacement_effect.projected_replacement_ratio != null ? Number(row.replacement_effect.projected_replacement_ratio).toFixed(2) : "N/A"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}`);
+      const evProfileReview = row.scope === "EV"
+        ? ` / review=${row.ev_policy_review_mode || "N/A"} / drag=${row.ev_profile_top_return_drag_profile || "N/A"}:${row.ev_profile_top_return_drag_driver || "N/A"} / mixed=${row.ev_profile_top_mixed_profile || "N/A"}:${row.ev_profile_top_mixed_driver || "N/A"}`
+        : "";
+      lines.push(`- ${displayCandidateId(row)}: legacy=${row.candidate_id || "N/A"} / ${row.scope}/${row.direction} / class=${row.canonical_migration_class || "N/A"} / deploy=${row.current_deploy_unit || "N/A"}->${row.target_deploy_unit || "N/A"} / status=${row.status} / ready=${row.ready_for_auto_apply ? "YES" : "NO"} / count=${row.count_guard_effect && row.count_guard_effect.projected_count_ratio_global != null ? Number(row.count_guard_effect.projected_count_ratio_global).toFixed(2) : "N/A"} / replacement=${row.replacement_effect && row.replacement_effect.projected_replacement_ratio != null ? Number(row.replacement_effect.projected_replacement_ratio).toFixed(2) : "N/A"} / risks=${Array.isArray(row.risk_flags) && row.risk_flags.length ? row.risk_flags.join("|") : "none"}${evProfileReview}`);
     }
   }
   lines.push("");
@@ -88,6 +92,7 @@ async function main() {
     ml: readJsonRawSafe(INPUTS.ml, null),
     ev: readJsonRawSafe(INPUTS.ev, null),
     wait: readJsonRawSafe(INPUTS.wait, null),
+    policyParameterPlan: readJsonRawSafe(INPUTS.policyParameterPlan, null),
     changeControl: readJsonRawSafe(INPUTS.changeControl, null),
     memoryLedger: readJsonRawSafe(INPUTS.memory, null),
   });
