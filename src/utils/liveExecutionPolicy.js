@@ -339,6 +339,11 @@ function readSummary(value) {
   return raw;
 }
 
+function hasLineageEntryFillIntentMetric(value) {
+  const summary = readSummary(value);
+  return !!(summary && typeof summary === "object" && summary.entry_fills_intent_id_null_rate != null);
+}
+
 function readRows(value, key = "by_market") {
   const raw = unwrapRaw(value);
   const summary = raw.summary && typeof raw.summary === "object" ? raw.summary : raw;
@@ -759,6 +764,16 @@ function selectPreferredLineageInput({
     || null
   ) || toNum(localMtimeMs);
   const sharedGeneratedAtMs = toNum(sharedSnapshot && sharedSnapshot.generatedAtMs);
+  const localHasEntryMetric = hasLineageEntryFillIntentMetric(localDoc);
+  const sharedHasEntryMetric = hasLineageEntryFillIntentMetric(sharedSnapshot && sharedSnapshot.doc);
+  if (localHasEntryMetric && !sharedHasEntryMetric) {
+    return {
+      doc: localDoc,
+      mtimeMs: localMtimeMs,
+      path: SIGNAL_LINEAGE_HEALTH_PATH,
+      source: null,
+    };
+  }
   const useShared = !!(sharedSnapshot
     && sharedSnapshot.doc
     && (!Number.isFinite(localGeneratedAtMs) || (Number.isFinite(sharedGeneratedAtMs) && sharedGeneratedAtMs > localGeneratedAtMs)));
@@ -1007,16 +1022,32 @@ function deriveLineageSloBlock(snapshot = null) {
       ? summary.entry_fills_intent_id_null_rate
       : null
   );
+  const baseMeta = {
+    stale: false,
+    report_generated_at_kst: reportGeneratedAtKst,
+    report_age_ms: reportAgeMs,
+    report_path: reportPath,
+    report_source: reportSource,
+    report_missing: false,
+    shared_refresh_pending: sharedRefreshPending === true,
+    intents_signal_doc_id_null_rate: intentSignalNull,
+    fills_signal_doc_id_null_rate: fillSignalNull,
+    fills_intent_id_null_rate: toNum(summary.fills_intent_id_null_rate),
+    entry_fills_intent_id_null_rate: fillIntentNull,
+    entry_fills_24h_n: toNum(summary.entry_fills_24h_n),
+    has_entry_fill_intent_metric: hasEntryFillIntentMetric,
+    max_report_age_ms: LINEAGE_SLO_MAX_REPORT_AGE_MS,
+  };
   if (Number.isFinite(intentSignalNull) && intentSignalNull > LINEAGE_SLO_MAX_INTENT_SIGNAL_NULL_RATE) {
-    return { blocked: LINEAGE_SLO_FAIL_CLOSED, reason: "LINEAGE_SLO_INTENT_SIGNAL_NULL_RATE", stale: false };
+    return { blocked: LINEAGE_SLO_FAIL_CLOSED, reason: "LINEAGE_SLO_INTENT_SIGNAL_NULL_RATE", ...baseMeta };
   }
   if (Number.isFinite(fillSignalNull) && fillSignalNull > LINEAGE_SLO_MAX_FILL_SIGNAL_NULL_RATE) {
-    return { blocked: LINEAGE_SLO_FAIL_CLOSED, reason: "LINEAGE_SLO_FILL_SIGNAL_NULL_RATE", stale: false };
+    return { blocked: LINEAGE_SLO_FAIL_CLOSED, reason: "LINEAGE_SLO_FILL_SIGNAL_NULL_RATE", ...baseMeta };
   }
   if (Number.isFinite(fillIntentNull) && fillIntentNull > LINEAGE_SLO_MAX_FILL_INTENT_NULL_RATE) {
-    return { blocked: LINEAGE_SLO_FAIL_CLOSED, reason: "LINEAGE_SLO_FILL_INTENT_NULL_RATE", stale: false };
+    return { blocked: LINEAGE_SLO_FAIL_CLOSED, reason: "LINEAGE_SLO_FILL_INTENT_NULL_RATE", ...baseMeta };
   }
-  return { blocked: false, reason: null, stale: false };
+  return { blocked: false, reason: null, ...baseMeta };
 }
 
 function deriveLearningEpochRelease(snapshot = null) {
@@ -1135,15 +1166,12 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_lineage_report_missing: lineageSlo.report_missing === true,
     _live_exec_policy_lineage_shared_refresh_pending: lineageSlo.shared_refresh_pending === true,
     _live_exec_policy_lineage_slo_max_report_age_ms: LINEAGE_SLO_MAX_REPORT_AGE_MS,
-    _live_exec_policy_lineage_intents_signal_doc_id_null_rate: toNum(snapshot && snapshot.lineage && snapshot.lineage.intents_signal_doc_id_null_rate),
-    _live_exec_policy_lineage_fills_signal_doc_id_null_rate: toNum(snapshot && snapshot.lineage && snapshot.lineage.fills_signal_doc_id_null_rate),
-    _live_exec_policy_lineage_fills_intent_id_null_rate: toNum(snapshot && snapshot.lineage && snapshot.lineage.fills_intent_id_null_rate),
-    _live_exec_policy_lineage_entry_fills_intent_id_null_rate: toNum(snapshot && snapshot.lineage && snapshot.lineage.entry_fills_intent_id_null_rate),
-    _live_exec_policy_lineage_entry_fills_24h_n: toNum(snapshot && snapshot.lineage && snapshot.lineage.entry_fills_24h_n),
-    _live_exec_policy_lineage_has_entry_fill_intent_metric:
-      snapshot && snapshot.lineage
-        ? snapshot.lineage.entry_fills_intent_id_null_rate != null
-        : false,
+    _live_exec_policy_lineage_intents_signal_doc_id_null_rate: toNum(lineageSlo.intents_signal_doc_id_null_rate),
+    _live_exec_policy_lineage_fills_signal_doc_id_null_rate: toNum(lineageSlo.fills_signal_doc_id_null_rate),
+    _live_exec_policy_lineage_fills_intent_id_null_rate: toNum(lineageSlo.fills_intent_id_null_rate),
+    _live_exec_policy_lineage_entry_fills_intent_id_null_rate: toNum(lineageSlo.entry_fills_intent_id_null_rate),
+    _live_exec_policy_lineage_entry_fills_24h_n: toNum(lineageSlo.entry_fills_24h_n),
+    _live_exec_policy_lineage_has_entry_fill_intent_metric: lineageSlo.has_entry_fill_intent_metric === true,
     _live_exec_policy_drift_remediation_enabled: DRIFT_REMEDIATION_ENABLED,
     _live_exec_policy_other_server_policy_watch_only_block_enabled: DRIFT_REMEDIATION_WATCH_ONLY_BLOCK,
     _live_exec_policy_other_server_policy_watch_only_market: !!(snapshot && snapshot.driftOtherServerPolicyWatchOnlySet && snapshot.driftOtherServerPolicyWatchOnlySet.has(market)),
@@ -1520,6 +1548,7 @@ module.exports = {
     buildSnapshotFromArtifacts,
     normalizeSharedLineageSnapshot,
     selectPreferredLineageInput,
+    hasLineageEntryFillIntentMetric,
     extractOtherServerPolicyWatchOnlyMarkets,
     deriveDesiredPositionSide,
     buildActivePositionsSnapshot,

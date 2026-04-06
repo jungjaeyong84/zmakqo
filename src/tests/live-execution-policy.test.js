@@ -485,6 +485,38 @@ function buildSnapshot({
 })();
 
 (() => {
+  const olderLocalIso = new Date(Date.now() - (3 * 60 * 60 * 1000)).toISOString();
+  const newerSharedIso = new Date(Date.now() - (5 * 60 * 1000)).toISOString();
+  const selected = __test.selectPreferredLineageInput({
+    localDoc: {
+      generated_at: olderLocalIso,
+      summary: {
+        intents_signal_doc_id_null_rate: 0,
+        fills_signal_doc_id_null_rate: 0,
+        fills_intent_id_null_rate: 0.2,
+        entry_fills_24h_n: 7,
+        entry_fills_intent_id_null_rate: 0,
+      },
+    },
+    localMtimeMs: Date.parse(olderLocalIso),
+    sharedSnapshot: __test.normalizeSharedLineageSnapshot({
+      updated_at: newerSharedIso,
+      report: {
+        generated_at: newerSharedIso,
+        summary: {
+          intents_signal_doc_id_null_rate: 0,
+          fills_signal_doc_id_null_rate: 0,
+          fills_intent_id_null_rate: 0.2,
+        },
+      },
+    }),
+  });
+  assert.strictEqual(selected.path, "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/signal_lineage_health_latest.json");
+  assert.strictEqual(selected.source, null);
+  assert.strictEqual(selected.doc.summary.entry_fills_intent_id_null_rate, 0);
+})();
+
+(() => {
   const nowMs = Date.now();
   const snap = __test.buildSnapshotFromArtifacts({
     allocatorDoc: { summary: { by_market: [{ market: "BTCUSDT", allocation_score: 1, recommended_action: "HOLD" }] } },
@@ -546,6 +578,9 @@ function buildSnapshot({
   });
   assert.strictEqual(res.ok, false);
   assert.strictEqual(res.reason, "LINEAGE_SLO_FILL_INTENT_NULL_RATE");
+  assert.strictEqual(res.featuresPatch._live_exec_policy_lineage_entry_fills_intent_id_null_rate, 0.2);
+  assert.strictEqual(res.featuresPatch._live_exec_policy_lineage_entry_fills_24h_n, null);
+  assert.strictEqual(res.featuresPatch._live_exec_policy_lineage_has_entry_fill_intent_metric, true);
 })();
 
 (() => {
