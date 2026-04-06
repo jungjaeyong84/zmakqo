@@ -30,9 +30,11 @@ function summarizeCounts(values = []) {
 function buildMlGlobalCanaryEvidence({
   canary = null,
   replayEvidence = null,
+  evReplaySampleGap = null,
 } = {}) {
   const summary = readSummary(canary);
   const replay = readSummary(replayEvidence);
+  const sampleGap = readSummary(evReplaySampleGap);
   const rows = Array.isArray(canary && canary.rows) ? canary.rows : [];
 
   const totalN = toNum(summary.total_n) || rows.length;
@@ -86,6 +88,12 @@ function buildMlGlobalCanaryEvidence({
     dominant_blocker: dominantBlocker,
     replay_evidence_status: replayEvidenceStatus,
     replay_dominant_issue: replayDominantIssue,
+    replay_sample_gap_status: norm(sampleGap.evidence_status),
+    replay_sample_requirement_source: norm(sampleGap.requirement_source),
+    replay_sample_required_realized_n: toNum(sampleGap.required_realized_n),
+    replay_sample_current_effective_realized_n: toNum(sampleGap.governance_effective_realized_n),
+    replay_sample_gap_n: toNum(sampleGap.governance_effective_gap_n),
+    replay_sample_dominant_dimension: norm(sampleGap.dominant_sample_dimension),
     top_ready_market: norm(summary.top_ready_market),
     top_rollback_market: norm(summary.top_rollback_market),
     top_shadow_drift_market: norm(summary.top_shadow_drift_market),

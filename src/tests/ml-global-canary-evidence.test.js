@@ -31,6 +31,16 @@ const { buildMlGlobalCanaryEvidence } = require("../utils/mlGlobalCanaryEvidence
         dominant_issue: "EV_TUNER_INSUFFICIENT_SAMPLE",
       },
     },
+    evReplaySampleGap: {
+      summary: {
+        evidence_status: "EV_REPLAY_SAMPLE_GAP",
+        requirement_source: "OBJECTIVE_SUPERVISOR_GOVERNANCE_EFFECTIVE_REALIZED",
+        required_realized_n: 8,
+        governance_effective_realized_n: 7,
+        governance_effective_gap_n: 1,
+        dominant_sample_dimension: "GOVERNANCE_EFFECTIVE_REALIZED",
+      },
+    },
   });
 
   assert.strictEqual(blocked.status, "ML_GLOBAL_CANARY_EVIDENCE_READY");
@@ -39,6 +49,8 @@ const { buildMlGlobalCanaryEvidence } = require("../utils/mlGlobalCanaryEvidence
   assert.strictEqual(blocked.dominant_blocker, "SELF_EVOLUTION_REPLAY_NOT_PASS");
   assert.strictEqual(blocked.replay_evidence_status, "REPLAY_WARN_INSUFFICIENT_SAMPLE");
   assert.strictEqual(blocked.replay_dominant_issue, "EV_TUNER_INSUFFICIENT_SAMPLE");
+  assert.strictEqual(blocked.replay_sample_gap_status, "EV_REPLAY_SAMPLE_GAP");
+  assert.strictEqual(blocked.replay_sample_gap_n, 1);
   assert.ok(blocked.blocking_reasons.includes("GLOBAL_CANARY_BLOCKER_SELF_EVOLUTION_REPLAY_NOT_PASS"));
 
   const ready = buildMlGlobalCanaryEvidence({

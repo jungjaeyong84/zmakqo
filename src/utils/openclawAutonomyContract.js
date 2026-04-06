@@ -172,6 +172,7 @@ function deriveOpenClawAutonomyContract({
   mlTrainRunScope = null,
   executionServingContract = null,
   mlGlobalCanaryEvidence = null,
+  mlEvReplaySampleGap = null,
   mlModelSpecificCanary = null,
   mlRollbackArm = null,
   mlModelContract = null,
@@ -209,6 +210,7 @@ function deriveOpenClawAutonomyContract({
   const mlTrainRunScopeSummary = readSummary(mlTrainRunScope);
   const executionServingContractSummary = readSummary(executionServingContract);
   const mlGlobalCanaryEvidenceSummary = readSummary(mlGlobalCanaryEvidence);
+  const mlEvReplaySampleGapSummary = readSummary(mlEvReplaySampleGap);
   const mlModelSpecificCanarySummary = readSummary(mlModelSpecificCanary);
   const mlRollbackArmSummary = readSummary(mlRollbackArm);
   const mlModelContractSummary = readSummary(mlModelContract);
@@ -553,6 +555,11 @@ function deriveOpenClawAutonomyContract({
       ml_global_canary_dominant_blocker: String(mlGlobalCanaryEvidenceSummary.dominant_blocker || "").trim() || null,
       ml_global_canary_replay_evidence_status: String(mlGlobalCanaryEvidenceSummary.replay_evidence_status || "").trim() || null,
       ml_global_canary_replay_dominant_issue: String(mlGlobalCanaryEvidenceSummary.replay_dominant_issue || "").trim() || null,
+      ml_global_canary_replay_sample_gap_status: String(mlGlobalCanaryEvidenceSummary.replay_sample_gap_status || mlEvReplaySampleGapSummary.evidence_status || "").trim() || null,
+      ml_global_canary_replay_sample_required_realized_n: toNum(mlGlobalCanaryEvidenceSummary.replay_sample_required_realized_n ?? mlEvReplaySampleGapSummary.required_realized_n),
+      ml_global_canary_replay_sample_current_effective_realized_n: toNum(mlGlobalCanaryEvidenceSummary.replay_sample_current_effective_realized_n ?? mlEvReplaySampleGapSummary.governance_effective_realized_n),
+      ml_global_canary_replay_sample_gap_n: toNum(mlGlobalCanaryEvidenceSummary.replay_sample_gap_n ?? mlEvReplaySampleGapSummary.governance_effective_gap_n),
+      ml_global_canary_replay_sample_dominant_dimension: String(mlGlobalCanaryEvidenceSummary.replay_sample_dominant_dimension || mlEvReplaySampleGapSummary.dominant_sample_dimension || "").trim() || null,
       ml_model_specific_canary_status: String(mlModelSpecificCanarySummary.status || "").trim() || null,
       ml_model_specific_canary_binding_mode: String(mlModelSpecificCanarySummary.binding_mode || "").trim() || null,
       ml_model_specific_canary_evidence_status: String(mlModelSpecificCanarySummary.evidence_status || "").trim() || null,
@@ -604,6 +611,11 @@ function deriveOpenClawAutonomyContract({
       ml_promotion_global_canary_dominant_blocker: String(mlPromotionGateSummary.global_canary_dominant_blocker || "").trim() || null,
       ml_promotion_global_canary_replay_evidence_status: String(mlPromotionGateSummary.global_canary_replay_evidence_status || "").trim() || null,
       ml_promotion_global_canary_replay_dominant_issue: String(mlPromotionGateSummary.global_canary_replay_dominant_issue || "").trim() || null,
+      ml_promotion_global_canary_replay_sample_gap_status: String(mlPromotionGateSummary.global_canary_replay_sample_gap_status || "").trim() || null,
+      ml_promotion_global_canary_replay_sample_required_realized_n: toNum(mlPromotionGateSummary.global_canary_replay_sample_required_realized_n),
+      ml_promotion_global_canary_replay_sample_current_effective_realized_n: toNum(mlPromotionGateSummary.global_canary_replay_sample_current_effective_realized_n),
+      ml_promotion_global_canary_replay_sample_gap_n: toNum(mlPromotionGateSummary.global_canary_replay_sample_gap_n),
+      ml_promotion_global_canary_replay_sample_dominant_dimension: String(mlPromotionGateSummary.global_canary_replay_sample_dominant_dimension || "").trim() || null,
       ml_promotion_model_specific_canary_gate_status: String(mlPromotionGateSummary.model_specific_canary_gate_status || "").trim() || null,
       ml_promotion_model_specific_canary_ready: mlPromotionGateSummary.model_specific_canary_ready === true,
       ml_promotion_model_specific_canary_binding_mode: String(mlPromotionGateSummary.model_specific_canary_binding_mode || "").trim() || null,

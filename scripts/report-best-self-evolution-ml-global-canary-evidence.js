@@ -16,6 +16,7 @@ const { buildMlGlobalCanaryEvidence } = require("../src/utils/mlGlobalCanaryEvid
 const INPUTS = Object.freeze({
   canary: path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json"),
   replayEvidence: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_replay_evidence_latest.json"),
+  evReplaySampleGap: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_ev_replay_sample_gap_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -29,6 +30,7 @@ function renderMarkdown(report = {}) {
     `- evidence_status: ${summary.evidence_status || "N/A"}`,
     `- dominant_blocker: ${summary.dominant_blocker || "N/A"}`,
     `- replay_evidence: ${summary.replay_evidence_status || "N/A"} / issue=${summary.replay_dominant_issue || "N/A"}`,
+    `- replay_sample_gap: ${summary.replay_sample_gap_status || "N/A"} / required=${summary.replay_sample_required_realized_n ?? "N/A"} / current=${summary.replay_sample_current_effective_realized_n ?? "N/A"} / gap=${summary.replay_sample_gap_n ?? "N/A"} / dimension=${summary.replay_sample_dominant_dimension || "N/A"}`,
     `- blocked/ready/rollback: ${summary.blocked_n ?? "N/A"} / ${summary.ready_n ?? "N/A"} / ${summary.rollback_ready_n ?? "N/A"}`,
     `- shadow_global_drift/golden_global_drift: ${summary.shadow_global_drift ?? "N/A"} / ${summary.golden_global_drift ?? "N/A"}`,
     `- model: ${summary.model_binding_source || "N/A"} / ${summary.model_artifact_id || "N/A"} / ${summary.train_run_id || "N/A"}`,
@@ -42,6 +44,7 @@ function main() {
   const summary = buildMlGlobalCanaryEvidence({
     canary: readJsonRawSafe(INPUTS.canary, null),
     replayEvidence: readJsonRawSafe(INPUTS.replayEvidence, null),
+    evReplaySampleGap: readJsonRawSafe(INPUTS.evReplaySampleGap, null),
   });
   const payload = { ok: true, generated_at_kst: nowMeta.kst, inputs: INPUTS, summary };
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}_best_self_evolution_ml_global_canary_evidence`;

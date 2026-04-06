@@ -37,7 +37,7 @@ function renderMarkdown(report = {}) {
     `- preferred_model_artifact_id: ${summary.preferred_model_artifact_id || "N/A"}`,
     `- replay_gate: ${summary.replay_gate_status || "N/A"}`,
     `- shadow_gate: ${summary.shadow_gate_status || "N/A"}`,
-    `- global_canary_gate: ${summary.global_canary_gate_status || "N/A"} / evidence=${summary.global_canary_evidence_status || "N/A"} / blocker=${summary.global_canary_dominant_blocker || "N/A"} / replay=${summary.global_canary_replay_evidence_status || "N/A"}:${summary.global_canary_replay_dominant_issue || "N/A"}`,
+    `- global_canary_gate: ${summary.global_canary_gate_status || "N/A"} / evidence=${summary.global_canary_evidence_status || "N/A"} / blocker=${summary.global_canary_dominant_blocker || "N/A"} / replay=${summary.global_canary_replay_evidence_status || "N/A"}:${summary.global_canary_replay_dominant_issue || "N/A"} / sample_gap=${summary.global_canary_replay_sample_gap_status || "N/A"}:${summary.global_canary_replay_sample_gap_n ?? "N/A"}`,
     `- model_specific_canary_status: ${summary.model_specific_canary_status || "N/A"}`,
     `- model_specific_canary_binding_mode: ${summary.model_specific_canary_binding_mode || "N/A"}`,
     `- model_specific_canary_evidence_status: ${summary.model_specific_canary_evidence_status || "N/A"}`,
