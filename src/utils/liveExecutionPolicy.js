@@ -1135,6 +1135,15 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_lineage_report_missing: lineageSlo.report_missing === true,
     _live_exec_policy_lineage_shared_refresh_pending: lineageSlo.shared_refresh_pending === true,
     _live_exec_policy_lineage_slo_max_report_age_ms: LINEAGE_SLO_MAX_REPORT_AGE_MS,
+    _live_exec_policy_lineage_intents_signal_doc_id_null_rate: toNum(snapshot && snapshot.lineage && snapshot.lineage.intents_signal_doc_id_null_rate),
+    _live_exec_policy_lineage_fills_signal_doc_id_null_rate: toNum(snapshot && snapshot.lineage && snapshot.lineage.fills_signal_doc_id_null_rate),
+    _live_exec_policy_lineage_fills_intent_id_null_rate: toNum(snapshot && snapshot.lineage && snapshot.lineage.fills_intent_id_null_rate),
+    _live_exec_policy_lineage_entry_fills_intent_id_null_rate: toNum(snapshot && snapshot.lineage && snapshot.lineage.entry_fills_intent_id_null_rate),
+    _live_exec_policy_lineage_entry_fills_24h_n: toNum(snapshot && snapshot.lineage && snapshot.lineage.entry_fills_24h_n),
+    _live_exec_policy_lineage_has_entry_fill_intent_metric:
+      snapshot && snapshot.lineage
+        ? snapshot.lineage.entry_fills_intent_id_null_rate != null
+        : false,
     _live_exec_policy_drift_remediation_enabled: DRIFT_REMEDIATION_ENABLED,
     _live_exec_policy_other_server_policy_watch_only_block_enabled: DRIFT_REMEDIATION_WATCH_ONLY_BLOCK,
     _live_exec_policy_other_server_policy_watch_only_market: !!(snapshot && snapshot.driftOtherServerPolicyWatchOnlySet && snapshot.driftOtherServerPolicyWatchOnlySet.has(market)),
