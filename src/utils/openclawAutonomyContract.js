@@ -176,6 +176,7 @@ function deriveOpenClawAutonomyContract({
   mlReplayUnblockProjection = null,
   mlEvReplayDeltaDiagnostics = null,
   mlEvReplayMarketContribution = null,
+  mlEvReplayProfileContribution = null,
   mlModelSpecificCanary = null,
   mlRollbackArm = null,
   mlModelContract = null,
@@ -217,6 +218,7 @@ function deriveOpenClawAutonomyContract({
   const mlReplayUnblockProjectionSummary = readSummary(mlReplayUnblockProjection);
   const mlEvReplayDeltaDiagnosticsSummary = readSummary(mlEvReplayDeltaDiagnostics);
   const mlEvReplayMarketContributionSummary = readSummary(mlEvReplayMarketContribution);
+  const mlEvReplayProfileContributionSummary = readSummary(mlEvReplayProfileContribution);
   const mlModelSpecificCanarySummary = readSummary(mlModelSpecificCanary);
   const mlRollbackArmSummary = readSummary(mlRollbackArm);
   const mlModelContractSummary = readSummary(mlModelContract);
@@ -581,6 +583,16 @@ function deriveOpenClawAutonomyContract({
       ml_ev_replay_market_top_positive_market: String(mlEvReplayMarketContributionSummary.top_positive_market || "").trim() || null,
       ml_ev_replay_market_top_return_drag_market: String(mlEvReplayMarketContributionSummary.top_return_drag_market || "").trim() || null,
       ml_ev_replay_market_top_mixed_market: String(mlEvReplayMarketContributionSummary.top_mixed_market || "").trim() || null,
+      ml_ev_replay_profile_contribution_status: String(mlEvReplayProfileContributionSummary.status || "").trim() || null,
+      ml_ev_replay_profile_evidence_status: String(mlEvReplayProfileContributionSummary.evidence_status || "").trim() || null,
+      ml_ev_replay_profile_top_return_drag_market: String(mlEvReplayProfileContributionSummary.top_return_drag_market || "").trim() || null,
+      ml_ev_replay_profile_top_return_drag_profile: String(mlEvReplayProfileContributionSummary.top_return_drag_profile || "").trim() || null,
+      ml_ev_replay_profile_top_return_drag_profile_rows_delta: toNum(mlEvReplayProfileContributionSummary.top_return_drag_profile_rows_delta),
+      ml_ev_replay_profile_top_return_drag_profile_avg_ret_net_delta: toNum(mlEvReplayProfileContributionSummary.top_return_drag_profile_avg_ret_net_delta),
+      ml_ev_replay_profile_top_mixed_market: String(mlEvReplayProfileContributionSummary.top_mixed_market || "").trim() || null,
+      ml_ev_replay_profile_top_mixed_profile: String(mlEvReplayProfileContributionSummary.top_mixed_profile || "").trim() || null,
+      ml_ev_replay_profile_top_mixed_profile_rows_delta: toNum(mlEvReplayProfileContributionSummary.top_mixed_profile_rows_delta),
+      ml_ev_replay_profile_top_mixed_profile_avg_ret_net_delta: toNum(mlEvReplayProfileContributionSummary.top_mixed_profile_avg_ret_net_delta),
       ml_model_specific_canary_status: String(mlModelSpecificCanarySummary.status || "").trim() || null,
       ml_model_specific_canary_binding_mode: String(mlModelSpecificCanarySummary.binding_mode || "").trim() || null,
       ml_model_specific_canary_evidence_status: String(mlModelSpecificCanarySummary.evidence_status || "").trim() || null,
