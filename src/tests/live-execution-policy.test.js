@@ -456,6 +456,35 @@ function buildSnapshot({
 })();
 
 (() => {
+  const olderLocalIso = new Date(Date.now() - (3 * 60 * 60 * 1000)).toISOString();
+  const selected = __test.selectPreferredLineageInput({
+    localDoc: {
+      generated_at: olderLocalIso,
+      summary: {
+        intents_signal_doc_id_null_rate: 0,
+        fills_signal_doc_id_null_rate: 0,
+        fills_intent_id_null_rate: 0,
+        entry_fills_intent_id_null_rate: 0,
+      },
+    },
+    localMtimeMs: Date.parse(olderLocalIso),
+    sharedSnapshot: __test.normalizeSharedLineageSnapshot({
+      updated_at: new Date().toISOString(),
+      report: {
+        generated_at_kst: "2026-04-06 00:00:49 KST",
+        summary: {
+          intents_signal_doc_id_null_rate: 0,
+          fills_signal_doc_id_null_rate: 0,
+          fills_intent_id_null_rate: 0.09,
+        },
+      },
+    }),
+  });
+  assert.strictEqual(selected.path, "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/signal_lineage_health_latest.json");
+  assert.strictEqual(selected.source, null);
+})();
+
+(() => {
   const nowMs = Date.now();
   const snap = __test.buildSnapshotFromArtifacts({
     allocatorDoc: { summary: { by_market: [{ market: "BTCUSDT", allocation_score: 1, recommended_action: "HOLD" }] } },
@@ -517,6 +546,67 @@ function buildSnapshot({
   });
   assert.strictEqual(res.ok, false);
   assert.strictEqual(res.reason, "LINEAGE_SLO_FILL_INTENT_NULL_RATE");
+})();
+
+(() => {
+  const nowMs = Date.now();
+  const snap = __test.buildSnapshotFromArtifacts({
+    allocatorDoc: { summary: { by_market: [{ market: "BTCUSDT", allocation_score: 1, recommended_action: "HOLD" }] } },
+    quarantineDoc: { summary: { by_market: [] } },
+    executionQualityDoc: { summary: { by_market: [{ market: "BTCUSDT", avg_created_to_fill_ms: 100, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }] } },
+    lineageHealthDoc: {
+      generated_at: new Date(nowMs - (60 * 1000)).toISOString(),
+      summary: {
+        intents_signal_doc_id_null_rate: 0,
+        fills_signal_doc_id_null_rate: 0,
+        fills_intent_id_null_rate: 0,
+        entry_fills_intent_id_null_rate: 0,
+      },
+    },
+  });
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    intent: "ENTRY",
+    qtyPct: 0.5,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.reason, "LIVE_POLICY_OK");
+})();
+
+(() => {
+  const nowMs = Date.now();
+  const snap = __test.buildSnapshotFromArtifacts({
+    allocatorDoc: { summary: { by_market: [{ market: "BTCUSDT", allocation_score: 1, recommended_action: "HOLD" }] } },
+    quarantineDoc: { summary: { by_market: [] } },
+    executionQualityDoc: { summary: { by_market: [{ market: "BTCUSDT", avg_created_to_fill_ms: 100, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }] } },
+    lineageHealthMtimeMs: nowMs - (60 * 1000),
+    lineageHealthSource: "FIRESTORE_REPORT_LATEST",
+    lineageHealthDoc: {
+      generated_at_kst: "2026-04-06 00:00:49 KST",
+      summary: {
+        intents_signal_doc_id_null_rate: 0,
+        fills_signal_doc_id_null_rate: 0,
+        fills_intent_id_null_rate: 0.2,
+      },
+    },
+  });
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    intent: "ENTRY",
+    qtyPct: 0.5,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.reason, "LINEAGE_SLO_REPORT_STALE");
 })();
 
 (() => {

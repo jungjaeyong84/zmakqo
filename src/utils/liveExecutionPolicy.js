@@ -711,18 +711,18 @@ function normalizeSharedLineageSnapshot(raw = null) {
   if (!raw || typeof raw !== "object") return null;
   const report = raw.report && typeof raw.report === "object" ? raw.report : raw;
   if (!report || typeof report !== "object") return null;
+  const contentGeneratedAtMs = parseDateMs(
+    report.generated_at
+    || report.generated_at_kst
+    || raw.generated_at
+    || raw.generated_at_kst
+    || null
+  );
   return {
     doc: report,
     path: buildSharedLineageDocPath(),
     source: "FIRESTORE_REPORT_LATEST",
-    generatedAtMs: parseDateMs(
-      report.generated_at
-      || report.generated_at_kst
-      || raw.generated_at
-      || raw.generated_at_kst
-      || raw.updated_at
-      || null
-    ),
+    generatedAtMs: contentGeneratedAtMs,
   };
 }
 
@@ -1001,10 +1001,11 @@ function deriveLineageSloBlock(snapshot = null) {
   }
   const intentSignalNull = toNum(summary.intents_signal_doc_id_null_rate);
   const fillSignalNull = toNum(summary.fills_signal_doc_id_null_rate);
+  const hasEntryFillIntentMetric = summary.entry_fills_intent_id_null_rate != null;
   const fillIntentNull = toNum(
-    summary.entry_fills_intent_id_null_rate != null
+    hasEntryFillIntentMetric
       ? summary.entry_fills_intent_id_null_rate
-      : summary.fills_intent_id_null_rate
+      : null
   );
   if (Number.isFinite(intentSignalNull) && intentSignalNull > LINEAGE_SLO_MAX_INTENT_SIGNAL_NULL_RATE) {
     return { blocked: LINEAGE_SLO_FAIL_CLOSED, reason: "LINEAGE_SLO_INTENT_SIGNAL_NULL_RATE", stale: false };
