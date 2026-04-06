@@ -99,6 +99,8 @@ function buildMlPromotionGate({
     global_canary_gate_status: globalCanaryPass ? "PASS" : "BLOCK",
     global_canary_evidence_status: globalCanaryEvidenceStatus,
     global_canary_dominant_blocker: norm(globalCanaryEvidenceSummary.dominant_blocker),
+    global_canary_replay_evidence_status: norm(globalCanaryEvidenceSummary.replay_evidence_status),
+    global_canary_replay_dominant_issue: norm(globalCanaryEvidenceSummary.replay_dominant_issue),
     model_specific_canary_gate_status: modelSpecificCanaryReady ? "PASS" : "BLOCK",
     server_primary_gate_status: serverPrimaryPass ? "PASS" : "BLOCK",
     rollback_gate_status: rollbackReady ? "READY" : "NOT_ARMED",

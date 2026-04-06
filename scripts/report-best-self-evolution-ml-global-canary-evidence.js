@@ -15,6 +15,7 @@ const { buildMlGlobalCanaryEvidence } = require("../src/utils/mlGlobalCanaryEvid
 
 const INPUTS = Object.freeze({
   canary: path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json"),
+  replayEvidence: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_replay_evidence_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -27,6 +28,7 @@ function renderMarkdown(report = {}) {
     `- global_canary_ready: ${summary.global_canary_ready ? "YES" : "NO"}`,
     `- evidence_status: ${summary.evidence_status || "N/A"}`,
     `- dominant_blocker: ${summary.dominant_blocker || "N/A"}`,
+    `- replay_evidence: ${summary.replay_evidence_status || "N/A"} / issue=${summary.replay_dominant_issue || "N/A"}`,
     `- blocked/ready/rollback: ${summary.blocked_n ?? "N/A"} / ${summary.ready_n ?? "N/A"} / ${summary.rollback_ready_n ?? "N/A"}`,
     `- shadow_global_drift/golden_global_drift: ${summary.shadow_global_drift ?? "N/A"} / ${summary.golden_global_drift ?? "N/A"}`,
     `- model: ${summary.model_binding_source || "N/A"} / ${summary.model_artifact_id || "N/A"} / ${summary.train_run_id || "N/A"}`,
@@ -39,6 +41,7 @@ function main() {
   const nowMeta = nowKstMeta();
   const summary = buildMlGlobalCanaryEvidence({
     canary: readJsonRawSafe(INPUTS.canary, null),
+    replayEvidence: readJsonRawSafe(INPUTS.replayEvidence, null),
   });
   const payload = { ok: true, generated_at_kst: nowMeta.kst, inputs: INPUTS, summary };
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}_best_self_evolution_ml_global_canary_evidence`;

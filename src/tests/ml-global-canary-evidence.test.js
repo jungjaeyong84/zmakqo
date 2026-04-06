@@ -25,12 +25,20 @@ const { buildMlGlobalCanaryEvidence } = require("../utils/mlGlobalCanaryEvidence
         { market: "ALL", current_stage: "SHADOW", canary_verdict: "BLOCK", blockers: ["SELF_EVOLUTION_REPLAY_NOT_PASS"] },
       ],
     },
+    replayEvidence: {
+      summary: {
+        evidence_status: "REPLAY_WARN_INSUFFICIENT_SAMPLE",
+        dominant_issue: "EV_TUNER_INSUFFICIENT_SAMPLE",
+      },
+    },
   });
 
   assert.strictEqual(blocked.status, "ML_GLOBAL_CANARY_EVIDENCE_READY");
   assert.strictEqual(blocked.global_canary_ready, false);
   assert.strictEqual(blocked.evidence_status, "GLOBAL_CANARY_REPLAY_BLOCKED");
   assert.strictEqual(blocked.dominant_blocker, "SELF_EVOLUTION_REPLAY_NOT_PASS");
+  assert.strictEqual(blocked.replay_evidence_status, "REPLAY_WARN_INSUFFICIENT_SAMPLE");
+  assert.strictEqual(blocked.replay_dominant_issue, "EV_TUNER_INSUFFICIENT_SAMPLE");
   assert.ok(blocked.blocking_reasons.includes("GLOBAL_CANARY_BLOCKER_SELF_EVOLUTION_REPLAY_NOT_PASS"));
 
   const ready = buildMlGlobalCanaryEvidence({

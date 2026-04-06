@@ -200,6 +200,7 @@ function buildStepPlan(context = {}, capabilityDefs = null) {
     { id: "attribution", script: "report-best-self-evolution-attribution.js" },
     { id: "candidates", script: "report-best-self-evolution-candidates.js" },
     { id: "replay", script: "report-best-self-evolution-replay.js" },
+    { id: "ml_replay_evidence", script: "report-best-self-evolution-ml-replay-evidence.js" },
     { id: "filter_shadow_canary", script: "automation-filter-shadow-canary.js" },
     { id: "canary", script: "report-best-self-evolution-canary.js" },
     { id: "ml_global_canary_evidence", script: "report-best-self-evolution-ml-global-canary-evidence.js" },

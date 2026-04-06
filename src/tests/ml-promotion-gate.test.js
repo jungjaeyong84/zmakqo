@@ -23,6 +23,8 @@ const { buildMlPromotionGate } = require("../utils/mlPromotionGate");
         global_canary_ready: false,
         evidence_status: "GLOBAL_CANARY_REPLAY_BLOCKED",
         dominant_blocker: "SELF_EVOLUTION_REPLAY_NOT_PASS",
+        replay_evidence_status: "REPLAY_WARN_INSUFFICIENT_SAMPLE",
+        replay_dominant_issue: "EV_TUNER_INSUFFICIENT_SAMPLE",
       },
     },
     modelSpecificCanary: {
@@ -56,6 +58,7 @@ const { buildMlPromotionGate } = require("../utils/mlPromotionGate");
   assert.strictEqual(shadowOnly.shadow_gate_status, "PASS");
   assert.strictEqual(shadowOnly.global_canary_gate_status, "BLOCK");
   assert.strictEqual(shadowOnly.global_canary_evidence_status, "GLOBAL_CANARY_REPLAY_BLOCKED");
+  assert.strictEqual(shadowOnly.global_canary_replay_evidence_status, "REPLAY_WARN_INSUFFICIENT_SAMPLE");
   assert.strictEqual(shadowOnly.model_specific_canary_gate_status, "BLOCK");
   assert.strictEqual(shadowOnly.model_specific_canary_binding_mode, "MODEL_BINDING_MISSING");
   assert.strictEqual(shadowOnly.model_specific_canary_evidence_status, "MODEL_SPECIFIC_CANARY_BINDING_MISSING");
@@ -71,6 +74,7 @@ const { buildMlPromotionGate } = require("../utils/mlPromotionGate");
         status: "ML_GLOBAL_CANARY_EVIDENCE_READY",
         global_canary_ready: true,
         evidence_status: "GLOBAL_CANARY_PASS_READY",
+        replay_evidence_status: "REPLAY_PASS_READY",
       },
     },
     modelSpecificCanary: {
