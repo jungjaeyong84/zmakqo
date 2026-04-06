@@ -34,7 +34,10 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
     watchdog: { display: { verdict: "PASS", scheduler_mode: "OPENCLAW_CRON" } },
     marketRegimeBoard: { summary: { status: "RESCUE_COHORT_ACTIVE", rescue_market_n: 2, keep_drop_market_n: 3, top_rescue_market: "SOLUSDT", top_keep_drop_market: "AXSUSDT" } },
     executionQuality: { summary: { status: "EXECUTION_QUALITY_REVIEW", created_to_fill_p95_ms: 59871, adverse_slippage_p95_bps: 81.37, partial_fill_rate_pct: 67.57, top_latency_market: "AXSUSDT", top_operational_webhook_delay_cause: "IMMEDIATE_EXEC_TRUE_INTENT_DELAY", top_operational_immediate_intent_delay_group: "TV_WEBHOOK|EARLY_LONG|BTCUSDT", top_no_fill_reason: "LIVE_EXCEPTION", top_no_fill_subtype: "TIMING_IMMEDIATE_EXEC", execution_scope_quality_gate_status: "POLICY_BLOCKED_RECALL_TOO_LOW", execution_scope_quality_gate_ready: false, execution_scope_inference_mismatch_rate: 0.29, execution_scope_top_false_positive_group: "FILLABLE|POLICY_BLOCKED|LIVE_RUNTIME|EMO_LONG|KRW-BCH", execution_scope_fp_diagnostics_status: "EXECUTION_SCOPE_FP_DIAGNOSTICS_READY", execution_scope_fp_diagnostics_top_shared_feature: "execution.entry_schedule_reason=LATE_EXEC", execution_scope_fp_diagnostics_top_context_profile: "IN_POSITION_SAME_DIR|ADD|SHORT|-20-0|SAME_BAR_FAST_FILL", execution_scope_fp_diagnostics_reference_rows_n: 4, execution_scope_fp_diagnostics_reference_group_mode: "EXACT_SOURCE_EVENT_MARKET", execution_scope_tier_raw_diff_top_webhook_execution_profile: "WEBHOOK_PRE_BAR_CLOSE_FILLED", execution_scope_tier_raw_diff_top_webhook_bar_timing_profile: "PRE_BAR_CLOSE_GT_5M", execution_scope_tier_raw_diff_top_webhook_execution_profile_rows_n: 2, execution_scope_tier_raw_diff_saved_no_probe_rows_n: 2, execution_scope_tier_raw_diff_pre_bar_close_rows_n: 2 } },
-    objectiveRetrospective: { display: { generated_at_kst: "2026-04-05 15:33:52 KST", execution_microstructure: { tp0_hit_rate: 0.85, tp1_hit_rate: 0, pre_tp1_time_stop_rate: 0, chase_reject_n: 1, portfolio_cluster_reduce_n: 2, portfolio_cluster_block_n: 0 } } },
+    objectiveRetrospective: { display: { generated_at_kst: "2026-04-05 15:33:52 KST", execution_microstructure: { tp0_hit_rate: 0.85, tp1_hit_rate: 0, tp0_to_tp1_conversion_rate: 0, pre_tp1_time_stop_rate: 0, chase_reject_n: 1, portfolio_cluster_reduce_n: 2, portfolio_cluster_block_n: 0 } } },
+    executionStructureUpgradeContract: { summary: { status: "EXECUTION_STRUCTURE_UPGRADE_CONTRACT_READY", structure_mode: "ENTRY_TP0_TP1_TRAIL", survivability_priority: "PRE_TP1_SURVIVABILITY_FIRST", stage_sequence_ready: true, survivability_ready: true, label_support_ready: true, tp0_stage_active: true, tp1_stage_active: true, trail_stage_active: true, conversion_observable: true, pre_tp1_survivability_observable: true, tp0_pct: 0.8, tp0_qty_ratio: 0.25, tp1_pct: 3.25, trail_r_multiple: 0.9, tp0_to_tp1_conversion_rate: 0, pre_tp1_time_stop_rate: 0, blocking_reason_n: 0 } },
+    costControlEngineContract: { summary: { status: "COST_CONTROL_ENGINE_CONTRACT_READY", contract_mode: "EXPECTANCY_AND_REENTRY_CONTROL", automatic_entry_suppression_ready: true, system_reentry_control_ready: true, expectancy_gate_active: true, cost_block_mode_active: true, cooldown_reentry_control_active: true, reverse_reentry_control_active: true, fill_cost_pressure_active: true, expectancy_metric: "exit_value_lower_bound", expectancy_metric_family: "TP_COMPOSITE_EXIT_VALUE", operations_mode: "비용 차단", cooldown_policy_status: "MONITOR_WITH_TARGETED_REVIEW", cooldown_policy_mismatch_n: 1, reverse_policy_status: "REVERSE_POLICY_REVIEW", reverse_blocked_n: 274, reverse_cooldown_n: 22, blocking_reason_n: 0 } },
+    cohortRegimeParameterSplitContract: { summary: { status: "COHORT_REGIME_PARAMETER_SPLIT_CONTRACT_READY", contract_mode: "COHORT_REGIME_AUTO_SWITCH", cohort_scope: "RESCUE_MIXED_KEEP_DROP", active_market_n: 7, active_cohort_n: 3, rescue_market_n: 2, mixed_market_n: 1, keep_drop_market_n: 3, has_market_split: true, cohort_parameterization_ready: true, regime_switch_ready: true, policy_scoped_ready: true, auto_switch_observability_ready: true, automatic_transition_ready: true, policy_plan_status: "HOLD", policy_plan_mode: "ADVISORY_ONLY", policy_global_qty_scale: 0.55, cohort_action_profile_n: 3, blocking_reason_n: 0 } },
     overallAccountReport: { integrity: { ok: false, issue_count: 4, active_market_count: 3, position_doc_count: 3 }, operations: { status: "보류", mode: "비용 차단" } },
     signalLineageHealth: { summary: { verdict: "PASS", fills_intent_id_null_rate: 0, fills_signal_doc_id_null_rate: 0, intents_signal_doc_id_null_rate: 0 } },
     modelReadiness: { summary: { status: "MODEL_READINESS_READY", rows_n: 344, realized_n: 18, invalid_n: 0, mfe_mae_labeled_n: 7, mfe_mae_label_rate: 0.0203, tp1_time_labeled_n: 1, tp1_time_label_rate: 0.0029, tp0_time_labeled_n: 0, tp0_time_label_rate: 0, tp0_to_tp1_converted_n: 0, pre_tp1_time_stop_n: 0, schema_version: "2026-04-05.v1", dataset_version_id: "ML_TRAINING_DATASET__abc123" } },
@@ -50,6 +53,8 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
     mlTrainRunScope: { summary: { status: "ML_TRAIN_RUN_REPORTED", train_run_id: "TRAIN_EXEC_SCOPE__s1", model_artifact_id: "MODEL_EXEC_SCOPE__s1", model_kind: "EXECUTION_SCOPE_OVR_LOGISTIC_V1", quality_gate_status: "POLICY_BLOCKED_RECALL_TOO_LOW", quality_gate_ready: false, split_diagnostics: { top_policy_blocked_test_source: "PINE_WEBHOOK", top_policy_blocked_test_source_train_n: 1, top_policy_blocked_test_source_test_n: 13, top_policy_blocked_test_source_test_share: 0.8667 } } },
     executionServingContract: { summary: { status: "EXECUTION_SERVING_CONTRACT_READY", serving_stage: "OFFLINE_ONLY", serving_decision: "HOLD_SCOPE_QUALITY", shadow_ready: false, preferred_model_family: "EXECUTION_SCOPE", preferred_model_kind: "EXECUTION_SCOPE_OVR_LOGISTIC_V1", preferred_model_artifact_id: "MODEL_EXEC_SCOPE__s1" } },
     mlModelSpecificCanary: { summary: { status: "ML_MODEL_SPECIFIC_CANARY_READY", binding_mode: "MODEL_BINDING_MISSING", evidence_status: "MODEL_SPECIFIC_CANARY_BINDING_MISSING", model_specific_canary_ready: false, preferred_model_artifact_id: "MODEL_EXEC_SCOPE__s1", preferred_train_run_id: "TRAIN_EXEC_SCOPE__s1", bound_model_artifact_id: null, bound_train_run_id: null } },
+    validationDeploymentPipelineContract: { summary: { status: "VALIDATION_DEPLOYMENT_PIPELINE_CONTRACT_BOOTSTRAPPING", contract_mode: "SHADOW_CANARY_LIVE_NUMERIC_GATES", current_deployment_stage: "SHADOW_READY", shadow_numeric_gate_ready: true, canary_numeric_gate_ready: false, live_numeric_gate_ready: false, numeric_judgement_ready: true, automatic_rollback_ready: true, global_canary_evidence_status: "GLOBAL_CANARY_REPLAY_BLOCKED", global_canary_dominant_blocker: "SELF_EVOLUTION_REPLAY_NOT_PASS", replay_sample_gap_n: 1, replay_projected_ready_if_gap_closed: false, replay_projected_residual_issue_after_sample_gap_closed: "NEGATIVE_OBJECTIVE_DELTA", blocking_reason_n: 2 } },
+    performanceKpiUpgradeContract: { summary: { status: "PERFORMANCE_KPI_UPGRADE_CONTRACT_READY", contract_mode: "TP0_TP1_CONVERSION_EXPECTANCY_KPI", microstructure_kpi_ready: true, survivability_kpi_ready: true, expectancy_kpi_ready: true, structure_alignment_ready: true, cost_alignment_ready: true, tp0_hit_rate: 0.85, tp1_hit_rate: 0, tp0_to_tp1_conversion_rate: 0, pre_tp1_time_stop_rate: 0, fee_adjusted_expectancy: -0.0011, realized_trade_n: 24, legacy_win_rate_reference: 0.3333, objective_verdict: "FAIL", blocking_reason_n: 0 } },
     mlModelContract: { summary: { status: "ML_MODEL_CONTRACT_OFFLINE_ONLY", deployment_stage: "OFFLINE_ONLY", canary_gate_status: "BLOCK_MODEL_QUALITY", promotion_status: "HOLD_MODEL_QUALITY", model_artifact_id: null } },
     mlGlobalCanaryEvidence: { summary: { status: "ML_GLOBAL_CANARY_EVIDENCE_READY", global_canary_ready: false, evidence_status: "GLOBAL_CANARY_REPLAY_BLOCKED", dominant_blocker: "SELF_EVOLUTION_REPLAY_NOT_PASS", replay_evidence_status: "REPLAY_WARN_INSUFFICIENT_SAMPLE", replay_dominant_issue: "EV_TUNER_INSUFFICIENT_SAMPLE", replay_sample_gap_status: "EV_REPLAY_SAMPLE_GAP", replay_sample_required_realized_n: 8, replay_sample_current_effective_realized_n: 7, replay_sample_gap_n: 1, replay_sample_dominant_dimension: "GOVERNANCE_EFFECTIVE_REALIZED", replay_projected_ready_if_sample_gap_closed: false, replay_projected_residual_issue_after_sample_gap_closed: "NEGATIVE_OBJECTIVE_DELTA" } },
     mlEvReplaySampleGap: { summary: { status: "ML_EV_REPLAY_SAMPLE_GAP_READY", evidence_status: "EV_REPLAY_SAMPLE_GAP", required_realized_n: 8, governance_effective_realized_n: 7, governance_effective_gap_n: 1, dominant_sample_dimension: "GOVERNANCE_EFFECTIVE_REALIZED" } },
@@ -77,6 +82,17 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.summary.lineage_status, "PASS");
   assert.strictEqual(report.summary.account_integrity_status, "WARN");
   assert.strictEqual(report.summary.execution_microstructure_status, "ACTIVE");
+  assert.strictEqual(report.summary.execution_structure_upgrade_contract_status, "EXECUTION_STRUCTURE_UPGRADE_CONTRACT_READY");
+  assert.strictEqual(report.summary.execution_structure_upgrade_mode, "ENTRY_TP0_TP1_TRAIL");
+  assert.strictEqual(report.summary.execution_structure_upgrade_stage_sequence_ready, true);
+  assert.strictEqual(report.summary.execution_structure_upgrade_survivability_ready, true);
+  assert.strictEqual(report.summary.cost_control_engine_contract_status, "COST_CONTROL_ENGINE_CONTRACT_READY");
+  assert.strictEqual(report.summary.cost_control_engine_automatic_entry_suppression_ready, true);
+  assert.strictEqual(report.summary.cost_control_engine_system_reentry_control_ready, true);
+  assert.strictEqual(report.summary.cohort_regime_parameter_split_contract_status, "COHORT_REGIME_PARAMETER_SPLIT_CONTRACT_READY");
+  assert.strictEqual(report.summary.cohort_regime_parameter_split_contract_mode, "COHORT_REGIME_AUTO_SWITCH");
+  assert.strictEqual(report.summary.cohort_regime_parameter_split_cohort_parameterization_ready, true);
+  assert.strictEqual(report.summary.cohort_regime_parameter_split_automatic_transition_ready, true);
   assert.strictEqual(report.summary.portfolio_cluster_risk_status, "REDUCING");
   assert.strictEqual(report.summary.truth_preservation_audit_status, "TRUTH_PRESERVATION_AUDIT_READY");
   assert.strictEqual(report.summary.truth_preservation_ready, true);
@@ -90,6 +106,18 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.current_status.execution_quality_top_no_fill_reason, "LIVE_EXCEPTION");
   assert.strictEqual(report.current_status.account_integrity_issue_n, 4);
   assert.strictEqual(report.current_status.tp0_hit_rate, 0.85);
+  assert.strictEqual(report.current_status.execution_structure_upgrade_contract_status, "EXECUTION_STRUCTURE_UPGRADE_CONTRACT_READY");
+  assert.strictEqual(report.current_status.execution_structure_upgrade_tp0_stage_active, true);
+  assert.strictEqual(report.current_status.execution_structure_upgrade_tp1_stage_active, true);
+  assert.strictEqual(report.current_status.execution_structure_upgrade_trail_stage_active, true);
+  assert.strictEqual(report.current_status.cost_control_engine_contract_status, "COST_CONTROL_ENGINE_CONTRACT_READY");
+  assert.strictEqual(report.current_status.cost_control_engine_expectancy_gate_active, true);
+  assert.strictEqual(report.current_status.cost_control_engine_cost_block_mode_active, true);
+  assert.strictEqual(report.current_status.cost_control_engine_reverse_reentry_control_active, true);
+  assert.strictEqual(report.current_status.cohort_regime_parameter_split_contract_status, "COHORT_REGIME_PARAMETER_SPLIT_CONTRACT_READY");
+  assert.strictEqual(report.current_status.cohort_regime_parameter_split_active_cohort_n, 3);
+  assert.strictEqual(report.current_status.cohort_regime_parameter_split_regime_switch_ready, true);
+  assert.strictEqual(report.current_status.cohort_regime_parameter_split_policy_scoped_ready, true);
   assert.strictEqual(report.current_status.model_readiness_mfe_mae_labeled_n, 7);
   assert.strictEqual(report.current_status.model_readiness_tp1_time_labeled_n, 1);
   assert.strictEqual(report.current_status.feature_store_rows_n, 344);
@@ -120,6 +148,13 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.current_status.ml_model_specific_canary_binding_mode, "MODEL_BINDING_MISSING");
   assert.strictEqual(report.current_status.ml_model_specific_canary_evidence_status, "MODEL_SPECIFIC_CANARY_BINDING_MISSING");
   assert.strictEqual(report.current_status.ml_model_specific_canary_ready, false);
+  assert.strictEqual(report.current_status.validation_deployment_pipeline_contract_status, "VALIDATION_DEPLOYMENT_PIPELINE_CONTRACT_BOOTSTRAPPING");
+  assert.strictEqual(report.current_status.validation_deployment_pipeline_shadow_numeric_gate_ready, true);
+  assert.strictEqual(report.current_status.validation_deployment_pipeline_canary_numeric_gate_ready, false);
+  assert.strictEqual(report.current_status.validation_deployment_pipeline_automatic_rollback_ready, true);
+  assert.strictEqual(report.current_status.performance_kpi_upgrade_contract_status, "PERFORMANCE_KPI_UPGRADE_CONTRACT_READY");
+  assert.strictEqual(report.current_status.performance_kpi_upgrade_microstructure_kpi_ready, true);
+  assert.strictEqual(report.current_status.performance_kpi_upgrade_fee_adjusted_expectancy, -0.0011);
   assert.strictEqual(report.current_status.ml_global_canary_replay_sample_gap_status, "EV_REPLAY_SAMPLE_GAP");
   assert.strictEqual(report.current_status.ml_global_canary_replay_sample_gap_n, 1);
   assert.strictEqual(report.current_status.ml_global_canary_replay_projected_ready_if_sample_gap_closed, false);
@@ -199,6 +234,15 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.summary.execution_serving_contract_status, "EXECUTION_SERVING_CONTRACT_READY");
   assert.strictEqual(report.summary.execution_serving_stage, "OFFLINE_ONLY");
   assert.strictEqual(report.summary.execution_serving_preferred_model_family, "EXECUTION_SCOPE");
+  assert.strictEqual(report.summary.validation_deployment_pipeline_contract_status, "VALIDATION_DEPLOYMENT_PIPELINE_CONTRACT_BOOTSTRAPPING");
+  assert.strictEqual(report.summary.validation_deployment_pipeline_numeric_judgement_ready, true);
+  assert.strictEqual(report.summary.validation_deployment_pipeline_global_canary_dominant_blocker, "SELF_EVOLUTION_REPLAY_NOT_PASS");
+  assert.strictEqual(report.summary.performance_kpi_upgrade_contract_status, "PERFORMANCE_KPI_UPGRADE_CONTRACT_READY");
+  assert.strictEqual(report.summary.performance_kpi_upgrade_contract_mode, "TP0_TP1_CONVERSION_EXPECTANCY_KPI");
+  assert.strictEqual(report.summary.performance_kpi_upgrade_microstructure_kpi_ready, true);
+  assert.strictEqual(report.summary.performance_kpi_upgrade_expectancy_kpi_ready, true);
+  assert.strictEqual(report.summary.performance_kpi_upgrade_tp0_hit_rate, 0.85);
+  assert.strictEqual(report.summary.performance_kpi_upgrade_fee_adjusted_expectancy, -0.0011);
   assert.strictEqual(report.summary.ev_gate_policy_status, "EV_GATE_COMPOSITE_POLICY_READY");
   assert.strictEqual(report.summary.ev_gate_policy_basis, "TP_COMPOSITE_EXIT_VALUE_V1");
   assert.strictEqual(report.summary.ev_gate_canonical_policy_version, "EV_COMPOSITE_EXIT_VALUE_V1");

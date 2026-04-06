@@ -17,6 +17,58 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         change_authority_state: "PENDING",
         model_readiness_status: "MODEL_READINESS_READY",
         feature_store_status: "FEATURE_STORE_READY",
+        execution_structure_upgrade_contract_status: "EXECUTION_STRUCTURE_UPGRADE_CONTRACT_READY",
+        execution_structure_upgrade_mode: "ENTRY_TP0_TP1_TRAIL",
+        execution_structure_upgrade_stage_sequence_ready: true,
+        execution_structure_upgrade_survivability_ready: true,
+        execution_structure_upgrade_label_support_ready: true,
+        execution_structure_upgrade_tp0_stage_active: true,
+        execution_structure_upgrade_tp1_stage_active: true,
+        execution_structure_upgrade_trail_stage_active: true,
+        execution_structure_upgrade_blocking_reason_n: 0,
+        cost_control_engine_contract_status: "COST_CONTROL_ENGINE_CONTRACT_READY",
+        cost_control_engine_contract_mode: "EXPECTANCY_AND_REENTRY_CONTROL",
+        cost_control_engine_automatic_entry_suppression_ready: true,
+        cost_control_engine_system_reentry_control_ready: true,
+        cost_control_engine_expectancy_gate_active: true,
+        cost_control_engine_cost_block_mode_active: true,
+        cost_control_engine_cooldown_reentry_control_active: true,
+        cost_control_engine_reverse_reentry_control_active: true,
+        cost_control_engine_blocking_reason_n: 0,
+        cohort_regime_parameter_split_contract_status: "COHORT_REGIME_PARAMETER_SPLIT_CONTRACT_READY",
+        cohort_regime_parameter_split_contract_mode: "COHORT_REGIME_AUTO_SWITCH",
+        cohort_regime_parameter_split_cohort_scope: "RESCUE_MIXED_KEEP_DROP",
+        cohort_regime_parameter_split_active_cohort_n: 3,
+        cohort_regime_parameter_split_cohort_parameterization_ready: true,
+        cohort_regime_parameter_split_regime_switch_ready: true,
+        cohort_regime_parameter_split_policy_scoped_ready: true,
+        cohort_regime_parameter_split_automatic_transition_ready: true,
+        cohort_regime_parameter_split_blocking_reason_n: 0,
+        validation_deployment_pipeline_contract_status: "VALIDATION_DEPLOYMENT_PIPELINE_CONTRACT_BOOTSTRAPPING",
+        validation_deployment_pipeline_contract_mode: "SHADOW_CANARY_LIVE_NUMERIC_GATES",
+        validation_deployment_pipeline_current_deployment_stage: "SHADOW_READY",
+        validation_deployment_pipeline_shadow_numeric_gate_ready: true,
+        validation_deployment_pipeline_canary_numeric_gate_ready: false,
+        validation_deployment_pipeline_live_numeric_gate_ready: false,
+        validation_deployment_pipeline_numeric_judgement_ready: true,
+        validation_deployment_pipeline_automatic_rollback_ready: true,
+        validation_deployment_pipeline_blocking_reason_n: 2,
+        performance_kpi_upgrade_contract_status: "PERFORMANCE_KPI_UPGRADE_CONTRACT_READY",
+        performance_kpi_upgrade_contract_mode: "TP0_TP1_CONVERSION_EXPECTANCY_KPI",
+        performance_kpi_upgrade_microstructure_kpi_ready: true,
+        performance_kpi_upgrade_survivability_kpi_ready: true,
+        performance_kpi_upgrade_expectancy_kpi_ready: true,
+        performance_kpi_upgrade_structure_alignment_ready: true,
+        performance_kpi_upgrade_cost_alignment_ready: true,
+        performance_kpi_upgrade_tp0_hit_rate: 0.85,
+        performance_kpi_upgrade_tp1_hit_rate: 0,
+        performance_kpi_upgrade_tp0_to_tp1_conversion_rate: 0,
+        performance_kpi_upgrade_pre_tp1_time_stop_rate: 0,
+        performance_kpi_upgrade_fee_adjusted_expectancy: -0.0011,
+        performance_kpi_upgrade_realized_trade_n: 24,
+        performance_kpi_upgrade_legacy_win_rate_reference: 0.3333,
+        performance_kpi_upgrade_objective_verdict: "FAIL",
+        performance_kpi_upgrade_blocking_reason_n: 0,
         ev_gate_policy_status: "EV_GATE_COMPOSITE_POLICY_READY",
         ev_gate_policy_basis: "TP_COMPOSITE_EXIT_VALUE_V1",
         ev_gate_canonical_policy_version: "EV_COMPOSITE_EXIT_VALUE_V1",
@@ -271,6 +323,30 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_recommended_action, "HOLD_EV_POLICY_REVIEW");
   assert.match(journal.summary.current_verification_focus, /ev_policy_post_apply_comparable_n/);
   assert.strictEqual(journal.summary.current_execution_quality_status, "EXECUTION_QUALITY_REVIEW");
+  assert.strictEqual(journal.summary.current_execution_structure_upgrade_contract_status, "EXECUTION_STRUCTURE_UPGRADE_CONTRACT_READY");
+  assert.strictEqual(journal.summary.current_execution_structure_upgrade_mode, "ENTRY_TP0_TP1_TRAIL");
+  assert.strictEqual(journal.summary.current_execution_structure_upgrade_stage_sequence_ready, true);
+  assert.strictEqual(journal.summary.current_execution_structure_upgrade_survivability_ready, true);
+  assert.strictEqual(journal.summary.current_cost_control_engine_contract_status, "COST_CONTROL_ENGINE_CONTRACT_READY");
+  assert.strictEqual(journal.summary.current_cost_control_engine_contract_mode, "EXPECTANCY_AND_REENTRY_CONTROL");
+  assert.strictEqual(journal.summary.current_cost_control_engine_automatic_entry_suppression_ready, true);
+  assert.strictEqual(journal.summary.current_cost_control_engine_system_reentry_control_ready, true);
+  assert.strictEqual(journal.summary.current_cohort_regime_parameter_split_contract_status, "COHORT_REGIME_PARAMETER_SPLIT_CONTRACT_READY");
+  assert.strictEqual(journal.summary.current_cohort_regime_parameter_split_contract_mode, "COHORT_REGIME_AUTO_SWITCH");
+  assert.strictEqual(journal.summary.current_cohort_regime_parameter_split_active_cohort_n, 3);
+  assert.strictEqual(journal.summary.current_cohort_regime_parameter_split_cohort_parameterization_ready, true);
+  assert.strictEqual(journal.summary.current_cohort_regime_parameter_split_automatic_transition_ready, true);
+  assert.strictEqual(journal.summary.current_validation_deployment_pipeline_contract_status, "VALIDATION_DEPLOYMENT_PIPELINE_CONTRACT_BOOTSTRAPPING");
+  assert.strictEqual(journal.summary.current_validation_deployment_pipeline_contract_mode, "SHADOW_CANARY_LIVE_NUMERIC_GATES");
+  assert.strictEqual(journal.summary.current_validation_deployment_pipeline_shadow_numeric_gate_ready, true);
+  assert.strictEqual(journal.summary.current_validation_deployment_pipeline_canary_numeric_gate_ready, false);
+  assert.strictEqual(journal.summary.current_validation_deployment_pipeline_automatic_rollback_ready, true);
+  assert.strictEqual(journal.summary.current_performance_kpi_upgrade_contract_status, "PERFORMANCE_KPI_UPGRADE_CONTRACT_READY");
+  assert.strictEqual(journal.summary.current_performance_kpi_upgrade_contract_mode, "TP0_TP1_CONVERSION_EXPECTANCY_KPI");
+  assert.strictEqual(journal.summary.current_performance_kpi_upgrade_microstructure_kpi_ready, true);
+  assert.strictEqual(journal.summary.current_performance_kpi_upgrade_expectancy_kpi_ready, true);
+  assert.strictEqual(journal.summary.current_performance_kpi_upgrade_tp0_hit_rate, 0.85);
+  assert.strictEqual(journal.summary.current_performance_kpi_upgrade_fee_adjusted_expectancy, -0.0011);
   assert.strictEqual(journal.summary.current_ev_gate_policy_status, "EV_GATE_COMPOSITE_POLICY_READY");
   assert.strictEqual(journal.summary.current_ev_gate_policy_basis, "TP_COMPOSITE_EXIT_VALUE_V1");
   assert.strictEqual(journal.summary.current_ev_gate_canonical_policy_version, "EV_COMPOSITE_EXIT_VALUE_V1");
