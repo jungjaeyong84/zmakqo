@@ -38,6 +38,57 @@ function readRows(value, key = "by_market") {
   return [];
 }
 
+function classifyStalePosDriver(row = {}) {
+  const failure = toNum(row.failure_risk);
+  const delay = toNum(row.delay_cost);
+  const late = toNum(row.late_risk);
+  if (failure != null && delay != null && late != null) {
+    if (failure >= Math.max(delay, late)) return "FAILURE_RISK_HEAVY";
+    if ((delay + late) / 2 >= failure) return "DELAY_LATE_RISK_HEAVY";
+  }
+  if (failure != null && failure >= 0.5) return "FAILURE_RISK_HEAVY";
+  if ((delay != null && delay >= 0.4) || (late != null && late >= 0.35)) return "DELAY_LATE_RISK_HEAVY";
+  return "MIXED_STALE_POS_RISK";
+}
+
+function buildStalePosReviewHints(summary = {}) {
+  const dragProfile = upper(summary.top_return_drag_profile);
+  const mixedProfile = upper(summary.top_mixed_profile);
+  const dragMarket = upper(summary.top_return_drag_market);
+  const mixedMarket = upper(summary.top_mixed_market);
+  const dragRow = dragProfile
+    ? {
+        market: dragMarket,
+        profile: dragProfile,
+        ev_lb: toNum(summary.top_return_drag_avg_ev_lb),
+        delay_cost: toNum(summary.top_return_drag_avg_delay_cost),
+        late_risk: toNum(summary.top_return_drag_avg_late_risk),
+        failure_risk: toNum(summary.top_return_drag_avg_failure_risk),
+      }
+    : null;
+  const mixedRow = mixedProfile
+    ? {
+        market: mixedMarket,
+        profile: mixedProfile,
+        ev_lb: toNum(summary.top_mixed_avg_ev_lb),
+        delay_cost: toNum(summary.top_mixed_avg_delay_cost),
+        late_risk: toNum(summary.top_mixed_avg_late_risk),
+        failure_risk: toNum(summary.top_mixed_avg_failure_risk),
+      }
+    : null;
+  return {
+    review_mode: dragRow || mixedRow ? "PROFILE_CONDITIONAL_REVIEW" : "GLOBAL_REVIEW_ONLY",
+    top_return_drag: dragRow && {
+      ...dragRow,
+      driver: classifyStalePosDriver(dragRow),
+    },
+    top_mixed: mixedRow && {
+      ...mixedRow,
+      driver: classifyStalePosDriver(mixedRow),
+    },
+  };
+}
+
 function normalizeListMap(raw = null) {
   let src = raw;
   if (typeof src === "string") {
@@ -143,6 +194,7 @@ function derivePolicyParameterEvolutionPlan({
   serverMarketQuarantine = null,
   explorationApplyCandidate = null,
   serverSignalDriftRemediationPlan = null,
+  mlEvReplayStalePosDiagnostics = null,
 } = {}) {
   const governor = readSummary(objectiveRecoveryGovernor);
   const recoveryEffect = readSummary(objectiveRecoveryEffect);
@@ -157,6 +209,8 @@ function derivePolicyParameterEvolutionPlan({
   const allocatorRows = readRows(serverMarketCapitalAllocator, "by_market");
   const quarantineRows = readRows(serverMarketQuarantine, "by_market");
   const explorationApply = readSummary(explorationApplyCandidate);
+  const stalePosDiagnostics = readSummary(mlEvReplayStalePosDiagnostics);
+  const stalePosReview = buildStalePosReviewHints(stalePosDiagnostics);
   const driftRemediation = unwrapRawReport(serverSignalDriftRemediationPlan) || {};
   const driftPatch = driftRemediation.recommendations && typeof driftRemediation.recommendations === "object"
     ? (driftRemediation.recommendations.settings_patch || {})
@@ -280,6 +334,13 @@ function derivePolicyParameterEvolutionPlan({
       global_qty_scale: globalQtyScale,
       ev_policy_action: evPolicyAction,
       ev_policy_action_canonical: evPolicyActionCanonical,
+      ev_policy_review_mode: stalePosReview.review_mode,
+      ev_policy_top_return_drag_profile: stalePosReview.top_return_drag && stalePosReview.top_return_drag.profile || null,
+      ev_policy_top_return_drag_market: stalePosReview.top_return_drag && stalePosReview.top_return_drag.market || null,
+      ev_policy_top_return_drag_driver: stalePosReview.top_return_drag && stalePosReview.top_return_drag.driver || null,
+      ev_policy_top_mixed_profile: stalePosReview.top_mixed && stalePosReview.top_mixed.profile || null,
+      ev_policy_top_mixed_market: stalePosReview.top_mixed && stalePosReview.top_mixed.market || null,
+      ev_policy_top_mixed_driver: stalePosReview.top_mixed && stalePosReview.top_mixed.driver || null,
       recovery_required: governor.recovery_required === true,
       governor_status: upper(governor.governor_status),
       governor_reason: upper(governor.governor_reason),
@@ -306,6 +367,9 @@ function derivePolicyParameterEvolutionPlan({
         evPolicyActionCanonical === "HOLD_EV_POLICY"
           ? "Keep EV composite policy unchanged; continue monitoring recovery effect."
           : `Set EV policy to ${evPolicyActionCanonical} and track objective delta impact.`,
+        stalePosReview.review_mode === "PROFILE_CONDITIONAL_REVIEW"
+          ? `Review EV by stale-pos profile, not global loosen: drag=${stalePosReview.top_return_drag && stalePosReview.top_return_drag.market || "N/A"}|${stalePosReview.top_return_drag && stalePosReview.top_return_drag.profile || "N/A"}|${stalePosReview.top_return_drag && stalePosReview.top_return_drag.driver || "N/A"} / mixed=${stalePosReview.top_mixed && stalePosReview.top_mixed.market || "N/A"}|${stalePosReview.top_mixed && stalePosReview.top_mixed.profile || "N/A"}|${stalePosReview.top_mixed && stalePosReview.top_mixed.driver || "N/A"}.`
+          : "No stale-pos profile conditional EV review hint right now.",
         quarantined.length
           ? `Keep quarantine/watch-only for ${quarantined.join("|")} until objective+quality recovers.`
           : "No quarantine override markets right now.",
@@ -331,6 +395,11 @@ function derivePolicyParameterEvolutionPlan({
           key: "EV_COMPOSITE_POLICY_ACTION",
           recommended_value: evPolicyActionCanonical,
           reason: "drop-validation + recovery-effect candidate priority",
+        },
+        {
+          key: "EV_COMPOSITE_PROFILE_REVIEW_MODE",
+          recommended_value: stalePosReview.review_mode,
+          reason: "replay stale-pos diagnostics for profile-conditional review",
         },
       ],
       by_market: topMarketActions.map((row) => ({

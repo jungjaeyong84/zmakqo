@@ -175,6 +175,11 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
       summary: {
         status: "HOLD",
         ev_policy_action: "PRIORITIZE_EV_TP1_THRESHOLD_TUNE",
+        ev_policy_review_mode: "PROFILE_CONDITIONAL_REVIEW",
+        ev_policy_top_return_drag_profile: "EARLY|LONG|PINE_DROP_STALE_POS_TO_ENTRY|PREPARE",
+        ev_policy_top_return_drag_driver: "FAILURE_RISK_HEAVY",
+        ev_policy_top_mixed_profile: "EARLY|SHORT|PINE_DROP_STALE_POS_TO_ENTRY|ARMED",
+        ev_policy_top_mixed_driver: "DELAY_LATE_RISK_HEAVY",
       },
     },
     objectiveRetrospective: {
@@ -262,6 +267,9 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_ev_gate_threshold_metric, "exit_value_lower_bound");
   assert.strictEqual(journal.summary.current_ev_candidate_id, "EV_TP1_THRESHOLD_TUNE");
   assert.strictEqual(journal.summary.current_ev_candidate_canonical_id, "EV_COMPOSITE_THRESHOLD_TUNE");
+  assert.strictEqual(journal.summary.current_ev_policy_review_mode, "PROFILE_CONDITIONAL_REVIEW");
+  assert.strictEqual(journal.summary.current_ev_policy_top_return_drag_driver, "FAILURE_RISK_HEAVY");
+  assert.strictEqual(journal.summary.current_ev_policy_top_mixed_driver, "DELAY_LATE_RISK_HEAVY");
   assert.strictEqual(journal.summary.current_top_candidate_id, "ML_GATE_CORE_SCORE_ABS");
   assert.strictEqual(journal.summary.current_authority_state, "DEGRADED_ACTIVE");
   assert.strictEqual(journal.summary.current_change_authority_state, "PENDING");

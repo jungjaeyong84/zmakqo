@@ -31,6 +31,7 @@ const INPUTS = Object.freeze({
   serverMarketQuarantine: path.join(OPS_DAILY_DIR, "best_self_evolution_server_market_quarantine_latest.json"),
   explorationApplyCandidate: path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_apply_candidate_latest.json"),
   serverSignalDriftRemediationPlan: path.join(OPS_DAILY_DIR, "server_signal_drift_remediation_plan_latest.json"),
+  mlEvReplayStalePosDiagnostics: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_ev_replay_stale_pos_diagnostics_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -46,6 +47,7 @@ function renderMarkdown(report = {}) {
     `- blocker_n: ${summary.blocker_n ?? 0} / ${Array.isArray(summary.blockers) && summary.blockers.length ? summary.blockers.join("|") : "none"}`,
     `- global_qty_scale: ${summary.global_qty_scale != null ? summary.global_qty_scale : "N/A"}`,
     `- ev_policy_action: ${summary.ev_policy_action_canonical || summary.ev_policy_action || "N/A"} / legacy=${summary.ev_policy_action || "N/A"}`,
+    `- ev_policy_review_mode: ${summary.ev_policy_review_mode || "N/A"} / drag=${summary.ev_policy_top_return_drag_market || "N/A"}:${summary.ev_policy_top_return_drag_profile || "N/A"}:${summary.ev_policy_top_return_drag_driver || "N/A"} / mixed=${summary.ev_policy_top_mixed_market || "N/A"}:${summary.ev_policy_top_mixed_profile || "N/A"}:${summary.ev_policy_top_mixed_driver || "N/A"}`,
     `- objective score (cur -> proj): ${summary.current_objective_score != null ? summary.current_objective_score : "N/A"} -> ${summary.projected_objective_score != null ? summary.projected_objective_score : "N/A"}`,
     `- execution_quality: ${summary.execution_quality_status || "N/A"}`,
     `- quarantine/watch-only/other-policy: ${summary.quarantine_market_n ?? 0} / ${summary.watch_only_review_market_n ?? 0} / ${summary.other_server_policy_watch_only_market_n ?? 0}`,
@@ -81,6 +83,7 @@ function main() {
   const serverMarketQuarantine = readJsonRawSafe(INPUTS.serverMarketQuarantine, null);
   const explorationApplyCandidate = readJsonRawSafe(INPUTS.explorationApplyCandidate, null);
   const serverSignalDriftRemediationPlan = readJsonRawSafe(INPUTS.serverSignalDriftRemediationPlan, null);
+  const mlEvReplayStalePosDiagnostics = readJsonRawSafe(INPUTS.mlEvReplayStalePosDiagnostics, null);
 
   const reportCycleId = resolveAnchoredReportCycleId({
     preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
@@ -96,6 +99,7 @@ function main() {
       serverMarketQuarantine,
       explorationApplyCandidate,
       serverSignalDriftRemediationPlan,
+      mlEvReplayStalePosDiagnostics,
     ],
   });
 
@@ -110,6 +114,7 @@ function main() {
     serverMarketQuarantine,
     explorationApplyCandidate,
     serverSignalDriftRemediationPlan,
+    mlEvReplayStalePosDiagnostics,
   });
 
   const report = {

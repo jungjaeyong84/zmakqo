@@ -54,6 +54,22 @@ const { derivePolicyParameterEvolutionPlan } = require("../../src/utils/policyPa
         auto_apply_allowed: false,
       },
     },
+    mlEvReplayStalePosDiagnostics: {
+      summary: {
+        top_return_drag_market: "XRPUSDT",
+        top_return_drag_profile: "EARLY|LONG|PINE_DROP_STALE_POS_TO_ENTRY|PREPARE",
+        top_return_drag_avg_ev_lb: 0.4582,
+        top_return_drag_avg_delay_cost: 0.2024,
+        top_return_drag_avg_late_risk: 0.2606,
+        top_return_drag_avg_failure_risk: 0.5765,
+        top_mixed_market: "SOLUSDT",
+        top_mixed_profile: "EARLY|SHORT|PINE_DROP_STALE_POS_TO_ENTRY|ARMED",
+        top_mixed_avg_ev_lb: 0.4319,
+        top_mixed_avg_delay_cost: 0.5146,
+        top_mixed_avg_late_risk: 0.4272,
+        top_mixed_avg_failure_risk: 0.285,
+      },
+    },
   });
 
   assert.strictEqual(holdPlan.summary.status, "HOLD");
@@ -68,6 +84,9 @@ const { derivePolicyParameterEvolutionPlan } = require("../../src/utils/policyPa
   assert.ok(holdPlan.summary.blockers.includes("DEGRADED_AUTHORITY_NOT_ELIGIBLE"));
   assert.strictEqual(holdPlan.summary.ev_policy_action, "PRIORITIZE_EV_TP1_THRESHOLD_TUNE");
   assert.strictEqual(holdPlan.summary.ev_policy_action_canonical, "PRIORITIZE_EV_COMPOSITE_THRESHOLD_TUNE");
+  assert.strictEqual(holdPlan.summary.ev_policy_review_mode, "PROFILE_CONDITIONAL_REVIEW");
+  assert.strictEqual(holdPlan.summary.ev_policy_top_return_drag_driver, "FAILURE_RISK_HEAVY");
+  assert.strictEqual(holdPlan.summary.ev_policy_top_mixed_driver, "DELAY_LATE_RISK_HEAVY");
   assert.ok(holdPlan.summary.global_qty_scale <= 0.8);
   assert.strictEqual(holdPlan.recommendations.by_market[0].market, "AXSUSDT");
   assert.strictEqual(holdPlan.recommendations.by_market[0].mode, "WATCH_ONLY");
