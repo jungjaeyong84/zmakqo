@@ -17,6 +17,14 @@ const { buildMlPromotionGate } = require("../utils/mlPromotionGate");
       },
     },
     executionScopeTrainRun: { summary: { quality_gate_ready: true, train_run_id: "TRAIN_SCOPE__1" } },
+    mlGlobalCanaryEvidence: {
+      summary: {
+        status: "ML_GLOBAL_CANARY_EVIDENCE_READY",
+        global_canary_ready: false,
+        evidence_status: "GLOBAL_CANARY_REPLAY_BLOCKED",
+        dominant_blocker: "SELF_EVOLUTION_REPLAY_NOT_PASS",
+      },
+    },
     modelSpecificCanary: {
       summary: {
         status: "ML_MODEL_SPECIFIC_CANARY_READY",
@@ -47,6 +55,7 @@ const { buildMlPromotionGate } = require("../utils/mlPromotionGate");
   assert.strictEqual(shadowOnly.replay_gate_status, "PASS");
   assert.strictEqual(shadowOnly.shadow_gate_status, "PASS");
   assert.strictEqual(shadowOnly.global_canary_gate_status, "BLOCK");
+  assert.strictEqual(shadowOnly.global_canary_evidence_status, "GLOBAL_CANARY_REPLAY_BLOCKED");
   assert.strictEqual(shadowOnly.model_specific_canary_gate_status, "BLOCK");
   assert.strictEqual(shadowOnly.model_specific_canary_binding_mode, "MODEL_BINDING_MISSING");
   assert.strictEqual(shadowOnly.model_specific_canary_evidence_status, "MODEL_SPECIFIC_CANARY_BINDING_MISSING");
@@ -57,6 +66,13 @@ const { buildMlPromotionGate } = require("../utils/mlPromotionGate");
     truthPreservationAudit: { summary: { truth_preservation_ready: true } },
     executionServingContract: { summary: { shadow_ready: true, preferred_model_artifact_id: "MODEL_SCOPE__2", preferred_train_run_id: "TRAIN_SCOPE__2" } },
     executionScopeTrainRun: { summary: { quality_gate_ready: true, train_run_id: "TRAIN_SCOPE__2" } },
+    mlGlobalCanaryEvidence: {
+      summary: {
+        status: "ML_GLOBAL_CANARY_EVIDENCE_READY",
+        global_canary_ready: true,
+        evidence_status: "GLOBAL_CANARY_PASS_READY",
+      },
+    },
     modelSpecificCanary: {
       summary: {
         status: "ML_MODEL_SPECIFIC_CANARY_READY",
@@ -87,6 +103,7 @@ const { buildMlPromotionGate } = require("../utils/mlPromotionGate");
   assert.strictEqual(canaryReady.promotion_stage, "CANARY_READY");
   assert.strictEqual(canaryReady.promotion_decision, "READY_FOR_CANARY_REVIEW");
   assert.strictEqual(canaryReady.model_specific_canary_gate_status, "PASS");
+  assert.strictEqual(canaryReady.global_canary_gate_status, "PASS");
 
   console.log("ML_PROMOTION_GATE_TEST_OK");
 })();

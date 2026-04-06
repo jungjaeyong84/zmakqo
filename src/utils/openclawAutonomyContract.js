@@ -171,6 +171,7 @@ function deriveOpenClawAutonomyContract({
   mlTrainRun = null,
   mlTrainRunScope = null,
   executionServingContract = null,
+  mlGlobalCanaryEvidence = null,
   mlModelSpecificCanary = null,
   mlRollbackArm = null,
   mlModelContract = null,
@@ -207,6 +208,7 @@ function deriveOpenClawAutonomyContract({
   const mlTrainRunSummary = readSummary(mlTrainRun);
   const mlTrainRunScopeSummary = readSummary(mlTrainRunScope);
   const executionServingContractSummary = readSummary(executionServingContract);
+  const mlGlobalCanaryEvidenceSummary = readSummary(mlGlobalCanaryEvidence);
   const mlModelSpecificCanarySummary = readSummary(mlModelSpecificCanary);
   const mlRollbackArmSummary = readSummary(mlRollbackArm);
   const mlModelContractSummary = readSummary(mlModelContract);
@@ -545,6 +547,10 @@ function deriveOpenClawAutonomyContract({
       execution_serving_preferred_model_family: String(executionServingContractSummary.preferred_model_family || "").trim() || null,
       execution_serving_preferred_model_kind: String(executionServingContractSummary.preferred_model_kind || "").trim() || null,
       execution_serving_preferred_model_artifact_id: String(executionServingContractSummary.preferred_model_artifact_id || "").trim() || null,
+      ml_global_canary_status: String(mlGlobalCanaryEvidenceSummary.status || "").trim() || null,
+      ml_global_canary_ready: mlGlobalCanaryEvidenceSummary.global_canary_ready === true,
+      ml_global_canary_evidence_status: String(mlGlobalCanaryEvidenceSummary.evidence_status || "").trim() || null,
+      ml_global_canary_dominant_blocker: String(mlGlobalCanaryEvidenceSummary.dominant_blocker || "").trim() || null,
       ml_model_specific_canary_status: String(mlModelSpecificCanarySummary.status || "").trim() || null,
       ml_model_specific_canary_binding_mode: String(mlModelSpecificCanarySummary.binding_mode || "").trim() || null,
       ml_model_specific_canary_evidence_status: String(mlModelSpecificCanarySummary.evidence_status || "").trim() || null,
@@ -591,6 +597,9 @@ function deriveOpenClawAutonomyContract({
       ml_promotion_gate_status: mlPromotionGateStatus,
       ml_promotion_stage: String(mlPromotionGateSummary.promotion_stage || "").trim() || null,
       ml_promotion_decision: String(mlPromotionGateSummary.promotion_decision || "").trim() || null,
+      ml_promotion_global_canary_gate_status: String(mlPromotionGateSummary.global_canary_gate_status || "").trim() || null,
+      ml_promotion_global_canary_evidence_status: String(mlPromotionGateSummary.global_canary_evidence_status || "").trim() || null,
+      ml_promotion_global_canary_dominant_blocker: String(mlPromotionGateSummary.global_canary_dominant_blocker || "").trim() || null,
       ml_promotion_model_specific_canary_gate_status: String(mlPromotionGateSummary.model_specific_canary_gate_status || "").trim() || null,
       ml_promotion_model_specific_canary_ready: mlPromotionGateSummary.model_specific_canary_ready === true,
       ml_promotion_model_specific_canary_binding_mode: String(mlPromotionGateSummary.model_specific_canary_binding_mode || "").trim() || null,

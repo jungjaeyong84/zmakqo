@@ -12,6 +12,11 @@ function readSummary(value) {
   return raw.summary && typeof raw.summary === "object" ? raw.summary : raw;
 }
 
+function readCurrentStatus(value) {
+  const raw = unwrapRawReport(value) || {};
+  return raw.current_status && typeof raw.current_status === "object" ? raw.current_status : {};
+}
+
 function toUpper(value) {
   return String(value || "").trim().toUpperCase() || null;
 }
@@ -495,6 +500,7 @@ function buildReasoningJournal({
 } = {}) {
   const objective = unwrapRawReport(objectiveSupervisor) || {};
   const autonomySummary = readSummary(autonomyContract);
+  const autonomyCurrentStatus = readCurrentStatus(autonomyContract);
   const qualitySummary = readSummary(quality);
   const cutoverSummary = readSummary(cutover);
   const policySummary = readSummary(policyPlan);
@@ -743,6 +749,10 @@ function buildReasoningJournal({
       current_execution_serving_scope_registry_aligned: autonomySummary.execution_serving_scope_registry_aligned === true,
       current_execution_serving_preferred_model_family: String(autonomySummary.execution_serving_preferred_model_family || "").trim() || null,
       current_execution_serving_preferred_model_artifact_id: String(autonomySummary.execution_serving_preferred_model_artifact_id || "").trim() || null,
+      current_ml_global_canary_status: String(autonomyCurrentStatus.ml_global_canary_status || autonomySummary.ml_global_canary_status || "").trim() || null,
+      current_ml_global_canary_ready: autonomyCurrentStatus.ml_global_canary_ready === true || autonomySummary.ml_global_canary_ready === true,
+      current_ml_global_canary_evidence_status: String(autonomyCurrentStatus.ml_global_canary_evidence_status || autonomySummary.ml_global_canary_evidence_status || "").trim() || null,
+      current_ml_global_canary_dominant_blocker: String(autonomyCurrentStatus.ml_global_canary_dominant_blocker || autonomySummary.ml_global_canary_dominant_blocker || "").trim() || null,
       current_ml_model_specific_canary_status: String(autonomySummary.ml_model_specific_canary_status || "").trim() || null,
       current_ml_model_specific_canary_binding_mode: String(autonomySummary.ml_model_specific_canary_binding_mode || "").trim() || null,
       current_ml_model_specific_canary_evidence_status: String(autonomySummary.ml_model_specific_canary_evidence_status || "").trim() || null,
@@ -766,6 +776,9 @@ function buildReasoningJournal({
       current_ml_promotion_gate_status: String(autonomySummary.ml_promotion_gate_status || "").trim() || null,
       current_ml_promotion_stage: String(autonomySummary.ml_promotion_stage || "").trim() || null,
       current_ml_promotion_decision: String(autonomySummary.ml_promotion_decision || "").trim() || null,
+      current_ml_promotion_global_canary_gate_status: String(autonomyCurrentStatus.ml_promotion_global_canary_gate_status || autonomySummary.ml_promotion_global_canary_gate_status || "").trim() || null,
+      current_ml_promotion_global_canary_evidence_status: String(autonomyCurrentStatus.ml_promotion_global_canary_evidence_status || autonomySummary.ml_promotion_global_canary_evidence_status || "").trim() || null,
+      current_ml_promotion_global_canary_dominant_blocker: String(autonomyCurrentStatus.ml_promotion_global_canary_dominant_blocker || autonomySummary.ml_promotion_global_canary_dominant_blocker || "").trim() || null,
       current_ml_promotion_model_specific_canary_gate_status: String(autonomySummary.ml_promotion_model_specific_canary_gate_status || "").trim() || null,
       current_ml_promotion_model_specific_canary_ready: autonomySummary.ml_promotion_model_specific_canary_ready === true,
       current_ml_promotion_model_specific_canary_binding_mode: String(autonomySummary.ml_promotion_model_specific_canary_binding_mode || "").trim() || null,

@@ -23,6 +23,7 @@ function buildMlPromotionGate({
   truthPreservationAudit = null,
   executionServingContract = null,
   executionScopeTrainRun = null,
+  mlGlobalCanaryEvidence = null,
   modelSpecificCanary = null,
   mlRollbackArm = null,
   serverPrimaryCanary = null,
@@ -30,6 +31,7 @@ function buildMlPromotionGate({
   const truth = readSummary(truthPreservationAudit);
   const serving = readSummary(executionServingContract);
   const scopeTrain = readSummary(executionScopeTrainRun);
+  const globalCanaryEvidenceSummary = readSummary(mlGlobalCanaryEvidence);
   const modelSpecificCanarySummary = readSummary(modelSpecificCanary);
   const rollbackArmSummary = readSummary(mlRollbackArm);
   const serverPrimarySummary = readSummary(serverPrimaryCanary);
@@ -40,8 +42,7 @@ function buildMlPromotionGate({
   const canaryTrainRunId = norm(modelSpecificCanarySummary.bound_train_run_id);
   const replayPass = truth.truth_preservation_ready === true && scopeTrain.quality_gate_ready === true;
   const shadowPass = serving.shadow_ready === true;
-  const globalCanaryPass = modelSpecificCanarySummary.global_canary_pass === true
-    && modelSpecificCanarySummary.apply_pass === true;
+  const globalCanaryPass = globalCanaryEvidenceSummary.global_canary_ready === true;
   const modelSpecificCanaryArtifactAligned = modelSpecificCanarySummary.model_specific_canary_artifact_aligned === true;
   const modelSpecificCanaryTrainRunAligned = modelSpecificCanarySummary.model_specific_canary_train_run_aligned === true;
   const modelSpecificCanaryReady = modelSpecificCanarySummary.model_specific_canary_ready === true;
@@ -49,6 +50,7 @@ function buildMlPromotionGate({
   const rollbackReady = rollbackArmSummary.rollback_arm_ready === true;
   const bindingMode = toUpper(modelSpecificCanarySummary.binding_mode);
   const evidenceStatus = toUpper(modelSpecificCanarySummary.evidence_status);
+  const globalCanaryEvidenceStatus = toUpper(globalCanaryEvidenceSummary.evidence_status);
   const rollbackBindingSource = norm(rollbackArmSummary.rollback_binding_source);
   const rollbackEvidenceStatus = toUpper(rollbackArmSummary.evidence_status);
 
@@ -95,6 +97,8 @@ function buildMlPromotionGate({
     replay_gate_status: replayPass ? "PASS" : "BLOCK",
     shadow_gate_status: shadowPass ? "PASS" : "BLOCK",
     global_canary_gate_status: globalCanaryPass ? "PASS" : "BLOCK",
+    global_canary_evidence_status: globalCanaryEvidenceStatus,
+    global_canary_dominant_blocker: norm(globalCanaryEvidenceSummary.dominant_blocker),
     model_specific_canary_gate_status: modelSpecificCanaryReady ? "PASS" : "BLOCK",
     server_primary_gate_status: serverPrimaryPass ? "PASS" : "BLOCK",
     rollback_gate_status: rollbackReady ? "READY" : "NOT_ARMED",
