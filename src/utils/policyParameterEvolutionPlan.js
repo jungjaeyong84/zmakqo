@@ -336,10 +336,8 @@ function derivePolicyParameterEvolutionPlan({
       ev_policy_action_canonical: evPolicyActionCanonical,
       ev_policy_review_mode: stalePosReview.review_mode,
       ev_policy_top_return_drag_profile: stalePosReview.top_return_drag && stalePosReview.top_return_drag.profile || null,
-      ev_policy_top_return_drag_market: stalePosReview.top_return_drag && stalePosReview.top_return_drag.market || null,
       ev_policy_top_return_drag_driver: stalePosReview.top_return_drag && stalePosReview.top_return_drag.driver || null,
       ev_policy_top_mixed_profile: stalePosReview.top_mixed && stalePosReview.top_mixed.profile || null,
-      ev_policy_top_mixed_market: stalePosReview.top_mixed && stalePosReview.top_mixed.market || null,
       ev_policy_top_mixed_driver: stalePosReview.top_mixed && stalePosReview.top_mixed.driver || null,
       recovery_required: governor.recovery_required === true,
       governor_status: upper(governor.governor_status),
@@ -368,7 +366,7 @@ function derivePolicyParameterEvolutionPlan({
           ? "Keep EV composite policy unchanged; continue monitoring recovery effect."
           : `Set EV policy to ${evPolicyActionCanonical} and track objective delta impact.`,
         stalePosReview.review_mode === "PROFILE_CONDITIONAL_REVIEW"
-          ? `Review EV by stale-pos profile, not global loosen: drag=${stalePosReview.top_return_drag && stalePosReview.top_return_drag.market || "N/A"}|${stalePosReview.top_return_drag && stalePosReview.top_return_drag.profile || "N/A"}|${stalePosReview.top_return_drag && stalePosReview.top_return_drag.driver || "N/A"} / mixed=${stalePosReview.top_mixed && stalePosReview.top_mixed.market || "N/A"}|${stalePosReview.top_mixed && stalePosReview.top_mixed.profile || "N/A"}|${stalePosReview.top_mixed && stalePosReview.top_mixed.driver || "N/A"}.`
+          ? `Review EV by stale-pos profile, not global loosen: drag=${stalePosReview.top_return_drag && stalePosReview.top_return_drag.profile || "N/A"}|${stalePosReview.top_return_drag && stalePosReview.top_return_drag.driver || "N/A"} / mixed=${stalePosReview.top_mixed && stalePosReview.top_mixed.profile || "N/A"}|${stalePosReview.top_mixed && stalePosReview.top_mixed.driver || "N/A"}.`
           : "No stale-pos profile conditional EV review hint right now.",
         quarantined.length
           ? `Keep quarantine/watch-only for ${quarantined.join("|")} until objective+quality recovers.`
