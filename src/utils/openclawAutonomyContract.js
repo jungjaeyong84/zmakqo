@@ -171,6 +171,7 @@ function deriveOpenClawAutonomyContract({
   mlTrainRun = null,
   mlTrainRunScope = null,
   executionServingContract = null,
+  mlModelSpecificCanary = null,
   mlModelContract = null,
   mlPromotionGate = null,
   evGateCompositePolicy = null,
@@ -205,6 +206,7 @@ function deriveOpenClawAutonomyContract({
   const mlTrainRunSummary = readSummary(mlTrainRun);
   const mlTrainRunScopeSummary = readSummary(mlTrainRunScope);
   const executionServingContractSummary = readSummary(executionServingContract);
+  const mlModelSpecificCanarySummary = readSummary(mlModelSpecificCanary);
   const mlModelContractSummary = readSummary(mlModelContract);
   const mlPromotionGateSummary = readSummary(mlPromotionGate);
   const evGateCompositePolicySummary = readSummary(evGateCompositePolicy);
@@ -541,6 +543,14 @@ function deriveOpenClawAutonomyContract({
       execution_serving_preferred_model_family: String(executionServingContractSummary.preferred_model_family || "").trim() || null,
       execution_serving_preferred_model_kind: String(executionServingContractSummary.preferred_model_kind || "").trim() || null,
       execution_serving_preferred_model_artifact_id: String(executionServingContractSummary.preferred_model_artifact_id || "").trim() || null,
+      ml_model_specific_canary_status: String(mlModelSpecificCanarySummary.status || "").trim() || null,
+      ml_model_specific_canary_binding_mode: String(mlModelSpecificCanarySummary.binding_mode || "").trim() || null,
+      ml_model_specific_canary_evidence_status: String(mlModelSpecificCanarySummary.evidence_status || "").trim() || null,
+      ml_model_specific_canary_ready: mlModelSpecificCanarySummary.model_specific_canary_ready === true,
+      ml_model_specific_canary_preferred_model_artifact_id: String(mlModelSpecificCanarySummary.preferred_model_artifact_id || "").trim() || null,
+      ml_model_specific_canary_preferred_train_run_id: String(mlModelSpecificCanarySummary.preferred_train_run_id || "").trim() || null,
+      ml_model_specific_canary_bound_model_artifact_id: String(mlModelSpecificCanarySummary.bound_model_artifact_id || "").trim() || null,
+      ml_model_specific_canary_bound_train_run_id: String(mlModelSpecificCanarySummary.bound_train_run_id || "").trim() || null,
       ev_gate_policy_status: String(evGateCompositePolicySummary.status || "").trim() || null,
       ev_gate_policy_basis: String(evGateCompositePolicySummary.policy_basis || "").trim() || null,
       ev_gate_canonical_policy_version: String(evGateCompositePolicySummary.canonical_policy_version || "").trim() || null,
@@ -573,6 +583,8 @@ function deriveOpenClawAutonomyContract({
       ml_promotion_decision: String(mlPromotionGateSummary.promotion_decision || "").trim() || null,
       ml_promotion_model_specific_canary_gate_status: String(mlPromotionGateSummary.model_specific_canary_gate_status || "").trim() || null,
       ml_promotion_model_specific_canary_ready: mlPromotionGateSummary.model_specific_canary_ready === true,
+      ml_promotion_model_specific_canary_binding_mode: String(mlPromotionGateSummary.model_specific_canary_binding_mode || "").trim() || null,
+      ml_promotion_model_specific_canary_evidence_status: String(mlPromotionGateSummary.model_specific_canary_evidence_status || "").trim() || null,
       ml_promotion_preferred_model_family: String(mlPromotionGateSummary.preferred_model_family || "").trim() || null,
       ml_promotion_preferred_model_artifact_id: String(mlPromotionGateSummary.preferred_model_artifact_id || "").trim() || null,
       execution_bottleneck_delta_status: executionBottleneckDeltaStatus,
@@ -757,6 +769,14 @@ function deriveOpenClawAutonomyContract({
       execution_serving_preferred_model_family: String(executionServingContractSummary.preferred_model_family || "").trim() || null,
       execution_serving_preferred_model_kind: String(executionServingContractSummary.preferred_model_kind || "").trim() || null,
       execution_serving_preferred_model_artifact_id: String(executionServingContractSummary.preferred_model_artifact_id || "").trim() || null,
+      ml_model_specific_canary_status: String(mlModelSpecificCanarySummary.status || "").trim() || null,
+      ml_model_specific_canary_binding_mode: String(mlModelSpecificCanarySummary.binding_mode || "").trim() || null,
+      ml_model_specific_canary_evidence_status: String(mlModelSpecificCanarySummary.evidence_status || "").trim() || null,
+      ml_model_specific_canary_ready: mlModelSpecificCanarySummary.model_specific_canary_ready === true,
+      ml_model_specific_canary_preferred_model_artifact_id: String(mlModelSpecificCanarySummary.preferred_model_artifact_id || "").trim() || null,
+      ml_model_specific_canary_preferred_train_run_id: String(mlModelSpecificCanarySummary.preferred_train_run_id || "").trim() || null,
+      ml_model_specific_canary_bound_model_artifact_id: String(mlModelSpecificCanarySummary.bound_model_artifact_id || "").trim() || null,
+      ml_model_specific_canary_bound_train_run_id: String(mlModelSpecificCanarySummary.bound_train_run_id || "").trim() || null,
       ev_gate_policy_status: String(evGateCompositePolicySummary.status || "").trim() || null,
       ev_gate_policy_basis: String(evGateCompositePolicySummary.policy_basis || "").trim() || null,
       ev_gate_canonical_policy_version: String(evGateCompositePolicySummary.canonical_policy_version || "").trim() || null,
@@ -799,6 +819,8 @@ function deriveOpenClawAutonomyContract({
       ml_promotion_decision: String(mlPromotionGateSummary.promotion_decision || "").trim() || null,
       ml_promotion_model_specific_canary_gate_status: String(mlPromotionGateSummary.model_specific_canary_gate_status || "").trim() || null,
       ml_promotion_model_specific_canary_ready: mlPromotionGateSummary.model_specific_canary_ready === true,
+      ml_promotion_model_specific_canary_binding_mode: String(mlPromotionGateSummary.model_specific_canary_binding_mode || "").trim() || null,
+      ml_promotion_model_specific_canary_evidence_status: String(mlPromotionGateSummary.model_specific_canary_evidence_status || "").trim() || null,
       ml_promotion_preferred_model_family: String(mlPromotionGateSummary.preferred_model_family || "").trim() || null,
       ml_promotion_preferred_model_artifact_id: String(mlPromotionGateSummary.preferred_model_artifact_id || "").trim() || null,
       execution_stage_latency_status: executionStageLatencyStatus,

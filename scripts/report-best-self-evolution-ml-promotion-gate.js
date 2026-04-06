@@ -17,7 +17,7 @@ const INPUTS = Object.freeze({
   truthPreservationAudit: path.join(OPS_DAILY_DIR, "best_self_evolution_truth_preservation_audit_latest.json"),
   executionServingContract: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_serving_contract_latest.json"),
   executionScopeTrainRun: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_train_run_scope_result_latest.json"),
-  canary: path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json"),
+  modelSpecificCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_model_specific_canary_latest.json"),
   serverPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
 });
 
@@ -36,6 +36,10 @@ function renderMarkdown(report = {}) {
     `- replay_gate: ${summary.replay_gate_status || "N/A"}`,
     `- shadow_gate: ${summary.shadow_gate_status || "N/A"}`,
     `- global_canary_gate: ${summary.global_canary_gate_status || "N/A"}`,
+    `- model_specific_canary_status: ${summary.model_specific_canary_status || "N/A"}`,
+    `- model_specific_canary_binding_mode: ${summary.model_specific_canary_binding_mode || "N/A"}`,
+    `- model_specific_canary_evidence_status: ${summary.model_specific_canary_evidence_status || "N/A"}`,
+    `- model_specific_canary_gate: ${summary.model_specific_canary_gate_status || "N/A"}`,
     `- server_primary_gate: ${summary.server_primary_gate_status || "N/A"}`,
     `- rollback_gate: ${summary.rollback_gate_status || "N/A"}`,
     `- blocking_reasons: ${Array.isArray(summary.blocking_reasons) && summary.blocking_reasons.length ? summary.blocking_reasons.join(", ") : "none"}`,
@@ -49,7 +53,7 @@ function main() {
     truthPreservationAudit: readJsonRawSafe(INPUTS.truthPreservationAudit, null),
     executionServingContract: readJsonRawSafe(INPUTS.executionServingContract, null),
     executionScopeTrainRun: readJsonRawSafe(INPUTS.executionScopeTrainRun, null),
-    canary: readJsonRawSafe(INPUTS.canary, null),
+    modelSpecificCanary: readJsonRawSafe(INPUTS.modelSpecificCanary, null),
     serverPrimaryCanary: readJsonRawSafe(INPUTS.serverPrimaryCanary, null),
   });
   const payload = { ok: true, generated_at_kst: nowMeta.kst, inputs: INPUTS, summary };

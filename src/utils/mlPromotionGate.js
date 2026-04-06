@@ -15,24 +15,38 @@ function toNum(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function norm(value) {
+  return String(value || "").trim() || null;
+}
+
 function buildMlPromotionGate({
   truthPreservationAudit = null,
   executionServingContract = null,
   executionScopeTrainRun = null,
-  canary = null,
+  modelSpecificCanary = null,
   serverPrimaryCanary = null,
 } = {}) {
   const truth = readSummary(truthPreservationAudit);
   const serving = readSummary(executionServingContract);
   const scopeTrain = readSummary(executionScopeTrainRun);
-  const canarySummary = readSummary(canary);
+  const modelSpecificCanarySummary = readSummary(modelSpecificCanary);
   const serverPrimarySummary = readSummary(serverPrimaryCanary);
 
+  const preferredModelArtifactId = norm(serving.preferred_model_artifact_id || scopeTrain.model_artifact_id);
+  const preferredTrainRunId = norm(serving.preferred_train_run_id || scopeTrain.train_run_id);
+  const canaryModelArtifactId = norm(modelSpecificCanarySummary.bound_model_artifact_id);
+  const canaryTrainRunId = norm(modelSpecificCanarySummary.bound_train_run_id);
   const replayPass = truth.truth_preservation_ready === true && scopeTrain.quality_gate_ready === true;
   const shadowPass = serving.shadow_ready === true;
-  const globalCanaryPass = canarySummary.global_canary_pass === true && canarySummary.apply_pass === true;
+  const globalCanaryPass = modelSpecificCanarySummary.global_canary_pass === true
+    && modelSpecificCanarySummary.apply_pass === true;
+  const modelSpecificCanaryArtifactAligned = modelSpecificCanarySummary.model_specific_canary_artifact_aligned === true;
+  const modelSpecificCanaryTrainRunAligned = modelSpecificCanarySummary.model_specific_canary_train_run_aligned === true;
+  const modelSpecificCanaryReady = modelSpecificCanarySummary.model_specific_canary_ready === true;
   const serverPrimaryPass = serverPrimarySummary.apply_pass === true && serverPrimarySummary.acceptance_ready === true;
-  const rollbackReady = (toNum(canarySummary.rollback_ready_n) || 0) > 0;
+  const rollbackReady = (toNum(modelSpecificCanarySummary.rollback_ready_n) || 0) > 0;
+  const bindingMode = toUpper(modelSpecificCanarySummary.binding_mode);
+  const evidenceStatus = toUpper(modelSpecificCanarySummary.evidence_status);
 
   let promotion_stage = "OFFLINE_ONLY";
   let promotion_decision = "HOLD_OFFLINE_ONLY";
@@ -42,9 +56,9 @@ function buildMlPromotionGate({
   } else if (!shadowPass) {
     promotion_stage = "OFFLINE_ONLY";
     promotion_decision = "HOLD_SHADOW_READINESS";
-  } else if (!globalCanaryPass) {
+  } else if (!modelSpecificCanaryReady) {
     promotion_stage = "SHADOW_READY";
-    promotion_decision = "HOLD_GLOBAL_CANARY";
+    promotion_decision = "HOLD_MODEL_SPECIFIC_CANARY";
   } else if (!rollbackReady) {
     promotion_stage = "SHADOW_READY";
     promotion_decision = "HOLD_ROLLBACK_NOT_ARMED";
@@ -60,6 +74,13 @@ function buildMlPromotionGate({
   if (!replayPass) blockingReasons.push("REPLAY_GATE_NOT_READY");
   if (!shadowPass) blockingReasons.push("SHADOW_GATE_NOT_READY");
   if (!globalCanaryPass) blockingReasons.push("GLOBAL_CANARY_NOT_READY");
+  if (bindingMode === "MODEL_BINDING_MISSING") blockingReasons.push("MODEL_SPECIFIC_CANARY_EVIDENCE_MISSING");
+  if (bindingMode !== "MODEL_BINDING_MISSING" && (evidenceStatus === "MODEL_SPECIFIC_CANARY_ARTIFACT_MISMATCH" || !modelSpecificCanaryArtifactAligned)) {
+    blockingReasons.push("MODEL_SPECIFIC_CANARY_ARTIFACT_MISMATCH");
+  }
+  if (bindingMode !== "MODEL_BINDING_MISSING" && (evidenceStatus === "MODEL_SPECIFIC_CANARY_TRAIN_RUN_MISMATCH" || (preferredTrainRunId && !modelSpecificCanaryTrainRunAligned))) {
+    blockingReasons.push("MODEL_SPECIFIC_CANARY_TRAIN_RUN_MISMATCH");
+  }
   if (!rollbackReady) blockingReasons.push("ROLLBACK_NOT_ARMED");
   if (!serverPrimaryPass) blockingReasons.push("SERVER_PRIMARY_NOT_READY");
 
@@ -70,12 +91,21 @@ function buildMlPromotionGate({
     replay_gate_status: replayPass ? "PASS" : "BLOCK",
     shadow_gate_status: shadowPass ? "PASS" : "BLOCK",
     global_canary_gate_status: globalCanaryPass ? "PASS" : "BLOCK",
+    model_specific_canary_gate_status: modelSpecificCanaryReady ? "PASS" : "BLOCK",
     server_primary_gate_status: serverPrimaryPass ? "PASS" : "BLOCK",
     rollback_gate_status: rollbackReady ? "READY" : "NOT_ARMED",
+    model_specific_canary_status: String(modelSpecificCanarySummary.status || "").trim() || null,
+    model_specific_canary_binding_mode: bindingMode,
+    model_specific_canary_evidence_status: evidenceStatus,
     preferred_model_family: String(serving.preferred_model_family || "").trim() || "EXECUTION_SCOPE",
     preferred_model_kind: String(serving.preferred_model_kind || scopeTrain.model_kind || "").trim() || null,
-    preferred_model_artifact_id: String(serving.preferred_model_artifact_id || scopeTrain.model_artifact_id || "").trim() || null,
-    preferred_train_run_id: String(serving.preferred_train_run_id || scopeTrain.train_run_id || "").trim() || null,
+    preferred_model_artifact_id: preferredModelArtifactId,
+    preferred_train_run_id: preferredTrainRunId,
+    canary_model_artifact_id: canaryModelArtifactId,
+    canary_train_run_id: canaryTrainRunId,
+    model_specific_canary_artifact_aligned: modelSpecificCanaryArtifactAligned,
+    model_specific_canary_train_run_aligned: modelSpecificCanaryTrainRunAligned,
+    model_specific_canary_ready: modelSpecificCanaryReady,
     truth_preservation_ready: truth.truth_preservation_ready === true,
     scope_quality_gate_ready: scopeTrain.quality_gate_ready === true,
     scope_mismatch_rate: toNum(serving.scope_inference_mismatch_rate),

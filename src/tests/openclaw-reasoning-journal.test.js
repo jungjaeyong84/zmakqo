@@ -17,6 +17,18 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         change_authority_state: "PENDING",
         model_readiness_status: "MODEL_READINESS_READY",
         feature_store_status: "FEATURE_STORE_READY",
+        ev_gate_policy_status: "EV_GATE_COMPOSITE_POLICY_READY",
+        ev_gate_policy_basis: "TP_COMPOSITE_EXIT_VALUE_V1",
+        ev_gate_canonical_policy_version: "EV_COMPOSITE_EXIT_VALUE_V1",
+        ev_gate_compatibility_policy_version: "TP1_WEIGHT_V1",
+        ev_gate_threshold_metric: "exit_value_lower_bound",
+        ev_gate_compatibility_drop_reason: "DROP_EV_GATE_TP1_PROB",
+        ev_gate_default_tp0_pct: 0.8,
+        ev_gate_default_tp0_qty_ratio: 0.25,
+        ev_candidate_id: "EV_TP1_THRESHOLD_TUNE",
+        ev_candidate_canonical_id: "EV_COMPOSITE_THRESHOLD_TUNE",
+        self_evolution_top_candidate_id: "ML_GATE_CORE_SCORE_ABS",
+        self_evolution_top_candidate_canonical_id: null,
         execution_model_dataset_status: "EXECUTION_MODEL_DATASET_READY",
         execution_fill_inference_status: "EXECUTION_FILL_INFERENCE_READY",
         execution_fill_inference_mismatch_rate: 0.19,
@@ -66,6 +78,14 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         execution_serving_shadow_ready: true,
         execution_serving_preferred_model_family: "EXECUTION_SCOPE",
         execution_serving_preferred_model_artifact_id: "MODEL_EXEC_SCOPE__s1",
+        ml_model_specific_canary_status: "ML_MODEL_SPECIFIC_CANARY_READY",
+        ml_model_specific_canary_binding_mode: "MODEL_BINDING_MISSING",
+        ml_model_specific_canary_evidence_status: "MODEL_SPECIFIC_CANARY_BINDING_MISSING",
+        ml_model_specific_canary_ready: false,
+        ml_model_specific_canary_preferred_model_artifact_id: "MODEL_EXEC_SCOPE__s1",
+        ml_model_specific_canary_preferred_train_run_id: "TRAIN_EXEC_SCOPE__s1",
+        ml_model_specific_canary_bound_model_artifact_id: null,
+        ml_model_specific_canary_bound_train_run_id: null,
         execution_scope_train_run_status: "ML_TRAIN_RUN_REPORTED",
         execution_scope_train_run_id: "TRAIN_EXEC_SCOPE__s1",
         execution_scope_train_run_model_artifact_id: "MODEL_EXEC_SCOPE__s1",
@@ -84,6 +104,8 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         ml_promotion_gate_status: "ML_PROMOTION_GATE_READY",
         ml_promotion_stage: "SHADOW_READY",
         ml_promotion_decision: "HOLD_GLOBAL_CANARY",
+        ml_promotion_model_specific_canary_binding_mode: "MODEL_BINDING_MISSING",
+        ml_promotion_model_specific_canary_evidence_status: "MODEL_SPECIFIC_CANARY_BINDING_MISSING",
         ml_promotion_preferred_model_family: "EXECUTION_SCOPE",
         ml_promotion_preferred_model_artifact_id: "MODEL_EXEC_SCOPE__s1",
         execution_bottleneck_delta_status: "EXECUTION_BOTTLENECK_DELTA_READY",
@@ -209,6 +231,13 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_recommended_action, "HOLD_EV_POLICY_REVIEW");
   assert.match(journal.summary.current_verification_focus, /ev_policy_post_apply_comparable_n/);
   assert.strictEqual(journal.summary.current_execution_quality_status, "EXECUTION_QUALITY_REVIEW");
+  assert.strictEqual(journal.summary.current_ev_gate_policy_status, "EV_GATE_COMPOSITE_POLICY_READY");
+  assert.strictEqual(journal.summary.current_ev_gate_policy_basis, "TP_COMPOSITE_EXIT_VALUE_V1");
+  assert.strictEqual(journal.summary.current_ev_gate_canonical_policy_version, "EV_COMPOSITE_EXIT_VALUE_V1");
+  assert.strictEqual(journal.summary.current_ev_gate_threshold_metric, "exit_value_lower_bound");
+  assert.strictEqual(journal.summary.current_ev_candidate_id, "EV_TP1_THRESHOLD_TUNE");
+  assert.strictEqual(journal.summary.current_ev_candidate_canonical_id, "EV_COMPOSITE_THRESHOLD_TUNE");
+  assert.strictEqual(journal.summary.current_top_candidate_id, "ML_GATE_CORE_SCORE_ABS");
   assert.strictEqual(journal.summary.current_authority_state, "DEGRADED_ACTIVE");
   assert.strictEqual(journal.summary.current_change_authority_state, "PENDING");
   assert.strictEqual(journal.summary.current_lineage_status, "PASS");
@@ -226,6 +255,10 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_execution_serving_stage, "SHADOW_READY");
   assert.strictEqual(journal.summary.current_execution_serving_shadow_ready, true);
   assert.strictEqual(journal.summary.current_execution_serving_preferred_model_family, "EXECUTION_SCOPE");
+  assert.strictEqual(journal.summary.current_ml_model_specific_canary_status, "ML_MODEL_SPECIFIC_CANARY_READY");
+  assert.strictEqual(journal.summary.current_ml_model_specific_canary_binding_mode, "MODEL_BINDING_MISSING");
+  assert.strictEqual(journal.summary.current_ml_model_specific_canary_evidence_status, "MODEL_SPECIFIC_CANARY_BINDING_MISSING");
+  assert.strictEqual(journal.summary.current_ml_model_specific_canary_ready, false);
   assert.strictEqual(journal.summary.current_execution_quality_top_operational_webhook_delay_cause, "IMMEDIATE_EXEC_TRUE_INTENT_DELAY");
   assert.strictEqual(journal.summary.current_execution_quality_top_operational_immediate_intent_delay_group, "TV_WEBHOOK|EARLY_LONG|BTCUSDT");
   assert.strictEqual(journal.summary.current_execution_quality_scope_quality_gate_status, "POLICY_BLOCKED_RECALL_TOO_LOW");
@@ -282,6 +315,8 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_ml_promotion_gate_status, "ML_PROMOTION_GATE_READY");
   assert.strictEqual(journal.summary.current_ml_promotion_stage, "SHADOW_READY");
   assert.strictEqual(journal.summary.current_ml_promotion_decision, "HOLD_GLOBAL_CANARY");
+  assert.strictEqual(journal.summary.current_ml_promotion_model_specific_canary_binding_mode, "MODEL_BINDING_MISSING");
+  assert.strictEqual(journal.summary.current_ml_promotion_model_specific_canary_evidence_status, "MODEL_SPECIFIC_CANARY_BINDING_MISSING");
   assert.strictEqual(journal.summary.current_execution_bottleneck_delta_status, "EXECUTION_BOTTLENECK_DELTA_READY");
   assert.strictEqual(journal.summary.current_execution_bottleneck_delta_comparable, true);
   assert.strictEqual(journal.summary.current_execution_bottleneck_delta_interpretation, "USE_DELTA_SIGNAL");

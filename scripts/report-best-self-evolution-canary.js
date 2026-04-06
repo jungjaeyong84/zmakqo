@@ -5,7 +5,7 @@
 const path = require("path");
 const {
   OPS_DAILY_DIR,
-  copySelfEvolutionLatest,
+  copyLatest,
   loadLocalEnv,
   nowKstMeta,
   readJsonRawSafe,
@@ -99,8 +99,8 @@ async function main() {
   const latestMdPath = path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.md");
   writeJson(jsonPath, output);
   writeText(mdPath, renderMarkdown(output));
-  copySelfEvolutionLatest(jsonPath, latestJsonPath);
-  copySelfEvolutionLatest(mdPath, latestMdPath);
+  copyLatest(jsonPath, latestJsonPath);
+  copyLatest(mdPath, latestMdPath);
   console.log(JSON.stringify({ ok: true, json: jsonPath, markdown: mdPath, latest_json: latestJsonPath, latest_markdown: latestMdPath }));
 }
 

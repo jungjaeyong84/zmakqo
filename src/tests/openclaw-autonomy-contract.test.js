@@ -49,8 +49,11 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
     mlTrainRun: { summary: { status: "ML_TRAIN_RUN_NOT_STARTED", model_artifact_id: null, quality_gate_status: null, quality_gate_ready: false } },
     mlTrainRunScope: { summary: { status: "ML_TRAIN_RUN_REPORTED", train_run_id: "TRAIN_EXEC_SCOPE__s1", model_artifact_id: "MODEL_EXEC_SCOPE__s1", model_kind: "EXECUTION_SCOPE_OVR_LOGISTIC_V1", quality_gate_status: "POLICY_BLOCKED_RECALL_TOO_LOW", quality_gate_ready: false, split_diagnostics: { top_policy_blocked_test_source: "PINE_WEBHOOK", top_policy_blocked_test_source_train_n: 1, top_policy_blocked_test_source_test_n: 13, top_policy_blocked_test_source_test_share: 0.8667 } } },
     executionServingContract: { summary: { status: "EXECUTION_SERVING_CONTRACT_READY", serving_stage: "OFFLINE_ONLY", serving_decision: "HOLD_SCOPE_QUALITY", shadow_ready: false, preferred_model_family: "EXECUTION_SCOPE", preferred_model_kind: "EXECUTION_SCOPE_OVR_LOGISTIC_V1", preferred_model_artifact_id: "MODEL_EXEC_SCOPE__s1" } },
+    mlModelSpecificCanary: { summary: { status: "ML_MODEL_SPECIFIC_CANARY_READY", binding_mode: "MODEL_BINDING_MISSING", evidence_status: "MODEL_SPECIFIC_CANARY_BINDING_MISSING", model_specific_canary_ready: false, preferred_model_artifact_id: "MODEL_EXEC_SCOPE__s1", preferred_train_run_id: "TRAIN_EXEC_SCOPE__s1", bound_model_artifact_id: null, bound_train_run_id: null } },
     mlModelContract: { summary: { status: "ML_MODEL_CONTRACT_OFFLINE_ONLY", deployment_stage: "OFFLINE_ONLY", canary_gate_status: "BLOCK_MODEL_QUALITY", promotion_status: "HOLD_MODEL_QUALITY", model_artifact_id: null } },
-    mlPromotionGate: { summary: { status: "ML_PROMOTION_GATE_READY", promotion_stage: "OFFLINE_ONLY", promotion_decision: "HOLD_REPLAY", preferred_model_family: "EXECUTION_SCOPE", preferred_model_artifact_id: "MODEL_EXEC_SCOPE__s1" } },
+    mlPromotionGate: { summary: { status: "ML_PROMOTION_GATE_READY", promotion_stage: "OFFLINE_ONLY", promotion_decision: "HOLD_REPLAY", preferred_model_family: "EXECUTION_SCOPE", preferred_model_artifact_id: "MODEL_EXEC_SCOPE__s1", model_specific_canary_gate_status: "BLOCK", model_specific_canary_ready: false, model_specific_canary_binding_mode: "MODEL_BINDING_MISSING", model_specific_canary_evidence_status: "MODEL_SPECIFIC_CANARY_BINDING_MISSING" } },
+    evGateCompositePolicy: { summary: { status: "EV_GATE_COMPOSITE_POLICY_READY", policy_basis: "TP_COMPOSITE_EXIT_VALUE_V1", canonical_policy_version: "EV_COMPOSITE_EXIT_VALUE_V1", compatibility_policy_version: "TP1_WEIGHT_V1", threshold_metric: "exit_value_lower_bound", threshold_metric_family: "TP_COMPOSITE_EXIT_VALUE", compatibility_drop_reason: "DROP_EV_GATE_TP1_PROB", default_tp0_pct: 0.8, default_tp0_qty_ratio: 0.25, default_tp1_pct: 3.25, default_sl_pct: 1.65, tp1_prob_min_global: 0.55, tp1_prob_min_early: 0.6, tp1_prob_min_core: 0.57, legacy_threshold_setting_keys: ["ev_gate_tp1_prob_min"] } },
+    candidates: { summary: { top_candidate_id: "ML_GATE_CORE_SCORE_ABS" }, rows: [{ candidate_id: "ML_GATE_CORE_SCORE_ABS", canonical_candidate_id: null, scope: "ML" }, { candidate_id: "EV_TP1_THRESHOLD_TUNE", canonical_candidate_id: "EV_COMPOSITE_THRESHOLD_TUNE", scope: "EV" }] },
   });
 
   assert.strictEqual(report.current_status.objective_score, -7.4);
@@ -109,6 +112,21 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.current_status.execution_serving_stage, "OFFLINE_ONLY");
   assert.strictEqual(report.current_status.execution_serving_shadow_ready, false);
   assert.strictEqual(report.current_status.execution_serving_preferred_model_family, "EXECUTION_SCOPE");
+  assert.strictEqual(report.current_status.ml_model_specific_canary_status, "ML_MODEL_SPECIFIC_CANARY_READY");
+  assert.strictEqual(report.current_status.ml_model_specific_canary_binding_mode, "MODEL_BINDING_MISSING");
+  assert.strictEqual(report.current_status.ml_model_specific_canary_evidence_status, "MODEL_SPECIFIC_CANARY_BINDING_MISSING");
+  assert.strictEqual(report.current_status.ml_model_specific_canary_ready, false);
+  assert.strictEqual(report.current_status.ev_gate_policy_status, "EV_GATE_COMPOSITE_POLICY_READY");
+  assert.strictEqual(report.current_status.ev_gate_policy_basis, "TP_COMPOSITE_EXIT_VALUE_V1");
+  assert.strictEqual(report.current_status.ev_gate_canonical_policy_version, "EV_COMPOSITE_EXIT_VALUE_V1");
+  assert.strictEqual(report.current_status.ev_gate_compatibility_policy_version, "TP1_WEIGHT_V1");
+  assert.strictEqual(report.current_status.ev_gate_threshold_metric, "exit_value_lower_bound");
+  assert.strictEqual(report.current_status.ev_gate_compatibility_drop_reason, "DROP_EV_GATE_TP1_PROB");
+  assert.strictEqual(report.current_status.ev_gate_default_tp0_pct, 0.8);
+  assert.strictEqual(report.current_status.ev_gate_default_tp0_qty_ratio, 0.25);
+  assert.strictEqual(report.current_status.ev_candidate_id, "EV_TP1_THRESHOLD_TUNE");
+  assert.strictEqual(report.current_status.ev_candidate_canonical_id, "EV_COMPOSITE_THRESHOLD_TUNE");
+  assert.strictEqual(report.current_status.self_evolution_top_candidate_id, "ML_GATE_CORE_SCORE_ABS");
   assert.strictEqual(report.current_status.execution_bottleneck_delta_status, "EXECUTION_BOTTLENECK_DELTA_READY");
   assert.strictEqual(report.current_status.execution_bottleneck_delta_comparable, true);
   assert.strictEqual(report.current_status.execution_bottleneck_delta_interpretation, "USE_DELTA_SIGNAL");
@@ -166,6 +184,11 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.summary.execution_serving_contract_status, "EXECUTION_SERVING_CONTRACT_READY");
   assert.strictEqual(report.summary.execution_serving_stage, "OFFLINE_ONLY");
   assert.strictEqual(report.summary.execution_serving_preferred_model_family, "EXECUTION_SCOPE");
+  assert.strictEqual(report.summary.ev_gate_policy_status, "EV_GATE_COMPOSITE_POLICY_READY");
+  assert.strictEqual(report.summary.ev_gate_policy_basis, "TP_COMPOSITE_EXIT_VALUE_V1");
+  assert.strictEqual(report.summary.ev_gate_canonical_policy_version, "EV_COMPOSITE_EXIT_VALUE_V1");
+  assert.strictEqual(report.summary.ev_gate_threshold_metric, "exit_value_lower_bound");
+  assert.strictEqual(report.summary.ev_candidate_canonical_id, "EV_COMPOSITE_THRESHOLD_TUNE");
   assert.strictEqual(report.summary.execution_scope_train_run_status, "ML_TRAIN_RUN_REPORTED");
   assert.strictEqual(report.summary.execution_scope_train_run_quality_gate_status, "POLICY_BLOCKED_RECALL_TOO_LOW");
   assert.strictEqual(report.summary.execution_scope_train_run_quality_gate_ready, false);
@@ -175,6 +198,8 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.summary.ml_promotion_gate_status, "ML_PROMOTION_GATE_READY");
   assert.strictEqual(report.summary.ml_promotion_stage, "OFFLINE_ONLY");
   assert.strictEqual(report.summary.ml_promotion_decision, "HOLD_REPLAY");
+  assert.strictEqual(report.summary.ml_promotion_model_specific_canary_binding_mode, "MODEL_BINDING_MISSING");
+  assert.strictEqual(report.summary.ml_promotion_model_specific_canary_evidence_status, "MODEL_SPECIFIC_CANARY_BINDING_MISSING");
   assert.strictEqual(report.summary.execution_bottleneck_delta_status, "EXECUTION_BOTTLENECK_DELTA_READY");
   assert.strictEqual(report.summary.execution_bottleneck_delta_comparable, true);
   assert.strictEqual(report.summary.execution_bottleneck_delta_interpretation, "USE_DELTA_SIGNAL");
