@@ -26,6 +26,8 @@ const INPUTS = Object.freeze({
   previousCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json"),
   memory: path.join(OPS_DAILY_DIR, "best_self_evolution_memory_latest.json"),
   serverPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
+  executionServingContract: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_serving_contract_latest.json"),
+  executionScopeTrainRun: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_train_run_scope_result_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -41,6 +43,7 @@ function renderMarkdown(report = {}) {
     `- total/shadow/soft/hard: ${summary.total_n ?? 0} / ${summary.shadow_n ?? 0} / ${summary.soft_n ?? 0} / ${summary.hard_n ?? 0}`,
     `- ready/blocked/rollback: ${summary.ready_n ?? 0} / ${summary.blocked_n ?? 0} / ${summary.rollback_ready_n ?? 0}`,
     `- apply_pass: ${summary.apply_pass ? "YES" : "NO"} / global_canary_pass: ${summary.global_canary_pass ? "YES" : "NO"}`,
+    `- model_binding: ${summary.model_binding_source || "N/A"} / ${summary.model_artifact_id || "N/A"} / ${summary.train_run_id || "N/A"}`,
     `- drift global shadow/golden: ${summary.shadow_global_drift ?? 0} / ${summary.golden_global_drift ?? 0}`,
     `- wave open/current/next: ${summary.open_wave ?? "N/A"} / ${summary.current_open_wave ?? "N/A"} / ${summary.next_wave_candidate ?? "N/A"}`,
     `- scale_allowed: ${summary.scale_allowed ? "YES" : "NO"} / reason=${summary.scale_block_reason || "N/A"}`,
@@ -70,6 +73,8 @@ async function main() {
     driftCanary: readJsonRawSafe(INPUTS.driftCanary, null),
     previousCanary: readJsonRawSafe(INPUTS.previousCanary, null),
     memoryLedger: readJsonRawSafe(INPUTS.memory, null),
+    executionServingContract: readJsonRawSafe(INPUTS.executionServingContract, null),
+    executionScopeTrainRun: readJsonRawSafe(INPUTS.executionScopeTrainRun, null),
   });
   const serverPrimaryCanary = readJsonRawSafe(INPUTS.serverPrimaryCanary, null);
   const output = {

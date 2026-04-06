@@ -6,6 +6,15 @@ function toNum(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function readSummary(value) {
+  if (!value || typeof value !== "object") return {};
+  return value.summary && typeof value.summary === "object" ? value.summary : value;
+}
+
+function norm(value) {
+  return String(value || "").trim() || null;
+}
+
 function unwrapRawReport(value) {
   if (!value || typeof value !== "object") return value || null;
   if (value.raw && typeof value.raw === "object") return value.raw;
@@ -178,7 +187,11 @@ function buildMarketCanaryRows({
   driftCanary = null,
   previousCanary = null,
   memoryLedger = null,
+  executionServingContract = null,
+  executionScopeTrainRun = null,
 } = {}) {
+  const servingSummary = readSummary(executionServingContract);
+  const scopeTrainSummary = readSummary(executionScopeTrainRun);
   const objective = objectiveSupervisor && objectiveSupervisor.self_evolution_objective && typeof objectiveSupervisor.self_evolution_objective === "object"
     ? objectiveSupervisor.self_evolution_objective
     : {};
@@ -202,6 +215,12 @@ function buildMarketCanaryRows({
   const goldenGlobalDrift = toNum(driftMetaForMarket(goldenByMarket, "GLOBAL").drift) || 0;
   const globalCanaryPass = driftShadow === 0 && driftGolden === 0;
   const waveState = deriveOpenWave({ previousCanary, memoryLedger });
+  const preferredModelFamily = norm(servingSummary.preferred_model_family) || "EXECUTION_SCOPE";
+  const preferredModelKind = norm(servingSummary.preferred_model_kind || scopeTrainSummary.model_kind);
+  const preferredModelArtifactId = norm(servingSummary.preferred_model_artifact_id || scopeTrainSummary.model_artifact_id);
+  const preferredTrainRunId = norm(servingSummary.preferred_train_run_id || scopeTrainSummary.train_run_id);
+  const preferredExperimentId = norm(servingSummary.experiment_id || scopeTrainSummary.experiment_id);
+  const modelBindingReady = servingSummary.shadow_ready === true && Boolean(preferredModelArtifactId);
 
   const rows = [];
   for (const market of uniqueMarkets(
@@ -307,6 +326,11 @@ function buildMarketCanaryRows({
       drift_shadow_stages: driftStageList(shadowMarketMeta),
       drift_golden_stages: driftStageList(goldenMarketMeta),
       concentration_recovery: concentrationRecovery,
+      model_family: modelBindingReady ? preferredModelFamily : null,
+      model_kind: modelBindingReady ? preferredModelKind : null,
+      model_artifact_id: modelBindingReady ? preferredModelArtifactId : null,
+      train_run_id: modelBindingReady ? preferredTrainRunId : null,
+      experiment_id: modelBindingReady ? preferredExperimentId : null,
       blockers,
     });
   }
@@ -341,6 +365,12 @@ function buildMarketCanaryRows({
       top_rollback_market: rollbackRows[0] ? rollbackRows[0].market : null,
       top_shadow_drift_market: topShadowDriftMarket && Number(topShadowDriftMarket.drift_shadow_market || 0) > 0 ? topShadowDriftMarket.market : null,
       top_golden_drift_market: topGoldenDriftMarket && Number(topGoldenDriftMarket.drift_golden_market || 0) > 0 ? topGoldenDriftMarket.market : null,
+      model_binding_source: modelBindingReady ? "EXECUTION_SERVING_CONTRACT" : "NONE",
+      model_family: modelBindingReady ? preferredModelFamily : null,
+      model_kind: modelBindingReady ? preferredModelKind : null,
+      model_artifact_id: modelBindingReady ? preferredModelArtifactId : null,
+      train_run_id: modelBindingReady ? preferredTrainRunId : null,
+      experiment_id: modelBindingReady ? preferredExperimentId : null,
     },
     rows,
   };

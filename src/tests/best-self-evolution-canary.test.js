@@ -25,13 +25,28 @@ function run() {
         { candidate_id: "AUTO_CORE_REGIME_TIGHTEN", validation_verdict: "PASS", candidate_objective_delta: 0.9 },
       ],
     },
+    executionServingContract: {
+      summary: {
+        shadow_ready: true,
+        preferred_model_family: "EXECUTION_SCOPE",
+        preferred_model_kind: "EXECUTION_SCOPE_OVR_LOGISTIC_V1",
+        preferred_model_artifact_id: "MODEL_SCOPE__1",
+        preferred_train_run_id: "TRAIN_SCOPE__1",
+        experiment_id: "EXP__1",
+      },
+    },
     driftCanary: { golden: { summary: { drift: 0, byMarket: {} } }, shadow: { summary: { drift: 0, byMarket: {} } } },
   });
 
   assert.strictEqual(ready.summary.apply_pass, true);
+  assert.strictEqual(ready.summary.model_binding_source, "EXECUTION_SERVING_CONTRACT");
+  assert.strictEqual(ready.summary.model_artifact_id, "MODEL_SCOPE__1");
+  assert.strictEqual(ready.summary.train_run_id, "TRAIN_SCOPE__1");
   assert.strictEqual(ready.summary.open_wave, 1);
   const btc = ready.rows.find((row) => row.market === "BTCUSDT");
   const doge = ready.rows.find((row) => row.market === "DOGEUSDT");
+  assert.strictEqual(btc.model_artifact_id, "MODEL_SCOPE__1");
+  assert.strictEqual(btc.train_run_id, "TRAIN_SCOPE__1");
   assert.strictEqual(btc.current_stage, "SOFT");
   assert.strictEqual(btc.canary_action, "PROMOTE_SOFT");
   assert.strictEqual(doge.current_stage, "SHADOW");
