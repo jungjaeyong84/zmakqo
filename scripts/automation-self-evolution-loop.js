@@ -202,6 +202,7 @@ function buildStepPlan(context = {}, capabilityDefs = null) {
     { id: "replay", script: "report-best-self-evolution-replay.js" },
     { id: "ml_replay_evidence", script: "report-best-self-evolution-ml-replay-evidence.js" },
     { id: "ml_ev_replay_sample_gap", script: "report-best-self-evolution-ml-ev-replay-sample-gap.js" },
+    { id: "ml_replay_unblock_projection", script: "report-best-self-evolution-ml-replay-unblock-projection.js" },
     { id: "filter_shadow_canary", script: "automation-filter-shadow-canary.js" },
     { id: "canary", script: "report-best-self-evolution-canary.js" },
     { id: "ml_global_canary_evidence", script: "report-best-self-evolution-ml-global-canary-evidence.js" },

@@ -30,6 +30,8 @@ const { buildMlPromotionGate } = require("../utils/mlPromotionGate");
         replay_sample_current_effective_realized_n: 7,
         replay_sample_gap_n: 1,
         replay_sample_dominant_dimension: "GOVERNANCE_EFFECTIVE_REALIZED",
+        replay_projected_ready_if_sample_gap_closed: false,
+        replay_projected_residual_issue_after_sample_gap_closed: "NEGATIVE_OBJECTIVE_DELTA",
       },
     },
     modelSpecificCanary: {
@@ -66,6 +68,8 @@ const { buildMlPromotionGate } = require("../utils/mlPromotionGate");
   assert.strictEqual(shadowOnly.global_canary_replay_evidence_status, "REPLAY_WARN_INSUFFICIENT_SAMPLE");
   assert.strictEqual(shadowOnly.global_canary_replay_sample_gap_status, "EV_REPLAY_SAMPLE_GAP");
   assert.strictEqual(shadowOnly.global_canary_replay_sample_gap_n, 1);
+  assert.strictEqual(shadowOnly.global_canary_replay_projected_ready_if_sample_gap_closed, false);
+  assert.strictEqual(shadowOnly.global_canary_replay_projected_residual_issue_after_sample_gap_closed, "NEGATIVE_OBJECTIVE_DELTA");
   assert.strictEqual(shadowOnly.model_specific_canary_gate_status, "BLOCK");
   assert.strictEqual(shadowOnly.model_specific_canary_binding_mode, "MODEL_BINDING_MISSING");
   assert.strictEqual(shadowOnly.model_specific_canary_evidence_status, "MODEL_SPECIFIC_CANARY_BINDING_MISSING");

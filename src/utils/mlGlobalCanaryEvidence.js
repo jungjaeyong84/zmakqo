@@ -31,10 +31,12 @@ function buildMlGlobalCanaryEvidence({
   canary = null,
   replayEvidence = null,
   evReplaySampleGap = null,
+  replayUnblockProjection = null,
 } = {}) {
   const summary = readSummary(canary);
   const replay = readSummary(replayEvidence);
   const sampleGap = readSummary(evReplaySampleGap);
+  const replayProjection = readSummary(replayUnblockProjection);
   const rows = Array.isArray(canary && canary.rows) ? canary.rows : [];
 
   const totalN = toNum(summary.total_n) || rows.length;
@@ -94,6 +96,8 @@ function buildMlGlobalCanaryEvidence({
     replay_sample_current_effective_realized_n: toNum(sampleGap.governance_effective_realized_n),
     replay_sample_gap_n: toNum(sampleGap.governance_effective_gap_n),
     replay_sample_dominant_dimension: norm(sampleGap.dominant_sample_dimension),
+    replay_projected_ready_if_sample_gap_closed: replayProjection.projected_replay_ready_if_sample_gap_closed === true,
+    replay_projected_residual_issue_after_sample_gap_closed: norm(replayProjection.projected_residual_issue_after_sample_gap_closed),
     top_ready_market: norm(summary.top_ready_market),
     top_rollback_market: norm(summary.top_rollback_market),
     top_shadow_drift_market: norm(summary.top_shadow_drift_market),

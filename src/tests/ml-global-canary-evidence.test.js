@@ -41,6 +41,12 @@ const { buildMlGlobalCanaryEvidence } = require("../utils/mlGlobalCanaryEvidence
         dominant_sample_dimension: "GOVERNANCE_EFFECTIVE_REALIZED",
       },
     },
+    replayUnblockProjection: {
+      summary: {
+        projected_replay_ready_if_sample_gap_closed: false,
+        projected_residual_issue_after_sample_gap_closed: "NEGATIVE_OBJECTIVE_DELTA",
+      },
+    },
   });
 
   assert.strictEqual(blocked.status, "ML_GLOBAL_CANARY_EVIDENCE_READY");
@@ -51,6 +57,8 @@ const { buildMlGlobalCanaryEvidence } = require("../utils/mlGlobalCanaryEvidence
   assert.strictEqual(blocked.replay_dominant_issue, "EV_TUNER_INSUFFICIENT_SAMPLE");
   assert.strictEqual(blocked.replay_sample_gap_status, "EV_REPLAY_SAMPLE_GAP");
   assert.strictEqual(blocked.replay_sample_gap_n, 1);
+  assert.strictEqual(blocked.replay_projected_ready_if_sample_gap_closed, false);
+  assert.strictEqual(blocked.replay_projected_residual_issue_after_sample_gap_closed, "NEGATIVE_OBJECTIVE_DELTA");
   assert.ok(blocked.blocking_reasons.includes("GLOBAL_CANARY_BLOCKER_SELF_EVOLUTION_REPLAY_NOT_PASS"));
 
   const ready = buildMlGlobalCanaryEvidence({

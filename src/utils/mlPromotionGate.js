@@ -106,6 +106,8 @@ function buildMlPromotionGate({
     global_canary_replay_sample_current_effective_realized_n: toNum(globalCanaryEvidenceSummary.replay_sample_current_effective_realized_n),
     global_canary_replay_sample_gap_n: toNum(globalCanaryEvidenceSummary.replay_sample_gap_n),
     global_canary_replay_sample_dominant_dimension: norm(globalCanaryEvidenceSummary.replay_sample_dominant_dimension),
+    global_canary_replay_projected_ready_if_sample_gap_closed: globalCanaryEvidenceSummary.replay_projected_ready_if_sample_gap_closed === true,
+    global_canary_replay_projected_residual_issue_after_sample_gap_closed: norm(globalCanaryEvidenceSummary.replay_projected_residual_issue_after_sample_gap_closed),
     model_specific_canary_gate_status: modelSpecificCanaryReady ? "PASS" : "BLOCK",
     server_primary_gate_status: serverPrimaryPass ? "PASS" : "BLOCK",
     rollback_gate_status: rollbackReady ? "READY" : "NOT_ARMED",
