@@ -227,7 +227,7 @@ function buildSignalLineageReport({
   return {
     ok: true,
     generated_at_kst: meta.kst || null,
-    generated_at: meta.iso || null,
+    generated_at: meta.iso || meta.generated_at || new Date().toISOString(),
     inputs: {
       window_hours: windowHours,
       ...inputs,

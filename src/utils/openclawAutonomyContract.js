@@ -190,6 +190,7 @@ function deriveOpenClawAutonomyContract({
   mlPromotionGate = null,
   evGateCompositePolicy = null,
   candidates = null,
+  lineageSloDropMonitor = null,
 } = {}) {
   const objectiveSummary = readSummary(objective);
   const objectiveSupervisorRaw = unwrapRawReport(objectiveSupervisor) || {};
@@ -238,6 +239,7 @@ function deriveOpenClawAutonomyContract({
   const mlModelContractSummary = readSummary(mlModelContract);
   const mlPromotionGateSummary = readSummary(mlPromotionGate);
   const evGateCompositePolicySummary = readSummary(evGateCompositePolicy);
+  const lineageSloDropMonitorSummary = readSummary(lineageSloDropMonitor);
   const candidatesRaw = unwrapRawReport(candidates) || {};
   const candidatesSummary = readSummary(candidates);
   const candidateRows = Array.isArray(candidatesRaw.rows) ? candidatesRaw.rows : [];
@@ -491,8 +493,19 @@ function deriveOpenClawAutonomyContract({
       execution_quality_top_no_fill_subtype: String(executionQualitySummary.top_no_fill_subtype || "").trim() || null,
       lineage_status: lineageVerdict,
       lineage_fills_intent_null_rate: toNum(signalLineageSummary.fills_intent_id_null_rate),
+      lineage_entry_fills_intent_null_rate: toNum(signalLineageSummary.entry_fills_intent_id_null_rate),
+      lineage_external_reconciled_fill_intent_null_n: toNum(signalLineageSummary.external_reconciled_fills_intent_id_null_n),
+      lineage_warning_reason_n: Array.isArray(signalLineageSummary.warning_reasons) ? signalLineageSummary.warning_reasons.length : 0,
+      lineage_external_reconciled_fill_intent_null_present: Array.isArray(signalLineageSummary.warning_reasons)
+        && signalLineageSummary.warning_reasons.includes("EXTERNAL_RECONCILED_FILL_INTENT_NULL_PRESENT"),
       lineage_fills_signal_null_rate: toNum(signalLineageSummary.fills_signal_doc_id_null_rate),
       lineage_intents_signal_null_rate: toNum(signalLineageSummary.intents_signal_doc_id_null_rate),
+      lineage_slo_drop_monitor_status: String(lineageSloDropMonitorSummary.status || "").trim() || null,
+      lineage_slo_drop_monitor_evidence_status: String(lineageSloDropMonitorSummary.evidence_status || "").trim() || null,
+      lineage_slo_drop_monitor_post_fix_lineage_slo_drop_n: toNum(lineageSloDropMonitorSummary.post_fix_lineage_slo_drop_n),
+      lineage_slo_drop_monitor_pre_fix_lineage_slo_drop_n: toNum(lineageSloDropMonitorSummary.pre_fix_lineage_slo_drop_n),
+      lineage_slo_drop_monitor_latest_drop_created_at: String(lineageSloDropMonitorSummary.latest_lineage_slo_drop_created_at || "").trim() || null,
+      lineage_slo_drop_monitor_post_fix_clear: lineageSloDropMonitorSummary.post_fix_clear === true,
       account_integrity_ok: overallIntegrity.ok === true,
       account_integrity_issue_n: accountIntegrityIssueN,
       account_active_market_count: toNum(overallIntegrity.active_market_count) || 0,

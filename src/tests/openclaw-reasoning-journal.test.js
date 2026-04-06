@@ -200,6 +200,14 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         execution_bottleneck_delta_interpretation: "USE_DELTA_SIGNAL",
         execution_bottleneck_delta_top_operational_webhook_delay_cause: "IMMEDIATE_EXEC_WEBHOOK_SAVED_LATE_INTENT",
         execution_bottleneck_delta_top_operational_signal_to_intent_group: "TV_WEBHOOK|EARLY_LONG|BTCUSDT",
+        lineage_entry_fills_intent_null_rate: 0,
+        lineage_external_reconciled_fill_intent_null_n: 4,
+        lineage_external_reconciled_fill_intent_null_present: true,
+        lineage_slo_drop_monitor_status: "LINEAGE_SLO_DROP_MONITOR_READY",
+        lineage_slo_drop_monitor_evidence_status: "AWAITING_POST_FIX_DROP_CACHE",
+        lineage_slo_drop_monitor_post_fix_lineage_slo_drop_n: 0,
+        lineage_slo_drop_monitor_pre_fix_lineage_slo_drop_n: 12,
+        lineage_slo_drop_monitor_post_fix_clear: true,
         truth_preservation_audit_status: "TRUTH_PRESERVATION_AUDIT_READY",
         truth_preservation_ready: true,
         truth_preservation_lineage_status: "PASS",
@@ -265,6 +273,18 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
       summary: {
         verdict: "PASS",
         fills_intent_id_null_rate: 0,
+        entry_fills_intent_id_null_rate: 0,
+        external_reconciled_fills_intent_id_null_n: 4,
+        warning_reasons: ["EXTERNAL_RECONCILED_FILL_INTENT_NULL_PRESENT"],
+      },
+    },
+    lineageSloDropMonitor: {
+      summary: {
+        status: "LINEAGE_SLO_DROP_MONITOR_READY",
+        evidence_status: "AWAITING_POST_FIX_DROP_CACHE",
+        post_fix_lineage_slo_drop_n: 0,
+        pre_fix_lineage_slo_drop_n: 12,
+        post_fix_clear: true,
       },
     },
     executionQuality: {
@@ -360,6 +380,10 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_authority_state, "DEGRADED_ACTIVE");
   assert.strictEqual(journal.summary.current_change_authority_state, "PENDING");
   assert.strictEqual(journal.summary.current_lineage_status, "PASS");
+  assert.strictEqual(journal.summary.current_lineage_entry_fills_intent_null_rate, 0);
+  assert.strictEqual(journal.summary.current_lineage_external_reconciled_fill_intent_null_present, true);
+  assert.strictEqual(journal.summary.current_lineage_slo_drop_monitor_evidence_status, "AWAITING_POST_FIX_DROP_CACHE");
+  assert.strictEqual(journal.summary.current_lineage_slo_drop_monitor_post_fix_clear, true);
   assert.strictEqual(journal.summary.current_account_integrity_status, "WARN");
   assert.strictEqual(journal.summary.current_model_readiness_status, "MODEL_READINESS_READY");
   assert.strictEqual(journal.summary.current_truth_preservation_audit_status, "TRUTH_PRESERVATION_AUDIT_READY");

@@ -643,6 +643,10 @@ function buildReasoningJournal({
       execution_scope_tier_raw_diff_pre_bar_close_rows_n: toNum(executionQualitySummary.execution_scope_tier_raw_diff_pre_bar_close_rows_n),
       lineage_verdict: String(lineageSummary.verdict || "").trim() || null,
       lineage_fills_intent_null_rate: toNum(lineageSummary.fills_intent_id_null_rate),
+      lineage_entry_fills_intent_null_rate: toNum(lineageSummary.entry_fills_intent_id_null_rate),
+      lineage_external_reconciled_fill_intent_null_n: toNum(lineageSummary.external_reconciled_fills_intent_id_null_n),
+      lineage_external_reconciled_fill_intent_null_present: Array.isArray(lineageSummary.warning_reasons)
+        && lineageSummary.warning_reasons.includes("EXTERNAL_RECONCILED_FILL_INTENT_NULL_PRESENT"),
       account_integrity_ok: overallIntegrity.ok === true,
       account_integrity_issue_n: toNum(overallIntegrity.issue_count),
       account_ops_status: String(overallOperations.status || "").trim() || null,
@@ -748,6 +752,14 @@ function buildReasoningJournal({
       current_top_candidate_id: String(autonomySummary.self_evolution_top_candidate_id || "").trim() || null,
       current_top_candidate_canonical_id: String(autonomySummary.self_evolution_top_candidate_canonical_id || "").trim() || null,
       current_lineage_status: currentEntry.current_snapshot.lineage_verdict,
+      current_lineage_entry_fills_intent_null_rate: toNum(autonomyCurrentStatus.lineage_entry_fills_intent_null_rate != null ? autonomyCurrentStatus.lineage_entry_fills_intent_null_rate : autonomySummary.lineage_entry_fills_intent_null_rate),
+      current_lineage_external_reconciled_fill_intent_null_n: toNum(autonomyCurrentStatus.lineage_external_reconciled_fill_intent_null_n != null ? autonomyCurrentStatus.lineage_external_reconciled_fill_intent_null_n : autonomySummary.lineage_external_reconciled_fill_intent_null_n),
+      current_lineage_external_reconciled_fill_intent_null_present: autonomyCurrentStatus.lineage_external_reconciled_fill_intent_null_present === true || autonomySummary.lineage_external_reconciled_fill_intent_null_present === true,
+      current_lineage_slo_drop_monitor_status: String(autonomyCurrentStatus.lineage_slo_drop_monitor_status || autonomySummary.lineage_slo_drop_monitor_status || "").trim() || null,
+      current_lineage_slo_drop_monitor_evidence_status: String(autonomyCurrentStatus.lineage_slo_drop_monitor_evidence_status || autonomySummary.lineage_slo_drop_monitor_evidence_status || "").trim() || null,
+      current_lineage_slo_drop_monitor_post_fix_lineage_slo_drop_n: toNum(autonomyCurrentStatus.lineage_slo_drop_monitor_post_fix_lineage_slo_drop_n != null ? autonomyCurrentStatus.lineage_slo_drop_monitor_post_fix_lineage_slo_drop_n : autonomySummary.lineage_slo_drop_monitor_post_fix_lineage_slo_drop_n),
+      current_lineage_slo_drop_monitor_pre_fix_lineage_slo_drop_n: toNum(autonomyCurrentStatus.lineage_slo_drop_monitor_pre_fix_lineage_slo_drop_n != null ? autonomyCurrentStatus.lineage_slo_drop_monitor_pre_fix_lineage_slo_drop_n : autonomySummary.lineage_slo_drop_monitor_pre_fix_lineage_slo_drop_n),
+      current_lineage_slo_drop_monitor_post_fix_clear: autonomyCurrentStatus.lineage_slo_drop_monitor_post_fix_clear === true || autonomySummary.lineage_slo_drop_monitor_post_fix_clear === true,
       current_account_integrity_status: currentEntry.current_snapshot.account_integrity_ok === true
         ? "PASS"
         : (currentEntry.current_snapshot.account_integrity_issue_n != null ? "WARN" : null),

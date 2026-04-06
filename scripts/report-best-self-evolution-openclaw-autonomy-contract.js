@@ -67,6 +67,7 @@ const INPUTS = Object.freeze({
   mlPromotionGate: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_promotion_gate_latest.json"),
   evGateCompositePolicy: path.join(OPS_DAILY_DIR, "best_self_evolution_ev_gate_composite_policy_latest.json"),
   candidates: path.join(OPS_DAILY_DIR, "best_self_evolution_candidates_latest.json"),
+  lineageSloDropMonitor: path.join(OPS_DAILY_DIR, "lineage_slo_drop_monitor_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -200,6 +201,7 @@ function main() {
     mlPromotionGate: readJsonRawSafe(INPUTS.mlPromotionGate, null),
     evGateCompositePolicy: readJsonRawSafe(INPUTS.evGateCompositePolicy, null),
     candidates: readJsonRawSafe(INPUTS.candidates, null),
+    lineageSloDropMonitor: readJsonRawSafe(INPUTS.lineageSloDropMonitor, null),
   });
   const output = {
     ok: true,

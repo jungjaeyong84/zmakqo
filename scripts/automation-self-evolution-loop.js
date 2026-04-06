@@ -168,6 +168,7 @@ function buildStepPlan(context = {}, capabilityDefs = null) {
     { id: "server_signal_runtime", script: "report-server-signal-runtime.js" },
     { id: "server_signal_cutover_readiness", script: "report-server-signal-cutover-readiness.js" },
     { id: "drop_validation", script: "report-best-self-evolution-drop-validation.js" },
+    { id: "lineage_slo_drop_monitor", script: "report-lineage-slo-drop-monitor.js" },
     { id: "ev_probability_calibration", script: "report-best-self-evolution-ev-probability-calibration.js" },
     { id: "ev_gate_composite_policy", script: "report-best-self-evolution-ev-gate-composite-policy.js" },
     { id: "provisional_realized_outcome", script: "report-best-self-evolution-provisional-realized-outcome.js" },

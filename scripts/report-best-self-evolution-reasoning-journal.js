@@ -30,6 +30,7 @@ const INPUTS = Object.freeze({
   objectiveRetrospective: path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json"),
   overallAccountReport: path.join(OPS_DAILY_DIR, "overall_account_report_latest.json"),
   signalLineageHealth: path.join(OPS_DAILY_DIR, "signal_lineage_health_latest.json"),
+  lineageSloDropMonitor: path.join(OPS_DAILY_DIR, "lineage_slo_drop_monitor_latest.json"),
   executionQuality: path.join(OPS_DAILY_DIR, "best_self_evolution_execution_quality_latest.json"),
 });
 
@@ -105,6 +106,7 @@ function main() {
     objectiveRetrospective: readJsonSafe(INPUTS.objectiveRetrospective, null),
     overallAccountReport: readJsonRawSafe(INPUTS.overallAccountReport, null),
     signalLineageHealth: readJsonRawSafe(INPUTS.signalLineageHealth, null),
+    lineageSloDropMonitor: readJsonRawSafe(INPUTS.lineageSloDropMonitor, null),
     executionQuality: readJsonRawSafe(INPUTS.executionQuality, null),
     previousJournal: readJsonSafe(RUNTIME_JOURNAL_PATH, null),
   });
