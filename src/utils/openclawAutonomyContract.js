@@ -177,6 +177,7 @@ function deriveOpenClawAutonomyContract({
   mlEvReplayDeltaDiagnostics = null,
   mlEvReplayMarketContribution = null,
   mlEvReplayProfileContribution = null,
+  mlEvReplayStalePosDiagnostics = null,
   mlModelSpecificCanary = null,
   mlRollbackArm = null,
   mlModelContract = null,
@@ -219,6 +220,7 @@ function deriveOpenClawAutonomyContract({
   const mlEvReplayDeltaDiagnosticsSummary = readSummary(mlEvReplayDeltaDiagnostics);
   const mlEvReplayMarketContributionSummary = readSummary(mlEvReplayMarketContribution);
   const mlEvReplayProfileContributionSummary = readSummary(mlEvReplayProfileContribution);
+  const mlEvReplayStalePosDiagnosticsSummary = readSummary(mlEvReplayStalePosDiagnostics);
   const mlModelSpecificCanarySummary = readSummary(mlModelSpecificCanary);
   const mlRollbackArmSummary = readSummary(mlRollbackArm);
   const mlModelContractSummary = readSummary(mlModelContract);
@@ -593,6 +595,16 @@ function deriveOpenClawAutonomyContract({
       ml_ev_replay_profile_top_mixed_profile: String(mlEvReplayProfileContributionSummary.top_mixed_profile || "").trim() || null,
       ml_ev_replay_profile_top_mixed_profile_rows_delta: toNum(mlEvReplayProfileContributionSummary.top_mixed_profile_rows_delta),
       ml_ev_replay_profile_top_mixed_profile_avg_ret_net_delta: toNum(mlEvReplayProfileContributionSummary.top_mixed_profile_avg_ret_net_delta),
+      ml_ev_replay_stale_pos_diagnostics_status: String(mlEvReplayStalePosDiagnosticsSummary.status || "").trim() || null,
+      ml_ev_replay_stale_pos_evidence_status: String(mlEvReplayStalePosDiagnosticsSummary.evidence_status || "").trim() || null,
+      ml_ev_replay_stale_pos_top_return_drag_profile: String(mlEvReplayStalePosDiagnosticsSummary.top_return_drag_profile || "").trim() || null,
+      ml_ev_replay_stale_pos_top_return_drag_avg_ev_lb: toNum(mlEvReplayStalePosDiagnosticsSummary.top_return_drag_avg_ev_lb),
+      ml_ev_replay_stale_pos_top_return_drag_avg_delay_cost: toNum(mlEvReplayStalePosDiagnosticsSummary.top_return_drag_avg_delay_cost),
+      ml_ev_replay_stale_pos_top_return_drag_avg_late_risk: toNum(mlEvReplayStalePosDiagnosticsSummary.top_return_drag_avg_late_risk),
+      ml_ev_replay_stale_pos_top_mixed_profile: String(mlEvReplayStalePosDiagnosticsSummary.top_mixed_profile || "").trim() || null,
+      ml_ev_replay_stale_pos_top_mixed_avg_ev_lb: toNum(mlEvReplayStalePosDiagnosticsSummary.top_mixed_avg_ev_lb),
+      ml_ev_replay_stale_pos_top_mixed_avg_delay_cost: toNum(mlEvReplayStalePosDiagnosticsSummary.top_mixed_avg_delay_cost),
+      ml_ev_replay_stale_pos_top_mixed_avg_late_risk: toNum(mlEvReplayStalePosDiagnosticsSummary.top_mixed_avg_late_risk),
       ml_model_specific_canary_status: String(mlModelSpecificCanarySummary.status || "").trim() || null,
       ml_model_specific_canary_binding_mode: String(mlModelSpecificCanarySummary.binding_mode || "").trim() || null,
       ml_model_specific_canary_evidence_status: String(mlModelSpecificCanarySummary.evidence_status || "").trim() || null,
