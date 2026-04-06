@@ -586,6 +586,38 @@ function buildSnapshot({
 (() => {
   const nowMs = Date.now();
   const snap = __test.buildSnapshotFromArtifacts({
+    allocatorDoc: { summary: { by_market: [{ market: "BTCUSDT", allocation_score: -4.0, recommended_action: "QUARANTINE" },], learning_epoch_active: true } },
+    quarantineDoc: { summary: { by_market: [{ market: "BTCUSDT", quarantine_reason: "REVERSE_POLICY_PENALTY" }], learning_epoch_active: true } },
+    executionQualityDoc: { summary: { by_market: [{ market: "BTCUSDT", avg_created_to_fill_ms: 100, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }] } },
+    lineageHealthMtimeMs: nowMs - (60 * 1000),
+    lineageHealthSource: "FIRESTORE_REPORT_LATEST",
+    lineageHealthDoc: {
+      generated_at: new Date(nowMs - (60 * 1000)).toISOString(),
+      summary: {
+        intents_signal_doc_id_null_rate: 0,
+        fills_signal_doc_id_null_rate: 0,
+        fills_intent_id_null_rate: 0.2,
+      },
+    },
+  });
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    intent: "ENTRY",
+    qtyPct: 0.5,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.reason, "LIVE_POLICY_OK");
+  assert.strictEqual(res.featuresPatch._live_exec_policy_lineage_has_entry_fill_intent_metric, false);
+})();
+
+(() => {
+  const nowMs = Date.now();
+  const snap = __test.buildSnapshotFromArtifacts({
     allocatorDoc: { summary: { by_market: [{ market: "BTCUSDT", allocation_score: 1, recommended_action: "HOLD" }] } },
     quarantineDoc: { summary: { by_market: [] } },
     executionQualityDoc: { summary: { by_market: [{ market: "BTCUSDT", avg_created_to_fill_ms: 100, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }] } },

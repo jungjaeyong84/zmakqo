@@ -1213,6 +1213,10 @@ function evaluateLiveEntryPolicy({
     policyPlanWatchOnlyBlocked,
     policyPlanHoldBlocked,
   } = derived;
+  const suppressLineageFillIntentReason = lineageSlo
+    && lineageSlo.blocked === true
+    && String(lineageSlo.reason || "").trim().toUpperCase() === "LINEAGE_SLO_FILL_INTENT_NULL_RATE"
+    && lineageSlo.has_entry_fill_intent_metric !== true;
 
   const commonTracePatch = {
     ...baseFeatures,
@@ -1243,6 +1247,7 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_lineage_entry_fills_intent_id_null_rate: toNum(lineageSlo.entry_fills_intent_id_null_rate),
     _live_exec_policy_lineage_entry_fills_24h_n: toNum(lineageSlo.entry_fills_24h_n),
     _live_exec_policy_lineage_has_entry_fill_intent_metric: lineageSlo.has_entry_fill_intent_metric === true,
+    _live_exec_policy_lineage_reason_suppressed: suppressLineageFillIntentReason,
     _live_exec_policy_drift_remediation_enabled: DRIFT_REMEDIATION_ENABLED,
     _live_exec_policy_other_server_policy_watch_only_block_enabled: DRIFT_REMEDIATION_WATCH_ONLY_BLOCK,
     _live_exec_policy_other_server_policy_watch_only_market: !!(snapshot && snapshot.driftOtherServerPolicyWatchOnlySet && snapshot.driftOtherServerPolicyWatchOnlySet.has(market)),
@@ -1335,7 +1340,7 @@ function evaluateLiveEntryPolicy({
     };
   }
 
-  if (lineageSlo.blocked) {
+  if (lineageSlo.blocked && !suppressLineageFillIntentReason) {
     const reason = upper(lineageSlo.reason) || "LINEAGE_SLO_BLOCKED";
     return {
       ok: false,
