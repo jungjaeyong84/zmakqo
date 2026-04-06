@@ -207,6 +207,7 @@ function buildStepPlan(context = {}, capabilityDefs = null) {
     { id: "ml_ev_replay_market_contribution", script: "report-best-self-evolution-ml-ev-replay-market-contribution.js" },
     { id: "ml_ev_replay_profile_contribution", script: "report-best-self-evolution-ml-ev-replay-profile-contribution.js" },
     { id: "ml_ev_replay_stale_pos_diagnostics", script: "report-best-self-evolution-ml-ev-replay-stale-pos-diagnostics.js" },
+    { id: "ml_ev_profile_review_tracking", script: "report-best-self-evolution-ml-ev-profile-review-tracking.js" },
     { id: "filter_shadow_canary", script: "automation-filter-shadow-canary.js" },
     { id: "canary", script: "report-best-self-evolution-canary.js" },
     { id: "ml_global_canary_evidence", script: "report-best-self-evolution-ml-global-canary-evidence.js" },

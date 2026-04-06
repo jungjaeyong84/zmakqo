@@ -91,6 +91,16 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         ml_global_canary_replay_sample_dominant_dimension: "GOVERNANCE_EFFECTIVE_REALIZED",
         ml_global_canary_replay_projected_ready_if_sample_gap_closed: false,
         ml_global_canary_replay_projected_residual_issue_after_sample_gap_closed: "NEGATIVE_OBJECTIVE_DELTA",
+        ml_ev_profile_review_tracking_status: "ML_EV_PROFILE_REVIEW_TRACKING_READY",
+        ml_ev_profile_review_tracking_evidence_status: "PROFILE_REVIEW_TRACKING_READY",
+        ml_ev_profile_review_mode: "PROFILE_CONDITIONAL_REVIEW",
+        ml_ev_profile_review_target_n: 2,
+        ml_ev_profile_review_split_ready: false,
+        ml_ev_profile_review_split_blocker: "PROFILE_REALIZED_DELTA_TOO_SMALL",
+        ml_ev_profile_review_top_return_drag_profile: "EARLY|LONG|PINE_DROP_STALE_POS_TO_ENTRY|PREPARE",
+        ml_ev_profile_review_top_return_drag_driver: "FAILURE_RISK_HEAVY",
+        ml_ev_profile_review_top_mixed_profile: "EARLY|SHORT|PINE_DROP_STALE_POS_TO_ENTRY|ARMED",
+        ml_ev_profile_review_top_mixed_driver: "DELAY_LATE_RISK_HEAVY",
         ml_model_specific_canary_status: "ML_MODEL_SPECIFIC_CANARY_READY",
         ml_model_specific_canary_binding_mode: "MODEL_BINDING_MISSING",
         ml_model_specific_canary_evidence_status: "MODEL_SPECIFIC_CANARY_BINDING_MISSING",
@@ -292,6 +302,13 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_ml_global_canary_replay_sample_gap_n, 1);
   assert.strictEqual(journal.summary.current_ml_global_canary_replay_projected_ready_if_sample_gap_closed, false);
   assert.strictEqual(journal.summary.current_ml_global_canary_replay_projected_residual_issue_after_sample_gap_closed, "NEGATIVE_OBJECTIVE_DELTA");
+  assert.strictEqual(journal.summary.current_ml_ev_profile_review_tracking_status, "ML_EV_PROFILE_REVIEW_TRACKING_READY");
+  assert.strictEqual(journal.summary.current_ml_ev_profile_review_mode, "PROFILE_CONDITIONAL_REVIEW");
+  assert.strictEqual(journal.summary.current_ml_ev_profile_review_target_n, 2);
+  assert.strictEqual(journal.summary.current_ml_ev_profile_review_split_ready, false);
+  assert.strictEqual(journal.summary.current_ml_ev_profile_review_split_blocker, "PROFILE_REALIZED_DELTA_TOO_SMALL");
+  assert.strictEqual(journal.summary.current_ml_ev_profile_review_top_return_drag_driver, "FAILURE_RISK_HEAVY");
+  assert.strictEqual(journal.summary.current_ml_ev_profile_review_top_mixed_driver, "DELAY_LATE_RISK_HEAVY");
   assert.strictEqual(journal.summary.current_ml_model_specific_canary_status, "ML_MODEL_SPECIFIC_CANARY_READY");
   assert.strictEqual(journal.summary.current_ml_model_specific_canary_binding_mode, "MODEL_BINDING_MISSING");
   assert.strictEqual(journal.summary.current_ml_model_specific_canary_evidence_status, "MODEL_SPECIFIC_CANARY_BINDING_MISSING");

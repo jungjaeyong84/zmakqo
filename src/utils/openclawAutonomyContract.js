@@ -178,6 +178,7 @@ function deriveOpenClawAutonomyContract({
   mlEvReplayMarketContribution = null,
   mlEvReplayProfileContribution = null,
   mlEvReplayStalePosDiagnostics = null,
+  mlEvProfileReviewTracking = null,
   mlModelSpecificCanary = null,
   mlRollbackArm = null,
   mlModelContract = null,
@@ -221,6 +222,7 @@ function deriveOpenClawAutonomyContract({
   const mlEvReplayMarketContributionSummary = readSummary(mlEvReplayMarketContribution);
   const mlEvReplayProfileContributionSummary = readSummary(mlEvReplayProfileContribution);
   const mlEvReplayStalePosDiagnosticsSummary = readSummary(mlEvReplayStalePosDiagnostics);
+  const mlEvProfileReviewTrackingSummary = readSummary(mlEvProfileReviewTracking);
   const mlModelSpecificCanarySummary = readSummary(mlModelSpecificCanary);
   const mlRollbackArmSummary = readSummary(mlRollbackArm);
   const mlModelContractSummary = readSummary(mlModelContract);
@@ -613,6 +615,16 @@ function deriveOpenClawAutonomyContract({
       ml_ev_replay_stale_pos_top_mixed_avg_ev_lb: toNum(mlEvReplayStalePosDiagnosticsSummary.top_mixed_avg_ev_lb),
       ml_ev_replay_stale_pos_top_mixed_avg_delay_cost: toNum(mlEvReplayStalePosDiagnosticsSummary.top_mixed_avg_delay_cost),
       ml_ev_replay_stale_pos_top_mixed_avg_late_risk: toNum(mlEvReplayStalePosDiagnosticsSummary.top_mixed_avg_late_risk),
+      ml_ev_profile_review_tracking_status: String(mlEvProfileReviewTrackingSummary.status || "").trim() || null,
+      ml_ev_profile_review_tracking_evidence_status: String(mlEvProfileReviewTrackingSummary.evidence_status || "").trim() || null,
+      ml_ev_profile_review_mode: String(mlEvProfileReviewTrackingSummary.review_mode || "").trim() || null,
+      ml_ev_profile_review_target_n: toNum(mlEvProfileReviewTrackingSummary.target_n),
+      ml_ev_profile_review_split_ready: mlEvProfileReviewTrackingSummary.split_ready === true,
+      ml_ev_profile_review_split_blocker: String(mlEvProfileReviewTrackingSummary.split_blocker || "").trim() || null,
+      ml_ev_profile_review_top_return_drag_profile: String(mlEvProfileReviewTrackingSummary.top_return_drag_profile || "").trim() || null,
+      ml_ev_profile_review_top_return_drag_driver: String(mlEvProfileReviewTrackingSummary.top_return_drag_driver || "").trim() || null,
+      ml_ev_profile_review_top_mixed_profile: String(mlEvProfileReviewTrackingSummary.top_mixed_profile || "").trim() || null,
+      ml_ev_profile_review_top_mixed_driver: String(mlEvProfileReviewTrackingSummary.top_mixed_driver || "").trim() || null,
       ml_model_specific_canary_status: String(mlModelSpecificCanarySummary.status || "").trim() || null,
       ml_model_specific_canary_binding_mode: String(mlModelSpecificCanarySummary.binding_mode || "").trim() || null,
       ml_model_specific_canary_evidence_status: String(mlModelSpecificCanarySummary.evidence_status || "").trim() || null,
@@ -884,6 +896,16 @@ function deriveOpenClawAutonomyContract({
       ml_global_canary_replay_sample_dominant_dimension: String(mlGlobalCanaryEvidenceSummary.replay_sample_dominant_dimension || mlEvReplaySampleGapSummary.dominant_sample_dimension || "").trim() || null,
       ml_global_canary_replay_projected_ready_if_sample_gap_closed: mlGlobalCanaryEvidenceSummary.replay_projected_ready_if_sample_gap_closed === true || mlReplayUnblockProjectionSummary.projected_replay_ready_if_sample_gap_closed === true,
       ml_global_canary_replay_projected_residual_issue_after_sample_gap_closed: String(mlGlobalCanaryEvidenceSummary.replay_projected_residual_issue_after_sample_gap_closed || mlReplayUnblockProjectionSummary.projected_residual_issue_after_sample_gap_closed || "").trim() || null,
+      ml_ev_profile_review_tracking_status: String(mlEvProfileReviewTrackingSummary.status || "").trim() || null,
+      ml_ev_profile_review_tracking_evidence_status: String(mlEvProfileReviewTrackingSummary.evidence_status || "").trim() || null,
+      ml_ev_profile_review_mode: String(mlEvProfileReviewTrackingSummary.review_mode || "").trim() || null,
+      ml_ev_profile_review_target_n: toNum(mlEvProfileReviewTrackingSummary.target_n),
+      ml_ev_profile_review_split_ready: mlEvProfileReviewTrackingSummary.split_ready === true,
+      ml_ev_profile_review_split_blocker: String(mlEvProfileReviewTrackingSummary.split_blocker || "").trim() || null,
+      ml_ev_profile_review_top_return_drag_profile: String(mlEvProfileReviewTrackingSummary.top_return_drag_profile || "").trim() || null,
+      ml_ev_profile_review_top_return_drag_driver: String(mlEvProfileReviewTrackingSummary.top_return_drag_driver || "").trim() || null,
+      ml_ev_profile_review_top_mixed_profile: String(mlEvProfileReviewTrackingSummary.top_mixed_profile || "").trim() || null,
+      ml_ev_profile_review_top_mixed_driver: String(mlEvProfileReviewTrackingSummary.top_mixed_driver || "").trim() || null,
       ml_model_specific_canary_status: String(mlModelSpecificCanarySummary.status || "").trim() || null,
       ml_model_specific_canary_binding_mode: String(mlModelSpecificCanarySummary.binding_mode || "").trim() || null,
       ml_model_specific_canary_evidence_status: String(mlModelSpecificCanarySummary.evidence_status || "").trim() || null,

@@ -54,6 +54,7 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
     mlGlobalCanaryEvidence: { summary: { status: "ML_GLOBAL_CANARY_EVIDENCE_READY", global_canary_ready: false, evidence_status: "GLOBAL_CANARY_REPLAY_BLOCKED", dominant_blocker: "SELF_EVOLUTION_REPLAY_NOT_PASS", replay_evidence_status: "REPLAY_WARN_INSUFFICIENT_SAMPLE", replay_dominant_issue: "EV_TUNER_INSUFFICIENT_SAMPLE", replay_sample_gap_status: "EV_REPLAY_SAMPLE_GAP", replay_sample_required_realized_n: 8, replay_sample_current_effective_realized_n: 7, replay_sample_gap_n: 1, replay_sample_dominant_dimension: "GOVERNANCE_EFFECTIVE_REALIZED", replay_projected_ready_if_sample_gap_closed: false, replay_projected_residual_issue_after_sample_gap_closed: "NEGATIVE_OBJECTIVE_DELTA" } },
     mlEvReplaySampleGap: { summary: { status: "ML_EV_REPLAY_SAMPLE_GAP_READY", evidence_status: "EV_REPLAY_SAMPLE_GAP", required_realized_n: 8, governance_effective_realized_n: 7, governance_effective_gap_n: 1, dominant_sample_dimension: "GOVERNANCE_EFFECTIVE_REALIZED" } },
     mlReplayUnblockProjection: { summary: { status: "ML_REPLAY_UNBLOCK_PROJECTION_READY", projected_replay_ready_if_sample_gap_closed: false, projected_residual_issue_after_sample_gap_closed: "NEGATIVE_OBJECTIVE_DELTA" } },
+    mlEvProfileReviewTracking: { summary: { status: "ML_EV_PROFILE_REVIEW_TRACKING_READY", evidence_status: "PROFILE_REVIEW_TRACKING_READY", review_mode: "PROFILE_CONDITIONAL_REVIEW", target_n: 2, split_ready: false, split_blocker: "PROFILE_REALIZED_DELTA_TOO_SMALL", top_return_drag_profile: "EARLY|LONG|PINE_DROP_STALE_POS_TO_ENTRY|PREPARE", top_return_drag_driver: "FAILURE_RISK_HEAVY", top_mixed_profile: "EARLY|SHORT|PINE_DROP_STALE_POS_TO_ENTRY|ARMED", top_mixed_driver: "DELAY_LATE_RISK_HEAVY" } },
     mlPromotionGate: { summary: { status: "ML_PROMOTION_GATE_READY", promotion_stage: "OFFLINE_ONLY", promotion_decision: "HOLD_REPLAY", preferred_model_family: "EXECUTION_SCOPE", preferred_model_artifact_id: "MODEL_EXEC_SCOPE__s1", model_specific_canary_gate_status: "BLOCK", model_specific_canary_ready: false, model_specific_canary_binding_mode: "MODEL_BINDING_MISSING", model_specific_canary_evidence_status: "MODEL_SPECIFIC_CANARY_BINDING_MISSING", global_canary_replay_sample_gap_status: "EV_REPLAY_SAMPLE_GAP", global_canary_replay_sample_required_realized_n: 8, global_canary_replay_sample_current_effective_realized_n: 7, global_canary_replay_sample_gap_n: 1, global_canary_replay_sample_dominant_dimension: "GOVERNANCE_EFFECTIVE_REALIZED", global_canary_replay_projected_ready_if_sample_gap_closed: false, global_canary_replay_projected_residual_issue_after_sample_gap_closed: "NEGATIVE_OBJECTIVE_DELTA" } },
     evGateCompositePolicy: { summary: { status: "EV_GATE_COMPOSITE_POLICY_READY", policy_basis: "TP_COMPOSITE_EXIT_VALUE_V1", canonical_policy_version: "EV_COMPOSITE_EXIT_VALUE_V1", compatibility_policy_version: "TP1_WEIGHT_V1", threshold_metric: "exit_value_lower_bound", threshold_metric_family: "TP_COMPOSITE_EXIT_VALUE", compatibility_drop_reason: "DROP_EV_GATE_TP1_PROB", default_tp0_pct: 0.8, default_tp0_qty_ratio: 0.25, default_tp1_pct: 3.25, default_sl_pct: 1.65, tp1_prob_min_global: 0.55, tp1_prob_min_early: 0.6, tp1_prob_min_core: 0.57, legacy_threshold_setting_keys: ["ev_gate_tp1_prob_min"] } },
     candidates: { summary: { top_candidate_id: "ML_GATE_CORE_SCORE_ABS" }, rows: [{ candidate_id: "ML_GATE_CORE_SCORE_ABS", canonical_candidate_id: null, scope: "ML" }, { candidate_id: "EV_TP1_THRESHOLD_TUNE", canonical_candidate_id: "EV_COMPOSITE_THRESHOLD_TUNE", scope: "EV" }] },
@@ -123,6 +124,13 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.current_status.ml_global_canary_replay_sample_gap_n, 1);
   assert.strictEqual(report.current_status.ml_global_canary_replay_projected_ready_if_sample_gap_closed, false);
   assert.strictEqual(report.current_status.ml_global_canary_replay_projected_residual_issue_after_sample_gap_closed, "NEGATIVE_OBJECTIVE_DELTA");
+  assert.strictEqual(report.current_status.ml_ev_profile_review_tracking_status, "ML_EV_PROFILE_REVIEW_TRACKING_READY");
+  assert.strictEqual(report.current_status.ml_ev_profile_review_mode, "PROFILE_CONDITIONAL_REVIEW");
+  assert.strictEqual(report.current_status.ml_ev_profile_review_target_n, 2);
+  assert.strictEqual(report.current_status.ml_ev_profile_review_split_ready, false);
+  assert.strictEqual(report.current_status.ml_ev_profile_review_split_blocker, "PROFILE_REALIZED_DELTA_TOO_SMALL");
+  assert.strictEqual(report.current_status.ml_ev_profile_review_top_return_drag_driver, "FAILURE_RISK_HEAVY");
+  assert.strictEqual(report.current_status.ml_ev_profile_review_top_mixed_driver, "DELAY_LATE_RISK_HEAVY");
   assert.strictEqual(report.current_status.ev_gate_policy_status, "EV_GATE_COMPOSITE_POLICY_READY");
   assert.strictEqual(report.current_status.ev_gate_policy_basis, "TP_COMPOSITE_EXIT_VALUE_V1");
   assert.strictEqual(report.current_status.ev_gate_canonical_policy_version, "EV_COMPOSITE_EXIT_VALUE_V1");
@@ -211,6 +219,9 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.summary.ml_promotion_global_canary_replay_sample_gap_n, 1);
   assert.strictEqual(report.summary.ml_promotion_global_canary_replay_projected_ready_if_sample_gap_closed, false);
   assert.strictEqual(report.summary.ml_promotion_global_canary_replay_projected_residual_issue_after_sample_gap_closed, "NEGATIVE_OBJECTIVE_DELTA");
+  assert.strictEqual(report.summary.ml_ev_profile_review_tracking_status, "ML_EV_PROFILE_REVIEW_TRACKING_READY");
+  assert.strictEqual(report.summary.ml_ev_profile_review_mode, "PROFILE_CONDITIONAL_REVIEW");
+  assert.strictEqual(report.summary.ml_ev_profile_review_target_n, 2);
   assert.strictEqual(report.summary.execution_bottleneck_delta_status, "EXECUTION_BOTTLENECK_DELTA_READY");
   assert.strictEqual(report.summary.execution_bottleneck_delta_comparable, true);
   assert.strictEqual(report.summary.execution_bottleneck_delta_interpretation, "USE_DELTA_SIGNAL");
