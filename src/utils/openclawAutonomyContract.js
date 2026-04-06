@@ -174,6 +174,7 @@ function deriveOpenClawAutonomyContract({
   mlGlobalCanaryEvidence = null,
   mlEvReplaySampleGap = null,
   mlReplayUnblockProjection = null,
+  mlEvReplayDeltaDiagnostics = null,
   mlModelSpecificCanary = null,
   mlRollbackArm = null,
   mlModelContract = null,
@@ -213,6 +214,7 @@ function deriveOpenClawAutonomyContract({
   const mlGlobalCanaryEvidenceSummary = readSummary(mlGlobalCanaryEvidence);
   const mlEvReplaySampleGapSummary = readSummary(mlEvReplaySampleGap);
   const mlReplayUnblockProjectionSummary = readSummary(mlReplayUnblockProjection);
+  const mlEvReplayDeltaDiagnosticsSummary = readSummary(mlEvReplayDeltaDiagnostics);
   const mlModelSpecificCanarySummary = readSummary(mlModelSpecificCanary);
   const mlRollbackArmSummary = readSummary(mlRollbackArm);
   const mlModelContractSummary = readSummary(mlModelContract);
@@ -564,6 +566,11 @@ function deriveOpenClawAutonomyContract({
       ml_global_canary_replay_sample_dominant_dimension: String(mlGlobalCanaryEvidenceSummary.replay_sample_dominant_dimension || mlEvReplaySampleGapSummary.dominant_sample_dimension || "").trim() || null,
       ml_global_canary_replay_projected_ready_if_sample_gap_closed: mlGlobalCanaryEvidenceSummary.replay_projected_ready_if_sample_gap_closed === true || mlReplayUnblockProjectionSummary.projected_replay_ready_if_sample_gap_closed === true,
       ml_global_canary_replay_projected_residual_issue_after_sample_gap_closed: String(mlGlobalCanaryEvidenceSummary.replay_projected_residual_issue_after_sample_gap_closed || mlReplayUnblockProjectionSummary.projected_residual_issue_after_sample_gap_closed || "").trim() || null,
+      ml_ev_replay_delta_diagnostics_status: String(mlEvReplayDeltaDiagnosticsSummary.status || "").trim() || null,
+      ml_ev_replay_delta_driver_class: String(mlEvReplayDeltaDiagnosticsSummary.driver_class || "").trim() || null,
+      ml_ev_replay_delta_historical_applied_gap_role: String(mlEvReplayDeltaDiagnosticsSummary.historical_applied_gap_role || "").trim() || null,
+      ml_ev_replay_delta_top_positive_market: String(mlEvReplayDeltaDiagnosticsSummary.top_positive_market || "").trim() || null,
+      ml_ev_replay_delta_top_negative_market: String(mlEvReplayDeltaDiagnosticsSummary.top_negative_market || "").trim() || null,
       ml_model_specific_canary_status: String(mlModelSpecificCanarySummary.status || "").trim() || null,
       ml_model_specific_canary_binding_mode: String(mlModelSpecificCanarySummary.binding_mode || "").trim() || null,
       ml_model_specific_canary_evidence_status: String(mlModelSpecificCanarySummary.evidence_status || "").trim() || null,
