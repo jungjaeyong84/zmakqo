@@ -175,6 +175,7 @@ function deriveOpenClawAutonomyContract({
   mlEvReplaySampleGap = null,
   mlReplayUnblockProjection = null,
   mlEvReplayDeltaDiagnostics = null,
+  mlEvReplayMarketContribution = null,
   mlModelSpecificCanary = null,
   mlRollbackArm = null,
   mlModelContract = null,
@@ -215,6 +216,7 @@ function deriveOpenClawAutonomyContract({
   const mlEvReplaySampleGapSummary = readSummary(mlEvReplaySampleGap);
   const mlReplayUnblockProjectionSummary = readSummary(mlReplayUnblockProjection);
   const mlEvReplayDeltaDiagnosticsSummary = readSummary(mlEvReplayDeltaDiagnostics);
+  const mlEvReplayMarketContributionSummary = readSummary(mlEvReplayMarketContribution);
   const mlModelSpecificCanarySummary = readSummary(mlModelSpecificCanary);
   const mlRollbackArmSummary = readSummary(mlRollbackArm);
   const mlModelContractSummary = readSummary(mlModelContract);
@@ -571,6 +573,14 @@ function deriveOpenClawAutonomyContract({
       ml_ev_replay_delta_historical_applied_gap_role: String(mlEvReplayDeltaDiagnosticsSummary.historical_applied_gap_role || "").trim() || null,
       ml_ev_replay_delta_top_positive_market: String(mlEvReplayDeltaDiagnosticsSummary.top_positive_market || "").trim() || null,
       ml_ev_replay_delta_top_negative_market: String(mlEvReplayDeltaDiagnosticsSummary.top_negative_market || "").trim() || null,
+      ml_ev_replay_market_contribution_status: String(mlEvReplayMarketContributionSummary.status || "").trim() || null,
+      ml_ev_replay_market_dominant_drag_pattern: String(mlEvReplayMarketContributionSummary.dominant_drag_pattern || "").trim() || null,
+      ml_ev_replay_market_positive_objective_market_n: toNum(mlEvReplayMarketContributionSummary.positive_objective_market_n),
+      ml_ev_replay_market_return_drag_market_n: toNum(mlEvReplayMarketContributionSummary.return_drag_market_n),
+      ml_ev_replay_market_positive_with_return_drag_market_n: toNum(mlEvReplayMarketContributionSummary.positive_objective_with_return_drag_market_n),
+      ml_ev_replay_market_top_positive_market: String(mlEvReplayMarketContributionSummary.top_positive_market || "").trim() || null,
+      ml_ev_replay_market_top_return_drag_market: String(mlEvReplayMarketContributionSummary.top_return_drag_market || "").trim() || null,
+      ml_ev_replay_market_top_mixed_market: String(mlEvReplayMarketContributionSummary.top_mixed_market || "").trim() || null,
       ml_model_specific_canary_status: String(mlModelSpecificCanarySummary.status || "").trim() || null,
       ml_model_specific_canary_binding_mode: String(mlModelSpecificCanarySummary.binding_mode || "").trim() || null,
       ml_model_specific_canary_evidence_status: String(mlModelSpecificCanarySummary.evidence_status || "").trim() || null,
