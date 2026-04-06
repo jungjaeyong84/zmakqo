@@ -1001,7 +1001,11 @@ function deriveLineageSloBlock(snapshot = null) {
   }
   const intentSignalNull = toNum(summary.intents_signal_doc_id_null_rate);
   const fillSignalNull = toNum(summary.fills_signal_doc_id_null_rate);
-  const fillIntentNull = toNum(summary.fills_intent_id_null_rate);
+  const fillIntentNull = toNum(
+    summary.entry_fills_intent_id_null_rate != null
+      ? summary.entry_fills_intent_id_null_rate
+      : summary.fills_intent_id_null_rate
+  );
   if (Number.isFinite(intentSignalNull) && intentSignalNull > LINEAGE_SLO_MAX_INTENT_SIGNAL_NULL_RATE) {
     return { blocked: LINEAGE_SLO_FAIL_CLOSED, reason: "LINEAGE_SLO_INTENT_SIGNAL_NULL_RATE", stale: false };
   }

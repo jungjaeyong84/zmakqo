@@ -26,6 +26,7 @@ function buildSnapshot({
         intents_signal_doc_id_null_rate: 0,
         fills_signal_doc_id_null_rate: 0,
         fills_intent_id_null_rate: 0,
+        entry_fills_intent_id_null_rate: 0,
         ...(lineageSummary || {}),
       },
     },
@@ -452,6 +453,70 @@ function buildSnapshot({
   assert.strictEqual(selected.source, "FIRESTORE_REPORT_LATEST");
   assert.strictEqual(selected.mtimeMs, null);
   assert.strictEqual(selected.doc.summary.fills_intent_id_null_rate, 0.01);
+})();
+
+(() => {
+  const nowMs = Date.now();
+  const snap = __test.buildSnapshotFromArtifacts({
+    allocatorDoc: { summary: { by_market: [{ market: "BTCUSDT", allocation_score: 1, recommended_action: "HOLD" }] } },
+    quarantineDoc: { summary: { by_market: [] } },
+    executionQualityDoc: { summary: { by_market: [{ market: "BTCUSDT", avg_created_to_fill_ms: 100, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }] } },
+    lineageHealthMtimeMs: nowMs - (60 * 1000),
+    lineageHealthDoc: {
+      generated_at: new Date(nowMs - (60 * 1000)).toISOString(),
+      summary: {
+        intents_signal_doc_id_null_rate: 0,
+        fills_signal_doc_id_null_rate: 0,
+        fills_intent_id_null_rate: 0.2,
+        entry_fills_intent_id_null_rate: 0,
+        exit_fills_intent_id_null_rate: 1,
+        external_reconciled_fills_intent_id_null_rate: 1,
+      },
+    },
+  });
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    intent: "ENTRY",
+    qtyPct: 0.5,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.reason, "LIVE_POLICY_OK");
+})();
+
+(() => {
+  const nowMs = Date.now();
+  const snap = __test.buildSnapshotFromArtifacts({
+    allocatorDoc: { summary: { by_market: [{ market: "BTCUSDT", allocation_score: 1, recommended_action: "HOLD" }] } },
+    quarantineDoc: { summary: { by_market: [] } },
+    executionQualityDoc: { summary: { by_market: [{ market: "BTCUSDT", avg_created_to_fill_ms: 100, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }] } },
+    lineageHealthMtimeMs: nowMs - (60 * 1000),
+    lineageHealthDoc: {
+      generated_at: new Date(nowMs - (60 * 1000)).toISOString(),
+      summary: {
+        intents_signal_doc_id_null_rate: 0,
+        fills_signal_doc_id_null_rate: 0,
+        fills_intent_id_null_rate: 0,
+        entry_fills_intent_id_null_rate: 0.2,
+      },
+    },
+  });
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    intent: "ENTRY",
+    qtyPct: 0.5,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.reason, "LINEAGE_SLO_FILL_INTENT_NULL_RATE");
 })();
 
 (() => {

@@ -75,6 +75,12 @@ function buildTruthPreservationAudit({
   );
 
   const fillsIntentIdNullRate = toNum(lineage.fills_intent_id_null_rate);
+  const entryFillsIntentIdNullRate = toNum(
+    lineage.entry_fills_intent_id_null_rate != null
+      ? lineage.entry_fills_intent_id_null_rate
+      : lineage.fills_intent_id_null_rate
+  );
+  const externalReconciledFillsIntentIdNullN = toNum(lineage.external_reconciled_fills_intent_id_null_n) || 0;
   const fillsSignalDocIdNullRate = toNum(lineage.fills_signal_doc_id_null_rate);
   const intentsSignalDocIdNullRate = toNum(lineage.intents_signal_doc_id_null_rate);
   const legacyWebhookOutcomeOnlyRowsN = firstMatchingCount(
@@ -93,7 +99,7 @@ function buildTruthPreservationAudit({
   if (!registryDatasetAligned) blockingReasons.push("DATASET_VERSION_MISMATCH");
   if (!registryFeatureAligned) blockingReasons.push("FEATURE_STORE_VERSION_MISMATCH");
   if (!registryExecutionAligned) blockingReasons.push("EXECUTION_DATASET_VERSION_MISMATCH");
-  if (fillsIntentIdNullRate != null && fillsIntentIdNullRate > 0.05) blockingReasons.push("LINEAGE_FILLS_INTENT_NULL_RATE_HIGH");
+  if (entryFillsIntentIdNullRate != null && entryFillsIntentIdNullRate > 0.05) blockingReasons.push("LINEAGE_FILLS_INTENT_NULL_RATE_HIGH");
   if (signalScopeFilter && signalScopeFilter !== "EARLY_CORE_ONLY") blockingReasons.push("SIGNAL_SCOPE_FILTER_NOT_PRIMARY");
 
   const warningReasons = [];
@@ -102,6 +108,7 @@ function buildTruthPreservationAudit({
   if (legacyWebhookOutcomeOnlyRowsN > 0) warningReasons.push("LEGACY_WEBHOOK_OUTCOME_ONLY_PRESENT");
   if (fillsSignalDocIdNullRate != null && fillsSignalDocIdNullRate > 0) warningReasons.push("LINEAGE_FILLS_SIGNAL_NULL_PRESENT");
   if (intentsSignalDocIdNullRate != null && intentsSignalDocIdNullRate > 0) warningReasons.push("LINEAGE_INTENTS_SIGNAL_NULL_PRESENT");
+  if (externalReconciledFillsIntentIdNullN > 0) warningReasons.push("LINEAGE_EXTERNAL_RECONCILED_FILL_INTENT_NULL_PRESENT");
 
   return {
     status: blockingReasons.length === 0
@@ -114,6 +121,8 @@ function buildTruthPreservationAudit({
     experiment_id: experimentId,
     lineage_status: lineageStatus,
     lineage_fills_intent_id_null_rate: fillsIntentIdNullRate,
+    lineage_entry_fills_intent_id_null_rate: entryFillsIntentIdNullRate,
+    lineage_external_reconciled_fills_intent_id_null_n: externalReconciledFillsIntentIdNullN,
     lineage_fills_signal_doc_id_null_rate: fillsSignalDocIdNullRate,
     lineage_intents_signal_doc_id_null_rate: intentsSignalDocIdNullRate,
     model_readiness_status: modelReadinessStatus,

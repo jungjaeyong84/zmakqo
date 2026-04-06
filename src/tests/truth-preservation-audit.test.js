@@ -9,6 +9,7 @@ const { buildTruthPreservationAudit } = require("../utils/truthPreservationAudit
       summary: {
         verdict: "PASS",
         fills_intent_id_null_rate: 0.02,
+        entry_fills_intent_id_null_rate: 0.02,
         fills_signal_doc_id_null_rate: 0,
         intents_signal_doc_id_null_rate: 0,
       },
@@ -74,6 +75,7 @@ const { buildTruthPreservationAudit } = require("../utils/truthPreservationAudit
       summary: {
         verdict: "WARN",
         fills_intent_id_null_rate: 0.11,
+        entry_fills_intent_id_null_rate: 0.11,
         fills_signal_doc_id_null_rate: 0.03,
         intents_signal_doc_id_null_rate: 0.02,
       },
@@ -100,6 +102,39 @@ const { buildTruthPreservationAudit } = require("../utils/truthPreservationAudit
   assert.ok(review.blocking_reasons.includes("DATASET_VERSION_MISMATCH"));
   assert.ok(review.blocking_reasons.includes("LINEAGE_FILLS_INTENT_NULL_RATE_HIGH"));
   assert.ok(review.blocking_reasons.includes("SIGNAL_SCOPE_FILTER_NOT_PRIMARY"));
+
+  const externalOnlyNoise = buildTruthPreservationAudit({
+    signalLineageHealth: {
+      summary: {
+        verdict: "WARN",
+        fills_intent_id_null_rate: 0.11,
+        entry_fills_intent_id_null_rate: 0,
+        external_reconciled_fills_intent_id_null_n: 4,
+        fills_signal_doc_id_null_rate: 0,
+        intents_signal_doc_id_null_rate: 0,
+      },
+    },
+    modelReadiness: { summary: { status: "MODEL_READINESS_READY", dataset_version_id: "ML_TRAINING_DATASET__abc123" } },
+    featureStore: { summary: { status: "FEATURE_STORE_READY", version_id: "ML_FEATURE_STORE__def456" } },
+    executionModelDataset: { summary: { status: "EXECUTION_MODEL_DATASET_READY", version_id: "EXECUTION_MODEL_DATASET__xyz789", signal_scope_filter: "EARLY_CORE_ONLY" } },
+    experimentRegistry: {
+      summary: {
+        status: "ML_EXPERIMENT_REGISTRY_READY",
+        experiment_id: "ML_BASELINE_ENV__0003",
+        dataset_version_id: "ML_TRAINING_DATASET__abc123",
+        feature_store_version_id: "ML_FEATURE_STORE__def456",
+        execution_dataset_version_id: "EXECUTION_MODEL_DATASET__xyz789",
+      },
+    },
+    executionBottleneckDelta: { summary: { status: "EXECUTION_BOTTLENECK_DELTA_READY", comparable: true, same_experiment: true } },
+  });
+
+  assert.strictEqual(externalOnlyNoise.truth_preservation_ready, true);
+  assert.strictEqual(externalOnlyNoise.lineage_fills_intent_id_null_rate, 0.11);
+  assert.strictEqual(externalOnlyNoise.lineage_entry_fills_intent_id_null_rate, 0);
+  assert.strictEqual(externalOnlyNoise.lineage_external_reconciled_fills_intent_id_null_n, 4);
+  assert.ok(!externalOnlyNoise.blocking_reasons.includes("LINEAGE_FILLS_INTENT_NULL_RATE_HIGH"));
+  assert.ok(externalOnlyNoise.warning_reasons.includes("LINEAGE_EXTERNAL_RECONCILED_FILL_INTENT_NULL_PRESENT"));
 
   console.log("TRUTH_PRESERVATION_AUDIT_TEST_OK");
 })();
