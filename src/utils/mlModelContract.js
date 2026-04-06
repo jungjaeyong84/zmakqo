@@ -18,11 +18,13 @@ function buildMlModelContract({
   trainRun = null,
   experimentRegistry = null,
   canary = null,
+  mlRollbackArm = null,
   serverPrimaryCanary = null,
 } = {}) {
   const trainRunSummary = readSummary(trainRun);
   const registrySummary = readSummary(experimentRegistry);
   const canarySummary = readSummary(canary);
+  const rollbackArmSummary = readSummary(mlRollbackArm);
   const serverPrimarySummary = readSummary(serverPrimaryCanary);
 
   const trainRunStatus = toUpper(trainRunSummary.status) || "N_A";
@@ -31,7 +33,7 @@ function buildMlModelContract({
   const qualityGateStatus = toUpper(trainRunSummary.quality_gate_status) || "N_A";
   const globalCanaryPass = canarySummary.global_canary_pass === true && canarySummary.apply_pass === true;
   const serverPrimaryPass = serverPrimarySummary.apply_pass === true && serverPrimarySummary.acceptance_ready === true;
-  const rollbackReadyN = toNum(canarySummary.rollback_ready_n) || 0;
+  const rollbackReady = rollbackArmSummary.rollback_arm_ready === true;
 
   let status = "ML_MODEL_CONTRACT_INCOMPLETE";
   let deploymentStage = "NOT_READY";
@@ -43,7 +45,7 @@ function buildMlModelContract({
     if (!qualityGateReady) {
       canaryGateStatus = "BLOCK_MODEL_QUALITY";
       promotionStatus = "HOLD_MODEL_QUALITY";
-    } else if (globalCanaryPass && serverPrimaryPass) {
+    } else if (globalCanaryPass && rollbackReady && serverPrimaryPass) {
       status = "ML_MODEL_CONTRACT_CANARY_READY";
       deploymentStage = "CANARY_READY";
       canaryGateStatus = "PASS";
@@ -51,6 +53,9 @@ function buildMlModelContract({
     } else if (!globalCanaryPass) {
       canaryGateStatus = "BLOCK_GLOBAL_CANARY";
       promotionStatus = "HOLD_OFFLINE_ONLY";
+    } else if (!rollbackReady) {
+      canaryGateStatus = "BLOCK_ROLLBACK_NOT_ARMED";
+      promotionStatus = "HOLD_ROLLBACK_NOT_ARMED";
     } else if (!serverPrimaryPass) {
       canaryGateStatus = "BLOCK_SERVER_PRIMARY";
       promotionStatus = "HOLD_SERVER_PRIMARY";
@@ -72,7 +77,12 @@ function buildMlModelContract({
     quality_gate_ready: qualityGateReady,
     canary_gate_status: canaryGateStatus,
     server_primary_gate_status: serverPrimaryPass ? "PASS" : "BLOCK",
-    rollback_status: rollbackReadyN > 0 ? "READY" : "NOT_ARMED",
+    rollback_status: rollbackReady ? "READY" : "NOT_ARMED",
+    rollback_arm_status: String(rollbackArmSummary.status || "").trim() || null,
+    rollback_evidence_status: String(rollbackArmSummary.evidence_status || "").trim() || null,
+    rollback_binding_source: String(rollbackArmSummary.rollback_binding_source || "").trim() || null,
+    rollback_target_path: String(rollbackArmSummary.rollback_target_path || "").trim() || null,
+    rollback_engine_bundle_id: String(rollbackArmSummary.rollback_engine_bundle_id || "").trim() || null,
     promotion_status: promotionStatus,
     metrics_snapshot: trainRunSummary.metrics_snapshot && typeof trainRunSummary.metrics_snapshot === "object"
       ? trainRunSummary.metrics_snapshot

@@ -203,6 +203,7 @@ function buildStepPlan(context = {}, capabilityDefs = null) {
     { id: "filter_shadow_canary", script: "automation-filter-shadow-canary.js" },
     { id: "canary", script: "report-best-self-evolution-canary.js" },
     { id: "ml_model_specific_canary", script: "report-best-self-evolution-ml-model-specific-canary.js" },
+    { id: "ml_rollback_arm", script: "report-best-self-evolution-ml-rollback-arm.js" },
     { id: "ml_promotion_gate", script: "report-best-self-evolution-ml-promotion-gate.js" },
     { id: "memory", script: "report-best-self-evolution-memory-ledger.js" },
     { id: "deployment_guards", script: "report-best-self-evolution-deployment-guards.js" },

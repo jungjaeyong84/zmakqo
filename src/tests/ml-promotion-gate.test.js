@@ -30,6 +30,14 @@ const { buildMlPromotionGate } = require("../utils/mlPromotionGate");
         model_specific_canary_ready: false,
       },
     },
+    mlRollbackArm: {
+      summary: {
+        status: "ML_ROLLBACK_ARM_READY",
+        rollback_arm_ready: false,
+        rollback_binding_source: "DEPLOYMENT_PLAN",
+        evidence_status: "ROLLBACK_ARM_TARGET_MISSING",
+      },
+    },
     serverPrimaryCanary: { summary: { apply_pass: true, acceptance_ready: true } },
   });
 
@@ -64,6 +72,14 @@ const { buildMlPromotionGate } = require("../utils/mlPromotionGate");
         model_specific_canary_artifact_aligned: true,
         model_specific_canary_train_run_aligned: true,
         model_specific_canary_ready: true,
+      },
+    },
+    mlRollbackArm: {
+      summary: {
+        status: "ML_ROLLBACK_ARM_READY",
+        rollback_arm_ready: true,
+        rollback_binding_source: "DEPLOYMENT_PLAN",
+        evidence_status: "ROLLBACK_ARM_EVIDENCE_READY",
       },
     },
     serverPrimaryCanary: { summary: { apply_pass: true, acceptance_ready: true } },

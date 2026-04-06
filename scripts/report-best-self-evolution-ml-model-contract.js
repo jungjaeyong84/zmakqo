@@ -17,6 +17,7 @@ const INPUTS = Object.freeze({
   trainRun: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_train_run_latest.json"),
   experimentRegistry: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_experiment_registry_latest.json"),
   canary: path.join(OPS_DAILY_DIR, "best_self_evolution_canary_latest.json"),
+  mlRollbackArm: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_rollback_arm_latest.json"),
   serverPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
 });
 
@@ -33,7 +34,7 @@ function renderMarkdown(report = {}) {
     `- model_kind: ${summary.model_kind || "N/A"}`,
     `- canary_gate_status: ${summary.canary_gate_status || "N/A"}`,
     `- server_primary_gate_status: ${summary.server_primary_gate_status || "N/A"}`,
-    `- rollback_status: ${summary.rollback_status || "N/A"}`,
+    `- rollback_status: ${summary.rollback_status || "N/A"} / evidence=${summary.rollback_evidence_status || "N/A"} / source=${summary.rollback_binding_source || "N/A"}`,
     `- promotion_status: ${summary.promotion_status || "N/A"}`,
     "",
   ].join("\n");
@@ -45,6 +46,7 @@ function main() {
     trainRun: readJsonRawSafe(INPUTS.trainRun, null),
     experimentRegistry: readJsonRawSafe(INPUTS.experimentRegistry, null),
     canary: readJsonRawSafe(INPUTS.canary, null),
+    mlRollbackArm: readJsonRawSafe(INPUTS.mlRollbackArm, null),
     serverPrimaryCanary: readJsonRawSafe(INPUTS.serverPrimaryCanary, null),
   });
   const payload = { ok: true, generated_at_kst: nowMeta.kst, inputs: INPUTS, summary };

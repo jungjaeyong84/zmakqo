@@ -24,12 +24,14 @@ function buildMlPromotionGate({
   executionServingContract = null,
   executionScopeTrainRun = null,
   modelSpecificCanary = null,
+  mlRollbackArm = null,
   serverPrimaryCanary = null,
 } = {}) {
   const truth = readSummary(truthPreservationAudit);
   const serving = readSummary(executionServingContract);
   const scopeTrain = readSummary(executionScopeTrainRun);
   const modelSpecificCanarySummary = readSummary(modelSpecificCanary);
+  const rollbackArmSummary = readSummary(mlRollbackArm);
   const serverPrimarySummary = readSummary(serverPrimaryCanary);
 
   const preferredModelArtifactId = norm(serving.preferred_model_artifact_id || scopeTrain.model_artifact_id);
@@ -44,9 +46,11 @@ function buildMlPromotionGate({
   const modelSpecificCanaryTrainRunAligned = modelSpecificCanarySummary.model_specific_canary_train_run_aligned === true;
   const modelSpecificCanaryReady = modelSpecificCanarySummary.model_specific_canary_ready === true;
   const serverPrimaryPass = serverPrimarySummary.apply_pass === true && serverPrimarySummary.acceptance_ready === true;
-  const rollbackReady = (toNum(modelSpecificCanarySummary.rollback_ready_n) || 0) > 0;
+  const rollbackReady = rollbackArmSummary.rollback_arm_ready === true;
   const bindingMode = toUpper(modelSpecificCanarySummary.binding_mode);
   const evidenceStatus = toUpper(modelSpecificCanarySummary.evidence_status);
+  const rollbackBindingSource = norm(rollbackArmSummary.rollback_binding_source);
+  const rollbackEvidenceStatus = toUpper(rollbackArmSummary.evidence_status);
 
   let promotion_stage = "OFFLINE_ONLY";
   let promotion_decision = "HOLD_OFFLINE_ONLY";
@@ -94,6 +98,12 @@ function buildMlPromotionGate({
     model_specific_canary_gate_status: modelSpecificCanaryReady ? "PASS" : "BLOCK",
     server_primary_gate_status: serverPrimaryPass ? "PASS" : "BLOCK",
     rollback_gate_status: rollbackReady ? "READY" : "NOT_ARMED",
+    rollback_binding_source: rollbackBindingSource,
+    rollback_evidence_status: rollbackEvidenceStatus,
+    rollback_arm_status: String(rollbackArmSummary.status || "").trim() || null,
+    rollback_arm_ready: rollbackReady,
+    rollback_target_path: norm(rollbackArmSummary.rollback_target_path),
+    rollback_engine_bundle_id: norm(rollbackArmSummary.rollback_engine_bundle_id),
     model_specific_canary_status: String(modelSpecificCanarySummary.status || "").trim() || null,
     model_specific_canary_binding_mode: bindingMode,
     model_specific_canary_evidence_status: evidenceStatus,

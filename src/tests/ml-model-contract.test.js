@@ -17,6 +17,7 @@ const { buildMlModelContract } = require("../utils/mlModelContract");
     },
     experimentRegistry: { summary: { experiment_id: "ML_BASELINE_ENV__abc123" } },
     canary: { summary: { global_canary_pass: false, apply_pass: false, rollback_ready_n: 0 } },
+    mlRollbackArm: { summary: { rollback_arm_ready: false, evidence_status: "ROLLBACK_ARM_TARGET_MISSING" } },
     serverPrimaryCanary: { summary: { apply_pass: true, acceptance_ready: true } },
   });
   assert.strictEqual(offlineOnly.status, "ML_MODEL_CONTRACT_OFFLINE_ONLY");
@@ -34,6 +35,7 @@ const { buildMlModelContract } = require("../utils/mlModelContract");
       },
     },
     canary: { summary: { global_canary_pass: true, apply_pass: true, rollback_ready_n: 1 } },
+    mlRollbackArm: { summary: { rollback_arm_ready: true, evidence_status: "ROLLBACK_ARM_EVIDENCE_READY" } },
     serverPrimaryCanary: { summary: { apply_pass: true, acceptance_ready: true } },
   });
   assert.strictEqual(canaryReady.status, "ML_MODEL_CONTRACT_CANARY_READY");

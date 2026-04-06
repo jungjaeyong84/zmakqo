@@ -172,6 +172,7 @@ function deriveOpenClawAutonomyContract({
   mlTrainRunScope = null,
   executionServingContract = null,
   mlModelSpecificCanary = null,
+  mlRollbackArm = null,
   mlModelContract = null,
   mlPromotionGate = null,
   evGateCompositePolicy = null,
@@ -207,6 +208,7 @@ function deriveOpenClawAutonomyContract({
   const mlTrainRunScopeSummary = readSummary(mlTrainRunScope);
   const executionServingContractSummary = readSummary(executionServingContract);
   const mlModelSpecificCanarySummary = readSummary(mlModelSpecificCanary);
+  const mlRollbackArmSummary = readSummary(mlRollbackArm);
   const mlModelContractSummary = readSummary(mlModelContract);
   const mlPromotionGateSummary = readSummary(mlPromotionGate);
   const evGateCompositePolicySummary = readSummary(evGateCompositePolicy);
@@ -551,6 +553,14 @@ function deriveOpenClawAutonomyContract({
       ml_model_specific_canary_preferred_train_run_id: String(mlModelSpecificCanarySummary.preferred_train_run_id || "").trim() || null,
       ml_model_specific_canary_bound_model_artifact_id: String(mlModelSpecificCanarySummary.bound_model_artifact_id || "").trim() || null,
       ml_model_specific_canary_bound_train_run_id: String(mlModelSpecificCanarySummary.bound_train_run_id || "").trim() || null,
+      ml_rollback_arm_status: String(mlRollbackArmSummary.status || "").trim() || null,
+      ml_rollback_arm_binding_source: String(mlRollbackArmSummary.rollback_binding_source || "").trim() || null,
+      ml_rollback_arm_evidence_status: String(mlRollbackArmSummary.evidence_status || "").trim() || null,
+      ml_rollback_arm_ready: mlRollbackArmSummary.rollback_arm_ready === true,
+      ml_rollback_arm_target_path: String(mlRollbackArmSummary.rollback_target_path || "").trim() || null,
+      ml_rollback_arm_engine_bundle_id: String(mlRollbackArmSummary.rollback_engine_bundle_id || "").trim() || null,
+      ml_rollback_arm_trigger_status: String(mlRollbackArmSummary.rollback_trigger_status || "").trim() || null,
+      ml_rollback_arm_server_primary_trigger_n: toNum(mlRollbackArmSummary.server_primary_rollback_trigger_n),
       ev_gate_policy_status: String(evGateCompositePolicySummary.status || "").trim() || null,
       ev_gate_policy_basis: String(evGateCompositePolicySummary.policy_basis || "").trim() || null,
       ev_gate_canonical_policy_version: String(evGateCompositePolicySummary.canonical_policy_version || "").trim() || null,
@@ -585,6 +595,10 @@ function deriveOpenClawAutonomyContract({
       ml_promotion_model_specific_canary_ready: mlPromotionGateSummary.model_specific_canary_ready === true,
       ml_promotion_model_specific_canary_binding_mode: String(mlPromotionGateSummary.model_specific_canary_binding_mode || "").trim() || null,
       ml_promotion_model_specific_canary_evidence_status: String(mlPromotionGateSummary.model_specific_canary_evidence_status || "").trim() || null,
+      ml_promotion_rollback_gate_status: String(mlPromotionGateSummary.rollback_gate_status || "").trim() || null,
+      ml_promotion_rollback_binding_source: String(mlPromotionGateSummary.rollback_binding_source || "").trim() || null,
+      ml_promotion_rollback_evidence_status: String(mlPromotionGateSummary.rollback_evidence_status || "").trim() || null,
+      ml_promotion_rollback_arm_ready: mlPromotionGateSummary.rollback_arm_ready === true,
       ml_promotion_preferred_model_family: String(mlPromotionGateSummary.preferred_model_family || "").trim() || null,
       ml_promotion_preferred_model_artifact_id: String(mlPromotionGateSummary.preferred_model_artifact_id || "").trim() || null,
       execution_bottleneck_delta_status: executionBottleneckDeltaStatus,
@@ -777,6 +791,14 @@ function deriveOpenClawAutonomyContract({
       ml_model_specific_canary_preferred_train_run_id: String(mlModelSpecificCanarySummary.preferred_train_run_id || "").trim() || null,
       ml_model_specific_canary_bound_model_artifact_id: String(mlModelSpecificCanarySummary.bound_model_artifact_id || "").trim() || null,
       ml_model_specific_canary_bound_train_run_id: String(mlModelSpecificCanarySummary.bound_train_run_id || "").trim() || null,
+      ml_rollback_arm_status: String(mlRollbackArmSummary.status || "").trim() || null,
+      ml_rollback_arm_binding_source: String(mlRollbackArmSummary.rollback_binding_source || "").trim() || null,
+      ml_rollback_arm_evidence_status: String(mlRollbackArmSummary.evidence_status || "").trim() || null,
+      ml_rollback_arm_ready: mlRollbackArmSummary.rollback_arm_ready === true,
+      ml_rollback_arm_target_path: String(mlRollbackArmSummary.rollback_target_path || "").trim() || null,
+      ml_rollback_arm_engine_bundle_id: String(mlRollbackArmSummary.rollback_engine_bundle_id || "").trim() || null,
+      ml_rollback_arm_trigger_status: String(mlRollbackArmSummary.rollback_trigger_status || "").trim() || null,
+      ml_rollback_arm_server_primary_trigger_n: toNum(mlRollbackArmSummary.server_primary_rollback_trigger_n),
       ev_gate_policy_status: String(evGateCompositePolicySummary.status || "").trim() || null,
       ev_gate_policy_basis: String(evGateCompositePolicySummary.policy_basis || "").trim() || null,
       ev_gate_canonical_policy_version: String(evGateCompositePolicySummary.canonical_policy_version || "").trim() || null,
@@ -821,6 +843,10 @@ function deriveOpenClawAutonomyContract({
       ml_promotion_model_specific_canary_ready: mlPromotionGateSummary.model_specific_canary_ready === true,
       ml_promotion_model_specific_canary_binding_mode: String(mlPromotionGateSummary.model_specific_canary_binding_mode || "").trim() || null,
       ml_promotion_model_specific_canary_evidence_status: String(mlPromotionGateSummary.model_specific_canary_evidence_status || "").trim() || null,
+      ml_promotion_rollback_gate_status: String(mlPromotionGateSummary.rollback_gate_status || "").trim() || null,
+      ml_promotion_rollback_binding_source: String(mlPromotionGateSummary.rollback_binding_source || "").trim() || null,
+      ml_promotion_rollback_evidence_status: String(mlPromotionGateSummary.rollback_evidence_status || "").trim() || null,
+      ml_promotion_rollback_arm_ready: mlPromotionGateSummary.rollback_arm_ready === true,
       ml_promotion_preferred_model_family: String(mlPromotionGateSummary.preferred_model_family || "").trim() || null,
       ml_promotion_preferred_model_artifact_id: String(mlPromotionGateSummary.preferred_model_artifact_id || "").trim() || null,
       execution_stage_latency_status: executionStageLatencyStatus,
