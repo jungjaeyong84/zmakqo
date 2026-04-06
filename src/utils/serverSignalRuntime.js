@@ -20,6 +20,13 @@ function toBool(value, fallback = false) {
   return fallback;
 }
 
+function parseTimeMs(value) {
+  if (value == null || value === "") return null;
+  if (Number.isFinite(Number(value))) return Number(value);
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function list(value) {
   if (Array.isArray(value)) return value.map((x) => String(x || "").trim()).filter(Boolean);
   return String(value || "")
@@ -77,6 +84,16 @@ function deriveServerSignalRuntime({
   };
   const completedN = Object.values(transition).filter((x) => x === "DONE").length;
   const progressPct = Math.round((completedN / Object.keys(transition).length) * 100);
+  const genRelaxEnabled = toBool(systemSettings.ev_gate_unknown_gen_relax_enabled, false);
+  const genRelaxStartAt = systemSettings.ev_gate_unknown_gen_relax_started_at || null;
+  const genRelaxStartMs = parseTimeMs(systemSettings.ev_gate_unknown_gen_relax_started_at_ms || genRelaxStartAt);
+  const genRelaxWindowHours = toNum(systemSettings.ev_gate_unknown_gen_relax_window_hours) || 6;
+  const genRelaxReviewAfterHours = toNum(systemSettings.ev_gate_unknown_gen_relax_review_after_hours)
+    || toNum(systemSettings.ev_gate_unknown_gen_relax_rollback_after_hours)
+    || 4;
+  const genRelaxActiveWindow = genRelaxEnabled
+    && Number.isFinite(genRelaxStartMs)
+    && Date.now() < (genRelaxStartMs + (genRelaxWindowHours * 3600000));
 
   return {
     contract_version: "SERVER_SIGNAL_RUNTIME_V1",
@@ -118,6 +135,15 @@ function deriveServerSignalRuntime({
       ev_gate_tp1_prob_min_by_market_n: Object.keys(systemSettings.ev_gate_tp1_prob_min_by_market || {}).length,
       ev_gate_tp1_prob_min_by_market_report_only_n: Object.keys(systemSettings.ev_gate_tp1_prob_min_by_market_report_only || {}).length,
       ev_gate_tp1_prob_min_by_market_report_only_enabled: toBool(systemSettings.ev_gate_tp1_prob_min_by_market_report_only_enabled, false),
+      ev_gate_unknown_gen_relax_enabled: genRelaxEnabled,
+      ev_gate_unknown_gen_relax_started_at: genRelaxStartAt,
+      ev_gate_unknown_gen_relax_window_hours: genRelaxWindowHours,
+      ev_gate_unknown_gen_relax_review_after_hours: genRelaxReviewAfterHours,
+      ev_gate_unknown_gen_relax_active_window: genRelaxActiveWindow,
+      ev_gate_unknown_gen_relax_auto_rollback_enabled: false,
+      ev_gate_unknown_gen_relax_tp1_prob_min_delta: toNum(systemSettings.ev_gate_unknown_gen_relax_tp1_prob_min_delta) || 0.04,
+      ev_gate_unknown_gen_relax_tp1_prob_full_delta: toNum(systemSettings.ev_gate_unknown_gen_relax_tp1_prob_full_delta) || 0.03,
+      ev_gate_unknown_gen_relax_tp1_prob_kill_delta: toNum(systemSettings.ev_gate_unknown_gen_relax_tp1_prob_kill_delta) || 0.02,
     },
     summary: {
       cycle_id: runtimeCycleId,
@@ -143,6 +169,15 @@ function deriveServerSignalRuntime({
       ev_gate_tp1_prob_min_by_market_n: Object.keys(systemSettings.ev_gate_tp1_prob_min_by_market || {}).length,
       ev_gate_tp1_prob_min_by_market_report_only_n: Object.keys(systemSettings.ev_gate_tp1_prob_min_by_market_report_only || {}).length,
       ev_gate_tp1_prob_min_by_market_report_only_enabled: toBool(systemSettings.ev_gate_tp1_prob_min_by_market_report_only_enabled, false),
+      ev_gate_unknown_gen_relax_enabled: genRelaxEnabled,
+      ev_gate_unknown_gen_relax_started_at: genRelaxStartAt,
+      ev_gate_unknown_gen_relax_window_hours: genRelaxWindowHours,
+      ev_gate_unknown_gen_relax_review_after_hours: genRelaxReviewAfterHours,
+      ev_gate_unknown_gen_relax_active_window: genRelaxActiveWindow,
+      ev_gate_unknown_gen_relax_auto_rollback_enabled: false,
+      ev_gate_unknown_gen_relax_tp1_prob_min_delta: toNum(systemSettings.ev_gate_unknown_gen_relax_tp1_prob_min_delta) || 0.04,
+      ev_gate_unknown_gen_relax_tp1_prob_full_delta: toNum(systemSettings.ev_gate_unknown_gen_relax_tp1_prob_full_delta) || 0.03,
+      ev_gate_unknown_gen_relax_tp1_prob_kill_delta: toNum(systemSettings.ev_gate_unknown_gen_relax_tp1_prob_kill_delta) || 0.02,
       pine_shadow_transition_status: completedN === Object.keys(transition).length ? "COMPLETE" : "IN_PROGRESS",
       pine_shadow_transition_progress_pct: progressPct,
     },

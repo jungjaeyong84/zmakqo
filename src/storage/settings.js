@@ -223,6 +223,14 @@ function applyEvGateDefaultsForProvider(data = {}, provider = "BINANCEFUT") {
   if (out.ev_gate_default_tp1_pct === undefined || out.ev_gate_default_tp1_pct === null || out.ev_gate_default_tp1_pct === "") out.ev_gate_default_tp1_pct = 3.25;
   if (out.ev_gate_default_sl_pct === undefined || out.ev_gate_default_sl_pct === null || out.ev_gate_default_sl_pct === "") out.ev_gate_default_sl_pct = 1.65;
   if (out.ev_gate_skip_missing_bars === undefined || out.ev_gate_skip_missing_bars === null || out.ev_gate_skip_missing_bars === "") out.ev_gate_skip_missing_bars = true;
+  if (out.ev_gate_unknown_gen_relax_enabled === undefined || out.ev_gate_unknown_gen_relax_enabled === null || out.ev_gate_unknown_gen_relax_enabled === "") out.ev_gate_unknown_gen_relax_enabled = false;
+  if (out.ev_gate_unknown_gen_relax_tp1_prob_min_delta === undefined || out.ev_gate_unknown_gen_relax_tp1_prob_min_delta === null || out.ev_gate_unknown_gen_relax_tp1_prob_min_delta === "") out.ev_gate_unknown_gen_relax_tp1_prob_min_delta = 0.04;
+  if (out.ev_gate_unknown_gen_relax_tp1_prob_full_delta === undefined || out.ev_gate_unknown_gen_relax_tp1_prob_full_delta === null || out.ev_gate_unknown_gen_relax_tp1_prob_full_delta === "") out.ev_gate_unknown_gen_relax_tp1_prob_full_delta = 0.03;
+  if (out.ev_gate_unknown_gen_relax_tp1_prob_kill_delta === undefined || out.ev_gate_unknown_gen_relax_tp1_prob_kill_delta === null || out.ev_gate_unknown_gen_relax_tp1_prob_kill_delta === "") out.ev_gate_unknown_gen_relax_tp1_prob_kill_delta = 0.02;
+  if (out.ev_gate_unknown_gen_relax_window_hours === undefined || out.ev_gate_unknown_gen_relax_window_hours === null || out.ev_gate_unknown_gen_relax_window_hours === "") out.ev_gate_unknown_gen_relax_window_hours = 6;
+  if (out.ev_gate_unknown_gen_relax_review_after_hours === undefined || out.ev_gate_unknown_gen_relax_review_after_hours === null || out.ev_gate_unknown_gen_relax_review_after_hours === "") out.ev_gate_unknown_gen_relax_review_after_hours = 4;
+  if (out.ev_gate_unknown_gen_relax_rollback_after_hours === undefined || out.ev_gate_unknown_gen_relax_rollback_after_hours === null || out.ev_gate_unknown_gen_relax_rollback_after_hours === "") out.ev_gate_unknown_gen_relax_rollback_after_hours = 4;
+  if (out.ev_gate_unknown_gen_relax_started_at === undefined) out.ev_gate_unknown_gen_relax_started_at = null;
   if (out.wait_one_bar_enabled === undefined || out.wait_one_bar_enabled === null || out.wait_one_bar_enabled === "") out.wait_one_bar_enabled = defaultEnabled;
   if (out.wait_one_bar_core_enabled === undefined || out.wait_one_bar_core_enabled === null || out.wait_one_bar_core_enabled === "") out.wait_one_bar_core_enabled = true;
   if (out.wait_one_bar_pre_real_enabled === undefined || out.wait_one_bar_pre_real_enabled === null || out.wait_one_bar_pre_real_enabled === "") out.wait_one_bar_pre_real_enabled = false;
@@ -317,7 +325,7 @@ function applyReverseExceptionDefaultsForProvider(data = {}, provider = "BINANCE
     out.reverse_exception_real_enabled = false;
   }
   if (out.reverse_exception_early_enabled === undefined || out.reverse_exception_early_enabled === null || out.reverse_exception_early_enabled === "") {
-    out.reverse_exception_early_enabled = false;
+    out.reverse_exception_early_enabled = true;
   }
   return out;
 }
@@ -486,6 +494,14 @@ async function getSystemSettingsCached(ttlMs = 30_000) {
     ev_gate_default_tp1_pct: 3.25,
     ev_gate_default_sl_pct: 1.65,
     ev_gate_skip_missing_bars: true,
+    ev_gate_unknown_gen_relax_enabled: false,
+    ev_gate_unknown_gen_relax_tp1_prob_min_delta: 0.04,
+    ev_gate_unknown_gen_relax_tp1_prob_full_delta: 0.03,
+    ev_gate_unknown_gen_relax_tp1_prob_kill_delta: 0.02,
+    ev_gate_unknown_gen_relax_window_hours: 6,
+    ev_gate_unknown_gen_relax_review_after_hours: 4,
+    ev_gate_unknown_gen_relax_rollback_after_hours: 4,
+    ev_gate_unknown_gen_relax_started_at: null,
     wait_one_bar_enabled: true,
     wait_one_bar_core_enabled: true,
     wait_one_bar_pre_real_enabled: false,
@@ -499,12 +515,12 @@ async function getSystemSettingsCached(ttlMs = 30_000) {
     wait_one_bar_recent_move1_pct_min: 0.45,
     wait_one_bar_counter_dir_bars_max: 0,
     reverse_exception_enabled: true,
-    reverse_exception_drop_count_min: 2,
-    reverse_exception_max_profit_pct: 1.5,
+    reverse_exception_drop_count_min: 1,
+    reverse_exception_max_profit_pct: 3.0,
     reverse_exception_core_enabled: true,
     reverse_exception_pre_real_enabled: false,
     reverse_exception_real_enabled: false,
-    reverse_exception_early_enabled: false,
+    reverse_exception_early_enabled: true,
     // Legacy mirrors
     short_gate_enabled: true,
     short_gate_trend_only: true,

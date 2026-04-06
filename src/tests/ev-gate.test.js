@@ -78,6 +78,8 @@ async function run() {
   assert.strictEqual(cfg.pointPassKillRescueEnabled, true);
   assert.strictEqual(cfg.pointPassKillRescueMargin, 0.06);
   assert.strictEqual(cfg.qtyScaleKillRescue, 0.25);
+  assert.strictEqual(cfg.defaultTp0Pct, 0.8);
+  assert.strictEqual(cfg.defaultTp0QtyRatio, 0.25);
 
   const marketCfg = __test.resolveEvGateConfig({
     ev_gate_enabled: true,
@@ -131,6 +133,28 @@ async function run() {
   assert.strictEqual(reportOnlyCohortCfg.tp1ProbMin, 0.502);
   assert.strictEqual(reportOnlyCohortCfg.tp1ProbMinEarly, 0.502);
   assert.strictEqual(reportOnlyCohortCfg.tp1ProbMinCore, 0.502);
+
+  const unknownGenRelaxCfg = __test.resolveEvGateConfig({
+    ev_gate_enabled: true,
+    ev_gate_tp1_prob_min: 0.55,
+    ev_gate_tp1_prob_min_early: 0.60,
+    ev_gate_tp1_prob_min_core: 0.55,
+    ev_gate_tp1_prob_full: 0.60,
+    ev_gate_tp1_prob_kill: 0.50,
+    ev_gate_unknown_gen_relax_enabled: true,
+    ev_gate_unknown_gen_relax_started_at: new Date().toISOString(),
+    ev_gate_unknown_gen_relax_window_hours: 6,
+    ev_gate_unknown_gen_relax_review_after_hours: 4,
+    ev_gate_unknown_gen_relax_tp1_prob_min_delta: 0.04,
+    ev_gate_unknown_gen_relax_tp1_prob_full_delta: 0.03,
+    ev_gate_unknown_gen_relax_tp1_prob_kill_delta: 0.02,
+  }, "BINANCEFUT", "XRPUSDT");
+  assert.strictEqual(unknownGenRelaxCfg.unknownGenRelaxEnabled, true);
+  assert.strictEqual(unknownGenRelaxCfg.unknownGenRelaxStatus, "ACTIVE");
+  assert.strictEqual(unknownGenRelaxCfg.unknownGenRelaxActive, true);
+  assert.strictEqual(unknownGenRelaxCfg.unknownGenRelaxWindowHours, 6);
+  assert.strictEqual(unknownGenRelaxCfg.unknownGenRelaxReviewAfterHours, 4);
+  assert.strictEqual(unknownGenRelaxCfg.unknownGenRelaxMinDelta, 0.04);
 
   const rescuedDecision = __test.resolveEvGateDecision({
     cfg,
@@ -211,12 +235,17 @@ async function run() {
   assert.strictEqual(allowCoreLong.ok, true);
   assert.strictEqual(allowCoreLong.detail.ev_gate_action, "REDUCE_MID");
   assert.strictEqual(allowCoreLong.qtyScale, 0.70);
+  assert.strictEqual(allowCoreLong.detail.ev_gate_source, "TP_COMPOSITE_EXIT_VALUE_V1");
+  assert.strictEqual(allowCoreLong.detail.ev_gate_policy_basis, "TP_COMPOSITE_EXIT_VALUE_V1");
+  assert.strictEqual(allowCoreLong.detail.ev_gate_tp0_pct, 0.8);
   assert.strictEqual(allowCoreLong.detail.ev_gate_tp1_prob_min, 0.55);
   assert.strictEqual(allowCoreLong.detail.ev_gate_policy_version, "TP1_WEIGHT_V1");
   assert.strictEqual(allowCoreLong.detail.ev_gate_policy_source, "DEFAULT");
   assert.ok(allowCoreLong.detail.ev_gate_component_weights);
   assert.ok(allowCoreLong.detail.ev_gate_tp1_reach_prob_lower_bound > 0.55);
   assert.ok(allowCoreLong.detail.ev_gate_tp1_reach_prob_lower_bound < 0.60);
+  assert.ok(allowCoreLong.detail.ev_gate_exit_value_prob_lower_bound > 0.55);
+  assert.ok(allowCoreLong.detail.ev_gate_exit_value_prob_lower_bound < 0.60);
 
   const reduceCoreLong = await __test.evaluateEvEntryGate({
     exchange: "BINANCEFUT",
@@ -231,10 +260,12 @@ async function run() {
     bars: makeBars({ direction: "LONG", driftPct: 0.20, rangePct: 1.40, closeControl: 0.65, adverseEvery: 4 }),
   });
   assert.strictEqual(reduceCoreLong.ok, true);
-  assert.strictEqual(reduceCoreLong.detail.ev_gate_action, "REDUCE_LOW");
-  assert.strictEqual(reduceCoreLong.qtyScale, 0.40);
+  assert.strictEqual(reduceCoreLong.detail.ev_gate_action, "REDUCE_MID");
+  assert.strictEqual(reduceCoreLong.qtyScale, 0.70);
   assert.ok(reduceCoreLong.detail.ev_gate_tp1_reach_prob_lower_bound >= 0.50);
   assert.ok(reduceCoreLong.detail.ev_gate_tp1_reach_prob_lower_bound < 0.55);
+  assert.ok(reduceCoreLong.detail.ev_gate_exit_value_prob_lower_bound >= 0.55);
+  assert.ok(reduceCoreLong.detail.ev_gate_exit_value_prob_lower_bound < 0.60);
 
   const dropCoreLong = await __test.evaluateEvEntryGate({
     exchange: "BINANCEFUT",
@@ -265,13 +296,13 @@ async function run() {
     bars: makeBars({ direction: "LONG", driftPct: 0.05, rangePct: 1.35, closeControl: 0.40, adverseEvery: 2 }),
   });
   assert.strictEqual(rescueCoreLong.ok, true);
-  assert.strictEqual(rescueCoreLong.detail.ev_gate_action, "REDUCE_RESCUE");
-  assert.strictEqual(rescueCoreLong.qtyScale, 0.25);
+  assert.strictEqual(rescueCoreLong.detail.ev_gate_action, "REDUCE_LOW");
+  assert.strictEqual(rescueCoreLong.qtyScale, 0.40);
   assert.strictEqual(rescueCoreLong.detail.ev_gate_point_pass, true);
-  assert.strictEqual(rescueCoreLong.detail.ev_gate_point_pass_kill_rescue_applied, true);
-  assert.ok(rescueCoreLong.detail.ev_gate_tp1_reach_prob >= rescueCoreLong.detail.ev_gate_tp1_prob_min);
-  assert.ok(rescueCoreLong.detail.ev_gate_tp1_reach_prob_lower_bound < rescueCoreLong.detail.ev_gate_tp1_prob_kill);
-  assert.ok(rescueCoreLong.detail.ev_gate_tp1_reach_prob_lower_bound >= rescueCoreLong.detail.ev_gate_point_pass_kill_rescue_floor);
+  assert.strictEqual(rescueCoreLong.detail.ev_gate_point_pass_kill_rescue_applied, false);
+  assert.ok(rescueCoreLong.detail.ev_gate_exit_value_prob >= rescueCoreLong.detail.ev_gate_tp1_prob_min);
+  assert.ok(rescueCoreLong.detail.ev_gate_exit_value_prob_lower_bound >= rescueCoreLong.detail.ev_gate_tp1_prob_kill);
+  assert.ok(rescueCoreLong.detail.ev_gate_exit_value_prob_lower_bound < rescueCoreLong.detail.ev_gate_tp1_prob_min);
 
   const reduceEarlyLong = await __test.evaluateEvEntryGate({
     exchange: "BINANCEFUT",
@@ -288,6 +319,32 @@ async function run() {
   assert.strictEqual(reduceEarlyLong.ok, true);
   assert.strictEqual(reduceEarlyLong.detail.ev_gate_tp1_prob_min, 0.6);
   assert.strictEqual(reduceEarlyLong.detail.ev_gate_action, "REDUCE_LOW");
+
+  const relaxedEarlyLong = await __test.evaluateEvEntryGate({
+    exchange: "BINANCEFUT",
+    symbol: "XRPUSDT",
+    tf: "15m",
+    barCloseMs: 1_700_000_000_000 + (11 * 900_000),
+    intent: "ENTRY",
+    intentDir: "LONG",
+    eventUpper: "EARLY_LONG",
+    features: {
+      event_group: "ENTRY",
+      event_subtype: "GEN",
+      market_state_summary_state: "UNKNOWN",
+    },
+    cfg: unknownGenRelaxCfg,
+    bars: makeBars({ direction: "LONG", driftPct: 0.50, rangePct: 1.80, closeControl: 0.92 }),
+  });
+  assert.strictEqual(relaxedEarlyLong.ok, true);
+  assert.strictEqual(relaxedEarlyLong.detail.ev_gate_unknown_gen_relax_applied, true);
+  assert.strictEqual(relaxedEarlyLong.detail.ev_gate_tp1_prob_min, 0.56);
+  assert.strictEqual(relaxedEarlyLong.detail.ev_gate_tp1_prob_full, 0.57);
+  assert.strictEqual(relaxedEarlyLong.detail.ev_gate_tp1_prob_kill, 0.48);
+  assert.strictEqual(relaxedEarlyLong.detail.ev_gate_signal_subtype, "GEN");
+  assert.strictEqual(relaxedEarlyLong.detail.ev_gate_market_state, "UNKNOWN");
+  assert.strictEqual(relaxedEarlyLong.detail.ev_gate_unknown_gen_relax_auto_rollback_enabled, false);
+  assert.notStrictEqual(relaxedEarlyLong.detail.ev_gate_action, "DROP");
 
   const allowCoreShort = await __test.evaluateEvEntryGate({
     exchange: "BINANCEFUT",

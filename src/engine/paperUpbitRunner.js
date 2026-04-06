@@ -34,7 +34,7 @@ const {
 const { resolveMarketStateSummary } = require("../utils/marketStateSummary");
 const { evaluateLiveEntryPolicy } = require("../utils/liveExecutionPolicy");
 const { resolveEventMapping } = require("../services/signalMapping");
-const { normalizeEvent } = require("../services/signalStandard");
+const { normalizeEvent, deriveGroupSubtype } = require("../services/signalStandard");
 const {
   evaluateCanonicalDecision,
   resolveCanonicalEngineConfig: resolveCanonicalEngineConfigShared,
@@ -4074,6 +4074,71 @@ function normalizeMarketProbMap(raw = null) {
   return out;
 }
 
+function parseTimeMs(raw) {
+  if (raw == null || raw === "") return null;
+  if (Number.isFinite(Number(raw))) return Number(raw);
+  const parsed = Date.parse(String(raw));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function readJsonSafe(filePath) {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return null;
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch (_) {
+    return null;
+  }
+}
+
+function resolveEvGateUnknownGenRelaxMode(sysCfg = {}) {
+  const enabled = normalizeBool(sysCfg.ev_gate_unknown_gen_relax_enabled, false);
+  const startMs = parseTimeMs(sysCfg.ev_gate_unknown_gen_relax_started_at_ms || sysCfg.ev_gate_unknown_gen_relax_started_at);
+  const windowHours = clamp(normalizeNumber(sysCfg.ev_gate_unknown_gen_relax_window_hours, 6), 1, 24);
+  const reviewAfterHours = clamp(
+    normalizeNumber(
+      sysCfg.ev_gate_unknown_gen_relax_review_after_hours,
+      normalizeNumber(sysCfg.ev_gate_unknown_gen_relax_rollback_after_hours, 4)
+    ),
+    1,
+    windowHours
+  );
+  const minDelta = clamp(normalizeNumber(sysCfg.ev_gate_unknown_gen_relax_tp1_prob_min_delta, 0.04), 0, 0.20);
+  const fullDelta = clamp(normalizeNumber(sysCfg.ev_gate_unknown_gen_relax_tp1_prob_full_delta, 0.03), 0, 0.20);
+  const killDelta = clamp(normalizeNumber(sysCfg.ev_gate_unknown_gen_relax_tp1_prob_kill_delta, 0.02), 0, 0.20);
+  const nowMs = Date.now();
+  const ageHours = Number.isFinite(startMs) ? ((nowMs - startMs) / 3600000) : null;
+  const windowActive = enabled && Number.isFinite(startMs) && ageHours < windowHours;
+  const reviewDue = enabled && Number.isFinite(ageHours) && ageHours >= reviewAfterHours;
+  let status = "DISABLED";
+  if (enabled && !Number.isFinite(startMs)) status = "PENDING_START";
+  else if (enabled && reviewDue) status = "MANUAL_REVIEW_DUE";
+  else if (enabled && windowActive) status = "ACTIVE";
+  else if (enabled && Number.isFinite(startMs) && ageHours >= windowHours) status = "MONITOR_WINDOW_ELAPSED";
+  else if (enabled) status = "IDLE";
+  return {
+    enabled,
+    status,
+    active: enabled,
+    startMs,
+    ageHours: Number.isFinite(ageHours) ? Number(ageHours.toFixed(4)) : null,
+    windowHours,
+    reviewAfterHours,
+    minDelta,
+    fullDelta,
+    killDelta,
+    reviewDue,
+    autoRollbackEnabled: false,
+  };
+}
+
+function pickFirstUpper(source = {}, keys = []) {
+  for (const key of keys) {
+    const value = String(source && source[key] || "").trim().toUpperCase();
+    if (value) return value;
+  }
+  return null;
+}
+
 function resolveEvGateConfig(sysCfg = {}, exchange = "", market = "") {
   const ex = String(exchange || "").toUpperCase();
   const defaultEnabled = ex.includes("BINANCE");
@@ -4120,8 +4185,11 @@ function resolveEvGateConfig(sysCfg = {}, exchange = "", market = "") {
   const qtyScaleKillRescue = Math.min(qtyScaleLow, qtyScaleKillRescueRaw);
   const lookbackBars = Math.max(8, Math.min(24, normalizeInt(sysCfg.ev_gate_lookback_bars, 12)));
   const atrBars = Math.max(4, Math.min(lookbackBars - 1, normalizeInt(sysCfg.ev_gate_atr_bars, 8)));
+  const defaultTp0Pct = Math.max(0.1, normalizeNumber(sysCfg.ev_gate_default_tp0_pct, 0.8));
+  const defaultTp0QtyRatio = clamp(normalizeNumber(sysCfg.ev_gate_default_tp0_qty_ratio, 0.25), 0, 1);
   const defaultTp1Pct = Math.max(0.1, normalizeNumber(sysCfg.ev_gate_default_tp1_pct, 3.25));
   const defaultSlPct = Math.max(0.1, normalizeNumber(sysCfg.ev_gate_default_sl_pct, 1.65));
+  const unknownGenRelaxMode = resolveEvGateUnknownGenRelaxMode(sysCfg);
   return {
     enabled: normalizeBool(sysCfg.ev_gate_enabled, defaultEnabled),
     applyCore: normalizeBool(sysCfg.ev_gate_core_enabled, true),
@@ -4150,8 +4218,22 @@ function resolveEvGateConfig(sysCfg = {}, exchange = "", market = "") {
     qtyScaleKillRescue: Number.isFinite(qtyScaleKillRescue) ? qtyScaleKillRescue : Math.min(Number.isFinite(qtyScaleLow) ? qtyScaleLow : 0.40, 0.25),
     lookbackBars,
     atrBars,
+    defaultTp0Pct,
+    defaultTp0QtyRatio,
     defaultTp1Pct,
     defaultSlPct,
+    unknownGenRelaxEnabled: unknownGenRelaxMode.enabled,
+    unknownGenRelaxStatus: unknownGenRelaxMode.status,
+    unknownGenRelaxActive: unknownGenRelaxMode.active,
+    unknownGenRelaxStartMs: unknownGenRelaxMode.startMs,
+    unknownGenRelaxAgeHours: unknownGenRelaxMode.ageHours,
+    unknownGenRelaxWindowHours: unknownGenRelaxMode.windowHours,
+    unknownGenRelaxReviewAfterHours: unknownGenRelaxMode.reviewAfterHours,
+    unknownGenRelaxMinDelta: unknownGenRelaxMode.minDelta,
+    unknownGenRelaxFullDelta: unknownGenRelaxMode.fullDelta,
+    unknownGenRelaxKillDelta: unknownGenRelaxMode.killDelta,
+    unknownGenRelaxReviewDue: unknownGenRelaxMode.reviewDue,
+    unknownGenRelaxAutoRollbackEnabled: unknownGenRelaxMode.autoRollbackEnabled,
     skipMissingBars: normalizeBool(
       sysCfg.ev_gate_skip_missing_bars === undefined ? true : sysCfg.ev_gate_skip_missing_bars,
       true
@@ -4179,12 +4261,51 @@ function shouldBypassEvEntryGate({ intent, features } = {}) {
   return String(intent || "").toUpperCase() === "ENTRY" && isManualRetryFeatures(features);
 }
 
+function resolveEvGateUnknownGenRelaxContext({ eventUpper, features, cfg, tier } = {}) {
+  const f = (features && typeof features === "object") ? features : {};
+  const derived = deriveGroupSubtype(eventUpper);
+  const signalGroup = pickFirstUpper(f, ["event_group", "signal_group", "_event_group"]) || derived.group || null;
+  const signalSubtype = pickFirstUpper(f, ["event_subtype", "signal_subtype", "_event_subtype"]) || derived.subtype || null;
+  const marketState = pickFirstUpper(f, [
+    "market_state_summary_state",
+    "market_state_state",
+    "market_state",
+    "sp_state",
+    "market_physics_state",
+  ]);
+  const baseTp1ProbMin = resolveEvGateTp1ProbMinForTier(cfg, tier);
+  const applies = cfg
+    && cfg.unknownGenRelaxActive === true
+    && signalGroup === "ENTRY"
+    && signalSubtype === "GEN"
+    && (!marketState || marketState === "UNKNOWN");
+  const tp1ProbMin = applies
+    ? Number(Math.max(0.30, Number(baseTp1ProbMin || 0) - Number(cfg.unknownGenRelaxMinDelta || 0)).toFixed(4))
+    : baseTp1ProbMin;
+  const tp1ProbFull = applies
+    ? Number(Math.max(0.35, Number(cfg.tp1ProbFull || 0) - Number(cfg.unknownGenRelaxFullDelta || 0)).toFixed(4))
+    : Number(cfg && cfg.tp1ProbFull);
+  const tp1ProbKill = applies
+    ? Number(Math.max(0.25, Number(cfg.tp1ProbKill || 0) - Number(cfg.unknownGenRelaxKillDelta || 0)).toFixed(4))
+    : Number(cfg && cfg.tp1ProbKill);
+  return {
+    signalGroup,
+    signalSubtype,
+    marketState: marketState || "UNKNOWN",
+    applies,
+    baseTp1ProbMin,
+    tp1ProbMin,
+    tp1ProbFull,
+    tp1ProbKill,
+  };
+}
+
 function resolveEvGateDecision({ estimate, cfg, tp1ProbMin } = {}) {
   const killThreshold = Number(cfg && cfg.tp1ProbKill);
   const fullThreshold = Number(cfg && cfg.tp1ProbFull);
   const probMin = Number(tp1ProbMin);
-  const pointProbability = Number(estimate && estimate.probability);
-  const lowerBound = Number(estimate && estimate.lowerBound);
+  const pointProbability = Number(estimate && (estimate.exit_value_probability != null ? estimate.exit_value_probability : estimate.probability));
+  const lowerBound = Number(estimate && (estimate.exit_value_lower_bound != null ? estimate.exit_value_lower_bound : estimate.lowerBound));
   const pointPass = Number.isFinite(pointProbability) && Number.isFinite(probMin) && pointProbability >= probMin;
   const rescueMargin = Math.max(0, Number(cfg && cfg.pointPassKillRescueMargin) || 0);
   const rescueFloor = Number.isFinite(killThreshold) ? Math.max(0, killThreshold - rescueMargin) : null;
@@ -4256,9 +4377,11 @@ function resolveEvGateDecision({ estimate, cfg, tp1ProbMin } = {}) {
 
 function resolveEvGateTradePlan({ cfg, exitRules, features } = {}) {
   const fallback = {
+    tp0Pct: Math.max(0, Number(cfg && cfg.defaultTp0Pct)),
     tp1Pct: Math.max(0, Number(cfg && cfg.defaultTp1Pct)),
     slPct: Math.max(0, Number(cfg && cfg.defaultSlPct)),
     source: "config",
+    tp0QtyRatio: Number.isFinite(Number(cfg && cfg.defaultTp0QtyRatio)) ? clamp(Number(cfg.defaultTp0QtyRatio), 0, 1) : 0.25,
     tp1QtyRatio: null,
     bePct: null,
     trailPct: null,
@@ -4267,8 +4390,10 @@ function resolveEvGateTradePlan({ cfg, exitRules, features } = {}) {
   };
   if (!exitRules || typeof exitRules !== "object") return fallback;
   const rules = applySignalExitPolicyOverrides(exitRules, features);
+  const tp0Abs = Math.abs(Number(rules.TP_P0));
   const slAbs = Math.abs(Number(rules.SL));
   const tp1Abs = Math.abs(Number(rules.TP_P1));
+  const tp0QtyRatio = clamp(normalizeNumber(rules.TP_P0_QTY, 0.25), 0, 1);
   const tp1QtyRatio = clamp(normalizeNumber(rules.TP_P1_QTY, 1), 0, 1);
   const beEnabled = normalizeBool(rules.BE_ENABLE, false);
   const beAbs = Math.abs(Number(rules.BE_PCT));
@@ -4279,9 +4404,11 @@ function resolveEvGateTradePlan({ cfg, exitRules, features } = {}) {
     return fallback;
   }
   return {
+    tp0Pct: Number.isFinite(tp0Abs) && tp0Abs > 0 ? (tp0Abs * 100) : null,
     tp1Pct: tp1Abs * 100,
     slPct: slAbs * 100,
     source: "exit_rules",
+    tp0QtyRatio,
     tp1QtyRatio,
     bePct: beEnabled && Number.isFinite(beAbs) ? (beAbs * 100) : null,
     trailPct: Number.isFinite(trailAbs) && trailAbs > 0 ? (trailAbs * 100) : null,
@@ -4314,27 +4441,34 @@ async function evaluateEvEntryGate({
   const tier = resolveEntryQualityTier(eventUpper, features);
   const f = (features && typeof features === "object") ? features : {};
   const plan = resolveEvGateTradePlan({ cfg, exitRules, features: f });
+  const tp0Pct = Number(plan.tp0Pct);
   const tp1Pct = Number(plan.tp1Pct);
   const slPct = Number(plan.slPct);
-  const tp1ProbMin = resolveEvGateTp1ProbMinForTier(cfg, tier);
+  const relaxContext = resolveEvGateUnknownGenRelaxContext({ eventUpper, features: f, cfg, tier });
+  const tp1ProbMin = relaxContext.tp1ProbMin;
 
   const baseDetail = {
     ev_gate_enabled: true,
-    ev_gate_source: "TP1_REACH_RECENT_BARS_V1",
+    ev_gate_source: "TP_COMPOSITE_EXIT_VALUE_V1",
     ev_gate_plan_source: plan.source,
     ev_gate_tier: tier,
     ev_gate_dir: dir,
     ev_gate_tp1_prob_min_global: Number(cfg.tp1ProbMin),
+    ev_gate_tp1_prob_min_base: relaxContext.baseTp1ProbMin,
     ev_gate_tp1_prob_min: tp1ProbMin,
-    ev_gate_tp1_prob_full: Number(cfg.tp1ProbFull),
-    ev_gate_tp1_prob_kill: Number(cfg.tp1ProbKill),
+    ev_gate_tp1_prob_full_base: Number(cfg.tp1ProbFull),
+    ev_gate_tp1_prob_kill_base: Number(cfg.tp1ProbKill),
+    ev_gate_tp1_prob_full: relaxContext.tp1ProbFull,
+    ev_gate_tp1_prob_kill: relaxContext.tp1ProbKill,
     ev_gate_qty_scale_mid: Number(cfg.qtyScaleMid),
     ev_gate_qty_scale_low: Number(cfg.qtyScaleLow),
     ev_gate_qty_scale_kill_rescue: Number(cfg.qtyScaleKillRescue),
     ev_gate_point_pass_kill_rescue_enabled: cfg.pointPassKillRescueEnabled === true,
     ev_gate_point_pass_kill_rescue_margin: Number(cfg.pointPassKillRescueMargin),
+    ev_gate_tp0_pct: Number.isFinite(tp0Pct) ? tp0Pct : null,
     ev_gate_tp1_pct: Number.isFinite(tp1Pct) ? tp1Pct : null,
     ev_gate_sl_pct: Number.isFinite(slPct) ? slPct : null,
+    ev_gate_tp0_qty_ratio: Number.isFinite(Number(plan.tp0QtyRatio)) ? Number(plan.tp0QtyRatio) : null,
     ev_gate_tp1_qty_ratio: Number.isFinite(Number(plan.tp1QtyRatio)) ? Number(plan.tp1QtyRatio) : null,
     ev_gate_be_pct: Number.isFinite(Number(plan.bePct)) ? Number(plan.bePct) : null,
     ev_gate_trail_pct: Number.isFinite(Number(plan.trailPct)) ? Number(plan.trailPct) : null,
@@ -4344,6 +4478,21 @@ async function evaluateEvEntryGate({
     ev_gate_exit_profile_reason: exitProfileReason ? String(exitProfileReason) : null,
     ev_gate_lookback_bars: Number(cfg.lookbackBars) || null,
     ev_gate_atr_bars: Number(cfg.atrBars) || null,
+    ev_gate_signal_group: relaxContext.signalGroup,
+    ev_gate_signal_subtype: relaxContext.signalSubtype,
+    ev_gate_market_state: relaxContext.marketState,
+    ev_gate_unknown_gen_relax_enabled: cfg.unknownGenRelaxEnabled === true,
+    ev_gate_unknown_gen_relax_status: cfg.unknownGenRelaxStatus || "DISABLED",
+    ev_gate_unknown_gen_relax_active: cfg.unknownGenRelaxActive === true,
+    ev_gate_unknown_gen_relax_applied: relaxContext.applies === true,
+    ev_gate_unknown_gen_relax_window_hours: Number(cfg.unknownGenRelaxWindowHours) || null,
+    ev_gate_unknown_gen_relax_review_after_hours: Number(cfg.unknownGenRelaxReviewAfterHours) || null,
+    ev_gate_unknown_gen_relax_age_hours: Number.isFinite(Number(cfg.unknownGenRelaxAgeHours)) ? Number(cfg.unknownGenRelaxAgeHours) : null,
+    ev_gate_unknown_gen_relax_min_delta: Number(cfg.unknownGenRelaxMinDelta) || 0,
+    ev_gate_unknown_gen_relax_full_delta: Number(cfg.unknownGenRelaxFullDelta) || 0,
+    ev_gate_unknown_gen_relax_kill_delta: Number(cfg.unknownGenRelaxKillDelta) || 0,
+    ev_gate_unknown_gen_relax_review_due: cfg.unknownGenRelaxReviewDue === true,
+    ev_gate_unknown_gen_relax_auto_rollback_enabled: cfg.unknownGenRelaxAutoRollbackEnabled === true,
   };
 
   if (!Number.isFinite(tp1Pct) || tp1Pct <= 0 || !Number.isFinite(slPct) || slPct <= 0) {
@@ -4368,8 +4517,12 @@ async function evaluateEvEntryGate({
   const estimate = estimateTp1ReachProbability({
     bars: loadedBars,
     dir,
+    tp0Pct,
     tp1Pct,
     slPct,
+    tp0QtyRatio: plan.tp0QtyRatio,
+    tp1QtyRatio: plan.tp1QtyRatio,
+    runnerMinProfitPct: plan.runnerMinProfitPct,
     barCloseMs,
     lookbackBars: cfg.lookbackBars,
     atrBars: cfg.atrBars,
@@ -4387,7 +4540,14 @@ async function evaluateEvEntryGate({
     return { ok: false, action: "DROP", qtyScale: 0, reason: "DROP_EV_GATE_BARS_MISSING", detail };
   }
 
-  const decision = resolveEvGateDecision({ estimate, cfg, tp1ProbMin });
+  const decisionCfg = relaxContext.applies
+    ? {
+      ...cfg,
+      tp1ProbFull: relaxContext.tp1ProbFull,
+      tp1ProbKill: relaxContext.tp1ProbKill,
+    }
+    : cfg;
+  const decision = resolveEvGateDecision({ estimate, cfg: decisionCfg, tp1ProbMin });
   const action = decision.action;
   const qtyScale = decision.qtyScale;
   const dropReason = decision.reason;
@@ -4396,10 +4556,20 @@ async function evaluateEvEntryGate({
     ...baseDetail,
     ev_gate_action: action,
     ev_gate_qty_scale: qtyScale,
+    ev_gate_tp0_reach_prob: estimate.tp0_probability,
+    ev_gate_tp0_reach_prob_lower_bound: estimate.tp0_lower_bound,
     ev_gate_tp1_reach_prob: estimate.probability,
     ev_gate_tp1_reach_prob_lower_bound: estimate.lowerBound,
+    ev_gate_exit_value_prob: estimate.exit_value_probability,
+    ev_gate_exit_value_prob_lower_bound: estimate.exit_value_lower_bound,
+    ev_gate_tp0_to_tp1_conversion_prob: estimate.tp0_to_tp1_conversion_probability,
+    ev_gate_pre_tp1_time_stop_risk: estimate.pre_tp1_time_stop_risk,
+    ev_gate_expected_exit_value_pct: estimate.expected_exit_value_pct,
+    ev_gate_expected_exit_value_r: estimate.expected_exit_value_r,
     ev_gate_probability_stderr: estimate.stderr,
     ev_gate_effective_n: estimate.effectiveN,
+    ev_gate_exit_value_stderr: estimate.exit_value_stderr,
+    ev_gate_exit_value_effective_n: estimate.exit_value_effective_n,
     ev_gate_confidence_z: estimate.confidenceZ,
     ev_gate_bars_seen: estimate.barsSeen,
     ev_gate_atr_pct: estimate.atrPct,
@@ -4423,9 +4593,11 @@ async function evaluateEvEntryGate({
     ev_gate_prev_opposite_wick: estimate.prevOppWick,
     ev_gate_prev_dir_body: estimate.prevDirBody,
     ev_gate_policy_version: estimate.policy_version || null,
+    ev_gate_policy_basis: estimate.policy_basis || null,
     ev_gate_policy_source: estimate.policy_source || null,
     ev_gate_component_weights: estimate.componentWeights || null,
     ev_gate_components: estimate.components,
+    ev_gate_exit_value_components: estimate.exit_value_components || null,
   };
 
   if (dropReason) return { ok: false, action, qtyScale, reason: dropReason, detail };
