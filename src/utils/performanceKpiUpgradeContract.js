@@ -52,8 +52,10 @@ function derivePerformanceKpiUpgradeContract({
   const microstructureKpiReady = tp0HitRate != null && tp1HitRate != null && conversionRate != null;
   const survivabilityKpiReady = preTp1TimeStopRate != null;
   const expectancyKpiReady = feeAdjustedExpectancy != null;
-  const structureAlignmentReady = executionStructure.stage_sequence_ready === true;
-  const costAlignmentReady = costControl.automatic_entry_suppression_ready === true;
+  const structureAlignmentReady = executionStructure.stage_sequence_ready === true
+    && executionStructure.survivability_ready === true;
+  const costAlignmentReady = costControl.automatic_entry_suppression_ready === true
+    && costControl.system_reentry_control_ready === true;
 
   const blockingReasons = [];
   if (!microstructureKpiReady) blockingReasons.push("MICROSTRUCTURE_KPI_NOT_READY");

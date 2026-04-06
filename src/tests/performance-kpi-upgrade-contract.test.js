@@ -28,8 +28,8 @@ const {
         },
       },
     },
-    executionStructureUpgradeContract: { summary: { stage_sequence_ready: true } },
-    costControlEngineContract: { summary: { automatic_entry_suppression_ready: true } },
+    executionStructureUpgradeContract: { summary: { stage_sequence_ready: true, survivability_ready: true } },
+    costControlEngineContract: { summary: { automatic_entry_suppression_ready: true, system_reentry_control_ready: true } },
   });
 
   assert.strictEqual(report.status, "PERFORMANCE_KPI_UPGRADE_CONTRACT_READY");
@@ -45,13 +45,45 @@ const {
 (() => {
   const report = derivePerformanceKpiUpgradeContract({
     objectiveRetrospective: { display: { periods: { DAILY: { execution_microstructure: {}, realized_trades: {} } } } },
-    executionStructureUpgradeContract: { summary: { stage_sequence_ready: false } },
-    costControlEngineContract: { summary: { automatic_entry_suppression_ready: false } },
+    executionStructureUpgradeContract: { summary: { stage_sequence_ready: false, survivability_ready: false } },
+    costControlEngineContract: { summary: { automatic_entry_suppression_ready: false, system_reentry_control_ready: false } },
   });
 
   assert.strictEqual(report.status, "PERFORMANCE_KPI_UPGRADE_CONTRACT_BLOCKED");
   assert.ok(report.blocking_reasons.includes("MICROSTRUCTURE_KPI_NOT_READY"));
   assert.ok(report.blocking_reasons.includes("EXPECTANCY_KPI_NOT_READY"));
+  assert.ok(report.blocking_reasons.includes("EXECUTION_STRUCTURE_NOT_ALIGNED"));
+  assert.ok(report.blocking_reasons.includes("COST_CONTROL_NOT_ALIGNED"));
+})();
+
+(() => {
+  const report = derivePerformanceKpiUpgradeContract({
+    objectiveRetrospective: {
+      display: {
+        periods: {
+          DAILY: {
+            execution_microstructure: {
+              tp0_hit_rate: 0.75,
+              tp1_hit_rate: 0.375,
+              tp0_to_tp1_conversion_rate: 0,
+              pre_tp1_time_stop_rate: 0,
+            },
+            realized_trades: {
+              realized_n: 24,
+              win_rate: 0.3333,
+              avg_ret_net: -0.0011,
+            },
+          },
+        },
+      },
+    },
+    executionStructureUpgradeContract: { summary: { stage_sequence_ready: true, survivability_ready: false } },
+    costControlEngineContract: { summary: { automatic_entry_suppression_ready: true, system_reentry_control_ready: false } },
+  });
+
+  assert.strictEqual(report.status, "PERFORMANCE_KPI_UPGRADE_CONTRACT_BOOTSTRAPPING");
+  assert.strictEqual(report.structure_alignment_ready, false);
+  assert.strictEqual(report.cost_alignment_ready, false);
   assert.ok(report.blocking_reasons.includes("EXECUTION_STRUCTURE_NOT_ALIGNED"));
   assert.ok(report.blocking_reasons.includes("COST_CONTROL_NOT_ALIGNED"));
 })();

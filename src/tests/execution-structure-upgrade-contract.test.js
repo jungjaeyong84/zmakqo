@@ -55,6 +55,8 @@ const { buildExecutionStructureUpgradeContract } = require("../utils/executionSt
   assert.strictEqual(report.stage_sequence_ready, true);
   assert.strictEqual(report.survivability_ready, true);
   assert.strictEqual(report.label_support_ready, true);
+  assert.strictEqual(report.model_conversion_label_ready, true);
+  assert.strictEqual(report.model_pre_tp1_time_stop_label_ready, true);
   assert.strictEqual(report.tp0_stage_active, true);
   assert.strictEqual(report.tp1_stage_active, true);
   assert.strictEqual(report.trail_stage_active, true);
@@ -102,6 +104,8 @@ const { buildExecutionStructureUpgradeContract } = require("../utils/executionSt
         status: "MODEL_READINESS_READY",
         tp0_time_labeled_n: 0,
         tp1_time_labeled_n: 5,
+        tp0_to_tp1_converted_n: 2,
+        pre_tp1_time_stop_n: 0,
       },
     },
   });
@@ -110,6 +114,8 @@ const { buildExecutionStructureUpgradeContract } = require("../utils/executionSt
   assert.strictEqual(report.stage_sequence_ready, true);
   assert.strictEqual(report.survivability_ready, false);
   assert.strictEqual(report.label_support_ready, false);
+  assert.strictEqual(report.model_conversion_label_ready, true);
+  assert.strictEqual(report.model_pre_tp1_time_stop_label_ready, false);
   assert.ok(report.blocking_reasons.includes("TP_LABEL_SUPPORT_NOT_READY"));
   console.log("EXECUTION_STRUCTURE_UPGRADE_CONTRACT_BOOTSTRAP_TEST_OK");
 })();

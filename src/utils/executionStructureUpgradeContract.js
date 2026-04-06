@@ -74,9 +74,13 @@ function buildExecutionStructureUpgradeContract({
     && chaseRejectN != null
     && clusterReduceN != null
     && clusterBlockN != null;
+  const conversionLabelReady = (toNum(readinessSummary.tp0_to_tp1_converted_n) || 0) > 0;
+  const preTp1TimeStopLabelReady = (toNum(readinessSummary.pre_tp1_time_stop_n) || 0) > 0;
   const labelSupportReady = String(readinessSummary.status || "").trim().toUpperCase() === "MODEL_READINESS_READY"
     && (toNum(readinessSummary.tp0_time_labeled_n) || 0) > 0
-    && (toNum(readinessSummary.tp1_time_labeled_n) || 0) > 0;
+    && (toNum(readinessSummary.tp1_time_labeled_n) || 0) > 0
+    && conversionLabelReady
+    && preTp1TimeStopLabelReady;
   const survivabilityReady = conversionObservable && preTp1SurvivabilityObservable && labelSupportReady;
 
   const blockingReasons = [];
@@ -122,6 +126,8 @@ function buildExecutionStructureUpgradeContract({
     model_tp1_time_labeled_n: toNum(readinessSummary.tp1_time_labeled_n),
     model_tp0_to_tp1_converted_n: toNum(readinessSummary.tp0_to_tp1_converted_n),
     model_pre_tp1_time_stop_n: toNum(readinessSummary.pre_tp1_time_stop_n),
+    model_conversion_label_ready: conversionLabelReady,
+    model_pre_tp1_time_stop_label_ready: preTp1TimeStopLabelReady,
     exit_trailing_contract_status: String(exitSummary.status || "").trim() || null,
     ev_gate_policy_status: String(evSummary.status || "").trim() || null,
     blocking_reason_n: blockingReasons.length,
