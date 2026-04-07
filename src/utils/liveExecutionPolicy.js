@@ -972,6 +972,20 @@ function deriveLineageSloBlock(snapshot = null) {
   const reportAgeMs = Number.isFinite(reportMs) ? Math.max(0, nowMs - reportMs) : null;
   if (LINEAGE_SLO_REQUIRE_FRESH) {
     if (!Number.isFinite(reportMs)) {
+      if (!sharedSnapshotAvailable && sharedRefreshPending && reportSource !== "FIRESTORE_REPORT_LATEST") {
+        return {
+          blocked: false,
+          reason: "LINEAGE_SLO_SHARED_REFRESH_PENDING",
+          stale: false,
+          shared_refresh_pending: true,
+          report_generated_at_kst: reportGeneratedAtKst,
+          report_age_ms: reportAgeMs,
+          report_path: reportPath,
+          report_source: reportSource,
+          report_missing: false,
+          max_report_age_ms: LINEAGE_SLO_MAX_REPORT_AGE_MS,
+        };
+      }
       return {
         blocked: LINEAGE_SLO_FAIL_CLOSED,
         reason: "LINEAGE_SLO_REPORT_MISSING",
