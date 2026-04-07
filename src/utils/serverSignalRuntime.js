@@ -94,6 +94,24 @@ function deriveServerSignalRuntime({
   const genRelaxActiveWindow = genRelaxEnabled
     && Number.isFinite(genRelaxStartMs)
     && Date.now() < (genRelaxStartMs + (genRelaxWindowHours * 3600000));
+  const tp1LadderEnabled = toBool(systemSettings.tp1_ladder_enabled, true);
+  const tp1LadderStage1RealizedNMin = toNum(systemSettings.tp1_ladder_stage1_realized_n_min) || 8;
+  const tp1LadderStage1Tp0HitRateMin = toNum(systemSettings.tp1_ladder_stage1_tp0_hit_rate_min) || 0.55;
+  const tp1LadderStage1Tp0ToTp1ConversionMin = toNum(systemSettings.tp1_ladder_stage1_tp0_to_tp1_conversion_min) || 0.20;
+  const tp1LadderStage1FeeAdjustedExpectancyMin = toNum(systemSettings.tp1_ladder_stage1_fee_adjusted_expectancy_min);
+  const tp1LadderStage2RealizedNMin = toNum(systemSettings.tp1_ladder_stage2_realized_n_min) || 16;
+  const tp1LadderStage2Tp0HitRateMin = toNum(systemSettings.tp1_ladder_stage2_tp0_hit_rate_min) || 0.60;
+  const tp1LadderStage2Tp1HitRateMin = toNum(systemSettings.tp1_ladder_stage2_tp1_hit_rate_min) || 0.30;
+  const tp1LadderStage2Tp0ToTp1ConversionMin = toNum(systemSettings.tp1_ladder_stage2_tp0_to_tp1_conversion_min) || 0.35;
+  const tp1LadderStage2FeeAdjustedExpectancyMin = toNum(systemSettings.tp1_ladder_stage2_fee_adjusted_expectancy_min) || 0;
+  const oppositeCooldownBarsBase = toNum(systemSettings.opposite_signal_cooldown_bars) || 3;
+  const oppositeCooldownBarsMixed = toNum(systemSettings.opposite_signal_cooldown_bars_mixed) ?? 1;
+  const oppositeCooldownBarsRescue = toNum(systemSettings.opposite_signal_cooldown_bars_rescue) ?? 0;
+  const oppositeCooldownMsBase = toNum(systemSettings.opposite_time_cooldown_ms) || 300000;
+  const oppositeCooldownMsMixed = toNum(systemSettings.opposite_time_cooldown_ms_mixed) ?? 60000;
+  const oppositeCooldownMsRescue = toNum(systemSettings.opposite_time_cooldown_ms_rescue) ?? 0;
+  const reverseExceptionMixedBypassTierBlock = toBool(systemSettings.reverse_exception_mixed_bypass_tier_block, true);
+  const reverseExceptionRescueBypassTierBlock = toBool(systemSettings.reverse_exception_rescue_bypass_tier_block, true);
 
   return {
     contract_version: "SERVER_SIGNAL_RUNTIME_V1",
@@ -145,6 +163,24 @@ function deriveServerSignalRuntime({
       ev_gate_unknown_gen_relax_tp1_prob_min_delta: toNum(systemSettings.ev_gate_unknown_gen_relax_tp1_prob_min_delta) || 0.04,
       ev_gate_unknown_gen_relax_tp1_prob_full_delta: toNum(systemSettings.ev_gate_unknown_gen_relax_tp1_prob_full_delta) || 0.03,
       ev_gate_unknown_gen_relax_tp1_prob_kill_delta: toNum(systemSettings.ev_gate_unknown_gen_relax_tp1_prob_kill_delta) || 0.02,
+      tp1_ladder_enabled: tp1LadderEnabled,
+      tp1_ladder_stage1_realized_n_min: tp1LadderStage1RealizedNMin,
+      tp1_ladder_stage1_tp0_hit_rate_min: tp1LadderStage1Tp0HitRateMin,
+      tp1_ladder_stage1_tp0_to_tp1_conversion_min: tp1LadderStage1Tp0ToTp1ConversionMin,
+      tp1_ladder_stage1_fee_adjusted_expectancy_min: tp1LadderStage1FeeAdjustedExpectancyMin,
+      tp1_ladder_stage2_realized_n_min: tp1LadderStage2RealizedNMin,
+      tp1_ladder_stage2_tp0_hit_rate_min: tp1LadderStage2Tp0HitRateMin,
+      tp1_ladder_stage2_tp1_hit_rate_min: tp1LadderStage2Tp1HitRateMin,
+      tp1_ladder_stage2_tp0_to_tp1_conversion_min: tp1LadderStage2Tp0ToTp1ConversionMin,
+      tp1_ladder_stage2_fee_adjusted_expectancy_min: tp1LadderStage2FeeAdjustedExpectancyMin,
+      opposite_cooldown_bars_base: oppositeCooldownBarsBase,
+      opposite_cooldown_bars_mixed: oppositeCooldownBarsMixed,
+      opposite_cooldown_bars_rescue: oppositeCooldownBarsRescue,
+      opposite_cooldown_ms_base: oppositeCooldownMsBase,
+      opposite_cooldown_ms_mixed: oppositeCooldownMsMixed,
+      opposite_cooldown_ms_rescue: oppositeCooldownMsRescue,
+      reverse_exception_mixed_bypass_tier_block: reverseExceptionMixedBypassTierBlock,
+      reverse_exception_rescue_bypass_tier_block: reverseExceptionRescueBypassTierBlock,
     },
     summary: {
       cycle_id: runtimeCycleId,
@@ -180,6 +216,24 @@ function deriveServerSignalRuntime({
       ev_gate_unknown_gen_relax_tp1_prob_min_delta: toNum(systemSettings.ev_gate_unknown_gen_relax_tp1_prob_min_delta) || 0.04,
       ev_gate_unknown_gen_relax_tp1_prob_full_delta: toNum(systemSettings.ev_gate_unknown_gen_relax_tp1_prob_full_delta) || 0.03,
       ev_gate_unknown_gen_relax_tp1_prob_kill_delta: toNum(systemSettings.ev_gate_unknown_gen_relax_tp1_prob_kill_delta) || 0.02,
+      tp1_ladder_enabled: tp1LadderEnabled,
+      tp1_ladder_stage1_realized_n_min: tp1LadderStage1RealizedNMin,
+      tp1_ladder_stage1_tp0_hit_rate_min: tp1LadderStage1Tp0HitRateMin,
+      tp1_ladder_stage1_tp0_to_tp1_conversion_min: tp1LadderStage1Tp0ToTp1ConversionMin,
+      tp1_ladder_stage1_fee_adjusted_expectancy_min: tp1LadderStage1FeeAdjustedExpectancyMin,
+      tp1_ladder_stage2_realized_n_min: tp1LadderStage2RealizedNMin,
+      tp1_ladder_stage2_tp0_hit_rate_min: tp1LadderStage2Tp0HitRateMin,
+      tp1_ladder_stage2_tp1_hit_rate_min: tp1LadderStage2Tp1HitRateMin,
+      tp1_ladder_stage2_tp0_to_tp1_conversion_min: tp1LadderStage2Tp0ToTp1ConversionMin,
+      tp1_ladder_stage2_fee_adjusted_expectancy_min: tp1LadderStage2FeeAdjustedExpectancyMin,
+      opposite_cooldown_bars_base: oppositeCooldownBarsBase,
+      opposite_cooldown_bars_mixed: oppositeCooldownBarsMixed,
+      opposite_cooldown_bars_rescue: oppositeCooldownBarsRescue,
+      opposite_cooldown_ms_base: oppositeCooldownMsBase,
+      opposite_cooldown_ms_mixed: oppositeCooldownMsMixed,
+      opposite_cooldown_ms_rescue: oppositeCooldownMsRescue,
+      reverse_exception_mixed_bypass_tier_block: reverseExceptionMixedBypassTierBlock,
+      reverse_exception_rescue_bypass_tier_block: reverseExceptionRescueBypassTierBlock,
       pine_shadow_transition_status: completedN === Object.keys(transition).length ? "COMPLETE" : "IN_PROGRESS",
       pine_shadow_transition_progress_pct: progressPct,
     },

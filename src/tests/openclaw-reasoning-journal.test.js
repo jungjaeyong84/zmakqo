@@ -91,6 +91,24 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_min_delta: 0.04,
         server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_full_delta: 0.03,
         server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_kill_delta: 0.02,
+        server_signal_runtime_tp1_ladder_enabled: true,
+        server_signal_runtime_tp1_ladder_stage1_realized_n_min: 8,
+        server_signal_runtime_tp1_ladder_stage1_tp0_hit_rate_min: 0.55,
+        server_signal_runtime_tp1_ladder_stage1_tp0_to_tp1_conversion_min: 0.20,
+        server_signal_runtime_tp1_ladder_stage1_fee_adjusted_expectancy_min: -0.0005,
+        server_signal_runtime_tp1_ladder_stage2_realized_n_min: 16,
+        server_signal_runtime_tp1_ladder_stage2_tp0_hit_rate_min: 0.60,
+        server_signal_runtime_tp1_ladder_stage2_tp1_hit_rate_min: 0.30,
+        server_signal_runtime_tp1_ladder_stage2_tp0_to_tp1_conversion_min: 0.35,
+        server_signal_runtime_tp1_ladder_stage2_fee_adjusted_expectancy_min: 0,
+        server_signal_runtime_opposite_cooldown_bars_base: 3,
+        server_signal_runtime_opposite_cooldown_bars_mixed: 1,
+        server_signal_runtime_opposite_cooldown_bars_rescue: 0,
+        server_signal_runtime_opposite_cooldown_ms_base: 300000,
+        server_signal_runtime_opposite_cooldown_ms_mixed: 60000,
+        server_signal_runtime_opposite_cooldown_ms_rescue: 0,
+        server_signal_runtime_reverse_exception_mixed_bypass_tier_block: true,
+        server_signal_runtime_reverse_exception_rescue_bypass_tier_block: true,
         filter_layer_1_integrity_mode: "INTEGRITY_GUARD_ONLY",
         filter_layer_1_integrity_expectation: "N/A",
         filter_layer_1_integrity_coverage_pass: true,
@@ -418,6 +436,12 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_server_signal_runtime_ev_gate_unknown_gen_relax_review_after_hours, 4);
   assert.strictEqual(journal.summary.current_server_signal_runtime_ev_gate_unknown_gen_relax_auto_rollback_enabled, false);
   assert.strictEqual(journal.summary.current_server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_full_delta, 0.03);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_tp1_ladder_enabled, true);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_tp1_ladder_stage1_realized_n_min, 8);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_tp1_ladder_stage2_tp1_hit_rate_min, 0.3);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_opposite_cooldown_bars_mixed, 1);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_opposite_cooldown_ms_rescue, 0);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_reverse_exception_rescue_bypass_tier_block, true);
   assert.strictEqual(journal.summary.current_filter_layer_1_integrity_mode, "INTEGRITY_GUARD_ONLY");
   assert.strictEqual(journal.summary.current_filter_layer_2_entry_quality_actions, 2);
   assert.strictEqual(journal.summary.current_filter_layer_3_state_soft_sizing_ml_action, "KEEP");
