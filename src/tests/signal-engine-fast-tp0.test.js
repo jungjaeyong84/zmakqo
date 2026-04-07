@@ -1,7 +1,12 @@
 "use strict";
 
 const assert = require("assert");
-const { generateSignals, resolveExitRulesForPosition } = require("../engine/signalEngine");
+const {
+  generateSignals,
+  resolveExitRulesForPosition,
+  evaluateTp1LadderStage,
+  applyTp1LadderPolicy,
+} = require("../engine/signalEngine");
 
 function run() {
   const tp0Signals = generateSignals({
@@ -108,6 +113,55 @@ function run() {
   assert.strictEqual(mixedRules.BE_PCT, 0.002);
   assert.strictEqual(mixedRules.TRAIL_R_MULTIPLE, 0.75);
   assert.strictEqual(mixedRules.RUNNER_MIN_PROFIT_PCT, 0.0165);
+
+  const samplingStage = evaluateTp1LadderStage({
+    cohort: "BASE",
+    kpi: {
+      realized_n: 24,
+      tp0_hit_rate: 0.75,
+      tp1_hit_rate: 0.375,
+      tp0_to_tp1_conversion: 0,
+      fee_adjusted_expectancy: -0.0011,
+    },
+  });
+  assert.strictEqual(samplingStage.stage, 0);
+  assert.strictEqual(samplingStage.profile, "RESCUE");
+  assert.strictEqual(samplingStage.reason, "STAGE_0_SAMPLING");
+
+  const promotedMixedStage = evaluateTp1LadderStage({
+    cohort: "MIXED",
+    kpi: {
+      realized_n: 10,
+      tp0_hit_rate: 0.62,
+      tp1_hit_rate: 0.28,
+      tp0_to_tp1_conversion: 0.24,
+      fee_adjusted_expectancy: 0.0002,
+    },
+  });
+  assert.strictEqual(promotedMixedStage.stage, 1);
+  assert.strictEqual(promotedMixedStage.profile, "MIXED");
+
+  const promotedBaseStage = evaluateTp1LadderStage({
+    cohort: "BASE",
+    kpi: {
+      realized_n: 20,
+      tp0_hit_rate: 0.67,
+      tp1_hit_rate: 0.32,
+      tp0_to_tp1_conversion: 0.4,
+      fee_adjusted_expectancy: 0.0003,
+    },
+  });
+  assert.strictEqual(promotedBaseStage.stage, 2);
+  assert.strictEqual(promotedBaseStage.profile, "BASE");
+
+  const ladderAppliedRules = applyTp1LadderPolicy({
+    rules: resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: { meta: {} } }),
+    cohort: "BASE",
+    ladderState: samplingStage,
+  });
+  assert.strictEqual(ladderAppliedRules.TP_P1, 0.0165);
+  assert.strictEqual(ladderAppliedRules.BE_PCT, 0.0015);
+  assert.strictEqual(ladderAppliedRules.TRAIL_R_MULTIPLE, 0.6);
 }
 
 try {

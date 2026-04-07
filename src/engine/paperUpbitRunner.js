@@ -2,7 +2,12 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { generateSignals, resolveExitRulesForPosition } = require("./signalEngine");
+const {
+  generateSignals,
+  resolveExitRulesForPosition,
+  evaluateTp1LadderStage,
+  applyTp1LadderPolicy,
+} = require("./signalEngine");
 const { computeFillPrice, computeFeeValue } = require("./paperExecution");
 
 const { listPendingIntentsForExec, listPendingIntentsOverdue, cancelExpiredPendingIntents, markIntentStatus, upsertIntent, patchIntent } = require("../storage/orderIntentsPaper");
@@ -83,11 +88,18 @@ const recentFillsCache = {
 };
 const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
 const OPENCLAW_MARKET_REGIME_BOARD_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_market_regime_board_latest.json");
+const PERFORMANCE_KPI_UPGRADE_CONTRACT_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_performance_kpi_upgrade_contract_latest.json");
 const OPENCLAW_MARKET_REGIME_CACHE_TTL_MS = 15 * 1000;
 const openclawMarketRegimeCache = {
   ts: 0,
   mtimeMs: null,
   byMarket: new Map(),
+};
+const TP1_LADDER_KPI_CACHE_TTL_MS = 15 * 1000;
+const tp1LadderKpiCache = {
+  ts: 0,
+  mtimeMs: null,
+  value: null,
 };
 
 const TP_P1_SKIP_REASONS = new Set([
@@ -136,6 +148,73 @@ function loadOpenClawMarketRegimeBoard(force = false) {
     if (!openclawMarketRegimeCache.byMarket) openclawMarketRegimeCache.byMarket = new Map();
     return openclawMarketRegimeCache.byMarket;
   }
+}
+
+function unwrapSummaryRecord(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  if (raw.summary && typeof raw.summary === "object") return raw.summary;
+  return raw;
+}
+
+function loadTp1LadderKpiSnapshot(force = false) {
+  const now = Date.now();
+  if (!force && tp1LadderKpiCache.ts && (now - tp1LadderKpiCache.ts) < TP1_LADDER_KPI_CACHE_TTL_MS) {
+    return tp1LadderKpiCache.value;
+  }
+  try {
+    const stat = fs.statSync(PERFORMANCE_KPI_UPGRADE_CONTRACT_PATH);
+    const mtimeMs = Number(stat.mtimeMs || 0);
+    if (!force && tp1LadderKpiCache.mtimeMs && tp1LadderKpiCache.mtimeMs === mtimeMs) {
+      tp1LadderKpiCache.ts = now;
+      return tp1LadderKpiCache.value;
+    }
+    const raw = JSON.parse(fs.readFileSync(PERFORMANCE_KPI_UPGRADE_CONTRACT_PATH, "utf8"));
+    const summary = unwrapSummaryRecord(raw) || {};
+    const snapshot = {
+      status: String(summary.status || raw.status || "").trim().toUpperCase() || null,
+      realized_n: Number(summary.realized_trade_n ?? raw.realized_trade_n),
+      tp0_hit_rate: Number(summary.tp0_hit_rate ?? raw.tp0_hit_rate),
+      tp1_hit_rate: Number(summary.tp1_hit_rate ?? raw.tp1_hit_rate),
+      tp0_to_tp1_conversion: Number(summary.tp0_to_tp1_conversion_rate ?? raw.tp0_to_tp1_conversion_rate),
+      fee_adjusted_expectancy: Number(summary.fee_adjusted_expectancy ?? raw.fee_adjusted_expectancy),
+    };
+    tp1LadderKpiCache.ts = now;
+    tp1LadderKpiCache.mtimeMs = mtimeMs;
+    tp1LadderKpiCache.value = snapshot;
+    return snapshot;
+  } catch (_) {
+    tp1LadderKpiCache.ts = now;
+    tp1LadderKpiCache.value = null;
+    return null;
+  }
+}
+
+function resolveTp1LadderConfig(sysCfg) {
+  return {
+    enabled: normalizeBool(sysCfg && sysCfg.tp1_ladder_enabled, true),
+    stage1RealizedNMin: Math.max(1, normalizeInt(sysCfg && sysCfg.tp1_ladder_stage1_realized_n_min, 8)),
+    stage1Tp0HitRateMin: clamp(normalizeNumber(sysCfg && sysCfg.tp1_ladder_stage1_tp0_hit_rate_min, 0.55), 0, 1),
+    stage1Tp0ToTp1ConversionMin: clamp(normalizeNumber(sysCfg && sysCfg.tp1_ladder_stage1_tp0_to_tp1_conversion_min, 0.20), 0, 1),
+    stage1FeeAdjustedExpectancyMin: normalizeNumber(sysCfg && sysCfg.tp1_ladder_stage1_fee_adjusted_expectancy_min, -0.0005),
+    stage2RealizedNMin: Math.max(1, normalizeInt(sysCfg && sysCfg.tp1_ladder_stage2_realized_n_min, 16)),
+    stage2Tp0HitRateMin: clamp(normalizeNumber(sysCfg && sysCfg.tp1_ladder_stage2_tp0_hit_rate_min, 0.60), 0, 1),
+    stage2Tp1HitRateMin: clamp(normalizeNumber(sysCfg && sysCfg.tp1_ladder_stage2_tp1_hit_rate_min, 0.30), 0, 1),
+    stage2Tp0ToTp1ConversionMin: clamp(normalizeNumber(sysCfg && sysCfg.tp1_ladder_stage2_tp0_to_tp1_conversion_min, 0.35), 0, 1),
+    stage2FeeAdjustedExpectancyMin: normalizeNumber(sysCfg && sysCfg.tp1_ladder_stage2_fee_adjusted_expectancy_min, 0),
+  };
+}
+
+function resolveTp1LadderRuntimeState({ sysCfg, cohort } = {}) {
+  const config = resolveTp1LadderConfig(sysCfg || {});
+  const kpi = loadTp1LadderKpiSnapshot();
+  return {
+    ...evaluateTp1LadderStage({
+      cohort: cohort || "BASE",
+      kpi,
+      config,
+    }),
+    kpi,
+  };
 }
 
 function readOpenClawMarketRegimeRow(market) {
@@ -8903,6 +8982,12 @@ async function runPaperUpbitForBar({
       const exitPolicySrc = String(
         (it.features_json && it.features_json.exit_policy_source) || ""
       ).trim().toUpperCase();
+      const tp1LadderState = !exitPolicySrc
+        ? resolveTp1LadderRuntimeState({
+            sysCfg,
+            cohort: marketRegimeCohort || "BASE",
+          })
+        : null;
       if (exitPolicySrc && exitPolicySrc !== "BINANCE_DEFAULT") {
         const dynSl = Number(it.features_json.exit_policy_sl_pct);
         const dynTp1 = Number(it.features_json.exit_policy_tp1_pct);
@@ -8934,10 +9019,12 @@ async function runPaperUpbitForBar({
           appliedExitRules.RUNNER_MIN_PROFIT_PCT = dynRunnerMin / 100;
         }
       }
-      if (!exitPolicySrc && marketRegimeCohort === "RESCUE" && Number.isFinite(Number(appliedExitRules.TP_P1_RESCUE_COHORT)) && Number(appliedExitRules.TP_P1_RESCUE_COHORT) > 0) {
-        appliedExitRules.TP_P1 = Math.min(Number(appliedExitRules.TP_P1), Number(appliedExitRules.TP_P1_RESCUE_COHORT));
-      } else if (!exitPolicySrc && marketRegimeCohort === "MIXED" && Number.isFinite(Number(appliedExitRules.TP_P1_MIXED_COHORT)) && Number(appliedExitRules.TP_P1_MIXED_COHORT) > 0) {
-        appliedExitRules.TP_P1 = Math.min(Number(appliedExitRules.TP_P1), Number(appliedExitRules.TP_P1_MIXED_COHORT));
+      if (!exitPolicySrc && tp1LadderState) {
+        appliedExitRules = applyTp1LadderPolicy({
+          rules: appliedExitRules,
+          cohort: marketRegimeCohort || "BASE",
+          ladderState: tp1LadderState,
+        });
       }
       nextMeta = mergeMeta(nextMeta, {
         exit_profile: appliedExitProfile || "BASE",
@@ -8945,6 +9032,15 @@ async function runPaperUpbitForBar({
           ? `${appliedExitProfileReason || "BASE_PROFILE"}+${exitPolicySrc}`
           : (appliedExitProfileReason || null),
         exit_rules_override: cloneExitRules(appliedExitRules),
+        tp1_ladder_enabled: tp1LadderState ? tp1LadderState.enabled !== false : null,
+        tp1_ladder_stage: tp1LadderState ? tp1LadderState.stage : null,
+        tp1_ladder_profile: tp1LadderState ? tp1LadderState.profile : null,
+        tp1_ladder_reason: tp1LadderState ? tp1LadderState.reason : null,
+        tp1_ladder_realized_n: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.realized_n : null,
+        tp1_ladder_tp0_hit_rate: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.tp0_hit_rate : null,
+        tp1_ladder_tp1_hit_rate: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.tp1_hit_rate : null,
+        tp1_ladder_tp0_to_tp1_conversion: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.tp0_to_tp1_conversion : null,
+        tp1_ladder_fee_adjusted_expectancy: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.fee_adjusted_expectancy : null,
         exit_policy_source: exitPolicySrc || null,
       });
     }
@@ -11628,6 +11724,12 @@ async function runPaperFuturesForBar({
       const exitPolicySrc = String(
         (it.features_json && it.features_json.exit_policy_source) || ""
       ).trim().toUpperCase();
+      const tp1LadderState = !exitPolicySrc
+        ? resolveTp1LadderRuntimeState({
+            sysCfg,
+            cohort: marketRegimeCohort || "BASE",
+          })
+        : null;
       if (exitPolicySrc && exitPolicySrc !== "BINANCE_DEFAULT") {
         const dynSl = Number(it.features_json.exit_policy_sl_pct);
         const dynTp1 = Number(it.features_json.exit_policy_tp1_pct);
@@ -11659,10 +11761,12 @@ async function runPaperFuturesForBar({
           appliedExitRules.RUNNER_MIN_PROFIT_PCT = dynRunnerMin / 100;
         }
       }
-      if (!exitPolicySrc && marketRegimeCohort === "RESCUE" && Number.isFinite(Number(appliedExitRules.TP_P1_RESCUE_COHORT)) && Number(appliedExitRules.TP_P1_RESCUE_COHORT) > 0) {
-        appliedExitRules.TP_P1 = Math.min(Number(appliedExitRules.TP_P1), Number(appliedExitRules.TP_P1_RESCUE_COHORT));
-      } else if (!exitPolicySrc && marketRegimeCohort === "MIXED" && Number.isFinite(Number(appliedExitRules.TP_P1_MIXED_COHORT)) && Number(appliedExitRules.TP_P1_MIXED_COHORT) > 0) {
-        appliedExitRules.TP_P1 = Math.min(Number(appliedExitRules.TP_P1), Number(appliedExitRules.TP_P1_MIXED_COHORT));
+      if (!exitPolicySrc && tp1LadderState) {
+        appliedExitRules = applyTp1LadderPolicy({
+          rules: appliedExitRules,
+          cohort: marketRegimeCohort || "BASE",
+          ladderState: tp1LadderState,
+        });
       }
       nextMeta = mergeMeta(nextMeta, {
         exit_profile: appliedExitProfile || "BASE",
@@ -11670,6 +11774,15 @@ async function runPaperFuturesForBar({
           ? `${appliedExitProfileReason || "BASE_PROFILE"}+${exitPolicySrc}`
           : (appliedExitProfileReason || null),
         exit_rules_override: cloneExitRules(appliedExitRules),
+        tp1_ladder_enabled: tp1LadderState ? tp1LadderState.enabled !== false : null,
+        tp1_ladder_stage: tp1LadderState ? tp1LadderState.stage : null,
+        tp1_ladder_profile: tp1LadderState ? tp1LadderState.profile : null,
+        tp1_ladder_reason: tp1LadderState ? tp1LadderState.reason : null,
+        tp1_ladder_realized_n: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.realized_n : null,
+        tp1_ladder_tp0_hit_rate: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.tp0_hit_rate : null,
+        tp1_ladder_tp1_hit_rate: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.tp1_hit_rate : null,
+        tp1_ladder_tp0_to_tp1_conversion: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.tp0_to_tp1_conversion : null,
+        tp1_ladder_fee_adjusted_expectancy: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.fee_adjusted_expectancy : null,
         exit_profile_rollback_active: appliedExitRollbackActive === true,
         exit_profile_rollback_until_ms: Number.isFinite(appliedExitRollbackUntilMs) ? appliedExitRollbackUntilMs : null,
         exit_profile_rollback_reason: appliedExitRollbackReason || null,
@@ -13463,6 +13576,9 @@ module.exports = {
     resolveManualRetryQtyBase,
     resolveEventRefMs,
     shouldBypassOppositeEntryCooldown,
+    resolveTp1LadderConfig,
+    resolveTp1LadderRuntimeState,
+    loadTp1LadderKpiSnapshot,
     resolveStructureInitialStopPrice,
     resolveInitialStopSource,
     sendRescueAddRepriceAlert,

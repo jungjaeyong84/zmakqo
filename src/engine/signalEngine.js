@@ -122,6 +122,162 @@ function normalizeOpenClawCohort(value) {
   return null;
 }
 
+function normalizeTp1LadderStage(value) {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.floor(n));
+}
+
+function resolveTp1LadderMaxStage(cohort) {
+  const normalized = normalizeOpenClawCohort(cohort);
+  if (normalized === "RESCUE") return 0;
+  if (normalized === "MIXED") return 1;
+  return 2;
+}
+
+function resolveTp1LadderProfile({ cohort, stage } = {}) {
+  const maxStage = resolveTp1LadderMaxStage(cohort);
+  const safeStage = Math.max(0, Math.min(maxStage, normalizeTp1LadderStage(stage) ?? 0));
+  const normalized = normalizeOpenClawCohort(cohort);
+  if (normalized === "RESCUE") return "RESCUE";
+  if (normalized === "MIXED") return safeStage >= 1 ? "MIXED" : "RESCUE";
+  if (safeStage >= 2) return "BASE";
+  if (safeStage >= 1) return "MIXED";
+  return "RESCUE";
+}
+
+function evaluateTp1LadderStage({ cohort, kpi = null, config = null, explicitStage = null } = {}) {
+  const maxStage = resolveTp1LadderMaxStage(cohort);
+  const normalized = normalizeOpenClawCohort(cohort) || "BASE";
+  const explicit = normalizeTp1LadderStage(explicitStage);
+  const cfg = (config && typeof config === "object") ? config : {};
+  const enabled = cfg.enabled !== false;
+  if (explicit !== null) {
+    const stage = Math.max(0, Math.min(maxStage, explicit));
+    return {
+      enabled,
+      stage,
+      maxStage,
+      profile: resolveTp1LadderProfile({ cohort: normalized, stage }),
+      reason: "EXPLICIT_STAGE_OVERRIDE",
+    };
+  }
+  if (!enabled) {
+    return {
+      enabled: false,
+      stage: maxStage,
+      maxStage,
+      profile: resolveTp1LadderProfile({ cohort: normalized, stage: maxStage }),
+      reason: "LADDER_DISABLED",
+    };
+  }
+  if (maxStage === 0) {
+    return {
+      enabled,
+      stage: 0,
+      maxStage,
+      profile: "RESCUE",
+      reason: "RESCUE_LOCKED",
+    };
+  }
+
+  const snapshot = (kpi && typeof kpi === "object") ? kpi : {};
+  const realizedN = Number(snapshot.realized_n ?? snapshot.realizedTradeN);
+  const tp0HitRate = Number(snapshot.tp0_hit_rate ?? snapshot.tp0HitRate);
+  const tp1HitRate = Number(snapshot.tp1_hit_rate ?? snapshot.tp1HitRate);
+  const conversion = Number(snapshot.tp0_to_tp1_conversion ?? snapshot.tp0ToTp1Conversion ?? snapshot.conversion);
+  const expectancy = Number(snapshot.fee_adjusted_expectancy ?? snapshot.feeAdjustedExpectancy);
+  const hasUsableSnapshot = [
+    realizedN,
+    tp0HitRate,
+    conversion,
+    expectancy,
+  ].every(Number.isFinite);
+  if (!hasUsableSnapshot) {
+    return {
+      enabled,
+      stage: 0,
+      maxStage,
+      profile: resolveTp1LadderProfile({ cohort: normalized, stage: 0 }),
+      reason: "KPI_SNAPSHOT_MISSING",
+    };
+  }
+
+  const stage1RealizedNMin = Number.isFinite(Number(cfg.stage1RealizedNMin)) ? Number(cfg.stage1RealizedNMin) : 8;
+  const stage1Tp0HitRateMin = Number.isFinite(Number(cfg.stage1Tp0HitRateMin)) ? Number(cfg.stage1Tp0HitRateMin) : 0.55;
+  const stage1ConversionMin = Number.isFinite(Number(cfg.stage1Tp0ToTp1ConversionMin)) ? Number(cfg.stage1Tp0ToTp1ConversionMin) : 0.20;
+  const stage1ExpectancyMin = Number.isFinite(Number(cfg.stage1FeeAdjustedExpectancyMin)) ? Number(cfg.stage1FeeAdjustedExpectancyMin) : -0.0005;
+  const stage2RealizedNMin = Number.isFinite(Number(cfg.stage2RealizedNMin)) ? Number(cfg.stage2RealizedNMin) : 16;
+  const stage2Tp0HitRateMin = Number.isFinite(Number(cfg.stage2Tp0HitRateMin)) ? Number(cfg.stage2Tp0HitRateMin) : 0.60;
+  const stage2Tp1HitRateMin = Number.isFinite(Number(cfg.stage2Tp1HitRateMin)) ? Number(cfg.stage2Tp1HitRateMin) : 0.30;
+  const stage2ConversionMin = Number.isFinite(Number(cfg.stage2Tp0ToTp1ConversionMin)) ? Number(cfg.stage2Tp0ToTp1ConversionMin) : 0.35;
+  const stage2ExpectancyMin = Number.isFinite(Number(cfg.stage2FeeAdjustedExpectancyMin)) ? Number(cfg.stage2FeeAdjustedExpectancyMin) : 0;
+
+  const stage1Ready = realizedN >= stage1RealizedNMin
+    && tp0HitRate >= stage1Tp0HitRateMin
+    && conversion >= stage1ConversionMin
+    && expectancy >= stage1ExpectancyMin;
+  const stage2Ready = maxStage >= 2
+    && Number.isFinite(tp1HitRate)
+    && realizedN >= stage2RealizedNMin
+    && tp0HitRate >= stage2Tp0HitRateMin
+    && tp1HitRate >= stage2Tp1HitRateMin
+    && conversion >= stage2ConversionMin
+    && expectancy >= stage2ExpectancyMin;
+  const stage = stage2Ready ? 2 : (stage1Ready ? Math.min(1, maxStage) : 0);
+  return {
+    enabled,
+    stage,
+    maxStage,
+    profile: resolveTp1LadderProfile({ cohort: normalized, stage }),
+    reason: stage2Ready ? "STAGE_2_KPI_READY" : (stage1Ready ? "STAGE_1_KPI_READY" : "STAGE_0_SAMPLING"),
+  };
+}
+
+function applyTp1LadderPolicy({ rules = null, cohort = null, ladderState = null } = {}) {
+  if (!rules || typeof rules !== "object") return rules;
+  const state = (ladderState && typeof ladderState === "object") ? ladderState : {};
+  const profile = String(state.profile || "").trim().toUpperCase();
+  if (!profile) return rules;
+  const currentTp1 = toNum(rules.TP_P1);
+  const rescueTp1 = toNum(rules.TP_P1_RESCUE_COHORT);
+  const mixedTp1 = toNum(rules.TP_P1_MIXED_COHORT);
+  const targetTp1 = profile === "RESCUE"
+    ? rescueTp1
+    : profile === "MIXED"
+      ? mixedTp1
+      : currentTp1;
+  if (!Number.isFinite(targetTp1) || targetTp1 <= 0) return rules;
+  const targetBe = profile === "RESCUE"
+    ? toNum(rules.BE_PCT_RESCUE_COHORT)
+    : profile === "MIXED"
+      ? toNum(rules.BE_PCT_MIXED_COHORT)
+      : toNum(rules.BE_PCT);
+  const targetRunner = profile === "RESCUE"
+    ? toNum(rules.RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT)
+    : profile === "MIXED"
+      ? toNum(rules.RUNNER_MIN_PROFIT_PCT_MIXED_COHORT)
+      : toNum(rules.RUNNER_MIN_PROFIT_PCT);
+  const targetTrailR = profile === "RESCUE"
+    ? toNum(rules.TRAIL_R_MULTIPLE_RESCUE_COHORT)
+    : profile === "MIXED"
+      ? toNum(rules.TRAIL_R_MULTIPLE_MIXED_COHORT)
+      : toNum(rules.TRAIL_R_MULTIPLE);
+  return {
+    ...rules,
+    TP_P1: Math.min(Number.isFinite(currentTp1) && currentTp1 > 0 ? currentTp1 : targetTp1, targetTp1),
+    BE_PCT: Number.isFinite(targetBe) && targetBe > 0 ? targetBe : rules.BE_PCT,
+    RUNNER_MIN_PROFIT_PCT: Number.isFinite(targetRunner) && targetRunner > 0 ? targetRunner : rules.RUNNER_MIN_PROFIT_PCT,
+    TRAIL_R_MULTIPLE: Number.isFinite(targetTrailR) && targetTrailR > 0 ? targetTrailR : rules.TRAIL_R_MULTIPLE,
+    tp1_ladder_stage: normalizeTp1LadderStage(state.stage),
+    tp1_ladder_profile: profile,
+    tp1_ladder_reason: state.reason || null,
+    tp1_ladder_enabled: state.enabled !== false,
+    tp1_ladder_cohort: normalizeOpenClawCohort(cohort) || "BASE",
+  };
+}
+
 function applyCohortTp1Adjustment({ rules = null, meta = null, exchange = "" } = {}) {
   const ex = normalizeExchangeKey(exchange);
   if (ex !== "BINANCEFUT" || !rules || typeof rules !== "object") return rules;
@@ -133,6 +289,17 @@ function applyCohortTp1Adjustment({ rules = null, meta = null, exchange = "" } =
     || metaSafe.market_regime_cohort
   );
   if (!cohort || cohort === "KEEP_DROP" || cohort === "HOLD_SAMPLE") return rules;
+  const ladderProfile = String(metaSafe.tp1_ladder_profile || "").trim().toUpperCase();
+  const ladderStage = normalizeTp1LadderStage(metaSafe.tp1_ladder_stage);
+  if (ladderProfile || ladderStage !== null) {
+    const ladderState = evaluateTp1LadderStage({
+      cohort,
+      explicitStage: ladderStage,
+      config: { enabled: metaSafe.tp1_ladder_enabled !== false },
+    });
+    if (ladderProfile) ladderState.profile = ladderProfile;
+    return applyTp1LadderPolicy({ rules, cohort, ladderState });
+  }
   const rescueTp1 = toNum(rules.TP_P1_RESCUE_COHORT);
   const mixedTp1 = toNum(rules.TP_P1_MIXED_COHORT);
   const rescueBe = toNum(rules.BE_PCT_RESCUE_COHORT);
@@ -882,6 +1049,8 @@ module.exports = {
   getExitRulesForExchange,
   resolveExitRulesForPosition,
   normalizeExchangeKey,
+  evaluateTp1LadderStage,
+  applyTp1LadderPolicy,
   computeRunnerExitStopPrice,
   computeTrailingStopPrice,
   resolveEntryRDistance,
