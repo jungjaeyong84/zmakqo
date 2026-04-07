@@ -116,6 +116,30 @@ function shouldConfirmSelfEvolutionFromDrop(payload = null) {
   return true;
 }
 
+function resolveDropStageBucket(payload = null) {
+  const p = payload && typeof payload === "object" ? payload : {};
+  const features = p.features_json && typeof p.features_json === "object"
+    ? p.features_json
+    : (p.features && typeof p.features === "object" ? p.features : {});
+  const group = upper(
+    p.event_group
+    || p.group
+    || features.event_group
+    || features.signal_group
+    || features._event_group
+    || null
+  ) || "UNKNOWN";
+  const subtype = upper(
+    p.event_subtype
+    || p.subtype
+    || features.event_subtype
+    || features.signal_subtype
+    || features._event_subtype
+    || null
+  ) || null;
+  return { group, subtype };
+}
+
 async function recordSignalDrops({ exchange, symbol, tf, drops = [], requestId = null, runId = null, decisionReason = null } = {}) {
   if (!Array.isArray(drops) || drops.length === 0) return { ok: true, written: 0 };
   const db = getFirestore();
@@ -123,8 +147,7 @@ async function recordSignalDrops({ exchange, symbol, tf, drops = [], requestId =
 
   const normalizedDrops = [];
   const writes = drops.map((d) => {
-    const group = String(d.event_group || d.group || "UNKNOWN").toUpperCase();
-    const subtype = String(d.event_subtype || d.subtype || "GEN").toUpperCase();
+    const { group, subtype } = resolveDropStageBucket(d);
     const id = dropId({
       exchange,
       symbol,
@@ -290,6 +313,7 @@ module.exports = {
   __test: {
     pickDropStrategyId,
     shouldConfirmSelfEvolutionFromDrop,
+    resolveDropStageBucket,
     deriveReasonFamily,
     deriveCanonicalEventId,
     deriveEffectiveDropReason,

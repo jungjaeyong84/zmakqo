@@ -85,6 +85,24 @@ function run() {
     "LINEAGE_SLO_FILL_INTENT_NULL_RATE"
   );
 
+  assert.deepStrictEqual(
+    __test.resolveDropStageBucket({
+      event_group: "unknown",
+      features_json: {},
+    }),
+    { group: "UNKNOWN", subtype: null }
+  );
+
+  assert.deepStrictEqual(
+    __test.resolveDropStageBucket({
+      features_json: {
+        event_group: "unknown",
+        event_subtype: "gen",
+      },
+    }),
+    { group: "UNKNOWN", subtype: "GEN" }
+  );
+
   console.log("SIGNAL_DROPS_TEST_OK");
 }
 
