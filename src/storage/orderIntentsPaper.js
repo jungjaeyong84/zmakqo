@@ -2,6 +2,7 @@ const { getFirestore } = require("./firestore");
 const { tfToMs } = require("../utils/marketConfig");
 const { enrichFeaturesWithRegime } = require("../utils/regime");
 const { resolveEventMapping } = require("../services/signalMapping");
+const { sendSignalDroppedAlert } = require("../services/signalLifecycleAlert");
 const { deriveSignalDocId } = require("../utils/signalDocId");
 const { isIntentCanceledLikeStatus, classifyIntentTerminalStatus } = require("../utils/intentStatus");
 const { buildEventEnvelope } = require("../utils/eventEnvelope");
@@ -524,7 +525,35 @@ async function markIntentStatus(intentIdValue, status, patch = {}) {
     ...patch,
   }, { merge: true });
 
-  if (!isIntentCanceledLikeStatus(statusToWrite)) return;
+  if (isIntentCanceledLikeStatus(statusToWrite)) {
+    try {
+      const snap = await ref.get();
+      if (snap.exists) {
+        const doc = snap.data() || {};
+        const reason = String(doc.cancel_reason || doc.status_reason || doc.decision_reason || "").trim() || null;
+        if (reason) {
+          sendSignalDroppedAlert({
+            exchange: doc.exchange || exchange || null,
+            symbol: doc.symbol_or_pair_id || doc.symbol || symbol || null,
+            tf: doc.tf || tf || null,
+            event: doc.event || event || null,
+            side: doc.side || null,
+            qtyPct: doc.qty_pct != null ? doc.qty_pct : null,
+            reason,
+            dropReasonCode: reason,
+            signalId: doc.signal_id || signalId || null,
+            executionMode: doc.execution_mode || executionMode || null,
+            source: "SERVER",
+            authoritative: true,
+            dropGroup: doc.features_json && doc.features_json._event_group ? doc.features_json._event_group : null,
+            dropSubtype: doc.features_json && doc.features_json._event_subtype ? doc.features_json._event_subtype : null,
+          }).catch(() => {});
+        }
+      }
+    } catch (_) {}
+  } else {
+    return;
+  }
 
   // TP1 cancel should immediately release pending lock; otherwise TP1 can stay blocked for too long.
   try {
