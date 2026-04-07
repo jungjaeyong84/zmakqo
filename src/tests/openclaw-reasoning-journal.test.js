@@ -82,6 +82,7 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         self_evolution_top_candidate_id: "ML_GATE_CORE_SCORE_ABS",
         self_evolution_top_candidate_canonical_id: null,
         server_signal_runtime_ev_gate_unknown_gen_relax_enabled: true,
+        server_signal_runtime_ev_gate_unknown_gen_relax_mode: "REPORT_ONLY",
         server_signal_runtime_ev_gate_unknown_gen_relax_started_at: "2026-04-06T22:50:11.452Z",
         server_signal_runtime_ev_gate_unknown_gen_relax_window_hours: 6,
         server_signal_runtime_ev_gate_unknown_gen_relax_review_after_hours: 4,
@@ -90,6 +91,32 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_min_delta: 0.04,
         server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_full_delta: 0.03,
         server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_kill_delta: 0.02,
+        filter_layer_1_integrity_mode: "INTEGRITY_GUARD_ONLY",
+        filter_layer_1_integrity_expectation: "N/A",
+        filter_layer_1_integrity_coverage_pass: true,
+        filter_layer_2_entry_quality_candidate_verdict: "HOLD",
+        filter_layer_2_entry_quality_actions: 2,
+        filter_layer_3_state_soft_sizing_ml_action: "KEEP",
+        filter_layer_3_state_soft_sizing_physics_action: "ALLOW",
+        filter_layer_3_state_soft_sizing_qty_scale: 1,
+        filter_layer_3_state_soft_sizing_dominant_state: "MIXED",
+        filter_layer_3_state_soft_sizing_dominant_action: "UNKNOWN",
+        filter_layer_4_ev_time_value_tuner_reason: "INSUFFICIENT_SAMPLE",
+        filter_layer_4_ev_time_value_observed_tuner_reason: "INSUFFICIENT_SAMPLE",
+        filter_layer_4_ev_time_value_fresh: true,
+        filter_layer_4_ev_time_value_age_hours: 15.4265,
+        filter_layer_4_ev_time_value_policy_version: "TP1_WEIGHT_V1",
+        filter_layer_4_ev_time_value_policy_source: "DEFAULT",
+        filter_layer_5_wait_timing_tuner_reason: "TRIGGER_SAMPLE_TOO_SMALL",
+        filter_layer_5_wait_timing_wait_action: "ALLOW",
+        filter_layer_5_wait_timing_febt_calc_ok_rate: 0.2727,
+        filter_layer_5_wait_timing_febt_phase_known: 9,
+        filter_layer_5_wait_timing_febt_fire_n: 0,
+        filter_layer_5_wait_timing_febt_late_n: 0,
+        filter_layer_5_wait_timing_febt_void_n: 1,
+        filter_layer_5_wait_timing_febt_disagreement_n: 9,
+        filter_layer_5_wait_timing_febt_fallback_legacy_n: 24,
+        filter_layer_5_wait_timing_febt_missing_rate: 0.7273,
         execution_model_dataset_status: "EXECUTION_MODEL_DATASET_READY",
         execution_fill_inference_status: "EXECUTION_FILL_INFERENCE_READY",
         execution_fill_inference_mismatch_rate: 0.19,
@@ -386,10 +413,16 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_ev_policy_top_return_drag_driver, "FAILURE_RISK_HEAVY");
   assert.strictEqual(journal.summary.current_ev_policy_top_mixed_driver, "DELAY_LATE_RISK_HEAVY");
   assert.strictEqual(journal.summary.current_server_signal_runtime_ev_gate_unknown_gen_relax_enabled, true);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_ev_gate_unknown_gen_relax_mode, "REPORT_ONLY");
   assert.strictEqual(journal.summary.current_server_signal_runtime_ev_gate_unknown_gen_relax_active_window, true);
   assert.strictEqual(journal.summary.current_server_signal_runtime_ev_gate_unknown_gen_relax_review_after_hours, 4);
   assert.strictEqual(journal.summary.current_server_signal_runtime_ev_gate_unknown_gen_relax_auto_rollback_enabled, false);
   assert.strictEqual(journal.summary.current_server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_full_delta, 0.03);
+  assert.strictEqual(journal.summary.current_filter_layer_1_integrity_mode, "INTEGRITY_GUARD_ONLY");
+  assert.strictEqual(journal.summary.current_filter_layer_2_entry_quality_actions, 2);
+  assert.strictEqual(journal.summary.current_filter_layer_3_state_soft_sizing_ml_action, "KEEP");
+  assert.strictEqual(journal.summary.current_filter_layer_4_ev_time_value_tuner_reason, "INSUFFICIENT_SAMPLE");
+  assert.strictEqual(journal.summary.current_filter_layer_5_wait_timing_wait_action, "ALLOW");
   assert.strictEqual(journal.summary.current_top_candidate_id, "ML_GATE_CORE_SCORE_ABS");
   assert.strictEqual(journal.summary.current_authority_state, "DEGRADED_ACTIVE");
   assert.strictEqual(journal.summary.current_change_authority_state, "PENDING");

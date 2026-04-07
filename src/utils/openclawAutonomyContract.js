@@ -10,6 +10,10 @@ function readDisplay(value) {
   return value && value.display && typeof value.display === "object" ? value.display : null;
 }
 
+function readRaw(value) {
+  return value && value.raw && typeof value.raw === "object" ? value.raw : null;
+}
+
 function readRetrospectiveMicrostructure(value) {
   const display = readDisplay(value) || {};
   if (display.execution_microstructure && typeof display.execution_microstructure === "object") {
@@ -194,6 +198,25 @@ function deriveOpenClawAutonomyContract({
 } = {}) {
   const objectiveSummary = readSummary(objective);
   const objectiveSupervisorRaw = unwrapRawReport(objectiveSupervisor) || {};
+  const objectiveSupervisorEnvelope = readRaw(objectiveSupervisor) || objectiveSupervisorRaw;
+  const objectiveSupervisorFilterLayers = objectiveSupervisorEnvelope.filter_layers && typeof objectiveSupervisorEnvelope.filter_layers === "object"
+    ? objectiveSupervisorEnvelope.filter_layers
+    : {};
+  const filterLayerIntegrity = objectiveSupervisorFilterLayers.integrity && typeof objectiveSupervisorFilterLayers.integrity === "object"
+    ? objectiveSupervisorFilterLayers.integrity
+    : {};
+  const filterLayerEntryQuality = objectiveSupervisorFilterLayers.entry_quality && typeof objectiveSupervisorFilterLayers.entry_quality === "object"
+    ? objectiveSupervisorFilterLayers.entry_quality
+    : {};
+  const filterLayerStateSoftSizing = objectiveSupervisorFilterLayers.state_soft_sizing && typeof objectiveSupervisorFilterLayers.state_soft_sizing === "object"
+    ? objectiveSupervisorFilterLayers.state_soft_sizing
+    : {};
+  const filterLayerEvTimeValue = objectiveSupervisorFilterLayers.ev_time_value && typeof objectiveSupervisorFilterLayers.ev_time_value === "object"
+    ? objectiveSupervisorFilterLayers.ev_time_value
+    : {};
+  const filterLayerWaitTiming = objectiveSupervisorFilterLayers.wait_timing && typeof objectiveSupervisorFilterLayers.wait_timing === "object"
+    ? objectiveSupervisorFilterLayers.wait_timing
+    : {};
   const objectiveRecoveryGovernorSummary = readSummary(objectiveRecoveryGovernor);
   const deploymentPlanSummary = readSummary(deploymentPlan);
   const serverPrimarySummary = readSummary(serverPrimaryCanary);
@@ -468,6 +491,7 @@ function deriveOpenClawAutonomyContract({
       server_signal_runtime_exec_tf: String(serverSignalRuntimeSummary.exec_tf || "").trim() || null,
       server_signal_runtime_market_count: toNum(serverSignalRuntimeSummary.market_count) || 0,
       server_signal_runtime_ev_gate_unknown_gen_relax_enabled: serverSignalRuntimeSummary.ev_gate_unknown_gen_relax_enabled === true,
+      server_signal_runtime_ev_gate_unknown_gen_relax_mode: String(serverSignalRuntimeSummary.ev_gate_unknown_gen_relax_mode || "").trim() || null,
       server_signal_runtime_ev_gate_unknown_gen_relax_started_at: String(serverSignalRuntimeSummary.ev_gate_unknown_gen_relax_started_at || "").trim() || null,
       server_signal_runtime_ev_gate_unknown_gen_relax_window_hours: toNum(serverSignalRuntimeSummary.ev_gate_unknown_gen_relax_window_hours),
       server_signal_runtime_ev_gate_unknown_gen_relax_review_after_hours: toNum(serverSignalRuntimeSummary.ev_gate_unknown_gen_relax_review_after_hours),
@@ -481,6 +505,32 @@ function deriveOpenClawAutonomyContract({
       server_signal_entry_24h_n: toNum(serverSignalQualitySummary.authoritative_entry_signal_24h_n) || 0,
       server_signal_intent_24h_n: toNum(serverSignalQualitySummary.order_intent_24h_n) || 0,
       server_signal_fill_24h_n: toNum(serverSignalQualitySummary.fill_24h_n) || 0,
+      filter_layer_1_integrity_mode: String(filterLayerIntegrity.server_mode || "").trim() || null,
+      filter_layer_1_integrity_expectation: String(filterLayerIntegrity.expectation || "").trim() || null,
+      filter_layer_1_integrity_coverage_pass: filterLayerIntegrity.coverage_pass === true,
+      filter_layer_2_entry_quality_candidate_verdict: String(filterLayerEntryQuality.pine_candidate_verdict || "").trim() || null,
+      filter_layer_2_entry_quality_actions: toNum(filterLayerEntryQuality.quality_actions),
+      filter_layer_3_state_soft_sizing_ml_action: String(filterLayerStateSoftSizing.ml_action || "").trim() || null,
+      filter_layer_3_state_soft_sizing_physics_action: String(filterLayerStateSoftSizing.physics_action || "").trim() || null,
+      filter_layer_3_state_soft_sizing_qty_scale: toNum(filterLayerStateSoftSizing.qty_scale),
+      filter_layer_3_state_soft_sizing_dominant_state: String(filterLayerStateSoftSizing.dominant_state || "").trim() || null,
+      filter_layer_3_state_soft_sizing_dominant_action: String(filterLayerStateSoftSizing.dominant_action || "").trim() || null,
+      filter_layer_4_ev_time_value_tuner_reason: String(filterLayerEvTimeValue.tuner_reason || "").trim() || null,
+      filter_layer_4_ev_time_value_observed_tuner_reason: String(filterLayerEvTimeValue.observed_tuner_reason || "").trim() || null,
+      filter_layer_4_ev_time_value_fresh: filterLayerEvTimeValue.fresh === true,
+      filter_layer_4_ev_time_value_age_hours: toNum(filterLayerEvTimeValue.age_hours),
+      filter_layer_4_ev_time_value_policy_version: String(filterLayerEvTimeValue.policy_version || "").trim() || null,
+      filter_layer_4_ev_time_value_policy_source: String(filterLayerEvTimeValue.policy_source || "").trim() || null,
+      filter_layer_5_wait_timing_tuner_reason: String(filterLayerWaitTiming.tuner_reason || "").trim() || null,
+      filter_layer_5_wait_timing_wait_action: String(filterLayerWaitTiming.wait_action || "").trim() || null,
+      filter_layer_5_wait_timing_febt_calc_ok_rate: toNum(filterLayerWaitTiming.febt_calc_ok_rate),
+      filter_layer_5_wait_timing_febt_phase_known: toNum(filterLayerWaitTiming.febt_phase_known),
+      filter_layer_5_wait_timing_febt_fire_n: toNum(filterLayerWaitTiming.febt_fire_n),
+      filter_layer_5_wait_timing_febt_late_n: toNum(filterLayerWaitTiming.febt_late_n),
+      filter_layer_5_wait_timing_febt_void_n: toNum(filterLayerWaitTiming.febt_void_n),
+      filter_layer_5_wait_timing_febt_disagreement_n: toNum(filterLayerWaitTiming.febt_disagreement_n),
+      filter_layer_5_wait_timing_febt_fallback_legacy_n: toNum(filterLayerWaitTiming.febt_fallback_legacy_n),
+      filter_layer_5_wait_timing_febt_missing_rate: toNum(filterLayerWaitTiming.febt_missing_rate),
       market_regime_board_status: toUpper(marketRegimeBoardSummary.status),
       market_regime_rescue_n: toNum(marketRegimeBoardSummary.rescue_market_n) || 0,
       market_regime_keep_drop_n: toNum(marketRegimeBoardSummary.keep_drop_market_n) || 0,
@@ -951,6 +1001,7 @@ function deriveOpenClawAutonomyContract({
       server_signal_quality_status: toUpper(serverSignalQualitySummary.quality_status) || "N_A",
       server_signal_runtime_status: toUpper(serverSignalRuntimeSummary.runtime_status) || "N_A",
       server_signal_runtime_ev_gate_unknown_gen_relax_enabled: serverSignalRuntimeSummary.ev_gate_unknown_gen_relax_enabled === true,
+      server_signal_runtime_ev_gate_unknown_gen_relax_mode: String(serverSignalRuntimeSummary.ev_gate_unknown_gen_relax_mode || "").trim() || null,
       server_signal_runtime_ev_gate_unknown_gen_relax_started_at: String(serverSignalRuntimeSummary.ev_gate_unknown_gen_relax_started_at || "").trim() || null,
       server_signal_runtime_ev_gate_unknown_gen_relax_window_hours: toNum(serverSignalRuntimeSummary.ev_gate_unknown_gen_relax_window_hours),
       server_signal_runtime_ev_gate_unknown_gen_relax_review_after_hours: toNum(serverSignalRuntimeSummary.ev_gate_unknown_gen_relax_review_after_hours),
@@ -959,6 +1010,32 @@ function deriveOpenClawAutonomyContract({
       server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_min_delta: toNum(serverSignalRuntimeSummary.ev_gate_unknown_gen_relax_tp1_prob_min_delta),
       server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_full_delta: toNum(serverSignalRuntimeSummary.ev_gate_unknown_gen_relax_tp1_prob_full_delta),
       server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_kill_delta: toNum(serverSignalRuntimeSummary.ev_gate_unknown_gen_relax_tp1_prob_kill_delta),
+      filter_layer_1_integrity_mode: String(filterLayerIntegrity.server_mode || "").trim() || null,
+      filter_layer_1_integrity_expectation: String(filterLayerIntegrity.expectation || "").trim() || null,
+      filter_layer_1_integrity_coverage_pass: filterLayerIntegrity.coverage_pass === true,
+      filter_layer_2_entry_quality_candidate_verdict: String(filterLayerEntryQuality.pine_candidate_verdict || "").trim() || null,
+      filter_layer_2_entry_quality_actions: toNum(filterLayerEntryQuality.quality_actions),
+      filter_layer_3_state_soft_sizing_ml_action: String(filterLayerStateSoftSizing.ml_action || "").trim() || null,
+      filter_layer_3_state_soft_sizing_physics_action: String(filterLayerStateSoftSizing.physics_action || "").trim() || null,
+      filter_layer_3_state_soft_sizing_qty_scale: toNum(filterLayerStateSoftSizing.qty_scale),
+      filter_layer_3_state_soft_sizing_dominant_state: String(filterLayerStateSoftSizing.dominant_state || "").trim() || null,
+      filter_layer_3_state_soft_sizing_dominant_action: String(filterLayerStateSoftSizing.dominant_action || "").trim() || null,
+      filter_layer_4_ev_time_value_tuner_reason: String(filterLayerEvTimeValue.tuner_reason || "").trim() || null,
+      filter_layer_4_ev_time_value_observed_tuner_reason: String(filterLayerEvTimeValue.observed_tuner_reason || "").trim() || null,
+      filter_layer_4_ev_time_value_fresh: filterLayerEvTimeValue.fresh === true,
+      filter_layer_4_ev_time_value_age_hours: toNum(filterLayerEvTimeValue.age_hours),
+      filter_layer_4_ev_time_value_policy_version: String(filterLayerEvTimeValue.policy_version || "").trim() || null,
+      filter_layer_4_ev_time_value_policy_source: String(filterLayerEvTimeValue.policy_source || "").trim() || null,
+      filter_layer_5_wait_timing_tuner_reason: String(filterLayerWaitTiming.tuner_reason || "").trim() || null,
+      filter_layer_5_wait_timing_wait_action: String(filterLayerWaitTiming.wait_action || "").trim() || null,
+      filter_layer_5_wait_timing_febt_calc_ok_rate: toNum(filterLayerWaitTiming.febt_calc_ok_rate),
+      filter_layer_5_wait_timing_febt_phase_known: toNum(filterLayerWaitTiming.febt_phase_known),
+      filter_layer_5_wait_timing_febt_fire_n: toNum(filterLayerWaitTiming.febt_fire_n),
+      filter_layer_5_wait_timing_febt_late_n: toNum(filterLayerWaitTiming.febt_late_n),
+      filter_layer_5_wait_timing_febt_void_n: toNum(filterLayerWaitTiming.febt_void_n),
+      filter_layer_5_wait_timing_febt_disagreement_n: toNum(filterLayerWaitTiming.febt_disagreement_n),
+      filter_layer_5_wait_timing_febt_fallback_legacy_n: toNum(filterLayerWaitTiming.febt_fallback_legacy_n),
+      filter_layer_5_wait_timing_febt_missing_rate: toNum(filterLayerWaitTiming.febt_missing_rate),
       server_signal_transition_status: serverSignalTransition.status,
       server_signal_transition_progress_pct: serverSignalTransition.progress_pct,
       market_regime_board_status: toUpper(marketRegimeBoardSummary.status) || "N_A",

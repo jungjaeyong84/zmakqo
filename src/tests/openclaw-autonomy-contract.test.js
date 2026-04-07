@@ -7,6 +7,17 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   const report = deriveOpenClawAutonomyContract({
     objective: { global_objective_score: { objective_score: -7.4, snapshot: { win_rate: 0.44 } } },
     objectiveSupervisor: {
+      raw: {
+        objective: { monthly_run_rate_krw: -436.19 },
+        self_evolution_objective: { objective_score: -7.4, win_rate: 0.44 },
+        filter_layers: {
+          integrity: { server_mode: "INTEGRITY_GUARD_ONLY", expectation: "N/A", coverage_pass: true },
+          entry_quality: { pine_candidate_verdict: "HOLD", quality_actions: 2 },
+          state_soft_sizing: { ml_action: "KEEP", physics_action: "ALLOW", qty_scale: 1, dominant_state: "MIXED", dominant_action: "UNKNOWN" },
+          ev_time_value: { tuner_reason: "INSUFFICIENT_SAMPLE", observed_tuner_reason: "INSUFFICIENT_SAMPLE", fresh: true, age_hours: 15.4265, policy_version: "TP1_WEIGHT_V1", policy_source: "DEFAULT" },
+          wait_timing: { tuner_reason: "TRIGGER_SAMPLE_TOO_SMALL", wait_action: "ALLOW", febt_calc_ok_rate: 0.2727, febt_phase_known: 9, febt_fire_n: 0, febt_late_n: 0, febt_void_n: 1, febt_disagreement_n: 9, febt_fallback_legacy_n: 24, febt_missing_rate: 0.7273 },
+        },
+      },
       display: {
         objective: { monthly_run_rate_krw: -436.19 },
         self_evolution_objective: { objective_score: -7.4, win_rate: 0.44 },
@@ -32,7 +43,7 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
     },
     serverPrimaryCanary: { summary: { acceptance_ready: false, acceptance_reason: "SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT", server_primary_executed_n: 0, pine_shadow_disagreement_rate: 0, rollback_trigger_n: 0 } },
     watchdog: { display: { verdict: "PASS", scheduler_mode: "OPENCLAW_CRON" } },
-    serverSignalRuntime: { summary: { runtime_status: "READY", exec_tf: "15m", market_count: 7, ev_gate_unknown_gen_relax_enabled: true, ev_gate_unknown_gen_relax_started_at: "2026-04-06T22:50:11.452Z", ev_gate_unknown_gen_relax_window_hours: 6, ev_gate_unknown_gen_relax_review_after_hours: 4, ev_gate_unknown_gen_relax_active_window: true, ev_gate_unknown_gen_relax_auto_rollback_enabled: false, ev_gate_unknown_gen_relax_tp1_prob_min_delta: 0.04, ev_gate_unknown_gen_relax_tp1_prob_full_delta: 0.03, ev_gate_unknown_gen_relax_tp1_prob_kill_delta: 0.02 } },
+    serverSignalRuntime: { summary: { runtime_status: "READY", exec_tf: "15m", market_count: 7, ev_gate_unknown_gen_relax_enabled: true, ev_gate_unknown_gen_relax_mode: "REPORT_ONLY", ev_gate_unknown_gen_relax_started_at: "2026-04-06T22:50:11.452Z", ev_gate_unknown_gen_relax_window_hours: 6, ev_gate_unknown_gen_relax_review_after_hours: 4, ev_gate_unknown_gen_relax_active_window: true, ev_gate_unknown_gen_relax_auto_rollback_enabled: false, ev_gate_unknown_gen_relax_tp1_prob_min_delta: 0.04, ev_gate_unknown_gen_relax_tp1_prob_full_delta: 0.03, ev_gate_unknown_gen_relax_tp1_prob_kill_delta: 0.02 } },
     marketRegimeBoard: { summary: { status: "RESCUE_COHORT_ACTIVE", rescue_market_n: 2, keep_drop_market_n: 3, top_rescue_market: "SOLUSDT", top_keep_drop_market: "AXSUSDT" } },
     executionQuality: { summary: { status: "EXECUTION_QUALITY_REVIEW", created_to_fill_p95_ms: 59871, adverse_slippage_p95_bps: 81.37, partial_fill_rate_pct: 67.57, top_latency_market: "AXSUSDT", top_operational_webhook_delay_cause: "IMMEDIATE_EXEC_TRUE_INTENT_DELAY", top_operational_immediate_intent_delay_group: "TV_WEBHOOK|EARLY_LONG|BTCUSDT", top_no_fill_reason: "LIVE_EXCEPTION", top_no_fill_subtype: "TIMING_IMMEDIATE_EXEC", execution_scope_quality_gate_status: "POLICY_BLOCKED_RECALL_TOO_LOW", execution_scope_quality_gate_ready: false, execution_scope_inference_mismatch_rate: 0.29, execution_scope_top_false_positive_group: "FILLABLE|POLICY_BLOCKED|LIVE_RUNTIME|EMO_LONG|KRW-BCH", execution_scope_fp_diagnostics_status: "EXECUTION_SCOPE_FP_DIAGNOSTICS_READY", execution_scope_fp_diagnostics_top_shared_feature: "execution.entry_schedule_reason=LATE_EXEC", execution_scope_fp_diagnostics_top_context_profile: "IN_POSITION_SAME_DIR|ADD|SHORT|-20-0|SAME_BAR_FAST_FILL", execution_scope_fp_diagnostics_reference_rows_n: 4, execution_scope_fp_diagnostics_reference_group_mode: "EXACT_SOURCE_EVENT_MARKET", execution_scope_tier_raw_diff_top_webhook_execution_profile: "WEBHOOK_PRE_BAR_CLOSE_FILLED", execution_scope_tier_raw_diff_top_webhook_bar_timing_profile: "PRE_BAR_CLOSE_GT_5M", execution_scope_tier_raw_diff_top_webhook_execution_profile_rows_n: 2, execution_scope_tier_raw_diff_saved_no_probe_rows_n: 2, execution_scope_tier_raw_diff_pre_bar_close_rows_n: 2 } },
     objectiveRetrospective: { display: { generated_at_kst: "2026-04-05 15:33:52 KST", execution_microstructure: { tp0_hit_rate: 0.85, tp1_hit_rate: 0, tp0_to_tp1_conversion_rate: 0, pre_tp1_time_stop_rate: 0, chase_reject_n: 1, portfolio_cluster_reduce_n: 2, portfolio_cluster_block_n: 0 } } },
@@ -107,10 +118,16 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.current_status.execution_quality_top_operational_webhook_delay_cause, "IMMEDIATE_EXEC_TRUE_INTENT_DELAY");
   assert.strictEqual(report.current_status.execution_quality_top_no_fill_reason, "LIVE_EXCEPTION");
   assert.strictEqual(report.current_status.server_signal_runtime_ev_gate_unknown_gen_relax_enabled, true);
+  assert.strictEqual(report.current_status.server_signal_runtime_ev_gate_unknown_gen_relax_mode, "REPORT_ONLY");
   assert.strictEqual(report.current_status.server_signal_runtime_ev_gate_unknown_gen_relax_active_window, true);
   assert.strictEqual(report.current_status.server_signal_runtime_ev_gate_unknown_gen_relax_review_after_hours, 4);
   assert.strictEqual(report.current_status.server_signal_runtime_ev_gate_unknown_gen_relax_auto_rollback_enabled, false);
   assert.strictEqual(report.current_status.server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_min_delta, 0.04);
+  assert.strictEqual(report.current_status.filter_layer_1_integrity_mode, "INTEGRITY_GUARD_ONLY");
+  assert.strictEqual(report.current_status.filter_layer_2_entry_quality_candidate_verdict, "HOLD");
+  assert.strictEqual(report.current_status.filter_layer_3_state_soft_sizing_physics_action, "ALLOW");
+  assert.strictEqual(report.current_status.filter_layer_4_ev_time_value_tuner_reason, "INSUFFICIENT_SAMPLE");
+  assert.strictEqual(report.current_status.filter_layer_5_wait_timing_wait_action, "ALLOW");
   assert.strictEqual(report.current_status.lineage_entry_fills_intent_null_rate, 0);
   assert.strictEqual(report.current_status.lineage_external_reconciled_fill_intent_null_present, true);
   assert.strictEqual(report.current_status.lineage_slo_drop_monitor_evidence_status, "AWAITING_POST_FIX_DROP_CACHE");
@@ -259,10 +276,16 @@ const { deriveOpenClawAutonomyContract } = require("../../src/utils/openclawAuto
   assert.strictEqual(report.summary.ev_gate_canonical_policy_version, "EV_COMPOSITE_EXIT_VALUE_V1");
   assert.strictEqual(report.summary.ev_gate_threshold_metric, "exit_value_lower_bound");
   assert.strictEqual(report.summary.server_signal_runtime_ev_gate_unknown_gen_relax_enabled, true);
+  assert.strictEqual(report.summary.server_signal_runtime_ev_gate_unknown_gen_relax_mode, "REPORT_ONLY");
   assert.strictEqual(report.summary.server_signal_runtime_ev_gate_unknown_gen_relax_window_hours, 6);
   assert.strictEqual(report.summary.server_signal_runtime_ev_gate_unknown_gen_relax_review_after_hours, 4);
   assert.strictEqual(report.summary.server_signal_runtime_ev_gate_unknown_gen_relax_active_window, true);
   assert.strictEqual(report.summary.server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_kill_delta, 0.02);
+  assert.strictEqual(report.summary.filter_layer_1_integrity_coverage_pass, true);
+  assert.strictEqual(report.summary.filter_layer_2_entry_quality_actions, 2);
+  assert.strictEqual(report.summary.filter_layer_3_state_soft_sizing_qty_scale, 1);
+  assert.strictEqual(report.summary.filter_layer_4_ev_time_value_policy_version, "TP1_WEIGHT_V1");
+  assert.strictEqual(report.summary.filter_layer_5_wait_timing_febt_fallback_legacy_n, 24);
   assert.strictEqual(report.summary.ev_candidate_canonical_id, "EV_COMPOSITE_THRESHOLD_TUNE");
   assert.strictEqual(report.summary.execution_scope_train_run_status, "ML_TRAIN_RUN_REPORTED");
   assert.strictEqual(report.summary.execution_scope_train_run_quality_gate_status, "POLICY_BLOCKED_RECALL_TOO_LOW");
