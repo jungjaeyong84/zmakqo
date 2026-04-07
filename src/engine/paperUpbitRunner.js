@@ -7954,7 +7954,8 @@ async function resolveRiskBudget(symbol, exchange) {
     const rb = await getRiskBudgetForProvider(exchange || "BINANCEFUT", 5000);
     const cfg = rb && rb.data ? rb.data : null;
     const sideAllocation = normalizeSideAllocation(cfg && cfg.side_allocation);
-    if (!cfg || cfg.enabled !== true) return { enabled: false, sideAllocation };
+    if (!cfg) return { enabled: false, sideAllocation };
+    const configuredEnabled = cfg.enabled === true;
     let maxKrw = Number((cfg.by_market && cfg.by_market[symbol]) || cfg.default_max_krw || 0);
     const onExceed = String(cfg.on_exceed || "CLAMP").toUpperCase();
     let totalMaxKrw = Number(cfg.total_max_krw ?? cfg.total_budget_krw ?? cfg.total_krw ?? 0) || 0;
@@ -8018,11 +8019,23 @@ async function resolveRiskBudget(symbol, exchange) {
         );
       }
     }
-    if (!Number.isFinite(maxKrw) || maxKrw <= 0) return { enabled: false };
+    const hasMarketOrDefaultBudget = Number.isFinite(maxKrw) && maxKrw > 0;
+    const hasTotalBudget = Number.isFinite(totalMaxKrw) && totalMaxKrw > 0;
+    const effectiveEnabled = configuredEnabled || hasMarketOrDefaultBudget || hasTotalBudget;
+    if (!effectiveEnabled || !hasMarketOrDefaultBudget) {
+      return {
+        enabled: false,
+        configuredEnabled,
+        sideAllocation,
+        totalMaxKrw: hasTotalBudget ? totalMaxKrw : null,
+        source: rb.source || "unknown",
+      };
+    }
     return {
       enabled: true,
+      configuredEnabled,
       maxKrw,
-      totalMaxKrw: (Number.isFinite(totalMaxKrw) && totalMaxKrw > 0) ? totalMaxKrw : null,
+      totalMaxKrw: hasTotalBudget ? totalMaxKrw : null,
       defaultMaxKrw: Number(cfg.default_max_krw || 0) || 0,
       byMarket: (cfg.by_market && typeof cfg.by_market === "object") ? cfg.by_market : {},
       onExceed: (onExceed === "SKIP") ? "SKIP" : "CLAMP",
@@ -13689,6 +13702,7 @@ module.exports = {
     buildEntryLineageMetaPatch,
     resolveEntryLineageForFill,
     extractEntryLineageCandidate,
+    resolveRiskBudget,
   },
 };
 
