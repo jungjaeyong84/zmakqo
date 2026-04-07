@@ -50,6 +50,41 @@ function run() {
     "EVENT__BINANCEFUT__XRPUSDT__15m__1774860300000__LONG__BUY"
   );
 
+  assert.strictEqual(
+    __test.deriveEffectiveDropReason({
+      resolvedReason: "LINEAGE_SLO_FILL_INTENT_NULL_RATE",
+      liveExecPolicyTrace: {
+        _live_exec_policy_lineage_has_entry_fill_intent_metric: false,
+        _live_exec_policy_lineage_reason_suppressed: true,
+        _live_exec_policy_action: "QUARANTINE",
+        _live_exec_policy_quarantine_reason: "REVERSE_POLICY_PENALTY",
+      },
+    }),
+    "LIVE_POLICY_QUARANTINE_HARD_BLOCK"
+  );
+
+  assert.strictEqual(
+    __test.deriveEffectiveDropReason({
+      resolvedReason: "LINEAGE_SLO_FILL_INTENT_NULL_RATE",
+      liveExecPolicyTrace: {
+        _live_exec_policy_lineage_has_entry_fill_intent_metric: false,
+        _live_exec_policy_plan_mode: "WATCH_ONLY",
+      },
+    }),
+    "LIVE_POLICY_PLAN_WATCH_ONLY_BLOCK"
+  );
+
+  assert.strictEqual(
+    __test.deriveEffectiveDropReason({
+      resolvedReason: "LINEAGE_SLO_FILL_INTENT_NULL_RATE",
+      liveExecPolicyTrace: {
+        _live_exec_policy_lineage_has_entry_fill_intent_metric: true,
+        _live_exec_policy_lineage_entry_fills_intent_id_null_rate: 0.2,
+      },
+    }),
+    "LINEAGE_SLO_FILL_INTENT_NULL_RATE"
+  );
+
   console.log("SIGNAL_DROPS_TEST_OK");
 }
 

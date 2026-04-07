@@ -33,6 +33,41 @@ function deriveReasonFamily(codeOrReason = null) {
   return parts.length ? parts.join("_") : "UNKNOWN";
 }
 
+function isLineageFillIntentReason(value) {
+  return upper(value) === "LINEAGE_SLO_FILL_INTENT_NULL_RATE";
+}
+
+function deriveEffectiveDropReason({ resolvedReason = null, liveExecPolicyTrace = null } = {}) {
+  const trace = liveExecPolicyTrace && typeof liveExecPolicyTrace === "object" ? liveExecPolicyTrace : {};
+  const rawReason = upper(resolvedReason);
+  if (!isLineageFillIntentReason(rawReason)) return rawReason || null;
+
+  const hasEntryMetric = trace._live_exec_policy_lineage_has_entry_fill_intent_metric === true;
+  const entryFillIntentNullRate = Number(trace._live_exec_policy_lineage_entry_fills_intent_id_null_rate);
+  const lineageReasonSuppressed = trace._live_exec_policy_lineage_reason_suppressed === true;
+
+  if (
+    lineageReasonSuppressed
+    || !hasEntryMetric
+    || !Number.isFinite(entryFillIntentNullRate)
+    || entryFillIntentNullRate <= 0
+  ) {
+    const policyReason = upper(trace._live_exec_policy_reason);
+    if (policyReason && policyReason !== rawReason && policyReason !== "LIVE_POLICY_OK") {
+      return policyReason;
+    }
+    if (upper(trace._live_exec_policy_action) === "QUARANTINE") {
+      return "LIVE_POLICY_QUARANTINE_HARD_BLOCK";
+    }
+    if (upper(trace._live_exec_policy_plan_mode) === "WATCH_ONLY") {
+      return "LIVE_POLICY_PLAN_WATCH_ONLY_BLOCK";
+    }
+    return "LIVE_POLICY_BLOCK";
+  }
+
+  return rawReason;
+}
+
 function dropId({ exchange, symbol, tf, barCloseMs, event, side, group, subtype }) {
   return [
     "DROP",
@@ -131,9 +166,13 @@ async function recordSignalDrops({ exchange, symbol, tf, drops = [], requestId =
     if (!resolvedSignalId && String(resolvedSignalDocId || "").startsWith("SIG__")) {
       resolvedSignalId = resolvedSignalDocId;
     }
-    const resolvedReason = d.decision_reason || decisionReason || d.reason || d.drop_reason_code || null;
-    const resolvedReasonFamily = deriveReasonFamily(d.reason_family || d.drop_reason_code || resolvedReason);
     const liveExecPolicyTrace = extractLiveExecutionPolicyTrace(d.features_json || d.features || {});
+    const rawResolvedReason = d.decision_reason || decisionReason || d.reason || d.drop_reason_code || null;
+    const resolvedReason = deriveEffectiveDropReason({
+      resolvedReason: rawResolvedReason,
+      liveExecPolicyTrace,
+    });
+    const resolvedReasonFamily = deriveReasonFamily(d.reason_family || d.drop_reason_code || resolvedReason);
     const canonicalEventId = String(
       d.canonical_event_id
       || deriveCanonicalEventId({ exchange, symbol, tf, barCloseMs: d.bar_close_time_utc_ms, event: d.event, side: d.side })
@@ -172,7 +211,7 @@ async function recordSignalDrops({ exchange, symbol, tf, drops = [], requestId =
       event: d.event || null,
       side: d.side || null,
       qty_pct: Number.isFinite(Number(d.qty_pct)) ? Number(d.qty_pct) : null,
-      reason: d.reason || "DROP_FILTER",
+      reason: resolvedReason || d.reason || "DROP_FILTER",
       decision_reason: resolvedReason,
       reason_family: resolvedReasonFamily,
       features_json: regimeMeta.features,
@@ -187,7 +226,9 @@ async function recordSignalDrops({ exchange, symbol, tf, drops = [], requestId =
       event_group: group,
       event_subtype: subtype,
       drop_key: d.drop_key || null,
-      drop_reason_code: d.drop_reason_code || null,
+      drop_reason_code: resolvedReason || d.drop_reason_code || null,
+      drop_reason_code_raw: d.drop_reason_code || null,
+      decision_reason_raw: rawResolvedReason,
       signal_id: resolvedSignalId || null,
       signal_doc_id: resolvedSignalDocId || null,
       canonical_event_id: canonicalEventId,
@@ -251,5 +292,6 @@ module.exports = {
     shouldConfirmSelfEvolutionFromDrop,
     deriveReasonFamily,
     deriveCanonicalEventId,
+    deriveEffectiveDropReason,
   },
 };

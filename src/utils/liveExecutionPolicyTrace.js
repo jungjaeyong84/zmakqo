@@ -22,6 +22,7 @@ const TRACE_KEYS = Object.freeze([
   "_live_exec_policy_lineage_entry_fills_intent_id_null_rate",
   "_live_exec_policy_lineage_entry_fills_24h_n",
   "_live_exec_policy_lineage_has_entry_fill_intent_metric",
+  "_live_exec_policy_lineage_reason_suppressed",
   "_live_exec_policy_drift_remediation_enabled",
   "_live_exec_policy_other_server_policy_watch_only_block_enabled",
   "_live_exec_policy_other_server_policy_watch_only_block",
@@ -81,6 +82,7 @@ function toLiveExecutionPolicyTopLevel(trace = null) {
     live_exec_policy_lineage_entry_fills_intent_id_null_rate: src._live_exec_policy_lineage_entry_fills_intent_id_null_rate ?? null,
     live_exec_policy_lineage_entry_fills_24h_n: src._live_exec_policy_lineage_entry_fills_24h_n ?? null,
     live_exec_policy_lineage_has_entry_fill_intent_metric: src._live_exec_policy_lineage_has_entry_fill_intent_metric ?? null,
+    live_exec_policy_lineage_reason_suppressed: src._live_exec_policy_lineage_reason_suppressed ?? null,
     live_exec_policy_learning_epoch_exception_release_active: src._live_exec_policy_learning_epoch_exception_release_active ?? null,
     live_exec_policy_other_server_policy_watch_only_reasons: Array.isArray(src._live_exec_policy_other_server_policy_watch_only_reasons)
       ? src._live_exec_policy_other_server_policy_watch_only_reasons
