@@ -4270,6 +4270,7 @@ function resolveEvGateConfig(sysCfg = {}, exchange = "", market = "") {
   const ex = String(exchange || "").toUpperCase();
   const defaultEnabled = ex.includes("BINANCE");
   const marketKey = String(market || "").trim().toUpperCase();
+  const globalReportOnlyEnabled = normalizeBool(sysCfg.ev_gate_global_report_only_enabled, true);
   const tp1ProbMinGlobal = clamp(normalizeNumber(sysCfg.ev_gate_tp1_prob_min, 0.55), 0, 1);
   const tp1ProbMinByMarket = normalizeMarketProbMap(sysCfg.ev_gate_tp1_prob_min_by_market);
   const tp1ProbMinByMarketReportOnly = normalizeMarketProbMap(sysCfg.ev_gate_tp1_prob_min_by_market_report_only);
@@ -4319,6 +4320,7 @@ function resolveEvGateConfig(sysCfg = {}, exchange = "", market = "") {
   const unknownGenRelaxMode = resolveEvGateUnknownGenRelaxMode(sysCfg);
   return {
     enabled: normalizeBool(sysCfg.ev_gate_enabled, defaultEnabled),
+    globalReportOnlyEnabled,
     applyCore: normalizeBool(sysCfg.ev_gate_core_enabled, true),
     applyPreReal: false,
     applyReal: false,
@@ -4605,6 +4607,7 @@ async function evaluateEvEntryGate({
 
   const baseDetail = {
     ev_gate_enabled: true,
+    ev_gate_global_report_only_enabled: cfg.globalReportOnlyEnabled === true,
     ev_gate_source: "TP_COMPOSITE_EXIT_VALUE_V1",
     ev_gate_plan_source: plan.source,
     ev_gate_tier: tier,
@@ -4712,10 +4715,14 @@ async function evaluateEvEntryGate({
   const action = decision.action;
   const qtyScale = decision.qtyScale;
   const dropReason = decision.reason;
-  const reportOnlyApplied = relaxContext.applies === true && cfg.unknownGenRelaxEnforcementMode === "REPORT_ONLY";
+  const reportOnlyApplied = cfg.globalReportOnlyEnabled === true
+    || (relaxContext.applies === true && cfg.unknownGenRelaxEnforcementMode === "REPORT_ONLY");
   const effectiveAction = reportOnlyApplied ? "REPORT_ONLY" : action;
   const effectiveQtyScale = reportOnlyApplied ? 1 : qtyScale;
   const effectiveDropReason = reportOnlyApplied ? null : dropReason;
+  const reportOnlyScope = cfg.globalReportOnlyEnabled === true
+    ? "GLOBAL"
+    : (reportOnlyApplied ? "UNKNOWN_GEN" : null);
 
   const detail = {
     ...baseDetail,
@@ -4725,7 +4732,7 @@ async function evaluateEvEntryGate({
     ev_gate_raw_qty_scale: qtyScale,
     ev_gate_raw_reason: dropReason || null,
     ev_gate_report_only_applied: reportOnlyApplied,
-    ev_gate_report_only_scope: reportOnlyApplied ? "UNKNOWN_GEN" : null,
+    ev_gate_report_only_scope: reportOnlyScope,
     ev_gate_report_only_would_drop: reportOnlyApplied && action === "DROP",
     ev_gate_report_only_would_reduce: reportOnlyApplied && action !== "DROP" && Number.isFinite(qtyScale) && qtyScale > 0 && qtyScale < 0.9999,
     ev_gate_tp0_reach_prob: estimate.tp0_probability,

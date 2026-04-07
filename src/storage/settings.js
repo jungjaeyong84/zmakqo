@@ -186,6 +186,7 @@ function applyEvGateDefaultsForProvider(data = {}, provider = "BINANCEFUT") {
   const p = normalizeProviderId(provider || "BINANCEFUT");
   const defaultEnabled = p === "BINANCEFUT" || p === "BINANCE";
   if (out.ev_gate_enabled === undefined || out.ev_gate_enabled === null || out.ev_gate_enabled === "") out.ev_gate_enabled = defaultEnabled;
+  if (out.ev_gate_global_report_only_enabled === undefined || out.ev_gate_global_report_only_enabled === null || out.ev_gate_global_report_only_enabled === "") out.ev_gate_global_report_only_enabled = true;
   if (out.ev_gate_core_enabled === undefined || out.ev_gate_core_enabled === null || out.ev_gate_core_enabled === "") out.ev_gate_core_enabled = true;
   if (out.ev_gate_pre_real_enabled === undefined || out.ev_gate_pre_real_enabled === null || out.ev_gate_pre_real_enabled === "") out.ev_gate_pre_real_enabled = false;
   if (out.ev_gate_real_enabled === undefined || out.ev_gate_real_enabled === null || out.ev_gate_real_enabled === "") out.ev_gate_real_enabled = false;
@@ -480,6 +481,7 @@ async function getSystemSettingsCached(ttlMs = 30_000) {
     ai_bias_gate_strong_opposite_score: 0.2,
     ai_bias_gate_strong_opposite_conf: 0.55,
     ev_gate_enabled: true,
+    ev_gate_global_report_only_enabled: true,
     ev_gate_core_enabled: true,
     ev_gate_pre_real_enabled: false,
     ev_gate_real_enabled: false,

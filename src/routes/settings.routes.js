@@ -622,6 +622,7 @@ function normalizeSystem(req, body, current = {}) {
   const aiBiasStrongOppositeConf = clampNumber(body.ai_bias_gate_strong_opposite_conf, 0, 1);
   clean.ai_bias_gate_strong_opposite_conf = (aiBiasStrongOppositeConf == null) ? 0.55 : aiBiasStrongOppositeConf;
   clean.ev_gate_enabled = normalizeBool(body.ev_gate_enabled === undefined ? true : body.ev_gate_enabled);
+  clean.ev_gate_global_report_only_enabled = normalizeBool(body.ev_gate_global_report_only_enabled === undefined ? true : body.ev_gate_global_report_only_enabled);
   clean.ev_gate_core_enabled = normalizeBool(body.ev_gate_core_enabled === undefined ? true : body.ev_gate_core_enabled);
   clean.ev_gate_pre_real_enabled = normalizeBool(body.ev_gate_pre_real_enabled === undefined ? false : body.ev_gate_pre_real_enabled);
   clean.ev_gate_real_enabled = normalizeBool(body.ev_gate_real_enabled === undefined ? false : body.ev_gate_real_enabled);
@@ -872,6 +873,7 @@ const SYSTEM_PROVIDER_KEYS = [
   "ai_bias_gate_strong_opposite_score",
   "ai_bias_gate_strong_opposite_conf",
   "ev_gate_enabled",
+  "ev_gate_global_report_only_enabled",
   "ev_gate_core_enabled",
   "ev_gate_pre_real_enabled",
   "ev_gate_real_enabled",
@@ -1632,6 +1634,7 @@ router.get("/api/settings/system", async (req, res) => {
       ai_bias_gate_strong_opposite_score: 0.2,
       ai_bias_gate_strong_opposite_conf: 0.55,
       ev_gate_enabled: true,
+      ev_gate_global_report_only_enabled: true,
       ev_gate_core_enabled: true,
       ev_gate_pre_real_enabled: false,
       ev_gate_real_enabled: false,

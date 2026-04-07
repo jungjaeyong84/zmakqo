@@ -85,6 +85,7 @@ function deriveServerSignalRuntime({
   const completedN = Object.values(transition).filter((x) => x === "DONE").length;
   const progressPct = Math.round((completedN / Object.keys(transition).length) * 100);
   const genRelaxEnabled = toBool(systemSettings.ev_gate_unknown_gen_relax_enabled, false);
+  const evGateGlobalReportOnlyEnabled = toBool(systemSettings.ev_gate_global_report_only_enabled, true);
   const genRelaxStartAt = systemSettings.ev_gate_unknown_gen_relax_started_at || null;
   const genRelaxStartMs = parseTimeMs(systemSettings.ev_gate_unknown_gen_relax_started_at_ms || genRelaxStartAt);
   const genRelaxWindowHours = toNum(systemSettings.ev_gate_unknown_gen_relax_window_hours) || 6;
@@ -151,6 +152,8 @@ function deriveServerSignalRuntime({
         policy_profile: toUpper(livePolicy.policy_profile || "RISK_GUARD_V2") || "RISK_GUARD_V2",
       },
       ev_gate_tp1_prob_min_by_market_n: Object.keys(systemSettings.ev_gate_tp1_prob_min_by_market || {}).length,
+      ev_gate_global_report_only_enabled: evGateGlobalReportOnlyEnabled,
+      ev_gate_global_report_only_mode: evGateGlobalReportOnlyEnabled ? "REPORT_ONLY" : "ENFORCING",
       ev_gate_tp1_prob_min_by_market_report_only_n: Object.keys(systemSettings.ev_gate_tp1_prob_min_by_market_report_only || {}).length,
       ev_gate_tp1_prob_min_by_market_report_only_enabled: toBool(systemSettings.ev_gate_tp1_prob_min_by_market_report_only_enabled, false),
       ev_gate_unknown_gen_relax_enabled: genRelaxEnabled,
@@ -204,6 +207,8 @@ function deriveServerSignalRuntime({
       live_execution_policy_drift_remediation_watch_only_block: livePolicy.drift_remediation_watch_only_block !== false,
       live_execution_policy_learning_epoch_exception_release_enabled: livePolicy.learning_epoch_exception_release_enabled !== false,
       ev_gate_tp1_prob_min_by_market_n: Object.keys(systemSettings.ev_gate_tp1_prob_min_by_market || {}).length,
+      ev_gate_global_report_only_enabled: evGateGlobalReportOnlyEnabled,
+      ev_gate_global_report_only_mode: evGateGlobalReportOnlyEnabled ? "REPORT_ONLY" : "ENFORCING",
       ev_gate_tp1_prob_min_by_market_report_only_n: Object.keys(systemSettings.ev_gate_tp1_prob_min_by_market_report_only || {}).length,
       ev_gate_tp1_prob_min_by_market_report_only_enabled: toBool(systemSettings.ev_gate_tp1_prob_min_by_market_report_only_enabled, false),
       ev_gate_unknown_gen_relax_enabled: genRelaxEnabled,

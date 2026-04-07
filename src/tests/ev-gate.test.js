@@ -50,6 +50,7 @@ async function run() {
 
   const cfg = __test.resolveEvGateConfig({
     ev_gate_enabled: true,
+    ev_gate_global_report_only_enabled: false,
     ev_gate_core_enabled: true,
     ev_gate_pre_real_enabled: true,
     ev_gate_real_enabled: true,
@@ -71,6 +72,7 @@ async function run() {
   }, "BINANCEFUT");
 
   assert.strictEqual(cfg.enabled, true);
+  assert.strictEqual(cfg.globalReportOnlyEnabled, false);
   assert.strictEqual(cfg.applyEarly, true);
   assert.strictEqual(cfg.tp1ProbMin, 0.55);
   assert.strictEqual(cfg.tp1ProbMinEarly, 0.60);
@@ -84,6 +86,7 @@ async function run() {
 
   const marketCfg = __test.resolveEvGateConfig({
     ev_gate_enabled: true,
+    ev_gate_global_report_only_enabled: false,
     ev_gate_tp1_prob_min: 0.55,
     ev_gate_tp1_prob_min_early: 0.60,
     ev_gate_tp1_prob_min_core: 0.57,
@@ -101,6 +104,7 @@ async function run() {
 
   const reportOnlyMarketCfg = __test.resolveEvGateConfig({
     ev_gate_enabled: true,
+    ev_gate_global_report_only_enabled: false,
     ev_gate_tp1_prob_min: 0.55,
     ev_gate_tp1_prob_min_early: 0.60,
     ev_gate_tp1_prob_min_core: 0.57,
@@ -121,6 +125,7 @@ async function run() {
 
   const reportOnlyCohortCfg = __test.resolveEvGateConfig({
     ev_gate_enabled: true,
+    ev_gate_global_report_only_enabled: false,
     ev_gate_tp1_prob_min: 0.55,
     ev_gate_tp1_prob_min_early: 0.60,
     ev_gate_tp1_prob_min_core: 0.57,
@@ -137,6 +142,7 @@ async function run() {
 
   const unknownGenRelaxCfg = __test.resolveEvGateConfig({
     ev_gate_enabled: true,
+    ev_gate_global_report_only_enabled: false,
     ev_gate_tp1_prob_min: 0.55,
     ev_gate_tp1_prob_min_early: 0.60,
     ev_gate_tp1_prob_min_core: 0.55,
@@ -232,6 +238,17 @@ async function run() {
   assert.strictEqual(dropDecision.ok, false);
   assert.strictEqual(dropDecision.action, "DROP");
   assert.strictEqual(dropDecision.reason, "DROP_EV_GATE_TP1_PROB");
+
+  const globalReportOnlyCfg = __test.resolveEvGateConfig({
+    ev_gate_enabled: true,
+    ev_gate_global_report_only_enabled: true,
+    ev_gate_tp1_prob_min: 0.55,
+    ev_gate_tp1_prob_min_early: 0.60,
+    ev_gate_tp1_prob_min_core: 0.55,
+    ev_gate_tp1_prob_full: 0.60,
+    ev_gate_tp1_prob_kill: 0.50,
+  }, "BINANCEFUT", "BTCUSDT");
+  assert.strictEqual(globalReportOnlyCfg.globalReportOnlyEnabled, true);
 
   const allowCoreLong = await __test.evaluateEvEntryGate({
     exchange: "BINANCEFUT",
@@ -473,6 +490,30 @@ async function run() {
   assert.strictEqual(allowCoreShort.detail.ev_gate_action, "ALLOW");
   assert.strictEqual(allowCoreShort.qtyScale, 1);
   assert.ok(allowCoreShort.detail.ev_gate_tp1_reach_prob_lower_bound >= 0.60);
+
+  const globalReportOnlyDrop = await __test.evaluateEvEntryGate({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    tf: "15m",
+    barCloseMs: 1_700_000_000_000 + (11 * 900_000),
+    intent: "ENTRY",
+    intentDir: "LONG",
+    eventUpper: "CORE_LONG",
+    features: {},
+    cfg: globalReportOnlyCfg,
+    bars: makeBars({ direction: "LONG", driftPct: 0.03, rangePct: 2.2, closeControl: 0.2, adverseEvery: 1 }),
+  });
+  assert.strictEqual(globalReportOnlyDrop.ok, true);
+  assert.strictEqual(globalReportOnlyDrop.action, "REPORT_ONLY");
+  assert.ok(globalReportOnlyDrop.reason == null);
+  assert.strictEqual(globalReportOnlyDrop.qtyScale, 1);
+  assert.strictEqual(globalReportOnlyDrop.detail.ev_gate_global_report_only_enabled, true);
+  assert.strictEqual(globalReportOnlyDrop.detail.ev_gate_action, "REPORT_ONLY");
+  assert.strictEqual(globalReportOnlyDrop.detail.ev_gate_raw_action, "DROP");
+  assert.strictEqual(globalReportOnlyDrop.detail.ev_gate_raw_reason, "DROP_EV_GATE_TP1_PROB");
+  assert.strictEqual(globalReportOnlyDrop.detail.ev_gate_report_only_applied, true);
+  assert.strictEqual(globalReportOnlyDrop.detail.ev_gate_report_only_scope, "GLOBAL");
+  assert.strictEqual(globalReportOnlyDrop.detail.ev_gate_report_only_would_drop, true);
 
   const overridePlan = __test.resolveEvGateTradePlan({
     cfg,

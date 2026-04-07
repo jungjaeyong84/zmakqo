@@ -11,6 +11,7 @@ const { deriveServerSignalRuntime } = require("../../src/utils/serverSignalRunti
       scheduler_interval_sec: 900,
       canonical_engine_source_mode: "SERVER_PRIMARY",
       canonical_engine_shadow_enabled: true,
+      ev_gate_global_report_only_enabled: true,
       ev_gate_tp1_prob_min_by_market: { BTCUSDT: 0.515 },
       ev_gate_tp1_prob_min_by_market_report_only_enabled: true,
       ev_gate_tp1_prob_min_by_market_report_only: { SOLUSDT: 0.501, ETHUSDT: 0.501 },
@@ -52,6 +53,8 @@ const { deriveServerSignalRuntime } = require("../../src/utils/serverSignalRunti
   assert.strictEqual(report.summary.exec_tf, "15m");
   assert.strictEqual(report.summary.market_count, 3);
   assert.strictEqual(report.summary.ev_gate_tp1_prob_min_by_market_n, 1);
+  assert.strictEqual(report.summary.ev_gate_global_report_only_enabled, true);
+  assert.strictEqual(report.summary.ev_gate_global_report_only_mode, "REPORT_ONLY");
   assert.strictEqual(report.summary.ev_gate_tp1_prob_min_by_market_report_only_enabled, true);
   assert.strictEqual(report.summary.ev_gate_tp1_prob_min_by_market_report_only_n, 2);
   assert.strictEqual(report.summary.ev_gate_unknown_gen_relax_enabled, true);
@@ -62,6 +65,8 @@ const { deriveServerSignalRuntime } = require("../../src/utils/serverSignalRunti
   assert.strictEqual(report.summary.ev_gate_unknown_gen_relax_auto_rollback_enabled, false);
   assert.strictEqual(report.summary.ev_gate_unknown_gen_relax_tp1_prob_min_delta, 0.04);
   assert.strictEqual(report.current_status.ev_gate_unknown_gen_relax_enabled, true);
+  assert.strictEqual(report.current_status.ev_gate_global_report_only_enabled, true);
+  assert.strictEqual(report.current_status.ev_gate_global_report_only_mode, "REPORT_ONLY");
   assert.strictEqual(report.current_status.ev_gate_unknown_gen_relax_mode, "REPORT_ONLY");
   assert.strictEqual(report.current_status.ev_gate_unknown_gen_relax_review_after_hours, 4);
   assert.strictEqual(report.summary.tp1_ladder_enabled, true);
