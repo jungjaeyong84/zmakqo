@@ -81,6 +81,15 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         ev_candidate_canonical_id: "EV_COMPOSITE_THRESHOLD_TUNE",
         self_evolution_top_candidate_id: "ML_GATE_CORE_SCORE_ABS",
         self_evolution_top_candidate_canonical_id: null,
+        server_signal_runtime_ev_gate_unknown_gen_relax_enabled: true,
+        server_signal_runtime_ev_gate_unknown_gen_relax_started_at: "2026-04-06T22:50:11.452Z",
+        server_signal_runtime_ev_gate_unknown_gen_relax_window_hours: 6,
+        server_signal_runtime_ev_gate_unknown_gen_relax_review_after_hours: 4,
+        server_signal_runtime_ev_gate_unknown_gen_relax_active_window: true,
+        server_signal_runtime_ev_gate_unknown_gen_relax_auto_rollback_enabled: false,
+        server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_min_delta: 0.04,
+        server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_full_delta: 0.03,
+        server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_kill_delta: 0.02,
         execution_model_dataset_status: "EXECUTION_MODEL_DATASET_READY",
         execution_fill_inference_status: "EXECUTION_FILL_INFERENCE_READY",
         execution_fill_inference_mismatch_rate: 0.19,
@@ -376,6 +385,11 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_ev_policy_review_mode, "PROFILE_CONDITIONAL_REVIEW");
   assert.strictEqual(journal.summary.current_ev_policy_top_return_drag_driver, "FAILURE_RISK_HEAVY");
   assert.strictEqual(journal.summary.current_ev_policy_top_mixed_driver, "DELAY_LATE_RISK_HEAVY");
+  assert.strictEqual(journal.summary.current_server_signal_runtime_ev_gate_unknown_gen_relax_enabled, true);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_ev_gate_unknown_gen_relax_active_window, true);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_ev_gate_unknown_gen_relax_review_after_hours, 4);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_ev_gate_unknown_gen_relax_auto_rollback_enabled, false);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_full_delta, 0.03);
   assert.strictEqual(journal.summary.current_top_candidate_id, "ML_GATE_CORE_SCORE_ABS");
   assert.strictEqual(journal.summary.current_authority_state, "DEGRADED_ACTIVE");
   assert.strictEqual(journal.summary.current_change_authority_state, "PENDING");
