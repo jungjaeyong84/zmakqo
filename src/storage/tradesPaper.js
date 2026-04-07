@@ -1,6 +1,7 @@
 // src/storage/tradesPaper.js
 const { getFirestore } = require("./firestore");
 const { deriveSignalDocId } = require("../utils/signalDocId");
+const { buildEventEnvelope } = require("../utils/eventEnvelope");
 
 function nowIso() {
   return new Date().toISOString();
@@ -61,6 +62,18 @@ function resolveTradeSignalRefs({
   };
 }
 
+function buildTraceMeta({ signalId = null, intentId = null, fillId = null, tradeId = null, runId = null, requestId = null, decisionReason = null } = {}) {
+  return [
+    signalId ? `signal:${signalId}` : null,
+    intentId ? `intent:${intentId}` : null,
+    fillId ? `fill:${fillId}` : null,
+    tradeId ? `trade:${tradeId}` : null,
+    runId ? `run:${runId}` : null,
+    requestId ? `req:${requestId}` : null,
+    decisionReason ? `reason:${decisionReason}` : null,
+  ].filter(Boolean).join(" | ") || null;
+}
+
 async function upsertTradeEvent({
   runId,
   exchange,
@@ -89,6 +102,8 @@ async function upsertTradeEvent({
   meta = {},
   executionMode = null,
   featuresJson = null,
+  requestId = null,
+  decisionReason = null,
 } = {}) {
   const db = getFirestore();
   const execMsNum = Number(execMs);
@@ -124,7 +139,25 @@ async function upsertTradeEvent({
   const normalizedFeaturesJson = resolvedSignalRefs.featuresJson;
   const payload = {
     trade_id: id,
+    ...buildEventEnvelope({
+      requestId,
+      runId,
+      signalId: resolvedSignalId,
+      intentId: intentId || null,
+      event,
+      exchange,
+      symbol,
+      tf,
+      decisionReason: decisionReason || note || event || null,
+      action: event,
+      intent: event,
+      executionMode,
+      source: "TRADE",
+      barCloseMs: execBarCloseTimeUtcMs,
+      createdAt,
+    }),
     run_id: runId || null,
+    request_id: requestId || null,
     intent_id: intentId || null,
     fill_id: fillId || null,
     signal_id: resolvedSignalId,
@@ -154,6 +187,16 @@ async function upsertTradeEvent({
     budget_used_krw: (budgetUsedKrw === null || budgetUsedKrw === undefined) ? null : Number(budgetUsedKrw),
 
     note: note || null,
+    decision_reason: String(decisionReason || note || event || "").trim() || null,
+    trace_meta: buildTraceMeta({
+      signalId: resolvedSignalId,
+      intentId: intentId || null,
+      fillId: fillId || null,
+      tradeId: id,
+      runId: runId || null,
+      requestId: requestId || null,
+      decisionReason: decisionReason || note || event || null,
+    }),
     meta: meta || {},
 
     created_at: createdAt,
@@ -172,5 +215,6 @@ module.exports = {
   __test: {
     tradeId: buildTradeId,
     resolveTradeSignalRefs,
+    buildTraceMeta,
   },
 };

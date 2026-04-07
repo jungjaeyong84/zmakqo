@@ -15,6 +15,14 @@ function toNum(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function norm(value) {
+  return String(value || "").trim() || null;
+}
+
+function sameNonEmpty(a, b) {
+  return Boolean(norm(a) && norm(b) && norm(a) === norm(b));
+}
+
 function buildExecutionServingContract({
   truthPreservationAudit = null,
   executionScopeTrainRun = null,
@@ -35,10 +43,17 @@ function buildExecutionServingContract({
   const truthReady = truth.truth_preservation_ready === true;
   const scopeQualityReady = scopeTrain.quality_gate_ready === true;
   const scopeInferenceReady = toUpper(scopeInference.status) === "EXECUTION_SCOPE_INFERENCE_READY";
-  const scopeArtifactAligned = Boolean(
-    String(scopeTrain.model_artifact_id || "").trim()
-    && String(scopeInference.model_artifact_id || "").trim()
-    && String(scopeTrain.model_artifact_id).trim() === String(scopeInference.model_artifact_id).trim()
+  const scopeArtifactAligned = sameNonEmpty(scopeTrain.model_artifact_id, scopeInference.model_artifact_id);
+  const scopeTrainRunAligned = sameNonEmpty(scopeTrain.train_run_id, scopeInference.train_run_id);
+  const scopeExperimentAligned = sameNonEmpty(scopeTrain.experiment_id, registry.experiment_id);
+  const scopeDatasetVersionAligned = sameNonEmpty(scopeTrain.dataset_version_id, registry.dataset_version_id);
+  const scopeFeatureStoreVersionAligned = sameNonEmpty(scopeTrain.feature_store_version_id, registry.feature_store_version_id);
+  const scopeExecutionDatasetVersionAligned = sameNonEmpty(scopeTrain.execution_dataset_version_id, registry.execution_dataset_version_id);
+  const scopeRegistryAligned = (
+    scopeExperimentAligned
+    && scopeDatasetVersionAligned
+    && scopeFeatureStoreVersionAligned
+    && scopeExecutionDatasetVersionAligned
   );
   const scopeMismatchRate = toNum(scopeInference.mismatch_rate);
   const scopeMismatchReady = scopeMismatchRate != null && scopeMismatchRate <= 0.10;
@@ -51,6 +66,11 @@ function buildExecutionServingContract({
   if (!scopeQualityReady) blockingReasons.push("SCOPE_MODEL_QUALITY_NOT_READY");
   if (!scopeInferenceReady) blockingReasons.push("SCOPE_INFERENCE_NOT_READY");
   if (!scopeArtifactAligned) blockingReasons.push("SCOPE_MODEL_ARTIFACT_MISMATCH");
+  if (!scopeTrainRunAligned) blockingReasons.push("SCOPE_TRAIN_RUN_MISMATCH");
+  if (!scopeExperimentAligned) blockingReasons.push("SCOPE_EXPERIMENT_MISMATCH");
+  if (!scopeDatasetVersionAligned) blockingReasons.push("SCOPE_DATASET_VERSION_MISMATCH");
+  if (!scopeFeatureStoreVersionAligned) blockingReasons.push("SCOPE_FEATURE_STORE_VERSION_MISMATCH");
+  if (!scopeExecutionDatasetVersionAligned) blockingReasons.push("SCOPE_EXECUTION_DATASET_VERSION_MISMATCH");
   if (!scopeMismatchReady) blockingReasons.push("SCOPE_MISMATCH_TOO_HIGH");
 
   const warningReasons = [];
@@ -75,6 +95,12 @@ function buildExecutionServingContract({
   } else if (!scopeArtifactAligned) {
     servingStage = "BLOCKED_ARTIFACT_ALIGNMENT";
     servingDecision = "HOLD_SCOPE_ALIGNMENT";
+  } else if (!scopeTrainRunAligned) {
+    servingStage = "BLOCKED_TRAIN_RUN_ALIGNMENT";
+    servingDecision = "HOLD_SCOPE_TRAIN_RUN_ALIGNMENT";
+  } else if (!scopeRegistryAligned) {
+    servingStage = "BLOCKED_REGISTRY_ALIGNMENT";
+    servingDecision = "HOLD_SCOPE_REGISTRY_ALIGNMENT";
   } else if (!scopeMismatchReady) {
     servingStage = "BLOCKED_SCOPE_MISMATCH";
     servingDecision = "HOLD_SCOPE_MISMATCH";
@@ -103,6 +129,12 @@ function buildExecutionServingContract({
     scope_inference_status: toUpper(scopeInference.status) || null,
     scope_inference_mismatch_rate: scopeMismatchRate,
     scope_model_artifact_aligned: scopeArtifactAligned,
+    scope_train_run_aligned: scopeTrainRunAligned,
+    scope_experiment_aligned: scopeExperimentAligned,
+    scope_dataset_version_aligned: scopeDatasetVersionAligned,
+    scope_feature_store_version_aligned: scopeFeatureStoreVersionAligned,
+    scope_execution_dataset_version_aligned: scopeExecutionDatasetVersionAligned,
+    scope_registry_aligned: scopeRegistryAligned,
     fill_quality_gate_status: String(fillTrain.quality_gate_status || "").trim().toUpperCase() || null,
     fill_quality_gate_ready: fillQualityReady,
     fill_inference_status: toUpper(fillInference.status) || null,

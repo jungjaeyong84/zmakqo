@@ -34,7 +34,7 @@ const STAGE_ACTION_HINTS = Object.freeze({
   QUALITY: "Pine 품질 기준과 1차 상태/무결성 경계가 과차단인지 확인해야 합니다.",
   AI: "2차 진입 품질의 AI usable, missing, block 정책과 데이터 수집 상태를 같이 확인해야 합니다.",
   MARKET: "3차 상태 기반 Soft Sizing의 방향 prior가 과하게 보수적인지 확인해야 합니다.",
-  EV: "4차 EV/시간가치층의 확률 기준과 수량 밴드가 과하게 높지 않은지 확인해야 합니다.",
+  EV: "4차 EV/시간가치층의 복합 기대값 하한 기준과 수량 밴드가 과하게 높지 않은지 확인해야 합니다.",
   TIMING: "5차 WAIT 타이밍층의 연기 조건이 과도한지 확인해야 합니다.",
   EXIT: "청산 구조가 지나치게 공격적이거나 보수적인지 확인해야 합니다.",
 });
@@ -83,7 +83,7 @@ function buildStageEntries(period = {}, coverageGuard = {}) {
     const reason = stageKey === "QUALITY"
       ? "1차 상태/무결성 fallback 차단 비중이 높아, 실제 거래 부족의 직접 원인일 가능성이 큽니다."
       : stageKey === "EV"
-        ? "4차 EV/시간가치층에서 TP1 확률 기준으로 많이 걸러져 거래가 줄었을 가능성이 큽니다."
+        ? "4차 EV/시간가치층에서 TP0/TP1/시간청산 복합 기대값 기준으로 많이 걸러져 거래가 줄었을 가능성이 큽니다."
         : stageKey === "MARKET"
           ? "3차 상태 기반 Soft Sizing의 방향 prior에서 막힌 비중이 커 거래가 줄었을 가능성이 큽니다."
           : stageKey === "AI"

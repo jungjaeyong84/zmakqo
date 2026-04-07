@@ -4,6 +4,7 @@ const assert = require("assert");
 const {
   isPendingIntentExpired,
   resolveIntentStatusForView,
+  resolveIntentStatusFamilyForView,
   isActivePendingIntent,
 } = require("../utils/intentView");
 
@@ -21,12 +22,17 @@ const {
     status: "CANCELED",
     expires_at_ms: refMs - 60_000,
   };
+  const failedInternal = {
+    status: "FAILED_INTERNAL",
+  };
 
   assert.strictEqual(isPendingIntentExpired(activePending, refMs), false);
   assert.strictEqual(isPendingIntentExpired(expiredPending, refMs), true);
   assert.strictEqual(resolveIntentStatusForView(activePending, refMs), "PENDING");
   assert.strictEqual(resolveIntentStatusForView(expiredPending, refMs), "CANCELED");
   assert.strictEqual(resolveIntentStatusForView(canceled, refMs), "CANCELED");
+  assert.strictEqual(resolveIntentStatusForView(failedInternal, refMs), "FAILED_INTERNAL");
+  assert.strictEqual(resolveIntentStatusFamilyForView(failedInternal, refMs), "CANCELED");
   assert.strictEqual(isActivePendingIntent(activePending, refMs), true);
   assert.strictEqual(isActivePendingIntent(expiredPending, refMs), false);
 

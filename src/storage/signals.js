@@ -5,6 +5,7 @@ const { deriveGroupSubtype } = require("../services/signalTaxonomy");
 const { normalizeMarketSymbolForProvider } = require("../utils/marketConfig");
 const { normalizeProviderId } = require("../utils/providerUtils");
 const { enrichFeaturesWithRegime } = require("../utils/regime");
+const { buildEventEnvelope } = require("../utils/eventEnvelope");
 
 function nowIso() {
   return new Date().toISOString();
@@ -57,6 +58,9 @@ async function upsertSignal({
   executionMode,
   source = "webhook",
   authoritative = null,
+  requestId = null,
+  runId = null,
+  decisionReason = null,
 } = {}) {
   const db = getFirestore();
 
@@ -105,6 +109,9 @@ async function upsertSignal({
     source,
     authoritative: authoritative == null ? null : authoritative === true,
     execution_mode: execMode,
+    request_id: requestId || null,
+    run_id: runId || null,
+    decision_reason: String(decisionReason || reason || "").trim() || null,
     event_intent: finalIntent || null,
     event_group: eventGroup || null,
     event_subtype: eventSubtype || null,
@@ -127,6 +134,22 @@ async function upsertSignal({
     if (!snap.exists) {
       const payload = {
         signal_id: id,
+        ...buildEventEnvelope({
+          requestId,
+          runId,
+          signalId: id,
+          event: incomingCore.event,
+          exchange: incomingCore.exchange,
+          symbol: incomingCore.symbol_or_pair_id,
+          tf: incomingCore.tf,
+          decisionReason: incomingCore.decision_reason,
+          action: incomingCore.event_intent,
+          intent: incomingCore.event_intent,
+          executionMode: incomingCore.execution_mode,
+          source: incomingCore.source,
+          barCloseMs: incomingCore.bar_close_time_utc_ms,
+          createdAt: t,
+        }),
         exchange: incomingCore.exchange,
         symbol_or_pair_id: incomingCore.symbol_or_pair_id,
         tf: incomingCore.tf,
@@ -136,6 +159,7 @@ async function upsertSignal({
         side: incomingCore.side,
         qty_pct: incomingCore.qty_pct,
         reason: incomingCore.reason,
+        decision_reason: incomingCore.decision_reason,
         features_json: incomingCore.features_json,
         price: incomingCore.price,
         source: incomingCore.source,
@@ -193,6 +217,9 @@ async function upsertSignal({
       side: incomingCore.side,
       qty_pct: incomingCore.qty_pct,
       reason: incomingCore.reason,
+      request_id: incomingCore.request_id,
+      run_id: incomingCore.run_id,
+      decision_reason: incomingCore.decision_reason,
       features_json: incomingCore.features_json,
       price: incomingCore.price,
       source: incomingCore.source,

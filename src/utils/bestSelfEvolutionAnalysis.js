@@ -421,6 +421,7 @@ function deriveCanonicalParityDiagnostics(parity = null) {
   const evPolicyMismatchN = familyMap.get("EV_POLICY") || 0;
   const cooldownPolicyMismatchN = familyMap.get("COOLDOWN_POLICY") || 0;
   const strategyGateMismatchN = familyMap.get("STRATEGY_GATE") || 0;
+  const otherServerPolicyMismatchN = familyMap.get("OTHER_SERVER_POLICY") || 0;
   const sourceParityMismatchN = toNum(raw.source_parity_mismatch_n) || 0;
   const finalDownstreamMismatchN = toNum(raw.final_downstream_mismatch_n) || 0;
   const topFamily = byFamilyRows[0] || null;
@@ -437,6 +438,8 @@ function deriveCanonicalParityDiagnostics(parity = null) {
     ev_policy_mismatch_n: evPolicyMismatchN,
     cooldown_policy_mismatch_n: cooldownPolicyMismatchN,
     strategy_gate_mismatch_n: strategyGateMismatchN,
+    other_server_policy_mismatch_n: otherServerPolicyMismatchN,
+    by_actual_drop_reason_family: byFamilyRows.slice(0, 32),
     source_quality_pass: sourceParityMismatchN === 0,
     downstream_policy_pressure: finalDownstreamMismatchN > 0,
     downstream_ev_pressure: evPolicyMismatchN >= 2,

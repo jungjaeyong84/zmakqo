@@ -142,7 +142,7 @@ function explainSignalReason(reason) {
     DROP_AI_BIAS_NEUTRAL_SHORT_ONLY: "AI 중립 정책상 숏만 허용되어 롱 진입을 보류했습니다.",
     AI_BLOCK: "AI 판단이 진입 비허용으로 나와 진입을 보류했습니다.",
 
-    DROP_EV_GATE_TP1_PROB: "TP1 도달 확률 하한이 기준보다 낮아 진입을 보류했습니다.",
+    DROP_EV_GATE_TP1_PROB: "TP0/TP1/시간청산을 함께 반영한 기대값 하한이 기준보다 낮아 진입을 보류했습니다.",
     DROP_EV_GATE_BARS_MISSING: "EV 판단에 필요한 최근 봉 데이터가 부족해 진입을 보류했습니다.",
     DROP_WAIT_ONE_BAR_TIMING: "현재 봉이 과열된 추격봉으로 보여 다음 봉까지 진입을 연기했습니다.",
     DROP_CHASE_ENTRY_QUALITY: "최근 봉이 과확장 추격 구간으로 판단되어 진입을 보류했습니다.",

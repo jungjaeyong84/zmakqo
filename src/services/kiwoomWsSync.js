@@ -112,6 +112,7 @@ async function handleOrderFill(values) {
     executionMode: "LIVE",
     liveOrderId: orderId || null,
     execQtyBase: fillQty,
+    decisionReason: "KIWOOM_WS_FILL",
   });
 
   await markIdem(idemKey, { exchange: "KIWOOM", symbol, type: "FILL", created_at: nowIso() });

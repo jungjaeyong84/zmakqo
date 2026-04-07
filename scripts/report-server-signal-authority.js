@@ -35,6 +35,16 @@ function writeJson(filePath, payload) {
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`);
 }
 
+function readCycleId(doc = null) {
+  if (!doc || typeof doc !== "object") return null;
+  const candidates = [doc.cycle_id, doc.source_cycle_id, doc.generation_id, doc.summary && doc.summary.cycle_id];
+  for (const value of candidates) {
+    const s = String(value || "").trim();
+    if (s) return s;
+  }
+  return null;
+}
+
 function main() {
   const meta = nowMeta();
   const signalsRecent = readJsonSafe(SIGNALS_RECENT_PATH, null);
@@ -44,6 +54,7 @@ function main() {
     ok: true,
     generated_at: meta.iso,
     generated_at_kst: meta.kst,
+    cycle_id: readCycleId(parityReport),
     inputs: {
       signals_recent: SIGNALS_RECENT_PATH,
       parity_latest: PARITY_LATEST_PATH,

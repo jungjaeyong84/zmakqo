@@ -88,6 +88,9 @@ function hasEvGateObservation(row) {
   return features.ev_gate_enabled === true
     || features.ev_gate_tp1_reach_prob !== undefined
     || features.ev_gate_tp1_reach_prob_lower_bound !== undefined
+    || features.ev_gate_exit_value_prob !== undefined
+    || features.ev_gate_exit_value_prob_lower_bound !== undefined
+    || features.ev_gate_policy_basis !== undefined
     || features.ev_gate_action !== undefined
     || features.ev_gate_skipped === true;
 }
@@ -160,6 +163,7 @@ function buildEvGateBreakdowns(rows = []) {
     by_observation_source: countBy(scoped, (x) => String(x.observation_source || 'UNKNOWN').toUpperCase()),
     by_event: countBy(scoped, (x) => eventDisplay(x.event, x.side)),
     by_dir: countBy(scoped, (x) => String((x.features_json && x.features_json.ev_gate_dir) || x.side || 'UNKNOWN').toUpperCase()),
+    by_policy_basis: countBy(scoped, (x) => String((x.features_json && x.features_json.ev_gate_policy_basis) || 'UNKNOWN').toUpperCase()),
     by_plan_source: countBy(scoped, (x) => String((x.features_json && x.features_json.ev_gate_plan_source) || 'UNKNOWN').toUpperCase()),
     by_exit_profile: countBy(scoped, (x) => String((x.features_json && x.features_json.ev_gate_exit_profile) || 'UNKNOWN').toUpperCase()),
     by_policy_version: countBy(scoped, (x) => String((x.features_json && x.features_json.ev_gate_policy_version) || 'UNKNOWN').toUpperCase()),
@@ -181,8 +185,11 @@ function buildRecentEvGateExamples(rows = []) {
       symbol: x.symbol_or_pair_id || null,
       event: x.event || null,
       side: x.side || null,
+      policy_basis: x.features_json && x.features_json.ev_gate_policy_basis,
       tp1_reach_prob: x.features_json && x.features_json.ev_gate_tp1_reach_prob,
       tp1_reach_prob_lower_bound: x.features_json && x.features_json.ev_gate_tp1_reach_prob_lower_bound,
+      exit_value_prob: x.features_json && x.features_json.ev_gate_exit_value_prob,
+      exit_value_prob_lower_bound: x.features_json && x.features_json.ev_gate_exit_value_prob_lower_bound,
       atr_pct: x.features_json && x.features_json.ev_gate_atr_pct,
       plan_source: x.features_json && x.features_json.ev_gate_plan_source,
       exit_profile: x.features_json && x.features_json.ev_gate_exit_profile,
@@ -317,6 +324,8 @@ async function main() {
 
   const probStats = summarizeNumbers(evDrops.map((x) => x.features_json && x.features_json.ev_gate_tp1_reach_prob));
   const lowerBoundStats = summarizeNumbers(evDrops.map((x) => x.features_json && x.features_json.ev_gate_tp1_reach_prob_lower_bound));
+  const exitProbStats = summarizeNumbers(evDrops.map((x) => x.features_json && x.features_json.ev_gate_exit_value_prob));
+  const exitLowerBoundStats = summarizeNumbers(evDrops.map((x) => x.features_json && x.features_json.ev_gate_exit_value_prob_lower_bound));
   const atrStats = summarizeNumbers(evDrops.map((x) => x.features_json && x.features_json.ev_gate_atr_pct));
 
   const breakdowns = buildEvGateBreakdowns(evTotalDrops);
@@ -359,6 +368,8 @@ async function main() {
       ev_drop_rate_of_scoped_entries: scopedSignals.length > 0 ? (evTotalDrops.length / scopedSignals.length) : null,
     },
     stats: {
+      exit_value_prob: exitProbStats,
+      exit_value_prob_lower_bound: exitLowerBoundStats,
       tp1_reach_prob: probStats,
       tp1_reach_prob_lower_bound: lowerBoundStats,
       atr_pct: atrStats,
@@ -402,13 +413,15 @@ async function main() {
   lines.push(`- source observations: signal ${payload.summary.ev_gate_signal_observations}, intent ${payload.summary.ev_gate_intent_observations}, drop ${payload.summary.ev_gate_drop_observations}, fill ${payload.summary.ev_gate_fill_observations}, trade ${payload.summary.ev_gate_trade_observations}`);
   lines.push(`- all drops: ${payload.summary.all_drops}`);
   lines.push(`- ev gate total drops: ${payload.summary.ev_gate_drops_total}`);
-  lines.push(`- ev gate tp1-prob drops: ${payload.summary.ev_gate_prob_drops}`);
+  lines.push(`- ev gate compatibility-code drops: ${payload.summary.ev_gate_prob_drops}`);
   lines.push(`- ev gate bars-missing drops: ${payload.summary.ev_gate_bars_missing_drops}`);
   lines.push(`- ev drop share of all drops: ${pctString(payload.summary.ev_drop_share_of_all_drops)}`);
   lines.push(`- ev drop rate of evaluated entries: ${pctString(payload.summary.ev_drop_rate_of_evaluated_entries)}`);
   lines.push(`- ev drop rate of scoped entries: ${pctString(payload.summary.ev_drop_rate_of_scoped_entries)}`);
   lines.push('');
   lines.push('## 수치');
+  lines.push(`- exit_value_prob avg/min/max: ${numString(exitProbStats.avg)} / ${numString(exitProbStats.min)} / ${numString(exitProbStats.max)}`);
+  lines.push(`- exit_value_lb avg/min/max: ${numString(exitLowerBoundStats.avg)} / ${numString(exitLowerBoundStats.min)} / ${numString(exitLowerBoundStats.max)}`);
   lines.push(`- tp1_prob avg/min/max: ${numString(probStats.avg)} / ${numString(probStats.min)} / ${numString(probStats.max)}`);
   lines.push(`- tp1_prob_lb avg/min/max: ${numString(lowerBoundStats.avg)} / ${numString(lowerBoundStats.min)} / ${numString(lowerBoundStats.max)}`);
   lines.push(`- atr_pct avg/min/max: ${numString(atrStats.avg)} / ${numString(atrStats.min)} / ${numString(atrStats.max)}`);
@@ -433,6 +446,7 @@ async function main() {
   if (!breakdowns.by_policy_source.length && !breakdowns.by_market_action.length) {
     lines.push('- 없음');
   } else {
+    if (breakdowns.by_policy_basis.length) lines.push(`- policy basis: ${breakdowns.by_policy_basis.slice(0, 5).map((row) => `${row.key}:${row.count}`).join(', ')}`);
     if (breakdowns.by_policy_version.length) lines.push(`- policy version: ${breakdowns.by_policy_version.slice(0, 5).map((row) => `${row.key}:${row.count}`).join(', ')}`);
     if (breakdowns.by_policy_source.length) lines.push(`- policy source: ${breakdowns.by_policy_source.slice(0, 5).map((row) => `${row.key}:${row.count}`).join(', ')}`);
     if (breakdowns.by_market_state.length) lines.push(`- market state: ${breakdowns.by_market_state.slice(0, 5).map((row) => `${row.key}:${row.count}`).join(', ')}`);
@@ -454,7 +468,7 @@ async function main() {
     lines.push('- 없음');
   } else {
     for (const row of recentExamples) {
-      lines.push(`- ${row.kst} | ${row.symbol} ${eventDisplay(row.event, row.side)} | tp1_prob ${numString(row.tp1_reach_prob)} | tp1_lb ${numString(row.tp1_reach_prob_lower_bound)} | atr_pct ${numString(row.atr_pct)} | ${row.plan_source}/${row.exit_profile} | ${row.policy_version || 'N/A'}/${row.policy_source || 'N/A'} | ${row.market_state || 'N/A'}/${row.market_action || 'N/A'}`);
+      lines.push(`- ${row.kst} | ${row.symbol} ${eventDisplay(row.event, row.side)} | exit_prob ${numString(row.exit_value_prob)} | exit_lb ${numString(row.exit_value_prob_lower_bound)} | tp1_prob ${numString(row.tp1_reach_prob)} | tp1_lb ${numString(row.tp1_reach_prob_lower_bound)} | atr_pct ${numString(row.atr_pct)} | ${row.policy_basis || 'N/A'} | ${row.plan_source}/${row.exit_profile} | ${row.policy_version || 'N/A'}/${row.policy_source || 'N/A'} | ${row.market_state || 'N/A'}/${row.market_action || 'N/A'}`);
     }
   }
   lines.push('');

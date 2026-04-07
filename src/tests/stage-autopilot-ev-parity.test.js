@@ -40,6 +40,10 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
   assert.strictEqual(evParityCandidate.nextSettings.ev_gate_tp1_prob_min_real, 0.515);
   assert.strictEqual(evParityCandidate.nextSettings.ev_gate_tp1_prob_full, 0.59);
   assert.strictEqual(evParityCandidate.nextSettings.ev_gate_tp1_prob_kill, 0.5);
+  assert.strictEqual(evParityCandidate.canonical_policy_basis, "TP_COMPOSITE_EXIT_VALUE_V1");
+  assert.strictEqual(evParityCandidate.threshold_metric, "exit_value_lower_bound");
+  assert.ok(Array.isArray(evParityCandidate.legacy_threshold_setting_keys));
+  assert.ok(evParityCandidate.legacy_threshold_setting_keys.includes("ev_gate_tp1_prob_min"));
 
   console.log("STAGE_AUTOPILOT_EV_PARITY_TEST_OK");
 })();

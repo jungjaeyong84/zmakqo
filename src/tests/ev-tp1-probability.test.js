@@ -53,7 +53,12 @@ function run() {
   assert.ok(strongLong.probability > 0.55, `strongLong.probability=${strongLong.probability}`);
   assert.ok(strongLong.lowerBound > 0.55, `strongLong.lowerBound=${strongLong.lowerBound}`);
   assert.strictEqual(strongLong.policy_version, "TP1_WEIGHT_V1");
+  assert.strictEqual(strongLong.canonical_policy_version, "EV_COMPOSITE_EXIT_VALUE_V1");
+  assert.strictEqual(strongLong.compatibility_policy_version, "TP1_WEIGHT_V1");
   assert.strictEqual(strongLong.policy_source, "DEFAULT");
+  assert.strictEqual(strongLong.policy_basis, "TP_COMPOSITE_EXIT_VALUE_V1");
+  assert.ok(strongLong.tp0_probability > 0.55, `strongLong.tp0_probability=${strongLong.tp0_probability}`);
+  assert.ok(strongLong.exit_value_lower_bound > 0.55, `strongLong.exit_value_lower_bound=${strongLong.exit_value_lower_bound}`);
 
   const weakLong = __test.estimateTp1ReachProbability({
     bars: makeBars({ direction: "LONG", driftPct: 0.05, rangePct: 1.35, closeControl: 0.40, adverseEvery: 2 }),
@@ -111,7 +116,10 @@ function run() {
   });
   assert.strictEqual(weightedRun.ok, true);
   assert.strictEqual(weightedRun.policy_version, "TP1_WEIGHT_V1_OVERRIDE");
+  assert.strictEqual(weightedRun.canonical_policy_version, "EV_COMPOSITE_EXIT_VALUE_V1_OVERRIDE");
+  assert.strictEqual(weightedRun.compatibility_policy_version, "TP1_WEIGHT_V1_OVERRIDE");
   assert.strictEqual(weightedRun.policy_source, "DIRECT_OVERRIDE");
+  assert.strictEqual(weightedRun.policy_basis, "TP_COMPOSITE_EXIT_VALUE_V1");
   assert.strictEqual(weightedRun.componentWeights.target_ease, 2.4);
   assert.strictEqual(weightedRun.componentWeights.chase_safety, 0.5);
 

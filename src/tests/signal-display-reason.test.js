@@ -92,7 +92,7 @@ const { buildSignalDisplayReason, classifySignalReasonStage } = require('../util
     { reason: 'DROP_EV_GATE_TP1_PROB' },
     {}
   );
-  assert.strictEqual(evReason.reason_ko, 'TP1 도달 확률 하한이 기준보다 낮아 진입을 보류했습니다.');
+  assert.strictEqual(evReason.reason_ko, 'TP0/TP1/시간청산을 함께 반영한 기대값 하한이 기준보다 낮아 진입을 보류했습니다.');
 
   const waitStage = classifySignalReasonStage('DROP_WAIT_ONE_BAR_TIMING');
   assert.strictEqual(waitStage.step, 5);

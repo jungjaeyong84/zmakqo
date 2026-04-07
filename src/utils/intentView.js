@@ -1,5 +1,7 @@
 "use strict";
 
+const { isIntentCanceledLikeStatus, resolveIntentStatusFamily } = require("./intentStatus");
+
 function toMsSafe(v) {
   if (v == null) return null;
   const n = Number(v);
@@ -22,6 +24,11 @@ function resolveIntentStatusForView(intent, refMs = Date.now()) {
   return status;
 }
 
+function resolveIntentStatusFamilyForView(intent, refMs = Date.now()) {
+  const status = resolveIntentStatusForView(intent, refMs);
+  return resolveIntentStatusFamily(status);
+}
+
 function isActivePendingIntent(intent, refMs = Date.now()) {
   return resolveIntentStatusForView(intent, refMs) === "PENDING";
 }
@@ -30,5 +37,7 @@ module.exports = {
   toMsSafe,
   isPendingIntentExpired,
   resolveIntentStatusForView,
+  resolveIntentStatusFamilyForView,
   isActivePendingIntent,
+  isIntentCanceledLikeStatus,
 };

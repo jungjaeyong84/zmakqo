@@ -416,7 +416,7 @@ const VALUE_TEXT_MAP = {
   FINAL_DOWNSTREAM_MISMATCH: "최종 실행 결과가 다름",
   SOURCE_DECISION_MISMATCH: "정본 판단 단계가 다름",
   EV_POLICY: "기대값 정책",
-  DROP_EV_GATE_TP1_PROB: "기대값 게이트(TP1 확률)",
+  DROP_EV_GATE_TP1_PROB: "기대값 게이트(TP 복합 기대값)",
   PINE_DROP_STALE_POS_TO_ENTRY: "기존 포지션 영향으로 엔트리 미진행",
   COOLDOWN_POLICY: "쿨다운 정책",
   STRATEGY_GATE: "전략 게이트",

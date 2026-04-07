@@ -23,6 +23,7 @@ const DEPENDENT_REPORT_SCRIPTS = Object.freeze([
   "report-server-signal-quality.js",
   "report-server-signal-runtime.js",
   "report-server-signal-cutover-readiness.js",
+  "report-best-self-evolution-ev-gate-composite-policy.js",
   "report-best-self-evolution-openclaw-autonomy-contract.js",
   "report-best-self-evolution-loop-monitor.js",
 ]);
