@@ -9,7 +9,7 @@ const { patchIntent } = require("../storage/orderIntentsPaper");
 const { buildTradeId } = require("../storage/tradesPaper");
 const { getExitRulesForExchange, resolveExitRulesForPosition } = require("../engine/signalEngine");
 const { sendTradeExecutionAlert } = require("./tradeExecutionAlert");
-const { ensureExitWorkerOn } = require("./exitWorkerScale");
+const { triggerExitWorkerRun } = require("./exitWorkerClient");
 const { sendAlert } = require("../utils/alerts");
 const { resolvePositionSideFromPosition } = require("../utils/positionSide");
 const { isIntentCanceledLikeStatus } = require("../utils/intentStatus");
@@ -280,7 +280,7 @@ async function markTpP1DoneFromExternalFill({ exchange, symbol, execPrice, execT
     `trail_high=${nextTrailHigh ?? "NA"} trail_low=${nextTrailLow ?? "NA"}`
   );
 
-  ensureExitWorkerOn({
+  triggerExitWorkerRun({
     reason: `TP1_TRAIL_ARMED_${String(exchange || "").toUpperCase()}_${String(symbol || "").toUpperCase()}`,
   }).catch((e) => {
     console.warn("[EXIT_WORKER_SCALE_ON_FAIL][TP1_SYNC]", e && e.message ? e.message : String(e));

@@ -72,7 +72,7 @@ const {
   fetchFuturesPositionMode,
   calcAveragePrice: calcBinanceAveragePrice
 } = require("../exchanges/binanceFuturesPrivate");
-const { ensureExitWorkerOn } = require("../services/exitWorkerScale");
+const { triggerExitWorkerRun } = require("../services/exitWorkerClient");
 
 const POS_SIZE_EPSILON = (() => {
   const raw = Number(process.env.POS_SIZE_EPSILON);
@@ -7163,7 +7163,7 @@ async function executeLiveFuturesOrder({
     return { ok: false, mode: "LIVE", reason: "NO_POSITION" };
   }
   if (!isExit && !liveCfg.liveDryRun) {
-    ensureExitWorkerOn({
+    triggerExitWorkerRun({
       reason: `ENTRY_${String(exchange || "").toUpperCase()}_${String(symbol || "").toUpperCase()}`,
     }).catch((e) => {
       const errText = e && e.message ? e.message : String(e);
@@ -9203,7 +9203,7 @@ async function runPaperUpbitForBar({
         `event=${ev} fill_price=${fillPrice ?? "NA"} trail_high=${nextTrailHigh ?? "NA"} ` +
         `trail_low=${nextTrailLow ?? "NA"} intent_id=${it.intent_id || "NA"}`
       );
-      ensureExitWorkerOn({
+      triggerExitWorkerRun({
         reason: `TP1_TRAIL_ARMED_${String(exchange || "").toUpperCase()}_${String(symbol || "").toUpperCase()}`,
       }).catch((e) => {
         console.warn("[EXIT_WORKER_SCALE_ON_FAIL][TP1_INTENT_FILL]", e && e.message ? e.message : String(e));
@@ -11973,7 +11973,7 @@ async function runPaperFuturesForBar({
         `event=${ev} fill_price=${fillPrice ?? "NA"} trail_high=${nextTrailHigh ?? "NA"} ` +
         `trail_low=${nextTrailLow ?? "NA"} intent_id=${it.intent_id || "NA"}`
       );
-      ensureExitWorkerOn({
+      triggerExitWorkerRun({
         reason: `TP1_TRAIL_ARMED_${String(exchange || "").toUpperCase()}_${String(symbol || "").toUpperCase()}`,
       }).catch((e) => {
         console.warn("[EXIT_WORKER_SCALE_ON_FAIL][TP1_INTENT_FILL]", e && e.message ? e.message : String(e));

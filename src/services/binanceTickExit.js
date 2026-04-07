@@ -978,11 +978,95 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
 
   return {
     ok: true,
+    active_count: active.length,
     checked,
     triggered,
     skipped_cooldown: skippedCooldown,
     fast_lane_active: fastLaneActive,
     fast_lane_symbols: Array.from(fastLaneSymbols),
+  };
+}
+
+async function runBinanceTickExitBurst({
+  maxDurationMs,
+  maxIterations,
+  intervalMs,
+  symbolCooldownMs,
+  fastLaneEnabled,
+  fastLaneIntervalMs,
+  nearPct,
+} = {}) {
+  if (!env.tickExit || env.tickExit.enabled !== true) {
+    return { ok: false, skipped: true, reason: "DISABLED" };
+  }
+
+  const intervalMsResolved = normalizeIntervalMs(
+    intervalMs != null ? intervalMs : (env.tickExit && env.tickExit.intervalMs),
+    10000
+  );
+  const fastLaneIntervalResolved = normalizeIntervalMs(
+    fastLaneIntervalMs != null ? fastLaneIntervalMs : (env.tickExit && env.tickExit.fastLaneIntervalMs),
+    1000
+  );
+  const symbolCooldownResolved = normalizeIntervalMs(
+    symbolCooldownMs != null ? symbolCooldownMs : (env.tickExit && env.tickExit.symbolCooldownMs),
+    20000
+  );
+  const nearPctResolved = Number.isFinite(Number(nearPct))
+    ? Number(nearPct)
+    : Number(env.tickExit && env.tickExit.nearPct || 0.003);
+  const fastLaneEnabledResolved = fastLaneEnabled != null
+    ? fastLaneEnabled === true
+    : (env.tickExit && env.tickExit.fastLaneEnabled !== false);
+  const maxDurationResolved = Math.max(5000, Math.floor(Number(maxDurationMs || 55000)));
+  const maxIterationsResolved = Math.max(1, Math.floor(Number(maxIterations || 20)));
+  const startedAt = nowMs();
+  const leaseTtlMs = Math.max(
+    TICK_EXIT_LEASE_MIN_TTL_MS,
+    maxDurationResolved + Math.max(intervalMsResolved, fastLaneIntervalResolved) * 2
+  );
+  const lease = await acquireTickExitLease({ ttlMs: leaseTtlMs });
+  if (!lease.ok) {
+    return { ok: false, skipped: true, reason: "LEASE_FAIL", error: lease.error || "UNKNOWN" };
+  }
+  if (lease.acquired !== true) {
+    return { ok: true, skipped: true, reason: "LEASE_HELD", holder: lease.holder || null };
+  }
+
+  let iterations = 0;
+  let nextDelayMs = intervalMsResolved;
+  let lastResult = null;
+
+  try {
+    while (iterations < maxIterationsResolved) {
+      lastResult = await runBinanceTickExitOnce({
+        nearPct: nearPctResolved,
+        symbolCooldownMs: symbolCooldownResolved,
+      });
+      iterations += 1;
+
+      const activeCount = Number(lastResult && lastResult.active_count) || 0;
+      const fastLaneActive = fastLaneEnabledResolved && lastResult && lastResult.fast_lane_active === true;
+      nextDelayMs = fastLaneActive
+        ? Math.min(intervalMsResolved, fastLaneIntervalResolved)
+        : intervalMsResolved;
+
+      if (activeCount <= 0) break;
+      if ((nowMs() - startedAt + nextDelayMs) >= maxDurationResolved) break;
+      await sleep(nextDelayMs);
+    }
+  } finally {
+    await releaseTickExitLease();
+  }
+
+  const activeCount = Number(lastResult && lastResult.active_count) || 0;
+  return {
+    ok: true,
+    iterations,
+    elapsed_ms: nowMs() - startedAt,
+    next_delay_ms: nextDelayMs,
+    reschedule_recommended: activeCount > 0,
+    last_result: lastResult,
   };
 }
 
@@ -1148,6 +1232,7 @@ module.exports = {
   startBinanceTickExitLoop,
   stopBinanceTickExitLoop,
   runBinanceTickExitOnce,
+  runBinanceTickExitBurst,
   __test: {
     computeExitTriggers,
     shouldCheckNear,
