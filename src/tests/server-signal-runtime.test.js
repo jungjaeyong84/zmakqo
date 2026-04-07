@@ -37,11 +37,15 @@ const { deriveServerSignalRuntime } = require("../../src/utils/serverSignalRunti
   assert.strictEqual(report.summary.ev_gate_tp1_prob_min_by_market_report_only_enabled, true);
   assert.strictEqual(report.summary.ev_gate_tp1_prob_min_by_market_report_only_n, 2);
   assert.strictEqual(report.summary.ev_gate_unknown_gen_relax_enabled, true);
+  assert.strictEqual(report.summary.ev_gate_unknown_gen_relax_mode, "REPORT_ONLY");
   assert.strictEqual(report.summary.ev_gate_unknown_gen_relax_active_window, true);
   assert.strictEqual(report.summary.ev_gate_unknown_gen_relax_window_hours, 6);
   assert.strictEqual(report.summary.ev_gate_unknown_gen_relax_review_after_hours, 4);
   assert.strictEqual(report.summary.ev_gate_unknown_gen_relax_auto_rollback_enabled, false);
   assert.strictEqual(report.summary.ev_gate_unknown_gen_relax_tp1_prob_min_delta, 0.04);
+  assert.strictEqual(report.current_status.ev_gate_unknown_gen_relax_enabled, true);
+  assert.strictEqual(report.current_status.ev_gate_unknown_gen_relax_mode, "REPORT_ONLY");
+  assert.strictEqual(report.current_status.ev_gate_unknown_gen_relax_review_after_hours, 4);
   assert.strictEqual(report.summary.pine_shadow_transition_progress_pct, 100);
   assert.strictEqual(report.current_status.execution_shadow_policy, "EXCLUDE_FROM_EXECUTION_DEFAULT");
   console.log("SERVER_SIGNAL_RUNTIME_TEST_OK");

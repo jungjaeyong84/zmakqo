@@ -4119,6 +4119,7 @@ function resolveEvGateUnknownGenRelaxMode(sysCfg = {}) {
     enabled,
     status,
     active: enabled,
+    enforcementMode: enabled ? "REPORT_ONLY" : "DISABLED",
     startMs,
     ageHours: Number.isFinite(ageHours) ? Number(ageHours.toFixed(4)) : null,
     windowHours,
@@ -4225,6 +4226,7 @@ function resolveEvGateConfig(sysCfg = {}, exchange = "", market = "") {
     unknownGenRelaxEnabled: unknownGenRelaxMode.enabled,
     unknownGenRelaxStatus: unknownGenRelaxMode.status,
     unknownGenRelaxActive: unknownGenRelaxMode.active,
+    unknownGenRelaxEnforcementMode: unknownGenRelaxMode.enforcementMode,
     unknownGenRelaxStartMs: unknownGenRelaxMode.startMs,
     unknownGenRelaxAgeHours: unknownGenRelaxMode.ageHours,
     unknownGenRelaxWindowHours: unknownGenRelaxMode.windowHours,
@@ -4484,6 +4486,7 @@ async function evaluateEvEntryGate({
     ev_gate_unknown_gen_relax_enabled: cfg.unknownGenRelaxEnabled === true,
     ev_gate_unknown_gen_relax_status: cfg.unknownGenRelaxStatus || "DISABLED",
     ev_gate_unknown_gen_relax_active: cfg.unknownGenRelaxActive === true,
+    ev_gate_unknown_gen_relax_enforcement_mode: cfg.unknownGenRelaxEnforcementMode || "DISABLED",
     ev_gate_unknown_gen_relax_applied: relaxContext.applies === true,
     ev_gate_unknown_gen_relax_window_hours: Number(cfg.unknownGenRelaxWindowHours) || null,
     ev_gate_unknown_gen_relax_review_after_hours: Number(cfg.unknownGenRelaxReviewAfterHours) || null,
@@ -4551,11 +4554,22 @@ async function evaluateEvEntryGate({
   const action = decision.action;
   const qtyScale = decision.qtyScale;
   const dropReason = decision.reason;
+  const reportOnlyApplied = relaxContext.applies === true && cfg.unknownGenRelaxEnforcementMode === "REPORT_ONLY";
+  const effectiveAction = reportOnlyApplied ? "REPORT_ONLY" : action;
+  const effectiveQtyScale = reportOnlyApplied ? 1 : qtyScale;
+  const effectiveDropReason = reportOnlyApplied ? null : dropReason;
 
   const detail = {
     ...baseDetail,
-    ev_gate_action: action,
-    ev_gate_qty_scale: qtyScale,
+    ev_gate_action: effectiveAction,
+    ev_gate_qty_scale: effectiveQtyScale,
+    ev_gate_raw_action: action,
+    ev_gate_raw_qty_scale: qtyScale,
+    ev_gate_raw_reason: dropReason || null,
+    ev_gate_report_only_applied: reportOnlyApplied,
+    ev_gate_report_only_scope: reportOnlyApplied ? "UNKNOWN_GEN" : null,
+    ev_gate_report_only_would_drop: reportOnlyApplied && action === "DROP",
+    ev_gate_report_only_would_reduce: reportOnlyApplied && action !== "DROP" && Number.isFinite(qtyScale) && qtyScale > 0 && qtyScale < 0.9999,
     ev_gate_tp0_reach_prob: estimate.tp0_probability,
     ev_gate_tp0_reach_prob_lower_bound: estimate.tp0_lower_bound,
     ev_gate_tp1_reach_prob: estimate.probability,
@@ -4600,9 +4614,9 @@ async function evaluateEvEntryGate({
     ev_gate_exit_value_components: estimate.exit_value_components || null,
   };
 
-  if (dropReason) return { ok: false, action, qtyScale, reason: dropReason, detail };
+  if (effectiveDropReason) return { ok: false, action: effectiveAction, qtyScale: effectiveQtyScale, reason: effectiveDropReason, detail };
 
-  return { ok: true, action, qtyScale, detail };
+  return { ok: true, action: effectiveAction, qtyScale: effectiveQtyScale, detail };
 }
 
 function evaluateEntryQualityGate({ intent, intentDir, eventUpper, features, cfg } = {}) {

@@ -152,6 +152,7 @@ async function run() {
   assert.strictEqual(unknownGenRelaxCfg.unknownGenRelaxEnabled, true);
   assert.strictEqual(unknownGenRelaxCfg.unknownGenRelaxStatus, "ACTIVE");
   assert.strictEqual(unknownGenRelaxCfg.unknownGenRelaxActive, true);
+  assert.strictEqual(unknownGenRelaxCfg.unknownGenRelaxEnforcementMode, "REPORT_ONLY");
   assert.strictEqual(unknownGenRelaxCfg.unknownGenRelaxWindowHours, 6);
   assert.strictEqual(unknownGenRelaxCfg.unknownGenRelaxReviewAfterHours, 4);
   assert.strictEqual(unknownGenRelaxCfg.unknownGenRelaxMinDelta, 0.04);
@@ -343,8 +344,38 @@ async function run() {
   assert.strictEqual(relaxedEarlyLong.detail.ev_gate_tp1_prob_kill, 0.48);
   assert.strictEqual(relaxedEarlyLong.detail.ev_gate_signal_subtype, "GEN");
   assert.strictEqual(relaxedEarlyLong.detail.ev_gate_market_state, "UNKNOWN");
+  assert.strictEqual(relaxedEarlyLong.detail.ev_gate_unknown_gen_relax_enforcement_mode, "REPORT_ONLY");
   assert.strictEqual(relaxedEarlyLong.detail.ev_gate_unknown_gen_relax_auto_rollback_enabled, false);
-  assert.notStrictEqual(relaxedEarlyLong.detail.ev_gate_action, "DROP");
+  assert.strictEqual(relaxedEarlyLong.detail.ev_gate_action, "REPORT_ONLY");
+  assert.strictEqual(relaxedEarlyLong.detail.ev_gate_raw_action, "ALLOW");
+  assert.strictEqual(relaxedEarlyLong.detail.ev_gate_report_only_applied, true);
+  assert.strictEqual(relaxedEarlyLong.qtyScale, 1);
+
+  const reportOnlyDropUnknownGen = await __test.evaluateEvEntryGate({
+    exchange: "BINANCEFUT",
+    symbol: "XRPUSDT",
+    tf: "15m",
+    barCloseMs: 1_700_000_000_000 + (11 * 900_000),
+    intent: "ENTRY",
+    intentDir: "SHORT",
+    eventUpper: "EARLY_SHORT",
+    features: {
+      event_group: "ENTRY",
+      event_subtype: "GEN",
+      market_state_summary_state: "UNKNOWN",
+    },
+    cfg: unknownGenRelaxCfg,
+    bars: makeBars({ direction: "SHORT", driftPct: 0.05, rangePct: 0.6, closeControl: 0.2, adverseEvery: 2 }),
+  });
+  assert.strictEqual(reportOnlyDropUnknownGen.ok, true);
+  assert.strictEqual(reportOnlyDropUnknownGen.action, "REPORT_ONLY");
+  assert.strictEqual(reportOnlyDropUnknownGen.qtyScale, 1);
+  assert.strictEqual(reportOnlyDropUnknownGen.detail.ev_gate_report_only_applied, true);
+  assert.strictEqual(reportOnlyDropUnknownGen.detail.ev_gate_report_only_scope, "UNKNOWN_GEN");
+  assert.strictEqual(reportOnlyDropUnknownGen.detail.ev_gate_report_only_would_drop, true);
+  assert.strictEqual(reportOnlyDropUnknownGen.detail.ev_gate_raw_action, "DROP");
+  assert.strictEqual(reportOnlyDropUnknownGen.detail.ev_gate_raw_reason, "DROP_EV_GATE_TP1_PROB");
+  assert.strictEqual(reportOnlyDropUnknownGen.detail.ev_gate_action, "REPORT_ONLY");
 
   const allowCoreShort = await __test.evaluateEvEntryGate({
     exchange: "BINANCEFUT",
