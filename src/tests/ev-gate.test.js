@@ -377,6 +377,30 @@ async function run() {
   assert.strictEqual(reportOnlyDropUnknownGen.detail.ev_gate_raw_reason, "DROP_EV_GATE_TP1_PROB");
   assert.strictEqual(reportOnlyDropUnknownGen.detail.ev_gate_action, "REPORT_ONLY");
 
+  const reportOnlyExplicitGenBearState = await __test.evaluateEvEntryGate({
+    exchange: "BINANCEFUT",
+    symbol: "DOGEUSDT",
+    tf: "15m",
+    barCloseMs: 1_700_000_000_000 + (11 * 900_000),
+    intent: "ENTRY",
+    intentDir: "SHORT",
+    eventUpper: "SHORT",
+    features: {
+      event_group: "UNKNOWN",
+      event_subtype: "GEN",
+      event_intent: "ENTRY",
+      market_state: "BEAR",
+    },
+    cfg: unknownGenRelaxCfg,
+    bars: makeBars({ direction: "SHORT", driftPct: 0.05, rangePct: 0.6, closeControl: 0.2, adverseEvery: 2 }),
+  });
+  assert.strictEqual(reportOnlyExplicitGenBearState.ok, true);
+  assert.strictEqual(reportOnlyExplicitGenBearState.action, "REPORT_ONLY");
+  assert.strictEqual(reportOnlyExplicitGenBearState.detail.ev_gate_signal_subtype, "GEN");
+  assert.strictEqual(reportOnlyExplicitGenBearState.detail.ev_gate_market_state, "BEAR");
+  assert.strictEqual(reportOnlyExplicitGenBearState.detail.ev_gate_report_only_applied, true);
+  assert.strictEqual(reportOnlyExplicitGenBearState.detail.ev_gate_raw_reason, "DROP_EV_GATE_TP1_PROB");
+
   const reportOnlyServerUnknownGen = await __test.evaluateEvEntryGate({
     exchange: "BINANCEFUT",
     symbol: "DOGEUSDT",

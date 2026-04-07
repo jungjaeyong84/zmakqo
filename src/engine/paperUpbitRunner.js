@@ -4296,12 +4296,13 @@ function resolveEvGateUnknownGenRelaxContext({ eventUpper, intent, features, cfg
   const baseTp1ProbMin = resolveEvGateTp1ProbMinForTier(cfg, tier);
   const isEntryLikeSignal = eventIntent === "ENTRY" || signalGroup === "ENTRY";
   const hasExplicitStageMetadata = !!(explicitSignalGroup || explicitSignalSubtype);
-  const isUnknownGenLikeSignal = signalSubtype === "GEN" || !hasExplicitStageMetadata;
+  const isExplicitGenSignal = signalSubtype === "GEN";
+  const isUnknownGenLikeSignal = isExplicitGenSignal || !hasExplicitStageMetadata;
   const applies = cfg
     && cfg.unknownGenRelaxActive === true
     && isEntryLikeSignal
     && isUnknownGenLikeSignal
-    && (!marketState || marketState === "UNKNOWN");
+    && (isExplicitGenSignal || !marketState || marketState === "UNKNOWN");
   const tp1ProbMin = applies
     ? Number(Math.max(0.30, Number(baseTp1ProbMin || 0) - Number(cfg.unknownGenRelaxMinDelta || 0)).toFixed(4))
     : baseTp1ProbMin;
