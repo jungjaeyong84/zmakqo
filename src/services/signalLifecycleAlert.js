@@ -175,6 +175,11 @@ function buildLifecycleTitle(payload = {}, kind = "RECEIVED") {
     if (isWebhook) return `${symbol} 웹훅 신호 수신`;
     return `${symbol} 신호 수신`;
   }
+  if (kind === "PROGRESSED") {
+    if (authoritative) return `${symbol} 서버 신호 진행`;
+    if (isWebhook) return `${symbol} 웹훅 신호 진행`;
+    return `${symbol} 신호 진행`;
+  }
   if (authoritative) return `${symbol} 서버 신호 드롭`;
   if (isWebhook) return `${symbol} 웹훅 신호 드롭`;
   return `${symbol} 신호 드롭`;
@@ -235,6 +240,34 @@ function buildDroppedMessage(payload = {}) {
   return { title, body: lines.join("\n"), severity: isTimingDefer ? "INFO" : "WARN" };
 }
 
+function buildProgressMessage(payload = {}) {
+  const symbol = String(payload.symbol || "").toUpperCase();
+  const event = String(payload.event || "-").toUpperCase();
+  if (!symbol || !event) return null;
+
+  const pendingReason = String(payload.pendingReason || "").trim().toUpperCase();
+  const nextStep = (() => {
+    if (pendingReason === "WAIT_NEXT_BAR") return "다음 바 집행 대기";
+    if (pendingReason === "EXEC_CURRENT_BAR" || pendingReason === "IMMEDIATE_ENTRY" || pendingReason === "IMMEDIATE_EXEC") return "주문/집행 진행";
+    return "주문 판단 진행";
+  })();
+
+  const title = buildLifecycleTitle(payload, "PROGRESSED");
+  const lines = [
+    `이벤트: ${formatEventTag(event)}`,
+    `출처: ${formatSignalSource(payload)}`,
+    `사이드: ${fmtSide(payload.side)}`,
+    `TF: ${String(payload.tf || "-")}`,
+    `수량: ${fmtQty(payload.qtyPct)}`,
+    `실행모드: ${String(payload.executionMode || "-")}`,
+    `진행 상태: ${String(payload.progressReason || "INTENT_CREATED")}`,
+    `다음 단계: ${nextStep}`,
+  ];
+  if (payload.signalId) lines.push(`signal_id: ${payload.signalId}`);
+  if (payload.scheduledExecBarCloseUtc) lines.push(`예정 집행시각: ${String(payload.scheduledExecBarCloseUtc)}`);
+  return { title, body: lines.join("\n"), severity: "INFO" };
+}
+
 function readJsonSafe(filePath, fallback = null) {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -282,12 +315,13 @@ function buildCompareMessage(payload = {}) {
     ? `있음${payload.webhookDecision ? ` (${payload.webhookDecision})` : ""}`
     : "없음";
   const serverCreated = payload.serverSignalCreated ? "예" : "아니오";
+  const serverReasonLabel = payload.serverSignalCreated ? "생성 후 상태" : "미생성 주원인";
   const lines = [
     `시장: ${symbol}`,
     `바시각: ${String(payload.barCloseUtc || "-")}`,
     `웹훅신호: ${webhookText}`,
     `서버신호 생성여부: ${serverCreated}`,
-    `미생성 주원인: ${String(payload.serverReason || "-")}`,
+    `${serverReasonLabel}: ${String(payload.serverReason || "-")}`,
     `드롭상위사유: ${String(payload.topDropReason || "-")}`,
   ];
   return {
@@ -300,6 +334,9 @@ function buildCompareMessage(payload = {}) {
 function shouldNotifyType(type) {
   if (type === "RECEIVED") {
     return toBool(process.env.SIGNAL_LIFECYCLE_ALERT_RECEIVED_ENABLED, true);
+  }
+  if (type === "PROGRESSED") {
+    return toBool(process.env.SIGNAL_LIFECYCLE_ALERT_PROGRESS_ENABLED, true);
   }
   if (type === "DROPPED") {
     return toBool(process.env.SIGNAL_LIFECYCLE_ALERT_DROPPED_ENABLED, true);
@@ -323,7 +360,9 @@ async function sendSignalLifecycleAlert({ type, ...payload } = {}) {
     return { ok: false, skipped: true, reason: "NON_LIVE_MODE" };
   }
 
-  const msg = type === "RECEIVED" ? buildReceivedMessage(payload) : buildDroppedMessage(payload);
+  const msg = type === "RECEIVED"
+    ? buildReceivedMessage(payload)
+    : (type === "PROGRESSED" ? buildProgressMessage(payload) : buildDroppedMessage(payload));
   if (!msg) return { ok: false, skipped: true, reason: "INVALID_MESSAGE" };
 
   const rawChannel = await resolveAlertChannel(exchange);
@@ -412,6 +451,10 @@ async function sendSignalReceivedAlert(payload = {}) {
   return sendSignalLifecycleAlert({ type: "RECEIVED", ...payload });
 }
 
+async function sendSignalProgressAlert(payload = {}) {
+  return sendSignalLifecycleAlert({ type: "PROGRESSED", ...payload });
+}
+
 async function sendSignalDroppedAlert(payload = {}) {
   return sendSignalLifecycleAlert({ type: "DROPPED", ...payload });
 }
@@ -419,12 +462,14 @@ async function sendSignalDroppedAlert(payload = {}) {
 module.exports = {
   sendSignalLifecycleAlert,
   sendSignalReceivedAlert,
+  sendSignalProgressAlert,
   sendSignalDroppedAlert,
   sendSignalCompareAlert,
   __test: {
     resolveAlertChannelFromSources,
     buildTelegramChannelFromChatId,
     buildReceivedMessage,
+    buildProgressMessage,
     buildDroppedMessage,
     buildCompareMessage,
     shouldSendCompareAlert,

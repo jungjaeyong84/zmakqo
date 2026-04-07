@@ -47,5 +47,17 @@ const { __test } = require("../services/signalLifecycleAlert");
   assert.ok(msg.body.includes("미생성 주원인: DROP_EV_GATE_TP1_PROB"));
   assert.ok(msg.body.includes("드롭상위사유: DROP_EV_GATE_TP1_PROB"));
 
+  const createdMsg = __test.buildCompareMessage({
+    symbol: "BNBUSDT",
+    barCloseUtc: "2026-04-07 14:45:00 KST",
+    webhookSeen: false,
+    serverSignalCreated: true,
+    serverReason: "INTENT_CREATED",
+    topDropReason: null,
+  });
+  assert.ok(createdMsg.body.includes("서버신호 생성여부: 예"));
+  assert.ok(createdMsg.body.includes("생성 후 상태: INTENT_CREATED"));
+  assert.ok(!createdMsg.body.includes("미생성 주원인: INTENT_CREATED"));
+
   console.log("SIGNAL_COMPARE_ALERT_TEST_OK");
 })();

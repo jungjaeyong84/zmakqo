@@ -45,7 +45,7 @@ const {
   resolveCanonicalEngineConfig: resolveCanonicalEngineConfigShared,
 } = require("../services/canonicalEngine");
 const { sendTradeExecutionAlert, sendTradeExecutionFailureAlert } = require("../services/tradeExecutionAlert");
-const { sendSignalReceivedAlert } = require("../services/signalLifecycleAlert");
+const { sendSignalReceivedAlert, sendSignalProgressAlert } = require("../services/signalLifecycleAlert");
 const { sendAlert } = require("../utils/alerts");
 const { estimateTp1ReachProbability } = require("../services/evTp1Probability");
 const { resolveWaitOneBarConfig, evaluateWaitOneBarTiming } = require("../services/waitOneBarPolicy");
@@ -10363,6 +10363,24 @@ async function runPaperUpbitForBar({
       decisionReason: s.reason || "INTENT_CREATED",
     });
 
+    sendSignalProgressAlert({
+      exchange,
+      symbol,
+      tf,
+      event: s.event,
+      side: s.side,
+      qtyPct: qtyFraction,
+      signalId: s.signal_id || (features && features.signal_id) || null,
+      executionMode: intentExecutionMode,
+      source: "SERVER",
+      authoritative: true,
+      progressReason: "INTENT_CREATED",
+      pendingReason,
+      scheduledExecBarCloseUtc: execBarCloseUtcForIntent,
+    }).catch((err) => {
+      console.warn("[SIGNAL_PROGRESS_ALERT_FAIL]", err?.message || err);
+    });
+
     // external signal consumed mark (operational-B)
     if (s.signal_id) {
       const lock = await tryLockSignal({ signalId: s.signal_id, runId });
@@ -13437,6 +13455,24 @@ async function runPaperFuturesForBar({
       ttlMs,
       execTf: execTfFinal,
       decisionReason: s.reason || "INTENT_CREATED",
+    });
+
+    sendSignalProgressAlert({
+      exchange,
+      symbol,
+      tf,
+      event: s.event,
+      side: s.side,
+      qtyPct: qtyFraction,
+      signalId: s.signal_id || (features && features.signal_id) || null,
+      executionMode: intentExecutionMode,
+      source: "SERVER",
+      authoritative: true,
+      progressReason: "INTENT_CREATED",
+      pendingReason,
+      scheduledExecBarCloseUtc: execBarCloseUtcForIntent,
+    }).catch((err) => {
+      console.warn("[SIGNAL_PROGRESS_ALERT_FAIL]", err?.message || err);
     });
 
     if (intent === "ADD" && (s.features._rescue_add_applied === true || s.features._replay_rescue_add_applied === true)) {

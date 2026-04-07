@@ -88,5 +88,20 @@ const { __test } = require("../services/signalLifecycleAlert");
   assert.ok(received.body.includes("이벤트: LONG"));
   assert.ok(received.body.includes("사이드: 매수"));
 
+  const progressed = __test.buildProgressMessage({
+    symbol: "BNBUSDT",
+    event: "SHORT",
+    side: "SELL",
+    tf: "15m",
+    qtyPct: 1,
+    executionMode: "LIVE",
+    progressReason: "INTENT_CREATED",
+    pendingReason: "WAIT_NEXT_BAR",
+    scheduledExecBarCloseUtc: "2026-04-07T06:00:00.000Z",
+  });
+  assert.ok(progressed.body.includes("진행 상태: INTENT_CREATED"));
+  assert.ok(progressed.body.includes("다음 단계: 다음 바 집행 대기"));
+  assert.ok(progressed.body.includes("예정 집행시각: 2026-04-07T06:00:00.000Z"));
+
   console.log("SIGNAL_LIFECYCLE_ALERT_CHANNEL_TEST_OK");
 })();
