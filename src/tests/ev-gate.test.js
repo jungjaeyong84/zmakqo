@@ -45,6 +45,7 @@ async function run() {
   assert.strictEqual(typeof __test.applyEvQtyScale, "function", "applyEvQtyScale export missing");
   assert.strictEqual(typeof __test.restoreFixedEntryQtyFraction, "function", "restoreFixedEntryQtyFraction export missing");
   assert.strictEqual(typeof __test.shouldBypassEvEntryGate, "function", "shouldBypassEvEntryGate export missing");
+  assert.strictEqual(typeof __test.buildSignalStageFeatures, "function", "buildSignalStageFeatures export missing");
   assert.strictEqual(typeof __test.evaluateEvEntryGate, "function", "evaluateEvEntryGate export missing");
 
   const cfg = __test.resolveEvGateConfig({
@@ -156,6 +157,17 @@ async function run() {
   assert.strictEqual(unknownGenRelaxCfg.unknownGenRelaxWindowHours, 6);
   assert.strictEqual(unknownGenRelaxCfg.unknownGenRelaxReviewAfterHours, 4);
   assert.strictEqual(unknownGenRelaxCfg.unknownGenRelaxMinDelta, 0.04);
+
+  const enrichedGenFeatures = __test.buildSignalStageFeatures({
+    event_group: "UNKNOWN",
+    event_subtype: "GEN",
+    features: {
+      market_state: "BEAR",
+    },
+  }, "ENTRY");
+  assert.strictEqual(enrichedGenFeatures.event_group, "UNKNOWN");
+  assert.strictEqual(enrichedGenFeatures.event_subtype, "GEN");
+  assert.strictEqual(enrichedGenFeatures.event_intent, "ENTRY");
 
   const rescuedDecision = __test.resolveEvGateDecision({
     cfg,

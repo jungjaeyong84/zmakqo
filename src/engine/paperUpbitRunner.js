@@ -146,6 +146,11 @@ function resolveOppositeCooldownWindow({ sysCfg = {}, posMeta = null } = {}) {
   };
 }
 
+function resolveOppositeCooldownWindowFromPosition({ sysCfg = {}, position = null } = {}) {
+  const posMeta = (position && typeof position.meta === "object") ? position.meta : null;
+  return resolveOppositeCooldownWindow({ sysCfg, posMeta });
+}
+
 function loadOpenClawMarketRegimeBoard(force = false) {
   const now = Date.now();
   if (!force && openclawMarketRegimeCache.ts && (now - openclawMarketRegimeCache.ts) < OPENCLAW_MARKET_REGIME_CACHE_TTL_MS) {
@@ -4384,6 +4389,19 @@ function shouldBypassEvEntryGate({ intent, features } = {}) {
   return String(intent || "").toUpperCase() === "ENTRY" && isManualRetryFeatures(features);
 }
 
+function buildSignalStageFeatures(signal = {}, intent = null) {
+  const base = (signal && signal.features && typeof signal.features === "object") ? { ...signal.features } : {};
+  const eventGroup = String(signal && signal.event_group || "").trim().toUpperCase() || null;
+  const eventSubtype = String(signal && signal.event_subtype || "").trim().toUpperCase() || null;
+  const eventIntent = String(
+    signal && (signal.event_intent || signal.intent || intent) || ""
+  ).trim().toUpperCase() || null;
+  if (eventGroup && !base.event_group && !base.signal_group && !base._event_group) base.event_group = eventGroup;
+  if (eventSubtype && !base.event_subtype && !base.signal_subtype && !base._event_subtype) base.event_subtype = eventSubtype;
+  if (eventIntent && !base.event_intent && !base._event_intent) base.event_intent = eventIntent;
+  return base;
+}
+
 function resolveEvGateUnknownGenRelaxContext({ eventUpper, intent, features, cfg, tier } = {}) {
   const f = (features && typeof features === "object") ? features : {};
   const derived = deriveGroupSubtype(eventUpper);
@@ -4408,7 +4426,11 @@ function resolveEvGateUnknownGenRelaxContext({ eventUpper, intent, features, cfg
     && cfg.unknownGenRelaxActive === true
     && isEntryLikeSignal
     && isUnknownGenLikeSignal
-    && (isExplicitGenSignal || !marketState || marketState === "UNKNOWN");
+    && (
+      isExplicitGenSignal
+      || !marketState
+      || marketState === "UNKNOWN"
+    );
   const tp1ProbMin = applies
     ? Number(Math.max(0.30, Number(baseTp1ProbMin || 0) - Number(cfg.unknownGenRelaxMinDelta || 0)).toFixed(4))
     : baseTp1ProbMin;
@@ -8108,16 +8130,16 @@ async function runPaperUpbitForBar({
   const tradeableSignalTypes = resolveTradeableSignalTypes(sysCfgEffective, exchange);
   const binanceFutOnly = exUpper.includes("BINANCEFUT");
   const maxHoldBars = binanceFutOnly ? resolveBinanceMaxHoldBars(sysCfgEffective, signalTfMs) : 0;
-  const oppositeCooldownWindow = binanceFutOnly
-    ? resolveOppositeCooldownWindow({ sysCfg: sysCfgEffective, posMeta })
-    : { bars: 0, timeMs: 0, cohort: null };
-  const oppositeCooldownBars = binanceFutOnly ? oppositeCooldownWindow.bars : 0;
-  const oppositeTimeCooldownMs = binanceFutOnly ? oppositeCooldownWindow.timeMs : 0;
   const sameDirectionTrailProfitCooldownCfg = resolveSameDirectionTrailProfitCooldownConfig(sysCfgEffective);
 
   // 1) 포지션 로드
   let pos = await getPosition({ exchange, symbol });
   let posMeta = (pos && typeof pos.meta === "object") ? { ...pos.meta } : {};
+  const oppositeCooldownWindow = binanceFutOnly
+    ? resolveOppositeCooldownWindowFromPosition({ sysCfg: sysCfgEffective, position: pos })
+    : { bars: 0, timeMs: 0, cohort: null };
+  const oppositeCooldownBars = binanceFutOnly ? oppositeCooldownWindow.bars : 0;
+  const oppositeTimeCooldownMs = binanceFutOnly ? oppositeCooldownWindow.timeMs : 0;
   let posQtyBase = resolvePosQtyBase(pos);
   const spikeLock = await resolveSignalSpikeLock({ exchange, symbol, barCloseMs, pos, sysCfg });
   let pendingMetaPatch = null;
@@ -8203,6 +8225,7 @@ async function runPaperUpbitForBar({
     });
 
     const intent = intentFromSignal({ event: it.event, side: it.side, features: it.features_json });
+    it.features_json = buildSignalStageFeatures({ ...(it || {}), features: it.features_json }, intent);
     const intentIsEntry = intent === "ENTRY" || intent === "ADD";
     const manualRetryIntent = intentIsEntry && isManualRetryFeatures(it.features_json);
     const manualRetryQtyBase = manualRetryIntent ? resolveManualRetryQtyBase(it.features_json) : null;
@@ -9384,6 +9407,7 @@ async function runPaperUpbitForBar({
   let intentsCreated = 0;
   let immediateIntentsCreated = 0;
   for (const s of signals) {
+    s.features = buildSignalStageFeatures(s, null);
     const intent = intentFromSignal({ event: s.event, side: s.side, features: s.features });
     const intentIsEntry = intent === "ENTRY" || intent === "ADD";
     if (intentIsEntry) {
@@ -10518,11 +10542,6 @@ async function runPaperFuturesForBar({
     ? Math.max(0, Math.min(1, Number(immediateCfg.lookaheadBars) || 0))
     : 0;
   const maxHoldBars = binanceFutOnly ? resolveBinanceMaxHoldBars(sysCfgEffective, signalTfMs) : 0;
-  const oppositeCooldownWindow = binanceFutOnly
-    ? resolveOppositeCooldownWindow({ sysCfg: sysCfgEffective, posMeta })
-    : { bars: 0, timeMs: 0, cohort: null };
-  const oppositeCooldownBars = binanceFutOnly ? oppositeCooldownWindow.bars : 0;
-  const oppositeTimeCooldownMs = binanceFutOnly ? oppositeCooldownWindow.timeMs : 0;
   const sameDirectionTrailProfitCooldownCfg = resolveSameDirectionTrailProfitCooldownConfig(sysCfgEffective);
 
   let pos = await getPosition({ exchange, symbol });
@@ -10550,6 +10569,11 @@ async function runPaperFuturesForBar({
     }
   }
   let posMeta = (pos && typeof pos.meta === "object") ? { ...pos.meta } : {};
+  const oppositeCooldownWindow = binanceFutOnly
+    ? resolveOppositeCooldownWindowFromPosition({ sysCfg: sysCfgEffective, position: pos })
+    : { bars: 0, timeMs: 0, cohort: null };
+  const oppositeCooldownBars = binanceFutOnly ? oppositeCooldownWindow.bars : 0;
+  const oppositeTimeCooldownMs = binanceFutOnly ? oppositeCooldownWindow.timeMs : 0;
   let posSide = normalizePositionSide(
     pos.position_side ||
     pos.side ||
@@ -12431,6 +12455,7 @@ async function runPaperFuturesForBar({
     ? liveCfg.executionMode
     : "PAPER";
   for (const s of signals) {
+    s.features = buildSignalStageFeatures(s, null);
     const intent = intentFromSignal({ event: s.event, side: s.side, features: s.features });
     const intentIsEntry = intent === "ENTRY" || intent === "ADD";
     if (intentIsEntry) {
@@ -13586,6 +13611,7 @@ module.exports = {
     applyEvQtyScale,
     restoreFixedEntryQtyFraction,
     shouldBypassEvEntryGate,
+    buildSignalStageFeatures,
     evaluateEvEntryGate,
     resolveWaitOneBarConfig,
     evaluateWaitOneBarTiming,
@@ -13610,6 +13636,7 @@ module.exports = {
     resolveEventRefMs,
     shouldBypassOppositeEntryCooldown,
     resolveOppositeCooldownWindow,
+    resolveOppositeCooldownWindowFromPosition,
     resolveTp1LadderConfig,
     resolveTp1LadderRuntimeState,
     loadTp1LadderKpiSnapshot,
