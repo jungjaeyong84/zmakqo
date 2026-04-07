@@ -1,4 +1,4 @@
-<%- include('partials/app_start', { title: 'AI 저널 · DONBEOLJA Ω', pageTitle: 'AI 저널', active: 'trading' }) %>
+<%- include('partials/app_start_unified', { title: 'AI 트레이딩 · DONBEOLJA', pageTitle: 'AI 트레이딩', active: 'ai' }) %>
 
 <%
   const sideLabel = (side) => {
@@ -173,142 +173,150 @@
   }, { total: 0 });
 %>
 
-<%- include('partials/legacy_trading_subnav', { activeTab: 'ai' }) %>
-<%- include('partials/legacy_control_surface_bridge', { mode: 'trading', surfaceHref: '/dashboard/execution', surfaceLabel: '실행', detailHref: '/dashboard/home', detailLabel: '미션', extraHref: '/dashboard/audit', extraLabel: '감사' }) %>
+<div class="subnav">
+  <%- include('partials/legacy_trading_subnav', { activeTab: 'ai' }) %>
+</div>
 
 <div class="card">
-  <h2>AI 판단 타임라인</h2>
-  <div class="subtle">
-    신호/드랍 기준 최신 200건의 AI trace입니다. 운영 판단은 실행/감사에서 하고, 이 화면은 AI 근거와 축소/차단 이유를 확인합니다.
+  <div class="card-header">
+    <div class="card-title">AI 판단 타임라인</div>
+    <div class="card-subtitle">신호/드랍 기준 최신 200건의 AI trace입니다. 운영 판단은 실행/감사에서 하고, 이 화면은 AI 근거와 축소/차단 이유를 확인합니다.</div>
   </div>
-  <div class="hr"></div>
-
-  <div class="kv">
-    <div class="k">건수</div><div class="v"><%= meta && meta.n != null ? meta.n : rowsSafe.length %></div>
-    <div class="k">최신 시각</div><div class="v mono"><%= meta && meta.last_created_kst ? meta.last_created_kst : '-' %></div>
-    <div class="k">신호 TF</div><div class="v mono"><%= signal_tf || '-' %></div>
-    <div class="k">차단</div><div class="v"><%= stats.BLOCK || 0 %></div>
-    <div class="k">축소</div><div class="v"><%= stats.REDUCE || 0 %></div>
-    <div class="k">허용</div><div class="v"><%= stats.ALLOW || 0 %></div>
-    <div class="k">AI 미사용</div><div class="v"><%= stats.NONE || 0 %></div>
-  </div>
-</div>
-
-<div class="hr"></div>
-
-<div class="tablewrap">
-  <div class="head">
-    <h2>AI 분석 기록</h2>
-    <div class="subtle">컬렉션: signals / signals_dropped</div>
-  </div>
-  <div class="scroll">
-    <table>
-      <thead>
-        <tr>
-          <th>시간</th>
-          <th>마켓</th>
-          <th>TF</th>
-          <th>방향</th>
-          <th>이벤트</th>
-          <th>흐름</th>
-          <th>AI 결정</th>
-          <th>GPT 신뢰도</th>
-          <th>AI Guard</th>
-          <th>교차자산</th>
-          <th>AI 우위(참고)</th>
-          <th>수량(원→최종)</th>
-          <th>AI 요약</th>
-          <th>사유</th>
-        </tr>
-      </thead>
-      <tbody>
-        <% if (rowsSafe.length === 0) { %>
-          <tr><td colspan="14" class="subtle">AI 기록이 없습니다. (AI 비활성 또는 아직 데이터 없음)</td></tr>
-        <% } else { %>
-          <% rowsSafe.forEach(r => { %>
-            <tr>
-              <td class="mono">
-                <div><%= fmtKst(r.signal_created_kst || r.signal_created_at || r.created_kst || r.created_at) %></div>
-                <% if (r.has_drop && r.drop_created_at) { %>
-                  <div class="subtle">최종 <%= fmtKst(r.drop_created_kst || r.drop_created_at) %></div>
-                <% } %>
-              </td>
-              <td class="mono"><%= r.symbol_or_pair_id || '-' %></td>
-              <td class="mono"><%= r.tf || '-' %></td>
-              <td><%= sideLabel(r.side) %></td>
-              <td>
-                <%= eventDisplay(r.event) %>
-              </td>
-              <td class="mono"><%= r.lifecycle || r.kind || '-' %></td>
-              <td><%= decisionLabel(r.ai_decision) %></td>
-              <td class="mono"><%= fmtConf(r.ai_confidence) %></td>
-              <td class="mono">
-                <% const gptDecision = r.ai_gpt_decision || r.ai_decision; %>
-                <% const gptConf = r.ai_gpt_confidence != null ? r.ai_gpt_confidence : r.ai_confidence; %>
-                <% const claudeLabel = r.ai_claude_attempted ? decisionLabel(r.ai_claude_decision) : '-'; %>
-                <div>GPT: <%= decisionLabel(gptDecision) %> · <%= fmtConf(gptConf) %></div>
-                <div>Claude: <%= claudeLabel %> · <%= fmtConf(r.ai_claude_confidence) %></div>
-                <div>Ens: <%= fmtScore(r.ai_ensemble_score) %> (A <%= fmtScore(r.ai_ensemble_allow_min) %> / R <%= fmtScore(r.ai_ensemble_reduce_min) %>)</div>
-                <div class="subtle">w <%= fmtWeight(r.ai_ensemble_w_gpt) %>/<%= fmtWeight(r.ai_ensemble_w_claude) %></div>
-              </td>
-              <td class="mono">
-                <% if (r.ai_cross_decision) { %>
-                  <% const crossLevel = corrLevelLabel(r.ai_cross_level); %>
-                  <% const crossCorr = r.ai_cross_corr != null ? fmtConf(r.ai_cross_corr) : null; %>
-                  <% const crossBeta = r.ai_cross_beta != null ? fmtConf(r.ai_cross_beta) : null; %>
-                  <% const crossScale = r.ai_cross_scale != null ? fmtConf(r.ai_cross_scale) : null; %>
-                  <% const crossNetBefore = r.ai_cross_net_before != null ? fmtNet(r.ai_cross_net_before) : null; %>
-                  <% const crossNetAfter = r.ai_cross_net_after != null ? fmtNet(r.ai_cross_net_after) : null; %>
-                  <% const crossSource = r.ai_cross_corr_source || null; %>
-                  <% const crossCorrN = r.ai_cross_corr_n != null ? fmtInt(r.ai_cross_corr_n) : null; %>
-                  <% const crossTf = r.ai_cross_corr_tf || null; %>
-                  <% const crossWin = r.ai_cross_corr_window != null ? fmtInt(r.ai_cross_corr_window) : null; %>
-                  <% const crossPosN = r.ai_cross_positions_n != null ? fmtInt(r.ai_cross_positions_n) : null; %>
-                  <div>
-                    <%= decisionLabel(r.ai_cross_decision) %>
-                    <% if (crossLevel) { %> · <%= crossLevel %><% } %>
-                    <% if (crossCorr) { %> · corr <%= crossCorr %><% } %>
-                    <% if (crossBeta) { %> · beta <%= crossBeta %><% } %>
-                    <% if (crossScale) { %> · x<%= crossScale %><% } %>
-                  </div>
-                  <% if (crossNetBefore || crossNetAfter) { %>
-                    <div class="subtle">net <%= crossNetBefore || '-' %> → <%= crossNetAfter || '-' %></div>
-                  <% } %>
-                  <% if (crossSource || crossCorrN) { %>
-                    <div class="subtle">src <%= crossSource || '-' %><% if (crossCorrN) { %> · n <%= crossCorrN %><% } %></div>
-                  <% } %>
-                  <% if (crossTf || crossWin || crossPosN) { %>
-                    <div class="subtle">tf <%= crossTf || '-' %> · win <%= crossWin || '-' %> · pos <%= crossPosN || '-' %></div>
-                  <% } %>
-                  <% if (r.ai_cross_reason) { %>
-                    <div class="subtle"><%= r.ai_cross_reason_ko || translateReason(r.ai_cross_reason) %></div>
-                  <% } %>
-                <% } else { %>
-                  -
-                <% } %>
-              </td>
-              <td><%= aiRiskBiasLabel(r.ai_risk_mode) %></td>
-              <td class="mono"><%= fmtPct(r.ai_qty_raw) %> → <%= fmtPct(r.ai_qty_final) %></td>
-              <td class="subtle"><%= r.ai_news_summary_ko || r.ai_reason_ko || '-' %></td>
-              <td class="subtle">
-                <% if (r.has_signal) { %>
-                  <div>수신: <%= translateReason(r.signal_reason_detail || r.signal_reason || '-') %></div>
-                <% } %>
-                <% if (r.has_drop) { %>
-                  <div>최종: <%= translateReason(r.drop_reason_detail || r.drop_reason || '-') %></div>
-                <% } else if (!r.has_signal) { %>
-                  <div><%= translateReason(r.reason_detail || r.reason || '-') %></div>
-                <% } %>
-                <% if (r.ai_reason_ko) { %>
-                  <div class="subtle">AI: <%= r.ai_reason_ko %></div>
-                <% } %>
-              </td>
-            </tr>
-          <% }) %>
-        <% } %>
-      </tbody>
-    </table>
+  <div class="card-body">
+    <div class="grid cols-4" style="margin-bottom:12px;">
+      <div class="mini-card">
+        <div class="metric-card-label">건수</div>
+        <div class="metric-card-value"><%= meta && meta.n != null ? meta.n : rowsSafe.length %></div>
+      </div>
+      <div class="mini-card">
+        <div class="metric-card-label">최신 시각</div>
+        <div class="metric-card-value mono" style="font-size:12px;"><%= meta && meta.last_created_kst ? meta.last_created_kst : '-' %></div>
+      </div>
+      <div class="mini-card">
+        <div class="metric-card-label">신호 TF</div>
+        <div class="metric-card-value mono"><%= signal_tf || '-' %></div>
+      </div>
+      <div class="mini-card">
+        <div class="metric-card-label">차단/축소/허용</div>
+        <div class="metric-card-value"><%= stats.BLOCK || 0 %> / <%= stats.REDUCE || 0 %> / <%= stats.ALLOW || 0 %></div>
+      </div>
+    </div>
   </div>
 </div>
 
-<%- include('partials/app_end') %>
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">AI 분석 기록</div>
+    <div class="card-subtitle">컬렉션: signals / signals_dropped</div>
+  </div>
+  <div class="card-body">
+    <div class="table-wrap">
+      <table class="table-compact">
+        <thead>
+          <tr>
+            <th>시간</th>
+            <th>마켓</th>
+            <th>TF</th>
+            <th>방향</th>
+            <th>이벤트</th>
+            <th>흐름</th>
+            <th>AI 결정</th>
+            <th>GPT 신뢰도</th>
+            <th>AI Guard</th>
+            <th>교차자산</th>
+            <th>AI 우위(참고)</th>
+            <th>수량(원->최종)</th>
+            <th>AI 요약</th>
+            <th>사유</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (rowsSafe.length === 0) { %>
+            <tr><td colspan="14" class="text-muted">AI 기록이 없습니다. (AI 비활성 또는 아직 데이터 없음)</td></tr>
+          <% } else { %>
+            <% rowsSafe.forEach(r => { %>
+              <tr>
+                <td class="mono">
+                  <div><%= fmtKst(r.signal_created_kst || r.signal_created_at || r.created_kst || r.created_at) %></div>
+                  <% if (r.has_drop && r.drop_created_at) { %>
+                    <div class="text-muted body-sm">최종 <%= fmtKst(r.drop_created_kst || r.drop_created_at) %></div>
+                  <% } %>
+                </td>
+                <td class="mono"><%= r.symbol_or_pair_id || '-' %></td>
+                <td class="mono"><%= r.tf || '-' %></td>
+                <td><%= sideLabel(r.side) %></td>
+                <td><%= eventDisplay(r.event) %></td>
+                <td class="mono"><%= r.lifecycle || r.kind || '-' %></td>
+                <td><%= decisionLabel(r.ai_decision) %></td>
+                <td class="mono"><%= fmtConf(r.ai_confidence) %></td>
+                <td class="mono">
+                  <% const gptDecision = r.ai_gpt_decision || r.ai_decision; %>
+                  <% const gptConf = r.ai_gpt_confidence != null ? r.ai_gpt_confidence : r.ai_confidence; %>
+                  <% const claudeLabel = r.ai_claude_attempted ? decisionLabel(r.ai_claude_decision) : '-'; %>
+                  <div>GPT: <%= decisionLabel(gptDecision) %> · <%= fmtConf(gptConf) %></div>
+                  <div>Claude: <%= claudeLabel %> · <%= fmtConf(r.ai_claude_confidence) %></div>
+                  <div>Ens: <%= fmtScore(r.ai_ensemble_score) %> (A <%= fmtScore(r.ai_ensemble_allow_min) %> / R <%= fmtScore(r.ai_ensemble_reduce_min) %>)</div>
+                  <div class="text-muted body-sm">w <%= fmtWeight(r.ai_ensemble_w_gpt) %>/<%= fmtWeight(r.ai_ensemble_w_claude) %></div>
+                </td>
+                <td class="mono">
+                  <% if (r.ai_cross_decision) { %>
+                    <% const crossLevel = corrLevelLabel(r.ai_cross_level); %>
+                    <% const crossCorr = r.ai_cross_corr != null ? fmtConf(r.ai_cross_corr) : null; %>
+                    <% const crossBeta = r.ai_cross_beta != null ? fmtConf(r.ai_cross_beta) : null; %>
+                    <% const crossScale = r.ai_cross_scale != null ? fmtConf(r.ai_cross_scale) : null; %>
+                    <% const crossNetBefore = r.ai_cross_net_before != null ? fmtNet(r.ai_cross_net_before) : null; %>
+                    <% const crossNetAfter = r.ai_cross_net_after != null ? fmtNet(r.ai_cross_net_after) : null; %>
+                    <% const crossSource = r.ai_cross_corr_source || null; %>
+                    <% const crossCorrN = r.ai_cross_corr_n != null ? fmtInt(r.ai_cross_corr_n) : null; %>
+                    <% const crossTf = r.ai_cross_corr_tf || null; %>
+                    <% const crossWin = r.ai_cross_corr_window != null ? fmtInt(r.ai_cross_corr_window) : null; %>
+                    <% const crossPosN = r.ai_cross_positions_n != null ? fmtInt(r.ai_cross_positions_n) : null; %>
+                    <div>
+                      <%= decisionLabel(r.ai_cross_decision) %>
+                      <% if (crossLevel) { %> · <%= crossLevel %><% } %>
+                      <% if (crossCorr) { %> · corr <%= crossCorr %><% } %>
+                      <% if (crossBeta) { %> · beta <%= crossBeta %><% } %>
+                      <% if (crossScale) { %> · x<%= crossScale %><% } %>
+                    </div>
+                    <% if (crossNetBefore || crossNetAfter) { %>
+                      <div class="text-muted body-sm">net <%= crossNetBefore || '-' %> -> <%= crossNetAfter || '-' %></div>
+                    <% } %>
+                    <% if (crossSource || crossCorrN) { %>
+                      <div class="text-muted body-sm">src <%= crossSource || '-' %><% if (crossCorrN) { %> · n <%= crossCorrN %><% } %></div>
+                    <% } %>
+                    <% if (crossTf || crossWin || crossPosN) { %>
+                      <div class="text-muted body-sm">tf <%= crossTf || '-' %> · win <%= crossWin || '-' %> · pos <%= crossPosN || '-' %></div>
+                    <% } %>
+                    <% if (r.ai_cross_reason) { %>
+                      <div class="text-muted body-sm"><%= r.ai_cross_reason_ko || translateReason(r.ai_cross_reason) %></div>
+                    <% } %>
+                  <% } else { %>
+                    -
+                  <% } %>
+                </td>
+                <td><%= aiRiskBiasLabel(r.ai_risk_mode) %></td>
+                <td class="mono"><%= fmtPct(r.ai_qty_raw) %> -> <%= fmtPct(r.ai_qty_final) %></td>
+                <td class="text-muted"><%= r.ai_news_summary_ko || r.ai_reason_ko || '-' %></td>
+                <td class="text-muted">
+                  <% if (r.has_signal) { %>
+                    <div>수신: <%= translateReason(r.signal_reason_detail || r.signal_reason || '-') %></div>
+                  <% } %>
+                  <% if (r.has_drop) { %>
+                    <div>최종: <%= translateReason(r.drop_reason_detail || r.drop_reason || '-') %></div>
+                  <% } else if (!r.has_signal) { %>
+                    <div><%= translateReason(r.reason_detail || r.reason || '-') %></div>
+                  <% } %>
+                  <% if (r.ai_reason_ko) { %>
+                    <div class="text-muted body-sm">AI: <%= r.ai_reason_ko %></div>
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<%- include('partials/app_end_unified') %>

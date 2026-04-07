@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>DONBEOLJA Design System Preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/tokens.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+</head>
+<body>
+  <div class="app-shell">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-icon">DB</div>
+        <div class="sidebar-brand-text">
+          <div class="sidebar-brand-name">DONBEOLJA</div>
+          <div class="sidebar-brand-sub">Design System Preview</div>
+        </div>
+      </div>
+      <div class="sidebar-divider"></div>
+      <nav class="sidebar-nav">
+        <a href="#" class="active"><span class="nav-icon">&#x1f3e0;</span> Home</a>
+        <a href="#"><span class="nav-icon">&#x1f4c8;</span> Performance</a>
+        <a href="#"><span class="nav-icon">&#x1f4b0;</span> Treasury</a>
+        <a href="#"><span class="nav-icon">&#x1f4cb;</span> Execution</a>
+        <a href="#"><span class="nav-icon">&#x2699;</span> Strategy</a>
+        <a href="#"><span class="nav-icon">&#x2692;</span> Settings</a>
+      </nav>
+      <div class="sidebar-controls">
+        <div>
+          <label>Exchange</label>
+          <select><option>Binance Futures</option></select>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+          <span class="chip sm primary">Server Primary</span>
+          <span class="chip sm filled">Pine Shadow</span>
+        </div>
+        <div class="sidebar-env-chip" style="margin-top:8px">PRODUCTION</div>
+      </div>
+    </aside>
+
+    <div class="app-main">
+      <!-- Topbar -->
+      <header class="topbar">
+        <div class="topbar-copy">
+          <div class="topbar-eyebrow">Design System</div>
+          <h1 class="topbar-title">Component Preview</h1>
+          <div class="topbar-hint">M3 Light Theme Components</div>
+        </div>
+        <div class="topbar-actions">
+          <span class="chip primary">Server Primary</span>
+          <span class="chip filled">Pine Shadow</span>
+          <span class="chip filled"><span class="mono">PRODUCTION</span></span>
+        </div>
+      </header>
+
+      <div class="content">
+
+        <!-- Metric Cards -->
+        <h2 class="title-lg" style="margin-bottom:16px">Metric Cards</h2>
+        <div class="grid cols-4" style="margin-bottom:32px">
+          <div class="metric-card">
+            <div class="metric-card-label">Total Asset</div>
+            <div class="metric-card-value">12,450.00 USDT</div>
+            <div class="metric-card-meta">Real-time balance</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-card-label">Available</div>
+            <div class="metric-card-value profit-up">+850.50 USDT</div>
+            <div class="metric-card-meta">Free margin</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-card-label">Today P&L</div>
+            <div class="metric-card-value profit-down">-120.30 USDT</div>
+            <div class="metric-card-meta">Unrealized included</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-card-label">Win Rate</div>
+            <div class="metric-card-value">62.5%</div>
+            <div class="metric-card-meta">Last 30 days</div>
+          </div>
+        </div>
+
+        <!-- Cards -->
+        <h2 class="title-lg" style="margin-bottom:16px">Cards</h2>
+        <div class="grid cols-2" style="margin-bottom:32px">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Recent Signals</div>
+                <div class="card-subtitle">Latest trading signals from server</div>
+              </div>
+              <a class="btn btn-outlined sm" href="#">View All</a>
+            </div>
+            <div class="card-body">
+              <div class="table-wrap">
+                <table class="table-compact">
+                  <thead>
+                    <tr><th>Time</th><th>Market</th><th>Signal</th><th>Status</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td class="mono text-muted" style="font-size:11px">04-02 10:18</td>
+                      <td><strong>BNBUSDT</strong><div class="body-sm text-muted">15m</div></td>
+                      <td><span class="chip sm short">Short</span> <span class="chip sm primary">Core</span></td>
+                      <td><span class="chip sm success">Filled</span></td>
+                    </tr>
+                    <tr>
+                      <td class="mono text-muted" style="font-size:11px">04-02 09:45</td>
+                      <td><strong>BTCUSDT</strong><div class="body-sm text-muted">15m</div></td>
+                      <td><span class="chip sm long">Long</span> <span class="chip sm filled">Early</span></td>
+                      <td><span class="chip sm warning">Pending</span></td>
+                    </tr>
+                    <tr>
+                      <td class="mono text-muted" style="font-size:11px">04-02 09:15</td>
+                      <td><strong>ETHUSDT</strong><div class="body-sm text-muted">15m</div></td>
+                      <td><span class="chip sm long">Long</span> <span class="chip sm primary">Core</span></td>
+                      <td><span class="chip sm error">Dropped</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Strategy Status</div>
+                <div class="card-subtitle">Server signal transition status</div>
+              </div>
+            </div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
+              <div class="mini-card">
+                <div class="mini-card-label">Current State</div>
+                <div class="mini-card-value" style="font-size:16px">Server Primary Active</div>
+                <div class="mini-card-meta">Pine is shadow-only comparison</div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <div class="mini-card">
+                  <div class="mini-card-label">Source</div>
+                  <div class="mini-card-value" style="font-size:16px">SERVER</div>
+                </div>
+                <div class="mini-card">
+                  <div class="mini-card-label">Transition</div>
+                  <div class="mini-card-value" style="font-size:16px">100%</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chips -->
+        <h2 class="title-lg" style="margin-bottom:16px">Chips</h2>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:32px">
+          <span class="chip">Default</span>
+          <span class="chip primary">Primary</span>
+          <span class="chip filled">Filled</span>
+          <span class="chip success">Success</span>
+          <span class="chip error">Error</span>
+          <span class="chip warning">Warning</span>
+          <span class="chip long">Long</span>
+          <span class="chip short">Short</span>
+          <span class="chip sm">Small</span>
+          <span class="chip sm primary">Small Primary</span>
+        </div>
+
+        <!-- Buttons -->
+        <h2 class="title-lg" style="margin-bottom:16px">Buttons</h2>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:32px">
+          <button class="btn btn-filled">Filled</button>
+          <button class="btn btn-outlined">Outlined</button>
+          <button class="btn btn-tonal">Tonal</button>
+          <button class="btn btn-text">Text</button>
+          <button class="btn btn-filled sm">Small Filled</button>
+          <button class="btn btn-outlined sm">Small Outlined</button>
+          <button class="btn btn-filled" disabled>Disabled</button>
+        </div>
+
+        <!-- Badges -->
+        <h2 class="title-lg" style="margin-bottom:16px">Badges</h2>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:32px">
+          <span class="badge ok">OK</span>
+          <span class="badge warn">Warning</span>
+          <span class="badge bad">Error</span>
+          <span class="badge">Neutral</span>
+        </div>
+
+        <!-- Tabs -->
+        <h2 class="title-lg" style="margin-bottom:16px">Tabs</h2>
+        <div class="tabs" style="margin-bottom:16px">
+          <a href="#" class="active">Risk</a>
+          <a href="#">System</a>
+          <a href="#">AI</a>
+          <a href="#">Exchanges</a>
+        </div>
+
+        <!-- Subnav (Pill Tabs) -->
+        <h2 class="title-lg" style="margin:16px 0">Subnav (Pill)</h2>
+        <div class="subnav" style="margin-bottom:32px">
+          <a href="#" class="active">Overview</a>
+          <a href="#">Server Primary</a>
+          <a href="#">Deployment</a>
+          <a href="#">Audit</a>
+        </div>
+
+        <!-- Pipeline -->
+        <h2 class="title-lg" style="margin-bottom:16px">Pipeline / Stepper</h2>
+        <div class="pipeline" style="margin-bottom:32px">
+          <div class="pipeline-step done">Signal Gen</div>
+          <div class="pipeline-step done">Execution</div>
+          <div class="pipeline-step active">Shadow Demotion</div>
+          <div class="pipeline-step">Authority Wiring</div>
+        </div>
+
+        <!-- Key-Value -->
+        <h2 class="title-lg" style="margin-bottom:16px">Key-Value</h2>
+        <div class="card" style="margin-bottom:32px;max-width:500px">
+          <div class="card-body">
+            <div class="kv">
+              <div class="k">Source Mode</div><div class="v">SERVER_PRIMARY</div>
+              <div class="k">Exec TF</div><div class="v">15m</div>
+              <div class="k">Market Count</div><div class="v">7</div>
+              <div class="k">Scheduler</div><div class="v"><span class="chip sm success">ENABLED</span></div>
+              <div class="k">Watchdog</div><div class="v"><span class="chip sm success">PASS</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Forms -->
+        <h2 class="title-lg" style="margin-bottom:16px">Form Elements</h2>
+        <div class="card" style="margin-bottom:32px;max-width:500px">
+          <div class="card-body">
+            <div style="display:flex;flex-direction:column;gap:16px">
+              <div>
+                <label for="demo-input">Text Input</label>
+                <input id="demo-input" type="text" placeholder="Enter value..." />
+              </div>
+              <div>
+                <label for="demo-select">Select</label>
+                <select id="demo-select">
+                  <option>BINANCEFUT</option>
+                  <option>UPBIT</option>
+                </select>
+              </div>
+              <div>
+                <label for="demo-textarea">Textarea</label>
+                <textarea id="demo-textarea" rows="3" placeholder="Notes..."></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Empty State -->
+        <h2 class="title-lg" style="margin-bottom:16px">Empty State</h2>
+        <div class="card" style="margin-bottom:32px">
+          <div class="card-body">
+            <div class="empty-state">
+              <div class="empty-state-text">No recent signals available.</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</body>
+</html>

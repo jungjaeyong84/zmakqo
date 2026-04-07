@@ -119,6 +119,7 @@ router.get("/dashboard/cashflow", async (req, res) => {
       ranges: Object.values(RANGE_MAP),
       rangeWarning,
       error: e && e.message ? String(e.message) : "입출금 데이터를 불러오지 못했습니다.",
+      _error: { code: "CASHFLOW_ROUTE_ERROR", message: '데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.' },
     });
   }
 });

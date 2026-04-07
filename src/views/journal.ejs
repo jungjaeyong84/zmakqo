@@ -1,4 +1,4 @@
-<%- include('partials/app_start', { title: '저널 · DONBEOLJA Ω', pageTitle: '저널', active: 'trading' }) %>
+<%- include('partials/app_start_unified', { title: '거래 일지 · DONBEOLJA', pageTitle: '거래 일지', active: 'trading' }) %>
 
 <%
   const sideLabel = (side) => {
@@ -45,10 +45,14 @@
   };
   const eventDisplay = (event) => {
     const rawUpper = String(event || '').toUpperCase();
-    if (rawUpper === 'LONG') return 'LONG';
-    if (rawUpper === 'SHORT') return 'SHORT';
+    if (rawUpper === 'LONG') return '매수';
+    if (rawUpper === 'SHORT') return '매도';
     const entryMatch = rawUpper.match(/^(EARLY|CORE|PRE_REAL|REAL)_(LONG|SHORT)$/);
-    if (entryMatch) return entryMatch[2];
+    if (entryMatch) {
+      const tierLabel = entryMatch[1] === 'CORE' ? '강한 신호' : (entryMatch[1] === 'EARLY' ? '초기 신호' : entryMatch[1]);
+      const sideLabel2 = entryMatch[2] === 'LONG' ? '매수' : '매도';
+      return `${tierLabel} ${sideLabel2}`;
+    }
     let raw = String(event || '-');
     raw = rawUpper.replace(/^EXIT_TP_C_([0-9]+(?:\.[0-9]+)?)P$/, 'EXIT_TP_P1_$1P');
     raw = raw === 'EXIT_TP_C' ? 'EXIT_TP_P1' : raw;
@@ -57,67 +61,72 @@
   };
 %>
 
-<%- include('partials/legacy_trading_subnav', { activeTab: 'journal' }) %>
-<%- include('partials/legacy_control_surface_bridge', { mode: 'trading', surfaceHref: '/dashboard/execution', surfaceLabel: '실행', detailHref: '/dashboard/home', detailLabel: '미션', extraHref: '/dashboard/audit', extraLabel: '감사' }) %>
+<div class="subnav">
+  <%- include('partials/legacy_trading_subnav', { activeTab: 'journal' }) %>
+</div>
 
 <div class="card">
-  <h2>타임라인</h2>
-  <div class="subtle">
-    최근 체결/거래 이벤트(최대 200)를 추적합니다. 실행 판단은 실행 화면에서 하고, 이 화면은 기록 확인에 집중합니다.
+  <div class="card-header">
+    <div class="card-title">타임라인</div>
+    <div class="card-subtitle">최근 체결/거래 이벤트(최대 200)를 추적합니다. 실행 판단은 실행 화면에서 하고, 이 화면은 기록 확인에 집중합니다.</div>
   </div>
-  <div class="hr"></div>
-
-  <div class="kv">
-    <div class="k">건수</div><div class="v"><%= meta && meta.n != null ? meta.n : (trades ? trades.length : 0) %></div>
-    <div class="k">최신 시각</div><div class="v mono"><%= meta && meta.last_created_kst ? meta.last_created_kst : '-' %></div>
-  </div>
-</div>
-
-<div class="hr"></div>
-
-<div class="tablewrap">
-  <div class="head">
-    <h2>거래 기록</h2>
-    <div class="subtle">컬렉션: fills_paper</div>
-  </div>
-  <div class="scroll">
-    <table>
-      <thead>
-        <tr>
-          <th>시간</th>
-          <th>마켓</th>
-          <th>방향</th>
-          <th>이벤트</th>
-          <th>가격</th>
-          <th>비중/수량</th>
-          <th>수수료</th>
-          <th>손익</th>
-          <th>메모</th>
-        </tr>
-      </thead>
-      <tbody>
-        <% if (!trades || trades.length === 0) { %>
-          <tr><td colspan="9" class="subtle">아직 기록이 없습니다. (초기 구간이거나 컬렉션 미생성)</td></tr>
-        <% } else { %>
-          <% trades.forEach(t => { %>
-            <tr>
-              <td class="mono"><%= fmtKst(t.created_kst || t.created_at) %></td>
-              <td class="mono"><%= t.symbol_or_pair_id || '-' %></td>
-              <td><%= sideLabel(t.side) %></td>
-              <td>
-                <%= eventDisplay(t.event) %>
-              </td>
-              <td class="mono"><%= (t.exec_price == null) ? '-' : fmtKrw(t.exec_price) %></td>
-              <td class="mono"><%= (t.qty_pct == null && t.exec_qty_base == null) ? '-' : (t.qty_pct == null ? fmtKrw(t.exec_qty_base) : Number(t.qty_pct).toFixed(2)) %></td>
-              <td class="mono"><%= (t.fee_value == null) ? '-' : fmtKrw(t.fee_value) %></td>
-              <td class="mono"><%= (t.pnl == null) ? '-' : fmtKrw(t.pnl) %></td>
-              <td class="subtle"><%= t.note || '' %></td>
-            </tr>
-          <% }) %>
-        <% } %>
-      </tbody>
-    </table>
+  <div class="card-body">
+    <div class="grid cols-2">
+      <div class="metric-card">
+        <div class="metric-card-label">건수</div>
+        <div class="metric-card-value"><%= meta && meta.n != null ? meta.n : (trades ? trades.length : 0) %></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-card-label">최신 시각</div>
+        <div class="metric-card-value mono" style="font-size:14px;"><%= meta && meta.last_created_kst ? meta.last_created_kst : '-' %></div>
+      </div>
+    </div>
   </div>
 </div>
 
-<%- include('partials/app_end') %>
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">거래 기록</div>
+    <div class="card-subtitle">체결 기록 저장소 기준</div>
+  </div>
+  <div class="card-body">
+    <div class="table-wrap">
+      <table class="table-compact">
+        <thead>
+          <tr>
+            <th>시간</th>
+            <th>마켓</th>
+            <th>방향</th>
+            <th>이벤트</th>
+            <th>가격</th>
+            <th>비중/수량</th>
+            <th>수수료</th>
+            <th>손익</th>
+            <th>메모</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (!trades || trades.length === 0) { %>
+            <tr><td colspan="9" class="text-muted">아직 기록이 없습니다. (초기 구간이거나 컬렉션 미생성)</td></tr>
+          <% } else { %>
+            <% trades.forEach(t => { %>
+              <tr>
+                <td class="mono"><%= fmtKst(t.created_kst || t.created_at) %></td>
+                <td class="mono"><%= t.symbol_or_pair_id || '-' %></td>
+                <td><%= sideLabel(t.side) %></td>
+                <td><%= eventDisplay(t.event) %></td>
+                <td class="mono"><%= (t.exec_price == null) ? '-' : fmtKrw(t.exec_price) %></td>
+                <td class="mono"><%= (t.qty_pct == null && t.exec_qty_base == null) ? '-' : (t.qty_pct == null ? fmtKrw(t.exec_qty_base) : Number(t.qty_pct).toFixed(2)) %></td>
+                <td class="mono"><%= (t.fee_value == null) ? '-' : fmtKrw(t.fee_value) %></td>
+                <td class="mono"><%= (t.pnl == null) ? '-' : fmtKrw(t.pnl) %></td>
+                <td class="text-muted"><%= t.note || '' %></td>
+              </tr>
+            <% }) %>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<%- include('partials/app_end_unified') %>

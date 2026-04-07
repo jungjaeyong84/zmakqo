@@ -13,11 +13,14 @@
     "app:mac:dir": "electron-builder --mac dir --universal",
     "test": "node src/tests/run-tests.js && node src/tests/signals-fallback-guard.test.js && node src/tests/tick-exit-cooldown.test.js && node src/tests/signal-doc-id.test.js && node src/tests/binance-fills-qty-pct.test.js && node src/tests/trade-execution-alert.test.js && node src/tests/pine-signal-quality.test.js",
     "test:guards": "node src/tests/signals-fallback-guard.test.js && node src/tests/tick-exit-cooldown.test.js",
+    "test:e2e": "npx playwright test",
+    "test:e2e:mobile": "npx playwright test --project=mobile",
     "check:binance-exec-safety": "node scripts/binance-execution-safety-check.js",
     "refresh:execution-flow-cycles": "node scripts/refresh-execution-flow-cycles.js",
     "run:system-autonomous-cycle": "node scripts/system-autonomous-cycle.js",
     "run:system-dev-autonomous-cycle": "node scripts/system-dev-autonomous-cycle.js",
     "run:codex-octopus": "node scripts/codex-octopus.js",
+    "check:doc-artifact-parity": "node scripts/check-doc-artifact-parity.js",
     "check:scheduler-env": "node scripts/check-scheduler-env.js",
     "check:dup-helpers": "node scripts/check-dup-helpers.js",
     "cleanup:retention": "node scripts/cleanup-firestore-retention.js",
@@ -42,6 +45,7 @@
     "ws": "^8.19.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "electron": "^33.4.11",
     "electron-builder": "^25.1.8",
     "nodemon": "^3.1.11"

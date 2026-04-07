@@ -1,0 +1,299 @@
+  <div id="ex-card" style="display:flex;flex-direction:column;gap:24px">
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">거래소 연결</div>
+          <div class="card-subtitle">사용 여부, 거래소, 대상 마켓, 타임프레임, API 키를 한 화면에서 관리합니다.</div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <span class="chip primary filled">연동 <span class="mono">/api/settings/exchanges</span></span>
+          <span class="chip">연결 테스트는 공개 API만 확인</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">연결 기본값</div>
+          <div class="card-subtitle">거래 대상 마켓과 실행 타임프레임을 먼저 확정합니다.</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="grid cols-2">
+          <div>
+            <label>사용 여부</label>
+            <select id="ex-enabled">
+              <option value="true">켜짐</option>
+              <option value="false">꺼짐</option>
+            </select>
+          </div>
+          <div id="ex-provider-wrap">
+            <label>거래소</label>
+            <select id="ex-provider">
+              <option value="BINANCEFUT">바이낸스(선물)</option>
+            </select>
+          </div>
+          <div id="ex-provider-fixed" style="display:none;">
+            <label>거래소</label>
+            <div class="chip" id="ex-provider-label">-</div>
+          </div>
+          <div>
+            <label>마켓 목록</label>
+            <textarea id="ex-markets" rows="4" placeholder="BTCUSDT, ETHUSDT, BNBUSDT, XRPUSDT, SOLUSDT, DOGEUSDT, AXSUSDT"></textarea>
+          </div>
+          <div>
+            <label>허용 타임프레임</label>
+            <input id="ex-tf" type="text" placeholder="예: 15m, 60m" />
+          </div>
+          <div>
+            <label>실행 타임프레임</label>
+            <input id="ex-exec-tf" type="text" placeholder="예: 15m" />
+          </div>
+          <div>
+            <label>API 키</label>
+            <input id="ex-api-key" type="password" placeholder="비워두면 기존 값 유지" />
+          </div>
+          <div>
+            <label>API 시크릿</label>
+            <input id="ex-api-secret" type="password" placeholder="비워두면 기존 값 유지" />
+          </div>
+          <div>
+            <label>저장된 키 초기화</label>
+            <div>
+              <input id="ex-clear-keys" type="checkbox" /> <span class="body-sm">키 초기화</span>
+              <div class="body-sm text-muted" id="ex-key-status" style="margin-top: 6px;">-</div>
+            </div>
+          </div>
+          <div>
+            <label>최근 변경</label>
+            <div class="kv">
+              <div class="k">변경 시각</div><div class="v mono" id="ex-upd-at">-</div>
+              <div class="k">변경자</div><div class="v mono" id="ex-upd-by">-</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">연결 확인</div>
+          <div class="card-subtitle">저장 후 공개 API 연결과 실거래 키 상태를 점검합니다.</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+          <button class="btn btn-filled" type="button" id="ex-save">저장</button>
+          <button class="btn btn-outlined sm" type="button" id="ex-test">연결 테스트</button>
+          <button class="btn btn-outlined sm" type="button" id="ex-live-test">실거래 키 점검</button>
+          <span class="chip" id="ex-status">상태 대기</span>
+        </div>
+        <div class="body-sm text-muted" id="ex-test-result" style="margin-top: 8px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    function $(id){ return document.getElementById(id); }
+    function setStatus(text, level){
+      const el = $("ex-status");
+      if (!el) return;
+      el.textContent = text;
+      el.classList.remove("ok","warn","bad","dim");
+      el.classList.add(level || "dim");
+    }
+    function normalizeProvider(v){
+      const raw = String(v || "").trim().toUpperCase();
+      if (raw.includes("BINANCE")) return "BINANCEFUT";
+      return "BINANCEFUT";
+    }
+    function activeProvider(){
+      try {
+        const saved = localStorage.getItem("db_exchange_mode");
+        if (saved) return normalizeProvider(saved);
+      } catch(_) {}
+      const nav = document.getElementById("ex-mode");
+      if (nav && nav.value) return normalizeProvider(nav.value);
+      return normalizeProvider($("ex-provider")?.value || "BINANCEFUT");
+    }
+    function parseList(raw){
+      return String(raw || "")
+        .split(/[\n,]/)
+        .map((s)=>s.trim())
+        .filter(Boolean);
+    }
+    function fmtKst(v){
+      if (!v) return "-";
+      const raw = String(v);
+      if (raw.includes("KST")) return raw;
+      const ms = Date.parse(raw);
+      if (!Number.isFinite(ms)) return raw;
+      const k = new Date(ms + 9 * 60 * 60 * 1000);
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${k.getUTCFullYear()}-${pad(k.getUTCMonth() + 1)}-${pad(k.getUTCDate())} ${pad(k.getUTCHours())}:${pad(k.getUTCMinutes())}:${pad(k.getUTCSeconds())} KST`;
+    }
+    async function load(providerOverride){
+      setStatus("불러오는 중…", "dim");
+      const provider = String(providerOverride || activeProvider() || "BINANCEFUT").toUpperCase();
+      const r = await fetch("/api/settings/exchanges?provider=" + encodeURIComponent(provider), { credentials: "include" });
+      const t = await r.text();
+      let j = null;
+      try { j = JSON.parse(t); } catch(_) { j = null; }
+      if (!r.ok || !j || !j.ok){
+        setStatus("불러오기 실패 (" + r.status + ")", "bad");
+        return;
+      }
+      const data = j.data || {};
+      $("ex-enabled").value = String(!!data.enabled);
+      const resolvedProvider = String(data.provider || provider || "BINANCEFUT").toUpperCase();
+      $("ex-provider").value = resolvedProvider;
+      const nav = document.getElementById("ex-mode");
+      const fixedWrap = $("ex-provider-fixed");
+      const selectWrap = $("ex-provider-wrap");
+      if (nav && fixedWrap && selectWrap) {
+        fixedWrap.style.display = "block";
+        selectWrap.style.display = "none";
+        const label = $("ex-provider-label");
+        if (label) label.textContent = "바이낸스(선물)";
+      }
+      $("ex-markets").value = Array.isArray(data.markets) ? data.markets.join(", ") : "";
+      $("ex-tf").value = Array.isArray(data.tf_allowlist) ? data.tf_allowlist.join(", ") : "";
+      $("ex-exec-tf").value = data.exec_tf || "";
+      $("ex-upd-at").textContent = fmtKst(data.updated_at || "-");
+      $("ex-upd-by").textContent = data.updated_by || "-";
+      const keyHint = data.api_key_hint ? "API 키: " + data.api_key_hint : "API 키: -";
+      const secHint = data.api_secret_hint ? "API 시크릿: " + data.api_secret_hint : "API 시크릿: -";
+      $("ex-key-status").textContent = keyHint + " / " + secHint;
+      setStatus("불러옴", "ok");
+    }
+    function collect(){
+      const provider = String($("ex-provider")?.value || activeProvider() || "BINANCEFUT").toUpperCase();
+      const payload = {
+        enabled: $("ex-enabled").value === "true",
+        provider,
+        markets: parseList($("ex-markets").value),
+        tf_allowlist: parseList($("ex-tf").value),
+        exec_tf: String($("ex-exec-tf").value || "").trim(),
+        clear_keys: $("ex-clear-keys").checked,
+      };
+      const apiKey = $("ex-api-key").value.trim();
+      const apiSecret = $("ex-api-secret").value.trim();
+      if (apiKey) payload.api_key = apiKey;
+      if (apiSecret) payload.api_secret = apiSecret;
+      return payload;
+    }
+    async function save(){
+      const btn = $("ex-save");
+      btn.disabled = true;
+      setStatus("저장 중…", "dim");
+      let payload = null;
+      try { payload = collect(); }
+      catch(e){
+        btn.disabled = false;
+        setStatus("입력 오류: " + e.message, "bad");
+        return;
+      }
+      try{
+        const r = await fetch("/api/settings/exchanges", {
+          method: "POST",
+          headers: { "Content-Type":"application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        });
+        const t = await r.text();
+        let j = null;
+        try { j = JSON.parse(t); } catch(_) { j = null; }
+        if (!r.ok || !j || !j.ok){
+          setStatus("저장 실패 (" + r.status + ")", "bad");
+          btn.disabled = false;
+          return;
+        }
+        setStatus("저장 완료 ✅", "ok");
+        setTimeout(()=>{ btn.disabled = false; }, 1500);
+        $("ex-api-key").value = "";
+        $("ex-api-secret").value = "";
+        $("ex-clear-keys").checked = false;
+        await load();
+      }catch(e){
+        setStatus("저장 오류: " + e.message, "bad");
+        btn.disabled = false;
+      }
+    }
+    async function testConn(){
+      const markets = parseList($("ex-markets").value);
+      if (!markets.length){
+        setStatus("테스트 실패: 마켓 없음", "bad");
+        return;
+      }
+      setStatus("테스트 중…", "dim");
+      $("ex-test-result").textContent = "";
+      const provider = String($("ex-provider")?.value || "BINANCEFUT").toUpperCase();
+      try{
+        const url = "/api/settings/exchanges/test?provider=" + encodeURIComponent(provider) + "&markets=" + encodeURIComponent(markets.join(","));
+        const r = await fetch(url, { credentials: "include" });
+        const t = await r.text();
+        let j = null;
+        try { j = JSON.parse(t); } catch(_) { j = null; }
+        if (!r.ok || !j || !j.ok){
+          setStatus("테스트 실패 (" + r.status + ")", "bad");
+          $("ex-test-result").textContent = (j && (j.error || j.message)) ? (j.error || j.message) : t.slice(0, 200);
+          return;
+        }
+        setStatus("테스트 성공 ✅", "ok");
+        $("ex-test-result").textContent = "지연 " + j.latency_ms + "ms · 마켓 " + j.count;
+      }catch(e){
+        setStatus("테스트 오류: " + e.message, "bad");
+      }
+    }
+
+    $("ex-save").addEventListener("click", save);
+    $("ex-test").addEventListener("click", testConn);
+    $("ex-live-test").addEventListener("click", async () => {
+      setStatus("실거래 키 점검 중…", "dim");
+      $("ex-test-result").textContent = "";
+      const provider = String($("ex-provider")?.value || activeProvider() || "BINANCEFUT").toUpperCase();
+      try{
+        const r = await fetch("/api/settings/exchanges/live-check?provider=" + encodeURIComponent(provider), { credentials: "include" });
+        const t = await r.text();
+        let j = null;
+        try { j = JSON.parse(t); } catch(_) { j = null; }
+        if (!r.ok || !j || !j.ok){
+          setStatus("점검 실패 (" + r.status + ")", "bad");
+          $("ex-test-result").textContent = (j && (j.error || j.message)) ? (j.error || j.message) : t.slice(0, 200);
+          return;
+        }
+        setStatus("점검 성공 ✅", "ok");
+        const msg = "자산 " + (j.asset_count || 0) + "개 확인 · 거래 가능=" + String(!!j.can_trade);
+        $("ex-test-result").textContent = msg;
+      }catch(e){
+        setStatus("점검 오류: " + e.message, "bad");
+      }
+    });
+    const navSel = document.getElementById("ex-mode");
+    if (navSel) {
+      navSel.addEventListener("change", async () => {
+        await load(activeProvider());
+      });
+    } else {
+      $("ex-provider").addEventListener("change", async () => {
+        const provider = String($("ex-provider").value || "BINANCEFUT").toUpperCase();
+        const cur = $("ex-markets").value.trim();
+        const isKrw = cur.includes("KRW-");
+        const isUsdt = cur.toUpperCase().includes("USDT");
+        const isKrx = cur.toUpperCase().includes("KRX:");
+        if (
+          !cur
+          || (provider === "BINANCEFUT" && (isKrw || isKrx))
+        ) {
+          $("ex-markets").value = "BTCUSDT, ETHUSDT, BNBUSDT, XRPUSDT, SOLUSDT, DOGEUSDT, AXSUSDT";
+        }
+        await load(provider);
+      });
+    }
+    load(activeProvider());
+  })();
+  </script>

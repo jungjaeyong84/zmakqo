@@ -1,17 +1,17 @@
-<%- include('partials/app_start', { title: '평가 · DONBEOLJA Ω', pageTitle: '평가', active: 'eval' }) %>
+<%- include('partials/app_start_unified', { title: '평가 · DONBEOLJA', pageTitle: '평가', active: 'eval' }) %>
 
 <style>
   .diag-box { display:flex; flex-direction:column; gap:10px; }
   .diag-row { display:flex; align-items:center; gap:10px; }
-  .diag-label { width:120px; font-size:12px; color:#333; }
-  .diag-bar { flex:1; height:10px; background:#f1f1f1; border-radius:999px; overflow:hidden; }
+  .diag-label { width:120px; font-size:12px; color:var(--md-on-surface-variant); }
+  .diag-bar { flex:1; height:10px; background:var(--md-surface-container); border-radius:999px; overflow:hidden; }
   .diag-bar-fill { height:100%; width:0%; transition:width .3s ease; }
-  .diag-bar-fill.ok { background:#1f9d55; }
-  .diag-bar-fill.warn { background:#e58f2a; }
-  .diag-meta { width:160px; text-align:right; font-size:12px; color:#444; }
-  .diag-summary { font-size:12px; color:#333; }
+  .diag-bar-fill.ok { background:var(--md-success); }
+  .diag-bar-fill.warn { background:var(--md-warning); }
+  .diag-meta { width:160px; text-align:right; font-size:12px; color:var(--md-on-surface-variant); }
+  .diag-summary { font-size:12px; color:var(--md-on-surface-variant); }
   .diag-alerts { display:flex; align-items:center; gap:10px; font-size:12px; }
-  .diag-raw summary { cursor:pointer; font-size:12px; color:#555; }
+  .diag-raw summary { cursor:pointer; font-size:12px; color:var(--md-on-surface-variant); }
   @media (max-width: 900px) {
     .diag-row { flex-direction:column; align-items:flex-start; }
     .diag-label, .diag-meta { width:auto; }
@@ -19,103 +19,107 @@
   }
 </style>
 
-<%- include('partials/legacy_report_subnav', { activeTab: 'eval' }) %>
-<%- include('partials/legacy_control_surface_bridge', { mode: 'report', surfaceHref: '/dashboard/home', surfaceLabel: '미션', detailHref: '/dashboard/audit', detailLabel: '감사', extraHref: '/dashboard/recovery', extraLabel: '회복' }) %>
-
 <div class="card">
-  <h2>요약</h2>
-  <div class="subtle">
-    최신 평가 결과를 보조 화면으로 요약합니다. 표본 수가 부족하면 판단을 보류합니다.
+  <div class="card-header">
+    <div class="card-title">요약</div>
+    <div class="card-subtitle">최신 평가 결과를 보조 화면으로 요약합니다. 표본 수가 부족하면 판단을 보류합니다.</div>
   </div>
-  <div class="hr"></div>
-  <div class="kv">
-    <div class="k">주차</div><div class="v mono" id="ev-week">…</div>
-    <div class="k">생성 시각</div><div class="v mono" id="ev-gen">…</div>
-    <div class="k">타임프레임/범위</div><div class="v mono" id="ev-tf">…</div>
-    <div class="k">스트림 수</div><div class="v mono" id="ev-streams">…</div>
+  <div class="card-body">
+    <table class="table-compact">
+      <tr><td class="text-muted">주차</td><td class="mono" id="ev-week">...</td></tr>
+      <tr><td class="text-muted">생성 시각</td><td class="mono" id="ev-gen">...</td></tr>
+      <tr><td class="text-muted">타임프레임/범위</td><td class="mono" id="ev-tf">...</td></tr>
+      <tr><td class="text-muted">스트림 수</td><td class="mono" id="ev-streams">...</td></tr>
+    </table>
   </div>
 </div>
-
-<div class="hr"></div>
 
 <div class="grid cols-2">
   <div class="card">
-    <h2>판단 요약</h2>
-    <div class="subtle">유지 / 제거 / 조정 / 보류 · 충분 기준: 보류 0개, 부분 기준: 70% 이상 충족</div>
-    <div class="hr"></div>
-    <div class="kv">
-      <div class="k">최소 표본</div><div class="v mono" id="ev-minn">…</div>
-      <div class="k">판단 가능</div>
-      <div class="v">
-        <span id="ev-sufficient" class="pill dim">…</span>
-        <span id="ev-sufficient-desc" class="subtle" style="margin-left:6px;">-</span>
-      </div>
-      <div class="k">유지</div><div class="v mono" id="ev-keep">…</div>
-      <div class="k">제거</div><div class="v mono" id="ev-drop">…</div>
-      <div class="k">조정</div><div class="v mono" id="ev-tune">…</div>
-      <div class="k">보류</div><div class="v mono" id="ev-need">…</div>
+    <div class="card-header">
+      <div class="card-title">판단 요약</div>
+      <div class="card-subtitle">유지 / 제거 / 조정 / 보류</div>
+    </div>
+    <div class="card-body">
+      <table class="table-compact">
+        <tr><td class="text-muted">최소 표본</td><td class="mono" id="ev-minn">...</td></tr>
+        <tr>
+          <td class="text-muted">판단 가능</td>
+          <td>
+            <span id="ev-sufficient" class="chip">...</span>
+            <span id="ev-sufficient-desc" class="text-muted body-sm" style="margin-left:6px;">-</span>
+          </td>
+        </tr>
+        <tr><td class="text-muted">유지</td><td class="mono" id="ev-keep">...</td></tr>
+        <tr><td class="text-muted">제거</td><td class="mono" id="ev-drop">...</td></tr>
+        <tr><td class="text-muted">조정</td><td class="mono" id="ev-tune">...</td></tr>
+        <tr><td class="text-muted">보류</td><td class="mono" id="ev-need">...</td></tr>
+      </table>
     </div>
   </div>
 
   <div class="card">
-    <h2>데이터 진단</h2>
-    <div class="subtle">데이터 상태를 비율로 확인하는 보조 진단입니다.</div>
-    <div class="hr"></div>
-    <div class="diag-box">
-      <div class="diag-row">
-        <div class="diag-label">정상</div>
-        <div class="diag-bar"><div id="ev-diag-ok-bar" class="diag-bar-fill ok"></div></div>
-        <div class="diag-meta"><span id="ev-diag-ok-pct">-</span> · <span id="ev-diag-ok-count">-</span></div>
+    <div class="card-header">
+      <div class="card-title">데이터 진단</div>
+      <div class="card-subtitle">데이터 상태를 비율로 확인하는 보조 진단입니다.</div>
+    </div>
+    <div class="card-body">
+      <div class="diag-box">
+        <div class="diag-row">
+          <div class="diag-label">정상</div>
+          <div class="diag-bar"><div id="ev-diag-ok-bar" class="diag-bar-fill ok"></div></div>
+          <div class="diag-meta"><span id="ev-diag-ok-pct">-</span> · <span id="ev-diag-ok-count">-</span></div>
+        </div>
+        <div class="diag-row">
+          <div class="diag-label">현재 봉 누락</div>
+          <div class="diag-bar"><div id="ev-diag-now-bar" class="diag-bar-fill warn"></div></div>
+          <div class="diag-meta"><span id="ev-diag-now-pct">-</span> · <span id="ev-diag-now-count">-</span></div>
+        </div>
+        <div class="diag-row">
+          <div class="diag-label">다음 봉 누락</div>
+          <div class="diag-bar"><div id="ev-diag-fut-bar" class="diag-bar-fill warn"></div></div>
+          <div class="diag-meta"><span id="ev-diag-fut-pct">-</span> · <span id="ev-diag-fut-count">-</span></div>
+        </div>
+        <div class="diag-summary mono" id="ev-diag-summary">-</div>
+        <div class="diag-alerts">
+          <span id="ev-diag-warn" class="chip">상태 확인 중...</span>
+          <span id="ev-diag-cause" class="text-muted body-sm">-</span>
+        </div>
+        <details class="diag-raw">
+          <summary>원본 보기</summary>
+          <pre class="mono body-sm" id="ev-diag-raw" style="margin:6px 0 0; white-space:pre-wrap;">...</pre>
+        </details>
       </div>
-      <div class="diag-row">
-        <div class="diag-label">현재 봉 누락</div>
-        <div class="diag-bar"><div id="ev-diag-now-bar" class="diag-bar-fill warn"></div></div>
-        <div class="diag-meta"><span id="ev-diag-now-pct">-</span> · <span id="ev-diag-now-count">-</span></div>
-      </div>
-      <div class="diag-row">
-        <div class="diag-label">다음 봉 누락</div>
-        <div class="diag-bar"><div id="ev-diag-fut-bar" class="diag-bar-fill warn"></div></div>
-        <div class="diag-meta"><span id="ev-diag-fut-pct">-</span> · <span id="ev-diag-fut-count">-</span></div>
-      </div>
-      <div class="diag-summary mono" id="ev-diag-summary">-</div>
-      <div class="diag-alerts">
-        <span id="ev-diag-warn" class="pill dim">상태 확인 중…</span>
-        <span id="ev-diag-cause" class="subtle">-</span>
-      </div>
-      <details class="diag-raw">
-        <summary>원본 보기</summary>
-        <pre class="mono" id="ev-diag-raw" style="margin:6px 0 0; white-space:pre-wrap; font-size:12px; color:#333;">…</pre>
-      </details>
     </div>
   </div>
 </div>
 
-<div class="hr"></div>
-
-<div class="tablewrap">
-  <div class="head">
-    <h2>신호 KPI</h2>
-    <div class="subtle">표본 기반 KPI (상위 200개 표시)</div>
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">거래 신호 KPI</div>
+    <div class="card-subtitle">표본 기반 KPI (상위 200개 표시)</div>
   </div>
-  <div class="scroll" style="max-height:520px;">
-    <table>
-      <thead>
-        <tr>
-          <th>거래소</th>
-          <th>마켓</th>
-          <th>방향</th>
-          <th>그룹</th>
-          <th>유형</th>
-          <th>표본</th>
-          <th>평가 표본</th>
-          <th>기대값</th>
-          <th>승률</th>
-        </tr>
-      </thead>
-      <tbody id="ev-body">
-        <tr><td colspan="9" class="subtle">로딩 중…</td></tr>
-      </tbody>
-    </table>
+  <div class="card-body">
+    <div class="table-wrap" style="max-height:520px; overflow:auto;">
+      <table class="table-compact">
+        <thead>
+          <tr>
+            <th>거래소</th>
+            <th>마켓</th>
+            <th>방향</th>
+            <th>그룹</th>
+            <th>유형</th>
+            <th>표본</th>
+            <th>평가 표본</th>
+            <th>기대값</th>
+            <th>승률</th>
+          </tr>
+        </thead>
+        <tbody id="ev-body">
+          <tr><td colspan="9" class="text-muted">로딩 중...</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 
@@ -164,7 +168,7 @@
 
   if (!r.ok || !j || !j.ok){
     set('ev-week','(확인 불가)');
-    $('ev-body').innerHTML = `<tr><td colspan="9" class="subtle">로드 실패: ${r.status}</td></tr>`;
+    $('ev-body').innerHTML = `<tr><td colspan="9" class="text-muted">로드 실패: ${r.status}</td></tr>`;
     return;
   }
 
@@ -191,7 +195,7 @@
     else if (need === 0) label = '충분';
     else if (ratio >= 0.7) label = '부분';
     pill.textContent = label;
-    pill.className = `pill ${label === '충분' ? 'ok' : (label === '부분' ? 'warn' : 'dim')}`;
+    pill.className = `chip ${label === '충분' ? 'success' : (label === '부분' ? 'warning' : '')}`;
     desc.textContent = total > 0 ? `${pass}/${total} 충족` : '표본 없음';
   })();
   (function(){
@@ -231,12 +235,12 @@
     const warnEl = document.getElementById("ev-diag-warn");
     if (warnEl) {
       const missTotalPct = pNow + pFut;
-      let level = "ok";
+      let level = "success";
       let msg = "상태 양호";
-      if (missTotalPct >= 30) { level = "bad"; msg = "누락 비율 높음: 백필/대기 필요"; }
-      else if (missTotalPct >= 10) { level = "warn"; msg = "일부 누락: 최근 신호/봉 부족 가능"; }
+      if (missTotalPct >= 30) { level = "error"; msg = "누락 비율 높음: 백필/대기 필요"; }
+      else if (missTotalPct >= 10) { level = "warning"; msg = "일부 누락: 최근 신호/봉 부족 가능"; }
       warnEl.textContent = msg;
-      warnEl.className = "pill " + level;
+      warnEl.className = "chip " + level;
     }
 
     const causeEl = document.getElementById("ev-diag-cause");
@@ -255,7 +259,7 @@
   const body = $('ev-body');
   const rows = Array.isArray(data.signal_kpi_A) ? data.signal_kpi_A.slice(0, 200) : [];
   if (rows.length === 0){
-    body.innerHTML = `<tr><td colspan="9" class="subtle">표가 비어 있습니다.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="9" class="text-muted">표가 비어 있습니다.</td></tr>`;
     return;
   }
   body.innerHTML = '';
@@ -277,4 +281,4 @@
 })();
 </script>
 
-<%- include('partials/app_end') %>
+<%- include('partials/app_end_unified') %>

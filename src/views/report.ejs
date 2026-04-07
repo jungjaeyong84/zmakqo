@@ -1,4 +1,4 @@
-<%- include('partials/app_start', { title: '리포트 · DONBEOLJA Ω', pageTitle: '리포트', active: 'report' }) %>
+<%- include('partials/app_start_unified', { title: '리포트 · DONBEOLJA', pageTitle: '리포트', active: 'report' }) %>
 
 <%
   const budgetUnit = String(
@@ -12,6 +12,13 @@
     if (x === 'YELLOW' || x === 'WARN') return 'warn';
     if (x === 'RED' || x === 'FAIL') return 'bad';
     return 'dim';
+  };
+  const chipFor = (s) => {
+    const x = String(s || '').toUpperCase();
+    if (x === 'GREEN' || x === 'PASS') return 'chip success';
+    if (x === 'YELLOW' || x === 'WARN') return 'chip warning';
+    if (x === 'RED' || x === 'FAIL') return 'chip error';
+    return 'chip';
   };
   const statusLabel = (s) => {
     const x = String(s || 'INCONCLUSIVE').toUpperCase();
@@ -76,10 +83,17 @@
     if (n < 0) return 'bad';
     return 'warn';
   };
+  const chipForPnl = (x) => {
+    const n = Number(x);
+    if (!Number.isFinite(n)) return 'chip';
+    if (n > 0) return 'chip success';
+    if (n < 0) return 'chip error';
+    return 'chip warning';
+  };
   const fmtSide = (s) => {
     const x = String(s || '').toUpperCase();
-    if (x === 'BUY') return '롱';
-    if (x === 'SELL') return '숏';
+    if (x === 'BUY') return '매수';
+    if (x === 'SELL') return '매도';
     return x || '-';
   };
   const decisionLabel = (d) => {
@@ -96,6 +110,13 @@
     if (x === 'NEED_DATA') return 'warn';
     return 'dim';
   };
+  const decisionChip = (d) => {
+    const x = String(d || '').toUpperCase();
+    if (x === 'KEEP') return 'chip success';
+    if (x === 'DROP') return 'chip error';
+    if (x === 'NEED_DATA') return 'chip warning';
+    return 'chip';
+  };
   const exchangeLabel = (ex) => {
     const v = String(ex || '').toUpperCase();
     if (v.includes('BINANCE')) return '바이낸스';
@@ -110,54 +131,57 @@
   };
   const leverageBadge = (tier) => {
     const t = String(tier || '').toLowerCase();
-    if (t === '3x') return 'warn';
-    if (t === '2x') return 'ok';
-    if (t.endsWith('x')) return 'dim';
-    return 'dim';
+    if (t === '3x') return 'chip warning';
+    if (t === '2x') return 'chip success';
+    return 'chip';
   };
 %>
 
-<%- include('partials/legacy_report_subnav', { activeTab: 'report' }) %>
-<%- include('partials/legacy_control_surface_bridge', { mode: 'report', surfaceHref: '/dashboard/home', surfaceLabel: '미션', detailHref: '/dashboard/audit', detailLabel: '감사', extraHref: '/dashboard/deployment', extraLabel: '배포' }) %>
-
 <style>
-  .row-focus { background:#fff7e6; }
-  .row-focus td { border-bottom-color:#ffe7ba; }
+  .row-focus { background: color-mix(in srgb, var(--md-primary) 6%, transparent); }
+  .row-focus td { border-bottom-color: color-mix(in srgb, var(--md-primary) 20%, transparent); }
+  .rpt-bar-track { width:100%; height:28px; background:var(--md-surface-container); border-radius:8px; overflow:hidden; position:relative; }
+  .rpt-bar-fill { position:absolute; bottom:0; left:0; width:100%; border-radius:8px; transition:height .3s ease; }
+  .rpt-bar-fill.ok { background: var(--md-success); }
+  .rpt-bar-fill.bad { background: var(--md-error); }
+  .rpt-bar-fill.dim { background: var(--md-outline); }
+  .rpt-mini-bars { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .rpt-mini-bar { display:flex; flex-direction:column; gap:4px; align-items:center; }
 </style>
 
 <div class="card">
-  <h2>기간</h2>
-  <div class="subtle">기간 성과를 깊게 보는 보조 리포트입니다. 기본 기간은 자동 계산되며, 필요하면 직접 입력합니다.</div>
-  <div class="hr"></div>
-
-  <form method="GET" action="/dashboard/report" class="grid cols-3" style="align-items:end;">
-    <div>
-      <label>기준</label>
-      <select name="mode">
-        <option value="weekly" <%= mode==='weekly' ? 'selected' : '' %>>주간</option>
-        <option value="monthly" <%= mode==='monthly' ? 'selected' : '' %>>월간</option>
-        <option value="daily" <%= mode==='daily' ? 'selected' : '' %>>일간</option>
-      </select>
-    </div>
-    <div>
-      <label>시작 (KST)</label>
-      <input name="from" value="<%= range && range.from ? range.from : '' %>" placeholder="2026-01-01 09:00" />
-    </div>
-    <div>
-      <label>끝 (KST)</label>
-      <input name="to" value="<%= range && range.to ? range.to : '' %>" placeholder="2026-01-08 09:00" />
-    </div>
-
-    <div style="grid-column: 1 / -1; display:flex; gap:10px; flex-wrap:wrap;">
-      <button class="btn" type="submit">적용</button>
-      <a class="btn ghost slim" href="/dashboard/report?mode=<%= mode %>">기본 기간으로 리셋</a>
-      <a class="btn ghost slim" href="<%= packUrl %>">개선팩 ZIP (현재 기간)</a>
-    </div>
-
-    <% if (hasCustomRange) { %>
-      <div class="subtle" style="grid-column: 1 / -1;">사용자 지정 기간 적용됨 (입력은 KST)</div>
-    <% } %>
-  </form>
+  <div class="card-header">
+    <div class="card-title">기간</div>
+    <div class="card-subtitle">기간 성과를 깊게 보는 보조 리포트입니다. 기본 기간은 자동 계산되며, 필요하면 직접 입력합니다.</div>
+  </div>
+  <div class="card-body">
+    <form method="GET" action="/dashboard/report" class="grid cols-3" style="align-items:end;">
+      <div>
+        <label class="body-sm text-muted">기준</label>
+        <select name="mode">
+          <option value="weekly" <%= mode==='weekly' ? 'selected' : '' %>>주간</option>
+          <option value="monthly" <%= mode==='monthly' ? 'selected' : '' %>>월간</option>
+          <option value="daily" <%= mode==='daily' ? 'selected' : '' %>>일간</option>
+        </select>
+      </div>
+      <div>
+        <label class="body-sm text-muted">시작 (KST)</label>
+        <input name="from" value="<%= range && range.from ? range.from : '' %>" placeholder="2026-01-01 09:00" />
+      </div>
+      <div>
+        <label class="body-sm text-muted">끝 (KST)</label>
+        <input name="to" value="<%= range && range.to ? range.to : '' %>" placeholder="2026-01-08 09:00" />
+      </div>
+      <div style="grid-column: 1 / -1; display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn btn-filled" type="submit">적용</button>
+        <a class="btn btn-outlined sm" href="/dashboard/report?mode=<%= mode %>">기본 기간으로 리셋</a>
+        <a class="btn btn-outlined sm" href="<%= packUrl %>">개선팩 ZIP (현재 기간)</a>
+      </div>
+      <% if (hasCustomRange) { %>
+        <div class="text-muted body-sm" style="grid-column: 1 / -1;">사용자 지정 기간 적용됨 (입력은 KST)</div>
+      <% } %>
+    </form>
+  </div>
 </div>
 
 <script>
@@ -210,124 +234,128 @@
 })();
 </script>
 
-<div class="hr"></div>
-
 <div class="grid cols-3">
   <div class="card">
-    <h2>현재 종합 스냅샷</h2>
-    <div class="subtle">지금 시점의 운영 상태와 포지션 규모를 요약합니다.</div>
-    <div class="hr"></div>
-    <div class="kv">
-      <div class="k">상태</div>
-      <div class="v"><span class="pill <%= pillFor(overall && overall.status) %>"><%= statusLabel(overall && overall.status) %></span></div>
-
-      <div class="k">액션</div><div class="v mono"><%= overall && overall.action ? overall.action : '-' %></div>
-      <div class="k">미실현 가중치</div><div class="v mono"><%= fmtNum(overall && overall.unrealized_weighted) %></div>
-      <div class="k">활성 수</div><div class="v mono"><%= fmtNum(overall && overall.active_cnt) %></div>
-      <div class="k">포지션 합</div><div class="v mono"><%= fmtNum(overall && overall.size_sum) %></div>
+    <div class="card-header">
+      <div class="card-title">현재 종합 스냅샷</div>
+      <div class="card-subtitle">지금 시점의 운영 상태와 포지션 규모를 요약합니다.</div>
+    </div>
+    <div class="card-body">
+      <div style="margin-bottom:8px;"><span class="<%= chipFor(overall && overall.status) %>"><%= statusLabel(overall && overall.status) %></span></div>
+      <table class="table-compact">
+        <tr><td class="text-muted">액션</td><td class="mono"><%= overall && overall.action ? overall.action : '-' %></td></tr>
+        <tr><td class="text-muted">미실현 가중치</td><td class="mono"><%= fmtNum(overall && overall.unrealized_weighted) %></td></tr>
+        <tr><td class="text-muted">활성 수</td><td class="mono"><%= fmtNum(overall && overall.active_cnt) %></td></tr>
+        <tr><td class="text-muted">포지션 합</td><td class="mono"><%= fmtNum(overall && overall.size_sum) %></td></tr>
+      </table>
     </div>
   </div>
 
   <div class="card">
-    <h2>최근 주간 스냅샷</h2>
-    <div class="subtle">주간 최신 저장 결과가 없으면 현재 계산값으로 즉시 보정합니다.</div>
-    <div class="hr"></div>
-    <div class="kv">
-      <div class="k">계산 시각</div><div class="v mono"><%= fmtKst(latest_weekly && latest_weekly.computed_at ? latest_weekly.computed_at : '-') %></div>
-      <div class="k">데이터 소스</div><div class="v mono"><%= latest_weekly && latest_weekly.source === 'computed_now' ? '현재 계산값 보정' : '저장 스냅샷' %></div>
-      <div class="k">상태</div><div class="v"><span class="pill <%= pillFor(latest_weekly && latest_weekly.overall && latest_weekly.overall.status) %>"><%= statusLabel(latest_weekly && latest_weekly.overall && latest_weekly.overall.status) %></span></div>
-      <div class="k">미실현 가중치</div><div class="v mono"><%= fmtNum(latest_weekly && latest_weekly.overall && latest_weekly.overall.unrealized_weighted) %></div>
-      <div class="k">활성 수</div><div class="v mono"><%= fmtNum(latest_weekly && latest_weekly.overall && latest_weekly.overall.active_cnt) %></div>
-      <div class="k">포지션 합</div><div class="v mono"><%= fmtNum(latest_weekly && latest_weekly.overall && latest_weekly.overall.size_sum) %></div>
+    <div class="card-header">
+      <div class="card-title">최근 주간 스냅샷</div>
+      <div class="card-subtitle">주간 최신 저장 결과가 없으면 현재 계산값으로 즉시 보정합니다.</div>
+    </div>
+    <div class="card-body">
+      <div style="margin-bottom:8px;"><span class="<%= chipFor(latest_weekly && latest_weekly.overall && latest_weekly.overall.status) %>"><%= statusLabel(latest_weekly && latest_weekly.overall && latest_weekly.overall.status) %></span></div>
+      <table class="table-compact">
+        <tr><td class="text-muted">계산 시각</td><td class="mono"><%= fmtKst(latest_weekly && latest_weekly.computed_at ? latest_weekly.computed_at : '-') %></td></tr>
+        <tr><td class="text-muted">데이터 소스</td><td class="mono"><%= latest_weekly && latest_weekly.source === 'computed_now' ? '현재 계산값 보정' : '저장 스냅샷' %></td></tr>
+        <tr><td class="text-muted">미실현 가중치</td><td class="mono"><%= fmtNum(latest_weekly && latest_weekly.overall && latest_weekly.overall.unrealized_weighted) %></td></tr>
+        <tr><td class="text-muted">활성 수</td><td class="mono"><%= fmtNum(latest_weekly && latest_weekly.overall && latest_weekly.overall.active_cnt) %></td></tr>
+        <tr><td class="text-muted">포지션 합</td><td class="mono"><%= fmtNum(latest_weekly && latest_weekly.overall && latest_weekly.overall.size_sum) %></td></tr>
+      </table>
     </div>
   </div>
 
   <div class="card">
-    <h2>최근 월간 스냅샷</h2>
-    <div class="subtle">월간 최신 저장 결과가 없거나 오래되면 현재 계산값으로 즉시 보정합니다.</div>
-    <div class="hr"></div>
-    <div class="kv">
-      <div class="k">계산 시각</div><div class="v mono"><%= fmtKst(latest_monthly && latest_monthly.computed_at ? latest_monthly.computed_at : '-') %></div>
-      <div class="k">데이터 소스</div><div class="v mono"><%= latest_monthly && latest_monthly.source === 'computed_now' ? '현재 계산값 보정' : '저장 스냅샷' %></div>
-      <div class="k">상태</div><div class="v"><span class="pill <%= pillFor(latest_monthly && latest_monthly.overall && latest_monthly.overall.status) %>"><%= statusLabel(latest_monthly && latest_monthly.overall && latest_monthly.overall.status) %></span></div>
-      <div class="k">미실현 가중치</div><div class="v mono"><%= fmtNum(latest_monthly && latest_monthly.overall && latest_monthly.overall.unrealized_weighted) %></div>
-      <div class="k">활성 수</div><div class="v mono"><%= fmtNum(latest_monthly && latest_monthly.overall && latest_monthly.overall.active_cnt) %></div>
-      <div class="k">포지션 합</div><div class="v mono"><%= fmtNum(latest_monthly && latest_monthly.overall && latest_monthly.overall.size_sum) %></div>
+    <div class="card-header">
+      <div class="card-title">최근 월간 스냅샷</div>
+      <div class="card-subtitle">월간 최신 저장 결과가 없거나 오래되면 현재 계산값으로 즉시 보정합니다.</div>
+    </div>
+    <div class="card-body">
+      <div style="margin-bottom:8px;"><span class="<%= chipFor(latest_monthly && latest_monthly.overall && latest_monthly.overall.status) %>"><%= statusLabel(latest_monthly && latest_monthly.overall && latest_monthly.overall.status) %></span></div>
+      <table class="table-compact">
+        <tr><td class="text-muted">계산 시각</td><td class="mono"><%= fmtKst(latest_monthly && latest_monthly.computed_at ? latest_monthly.computed_at : '-') %></td></tr>
+        <tr><td class="text-muted">데이터 소스</td><td class="mono"><%= latest_monthly && latest_monthly.source === 'computed_now' ? '현재 계산값 보정' : '저장 스냅샷' %></td></tr>
+        <tr><td class="text-muted">미실현 가중치</td><td class="mono"><%= fmtNum(latest_monthly && latest_monthly.overall && latest_monthly.overall.unrealized_weighted) %></td></tr>
+        <tr><td class="text-muted">활성 수</td><td class="mono"><%= fmtNum(latest_monthly && latest_monthly.overall && latest_monthly.overall.active_cnt) %></td></tr>
+        <tr><td class="text-muted">포지션 합</td><td class="mono"><%= fmtNum(latest_monthly && latest_monthly.overall && latest_monthly.overall.size_sum) %></td></tr>
+      </table>
     </div>
   </div>
 </div>
-
-<div class="hr"></div>
 
 <div class="grid cols-2">
   <div class="card">
-    <h2>현재 손익 스냅샷</h2>
-    <div class="subtle">지금 계좌 기준의 실현·미실현 손익과 성장률입니다.</div>
-    <div class="hr"></div>
-    <div class="kv">
-      <div class="k">총 손익</div>
-      <div class="v mono"><%= fmtKrwSigned(budget_perf && budget_perf.total_pnl_krw) %> <%= budgetUnit %></div>
-      <div class="k">성장률(총액)</div>
-      <div class="v"><span class="pill <%= pillForPnl(budget_perf && budget_perf.growth_pct_total) %>"><%= fmtPctSigned(budget_perf && budget_perf.growth_pct_total) %></span></div>
-      <div class="k">성장률(사용분)</div>
-      <div class="v"><span class="pill <%= pillForPnl(budget_perf && budget_perf.growth_pct_used) %>"><%= fmtPctSigned(budget_perf && budget_perf.growth_pct_used) %></span></div>
-      <div class="k">실현 손익</div>
-      <div class="v mono"><%= fmtKrwSigned(budget_perf && budget_perf.total_realized_krw) %> <%= budgetUnit %></div>
-      <div class="k">미실현 손익</div>
-      <div class="v mono"><%= fmtKrwSigned(budget_perf && budget_perf.total_unrealized_krw) %> <%= budgetUnit %></div>
+    <div class="card-header">
+      <div class="card-title">현재 손익 스냅샷</div>
+      <div class="card-subtitle">지금 계좌 기준의 실현/미실현 손익과 성장률입니다.</div>
+    </div>
+    <div class="card-body">
+      <table class="table-compact">
+        <tr><td class="text-muted">총 손익</td><td class="mono"><%= fmtKrwSigned(budget_perf && budget_perf.total_pnl_krw) %> <%= budgetUnit %></td></tr>
+        <tr><td class="text-muted">성장률(총액)</td><td><span class="<%= chipForPnl(budget_perf && budget_perf.growth_pct_total) %>"><%= fmtPctSigned(budget_perf && budget_perf.growth_pct_total) %></span></td></tr>
+        <tr><td class="text-muted">성장률(사용분)</td><td><span class="<%= chipForPnl(budget_perf && budget_perf.growth_pct_used) %>"><%= fmtPctSigned(budget_perf && budget_perf.growth_pct_used) %></span></td></tr>
+        <tr><td class="text-muted">실현 손익</td><td class="mono"><%= fmtKrwSigned(budget_perf && budget_perf.total_realized_krw) %> <%= budgetUnit %></td></tr>
+        <tr><td class="text-muted">미실현 손익</td><td class="mono"><%= fmtKrwSigned(budget_perf && budget_perf.total_unrealized_krw) %> <%= budgetUnit %></td></tr>
+      </table>
     </div>
   </div>
 
   <div class="card">
-    <h2>선택 기간 성과</h2>
-    <div class="subtle">현재 선택한 기간의 실현 손익과 거래 수를 요약합니다.</div>
-    <div class="hr"></div>
-    <% if (range_perf && range_perf.ok) { %>
-      <div class="kv">
-        <div class="k">기간</div>
-        <div class="v mono"><%= fmtKst(range && range.from ? range.from : null) %> → <%= fmtKst(range && range.to ? range.to : null) %></div>
-        <div class="k">실현 손익</div>
-        <div class="v mono"><%= fmtKrwSigned(range_perf.total_realized_krw) %> <%= budgetUnit %></div>
-        <div class="k">성장률(기간)</div>
-        <div class="v"><span class="pill <%= pillForPnl(range_perf && range_perf.growth_pct_total) %>"><%= fmtPctSigned(range_perf && range_perf.growth_pct_total) %></span></div>
-        <div class="k">거래 수</div>
-        <div class="v mono"><%= fmtNum(range_perf.trades_n) %></div>
-        <div class="k">범위 제한</div>
-        <div class="v mono"><%= range_perf.scope_clamped ? `최근 ${range_perf.pnl_scope_days}일로 제한` : '없음' %></div>
-      </div>
-    <% } else { %>
-      <div class="subtle">선택 기간 성과를 계산할 수 없습니다.</div>
-    <% } %>
+    <div class="card-header">
+      <div class="card-title">선택 기간 성과</div>
+      <div class="card-subtitle">현재 선택한 기간의 실현 손익과 거래 수를 요약합니다.</div>
+    </div>
+    <div class="card-body">
+      <% if (range_perf && range_perf.ok) { %>
+        <table class="table-compact">
+          <tr><td class="text-muted">기간</td><td class="mono"><%= fmtKst(range && range.from ? range.from : null) %> → <%= fmtKst(range && range.to ? range.to : null) %></td></tr>
+          <tr><td class="text-muted">실현 손익</td><td class="mono"><%= fmtKrwSigned(range_perf.total_realized_krw) %> <%= budgetUnit %></td></tr>
+          <tr><td class="text-muted">성장률(기간)</td><td><span class="<%= chipForPnl(range_perf && range_perf.growth_pct_total) %>"><%= fmtPctSigned(range_perf && range_perf.growth_pct_total) %></span></td></tr>
+          <tr><td class="text-muted">거래 수</td><td class="mono"><%= fmtNum(range_perf.trades_n) %></td></tr>
+          <tr><td class="text-muted">범위 제한</td><td class="mono"><%= range_perf.scope_clamped ? `최근 ${range_perf.pnl_scope_days}일로 제한` : '없음' %></td></tr>
+        </table>
+      <% } else { %>
+        <div class="empty-state">선택 기간 성과를 계산할 수 없습니다.</div>
+      <% } %>
+    </div>
   </div>
 </div>
 
-<div class="hr"></div>
-
 <div class="card" id="tier-health-card">
-  <h2>LONG/SHORT 진입 건강도 (24h / 72h)</h2>
-  <div class="subtle">현재 라이브 진입 구조 기준 신호 수와 체결 승률</div>
-  <div class="hr"></div>
-  <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-    <button class="btn ghost slim" type="button" id="tier-health-refresh">새로고침</button>
-    <span class="mono subtle" id="tier-health-meta">로딩 중...</span>
+  <div class="card-header">
+    <div class="card-title">매수/매도 진입 건강도 (24시간 / 72시간)</div>
+    <div class="card-subtitle">현재 라이브 진입 구조 기준 거래 신호 수와 체결 승률</div>
   </div>
-  <div class="grid cols-2" style="margin-top:10px;">
-    <div class="card">
-      <h3 style="margin-bottom:8px;">24h</h3>
-      <div class="kv">
-        <div class="k">신호(전체)</div><div class="v mono" id="th24-signals-total">-</div>
-        <div class="k">체결 트레이드</div><div class="v mono" id="th24-trades-total">-</div>
-        <div class="k">승률</div><div class="v mono" id="th24-win-rate">-</div>
-        <div class="k">평균 PnL%</div><div class="v mono" id="th24-avg-pnl">-</div>
-      </div>
+  <div class="card-body">
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px;">
+      <button class="btn btn-outlined sm" type="button" id="tier-health-refresh">새로고침</button>
+      <span class="mono text-muted body-sm" id="tier-health-meta">로딩 중...</span>
     </div>
-    <div class="card">
-      <h3 style="margin-bottom:8px;">72h</h3>
-      <div class="kv">
-        <div class="k">신호(전체)</div><div class="v mono" id="th72-signals-total">-</div>
-        <div class="k">체결 트레이드</div><div class="v mono" id="th72-trades-total">-</div>
-        <div class="k">승률</div><div class="v mono" id="th72-win-rate">-</div>
-        <div class="k">평균 PnL%</div><div class="v mono" id="th72-avg-pnl">-</div>
+    <div class="grid cols-2">
+      <div class="card">
+        <div class="card-header"><div class="card-title">24h</div></div>
+        <div class="card-body">
+          <table class="table-compact">
+            <tr><td class="text-muted">거래 신호(전체)</td><td class="mono" id="th24-signals-total">-</td></tr>
+            <tr><td class="text-muted">체결 거래</td><td class="mono" id="th24-trades-total">-</td></tr>
+            <tr><td class="text-muted">승률</td><td class="mono" id="th24-win-rate">-</td></tr>
+            <tr><td class="text-muted">평균 PnL%</td><td class="mono" id="th24-avg-pnl">-</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">72h</div></div>
+        <div class="card-body">
+          <table class="table-compact">
+            <tr><td class="text-muted">거래 신호(전체)</td><td class="mono" id="th72-signals-total">-</td></tr>
+            <tr><td class="text-muted">체결 거래</td><td class="mono" id="th72-trades-total">-</td></tr>
+            <tr><td class="text-muted">승률</td><td class="mono" id="th72-win-rate">-</td></tr>
+            <tr><td class="text-muted">평균 PnL%</td><td class="mono" id="th72-avg-pnl">-</td></tr>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -387,7 +415,7 @@
       setWindow("th72", report["72h"] || null);
       if (metaEl) {
         const gen = j.payload.generated_at ? String(j.payload.generated_at).replace("T", " ").replace("Z", " UTC") : "-";
-        metaEl.textContent = `생성시각: ${gen} · source: ${j.source || "-"}`;
+        metaEl.textContent = `생성시각: ${gen} · 출처: ${j.source || "-"}`;
       }
     } catch (_err) {
       setWindow("th24", null);
@@ -401,78 +429,70 @@
 })();
 </script>
 
-<div class="hr"></div>
-
 <div class="card" id="account-growth-card" data-exchange="<%= exchange %>">
-  <h2>총액 성장률 (<%= exchangeLabel(exchange) %>)</h2>
-  <div class="subtle">최근 1일/7일/30일 변화. 바이낸스는 입출금(USDT) 보정 후 표시</div>
-  <div class="hr"></div>
-  <div class="kv">
-    <div class="k">총액</div><div class="v mono" id="acc-total-krw">-</div>
-    <div class="k">현금</div><div class="v mono" id="acc-cash-krw">-</div>
-    <div class="k">업데이트</div><div class="v mono" id="acc-updated-at">-</div>
+  <div class="card-header">
+    <div class="card-title">총액 성장률 (<%= exchangeLabel(exchange) %>)</div>
+    <div class="card-subtitle">최근 1일/7일/30일 변화. 바이낸스는 입출금(USDT) 보정 후 표시</div>
   </div>
-  <div class="hr"></div>
-  <div class="mini-bars" id="acc-growth-bars">
-    <div class="mini-bar">
-      <div class="subtle">데일리</div>
-      <div class="bar-track"><div class="bar-fill dim" data-role="daily"></div></div>
-      <div class="mono" id="acc-daily-pct">-</div>
+  <div class="card-body">
+    <table class="table-compact">
+      <tr><td class="text-muted">총액</td><td class="mono" id="acc-total-krw">-</td></tr>
+      <tr><td class="text-muted">현금</td><td class="mono" id="acc-cash-krw">-</td></tr>
+      <tr><td class="text-muted">업데이트</td><td class="mono" id="acc-updated-at">-</td></tr>
+    </table>
+    <div class="rpt-mini-bars" style="margin-top:12px;" id="acc-growth-bars">
+      <div class="rpt-mini-bar">
+        <div class="text-muted body-sm">데일리</div>
+        <div class="rpt-bar-track"><div class="rpt-bar-fill dim" data-role="daily"></div></div>
+        <div class="mono body-sm" id="acc-daily-pct">-</div>
+      </div>
+      <div class="rpt-mini-bar">
+        <div class="text-muted body-sm">주간</div>
+        <div class="rpt-bar-track"><div class="rpt-bar-fill dim" data-role="weekly"></div></div>
+        <div class="mono body-sm" id="acc-weekly-pct">-</div>
+      </div>
+      <div class="rpt-mini-bar">
+        <div class="text-muted body-sm">월간</div>
+        <div class="rpt-bar-track"><div class="rpt-bar-fill dim" data-role="monthly"></div></div>
+        <div class="mono body-sm" id="acc-monthly-pct">-</div>
+      </div>
     </div>
-    <div class="mini-bar">
-      <div class="subtle">주간</div>
-      <div class="bar-track"><div class="bar-fill dim" data-role="weekly"></div></div>
-      <div class="mono" id="acc-weekly-pct">-</div>
-    </div>
-    <div class="mini-bar">
-      <div class="subtle">월간</div>
-      <div class="bar-track"><div class="bar-fill dim" data-role="monthly"></div></div>
-      <div class="mono" id="acc-monthly-pct">-</div>
-    </div>
+    <div class="text-muted body-sm" style="margin-top:8px;" id="acc-growth-note">불러오는 중...</div>
   </div>
-  <div class="subtle" style="margin-top:8px;" id="acc-growth-note">불러오는 중...</div>
 </div>
 
-<div class="hr"></div>
-
 <div class="card">
-  <h2>예산·익스포저 상세</h2>
-  <div class="subtle">상단 손익 스냅샷 아래의 운영용 세부값입니다. 예산 사용, 배율, 마켓별 익스포저를 보여줍니다.</div>
-  <div class="hr"></div>
-  <% if (budget && budget.source === 'ai_allocation') { %>
-    <div class="subtle">AI 자동 예산 기준<%= budget.virtual ? ' (미적용/가상)' : '' %></div>
-    <div class="hr"></div>
-  <% } %>
-  <div class="kv">
-    <div class="k">사용 여부</div><div class="v mono"><%= budget && budget.enabled ? '켜짐' : '꺼짐' %></div>
-    <div class="k">총 예산</div>
-    <div class="v mono">
-      <%= fmtKrw(budget && budget.total_used_krw) %> / <%= fmtKrw(budget && budget.total_max_krw) %>
-    </div>
-    <div class="k">사용률</div><div class="v mono"><%= fmtPct(budget && budget.total_used_pct) %></div>
-    <div class="k">실현 소스</div>
-    <div class="v mono"><%= budget_perf && budget_perf.realized_source_mode ? budget_perf.realized_source_mode : '-' %></div>
-    <div class="k">배율 상태</div>
-    <div class="v">
-      <% if (leverageSummary && leverageSummary.enabled) { %>
-        <span class="pill ok">2x <%= fmtNum(leverageSummary.tier_2x || 0) %></span>
-        <span class="pill warn">3x <%= fmtNum(leverageSummary.tier_3x || 0) %></span>
-        <span class="subtle mono">· 활성 <%= fmtNum(leverageSummary.active_markets || 0) %></span>
-      <% } else { %>
-        <span class="pill dim">현물/비활성</span>
-      <% } %>
-    </div>
-    <div class="k">기준금액(사용분)</div>
-    <div class="v mono"><%= fmtKrw(budget_perf && budget_perf.pnl_used_krw) %> <%= budgetUnit %></div>
+  <div class="card-header">
+    <div class="card-title">예산/익스포저 상세</div>
+    <div class="card-subtitle">예산 사용, 배율, 마켓별 익스포저를 보여줍니다.</div>
   </div>
+  <div class="card-body">
+    <% if (budget && budget.source === 'ai_allocation') { %>
+      <div class="text-muted body-sm" style="margin-bottom:8px;">AI 자동 예산 기준<%= budget.virtual ? ' (미적용/가상)' : '' %></div>
+    <% } %>
+    <table class="table-compact" style="margin-bottom:12px;">
+      <tr><td class="text-muted">사용 여부</td><td class="mono"><%= budget && budget.enabled ? '켜짐' : '꺼짐' %></td></tr>
+      <tr><td class="text-muted">총 예산</td><td class="mono"><%= fmtKrw(budget && budget.total_used_krw) %> / <%= fmtKrw(budget && budget.total_max_krw) %></td></tr>
+      <tr><td class="text-muted">사용률</td><td class="mono"><%= fmtPct(budget && budget.total_used_pct) %></td></tr>
+      <tr><td class="text-muted">실현 기준</td><td class="mono"><%= budget_perf && budget_perf.realized_source_mode ? budget_perf.realized_source_mode : '-' %></td></tr>
+      <tr>
+        <td class="text-muted">배율 상태</td>
+        <td>
+          <% if (leverageSummary && leverageSummary.enabled) { %>
+            <span class="chip success">2x <%= fmtNum(leverageSummary.tier_2x || 0) %></span>
+            <span class="chip warning">3x <%= fmtNum(leverageSummary.tier_3x || 0) %></span>
+            <span class="text-muted mono body-sm"> 활성 <%= fmtNum(leverageSummary.active_markets || 0) %></span>
+          <% } else { %>
+            <span class="chip">현물/비활성</span>
+          <% } %>
+        </td>
+      </tr>
+      <tr><td class="text-muted">기준금액(사용분)</td><td class="mono"><%= fmtKrw(budget_perf && budget_perf.pnl_used_krw) %> <%= budgetUnit %></td></tr>
+    </table>
 
-  <div class="hr"></div>
-  <div class="tablewrap">
-    <div class="head">
-      <h2>마켓별 익스포저</h2>
-    </div>
-    <div class="scroll" style="max-height:320px;">
-      <table>
+    <div class="card-title" style="margin-bottom:8px;">마켓별 익스포저</div>
+    <div class="table-wrap">
+      <table class="table-compact">
         <thead>
           <tr>
             <th>마켓</th>
@@ -493,19 +513,19 @@
               <td class="mono"><%= fmtPct(b.size_pct) %></td>
               <td class="mono">
                 <% if (b.leverage_tier) { %>
-                  <span class="pill <%= leverageBadge(b.leverage_tier) %>"><%= b.leverage_tier %></span>
+                  <span class="<%= leverageBadge(b.leverage_tier) %>"><%= b.leverage_tier %></span>
                 <% } else if (b.leverage != null) { %>
-                  <span class="pill dim"><%= fmtLeverage(b.leverage) %></span>
+                  <span class="chip"><%= fmtLeverage(b.leverage) %></span>
                 <% } else { %>
                   -
                 <% } %>
               </td>
               <td class="mono"><%= fmtKrwSigned(b.total_pnl_krw) %></td>
-              <td><span class="pill <%= pillForPnl(b.growth_pct) %>"><%= fmtPctSigned(b.growth_pct) %></span></td>
+              <td><span class="<%= chipForPnl(b.growth_pct) %>"><%= fmtPctSigned(b.growth_pct) %></span></td>
             </tr>
           <% }) %>
           <% if (!budget || !budget.per_market || budget.per_market.length === 0) { %>
-            <tr><td colspan="7" class="subtle">예산 데이터 없음</td></tr>
+            <tr><td colspan="7" class="text-muted">예산 데이터 없음</td></tr>
           <% } %>
         </tbody>
       </table>
@@ -513,23 +533,18 @@
   </div>
 </div>
 
-<div class="hr"></div>
-
 <div class="card">
-  <h2>기간 성과 상세</h2>
-  <div class="subtle">상단 선택 기간 성과 카드 아래의 마켓별 세부입니다.</div>
-  <div class="subtle">선택한 기간(<%= fmtKst(range && range.from ? range.from : null) %> → <%= fmtKst(range && range.to ? range.to : null) %>)의 실현 손익을 최근 <%= range_perf && range_perf.pnl_scope_days ? range_perf.pnl_scope_days : 730 %>일 범위 내에서 집계합니다.</div>
-  <% if (range_perf && range_perf.scope_clamped) { %>
-    <div class="subtle">입력 기간이 길어서 최근 <%= range_perf.pnl_scope_days %>일로 자동 제한되었습니다.</div>
-  <% } %>
-  <div class="hr"></div>
-  <% if (range_perf && range_perf.ok) { %>
-    <div class="tablewrap">
-      <div class="head">
-        <h2>마켓별 성과</h2>
-      </div>
-      <div class="scroll" style="max-height:320px;">
-        <table>
+  <div class="card-header">
+    <div class="card-title">기간 성과 상세</div>
+    <div class="card-subtitle">선택한 기간(<%= fmtKst(range && range.from ? range.from : null) %> → <%= fmtKst(range && range.to ? range.to : null) %>)의 실현 손익</div>
+  </div>
+  <div class="card-body">
+    <% if (range_perf && range_perf.scope_clamped) { %>
+      <div class="text-muted body-sm" style="margin-bottom:8px;">입력 기간이 길어서 최근 <%= range_perf.pnl_scope_days %>일로 자동 제한되었습니다.</div>
+    <% } %>
+    <% if (range_perf && range_perf.ok) { %>
+      <div class="table-wrap">
+        <table class="table-compact">
           <thead>
             <tr>
               <th>마켓</th>
@@ -545,76 +560,72 @@
                 <td class="mono"><%= r.market %></td>
                 <td class="mono">
                   <% if (r.leverage_tier) { %>
-                    <span class="pill <%= leverageBadge(r.leverage_tier) %>"><%= r.leverage_tier %></span>
+                    <span class="<%= leverageBadge(r.leverage_tier) %>"><%= r.leverage_tier %></span>
                   <% } else if (r.leverage != null) { %>
-                    <span class="pill dim"><%= fmtLeverage(r.leverage) %></span>
+                    <span class="chip"><%= fmtLeverage(r.leverage) %></span>
                   <% } else { %>
                     -
                   <% } %>
                 </td>
                 <td class="mono"><%= fmtKrwSigned(r.realized_krw) %></td>
-                <td><span class="pill <%= pillForPnl(r.growth_pct) %>"><%= fmtPctSigned(r.growth_pct) %></span></td>
+                <td><span class="<%= chipForPnl(r.growth_pct) %>"><%= fmtPctSigned(r.growth_pct) %></span></td>
                 <td class="mono"><%= fmtNum(r.trades_n) %></td>
               </tr>
             <% }) %>
             <% if (!range_perf || !range_perf.per_market || range_perf.per_market.length === 0) { %>
-              <tr><td colspan="5" class="subtle">기간 데이터 없음</td></tr>
+              <tr><td colspan="5" class="text-muted">기간 데이터 없음</td></tr>
             <% } %>
           </tbody>
         </table>
       </div>
-    </div>
-  <% } else { %>
-    <div class="subtle">기간 데이터를 계산할 수 없습니다.</div>
-  <% } %>
+    <% } else { %>
+      <div class="empty-state">기간 데이터를 계산할 수 없습니다.</div>
+    <% } %>
+  </div>
 </div>
 
-<div class="hr"></div>
-
 <div class="card">
-  <h2>체결 성공률</h2>
-  <div class="subtle">선택한 기간의 인텐트 기준 집계</div>
-  <div class="hr"></div>
-  <% if (typeof intent_stats !== 'undefined' && intent_stats && intent_stats.ok) { %>
-    <div class="kv">
-      <div class="k">인텐트 수</div><div class="v mono"><%= fmtNum(intent_stats.total) %></div>
-      <div class="k">체결</div><div class="v mono"><%= fmtNum(intent_stats.filled) %></div>
-      <div class="k">취소</div><div class="v mono"><%= fmtNum(intent_stats.canceled) %></div>
-      <div class="k">대기</div><div class="v mono"><%= fmtNum(intent_stats.pending) %></div>
-      <div class="k">만료</div><div class="v mono"><%= fmtNum(intent_stats.expired) %></div>
-      <div class="k">성공률</div><div class="v"><span class="pill <%= pillForPnl(intent_stats.success_pct) %>"><%= fmtPctSigned(intent_stats.success_pct) %></span></div>
-      <div class="k">취소율</div><div class="v"><span class="pill <%= pillForPnl(intent_stats.cancel_pct ? -intent_stats.cancel_pct : null) %>"><%= fmtPctSigned(intent_stats.cancel_pct ? -intent_stats.cancel_pct : null) %></span></div>
-      <div class="k">대기율</div><div class="v mono"><%= fmtPct(intent_stats.pending_pct) %></div>
-      <div class="k">만료율</div><div class="v mono"><%= fmtPct(intent_stats.expired_pct) %></div>
-    </div>
-    <div class="hr"></div>
-    <div class="subtle">취소 사유 TOP</div>
-    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
-      <% (intent_stats.top_cancel_reasons || []).forEach(r => { %>
-        <span class="pill dim"><%= r.reason %> · <%= fmtNum(r.count) %></span>
-      <% }) %>
-      <% if (!intent_stats.top_cancel_reasons || intent_stats.top_cancel_reasons.length === 0) { %>
-        <span class="subtle">취소 사유 없음</span>
-      <% } %>
-    </div>
-  <% } else { %>
-    <div class="subtle">집계 데이터 없음</div>
-  <% } %>
-</div>
-
-<div class="hr"></div>
-
-<div class="card">
-  <h2>신호별 성적표</h2>
-  <div class="subtle">최신 평가 결과 기준 (signal_eval)</div>
-  <div class="hr"></div>
-  <% if (signal_scorecard && signal_scorecard.length > 0) { %>
-    <div class="tablewrap">
-      <div class="head">
-        <h2>요약</h2>
+  <div class="card-header">
+    <div class="card-title">체결 성공률</div>
+    <div class="card-subtitle">선택한 기간의 주문 기준 집계</div>
+  </div>
+  <div class="card-body">
+    <% if (typeof intent_stats !== 'undefined' && intent_stats && intent_stats.ok) { %>
+      <table class="table-compact" style="margin-bottom:12px;">
+        <tr><td class="text-muted">주문 수</td><td class="mono"><%= fmtNum(intent_stats.total) %></td></tr>
+        <tr><td class="text-muted">체결됨</td><td class="mono"><%= fmtNum(intent_stats.filled) %></td></tr>
+        <tr><td class="text-muted">취소됨</td><td class="mono"><%= fmtNum(intent_stats.canceled) %></td></tr>
+        <tr><td class="text-muted">대기 중</td><td class="mono"><%= fmtNum(intent_stats.pending) %></td></tr>
+        <tr><td class="text-muted">만료</td><td class="mono"><%= fmtNum(intent_stats.expired) %></td></tr>
+        <tr><td class="text-muted">성공률</td><td><span class="<%= chipForPnl(intent_stats.success_pct) %>"><%= fmtPctSigned(intent_stats.success_pct) %></span></td></tr>
+        <tr><td class="text-muted">취소율</td><td><span class="<%= chipForPnl(intent_stats.cancel_pct ? -intent_stats.cancel_pct : null) %>"><%= fmtPctSigned(intent_stats.cancel_pct ? -intent_stats.cancel_pct : null) %></span></td></tr>
+        <tr><td class="text-muted">대기율</td><td class="mono"><%= fmtPct(intent_stats.pending_pct) %></td></tr>
+        <tr><td class="text-muted">만료율</td><td class="mono"><%= fmtPct(intent_stats.expired_pct) %></td></tr>
+      </table>
+      <div class="text-muted body-sm" style="margin-bottom:8px;">취소 사유 TOP</div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <% (intent_stats.top_cancel_reasons || []).forEach(r => { %>
+          <span class="chip sm"><%= r.reason %> · <%= fmtNum(r.count) %></span>
+        <% }) %>
+        <% if (!intent_stats.top_cancel_reasons || intent_stats.top_cancel_reasons.length === 0) { %>
+          <span class="text-muted body-sm">취소 사유 없음</span>
+        <% } %>
       </div>
-      <div class="scroll" style="max-height:360px;">
-        <table>
+    <% } else { %>
+      <div class="empty-state">집계 데이터 없음</div>
+    <% } %>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">거래 신호별 성적표</div>
+    <div class="card-subtitle">최신 평가 결과 기준</div>
+  </div>
+  <div class="card-body">
+    <% if (signal_scorecard && signal_scorecard.length > 0) { %>
+      <div class="table-wrap">
+        <table class="table-compact">
           <thead>
             <tr>
               <th>그룹</th>
@@ -637,53 +648,54 @@
                 <td class="mono"><%= fmtNum(r.eval_n) %></td>
                 <td class="mono"><%= fmtPctRatio(r.win_rate) %></td>
                 <td class="mono"><%= fmtPct(r.ev) %></td>
-                <td><span class="pill <%= decisionPill(r.decision) %>"><%= decisionLabel(r.decision) %></span></td>
+                <td><span class="<%= decisionChip(r.decision) %>"><%= decisionLabel(r.decision) %></span></td>
               </tr>
             <% }) %>
           </tbody>
         </table>
       </div>
-    </div>
-  <% } else { %>
-    <div class="subtle">평가 데이터 없음</div>
-  <% } %>
+    <% } else { %>
+      <div class="empty-state">평가 데이터 없음</div>
+    <% } %>
+  </div>
 </div>
 
-<div class="hr"></div>
-
 <div class="card">
-  <h2>데이터 품질 리포트</h2>
-  <div class="subtle">최근 평가 기준의 데이터 매칭 상태</div>
-  <div class="hr"></div>
-  <% if (data_quality) { %>
-    <div class="kv">
-      <div class="k">신호 스캔</div><div class="v mono"><%= fmtNum(data_quality.scanned_signals) %></div>
-      <div class="k">정상 매칭</div><div class="v mono"><%= fmtNum(data_quality.match_ok) %></div>
-      <div class="k">현재봉 누락</div><div class="v mono"><%= fmtNum(data_quality.match_nowClose_missing) %></div>
-      <div class="k">미래봉 누락</div><div class="v mono"><%= fmtNum(data_quality.match_futClose_missing) %></div>
-      <div class="k">클로즈맵 크기</div><div class="v mono"><%= fmtNum(data_quality.closeMap_size) %></div>
+  <div class="card-header">
+    <div class="card-title">데이터 품질</div>
+    <div class="card-subtitle">거래 신호와 가격 데이터가 잘 연결되는지 확인합니다.</div>
+  </div>
+  <div class="card-body">
+    <% if (data_quality) { %>
       <% const totalMatches = Number(data_quality.match_ok || 0) + Number(data_quality.match_nowClose_missing || 0) + Number(data_quality.match_futClose_missing || 0); %>
-      <div class="k">정합률</div>
-      <div class="v"><span class="pill <%= pillForPnl((totalMatches > 0) ? (data_quality.match_ok / totalMatches) : null) %>"><%= fmtPctRatio(totalMatches > 0 ? (data_quality.match_ok / totalMatches) : null) %></span></div>
-    </div>
-  <% } else { %>
-    <div class="subtle">데이터 품질 정보 없음</div>
-  <% } %>
+      <table class="table-compact">
+        <tr><td class="text-muted">정합률</td><td><span class="<%= chipForPnl((totalMatches > 0) ? (data_quality.match_ok / totalMatches) : null) %>"><%= fmtPctRatio(totalMatches > 0 ? (data_quality.match_ok / totalMatches) : null) %></span></td></tr>
+      </table>
+      <details style="margin-top:8px;">
+        <summary class="text-muted body-sm" style="cursor:pointer;">상세 보기</summary>
+        <table class="table-compact" style="margin-top:6px;">
+          <tr><td class="text-muted">거래 신호 스캔</td><td class="mono"><%= fmtNum(data_quality.scanned_signals) %></td></tr>
+          <tr><td class="text-muted">정상 매칭</td><td class="mono"><%= fmtNum(data_quality.match_ok) %></td></tr>
+          <tr><td class="text-muted">현재봉 누락</td><td class="mono"><%= fmtNum(data_quality.match_nowClose_missing) %></td></tr>
+          <tr><td class="text-muted">미래봉 누락</td><td class="mono"><%= fmtNum(data_quality.match_futClose_missing) %></td></tr>
+          <tr><td class="text-muted">종가맵 크기</td><td class="mono"><%= fmtNum(data_quality.closeMap_size) %></td></tr>
+        </table>
+      </details>
+    <% } else { %>
+      <div class="empty-state">데이터 품질 정보 없음</div>
+    <% } %>
+  </div>
 </div>
 
-<div class="hr"></div>
-
 <div class="card">
-  <h2>꼬리 위험</h2>
-  <div class="subtle">하위 5% 평균과 최악값(시장별)</div>
-  <div class="hr"></div>
-  <% if (tail_summary && tail_summary.rows && tail_summary.rows.length) { %>
-    <div class="tablewrap">
-      <div class="head">
-        <h2>하위 위험 TOP</h2>
-      </div>
-      <div class="scroll" style="max-height:240px;">
-        <table>
+  <div class="card-header">
+    <div class="card-title">꼬리 위험</div>
+    <div class="card-subtitle">하위 5% 평균과 최악값(시장별)</div>
+  </div>
+  <div class="card-body">
+    <% if (tail_summary && tail_summary.rows && tail_summary.rows.length) { %>
+      <div class="table-wrap">
+        <table class="table-compact">
           <thead>
             <tr>
               <th>마켓</th>
@@ -702,31 +714,25 @@
           </tbody>
         </table>
       </div>
-    </div>
-  <% } else { %>
-    <div class="subtle">꼬리 위험 데이터 없음</div>
-  <% } %>
+    <% } else { %>
+      <div class="empty-state">꼬리 위험 데이터 없음</div>
+    <% } %>
+  </div>
 </div>
 
-<div class="hr"></div>
-
 <div class="card">
-  <h2>현장-구현 체크</h2>
-  <div class="subtle">불변 규칙이 코드와 일치하는지 점검</div>
-  <div class="hr"></div>
-  <% if (charter_check && charter_check.checks) { %>
-    <div class="kv">
-      <div class="k">상태</div>
-      <div class="v"><span class="pill <%= charter_check.ok ? 'ok' : 'bad' %>"><%= charter_check.ok ? 'OK' : '불일치' %></span></div>
-      <div class="k">업데이트</div><div class="v mono"><%= fmtKst(charter_check.updated_at) %></div>
-    </div>
-    <div class="hr"></div>
-    <div class="tablewrap">
-      <div class="head">
-        <h2>체크리스트</h2>
-      </div>
-      <div class="scroll" style="max-height:240px;">
-        <table>
+  <div class="card-header">
+    <div class="card-title">운영 규칙 점검</div>
+    <div class="card-subtitle">설정된 운영 규칙이 실제 코드와 일치하는지 확인합니다.</div>
+  </div>
+  <div class="card-body">
+    <% if (charter_check && charter_check.checks) { %>
+      <table class="table-compact" style="margin-bottom:12px;">
+        <tr><td class="text-muted">상태</td><td><span class="<%= charter_check.ok ? 'chip success' : 'chip error' %>"><%= charter_check.ok ? '정상' : '불일치' %></span></td></tr>
+        <tr><td class="text-muted">업데이트</td><td class="mono"><%= fmtKst(charter_check.updated_at) %></td></tr>
+      </table>
+      <div class="table-wrap">
+        <table class="table-compact">
           <thead>
             <tr>
               <th>항목</th>
@@ -741,41 +747,36 @@
                 <td><%= r.label %></td>
                 <td class="mono"><%= r.expected_label != null ? r.expected_label : r.expected %></td>
                 <td class="mono"><%= r.actual_label != null ? r.actual_label : r.actual %></td>
-                <td><span class="pill <%= r.ok ? 'ok' : 'bad' %>"><%= r.ok ? 'OK' : '불일치' %></span></td>
+                <td><span class="<%= r.ok ? 'chip success' : 'chip error' %>"><%= r.ok ? '정상' : '불일치' %></span></td>
               </tr>
             <% }) %>
           </tbody>
         </table>
       </div>
-    </div>
-  <% } else { %>
-    <div class="subtle">체크 데이터 없음</div>
-  <% } %>
+    <% } else { %>
+      <div class="empty-state">체크 데이터 없음</div>
+    <% } %>
+  </div>
 </div>
-
-<div class="hr"></div>
 
 <% if (ai_summary) { %>
   <div class="card">
-    <h2>AI 요약</h2>
-    <div class="subtle">
-      언어=<%= ai_summary.settings.language %> · 길이=<%= ai_summary.settings.summary_length %> ·
-      강조=<%= ai_summary.settings.report_emphasis %> · 경고=<%= ai_summary.settings.warnings_enabled ? 'on' : 'off' %> ·
-      표 비중=<%= ai_summary.settings.table_ratio %>
-    </div>
-    <div class="hr"></div>
-
-    <% (ai_summary.lines || []).forEach(line => { %>
-      <div class="subtle"><%= line %></div>
-    <% }) %>
-
-    <div class="hr"></div>
-    <div class="tablewrap">
-      <div class="head">
-        <h2>상위 마켓</h2>
+    <div class="card-header">
+      <div class="card-title">AI 요약</div>
+      <div class="card-subtitle">
+        언어=<%= ai_summary.settings.language %> · 길이=<%= ai_summary.settings.summary_length %> ·
+        강조=<%= ai_summary.settings.report_emphasis %> · 경고=<%= ai_summary.settings.warnings_enabled ? '켜짐' : '꺼짐' %> ·
+        표 비중=<%= ai_summary.settings.table_ratio %>
       </div>
-      <div class="scroll" style="max-height:260px;">
-        <table>
+    </div>
+    <div class="card-body">
+      <% (ai_summary.lines || []).forEach(line => { %>
+        <div class="text-muted body-sm"><%= line %></div>
+      <% }) %>
+
+      <div class="card-title" style="margin-top:12px; margin-bottom:8px;">상위 마켓</div>
+      <div class="table-wrap">
+        <table class="table-compact">
           <thead>
             <tr>
               <th>마켓</th>
@@ -789,30 +790,31 @@
               <tr class="<%= (focus_market && r.market === focus_market) ? 'row-focus' : '' %>">
                 <td class="mono"><%= r.market %></td>
                 <td class="mono"><%= r.metric_label %></td>
-                <td><span class="pill <%= pillForPnl(r.growth_pct) %>"><%= fmtPctSigned(r.growth_pct) %></span></td>
+                <td><span class="<%= chipForPnl(r.growth_pct) %>"><%= fmtPctSigned(r.growth_pct) %></span></td>
                 <td class="mono"><%= r.gate || '-' %></td>
               </tr>
             <% }) %>
             <% if (!ai_summary.top_markets || ai_summary.top_markets.length === 0) { %>
-              <tr><td colspan="4" class="subtle">요약 데이터 없음</td></tr>
+              <tr><td colspan="4" class="text-muted">요약 데이터 없음</td></tr>
             <% } %>
           </tbody>
         </table>
       </div>
     </div>
   </div>
-
-  <div class="hr"></div>
 <% } %>
 
 <div class="card">
-  <h2>주간 - 월간 차이</h2>
-  <div class="subtle">주간 수치에서 월간 수치를 뺀 값</div>
-  <div class="hr"></div>
-  <div class="kv">
-    <div class="k">미실현 가중치</div><div class="v mono"><%= fmtNum(compare && compare.delta && compare.delta.unrealized_weighted) %></div>
-    <div class="k">활성 수</div><div class="v mono"><%= fmtNum(compare && compare.delta && compare.delta.active_cnt) %></div>
-    <div class="k">포지션 합</div><div class="v mono"><%= fmtNum(compare && compare.delta && compare.delta.size_sum) %></div>
+  <div class="card-header">
+    <div class="card-title">주간 - 월간 차이</div>
+    <div class="card-subtitle">주간 수치에서 월간 수치를 뺀 값</div>
+  </div>
+  <div class="card-body">
+    <table class="table-compact">
+      <tr><td class="text-muted">미실현 가중치</td><td class="mono"><%= fmtNum(compare && compare.delta && compare.delta.unrealized_weighted) %></td></tr>
+      <tr><td class="text-muted">활성 수</td><td class="mono"><%= fmtNum(compare && compare.delta && compare.delta.active_cnt) %></td></tr>
+      <tr><td class="text-muted">포지션 합</td><td class="mono"><%= fmtNum(compare && compare.delta && compare.delta.size_sum) %></td></tr>
+    </table>
   </div>
 </div>
 
@@ -860,18 +862,18 @@
     return `${k.getUTCFullYear()}-${pad(k.getUTCMonth() + 1)}-${pad(k.getUTCDate())} ${pad(k.getUTCHours())}:${pad(k.getUTCMinutes())} KST`;
   };
   const setBar = (role, pct) => {
-    const el = card.querySelector(`.bar-fill[data-role="${role}"]`);
+    const el = card.querySelector(`.rpt-bar-fill[data-role="${role}"]`);
     if (!el) return;
     const v = Number(pct);
     if (!Number.isFinite(v)) {
-      el.className = "bar-fill dim";
+      el.className = "rpt-bar-fill dim";
       el.style.height = "6%";
       return;
     }
     const cap = 0.2;
     const h = Math.min(Math.abs(v), cap) / cap * 100;
     el.style.height = Math.max(6, h) + "%";
-    el.className = "bar-fill " + (v > 0 ? "ok" : v < 0 ? "bad" : "dim");
+    el.className = "rpt-bar-fill " + (v > 0 ? "ok" : v < 0 ? "bad" : "dim");
   };
 
   fetch("/api/account/summary?exchange=" + encodeURIComponent(exchange))
@@ -918,4 +920,4 @@
 })();
 </script>
 
-<%- include('partials/app_end') %>
+<%- include('partials/app_end_unified') %>

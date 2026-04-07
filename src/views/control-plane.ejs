@@ -1,286 +1,121 @@
-<%- include('partials/app_start_trader', { title: `${model && model.title ? model.title : '전략상태'} · DONBEOLJA Trader`, pageTitle: model && model.title ? model.title : '전략상태', active: model && model.active ? model.active : 'recovery' }) %>
+<%- include('partials/app_start_unified', { title: `${model && model.title ? model.title : '전략상태'} · DONBEOLJA`, pageTitle: model && model.title ? model.title : '전략상태', active: model && model.active ? model.active : 'recovery' }) %>
 
 <style>
-  .strategy-status-screen {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-  .strategy-subnav {
+  /* ── Summary Banner ── */
+  .cp-summary-banner {
+    padding: 20px 24px;
+    border-radius: 16px;
     display: flex;
     align-items: center;
-    gap: 0;
-    flex-wrap: wrap;
-  }
-  .strategy-subnav .subnav {
-    margin: 0 !important;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .strategy-subnav a {
-    text-decoration: none;
-    padding: 7px 11px;
-    border-radius: 999px;
-    border: 1px solid var(--trade-border);
-    background: #fff;
-    color: var(--trade-muted);
-    font-size: 10px;
-    font-weight: 700;
-  }
-  .strategy-subnav a.active {
-    color: #805b00;
-    border-color: #ead8a2;
-    background: linear-gradient(180deg, #fffaf0 0%, #fff2cf 100%);
-  }
-  .strategy-layout-top {
-    display: grid;
-    grid-template-columns: minmax(0, 1.2fr) 340px;
     gap: 16px;
+    margin-bottom: 4px;
   }
-  .strategy-layout-top.single {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .strategy-status-hero .trade-panel-body {
+  .cp-summary-banner.tone-ok { background: var(--md-success-container, #e8f5e9); }
+  .cp-summary-banner.tone-bad { background: var(--md-error-container, #fdecea); }
+  .cp-summary-banner.tone-warn { background: var(--md-warning-container, #fff8e1); }
+  .cp-summary-banner.tone-dim { background: var(--md-surface-variant, #f5f5f5); }
+  .cp-summary-icon { font-size: 32px; line-height: 1; }
+  .cp-summary-text { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+  .cp-summary-sub { font-size: 13px; color: var(--md-on-surface-variant); margin-top: 2px; }
+
+  /* ── Metric Pills ── */
+  .cp-metrics-row {
     display: grid;
-    grid-template-columns: minmax(0, 1.1fr) 320px;
-    gap: 12px;
-  }
-  .strategy-status-hero.compact-hero .trade-panel-body {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 10px;
   }
-  .strategy-hero-copy {
+  .cp-metric-pill {
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: var(--md-surface-container, #fafafa);
+    border: 1px solid var(--md-outline-variant, #e0e0e0);
+  }
+  .cp-metric-pill .label { font-size: 11px; font-weight: 600; color: var(--md-on-surface-variant); text-transform: uppercase; letter-spacing: 0.04em; }
+  .cp-metric-pill .value { font-size: 18px; font-weight: 800; margin-top: 4px; }
+  .cp-metric-pill.tone-ok .value { color: var(--md-success); }
+  .cp-metric-pill.tone-bad .value { color: var(--md-error); }
+  .cp-metric-pill.tone-warn .value { color: var(--md-warning); }
+
+  /* ── Collapsible Section ── */
+  .cp-collapse { margin-top: 8px; }
+  .cp-collapse-header {
     display: flex;
-    flex-direction: column;
+    align-items: center;
     gap: 8px;
+    padding: 12px 16px;
+    background: var(--md-surface-container, #fafafa);
+    border: 1px solid var(--md-outline-variant, #e0e0e0);
+    border-radius: 12px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
   }
-  .strategy-eyebrow {
-    color: var(--trade-gold);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-  }
-  .strategy-title {
-    font-size: 24px;
-    line-height: 1.04;
-    font-weight: 800;
-    letter-spacing: -.05em;
-  }
-  .strategy-detail {
-    color: var(--trade-muted);
+  .cp-collapse-header:hover { background: var(--md-surface-container-high, #f0f0f0); }
+  .cp-collapse-header .arrow {
+    transition: transform 0.2s;
     font-size: 12px;
-    line-height: 1.45;
-    max-width: 720px;
+    color: var(--md-on-surface-variant);
   }
-  .strategy-actions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
+  .cp-collapse-header.open .arrow { transform: rotate(90deg); }
+  .cp-collapse-header .section-title { font-size: 15px; font-weight: 700; flex: 1; }
+  .cp-collapse-header .section-desc { font-size: 12px; color: var(--md-on-surface-variant); }
+  .cp-collapse-body {
+    display: none;
+    padding: 12px 0 0;
   }
-  .strategy-pill-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 8px;
-  }
-  .strategy-pill {
-    padding: 10px 11px;
-    border-radius: 14px;
-    border: 1px solid var(--trade-border);
-    background: #fbfcfd;
-  }
-  .strategy-pill .label,
-  .status-mini .label,
-  .strategy-kpi .label {
-    color: var(--trade-muted);
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .07em;
-  }
-  .strategy-pill .value,
-  .status-mini .value,
-  .strategy-kpi .value {
-    margin-top: 4px;
-    font-size: 15px;
-    font-weight: 800;
-    letter-spacing: -.04em;
-  }
-  .status-side-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .status-mini {
-    padding: 12px 13px;
-    border: 1px solid var(--trade-border);
-    border-radius: 15px;
-    background: #fbfcfd;
-  }
-  .status-mini .meta,
-  .strategy-kpi .meta {
-    margin-top: 5px;
-    color: var(--trade-muted);
-    font-size: 11px;
-    line-height: 1.45;
-  }
-  .strategy-kpis {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 12px;
-  }
-  .strategy-kpi {
-    padding: 12px 13px;
-    border-radius: 16px;
-    border: 1px solid var(--trade-border);
-    background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
-  }
-  .strategy-sections {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-  }
-  .strategy-section-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 10px;
-  }
-  .strategy-section-title {
-    font-size: 16px;
-    font-weight: 800;
-    letter-spacing: -.03em;
-  }
-  .strategy-section-desc {
-    margin-top: 4px;
-    color: var(--trade-muted);
-    font-size: 12px;
-    line-height: 1.5;
-  }
-  .strategy-card-grid.cols-3 {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 14px;
-  }
-  .strategy-card-grid.cols-2 {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
-  }
-  .strategy-card {
+  .cp-collapse-body.open { display: block; }
+
+  /* ── Card Grid ── */
+  .cp-card-grid { display: grid; gap: 12px; }
+  .cp-card-grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cp-card-grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+  /* ── KV rows ── */
+  .cp-kv { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 6px 10px; }
+  .cp-kv .k { color: var(--md-on-surface-variant); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; padding-top: 2px; }
+  .cp-kv .v { font-size: 13px; line-height: 1.5; }
+  .cp-kv .v.is-id { font-family: var(--md-mono, monospace); font-size: 11px; color: var(--md-on-surface-variant); }
+
+  /* ── Status Chip ── */
+  .cp-status-chip {
+    display: inline-block;
+    padding: 2px 10px;
     border-radius: 20px;
-    border: 1px solid var(--trade-border);
-    background: #fff;
-    box-shadow: var(--trade-shadow);
-    overflow: hidden;
-  }
-  .strategy-card-head {
-    padding: 14px 16px 0;
-  }
-  .strategy-card-head h2 {
-    margin: 0;
-    font-size: 15px;
-    font-weight: 800;
-    letter-spacing: -.03em;
-  }
-  .strategy-card-body {
-    padding: 14px 16px 16px;
-  }
-  .strategy-kv {
-    display: grid;
-    grid-template-columns: 110px minmax(0, 1fr);
-    gap: 8px 10px;
-  }
-  .strategy-kv .k {
-    color: var(--trade-muted);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
-    letter-spacing: .06em;
-    text-transform: uppercase;
+    letter-spacing: 0.02em;
   }
-  .strategy-kv .v {
-    font-size: 12px;
-    line-height: 1.5;
-  }
-  .strategy-note-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 12px;
-  }
-  .strategy-note-pill {
+  .cp-status-chip.ok { background: var(--md-success-container, #e8f5e9); color: var(--md-success, #2e7d32); }
+  .cp-status-chip.bad { background: var(--md-error-container, #fdecea); color: var(--md-error, #c62828); }
+  .cp-status-chip.warn { background: var(--md-warning-container, #fff8e1); color: var(--md-warning, #e65100); }
+  .cp-status-chip.dim { background: var(--md-surface-variant, #f5f5f5); color: var(--md-on-surface-variant); }
+
+  /* ── Detail Toggle ── */
+  .cp-detail-toggle {
+    font-size: 11px;
+    color: var(--md-primary);
+    cursor: pointer;
+    user-select: none;
+    margin-top: 8px;
     display: inline-flex;
     align-items: center;
-    padding: 6px 8px;
-    border-radius: 999px;
-    background: #f4f6f8;
-    color: var(--trade-muted);
-    font-size: 10px;
-    font-weight: 700;
+    gap: 4px;
   }
-  .strategy-table-wrap {
-    margin-top: 12px;
+  .cp-detail-toggle:hover { text-decoration: underline; }
+  .cp-hidden-detail { display: none; margin-top: 8px; }
+  .cp-hidden-detail.open { display: block; }
+
+  .tone-ok .metric-card-value { color: var(--md-success); }
+  .tone-bad .metric-card-value { color: var(--md-error); }
+  .tone-warn .metric-card-value { color: var(--md-warning); }
+
+  @media (max-width: 1060px) {
+    .cp-card-grid.cols-2, .cp-card-grid.cols-3 { grid-template-columns: 1fr; }
+    .cp-metrics-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
-  .strategy-table-wrap table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 11px;
-  }
-  .strategy-table-wrap th,
-  .strategy-table-wrap td {
-    padding: 8px 7px;
-    border-bottom: 1px solid #edf1f5;
-    text-align: left;
-    vertical-align: top;
-  }
-  .strategy-table-wrap th {
-    color: var(--trade-muted);
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: .05em;
-    font-weight: 700;
-  }
-  .strategy-table-wrap tbody tr:last-child td { border-bottom: 0; }
-  .strategy-card-actions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-top: 12px;
-  }
-  .tone-ok .strategy-title,
-  .tone-ok .strategy-pill .value,
-  .tone-ok .strategy-kpi .value { color: var(--trade-up); }
-  .tone-bad .strategy-title,
-  .tone-bad .strategy-pill .value,
-  .tone-bad .strategy-kpi .value { color: var(--trade-down); }
-  .tone-warn .strategy-title,
-  .tone-warn .strategy-pill .value,
-  .tone-warn .strategy-kpi .value { color: #8a6303; }
-  @media (max-width: 1260px) {
-    .strategy-layout-top,
-    .strategy-status-hero .trade-panel-body,
-    .strategy-card-grid.cols-3,
-    .strategy-card-grid.cols-2 {
-      grid-template-columns: 1fr;
-    }
-    .strategy-pill-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .strategy-kpis {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-  @media (max-width: 860px) {
-    .strategy-kpis,
-    .strategy-pill-grid,
-    .strategy-kv {
-      grid-template-columns: 1fr;
-    }
-    .strategy-title {
-      font-size: 20px;
-    }
+  @media (max-width: 600px) {
+    .cp-metrics-row { grid-template-columns: 1fr; }
+    .cp-kv { grid-template-columns: 1fr; }
   }
 </style>
 
@@ -289,159 +124,301 @@
   const hero = vm.hero || {};
   const metrics = Array.isArray(vm.metrics) ? vm.metrics : [];
   const sections = Array.isArray(vm.sections) ? vm.sections : [];
+
+  /* ── Tone helper ── */
   const toneClass = (value) => {
     const s = String(value || '').trim();
     return s ? `tone-${s}` : 'tone-dim';
   };
+
+  /* ── Button helper ── */
   const buttonClass = (tone) => {
     const s = String(tone || '').toLowerCase();
-    if (s === 'primary') return 'trade-btn primary';
-    if (s === 'secondary') return 'trade-btn gold';
-    return 'trade-btn';
+    if (s === 'primary') return 'btn btn-filled';
+    if (s === 'secondary') return 'btn btn-tonal';
+    return 'btn btn-outlined';
   };
+
+  /* ── Section columns ── */
   const sectionColsClass = (section) => Number(section && section.columns) === 3 ? 'cols-3' : 'cols-2';
+
+  /* ── Cell text ── */
   const cellText = (value) => {
     if (value == null || value === '') return '-';
     if (typeof value === 'object' && value && value.label) return value.label;
     return value;
   };
-  const topMetrics = metrics.slice(0, 4);
-  const sideMetrics = metrics.slice(4, 8);
-  const hasSideMetrics = sideMetrics.length > 0;
+
+  /* ── Korean status translation ── */
+  const koStatus = (raw) => {
+    const s = String(raw || '').trim().toUpperCase();
+    const map = {
+      'SERVER_PRIMARY': '자동 분석 모드',
+      'PINE_SHADOW': '보조 분석',
+      'PINE_PRIMARY': '보조 분석 우선',
+      'PARITY_DRIFT': '차이 발생',
+      'PARITY_STABLE': '정합성 안정',
+      'PARITY_WATCH': '정합성 관찰 중',
+      'PARITY_UNKNOWN': '정합성 미확인',
+      'RECOVERY_CANARY_BLOCKED': '회복 대기 중',
+      'QUARANTINE': '거래 중단',
+      'WATCH_ONLY': '관찰만',
+      'EXECUTION_QUALITY_REVIEW': '체결 품질 점검 중',
+      'HOLD': '보류',
+      'TIMEOUT_HOLD': '시간 초과 보류',
+      'PASS': '정상',
+      'FAIL': '주의 필요',
+      'BLOCK': '차단됨',
+      'READY': '준비됨',
+      'PENDING': '대기 중',
+      'OBJECTIVE_RECOVERY_REQUIRED': '수익 회복 필요',
+      'RECOVERY_PROMOTION_READY': '회복 승격 준비됨',
+      'COMPLETE': '완료',
+      'DONE': '완료',
+      'IN_PROGRESS': '진행 중',
+      'NOT_STARTED': '시작 전',
+      'ACTIVE': '활성',
+      'APPROVED': '승인됨',
+      'PROMOTE': '승격',
+      'CLEAR': '해제됨',
+      'CONSISTENT': '일치',
+      'MISMATCH': '불일치',
+      'WARN': '주의',
+      'YES': '예',
+      'NO': '아니오',
+      'TRUE': '예',
+      'FALSE': '아니오',
+      'ON_TRACK': '목표 달성 중',
+      'PARTIAL_RECOVERY_ONLY': '부분 회복',
+      'APPLIED_ACTIVE': '적용 완료',
+      'NO_SHADOW_OBSERVED': '보조 분석 데이터 없음',
+      'SERVER_SIGNAL_NOT_REACHING_EXECUTION': '분석 신호가 거래까지 도달하지 않음',
+      'SERVER_SIGNAL_FILL_SHORT': '분석 신호는 있으나 체결 부족',
+      'NO_SERVER_ENTRY_SIGNAL': '최근 분석 진입 신호 없음',
+    };
+    if (map[s]) return map[s];
+    /* Partial match fallback */
+    for (const [k, v] of Object.entries(map)) {
+      if (s.includes(k)) return v;
+    }
+    return raw;
+  };
+
+  /* ── Pipeline step translation ── */
+  const koPipelineStep = (raw) => {
+    const s = String(raw || '').trim();
+    const map = {
+      'Plan': '계획 수립',
+      'Probe': '환경 탐색',
+      'Evidence': '증거 수집',
+      'Deployment': '전략 적용',
+      'Execution': '거래 실행',
+      'Activation': '활성화',
+      'Acceptance': '수용 검증',
+      'Validation': '검증',
+      'Rollback': '복구',
+      'Recovery': '회복',
+    };
+    return map[s] || s;
+  };
+
+  /* ── Value display with Korean translation ── */
+  const koValue = (raw) => {
+    if (raw == null || raw === '') return '-';
+    const s = String(raw).trim();
+    if (!s) return '-';
+    const translated = koStatus(s);
+    return translated;
+  };
+
+  /* ── Summary banner logic ── */
+  const heroTone = String(hero.tone || '').trim() || 'dim';
+  const summaryIcon = heroTone === 'ok' ? '&#10004;' : heroTone === 'bad' ? '&#9888;' : heroTone === 'warn' ? '&#9679;' : '&#8212;';
+  const summaryText = (() => {
+    const t = heroTone;
+    if (t === 'ok') return '자동매매 정상 운영 중';
+    if (t === 'bad') return '회복 진행 중 - 확인이 필요합니다';
+    if (t === 'warn') return '일부 항목 점검 중';
+    return '상태 확인 중';
+  })();
+
+  /* ── Check if a value looks like an internal ID ── */
+  const isInternalId = (val) => {
+    const s = String(val || '').trim();
+    if (!s || s === '-') return false;
+    /* cycle_id, artifact path, long hex, uuid-like */
+    if (/^[0-9a-f]{8,}$/i.test(s)) return true;
+    if (/^[0-9a-f-]{36}$/i.test(s)) return true;
+    if (s.startsWith('/') && (s.includes('/ops/') || s.includes('/artifacts/') || s.includes('/daily/'))) return true;
+    if (/cycle[_-]?\d{4,}/i.test(s)) return true;
+    return false;
+  };
+
+  /* ── Label keywords that suggest internal/technical detail ── */
+  const isTechnicalLabel = (label) => {
+    const s = String(label || '').toLowerCase();
+    return /cycle.id|artifact|abs.?path|file.?name|bundle.?hash|origin.?hash|cache.?key|provenance/i.test(s);
+  };
 %>
 
-<section class="strategy-status-screen">
-  <nav class="strategy-subnav">
-    <%- include('partials/control_surface_nav', { active: vm.active || 'recovery' }) %>
-  </nav>
+<nav class="subnav">
+  <%- include('partials/control_surface_nav', { active: vm.active || 'recovery' }) %>
+</nav>
 
-  <section class="strategy-layout-top <%= hasSideMetrics ? '' : 'single' %>">
-    <article class="trade-panel soft strategy-status-hero compact-hero <%= toneClass(hero.tone) %>">
-      <div class="trade-panel-body">
-        <div class="strategy-hero-copy">
-          <% if (hero.eyebrow) { %><div class="strategy-eyebrow"><%= hero.eyebrow %></div><% } %>
-          <div class="strategy-title"><%= hero.title || '-' %></div>
-          <% if (hero.detail) { %><div class="strategy-detail"><%= hero.detail %></div><% } %>
-          <% if (Array.isArray(hero.actions) && hero.actions.length) { %>
-            <div class="strategy-actions">
-              <% hero.actions.forEach((action) => { %>
-                <a href="<%= action.href %>" class="<%= buttonClass(action.tone) %>"><%= action.label %></a>
-              <% }) %>
-            </div>
-          <% } %>
-        </div>
-        <div class="strategy-pill-grid">
-          <% (Array.isArray(hero.pills) ? hero.pills : []).forEach((pill) => { %>
-            <div class="strategy-pill <%= toneClass(pill.tone) %>">
-              <div class="label"><%= pill.label %></div>
-              <div class="value"><%= pill.value || '-' %></div>
-            </div>
-          <% }) %>
-        </div>
-      </div>
-    </article>
-
-    <% if (hasSideMetrics) { %>
-      <aside class="status-side-stack">
-        <% sideMetrics.forEach((metric) => { %>
-          <section class="status-mini <%= toneClass(metric.tone) %>">
-            <div class="label"><%= metric.label %></div>
-            <div class="value"><%= metric.value || '-' %></div>
-            <% if (metric.meta) { %><div class="meta"><%= metric.meta %></div><% } %>
-          </section>
-        <% }) %>
-      </aside>
+<!-- ━━━ Summary Banner ━━━ -->
+<div class="cp-summary-banner tone-<%= heroTone %>">
+  <span class="cp-summary-icon"><%- summaryIcon %></span>
+  <div>
+    <div class="cp-summary-text"><%= summaryText %></div>
+    <% if (hero.detail) { %>
+      <div class="cp-summary-sub"><%= hero.detail %></div>
     <% } %>
-  </section>
+  </div>
+</div>
 
-  <% if (topMetrics.length) { %>
-    <section class="strategy-kpis">
-      <% topMetrics.forEach((metric) => { %>
-        <article class="strategy-kpi <%= toneClass(metric.tone) %>">
-          <div class="label"><%= metric.label %></div>
-          <div class="value"><%= metric.value || '-' %></div>
-          <% if (metric.meta) { %><div class="meta"><%= metric.meta %></div><% } %>
-        </article>
-      <% }) %>
-    </section>
-  <% } %>
+<!-- ━━━ Hero Card (detailed) ━━━ -->
+<% if (hero.title || (Array.isArray(hero.pills) && hero.pills.length) || (Array.isArray(hero.actions) && hero.actions.length)) { %>
+<div class="cp-collapse">
+  <div class="cp-collapse-header" onclick="this.classList.toggle('open'); this.nextElementSibling.classList.toggle('open');">
+    <span class="arrow">&#9654;</span>
+    <span class="section-title"><%= hero.title || '운영 상세' %></span>
+    <% if (hero.eyebrow) { %><span class="section-desc"><%= hero.eyebrow %></span><% } %>
+  </div>
+  <div class="cp-collapse-body">
+    <% if (Array.isArray(hero.pills) && hero.pills.length) { %>
+      <div class="cp-metrics-row" style="margin-bottom: 12px;">
+        <% hero.pills.forEach((pill) => { %>
+          <div class="cp-metric-pill <%= toneClass(pill.tone) %>">
+            <div class="label"><%= pill.label %></div>
+            <div class="value"><%= koValue(pill.value) %></div>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+    <% if (Array.isArray(hero.actions) && hero.actions.length) { %>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <% hero.actions.forEach((action) => { %>
+          <a href="<%= action.href %>" class="<%= buttonClass(action.tone) %>"><%= action.label %></a>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+</div>
+<% } %>
 
-  <section class="strategy-sections">
-    <% sections.forEach((section) => { %>
-      <section>
-        <div class="strategy-section-head">
-          <div>
-            <div class="strategy-section-title"><%= section.title %></div>
-            <% if (section.description) { %><div class="strategy-section-desc"><%= section.description %></div><% } %>
+<!-- ━━━ Key Metrics ━━━ -->
+<% if (metrics.length) { %>
+<div class="cp-metrics-row" style="margin-top: 8px;">
+  <% metrics.forEach((metric) => { %>
+    <div class="cp-metric-pill <%= toneClass(metric.tone) %>">
+      <div class="label"><%= metric.label %></div>
+      <div class="value"><%= koValue(metric.value) %></div>
+      <% if (metric.meta) { %><div style="font-size:11px; color:var(--md-on-surface-variant); margin-top:2px;"><%= metric.meta %></div><% } %>
+    </div>
+  <% }) %>
+</div>
+<% } %>
+
+<!-- ━━━ Sections ━━━ -->
+<% sections.forEach((section, sIdx) => { %>
+<div class="cp-collapse" style="margin-top: 12px;">
+  <div class="cp-collapse-header open" onclick="this.classList.toggle('open'); this.nextElementSibling.classList.toggle('open');">
+    <span class="arrow" style="transform:rotate(90deg);">&#9654;</span>
+    <span class="section-title"><%= section.title %></span>
+    <% if (section.description) { %><span class="section-desc"><%= section.description %></span><% } %>
+  </div>
+  <div class="cp-collapse-body open">
+    <div class="cp-card-grid <%= sectionColsClass(section) %>">
+      <% (section.cards || []).forEach((card, cIdx) => { %>
+        <div class="card <%= toneClass(card.tone) %>">
+          <div class="card-header">
+            <div class="card-title"><%= card.title %></div>
+          </div>
+          <div class="card-body">
+            <%
+              const visibleRows = [];
+              const hiddenRows = [];
+              if (Array.isArray(card.rows) && card.rows.length) {
+                card.rows.forEach((row) => {
+                  if (isTechnicalLabel(row.label) || isInternalId(row.value)) {
+                    hiddenRows.push(row);
+                  } else {
+                    visibleRows.push(row);
+                  }
+                });
+              }
+            %>
+            <% if (visibleRows.length) { %>
+              <div class="cp-kv">
+                <% visibleRows.forEach((row) => { %>
+                  <div class="k"><%= row.label %></div>
+                  <div class="v"><%= koValue(row.value) %></div>
+                <% }) %>
+              </div>
+            <% } %>
+            <% if (hiddenRows.length) { %>
+              <div class="cp-detail-toggle" onclick="var el = this.nextElementSibling; el.classList.toggle('open'); this.querySelector('.togtext').textContent = el.classList.contains('open') ? '상세 정보 숨기기' : '상세 정보 보기';">
+                <span class="arrow">&#9654;</span>
+                <span class="togtext">상세 정보 보기</span>
+              </div>
+              <div class="cp-hidden-detail">
+                <div class="cp-kv">
+                  <% hiddenRows.forEach((row) => { %>
+                    <div class="k"><%= row.label %></div>
+                    <div class="v is-id"><%= row.value || '-' %></div>
+                  <% }) %>
+                </div>
+              </div>
+            <% } %>
+            <% if (Array.isArray(card.notes) && card.notes.length) { %>
+              <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:12px;">
+                <% card.notes.forEach((note) => { %>
+                  <span class="chip sm"><%= koValue(note) %></span>
+                <% }) %>
+              </div>
+            <% } %>
+            <% if (card.table && Array.isArray(card.table.columns) && Array.isArray(card.table.rows) && card.table.rows.length) { %>
+              <div class="table-wrap" style="margin-top:12px;">
+                <table class="table-compact">
+                  <thead>
+                    <tr>
+                      <% card.table.columns.forEach((column) => { %>
+                        <th><%= column.label %></th>
+                      <% }) %>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% card.table.rows.forEach((tableRow) => { %>
+                      <tr>
+                        <% card.table.columns.forEach((column) => { %>
+                          <% const cell = tableRow[column.key]; %>
+                          <td>
+                            <% if (cell && typeof cell === 'object' && cell.href) { %>
+                              <a href="<%= cell.href %>"><%= cellText(cell) %></a>
+                            <% } else { %>
+                              <%= koValue(cellText(cell)) %>
+                            <% } %>
+                          </td>
+                        <% }) %>
+                      </tr>
+                    <% }) %>
+                  </tbody>
+                </table>
+              </div>
+            <% } %>
+            <% if (Array.isArray(card.actions) && card.actions.length) { %>
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+                <% card.actions.forEach((action) => { %>
+                  <a href="<%= action.href %>" class="<%= buttonClass(action.tone) %>"><%= action.label %></a>
+                <% }) %>
+              </div>
+            <% } %>
           </div>
         </div>
-        <div class="strategy-card-grid <%= sectionColsClass(section) %>">
-          <% (section.cards || []).forEach((card) => { %>
-            <article class="strategy-card <%= toneClass(card.tone) %>">
-              <div class="strategy-card-head">
-                <h2><%= card.title %></h2>
-              </div>
-              <div class="strategy-card-body">
-                <% if (Array.isArray(card.rows) && card.rows.length) { %>
-                  <div class="strategy-kv">
-                    <% card.rows.forEach((row) => { %>
-                      <div class="k"><%= row.label %></div>
-                      <div class="v"><%= row.value || '-' %></div>
-                    <% }) %>
-                  </div>
-                <% } %>
-                <% if (Array.isArray(card.notes) && card.notes.length) { %>
-                  <div class="strategy-note-list">
-                    <% card.notes.forEach((note) => { %>
-                      <span class="strategy-note-pill"><%= note %></span>
-                    <% }) %>
-                  </div>
-                <% } %>
-                <% if (card.table && Array.isArray(card.table.columns) && Array.isArray(card.table.rows) && card.table.rows.length) { %>
-                  <div class="strategy-table-wrap">
-                    <div class="scroll">
-                      <table>
-                        <thead>
-                          <tr>
-                            <% card.table.columns.forEach((column) => { %>
-                              <th><%= column.label %></th>
-                            <% }) %>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <% card.table.rows.forEach((tableRow) => { %>
-                            <tr>
-                              <% card.table.columns.forEach((column) => { %>
-                                <% const cell = tableRow[column.key]; %>
-                                <td>
-                                  <% if (cell && typeof cell === 'object' && cell.href) { %>
-                                    <a href="<%= cell.href %>"><%= cellText(cell) %></a>
-                                  <% } else { %>
-                                    <%= cellText(cell) %>
-                                  <% } %>
-                                </td>
-                              <% }) %>
-                            </tr>
-                          <% }) %>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                <% } %>
-                <% if (Array.isArray(card.actions) && card.actions.length) { %>
-                  <div class="strategy-card-actions">
-                    <% card.actions.forEach((action) => { %>
-                      <a href="<%= action.href %>" class="<%= buttonClass(action.tone) %>"><%= action.label %></a>
-                    <% }) %>
-                  </div>
-                <% } %>
-              </div>
-            </article>
-          <% }) %>
-        </div>
-      </section>
-    <% }) %>
-  </section>
-</section>
+      <% }) %>
+    </div>
+  </div>
+</div>
+<% }) %>
 
-<%- include('partials/app_end_trader') %>
+<%- include('partials/app_end_unified') %>

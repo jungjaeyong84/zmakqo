@@ -301,7 +301,17 @@ router.get("/dashboard/ai", async (req, res) => {
       },
     });
   } catch (e) {
-    return res.status(500).send("AI_JOURNAL_ROUTE_ERROR: " + (e?.message || String(e)));
+    try {
+      return res.status(200).render("trading.ai.ejs", {
+        rows: [],
+        exchange: req.query.exchange || '',
+        signal_tf: null,
+        meta: { n: 0, last_created_at: null, last_created_kst: null },
+        _error: { code: "AI_JOURNAL_ROUTE_ERROR", message: '데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.' },
+      });
+    } catch (renderErr) {
+      return res.status(500).send("RENDER_FALLBACK_ERROR: " + (renderErr.message || String(renderErr)));
+    }
   }
 });
 

@@ -1,0 +1,480 @@
+/* ============================================================
+   DONBEOLJA Layout — Shell, Sidebar, Topbar, Content
+   ============================================================ */
+
+/* ── App Shell ─────────────────────────────────────────── */
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: var(--md-sidebar-width) minmax(0, 1fr);
+}
+
+.app-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Sidebar (M3 Navigation Drawer) ────────────────────── */
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--md-surface);
+  border-right: 1px solid var(--md-outline-variant);
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px 16px;
+}
+
+.sidebar-brand-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--md-shape-md);
+  display: grid;
+  place-items: center;
+  background: var(--md-primary);
+  color: var(--md-on-primary);
+  font-family: var(--md-font-display);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+
+.sidebar-brand-text {
+  min-width: 0;
+}
+
+.sidebar-brand-name {
+  font-family: var(--md-font-display);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--md-on-surface);
+  letter-spacing: -0.02em;
+}
+
+.sidebar-brand-sub {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+  margin-top: 2px;
+}
+
+.sidebar-divider {
+  height: 1px;
+  background: var(--md-outline-variant);
+  margin: 4px 12px;
+}
+
+.sidebar-section-label {
+  padding: 16px 16px 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--md-on-surface-variant);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ── Sidebar Navigation Items (M3 Nav Drawer) ──────────── */
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-nav a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  height: 48px;
+  border-radius: var(--md-shape-full);
+  color: var(--md-on-surface-variant);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background var(--md-motion-std), color var(--md-motion-std);
+  position: relative;
+}
+
+.sidebar-nav a:hover {
+  background: var(--md-surface-container);
+  color: var(--md-on-surface);
+  text-decoration: none;
+}
+
+.sidebar-nav a.active {
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  font-weight: 700;
+}
+
+.sidebar-nav a .nav-icon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+/* ── Sidebar Controls (Exchange, Env) ──────────────────── */
+
+.sidebar-controls {
+  margin-top: auto;
+  padding: 12px;
+  border-radius: var(--md-shape-md);
+  background: var(--md-surface-container-low);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sidebar-controls label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--md-on-surface-variant);
+  margin-bottom: 4px;
+}
+
+.sidebar-controls select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--md-outline);
+  border-radius: var(--md-shape-sm);
+  background: var(--md-surface);
+  font-size: 13px;
+  color: var(--md-on-surface);
+  outline: none;
+  cursor: pointer;
+  transition: border-color var(--md-motion-std);
+}
+
+.sidebar-controls select:focus {
+  border-color: var(--md-primary);
+}
+
+.sidebar-env-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--md-shape-full);
+  background: var(--md-surface-container);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--md-on-surface-variant);
+  font-family: var(--md-font-mono);
+}
+
+/* ── Topbar (M3 Top App Bar) ───────────────────────────── */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: var(--md-topbar-height);
+  padding: 0 24px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--md-outline-variant);
+  transition: box-shadow var(--md-motion-std);
+}
+
+.topbar.elevated {
+  box-shadow: var(--md-elevation-2);
+}
+
+.topbar-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.topbar-eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--md-primary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.topbar-title {
+  font-family: var(--md-font-display);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--md-on-surface);
+  letter-spacing: -0.02em;
+  line-height: 28px;
+}
+
+.topbar-hint {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+  line-height: 1.4;
+  max-width: 700px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Compact topbar for home */
+.topbar.compact {
+  min-height: 56px;
+}
+.topbar.compact .topbar-copy {
+  display: none;
+}
+.topbar.compact .topbar-actions {
+  width: 100%;
+  justify-content: flex-end;
+}
+
+/* ── Content Area ──────────────────────────────────────── */
+
+.content {
+  padding: 32px 40px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.content > :first-child {
+  margin-top: 0;
+}
+
+/* ── Status Banner ─────────────────────────────────────── */
+
+.status-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 24px;
+  background: var(--md-info-container);
+  font-size: 13px;
+  color: var(--md-on-surface);
+}
+
+.status-banner.warn {
+  background: var(--md-warning-container);
+}
+
+.status-banner.error {
+  background: var(--md-error-container);
+}
+
+.status-banner.success {
+  background: var(--md-success-container);
+}
+
+/* ── Grid Utilities ────────────────────────────────────── */
+
+.grid {
+  display: grid;
+  gap: 20px;
+}
+
+.grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+/* ── Responsive ────────────────────────────────────────── */
+
+@media (max-width: 1200px) {
+  .grid.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1024px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    position: fixed;
+    left: -280px;
+    top: 0;
+    z-index: 100;
+    width: 280px;
+    transition: left var(--md-motion-emphasis);
+    box-shadow: var(--md-elevation-4);
+  }
+  .sidebar.open {
+    left: 0;
+  }
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.32);
+    z-index: 99;
+  }
+  .sidebar.open ~ .sidebar-overlay {
+    display: block;
+  }
+  .topbar {
+    padding: 0 16px;
+  }
+  .content {
+    padding: 20px 16px;
+    gap: 20px;
+  }
+  .mobile-menu-btn {
+    display: flex !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .grid.cols-2,
+  .grid.cols-3,
+  .grid.cols-4 {
+    grid-template-columns: 1fr;
+  }
+  .topbar-title {
+    font-size: 18px;
+  }
+  .topbar-hint {
+    display: none;
+  }
+}
+
+.mobile-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: none;
+  border-radius: var(--md-shape-full);
+  cursor: pointer;
+  color: var(--md-on-surface);
+  font-size: 20px;
+}
+.mobile-menu-btn:hover {
+  background: var(--md-surface-container);
+}
+
+/* ── Mobile Bottom Navigation (M3 Navigation Bar) ──────── */
+
+.mobile-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: var(--md-surface);
+  border-top: 1px solid var(--md-outline-variant);
+  box-shadow: 0 -1px 3px rgba(60,64,67,.15);
+  padding: 4px 0;
+  padding-bottom: env(safe-area-inset-bottom, 4px);
+}
+
+.mobile-bottom-nav nav {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+}
+
+.mobile-bottom-nav a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: var(--md-shape-lg);
+  color: var(--md-on-surface-variant);
+  text-decoration: none;
+  font-size: 10px;
+  font-weight: 500;
+  min-width: 56px;
+  transition: all var(--md-motion-std);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-bottom-nav a .nav-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.mobile-bottom-nav a.active {
+  color: var(--md-primary);
+}
+
+.mobile-bottom-nav a.active .nav-icon-bg {
+  display: block;
+  background: var(--md-primary-container);
+  border-radius: var(--md-shape-full);
+  padding: 4px 16px;
+}
+
+@media (max-width: 768px) {
+  .mobile-bottom-nav {
+    display: block;
+  }
+  .content {
+    padding-bottom: 80px;
+  }
+  .topbar-actions {
+    display: none;
+  }
+  .mobile-menu-btn {
+    display: none !important;
+  }
+}
+
+/* ── Mobile Touch Optimization ─────────────────────────── */
+
+@media (max-width: 768px) {
+  .chip {
+    padding: 8px 14px;
+    font-size: 13px;
+    min-height: 36px;
+  }
+  .chip.sm {
+    padding: 6px 10px;
+    font-size: 12px;
+    min-height: 32px;
+  }
+  .btn {
+    min-height: 44px;
+    padding: 12px 20px;
+  }
+  .btn.sm {
+    min-height: 36px;
+    padding: 8px 14px;
+  }
+  table th, table td {
+    padding: 12px 10px;
+    font-size: 13px;
+  }
+  .table-compact th, .table-compact td {
+    padding: 10px 8px;
+    font-size: 12px;
+  }
+  .metric-card-value {
+    font-size: 20px;
+  }
+}

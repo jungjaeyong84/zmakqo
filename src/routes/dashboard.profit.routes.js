@@ -575,7 +575,39 @@ router.get("/dashboard/profit", async (req, res) => {
       message: e && e.message ? e.message : String(e),
       stack: e && e.stack ? e.stack : null,
     });
-    return res.status(500).send("PROFIT_ROUTE_ERROR: " + (e && e.message ? e.message : String(e)));
+    try {
+      return res.status(200).render(String(req.query.legacy || "").trim() === "1" ? "profit.legacy.ejs" : "profit", {
+        exchange: req.query.exchange || '',
+        markets_expected: [],
+        as_of_kst: null,
+        pnl_scope_days: null,
+        pnl_source_policy: null,
+        leverage_summary: null,
+        pnl_basis: null,
+        customRange: null,
+        rangeWarning: null,
+        profit: {
+          unit: null,
+          basis: null,
+          total_max_krw: null,
+          total_used_krw: null,
+          total_used_pct: null,
+          leverage_summary: null,
+          ranges: [],
+          rangeAgg: {},
+          dailySeriesByRange: {},
+          cumulativeSeriesByRange: {},
+          dayStatsByRange: {},
+          defaultRangeKey: null,
+          topMarkets: [],
+          customRange: null,
+          rangeWarning: null,
+        },
+        _error: { code: "PROFIT_ROUTE_ERROR", message: '데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.' },
+      });
+    } catch (renderErr) {
+      return res.status(500).send("RENDER_FALLBACK_ERROR: " + (renderErr.message || String(renderErr)));
+    }
   }
 });
 

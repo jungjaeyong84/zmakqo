@@ -1,5 +1,4 @@
-<%- include('partials/app_start_trader', { title: '입출금 · DONBEOLJA Trader', pageTitle: '입출금', active: 'cashflow', bodyClass: 'trader-cashflow-page' }) %>
-<div class="trader-compat-surface">
+<%- include('partials/app_start_unified', { title: '입출금 · DONBEOLJA', pageTitle: '입출금', active: 'cashflow' }) %>
 
 <%
   const entries = (cashflow && Array.isArray(cashflow.entries)) ? cashflow.entries : [];
@@ -40,68 +39,37 @@
 %>
 
 <style>
-  .cashflow-shell{ background: transparent; border: 0; border-radius: 0; padding: 0; box-shadow: none; }
-  .cashflow-head{ display:flex; align-items:flex-start; justify-content:space-between; gap: 12px; flex-wrap:wrap; margin-bottom: 12px; }
-  .cashflow-title{ font-size: 18px; font-weight: 700; letter-spacing: -0.2px; }
-  .cashflow-sub{ color: var(--muted); font-size: 12px; }
-  .cashflow-controls{ display:flex; gap: 8px; flex-wrap:wrap; align-items:center; }
-  .cashflow-controls label{ display:flex; align-items:center; gap:8px; font-size:12px; color: var(--muted); background:#fff; border:1px solid var(--line); padding:6px 8px; border-radius:10px; }
-  .cashflow-controls .label-text{ white-space: nowrap; }
-  .cashflow-controls select{ border:0; background:transparent; font-size:12px; color: var(--text); outline:none; }
-  .cashflow-controls button{ background:#fff; border:1px solid var(--line); border-radius:10px; padding:6px 10px; font-size:12px; cursor:pointer; }
-  .cashflow-cards{ display:grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
-  .cashflow-card{ background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; min-height: 80px; }
-  .cashflow-card .k{ color: var(--muted); font-size: 11px; }
-  .cashflow-card .v{ font-size: 16px; font-weight: 700; margin-top: 6px; }
-  .cashflow-card .note{ font-size: 11px; color: var(--muted); margin-top: 4px; }
-  .cashflow-table{ width:100%; border-collapse: collapse; }
-  .cashflow-table th{ text-align:left; font-size: 11px; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); }
-  .cashflow-table td{ font-size: 12px; padding: 9px 10px; border-bottom: 1px solid var(--line); }
-  .cashflow-table tr:last-child td{ border-bottom: 0; }
-  .cashflow-amount.up{ color: #0b6; font-weight: 600; }
-  .cashflow-amount.down{ color: #c23; font-weight: 600; }
-  .cashflow-amount.neutral{ color: var(--text); font-weight: 600; }
-  .cashflow-tag{ display:inline-flex; padding:2px 8px; border-radius:999px; font-size:11px; border:1px solid var(--line); background:#fff; }
-  .cashflow-tag.deposit{ color:#0b6; border-color: rgba(11,102,85,0.25); }
-  .cashflow-tag.withdraw{ color:#c23; border-color: rgba(194,35,51,0.25); }
-  .cashflow-tag.transfer{ color:#2563eb; border-color: rgba(37,99,235,0.25); }
-  .cashflow-tag.excluded{ color:#b7791f; border-color: rgba(183,121,31,0.35); margin-left:6px; }
-  .cashflow-section{ background: var(--card); border:1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 14px; }
-
-  .cf-modal{ position: fixed; inset: 0; display:none; align-items:center; justify-content:center; z-index: 2000; }
-  .cf-modal.open{ display:flex; }
-  .cf-modal-backdrop{ position:absolute; inset:0; background: rgba(0,0,0,0.35); }
-  .cf-modal-body{ position:relative; background:#fff; border:1px solid var(--line); border-radius:16px; padding:18px; width: min(420px, 92vw); box-shadow: 0 20px 40px rgba(0,0,0,0.18); }
-  .cf-modal-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:6px; }
-  .cf-modal-title{ font-size:16px; font-weight:700; }
-  .cf-modal-close{ border:0; background:#fff; font-size:18px; cursor:pointer; color: var(--muted); }
-  .cf-modal-sub{ font-size:12px; color: var(--muted); margin-bottom:12px; }
-  .cf-modal-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
-  .cf-modal-grid label{ font-size:12px; color: var(--muted); display:flex; flex-direction:column; gap:6px; }
-  .cf-modal-grid input{ border:1px solid var(--line); border-radius:10px; padding:8px 10px; font-size:12px; }
-  .cf-modal-actions{ margin-top:14px; display:flex; justify-content:flex-end; }
-  .cf-modal-actions .btn{ background:#111; color:#fff; border:0; border-radius:12px; padding:8px 16px; font-size:12px; cursor:pointer; }
-
-  @media (max-width: 900px){
-    .cashflow-cards{ grid-template-columns: repeat(2, 1fr); }
+  .cf-amount-up { color: var(--md-success); font-weight: 600; }
+  .cf-amount-down { color: var(--md-error); font-weight: 600; }
+  .cf-amount-neutral { color: var(--md-on-surface); font-weight: 600; }
+  .cf-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .cf-modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 2000; }
+  .cf-modal.open { display: flex; }
+  .cf-modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.32); }
+  .cf-modal-body { position: relative; background: var(--md-surface); border: 1px solid var(--md-outline); border-radius: 16px; padding: 20px; width: min(420px, 92vw); box-shadow: 0 8px 32px rgba(0,0,0,0.14); }
+  .cf-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+  .cf-modal-title { font-size: 16px; font-weight: 700; }
+  .cf-modal-close { border: 0; background: transparent; font-size: 18px; cursor: pointer; color: var(--md-on-surface-variant); }
+  @media (max-width: 900px) {
+    .grid.cols-4 { grid-template-columns: repeat(2, 1fr); }
   }
-  @media (max-width: 640px){
-    .cashflow-cards{ grid-template-columns: 1fr; }
-    .cashflow-controls{ width:100%; }
-    .cashflow-controls label, .cashflow-controls button{ width:100%; justify-content:space-between; }
+  @media (max-width: 640px) {
+    .grid.cols-4 { grid-template-columns: 1fr; }
+    .cf-controls { width: 100%; }
+    .cf-controls label, .cf-controls .btn { width: 100%; justify-content: space-between; }
   }
 </style>
 
-<div class="cashflow-shell">
-  <div class="cashflow-head">
+<div class="card">
+  <div class="card-header" style="flex-wrap: wrap; gap: 12px;">
     <div>
-      <div class="cashflow-title">입출금 세부 분석</div>
-      <div class="cashflow-sub"><%= exchange %> · 바이낸스 지갑 · <%= rangeLabel %> · USDT는 당시 1h 시세로 환산</div>
-      <div class="cashflow-sub">입금, 출금, 순유입과 자금 이동 로그를 별도 카테고리로 확인합니다.</div>
+      <div class="card-title">입출금 세부 분석</div>
+      <div class="card-subtitle"><%= exchange %> · 바이낸스 지갑 · <%= rangeLabel %> · USDT는 당시 1h 시세로 환산</div>
+      <div class="body-sm text-muted" style="margin-top: 2px;">입금, 출금, 순유입과 자금 이동 로그를 별도 카테고리로 확인합니다.</div>
     </div>
-    <div class="cashflow-controls">
+    <div class="cf-controls">
       <label>
-        <span class="label-text">기간</span>
+        <span class="body-sm text-muted" style="margin-right: 6px;">기간</span>
         <select id="cf-range" data-current="<%= range && range.key ? range.key : 'd30' %>">
           <% if (customRangeData && customRangeData.start && customRangeData.end) { %>
             <option value="custom" selected disabled>기간선택</option>
@@ -112,7 +80,7 @@
         </select>
       </label>
       <label>
-        <span class="label-text">유형</span>
+        <span class="body-sm text-muted" style="margin-right: 6px;">유형</span>
         <select id="cf-type" data-current="all">
           <option value="all">전체</option>
           <option value="DEPOSIT">입금</option>
@@ -121,7 +89,7 @@
         </select>
       </label>
       <label>
-        <span class="label-text">코인</span>
+        <span class="body-sm text-muted" style="margin-right: 6px;">코인</span>
         <select id="cf-coin" data-current="all">
           <option value="all">전체</option>
           <% coins.forEach(c => { %>
@@ -129,198 +97,218 @@
           <% }) %>
         </select>
       </label>
-      <button id="cf-range-open" type="button">기간선택</button>
-      <button id="cf-reset" type="button">초기화</button>
+      <button class="btn btn-outlined sm" id="cf-range-open" type="button">기간선택</button>
+      <button class="btn btn-text sm" id="cf-reset" type="button">초기화</button>
+    </div>
+  </div>
+</div>
+
+<% if (rangeWarningMsg) { %>
+  <div class="card">
+    <div class="card-body">
+      <div class="body-sm text-muted"><%= rangeWarningMsg %></div>
+    </div>
+  </div>
+<% } %>
+
+<% if (error) { %>
+  <div class="card">
+    <div class="card-body">
+      <div class="text-muted">입출금 데이터를 불러오지 못했습니다.</div>
+      <div class="mono body-sm" style="margin-top: 4px;"><%= error %></div>
+    </div>
+  </div>
+<% } else if (!supported) { %>
+  <div class="card">
+    <div class="card-body">
+      <div class="empty-state">현재는 바이낸스 선물 입출금만 지원합니다.</div>
+    </div>
+  </div>
+<% } else { %>
+  <div class="grid cols-4">
+    <div class="metric-card" id="cf-card-1">
+      <div class="metric-card-label" id="cf-card-1-label">입금 합계 (<%= summaryCoin || '-' %>)</div>
+      <div class="metric-card-value" id="cf-card-1-value"><%= summary ? fmtNum(summary.deposit, 4) : '-' %></div>
+      <div class="metric-card-meta" id="cf-card-1-note">
+        <%= summaryCoin ? '완료 기준 · 외부 입출금 집계' : '코인별 합계만 표시' %>
+        <% if (summary && summary.coin === 'USDT' && summary.krw_deposit != null) { %>
+          · ≈ <%= fmtKrw(summary.krw_deposit) %> KRW
+        <% } %>
+      </div>
+    </div>
+    <div class="metric-card" id="cf-card-2">
+      <div class="metric-card-label" id="cf-card-2-label">출금 합계 (<%= summaryCoin || '-' %>)</div>
+      <div class="metric-card-value" id="cf-card-2-value"><%= summary ? fmtNum(summary.withdraw, 4) : '-' %></div>
+      <div class="metric-card-meta" id="cf-card-2-note">
+        <%= summaryCoin ? '완료 기준 · 외부 입출금 집계' : '코인별 합계만 표시' %>
+        <% if (summary && summary.coin === 'USDT' && summary.krw_withdraw != null) { %>
+          · ≈ <%= fmtKrw(summary.krw_withdraw) %> KRW
+        <% } %>
+      </div>
+    </div>
+    <div class="metric-card" id="cf-card-3">
+      <div class="metric-card-label" id="cf-card-3-label">순유입 (<%= summaryCoin || '-' %>)</div>
+      <div class="metric-card-value" id="cf-card-3-value"><%= summary ? fmtNum(summary.net, 4) : '-' %></div>
+      <div class="metric-card-meta" id="cf-card-3-note">
+        <%= summaryCoin ? '입금-출금 · 외부 입출금 집계' : '코인별 합계만 표시' %>
+        <% if (summary && summary.coin === 'USDT' && summary.krw_net != null) { %>
+          · ≈ <%= fmtKrw(summary.krw_net) %> KRW
+        <% } %>
+      </div>
+    </div>
+    <div class="metric-card" id="cf-card-4">
+      <div class="metric-card-label" id="cf-card-4-label">완료 건수</div>
+      <div class="metric-card-value" id="cf-card-4-value"><%= summary ? (summary.n_deposit + summary.n_withdraw) : '-' %></div>
+      <div class="metric-card-meta" id="cf-card-4-note"><%= entries.length ? ('전체 기록 ' + entries.length + '건') : '기록 없음' %></div>
     </div>
   </div>
 
-  <% if (rangeWarningMsg) { %>
-    <div class="card" style="margin-bottom:12px;">
-      <div class="subtle"><%= rangeWarningMsg %></div>
+  <% if (coins.length > 1 || !summaryCoin) { %>
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">코인별 합계</div>
+          <div class="card-subtitle">완료된 입출금만 집계합니다. 운영 판단은 미션/감사를 우선합니다.</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="table-wrap">
+          <table class="table-compact">
+            <thead>
+              <tr>
+                <th>코인</th>
+                <th>입금</th>
+                <th>출금</th>
+                <th>순유입</th>
+                <th>건수</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% coins.forEach(c => { %>
+                <tr>
+                  <td class="mono"><%= c.coin %></td>
+                  <td class="mono">
+                    <%= fmtAmt(c.deposit, 4) %>
+                    <% if (c.coin === 'USDT' && c.krw_deposit != null) { %>
+                      <div class="body-sm text-muted">≈ <%= fmtKrw(c.krw_deposit) %> KRW</div>
+                    <% } %>
+                  </td>
+                  <td class="mono">
+                    <%= fmtAmt(c.withdraw, 4) %>
+                    <% if (c.coin === 'USDT' && c.krw_withdraw != null) { %>
+                      <div class="body-sm text-muted">≈ <%= fmtKrw(c.krw_withdraw) %> KRW</div>
+                    <% } %>
+                  </td>
+                  <td class="mono">
+                    <%= fmtAmt(c.net, 4) %>
+                    <% if (c.coin === 'USDT' && c.krw_net != null) { %>
+                      <div class="body-sm text-muted">≈ <%= fmtKrw(c.krw_net) %> KRW</div>
+                    <% } %>
+                  </td>
+                  <td class="mono"><%= c.n_deposit + c.n_withdraw %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   <% } %>
 
-  <% if (error) { %>
-    <div class="card">
-      <div class="subtle">입출금 데이터를 불러오지 못했습니다.</div>
-      <div class="mono"><%= error %></div>
-    </div>
-  <% } else if (!supported) { %>
-    <div class="card">
-      <div class="subtle">현재는 BINANCEFUT 입출금만 지원합니다.</div>
-    </div>
-  <% } else { %>
-    <div class="cashflow-cards">
-      <div class="cashflow-card" id="cf-card-1">
-        <div class="k" id="cf-card-1-label">입금 합계 (<%= summaryCoin || '-' %>)</div>
-        <div class="v" id="cf-card-1-value"><%= summary ? fmtNum(summary.deposit, 4) : '-' %></div>
-        <div class="note" id="cf-card-1-note">
-          <%= summaryCoin ? '완료 기준 · 외부 입출금 집계' : '코인별 합계만 표시' %>
-          <% if (summary && summary.coin === 'USDT' && summary.krw_deposit != null) { %>
-            · ≈ <%= fmtKrw(summary.krw_deposit) %> KRW
-          <% } %>
-        </div>
-      </div>
-      <div class="cashflow-card" id="cf-card-2">
-        <div class="k" id="cf-card-2-label">출금 합계 (<%= summaryCoin || '-' %>)</div>
-        <div class="v" id="cf-card-2-value"><%= summary ? fmtNum(summary.withdraw, 4) : '-' %></div>
-        <div class="note" id="cf-card-2-note">
-          <%= summaryCoin ? '완료 기준 · 외부 입출금 집계' : '코인별 합계만 표시' %>
-          <% if (summary && summary.coin === 'USDT' && summary.krw_withdraw != null) { %>
-            · ≈ <%= fmtKrw(summary.krw_withdraw) %> KRW
-          <% } %>
-        </div>
-      </div>
-      <div class="cashflow-card" id="cf-card-3">
-        <div class="k" id="cf-card-3-label">순유입 (<%= summaryCoin || '-' %>)</div>
-        <div class="v" id="cf-card-3-value"><%= summary ? fmtNum(summary.net, 4) : '-' %></div>
-        <div class="note" id="cf-card-3-note">
-          <%= summaryCoin ? '입금-출금 · 외부 입출금 집계' : '코인별 합계만 표시' %>
-          <% if (summary && summary.coin === 'USDT' && summary.krw_net != null) { %>
-            · ≈ <%= fmtKrw(summary.krw_net) %> KRW
-          <% } %>
-        </div>
-      </div>
-      <div class="cashflow-card" id="cf-card-4">
-        <div class="k" id="cf-card-4-label">완료 건수</div>
-        <div class="v" id="cf-card-4-value"><%= summary ? (summary.n_deposit + summary.n_withdraw) : '-' %></div>
-        <div class="note" id="cf-card-4-note"><%= entries.length ? ('전체 기록 ' + entries.length + '건') : '기록 없음' %></div>
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">입출금 내역</div>
+        <div class="card-subtitle">바이낸스 지갑 기준 세부 로그입니다. 전송/입출금 모두 표시하며, 완료 외 상태는 참고용으로 표시합니다.</div>
       </div>
     </div>
-
-  <% if (coins.length > 1 || !summaryCoin) { %>
-      <div class="cashflow-section">
-        <h2>코인별 합계</h2>
-        <div class="subtle">완료된 입출금만 집계합니다. 운영 판단은 미션/감사를 우선합니다.</div>
-        <div class="hr"></div>
-        <table class="cashflow-table">
+    <div class="card-body">
+      <div class="table-wrap">
+        <table class="table-compact" id="cf-table">
           <thead>
             <tr>
+              <th>시각(KST)</th>
+              <th>유형</th>
               <th>코인</th>
-              <th>입금</th>
-              <th>출금</th>
-              <th>순유입</th>
-              <th>건수</th>
+              <th>수량</th>
+              <th>수수료</th>
+              <th>상태</th>
+              <th>비고</th>
             </tr>
           </thead>
           <tbody>
-            <% coins.forEach(c => { %>
-              <tr>
-                <td class="mono"><%= c.coin %></td>
+            <% if (!entries.length) { %>
+              <tr><td colspan="7" class="text-muted"><%= rangeLabel %> 기준 입출금 기록이 없습니다.</td></tr>
+            <% } %>
+            <% entries.forEach(row => { %>
+              <% const isTransfer = row.type === 'TRANSFER'; %>
+              <% const dir = isTransfer ? row.direction : (row.type === 'DEPOSIT' ? 'IN' : 'OUT'); %>
+              <% const sign = dir === 'IN' ? '+' : (dir === 'OUT' ? '-' : ''); %>
+              <% const amtClass = dir === 'IN' ? 'up' : (dir === 'OUT' ? 'down' : 'neutral'); %>
+              <tr
+                data-type="<%= row.type %>"
+                data-coin="<%= row.coin %>"
+                data-completed="<%= row.completed ? '1' : '0' %>"
+                data-excluded="<%= row.excluded_from_summary ? '1' : '0' %>"
+                data-direction="<%= dir || '' %>"
+                data-amount="<%= Number.isFinite(Number(row.amount)) ? Number(row.amount) : '' %>"
+                data-krw="<%= Number.isFinite(Number(row.krw_amount)) ? Number(row.krw_amount) : '' %>"
+              >
+                <td class="mono"><%= fmtKst(row.time_ms) %></td>
+                <td>
+                  <span class="chip sm <%= row.type === 'DEPOSIT' ? 'success' : (row.type === 'WITHDRAW' ? 'error' : 'primary') %>">
+                    <%= row.type === 'DEPOSIT' ? '입금' : (row.type === 'WITHDRAW' ? '출금' : '전송') %>
+                  </span>
+                </td>
+                <td class="mono"><%= row.coin %></td>
+                <td class="mono cf-amount-<%= amtClass %>">
+                  <%= sign %><%= fmtAmt(row.amount, 6) %>
+                  <% if (row.coin === 'USDT' && row.krw_amount != null) { %>
+                    <div class="body-sm text-muted">≈ <%= fmtKrw(row.krw_amount) %> KRW</div>
+                  <% } %>
+                </td>
+                <td class="mono"><%= row.fee != null ? fmtAmt(row.fee, 6) : '-' %></td>
                 <td class="mono">
-                  <%= fmtAmt(c.deposit, 4) %>
-                  <% if (c.coin === 'USDT' && c.krw_deposit != null) { %>
-                    <div class="subtle">≈ <%= fmtKrw(c.krw_deposit) %> KRW</div>
+                  <%= row.status_label %>
+                  <% if (row.excluded_from_summary) { %>
+                    <span class="chip sm warning" title="전송과 중복되어 합계에서 제외">중복 제외</span>
                   <% } %>
                 </td>
                 <td class="mono">
-                  <%= fmtAmt(c.withdraw, 4) %>
-                  <% if (c.coin === 'USDT' && c.krw_withdraw != null) { %>
-                    <div class="subtle">≈ <%= fmtKrw(c.krw_withdraw) %> KRW</div>
+                  <%= row.remark ? row.remark : '-' %>
+                  <% if (row.exclude_reason === 'MIRROR_TRANSFER_IN') { %>
+                    <div class="body-sm text-muted">전송 미러 감지로 합계 제외</div>
                   <% } %>
                 </td>
-                <td class="mono">
-                  <%= fmtAmt(c.net, 4) %>
-                  <% if (c.coin === 'USDT' && c.krw_net != null) { %>
-                    <div class="subtle">≈ <%= fmtKrw(c.krw_net) %> KRW</div>
-                  <% } %>
-                </td>
-                <td class="mono"><%= c.n_deposit + c.n_withdraw %></td>
               </tr>
             <% }) %>
           </tbody>
         </table>
       </div>
-    <% } %>
-
-    <div class="cashflow-section">
-      <h2>입출금 내역</h2>
-      <div class="subtle">Binance wallet 기준 세부 로그입니다. 전송/입출금 모두 표시하며, 완료 외 상태는 참고용으로 표시합니다.</div>
-      <div class="hr"></div>
-      <table class="cashflow-table" id="cf-table">
-        <thead>
-          <tr>
-            <th>시각(KST)</th>
-            <th>유형</th>
-            <th>코인</th>
-            <th>수량</th>
-            <th>수수료</th>
-            <th>상태</th>
-            <th>비고</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% if (!entries.length) { %>
-            <tr><td colspan="7" class="subtle"><%= rangeLabel %> 기준 입출금 기록이 없습니다.</td></tr>
-          <% } %>
-          <% entries.forEach(row => { %>
-            <% const isTransfer = row.type === 'TRANSFER'; %>
-            <% const dir = isTransfer ? row.direction : (row.type === 'DEPOSIT' ? 'IN' : 'OUT'); %>
-            <% const sign = dir === 'IN' ? '+' : (dir === 'OUT' ? '-' : ''); %>
-            <% const amtClass = dir === 'IN' ? 'up' : (dir === 'OUT' ? 'down' : 'neutral'); %>
-            <tr
-              data-type="<%= row.type %>"
-              data-coin="<%= row.coin %>"
-              data-completed="<%= row.completed ? '1' : '0' %>"
-              data-excluded="<%= row.excluded_from_summary ? '1' : '0' %>"
-              data-direction="<%= dir || '' %>"
-              data-amount="<%= Number.isFinite(Number(row.amount)) ? Number(row.amount) : '' %>"
-              data-krw="<%= Number.isFinite(Number(row.krw_amount)) ? Number(row.krw_amount) : '' %>"
-            >
-              <td class="mono"><%= fmtKst(row.time_ms) %></td>
-              <td>
-                <span class="cashflow-tag <%= row.type === 'DEPOSIT' ? 'deposit' : (row.type === 'WITHDRAW' ? 'withdraw' : 'transfer') %>">
-                  <%= row.type === 'DEPOSIT' ? '입금' : (row.type === 'WITHDRAW' ? '출금' : '전송') %>
-                </span>
-              </td>
-              <td class="mono"><%= row.coin %></td>
-              <td class="mono cashflow-amount <%= amtClass %>">
-                <%= sign %><%= fmtAmt(row.amount, 6) %>
-                <% if (row.coin === 'USDT' && row.krw_amount != null) { %>
-                  <div class="subtle">≈ <%= fmtKrw(row.krw_amount) %> KRW</div>
-                <% } %>
-              </td>
-              <td class="mono"><%= row.fee != null ? fmtAmt(row.fee, 6) : '-' %></td>
-              <td class="mono">
-                <%= row.status_label %>
-                <% if (row.excluded_from_summary) { %>
-                  <span class="cashflow-tag excluded" title="전송과 중복되어 합계에서 제외">중복 제외</span>
-                <% } %>
-              </td>
-              <td class="mono">
-                <%= row.remark ? row.remark : '-' %>
-                <% if (row.exclude_reason === 'MIRROR_TRANSFER_IN') { %>
-                  <div class="subtle">전송 미러 감지로 합계 제외</div>
-                <% } %>
-              </td>
-            </tr>
-          <% }) %>
-        </tbody>
-      </table>
     </div>
-  <% } %>
-</div>
+  </div>
+<% } %>
 
 <div class="cf-modal" id="cf-range-modal" aria-hidden="true">
   <div class="cf-modal-backdrop" data-close="1"></div>
   <div class="cf-modal-body">
     <div class="cf-modal-head">
       <div class="cf-modal-title">기간선택</div>
-      <button class="cf-modal-close" type="button" data-close="1">×</button>
+      <button class="cf-modal-close" type="button" data-close="1">&times;</button>
     </div>
-    <div class="cf-modal-sub">6개월 이내로 선택할 수 있습니다.</div>
-    <div class="cf-modal-grid">
-      <label>
-        시작일
+    <div class="body-sm text-muted" style="margin-bottom: 12px;">6개월 이내로 선택할 수 있습니다.</div>
+    <div class="grid cols-2">
+      <div>
+        <label>시작일</label>
         <input type="date" id="cf-start" value="<%= customRangeData && customRangeData.start ? customRangeData.start : '' %>"/>
-      </label>
-      <label>
-        종료일
+      </div>
+      <div>
+        <label>종료일</label>
         <input type="date" id="cf-end" value="<%= customRangeData && customRangeData.end ? customRangeData.end : '' %>"/>
-      </label>
+      </div>
     </div>
-    <div class="cf-modal-actions">
-      <button class="btn" id="cf-range-apply" type="button">확인</button>
+    <div style="margin-top: 14px; display: flex; justify-content: flex-end;">
+      <button class="btn btn-filled" id="cf-range-apply" type="button">확인</button>
     </div>
   </div>
 </div>
@@ -556,5 +544,4 @@
 })();
 </script>
 
-</div>
-<%- include('partials/app_end_trader') %>
+<%- include('partials/app_end_unified') %>

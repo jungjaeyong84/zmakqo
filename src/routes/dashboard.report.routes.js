@@ -22,6 +22,7 @@ const {
   buildLeverageSummary,
 } = require("../utils/leverageView");
 const { resolvePositionBudgetUsedKrw } = require("../utils/budgetUsageView");
+const { resolveIntentStatusFamilyForView } = require("../utils/intentView");
 const {
   SIGNAL_KPI_MIN_N,
   SIGNAL_KPI_MIN_EVAL_N,
@@ -431,7 +432,7 @@ async function computeIntentStats(db, { from, to, limit = 4000, exchange } = {})
     if (!Number.isFinite(createdMs)) return;
     if (createdMs < fromMs || createdMs >= toMsVal) return;
     total += 1;
-    const st = String(x.status || "").toUpperCase();
+    const st = String(resolveIntentStatusFamilyForView(x, Date.now()) || x.status || "").toUpperCase();
     if (st === "FILLED") filled += 1;
     else if (st === "CANCELED") {
       canceled += 1;
@@ -1131,7 +1132,41 @@ router.get("/dashboard/report", async (req, res) => {
     setReportCache(cacheKey, payload);
     return res.render("report", payload);
   } catch (e) {
-    return res.status(500).send("REPORT_ROUTE_ERROR: " + (e && e.message ? e.message : String(e)));
+    try {
+      return res.status(200).render("report", {
+        exchange: req.query.exchange || '',
+        mode: null,
+        range: null,
+        hasCustomRange: false,
+        as_of_kst: null,
+        pnl_scope_days: null,
+        pnl_source_policy: null,
+        overall: null,
+        budget: null,
+        leverage_summary: null,
+        budget_perf: null,
+        tail_summary: null,
+        charter_check: null,
+        range_perf: null,
+        intent_stats: null,
+        signal_scorecard: null,
+        data_quality: null,
+        eval_latest: null,
+        ai_summary: null,
+        focus_market: null,
+        latest: null,
+        latest_weekly: null,
+        latest_monthly: null,
+        compare: null,
+        weeks_back: null,
+        packUrl: null,
+        signal_tf: null,
+        exec_tf: null,
+        _error: { code: "REPORT_ROUTE_ERROR", message: '데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.' },
+      });
+    } catch (renderErr) {
+      return res.status(500).send("RENDER_FALLBACK_ERROR: " + (renderErr.message || String(renderErr)));
+    }
   }
 });
 

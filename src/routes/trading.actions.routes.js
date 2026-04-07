@@ -9,6 +9,7 @@ const { getSystemSettingsForProvider } = require("../storage/settings");
 const { toKstStringFromMs } = require("../utils/timeKst");
 const { fetchFuturesUserTrades } = require("../exchanges/binanceFuturesPrivate");
 const { runPaperFuturesForBar, syncFuturesPositionOnly } = require("../engine/paperUpbitRunner");
+const { runActionPreHooks, runActionPostHooks } = require("../utils/actionExecutionHooks");
 
 function nowMs() {
   return Date.now();
@@ -67,8 +68,10 @@ function createTradingActionsRoutes() {
 
   // Force exit 50% / 100% (all exchanges)
   router.post("/api/trading/force-exit", async (req, res) => {
+    let actionEnvelope = null;
     try {
       const body = req.body || {};
+      const requestId = String(req.headers["x-request-id"] || req.headers["x-correlation-id"] || "").trim() || null;
       const rawMarket = String(body.market || body.symbol || "").trim();
       const fracRaw = body.fraction ?? body.qty_fraction ?? body.qty_pct ?? body.pct;
       const fraction = normalizeFraction(fracRaw);
@@ -119,6 +122,22 @@ function createTradingActionsRoutes() {
       const sys = await getSystemSettingsForProvider(exchange, 2000);
       const execModeRaw = String(sys && sys.data && sys.data.execution_mode ? sys.data.execution_mode : "PAPER").toUpperCase();
       const executionMode = execModeRaw === "LIVE" ? "LIVE" : "PAPER";
+      const runId = `RUN__MANUAL_FORCE_EXIT__${exchange}__${market}__${Date.now()}`;
+      const pre = runActionPreHooks({
+        action: "TRADING_FORCE_EXIT",
+        runId,
+        exchange,
+        symbol: market,
+        tf: signalTf,
+        signalEvent: event,
+        decisionReason: "FORCE_EXIT_UI",
+        source: "TRADING_ACTIONS_ROUTE",
+        executionMode,
+        intent: "EXIT",
+        qtyPct: fraction,
+        persist: true,
+      });
+      actionEnvelope = pre.envelope;
 
       const intent = await upsertIntent({
         exchange,
@@ -140,7 +159,24 @@ function createTradingActionsRoutes() {
           _force_exit_fraction: fraction,
           position_side: posSide || null,
         },
+        runId,
         execTf,
+        requestId,
+        decisionReason: "FORCE_EXIT_UI",
+      });
+      if (actionEnvelope) actionEnvelope.intent_id = intent && (intent.intent_id || intent.id) ? (intent.intent_id || intent.id) : null;
+      runActionPostHooks({
+        envelope: actionEnvelope,
+        ok: true,
+        reason: "FORCE_EXIT_INTENT_CREATED",
+        persist: true,
+        result: {
+          intent_id: actionEnvelope && actionEnvelope.intent_id,
+          fraction,
+          exchange,
+          symbol: market,
+          scheduled_exec_bar_close_time_utc_ms: execBarCloseMs,
+        },
       });
 
       return res.json({
@@ -152,13 +188,28 @@ function createTradingActionsRoutes() {
         scheduled_exec_kst: toKstStringFromMs(execBarCloseMs, { fallback: null }),
       });
     } catch (err) {
+      runActionPostHooks({
+        envelope: actionEnvelope || {
+          action: "TRADING_FORCE_EXIT",
+          ts: new Date().toISOString(),
+        },
+        ok: false,
+        reason: "FORCE_EXIT_FAILED",
+        persist: true,
+        result: null,
+        extra: {
+          error: String(err && err.message || err).slice(0, 240),
+        },
+      });
       return res.status(500).json({ ok: false, error: "FORCE_EXIT_FAILED", message: String(err && err.message || err) });
     }
   });
 
   router.post("/api/trading/manual-retry-entry", async (req, res) => {
+    let actionEnvelope = null;
     try {
       const body = req.body || {};
+      const requestId = String(req.headers["x-request-id"] || req.headers["x-correlation-id"] || "").trim() || null;
       const rawMarket = String(body.market || body.symbol || "").trim();
       if (!rawMarket) {
         return res.status(400).json({ ok: false, error: "MARKET_REQUIRED" });
@@ -227,6 +278,35 @@ function createTradingActionsRoutes() {
       const execModeRaw = String(sys && sys.data && sys.data.execution_mode ? sys.data.execution_mode : "PAPER").toUpperCase();
       const executionMode = execModeRaw === "LIVE" ? "LIVE" : "PAPER";
       const signalMs = Date.now();
+      const pre = runActionPreHooks({
+        action: "TRADING_MANUAL_RETRY_ENTRY",
+        runId,
+        exchange,
+        symbol: market,
+        tf: signalTf,
+        signalEvent: event,
+        decisionReason: "MANUAL_RETRY_BY_USER",
+        source: "TRADING_ACTIONS_ROUTE",
+        executionMode,
+        intent: "ENTRY",
+        qtyPct: fraction,
+        features: {
+          action: "ENTRY",
+          _manual_retry_by_user: true,
+          _manual_retry_qty_base: qtyBase,
+          _manual_retry_source: qtySource,
+          _entry_exec_timing: "EXEC_CURRENT_BAR",
+        },
+        persist: true,
+      });
+      actionEnvelope = pre.envelope;
+      if (!pre.ok) {
+        return res.status(409).json({
+          ok: false,
+          error: "MANUAL_RETRY_PRE_HOOK_BLOCKED",
+          reason: pre.reason,
+        });
+      }
 
       const intent = await upsertIntent({
         exchange,
@@ -245,15 +325,14 @@ function createTradingActionsRoutes() {
         pendingNote: String(body.note || "FALSE_EXIT_RETRY").slice(0, 160),
         executionMode,
         features: {
-          action: "ENTRY",
-          _manual_retry_by_user: true,
-          _manual_retry_qty_base: qtyBase,
-          _manual_retry_source: qtySource,
-          _entry_exec_timing: "EXEC_CURRENT_BAR",
+          ...pre.featuresPatch,
         },
         runId,
         execTf,
+        requestId,
+        decisionReason: "MANUAL_RETRY_BY_USER",
       });
+      if (actionEnvelope) actionEnvelope.intent_id = intent && (intent.intent_id || intent.id) ? (intent.intent_id || intent.id) : null;
 
       const result = await runPaperFuturesForBar({
         runId,
@@ -270,6 +349,18 @@ function createTradingActionsRoutes() {
 
       await syncFuturesPositionOnly({ runId, exchange, symbol: market });
       const nextPos = await getPosition({ exchange, symbol: market });
+      runActionPostHooks({
+        envelope: actionEnvelope,
+        ok: true,
+        reason: "MANUAL_RETRY_COMPLETED",
+        persist: true,
+        result: {
+          intent_id: actionEnvelope && actionEnvelope.intent_id,
+          fills_executed: Number(result && result.fills_executed) || 0,
+          intents_created: Number(result && result.intents_created) || 0,
+          position_state: String(nextPos && nextPos.state || "").toUpperCase() || null,
+        },
+      });
 
       return res.json({
         ok: true,
@@ -285,12 +376,26 @@ function createTradingActionsRoutes() {
         position: nextPos,
       });
     } catch (err) {
+      runActionPostHooks({
+        envelope: actionEnvelope || {
+          action: "TRADING_MANUAL_RETRY_ENTRY",
+          ts: new Date().toISOString(),
+        },
+        ok: false,
+        reason: "MANUAL_RETRY_FAILED",
+        persist: true,
+        result: null,
+        extra: {
+          error: String(err && err.message || err).slice(0, 240),
+        },
+      });
       return res.status(500).json({ ok: false, error: "MANUAL_RETRY_FAILED", message: String(err && err.message || err) });
     }
   });
 
   // Cancel pending intents for a market (all exchanges)
   router.post("/api/trading/cancel-pending", async (req, res) => {
+    let actionEnvelope = null;
     try {
       const body = req.body || {};
       const rawMarket = String(body.market || body.symbol || "").trim();
@@ -310,6 +415,20 @@ function createTradingActionsRoutes() {
       if (!market || (markets.length && !markets.includes(market))) {
         return res.status(400).json({ ok: false, error: "MARKET_NOT_ALLOWED" });
       }
+      const pre = runActionPreHooks({
+        action: "TRADING_CANCEL_PENDING",
+        runId: `RUN__CANCEL_PENDING__${exchange}__${market}__${Date.now()}`,
+        exchange,
+        symbol: market,
+        tf: null,
+        signalEvent: "CANCEL_PENDING",
+        decisionReason: "MANUAL_CANCEL_UI",
+        source: "TRADING_ACTIONS_ROUTE",
+        executionMode: null,
+        intent: "CANCEL",
+        persist: true,
+      });
+      actionEnvelope = pre.envelope;
 
       const result = await cancelPendingIntentsByMarket({
         exchange,
@@ -317,6 +436,16 @@ function createTradingActionsRoutes() {
         limitN: 300,
         reason: "MANUAL_CANCEL_UI",
         note: "CANCEL_PENDING_UI",
+      });
+      runActionPostHooks({
+        envelope: actionEnvelope,
+        ok: true,
+        reason: "CANCEL_PENDING_COMPLETED",
+        persist: true,
+        result: {
+          canceled: result.canceled || 0,
+          scanned: result.scanned || 0,
+        },
       });
 
       return res.json({
@@ -327,6 +456,19 @@ function createTradingActionsRoutes() {
         scanned: result.scanned || 0,
       });
     } catch (err) {
+      runActionPostHooks({
+        envelope: actionEnvelope || {
+          action: "TRADING_CANCEL_PENDING",
+          ts: new Date().toISOString(),
+        },
+        ok: false,
+        reason: "CANCEL_PENDING_FAILED",
+        persist: true,
+        result: null,
+        extra: {
+          error: String(err && err.message || err).slice(0, 240),
+        },
+      });
       return res.status(500).json({ ok: false, error: "CANCEL_PENDING_FAILED", message: String(err && err.message || err) });
     }
   });

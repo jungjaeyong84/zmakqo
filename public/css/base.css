@@ -1,0 +1,78 @@
+/* ============================================================
+   DONBEOLJA Base — Reset + Typography + Body
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Google+Sans+Text:wght@400;500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap');
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  color: var(--md-on-surface);
+  background: var(--md-surface-dim);
+  font-family: var(--md-font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+}
+
+a {
+  color: var(--md-primary);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-family: var(--md-font-display);
+  letter-spacing: -0.02em;
+}
+
+.mono {
+  font-family: var(--md-font-mono);
+}
+
+/* ── M3 Type Scale ─────────────────────────────────────── */
+
+.display-lg   { font-size: 57px; line-height: 64px; font-weight: 400; letter-spacing: -0.25px; }
+.display-md   { font-size: 45px; line-height: 52px; font-weight: 400; }
+.display-sm   { font-size: 36px; line-height: 44px; font-weight: 400; }
+
+.headline-lg  { font-size: 32px; line-height: 40px; font-weight: 400; }
+.headline-md  { font-size: 28px; line-height: 36px; font-weight: 400; }
+.headline-sm  { font-size: 24px; line-height: 32px; font-weight: 400; }
+
+.title-lg     { font-size: 22px; line-height: 28px; font-weight: 500; }
+.title-md     { font-size: 16px; line-height: 24px; font-weight: 500; letter-spacing: 0.15px; }
+.title-sm     { font-size: 14px; line-height: 20px; font-weight: 500; letter-spacing: 0.1px; }
+
+.body-lg      { font-size: 16px; line-height: 24px; font-weight: 400; letter-spacing: 0.5px; }
+.body-md      { font-size: 14px; line-height: 20px; font-weight: 400; letter-spacing: 0.25px; }
+.body-sm      { font-size: 12px; line-height: 16px; font-weight: 400; letter-spacing: 0.4px; }
+
+.label-lg     { font-size: 14px; line-height: 20px; font-weight: 500; letter-spacing: 0.1px; }
+.label-md     { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.5px; }
+.label-sm     { font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.5px; }
+
+/* ── Semantic Text Colors ──────────────────────────────── */
+
+.text-primary   { color: var(--md-primary); }
+.text-muted     { color: var(--md-on-surface-variant); }
+.text-success   { color: var(--md-success); }
+.text-error     { color: var(--md-error); }
+.text-warning   { color: var(--md-warning); }
+
+.profit-up      { color: var(--md-long); }
+.profit-down    { color: var(--md-short); }
+.profit-neutral { color: var(--md-on-surface); }

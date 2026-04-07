@@ -22,7 +22,7 @@ const { buildKpiLatestByMarket } = require("../utils/kpiLatestView");
 const { buildExitStageView } = require("../utils/exitStageView");
 const { buildSignalDisplayReason } = require("../utils/signalReasonView");
 const { buildFillDisplayReason } = require("../utils/fillReasonView");
-const { isPendingIntentExpired, resolveIntentStatusForView, isActivePendingIntent } = require("../utils/intentView");
+const { isPendingIntentExpired, resolveIntentStatusForView, resolveIntentStatusFamilyForView, isActivePendingIntent } = require("../utils/intentView");
 const { buildRouteErrorRef, sanitizeRouteError, logRouteError } = require("../utils/routeErrors");
 const {
   buildAiReasonKo,
@@ -183,7 +183,7 @@ function buildIntentStatusLookup({ intents = [], exchange, tfDefault } = {}) {
     return `${mk}__${tfNorm}__${ms}__${ev}`;
   };
   const statusWeight = (status) => {
-    const s = normalizeStatus(resolveIntentStatusForView(status, Date.now()) || (status && status.status));
+    const s = normalizeStatus(resolveIntentStatusFamilyForView(status, Date.now()) || (status && status.status));
     if (s === "PENDING") return 3;
     if (s === "FILLED") return 2;
     if (s === "CANCELED") return 1;
@@ -649,6 +649,13 @@ router.get("/dashboard/mission", async (req, res) => {
 });
 
 router.get("/dashboard/home", async (req, res) => {
+  // Mock data mode for UI development
+  const { isMockEnabled, getMockHomePayload } = require("../utils/mockData");
+  if (isMockEnabled()) {
+    const mockPayload = getMockHomePayload();
+    return res.render(String(req.query.legacy || "").trim() === "1" ? "home.legacy.ejs" : "home", mockPayload);
+  }
+
   try {
     const allowLocal = String(process.env.ALLOW_LOCAL_NO_OAUTH || "0") === "1";
     if (!allowLocal) {
@@ -763,6 +770,12 @@ router.get("/dashboard/home", async (req, res) => {
       latest_at: null,
       top: [],
       recent: [],
+      by_status: {
+        rejected_provider: 0,
+        timeout_provider: 0,
+        failed_internal: 0,
+        canceled_plain: 0,
+      },
     };
     const failureCounts = {};
     const failureLabel = (raw) => {
@@ -779,11 +792,16 @@ router.get("/dashboard/home", async (req, res) => {
       return r;
     };
     for (const x of intentsFiltered) {
-      const st = String(x.status || "").toUpperCase();
-      if (st !== "CANCELED") continue;
+      const stFamily = String(resolveIntentStatusFamilyForView(x, Date.now()) || x.status || "").toUpperCase();
+      const stDetail = String(resolveIntentStatusForView(x, Date.now()) || x.status || "").toUpperCase();
+      if (stFamily !== "CANCELED") continue;
       const mk = String(x.symbol || x.symbol_or_pair_id || x.market || "");
       const reasonRaw = String(x.cancel_reason || x.status_reason || "UNKNOWN").toUpperCase();
       const reason = failureLabel(reasonRaw);
+      if (stDetail === "REJECTED_PROVIDER") intentFailures.by_status.rejected_provider += 1;
+      else if (stDetail === "TIMEOUT_PROVIDER") intentFailures.by_status.timeout_provider += 1;
+      else if (stDetail === "FAILED_INTERNAL") intentFailures.by_status.failed_internal += 1;
+      else intentFailures.by_status.canceled_plain += 1;
       failureCounts[reason] = (failureCounts[reason] || 0) + 1;
       intentFailures.total += 1;
       if (!intentFailures.latest_at) {
@@ -793,6 +811,7 @@ router.get("/dashboard/home", async (req, res) => {
         intentFailures.recent.push({
           intent_id: x.intent_id || x.id,
           market: mk || "-",
+          status_detail: stDetail || null,
           reason,
           reason_raw: reasonRaw,
           note: x.cancel_note || null,
@@ -1395,9 +1414,13 @@ router.get("/dashboard/home", async (req, res) => {
     const signals12 = recentSignalsWithDrops.map((x) => {
       const matched = intentLookup.resolveForSignal(x);
       const schedMs = Number(matched && matched.scheduled_exec_bar_close_time_utc_ms);
+      const resolvedStatus = normalizeStatus(resolveIntentStatusForView(matched, nowMs));
       const execPlan = matched ? {
         intent_id: matched.intent_id || matched.id || null,
-        status: normalizeStatus(resolveIntentStatusForView(matched, nowMs)),
+        status: resolvedStatus,
+        status_detail: resolvedStatus,
+        status_family: normalizeStatus(resolveIntentStatusFamilyForView(matched, nowMs)),
+        terminal_failure_status: normalizeStatus(matched.terminal_failure_status || null),
         scheduled_exec_bar_close_time_utc_ms: Number.isFinite(schedMs) ? schedMs : null,
         scheduled_exec_kst: Number.isFinite(schedMs) ? toKstString(schedMs) : null,
         pending_reason: matched.pending_reason || null,
@@ -1420,6 +1443,18 @@ router.get("/dashboard/home", async (req, res) => {
         authoritative: x.authoritative === true,
         qty_pct: (x.qty_pct === undefined ? (x.qtyPct === undefined ? null : x.qtyPct) : x.qty_pct),
         reason: x.reason || null,
+        decision_reason: x.decision_reason || x.reason || null,
+        request_id: x.request_id || null,
+        run_id: x.run_id || (matched && matched.run_id) || null,
+        signal_id: x.signal_id || x.id || null,
+        intent_id: matched && (matched.intent_id || matched.id) ? (matched.intent_id || matched.id) : null,
+        trace_meta: [
+          x.signal_id || x.id ? `signal:${x.signal_id || x.id}` : null,
+          matched && (matched.intent_id || matched.id) ? `intent:${matched.intent_id || matched.id}` : null,
+          x.run_id || (matched && matched.run_id) ? `run:${x.run_id || matched.run_id}` : null,
+          x.request_id ? `req:${x.request_id}` : null,
+          x.decision_reason || x.reason ? `reason:${x.decision_reason || x.reason}` : null,
+        ].filter(Boolean).join(" | ") || null,
         display_reason: displayReason.primary,
         display_reason_detail: displayReason.detail,
         display_reason_secondary: displayReason.secondary,
@@ -1460,6 +1495,22 @@ router.get("/dashboard/home", async (req, res) => {
         signal_price: (x.signal_price != null) ? Number(x.signal_price) : null,
         signal_price_diff: (x.signal_price_diff != null) ? Number(x.signal_price_diff) : null,
         signal_price_diff_pct: (x.signal_price_diff_pct != null) ? Number(x.signal_price_diff_pct) : null,
+        decision_reason: x.decision_reason || x.event || null,
+        request_id: x.request_id || null,
+        run_id: x.run_id || null,
+        signal_id: x.signal_id || null,
+        intent_id: x.intent_id || null,
+        fill_id: x.fill_id || x.id || null,
+        trade_id: x.trade_id || null,
+        trace_meta: x.trace_meta || [
+          x.signal_id ? `signal:${x.signal_id}` : null,
+          x.intent_id ? `intent:${x.intent_id}` : null,
+          (x.fill_id || x.id) ? `fill:${x.fill_id || x.id}` : null,
+          x.trade_id ? `trade:${x.trade_id}` : null,
+          x.run_id ? `run:${x.run_id}` : null,
+          x.request_id ? `req:${x.request_id}` : null,
+          (x.decision_reason || x.event) ? `reason:${x.decision_reason || x.event}` : null,
+        ].filter(Boolean).join(" | ") || null,
         display_exec_label: display.exec_label,
         display_exec_text: display.exec_text,
         display_exec_ko: display.exec_ko,
@@ -1478,6 +1529,20 @@ router.get("/dashboard/home", async (req, res) => {
 
     const charter_check = checkCharterConsistency(exchange);
     const gate_latest = await getLatestGateForExchange(db, exchange);
+
+    // Active positions for "지금" home view
+    const activePositions = Object.values(posByMarket)
+      .filter((p) => String(p.state || p.status || "").toUpperCase() === "ACTIVE")
+      .map((p) => ({
+        symbol: p.symbol_or_pair_id || p.symbol || "",
+        side: p.position_side || p.side || "",
+        avg_price: p.avg_price || null,
+        size_pct: p.size_pct || 0,
+        entry_at: p.entry_at || p.created_at || null,
+        pnl_pct: p.unrealized_pnl_pct || p.pnl_pct || null,
+        pnl_value: p.unrealized_pnl || null,
+        leverage: p.leverage || null,
+      }));
 
     const asOfKst = toKstString(new Date().toISOString());
     const payload = {
@@ -1523,6 +1588,7 @@ router.get("/dashboard/home", async (req, res) => {
       febt_phase0_latest: febtPhase0Latest,
       intent_failures: intentFailures,
       mission_control: buildMissionControlViewModel(),
+      active_positions: activePositions,
     };
     setHomeCache(cacheKey, payload);
     return res.render(String(req.query.legacy || "").trim() === "1" ? "home.legacy.ejs" : "home", payload);
@@ -1537,7 +1603,49 @@ router.get("/dashboard/home", async (req, res) => {
       defaultMessage: "홈 화면을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
       defaultStatus: 500,
     });
-    return res.status(sanitized.status).send(`${sanitized.code}:${errorRef}`);
+    try {
+      return res.status(200).render(String(req.query.legacy || "").trim() === "1" ? "home.legacy.ejs" : "home", {
+        service: String(process.env.K_SERVICE || "donbeolja"),
+        exchange: req.query.exchange || '',
+        as_of_kst: null,
+        pnl_scope_days: null,
+        pnl_source_policy: null,
+        signal_tf: null,
+        exec_tf: null,
+        gate_latest: null,
+        weekly: null,
+        packUrl: null,
+        latestSignalsAt: null,
+        latestFillsAt: null,
+        markets_expected: [],
+        markets: [],
+        coverage: null,
+        signals12: [],
+        fills12: [],
+        runtime: { mode: process.env.RUNTIME_MODE || (process.env.NODE_ENV === "production" ? "prod" : "local"), engine_version: process.env.ENGINE_VERSION || "baseline_v0" },
+        system_settings: { execution_mode: "PAPER", live_enabled: false, live_dry_run: false, live_confirm_required: false, futures_leverage: null },
+        tp_status: null,
+        leverage_summary: null,
+        rollback_summary: null,
+        ai_mode_today: null,
+        ai_mode_display: null,
+        ai_mode_stale: false,
+        ai_run_latest: null,
+        ai_alloc_config: null,
+        charter_check: null,
+        budget_summary: null,
+        budget_perf: null,
+        weekly_range_perf: null,
+        home_profit_ranges: null,
+        febt_shadow_recent: null,
+        febt_phase0_latest: null,
+        intent_failures: [],
+        mission_control: null,
+        _error: { code: errorRef, message: '데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.' },
+      });
+    } catch (renderErr) {
+      return res.status(500).send("RENDER_FALLBACK_ERROR: " + (renderErr.message || String(renderErr)));
+    }
   }
 });
 

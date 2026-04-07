@@ -1,5 +1,5 @@
-<%- include('partials/app_start_trader', { title: '수익 · DONBEOLJA Trader', pageTitle: '수익', active: 'profit', bodyClass: 'trader-profit-page' }) %>
-<div class="trader-compat-surface">
+<%- include('partials/app_start_unified', { title: '수익 · DONBEOLJA', pageTitle: '수익', active: 'profit', bodyClass: '' }) %>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 
 <%
   const unit = (profit && profit.unit) ? profit.unit : 'USDT';
@@ -103,327 +103,205 @@
 %>
 
 <style>
-  .profit-shell{
-    background: transparent;
-    border: 0;
-    border-radius: 0;
-    padding: 0;
-    color: var(--text);
-    box-shadow: none;
-  }
-  .profit-head{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
+  /* -- Profit page-specific styles -- */
+  .profit-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 12px;
-    margin-bottom: 12px;
+    margin-bottom: 16px;
   }
-  .profit-title{
+  .profit-head-title {
+    font-family: var(--md-font-display);
     font-size: 18px;
-    font-weight: 700;
-    letter-spacing: -0.2px;
+    font-weight: 600;
+    color: var(--md-on-surface);
+    letter-spacing: -0.01em;
   }
-  .profit-sub{
-    color: var(--muted);
-    font-size: 12px;
-  }
-  .profit-range{
-    display:flex;
+  .profit-range-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
     gap: 6px;
-    flex-wrap: wrap;
   }
-  .profit-range-wrap{
-    display:flex;
-    flex-direction:column;
-    align-items:flex-end;
-    gap: 4px;
-  }
-  .profit-range-window{
+  .profit-range-window {
     font-size: 11px;
-    color: var(--muted);
+    color: var(--md-on-surface-variant);
     text-align: right;
     white-space: nowrap;
   }
-  .profit-range button{
-    background: #fff;
-    color: var(--text);
-    border: 1px solid var(--line);
-    padding: 6px 10px;
-    border-radius: 10px;
-    font-size: 11px;
-    cursor: pointer;
-  }
-  .profit-range button.active{
-    background: #f1f4f8;
-    color: var(--text);
-    border-color: var(--line);
-  }
-  .profit-range .range-note{
-    font-size: 11px;
-    color: var(--muted);
-    padding-left: 6px;
-  }
-  .profit-warning{
+  .profit-warning {
     margin-top: 6px;
-    font-size: 11px;
+    font-size: 12px;
     color: #b45309;
   }
-  .profit-cards{
-    display:grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 10px;
-    margin-bottom: 14px;
-  }
-  .profit-card{
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 12px;
-    min-height: 84px;
-  }
-  .profit-card .label{ font-size: 11px; color: var(--muted); }
-  .profit-card .value{ font-size: 18px; font-weight: 700; margin-top: 6px; }
-  .profit-card .meta{ font-size: 11px; color: var(--muted); margin-top: 4px; }
-  .profit-card .value.up{ color: #23d18b; }
-  .profit-card .value.down{ color: #ff6b6b; }
-  .profit-card .value.neutral{ color: var(--text); }
-
-  .profit-grid{
-    display:grid;
+  .profit-grid {
+    display: grid;
     grid-template-columns: 1.2fr 1fr;
-    gap: 12px;
+    gap: 16px;
   }
-  .profit-panel{
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 14px;
-  }
-  .profit-panel h3{
-    margin: 0 0 10px 0;
-    font-size: 13px;
-    color: var(--text);
-  }
-  .profit-kv{
-    display:grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px 12px;
-    font-size: 12px;
-  }
-  .profit-kv .k{ color: var(--muted); }
-  .profit-kv .v{ color: var(--text); text-align: right; }
-
-  .profit-chart{
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 14px;
-  }
-  .chart-bars{
-    display:grid;
-    grid-template-columns: repeat(auto-fit, minmax(6px, 1fr));
-    align-items: end;
-    gap: 2px;
-    height: 140px;
+  .chart-canvas-wrap {
     margin-top: 10px;
-  }
-  .bar{
-    width: 100%;
-    border-radius: 4px 4px 2px 2px;
-    background: #e3e7ee;
-    min-height: 2px;
-  }
-  .bar.up{ background: #23d18b; }
-  .bar.down{ background: #ff6b6b; }
-  .bar.flat{ background: #3b4452; }
-
-  .profit-lines{
-    height: 140px;
-    margin-top: 10px;
-    background: #f5f7fb;
-    border-radius: 10px;
-    border: 1px solid var(--line);
     position: relative;
+    height: 200px;
   }
-  .profit-lines svg{ position:absolute; inset:0; width:100%; height:100%; }
-  .profit-lines .axis{ position:absolute; inset:10px; border-left:1px solid var(--line); border-bottom:1px solid var(--line); }
-
-  .profit-footer{
-    display:grid;
+  .profit-footer {
+    display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-top: 12px;
+    gap: 16px;
+    margin-top: 16px;
   }
-  .profit-donut{
+  .profit-donut {
     width: 140px;
     height: 140px;
     border-radius: 50%;
-    background: conic-gradient(#23d18b 0deg, #23d18b var(--used, 0deg), #e3e7ee var(--used, 0deg));
-    display:flex;
-    align-items:center;
-    justify-content:center;
+    background: conic-gradient(var(--md-primary) 0deg, var(--md-primary) var(--used, 0deg), var(--md-surface-container-high) var(--used, 0deg));
+    display: flex;
+    align-items: center;
+    justify-content: center;
     position: relative;
+    flex-shrink: 0;
   }
-  .profit-donut::after{
+  .profit-donut::after {
     content: '';
     width: 80px;
     height: 80px;
     border-radius: 50%;
-    background: var(--card);
-    border: 1px solid var(--line);
+    background: var(--md-surface);
+    border: 1px solid var(--md-outline-variant);
   }
-  .profit-donut-label{
+  .profit-donut-label {
     position: absolute;
-    font-size: 11px;
-    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--md-on-surface);
   }
-
-  .profit-toplist{
-    display:flex;
-    flex-direction:column;
-    gap: 8px;
-  }
-  .profit-toplist .row{
-    display:flex;
-    justify-content:space-between;
-    padding: 8px 10px;
-    border-radius: 10px;
-    background: var(--card);
-    border: 1px solid var(--line);
+  .toplist-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border-radius: var(--md-shape-sm);
+    background: var(--md-surface-container-low);
     font-size: 12px;
   }
-  .profit-toplist .row .mk{ color: var(--text); font-weight: 600; }
-  .profit-toplist .row .val{ color: var(--muted); }
+  .toplist-row + .toplist-row { margin-top: 8px; }
+  .toplist-row .mk { color: var(--md-on-surface); font-weight: 600; }
+  .toplist-row .val { color: var(--md-on-surface-variant); }
+  .metric-card-value.up { color: var(--md-success); }
+  .metric-card-value.down { color: var(--md-error); }
+  .metric-card-value.neutral { color: var(--md-on-surface); }
 
-  .range-modal{
+  /* Range modal */
+  .range-modal {
     position: fixed;
     inset: 0;
-    background: rgba(15, 23, 42, 0.35);
+    background: rgba(0, 0, 0, 0.32);
     display: none;
     align-items: center;
     justify-content: center;
     z-index: 50;
   }
-  .range-modal.show{ display: flex; }
-  .range-modal__panel{
+  .range-modal.show { display: flex; }
+  .range-modal__panel {
     width: min(420px, 92vw);
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    padding: 18px;
-    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18);
+    background: var(--md-surface);
+    border: 1px solid var(--md-outline-variant);
+    border-radius: var(--md-shape-xl);
+    padding: 24px;
+    box-shadow: var(--md-elevation-3);
   }
-  .range-modal__title{
-    font-size: 16px;
-    font-weight: 700;
+  .range-modal__title {
+    font-family: var(--md-font-display);
+    font-size: 18px;
+    font-weight: 600;
     margin-bottom: 4px;
   }
-  .range-modal__desc{
+  .range-modal__desc {
     font-size: 12px;
-    color: var(--muted);
-    margin-bottom: 14px;
+    color: var(--md-on-surface-variant);
+    margin-bottom: 16px;
   }
-  .range-modal__grid{
+  .range-modal__grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-bottom: 14px;
+    gap: 12px;
+    margin-bottom: 16px;
   }
-  .range-modal__label{
-    font-size: 11px;
-    color: var(--muted);
-    margin-bottom: 6px;
-  }
-  .range-modal__input{
-    width: 100%;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 8px 10px;
-    font-size: 12px;
-    background: #fff;
-  }
-  .range-modal__actions{
+  .range-modal__actions {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
   }
-  .range-modal__btn{
-    border: 1px solid var(--line);
-    background: #fff;
-    color: var(--text);
-    padding: 8px 14px;
-    border-radius: 10px;
-    font-size: 12px;
-    cursor: pointer;
-  }
-  .range-modal__btn.primary{
-    background: #111827;
-    color: #fff;
-    border-color: #111827;
-  }
 
-  @media (max-width: 980px){
-    .profit-head{ flex-direction: column; align-items: flex-start; }
-    .profit-range-wrap{ align-items: flex-start; }
-    .profit-range-window{ text-align: left; white-space: normal; }
-    .profit-cards{ grid-template-columns: repeat(2, 1fr); }
-    .profit-grid{ grid-template-columns: 1fr; }
-    .profit-footer{ grid-template-columns: 1fr; }
+  @media (max-width: 980px) {
+    .profit-head { flex-direction: column; align-items: flex-start; }
+    .profit-range-wrap { align-items: flex-start; }
+    .profit-range-window { text-align: left; white-space: normal; }
+    .profit-grid { grid-template-columns: 1fr; }
+    .profit-footer { grid-template-columns: 1fr; }
   }
 </style>
 
-<div class="profit-shell">
-  <div class="profit-head">
-    <div>
-      <div class="profit-title">수익 세부 분석</div>
-      <div class="profit-sub"><%= exchange %> · 실현 손익 중심 · <%= basisHint %><% if (customRangeData && customRangeData.start && customRangeData.end) { %> · <%= customRangeData.start %> ~ <%= customRangeData.end %><% } %></div>
-      <div class="profit-sub">오늘, 최근 30일, 6개월 손익과 수익 구조를 읽는 메인 수익 화면입니다.</div>
-      <% if (leverageSummary && leverageSummary.enabled) { %>
-        <div class="profit-sub">배율 상태 · 2x <%= fmtInt(leverageSummary.tier_2x || 0) %> / 3x <%= fmtInt(leverageSummary.tier_3x || 0) %> (활성 <%= fmtInt(leverageSummary.active_markets || 0) %>)</div>
-      <% } %>
-      <% if (rangeWarningMsg) { %>
-        <div class="profit-warning"><%= rangeWarningMsg %></div>
-      <% } %>
+<!-- Profit Header -->
+<div class="profit-head">
+  <div>
+    <div class="profit-head-title">수익 세부 분석</div>
+    <div class="body-sm text-muted"><%= exchange %> · 실현 손익 중심 · <%= basisHint %><% if (customRangeData && customRangeData.start && customRangeData.end) { %> · <%= customRangeData.start %> ~ <%= customRangeData.end %><% } %></div>
+    <div class="body-sm text-muted">오늘, 최근 30일, 6개월 손익과 수익 구조를 읽는 메인 수익 화면입니다.</div>
+    <% if (leverageSummary && leverageSummary.enabled) { %>
+      <div class="body-sm text-muted">배율 상태 · 2x <%= fmtInt(leverageSummary.tier_2x || 0) %> / 3x <%= fmtInt(leverageSummary.tier_3x || 0) %> (활성 <%= fmtInt(leverageSummary.active_markets || 0) %>)</div>
+    <% } %>
+    <% if (rangeWarningMsg) { %>
+      <div class="profit-warning"><%= rangeWarningMsg %></div>
+    <% } %>
+  </div>
+  <div class="profit-range-wrap">
+    <div class="subnav" id="profit-range">
+      <a href="#" data-range="d7" class="<%= defaultRangeKey === 'd7' ? 'active' : '' %>">7D</a>
+      <a href="#" data-range="d30" class="<%= defaultRangeKey === 'd30' ? 'active' : '' %>">1M</a>
+      <a href="#" data-range="d90" class="<%= defaultRangeKey === 'd90' ? 'active' : '' %>">3M</a>
+      <a href="#" data-range="m6" class="<%= defaultRangeKey === 'm6' ? 'active' : '' %>">6M</a>
+      <a href="#" data-range="custom" class="<%= defaultRangeKey === 'custom' ? 'active' : '' %>">기간선택</a>
     </div>
-    <div class="profit-range-wrap">
-      <div class="profit-range" id="profit-range">
-        <button data-range="d7" class="<%= defaultRangeKey === 'd7' ? 'active' : '' %>">7D</button>
-        <button data-range="d30" class="<%= defaultRangeKey === 'd30' ? 'active' : '' %>">1M</button>
-        <button data-range="d90" class="<%= defaultRangeKey === 'd90' ? 'active' : '' %>">3M</button>
-        <button data-range="m6" class="<%= defaultRangeKey === 'm6' ? 'active' : '' %>">6M</button>
-        <button data-range="custom" class="<%= defaultRangeKey === 'custom' ? 'active' : '' %>">기간선택</button>
+    <div class="profit-range-window" id="profit-range-window"><%= fmtRangeWindow(ranges[defaultRangeKey]) %></div>
+  </div>
+</div>
+
+<!-- KPI Metric Cards -->
+<div class="grid cols-4" style="margin-bottom:16px;">
+  <div class="metric-card">
+    <div class="metric-card-label">오늘 손익</div>
+    <div class="metric-card-value <%= pnlColor(rangeAgg.today && rangeAgg.today.total) %>" data-field="today_pnl"><%- fmtPnlHtml(rangeAgg.today && rangeAgg.today.total) %></div>
+    <div class="metric-card-meta" data-field="today_pct"><%= fmtPct((profit && profit.total_max_krw && rangeAgg.today && rangeAgg.today.total != null) ? (rangeAgg.today.total / profit.total_max_krw) : null) %></div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-card-label" data-field="range_label"><%= fmtRangeLabel(ranges[defaultRangeKey]) %> 손익</div>
+    <div class="metric-card-value <%= pnlColor(rangeAgg[defaultRangeKey] && rangeAgg[defaultRangeKey].total) %>" data-field="range_pnl"><%- fmtPnlHtml(rangeAgg[defaultRangeKey] && rangeAgg[defaultRangeKey].total) %></div>
+    <div class="metric-card-meta" data-field="range_pct"><%= fmtPct((profit && profit.total_max_krw && rangeAgg[defaultRangeKey] && rangeAgg[defaultRangeKey].total != null) ? (rangeAgg[defaultRangeKey].total / profit.total_max_krw) : null) %></div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-card-label">30일 손익</div>
+    <div class="metric-card-value <%= pnlColor(rangeAgg.d30 && rangeAgg.d30.total) %>" data-field="range2_pnl"><%- fmtPnlHtml(rangeAgg.d30 && rangeAgg.d30.total) %></div>
+    <div class="metric-card-meta" data-field="range2_pct"><%= fmtPct((profit && profit.total_max_krw && rangeAgg.d30 && rangeAgg.d30.total != null) ? (rangeAgg.d30.total / profit.total_max_krw) : null) %></div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-card-label">6개월 손익</div>
+    <div class="metric-card-value <%= pnlColor(rangeAgg.m6 && rangeAgg.m6.total) %>" data-field="m6_pnl"><%- fmtPnlHtml(rangeAgg.m6 && rangeAgg.m6.total) %></div>
+    <div class="metric-card-meta" data-field="m6_pct"><%= fmtPct((profit && profit.total_max_krw && rangeAgg.m6 && rangeAgg.m6.total != null) ? (rangeAgg.m6.total / profit.total_max_krw) : null) %></div>
+  </div>
+</div>
+
+<!-- PnL Analysis + Daily Bar Chart -->
+<div class="profit-grid">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">손익 분석</div>
       </div>
-      <div class="profit-range-window" id="profit-range-window"><%= fmtRangeWindow(ranges[defaultRangeKey]) %></div>
     </div>
-  </div>
-
-  <div class="profit-cards">
-    <div class="profit-card">
-      <div class="label">오늘 손익</div>
-      <div class="value <%= pnlColor(rangeAgg.today && rangeAgg.today.total) %>" data-field="today_pnl"><%- fmtPnlHtml(rangeAgg.today && rangeAgg.today.total) %></div>
-      <div class="meta" data-field="today_pct"><%= fmtPct((profit && profit.total_max_krw && rangeAgg.today && rangeAgg.today.total != null) ? (rangeAgg.today.total / profit.total_max_krw) : null) %></div>
-    </div>
-    <div class="profit-card">
-      <div class="label" data-field="range_label"><%= fmtRangeLabel(ranges[defaultRangeKey]) %> 손익</div>
-      <div class="value <%= pnlColor(rangeAgg[defaultRangeKey] && rangeAgg[defaultRangeKey].total) %>" data-field="range_pnl"><%- fmtPnlHtml(rangeAgg[defaultRangeKey] && rangeAgg[defaultRangeKey].total) %></div>
-      <div class="meta" data-field="range_pct"><%= fmtPct((profit && profit.total_max_krw && rangeAgg[defaultRangeKey] && rangeAgg[defaultRangeKey].total != null) ? (rangeAgg[defaultRangeKey].total / profit.total_max_krw) : null) %></div>
-    </div>
-    <div class="profit-card">
-      <div class="label">30일 손익</div>
-      <div class="value <%= pnlColor(rangeAgg.d30 && rangeAgg.d30.total) %>" data-field="range2_pnl"><%- fmtPnlHtml(rangeAgg.d30 && rangeAgg.d30.total) %></div>
-      <div class="meta" data-field="range2_pct"><%= fmtPct((profit && profit.total_max_krw && rangeAgg.d30 && rangeAgg.d30.total != null) ? (rangeAgg.d30.total / profit.total_max_krw) : null) %></div>
-    </div>
-    <div class="profit-card">
-      <div class="label">6개월 손익</div>
-      <div class="value <%= pnlColor(rangeAgg.m6 && rangeAgg.m6.total) %>" data-field="m6_pnl"><%- fmtPnlHtml(rangeAgg.m6 && rangeAgg.m6.total) %></div>
-      <div class="meta" data-field="m6_pct"><%= fmtPct((profit && profit.total_max_krw && rangeAgg.m6 && rangeAgg.m6.total != null) ? (rangeAgg.m6.total / profit.total_max_krw) : null) %></div>
-    </div>
-  </div>
-
-  <div class="profit-grid">
-    <div class="profit-panel">
-      <h3>손익 분석</h3>
-      <div class="profit-kv">
+    <div class="card-body">
+      <div class="kv">
         <div class="k">총 이익</div><div class="v" data-field="total_profit"><%- fmtNumHtml(rangeAgg[defaultRangeKey] && rangeAgg[defaultRangeKey].total_profit, 2) %></div>
         <div class="k">총 손실</div><div class="v" data-field="total_loss"><%- fmtNumHtml(rangeAgg[defaultRangeKey] && rangeAgg[defaultRangeKey].total_loss, 2) %></div>
         <div class="k">순손익</div><div class="v" data-field="net_pnl"><%- fmtNumHtml(rangeAgg[defaultRangeKey] && rangeAgg[defaultRangeKey].total, 2) %></div>
@@ -437,69 +315,84 @@
         <div class="k">거래대금</div><div class="v" data-field="notional"><%- fmtNumHtml(rangeAgg[defaultRangeKey] && rangeAgg[defaultRangeKey].notional, 2) %></div>
       </div>
     </div>
+  </div>
 
-    <div class="profit-chart">
-      <h3 id="daily-title">일별 손익 (<%= fmtRangeLabel(ranges[defaultRangeKey]) %>)</h3>
-      <div class="chart-bars" id="daily-bars">
-        <% dailySeries.forEach(function(d){ %>
-          <div class="bar <%= d.dir %>" style="height:<%= d.height_pct %>%" title="<%= d.day %> · <%= fmtNum(d.pnl, 2) %> <%= unit %>"></div>
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title" id="daily-title">일별 손익 (<%= fmtRangeLabel(ranges[defaultRangeKey]) %>)</div>
+    </div>
+    <div class="card-body">
+      <div class="chart-canvas-wrap">
+        <canvas id="daily-chart-canvas" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Cumulative Chart + Top Markets -->
+<div class="profit-grid" style="margin-top:16px;">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title" id="cum-title">누적 손익 (<%= fmtRangeLabel(ranges[defaultRangeKey]) %>)</div>
+    </div>
+    <div class="card-body">
+      <div class="chart-canvas-wrap">
+        <canvas id="cum-chart-canvas" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">수익 상위 마켓</div>
+    </div>
+    <div class="card-body">
+      <% if (topMarkets.length === 0) { %>
+        <div class="empty-state">
+          <div class="empty-state-text">데이터 없음</div>
+        </div>
+      <% } else { %>
+        <% topMarkets.forEach(function(r){ %>
+          <div class="toplist-row">
+            <span class="mk">
+              <%= r.market %>
+              <% if (r.leverage_tier) { %>
+                · <span class="pill <%= leverageBadge(r.leverage_tier) %>"><%= r.leverage_tier %></span>
+              <% } else if (r.leverage != null) { %>
+                · <span class="pill dim"><%= fmtLeverage(r.leverage) %></span>
+              <% } %>
+            </span>
+            <span class="val"><%- fmtPnlHtml(r.pnl_krw) %></span>
+          </div>
         <% }) %>
-      </div>
+      <% } %>
     </div>
   </div>
+</div>
 
-  <div class="profit-grid" style="margin-top:12px;">
-    <div class="profit-chart">
-      <h3 id="cum-title">누적 손익 (<%= fmtRangeLabel(ranges[defaultRangeKey]) %>)</h3>
-      <div class="profit-lines">
-        <div class="axis"></div>
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none">
-          <path id="cum-line" d="" fill="none" stroke="#f5c84c" stroke-width="1.5" />
-        </svg>
-      </div>
-    </div>
-
-    <div class="profit-panel">
-      <h3>Top Markets</h3>
-      <div class="profit-toplist">
-        <% if (topMarkets.length === 0) { %>
-          <div class="row"><span class="mk">-</span><span class="val">데이터 없음</span></div>
-        <% } else { %>
-          <% topMarkets.forEach(function(r){ %>
-            <div class="row">
-              <span class="mk">
-                <%= r.market %>
-                <% if (r.leverage_tier) { %>
-                  · <span class="pill <%= leverageBadge(r.leverage_tier) %>"><%= r.leverage_tier %></span>
-                <% } else if (r.leverage != null) { %>
-                  · <span class="pill dim"><%= fmtLeverage(r.leverage) %></span>
-                <% } %>
-              </span>
-              <span class="val"><%- fmtPnlHtml(r.pnl_krw) %></span>
-            </div>
-          <% }) %>
-        <% } %>
-      </div>
-    </div>
-  </div>
-
-  <div class="profit-footer">
-    <div class="profit-panel" style="display:flex; align-items:center; gap:18px;">
+<!-- Budget + Range Snapshot -->
+<div class="profit-footer">
+  <div class="card">
+    <div class="card-body" style="display:flex; align-items:center; gap:20px;">
       <div class="profit-donut" style="--used:<%= (profit && profit.total_used_pct != null) ? (profit.total_used_pct * 360).toFixed(1) + 'deg' : '0deg' %>">
-      <div class="profit-donut-label"><%= profit && profit.total_used_pct != null ? (profit.total_used_pct * 100).toFixed(1) + '%' : '-' %></div>
+        <div class="profit-donut-label"><%= profit && profit.total_used_pct != null ? (profit.total_used_pct * 100).toFixed(1) + '%' : '-' %></div>
       </div>
       <div>
-        <div class="subtle">예산 사용률</div>
-        <div class="metric-value" style="color:var(--text); font-size:18px;">
+        <div class="body-sm text-muted">예산 사용률</div>
+        <div class="metric-card-value sm">
           <%- profit && profit.total_used_krw != null ? fmtNumHtml(profit.total_used_krw, 2) : '-' %>
           / <%- profit && profit.total_max_krw != null ? fmtNumHtml(profit.total_max_krw, 2) : '-' %>
         </div>
       </div>
     </div>
+  </div>
 
-    <div class="profit-panel">
-      <h3>Range Snapshot</h3>
-      <div class="profit-kv">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">기간 요약</div>
+    </div>
+    <div class="card-body">
+      <div class="kv">
         <div class="k">기준</div><div class="v" id="range-label"><%= fmtRangeLabel(ranges[defaultRangeKey]) %></div>
         <div class="k" data-range-label="trades_n"><%= tradesLabel %></div><div class="v" id="range-trades"><%= fmtInt(rangeAgg[defaultRangeKey] && rangeAgg[defaultRangeKey].trades_n) %></div>
         <div class="k">순손익</div><div class="v" id="range-net"><%- fmtPnlHtml(rangeAgg[defaultRangeKey] && rangeAgg[defaultRangeKey].total) %></div>
@@ -511,23 +404,24 @@
   </div>
 </div>
 
+<!-- Custom Range Modal -->
 <div class="range-modal" id="profit-range-modal" aria-hidden="true">
   <div class="range-modal__panel">
     <div class="range-modal__title">기간 선택</div>
     <div class="range-modal__desc">2년(730일) 이내로 기간을 선택하세요.</div>
     <div class="range-modal__grid">
       <div>
-        <div class="range-modal__label">시작일</div>
-        <input type="date" class="range-modal__input" id="profit-range-start">
+        <label for="profit-range-start">시작일</label>
+        <input type="date" id="profit-range-start">
       </div>
       <div>
-        <div class="range-modal__label">종료일</div>
-        <input type="date" class="range-modal__input" id="profit-range-end">
+        <label for="profit-range-end">종료일</label>
+        <input type="date" id="profit-range-end">
       </div>
     </div>
     <div class="range-modal__actions">
-      <button type="button" class="range-modal__btn" id="profit-range-cancel">취소</button>
-      <button type="button" class="range-modal__btn primary" id="profit-range-apply">확인</button>
+      <button type="button" class="btn btn-outlined sm" id="profit-range-cancel">취소</button>
+      <button type="button" class="btn btn-filled sm" id="profit-range-apply">확인</button>
     </div>
   </div>
 </div>
@@ -546,7 +440,7 @@
     defaultRangeKey: <%- JSON.stringify(defaultRangeKey || "d7") %>,
     customRange: <%- JSON.stringify(customRangeData || null) %>
   };
-  const buttons = document.querySelectorAll('#profit-range button');
+  const buttons = document.querySelectorAll('#profit-range a[data-range]');
   if (!buttons.length) return;
   const modal = document.getElementById('profit-range-modal');
   const startInput = document.getElementById('profit-range-start');
@@ -659,38 +553,97 @@
     else if (n > 0) el.classList.add('up');
     else el.classList.add('down');
   }
+  let dailyChartInstance = null;
+  let cumChartInstance = null;
+
   function renderDaily(series){
-    const box = document.getElementById('daily-bars');
-    if (!box) return;
-    if (!Array.isArray(series) || series.length === 0) {
-      box.innerHTML = '';
-      return;
-    }
-    const html = series.map((d) => {
-      const height = Number(d.height_pct) || 0;
-      const dir = d.dir || 'flat';
-      const title = `${d.day || ''} · ${fmtNum(d.pnl, 2)} ${data.unit}`;
-      return `<div class="bar ${dir}" style="height:${height}%" title="${title}"></div>`;
-    }).join('');
-    box.innerHTML = html;
+    const canvas = document.getElementById('daily-chart-canvas');
+    if (!canvas) return;
+    if (dailyChartInstance) { dailyChartInstance.destroy(); dailyChartInstance = null; }
+    if (!Array.isArray(series) || series.length === 0) return;
+    const labels = series.map(d => d.day || '');
+    const values = series.map(d => Number(d.pnl) || 0);
+    const colors = values.map(v => v >= 0 ? '#188038' : '#d93025');
+    dailyChartInstance = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: values,
+          backgroundColor: colors,
+          borderRadius: 3,
+          barPercentage: 0.85,
+          categoryPercentage: 0.9
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                const v = ctx.parsed.y;
+                const sign = v > 0 ? '+' : '';
+                return sign + fmtNum(v, 2) + ' ' + data.unit;
+              },
+              title: function(items) { return items[0].label; }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxRotation: 45, font: { size: 10 } } },
+          y: { grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { font: { size: 10 } } }
+        }
+      }
+    });
   }
+
   function renderCumulative(series){
-    const path = document.getElementById('cum-line');
-    if (!path) return;
-    if (!Array.isArray(series) || series.length === 0) {
-      path.setAttribute('d', '');
-      return;
-    }
-    const max = Math.max(...series.map(c => c.value));
-    const min = Math.min(...series.map(c => c.value));
-    const span = (max - min) || 1;
-    const denom = series.length > 1 ? (series.length - 1) : 1;
-    const pts = series.map((c, i) => {
-      const x = (i / denom) * 100;
-      const y = 100 - ((c.value - min) / span) * 100;
-      return `${i === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    }).join(' ');
-    path.setAttribute('d', pts);
+    const canvas = document.getElementById('cum-chart-canvas');
+    if (!canvas) return;
+    if (cumChartInstance) { cumChartInstance.destroy(); cumChartInstance = null; }
+    if (!Array.isArray(series) || series.length === 0) return;
+    const labels = series.map(c => c.day || '');
+    const values = series.map(c => Number(c.value) || 0);
+    cumChartInstance = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: values,
+          borderColor: '#1a73e8',
+          backgroundColor: 'rgba(26, 115, 232, 0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: series.length > 30 ? 0 : 3,
+          pointHoverRadius: 4,
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                const v = ctx.parsed.y;
+                const sign = v > 0 ? '+' : '';
+                return sign + fmtNum(v, 2) + ' ' + data.unit;
+              },
+              title: function(items) { return items[0].label; }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxRotation: 45, font: { size: 10 } } },
+          y: { grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { font: { size: 10 } } }
+        }
+      }
+    });
   }
   function openModal(){
     if (!modal) return;
@@ -756,7 +709,7 @@
     if (tradeStatsEl) tradeStatsEl.textContent = (agg.win_n != null && agg.loss_n != null) ? `${fmtNum(agg.win_n, 0)} / ${fmtNum(agg.loss_n, 0)}` : '-';
     if (dayStatsEl) dayStatsEl.textContent = `${stats.win} / ${stats.loss} / ${stats.flat}`;
     if (labelEl) labelEl.textContent = rangeLabel;
-    if (rangeLabelEl) rangeLabelEl.textContent = rangeLabel + ' PNL';
+    if (rangeLabelEl) rangeLabelEl.textContent = rangeLabel + ' 손익';
     if (rangeWindowEl) rangeWindowEl.textContent = fmtRangeWindow(data.ranges && data.ranges[key]);
 
     const setField = (field, value, isHtml) => {
@@ -794,7 +747,8 @@
   }
 
   buttons.forEach((btn)=>{
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
       if (btn.dataset.range === 'custom') {
         openModal();
         return;
@@ -815,5 +769,5 @@
   refreshUsdtKrw();
 })();
 </script>
- </div>
-<%- include('partials/app_end_trader') %>
+
+<%- include('partials/app_end_unified') %>

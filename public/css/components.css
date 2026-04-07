@@ -1,0 +1,610 @@
+/* ============================================================
+   DONBEOLJA Components — M3 Inspired
+   ============================================================ */
+
+/* ── Card (M3 Filled Card) ─────────────────────────────── */
+
+.card {
+  background: var(--md-surface);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-lg);
+  box-shadow: var(--md-elevation-1);
+  overflow: hidden;
+}
+
+.card.outlined {
+  box-shadow: none;
+}
+
+.card.elevated {
+  box-shadow: var(--md-elevation-2);
+  border: none;
+}
+
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 20px 0;
+}
+
+.card-title {
+  font-family: var(--md-font-display);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--md-on-surface);
+  letter-spacing: 0.01em;
+  line-height: 24px;
+}
+
+.card-subtitle {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+.card-body {
+  padding: 16px 20px 20px;
+}
+
+.card-header + .card-body {
+  padding-top: 12px;
+}
+
+.card-footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--md-outline-variant);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Metric Card ───────────────────────────────────────── */
+
+.metric-card {
+  padding: 16px 20px;
+  background: var(--md-surface);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--md-shape-md);
+}
+
+.metric-card-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--md-on-surface-variant);
+  letter-spacing: 0.02em;
+  margin-bottom: 6px;
+}
+
+.metric-card-value {
+  font-family: var(--md-font-display);
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--md-on-surface);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.metric-card-value.sm {
+  font-size: 18px;
+}
+
+.metric-card-meta {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+  margin-top: 4px;
+}
+
+/* ── Mini Card ─────────────────────────────────────────── */
+
+.mini-card {
+  padding: 12px 16px;
+  background: var(--md-surface-container-low);
+  border-radius: var(--md-shape-md);
+  border: 1px solid var(--md-outline-variant);
+}
+
+.mini-card-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--md-on-surface-variant);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mini-card-value {
+  font-family: var(--md-font-display);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--md-on-surface);
+  margin-top: 4px;
+}
+
+.mini-card-meta {
+  font-size: 11px;
+  color: var(--md-on-surface-variant);
+  margin-top: 2px;
+}
+
+/* ── Chip (M3 Assist/Filter Chip) ──────────────────────── */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--md-shape-sm);
+  border: 1px solid var(--md-outline);
+  background: var(--md-surface);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--md-on-surface);
+  white-space: nowrap;
+  transition: background var(--md-motion-std);
+}
+
+.chip:hover {
+  background: var(--md-surface-container-low);
+}
+
+.chip.filled {
+  border: none;
+  background: var(--md-surface-container-high);
+}
+
+.chip.primary {
+  border-color: var(--md-primary);
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+}
+
+.chip.success {
+  border-color: var(--md-success);
+  background: var(--md-success-container);
+  color: var(--md-success);
+}
+
+.chip.error {
+  border-color: var(--md-error);
+  background: var(--md-error-container);
+  color: var(--md-error);
+}
+
+.chip.warning {
+  border-color: var(--md-warning);
+  background: var(--md-warning-container);
+  color: #7c5800;
+}
+
+.chip.long {
+  border-color: var(--md-long);
+  background: var(--md-long-bg);
+  color: var(--md-long);
+}
+
+.chip.short {
+  border-color: var(--md-short);
+  background: var(--md-short-bg);
+  color: var(--md-short);
+}
+
+.chip.sm {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+/* Legacy compat */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--md-shape-full);
+  border: 1px solid var(--md-outline);
+  background: var(--md-surface);
+  font-size: 11px;
+  font-weight: 500;
+}
+.pill.dim {
+  color: var(--md-on-surface-variant);
+  background: var(--md-surface-container-low);
+}
+
+/* ── Button (M3 Filled/Outlined/Text) ──────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+  padding: 10px 16px;
+  border-radius: var(--md-shape-full);
+  border: none;
+  font-family: var(--md-font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: all var(--md-motion-std);
+}
+
+.btn-filled {
+  background: var(--md-primary);
+  color: var(--md-on-primary);
+  box-shadow: var(--md-elevation-1);
+}
+.btn-filled:hover {
+  background: var(--md-primary-hover);
+  box-shadow: var(--md-elevation-2);
+  text-decoration: none;
+}
+
+.btn-outlined {
+  background: transparent;
+  border: 1px solid var(--md-outline);
+  color: var(--md-primary);
+}
+.btn-outlined:hover {
+  background: var(--md-primary-container);
+  text-decoration: none;
+}
+
+.btn-text {
+  background: transparent;
+  color: var(--md-primary);
+  padding: 10px 12px;
+}
+.btn-text:hover {
+  background: var(--md-primary-container);
+  text-decoration: none;
+}
+
+.btn-tonal {
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+}
+.btn-tonal:hover {
+  box-shadow: var(--md-elevation-1);
+  text-decoration: none;
+}
+
+.btn.sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.btn.lg {
+  padding: 12px 24px;
+  font-size: 16px;
+}
+
+.btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Legacy compat */
+.btn.ghost,
+.btn.secondary {
+  background: transparent;
+  border: 1px solid var(--md-outline);
+  color: var(--md-primary);
+}
+.btn.slim {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+/* ── Table (M3 Data Table) ─────────────────────────────── */
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 12px 16px;
+  text-align: left;
+  vertical-align: middle;
+  font-size: 13px;
+}
+
+th {
+  color: var(--md-on-surface-variant);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--md-outline);
+  background: var(--md-surface-container-low);
+}
+
+td {
+  border-bottom: 1px solid var(--md-outline-variant);
+  color: var(--md-on-surface);
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+tbody tr:hover {
+  background: var(--md-surface-container-low);
+}
+
+.table-compact th,
+.table-compact td {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.table-compact th {
+  font-size: 11px;
+}
+
+/* ── Tabs / Subnav (M3 Tabs) ──────────────────────────── */
+
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--md-outline-variant);
+  overflow-x: auto;
+}
+
+.tabs a, .tabs button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border: none;
+  background: transparent;
+  color: var(--md-on-surface-variant);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: all var(--md-motion-std);
+  white-space: nowrap;
+}
+
+.tabs a:hover, .tabs button:hover {
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface);
+  text-decoration: none;
+}
+
+.tabs a.active, .tabs button.active {
+  color: var(--md-primary);
+  border-bottom-color: var(--md-primary);
+  font-weight: 700;
+}
+
+/* Legacy subnav compat */
+.subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+}
+.subnav a {
+  text-decoration: none;
+  padding: 8px 14px;
+  border-radius: var(--md-shape-full);
+  border: 1px solid var(--md-outline);
+  background: var(--md-surface);
+  color: var(--md-on-surface-variant);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all var(--md-motion-std);
+}
+.subnav a:hover {
+  background: var(--md-surface-container-low);
+  text-decoration: none;
+}
+.subnav a.active {
+  color: var(--md-on-primary);
+  border-color: var(--md-primary);
+  background: var(--md-primary);
+}
+
+/* ── Key-Value List ────────────────────────────────────── */
+
+.kv {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 8px 16px;
+  font-size: 13px;
+}
+
+.kv .k {
+  color: var(--md-on-surface-variant);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.kv .v {
+  color: var(--md-on-surface);
+}
+
+/* ── Form Elements (M3 Filled Text Field) ──────────────── */
+
+label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--md-on-surface-variant);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+input, select, textarea {
+  width: 100%;
+  border-radius: var(--md-shape-sm);
+  border: 1px solid var(--md-outline);
+  padding: 12px 14px;
+  background: var(--md-surface);
+  font-size: 14px;
+  color: var(--md-on-surface);
+  font-family: var(--md-font-sans);
+  outline: none;
+  transition: border-color var(--md-motion-std), box-shadow var(--md-motion-std);
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--md-primary);
+  box-shadow: 0 0 0 1px var(--md-primary);
+}
+
+/* ── Divider ───────────────────────────────────────────── */
+
+.hr, .divider {
+  height: 1px;
+  background: var(--md-outline-variant);
+  margin: 16px 0;
+  border: none;
+}
+
+/* ── Scroll Container ──────────────────────────────────── */
+
+.tablewrap,
+.scroll {
+  overflow: auto;
+}
+
+/* ── Head / Section Header ─────────────────────────────── */
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.subtle {
+  color: var(--md-on-surface-variant);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ── Badge / Lineage ───────────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--md-shape-full);
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--md-outline);
+}
+
+.badge.ok {
+  border-color: var(--md-success);
+  color: var(--md-success);
+  background: var(--md-success-container);
+}
+
+.badge.bad {
+  border-color: var(--md-error);
+  color: var(--md-error);
+  background: var(--md-error-container);
+}
+
+.badge.warn {
+  border-color: var(--md-warning);
+  color: #7c5800;
+  background: var(--md-warning-container);
+}
+
+/* ── Pipeline / Stepper ────────────────────────────────── */
+
+.pipeline {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+}
+
+.pipeline-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--md-on-surface-variant);
+  position: relative;
+}
+
+.pipeline-step.done {
+  color: var(--md-success);
+}
+
+.pipeline-step.active {
+  color: var(--md-primary);
+  font-weight: 700;
+}
+
+.pipeline-step.blocked {
+  color: var(--md-error);
+}
+
+.pipeline-step + .pipeline-step::before {
+  content: '';
+  display: block;
+  width: 24px;
+  height: 2px;
+  background: var(--md-outline-variant);
+  margin-right: 8px;
+}
+
+.pipeline-step.done + .pipeline-step::before {
+  background: var(--md-success);
+}
+
+/* ── Empty State ───────────────────────────────────────── */
+
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--md-on-surface-variant);
+}
+
+.empty-state-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.4;
+}
+
+.empty-state-text {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── Toast ─────────────────────────────────────────────── */
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 24px;
+  border-radius: var(--md-shape-sm);
+  background: var(--md-inverse-surface);
+  color: var(--md-inverse-on-surface);
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: var(--md-elevation-3);
+  z-index: 1000;
+  transition: opacity var(--md-motion-std);
+}

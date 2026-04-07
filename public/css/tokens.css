@@ -1,0 +1,93 @@
+/* ============================================================
+   DONBEOLJA Design Tokens — Google Material Design 3 (Light)
+   ============================================================ */
+
+:root {
+  /* ── Primary (Google Blue) ─────────────────────────────── */
+  --md-primary: #1a73e8;
+  --md-primary-hover: #1567d3;
+  --md-on-primary: #ffffff;
+  --md-primary-container: #d3e3fd;
+  --md-on-primary-container: #041e49;
+
+  /* ── Surface ───────────────────────────────────────────── */
+  --md-surface: #ffffff;
+  --md-surface-dim: #f8f9fa;
+  --md-surface-container-lowest: #ffffff;
+  --md-surface-container-low: #f8f9fa;
+  --md-surface-container: #f1f3f4;
+  --md-surface-container-high: #e8eaed;
+  --md-surface-container-highest: #dadce0;
+  --md-on-surface: #1f1f1f;
+  --md-on-surface-variant: #5f6368;
+  --md-inverse-surface: #303134;
+  --md-inverse-on-surface: #f1f3f4;
+
+  /* ── Outline ───────────────────────────────────────────── */
+  --md-outline: #dadce0;
+  --md-outline-variant: #e8eaed;
+
+  /* ── Semantic Colors ───────────────────────────────────── */
+  --md-error: #d93025;
+  --md-error-container: #fce8e6;
+  --md-on-error: #ffffff;
+  --md-success: #188038;
+  --md-success-container: #e6f4ea;
+  --md-warning: #f9ab00;
+  --md-warning-container: #fef7e0;
+  --md-info: #1a73e8;
+  --md-info-container: #e8f0fe;
+
+  /* ── Trading Semantic ──────────────────────────────────── */
+  --md-long: #188038;
+  --md-long-bg: #e6f4ea;
+  --md-short: #d93025;
+  --md-short-bg: #fce8e6;
+  --md-neutral: #5f6368;
+
+  /* ── Elevation (M3 tone-based) ─────────────────────────── */
+  --md-elevation-0: none;
+  --md-elevation-1: 0 1px 2px rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15);
+  --md-elevation-2: 0 1px 2px rgba(60,64,67,.3), 0 2px 6px 2px rgba(60,64,67,.15);
+  --md-elevation-3: 0 1px 3px rgba(60,64,67,.3), 0 4px 8px 3px rgba(60,64,67,.15);
+  --md-elevation-4: 0 2px 3px rgba(60,64,67,.3), 0 6px 10px 4px rgba(60,64,67,.15);
+
+  /* ── Shape (M3 scale) ──────────────────────────────────── */
+  --md-shape-xs: 4px;
+  --md-shape-sm: 8px;
+  --md-shape-md: 12px;
+  --md-shape-lg: 16px;
+  --md-shape-xl: 28px;
+  --md-shape-full: 9999px;
+
+  /* ── Typography ────────────────────────────────────────── */
+  --md-font-sans: "Google Sans Text", "Google Sans", "Inter", "Noto Sans KR", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --md-font-display: "Google Sans", "Google Sans Text", "Inter", "Noto Sans KR", sans-serif;
+  --md-font-mono: "Google Sans Mono", "JetBrains Mono", "Roboto Mono", "SFMono-Regular", Consolas, monospace;
+
+  /* ── Spacing ───────────────────────────────────────────── */
+  --md-space-xs: 4px;
+  --md-space-sm: 8px;
+  --md-space-md: 16px;
+  --md-space-lg: 24px;
+  --md-space-xl: 32px;
+  --md-space-2xl: 48px;
+
+  /* ── Layout ────────────────────────────────────────────── */
+  --md-sidebar-width: 260px;
+  --md-topbar-height: 64px;
+
+  /* ── Transition ────────────────────────────────────────── */
+  --md-motion-std: 200ms cubic-bezier(0.2, 0, 0, 1);
+  --md-motion-emphasis: 400ms cubic-bezier(0.2, 0, 0, 1);
+
+  /* ── Legacy Compat Aliases ─────────────────────────────── */
+  --bg: var(--md-surface-dim);
+  --card: var(--md-surface);
+  --text: var(--md-on-surface);
+  --muted: var(--md-on-surface-variant);
+  --line: var(--md-outline);
+  --accent: var(--md-primary);
+  --shadow: var(--md-elevation-1);
+  --mono: var(--md-font-mono);
+}

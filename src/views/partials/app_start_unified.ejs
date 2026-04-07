@@ -1,0 +1,137 @@
+<%
+  const __title = (typeof title !== 'undefined' && title) ? String(title) : 'DONBEOLJA';
+  const __active = (typeof active !== 'undefined' && active) ? String(active) : '';
+  const __pageTitle = (typeof pageTitle !== 'undefined' && pageTitle) ? String(pageTitle) : '';
+  const __bodyClass = (typeof bodyClass !== 'undefined' && bodyClass) ? String(bodyClass) : '';
+  const __envLabel = (typeof envLabel !== 'undefined' && envLabel)
+    ? String(envLabel)
+    : (typeof process !== 'undefined' && process.env)
+      ? String(process.env.RUNTIME_MODE || process.env.NODE_ENV || 'env')
+      : 'env';
+
+  const __pageMetaMap = {
+    home:             { eyebrow: '홈',           hint: '현재 자산, 수익, 최근 신호와 체결을 확인합니다.' },
+    mission:          { eyebrow: '홈',           hint: '현재 자산, 수익, 최근 신호와 체결을 확인합니다.' },
+    profit:           { eyebrow: '수익',         hint: '기간별 손익과 주요 기여 마켓을 분석합니다.' },
+    cashflow:         { eyebrow: '입출금',       hint: '입출금과 자금 흐름을 확인합니다.' },
+    trading:          { eyebrow: '거래기록',     hint: '신호, 드롭, 주문, 포지션, 체결 기록을 봅니다.' },
+    recovery:         { eyebrow: '전략상태',     hint: '자기진화 상태와 서버 신호 전환을 확인합니다.' },
+    'server-primary': { eyebrow: '전략상태',     hint: '서버 정본 전환 진행과 승격 준비 상태를 확인합니다.' },
+    audit:            { eyebrow: '전략상태',     hint: '운영 기록, 드리프트, 증거 체인을 점검합니다.' },
+    settings:         { eyebrow: '설정',         hint: '거래소, 리스크, 실행 설정을 조정합니다.' },
+  };
+  const __pageMeta = __pageMetaMap[__active] || { eyebrow: 'DONBEOLJA', hint: '' };
+  const __compactTopbar = ['home', 'mission'].includes(__active);
+  const __compactStatusTopbar = ['recovery', 'deployment', 'execution', 'server-primary', 'audit'].includes(__active);
+
+  const __homeActive = ['home', 'mission'].includes(__active);
+  const __profitActive = __active === 'profit';
+  const __cashflowActive = __active === 'cashflow';
+  const __tradingActive = ['execution', 'trading', 'server-primary', 'journal', 'ai', 'state'].includes(__active);
+  const __automationActive = ['recovery', 'deployment', 'audit', 'analysis', 'report', 'eval', 'briefing', 'risk'].includes(__active);
+%>
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title><%= __title %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/tokens.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+  <link rel="stylesheet" href="/css/mobile.css" />
+  <% if (typeof extraHead !== 'undefined' && extraHead) { %>
+    <%- extraHead %>
+  <% } %>
+</head>
+<body class="<%= __bodyClass %>">
+  <div class="app-shell">
+
+    <!-- ── Sidebar ─────────────────────────────────────── -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-icon">DB</div>
+        <div class="sidebar-brand-text">
+          <div class="sidebar-brand-name">DONBEOLJA</div>
+          <div class="sidebar-brand-sub">자동 코인 선물 거래</div>
+        </div>
+      </div>
+
+      <div class="sidebar-divider"></div>
+
+      <nav class="sidebar-nav">
+        <a href="/dashboard/home" class="<%= __homeActive ? 'active' : '' %>">
+          <span class="nav-icon">&#x1f3e0;</span> 지금
+        </a>
+        <a href="/dashboard/profit" class="<%= __profitActive ? 'active' : '' %>">
+          <span class="nav-icon">&#x1f4c8;</span> 수익
+        </a>
+        <a href="/dashboard/settings" class="<%= __active === 'settings' ? 'active' : '' %>">
+          <span class="nav-icon">&#x2692;</span> 설정
+        </a>
+      </nav>
+
+      <div class="sidebar-section-label">운영</div>
+      <nav class="sidebar-nav">
+        <a href="/dashboard/trading" class="<%= __tradingActive ? 'active' : '' %>">
+          <span class="nav-icon">&#x1f4cb;</span> 거래기록
+        </a>
+        <a href="/dashboard/cashflow" class="<%= __cashflowActive ? 'active' : '' %>">
+          <span class="nav-icon">&#x1f4b0;</span> 입출금
+        </a>
+        <a href="/dashboard/recovery" class="<%= __automationActive ? 'active' : '' %>">
+          <span class="nav-icon">&#x2699;</span> 전략상태
+        </a>
+      </nav>
+
+      <div class="sidebar-controls">
+        <div>
+          <label for="exchange-select">거래소</label>
+          <select id="exchange-select"></select>
+        </div>
+        <div id="exchange-hint" class="body-sm text-muted">선물 · 멀티 마켓</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span class="chip sm primary">서버 정본</span>
+          <span class="chip sm filled">Pine 비교</span>
+        </div>
+        <div class="sidebar-env-chip"><%= __envLabel.toUpperCase() %></div>
+      </div>
+    </aside>
+
+    <!-- ── Main ────────────────────────────────────────── -->
+    <div class="app-main">
+
+      <!-- Topbar -->
+      <header class="topbar <%= __compactTopbar ? 'compact' : '' %>">
+        <button class="mobile-menu-btn" id="mobile-menu-btn" type="button" aria-label="메뉴 열기">&#9776;</button>
+        <div class="topbar-copy">
+          <div class="topbar-eyebrow"><%= __pageMeta.eyebrow %></div>
+          <h1 class="topbar-title"><%= __pageTitle || 'DONBEOLJA' %></h1>
+          <% if (__pageMeta.hint && !__compactStatusTopbar) { %>
+            <div class="topbar-hint"><%= __pageMeta.hint %></div>
+          <% } %>
+        </div>
+        <div class="topbar-actions">
+          <span class="chip primary">서버 정본</span>
+          <span class="chip filled">Pine 비교</span>
+          <% if (!__compactTopbar) { %>
+            <span class="chip filled"><span class="mono"><%= __envLabel.toUpperCase() %></span></span>
+          <% } %>
+          <span id="pulse-time" class="body-sm text-muted"></span>
+        </div>
+      </header>
+
+      <!-- Error Banner -->
+      <% if (typeof _error !== 'undefined' && _error) { %>
+        <div class="status-banner error" style="gap:8px">
+          <strong>데이터를 불러오지 못했습니다</strong>
+          <span class="body-sm"><%= _error.message || '잠시 후 새로고침 해주세요.' %></span>
+        </div>
+      <% } %>
+
+      <!-- Content -->
+      <div class="content">

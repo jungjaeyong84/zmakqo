@@ -281,15 +281,15 @@
     <div class="tablewrap">
       <div class="head">
         <h2>4차 EV/시간가치층</h2>
-        <div class="subtle">3차까지 통과한 뒤, TP1 도달 확률과 hold-value 관점에서 최종 수량을 조절합니다. kill 미만만 hard drop이며 상태/진입 품질은 여기서 다시 재판정하지 않습니다.</div>
+        <div class="subtle">3차까지 통과한 뒤, TP0/TP1/시간청산을 함께 반영한 복합 기대값과 hold-value 관점에서 최종 수량을 조절합니다. kill 미만만 hard drop이며 상태/진입 품질은 여기서 다시 재판정하지 않습니다.</div>
       </div>
       <div class="grid cols-2">
         <div>
-          <label>TP1 확률 full 기준</label>
+          <label>복합 기대값 full 기준</label>
           <input id="sys-ev-full" type="number" min="0" max="1" step="0.01" placeholder="예: 0.60" />
         </div>
         <div>
-          <label>TP1 확률 kill 기준</label>
+          <label>복합 기대값 kill 기준</label>
           <input id="sys-ev-kill" type="number" min="0" max="1" step="0.01" placeholder="예: 0.50" />
         </div>
         <div>

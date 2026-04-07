@@ -1,0 +1,26 @@
+
+      </div><!-- /.content -->
+    </div><!-- /.app-main -->
+  </div><!-- /.app-shell -->
+
+  <!-- Sidebar overlay (outside grid to avoid layout issues) -->
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+  <!-- ── Mobile Bottom Navigation (3 items) ────────────── -->
+  <div class="mobile-bottom-nav">
+    <nav>
+      <a href="/dashboard/home" class="<%= (typeof active !== 'undefined' && ['home','mission'].includes(active)) ? 'active' : '' %>">
+        <span class="nav-icon">&#x1f3e0;</span> 지금
+      </a>
+      <a href="/dashboard/profit" class="<%= (typeof active !== 'undefined' && active === 'profit') ? 'active' : '' %>">
+        <span class="nav-icon">&#x1f4c8;</span> 수익
+      </a>
+      <a href="/dashboard/settings" class="<%= (typeof active !== 'undefined' && active === 'settings') ? 'active' : '' %>">
+        <span class="nav-icon">&#x2692;</span> 설정
+      </a>
+    </nav>
+  </div>
+
+  <script src="/js/nav.js"></script>
+</body>
+</html>

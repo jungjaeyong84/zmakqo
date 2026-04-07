@@ -1,0 +1,694 @@
+  <div id="system-card" style="display:flex;flex-direction:column;gap:24px">
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">운영 기본</div>
+          <div class="card-subtitle">스케줄러, 로그, 알림, 보관 기간 같은 런타임 기본값을 관리합니다.</div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <span class="chip primary filled">연동 <span class="mono">/api/settings/system</span></span>
+          <span class="chip">일부 항목은 저장 후 재시작 필요</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="subnav">
+          <a href="#sys-runtime">운영 기본</a>
+          <a href="#sys-execution">체결/실거래</a>
+          <a href="#sys-overrides">시장별 오버라이드</a>
+          <a href="#sys-decision-layers">진입 판단 계층</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="sys-runtime">
+      <div class="card-header">
+        <div>
+          <div class="card-title">운영 기본값</div>
+          <div class="card-subtitle">자동 실행, 백필, 로그, 알림, 최근 변경 정보를 먼저 관리합니다.</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="grid cols-2">
+          <div id="sys-provider-wrap">
+            <label>거래소</label>
+            <select id="sys-provider">
+              <option value="BINANCEFUT">바이낸스(선물)</option>
+            </select>
+          </div>
+          <div id="sys-provider-fixed" style="display:none;">
+            <label>거래소</label>
+            <div class="chip" id="sys-provider-label">-</div>
+          </div>
+          <div class="text-muted body-sm" style="align-self:center;">
+            상단(자동 실행/로그/보관)은 공통, 아래는 선택 거래소 전용입니다.
+          </div>
+          <div>
+            <label>자동 실행</label>
+            <select id="sys-enabled">
+              <option value="true">켜짐</option>
+              <option value="false">꺼짐</option>
+            </select>
+          </div>
+          <div>
+            <label>자동 실행 간격(초)</label>
+            <input id="sys-interval" type="number" min="10" step="10" placeholder="예: 900" />
+          </div>
+          <div>
+            <label>시간대</label>
+            <input id="sys-tz" type="text" placeholder="Asia/Seoul" />
+          </div>
+          <div>
+            <label>재시도 횟수</label>
+            <input id="sys-retry" type="number" min="0" step="1" placeholder="예: 2" />
+          </div>
+          <div>
+            <label>로그 레벨</label>
+            <select id="sys-log">
+              <option value="DEBUG">DEBUG</option>
+              <option value="INFO">INFO</option>
+              <option value="WARN">WARN</option>
+              <option value="ERROR">ERROR</option>
+            </select>
+          </div>
+          <div>
+            <label>알림 채널</label>
+            <input id="sys-alert" type="text" placeholder="예: slack://... , telegram:CHAT_ID" />
+          </div>
+          <div>
+            <label>데이터 보관 기간(일)</label>
+            <input id="sys-retention" type="number" min="0" step="1" placeholder="예: 30" />
+          </div>
+          <div>
+            <label>자동 백필</label>
+            <div class="grid cols-2">
+              <select id="sys-backfill-enabled">
+                <option value="false">꺼짐</option>
+                <option value="true">켜짐</option>
+              </select>
+              <input id="sys-backfill-days" type="number" min="0" step="1" placeholder="일수" />
+            </div>
+          </div>
+          <div>
+            <label>최근 변경</label>
+            <div class="kv">
+              <div class="k">변경 시각</div><div class="v mono" id="sys-upd-at">-</div>
+              <div class="k">변경자</div><div class="v mono" id="sys-upd-by">-</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="sys-execution">
+      <div class="card-header">
+        <div>
+          <div class="card-title">체결/실거래 설정</div>
+          <div class="card-subtitle">수수료, 슬리피지, 주문 만료, 실거래 안전장치를 한 구역에서 정리합니다.</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="settings-mini-grid" style="margin-bottom: 14px;">
+          <div class="mini-card">
+            <div class="metric-card-label">체결 프로파일</div>
+            <div class="body-sm" style="margin-top: 6px; font-weight: 700;">수수료/슬리피지/만료</div>
+          </div>
+          <div class="mini-card">
+            <div class="metric-card-label">실행 모드</div>
+            <div class="body-sm" style="margin-top: 6px; font-weight: 700;">모의거래 / 실거래 테스트 / 실거래</div>
+          </div>
+          <div class="mini-card">
+            <div class="metric-card-label">주의</div>
+            <div class="body-sm" style="margin-top: 6px; font-weight: 700;">실거래는 확인 문구와 가드가 모두 필요</div>
+          </div>
+        </div>
+
+        <h3 style="margin: 0 0 4px;">체결 프로파일</h3>
+        <div class="body-sm text-muted" style="margin-bottom: 12px;">수수료/슬리피지/만료 기준을 정의합니다. 시장별 오버라이드는 아래에서 별도 관리합니다.</div>
+        <div class="grid cols-2">
+          <div>
+            <label>수수료 (bps)</label>
+            <input id="sys-fee-bps" type="number" min="0" max="10000" step="1" placeholder="예: 5" />
+          </div>
+          <div>
+            <label>슬리피지 (bps)</label>
+            <input id="sys-slip-bps" type="number" min="0" max="10000" step="1" placeholder="예: 10" />
+          </div>
+          <div>
+            <label>슬리피지 모델</label>
+            <select id="sys-slip-model">
+              <option value="FIXED">고정</option>
+              <option value="VOLATILITY">변동성 반영</option>
+            </select>
+          </div>
+          <div>
+            <label>변동성 계수</label>
+            <input id="sys-slip-vol" type="number" min="0" max="5" step="0.01" placeholder="예: 0.1" />
+          </div>
+          <div>
+            <label>슬리피지 최소 (bps)</label>
+            <input id="sys-slip-min" type="number" min="0" max="10000" step="1" placeholder="예: 0" />
+          </div>
+          <div>
+            <label>슬리피지 최대 (bps)</label>
+            <input id="sys-slip-max" type="number" min="0" max="10000" step="1" placeholder="예: 30" />
+          </div>
+          <div>
+            <label>주문 만료 (ms)</label>
+            <input id="sys-ttl-ms" type="number" min="0" step="1000" placeholder="예: 0 (비활성)" />
+          </div>
+          <div>
+            <label>주문 만료 (bars)</label>
+            <input id="sys-ttl-bars" type="number" min="0" step="1" placeholder="예: 2" />
+          </div>
+        </div>
+
+        <hr style="border: none; border-top: 1px solid var(--md-outline); margin: 16px 0;" />
+
+        <h3 style="margin: 0 0 4px;">실거래 모드</h3>
+        <div class="body-sm text-muted" style="margin-bottom: 12px;">실거래는 안전장치가 켜져 있어야 작동합니다. 확인 문구는 <b>LIVE</b>로 입력하세요.</div>
+        <div class="grid cols-2">
+          <div>
+            <label>실행 모드</label>
+            <select id="sys-exec-mode">
+              <option value="PAPER">모의거래</option>
+              <option value="LIVE_DRY_RUN">실거래 테스트(주문 없음)</option>
+              <option value="LIVE">실거래</option>
+            </select>
+          </div>
+          <div id="sys-futures-lev-wrap" style="display:none;">
+            <label>선물 레버리지(배율)</label>
+            <select id="sys-futures-lev">
+              <option value="1">1x</option>
+              <option value="2">2x</option>
+              <option value="3">3x</option>
+            </select>
+          </div>
+          <div id="sys-futures-margin-wrap" style="display:none;">
+            <label>마진 타입(선물)</label>
+            <select id="sys-futures-margin">
+              <option value="ISOLATED">격리</option>
+              <option value="CROSSED">교차</option>
+            </select>
+          </div>
+          <div id="sys-futures-exit-profile-wrap" style="display:none;">
+            <label>선물 청산 프로파일</label>
+            <select id="sys-futures-exit-profile-mode">
+              <option value="BASE">보수적 · 손절 1.65% / 목표가 3.25% / 추적 1% / 최소 수익 2% / 본전 0.25%</option>
+              <option value="AGGRESSIVE">공격적 · 손절 2% / 목표가 3% / 추적 1.5% / 최소 수익 2% / 본전 0.25%</option>
+            </select>
+          </div>
+          <div>
+            <label>실거래 활성화</label>
+            <select id="sys-live-enabled">
+              <option value="false">꺼짐</option>
+              <option value="true">켜짐</option>
+            </select>
+          </div>
+          <div>
+            <label>확인 문구</label>
+            <input id="sys-live-confirm" type="text" placeholder="LIVE" />
+          </div>
+          <div>
+            <label>확인 필수</label>
+            <select id="sys-live-confirm-required">
+              <option value="true">켜짐</option>
+              <option value="false">꺼짐</option>
+            </select>
+          </div>
+          <div>
+            <label>허용 마켓</label>
+            <input id="sys-live-markets" type="text" placeholder="예: BTCUSDT, ETHUSDT, BNBUSDT, XRPUSDT, SOLUSDT, AXSUSDT, DOGEUSDT" />
+          </div>
+          <div>
+            <label>최소 주문 금액(<span id="sys-live-unit">원</span>)</label>
+            <input id="sys-live-min" type="number" min="0" step="1000" placeholder="예: 5000" />
+          </div>
+          <div>
+            <label>최대 주문 금액(<span id="sys-live-unit-max">원</span>)</label>
+            <input id="sys-live-max" type="number" min="0" step="1000" placeholder="예: 300000" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="sys-overrides">
+      <div class="card-header">
+        <div>
+          <div class="card-title">시장별 오버라이드</div>
+          <div class="card-subtitle">기본 체결 프로파일에서 벗어나야 하는 시장만 별도로 추가합니다.</div>
+        </div>
+        <button class="btn btn-outlined sm" type="button" id="sys-ov-add">시장 추가</button>
+      </div>
+      <div class="card-body">
+        <div class="table-wrap" style="max-height: 260px; overflow-y: auto;">
+          <table class="table-compact">
+            <thead>
+              <tr>
+                <th style="width:240px;">마켓</th>
+                <th style="width:140px;">수수료 bps</th>
+                <th style="width:140px;">슬리피지 bps</th>
+                <th style="width:90px;">관리</th>
+              </tr>
+            </thead>
+            <tbody id="sys-ov-body">
+              <tr><td colspan="4" class="text-muted">로딩 중...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="sys-decision-layers">
+      <div class="card-header">
+        <div>
+          <div class="card-title">진입 판단 계층</div>
+          <div class="card-subtitle">현재 실행 순서는 1차 상태/무결성 - 2차 진입 품질 - 3차 상태 기반 수량 조절 - 4차 기대값/시간가치 - 5차 대기 타이밍층입니다.</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="settings-mini-grid" style="margin-bottom: 14px;">
+          <div class="mini-card">
+            <div class="metric-card-label">3차</div>
+            <div class="body-sm" style="margin-top: 6px; font-weight: 700;">상태 기반 수량 조절</div>
+          </div>
+          <div class="mini-card">
+            <div class="metric-card-label">4차</div>
+            <div class="body-sm" style="margin-top: 6px; font-weight: 700;">기대값 / 시간가치</div>
+          </div>
+          <div class="mini-card">
+            <div class="metric-card-label">5차</div>
+            <div class="body-sm" style="margin-top: 6px; font-weight: 700;">대기 타이밍</div>
+          </div>
+        </div>
+
+        <div class="body-sm text-muted" style="margin-bottom: 12px;">
+          이 탭에서 직접 조정하는 것은 3~5차입니다. 1~2차는 자동 분석/보조 분석 품질 계층에서 관리하며 여기서는 의미만 구분해서 보여줍니다.
+        </div>
+
+        <h3 style="margin: 0 0 4px;">3차 상태 기반 수량 조절</h3>
+        <div class="body-sm text-muted" style="margin-bottom: 12px;">시장 상태가 반대 또는 중립이면 진입 수량만 줄입니다. 진입 판단 자체는 변경하지 않습니다.</div>
+        <div class="grid cols-2">
+          <div>
+            <label>중립 수량 배수</label>
+            <input id="sys-ai-bias-neutral-mult" type="number" min="0" max="1" step="0.05" placeholder="예: 0.50" />
+          </div>
+          <div>
+            <label>약한 반대 수량 배수</label>
+            <input id="sys-ai-bias-opposite-mult" type="number" min="0" max="1" step="0.05" placeholder="예: 0.35" />
+          </div>
+          <div>
+            <label>강한 반대 score 기준</label>
+            <input id="sys-ai-bias-strong-opposite-score" type="number" min="0" max="1" step="0.01" placeholder="예: 0.20" />
+          </div>
+          <div>
+            <label>강한 반대 confidence 기준</label>
+            <input id="sys-ai-bias-strong-opposite-conf" type="number" min="0" max="1" step="0.01" placeholder="예: 0.55" />
+          </div>
+        </div>
+
+        <hr style="border: none; border-top: 1px solid var(--md-outline); margin: 16px 0;" />
+
+        <h3 style="margin: 0 0 4px;">4차 기대값/시간가치층</h3>
+        <div class="body-sm text-muted" style="margin-bottom: 12px;">3차까지 통과한 뒤, 목표가 도달 확률과 보유 가치 관점에서 최종 수량을 조절합니다.</div>
+        <div class="grid cols-2">
+          <div>
+            <label>목표가 도달 확률 (전량 진입)</label>
+            <input id="sys-ev-full" type="number" min="0" max="1" step="0.01" placeholder="예: 0.60" />
+          </div>
+          <div>
+            <label>목표가 도달 확률 (진입 차단)</label>
+            <input id="sys-ev-kill" type="number" min="0" max="1" step="0.01" placeholder="예: 0.50" />
+          </div>
+          <div>
+            <label>중간 구간 수량 배수</label>
+            <input id="sys-ev-mid-scale" type="number" min="0" max="1" step="0.05" placeholder="예: 0.70" />
+          </div>
+          <div>
+            <label>낮은 구간 수량 배수</label>
+            <input id="sys-ev-low-scale" type="number" min="0" max="1" step="0.05" placeholder="예: 0.40" />
+          </div>
+        </div>
+
+        <hr style="border: none; border-top: 1px solid var(--md-outline); margin: 16px 0;" />
+
+        <h3 style="margin: 0 0 4px;">5차 대기 타이밍층</h3>
+        <div class="body-sm text-muted" style="margin-bottom: 12px;">현재 봉이 과열된 추격봉이면 다음 봉까지 진입을 연기합니다. 이 단계는 타이밍만 다룹니다.</div>
+        <div class="grid cols-2">
+          <div>
+            <label>최소 같은방향 연속 봉</label>
+            <input id="sys-wait-streak" type="number" min="2" max="5" step="1" placeholder="예: 3" />
+          </div>
+          <div>
+            <label>최소 추격 배수(x)</label>
+            <input id="sys-wait-chase" type="number" min="0.5" max="5" step="0.05" placeholder="예: 1.75x" />
+          </div>
+          <div>
+            <label>최소 종가 제어력</label>
+            <input id="sys-wait-close-control" type="number" min="0.5" max="1" step="0.01" placeholder="예: 0.80" />
+          </div>
+          <div>
+            <label>최소 방향성 몸통 비율</label>
+            <input id="sys-wait-dir-body" type="number" min="0.05" max="1" step="0.01" placeholder="예: 0.45" />
+          </div>
+          <div>
+            <label>최대 반대 꼬리 비율</label>
+            <input id="sys-wait-opp-wick" type="number" min="0" max="0.5" step="0.01" placeholder="예: 0.18" />
+          </div>
+          <div>
+            <label>최소 최근 1봉 이동률(%)</label>
+            <input id="sys-wait-move1" type="number" min="0.05" max="10" step="0.05" placeholder="예: 0.45" />
+          </div>
+          <div>
+            <label>허용 반대방향 봉 수</label>
+            <input id="sys-wait-counter-bars" type="number" min="0" max="3" step="1" placeholder="예: 0" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        <button class="btn btn-filled" type="button" id="sys-save">저장</button>
+        <a class="btn btn-outlined sm" href="/scheduler/status" target="_blank" rel="noopener">스케줄러 상태 보기</a>
+        <span class="chip" id="sys-status">상태 대기</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    function $(id){ return document.getElementById(id); }
+    function setStatus(text, level){
+      const el = $("sys-status");
+      if (!el) return;
+      el.textContent = text;
+      el.classList.remove("ok","warn","bad","dim");
+      el.classList.add(level || "dim");
+    }
+    function normalizeProvider(v){
+      const raw = String(v || "").trim().toUpperCase();
+      if (raw.includes("BINANCE")) return "BINANCEFUT";
+      return "BINANCEFUT";
+    }
+    function activeProvider(){
+      const current = $("sys-provider")?.value;
+      if (current) return normalizeProvider(current);
+      const nav = document.getElementById("ex-mode");
+      if (nav && nav.value) return normalizeProvider(nav.value);
+      try {
+        const saved = localStorage.getItem("db_exchange_mode");
+        if (saved) return normalizeProvider(saved);
+      } catch(_) {}
+      return "BINANCEFUT";
+    }
+    function numOrZero(v){
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    }
+    function fmtKst(v){
+      if (!v) return "-";
+      const raw = String(v);
+      if (raw.includes("KST")) return raw;
+      const ms = Date.parse(raw);
+      if (!Number.isFinite(ms)) return raw;
+      const k = new Date(ms + 9 * 60 * 60 * 1000);
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${k.getUTCFullYear()}-${pad(k.getUTCMonth() + 1)}-${pad(k.getUTCDate())} ${pad(k.getUTCHours())}:${pad(k.getUTCMinutes())}:${pad(k.getUTCSeconds())} KST`;
+    }
+    function fmtKrw(v){
+      const n = Number(v);
+      if (!Number.isFinite(n)) return "-";
+      const cut = Math.trunc(n / 10) * 10;
+      return cut.toLocaleString();
+    }
+    function numOrNull(v){
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
+    function sysMarketPlaceholder(){
+      return "BTCUSDT";
+    }
+    function applyProviderUi(provider){
+      const p = String(provider || "").toUpperCase();
+      const isBinance = p === "BINANCEFUT";
+      const unit = "USDT";
+      const minEl = $("sys-live-min");
+      const maxEl = $("sys-live-max");
+      const levWrap = $("sys-futures-lev-wrap");
+      const marginWrap = $("sys-futures-margin-wrap");
+      const exitProfileWrap = $("sys-futures-exit-profile-wrap");
+      if (levWrap) levWrap.style.display = isBinance ? "block" : "none";
+      if (marginWrap) marginWrap.style.display = isBinance ? "block" : "none";
+      if (exitProfileWrap) exitProfileWrap.style.display = isBinance ? "block" : "none";
+      if ($("sys-live-unit")) $("sys-live-unit").textContent = unit;
+      if ($("sys-live-unit-max")) $("sys-live-unit-max").textContent = unit;
+      if (minEl) {
+        minEl.step = "1";
+        minEl.placeholder = "예: 5";
+      }
+      if (maxEl) {
+        maxEl.step = "1";
+        maxEl.placeholder = "예: 500";
+      }
+    }
+    function overrideRow(market, feeBps, slipBps){
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><input class="sys-ov-market mono" value="${(market||"").replace(/"/g,'&quot;')}" placeholder="${sysMarketPlaceholder()}" /></td>
+        <td><input class="sys-ov-fee mono" type="number" min="0" max="10000" step="1" value="${feeBps==null?"" : String(feeBps)}" placeholder="예: 5" /></td>
+        <td><input class="sys-ov-slip mono" type="number" min="0" max="10000" step="1" value="${slipBps==null?"" : String(slipBps)}" placeholder="예: 10" /></td>
+        <td><button class="btn btn-text sm sys-ov-del" type="button">삭제</button></td>
+      `;
+      tr.querySelector(".sys-ov-del").addEventListener("click", ()=>{
+        if (confirm("이 줄을 삭제할까요?")) tr.remove();
+      });
+      return tr;
+    }
+    function parseList(raw){
+      return String(raw || "")
+        .split(/[\n,]/)
+        .map((s)=>s.trim())
+        .filter(Boolean);
+    }
+    async function load(){
+      setStatus("불러오는 중…", "dim");
+      const provider = activeProvider();
+      const r = await fetch("/api/settings/system?provider=" + encodeURIComponent(provider), { credentials: "include" });
+      const t = await r.text();
+      let j = null;
+      try { j = JSON.parse(t); } catch(_) { j = null; }
+      if (!r.ok || !j || !j.ok){
+        setStatus("불러오기 실패 (" + r.status + ")", "bad");
+        return;
+      }
+      const data = j.data || {};
+      const resolvedProvider = String(data.provider || provider || "BINANCEFUT").toUpperCase();
+      $("sys-provider").value = resolvedProvider;
+      applyProviderUi(resolvedProvider);
+      const nav = document.getElementById("ex-mode");
+      const fixedWrap = $("sys-provider-fixed");
+      const selectWrap = $("sys-provider-wrap");
+      if (nav && fixedWrap && selectWrap) {
+        fixedWrap.style.display = "block";
+        selectWrap.style.display = "none";
+        const label = $("sys-provider-label");
+      if (label) label.textContent = "바이낸스(선물)";
+      }
+      $("sys-enabled").value = String(!!data.scheduler_enabled);
+      $("sys-interval").value = String(data.scheduler_interval_sec ?? 900);
+      $("sys-tz").value = String(data.timezone || "Asia/Seoul");
+      $("sys-retry").value = String(data.retry_max ?? 0);
+      $("sys-log").value = String(data.log_level || "INFO").toUpperCase();
+      $("sys-alert").value = String(data.alert_channel || "");
+      $("sys-retention").value = String(data.data_retention_days ?? 0);
+      $("sys-backfill-enabled").value = String(!!data.auto_backfill_enabled);
+      $("sys-backfill-days").value = String(data.auto_backfill_days ?? 0);
+      $("sys-fee-bps").value = String(data.fee_bps ?? 0);
+      $("sys-slip-bps").value = String(data.slippage_bps ?? 0);
+      $("sys-slip-model").value = String(data.slippage_model || "FIXED").toUpperCase();
+      $("sys-slip-min").value = (data.slippage_bps_min == null) ? "" : String(data.slippage_bps_min);
+      $("sys-slip-max").value = (data.slippage_bps_max == null) ? "" : String(data.slippage_bps_max);
+      $("sys-slip-vol").value = (data.slippage_volatility_factor == null) ? "" : String(data.slippage_volatility_factor);
+      $("sys-ttl-ms").value = (data.intent_ttl_ms == null) ? "" : String(data.intent_ttl_ms);
+      $("sys-ttl-bars").value = (data.intent_ttl_bars == null) ? "" : String(data.intent_ttl_bars);
+      const execMode = String(data.execution_mode || (data.live_dry_run ? "LIVE_DRY_RUN" : "PAPER")).toUpperCase();
+      $("sys-exec-mode").value = execMode;
+      $("sys-live-enabled").value = String(!!data.live_enabled);
+      $("sys-live-confirm").value = "";
+      $("sys-live-confirm-required").value = String(data.live_confirm_required !== false);
+      const currentProvider = resolvedProvider;
+      $("sys-live-markets").value = Array.isArray(data.live_allowed_markets) ? data.live_allowed_markets.join(", ") : "";
+      $("sys-live-markets").placeholder = "BTCUSDT, ETHUSDT, BNBUSDT, XRPUSDT, SOLUSDT, DOGEUSDT, AXSUSDT";
+      $("sys-live-min").value = String(data.live_min_order_krw ?? 5000);
+      $("sys-live-max").value = String(data.live_max_order_krw ?? 0);
+      $("sys-futures-lev").value = String(data.futures_leverage ?? 1);
+      $("sys-futures-margin").value = String(data.futures_margin_type || "ISOLATED").toUpperCase();
+      const exitProfileMode = String(data.futures_exit_profile_mode || "BASE").toUpperCase();
+      $("sys-futures-exit-profile-mode").value = ["BASE", "AGGRESSIVE"].includes(exitProfileMode) ? exitProfileMode : "BASE";
+      $("sys-ai-bias-neutral-mult").value = String(data.ai_bias_gate_neutral_mult ?? 0.5);
+      $("sys-ai-bias-opposite-mult").value = String(data.ai_bias_gate_opposite_mult ?? 0.35);
+      $("sys-ai-bias-strong-opposite-score").value = String(data.ai_bias_gate_strong_opposite_score ?? 0.2);
+      $("sys-ai-bias-strong-opposite-conf").value = String(data.ai_bias_gate_strong_opposite_conf ?? 0.55);
+      $("sys-ev-full").value = String(data.ev_gate_tp1_prob_full ?? 0.6);
+      $("sys-ev-kill").value = String(data.ev_gate_tp1_prob_kill ?? 0.5);
+      $("sys-ev-mid-scale").value = String(data.ev_gate_qty_scale_mid ?? 0.7);
+      $("sys-ev-low-scale").value = String(data.ev_gate_qty_scale_low ?? 0.4);
+      $("sys-wait-streak").value = String(data.wait_one_bar_same_dir_streak_min ?? 3);
+      $("sys-wait-chase").value = String(data.wait_one_bar_chase_ratio_min ?? 1.75);
+      $("sys-wait-close-control").value = String(data.wait_one_bar_last_close_control_min ?? 0.8);
+      $("sys-wait-dir-body").value = String(data.wait_one_bar_last_dir_body_min ?? 0.45);
+      $("sys-wait-opp-wick").value = String(data.wait_one_bar_last_opposite_wick_max ?? 0.18);
+      $("sys-wait-move1").value = String(data.wait_one_bar_recent_move1_pct_min ?? 0.45);
+      $("sys-wait-counter-bars").value = String(data.wait_one_bar_counter_dir_bars_max ?? 0);
+      $("sys-upd-at").textContent = fmtKst(data.updated_at || "-");
+      $("sys-upd-by").textContent = data.updated_by || "-";
+
+      const feeBy = data.fee_bps_by_market || {};
+      const slipBy = data.slippage_bps_by_market || {};
+      const body = $("sys-ov-body");
+      body.innerHTML = "";
+      const keys = new Set([
+        ...Object.keys(feeBy || {}),
+        ...Object.keys(slipBy || {}),
+      ]);
+      const entries = Array.from(keys).sort((a,b)=> String(a).localeCompare(String(b)));
+      if (!entries.length) {
+        body.appendChild(overrideRow("", "", ""));
+      } else {
+        for (const mk of entries) {
+          body.appendChild(overrideRow(mk, feeBy[mk], slipBy[mk]));
+        }
+      }
+      Array.from(document.querySelectorAll(".sys-ov-market")).forEach((el) => {
+        el.setAttribute("placeholder", sysMarketPlaceholder());
+      });
+      setStatus("불러옴", "ok");
+    }
+
+    function collect(){
+      const fee_bps_by_market = {};
+      const slippage_bps_by_market = {};
+      const rows = Array.from(document.querySelectorAll("#sys-ov-body tr"));
+      for (const tr of rows){
+        const mk = (tr.querySelector(".sys-ov-market")?.value || "").trim();
+        if (!mk) continue;
+        const fee = numOrNull(tr.querySelector(".sys-ov-fee")?.value);
+        const slip = numOrNull(tr.querySelector(".sys-ov-slip")?.value);
+        if (fee != null) fee_bps_by_market[mk] = Math.trunc(fee);
+        if (slip != null) slippage_bps_by_market[mk] = Math.trunc(slip);
+      }
+
+      const provider = activeProvider();
+      const lev = numOrNull($("sys-futures-lev").value);
+      return {
+        scheduler_enabled: $("sys-enabled").value === "true",
+        scheduler_interval_sec: numOrZero($("sys-interval").value),
+        timezone: $("sys-tz").value.trim(),
+        retry_max: numOrZero($("sys-retry").value),
+        log_level: $("sys-log").value,
+        alert_channel: $("sys-alert").value.trim(),
+        data_retention_days: numOrZero($("sys-retention").value),
+        auto_backfill_enabled: $("sys-backfill-enabled").value === "true",
+        auto_backfill_days: numOrZero($("sys-backfill-days").value),
+        fee_bps: numOrZero($("sys-fee-bps").value),
+        slippage_bps: numOrZero($("sys-slip-bps").value),
+        slippage_model: $("sys-slip-model").value,
+        slippage_bps_min: numOrNull($("sys-slip-min").value),
+        slippage_bps_max: numOrNull($("sys-slip-max").value),
+        slippage_volatility_factor: numOrNull($("sys-slip-vol").value),
+        fee_bps_by_market,
+        slippage_bps_by_market,
+        intent_ttl_ms: numOrNull($("sys-ttl-ms").value),
+        intent_ttl_bars: numOrNull($("sys-ttl-bars").value),
+        execution_mode: $("sys-exec-mode").value,
+        live_enabled: $("sys-live-enabled").value === "true",
+        live_dry_run: $("sys-exec-mode").value === "LIVE_DRY_RUN",
+        live_confirm_text: $("sys-live-confirm").value.trim(),
+        live_confirm_required: $("sys-live-confirm-required").value === "true",
+        live_allowed_markets: parseList($("sys-live-markets").value),
+        live_min_order_krw: numOrZero($("sys-live-min").value),
+        live_max_order_krw: numOrZero($("sys-live-max").value),
+        futures_leverage: (provider === "BINANCEFUT") ? (lev || 1) : 1,
+        futures_margin_type: (provider === "BINANCEFUT") ? String($("sys-futures-margin").value || "ISOLATED") : "ISOLATED",
+        futures_exit_profile_mode: (provider === "BINANCEFUT") ? String($("sys-futures-exit-profile-mode").value || "BASE") : "BASE",
+        ai_bias_gate_neutral_mult: numOrNull($("sys-ai-bias-neutral-mult").value),
+        ai_bias_gate_opposite_mult: numOrNull($("sys-ai-bias-opposite-mult").value),
+        ai_bias_gate_strong_opposite_score: numOrNull($("sys-ai-bias-strong-opposite-score").value),
+        ai_bias_gate_strong_opposite_conf: numOrNull($("sys-ai-bias-strong-opposite-conf").value),
+        ev_gate_tp1_prob_full: numOrNull($("sys-ev-full").value),
+        ev_gate_tp1_prob_kill: numOrNull($("sys-ev-kill").value),
+        ev_gate_qty_scale_mid: numOrNull($("sys-ev-mid-scale").value),
+        ev_gate_qty_scale_low: numOrNull($("sys-ev-low-scale").value),
+        wait_one_bar_same_dir_streak_min: numOrNull($("sys-wait-streak").value),
+        wait_one_bar_chase_ratio_min: numOrNull($("sys-wait-chase").value),
+        wait_one_bar_last_close_control_min: numOrNull($("sys-wait-close-control").value),
+        wait_one_bar_last_dir_body_min: numOrNull($("sys-wait-dir-body").value),
+        wait_one_bar_last_opposite_wick_max: numOrNull($("sys-wait-opp-wick").value),
+        wait_one_bar_recent_move1_pct_min: numOrNull($("sys-wait-move1").value),
+        wait_one_bar_counter_dir_bars_max: numOrNull($("sys-wait-counter-bars").value),
+      };
+    }
+
+    async function save(){
+      const btn = $("sys-save");
+      btn.disabled = true;
+      setStatus("저장 중…", "dim");
+
+      let payload = null;
+      try { payload = collect(); }
+      catch(e){
+        btn.disabled = false;
+        setStatus("입력 오류: " + e.message, "bad");
+        return;
+      }
+
+      try{
+        if (payload.execution_mode === "LIVE" && payload.live_enabled) {
+          if (!confirm("실거래가 켜집니다. 계속할까요?")) {
+            btn.disabled = false;
+            setStatus("저장 취소", "dim");
+            return;
+          }
+        }
+        const provider = ($("sys-provider")?.value || "BINANCEFUT").toUpperCase();
+        const r = await fetch("/api/settings/system?provider=" + encodeURIComponent(provider), {
+          method: "POST",
+          headers: { "Content-Type":"application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        });
+        const t = await r.text();
+        let j = null;
+        try { j = JSON.parse(t); } catch(_) { j = null; }
+        if (!r.ok || !j || !j.ok){
+          setStatus("저장 실패 (" + r.status + ")", "bad");
+          btn.disabled = false;
+          return;
+        }
+        setStatus("저장 완료 ✅", "ok");
+        setTimeout(()=>{ btn.disabled = false; }, 1500);
+        await load();
+      }catch(e){
+        setStatus("저장 오류: " + e.message, "bad");
+        btn.disabled = false;
+      }
+    }
+
+    $("sys-save").addEventListener("click", save);
+    const navSel = document.getElementById("ex-mode");
+    if (navSel) {
+      navSel.addEventListener("change", async () => {
+        await load();
+      });
+    } else {
+      $("sys-provider").addEventListener("change", async () => {
+        await load();
+      });
+    }
+    $("sys-ov-add").addEventListener("click", ()=>{
+      $("sys-ov-body").appendChild(overrideRow("", "", ""));
+    });
+    load();
+  })();
+  </script>

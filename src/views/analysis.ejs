@@ -1,56 +1,60 @@
-<%- include('partials/app_start', { title: '리포트 보조 허브 · DONBEOLJA Ω', pageTitle: '리포트 보조 허브', active: 'analysis' }) %>
-<%- include('partials/legacy_report_subnav', { activeTab: 'analysis' }) %>
-<%- include('partials/legacy_control_surface_bridge', { mode: 'report', surfaceHref: '/dashboard/home', surfaceLabel: '미션', detailHref: '/dashboard/audit', detailLabel: '감사', extraHref: '/dashboard/recovery', extraLabel: '회복' }) %>
+<%- include('partials/app_start_unified', { title: '분석 · DONBEOLJA', pageTitle: '분석', active: 'analysis' }) %>
 
 <div class="grid cols-3">
   <div class="card">
-    <h2>리포트</h2>
-    <div class="subtle">기간 성과와 개선팩을 깊게 보는 보조 화면입니다.</div>
-    <div class="hr"></div>
-    <div class="kv">
-      <div class="k">최근 주간</div><div class="v" id="an-wk">…</div>
-      <div class="k">최근 월간</div><div class="v" id="an-mo">…</div>
+    <div class="card-header">
+      <div class="card-title">리포트</div>
+      <div class="card-subtitle">기간 성과와 개선팩을 깊게 보는 보조 화면입니다.</div>
+    </div>
+    <div class="card-body">
+      <table class="table-compact">
+        <tr><td class="text-muted">최근 주간</td><td id="an-wk">...</td></tr>
+        <tr><td class="text-muted">최근 월간</td><td id="an-mo">...</td></tr>
+      </table>
     </div>
   </div>
 
   <div class="card">
-    <h2>평가</h2>
-    <div class="subtle">표본 수, EV, 유지/제거 판단 근거를 세부 확인합니다.</div>
-    <div class="hr"></div>
-    <div class="kv">
-      <div class="k">평가 주차</div><div class="v" id="an-ev-week">…</div>
-      <div class="k">상태</div><div class="v" id="an-ev-status">…</div>
+    <div class="card-header">
+      <div class="card-title">평가</div>
+      <div class="card-subtitle">표본 수, EV, 유지/제거 판단 근거를 세부 확인합니다.</div>
+    </div>
+    <div class="card-body">
+      <table class="table-compact">
+        <tr><td class="text-muted">평가 주차</td><td id="an-ev-week">...</td></tr>
+        <tr><td class="text-muted">상태</td><td id="an-ev-status">...</td></tr>
+      </table>
     </div>
   </div>
 
   <div class="card">
-    <h2>브리핑</h2>
-    <div class="subtle">현재 상태를 사람이 읽기 쉬운 문장으로 다시 요약합니다.</div>
-    <div class="hr"></div>
-    <div class="kv">
-      <div class="k">출처</div><div class="v" id="an-br-src">…</div>
-      <div class="k">업데이트</div><div class="v" id="an-br-upd">…</div>
+    <div class="card-header">
+      <div class="card-title">브리핑</div>
+      <div class="card-subtitle">현재 상태를 사람이 읽기 쉬운 문장으로 다시 요약합니다.</div>
+    </div>
+    <div class="card-body">
+      <table class="table-compact">
+        <tr><td class="text-muted">출처</td><td id="an-br-src">...</td></tr>
+        <tr><td class="text-muted">업데이트</td><td id="an-br-upd">...</td></tr>
+      </table>
     </div>
   </div>
 </div>
 
-<div class="hr"></div>
-
 <div class="card">
-  <h2>데이터 신선도</h2>
-  <div class="subtle">신호/체결의 최신 도착 시각을 확인합니다. 운영 판단은 미션/실행/감사에서 먼저 읽습니다.</div>
-  <div class="hr"></div>
-  <div class="grid cols-2">
-    <div class="card" style="box-shadow:none;">
-      <h2>신호</h2>
-      <div class="kv">
-        <div class="k">최신</div><div class="v mono" id="an-sig">…</div>
+  <div class="card-header">
+    <div class="card-title">데이터 신선도</div>
+    <div class="card-subtitle">신호/체결의 최신 도착 시각을 확인합니다. 운영 판단은 미션/실행/감사에서 먼저 읽습니다.</div>
+  </div>
+  <div class="card-body">
+    <div class="grid cols-2">
+      <div class="mini-card">
+        <div class="metric-card-label">신호 최신</div>
+        <div class="metric-card-value mono" style="font-size:13px;" id="an-sig">...</div>
       </div>
-    </div>
-    <div class="card" style="box-shadow:none;">
-      <h2>체결</h2>
-      <div class="kv">
-        <div class="k">최신</div><div class="v mono" id="an-fill">…</div>
+      <div class="mini-card">
+        <div class="metric-card-label">체결 최신</div>
+        <div class="metric-card-value mono" style="font-size:13px;" id="an-fill">...</div>
       </div>
     </div>
   </div>
@@ -180,4 +184,4 @@
 })();
 </script>
 
-<%- include('partials/app_end') %>
+<%- include('partials/app_end_unified') %>

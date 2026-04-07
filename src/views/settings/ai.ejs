@@ -1,0 +1,233 @@
+  <div id="ai-card" style="display:flex;flex-direction:column;gap:24px">
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">리포트 기본</div>
+          <div class="card-subtitle">언어, 길이, 강조 포인트, 경고 표시 방식과 자금 배분 자동화에 쓰는 기준을 조정합니다.</div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <span class="chip primary filled">연동 <span class="mono">/api/settings/ai</span></span>
+          <span class="chip">리포트 생성 시점에 반영</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <span class="chip">대상 <span class="mono" id="ai-provider-label">-</span></span>
+          <span class="chip">통화 <span class="mono" id="ai-unit">KRW</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">리포트 표시 방식</div>
+          <div class="card-subtitle">요약 길이와 강조 포인트를 정하고, 미리보기로 바로 확인합니다.</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="grid cols-2">
+          <div>
+            <label>언어</label>
+            <select id="ai-lang">
+              <option value="ko">한국어</option>
+              <option value="en">영어</option>
+            </select>
+          </div>
+          <div>
+            <label>요약 길이</label>
+            <select id="ai-length">
+              <option value="short">짧게</option>
+              <option value="medium">보통</option>
+              <option value="long">길게</option>
+            </select>
+          </div>
+          <div>
+            <label>강조 포인트</label>
+            <select id="ai-emphasis">
+              <option value="EV">기대값</option>
+              <option value="MDD">최대 낙폭</option>
+              <option value="GATE">진입 조건</option>
+              <option value="BALANCED">균형</option>
+            </select>
+          </div>
+          <div>
+            <label>경고 표시</label>
+            <select id="ai-warn">
+              <option value="true">켜짐</option>
+              <option value="false">꺼짐</option>
+            </select>
+          </div>
+          <div>
+            <label>표 비중(%)</label>
+            <input id="ai-table" type="number" min="0" max="100" step="5" placeholder="예: 60" />
+          </div>
+          <div>
+            <label>최근 변경</label>
+            <div class="kv">
+              <div class="k">변경 시각</div><div class="v mono" id="ai-upd-at">-</div>
+              <div class="k">변경자</div><div class="v mono" id="ai-upd-by">-</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">미리보기와 저장</div>
+          <div class="card-subtitle">현재 조합이 실제 리포트 톤에 어떻게 반영되는지 확인하고 저장합니다.</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="body-sm text-muted">미리보기</div>
+        <div id="ai-preview" style="margin-top: 8px; padding: 12px; border: 1px dashed var(--md-outline); border-radius: 12px; background: var(--md-surface-container); font-size: 12px;"></div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px;">
+          <button class="btn btn-filled" type="button" id="ai-save">저장</button>
+          <span class="chip" id="ai-status">상태 대기</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    function $(id){ return document.getElementById(id); }
+    function normalizeProvider(v){
+      const raw = String(v || "").trim().toUpperCase();
+      if (raw.includes("BINANCE")) return "BINANCEFUT";
+      return "BINANCEFUT";
+    }
+    function unitForProvider(p){
+      const v = String(p || "BINANCEFUT").toUpperCase();
+      if (v === "BINANCEFUT") return "USDT";
+      return "KRW";
+    }
+    function activeProvider(){
+      try {
+        const saved = localStorage.getItem("db_exchange_mode");
+        if (saved) return normalizeProvider(saved);
+      } catch(_) {}
+      const nav = document.getElementById("ex-mode");
+      if (nav && nav.value) return normalizeProvider(nav.value);
+      return "BINANCEFUT";
+    }
+    function setStatus(text, level){
+      const el = $("ai-status");
+      if (!el) return;
+      el.textContent = text;
+      el.classList.remove("ok","warn","bad","dim");
+      el.classList.add(level || "dim");
+    }
+    function numOrZero(v){
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    }
+    function fmtKst(v){
+      if (!v) return "-";
+      const raw = String(v);
+      if (raw.includes("KST")) return raw;
+      const ms = Date.parse(raw);
+      if (!Number.isFinite(ms)) return raw;
+      const k = new Date(ms + 9 * 60 * 60 * 1000);
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${k.getUTCFullYear()}-${pad(k.getUTCMonth() + 1)}-${pad(k.getUTCDate())} ${pad(k.getUTCHours())}:${pad(k.getUTCMinutes())}:${pad(k.getUTCSeconds())} KST`;
+    }
+    function updatePreview(){
+      const lang = $("ai-lang").value;
+      const len = $("ai-length").value;
+      const em = $("ai-emphasis").value;
+      const warn = $("ai-warn").value === "true";
+      const ratio = numOrZero($("ai-table").value || 60);
+      let text = "";
+      if (lang === "en") {
+        text = `Weekly report (${len}). Focus: ${em}. Warnings: ${warn ? "on" : "off"}. Table: ${ratio}%.`;
+      } else {
+        text = `주간 리포트 (${len}): 강조=${em}, 경고=${warn ? "켜짐" : "꺼짐"}, 표 비중=${ratio}%.`;
+      }
+      $("ai-preview").textContent = text;
+    }
+    async function load(){
+      setStatus("불러오는 중…", "dim");
+      const provider = activeProvider();
+      const label = $("ai-provider-label");
+      if (label) label.textContent = "BINANCEFUT";
+      const unit = $("ai-unit");
+      if (unit) unit.textContent = unitForProvider(provider);
+      const r = await fetch("/api/settings/ai?provider=" + encodeURIComponent(provider), { credentials: "include" });
+      const t = await r.text();
+      let j = null;
+      try { j = JSON.parse(t); } catch(_) { j = null; }
+      if (!r.ok || !j || !j.ok){
+        setStatus("불러오기 실패 (" + r.status + ")", "bad");
+        return;
+      }
+      const data = j.data || {};
+      $("ai-lang").value = String(data.language || "ko").toLowerCase();
+      $("ai-length").value = String(data.summary_length || "medium").toLowerCase();
+      $("ai-emphasis").value = String(data.report_emphasis || "EV").toUpperCase();
+      $("ai-warn").value = String(!!data.warnings_enabled);
+      $("ai-table").value = String(data.table_ratio ?? 60);
+      $("ai-upd-at").textContent = fmtKst(data.updated_at || "-");
+      $("ai-upd-by").textContent = data.updated_by || "-";
+      updatePreview();
+      setStatus("불러옴", "ok");
+    }
+    function collect(){
+      return {
+        language: $("ai-lang").value,
+        summary_length: $("ai-length").value,
+        report_emphasis: $("ai-emphasis").value,
+        warnings_enabled: $("ai-warn").value === "true",
+        table_ratio: numOrZero($("ai-table").value),
+      };
+    }
+    async function save(){
+      const btn = $("ai-save");
+      btn.disabled = true;
+      setStatus("저장 중…", "dim");
+      let payload = null;
+      try { payload = collect(); }
+      catch(e){
+        btn.disabled = false;
+        setStatus("입력 오류: " + e.message, "bad");
+        return;
+      }
+      try{
+        const provider = activeProvider();
+        const r = await fetch("/api/settings/ai?provider=" + encodeURIComponent(provider), {
+          method: "POST",
+          headers: { "Content-Type":"application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        });
+        const t = await r.text();
+        let j = null;
+        try { j = JSON.parse(t); } catch(_) { j = null; }
+        if (!r.ok || !j || !j.ok){
+          setStatus("저장 실패 (" + r.status + ")", "bad");
+          btn.disabled = false;
+          return;
+        }
+        setStatus("저장 완료 ✅", "ok");
+        setTimeout(()=>{ btn.disabled = false; }, 1500);
+        await load();
+      }catch(e){
+        setStatus("저장 오류: " + e.message, "bad");
+        btn.disabled = false;
+      }
+    }
+
+    $("ai-save").addEventListener("click", save);
+    $("ai-lang").addEventListener("change", updatePreview);
+    $("ai-length").addEventListener("change", updatePreview);
+    $("ai-emphasis").addEventListener("change", updatePreview);
+    $("ai-warn").addEventListener("change", updatePreview);
+    $("ai-table").addEventListener("input", updatePreview);
+    const navSel = document.getElementById("ex-mode");
+    if (navSel) navSel.addEventListener("change", load);
+    load();
+  })();
+  </script>

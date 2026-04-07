@@ -1,50 +1,47 @@
-<%- include('partials/app_start', { title: '브리핑 · DONBEOLJA Ω', pageTitle: '브리핑', active: 'briefing' }) %>
-
-<%- include('partials/legacy_report_subnav', { activeTab: 'briefing' }) %>
-<%- include('partials/legacy_control_surface_bridge', { mode: 'report', surfaceHref: '/dashboard/home', surfaceLabel: '미션', detailHref: '/dashboard/audit', detailLabel: '감사', extraHref: '/dashboard/recovery', extraLabel: '회복' }) %>
+<%- include('partials/app_start_unified', { title: '브리핑 · DONBEOLJA', pageTitle: '브리핑', active: 'briefing' }) %>
 
 <div class="card">
-  <h2>시장 요약</h2>
-  <div class="subtle">
-    KPI 최신 스냅샷을 기준으로 현재 상태를 빠르게 읽는 보조 브리핑입니다.
+  <div class="card-header">
+    <div class="card-title">시장 요약</div>
+    <div class="card-subtitle">KPI 최신 스냅샷을 기준으로 현재 상태를 빠르게 읽는 보조 브리핑입니다.</div>
   </div>
-  <div class="hr"></div>
-  <div id="br-summary" style="font-size:15px; line-height:1.6; color:#111;">요약 확인 중…</div>
-  <div id="br-summary-lines" class="subtle" style="margin-top:8px; line-height:1.7;"></div>
-  <div class="hr"></div>
-  <div class="kv">
-    <div class="k">계산 시각</div><div class="v mono" id="br-at">…</div>
-    <div class="k">운영 타임프레임</div><div class="v mono" id="br-tf">…</div>
-    <div class="k">행 수</div><div class="v mono" id="br-count">…</div>
-    <div class="k">대상 마켓</div><div class="v mono" id="br-exp">…</div>
+  <div class="card-body">
+    <div id="br-summary" style="font-size:15px; line-height:1.6; color:var(--md-on-surface);">요약 확인 중...</div>
+    <div id="br-summary-lines" class="text-muted" style="margin-top:8px; line-height:1.7;"></div>
+    <table class="table-compact" style="margin-top:12px;">
+      <tr><td class="text-muted">계산 시각</td><td class="mono" id="br-at">...</td></tr>
+      <tr><td class="text-muted">운영 타임프레임</td><td class="mono" id="br-tf">...</td></tr>
+      <tr><td class="text-muted">행 수</td><td class="mono" id="br-count">...</td></tr>
+      <tr><td class="text-muted">대상 마켓</td><td class="mono" id="br-exp">...</td></tr>
+    </table>
   </div>
 </div>
 
-<div class="hr"></div>
-
-<div class="tablewrap">
-  <div class="head">
-    <h2>최신 KPI</h2>
-    <div class="subtle">각 마켓의 최신 KPI 세부</div>
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">최신 KPI</div>
+    <div class="card-subtitle">각 마켓의 최신 KPI 세부</div>
   </div>
-  <div class="scroll" style="max-height:520px;">
-    <table>
-      <thead>
-        <tr>
-          <th>마켓</th>
-          <th>타임프레임</th>
-          <th>상태</th>
-          <th>표본</th>
-          <th>기대값</th>
-          <th>승률</th>
-          <th>계산 시각</th>
-          <th>출처</th>
-        </tr>
-      </thead>
-      <tbody id="br-body">
-        <tr><td colspan="8" class="subtle">로딩 중…</td></tr>
-      </tbody>
-    </table>
+  <div class="card-body">
+    <div class="table-wrap" style="max-height:520px; overflow:auto;">
+      <table class="table-compact">
+        <thead>
+          <tr>
+            <th>마켓</th>
+            <th>타임프레임</th>
+            <th>상태</th>
+            <th>표본</th>
+            <th>기대값</th>
+            <th>승률</th>
+            <th>계산 시각</th>
+            <th>출처</th>
+          </tr>
+        </thead>
+        <tbody id="br-body">
+          <tr><td colspan="8" class="text-muted">로딩 중...</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 
@@ -85,7 +82,7 @@
     set('br-tf','(확인 불가)');
     set('br-summary','브리핑 요약을 불러오지 못했습니다.');
     setHtml('br-summary-lines', '');
-    $('br-body').innerHTML = `<tr><td colspan="8" class="subtle">로드 실패: ${r.status}</td></tr>`;
+    $('br-body').innerHTML = `<tr><td colspan="8" class="text-muted">로드 실패: ${r.status}</td></tr>`;
     return;
   }
 
@@ -101,7 +98,7 @@
   const body = $('br-body');
   const rows = Array.isArray(j.rows) ? j.rows : [];
   if (rows.length === 0){
-    body.innerHTML = `<tr><td colspan="8" class="subtle">표가 비어 있습니다.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="8" class="text-muted">표가 비어 있습니다.</td></tr>`;
     return;
   }
   body.innerHTML = '';
@@ -117,11 +114,11 @@
       <td class="mono">${fmtEv(k.ev)}</td>
       <td class="mono">${fmtPct(k.win_rate)}</td>
       <td class="mono">${fmtKst(row.computed_at || '-')}</td>
-      <td class="subtle">${row.source || '-'}</td>
+      <td class="text-muted">${row.source || '-'}</td>
     `;
     body.appendChild(tr);
   }
 })();
 </script>
 
-<%- include('partials/app_end') %>
+<%- include('partials/app_end_unified') %>

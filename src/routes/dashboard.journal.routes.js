@@ -70,7 +70,17 @@ router.get("/dashboard/journal", async (req, res) => {
       },
     });
   } catch (e) {
-    return res.status(500).send("JOURNAL_ROUTE_ERROR: " + (e?.message || String(e)));
+    try {
+      return res.status(200).render("journal", {
+        trades: [],
+        exchange: req.query.exchange || '',
+        exec_tf: null,
+        meta: { n: 0, last_created_at: null, last_created_kst: null },
+        _error: { code: "JOURNAL_ROUTE_ERROR", message: '데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.' },
+      });
+    } catch (renderErr) {
+      return res.status(500).send("RENDER_FALLBACK_ERROR: " + (renderErr.message || String(renderErr)));
+    }
   }
 });
 

@@ -1,0 +1,1258 @@
+
+  <style>
+    .rb-toast { position: fixed; right: 18px; bottom: 18px; background: var(--md-on-surface); color: var(--md-surface); padding: 10px 14px; border-radius: 12px; font-size: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); opacity: 1; transition: opacity 0.2s ease; z-index: 9999; }
+    .rb-toast.dim { background: #444; }
+    .rb-toast.ok { background: var(--md-success); }
+    .rb-toast.bad { background: var(--md-error); }
+    .rb-toast.hide { opacity: 0; pointer-events: none; }
+  </style>
+
+  <div id="risk-card" style="display:flex;flex-direction:column;gap:24px">
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">리스크 기본</div>
+          <div class="card-subtitle">총 예산, 기본 마켓 한도, 초과 정책을 먼저 정하고 시장별 한도를 세부 조정합니다.</div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <span class="chip primary filled">연동 <span class="mono">/api/settings/risk-budget</span></span>
+          <span class="chip">저장 직후 2초간 버튼 비활성화</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">예산과 한도</div>
+          <div class="card-subtitle">총 예산과 기본 한도를 먼저 정해두면 아래 시장별 한도는 예외 케이스만 관리하면 됩니다.</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="grid cols-2">
+          <div>
+            <label>사용 여부</label>
+            <select id="rb-enabled">
+              <option value="true">켜짐</option>
+              <option value="false">꺼짐</option>
+            </select>
+          </div>
+          <div>
+            <label>초과 시 정책</label>
+            <select id="rb-onex">
+              <option value="CLAMP">최대치로 제한</option>
+              <option value="SKIP">신규 진입 차단</option>
+            </select>
+          </div>
+          <div>
+            <label>총 예산 한도 (<span id="rb-unit-total">KRW</span>)</label>
+            <input id="rb-total" type="number" min="0" step="1000" placeholder="예: 3000000" />
+            <div style="margin-top: 6px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <button class="btn btn-outlined sm" type="button" id="rb-fetch-total">계정 총액 불러오기</button>
+              <span class="body-sm text-muted" id="rb-total-hint">불러온 뒤 자동 저장</span>
+            </div>
+          </div>
+          <div>
+            <label>기본 마켓 한도 (<span id="rb-unit-default">KRW</span>)</label>
+            <input id="rb-default" type="number" min="0" step="1000" placeholder="예: 1000000" />
+          </div>
+          <div>
+            <label>최근 변경</label>
+            <div class="kv">
+              <div class="k">변경 시각</div><div class="v mono" id="rb-upd-at">-</div>
+              <div class="k">변경자</div><div class="v mono" id="rb-upd-by">-</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">마켓별 한도</div>
+          <div class="card-subtitle">미등록 마켓은 자동 추가하고, 과한 노출이 필요한 마켓만 별도 한도를 둡니다.</div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button class="btn btn-outlined sm" type="button" id="rb-add">시장 추가</button>
+          <button class="btn btn-outlined sm" type="button" id="rb-add-missing">현재 마켓 자동 추가</button>
+          <button class="btn btn-filled" type="button" id="rb-save">저장</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="body-sm text-muted" style="margin-bottom: 10px;">미등록 마켓: <span id="rb-missing-count">-</span> · 다른 거래소 숨김: <span id="rb-hidden-count">0</span></div>
+        <div class="table-wrap" style="max-height: 420px; overflow-y: auto;">
+          <table class="table-compact">
+            <thead>
+              <tr>
+                <th style="width:260px;">마켓</th>
+                <th style="width:220px;">최대 금액 (<span id="rb-unit-col">KRW</span>)</th>
+                <th style="width:110px;">관리</th>
+              </tr>
+            </thead>
+            <tbody id="rb-body">
+              <tr><td colspan="3" class="text-muted">로딩 중...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px;">
+          <span class="chip" id="rb-status">상태 대기</span>
+          <span class="body-sm text-muted">대상 마켓: <span class="mono"><%= markets.join(', ') %></span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    let expectedMarkets = <%- JSON.stringify(markets || []) %>;
+    let currentProvider = "BINANCEFUT";
+    let hiddenByMarket = {};
+    let budgetUnit = "KRW";
+    let budgetStep = 1000;
+    function $(id){ return document.getElementById(id); }
+    function setStatus(text, level){
+      const el = $("rb-status");
+      if (!el) return;
+      el.textContent = text;
+      el.classList.remove("ok","warn","bad","dim");
+      el.classList.add(level || "dim");
+    }
+    function ensureToast(){
+      let el = document.getElementById("rb-toast");
+      if (!el){
+        el = document.createElement("div");
+        el.id = "rb-toast";
+        el.className = "rb-toast hide";
+        el.setAttribute("aria-live", "polite");
+        document.body.appendChild(el);
+      }
+      return el;
+    }
+    function showToast(text, level){
+      const el = ensureToast();
+      el.textContent = text;
+      el.classList.remove("ok","bad","dim","hide");
+      el.classList.add(level || "dim");
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(()=>{ el.classList.add("hide"); }, 2200);
+    }
+    function fmtKst(v){
+      if (!v) return "-";
+      const raw = String(v);
+      if (raw.includes("KST")) return raw;
+      const ms = Date.parse(raw);
+      if (!Number.isFinite(ms)) return raw;
+      const k = new Date(ms + 9 * 60 * 60 * 1000);
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${k.getUTCFullYear()}-${pad(k.getUTCMonth() + 1)}-${pad(k.getUTCDate())} ${pad(k.getUTCHours())}:${pad(k.getUTCMinutes())}:${pad(k.getUTCSeconds())} KST`;
+    }
+
+    function toggleClaudeModelInput(){
+      const val = $("rb-claude-model")?.value;
+      const custom = $("rb-claude-model-custom");
+      if (custom) custom.style.display = (val === "custom") ? "block" : "none";
+    }
+
+    async function loadAiGuard(){
+      const hint = $("rb-claude-key-hint");
+      try{
+        const r = await fetch("/api/settings/ai-guard", { credentials: "include" });
+        const t = await r.text();
+        let j = null;
+        try { j = JSON.parse(t); } catch(_) { j = null; }
+        if (!r.ok || !j || !j.ok){
+          if (hint) hint.textContent = "키 상태: 불러오기 실패";
+          return;
+        }
+        const d = j.data || {};
+        if (hint) hint.textContent = d.claude_api_key_hint ? `키 상태: ${d.claude_api_key_hint}` : "키 상태: 없음";
+        const keyInput = $("rb-claude-key");
+        if (keyInput) keyInput.value = "";
+        const model = String(d.claude_model || "claude-opus-4-5-20251101");
+        const modelSel = $("rb-claude-model");
+        const modelCustom = $("rb-claude-model-custom");
+        if (modelSel) {
+          const known = [
+            "claude-opus-4-5-20251101",
+            "claude-3-5-sonnet-20241022",
+            "claude-3-opus-20240229",
+            "claude-3-haiku-20240307",
+            "opus-4",
+            "claude-opus-4-1",
+            "claude-opus-4-5",
+            "claude-opus-4-6",
+          ];
+          if (known.includes(model)) {
+            modelSel.value = model;
+            if (modelCustom) modelCustom.value = "";
+          } else {
+            modelSel.value = "custom";
+            if (modelCustom) modelCustom.value = model;
+          }
+        }
+        toggleClaudeModelInput();
+        const allowInput = $("rb-ensemble-allow");
+        if (allowInput) allowInput.value = (d.ensemble_allow_min != null) ? String(d.ensemble_allow_min) : "";
+        const reduceInput = $("rb-ensemble-reduce");
+        if (reduceInput) reduceInput.value = (d.ensemble_reduce_min != null) ? String(d.ensemble_reduce_min) : "";
+      }catch(e){
+        if (hint) hint.textContent = "키 상태: 오류";
+      }
+    }
+
+    async function saveAiGuard(){
+      const btn = $("rb-claude-save");
+      const keyInput = $("rb-claude-key");
+      if (!keyInput) return;
+      const key = keyInput.value.trim();
+      const modelSel = $("rb-claude-model")?.value;
+      const modelCustom = $("rb-claude-model-custom")?.value || "";
+      const model = (modelSel === "custom") ? modelCustom.trim() : String(modelSel || "").trim();
+      const allowVal = Number($("rb-ensemble-allow")?.value);
+      const reduceVal = Number($("rb-ensemble-reduce")?.value);
+      const payload = {};
+      if (key) payload.claude_api_key = key;
+      if (model) payload.claude_model = model;
+      if (Number.isFinite(allowVal)) payload.ensemble_allow_min = allowVal;
+      if (Number.isFinite(reduceVal)) payload.ensemble_reduce_min = reduceVal;
+      if (!Object.keys(payload).length) {
+        showToast("저장할 값이 없습니다", "bad");
+        return;
+      }
+      btn.disabled = true;
+      try{
+        const r = await fetch("/api/settings/ai-guard", {
+          method: "POST",
+          headers: { "Content-Type":"application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        });
+        const t = await r.text();
+        let j = null;
+        try { j = JSON.parse(t); } catch(_) { j = null; }
+        if (!r.ok || !j || !j.ok){
+          showToast("Claude 키 저장 실패 (" + r.status + ")", "bad");
+          btn.disabled = false;
+          return;
+        }
+        showToast("저장 완료 ✅", "ok");
+        await loadAiGuard();
+      }catch(e){
+        showToast("Claude 키 저장 오류: " + e.message, "bad");
+      }
+      btn.disabled = false;
+    }
+
+    function marketPlaceholder(){
+      return "BTCUSDT";
+    }
+
+    function rowTemplate(market, maxKrw){
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>
+          <input class="rb-market mono" value="${(market||"").replace(/"/g,'&quot;')}" placeholder="${marketPlaceholder()}" />
+        </td>
+        <td>
+          <input class="rb-max mono" type="number" min="0" step="${budgetStep}" value="${maxKrw==null?"" : String(maxKrw)}" placeholder="예: 500000" />
+        </td>
+        <td>
+          <button class="btn btn-text sm rb-del" type="button">삭제</button>
+        </td>
+      `;
+      tr.querySelector(".rb-del").addEventListener("click", ()=>{
+        if (confirm("이 줄을 삭제할까요?")) tr.remove();
+      });
+      return tr;
+    }
+
+    function normalizeMarket(v){
+      return String(v || "").trim().toUpperCase();
+    }
+
+    function normalizeProvider(v){
+      const raw = String(v || "").trim().toUpperCase();
+      if (raw.includes("BINANCE")) return "BINANCEFUT";
+      return "BINANCEFUT";
+    }
+    function storedProvider(){
+      try {
+        const saved = localStorage.getItem("db_exchange_mode");
+        if (saved) return normalizeProvider(saved);
+      } catch(_) {}
+      return null;
+    }
+
+    function updateBudgetUnit(unit){
+      budgetUnit = String(unit || "USDT").toUpperCase();
+      budgetStep = budgetUnit === "USDT" ? 1 : 1000;
+      const labelTotal = $("rb-unit-total");
+      const labelDefault = $("rb-unit-default");
+      const col = $("rb-unit-col");
+      if (labelTotal) labelTotal.textContent = budgetUnit;
+      if (labelDefault) labelDefault.textContent = budgetUnit;
+      if (col) col.textContent = budgetUnit;
+      const total = $("rb-total");
+      const def = $("rb-default");
+      if (total) total.step = String(budgetStep);
+      if (def) def.step = String(budgetStep);
+      document.querySelectorAll("#rb-body .rb-max").forEach((el) => {
+        el.step = String(budgetStep);
+      });
+    }
+
+    function fallbackMarkets(provider){
+      return ["BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "SOLUSDT", "AXSUSDT", "DOGEUSDT"];
+    }
+
+    function isMarketForProvider(market, provider){
+      const mk = normalizeMarket(market);
+      if (!mk) return false;
+      const isKrw = mk.startsWith("KRW-");
+      const isUsdt = mk.endsWith("USDT") || mk.includes("USDT");
+      const isKrx = mk.startsWith("KRX:");
+      return !isKrw && isUsdt;
+    }
+
+    function currentMarketSet(){
+      const rows = Array.from(document.querySelectorAll("#rb-body .rb-market"));
+      const set = new Set();
+      rows.forEach((input) => {
+        const mk = normalizeMarket(input.value);
+        if (mk) set.add(mk);
+      });
+      return set;
+    }
+
+    function expectedMarketsForProvider(){
+      const expected = Array.isArray(expectedMarkets) ? expectedMarkets : [];
+      return expected.filter((mk) => isMarketForProvider(mk, currentProvider));
+    }
+
+    function updateMissing(){
+      const expected = expectedMarketsForProvider();
+      const existing = currentMarketSet();
+      const missing = expected.filter((mk) => !existing.has(normalizeMarket(mk)));
+      const label = $("rb-missing-count");
+      if (label) label.textContent = missing.length ? missing.join(", ") : "없음";
+      return missing;
+    }
+
+    function addMissingRows(){
+      const missing = updateMissing();
+      if (!missing.length) return;
+      const defaultVal = Number($("rb-default").value || "");
+      const useDefault = Number.isFinite(defaultVal) && defaultVal >= 0;
+      const body = $("rb-body");
+      for (const mk of missing) {
+        body.appendChild(rowTemplate(mk, useDefault ? defaultVal : ""));
+      }
+      updateMissing();
+    }
+
+    async function loadProvider(){
+      const navSel = document.getElementById("ex-mode");
+      const navProvider = navSel ? normalizeProvider(navSel.value) : null;
+      const savedProvider = storedProvider();
+      if (savedProvider) currentProvider = savedProvider;
+      else if (navProvider) currentProvider = navProvider;
+      try{
+        const r = await fetch("/api/settings/exchanges?provider=" + encodeURIComponent(currentProvider), { credentials: "include" });
+        const t = await r.text();
+        let j = null;
+        try { j = JSON.parse(t); } catch(_) { j = null; }
+        if (r.ok && j && j.ok && j.data){
+          if (!navProvider && j.data.provider) {
+            currentProvider = normalizeProvider(j.data.provider);
+          }
+          const providerFromServer = j.data.provider ? normalizeProvider(j.data.provider) : null;
+          if (providerFromServer === currentProvider && Array.isArray(j.data.markets) && j.data.markets.length) {
+            expectedMarkets = j.data.markets;
+          }
+          return;
+        }
+      }catch(_){}
+      expectedMarkets = fallbackMarkets(currentProvider);
+    }
+
+    async function load(options){
+      const opts = options || {};
+      setStatus("불러오는 중…", "dim");
+      if (!opts.skipProvider) await loadProvider();
+
+      const r = await fetch("/api/settings/risk-budget?provider=" + encodeURIComponent(currentProvider), { credentials: "include" });
+      const t = await r.text();
+      let j = null;
+      try { j = JSON.parse(t); } catch(_) { j = null; }
+
+      if (!r.ok || !j || !j.ok){
+        setStatus("불러오기 실패 (" + r.status + ")", "bad");
+        $("rb-body").innerHTML = `<tr><td colspan="3" class="text-muted">로드 실패: ${r.status}</td></tr>`;
+        return false;
+      }
+
+      const data = j.data || {};
+      updateBudgetUnit(data.unit);
+      $("rb-enabled").value = String(!!data.enabled);
+      $("rb-onex").value = String(data.on_exceed || "CLAMP").toUpperCase();
+      $("rb-total").value = (data.total_max_krw == null) ? "" : String(data.total_max_krw);
+      $("rb-default").value = (data.default_max_krw == null) ? "" : String(data.default_max_krw);
+
+      $("rb-upd-at").textContent = fmtKst(data.updated_at || "-");
+      $("rb-upd-by").textContent = data.updated_by || "-";
+
+      const body = $("rb-body");
+      body.innerHTML = "";
+      const by = data.by_market || {};
+      const entries = Object.entries(by);
+      const visible = [];
+      hiddenByMarket = {};
+
+      for (const [mk, v] of entries){
+        if (isMarketForProvider(mk, currentProvider)){
+          visible.push([mk, v]);
+        } else {
+          hiddenByMarket[mk] = v;
+        }
+      }
+
+      if (visible.length === 0){
+        body.appendChild(rowTemplate("", ""));
+      } else {
+        visible.sort((a,b)=> String(a[0]).localeCompare(String(b[0])));
+        for (const [mk, v] of visible){
+          const max = (v && typeof v === "object") ? (v.max_krw ?? v.maxKrw ?? v.value ?? "") : v;
+          body.appendChild(rowTemplate(mk, max));
+        }
+      }
+
+      const hiddenLabel = $("rb-hidden-count");
+      if (hiddenLabel) hiddenLabel.textContent = String(Object.keys(hiddenByMarket).length || 0);
+
+      updateMissing();
+      setStatus("불러옴 (" + (visible.length) + "개 마켓)", "ok");
+      return true;
+    }
+
+    async function fetchAccountTotal(autoSave){
+      setStatus("계정 총액 불러오는 중…", "dim");
+      const hint = $("rb-total-hint");
+      if (hint) hint.textContent = "-";
+      try{
+        const r = await fetch("/api/account/summary?exchange=" + encodeURIComponent(currentProvider), { credentials: "include" });
+        const t = await r.text();
+        let j = null;
+        try { j = JSON.parse(t); } catch(_) { j = null; }
+        if (!r.ok || !j || !j.ok){
+          setStatus("총액 불러오기 실패 (" + r.status + ")", "bad");
+          if (hint) hint.textContent = (j && (j.error || j.message)) ? (j.error || j.message) : t.slice(0, 120);
+          return;
+        }
+        const unit = String(j.unit || (currentProvider === "BINANCEFUT" ? "USDT" : "KRW")).toUpperCase();
+        const total = Number(j.total_value ?? j.total_krw ?? 0);
+        if (!Number.isFinite(total) || total <= 0){
+          setStatus("총액 값이 비어있음", "bad");
+          if (hint) hint.textContent = "계정 총액이 비어있습니다";
+          return;
+        }
+        updateBudgetUnit(unit);
+        $("rb-total").value = String(Math.trunc(total));
+        setStatus("총액 적용됨 ✅", "ok");
+        if (hint) hint.textContent = `계정 총액 ${Math.trunc(total).toLocaleString()} ${unit}`;
+        if (autoSave) {
+          await save();
+        }
+      }catch(e){
+        setStatus("총액 불러오기 오류: " + e.message, "bad");
+      }
+    }
+
+    function collect(){
+      const enabled = $("rb-enabled").value === "true";
+      const on_exceed = String($("rb-onex").value || "CLAMP").toUpperCase();
+      const total_max_krw = Number($("rb-total").value || 0);
+      const default_max_krw = Number($("rb-default").value || 0);
+
+      const by_market = { ...hiddenByMarket };
+      const rows = Array.from(document.querySelectorAll("#rb-body tr"));
+      for (const tr of rows){
+        const mk = (tr.querySelector(".rb-market")?.value || "").trim();
+        if (!mk) continue;
+        const max = Number(tr.querySelector(".rb-max")?.value || 0);
+        if (!Number.isFinite(max) || max < 0) throw new Error("max_krw invalid for " + mk);
+        by_market[mk] = Math.trunc(max);
+      }
+
+      return {
+        enabled,
+        on_exceed,
+        total_max_krw: Math.trunc(total_max_krw),
+        default_max_krw: Math.trunc(default_max_krw),
+        by_market,
+        unit: budgetUnit,
+        provider: currentProvider,
+      };
+    }
+
+    async function save(){
+      const btn = $("rb-save");
+      btn.disabled = true;
+      setStatus("저장 중…", "dim");
+
+      let payload = null;
+      try { payload = collect(); }
+      catch(e){
+        btn.disabled = false;
+        setStatus("입력 오류: " + e.message, "bad");
+        return;
+      }
+
+      try{
+        const r = await fetch("/api/settings/risk-budget?provider=" + encodeURIComponent(currentProvider), {
+          method: "POST",
+          headers: { "Content-Type":"application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        });
+
+        const t = await r.text();
+        let j = null;
+        try { j = JSON.parse(t); } catch(_) { j = null; }
+
+        if (!r.ok || !j || !j.ok){
+          setStatus("저장 실패 (" + r.status + ")", "bad");
+          btn.disabled = false;
+          return;
+        }
+
+        setStatus("저장 완료 ✅", "ok");
+        if (Array.isArray(j.adjustments) && j.adjustments.length) {
+          const msg = j.adjustments
+            .filter((x) => x && x.market)
+            .map((x) => `${x.market} ${x.before}→${x.after}`)
+            .join(", ");
+          showToast("자동 보정: " + msg, "ok");
+        }
+        if (Array.isArray(j.warnings) && j.warnings.length) {
+          const msg = j.warnings
+            .filter((x) => x && x.market)
+            .map((x) => `${x.market} 최소 예산 필요`)
+            .join(", ");
+          showToast("경고: " + msg, "bad");
+        }
+        setTimeout(()=>{ btn.disabled = false; }, 2000);
+        await load();
+      }catch(e){
+        setStatus("저장 오류: " + e.message, "bad");
+        btn.disabled = false;
+      }
+    }
+
+    $("rb-add").addEventListener("click", ()=>{
+      $("rb-body").appendChild(rowTemplate("", ""));
+      updateMissing();
+    });
+    $("rb-add-missing").addEventListener("click", addMissingRows);
+    $("rb-save").addEventListener("click", save);
+    $("rb-fetch-total").addEventListener("click", () => fetchAccountTotal(true));
+
+    const navSel = document.getElementById("ex-mode");
+    if (navSel){
+      navSel.addEventListener("change", async () => {
+        currentProvider = normalizeProvider(navSel.value);
+        await loadProvider();
+        await load({ skipProvider: true });
+      });
+    }
+
+    load();
+    function initAiGuard(){
+      const saveBtn = $("rb-claude-save");
+      if (saveBtn) saveBtn.addEventListener("click", saveAiGuard);
+      const modelSel = $("rb-claude-model");
+      if (modelSel) modelSel.addEventListener("change", toggleClaudeModelInput);
+      loadAiGuard();
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initAiGuard);
+    } else {
+      initAiGuard();
+    }
+  })();
+  </script>
+
+  <div class="card" style="margin-top: 4px;">
+    <div class="card-header">
+      <div>
+        <div class="card-title">자동 배분 (AI)</div>
+        <div class="card-subtitle">시장 방향 우위 판단 + 변동성 기반으로 예산을 자동 분배합니다.</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="body-sm text-muted">
+        API: <span class="mono">/api/settings/ai-allocation</span><br/>
+        총예산은 고정(캡/재투자 기준)하고, GPT+Claude 앙상블 뉴스 방향성으로 롱/숏 투입 비중만 조절합니다.
+      </div>
+      <div class="body-sm text-muted" style="margin-top: 6px;">
+        기본 운영값: <span class="mono">GPT 0.60 / Claude 0.40</span> · <span class="mono">KST 0,3,6,9,12,15,18,21시</span>
+      </div>
+      <div class="body-sm text-muted" style="margin-top: 6px;">
+        대상 거래소: <span class="mono" id="ai-alloc-provider-label">-</span>
+        · 기준 통화: <span class="mono" id="ai-alloc-unit">KRW</span>
+      </div>
+
+      <hr style="border: none; border-top: 1px solid var(--md-outline); margin: 16px 0;" />
+
+      <div class="grid cols-3">
+        <div>
+          <label>현재 적용</label>
+          <div class="kv">
+            <div class="k">합산 한도</div><div class="v mono" id="ai-alloc-cap-now">-</div>
+            <div class="k">에쿼티 배수</div><div class="v mono" id="ai-alloc-eq-now">-</div>
+            <div class="k">재투자</div><div class="v mono" id="ai-alloc-reinvest-now">-</div>
+            <div class="k">롱/숏 비중</div><div class="v mono" id="ai-alloc-side-now">-</div>
+            <div class="k">앙상블 비중</div><div class="v mono" id="ai-alloc-ensemble-now">-</div>
+            <div class="k">실행 슬롯</div><div class="v mono" id="ai-alloc-slots-now">-</div>
+            <div class="k">최근 적용</div><div class="v mono" id="ai-alloc-last-at">-</div>
+            <div class="k">우위</div><div class="v"><span class="chip" id="ai-alloc-last-bias-pill">-</span></div>
+            <div class="k">레짐(참고)</div><div class="v"><span class="chip" id="ai-alloc-last-regime-pill">-</span></div>
+          </div>
+        </div>
+      </div>
+
+      <hr style="border: none; border-top: 1px solid var(--md-outline); margin: 16px 0;" />
+
+      <div class="grid cols-2">
+        <div>
+          <label>사용 여부</label>
+          <select id="ai-alloc-enabled">
+            <option value="false">꺼짐</option>
+            <option value="true">켜짐</option>
+          </select>
+        </div>
+        <div>
+          <label>실거래 자동 적용</label>
+          <select id="ai-alloc-apply">
+            <option value="false">꺼짐</option>
+            <option value="true">켜짐</option>
+          </select>
+        </div>
+        <div>
+          <label>실행 주기(일)</label>
+          <input id="ai-alloc-cadence" type="number" min="1" max="30" step="1" placeholder="예: 7" />
+        </div>
+        <div>
+          <label>실행 요일(KST)</label>
+          <select id="ai-alloc-dow">
+            <option value="1">월요일</option>
+            <option value="2">화요일</option>
+            <option value="3">수요일</option>
+            <option value="4">목요일</option>
+            <option value="5">금요일</option>
+            <option value="6">토요일</option>
+            <option value="0">일요일</option>
+          </select>
+        </div>
+        <div>
+          <label>실행 시각(KST, 시)</label>
+          <input id="ai-alloc-hour" type="number" min="0" max="23" step="1" placeholder="예: 9" />
+        </div>
+        <div>
+          <label>실행 분(KST, 분)</label>
+          <input id="ai-alloc-minute" type="number" min="0" max="59" step="1" placeholder="예: 30" />
+        </div>
+        <div>
+          <label>실행 시간들(KST, 쉼표)</label>
+          <input id="ai-alloc-hours" type="text" placeholder="예: 0,3,6,9,12,15,18,21" />
+          <div class="body-sm text-muted">입력 시 run_hour보다 우선합니다.</div>
+        </div>
+        <div>
+          <label>최대 변경폭(0~0.5)</label>
+          <input id="ai-alloc-max-change" type="number" min="0" max="0.5" step="0.01" placeholder="예: 0.05" />
+        </div>
+        <div>
+          <label>마켓당 최소 예산(<span id="ai-alloc-unit-min">KRW</span>)</label>
+          <input id="ai-alloc-min" type="number" min="0" step="10000" placeholder="예: 100000" />
+        </div>
+        <div>
+          <label>마켓당 최대 예산(<span id="ai-alloc-unit-max">KRW</span>)</label>
+          <input id="ai-alloc-max" type="number" min="0" step="10000" placeholder="예: 3000000" />
+        </div>
+      </div>
+
+      <hr style="border: none; border-top: 1px solid var(--md-outline); margin: 16px 0;" />
+
+      <div class="grid cols-3">
+        <div>
+          <label>합산 최대 사용 비율(0~1)</label>
+          <input id="ai-alloc-total-cap" type="number" min="0.1" max="1" step="0.05" placeholder="예: 0.8" />
+        </div>
+        <div>
+          <label>이익 재투자 비율(0~1)</label>
+          <input id="ai-alloc-reinvest" type="number" min="0" max="1" step="0.05" placeholder="예: 0.6" />
+        </div>
+        <div>
+          <label>손실 반영 비율(0~2)</label>
+          <input id="ai-alloc-reinvest-loss" type="number" min="0" max="2" step="0.05" placeholder="예: 1.0" />
+        </div>
+        <div>
+          <label>에쿼티 배수 최소</label>
+          <input id="ai-alloc-eq-min" type="number" min="0.3" max="2" step="0.05" placeholder="예: 0.6" />
+        </div>
+        <div>
+          <label>에쿼티 배수 최대</label>
+          <input id="ai-alloc-eq-max" type="number" min="0.3" max="2" step="0.05" placeholder="예: 1.4" />
+        </div>
+        <div>
+          <label>뉴스 기간(일)</label>
+          <input id="ai-alloc-news" type="number" min="1" max="14" step="1" placeholder="예: 7" />
+        </div>
+      </div>
+
+      <hr style="border: none; border-top: 1px solid var(--md-outline); margin: 16px 0;" />
+
+      <div class="grid cols-3">
+        <div>
+          <label>롱/숏 방향 조절 사용</label>
+          <select id="ai-alloc-directional-enabled">
+            <option value="true">켜짐</option>
+            <option value="false">꺼짐</option>
+          </select>
+        </div>
+        <div>
+          <label>방향 최대 기울기(0~0.9)</label>
+          <input id="ai-alloc-side-tilt" type="number" min="0" max="0.9" step="0.05" placeholder="예: 0.35" />
+        </div>
+        <div>
+          <label>중립 밴드(0~0.5)</label>
+          <input id="ai-alloc-side-neutral" type="number" min="0" max="0.5" step="0.01" placeholder="예: 0.05" />
+        </div>
+        <div>
+          <label>방향 최소 신뢰도(0~1)</label>
+          <input id="ai-alloc-side-min-conf" type="number" min="0" max="1" step="0.01" placeholder="예: 0.30" />
+        </div>
+        <div>
+          <label>롱/숏 배율 최소(0.1~1.0)</label>
+          <input id="ai-alloc-side-min" type="number" min="0.1" max="1.0" step="0.05" placeholder="예: 0.65" />
+        </div>
+        <div>
+          <label>롱/숏 배율 최대(1.0~3.0)</label>
+          <input id="ai-alloc-side-max" type="number" min="1.0" max="3.0" step="0.05" placeholder="예: 1.35" />
+        </div>
+      </div>
+
+      <hr style="border: none; border-top: 1px solid var(--md-outline); margin: 16px 0;" />
+
+      <div class="grid cols-3">
+        <div>
+          <label>최소 바 수</label>
+          <input id="ai-alloc-min-bars" type="number" min="5" step="1" placeholder="예: 30" />
+        </div>
+        <div>
+          <label>바 조회 한도</label>
+          <input id="ai-alloc-bars-limit" type="number" min="100" step="100" placeholder="예: 1200" />
+        </div>
+        <div>
+          <label>GPT 사용</label>
+          <select id="ai-alloc-gpt">
+            <option value="true">켜짐</option>
+            <option value="false">꺼짐</option>
+          </select>
+        </div>
+        <div>
+          <label>GPT 모델</label>
+          <select id="ai-alloc-model">
+            <option value="gpt-4o">gpt-4o</option>
+            <option value="gpt-4o-mini">gpt-4o-mini</option>
+            <option value="custom">직접 입력</option>
+          </select>
+          <input id="ai-alloc-model-custom" type="text" placeholder="예: gpt-4o" style="margin-top: 6px; display: none;" />
+        </div>
+        <div>
+          <label>GPT 온도</label>
+          <input id="ai-alloc-temp" type="number" min="0" max="1" step="0.01" placeholder="예: 0.2" />
+        </div>
+        <div>
+          <label>GPT API 키</label>
+          <input id="ai-alloc-key" type="password" placeholder="입력 시 저장됩니다" />
+          <div class="body-sm text-muted" id="ai-alloc-key-hint">키 상태: -</div>
+        </div>
+        <div>
+          <label>Claude 사용</label>
+          <select id="ai-alloc-claude">
+            <option value="true">켜짐</option>
+            <option value="false">꺼짐</option>
+          </select>
+        </div>
+        <div>
+          <label>Claude 모델</label>
+          <select id="ai-alloc-claude-model">
+            <option value="claude-opus-4-5-20251101">claude-opus-4-5-20251101</option>
+            <option value="claude-3-5-sonnet-20241022">claude-3-5-sonnet-20241022</option>
+            <option value="claude-opus-4-1">claude-opus-4-1</option>
+            <option value="claude-3-haiku-20240307">claude-3-haiku-20240307</option>
+            <option value="custom">직접 입력</option>
+          </select>
+          <input id="ai-alloc-claude-model-custom" type="text" placeholder="예: claude-opus-4-5-20251101" style="margin-top: 6px; display: none;" />
+        </div>
+        <div>
+          <label>앙상블 사용</label>
+          <select id="ai-alloc-ensemble">
+            <option value="true">켜짐</option>
+            <option value="false">꺼짐</option>
+          </select>
+        </div>
+        <div>
+          <label>앙상블 GPT 가중치(0~1)</label>
+          <input id="ai-alloc-w-gpt" type="number" min="0" max="1" step="0.01" placeholder="예: 0.6" />
+        </div>
+        <div>
+          <label>앙상블 Claude 가중치(0~1)</label>
+          <input id="ai-alloc-w-claude" type="number" min="0" max="1" step="0.01" placeholder="예: 0.4" />
+        </div>
+      </div>
+
+      <hr style="border: none; border-top: 1px solid var(--md-outline); margin: 16px 0;" />
+
+      <div class="grid cols-2">
+        <div>
+          <label>최근 변경</label>
+          <div class="kv">
+            <div class="k">변경 시각</div><div class="v mono" id="ai-alloc-upd-at">-</div>
+            <div class="k">변경자</div><div class="v mono" id="ai-alloc-upd-by">-</div>
+          </div>
+        </div>
+      </div>
+
+      <hr style="border: none; border-top: 1px solid var(--md-outline); margin: 16px 0;" />
+
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        <button class="btn btn-filled" type="button" id="ai-alloc-save">저장</button>
+        <span class="chip" id="ai-alloc-status">상태 대기</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    function $(id){ return document.getElementById(id); }
+    function normalizeProvider(v){
+      const raw = String(v || "").trim().toUpperCase();
+      if (raw.includes("BINANCE")) return "BINANCEFUT";
+      return "BINANCEFUT";
+    }
+    function activeProvider(){
+      try {
+        const saved = localStorage.getItem("db_exchange_mode");
+        if (saved) return normalizeProvider(saved);
+      } catch(_) {}
+      const nav = document.getElementById("ex-mode");
+      if (nav && nav.value) return normalizeProvider(nav.value);
+      return "BINANCEFUT";
+    }
+    function aiAllocUnit(provider){
+      return { unit: "USDT", step: 1, minPh: "예: 50", maxPh: "예: 500" };
+    }
+    function applyAiAllocUnit(provider){
+      const u = aiAllocUnit(provider);
+      const unit = u.unit;
+      const step = u.step;
+      const minEl = $("ai-alloc-min");
+      const maxEl = $("ai-alloc-max");
+      if ($("ai-alloc-unit")) $("ai-alloc-unit").textContent = unit;
+      if ($("ai-alloc-unit-min")) $("ai-alloc-unit-min").textContent = unit;
+      if ($("ai-alloc-unit-max")) $("ai-alloc-unit-max").textContent = unit;
+      if (minEl) {
+        minEl.step = String(step);
+        minEl.placeholder = u.minPh;
+      }
+      if (maxEl) {
+        maxEl.step = String(step);
+        maxEl.placeholder = u.maxPh;
+      }
+    }
+    function fmtPct(v){
+      const n = Number(v);
+      if (!Number.isFinite(n)) return "-";
+      return (Math.round(n * 1000) / 10).toFixed(1) + "%";
+    }
+    function fmtRatio(v){
+      const n = Number(v);
+      if (!Number.isFinite(n)) return "-";
+      return (Math.round(n * 100) / 100).toFixed(2);
+    }
+    function fmtRegime(v){
+      const raw = String(v || "").toUpperCase();
+      if (!raw) return "-";
+      if (raw.includes("AGG") || raw === "AGGRESSIVE") return "상향";
+      if (raw.includes("NEU") || raw === "NEUTRAL") return "중립";
+      if (raw.includes("CON") || raw === "CONSERVATIVE") return "하향";
+      return raw;
+    }
+    function normalizeBiasTag(v){
+      const raw = String(v || "").toUpperCase();
+      if (raw.includes("LONG") || raw.includes("BULL") || raw === "UP") return "LONG";
+      if (raw.includes("SHORT") || raw.includes("BEAR") || raw === "DOWN") return "SHORT";
+      return "NEUTRAL";
+    }
+    function biasTagFromLast(last){
+      if (!last || typeof last !== "object") return "NEUTRAL";
+      const side = (last.side_allocation && typeof last.side_allocation === "object") ? last.side_allocation : null;
+      const tag = normalizeBiasTag((side && side.bias_direction) || last.direction || "");
+      if (tag !== "NEUTRAL") return tag;
+      const modeTag = String(last.mode || "").toUpperCase();
+      if (modeTag.includes("AGG")) return "LONG";
+      if (modeTag.includes("CON")) return "SHORT";
+      return "NEUTRAL";
+    }
+    function fmtBias(v){
+      const tag = normalizeBiasTag(v);
+      if (tag === "LONG") return "매수 우위";
+      if (tag === "SHORT") return "매도 우위";
+      return "중립";
+    }
+    function setStatus(text, level){
+      const el = $("ai-alloc-status");
+      if (!el) return;
+      el.textContent = text;
+      el.classList.remove("ok","warn","bad","dim");
+      el.classList.add(level || "dim");
+    }
+    function numOrZero(v){
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    }
+    function numOrNull(v){
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
+    function fmtKst(v){
+      if (!v) return "-";
+      const raw = String(v);
+      if (raw.includes("KST")) return raw;
+      const ms = Date.parse(raw);
+      if (!Number.isFinite(ms)) return raw;
+      const k = new Date(ms + 9 * 60 * 60 * 1000);
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${k.getUTCFullYear()}-${pad(k.getUTCMonth() + 1)}-${pad(k.getUTCDate())} ${pad(k.getUTCHours())}:${pad(k.getUTCMinutes())}:${pad(k.getUTCSeconds())} KST`;
+    }
+    function toggleModelInput(){
+      const val = $("ai-alloc-model").value;
+      $("ai-alloc-model-custom").style.display = (val === "custom") ? "block" : "none";
+    }
+    function toggleClaudeAllocModelInput(){
+      const sel = $("ai-alloc-claude-model");
+      const custom = $("ai-alloc-claude-model-custom");
+      if (!sel || !custom) return;
+      custom.style.display = (sel.value === "custom") ? "block" : "none";
+    }
+    function normalizeRunHours(values){
+      const out = [];
+      const seen = new Set();
+      for (const v of (values || [])) {
+        const n = Number(v);
+        if (!Number.isFinite(n)) continue;
+        const h = Math.trunc(n);
+        if (h < 0 || h > 23) continue;
+        if (seen.has(h)) continue;
+        seen.add(h);
+        out.push(h);
+      }
+      return out;
+    }
+    function normalizeRunMinute(value, fallback = 30){
+      const n = Number(value);
+      if (!Number.isFinite(n)) {
+        const f = Number(fallback);
+        if (!Number.isFinite(f)) return 0;
+        return Math.max(0, Math.min(59, Math.trunc(f)));
+      }
+      const m = Math.trunc(n);
+      if (m < 0) return 0;
+      if (m > 59) return 59;
+      return m;
+    }
+    function parseRunHoursInput(raw){
+      const src = String(raw || "").trim();
+      if (!src) return [];
+      const parts = src
+        .split(/[\s,]+/)
+        .map((x) => x.trim())
+        .filter(Boolean);
+      return normalizeRunHours(parts);
+    }
+    function fmtRunHours(hours, minute){
+      const h = normalizeRunHours(hours);
+      if (!h.length) return "-";
+      const mm = String(normalizeRunMinute(minute, 30)).padStart(2, "0");
+      return "매일 " + h.map((x) => `${String(x).padStart(2, "0")}:${mm}`).join(", ");
+    }
+    async function load(){
+      setStatus("불러오는 중…", "dim");
+      const provider = activeProvider();
+      applyAiAllocUnit(provider);
+      const label = $("ai-alloc-provider-label");
+      if (label) label.textContent = "BINANCEFUT";
+      const r = await fetch("/api/settings/ai-allocation?provider=" + encodeURIComponent(provider), { credentials: "include" });
+      const t = await r.text();
+      let j = null;
+      try { j = JSON.parse(t); } catch(_) { j = null; }
+      if (!r.ok || !j || !j.ok){
+        setStatus("불러오기 실패 (" + r.status + ")", "bad");
+        return;
+      }
+      const d = j.data || {};
+      $("ai-alloc-enabled").value = String(!!d.enabled);
+      $("ai-alloc-apply").value = String(!!d.apply_live);
+      $("ai-alloc-cadence").value = String(d.cadence_days ?? 7);
+      $("ai-alloc-dow").value = String(d.run_dow ?? 1);
+      $("ai-alloc-hour").value = String(d.run_hour_kst ?? 9);
+      const runMinute = normalizeRunMinute(d.run_minute_kst ?? 30, 30);
+      $("ai-alloc-minute").value = String(runMinute);
+      const runHours = normalizeRunHours(Array.isArray(d.run_hours_kst) ? d.run_hours_kst : []);
+      $("ai-alloc-hours").value = runHours.join(",");
+      $("ai-alloc-max-change").value = String(d.max_change_pct ?? 0.05);
+      $("ai-alloc-min").value = String(d.min_per_market_krw ?? 100000);
+      $("ai-alloc-max").value = String(d.max_per_market_krw ?? 3000000);
+      $("ai-alloc-total-cap").value = String(d.total_cap_pct_max ?? 0.8);
+      $("ai-alloc-reinvest").value = String(d.reinvest_rate ?? 0.6);
+      $("ai-alloc-reinvest-loss").value = String(d.reinvest_loss_rate ?? 1.0);
+      $("ai-alloc-eq-min").value = String(d.equity_mult_min ?? 0.6);
+      $("ai-alloc-eq-max").value = String(d.equity_mult_max ?? 1.4);
+      const capNow = $("ai-alloc-cap-now");
+      const eqNow = $("ai-alloc-eq-now");
+      const reinvestNow = $("ai-alloc-reinvest-now");
+      const sideNow = $("ai-alloc-side-now");
+      const ensembleNow = $("ai-alloc-ensemble-now");
+      const slotsNow = $("ai-alloc-slots-now");
+      const lastAt = $("ai-alloc-last-at");
+      const lastBias = $("ai-alloc-last-bias-pill");
+      const lastRegime = $("ai-alloc-last-regime-pill");
+      if (capNow) capNow.textContent = fmtPct(d.total_cap_pct_max ?? 0.8);
+      if (eqNow) eqNow.textContent = `${fmtRatio(d.equity_mult_min ?? 0.6)} ~ ${fmtRatio(d.equity_mult_max ?? 1.4)}`;
+      if (reinvestNow) reinvestNow.textContent = `${fmtPct(d.reinvest_rate ?? 0.6)} / 손실 ${fmtRatio(d.reinvest_loss_rate ?? 1.0)}x`;
+      const last = d.last_run || {};
+      if (sideNow) {
+        const sa = (last.side_allocation && typeof last.side_allocation === "object") ? last.side_allocation : null;
+        if (sa) {
+          sideNow.textContent = `매수 ${(fmtPct(sa.long_pct || 0)).replace('.0%', '%')} / 매도 ${(fmtPct(sa.short_pct || 0)).replace('.0%', '%')}`;
+        } else {
+          sideNow.textContent = `매수 x${fmtRatio(d.side_scale_max ?? 1.35)} / 매도 x${fmtRatio(d.side_scale_min ?? 0.65)}`;
+        }
+      }
+      if (ensembleNow) {
+        const ensOn = d.ensemble_enabled !== false;
+        const wg = Number.isFinite(Number(d.ensemble_w_gpt)) ? Number(d.ensemble_w_gpt) : 0.6;
+        const wc = Number.isFinite(Number(d.ensemble_w_claude)) ? Number(d.ensemble_w_claude) : 0.4;
+        ensembleNow.textContent = `${ensOn ? "켜짐" : "꺼짐"} · GPT ${fmtRatio(wg)} / Claude ${fmtRatio(wc)}`;
+      }
+      if (slotsNow) {
+        if (runHours.length) slotsNow.textContent = fmtRunHours(runHours, runMinute);
+        else slotsNow.textContent = `기본 ${String(Number(d.run_hour_kst ?? 9)).padStart(2, "0")}:${String(runMinute).padStart(2, "0")}`;
+      }
+      if (lastAt) lastAt.textContent = fmtKst(last.created_at || "-");
+      if (lastBias) {
+        const biasTag = biasTagFromLast(last);
+        lastBias.textContent = fmtBias(biasTag);
+        lastBias.classList.remove("ok","warn","bad","dim");
+        const cls = biasTag === "LONG"
+          ? "ok"
+          : (biasTag === "SHORT" ? "warn" : "dim");
+        lastBias.classList.add(cls);
+      }
+      if (lastRegime) {
+        const modeTag = String(last.mode || "").toUpperCase();
+        lastRegime.textContent = fmtRegime(last.mode);
+        lastRegime.classList.remove("ok","warn","bad","dim");
+        const cls = modeTag.includes("AGG")
+          ? "ok"
+          : (modeTag.includes("CON") ? "warn" : "dim");
+        lastRegime.classList.add(cls);
+      }
+      $("ai-alloc-news").value = String(d.news_window_days ?? 7);
+      $("ai-alloc-min-bars").value = String(d.min_bars ?? 30);
+      $("ai-alloc-bars-limit").value = String(d.bars_limit ?? 1200);
+      $("ai-alloc-directional-enabled").value = String(d.directional_enabled !== false);
+      $("ai-alloc-side-tilt").value = String(d.side_bias_max_tilt ?? 0.35);
+      $("ai-alloc-side-neutral").value = String(d.side_bias_neutral_threshold ?? 0.05);
+      $("ai-alloc-side-min-conf").value = String(d.side_bias_min_confidence ?? 0.3);
+      $("ai-alloc-side-min").value = String(d.side_scale_min ?? 0.65);
+      $("ai-alloc-side-max").value = String(d.side_scale_max ?? 1.35);
+      $("ai-alloc-gpt").value = String(d.gpt_enabled !== false);
+      const model = String(d.gpt_model || "gpt-4o");
+      const modelPreset = (model === "gpt-4o" || model === "gpt-4o-mini") ? model : "custom";
+      $("ai-alloc-model").value = modelPreset;
+      $("ai-alloc-model-custom").value = (modelPreset === "custom") ? model : "";
+      $("ai-alloc-claude").value = String(d.claude_enabled !== false);
+      const claudeModel = String(d.claude_model || "claude-opus-4-5-20251101");
+      const claudeModelSel = $("ai-alloc-claude-model");
+      const claudeModelCustom = $("ai-alloc-claude-model-custom");
+      if (claudeModelSel) {
+        const known = [
+          "claude-3-5-sonnet-20241022",
+          "claude-opus-4-5-20251101",
+          "claude-opus-4-1",
+          "claude-3-haiku-20240307",
+        ];
+        if (known.includes(claudeModel)) {
+          claudeModelSel.value = claudeModel;
+          if (claudeModelCustom) claudeModelCustom.value = "";
+        } else {
+          claudeModelSel.value = "custom";
+          if (claudeModelCustom) claudeModelCustom.value = claudeModel;
+        }
+      }
+      $("ai-alloc-ensemble").value = String(d.ensemble_enabled !== false);
+      $("ai-alloc-w-gpt").value = String(d.ensemble_w_gpt ?? 0.6);
+      $("ai-alloc-w-claude").value = String(d.ensemble_w_claude ?? 0.4);
+      $("ai-alloc-temp").value = String(d.gpt_temperature ?? 0.2);
+      $("ai-alloc-key").value = "";
+      $("ai-alloc-key-hint").textContent = d.api_key_hint ? `키 상태: ${d.api_key_hint}` : "키 상태: 없음";
+      $("ai-alloc-upd-at").textContent = fmtKst(d.updated_at || "-");
+      $("ai-alloc-upd-by").textContent = d.updated_by || "-";
+      toggleModelInput();
+      toggleClaudeAllocModelInput();
+      setStatus("불러옴", "ok");
+    }
+    function collect(){
+      const modelSel = $("ai-alloc-model").value;
+      const model = (modelSel === "custom")
+        ? ($("ai-alloc-model-custom").value.trim() || "gpt-4o")
+        : modelSel;
+      const claudeModelSel = $("ai-alloc-claude-model").value;
+      const claudeModel = (claudeModelSel === "custom")
+        ? ($("ai-alloc-claude-model-custom").value.trim() || "claude-opus-4-5-20251101")
+        : claudeModelSel;
+      const runHours = parseRunHoursInput($("ai-alloc-hours").value);
+      const runHour = numOrZero($("ai-alloc-hour").value);
+      const runMinute = normalizeRunMinute($("ai-alloc-minute").value, 30);
+      return {
+        enabled: $("ai-alloc-enabled").value === "true",
+        apply_live: $("ai-alloc-apply").value === "true",
+        cadence_days: numOrZero($("ai-alloc-cadence").value),
+        run_dow: numOrZero($("ai-alloc-dow").value),
+        run_hour_kst: runHours.length ? runHours[0] : runHour,
+        run_hours_kst: runHours,
+        run_minute_kst: runMinute,
+        news_window_days: numOrZero($("ai-alloc-news").value),
+        max_change_pct: numOrNull($("ai-alloc-max-change").value),
+        min_per_market_krw: numOrZero($("ai-alloc-min").value),
+        max_per_market_krw: numOrZero($("ai-alloc-max").value),
+        total_cap_pct_max: numOrNull($("ai-alloc-total-cap").value),
+        reinvest_rate: numOrNull($("ai-alloc-reinvest").value),
+        reinvest_loss_rate: numOrNull($("ai-alloc-reinvest-loss").value),
+        equity_mult_min: numOrNull($("ai-alloc-eq-min").value),
+        equity_mult_max: numOrNull($("ai-alloc-eq-max").value),
+        directional_enabled: $("ai-alloc-directional-enabled").value === "true",
+        side_bias_max_tilt: numOrNull($("ai-alloc-side-tilt").value),
+        side_bias_neutral_threshold: numOrNull($("ai-alloc-side-neutral").value),
+        side_bias_min_confidence: numOrNull($("ai-alloc-side-min-conf").value),
+        side_scale_min: numOrNull($("ai-alloc-side-min").value),
+        side_scale_max: numOrNull($("ai-alloc-side-max").value),
+        min_bars: numOrZero($("ai-alloc-min-bars").value),
+        bars_limit: numOrZero($("ai-alloc-bars-limit").value),
+        mode_scale: {
+          aggressive: 1,
+          neutral: 1,
+          conservative: 1,
+        },
+        gpt_enabled: $("ai-alloc-gpt").value === "true",
+        gpt_model: model,
+        claude_enabled: $("ai-alloc-claude").value === "true",
+        claude_model: claudeModel,
+        ensemble_enabled: $("ai-alloc-ensemble").value === "true",
+        ensemble_w_gpt: numOrNull($("ai-alloc-w-gpt").value),
+        ensemble_w_claude: numOrNull($("ai-alloc-w-claude").value),
+        gpt_temperature: numOrNull($("ai-alloc-temp").value),
+        api_key: $("ai-alloc-key").value.trim(),
+      };
+    }
+    async function save(){
+      const btn = $("ai-alloc-save");
+      btn.disabled = true;
+      setStatus("저장 중…", "dim");
+      let payload = null;
+      try { payload = collect(); }
+      catch(e){
+        btn.disabled = false;
+        setStatus("입력 오류: " + e.message, "bad");
+        return;
+      }
+      try{
+        const provider = activeProvider();
+        const r = await fetch("/api/settings/ai-allocation?provider=" + encodeURIComponent(provider), {
+          method: "POST",
+          headers: { "Content-Type":"application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        });
+        const t = await r.text();
+        let j = null;
+        try { j = JSON.parse(t); } catch(_) { j = null; }
+        if (!r.ok || !j || !j.ok){
+          setStatus("저장 실패 (" + r.status + ")", "bad");
+          btn.disabled = false;
+          return;
+        }
+        setStatus("저장 완료 ✅", "ok");
+        setTimeout(()=>{ btn.disabled = false; }, 1500);
+        await load();
+      }catch(e){
+        setStatus("저장 오류: " + e.message, "bad");
+        btn.disabled = false;
+      }
+    }
+    $("ai-alloc-save").addEventListener("click", save);
+    $("ai-alloc-model").addEventListener("change", toggleModelInput);
+    $("ai-alloc-claude-model").addEventListener("change", toggleClaudeAllocModelInput);
+    const navSel = document.getElementById("ex-mode");
+    if (navSel) navSel.addEventListener("change", load);
+    load();
+  })();
+  </script>
+
+  <div class="card" style="margin-top: 4px;">
+    <div class="card-header">
+      <div>
+        <div class="card-title">리스크 · AI Guard</div>
+        <div class="card-subtitle">Claude 키와 앙상블 임계값을 관리합니다.</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="grid cols-3">
+        <div>
+          <label>Claude API 키</label>
+          <input id="rb-claude-key" type="password" placeholder="입력 시 저장됩니다" />
+          <div class="body-sm text-muted" id="rb-claude-key-hint">키 상태: -</div>
+        </div>
+        <div>
+          <label>Claude 모델</label>
+          <select id="rb-claude-model">
+            <option value="claude-opus-4-5-20251101">claude-opus-4-5-20251101</option>
+            <option value="claude-3-5-sonnet-20241022">claude-3-5-sonnet-20241022</option>
+            <option value="claude-3-opus-20240229">claude-3-opus-20240229</option>
+            <option value="claude-3-haiku-20240307">claude-3-haiku-20240307</option>
+            <option value="opus-4">opus-4</option>
+            <option value="claude-opus-4-1">claude-opus-4-1</option>
+            <option value="claude-opus-4-5">claude-opus-4-5</option>
+            <option value="claude-opus-4-6">claude-opus-4-6</option>
+            <option value="custom">직접 입력</option>
+          </select>
+          <input id="rb-claude-model-custom" type="text" placeholder="예: claude-opus-4-5-20251101" style="margin-top: 6px; display: none;" />
+        </div>
+        <div>
+          <label>앙상블 허용 임계값(0~1)</label>
+          <input id="rb-ensemble-allow" type="number" min="0" max="1" step="0.01" placeholder="예: 0.6" />
+        </div>
+        <div>
+          <label>앙상블 축소 임계값(0~1)</label>
+          <input id="rb-ensemble-reduce" type="number" min="0" max="1" step="0.01" placeholder="예: 0.45" />
+        </div>
+        <div style="display: flex; align-items: flex-end; gap: 8px;">
+          <button class="btn btn-outlined sm" type="button" id="rb-claude-save">저장</button>
+        </div>
+      </div>
+    </div>
+  </div>

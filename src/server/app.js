@@ -49,6 +49,7 @@ const briefingRoutes = require("../routes/briefing.routes");
 const briefingLatestRoutes = require("../routes/briefing.latest.routes");
 const patchSuggestRoutes = require("../routes/patch.suggest.routes");
 const egressProxyRoutes = require("../routes/egress.proxy.routes");
+const sseRoutes = require("../routes/sse.routes");
 
 const weeklyCloseRoutes = require("../routes/weekly.close.routes");
 const evalWeeklyRoutes = require("../routes/eval.weekly.routes");
@@ -239,6 +240,9 @@ function createApp() {
 
   // Webhook(신호 저장): 내부 토큰/검증은 routes에서 처리
   app.use("/", createWebhookRoutes());
+
+  // SSE real-time dashboard stream (public, lightweight)
+  app.use("/", sseRoutes);
 
   // Read-only risk proxy + price proxy (public)
   app.use("/", createRiskRoutes());

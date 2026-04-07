@@ -15,7 +15,7 @@ const { buildKpiLatestByMarket } = require("../utils/kpiLatestView");
 const { buildExitStageView } = require("../utils/exitStageView");
 const { buildSignalDisplayReason } = require("../utils/signalReasonView");
 const { buildFillDisplayReason } = require("../utils/fillReasonView");
-const { isPendingIntentExpired, resolveIntentStatusForView, isActivePendingIntent } = require("../utils/intentView");
+const { isPendingIntentExpired, resolveIntentStatusForView, resolveIntentStatusFamilyForView, isActivePendingIntent } = require("../utils/intentView");
 const {
   resolvePositionLeverage,
   resolvePositionLeverageReason,
@@ -85,7 +85,7 @@ function buildIntentStatusLookup({ intents = [], exchange, tfDefault } = {}) {
     return `${mk}__${tfNorm}__${ms}__${ev}`;
   };
   const statusWeight = (intent) => {
-    const s = normalizeStatus(resolveIntentStatusForView(intent, Date.now()) || (intent && intent.status));
+    const s = normalizeStatus(resolveIntentStatusFamilyForView(intent, Date.now()) || (intent && intent.status));
     if (s === "PENDING") return 3;
     if (s === "FILLED") return 2;
     if (s === "CANCELED") return 1;
@@ -141,6 +141,99 @@ async function topN(db, col, n) {
   const snap = await db.collection(col).orderBy("created_at", "desc").limit(n).get();
   const out = [];
   snap.forEach((d) => out.push({ id: d.id, ...(d.data() || {}) }));
+  return out;
+}
+
+function normalizeEntityId(v) {
+  const s = String(v || "").trim();
+  return s || null;
+}
+
+function rowSortMs(row) {
+  return toMsSafe(
+    row && (
+      row.created_at
+      || row.updated_at
+      || row.exec_bar_close_time_utc_ms
+      || row.bar_close_time_utc_ms
+      || row.signal_bar_close_time_utc_ms
+      || row.scheduled_exec_bar_close_time_utc_ms
+    )
+  ) || 0;
+}
+
+function dedupeByIdentity(rows = [], fallbackKeys = []) {
+  const out = [];
+  const seen = new Set();
+  for (const row of rows || []) {
+    if (!row || typeof row !== "object") continue;
+    const keyCandidates = [
+      row.id,
+      row.signal_id,
+      row.drop_id,
+      row.intent_id,
+      row.fill_id,
+      row.trade_id,
+      ...fallbackKeys.map((k) => row[k]),
+    ];
+    const key = keyCandidates.map((x) => normalizeEntityId(x)).find(Boolean) || null;
+    if (!key) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  return out;
+}
+
+function isRowForExchange(item, exchangeNorm) {
+  if (!item || !exchangeNorm) return false;
+  const exRaw = String(item.exchange || "").toUpperCase();
+  if (exRaw) return normalizeProviderId(exRaw) === exchangeNorm;
+  const mkRaw = String(item.symbol_or_pair_id || item.symbol || item.market || "");
+  return normalizeProviderId(inferExchangeFromMarket(mkRaw)) === exchangeNorm;
+}
+
+async function getDocById(db, col, id) {
+  const normalizedId = normalizeEntityId(id);
+  if (!normalizedId) return null;
+  try {
+    const snap = await db.collection(col).doc(normalizedId).get();
+    if (!snap.exists) return null;
+    return { id: snap.id, ...(snap.data() || {}) };
+  } catch (_) {
+    return null;
+  }
+}
+
+async function queryByFieldEq(db, col, field, value, limitN = 80) {
+  const normalizedValue = normalizeEntityId(value);
+  if (!normalizedValue) return [];
+  const lim = Math.max(1, Math.min(Number(limitN) || 80, 300));
+  try {
+    const snap = await db.collection(col).where(field, "==", normalizedValue).limit(lim).get();
+    if (snap.empty) return [];
+    const out = [];
+    snap.forEach((d) => out.push({ id: d.id, ...(d.data() || {}) }));
+    return out;
+  } catch (_) {
+    try {
+      const rows = await topN(db, col, Math.max(200, lim * 3));
+      return rows.filter((x) => normalizeEntityId(x && x[field]) === normalizedValue).slice(0, lim);
+    } catch (_) {
+      return [];
+    }
+  }
+}
+
+function buildLineageBrokenLinks({ signals = [], intents = [], fills = [], trades = [] } = {}) {
+  const hasSignals = (signals || []).length > 0;
+  const hasIntents = (intents || []).length > 0;
+  const hasFills = (fills || []).length > 0;
+  const hasTrades = (trades || []).length > 0;
+  const out = [];
+  if (hasSignals && !hasIntents) out.push("SIGNAL_WITHOUT_INTENT");
+  if (hasIntents && !hasFills) out.push("INTENT_WITHOUT_FILL");
+  if (hasFills && !hasTrades) out.push("FILL_WITHOUT_TRADE");
   return out;
 }
 
@@ -203,12 +296,21 @@ function createStateRoutes() {
       });
 
       const nowMs = Date.now();
+      const canceledLikeRows = intentsFiltered.filter((x) => resolveIntentStatusFamilyForView(x, nowMs) === "CANCELED");
+      const canceledRejectedProvider = canceledLikeRows.filter((x) => normalizeStatus(resolveIntentStatusForView(x, nowMs)) === "REJECTED_PROVIDER").length;
+      const canceledTimeoutProvider = canceledLikeRows.filter((x) => normalizeStatus(resolveIntentStatusForView(x, nowMs)) === "TIMEOUT_PROVIDER").length;
+      const canceledFailedInternal = canceledLikeRows.filter((x) => normalizeStatus(resolveIntentStatusForView(x, nowMs)) === "FAILED_INTERNAL").length;
+      const canceledPlain = Math.max(0, canceledLikeRows.length - canceledRejectedProvider - canceledTimeoutProvider - canceledFailedInternal);
       const intentSummary = {
         // Exchange + live scope only. Mixed-scope totals make the trading page misleading.
         total: intentsFiltered.length,
         pending: intentsFiltered.filter((x) => isActivePendingIntent(x, nowMs)).length,
         filled: intentsFiltered.filter((x) => String(x.status || "").toUpperCase() === "FILLED").length,
-        canceled: intentsFiltered.filter((x) => resolveIntentStatusForView(x, nowMs) === "CANCELED").length,
+        canceled: canceledLikeRows.length,
+        canceled_rejected_provider: canceledRejectedProvider,
+        canceled_timeout_provider: canceledTimeoutProvider,
+        canceled_failed_internal: canceledFailedInternal,
+        canceled_plain: canceledPlain,
         expired_pending: intentsFiltered.filter((x) => {
           return isPendingIntentExpired(x, nowMs);
         }).length,
@@ -322,12 +424,39 @@ function createStateRoutes() {
           exit_stage: exitStage,
           last_signal: lastSignal ? {
             ...lastSignal,
+            signal_id: lastSignal.signal_id || lastSignal.id || null,
+            intent_id: null,
+            run_id: lastSignal.run_id || null,
+            request_id: lastSignal.request_id || null,
+            decision_reason: lastSignal.decision_reason || lastSignal.reason || null,
+            trace_meta: lastSignal.trace_meta || [
+              (lastSignal.signal_id || lastSignal.id) ? `signal:${lastSignal.signal_id || lastSignal.id}` : null,
+              lastSignal.run_id ? `run:${lastSignal.run_id}` : null,
+              lastSignal.request_id ? `req:${lastSignal.request_id}` : null,
+              (lastSignal.decision_reason || lastSignal.reason) ? `reason:${lastSignal.decision_reason || lastSignal.reason}` : null,
+            ].filter(Boolean).join(" | ") || null,
             event_intent: lastSignal.event_intent ?? null,
             mapping_ok: computeMappingOk(lastSignal),
             late_by_bars: lastSignal.features_json ? lastSignal.features_json._late_by_bars : null,
           } : null,
           last_fill: lastFill ? {
             ...lastFill,
+            fill_id: lastFill.fill_id || lastFill.id || null,
+            trade_id: lastFill.trade_id || null,
+            signal_id: lastFill.signal_id || null,
+            intent_id: lastFill.intent_id || null,
+            run_id: lastFill.run_id || null,
+            request_id: lastFill.request_id || null,
+            decision_reason: lastFill.decision_reason || lastFill.event || null,
+            trace_meta: lastFill.trace_meta || [
+              lastFill.signal_id ? `signal:${lastFill.signal_id}` : null,
+              lastFill.intent_id ? `intent:${lastFill.intent_id}` : null,
+              (lastFill.fill_id || lastFill.id) ? `fill:${lastFill.fill_id || lastFill.id}` : null,
+              lastFill.trade_id ? `trade:${lastFill.trade_id}` : null,
+              lastFill.run_id ? `run:${lastFill.run_id}` : null,
+              lastFill.request_id ? `req:${lastFill.request_id}` : null,
+              (lastFill.decision_reason || lastFill.event) ? `reason:${lastFill.decision_reason || lastFill.event}` : null,
+            ].filter(Boolean).join(" | ") || null,
             signal_price: (lastFill.signal_price != null) ? Number(lastFill.signal_price) : null,
             signal_price_diff: (lastFill.signal_price_diff != null) ? Number(lastFill.signal_price_diff) : null,
             signal_price_diff_pct: (lastFill.signal_price_diff_pct != null) ? Number(lastFill.signal_price_diff_pct) : null,
@@ -342,6 +471,18 @@ function createStateRoutes() {
             expires_at: p.expires_at ?? null,
             pending_reason: p.pending_reason ?? null,
             status_reason: p.status_reason ?? null,
+            decision_reason: p.decision_reason || p.reason || p.status_reason || null,
+            request_id: p.request_id || null,
+            run_id: p.run_id || null,
+            signal_id: p.signal_id || null,
+            intent_id: p.intent_id || p.id || null,
+            trace_meta: p.trace_meta || [
+              p.signal_id ? `signal:${p.signal_id}` : null,
+              (p.intent_id || p.id) ? `intent:${p.intent_id || p.id}` : null,
+              p.run_id ? `run:${p.run_id}` : null,
+              p.request_id ? `req:${p.request_id}` : null,
+              (p.decision_reason || p.reason || p.status_reason) ? `reason:${p.decision_reason || p.reason || p.status_reason}` : null,
+            ].filter(Boolean).join(" | ") || null,
           })),
           _view: {
             last_signal_ts: toKstString(lastSignal?.created_kst || lastSignal?.created_at, { fallbackToString: true }),
@@ -630,9 +771,13 @@ function createStateRoutes() {
       const signals12 = signalsMerged.slice(0, 12).map((x) => {
         const matched = intentLookup.resolveForSignal(x);
         const schedMs = Number(matched && matched.scheduled_exec_bar_close_time_utc_ms);
+        const resolvedStatus = normalizeStatus(resolveIntentStatusForView(matched, nowMs));
         const execPlan = matched ? {
           intent_id: matched.intent_id || matched.id || null,
-            status: normalizeStatus(resolveIntentStatusForView(matched, nowMs)),
+          status: resolvedStatus,
+          status_detail: resolvedStatus,
+          status_family: normalizeStatus(resolveIntentStatusFamilyForView(matched, nowMs)),
+          terminal_failure_status: normalizeStatus(matched.terminal_failure_status || null),
           scheduled_exec_bar_close_time_utc_ms: Number.isFinite(schedMs) ? schedMs : null,
           scheduled_exec_kst: Number.isFinite(schedMs) ? toKstString(schedMs) : null,
           pending_reason: matched.pending_reason || null,
@@ -646,6 +791,18 @@ function createStateRoutes() {
         return {
           ...x,
           created_kst: toKstString(x.created_kst || x.created_at, { fallbackToString: true }),
+          decision_reason: x.decision_reason || x.reason || null,
+          request_id: x.request_id || null,
+          run_id: x.run_id || (matched && matched.run_id) || null,
+          signal_id: x.signal_id || x.id || null,
+          intent_id: matched && (matched.intent_id || matched.id) ? (matched.intent_id || matched.id) : null,
+          trace_meta: [
+            x.signal_id || x.id ? `signal:${x.signal_id || x.id}` : null,
+            matched && (matched.intent_id || matched.id) ? `intent:${matched.intent_id || matched.id}` : null,
+            x.run_id || (matched && matched.run_id) ? `run:${x.run_id || matched.run_id}` : null,
+            x.request_id ? `req:${x.request_id}` : null,
+            x.decision_reason || x.reason ? `reason:${x.decision_reason || x.reason}` : null,
+          ].filter(Boolean).join(" | ") || null,
           event_intent: x.event_intent ?? null,
           mapping_ok: computeMappingOk(x),
           late_by_bars: x.features_json ? x.features_json._late_by_bars : null,
@@ -674,6 +831,22 @@ function createStateRoutes() {
           signal_price: (x.signal_price != null) ? Number(x.signal_price) : null,
           signal_price_diff: (x.signal_price_diff != null) ? Number(x.signal_price_diff) : null,
           signal_price_diff_pct: (x.signal_price_diff_pct != null) ? Number(x.signal_price_diff_pct) : null,
+          decision_reason: x.decision_reason || x.event || null,
+          request_id: x.request_id || null,
+          run_id: x.run_id || null,
+          signal_id: x.signal_id || null,
+          intent_id: x.intent_id || null,
+          fill_id: x.fill_id || x.id || null,
+          trade_id: x.trade_id || null,
+          trace_meta: x.trace_meta || [
+            x.signal_id ? `signal:${x.signal_id}` : null,
+            x.intent_id ? `intent:${x.intent_id}` : null,
+            (x.fill_id || x.id) ? `fill:${x.fill_id || x.id}` : null,
+            x.trade_id ? `trade:${x.trade_id}` : null,
+            x.run_id ? `run:${x.run_id}` : null,
+            x.request_id ? `req:${x.request_id}` : null,
+            (x.decision_reason || x.event) ? `reason:${x.decision_reason || x.event}` : null,
+          ].filter(Boolean).join(" | ") || null,
           leverage_applied: lev,
           leverage_tier: resolveLeverageTier(lev),
           leverage_reason: resolveFillLeverageReason(x, { position: pos }),
@@ -781,6 +954,21 @@ function createStateRoutes() {
       const isBinanceExchange = String(exchange || "").toUpperCase().includes("BINANCE");
       const defaultFuturesLeverage = isBinanceExchange ? 2 : 1;
       const nowMs = Date.now();
+      const canceledLikeRows = intentsFiltered.filter((x) => resolveIntentStatusFamilyForView(x, nowMs) === "CANCELED");
+      const canceledRejectedProvider = canceledLikeRows.filter((x) => normalizeStatus(resolveIntentStatusForView(x, nowMs)) === "REJECTED_PROVIDER").length;
+      const canceledTimeoutProvider = canceledLikeRows.filter((x) => normalizeStatus(resolveIntentStatusForView(x, nowMs)) === "TIMEOUT_PROVIDER").length;
+      const canceledFailedInternal = canceledLikeRows.filter((x) => normalizeStatus(resolveIntentStatusForView(x, nowMs)) === "FAILED_INTERNAL").length;
+      const canceledPlain = Math.max(0, canceledLikeRows.length - canceledRejectedProvider - canceledTimeoutProvider - canceledFailedInternal);
+      const intentSummary = {
+        total: intentsFiltered.length,
+        pending: intentsFiltered.filter((x) => isActivePendingIntent(x, nowMs)).length,
+        filled: intentsFiltered.filter((x) => String(x.status || "").toUpperCase() === "FILLED").length,
+        canceled: canceledLikeRows.length,
+        canceled_rejected_provider: canceledRejectedProvider,
+        canceled_timeout_provider: canceledTimeoutProvider,
+        canceled_failed_internal: canceledFailedInternal,
+        canceled_plain: canceledPlain,
+      };
 
       const rows = markets.map((mk) => {
         const lastSignal = signalsMerged.find((x) => normalizeMarket(x.symbol_or_pair_id || x.symbol || x.market || "") === mk) || null;
@@ -803,15 +991,58 @@ function createStateRoutes() {
           position_leverage: positionLeverage,
           position_leverage_tier: resolveLeverageTier(positionLeverage),
           position_leverage_reason: resolvePositionLeverageReason(position),
-          last_signal: lastSignal,
+          last_signal: lastSignal ? {
+            ...lastSignal,
+            signal_id: lastSignal.signal_id || lastSignal.id || null,
+            intent_id: null,
+            run_id: lastSignal.run_id || null,
+            request_id: lastSignal.request_id || null,
+            decision_reason: lastSignal.decision_reason || lastSignal.reason || null,
+            trace_meta: lastSignal.trace_meta || [
+              (lastSignal.signal_id || lastSignal.id) ? `signal:${lastSignal.signal_id || lastSignal.id}` : null,
+              lastSignal.run_id ? `run:${lastSignal.run_id}` : null,
+              lastSignal.request_id ? `req:${lastSignal.request_id}` : null,
+              (lastSignal.decision_reason || lastSignal.reason) ? `reason:${lastSignal.decision_reason || lastSignal.reason}` : null,
+            ].filter(Boolean).join(" | ") || null,
+          } : null,
           last_fill: lastFill ? {
             ...lastFill,
+            fill_id: lastFill.fill_id || lastFill.id || null,
+            trade_id: lastFill.trade_id || null,
+            signal_id: lastFill.signal_id || null,
+            intent_id: lastFill.intent_id || null,
+            run_id: lastFill.run_id || null,
+            request_id: lastFill.request_id || null,
+            decision_reason: lastFill.decision_reason || lastFill.event || null,
+            trace_meta: lastFill.trace_meta || [
+              lastFill.signal_id ? `signal:${lastFill.signal_id}` : null,
+              lastFill.intent_id ? `intent:${lastFill.intent_id}` : null,
+              (lastFill.fill_id || lastFill.id) ? `fill:${lastFill.fill_id || lastFill.id}` : null,
+              lastFill.trade_id ? `trade:${lastFill.trade_id}` : null,
+              lastFill.run_id ? `run:${lastFill.run_id}` : null,
+              lastFill.request_id ? `req:${lastFill.request_id}` : null,
+              (lastFill.decision_reason || lastFill.event) ? `reason:${lastFill.decision_reason || lastFill.event}` : null,
+            ].filter(Boolean).join(" | ") || null,
             leverage_applied: fillLeverage,
             leverage_tier: resolveLeverageTier(fillLeverage),
             leverage_reason: resolveFillLeverageReason(lastFill, { position }),
           } : null,
           fill_leverage: fillLeverage,
           pending_intents: pendings,
+          pending_intent_trace: pendings.map((p) => ({
+            intent_id: p.intent_id || p.id || null,
+            signal_id: p.signal_id || null,
+            run_id: p.run_id || null,
+            request_id: p.request_id || null,
+            decision_reason: p.decision_reason || p.reason || p.status_reason || null,
+            trace_meta: p.trace_meta || [
+              p.signal_id ? `signal:${p.signal_id}` : null,
+              (p.intent_id || p.id) ? `intent:${p.intent_id || p.id}` : null,
+              p.run_id ? `run:${p.run_id}` : null,
+              p.request_id ? `req:${p.request_id}` : null,
+              (p.decision_reason || p.reason || p.status_reason) ? `reason:${p.decision_reason || p.reason || p.status_reason}` : null,
+            ].filter(Boolean).join(" | ") || null,
+          })),
         };
       });
       const leverageSummary = buildLeverageSummary(rows, { includeFlat: true });
@@ -825,6 +1056,7 @@ function createStateRoutes() {
         markets,
         exchange,
         rows,
+        intent_summary: intentSummary,
         leverage_summary: leverageSummary,
         rollback_summary: rollbackSummary,
         meta: {
@@ -841,6 +1073,173 @@ function createStateRoutes() {
       return res.json(payload);
     } catch (e) {
       return res.status(500).json({ ok: false, message: e?.message || String(e) });
+    }
+  });
+
+  router.get("/api/state/lineage", async (req, res) => {
+    try {
+      const db = getFirestore();
+      const { exchange } = await resolveExchangeFromReq(req, 2000);
+      const exchangeNorm = normalizeProviderId(exchange);
+
+      const signalIdInput = normalizeEntityId(req.query.signal_id || req.query.signalId);
+      const intentIdInput = normalizeEntityId(req.query.intent_id || req.query.intentId);
+      const fillIdInput = normalizeEntityId(req.query.fill_id || req.query.fillId);
+      const tradeIdInput = normalizeEntityId(req.query.trade_id || req.query.tradeId);
+      const limitN = Math.max(20, Math.min(Number(req.query.limit || 80) || 80, 300));
+
+      if (!signalIdInput && !intentIdInput && !fillIdInput && !tradeIdInput) {
+        return res.status(400).json({
+          ok: false,
+          error: "LINEAGE_ID_REQUIRED",
+          message: "signal_id | intent_id | fill_id | trade_id 중 하나는 필요합니다.",
+        });
+      }
+
+      const nodes = {
+        signals: [],
+        drops: [],
+        intents: [],
+        fills: [],
+        trades: [],
+      };
+      const signalIds = new Set();
+      const intentIds = new Set();
+      const fillIds = new Set();
+      const tradeIds = new Set();
+
+      const seedSignal = await getDocById(db, "signals", signalIdInput);
+      if (seedSignal && isRowForExchange(seedSignal, exchangeNorm)) nodes.signals.push(seedSignal);
+      const seedDrop = await getDocById(db, "signals_dropped", signalIdInput);
+      if (seedDrop && isRowForExchange(seedDrop, exchangeNorm)) nodes.drops.push(seedDrop);
+      const seedIntent = await getDocById(db, "order_intents_paper", intentIdInput);
+      if (seedIntent && isRowForExchange(seedIntent, exchangeNorm)) nodes.intents.push(seedIntent);
+      const seedFill = await getDocById(db, "fills_paper", fillIdInput);
+      if (seedFill && isRowForExchange(seedFill, exchangeNorm)) nodes.fills.push(seedFill);
+      const seedTrade = await getDocById(db, "trades_paper", tradeIdInput);
+      if (seedTrade && isRowForExchange(seedTrade, exchangeNorm)) nodes.trades.push(seedTrade);
+
+      if (signalIdInput) signalIds.add(signalIdInput);
+      if (intentIdInput) intentIds.add(intentIdInput);
+      if (fillIdInput) fillIds.add(fillIdInput);
+      if (tradeIdInput) tradeIds.add(tradeIdInput);
+
+      const absorbRowIds = (row) => {
+        if (!row || typeof row !== "object") return;
+        const sid = normalizeEntityId(row.signal_id || row.id);
+        const iid = normalizeEntityId(row.intent_id);
+        const fid = normalizeEntityId(row.fill_id);
+        const tid = normalizeEntityId(row.trade_id);
+        if (sid) signalIds.add(sid);
+        if (iid) intentIds.add(iid);
+        if (fid) fillIds.add(fid);
+        if (tid) tradeIds.add(tid);
+      };
+
+      nodes.signals.forEach(absorbRowIds);
+      nodes.drops.forEach(absorbRowIds);
+      nodes.intents.forEach(absorbRowIds);
+      nodes.fills.forEach(absorbRowIds);
+      nodes.trades.forEach(absorbRowIds);
+
+      const queryByEachId = async (col, field, ids) => {
+        const results = [];
+        const list = Array.from(ids || []).slice(0, 10);
+        for (const id of list) {
+          // eslint-disable-next-line no-await-in-loop
+          const rows = await queryByFieldEq(db, col, field, id, Math.max(20, Math.floor(limitN / 2)));
+          results.push(...rows);
+        }
+        return results;
+      };
+
+      const [
+        intentsBySignal,
+        fillsBySignal,
+        fillsByIntent,
+        fillsByTrade,
+        tradesBySignal,
+        tradesByIntent,
+        tradesByFill,
+      ] = await Promise.all([
+        queryByEachId("order_intents_paper", "signal_id", signalIds),
+        queryByEachId("fills_paper", "signal_id", signalIds),
+        queryByEachId("fills_paper", "intent_id", intentIds),
+        queryByEachId("fills_paper", "trade_id", tradeIds),
+        queryByEachId("trades_paper", "signal_id", signalIds),
+        queryByEachId("trades_paper", "intent_id", intentIds),
+        queryByEachId("trades_paper", "fill_id", fillIds),
+      ]);
+
+      nodes.intents.push(...(intentsBySignal || []));
+      nodes.fills.push(...(fillsBySignal || []), ...(fillsByIntent || []), ...(fillsByTrade || []));
+      nodes.trades.push(...(tradesBySignal || []), ...(tradesByIntent || []), ...(tradesByFill || []));
+
+      const includeExchange = (row) => isRowForExchange(row, exchangeNorm);
+      nodes.signals = dedupeByIdentity(nodes.signals.filter(includeExchange), ["signal_doc_id"])
+        .sort((a, b) => rowSortMs(b) - rowSortMs(a))
+        .slice(0, limitN);
+      nodes.drops = dedupeByIdentity(nodes.drops.filter(includeExchange), ["drop_id"])
+        .sort((a, b) => rowSortMs(b) - rowSortMs(a))
+        .slice(0, limitN);
+      nodes.intents = dedupeByIdentity(nodes.intents.filter(includeExchange), ["intent_scope"])
+        .sort((a, b) => rowSortMs(b) - rowSortMs(a))
+        .slice(0, limitN);
+      nodes.fills = dedupeByIdentity(nodes.fills.filter(includeExchange), ["signal_doc_id"])
+        .sort((a, b) => rowSortMs(b) - rowSortMs(a))
+        .slice(0, limitN);
+      nodes.trades = dedupeByIdentity(nodes.trades.filter(includeExchange), ["signal_doc_id"])
+        .sort((a, b) => rowSortMs(b) - rowSortMs(a))
+        .slice(0, limitN);
+
+      nodes.signals.forEach(absorbRowIds);
+      nodes.intents.forEach(absorbRowIds);
+      nodes.fills.forEach(absorbRowIds);
+      nodes.trades.forEach(absorbRowIds);
+
+      const chain = {
+        signal_ids: Array.from(signalIds).slice(0, 20),
+        intent_ids: Array.from(intentIds).slice(0, 20),
+        fill_ids: Array.from(fillIds).slice(0, 20),
+        trade_ids: Array.from(tradeIds).slice(0, 20),
+      };
+      const brokenLinks = buildLineageBrokenLinks({
+        signals: nodes.signals.length ? nodes.signals : nodes.drops,
+        intents: nodes.intents,
+        fills: nodes.fills,
+        trades: nodes.trades,
+      });
+
+      return res.json({
+        ok: true,
+        exchange: exchangeNorm,
+        query: {
+          signal_id: signalIdInput,
+          intent_id: intentIdInput,
+          fill_id: fillIdInput,
+          trade_id: tradeIdInput,
+          limit: limitN,
+        },
+        counts: {
+          signals: nodes.signals.length,
+          drops: nodes.drops.length,
+          intents: nodes.intents.length,
+          fills: nodes.fills.length,
+          trades: nodes.trades.length,
+        },
+        chain,
+        diagnostics: {
+          broken_links: brokenLinks,
+          complete: brokenLinks.length === 0,
+        },
+        nodes,
+      });
+    } catch (e) {
+      return res.status(500).json({
+        ok: false,
+        error: "LINEAGE_LOOKUP_FAILED",
+        message: e?.message || String(e),
+      });
     }
   });
 

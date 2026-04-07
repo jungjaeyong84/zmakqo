@@ -133,6 +133,64 @@ function createDashboardRoutes(stateMachine, scheduler) {
     });
   });
 
+  // ── Lightweight polling endpoint for home dashboard ──
+  router.get("/api/dashboard/pulse", async (req, res) => {
+    try {
+      const db = getFirestore();
+      const exchange = String(req.query.exchange || "BINANCEFUT").toUpperCase();
+
+      // Latest 3 signals
+      const signalsSnap = await db.collection("signals")
+        .where("exchange", "==", exchange)
+        .orderBy("created_at", "desc")
+        .limit(3)
+        .get();
+      const signals = signalsSnap.docs.map((d) => {
+        const data = d.data();
+        return {
+          symbol: data.symbol_or_pair_id || data.symbol || null,
+          event: data.event || null,
+          entry_grade: (data.features_json && data.features_json.entry_grade) || null,
+          source: (data.features_json && data.features_json.canonical_engine_candidate_source) || "SERVER",
+          created_at: data.created_at || null,
+          status: data.exec_plan ? (data.exec_plan.status || null) : null,
+        };
+      });
+
+      // Latest 3 fills
+      const fillsSnap = await db.collection("fills_paper")
+        .where("exchange", "==", exchange)
+        .orderBy("created_at", "desc")
+        .limit(3)
+        .get();
+      const fills = fillsSnap.docs.map((d) => {
+        const data = d.data();
+        return {
+          symbol: data.symbol || data.symbol_or_pair_id || null,
+          event: data.event || null,
+          exec_price: data.exec_price || null,
+          created_at: data.created_at || null,
+        };
+      });
+
+      // Active positions count
+      const posSnap = await db.collection("positions_paper")
+        .where("exchange", "==", exchange)
+        .where("status", "==", "ACTIVE")
+        .get();
+
+      res.json({
+        ok: true,
+        ts: new Date().toISOString(),
+        signals,
+        fills,
+        active_positions: posSnap.size,
+      });
+    } catch (e) {
+      res.json({ ok: false, error: e.message || String(e), signals: [], fills: [], active_positions: 0 });
+    }
+  });
+
   return router;
 }
 

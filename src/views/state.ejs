@@ -1,4 +1,4 @@
-<%- include('partials/app_start_trader', { title: '거래기록 · DONBEOLJA Trader', pageTitle: '거래기록', active: 'trading' }) %>
+<%- include('partials/app_start_unified', { title: '거래기록 · DONBEOLJA', pageTitle: '거래기록', active: 'trading' }) %>
 
 <%
   const budgetUnit = String(String(exchange || '').includes('BINANCE') ? 'USDT' : 'KRW').toUpperCase();
@@ -18,6 +18,9 @@
     return state === 'ACTIVE' || state === 'EXIT_ONLY';
   }).length;
   const pendingMarketsN = marketRows.filter((row) => Array.isArray(row && row.pending_intents) && row.pending_intents.length > 0).length;
+  const canceledRejectedProviderN = Number(intent_summary && intent_summary.canceled_rejected_provider);
+  const canceledTimeoutProviderN = Number(intent_summary && intent_summary.canceled_timeout_provider);
+  const canceledFailedInternalN = Number(intent_summary && intent_summary.canceled_failed_internal);
 
   function fmtNum(x, digits = 0) {
     const n = Number(x);
@@ -46,10 +49,14 @@
     const pad = (n) => String(n).padStart(2, '0');
     return `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
   }
+  function displaySymbol(raw) {
+    const s = String(raw || '-');
+    return s.replace(/USDT$/i, '');
+  }
   function eventLabel(event) {
     const s = String(event || '').toUpperCase();
-    if (s.includes('SHORT')) return '숏';
-    if (s.includes('LONG')) return '롱';
+    if (s.includes('SHORT')) return '매도';
+    if (s.includes('LONG')) return '매수';
     if (s.startsWith('EXIT')) return '청산';
     return s || '-';
   }
@@ -57,44 +64,49 @@
     const s = String(event || '').toUpperCase();
     if (s.includes('SHORT')) return 'short';
     if (s.includes('LONG')) return 'long';
-    return 'soft';
+    return 'filled';
   }
   function gradeLabel(signal) {
     const g = String(signal && signal.entry_grade || '').toUpperCase();
-    if (g === 'CORE') return '코어';
-    if (g === 'EARLY') return '얼리';
+    if (g === 'CORE') return '강한 신호';
+    if (g === 'EARLY') return '초기 신호';
     return '-';
   }
   function sourceLabel(signal) {
     if (!signal) return '-';
     const source = String(signal.source || '').toUpperCase();
-    if (signal.authoritative === true || source === 'SERVER') return '서버';
-    if (source === 'PINE_SHADOW') return 'Pine';
+    if (signal.authoritative === true || source === 'SERVER') return '자동 분석';
+    if (source === 'PINE_SHADOW') return '보조 분석';
     if (source === 'WEBHOOK') return '외부';
     return '-';
   }
   function statusLabel(signal) {
     if (!signal) return '-';
     if (signal.exec_plan && signal.exec_plan.status) {
-      const s = String(signal.exec_plan.status).toUpperCase();
-      if (s === 'PENDING') return '주문 대기';
-      if (s === 'FILLED') return '체결 완료';
-      if (s === 'CANCELED') return '취소';
+      const s = String(signal.exec_plan.status_detail || signal.exec_plan.status || signal.exec_plan.status_family).toUpperCase();
+      if (s === 'PENDING') return '대기 중';
+      if (s === 'FILLED') return '체결됨';
+      if (s === 'REJECTED_PROVIDER') return '거래소 거절';
+      if (s === 'TIMEOUT_PROVIDER') return '시간 초과';
+      if (s === 'FAILED_INTERNAL') return '내부 오류';
+      if (s === 'CANCELED') return '취소됨';
       return s;
     }
-    if (signal._signal_source === 'DROP') return '드롭';
+    if (signal._signal_source === 'DROP') return '건너뜀';
     return '수신';
   }
   function positionStateLabel(row) {
     const s = String(row && row.position_state || '').toUpperCase();
     if (s === 'ACTIVE') return '보유 중';
     if (s === 'EXIT_ONLY') return '청산 대기';
+    if (s === 'QUARANTINE') return '거래 중단';
+    if (s === 'WATCH_ONLY') return '관찰 중';
     return '대기';
   }
   function positionSideLabel(row) {
     const side = String(row && row.position && (row.position.position_side || row.position.positionSide || row.position.side) || '').toUpperCase();
-    if (side === 'LONG') return '롱';
-    if (side === 'SHORT') return '숏';
+    if (side === 'LONG') return '매수';
+    if (side === 'SHORT') return '매도';
     return null;
   }
   function leverageText(x, tier) {
@@ -107,24 +119,51 @@
     const raw = String(v || '-');
     return raw.length > len ? raw.slice(0, len) + '...' : raw;
   }
+  function lineageHref({ signalId = null, intentId = null, fillId = null, tradeId = null } = {}) {
+    const q = [];
+    if (exchange) q.push(`provider=${encodeURIComponent(String(exchange))}`);
+    if (signalId) q.push(`signal_id=${encodeURIComponent(String(signalId))}`);
+    if (intentId) q.push(`intent_id=${encodeURIComponent(String(intentId))}`);
+    if (fillId) q.push(`fill_id=${encodeURIComponent(String(fillId))}`);
+    if (tradeId) q.push(`trade_id=${encodeURIComponent(String(tradeId))}`);
+    return `/api/state/lineage${q.length ? `?${q.join("&")}` : ""}`;
+  }
+
+  const guardrailStatus = health && health.guardrail && health.guardrail.status ? String(health.guardrail.status).toUpperCase() : '';
+  const guardrailLabel = guardrailStatus === 'QUARANTINE' ? '거래 중단' : guardrailStatus === 'WATCH_ONLY' ? '관찰 중' : (health && health.guardrail && health.guardrail.status ? health.guardrail.status : '-');
+  const guardrailTone = guardrailStatus === 'QUARANTINE' ? 'error' : guardrailStatus === 'WATCH_ONLY' ? 'warning' : 'success';
 %>
 
 <style>
-  .trading-records {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-  }
-  .records-top {
+  /* -- State page-specific styles -- */
+  .state-overview {
     display: grid;
-    grid-template-columns: minmax(0, 1.15fr) 340px;
-    gap: 16px;
-  }
-  .records-kpis {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: 1fr 1fr 1fr 1fr;
     gap: 12px;
+    margin-bottom: 18px;
   }
+  .state-section { margin-bottom: 18px; }
+  .state-section summary {
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .state-section summary::-webkit-details-marker { display: none; }
+  .state-section summary::before {
+    content: '\25B6';
+    font-size: 10px;
+    color: var(--md-on-surface-variant);
+    transition: transform 0.15s ease;
+    display: inline-block;
+  }
+  .state-section[open] summary::before {
+    transform: rotate(90deg);
+  }
+  .state-section .card { margin-top: 10px; }
+
   .records-strip {
     display: flex;
     align-items: center;
@@ -132,106 +171,41 @@
     flex-wrap: wrap;
     margin-bottom: 12px;
   }
-  .records-kpi {
-    padding: 14px 15px;
-    border-radius: 18px;
-    border: 1px solid var(--trade-border);
-    background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
-  }
-  .records-kpi .label,
-  .records-mini .label,
-  .runtime-row .label,
-  .drop-row .label {
-    color: var(--trade-muted);
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .07em;
-  }
-  .records-kpi .value,
-  .records-mini .value {
-    margin-top: 6px;
-    font-size: 18px;
-    font-weight: 800;
-    letter-spacing: -.04em;
-  }
-  .records-kpi .meta,
-  .records-mini .meta,
-  .runtime-row .meta,
-  .drop-row .meta {
-    margin-top: 5px;
-    color: var(--trade-muted);
-    font-size: 11px;
-    line-height: 1.45;
-  }
-  .records-hero .trade-panel-body {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
-  .records-mini {
-    padding: 12px 13px;
-    border: 1px solid var(--trade-border);
-    border-radius: 14px;
-    background: #fbfcfd;
-  }
-  .side-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .runtime-list,
-  .drop-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
   .runtime-row,
   .drop-row {
-    padding: 10px 12px;
-    border: 1px solid var(--trade-border);
-    border-radius: 14px;
-    background: #fbfcfd;
+    padding: 12px 14px;
+    border: 1px solid var(--md-outline-variant);
+    border-radius: var(--md-shape-md);
+    background: var(--md-surface-container-low);
+  }
+  .runtime-row + .runtime-row,
+  .drop-row + .drop-row { margin-top: 8px; }
+  .runtime-row .rlabel,
+  .drop-row .rlabel {
+    color: var(--md-on-surface-variant);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
   }
   .runtime-row strong,
   .drop-row strong {
     display: block;
     margin-top: 4px;
-    font-size: 12px;
+    font-size: 13px;
+    color: var(--md-on-surface);
   }
-  .trade-layout-grid,
-  .market-layout-grid,
-  .fills-layout-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.2fr) 340px;
-    gap: 16px;
-  }
-  .compact-record-table th,
-  .compact-record-table td {
-    padding-top: 8px;
-    padding-bottom: 8px;
-  }
-  .compact-record-table td strong {
-    display: block;
+  .runtime-row .rmeta,
+  .drop-row .rmeta {
+    margin-top: 4px;
+    color: var(--md-on-surface-variant);
     font-size: 11px;
+    line-height: 1.45;
   }
-  .compact-record-table td span {
-    display: block;
-    margin-top: 2px;
-    color: var(--trade-muted);
-    font-size: 10px;
-  }
-  .table-chip.soft {
-    color: var(--trade-muted);
-    background: #f7f8fa;
-  }
-  .table-chip.status {
-    color: #3f4954;
-    background: #f4f6f8;
-  }
-  .table-chip.warn {
-    color: #8a6303;
-    background: #fff4d7;
+  .lineage-link {
+    font-size: 11px;
+    color: var(--md-on-surface-variant);
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
   .action-stack {
     display: flex;
@@ -244,27 +218,26 @@
     justify-content: center;
     height: 30px;
     padding: 0 10px;
-    border-radius: 10px;
-    border: 1px solid var(--trade-border);
-    background: #fff;
+    border-radius: var(--md-shape-full);
+    border: 1px solid var(--md-outline);
+    background: var(--md-surface);
     font-size: 11px;
-    font-weight: 700;
-    color: var(--trade-text);
+    font-weight: 500;
+    color: var(--md-on-surface);
     cursor: pointer;
+    transition: background var(--md-motion-std);
   }
-  .action-btn:disabled {
-    opacity: .45;
-    cursor: default;
-  }
+  .action-btn:hover { background: var(--md-surface-container-low); }
+  .action-btn:disabled { opacity: 0.38; cursor: not-allowed; }
   .action-btn.warn {
-    border-color: #ead8a2;
-    background: #fff8e7;
-    color: #8a6303;
+    border-color: var(--md-warning);
+    background: var(--md-warning-container);
+    color: #7c5800;
   }
   .action-btn.bad {
-    border-color: #f0c5c1;
-    background: #fff1f0;
-    color: var(--trade-down);
+    border-color: var(--md-error);
+    background: var(--md-error-container);
+    color: var(--md-error);
   }
   .pending-stack {
     display: flex;
@@ -272,15 +245,12 @@
     gap: 6px;
     flex-wrap: wrap;
   }
-  .subchip {
-    display: inline-flex;
+  .signal-status-stack,
+  .market-status-stack {
+    display: flex;
     align-items: center;
-    padding: 4px 7px;
-    border-radius: 999px;
-    background: #f4f6f8;
-    color: var(--trade-muted);
-    font-size: 10px;
-    font-weight: 700;
+    gap: 6px;
+    flex-wrap: wrap;
   }
   .summary-pills {
     display: flex;
@@ -288,396 +258,461 @@
     gap: 6px;
   }
   .table-note {
-    color: var(--trade-muted);
-    font-size: 10px;
+    color: var(--md-on-surface-variant);
+    font-size: 11px;
     line-height: 1.45;
-  }
-  .market-status-stack,
-  .signal-status-stack {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
+    margin-top: 2px;
   }
   .right-align { text-align: right; }
   .center-align { text-align: center; }
+  .side-by-side {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 16px;
+  }
+
   @media (max-width: 1260px) {
-    .records-top,
-    .trade-layout-grid,
-    .market-layout-grid,
-    .fills-layout-grid { grid-template-columns: 1fr; }
-    .records-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .side-by-side { grid-template-columns: 1fr; }
   }
   @media (max-width: 860px) {
-    .records-kpis,
-    .records-hero .trade-panel-body { grid-template-columns: 1fr; }
+    .state-overview { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 520px) {
+    .state-overview { grid-template-columns: 1fr; }
   }
 </style>
 
-<section class="trading-records">
-  <section class="records-top">
-    <article class="trade-panel soft records-hero compact">
-      <div class="trade-panel-head">
-        <div>
-          <div class="trade-panel-title">거래기록 요약</div>
-          <div class="trade-panel-sub">신호, 드롭, 대기 인텐트, 체결을 거래소형 화면으로 빠르게 읽습니다.</div>
-        </div>
-      </div>
-      <div class="trade-panel-body">
-        <div class="records-mini">
-          <div class="label">거래소 · TF</div>
-          <div class="value"><%= exchange || '-' %></div>
-          <div class="meta">기본 TF <span class="mono"><%= tf_default || '-' %></span> · <span class="mono"><%= now_kst || '-' %></span></div>
-        </div>
-        <div class="records-mini">
-          <div class="label">실행 상태</div>
-          <div class="value"><%= health && health.last_tick_kst ? '가동 중' : '대기' %></div>
-          <div class="meta">최근 스케줄러 <span class="mono"><%= health && health.last_tick_kst ? health.last_tick_kst : '-' %></span></div>
-        </div>
-        <div class="records-mini">
-          <div class="label">신호 보기</div>
-          <div class="value"><%= shadowMode ? '그림자 포함' : '정본 기준' %></div>
-          <div class="meta"><a class="trade-btn" href="<%= shadowMode ? '/dashboard/trading?shadow=0' : '/dashboard/trading?shadow=1' %>"><%= shadowMode ? '정본만 보기' : '그림자 포함 보기' %></a></div>
-        </div>
-        <div class="records-mini">
-          <div class="label">감시 마켓</div>
-          <div class="value"><%= fmtNum(monitoredMarketsN) %>개</div>
-          <div class="meta">활성 포지션 <%= fmtNum(activePositionsN) %> · 대기 마켓 <%= fmtNum(pendingMarketsN) %></div>
-        </div>
-      </div>
-    </article>
+<!-- Overview KPI -->
+<div class="state-overview">
+  <div class="metric-card">
+    <div class="metric-card-label">거래 신호</div>
+    <div class="metric-card-value sm"><%= fmtNum(signalRows.length) %>건</div>
+    <div class="metric-card-meta">자동 분석 <%= fmtNum(serverSignalN) %> · 보조 분석 <%= fmtNum(pineSignalN) %></div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-card-label">체결</div>
+    <div class="metric-card-value sm"><%= fmtNum(fillRows.length) %>건</div>
+    <div class="metric-card-meta">최근 12건 기준</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-card-label">대기 중인 주문</div>
+    <div class="metric-card-value sm"><%= intent_summary && intent_summary.pending != null ? fmtNum(intent_summary.pending) : '-' %></div>
+    <div class="metric-card-meta">
+      총 <%= intent_summary && intent_summary.total != null ? fmtNum(intent_summary.total) : '-' %>건
+      <% if (canceledRejectedProviderN || canceledTimeoutProviderN || canceledFailedInternalN) { %>
+        · 실패 <%= fmtNum(canceledRejectedProviderN + canceledTimeoutProviderN + canceledFailedInternalN) %>건
+      <% } %>
+    </div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-card-label">보유 포지션</div>
+    <div class="metric-card-value sm"><%= fmtNum(activePositionsN) %>개</div>
+    <div class="metric-card-meta">감시 마켓 <%= fmtNum(monitoredMarketsN) %>개</div>
+  </div>
+</div>
 
-    <aside class="side-stack">
-      <section class="trade-panel compact">
-        <div class="trade-panel-head">
-          <div>
-            <div class="trade-panel-title">실행 런타임</div>
-            <div class="trade-panel-sub">감시와 가드레일 상태</div>
-          </div>
-        </div>
-        <div class="trade-panel-body runtime-list">
-          <div class="runtime-row">
-            <div class="label">리스크 가드레일</div>
-            <strong><%= health && health.guardrail && health.guardrail.status ? health.guardrail.status : '-' %></strong>
-            <div class="meta">일일 손익 <%= fmtPrice(health && health.guardrail ? health.guardrail.daily_realized_krw : null) %> <%= budgetUnit %></div>
-          </div>
-          <div class="runtime-row">
-            <div class="label">봉 최신</div>
-            <strong><%= health && health.latest_bar_kst ? health.latest_bar_kst : '-' %></strong>
-            <div class="meta">지연 봉 <%= fmtNum(health && health.stale_bars_n) %>개</div>
-          </div>
-          <div class="runtime-row">
-            <div class="label">최근 체결</div>
-            <strong><%= health && health.last_fill_kst ? health.last_fill_kst : '-' %></strong>
-            <div class="meta">로그 <span class="mono"><%= health && health.log_level ? health.log_level : '-' %></span></div>
-          </div>
-        </div>
-      </section>
-    </aside>
-  </section>
-
-  <section class="records-kpis">
-    <article class="records-kpi">
-      <div class="label">최근 신호</div>
-      <div class="value"><%= fmtNum(signalRows.length) %>건</div>
-      <div class="meta">현재 화면에 표시되는 최근 12건 기준</div>
-    </article>
-    <article class="records-kpi">
-      <div class="label">최근 드롭</div>
-      <div class="value"><%= fmtNum(recentDropN) %>건</div>
-      <div class="meta"><%= dropSummary ? `${dropSummary.window_hours}시간 필터링 기준` : '드롭 집계 없음' %></div>
-    </article>
-    <article class="records-kpi">
-      <div class="label">대기 인텐트</div>
-      <div class="value"><%= intent_summary && intent_summary.pending != null ? fmtNum(intent_summary.pending) : '-' %></div>
-      <div class="meta">총 <%= intent_summary && intent_summary.total != null ? fmtNum(intent_summary.total) : '-' %>건</div>
-    </article>
-    <article class="records-kpi">
-      <div class="label">최근 체결</div>
-      <div class="value"><%= fmtNum(fillRows.length) %>건</div>
-      <div class="meta">최근 12건 기준</div>
-    </article>
-  </section>
-
-  <section class="trade-layout-grid">
-    <article class="trade-panel compact">
-      <div class="trade-panel-head">
-        <div>
-          <div class="trade-panel-title">최근 신호</div>
-          <div class="trade-panel-sub">홈보다 조금 더 자세히 읽지만, 과한 내부 코드는 숨깁니다.</div>
-        </div>
+<!-- Recent Signals -->
+<div class="state-section card">
+  <div class="card-header">
+    <div>
+      <div class="card-title">최근 거래 신호</div>
+      <div class="card-subtitle">최근 수신된 신호와 처리 결과입니다.</div>
+    </div>
+  </div>
+  <div class="card-body">
+    <% if (signalRows.length) { %>
+      <div class="records-strip">
+        <span class="chip primary sm">전체 <%= fmtNum(signalRows.length) %></span>
+        <span class="chip warning sm">건너뜀 <%= fmtNum(recentDropN) %></span>
       </div>
-      <div class="trade-panel-body">
-        <% if (signalRows.length) { %>
-          <div class="records-strip">
-            <span class="trade-chip gold">전체 <%= fmtNum(signalRows.length) %></span>
-            <span class="trade-chip soft">서버 <%= fmtNum(serverSignalN) %></span>
-            <span class="trade-chip soft">Pine <%= fmtNum(pineSignalN) %></span>
-            <span class="trade-chip warn">드롭 <%= fmtNum(recentDropN) %></span>
-          </div>
-          <table class="trade-table compact-record-table">
-            <colgroup>
-              <col style="width: 18%">
-              <col style="width: 18%">
-              <col style="width: 18%">
-              <col style="width: 18%">
-              <col style="width: 28%">
-            </colgroup>
-            <thead>
+      <div class="table-wrap">
+        <table class="table-compact">
+          <colgroup>
+            <col style="width: 15%">
+            <col style="width: 12%">
+            <col style="width: 15%">
+            <col style="width: 15%">
+            <col style="width: 28%">
+            <col style="width: 15%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>시각</th>
+              <th>종목</th>
+              <th>방향</th>
+              <th>결과</th>
+              <th>사유</th>
+              <th>상세</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% signalRows.forEach((s) => { %>
               <tr>
-                <th>시각</th>
-                <th>마켓</th>
-                <th>신호</th>
-                <th>상태</th>
-                <th>메모</th>
+                <td class="mono"><%= fmtKst(s.created_kst || s.created_at) %></td>
+                <td><strong><%= displaySymbol(s.symbol_or_pair_id || s.symbol) %></strong></td>
+                <td>
+                  <div class="signal-status-stack">
+                    <span class="chip sm <%= eventTone(s.event) %>"><%= eventLabel(s.event) %></span>
+                    <% if (gradeLabel(s) !== '-') { %><span class="chip sm <%= gradeLabel(s) === '강한 신호' ? 'primary' : 'filled' %>"><%= gradeLabel(s) %></span><% } %>
+                  </div>
+                </td>
+                <td>
+                  <span class="chip sm filled"><%= statusLabel(s) %></span>
+                  <% if (s.signal_id || s.intent_id) { %>
+                    <% const sLineageHref = lineageHref({ signalId: s.signal_id, intentId: s.intent_id }); %>
+                    <div class="table-note">
+                      <a class="lineage-link" href="<%= sLineageHref %>" data-lineage-href="<%= sLineageHref %>" target="_blank" rel="noopener">추적</a>
+                      <span class="badge" data-lineage-href="<%= sLineageHref %>">확인 중</span>
+                    </div>
+                  <% } %>
+                </td>
+                <td><span class="body-sm"><%= noteShort(s.display_reason_ko || s.display_reason || s.reason || '-') %></span></td>
+                <td>
+                  <details>
+                    <summary class="body-sm text-muted" style="cursor:pointer;">더보기</summary>
+                    <div class="table-note" style="margin-top:4px;">
+                      분석: <%= sourceLabel(s) %><br>
+                      <% if (s.market || s.timeframe) { %>TF: <span class="mono"><%= s.market || s.timeframe || '-' %></span><br><% } %>
+                      <% if (s.trace_meta) { %>메타: <span class="mono" style="word-break:break-all;"><%= s.trace_meta %></span><% } %>
+                    </div>
+                  </details>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              <% signalRows.forEach((s) => { %>
-                <tr>
-                  <td class="mono"><%= fmtKst(s.created_kst || s.created_at) %></td>
-                  <td><strong><%= s.symbol_or_pair_id || s.symbol || '-' %></strong><span><%= s.market || s.timeframe || '-' %></span></td>
-                  <td>
-                    <div class="signal-status-stack">
-                      <span class="table-chip <%= eventTone(s.event) %>"><%= eventLabel(s.event) %></span>
-                      <span class="table-chip <%= gradeLabel(s) === '코어' ? 'core' : 'soft' %>"><%= gradeLabel(s) %></span>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } else { %>
+      <div class="empty-state">
+        <div class="empty-state-text">최근 거래 신호가 없습니다.</div>
+      </div>
+    <% } %>
+  </div>
+</div>
+
+<!-- Market Execution Board -->
+<div class="state-section card">
+  <div class="card-header">
+    <div>
+      <div class="card-title">마켓별 현황</div>
+      <div class="card-subtitle">종목별 포지션, 최근 신호, 대기 주문을 확인하고 즉시 조치할 수 있습니다.</div>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="table-wrap">
+      <table class="table-compact">
+        <colgroup>
+          <col style="width: 14%">
+          <col style="width: 18%">
+          <col style="width: 18%">
+          <col style="width: 12%">
+          <col style="width: 14%">
+          <col style="width: 24%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>종목</th>
+            <th>포지션</th>
+            <th>최근 신호</th>
+            <th>대기</th>
+            <th>최근 체결</th>
+            <th>조치</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% marketRows.forEach((r) => { %>
+            <% const posSide = positionSideLabel(r); %>
+            <% const pendingCount = Array.isArray(r.pending_intents) ? r.pending_intents.length : 0; %>
+            <% const posActive = String(r.position_state || '').toUpperCase() === 'ACTIVE' || String(r.position_state || '').toUpperCase() === 'EXIT_ONLY'; %>
+            <tr>
+              <td><strong><%= displaySymbol(r.market) %></strong><br><span class="text-muted body-sm"><%= r.tf || tf_default || '-' %></span></td>
+              <td>
+                <div class="market-status-stack">
+                  <span class="chip sm filled"><%= positionStateLabel(r) %></span>
+                  <% if (posSide) { %><span class="chip sm <%= posSide === '매수' ? 'long' : 'short' %>"><%= posSide %></span><% } %>
+                </div>
+                <div class="table-note"><%= r.position_size_pct != null ? `${fmtNum(r.position_size_pct, 0)}% 비중` : '' %> <%= leverageText(r.position_leverage, r.position_leverage_tier) %></div>
+              </td>
+              <td>
+                <% if (r.last_signal) { %>
+                  <div class="market-status-stack">
+                    <span class="chip sm <%= eventTone(r.last_signal.event) %>"><%= eventLabel(r.last_signal.event) %></span>
+                    <span class="chip sm filled"><%= sourceLabel(r.last_signal) %></span>
+                  </div>
+                  <div class="table-note"><%= fmtKst(r._view && r._view.last_signal_ts) %></div>
+                  <% if (r.last_signal.signal_id || r.last_signal.intent_id) { %>
+                    <% const rowSignalLineageHref = lineageHref({ signalId: r.last_signal.signal_id, intentId: r.last_signal.intent_id }); %>
+                    <div class="table-note">
+                      <a class="lineage-link" href="<%= rowSignalLineageHref %>" data-lineage-href="<%= rowSignalLineageHref %>" target="_blank" rel="noopener">추적</a>
+                      <span class="badge" data-lineage-href="<%= rowSignalLineageHref %>">확인 중</span>
                     </div>
-                  </td>
-                  <td>
-                    <div class="signal-status-stack">
-                      <span class="table-chip soft"><%= sourceLabel(s) %></span>
-                      <span class="table-chip status"><%= statusLabel(s) %></span>
+                  <% } %>
+                <% } else { %>
+                  <span class="text-muted">없음</span>
+                <% } %>
+              </td>
+              <td class="pending-cell">
+                <% if (pendingCount > 0) { %>
+                  <div class="pending-stack">
+                    <span class="chip sm warning"><%= pendingCount %>건</span>
+                  </div>
+                <% } else { %>
+                  <span class="text-muted">없음</span>
+                <% } %>
+              </td>
+              <td class="right-align">
+                <% if (r.last_fill && r.last_fill.exec_price != null) { %>
+                  <strong class="mono"><%= fmtPrice(r.last_fill.exec_price) %></strong>
+                  <div class="table-note"><%= fmtKst(r._view && r._view.last_fill_ts) %></div>
+                  <% if (r.last_fill.fill_id || r.last_fill.trade_id || r.last_fill.intent_id) { %>
+                    <% const rowFillLineageHref = lineageHref({ fillId: r.last_fill.fill_id, tradeId: r.last_fill.trade_id, intentId: r.last_fill.intent_id, signalId: r.last_fill.signal_id }); %>
+                    <div class="table-note">
+                      <a class="lineage-link" href="<%= rowFillLineageHref %>" data-lineage-href="<%= rowFillLineageHref %>" target="_blank" rel="noopener">추적</a>
+                      <span class="badge" data-lineage-href="<%= rowFillLineageHref %>">확인 중</span>
                     </div>
-                  </td>
-                  <td><span><%= noteShort(s.display_reason_ko || s.display_reason || s.reason || '-') %></span></td>
-                </tr>
-              <% }) %>
-            </tbody>
-          </table>
-        <% } else { %>
-          <div class="trade-empty">최근 신호가 없습니다.</div>
+                  <% } %>
+                <% } else { %>
+                  <span class="text-muted">-</span>
+                <% } %>
+              </td>
+              <td>
+                <div class="action-stack">
+                  <button class="action-btn cancel-pending-btn" data-market="<%= r.market %>" data-exchange="<%= exchange %>" data-pending-count="<%= pendingCount %>" <%= pendingCount ? '' : 'disabled' %>>대기 취소</button>
+                  <button class="action-btn warn force-exit-btn" data-market="<%= r.market %>" data-exchange="<%= exchange %>" data-fraction="0.5" <%= posActive ? '' : 'disabled' %>>50% 정리</button>
+                  <button class="action-btn bad force-exit-btn" data-market="<%= r.market %>" data-exchange="<%= exchange %>" data-fraction="1" <%= posActive ? '' : 'disabled' %>>전량 정리</button>
+                </div>
+              </td>
+            </tr>
+          <% }) %>
+          <% if (!marketRows.length) { %>
+            <tr><td colspan="6" class="empty-state" style="padding:24px;">감시 중인 종목이 없습니다.</td></tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Recent Fills -->
+<div class="state-section card">
+  <div class="card-header">
+    <div>
+      <div class="card-title">최근 체결 내역</div>
+      <div class="card-subtitle">실제로 거래소에서 체결된 주문 목록입니다.</div>
+    </div>
+  </div>
+  <div class="card-body">
+    <% if (fillRows.length) { %>
+      <div class="table-wrap">
+        <table class="table-compact">
+          <colgroup>
+            <col style="width: 16%">
+            <col style="width: 14%">
+            <col style="width: 12%">
+            <col style="width: 18%">
+            <col style="width: 28%">
+            <col style="width: 12%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>시각</th>
+              <th>종목</th>
+              <th>방향</th>
+              <th class="right-align">체결가</th>
+              <th>메모</th>
+              <th>상세</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% fillRows.forEach((f) => { %>
+              <tr>
+                <td class="mono"><%= fmtKst(f.created_kst || f.created_at) %></td>
+                <td><strong><%= displaySymbol(f.symbol || f.symbol_or_pair_id || f.market) %></strong></td>
+                <td class="center-align"><span class="chip sm <%= eventTone(f.event) %>"><%= eventLabel(f.event) %></span></td>
+                <td class="right-align mono"><%= f.exec_price != null ? fmtPrice(f.exec_price) : '-' %></td>
+                <td><span class="body-sm"><%= noteShort(f.display_exec_ko || f.display_exec_text || '-') %></span></td>
+                <td>
+                  <details>
+                    <summary class="body-sm text-muted" style="cursor:pointer;">더보기</summary>
+                    <div class="table-note" style="margin-top:4px;">
+                      레버리지: <%= leverageText(f.leverage_applied, f.leverage_tier) %>
+                      <% if (f.fill_id || f.trade_id || f.intent_id) { %>
+                        <% const fLineageHref = lineageHref({ fillId: f.fill_id, tradeId: f.trade_id, intentId: f.intent_id, signalId: f.signal_id }); %>
+                        <br><a class="lineage-link" href="<%= fLineageHref %>" data-lineage-href="<%= fLineageHref %>" target="_blank" rel="noopener">추적</a>
+                        <span class="badge" data-lineage-href="<%= fLineageHref %>">확인 중</span>
+                      <% } %>
+                      <% if (f.trace_meta) { %><br>메타: <span class="mono" style="word-break:break-all;"><%= f.trace_meta %></span><% } %>
+                    </div>
+                  </details>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } else { %>
+      <div class="empty-state">
+        <div class="empty-state-text">최근 체결 내역이 없습니다.</div>
+      </div>
+    <% } %>
+  </div>
+</div>
+
+<!-- Collapsible: System Details -->
+<details class="state-section">
+  <summary><span class="card-title" style="font-size:14px;">시스템 상세 정보</span> <span class="text-muted body-sm">리스크 관리, 건너뜀 요약, 레버리지, 성과 지표</span></summary>
+
+  <div class="side-by-side" style="margin-top:12px;">
+    <!-- Runtime / Guardrail -->
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">실행 상태</div>
+          <div class="card-subtitle">시스템 가동 상태와 리스크 관리 현황</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="runtime-row">
+          <div class="rlabel">시스템</div>
+          <strong><%= health && health.last_tick_kst ? '가동 중' : '대기' %></strong>
+          <div class="rmeta">
+            거래소: <%= exchange || '-' %> · 기본 TF: <span class="mono"><%= tf_default || '-' %></span><br>
+            마지막 작동: <span class="mono"><%= health && health.last_tick_kst ? health.last_tick_kst : '-' %></span>
+          </div>
+        </div>
+        <div class="runtime-row">
+          <div class="rlabel">리스크 관리</div>
+          <strong><span class="chip sm <%= guardrailTone %>"><%= guardrailLabel %></span></strong>
+          <div class="rmeta">일일 손익 <%= fmtPrice(health && health.guardrail ? health.guardrail.daily_realized_krw : null) %> <%= budgetUnit %></div>
+        </div>
+        <div class="runtime-row">
+          <div class="rlabel">최신 데이터</div>
+          <strong><%= health && health.latest_bar_kst ? health.latest_bar_kst : '-' %></strong>
+          <div class="rmeta">지연 데이터 <%= fmtNum(health && health.stale_bars_n) %>개</div>
+        </div>
+        <div class="runtime-row">
+          <div class="rlabel">최근 체결</div>
+          <strong><%= health && health.last_fill_kst ? health.last_fill_kst : '-' %></strong>
+        </div>
+        <% if (shadowMode || true) { %>
+        <div class="runtime-row">
+          <div class="rlabel">신호 보기 모드</div>
+          <strong><%= shadowMode ? '보조 분석 포함' : '자동 분석만' %></strong>
+          <div class="rmeta"><a class="btn btn-text sm" href="<%= shadowMode ? '/dashboard/trading?shadow=0' : '/dashboard/trading?shadow=1' %>"><%= shadowMode ? '자동 분석만 보기' : '보조 분석 포함 보기' %></a></div>
+        </div>
         <% } %>
       </div>
-    </article>
+    </div>
 
-    <aside class="trade-panel compact">
-      <div class="trade-panel-head">
+    <!-- Drop Summary -->
+    <div class="card">
+      <div class="card-header">
         <div>
-          <div class="trade-panel-title">드롭 요약</div>
-          <div class="trade-panel-sub">최근 필터링이 어디서 많이 발생하는지 봅니다.</div>
+          <div class="card-title">건너뜀 요약</div>
+          <div class="card-subtitle">
+            최근 <%= dropSummary ? `${dropSummary.window_hours}시간` : '' %> 동안 필터링된 신호 <%= fmtNum(recentDropN) %>건
+          </div>
         </div>
       </div>
-      <div class="trade-panel-body drop-list">
+      <div class="card-body">
         <% if (topReasons.length) { %>
-          <div class="summary-pills" style="margin-bottom:10px;">
+          <div class="summary-pills" style="margin-bottom:12px;">
             <% topReasons.forEach((reason) => { %>
-              <span class="subchip"><%= reason %></span>
+              <span class="chip sm filled"><%= reason %></span>
             <% }) %>
           </div>
         <% } %>
         <% if (topDropMarkets.length) { %>
           <% topDropMarkets.forEach((m) => { %>
             <div class="drop-row">
-              <div class="label"><%= m.market || '-' %></div>
-              <strong><%= fmtNum(m.total) %>건 · AI <%= fmtNum(m.ai_block) %>건</strong>
-              <div class="meta"><%= (m.top_reasons || []).join(', ') || '상세 사유 없음' %></div>
+              <div class="rlabel"><%= displaySymbol(m.market) %></div>
+              <strong><%= fmtNum(m.total) %>건 · AI 차단 <%= fmtNum(m.ai_block) %>건</strong>
+              <div class="rmeta"><%= (m.top_reasons || []).join(', ') || '상세 사유 없음' %></div>
             </div>
           <% }) %>
         <% } else { %>
-          <div class="trade-empty">최근 드롭이 없습니다.</div>
+          <div class="empty-state">
+            <div class="empty-state-text">최근 건너뜀이 없습니다.</div>
+          </div>
         <% } %>
       </div>
-    </aside>
-  </section>
+    </div>
+  </div>
 
-  <section class="market-layout-grid">
-    <article class="trade-panel compact">
-      <div class="trade-panel-head">
+  <div class="side-by-side" style="margin-top:12px;">
+    <!-- Leverage Summary -->
+    <div class="card">
+      <div class="card-header">
         <div>
-          <div class="trade-panel-title">마켓 실행 보드</div>
-          <div class="trade-panel-sub">포지션, 최근 신호, 대기 주문, 즉시 조치를 한 줄에서 봅니다.</div>
+          <div class="card-title">레버리지 현황</div>
+          <div class="card-subtitle">감시 종목의 레버리지 설정</div>
         </div>
       </div>
-      <div class="trade-panel-body">
-        <table class="trade-table compact-record-table">
-          <colgroup>
-            <col style="width: 16%">
-            <col style="width: 18%">
-            <col style="width: 18%">
-            <col style="width: 16%">
-            <col style="width: 14%">
-            <col style="width: 18%">
-          </colgroup>
-          <thead>
-            <tr>
-              <th>마켓</th>
-              <th>포지션</th>
-              <th>최근 신호</th>
-              <th>대기</th>
-              <th>최근 체결</th>
-              <th>조치</th>
-            </tr>
-          </thead>
-          <tbody>
-            <% marketRows.forEach((r) => { %>
-              <% const posSide = positionSideLabel(r); %>
-              <% const pendingCount = Array.isArray(r.pending_intents) ? r.pending_intents.length : 0; %>
-              <% const posActive = String(r.position_state || '').toUpperCase() === 'ACTIVE' || String(r.position_state || '').toUpperCase() === 'EXIT_ONLY'; %>
-              <tr>
-                <td><strong><%= r.market %></strong><span><%= r.tf || tf_default || '-' %></span></td>
-                <td>
-                  <div class="market-status-stack">
-                    <span class="table-chip status"><%= positionStateLabel(r) %></span>
-                    <% if (posSide) { %><span class="table-chip <%= posSide === '롱' ? 'long' : 'short' %>"><%= posSide %></span><% } %>
-                  </div>
-                  <div class="table-note"><%= r.position_size_pct != null ? `${fmtNum(r.position_size_pct, 0)}% 비중` : '비중 없음' %> · <%= leverageText(r.position_leverage, r.position_leverage_tier) %></div>
-                </td>
-                <td>
-                  <% if (r.last_signal) { %>
-                    <div class="market-status-stack">
-                      <span class="table-chip <%= eventTone(r.last_signal.event) %>"><%= eventLabel(r.last_signal.event) %></span>
-                      <span class="table-chip soft"><%= sourceLabel(r.last_signal) %></span>
-                    </div>
-                    <div class="table-note"><%= fmtKst(r._view && r._view.last_signal_ts) %></div>
-                  <% } else { %>
-                    <span>신호 없음</span>
-                  <% } %>
-                </td>
-                <td class="pending-cell">
-                  <% if (pendingCount > 0) { %>
-                    <div class="pending-stack">
-                      <span class="subchip"><%= pendingCount %>건</span>
-                    </div>
-                  <% } else { %>
-                    <span>없음</span>
-                  <% } %>
-                </td>
-                <td class="right-align">
-                  <% if (r.last_fill && r.last_fill.exec_price != null) { %>
-                    <strong class="mono"><%= fmtPrice(r.last_fill.exec_price) %></strong>
-                    <span class="table-note"><%= fmtKst(r._view && r._view.last_fill_ts) %></span>
-                  <% } else { %>
-                    <span>-</span>
-                  <% } %>
-                </td>
-                <td>
-                  <div class="action-stack">
-                    <button class="action-btn cancel-pending-btn" data-market="<%= r.market %>" data-exchange="<%= exchange %>" data-pending-count="<%= pendingCount %>" <%= pendingCount ? '' : 'disabled' %>>대기 취소</button>
-                    <button class="action-btn warn force-exit-btn" data-market="<%= r.market %>" data-exchange="<%= exchange %>" data-fraction="0.5" <%= posActive ? '' : 'disabled' %>>50% 정리</button>
-                    <button class="action-btn bad force-exit-btn" data-market="<%= r.market %>" data-exchange="<%= exchange %>" data-fraction="1" <%= posActive ? '' : 'disabled' %>>전량 정리</button>
-                  </div>
-                </td>
-              </tr>
-            <% }) %>
-            <% if (!marketRows.length) { %>
-              <tr><td colspan="6" class="trade-empty">감시 중인 마켓이 없습니다.</td></tr>
-            <% } %>
-          </tbody>
-        </table>
-      </div>
-    </article>
-
-    <aside class="side-stack">
-      <section class="trade-panel compact">
-        <div class="trade-panel-head">
-          <div>
-            <div class="trade-panel-title">레버리지 요약</div>
-            <div class="trade-panel-sub">현재 감시 마켓의 레버리지 상태</div>
-          </div>
-        </div>
-        <div class="trade-panel-body runtime-list">
-          <div class="runtime-row">
-            <div class="label">2x 마켓</div>
-            <strong><%= leverage_summary && leverage_summary.tier_2x != null ? fmtNum(leverage_summary.tier_2x) : '-' %></strong>
-            <div class="meta">활성 <%= leverage_summary && leverage_summary.active_markets != null ? fmtNum(leverage_summary.active_markets) : '-' %>개</div>
-          </div>
-          <div class="runtime-row">
-            <div class="label">3x 마켓</div>
-            <strong><%= leverage_summary && leverage_summary.tier_3x != null ? fmtNum(leverage_summary.tier_3x) : '-' %></strong>
-            <div class="meta">기본 레버리지 <%= leverage_summary && leverage_summary.default_leverage != null ? leverage_summary.default_leverage : '-' %>x</div>
-          </div>
-          <div class="runtime-row">
-            <div class="label">롤백 상태</div>
-            <strong><%= rollback_summary && rollback_summary.rollback_active != null ? fmtNum(rollback_summary.rollback_active) : '-' %></strong>
-            <div class="meta">최대 남은 시간 <%= rollback_summary && rollback_summary.max_remaining_ms != null ? fmtNum(Math.round(rollback_summary.max_remaining_ms / 60000)) : '-' %>분</div>
-          </div>
-        </div>
-      </section>
-    </aside>
-  </section>
-
-  <section class="fills-layout-grid">
-    <article class="trade-panel compact">
-      <div class="trade-panel-head">
-        <div>
-          <div class="trade-panel-title">최근 체결</div>
-          <div class="trade-panel-sub">체결까지 내려온 거래만 따로 봅니다.</div>
-        </div>
-      </div>
-      <div class="trade-panel-body">
-        <% if (fillRows.length) { %>
-          <table class="trade-table compact-record-table">
-            <colgroup>
-              <col style="width: 18%">
-              <col style="width: 18%">
-              <col style="width: 14%">
-              <col style="width: 18%">
-              <col style="width: 32%">
-            </colgroup>
-            <thead>
-              <tr>
-                <th>시각</th>
-                <th>마켓</th>
-                <th>방향</th>
-                <th class="right-align">체결가</th>
-                <th>메모</th>
-              </tr>
-            </thead>
-            <tbody>
-              <% fillRows.forEach((f) => { %>
-                <tr>
-                  <td class="mono"><%= fmtKst(f.created_kst || f.created_at) %></td>
-                  <td><strong><%= f.symbol || f.symbol_or_pair_id || f.market || '-' %></strong><span><%= leverageText(f.leverage_applied, f.leverage_tier) %></span></td>
-                  <td class="center-align"><span class="table-chip <%= eventTone(f.event) %>"><%= eventLabel(f.event) %></span></td>
-                  <td class="right-align mono"><%= f.exec_price != null ? fmtPrice(f.exec_price) : '-' %></td>
-                  <td><span><%= noteShort(f.display_exec_ko || f.display_exec_text || '-') %></span></td>
-                </tr>
-              <% }) %>
-            </tbody>
-          </table>
-        <% } else { %>
-          <div class="trade-empty">최근 체결이 없습니다.</div>
-        <% } %>
-      </div>
-    </article>
-
-    <aside class="trade-panel compact">
-      <div class="trade-panel-head">
-        <div>
-          <div class="trade-panel-title">KPI 준비 상태</div>
-          <div class="trade-panel-sub">실행 품질 지표 준비 상황</div>
-        </div>
-      </div>
-      <div class="trade-panel-body runtime-list">
+      <div class="card-body">
         <div class="runtime-row">
-          <div class="label">준비 마켓</div>
+          <div class="rlabel">2x 종목</div>
+          <strong><%= leverage_summary && leverage_summary.tier_2x != null ? fmtNum(leverage_summary.tier_2x) : '-' %></strong>
+          <div class="rmeta">활성 <%= leverage_summary && leverage_summary.active_markets != null ? fmtNum(leverage_summary.active_markets) : '-' %>개</div>
+        </div>
+        <div class="runtime-row">
+          <div class="rlabel">3x 종목</div>
+          <strong><%= leverage_summary && leverage_summary.tier_3x != null ? fmtNum(leverage_summary.tier_3x) : '-' %></strong>
+          <div class="rmeta">기본 레버리지 <%= leverage_summary && leverage_summary.default_leverage != null ? leverage_summary.default_leverage : '-' %>x</div>
+        </div>
+        <div class="runtime-row">
+          <div class="rlabel">롤백 상태</div>
+          <strong><%= rollback_summary && rollback_summary.rollback_active != null ? fmtNum(rollback_summary.rollback_active) : '-' %></strong>
+          <div class="rmeta">최대 남은 시간 <%= rollback_summary && rollback_summary.max_remaining_ms != null ? fmtNum(Math.round(rollback_summary.max_remaining_ms / 60000)) : '-' %>분</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- KPI Summary -->
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">성과 지표</div>
+          <div class="card-subtitle">실행 품질 지표 현황</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="runtime-row">
+          <div class="rlabel">준비 종목</div>
           <strong><%= kpi_summary && kpi_summary.ready_markets != null ? fmtNum(kpi_summary.ready_markets) : '-' %> / <%= kpi_summary && kpi_summary.total_markets != null ? fmtNum(kpi_summary.total_markets) : '-' %></strong>
-          <div class="meta">최소 표본 <%= kpi_summary && kpi_summary.kpi_min_n != null ? fmtNum(kpi_summary.kpi_min_n) : '-' %>건</div>
+          <div class="rmeta">최소 표본 <%= kpi_summary && kpi_summary.kpi_min_n != null ? fmtNum(kpi_summary.kpi_min_n) : '-' %>건</div>
         </div>
         <div class="runtime-row">
-          <div class="label">평균 승률</div>
+          <div class="rlabel">평균 승률</div>
           <strong><%= kpi_summary && kpi_summary.avg_win_rate != null ? fmtPct(kpi_summary.avg_win_rate) : '-' %></strong>
-          <div class="meta">평균 EV <%= kpi_summary && kpi_summary.avg_ev != null ? fmtNum(kpi_summary.avg_ev, 2) : '-' %></div>
+          <div class="rmeta">평균 기대값 <%= kpi_summary && kpi_summary.avg_ev != null ? fmtNum(kpi_summary.avg_ev, 2) : '-' %></div>
         </div>
         <div class="runtime-row">
-          <div class="label">상태</div>
+          <div class="rlabel">상태</div>
           <strong><%= kpi_summary && kpi_summary.status_text ? kpi_summary.status_text : '-' %></strong>
-          <div class="meta">최근 계산 <%= kpi_summary && kpi_summary.last_computed_kst ? kpi_summary.last_computed_kst : '-' %></div>
+          <div class="rmeta">최근 계산 <%= kpi_summary && kpi_summary.last_computed_kst ? kpi_summary.last_computed_kst : '-' %></div>
         </div>
       </div>
-    </aside>
-  </section>
-</section>
+    </div>
+  </div>
+
+  <!-- Failure breakdown (hidden by default inside the collapsible) -->
+  <% if (canceledRejectedProviderN || canceledTimeoutProviderN || canceledFailedInternalN) { %>
+  <div class="card" style="margin-top:12px;">
+    <div class="card-header">
+      <div>
+        <div class="card-title">주문 실패 상세</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="records-strip">
+        <span class="chip sm error">거래소 거절 <%= fmtNum(canceledRejectedProviderN) %></span>
+        <span class="chip sm warning">시간 초과 <%= fmtNum(canceledTimeoutProviderN) %></span>
+        <span class="chip sm filled">내부 오류 <%= fmtNum(canceledFailedInternalN) %></span>
+      </div>
+    </div>
+  </div>
+  <% } %>
+</details>
 
 <script>
 (function(){
@@ -708,7 +743,7 @@
     if (!row) return;
     const cell = row.querySelector('.pending-cell');
     if (!cell) return;
-    cell.innerHTML = '<span>없음</span>';
+    cell.innerHTML = '<span class="text-muted">없음</span>';
     const cancelBtn = row.querySelector('.cancel-pending-btn');
     if (cancelBtn) cancelBtn.disabled = true;
   }
@@ -785,4 +820,47 @@
 })();
 </script>
 
-<%- include('partials/app_end_trader') %>
+<script>
+(function(){
+  const badges = Array.from(document.querySelectorAll('.badge[data-lineage-href]'));
+  if (!badges.length) return;
+  const byHref = new Map();
+  for (const node of badges) {
+    const href = String(node.getAttribute('data-lineage-href') || '').trim();
+    if (!href) continue;
+    if (!byHref.has(href)) byHref.set(href, []);
+    byHref.get(href).push(node);
+  }
+  const setBadge = (nodes, text, klass, title) => {
+    (nodes || []).forEach((node) => {
+      node.textContent = text;
+      node.classList.remove('ok', 'bad', 'warn');
+      if (klass) node.classList.add(klass);
+      node.title = title || '';
+    });
+  };
+  byHref.forEach((nodes, href) => {
+    setBadge(nodes, '확인 중', null, '추적 조회 중');
+    fetch(href, { credentials: 'include' })
+      .then((res) => res.json().catch(() => null))
+      .then((payload) => {
+        if (!payload || payload.ok !== true) {
+          setBadge(nodes, '오류', 'warn', '추적 조회 실패');
+          return;
+        }
+        const diagnostics = payload.diagnostics || {};
+        const broken = Array.isArray(diagnostics.broken_links) ? diagnostics.broken_links : [];
+        if (diagnostics.complete === true || broken.length === 0) {
+          setBadge(nodes, '정상', 'ok', '연결 완료');
+          return;
+        }
+        setBadge(nodes, `끊김 ${broken.length}`, 'bad', broken.join(', '));
+      })
+      .catch(() => {
+        setBadge(nodes, '오류', 'warn', '추적 조회 실패');
+      });
+  });
+})();
+</script>
+
+<%- include('partials/app_end_unified') %>
