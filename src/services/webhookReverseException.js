@@ -2,6 +2,12 @@ const { normalizeProviderId } = require("../utils/providerUtils");
 const { resolveEntryTimingTier } = require("../utils/liveEntryTaxonomy");
 const { normalizePositionSide, sideToPositionDir } = require("../utils/positionSide");
 
+function normalizeCohort(value) {
+  const upper = String(value || "").trim().toUpperCase();
+  if (upper === "RESCUE" || upper === "MIXED" || upper === "KEEP_DROP" || upper === "HOLD_SAMPLE") return upper;
+  return null;
+}
+
 function normalizeBool(v, fallback = false) {
   if (v === true || v === false) return v;
   if (v === null || v === undefined || v === "") return fallback;
@@ -46,19 +52,28 @@ function resolveReverseExceptionConfig(sysCfg = {}, exchange = "") {
   const defaultEnabled = provider === "BINANCEFUT" || provider === "BINANCE";
   return {
     enabled: normalizeBool(sysCfg.reverse_exception_enabled, defaultEnabled),
-    dropCountMin: clampInt(sysCfg.reverse_exception_drop_count_min, 1, 10, 2),
+    dropCountMin: clampInt(sysCfg.reverse_exception_drop_count_min, 1, 10, 1),
     maxProfitPct: (() => {
       const n = Number(
         sysCfg.reverse_exception_max_profit_pct ??
         sysCfg.reverse_exception_max_abs_pnl_pct
       );
-      return Number.isFinite(n) && n > 0 ? n : 1.5;
+      return Number.isFinite(n) && n > 0 ? n : 3.0;
     })(),
     coreEnabled: normalizeBool(sysCfg.reverse_exception_core_enabled, true),
     preRealEnabled: normalizeBool(sysCfg.reverse_exception_pre_real_enabled, false),
     realEnabled: normalizeBool(sysCfg.reverse_exception_real_enabled, false),
-    earlyEnabled: normalizeBool(sysCfg.reverse_exception_early_enabled, false),
+    earlyEnabled: normalizeBool(sysCfg.reverse_exception_early_enabled, true),
+    mixedBypassTierBlock: normalizeBool(sysCfg.reverse_exception_mixed_bypass_tier_block, true),
+    rescueBypassTierBlock: normalizeBool(sysCfg.reverse_exception_rescue_bypass_tier_block, true),
   };
+}
+
+function shouldBypassReverseExceptionTierBlock({ cfg = {}, cohort = null } = {}) {
+  const normalized = normalizeCohort(cohort);
+  if (normalized === "RESCUE") return cfg.rescueBypassTierBlock === true;
+  if (normalized === "MIXED") return cfg.mixedBypassTierBlock === true;
+  return false;
 }
 
 function pickDropRawReason(row = {}) {
@@ -97,7 +112,7 @@ function summarizeOppositeReverseDrops({
     if (Number.isFinite(entryMs) && Number.isFinite(barMs) && barMs < entryMs) continue;
     const reverseCode = pickDropRawReason(row);
     if (!isReverseDropReason(reverseCode)) continue;
-    if (!isReverseExceptionTierEvent(row.event, cfg)) continue;
+    if (!isReverseExceptionTierEvent(row, cfg)) continue;
     const rowDir = sideToPositionDir(row.side);
     if (dir && rowDir && rowDir !== dir) continue;
     matches.push({
@@ -126,7 +141,9 @@ function shouldReviveReverseDrop({
   reasonRaw,
   intentBeforeOverride,
   posSnap,
+  posMeta = null,
   event,
+  eventFeatures = null,
   side,
   priorDropCount = 0,
   effectivePnlPct = null,
@@ -138,7 +155,14 @@ function shouldReviveReverseDrop({
   if (!posSnap || posSnap.active !== true || !posSnap.side) return { ok: false, reason: "REVERSE_EXCEPTION_NO_POSITION" };
   const incomingDir = sideToPositionDir(side);
   if (!incomingDir || incomingDir === posSnap.side) return { ok: false, reason: "REVERSE_EXCEPTION_NOT_OPPOSITE" };
-  if (!isReverseExceptionTierEvent(event, cfg)) return { ok: false, reason: "REVERSE_EXCEPTION_TIER_BLOCKED" };
+  const cohort = normalizeCohort(
+    (posMeta && (posMeta.openclaw_market_regime_cohort || posMeta.market_regime_cohort))
+    || (eventFeatures && (eventFeatures.openclaw_market_regime_cohort || eventFeatures.market_regime_cohort))
+  );
+  const tierAllowed = isReverseExceptionTierEvent({ event, features_json: eventFeatures || {} }, cfg);
+  if (!tierAllowed && !shouldBypassReverseExceptionTierBlock({ cfg, cohort })) {
+    return { ok: false, reason: "REVERSE_EXCEPTION_TIER_BLOCKED" };
+  }
   if (!(Number.isFinite(effectivePnlPct) && effectivePnlPct < Number(cfg.maxProfitPct))) {
     return {
       ok: false,
@@ -171,16 +195,20 @@ function shouldReviveReverseDrop({
       effective_pnl_pct: Number.isFinite(effectivePnlPct) ? Number(effectivePnlPct.toFixed(4)) : null,
       position_side: posSnap.side,
       incoming_dir: incomingDir,
+      cohort,
+      tier_bypass_applied: !tierAllowed && shouldBypassReverseExceptionTierBlock({ cfg, cohort }),
     },
   };
 }
 
 module.exports = {
+  normalizeCohort,
   normalizeReasonCode,
   sideToPositionDir,
   isReverseDropReason,
   isReverseExceptionTierEvent,
   resolveReverseExceptionConfig,
+  shouldBypassReverseExceptionTierBlock,
   summarizeOppositeReverseDrops,
   shouldReviveReverseDrop,
 };

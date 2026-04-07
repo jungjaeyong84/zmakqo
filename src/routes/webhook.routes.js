@@ -1585,6 +1585,7 @@ function createWebhookRoutes() {
               reasonRaw,
               intentBeforeOverride,
               posSnap,
+              posMeta: pos && pos.meta ? pos.meta : null,
               event,
               eventFeatures: featureObj,
               side,

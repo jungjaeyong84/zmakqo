@@ -5,6 +5,7 @@ const { __test } = require("../engine/paperUpbitRunner");
 
 function run() {
   assert.strictEqual(typeof __test.shouldBypassOppositeEntryCooldown, "function", "shouldBypassOppositeEntryCooldown export missing");
+  assert.strictEqual(typeof __test.resolveOppositeCooldownWindow, "function", "resolveOppositeCooldownWindow export missing");
 
   const bypassed = __test.shouldBypassOppositeEntryCooldown({
     features: {
@@ -43,6 +44,33 @@ function run() {
     },
   });
   assert.strictEqual(missingAllow, false, "missing explicit allow flag must not bypass cooldown");
+
+  const rescueCooldown = __test.resolveOppositeCooldownWindow({
+    sysCfg: {},
+    posMeta: {
+      openclaw_market_regime_cohort: "RESCUE",
+    },
+  });
+  assert.strictEqual(rescueCooldown.bars, 0);
+  assert.strictEqual(rescueCooldown.timeMs, 0);
+
+  const mixedCooldown = __test.resolveOppositeCooldownWindow({
+    sysCfg: {},
+    posMeta: {
+      openclaw_market_regime_cohort: "MIXED",
+    },
+  });
+  assert.strictEqual(mixedCooldown.bars, 1);
+  assert.strictEqual(mixedCooldown.timeMs, 60000);
+
+  const baseCooldown = __test.resolveOppositeCooldownWindow({
+    sysCfg: {},
+    posMeta: {
+      openclaw_market_regime_cohort: "KEEP_DROP",
+    },
+  });
+  assert.strictEqual(baseCooldown.bars, 3);
+  assert.strictEqual(baseCooldown.timeMs, 300000);
 }
 
 try {

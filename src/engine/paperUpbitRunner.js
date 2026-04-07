@@ -119,6 +119,33 @@ function normalizeOpenClawCohort(value) {
   return null;
 }
 
+function resolveOppositeCooldownWindow({ sysCfg = {}, posMeta = null } = {}) {
+  const cohort = normalizeOpenClawCohort(
+    posMeta && (posMeta.openclaw_market_regime_cohort || posMeta.market_regime_cohort)
+  );
+  const defaultBars = Math.max(0, normalizeInt(sysCfg && sysCfg.opposite_signal_cooldown_bars, 3));
+  const defaultMs = Math.max(0, normalizeInt(sysCfg && sysCfg.opposite_time_cooldown_ms, 300000));
+  if (cohort === "RESCUE") {
+    return {
+      cohort,
+      bars: Math.max(0, normalizeInt(sysCfg && sysCfg.opposite_signal_cooldown_bars_rescue, 0)),
+      timeMs: Math.max(0, normalizeInt(sysCfg && sysCfg.opposite_time_cooldown_ms_rescue, 0)),
+    };
+  }
+  if (cohort === "MIXED") {
+    return {
+      cohort,
+      bars: Math.max(0, normalizeInt(sysCfg && sysCfg.opposite_signal_cooldown_bars_mixed, 1)),
+      timeMs: Math.max(0, normalizeInt(sysCfg && sysCfg.opposite_time_cooldown_ms_mixed, 60000)),
+    };
+  }
+  return {
+    cohort: cohort || "BASE",
+    bars: defaultBars,
+    timeMs: defaultMs,
+  };
+}
+
 function loadOpenClawMarketRegimeBoard(force = false) {
   const now = Date.now();
   if (!force && openclawMarketRegimeCache.ts && (now - openclawMarketRegimeCache.ts) < OPENCLAW_MARKET_REGIME_CACHE_TTL_MS) {
@@ -8081,8 +8108,11 @@ async function runPaperUpbitForBar({
   const tradeableSignalTypes = resolveTradeableSignalTypes(sysCfgEffective, exchange);
   const binanceFutOnly = exUpper.includes("BINANCEFUT");
   const maxHoldBars = binanceFutOnly ? resolveBinanceMaxHoldBars(sysCfgEffective, signalTfMs) : 0;
-  const oppositeCooldownBars = binanceFutOnly ? Math.max(0, normalizeInt(sysCfgEffective.opposite_signal_cooldown_bars, 3)) : 0;
-  const oppositeTimeCooldownMs = binanceFutOnly ? Math.max(0, normalizeInt(sysCfgEffective.opposite_time_cooldown_ms, 300000)) : 0;
+  const oppositeCooldownWindow = binanceFutOnly
+    ? resolveOppositeCooldownWindow({ sysCfg: sysCfgEffective, posMeta })
+    : { bars: 0, timeMs: 0, cohort: null };
+  const oppositeCooldownBars = binanceFutOnly ? oppositeCooldownWindow.bars : 0;
+  const oppositeTimeCooldownMs = binanceFutOnly ? oppositeCooldownWindow.timeMs : 0;
   const sameDirectionTrailProfitCooldownCfg = resolveSameDirectionTrailProfitCooldownConfig(sysCfgEffective);
 
   // 1) 포지션 로드
@@ -10488,8 +10518,11 @@ async function runPaperFuturesForBar({
     ? Math.max(0, Math.min(1, Number(immediateCfg.lookaheadBars) || 0))
     : 0;
   const maxHoldBars = binanceFutOnly ? resolveBinanceMaxHoldBars(sysCfgEffective, signalTfMs) : 0;
-  const oppositeCooldownBars = binanceFutOnly ? Math.max(0, normalizeInt(sysCfgEffective.opposite_signal_cooldown_bars, 3)) : 0;
-  const oppositeTimeCooldownMs = binanceFutOnly ? Math.max(0, normalizeInt(sysCfgEffective.opposite_time_cooldown_ms, 300000)) : 0;
+  const oppositeCooldownWindow = binanceFutOnly
+    ? resolveOppositeCooldownWindow({ sysCfg: sysCfgEffective, posMeta })
+    : { bars: 0, timeMs: 0, cohort: null };
+  const oppositeCooldownBars = binanceFutOnly ? oppositeCooldownWindow.bars : 0;
+  const oppositeTimeCooldownMs = binanceFutOnly ? oppositeCooldownWindow.timeMs : 0;
   const sameDirectionTrailProfitCooldownCfg = resolveSameDirectionTrailProfitCooldownConfig(sysCfgEffective);
 
   let pos = await getPosition({ exchange, symbol });
@@ -13576,6 +13609,7 @@ module.exports = {
     resolveManualRetryQtyBase,
     resolveEventRefMs,
     shouldBypassOppositeEntryCooldown,
+    resolveOppositeCooldownWindow,
     resolveTp1LadderConfig,
     resolveTp1LadderRuntimeState,
     loadTp1LadderKpiSnapshot,
