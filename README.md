@@ -1,17 +1,23 @@
 # 돈벌자 시스템 개요
 
-- 업데이트: 2026-04-01 KST
+- 업데이트: 2026-04-02 KST
 - 현재 엔진: `6.1.1.0`
 - 현재 전략 ID: `donbeolja_v6.1.1.0`
 - 기본 실행 환경: `BINANCEFUT / 15m / 7 markets`
-- 현재 source mode: `PINE_PRIMARY`
-- 현재 전환 상태: `서버 정본 전환 진행 중 (88%)`
+- 현재 source mode: `SERVER_PRIMARY`
+- 현재 전환 상태: `구조 전환 완료, acceptance 샘플/후단 drift 정리 단계`
+
+## 0. 검수 SSOT
+
+Claude/Codex/OpenClaw 품질 검수는 아래 문서를 최우선 기준으로 사용한다.
+
+- [DONBEOLJA_SYSTEM_SSOT_FOR_REVIEW_2026-04-02](/Users/jeongjaeyong/Projects/donbeolja/docs/DONBEOLJA_SYSTEM_SSOT_FOR_REVIEW_2026-04-02.md)
 
 ## 1. 한 줄 정의
 
 돈벌자는 `바이낸스 선물 15분 봉`을 기준으로 자동 전략을 실행하고, 자산·수익·거래 결과를 사용자 화면과 운영 자동화에 함께 연결하는 시스템이다.
 
-현재는 `서버가 정본 신호 생성기로 전환되는 중`이며, `Pine`은 점점 `비교/시각화 shadow` 역할로 축소되고 있다.
+현재는 `서버가 정본 신호 생성기`이며, `Pine`은 `비교/시각화 shadow` 역할을 담당한다.
 
 ## 2. 현재 운영 상태
 
@@ -28,10 +34,11 @@
 
 ## 3. 지금 남은 핵심 blocker
 
-현재 latest artifact 기준 blocker는 아래 2개다.
+현재 latest artifact 기준 핵심 blocker는 아래 3개다.
 
 1. `EV_POLICY_DRIFT_ACTIVE`
 2. `COOLDOWN_POLICY_DRIFT_ACTIVE`
+3. `SERVER_PRIMARY_ACCEPTANCE_SAMPLE_SHORT`
 
 참고:
 - `STRATEGY_GATE`는 현재 `historical_only`로 분류돼 실질 blocker에서 빠졌다.
@@ -76,12 +83,12 @@
 
 ## 6. 현재 판정
 
-구조적으로는 `서버 정본 전환`이 거의 끝났다.
+구조적으로는 `서버 정본 전환`이 완료됐다.
 
 다만 아직 아래는 진행 중이다.
 
-1. `SERVER_PRIMARY` 승격
+1. `SERVER_PRIMARY acceptance sample` 충족
 2. `EV / COOLDOWN drift` 축소
-3. `Pine 완전 shadow 마감`
+3. `objective recovery`와 실행 품질 회복
 
-즉 현재 돈벌자는 `서버가 봉을 읽고 신호를 만들며`, `Pine는 비교/시각화로 강등되는` 마지막 단계에 있다.
+즉 현재 돈벌자는 `서버가 봉을 읽고 신호를 만들고 실행하는` 정본 구조이며, 남은 과제는 `후단 정책/품질 병목`을 줄여 승격 조건을 닫는 것이다.

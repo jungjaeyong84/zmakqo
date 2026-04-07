@@ -79,7 +79,7 @@
 
 1. AI usable 여부
 2. 시황 방향 prior sizing
-3. 서버단 TP1 확률 sizing
+3. 서버단 TP 복합 기대값 sizing
 4. 늦은 진입 연기 판단
 
 ## 1차 역할

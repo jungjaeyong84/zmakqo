@@ -31,21 +31,23 @@
    - objective supervisor root_cause / action_plan / promotion replay 정보
 
 반드시 가장 먼저 읽어라.
-1. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/objective_supervisor_latest.json
-2. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_loop_run_latest.json
-3. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_dataset_latest.json
-4. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_objective_latest.json
-5. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_replay_latest.json
-6. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_canary_latest.json
-7. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/filter_shadow_canary_latest.json
-8. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_candidates_latest.json
-9. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/codex_weekly_patch_engine_latest.json
-10. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/stage_autopilot_latest.json
-11. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_deployment_guards_latest.json
-12. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_deployment_plan_latest.json
-13. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_loop_monitor_latest.json
-14. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_weight_tuning_latest.json
-15. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/weekly_filter_governance_latest.json
+1. /Users/jeongjaeyong/Projects/donbeolja/docs/DONBEOLJA_SYSTEM_SSOT_FOR_REVIEW_2026-04-02.md
+2. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/objective_supervisor_latest.json
+3. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_loop_run_latest.json
+4. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_dataset_latest.json
+5. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_objective_latest.json
+6. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_replay_latest.json
+7. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_canary_latest.json
+8. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/filter_shadow_canary_latest.json
+9. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_candidates_latest.json
+10. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/codex_weekly_patch_engine_latest.json
+11. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/stage_autopilot_latest.json
+12. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_deployment_guards_latest.json
+13. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_deployment_plan_latest.json
+14. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_loop_monitor_latest.json
+15. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_weight_tuning_latest.json
+16. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/weekly_filter_governance_latest.json
+17. /Users/jeongjaeyong/Projects/donbeolja/ops/daily/best_self_evolution_policy_parameter_plan_latest.json
 
 첫 단계에서 반드시 아래 표를 만들어라.
 - artifact path

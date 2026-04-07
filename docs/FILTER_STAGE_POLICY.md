@@ -272,14 +272,14 @@ Pine 이관 대상:
   - opposite-side block
 - 원칙:
   - 방향 prior를 다룬다
-  - score/confidence/wave/TP1 확률은 여기서 다시 판단하지 않는다
+  - score/confidence/wave/TP 복합 기대값은 여기서 다시 판단하지 않는다
 
 ### 4차 EV
 
 - 목적:
-  - 선택된 방향이 TP1 3.25%에 도달할 확률이 충분한지 확인
+  - 선택된 방향이 TP0/TP1/시간청산을 함께 반영한 복합 기대값 하한을 만족하는지 확인
 - 포함:
-  - 최근 봉 기반 TP1 reach probability
+  - 최근 봉 기반 TP 복합 exit-value 추정
   - tier별 threshold
   - EV 자동 튜닝
 - 원칙:

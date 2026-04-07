@@ -64,6 +64,10 @@ Status: ACTIVE_FOUNDATION
    - 단계별 latency와 version-to-version delta를 artifact로 저장한다.
 7. `OpenClaw integration`
    - dataset readiness, execution bottleneck, experiment registry, execution quality를 OpenClaw가 직접 읽는다.
+8. `rule-based layer 4 EV gate alignment`
+   - 기존 `TP1-only` gate를 `TP_COMPOSITE_EXIT_VALUE_V1` 기준으로 재정렬했다.
+   - `TP0 / TP1 / tp0_to_tp1_conversion / pre-TP1 time stop / expected exit value`를 함께 반영한다.
+   - 단, 함수명과 drop reason code는 하위 호환 때문에 아직 `tp1` 이름을 일부 유지한다.
 
 ### Not Done Yet
 1. 실제 `alpha model` 학습/서빙

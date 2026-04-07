@@ -43,8 +43,8 @@
 8. `OpenClaw autonomy governor`
    - `ACTIVE`
    - autonomy contract는 `OBJECTIVE_RECOVERY_REQUIRED`를 선언하고, bounded degraded authority policy를 들고 있다.
-   - objective recovery governor는 현재 `RECOVERY_PROMOTION_READY`다.
-   - 다만 authority ensemble은 아직 `timeout consensus`가 아니므로 degraded policy를 실제로 쓰지 않았다.
+   - objective recovery governor는 현재 `RECOVERY_REPLAY_BLOCKED`다.
+   - degraded authority eligibility도 아직 `false`이며, authority ensemble은 `timeout consensus`가 아니어서 degraded policy를 실제로 쓰지 않았다.
 
 남은 구조적 작업은 없다. 남은 것은 `Phase D 운영 acceptance sample`, `external authority pending`, `timeout degraded-policy 실발동 검증` 같은 운영 상태다.
 

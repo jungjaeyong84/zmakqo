@@ -115,7 +115,7 @@
 
 ### 6.2 EV Probability Calibration
 역할:
-- `DROP_EV_GATE_TP1_PROB`가 쓰는 `tp1_prob lower bound`를 empirical outcome으로 보정한다.
+- `4차 EV/시간가치층`이 쓰는 `exit_value_lower_bound`를 empirical outcome과 exit microstructure로 보정한다.
 - 과신된 probability/lower bound를 실측 ceiling으로 clamp한다.
 
 핵심 경로:
@@ -124,7 +124,8 @@
 - `ops/daily/best_self_evolution_ev_probability_calibration_latest.json`
 
 의미:
-- EV gate 문제를 단순 threshold 완화로만 다루지 않고, 확률 모델 calibration부터 바로잡는다.
+- EV gate 문제를 단순 threshold 완화로만 다루지 않고, `TP0/TP1/시간청산 복합 기대값` 기준과 calibration을 함께 바로잡는다.
+- legacy reason code `DROP_EV_GATE_TP1_PROB`와 함수명 `estimateTp1ReachProbability()`는 하위 호환을 위해 유지되지만, 실제 gate basis는 `TP_COMPOSITE_EXIT_VALUE_V1`이다.
 
 ### 6.3 Exit Microstructure
 역할:
