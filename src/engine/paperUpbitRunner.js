@@ -4263,11 +4263,14 @@ function shouldBypassEvEntryGate({ intent, features } = {}) {
   return String(intent || "").toUpperCase() === "ENTRY" && isManualRetryFeatures(features);
 }
 
-function resolveEvGateUnknownGenRelaxContext({ eventUpper, features, cfg, tier } = {}) {
+function resolveEvGateUnknownGenRelaxContext({ eventUpper, intent, features, cfg, tier } = {}) {
   const f = (features && typeof features === "object") ? features : {};
   const derived = deriveGroupSubtype(eventUpper);
-  const signalGroup = pickFirstUpper(f, ["event_group", "signal_group", "_event_group"]) || derived.group || null;
-  const signalSubtype = pickFirstUpper(f, ["event_subtype", "signal_subtype", "_event_subtype"]) || derived.subtype || null;
+  const explicitSignalGroup = pickFirstUpper(f, ["event_group", "signal_group", "_event_group"]);
+  const explicitSignalSubtype = pickFirstUpper(f, ["event_subtype", "signal_subtype", "_event_subtype"]);
+  const signalGroup = explicitSignalGroup || derived.group || null;
+  const signalSubtype = explicitSignalSubtype || derived.subtype || null;
+  const eventIntent = pickFirstUpper(f, ["event_intent", "_event_intent"]) || String(intent || "").trim().toUpperCase() || null;
   const marketState = pickFirstUpper(f, [
     "market_state_summary_state",
     "market_state_state",
@@ -4276,10 +4279,13 @@ function resolveEvGateUnknownGenRelaxContext({ eventUpper, features, cfg, tier }
     "market_physics_state",
   ]);
   const baseTp1ProbMin = resolveEvGateTp1ProbMinForTier(cfg, tier);
+  const isEntryLikeSignal = eventIntent === "ENTRY" || signalGroup === "ENTRY";
+  const hasExplicitStageMetadata = !!(explicitSignalGroup || explicitSignalSubtype);
+  const isUnknownGenLikeSignal = signalSubtype === "GEN" || !hasExplicitStageMetadata;
   const applies = cfg
     && cfg.unknownGenRelaxActive === true
-    && signalGroup === "ENTRY"
-    && signalSubtype === "GEN"
+    && isEntryLikeSignal
+    && isUnknownGenLikeSignal
     && (!marketState || marketState === "UNKNOWN");
   const tp1ProbMin = applies
     ? Number(Math.max(0.30, Number(baseTp1ProbMin || 0) - Number(cfg.unknownGenRelaxMinDelta || 0)).toFixed(4))
@@ -4291,6 +4297,10 @@ function resolveEvGateUnknownGenRelaxContext({ eventUpper, features, cfg, tier }
     ? Number(Math.max(0.25, Number(cfg.tp1ProbKill || 0) - Number(cfg.unknownGenRelaxKillDelta || 0)).toFixed(4))
     : Number(cfg && cfg.tp1ProbKill);
   return {
+    eventIntent,
+    explicitSignalGroup: explicitSignalGroup || null,
+    explicitSignalSubtype: explicitSignalSubtype || null,
+    hasExplicitStageMetadata,
     signalGroup,
     signalSubtype,
     marketState: marketState || "UNKNOWN",
@@ -4446,7 +4456,7 @@ async function evaluateEvEntryGate({
   const tp0Pct = Number(plan.tp0Pct);
   const tp1Pct = Number(plan.tp1Pct);
   const slPct = Number(plan.slPct);
-  const relaxContext = resolveEvGateUnknownGenRelaxContext({ eventUpper, features: f, cfg, tier });
+  const relaxContext = resolveEvGateUnknownGenRelaxContext({ eventUpper, intent, features: f, cfg, tier });
   const tp1ProbMin = relaxContext.tp1ProbMin;
 
   const baseDetail = {
@@ -4481,6 +4491,10 @@ async function evaluateEvEntryGate({
     ev_gate_lookback_bars: Number(cfg.lookbackBars) || null,
     ev_gate_atr_bars: Number(cfg.atrBars) || null,
     ev_gate_signal_group: relaxContext.signalGroup,
+    ev_gate_event_intent: relaxContext.eventIntent,
+    ev_gate_signal_group_explicit: relaxContext.explicitSignalGroup,
+    ev_gate_signal_subtype_explicit: relaxContext.explicitSignalSubtype,
+    ev_gate_signal_stage_metadata_present: relaxContext.hasExplicitStageMetadata,
     ev_gate_signal_subtype: relaxContext.signalSubtype,
     ev_gate_market_state: relaxContext.marketState,
     ev_gate_unknown_gen_relax_enabled: cfg.unknownGenRelaxEnabled === true,

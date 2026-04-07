@@ -377,6 +377,50 @@ async function run() {
   assert.strictEqual(reportOnlyDropUnknownGen.detail.ev_gate_raw_reason, "DROP_EV_GATE_TP1_PROB");
   assert.strictEqual(reportOnlyDropUnknownGen.detail.ev_gate_action, "REPORT_ONLY");
 
+  const reportOnlyServerUnknownGen = await __test.evaluateEvEntryGate({
+    exchange: "BINANCEFUT",
+    symbol: "DOGEUSDT",
+    tf: "15m",
+    barCloseMs: 1_700_000_000_000 + (11 * 900_000),
+    intent: "ENTRY",
+    intentDir: "SHORT",
+    eventUpper: "SHORT",
+    features: {
+      event_intent: "ENTRY",
+    },
+    cfg: unknownGenRelaxCfg,
+    bars: makeBars({ direction: "SHORT", driftPct: 0.05, rangePct: 0.6, closeControl: 0.2, adverseEvery: 2 }),
+  });
+  assert.strictEqual(reportOnlyServerUnknownGen.ok, true);
+  assert.strictEqual(reportOnlyServerUnknownGen.action, "REPORT_ONLY");
+  assert.strictEqual(reportOnlyServerUnknownGen.detail.ev_gate_event_intent, "ENTRY");
+  assert.strictEqual(reportOnlyServerUnknownGen.detail.ev_gate_signal_group, "ENTRY");
+  assert.strictEqual(reportOnlyServerUnknownGen.detail.ev_gate_signal_stage_metadata_present, false);
+  assert.strictEqual(reportOnlyServerUnknownGen.detail.ev_gate_signal_subtype, "LONG_SHORT");
+  assert.strictEqual(reportOnlyServerUnknownGen.detail.ev_gate_market_state, "UNKNOWN");
+  assert.strictEqual(reportOnlyServerUnknownGen.detail.ev_gate_report_only_applied, true);
+  assert.strictEqual(reportOnlyServerUnknownGen.detail.ev_gate_raw_reason, "DROP_EV_GATE_TP1_PROB");
+
+  const reportOnlyBareServerEntry = await __test.evaluateEvEntryGate({
+    exchange: "BINANCEFUT",
+    symbol: "DOGEUSDT",
+    tf: "15m",
+    barCloseMs: 1_700_000_000_000 + (11 * 900_000),
+    intent: "ENTRY",
+    intentDir: "SHORT",
+    eventUpper: "SHORT",
+    features: {
+      event_intent: "ENTRY",
+    },
+    cfg: unknownGenRelaxCfg,
+    bars: makeBars({ direction: "SHORT", driftPct: 0.05, rangePct: 0.6, closeControl: 0.2, adverseEvery: 2 }),
+  });
+  assert.strictEqual(reportOnlyBareServerEntry.ok, true);
+  assert.strictEqual(reportOnlyBareServerEntry.action, "REPORT_ONLY");
+  assert.strictEqual(reportOnlyBareServerEntry.detail.ev_gate_signal_stage_metadata_present, false);
+  assert.strictEqual(reportOnlyBareServerEntry.detail.ev_gate_report_only_applied, true);
+  assert.strictEqual(reportOnlyBareServerEntry.detail.ev_gate_raw_reason, "DROP_EV_GATE_TP1_PROB");
+
   const allowCoreShort = await __test.evaluateEvEntryGate({
     exchange: "BINANCEFUT",
     symbol: "BTCUSDT",
