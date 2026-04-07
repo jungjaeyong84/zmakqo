@@ -5,9 +5,14 @@
 const fs = require("fs");
 const path = require("path");
 
-const ROOT = path.resolve(__dirname, "..");
+const ROOT = path.resolve(process.env.DOC_ARTIFACT_PARITY_ROOT || path.join(__dirname, ".."));
 const OPS_DAILY_DIR = path.join(ROOT, "ops", "daily");
 const LOCK_DOC_PATH = path.join(ROOT, "docs", "ARTIFACT_SSOT_LOCK.md");
+const REQUIRED_ARTIFACTS = {
+  governor: path.join(OPS_DAILY_DIR, "best_self_evolution_objective_recovery_governor_latest.json"),
+  runtime: path.join(OPS_DAILY_DIR, "server_signal_runtime_latest.json"),
+  cutover: path.join(OPS_DAILY_DIR, "server_signal_cutover_readiness_latest.json"),
+};
 
 function readJsonSafe(filePath, fallback = null) {
   try {
@@ -53,13 +58,59 @@ function normalize(v) {
   return String(v == null ? "" : v).trim();
 }
 
+function buildResult(overrides = {}) {
+  return {
+    ok: false,
+    checked_n: 0,
+    mismatch_n: 0,
+    mismatches: [],
+    lock_doc: LOCK_DOC_PATH,
+    generated_at: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+function writeResult(result) {
+  const outPath = path.join(OPS_DAILY_DIR, "doc_artifact_parity_latest.json");
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.writeFileSync(outPath, `${JSON.stringify(result, null, 2)}\n`);
+}
+
 function main() {
   const lockText = fs.readFileSync(LOCK_DOC_PATH, "utf8");
   const lock = parseLockDoc(lockText);
+  const missingArtifacts = Object.entries(REQUIRED_ARTIFACTS)
+    .filter(([, filePath]) => !fs.existsSync(filePath))
+    .map(([key, filePath]) => ({ key, file: filePath }));
 
-  const governorSummary = unwrapSummary(readJsonSafe(path.join(OPS_DAILY_DIR, "best_self_evolution_objective_recovery_governor_latest.json"), null));
-  const runtimeSummary = unwrapSummary(readJsonSafe(path.join(OPS_DAILY_DIR, "server_signal_runtime_latest.json"), null));
-  const cutoverSummary = unwrapSummary(readJsonSafe(path.join(OPS_DAILY_DIR, "server_signal_cutover_readiness_latest.json"), null));
+  if (missingArtifacts.length === Object.keys(REQUIRED_ARTIFACTS).length && String(process.env.CI || "") === "true") {
+    const result = buildResult({
+      ok: true,
+      skipped: true,
+      reason: "CI_RUNTIME_ARTIFACTS_MISSING",
+      checked_n: Object.keys(lock).length,
+      missing_artifacts: missingArtifacts,
+    });
+    writeResult(result);
+    console.log(JSON.stringify(result));
+    return;
+  }
+
+  if (missingArtifacts.length > 0) {
+    const result = buildResult({
+      ok: false,
+      reason: "REQUIRED_ARTIFACTS_MISSING",
+      checked_n: Object.keys(lock).length,
+      missing_artifacts: missingArtifacts,
+    });
+    writeResult(result);
+    console.error(JSON.stringify(result));
+    process.exit(1);
+  }
+
+  const governorSummary = unwrapSummary(readJsonSafe(REQUIRED_ARTIFACTS.governor, null));
+  const runtimeSummary = unwrapSummary(readJsonSafe(REQUIRED_ARTIFACTS.runtime, null));
+  const cutoverSummary = unwrapSummary(readJsonSafe(REQUIRED_ARTIFACTS.cutover, null));
 
   const actual = {
     governor_status: governorSummary.governor_status,
@@ -78,18 +129,13 @@ function main() {
     }
   }
 
-  const result = {
+  const result = buildResult({
     ok: mismatches.length === 0,
     checked_n: Object.keys(lock).length,
     mismatch_n: mismatches.length,
     mismatches,
-    lock_doc: LOCK_DOC_PATH,
-    generated_at: new Date().toISOString(),
-  };
-
-  const outPath = path.join(OPS_DAILY_DIR, "doc_artifact_parity_latest.json");
-  fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, `${JSON.stringify(result, null, 2)}\n`);
+  });
+  writeResult(result);
 
   if (mismatches.length > 0) {
     console.error(JSON.stringify(result));
