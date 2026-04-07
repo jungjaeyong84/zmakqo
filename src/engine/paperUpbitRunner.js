@@ -2169,6 +2169,21 @@ function resolveEventRefMs(...candidates) {
   return Date.now();
 }
 
+function shouldBypassOppositeEntryCooldown({ features, intentDir, posMeta } = {}) {
+  const featureMap = (features && typeof features === "object") ? features : {};
+  const allowOppositeAfterExit = normalizeBool(featureMap._allow_opposite_after_exit, false);
+  const flipConfirmed = normalizeBool(featureMap._flip_confirmed, false)
+    || Number(featureMap._flip_stage) >= 2
+    || String(featureMap.opposite_transition || "").toUpperCase() === "CONFIRM_EXIT";
+  const lastExitDir = String(posMeta && posMeta.last_exit_dir || "").toUpperCase();
+  const nextDir = String(intentDir || "").toUpperCase();
+  return allowOppositeAfterExit === true
+    && flipConfirmed === true
+    && !!lastExitDir
+    && !!nextDir
+    && lastExitDir !== nextDir;
+}
+
 function evaluateLiveRescueAdd({
   cfg,
   event,
@@ -8180,7 +8195,9 @@ async function runPaperUpbitForBar({
         }
       }
     }
-    if (intentIsEntry && oppositeCooldownBars > 0) {
+    const bypassOppositeEntryCooldown = intentIsEntry
+      && shouldBypassOppositeEntryCooldown({ features: it.features_json, intentDir, posMeta });
+    if (intentIsEntry && oppositeCooldownBars > 0 && !bypassOppositeEntryCooldown) {
       const hasPositionNow = hasPositionSize(pos.size_pct) || (Number.isFinite(posQtyBase) && posQtyBase > 0);
       if (!hasPositionNow) {
         const lastExitMs = Number(posMeta && posMeta.last_exit_bar_ms);
@@ -8198,7 +8215,7 @@ async function runPaperUpbitForBar({
       }
     }
     // ── 시간 기반 절대 쿨다운: 방향 반전 시 최소 대기 시간 (타임프레임 무관) ──
-    if (intentIsEntry && oppositeTimeCooldownMs > 0) {
+    if (intentIsEntry && oppositeTimeCooldownMs > 0 && !bypassOppositeEntryCooldown) {
       const hasPositionNow = hasPositionSize(pos.size_pct) || (Number.isFinite(posQtyBase) && posQtyBase > 0);
       if (!hasPositionNow) {
         const lastExitWallMs = Number(posMeta && posMeta.last_exit_wall_ms);
@@ -9334,7 +9351,9 @@ async function runPaperUpbitForBar({
       });
       continue;
     }
-    if (intentIsEntry && oppositeCooldownBars > 0 && !hasPositionSize(pos.size_pct)) {
+    const bypassOppositeEntryCooldown = intentIsEntry
+      && shouldBypassOppositeEntryCooldown({ features: s.features, intentDir, posMeta });
+    if (intentIsEntry && oppositeCooldownBars > 0 && !hasPositionSize(pos.size_pct) && !bypassOppositeEntryCooldown) {
       const lastExitMs = Number(posMeta && posMeta.last_exit_bar_ms);
       const lastExitDir = String(posMeta && posMeta.last_exit_dir || "");
       if (Number.isFinite(lastExitMs) && lastExitDir && Number.isFinite(signalTfMs)) {
@@ -9362,7 +9381,7 @@ async function runPaperUpbitForBar({
       }
     }
     // ── 시간 기반 절대 쿨다운: 방향 반전 시 최소 대기 시간 (타임프레임 무관) ──
-    if (intentIsEntry && oppositeTimeCooldownMs > 0 && !hasPositionSize(pos.size_pct)) {
+    if (intentIsEntry && oppositeTimeCooldownMs > 0 && !hasPositionSize(pos.size_pct) && !bypassOppositeEntryCooldown) {
       const lastExitWallMs = Number(posMeta && posMeta.last_exit_wall_ms);
       const lastExitDir = String(posMeta && posMeta.last_exit_dir || "");
       if (Number.isFinite(lastExitWallMs) && lastExitDir && intentDir && lastExitDir !== intentDir) {
@@ -10597,7 +10616,9 @@ async function runPaperFuturesForBar({
         continue;
       }
     }
-    if (intentIsEntry && oppositeCooldownBars > 0) {
+    const bypassOppositeEntryCooldown = intentIsEntry
+      && shouldBypassOppositeEntryCooldown({ features: it.features_json, intentDir, posMeta });
+    if (intentIsEntry && oppositeCooldownBars > 0 && !bypassOppositeEntryCooldown) {
       const hasPositionNow = hasPositionSize(pos.size_pct) || (Number.isFinite(posQtyBase) && posQtyBase > 0);
       if (!hasPositionNow) {
         const lastExitMs = Number(posMeta && posMeta.last_exit_bar_ms);
@@ -10615,7 +10636,7 @@ async function runPaperFuturesForBar({
       }
     }
     // ── 시간 기반 절대 쿨다운: 방향 반전 시 최소 대기 시간 (타임프레임 무관) ──
-    if (intentIsEntry && oppositeTimeCooldownMs > 0) {
+    if (intentIsEntry && oppositeTimeCooldownMs > 0 && !bypassOppositeEntryCooldown) {
       const hasPositionNow = hasPositionSize(pos.size_pct) || (Number.isFinite(posQtyBase) && posQtyBase > 0);
       if (!hasPositionNow) {
         const lastExitWallMs = Number(posMeta && posMeta.last_exit_wall_ms);
@@ -12431,7 +12452,9 @@ async function runPaperFuturesForBar({
       });
       continue;
     }
-    if (intentIsEntry && oppositeCooldownBars > 0 && !hasPositionNow) {
+    const bypassOppositeEntryCooldown = intentIsEntry
+      && shouldBypassOppositeEntryCooldown({ features: s.features, intentDir, posMeta });
+    if (intentIsEntry && oppositeCooldownBars > 0 && !hasPositionNow && !bypassOppositeEntryCooldown) {
       const lastExitMs = Number(posMeta && posMeta.last_exit_bar_ms);
       const lastExitDir = String(posMeta && posMeta.last_exit_dir || "");
       if (Number.isFinite(lastExitMs) && lastExitDir && Number.isFinite(signalTfMs)) {
@@ -12459,7 +12482,7 @@ async function runPaperFuturesForBar({
       }
     }
     // ── 시간 기반 절대 쿨다운: 방향 반전 시 최소 대기 시간 (타임프레임 무관) ──
-    if (intentIsEntry && oppositeTimeCooldownMs > 0 && !hasPositionNow) {
+    if (intentIsEntry && oppositeTimeCooldownMs > 0 && !hasPositionNow && !bypassOppositeEntryCooldown) {
       const lastExitWallMs = Number(posMeta && posMeta.last_exit_wall_ms);
       const lastExitDir = String(posMeta && posMeta.last_exit_dir || "");
       if (Number.isFinite(lastExitWallMs) && lastExitDir && intentDir && lastExitDir !== intentDir) {
@@ -13438,6 +13461,7 @@ module.exports = {
     isBinanceImmediateTriggerError,
     resolveManualRetryQtyBase,
     resolveEventRefMs,
+    shouldBypassOppositeEntryCooldown,
     resolveStructureInitialStopPrice,
     resolveInitialStopSource,
     sendRescueAddRepriceAlert,
