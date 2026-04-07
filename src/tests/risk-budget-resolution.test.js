@@ -22,7 +22,9 @@ async function run() {
       enabled: false,
       on_exceed: "SKIP",
       default_max_krw: 3577,
-      total_max_krw: 3578.2025161,
+      total_max_krw: 107,
+      total_max_source: "account_total",
+      account_total_value: 3578.2025161,
       unit: "USDT",
       by_market: {
         BNBUSDT: 17,
@@ -40,6 +42,11 @@ async function run() {
     assert.strictEqual(budget.configuredEnabled, false, "configured enabled flag should preserve raw config");
     assert.strictEqual(budget.maxKrw, 17);
     assert.ok(Number.isFinite(budget.totalMaxKrw) && budget.totalMaxKrw > 0, "total budget should remain populated");
+    assert.ok(
+      budget.totalMaxKrw > 3000,
+      "account_total source should prefer account-total-scale budget over stale total_max_krw"
+    );
+    assert.notStrictEqual(budget.totalMaxKrw, 107, "stale total_max_krw should not survive when total_max_source=account_total");
     assert.strictEqual(budget.onExceed, "SKIP");
 
     const disabledBudget = await __test.resolveRiskBudget("XLMUSDT", "BINANCEFUT");

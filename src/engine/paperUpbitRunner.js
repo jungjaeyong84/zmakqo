@@ -7960,6 +7960,13 @@ async function resolveRiskBudget(symbol, exchange) {
     const onExceed = String(cfg.on_exceed || "CLAMP").toUpperCase();
     let totalMaxKrw = Number(cfg.total_max_krw ?? cfg.total_budget_krw ?? cfg.total_krw ?? 0) || 0;
     const ex = String(exchange || "").toUpperCase();
+    const totalMaxSource = String(cfg.total_max_source || "").toLowerCase();
+    const configuredAccountTotal = Number(
+      cfg.account_total_value ??
+      cfg.account_total_krw ??
+      cfg.total_account_value ??
+      0
+    ) || 0;
     const replayForcedTotalRaw = Number(
       process.env.REPLAY_FORCE_TOTAL_MAX_USDT ||
       process.env.REPLAY_FORCE_TOTAL_MAX_KRW ||
@@ -7970,6 +7977,13 @@ async function resolveRiskBudget(symbol, exchange) {
       : null;
     if (ex.includes("_REPLAY_") && Number.isFinite(replayForcedTotal) && replayForcedTotal > 0) {
       totalMaxKrw = replayForcedTotal;
+    } else if (
+      ex.includes("BINANCE") &&
+      totalMaxSource === "account_total" &&
+      Number.isFinite(configuredAccountTotal) &&
+      configuredAccountTotal > 0
+    ) {
+      totalMaxKrw = configuredAccountTotal;
     } else if (ex.includes("BINANCE")) {
       try {
         const keys = await resolveBinanceKeys();
