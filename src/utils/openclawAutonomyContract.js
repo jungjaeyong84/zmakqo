@@ -86,6 +86,10 @@ function phaseStatus(done, active) {
   return "PENDING";
 }
 
+function readNestedObject(value) {
+  return value && typeof value === "object" ? value : {};
+}
+
 function deriveServerSignalTransition({ authoritySummary = {}, qualitySummary = {} } = {}) {
   const sourceMode = toUpper(authoritySummary.source_mode) || "UNKNOWN";
   const driftStatus = toUpper(authoritySummary.drift_status) || "PARITY_UNKNOWN";
@@ -161,6 +165,7 @@ function deriveOpenClawAutonomyContract({
   marketRegimeBoard = null,
   executionQuality = null,
   objectiveRetrospective = null,
+  exitTrailingContract = null,
   executionStructureUpgradeContract = null,
   costControlEngineContract = null,
   cohortRegimeParameterSplitContract = null,
@@ -228,6 +233,8 @@ function deriveOpenClawAutonomyContract({
   const executionQualitySummary = readSummary(executionQuality);
   const retrospectiveDisplay = readDisplay(objectiveRetrospective) || {};
   const retrospectiveMicro = readRetrospectiveMicrostructure(objectiveRetrospective);
+  const exitTrailingContractSummary = readSummary(exitTrailingContract);
+  const activeBinanceEntryExitContract = readNestedObject(exitTrailingContractSummary.active_binance_entry_exit_contract);
   const executionStructureUpgradeContractSummary = readSummary(executionStructureUpgradeContract);
   const costControlEngineContractSummary = readSummary(costControlEngineContract);
   const cohortRegimeParameterSplitContractSummary = readSummary(cohortRegimeParameterSplitContract);
@@ -263,6 +270,19 @@ function deriveOpenClawAutonomyContract({
   const mlPromotionGateSummary = readSummary(mlPromotionGate);
   const evGateCompositePolicySummary = readSummary(evGateCompositePolicy);
   const lineageSloDropMonitorSummary = readSummary(lineageSloDropMonitor);
+  const exitTrailingContractActiveBinanceProfileMode = String(exitTrailingContractSummary.active_binance_profile_mode || "").trim() || null;
+  const exitTrailingContractCanonicalMode = String(exitTrailingContractSummary.canonical_mode || "").trim() || null;
+  const exitTrailingContractActiveBinanceTp1Pct = toNum(activeBinanceEntryExitContract.tp1_pct);
+  const exitTrailingContractActiveBinanceBePct = toNum(activeBinanceEntryExitContract.be_pct);
+  const exitTrailingContractActiveBinanceTrailRMultiple = toNum(activeBinanceEntryExitContract.trail_r_multiple);
+  const runtimeTp1LadderDefaultProfile = String(serverSignalRuntimeSummary.tp1_ladder_default_profile || "").trim() || null;
+  const runtimeOppositeCooldownDefaultProfile = String(serverSignalRuntimeSummary.opposite_cooldown_default_profile || "").trim() || null;
+  const runtimeVsCanonicalExitContractDiverged = Boolean(
+    (toUpper(runtimeTp1LadderDefaultProfile) && toUpper(exitTrailingContractActiveBinanceProfileMode)
+      && toUpper(runtimeTp1LadderDefaultProfile) !== toUpper(exitTrailingContractActiveBinanceProfileMode))
+    || (toUpper(runtimeOppositeCooldownDefaultProfile) && toUpper(exitTrailingContractActiveBinanceProfileMode)
+      && toUpper(runtimeOppositeCooldownDefaultProfile) !== toUpper(exitTrailingContractActiveBinanceProfileMode))
+  );
   const candidatesRaw = unwrapRawReport(candidates) || {};
   const candidatesSummary = readSummary(candidates);
   const candidateRows = Array.isArray(candidatesRaw.rows) ? candidatesRaw.rows : [];
@@ -512,6 +532,12 @@ function deriveOpenClawAutonomyContract({
       server_signal_runtime_tp1_ladder_stage2_fee_adjusted_expectancy_min: toNum(serverSignalRuntimeSummary.tp1_ladder_stage2_fee_adjusted_expectancy_min),
       server_signal_runtime_tp1_ladder_default_profile: String(serverSignalRuntimeSummary.tp1_ladder_default_profile || "").trim() || null,
       server_signal_runtime_tp1_ladder_promotion_mode: String(serverSignalRuntimeSummary.tp1_ladder_promotion_mode || "").trim() || null,
+      exit_trailing_contract_canonical_mode: exitTrailingContractCanonicalMode,
+      exit_trailing_contract_active_binance_profile_mode: exitTrailingContractActiveBinanceProfileMode,
+      exit_trailing_contract_active_binance_tp1_pct: exitTrailingContractActiveBinanceTp1Pct,
+      exit_trailing_contract_active_binance_be_pct: exitTrailingContractActiveBinanceBePct,
+      exit_trailing_contract_active_binance_trail_r_multiple: exitTrailingContractActiveBinanceTrailRMultiple,
+      runtime_vs_canonical_exit_contract_diverged: runtimeVsCanonicalExitContractDiverged,
       server_signal_runtime_opposite_cooldown_bars_base: toNum(serverSignalRuntimeSummary.opposite_cooldown_bars_base),
       server_signal_runtime_opposite_cooldown_bars_mixed: toNum(serverSignalRuntimeSummary.opposite_cooldown_bars_mixed),
       server_signal_runtime_opposite_cooldown_bars_rescue: toNum(serverSignalRuntimeSummary.opposite_cooldown_bars_rescue),
@@ -1044,6 +1070,12 @@ function deriveOpenClawAutonomyContract({
       server_signal_runtime_tp1_ladder_stage2_fee_adjusted_expectancy_min: toNum(serverSignalRuntimeSummary.tp1_ladder_stage2_fee_adjusted_expectancy_min),
       server_signal_runtime_tp1_ladder_default_profile: String(serverSignalRuntimeSummary.tp1_ladder_default_profile || "").trim() || null,
       server_signal_runtime_tp1_ladder_promotion_mode: String(serverSignalRuntimeSummary.tp1_ladder_promotion_mode || "").trim() || null,
+      exit_trailing_contract_canonical_mode: exitTrailingContractCanonicalMode,
+      exit_trailing_contract_active_binance_profile_mode: exitTrailingContractActiveBinanceProfileMode,
+      exit_trailing_contract_active_binance_tp1_pct: exitTrailingContractActiveBinanceTp1Pct,
+      exit_trailing_contract_active_binance_be_pct: exitTrailingContractActiveBinanceBePct,
+      exit_trailing_contract_active_binance_trail_r_multiple: exitTrailingContractActiveBinanceTrailRMultiple,
+      runtime_vs_canonical_exit_contract_diverged: runtimeVsCanonicalExitContractDiverged,
       server_signal_runtime_opposite_cooldown_bars_base: toNum(serverSignalRuntimeSummary.opposite_cooldown_bars_base),
       server_signal_runtime_opposite_cooldown_bars_mixed: toNum(serverSignalRuntimeSummary.opposite_cooldown_bars_mixed),
       server_signal_runtime_opposite_cooldown_bars_rescue: toNum(serverSignalRuntimeSummary.opposite_cooldown_bars_rescue),

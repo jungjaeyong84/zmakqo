@@ -103,6 +103,12 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         server_signal_runtime_tp1_ladder_stage2_fee_adjusted_expectancy_min: 0,
         server_signal_runtime_tp1_ladder_default_profile: "RESCUE",
         server_signal_runtime_tp1_ladder_promotion_mode: "RESCUE_FIRST_PROMOTION",
+        exit_trailing_contract_canonical_mode: "TRAIL_R_MULTIPLE",
+        exit_trailing_contract_active_binance_profile_mode: "BASE",
+        exit_trailing_contract_active_binance_tp1_pct: 3.25,
+        exit_trailing_contract_active_binance_be_pct: 0.25,
+        exit_trailing_contract_active_binance_trail_r_multiple: 0.9,
+        runtime_vs_canonical_exit_contract_diverged: true,
         server_signal_runtime_opposite_cooldown_bars_base: 3,
         server_signal_runtime_opposite_cooldown_bars_mixed: 1,
         server_signal_runtime_opposite_cooldown_bars_rescue: 0,
@@ -445,6 +451,12 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_server_signal_runtime_tp1_ladder_stage2_tp1_hit_rate_min, 0.3);
   assert.strictEqual(journal.summary.current_server_signal_runtime_tp1_ladder_default_profile, "RESCUE");
   assert.strictEqual(journal.summary.current_server_signal_runtime_tp1_ladder_promotion_mode, "RESCUE_FIRST_PROMOTION");
+  assert.strictEqual(journal.summary.current_exit_trailing_contract_canonical_mode, "TRAIL_R_MULTIPLE");
+  assert.strictEqual(journal.summary.current_exit_trailing_contract_active_binance_profile_mode, "BASE");
+  assert.strictEqual(journal.summary.current_exit_trailing_contract_active_binance_tp1_pct, 3.25);
+  assert.strictEqual(journal.summary.current_exit_trailing_contract_active_binance_be_pct, 0.25);
+  assert.strictEqual(journal.summary.current_exit_trailing_contract_active_binance_trail_r_multiple, 0.9);
+  assert.strictEqual(journal.summary.current_runtime_vs_canonical_exit_contract_diverged, true);
   assert.strictEqual(journal.summary.current_server_signal_runtime_opposite_cooldown_bars_mixed, 1);
   assert.strictEqual(journal.summary.current_server_signal_runtime_opposite_cooldown_ms_rescue, 0);
   assert.strictEqual(journal.summary.current_server_signal_runtime_opposite_cooldown_default_profile, "RESCUE");
