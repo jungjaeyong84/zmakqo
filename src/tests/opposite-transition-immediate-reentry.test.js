@@ -62,8 +62,8 @@ function run() {
       openclaw_market_regime_cohort: "MIXED",
     },
   });
-  assert.strictEqual(mixedCooldown.bars, 0);
-  assert.strictEqual(mixedCooldown.timeMs, 0);
+  assert.strictEqual(mixedCooldown.bars, 1);
+  assert.strictEqual(mixedCooldown.timeMs, 60000);
 
   const promotedMixedCooldown = __test.resolveOppositeCooldownWindow({
     sysCfg: {},
@@ -75,14 +75,14 @@ function run() {
   assert.strictEqual(promotedMixedCooldown.bars, 1);
   assert.strictEqual(promotedMixedCooldown.timeMs, 60000);
 
-  const rescueDefaultCooldown = __test.resolveOppositeCooldownWindow({
+  const keepDropDefaultCooldown = __test.resolveOppositeCooldownWindow({
     sysCfg: {},
     posMeta: {
       openclaw_market_regime_cohort: "KEEP_DROP",
     },
   });
-  assert.strictEqual(rescueDefaultCooldown.bars, 0);
-  assert.strictEqual(rescueDefaultCooldown.timeMs, 0);
+  assert.strictEqual(keepDropDefaultCooldown.bars, 3);
+  assert.strictEqual(keepDropDefaultCooldown.timeMs, 300000);
 
   const baseCooldown = __test.resolveOppositeCooldownWindow({
     sysCfg: {},
@@ -101,8 +101,17 @@ function run() {
       tp1_ladder_profile: "MIXED",
     },
   });
-  assert.strictEqual(mixedProfileCooldown.bars, 1);
-  assert.strictEqual(mixedProfileCooldown.timeMs, 60000);
+  assert.strictEqual(mixedProfileCooldown.bars, 3);
+  assert.strictEqual(mixedProfileCooldown.timeMs, 300000);
+
+  const holdSampleCooldown = __test.resolveOppositeCooldownWindow({
+    sysCfg: {},
+    posMeta: {
+      openclaw_market_regime_cohort: "HOLD_SAMPLE",
+    },
+  });
+  assert.strictEqual(holdSampleCooldown.bars, 3);
+  assert.strictEqual(holdSampleCooldown.timeMs, 300000);
 
   const fromPositionCooldown = __test.resolveOppositeCooldownWindowFromPosition({
     sysCfg: {},

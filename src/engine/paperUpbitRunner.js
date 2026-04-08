@@ -127,15 +127,12 @@ function normalizeTp1LadderProfile(value) {
 
 function resolveCooldownProfileFromMeta(posMeta = null) {
   const metaSafe = posMeta && typeof posMeta === "object" ? posMeta : {};
-  const explicitProfile = normalizeTp1LadderProfile(metaSafe.tp1_ladder_profile);
-  if (explicitProfile) return explicitProfile;
-  const stageRaw = Number(metaSafe.tp1_ladder_stage);
-  if (Number.isFinite(stageRaw)) {
-    if (stageRaw >= 2) return "BASE";
-    if (stageRaw >= 1) return "MIXED";
-    return "RESCUE";
-  }
-  return "RESCUE";
+  const cohort = normalizeOpenClawCohort(
+    metaSafe.openclaw_market_regime_cohort || metaSafe.market_regime_cohort
+  );
+  if (cohort === "RESCUE") return "RESCUE";
+  if (cohort === "MIXED") return "MIXED";
+  return "BASE";
 }
 
 function resolveOppositeCooldownWindow({ sysCfg = {}, posMeta = null } = {}) {
@@ -211,6 +208,61 @@ function unwrapSummaryRecord(raw) {
   return raw;
 }
 
+function normalizeTp1LadderKpiRecord(raw = null) {
+  const safe = unwrapSummaryRecord(raw) || raw;
+  if (!safe || typeof safe !== "object") return null;
+  const snapshot = {
+    status: String(safe.status || "").trim().toUpperCase() || null,
+    realized_n: Number(safe.realized_trade_n ?? safe.realized_n),
+    tp0_hit_rate: Number(safe.tp0_hit_rate),
+    tp1_hit_rate: Number(safe.tp1_hit_rate),
+    tp0_to_tp1_conversion: Number(safe.tp0_to_tp1_conversion_rate ?? safe.tp0_to_tp1_conversion),
+    fee_adjusted_expectancy: Number(safe.fee_adjusted_expectancy),
+  };
+  return snapshot;
+}
+
+function buildTp1LadderKpiScopeMap(raw = null, scope = "MARKET") {
+  const result = new Map();
+  const addEntry = (scopeKey, record) => {
+    const normalizedKey = scope === "MARKET"
+      ? String(scopeKey || "").trim().toUpperCase()
+      : normalizeOpenClawCohort(scopeKey);
+    if (!normalizedKey) return;
+    const normalizedRecord = normalizeTp1LadderKpiRecord(record);
+    if (!normalizedRecord) return;
+    result.set(normalizedKey, normalizedRecord);
+  };
+  if (!raw || typeof raw !== "object") return result;
+  if (Array.isArray(raw)) {
+    for (const row of raw) {
+      if (!row || typeof row !== "object") continue;
+      addEntry(scope === "MARKET" ? row.market : row.cohort, row);
+    }
+    return result;
+  }
+  for (const [key, value] of Object.entries(raw)) {
+    addEntry(key, value);
+  }
+  return result;
+}
+
+function resolveTp1LadderKpiForContext(snapshot = null, { market = null, cohort = null } = {}) {
+  const safe = snapshot && typeof snapshot === "object" ? snapshot : null;
+  if (!safe) return { scope: "GLOBAL", kpi: null };
+  const marketKey = String(market || "").trim().toUpperCase();
+  if (marketKey && safe.byMarket instanceof Map) {
+    const marketSnapshot = safe.byMarket.get(marketKey);
+    if (marketSnapshot) return { scope: "MARKET", kpi: marketSnapshot };
+  }
+  const cohortKey = normalizeOpenClawCohort(cohort);
+  if (cohortKey && safe.byCohort instanceof Map) {
+    const cohortSnapshot = safe.byCohort.get(cohortKey);
+    if (cohortSnapshot) return { scope: "COHORT", kpi: cohortSnapshot };
+  }
+  return { scope: "GLOBAL", kpi: safe.global || null };
+}
+
 function loadTp1LadderKpiSnapshot(force = false) {
   const now = Date.now();
   if (!force && tp1LadderKpiCache.ts && (now - tp1LadderKpiCache.ts) < TP1_LADDER_KPI_CACHE_TTL_MS) {
@@ -227,11 +279,15 @@ function loadTp1LadderKpiSnapshot(force = false) {
     const summary = unwrapSummaryRecord(raw) || {};
     const snapshot = {
       status: String(summary.status || raw.status || "").trim().toUpperCase() || null,
-      realized_n: Number(summary.realized_trade_n ?? raw.realized_trade_n),
-      tp0_hit_rate: Number(summary.tp0_hit_rate ?? raw.tp0_hit_rate),
-      tp1_hit_rate: Number(summary.tp1_hit_rate ?? raw.tp1_hit_rate),
-      tp0_to_tp1_conversion: Number(summary.tp0_to_tp1_conversion_rate ?? raw.tp0_to_tp1_conversion_rate),
-      fee_adjusted_expectancy: Number(summary.fee_adjusted_expectancy ?? raw.fee_adjusted_expectancy),
+      global: normalizeTp1LadderKpiRecord(summary || raw),
+      byMarket: buildTp1LadderKpiScopeMap(
+        summary.by_market || summary.byMarket || raw.by_market || raw.byMarket,
+        "MARKET"
+      ),
+      byCohort: buildTp1LadderKpiScopeMap(
+        summary.by_cohort || summary.byCohort || raw.by_cohort || raw.byCohort,
+        "COHORT"
+      ),
     };
     tp1LadderKpiCache.ts = now;
     tp1LadderKpiCache.mtimeMs = mtimeMs;
@@ -259,16 +315,18 @@ function resolveTp1LadderConfig(sysCfg) {
   };
 }
 
-function resolveTp1LadderRuntimeState({ sysCfg, cohort } = {}) {
+function resolveTp1LadderRuntimeState({ sysCfg, cohort, market } = {}) {
   const config = resolveTp1LadderConfig(sysCfg || {});
-  const kpi = loadTp1LadderKpiSnapshot();
+  const snapshot = loadTp1LadderKpiSnapshot();
+  const selected = resolveTp1LadderKpiForContext(snapshot, { market, cohort });
   return {
     ...evaluateTp1LadderStage({
       cohort: cohort || "BASE",
-      kpi,
+      kpi: selected.kpi,
       config,
     }),
-    kpi,
+    kpi: selected.kpi,
+    kpi_scope: selected.scope,
   };
 }
 
@@ -1399,6 +1457,7 @@ function applyEntryExitRuleRuntimeAdjustments({
   positionMeta = null,
   sysCfg = null,
   cohort = null,
+  market = null,
 } = {}) {
   let appliedExitRules = cloneExitRules(rules || FUTURES_EXIT_PROFILE_BASE.rules);
   const f = (features && typeof features === "object") ? features : {};
@@ -1448,6 +1507,7 @@ function applyEntryExitRuleRuntimeAdjustments({
     tp1LadderState = resolveTp1LadderRuntimeState({
       sysCfg,
       cohort: resolvedCohort,
+      market: market || f.symbol || f.market || metaSafe.symbol || metaSafe.market || null,
     });
     if (tp1LadderState) {
       appliedExitRules = applyTp1LadderPolicy({
@@ -7451,6 +7511,7 @@ async function executeLiveFuturesOrder({
       positionMeta: metaForProfile,
       sysCfg,
       cohort: marketRegimeCohort,
+      market: symbol,
     });
     exitRulesOverride = cloneExitRules(runtimeExitAdjustment.appliedExitRules);
   }
@@ -9264,6 +9325,7 @@ async function runPaperUpbitForBar({
         features: it.features_json,
         sysCfg,
         cohort: marketRegimeCohort,
+        market: symbol,
       });
       const exitPolicySrc = entryExitAdjustment.exitPolicySrc;
       const tp1LadderState = entryExitAdjustment.tp1LadderState;
@@ -10191,6 +10253,7 @@ async function runPaperUpbitForBar({
         features: s.features,
         sysCfg,
         cohort: marketRegimeCohort,
+        market: symbol,
       });
       const evGate = await evaluateEvEntryGate({
         exchange,
@@ -11984,6 +12047,7 @@ async function runPaperFuturesForBar({
         features: it.features_json,
         sysCfg,
         cohort: marketRegimeCohort,
+        market: symbol,
       });
       const exitPolicySrc = entryExitAdjustment.exitPolicySrc;
       const tp1LadderState = entryExitAdjustment.tp1LadderState;
@@ -13878,6 +13942,7 @@ module.exports = {
     resolveOppositeCooldownWindowFromPosition,
     resolveTp1LadderConfig,
     resolveTp1LadderRuntimeState,
+    resolveTp1LadderKpiForContext,
     applyEntryExitRuleRuntimeAdjustments,
     loadTp1LadderKpiSnapshot,
     resolveStructureInitialStopPrice,
