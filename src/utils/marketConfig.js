@@ -12,6 +12,7 @@ const BINANCEFUT_CORE_MARKETS = [
   "SOLUSDT",
   "AXSUSDT",
   "DOGEUSDT",
+  "LINKUSDT",
 ];
 const BINANCEFUT_BLOCKED_MARKETS = (() => {
   const base = [];
