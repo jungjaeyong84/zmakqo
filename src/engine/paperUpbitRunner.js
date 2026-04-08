@@ -9118,7 +9118,6 @@ async function runPaperUpbitForBar({
     let nativeProtectionMetaPatch = null;
     const liveMarketRegimeCohort = resolveLiveMarketRegimeCohort({ symbol, posMeta });
     if (isLiveExecution) {
-      const liveMarketRegimeCohort = resolveLiveMarketRegimeCohort({ symbol, posMeta });
       if (liveCfg.executionMode === "LIVE" && !liveCfg.liveEnabled) {
         const liveReason = liveCfg.reason || "LIVE_DISABLED";
         await markIntentStatus(it.intent_id, "CANCELED", { cancel_reason: liveReason, status_reason: "LIVE_DISABLED" });
@@ -11801,6 +11800,7 @@ async function runPaperFuturesForBar({
       }
     }
 
+    const liveMarketRegimeCohort = resolveLiveMarketRegimeCohort({ symbol, posMeta });
     if (isLiveExecution) {
       if (liveCfg.executionMode === "LIVE" && !liveCfg.liveEnabled) {
         const liveReason = liveCfg.reason || "LIVE_DISABLED";
