@@ -9,6 +9,7 @@ async function run() {
   assert.strictEqual(typeof __test.resolveOppositeCooldownWindowFromPosition, "function", "resolveOppositeCooldownWindowFromPosition export missing");
   assert.strictEqual(typeof __test.applyEntryExitRuleRuntimeAdjustments, "function", "applyEntryExitRuleRuntimeAdjustments export missing");
   assert.strictEqual(typeof __test.repairActivePositionExitRuntimeState, "function", "repairActivePositionExitRuntimeState export missing");
+  assert.strictEqual(typeof __test.collectCriticalExitRuleViolations, "function", "collectCriticalExitRuleViolations export missing");
 
   const bypassed = __test.shouldBypassOppositeEntryCooldown({
     features: {
@@ -198,6 +199,9 @@ async function run() {
           TP_P1: 0.0165,
           TP_P1_QTY: 0.5,
           SL: -0.0165,
+          BE_ENABLE: true,
+          BE_PCT: 0.0015,
+          TRAIL_R_MULTIPLE: 0.6,
         },
       },
     }),
@@ -248,6 +252,61 @@ async function run() {
   assert.ok(repairedMeta.exit_rules_override && repairedMeta.exit_rules_override.TP_P0 > 0, "runtime repair must restore TP0");
   assert.strictEqual(repairedMeta.exit_rules_override.TP_P0_QTY, 0.25);
   assert.strictEqual(repairedMeta.exit_rules_override.TP_P1, 0.0165);
+
+  const invalidViolations = __test.collectCriticalExitRuleViolations({
+    rules: {
+      TP_P0: 0,
+      TP_P0_QTY: 0,
+      TP_P1: null,
+      TP_P1_QTY: 2,
+      SL: 0.01,
+      BE_ENABLE: true,
+      BE_PCT: undefined,
+      TRAIL_PCT: null,
+      TRAIL_R_MULTIPLE: null,
+    },
+  });
+  assert.ok(invalidViolations.includes("TP0_MISSING"));
+  assert.ok(invalidViolations.includes("TP1_MISSING"));
+  assert.ok(invalidViolations.includes("SL_INVALID"));
+  assert.ok(invalidViolations.includes("BE_INVALID"));
+  assert.ok(invalidViolations.includes("TRAIL_INVALID"));
+
+  const fullyRepairedMeta = await __test.repairActivePositionExitRuntimeState({
+    exchange: "BINANCEFUT",
+    symbol: "DOGEUSDT",
+    positionSide: "LONG",
+    entryPrice: 0.09482,
+    leverage: 2,
+    liveCfg: null,
+    cohort: "HOLD_SAMPLE",
+    posMeta: {
+      openclaw_market_regime_cohort: "HOLD_SAMPLE",
+      exit_profile: "BASE",
+      exit_profile_reason: "MANUAL_BASE_PROFILE",
+      exit_rules_override: {
+        TP_P0: 0,
+        TP_P0_QTY: 0,
+        TP_P1: null,
+        TP_P1_QTY: 2,
+        SL: 0.01,
+        BE_ENABLE: true,
+        BE_PCT: undefined,
+        TRAIL_PCT: null,
+        TRAIL_R_MULTIPLE: null,
+      },
+      tp1_ladder_profile: "RESCUE",
+      tp1_ladder_stage: 0,
+    },
+  });
+  assert.ok(fullyRepairedMeta.exit_rules_override.TP_P0 > 0, "repair must restore TP0");
+  assert.ok(fullyRepairedMeta.exit_rules_override.TP_P1 > 0, "repair must restore TP1");
+  assert.ok(fullyRepairedMeta.exit_rules_override.SL < 0, "repair must restore negative SL");
+  assert.ok(fullyRepairedMeta.exit_rules_override.BE_PCT >= 0, "repair must restore BE");
+  assert.ok(
+    fullyRepairedMeta.exit_rules_override.TRAIL_PCT > 0 || fullyRepairedMeta.exit_rules_override.TRAIL_R_MULTIPLE > 0,
+    "repair must restore trailing rule"
+  );
 }
 
 try {

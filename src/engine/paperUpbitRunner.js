@@ -1547,10 +1547,50 @@ function shouldRepairActiveExitRuntimeState({
   const rules = (metaSafe.exit_rules_override && typeof metaSafe.exit_rules_override === "object")
     ? metaSafe.exit_rules_override
     : null;
-  const hasTp0Rule = Number.isFinite(Number(rules && rules.TP_P0)) && Number(rules.TP_P0) > 0;
-  if (!hasTp0Rule) return true;
+  if (collectCriticalExitRuleViolations({ rules }).length > 0) return true;
 
   return false;
+}
+
+function collectCriticalExitRuleViolations({ rules = null } = {}) {
+  const ruleSafe = (rules && typeof rules === "object") ? rules : {};
+  const violations = [];
+  const tp0 = Number(ruleSafe.TP_P0);
+  const tp0Qty = Number(ruleSafe.TP_P0_QTY);
+  const tp1 = Number(ruleSafe.TP_P1);
+  const tp1Qty = Number(ruleSafe.TP_P1_QTY);
+  const sl = Number(ruleSafe.SL);
+  const beEnabled = ruleSafe.BE_ENABLE !== false;
+  const bePct = Number(ruleSafe.BE_PCT);
+  const trailPct = Number(ruleSafe.TRAIL_PCT);
+  const trailR = Number(ruleSafe.TRAIL_R_MULTIPLE);
+
+  if (!(Number.isFinite(tp0) && tp0 > 0)) violations.push("TP0_MISSING");
+  if (!(Number.isFinite(tp0Qty) && tp0Qty > 0 && tp0Qty <= 1)) violations.push("TP0_QTY_INVALID");
+  if (!(Number.isFinite(tp1) && tp1 > 0)) violations.push("TP1_MISSING");
+  if (!(Number.isFinite(tp1Qty) && tp1Qty > 0 && tp1Qty <= 1)) violations.push("TP1_QTY_INVALID");
+  if (!(Number.isFinite(sl) && sl < 0)) violations.push("SL_INVALID");
+  if (beEnabled && !(Number.isFinite(bePct) && bePct >= 0)) violations.push("BE_INVALID");
+  if (!((Number.isFinite(trailPct) && trailPct > 0) || (Number.isFinite(trailR) && trailR > 0))) {
+    violations.push("TRAIL_INVALID");
+  }
+  return violations;
+}
+
+function shouldRepairEntryRuntimeExitState({
+  appliedExitRules = null,
+  posMeta = null,
+  features = null,
+} = {}) {
+  const metaSafe = (posMeta && typeof posMeta === "object") ? posMeta : {};
+  const feat = (features && typeof features === "object") ? features : {};
+  const exitPolicySrc = String(feat.exit_policy_source || metaSafe.exit_policy_source || "").trim().toUpperCase();
+  if (exitPolicySrc && exitPolicySrc !== "BINANCE_DEFAULT") return false;
+
+  const rules = (appliedExitRules && typeof appliedExitRules === "object")
+    ? appliedExitRules
+    : ((metaSafe.exit_rules_override && typeof metaSafe.exit_rules_override === "object") ? metaSafe.exit_rules_override : null);
+  return collectCriticalExitRuleViolations({ rules }).length > 0;
 }
 
 async function repairActivePositionExitRuntimeState({
@@ -1630,6 +1670,53 @@ async function repairActivePositionExitRuntimeState({
     } catch (_) {}
   }
   return nextMeta;
+}
+
+async function enforceEntryRuntimeExitState({
+  exchange,
+  symbol,
+  appliedExitRules = null,
+  posMeta = null,
+  features = null,
+  cohort = null,
+  sysCfg = null,
+  entryPrice = null,
+  leverage = null,
+  execBarCloseMs = null,
+} = {}) {
+  const metaSafe = (posMeta && typeof posMeta === "object") ? posMeta : {};
+  if (!shouldRepairEntryRuntimeExitState({ appliedExitRules, posMeta: metaSafe, features })) {
+    return {
+      repaired: false,
+      meta: metaSafe,
+      appliedExitRules: cloneExitRules(appliedExitRules || metaSafe.exit_rules_override || FUTURES_EXIT_PROFILE_BASE.rules),
+    };
+  }
+
+  const repairedMeta = await repairActivePositionExitRuntimeState({
+    exchange,
+    symbol,
+    positionSide: metaSafe.position_side || metaSafe.external_side || null,
+    entryPrice,
+    leverage,
+    liveCfg: null,
+    posMeta: mergeMeta(metaSafe, {
+      exit_rules_override: cloneExitRules(appliedExitRules || metaSafe.exit_rules_override || FUTURES_EXIT_PROFILE_BASE.rules),
+    }),
+    cohort,
+    sysCfg,
+    execBarCloseMs,
+  });
+
+  return {
+    repaired: true,
+    meta: mergeMeta(repairedMeta, {
+      runtime_exit_invariant_repaired: true,
+      runtime_exit_invariant_reason: "ENTRY_RUNTIME_EXIT_RULES_INVALID",
+      runtime_exit_invariant_at_ms: Date.now(),
+    }),
+    appliedExitRules: cloneExitRules(repairedMeta.exit_rules_override || appliedExitRules || FUTURES_EXIT_PROFILE_BASE.rules),
+  };
 }
 
 async function loadFutures3xStats({ exchange, symbol, tf, nowMs }) {
@@ -9467,6 +9554,22 @@ async function runPaperUpbitForBar({
         tp1_ladder_fee_adjusted_expectancy: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.fee_adjusted_expectancy : null,
         exit_policy_source: exitPolicySrc || null,
       });
+      const runtimeExitInvariant = await enforceEntryRuntimeExitState({
+        exchange,
+        symbol,
+        appliedExitRules,
+        posMeta: nextMeta,
+        features: it.features_json,
+        cohort: marketRegimeCohort,
+        sysCfg,
+        entryPrice: fillPrice,
+        leverage,
+        execBarCloseMs,
+      });
+      if (runtimeExitInvariant.repaired) {
+        appliedExitRules = cloneExitRules(runtimeExitInvariant.appliedExitRules);
+        nextMeta = runtimeExitInvariant.meta;
+      }
     }
     if (opening) {
       nextMeta = mergeMeta(nextMeta, {
@@ -12192,6 +12295,22 @@ async function runPaperFuturesForBar({
         exit_profile_rollback_reason: appliedExitRollbackReason || null,
         exit_policy_source: exitPolicySrc || null,
       });
+      const runtimeExitInvariant = await enforceEntryRuntimeExitState({
+        exchange,
+        symbol,
+        appliedExitRules,
+        posMeta: nextMeta,
+        features: it.features_json,
+        cohort: marketRegimeCohort,
+        sysCfg,
+        entryPrice: fillPrice,
+        leverage: appliedLeverage,
+        execBarCloseMs,
+      });
+      if (runtimeExitInvariant.repaired) {
+        appliedExitRules = cloneExitRules(runtimeExitInvariant.appliedExitRules);
+        nextMeta = runtimeExitInvariant.meta;
+      }
     }
     if (opening) {
       const initialStopPrice = computeInitialStopPriceForEntry({
@@ -14063,6 +14182,7 @@ module.exports = {
     resolveTp1LadderConfig,
     resolveTp1LadderRuntimeState,
     resolveTp1LadderKpiForContext,
+    collectCriticalExitRuleViolations,
     shouldRepairActiveExitRuntimeState,
     repairActivePositionExitRuntimeState,
     applyEntryExitRuleRuntimeAdjustments,
