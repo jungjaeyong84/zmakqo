@@ -203,10 +203,42 @@ async function testDuplicateRecoveryByClientOrderId() {
   );
 }
 
+async function testPrivateBinanceCallsUsePrivateEgressUrl() {
+  const originalFetch = global.fetch;
+  const calls = [];
+  global.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    return makeResponse({
+      status: 200,
+      body: JSON.stringify({ ok: true, data: { dualSidePosition: false }, request_id: "REQ_TEST" }),
+    });
+  };
+  try {
+    process.env.EGRESS_PROXY_MODE = "client";
+    process.env.EGRESS_PROXY_URL = "https://public-egress.example";
+    process.env.EGRESS_PROXY_BINANCE_PRIVATE_URL = "https://private-egress.example";
+    process.env.EGRESS_PROXY_TOKEN = "test-token";
+    const out = await binance.fetchFuturesPositionMode({
+      apiKey: "k",
+      apiSecret: "s",
+    });
+    assert.deepStrictEqual(out, { dualSidePosition: false });
+    assert.strictEqual(calls.length, 1);
+    assert.ok(
+      String(calls[0].url).startsWith("https://private-egress.example/egress/binancefut"),
+      `expected private egress url, got ${calls[0].url}`
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+}
+
 async function run() {
   const prevEnv = {
     EGRESS_PROXY_MODE: process.env.EGRESS_PROXY_MODE,
     EGRESS_PROXY_URL: process.env.EGRESS_PROXY_URL,
+    EGRESS_PROXY_BINANCE_PRIVATE_URL: process.env.EGRESS_PROXY_BINANCE_PRIVATE_URL,
+    EGRESS_PROXY_TOKEN: process.env.EGRESS_PROXY_TOKEN,
     BINANCE_HTTP_MAX_RETRIES: process.env.BINANCE_HTTP_MAX_RETRIES,
     BINANCE_HTTP_RETRY_BASE_MS: process.env.BINANCE_HTTP_RETRY_BASE_MS,
     BINANCE_HTTP_RETRY_MAX_MS: process.env.BINANCE_HTTP_RETRY_MAX_MS,
@@ -221,6 +253,7 @@ async function run() {
     await testNoRetryWithoutIdempotencyOnPost();
     await testNoRetryOnInvalidJsonWithoutIdempotency();
     await testDuplicateRecoveryByClientOrderId();
+    await testPrivateBinanceCallsUsePrivateEgressUrl();
     console.log("BINANCE_PRIVATE_IDEMPOTENCY_TEST_OK");
   } finally {
     Object.keys(prevEnv).forEach((k) => {

@@ -1,5 +1,25 @@
 const crypto = require("crypto");
 
+const BINANCE_PRIVATE_ACTIONS = new Set([
+  "fetchBinanceFuturesAccount",
+  "fetchFuturesOpenOrders",
+  "fetchFuturesAlgoOpenOrders",
+  "fetchFuturesPositionMode",
+  "fetchBinanceWalletDeposits",
+  "fetchBinanceWalletWithdrawals",
+  "fetchBinanceWalletTransfers",
+  "placeFuturesMarketOrder",
+  "fetchFuturesAlgoOrder",
+  "placeFuturesStopMarketOrder",
+  "placeFuturesTakeProfitMarketOrder",
+  "cancelFuturesOpenOrders",
+  "fetchFuturesOrder",
+  "fetchFuturesUserTrades",
+  "fetchFuturesIncomeHistory",
+  "setFuturesLeverage",
+  "setFuturesMarginType",
+]);
+
 const DEFAULT_TIMEOUT_MS = (() => {
   const raw = Number(process.env.EGRESS_PROXY_TIMEOUT_MS || 10000);
   if (Number.isFinite(raw) && raw >= 1000) return Math.floor(raw);
@@ -29,6 +49,30 @@ function shouldUseEgressProxy() {
 
 function resolveEgressBaseUrl() {
   return String(process.env.EGRESS_PROXY_URL || "").trim().replace(/\/+$/, "");
+}
+
+function shouldUsePrivateBinanceEgress(provider, action) {
+  const prov = String(provider || "").trim().toLowerCase();
+  const act = String(action || "").trim();
+  if (prov !== "binancefut") return false;
+  if (!BINANCE_PRIVATE_ACTIONS.has(act)) return false;
+  const privateUrl = String(
+    process.env.EGRESS_PROXY_BINANCE_PRIVATE_URL
+      || process.env.EGRESS_PROXY_PRIVATE_URL
+      || ""
+  ).trim();
+  return !!privateUrl;
+}
+
+function resolveEgressBaseUrlFor(provider, action) {
+  if (shouldUsePrivateBinanceEgress(provider, action)) {
+    return String(
+      process.env.EGRESS_PROXY_BINANCE_PRIVATE_URL
+        || process.env.EGRESS_PROXY_PRIVATE_URL
+        || ""
+    ).trim().replace(/\/+$/, "");
+  }
+  return resolveEgressBaseUrl();
 }
 
 function resolveEgressToken() {
@@ -79,7 +123,7 @@ function noteEgressClientSuccess(provider, action) {
 
 async function callEgressProxy({ provider, action, payload, timeoutMs } = {}) {
   const requestId = buildEgressRequestId();
-  const base = resolveEgressBaseUrl();
+  const base = resolveEgressBaseUrlFor(provider, action);
   if (!base) throw new Error("EGRESS_PROXY_URL_MISSING");
   const prov = String(provider || "").trim().toLowerCase();
   if (!prov) throw new Error("EGRESS_PROXY_PROVIDER_REQUIRED");
@@ -168,4 +212,10 @@ async function callEgressProxy({ provider, action, payload, timeoutMs } = {}) {
   }
 }
 
-module.exports = { shouldUseEgressProxy, callEgressProxy, buildEgressRequestId };
+module.exports = {
+  shouldUseEgressProxy,
+  callEgressProxy,
+  buildEgressRequestId,
+  shouldUsePrivateBinanceEgress,
+  resolveEgressBaseUrlFor,
+};
