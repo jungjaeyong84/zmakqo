@@ -1331,6 +1331,79 @@ function applySignalExitPolicyOverrides(exitRules, features) {
   return nextRules;
 }
 
+function applyEntryExitRuleRuntimeAdjustments({
+  rules = null,
+  features = null,
+  positionMeta = null,
+  sysCfg = null,
+  cohort = null,
+} = {}) {
+  let appliedExitRules = cloneExitRules(rules || FUTURES_EXIT_PROFILE_BASE.rules);
+  const f = (features && typeof features === "object") ? features : {};
+  const metaSafe = (positionMeta && typeof positionMeta === "object") ? positionMeta : {};
+  const exitPolicySrc = String(f.exit_policy_source || metaSafe.exit_policy_source || "").trim().toUpperCase();
+  const hasExplicitExitPolicy = !!(exitPolicySrc && exitPolicySrc !== "BINANCE_DEFAULT");
+  let tp1LadderState = null;
+
+  if (hasExplicitExitPolicy) {
+    const dynSl = Number(f.exit_policy_sl_pct);
+    const dynTp1 = Number(f.exit_policy_tp1_pct);
+    const dynBe = Number(f.exit_policy_be_pct);
+    const dynTrail = Number(f.exit_policy_trail_pct);
+    const dynTrailR = Number(f.exit_policy_trail_r_multiple);
+    const dynRunnerMin = Number(
+      f.exit_policy_runner_min_profit_pct
+      ?? f.exit_policy_runner_floor_pct
+      ?? f.exit_policy_runner_min_pct
+    );
+    if (Number.isFinite(dynSl) && dynSl > 0) {
+      appliedExitRules.SL = -(dynSl / 100);
+    }
+    if (Number.isFinite(dynTp1) && dynTp1 > 0) {
+      appliedExitRules.TP_P1 = dynTp1 / 100;
+    }
+    if (Number.isFinite(dynBe) && dynBe >= 0) {
+      appliedExitRules.BE_ENABLE = true;
+      appliedExitRules.BE_PCT = dynBe / 100;
+    }
+    if (Number.isFinite(dynTrail) && dynTrail > 0) {
+      appliedExitRules.TRAIL_PCT = dynTrail / 100;
+    }
+    if (Number.isFinite(dynTrailR) && dynTrailR > 0) {
+      appliedExitRules.TRAIL_R_MULTIPLE = dynTrailR;
+    }
+    if (Number.isFinite(dynRunnerMin) && dynRunnerMin > 0) {
+      appliedExitRules.RUNNER_MIN_PROFIT_PCT = dynRunnerMin / 100;
+    }
+  } else {
+    const resolvedCohort = normalizeOpenClawCohort(
+      cohort
+      || f.openclaw_market_regime_cohort
+      || f.market_regime_cohort
+      || metaSafe.openclaw_market_regime_cohort
+      || metaSafe.market_regime_cohort
+    ) || "BASE";
+    tp1LadderState = resolveTp1LadderRuntimeState({
+      sysCfg,
+      cohort: resolvedCohort,
+    });
+    if (tp1LadderState) {
+      appliedExitRules = applyTp1LadderPolicy({
+        rules: appliedExitRules,
+        cohort: resolvedCohort,
+        ladderState: tp1LadderState,
+      });
+    }
+  }
+
+  return {
+    exitPolicySrc: exitPolicySrc || null,
+    hasExplicitExitPolicy,
+    tp1LadderState,
+    appliedExitRules,
+  };
+}
+
 async function loadFutures3xStats({ exchange, symbol, tf, nowMs }) {
   const ex = String(exchange || "").toUpperCase();
   const symbolRaw = String(symbol || "").trim().toUpperCase();
@@ -7151,6 +7224,8 @@ async function executeLiveFuturesOrder({
   event,
   features,
   positionMeta,
+  marketRegimeCohort,
+  sysCfg,
   bar,
   barCloseMs,
   slippageBps,
@@ -7264,11 +7339,21 @@ async function executeLiveFuturesOrder({
       { profile: positionProfile.profile, rules: cloneExitRules(positionProfile.rules) }
     );
   }
-  const exitRulesOverride = cloneExitRules(
+  let exitRulesOverride = cloneExitRules(
     exitProfileResolved && exitProfileResolved.rules
       ? exitProfileResolved.rules
       : FUTURES_EXIT_PROFILE_BASE.rules
   );
+  if (intentUpper === "ENTRY" || intentUpper === "ADD") {
+    const runtimeExitAdjustment = applyEntryExitRuleRuntimeAdjustments({
+      rules: exitRulesOverride,
+      features,
+      positionMeta: metaForProfile,
+      sysCfg,
+      cohort: marketRegimeCohort,
+    });
+    exitRulesOverride = cloneExitRules(runtimeExitAdjustment.appliedExitRules);
+  }
   const exitProfileRollbackRaw = (exitProfileResolved && exitProfileResolved.rollback && typeof exitProfileResolved.rollback === "object")
     ? exitProfileResolved.rollback
     : null;
@@ -9088,54 +9173,15 @@ async function runPaperUpbitForBar({
       });
     }
     if (openingOrAdd) {
-      // Pine exit policy override: ATR_DYNAMIC / PINE_FIXED
-      const exitPolicySrc = String(
-        (it.features_json && it.features_json.exit_policy_source) || ""
-      ).trim().toUpperCase();
-      const tp1LadderState = !exitPolicySrc
-        ? resolveTp1LadderRuntimeState({
-            sysCfg,
-            cohort: marketRegimeCohort || "BASE",
-          })
-        : null;
-      if (exitPolicySrc && exitPolicySrc !== "BINANCE_DEFAULT") {
-        const dynSl = Number(it.features_json.exit_policy_sl_pct);
-        const dynTp1 = Number(it.features_json.exit_policy_tp1_pct);
-        const dynBe = Number(it.features_json.exit_policy_be_pct);
-      const dynTrail = Number(it.features_json.exit_policy_trail_pct);
-      const dynTrailR = Number(it.features_json.exit_policy_trail_r_multiple);
-      const dynRunnerMin = Number(
-        it.features_json.exit_policy_runner_min_profit_pct
-        ?? it.features_json.exit_policy_runner_floor_pct
-          ?? it.features_json.exit_policy_runner_min_pct
-        );
-        if (Number.isFinite(dynSl) && dynSl > 0) {
-          appliedExitRules.SL = -(dynSl / 100);
-        }
-        if (Number.isFinite(dynTp1) && dynTp1 > 0) {
-          appliedExitRules.TP_P1 = dynTp1 / 100; // Pine % → fraction
-        }
-        if (Number.isFinite(dynBe) && dynBe >= 0) {
-          appliedExitRules.BE_ENABLE = true;
-          appliedExitRules.BE_PCT = dynBe / 100;
-        }
-      if (Number.isFinite(dynTrail) && dynTrail > 0) {
-        appliedExitRules.TRAIL_PCT = dynTrail / 100;
-      }
-      if (Number.isFinite(dynTrailR) && dynTrailR > 0) {
-        appliedExitRules.TRAIL_R_MULTIPLE = dynTrailR;
-      }
-        if (Number.isFinite(dynRunnerMin) && dynRunnerMin > 0) {
-          appliedExitRules.RUNNER_MIN_PROFIT_PCT = dynRunnerMin / 100;
-        }
-      }
-      if (!exitPolicySrc && tp1LadderState) {
-        appliedExitRules = applyTp1LadderPolicy({
-          rules: appliedExitRules,
-          cohort: marketRegimeCohort || "BASE",
-          ladderState: tp1LadderState,
-        });
-      }
+      const entryExitAdjustment = applyEntryExitRuleRuntimeAdjustments({
+        rules: appliedExitRules,
+        features: it.features_json,
+        sysCfg,
+        cohort: marketRegimeCohort,
+      });
+      const exitPolicySrc = entryExitAdjustment.exitPolicySrc;
+      const tp1LadderState = entryExitAdjustment.tp1LadderState;
+      appliedExitRules = cloneExitRules(entryExitAdjustment.appliedExitRules);
       nextMeta = mergeMeta(nextMeta, {
         exit_profile: appliedExitProfile || "BASE",
         exit_profile_reason: (exitPolicySrc && exitPolicySrc !== "BINANCE_DEFAULT")
@@ -10020,6 +10066,12 @@ async function runPaperUpbitForBar({
         Object.assign(features, evGateDetail);
       }
       const evGateBaseQty = qtyFraction;
+      const evExitRulesAdjustment = applyEntryExitRuleRuntimeAdjustments({
+        rules: evExitProfile && evExitProfile.rules,
+        features: s.features,
+        sysCfg,
+        cohort: marketRegimeCohort,
+      });
       const evGate = await evaluateEvEntryGate({
         exchange,
         symbol,
@@ -10030,7 +10082,7 @@ async function runPaperUpbitForBar({
         eventUpper,
         features: s.features,
         cfg: evGateCfg,
-        exitRules: evExitProfile && evExitProfile.rules,
+        exitRules: evExitRulesAdjustment.appliedExitRules,
         exitProfile: evExitProfile && evExitProfile.profile,
         exitProfileReason: evExitProfile && evExitProfile.reason,
       });
@@ -11381,6 +11433,8 @@ async function runPaperFuturesForBar({
           event: it.event,
           features: it.features_json,
           positionMeta: posMeta,
+          marketRegimeCohort,
+          sysCfg,
           bar,
           barCloseMs: execBarCloseMs,
           slippageBps,
@@ -11852,54 +11906,15 @@ async function runPaperFuturesForBar({
       });
     }
     if (openingOrAdd) {
-      // Pine exit policy override: ATR_DYNAMIC / PINE_FIXED
-      const exitPolicySrc = String(
-        (it.features_json && it.features_json.exit_policy_source) || ""
-      ).trim().toUpperCase();
-      const tp1LadderState = !exitPolicySrc
-        ? resolveTp1LadderRuntimeState({
-            sysCfg,
-            cohort: marketRegimeCohort || "BASE",
-          })
-        : null;
-      if (exitPolicySrc && exitPolicySrc !== "BINANCE_DEFAULT") {
-        const dynSl = Number(it.features_json.exit_policy_sl_pct);
-        const dynTp1 = Number(it.features_json.exit_policy_tp1_pct);
-        const dynBe = Number(it.features_json.exit_policy_be_pct);
-        const dynTrail = Number(it.features_json.exit_policy_trail_pct);
-        const dynTrailR = Number(it.features_json.exit_policy_trail_r_multiple);
-        const dynRunnerMin = Number(
-          it.features_json.exit_policy_runner_min_profit_pct
-          ?? it.features_json.exit_policy_runner_floor_pct
-          ?? it.features_json.exit_policy_runner_min_pct
-        );
-        if (Number.isFinite(dynSl) && dynSl > 0) {
-          appliedExitRules.SL = -(dynSl / 100);
-        }
-        if (Number.isFinite(dynTp1) && dynTp1 > 0) {
-          appliedExitRules.TP_P1 = dynTp1 / 100; // Pine % → fraction
-        }
-        if (Number.isFinite(dynBe) && dynBe >= 0) {
-          appliedExitRules.BE_ENABLE = true;
-          appliedExitRules.BE_PCT = dynBe / 100;
-        }
-        if (Number.isFinite(dynTrail) && dynTrail > 0) {
-          appliedExitRules.TRAIL_PCT = dynTrail / 100;
-        }
-        if (Number.isFinite(dynTrailR) && dynTrailR > 0) {
-          appliedExitRules.TRAIL_R_MULTIPLE = dynTrailR;
-        }
-        if (Number.isFinite(dynRunnerMin) && dynRunnerMin > 0) {
-          appliedExitRules.RUNNER_MIN_PROFIT_PCT = dynRunnerMin / 100;
-        }
-      }
-      if (!exitPolicySrc && tp1LadderState) {
-        appliedExitRules = applyTp1LadderPolicy({
-          rules: appliedExitRules,
-          cohort: marketRegimeCohort || "BASE",
-          ladderState: tp1LadderState,
-        });
-      }
+      const entryExitAdjustment = applyEntryExitRuleRuntimeAdjustments({
+        rules: appliedExitRules,
+        features: it.features_json,
+        sysCfg,
+        cohort: marketRegimeCohort,
+      });
+      const exitPolicySrc = entryExitAdjustment.exitPolicySrc;
+      const tp1LadderState = entryExitAdjustment.tp1LadderState;
+      appliedExitRules = cloneExitRules(entryExitAdjustment.appliedExitRules);
       nextMeta = mergeMeta(nextMeta, {
         exit_profile: appliedExitProfile || "BASE",
         exit_profile_reason: (exitPolicySrc && exitPolicySrc !== "BINANCE_DEFAULT")
@@ -13096,7 +13111,7 @@ async function runPaperFuturesForBar({
         eventUpper,
         features: s.features,
         cfg: evGateCfg,
-        exitRules: evExitProfile && evExitProfile.rules,
+        exitRules: evExitRulesAdjustment.appliedExitRules,
         exitProfile: evExitProfile && evExitProfile.profile,
         exitProfileReason: evExitProfile && evExitProfile.reason,
       });
@@ -13732,6 +13747,7 @@ module.exports = {
     resolveOppositeCooldownWindowFromPosition,
     resolveTp1LadderConfig,
     resolveTp1LadderRuntimeState,
+    applyEntryExitRuleRuntimeAdjustments,
     loadTp1LadderKpiSnapshot,
     resolveStructureInitialStopPrice,
     resolveInitialStopSource,
