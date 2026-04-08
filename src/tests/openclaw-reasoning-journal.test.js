@@ -101,12 +101,16 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         server_signal_runtime_tp1_ladder_stage2_tp1_hit_rate_min: 0.30,
         server_signal_runtime_tp1_ladder_stage2_tp0_to_tp1_conversion_min: 0.35,
         server_signal_runtime_tp1_ladder_stage2_fee_adjusted_expectancy_min: 0,
+        server_signal_runtime_tp1_ladder_default_profile: "RESCUE",
+        server_signal_runtime_tp1_ladder_promotion_mode: "RESCUE_FIRST_PROMOTION",
         server_signal_runtime_opposite_cooldown_bars_base: 3,
         server_signal_runtime_opposite_cooldown_bars_mixed: 1,
         server_signal_runtime_opposite_cooldown_bars_rescue: 0,
         server_signal_runtime_opposite_cooldown_ms_base: 300000,
         server_signal_runtime_opposite_cooldown_ms_mixed: 60000,
         server_signal_runtime_opposite_cooldown_ms_rescue: 0,
+        server_signal_runtime_opposite_cooldown_default_profile: "RESCUE",
+        server_signal_runtime_opposite_cooldown_promotion_mode: "RESCUE_FIRST_PROMOTION",
         server_signal_runtime_reverse_exception_mixed_bypass_tier_block: true,
         server_signal_runtime_reverse_exception_rescue_bypass_tier_block: true,
         filter_layer_1_integrity_mode: "INTEGRITY_GUARD_ONLY",
@@ -439,8 +443,12 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_server_signal_runtime_tp1_ladder_enabled, true);
   assert.strictEqual(journal.summary.current_server_signal_runtime_tp1_ladder_stage1_realized_n_min, 8);
   assert.strictEqual(journal.summary.current_server_signal_runtime_tp1_ladder_stage2_tp1_hit_rate_min, 0.3);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_tp1_ladder_default_profile, "RESCUE");
+  assert.strictEqual(journal.summary.current_server_signal_runtime_tp1_ladder_promotion_mode, "RESCUE_FIRST_PROMOTION");
   assert.strictEqual(journal.summary.current_server_signal_runtime_opposite_cooldown_bars_mixed, 1);
   assert.strictEqual(journal.summary.current_server_signal_runtime_opposite_cooldown_ms_rescue, 0);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_opposite_cooldown_default_profile, "RESCUE");
+  assert.strictEqual(journal.summary.current_server_signal_runtime_opposite_cooldown_promotion_mode, "RESCUE_FIRST_PROMOTION");
   assert.strictEqual(journal.summary.current_server_signal_runtime_reverse_exception_rescue_bypass_tier_block, true);
   assert.strictEqual(journal.summary.current_filter_layer_1_integrity_mode, "INTEGRITY_GUARD_ONLY");
   assert.strictEqual(journal.summary.current_filter_layer_2_entry_quality_actions, 2);

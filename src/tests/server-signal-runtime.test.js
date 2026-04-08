@@ -72,10 +72,14 @@ const { deriveServerSignalRuntime } = require("../../src/utils/serverSignalRunti
   assert.strictEqual(report.summary.tp1_ladder_enabled, true);
   assert.strictEqual(report.summary.tp1_ladder_stage1_realized_n_min, 8);
   assert.strictEqual(report.summary.tp1_ladder_stage2_tp1_hit_rate_min, 0.30);
+  assert.strictEqual(report.summary.tp1_ladder_default_profile, "RESCUE");
+  assert.strictEqual(report.summary.tp1_ladder_promotion_mode, "RESCUE_FIRST_PROMOTION");
   assert.strictEqual(report.summary.opposite_cooldown_bars_base, 3);
   assert.strictEqual(report.summary.opposite_cooldown_bars_mixed, 1);
   assert.strictEqual(report.summary.opposite_cooldown_bars_rescue, 0);
   assert.strictEqual(report.summary.opposite_cooldown_ms_mixed, 60000);
+  assert.strictEqual(report.summary.opposite_cooldown_default_profile, "RESCUE");
+  assert.strictEqual(report.summary.opposite_cooldown_promotion_mode, "RESCUE_FIRST_PROMOTION");
   assert.strictEqual(report.summary.reverse_exception_mixed_bypass_tier_block, true);
   assert.strictEqual(report.current_status.reverse_exception_rescue_bypass_tier_block, true);
   assert.strictEqual(report.summary.pine_shadow_transition_progress_pct, 100);
