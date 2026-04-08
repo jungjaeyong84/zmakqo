@@ -7,6 +7,7 @@ async function run() {
   assert.strictEqual(typeof __test.shouldBypassOppositeEntryCooldown, "function", "shouldBypassOppositeEntryCooldown export missing");
   assert.strictEqual(typeof __test.resolveOppositeCooldownWindow, "function", "resolveOppositeCooldownWindow export missing");
   assert.strictEqual(typeof __test.resolveOppositeCooldownWindowFromPosition, "function", "resolveOppositeCooldownWindowFromPosition export missing");
+  assert.strictEqual(typeof __test.resolveLiveMarketRegimeCohort, "function", "resolveLiveMarketRegimeCohort export missing");
   assert.strictEqual(typeof __test.applyEntryExitRuleRuntimeAdjustments, "function", "applyEntryExitRuleRuntimeAdjustments export missing");
   assert.strictEqual(typeof __test.repairActivePositionExitRuntimeState, "function", "repairActivePositionExitRuntimeState export missing");
   assert.strictEqual(typeof __test.collectCriticalExitRuleViolations, "function", "collectCriticalExitRuleViolations export missing");
@@ -125,6 +126,22 @@ async function run() {
   });
   assert.strictEqual(fromPositionCooldown.bars, 0);
   assert.strictEqual(fromPositionCooldown.timeMs, 0);
+
+  const liveCohortFromMeta = __test.resolveLiveMarketRegimeCohort({
+    symbol: "UNKNOWN_MARKET",
+    posMeta: {
+      openclaw_market_regime_cohort: "MIXED",
+    },
+  });
+  assert.strictEqual(liveCohortFromMeta, "MIXED");
+
+  const liveCohortFallback = __test.resolveLiveMarketRegimeCohort({
+    symbol: "UNKNOWN_MARKET",
+    posMeta: {
+      market_regime_cohort: "RESCUE",
+    },
+  });
+  assert.strictEqual(liveCohortFallback, "RESCUE");
 
   const baseExitRules = {
     TP_P0: 0.008,

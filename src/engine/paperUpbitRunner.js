@@ -171,6 +171,15 @@ function resolveOppositeCooldownWindowFromPosition({ sysCfg = {}, position = nul
   return resolveOppositeCooldownWindow({ sysCfg, posMeta });
 }
 
+function resolveLiveMarketRegimeCohort({ symbol = "", posMeta = null } = {}) {
+  const marketRegimeRow = readOpenClawMarketRegimeRow(symbol);
+  return normalizeOpenClawCohort(
+    (marketRegimeRow && marketRegimeRow.cohort)
+    || (posMeta && posMeta.openclaw_market_regime_cohort)
+    || (posMeta && posMeta.market_regime_cohort)
+  );
+}
+
 function loadOpenClawMarketRegimeBoard(force = false) {
   const now = Date.now();
   if (!force && openclawMarketRegimeCache.ts && (now - openclawMarketRegimeCache.ts) < OPENCLAW_MARKET_REGIME_CACHE_TTL_MS) {
@@ -9107,13 +9116,9 @@ async function runPaperUpbitForBar({
       }
     }
     let nativeProtectionMetaPatch = null;
+    const liveMarketRegimeCohort = resolveLiveMarketRegimeCohort({ symbol, posMeta });
     if (isLiveExecution) {
-      const liveMarketRegimeRow = readOpenClawMarketRegimeRow(symbol);
-      const liveMarketRegimeCohort = normalizeOpenClawCohort(
-        (liveMarketRegimeRow && liveMarketRegimeRow.cohort)
-        || (posMeta && posMeta.openclaw_market_regime_cohort)
-        || (posMeta && posMeta.market_regime_cohort)
-      );
+      const liveMarketRegimeCohort = resolveLiveMarketRegimeCohort({ symbol, posMeta });
       if (liveCfg.executionMode === "LIVE" && !liveCfg.liveEnabled) {
         const liveReason = liveCfg.reason || "LIVE_DISABLED";
         await markIntentStatus(it.intent_id, "CANCELED", { cancel_reason: liveReason, status_reason: "LIVE_DISABLED" });
@@ -14185,6 +14190,7 @@ module.exports = {
     shouldBypassOppositeEntryCooldown,
     resolveOppositeCooldownWindow,
     resolveOppositeCooldownWindowFromPosition,
+    resolveLiveMarketRegimeCohort,
     resolveTp1LadderConfig,
     resolveTp1LadderRuntimeState,
     resolveTp1LadderKpiForContext,
