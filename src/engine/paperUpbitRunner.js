@@ -13546,6 +13546,13 @@ async function runPaperFuturesForBar({
         Object.assign(features, evGateDetail);
       }
       const evGateBaseQty = qtyFraction;
+      const evExitRulesAdjustment = applyEntryExitRuleRuntimeAdjustments({
+        rules: evExitProfile && evExitProfile.rules,
+        features: s.features,
+        sysCfg,
+        cohort: marketRegimeCohort,
+        market: symbol,
+      });
       const evGate = await evaluateEvEntryGate({
         exchange,
         symbol,
