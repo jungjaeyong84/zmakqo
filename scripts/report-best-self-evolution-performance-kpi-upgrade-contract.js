@@ -39,7 +39,7 @@ function renderMarkdown(report = {}) {
     `- primary_kpis: ${Array.isArray(summary.primary_kpis) ? summary.primary_kpis.join(", ") : "N/A"}`,
     `- tp0/tp1/conversion/pre_tp1_stop: ${summary.tp0_hit_rate != null ? summary.tp0_hit_rate : "N/A"} / ${summary.tp1_hit_rate != null ? summary.tp1_hit_rate : "N/A"} / ${summary.tp0_to_tp1_conversion_rate != null ? summary.tp0_to_tp1_conversion_rate : "N/A"} / ${summary.pre_tp1_time_stop_rate != null ? summary.pre_tp1_time_stop_rate : "N/A"}`,
     `- fee_adjusted_expectancy/net/realized: ${summary.fee_adjusted_expectancy != null ? summary.fee_adjusted_expectancy : "N/A"} / ${summary.fee_adjusted_net_pnl_quote != null ? summary.fee_adjusted_net_pnl_quote : "N/A"} / ${summary.realized_trade_n != null ? summary.realized_trade_n : "N/A"}`,
-    `- legacy_win_rate_reference: ${summary.legacy_win_rate_reference != null ? summary.legacy_win_rate_reference : "N/A"} / objective_verdict=${summary.objective_verdict || "N/A"}`,
+    `- legacy_win_rate_reference_only: ${summary.legacy_win_rate_reference != null ? summary.legacy_win_rate_reference : "N/A"} / objective_verdict=${summary.objective_verdict || "N/A"}`,
     `- blocking_reason_n: ${summary.blocking_reason_n != null ? summary.blocking_reason_n : "N/A"}`,
   ];
   if (Array.isArray(summary.blocking_reasons) && summary.blocking_reasons.length) {

@@ -23,21 +23,28 @@ const { deriveServerSignalRuntime } = require("../../src/utils/serverSignalRunti
       ev_gate_unknown_gen_relax_tp1_prob_full_delta: 0.03,
       ev_gate_unknown_gen_relax_tp1_prob_kill_delta: 0.02,
       tp1_ladder_enabled: true,
-      tp1_ladder_stage1_realized_n_min: 8,
-      tp1_ladder_stage1_tp0_hit_rate_min: 0.55,
-      tp1_ladder_stage1_tp0_to_tp1_conversion_min: 0.20,
-      tp1_ladder_stage1_fee_adjusted_expectancy_min: -0.0005,
-      tp1_ladder_stage2_realized_n_min: 16,
-      tp1_ladder_stage2_tp0_hit_rate_min: 0.60,
-      tp1_ladder_stage2_tp1_hit_rate_min: 0.30,
-      tp1_ladder_stage2_tp0_to_tp1_conversion_min: 0.35,
-      tp1_ladder_stage2_fee_adjusted_expectancy_min: 0,
-      opposite_signal_cooldown_bars: 3,
-      opposite_signal_cooldown_bars_mixed: 1,
-      opposite_signal_cooldown_bars_rescue: 0,
-      opposite_time_cooldown_ms: 300000,
-      opposite_time_cooldown_ms_mixed: 60000,
-      opposite_time_cooldown_ms_rescue: 0,
+      signal_overlap_enabled: true,
+      signal_overlap_bars: 3,
+      same_direction_trail_profit_cooldown_enabled: true,
+      same_direction_trail_profit_cooldown_ms: 14400000,
+      tp1_ladder_stage1_realized_n_min: 12,
+      tp1_ladder_stage1_tp0_hit_rate_min: 0.60,
+      tp1_ladder_stage1_tp0_to_tp1_conversion_min: 0.28,
+      tp1_ladder_stage1_fee_adjusted_expectancy_min: 0,
+      tp1_ladder_stage2_realized_n_min: 24,
+      tp1_ladder_stage2_tp0_hit_rate_min: 0.68,
+      tp1_ladder_stage2_tp1_hit_rate_min: 0.38,
+      tp1_ladder_stage2_tp0_to_tp1_conversion_min: 0.45,
+      tp1_ladder_stage2_fee_adjusted_expectancy_min: 0.001,
+      opposite_signal_cooldown_bars: 4,
+      opposite_signal_cooldown_bars_mixed: 2,
+      opposite_signal_cooldown_bars_rescue: 1,
+      opposite_time_cooldown_ms: 900000,
+      opposite_time_cooldown_ms_mixed: 300000,
+      opposite_time_cooldown_ms_rescue: 60000,
+      opposite_transition_enabled: true,
+      opposite_transition_reduce_fraction: 0.35,
+      opposite_transition_confirm_bars: 3,
       reverse_exception_mixed_bypass_tier_block: true,
       reverse_exception_rescue_bypass_tier_block: true,
     },
@@ -70,17 +77,25 @@ const { deriveServerSignalRuntime } = require("../../src/utils/serverSignalRunti
   assert.strictEqual(report.current_status.ev_gate_unknown_gen_relax_mode, "REPORT_ONLY");
   assert.strictEqual(report.current_status.ev_gate_unknown_gen_relax_review_after_hours, 4);
   assert.strictEqual(report.summary.tp1_ladder_enabled, true);
-  assert.strictEqual(report.summary.tp1_ladder_stage1_realized_n_min, 8);
-  assert.strictEqual(report.summary.tp1_ladder_stage2_tp1_hit_rate_min, 0.30);
+  assert.strictEqual(report.summary.tp1_ladder_stage1_realized_n_min, 12);
+  assert.strictEqual(report.summary.tp1_ladder_stage2_tp1_hit_rate_min, 0.38);
   assert.strictEqual(report.summary.tp1_ladder_default_profile, "RESCUE");
   assert.strictEqual(report.summary.tp1_ladder_promotion_mode, "RESCUE_FIRST_PROMOTION");
-  assert.strictEqual(report.summary.opposite_cooldown_bars_base, 3);
-  assert.strictEqual(report.summary.opposite_cooldown_bars_mixed, 1);
-  assert.strictEqual(report.summary.opposite_cooldown_bars_rescue, 0);
-  assert.strictEqual(report.summary.opposite_cooldown_ms_mixed, 60000);
+  assert.strictEqual(report.summary.signal_overlap_enabled, true);
+  assert.strictEqual(report.summary.signal_overlap_bars, 3);
+  assert.strictEqual(report.summary.same_direction_trail_profit_cooldown_enabled, true);
+  assert.strictEqual(report.summary.same_direction_trail_profit_cooldown_ms, 14400000);
+  assert.strictEqual(report.summary.opposite_cooldown_bars_base, 4);
+  assert.strictEqual(report.summary.opposite_cooldown_bars_mixed, 2);
+  assert.strictEqual(report.summary.opposite_cooldown_bars_rescue, 1);
+  assert.strictEqual(report.summary.opposite_cooldown_ms_mixed, 300000);
   assert.strictEqual(report.summary.opposite_cooldown_default_profile, "RESCUE");
   assert.strictEqual(report.summary.opposite_cooldown_promotion_mode, "RESCUE_FIRST_PROMOTION");
+  assert.strictEqual(report.summary.opposite_transition_enabled, true);
+  assert.strictEqual(report.summary.opposite_transition_reduce_fraction, 0.35);
+  assert.strictEqual(report.summary.opposite_transition_confirm_bars, 3);
   assert.strictEqual(report.summary.reverse_exception_mixed_bypass_tier_block, true);
+  assert.deepStrictEqual(report.summary.operational_drop_watch_reasons, ["POSITION_FULL", "LIVE_RESCUE_ADD_*", "DROP_OVERLAP"]);
   assert.strictEqual(report.current_status.reverse_exception_rescue_bypass_tier_block, true);
   assert.strictEqual(report.summary.pine_shadow_transition_progress_pct, 100);
   assert.strictEqual(report.current_status.execution_shadow_policy, "EXCLUDE_FROM_EXECUTION_DEFAULT");

@@ -792,6 +792,10 @@ function buildReasoningJournal({
       current_performance_kpi_upgrade_fee_adjusted_expectancy: toNum(autonomySummary.performance_kpi_upgrade_fee_adjusted_expectancy),
       current_performance_kpi_upgrade_realized_trade_n: toNum(autonomySummary.performance_kpi_upgrade_realized_trade_n),
       current_performance_kpi_upgrade_legacy_win_rate_reference: toNum(autonomySummary.performance_kpi_upgrade_legacy_win_rate_reference),
+      current_performance_primary_metrics: Array.isArray(autonomySummary.performance_primary_metrics)
+        ? autonomySummary.performance_primary_metrics.map((row) => String(row || "").trim()).filter(Boolean)
+        : [],
+      current_legacy_win_rate_reference_only: autonomySummary.legacy_win_rate_reference_only === true,
       current_performance_kpi_upgrade_objective_verdict: String(autonomySummary.performance_kpi_upgrade_objective_verdict || "").trim() || null,
       current_performance_kpi_upgrade_blocking_reason_n: toNum(autonomySummary.performance_kpi_upgrade_blocking_reason_n),
       current_cohort_regime_parameter_split_contract_status: String(autonomySummary.cohort_regime_parameter_split_contract_status || "").trim() || null,
@@ -840,6 +844,10 @@ function buildReasoningJournal({
       current_server_signal_runtime_tp1_ladder_stage2_fee_adjusted_expectancy_min: toNum(autonomyField("server_signal_runtime_tp1_ladder_stage2_fee_adjusted_expectancy_min")),
       current_server_signal_runtime_tp1_ladder_default_profile: String(autonomyField("server_signal_runtime_tp1_ladder_default_profile") || "").trim() || null,
       current_server_signal_runtime_tp1_ladder_promotion_mode: String(autonomyField("server_signal_runtime_tp1_ladder_promotion_mode") || "").trim() || null,
+      current_server_signal_runtime_signal_overlap_enabled: autonomyField("server_signal_runtime_signal_overlap_enabled") === true,
+      current_server_signal_runtime_signal_overlap_bars: toNum(autonomyField("server_signal_runtime_signal_overlap_bars")),
+      current_server_signal_runtime_same_direction_trail_profit_cooldown_enabled: autonomyField("server_signal_runtime_same_direction_trail_profit_cooldown_enabled") === true,
+      current_server_signal_runtime_same_direction_trail_profit_cooldown_ms: toNum(autonomyField("server_signal_runtime_same_direction_trail_profit_cooldown_ms")),
       current_exit_trailing_contract_canonical_mode: String(autonomyField("exit_trailing_contract_canonical_mode") || "").trim() || null,
       current_exit_trailing_contract_active_binance_profile_mode: String(autonomyField("exit_trailing_contract_active_binance_profile_mode") || "").trim() || null,
       current_exit_trailing_contract_active_binance_tp1_pct: toNum(autonomyField("exit_trailing_contract_active_binance_tp1_pct")),
@@ -854,6 +862,15 @@ function buildReasoningJournal({
       current_server_signal_runtime_opposite_cooldown_ms_rescue: toNum(autonomyField("server_signal_runtime_opposite_cooldown_ms_rescue")),
       current_server_signal_runtime_opposite_cooldown_default_profile: String(autonomyField("server_signal_runtime_opposite_cooldown_default_profile") || "").trim() || null,
       current_server_signal_runtime_opposite_cooldown_promotion_mode: String(autonomyField("server_signal_runtime_opposite_cooldown_promotion_mode") || "").trim() || null,
+      current_server_signal_runtime_opposite_transition_enabled: autonomyField("server_signal_runtime_opposite_transition_enabled") === true,
+      current_server_signal_runtime_opposite_transition_reduce_fraction: toNum(autonomyField("server_signal_runtime_opposite_transition_reduce_fraction")),
+      current_server_signal_runtime_opposite_transition_confirm_bars: toNum(autonomyField("server_signal_runtime_opposite_transition_confirm_bars")),
+      current_server_signal_runtime_operational_drop_watch_reasons: Array.isArray(autonomyField("server_signal_runtime_operational_drop_watch_reasons"))
+        ? autonomyField("server_signal_runtime_operational_drop_watch_reasons").map((row) => String(row || "").trim()).filter(Boolean)
+        : [],
+      current_server_signal_entry_to_intent_conversion_24h: toNum(autonomySummary.server_signal_entry_to_intent_conversion_24h),
+      current_server_signal_entry_to_fill_conversion_24h: toNum(autonomySummary.server_signal_entry_to_fill_conversion_24h),
+      current_server_signal_intent_to_fill_conversion_24h: toNum(autonomySummary.server_signal_intent_to_fill_conversion_24h),
       current_server_signal_runtime_reverse_exception_mixed_bypass_tier_block: autonomyField("server_signal_runtime_reverse_exception_mixed_bypass_tier_block") === true,
       current_server_signal_runtime_reverse_exception_rescue_bypass_tier_block: autonomyField("server_signal_runtime_reverse_exception_rescue_bypass_tier_block") === true,
       current_filter_layer_1_integrity_mode: String(autonomyField("filter_layer_1_integrity_mode") || "").trim() || null,

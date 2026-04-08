@@ -67,6 +67,8 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         performance_kpi_upgrade_fee_adjusted_expectancy: -0.0011,
         performance_kpi_upgrade_realized_trade_n: 24,
         performance_kpi_upgrade_legacy_win_rate_reference: 0.3333,
+        performance_primary_metrics: ["TP0_HIT_RATE", "TP1_HIT_RATE", "FEE_ADJUSTED_EXPECTANCY", "SIGNAL_TO_FILL_CONVERSION"],
+        legacy_win_rate_reference_only: true,
         performance_kpi_upgrade_objective_verdict: "FAIL",
         performance_kpi_upgrade_blocking_reason_n: 0,
         ev_gate_policy_status: "EV_GATE_COMPOSITE_POLICY_READY",
@@ -92,33 +94,44 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_full_delta: 0.03,
         server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_kill_delta: 0.02,
         server_signal_runtime_tp1_ladder_enabled: true,
-        server_signal_runtime_tp1_ladder_stage1_realized_n_min: 8,
-        server_signal_runtime_tp1_ladder_stage1_tp0_hit_rate_min: 0.55,
-        server_signal_runtime_tp1_ladder_stage1_tp0_to_tp1_conversion_min: 0.20,
-        server_signal_runtime_tp1_ladder_stage1_fee_adjusted_expectancy_min: -0.0005,
-        server_signal_runtime_tp1_ladder_stage2_realized_n_min: 16,
-        server_signal_runtime_tp1_ladder_stage2_tp0_hit_rate_min: 0.60,
-        server_signal_runtime_tp1_ladder_stage2_tp1_hit_rate_min: 0.30,
-        server_signal_runtime_tp1_ladder_stage2_tp0_to_tp1_conversion_min: 0.35,
-        server_signal_runtime_tp1_ladder_stage2_fee_adjusted_expectancy_min: 0,
+        server_signal_runtime_tp1_ladder_stage1_realized_n_min: 12,
+        server_signal_runtime_tp1_ladder_stage1_tp0_hit_rate_min: 0.60,
+        server_signal_runtime_tp1_ladder_stage1_tp0_to_tp1_conversion_min: 0.28,
+        server_signal_runtime_tp1_ladder_stage1_fee_adjusted_expectancy_min: 0,
+        server_signal_runtime_tp1_ladder_stage2_realized_n_min: 24,
+        server_signal_runtime_tp1_ladder_stage2_tp0_hit_rate_min: 0.68,
+        server_signal_runtime_tp1_ladder_stage2_tp1_hit_rate_min: 0.38,
+        server_signal_runtime_tp1_ladder_stage2_tp0_to_tp1_conversion_min: 0.45,
+        server_signal_runtime_tp1_ladder_stage2_fee_adjusted_expectancy_min: 0.001,
         server_signal_runtime_tp1_ladder_default_profile: "RESCUE",
         server_signal_runtime_tp1_ladder_promotion_mode: "RESCUE_FIRST_PROMOTION",
+        server_signal_runtime_signal_overlap_enabled: true,
+        server_signal_runtime_signal_overlap_bars: 3,
+        server_signal_runtime_same_direction_trail_profit_cooldown_enabled: true,
+        server_signal_runtime_same_direction_trail_profit_cooldown_ms: 14400000,
         exit_trailing_contract_canonical_mode: "TRAIL_R_MULTIPLE",
         exit_trailing_contract_active_binance_profile_mode: "BASE",
         exit_trailing_contract_active_binance_tp1_pct: 3.25,
         exit_trailing_contract_active_binance_be_pct: 0.25,
         exit_trailing_contract_active_binance_trail_r_multiple: 0.9,
         runtime_vs_canonical_exit_contract_diverged: true,
-        server_signal_runtime_opposite_cooldown_bars_base: 3,
-        server_signal_runtime_opposite_cooldown_bars_mixed: 1,
-        server_signal_runtime_opposite_cooldown_bars_rescue: 0,
-        server_signal_runtime_opposite_cooldown_ms_base: 300000,
-        server_signal_runtime_opposite_cooldown_ms_mixed: 60000,
-        server_signal_runtime_opposite_cooldown_ms_rescue: 0,
+        server_signal_runtime_opposite_cooldown_bars_base: 4,
+        server_signal_runtime_opposite_cooldown_bars_mixed: 2,
+        server_signal_runtime_opposite_cooldown_bars_rescue: 1,
+        server_signal_runtime_opposite_cooldown_ms_base: 900000,
+        server_signal_runtime_opposite_cooldown_ms_mixed: 300000,
+        server_signal_runtime_opposite_cooldown_ms_rescue: 60000,
         server_signal_runtime_opposite_cooldown_default_profile: "RESCUE",
         server_signal_runtime_opposite_cooldown_promotion_mode: "RESCUE_FIRST_PROMOTION",
+        server_signal_runtime_opposite_transition_enabled: true,
+        server_signal_runtime_opposite_transition_reduce_fraction: 0.35,
+        server_signal_runtime_opposite_transition_confirm_bars: 3,
+        server_signal_runtime_operational_drop_watch_reasons: ["POSITION_FULL", "LIVE_RESCUE_ADD_*", "DROP_OVERLAP"],
         server_signal_runtime_reverse_exception_mixed_bypass_tier_block: true,
         server_signal_runtime_reverse_exception_rescue_bypass_tier_block: true,
+        server_signal_entry_to_intent_conversion_24h: 0.4,
+        server_signal_entry_to_fill_conversion_24h: 0.3,
+        server_signal_intent_to_fill_conversion_24h: 0.75,
         filter_layer_1_integrity_mode: "INTEGRITY_GUARD_ONLY",
         filter_layer_1_integrity_expectation: "N/A",
         filter_layer_1_integrity_coverage_pass: true,
@@ -431,6 +444,8 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_performance_kpi_upgrade_expectancy_kpi_ready, true);
   assert.strictEqual(journal.summary.current_performance_kpi_upgrade_tp0_hit_rate, 0.85);
   assert.strictEqual(journal.summary.current_performance_kpi_upgrade_fee_adjusted_expectancy, -0.0011);
+  assert.deepStrictEqual(journal.summary.current_performance_primary_metrics, ["TP0_HIT_RATE", "TP1_HIT_RATE", "FEE_ADJUSTED_EXPECTANCY", "SIGNAL_TO_FILL_CONVERSION"]);
+  assert.strictEqual(journal.summary.current_legacy_win_rate_reference_only, true);
   assert.strictEqual(journal.summary.current_ev_gate_policy_status, "EV_GATE_COMPOSITE_POLICY_READY");
   assert.strictEqual(journal.summary.current_ev_gate_policy_basis, "TP_COMPOSITE_EXIT_VALUE_V1");
   assert.strictEqual(journal.summary.current_ev_gate_canonical_policy_version, "EV_COMPOSITE_EXIT_VALUE_V1");
@@ -447,20 +462,31 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_server_signal_runtime_ev_gate_unknown_gen_relax_auto_rollback_enabled, false);
   assert.strictEqual(journal.summary.current_server_signal_runtime_ev_gate_unknown_gen_relax_tp1_prob_full_delta, 0.03);
   assert.strictEqual(journal.summary.current_server_signal_runtime_tp1_ladder_enabled, true);
-  assert.strictEqual(journal.summary.current_server_signal_runtime_tp1_ladder_stage1_realized_n_min, 8);
-  assert.strictEqual(journal.summary.current_server_signal_runtime_tp1_ladder_stage2_tp1_hit_rate_min, 0.3);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_tp1_ladder_stage1_realized_n_min, 12);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_tp1_ladder_stage2_tp1_hit_rate_min, 0.38);
   assert.strictEqual(journal.summary.current_server_signal_runtime_tp1_ladder_default_profile, "RESCUE");
   assert.strictEqual(journal.summary.current_server_signal_runtime_tp1_ladder_promotion_mode, "RESCUE_FIRST_PROMOTION");
+  assert.strictEqual(journal.summary.current_server_signal_runtime_signal_overlap_enabled, true);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_signal_overlap_bars, 3);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_same_direction_trail_profit_cooldown_enabled, true);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_same_direction_trail_profit_cooldown_ms, 14400000);
   assert.strictEqual(journal.summary.current_exit_trailing_contract_canonical_mode, "TRAIL_R_MULTIPLE");
   assert.strictEqual(journal.summary.current_exit_trailing_contract_active_binance_profile_mode, "BASE");
   assert.strictEqual(journal.summary.current_exit_trailing_contract_active_binance_tp1_pct, 3.25);
   assert.strictEqual(journal.summary.current_exit_trailing_contract_active_binance_be_pct, 0.25);
   assert.strictEqual(journal.summary.current_exit_trailing_contract_active_binance_trail_r_multiple, 0.9);
   assert.strictEqual(journal.summary.current_runtime_vs_canonical_exit_contract_diverged, true);
-  assert.strictEqual(journal.summary.current_server_signal_runtime_opposite_cooldown_bars_mixed, 1);
-  assert.strictEqual(journal.summary.current_server_signal_runtime_opposite_cooldown_ms_rescue, 0);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_opposite_cooldown_bars_mixed, 2);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_opposite_cooldown_ms_rescue, 60000);
   assert.strictEqual(journal.summary.current_server_signal_runtime_opposite_cooldown_default_profile, "RESCUE");
   assert.strictEqual(journal.summary.current_server_signal_runtime_opposite_cooldown_promotion_mode, "RESCUE_FIRST_PROMOTION");
+  assert.strictEqual(journal.summary.current_server_signal_runtime_opposite_transition_enabled, true);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_opposite_transition_reduce_fraction, 0.35);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_opposite_transition_confirm_bars, 3);
+  assert.deepStrictEqual(journal.summary.current_server_signal_runtime_operational_drop_watch_reasons, ["POSITION_FULL", "LIVE_RESCUE_ADD_*", "DROP_OVERLAP"]);
+  assert.strictEqual(journal.summary.current_server_signal_entry_to_intent_conversion_24h, 0.4);
+  assert.strictEqual(journal.summary.current_server_signal_entry_to_fill_conversion_24h, 0.3);
+  assert.strictEqual(journal.summary.current_server_signal_intent_to_fill_conversion_24h, 0.75);
   assert.strictEqual(journal.summary.current_server_signal_runtime_reverse_exception_rescue_bypass_tier_block, true);
   assert.strictEqual(journal.summary.current_filter_layer_1_integrity_mode, "INTEGRITY_GUARD_ONLY");
   assert.strictEqual(journal.summary.current_filter_layer_2_entry_quality_actions, 2);

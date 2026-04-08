@@ -56,6 +56,20 @@ function envList(name, fallback = []) {
   return raw.split(",").map((item) => String(item || "").trim().toUpperCase()).filter(Boolean);
 }
 
+function rate(part, whole) {
+  const a = Number(part);
+  const b = Number(whole);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= 0) return null;
+  return a / b;
+}
+
+function cappedRate(part, whole) {
+  const a = Number(part);
+  const b = Number(whole);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= 0) return null;
+  return Math.min(a, b) / b;
+}
+
 function extractMonthlyRunRate(value) {
   const summary = value && typeof value === "object" ? value : {};
   const nested = summary.global_objective_score && typeof summary.global_objective_score === "object"
@@ -312,7 +326,13 @@ function deriveOpenClawAutonomyContract({
   const objectivePolicy = {
     min_objective_score: envNum("OPENCLAW_AUTONOMY_MIN_OBJECTIVE_SCORE", 0),
     min_monthly_run_rate_krw: envNum("OPENCLAW_AUTONOMY_MIN_MONTHLY_RUN_RATE_KRW", 1500000),
-    min_win_rate: envNum("OPENCLAW_AUTONOMY_MIN_WIN_RATE", 0.6),
+    primary_performance_metrics: [
+      "TP0_HIT_RATE",
+      "TP1_HIT_RATE",
+      "FEE_ADJUSTED_EXPECTANCY",
+      "SIGNAL_TO_FILL_CONVERSION",
+    ],
+    legacy_win_rate_reference_only: true,
     recovery_trigger_objective_score: envNum("OPENCLAW_AUTONOMY_RECOVERY_TRIGGER_SCORE", -0.25),
   };
 
@@ -374,10 +394,15 @@ function deriveOpenClawAutonomyContract({
   const currentWinRate = extractWinRate(objectiveSummary)
     ?? extractWinRate(objectiveSupervisorSummary)
     ?? extractWinRate(governanceObjectiveSummary);
+  const signalEntry24h = toNum(serverSignalQualitySummary.authoritative_entry_signal_24h_n) || 0;
+  const signalIntent24h = toNum(serverSignalQualitySummary.order_intent_24h_n) || 0;
+  const signalFill24h = toNum(serverSignalQualitySummary.fill_24h_n) || 0;
+  const serverSignalEntryToIntentConversion24h = cappedRate(signalIntent24h, signalEntry24h);
+  const serverSignalEntryToFillConversion24h = cappedRate(signalFill24h, signalEntry24h);
+  const serverSignalIntentToFillConversion24h = cappedRate(signalFill24h, signalIntent24h);
   const objectiveMet = Boolean(
     currentObjectiveScore != null && currentObjectiveScore >= objectivePolicy.min_objective_score
     && currentMonthlyRunRate != null && currentMonthlyRunRate >= objectivePolicy.min_monthly_run_rate_krw
-    && currentWinRate != null && currentWinRate >= objectivePolicy.min_win_rate
   );
   const recoveryRequired = Boolean(
     !objectiveMet
@@ -487,6 +512,8 @@ function deriveOpenClawAutonomyContract({
       objective_score_source: objectiveScoreSnapshot.objective_score_source,
       monthly_run_rate_krw: currentMonthlyRunRate,
       win_rate: currentWinRate,
+      performance_primary_metrics: objectivePolicy.primary_performance_metrics.slice(),
+      legacy_win_rate_reference_only: objectivePolicy.legacy_win_rate_reference_only === true,
       objective_met: objectiveMet,
       recovery_required: recoveryRequired,
       authority_pending: authorityPending,
@@ -553,6 +580,19 @@ function deriveOpenClawAutonomyContract({
       server_signal_entry_24h_n: toNum(serverSignalQualitySummary.authoritative_entry_signal_24h_n) || 0,
       server_signal_intent_24h_n: toNum(serverSignalQualitySummary.order_intent_24h_n) || 0,
       server_signal_fill_24h_n: toNum(serverSignalQualitySummary.fill_24h_n) || 0,
+      server_signal_entry_to_intent_conversion_24h: serverSignalEntryToIntentConversion24h,
+      server_signal_entry_to_fill_conversion_24h: serverSignalEntryToFillConversion24h,
+      server_signal_intent_to_fill_conversion_24h: serverSignalIntentToFillConversion24h,
+      server_signal_runtime_signal_overlap_enabled: serverSignalRuntimeSummary.signal_overlap_enabled === true,
+      server_signal_runtime_signal_overlap_bars: toNum(serverSignalRuntimeSummary.signal_overlap_bars),
+      server_signal_runtime_same_direction_trail_profit_cooldown_enabled: serverSignalRuntimeSummary.same_direction_trail_profit_cooldown_enabled === true,
+      server_signal_runtime_same_direction_trail_profit_cooldown_ms: toNum(serverSignalRuntimeSummary.same_direction_trail_profit_cooldown_ms),
+      server_signal_runtime_opposite_transition_enabled: serverSignalRuntimeSummary.opposite_transition_enabled === true,
+      server_signal_runtime_opposite_transition_reduce_fraction: toNum(serverSignalRuntimeSummary.opposite_transition_reduce_fraction),
+      server_signal_runtime_opposite_transition_confirm_bars: toNum(serverSignalRuntimeSummary.opposite_transition_confirm_bars),
+      server_signal_runtime_operational_drop_watch_reasons: Array.isArray(serverSignalRuntimeSummary.operational_drop_watch_reasons)
+        ? serverSignalRuntimeSummary.operational_drop_watch_reasons.map((row) => String(row || "").trim()).filter(Boolean)
+        : [],
       filter_layer_1_integrity_mode: String(filterLayerIntegrity.server_mode || "").trim() || null,
       filter_layer_1_integrity_expectation: String(filterLayerIntegrity.expectation || "").trim() || null,
       filter_layer_1_integrity_coverage_pass: filterLayerIntegrity.coverage_pass === true,
@@ -1037,6 +1077,8 @@ function deriveOpenClawAutonomyContract({
     },
     summary: {
       goal_state: objectiveMet ? "OBJECTIVE_ON_TRACK" : "OBJECTIVE_RECOVERY_REQUIRED",
+      performance_primary_metrics: objectivePolicy.primary_performance_metrics.slice(),
+      legacy_win_rate_reference_only: objectivePolicy.legacy_win_rate_reference_only === true,
       authority_state: runtimeAuthorityState,
       runtime_authority_state: runtimeAuthorityState,
       change_authority_state: changeAuthorityState,
@@ -1070,6 +1112,10 @@ function deriveOpenClawAutonomyContract({
       server_signal_runtime_tp1_ladder_stage2_fee_adjusted_expectancy_min: toNum(serverSignalRuntimeSummary.tp1_ladder_stage2_fee_adjusted_expectancy_min),
       server_signal_runtime_tp1_ladder_default_profile: String(serverSignalRuntimeSummary.tp1_ladder_default_profile || "").trim() || null,
       server_signal_runtime_tp1_ladder_promotion_mode: String(serverSignalRuntimeSummary.tp1_ladder_promotion_mode || "").trim() || null,
+      server_signal_runtime_signal_overlap_enabled: serverSignalRuntimeSummary.signal_overlap_enabled === true,
+      server_signal_runtime_signal_overlap_bars: toNum(serverSignalRuntimeSummary.signal_overlap_bars),
+      server_signal_runtime_same_direction_trail_profit_cooldown_enabled: serverSignalRuntimeSummary.same_direction_trail_profit_cooldown_enabled === true,
+      server_signal_runtime_same_direction_trail_profit_cooldown_ms: toNum(serverSignalRuntimeSummary.same_direction_trail_profit_cooldown_ms),
       exit_trailing_contract_canonical_mode: exitTrailingContractCanonicalMode,
       exit_trailing_contract_active_binance_profile_mode: exitTrailingContractActiveBinanceProfileMode,
       exit_trailing_contract_active_binance_tp1_pct: exitTrailingContractActiveBinanceTp1Pct,
@@ -1084,8 +1130,17 @@ function deriveOpenClawAutonomyContract({
       server_signal_runtime_opposite_cooldown_ms_rescue: toNum(serverSignalRuntimeSummary.opposite_cooldown_ms_rescue),
       server_signal_runtime_opposite_cooldown_default_profile: String(serverSignalRuntimeSummary.opposite_cooldown_default_profile || "").trim() || null,
       server_signal_runtime_opposite_cooldown_promotion_mode: String(serverSignalRuntimeSummary.opposite_cooldown_promotion_mode || "").trim() || null,
+      server_signal_runtime_opposite_transition_enabled: serverSignalRuntimeSummary.opposite_transition_enabled === true,
+      server_signal_runtime_opposite_transition_reduce_fraction: toNum(serverSignalRuntimeSummary.opposite_transition_reduce_fraction),
+      server_signal_runtime_opposite_transition_confirm_bars: toNum(serverSignalRuntimeSummary.opposite_transition_confirm_bars),
       server_signal_runtime_reverse_exception_mixed_bypass_tier_block: serverSignalRuntimeSummary.reverse_exception_mixed_bypass_tier_block === true,
       server_signal_runtime_reverse_exception_rescue_bypass_tier_block: serverSignalRuntimeSummary.reverse_exception_rescue_bypass_tier_block === true,
+      server_signal_runtime_operational_drop_watch_reasons: Array.isArray(serverSignalRuntimeSummary.operational_drop_watch_reasons)
+        ? serverSignalRuntimeSummary.operational_drop_watch_reasons.map((row) => String(row || "").trim()).filter(Boolean)
+        : [],
+      server_signal_entry_to_intent_conversion_24h: serverSignalEntryToIntentConversion24h,
+      server_signal_entry_to_fill_conversion_24h: serverSignalEntryToFillConversion24h,
+      server_signal_intent_to_fill_conversion_24h: serverSignalIntentToFillConversion24h,
       filter_layer_1_integrity_mode: String(filterLayerIntegrity.server_mode || "").trim() || null,
       filter_layer_1_integrity_expectation: String(filterLayerIntegrity.expectation || "").trim() || null,
       filter_layer_1_integrity_coverage_pass: filterLayerIntegrity.coverage_pass === true,

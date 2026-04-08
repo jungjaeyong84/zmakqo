@@ -96,23 +96,31 @@ function deriveServerSignalRuntime({
     && Number.isFinite(genRelaxStartMs)
     && Date.now() < (genRelaxStartMs + (genRelaxWindowHours * 3600000));
   const tp1LadderEnabled = toBool(systemSettings.tp1_ladder_enabled, true);
-  const tp1LadderStage1RealizedNMin = toNum(systemSettings.tp1_ladder_stage1_realized_n_min) || 8;
-  const tp1LadderStage1Tp0HitRateMin = toNum(systemSettings.tp1_ladder_stage1_tp0_hit_rate_min) || 0.55;
-  const tp1LadderStage1Tp0ToTp1ConversionMin = toNum(systemSettings.tp1_ladder_stage1_tp0_to_tp1_conversion_min) || 0.20;
+  const tp1LadderStage1RealizedNMin = toNum(systemSettings.tp1_ladder_stage1_realized_n_min) || 12;
+  const tp1LadderStage1Tp0HitRateMin = toNum(systemSettings.tp1_ladder_stage1_tp0_hit_rate_min) || 0.60;
+  const tp1LadderStage1Tp0ToTp1ConversionMin = toNum(systemSettings.tp1_ladder_stage1_tp0_to_tp1_conversion_min) || 0.28;
   const tp1LadderStage1FeeAdjustedExpectancyMin = toNum(systemSettings.tp1_ladder_stage1_fee_adjusted_expectancy_min);
-  const tp1LadderStage2RealizedNMin = toNum(systemSettings.tp1_ladder_stage2_realized_n_min) || 16;
-  const tp1LadderStage2Tp0HitRateMin = toNum(systemSettings.tp1_ladder_stage2_tp0_hit_rate_min) || 0.60;
-  const tp1LadderStage2Tp1HitRateMin = toNum(systemSettings.tp1_ladder_stage2_tp1_hit_rate_min) || 0.30;
-  const tp1LadderStage2Tp0ToTp1ConversionMin = toNum(systemSettings.tp1_ladder_stage2_tp0_to_tp1_conversion_min) || 0.35;
-  const tp1LadderStage2FeeAdjustedExpectancyMin = toNum(systemSettings.tp1_ladder_stage2_fee_adjusted_expectancy_min) || 0;
-  const oppositeCooldownBarsBase = toNum(systemSettings.opposite_signal_cooldown_bars) || 3;
-  const oppositeCooldownBarsMixed = toNum(systemSettings.opposite_signal_cooldown_bars_mixed) ?? 1;
-  const oppositeCooldownBarsRescue = toNum(systemSettings.opposite_signal_cooldown_bars_rescue) ?? 0;
-  const oppositeCooldownMsBase = toNum(systemSettings.opposite_time_cooldown_ms) || 300000;
-  const oppositeCooldownMsMixed = toNum(systemSettings.opposite_time_cooldown_ms_mixed) ?? 60000;
-  const oppositeCooldownMsRescue = toNum(systemSettings.opposite_time_cooldown_ms_rescue) ?? 0;
+  const tp1LadderStage2RealizedNMin = toNum(systemSettings.tp1_ladder_stage2_realized_n_min) || 24;
+  const tp1LadderStage2Tp0HitRateMin = toNum(systemSettings.tp1_ladder_stage2_tp0_hit_rate_min) || 0.68;
+  const tp1LadderStage2Tp1HitRateMin = toNum(systemSettings.tp1_ladder_stage2_tp1_hit_rate_min) || 0.38;
+  const tp1LadderStage2Tp0ToTp1ConversionMin = toNum(systemSettings.tp1_ladder_stage2_tp0_to_tp1_conversion_min) || 0.45;
+  const tp1LadderStage2FeeAdjustedExpectancyMin = toNum(systemSettings.tp1_ladder_stage2_fee_adjusted_expectancy_min) || 0.001;
+  const signalOverlapEnabled = toBool(systemSettings.signal_overlap_enabled, true);
+  const signalOverlapBars = Math.max(0, toNum(systemSettings.signal_overlap_bars) || 3);
+  const sameDirectionTrailProfitCooldownEnabled = toBool(systemSettings.same_direction_trail_profit_cooldown_enabled, true);
+  const sameDirectionTrailProfitCooldownMs = Math.max(0, toNum(systemSettings.same_direction_trail_profit_cooldown_ms) || (4 * 60 * 60 * 1000));
+  const oppositeCooldownBarsBase = toNum(systemSettings.opposite_signal_cooldown_bars) || 4;
+  const oppositeCooldownBarsMixed = toNum(systemSettings.opposite_signal_cooldown_bars_mixed) ?? 2;
+  const oppositeCooldownBarsRescue = toNum(systemSettings.opposite_signal_cooldown_bars_rescue) ?? 1;
+  const oppositeCooldownMsBase = toNum(systemSettings.opposite_time_cooldown_ms) || 900000;
+  const oppositeCooldownMsMixed = toNum(systemSettings.opposite_time_cooldown_ms_mixed) ?? 300000;
+  const oppositeCooldownMsRescue = toNum(systemSettings.opposite_time_cooldown_ms_rescue) ?? 60000;
+  const oppositeTransitionEnabled = toBool(systemSettings.opposite_transition_enabled, true);
+  const oppositeTransitionReduceFraction = toNum(systemSettings.opposite_transition_reduce_fraction);
+  const oppositeTransitionConfirmBars = Math.max(1, toNum(systemSettings.opposite_transition_confirm_bars) || 3);
   const reverseExceptionMixedBypassTierBlock = toBool(systemSettings.reverse_exception_mixed_bypass_tier_block, true);
   const reverseExceptionRescueBypassTierBlock = toBool(systemSettings.reverse_exception_rescue_bypass_tier_block, true);
+  const operationalDropWatchReasons = ["POSITION_FULL", "LIVE_RESCUE_ADD_*", "DROP_OVERLAP"];
 
   return {
     contract_version: "SERVER_SIGNAL_RUNTIME_V1",
@@ -178,6 +186,10 @@ function deriveServerSignalRuntime({
       tp1_ladder_stage2_fee_adjusted_expectancy_min: tp1LadderStage2FeeAdjustedExpectancyMin,
       tp1_ladder_default_profile: "RESCUE",
       tp1_ladder_promotion_mode: "RESCUE_FIRST_PROMOTION",
+      signal_overlap_enabled: signalOverlapEnabled,
+      signal_overlap_bars: signalOverlapBars,
+      same_direction_trail_profit_cooldown_enabled: sameDirectionTrailProfitCooldownEnabled,
+      same_direction_trail_profit_cooldown_ms: sameDirectionTrailProfitCooldownMs,
       opposite_cooldown_bars_base: oppositeCooldownBarsBase,
       opposite_cooldown_bars_mixed: oppositeCooldownBarsMixed,
       opposite_cooldown_bars_rescue: oppositeCooldownBarsRescue,
@@ -186,8 +198,12 @@ function deriveServerSignalRuntime({
       opposite_cooldown_ms_rescue: oppositeCooldownMsRescue,
       opposite_cooldown_default_profile: "RESCUE",
       opposite_cooldown_promotion_mode: "RESCUE_FIRST_PROMOTION",
+      opposite_transition_enabled: oppositeTransitionEnabled,
+      opposite_transition_reduce_fraction: oppositeTransitionReduceFraction,
+      opposite_transition_confirm_bars: oppositeTransitionConfirmBars,
       reverse_exception_mixed_bypass_tier_block: reverseExceptionMixedBypassTierBlock,
       reverse_exception_rescue_bypass_tier_block: reverseExceptionRescueBypassTierBlock,
+      operational_drop_watch_reasons: operationalDropWatchReasons,
     },
     summary: {
       cycle_id: runtimeCycleId,
@@ -237,6 +253,10 @@ function deriveServerSignalRuntime({
       tp1_ladder_stage2_fee_adjusted_expectancy_min: tp1LadderStage2FeeAdjustedExpectancyMin,
       tp1_ladder_default_profile: "RESCUE",
       tp1_ladder_promotion_mode: "RESCUE_FIRST_PROMOTION",
+      signal_overlap_enabled: signalOverlapEnabled,
+      signal_overlap_bars: signalOverlapBars,
+      same_direction_trail_profit_cooldown_enabled: sameDirectionTrailProfitCooldownEnabled,
+      same_direction_trail_profit_cooldown_ms: sameDirectionTrailProfitCooldownMs,
       opposite_cooldown_bars_base: oppositeCooldownBarsBase,
       opposite_cooldown_bars_mixed: oppositeCooldownBarsMixed,
       opposite_cooldown_bars_rescue: oppositeCooldownBarsRescue,
@@ -245,8 +265,12 @@ function deriveServerSignalRuntime({
       opposite_cooldown_ms_rescue: oppositeCooldownMsRescue,
       opposite_cooldown_default_profile: "RESCUE",
       opposite_cooldown_promotion_mode: "RESCUE_FIRST_PROMOTION",
+      opposite_transition_enabled: oppositeTransitionEnabled,
+      opposite_transition_reduce_fraction: oppositeTransitionReduceFraction,
+      opposite_transition_confirm_bars: oppositeTransitionConfirmBars,
       reverse_exception_mixed_bypass_tier_block: reverseExceptionMixedBypassTierBlock,
       reverse_exception_rescue_bypass_tier_block: reverseExceptionRescueBypassTierBlock,
+      operational_drop_watch_reasons: operationalDropWatchReasons,
       pine_shadow_transition_status: completedN === Object.keys(transition).length ? "COMPLETE" : "IN_PROGRESS",
       pine_shadow_transition_progress_pct: progressPct,
     },
