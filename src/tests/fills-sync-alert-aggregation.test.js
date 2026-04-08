@@ -113,6 +113,25 @@ async function run() {
   assert.ok(approxEqual(merged.payload.closeRatio, 0.5), "aggregated close ratio must represent 50% TP1");
   assert.strictEqual(merged.payload.fullExit, false, "aggregated TP1 alert must remain partial");
 
+  const nativeTp0CloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({
+    event: "EXIT_TP_P0_0.8P",
+    intent: null,
+    qtyScale: { ratio: null },
+    execQtyBase: 24.595,
+    positionCtx: {
+      qtyBase: 98.38,
+      nativeProtectionTp0QtyBase: 24.595,
+      nativeProtectionTp0QtyRatio: 0.25,
+    },
+  });
+  assert.ok(approxEqual(nativeTp0CloseRatio, 0.25), "native TP0 close ratio must use TP0 quantity metadata");
+
+  assert.strictEqual(
+    fillsSyncTest.normalizeExitEventForRules("EXIT_TP_P0_0.8P", rescueExitRules),
+    "EXIT_TP_P0_0.8P",
+    "TP0 label must remain stable under current rescue rules"
+  );
+
   const nativeTpCloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({
     event: "EXIT_TP_P1_3.25P",
     intent: null,

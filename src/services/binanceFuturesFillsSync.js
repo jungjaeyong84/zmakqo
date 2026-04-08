@@ -345,7 +345,11 @@ function sumFiniteValues(a, b) {
 
 function resolveFillSyncAlertCloseRatio({ event, intent, qtyScale, execQtyBase, positionCtx } = {}) {
   if (!isExitEvent(event)) return null;
+  const eventUpper = String(event || "").toUpperCase();
   const syncedQtyPct = clamp01(qtyScale && qtyScale.qtyPct);
+  if (eventUpper.startsWith("EXIT_TP_P0") && Number.isFinite(syncedQtyPct) && syncedQtyPct > 0) {
+    return syncedQtyPct;
+  }
   if (isTpP1Event(event) && Number.isFinite(syncedQtyPct) && syncedQtyPct > 0) {
     return syncedQtyPct;
   }
@@ -358,6 +362,10 @@ function resolveFillSyncAlertCloseRatio({ event, intent, qtyScale, execQtyBase, 
     return intentQtyFraction;
   }
   if (Number.isFinite(scaledRatio) && scaledRatio > 0) return scaledRatio;
+  if (eventUpper.startsWith("EXIT_TP_P0")) {
+    const nativeTp0QtyRatio = clamp01(positionCtx && positionCtx.nativeProtectionTp0QtyRatio);
+    if (Number.isFinite(nativeTp0QtyRatio) && nativeTp0QtyRatio > 0) return nativeTp0QtyRatio;
+  }
   if (isTpP1Event(event)) {
     const execQty = Number(execQtyBase);
     const nativeTpQtyRatio = clamp01(positionCtx && positionCtx.nativeProtectionTpQtyRatio);
@@ -837,6 +845,18 @@ async function loadPositionEntryContext(exchange, symbol, cacheMap) {
       nativeProtectionRefreshAtMs: Number.isFinite(Number(meta.native_protection_refresh_at_ms))
         ? Number(meta.native_protection_refresh_at_ms)
         : null,
+      nativeProtectionTp0OrderId: Number.isFinite(Number(meta.native_protection_tp0_order_id))
+        ? Number(meta.native_protection_tp0_order_id)
+        : null,
+      nativeProtectionTpOrderId: Number.isFinite(Number(meta.native_protection_tp_order_id))
+        ? Number(meta.native_protection_tp_order_id)
+        : null,
+      nativeProtectionTp0QtyBase: Number.isFinite(Number(meta.native_protection_tp0_qty_base))
+        ? Number(meta.native_protection_tp0_qty_base)
+        : null,
+      nativeProtectionTp0QtyRatio: Number.isFinite(Number(meta.native_protection_tp0_qty_ratio))
+        ? Number(meta.native_protection_tp0_qty_ratio)
+        : null,
       nativeProtectionTpQtyBase: Number.isFinite(Number(meta.native_protection_tp_qty_base))
         ? Number(meta.native_protection_tp_qty_base)
         : null,
@@ -881,9 +901,11 @@ function isMeaningfulRealizedPnl(v) {
 function buildExitEventByKind(kind, rules) {
   const k = String(kind || "").toUpperCase();
   const slLabel = pctLabel(rules && rules.SL);
+  const tp0Label = pctLabel(rules && rules.TP_P0);
   const tpLabel = pctLabel(rules && rules.TP_P1);
   const trailLabel = pctLabel(rules && rules.TRAIL_PCT);
   if (k === "SL") return slLabel ? `EXIT_SL_${slLabel}P` : "EXIT_SL";
+  if (k === "TP0") return tp0Label ? `EXIT_TP_P0_${tp0Label}P` : "EXIT_TP_P0";
   if (k === "TP1") return tpLabel ? `EXIT_TP_P1_${tpLabel}P` : "EXIT_TP_P1";
   if (k === "TRAIL") {
     const trailR = Number(rules && rules.TRAIL_R_MULTIPLE);
@@ -896,10 +918,23 @@ function buildExitEventByKind(kind, rules) {
 function normalizeExitEventForRules(event, rules) {
   const ev = String(event || "").trim().toUpperCase();
   if (!ev) return ev;
+  if (ev.startsWith("EXIT_TP_P0")) return buildExitEventByKind("TP0", rules);
   if (ev.startsWith("EXIT_TP_P1")) return buildExitEventByKind("TP1", rules);
   if (ev.startsWith("EXIT_TRAIL")) return buildExitEventByKind("TRAIL", rules);
   if (ev.startsWith("EXIT_SL")) return buildExitEventByKind("SL", rules);
   return ev;
+}
+
+function isSameOrderAsNativeTp0(orderMeta, positionCtx) {
+  const orderId = Number(orderMeta && orderMeta.orderId);
+  const nativeOrderId = Number(positionCtx && positionCtx.nativeProtectionTp0OrderId);
+  return Number.isFinite(orderId) && Number.isFinite(nativeOrderId) && orderId === nativeOrderId;
+}
+
+function isSameOrderAsNativeTp1(orderMeta, positionCtx) {
+  const orderId = Number(orderMeta && orderMeta.orderId);
+  const nativeOrderId = Number(positionCtx && positionCtx.nativeProtectionTpOrderId);
+  return Number.isFinite(orderId) && Number.isFinite(nativeOrderId) && orderId === nativeOrderId;
 }
 
 function isSyntheticExternalFillExitEvent(event) {
@@ -1046,6 +1081,8 @@ async function resolveExternalExitEvent({
   const clientOrderId = String(orderMeta && orderMeta.clientOrderId || "").trim() || null;
   const trackedClientOrder = !!(clientOrderId && /^(fut_|dbj_)/.test(clientOrderId));
   const sameOrderAsRecentTp1 = isSameOrderAsRecentTp1(orderMeta, recentTp1);
+  const sameOrderAsNativeTp0 = isSameOrderAsNativeTp0(orderMeta, positionCtx);
+  const sameOrderAsNativeTp1 = isSameOrderAsNativeTp1(orderMeta, positionCtx);
   const recentAddProtectionRefresh = isRecentAddNativeProtectionRefresh({
     positionCtx,
     tradeMs: Number(trade && trade.time),
@@ -1056,6 +1093,8 @@ async function resolveExternalExitEvent({
       return buildExitEventByKind("SL", rules);
     }
     if (orderType === "TAKE_PROFIT_MARKET" || orderType === "TAKE_PROFIT") {
+      if (sameOrderAsNativeTp0) return buildExitEventByKind("TP0", rules);
+      if (sameOrderAsNativeTp1) return buildExitEventByKind("TP1", rules);
       if (positionCtx && positionCtx.trailActive) return buildExitEventByKind("TRAIL", rules);
       return buildExitEventByKind("TP1", rules);
     }
@@ -1107,6 +1146,8 @@ async function resolveExternalExitEvent({
     return buildExitEventByKind("SL", rules);
   }
   if (orderType === "TAKE_PROFIT_MARKET" || orderType === "TAKE_PROFIT") {
+    if (sameOrderAsNativeTp0) return buildExitEventByKind("TP0", rules);
+    if (sameOrderAsNativeTp1) return buildExitEventByKind("TP1", rules);
     if (positionCtx && positionCtx.trailActive) return buildExitEventByKind("TRAIL", rules);
     return buildExitEventByKind("TP1", rules);
   }

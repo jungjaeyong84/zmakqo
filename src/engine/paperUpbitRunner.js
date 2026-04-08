@@ -6939,32 +6939,45 @@ function computeBinanceNativeProtectionPrices({ positionSide, entryPrice, levera
   const levRaw = Number(leverage);
   const lev = Number.isFinite(levRaw) && levRaw > 0 ? levRaw : 1;
   const slPct = Number(rules && rules.SL);
+  const tp0Pct = Number(rules && rules.TP_P0);
   const tpPct = Number(rules && rules.TP_P1);
+  const tp0QtyRatioRaw = Number(rules && rules.TP_P0_QTY);
   const tpQtyRatioRaw = Number(rules && rules.TP_P1_QTY);
+  const tp0QtyRatio = Number.isFinite(tp0QtyRatioRaw) && tp0QtyRatioRaw > 0
+    ? Math.min(1, Math.max(POS_SIZE_EPSILON, tp0QtyRatioRaw))
+    : 0.25;
   const tpQtyRatio = Number.isFinite(tpQtyRatioRaw) && tpQtyRatioRaw > 0
     ? Math.min(1, Math.max(POS_SIZE_EPSILON, tpQtyRatioRaw))
     : 0.5;
   if (!Number.isFinite(px) || px <= 0 || (side !== "LONG" && side !== "SHORT")) return null;
   if (!Number.isFinite(slPct) || !Number.isFinite(tpPct)) return null;
   const slMove = slPct / lev;
+  const tp0Move = Number.isFinite(tp0Pct) ? (tp0Pct / lev) : null;
   const tpMove = tpPct / lev;
   let stopTriggerPx = null;
+  let tp0TriggerPx = null;
   let tpTriggerPx = null;
   if (side === "LONG") {
     stopTriggerPx = px * (1 + slMove);
+    tp0TriggerPx = Number.isFinite(tp0Move) ? (px * (1 + tp0Move)) : null;
     tpTriggerPx = px * (1 + tpMove);
   } else {
     const slDen = 1 + slMove;
+    const tp0Den = Number.isFinite(tp0Move) ? (1 + tp0Move) : null;
     const tpDen = 1 + tpMove;
     if (slDen > 0) stopTriggerPx = px / slDen;
+    if (Number.isFinite(tp0Den) && tp0Den > 0) tp0TriggerPx = px / tp0Den;
     if (tpDen > 0) tpTriggerPx = px / tpDen;
   }
   if (!Number.isFinite(stopTriggerPx) || stopTriggerPx <= 0) return null;
+  if (!Number.isFinite(tp0TriggerPx) || tp0TriggerPx <= 0) tp0TriggerPx = null;
   if (!Number.isFinite(tpTriggerPx) || tpTriggerPx <= 0) tpTriggerPx = null;
   return {
     closeSide: side === "SHORT" ? "BUY" : "SELL",
     stopTriggerPx,
+    tp0TriggerPx,
     tpTriggerPx,
+    tp0QtyRatio,
     tpQtyRatio,
   };
 }
@@ -7269,12 +7282,18 @@ function buildNativeProtectionMetaPatch({
     return {
       ...basePatch,
       native_protection_stop_order_id: nativeProtection.stop_order_id || null,
+      native_protection_tp0_order_id: nativeProtection.tp0_order_id || null,
       native_protection_tp_order_id: nativeProtection.tp_order_id || null,
       native_protection_stop_price: Number.isFinite(Number(nativeProtection.stop_price)) ? Number(nativeProtection.stop_price) : null,
+      native_protection_tp0_price: Number.isFinite(Number(nativeProtection.tp0_price)) ? Number(nativeProtection.tp0_price) : null,
       native_protection_tp_price: Number.isFinite(Number(nativeProtection.tp_price)) ? Number(nativeProtection.tp_price) : null,
+      native_protection_tp0_qty_base: Number.isFinite(Number(nativeProtection.tp0_qty_base)) ? Number(nativeProtection.tp0_qty_base) : null,
       native_protection_tp_qty_base: Number.isFinite(Number(nativeProtection.tp_qty_base)) ? Number(nativeProtection.tp_qty_base) : null,
+      native_protection_tp0_qty_ratio: Number.isFinite(Number(nativeProtection.tp0_qty_ratio)) ? Number(nativeProtection.tp0_qty_ratio) : null,
       native_protection_tp_qty_ratio: Number.isFinite(Number(nativeProtection.tp_qty_ratio)) ? Number(nativeProtection.tp_qty_ratio) : null,
+      native_protection_tp0_status: nativeProtection.tp0_status || null,
       native_protection_tp_status: nativeProtection.tp_status || null,
+      native_protection_tp0_reason: nativeProtection.tp0_reason || null,
       native_protection_tp_reason: nativeProtection.tp_reason || null,
       native_protection_entry_price: Number.isFinite(Number(nativeProtection.entry_price)) ? Number(nativeProtection.entry_price) : null,
       native_protection_side: nativeProtection.position_side || null,
@@ -7283,12 +7302,18 @@ function buildNativeProtectionMetaPatch({
   return {
     ...basePatch,
     native_protection_stop_order_id: nativeProtection.stop_order_id ? String(nativeProtection.stop_order_id) : undefined,
+    native_protection_tp0_order_id: nativeProtection.tp0_order_id ? String(nativeProtection.tp0_order_id) : undefined,
     native_protection_tp_order_id: nativeProtection.tp_order_id ? String(nativeProtection.tp_order_id) : undefined,
     native_protection_stop_price: Number.isFinite(Number(nativeProtection.stop_price)) ? Number(nativeProtection.stop_price) : undefined,
+    native_protection_tp0_price: Number.isFinite(Number(nativeProtection.tp0_price)) ? Number(nativeProtection.tp0_price) : undefined,
     native_protection_tp_price: Number.isFinite(Number(nativeProtection.tp_price)) ? Number(nativeProtection.tp_price) : undefined,
+    native_protection_tp0_qty_base: Number.isFinite(Number(nativeProtection.tp0_qty_base)) ? Number(nativeProtection.tp0_qty_base) : undefined,
     native_protection_tp_qty_base: Number.isFinite(Number(nativeProtection.tp_qty_base)) ? Number(nativeProtection.tp_qty_base) : undefined,
+    native_protection_tp0_qty_ratio: Number.isFinite(Number(nativeProtection.tp0_qty_ratio)) ? Number(nativeProtection.tp0_qty_ratio) : undefined,
     native_protection_tp_qty_ratio: Number.isFinite(Number(nativeProtection.tp_qty_ratio)) ? Number(nativeProtection.tp_qty_ratio) : undefined,
+    native_protection_tp0_status: nativeProtection.tp0_status ? String(nativeProtection.tp0_status) : undefined,
     native_protection_tp_status: nativeProtection.tp_status ? String(nativeProtection.tp_status) : undefined,
+    native_protection_tp0_reason: nativeProtection.tp0_reason ? String(nativeProtection.tp0_reason) : undefined,
     native_protection_tp_reason: nativeProtection.tp_reason ? String(nativeProtection.tp_reason) : undefined,
     native_protection_entry_price: Number.isFinite(Number(nativeProtection.entry_price)) ? Number(nativeProtection.entry_price) : undefined,
     native_protection_side: nativeProtection.position_side ? String(nativeProtection.position_side) : undefined,
@@ -7383,12 +7408,95 @@ async function refreshBinanceNativeProtection({
       priceProtect: BINANCE_NATIVE_PRICE_PROTECT,
       idempotencyKey: stopIdempotencyKey,
     });
+    let tp0Order = null;
     let tpOrder = null;
+    let tp0QtyBase = null;
     let tpQtyBase = null;
+    let tp0QtyRatio = null;
     let tpQtyRatio = null;
+    let desiredTp0QtyPlaced = null;
     let desiredTpQtyPlaced = null;
+    let tp0Status = BINANCE_NATIVE_TP_ENABLED ? "SKIPPED" : "DISABLED";
+    let tp0Reason = BINANCE_NATIVE_TP_ENABLED ? "TP0_TRIGGER_INVALID" : "NATIVE_TP_DISABLED";
     let tpStatus = BINANCE_NATIVE_TP_ENABLED ? "SKIPPED" : "DISABLED";
     let tpReason = BINANCE_NATIVE_TP_ENABLED ? "TP_TRIGGER_INVALID" : "NATIVE_TP_DISABLED";
+    if (BINANCE_NATIVE_TP_ENABLED && Number.isFinite(prices.tp0TriggerPx) && prices.tp0TriggerPx > 0) {
+      try {
+        const exchangeInfo = await fetchFuturesExchangeInfo(symbol);
+        const desiredTp0QtyBase = Number(context.qtyBase) * Number(prices.tp0QtyRatio || 0.25);
+        const tp0QtyInfo = await computeFuturesOrderQty({
+          symbol,
+          priceRef: prices.tp0TriggerPx,
+          notionalQuote: desiredTp0QtyBase * prices.tp0TriggerPx,
+          reduceOnly: true,
+          info: exchangeInfo,
+          qtyBase: desiredTp0QtyBase,
+        });
+        if (!tp0QtyInfo.ok || !Number.isFinite(tp0QtyInfo.qty) || tp0QtyInfo.qty <= 0) {
+          tp0Status = "SKIPPED";
+          tp0Reason = tp0QtyInfo.reason || "TP0_QTY_INVALID";
+        } else if (tp0QtyInfo.qty + POS_SIZE_EPSILON >= Number(context.qtyBase)) {
+          tp0Status = "SKIPPED";
+          tp0Reason = "TP0_QTY_FULL_POSITION";
+        } else {
+          desiredTp0QtyPlaced = tp0QtyInfo.qty;
+          const tp0IdempotencyKey = buildBinanceNativeProtectionIdempotencyKey({
+            exchange,
+            symbol,
+            positionSide,
+            closeSide: prices.closeSide,
+            entryPrice,
+            leverage,
+            triggerPrice: prices.tp0TriggerPx,
+            kind: "TP0",
+          });
+          tp0Order = await placeFuturesTakeProfitMarketOrder({
+            apiKey: liveCfg.apiKey,
+            apiSecret: liveCfg.apiSecret,
+            symbol,
+            side: prices.closeSide,
+            stopPrice: prices.tp0TriggerPx,
+            closePosition: false,
+            quantity: tp0QtyInfo.qty,
+            reduceOnly: true,
+            workingType: BINANCE_NATIVE_WORKING_TYPE,
+            priceProtect: BINANCE_NATIVE_PRICE_PROTECT,
+            idempotencyKey: tp0IdempotencyKey,
+          });
+          tp0QtyBase = tp0QtyInfo.qty;
+          tp0QtyRatio = Number(context.qtyBase) > 0 ? Math.min(1, tp0QtyInfo.qty / Number(context.qtyBase)) : null;
+          tp0Status = "OK";
+          tp0Reason = null;
+        }
+      } catch (tp0Err) {
+        if (isBinanceImmediateTriggerError(tp0Err) && Number.isFinite(desiredTp0QtyPlaced) && desiredTp0QtyPlaced > 0) {
+          try {
+            const fallback = await placeNativeTpMarketFallback({
+              liveCfg,
+              exchange,
+              symbol,
+              positionSide,
+              closeSide: prices.closeSide,
+              entryPrice,
+              leverage,
+              triggerPrice: prices.tp0TriggerPx,
+              quantity: desiredTp0QtyPlaced,
+            });
+            tp0Order = fallback.order;
+            tp0QtyBase = desiredTp0QtyPlaced;
+            tp0QtyRatio = Number(context.qtyBase) > 0 ? Math.min(1, desiredTp0QtyPlaced / Number(context.qtyBase)) : null;
+            tp0Status = "OK";
+            tp0Reason = "MARKET_FALLBACK";
+          } catch (fallbackErr) {
+            tp0Status = "FAILED";
+            tp0Reason = fallbackErr && fallbackErr.message ? fallbackErr.message : String(fallbackErr);
+          }
+        } else {
+          tp0Status = "FAILED";
+          tp0Reason = tp0Err && tp0Err.message ? tp0Err.message : String(tp0Err);
+        }
+      }
+    }
     if (BINANCE_NATIVE_TP_ENABLED && Number.isFinite(prices.tpTriggerPx) && prices.tpTriggerPx > 0) {
       try {
         const exchangeInfo = await fetchFuturesExchangeInfo(symbol);
@@ -7474,12 +7582,18 @@ async function refreshBinanceNativeProtection({
       leverage,
       close_side: prices.closeSide,
       stop_price: prices.stopTriggerPx,
+      tp0_price: prices.tp0TriggerPx,
       tp_price: prices.tpTriggerPx,
+      tp0_qty_base: Number.isFinite(tp0QtyBase) ? tp0QtyBase : null,
       tp_qty_base: Number.isFinite(tpQtyBase) ? tpQtyBase : null,
+      tp0_qty_ratio: Number.isFinite(tp0QtyRatio) ? tp0QtyRatio : null,
       tp_qty_ratio: Number.isFinite(tpQtyRatio) ? tpQtyRatio : null,
+      tp0_status: tp0Status,
       tp_status: tpStatus,
+      tp0_reason: tp0Reason,
       tp_reason: tpReason,
       stop_order_id: stopOrder && stopOrder.orderId ? String(stopOrder.orderId) : null,
+      tp0_order_id: tp0Order && tp0Order.orderId ? String(tp0Order.orderId) : null,
       tp_order_id: tpOrder && tpOrder.orderId ? String(tpOrder.orderId) : null,
     };
   } catch (e) {
@@ -9543,12 +9657,18 @@ async function runPaperUpbitForBar({
         native_protection_attempts: closing ? null : undefined,
         native_protection_max_attempts: closing ? null : undefined,
         native_protection_stop_order_id: closing ? null : undefined,
+        native_protection_tp0_order_id: closing ? null : undefined,
         native_protection_tp_order_id: closing ? null : undefined,
         native_protection_stop_price: closing ? null : undefined,
+        native_protection_tp0_price: closing ? null : undefined,
         native_protection_tp_price: closing ? null : undefined,
+        native_protection_tp0_qty_base: closing ? null : undefined,
         native_protection_tp_qty_base: closing ? null : undefined,
+        native_protection_tp0_qty_ratio: closing ? null : undefined,
         native_protection_tp_qty_ratio: closing ? null : undefined,
+        native_protection_tp0_status: closing ? null : undefined,
         native_protection_tp_status: closing ? null : undefined,
+        native_protection_tp0_reason: closing ? null : undefined,
         native_protection_tp_reason: closing ? null : undefined,
         native_protection_entry_price: closing ? null : undefined,
         native_protection_side: closing ? null : undefined,
@@ -12279,12 +12399,18 @@ async function runPaperFuturesForBar({
         native_protection_attempts: closing ? null : undefined,
         native_protection_max_attempts: closing ? null : undefined,
         native_protection_stop_order_id: closing ? null : undefined,
+        native_protection_tp0_order_id: closing ? null : undefined,
         native_protection_tp_order_id: closing ? null : undefined,
         native_protection_stop_price: closing ? null : undefined,
+        native_protection_tp0_price: closing ? null : undefined,
         native_protection_tp_price: closing ? null : undefined,
+        native_protection_tp0_qty_base: closing ? null : undefined,
         native_protection_tp_qty_base: closing ? null : undefined,
+        native_protection_tp0_qty_ratio: closing ? null : undefined,
         native_protection_tp_qty_ratio: closing ? null : undefined,
+        native_protection_tp0_status: closing ? null : undefined,
         native_protection_tp_status: closing ? null : undefined,
+        native_protection_tp0_reason: closing ? null : undefined,
         native_protection_tp_reason: closing ? null : undefined,
         native_protection_entry_price: closing ? null : undefined,
         native_protection_side: closing ? null : undefined,
