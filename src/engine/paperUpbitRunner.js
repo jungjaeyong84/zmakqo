@@ -2715,6 +2715,24 @@ function shouldBypassOppositeEntryCooldown({ features, intentDir, posMeta } = {}
     && lastExitDir !== nextDir;
 }
 
+function shouldBlockSignalOverlap({
+  pos = null,
+  lastBarMs = NaN,
+  effectiveBarMs = NaN,
+  signalTfMs = NaN,
+  signalOverlapBars = 0,
+  allowOverlapUpgrade = false,
+} = {}) {
+  const positionState = String(pos && (pos.position_state || pos.state) || "").toUpperCase();
+  if (positionState === "FLAT") return false;
+  if (!Number.isFinite(lastBarMs)) return false;
+  const barsSince = Math.round((effectiveBarMs - lastBarMs) / signalTfMs);
+  return Number.isFinite(barsSince)
+    && barsSince >= 0
+    && barsSince <= signalOverlapBars
+    && !allowOverlapUpgrade;
+}
+
 function evaluateLiveRescueAdd({
   cfg,
   event,
@@ -10152,20 +10170,17 @@ async function runPaperUpbitForBar({
         || isPreRealOrEarlyEventName(s.event, s.features);
       const allowOverlapUpgrade = (Number.isFinite(currentTier) && Number.isFinite(lastTier) && currentTier > lastTier)
         || isCoreRealOrEarlyEvent;
-      if (Number.isFinite(lastBarMs)) {
-        const barsSince = Math.round((effectiveBarMs - lastBarMs) / signalTfMs);
-        if (Number.isFinite(barsSince) && barsSince >= 0 && barsSince <= signalOverlapBars && !allowOverlapUpgrade) {
-          signalDrops.push({
-            ...s,
-            bar_close_time_utc_ms: effectiveBarMs,
-            qty_pct: qtyFraction,
-            reason: "DROP_OVERLAP",
-            drop_reason_code: "DROP_OVERLAP",
-            features_json: { ...(s.features || {}), overlap_bars: signalOverlapBars, last_entry_bar_ms: lastBarMs },
-            event_intent: intent,
-          });
-          continue;
-        }
+      if (shouldBlockSignalOverlap({ pos, lastBarMs, effectiveBarMs, signalTfMs, signalOverlapBars, allowOverlapUpgrade })) {
+        signalDrops.push({
+          ...s,
+          bar_close_time_utc_ms: effectiveBarMs,
+          qty_pct: qtyFraction,
+          reason: "DROP_OVERLAP",
+          drop_reason_code: "DROP_OVERLAP",
+          features_json: { ...(s.features || {}), overlap_bars: signalOverlapBars, last_entry_bar_ms: lastBarMs },
+          event_intent: intent,
+        });
+        continue;
       }
     }
 
@@ -13092,20 +13107,17 @@ async function runPaperFuturesForBar({
         || isPreRealOrEarlyEventName(s.event, s.features);
       const allowOverlapUpgrade = (Number.isFinite(currentTier) && Number.isFinite(lastTier) && currentTier > lastTier)
         || isCoreRealOrEarlyEvent;
-      if (Number.isFinite(lastBarMs)) {
-        const barsSince = Math.round((effectiveBarMs - lastBarMs) / signalTfMs);
-        if (Number.isFinite(barsSince) && barsSince >= 0 && barsSince <= signalOverlapBars && !allowOverlapUpgrade) {
-          signalDrops.push({
-            ...s,
-            bar_close_time_utc_ms: effectiveBarMs,
-            qty_pct: s.qty_pct,
-            reason: "DROP_OVERLAP",
-            drop_reason_code: "DROP_OVERLAP",
-            features_json: { ...(s.features || {}), overlap_bars: signalOverlapBars, last_entry_bar_ms: lastBarMs },
-            event_intent: intent,
-          });
-          continue;
-        }
+      if (shouldBlockSignalOverlap({ pos, lastBarMs, effectiveBarMs, signalTfMs, signalOverlapBars, allowOverlapUpgrade })) {
+        signalDrops.push({
+          ...s,
+          bar_close_time_utc_ms: effectiveBarMs,
+          qty_pct: s.qty_pct,
+          reason: "DROP_OVERLAP",
+          drop_reason_code: "DROP_OVERLAP",
+          features_json: { ...(s.features || {}), overlap_bars: signalOverlapBars, last_entry_bar_ms: lastBarMs },
+          event_intent: intent,
+        });
+        continue;
       }
     }
 
@@ -14195,6 +14207,7 @@ module.exports = {
     resolveManualRetryQtyBase,
     resolveEventRefMs,
     shouldBypassOppositeEntryCooldown,
+    shouldBlockSignalOverlap,
     resolveOppositeCooldownWindow,
     resolveOppositeCooldownWindowFromPosition,
     resolveLiveMarketRegimeCohort,

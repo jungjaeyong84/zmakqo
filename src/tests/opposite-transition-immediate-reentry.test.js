@@ -5,6 +5,7 @@ const { __test } = require("../engine/paperUpbitRunner");
 
 async function run() {
   assert.strictEqual(typeof __test.shouldBypassOppositeEntryCooldown, "function", "shouldBypassOppositeEntryCooldown export missing");
+  assert.strictEqual(typeof __test.shouldBlockSignalOverlap, "function", "shouldBlockSignalOverlap export missing");
   assert.strictEqual(typeof __test.resolveOppositeCooldownWindow, "function", "resolveOppositeCooldownWindow export missing");
   assert.strictEqual(typeof __test.resolveOppositeCooldownWindowFromPosition, "function", "resolveOppositeCooldownWindowFromPosition export missing");
   assert.strictEqual(typeof __test.resolveLiveMarketRegimeCohort, "function", "resolveLiveMarketRegimeCohort export missing");
@@ -49,6 +50,26 @@ async function run() {
     },
   });
   assert.strictEqual(missingAllow, false, "missing explicit allow flag must not bypass cooldown");
+
+  const flatOverlapBlocked = __test.shouldBlockSignalOverlap({
+    pos: { position_state: "FLAT" },
+    lastBarMs: 1775632500000,
+    effectiveBarMs: 1775633400000,
+    signalTfMs: 15 * 60 * 1000,
+    signalOverlapBars: 2,
+    allowOverlapUpgrade: false,
+  });
+  assert.strictEqual(flatOverlapBlocked, false, "flat position should not be overlap-blocked");
+
+  const activeOverlapBlocked = __test.shouldBlockSignalOverlap({
+    pos: { position_state: "ACTIVE" },
+    lastBarMs: 1775632500000,
+    effectiveBarMs: 1775633400000,
+    signalTfMs: 15 * 60 * 1000,
+    signalOverlapBars: 2,
+    allowOverlapUpgrade: false,
+  });
+  assert.strictEqual(activeOverlapBlocked, true, "active position within overlap window should remain blocked");
 
   const rescueCooldown = __test.resolveOppositeCooldownWindow({
     sysCfg: {},
