@@ -134,8 +134,17 @@ function resolveTpP0Pct({ rules = null, meta = null } = {}) {
   const ruleSafe = rules && typeof rules === "object" ? rules : {};
   const metaSafe = meta && typeof meta === "object" ? meta : {};
   const basePct = toNum(ruleSafe.TP_P0);
-  const atrPct = Math.abs(toNum(metaSafe.ev_gate_atr_pct));
+  let atrPct = Math.abs(toNum(metaSafe.ev_gate_atr_pct));
   const atrMultiple = toNum(ruleSafe.TP_P0_ATR_MULTIPLE);
+  // ev_gate_atr_pct has historically appeared in two units:
+  // - fraction form: 0.012 => 1.2%
+  // - percentage-point form: 0.509 => 0.509%
+  // TP0 runtime must tolerate both, otherwise TP0 can become absurdly large
+  // and never trigger before TP1.
+  if (Number.isFinite(atrPct) && atrPct > 0) {
+    const looksLikePctPoint = atrPct > 1 || (Number.isFinite(basePct) && basePct > 0 && atrPct > (basePct * 4));
+    if (looksLikePctPoint) atrPct /= 100;
+  }
   if (Number.isFinite(atrPct) && atrPct > 0 && Number.isFinite(atrMultiple) && atrMultiple > 0) {
     if (Number.isFinite(basePct) && basePct > 0) return Math.max(basePct, atrPct * atrMultiple);
     return atrPct * atrMultiple;

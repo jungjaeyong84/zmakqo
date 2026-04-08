@@ -60,6 +60,29 @@ function run() {
   assert.strictEqual(staleTp0Signals.length, 1, "stale tp0 meta must not suppress fresh tp0");
   assert.strictEqual(staleTp0Signals[0].event, "EXIT_TP_P0_0.96P");
 
+  const pctPointAtrTp0Signals = generateSignals({
+    exchange: "BINANCEFUT",
+    symbol: "BNBUSDT",
+    trading_mode: "EXIT_ONLY",
+    leverage: 2,
+    currentBarCloseMs: 1_800_020_900_000,
+    bar: { close: 99.59, c: 99.59 },
+    position: {
+      state: "ACTIVE",
+      size_pct: 1,
+      avg_price: 100,
+      position_side: "SHORT",
+      meta: {
+        external_leverage: 2,
+        ev_gate_atr_pct: 0.509,
+        tp_p0_done: false,
+        tp_p1_done: false,
+      },
+    },
+  });
+  assert.strictEqual(pctPointAtrTp0Signals.length, 1, "percentage-point atr input must not suppress tp0");
+  assert.strictEqual(pctPointAtrTp0Signals[0].event, "EXIT_TP_P0_0.8P");
+
   const delayedTrail = generateSignals({
     exchange: "BINANCEFUT",
     symbol: "BTCUSDT",
