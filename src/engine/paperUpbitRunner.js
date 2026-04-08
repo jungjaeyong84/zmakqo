@@ -1266,6 +1266,68 @@ function resolveInitialStopSource({ avgPrice, side, features, nativeProtectionSt
   return "LEVERAGED_SL_FALLBACK";
 }
 
+function isExitMetaLinkedToEntry({
+  entryEventId = null,
+  exitEntryEventId = null,
+  entryExecMs = null,
+  exitEntryExecMs = null,
+  exitAtMs = null,
+} = {}) {
+  const entryId = String(entryEventId || "").trim();
+  const exitEntryId = String(exitEntryEventId || "").trim();
+  const entryMs = Number(entryExecMs);
+  const linkedEntryMs = Number(exitEntryExecMs);
+  const exitMs = Number(exitAtMs);
+  let linkedToEntry = true;
+  if (entryId && exitEntryId && entryId !== exitEntryId) linkedToEntry = false;
+  if (linkedToEntry && Number.isFinite(entryMs)) {
+    if (Number.isFinite(linkedEntryMs)) {
+      if (Math.abs(linkedEntryMs - entryMs) > 1000) linkedToEntry = false;
+    } else if (Number.isFinite(exitMs) && (exitMs + 30000) < entryMs) {
+      linkedToEntry = false;
+    }
+  }
+  return linkedToEntry;
+}
+
+function computeExitTriggerPrice({ avgPrice, leverage, side, pnlPct } = {}) {
+  const px = Number(avgPrice);
+  const levRaw = Number(leverage);
+  const lev = Number.isFinite(levRaw) && levRaw > 0 ? levRaw : 1;
+  const pct = Number(pnlPct);
+  const sideUpper = String(side || "").toUpperCase();
+  if (!Number.isFinite(px) || px <= 0 || !Number.isFinite(pct)) return null;
+  const move = pct / lev;
+  if (sideUpper === "SHORT") {
+    const den = 1 + move;
+    return den > 0 ? (px / den) : null;
+  }
+  return px * (1 + move);
+}
+
+function computeTpP1TargetPrice({ exchange, position, posMeta, fillPrice } = {}) {
+  const rules = resolveExitRulesForPosition({
+    exchange,
+    position: position || { meta: posMeta || {} },
+  });
+  const side = normalizePositionSide(
+    (position && (position.position_side || position.side))
+    || (posMeta && (posMeta.position_side || posMeta.external_side || posMeta.external_position_side))
+  ) || "LONG";
+  const entryPrice = Number(
+    (position && position.avg_price)
+    ?? (posMeta && (posMeta.external_entry_price ?? posMeta.entry_price))
+  );
+  const leverage = resolvePositionLeverage({ position, fallback: posMeta && posMeta.external_leverage });
+  const targetPrice = computeExitTriggerPrice({
+    avgPrice: entryPrice,
+    leverage,
+    side,
+    pnlPct: Number(rules && rules.TP_P1),
+  });
+  return Number.isFinite(targetPrice) ? targetPrice : (Number.isFinite(Number(fillPrice)) ? Number(fillPrice) : null);
+}
+
 function computeInitialStopPriceForEntry({ avgPrice, leverage, side, slRatio, features, nativeProtectionStopPrice } = {}) {
   const structureStop = resolveStructureInitialStopPrice({
     avgPrice,
@@ -3120,6 +3182,14 @@ function reconcileTpP1MetaFromFill({ posMeta, pos, fill } = {}) {
   const patch = {
     tp_p1_done: true,
     tp_p1_price: Number.isFinite(execPrice) ? execPrice : (posMeta.tp_p1_price ?? null),
+    tp_p1_target_price: Number.isFinite(Number(posMeta.tp_p1_target_price))
+      ? Number(posMeta.tp_p1_target_price)
+      : computeTpP1TargetPrice({
+          exchange: pos && pos.exchange,
+          position: pos,
+          posMeta,
+          fillPrice: execPrice,
+        }),
     trail_active: false,
     tp_p1_pending: false,
     tp_p1_pending_at_ms: null,
@@ -3191,6 +3261,14 @@ async function applyTpP1SkipOnCancel({
   const merged = mergeMeta(posMeta, {
     tp_p1_done: true,
     tp_p1_price: keepFullAndTrail && Number.isFinite(refPx) ? refPx : null,
+    tp_p1_target_price: keepFullAndTrail
+      ? computeTpP1TargetPrice({
+          exchange,
+          position: pos,
+          posMeta,
+          fillPrice: refPx,
+        })
+      : null,
     trail_high: keepFullAndTrail ? trailHigh : null,
     trail_low: keepFullAndTrail ? trailLow : null,
     trail_active: false,
@@ -5837,8 +5915,11 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     metaPatch.tp_p0_at = null;
     metaPatch.tp_p0_source = null;
     metaPatch.tp_p0_qty_ratio = null;
+    metaPatch.tp_p0_entry_event_id = null;
+    metaPatch.tp_p0_entry_exec_bar_ms = null;
     metaPatch.tp_p1_done = false;
     metaPatch.tp_p1_price = null;
+    metaPatch.tp_p1_target_price = null;
     metaPatch.trail_high = null;
     metaPatch.trail_low = null;
     metaPatch.trail_active = false;
@@ -5939,8 +6020,11 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
       tp_p0_at: null,
       tp_p0_source: null,
       tp_p0_qty_ratio: null,
+      tp_p0_entry_event_id: null,
+      tp_p0_entry_exec_bar_ms: null,
       tp_p1_done: false,
       tp_p1_price: null,
+      tp_p1_target_price: null,
       trail_high: null,
       trail_low: null,
       trail_active: false,
@@ -6011,21 +6095,34 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
       add_chain_base_qty_pct: syncedAddChainBaseQtyPct,
     });
   }
-  if (active && meta.tp_p1_done === true) {
-    const entryEventId = String(meta.entry_event_id || "").trim();
-    const tpP1EntryEventId = String(meta.tp_p1_entry_event_id || "").trim();
-    const entryExecMs = Number(meta.entry_exec_bar_ms);
-    const tpP1EntryExecMs = Number(meta.tp_p1_entry_exec_bar_ms);
-    const tpP1AtMs = Date.parse(String(meta.tp_p1_at || ""));
-    let linkedToEntry = true;
-    if (entryEventId && tpP1EntryEventId && entryEventId !== tpP1EntryEventId) linkedToEntry = false;
-    if (linkedToEntry && Number.isFinite(entryExecMs)) {
-      if (Number.isFinite(tpP1EntryExecMs)) {
-        if (Math.abs(tpP1EntryExecMs - entryExecMs) > 1000) linkedToEntry = false;
-      } else if (Number.isFinite(tpP1AtMs) && (tpP1AtMs + 30000) < entryExecMs) {
-        linkedToEntry = false;
-      }
+  if (active && meta.tp_p0_done === true) {
+    const linkedTp0 = isExitMetaLinkedToEntry({
+      entryEventId: meta.entry_event_id,
+      exitEntryEventId: meta.tp_p0_entry_event_id,
+      entryExecMs: meta.entry_exec_bar_ms,
+      exitEntryExecMs: meta.tp_p0_entry_exec_bar_ms,
+      exitAtMs: Date.parse(String(meta.tp_p0_at || "")),
+    });
+    if (!linkedTp0) {
+      meta = mergeMeta(meta, {
+        tp_p0_done: false,
+        tp_p0_price: null,
+        tp_p0_at: null,
+        tp_p0_source: null,
+        tp_p0_qty_ratio: null,
+        tp_p0_entry_event_id: null,
+        tp_p0_entry_exec_bar_ms: null,
+      });
     }
+  }
+  if (active && meta.tp_p1_done === true) {
+    const linkedToEntry = isExitMetaLinkedToEntry({
+      entryEventId: meta.entry_event_id,
+      exitEntryEventId: meta.tp_p1_entry_event_id,
+      entryExecMs: meta.entry_exec_bar_ms,
+      exitEntryExecMs: meta.tp_p1_entry_exec_bar_ms,
+      exitAtMs: Date.parse(String(meta.tp_p1_at || "")),
+    });
     if (!linkedToEntry) {
       meta = mergeMeta(meta, {
         tp_p0_done: false,
@@ -6033,8 +6130,11 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
         tp_p0_at: null,
         tp_p0_source: null,
         tp_p0_qty_ratio: null,
+        tp_p0_entry_event_id: null,
+        tp_p0_entry_exec_bar_ms: null,
         tp_p1_done: false,
         tp_p1_price: null,
+        tp_p1_target_price: null,
         trail_high: null,
         trail_low: null,
         trail_active: false,
@@ -9094,8 +9194,11 @@ async function runPaperUpbitForBar({
         tp_p0_at: null,
         tp_p0_source: null,
         tp_p0_qty_ratio: null,
+        tp_p0_entry_event_id: null,
+        tp_p0_entry_exec_bar_ms: null,
         tp_p1_done: false,
         tp_p1_price: null,
+        tp_p1_target_price: null,
         trail_high: null,
         trail_low: null,
         trail_active: false,
@@ -9253,6 +9356,8 @@ async function runPaperUpbitForBar({
         tp_p0_at: new Date().toISOString(),
         tp_p0_source: "INTENT_FILL",
         tp_p0_qty_ratio: qtyFraction,
+        tp_p0_entry_event_id: (entryEventIdForFill || nextMeta.entry_event_id || null),
+        tp_p0_entry_exec_bar_ms: Number(nextMeta.entry_exec_bar_ms || execBarCloseMs) || null,
       });
     }
     if ((ev === "EXIT_TP_P1" || ev.startsWith("EXIT_TP_P1_")) && newState === "ACTIVE") {
@@ -9271,6 +9376,12 @@ async function runPaperUpbitForBar({
         tp_p0_done: nextMeta.tp_p0_done === true,
         tp_p1_done: true,
         tp_p1_price: fillPrice,
+        tp_p1_target_price: computeTpP1TargetPrice({
+          exchange,
+          position: pos,
+          posMeta: nextMeta,
+          fillPrice,
+        }),
         trail_high: nextTrailHigh,
         trail_low: nextTrailLow,
         trail_active: false,
@@ -11806,8 +11917,11 @@ async function runPaperFuturesForBar({
         tp_p0_at: null,
         tp_p0_source: null,
         tp_p0_qty_ratio: null,
+        tp_p0_entry_event_id: null,
+        tp_p0_entry_exec_bar_ms: null,
         tp_p1_done: false,
         tp_p1_price: null,
+        tp_p1_target_price: null,
         trail_high: null,
         trail_low: null,
         trail_active: false,
@@ -11992,6 +12106,8 @@ async function runPaperFuturesForBar({
         tp_p0_at: new Date().toISOString(),
         tp_p0_source: "INTENT_FILL",
         tp_p0_qty_ratio: qtyFraction,
+        tp_p0_entry_event_id: (entryEventIdForFill || nextMeta.entry_event_id || null),
+        tp_p0_entry_exec_bar_ms: Number(nextMeta.entry_exec_bar_ms || execBarCloseMs) || null,
       });
     }
     if ((ev === "EXIT_TP_P1" || ev.startsWith("EXIT_TP_P1_")) && newState === "ACTIVE") {
@@ -12010,6 +12126,12 @@ async function runPaperFuturesForBar({
         tp_p0_done: nextMeta.tp_p0_done === true,
         tp_p1_done: true,
         tp_p1_price: fillPrice,
+        tp_p1_target_price: computeTpP1TargetPrice({
+          exchange,
+          position: pos,
+          posMeta: nextMeta,
+          fillPrice,
+        }),
         trail_high: nextTrailHigh,
         trail_low: nextTrailLow,
         trail_active: false,

@@ -6,6 +6,7 @@ const {
   resolveExitRulesForPosition,
   evaluateTp1LadderStage,
   applyTp1LadderPolicy,
+  resolveTrailDelayState,
 } = require("../engine/signalEngine");
 
 function run() {
@@ -33,6 +34,31 @@ function run() {
   assert.strictEqual(tp0Signals[0].event, "EXIT_TP_P0_0.96P");
   assert.strictEqual(tp0Signals[0].reason, "EXIT_TAKE_PROFIT_P0");
   assert.ok(Math.abs(tp0Signals[0].qty_pct - 0.25) < 1e-9);
+
+  const staleTp0Signals = generateSignals({
+    exchange: "BINANCEFUT",
+    symbol: "SOLUSDT",
+    trading_mode: "EXIT_ONLY",
+    leverage: 2,
+    currentBarCloseMs: 1_800_010_900_000,
+    bar: { close: 100.5, c: 100.5 },
+    position: {
+      state: "ACTIVE",
+      size_pct: 1,
+      avg_price: 100,
+      position_side: "LONG",
+      meta: {
+        external_leverage: 2,
+        ev_gate_atr_pct: 0.012,
+        entry_exec_bar_ms: 1_800_010_000_000,
+        entry_event_id: "ENTRY__CUR",
+        tp_p0_done: true,
+        tp_p0_at: new Date(1_800_000_000_000).toISOString(),
+      },
+    },
+  });
+  assert.strictEqual(staleTp0Signals.length, 1, "stale tp0 meta must not suppress fresh tp0");
+  assert.strictEqual(staleTp0Signals[0].event, "EXIT_TP_P0_0.96P");
 
   const delayedTrail = generateSignals({
     exchange: "BINANCEFUT",
@@ -64,6 +90,27 @@ function run() {
   assert.strictEqual(delayedTrail[0].event, "EXIT_TRAIL");
   assert.strictEqual(delayedTrail[0].features.trail_delay_bars_ready, true);
   assert.strictEqual(delayedTrail[0].features.trail_delay_release_reason, "BAR_DELAY_RELEASE");
+
+  const targetBasedTrailDelay = resolveTrailDelayState({
+    meta: {
+      tp_p1_done: true,
+      trail_active: false,
+      tp_p1_price: 98.8,
+      tp_p1_target_price: 99.175,
+      tp_p1_bar_ms: 1_800_000_000_000,
+      entry_exec_tf_ms: 15 * 60 * 1000,
+      trail_delay_bars_required: 0,
+      trail_delay_mfe_pct_required: 0.005,
+    },
+    tpP1Done: true,
+    currentBarMs: 1_800_000_100_000,
+    closePx: 98.85,
+    side: "SHORT",
+    leverageEff: 2,
+    rules: {},
+  });
+  assert.strictEqual(targetBasedTrailDelay.trailActive, true, "trail delay should arm from tp1 target price");
+  assert.strictEqual(targetBasedTrailDelay.releaseReason, "MFE_DELAY_RELEASE");
 
   const rescueTp1 = generateSignals({
     exchange: "BINANCEFUT",

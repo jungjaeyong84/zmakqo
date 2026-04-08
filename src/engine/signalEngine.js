@@ -100,7 +100,34 @@ function resolveTpP1State(meta = {}) {
 }
 
 function resolveTpP0State(meta = {}) {
-  return { tpP0Done: meta.tp_p0_done === true };
+  const rawTpP0Done = meta.tp_p0_done === true;
+  if (!rawTpP0Done) {
+    return { tpP0Done: false, linkedToEntry: false };
+  }
+
+  const entryEventId = String(meta.entry_event_id || "").trim();
+  const tpP0EntryEventId = String(meta.tp_p0_entry_event_id || "").trim();
+  const entryExecMs = toNum(meta.entry_exec_bar_ms);
+  const tpP0EntryExecMs = toNum(meta.tp_p0_entry_exec_bar_ms);
+  const tpP0AtMs = parseIsoMs(meta.tp_p0_at);
+
+  let linkedToEntry = true;
+  if (entryEventId && tpP0EntryEventId && entryEventId !== tpP0EntryEventId) {
+    linkedToEntry = false;
+  }
+
+  if (linkedToEntry && Number.isFinite(entryExecMs)) {
+    if (Number.isFinite(tpP0EntryExecMs)) {
+      if (Math.abs(tpP0EntryExecMs - entryExecMs) > 1000) linkedToEntry = false;
+    } else if (Number.isFinite(tpP0AtMs) && (tpP0AtMs + 30000) < entryExecMs) {
+      linkedToEntry = false;
+    }
+  }
+
+  return {
+    tpP0Done: rawTpP0Done && linkedToEntry,
+    linkedToEntry,
+  };
 }
 
 function resolveTpP0Pct({ rules = null, meta = null } = {}) {
@@ -312,7 +339,7 @@ function resolveTrailDelayState({
   const mfePctRequired = toNum(metaSafe.trail_delay_mfe_pct_required) ?? toNum(rules && rules.TRAIL_DELAY_MFE_PCT);
   const tp1BarMs = toNum(metaSafe.tp_p1_bar_ms) ?? parseIsoMs(metaSafe.tp_p1_at);
   const tfMs = Math.max(0, Math.round(toNum(metaSafe.entry_exec_tf_ms) || 0));
-  const tp1Price = toNum(metaSafe.tp_p1_price);
+  const tp1Price = toNum(metaSafe.tp_p1_target_price) ?? toNum(metaSafe.tp_p1_price);
   const sideUpper = String(side || "").toUpperCase() === "SHORT" ? "SHORT" : "LONG";
   const lev = toNum(leverageEff);
   const currentMs = toNum(currentBarMs);

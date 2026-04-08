@@ -51,7 +51,7 @@ function run() {
     },
   });
   assert.ok(Array.isArray(linked) && linked.length > 0, "linked TP1 meta should produce exit signal");
-  assert.strictEqual(linked[0].event, "EXIT_BE_0.25P", "linked TP1 meta should produce BE signal");
+  assert.strictEqual(linked[0].event, "EXIT_BE_0.15P", "linked TP1 meta should produce BE signal");
 }
 
 try {
