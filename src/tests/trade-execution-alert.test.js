@@ -73,7 +73,7 @@ async function run() {
   const tp1Failure = __test.buildFailureMessage({
     exchange: "BINANCEFUT",
     symbol: "SOLUSDT",
-    event: "EXIT_TP_P1_3.25P",
+    event: "EXIT_TP_P1_1.65P",
     intent: "EXIT",
     side: "BUY",
     positionSideBefore: "SHORT",
@@ -86,7 +86,7 @@ async function run() {
     exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
   });
   assert.ok(tp1Failure, "tp1 failure message should exist");
-  assert.strictEqual(tp1Failure.title, "SOLUSDT 익절(TP1) 3.25% 주문 실패");
+  assert.strictEqual(tp1Failure.title, "SOLUSDT 익절(TP1) 1.65% 주문 실패");
   assert.ok(tp1Failure.body.includes("방향: 숏 청산"), "failure message should include exit direction");
   assert.ok(tp1Failure.body.includes("주문비율: 50%"), "failure message should include close ratio");
   assert.ok(tp1Failure.body.includes("TRAIL_0.9R"), "failure message should include R-based trailing rule");

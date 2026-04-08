@@ -34,7 +34,7 @@ const MOCK_HOME_PAYLOAD = {
   fills12: [
     { symbol: 'BTCUSDT', event: 'LONG', exec_price: 67850.20, created_at: new Date().toISOString(), display_exec_ko: '매수 체결', fill_id: 'MOCK_FILL_1' },
     { symbol: 'SOLUSDT', event: 'SHORT', exec_price: 142.35, created_at: new Date(Date.now() - 3600000).toISOString(), display_exec_ko: '매도 체결', fill_id: 'MOCK_FILL_2' },
-    { symbol: 'ETHUSDT', event: 'EXIT_TP_P1_3.25P', exec_price: 2055.80, created_at: new Date(Date.now() - 7200000).toISOString(), display_exec_ko: '목표가 청산', fill_id: 'MOCK_FILL_3' },
+    { symbol: 'ETHUSDT', event: 'EXIT_TP_P1_1.65P', exec_price: 2055.80, created_at: new Date(Date.now() - 7200000).toISOString(), display_exec_ko: '목표가 청산', fill_id: 'MOCK_FILL_3' },
   ],
   intent_failures: { total: 2, by_status: { rejected_provider: 1, timeout_provider: 1 }, top: [{ reason: 'INSUFFICIENT_MARGIN', count: 1 }] },
   mission_control: {

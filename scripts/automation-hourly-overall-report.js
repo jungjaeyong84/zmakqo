@@ -346,7 +346,7 @@ async function readRecentTp1FillMap({ exchange = "BINANCEFUT", lookbackMs = 20 *
   snap.forEach((doc) => {
     const d = doc.data() || {};
     if (String(d.exchange || "").toUpperCase() !== String(exchange || "").toUpperCase()) return;
-    if (String(d.event || "").toUpperCase() !== "EXIT_TP_P1_3.25P") return;
+    if (!String(d.event || "").toUpperCase().startsWith("EXIT_TP_P1_")) return;
     const symbol = String(d.symbol_or_pair_id || d.symbol || "").trim().toUpperCase();
     if (!symbol) return;
     const createdAtMs = Date.parse(String(d.created_at || ""));
