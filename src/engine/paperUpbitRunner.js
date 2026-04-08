@@ -7593,6 +7593,15 @@ async function executeLiveFuturesOrder({
       liveOrderId: null,
       appliedLeverage: leverageMult,
       leverageReason: leverageResolved && leverageResolved.reason,
+      appliedExitProfile: exitProfileResolved && exitProfileResolved.profile ? String(exitProfileResolved.profile).toUpperCase() : "BASE",
+      exitProfileReason: exitProfileResolved && exitProfileResolved.reason ? String(exitProfileResolved.reason) : "BASE_PROFILE",
+      appliedExitRules: exitRulesOverride,
+      exitProfileRollbackActive: exitProfileRollback.rollbackActive === true,
+      exitProfileRollbackUntilMs: Number.isFinite(Number(exitProfileRollback.rollbackUntilMs))
+        ? Number(exitProfileRollback.rollbackUntilMs)
+        : null,
+      exitProfileRollbackReason: exitProfileRollback.rollbackReason || null,
+      nativeProtection: null,
     };
   }
 
@@ -9146,32 +9155,6 @@ async function runPaperUpbitForBar({
         native_protection_side: closing ? null : undefined,
       });
     }
-    if (opening) {
-      nextMeta = mergeMeta(nextMeta, {
-        leverage,
-        entry_exec_tf_ms: Number.isFinite(signalTfMs) ? signalTfMs : null,
-        last_exit_bar_ms: null,
-        last_exit_dir: null,
-        last_exit_wall_ms: null,
-        add_chain_base_qty_pct: Number.isFinite(newSize) ? Number(newSize) : null,
-        ev_gate_atr_pct: Number.isFinite(Number(it.features_json && it.features_json.ev_gate_atr_pct))
-          ? Number(it.features_json.ev_gate_atr_pct)
-          : null,
-        openclaw_market_regime_cohort: marketRegimeCohort || null,
-        openclaw_market_regime_objective_score: marketRegimeRow && Number.isFinite(Number(marketRegimeRow.objective_score))
-          ? Number(marketRegimeRow.objective_score)
-          : null,
-        openclaw_market_regime_drop_verdict: marketRegimeRow ? String(marketRegimeRow.drop_verdict || "").trim().toUpperCase() || null : null,
-        ...buildEntryLineageMetaPatch({
-          entry_event_id: entryEventIdFromIntent || null,
-          entry_signal_type: entrySignalTypeFromIntent || null,
-          entry_grade: entryGradeFromIntent || null,
-          entry_qty_profile: entryQtyProfileFromIntent || null,
-          entry_signal_bar_ms: Number(it.signal_bar_close_time_utc_ms) || null,
-          entry_exec_bar_ms: Number(execBarCloseMs) || null,
-        }),
-      });
-    }
     if (openingOrAdd) {
       const entryExitAdjustment = applyEntryExitRuleRuntimeAdjustments({
         rules: appliedExitRules,
@@ -9198,6 +9181,32 @@ async function runPaperUpbitForBar({
         tp1_ladder_tp0_to_tp1_conversion: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.tp0_to_tp1_conversion : null,
         tp1_ladder_fee_adjusted_expectancy: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.fee_adjusted_expectancy : null,
         exit_policy_source: exitPolicySrc || null,
+      });
+    }
+    if (opening) {
+      nextMeta = mergeMeta(nextMeta, {
+        leverage,
+        entry_exec_tf_ms: Number.isFinite(signalTfMs) ? signalTfMs : null,
+        last_exit_bar_ms: null,
+        last_exit_dir: null,
+        last_exit_wall_ms: null,
+        add_chain_base_qty_pct: Number.isFinite(newSize) ? Number(newSize) : null,
+        ev_gate_atr_pct: Number.isFinite(Number(it.features_json && it.features_json.ev_gate_atr_pct))
+          ? Number(it.features_json.ev_gate_atr_pct)
+          : null,
+        openclaw_market_regime_cohort: marketRegimeCohort || null,
+        openclaw_market_regime_objective_score: marketRegimeRow && Number.isFinite(Number(marketRegimeRow.objective_score))
+          ? Number(marketRegimeRow.objective_score)
+          : null,
+        openclaw_market_regime_drop_verdict: marketRegimeRow ? String(marketRegimeRow.drop_verdict || "").trim().toUpperCase() || null : null,
+        ...buildEntryLineageMetaPatch({
+          entry_event_id: entryEventIdFromIntent || null,
+          entry_signal_type: entrySignalTypeFromIntent || null,
+          entry_grade: entryGradeFromIntent || null,
+          entry_qty_profile: entryQtyProfileFromIntent || null,
+          entry_signal_bar_ms: Number(it.signal_bar_close_time_utc_ms) || null,
+          entry_exec_bar_ms: Number(execBarCloseMs) || null,
+        }),
       });
     }
     if (closing) {
@@ -11855,6 +11864,37 @@ async function runPaperFuturesForBar({
         native_protection_side: closing ? null : undefined,
       });
     }
+    if (openingOrAdd) {
+      const entryExitAdjustment = applyEntryExitRuleRuntimeAdjustments({
+        rules: appliedExitRules,
+        features: it.features_json,
+        sysCfg,
+        cohort: marketRegimeCohort,
+      });
+      const exitPolicySrc = entryExitAdjustment.exitPolicySrc;
+      const tp1LadderState = entryExitAdjustment.tp1LadderState;
+      appliedExitRules = cloneExitRules(entryExitAdjustment.appliedExitRules);
+      nextMeta = mergeMeta(nextMeta, {
+        exit_profile: appliedExitProfile || "BASE",
+        exit_profile_reason: (exitPolicySrc && exitPolicySrc !== "BINANCE_DEFAULT")
+          ? `${appliedExitProfileReason || "BASE_PROFILE"}+${exitPolicySrc}`
+          : (appliedExitProfileReason || null),
+        exit_rules_override: cloneExitRules(appliedExitRules),
+        tp1_ladder_enabled: tp1LadderState ? tp1LadderState.enabled !== false : null,
+        tp1_ladder_stage: tp1LadderState ? tp1LadderState.stage : null,
+        tp1_ladder_profile: tp1LadderState ? tp1LadderState.profile : null,
+        tp1_ladder_reason: tp1LadderState ? tp1LadderState.reason : null,
+        tp1_ladder_realized_n: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.realized_n : null,
+        tp1_ladder_tp0_hit_rate: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.tp0_hit_rate : null,
+        tp1_ladder_tp1_hit_rate: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.tp1_hit_rate : null,
+        tp1_ladder_tp0_to_tp1_conversion: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.tp0_to_tp1_conversion : null,
+        tp1_ladder_fee_adjusted_expectancy: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.fee_adjusted_expectancy : null,
+        exit_profile_rollback_active: appliedExitRollbackActive === true,
+        exit_profile_rollback_until_ms: Number.isFinite(appliedExitRollbackUntilMs) ? appliedExitRollbackUntilMs : null,
+        exit_profile_rollback_reason: appliedExitRollbackReason || null,
+        exit_policy_source: exitPolicySrc || null,
+      });
+    }
     if (opening) {
       const initialStopPrice = computeInitialStopPriceForEntry({
         avgPrice: fillPrice,
@@ -11903,37 +11943,6 @@ async function runPaperFuturesForBar({
           entry_signal_bar_ms: Number(it.signal_bar_close_time_utc_ms) || null,
           entry_exec_bar_ms: Number(execBarCloseMs) || null,
         }),
-      });
-    }
-    if (openingOrAdd) {
-      const entryExitAdjustment = applyEntryExitRuleRuntimeAdjustments({
-        rules: appliedExitRules,
-        features: it.features_json,
-        sysCfg,
-        cohort: marketRegimeCohort,
-      });
-      const exitPolicySrc = entryExitAdjustment.exitPolicySrc;
-      const tp1LadderState = entryExitAdjustment.tp1LadderState;
-      appliedExitRules = cloneExitRules(entryExitAdjustment.appliedExitRules);
-      nextMeta = mergeMeta(nextMeta, {
-        exit_profile: appliedExitProfile || "BASE",
-        exit_profile_reason: (exitPolicySrc && exitPolicySrc !== "BINANCE_DEFAULT")
-          ? `${appliedExitProfileReason || "BASE_PROFILE"}+${exitPolicySrc}`
-          : (appliedExitProfileReason || null),
-        exit_rules_override: cloneExitRules(appliedExitRules),
-        tp1_ladder_enabled: tp1LadderState ? tp1LadderState.enabled !== false : null,
-        tp1_ladder_stage: tp1LadderState ? tp1LadderState.stage : null,
-        tp1_ladder_profile: tp1LadderState ? tp1LadderState.profile : null,
-        tp1_ladder_reason: tp1LadderState ? tp1LadderState.reason : null,
-        tp1_ladder_realized_n: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.realized_n : null,
-        tp1_ladder_tp0_hit_rate: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.tp0_hit_rate : null,
-        tp1_ladder_tp1_hit_rate: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.tp1_hit_rate : null,
-        tp1_ladder_tp0_to_tp1_conversion: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.tp0_to_tp1_conversion : null,
-        tp1_ladder_fee_adjusted_expectancy: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.fee_adjusted_expectancy : null,
-        exit_profile_rollback_active: appliedExitRollbackActive === true,
-        exit_profile_rollback_until_ms: Number.isFinite(appliedExitRollbackUntilMs) ? appliedExitRollbackUntilMs : null,
-        exit_profile_rollback_reason: appliedExitRollbackReason || null,
-        exit_policy_source: exitPolicySrc || null,
       });
     }
     if (closing) {
