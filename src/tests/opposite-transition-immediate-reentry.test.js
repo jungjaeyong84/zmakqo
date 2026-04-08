@@ -3,11 +3,12 @@
 const assert = require("assert");
 const { __test } = require("../engine/paperUpbitRunner");
 
-function run() {
+async function run() {
   assert.strictEqual(typeof __test.shouldBypassOppositeEntryCooldown, "function", "shouldBypassOppositeEntryCooldown export missing");
   assert.strictEqual(typeof __test.resolveOppositeCooldownWindow, "function", "resolveOppositeCooldownWindow export missing");
   assert.strictEqual(typeof __test.resolveOppositeCooldownWindowFromPosition, "function", "resolveOppositeCooldownWindowFromPosition export missing");
   assert.strictEqual(typeof __test.applyEntryExitRuleRuntimeAdjustments, "function", "applyEntryExitRuleRuntimeAdjustments export missing");
+  assert.strictEqual(typeof __test.repairActivePositionExitRuntimeState, "function", "repairActivePositionExitRuntimeState export missing");
 
   const bypassed = __test.shouldBypassOppositeEntryCooldown({
     features: {
@@ -183,11 +184,81 @@ function run() {
   assert.ok(Math.abs(explicitExitPolicyAdjusted.appliedExitRules.SL - (-0.011)) < 1e-12);
   assert.strictEqual(explicitExitPolicyAdjusted.appliedExitRules.BE_PCT, 0.002);
   assert.strictEqual(explicitExitPolicyAdjusted.appliedExitRules.TRAIL_R_MULTIPLE, 0.7);
+
+  assert.strictEqual(
+    __test.shouldRepairActiveExitRuntimeState({
+      positionSide: "LONG",
+      entryPrice: 1.3738,
+      posMeta: {
+        native_protection_side: "LONG",
+        native_protection_entry_price: 1.3738,
+        exit_rules_override: {
+          TP_P0: 0.008,
+          TP_P0_QTY: 0.25,
+          TP_P1: 0.0165,
+          TP_P1_QTY: 0.5,
+          SL: -0.0165,
+        },
+      },
+    }),
+    false,
+    "coherent active position must not trigger runtime repair"
+  );
+
+  assert.strictEqual(
+    __test.shouldRepairActiveExitRuntimeState({
+      positionSide: "LONG",
+      entryPrice: 1.3738,
+      posMeta: {
+        native_protection_side: "SHORT",
+        native_protection_entry_price: 1.3029,
+        exit_rules_override: null,
+      },
+    }),
+    true,
+    "stale side/entry/native protection state must trigger runtime repair"
+  );
+
+  const repairedMeta = await __test.repairActivePositionExitRuntimeState({
+    exchange: "BINANCEFUT",
+    symbol: "XRPUSDT",
+    positionSide: "LONG",
+    entryPrice: 1.3738,
+    leverage: 2,
+    liveCfg: null,
+    cohort: "KEEP_DROP",
+    posMeta: {
+      openclaw_market_regime_cohort: "KEEP_DROP",
+      exit_profile: "BASE",
+      exit_profile_reason: "MANUAL_BASE_PROFILE",
+      exit_rules_override: {
+        TP_P1: 0.0325,
+        TP_P1_QTY: 0.5,
+        SL: -0.0165,
+        BE_ENABLE: true,
+        BE_PCT: 0.0025,
+        TRAIL_PCT: 0.01,
+      },
+      tp1_ladder_profile: "RESCUE",
+      tp1_ladder_stage: 0,
+    },
+  });
+  assert.strictEqual(repairedMeta.runtime_exit_repair_applied, true);
+  assert.strictEqual(repairedMeta.exit_profile_reason, "ACTIVE_POSITION_RUNTIME_REPAIR");
+  assert.ok(repairedMeta.exit_rules_override && repairedMeta.exit_rules_override.TP_P0 > 0, "runtime repair must restore TP0");
+  assert.strictEqual(repairedMeta.exit_rules_override.TP_P0_QTY, 0.25);
+  assert.strictEqual(repairedMeta.exit_rules_override.TP_P1, 0.0165);
 }
 
 try {
-  run();
-  console.log("OPPOSITE_TRANSITION_IMMEDIATE_REENTRY_TEST_OK");
+  run()
+    .then(() => {
+      console.log("OPPOSITE_TRANSITION_IMMEDIATE_REENTRY_TEST_OK");
+    })
+    .catch((err) => {
+      console.error("OPPOSITE_TRANSITION_IMMEDIATE_REENTRY_TEST_FAIL", err && err.stack ? err.stack : err);
+      process.exit(1);
+    });
 } catch (err) {
   console.error("OPPOSITE_TRANSITION_IMMEDIATE_REENTRY_TEST_FAIL", err && err.stack ? err.stack : err);
   process.exit(1);

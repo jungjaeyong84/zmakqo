@@ -1526,6 +1526,112 @@ function applyEntryExitRuleRuntimeAdjustments({
   };
 }
 
+function shouldRepairActiveExitRuntimeState({
+  positionSide = null,
+  entryPrice = null,
+  posMeta = null,
+} = {}) {
+  const metaSafe = (posMeta && typeof posMeta === "object") ? posMeta : {};
+  const side = normalizePositionSide(positionSide || metaSafe.position_side || metaSafe.external_side || metaSafe.native_protection_side);
+  if (!side) return false;
+  const nativeSide = normalizePositionSide(metaSafe.native_protection_side);
+  if (nativeSide && nativeSide !== side) return true;
+
+  const avgPrice = Number(entryPrice);
+  const nativeEntryPrice = Number(metaSafe.native_protection_entry_price);
+  if (Number.isFinite(avgPrice) && avgPrice > 0 && Number.isFinite(nativeEntryPrice) && nativeEntryPrice > 0) {
+    const relDiff = Math.abs(nativeEntryPrice - avgPrice) / avgPrice;
+    if (relDiff > 0.0005) return true;
+  }
+
+  const rules = (metaSafe.exit_rules_override && typeof metaSafe.exit_rules_override === "object")
+    ? metaSafe.exit_rules_override
+    : null;
+  const hasTp0Rule = Number.isFinite(Number(rules && rules.TP_P0)) && Number(rules.TP_P0) > 0;
+  if (!hasTp0Rule) return true;
+
+  return false;
+}
+
+async function repairActivePositionExitRuntimeState({
+  exchange,
+  symbol,
+  positionSide,
+  entryPrice,
+  leverage,
+  liveCfg,
+  posMeta = null,
+  cohort = null,
+  sysCfg = null,
+  execBarCloseMs = null,
+} = {}) {
+  const metaSafe = (posMeta && typeof posMeta === "object") ? posMeta : {};
+  const explicitExitPolicySrc = String(metaSafe.exit_policy_source || "").trim().toUpperCase();
+  const preserveExplicitExitPolicy = !!(explicitExitPolicySrc && explicitExitPolicySrc !== "BINANCE_DEFAULT");
+  const repairSeedMeta = preserveExplicitExitPolicy
+    ? metaSafe
+    : mergeMeta(metaSafe, {
+        exit_rules_override: null,
+        exit_policy_source: null,
+        openclaw_market_regime_cohort: cohort || metaSafe.openclaw_market_regime_cohort || metaSafe.market_regime_cohort || null,
+      });
+  const canonicalRuntimeRules = resolveExitRulesForPosition({
+    exchange,
+    position: { meta: repairSeedMeta },
+  });
+  const adjustment = applyEntryExitRuleRuntimeAdjustments({
+    rules: canonicalRuntimeRules,
+    positionMeta: repairSeedMeta,
+    sysCfg: sysCfg || {},
+    cohort,
+    market: symbol,
+  });
+  let nextMeta = mergeMeta(metaSafe, {
+    exit_rules_override: cloneExitRules(adjustment.appliedExitRules),
+    exit_profile: canonicalRuntimeRules && canonicalRuntimeRules.exit_profile
+      ? String(canonicalRuntimeRules.exit_profile).toUpperCase()
+      : (metaSafe.exit_profile || null),
+    exit_profile_reason: preserveExplicitExitPolicy
+      ? (metaSafe.exit_profile_reason || null)
+      : "ACTIVE_POSITION_RUNTIME_REPAIR",
+    tp1_ladder_enabled: adjustment.tp1LadderState ? adjustment.tp1LadderState.enabled !== false : null,
+    tp1_ladder_stage: adjustment.tp1LadderState ? adjustment.tp1LadderState.stage : null,
+    tp1_ladder_profile: adjustment.tp1LadderState ? adjustment.tp1LadderState.profile : null,
+    tp1_ladder_reason: adjustment.tp1LadderState ? adjustment.tp1LadderState.reason : null,
+    tp1_ladder_realized_n: adjustment.tp1LadderState && adjustment.tp1LadderState.kpi ? adjustment.tp1LadderState.kpi.realized_n : null,
+    tp1_ladder_tp0_hit_rate: adjustment.tp1LadderState && adjustment.tp1LadderState.kpi ? adjustment.tp1LadderState.kpi.tp0_hit_rate : null,
+    tp1_ladder_tp1_hit_rate: adjustment.tp1LadderState && adjustment.tp1LadderState.kpi ? adjustment.tp1LadderState.kpi.tp1_hit_rate : null,
+    tp1_ladder_tp0_to_tp1_conversion: adjustment.tp1LadderState && adjustment.tp1LadderState.kpi ? adjustment.tp1LadderState.kpi.tp0_to_tp1_conversion : null,
+    tp1_ladder_fee_adjusted_expectancy: adjustment.tp1LadderState && adjustment.tp1LadderState.kpi ? adjustment.tp1LadderState.kpi.fee_adjusted_expectancy : null,
+    exit_policy_source: preserveExplicitExitPolicy ? (adjustment.exitPolicySrc || explicitExitPolicySrc) : null,
+    runtime_exit_repair_applied: true,
+    runtime_exit_repair_reason: "ACTIVE_POSITION_EXIT_META_MISMATCH",
+    runtime_exit_repair_at_ms: Date.now(),
+  });
+
+  const fallbackSide = String(positionSide || "").toUpperCase() === "SHORT" ? "SELL" : "BUY";
+  if (liveCfg && liveCfg.apiKey && liveCfg.apiSecret && Number.isFinite(Number(entryPrice)) && Number(entryPrice) > 0) {
+    try {
+      const nativeProtection = await refreshBinanceNativeProtectionWithRetry({
+        liveCfg,
+        exchange,
+        symbol,
+        fallbackSide,
+        fallbackEntryPrice: Number(entryPrice),
+        fallbackLeverage: Number.isFinite(Number(leverage)) && Number(leverage) > 0 ? Number(leverage) : FUTURES_BASE_LEVERAGE,
+        exitRulesOverride: adjustment.appliedExitRules,
+      });
+      const nativePatch = buildNativeProtectionMetaPatch({
+        nativeProtection,
+        intent: "ENTRY",
+        execBarCloseMs,
+      });
+      if (nativePatch) nextMeta = mergeMeta(nextMeta, nativePatch);
+    } catch (_) {}
+  }
+  return nextMeta;
+}
+
 async function loadFutures3xStats({ exchange, symbol, tf, nowMs }) {
   const ex = String(exchange || "").toUpperCase();
   const symbolRaw = String(symbol || "").trim().toUpperCase();
@@ -6257,6 +6363,20 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
         }
       }
     } catch (_) {}
+  }
+  if (active && shouldRepairActiveExitRuntimeState({ positionSide: side, entryPrice: priceRef, posMeta: meta })) {
+    meta = await repairActivePositionExitRuntimeState({
+      exchange,
+      symbol,
+      positionSide: side,
+      entryPrice: priceRef,
+      leverage,
+      liveCfg,
+      posMeta: meta,
+      cohort: syncMarketRegimeCohort,
+      sysCfg: {},
+      execBarCloseMs: syncEventMs,
+    });
   }
 
   const payload = await upsertPosition({
@@ -13943,6 +14063,8 @@ module.exports = {
     resolveTp1LadderConfig,
     resolveTp1LadderRuntimeState,
     resolveTp1LadderKpiForContext,
+    shouldRepairActiveExitRuntimeState,
+    repairActivePositionExitRuntimeState,
     applyEntryExitRuleRuntimeAdjustments,
     loadTp1LadderKpiSnapshot,
     resolveStructureInitialStopPrice,
