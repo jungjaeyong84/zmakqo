@@ -345,6 +345,10 @@ function sumFiniteValues(a, b) {
 
 function resolveFillSyncAlertCloseRatio({ event, intent, qtyScale, execQtyBase, positionCtx } = {}) {
   if (!isExitEvent(event)) return null;
+  const syncedQtyPct = clamp01(qtyScale && qtyScale.qtyPct);
+  if (isTpP1Event(event) && Number.isFinite(syncedQtyPct) && syncedQtyPct > 0) {
+    return syncedQtyPct;
+  }
   const intentQtyFraction = clamp01(intent && intent.qty_fraction);
   const scaledRatio = clamp01(qtyScale && qtyScale.ratio);
   if (Number.isFinite(intentQtyFraction) && intentQtyFraction > 0) {

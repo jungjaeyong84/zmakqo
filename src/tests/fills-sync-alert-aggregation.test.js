@@ -126,6 +126,22 @@ async function run() {
   });
   assert.ok(approxEqual(nativeTpCloseRatio, 0.5), "native TP1 close ratio must prefer native TP quantity metadata");
 
+  const partialTp1CloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({
+    event: "EXIT_TP_P1_1.65P",
+    intent: { qty_fraction: 1 },
+    qtyScale: { qtyPct: 0.5, ratio: 0.5 },
+    execQtyBase: 365.5,
+    positionCtx: {
+      qtyBase: 731,
+      nativeProtectionTpQtyBase: 365.5,
+      nativeProtectionTpQtyRatio: 0.5,
+    },
+  });
+  assert.ok(
+    approxEqual(partialTp1CloseRatio, 0.5),
+    "TP1 alert close ratio must prefer synced/native partial size over stale full intent fraction"
+  );
+
   const ethLikeCloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({
     event: "EXIT_TP_P1_3.25P",
     intent: null,
