@@ -9108,6 +9108,12 @@ async function runPaperUpbitForBar({
     }
     let nativeProtectionMetaPatch = null;
     if (isLiveExecution) {
+      const liveMarketRegimeRow = readOpenClawMarketRegimeRow(symbol);
+      const liveMarketRegimeCohort = normalizeOpenClawCohort(
+        (liveMarketRegimeRow && liveMarketRegimeRow.cohort)
+        || (posMeta && posMeta.openclaw_market_regime_cohort)
+        || (posMeta && posMeta.market_regime_cohort)
+      );
       if (liveCfg.executionMode === "LIVE" && !liveCfg.liveEnabled) {
         const liveReason = liveCfg.reason || "LIVE_DISABLED";
         await markIntentStatus(it.intent_id, "CANCELED", { cancel_reason: liveReason, status_reason: "LIVE_DISABLED" });
@@ -11839,7 +11845,7 @@ async function runPaperFuturesForBar({
           event: it.event,
           features: it.features_json,
           positionMeta: posMeta,
-          marketRegimeCohort,
+          marketRegimeCohort: liveMarketRegimeCohort,
           sysCfg,
           bar,
           barCloseMs: execBarCloseMs,
