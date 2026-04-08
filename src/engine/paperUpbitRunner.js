@@ -10486,7 +10486,7 @@ async function runPaperUpbitForBar({
         rules: evExitProfile && evExitProfile.rules,
         features: s.features,
         sysCfg,
-        cohort: marketRegimeCohort,
+        cohort: resolveLiveMarketRegimeCohort({ symbol, posMeta }),
         market: symbol,
       });
       const evGate = await evaluateEvEntryGate({
@@ -13550,7 +13550,7 @@ async function runPaperFuturesForBar({
         rules: evExitProfile && evExitProfile.rules,
         features: s.features,
         sysCfg,
-        cohort: marketRegimeCohort,
+        cohort: resolveLiveMarketRegimeCohort({ symbol, posMeta }),
         market: symbol,
       });
       const evGate = await evaluateEvEntryGate({
