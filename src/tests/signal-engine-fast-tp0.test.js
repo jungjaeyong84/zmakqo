@@ -109,10 +109,37 @@ function run() {
       },
     },
   });
-  assert.strictEqual(mixedRules.TP_P1, 0.025);
-  assert.strictEqual(mixedRules.BE_PCT, 0.002);
-  assert.strictEqual(mixedRules.TRAIL_R_MULTIPLE, 0.75);
-  assert.strictEqual(mixedRules.RUNNER_MIN_PROFIT_PCT, 0.0165);
+  assert.strictEqual(mixedRules.TP_P1, 0.0165);
+  assert.strictEqual(mixedRules.BE_PCT, 0.0015);
+  assert.strictEqual(mixedRules.TRAIL_R_MULTIPLE, 0.6);
+  assert.strictEqual(mixedRules.RUNNER_MIN_PROFIT_PCT, 0.012);
+
+  const promotedMixedRules = resolveExitRulesForPosition({
+    exchange: "BINANCEFUT",
+    position: {
+      meta: {
+        openclaw_market_regime_cohort: "MIXED",
+        tp1_ladder_profile: "MIXED",
+        tp1_ladder_stage: 1,
+      },
+    },
+  });
+  assert.strictEqual(promotedMixedRules.TP_P1, 0.025);
+  assert.strictEqual(promotedMixedRules.BE_PCT, 0.002);
+  assert.strictEqual(promotedMixedRules.TRAIL_R_MULTIPLE, 0.75);
+  assert.strictEqual(promotedMixedRules.RUNNER_MIN_PROFIT_PCT, 0.0165);
+
+  const promotedBaseRules = resolveExitRulesForPosition({
+    exchange: "BINANCEFUT",
+    position: {
+      meta: {
+        openclaw_market_regime_cohort: "RESCUE",
+        tp1_ladder_profile: "BASE",
+        tp1_ladder_stage: 2,
+      },
+    },
+  });
+  assert.strictEqual(promotedBaseRules.TP_P1, 0.0325);
 
   const samplingStage = evaluateTp1LadderStage({
     cohort: "BASE",
@@ -140,6 +167,19 @@ function run() {
   });
   assert.strictEqual(promotedMixedStage.stage, 1);
   assert.strictEqual(promotedMixedStage.profile, "MIXED");
+
+  const promotedRescueStage = evaluateTp1LadderStage({
+    cohort: "RESCUE",
+    kpi: {
+      realized_n: 20,
+      tp0_hit_rate: 0.67,
+      tp1_hit_rate: 0.32,
+      tp0_to_tp1_conversion: 0.4,
+      fee_adjusted_expectancy: 0.0003,
+    },
+  });
+  assert.strictEqual(promotedRescueStage.stage, 2);
+  assert.strictEqual(promotedRescueStage.profile, "BASE");
 
   const promotedBaseStage = evaluateTp1LadderStage({
     cohort: "BASE",

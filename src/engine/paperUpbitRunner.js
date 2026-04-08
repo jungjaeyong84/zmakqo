@@ -119,28 +119,51 @@ function normalizeOpenClawCohort(value) {
   return null;
 }
 
+function normalizeTp1LadderProfile(value) {
+  const upper = String(value || "").trim().toUpperCase();
+  if (upper === "RESCUE" || upper === "MIXED" || upper === "BASE") return upper;
+  return null;
+}
+
+function resolveCooldownProfileFromMeta(posMeta = null) {
+  const metaSafe = posMeta && typeof posMeta === "object" ? posMeta : {};
+  const explicitProfile = normalizeTp1LadderProfile(metaSafe.tp1_ladder_profile);
+  if (explicitProfile) return explicitProfile;
+  const stageRaw = Number(metaSafe.tp1_ladder_stage);
+  if (Number.isFinite(stageRaw)) {
+    if (stageRaw >= 2) return "BASE";
+    if (stageRaw >= 1) return "MIXED";
+    return "RESCUE";
+  }
+  return "RESCUE";
+}
+
 function resolveOppositeCooldownWindow({ sysCfg = {}, posMeta = null } = {}) {
   const cohort = normalizeOpenClawCohort(
     posMeta && (posMeta.openclaw_market_regime_cohort || posMeta.market_regime_cohort)
   );
+  const profile = resolveCooldownProfileFromMeta(posMeta);
   const defaultBars = Math.max(0, normalizeInt(sysCfg && sysCfg.opposite_signal_cooldown_bars, 3));
   const defaultMs = Math.max(0, normalizeInt(sysCfg && sysCfg.opposite_time_cooldown_ms, 300000));
-  if (cohort === "RESCUE") {
+  if (profile === "RESCUE") {
     return {
-      cohort,
+      cohort: cohort || "BASE",
+      profile,
       bars: Math.max(0, normalizeInt(sysCfg && sysCfg.opposite_signal_cooldown_bars_rescue, 0)),
       timeMs: Math.max(0, normalizeInt(sysCfg && sysCfg.opposite_time_cooldown_ms_rescue, 0)),
     };
   }
-  if (cohort === "MIXED") {
+  if (profile === "MIXED") {
     return {
-      cohort,
+      cohort: cohort || "BASE",
+      profile,
       bars: Math.max(0, normalizeInt(sysCfg && sysCfg.opposite_signal_cooldown_bars_mixed, 1)),
       timeMs: Math.max(0, normalizeInt(sysCfg && sysCfg.opposite_time_cooldown_ms_mixed, 60000)),
     };
   }
   return {
     cohort: cohort || "BASE",
+    profile: "BASE",
     bars: defaultBars,
     timeMs: defaultMs,
   };

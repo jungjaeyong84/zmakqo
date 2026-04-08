@@ -130,18 +130,12 @@ function normalizeTp1LadderStage(value) {
 }
 
 function resolveTp1LadderMaxStage(cohort) {
-  const normalized = normalizeOpenClawCohort(cohort);
-  if (normalized === "RESCUE") return 0;
-  if (normalized === "MIXED") return 1;
   return 2;
 }
 
 function resolveTp1LadderProfile({ cohort, stage } = {}) {
   const maxStage = resolveTp1LadderMaxStage(cohort);
   const safeStage = Math.max(0, Math.min(maxStage, normalizeTp1LadderStage(stage) ?? 0));
-  const normalized = normalizeOpenClawCohort(cohort);
-  if (normalized === "RESCUE") return "RESCUE";
-  if (normalized === "MIXED") return safeStage >= 1 ? "MIXED" : "RESCUE";
   if (safeStage >= 2) return "BASE";
   if (safeStage >= 1) return "MIXED";
   return "RESCUE";
@@ -170,15 +164,6 @@ function evaluateTp1LadderStage({ cohort, kpi = null, config = null, explicitSta
       maxStage,
       profile: resolveTp1LadderProfile({ cohort: normalized, stage: maxStage }),
       reason: "LADDER_DISABLED",
-    };
-  }
-  if (maxStage === 0) {
-    return {
-      enabled,
-      stage: 0,
-      maxStage,
-      profile: "RESCUE",
-      reason: "RESCUE_LOCKED",
     };
   }
 
@@ -288,42 +273,28 @@ function applyCohortTp1Adjustment({ rules = null, meta = null, exchange = "" } =
     metaSafe.openclaw_market_regime_cohort
     || metaSafe.market_regime_cohort
   );
-  if (!cohort || cohort === "KEEP_DROP" || cohort === "HOLD_SAMPLE") return rules;
   const ladderProfile = String(metaSafe.tp1_ladder_profile || "").trim().toUpperCase();
   const ladderStage = normalizeTp1LadderStage(metaSafe.tp1_ladder_stage);
   if (ladderProfile || ladderStage !== null) {
     const ladderState = evaluateTp1LadderStage({
-      cohort,
+      cohort: cohort || "BASE",
       explicitStage: ladderStage,
       config: { enabled: metaSafe.tp1_ladder_enabled !== false },
     });
     if (ladderProfile) ladderState.profile = ladderProfile;
-    return applyTp1LadderPolicy({ rules, cohort, ladderState });
+    return applyTp1LadderPolicy({ rules, cohort: cohort || "BASE", ladderState });
   }
-  const rescueTp1 = toNum(rules.TP_P1_RESCUE_COHORT);
-  const mixedTp1 = toNum(rules.TP_P1_MIXED_COHORT);
-  const rescueBe = toNum(rules.BE_PCT_RESCUE_COHORT);
-  const mixedBe = toNum(rules.BE_PCT_MIXED_COHORT);
-  const rescueRunner = toNum(rules.RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT);
-  const mixedRunner = toNum(rules.RUNNER_MIN_PROFIT_PCT_MIXED_COHORT);
-  const rescueTrailR = toNum(rules.TRAIL_R_MULTIPLE_RESCUE_COHORT);
-  const mixedTrailR = toNum(rules.TRAIL_R_MULTIPLE_MIXED_COHORT);
-  const currentTp1 = toNum(rules.TP_P1);
-  if (!Number.isFinite(currentTp1) || currentTp1 <= 0) return rules;
-  const cohortTp1 = cohort === "RESCUE" ? rescueTp1 : mixedTp1;
-  const cohortBe = cohort === "RESCUE" ? rescueBe : mixedBe;
-  const cohortRunner = cohort === "RESCUE" ? rescueRunner : mixedRunner;
-  const cohortTrailR = cohort === "RESCUE" ? rescueTrailR : mixedTrailR;
-  if (!Number.isFinite(cohortTp1) || cohortTp1 <= 0) return rules;
-  return {
-    ...rules,
-    TP_P1: Math.min(currentTp1, cohortTp1),
-    BE_PCT: Number.isFinite(cohortBe) && cohortBe > 0 ? cohortBe : rules.BE_PCT,
-    RUNNER_MIN_PROFIT_PCT: Number.isFinite(cohortRunner) && cohortRunner > 0 ? cohortRunner : rules.RUNNER_MIN_PROFIT_PCT,
-    TRAIL_R_MULTIPLE: Number.isFinite(cohortTrailR) && cohortTrailR > 0 ? cohortTrailR : rules.TRAIL_R_MULTIPLE,
-    tp_p1_cohort_adjusted: true,
-    tp_p1_cohort: cohort,
-  };
+  return applyTp1LadderPolicy({
+    rules,
+    cohort: cohort || "BASE",
+    ladderState: {
+      enabled: true,
+      stage: 0,
+      maxStage: resolveTp1LadderMaxStage(cohort || "BASE"),
+      profile: "RESCUE",
+      reason: "DEFAULT_RESCUE_START",
+    },
+  });
 }
 
 function resolveTrailDelayState({
