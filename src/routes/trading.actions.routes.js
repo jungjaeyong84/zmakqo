@@ -4,15 +4,34 @@ const { normalizeMarketSymbolForProvider, tfToMs, defaultExecTfFromEnv } = requi
 const { normalizeProviderId } = require("../utils/providerUtils");
 const { fetchCandles } = require("../exchanges");
 const { getPosition } = require("../storage/positions");
+const { getPosition: getPaperPosition, upsertPosition: upsertPaperPosition } = require("../storage/positionsPaper");
 const { upsertIntent, cancelPendingIntentsByMarket } = require("../storage/orderIntentsPaper");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { toKstStringFromMs } = require("../utils/timeKst");
 const { fetchFuturesUserTrades } = require("../exchanges/binanceFuturesPrivate");
-const { runPaperFuturesForBar, syncFuturesPositionOnly } = require("../engine/paperUpbitRunner");
+const {
+  runPaperFuturesForBar,
+  syncFuturesPositionOnly,
+  resolveLiveFuturesConfig,
+  repairActivePositionExitRuntimeState,
+} = require("../engine/paperUpbitRunner");
 const { runActionPreHooks, runActionPostHooks } = require("../utils/actionExecutionHooks");
 
 function nowMs() {
   return Date.now();
+}
+
+function allowLocal() {
+  return String(process.env.ALLOW_LOCAL_NO_OAUTH || "0") === "1";
+}
+
+function ensureAuthOrSchedulerToken(req, res, next) {
+  if (allowLocal()) return next();
+  if (req.isAuthenticated && req.isAuthenticated()) return next();
+  const expected = String(process.env.SCHEDULER_TOKEN || "");
+  const token = String(req.get("x-scheduler-token") || req.get("X-Scheduler-Token") || "");
+  if (expected && token === expected) return next();
+  return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
 }
 
 function normalizeFraction(raw) {
@@ -470,6 +489,93 @@ function createTradingActionsRoutes() {
         },
       });
       return res.status(500).json({ ok: false, error: "CANCEL_PENDING_FAILED", message: String(err && err.message || err) });
+    }
+  });
+
+  router.post("/api/trading/repair-native-protection", ensureAuthOrSchedulerToken, async (req, res) => {
+    try {
+      const body = req.body || {};
+      const providerRaw = body.provider || body.exchange || req.query.provider || req.query.exchange || "BINANCEFUT";
+      const exchange = normalizeProviderId(providerRaw || "BINANCEFUT");
+      if (exchange !== "BINANCEFUT") {
+        return res.status(400).json({ ok: false, error: "BINANCE_ONLY" });
+      }
+
+      const rawMarket = String(body.market || body.symbol || req.query.market || req.query.symbol || "").trim();
+      if (!rawMarket) {
+        return res.status(400).json({ ok: false, error: "MARKET_REQUIRED" });
+      }
+      const exCfg = await getExchangeSettingsForProvider(exchange, 2000);
+      const market = normalizeMarketSymbolForProvider(rawMarket, exchange);
+      const markets = Array.isArray(exCfg && exCfg.markets) ? exCfg.markets : [];
+      if (!market || (markets.length && !markets.includes(market))) {
+        return res.status(400).json({ ok: false, error: "MARKET_NOT_ALLOWED" });
+      }
+
+      await syncFuturesPositionOnly({ runId: `RUN__REPAIR_NATIVE__${exchange}__${market}__${Date.now()}`, exchange, symbol: market });
+      const pos = await getPaperPosition({ exchange, symbol: market });
+      const sizePct = Number(pos && pos.size_pct);
+      const qtyBase = Number(pos && pos.qty_base);
+      const avgPrice = Number(pos && pos.avg_price);
+      if (!pos || String(pos.position_state || pos.state || "").toUpperCase() === "FLAT" || !Number.isFinite(sizePct) || sizePct <= 0) {
+        return res.status(400).json({ ok: false, error: "NO_ACTIVE_POSITION" });
+      }
+      if (!Number.isFinite(avgPrice) || avgPrice <= 0 || !Number.isFinite(qtyBase) || qtyBase <= 0) {
+        return res.status(400).json({ ok: false, error: "POSITION_DATA_INCOMPLETE" });
+      }
+
+      const sys = await getSystemSettingsForProvider(exchange, 2000);
+      const sysCfg = sys && sys.data ? sys.data : {};
+      const liveCfg = await resolveLiveFuturesConfig({ exchange, symbol: market });
+      const meta = (pos && typeof pos.meta === "object") ? pos.meta : {};
+      const repairedMeta = await repairActivePositionExitRuntimeState({
+        exchange,
+        symbol: market,
+        positionSide: pos.position_side || pos.side || meta.position_side || null,
+        entryPrice: avgPrice,
+        leverage: meta.leverage || meta.native_protection_leverage || null,
+        liveCfg,
+        posMeta: meta,
+        cohort: meta.openclaw_market_regime_cohort || meta.market_regime_cohort || null,
+        sysCfg,
+        execBarCloseMs: Number(meta.last_entry_bar_ms) || null,
+      });
+
+      const payload = await upsertPaperPosition({
+        exchange,
+        symbol: market,
+        state: pos.state || pos.position_state || "ACTIVE",
+        sizePct,
+        avgPrice,
+        qtyBase,
+        runId: pos.run_id || null,
+        budgetMaxKrw: pos.budget_max_krw,
+        budgetUsedKrw: pos.budget_used_krw,
+        budgetSource: pos.budget_source,
+        positionSide: pos.position_side || meta.position_side || null,
+        executionMode: pos.execution_mode || "LIVE",
+        meta: repairedMeta,
+      });
+
+      const nextMeta = (payload && typeof payload.meta === "object") ? payload.meta : {};
+      return res.json({
+        ok: true,
+        exchange,
+        market,
+        position_state: payload.position_state || null,
+        qty_base: payload.qty_base || null,
+        native_refresh_status: nextMeta.native_protection_refresh_status || null,
+        native_refresh_reason: nextMeta.native_protection_refresh_reason || null,
+        tp0_order_id: nextMeta.native_protection_tp0_order_id || null,
+        tp1_order_id: nextMeta.native_protection_tp_order_id || null,
+        stop_order_id: nextMeta.native_protection_stop_order_id || null,
+      });
+    } catch (err) {
+      return res.status(500).json({
+        ok: false,
+        error: "REPAIR_NATIVE_PROTECTION_FAILED",
+        message: String(err && err.message ? err.message : err),
+      });
     }
   });
 
