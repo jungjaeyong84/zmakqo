@@ -2115,6 +2115,12 @@ function normalizeFuturesExitProfileMode(raw, fallback = "BASE") {
   return String(fallback || "BASE").trim().toUpperCase() || "BASE";
 }
 
+function resolveConfiguredFuturesExitProfileMode(raw, fallback = null) {
+  const text = String(raw ?? "").trim();
+  if (!text) return fallback == null ? null : normalizeFuturesExitProfileMode(fallback, "BASE");
+  return normalizeFuturesExitProfileMode(text, fallback == null ? "BASE" : fallback);
+}
+
 function resolvePositionExitProfile({ posMeta, fallbackMode } = {}) {
   const meta = (posMeta && typeof posMeta === "object") ? posMeta : {};
   const rawFallbackProfile = String(fallbackMode || "").trim().toUpperCase();
@@ -5688,9 +5694,9 @@ async function resolveLiveFuturesConfig({ exchange, symbol } = {}) {
   const levRaw = Number(cfg.futures_leverage ?? process.env.FUTURES_LEVERAGE ?? FUTURES_BASE_LEVERAGE);
   const leverage = normalizeFuturesLeverage(levRaw, 3);
   const marginType = normalizeFuturesMarginType(cfg.futures_margin_type ?? process.env.FUTURES_MARGIN_TYPE ?? "CROSSED");
-  const exitProfileMode = normalizeFuturesExitProfileMode(
-    cfg.futures_exit_profile_mode ?? process.env.FUTURES_EXIT_PROFILE_MODE ?? "BASE",
-    "BASE"
+  const exitProfileMode = resolveConfiguredFuturesExitProfileMode(
+    cfg.futures_exit_profile_mode ?? process.env.FUTURES_EXIT_PROFILE_MODE ?? "",
+    null
   );
 
   return {
@@ -14466,6 +14472,7 @@ module.exports = {
     pickSignalRegime,
     isBinanceMultiAssetsIsolatedMarginBlocked,
     isBinanceMarginTypeOpenOrdersConflict,
+    resolveConfiguredFuturesExitProfileMode,
     resolveRecentExternalFlatSyncGuard,
     normalizeEntryLineage,
     buildEntryLineageMetaPatch,
