@@ -3447,9 +3447,52 @@ function pickLatestTpP1Fill(rows, exchange, symbol) {
   return best;
 }
 
+function pickLatestTpP0Fill(rows, exchange, symbol) {
+  const ex = String(exchange || "").toUpperCase();
+  const sym = String(symbol || "");
+  let best = null;
+  let bestMs = null;
+  for (const r of rows || []) {
+    if (!r) continue;
+    if (String(r.exchange || "").toUpperCase() !== ex) continue;
+    const rSym = String(r.symbol || r.symbol_or_pair_id || r.market || "");
+    if (rSym !== sym) continue;
+    if (!isTpP0EventLocal(r.event)) continue;
+    const ms = Number(r.exec_bar_close_time_utc_ms) || Date.parse(String(r.created_at || ""));
+    if (!Number.isFinite(ms)) continue;
+    if (!best || ms > bestMs) {
+      best = r;
+      bestMs = ms;
+    }
+  }
+  return best;
+}
+
+function reconcileTpP0MetaFromFill({ posMeta, pos, fill } = {}) {
+  if (!fill || !posMeta || posMeta.tp_p0_done === true) return posMeta;
+  const fillEntry = fill.entry_event_id || fill.entryEventId || null;
+  const metaEntry = posMeta.entry_event_id || null;
+  if (fillEntry && metaEntry && fillEntry !== metaEntry) return posMeta;
+  const entryExecMs = Number(posMeta.entry_exec_bar_ms);
+  const fillMs = Number(fill.exec_bar_close_time_utc_ms) || Date.parse(String(fill.created_at || ""));
+  if (Number.isFinite(entryExecMs) && Number.isFinite(fillMs) && (fillMs + 30000) < entryExecMs) {
+    return posMeta;
+  }
+  const execPrice = Number(fill.exec_price);
+  const closeRatio = Number(fill.close_ratio);
+  return mergeMeta(posMeta, {
+    tp_p0_done: true,
+    tp_p0_price: Number.isFinite(execPrice) ? execPrice : (posMeta.tp_p0_price ?? null),
+    tp_p0_at: fill.created_at || new Date().toISOString(),
+    tp_p0_source: "FILL_RECONCILE",
+    tp_p0_qty_ratio: Number.isFinite(closeRatio) && closeRatio > 0 ? closeRatio : (posMeta.tp_p0_qty_ratio ?? null),
+    tp_p0_entry_event_id: metaEntry || fillEntry || null,
+    tp_p0_entry_exec_bar_ms: Number.isFinite(entryExecMs) ? entryExecMs : null,
+  });
+}
+
 function reconcileTpP1MetaFromFill({ posMeta, pos, fill } = {}) {
   if (!fill || !posMeta || posMeta.tp_p1_done === true) return posMeta;
-  if (posMeta.tp_p1_pending !== true) return posMeta;
   const fillEntry = fill.entry_event_id || fill.entryEventId || null;
   const metaEntry = posMeta.entry_event_id || null;
   if (fillEntry && metaEntry && fillEntry !== metaEntry) return posMeta;
@@ -6507,6 +6550,29 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
 
   let exchangeOpenOrders = [];
   let exchangeAlgoOrders = [];
+  let recentFills = null;
+  if (active) {
+    try {
+      const db = getFirestore();
+      recentFills = await loadRecentFillsCache(db);
+      const lastTpP0Fill = pickLatestTpP0Fill(recentFills, exchange, symbol);
+      if (lastTpP0Fill) {
+        meta = reconcileTpP0MetaFromFill({
+          posMeta: meta,
+          pos: prevPos,
+          fill: lastTpP0Fill,
+        });
+      }
+      const lastTpP1Fill = pickLatestTpP1Fill(recentFills, exchange, symbol);
+      if (lastTpP1Fill) {
+        meta = reconcileTpP1MetaFromFill({
+          posMeta: meta,
+          pos: prevPos,
+          fill: lastTpP1Fill,
+        });
+      }
+    } catch (_) {}
+  }
   if (active) {
     try {
       exchangeOpenOrders = await fetchFuturesOpenOrders({
@@ -14479,6 +14545,10 @@ module.exports = {
     resolveEntryLineageForFill,
     extractEntryLineageCandidate,
     resolveRiskBudget,
+    pickLatestTpP0Fill,
+    reconcileTpP0MetaFromFill,
+    pickLatestTpP1Fill,
+    reconcileTpP1MetaFromFill,
   },
 };
 

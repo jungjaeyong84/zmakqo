@@ -26,6 +26,7 @@ const {
 const { sendAlert } = require("../utils/alerts");
 const { runActionPreHooks, runActionPostHooks, emitActionEvent } = require("../utils/actionExecutionHooks");
 const { auditBinanceExitIntegrity } = require("./exitIntegrityAudit");
+const { runBinanceLiveStateSelfHeal } = require("./binanceLiveStateSelfHeal");
 
 function nowMs() {
   return Date.now();
@@ -1118,6 +1119,7 @@ async function runBinanceTickExitBurst({
   let iterations = 0;
   let nextDelayMs = intervalMsResolved;
   let lastResult = null;
+  let selfHealResult = null;
 
   try {
     while (iterations < maxIterationsResolved) {
@@ -1141,6 +1143,21 @@ async function runBinanceTickExitBurst({
     await releaseTickExitLease();
   }
 
+  try {
+    if (String(process.env.BINANCE_LIVE_STATE_SELF_HEAL_ENABLED || "1") !== "0") {
+      selfHealResult = await runBinanceLiveStateSelfHeal({
+        exchange: "BINANCEFUT",
+        maxPositions: Math.max(1, Number(process.env.BINANCE_LIVE_STATE_SELF_HEAL_MAX_POSITIONS || 12)),
+        reason: "TICK_EXIT_BURST",
+      });
+    }
+  } catch (e) {
+    selfHealResult = {
+      ok: false,
+      error: e && e.message ? e.message : String(e),
+    };
+  }
+
   const activeCount = Number(lastResult && lastResult.active_count) || 0;
   return {
     ok: true,
@@ -1149,6 +1166,7 @@ async function runBinanceTickExitBurst({
     next_delay_ms: nextDelayMs,
     reschedule_recommended: activeCount > 0,
     last_result: lastResult,
+    self_heal: selfHealResult,
   };
 }
 
@@ -1252,6 +1270,20 @@ function startBinanceTickExitLoop() {
         }
       } else {
         const result = await runBinanceTickExitOnce({ nearPct, symbolCooldownMs });
+        if (String(process.env.BINANCE_LIVE_STATE_SELF_HEAL_ENABLED || "1") !== "0") {
+          try {
+            result.self_heal = await runBinanceLiveStateSelfHeal({
+              exchange: "BINANCEFUT",
+              maxPositions: Math.max(1, Number(process.env.BINANCE_LIVE_STATE_SELF_HEAL_MAX_POSITIONS || 12)),
+              reason: "TICK_EXIT_LOOP",
+            });
+          } catch (healErr) {
+            result.self_heal = {
+              ok: false,
+              error: healErr && healErr.message ? healErr.message : String(healErr),
+            };
+          }
+        }
         const useFastLane = fastLaneEnabled && result && result.fast_lane_active === true;
         nextDelayMs = useFastLane ? Math.min(intervalMs, fastLaneIntervalMs) : intervalMs;
         if (useFastLane !== fastLaneArmed) {

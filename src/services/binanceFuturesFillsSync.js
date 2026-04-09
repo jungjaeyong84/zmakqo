@@ -329,69 +329,11 @@ function clearConsumedTakeProfitProtectionMeta(meta = {}) {
 }
 
 async function markTpP1DoneFromExternalFill({ exchange, symbol, execPrice, execTimeIso, entryEventId } = {}) {
-  const pos = await getPosition({ exchange, symbol });
-  const state = String(pos && (pos.position_state || pos.state) || "").toUpperCase();
-  const sizePct = Number(pos && pos.size_pct);
-  const qtyBase = Number(pos && pos.qty_base);
-  const hasSize = (Number.isFinite(sizePct) && sizePct > 0) || (Number.isFinite(qtyBase) && qtyBase > 0);
-  const stateOk = state === "ACTIVE" || state === "COMMIT" || state === "PROBE" || state === "SCALE_OUT";
-  if (!stateOk && !hasSize) return false;
-
-  const prevMeta = (pos && typeof pos.meta === "object") ? pos.meta : {};
-  const currentEntryEventId = String(prevMeta.entry_event_id || "").trim();
-  const tp1EntryEventId = String(entryEventId || "").trim();
-  if (currentEntryEventId && tp1EntryEventId && currentEntryEventId !== tp1EntryEventId) return false;
-  const entryExecMs = Number(prevMeta.entry_exec_bar_ms);
-  const execMs = Date.parse(String(execTimeIso || ""));
-  if (Number.isFinite(entryExecMs) && Number.isFinite(execMs) && (execMs + 30000) < entryExecMs) return false;
-  const side = resolvePositionSideFromPosition(pos, prevMeta, "LONG");
-  const prevTrailRef = side === "SHORT" ? Number(prevMeta.trail_low) : Number(prevMeta.trail_high);
-  const tpP1AlreadyReady = prevMeta.tp_p1_done === true
-    && prevMeta.trail_active === true
-    && Number.isFinite(prevTrailRef);
-  if (tpP1AlreadyReady) return false;
-  const execPx = Number.isFinite(execPrice) ? execPrice : null;
-  const nextTrailHigh = side === "SHORT" ? null : (execPx ?? prevMeta.trail_high ?? null);
-  const nextTrailLow = side === "SHORT" ? (execPx ?? prevMeta.trail_low ?? null) : null;
-
-  const nextMeta = {
-    ...clearConsumedTakeProfitProtectionMeta(prevMeta),
-    tp_p1_done: true,
-    tp_p1_price: execPx ?? (prevMeta.tp_p1_price ?? null),
-    trail_high: nextTrailHigh,
-    trail_low: nextTrailLow,
-    trail_active: true,
-    tp_p1_pending: false,
-    tp_p1_pending_at_ms: null,
-    tp_p1_pending_until_ms: null,
-    tp_p1_pending_event: null,
-    tp_p1_at: execTimeIso || nowIso(),
-    tp_p1_source: "BINANCE_USER_TRADES",
-    tp_p1_entry_event_id: currentEntryEventId || tp1EntryEventId || null,
-    tp_p1_entry_exec_bar_ms: Number.isFinite(entryExecMs) ? entryExecMs : null,
-  };
-
-  await upsertPosition({
+  await syncFuturesPositionOnly({
+    runId: `RUN__FILL_SYNC_STAGE_RECONCILE__${String(exchange || "").toUpperCase()}__${String(symbol || "").toUpperCase()}__${Date.now()}`,
     exchange,
     symbol,
-    state: pos.state,
-    positionSide: resolvePositionSideFromPosition(pos, prevMeta),
-    sizePct: pos.size_pct,
-    avgPrice: pos.avg_price,
-    qtyBase: (pos.qty_base ?? prevMeta.qty_base ?? null),
-    runId: null,
-    executionMode: pos.execution_mode || "LIVE",
-    budgetMaxKrw: pos.budget_max_krw ?? null,
-    budgetUsedKrw: pos.budget_used_krw ?? null,
-    budgetSource: pos.budget_source ?? null,
-    meta: nextMeta,
   });
-
-  console.warn(
-    `[TP1_TRAIL_REPAIRED_BY_FILL_SYNC] ${symbol} side=${side || "UNKNOWN"} ` +
-    `entry_event_id=${currentEntryEventId || tp1EntryEventId || "NA"} exec_price=${execPx ?? "NA"} ` +
-    `trail_high=${nextTrailHigh ?? "NA"} trail_low=${nextTrailLow ?? "NA"}`
-  );
 
   triggerExitWorkerRun({
     reason: `TP1_TRAIL_ARMED_${String(exchange || "").toUpperCase()}_${String(symbol || "").toUpperCase()}`,

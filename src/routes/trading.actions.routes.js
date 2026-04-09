@@ -10,11 +10,10 @@ const { getSystemSettingsForProvider } = require("../storage/settings");
 const { toKstStringFromMs } = require("../utils/timeKst");
 const { fetchFuturesUserTrades } = require("../exchanges/binanceFuturesPrivate");
 const { syncBinanceFuturesFills } = require("../services/binanceFuturesFillsSync");
+const { healBinanceLivePosition } = require("../services/binanceLiveStateSelfHeal");
 const {
   runPaperFuturesForBar,
   syncFuturesPositionOnly,
-  resolveLiveFuturesConfig,
-  repairActivePositionExitRuntimeState,
 } = require("../engine/paperUpbitRunner");
 const { runActionPreHooks, runActionPostHooks } = require("../utils/actionExecutionHooks");
 
@@ -513,56 +512,24 @@ function createTradingActionsRoutes() {
         return res.status(400).json({ ok: false, error: "MARKET_NOT_ALLOWED" });
       }
 
-      await syncFuturesPositionOnly({ runId: `RUN__REPAIR_NATIVE__${exchange}__${market}__${Date.now()}`, exchange, symbol: market });
-      const pos = await getPaperPosition({ exchange, symbol: market });
+      const healed = await healBinanceLivePosition({
+        exchange,
+        symbol: market,
+        runId: `RUN__REPAIR_NATIVE__${exchange}__${market}__${Date.now()}`,
+        forceRepair: true,
+      });
+      const pos = healed && healed.position ? healed.position : await getPaperPosition({ exchange, symbol: market });
       const sizePct = Number(pos && pos.size_pct);
-      const qtyBase = Number(pos && pos.qty_base);
-      const avgPrice = Number(pos && pos.avg_price);
       if (!pos || String(pos.position_state || pos.state || "").toUpperCase() === "FLAT" || !Number.isFinite(sizePct) || sizePct <= 0) {
         return res.status(400).json({ ok: false, error: "NO_ACTIVE_POSITION" });
       }
-      if (!Number.isFinite(avgPrice) || avgPrice <= 0 || !Number.isFinite(qtyBase) || qtyBase <= 0) {
-        return res.status(400).json({ ok: false, error: "POSITION_DATA_INCOMPLETE" });
-      }
-
-      const sys = await getSystemSettingsForProvider(exchange, 2000);
-      const sysCfg = sys && sys.data ? sys.data : {};
-      const liveCfg = await resolveLiveFuturesConfig({ exchange, symbol: market });
-      const meta = (pos && typeof pos.meta === "object") ? pos.meta : {};
-      const repairedMeta = await repairActivePositionExitRuntimeState({
-        exchange,
-        symbol: market,
-        positionSide: pos.position_side || pos.side || meta.position_side || null,
-        entryPrice: avgPrice,
-        leverage: meta.leverage || meta.native_protection_leverage || null,
-        liveCfg,
-        posMeta: meta,
-        cohort: meta.openclaw_market_regime_cohort || meta.market_regime_cohort || null,
-        sysCfg,
-        execBarCloseMs: Number(meta.last_entry_bar_ms) || null,
-      });
-
-      const payload = await upsertPaperPosition({
-        exchange,
-        symbol: market,
-        state: pos.state || pos.position_state || "ACTIVE",
-        sizePct,
-        avgPrice,
-        qtyBase,
-        runId: pos.run_id || null,
-        budgetMaxKrw: pos.budget_max_krw,
-        budgetUsedKrw: pos.budget_used_krw,
-        budgetSource: pos.budget_source,
-        positionSide: pos.position_side || meta.position_side || null,
-        executionMode: pos.execution_mode || "LIVE",
-        meta: repairedMeta,
-      });
-
+      const payload = healed && healed.position ? healed.position : pos;
       const nextMeta = (payload && typeof payload.meta === "object") ? payload.meta : {};
       return res.json({
         ok: true,
         exchange,
         market,
+        repaired: healed && healed.repaired === true,
         position_state: payload.position_state || null,
         qty_base: payload.qty_base || null,
         native_refresh_status: nextMeta.native_protection_refresh_status || null,
