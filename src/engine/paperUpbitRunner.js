@@ -9858,6 +9858,16 @@ async function runPaperUpbitForBar({
         opposite_transition_until_ms: null,
         opposite_transition_stage: null,
         opposite_transition_seen_ms: null,
+        native_protection_tp0_order_id: null,
+        native_protection_tp_order_id: null,
+        native_protection_tp0_status: null,
+        native_protection_tp_status: null,
+        native_protection_tp0_reason: null,
+        native_protection_tp_reason: null,
+        native_protection_tp0_qty_base: null,
+        native_protection_tp_qty_base: null,
+        native_protection_tp0_qty_ratio: null,
+        native_protection_tp_qty_ratio: null,
       });
       console.warn(
         `[TP1_TRAIL_ARMED] ${symbol} side=${metaSide || "UNKNOWN"} source=INTENT_FILL ` +
@@ -12630,6 +12640,16 @@ async function runPaperFuturesForBar({
         opposite_transition_until_ms: null,
         opposite_transition_stage: null,
         opposite_transition_seen_ms: null,
+        native_protection_tp0_order_id: null,
+        native_protection_tp_order_id: null,
+        native_protection_tp0_status: null,
+        native_protection_tp_status: null,
+        native_protection_tp0_reason: null,
+        native_protection_tp_reason: null,
+        native_protection_tp0_qty_base: null,
+        native_protection_tp_qty_base: null,
+        native_protection_tp0_qty_ratio: null,
+        native_protection_tp_qty_ratio: null,
       });
       console.warn(
         `[TP1_TRAIL_ARMED] ${symbol} side=${metaSide || "UNKNOWN"} source=INTENT_FILL ` +

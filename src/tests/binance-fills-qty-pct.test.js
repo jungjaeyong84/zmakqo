@@ -2,6 +2,25 @@ const assert = require("assert");
 const { __test } = require("../services/binanceFuturesFillsSync");
 
 async function run() {
+  const clearConsumedTakeProfitProtectionMeta = __test && __test.clearConsumedTakeProfitProtectionMeta;
+  assert.strictEqual(typeof clearConsumedTakeProfitProtectionMeta, "function", "clearConsumedTakeProfitProtectionMeta export missing");
+  const clearedProtectionMeta = clearConsumedTakeProfitProtectionMeta({
+    native_protection_stop_order_id: "stop-1",
+    native_protection_tp0_order_id: "tp0-1",
+    native_protection_tp_order_id: "tp1-1",
+    native_protection_tp0_status: "OK",
+    native_protection_tp_status: "OK",
+    native_protection_tp0_qty_ratio: 0.25,
+    native_protection_tp_qty_ratio: 0.5,
+  });
+  assert.strictEqual(clearedProtectionMeta.native_protection_stop_order_id, "stop-1");
+  assert.strictEqual(clearedProtectionMeta.native_protection_tp0_order_id, null);
+  assert.strictEqual(clearedProtectionMeta.native_protection_tp_order_id, null);
+  assert.strictEqual(clearedProtectionMeta.native_protection_tp0_status, null);
+  assert.strictEqual(clearedProtectionMeta.native_protection_tp_status, null);
+  assert.strictEqual(clearedProtectionMeta.native_protection_tp0_qty_ratio, null);
+  assert.strictEqual(clearedProtectionMeta.native_protection_tp_qty_ratio, null);
+
   const fn = __test && __test.computeSyncedQtyPct;
   assert.strictEqual(typeof fn, "function", "computeSyncedQtyPct export missing");
 

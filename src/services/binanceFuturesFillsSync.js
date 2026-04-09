@@ -310,6 +310,23 @@ function computeAdverseSlippageBps({ side, signalPrice, execPrice } = {}) {
   return Math.max(0, adverseBps);
 }
 
+function clearConsumedTakeProfitProtectionMeta(meta = {}) {
+  const prevMeta = meta && typeof meta === "object" ? meta : {};
+  return {
+    ...prevMeta,
+    native_protection_tp0_order_id: null,
+    native_protection_tp_order_id: null,
+    native_protection_tp0_status: null,
+    native_protection_tp_status: null,
+    native_protection_tp0_reason: null,
+    native_protection_tp_reason: null,
+    native_protection_tp0_qty_base: null,
+    native_protection_tp_qty_base: null,
+    native_protection_tp0_qty_ratio: null,
+    native_protection_tp_qty_ratio: null,
+  };
+}
+
 async function markTpP1DoneFromExternalFill({ exchange, symbol, execPrice, execTimeIso, entryEventId } = {}) {
   const pos = await getPosition({ exchange, symbol });
   const state = String(pos && (pos.position_state || pos.state) || "").toUpperCase();
@@ -337,7 +354,7 @@ async function markTpP1DoneFromExternalFill({ exchange, symbol, execPrice, execT
   const nextTrailLow = side === "SHORT" ? (execPx ?? prevMeta.trail_low ?? null) : null;
 
   const nextMeta = {
-    ...prevMeta,
+    ...clearConsumedTakeProfitProtectionMeta(prevMeta),
     tp_p1_done: true,
     tp_p1_price: execPx ?? (prevMeta.tp_p1_price ?? null),
     trail_high: nextTrailHigh,
@@ -1807,6 +1824,7 @@ async function syncBinanceFuturesFills({
 module.exports = {
   syncBinanceFuturesFills,
   __test: {
+    clearConsumedTakeProfitProtectionMeta,
     computeSyncedQtyPct,
     resolveIntentNotional,
     resolveIntentQtyBase,
