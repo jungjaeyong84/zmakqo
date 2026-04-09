@@ -190,6 +190,36 @@ async function run() {
     "TP1 without reliable intent/native metadata must not guess a close ratio from current remaining qty"
   );
 
+  const tinyResidual = fillsSyncTest.resolveTinyResidualCloseDecision({
+    position: {
+      symbol: "SOLUSDT",
+      positionAmt: "-0.01",
+      markPrice: "81.97",
+    },
+    exchangeInfo: {
+      minQty: 0.01,
+      minNotional: 5,
+      stepSize: 0.01,
+    },
+  });
+  assert.strictEqual(tinyResidual.shouldClose, true, "minQty-sized residual must be force-closed");
+  assert.strictEqual(tinyResidual.side, "BUY");
+  assert.ok(approxEqual(tinyResidual.qty, 0.01), "dust close must preserve exchange step size");
+
+  const normalResidual = fillsSyncTest.resolveTinyResidualCloseDecision({
+    position: {
+      symbol: "ETHUSDT",
+      positionAmt: "0.25",
+      markPrice: "2150",
+    },
+    exchangeInfo: {
+      minQty: 0.001,
+      minNotional: 5,
+      stepSize: 0.001,
+    },
+  });
+  assert.strictEqual(normalResidual.shouldClose, false, "normal residual must not be force-closed by fills sync");
+
   const msg = alertTest.buildMessage(merged.payload);
   assert.ok(msg, "aggregated TP1 alert message must be buildable");
   assert.strictEqual(msg.title, "XRPUSDT TP1_3.25 50% 청산");

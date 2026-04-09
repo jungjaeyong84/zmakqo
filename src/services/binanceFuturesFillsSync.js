@@ -1,4 +1,11 @@
-const { fetchFuturesUserTrades, fetchFuturesOrder, fetchFuturesAlgoOrder } = require("../exchanges/binanceFuturesPrivate");
+const {
+  fetchFuturesUserTrades,
+  fetchFuturesOrder,
+  fetchFuturesAlgoOrder,
+  fetchBinanceFuturesAccount,
+  fetchFuturesExchangeInfo,
+  placeFuturesMarketOrder,
+} = require("../exchanges/binanceFuturesPrivate");
 const { getExchangeSettingsForProvider } = require("../utils/exchangeSettings");
 const { normalizeMarketSymbolForProvider, normalizeTf, defaultExecTfFromEnv } = require("../utils/marketConfig");
 const { getFirestore } = require("../storage/firestore");
@@ -95,6 +102,94 @@ function pickFinitePositive(candidates = []) {
     if (Number.isFinite(n) && n > 0) return n;
   }
   return null;
+}
+
+function qtyPrecision(step) {
+  const s = String(step == null ? "" : step);
+  const idx = s.indexOf(".");
+  return idx === -1 ? 0 : (s.length - idx - 1);
+}
+
+function roundQtyToStep(qty, step) {
+  const q = Number(qty);
+  const s = Number(step);
+  if (!Number.isFinite(q) || !Number.isFinite(s) || s <= 0) return null;
+  const floored = Math.floor(q / s) * s;
+  return Number(floored.toFixed(qtyPrecision(s)));
+}
+
+function resolveTinyResidualCloseDecision({ position = null, exchangeInfo = null } = {}) {
+  const pos = position && typeof position === "object" ? position : {};
+  const info = exchangeInfo && typeof exchangeInfo === "object" ? exchangeInfo : {};
+  const amt = Number(pos.positionAmt ?? pos.position_amt);
+  const absQty = Math.abs(amt);
+  const minQty = Number(info.minQty);
+  const markPrice = Number(pos.markPrice ?? pos.mark_price ?? pos.entryPrice ?? pos.entry_price);
+  const minNotional = Number(info.minNotional);
+  const side = amt < 0 ? "BUY" : (amt > 0 ? "SELL" : null);
+  const stepSize = Number(info.stepSize);
+  const roundedQty = roundQtyToStep(absQty, stepSize);
+  const notional = Number.isFinite(markPrice) && Number.isFinite(roundedQty) ? markPrice * roundedQty : null;
+  const tinyByQty = Number.isFinite(minQty) && Number.isFinite(roundedQty) && roundedQty > 0 && roundedQty <= minQty;
+  const tinyByNotional = Number.isFinite(minNotional) && Number.isFinite(notional) && notional > 0 && notional < minNotional;
+  if (!side || !Number.isFinite(roundedQty) || roundedQty <= 0) {
+    return { shouldClose: false, side: null, qty: null, reason: "NO_POSITION" };
+  }
+  if (!(tinyByQty || tinyByNotional)) {
+    return { shouldClose: false, side, qty: roundedQty, reason: "NOT_TINY" };
+  }
+  return {
+    shouldClose: true,
+    side,
+    qty: roundedQty,
+    reason: tinyByQty ? "TINY_BY_QTY" : "TINY_BY_NOTIONAL",
+    minQty: Number.isFinite(minQty) ? minQty : null,
+    minNotional: Number.isFinite(minNotional) ? minNotional : null,
+    notional: Number.isFinite(notional) ? notional : null,
+  };
+}
+
+async function closeTinyExternalResidualPosition({
+  apiKey,
+  apiSecret,
+  symbol,
+  contextTag = "FILL_SYNC",
+  tradeMs = null,
+} = {}) {
+  const sym = normalizeSymbol(symbol);
+  if (!sym || !apiKey || !apiSecret) return { ok: false, skipped: true, reason: "PARAMS_INVALID" };
+  const [account, info] = await Promise.all([
+    fetchBinanceFuturesAccount({ apiKey, apiSecret }),
+    fetchFuturesExchangeInfo(sym),
+  ]);
+  const positions = Array.isArray(account && account.positions) ? account.positions : [];
+  const externalPos = positions.find((row) => normalizeSymbol(row && row.symbol) === sym) || null;
+  const decision = resolveTinyResidualCloseDecision({
+    position: externalPos,
+    exchangeInfo: info,
+  });
+  if (!decision.shouldClose) {
+    return { ok: true, skipped: true, reason: decision.reason, qty: decision.qty || null };
+  }
+
+  const order = await placeFuturesMarketOrder({
+    apiKey,
+    apiSecret,
+    symbol: sym,
+    side: decision.side,
+    quantity: decision.qty,
+    reduceOnly: true,
+    idempotencyKey: `fill_sync_dust_${String(contextTag || "fill_sync").toLowerCase()}_${sym}_${Number.isFinite(Number(tradeMs)) ? Number(tradeMs) : Date.now()}`,
+  });
+
+  return {
+    ok: true,
+    skipped: false,
+    reason: decision.reason,
+    qty: decision.qty,
+    side: decision.side,
+    orderId: order && order.orderId ? String(order.orderId) : null,
+  };
 }
 
 function resolveIntentNotional(intent) {
@@ -1212,6 +1307,8 @@ async function syncMarketTrades({
   const orderMetaCache = new Map();
   const recentTp1BySymbol = new Map();
   const pendingAlertBatches = new Map();
+  let lastExitTradeMs = null;
+  let observedExitFill = false;
   const defaultExitRules = getExitRulesForExchange("BINANCEFUT");
   const alertEnabled = resolveEnvBool(process.env.BINANCEFUT_FILLS_SYNC_ALERT_ENABLED, true);
   const intentFutureAllowMs = Number(process.env.BINANCEFUT_FILLS_SYNC_INTENT_FUTURE_ALLOW_MS) || DEFAULT_INTENT_FUTURE_ALLOW_MS;
@@ -1329,6 +1426,10 @@ async function syncMarketTrades({
       const fillId = `EXT__BINANCEFUT__${sym}__${Number.isFinite(tradeId) ? tradeId : String(t.id || t.time || now)}`;
       const execTimeIso = Number.isFinite(tradeMs) ? new Date(tradeMs).toISOString() : nowIso();
       const looksLikeExit = Number.isFinite(realizedPnl) && Math.abs(realizedPnl) > 1e-12;
+      if (looksLikeExit) {
+        observedExitFill = true;
+        if (!Number.isFinite(lastExitTradeMs) || tradeMs > lastExitTradeMs) lastExitTradeMs = tradeMs;
+      }
       if (!intentId && looksLikeExit) {
         intentId = await ensureSyntheticExternalIntent({
           exchange: "BINANCEFUT",
@@ -1556,6 +1657,25 @@ async function syncMarketTrades({
     if (list.length < 1000) break;
   }
 
+  if (observedExitFill) {
+    try {
+      const dustClose = await closeTinyExternalResidualPosition({
+        apiKey,
+        apiSecret,
+        symbol: sym,
+        contextTag: "fill_sync",
+        tradeMs: lastExitTradeMs,
+      });
+      if (dustClose && !dustClose.skipped) {
+        console.warn(
+          `[BINANCEFUT_FILL_SYNC_DUST_CLOSE] ${sym} side=${dustClose.side} qty=${dustClose.qty} reason=${dustClose.reason} order_id=${dustClose.orderId || "NA"}`
+        );
+      }
+    } catch (e) {
+      console.warn("[BINANCEFUT_FILL_SYNC_DUST_CLOSE_FAIL]", e && e.message ? e.message : String(e));
+    }
+  }
+
   await flushFillSyncAlertBatches(pendingAlertBatches);
 
   if (Number.isFinite(lastTradeMs)) {
@@ -1664,6 +1784,7 @@ module.exports = {
     normalizeExitEventForRules,
     resolveFillSyncAlertCloseRatio,
     resolveFillSyncAlertFullExit,
+    resolveTinyResidualCloseDecision,
     queueFillSyncAlertBatch,
     pickIntentForTrade,
     resolveExternalExitEvent,
