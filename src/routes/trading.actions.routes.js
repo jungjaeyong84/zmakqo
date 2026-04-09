@@ -9,6 +9,7 @@ const { upsertIntent, cancelPendingIntentsByMarket } = require("../storage/order
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { toKstStringFromMs } = require("../utils/timeKst");
 const { fetchFuturesUserTrades } = require("../exchanges/binanceFuturesPrivate");
+const { syncBinanceFuturesFills } = require("../services/binanceFuturesFillsSync");
 const {
   runPaperFuturesForBar,
   syncFuturesPositionOnly,
@@ -574,6 +575,69 @@ function createTradingActionsRoutes() {
       return res.status(500).json({
         ok: false,
         error: "REPAIR_NATIVE_PROTECTION_FAILED",
+        message: String(err && err.message ? err.message : err),
+      });
+    }
+  });
+
+  router.post("/api/trading/sync-futures-live-state", ensureAuthOrSchedulerToken, async (req, res) => {
+    try {
+      const body = req.body || {};
+      const providerRaw = body.provider || body.exchange || req.query.provider || req.query.exchange || "BINANCEFUT";
+      const exchange = normalizeProviderId(providerRaw || "BINANCEFUT");
+      if (exchange !== "BINANCEFUT") {
+        return res.status(400).json({ ok: false, error: "BINANCE_ONLY" });
+      }
+
+      const rawMarket = String(body.market || body.symbol || req.query.market || req.query.symbol || "").trim();
+      if (!rawMarket) {
+        return res.status(400).json({ ok: false, error: "MARKET_REQUIRED" });
+      }
+      const exCfg = await getExchangeSettingsForProvider(exchange, 2000);
+      const market = normalizeMarketSymbolForProvider(rawMarket, exchange);
+      const markets = Array.isArray(exCfg && exCfg.markets) ? exCfg.markets : [];
+      if (!market || (markets.length && !markets.includes(market))) {
+        return res.status(400).json({ ok: false, error: "MARKET_NOT_ALLOWED" });
+      }
+
+      const lookbackMsRaw = body.lookback_ms ?? body.lookbackMs ?? req.query.lookback_ms ?? req.query.lookbackMs;
+      const lookbackMs = Number.isFinite(Number(lookbackMsRaw)) && Number(lookbackMsRaw) > 0
+        ? Number(lookbackMsRaw)
+        : null;
+
+      const fills = await syncBinanceFuturesFills({
+        markets: [market],
+        executionMode: "LIVE",
+        lookbackMs,
+        minIntervalMs: 0,
+        force: true,
+      });
+
+      const posSync = await syncFuturesPositionOnly({
+        runId: `RUN__SYNC_LIVE_STATE__${exchange}__${market}__${Date.now()}`,
+        exchange,
+        symbol: market,
+      });
+      const pos = await getPaperPosition({ exchange, symbol: market });
+      const meta = (pos && typeof pos.meta === "object") ? pos.meta : {};
+
+      return res.json({
+        ok: true,
+        exchange,
+        market,
+        fills,
+        position_sync: posSync,
+        position_state: pos ? (pos.position_state || pos.state || null) : null,
+        qty_base: pos ? (pos.qty_base ?? null) : null,
+        tp_p0_done: meta.tp_p0_done === true,
+        tp_p1_done: meta.tp_p1_done === true,
+        trail_active: meta.trail_active === true,
+        native_refresh_status: meta.native_protection_refresh_status || null,
+      });
+    } catch (err) {
+      return res.status(500).json({
+        ok: false,
+        error: "SYNC_FUTURES_LIVE_STATE_FAILED",
         message: String(err && err.message ? err.message : err),
       });
     }
