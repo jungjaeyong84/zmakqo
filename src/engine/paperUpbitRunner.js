@@ -14273,6 +14273,7 @@ module.exports = {
   buildNativeProtectionMetaPatch,
   notifyNativeProtectionResult,
   resolveLiveFuturesConfig,
+  repairActivePositionExitRuntimeState,
   __test: {
     applyAddRiskMetaOnFill,
     buildTimeStopExitSignal,
