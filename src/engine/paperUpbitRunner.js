@@ -312,6 +312,7 @@ function loadTp1LadderKpiSnapshot(force = false) {
 function resolveTp1LadderConfig(sysCfg) {
   return {
     enabled: normalizeBool(sysCfg && sysCfg.tp1_ladder_enabled, true),
+    freeze: normalizeBool(sysCfg && sysCfg.tp1_ladder_freeze, false),
     stage1RealizedNMin: Math.max(1, normalizeInt(sysCfg && sysCfg.tp1_ladder_stage1_realized_n_min, 8)),
     stage1Tp0HitRateMin: clamp(normalizeNumber(sysCfg && sysCfg.tp1_ladder_stage1_tp0_hit_rate_min, 0.55), 0, 1),
     stage1Tp0ToTp1ConversionMin: clamp(normalizeNumber(sysCfg && sysCfg.tp1_ladder_stage1_tp0_to_tp1_conversion_min, 0.20), 0, 1),

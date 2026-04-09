@@ -557,6 +557,7 @@ function deriveOpenClawAutonomyContract({
       server_signal_runtime_tp1_ladder_stage2_tp1_hit_rate_min: toNum(serverSignalRuntimeSummary.tp1_ladder_stage2_tp1_hit_rate_min),
       server_signal_runtime_tp1_ladder_stage2_tp0_to_tp1_conversion_min: toNum(serverSignalRuntimeSummary.tp1_ladder_stage2_tp0_to_tp1_conversion_min),
       server_signal_runtime_tp1_ladder_stage2_fee_adjusted_expectancy_min: toNum(serverSignalRuntimeSummary.tp1_ladder_stage2_fee_adjusted_expectancy_min),
+      server_signal_runtime_tp1_ladder_freeze: serverSignalRuntimeSummary.tp1_ladder_freeze === true,
       server_signal_runtime_tp1_ladder_default_profile: String(serverSignalRuntimeSummary.tp1_ladder_default_profile || "").trim() || null,
       server_signal_runtime_tp1_ladder_promotion_mode: String(serverSignalRuntimeSummary.tp1_ladder_promotion_mode || "").trim() || null,
       exit_trailing_contract_canonical_mode: exitTrailingContractCanonicalMode,
@@ -575,6 +576,7 @@ function deriveOpenClawAutonomyContract({
       server_signal_runtime_opposite_cooldown_promotion_mode: String(serverSignalRuntimeSummary.opposite_cooldown_promotion_mode || "").trim() || null,
       server_signal_runtime_reverse_exception_mixed_bypass_tier_block: serverSignalRuntimeSummary.reverse_exception_mixed_bypass_tier_block === true,
       server_signal_runtime_reverse_exception_rescue_bypass_tier_block: serverSignalRuntimeSummary.reverse_exception_rescue_bypass_tier_block === true,
+      server_signal_runtime_auto_score_freeze: serverSignalRuntimeSummary.auto_score_freeze === true,
       server_signal_authoritative_24h_n: toNum(serverSignalAuthoritySummary.authoritative_server_24h_n) || 0,
       server_signal_shadow_24h_n: toNum(serverSignalAuthoritySummary.pine_shadow_24h_n) || 0,
       server_signal_entry_24h_n: toNum(serverSignalQualitySummary.authoritative_entry_signal_24h_n) || 0,
@@ -1110,6 +1112,7 @@ function deriveOpenClawAutonomyContract({
       server_signal_runtime_tp1_ladder_stage2_tp1_hit_rate_min: toNum(serverSignalRuntimeSummary.tp1_ladder_stage2_tp1_hit_rate_min),
       server_signal_runtime_tp1_ladder_stage2_tp0_to_tp1_conversion_min: toNum(serverSignalRuntimeSummary.tp1_ladder_stage2_tp0_to_tp1_conversion_min),
       server_signal_runtime_tp1_ladder_stage2_fee_adjusted_expectancy_min: toNum(serverSignalRuntimeSummary.tp1_ladder_stage2_fee_adjusted_expectancy_min),
+      server_signal_runtime_tp1_ladder_freeze: serverSignalRuntimeSummary.tp1_ladder_freeze === true,
       server_signal_runtime_tp1_ladder_default_profile: String(serverSignalRuntimeSummary.tp1_ladder_default_profile || "").trim() || null,
       server_signal_runtime_tp1_ladder_promotion_mode: String(serverSignalRuntimeSummary.tp1_ladder_promotion_mode || "").trim() || null,
       server_signal_runtime_signal_overlap_enabled: serverSignalRuntimeSummary.signal_overlap_enabled === true,
@@ -1135,6 +1138,7 @@ function deriveOpenClawAutonomyContract({
       server_signal_runtime_opposite_transition_confirm_bars: toNum(serverSignalRuntimeSummary.opposite_transition_confirm_bars),
       server_signal_runtime_reverse_exception_mixed_bypass_tier_block: serverSignalRuntimeSummary.reverse_exception_mixed_bypass_tier_block === true,
       server_signal_runtime_reverse_exception_rescue_bypass_tier_block: serverSignalRuntimeSummary.reverse_exception_rescue_bypass_tier_block === true,
+      server_signal_runtime_auto_score_freeze: serverSignalRuntimeSummary.auto_score_freeze === true,
       server_signal_runtime_operational_drop_watch_reasons: Array.isArray(serverSignalRuntimeSummary.operational_drop_watch_reasons)
         ? serverSignalRuntimeSummary.operational_drop_watch_reasons.map((row) => String(row || "").trim()).filter(Boolean)
         : [],

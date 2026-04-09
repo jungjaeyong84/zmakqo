@@ -770,6 +770,39 @@ function normalizeSystem(req, body, current = {}) {
   const addGuardDayLossCap = clampNumber(body.add_guard_day_loss_cap_krw, 0, Number.MAX_SAFE_INTEGER);
   clean.add_guard_day_loss_cap_krw = addGuardDayLossCap == null ? null : addGuardDayLossCap;
   clean.add_guard_block_hard_drawdown = normalizeBool(body.add_guard_block_hard_drawdown === undefined ? true : body.add_guard_block_hard_drawdown);
+  clean.signal_overlap_enabled = normalizeBool(body.signal_overlap_enabled === undefined ? true : body.signal_overlap_enabled);
+  let signalOverlapBars = clampInt(body.signal_overlap_bars, 0, 32);
+  if (signalOverlapBars == null) signalOverlapBars = 4;
+  clean.signal_overlap_bars = signalOverlapBars;
+  clean.tp1_ladder_enabled = normalizeBool(body.tp1_ladder_enabled === undefined ? true : body.tp1_ladder_enabled);
+  clean.tp1_ladder_freeze = normalizeBool(body.tp1_ladder_freeze === undefined ? false : body.tp1_ladder_freeze);
+  let tp1LadderStage1RealizedNMin = clampInt(body.tp1_ladder_stage1_realized_n_min, 1, 500);
+  if (tp1LadderStage1RealizedNMin == null) tp1LadderStage1RealizedNMin = 8;
+  clean.tp1_ladder_stage1_realized_n_min = tp1LadderStage1RealizedNMin;
+  let tp1LadderStage1Tp0HitRateMin = clampNumber(body.tp1_ladder_stage1_tp0_hit_rate_min, 0, 1);
+  if (tp1LadderStage1Tp0HitRateMin == null) tp1LadderStage1Tp0HitRateMin = 0.55;
+  clean.tp1_ladder_stage1_tp0_hit_rate_min = tp1LadderStage1Tp0HitRateMin;
+  let tp1LadderStage1Tp0ToTp1ConversionMin = clampNumber(body.tp1_ladder_stage1_tp0_to_tp1_conversion_min, 0, 1);
+  if (tp1LadderStage1Tp0ToTp1ConversionMin == null) tp1LadderStage1Tp0ToTp1ConversionMin = 0.20;
+  clean.tp1_ladder_stage1_tp0_to_tp1_conversion_min = tp1LadderStage1Tp0ToTp1ConversionMin;
+  let tp1LadderStage1FeeAdjustedExpectancyMin = clampNumber(body.tp1_ladder_stage1_fee_adjusted_expectancy_min, -1, 1);
+  if (tp1LadderStage1FeeAdjustedExpectancyMin == null) tp1LadderStage1FeeAdjustedExpectancyMin = -0.0005;
+  clean.tp1_ladder_stage1_fee_adjusted_expectancy_min = tp1LadderStage1FeeAdjustedExpectancyMin;
+  let tp1LadderStage2RealizedNMin = clampInt(body.tp1_ladder_stage2_realized_n_min, 1, 1000);
+  if (tp1LadderStage2RealizedNMin == null) tp1LadderStage2RealizedNMin = 16;
+  clean.tp1_ladder_stage2_realized_n_min = tp1LadderStage2RealizedNMin;
+  let tp1LadderStage2Tp0HitRateMin = clampNumber(body.tp1_ladder_stage2_tp0_hit_rate_min, 0, 1);
+  if (tp1LadderStage2Tp0HitRateMin == null) tp1LadderStage2Tp0HitRateMin = 0.60;
+  clean.tp1_ladder_stage2_tp0_hit_rate_min = tp1LadderStage2Tp0HitRateMin;
+  let tp1LadderStage2Tp1HitRateMin = clampNumber(body.tp1_ladder_stage2_tp1_hit_rate_min, 0, 1);
+  if (tp1LadderStage2Tp1HitRateMin == null) tp1LadderStage2Tp1HitRateMin = 0.30;
+  clean.tp1_ladder_stage2_tp1_hit_rate_min = tp1LadderStage2Tp1HitRateMin;
+  let tp1LadderStage2Tp0ToTp1ConversionMin = clampNumber(body.tp1_ladder_stage2_tp0_to_tp1_conversion_min, 0, 1);
+  if (tp1LadderStage2Tp0ToTp1ConversionMin == null) tp1LadderStage2Tp0ToTp1ConversionMin = 0.35;
+  clean.tp1_ladder_stage2_tp0_to_tp1_conversion_min = tp1LadderStage2Tp0ToTp1ConversionMin;
+  let tp1LadderStage2FeeAdjustedExpectancyMin = clampNumber(body.tp1_ladder_stage2_fee_adjusted_expectancy_min, -1, 1);
+  if (tp1LadderStage2FeeAdjustedExpectancyMin == null) tp1LadderStage2FeeAdjustedExpectancyMin = 0;
+  clean.tp1_ladder_stage2_fee_adjusted_expectancy_min = tp1LadderStage2FeeAdjustedExpectancyMin;
   clean.same_direction_trail_profit_cooldown_enabled = normalizeBool(body.same_direction_trail_profit_cooldown_enabled);
   let sameDirectionTrailProfitCooldownMs = clampInt(
     body.same_direction_trail_profit_cooldown_ms,
@@ -778,6 +811,34 @@ function normalizeSystem(req, body, current = {}) {
   );
   if (sameDirectionTrailProfitCooldownMs == null) sameDirectionTrailProfitCooldownMs = 4 * 60 * 60 * 1000;
   clean.same_direction_trail_profit_cooldown_ms = sameDirectionTrailProfitCooldownMs;
+  let oppositeSignalCooldownBars = clampInt(body.opposite_signal_cooldown_bars, 0, 64);
+  if (oppositeSignalCooldownBars == null) oppositeSignalCooldownBars = 4;
+  clean.opposite_signal_cooldown_bars = oppositeSignalCooldownBars;
+  let oppositeSignalCooldownBarsMixed = clampInt(body.opposite_signal_cooldown_bars_mixed, 0, 64);
+  if (oppositeSignalCooldownBarsMixed == null) oppositeSignalCooldownBarsMixed = 4;
+  clean.opposite_signal_cooldown_bars_mixed = oppositeSignalCooldownBarsMixed;
+  let oppositeSignalCooldownBarsRescue = clampInt(body.opposite_signal_cooldown_bars_rescue, 0, 64);
+  if (oppositeSignalCooldownBarsRescue == null) oppositeSignalCooldownBarsRescue = 4;
+  clean.opposite_signal_cooldown_bars_rescue = oppositeSignalCooldownBarsRescue;
+  let oppositeTimeCooldownMs = clampInt(body.opposite_time_cooldown_ms, 0, 7 * 24 * 60 * 60 * 1000);
+  if (oppositeTimeCooldownMs == null) oppositeTimeCooldownMs = 60 * 60 * 1000;
+  clean.opposite_time_cooldown_ms = oppositeTimeCooldownMs;
+  let oppositeTimeCooldownMsMixed = clampInt(body.opposite_time_cooldown_ms_mixed, 0, 7 * 24 * 60 * 60 * 1000);
+  if (oppositeTimeCooldownMsMixed == null) oppositeTimeCooldownMsMixed = 60 * 60 * 1000;
+  clean.opposite_time_cooldown_ms_mixed = oppositeTimeCooldownMsMixed;
+  let oppositeTimeCooldownMsRescue = clampInt(body.opposite_time_cooldown_ms_rescue, 0, 7 * 24 * 60 * 60 * 1000);
+  if (oppositeTimeCooldownMsRescue == null) oppositeTimeCooldownMsRescue = 60 * 60 * 1000;
+  clean.opposite_time_cooldown_ms_rescue = oppositeTimeCooldownMsRescue;
+  clean.opposite_transition_enabled = normalizeBool(body.opposite_transition_enabled === undefined ? true : body.opposite_transition_enabled);
+  let oppositeTransitionReduceFraction = clampNumber(body.opposite_transition_reduce_fraction, 0, 1);
+  if (oppositeTransitionReduceFraction == null) oppositeTransitionReduceFraction = 0.35;
+  clean.opposite_transition_reduce_fraction = oppositeTransitionReduceFraction;
+  let oppositeTransitionConfirmBars = clampInt(body.opposite_transition_confirm_bars, 1, 16);
+  if (oppositeTransitionConfirmBars == null) oppositeTransitionConfirmBars = 3;
+  clean.opposite_transition_confirm_bars = oppositeTransitionConfirmBars;
+  clean.opposite_transition_core_real_only = normalizeBool(
+    body.opposite_transition_core_real_only === undefined ? true : body.opposite_transition_core_real_only
+  );
   let maxHoldBars = clampInt(body.max_hold_bars, 0, 1000);
   if (maxHoldBars == null) maxHoldBars = 12;
   clean.max_hold_bars = maxHoldBars;
@@ -786,6 +847,7 @@ function normalizeSystem(req, body, current = {}) {
   let reinvestRatio = clampNumber(body.reinvest_ratio, 0, 1);
   if (reinvestRatio == null) reinvestRatio = 0.5;
   clean.reinvest_ratio = reinvestRatio;
+  clean.auto_score_freeze = normalizeBool(body.auto_score_freeze === undefined ? false : body.auto_score_freeze);
 
   if (clean.execution_mode !== "LIVE") {
     clean.live_enabled = false;
@@ -932,8 +994,31 @@ const SYSTEM_PROVIDER_KEYS = [
   "add_guard_max_loss_streak",
   "add_guard_day_loss_cap_krw",
   "add_guard_block_hard_drawdown",
+  "signal_overlap_enabled",
+  "signal_overlap_bars",
+  "tp1_ladder_enabled",
+  "tp1_ladder_freeze",
+  "tp1_ladder_stage1_realized_n_min",
+  "tp1_ladder_stage1_tp0_hit_rate_min",
+  "tp1_ladder_stage1_tp0_to_tp1_conversion_min",
+  "tp1_ladder_stage1_fee_adjusted_expectancy_min",
+  "tp1_ladder_stage2_realized_n_min",
+  "tp1_ladder_stage2_tp0_hit_rate_min",
+  "tp1_ladder_stage2_tp1_hit_rate_min",
+  "tp1_ladder_stage2_tp0_to_tp1_conversion_min",
+  "tp1_ladder_stage2_fee_adjusted_expectancy_min",
   "same_direction_trail_profit_cooldown_enabled",
   "same_direction_trail_profit_cooldown_ms",
+  "opposite_signal_cooldown_bars",
+  "opposite_signal_cooldown_bars_mixed",
+  "opposite_signal_cooldown_bars_rescue",
+  "opposite_time_cooldown_ms",
+  "opposite_time_cooldown_ms_mixed",
+  "opposite_time_cooldown_ms_rescue",
+  "opposite_transition_enabled",
+  "opposite_transition_reduce_fraction",
+  "opposite_transition_confirm_bars",
+  "opposite_transition_core_real_only",
   "max_hold_bars",
   // Legacy mirrors (temporary)
   "short_gate_enabled",
@@ -949,6 +1034,7 @@ const SYSTEM_PROVIDER_KEYS = [
   "short_gate_conf_min",
   "short_gate_wave_conf_min",
   "short_gate_block_conflict",
+  "auto_score_freeze",
   "reinvest_enabled",
   "reinvest_ratio",
 ];

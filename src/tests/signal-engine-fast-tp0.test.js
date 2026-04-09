@@ -264,6 +264,21 @@ function run() {
   assert.strictEqual(promotedBaseStage.stage, 2);
   assert.strictEqual(promotedBaseStage.profile, "BASE");
 
+  const frozenStage = evaluateTp1LadderStage({
+    cohort: "BASE",
+    config: { enabled: true, freeze: true },
+    kpi: {
+      realized_n: 50,
+      tp0_hit_rate: 0.9,
+      tp1_hit_rate: 0.5,
+      tp0_to_tp1_conversion: 0.5,
+      fee_adjusted_expectancy: 0.01,
+    },
+  });
+  assert.strictEqual(frozenStage.stage, 0);
+  assert.strictEqual(frozenStage.profile, "RESCUE");
+  assert.strictEqual(frozenStage.reason, "LADDER_FROZEN_STAGE_0");
+
   const ladderAppliedRules = applyTp1LadderPolicy({
     rules: resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: { meta: {} } }),
     cohort: "BASE",

@@ -202,6 +202,15 @@ function evaluateTp1LadderStage({ cohort, kpi = null, config = null, explicitSta
       reason: "LADDER_DISABLED",
     };
   }
+  if (cfg.freeze === true) {
+    return {
+      enabled,
+      stage: 0,
+      maxStage,
+      profile: resolveTp1LadderProfile({ cohort: normalized, stage: 0 }),
+      reason: "LADDER_FROZEN_STAGE_0",
+    };
+  }
 
   const snapshot = (kpi && typeof kpi === "object") ? kpi : {};
   const realizedN = Number(snapshot.realized_n ?? snapshot.realizedTradeN);

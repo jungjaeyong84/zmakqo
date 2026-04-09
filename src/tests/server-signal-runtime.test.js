@@ -23,10 +23,11 @@ const { deriveServerSignalRuntime } = require("../../src/utils/serverSignalRunti
       ev_gate_unknown_gen_relax_tp1_prob_full_delta: 0.03,
       ev_gate_unknown_gen_relax_tp1_prob_kill_delta: 0.02,
       tp1_ladder_enabled: true,
+      tp1_ladder_freeze: true,
       signal_overlap_enabled: true,
-      signal_overlap_bars: 3,
+      signal_overlap_bars: 4,
       same_direction_trail_profit_cooldown_enabled: true,
-      same_direction_trail_profit_cooldown_ms: 14400000,
+      same_direction_trail_profit_cooldown_ms: 21600000,
       tp1_ladder_stage1_realized_n_min: 12,
       tp1_ladder_stage1_tp0_hit_rate_min: 0.60,
       tp1_ladder_stage1_tp0_to_tp1_conversion_min: 0.28,
@@ -37,14 +38,14 @@ const { deriveServerSignalRuntime } = require("../../src/utils/serverSignalRunti
       tp1_ladder_stage2_tp0_to_tp1_conversion_min: 0.45,
       tp1_ladder_stage2_fee_adjusted_expectancy_min: 0.001,
       opposite_signal_cooldown_bars: 4,
-      opposite_signal_cooldown_bars_mixed: 2,
-      opposite_signal_cooldown_bars_rescue: 1,
+      opposite_signal_cooldown_bars_mixed: 4,
+      opposite_signal_cooldown_bars_rescue: 4,
       opposite_time_cooldown_ms: 900000,
-      opposite_time_cooldown_ms_mixed: 300000,
-      opposite_time_cooldown_ms_rescue: 60000,
-      opposite_transition_enabled: true,
-      opposite_transition_reduce_fraction: 0.35,
-      opposite_transition_confirm_bars: 3,
+      opposite_time_cooldown_ms_mixed: 3600000,
+      opposite_time_cooldown_ms_rescue: 3600000,
+      opposite_transition_enabled: false,
+      opposite_transition_reduce_fraction: 0,
+      opposite_transition_confirm_bars: 4,
       reverse_exception_mixed_bypass_tier_block: true,
       reverse_exception_rescue_bypass_tier_block: true,
     },
@@ -80,20 +81,20 @@ const { deriveServerSignalRuntime } = require("../../src/utils/serverSignalRunti
   assert.strictEqual(report.summary.tp1_ladder_stage1_realized_n_min, 12);
   assert.strictEqual(report.summary.tp1_ladder_stage2_tp1_hit_rate_min, 0.38);
   assert.strictEqual(report.summary.tp1_ladder_default_profile, "RESCUE");
-  assert.strictEqual(report.summary.tp1_ladder_promotion_mode, "RESCUE_FIRST_PROMOTION");
+  assert.strictEqual(report.summary.tp1_ladder_promotion_mode, "RESCUE_FIRST_FROZEN");
   assert.strictEqual(report.summary.signal_overlap_enabled, true);
-  assert.strictEqual(report.summary.signal_overlap_bars, 3);
+  assert.strictEqual(report.summary.signal_overlap_bars, 4);
   assert.strictEqual(report.summary.same_direction_trail_profit_cooldown_enabled, true);
-  assert.strictEqual(report.summary.same_direction_trail_profit_cooldown_ms, 14400000);
+  assert.strictEqual(report.summary.same_direction_trail_profit_cooldown_ms, 21600000);
   assert.strictEqual(report.summary.opposite_cooldown_bars_base, 4);
-  assert.strictEqual(report.summary.opposite_cooldown_bars_mixed, 2);
-  assert.strictEqual(report.summary.opposite_cooldown_bars_rescue, 1);
-  assert.strictEqual(report.summary.opposite_cooldown_ms_mixed, 300000);
+  assert.strictEqual(report.summary.opposite_cooldown_bars_mixed, 4);
+  assert.strictEqual(report.summary.opposite_cooldown_bars_rescue, 4);
+  assert.strictEqual(report.summary.opposite_cooldown_ms_mixed, 3600000);
   assert.strictEqual(report.summary.opposite_cooldown_default_profile, "RESCUE");
-  assert.strictEqual(report.summary.opposite_cooldown_promotion_mode, "RESCUE_FIRST_PROMOTION");
-  assert.strictEqual(report.summary.opposite_transition_enabled, true);
-  assert.strictEqual(report.summary.opposite_transition_reduce_fraction, 0.35);
-  assert.strictEqual(report.summary.opposite_transition_confirm_bars, 3);
+  assert.strictEqual(report.summary.opposite_cooldown_promotion_mode, "RESCUE_FIRST_FROZEN");
+  assert.strictEqual(report.summary.opposite_transition_enabled, false);
+  assert.strictEqual(report.summary.opposite_transition_reduce_fraction, 0);
+  assert.strictEqual(report.summary.opposite_transition_confirm_bars, 4);
   assert.strictEqual(report.summary.reverse_exception_mixed_bypass_tier_block, true);
   assert.deepStrictEqual(report.summary.operational_drop_watch_reasons, ["POSITION_FULL", "LIVE_RESCUE_ADD_*", "DROP_OVERLAP"]);
   assert.strictEqual(report.current_status.reverse_exception_rescue_bypass_tier_block, true);

@@ -584,6 +584,7 @@ function buildReasoningJournal({
       server_signal_runtime_tp1_ladder_stage2_tp1_hit_rate_min: toNum(autonomyField("server_signal_runtime_tp1_ladder_stage2_tp1_hit_rate_min")),
       server_signal_runtime_tp1_ladder_stage2_tp0_to_tp1_conversion_min: toNum(autonomyField("server_signal_runtime_tp1_ladder_stage2_tp0_to_tp1_conversion_min")),
       server_signal_runtime_tp1_ladder_stage2_fee_adjusted_expectancy_min: toNum(autonomyField("server_signal_runtime_tp1_ladder_stage2_fee_adjusted_expectancy_min")),
+      server_signal_runtime_tp1_ladder_freeze: autonomyField("server_signal_runtime_tp1_ladder_freeze") === true,
       server_signal_runtime_tp1_ladder_default_profile: String(autonomyField("server_signal_runtime_tp1_ladder_default_profile") || "").trim() || null,
       server_signal_runtime_tp1_ladder_promotion_mode: String(autonomyField("server_signal_runtime_tp1_ladder_promotion_mode") || "").trim() || null,
       exit_trailing_contract_canonical_mode: String(autonomyField("exit_trailing_contract_canonical_mode") || "").trim() || null,
@@ -602,6 +603,7 @@ function buildReasoningJournal({
       server_signal_runtime_opposite_cooldown_promotion_mode: String(autonomyField("server_signal_runtime_opposite_cooldown_promotion_mode") || "").trim() || null,
       server_signal_runtime_reverse_exception_mixed_bypass_tier_block: autonomyField("server_signal_runtime_reverse_exception_mixed_bypass_tier_block") === true,
       server_signal_runtime_reverse_exception_rescue_bypass_tier_block: autonomyField("server_signal_runtime_reverse_exception_rescue_bypass_tier_block") === true,
+      server_signal_runtime_auto_score_freeze: autonomyField("server_signal_runtime_auto_score_freeze") === true,
       filter_layer_1_integrity_mode: String(autonomyField("filter_layer_1_integrity_mode") || "").trim() || null,
       filter_layer_1_integrity_expectation: String(autonomyField("filter_layer_1_integrity_expectation") || "").trim() || null,
       filter_layer_1_integrity_coverage_pass: autonomyField("filter_layer_1_integrity_coverage_pass") === true,
@@ -842,6 +844,7 @@ function buildReasoningJournal({
       current_server_signal_runtime_tp1_ladder_stage2_tp1_hit_rate_min: toNum(autonomyField("server_signal_runtime_tp1_ladder_stage2_tp1_hit_rate_min")),
       current_server_signal_runtime_tp1_ladder_stage2_tp0_to_tp1_conversion_min: toNum(autonomyField("server_signal_runtime_tp1_ladder_stage2_tp0_to_tp1_conversion_min")),
       current_server_signal_runtime_tp1_ladder_stage2_fee_adjusted_expectancy_min: toNum(autonomyField("server_signal_runtime_tp1_ladder_stage2_fee_adjusted_expectancy_min")),
+      current_server_signal_runtime_tp1_ladder_freeze: autonomyField("server_signal_runtime_tp1_ladder_freeze") === true,
       current_server_signal_runtime_tp1_ladder_default_profile: String(autonomyField("server_signal_runtime_tp1_ladder_default_profile") || "").trim() || null,
       current_server_signal_runtime_tp1_ladder_promotion_mode: String(autonomyField("server_signal_runtime_tp1_ladder_promotion_mode") || "").trim() || null,
       current_server_signal_runtime_signal_overlap_enabled: autonomyField("server_signal_runtime_signal_overlap_enabled") === true,
@@ -865,6 +868,7 @@ function buildReasoningJournal({
       current_server_signal_runtime_opposite_transition_enabled: autonomyField("server_signal_runtime_opposite_transition_enabled") === true,
       current_server_signal_runtime_opposite_transition_reduce_fraction: toNum(autonomyField("server_signal_runtime_opposite_transition_reduce_fraction")),
       current_server_signal_runtime_opposite_transition_confirm_bars: toNum(autonomyField("server_signal_runtime_opposite_transition_confirm_bars")),
+      current_server_signal_runtime_auto_score_freeze: autonomyField("server_signal_runtime_auto_score_freeze") === true,
       current_server_signal_runtime_operational_drop_watch_reasons: Array.isArray(autonomyField("server_signal_runtime_operational_drop_watch_reasons"))
         ? autonomyField("server_signal_runtime_operational_drop_watch_reasons").map((row) => String(row || "").trim()).filter(Boolean)
         : [],
