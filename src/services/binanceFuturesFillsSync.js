@@ -1032,6 +1032,14 @@ function isSameOrderAsNativeTp1(orderMeta, positionCtx) {
   return Number.isFinite(orderId) && Number.isFinite(nativeOrderId) && orderId === nativeOrderId;
 }
 
+function isTrailExitEligible(positionCtx, recentTp1) {
+  const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
+  if (ctx.trailActive !== true) return false;
+  if (ctx.tpP1Done === true) return true;
+  const recentTp1Event = String(recentTp1 && recentTp1.event || "").toUpperCase();
+  return isTpP1Event(recentTp1Event);
+}
+
 function isSyntheticExternalFillExitEvent(event) {
   const ev = String(event || "").toUpperCase();
   if (!ev) return false;
@@ -1178,6 +1186,7 @@ async function resolveExternalExitEvent({
   const sameOrderAsRecentTp1 = isSameOrderAsRecentTp1(orderMeta, recentTp1);
   const sameOrderAsNativeTp0 = isSameOrderAsNativeTp0(orderMeta, positionCtx);
   const sameOrderAsNativeTp1 = isSameOrderAsNativeTp1(orderMeta, positionCtx);
+  const trailEligible = isTrailExitEligible(positionCtx, recentTp1);
   const recentAddProtectionRefresh = isRecentAddNativeProtectionRefresh({
     positionCtx,
     tradeMs: Number(trade && trade.time),
@@ -1190,7 +1199,7 @@ async function resolveExternalExitEvent({
     if (orderType === "TAKE_PROFIT_MARKET" || orderType === "TAKE_PROFIT") {
       if (sameOrderAsNativeTp0) return buildExitEventByKind("TP0", rules);
       if (sameOrderAsNativeTp1) return buildExitEventByKind("TP1", rules);
-      if (positionCtx && positionCtx.trailActive) return buildExitEventByKind("TRAIL", rules);
+      if (trailEligible) return buildExitEventByKind("TRAIL", rules);
       return buildExitEventByKind("TP1", rules);
     }
     if (trackedClientOrder && orderType === "MARKET" && !isNativeTpEnabled()) {
@@ -1243,14 +1252,14 @@ async function resolveExternalExitEvent({
   if (orderType === "TAKE_PROFIT_MARKET" || orderType === "TAKE_PROFIT") {
     if (sameOrderAsNativeTp0) return buildExitEventByKind("TP0", rules);
     if (sameOrderAsNativeTp1) return buildExitEventByKind("TP1", rules);
-    if (positionCtx && positionCtx.trailActive) return buildExitEventByKind("TRAIL", rules);
+    if (trailEligible) return buildExitEventByKind("TRAIL", rules);
     return buildExitEventByKind("TP1", rules);
   }
 
   const realized = Number(trade && trade.realizedPnl);
   if (!Number.isFinite(realized)) return buildExitEventByKind("UNKNOWN", rules);
   if (realized < 0) return buildExitEventByKind("SL", rules);
-  if (positionCtx && positionCtx.trailActive) return buildExitEventByKind("TRAIL", rules);
+  if (trailEligible) return buildExitEventByKind("TRAIL", rules);
   return buildExitEventByKind("TP1", rules);
 }
 
@@ -1790,5 +1799,6 @@ module.exports = {
     resolveExternalExitEvent,
     isSameOrderAsRecentTp1,
     isSyntheticExternalFillExitEvent,
+    isTrailExitEligible,
   },
 };

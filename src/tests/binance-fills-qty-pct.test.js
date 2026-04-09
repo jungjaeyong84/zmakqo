@@ -99,10 +99,19 @@ async function run() {
     intent: null,
     trade: { symbol: "SOLUSDT", realizedPnl: 10 },
     orderMeta: { orderId: 127, orderType: "TAKE_PROFIT_MARKET", closePosition: true, reduceOnly: true, clientOrderId: "dbj_tp" },
-    positionCtx: { trailActive: true },
+    positionCtx: { trailActive: true, tpP1Done: true },
     rules,
   });
   assert.strictEqual(nativeTrail, "EXIT_TRAIL_1P");
+
+  const noTp1NoTrail = await resolveExternalExitEvent({
+    intent: null,
+    trade: { symbol: "SOLUSDT", realizedPnl: 10 },
+    orderMeta: { orderId: 1271, orderType: "TAKE_PROFIT_MARKET", closePosition: true, reduceOnly: true, clientOrderId: "dbj_tp" },
+    positionCtx: { trailActive: true, tpP1Done: false },
+    rules,
+  });
+  assert.strictEqual(noTp1NoTrail, "EXIT_TP_P1_3P");
 
   process.env.BINANCE_NATIVE_TP_ENABLED = "0";
   const nativeTrackedMarketStop = await resolveExternalExitEvent({
