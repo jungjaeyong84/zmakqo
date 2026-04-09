@@ -1670,6 +1670,7 @@ async function repairActivePositionExitRuntimeState({
         fallbackEntryPrice: Number(entryPrice),
         fallbackLeverage: Number.isFinite(Number(leverage)) && Number(leverage) > 0 ? Number(leverage) : FUTURES_BASE_LEVERAGE,
         exitRulesOverride: adjustment.appliedExitRules,
+        posMeta: nextMeta,
       });
       const nativePatch = buildNativeProtectionMetaPatch({
         nativeProtection,
@@ -7185,6 +7186,7 @@ async function refreshBinanceNativeProtectionWithRetry({
   fallbackEntryPrice,
   fallbackLeverage,
   exitRulesOverride,
+  posMeta,
 } = {}) {
   const totalAttempts = BINANCE_NATIVE_PROTECTION_RETRY_COUNT + 1;
   let lastResult = null;
@@ -7197,6 +7199,7 @@ async function refreshBinanceNativeProtectionWithRetry({
       fallbackEntryPrice,
       fallbackLeverage,
       exitRulesOverride,
+      posMeta,
     });
     const enriched = {
       ...(result && typeof result === "object" ? result : {}),
@@ -7212,6 +7215,17 @@ async function refreshBinanceNativeProtectionWithRetry({
     }
   }
   return lastResult || { ok: false, reason: "UNKNOWN", attempts: totalAttempts, max_attempts: totalAttempts };
+}
+
+function resolveNativeProtectionStageState(posMeta = null) {
+  const meta = (posMeta && typeof posMeta === "object") ? posMeta : {};
+  const tp0Done = meta.tp_p0_done === true;
+  const tp1Done = meta.tp_p1_done === true;
+  const trailActive = meta.trail_active === true;
+  return {
+    tp0Eligible: tp0Done !== true && tp1Done !== true && trailActive !== true,
+    tp1Eligible: tp1Done !== true && trailActive !== true,
+  };
 }
 
 function isBinanceImmediateTriggerError(error) {
@@ -7329,6 +7343,7 @@ async function refreshBinanceNativeProtection({
   fallbackEntryPrice,
   fallbackLeverage,
   exitRulesOverride,
+  posMeta,
 } = {}) {
   const ex = String(exchange || "").toUpperCase();
   if (!ex.includes("BINANCE")) return { ok: false, skipped: true, reason: "NOT_BINANCE" };
@@ -7373,6 +7388,7 @@ async function refreshBinanceNativeProtection({
     leverage,
     rules,
   });
+  const stageState = resolveNativeProtectionStageState(posMeta);
   if (!prices) {
     return { ok: false, skipped: true, reason: "NATIVE_PRICE_COMPUTE_FAIL", positionSide, entryPrice, leverage };
   }
@@ -7421,7 +7437,7 @@ async function refreshBinanceNativeProtection({
     let tp0Reason = BINANCE_NATIVE_TP_ENABLED ? "TP0_TRIGGER_INVALID" : "NATIVE_TP_DISABLED";
     let tpStatus = BINANCE_NATIVE_TP_ENABLED ? "SKIPPED" : "DISABLED";
     let tpReason = BINANCE_NATIVE_TP_ENABLED ? "TP_TRIGGER_INVALID" : "NATIVE_TP_DISABLED";
-    if (BINANCE_NATIVE_TP_ENABLED && Number.isFinite(prices.tp0TriggerPx) && prices.tp0TriggerPx > 0) {
+    if (BINANCE_NATIVE_TP_ENABLED && stageState.tp0Eligible && Number.isFinite(prices.tp0TriggerPx) && prices.tp0TriggerPx > 0) {
       try {
         const exchangeInfo = await fetchFuturesExchangeInfo(symbol);
         const desiredTp0QtyBase = Number(context.qtyBase) * Number(prices.tp0QtyRatio || 0.25);
@@ -7498,7 +7514,7 @@ async function refreshBinanceNativeProtection({
         }
       }
     }
-    if (BINANCE_NATIVE_TP_ENABLED && Number.isFinite(prices.tpTriggerPx) && prices.tpTriggerPx > 0) {
+    if (BINANCE_NATIVE_TP_ENABLED && stageState.tp1Eligible && Number.isFinite(prices.tpTriggerPx) && prices.tpTriggerPx > 0) {
       try {
         const exchangeInfo = await fetchFuturesExchangeInfo(symbol);
         const desiredTpQtyBase = Number(context.qtyBase) * Number(prices.tpQtyRatio || 0.5);
@@ -8234,6 +8250,7 @@ async function executeLiveFuturesOrder({
         fallbackEntryPrice: Number.isFinite(execPrice) ? execPrice : priceRef,
         fallbackLeverage: leverageMult,
         exitRulesOverride,
+        posMeta,
       });
     } catch (nativeErr) {
       nativeProtection = {
@@ -14343,6 +14360,7 @@ module.exports = {
     resolveTp1LadderRuntimeState,
     resolveTp1LadderKpiForContext,
     collectCriticalExitRuleViolations,
+    resolveNativeProtectionStageState,
     shouldRepairActiveExitRuntimeState,
     repairActivePositionExitRuntimeState,
     applyEntryExitRuleRuntimeAdjustments,

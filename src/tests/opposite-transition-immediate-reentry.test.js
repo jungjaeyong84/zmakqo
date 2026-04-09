@@ -12,6 +12,7 @@ async function run() {
   assert.strictEqual(typeof __test.applyEntryExitRuleRuntimeAdjustments, "function", "applyEntryExitRuleRuntimeAdjustments export missing");
   assert.strictEqual(typeof __test.repairActivePositionExitRuntimeState, "function", "repairActivePositionExitRuntimeState export missing");
   assert.strictEqual(typeof __test.collectCriticalExitRuleViolations, "function", "collectCriticalExitRuleViolations export missing");
+  assert.strictEqual(typeof __test.resolveNativeProtectionStageState, "function", "resolveNativeProtectionStageState export missing");
 
   const bypassed = __test.shouldBypassOppositeEntryCooldown({
     features: {
@@ -345,6 +346,22 @@ async function run() {
     fullyRepairedMeta.exit_rules_override.TRAIL_PCT > 0 || fullyRepairedMeta.exit_rules_override.TRAIL_R_MULTIPLE > 0,
     "repair must restore trailing rule"
   );
+
+  const tp0DoneStage = __test.resolveNativeProtectionStageState({
+    tp_p0_done: true,
+    tp_p1_done: false,
+    trail_active: false,
+  });
+  assert.strictEqual(tp0DoneStage.tp0Eligible, false, "completed TP0 must not be re-armed");
+  assert.strictEqual(tp0DoneStage.tp1Eligible, true, "TP1 should remain eligible after TP0");
+
+  const tp1DoneStage = __test.resolveNativeProtectionStageState({
+    tp_p0_done: true,
+    tp_p1_done: true,
+    trail_active: true,
+  });
+  assert.strictEqual(tp1DoneStage.tp0Eligible, false, "TP0 must stay disabled after TP1");
+  assert.strictEqual(tp1DoneStage.tp1Eligible, false, "TP1 must stay disabled after TP1/trail");
 }
 
 try {
