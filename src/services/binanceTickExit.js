@@ -8,7 +8,11 @@ const { getSystemSettingsForProvider } = require("../storage/settings");
 const { getPosition } = require("../storage/positions");
 const { clearTpP1PendingIfUnchanged, posId } = require("../storage/positionsPaper");
 const { resolveExitRulesForPosition, computeRunnerExitStopPrice, resolveTrailDelayState, resolveTpP0Pct } = require("../engine/signalEngine");
-const { runPaperMarket } = require("../engine/paperUpbitRunner");
+const {
+  runPaperMarket,
+  resolveLiveFuturesConfig,
+  refreshBinanceNativeProtectionWithRetry,
+} = require("../engine/paperUpbitRunner");
 const { resolveCloseSide, resolvePositionSideFromPosition } = require("../utils/positionSide");
 const {
   getFuturesBaseUrl,
@@ -104,6 +108,35 @@ function structuredLog(event, payload = {}, level = "log") {
 
 function structuredLogWriter(event, payload = {}, level = "log") {
   structuredLog(event, payload, level);
+}
+
+function buildTrailNativeRefreshMetaPatch(nativeProtection, barMs) {
+  const refreshAtMs = Date.now();
+  if (!nativeProtection || typeof nativeProtection !== "object") {
+    return {
+      native_protection_refresh_status: "FAILED",
+      native_protection_refresh_reason: "TRAIL_REFRESH_EMPTY_RESULT",
+      native_protection_refresh_context: "TRAIL_REFRESH",
+      native_protection_refresh_at_ms: refreshAtMs,
+      native_protection_refresh_bar_ms: Number.isFinite(Number(barMs)) ? Number(barMs) : null,
+      native_protection_stale: true,
+    };
+  }
+  const ok = nativeProtection.ok === true;
+  return {
+    native_protection_refresh_status: ok ? "OK" : (nativeProtection.skipped === true ? "SKIPPED" : "FAILED"),
+    native_protection_refresh_reason: ok ? null : String(nativeProtection.reason || "TRAIL_REFRESH_FAIL"),
+    native_protection_refresh_context: "TRAIL_REFRESH",
+    native_protection_refresh_at_ms: refreshAtMs,
+    native_protection_refresh_bar_ms: Number.isFinite(Number(barMs)) ? Number(barMs) : null,
+    native_protection_stale: ok ? false : true,
+    native_protection_attempts: Number.isFinite(Number(nativeProtection.attempts)) ? Number(nativeProtection.attempts) : null,
+    native_protection_max_attempts: Number.isFinite(Number(nativeProtection.max_attempts)) ? Number(nativeProtection.max_attempts) : null,
+    native_protection_stop_order_id: nativeProtection.stop_order_id ? String(nativeProtection.stop_order_id) : undefined,
+    native_protection_stop_price: Number.isFinite(Number(nativeProtection.stop_price)) ? Number(nativeProtection.stop_price) : undefined,
+    native_protection_entry_price: Number.isFinite(Number(nativeProtection.entry_price)) ? Number(nativeProtection.entry_price) : undefined,
+    native_protection_side: nativeProtection.position_side ? String(nativeProtection.position_side) : undefined,
+  };
 }
 
 async function resolveTickExitAlertChannel(exchange = "BINANCEFUT") {
@@ -722,9 +755,10 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
           try {
             const _tDb = getFirestore();
             const _tDocId = posId({ exchange: "BINANCEFUT", symbol });
+            const _tUpdatedAt = new Date().toISOString();
             await _tDb.collection("positions_paper").doc(_tDocId).update({
               ..._trailPatch,
-              updated_at: new Date().toISOString(),
+              updated_at: _tUpdatedAt,
             });
             if (pos.meta && _trailField === "trail_high" && Number.isFinite(_trailNext)) {
               pos.meta.trail_high = _trailNext;
@@ -744,6 +778,40 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
                 prev: _trailPrev,
                 next: price,
               });
+            }
+
+            try {
+              const _liveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol });
+              const _native = await refreshBinanceNativeProtectionWithRetry({
+                liveCfg: _liveCfg,
+                exchange: "BINANCEFUT",
+                symbol,
+                fallbackSide: _tSide === "SHORT" ? "SELL" : "BUY",
+                fallbackEntryPrice: Number(pos && pos.avg_price),
+                fallbackLeverage: Number(_tMeta && (_tMeta.external_leverage || _tMeta.leverage || 1)),
+                exitRulesOverride: _tMeta && _tMeta.exit_rules_override ? _tMeta.exit_rules_override : null,
+                posMeta: pos.meta || _tMeta,
+              });
+              const _nativePatch = buildTrailNativeRefreshMetaPatch(_native, tickNow);
+              const _nativeMetaUpdate = Object.fromEntries(
+                Object.entries(_nativePatch)
+                  .filter(([, v]) => v !== undefined)
+                  .map(([k, v]) => [`meta.${k}`, v])
+              );
+              await _tDb.collection("positions_paper").doc(_tDocId).update({
+                ..._nativeMetaUpdate,
+                updated_at: new Date().toISOString(),
+              });
+              if (pos.meta && _native && typeof _native === "object") {
+                if (_native.stop_order_id) pos.meta.native_protection_stop_order_id = String(_native.stop_order_id);
+                if (Number.isFinite(Number(_native.stop_price))) pos.meta.native_protection_stop_price = Number(_native.stop_price);
+              }
+            } catch (_nativeRefreshErr) {
+              structuredLog("tick_exit_trail_native_refresh_error", {
+                exchange: "BINANCEFUT",
+                symbol: String(symbol).toUpperCase(),
+                error: String(_nativeRefreshErr && _nativeRefreshErr.message || _nativeRefreshErr).slice(0, 200),
+              }, "warn");
             }
           } catch (_trailErr) {
             structuredLog("tick_exit_trail_update_error", {

@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const {
   generateSignals,
   resolveExitRulesForPosition,
+  computeRunnerExitStopPrice,
   evaluateTp1LadderStage,
   applyTp1LadderPolicy,
 } = require("./signalEngine");
@@ -6935,7 +6936,7 @@ async function resolveBinancePositionContext({ liveCfg, symbol } = {}) {
   };
 }
 
-function computeBinanceNativeProtectionPrices({ positionSide, entryPrice, leverage, rules } = {}) {
+function computeBinanceNativeProtectionPrices({ positionSide, entryPrice, leverage, rules, posMeta } = {}) {
   const side = String(positionSide || "").toUpperCase();
   const px = Number(entryPrice);
   const levRaw = Number(leverage);
@@ -6974,6 +6975,27 @@ function computeBinanceNativeProtectionPrices({ positionSide, entryPrice, levera
   if (!Number.isFinite(stopTriggerPx) || stopTriggerPx <= 0) return null;
   if (!Number.isFinite(tp0TriggerPx) || tp0TriggerPx <= 0) tp0TriggerPx = null;
   if (!Number.isFinite(tpTriggerPx) || tpTriggerPx <= 0) tpTriggerPx = null;
+
+  const meta = (posMeta && typeof posMeta === "object") ? posMeta : {};
+  const tpP1Done = meta.tp_p1_done === true;
+  const trailActive = meta.trail_active === true;
+  if (tpP1Done || trailActive) {
+    const runnerExit = computeRunnerExitStopPrice({
+      avg: px,
+      leverageEff: lev,
+      side,
+      rules,
+      tpP1Done,
+      trailActive,
+      trailHigh: Number(meta.trail_high),
+      trailLow: Number(meta.trail_low),
+      entryRDistance: Number(meta.entry_r_distance),
+    });
+    if (runnerExit && Number.isFinite(Number(runnerExit.stopPrice)) && Number(runnerExit.stopPrice) > 0) {
+      stopTriggerPx = Number(runnerExit.stopPrice);
+    }
+  }
+
   return {
     closeSide: side === "SHORT" ? "BUY" : "SELL",
     stopTriggerPx,
@@ -7387,6 +7409,7 @@ async function refreshBinanceNativeProtection({
     entryPrice,
     leverage,
     rules,
+    posMeta,
   });
   const stageState = resolveNativeProtectionStageState(posMeta);
   if (!prices) {
@@ -14381,6 +14404,7 @@ module.exports = {
     resolveTp1LadderKpiForContext,
     collectCriticalExitRuleViolations,
     resolveNativeProtectionStageState,
+    computeBinanceNativeProtectionPrices,
     shouldRepairActiveExitRuntimeState,
     repairActivePositionExitRuntimeState,
     applyEntryExitRuleRuntimeAdjustments,
