@@ -15,6 +15,7 @@ const { getPosition, upsertPosition } = require("../storage/positionsPaper");
 const { patchIntent } = require("../storage/orderIntentsPaper");
 const { buildTradeId } = require("../storage/tradesPaper");
 const { getExitRulesForExchange, resolveExitRulesForPosition } = require("../engine/signalEngine");
+const { syncFuturesPositionOnly } = require("../engine/paperUpbitRunner");
 const { sendTradeExecutionAlert } = require("./tradeExecutionAlert");
 const { triggerExitWorkerRun } = require("./exitWorkerClient");
 const { sendAlert } = require("../utils/alerts");
@@ -1720,6 +1721,15 @@ async function syncMarketTrades({
       }
     } catch (e) {
       console.warn("[BINANCEFUT_FILL_SYNC_DUST_CLOSE_FAIL]", e && e.message ? e.message : String(e));
+    }
+    try {
+      await syncFuturesPositionOnly({
+        runId: `RUN__FILL_SYNC_RECONCILE__BINANCEFUT__${sym}__${Date.now()}`,
+        exchange: "BINANCEFUT",
+        symbol: sym,
+      });
+    } catch (e) {
+      console.warn("[BINANCEFUT_FILL_SYNC_POSITION_RECONCILE_FAIL]", e && e.message ? e.message : String(e));
     }
   }
 

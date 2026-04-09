@@ -66,6 +66,8 @@ const {
   placeFuturesStopMarketOrder,
   placeFuturesTakeProfitMarketOrder,
   cancelFuturesOpenOrders,
+  fetchFuturesOpenOrders,
+  fetchFuturesAlgoOpenOrders,
   fetchFuturesOrder,
   fetchBinanceFuturesAccount,
   setFuturesLeverage,
@@ -74,6 +76,7 @@ const {
   calcAveragePrice: calcBinanceAveragePrice
 } = require("../exchanges/binanceFuturesPrivate");
 const { triggerExitWorkerRun } = require("../services/exitWorkerClient");
+const { reconcileBinancePositionMetaWithExchange } = require("../services/binancePositionReconciler");
 
 const POS_SIZE_EPSILON = (() => {
   const raw = Number(process.env.POS_SIZE_EPSILON);
@@ -6493,6 +6496,52 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
       cohort: syncMarketRegimeCohort,
       sysCfg: {},
       execBarCloseMs: syncEventMs,
+    });
+  }
+
+  let exchangeOpenOrders = [];
+  let exchangeAlgoOrders = [];
+  if (active) {
+    try {
+      exchangeOpenOrders = await fetchFuturesOpenOrders({
+        apiKey: liveCfg.apiKey,
+        apiSecret: liveCfg.apiSecret,
+        symbol,
+      });
+    } catch (e) {
+      console.warn("[BINANCE_SYNC_OPEN_ORDERS_FAIL]", symbol, e && e.message ? e.message : String(e));
+    }
+    try {
+      exchangeAlgoOrders = await fetchFuturesAlgoOpenOrders({
+        apiKey: liveCfg.apiKey,
+        apiSecret: liveCfg.apiSecret,
+        symbol,
+      });
+    } catch (e) {
+      exchangeAlgoOrders = { endpointUnavailable: true, note: e && e.message ? e.message : String(e), orders: [] };
+      console.warn("[BINANCE_SYNC_ALGO_ORDERS_FAIL]", symbol, e && e.message ? e.message : String(e));
+    }
+  }
+  const reconciledProjection = reconcileBinancePositionMetaWithExchange({
+    active,
+    meta,
+    positionSide: active ? side : null,
+    qtyBase,
+    entryPrice: priceRef,
+    leverage,
+    openOrders: exchangeOpenOrders,
+    algoOrders: exchangeAlgoOrders,
+  });
+  meta = reconciledProjection.meta;
+  if (Array.isArray(reconciledProjection.invariants) && reconciledProjection.invariants.length) {
+    meta = mergeMeta(meta, {
+      exchange_projection_invariants: reconciledProjection.invariants,
+      exchange_projection_checked_at: new Date().toISOString(),
+    });
+  } else {
+    meta = mergeMeta(meta, {
+      exchange_projection_invariants: [],
+      exchange_projection_checked_at: new Date().toISOString(),
     });
   }
 

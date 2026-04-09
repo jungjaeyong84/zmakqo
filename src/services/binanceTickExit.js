@@ -12,6 +12,7 @@ const {
   runPaperMarket,
   resolveLiveFuturesConfig,
   refreshBinanceNativeProtectionWithRetry,
+  syncFuturesPositionOnly,
 } = require("../engine/paperUpbitRunner");
 const { resolveCloseSide, resolvePositionSideFromPosition } = require("../utils/positionSide");
 const {
@@ -805,6 +806,19 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
               if (pos.meta && _native && typeof _native === "object") {
                 if (_native.stop_order_id) pos.meta.native_protection_stop_order_id = String(_native.stop_order_id);
                 if (Number.isFinite(Number(_native.stop_price))) pos.meta.native_protection_stop_price = Number(_native.stop_price);
+              }
+              try {
+                await syncFuturesPositionOnly({
+                  runId: `RUN__TRAIL_RECONCILE__BINANCEFUT__${symbol}__${Date.now()}`,
+                  exchange: "BINANCEFUT",
+                  symbol,
+                });
+              } catch (_syncErr) {
+                structuredLog("tick_exit_trail_position_reconcile_error", {
+                  exchange: "BINANCEFUT",
+                  symbol: String(symbol).toUpperCase(),
+                  error: String(_syncErr && _syncErr.message || _syncErr).slice(0, 200),
+                }, "warn");
               }
             } catch (_nativeRefreshErr) {
               structuredLog("tick_exit_trail_native_refresh_error", {
