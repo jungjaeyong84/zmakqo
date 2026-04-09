@@ -231,6 +231,7 @@ function isDuplicateClientOrderError(err) {
   const code = Number(err && err.code);
   const msg = String(err && err.message ? err.message : "").toLowerCase();
   const body = String(err && err.body ? err.body : "").toLowerCase();
+  if (code === -4116 && (msg.includes("duplicated") || body.includes("duplicated") || msg.includes("clientorderid") || body.includes("clientorderid"))) return true;
   if (code === -2010 && (msg.includes("duplicate") || body.includes("duplicate"))) return true;
   if (msg.includes("duplicate order sent") || body.includes("duplicate order sent")) return true;
   if (msg.includes("new client order id") && msg.includes("used")) return true;
@@ -1333,6 +1334,7 @@ module.exports = {
   getSpotBaseUrl,
   normalizeRecvWindow,
   __test: {
+    isDuplicateClientOrderError,
     isAlgoEndpointUnavailableError,
     normalizeAlgoOpenOrdersResponse,
     normalizeAlgoOrderResponse,
