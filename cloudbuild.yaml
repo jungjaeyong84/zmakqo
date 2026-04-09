@@ -85,7 +85,7 @@ steps:
         "--command", "node",
         "--args", "src/worker/tickExitWorker.js",
         "--cpu", "1",
-        "--memory", "512Mi",
+        "--memory", "1Gi",
         "--concurrency", "1",
         "--min-instances", "0",
         "--max-instances", "1",
