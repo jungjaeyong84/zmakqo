@@ -1040,6 +1040,22 @@ function isTrailExitEligible(positionCtx, recentTp1) {
   return isTpP1Event(recentTp1Event);
 }
 
+function inferTakeProfitKindFromQtyPct(qtyPct, rules) {
+  const qty = Number(qtyPct);
+  if (!Number.isFinite(qty) || qty <= 0) return null;
+  const tp0Qty = Number(rules && rules.TP_P0_QTY);
+  const tp1Qty = Number(rules && rules.TP_P1_QTY);
+  const cands = [];
+  if (Number.isFinite(tp0Qty) && tp0Qty > 0) cands.push({ kind: "TP0", dist: Math.abs(qty - tp0Qty), ref: tp0Qty });
+  if (Number.isFinite(tp1Qty) && tp1Qty > 0) cands.push({ kind: "TP1", dist: Math.abs(qty - tp1Qty), ref: tp1Qty });
+  if (!cands.length) return null;
+  cands.sort((a, b) => a.dist - b.dist);
+  const best = cands[0];
+  if (!Number.isFinite(best.ref) || best.ref <= 0) return null;
+  if (best.dist > Math.max(0.05, best.ref * 0.4)) return null;
+  return best.kind;
+}
+
 function isSyntheticExternalFillExitEvent(event) {
   const ev = String(event || "").toUpperCase();
   if (!ev) return false;
@@ -1172,6 +1188,7 @@ async function resolveExternalExitEvent({
   positionCtx,
   recentTp1,
   rules,
+  qtyPct,
 } = {}) {
   if (!isMeaningfulRealizedPnl(trade && trade.realizedPnl)) return "SYNC_FILL";
 
@@ -1187,6 +1204,7 @@ async function resolveExternalExitEvent({
   const sameOrderAsNativeTp0 = isSameOrderAsNativeTp0(orderMeta, positionCtx);
   const sameOrderAsNativeTp1 = isSameOrderAsNativeTp1(orderMeta, positionCtx);
   const trailEligible = isTrailExitEligible(positionCtx, recentTp1);
+  const inferredTakeProfitKind = inferTakeProfitKindFromQtyPct(qtyPct, rules);
   const recentAddProtectionRefresh = isRecentAddNativeProtectionRefresh({
     positionCtx,
     tradeMs: Number(trade && trade.time),
@@ -1200,6 +1218,7 @@ async function resolveExternalExitEvent({
       if (sameOrderAsNativeTp0) return buildExitEventByKind("TP0", rules);
       if (sameOrderAsNativeTp1) return buildExitEventByKind("TP1", rules);
       if (trailEligible) return buildExitEventByKind("TRAIL", rules);
+      if (inferredTakeProfitKind) return buildExitEventByKind(inferredTakeProfitKind, rules);
       return buildExitEventByKind("TP1", rules);
     }
     if (trackedClientOrder && orderType === "MARKET" && !isNativeTpEnabled()) {
@@ -1253,6 +1272,7 @@ async function resolveExternalExitEvent({
     if (sameOrderAsNativeTp0) return buildExitEventByKind("TP0", rules);
     if (sameOrderAsNativeTp1) return buildExitEventByKind("TP1", rules);
     if (trailEligible) return buildExitEventByKind("TRAIL", rules);
+    if (inferredTakeProfitKind) return buildExitEventByKind(inferredTakeProfitKind, rules);
     return buildExitEventByKind("TP1", rules);
   }
 
@@ -1356,6 +1376,15 @@ async function syncMarketTrades({
       const positionCtx = await loadPositionEntryContext("BINANCEFUT", sym, positionEntryCache);
       const exitRules = resolveAlertExitRules(positionCtx, defaultExitRules);
       const recentTp1 = recentTp1BySymbol.get(sym) || null;
+      const execPrice = Number(t.price);
+      const execQtyBase = Number(t.qty);
+      const notional = Number(t.quoteQty) || (Number.isFinite(execPrice) && Number.isFinite(execQtyBase) ? execPrice * execQtyBase : null);
+      const qtyScale = computeSyncedQtyPct({
+        intent,
+        tradeNotional: notional,
+        execQtyBase,
+      });
+      const qtyPct = qtyScale.qtyPct;
       const orderMeta = await resolveExternalOrderMeta({
         trade: t,
         apiKey,
@@ -1370,6 +1399,7 @@ async function syncMarketTrades({
         positionCtx,
         recentTp1,
         rules: exitRules,
+        qtyPct,
       });
       let intentId = intent ? intent.intent_id : null;
       const signalRefs = resolveSignalRefsForExternalFill({
@@ -1381,15 +1411,6 @@ async function syncMarketTrades({
       });
       const signalId = signalRefs.signalId;
       const signalDocId = signalRefs.signalDocId;
-      const execPrice = Number(t.price);
-      const execQtyBase = Number(t.qty);
-      const notional = Number(t.quoteQty) || (Number.isFinite(execPrice) && Number.isFinite(execQtyBase) ? execPrice * execQtyBase : null);
-      const qtyScale = computeSyncedQtyPct({
-        intent,
-        tradeNotional: notional,
-        execQtyBase,
-      });
-      const qtyPct = qtyScale.qtyPct;
       const qtyFraction = intent ? intent.qty_fraction : null;
       const intentEntryCtx = extractEntryContextFromIntent(intent);
       const signalPrice = intent
