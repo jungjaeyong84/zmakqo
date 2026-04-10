@@ -23,6 +23,7 @@ const { resolvePositionSideFromPosition } = require("../utils/positionSide");
 const { isIntentCanceledLikeStatus } = require("../utils/intentStatus");
 const { deriveSignalDocId } = require("../utils/signalDocId");
 const { inferTakeProfitKindFromQtyRatio } = require("./binancePositionReconciler");
+const { sendKoreanTelegramSummary } = require("../../scripts/lib/automation-utils");
 
 const DEFAULT_LOOKBACK_MS = 72 * 60 * 60 * 1000;
 const DEFAULT_MIN_INTERVAL_MS = 3 * 60 * 1000;
@@ -91,23 +92,43 @@ async function sendImmediateProjectionMismatchAlert({
       dedupeKey: dedupe.key,
     };
   }
-  return sendAlert({
-    channel,
-    title: `${sym} fill-projection 불일치`,
-    body: [
-      `event: ${String(event || "").trim().toUpperCase() || "UNKNOWN"}`,
-      `issues: ${issues.join(",")}`,
-      `repeat_count: ${dedupe.repeatCount}`,
-      `tp0_done: ${meta.tp_p0_done === true ? "1" : "0"}`,
-      `tp1_done: ${meta.tp_p1_done === true ? "1" : "0"}`,
-      `trail_active: ${meta.trail_active === true ? "1" : "0"}`,
-      `native_status: ${String(meta.native_protection_refresh_status || "NA").trim().toUpperCase() || "NA"}`,
-      `state: ${String(pos.state || "NA").trim().toUpperCase() || "NA"}`,
-      `qty_base: ${Number.isFinite(Number(pos.qty_base)) ? String(Number(pos.qty_base)) : "NA"}`,
-      `entry_event_id: ${String(meta.entry_event_id || meta.origin_entry_event_id || "NA").trim() || "NA"}`,
-      `projection_invariants: ${Array.isArray(meta.exchange_projection_invariants) && meta.exchange_projection_invariants.length ? meta.exchange_projection_invariants.join(",") : "NA"}`,
-    ].join("\n"),
+  return sendKoreanTelegramSummary({
+    title: `[경고] ${sym} fill-projection 불일치`,
     severity: "WARN",
+    provider: "BINANCEFUT",
+    dedupeKey: `fill_projection_mismatch:${dedupe.key}`,
+    dedupeWindowSec: 600,
+    dedupeFingerprint: {
+      event: String(event || "").trim().toUpperCase() || "UNKNOWN",
+      issues,
+      repeat_count: dedupe.repeatCount,
+      state: String(pos.state || "NA").trim().toUpperCase() || "NA",
+      qty_base: Number.isFinite(Number(pos.qty_base)) ? Number(pos.qty_base) : null,
+      entry_event_id: String(meta.entry_event_id || meta.origin_entry_event_id || "").trim() || null,
+    },
+    sections: [
+      {
+        header: "Projection",
+        lines: [
+          `event=${String(event || "").trim().toUpperCase() || "UNKNOWN"}`,
+          `issues=${issues.join(",")}`,
+          `repeat_count=${dedupe.repeatCount}`,
+          `tp0_done=${meta.tp_p0_done === true ? "1" : "0"}`,
+          `tp1_done=${meta.tp_p1_done === true ? "1" : "0"}`,
+          `trail_active=${meta.trail_active === true ? "1" : "0"}`,
+          `native_status=${String(meta.native_protection_refresh_status || "NA").trim().toUpperCase() || "NA"}`,
+        ],
+      },
+      {
+        header: "Position",
+        lines: [
+          `state=${String(pos.state || "NA").trim().toUpperCase() || "NA"}`,
+          `qty_base=${Number.isFinite(Number(pos.qty_base)) ? String(Number(pos.qty_base)) : "NA"}`,
+          `entry_event_id=${String(meta.entry_event_id || meta.origin_entry_event_id || "NA").trim() || "NA"}`,
+          `projection_invariants=${Array.isArray(meta.exchange_projection_invariants) && meta.exchange_projection_invariants.length ? meta.exchange_projection_invariants.join(",") : "NA"}`,
+        ],
+      },
+    ],
   });
 }
 
