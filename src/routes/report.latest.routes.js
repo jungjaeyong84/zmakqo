@@ -11,6 +11,7 @@ const {
 const { buildKpiLatestByMarket } = require("../utils/kpiLatestView");
 const { isLiveDocForExchange } = require("../utils/liveOnly");
 const { defaultExecTfFromEnv } = require("../utils/marketConfig");
+const { loadTradeQualitySummaryForExchange } = require("../services/tradeQualitySummary");
 
 function allowLocalNoOauth(req) {
   const isProd = String(process.env.NODE_ENV || "").toLowerCase() === "production";
@@ -122,13 +123,29 @@ async function computeOverallSnapshotNow(db, { exchange }) {
 
 async function buildComputedLatestSnapshot({ db, mode, exchange, nowIso }) {
   const overall = await computeOverallSnapshotNow(db, { exchange });
+  const exCfg = await getEffectiveExchangesSettings(2000);
+  const execTf = await resolveExecTfForExchange(exchange, (exCfg && exCfg.exec_tf) || defaultExecTfFromEnv() || "15m", 2000);
+  const marketsExpected = await resolveRuntimeMarketsForExchange(exchange, 2000);
+  const range = expectedRangeForMode(mode, new Date(nowIso));
+  const fromMs = Date.parse(String(range.from || ""));
+  const toMs = Date.parse(String(range.to || ""));
+  const tradeQuality = await loadTradeQualitySummaryForExchange({
+    exchange,
+    markets: marketsExpected,
+    tf: execTf,
+    fallbackTf: defaultExecTfFromEnv() || execTf,
+    fromMs: Number.isFinite(fromMs) ? fromMs : null,
+    toMs: Number.isFinite(toMs) ? toMs : null,
+    topN: 5,
+  });
   return {
     mode,
     exchange,
     computed_at: nowIso,
     updated_at: nowIso,
     overall,
-    range: expectedRangeForMode(mode, new Date(nowIso)),
+    range,
+    trade_quality: tradeQuality,
     source: "computed_now",
   };
 }
@@ -157,6 +174,22 @@ router.get("/api/report/latest", async (req, res) => {
     const data = latestSnapshotIsFresh(raw, mode)
       ? normalizeLatestSnapshot(raw)
       : await buildComputedLatestSnapshot({ db, mode, exchange, nowIso });
+    if (!data.trade_quality) {
+      const exCfg = await getEffectiveExchangesSettings(2000);
+      const execTf = await resolveExecTfForExchange(exchange, (exCfg && exCfg.exec_tf) || defaultExecTfFromEnv() || "15m", 2000);
+      const marketsExpected = await resolveRuntimeMarketsForExchange(exchange, 2000);
+      const fromMs = Date.parse(String(data && data.range && data.range.from || ""));
+      const toMs = Date.parse(String(data && data.range && data.range.to || ""));
+      data.trade_quality = await loadTradeQualitySummaryForExchange({
+        exchange,
+        markets: marketsExpected,
+        tf: execTf,
+        fallbackTf: defaultExecTfFromEnv() || execTf,
+        fromMs: Number.isFinite(fromMs) ? fromMs : null,
+        toMs: Number.isFinite(toMs) ? toMs : null,
+        topN: 5,
+      });
+    }
     return res.json({
       ok: true,
       id: key,

@@ -6,6 +6,7 @@ const { resolveExchangeFromReq, resolveRuntimeMarketsForExchange, resolveRuntime
 const { getRiskBudgetForProvider, getExchangeSettingsForProvider } = require("../utils/exchangeSettings");
 const { getPnlScopeDays, getPnlSourcePolicy, loadRealizedRowsForMarket } = require("../services/pnlPolicy");
 const { loadBinanceIncomePnlRows } = require("../services/binanceIncomePnl");
+const { loadTradeQualitySummaryForExchange } = require("../services/tradeQualitySummary");
 const { inferExchangeFromMarket } = require("../utils/marketExchange");
 const { isLiveDocForExchange } = require("../utils/liveOnly");
 const { toKstString, kstStartOfDay, kstDateKey } = require("../utils/timeKst");
@@ -537,6 +538,15 @@ router.get("/dashboard/profit", async (req, res) => {
     const pnlSourcePolicyUsed = usedBinanceIncomeApi
       ? "BINANCE_INCOME_API_FIRST_FALLBACK"
       : getPnlSourcePolicy();
+    const tradeQuality = await loadTradeQualitySummaryForExchange({
+      exchange,
+      markets: markets_expected,
+      tf: execTf || fallbackTf,
+      fallbackTf,
+      fromMs: hasCustom ? customStartMs : ranges.m6.from,
+      toMs: hasCustom ? customEndMs : ranges.m6.to,
+      topN: 5,
+    });
 
     const payload = {
       exchange,
@@ -562,6 +572,7 @@ router.get("/dashboard/profit", async (req, res) => {
         dayStatsByRange,
         defaultRangeKey,
         topMarkets,
+        trade_quality: tradeQuality,
         customRange: hasCustom ? { start: startRaw, end: endRaw } : null,
         rangeWarning,
       },
@@ -600,6 +611,7 @@ router.get("/dashboard/profit", async (req, res) => {
           dayStatsByRange: {},
           defaultRangeKey: null,
           topMarkets: [],
+          trade_quality: null,
           customRange: null,
           rangeWarning: null,
         },
