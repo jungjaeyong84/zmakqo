@@ -318,6 +318,7 @@ async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHi
         runId: runIdHint || `RUN__${exchange}__${market}__SYNC__${Date.now()}`,
         exchange,
         symbol: market,
+        dedupeWindowMs: 15000,
       });
     } catch (e) {
       futuresSync = { ok: false, error: (e && e.message) ? e.message : String(e) };

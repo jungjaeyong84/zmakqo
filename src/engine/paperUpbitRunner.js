@@ -96,6 +96,7 @@ const recentFillsCache = {
   rows: [],
 };
 const futuresPositionSyncQueue = new Map();
+const futuresPositionSyncRecentState = new Map();
 const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
 const OPENCLAW_MARKET_REGIME_BOARD_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_market_regime_board_latest.json");
 const PERFORMANCE_KPI_UPGRADE_CONTRACT_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_performance_kpi_upgrade_contract_latest.json");
@@ -7335,6 +7336,42 @@ function buildFuturesPositionSyncKey(exchange, symbol) {
   return `${String(exchange || "").toUpperCase()}::${String(symbol || "").toUpperCase()}`;
 }
 
+function shouldSkipRecentFuturesPositionSync({
+  exchange,
+  symbol,
+  dedupeWindowMs = 0,
+  nowMs = Date.now(),
+} = {}) {
+  const windowMs = Math.max(0, Math.floor(Number(dedupeWindowMs) || 0));
+  if (windowMs <= 0) return { skip: false, reason: "DEDUPE_DISABLED" };
+  const key = buildFuturesPositionSyncKey(exchange, symbol);
+  const lastAtMs = Number(futuresPositionSyncRecentState.get(key));
+  if (!Number.isFinite(lastAtMs) || lastAtMs <= 0) {
+    return { skip: false, reason: "NO_RECENT_SYNC" };
+  }
+  const ageMs = Math.max(0, Number(nowMs) - lastAtMs);
+  if (ageMs >= windowMs) {
+    return { skip: false, reason: "DEDupe_EXPIRED", ageMs, dedupeWindowMs: windowMs };
+  }
+  return {
+    skip: true,
+    reason: "RECENT_SYNC_DEDUPE",
+    ageMs,
+    dedupeWindowMs: windowMs,
+  };
+}
+
+function markRecentFuturesPositionSync({
+  exchange,
+  symbol,
+  atMs = Date.now(),
+} = {}) {
+  const key = buildFuturesPositionSyncKey(exchange, symbol);
+  const markAtMs = Number.isFinite(Number(atMs)) ? Number(atMs) : Date.now();
+  futuresPositionSyncRecentState.set(key, markAtMs);
+  return markAtMs;
+}
+
 async function serializeFuturesPositionSync({ exchange, symbol, runner } = {}) {
   const key = buildFuturesPositionSyncKey(exchange, symbol);
   const prev = futuresPositionSyncQueue.get(key) || Promise.resolve();
@@ -7493,15 +7530,37 @@ async function runDistributedFuturesPositionSync({
   }
 }
 
-async function syncFuturesPositionOnly({ runId, exchange, symbol } = {}) {
+async function syncFuturesPositionOnly({
+  runId,
+  exchange,
+  symbol,
+  force = false,
+  dedupeWindowMs = 0,
+} = {}) {
   const ex = String(exchange || "").toUpperCase();
   if (!ex.includes("BINANCE")) return { ok: false, skipped: true, reason: "EXCHANGE_NOT_BINANCE" };
+  if (force !== true) {
+    const dedupe = shouldSkipRecentFuturesPositionSync({
+      exchange,
+      symbol,
+      dedupeWindowMs,
+    });
+    if (dedupe.skip === true) {
+      return {
+        ok: true,
+        skipped: true,
+        reason: dedupe.reason,
+        ageMs: dedupe.ageMs,
+        dedupeWindowMs: dedupe.dedupeWindowMs,
+      };
+    }
+  }
   const liveCfg = await resolveLiveFuturesConfig({ exchange, symbol });
   if (!liveCfg || (!liveCfg.apiKey || !liveCfg.apiSecret)) {
     return { ok: false, skipped: true, reason: "BINANCEFUT_KEYS_MISSING" };
   }
   const riskBudget = await resolveRiskBudget(symbol, exchange);
-  return serializeFuturesPositionSync({
+  const result = await serializeFuturesPositionSync({
     exchange,
     symbol,
     runner: () => runDistributedFuturesPositionSync({
@@ -7518,6 +7577,10 @@ async function syncFuturesPositionOnly({ runId, exchange, symbol } = {}) {
       }),
     }),
   });
+  if (result && result.ok === true && result.skipped !== true) {
+    markRecentFuturesPositionSync({ exchange, symbol });
+  }
+  return result;
 }
 
 function shouldForceImmediateLiveFuturesReconcile({ exchange, executionMode } = {}) {
@@ -15304,6 +15367,8 @@ module.exports = {
     stripExchangeOwnedProjectionMeta,
     resolveOptimisticNativeProtectionMetaPatch,
     buildFuturesPositionSyncKey,
+    shouldSkipRecentFuturesPositionSync,
+    markRecentFuturesPositionSync,
     serializeFuturesPositionSync,
     buildFuturesPositionSyncLeaseDocPath,
     runDistributedFuturesPositionSync,

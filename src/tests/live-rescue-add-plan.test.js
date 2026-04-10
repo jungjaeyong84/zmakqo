@@ -235,10 +235,32 @@ async function run() {
     __test.buildFuturesPositionSyncKey("binancefut", "dogeusdt"),
     "BINANCEFUT::DOGEUSDT"
   );
+  assert.strictEqual(typeof __test.shouldSkipRecentFuturesPositionSync, "function", "recent sync dedupe helper missing");
+  assert.strictEqual(typeof __test.markRecentFuturesPositionSync, "function", "recent sync marker helper missing");
   assert.strictEqual(
     __test.buildFuturesPositionSyncLeaseDocPath("binancefut", "dogeusdt"),
     "runtime_locks/futures_position_sync__BINANCEFUT__DOGEUSDT"
   );
+  __test.markRecentFuturesPositionSync({
+    exchange: "BINANCEFUT",
+    symbol: "DOGEUSDT",
+    atMs: 1_700_000_000_000,
+  });
+  const recentSyncSkip = __test.shouldSkipRecentFuturesPositionSync({
+    exchange: "BINANCEFUT",
+    symbol: "DOGEUSDT",
+    dedupeWindowMs: 15000,
+    nowMs: 1_700_000_000_500,
+  });
+  assert.strictEqual(recentSyncSkip.skip, true);
+  assert.strictEqual(recentSyncSkip.reason, "RECENT_SYNC_DEDUPE");
+  const expiredSyncSkip = __test.shouldSkipRecentFuturesPositionSync({
+    exchange: "BINANCEFUT",
+    symbol: "DOGEUSDT",
+    dedupeWindowMs: 15000,
+    nowMs: 1_700_000_020_000,
+  });
+  assert.strictEqual(expiredSyncSkip.skip, false);
 
   const ordered = [];
   const firstSync = __test.serializeFuturesPositionSync({
