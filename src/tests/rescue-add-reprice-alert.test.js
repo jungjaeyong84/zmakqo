@@ -4,6 +4,36 @@ const assert = require("assert");
 const { __test } = require("../engine/paperUpbitRunner");
 
 async function run() {
+  const context = __test.buildRescueAddRepriceAlertContext({
+    position: {
+      avg_price: 98.75,
+      meta: {
+        add_chain_last_avg_before: 100,
+        add_chain_last_avg_after: 98.75,
+        add_chain_last_qty_pct: 0.14,
+        add_chain_last_qty_base: 14,
+        native_protection_refresh_status: "OK",
+        native_protection_stop_price: 97.2,
+      },
+    },
+    fallbackMeta: {
+      add_chain_last_avg_before: 101,
+      add_chain_last_avg_after: 99.5,
+      add_chain_last_qty_pct: 0.2,
+      add_chain_last_qty_base: 20,
+      native_protection_refresh_status: "FAILED",
+    },
+    fallbackAvgBefore: 102,
+    fallbackAvgAfter: 99,
+    fallbackAddQtyPct: 0.22,
+    fallbackAddQtyBase: 22,
+  });
+  assert.strictEqual(context.avgBefore, 100);
+  assert.strictEqual(context.avgAfter, 98.75);
+  assert.strictEqual(context.addQtyPct, 0.14);
+  assert.strictEqual(context.addQtyBase, 14);
+  assert.strictEqual(context.nativeProtectionMeta.native_protection_refresh_status, "OK");
+
   let sent = null;
   const result = await __test.sendRescueAddRepriceAlert({
     exchange: "BINANCEFUT",

@@ -7421,6 +7421,47 @@ async function sendRescueAddRepriceAlert({
   });
 }
 
+function buildRescueAddRepriceAlertContext({
+  position,
+  fallbackMeta,
+  fallbackAvgBefore,
+  fallbackAvgAfter,
+  fallbackAddQtyPct,
+  fallbackAddQtyBase,
+} = {}) {
+  const pos = position && typeof position === "object" ? position : null;
+  const positionMeta = (pos && pos.meta && typeof pos.meta === "object") ? pos.meta : null;
+  const meta = positionMeta || (fallbackMeta && typeof fallbackMeta === "object" ? fallbackMeta : {});
+  const avgBefore = Number.isFinite(Number(meta.add_chain_last_avg_before))
+    ? Number(meta.add_chain_last_avg_before)
+    : Number.isFinite(Number(fallbackAvgBefore))
+      ? Number(fallbackAvgBefore)
+      : Number(pos && pos.avg_price);
+  const avgAfter = Number.isFinite(Number(meta.add_chain_last_avg_after))
+    ? Number(meta.add_chain_last_avg_after)
+    : Number.isFinite(Number(fallbackAvgAfter))
+      ? Number(fallbackAvgAfter)
+      : Number(pos && pos.avg_price);
+  const addQtyPct = Number.isFinite(Number(meta.add_chain_last_qty_pct))
+    ? Number(meta.add_chain_last_qty_pct)
+    : Number.isFinite(Number(fallbackAddQtyPct))
+      ? Number(fallbackAddQtyPct)
+      : null;
+  const addQtyBase = Number.isFinite(Number(meta.add_chain_last_qty_base))
+    ? Number(meta.add_chain_last_qty_base)
+    : Number.isFinite(Number(fallbackAddQtyBase))
+      ? Number(fallbackAddQtyBase)
+      : null;
+  const nativeProtectionMeta = positionMeta || (fallbackMeta && typeof fallbackMeta === "object" ? fallbackMeta : {});
+  return {
+    avgBefore,
+    avgAfter,
+    addQtyPct,
+    addQtyBase,
+    nativeProtectionMeta,
+  };
+}
+
 function shouldSendNativeProtectionAlert({ symbol, reason } = {}) {
   const sym = String(symbol || "").trim().toUpperCase();
   const why = String(reason || "").trim().toUpperCase() || "UNKNOWN";
@@ -13164,19 +13205,27 @@ async function runPaperFuturesForBar({
       posQtyBase = Number.isFinite(newQtyBase) ? newQtyBase : posQtyBase;
     }
     if (intent === "ADD" && executionMode === "LIVE") {
+      const rescueAddAlert = buildRescueAddRepriceAlertContext({
+        position: pos,
+        fallbackMeta: nextMeta,
+        fallbackAvgBefore: pos.avg_price,
+        fallbackAvgAfter: newAvg,
+        fallbackAddQtyPct: qtyFraction,
+        fallbackAddQtyBase: qtyBaseDelta,
+      });
       sendRescueAddRepriceAlert({
         exchange,
         symbol,
         event: it.event,
         executionMode,
         position: pos,
-        avgBefore: Number.isFinite(Number(nextMeta.add_chain_last_avg_before)) ? Number(nextMeta.add_chain_last_avg_before) : Number(pos.avg_price),
-        avgAfter: Number.isFinite(Number(newAvg)) ? Number(newAvg) : Number(pos.avg_price),
-        addQtyPct: Number.isFinite(Number(nextMeta.add_chain_last_qty_pct)) ? Number(nextMeta.add_chain_last_qty_pct) : qtyFraction,
-        addQtyBase: Number.isFinite(Number(nextMeta.add_chain_last_qty_base)) ? Number(nextMeta.add_chain_last_qty_base) : qtyBaseDelta,
+        avgBefore: rescueAddAlert.avgBefore,
+        avgAfter: rescueAddAlert.avgAfter,
+        addQtyPct: rescueAddAlert.addQtyPct,
+        addQtyBase: rescueAddAlert.addQtyBase,
         fillPrice,
         exitRules: appliedExitRules || null,
-        nativeProtectionMeta: nextMeta,
+        nativeProtectionMeta: rescueAddAlert.nativeProtectionMeta,
       }).catch((e) => {
         console.warn("[RESCUE_ADD_REPRICE_ALERT_FAIL]", e && e.message ? e.message : String(e));
       });
@@ -14818,6 +14867,7 @@ module.exports = {
     resolveNativeProtectionStageState,
     resolveNativeProtectionPositionMeta,
     buildLiveNativeProtectionRefreshArgs,
+    buildRescueAddRepriceAlertContext,
     computeBinanceNativeProtectionPrices,
     shouldRepairActiveExitRuntimeState,
     repairActivePositionExitRuntimeState,
