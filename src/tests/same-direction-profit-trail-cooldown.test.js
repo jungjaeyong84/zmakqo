@@ -24,6 +24,11 @@ function run() {
     "function",
     "resolveSameDirectionTrailProfitCooldownSnapshot export missing"
   );
+  assert.strictEqual(
+    typeof __test.loadSameDirectionTrailProfitObservationSafe,
+    "function",
+    "loadSameDirectionTrailProfitObservationSafe export missing"
+  );
 
   const cfg = __test.resolveSameDirectionTrailProfitCooldownConfig({
     same_direction_trail_profit_cooldown_enabled: true,
@@ -87,6 +92,13 @@ function run() {
   assert.strictEqual(mergedSnapshot.same_direction_trail_profit_exit_dir, "SHORT");
   assert.strictEqual(mergedSnapshot.same_direction_trail_profit_exit_event, "EXIT_TRAIL_NEW");
   assert.strictEqual(mergedSnapshot.same_direction_trail_profit_exit_realized_pnl, 8.5);
+
+  const disabledObservation = __test.loadSameDirectionTrailProfitObservationSafe({
+    enabled: false,
+    exchange: "BINANCEFUT",
+    symbol: "DOGEUSDT",
+  });
+  assert.ok(disabledObservation && typeof disabledObservation.then === "function", "helper should remain async");
 
   const nonProfitPatch = __test.buildSameDirectionTrailProfitCooldownMetaPatch({
     event: "EXIT_TRAIL_1P",

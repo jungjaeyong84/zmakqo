@@ -2808,6 +2808,24 @@ function resolveSameDirectionTrailProfitCooldownSnapshot({
   };
 }
 
+async function loadSameDirectionTrailProfitObservationSafe({
+  enabled = false,
+  exchange,
+  symbol,
+} = {}) {
+  if (enabled !== true) return null;
+  try {
+    return await getPositionRuntimeObservation({ exchange, symbol });
+  } catch (e) {
+    console.warn("[SAME_DIRECTION_TRAIL_PROFIT_OBSERVATION_LOAD_FAIL]", {
+      exchange,
+      symbol,
+      error: e && e.message ? e.message : String(e),
+    });
+    return null;
+  }
+}
+
 function computeReplayStopDistancePct({ position, bar, positionSide, rules } = {}) {
   const pos = position || {};
   const avg = Number(pos.avg_price);
@@ -9310,18 +9328,11 @@ async function runPaperUpbitForBar({
   // 1) 포지션 로드
   let pos = await getPosition({ exchange, symbol });
   let posMeta = (pos && typeof pos.meta === "object") ? { ...pos.meta } : {};
-  let sameDirectionTrailProfitObservation = null;
-  if (sameDirectionTrailProfitCooldownCfg.enabled) {
-    try {
-      sameDirectionTrailProfitObservation = await getPositionRuntimeObservation({ exchange, symbol });
-    } catch (e) {
-      console.warn("[SAME_DIRECTION_TRAIL_PROFIT_OBSERVATION_LOAD_FAIL]", {
-        exchange,
-        symbol,
-        error: e && e.message ? e.message : String(e),
-      });
-    }
-  }
+  let sameDirectionTrailProfitObservation = await loadSameDirectionTrailProfitObservationSafe({
+    enabled: sameDirectionTrailProfitCooldownCfg.enabled,
+    exchange,
+    symbol,
+  });
   const oppositeCooldownWindow = binanceFutOnly
     ? resolveOppositeCooldownWindowFromPosition({ sysCfg: sysCfgEffective, position: pos })
     : { bars: 0, timeMs: 0, cohort: null };
@@ -11819,18 +11830,11 @@ async function runPaperFuturesForBar({
     }
   }
   let posMeta = (pos && typeof pos.meta === "object") ? { ...pos.meta } : {};
-  let sameDirectionTrailProfitObservation = null;
-  if (sameDirectionTrailProfitCooldownCfg.enabled) {
-    try {
-      sameDirectionTrailProfitObservation = await getPositionRuntimeObservation({ exchange, symbol });
-    } catch (e) {
-      console.warn("[SAME_DIRECTION_TRAIL_PROFIT_OBSERVATION_LOAD_FAIL]", {
-        exchange,
-        symbol,
-        error: e && e.message ? e.message : String(e),
-      });
-    }
-  }
+  let sameDirectionTrailProfitObservation = await loadSameDirectionTrailProfitObservationSafe({
+    enabled: sameDirectionTrailProfitCooldownCfg.enabled,
+    exchange,
+    symbol,
+  });
   const oppositeCooldownWindow = binanceFutOnly
     ? resolveOppositeCooldownWindowFromPosition({ sysCfg: sysCfgEffective, position: pos })
     : { bars: 0, timeMs: 0, cohort: null };
@@ -14944,6 +14948,7 @@ module.exports = {
     buildSameDirectionTrailProfitCooldownMetaPatch,
     resolveSameDirectionTrailProfitCooldownBlock,
     resolveSameDirectionTrailProfitCooldownSnapshot,
+    loadSameDirectionTrailProfitObservationSafe,
     evaluateLiveRescueAdd,
     evaluateReplayRescueAdd,
     resolveEvGateConfig,
