@@ -5,6 +5,8 @@ const { __test } = require("../services/binanceUserDataStream");
 const { __test: fillsSyncTest } = require("../services/binanceFuturesFillsSync");
 
 (async () => {
+  __test.clearRecentSyncMark("XRPUSDT");
+  __test.clearRecentSyncMark("BTCUSDT");
   assert.strictEqual(__test.buildUserDataStreamUrl("abc123"), `${__test.resolveUserDataStreamBaseUrl()}/abc123`);
 
   assert.deepStrictEqual(
@@ -57,6 +59,42 @@ const { __test: fillsSyncTest } = require("../services/binanceFuturesFillsSync")
   );
   assert.strictEqual(accountHandled.ok, true);
   assert.strictEqual(accountHandled.tradeExecution, false);
+
+  const retryCalls = [];
+  const firstFailure = await __test.handleUserDataMessage(
+    JSON.stringify({ e: "ORDER_TRADE_UPDATE", o: { s: "BTCUSDT", x: "TRADE" } }),
+    {
+      syncPosition: async (args) => {
+        retryCalls.push({ phase: "position", symbol: args.symbol });
+        throw new Error("temporary sync failure");
+      },
+      syncFills: async (args) => {
+        retryCalls.push({ phase: "fills", symbol: args.markets[0] });
+        return { ok: true };
+      },
+    }
+  );
+  assert.strictEqual(firstFailure.results[0].ok, false, "first failed user-stream sync should surface as failed");
+
+  const secondAttempt = await __test.handleUserDataMessage(
+    JSON.stringify({ e: "ORDER_TRADE_UPDATE", o: { s: "BTCUSDT", x: "TRADE" } }),
+    {
+      syncPosition: async (args) => {
+        retryCalls.push({ phase: "position-retry", symbol: args.symbol });
+        return { ok: true, position: { symbol_or_pair_id: args.symbol } };
+      },
+      syncFills: async (args) => {
+        retryCalls.push({ phase: "fills-retry", symbol: args.markets[0] });
+        return { ok: true };
+      },
+    }
+  );
+  assert.strictEqual(secondAttempt.results[0].ok, true, "failed dedupe mark must be cleared so immediate retry can run");
+  assert.deepStrictEqual(
+    retryCalls.map((row) => row.phase),
+    ["fills", "position", "fills-retry", "position-retry"],
+    "failed user-stream sync should not suppress the immediate retry"
+  );
 
   const issues = fillsSyncTest.buildImmediateProjectionIssues({
     event: "EXIT_TP_P0_0.8P",

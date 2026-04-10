@@ -95,6 +95,12 @@ function shouldSkipRecentSync(symbol, nowMs = Date.now()) {
   return false;
 }
 
+function clearRecentSyncMark(symbol) {
+  const sym = normalizeSymbol(symbol);
+  if (!sym) return false;
+  return recentEventSyncAt.delete(sym);
+}
+
 async function syncSymbolsForEvent(payload = {}, {
   syncPosition = syncFuturesPositionOnly,
   syncFills = syncBinanceFuturesFills,
@@ -124,8 +130,12 @@ async function syncSymbolsForEvent(payload = {}, {
         exchange: "BINANCEFUT",
         symbol,
       });
+      if (!sync || sync.ok === false) {
+        clearRecentSyncMark(symbol);
+      }
       results.push({ symbol, ok: true, eventType, fills, sync });
     } catch (e) {
+      clearRecentSyncMark(symbol);
       results.push({ symbol, ok: false, eventType, error: e && e.message ? e.message : String(e) });
     }
   }
@@ -282,6 +292,7 @@ module.exports = {
     buildUserDataStreamUrl,
     extractSymbolsFromUserDataEvent,
     isTradeExecutionUpdate,
+    clearRecentSyncMark,
     syncSymbolsForEvent,
     handleUserDataMessage,
   },
