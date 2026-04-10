@@ -14,7 +14,10 @@ const { computeFillPrice, computeFeeValue } = require("./paperExecution");
 const { listPendingIntentsForExec, listPendingIntentsOverdue, cancelExpiredPendingIntents, markIntentStatus, upsertIntent, patchIntent } = require("../storage/orderIntentsPaper");
 const { upsertFill } = require("../storage/fillsPaper");
 const { getPosition, upsertPosition } = require("../storage/positionsPaper");
-const { getPositionRuntimeObservation } = require("../storage/positionRuntimeObservations");
+const {
+  getPositionRuntimeObservation,
+  upsertSameDirectionTrailProfitObservation,
+} = require("../storage/positionRuntimeObservations");
 const { buildTradeId, upsertTradeEvent } = require("../storage/tradesPaper");
 const { upsertSignal } = require("../storage/signals");
 const { markSignalConsumed, tryLockSignal } = require("../storage/signalsConsume");
@@ -948,6 +951,12 @@ function buildBinanceNativeRefreshLeaseDocPath(exchange, symbol) {
   return `runtime_locks/binance_native_refresh__${ex}__${sym}`;
 }
 
+function buildFuturesPositionSyncLeaseDocPath(exchange, symbol) {
+  const ex = String(exchange || "").trim().toUpperCase() || "BINANCEFUT";
+  const sym = String(symbol || "").trim().toUpperCase() || "UNKNOWN";
+  return `runtime_locks/futures_position_sync__${ex}__${sym}`;
+}
+
 async function acquireBinanceNativeRefreshLease({
   exchange,
   symbol,
@@ -1389,11 +1398,19 @@ const BINANCE_NATIVE_PRICE_PROTECT = String(process.env.BINANCE_NATIVE_PRICE_PRO
 const BINANCE_NATIVE_PROTECTION_RETRY_COUNT = Math.max(0, Math.min(5, Math.floor(Number(process.env.BINANCE_NATIVE_PROTECTION_RETRY_COUNT || 1))));
 const BINANCE_NATIVE_PROTECTION_RETRY_DELAY_MS = Math.max(0, Math.floor(Number(process.env.BINANCE_NATIVE_PROTECTION_RETRY_DELAY_MS || 1200)));
 const BINANCE_NATIVE_REFRESH_LEASE_TTL_MS = Math.max(2000, Math.floor(Number(process.env.BINANCE_NATIVE_REFRESH_LEASE_TTL_MS || 8000)));
+const FUTURES_POSITION_SYNC_LEASE_ENABLED = String(process.env.FUTURES_POSITION_SYNC_LEASE_ENABLED || "1") !== "0";
+const FUTURES_POSITION_SYNC_LEASE_TTL_MS = Math.max(3000, Math.floor(Number(process.env.FUTURES_POSITION_SYNC_LEASE_TTL_MS || 12000)));
+const FUTURES_POSITION_SYNC_LEASE_WAIT_MS = Math.max(0, Math.floor(Number(process.env.FUTURES_POSITION_SYNC_LEASE_WAIT_MS || 5000)));
 const BINANCE_NATIVE_ALERT_ENABLED = String(process.env.BINANCE_NATIVE_ALERT_ENABLED || "1") !== "0";
 const BINANCE_NATIVE_ALERT_TELEGRAM_ONLY = String(process.env.BINANCE_NATIVE_ALERT_TELEGRAM_ONLY || "1") !== "0";
 const BINANCE_NATIVE_ALERT_CHANNEL_CACHE_MS = Math.max(5000, Math.floor(Number(process.env.BINANCE_NATIVE_ALERT_CHANNEL_CACHE_MS || 30000)));
 const BINANCE_NATIVE_ALERT_COOLDOWN_MS = Math.max(10000, Math.floor(Number(process.env.BINANCE_NATIVE_ALERT_COOLDOWN_MS || 60000)));
 const binanceNativeRefreshLeaseHolderId = [
+  process.env.K_SERVICE || "local",
+  process.env.K_REVISION || "dev",
+  process.pid,
+].join(":");
+const futuresPositionSyncLeaseHolderId = [
   process.env.K_SERVICE || "local",
   process.env.K_REVISION || "dev",
   process.pid,
@@ -2760,6 +2777,23 @@ function buildSameDirectionTrailProfitCooldownMetaPatch({
     same_direction_trail_profit_exit_event: ev,
     same_direction_trail_profit_exit_realized_pnl: pnl,
     same_direction_trail_profit_exit_source: String(source || "INTENT_FILL").trim().slice(0, 80) || "INTENT_FILL",
+  };
+}
+
+function buildSameDirectionTrailProfitObservationPayload(metaPatch = null) {
+  const patch = (metaPatch && typeof metaPatch === "object") ? metaPatch : {};
+  const exitDir = normalizePositionSide(patch.same_direction_trail_profit_exit_dir);
+  const exitWallMs = Number(patch.same_direction_trail_profit_exit_wall_ms);
+  const exitEvent = String(patch.same_direction_trail_profit_exit_event || "").trim().toUpperCase() || null;
+  const realizedPnl = Number(patch.same_direction_trail_profit_exit_realized_pnl);
+  const source = String(patch.same_direction_trail_profit_exit_source || "").trim().toUpperCase() || null;
+  if (!exitDir || !Number.isFinite(exitWallMs) || exitWallMs <= 0 || !exitEvent) return null;
+  return {
+    exit_dir: exitDir,
+    exit_wall_ms: exitWallMs,
+    exit_event: exitEvent,
+    realized_pnl: Number.isFinite(realizedPnl) ? realizedPnl : null,
+    source,
   };
 }
 
@@ -7216,6 +7250,148 @@ async function serializeFuturesPositionSync({ exchange, symbol, runner } = {}) {
   }
 }
 
+async function acquireFuturesPositionSyncLease({
+  exchange,
+  symbol,
+  ttlMs = FUTURES_POSITION_SYNC_LEASE_TTL_MS,
+  holderId = futuresPositionSyncLeaseHolderId,
+} = {}) {
+  const db = getFirestore();
+  const now = Date.now();
+  const leaseUntil = now + Math.max(3000, Math.floor(Number(ttlMs) || FUTURES_POSITION_SYNC_LEASE_TTL_MS));
+  const ref = db.doc(buildFuturesPositionSyncLeaseDocPath(exchange, symbol));
+  let acquired = false;
+  let holder = null;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.exists ? (snap.data() || {}) : {};
+    const owner = String(data.owner || "");
+    const leaseUntilMs = Number(data.lease_until_ms);
+    const expired = !Number.isFinite(leaseUntilMs) || leaseUntilMs <= now;
+    if (!owner || owner === holderId || expired) {
+      acquired = true;
+      tx.set(ref, {
+        owner: holderId,
+        lease_until_ms: leaseUntil,
+        heartbeat_ms: now,
+        heartbeat_at: new Date(now).toISOString(),
+      }, { merge: true });
+      return;
+    }
+    acquired = false;
+    holder = owner || null;
+  });
+  return { acquired, holder, leaseUntil, holderId };
+}
+
+async function heartbeatFuturesPositionSyncLease({
+  exchange,
+  symbol,
+  ttlMs = FUTURES_POSITION_SYNC_LEASE_TTL_MS,
+  holderId = futuresPositionSyncLeaseHolderId,
+} = {}) {
+  const db = getFirestore();
+  const now = Date.now();
+  const leaseUntil = now + Math.max(3000, Math.floor(Number(ttlMs) || FUTURES_POSITION_SYNC_LEASE_TTL_MS));
+  const ref = db.doc(buildFuturesPositionSyncLeaseDocPath(exchange, symbol));
+  let ok = false;
+  let holder = null;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const data = snap.data() || {};
+    const owner = String(data.owner || "");
+    if (owner !== String(holderId || "")) {
+      holder = owner || null;
+      return;
+    }
+    ok = true;
+    tx.set(ref, {
+      lease_until_ms: leaseUntil,
+      heartbeat_ms: now,
+      heartbeat_at: new Date(now).toISOString(),
+    }, { merge: true });
+  });
+  return { ok, holder, leaseUntil, holderId };
+}
+
+async function releaseFuturesPositionSyncLease({
+  exchange,
+  symbol,
+  holderId = futuresPositionSyncLeaseHolderId,
+} = {}) {
+  const db = getFirestore();
+  const ref = db.doc(buildFuturesPositionSyncLeaseDocPath(exchange, symbol));
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const data = snap.data() || {};
+    if (String(data.owner || "") !== String(holderId || "")) return;
+    tx.set(ref, {
+      lease_until_ms: Date.now() - 1,
+      released_at: new Date().toISOString(),
+    }, { merge: true });
+  });
+}
+
+async function runDistributedFuturesPositionSync({
+  exchange,
+  symbol,
+  runner,
+  leaseEnabled = FUTURES_POSITION_SYNC_LEASE_ENABLED,
+  ttlMs = FUTURES_POSITION_SYNC_LEASE_TTL_MS,
+  waitMs = FUTURES_POSITION_SYNC_LEASE_WAIT_MS,
+  acquireLease = acquireFuturesPositionSyncLease,
+  heartbeatLease = heartbeatFuturesPositionSyncLease,
+  releaseLease = releaseFuturesPositionSyncLease,
+  sleep = sleepMs,
+} = {}) {
+  if (typeof runner !== "function") throw new Error("runDistributedFuturesPositionSync: runner required");
+  if (leaseEnabled !== true) return runner();
+
+  const maxWaitMs = Math.max(0, Math.floor(Number(waitMs) || 0));
+  const deadline = Date.now() + maxWaitMs;
+  let lease = null;
+  for (;;) {
+    lease = await acquireLease({ exchange, symbol, ttlMs });
+    if (lease && lease.acquired === true) break;
+    if (Date.now() >= deadline) {
+      return { ok: false, skipped: true, reason: "LEASE_HELD", holder: lease && lease.holder ? lease.holder : null };
+    }
+    await sleep(Math.min(250, Math.max(50, deadline - Date.now())));
+  }
+
+  let heartbeatLost = false;
+  const heartbeatEveryMs = Math.max(1000, Math.floor(Math.max(3000, ttlMs) / 3));
+  const heartbeatTimer = setInterval(() => {
+    heartbeatLease({ exchange, symbol, ttlMs, holderId: lease.holderId })
+      .then((res) => {
+        if (!res || res.ok !== true) heartbeatLost = true;
+      })
+      .catch(() => {
+        heartbeatLost = true;
+      });
+  }, heartbeatEveryMs);
+
+  try {
+    const heartbeat = await heartbeatLease({ exchange, symbol, ttlMs, holderId: lease.holderId });
+    if (!heartbeat || heartbeat.ok !== true) {
+      return { ok: false, skipped: true, reason: "LEASE_LOST", holder: heartbeat && heartbeat.holder ? heartbeat.holder : null };
+    }
+    const result = await runner();
+    if (heartbeatLost && result && typeof result === "object") {
+      return {
+        ...result,
+        lease_lost_after_run: true,
+      };
+    }
+    return result;
+  } finally {
+    clearInterval(heartbeatTimer);
+    await releaseLease({ exchange, symbol, holderId: lease && lease.holderId }).catch(() => {});
+  }
+}
+
 async function syncFuturesPositionOnly({ runId, exchange, symbol } = {}) {
   const ex = String(exchange || "").toUpperCase();
   if (!ex.includes("BINANCE")) return { ok: false, skipped: true, reason: "EXCHANGE_NOT_BINANCE" };
@@ -7227,14 +7403,18 @@ async function syncFuturesPositionOnly({ runId, exchange, symbol } = {}) {
   return serializeFuturesPositionSync({
     exchange,
     symbol,
-    runner: () => syncBinanceFuturesPosition({
-      runId,
+    runner: () => runDistributedFuturesPositionSync({
       exchange,
       symbol,
-      riskBudget,
-      liveCfg,
-      // Avoid unconditional refresh on every market/tick; only force when explicitly marked.
-      forceRefresh: shouldForceFuturesRefresh(symbol),
+      runner: () => syncBinanceFuturesPosition({
+        runId,
+        exchange,
+        symbol,
+        riskBudget,
+        liveCfg,
+        // Avoid unconditional refresh on every market/tick; only force when explicitly marked.
+        forceRefresh: shouldForceFuturesRefresh(symbol),
+      }),
     }),
   });
 }
@@ -10545,22 +10725,20 @@ async function runPaperUpbitForBar({
         includeEntryRiskFields: false,
       }));
     }
+    let profitableTrailCooldownMeta = null;
     if (closing) {
       nextMeta = mergeMeta(nextMeta, buildClosingFillMetaPatch({
         execBarCloseMs,
         metaSide,
         includeExitProfileRollback: false,
       }));
-      const profitableTrailCooldownMeta = buildSameDirectionTrailProfitCooldownMetaPatch({
+      profitableTrailCooldownMeta = buildSameDirectionTrailProfitCooldownMetaPatch({
         event: ev,
         realizedPnlQuote,
         positionSide: metaSide,
         exitWallMs: resolveEventRefMs(execBarCloseMs),
         source: "INTENT_FILL",
       });
-      if (profitableTrailCooldownMeta) {
-        nextMeta = mergeMeta(nextMeta, profitableTrailCooldownMeta);
-      }
     }
     if (isTpP0EventLocal(ev) && newState === "ACTIVE" && applyOptimisticFillProjection) {
       nextMeta = mergeMeta(nextMeta, {
@@ -10635,6 +10813,29 @@ async function runPaperUpbitForBar({
       budgetSource: useBudget ? riskBudget.source : null,
       meta: projectedMetaForWrite,
     });
+
+    if (profitableTrailCooldownMeta) {
+      const cooldownObservation = buildSameDirectionTrailProfitObservationPayload(profitableTrailCooldownMeta);
+      if (cooldownObservation) {
+        try {
+          await upsertSameDirectionTrailProfitObservation({
+            exchange,
+            symbol,
+            exitDir: cooldownObservation.exit_dir,
+            exitWallMs: cooldownObservation.exit_wall_ms,
+            exitEvent: cooldownObservation.exit_event,
+            realizedPnl: cooldownObservation.realized_pnl,
+            source: cooldownObservation.source || "INTENT_FILL",
+          });
+          sameDirectionTrailProfitObservation = {
+            ...(sameDirectionTrailProfitObservation && typeof sameDirectionTrailProfitObservation === "object" ? sameDirectionTrailProfitObservation : {}),
+            same_direction_trail_profit: cooldownObservation,
+          };
+        } catch (e) {
+          console.warn("[SAME_DIRECTION_TRAIL_COOLDOWN_OBS_FAIL]", e && e.message ? e.message : String(e));
+        }
+      }
+    }
 
     if (forceLiveReconcile) {
       try {
@@ -13201,22 +13402,20 @@ async function runPaperFuturesForBar({
         includeEntryRiskFields: true,
       }));
     }
+    let profitableTrailCooldownMeta = null;
     if (closing) {
       nextMeta = mergeMeta(nextMeta, buildClosingFillMetaPatch({
         execBarCloseMs,
         metaSide,
         includeExitProfileRollback: true,
       }));
-      const profitableTrailCooldownMeta = buildSameDirectionTrailProfitCooldownMetaPatch({
+      profitableTrailCooldownMeta = buildSameDirectionTrailProfitCooldownMetaPatch({
         event: ev,
         realizedPnlQuote,
         positionSide: metaSide,
         exitWallMs: resolveEventRefMs(execBarCloseMs),
         source: "INTENT_FILL",
       });
-      if (profitableTrailCooldownMeta) {
-        nextMeta = mergeMeta(nextMeta, profitableTrailCooldownMeta);
-      }
     }
     if (isTpP0EventLocal(ev) && newState === "ACTIVE" && applyOptimisticFillProjection) {
       nextMeta = mergeMeta(nextMeta, {
@@ -13324,6 +13523,29 @@ async function runPaperFuturesForBar({
       budgetSource: useBudget ? riskBudget.source : null,
       meta: projectedMetaForWrite,
     });
+
+    if (profitableTrailCooldownMeta) {
+      const cooldownObservation = buildSameDirectionTrailProfitObservationPayload(profitableTrailCooldownMeta);
+      if (cooldownObservation) {
+        try {
+          await upsertSameDirectionTrailProfitObservation({
+            exchange,
+            symbol,
+            exitDir: cooldownObservation.exit_dir,
+            exitWallMs: cooldownObservation.exit_wall_ms,
+            exitEvent: cooldownObservation.exit_event,
+            realizedPnl: cooldownObservation.realized_pnl,
+            source: cooldownObservation.source || "INTENT_FILL",
+          });
+          sameDirectionTrailProfitObservation = {
+            ...(sameDirectionTrailProfitObservation && typeof sameDirectionTrailProfitObservation === "object" ? sameDirectionTrailProfitObservation : {}),
+            same_direction_trail_profit: cooldownObservation,
+          };
+        } catch (e) {
+          console.warn("[SAME_DIRECTION_TRAIL_COOLDOWN_OBS_FAIL]", e && e.message ? e.message : String(e));
+        }
+      }
+    }
 
     if (forceLiveReconcile) {
       try {
@@ -14952,6 +15174,7 @@ module.exports = {
     isCoreOrRealEvent,
     resolveSameDirectionTrailProfitCooldownConfig,
     buildSameDirectionTrailProfitCooldownMetaPatch,
+    buildSameDirectionTrailProfitObservationPayload,
     resolveSameDirectionTrailProfitCooldownBlock,
     resolveSameDirectionTrailProfitCooldownSnapshot,
     loadSameDirectionTrailProfitObservationSafe,
@@ -14980,6 +15203,8 @@ module.exports = {
     resolveOptimisticNativeProtectionMetaPatch,
     buildFuturesPositionSyncKey,
     serializeFuturesPositionSync,
+    buildFuturesPositionSyncLeaseDocPath,
+    runDistributedFuturesPositionSync,
     shouldForceImmediateLiveFuturesReconcile,
     sanitizeBarLoopMetaUpdates,
     applyBarLoopObservationMetaUpdate,

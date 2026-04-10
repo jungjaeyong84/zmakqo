@@ -10,7 +10,7 @@ const { getExchangeSettingsForProvider } = require("../utils/exchangeSettings");
 const { normalizeMarketSymbolForProvider, normalizeTf, defaultExecTfFromEnv } = require("../utils/marketConfig");
 const { getFirestore } = require("../storage/firestore");
 const { getSystemSettingsForProvider } = require("../storage/settings");
-const { upsertExternalFill } = require("../storage/fillsPaper");
+const { upsertExternalFill, markExternalFillUnverified } = require("../storage/fillsPaper");
 const { getPosition, upsertPosition } = require("../storage/positionsPaper");
 const { upsertSameDirectionTrailProfitObservation } = require("../storage/positionRuntimeObservations");
 const { patchIntent } = require("../storage/orderIntentsPaper");
@@ -1660,7 +1660,7 @@ async function syncMarketTrades({
 
       if (upserted && upserted.inserted) inserted += 1;
       if (upserted && upserted.inserted && shouldAuditProjectionImmediately(event)) {
-        insertedProjectionAuditEvents.push({ event, tradeMs });
+        insertedProjectionAuditEvents.push({ fillId, event, tradeMs });
       }
       if (upserted && upserted.inserted && alertEnabled) {
         const isExitEvent = event.startsWith("EXIT_");
@@ -1765,6 +1765,13 @@ async function syncMarketTrades({
         position: currentPos,
       });
       if (issues.length) {
+        if (latestAuditEvent && latestAuditEvent.fillId) {
+          await markExternalFillUnverified({
+            fillId: latestAuditEvent.fillId,
+            event: latestAuditEvent.event,
+            issues,
+          });
+        }
         await sendImmediateProjectionMismatchAlert({
           symbol: sym,
           event: latestAuditEvent && latestAuditEvent.event,

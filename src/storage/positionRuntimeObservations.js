@@ -6,6 +6,12 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function normalizeOptionalFiniteNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function observationId({ exchange, symbol } = {}) {
   return `OBS__${String(exchange || "").toUpperCase().trim()}__${String(symbol || "").toUpperCase().trim()}`;
 }
@@ -56,6 +62,59 @@ async function upsertSameDirectionTrailProfitObservation({
   return payload;
 }
 
+function buildTrailObservationPayload({
+  exchange,
+  symbol,
+  side = null,
+  trailHigh = null,
+  trailHighAtMs = null,
+  trailLow = null,
+  trailLowAtMs = null,
+  source = null,
+} = {}) {
+  const id = observationId({ exchange, symbol });
+  return {
+    observation_id: id,
+    exchange,
+    symbol_or_pair_id: symbol,
+    trail_observation: {
+      side: side || null,
+      trail_high: normalizeOptionalFiniteNumber(trailHigh),
+      trail_high_at_ms: normalizeOptionalFiniteNumber(trailHighAtMs),
+      trail_low: normalizeOptionalFiniteNumber(trailLow),
+      trail_low_at_ms: normalizeOptionalFiniteNumber(trailLowAtMs),
+      source: source || null,
+    },
+    updated_at: nowIso(),
+  };
+}
+
+async function upsertTrailObservation({
+  exchange,
+  symbol,
+  side = null,
+  trailHigh = null,
+  trailHighAtMs = null,
+  trailLow = null,
+  trailLowAtMs = null,
+  source = null,
+} = {}) {
+  const db = getFirestore();
+  const payload = buildTrailObservationPayload({
+    exchange,
+    symbol,
+    side,
+    trailHigh,
+    trailHighAtMs,
+    trailLow,
+    trailLowAtMs,
+    source,
+  });
+  const ref = db.collection("position_runtime_observations").doc(payload.observation_id);
+  await ref.set(payload, { merge: true });
+  return payload;
+}
+
 async function upsertSelfHealFailureObservation({
   exchange,
   symbol,
@@ -84,8 +143,10 @@ async function upsertSelfHealFailureObservation({
 module.exports = {
   getPositionRuntimeObservation,
   upsertSameDirectionTrailProfitObservation,
+  upsertTrailObservation,
   upsertSelfHealFailureObservation,
   __test: {
     observationId,
+    buildTrailObservationPayload,
   },
 };

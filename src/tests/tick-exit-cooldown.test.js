@@ -3,6 +3,7 @@
 const assert = require("assert");
 const { __test } = require("../services/binanceTickExit");
 const { __test: runnerTest } = require("../engine/paperUpbitRunner");
+const { __test: observationTest } = require("../storage/positionRuntimeObservations");
 
 function run() {
   __test._symbolCooldownState.clear();
@@ -10,6 +11,7 @@ function run() {
   assert.strictEqual(typeof __test.buildTickTrailReconcileRunId, "function", "trail reconcile run id helper missing");
   assert.strictEqual(typeof __test.heartbeatTickExitLease, "function", "tick exit lease heartbeat helper missing");
   assert.strictEqual(typeof __test.runTickExitSelfHealPhase, "function", "tick exit self-heal helper missing");
+  assert.strictEqual(typeof observationTest.buildTrailObservationPayload, "function", "trail observation payload helper missing");
 
   const obsPatch = __test.buildTickTrailObservationDocUpdate({ "meta.trail_high": 1.23, "meta.trail_high_at_ms": 123 }, "2026-04-10T00:00:00.000Z");
   assert.deepStrictEqual(obsPatch, {
@@ -21,6 +23,25 @@ function run() {
     __test.buildTickTrailReconcileRunId("dogeusdt", 12345),
     "RUN__TRAIL_RECONCILE__BINANCEFUT__DOGEUSDT__12345",
     "trail reconcile run id must normalize symbol"
+  );
+  assert.deepStrictEqual(
+    observationTest.buildTrailObservationPayload({
+      exchange: "BINANCEFUT",
+      symbol: "DOGEUSDT",
+      side: "LONG",
+      trailHigh: 1.23,
+      trailHighAtMs: 123,
+      source: "TICK_EXIT",
+    }).trail_observation,
+    {
+      side: "LONG",
+      trail_high: 1.23,
+      trail_high_at_ms: 123,
+      trail_low: null,
+      trail_low_at_ms: null,
+      source: "TICK_EXIT",
+    },
+    "trail observation payload should keep trail snapshot in observation store format"
   );
 
   assert.strictEqual(typeof runnerTest.computeTrailingMetaUpdate, "function", "computeTrailingMetaUpdate export missing");

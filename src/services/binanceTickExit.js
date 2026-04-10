@@ -5,6 +5,7 @@ const os = require("os");
 const { getExchangeSettingsForProvider } = require("../utils/exchangeSettings");
 const { getFirestore } = require("../storage/firestore");
 const { getSystemSettingsForProvider } = require("../storage/settings");
+const { upsertTrailObservation } = require("../storage/positionRuntimeObservations");
 const { getPosition } = require("../storage/positions");
 const { clearTpP1PendingIfUnchanged, posId } = require("../storage/positionsPaper");
 const { resolveExitRulesForPosition, computeRunnerExitStopPrice, resolveTrailDelayState, resolveTpP0Pct } = require("../engine/signalEngine");
@@ -746,8 +747,28 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
             );
             if (pos.meta && _trailField === "trail_high" && Number.isFinite(_trailNext)) {
               pos.meta.trail_high = _trailNext;
+              pos.meta.trail_high_at_ms = tickNow;
             } else if (pos.meta && _trailField === "trail_low" && Number.isFinite(_trailNext)) {
               pos.meta.trail_low = _trailNext;
+              pos.meta.trail_low_at_ms = tickNow;
+            }
+            try {
+              await upsertTrailObservation({
+                exchange: "BINANCEFUT",
+                symbol,
+                side: _tSide,
+                trailHigh: pos.meta && Number.isFinite(Number(pos.meta.trail_high)) ? Number(pos.meta.trail_high) : null,
+                trailHighAtMs: pos.meta && Number.isFinite(Number(pos.meta.trail_high_at_ms)) ? Number(pos.meta.trail_high_at_ms) : null,
+                trailLow: pos.meta && Number.isFinite(Number(pos.meta.trail_low)) ? Number(pos.meta.trail_low) : null,
+                trailLowAtMs: pos.meta && Number.isFinite(Number(pos.meta.trail_low_at_ms)) ? Number(pos.meta.trail_low_at_ms) : null,
+                source: "TICK_EXIT",
+              });
+            } catch (_trailObsErr) {
+              structuredLog("tick_exit_trail_observation_write_error", {
+                exchange: "BINANCEFUT",
+                symbol: String(symbol).toUpperCase(),
+                error: String(_trailObsErr && _trailObsErr.message || _trailObsErr).slice(0, 200),
+              }, "warn");
             }
             const _tLogKey = `trail_upd_${String(symbol).toUpperCase()}`;
             const _tNow = nowMs();

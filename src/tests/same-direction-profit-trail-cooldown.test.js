@@ -15,6 +15,11 @@ function run() {
     "buildSameDirectionTrailProfitCooldownMetaPatch export missing"
   );
   assert.strictEqual(
+    typeof __test.buildSameDirectionTrailProfitObservationPayload,
+    "function",
+    "buildSameDirectionTrailProfitObservationPayload export missing"
+  );
+  assert.strictEqual(
     typeof __test.resolveSameDirectionTrailProfitCooldownBlock,
     "function",
     "resolveSameDirectionTrailProfitCooldownBlock export missing"
@@ -47,6 +52,15 @@ function run() {
   assert.strictEqual(patch.same_direction_trail_profit_exit_dir, "LONG");
   assert.strictEqual(patch.same_direction_trail_profit_exit_event, "EXIT_TRAIL_1P");
   assert.strictEqual(patch.same_direction_trail_profit_exit_realized_pnl, 12.5);
+
+  const observationPayload = __test.buildSameDirectionTrailProfitObservationPayload(patch);
+  assert.deepStrictEqual(observationPayload, {
+    exit_dir: "LONG",
+    exit_wall_ms: Date.parse("2026-03-14T10:00:00Z"),
+    exit_event: "EXIT_TRAIL_1P",
+    realized_pnl: 12.5,
+    source: "INTENT_FILL",
+  });
 
   const blocked = __test.resolveSameDirectionTrailProfitCooldownBlock({
     cfg,

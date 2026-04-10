@@ -86,6 +86,37 @@ function canonicalEventId({ exchange, symbol, tf, signalBarCloseMs, event, side 
   ].join("__");
 }
 
+function buildExternalFillUnverifiedPatch({
+  current = null,
+  event = null,
+  issues = [],
+  decisionReason = "PROJECTION_MISMATCH_UNVERIFIED",
+} = {}) {
+  const doc = current && typeof current === "object" ? current : {};
+  const exchange = doc.exchange || null;
+  const symbol = doc.symbol || doc.symbol_or_pair_id || null;
+  const tf = doc.tf || null;
+  const execBarCloseTimeUtcMs = Number(doc.exec_bar_close_time_utc_ms);
+  const side = doc.side || null;
+  const baseEvent = String(event || doc.event || "").trim().toUpperCase() || "UNKNOWN";
+  const unverifiedEvent = baseEvent.endsWith("_UNVERIFIED") ? baseEvent : `${baseEvent}_UNVERIFIED`;
+  return {
+    event: unverifiedEvent,
+    decision_reason: decisionReason || "PROJECTION_MISMATCH_UNVERIFIED",
+    canonical_event_id: canonicalEventId({
+      exchange,
+      symbol,
+      tf,
+      signalBarCloseMs: Number(doc.signal_bar_close_time_utc_ms) || execBarCloseTimeUtcMs,
+      event: unverifiedEvent,
+      side,
+    }),
+    classification_verified: false,
+    classification_issues: Array.isArray(issues) ? issues.slice() : [],
+    updated_at: nowIso(),
+  };
+}
+
 // fills_paper: intent 실행 결과(체결) 기록
 async function upsertFill({
   intentId,
@@ -377,6 +408,10 @@ async function upsertExternalFill({
 
     created_at,
     updated_at: now,
+    classification_verified: existing && existing.classification_verified === false ? false : true,
+    classification_issues: existing && existing.classification_verified === false
+      ? (Array.isArray(existing.classification_issues) ? existing.classification_issues.slice() : [])
+      : [],
   };
 
   if (extra && typeof extra === "object") {
@@ -388,12 +423,36 @@ async function upsertExternalFill({
   return { ok: true, fill_id: fillId, inserted: createdNew };
 }
 
+async function markExternalFillUnverified({
+  fillId,
+  event,
+  issues = [],
+  decisionReason = "PROJECTION_MISMATCH_UNVERIFIED",
+} = {}) {
+  if (!fillId) throw new Error("markExternalFillUnverified: fillId required");
+  const db = getFirestore();
+  const ref = db.collection("fills_paper").doc(fillId);
+  const snap = await ref.get();
+  if (!snap.exists) return { ok: false, skipped: true, reason: "FILL_NOT_FOUND" };
+  const current = snap.data() || {};
+  const payload = buildExternalFillUnverifiedPatch({
+    current,
+    event,
+    issues,
+    decisionReason,
+  });
+  await ref.set(payload, { merge: true });
+  return { ok: true, fill_id: fillId, event: payload.event };
+}
+
 module.exports = {
   upsertFill,
   upsertExternalFill,
+  markExternalFillUnverified,
   __test: {
     shouldRequireLineageForFill,
     resolveFillSignalRefs,
     canonicalEventId,
+    buildExternalFillUnverifiedPatch,
   },
 };

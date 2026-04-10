@@ -23,6 +23,8 @@ async function run() {
   assert.strictEqual(typeof __test.applyTpP1IntentFillMetaUpdate, "function", "applyTpP1IntentFillMetaUpdate export missing");
   assert.strictEqual(typeof __test.buildFuturesPositionSyncKey, "function", "buildFuturesPositionSyncKey export missing");
   assert.strictEqual(typeof __test.serializeFuturesPositionSync, "function", "serializeFuturesPositionSync export missing");
+  assert.strictEqual(typeof __test.buildFuturesPositionSyncLeaseDocPath, "function", "buildFuturesPositionSyncLeaseDocPath export missing");
+  assert.strictEqual(typeof __test.runDistributedFuturesPositionSync, "function", "runDistributedFuturesPositionSync export missing");
   assert.strictEqual(typeof __test.buildOpenCloseProjectionResetMetaPatch, "function", "buildOpenCloseProjectionResetMetaPatch export missing");
   assert.strictEqual(typeof __test.buildOpenCloseTransitionMetaPatch, "function", "buildOpenCloseTransitionMetaPatch export missing");
   assert.strictEqual(typeof __test.buildClosingFillMetaPatch, "function", "buildClosingFillMetaPatch export missing");
@@ -232,6 +234,10 @@ async function run() {
     __test.buildFuturesPositionSyncKey("binancefut", "dogeusdt"),
     "BINANCEFUT::DOGEUSDT"
   );
+  assert.strictEqual(
+    __test.buildFuturesPositionSyncLeaseDocPath("binancefut", "dogeusdt"),
+    "runtime_locks/futures_position_sync__BINANCEFUT__DOGEUSDT"
+  );
 
   const ordered = [];
   const firstSync = __test.serializeFuturesPositionSync({
@@ -260,6 +266,43 @@ async function run() {
     ordered,
     ["first-start", "first-end", "second-start", "second-end"],
     "same-symbol futures sync should serialize in-order"
+  );
+
+  const leaseTrace = [];
+  let acquireCount = 0;
+  const distributedResult = await __test.runDistributedFuturesPositionSync({
+    exchange: "BINANCEFUT",
+    symbol: "DOGEUSDT",
+    waitMs: 500,
+    ttlMs: 3000,
+    acquireLease: async () => {
+      acquireCount += 1;
+      if (acquireCount === 1) return { acquired: false, holder: "other-worker" };
+      leaseTrace.push("acquired");
+      return { acquired: true, holderId: "lease-holder-1" };
+    },
+    heartbeatLease: async () => {
+      leaseTrace.push("heartbeat");
+      return { ok: true };
+    },
+    releaseLease: async () => {
+      leaseTrace.push("released");
+      return { ok: true };
+    },
+    sleep: async () => {
+      leaseTrace.push("slept");
+    },
+    runner: async () => {
+      leaseTrace.push("runner");
+      return { ok: true, source: "runner" };
+    },
+  });
+  assert.strictEqual(distributedResult.ok, true);
+  assert.strictEqual(distributedResult.source, "runner");
+  assert.deepStrictEqual(
+    leaseTrace,
+    ["slept", "acquired", "heartbeat", "runner", "released"],
+    "distributed sync should wait, acquire lease, heartbeat once, run, then release"
   );
 
   const resetPatch = __test.buildOpenCloseProjectionResetMetaPatch({ closing: false });
