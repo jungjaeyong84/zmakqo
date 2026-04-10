@@ -2464,6 +2464,44 @@ function resolveLogicalCurrentQtyPctForBudget({
   return clamp(used / max, 0, 1);
 }
 
+function resolveLiveExitCurrentQtyPct({
+  exchange,
+  position,
+  fallbackQtyPct,
+} = {}) {
+  const ex = String(exchange || "").toUpperCase();
+  const pos = position && typeof position === "object" ? position : {};
+  if (ex.includes("BINANCE")) {
+    const logicalQtyPct = resolveLogicalCurrentQtyPctForBudget({
+      budgetMaxKrw: pos.budget_max_krw,
+      budgetUsedKrw: pos.budget_used_krw,
+    });
+    if (Number.isFinite(logicalQtyPct) && logicalQtyPct > POS_SIZE_EPSILON) {
+      return clamp(logicalQtyPct, POS_SIZE_EPSILON, 1);
+    }
+  }
+  const fallback = Number(fallbackQtyPct);
+  if (Number.isFinite(fallback) && fallback > POS_SIZE_EPSILON) {
+    return clamp(fallback, POS_SIZE_EPSILON, 1);
+  }
+  return null;
+}
+
+function resolveIntentFillCloseRatio({
+  qtyFraction,
+  prevSize,
+  useBudget,
+} = {}) {
+  const qty = Number(qtyFraction);
+  if (!Number.isFinite(qty) || qty <= 0) return null;
+  if (useBudget === true) return Math.max(0, Math.min(1, qty));
+  const current = Number(prevSize);
+  if (Number.isFinite(current) && current > 0) {
+    return Math.max(0, Math.min(1, qty / current));
+  }
+  return Math.max(0, Math.min(1, qty));
+}
+
 function resolveSyncedAddChainBaseQtyPct({
   active,
   posMeta,
@@ -8097,6 +8135,16 @@ function computeBinanceNativeProtectionPrices({ positionSide, entryPrice, levera
   const tpQtyRatio = Number.isFinite(tpQtyRatioRaw) && tpQtyRatioRaw > 0
     ? Math.min(1, Math.max(POS_SIZE_EPSILON, tpQtyRatioRaw))
     : 0.5;
+  const observedTp0QtyRatio = Number(posMeta && posMeta.tp_p0_qty_ratio);
+  const tp0FilledQtyRatio = Number.isFinite(observedTp0QtyRatio) && observedTp0QtyRatio > 0
+    ? Math.min(1, Math.max(POS_SIZE_EPSILON, observedTp0QtyRatio))
+    : tp0QtyRatio;
+  const tp0Done = posMeta && posMeta.tp_p0_done === true;
+  const remainingQtyRatio = tp0Done
+    ? Math.max(POS_SIZE_EPSILON, 1 - tp0FilledQtyRatio)
+    : 1;
+  const tp0OrderQtyRatio = tp0QtyRatio;
+  const tpOrderQtyRatio = Math.min(1, Math.max(POS_SIZE_EPSILON, tpQtyRatio / remainingQtyRatio));
   if (!Number.isFinite(px) || px <= 0 || (side !== "LONG" && side !== "SHORT")) return null;
   if (!Number.isFinite(slPct) || !Number.isFinite(tpPct)) return null;
   const slMove = slPct / lev;
@@ -8148,6 +8196,8 @@ function computeBinanceNativeProtectionPrices({ positionSide, entryPrice, levera
     tpTriggerPx,
     tp0QtyRatio,
     tpQtyRatio,
+    tp0OrderQtyRatio,
+    tpOrderQtyRatio,
   };
 }
 
@@ -8721,7 +8771,7 @@ async function refreshBinanceNativeProtection({
     if (BINANCE_NATIVE_TP_ENABLED && stageState.tp0Eligible && Number.isFinite(prices.tp0TriggerPx) && prices.tp0TriggerPx > 0) {
       try {
         const exchangeInfo = await fetchFuturesExchangeInfo(symbol);
-        const desiredTp0QtyBase = Number(context.qtyBase) * Number(prices.tp0QtyRatio || 0.25);
+        const desiredTp0QtyBase = Number(context.qtyBase) * Number(prices.tp0OrderQtyRatio || prices.tp0QtyRatio || 0.25);
         const tp0QtyInfo = await computeFuturesOrderQty({
           symbol,
           priceRef: prices.tp0TriggerPx,
@@ -8798,7 +8848,7 @@ async function refreshBinanceNativeProtection({
     if (BINANCE_NATIVE_TP_ENABLED && stageState.tp1Eligible && Number.isFinite(prices.tpTriggerPx) && prices.tpTriggerPx > 0) {
       try {
         const exchangeInfo = await fetchFuturesExchangeInfo(symbol);
-        const desiredTpQtyBase = Number(context.qtyBase) * Number(prices.tpQtyRatio || 0.5);
+        const desiredTpQtyBase = Number(context.qtyBase) * Number(prices.tpOrderQtyRatio || prices.tpQtyRatio || 0.5);
         const tpQtyInfo = await computeFuturesOrderQty({
           symbol,
           priceRef: prices.tpTriggerPx,
@@ -10752,8 +10802,8 @@ async function runPaperUpbitForBar({
         realizedPnlQuote = gross - (Number.isFinite(feeValue) ? feeValue : 0);
       }
     }
-    const closeRatio = (intent === "EXIT" && Number.isFinite(prevSize) && prevSize > 0)
-      ? Math.max(0, Math.min(1, qtyFraction / prevSize))
+    const closeRatio = intent === "EXIT"
+      ? resolveIntentFillCloseRatio({ qtyFraction, prevSize, useBudget })
       : null;
     const appliedLeverage = resolvePositionLeverage({ position: pos, fallback: leverage });
     const appliedLeverageReason = String(
@@ -13191,9 +13241,16 @@ async function runPaperFuturesForBar({
       var nativeProtectionMetaPatch = null;
       let liveQtyFraction = qtyFraction;
       let liveMaxFractionAllowed = maxFractionAllowed;
-      if (intent === "EXIT" && useBudget && Number.isFinite(prevSize) && prevSize > 0) {
-        liveQtyFraction = Math.min(1, qtyFraction / prevSize);
-        liveMaxFractionAllowed = Number.isFinite(maxFractionAllowed) ? Math.min(1, maxFractionAllowed / prevSize) : liveQtyFraction;
+      const liveExitCurrentQtyPct = resolveLiveExitCurrentQtyPct({
+        exchange,
+        position: pos,
+        fallbackQtyPct: prevSize,
+      });
+      if (intent === "EXIT" && useBudget && Number.isFinite(liveExitCurrentQtyPct) && liveExitCurrentQtyPct > 0) {
+        liveQtyFraction = Math.min(1, qtyFraction / liveExitCurrentQtyPct);
+        liveMaxFractionAllowed = Number.isFinite(maxFractionAllowed)
+          ? Math.min(1, maxFractionAllowed / liveExitCurrentQtyPct)
+          : liveQtyFraction;
       }
       let liveResult = null;
       try {
@@ -13428,8 +13485,8 @@ async function runPaperFuturesForBar({
         realizedPnlQuote = gross - (Number.isFinite(feeValue) ? feeValue : 0);
       }
     }
-    const closeRatio = (intent === "EXIT" && Number.isFinite(prevSize) && prevSize > 0)
-      ? Math.max(0, Math.min(1, qtyFraction / prevSize))
+    const closeRatio = intent === "EXIT"
+      ? resolveIntentFillCloseRatio({ qtyFraction, prevSize, useBudget })
       : null;
     const intentSignalId = it.signal_id || (it.features_json && it.features_json.signal_id) || null;
     const intentSignalDocId = it.signal_doc_id ||
@@ -15445,6 +15502,8 @@ module.exports = {
     ensureLogicalAddCapState,
     resolveCurrentQtyPctForCap,
     resolveLogicalCurrentQtyPctForBudget,
+    resolveLiveExitCurrentQtyPct,
+    resolveIntentFillCloseRatio,
     resolveSyncedAddChainBaseQtyPct,
     resolveBudgetUsedFromNotional,
     resolveBinanceBudgetUsedKrw,

@@ -82,6 +82,14 @@ function resolveTrailSnapshotMeta(meta = {}) {
   };
 }
 
+function resolveContractExitQtyPct(size, targetQtyPct) {
+  const currentSize = Number(size);
+  if (!Number.isFinite(currentSize) || currentSize <= 0) return 0;
+  const target = Number(targetQtyPct);
+  if (!Number.isFinite(target) || target <= 0) return currentSize;
+  return Math.min(currentSize, Math.max(0, target));
+}
+
 function resolveTpP1State(meta = {}) {
   const metaSafe = resolveTrailSnapshotMeta(meta);
   const rawTpP1Done = metaSafe.tp_p1_done === true;
@@ -986,8 +994,7 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
   }
 
   if (!tpP0Done && !tpP1Done && Number.isFinite(TP_P0) && pnlPctEffective >= TP_P0) {
-    const rawQty = Number.isFinite(TP_P0_QTY) ? (size * TP_P0_QTY) : size;
-    const qty = Math.min(size, Math.max(0, Number(rawQty) || 0));
+    const qty = resolveContractExitQtyPct(size, TP_P0_QTY);
     return [{
       event: tpP0Event,
       side: exitSide,
@@ -1010,8 +1017,7 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
 
   // Zone B: 기준 수익 도달 시 부분 익절
   if (!tpP1Done && pnlPctEffective >= TP_P1) {
-    const rawQty = Number.isFinite(TP_P1_QTY) ? (size * TP_P1_QTY) : size;
-    const qty = Math.min(size, Math.max(0, Number(rawQty) || 0));
+    const qty = resolveContractExitQtyPct(size, TP_P1_QTY);
     if (TP_P1_DEBUG) {
       const pnlTxt = Number.isFinite(pnlPctEffective) ? pnlPctEffective.toFixed(6) : "na";
       const pnlRawTxt = Number.isFinite(pnlPct) ? pnlPct.toFixed(6) : "na";
@@ -1109,4 +1115,5 @@ module.exports = {
   resolveTrailDelayState,
   resolveTpP0Pct,
   resolveTrailSnapshotMeta,
+  resolveContractExitQtyPct,
 };

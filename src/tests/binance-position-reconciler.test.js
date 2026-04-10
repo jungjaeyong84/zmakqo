@@ -69,8 +69,30 @@ async function run() {
   assert.strictEqual(trailPatch.meta.native_protection_stop_order_id, "stop-1");
   assert.strictEqual(trailPatch.meta.native_protection_tp0_order_id, "tp0-1");
   assert.strictEqual(trailPatch.meta.native_protection_tp_order_id, "tp1-1");
+  assert.strictEqual(trailPatch.meta.native_protection_tp0_qty_ratio, 0.25);
+  assert.strictEqual(trailPatch.meta.native_protection_tp_qty_ratio, 0.5);
   assert.strictEqual(trailPatch.meta.trail_active, true);
   assert.ok(trailPatch.invariants.includes("TP1_DONE_WITH_TP_ORDER"));
+
+  const tp1ContractRatioPatch = reconcileBinancePositionMetaWithExchange({
+    active: true,
+    meta: {
+      exit_rules_override: {
+        TP_P0_QTY: 0.25,
+        TP_P1_QTY: 0.5,
+      },
+    },
+    positionSide: "LONG",
+    qtyBase: 7.5,
+    entryPrice: 100,
+    leverage: 2,
+    openOrders: [],
+    algoOrders: [
+      { orderId: "stop-1", type: "STOP_MARKET", side: "SELL", closePosition: true, stopPrice: "101.5" },
+      { orderId: "tp1-1", type: "TAKE_PROFIT_MARKET", side: "SELL", reduceOnly: true, stopPrice: "103.25", origQty: "5" },
+    ],
+  });
+  assert.strictEqual(tp1ContractRatioPatch.meta.native_protection_tp_qty_ratio, 0.5, "reconciler must preserve TP1 contract ratio, not current remaining ratio");
 
   const staleTrail = reconcileBinancePositionMetaWithExchange({
     active: true,

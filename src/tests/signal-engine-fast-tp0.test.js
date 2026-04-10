@@ -157,6 +157,29 @@ function run() {
   });
   assert.strictEqual(rescueTp1.length, 1, "rescue cohort should shorten tp1");
   assert.strictEqual(rescueTp1[0].event, "EXIT_TP_P1_1.65P");
+  assert.strictEqual(rescueTp1[0].qty_pct, 0.5, "TP1 contract must remain 50% of the original position");
+
+  const tp1AfterTp0Remaining = generateSignals({
+    exchange: "BINANCEFUT",
+    symbol: "DOGEUSDT",
+    trading_mode: "EXIT_ONLY",
+    leverage: 2,
+    currentBarCloseMs: 1_800_100_000_000,
+    bar: { close: 101.45, c: 101.45 },
+    position: {
+      state: "ACTIVE",
+      size_pct: 0.75,
+      avg_price: 100,
+      position_side: "LONG",
+      meta: {
+        external_leverage: 2,
+        tp_p0_done: true,
+        tp_p1_done: false,
+      },
+    },
+  });
+  assert.strictEqual(tp1AfterTp0Remaining.length, 1, "TP1 should still fire after TP0");
+  assert.strictEqual(tp1AfterTp0Remaining[0].qty_pct, 0.5, "TP1 qty must stay absolute even after TP0");
 
   const rescueRules = resolveExitRulesForPosition({
     exchange: "BINANCEFUT",
@@ -169,7 +192,7 @@ function run() {
   assert.strictEqual(rescueRules.TP_P1, 0.0165);
   assert.strictEqual(rescueRules.BE_PCT, 0.0015);
   assert.strictEqual(rescueRules.TRAIL_R_MULTIPLE, 0.6);
-  assert.strictEqual(rescueRules.RUNNER_MIN_PROFIT_PCT, 0.012);
+  assert.strictEqual(rescueRules.RUNNER_MIN_PROFIT_PCT, 0.0165);
 
   const mixedRules = resolveExitRulesForPosition({
     exchange: "BINANCEFUT",
@@ -182,7 +205,7 @@ function run() {
   assert.strictEqual(mixedRules.TP_P1, 0.0165);
   assert.strictEqual(mixedRules.BE_PCT, 0.0015);
   assert.strictEqual(mixedRules.TRAIL_R_MULTIPLE, 0.6);
-  assert.strictEqual(mixedRules.RUNNER_MIN_PROFIT_PCT, 0.012);
+  assert.strictEqual(mixedRules.RUNNER_MIN_PROFIT_PCT, 0.0165);
 
   const promotedMixedRules = resolveExitRulesForPosition({
     exchange: "BINANCEFUT",

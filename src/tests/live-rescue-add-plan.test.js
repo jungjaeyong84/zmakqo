@@ -918,6 +918,48 @@ async function run() {
   assert.strictEqual(nativeProtectionTpMeta.native_protection_tp_status, "OK");
   assert.strictEqual(nativeProtectionTpMeta.native_protection_tp_reason, null);
 
+  const nativeProtectionPricesAfterTp0 = __test.computeBinanceNativeProtectionPrices({
+    positionSide: "LONG",
+    entryPrice: 100,
+    leverage: 2,
+    rules: {
+      SL: -0.0165,
+      TP_P0: 0.008,
+      TP_P0_QTY: 0.25,
+      TP_P1: 0.0165,
+      TP_P1_QTY: 0.5,
+    },
+    posMeta: {
+      tp_p0_done: true,
+      tp_p0_qty_ratio: 0.25,
+    },
+  });
+  assert.strictEqual(nativeProtectionPricesAfterTp0.tpQtyRatio, 0.5);
+  assert.ok(
+    Math.abs(nativeProtectionPricesAfterTp0.tpOrderQtyRatio - (2 / 3)) < 1e-9,
+    "TP1 native order must expand to 66.7% of the remaining position to preserve the 50% original contract"
+  );
+
+  assert.strictEqual(
+    __test.resolveLiveExitCurrentQtyPct({
+      exchange: "BINANCEFUT",
+      position: {
+        budget_max_krw: 100,
+        budget_used_krw: 75,
+      },
+      fallbackQtyPct: 1,
+    }),
+    0.75
+  );
+  assert.strictEqual(
+    __test.resolveIntentFillCloseRatio({
+      qtyFraction: 0.5,
+      prevSize: 0.75,
+      useBudget: true,
+    }),
+    0.5
+  );
+
   assert.strictEqual(
     __test.isBinanceImmediateTriggerError('BINANCEFUT_HTTP_400: {"code":-2021,"msg":"Order would immediately trigger."}'),
     true

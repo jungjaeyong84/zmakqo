@@ -133,6 +133,22 @@ function inferTakeProfitKindFromQtyRatio(qtyRatio, tp0QtyRatio = 0.25, tp1QtyRat
   return best.kind;
 }
 
+function resolveConfiguredTakeProfitQtyRatio(meta, key, fallback) {
+  const baseMeta = meta && typeof meta === "object" ? meta : {};
+  const rules = (baseMeta.exit_rules_override && typeof baseMeta.exit_rules_override === "object")
+    ? baseMeta.exit_rules_override
+    : null;
+  const configured = toNum(rules && rules[key]);
+  if (Number.isFinite(configured) && configured > 0) {
+    return Math.min(1, Math.max(configured, 0));
+  }
+  const fallbackNum = toNum(fallback);
+  if (Number.isFinite(fallbackNum) && fallbackNum > 0) {
+    return Math.min(1, Math.max(fallbackNum, 0));
+  }
+  return null;
+}
+
 function classifyTakeProfitOrders({ orders = [], positionSide, qtyBase } = {}) {
   const candidates = pickTakeProfitCandidates(orders, positionSide, qtyBase);
   if (!candidates.length) return { tp0: null, tp1: null };
@@ -282,8 +298,12 @@ function reconcileBinancePositionMetaWithExchange({
   nextMeta.native_protection_tp_price = tp1 && Number.isFinite(tp1.triggerPrice) ? tp1.triggerPrice : null;
   nextMeta.native_protection_tp0_qty_base = tp0 && Number.isFinite(tp0.qtyBase) ? tp0.qtyBase : null;
   nextMeta.native_protection_tp_qty_base = tp1 && Number.isFinite(tp1.qtyBase) ? tp1.qtyBase : null;
-  nextMeta.native_protection_tp0_qty_ratio = tp0 && Number.isFinite(tp0.qtyRatio) ? tp0.qtyRatio : null;
-  nextMeta.native_protection_tp_qty_ratio = tp1 && Number.isFinite(tp1.qtyRatio) ? tp1.qtyRatio : null;
+  nextMeta.native_protection_tp0_qty_ratio = tp0
+    ? resolveConfiguredTakeProfitQtyRatio(baseMeta, "TP_P0_QTY", tp0.qtyRatio)
+    : null;
+  nextMeta.native_protection_tp_qty_ratio = tp1
+    ? resolveConfiguredTakeProfitQtyRatio(baseMeta, "TP_P1_QTY", tp1.qtyRatio)
+    : null;
   nextMeta.native_protection_tp0_status = tp0 ? "OK" : null;
   nextMeta.native_protection_tp_status = tp1 ? "OK" : null;
   nextMeta.native_protection_tp0_reason = null;
@@ -309,6 +329,7 @@ module.exports = {
   __test: {
     normalizeAlgoOrderFetchResult,
     inferTakeProfitKindFromQtyRatio,
+    resolveConfiguredTakeProfitQtyRatio,
     classifyTakeProfitOrders,
     pickStopCandidate,
     buildFlatMetaProjection,
