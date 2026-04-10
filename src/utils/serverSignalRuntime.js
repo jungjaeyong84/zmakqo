@@ -48,6 +48,7 @@ function deriveServerSignalRuntime({
   watchdog = null,
   livePolicyConfig = null,
   cycleId = null,
+  livePositionHealth = null,
 } = {}) {
   const schedulerEnabled = toBool(systemSettings.scheduler_enabled, true);
   const schedulerIntervalSec = Math.max(10, toNum(systemSettings.scheduler_interval_sec) || 900);
@@ -123,6 +124,9 @@ function deriveServerSignalRuntime({
   const reverseExceptionMixedBypassTierBlock = toBool(systemSettings.reverse_exception_mixed_bypass_tier_block, true);
   const reverseExceptionRescueBypassTierBlock = toBool(systemSettings.reverse_exception_rescue_bypass_tier_block, true);
   const operationalDropWatchReasons = ["POSITION_FULL", "LIVE_RESCUE_ADD_*", "DROP_OVERLAP"];
+  const liveHealth = livePositionHealth && typeof livePositionHealth === "object" ? livePositionHealth : {};
+  const selfHealEnabled = toBool(systemSettings.binance_live_state_self_heal_enabled, true);
+  const selfHealMaxPositions = Math.max(1, toNum(systemSettings.binance_live_state_self_heal_max_positions) || 12);
 
   return {
     contract_version: "SERVER_SIGNAL_RUNTIME_V1",
@@ -208,6 +212,19 @@ function deriveServerSignalRuntime({
       reverse_exception_mixed_bypass_tier_block: reverseExceptionMixedBypassTierBlock,
       reverse_exception_rescue_bypass_tier_block: reverseExceptionRescueBypassTierBlock,
       operational_drop_watch_reasons: operationalDropWatchReasons,
+      binance_live_state_self_heal_enabled: selfHealEnabled,
+      binance_live_state_self_heal_max_positions: selfHealMaxPositions,
+      binance_live_state_projection_ssot: "EXCHANGE_LIVE_STATE",
+      binance_live_state_projection_writer_mode: "RECONCILE_FIRST",
+      binance_live_state_active_position_n: Math.max(0, toNum(liveHealth.active_position_n) || 0),
+      binance_live_state_projection_out_of_sync_n: Math.max(0, toNum(liveHealth.projection_out_of_sync_n) || 0),
+      binance_live_state_self_heal_required_n: Math.max(0, toNum(liveHealth.self_heal_required_n) || 0),
+      binance_live_state_native_stop_missing_n: Math.max(0, toNum(liveHealth.native_stop_missing_n) || 0),
+      binance_live_state_trail_without_tp1_n: Math.max(0, toNum(liveHealth.trail_without_tp1_n) || 0),
+      binance_live_state_tp1_done_with_tp_order_n: Math.max(0, toNum(liveHealth.tp1_done_with_tp_order_n) || 0),
+      binance_live_state_invariant_counts: liveHealth.invariant_counts && typeof liveHealth.invariant_counts === "object"
+        ? liveHealth.invariant_counts
+        : {},
     },
     summary: {
       cycle_id: runtimeCycleId,
@@ -277,6 +294,19 @@ function deriveServerSignalRuntime({
       reverse_exception_mixed_bypass_tier_block: reverseExceptionMixedBypassTierBlock,
       reverse_exception_rescue_bypass_tier_block: reverseExceptionRescueBypassTierBlock,
       operational_drop_watch_reasons: operationalDropWatchReasons,
+      binance_live_state_self_heal_enabled: selfHealEnabled,
+      binance_live_state_self_heal_max_positions: selfHealMaxPositions,
+      binance_live_state_projection_ssot: "EXCHANGE_LIVE_STATE",
+      binance_live_state_projection_writer_mode: "RECONCILE_FIRST",
+      binance_live_state_active_position_n: Math.max(0, toNum(liveHealth.active_position_n) || 0),
+      binance_live_state_projection_out_of_sync_n: Math.max(0, toNum(liveHealth.projection_out_of_sync_n) || 0),
+      binance_live_state_self_heal_required_n: Math.max(0, toNum(liveHealth.self_heal_required_n) || 0),
+      binance_live_state_native_stop_missing_n: Math.max(0, toNum(liveHealth.native_stop_missing_n) || 0),
+      binance_live_state_trail_without_tp1_n: Math.max(0, toNum(liveHealth.trail_without_tp1_n) || 0),
+      binance_live_state_tp1_done_with_tp_order_n: Math.max(0, toNum(liveHealth.tp1_done_with_tp_order_n) || 0),
+      binance_live_state_invariant_counts: liveHealth.invariant_counts && typeof liveHealth.invariant_counts === "object"
+        ? liveHealth.invariant_counts
+        : {},
       pine_shadow_transition_status: completedN === Object.keys(transition).length ? "COMPLETE" : "IN_PROGRESS",
       pine_shadow_transition_progress_pct: progressPct,
     },

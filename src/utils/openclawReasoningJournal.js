@@ -604,6 +604,21 @@ function buildReasoningJournal({
       server_signal_runtime_reverse_exception_mixed_bypass_tier_block: autonomyField("server_signal_runtime_reverse_exception_mixed_bypass_tier_block") === true,
       server_signal_runtime_reverse_exception_rescue_bypass_tier_block: autonomyField("server_signal_runtime_reverse_exception_rescue_bypass_tier_block") === true,
       server_signal_runtime_auto_score_freeze: autonomyField("server_signal_runtime_auto_score_freeze") === true,
+      server_signal_runtime_binance_live_state_self_heal_enabled: autonomyField("server_signal_runtime_binance_live_state_self_heal_enabled") === true,
+      server_signal_runtime_binance_live_state_self_heal_max_positions: toNum(autonomyField("server_signal_runtime_binance_live_state_self_heal_max_positions")),
+      server_signal_runtime_binance_live_state_projection_ssot: String(autonomyField("server_signal_runtime_binance_live_state_projection_ssot") || "").trim() || null,
+      server_signal_runtime_binance_live_state_projection_writer_mode: String(autonomyField("server_signal_runtime_binance_live_state_projection_writer_mode") || "").trim() || null,
+      server_signal_runtime_binance_live_state_active_position_n: toNum(autonomyField("server_signal_runtime_binance_live_state_active_position_n")),
+      server_signal_runtime_binance_live_state_projection_out_of_sync_n: toNum(autonomyField("server_signal_runtime_binance_live_state_projection_out_of_sync_n")),
+      server_signal_runtime_binance_live_state_self_heal_required_n: toNum(autonomyField("server_signal_runtime_binance_live_state_self_heal_required_n")),
+      server_signal_runtime_binance_live_state_native_stop_missing_n: toNum(autonomyField("server_signal_runtime_binance_live_state_native_stop_missing_n")),
+      server_signal_runtime_binance_live_state_trail_without_tp1_n: toNum(autonomyField("server_signal_runtime_binance_live_state_trail_without_tp1_n")),
+      server_signal_runtime_binance_live_state_tp1_done_with_tp_order_n: toNum(autonomyField("server_signal_runtime_binance_live_state_tp1_done_with_tp_order_n")),
+      server_signal_runtime_binance_live_state_invariant_counts:
+        autonomyField("server_signal_runtime_binance_live_state_invariant_counts") &&
+        typeof autonomyField("server_signal_runtime_binance_live_state_invariant_counts") === "object"
+          ? autonomyField("server_signal_runtime_binance_live_state_invariant_counts")
+          : null,
       filter_layer_1_integrity_mode: String(autonomyField("filter_layer_1_integrity_mode") || "").trim() || null,
       filter_layer_1_integrity_expectation: String(autonomyField("filter_layer_1_integrity_expectation") || "").trim() || null,
       filter_layer_1_integrity_coverage_pass: autonomyField("filter_layer_1_integrity_coverage_pass") === true,
@@ -869,6 +884,21 @@ function buildReasoningJournal({
       current_server_signal_runtime_opposite_transition_reduce_fraction: toNum(autonomyField("server_signal_runtime_opposite_transition_reduce_fraction")),
       current_server_signal_runtime_opposite_transition_confirm_bars: toNum(autonomyField("server_signal_runtime_opposite_transition_confirm_bars")),
       current_server_signal_runtime_auto_score_freeze: autonomyField("server_signal_runtime_auto_score_freeze") === true,
+      current_server_signal_runtime_binance_live_state_self_heal_enabled: autonomyField("server_signal_runtime_binance_live_state_self_heal_enabled") === true,
+      current_server_signal_runtime_binance_live_state_self_heal_max_positions: toNum(autonomyField("server_signal_runtime_binance_live_state_self_heal_max_positions")),
+      current_server_signal_runtime_binance_live_state_projection_ssot: String(autonomyField("server_signal_runtime_binance_live_state_projection_ssot") || "").trim() || null,
+      current_server_signal_runtime_binance_live_state_projection_writer_mode: String(autonomyField("server_signal_runtime_binance_live_state_projection_writer_mode") || "").trim() || null,
+      current_server_signal_runtime_binance_live_state_active_position_n: toNum(autonomyField("server_signal_runtime_binance_live_state_active_position_n")),
+      current_server_signal_runtime_binance_live_state_projection_out_of_sync_n: toNum(autonomyField("server_signal_runtime_binance_live_state_projection_out_of_sync_n")),
+      current_server_signal_runtime_binance_live_state_self_heal_required_n: toNum(autonomyField("server_signal_runtime_binance_live_state_self_heal_required_n")),
+      current_server_signal_runtime_binance_live_state_native_stop_missing_n: toNum(autonomyField("server_signal_runtime_binance_live_state_native_stop_missing_n")),
+      current_server_signal_runtime_binance_live_state_trail_without_tp1_n: toNum(autonomyField("server_signal_runtime_binance_live_state_trail_without_tp1_n")),
+      current_server_signal_runtime_binance_live_state_tp1_done_with_tp_order_n: toNum(autonomyField("server_signal_runtime_binance_live_state_tp1_done_with_tp_order_n")),
+      current_server_signal_runtime_binance_live_state_invariant_counts:
+        autonomyField("server_signal_runtime_binance_live_state_invariant_counts") &&
+        typeof autonomyField("server_signal_runtime_binance_live_state_invariant_counts") === "object"
+          ? autonomyField("server_signal_runtime_binance_live_state_invariant_counts")
+          : null,
       current_server_signal_runtime_operational_drop_watch_reasons: Array.isArray(autonomyField("server_signal_runtime_operational_drop_watch_reasons"))
         ? autonomyField("server_signal_runtime_operational_drop_watch_reasons").map((row) => String(row || "").trim()).filter(Boolean)
         : [],

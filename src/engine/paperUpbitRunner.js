@@ -6655,6 +6655,12 @@ async function syncFuturesPositionOnly({ runId, exchange, symbol } = {}) {
   });
 }
 
+function shouldForceImmediateLiveFuturesReconcile({ exchange, executionMode } = {}) {
+  const ex = String(exchange || "").toUpperCase();
+  const mode = String(executionMode || "").toUpperCase();
+  return ex.includes("BINANCE") && mode === "LIVE";
+}
+
 function qtyPrecision(step) {
   const s = Number(step);
   if (!Number.isFinite(s) || s <= 0) return 0;
@@ -10062,6 +10068,18 @@ async function runPaperUpbitForBar({
       meta: nextMeta,
     });
 
+    if (shouldForceImmediateLiveFuturesReconcile({ exchange, executionMode })) {
+      try {
+        await syncFuturesPositionOnly({
+          runId: `RUN__INTENT_FILL_RECONCILE__${String(exchange || "").toUpperCase()}__${String(symbol || "").toUpperCase()}__${Date.now()}`,
+          exchange,
+          symbol,
+        });
+      } catch (e) {
+        console.warn("[INTENT_FILL_RECONCILE_FAIL]", e && e.message ? e.message : String(e));
+      }
+    }
+
     pos = { ...pos, state: newState, size_pct: newSize, avg_price: newAvg, position_side: newState === "ACTIVE" ? "LONG" : null, meta: nextMeta, qty_base: newQtyBase };
     posMeta = nextMeta;
     posQtyBase = newQtyBase;
@@ -12873,6 +12891,18 @@ async function runPaperFuturesForBar({
       budgetSource: useBudget ? riskBudget.source : null,
       meta: nextMeta,
     });
+
+    if (shouldForceImmediateLiveFuturesReconcile({ exchange, executionMode })) {
+      try {
+        await syncFuturesPositionOnly({
+          runId: `RUN__INTENT_FILL_RECONCILE__${String(exchange || "").toUpperCase()}__${String(symbol || "").toUpperCase()}__${Date.now()}`,
+          exchange,
+          symbol,
+        });
+      } catch (e) {
+        console.warn("[INTENT_FILL_RECONCILE_FAIL]", e && e.message ? e.message : String(e));
+      }
+    }
 
     pos = { ...pos, state: newState, size_pct: newSize, avg_price: newAvg, position_side: nextPosSide, meta: nextMeta, qty_base: Number.isFinite(newQtyBase) ? newQtyBase : pos.qty_base };
     posMeta = nextMeta;

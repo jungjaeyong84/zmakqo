@@ -54,6 +54,15 @@ const { deriveServerSignalRuntime } = require("../../src/utils/serverSignalRunti
       tf_allowlist: ["15m", "60m"],
       markets: ["BTCUSDT", "ETHUSDT", "AXSUSDT"],
     },
+    livePositionHealth: {
+      active_position_n: 2,
+      projection_out_of_sync_n: 1,
+      self_heal_required_n: 1,
+      native_stop_missing_n: 0,
+      trail_without_tp1_n: 0,
+      tp1_done_with_tp_order_n: 1,
+      invariant_counts: { TP1_DONE_WITH_TP_ORDER: 1 },
+    },
     watchdog: { summary: { verdict: "PASS" } },
   });
 
@@ -97,6 +106,15 @@ const { deriveServerSignalRuntime } = require("../../src/utils/serverSignalRunti
   assert.strictEqual(report.summary.opposite_transition_confirm_bars, 4);
   assert.strictEqual(report.summary.reverse_exception_mixed_bypass_tier_block, true);
   assert.deepStrictEqual(report.summary.operational_drop_watch_reasons, ["POSITION_FULL", "LIVE_RESCUE_ADD_*", "DROP_OVERLAP"]);
+  assert.strictEqual(report.summary.binance_live_state_self_heal_enabled, true);
+  assert.strictEqual(report.summary.binance_live_state_self_heal_max_positions, 12);
+  assert.strictEqual(report.summary.binance_live_state_projection_ssot, "EXCHANGE_LIVE_STATE");
+  assert.strictEqual(report.summary.binance_live_state_projection_writer_mode, "RECONCILE_FIRST");
+  assert.strictEqual(report.summary.binance_live_state_active_position_n, 2);
+  assert.strictEqual(report.summary.binance_live_state_projection_out_of_sync_n, 1);
+  assert.strictEqual(report.summary.binance_live_state_self_heal_required_n, 1);
+  assert.strictEqual(report.summary.binance_live_state_tp1_done_with_tp_order_n, 1);
+  assert.deepStrictEqual(report.summary.binance_live_state_invariant_counts, { TP1_DONE_WITH_TP_ORDER: 1 });
   assert.strictEqual(report.current_status.reverse_exception_rescue_bypass_tier_block, true);
   assert.strictEqual(report.summary.pine_shadow_transition_progress_pct, 100);
   assert.strictEqual(report.current_status.execution_shadow_policy, "EXCLUDE_FROM_EXECUTION_DEFAULT");

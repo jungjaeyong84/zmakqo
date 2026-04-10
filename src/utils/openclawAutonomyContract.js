@@ -595,6 +595,19 @@ function deriveOpenClawAutonomyContract({
       server_signal_runtime_operational_drop_watch_reasons: Array.isArray(serverSignalRuntimeSummary.operational_drop_watch_reasons)
         ? serverSignalRuntimeSummary.operational_drop_watch_reasons.map((row) => String(row || "").trim()).filter(Boolean)
         : [],
+      server_signal_runtime_binance_live_state_self_heal_enabled: serverSignalRuntimeSummary.binance_live_state_self_heal_enabled === true,
+      server_signal_runtime_binance_live_state_self_heal_max_positions: toNum(serverSignalRuntimeSummary.binance_live_state_self_heal_max_positions),
+      server_signal_runtime_binance_live_state_projection_ssot: String(serverSignalRuntimeSummary.binance_live_state_projection_ssot || "").trim() || null,
+      server_signal_runtime_binance_live_state_projection_writer_mode: String(serverSignalRuntimeSummary.binance_live_state_projection_writer_mode || "").trim() || null,
+      server_signal_runtime_binance_live_state_active_position_n: toNum(serverSignalRuntimeSummary.binance_live_state_active_position_n),
+      server_signal_runtime_binance_live_state_projection_out_of_sync_n: toNum(serverSignalRuntimeSummary.binance_live_state_projection_out_of_sync_n),
+      server_signal_runtime_binance_live_state_self_heal_required_n: toNum(serverSignalRuntimeSummary.binance_live_state_self_heal_required_n),
+      server_signal_runtime_binance_live_state_native_stop_missing_n: toNum(serverSignalRuntimeSummary.binance_live_state_native_stop_missing_n),
+      server_signal_runtime_binance_live_state_trail_without_tp1_n: toNum(serverSignalRuntimeSummary.binance_live_state_trail_without_tp1_n),
+      server_signal_runtime_binance_live_state_tp1_done_with_tp_order_n: toNum(serverSignalRuntimeSummary.binance_live_state_tp1_done_with_tp_order_n),
+      server_signal_runtime_binance_live_state_invariant_counts: serverSignalRuntimeSummary.binance_live_state_invariant_counts && typeof serverSignalRuntimeSummary.binance_live_state_invariant_counts === "object"
+        ? serverSignalRuntimeSummary.binance_live_state_invariant_counts
+        : {},
       filter_layer_1_integrity_mode: String(filterLayerIntegrity.server_mode || "").trim() || null,
       filter_layer_1_integrity_expectation: String(filterLayerIntegrity.expectation || "").trim() || null,
       filter_layer_1_integrity_coverage_pass: filterLayerIntegrity.coverage_pass === true,
@@ -1142,6 +1155,19 @@ function deriveOpenClawAutonomyContract({
       server_signal_runtime_operational_drop_watch_reasons: Array.isArray(serverSignalRuntimeSummary.operational_drop_watch_reasons)
         ? serverSignalRuntimeSummary.operational_drop_watch_reasons.map((row) => String(row || "").trim()).filter(Boolean)
         : [],
+      server_signal_runtime_binance_live_state_self_heal_enabled: serverSignalRuntimeSummary.binance_live_state_self_heal_enabled === true,
+      server_signal_runtime_binance_live_state_self_heal_max_positions: toNum(serverSignalRuntimeSummary.binance_live_state_self_heal_max_positions),
+      server_signal_runtime_binance_live_state_projection_ssot: String(serverSignalRuntimeSummary.binance_live_state_projection_ssot || "").trim() || null,
+      server_signal_runtime_binance_live_state_projection_writer_mode: String(serverSignalRuntimeSummary.binance_live_state_projection_writer_mode || "").trim() || null,
+      server_signal_runtime_binance_live_state_active_position_n: toNum(serverSignalRuntimeSummary.binance_live_state_active_position_n),
+      server_signal_runtime_binance_live_state_projection_out_of_sync_n: toNum(serverSignalRuntimeSummary.binance_live_state_projection_out_of_sync_n),
+      server_signal_runtime_binance_live_state_self_heal_required_n: toNum(serverSignalRuntimeSummary.binance_live_state_self_heal_required_n),
+      server_signal_runtime_binance_live_state_native_stop_missing_n: toNum(serverSignalRuntimeSummary.binance_live_state_native_stop_missing_n),
+      server_signal_runtime_binance_live_state_trail_without_tp1_n: toNum(serverSignalRuntimeSummary.binance_live_state_trail_without_tp1_n),
+      server_signal_runtime_binance_live_state_tp1_done_with_tp_order_n: toNum(serverSignalRuntimeSummary.binance_live_state_tp1_done_with_tp_order_n),
+      server_signal_runtime_binance_live_state_invariant_counts: serverSignalRuntimeSummary.binance_live_state_invariant_counts && typeof serverSignalRuntimeSummary.binance_live_state_invariant_counts === "object"
+        ? serverSignalRuntimeSummary.binance_live_state_invariant_counts
+        : {},
       server_signal_entry_to_intent_conversion_24h: serverSignalEntryToIntentConversion24h,
       server_signal_entry_to_fill_conversion_24h: serverSignalEntryToFillConversion24h,
       server_signal_intent_to_fill_conversion_24h: serverSignalIntentToFillConversion24h,

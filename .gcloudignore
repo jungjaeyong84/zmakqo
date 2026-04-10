@@ -24,3 +24,9 @@ desktop/
 docs/
 noye/
 *.md
+
+# Large runtime/report artifacts not needed for container build
+ops/daily/
+ops/runtime/
+ops/analysis/
+ops/golden/

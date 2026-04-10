@@ -109,6 +109,17 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
         server_signal_runtime_signal_overlap_bars: 4,
         server_signal_runtime_same_direction_trail_profit_cooldown_enabled: true,
         server_signal_runtime_same_direction_trail_profit_cooldown_ms: 21600000,
+        server_signal_runtime_binance_live_state_self_heal_enabled: true,
+        server_signal_runtime_binance_live_state_self_heal_max_positions: 12,
+        server_signal_runtime_binance_live_state_projection_ssot: "EXCHANGE_LIVE_STATE",
+        server_signal_runtime_binance_live_state_projection_writer_mode: "RECONCILE_FIRST",
+        server_signal_runtime_binance_live_state_active_position_n: 2,
+        server_signal_runtime_binance_live_state_projection_out_of_sync_n: 1,
+        server_signal_runtime_binance_live_state_self_heal_required_n: 1,
+        server_signal_runtime_binance_live_state_native_stop_missing_n: 0,
+        server_signal_runtime_binance_live_state_trail_without_tp1_n: 0,
+        server_signal_runtime_binance_live_state_tp1_done_with_tp_order_n: 1,
+        server_signal_runtime_binance_live_state_invariant_counts: { TP1_DONE_WITH_TP_ORDER: 1 },
         exit_trailing_contract_canonical_mode: "TRAIL_R_MULTIPLE",
         exit_trailing_contract_active_binance_profile_mode: "BASE",
         exit_trailing_contract_active_binance_tp1_pct: 3.25,
@@ -471,6 +482,12 @@ const { buildReasoningJournal, __test } = require("../../src/utils/openclawReaso
   assert.strictEqual(journal.summary.current_server_signal_runtime_signal_overlap_bars, 4);
   assert.strictEqual(journal.summary.current_server_signal_runtime_same_direction_trail_profit_cooldown_enabled, true);
   assert.strictEqual(journal.summary.current_server_signal_runtime_same_direction_trail_profit_cooldown_ms, 21600000);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_binance_live_state_self_heal_enabled, true);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_binance_live_state_projection_ssot, "EXCHANGE_LIVE_STATE");
+  assert.strictEqual(journal.summary.current_server_signal_runtime_binance_live_state_projection_writer_mode, "RECONCILE_FIRST");
+  assert.strictEqual(journal.summary.current_server_signal_runtime_binance_live_state_projection_out_of_sync_n, 1);
+  assert.strictEqual(journal.summary.current_server_signal_runtime_binance_live_state_self_heal_required_n, 1);
+  assert.deepStrictEqual(journal.summary.current_server_signal_runtime_binance_live_state_invariant_counts, { TP1_DONE_WITH_TP_ORDER: 1 });
   assert.strictEqual(journal.summary.current_exit_trailing_contract_canonical_mode, "TRAIL_R_MULTIPLE");
   assert.strictEqual(journal.summary.current_exit_trailing_contract_active_binance_profile_mode, "BASE");
   assert.strictEqual(journal.summary.current_exit_trailing_contract_active_binance_tp1_pct, 3.25);

@@ -13,8 +13,10 @@ const {
 } = require("./lib/automation-utils");
 const { getSystemSettingsForProvider } = require("../src/storage/settings");
 const { getExchangeSettingsForProvider } = require("../src/utils/exchangeSettings");
+const { getFirestore } = require("../src/storage/firestore");
 const { deriveServerSignalRuntime } = require("../src/utils/serverSignalRuntime");
 const { getLiveExecutionPolicyRuntimeConfig } = require("../src/utils/liveExecutionPolicy");
+const { __test: liveStateSelfHealTest } = require("../src/services/binanceLiveStateSelfHeal");
 
 loadLocalEnv();
 
@@ -57,6 +59,7 @@ function renderMarkdown(report = {}) {
     `- cycle_id: ${summary.cycle_id || "N/A"}`,
     `- watchdog_generated_at_kst: ${summary.watchdog_generated_at_kst || "N/A"}`,
     `- live_exec_policy: mode=${summary.live_execution_policy_mode || "N/A"} / enabled=${summary.live_execution_policy_enabled ? "YES" : "NO"} / plan_apply=${summary.live_execution_policy_policy_plan_apply ? "YES" : "NO"} / quarantine_hard_block=${summary.live_execution_policy_quarantine_hard_block ? "YES" : "NO"} / quality_hard_block=${summary.live_execution_policy_quality_hard_block ? "YES" : "NO"}`,
+    `- live_state_health: active=${summary.binance_live_state_active_position_n ?? "N/A"} / out_of_sync=${summary.binance_live_state_projection_out_of_sync_n ?? "N/A"} / self_heal_required=${summary.binance_live_state_self_heal_required_n ?? "N/A"} / stop_missing=${summary.binance_live_state_native_stop_missing_n ?? "N/A"}`,
     `- ev_report_only_patch: enabled=${summary.ev_gate_tp1_prob_min_by_market_report_only_enabled ? "YES" : "NO"} / report_only_n=${summary.ev_gate_tp1_prob_min_by_market_report_only_n ?? "N/A"} / direct_n=${summary.ev_gate_tp1_prob_min_by_market_n ?? "N/A"}`,
     `- pine_shadow_transition: ${summary.pine_shadow_transition_status || "N/A"} / ${summary.pine_shadow_transition_progress_pct != null ? `${summary.pine_shadow_transition_progress_pct}%` : "N/A"}`,
     "",
@@ -73,11 +76,66 @@ function renderMarkdown(report = {}) {
   return `${lines.join("\n")}\n`;
 }
 
+function isActivePaperPosition(pos = {}) {
+  const state = String(pos.position_state || pos.state || "").trim().toUpperCase();
+  const sizePct = Number(pos.size_pct);
+  const qtyBase = Number(pos.qty_base);
+  const hasSize = (Number.isFinite(sizePct) && sizePct > 0) || (Number.isFinite(qtyBase) && qtyBase > 0);
+  return hasSize && state !== "FLAT";
+}
+
+async function collectLivePositionHealth(provider = "BINANCEFUT") {
+  const db = getFirestore();
+  const snap = await db.collection("positions_paper")
+    .where("exchange", "==", String(provider || "").toUpperCase())
+    .limit(200)
+    .get();
+
+  const rows = [];
+  snap.forEach((doc) => rows.push(doc.data() || {}));
+  const activeRows = rows.filter((row) => isActivePaperPosition(row));
+  const invariantCounts = {};
+  let outOfSync = 0;
+  let selfHealRequired = 0;
+  let nativeStopMissing = 0;
+  let trailWithoutTp1 = 0;
+  let tp1DoneWithTpOrder = 0;
+
+  for (const row of activeRows) {
+    const meta = row && typeof row.meta === "object" ? row.meta : {};
+    if (meta.exchange_projection_in_sync === false) outOfSync += 1;
+    if (typeof liveStateSelfHealTest.shouldRepairBinanceLivePosition === "function"
+      && liveStateSelfHealTest.shouldRepairBinanceLivePosition(meta)) {
+      selfHealRequired += 1;
+    }
+    const invariants = Array.isArray(meta.exchange_projection_invariants) ? meta.exchange_projection_invariants : [];
+    for (const key of invariants) {
+      const label = String(key || "").trim();
+      if (!label) continue;
+      invariantCounts[label] = (invariantCounts[label] || 0) + 1;
+    }
+    nativeStopMissing += Number(invariants.includes("NATIVE_STOP_MISSING"));
+    trailWithoutTp1 += Number(invariants.includes("TRAIL_WITHOUT_TP1"));
+    tp1DoneWithTpOrder += Number(invariants.includes("TP1_DONE_WITH_TP_ORDER"));
+  }
+
+  return {
+    active_position_n: activeRows.length,
+    projection_out_of_sync_n: outOfSync,
+    self_heal_required_n: selfHealRequired,
+    native_stop_missing_n: nativeStopMissing,
+    trail_without_tp1_n: trailWithoutTp1,
+    tp1_done_with_tp_order_n: tp1DoneWithTpOrder,
+    invariant_counts: invariantCounts,
+  };
+}
+
 async function main() {
   const nowMeta = nowKstMeta();
-  const [systemRes, exchangeSettings] = await Promise.all([
+  const [systemRes, exchangeSettings, livePositionHealth] = await Promise.all([
     getSystemSettingsForProvider(PROVIDER, 0),
     getExchangeSettingsForProvider(PROVIDER, 0),
+    collectLivePositionHealth(PROVIDER),
   ]);
   const objectiveSupervisor = readJsonRawSafe(OBJECTIVE_SUPERVISOR_PATH, null);
   const parity = readJsonRawSafe(PARITY_PATH, null);
@@ -89,6 +147,7 @@ async function main() {
     watchdog: readJsonRawSafe(WATCHDOG_PATH, null),
     livePolicyConfig: getLiveExecutionPolicyRuntimeConfig(),
     cycleId,
+    livePositionHealth,
   });
   const payload = {
     ok: true,
