@@ -138,6 +138,16 @@ async function run() {
   });
   assert.strictEqual(nativeTrail, "EXIT_TRAIL_1P");
 
+  const trailViaRecentTp1 = await resolveExternalExitEvent({
+    intent: null,
+    trade: { symbol: "SOLUSDT", realizedPnl: 10 },
+    orderMeta: { orderId: 12701, orderType: "TAKE_PROFIT_MARKET", closePosition: true, reduceOnly: true, clientOrderId: "native_trail_recent" },
+    positionCtx: { trailActive: false, tpP1Done: false },
+    recentTp1: { event: "EXIT_TP_P1_3P", orderId: 555 },
+    rules,
+  });
+  assert.strictEqual(trailViaRecentTp1, "EXIT_TRAIL_1P");
+
   const noTp1NoTrail = await resolveExternalExitEvent({
     intent: null,
     trade: { symbol: "SOLUSDT", realizedPnl: 10 },

@@ -376,22 +376,6 @@ function clearConsumedTakeProfitProtectionMeta(meta = {}) {
   };
 }
 
-async function markTpP1DoneFromExternalFill({ exchange, symbol, execPrice, execTimeIso, entryEventId } = {}) {
-  await syncFuturesPositionOnly({
-    runId: `RUN__FILL_SYNC_STAGE_RECONCILE__${String(exchange || "").toUpperCase()}__${String(symbol || "").toUpperCase()}__${Date.now()}`,
-    exchange,
-    symbol,
-  });
-
-  triggerExitWorkerRun({
-    reason: `TP1_TRAIL_ARMED_${String(exchange || "").toUpperCase()}_${String(symbol || "").toUpperCase()}`,
-  }).catch((e) => {
-    console.warn("[EXIT_WORKER_SCALE_ON_FAIL][TP1_SYNC]", e && e.message ? e.message : String(e));
-  });
-
-  return true;
-}
-
 function resolveEnvBool(v, def = false) {
   if (v == null) return def;
   const s = String(v).trim().toLowerCase();
@@ -1042,10 +1026,11 @@ function isSameOrderAsNativeTp1(orderMeta, positionCtx) {
 
 function isTrailExitEligible(positionCtx, recentTp1) {
   const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
+  const recentTp1Event = String(recentTp1 && recentTp1.event || "").toUpperCase();
+  if (isTpP1Event(recentTp1Event)) return true;
   if (ctx.trailActive !== true) return false;
   if (ctx.tpP1Done === true) return true;
-  const recentTp1Event = String(recentTp1 && recentTp1.event || "").toUpperCase();
-  return isTpP1Event(recentTp1Event);
+  return false;
 }
 
 function inferTakeProfitKindFromQtyPct(qtyPct, rules) {
@@ -1586,15 +1571,6 @@ async function syncMarketTrades({
           clientOrderId,
           execPrice: Number.isFinite(execPrice) ? execPrice : null,
         });
-        const cacheKey = `BINANCEFUT__${sym}`;
-        if (positionEntryCache.has(cacheKey)) {
-          const cachedCtx = positionEntryCache.get(cacheKey) || {};
-          positionEntryCache.set(cacheKey, {
-            ...cachedCtx,
-            tpP1Done: true,
-            trailActive: true,
-          });
-        }
       }
 
       if (intentId) {
