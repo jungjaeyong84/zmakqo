@@ -23,6 +23,7 @@ function run() {
   assert.strictEqual(typeof __test.buildOpenCloseProjectionResetMetaPatch, "function", "buildOpenCloseProjectionResetMetaPatch export missing");
   assert.strictEqual(typeof __test.buildOpenCloseTransitionMetaPatch, "function", "buildOpenCloseTransitionMetaPatch export missing");
   assert.strictEqual(typeof __test.buildClosingFillMetaPatch, "function", "buildClosingFillMetaPatch export missing");
+  assert.strictEqual(typeof __test.buildOpeningFillMetaPatch, "function", "buildOpeningFillMetaPatch export missing");
   assert.strictEqual(typeof __test.evaluateCommittedRescueAddGate, "function", "evaluateCommittedRescueAddGate export missing");
   assert.strictEqual(__test.resolveForceAllSignalsAdd({}, "BINANCEFUT"), false, "Binance default must not auto-upgrade same-direction signals to ADD");
   assert.strictEqual(
@@ -261,6 +262,55 @@ function run() {
   });
   assert.strictEqual(closingPatchWithRollback.exit_profile_rollback_active, false);
   assert.strictEqual(closingPatchWithRollback.exit_profile_rollback_until_ms, null);
+
+  const openingPatchSimple = __test.buildOpeningFillMetaPatch({
+    leverageValue: 2,
+    signalTfMs: 900000,
+    newSize: 0.25,
+    features: { ev_gate_atr_pct: 0.17 },
+    marketRegimeCohort: "TRANSITION",
+    marketRegimeRow: { objective_score: 0.81, drop_verdict: "hold" },
+    entryEventIdFromIntent: "ENTRY-1",
+    entrySignalTypeFromIntent: "LONG",
+    entryGradeFromIntent: "EARLY",
+    entryQtyProfileFromIntent: "FIXED",
+    signalBarCloseTimeUtcMs: 111,
+    execBarCloseMs: 222,
+    includeLeverageReason: false,
+    includeEntryRiskFields: false,
+  });
+  assert.strictEqual(openingPatchSimple.leverage, 2);
+  assert.strictEqual(openingPatchSimple.leverage_reason, undefined);
+  assert.strictEqual(openingPatchSimple.initial_stop_price, undefined);
+  assert.strictEqual(openingPatchSimple.openclaw_market_regime_cohort, "TRANSITION");
+  assert.strictEqual(openingPatchSimple.entry_event_id, "ENTRY-1");
+
+  const openingPatchFull = __test.buildOpeningFillMetaPatch({
+    leverageValue: 3,
+    leverageReason: "ENTRY",
+    signalTfMs: 900000,
+    newSize: 0.5,
+    features: { ev_gate_atr_pct: 0.2 },
+    marketRegimeCohort: "CORE",
+    marketRegimeRow: { objective_score: 0.9, drop_verdict: "keep" },
+    entryEventIdFromIntent: "ENTRY-2",
+    entrySignalTypeFromIntent: "SHORT",
+    entryGradeFromIntent: "CORE",
+    entryQtyProfileFromIntent: "SCALED",
+    signalBarCloseTimeUtcMs: 333,
+    execBarCloseMs: 444,
+    initialStopPrice: 99.1,
+    initialStopSource: "STRUCTURE",
+    entryRDistance: 1.2,
+    trailRMultiple: 0.6,
+    includeLeverageReason: true,
+    includeEntryRiskFields: true,
+  });
+  assert.strictEqual(openingPatchFull.leverage_reason, "ENTRY");
+  assert.strictEqual(openingPatchFull.initial_stop_price, 99.1);
+  assert.strictEqual(openingPatchFull.initial_stop_source, "STRUCTURE");
+  assert.strictEqual(openingPatchFull.entry_r_distance, 1.2);
+  assert.strictEqual(openingPatchFull.trail_r_multiple, 0.6);
 
   const baseSizeAware = __test.evaluateLiveRescueAdd({
     cfg,

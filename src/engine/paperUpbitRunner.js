@@ -3841,6 +3841,64 @@ function buildClosingFillMetaPatch({
   };
 }
 
+function buildOpeningFillMetaPatch({
+  leverageValue = null,
+  leverageReason = null,
+  signalTfMs = null,
+  newSize = null,
+  features = null,
+  marketRegimeCohort = null,
+  marketRegimeRow = null,
+  entryEventIdFromIntent = null,
+  entrySignalTypeFromIntent = null,
+  entryGradeFromIntent = null,
+  entryQtyProfileFromIntent = null,
+  signalBarCloseTimeUtcMs = null,
+  execBarCloseMs = null,
+  initialStopPrice = undefined,
+  initialStopSource = undefined,
+  entryRDistance = undefined,
+  trailRMultiple = undefined,
+  includeLeverageReason = false,
+  includeEntryRiskFields = false,
+} = {}) {
+  return {
+    leverage: Number.isFinite(Number(leverageValue)) ? Number(leverageValue) : null,
+    leverage_reason: includeLeverageReason ? (leverageReason || null) : undefined,
+    entry_exec_tf_ms: Number.isFinite(signalTfMs) ? signalTfMs : null,
+    initial_stop_price: includeEntryRiskFields
+      ? (Number.isFinite(Number(initialStopPrice)) ? Number(initialStopPrice) : null)
+      : undefined,
+    initial_stop_source: includeEntryRiskFields ? (initialStopSource || null) : undefined,
+    entry_r_distance: includeEntryRiskFields
+      ? (Number.isFinite(Number(entryRDistance)) ? Number(entryRDistance) : null)
+      : undefined,
+    ev_gate_atr_pct: Number.isFinite(Number(features && features.ev_gate_atr_pct))
+      ? Number(features.ev_gate_atr_pct)
+      : null,
+    trail_r_multiple: includeEntryRiskFields
+      ? (Number.isFinite(Number(trailRMultiple)) ? Number(trailRMultiple) : null)
+      : undefined,
+    add_chain_base_qty_pct: Number.isFinite(newSize) ? Number(newSize) : null,
+    last_exit_bar_ms: null,
+    last_exit_dir: null,
+    last_exit_wall_ms: null,
+    openclaw_market_regime_cohort: marketRegimeCohort || null,
+    openclaw_market_regime_objective_score: marketRegimeRow && Number.isFinite(Number(marketRegimeRow.objective_score))
+      ? Number(marketRegimeRow.objective_score)
+      : null,
+    openclaw_market_regime_drop_verdict: marketRegimeRow ? String(marketRegimeRow.drop_verdict || "").trim().toUpperCase() || null : null,
+    ...buildEntryLineageMetaPatch({
+      entry_event_id: entryEventIdFromIntent || null,
+      entry_signal_type: entrySignalTypeFromIntent || null,
+      entry_grade: entryGradeFromIntent || null,
+      entry_qty_profile: entryQtyProfileFromIntent || null,
+      entry_signal_bar_ms: Number(signalBarCloseTimeUtcMs) || null,
+      entry_exec_bar_ms: Number(execBarCloseMs) || null,
+    }),
+  };
+}
+
 async function loadRecentFillsCache(db) {
   const now = Date.now();
   if (recentFillsCache.ts && (now - recentFillsCache.ts) < TP_P1_FILL_CACHE_TTL_MS) {
@@ -10392,30 +10450,22 @@ async function runPaperUpbitForBar({
       }
     }
     if (opening) {
-      nextMeta = mergeMeta(nextMeta, {
-        leverage,
-        entry_exec_tf_ms: Number.isFinite(signalTfMs) ? signalTfMs : null,
-        last_exit_bar_ms: null,
-        last_exit_dir: null,
-        last_exit_wall_ms: null,
-        add_chain_base_qty_pct: Number.isFinite(newSize) ? Number(newSize) : null,
-        ev_gate_atr_pct: Number.isFinite(Number(it.features_json && it.features_json.ev_gate_atr_pct))
-          ? Number(it.features_json.ev_gate_atr_pct)
-          : null,
-        openclaw_market_regime_cohort: marketRegimeCohort || null,
-        openclaw_market_regime_objective_score: marketRegimeRow && Number.isFinite(Number(marketRegimeRow.objective_score))
-          ? Number(marketRegimeRow.objective_score)
-          : null,
-        openclaw_market_regime_drop_verdict: marketRegimeRow ? String(marketRegimeRow.drop_verdict || "").trim().toUpperCase() || null : null,
-        ...buildEntryLineageMetaPatch({
-          entry_event_id: entryEventIdFromIntent || null,
-          entry_signal_type: entrySignalTypeFromIntent || null,
-          entry_grade: entryGradeFromIntent || null,
-          entry_qty_profile: entryQtyProfileFromIntent || null,
-          entry_signal_bar_ms: Number(it.signal_bar_close_time_utc_ms) || null,
-          entry_exec_bar_ms: Number(execBarCloseMs) || null,
-        }),
-      });
+      nextMeta = mergeMeta(nextMeta, buildOpeningFillMetaPatch({
+        leverageValue: leverage,
+        signalTfMs,
+        newSize,
+        features: it.features_json,
+        marketRegimeCohort,
+        marketRegimeRow,
+        entryEventIdFromIntent,
+        entrySignalTypeFromIntent,
+        entryGradeFromIntent,
+        entryQtyProfileFromIntent,
+        signalBarCloseTimeUtcMs: it.signal_bar_close_time_utc_ms,
+        execBarCloseMs,
+        includeLeverageReason: false,
+        includeEntryRiskFields: false,
+      }));
     }
     if (closing) {
       nextMeta = mergeMeta(nextMeta, buildClosingFillMetaPatch({
@@ -13065,37 +13115,27 @@ async function runPaperFuturesForBar({
       const entryRDistance = (Number.isFinite(initialStopPrice) && Number.isFinite(fillPrice))
         ? Math.abs(Number(initialStopPrice) - Number(fillPrice))
         : null;
-      nextMeta = mergeMeta(nextMeta, {
-        leverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
-        leverage_reason: appliedLeverageReason || null,
-        entry_exec_tf_ms: Number.isFinite(signalTfMs) ? signalTfMs : null,
-        initial_stop_price: Number.isFinite(initialStopPrice) ? initialStopPrice : null,
-        initial_stop_source: initialStopSource || null,
-        entry_r_distance: Number.isFinite(entryRDistance) ? entryRDistance : null,
-        ev_gate_atr_pct: Number.isFinite(Number(it.features_json && it.features_json.ev_gate_atr_pct))
-          ? Number(it.features_json.ev_gate_atr_pct)
-          : null,
-        trail_r_multiple: Number.isFinite(Number(appliedExitRules && appliedExitRules.TRAIL_R_MULTIPLE))
-          ? Number(appliedExitRules.TRAIL_R_MULTIPLE)
-          : null,
-        add_chain_base_qty_pct: Number.isFinite(newSize) ? Number(newSize) : null,
-        last_exit_bar_ms: null,
-        last_exit_dir: null,
-        last_exit_wall_ms: null,
-        openclaw_market_regime_cohort: marketRegimeCohort || null,
-        openclaw_market_regime_objective_score: marketRegimeRow && Number.isFinite(Number(marketRegimeRow.objective_score))
-          ? Number(marketRegimeRow.objective_score)
-          : null,
-        openclaw_market_regime_drop_verdict: marketRegimeRow ? String(marketRegimeRow.drop_verdict || "").trim().toUpperCase() || null : null,
-        ...buildEntryLineageMetaPatch({
-          entry_event_id: entryEventIdFromIntent || null,
-          entry_signal_type: entrySignalTypeFromIntent || null,
-          entry_grade: entryGradeFromIntent || null,
-          entry_qty_profile: entryQtyProfileFromIntent || null,
-          entry_signal_bar_ms: Number(it.signal_bar_close_time_utc_ms) || null,
-          entry_exec_bar_ms: Number(execBarCloseMs) || null,
-        }),
-      });
+      nextMeta = mergeMeta(nextMeta, buildOpeningFillMetaPatch({
+        leverageValue: appliedLeverage,
+        leverageReason: appliedLeverageReason,
+        signalTfMs,
+        newSize,
+        features: it.features_json,
+        marketRegimeCohort,
+        marketRegimeRow,
+        entryEventIdFromIntent,
+        entrySignalTypeFromIntent,
+        entryGradeFromIntent,
+        entryQtyProfileFromIntent,
+        signalBarCloseTimeUtcMs: it.signal_bar_close_time_utc_ms,
+        execBarCloseMs,
+        initialStopPrice,
+        initialStopSource,
+        entryRDistance,
+        trailRMultiple: appliedExitRules && appliedExitRules.TRAIL_R_MULTIPLE,
+        includeLeverageReason: true,
+        includeEntryRiskFields: true,
+      }));
     }
     if (closing) {
       nextMeta = mergeMeta(nextMeta, buildClosingFillMetaPatch({
@@ -14894,6 +14934,7 @@ module.exports = {
     buildOpenCloseProjectionResetMetaPatch,
     buildOpenCloseTransitionMetaPatch,
     buildClosingFillMetaPatch,
+    buildOpeningFillMetaPatch,
     resolvePineStage1BundleMeta,
     resolveSignalTier,
     computeTrailingMetaUpdate,
