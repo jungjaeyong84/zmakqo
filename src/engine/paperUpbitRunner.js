@@ -970,6 +970,37 @@ async function acquireBinanceNativeRefreshLease({
   return { acquired, holder, leaseUntil, holderId };
 }
 
+async function heartbeatBinanceNativeRefreshLease({
+  exchange,
+  symbol,
+  ttlMs = BINANCE_NATIVE_REFRESH_LEASE_TTL_MS,
+  holderId = binanceNativeRefreshLeaseHolderId,
+} = {}) {
+  const db = getFirestore();
+  const now = Date.now();
+  const leaseUntil = now + Math.max(2000, Math.floor(Number(ttlMs) || BINANCE_NATIVE_REFRESH_LEASE_TTL_MS));
+  const ref = db.doc(buildBinanceNativeRefreshLeaseDocPath(exchange, symbol));
+  let ok = false;
+  let holder = null;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const data = snap.data() || {};
+    const owner = String(data.owner || "");
+    if (owner !== String(holderId || "")) {
+      holder = owner || null;
+      return;
+    }
+    ok = true;
+    tx.set(ref, {
+      lease_until_ms: leaseUntil,
+      heartbeat_ms: now,
+      heartbeat_at: new Date(now).toISOString(),
+    }, { merge: true });
+  });
+  return { ok, holder, leaseUntil, holderId };
+}
+
 async function releaseBinanceNativeRefreshLease({
   exchange,
   symbol,
@@ -7567,8 +7598,24 @@ async function refreshBinanceNativeProtectionWithRetry({
   }
   const totalAttempts = BINANCE_NATIVE_PROTECTION_RETRY_COUNT + 1;
   let lastResult = null;
+  const heartbeatEveryMs = Math.max(1000, Math.floor(BINANCE_NATIVE_REFRESH_LEASE_TTL_MS / 3));
+  let heartbeatTimer = null;
   try {
+    heartbeatTimer = setInterval(() => {
+      heartbeatBinanceNativeRefreshLease({ exchange, symbol, holderId: lease.holderId }).catch(() => {});
+    }, heartbeatEveryMs);
     for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+      const heartbeat = await heartbeatBinanceNativeRefreshLease({ exchange, symbol, holderId: lease.holderId });
+      if (!heartbeat.ok) {
+        return {
+          ok: false,
+          skipped: true,
+          reason: "NATIVE_REFRESH_LEASE_LOST",
+          holder: heartbeat.holder || null,
+          attempts: Math.max(0, attempt - 1),
+          max_attempts: totalAttempts,
+        };
+      }
       const result = await refreshBinanceNativeProtection({
         liveCfg,
         exchange,
@@ -7594,6 +7641,7 @@ async function refreshBinanceNativeProtectionWithRetry({
     }
     return lastResult || { ok: false, reason: "UNKNOWN", attempts: totalAttempts, max_attempts: totalAttempts };
   } finally {
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
     try {
       await releaseBinanceNativeRefreshLease({ exchange, symbol });
     } catch (_) {}

@@ -8,6 +8,7 @@ function run() {
   __test._symbolCooldownState.clear();
   assert.strictEqual(typeof __test.buildTickTrailObservationDocUpdate, "function", "trail observation update helper missing");
   assert.strictEqual(typeof __test.buildTickTrailReconcileRunId, "function", "trail reconcile run id helper missing");
+  assert.strictEqual(typeof __test.heartbeatTickExitLease, "function", "tick exit lease heartbeat helper missing");
 
   const obsPatch = __test.buildTickTrailObservationDocUpdate({ "meta.trail_high": 1.23 }, "2026-04-10T00:00:00.000Z");
   assert.deepStrictEqual(obsPatch, {

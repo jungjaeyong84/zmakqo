@@ -4,6 +4,7 @@ const { __test } = require("../services/binanceLiveStateSelfHeal");
 async function run() {
   assert.strictEqual(typeof __test.isActivePaperPosition, "function", "isActivePaperPosition export missing");
   assert.strictEqual(typeof __test.shouldRepairBinanceLivePosition, "function", "shouldRepairBinanceLivePosition export missing");
+  assert.strictEqual(typeof __test.buildSelfHealFailureMetaPatch, "function", "buildSelfHealFailureMetaPatch export missing");
 
   assert.strictEqual(__test.isActivePaperPosition({
     position_state: "COMMIT",
@@ -43,6 +44,17 @@ async function run() {
     exchange_projection_in_sync: true,
     exchange_projection_invariants: ["TP1_DONE_WITH_TP_ORDER"],
   }), true);
+
+  assert.deepStrictEqual(__test.buildSelfHealFailureMetaPatch({
+    reason: "repair_exception",
+    error: "boom",
+    atMs: 123,
+  }), {
+    native_protection_refresh_status: "FAILED",
+    native_protection_refresh_reason: "REPAIR_EXCEPTION",
+    last_self_heal_error: "boom",
+    last_self_heal_at_ms: 123,
+  });
 
   console.log("BINANCE_LIVE_STATE_SELF_HEAL_TEST_OK");
 }
