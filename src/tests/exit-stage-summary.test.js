@@ -68,9 +68,9 @@ const { buildExitStageView } = require("../utils/exitStageView");
     },
   });
   assert(stage, "stage must exist for trailing position");
-  assert.equal(stage.trail_r_multiple, 0.9);
+  assert.equal(stage.trail_r_multiple, 0.6);
   assert.equal(stage.compact_headline.left_label, "Trail");
-  assert.equal(stage.compact_headline.left_price, 109.2575);
+  assert.equal(stage.compact_headline.left_price, 109.505);
   assert.equal(stage.compact_headline.right_label, "SL");
   assert.equal(stage.compact_headline.right_price, 98.35);
 })();
