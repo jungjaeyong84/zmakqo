@@ -10083,6 +10083,8 @@ async function runPaperUpbitForBar({
     const ev = String(it.event || "").toUpperCase();
     const closing = newState === "FLAT";
     const openingOrAdd = (intent === "ENTRY" || intent === "ADD") && newState === "ACTIVE";
+    const forceLiveReconcile = shouldForceImmediateLiveFuturesReconcile({ exchange, executionMode });
+    const applyOptimisticFillProjection = !forceLiveReconcile;
     const metaSide = String(pos.position_side || "LONG").toUpperCase();
     const marketRegimeRow = opening ? readOpenClawMarketRegimeRow(symbol) : null;
     const marketRegimeCohort = normalizeOpenClawCohort(marketRegimeRow && marketRegimeRow.cohort);
@@ -10093,39 +10095,9 @@ async function runPaperUpbitForBar({
 
     if (opening || closing) {
       nextMeta = mergeMeta(nextMeta, {
-        tp_p0_done: false,
-        tp_p0_price: null,
-        tp_p0_at: null,
-        tp_p0_source: null,
-        tp_p0_qty_ratio: null,
-        tp_p0_entry_event_id: null,
-        tp_p0_entry_exec_bar_ms: null,
-        tp_p1_done: false,
-        tp_p1_price: null,
-        tp_p1_target_price: null,
-        trail_high: null,
-        trail_low: null,
-        trail_active: false,
         initial_stop_price: null,
         entry_r_distance: null,
         trail_r_multiple: null,
-        tp_p1_pending: false,
-        tp_p1_pending_at_ms: null,
-        tp_p1_pending_until_ms: null,
-        tp_p1_pending_event: null,
-        tp_p1_bar_ms: null,
-        tp_p1_at: null,
-        tp_p1_source: null,
-        tp_p1_entry_event_id: null,
-        tp_p1_entry_exec_bar_ms: null,
-        trail_delay_bars_required: null,
-        trail_delay_mfe_pct_required: null,
-        trail_delay_release_reason: null,
-        trail_delay_release_at: null,
-        trail_delay_mode: null,
-        tp_p1_skip_reason: null,
-        tp_p1_skip_note: null,
-        tp_p1_skip_at: null,
         opposite_transition_dir: null,
         opposite_transition_event: null,
         opposite_transition_until_ms: null,
@@ -10142,31 +10114,65 @@ async function runPaperUpbitForBar({
         add_chain_last_qty_base: null,
         add_chain_last_loss_pct: null,
         add_chain_base_qty_pct: closing ? null : undefined,
-        native_protection_refresh_status: closing ? null : undefined,
-        native_protection_refresh_reason: closing ? null : undefined,
-        native_protection_refresh_context: closing ? null : undefined,
-        native_protection_refresh_at_ms: closing ? null : undefined,
-        native_protection_refresh_bar_ms: closing ? null : undefined,
-        native_protection_stale: closing ? false : undefined,
-        native_protection_attempts: closing ? null : undefined,
-        native_protection_max_attempts: closing ? null : undefined,
-        native_protection_stop_order_id: closing ? null : undefined,
-        native_protection_tp0_order_id: closing ? null : undefined,
-        native_protection_tp_order_id: closing ? null : undefined,
-        native_protection_stop_price: closing ? null : undefined,
-        native_protection_tp0_price: closing ? null : undefined,
-        native_protection_tp_price: closing ? null : undefined,
-        native_protection_tp0_qty_base: closing ? null : undefined,
-        native_protection_tp_qty_base: closing ? null : undefined,
-        native_protection_tp0_qty_ratio: closing ? null : undefined,
-        native_protection_tp_qty_ratio: closing ? null : undefined,
-        native_protection_tp0_status: closing ? null : undefined,
-        native_protection_tp_status: closing ? null : undefined,
-        native_protection_tp0_reason: closing ? null : undefined,
-        native_protection_tp_reason: closing ? null : undefined,
-        native_protection_entry_price: closing ? null : undefined,
-        native_protection_side: closing ? null : undefined,
       });
+      if (applyOptimisticFillProjection) {
+        nextMeta = mergeMeta(nextMeta, {
+          tp_p0_done: false,
+          tp_p0_price: null,
+          tp_p0_at: null,
+          tp_p0_source: null,
+          tp_p0_qty_ratio: null,
+          tp_p0_entry_event_id: null,
+          tp_p0_entry_exec_bar_ms: null,
+          tp_p1_done: false,
+          tp_p1_price: null,
+          tp_p1_target_price: null,
+          trail_high: null,
+          trail_low: null,
+          trail_active: false,
+          tp_p1_pending: false,
+          tp_p1_pending_at_ms: null,
+          tp_p1_pending_until_ms: null,
+          tp_p1_pending_event: null,
+          tp_p1_bar_ms: null,
+          tp_p1_at: null,
+          tp_p1_source: null,
+          tp_p1_entry_event_id: null,
+          tp_p1_entry_exec_bar_ms: null,
+          trail_delay_bars_required: null,
+          trail_delay_mfe_pct_required: null,
+          trail_delay_release_reason: null,
+          trail_delay_release_at: null,
+          trail_delay_mode: null,
+          tp_p1_skip_reason: null,
+          tp_p1_skip_note: null,
+          tp_p1_skip_at: null,
+          native_protection_refresh_status: closing ? null : undefined,
+          native_protection_refresh_reason: closing ? null : undefined,
+          native_protection_refresh_context: closing ? null : undefined,
+          native_protection_refresh_at_ms: closing ? null : undefined,
+          native_protection_refresh_bar_ms: closing ? null : undefined,
+          native_protection_stale: closing ? false : undefined,
+          native_protection_attempts: closing ? null : undefined,
+          native_protection_max_attempts: closing ? null : undefined,
+          native_protection_stop_order_id: closing ? null : undefined,
+          native_protection_tp0_order_id: closing ? null : undefined,
+          native_protection_tp_order_id: closing ? null : undefined,
+          native_protection_stop_price: closing ? null : undefined,
+          native_protection_tp0_price: closing ? null : undefined,
+          native_protection_tp_price: closing ? null : undefined,
+          native_protection_tp0_qty_base: closing ? null : undefined,
+          native_protection_tp_qty_base: closing ? null : undefined,
+          native_protection_tp0_qty_ratio: closing ? null : undefined,
+          native_protection_tp_qty_ratio: closing ? null : undefined,
+          native_protection_tp0_status: closing ? null : undefined,
+          native_protection_tp_status: closing ? null : undefined,
+          native_protection_tp0_reason: closing ? null : undefined,
+          native_protection_tp_reason: closing ? null : undefined,
+          native_protection_entry_price: closing ? null : undefined,
+          native_protection_side: closing ? null : undefined,
+        });
+      }
     }
     if (openingOrAdd) {
       const entryExitAdjustment = applyEntryExitRuleRuntimeAdjustments({
@@ -10276,8 +10282,6 @@ async function runPaperUpbitForBar({
         nextMeta = mergeMeta(nextMeta, profitableTrailCooldownMeta);
       }
     }
-    const forceLiveReconcile = shouldForceImmediateLiveFuturesReconcile({ exchange, executionMode });
-    const applyOptimisticFillProjection = !forceLiveReconcile;
     if (isTpP0EventLocal(ev) && newState === "ACTIVE" && applyOptimisticFillProjection) {
       nextMeta = mergeMeta(nextMeta, {
         tp_p0_done: true,
@@ -12862,6 +12866,8 @@ async function runPaperFuturesForBar({
     const ev = String(it.event || "").toUpperCase();
     const closing = newState === "FLAT";
     const openingOrAdd = (intent === "ENTRY" || intent === "ADD") && newState === "ACTIVE";
+    const forceLiveReconcile = shouldForceImmediateLiveFuturesReconcile({ exchange, executionMode });
+    const applyOptimisticFillProjection = !forceLiveReconcile;
     const metaSide = String(posSide || nextPosSide || "LONG").toUpperCase();
     const marketRegimeRow = opening ? readOpenClawMarketRegimeRow(symbol) : null;
     const marketRegimeCohort = normalizeOpenClawCohort(marketRegimeRow && marketRegimeRow.cohort);
@@ -12873,36 +12879,6 @@ async function runPaperFuturesForBar({
     });
     if (opening || closing) {
       nextMeta = mergeMeta(nextMeta, {
-        tp_p0_done: false,
-        tp_p0_price: null,
-        tp_p0_at: null,
-        tp_p0_source: null,
-        tp_p0_qty_ratio: null,
-        tp_p0_entry_event_id: null,
-        tp_p0_entry_exec_bar_ms: null,
-        tp_p1_done: false,
-        tp_p1_price: null,
-        tp_p1_target_price: null,
-        trail_high: null,
-        trail_low: null,
-        trail_active: false,
-        tp_p1_pending: false,
-        tp_p1_pending_at_ms: null,
-        tp_p1_pending_until_ms: null,
-        tp_p1_pending_event: null,
-        tp_p1_bar_ms: null,
-        tp_p1_at: null,
-        tp_p1_source: null,
-        tp_p1_entry_event_id: null,
-        tp_p1_entry_exec_bar_ms: null,
-        trail_delay_bars_required: null,
-        trail_delay_mfe_pct_required: null,
-        trail_delay_release_reason: null,
-        trail_delay_release_at: null,
-        trail_delay_mode: null,
-        tp_p1_skip_reason: null,
-        tp_p1_skip_note: null,
-        tp_p1_skip_at: null,
         opposite_transition_dir: null,
         opposite_transition_event: null,
         opposite_transition_until_ms: null,
@@ -12919,31 +12895,65 @@ async function runPaperFuturesForBar({
         add_chain_last_qty_base: null,
         add_chain_last_loss_pct: null,
         add_chain_base_qty_pct: closing ? null : undefined,
-        native_protection_refresh_status: closing ? null : undefined,
-        native_protection_refresh_reason: closing ? null : undefined,
-        native_protection_refresh_context: closing ? null : undefined,
-        native_protection_refresh_at_ms: closing ? null : undefined,
-        native_protection_refresh_bar_ms: closing ? null : undefined,
-        native_protection_stale: closing ? false : undefined,
-        native_protection_attempts: closing ? null : undefined,
-        native_protection_max_attempts: closing ? null : undefined,
-        native_protection_stop_order_id: closing ? null : undefined,
-        native_protection_tp0_order_id: closing ? null : undefined,
-        native_protection_tp_order_id: closing ? null : undefined,
-        native_protection_stop_price: closing ? null : undefined,
-        native_protection_tp0_price: closing ? null : undefined,
-        native_protection_tp_price: closing ? null : undefined,
-        native_protection_tp0_qty_base: closing ? null : undefined,
-        native_protection_tp_qty_base: closing ? null : undefined,
-        native_protection_tp0_qty_ratio: closing ? null : undefined,
-        native_protection_tp_qty_ratio: closing ? null : undefined,
-        native_protection_tp0_status: closing ? null : undefined,
-        native_protection_tp_status: closing ? null : undefined,
-        native_protection_tp0_reason: closing ? null : undefined,
-        native_protection_tp_reason: closing ? null : undefined,
-        native_protection_entry_price: closing ? null : undefined,
-        native_protection_side: closing ? null : undefined,
       });
+      if (applyOptimisticFillProjection) {
+        nextMeta = mergeMeta(nextMeta, {
+          tp_p0_done: false,
+          tp_p0_price: null,
+          tp_p0_at: null,
+          tp_p0_source: null,
+          tp_p0_qty_ratio: null,
+          tp_p0_entry_event_id: null,
+          tp_p0_entry_exec_bar_ms: null,
+          tp_p1_done: false,
+          tp_p1_price: null,
+          tp_p1_target_price: null,
+          trail_high: null,
+          trail_low: null,
+          trail_active: false,
+          tp_p1_pending: false,
+          tp_p1_pending_at_ms: null,
+          tp_p1_pending_until_ms: null,
+          tp_p1_pending_event: null,
+          tp_p1_bar_ms: null,
+          tp_p1_at: null,
+          tp_p1_source: null,
+          tp_p1_entry_event_id: null,
+          tp_p1_entry_exec_bar_ms: null,
+          trail_delay_bars_required: null,
+          trail_delay_mfe_pct_required: null,
+          trail_delay_release_reason: null,
+          trail_delay_release_at: null,
+          trail_delay_mode: null,
+          tp_p1_skip_reason: null,
+          tp_p1_skip_note: null,
+          tp_p1_skip_at: null,
+          native_protection_refresh_status: closing ? null : undefined,
+          native_protection_refresh_reason: closing ? null : undefined,
+          native_protection_refresh_context: closing ? null : undefined,
+          native_protection_refresh_at_ms: closing ? null : undefined,
+          native_protection_refresh_bar_ms: closing ? null : undefined,
+          native_protection_stale: closing ? false : undefined,
+          native_protection_attempts: closing ? null : undefined,
+          native_protection_max_attempts: closing ? null : undefined,
+          native_protection_stop_order_id: closing ? null : undefined,
+          native_protection_tp0_order_id: closing ? null : undefined,
+          native_protection_tp_order_id: closing ? null : undefined,
+          native_protection_stop_price: closing ? null : undefined,
+          native_protection_tp0_price: closing ? null : undefined,
+          native_protection_tp_price: closing ? null : undefined,
+          native_protection_tp0_qty_base: closing ? null : undefined,
+          native_protection_tp_qty_base: closing ? null : undefined,
+          native_protection_tp0_qty_ratio: closing ? null : undefined,
+          native_protection_tp_qty_ratio: closing ? null : undefined,
+          native_protection_tp0_status: closing ? null : undefined,
+          native_protection_tp_status: closing ? null : undefined,
+          native_protection_tp0_reason: closing ? null : undefined,
+          native_protection_tp_reason: closing ? null : undefined,
+          native_protection_entry_price: closing ? null : undefined,
+          native_protection_side: closing ? null : undefined,
+        });
+      }
     }
     if (openingOrAdd) {
       const entryExitAdjustment = applyEntryExitRuleRuntimeAdjustments({
@@ -13083,8 +13093,6 @@ async function runPaperFuturesForBar({
         nextMeta = mergeMeta(nextMeta, profitableTrailCooldownMeta);
       }
     }
-    const forceLiveReconcile = shouldForceImmediateLiveFuturesReconcile({ exchange, executionMode });
-    const applyOptimisticFillProjection = !forceLiveReconcile;
     if (isTpP0EventLocal(ev) && newState === "ACTIVE" && applyOptimisticFillProjection) {
       nextMeta = mergeMeta(nextMeta, {
         tp_p0_done: true,
