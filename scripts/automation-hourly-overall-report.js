@@ -19,7 +19,9 @@ const {
 } = require("./lib/automation-utils");
 const { getFirestore } = require("../src/storage/firestore");
 const { getSystemSettingsForProvider } = require("../src/storage/settings");
+const { getPositionRuntimeObservation } = require("../src/storage/positionRuntimeObservations");
 const { auditBinanceExitIntegrity } = require("../src/services/exitIntegrityAudit");
+const { buildExitStageView } = require("../src/utils/exitStageView");
 
 loadLocalEnv();
 ensureDir(OPS_DAILY_DIR);
@@ -223,33 +225,53 @@ async function readActivePositions() {
     .where("exchange", "==", "BINANCEFUT")
     .get();
 
-  const rows = [];
+  const docs = [];
   snap.forEach((doc) => {
+    docs.push(doc);
+  });
+
+  const rows = [];
+  for (const doc of docs) {
     const d = doc.data() || {};
     const meta = d.meta || {};
     const state = String(d.state || "").toUpperCase();
     const status = String(d.status || "").toUpperCase();
     const qtyBase = toNumber(d.qty_base, 0);
     const active = (state === "ACTIVE" || status === "ACTIVE") && qtyBase > 0;
-    if (!active) return;
+    if (!active) continue;
+    const symbol = resolveSymbol(doc.id, d);
+    const observation = symbol
+      ? await getPositionRuntimeObservation({ exchange: "BINANCEFUT", symbol }).catch(() => null)
+      : null;
+    const exitStage = buildExitStageView({
+      exchange: "BINANCEFUT",
+      position: d,
+      leverageFallback: 2,
+      observation,
+    });
     rows.push({
-      symbol: resolveSymbol(doc.id, d),
+      symbol,
       side: d.position_side || d.side || null,
       qty_base: qtyBase,
       avg_price: toNumber(d.avg_price, null),
       tp_p1_done: Boolean(d.tp_p1_done ?? meta.tp_p1_done),
       trail_active: Boolean(d.trail_active ?? meta.trail_active),
+      exit_stage_label: exitStage && exitStage.label ? String(exitStage.label) : null,
       native_sl: toNumber(d.native_protection_stop_price ?? meta.native_protection_stop_price, null),
       native_tp1: toNumber(d.native_protection_tp_price ?? meta.native_protection_tp_price, null),
       native_tp_qty_base: toNumber(d.native_protection_tp_qty_base ?? meta.native_protection_tp_qty_base, null),
-      native_status: String((d.native_protection_refresh_status ?? meta.native_protection_refresh_status) || "").trim() || null,
+      native_status: String(
+        ((exitStage && exitStage.native_refresh_status) || d.native_protection_refresh_status || meta.native_protection_refresh_status) || ""
+      ).trim() || null,
     });
-  });
+  }
   rows.sort((a, b) => String(a.symbol || "").localeCompare(String(b.symbol || "")));
   return rows;
 }
 
 function positionStatusLabel(row) {
+  const exitStageLabel = String(row && row.exit_stage_label || "").trim();
+  if (exitStageLabel) return exitStageLabel;
   if (row.status_warning === "ACTIVE_MARKET_MISSING_FROM_POSITION_DOC") return "상태 미동기화";
   if (row.tp_p1_done && row.trail_active) return "TP1 완료 · 트레일링 활성";
   if (row.tp_p1_done) return "TP1 완료";
@@ -653,6 +675,7 @@ if (require.main === module) {
       buildComparison,
       formatSignedPercent,
       summarizeExecutionEngine,
+      positionStatusLabel,
     },
   };
 }

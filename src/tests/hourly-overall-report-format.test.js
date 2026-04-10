@@ -6,6 +6,7 @@ const { __test } = require("../../scripts/automation-hourly-overall-report");
 function run() {
   assert.strictEqual(typeof __test.resolveComparisonLabel, "function", "resolveComparisonLabel export missing");
   assert.strictEqual(typeof __test.formatSignedPercent, "function", "formatSignedPercent export missing");
+  assert.strictEqual(typeof __test.positionStatusLabel, "function", "positionStatusLabel export missing");
 
   assert.strictEqual(
     __test.resolveComparisonLabel({
@@ -38,6 +39,14 @@ function run() {
   );
 
   assert.strictEqual(__test.formatSignedPercent(-1.2345, 4), "-1.2345%");
+  assert.strictEqual(
+    __test.positionStatusLabel({
+      tp_p1_done: false,
+      trail_active: false,
+      exit_stage_label: "트레일링",
+    }),
+    "트레일링"
+  );
 }
 
 try {
