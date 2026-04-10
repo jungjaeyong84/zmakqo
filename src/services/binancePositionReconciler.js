@@ -133,12 +133,9 @@ function inferTakeProfitKindFromQtyRatio(qtyRatio, tp0QtyRatio = 0.25, tp1QtyRat
   return best.kind;
 }
 
-function classifyTakeProfitOrders({ orders = [], positionSide, qtyBase, meta } = {}) {
+function classifyTakeProfitOrders({ orders = [], positionSide, qtyBase } = {}) {
   const candidates = pickTakeProfitCandidates(orders, positionSide, qtyBase);
   if (!candidates.length) return { tp0: null, tp1: null };
-  if (meta && (meta.tp_p1_done === true || meta.trail_active === true)) {
-    return { tp0: null, tp1: null };
-  }
   if (candidates.length === 1) {
     const only = candidates[0];
     const inferredKind = inferTakeProfitKindFromQtyRatio(only.qtyRatio);
@@ -235,7 +232,6 @@ function reconcileBinancePositionMetaWithExchange({
     orders: allOrders,
     positionSide,
     qtyBase,
-    meta: baseMeta,
   });
 
   const nextMeta = {
@@ -266,36 +262,21 @@ function reconcileBinancePositionMetaWithExchange({
     nextMeta.trail_active = false;
   }
 
-  if (nextMeta.tp_p1_done === true || nextMeta.trail_active === true) {
-    nextMeta.native_protection_tp0_order_id = null;
-    nextMeta.native_protection_tp_order_id = null;
-    nextMeta.native_protection_tp0_price = null;
-    nextMeta.native_protection_tp_price = null;
-    nextMeta.native_protection_tp0_qty_base = null;
-    nextMeta.native_protection_tp_qty_base = null;
-    nextMeta.native_protection_tp0_qty_ratio = null;
-    nextMeta.native_protection_tp_qty_ratio = null;
-    nextMeta.native_protection_tp0_status = null;
-    nextMeta.native_protection_tp_status = null;
-    nextMeta.native_protection_tp0_reason = null;
-    nextMeta.native_protection_tp_reason = null;
-  } else {
-    nextMeta.native_protection_tp0_order_id = tp0 ? tp0.orderId : null;
-    nextMeta.native_protection_tp_order_id = tp1 ? tp1.orderId : null;
-    nextMeta.native_protection_tp0_price = tp0 && Number.isFinite(tp0.triggerPrice) ? tp0.triggerPrice : null;
-    nextMeta.native_protection_tp_price = tp1 && Number.isFinite(tp1.triggerPrice) ? tp1.triggerPrice : null;
-    nextMeta.native_protection_tp0_qty_base = tp0 && Number.isFinite(tp0.qtyBase) ? tp0.qtyBase : null;
-    nextMeta.native_protection_tp_qty_base = tp1 && Number.isFinite(tp1.qtyBase) ? tp1.qtyBase : null;
-    nextMeta.native_protection_tp0_qty_ratio = tp0 && Number.isFinite(tp0.qtyRatio) ? tp0.qtyRatio : null;
-    nextMeta.native_protection_tp_qty_ratio = tp1 && Number.isFinite(tp1.qtyRatio) ? tp1.qtyRatio : null;
-    nextMeta.native_protection_tp0_status = tp0 ? "OK" : null;
-    nextMeta.native_protection_tp_status = tp1 ? "OK" : null;
-    nextMeta.native_protection_tp0_reason = null;
-    nextMeta.native_protection_tp_reason = null;
-  }
+  nextMeta.native_protection_tp0_order_id = tp0 ? tp0.orderId : null;
+  nextMeta.native_protection_tp_order_id = tp1 ? tp1.orderId : null;
+  nextMeta.native_protection_tp0_price = tp0 && Number.isFinite(tp0.triggerPrice) ? tp0.triggerPrice : null;
+  nextMeta.native_protection_tp_price = tp1 && Number.isFinite(tp1.triggerPrice) ? tp1.triggerPrice : null;
+  nextMeta.native_protection_tp0_qty_base = tp0 && Number.isFinite(tp0.qtyBase) ? tp0.qtyBase : null;
+  nextMeta.native_protection_tp_qty_base = tp1 && Number.isFinite(tp1.qtyBase) ? tp1.qtyBase : null;
+  nextMeta.native_protection_tp0_qty_ratio = tp0 && Number.isFinite(tp0.qtyRatio) ? tp0.qtyRatio : null;
+  nextMeta.native_protection_tp_qty_ratio = tp1 && Number.isFinite(tp1.qtyRatio) ? tp1.qtyRatio : null;
+  nextMeta.native_protection_tp0_status = tp0 ? "OK" : null;
+  nextMeta.native_protection_tp_status = tp1 ? "OK" : null;
+  nextMeta.native_protection_tp0_reason = null;
+  nextMeta.native_protection_tp_reason = null;
 
   if (!stop) invariants.push("NATIVE_STOP_MISSING");
-  if (nextMeta.tp_p1_done === true && nextMeta.native_protection_tp_order_id) {
+  if ((nextMeta.tp_p1_done === true || nextMeta.trail_active === true) && (tp0 || tp1)) {
     invariants.push("TP1_DONE_WITH_TP_ORDER");
   }
   if (normalizedAlgo.endpointUnavailable) {

@@ -32,6 +32,18 @@ async function run() {
   assert.strictEqual(classifiedShort.tp0.orderId, "tp0");
   assert.strictEqual(classifiedShort.tp1.orderId, "tp1");
 
+  const classifiedWithStaleMeta = __test.classifyTakeProfitOrders({
+    orders: [
+      { orderId: "tp1", type: "TAKE_PROFIT_MARKET", side: "SELL", reduceOnly: true, stopPrice: "105", origQty: "5" },
+      { orderId: "tp0", type: "TAKE_PROFIT_MARKET", side: "SELL", reduceOnly: true, stopPrice: "102", origQty: "2.5" },
+    ],
+    positionSide: "LONG",
+    qtyBase: 10,
+    meta: { tp_p1_done: true, trail_active: true },
+  });
+  assert.strictEqual(classifiedWithStaleMeta.tp0.orderId, "tp0");
+  assert.strictEqual(classifiedWithStaleMeta.tp1.orderId, "tp1");
+
   const trailPatch = reconcileBinancePositionMetaWithExchange({
     active: true,
     meta: {
@@ -53,9 +65,10 @@ async function run() {
     ],
   });
   assert.strictEqual(trailPatch.meta.native_protection_stop_order_id, "stop-1");
-  assert.strictEqual(trailPatch.meta.native_protection_tp0_order_id, null);
-  assert.strictEqual(trailPatch.meta.native_protection_tp_order_id, null);
+  assert.strictEqual(trailPatch.meta.native_protection_tp0_order_id, "tp0-1");
+  assert.strictEqual(trailPatch.meta.native_protection_tp_order_id, "tp1-1");
   assert.strictEqual(trailPatch.meta.trail_active, true);
+  assert.ok(trailPatch.invariants.includes("TP1_DONE_WITH_TP_ORDER"));
 
   const invalidTrail = reconcileBinancePositionMetaWithExchange({
     active: true,

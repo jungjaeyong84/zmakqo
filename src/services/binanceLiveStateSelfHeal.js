@@ -112,7 +112,7 @@ async function healBinanceLivePosition({
       const sys = await getSystemSettingsForProvider(exchange, 2000);
       const sysCfg = sys && sys.data ? sys.data : {};
       const liveCfg = await resolveLiveFuturesConfig({ exchange, symbol: sym });
-      const repairedMeta = await repairActivePositionExitRuntimeState({
+      await repairActivePositionExitRuntimeState({
         exchange,
         symbol: sym,
         positionSide: pos.position_side || meta.position_side || null,
@@ -123,22 +123,6 @@ async function healBinanceLivePosition({
         cohort: meta.openclaw_market_regime_cohort || meta.market_regime_cohort || null,
         sysCfg,
         execBarCloseMs: Number(meta.entry_exec_bar_ms || meta.last_entry_bar_ms) || null,
-      });
-
-      await upsertPosition({
-        exchange,
-        symbol: sym,
-        state: pos.state || pos.position_state || "ACTIVE",
-        sizePct: pos.size_pct,
-        avgPrice: pos.avg_price,
-        qtyBase: pos.qty_base,
-        runId: pos.run_id || null,
-        budgetMaxKrw: pos.budget_max_krw,
-        budgetUsedKrw: pos.budget_used_krw,
-        budgetSource: pos.budget_source,
-        positionSide: pos.position_side || null,
-        executionMode: pos.execution_mode || "LIVE",
-        meta: repairedMeta,
       });
       repaired = true;
       await syncFuturesPositionOnly({
