@@ -1,5 +1,6 @@
 const express = require("express");
 const { getFirestore } = require("../storage/firestore");
+const { getPositionRuntimeObservation } = require("../storage/positionRuntimeObservations");
 const { getRiskBudgetForProvider, getExchangeSettingsForProvider } = require("../utils/exchangeSettings");
 const { resolveExchangeFromReq, resolveRuntimeMarketsForExchange, resolveRuntimeTfContext } = require("../utils/resolveExchange");
 const { getSystemSettingsForProvider } = require("../storage/settings");
@@ -326,6 +327,14 @@ function createStateRoutes() {
         const data = d.exists ? (d.data() || {}) : null;
         positionsByMarket[mk] = (data && isLiveDocForExchange(exchange, data)) ? data : null;
       });
+      const observationsByMarket = {};
+      await Promise.all(markets.map(async (mk) => {
+        try {
+          observationsByMarket[mk] = await getPositionRuntimeObservation({ exchange, symbol: mk });
+        } catch (_) {
+          observationsByMarket[mk] = null;
+        }
+      }));
 
       // KPI latest (market별 요약)
       const kpiSnap = await db.collection("kpi_latest").select("market", "kpi", "computed_at", "exchange", "tf").get();
@@ -404,6 +413,7 @@ function createStateRoutes() {
           exchange,
           position: pos,
           leverageFallback: isBinanceExchange ? defaultFuturesLeverage : 1,
+          observation: observationsByMarket[mk] || null,
         });
 
         return {

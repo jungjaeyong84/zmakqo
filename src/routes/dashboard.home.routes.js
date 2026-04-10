@@ -3,6 +3,7 @@ const path = require("path");
 const express = require("express");
 const router = express.Router();
 const { getFirestore } = require("../storage/firestore");
+const { getPositionRuntimeObservation } = require("../storage/positionRuntimeObservations");
 const { getSystemSettingsForProvider, getAiAllocationSettingsForProvider } = require("../storage/settings");
 const { queryBars } = require("../storage/barsSnapshots");
 const { getRiskBudgetForProvider, getExchangeSettingsForProvider } = require("../utils/exchangeSettings");
@@ -1138,6 +1139,15 @@ router.get("/dashboard/home", async (req, res) => {
       if (!lastFillByMarket[mk]) lastFillByMarket[mk] = x;
     }
 
+    const observationsByMarket = {};
+    await Promise.all(markets_expected.map(async (mk) => {
+      try {
+        observationsByMarket[mk] = await getPositionRuntimeObservation({ exchange, symbol: mk });
+      } catch (_) {
+        observationsByMarket[mk] = null;
+      }
+    }));
+
     const markets = markets_expected.map((mk) => {
       const kpi = kpiByMarket[mk] || { status: "INCONCLUSIVE", n: 0 };
       const pos = posByMarket[mk] || { state: "FLAT", size_pct: 0, avg_price: null };
@@ -1172,6 +1182,7 @@ router.get("/dashboard/home", async (req, res) => {
         position: pos,
         closePrice: close,
         leverageFallback: isBinanceExchange ? defaultFuturesLeverage : 1,
+        observation: observationsByMarket[mk] || null,
       });
 
       const realizedKrw = (realizedByMarket[mk] != null) ? Number(realizedByMarket[mk]) : null;
