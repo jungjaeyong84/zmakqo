@@ -1,4 +1,5 @@
 const { getFirestore } = require("./firestore");
+const { clearTpP1PendingIfUnchanged } = require("./positionsPaper");
 const { tfToMs } = require("../utils/marketConfig");
 const { enrichFeaturesWithRegime } = require("../utils/regime");
 const { resolveEventMapping } = require("../services/signalMapping");
@@ -564,15 +565,11 @@ async function markIntentStatus(intentIdValue, status, patch = {}) {
     const ex = String(doc.exchange || "").trim();
     const sym = String(doc.symbol_or_pair_id || "").trim();
     if (!ex || !sym) return;
-    const posId = `POS__${ex}__${sym}`;
-    await db.collection("positions_paper").doc(posId).update({
-      "meta.tp_p1_pending": false,
-      "meta.tp_p1_pending_at_ms": null,
-      "meta.tp_p1_pending_until_ms": null,
-      "meta.tp_p1_pending_event": null,
-      "meta.tp_p1_pending_cleared_at": nowIso(),
-      "meta.tp_p1_pending_cleared_reason": String(patch.cancel_reason || patch.status_reason || "INTENT_CANCELED"),
-      updated_at: nowIso(),
+    await clearTpP1PendingIfUnchanged({
+      exchange: ex,
+      symbol: sym,
+      clearedAt: nowIso(),
+      clearedReason: String(patch.cancel_reason || patch.status_reason || "INTENT_CANCELED"),
     });
   } catch (_) {}
 }
