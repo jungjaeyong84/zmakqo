@@ -225,6 +225,14 @@ function deriveServerSignalRuntime({
       binance_live_state_invariant_counts: liveHealth.invariant_counts && typeof liveHealth.invariant_counts === "object"
         ? liveHealth.invariant_counts
         : {},
+      binance_fill_projection_audit_issue_n: Math.max(0, toNum(liveHealth.fill_projection_audit_issue_n) || 0),
+      binance_fill_projection_tp0_missing_n: Math.max(0, toNum(liveHealth.fill_projection_tp0_missing_n) || 0),
+      binance_fill_projection_tp1_missing_n: Math.max(0, toNum(liveHealth.fill_projection_tp1_missing_n) || 0),
+      binance_fill_projection_tp1_trail_inactive_n: Math.max(0, toNum(liveHealth.fill_projection_tp1_trail_inactive_n) || 0),
+      binance_fill_projection_native_protection_not_ok_n: Math.max(0, toNum(liveHealth.fill_projection_native_protection_not_ok_n) || 0),
+      binance_fill_projection_issue_by_code: liveHealth.fill_projection_issue_by_code && typeof liveHealth.fill_projection_issue_by_code === "object"
+        ? liveHealth.fill_projection_issue_by_code
+        : {},
     },
     summary: {
       cycle_id: runtimeCycleId,
@@ -306,6 +314,14 @@ function deriveServerSignalRuntime({
       binance_live_state_tp1_done_with_tp_order_n: Math.max(0, toNum(liveHealth.tp1_done_with_tp_order_n) || 0),
       binance_live_state_invariant_counts: liveHealth.invariant_counts && typeof liveHealth.invariant_counts === "object"
         ? liveHealth.invariant_counts
+        : {},
+      binance_fill_projection_audit_issue_n: Math.max(0, toNum(liveHealth.fill_projection_audit_issue_n) || 0),
+      binance_fill_projection_tp0_missing_n: Math.max(0, toNum(liveHealth.fill_projection_tp0_missing_n) || 0),
+      binance_fill_projection_tp1_missing_n: Math.max(0, toNum(liveHealth.fill_projection_tp1_missing_n) || 0),
+      binance_fill_projection_tp1_trail_inactive_n: Math.max(0, toNum(liveHealth.fill_projection_tp1_trail_inactive_n) || 0),
+      binance_fill_projection_native_protection_not_ok_n: Math.max(0, toNum(liveHealth.fill_projection_native_protection_not_ok_n) || 0),
+      binance_fill_projection_issue_by_code: liveHealth.fill_projection_issue_by_code && typeof liveHealth.fill_projection_issue_by_code === "object"
+        ? liveHealth.fill_projection_issue_by_code
         : {},
       pine_shadow_transition_status: completedN === Object.keys(transition).length ? "COMPLETE" : "IN_PROGRESS",
       pine_shadow_transition_progress_pct: progressPct,

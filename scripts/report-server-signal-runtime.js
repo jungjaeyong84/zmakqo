@@ -17,6 +17,7 @@ const { getFirestore } = require("../src/storage/firestore");
 const { deriveServerSignalRuntime } = require("../src/utils/serverSignalRuntime");
 const { getLiveExecutionPolicyRuntimeConfig } = require("../src/utils/liveExecutionPolicy");
 const { __test: liveStateSelfHealTest } = require("../src/services/binanceLiveStateSelfHeal");
+const { buildBinanceFillProjectionAudit } = require("../src/services/binanceFillProjectionAudit");
 
 loadLocalEnv();
 
@@ -60,6 +61,7 @@ function renderMarkdown(report = {}) {
     `- watchdog_generated_at_kst: ${summary.watchdog_generated_at_kst || "N/A"}`,
     `- live_exec_policy: mode=${summary.live_execution_policy_mode || "N/A"} / enabled=${summary.live_execution_policy_enabled ? "YES" : "NO"} / plan_apply=${summary.live_execution_policy_policy_plan_apply ? "YES" : "NO"} / quarantine_hard_block=${summary.live_execution_policy_quarantine_hard_block ? "YES" : "NO"} / quality_hard_block=${summary.live_execution_policy_quality_hard_block ? "YES" : "NO"}`,
     `- live_state_health: active=${summary.binance_live_state_active_position_n ?? "N/A"} / out_of_sync=${summary.binance_live_state_projection_out_of_sync_n ?? "N/A"} / self_heal_required=${summary.binance_live_state_self_heal_required_n ?? "N/A"} / stop_missing=${summary.binance_live_state_native_stop_missing_n ?? "N/A"}`,
+    `- fill_projection_audit: issue=${summary.binance_fill_projection_audit_issue_n ?? "N/A"} / tp0_missing=${summary.binance_fill_projection_tp0_missing_n ?? "N/A"} / tp1_missing=${summary.binance_fill_projection_tp1_missing_n ?? "N/A"} / tp1_trail_inactive=${summary.binance_fill_projection_tp1_trail_inactive_n ?? "N/A"} / native_not_ok=${summary.binance_fill_projection_native_protection_not_ok_n ?? "N/A"}`,
     `- ev_report_only_patch: enabled=${summary.ev_gate_tp1_prob_min_by_market_report_only_enabled ? "YES" : "NO"} / report_only_n=${summary.ev_gate_tp1_prob_min_by_market_report_only_n ?? "N/A"} / direct_n=${summary.ev_gate_tp1_prob_min_by_market_n ?? "N/A"}`,
     `- pine_shadow_transition: ${summary.pine_shadow_transition_status || "N/A"} / ${summary.pine_shadow_transition_progress_pct != null ? `${summary.pine_shadow_transition_progress_pct}%` : "N/A"}`,
     "",
@@ -86,13 +88,21 @@ function isActivePaperPosition(pos = {}) {
 
 async function collectLivePositionHealth(provider = "BINANCEFUT") {
   const db = getFirestore();
-  const snap = await db.collection("positions_paper")
-    .where("exchange", "==", String(provider || "").toUpperCase())
-    .limit(200)
-    .get();
+  const [snap, fillSnap] = await Promise.all([
+    db.collection("positions_paper")
+      .where("exchange", "==", String(provider || "").toUpperCase())
+      .limit(200)
+      .get(),
+    db.collection("fills_paper")
+      .orderBy("created_at", "desc")
+      .limit(3000)
+      .get(),
+  ]);
 
   const rows = [];
   snap.forEach((doc) => rows.push(doc.data() || {}));
+  const fills = [];
+  fillSnap.forEach((doc) => fills.push(doc.data() || {}));
   const activeRows = rows.filter((row) => isActivePaperPosition(row));
   const invariantCounts = {};
   let outOfSync = 0;
@@ -119,6 +129,12 @@ async function collectLivePositionHealth(provider = "BINANCEFUT") {
     tp1DoneWithTpOrder += Number(invariants.includes("TP1_DONE_WITH_TP_ORDER"));
   }
 
+  const fillProjectionAudit = buildBinanceFillProjectionAudit({
+    positions: activeRows,
+    fills,
+    nowMs: Date.now(),
+  });
+
   return {
     active_position_n: activeRows.length,
     projection_out_of_sync_n: outOfSync,
@@ -127,6 +143,12 @@ async function collectLivePositionHealth(provider = "BINANCEFUT") {
     trail_without_tp1_n: trailWithoutTp1,
     tp1_done_with_tp_order_n: tp1DoneWithTpOrder,
     invariant_counts: invariantCounts,
+    fill_projection_audit_issue_n: fillProjectionAudit.issue_n || 0,
+    fill_projection_tp0_missing_n: fillProjectionAudit.tp0_fill_projection_missing_n || 0,
+    fill_projection_tp1_missing_n: fillProjectionAudit.tp1_fill_projection_missing_n || 0,
+    fill_projection_tp1_trail_inactive_n: fillProjectionAudit.tp1_fill_trail_inactive_n || 0,
+    fill_projection_native_protection_not_ok_n: fillProjectionAudit.native_protection_not_ok_n || 0,
+    fill_projection_issue_by_code: fillProjectionAudit.issue_by_code || {},
   };
 }
 

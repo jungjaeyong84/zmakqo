@@ -62,6 +62,16 @@ const { deriveServerSignalRuntime } = require("../../src/utils/serverSignalRunti
       trail_without_tp1_n: 0,
       tp1_done_with_tp_order_n: 1,
       invariant_counts: { TP1_DONE_WITH_TP_ORDER: 1 },
+      fill_projection_audit_issue_n: 3,
+      fill_projection_tp0_missing_n: 1,
+      fill_projection_tp1_missing_n: 0,
+      fill_projection_tp1_trail_inactive_n: 1,
+      fill_projection_native_protection_not_ok_n: 1,
+      fill_projection_issue_by_code: {
+        TP0_FILL_PROJECTION_MISSING: 1,
+        TP1_FILL_TRAIL_INACTIVE: 1,
+        NATIVE_PROTECTION_NOT_OK: 1,
+      },
     },
     watchdog: { summary: { verdict: "PASS" } },
   });
@@ -115,6 +125,15 @@ const { deriveServerSignalRuntime } = require("../../src/utils/serverSignalRunti
   assert.strictEqual(report.summary.binance_live_state_self_heal_required_n, 1);
   assert.strictEqual(report.summary.binance_live_state_tp1_done_with_tp_order_n, 1);
   assert.deepStrictEqual(report.summary.binance_live_state_invariant_counts, { TP1_DONE_WITH_TP_ORDER: 1 });
+  assert.strictEqual(report.summary.binance_fill_projection_audit_issue_n, 3);
+  assert.strictEqual(report.summary.binance_fill_projection_tp0_missing_n, 1);
+  assert.strictEqual(report.summary.binance_fill_projection_tp1_trail_inactive_n, 1);
+  assert.strictEqual(report.current_status.binance_fill_projection_native_protection_not_ok_n, 1);
+  assert.deepStrictEqual(report.current_status.binance_fill_projection_issue_by_code, {
+    TP0_FILL_PROJECTION_MISSING: 1,
+    TP1_FILL_TRAIL_INACTIVE: 1,
+    NATIVE_PROTECTION_NOT_OK: 1,
+  });
   assert.strictEqual(report.current_status.reverse_exception_rescue_bypass_tier_block, true);
   assert.strictEqual(report.summary.pine_shadow_transition_progress_pct, 100);
   assert.strictEqual(report.current_status.execution_shadow_policy, "EXCLUDE_FROM_EXECUTION_DEFAULT");
