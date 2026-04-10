@@ -13,6 +13,7 @@ function run() {
   assert.strictEqual(typeof __test.runTickExitSelfHealPhase, "function", "tick exit self-heal helper missing");
   assert.strictEqual(typeof observationTest.buildTrailObservationPayload, "function", "trail observation payload helper missing");
   assert.strictEqual(typeof observationTest.resolveTrailObservationSnapshot, "function", "trail observation snapshot helper missing");
+  assert.strictEqual(typeof runnerTest.applyTrailObservationSnapshotToMeta, "function", "trail observation apply helper missing");
 
   const obsPatch = __test.buildTickTrailObservationDocUpdate({ "meta.trail_high": 1.23, "meta.trail_high_at_ms": 123 }, "2026-04-10T00:00:00.000Z");
   assert.deepStrictEqual(obsPatch, {
@@ -70,6 +71,60 @@ function run() {
       trail_source: "TICK_EXIT",
     },
     "newer observation trail snapshot should override stale meta trail snapshot"
+  );
+  assert.deepStrictEqual(
+    runnerTest.applyTrailObservationSnapshotToMeta({
+      meta: {
+        trail_high: 1.21,
+        trail_high_at_ms: 100,
+        trail_low: null,
+        trail_low_at_ms: null,
+      },
+      observation: {
+        trail_observation: {
+          side: "LONG",
+          trail_high: 1.23,
+          trail_high_at_ms: 123,
+          source: "TICK_EXIT",
+        },
+      },
+      positionSide: "LONG",
+      allowDuringEntryTransition: true,
+    }),
+    {
+      trail_high: 1.23,
+      trail_high_at_ms: 123,
+      trail_low: null,
+      trail_low_at_ms: null,
+    },
+    "sync path should apply newer same-side trail observation snapshot"
+  );
+  assert.deepStrictEqual(
+    runnerTest.applyTrailObservationSnapshotToMeta({
+      meta: {
+        trail_high: null,
+        trail_high_at_ms: null,
+        trail_low: null,
+        trail_low_at_ms: null,
+      },
+      observation: {
+        trail_observation: {
+          side: "LONG",
+          trail_high: 1.23,
+          trail_high_at_ms: 123,
+          source: "TICK_EXIT",
+        },
+      },
+      positionSide: "SHORT",
+      allowDuringEntryTransition: true,
+    }),
+    {
+      trail_high: null,
+      trail_high_at_ms: null,
+      trail_low: null,
+      trail_low_at_ms: null,
+    },
+    "sync path must ignore opposite-side trail observations"
   );
 
   assert.strictEqual(typeof runnerTest.computeTrailingMetaUpdate, "function", "computeTrailingMetaUpdate export missing");

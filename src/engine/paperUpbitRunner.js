@@ -17,6 +17,7 @@ const { getPosition, upsertPosition } = require("../storage/positionsPaper");
 const {
   getPositionRuntimeObservation,
   upsertSameDirectionTrailProfitObservation,
+  resolveTrailObservationSnapshot,
 } = require("../storage/positionRuntimeObservations");
 const { buildTradeId, upsertTradeEvent } = require("../storage/tradesPaper");
 const { upsertSignal } = require("../storage/signals");
@@ -2879,6 +2880,48 @@ async function loadSameDirectionTrailProfitObservationSafe({
     });
     return null;
   }
+}
+
+async function loadPositionRuntimeObservationSafe({
+  enabled = false,
+  exchange,
+  symbol,
+} = {}) {
+  if (enabled !== true) return null;
+  try {
+    return await getPositionRuntimeObservation({ exchange, symbol });
+  } catch (e) {
+    console.warn("[POSITION_RUNTIME_OBSERVATION_LOAD_FAIL]", {
+      exchange,
+      symbol,
+      error: e && e.message ? e.message : String(e),
+    });
+    return null;
+  }
+}
+
+function applyTrailObservationSnapshotToMeta({
+  meta = null,
+  observation = null,
+  positionSide = null,
+  allowDuringEntryTransition = false,
+} = {}) {
+  const baseMeta = (meta && typeof meta === "object") ? meta : {};
+  if (allowDuringEntryTransition !== true) return baseMeta;
+  const observed = (observation && typeof observation === "object" && observation.trail_observation && typeof observation.trail_observation === "object")
+    ? observation.trail_observation
+    : null;
+  if (!observed) return baseMeta;
+  const observedSide = normalizePositionSide(observed.side);
+  const currentSide = normalizePositionSide(positionSide);
+  if (observedSide && currentSide && observedSide !== currentSide) return baseMeta;
+  const snapshot = resolveTrailObservationSnapshot({ meta: baseMeta, observation });
+  return mergeMeta(baseMeta, {
+    trail_high: snapshot.trail_high,
+    trail_high_at_ms: snapshot.trail_high_at_ms,
+    trail_low: snapshot.trail_low,
+    trail_low_at_ms: snapshot.trail_low_at_ms,
+  });
 }
 
 function computeReplayStopDistancePct({ position, bar, positionSide, rules } = {}) {
@@ -6889,7 +6932,9 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     metaPatch.tp_p1_price = null;
     metaPatch.tp_p1_target_price = null;
     metaPatch.trail_high = null;
+    metaPatch.trail_high_at_ms = null;
     metaPatch.trail_low = null;
+    metaPatch.trail_low_at_ms = null;
     metaPatch.trail_active = false;
     metaPatch.tp_p1_pending = false;
     metaPatch.tp_p1_pending_at_ms = null;
@@ -6954,6 +6999,9 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     }
   }
   let meta = mergeMeta(prevMeta, metaPatch);
+  const runtimeObservation = active
+    ? await loadPositionRuntimeObservationSafe({ enabled: true, exchange, symbol })
+    : null;
   const syncMarketRegimeRow = active ? readOpenClawMarketRegimeRow(symbol) : null;
   const syncMarketRegimeCohort = normalizeOpenClawCohort(
     (syncMarketRegimeRow && syncMarketRegimeRow.cohort)
@@ -6997,7 +7045,9 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
       tp_p1_price: null,
       tp_p1_target_price: null,
       trail_high: null,
+      trail_high_at_ms: null,
       trail_low: null,
+      trail_low_at_ms: null,
       trail_active: false,
       tp_p1_pending: false,
       tp_p1_pending_at_ms: null,
@@ -7048,6 +7098,13 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
           ? Number(activeEntryLineage.entry_exec_bar_ms)
           : syncEventMs,
       }),
+    });
+  } else if (active) {
+    meta = applyTrailObservationSnapshotToMeta({
+      meta,
+      observation: runtimeObservation,
+      positionSide: side,
+      allowDuringEntryTransition: true,
     });
   }
   if (active && !externalEntryTransition && activeEntryLineage && activeEntryLineage.entry_event_id && !String(meta.entry_event_id || "").trim()) {
@@ -7107,7 +7164,9 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
         tp_p1_price: null,
         tp_p1_target_price: null,
         trail_high: null,
+        trail_high_at_ms: null,
         trail_low: null,
+        trail_low_at_ms: null,
         trail_active: false,
         tp_p1_pending: false,
         tp_p1_pending_at_ms: null,
@@ -15302,6 +15361,8 @@ module.exports = {
     resolveActiveEntryLineageForSync,
     resolveEntryLineageForFill,
     extractEntryLineageCandidate,
+    loadPositionRuntimeObservationSafe,
+    applyTrailObservationSnapshotToMeta,
     resolveRiskBudget,
     pickLatestTpP0Fill,
     reconcileTpP0MetaFromFill,

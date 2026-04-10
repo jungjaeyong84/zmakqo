@@ -7,7 +7,7 @@ const { getFirestore } = require("../storage/firestore");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { upsertTrailObservation } = require("../storage/positionRuntimeObservations");
 const { getPosition } = require("../storage/positions");
-const { clearTpP1PendingIfUnchanged, posId } = require("../storage/positionsPaper");
+const { clearTpP1PendingIfUnchanged } = require("../storage/positionsPaper");
 const { resolveExitRulesForPosition, computeRunnerExitStopPrice, resolveTrailDelayState, resolveTpP0Pct } = require("../engine/signalEngine");
 const {
   runPaperMarket,
@@ -739,12 +739,6 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
         }
         if (_trailPatch) {
           try {
-            const _tDb = getFirestore();
-            const _tDocId = posId({ exchange: "BINANCEFUT", symbol });
-            const _tUpdatedAt = new Date().toISOString();
-            await _tDb.collection("positions_paper").doc(_tDocId).update(
-              buildTickTrailObservationDocUpdate(_trailPatch, _tUpdatedAt)
-            );
             if (pos.meta && _trailField === "trail_high" && Number.isFinite(_trailNext)) {
               pos.meta.trail_high = _trailNext;
               pos.meta.trail_high_at_ms = tickNow;
@@ -769,6 +763,7 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
                 symbol: String(symbol).toUpperCase(),
                 error: String(_trailObsErr && _trailObsErr.message || _trailObsErr).slice(0, 200),
               }, "warn");
+              throw _trailObsErr;
             }
             const _tLogKey = `trail_upd_${String(symbol).toUpperCase()}`;
             const _tNow = nowMs();
