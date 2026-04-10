@@ -56,9 +56,35 @@ async function upsertSameDirectionTrailProfitObservation({
   return payload;
 }
 
+async function upsertSelfHealFailureObservation({
+  exchange,
+  symbol,
+  reason,
+  error,
+  atMs,
+} = {}) {
+  const db = getFirestore();
+  const id = observationId({ exchange, symbol });
+  const ref = db.collection("position_runtime_observations").doc(id);
+  const payload = {
+    observation_id: id,
+    exchange,
+    symbol_or_pair_id: symbol,
+    self_heal_failure: {
+      reason: String(reason || "UNKNOWN").trim().toUpperCase() || "UNKNOWN",
+      error: error ? String(error).slice(0, 240) : null,
+      at_ms: Number.isFinite(Number(atMs)) ? Number(atMs) : Date.now(),
+    },
+    updated_at: nowIso(),
+  };
+  await ref.set(payload, { merge: true });
+  return payload;
+}
+
 module.exports = {
   getPositionRuntimeObservation,
   upsertSameDirectionTrailProfitObservation,
+  upsertSelfHealFailureObservation,
   __test: {
     observationId,
   },

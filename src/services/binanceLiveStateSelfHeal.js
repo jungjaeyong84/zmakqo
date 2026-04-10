@@ -1,8 +1,9 @@
 "use strict";
 
 const { getFirestore } = require("../storage/firestore");
-const { getPosition, upsertPosition } = require("../storage/positionsPaper");
+const { getPosition } = require("../storage/positionsPaper");
 const { getSystemSettingsForProvider } = require("../storage/settings");
+const { upsertSelfHealFailureObservation } = require("../storage/positionRuntimeObservations");
 const { sendAlert } = require("../utils/alerts");
 const {
   syncFuturesPositionOnly,
@@ -133,23 +134,11 @@ async function healBinanceLivePosition({
       pos = await getPosition({ exchange, symbol: sym });
     } catch (e) {
       const errorText = e && e.message ? e.message : String(e);
-      await upsertPosition({
+      await upsertSelfHealFailureObservation({
         exchange,
         symbol: sym,
-        state: pos.state || pos.position_state || "ACTIVE",
-        sizePct: pos.size_pct,
-        avgPrice: pos.avg_price,
-        qtyBase: pos.qty_base,
-        runId: pos.run_id || null,
-        budgetMaxKrw: pos.budget_max_krw,
-        budgetUsedKrw: pos.budget_used_krw,
-        budgetSource: pos.budget_source,
-        positionSide: pos.position_side || null,
-        executionMode: pos.execution_mode || "LIVE",
-        meta: buildSelfHealFailureMetaPatch({
-          reason: "REPAIR_EXCEPTION",
-          error: errorText,
-        }),
+        reason: "REPAIR_EXCEPTION",
+        error: errorText,
       });
       await sendSelfHealFailureAlert({
         exchange,
@@ -172,20 +161,12 @@ async function healBinanceLivePosition({
         reason: "REPAIR_POST_SYNC_MISMATCH",
         error: Array.isArray(nextMeta.exchange_projection_invariants) ? nextMeta.exchange_projection_invariants.join(",") : null,
       });
-      await upsertPosition({
+      await upsertSelfHealFailureObservation({
         exchange,
         symbol: sym,
-        state: pos.state || pos.position_state || "ACTIVE",
-        sizePct: pos.size_pct,
-        avgPrice: pos.avg_price,
-        qtyBase: pos.qty_base,
-        runId: pos.run_id || null,
-        budgetMaxKrw: pos.budget_max_krw,
-        budgetUsedKrw: pos.budget_used_krw,
-        budgetSource: pos.budget_source,
-        positionSide: pos.position_side || null,
-        executionMode: pos.execution_mode || "LIVE",
-        meta: failurePatch,
+        reason: failurePatch.native_protection_refresh_reason,
+        error: failurePatch.last_self_heal_error,
+        atMs: failurePatch.last_self_heal_at_ms,
       });
       await sendSelfHealFailureAlert({
         exchange,

@@ -3604,6 +3604,39 @@ function sanitizeBarLoopMetaUpdates(meta = null) {
   return next;
 }
 
+async function applyBarLoopObservationMetaUpdate({
+  exchange,
+  symbol,
+  position,
+  posMeta,
+  positionSide = null,
+  runId = null,
+  executionMode = "PAPER",
+  metaPatch = null,
+} = {}) {
+  if (!metaPatch || typeof metaPatch !== "object" || !Object.keys(metaPatch).length) {
+    return (posMeta && typeof posMeta === "object") ? posMeta : {};
+  }
+  const pos = (position && typeof position === "object") ? position : {};
+  const merged = mergeMeta(posMeta, metaPatch);
+  await upsertPosition({
+    exchange,
+    symbol,
+    state: pos.state,
+    positionSide: pos.position_side || positionSide || null,
+    sizePct: pos.size_pct,
+    avgPrice: pos.avg_price,
+    qtyBase: pos.qty_base ?? null,
+    runId,
+    executionMode,
+    budgetMaxKrw: pos.budget_max_krw ?? null,
+    budgetUsedKrw: pos.budget_used_krw ?? null,
+    budgetSource: pos.budget_source ?? null,
+    meta: merged,
+  });
+  return merged;
+}
+
 function resolveOptimisticNativeProtectionMetaPatch({ forceLiveReconcile = false, nativeProtectionMetaPatch = null } = {}) {
   if (forceLiveReconcile) return null;
   return (nativeProtectionMetaPatch && typeof nativeProtectionMetaPatch === "object")
@@ -11774,23 +11807,16 @@ async function runPaperUpbitForBar({
 
   const sanitizedMetaUpdates = sanitizeBarLoopMetaUpdates(metaUpdates);
   if (Object.keys(sanitizedMetaUpdates).length) {
-    const merged = mergeMeta(posMeta, sanitizedMetaUpdates);
-    await upsertPosition({
+    posMeta = await applyBarLoopObservationMetaUpdate({
       exchange,
       symbol,
-      state: pos.state,
-      positionSide: pos.position_side || posSideNow || null,
-      sizePct: pos.size_pct,
-      avgPrice: pos.avg_price,
-      qtyBase: pos.qty_base ?? null,
+      position: pos,
+      posMeta,
+      positionSide: posSideNow || null,
       runId,
       executionMode: intentExecutionMode,
-      budgetMaxKrw: pos.budget_max_krw ?? null,
-      budgetUsedKrw: pos.budget_used_krw ?? null,
-      budgetSource: pos.budget_source ?? null,
-      meta: merged,
+      metaPatch: sanitizedMetaUpdates,
     });
-    posMeta = merged;
   }
 
   if (exitImmediateEnabled || immediateIntentsCreated > 0) {
@@ -11811,23 +11837,16 @@ async function runPaperUpbitForBar({
 
   const trailUpdates = computeTrailingMetaUpdate({ exchange, bar, position: pos, posMeta, positionSideFallback: posSideNow });
   if (trailUpdates) {
-    const merged = mergeMeta(posMeta, trailUpdates);
-    await upsertPosition({
+    posMeta = await applyBarLoopObservationMetaUpdate({
       exchange,
       symbol,
-      state: pos.state,
-      positionSide: pos.position_side || posSideNow || null,
-      sizePct: pos.size_pct,
-      avgPrice: pos.avg_price,
-      qtyBase: pos.qty_base ?? null,
+      position: pos,
+      posMeta,
+      positionSide: posSideNow || null,
       runId,
       executionMode: intentExecutionMode,
-      budgetMaxKrw: pos.budget_max_krw ?? null,
-      budgetUsedKrw: pos.budget_used_krw ?? null,
-      budgetSource: pos.budget_source ?? null,
-      meta: merged,
+      metaPatch: trailUpdates,
     });
-    posMeta = merged;
   }
 
   return {
@@ -14780,23 +14799,16 @@ async function runPaperFuturesForBar({
 
   const sanitizedMetaUpdates = sanitizeBarLoopMetaUpdates(metaUpdates);
   if (Object.keys(sanitizedMetaUpdates).length) {
-    const merged = mergeMeta(posMeta, sanitizedMetaUpdates);
-    await upsertPosition({
+    posMeta = await applyBarLoopObservationMetaUpdate({
       exchange,
       symbol,
-      state: pos.state,
-      positionSide: pos.position_side || posSide || null,
-      sizePct: pos.size_pct,
-      avgPrice: pos.avg_price,
-      qtyBase: pos.qty_base ?? null,
+      position: pos,
+      posMeta,
+      positionSide: posSide || null,
       runId,
       executionMode: intentExecutionMode,
-      budgetMaxKrw: pos.budget_max_krw ?? null,
-      budgetUsedKrw: pos.budget_used_krw ?? null,
-      budgetSource: pos.budget_source ?? null,
-      meta: merged,
+      metaPatch: sanitizedMetaUpdates,
     });
-    posMeta = merged;
   }
 
   if (exitImmediateEnabled || immediateIntentsCreated > 0) {
@@ -14823,23 +14835,16 @@ async function runPaperFuturesForBar({
 
   const trailUpdates = computeTrailingMetaUpdate({ exchange, bar, position: pos, posMeta, positionSideFallback: posSide });
   if (trailUpdates) {
-    const merged = mergeMeta(posMeta, trailUpdates);
-    await upsertPosition({
+    posMeta = await applyBarLoopObservationMetaUpdate({
       exchange,
       symbol,
-      state: pos.state,
-      positionSide: pos.position_side || posSide || null,
-      sizePct: pos.size_pct,
-      avgPrice: pos.avg_price,
-      qtyBase: pos.qty_base ?? null,
+      position: pos,
+      posMeta,
+      positionSide: posSide || null,
       runId,
       executionMode: intentExecutionMode,
-      budgetMaxKrw: pos.budget_max_krw ?? null,
-      budgetUsedKrw: pos.budget_used_krw ?? null,
-      budgetSource: pos.budget_source ?? null,
-      meta: merged,
+      metaPatch: trailUpdates,
     });
-    posMeta = merged;
   }
 
   return {
@@ -14930,6 +14935,7 @@ module.exports = {
     resolveOptimisticNativeProtectionMetaPatch,
     shouldForceImmediateLiveFuturesReconcile,
     sanitizeBarLoopMetaUpdates,
+    applyBarLoopObservationMetaUpdate,
     applyTpP1IntentFillMetaUpdate,
     buildOpenCloseProjectionResetMetaPatch,
     buildOpenCloseTransitionMetaPatch,

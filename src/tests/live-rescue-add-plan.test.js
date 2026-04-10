@@ -19,6 +19,7 @@ function run() {
   assert.strictEqual(typeof __test.applyAddRiskMetaOnFill, "function", "applyAddRiskMetaOnFill export missing");
   assert.strictEqual(typeof __test.buildNativeProtectionMetaPatch, "function", "buildNativeProtectionMetaPatch export missing");
   assert.strictEqual(typeof __test.applyAddAndProtectionMetaOnFill, "function", "applyAddAndProtectionMetaOnFill export missing");
+  assert.strictEqual(typeof __test.applyBarLoopObservationMetaUpdate, "function", "applyBarLoopObservationMetaUpdate export missing");
   assert.strictEqual(typeof __test.applyTpP1IntentFillMetaUpdate, "function", "applyTpP1IntentFillMetaUpdate export missing");
   assert.strictEqual(typeof __test.buildOpenCloseProjectionResetMetaPatch, "function", "buildOpenCloseProjectionResetMetaPatch export missing");
   assert.strictEqual(typeof __test.buildOpenCloseTransitionMetaPatch, "function", "buildOpenCloseTransitionMetaPatch export missing");

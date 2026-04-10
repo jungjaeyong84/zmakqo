@@ -5,6 +5,7 @@ const { __test: userStreamTest } = require("../services/binanceUserDataStream");
 const { reconcileBinancePositionMetaWithExchange } = require("../services/binancePositionReconciler");
 const { __test: selfHealTest } = require("../services/binanceLiveStateSelfHeal");
 const { __test: tickExitTest } = require("../services/binanceTickExit");
+const { __test: runnerTest } = require("../engine/paperUpbitRunner");
 
 (async () => {
   userStreamTest.clearRecentSyncMark("BNBUSDT");
@@ -126,6 +127,47 @@ const { __test: tickExitTest } = require("../services/binanceTickExit");
   assert.strictEqual(executedHeal.args.reason, "RACE_TEST");
   assert.strictEqual(executedHeal.args.maxPositions, 3);
   assert.strictEqual(healCalls, 1, "tick-exit should run self-heal exactly once when lease is healthy");
+
+  const recentExternalFlatGuard = runnerTest.resolveRecentExternalFlatSyncGuard({
+    active: false,
+    prevActive: true,
+    prevPos: {
+      updated_at: "2026-04-10T05:30:20.000Z",
+    },
+    prevMeta: {
+      intent: "ENTRY",
+      native_protection_refresh_status: "OK",
+      native_protection_refresh_at_ms: Date.now() - 5_000,
+      last_fill_intent: "ENTRY",
+    },
+    nowMs: Date.now(),
+    graceMs: 30_000,
+  });
+  assert.strictEqual(recentExternalFlatGuard.defer, true, "recent entry-like external flat should defer immediate flatten projection");
+  assert.strictEqual(recentExternalFlatGuard.reason, "RECENT_ENTRY_GRACE");
+
+  assert.strictEqual(
+    runnerTest.shouldCleanupExternalFlatOrders({
+      active: false,
+      prevActive: true,
+      liveCfg: {
+        apiKey: "key",
+        apiSecret: "secret",
+      },
+    }),
+    true,
+    "external flat should cleanup open orders when live credentials exist"
+  );
+
+  assert.strictEqual(
+    runnerTest.shouldCleanupExternalFlatOrders({
+      active: false,
+      prevActive: true,
+      liveCfg: null,
+    }),
+    false,
+    "external flat cleanup should not run without live credentials"
+  );
 
   console.log("BINANCE_LIVE_STATE_FLOW_INTEGRATION_TEST_OK");
 })().catch((err) => {
