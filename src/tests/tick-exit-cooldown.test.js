@@ -9,6 +9,7 @@ function run() {
   assert.strictEqual(typeof __test.buildTickTrailObservationDocUpdate, "function", "trail observation update helper missing");
   assert.strictEqual(typeof __test.buildTickTrailReconcileRunId, "function", "trail reconcile run id helper missing");
   assert.strictEqual(typeof __test.heartbeatTickExitLease, "function", "tick exit lease heartbeat helper missing");
+  assert.strictEqual(typeof __test.runTickExitSelfHealPhase, "function", "tick exit self-heal helper missing");
 
   const obsPatch = __test.buildTickTrailObservationDocUpdate({ "meta.trail_high": 1.23 }, "2026-04-10T00:00:00.000Z");
   assert.deepStrictEqual(obsPatch, {
@@ -62,11 +63,47 @@ function run() {
 
   const third = __test.shouldRunBySymbolCooldown({ symbol, now: t0 + cooldownMs + 1, cooldownMs });
   assert.strictEqual(third.ok, true, "execution after cooldown must pass");
+
+  let healCalls = 0;
+  const healSkipped = __test.runTickExitSelfHealPhase({
+    enabled: true,
+    leaseHeartbeatOk: false,
+    runSelfHeal: async () => {
+      healCalls += 1;
+      return { ok: true };
+    },
+  });
+  assert.ok(healSkipped && typeof healSkipped.then === "function", "self-heal helper should remain async");
+
+  return healSkipped.then(async (skipped) => {
+    assert.strictEqual(skipped.skipped, true, "lease lost should skip self-heal");
+    assert.strictEqual(skipped.reason, "LEASE_LOST");
+    assert.strictEqual(healCalls, 0, "lease lost path must not call self-heal");
+
+    const executed = await __test.runTickExitSelfHealPhase({
+      enabled: true,
+      leaseHeartbeatOk: true,
+      reason: "TICK_EXIT_LOOP",
+      maxPositions: 7,
+      runSelfHeal: async (args) => {
+        healCalls += 1;
+        return { ok: true, args };
+      },
+    });
+    assert.strictEqual(executed.ok, true);
+    assert.strictEqual(executed.args.reason, "TICK_EXIT_LOOP");
+    assert.strictEqual(executed.args.maxPositions, 7);
+    assert.strictEqual(healCalls, 1, "healthy lease path should call self-heal once");
+  });
 }
 
 try {
-  run();
-  console.log("TICK_EXIT_COOLDOWN_TEST_OK");
+  Promise.resolve(run()).then(() => {
+    console.log("TICK_EXIT_COOLDOWN_TEST_OK");
+  }).catch((err) => {
+    console.error("TICK_EXIT_COOLDOWN_TEST_FAIL", err && err.stack ? err.stack : err);
+    process.exit(1);
+  });
 } catch (err) {
   console.error("TICK_EXIT_COOLDOWN_TEST_FAIL", err && err.stack ? err.stack : err);
   process.exit(1);

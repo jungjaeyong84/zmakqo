@@ -1112,20 +1112,9 @@ async function runBinanceTickExitBurst({
     await releaseTickExitLease();
   }
 
-  try {
-    if (String(process.env.BINANCE_LIVE_STATE_SELF_HEAL_ENABLED || "1") !== "0") {
-      selfHealResult = await runBinanceLiveStateSelfHeal({
-        exchange: "BINANCEFUT",
-        maxPositions: Math.max(1, Number(process.env.BINANCE_LIVE_STATE_SELF_HEAL_MAX_POSITIONS || 12)),
-        reason: "TICK_EXIT_BURST",
-      });
-    }
-  } catch (e) {
-    selfHealResult = {
-      ok: false,
-      error: e && e.message ? e.message : String(e),
-    };
-  }
+  selfHealResult = await runTickExitSelfHealPhase({
+    reason: "TICK_EXIT_BURST",
+  });
 
   const activeCount = Number(lastResult && lastResult.active_count) || 0;
   return {
@@ -1137,6 +1126,33 @@ async function runBinanceTickExitBurst({
     last_result: lastResult,
     self_heal: selfHealResult,
   };
+}
+
+async function runTickExitSelfHealPhase({
+  enabled = String(process.env.BINANCE_LIVE_STATE_SELF_HEAL_ENABLED || "1") !== "0",
+  reason = "TICK_EXIT_LOOP",
+  leaseHeartbeatOk = true,
+  maxPositions = Math.max(1, Number(process.env.BINANCE_LIVE_STATE_SELF_HEAL_MAX_POSITIONS || 12)),
+  runSelfHeal = runBinanceLiveStateSelfHeal,
+} = {}) {
+  if (enabled !== true) {
+    return { ok: false, skipped: true, reason: "DISABLED" };
+  }
+  if (leaseHeartbeatOk !== true) {
+    return { ok: false, skipped: true, reason: "LEASE_LOST" };
+  }
+  try {
+    return await runSelfHeal({
+      exchange: "BINANCEFUT",
+      maxPositions,
+      reason,
+    });
+  } catch (e) {
+    return {
+      ok: false,
+      error: e && e.message ? e.message : String(e),
+    };
+  }
 }
 
 async function acquireTickExitLease({ ttlMs } = {}) {
@@ -1282,22 +1298,16 @@ function startBinanceTickExitLoop() {
               owner: heartbeat.holder || null,
               instance: tickExitInstanceId,
             }, "warn");
+            result.self_heal = await runTickExitSelfHealPhase({
+              reason: "TICK_EXIT_LOOP",
+              leaseHeartbeatOk: false,
+            });
             nextDelayMs = intervalMs;
           } else {
-            if (String(process.env.BINANCE_LIVE_STATE_SELF_HEAL_ENABLED || "1") !== "0") {
-              try {
-                result.self_heal = await runBinanceLiveStateSelfHeal({
-                  exchange: "BINANCEFUT",
-                  maxPositions: Math.max(1, Number(process.env.BINANCE_LIVE_STATE_SELF_HEAL_MAX_POSITIONS || 12)),
-                  reason: "TICK_EXIT_LOOP",
-                });
-              } catch (healErr) {
-                result.self_heal = {
-                  ok: false,
-                  error: healErr && healErr.message ? healErr.message : String(healErr),
-                };
-              }
-            }
+            result.self_heal = await runTickExitSelfHealPhase({
+              reason: "TICK_EXIT_LOOP",
+              leaseHeartbeatOk: true,
+            });
             const useFastLane = fastLaneEnabled && result && result.fast_lane_active === true;
             nextDelayMs = useFastLane ? Math.min(intervalMs, fastLaneIntervalMs) : intervalMs;
             if (useFastLane !== fastLaneArmed) {
@@ -1368,6 +1378,7 @@ module.exports = {
   __test: {
     buildTickTrailObservationDocUpdate,
     buildTickTrailReconcileRunId,
+    runTickExitSelfHealPhase,
     heartbeatTickExitLease,
     computeExitTriggers,
     shouldCheckNear,
