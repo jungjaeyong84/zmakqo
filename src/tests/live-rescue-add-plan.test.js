@@ -22,6 +22,7 @@ function run() {
   assert.strictEqual(typeof __test.applyTpP1IntentFillMetaUpdate, "function", "applyTpP1IntentFillMetaUpdate export missing");
   assert.strictEqual(typeof __test.buildOpenCloseProjectionResetMetaPatch, "function", "buildOpenCloseProjectionResetMetaPatch export missing");
   assert.strictEqual(typeof __test.buildOpenCloseTransitionMetaPatch, "function", "buildOpenCloseTransitionMetaPatch export missing");
+  assert.strictEqual(typeof __test.buildClosingFillMetaPatch, "function", "buildClosingFillMetaPatch export missing");
   assert.strictEqual(typeof __test.evaluateCommittedRescueAddGate, "function", "evaluateCommittedRescueAddGate export missing");
   assert.strictEqual(__test.resolveForceAllSignalsAdd({}, "BINANCEFUT"), false, "Binance default must not auto-upgrade same-direction signals to ADD");
   assert.strictEqual(
@@ -242,6 +243,24 @@ function run() {
   assert.strictEqual(futuresTransitionReset.initial_stop_price, undefined);
   assert.strictEqual(futuresTransitionReset.entry_r_distance, undefined);
   assert.strictEqual(futuresTransitionReset.trail_active, false);
+
+  const closingPatch = __test.buildClosingFillMetaPatch({
+    execBarCloseMs: 456,
+    metaSide: "LONG",
+    includeExitProfileRollback: false,
+  });
+  assert.strictEqual(closingPatch.last_exit_bar_ms, 456);
+  assert.strictEqual(closingPatch.last_exit_dir, "LONG");
+  assert.strictEqual(closingPatch.exit_profile, null);
+  assert.strictEqual(closingPatch.exit_profile_rollback_active, undefined);
+
+  const closingPatchWithRollback = __test.buildClosingFillMetaPatch({
+    execBarCloseMs: 789,
+    metaSide: "SHORT",
+    includeExitProfileRollback: true,
+  });
+  assert.strictEqual(closingPatchWithRollback.exit_profile_rollback_active, false);
+  assert.strictEqual(closingPatchWithRollback.exit_profile_rollback_until_ms, null);
 
   const baseSizeAware = __test.evaluateLiveRescueAdd({
     cfg,

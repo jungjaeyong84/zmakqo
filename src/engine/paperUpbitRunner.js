@@ -3806,6 +3806,41 @@ function buildOpenCloseTransitionMetaPatch({ closing = false, includeEntryRiskRe
   };
 }
 
+function buildClosingFillMetaPatch({
+  execBarCloseMs = null,
+  metaSide = null,
+  includeExitProfileRollback = false,
+} = {}) {
+  return {
+    last_exit_bar_ms: Number(execBarCloseMs) || null,
+    last_exit_dir: metaSide || null,
+    last_exit_wall_ms: resolveEventRefMs(execBarCloseMs),
+    entry_exec_bar_ms: null,
+    entry_exec_tf_ms: null,
+    entry_event_id: null,
+    entry_signal_type: null,
+    entry_grade: null,
+    entry_qty_profile: null,
+    entry_signal_bar_ms: null,
+    origin_entry_event_id: null,
+    origin_entry_signal_type: null,
+    origin_entry_grade: null,
+    origin_entry_qty_profile: null,
+    origin_entry_signal_bar_ms: null,
+    origin_entry_exec_bar_ms: null,
+    openclaw_market_regime_cohort: null,
+    openclaw_market_regime_objective_score: null,
+    openclaw_market_regime_drop_verdict: null,
+    exit_profile: null,
+    exit_profile_reason: null,
+    exit_rules_override: null,
+    exit_profile_rollback_active: includeExitProfileRollback ? false : undefined,
+    exit_profile_rollback_until_ms: includeExitProfileRollback ? null : undefined,
+    exit_profile_rollback_reason: includeExitProfileRollback ? null : undefined,
+    exit_policy_source: null,
+  };
+}
+
 async function loadRecentFillsCache(db) {
   const now = Date.now();
   if (recentFillsCache.ts && (now - recentFillsCache.ts) < TP_P1_FILL_CACHE_TTL_MS) {
@@ -10383,31 +10418,11 @@ async function runPaperUpbitForBar({
       });
     }
     if (closing) {
-      nextMeta = mergeMeta(nextMeta, {
-        last_exit_bar_ms: Number(execBarCloseMs) || null,
-        last_exit_dir: metaSide || null,
-        last_exit_wall_ms: resolveEventRefMs(execBarCloseMs),
-        entry_exec_bar_ms: null,
-        entry_exec_tf_ms: null,
-        entry_event_id: null,
-        entry_signal_type: null,
-        entry_grade: null,
-        entry_qty_profile: null,
-        entry_signal_bar_ms: null,
-        origin_entry_event_id: null,
-        origin_entry_signal_type: null,
-        origin_entry_grade: null,
-        origin_entry_qty_profile: null,
-        origin_entry_signal_bar_ms: null,
-        origin_entry_exec_bar_ms: null,
-        openclaw_market_regime_cohort: null,
-        openclaw_market_regime_objective_score: null,
-        openclaw_market_regime_drop_verdict: null,
-        exit_profile: null,
-        exit_profile_reason: null,
-        exit_rules_override: null,
-        exit_policy_source: null,
-      });
+      nextMeta = mergeMeta(nextMeta, buildClosingFillMetaPatch({
+        execBarCloseMs,
+        metaSide,
+        includeExitProfileRollback: false,
+      }));
       const profitableTrailCooldownMeta = buildSameDirectionTrailProfitCooldownMetaPatch({
         event: ev,
         realizedPnlQuote,
@@ -13083,34 +13098,11 @@ async function runPaperFuturesForBar({
       });
     }
     if (closing) {
-      nextMeta = mergeMeta(nextMeta, {
-        last_exit_bar_ms: Number(execBarCloseMs) || null,
-        last_exit_dir: metaSide || null,
-        last_exit_wall_ms: resolveEventRefMs(execBarCloseMs),
-        entry_exec_bar_ms: null,
-        entry_exec_tf_ms: null,
-        entry_event_id: null,
-        entry_signal_type: null,
-        entry_grade: null,
-        entry_qty_profile: null,
-        entry_signal_bar_ms: null,
-        origin_entry_event_id: null,
-        origin_entry_signal_type: null,
-        origin_entry_grade: null,
-        origin_entry_qty_profile: null,
-        origin_entry_signal_bar_ms: null,
-        origin_entry_exec_bar_ms: null,
-        openclaw_market_regime_cohort: null,
-        openclaw_market_regime_objective_score: null,
-        openclaw_market_regime_drop_verdict: null,
-        exit_profile: null,
-        exit_profile_reason: null,
-        exit_rules_override: null,
-        exit_profile_rollback_active: false,
-        exit_profile_rollback_until_ms: null,
-        exit_profile_rollback_reason: null,
-        exit_policy_source: null,
-      });
+      nextMeta = mergeMeta(nextMeta, buildClosingFillMetaPatch({
+        execBarCloseMs,
+        metaSide,
+        includeExitProfileRollback: true,
+      }));
       const profitableTrailCooldownMeta = buildSameDirectionTrailProfitCooldownMetaPatch({
         event: ev,
         realizedPnlQuote,
@@ -14901,6 +14893,7 @@ module.exports = {
     applyTpP1IntentFillMetaUpdate,
     buildOpenCloseProjectionResetMetaPatch,
     buildOpenCloseTransitionMetaPatch,
+    buildClosingFillMetaPatch,
     resolvePineStage1BundleMeta,
     resolveSignalTier,
     computeTrailingMetaUpdate,
