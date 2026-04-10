@@ -5,7 +5,11 @@ const os = require("os");
 const { getExchangeSettingsForProvider } = require("../utils/exchangeSettings");
 const { getFirestore } = require("../storage/firestore");
 const { getSystemSettingsForProvider } = require("../storage/settings");
-const { upsertTrailObservation } = require("../storage/positionRuntimeObservations");
+const {
+  getPositionRuntimeObservation,
+  upsertTrailObservation,
+  resolveTrailObservationSnapshot,
+} = require("../storage/positionRuntimeObservations");
 const { getPosition } = require("../storage/positions");
 const { clearTpP1PendingIfUnchanged } = require("../storage/positionsPaper");
 const { resolveExitRulesForPosition, computeRunnerExitStopPrice, resolveTrailDelayState, resolveTpP0Pct } = require("../engine/signalEngine");
@@ -111,6 +115,23 @@ function structuredLog(event, payload = {}, level = "log") {
 
 function structuredLogWriter(event, payload = {}, level = "log") {
   structuredLog(event, payload, level);
+}
+
+function applyTrailObservationToPosition({ pos, observation } = {}) {
+  const position = (pos && typeof pos === "object") ? pos : null;
+  if (!position) return position;
+  const meta = (position.meta && typeof position.meta === "object") ? position.meta : {};
+  const snapshot = resolveTrailObservationSnapshot({ meta, observation });
+  return {
+    ...position,
+    meta: {
+      ...meta,
+      trail_high: snapshot.trail_high,
+      trail_high_at_ms: snapshot.trail_high_at_ms,
+      trail_low: snapshot.trail_low,
+      trail_low_at_ms: snapshot.trail_low_at_ms,
+    },
+  };
 }
 
 function buildTickTrailObservationDocUpdate(trailPatch, updatedAt = null) {
@@ -824,9 +845,17 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
       }
 
       const scope = intentScopeKey("BINANCEFUT", symbol, signalTf);
+      let trailObservation = null;
+      try {
+        trailObservation = await getPositionRuntimeObservation({
+          exchange: "BINANCEFUT",
+          symbol,
+        });
+      } catch (_) {}
+      const effectivePos = applyTrailObservationToPosition({ pos, observation: trailObservation });
       const leverageEff = resolveLeverageEff(pos, "BINANCEFUT");
-      const rules = resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: pos });
-      const nativeProtectionState = await resolveLiveNativeProtectionState({ exCfg, symbol, pos });
+      const rules = resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: effectivePos });
+      const nativeProtectionState = await resolveLiveNativeProtectionState({ exCfg, symbol, pos: effectivePos });
       if (nativeProtectionState && nativeProtectionState.verify_error) {
         const logKey = `native_verify_${String(symbol).toUpperCase()}`;
         const lastLogged = Number(symbolCooldownLogState.get(logKey));
@@ -839,11 +868,11 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
           }, "warn");
         }
       }
-      const triggers = computeExitTriggers({ pos, rules, leverageEff, nativeProtectionState });
-      const resolvedPosSide = resolvePositionSideFromPosition(pos, pos.meta, "LONG");
+      const triggers = computeExitTriggers({ pos: effectivePos, rules, leverageEff, nativeProtectionState });
+      const resolvedPosSide = resolvePositionSideFromPosition(effectivePos, effectivePos.meta, "LONG");
       const nearHit = shouldCheckNear({ price, triggers, nearPct, side: resolvedPosSide });
       const fastLaneHit = shouldActivateFastLane({
-        pos,
+        pos: effectivePos,
         price,
         triggers,
         fastLanePct: env.tickExit && env.tickExit.fastLanePct,
@@ -1399,6 +1428,7 @@ module.exports = {
     computeExitTriggers,
     shouldCheckNear,
     shouldActivateFastLane,
+    applyTrailObservationToPosition,
     resolvePositionSignalTf,
     shouldBypassNativeProtectionCache,
     hasNativeStopProtection,

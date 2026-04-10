@@ -11,6 +11,7 @@ function run() {
   assert.strictEqual(typeof __test.buildTickTrailReconcileRunId, "function", "trail reconcile run id helper missing");
   assert.strictEqual(typeof __test.heartbeatTickExitLease, "function", "tick exit lease heartbeat helper missing");
   assert.strictEqual(typeof __test.runTickExitSelfHealPhase, "function", "tick exit self-heal helper missing");
+  assert.strictEqual(typeof __test.applyTrailObservationToPosition, "function", "tick exit trail observation apply helper missing");
   assert.strictEqual(typeof observationTest.buildTrailObservationPayload, "function", "trail observation payload helper missing");
   assert.strictEqual(typeof observationTest.resolveTrailObservationSnapshot, "function", "trail observation snapshot helper missing");
   assert.strictEqual(typeof runnerTest.applyTrailObservationSnapshotToMeta, "function", "trail observation apply helper missing");
@@ -125,6 +126,36 @@ function run() {
       trail_low_at_ms: null,
     },
     "sync path must ignore opposite-side trail observations"
+  );
+  assert.deepStrictEqual(
+    __test.applyTrailObservationToPosition({
+      pos: {
+        avg_price: 100,
+        meta: {
+          position_side: "LONG",
+          trail_high: 1.21,
+          trail_high_at_ms: 100,
+          trail_low: null,
+          trail_low_at_ms: null,
+        },
+      },
+      observation: {
+        trail_observation: {
+          side: "LONG",
+          trail_high: 1.23,
+          trail_high_at_ms: 123,
+          source: "TICK_EXIT",
+        },
+      },
+    }).meta,
+    {
+      position_side: "LONG",
+      trail_high: 1.23,
+      trail_high_at_ms: 123,
+      trail_low: null,
+      trail_low_at_ms: null,
+    },
+    "tick exit should evaluate triggers against the freshest trail observation snapshot"
   );
 
   assert.strictEqual(typeof runnerTest.computeTrailingMetaUpdate, "function", "computeTrailingMetaUpdate export missing");
