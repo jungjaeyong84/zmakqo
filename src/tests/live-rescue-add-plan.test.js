@@ -629,6 +629,20 @@ function run() {
   assert.strictEqual(__test.shouldForceImmediateLiveFuturesReconcile({ exchange: "BINANCEFUT", executionMode: "LIVE" }), true);
   assert.strictEqual(__test.shouldForceImmediateLiveFuturesReconcile({ exchange: "BINANCEFUT", executionMode: "PAPER" }), false);
   assert.strictEqual(__test.shouldForceImmediateLiveFuturesReconcile({ exchange: "UPBIT", executionMode: "LIVE" }), false);
+  assert.deepStrictEqual(
+    __test.resolveOptimisticNativeProtectionMetaPatch({
+      forceLiveReconcile: true,
+      nativeProtectionMetaPatch: { native_protection_tp_order_id: "tp-1" },
+    }),
+    null
+  );
+  assert.deepStrictEqual(
+    __test.resolveOptimisticNativeProtectionMetaPatch({
+      forceLiveReconcile: false,
+      nativeProtectionMetaPatch: { native_protection_tp_order_id: "tp-1" },
+    }),
+    { native_protection_tp_order_id: "tp-1" }
+  );
 
   const mergedAddProtectionMeta = __test.applyAddAndProtectionMetaOnFill({
     posMeta: {

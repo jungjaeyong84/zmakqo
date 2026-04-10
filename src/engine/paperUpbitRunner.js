@@ -3572,6 +3572,13 @@ function sanitizeBarLoopMetaUpdates(meta = null) {
   return next;
 }
 
+function resolveOptimisticNativeProtectionMetaPatch({ forceLiveReconcile = false, nativeProtectionMetaPatch = null } = {}) {
+  if (forceLiveReconcile) return null;
+  return (nativeProtectionMetaPatch && typeof nativeProtectionMetaPatch === "object")
+    ? nativeProtectionMetaPatch
+    : null;
+}
+
 function isTpP1EventLocal(ev) {
   const e = String(ev || "").toUpperCase();
   return e === "EXIT_TP_P1" || e.startsWith("EXIT_TP_P1_");
@@ -13194,7 +13201,10 @@ async function runPaperFuturesForBar({
       qtyPct: qtyFraction,
       qtyBase: qtyBaseDelta,
       lossPct: it.features_json && it.features_json._rescue_add_loss_pct,
-      nativeProtectionMetaPatch,
+      nativeProtectionMetaPatch: resolveOptimisticNativeProtectionMetaPatch({
+        forceLiveReconcile,
+        nativeProtectionMetaPatch,
+      }),
     });
 
     let budgetUsedForPosition = useBudget ? (budgetMaxForIntent * newSize) : null;
@@ -14905,6 +14915,7 @@ module.exports = {
     evaluateCanonicalEntryGate,
     mergeCanonicalDecisionDetail,
     stripExchangeOwnedProjectionMeta,
+    resolveOptimisticNativeProtectionMetaPatch,
     shouldForceImmediateLiveFuturesReconcile,
     sanitizeBarLoopMetaUpdates,
     resolvePineStage1BundleMeta,
