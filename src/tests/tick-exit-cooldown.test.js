@@ -21,6 +21,7 @@ function run() {
   );
 
   assert.strictEqual(typeof runnerTest.computeTrailingMetaUpdate, "function", "computeTrailingMetaUpdate export missing");
+  assert.strictEqual(typeof runnerTest.sanitizeBarLoopMetaUpdates, "function", "sanitizeBarLoopMetaUpdates export missing");
   const trailUpdate = runnerTest.computeTrailingMetaUpdate({
     exchange: "BINANCEFUT",
     bar: { close: 101 },
@@ -29,6 +30,23 @@ function run() {
     positionSideFallback: "LONG",
   });
   assert.deepStrictEqual(trailUpdate, { trail_high: 101 }, "runner trailing update should only write observation fields");
+  assert.deepStrictEqual(
+    runnerTest.sanitizeBarLoopMetaUpdates({
+      tp_p1_pending: true,
+      opposite_transition_stage: 1,
+      core_probe_long_remaining_pct: 0.2,
+      last_entry_bar_ms_long: 123,
+      trail_active: true,
+      native_protection_stop_order_id: "bad",
+    }),
+    {
+      tp_p1_pending: true,
+      opposite_transition_stage: 1,
+      core_probe_long_remaining_pct: 0.2,
+      last_entry_bar_ms_long: 123,
+    },
+    "bar loop direct writes must exclude projection-owned fields"
+  );
 
   const symbol = "BTCUSDT";
   const cooldownMs = 120000;

@@ -3511,6 +3511,34 @@ function stripExchangeOwnedProjectionMeta(meta = null) {
   return next;
 }
 
+function sanitizeBarLoopMetaUpdates(meta = null) {
+  const src = (meta && typeof meta === "object") ? meta : {};
+  const next = {};
+  const allowedKeys = new Set([
+    "tp_p1_pending",
+    "tp_p1_pending_at_ms",
+    "tp_p1_pending_until_ms",
+    "tp_p1_pending_event",
+    "opposite_transition_dir",
+    "opposite_transition_event",
+    "opposite_transition_until_ms",
+    "opposite_transition_stage",
+    "opposite_transition_seen_ms",
+  ]);
+  const allowedPrefixes = [
+    "core_probe_",
+    "last_entry_bar_ms_",
+    "last_entry_tier_",
+  ];
+  for (const [key, value] of Object.entries(src)) {
+    if (value === undefined) continue;
+    if (allowedKeys.has(key) || allowedPrefixes.some((prefix) => key.startsWith(prefix))) {
+      next[key] = value;
+    }
+  }
+  return next;
+}
+
 function isTpP1EventLocal(ev) {
   const e = String(ev || "").toUpperCase();
   return e === "EXIT_TP_P1" || e.startsWith("EXIT_TP_P1_");
@@ -11488,8 +11516,9 @@ async function runPaperUpbitForBar({
     });
   }
 
-  if (Object.keys(metaUpdates).length) {
-    const merged = mergeMeta(posMeta, metaUpdates);
+  const sanitizedMetaUpdates = sanitizeBarLoopMetaUpdates(metaUpdates);
+  if (Object.keys(sanitizedMetaUpdates).length) {
+    const merged = mergeMeta(posMeta, sanitizedMetaUpdates);
     await upsertPosition({
       exchange,
       symbol,
@@ -14616,8 +14645,9 @@ async function runPaperFuturesForBar({
     });
   }
 
-  if (Object.keys(metaUpdates).length) {
-    const merged = mergeMeta(posMeta, metaUpdates);
+  const sanitizedMetaUpdates = sanitizeBarLoopMetaUpdates(metaUpdates);
+  if (Object.keys(sanitizedMetaUpdates).length) {
+    const merged = mergeMeta(posMeta, sanitizedMetaUpdates);
     await upsertPosition({
       exchange,
       symbol,
@@ -14762,6 +14792,7 @@ module.exports = {
     evaluateCanonicalEntryGate,
     mergeCanonicalDecisionDetail,
     stripExchangeOwnedProjectionMeta,
+    sanitizeBarLoopMetaUpdates,
     resolvePineStage1BundleMeta,
     resolveSignalTier,
     computeTrailingMetaUpdate,
