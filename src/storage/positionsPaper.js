@@ -155,9 +155,33 @@ async function upsertPosition({
   return payload;
 }
 
+async function upsertPositionMetaOnly({
+  exchange,
+  symbol,
+  runId,
+  executionMode,
+  meta = {},
+} = {}) {
+  const db = getFirestore();
+  const id = posId({ exchange, symbol });
+  const ref = db.collection("positions_paper").doc(id);
+  const payload = {
+    pos_id: id,
+    exchange,
+    symbol_or_pair_id: symbol,
+    run_id: runId || null,
+    execution_mode: executionMode || null,
+    meta: meta || {},
+    updated_at: nowIso(),
+  };
+  await ref.set(payload, { merge: true });
+  return payload;
+}
+
 module.exports = {
   getPosition,
   upsertPosition,
+  upsertPositionMetaOnly,
   clearTpP1PendingIfUnchanged,
   __test: {
     posId,

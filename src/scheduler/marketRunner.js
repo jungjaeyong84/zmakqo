@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const env = require("../config/env");
 const { fetchBarCloseTime } = require("../utils/barTimeFetch");
@@ -10,6 +11,7 @@ const { upsertGateEvent } = require("../storage/gateEvents");
 const gateMod = require("../storage/gate");
 const getGateStatus = gateMod.getGateStatusAsync || gateMod.getGateStatus;
 const { getCursor, setCursor } = require("../storage/cursors");
+const { getFirestore } = require("../storage/firestore");
 const { listSignalsByMarket } = require("../storage/signalsQuery");
 const { findRecentWebhookSummaryForBar } = require("../storage/webhookLedger");
 const { runPaperMarket, syncFuturesPositionOnly, resolveFuturesPositionSyncRequest } = require("../engine/paperUpbitRunner");
@@ -23,6 +25,12 @@ const OPS_DAILY = path.join(ROOT, "ops", "daily");
 const SERVER_SIGNAL_GENERATION_TRACE_LATEST = path.join(OPS_DAILY, "server_signal_generation_trace_latest.json");
 
 const DEFAULT_EXEC_TF = normalizeTf(defaultExecTfFromEnv()) || "15m";
+const MARKET_RUNNER_BAR_CLAIM_TTL_MS = Math.max(3000, Number(process.env.MARKET_RUNNER_BAR_CLAIM_TTL_MS) || 120000);
+const MARKET_RUNNER_BAR_CLAIM_WAIT_MS = Math.max(0, Number(process.env.MARKET_RUNNER_BAR_CLAIM_WAIT_MS) || 2000);
+const marketRunnerBarClaimHolderId = [
+  String(process.env.K_REVISION || process.env.HOSTNAME || os.hostname() || "local"),
+  String(process.pid || "0"),
+].join("__");
 
 function graceMs() {
   const v = Number(env.scheduler.graceMs || 15000);
@@ -49,6 +57,156 @@ function pickTf({ stateTf, tfAllowlist } = {}) {
 function buildRunId({ exchange, market, tf, execTf, barCloseMs: barCloseMs_f }) {
   const label = String(execTf || tf || DEFAULT_EXEC_TF);
   return `RUN__${exchange}__${market}__${label}__${barCloseMs_f}`;
+}
+
+function buildMarketRunnerBarClaimDocPath({ exchange, market, tf, barCloseMs } = {}) {
+  return [
+    "runtime_locks",
+    `market_runner_bar__${String(exchange || "").toUpperCase()}__${String(market || "").toUpperCase()}__${String(tf || DEFAULT_EXEC_TF).toUpperCase()}__${Number(barCloseMs || 0)}`
+  ].join("/");
+}
+
+async function acquireMarketRunnerBarClaim({
+  exchange,
+  market,
+  tf,
+  barCloseMs,
+  ttlMs = MARKET_RUNNER_BAR_CLAIM_TTL_MS,
+  holderId = marketRunnerBarClaimHolderId,
+} = {}) {
+  const db = getFirestore();
+  const now = Date.now();
+  const leaseUntil = now + Math.max(3000, Math.floor(Number(ttlMs) || MARKET_RUNNER_BAR_CLAIM_TTL_MS));
+  const ref = db.doc(buildMarketRunnerBarClaimDocPath({ exchange, market, tf, barCloseMs }));
+  let acquired = false;
+  let holder = null;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.exists ? (snap.data() || {}) : {};
+    const owner = String(data.owner || "");
+    const leaseUntilMs = Number(data.lease_until_ms);
+    const expired = !Number.isFinite(leaseUntilMs) || leaseUntilMs <= now;
+    if (!owner || owner === holderId || expired) {
+      acquired = true;
+      tx.set(ref, {
+        owner: holderId,
+        lease_until_ms: leaseUntil,
+        heartbeat_ms: now,
+        heartbeat_at: new Date(now).toISOString(),
+        exchange: String(exchange || "").toUpperCase(),
+        symbol_or_pair_id: String(market || "").toUpperCase(),
+        tf: String(tf || DEFAULT_EXEC_TF),
+        bar_close_time_utc_ms: Number(barCloseMs || 0) || null,
+      }, { merge: true });
+      return;
+    }
+    holder = owner || null;
+  });
+  return { acquired, holder, holderId, leaseUntil };
+}
+
+async function heartbeatMarketRunnerBarClaim({
+  exchange,
+  market,
+  tf,
+  barCloseMs,
+  ttlMs = MARKET_RUNNER_BAR_CLAIM_TTL_MS,
+  holderId = marketRunnerBarClaimHolderId,
+} = {}) {
+  const db = getFirestore();
+  const now = Date.now();
+  const leaseUntil = now + Math.max(3000, Math.floor(Number(ttlMs) || MARKET_RUNNER_BAR_CLAIM_TTL_MS));
+  const ref = db.doc(buildMarketRunnerBarClaimDocPath({ exchange, market, tf, barCloseMs }));
+  let ok = false;
+  let holder = null;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const data = snap.data() || {};
+    const owner = String(data.owner || "");
+    if (owner !== String(holderId || "")) {
+      holder = owner || null;
+      return;
+    }
+    ok = true;
+    tx.set(ref, {
+      lease_until_ms: leaseUntil,
+      heartbeat_ms: now,
+      heartbeat_at: new Date(now).toISOString(),
+    }, { merge: true });
+  });
+  return { ok, holder, leaseUntil, holderId };
+}
+
+async function releaseMarketRunnerBarClaim({
+  exchange,
+  market,
+  tf,
+  barCloseMs,
+  holderId = marketRunnerBarClaimHolderId,
+} = {}) {
+  const db = getFirestore();
+  const ref = db.doc(buildMarketRunnerBarClaimDocPath({ exchange, market, tf, barCloseMs }));
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const data = snap.data() || {};
+    if (String(data.owner || "") !== String(holderId || "")) return;
+    tx.set(ref, {
+      lease_until_ms: Date.now() - 1,
+      released_at: new Date().toISOString(),
+    }, { merge: true });
+  });
+}
+
+async function runWithMarketRunnerBarClaim({
+  exchange,
+  market,
+  tf,
+  barCloseMs,
+  runner,
+  ttlMs = MARKET_RUNNER_BAR_CLAIM_TTL_MS,
+  waitMs = MARKET_RUNNER_BAR_CLAIM_WAIT_MS,
+  acquireClaim = acquireMarketRunnerBarClaim,
+  heartbeatClaim = heartbeatMarketRunnerBarClaim,
+  releaseClaim = releaseMarketRunnerBarClaim,
+} = {}) {
+  if (typeof runner !== "function") throw new Error("runWithMarketRunnerBarClaim: runner required");
+  const deadline = Date.now() + Math.max(0, Math.floor(Number(waitMs) || 0));
+  let claim = null;
+  for (;;) {
+    claim = await acquireClaim({ exchange, market, tf, barCloseMs, ttlMs });
+    if (claim && claim.acquired === true) break;
+    if (Date.now() >= deadline) {
+      return { ok: false, skipped: true, reason: "BAR_CLAIM_HELD", holder: claim && claim.holder ? claim.holder : null };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  let heartbeatLost = false;
+  const heartbeatEveryMs = Math.max(1000, Math.floor(Math.max(3000, ttlMs) / 3));
+  const timer = setInterval(() => {
+    heartbeatClaim({ exchange, market, tf, barCloseMs, ttlMs, holderId: claim.holderId })
+      .then((res) => {
+        if (!res || res.ok !== true) heartbeatLost = true;
+      })
+      .catch(() => {
+        heartbeatLost = true;
+      });
+  }, heartbeatEveryMs);
+  try {
+    const heartbeat = await heartbeatClaim({ exchange, market, tf, barCloseMs, ttlMs, holderId: claim.holderId });
+    if (!heartbeat || heartbeat.ok !== true) {
+      return { ok: false, skipped: true, reason: "BAR_CLAIM_LOST", holder: heartbeat && heartbeat.holder ? heartbeat.holder : null };
+    }
+    const result = await runner();
+    if (heartbeatLost && result && typeof result === "object") {
+      return { ...result, bar_claim_lost_after_run: true };
+    }
+    return result;
+  } finally {
+    clearInterval(timer);
+    await releaseClaim({ exchange, market, tf, barCloseMs, holderId: claim && claim.holderId }).catch(() => {});
+  }
 }
 
 function readJsonSafe(filePath) {
@@ -422,52 +580,77 @@ async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHi
             ? Math.round((backfillUpperMs - backfillMs) / signalTfMs)
             : null;
           const backfillAllowEntry = allowEntryBars > 0 && Number.isFinite(barsBehind) && barsBehind <= allowEntryBars;
-          await runPaperMarket({
+          const backfillClaim = await runWithMarketRunnerBarClaim({
+            exchange,
+            market,
+            tf: execTfFinal,
+            barCloseMs: backfillMs,
+            runner: async () => {
+              await runPaperMarket({
+                exchange,
+                symbol: market,
+                tf: signalTfFinal,
+                execTf: execTfFinal,
+                barCloseUtc: backfillIso,
+                barCloseMs: backfillMs,
+                bar: b,
+                gate: gate,
+                trading_mode: "EXIT_ONLY",
+                backfillExitOnly: true,
+                backfillAllowEntry,
+                runId: backfillRunId,
+              });
+              await setCursor({
+                exchange,
+                symbol: market,
+                tf: execTfFinal,
+                barCloseTimeUtc: backfillIso,
+                barCloseTimeUtcMs: backfillMs,
+                runId: backfillRunId,
+              });
+              return { ok: true };
+            },
+          });
+          if (backfillClaim && backfillClaim.skipped === true) {
+            console.warn(`[market_runner_backfill_claim_skipped] ex=${exchange} sym=${market} tf=${execTfFinal} bar=${backfillMs} reason=${backfillClaim.reason || "BAR_CLAIM_HELD"}`);
+          }
+        }
+      }
+
+      const currentClaim = await runWithMarketRunnerBarClaim({
+        exchange,
+        market,
+        tf: execTfFinal,
+        barCloseMs: barCloseMs_f,
+        runner: async () => {
+          const executed = await runPaperMarket({
             exchange,
             symbol: market,
             tf: signalTfFinal,
             execTf: execTfFinal,
-            barCloseUtc: backfillIso,
-            barCloseMs: backfillMs,
-            bar: b,
+            barCloseUtc: barCloseIso_f,
+            barCloseMs: barCloseMs_f,
+            bar: latestBar,
             gate: gate,
-            trading_mode: "EXIT_ONLY",
-            backfillExitOnly: true,
-            backfillAllowEntry,
-            runId: backfillRunId,
+            trading_mode: tradingModeInfo.trading_mode,
+            runId: effectiveRunId,
           });
           await setCursor({
             exchange,
             symbol: market,
             tf: execTfFinal,
-            barCloseTimeUtc: backfillIso,
-            barCloseTimeUtcMs: backfillMs,
-            runId: backfillRunId,
+            barCloseTimeUtc: barCloseIso_f,
+            barCloseTimeUtcMs: barCloseMs_f,
+            runId: effectiveRunId,
           });
-        }
+          return executed;
+        },
+      });
+      if (currentClaim && currentClaim.skipped === true) {
+        paper = currentClaim;
+      } else {
+        paper = currentClaim;
       }
-
-      paper = await runPaperMarket({
-        exchange,
-        symbol: market,
-        tf: signalTfFinal,
-        execTf: execTfFinal,
-        barCloseUtc: barCloseIso_f,
-        barCloseMs: barCloseMs_f,
-        bar: latestBar,
-        gate: gate,
-        trading_mode: tradingModeInfo.trading_mode,
-        runId: effectiveRunId,
-      });
-
-      await setCursor({
-        exchange,
-        symbol: market,
-        tf: execTfFinal,
-        barCloseTimeUtc: barCloseIso_f,
-        barCloseTimeUtcMs: barCloseMs_f,
-        runId: effectiveRunId,
-      });
     } catch (e) {
       err = (e && e.message) ? e.message : String(e);
       errStack = (e && e.stack) ? String(e.stack) : null;
@@ -564,5 +747,7 @@ module.exports = {
   runOneMarket,
   __test: {
     summarizeServerSignalTrace,
+    buildMarketRunnerBarClaimDocPath,
+    runWithMarketRunnerBarClaim,
   },
 };

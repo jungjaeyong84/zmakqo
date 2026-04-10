@@ -35,6 +35,8 @@ const DEFAULT_ALERT_MAX_AGE_MS = 30 * 60 * 1000;
 const DEFAULT_INTENT_RECOVERY_LOOKBACK_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_INTENT_RECOVERY_SCAN_LIMIT = 600;
 const DEFAULT_ADD_NATIVE_PROTECTION_REFRESH_WINDOW_MS = 2 * 60 * 1000;
+const DEFAULT_FILLS_SYNC_LEASE_TTL_MS = 120000;
+const DEFAULT_FILLS_SYNC_LEASE_WAIT_MS = 3000;
 
 const syncState = {
   lastRunAt: 0,
@@ -42,9 +44,146 @@ const syncState = {
 const externalCloseAlertChannelCache = new Map();
 const externalCloseAlertCooldownMap = new Map();
 const immediateProjectionAlertState = new Map();
+const fillsSyncLeaseHolderId = `fills_sync__${process.env.K_REVISION || process.env.HOSTNAME || "local"}__${process.pid}`;
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function buildFillsSyncLeaseDocPath(symbol) {
+  return `runtime_locks/fills_sync__BINANCEFUT__${normalizeSymbol(symbol) || "UNKNOWN"}`;
+}
+
+async function acquireFillsSyncLease({
+  symbol,
+  ttlMs = DEFAULT_FILLS_SYNC_LEASE_TTL_MS,
+  holderId = fillsSyncLeaseHolderId,
+} = {}) {
+  const db = getFirestore();
+  const now = Date.now();
+  const leaseUntil = now + Math.max(3000, Math.floor(Number(ttlMs) || DEFAULT_FILLS_SYNC_LEASE_TTL_MS));
+  const ref = db.doc(buildFillsSyncLeaseDocPath(symbol));
+  let acquired = false;
+  let holder = null;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.exists ? (snap.data() || {}) : {};
+    const owner = String(data.owner || "");
+    const leaseUntilMs = Number(data.lease_until_ms);
+    const expired = !Number.isFinite(leaseUntilMs) || leaseUntilMs <= now;
+    if (!owner || owner === holderId || expired) {
+      acquired = true;
+      tx.set(ref, {
+        owner: holderId,
+        lease_until_ms: leaseUntil,
+        heartbeat_ms: now,
+        heartbeat_at: new Date(now).toISOString(),
+      }, { merge: true });
+      return;
+    }
+    holder = owner || null;
+  });
+  return { acquired, holder, leaseUntil, holderId };
+}
+
+async function heartbeatFillsSyncLease({
+  symbol,
+  ttlMs = DEFAULT_FILLS_SYNC_LEASE_TTL_MS,
+  holderId = fillsSyncLeaseHolderId,
+} = {}) {
+  const db = getFirestore();
+  const now = Date.now();
+  const leaseUntil = now + Math.max(3000, Math.floor(Number(ttlMs) || DEFAULT_FILLS_SYNC_LEASE_TTL_MS));
+  const ref = db.doc(buildFillsSyncLeaseDocPath(symbol));
+  let ok = false;
+  let holder = null;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const data = snap.data() || {};
+    const owner = String(data.owner || "");
+    if (owner !== String(holderId || "")) {
+      holder = owner || null;
+      return;
+    }
+    ok = true;
+    tx.set(ref, {
+      lease_until_ms: leaseUntil,
+      heartbeat_ms: now,
+      heartbeat_at: new Date(now).toISOString(),
+    }, { merge: true });
+  });
+  return { ok, holder, leaseUntil, holderId };
+}
+
+async function releaseFillsSyncLease({
+  symbol,
+  holderId = fillsSyncLeaseHolderId,
+} = {}) {
+  const db = getFirestore();
+  const ref = db.doc(buildFillsSyncLeaseDocPath(symbol));
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const data = snap.data() || {};
+    if (String(data.owner || "") !== String(holderId || "")) return;
+    tx.set(ref, {
+      lease_until_ms: Date.now() - 1,
+      released_at: new Date().toISOString(),
+    }, { merge: true });
+  });
+}
+
+async function runDistributedFillsSync({
+  symbol,
+  runner,
+  leaseEnabled = resolveEnvBool(process.env.BINANCEFUT_FILLS_SYNC_LEASE_ENABLED, true),
+  ttlMs = Number(process.env.BINANCEFUT_FILLS_SYNC_LEASE_TTL_MS) || DEFAULT_FILLS_SYNC_LEASE_TTL_MS,
+  waitMs = Number(process.env.BINANCEFUT_FILLS_SYNC_LEASE_WAIT_MS) || DEFAULT_FILLS_SYNC_LEASE_WAIT_MS,
+  acquireLease = acquireFillsSyncLease,
+  heartbeatLease = heartbeatFillsSyncLease,
+  releaseLease = releaseFillsSyncLease,
+} = {}) {
+  if (typeof runner !== "function") throw new Error("runDistributedFillsSync: runner required");
+  if (leaseEnabled !== true) return runner();
+
+  const deadline = Date.now() + Math.max(0, Math.floor(Number(waitMs) || 0));
+  let lease = null;
+  for (;;) {
+    lease = await acquireLease({ symbol, ttlMs });
+    if (lease && lease.acquired === true) break;
+    if (Date.now() >= deadline) {
+      return { ok: false, skipped: true, reason: "LEASE_HELD", symbol: normalizeSymbol(symbol), holder: lease && lease.holder ? lease.holder : null };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+
+  let heartbeatLost = false;
+  const heartbeatEveryMs = Math.max(1000, Math.floor(Math.max(3000, ttlMs) / 3));
+  const timer = setInterval(() => {
+    heartbeatLease({ symbol, ttlMs, holderId: lease.holderId })
+      .then((res) => {
+        if (!res || res.ok !== true) heartbeatLost = true;
+      })
+      .catch(() => {
+        heartbeatLost = true;
+      });
+  }, heartbeatEveryMs);
+
+  try {
+    const heartbeat = await heartbeatLease({ symbol, ttlMs, holderId: lease.holderId });
+    if (!heartbeat || heartbeat.ok !== true) {
+      return { ok: false, skipped: true, reason: "LEASE_LOST", symbol: normalizeSymbol(symbol), holder: heartbeat && heartbeat.holder ? heartbeat.holder : null };
+    }
+    const result = await runner();
+    if (heartbeatLost && result && typeof result === "object") {
+      return { ...result, lease_lost_after_run: true };
+    }
+    return result;
+  } finally {
+    clearInterval(timer);
+    await releaseLease({ symbol, holderId: lease && lease.holderId }).catch(() => {});
+  }
 }
 
 function shouldAuditProjectionImmediately(event = "") {
@@ -193,6 +332,36 @@ async function auditImmediateProjectionEvents({
     unverified_n: results.filter((row) => row.unverified).length,
     results,
   };
+}
+
+async function auditProjectionEventImmediately({
+  exchange = "BINANCEFUT",
+  symbol,
+  eventRow = null,
+  syncPosition = syncFuturesPositionOnly,
+  resolveSyncRequest = resolveFuturesPositionSyncRequest,
+  getPositionFn = getPosition,
+  auditProjectionEvents = auditImmediateProjectionEvents,
+} = {}) {
+  const sym = normalizeSymbol(symbol || (eventRow && eventRow.symbol));
+  if (!sym || !eventRow) return { ok: false, skipped: true, reason: "INVALID_EVENT" };
+  let position = null;
+  try {
+    await syncPosition(resolveSyncRequest({
+      source: "FILL_SYNC_AUDIT",
+      runId: `RUN__FILL_SYNC_AUDIT__BINANCEFUT__${sym}__${Number(eventRow.tradeMs || Date.now())}`,
+      exchange,
+      symbol: sym,
+      force: true,
+    }));
+  } catch (_) {
+    position = null;
+  }
+  position = await getPositionFn({ exchange, symbol: sym });
+  return auditProjectionEvents({
+    events: [{ ...eventRow, symbol: sym }],
+    position,
+  });
 }
 
 function shouldSendImmediateProjectionMismatchAlert({ symbol, event, issues = [], nowMs = Date.now() } = {}) {
@@ -1444,7 +1613,6 @@ async function syncMarketTrades({
   const pendingAlertBatches = new Map();
   let lastExitTradeMs = null;
   let observedExitFill = false;
-  const insertedProjectionAuditEvents = [];
   const defaultExitRules = getExitRulesForExchange("BINANCEFUT");
   const alertEnabled = resolveEnvBool(process.env.BINANCEFUT_FILLS_SYNC_ALERT_ENABLED, true);
   const intentFutureAllowMs = Number(process.env.BINANCEFUT_FILLS_SYNC_INTENT_FUTURE_ALLOW_MS) || DEFAULT_INTENT_FUTURE_ALLOW_MS;
@@ -1712,7 +1880,15 @@ async function syncMarketTrades({
 
       if (upserted && upserted.inserted) inserted += 1;
       if (upserted && upserted.inserted && shouldAuditProjectionImmediately(event)) {
-        insertedProjectionAuditEvents.push({ fillId, event, tradeMs });
+        try {
+          await auditProjectionEventImmediately({
+            exchange: "BINANCEFUT",
+            symbol: sym,
+            eventRow: { fillId, event, tradeMs, symbol: sym },
+          });
+        } catch (e) {
+          console.warn("[BINANCEFUT_FILL_SYNC_IMMEDIATE_AUDIT_FAIL]", e && e.message ? e.message : String(e));
+        }
       }
       if (upserted && upserted.inserted && alertEnabled) {
         const isExitEvent = event.startsWith("EXIT_");
@@ -1808,20 +1984,6 @@ async function syncMarketTrades({
     }
   }
 
-  if (insertedProjectionAuditEvents.length) {
-    try {
-      const currentPos = await getPosition({ exchange: "BINANCEFUT", symbol: sym });
-      await auditImmediateProjectionEvents({
-        events: insertedProjectionAuditEvents
-          .slice()
-          .sort((a, b) => Number(b.tradeMs || 0) - Number(a.tradeMs || 0)),
-        position: currentPos,
-      });
-    } catch (e) {
-      console.warn("[BINANCEFUT_FILL_SYNC_IMMEDIATE_AUDIT_FAIL]", e && e.message ? e.message : String(e));
-    }
-  }
-
   await flushFillSyncAlertBatches(pendingAlertBatches);
 
   if (Number.isFinite(lastTradeMs)) {
@@ -1887,15 +2049,18 @@ async function syncBinanceFuturesFills({
   const results = [];
   for (const sym of list) {
     try {
-      const r = await syncMarketTrades({
-        apiKey: keys.apiKey,
-        apiSecret: keys.apiSecret,
+      const r = await runDistributedFillsSync({
         symbol: sym,
-        execTf: tf,
-        lookbackMs: lookback,
-        matchWindowMs,
-        intents,
-        maxPages,
+        runner: () => syncMarketTrades({
+          apiKey: keys.apiKey,
+          apiSecret: keys.apiSecret,
+          symbol: sym,
+          execTf: tf,
+          lookbackMs: lookback,
+          matchWindowMs,
+          intents,
+          maxPages,
+        }),
       });
       results.push(r);
     } catch (e) {
@@ -1916,7 +2081,9 @@ async function syncBinanceFuturesFills({
     }
   }
 
-  syncState.lastRunAt = Date.now();
+  if (results.some((row) => row && row.ok === true && row.skipped !== true)) {
+    syncState.lastRunAt = Date.now();
+  }
   return { ok: true, tf, markets: list.length, results, intent_recovery: intentRecovery };
 }
 
@@ -1941,6 +2108,9 @@ module.exports = {
     inferStageConstrainedTakeProfitKind,
     buildImmediateProjectionIssues,
     auditImmediateProjectionEvents,
+    auditProjectionEventImmediately,
     shouldSendImmediateProjectionMismatchAlert,
+    buildFillsSyncLeaseDocPath,
+    runDistributedFillsSync,
   },
 };

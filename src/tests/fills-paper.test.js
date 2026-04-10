@@ -50,6 +50,14 @@ function run() {
 
   const auditImmediateProjectionEvents = fillsSyncTest && fillsSyncTest.auditImmediateProjectionEvents;
   assert.strictEqual(typeof auditImmediateProjectionEvents, "function", "auditImmediateProjectionEvents export missing");
+  const auditProjectionEventImmediately = fillsSyncTest && fillsSyncTest.auditProjectionEventImmediately;
+  assert.strictEqual(typeof auditProjectionEventImmediately, "function", "auditProjectionEventImmediately export missing");
+  assert.strictEqual(typeof fillsSyncTest.buildFillsSyncLeaseDocPath, "function", "buildFillsSyncLeaseDocPath export missing");
+  assert.strictEqual(typeof fillsSyncTest.runDistributedFillsSync, "function", "runDistributedFillsSync export missing");
+  assert.strictEqual(
+    fillsSyncTest.buildFillsSyncLeaseDocPath("ethusdt"),
+    "runtime_locks/fills_sync__BINANCEFUT__ETHUSDT"
+  );
   return auditImmediateProjectionEvents({
     events: [
       { fillId: "fill-1", symbol: "SOLUSDT", event: "EXIT_TP_P0_0.8P", tradeMs: 101 },
@@ -72,7 +80,56 @@ function run() {
       auditResult.results.filter((row) => row.unverified).map((row) => row.fillId),
       ["fill-1", "fill-2"]
     );
-    console.log("FILLS_PAPER_TEST_OK");
+    const perEventAuditStates = [];
+    let fallbackReads = 0;
+    return fillsSyncTest.runDistributedFillsSync({
+      symbol: "SOLUSDT",
+      acquireLease: async () => ({ acquired: true, holderId: "test-holder" }),
+      heartbeatLease: async () => ({ ok: true, holderId: "test-holder" }),
+      releaseLease: async () => ({ ok: true }),
+      runner: async () => ({ ok: true, locked: true }),
+    }).then((leaseResult) => {
+      assert.strictEqual(leaseResult.locked, true);
+      return auditProjectionEventImmediately({
+      exchange: "BINANCEFUT",
+      symbol: "SOLUSDT",
+      eventRow: { fillId: "fill-3", symbol: "SOLUSDT", event: "EXIT_TP_P0_0.8P", tradeMs: 103 },
+      syncPosition: async () => ({
+        ok: true,
+        position: {
+          state: "ACTIVE",
+          qty_base: 1,
+          meta: {
+            tp_p0_done: false,
+            tp_p1_done: false,
+            trail_active: false,
+          },
+        },
+      }),
+      getPositionFn: async () => {
+        fallbackReads += 1;
+        return {
+          state: "ACTIVE",
+          qty_base: 1,
+          meta: {
+            tp_p0_done: false,
+            tp_p1_done: false,
+            trail_active: false,
+          },
+        };
+      },
+      auditProjectionEvents: async ({ events, position }) => {
+        perEventAuditStates.push({ events, position });
+        return { ok: true, events, position };
+      },
+      });
+    }).then(() => {
+      assert.strictEqual(perEventAuditStates.length, 1);
+      assert.strictEqual(fallbackReads, 1, "per-event audit should reload the persisted snapshot after sync");
+      assert.strictEqual(perEventAuditStates[0].events[0].fillId, "fill-3");
+      assert.strictEqual(perEventAuditStates[0].position.state, "ACTIVE");
+      console.log("FILLS_PAPER_TEST_OK");
+    });
   });
 }
 

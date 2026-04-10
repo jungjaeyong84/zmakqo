@@ -13,7 +13,7 @@ const { computeFillPrice, computeFeeValue } = require("./paperExecution");
 
 const { listPendingIntentsForExec, listPendingIntentsOverdue, cancelExpiredPendingIntents, markIntentStatus, upsertIntent, patchIntent } = require("../storage/orderIntentsPaper");
 const { upsertFill } = require("../storage/fillsPaper");
-const { getPosition, upsertPosition } = require("../storage/positionsPaper");
+const { getPosition, upsertPosition, upsertPositionMetaOnly } = require("../storage/positionsPaper");
 const {
   getPositionRuntimeObservation,
   upsertSameDirectionTrailProfitObservation,
@@ -11053,21 +11053,31 @@ async function runPaperUpbitForBar({
     nextMeta = mergeMeta(nextMeta, { qty_base: newQtyBase });
 
     const projectedMetaForWrite = forceLiveReconcile ? stripExchangeOwnedProjectionMeta(nextMeta) : nextMeta;
-    await upsertPosition({
-      exchange,
-      symbol,
-      state: newState,
-      positionSide: newState === "ACTIVE" ? "LONG" : null,
-      sizePct: newSize,
-      avgPrice: newAvg,
-      qtyBase: newQtyBase,
-      runId,
-      executionMode,
-      budgetMaxKrw: useBudget ? riskBudget.maxKrw : null,
-      budgetUsedKrw: useBudget ? (riskBudget.maxKrw * newSize) : null,
-      budgetSource: useBudget ? riskBudget.source : null,
-      meta: projectedMetaForWrite,
-    });
+    if (forceLiveReconcile) {
+      await upsertPositionMetaOnly({
+        exchange,
+        symbol,
+        runId,
+        executionMode,
+        meta: projectedMetaForWrite,
+      });
+    } else {
+      await upsertPosition({
+        exchange,
+        symbol,
+        state: newState,
+        positionSide: newState === "ACTIVE" ? "LONG" : null,
+        sizePct: newSize,
+        avgPrice: newAvg,
+        qtyBase: newQtyBase,
+        runId,
+        executionMode,
+        budgetMaxKrw: useBudget ? riskBudget.maxKrw : null,
+        budgetUsedKrw: useBudget ? (riskBudget.maxKrw * newSize) : null,
+        budgetSource: useBudget ? riskBudget.source : null,
+        meta: projectedMetaForWrite,
+      });
+    }
 
     if (profitableTrailCooldownMeta) {
       const cooldownObservation = buildSameDirectionTrailProfitObservationPayload(profitableTrailCooldownMeta);
@@ -13765,21 +13775,31 @@ async function runPaperFuturesForBar({
     }
 
     const projectedMetaForWrite = forceLiveReconcile ? stripExchangeOwnedProjectionMeta(nextMeta) : nextMeta;
-    await upsertPosition({
-      exchange,
-      symbol,
-      state: newState,
-      positionSide: nextPosSide,
-      sizePct: newSize,
-      avgPrice: newAvg,
-      qtyBase: Number.isFinite(newQtyBase) ? newQtyBase : (pos.qty_base ?? null),
-      runId,
-      executionMode,
-      budgetMaxKrw: useBudget ? budgetMaxForIntent : null,
-      budgetUsedKrw: useBudget ? budgetUsedForPosition : null,
-      budgetSource: useBudget ? riskBudget.source : null,
-      meta: projectedMetaForWrite,
-    });
+    if (forceLiveReconcile) {
+      await upsertPositionMetaOnly({
+        exchange,
+        symbol,
+        runId,
+        executionMode,
+        meta: projectedMetaForWrite,
+      });
+    } else {
+      await upsertPosition({
+        exchange,
+        symbol,
+        state: newState,
+        positionSide: nextPosSide,
+        sizePct: newSize,
+        avgPrice: newAvg,
+        qtyBase: Number.isFinite(newQtyBase) ? newQtyBase : (pos.qty_base ?? null),
+        runId,
+        executionMode,
+        budgetMaxKrw: useBudget ? budgetMaxForIntent : null,
+        budgetUsedKrw: useBudget ? budgetUsedForPosition : null,
+        budgetSource: useBudget ? riskBudget.source : null,
+        meta: projectedMetaForWrite,
+      });
+    }
 
     if (profitableTrailCooldownMeta) {
       const cooldownObservation = buildSameDirectionTrailProfitObservationPayload(profitableTrailCooldownMeta);
