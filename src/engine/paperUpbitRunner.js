@@ -3781,6 +3781,31 @@ function buildOpenCloseProjectionResetMetaPatch({ closing = false } = {}) {
   };
 }
 
+function buildOpenCloseTransitionMetaPatch({ closing = false, includeEntryRiskReset = true } = {}) {
+  return {
+    initial_stop_price: includeEntryRiskReset ? null : undefined,
+    entry_r_distance: includeEntryRiskReset ? null : undefined,
+    trail_r_multiple: includeEntryRiskReset ? null : undefined,
+    opposite_transition_dir: null,
+    opposite_transition_event: null,
+    opposite_transition_until_ms: null,
+    opposite_transition_stage: null,
+    opposite_transition_seen_ms: null,
+    add_chain_last_signal_bar_ms: null,
+    add_chain_last_intent_id: null,
+    add_chain_last_signal_id: null,
+    add_chain_last_avg_before: null,
+    add_chain_last_avg_after: null,
+    add_chain_last_size_before: null,
+    add_chain_last_size_after: null,
+    add_chain_last_qty_pct: null,
+    add_chain_last_qty_base: null,
+    add_chain_last_loss_pct: null,
+    add_chain_base_qty_pct: closing ? null : undefined,
+    ...buildOpenCloseProjectionResetMetaPatch({ closing }),
+  };
+}
+
 async function loadRecentFillsCache(db) {
   const now = Date.now();
   if (recentFillsCache.ts && (now - recentFillsCache.ts) < TP_P1_FILL_CACHE_TTL_MS) {
@@ -10281,28 +10306,10 @@ async function runPaperUpbitForBar({
     });
 
     if (opening || closing) {
-      nextMeta = mergeMeta(nextMeta, {
-        initial_stop_price: null,
-        entry_r_distance: null,
-        trail_r_multiple: null,
-        opposite_transition_dir: null,
-        opposite_transition_event: null,
-        opposite_transition_until_ms: null,
-        opposite_transition_stage: null,
-        opposite_transition_seen_ms: null,
-        add_chain_last_signal_bar_ms: null,
-        add_chain_last_intent_id: null,
-        add_chain_last_signal_id: null,
-        add_chain_last_avg_before: null,
-        add_chain_last_avg_after: null,
-        add_chain_last_size_before: null,
-        add_chain_last_size_after: null,
-        add_chain_last_qty_pct: null,
-        add_chain_last_qty_base: null,
-        add_chain_last_loss_pct: null,
-        add_chain_base_qty_pct: closing ? null : undefined,
-      });
-      nextMeta = mergeMeta(nextMeta, buildOpenCloseProjectionResetMetaPatch({ closing }));
+      nextMeta = mergeMeta(nextMeta, buildOpenCloseTransitionMetaPatch({
+        closing,
+        includeEntryRiskReset: true,
+      }));
     }
     if (openingOrAdd) {
       const entryExitAdjustment = applyEntryExitRuleRuntimeAdjustments({
@@ -12972,25 +12979,10 @@ async function runPaperFuturesForBar({
       intent,
     });
     if (opening || closing) {
-      nextMeta = mergeMeta(nextMeta, {
-        opposite_transition_dir: null,
-        opposite_transition_event: null,
-        opposite_transition_until_ms: null,
-        opposite_transition_stage: null,
-        opposite_transition_seen_ms: null,
-        add_chain_last_signal_bar_ms: null,
-        add_chain_last_intent_id: null,
-        add_chain_last_signal_id: null,
-        add_chain_last_avg_before: null,
-        add_chain_last_avg_after: null,
-        add_chain_last_size_before: null,
-        add_chain_last_size_after: null,
-        add_chain_last_qty_pct: null,
-        add_chain_last_qty_base: null,
-        add_chain_last_loss_pct: null,
-        add_chain_base_qty_pct: closing ? null : undefined,
-      });
-      nextMeta = mergeMeta(nextMeta, buildOpenCloseProjectionResetMetaPatch({ closing }));
+      nextMeta = mergeMeta(nextMeta, buildOpenCloseTransitionMetaPatch({
+        closing,
+        includeEntryRiskReset: false,
+      }));
     }
     if (openingOrAdd) {
       const entryExitAdjustment = applyEntryExitRuleRuntimeAdjustments({
@@ -14908,6 +14900,7 @@ module.exports = {
     sanitizeBarLoopMetaUpdates,
     applyTpP1IntentFillMetaUpdate,
     buildOpenCloseProjectionResetMetaPatch,
+    buildOpenCloseTransitionMetaPatch,
     resolvePineStage1BundleMeta,
     resolveSignalTier,
     computeTrailingMetaUpdate,

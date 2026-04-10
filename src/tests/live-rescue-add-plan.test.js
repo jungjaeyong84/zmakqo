@@ -21,6 +21,7 @@ function run() {
   assert.strictEqual(typeof __test.applyAddAndProtectionMetaOnFill, "function", "applyAddAndProtectionMetaOnFill export missing");
   assert.strictEqual(typeof __test.applyTpP1IntentFillMetaUpdate, "function", "applyTpP1IntentFillMetaUpdate export missing");
   assert.strictEqual(typeof __test.buildOpenCloseProjectionResetMetaPatch, "function", "buildOpenCloseProjectionResetMetaPatch export missing");
+  assert.strictEqual(typeof __test.buildOpenCloseTransitionMetaPatch, "function", "buildOpenCloseTransitionMetaPatch export missing");
   assert.strictEqual(typeof __test.evaluateCommittedRescueAddGate, "function", "evaluateCommittedRescueAddGate export missing");
   assert.strictEqual(__test.resolveForceAllSignalsAdd({}, "BINANCEFUT"), false, "Binance default must not auto-upgrade same-direction signals to ADD");
   assert.strictEqual(
@@ -231,6 +232,16 @@ function run() {
   const closingResetPatch = __test.buildOpenCloseProjectionResetMetaPatch({ closing: true });
   assert.strictEqual(closingResetPatch.native_protection_stop_order_id, null);
   assert.strictEqual(closingResetPatch.native_protection_refresh_status, null);
+
+  const openingTransitionReset = __test.buildOpenCloseTransitionMetaPatch({ closing: false, includeEntryRiskReset: true });
+  assert.strictEqual(openingTransitionReset.initial_stop_price, null);
+  assert.strictEqual(openingTransitionReset.trail_active, false);
+  assert.strictEqual(openingTransitionReset.add_chain_last_qty_base, null);
+
+  const futuresTransitionReset = __test.buildOpenCloseTransitionMetaPatch({ closing: false, includeEntryRiskReset: false });
+  assert.strictEqual(futuresTransitionReset.initial_stop_price, undefined);
+  assert.strictEqual(futuresTransitionReset.entry_r_distance, undefined);
+  assert.strictEqual(futuresTransitionReset.trail_active, false);
 
   const baseSizeAware = __test.evaluateLiveRescueAdd({
     cfg,
