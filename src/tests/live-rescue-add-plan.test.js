@@ -19,6 +19,7 @@ function run() {
   assert.strictEqual(typeof __test.applyAddRiskMetaOnFill, "function", "applyAddRiskMetaOnFill export missing");
   assert.strictEqual(typeof __test.buildNativeProtectionMetaPatch, "function", "buildNativeProtectionMetaPatch export missing");
   assert.strictEqual(typeof __test.applyAddAndProtectionMetaOnFill, "function", "applyAddAndProtectionMetaOnFill export missing");
+  assert.strictEqual(typeof __test.applyTpP1IntentFillMetaUpdate, "function", "applyTpP1IntentFillMetaUpdate export missing");
   assert.strictEqual(typeof __test.evaluateCommittedRescueAddGate, "function", "evaluateCommittedRescueAddGate export missing");
   assert.strictEqual(__test.resolveForceAllSignalsAdd({}, "BINANCEFUT"), false, "Binance default must not auto-upgrade same-direction signals to ADD");
   assert.strictEqual(
@@ -203,6 +204,22 @@ function run() {
   });
   assert.strictEqual(leverageAware.ok, true);
   assert.strictEqual(leverageAware.detail.loss_pct, 1);
+
+  const tpP1Update = __test.applyTpP1IntentFillMetaUpdate({
+    exchange: "BINANCEFUT",
+    pos: { avg_price: 100, meta: { entry_event_id: "ENTRY-1", entry_exec_bar_ms: 123 } },
+    nextMeta: { entry_event_id: "ENTRY-1", entry_exec_bar_ms: 123, tp_p0_done: true },
+    metaSide: "LONG",
+    fillPrice: 101.6,
+    execBarCloseMs: 456,
+    entryEventIdForFill: "ENTRY-1",
+    applyOptimisticFillProjection: true,
+  });
+  assert.strictEqual(tpP1Update.meta.tp_p1_done, true);
+  assert.strictEqual(tpP1Update.meta.tp_p1_source, "INTENT_FILL");
+  assert.strictEqual(tpP1Update.meta.native_protection_tp0_order_id, null);
+  assert.strictEqual(tpP1Update.nextTrailHigh, 101.6);
+  assert.strictEqual(tpP1Update.nextTrailLow, null);
 
   const baseSizeAware = __test.evaluateLiveRescueAdd({
     cfg,

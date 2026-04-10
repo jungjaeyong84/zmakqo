@@ -3641,6 +3641,87 @@ function resolveTrailDelayConfigForMeta({ exchange = null, pos = null, posMeta =
   };
 }
 
+function applyTpP1IntentFillMetaUpdate({
+  exchange = null,
+  pos = null,
+  nextMeta = null,
+  metaSide = null,
+  fillPrice = null,
+  execBarCloseMs = null,
+  entryEventIdForFill = null,
+  applyOptimisticFillProjection = false,
+} = {}) {
+  const currentMeta = (nextMeta && typeof nextMeta === "object") ? nextMeta : {};
+  const trailDelayCfg = resolveTrailDelayConfigForMeta({
+    exchange,
+    pos: { ...(pos || {}), meta: currentMeta },
+    posMeta: currentMeta,
+  });
+  const nextTrailHigh = metaSide === "SHORT"
+    ? null
+    : (Number.isFinite(fillPrice) ? fillPrice : null);
+  const nextTrailLow = metaSide === "SHORT"
+    ? (Number.isFinite(fillPrice) ? fillPrice : null)
+    : null;
+  if (!applyOptimisticFillProjection) {
+    return {
+      meta: currentMeta,
+      nextTrailHigh,
+      nextTrailLow,
+    };
+  }
+  return {
+    meta: mergeMeta(currentMeta, {
+      tp_p0_done: currentMeta.tp_p0_done === true,
+      tp_p1_done: true,
+      tp_p1_price: fillPrice,
+      tp_p1_target_price: computeTpP1TargetPrice({
+        exchange,
+        position: pos,
+        posMeta: currentMeta,
+        fillPrice,
+      }),
+      trail_high: nextTrailHigh,
+      trail_low: nextTrailLow,
+      trail_active: false,
+      tp_p1_pending: false,
+      tp_p1_pending_at_ms: null,
+      tp_p1_pending_until_ms: null,
+      tp_p1_pending_event: null,
+      tp_p1_bar_ms: Number(execBarCloseMs) || null,
+      tp_p1_at: new Date().toISOString(),
+      tp_p1_source: "INTENT_FILL",
+      tp_p1_entry_event_id: (entryEventIdForFill || currentMeta.entry_event_id || null),
+      tp_p1_entry_exec_bar_ms: Number(currentMeta.entry_exec_bar_ms || execBarCloseMs) || null,
+      trail_delay_bars_required: trailDelayCfg.barsRequired,
+      trail_delay_mfe_pct_required: trailDelayCfg.mfePctRequired,
+      trail_delay_release_reason: null,
+      trail_delay_release_at: null,
+      trail_delay_mode: "ONE_BAR_OR_MFE",
+      tp_p1_skip_reason: null,
+      tp_p1_skip_note: null,
+      tp_p1_skip_at: null,
+      opposite_transition_dir: null,
+      opposite_transition_event: null,
+      opposite_transition_until_ms: null,
+      opposite_transition_stage: null,
+      opposite_transition_seen_ms: null,
+      native_protection_tp0_order_id: null,
+      native_protection_tp_order_id: null,
+      native_protection_tp0_status: null,
+      native_protection_tp_status: null,
+      native_protection_tp0_reason: null,
+      native_protection_tp_reason: null,
+      native_protection_tp0_qty_base: null,
+      native_protection_tp_qty_base: null,
+      native_protection_tp0_qty_ratio: null,
+      native_protection_tp_qty_ratio: null,
+    }),
+    nextTrailHigh,
+    nextTrailLow,
+  };
+}
+
 async function loadRecentFillsCache(db) {
   const now = Date.now();
   if (recentFillsCache.ts && (now - recentFillsCache.ts) < TP_P1_FILL_CACHE_TTL_MS) {
@@ -10341,65 +10422,18 @@ async function runPaperUpbitForBar({
       });
     }
     if ((ev === "EXIT_TP_P1" || ev.startsWith("EXIT_TP_P1_")) && newState === "ACTIVE") {
-      const trailDelayCfg = resolveTrailDelayConfigForMeta({
+      const tpP1Update = applyTpP1IntentFillMetaUpdate({
         exchange,
-        pos: { ...pos, meta: nextMeta },
-        posMeta: nextMeta,
+        pos,
+        nextMeta,
+        metaSide,
+        fillPrice,
+        execBarCloseMs,
+        entryEventIdForFill,
+        applyOptimisticFillProjection,
       });
-      const nextTrailHigh = metaSide === "SHORT"
-        ? null
-        : (Number.isFinite(fillPrice) ? fillPrice : null);
-      const nextTrailLow = metaSide === "SHORT"
-        ? (Number.isFinite(fillPrice) ? fillPrice : null)
-        : null;
-      if (applyOptimisticFillProjection) {
-        nextMeta = mergeMeta(nextMeta, {
-          tp_p0_done: nextMeta.tp_p0_done === true,
-          tp_p1_done: true,
-          tp_p1_price: fillPrice,
-          tp_p1_target_price: computeTpP1TargetPrice({
-            exchange,
-            position: pos,
-            posMeta: nextMeta,
-            fillPrice,
-          }),
-          trail_high: nextTrailHigh,
-          trail_low: nextTrailLow,
-          trail_active: false,
-          tp_p1_pending: false,
-          tp_p1_pending_at_ms: null,
-          tp_p1_pending_until_ms: null,
-          tp_p1_pending_event: null,
-          tp_p1_bar_ms: Number(execBarCloseMs) || null,
-          tp_p1_at: new Date().toISOString(),
-          tp_p1_source: "INTENT_FILL",
-          tp_p1_entry_event_id: (entryEventIdForFill || nextMeta.entry_event_id || null),
-          tp_p1_entry_exec_bar_ms: Number(nextMeta.entry_exec_bar_ms || execBarCloseMs) || null,
-          trail_delay_bars_required: trailDelayCfg.barsRequired,
-          trail_delay_mfe_pct_required: trailDelayCfg.mfePctRequired,
-          trail_delay_release_reason: null,
-          trail_delay_release_at: null,
-          trail_delay_mode: "ONE_BAR_OR_MFE",
-          tp_p1_skip_reason: null,
-          tp_p1_skip_note: null,
-          tp_p1_skip_at: null,
-          opposite_transition_dir: null,
-          opposite_transition_event: null,
-          opposite_transition_until_ms: null,
-          opposite_transition_stage: null,
-          opposite_transition_seen_ms: null,
-          native_protection_tp0_order_id: null,
-          native_protection_tp_order_id: null,
-          native_protection_tp0_status: null,
-          native_protection_tp_status: null,
-          native_protection_tp0_reason: null,
-          native_protection_tp_reason: null,
-          native_protection_tp0_qty_base: null,
-          native_protection_tp_qty_base: null,
-          native_protection_tp0_qty_ratio: null,
-          native_protection_tp_qty_ratio: null,
-        });
-      }
+      nextMeta = tpP1Update.meta;
+      const { nextTrailHigh, nextTrailLow } = tpP1Update;
       console.warn(
         `[TP1_TRAIL_ARMED] ${symbol} side=${metaSide || "UNKNOWN"} source=INTENT_FILL ` +
         `event=${ev} fill_price=${fillPrice ?? "NA"} trail_high=${nextTrailHigh ?? "NA"} ` +
@@ -13163,65 +13197,18 @@ async function runPaperFuturesForBar({
       });
     }
     if ((ev === "EXIT_TP_P1" || ev.startsWith("EXIT_TP_P1_")) && newState === "ACTIVE") {
-      const trailDelayCfg = resolveTrailDelayConfigForMeta({
+      const tpP1Update = applyTpP1IntentFillMetaUpdate({
         exchange,
-        pos: { ...pos, meta: nextMeta },
-        posMeta: nextMeta,
+        pos,
+        nextMeta,
+        metaSide,
+        fillPrice,
+        execBarCloseMs,
+        entryEventIdForFill,
+        applyOptimisticFillProjection,
       });
-      const nextTrailHigh = metaSide === "SHORT"
-        ? null
-        : (Number.isFinite(fillPrice) ? fillPrice : null);
-      const nextTrailLow = metaSide === "SHORT"
-        ? (Number.isFinite(fillPrice) ? fillPrice : null)
-        : null;
-      if (applyOptimisticFillProjection) {
-        nextMeta = mergeMeta(nextMeta, {
-          tp_p0_done: nextMeta.tp_p0_done === true,
-          tp_p1_done: true,
-          tp_p1_price: fillPrice,
-          tp_p1_target_price: computeTpP1TargetPrice({
-            exchange,
-            position: pos,
-            posMeta: nextMeta,
-            fillPrice,
-          }),
-          trail_high: nextTrailHigh,
-          trail_low: nextTrailLow,
-          trail_active: false,
-          tp_p1_pending: false,
-          tp_p1_pending_at_ms: null,
-          tp_p1_pending_until_ms: null,
-          tp_p1_pending_event: null,
-          tp_p1_bar_ms: Number(execBarCloseMs) || null,
-          tp_p1_at: new Date().toISOString(),
-          tp_p1_source: "INTENT_FILL",
-          tp_p1_entry_event_id: (entryEventIdForFill || nextMeta.entry_event_id || null),
-          tp_p1_entry_exec_bar_ms: Number(nextMeta.entry_exec_bar_ms || execBarCloseMs) || null,
-          trail_delay_bars_required: trailDelayCfg.barsRequired,
-          trail_delay_mfe_pct_required: trailDelayCfg.mfePctRequired,
-          trail_delay_release_reason: null,
-          trail_delay_release_at: null,
-          trail_delay_mode: "ONE_BAR_OR_MFE",
-          tp_p1_skip_reason: null,
-          tp_p1_skip_note: null,
-          tp_p1_skip_at: null,
-          opposite_transition_dir: null,
-          opposite_transition_event: null,
-          opposite_transition_until_ms: null,
-          opposite_transition_stage: null,
-          opposite_transition_seen_ms: null,
-          native_protection_tp0_order_id: null,
-          native_protection_tp_order_id: null,
-          native_protection_tp0_status: null,
-          native_protection_tp_status: null,
-          native_protection_tp0_reason: null,
-          native_protection_tp_reason: null,
-          native_protection_tp0_qty_base: null,
-          native_protection_tp_qty_base: null,
-          native_protection_tp0_qty_ratio: null,
-          native_protection_tp_qty_ratio: null,
-        });
-      }
+      nextMeta = tpP1Update.meta;
+      const { nextTrailHigh, nextTrailLow } = tpP1Update;
       console.warn(
         `[TP1_TRAIL_ARMED] ${symbol} side=${metaSide || "UNKNOWN"} source=INTENT_FILL ` +
         `event=${ev} fill_price=${fillPrice ?? "NA"} trail_high=${nextTrailHigh ?? "NA"} ` +
@@ -14974,6 +14961,7 @@ module.exports = {
     resolveOptimisticNativeProtectionMetaPatch,
     shouldForceImmediateLiveFuturesReconcile,
     sanitizeBarLoopMetaUpdates,
+    applyTpP1IntentFillMetaUpdate,
     resolvePineStage1BundleMeta,
     resolveSignalTier,
     computeTrailingMetaUpdate,
