@@ -446,6 +446,33 @@ async function binanceRequest({ method, path, params, apiKey, apiSecret, retry =
   }
 }
 
+async function binanceApiKeyRequest({ method, path, params, apiKey, baseUrl }) {
+  const key = String(apiKey || "").trim();
+  if (!key) throw new Error("BINANCEFUT_API_KEY_REQUIRED");
+  const root = baseUrl || getFuturesBaseUrl();
+  const query = buildQuery(params && typeof params === "object" ? params : {});
+  const url = query ? `${root}${path}?${query}` : `${root}${path}`;
+  const res = await fetch(url, {
+    method,
+    headers: {
+      "X-MBX-APIKEY": key,
+      Accept: "application/json",
+    },
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    const errJson = parseJsonSafe(text);
+    const errCode = errJson && Number.isFinite(Number(errJson.code)) ? Number(errJson.code) : null;
+    throw buildRequestError({ status: res.status, text, errCode, method, path, url });
+  }
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return null;
+  }
+}
+
 async function fetchBinanceFuturesAccount({ apiKey, apiSecret, recvWindow = 5000 } = {}) {
   if (shouldUseEgressProxy()) {
     return callEgressProxy({
@@ -1200,6 +1227,61 @@ async function fetchFuturesUserTrades({
   });
 }
 
+async function createFuturesListenKey({ apiKey, baseUrl } = {}) {
+  if (shouldUseEgressProxy()) {
+    return callEgressProxy({
+      provider: "binancefut",
+      action: "createFuturesListenKey",
+      payload: { apiKey, baseUrl },
+    });
+  }
+  return binanceApiKeyRequest({
+    method: "POST",
+    path: "/fapi/v1/listenKey",
+    params: null,
+    apiKey,
+    baseUrl,
+  });
+}
+
+async function keepaliveFuturesListenKey({ apiKey, listenKey, baseUrl } = {}) {
+  if (shouldUseEgressProxy()) {
+    return callEgressProxy({
+      provider: "binancefut",
+      action: "keepaliveFuturesListenKey",
+      payload: { apiKey, listenKey, baseUrl },
+    });
+  }
+  const key = String(listenKey || "").trim();
+  if (!key) throw new Error("BINANCEFUT_LISTEN_KEY_REQUIRED");
+  return binanceApiKeyRequest({
+    method: "PUT",
+    path: "/fapi/v1/listenKey",
+    params: { listenKey: key },
+    apiKey,
+    baseUrl,
+  });
+}
+
+async function deleteFuturesListenKey({ apiKey, listenKey, baseUrl } = {}) {
+  if (shouldUseEgressProxy()) {
+    return callEgressProxy({
+      provider: "binancefut",
+      action: "deleteFuturesListenKey",
+      payload: { apiKey, listenKey, baseUrl },
+    });
+  }
+  const key = String(listenKey || "").trim();
+  if (!key) throw new Error("BINANCEFUT_LISTEN_KEY_REQUIRED");
+  return binanceApiKeyRequest({
+    method: "DELETE",
+    path: "/fapi/v1/listenKey",
+    params: { listenKey: key },
+    apiKey,
+    baseUrl,
+  });
+}
+
 async function fetchFuturesIncomeHistory({
   apiKey,
   apiSecret,
@@ -1320,6 +1402,9 @@ module.exports = {
   placeFuturesMarketOrder,
   fetchFuturesOrder,
   fetchFuturesUserTrades,
+  createFuturesListenKey,
+  keepaliveFuturesListenKey,
+  deleteFuturesListenKey,
   fetchFuturesIncomeHistory,
   fetchBinanceWalletDeposits,
   fetchBinanceWalletWithdrawals,
@@ -1338,5 +1423,6 @@ module.exports = {
     isAlgoEndpointUnavailableError,
     normalizeAlgoOpenOrdersResponse,
     normalizeAlgoOrderResponse,
+    sanitizeClientOrderId,
   },
 };

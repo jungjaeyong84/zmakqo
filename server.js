@@ -59,4 +59,17 @@ app.listen(PORT, "0.0.0.0", () => {
   } catch (e) {
     console.log("[WARN] Binance tick exit start failed:", e && e.message ? e.message : String(e));
   }
+
+  try {
+    const { startBinanceUserDataStream } = require("./src/services/binanceUserDataStream");
+    startBinanceUserDataStream({ enabled: true }).then((result) => {
+      if (result && result.ok) {
+        console.log("[BOOT] Binance user-data stream started");
+      } else if (result && result.skipped) {
+        console.log(`[BOOT] Binance user-data stream skipped (${result.reason || "DISABLED"})`);
+      }
+    }).catch(() => {});
+  } catch (e) {
+    console.log("[WARN] Binance user-data stream start failed:", e && e.message ? e.message : String(e));
+  }
 });

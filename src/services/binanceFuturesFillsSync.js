@@ -44,6 +44,53 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function shouldAuditProjectionImmediately(event = "") {
+  const ev = String(event || "").trim().toUpperCase();
+  return ev.startsWith("EXIT_TP_P0") || ev.startsWith("EXIT_TP_P1") || ev.startsWith("EXIT_TRAIL") || ev.startsWith("EXIT_SL");
+}
+
+function buildImmediateProjectionIssues({ event = "", position = null } = {}) {
+  const ev = String(event || "").trim().toUpperCase();
+  const pos = position && typeof position === "object" ? position : {};
+  const meta = (pos.meta && typeof pos.meta === "object") ? pos.meta : {};
+  const issues = [];
+  if (ev.startsWith("EXIT_TP_P0") && meta.tp_p0_done !== true) issues.push("TP0_FILL_PROJECTION_MISSING");
+  if (ev.startsWith("EXIT_TP_P1") && meta.tp_p1_done !== true) issues.push("TP1_FILL_PROJECTION_MISSING");
+  if (ev.startsWith("EXIT_TRAIL") && meta.trail_active !== true) issues.push("TRAIL_FILL_PROJECTION_INACTIVE");
+  const nativeStatus = String(meta.native_protection_refresh_status || "").trim().toUpperCase();
+  if (nativeStatus && nativeStatus !== "OK") issues.push(`NATIVE_PROTECTION_${nativeStatus}`);
+  return issues;
+}
+
+async function sendImmediateProjectionMismatchAlert({
+  symbol,
+  event,
+  issues = [],
+  position = null,
+} = {}) {
+  const channel = String(process.env.EXIT_INTEGRITY_ALERT_CHANNEL || "").trim();
+  if (!channel) return { ok: false, skipped: true, reason: "NO_CHANNEL" };
+  const sym = normalizeSymbol(symbol);
+  if (!sym || !Array.isArray(issues) || !issues.length) {
+    return { ok: false, skipped: true, reason: "NO_ISSUES" };
+  }
+  const pos = position && typeof position === "object" ? position : {};
+  const meta = (pos.meta && typeof pos.meta === "object") ? pos.meta : {};
+  return sendAlert({
+    channel,
+    title: `${sym} fill-projection 불일치`,
+    body: [
+      `event: ${String(event || "").trim().toUpperCase() || "UNKNOWN"}`,
+      `issues: ${issues.join(",")}`,
+      `tp0_done: ${meta.tp_p0_done === true ? "1" : "0"}`,
+      `tp1_done: ${meta.tp_p1_done === true ? "1" : "0"}`,
+      `trail_active: ${meta.trail_active === true ? "1" : "0"}`,
+      `native_status: ${String(meta.native_protection_refresh_status || "NA").trim().toUpperCase() || "NA"}`,
+    ].join("\n"),
+    severity: "WARN",
+  });
+}
+
 async function markSameDirectionTrailProfitCooldownFromExternalFill({
   exchange,
   symbol,
@@ -1306,6 +1353,7 @@ async function syncMarketTrades({
   const pendingAlertBatches = new Map();
   let lastExitTradeMs = null;
   let observedExitFill = false;
+  const insertedProjectionAuditEvents = [];
   const defaultExitRules = getExitRulesForExchange("BINANCEFUT");
   const alertEnabled = resolveEnvBool(process.env.BINANCEFUT_FILLS_SYNC_ALERT_ENABLED, true);
   const intentFutureAllowMs = Number(process.env.BINANCEFUT_FILLS_SYNC_INTENT_FUTURE_ALLOW_MS) || DEFAULT_INTENT_FUTURE_ALLOW_MS;
@@ -1531,15 +1579,6 @@ async function syncMarketTrades({
       });
 
       if (isTpP1Event(event)) {
-        try {
-          await markTpP1DoneFromExternalFill({
-            exchange: "BINANCEFUT",
-            symbol: sym,
-            execPrice,
-            execTimeIso,
-            entryEventId,
-          });
-        } catch (_) {}
         recentTp1BySymbol.set(sym, {
           tradeMs,
           event,
@@ -1590,6 +1629,9 @@ async function syncMarketTrades({
       }
 
       if (upserted && upserted.inserted) inserted += 1;
+      if (upserted && upserted.inserted && shouldAuditProjectionImmediately(event)) {
+        insertedProjectionAuditEvents.push({ event, tradeMs });
+      }
       if (upserted && upserted.inserted && alertEnabled) {
         const isExitEvent = event.startsWith("EXIT_");
         const isEntryLikeEvent = !isExitEvent && event !== "SYNC_FILL";
@@ -1680,6 +1722,28 @@ async function syncMarketTrades({
       });
     } catch (e) {
       console.warn("[BINANCEFUT_FILL_SYNC_POSITION_RECONCILE_FAIL]", e && e.message ? e.message : String(e));
+    }
+  }
+
+  if (insertedProjectionAuditEvents.length) {
+    try {
+      const currentPos = await getPosition({ exchange: "BINANCEFUT", symbol: sym });
+      const latestAuditEvent = insertedProjectionAuditEvents
+        .sort((a, b) => Number(b.tradeMs || 0) - Number(a.tradeMs || 0))[0];
+      const issues = buildImmediateProjectionIssues({
+        event: latestAuditEvent && latestAuditEvent.event,
+        position: currentPos,
+      });
+      if (issues.length) {
+        await sendImmediateProjectionMismatchAlert({
+          symbol: sym,
+          event: latestAuditEvent && latestAuditEvent.event,
+          issues,
+          position: currentPos,
+        });
+      }
+    } catch (e) {
+      console.warn("[BINANCEFUT_FILL_SYNC_IMMEDIATE_AUDIT_FAIL]", e && e.message ? e.message : String(e));
     }
   }
 
@@ -1800,5 +1864,6 @@ module.exports = {
     isSyntheticExternalFillExitEvent,
     isTrailExitEligible,
     inferStageConstrainedTakeProfitKind,
+    buildImmediateProjectionIssues,
   },
 };

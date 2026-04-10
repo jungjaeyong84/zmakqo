@@ -11,7 +11,7 @@
     "app:dev": "electron ./desktop/main.js",
     "app:mac:build": "electron-builder --mac --universal",
     "app:mac:dir": "electron-builder --mac dir --universal",
-    "test": "node src/tests/run-tests.js && node src/tests/signals-fallback-guard.test.js && node src/tests/tick-exit-cooldown.test.js && node src/tests/signal-doc-id.test.js && node src/tests/binance-fills-qty-pct.test.js && node src/tests/trade-execution-alert.test.js && node src/tests/pine-signal-quality.test.js",
+    "test": "node src/tests/run-tests.js && node src/tests/signals-fallback-guard.test.js && node src/tests/tick-exit-cooldown.test.js && node src/tests/signal-doc-id.test.js && node src/tests/binance-fills-qty-pct.test.js && node src/tests/binance-user-data-stream.test.js && node src/tests/trade-execution-alert.test.js && node src/tests/pine-signal-quality.test.js",
     "test:guards": "node src/tests/signals-fallback-guard.test.js && node src/tests/tick-exit-cooldown.test.js",
     "test:e2e": "npx playwright test",
     "test:e2e:mobile": "npx playwright test --project=mobile",
