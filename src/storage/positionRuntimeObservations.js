@@ -89,6 +89,37 @@ function buildTrailObservationPayload({
   };
 }
 
+function resolveTrailObservationSnapshot({
+  meta = null,
+  observation = null,
+} = {}) {
+  const metaSafe = (meta && typeof meta === "object") ? meta : {};
+  const observed = (observation && typeof observation === "object" && observation.trail_observation && typeof observation.trail_observation === "object")
+    ? observation.trail_observation
+    : {};
+  const metaHighAtMs = normalizeOptionalFiniteNumber(metaSafe.trail_high_at_ms);
+  const metaLowAtMs = normalizeOptionalFiniteNumber(metaSafe.trail_low_at_ms);
+  const obsHighAtMs = normalizeOptionalFiniteNumber(observed.trail_high_at_ms);
+  const obsLowAtMs = normalizeOptionalFiniteNumber(observed.trail_low_at_ms);
+  const useObservedHigh = Number.isFinite(obsHighAtMs)
+    && (!Number.isFinite(metaHighAtMs) || obsHighAtMs > metaHighAtMs);
+  const useObservedLow = Number.isFinite(obsLowAtMs)
+    && (!Number.isFinite(metaLowAtMs) || obsLowAtMs > metaLowAtMs);
+  return {
+    trail_high: useObservedHigh
+      ? normalizeOptionalFiniteNumber(observed.trail_high)
+      : normalizeOptionalFiniteNumber(metaSafe.trail_high),
+    trail_high_at_ms: useObservedHigh ? obsHighAtMs : metaHighAtMs,
+    trail_low: useObservedLow
+      ? normalizeOptionalFiniteNumber(observed.trail_low)
+      : normalizeOptionalFiniteNumber(metaSafe.trail_low),
+    trail_low_at_ms: useObservedLow ? obsLowAtMs : metaLowAtMs,
+    trail_source: useObservedHigh || useObservedLow
+      ? (String(observed.source || "").trim().toUpperCase() || null)
+      : null,
+  };
+}
+
 async function upsertTrailObservation({
   exchange,
   symbol,
@@ -148,5 +179,6 @@ module.exports = {
   __test: {
     observationId,
     buildTrailObservationPayload,
+    resolveTrailObservationSnapshot,
   },
 };

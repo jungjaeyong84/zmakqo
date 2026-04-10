@@ -1,8 +1,10 @@
 "use strict";
 
 const { resolveExitRulesForPosition, computeRunnerExitStopPrice, resolveEntryRDistance, resolveTrailDelayState, resolveTpP0Pct } = require("../engine/signalEngine");
+const { resolveTrailObservationSnapshot } = require("../storage/positionRuntimeObservations").__test;
 
 function toNum(v) {
+  if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
@@ -52,7 +54,7 @@ function hasNativeProtection({ nativeStopPrice, nativeTpPrice, nativeRefreshStat
     || Boolean(nativeTpStatus);
 }
 
-function buildExitStageView({ exchange, position, closePrice, leverageFallback = 1 } = {}) {
+function buildExitStageView({ exchange, position, closePrice, leverageFallback = 1, observation = null } = {}) {
   if (!position || typeof position !== "object") return null;
   const state = String(position.state || position.position_state || "").toUpperCase();
   const size = toNum(position.size_pct);
@@ -62,6 +64,7 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
   if (!Number.isFinite(avg) || avg <= 0) return null;
 
   const meta = position && typeof position.meta === "object" ? position.meta : {};
+  const trailSnapshot = resolveTrailObservationSnapshot({ meta, observation });
   const side = normalizeSide(position);
   const leverage = resolveLeverage(position, leverageFallback);
   const close = toNum(closePrice);
@@ -87,7 +90,7 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
   });
   const trailActive = trailDelay.trailActive;
   const tpSkipReason = meta.tp_p1_skip_reason ? String(meta.tp_p1_skip_reason) : null;
-  const trailRef = side === "SHORT" ? toNum(meta.trail_low) : toNum(meta.trail_high);
+  const trailRef = side === "SHORT" ? toNum(trailSnapshot.trail_low) : toNum(trailSnapshot.trail_high);
   const entryRDistance = resolveEntryRDistance({
     avg,
     leverageEff: leverage,
@@ -102,8 +105,8 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     rules,
     tpP1Done,
     trailActive,
-    trailHigh: toNum(meta.trail_high),
-    trailLow: toNum(meta.trail_low),
+    trailHigh: toNum(trailSnapshot.trail_high),
+    trailLow: toNum(trailSnapshot.trail_low),
     entryRDistance,
   });
   const trailStop = runnerExit.stopPrice;
@@ -192,6 +195,11 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     tp1_gap_pct: tp1GapPct,
     tp1_skip_reason: tpSkipReason,
     trail_ref: trailRef,
+    trail_high: toNum(trailSnapshot.trail_high),
+    trail_high_at_ms: toNum(trailSnapshot.trail_high_at_ms),
+    trail_low: toNum(trailSnapshot.trail_low),
+    trail_low_at_ms: toNum(trailSnapshot.trail_low_at_ms),
+    trail_source: trailSnapshot.trail_source || null,
     trail_stop: trailStop,
     trail_stop_raw: rawTrailStop,
     runner_floor_pct: toNum(rules.RUNNER_MIN_PROFIT_PCT),

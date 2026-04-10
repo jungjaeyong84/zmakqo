@@ -8,8 +8,10 @@ const {
 const { getExchangeSettingsForProvider } = require("../utils/exchangeSettings");
 const { defaultMarketsFromEnv, normalizeMarketSymbolForProvider } = require("../utils/marketConfig");
 const { getFirestore } = require("../storage/firestore");
+const { getPositionRuntimeObservation, __test: observationTest } = require("../storage/positionRuntimeObservations");
 const { resolveExitRulesForPosition } = require("../engine/signalEngine");
 const { normalizePositionSide, resolveCloseSide, resolvePositionSideFromPosition } = require("../utils/positionSide");
+const { resolveTrailObservationSnapshot } = observationTest;
 
 function toBool(v, def = false) {
   if (v == null) return def;
@@ -23,6 +25,7 @@ function nowIso() {
 }
 
 function toNum(v) {
+  if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
@@ -175,6 +178,10 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
     const marketIssues = [];
     const internalSide = resolvePositionSideFromPosition(internal, meta);
     const externalSide = resolveExternalSideFromPosition(external);
+    const runtimeObservation = internalActive
+      ? await getPositionRuntimeObservation({ exchange: "BINANCEFUT", symbol: sym }).catch(() => null)
+      : null;
+    const trailSnapshot = resolveTrailObservationSnapshot({ meta, observation: runtimeObservation });
     const entryPrice = toNum((external && (external.entryPrice || external.entry_price)) || (internal && internal.avg_price));
     const leverage = toNum((external && external.leverage) || meta.leverage || meta.external_leverage);
     const rules = internal
@@ -222,7 +229,9 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
       }
 
       if (meta.tp_p1_done === true) {
-        const trailRef = internalSide === "SHORT" ? Number(meta.trail_low) : Number(meta.trail_high);
+        const trailRef = internalSide === "SHORT"
+          ? Number(trailSnapshot.trail_low)
+          : Number(trailSnapshot.trail_high);
         if (meta.trail_active !== true) {
           marketIssues.push(makeIssue({
             symbol: sym,

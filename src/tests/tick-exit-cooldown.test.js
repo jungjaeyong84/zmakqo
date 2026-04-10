@@ -12,6 +12,7 @@ function run() {
   assert.strictEqual(typeof __test.heartbeatTickExitLease, "function", "tick exit lease heartbeat helper missing");
   assert.strictEqual(typeof __test.runTickExitSelfHealPhase, "function", "tick exit self-heal helper missing");
   assert.strictEqual(typeof observationTest.buildTrailObservationPayload, "function", "trail observation payload helper missing");
+  assert.strictEqual(typeof observationTest.resolveTrailObservationSnapshot, "function", "trail observation snapshot helper missing");
 
   const obsPatch = __test.buildTickTrailObservationDocUpdate({ "meta.trail_high": 1.23, "meta.trail_high_at_ms": 123 }, "2026-04-10T00:00:00.000Z");
   assert.deepStrictEqual(obsPatch, {
@@ -42,6 +43,33 @@ function run() {
       source: "TICK_EXIT",
     },
     "trail observation payload should keep trail snapshot in observation store format"
+  );
+  assert.deepStrictEqual(
+    observationTest.resolveTrailObservationSnapshot({
+      meta: {
+        trail_high: 1.21,
+        trail_high_at_ms: 100,
+        trail_low: null,
+        trail_low_at_ms: null,
+      },
+      observation: {
+        trail_observation: {
+          trail_high: 1.23,
+          trail_high_at_ms: 123,
+          trail_low: null,
+          trail_low_at_ms: null,
+          source: "TICK_EXIT",
+        },
+      },
+    }),
+    {
+      trail_high: 1.23,
+      trail_high_at_ms: 123,
+      trail_low: null,
+      trail_low_at_ms: null,
+      trail_source: "TICK_EXIT",
+    },
+    "newer observation trail snapshot should override stale meta trail snapshot"
   );
 
   assert.strictEqual(typeof runnerTest.computeTrailingMetaUpdate, "function", "computeTrailingMetaUpdate export missing");
