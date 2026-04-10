@@ -20,6 +20,7 @@ function run() {
   assert.strictEqual(typeof __test.buildNativeProtectionMetaPatch, "function", "buildNativeProtectionMetaPatch export missing");
   assert.strictEqual(typeof __test.applyAddAndProtectionMetaOnFill, "function", "applyAddAndProtectionMetaOnFill export missing");
   assert.strictEqual(typeof __test.applyTpP1IntentFillMetaUpdate, "function", "applyTpP1IntentFillMetaUpdate export missing");
+  assert.strictEqual(typeof __test.buildOpenCloseProjectionResetMetaPatch, "function", "buildOpenCloseProjectionResetMetaPatch export missing");
   assert.strictEqual(typeof __test.evaluateCommittedRescueAddGate, "function", "evaluateCommittedRescueAddGate export missing");
   assert.strictEqual(__test.resolveForceAllSignalsAdd({}, "BINANCEFUT"), false, "Binance default must not auto-upgrade same-direction signals to ADD");
   assert.strictEqual(
@@ -220,6 +221,16 @@ function run() {
   assert.strictEqual(tpP1Update.meta.native_protection_tp0_order_id, null);
   assert.strictEqual(tpP1Update.nextTrailHigh, 101.6);
   assert.strictEqual(tpP1Update.nextTrailLow, null);
+
+  const resetPatch = __test.buildOpenCloseProjectionResetMetaPatch({ closing: false });
+  assert.strictEqual(resetPatch.trail_active, false);
+  assert.strictEqual(resetPatch.trail_high, null);
+  assert.strictEqual(resetPatch.tp_p1_done, false);
+  assert.strictEqual(resetPatch.native_protection_stop_order_id, undefined);
+
+  const closingResetPatch = __test.buildOpenCloseProjectionResetMetaPatch({ closing: true });
+  assert.strictEqual(closingResetPatch.native_protection_stop_order_id, null);
+  assert.strictEqual(closingResetPatch.native_protection_refresh_status, null);
 
   const baseSizeAware = __test.evaluateLiveRescueAdd({
     cfg,
