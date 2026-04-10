@@ -7,6 +7,7 @@ const { upsertSelfHealFailureObservation } = require("../storage/positionRuntime
 const { sendAlert } = require("../utils/alerts");
 const {
   syncFuturesPositionOnly,
+  resolveFuturesPositionSyncRequest,
   resolveLiveFuturesConfig,
   repairActivePositionExitRuntimeState,
 } = require("../engine/paperUpbitRunner");
@@ -86,11 +87,12 @@ async function healBinanceLivePosition({
   if (!sym) return { ok: false, skipped: true, reason: "SYMBOL_REQUIRED" };
 
   const syncRunId = runId || `RUN__SELF_HEAL__${String(exchange || "").toUpperCase()}__${sym}__${Date.now()}`;
-  const syncBefore = await syncFuturesPositionOnly({
+  const syncBefore = await syncFuturesPositionOnly(resolveFuturesPositionSyncRequest({
+    source: "SELF_HEAL_PRECHECK",
     runId: syncRunId,
     exchange,
     symbol: sym,
-  });
+  }));
 
   let pos = await getPosition({ exchange, symbol: sym });
   if (!isActivePaperPosition(pos)) {
@@ -126,11 +128,13 @@ async function healBinanceLivePosition({
         execBarCloseMs: Number(meta.entry_exec_bar_ms || meta.last_entry_bar_ms) || null,
       });
       repaired = true;
-      await syncFuturesPositionOnly({
+      await syncFuturesPositionOnly(resolveFuturesPositionSyncRequest({
+        source: "SELF_HEAL_POST_REPAIR",
         runId: `${syncRunId}__POST_REPAIR`,
         exchange,
         symbol: sym,
-      });
+        force: true,
+      }));
       pos = await getPosition({ exchange, symbol: sym });
     } catch (e) {
       const errorText = e && e.message ? e.message : String(e);

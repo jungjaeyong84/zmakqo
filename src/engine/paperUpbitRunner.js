@@ -2843,11 +2843,24 @@ function resolveSameDirectionTrailProfitCooldownBlock({
 function resolveSameDirectionTrailProfitCooldownSnapshot({
   posMeta = null,
   observation = null,
+  observationOnly = false,
 } = {}) {
   const metaSafe = (posMeta && typeof posMeta === "object") ? posMeta : {};
   const observed = (observation && typeof observation === "object" && observation.same_direction_trail_profit && typeof observation.same_direction_trail_profit === "object")
     ? observation.same_direction_trail_profit
     : {};
+  if (observationOnly === true) {
+    if (!Number.isFinite(Number(observed.exit_wall_ms))) return {};
+    return {
+      same_direction_trail_profit_exit_dir: observed.exit_dir || null,
+      same_direction_trail_profit_exit_wall_ms: Number(observed.exit_wall_ms),
+      same_direction_trail_profit_exit_event: observed.exit_event || null,
+      same_direction_trail_profit_exit_realized_pnl: Number.isFinite(Number(observed.realized_pnl))
+        ? Number(observed.realized_pnl)
+        : null,
+      same_direction_trail_profit_exit_source: observed.source || null,
+    };
+  }
   const metaExitWallMs = Number(metaSafe.same_direction_trail_profit_exit_wall_ms);
   const obsExitWallMs = Number(observed.exit_wall_ms);
   const useObserved = Number.isFinite(obsExitWallMs)
@@ -2881,6 +2894,27 @@ async function loadSameDirectionTrailProfitObservationSafe({
     });
     return null;
   }
+}
+
+function resolveFuturesPositionSyncRequest({
+  source = null,
+  runId,
+  exchange,
+  symbol,
+  force = false,
+} = {}) {
+  const src = String(source || "").trim().toUpperCase();
+  let dedupeWindowMs = 0;
+  if (src === "MARKET_RUNNER") dedupeWindowMs = 15000;
+  else if (src === "SELF_HEAL_PRECHECK") dedupeWindowMs = 5000;
+  else if (src === "FILL_SYNC_RECONCILE") dedupeWindowMs = 5000;
+  return {
+    runId,
+    exchange,
+    symbol,
+    force: force === true,
+    dedupeWindowMs,
+  };
 }
 
 async function loadPositionRuntimeObservationSafe({
@@ -10249,6 +10283,7 @@ async function runPaperUpbitForBar({
           posMeta: resolveSameDirectionTrailProfitCooldownSnapshot({
             posMeta,
             observation: sameDirectionTrailProfitObservation,
+            observationOnly: true,
           }),
           intentDir,
           eventRefMs: resolveEventRefMs(it.signal_bar_close_time_utc_ms, execBarCloseMs),
@@ -11350,6 +11385,7 @@ async function runPaperUpbitForBar({
         posMeta: resolveSameDirectionTrailProfitCooldownSnapshot({
           posMeta,
           observation: sameDirectionTrailProfitObservation,
+          observationOnly: true,
         }),
         intentDir,
         eventRefMs: resolveEventRefMs(effectiveBarMs, s.bar_close_time_utc_ms),
@@ -12616,6 +12652,7 @@ async function runPaperFuturesForBar({
           posMeta: resolveSameDirectionTrailProfitCooldownSnapshot({
             posMeta,
             observation: sameDirectionTrailProfitObservation,
+            observationOnly: true,
           }),
           intentDir,
           eventRefMs: resolveEventRefMs(it.signal_bar_close_time_utc_ms, execBarCloseMs),
@@ -14406,6 +14443,7 @@ async function runPaperFuturesForBar({
         posMeta: resolveSameDirectionTrailProfitCooldownSnapshot({
           posMeta,
           observation: sameDirectionTrailProfitObservation,
+          observationOnly: true,
         }),
         intentDir,
         eventRefMs: resolveEventRefMs(effectiveBarMs, s.bar_close_time_utc_ms),
@@ -15343,6 +15381,7 @@ module.exports = {
     resolveSameDirectionTrailProfitCooldownBlock,
     resolveSameDirectionTrailProfitCooldownSnapshot,
     loadSameDirectionTrailProfitObservationSafe,
+    resolveFuturesPositionSyncRequest,
     evaluateLiveRescueAdd,
     evaluateReplayRescueAdd,
     resolveEvGateConfig,

@@ -12,7 +12,7 @@ const getGateStatus = gateMod.getGateStatusAsync || gateMod.getGateStatus;
 const { getCursor, setCursor } = require("../storage/cursors");
 const { listSignalsByMarket } = require("../storage/signalsQuery");
 const { findRecentWebhookSummaryForBar } = require("../storage/webhookLedger");
-const { runPaperMarket, syncFuturesPositionOnly } = require("../engine/paperUpbitRunner");
+const { runPaperMarket, syncFuturesPositionOnly, resolveFuturesPositionSyncRequest } = require("../engine/paperUpbitRunner");
 const { tfToMs, normalizeTf, defaultExecTfFromEnv } = require("../utils/marketConfig");
 const { computeTradingMode: computeGateTradingMode } = require("../utils/tradingMode");
 const { sendSignalCompareAlert } = require("../services/signalLifecycleAlert");
@@ -314,12 +314,12 @@ async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHi
   if (String(exchange || "").toUpperCase().includes("BINANCE") &&
       (String(executionMode || "").toUpperCase() === "LIVE" || String(executionMode || "").toUpperCase() === "LIVE_DRY_RUN")) {
     try {
-      futuresSync = await syncFuturesPositionOnly({
+      futuresSync = await syncFuturesPositionOnly(resolveFuturesPositionSyncRequest({
+        source: "MARKET_RUNNER",
         runId: runIdHint || `RUN__${exchange}__${market}__SYNC__${Date.now()}`,
         exchange,
         symbol: market,
-        dedupeWindowMs: 15000,
-      });
+      }));
     } catch (e) {
       futuresSync = { ok: false, error: (e && e.message) ? e.message : String(e) };
     }

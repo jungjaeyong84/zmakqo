@@ -327,6 +327,37 @@ async function run() {
     ["slept", "acquired", "heartbeat", "runner", "released"],
     "distributed sync should wait, acquire lease, heartbeat once, run, then release"
   );
+  assert.deepStrictEqual(
+    __test.resolveFuturesPositionSyncRequest({
+      source: "MARKET_RUNNER",
+      runId: "run-1",
+      exchange: "BINANCEFUT",
+      symbol: "DOGEUSDT",
+    }),
+    {
+      runId: "run-1",
+      exchange: "BINANCEFUT",
+      symbol: "DOGEUSDT",
+      force: false,
+      dedupeWindowMs: 15000,
+    }
+  );
+  assert.deepStrictEqual(
+    __test.resolveFuturesPositionSyncRequest({
+      source: "SELF_HEAL_POST_REPAIR",
+      runId: "run-2",
+      exchange: "BINANCEFUT",
+      symbol: "DOGEUSDT",
+      force: true,
+    }),
+    {
+      runId: "run-2",
+      exchange: "BINANCEFUT",
+      symbol: "DOGEUSDT",
+      force: true,
+      dedupeWindowMs: 0,
+    }
+  );
 
   const resetPatch = __test.buildOpenCloseProjectionResetMetaPatch({ closing: false });
   assert.strictEqual(resetPatch.trail_active, false);

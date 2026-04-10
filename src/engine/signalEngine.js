@@ -66,18 +66,35 @@ function parseIsoMs(v) {
   return Number.isFinite(ms) ? ms : null;
 }
 
+function resolveTrailSnapshotMeta(meta = {}) {
+  const metaSafe = (meta && typeof meta === "object") ? meta : {};
+  const snapshot = (metaSafe.trail_observation_snapshot && typeof metaSafe.trail_observation_snapshot === "object")
+    ? metaSafe.trail_observation_snapshot
+    : null;
+  if (!snapshot) return metaSafe;
+  return {
+    ...metaSafe,
+    trail_high: snapshot.trail_high ?? metaSafe.trail_high ?? null,
+    trail_high_at_ms: snapshot.trail_high_at_ms ?? metaSafe.trail_high_at_ms ?? null,
+    trail_low: snapshot.trail_low ?? metaSafe.trail_low ?? null,
+    trail_low_at_ms: snapshot.trail_low_at_ms ?? metaSafe.trail_low_at_ms ?? null,
+    trail_active: snapshot.trail_active ?? metaSafe.trail_active ?? false,
+  };
+}
+
 function resolveTpP1State(meta = {}) {
-  const rawTpP1Done = meta.tp_p1_done === true;
-  const rawTrailActive = meta.trail_active === true;
+  const metaSafe = resolveTrailSnapshotMeta(meta);
+  const rawTpP1Done = metaSafe.tp_p1_done === true;
+  const rawTrailActive = metaSafe.trail_active === true;
   if (!rawTpP1Done) {
     return { tpP1Done: false, trailActive: false, linkedToEntry: false };
   }
 
-  const entryEventId = String(meta.entry_event_id || "").trim();
-  const tpP1EntryEventId = String(meta.tp_p1_entry_event_id || "").trim();
-  const entryExecMs = toNum(meta.entry_exec_bar_ms);
-  const tpP1EntryExecMs = toNum(meta.tp_p1_entry_exec_bar_ms);
-  const tpP1AtMs = parseIsoMs(meta.tp_p1_at);
+  const entryEventId = String(metaSafe.entry_event_id || "").trim();
+  const tpP1EntryEventId = String(metaSafe.tp_p1_entry_event_id || "").trim();
+  const entryExecMs = toNum(metaSafe.entry_exec_bar_ms);
+  const tpP1EntryExecMs = toNum(metaSafe.tp_p1_entry_exec_bar_ms);
+  const tpP1AtMs = parseIsoMs(metaSafe.tp_p1_at);
 
   let linkedToEntry = true;
   if (entryEventId && tpP1EntryEventId && entryEventId !== tpP1EntryEventId) {
@@ -351,7 +368,7 @@ function resolveTrailDelayState({
   leverageEff = null,
   rules = null,
 } = {}) {
-  const metaSafe = meta && typeof meta === "object" ? meta : {};
+  const metaSafe = resolveTrailSnapshotMeta(meta && typeof meta === "object" ? meta : {});
   const rawTrailActive = metaSafe.trail_active === true;
   const barsRequired = Math.max(0, Math.round(toNum(metaSafe.trail_delay_bars_required) ?? toNum(rules && rules.TRAIL_DELAY_BARS) ?? 0));
   const mfePctRequired = toNum(metaSafe.trail_delay_mfe_pct_required) ?? toNum(rules && rules.TRAIL_DELAY_MFE_PCT);
@@ -668,7 +685,7 @@ function resolveExitRulesForPosition({ exchange, position, exitProfileMode } = {
   const profileMode = normalizeExitProfileMode(exitProfileMode, "BASE");
   const base = getExitRulesForProfile(exchange, profileMode);
   const pos = position || {};
-  const meta = (pos.meta && typeof pos.meta === "object") ? pos.meta : {};
+  const meta = resolveTrailSnapshotMeta((pos.meta && typeof pos.meta === "object") ? pos.meta : {});
   const override = (meta.exit_rules_override && typeof meta.exit_rules_override === "object")
     ? meta.exit_rules_override
     : null;
@@ -1072,4 +1089,5 @@ module.exports = {
   resolveEntryRDistance,
   resolveTrailDelayState,
   resolveTpP0Pct,
+  resolveTrailSnapshotMeta,
 };

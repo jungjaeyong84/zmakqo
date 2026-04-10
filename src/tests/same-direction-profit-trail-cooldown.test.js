@@ -119,6 +119,25 @@ function run() {
   assert.strictEqual(mergedSnapshot.same_direction_trail_profit_exit_dir, "SHORT");
   assert.strictEqual(mergedSnapshot.same_direction_trail_profit_exit_event, "EXIT_TRAIL_NEW");
   assert.strictEqual(mergedSnapshot.same_direction_trail_profit_exit_realized_pnl, 8.5);
+  const observationOnlySnapshot = __test.resolveSameDirectionTrailProfitCooldownSnapshot({
+    posMeta: {
+      same_direction_trail_profit_exit_dir: "LONG",
+      same_direction_trail_profit_exit_wall_ms: Date.parse("2026-03-14T09:00:00Z"),
+      same_direction_trail_profit_exit_event: "EXIT_TRAIL_OLD",
+    },
+    observation: {
+      same_direction_trail_profit: {
+        exit_dir: "SHORT",
+        exit_wall_ms: Date.parse("2026-03-14T11:00:00Z"),
+        exit_event: "EXIT_TRAIL_NEW",
+        realized_pnl: 8.5,
+        source: "BINANCE_USER_TRADES",
+      },
+    },
+    observationOnly: true,
+  });
+  assert.strictEqual(observationOnlySnapshot.same_direction_trail_profit_exit_dir, "SHORT");
+  assert.strictEqual(observationOnlySnapshot.same_direction_trail_profit_exit_event, "EXIT_TRAIL_NEW");
 
   const disabledObservation = __test.loadSameDirectionTrailProfitObservationSafe({
     enabled: false,
