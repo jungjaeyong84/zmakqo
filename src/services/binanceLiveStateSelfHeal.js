@@ -1,7 +1,7 @@
 "use strict";
 
 const { getFirestore } = require("../storage/firestore");
-const { getPosition } = require("../storage/positionsPaper");
+const { getPosition, upsertPositionMetaOnly } = require("../storage/positionsPaper");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { upsertSelfHealFailureObservation } = require("../storage/positionRuntimeObservations");
 const { sendAlert } = require("../utils/alerts");
@@ -120,7 +120,7 @@ async function healBinanceLivePosition({
           const sys = await getSystemSettingsForProvider(exchange, 2000);
           const sysCfg = sys && sys.data ? sys.data : {};
           const liveCfg = await resolveLiveFuturesConfig({ exchange, symbol: sym });
-          await repairActivePositionExitRuntimeState({
+          const repairedMeta = await repairActivePositionExitRuntimeState({
             exchange,
             symbol: sym,
             positionSide: pos.position_side || meta.position_side || null,
@@ -132,6 +132,15 @@ async function healBinanceLivePosition({
             sysCfg,
             execBarCloseMs: Number(meta.entry_exec_bar_ms || meta.last_entry_bar_ms) || null,
           });
+          if (repairedMeta && typeof repairedMeta === "object") {
+            await upsertPositionMetaOnly({
+              exchange,
+              symbol: sym,
+              runId: `${syncRunId}__REPAIR_META`,
+              executionMode: "LIVE",
+              meta: repairedMeta,
+            });
+          }
           repaired = true;
           await syncFuturesPositionOnly(resolveFuturesPositionSyncRequest({
             source: "SELF_HEAL_POST_REPAIR",
