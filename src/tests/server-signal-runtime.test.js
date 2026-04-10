@@ -2,6 +2,7 @@
 
 const assert = require("assert");
 const { deriveServerSignalRuntime } = require("../../src/utils/serverSignalRuntime");
+const { __test: runtimeReportTest } = require("../../scripts/report-server-signal-runtime");
 
 (() => {
   const report = deriveServerSignalRuntime({
@@ -134,6 +135,19 @@ const { deriveServerSignalRuntime } = require("../../src/utils/serverSignalRunti
     TP1_FILL_TRAIL_INACTIVE: 1,
     NATIVE_PROTECTION_NOT_OK: 1,
   });
+  assert.strictEqual(typeof runtimeReportTest.buildRuntimeIntegrityAlertSections, "function");
+  const sections = runtimeReportTest.buildRuntimeIntegrityAlertSections(report);
+  assert.strictEqual(sections.length, 2);
+  assert.ok(sections[0].lines.some((line) => line.includes("out_of_sync=1")));
+  assert.ok(sections[1].lines.some((line) => line.includes("issue=3")));
+  assert.deepStrictEqual(runtimeReportTest.buildRuntimeIntegrityAlertSections({
+    summary: {
+      binance_fill_projection_audit_issue_n: 0,
+      binance_live_state_projection_out_of_sync_n: 0,
+      binance_live_state_self_heal_required_n: 0,
+      binance_live_state_native_stop_missing_n: 0,
+    },
+  }), []);
   assert.strictEqual(report.current_status.reverse_exception_rescue_bypass_tier_block, true);
   assert.strictEqual(report.summary.pine_shadow_transition_progress_pct, 100);
   assert.strictEqual(report.current_status.execution_shadow_policy, "EXCLUDE_FROM_EXECUTION_DEFAULT");

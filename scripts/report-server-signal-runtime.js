@@ -10,6 +10,7 @@ const {
   readJsonRawSafe,
   writeJson,
   writeText,
+  sendKoreanTelegramSummary,
 } = require("./lib/automation-utils");
 const { getSystemSettingsForProvider } = require("../src/storage/settings");
 const { getExchangeSettingsForProvider } = require("../src/utils/exchangeSettings");
@@ -76,6 +77,57 @@ function renderMarkdown(report = {}) {
     `- markets_preview: ${Array.isArray(status.markets_preview) && status.markets_preview.length ? status.markets_preview.join(", ") : "N/A"}`,
   ];
   return `${lines.join("\n")}\n`;
+}
+
+function buildRuntimeIntegrityAlertSections(report = {}) {
+  const summary = report && report.summary && typeof report.summary === "object" ? report.summary : {};
+  const issueN = Number(summary.binance_fill_projection_audit_issue_n || 0);
+  const outOfSyncN = Number(summary.binance_live_state_projection_out_of_sync_n || 0);
+  const selfHealRequiredN = Number(summary.binance_live_state_self_heal_required_n || 0);
+  const stopMissingN = Number(summary.binance_live_state_native_stop_missing_n || 0);
+  if (!(issueN > 0 || outOfSyncN > 0 || selfHealRequiredN > 0 || stopMissingN > 0)) return [];
+  return [
+    {
+      header: "Binance Live State",
+      lines: [
+        `active=${summary.binance_live_state_active_position_n ?? 0}`,
+        `out_of_sync=${outOfSyncN}`,
+        `self_heal_required=${selfHealRequiredN}`,
+        `stop_missing=${stopMissingN}`,
+      ],
+    },
+    {
+      header: "Fill Projection Audit",
+      lines: [
+        `issue=${issueN}`,
+        `tp0_missing=${summary.binance_fill_projection_tp0_missing_n ?? 0}`,
+        `tp1_missing=${summary.binance_fill_projection_tp1_missing_n ?? 0}`,
+        `tp1_trail_inactive=${summary.binance_fill_projection_tp1_trail_inactive_n ?? 0}`,
+        `native_not_ok=${summary.binance_fill_projection_native_protection_not_ok_n ?? 0}`,
+      ],
+    },
+  ];
+}
+
+async function maybeSendRuntimeIntegrityAlert(report = {}) {
+  const sections = buildRuntimeIntegrityAlertSections(report);
+  if (!sections.length) return { ok: true, skipped: true, reason: "NO_RUNTIME_ISSUES" };
+  const summary = report && report.summary && typeof report.summary === "object" ? report.summary : {};
+  return sendKoreanTelegramSummary({
+    title: "[변경] 서버 실체결/프로젝션 무결성 경고",
+    severity: "WARN",
+    provider: PROVIDER,
+    dedupeKey: `server-signal-runtime-integrity:${String(report.provider || PROVIDER)}`,
+    dedupeWindowSec: 1800,
+    dedupeFingerprint: {
+      issue_n: Number(summary.binance_fill_projection_audit_issue_n || 0),
+      out_of_sync_n: Number(summary.binance_live_state_projection_out_of_sync_n || 0),
+      self_heal_required_n: Number(summary.binance_live_state_self_heal_required_n || 0),
+      stop_missing_n: Number(summary.binance_live_state_native_stop_missing_n || 0),
+      issue_by_code: summary.binance_fill_projection_issue_by_code || {},
+    },
+    sections,
+  });
 }
 
 function isActivePaperPosition(pos = {}) {
@@ -191,6 +243,7 @@ async function main() {
   writeText(datedMd, renderMarkdown(payload));
   writeJson(latestJson, payload);
   writeText(latestMd, renderMarkdown(payload));
+  await maybeSendRuntimeIntegrityAlert(payload);
   console.log(JSON.stringify({ ok: true, latest_json: latestJson, latest_markdown: latestMd }));
 }
 
@@ -200,3 +253,9 @@ if (require.main === module) {
     process.exit(1);
   });
 }
+
+module.exports = {
+  __test: {
+    buildRuntimeIntegrityAlertSections,
+  },
+};
