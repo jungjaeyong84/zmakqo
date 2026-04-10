@@ -6581,6 +6581,25 @@ function buildEntryLineageMetaPatch(lineage = {}, {
   return patch;
 }
 
+function resolveActiveEntryLineageForSync({
+  externalEntryTransition = false,
+  persistedEntryLineage = null,
+  recoveredEntryLineage = null,
+} = {}) {
+  const persisted = normalizeEntryLineage(persistedEntryLineage);
+  const recovered = normalizeEntryLineage(recoveredEntryLineage);
+  const persistedId = String(persisted.entry_event_id || "").trim() || null;
+  const recoveredId = String(recovered.entry_event_id || "").trim() || null;
+  if (externalEntryTransition) {
+    if (recoveredId) return recovered;
+    if (persistedId) return persisted;
+    return recoveredId ? recovered : persisted;
+  }
+  if (persistedId) return persisted;
+  if (recoveredId) return recovered;
+  return persisted;
+}
+
 function resolveEntryLineageForFill({
   opening = false,
   entryEventIdFromIntent = null,
@@ -6950,11 +6969,11 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
   const recoveredEntryLineage = externalEntryTransition
     ? await recoverRecentEntryLineage({ exchange, symbol, side, nowMs: syncEventMs })
     : null;
-  const activeEntryLineage = (
-    (persistedEntryLineage && persistedEntryLineage.entry_event_id)
-      ? persistedEntryLineage
-      : (recoveredEntryLineage || persistedEntryLineage)
-  );
+  const activeEntryLineage = resolveActiveEntryLineageForSync({
+    externalEntryTransition,
+    persistedEntryLineage,
+    recoveredEntryLineage,
+  });
   if (externalEntryTransition) {
     meta = mergeMeta(meta, {
       tp_p0_done: false,
@@ -15270,6 +15289,7 @@ module.exports = {
     resolveRecentExternalFlatSyncGuard,
     normalizeEntryLineage,
     buildEntryLineageMetaPatch,
+    resolveActiveEntryLineageForSync,
     resolveEntryLineageForFill,
     extractEntryLineageCandidate,
     resolveRiskBudget,

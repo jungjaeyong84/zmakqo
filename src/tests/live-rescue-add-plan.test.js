@@ -29,6 +29,7 @@ async function run() {
   assert.strictEqual(typeof __test.buildOpenCloseTransitionMetaPatch, "function", "buildOpenCloseTransitionMetaPatch export missing");
   assert.strictEqual(typeof __test.buildClosingFillMetaPatch, "function", "buildClosingFillMetaPatch export missing");
   assert.strictEqual(typeof __test.buildOpeningFillMetaPatch, "function", "buildOpeningFillMetaPatch export missing");
+  assert.strictEqual(typeof __test.resolveActiveEntryLineageForSync, "function", "resolveActiveEntryLineageForSync export missing");
   assert.strictEqual(typeof __test.evaluateCommittedRescueAddGate, "function", "evaluateCommittedRescueAddGate export missing");
   assert.strictEqual(__test.resolveForceAllSignalsAdd({}, "BINANCEFUT"), false, "Binance default must not auto-upgrade same-direction signals to ADD");
   assert.strictEqual(
@@ -397,6 +398,25 @@ async function run() {
   assert.strictEqual(openingPatchFull.entry_r_distance, 1.2);
   assert.strictEqual(openingPatchFull.trail_r_multiple, 0.6);
   assert.strictEqual(openingPatchFull.same_direction_trail_profit_exit_wall_ms, null);
+
+  const preferredRecoveredLineage = __test.resolveActiveEntryLineageForSync({
+    externalEntryTransition: true,
+    persistedEntryLineage: {
+      entry_event_id: "BINANCEFUT|BNBUSDT|15m|1775772000000|SHORT|SHORT",
+      entry_signal_type: "SHORT",
+      entry_exec_bar_ms: 1775772000000,
+    },
+    recoveredEntryLineage: {
+      entry_event_id: "BINANCEFUT|BNBUSDT|15m|1775799000000|LONG|LONG",
+      entry_signal_type: "LONG",
+      entry_exec_bar_ms: 1775799000000,
+    },
+  });
+  assert.strictEqual(
+    preferredRecoveredLineage.entry_event_id,
+    "BINANCEFUT|BNBUSDT|15m|1775799000000|LONG|LONG",
+    "external entry transition should prefer recovered lineage over stale persisted lineage"
+  );
 
   const baseSizeAware = __test.evaluateLiveRescueAdd({
     cfg,
