@@ -4,6 +4,7 @@ const assert = require("assert");
 const { __test: userStreamTest } = require("../services/binanceUserDataStream");
 const { reconcileBinancePositionMetaWithExchange } = require("../services/binancePositionReconciler");
 const { __test: selfHealTest } = require("../services/binanceLiveStateSelfHeal");
+const { __test: tickExitTest } = require("../services/binanceTickExit");
 
 (async () => {
   const calls = [];
@@ -58,6 +59,36 @@ const { __test: selfHealTest } = require("../services/binanceLiveStateSelfHeal")
     true,
     "self-heal should request repair when reconcile surfaces TP1_DONE_WITH_TP_ORDER"
   );
+
+  let healCalls = 0;
+  const skippedHeal = await tickExitTest.runTickExitSelfHealPhase({
+    enabled: true,
+    leaseHeartbeatOk: false,
+    reason: "RACE_TEST",
+    runSelfHeal: async () => {
+      healCalls += 1;
+      return { ok: true };
+    },
+  });
+  assert.strictEqual(skippedHeal.skipped, true);
+  assert.strictEqual(skippedHeal.reason, "LEASE_LOST");
+  assert.strictEqual(healCalls, 0, "tick-exit must not run self-heal after lease loss");
+
+  const executedHeal = await tickExitTest.runTickExitSelfHealPhase({
+    enabled: true,
+    leaseHeartbeatOk: true,
+    reason: "RACE_TEST",
+    maxPositions: 3,
+    runSelfHeal: async (args) => {
+      healCalls += 1;
+      return { ok: true, args };
+    },
+  });
+  assert.strictEqual(executedHeal.ok, true);
+  assert.strictEqual(executedHeal.args.exchange, "BINANCEFUT");
+  assert.strictEqual(executedHeal.args.reason, "RACE_TEST");
+  assert.strictEqual(executedHeal.args.maxPositions, 3);
+  assert.strictEqual(healCalls, 1, "tick-exit should run self-heal exactly once when lease is healthy");
 
   console.log("BINANCE_LIVE_STATE_FLOW_INTEGRATION_TEST_OK");
 })().catch((err) => {
