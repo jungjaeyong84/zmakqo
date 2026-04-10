@@ -12,6 +12,7 @@ function run() {
   assert.strictEqual(typeof __test.heartbeatTickExitLease, "function", "tick exit lease heartbeat helper missing");
   assert.strictEqual(typeof __test.runTickExitSelfHealPhase, "function", "tick exit self-heal helper missing");
   assert.strictEqual(typeof __test.applyTrailObservationToPosition, "function", "tick exit trail observation apply helper missing");
+  assert.strictEqual(typeof __test.isNativeStopLessProtectiveThanTrigger, "function", "tick exit trail floor helper missing");
   assert.strictEqual(typeof observationTest.buildTrailObservationPayload, "function", "trail observation payload helper missing");
   assert.strictEqual(typeof observationTest.resolveTrailObservationSnapshot, "function", "trail observation snapshot helper missing");
   assert.strictEqual(typeof runnerTest.applyTrailObservationSnapshotToMeta, "function", "trail observation apply helper missing");
@@ -203,6 +204,33 @@ function run() {
       trail_low_at_ms: null,
     },
     "tick exit should evaluate triggers against the freshest trail observation snapshot"
+  );
+  assert.strictEqual(
+    __test.isNativeStopLessProtectiveThanTrigger({
+      meta: { native_protection_stop_price: 1.3368 },
+      triggerPrice: 1.359124,
+      side: "LONG",
+    }),
+    true,
+    "long trailing stop below runner floor must be treated as protection deficit"
+  );
+  assert.strictEqual(
+    __test.isNativeStopLessProtectiveThanTrigger({
+      meta: { native_protection_stop_price: 99.8 },
+      triggerPrice: 99.175,
+      side: "SHORT",
+    }),
+    true,
+    "short trailing stop above runner floor must be treated as protection deficit"
+  );
+  assert.strictEqual(
+    __test.isNativeStopLessProtectiveThanTrigger({
+      meta: { native_protection_stop_price: 1.36 },
+      triggerPrice: 1.359124,
+      side: "LONG",
+    }),
+    false,
+    "already protective long native stop must not trigger refresh"
   );
 
   assert.strictEqual(typeof runnerTest.computeTrailingMetaUpdate, "function", "computeTrailingMetaUpdate export missing");

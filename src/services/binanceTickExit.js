@@ -390,6 +390,19 @@ function hasNativeTpProtection(meta) {
     && ((Number.isFinite(tpPrice) && tpPrice > 0) || !!tpOrderId);
 }
 
+function isNativeStopLessProtectiveThanTrigger({ meta, triggerPrice, side } = {}) {
+  const trg = Number(triggerPrice);
+  if (!Number.isFinite(trg) || trg <= 0) return false;
+  const stopPrice = Number(meta && meta.native_protection_stop_price);
+  if (!Number.isFinite(stopPrice) || stopPrice <= 0) return true;
+  const sideUpper = String(side || "LONG").toUpperCase() === "SHORT" ? "SHORT" : "LONG";
+  const tolerance = Math.max(trg * 0.0001, 1e-8);
+  if (sideUpper === "SHORT") {
+    return stopPrice > (trg + tolerance);
+  }
+  return stopPrice < (trg - tolerance);
+}
+
 function normalizeOrderType(order) {
   return String(order && (order.type || order.origType || order.orderType || order.algoType) || "").toUpperCase();
 }
@@ -874,6 +887,53 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
       }
       const triggers = computeExitTriggers({ pos: effectivePos, rules, leverageEff, nativeProtectionState });
       const resolvedPosSide = resolvePositionSideFromPosition(effectivePos, effectivePos.meta, "LONG");
+      const trailTrigger = triggers.find((t) => String(t && t.kind || "").toUpperCase() === "TRAIL");
+      const trailProtectionDeficit = trailTrigger && isNativeStopLessProtectiveThanTrigger({
+        meta: effectivePos.meta,
+        triggerPrice: trailTrigger.price,
+        side: resolvedPosSide,
+      });
+      if (trailProtectionDeficit) {
+        try {
+          const liveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol });
+          const refreshed = await refreshBinanceNativeProtectionWithRetry({
+            liveCfg,
+            exchange: "BINANCEFUT",
+            symbol,
+            fallbackSide: resolvedPosSide === "SHORT" ? "SELL" : "BUY",
+            fallbackEntryPrice: Number(effectivePos && effectivePos.avg_price),
+            fallbackLeverage: Number(effectivePos && effectivePos.meta && (effectivePos.meta.external_leverage || effectivePos.meta.leverage || effectivePos.leverage || 1)),
+            exitRulesOverride: effectivePos && effectivePos.meta && effectivePos.meta.exit_rules_override ? effectivePos.meta.exit_rules_override : null,
+            posMeta: effectivePos.meta || {},
+          });
+          structuredLog("tick_exit_trail_native_floor_refresh", {
+            exchange: "BINANCEFUT",
+            symbol: String(symbol).toUpperCase(),
+            side: resolvedPosSide,
+            trigger_price: Number(trailTrigger.price),
+            native_stop_price: Number(effectivePos && effectivePos.meta && effectivePos.meta.native_protection_stop_price),
+            refreshed: refreshed && refreshed.ok === true,
+            refresh_reason: refreshed && refreshed.reason ? String(refreshed.reason) : null,
+          });
+        } catch (nativeRefreshErr) {
+          structuredLog("tick_exit_trail_native_floor_refresh_error", {
+            exchange: "BINANCEFUT",
+            symbol: String(symbol).toUpperCase(),
+            side: resolvedPosSide,
+            trigger_price: Number(trailTrigger.price),
+            error: String(nativeRefreshErr && nativeRefreshErr.message || nativeRefreshErr).slice(0, 200),
+          }, "warn");
+        } finally {
+          try {
+            nativeProtectionStateCache.delete(`BINANCEFUT__${String(symbol || "").toUpperCase()}`);
+            await syncFuturesPositionOnly({
+              runId: buildTickTrailReconcileRunId(symbol, Date.now()),
+              exchange: "BINANCEFUT",
+              symbol,
+            });
+          } catch (_) {}
+        }
+      }
       const nearHit = shouldCheckNear({ price, triggers, nearPct, side: resolvedPosSide });
       const fastLaneHit = shouldActivateFastLane({
         pos: effectivePos,
@@ -1433,6 +1493,7 @@ module.exports = {
     shouldCheckNear,
     shouldActivateFastLane,
     applyTrailObservationToPosition,
+    isNativeStopLessProtectiveThanTrigger,
     resolvePositionSignalTf,
     shouldBypassNativeProtectionCache,
     hasNativeStopProtection,
