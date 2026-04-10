@@ -440,7 +440,7 @@ const DEFAULT_RULES = (CHARTER_EXPECTATIONS && CHARTER_EXPECTATIONS.signal_engin
     BE_PCT_MIXED_COHORT: 0.002,
     TRAIL_R_MULTIPLE_RESCUE_COHORT: 0.6,
     TRAIL_R_MULTIPLE_MIXED_COHORT: 0.75,
-    RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: 0.012,
+    RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: 0.0165,
     RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: 0.0165,
     BE_ENABLE: true,
     BE_PCT: null,
@@ -527,7 +527,7 @@ const EXCHANGE_RULES = {
     BE_PCT_MIXED_COHORT: 0.002,
     TRAIL_R_MULTIPLE_RESCUE_COHORT: 0.6,
     TRAIL_R_MULTIPLE_MIXED_COHORT: 0.75,
-    RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: 0.012,
+    RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: 0.0165,
     RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: 0.0165,
     BE_ENABLE: true,
     // Keep small realized edge after TP1; prevents many short winners from reverting to losses.
@@ -573,7 +573,7 @@ const BINANCE_FUTURES_AGGRESSIVE_RULES = {
   BE_PCT_MIXED_COHORT: 0.002,
   TRAIL_R_MULTIPLE_RESCUE_COHORT: 0.6,
   TRAIL_R_MULTIPLE_MIXED_COHORT: 0.75,
-  RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: 0.012,
+  RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: 0.0165,
   RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: 0.0165,
   BE_ENABLE: true,
   BE_PCT: 0.0025,
@@ -687,11 +687,27 @@ function normalizeExitRules(rules, fallbackRules) {
 function enforceMinimumRunnerProfitFloor({ rules = null, exchange = "" } = {}) {
   const ex = normalizeExchangeKey(exchange);
   if (ex !== "BINANCEFUT" || !rules || typeof rules !== "object") return rules;
+  const clampFloor = (value) => {
+    const num = toNum(value);
+    return Number.isFinite(num) && num >= BINANCE_MIN_TRAIL_GUARANTEE_PCT
+      ? num
+      : BINANCE_MIN_TRAIL_GUARANTEE_PCT;
+  };
   const current = toNum(rules.RUNNER_MIN_PROFIT_PCT);
-  if (Number.isFinite(current) && current >= BINANCE_MIN_TRAIL_GUARANTEE_PCT) return rules;
+  const rescue = toNum(rules.RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT);
+  const mixed = toNum(rules.RUNNER_MIN_PROFIT_PCT_MIXED_COHORT);
+  if (
+    Number.isFinite(current) && current >= BINANCE_MIN_TRAIL_GUARANTEE_PCT
+    && Number.isFinite(rescue) && rescue >= BINANCE_MIN_TRAIL_GUARANTEE_PCT
+    && Number.isFinite(mixed) && mixed >= BINANCE_MIN_TRAIL_GUARANTEE_PCT
+  ) {
+    return rules;
+  }
   return {
     ...rules,
-    RUNNER_MIN_PROFIT_PCT: BINANCE_MIN_TRAIL_GUARANTEE_PCT,
+    RUNNER_MIN_PROFIT_PCT: clampFloor(rules.RUNNER_MIN_PROFIT_PCT),
+    RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: clampFloor(rules.RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT),
+    RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: clampFloor(rules.RUNNER_MIN_PROFIT_PCT_MIXED_COHORT),
   };
 }
 

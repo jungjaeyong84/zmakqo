@@ -19,7 +19,7 @@ async function run() {
   }, { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 });
   assert.ok(approxEqual(rescueExitRules.TP_P1, 0.0165), "rescue cohort alert must use current TP1");
   assert.ok(approxEqual(rescueExitRules.TRAIL_R_MULTIPLE, 0.6), "rescue cohort alert must use current trailing R");
-  assert.ok(approxEqual(rescueExitRules.RUNNER_MIN_PROFIT_PCT, 0.012), "rescue cohort alert must use current runner floor");
+  assert.ok(approxEqual(rescueExitRules.RUNNER_MIN_PROFIT_PCT, 0.0165), "rescue cohort alert must honor minimum Binance runner floor");
   assert.ok(approxEqual(rescueExitRules.BE_PCT, 0.0015), "rescue cohort alert must use current BE");
   assert.strictEqual(
     fillsSyncTest.normalizeExitEventForRules("EXIT_TP_P1_3.25P", rescueExitRules),
@@ -335,7 +335,7 @@ async function run() {
     exitRules: rescueExitRules,
   });
   assert.ok(rescueTrailMsg.body.includes("실행계약: TRAIL"), "trail alert must show executed contract separately");
-  assert.ok(rescueTrailMsg.body.includes("전략계약: SL_1.65 / TP1_1.65 / TRAIL_0.6R / RUNNER_MIN_1.2 / BE_0.15"), "trail alert must reflect current rescue cohort rules under strategy label");
+  assert.ok(rescueTrailMsg.body.includes("전략계약: SL_1.65 / TP1_1.65 / TRAIL_0.6R / RUNNER_MIN_1.65 / BE_0.15"), "trail alert must reflect current rescue cohort rules under strategy label");
 
   const sameOrderAsRecentTp1 = fillsSyncTest.isSameOrderAsRecentTp1(
     { orderId: 14608292413, clientOrderId: "dbj_same_order" },

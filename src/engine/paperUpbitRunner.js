@@ -1592,6 +1592,7 @@ function applySignalExitPolicyOverrides(exitRules, features) {
 }
 
 function applyEntryExitRuleRuntimeAdjustments({
+  exchange = null,
   rules = null,
   features = null,
   positionMeta = null,
@@ -1656,6 +1657,20 @@ function applyEntryExitRuleRuntimeAdjustments({
         ladderState: tp1LadderState,
       });
     }
+  }
+
+  if (String(exchange || "").toUpperCase().includes("BINANCE")) {
+    const floor = 0.0165;
+    const clampFloor = (value) => {
+      const num = Number(value);
+      return Number.isFinite(num) && num >= floor ? num : floor;
+    };
+    appliedExitRules = {
+      ...appliedExitRules,
+      RUNNER_MIN_PROFIT_PCT: clampFloor(appliedExitRules.RUNNER_MIN_PROFIT_PCT),
+      RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: clampFloor(appliedExitRules.RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT),
+      RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: clampFloor(appliedExitRules.RUNNER_MIN_PROFIT_PCT_MIXED_COHORT),
+    };
   }
 
   return {
@@ -1760,6 +1775,7 @@ async function repairActivePositionExitRuntimeState({
     position: { meta: repairSeedMeta },
   });
   const adjustment = applyEntryExitRuleRuntimeAdjustments({
+    exchange,
     rules: canonicalRuntimeRules,
     positionMeta: repairSeedMeta,
     sysCfg: sysCfg || {},
@@ -9202,6 +9218,7 @@ async function executeLiveFuturesOrder({
   );
   if (intentUpper === "ENTRY" || intentUpper === "ADD") {
     const runtimeExitAdjustment = applyEntryExitRuleRuntimeAdjustments({
+      exchange,
       rules: exitRulesOverride,
       features,
       positionMeta: metaForProfile,
@@ -10969,6 +10986,7 @@ async function runPaperUpbitForBar({
     }
     if (openingOrAdd) {
       const entryExitAdjustment = applyEntryExitRuleRuntimeAdjustments({
+        exchange,
         rules: appliedExitRules,
         features: it.features_json,
         sysCfg,
@@ -11902,6 +11920,7 @@ async function runPaperUpbitForBar({
       }
       const evGateBaseQty = qtyFraction;
       const evExitRulesAdjustment = applyEntryExitRuleRuntimeAdjustments({
+        exchange,
         rules: evExitProfile && evExitProfile.rules,
         features: s.features,
         sysCfg,
@@ -13640,6 +13659,7 @@ async function runPaperFuturesForBar({
     }
     if (openingOrAdd) {
       const entryExitAdjustment = applyEntryExitRuleRuntimeAdjustments({
+        exchange,
         rules: appliedExitRules,
         features: it.features_json,
         sysCfg,
@@ -14906,6 +14926,7 @@ async function runPaperFuturesForBar({
       }
       const evGateBaseQty = qtyFraction;
       const evExitRulesAdjustment = applyEntryExitRuleRuntimeAdjustments({
+        exchange,
         rules: evExitProfile && evExitProfile.rules,
         features: s.features,
         sysCfg,

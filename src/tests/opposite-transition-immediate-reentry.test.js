@@ -185,6 +185,7 @@ async function run() {
   };
 
   const rescueAdjusted = __test.applyEntryExitRuleRuntimeAdjustments({
+    exchange: "BINANCEFUT",
     rules: baseExitRules,
     sysCfg: {},
     cohort: "KEEP_DROP",
@@ -195,8 +196,11 @@ async function run() {
   assert.strictEqual(rescueAdjusted.appliedExitRules.TP_P1, 0.0165);
   assert.strictEqual(rescueAdjusted.appliedExitRules.BE_PCT, 0.0015);
   assert.strictEqual(rescueAdjusted.appliedExitRules.TRAIL_R_MULTIPLE, 0.6);
+  assert.strictEqual(rescueAdjusted.appliedExitRules.RUNNER_MIN_PROFIT_PCT, 0.0165);
+  assert.strictEqual(rescueAdjusted.appliedExitRules.RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT, 0.0165);
 
   const binanceDefaultAdjusted = __test.applyEntryExitRuleRuntimeAdjustments({
+    exchange: "BINANCEFUT",
     rules: baseExitRules,
     sysCfg: {},
     cohort: "KEEP_DROP",
@@ -206,8 +210,10 @@ async function run() {
   });
   assert.strictEqual(binanceDefaultAdjusted.tp1LadderState.profile, "RESCUE");
   assert.strictEqual(binanceDefaultAdjusted.appliedExitRules.TP_P1, 0.0165);
+  assert.strictEqual(binanceDefaultAdjusted.appliedExitRules.RUNNER_MIN_PROFIT_PCT, 0.0165);
 
   const explicitExitPolicyAdjusted = __test.applyEntryExitRuleRuntimeAdjustments({
+    exchange: "BINANCEFUT",
     rules: baseExitRules,
     sysCfg: {},
     cohort: "KEEP_DROP",
@@ -223,6 +229,7 @@ async function run() {
   assert.ok(Math.abs(explicitExitPolicyAdjusted.appliedExitRules.TP_P1 - 0.022) < 1e-12);
   assert.ok(Math.abs(explicitExitPolicyAdjusted.appliedExitRules.SL - (-0.011)) < 1e-12);
   assert.strictEqual(explicitExitPolicyAdjusted.appliedExitRules.BE_PCT, 0.002);
+  assert.strictEqual(explicitExitPolicyAdjusted.appliedExitRules.RUNNER_MIN_PROFIT_PCT, 0.022);
   assert.strictEqual(explicitExitPolicyAdjusted.appliedExitRules.TRAIL_R_MULTIPLE, 0.7);
 
   assert.strictEqual(
