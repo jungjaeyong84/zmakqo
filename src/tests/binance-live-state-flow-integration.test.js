@@ -7,6 +7,7 @@ const { __test: selfHealTest } = require("../services/binanceLiveStateSelfHeal")
 const { __test: tickExitTest } = require("../services/binanceTickExit");
 
 (async () => {
+  userStreamTest.clearRecentSyncMark("BNBUSDT");
   const calls = [];
   const handled = await userStreamTest.handleUserDataMessage(
     JSON.stringify({ e: "ORDER_TRADE_UPDATE", o: { s: "DOGEUSDT", x: "TRADE" } }),
@@ -26,6 +27,42 @@ const { __test: tickExitTest } = require("../services/binanceTickExit");
     calls.map((row) => row.fn),
     ["fills", "position"],
     "user-data trade update should run fills sync before position sync"
+  );
+
+  const retryCalls = [];
+  const failedFirstPass = await userStreamTest.handleUserDataMessage(
+    JSON.stringify({ e: "ORDER_TRADE_UPDATE", o: { s: "BNBUSDT", x: "TRADE" } }),
+    {
+      syncFills: async (args) => {
+        retryCalls.push({ fn: "fills", symbol: args.markets[0] });
+        return { ok: true };
+      },
+      syncPosition: async (args) => {
+        retryCalls.push({ fn: "position", symbol: args.symbol });
+        throw new Error("temporary sync failure");
+      },
+    }
+  );
+  assert.strictEqual(failedFirstPass.results[0].ok, false, "first BNB user-stream pass should fail in test");
+
+  const retryPass = await userStreamTest.handleUserDataMessage(
+    JSON.stringify({ e: "ORDER_TRADE_UPDATE", o: { s: "BNBUSDT", x: "TRADE" } }),
+    {
+      syncFills: async (args) => {
+        retryCalls.push({ fn: "fills-retry", symbol: args.markets[0] });
+        return { ok: true };
+      },
+      syncPosition: async (args) => {
+        retryCalls.push({ fn: "position-retry", symbol: args.symbol });
+        return { ok: true, position: { symbol_or_pair_id: args.symbol } };
+      },
+    }
+  );
+  assert.strictEqual(retryPass.results[0].ok, true, "failed user-stream pass must allow immediate retry");
+  assert.deepStrictEqual(
+    retryCalls.map((row) => row.fn),
+    ["fills", "position", "fills-retry", "position-retry"],
+    "retry flow should preserve fills->position ordering after failure"
   );
 
   const reconciled = reconcileBinancePositionMetaWithExchange({
