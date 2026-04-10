@@ -603,6 +603,23 @@ function run() {
   assert.strictEqual(nativeProtectionFallbackMeta.native_protection_tp_status, "OK");
   assert.strictEqual(nativeProtectionFallbackMeta.native_protection_tp_reason, "MARKET_FALLBACK");
 
+  const strippedProjection = __test.stripExchangeOwnedProjectionMeta({
+    tp_p0_done: true,
+    tp_p1_done: true,
+    trail_active: true,
+    native_protection_stop_order_id: "stop-1",
+    native_protection_tp_order_id: "tp-1",
+    exchange_projection_source: "BINANCE_LIVE_STATE",
+    carry_key: "preserve-me",
+  });
+  assert.strictEqual(strippedProjection.tp_p0_done, undefined);
+  assert.strictEqual(strippedProjection.tp_p1_done, undefined);
+  assert.strictEqual(strippedProjection.trail_active, undefined);
+  assert.strictEqual(strippedProjection.native_protection_stop_order_id, undefined);
+  assert.strictEqual(strippedProjection.native_protection_tp_order_id, undefined);
+  assert.strictEqual(strippedProjection.exchange_projection_source, undefined);
+  assert.strictEqual(strippedProjection.carry_key, "preserve-me");
+
   const mergedAddProtectionMeta = __test.applyAddAndProtectionMetaOnFill({
     posMeta: {
       add_chain_count: 0,

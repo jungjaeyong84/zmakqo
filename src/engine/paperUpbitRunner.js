@@ -3448,6 +3448,70 @@ function mergeMeta(base, patch) {
   return out;
 }
 
+function stripExchangeOwnedProjectionMeta(meta = null) {
+  const next = (meta && typeof meta === "object") ? { ...meta } : {};
+  const keys = [
+    "tp_p0_done",
+    "tp_p0_price",
+    "tp_p0_at",
+    "tp_p0_source",
+    "tp_p0_qty_ratio",
+    "tp_p0_entry_event_id",
+    "tp_p0_entry_exec_bar_ms",
+    "tp_p1_done",
+    "tp_p1_price",
+    "tp_p1_target_price",
+    "tp_p1_at",
+    "tp_p1_source",
+    "tp_p1_entry_event_id",
+    "tp_p1_entry_exec_bar_ms",
+    "tp_p1_pending",
+    "tp_p1_pending_at_ms",
+    "tp_p1_pending_until_ms",
+    "tp_p1_pending_event",
+    "tp_p1_bar_ms",
+    "trail_active",
+    "trail_high",
+    "trail_low",
+    "trail_delay_bars_required",
+    "trail_delay_mfe_pct_required",
+    "trail_delay_release_reason",
+    "trail_delay_release_at",
+    "trail_delay_mode",
+    "tp_p1_skip_reason",
+    "tp_p1_skip_note",
+    "tp_p1_skip_at",
+    "native_protection_refresh_status",
+    "native_protection_refresh_reason",
+    "native_protection_refresh_context",
+    "native_protection_refresh_at_ms",
+    "native_protection_refresh_bar_ms",
+    "native_protection_stale",
+    "native_protection_attempts",
+    "native_protection_max_attempts",
+    "native_protection_stop_order_id",
+    "native_protection_tp0_order_id",
+    "native_protection_tp_order_id",
+    "native_protection_stop_price",
+    "native_protection_tp0_price",
+    "native_protection_tp_price",
+    "native_protection_tp0_qty_base",
+    "native_protection_tp_qty_base",
+    "native_protection_tp0_qty_ratio",
+    "native_protection_tp_qty_ratio",
+    "native_protection_tp0_status",
+    "native_protection_tp_status",
+    "native_protection_tp0_reason",
+    "native_protection_tp_reason",
+    "native_protection_entry_price",
+    "native_protection_side",
+    "exchange_projection_source",
+    "exchange_projection_in_sync",
+  ];
+  for (const key of keys) delete next[key];
+  return next;
+}
+
 function isTpP1EventLocal(ev) {
   const e = String(ev || "").toUpperCase();
   return e === "EXIT_TP_P1" || e.startsWith("EXIT_TP_P1_");
@@ -10165,6 +10229,8 @@ async function runPaperUpbitForBar({
     });
     nextMeta = mergeMeta(nextMeta, { qty_base: newQtyBase });
 
+    const forceLiveReconcile = shouldForceImmediateLiveFuturesReconcile({ exchange, executionMode });
+    const projectedMetaForWrite = forceLiveReconcile ? stripExchangeOwnedProjectionMeta(nextMeta) : nextMeta;
     await upsertPosition({
       exchange,
       symbol,
@@ -10178,24 +10244,31 @@ async function runPaperUpbitForBar({
       budgetMaxKrw: useBudget ? riskBudget.maxKrw : null,
       budgetUsedKrw: useBudget ? (riskBudget.maxKrw * newSize) : null,
       budgetSource: useBudget ? riskBudget.source : null,
-      meta: nextMeta,
+      meta: projectedMetaForWrite,
     });
 
-    if (shouldForceImmediateLiveFuturesReconcile({ exchange, executionMode })) {
+    if (forceLiveReconcile) {
       try {
-        await syncFuturesPositionOnly({
+        const sync = await syncFuturesPositionOnly({
           runId: `RUN__INTENT_FILL_RECONCILE__${String(exchange || "").toUpperCase()}__${String(symbol || "").toUpperCase()}__${Date.now()}`,
           exchange,
           symbol,
         });
+        if (sync && sync.ok && sync.position) {
+          pos = sync.position;
+          posMeta = (sync.position.meta && typeof sync.position.meta === "object") ? { ...sync.position.meta } : posMeta;
+          posQtyBase = resolvePosQtyBase(sync.position);
+        }
       } catch (e) {
         console.warn("[INTENT_FILL_RECONCILE_FAIL]", e && e.message ? e.message : String(e));
       }
     }
 
-    pos = { ...pos, state: newState, size_pct: newSize, avg_price: newAvg, position_side: newState === "ACTIVE" ? "LONG" : null, meta: nextMeta, qty_base: newQtyBase };
-    posMeta = nextMeta;
-    posQtyBase = newQtyBase;
+    if (!forceLiveReconcile) {
+      pos = { ...pos, state: newState, size_pct: newSize, avg_price: newAvg, position_side: newState === "ACTIVE" ? "LONG" : null, meta: nextMeta, qty_base: newQtyBase };
+      posMeta = nextMeta;
+      posQtyBase = newQtyBase;
+    }
 
     await upsertTradeEvent({
       runId,
@@ -12989,6 +13062,8 @@ async function runPaperFuturesForBar({
       });
     }
 
+    const forceLiveReconcile = shouldForceImmediateLiveFuturesReconcile({ exchange, executionMode });
+    const projectedMetaForWrite = forceLiveReconcile ? stripExchangeOwnedProjectionMeta(nextMeta) : nextMeta;
     await upsertPosition({
       exchange,
       symbol,
@@ -13002,25 +13077,33 @@ async function runPaperFuturesForBar({
       budgetMaxKrw: useBudget ? budgetMaxForIntent : null,
       budgetUsedKrw: useBudget ? budgetUsedForPosition : null,
       budgetSource: useBudget ? riskBudget.source : null,
-      meta: nextMeta,
+      meta: projectedMetaForWrite,
     });
 
-    if (shouldForceImmediateLiveFuturesReconcile({ exchange, executionMode })) {
+    if (forceLiveReconcile) {
       try {
-        await syncFuturesPositionOnly({
+        const sync = await syncFuturesPositionOnly({
           runId: `RUN__INTENT_FILL_RECONCILE__${String(exchange || "").toUpperCase()}__${String(symbol || "").toUpperCase()}__${Date.now()}`,
           exchange,
           symbol,
         });
+        if (sync && sync.ok && sync.position) {
+          pos = sync.position;
+          posMeta = (sync.position.meta && typeof sync.position.meta === "object") ? { ...sync.position.meta } : posMeta;
+          posSide = sync.position.position_side || posSide;
+          posQtyBase = resolvePosQtyBase(sync.position);
+        }
       } catch (e) {
         console.warn("[INTENT_FILL_RECONCILE_FAIL]", e && e.message ? e.message : String(e));
       }
     }
 
-    pos = { ...pos, state: newState, size_pct: newSize, avg_price: newAvg, position_side: nextPosSide, meta: nextMeta, qty_base: Number.isFinite(newQtyBase) ? newQtyBase : pos.qty_base };
-    posMeta = nextMeta;
-    posSide = nextPosSide;
-    posQtyBase = Number.isFinite(newQtyBase) ? newQtyBase : posQtyBase;
+    if (!forceLiveReconcile) {
+      pos = { ...pos, state: newState, size_pct: newSize, avg_price: newAvg, position_side: nextPosSide, meta: nextMeta, qty_base: Number.isFinite(newQtyBase) ? newQtyBase : pos.qty_base };
+      posMeta = nextMeta;
+      posSide = nextPosSide;
+      posQtyBase = Number.isFinite(newQtyBase) ? newQtyBase : posQtyBase;
+    }
     if (intent === "ADD" && executionMode === "LIVE") {
       sendRescueAddRepriceAlert({
         exchange,
@@ -14648,6 +14731,7 @@ module.exports = {
     resolveCanonicalEntryConfig,
     evaluateCanonicalEntryGate,
     mergeCanonicalDecisionDetail,
+    stripExchangeOwnedProjectionMeta,
     resolvePineStage1BundleMeta,
     resolveSignalTier,
     resolveEntryQualityTier,
