@@ -2,6 +2,7 @@
 
 const assert = require("assert");
 const { __test } = require("../services/binanceTickExit");
+const { __test: runnerTest } = require("../engine/paperUpbitRunner");
 
 function run() {
   __test._symbolCooldownState.clear();
@@ -18,6 +19,16 @@ function run() {
     "RUN__TRAIL_RECONCILE__BINANCEFUT__DOGEUSDT__12345",
     "trail reconcile run id must normalize symbol"
   );
+
+  assert.strictEqual(typeof runnerTest.computeTrailingMetaUpdate, "function", "computeTrailingMetaUpdate export missing");
+  const trailUpdate = runnerTest.computeTrailingMetaUpdate({
+    exchange: "BINANCEFUT",
+    bar: { close: 101 },
+    position: { state: "ACTIVE", position_side: "LONG" },
+    posMeta: { tp_p1_done: true, trail_active: false, trail_high: 100, exit_rules_override: { TRAIL_R_MULTIPLE: 0.6 } },
+    positionSideFallback: "LONG",
+  });
+  assert.deepStrictEqual(trailUpdate, { trail_high: 101 }, "runner trailing update should only write observation fields");
 
   const symbol = "BTCUSDT";
   const cooldownMs = 120000;

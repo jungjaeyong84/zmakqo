@@ -36,7 +36,8 @@ async function run() {
     active: true,
     meta: {
       tp_p1_done: true,
-      trail_active: true,
+      trail_active: false,
+      trail_high: 111,
       native_protection_tp0_order_id: "old-tp0",
       native_protection_tp_order_id: "old-tp1",
     },
@@ -54,6 +55,7 @@ async function run() {
   assert.strictEqual(trailPatch.meta.native_protection_stop_order_id, "stop-1");
   assert.strictEqual(trailPatch.meta.native_protection_tp0_order_id, null);
   assert.strictEqual(trailPatch.meta.native_protection_tp_order_id, null);
+  assert.strictEqual(trailPatch.meta.trail_active, true);
 
   const invalidTrail = reconcileBinancePositionMetaWithExchange({
     active: true,

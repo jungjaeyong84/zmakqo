@@ -839,7 +839,6 @@ function computeTrailingMetaUpdate({ exchange, bar, position, posMeta, positionS
     const nextHigh = Number.isFinite(prevHigh) ? Math.max(prevHigh, closePx) : closePx;
     if (!Number.isFinite(prevHigh) || nextHigh !== prevHigh) updates.trail_high = nextHigh;
   }
-  if (!posMeta.trail_active) updates.trail_active = true;
   if (!Object.keys(updates).length) return null;
   return updates;
 }
@@ -14765,6 +14764,7 @@ module.exports = {
     stripExchangeOwnedProjectionMeta,
     resolvePineStage1BundleMeta,
     resolveSignalTier,
+    computeTrailingMetaUpdate,
     resolveEntryQualityTier,
     resolveEntryTierBudgetMax,
     evaluateCommittedRescueAddGate,

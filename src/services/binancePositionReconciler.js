@@ -252,6 +252,14 @@ function reconcileBinancePositionMetaWithExchange({
     exchange_projection_in_sync: !!stop,
   };
 
+  const side = normalizePositionSide(positionSide);
+  const hasTrailObservation = side === "SHORT"
+    ? Number.isFinite(Number(nextMeta.trail_low))
+    : Number.isFinite(Number(nextMeta.trail_high));
+  if (nextMeta.tp_p1_done === true && hasTrailObservation) {
+    nextMeta.trail_active = true;
+  }
+
   const invariants = [];
   if (nextMeta.trail_active === true && nextMeta.tp_p1_done !== true) {
     invariants.push("TRAIL_WITHOUT_TP1");
