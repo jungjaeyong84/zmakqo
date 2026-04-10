@@ -63,6 +63,16 @@ async function run() {
   assert.strictEqual(noIntentQty.qtyPct, null);
   assert.strictEqual(noIntentQty.mode, "NO_INTENT_QTY");
 
+  const flatTrailIssues = __test.buildImmediateProjectionIssues({
+    event: "EXIT_TRAIL_1P",
+    position: {
+      state: "FLAT",
+      qty_base: 0,
+      meta: { trail_active: false, tp_p0_done: false, tp_p1_done: false },
+    },
+  });
+  assert.deepStrictEqual(flatTrailIssues, [], "settled flat position must not raise trail projection mismatch");
+
   const immediateAlertGate = __test && __test.shouldSendImmediateProjectionMismatchAlert;
   assert.strictEqual(typeof immediateAlertGate, "function", "shouldSendImmediateProjectionMismatchAlert export missing");
   const immediateAlertFirst = immediateAlertGate({

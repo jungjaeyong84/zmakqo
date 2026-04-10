@@ -52,9 +52,19 @@ function shouldAuditProjectionImmediately(event = "") {
   return ev.startsWith("EXIT_TP_P0") || ev.startsWith("EXIT_TP_P1") || ev.startsWith("EXIT_TRAIL") || ev.startsWith("EXIT_SL");
 }
 
+function isSettledFlatProjection(position = null) {
+  const pos = position && typeof position === "object" ? position : {};
+  const state = String(pos.state || pos.position_state || "").trim().toUpperCase();
+  const qtyBase = Number(pos.qty_base);
+  if (state === "FLAT") return true;
+  if (Number.isFinite(qtyBase) && qtyBase <= 0) return true;
+  return false;
+}
+
 function buildImmediateProjectionIssues({ event = "", position = null } = {}) {
   const ev = String(event || "").trim().toUpperCase();
   const pos = position && typeof position === "object" ? position : {};
+  if (isSettledFlatProjection(pos)) return [];
   const meta = (pos.meta && typeof pos.meta === "object") ? pos.meta : {};
   const issues = [];
   if (ev.startsWith("EXIT_TP_P0") && meta.tp_p0_done !== true) issues.push("TP0_FILL_PROJECTION_MISSING");
