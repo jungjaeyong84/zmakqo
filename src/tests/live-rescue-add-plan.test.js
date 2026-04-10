@@ -626,6 +626,10 @@ function run() {
   assert.strictEqual(strippedProjection.exchange_projection_checked_at, undefined);
   assert.strictEqual(strippedProjection.carry_key, "preserve-me");
 
+  assert.strictEqual(__test.shouldForceImmediateLiveFuturesReconcile({ exchange: "BINANCEFUT", executionMode: "LIVE" }), true);
+  assert.strictEqual(__test.shouldForceImmediateLiveFuturesReconcile({ exchange: "BINANCEFUT", executionMode: "PAPER" }), false);
+  assert.strictEqual(__test.shouldForceImmediateLiveFuturesReconcile({ exchange: "UPBIT", executionMode: "LIVE" }), false);
+
   const mergedAddProtectionMeta = __test.applyAddAndProtectionMetaOnFill({
     posMeta: {
       add_chain_count: 0,
