@@ -12,6 +12,7 @@ const { getFirestore } = require("../storage/firestore");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { upsertExternalFill } = require("../storage/fillsPaper");
 const { getPosition, upsertPosition } = require("../storage/positionsPaper");
+const { upsertSameDirectionTrailProfitObservation } = require("../storage/positionRuntimeObservations");
 const { patchIntent } = require("../storage/orderIntentsPaper");
 const { buildTradeId } = require("../storage/tradesPaper");
 const { getExitRulesForExchange, resolveExitRulesForPosition } = require("../engine/signalEngine");
@@ -167,31 +168,14 @@ async function markSameDirectionTrailProfitCooldownFromExternalFill({
   if (!Number.isFinite(pnl) || pnl <= 0) return false;
   if ((dir !== "LONG" && dir !== "SHORT") || !Number.isFinite(execMs)) return false;
 
-  const pos = await getPosition({ exchange, symbol });
-  const prevMeta = (pos && typeof pos.meta === "object") ? pos.meta : {};
-  const nextMeta = {
-    ...prevMeta,
-    same_direction_trail_profit_exit_dir: dir,
-    same_direction_trail_profit_exit_wall_ms: execMs,
-    same_direction_trail_profit_exit_event: ev,
-    same_direction_trail_profit_exit_realized_pnl: pnl,
-    same_direction_trail_profit_exit_source: "BINANCE_USER_TRADES",
-  };
-
-  await upsertPosition({
+  await upsertSameDirectionTrailProfitObservation({
     exchange,
     symbol,
-    state: pos && pos.state ? pos.state : "FLAT",
-    positionSide: (pos && pos.position_side) || null,
-    sizePct: pos && pos.size_pct != null ? pos.size_pct : 0,
-    avgPrice: pos && pos.avg_price != null ? pos.avg_price : null,
-    qtyBase: pos && pos.qty_base != null ? pos.qty_base : null,
-    runId: null,
-    executionMode: (pos && pos.execution_mode) || "LIVE",
-    budgetMaxKrw: pos && pos.budget_max_krw != null ? pos.budget_max_krw : null,
-    budgetUsedKrw: pos && pos.budget_used_krw != null ? pos.budget_used_krw : null,
-    budgetSource: pos && pos.budget_source != null ? pos.budget_source : null,
-    meta: nextMeta,
+    exitDir: dir,
+    exitWallMs: execMs,
+    exitEvent: ev,
+    realizedPnl: pnl,
+    source: "BINANCE_USER_TRADES",
   });
 
   return true;

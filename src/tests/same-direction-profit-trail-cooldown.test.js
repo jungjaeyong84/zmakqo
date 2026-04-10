@@ -19,6 +19,11 @@ function run() {
     "function",
     "resolveSameDirectionTrailProfitCooldownBlock export missing"
   );
+  assert.strictEqual(
+    typeof __test.resolveSameDirectionTrailProfitCooldownSnapshot,
+    "function",
+    "resolveSameDirectionTrailProfitCooldownSnapshot export missing"
+  );
 
   const cfg = __test.resolveSameDirectionTrailProfitCooldownConfig({
     same_direction_trail_profit_cooldown_enabled: true,
@@ -62,6 +67,26 @@ function run() {
     eventRefMs: Date.parse("2026-03-14T14:00:00Z"),
   });
   assert.strictEqual(afterCooldown, null, "same direction after cooldown expiry must be allowed");
+
+  const mergedSnapshot = __test.resolveSameDirectionTrailProfitCooldownSnapshot({
+    posMeta: {
+      same_direction_trail_profit_exit_dir: "LONG",
+      same_direction_trail_profit_exit_wall_ms: Date.parse("2026-03-14T09:00:00Z"),
+      same_direction_trail_profit_exit_event: "EXIT_TRAIL_OLD",
+    },
+    observation: {
+      same_direction_trail_profit: {
+        exit_dir: "SHORT",
+        exit_wall_ms: Date.parse("2026-03-14T11:00:00Z"),
+        exit_event: "EXIT_TRAIL_NEW",
+        realized_pnl: 8.5,
+        source: "BINANCE_USER_TRADES",
+      },
+    },
+  });
+  assert.strictEqual(mergedSnapshot.same_direction_trail_profit_exit_dir, "SHORT");
+  assert.strictEqual(mergedSnapshot.same_direction_trail_profit_exit_event, "EXIT_TRAIL_NEW");
+  assert.strictEqual(mergedSnapshot.same_direction_trail_profit_exit_realized_pnl, 8.5);
 
   const nonProfitPatch = __test.buildSameDirectionTrailProfitCooldownMetaPatch({
     event: "EXIT_TRAIL_1P",

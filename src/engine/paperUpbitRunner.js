@@ -14,6 +14,7 @@ const { computeFillPrice, computeFeeValue } = require("./paperExecution");
 const { listPendingIntentsForExec, listPendingIntentsOverdue, cancelExpiredPendingIntents, markIntentStatus, upsertIntent, patchIntent } = require("../storage/orderIntentsPaper");
 const { upsertFill } = require("../storage/fillsPaper");
 const { getPosition, upsertPosition } = require("../storage/positionsPaper");
+const { getPositionRuntimeObservation } = require("../storage/positionRuntimeObservations");
 const { buildTradeId, upsertTradeEvent } = require("../storage/tradesPaper");
 const { upsertSignal } = require("../storage/signals");
 const { markSignalConsumed, tryLockSignal } = require("../storage/signalsConsume");
@@ -2779,6 +2780,31 @@ function resolveSameDirectionTrailProfitCooldownBlock({
     elapsed_ms: elapsedMs,
     cooldown_ms: cooldownMs,
     source: String(posMeta && posMeta.same_direction_trail_profit_exit_source || "").trim().toUpperCase() || null,
+  };
+}
+
+function resolveSameDirectionTrailProfitCooldownSnapshot({
+  posMeta = null,
+  observation = null,
+} = {}) {
+  const metaSafe = (posMeta && typeof posMeta === "object") ? posMeta : {};
+  const observed = (observation && typeof observation === "object" && observation.same_direction_trail_profit && typeof observation.same_direction_trail_profit === "object")
+    ? observation.same_direction_trail_profit
+    : {};
+  const metaExitWallMs = Number(metaSafe.same_direction_trail_profit_exit_wall_ms);
+  const obsExitWallMs = Number(observed.exit_wall_ms);
+  const useObserved = Number.isFinite(obsExitWallMs)
+    && (!Number.isFinite(metaExitWallMs) || obsExitWallMs > metaExitWallMs);
+  if (!useObserved) return metaSafe;
+  return {
+    ...metaSafe,
+    same_direction_trail_profit_exit_dir: observed.exit_dir || null,
+    same_direction_trail_profit_exit_wall_ms: obsExitWallMs,
+    same_direction_trail_profit_exit_event: observed.exit_event || null,
+    same_direction_trail_profit_exit_realized_pnl: Number.isFinite(Number(observed.realized_pnl))
+      ? Number(observed.realized_pnl)
+      : null,
+    same_direction_trail_profit_exit_source: observed.source || null,
   };
 }
 
@@ -9284,6 +9310,18 @@ async function runPaperUpbitForBar({
   // 1) 포지션 로드
   let pos = await getPosition({ exchange, symbol });
   let posMeta = (pos && typeof pos.meta === "object") ? { ...pos.meta } : {};
+  let sameDirectionTrailProfitObservation = null;
+  if (sameDirectionTrailProfitCooldownCfg.enabled) {
+    try {
+      sameDirectionTrailProfitObservation = await getPositionRuntimeObservation({ exchange, symbol });
+    } catch (e) {
+      console.warn("[SAME_DIRECTION_TRAIL_PROFIT_OBSERVATION_LOAD_FAIL]", {
+        exchange,
+        symbol,
+        error: e && e.message ? e.message : String(e),
+      });
+    }
+  }
   const oppositeCooldownWindow = binanceFutOnly
     ? resolveOppositeCooldownWindowFromPosition({ sysCfg: sysCfgEffective, position: pos })
     : { bars: 0, timeMs: 0, cohort: null };
@@ -9517,7 +9555,10 @@ async function runPaperUpbitForBar({
       if (!hasPositionNow) {
         const sameDirectionCooldown = resolveSameDirectionTrailProfitCooldownBlock({
           cfg: sameDirectionTrailProfitCooldownCfg,
-          posMeta,
+          posMeta: resolveSameDirectionTrailProfitCooldownSnapshot({
+            posMeta,
+            observation: sameDirectionTrailProfitObservation,
+          }),
           intentDir,
           eventRefMs: resolveEventRefMs(it.signal_bar_close_time_utc_ms, execBarCloseMs),
         });
@@ -10744,7 +10785,10 @@ async function runPaperUpbitForBar({
     if (intentIsEntry && sameDirectionTrailProfitCooldownCfg.enabled && !hasPositionSize(pos.size_pct)) {
       const sameDirectionCooldown = resolveSameDirectionTrailProfitCooldownBlock({
         cfg: sameDirectionTrailProfitCooldownCfg,
-        posMeta,
+        posMeta: resolveSameDirectionTrailProfitCooldownSnapshot({
+          posMeta,
+          observation: sameDirectionTrailProfitObservation,
+        }),
         intentDir,
         eventRefMs: resolveEventRefMs(effectiveBarMs, s.bar_close_time_utc_ms),
       });
@@ -11775,6 +11819,18 @@ async function runPaperFuturesForBar({
     }
   }
   let posMeta = (pos && typeof pos.meta === "object") ? { ...pos.meta } : {};
+  let sameDirectionTrailProfitObservation = null;
+  if (sameDirectionTrailProfitCooldownCfg.enabled) {
+    try {
+      sameDirectionTrailProfitObservation = await getPositionRuntimeObservation({ exchange, symbol });
+    } catch (e) {
+      console.warn("[SAME_DIRECTION_TRAIL_PROFIT_OBSERVATION_LOAD_FAIL]", {
+        exchange,
+        symbol,
+        error: e && e.message ? e.message : String(e),
+      });
+    }
+  }
   const oppositeCooldownWindow = binanceFutOnly
     ? resolveOppositeCooldownWindowFromPosition({ sysCfg: sysCfgEffective, position: pos })
     : { bars: 0, timeMs: 0, cohort: null };
@@ -12016,7 +12072,10 @@ async function runPaperFuturesForBar({
       if (!hasPositionNow) {
         const sameDirectionCooldown = resolveSameDirectionTrailProfitCooldownBlock({
           cfg: sameDirectionTrailProfitCooldownCfg,
-          posMeta,
+          posMeta: resolveSameDirectionTrailProfitCooldownSnapshot({
+            posMeta,
+            observation: sameDirectionTrailProfitObservation,
+          }),
           intentDir,
           eventRefMs: resolveEventRefMs(it.signal_bar_close_time_utc_ms, execBarCloseMs),
         });
@@ -13934,7 +13993,10 @@ async function runPaperFuturesForBar({
     if (intentIsEntry && sameDirectionTrailProfitCooldownCfg.enabled && !hasPositionNow) {
       const sameDirectionCooldown = resolveSameDirectionTrailProfitCooldownBlock({
         cfg: sameDirectionTrailProfitCooldownCfg,
-        posMeta,
+        posMeta: resolveSameDirectionTrailProfitCooldownSnapshot({
+          posMeta,
+          observation: sameDirectionTrailProfitObservation,
+        }),
         intentDir,
         eventRefMs: resolveEventRefMs(effectiveBarMs, s.bar_close_time_utc_ms),
       });
@@ -14881,6 +14943,7 @@ module.exports = {
     resolveSameDirectionTrailProfitCooldownConfig,
     buildSameDirectionTrailProfitCooldownMetaPatch,
     resolveSameDirectionTrailProfitCooldownBlock,
+    resolveSameDirectionTrailProfitCooldownSnapshot,
     evaluateLiveRescueAdd,
     evaluateReplayRescueAdd,
     resolveEvGateConfig,
