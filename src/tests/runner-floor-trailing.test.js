@@ -1,11 +1,50 @@
 "use strict";
 
 const assert = require("assert");
-const { generateSignals } = require("../engine/signalEngine");
+const { generateSignals, resolveExitRulesForPosition } = require("../engine/signalEngine");
 const { __test: tickExitTest } = require("../services/binanceTickExit");
 const { buildExitStageView } = require("../utils/exitStageView");
 
 function run() {
+  const rescueRules = resolveExitRulesForPosition({
+    exchange: "BINANCEFUT",
+    position: {
+      meta: {
+        openclaw_market_regime_cohort: "RESCUE",
+        exit_policy_source: "BINANCE_DEFAULT",
+      },
+    },
+  });
+  assert.strictEqual(rescueRules.RUNNER_MIN_PROFIT_PCT, 0.0165, "binance trailing floor must guarantee at least 1.65%");
+
+  const rescueFloorSignals = generateSignals({
+    exchange: "BINANCEFUT",
+    symbol: "SOLUSDT",
+    trading_mode: "EXIT_ONLY",
+    leverage: 2,
+    bar: { close: 99.2, c: 99.2 },
+    position: {
+      state: "ACTIVE",
+      size_pct: 0.5,
+      avg_price: 100,
+      position_side: "SHORT",
+      meta: {
+        external_leverage: 2,
+        tp_p1_done: true,
+        trail_active: true,
+        trail_low: 99.2,
+        openclaw_market_regime_cohort: "RESCUE",
+        exit_policy_source: "BINANCE_DEFAULT",
+      },
+    },
+  });
+  assert.strictEqual(rescueFloorSignals.length, 1, "rescue cohort should still emit trailing exit");
+  assert.strictEqual(rescueFloorSignals[0].event, "EXIT_TRAIL");
+  assert.strictEqual(rescueFloorSignals[0].reason, "EXIT_TRAIL_STOP_RUNNER_FLOOR");
+  assert.strictEqual(rescueFloorSignals[0].features.runner_floor_pct, 0.0165);
+  assert.strictEqual(rescueFloorSignals[0].features.runner_stop_source, "RUNNER_FLOOR");
+  assert.ok(Math.abs(rescueFloorSignals[0].features.runner_stop_px - 99.175) < 1e-9);
+
   const shortSignals = generateSignals({
     exchange: "BINANCEFUT",
     symbol: "ETHUSDT",

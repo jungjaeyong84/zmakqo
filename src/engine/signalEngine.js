@@ -474,6 +474,8 @@ const SIGNAL_ENGINE_RULES = {
   RUNNER_MIN_PROFIT_PCT: parseNumEnv("ENGINE_RUNNER_MIN_PROFIT_PCT", DEFAULT_RULES.RUNNER_MIN_PROFIT_PCT),
 };
 
+const BINANCE_MIN_TRAIL_GUARANTEE_PCT = 0.0165;
+
 const TP_P1_DEBUG = parseBoolEnv("TP_P1_DEBUG", false);
 
 const EXCHANGE_RULES = {
@@ -674,11 +676,25 @@ function normalizeExitRules(rules, fallbackRules) {
   return out;
 }
 
+function enforceMinimumRunnerProfitFloor({ rules = null, exchange = "" } = {}) {
+  const ex = normalizeExchangeKey(exchange);
+  if (ex !== "BINANCEFUT" || !rules || typeof rules !== "object") return rules;
+  const current = toNum(rules.RUNNER_MIN_PROFIT_PCT);
+  if (Number.isFinite(current) && current >= BINANCE_MIN_TRAIL_GUARANTEE_PCT) return rules;
+  return {
+    ...rules,
+    RUNNER_MIN_PROFIT_PCT: BINANCE_MIN_TRAIL_GUARANTEE_PCT,
+  };
+}
+
 function resolveExitRulesForPosition({ exchange, position, exitProfileMode } = {}) {
   const forcedProfileMode = normalizeExitProfileMode(exitProfileMode, "");
   if (forcedProfileMode) {
     const forcedBase = getExitRulesForProfile(exchange, forcedProfileMode);
-    const forcedResolved = normalizeExitRules(null, forcedBase);
+    const forcedResolved = enforceMinimumRunnerProfitFloor({
+      rules: normalizeExitRules(null, forcedBase),
+      exchange,
+    });
     forcedResolved.exit_profile = forcedProfileMode;
     return forcedResolved;
   }
@@ -694,7 +710,10 @@ function resolveExitRulesForPosition({ exchange, position, exitProfileMode } = {
     ? base
     : (metaProfile === "AGGRESSIVE" ? getExitRulesForProfile(exchange, "AGGRESSIVE") : base);
   const resolved = normalizeExitRules(override, fallbackBase);
-  const adjusted = applyCohortTp1Adjustment({ rules: resolved, meta, exchange });
+  const adjusted = enforceMinimumRunnerProfitFloor({
+    rules: applyCohortTp1Adjustment({ rules: resolved, meta, exchange }),
+    exchange,
+  });
   if (metaProfile) {
     adjusted.exit_profile = metaProfile;
   } else {
