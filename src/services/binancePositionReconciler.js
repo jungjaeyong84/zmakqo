@@ -113,6 +113,26 @@ function pickTakeProfitCandidates(orders = [], positionSide, qtyBase) {
     .sort((a, b) => profitableTpComparator(side, a, b));
 }
 
+function inferTakeProfitKindFromQtyRatio(qtyRatio, tp0QtyRatio = 0.25, tp1QtyRatio = 0.5) {
+  const ratio = toNum(qtyRatio);
+  const tp0Ref = toNum(tp0QtyRatio);
+  const tp1Ref = toNum(tp1QtyRatio);
+  if (!Number.isFinite(ratio) || ratio <= 0) return null;
+  const candidates = [];
+  if (Number.isFinite(tp0Ref) && tp0Ref > 0) {
+    candidates.push({ kind: "TP0", dist: Math.abs(ratio - tp0Ref), ref: tp0Ref });
+  }
+  if (Number.isFinite(tp1Ref) && tp1Ref > 0) {
+    candidates.push({ kind: "TP1", dist: Math.abs(ratio - tp1Ref), ref: tp1Ref });
+  }
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => a.dist - b.dist);
+  const best = candidates[0];
+  if (!Number.isFinite(best.ref) || best.ref <= 0) return null;
+  if (best.dist > Math.max(0.05, best.ref * 0.4)) return null;
+  return best.kind;
+}
+
 function classifyTakeProfitOrders({ orders = [], positionSide, qtyBase, meta } = {}) {
   const candidates = pickTakeProfitCandidates(orders, positionSide, qtyBase);
   if (!candidates.length) return { tp0: null, tp1: null };
@@ -121,15 +141,13 @@ function classifyTakeProfitOrders({ orders = [], positionSide, qtyBase, meta } =
   }
   if (candidates.length === 1) {
     const only = candidates[0];
-    const ratio = Number(only.qtyRatio);
-    if (Number.isFinite(ratio) && ratio <= 0.375) return { tp0: only, tp1: null };
+    const inferredKind = inferTakeProfitKindFromQtyRatio(only.qtyRatio);
+    if (inferredKind === "TP0") return { tp0: only, tp1: null };
     return { tp0: null, tp1: only };
   }
   let [first, second] = candidates;
-  const firstRatio = Number(first.qtyRatio);
-  const secondRatio = Number(second.qtyRatio);
-  const firstLooksLikeTp1 = Number.isFinite(firstRatio) && Math.abs(firstRatio - 0.5) < Math.abs(firstRatio - 0.25);
-  const secondLooksLikeTp0 = Number.isFinite(secondRatio) && Math.abs(secondRatio - 0.25) < Math.abs(secondRatio - 0.5);
+  const firstLooksLikeTp1 = inferTakeProfitKindFromQtyRatio(first.qtyRatio) === "TP1";
+  const secondLooksLikeTp0 = inferTakeProfitKindFromQtyRatio(second.qtyRatio) === "TP0";
   if (firstLooksLikeTp1 && secondLooksLikeTp0) {
     [first, second] = [second, first];
   }
@@ -284,8 +302,10 @@ function reconcileBinancePositionMetaWithExchange({
 
 module.exports = {
   reconcileBinancePositionMetaWithExchange,
+  inferTakeProfitKindFromQtyRatio,
   __test: {
     normalizeAlgoOrderFetchResult,
+    inferTakeProfitKindFromQtyRatio,
     classifyTakeProfitOrders,
     pickStopCandidate,
     buildFlatMetaProjection,

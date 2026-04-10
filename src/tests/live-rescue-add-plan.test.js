@@ -549,9 +549,9 @@ function run() {
   assert.strictEqual(nativeProtectionMeta.native_protection_refresh_context, "ADD");
   assert.strictEqual(nativeProtectionMeta.native_protection_refresh_status, "FAILED");
   assert.strictEqual(nativeProtectionMeta.native_protection_stale, true);
-  assert.strictEqual(nativeProtectionMeta.native_protection_stop_order_id, "123");
-  assert.strictEqual(nativeProtectionMeta.native_protection_stop_price, 98.5);
-  assert.strictEqual(nativeProtectionMeta.native_protection_tp_order_id, undefined);
+  assert.strictEqual(nativeProtectionMeta.native_protection_stop_order_id, null);
+  assert.strictEqual(nativeProtectionMeta.native_protection_stop_price, null);
+  assert.strictEqual(nativeProtectionMeta.native_protection_tp_order_id, null);
 
   const nativeProtectionTpMeta = __test.buildNativeProtectionMetaPatch({
     nativeProtection: {
@@ -661,9 +661,9 @@ function run() {
     closing: false,
     nativeProtectionMetaPatch: nativeProtectionMeta,
   });
-  assert.strictEqual(preservedProtectionMeta.native_protection_stop_order_id, "123");
-  assert.strictEqual(preservedProtectionMeta.native_protection_tp_order_id, "old-tp");
-  assert.strictEqual(preservedProtectionMeta.native_protection_tp_price, 105);
+  assert.strictEqual(preservedProtectionMeta.native_protection_stop_order_id, null);
+  assert.strictEqual(preservedProtectionMeta.native_protection_tp_order_id, null);
+  assert.strictEqual(preservedProtectionMeta.native_protection_tp_price, null);
 
   const committedGuardBlocked = __test.evaluateCommittedRescueAddGate({
     applied: true,

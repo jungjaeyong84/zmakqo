@@ -15,6 +15,10 @@ async function run() {
   });
   assert.strictEqual(classifiedLong.tp0.orderId, "tp0");
   assert.strictEqual(classifiedLong.tp1.orderId, "tp1");
+  assert.strictEqual(__test.inferTakeProfitKindFromQtyRatio(0.25), "TP0");
+  assert.strictEqual(__test.inferTakeProfitKindFromQtyRatio(0.5), "TP1");
+  assert.strictEqual(__test.inferTakeProfitKindFromQtyRatio(0.3), "TP0");
+  assert.strictEqual(__test.inferTakeProfitKindFromQtyRatio(0.375), null);
 
   const classifiedShort = __test.classifyTakeProfitOrders({
     orders: [

@@ -22,6 +22,7 @@ const { sendAlert } = require("../utils/alerts");
 const { resolvePositionSideFromPosition } = require("../utils/positionSide");
 const { isIntentCanceledLikeStatus } = require("../utils/intentStatus");
 const { deriveSignalDocId } = require("../utils/signalDocId");
+const { inferTakeProfitKindFromQtyRatio } = require("./binancePositionReconciler");
 
 const DEFAULT_LOOKBACK_MS = 72 * 60 * 60 * 1000;
 const DEFAULT_MIN_INTERVAL_MS = 3 * 60 * 1000;
@@ -1001,19 +1002,11 @@ function isTrailExitEligible(positionCtx, recentTp1) {
 }
 
 function inferTakeProfitKindFromQtyPct(qtyPct, rules) {
-  const qty = Number(qtyPct);
-  if (!Number.isFinite(qty) || qty <= 0) return null;
-  const tp0Qty = Number(rules && rules.TP_P0_QTY);
-  const tp1Qty = Number(rules && rules.TP_P1_QTY);
-  const cands = [];
-  if (Number.isFinite(tp0Qty) && tp0Qty > 0) cands.push({ kind: "TP0", dist: Math.abs(qty - tp0Qty), ref: tp0Qty });
-  if (Number.isFinite(tp1Qty) && tp1Qty > 0) cands.push({ kind: "TP1", dist: Math.abs(qty - tp1Qty), ref: tp1Qty });
-  if (!cands.length) return null;
-  cands.sort((a, b) => a.dist - b.dist);
-  const best = cands[0];
-  if (!Number.isFinite(best.ref) || best.ref <= 0) return null;
-  if (best.dist > Math.max(0.05, best.ref * 0.4)) return null;
-  return best.kind;
+  return inferTakeProfitKindFromQtyRatio(
+    qtyPct,
+    Number(rules && rules.TP_P0_QTY),
+    Number(rules && rules.TP_P1_QTY)
+  );
 }
 
 function inferStageConstrainedTakeProfitKind(positionCtx, inferredKind) {
