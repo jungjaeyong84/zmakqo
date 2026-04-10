@@ -607,6 +607,19 @@ function run() {
     tp_p0_done: true,
     tp_p1_done: true,
     trail_active: true,
+    tp_p1_pending: true,
+    tp_p1_pending_at_ms: 123,
+    tp_p1_pending_until_ms: 456,
+    tp_p1_pending_event: "EXIT_TP_P1",
+    tp_p1_bar_ms: 789,
+    trail_delay_bars_required: 2,
+    trail_delay_mfe_pct_required: 0.4,
+    trail_delay_release_reason: "TP1_CONFIRMED",
+    trail_delay_release_at: "2026-03-11T02:05:00Z",
+    trail_delay_mode: "MFE",
+    tp_p1_skip_reason: "EARLY_STAGE",
+    tp_p1_skip_note: "skip",
+    tp_p1_skip_at: "2026-03-11T02:06:00Z",
     native_protection_stop_order_id: "stop-1",
     native_protection_tp_order_id: "tp-1",
     exchange_projection_source: "BINANCE_LIVE_STATE",
@@ -624,6 +637,19 @@ function run() {
   assert.strictEqual(strippedProjection.exchange_projection_in_sync, undefined);
   assert.strictEqual(strippedProjection.exchange_projection_invariants, undefined);
   assert.strictEqual(strippedProjection.exchange_projection_checked_at, undefined);
+  assert.strictEqual(strippedProjection.tp_p1_pending, true);
+  assert.strictEqual(strippedProjection.tp_p1_pending_at_ms, 123);
+  assert.strictEqual(strippedProjection.tp_p1_pending_until_ms, 456);
+  assert.strictEqual(strippedProjection.tp_p1_pending_event, "EXIT_TP_P1");
+  assert.strictEqual(strippedProjection.tp_p1_bar_ms, 789);
+  assert.strictEqual(strippedProjection.trail_delay_bars_required, 2);
+  assert.strictEqual(strippedProjection.trail_delay_mfe_pct_required, 0.4);
+  assert.strictEqual(strippedProjection.trail_delay_release_reason, "TP1_CONFIRMED");
+  assert.strictEqual(strippedProjection.trail_delay_release_at, "2026-03-11T02:05:00Z");
+  assert.strictEqual(strippedProjection.trail_delay_mode, "MFE");
+  assert.strictEqual(strippedProjection.tp_p1_skip_reason, "EARLY_STAGE");
+  assert.strictEqual(strippedProjection.tp_p1_skip_note, "skip");
+  assert.strictEqual(strippedProjection.tp_p1_skip_at, "2026-03-11T02:06:00Z");
   assert.strictEqual(strippedProjection.carry_key, "preserve-me");
 
   assert.strictEqual(__test.shouldForceImmediateLiveFuturesReconcile({ exchange: "BINANCEFUT", executionMode: "LIVE" }), true);
