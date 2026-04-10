@@ -63,6 +63,33 @@ async function run() {
   assert.strictEqual(noIntentQty.qtyPct, null);
   assert.strictEqual(noIntentQty.mode, "NO_INTENT_QTY");
 
+  const immediateAlertGate = __test && __test.shouldSendImmediateProjectionMismatchAlert;
+  assert.strictEqual(typeof immediateAlertGate, "function", "shouldSendImmediateProjectionMismatchAlert export missing");
+  const immediateAlertFirst = immediateAlertGate({
+    symbol: "SOLUSDT",
+    event: "EXIT_TP_P1_3P",
+    issues: ["TP1_FILL_PROJECTION_MISSING"],
+    nowMs: 1000,
+  });
+  assert.strictEqual(immediateAlertFirst.send, true);
+  assert.strictEqual(immediateAlertFirst.repeatCount, 1);
+  const immediateAlertSecond = immediateAlertGate({
+    symbol: "SOLUSDT",
+    event: "EXIT_TP_P1_3P",
+    issues: ["TP1_FILL_PROJECTION_MISSING"],
+    nowMs: 2000,
+  });
+  assert.strictEqual(immediateAlertSecond.send, false);
+  assert.strictEqual(immediateAlertSecond.repeatCount, 2);
+  const immediateAlertThird = immediateAlertGate({
+    symbol: "SOLUSDT",
+    event: "EXIT_TP_P1_3P",
+    issues: ["TP1_FILL_PROJECTION_MISSING"],
+    nowMs: 3000,
+  });
+  assert.strictEqual(immediateAlertThird.send, true);
+  assert.strictEqual(immediateAlertThird.repeatCount, 3);
+
   const pickIntentForTrade = __test && __test.pickIntentForTrade;
   assert.strictEqual(typeof pickIntentForTrade, "function", "pickIntentForTrade export missing");
   const trade = {

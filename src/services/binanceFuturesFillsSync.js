@@ -39,6 +39,7 @@ const syncState = {
 };
 const externalCloseAlertChannelCache = new Map();
 const externalCloseAlertCooldownMap = new Map();
+const immediateProjectionAlertState = new Map();
 
 function nowIso() {
   return new Date().toISOString();
@@ -76,19 +77,57 @@ async function sendImmediateProjectionMismatchAlert({
   }
   const pos = position && typeof position === "object" ? position : {};
   const meta = (pos.meta && typeof pos.meta === "object") ? pos.meta : {};
+  const dedupe = shouldSendImmediateProjectionMismatchAlert({
+    symbol: sym,
+    event,
+    issues,
+  });
+  if (!dedupe.send) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "COOLDOWN",
+      repeatCount: dedupe.repeatCount,
+      dedupeKey: dedupe.key,
+    };
+  }
   return sendAlert({
     channel,
     title: `${sym} fill-projection 불일치`,
     body: [
       `event: ${String(event || "").trim().toUpperCase() || "UNKNOWN"}`,
       `issues: ${issues.join(",")}`,
+      `repeat_count: ${dedupe.repeatCount}`,
       `tp0_done: ${meta.tp_p0_done === true ? "1" : "0"}`,
       `tp1_done: ${meta.tp_p1_done === true ? "1" : "0"}`,
       `trail_active: ${meta.trail_active === true ? "1" : "0"}`,
       `native_status: ${String(meta.native_protection_refresh_status || "NA").trim().toUpperCase() || "NA"}`,
+      `state: ${String(pos.state || "NA").trim().toUpperCase() || "NA"}`,
+      `qty_base: ${Number.isFinite(Number(pos.qty_base)) ? String(Number(pos.qty_base)) : "NA"}`,
+      `entry_event_id: ${String(meta.entry_event_id || meta.origin_entry_event_id || "NA").trim() || "NA"}`,
+      `projection_invariants: ${Array.isArray(meta.exchange_projection_invariants) && meta.exchange_projection_invariants.length ? meta.exchange_projection_invariants.join(",") : "NA"}`,
     ].join("\n"),
     severity: "WARN",
   });
+}
+
+function shouldSendImmediateProjectionMismatchAlert({ symbol, event, issues = [], nowMs = Date.now() } = {}) {
+  const sym = normalizeSymbol(symbol);
+  const ev = String(event || "").trim().toUpperCase() || "UNKNOWN";
+  const issueKey = Array.isArray(issues) ? issues.map((v) => String(v || "").trim().toUpperCase()).filter(Boolean).sort().join(",") : "";
+  const key = `${sym || "UNKNOWN"}|${ev}|${issueKey || "NA"}`;
+  const now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+  const prev = immediateProjectionAlertState.get(key);
+  if (!prev || !Number.isFinite(prev.firstAtMs) || (now - prev.firstAtMs) > (10 * 60 * 1000)) {
+    const next = { firstAtMs: now, lastAtMs: now, repeatCount: 1 };
+    immediateProjectionAlertState.set(key, next);
+    return { send: true, key, repeatCount: 1, firstAtMs: now, lastAtMs: now };
+  }
+  const repeatCount = Number.isFinite(prev.repeatCount) ? (prev.repeatCount + 1) : 2;
+  const next = { firstAtMs: prev.firstAtMs, lastAtMs: now, repeatCount };
+  immediateProjectionAlertState.set(key, next);
+  const shouldSend = repeatCount === 3 || repeatCount === 10 || repeatCount % 25 === 0;
+  return { send: shouldSend, key, repeatCount, firstAtMs: prev.firstAtMs, lastAtMs: now };
 }
 
 async function markSameDirectionTrailProfitCooldownFromExternalFill({
@@ -1841,5 +1880,6 @@ module.exports = {
     isTrailExitEligible,
     inferStageConstrainedTakeProfitKind,
     buildImmediateProjectionIssues,
+    shouldSendImmediateProjectionMismatchAlert,
   },
 };
