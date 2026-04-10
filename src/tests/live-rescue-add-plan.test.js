@@ -610,6 +610,9 @@ function run() {
     native_protection_stop_order_id: "stop-1",
     native_protection_tp_order_id: "tp-1",
     exchange_projection_source: "BINANCE_LIVE_STATE",
+    exchange_projection_in_sync: false,
+    exchange_projection_invariants: ["NATIVE_STOP_MISSING"],
+    exchange_projection_checked_at: "2026-03-11T02:10:00Z",
     carry_key: "preserve-me",
   });
   assert.strictEqual(strippedProjection.tp_p0_done, undefined);
@@ -618,6 +621,9 @@ function run() {
   assert.strictEqual(strippedProjection.native_protection_stop_order_id, undefined);
   assert.strictEqual(strippedProjection.native_protection_tp_order_id, undefined);
   assert.strictEqual(strippedProjection.exchange_projection_source, undefined);
+  assert.strictEqual(strippedProjection.exchange_projection_in_sync, undefined);
+  assert.strictEqual(strippedProjection.exchange_projection_invariants, undefined);
+  assert.strictEqual(strippedProjection.exchange_projection_checked_at, undefined);
   assert.strictEqual(strippedProjection.carry_key, "preserve-me");
 
   const mergedAddProtectionMeta = __test.applyAddAndProtectionMetaOnFill({

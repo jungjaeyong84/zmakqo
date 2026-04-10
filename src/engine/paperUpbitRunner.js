@@ -3537,6 +3537,8 @@ function stripExchangeOwnedProjectionMeta(meta = null) {
     "native_protection_side",
     "exchange_projection_source",
     "exchange_projection_in_sync",
+    "exchange_projection_invariants",
+    "exchange_projection_checked_at",
   ];
   for (const key of keys) delete next[key];
   return next;
