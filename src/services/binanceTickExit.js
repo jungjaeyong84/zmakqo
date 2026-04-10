@@ -772,6 +772,10 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
                 exchange: "BINANCEFUT",
                 symbol,
                 side: _tSide,
+                entryEventId: pos.meta && pos.meta.entry_event_id ? pos.meta.entry_event_id : null,
+                entryExecBarMs: pos.meta && Number.isFinite(Number(pos.meta.entry_exec_bar_ms))
+                  ? Number(pos.meta.entry_exec_bar_ms)
+                  : null,
                 trailHigh: pos.meta && Number.isFinite(Number(pos.meta.trail_high)) ? Number(pos.meta.trail_high) : null,
                 trailHighAtMs: pos.meta && Number.isFinite(Number(pos.meta.trail_high_at_ms)) ? Number(pos.meta.trail_high_at_ms) : null,
                 trailLow: pos.meta && Number.isFinite(Number(pos.meta.trail_low)) ? Number(pos.meta.trail_low) : null,

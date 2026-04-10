@@ -30,6 +30,8 @@ async function run() {
   assert.strictEqual(typeof __test.buildClosingFillMetaPatch, "function", "buildClosingFillMetaPatch export missing");
   assert.strictEqual(typeof __test.buildOpeningFillMetaPatch, "function", "buildOpeningFillMetaPatch export missing");
   assert.strictEqual(typeof __test.resolveActiveEntryLineageForSync, "function", "resolveActiveEntryLineageForSync export missing");
+  assert.strictEqual(typeof __test.shouldProbeRecoveredEntryTransition, "function", "shouldProbeRecoveredEntryTransition export missing");
+  assert.strictEqual(typeof __test.shouldTreatRecoveredLineageAsEntryTransition, "function", "shouldTreatRecoveredLineageAsEntryTransition export missing");
   assert.strictEqual(typeof __test.evaluateCommittedRescueAddGate, "function", "evaluateCommittedRescueAddGate export missing");
   assert.strictEqual(__test.resolveForceAllSignalsAdd({}, "BINANCEFUT"), false, "Binance default must not auto-upgrade same-direction signals to ADD");
   assert.strictEqual(
@@ -492,6 +494,55 @@ async function run() {
     clearedTransitionLineage.entry_signal_type,
     "SYNC_FILL",
     "external entry transition should preserve recovered non-stale context while clearing stale lineage"
+  );
+  assert.strictEqual(
+    __test.shouldProbeRecoveredEntryTransition({
+      prevActive: true,
+      prevSide: "LONG",
+      side: "LONG",
+      prevMeta: {
+        entry_event_id: "BINANCEFUT|ETHUSDT|15m|1775747700000|LONG|LONG",
+        tp_p1_done: true,
+        trail_active: true,
+        trail_high_at_ms: 1775790000000,
+      },
+    }),
+    true,
+    "same-side active positions with progressed trail state should probe recovered lineage"
+  );
+
+  assert.strictEqual(
+    __test.shouldTreatRecoveredLineageAsEntryTransition({
+      persistedEntryLineage: {
+        entry_event_id: "BINANCEFUT|ETHUSDT|15m|1775747700000|LONG|LONG",
+        entry_signal_type: "LONG",
+        entry_exec_bar_ms: 1775747700000,
+      },
+      recoveredEntryLineage: {
+        entry_event_id: "BINANCEFUT|ETHUSDT|15m|1775799000000|LONG|LONG",
+        entry_signal_type: "LONG",
+        entry_exec_bar_ms: 1775799000000,
+      },
+    }),
+    true,
+    "same-side recovered lineage drift must force a new entry transition"
+  );
+
+  assert.strictEqual(
+    __test.shouldTreatRecoveredLineageAsEntryTransition({
+      persistedEntryLineage: {
+        entry_event_id: "BINANCEFUT|ETHUSDT|15m|1775747700000|LONG|LONG",
+        entry_signal_type: "LONG",
+        entry_exec_bar_ms: 1775747700000,
+      },
+      recoveredEntryLineage: {
+        entry_event_id: "BINANCEFUT|ETHUSDT|15m|1775747700000|LONG|LONG",
+        entry_signal_type: "LONG",
+        entry_exec_bar_ms: 1775747700000,
+      },
+    }),
+    false,
+    "same-side lineage must not force a reset when recovered lineage matches persisted lineage"
   );
 
   const baseSizeAware = __test.evaluateLiveRescueAdd({

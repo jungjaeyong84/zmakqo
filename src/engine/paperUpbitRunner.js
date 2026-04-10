@@ -2939,6 +2939,7 @@ function applyTrailObservationSnapshotToMeta({
   meta = null,
   observation = null,
   positionSide = null,
+  entryLineage = null,
   allowDuringEntryTransition = false,
 } = {}) {
   const baseMeta = (meta && typeof meta === "object") ? meta : {};
@@ -2950,6 +2951,13 @@ function applyTrailObservationSnapshotToMeta({
   const observedSide = normalizePositionSide(observed.side);
   const currentSide = normalizePositionSide(positionSide);
   if (observedSide && currentSide && observedSide !== currentSide) return baseMeta;
+  const lineage = normalizeEntryLineage(entryLineage || baseMeta);
+  const observedEntryId = String(observed.entry_event_id || "").trim() || null;
+  const currentEntryId = String(lineage.entry_event_id || "").trim() || null;
+  const observedEntryExecMs = Number(observed.entry_exec_bar_ms);
+  const currentEntryExecMs = Number(lineage.entry_exec_bar_ms);
+  if (observedEntryId && currentEntryId && observedEntryId !== currentEntryId) return baseMeta;
+  if (Number.isFinite(observedEntryExecMs) && Number.isFinite(currentEntryExecMs) && observedEntryExecMs !== currentEntryExecMs) return baseMeta;
   const snapshot = resolveTrailObservationSnapshot({ meta: baseMeta, observation });
   return mergeMeta(baseMeta, {
     trail_high: snapshot.trail_high,
@@ -6659,6 +6667,42 @@ function buildEntryLineageMetaPatch(lineage = {}, {
   return patch;
 }
 
+function shouldProbeRecoveredEntryTransition({
+  prevActive = false,
+  prevSide = null,
+  side = null,
+  prevMeta = null,
+} = {}) {
+  if (!prevActive) return false;
+  const prevNorm = normalizePositionSide(prevSide);
+  const currNorm = normalizePositionSide(side);
+  if (!prevNorm || !currNorm || prevNorm !== currNorm) return false;
+  const meta = (prevMeta && typeof prevMeta === "object") ? prevMeta : {};
+  return meta.tp_p0_done === true
+    || meta.tp_p1_done === true
+    || meta.trail_active === true
+    || Number.isFinite(Number(meta.trail_high_at_ms))
+    || Number.isFinite(Number(meta.trail_low_at_ms))
+    || !!String(meta.entry_event_id || meta.origin_entry_event_id || "").trim();
+}
+
+function shouldTreatRecoveredLineageAsEntryTransition({
+  persistedEntryLineage = null,
+  recoveredEntryLineage = null,
+} = {}) {
+  const persisted = normalizeEntryLineage(persistedEntryLineage);
+  const recovered = normalizeEntryLineage(recoveredEntryLineage);
+  const persistedId = String(persisted.entry_event_id || "").trim() || null;
+  const recoveredId = String(recovered.entry_event_id || "").trim() || null;
+  const persistedExecMs = Number(persisted.entry_exec_bar_ms);
+  const recoveredExecMs = Number(recovered.entry_exec_bar_ms);
+  if (recoveredId && recoveredId !== persistedId) return true;
+  if (!recoveredId && persistedId && Number.isFinite(recoveredExecMs)) return true;
+  if (Number.isFinite(recoveredExecMs) && Number.isFinite(persistedExecMs) && recoveredExecMs > persistedExecMs) return true;
+  if (Number.isFinite(recoveredExecMs) && !Number.isFinite(persistedExecMs)) return true;
+  return false;
+}
+
 function resolveActiveEntryLineageForSync({
   externalEntryTransition = false,
   persistedEntryLineage = null,
@@ -7057,11 +7101,22 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
           : null),
     });
   }
-  const externalEntryTransition = active && (!prevActive || (prevSide && side && prevSide !== side));
   const persistedEntryLineage = normalizeEntryLineage(prevMeta);
-  const recoveredEntryLineage = externalEntryTransition
+  const baseExternalEntryTransition = active && (!prevActive || (prevSide && side && prevSide !== side));
+  const shouldProbeSameSideEntryTransition = active && !baseExternalEntryTransition && shouldProbeRecoveredEntryTransition({
+    prevActive,
+    prevSide,
+    side,
+    prevMeta,
+  });
+  const recoveredEntryLineage = (baseExternalEntryTransition || shouldProbeSameSideEntryTransition)
     ? await recoverRecentEntryLineage({ exchange, symbol, side, nowMs: syncEventMs })
     : null;
+  const sameSideRecoveredEntryTransition = shouldProbeSameSideEntryTransition && shouldTreatRecoveredLineageAsEntryTransition({
+    persistedEntryLineage,
+    recoveredEntryLineage,
+  });
+  const externalEntryTransition = baseExternalEntryTransition || sameSideRecoveredEntryTransition;
   const activeEntryLineage = resolveActiveEntryLineageForSync({
     externalEntryTransition,
     persistedEntryLineage,
@@ -7139,6 +7194,7 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
       meta,
       observation: runtimeObservation,
       positionSide: side,
+      entryLineage: activeEntryLineage,
       allowDuringEntryTransition: true,
     });
   }
@@ -15462,6 +15518,8 @@ module.exports = {
     resolveRecentExternalFlatSyncGuard,
     normalizeEntryLineage,
     buildEntryLineageMetaPatch,
+    shouldProbeRecoveredEntryTransition,
+    shouldTreatRecoveredLineageAsEntryTransition,
     resolveActiveEntryLineageForSync,
     resolveEntryLineageForFill,
     extractEntryLineageCandidate,

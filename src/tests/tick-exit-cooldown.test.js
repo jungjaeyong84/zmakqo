@@ -32,12 +32,16 @@ function run() {
       exchange: "BINANCEFUT",
       symbol: "DOGEUSDT",
       side: "LONG",
+      entryEventId: "BINANCEFUT|DOGEUSDT|15m|123|LONG|LONG",
+      entryExecBarMs: 123,
       trailHigh: 1.23,
       trailHighAtMs: 123,
       source: "TICK_EXIT",
     }).trail_observation,
     {
       side: "LONG",
+      entry_event_id: "BINANCEFUT|DOGEUSDT|15m|123|LONG|LONG",
+      entry_exec_bar_ms: 123,
       trail_high: 1.23,
       trail_high_at_ms: 123,
       trail_low: null,
@@ -56,6 +60,8 @@ function run() {
       },
       observation: {
         trail_observation: {
+          entry_event_id: "BINANCEFUT|DOGEUSDT|15m|123|LONG|LONG",
+          entry_exec_bar_ms: 123,
           trail_high: 1.23,
           trail_high_at_ms: 123,
           trail_low: null,
@@ -84,12 +90,18 @@ function run() {
       observation: {
         trail_observation: {
           side: "LONG",
+          entry_event_id: "BINANCEFUT|DOGEUSDT|15m|123|LONG|LONG",
+          entry_exec_bar_ms: 123,
           trail_high: 1.23,
           trail_high_at_ms: 123,
           source: "TICK_EXIT",
         },
       },
       positionSide: "LONG",
+      entryLineage: {
+        entry_event_id: "BINANCEFUT|DOGEUSDT|15m|123|LONG|LONG",
+        entry_exec_bar_ms: 123,
+      },
       allowDuringEntryTransition: true,
     }),
     {
@@ -111,6 +123,8 @@ function run() {
       observation: {
         trail_observation: {
           side: "LONG",
+          entry_event_id: "BINANCEFUT|DOGEUSDT|15m|123|LONG|LONG",
+          entry_exec_bar_ms: 123,
           trail_high: 1.23,
           trail_high_at_ms: 123,
           source: "TICK_EXIT",
@@ -126,6 +140,39 @@ function run() {
       trail_low_at_ms: null,
     },
     "sync path must ignore opposite-side trail observations"
+  );
+  assert.deepStrictEqual(
+    runnerTest.applyTrailObservationSnapshotToMeta({
+      meta: {
+        trail_high: null,
+        trail_high_at_ms: null,
+        trail_low: null,
+        trail_low_at_ms: null,
+      },
+      observation: {
+        trail_observation: {
+          side: "LONG",
+          entry_event_id: "BINANCEFUT|DOGEUSDT|15m|123|LONG|LONG",
+          entry_exec_bar_ms: 123,
+          trail_high: 1.23,
+          trail_high_at_ms: 123,
+          source: "TICK_EXIT",
+        },
+      },
+      positionSide: "LONG",
+      entryLineage: {
+        entry_event_id: "BINANCEFUT|DOGEUSDT|15m|456|LONG|LONG",
+        entry_exec_bar_ms: 456,
+      },
+      allowDuringEntryTransition: true,
+    }),
+    {
+      trail_high: null,
+      trail_high_at_ms: null,
+      trail_low: null,
+      trail_low_at_ms: null,
+    },
+    "sync path must ignore stale same-side trail observations when entry lineage changed"
   );
   assert.deepStrictEqual(
     __test.applyTrailObservationToPosition({
