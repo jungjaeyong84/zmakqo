@@ -91,28 +91,78 @@ function isTradeExecutionUpdate(payload = {}) {
   return executionType === "TRADE";
 }
 
-function shouldSkipRecentSync(symbol, nowMs = Date.now()) {
+function resolveEventTimeMs(payload = {}) {
+  const order = (payload && payload.o && typeof payload.o === "object") ? payload.o : {};
+  const candidates = [payload && payload.E, payload && payload.T, order.T, order.t];
+  for (const value of candidates) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
+}
+
+function buildEventSyncDedupeKey(payload = {}, symbol) {
   const sym = normalizeSymbol(symbol);
-  if (!sym) return true;
-  const lastAt = Number(recentEventSyncAt.get(sym));
+  const eventType = String(payload && payload.e || "").trim().toUpperCase() || "UNKNOWN";
+  const eventTimeMs = resolveEventTimeMs(payload);
+  if (!sym) return `${eventType}:NA:${eventTimeMs || "NA"}`;
+  if (eventType === "ORDER_TRADE_UPDATE") {
+    const order = (payload && payload.o && typeof payload.o === "object") ? payload.o : {};
+    const orderId = Number.isFinite(Number(order.i)) ? String(Number(order.i)) : "NA";
+    const tradeId = Number.isFinite(Number(order.t)) ? String(Number(order.t)) : "NA";
+    return [eventType, sym, orderId, tradeId, eventTimeMs || "NA"].join(":");
+  }
+  return [eventType, sym, eventTimeMs || "NA"].join(":");
+}
+
+function shouldSkipRecentSync(dedupeKey, nowMs = Date.now()) {
+  const key = String(dedupeKey || "").trim();
+  if (!key) return true;
+  const lastAt = Number(recentEventSyncAt.get(key));
   if (Number.isFinite(lastAt) && (nowMs - lastAt) < EVENT_SYNC_DEDUPE_MS) {
     return true;
   }
-  recentEventSyncAt.set(sym, nowMs);
+  recentEventSyncAt.set(key, nowMs);
   if (recentEventSyncAt.size > 256) {
-    for (const [key, value] of recentEventSyncAt.entries()) {
+    for (const [entryKey, value] of recentEventSyncAt.entries()) {
       if (!Number.isFinite(value) || (nowMs - value) > (EVENT_SYNC_DEDUPE_MS * 20)) {
-        recentEventSyncAt.delete(key);
+        recentEventSyncAt.delete(entryKey);
       }
     }
   }
   return false;
 }
 
-function clearRecentSyncMark(symbol) {
-  const sym = normalizeSymbol(symbol);
-  if (!sym) return false;
-  return recentEventSyncAt.delete(sym);
+function clearRecentSyncMark(identifier) {
+  const raw = String(identifier || "").trim();
+  if (!raw) return false;
+  let cleared = false;
+  if (recentEventSyncAt.delete(raw)) cleared = true;
+  const sym = normalizeSymbol(raw);
+  if (!sym) return cleared;
+  for (const key of Array.from(recentEventSyncAt.keys())) {
+    if (String(key).includes(`:${sym}:`) || String(key).endsWith(`:${sym}`)) {
+      recentEventSyncAt.delete(key);
+      cleared = true;
+    }
+  }
+  return cleared;
+}
+
+function shouldRetryUserStreamConnectResult(result) {
+  return !result || result.ok !== true;
+}
+
+function normalizeUserStreamStartResult(result) {
+  if (result && result.skipped && result.reason === "LEASE_HELD") {
+    return {
+      ok: true,
+      waiting: true,
+      reason: "LEASE_WAITING",
+      holder: result.holder || null,
+    };
+  }
+  return result;
 }
 
 async function acquireUserStreamLease({ ttlMs = USER_STREAM_LEASE_MIN_TTL_MS } = {}) {
@@ -214,7 +264,8 @@ async function syncSymbolsForEvent(payload = {}, {
 
   for (const symbol of symbols) {
     const now = Date.now();
-    if (shouldSkipRecentSync(symbol, now)) {
+    const dedupeKey = buildEventSyncDedupeKey(payload, symbol);
+    if (shouldSkipRecentSync(dedupeKey, now)) {
       results.push({ symbol, ok: true, skipped: true, reason: "DEDUPED" });
       continue;
     }
@@ -233,11 +284,11 @@ async function syncSymbolsForEvent(payload = {}, {
         symbol,
       });
       if (!sync || sync.ok === false) {
-        clearRecentSyncMark(symbol);
+        clearRecentSyncMark(dedupeKey);
       }
       results.push({ symbol, ok: true, eventType, fills, sync });
     } catch (e) {
-      clearRecentSyncMark(symbol);
+      clearRecentSyncMark(dedupeKey);
       results.push({ symbol, ok: false, eventType, error: e && e.message ? e.message : String(e) });
     }
   }
@@ -282,7 +333,9 @@ function scheduleReconnect() {
   if (stopRequested || reconnectTimer) return;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
-    connectOnce().catch((e) => {
+    connectOnce().then((result) => {
+      if (shouldRetryUserStreamConnectResult(result)) scheduleReconnect();
+    }).catch((e) => {
       console.warn("[BINANCE_USER_STREAM_RECONNECT_FAIL]", e && e.message ? e.message : String(e));
       scheduleReconnect();
     });
@@ -400,7 +453,11 @@ async function startBinanceUserDataStream({ enabled } = {}) {
   if (started) return { ok: true, reason: "ALREADY_STARTED" };
   started = true;
   stopRequested = false;
-  return connectOnce();
+  const result = await connectOnce();
+  if (shouldRetryUserStreamConnectResult(result)) {
+    scheduleReconnect();
+  }
+  return normalizeUserStreamStartResult(result);
 }
 
 async function stopBinanceUserDataStream() {
@@ -437,6 +494,9 @@ module.exports = {
     USER_STREAM_LEASE_DOC,
     userStreamInstanceId,
     clearRecentSyncMark,
+    buildEventSyncDedupeKey,
+    shouldRetryUserStreamConnectResult,
+    normalizeUserStreamStartResult,
     syncSymbolsForEvent,
     handleUserDataMessage,
   },

@@ -1,5 +1,6 @@
 const assert = require("assert");
 const { __test } = require("../storage/fillsPaper");
+const { __test: fillsSyncTest } = require("../services/binanceFuturesFillsSync");
 
 function run() {
   const buildExternalFillUnverifiedPatch = __test && __test.buildExternalFillUnverifiedPatch;
@@ -47,7 +48,35 @@ function run() {
   assert.strictEqual(existingUnverified.decision_reason, "MANUAL_AUDIT");
   assert.deepStrictEqual(existingUnverified.classification_issues, ["NATIVE_PROTECTION_FAILED"]);
 
-  console.log("FILLS_PAPER_TEST_OK");
+  const auditImmediateProjectionEvents = fillsSyncTest && fillsSyncTest.auditImmediateProjectionEvents;
+  assert.strictEqual(typeof auditImmediateProjectionEvents, "function", "auditImmediateProjectionEvents export missing");
+  return auditImmediateProjectionEvents({
+    events: [
+      { fillId: "fill-1", symbol: "SOLUSDT", event: "EXIT_TP_P0_0.8P", tradeMs: 101 },
+      { fillId: "fill-2", symbol: "SOLUSDT", event: "EXIT_TRAIL_1P", tradeMs: 102 },
+    ],
+    position: {
+      state: "ACTIVE",
+      qty_base: 1,
+      meta: {
+        tp_p0_done: false,
+        tp_p1_done: false,
+        trail_active: false,
+      },
+    },
+    markUnverified: async (args) => args,
+    sendAlert: async (args) => args,
+  }).then((auditResult) => {
+    assert.strictEqual(auditResult.unverified_n, 2);
+    assert.deepStrictEqual(
+      auditResult.results.filter((row) => row.unverified).map((row) => row.fillId),
+      ["fill-1", "fill-2"]
+    );
+    console.log("FILLS_PAPER_TEST_OK");
+  });
 }
 
-run();
+Promise.resolve(run()).catch((err) => {
+  console.error(err && err.stack ? err.stack : err);
+  process.exit(1);
+});

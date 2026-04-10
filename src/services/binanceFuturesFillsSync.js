@@ -143,6 +143,58 @@ async function sendImmediateProjectionMismatchAlert({
   });
 }
 
+async function auditImmediateProjectionEvents({
+  events = [],
+  position = null,
+  markUnverified = markExternalFillUnverified,
+  sendAlert = sendImmediateProjectionMismatchAlert,
+} = {}) {
+  const list = Array.isArray(events) ? events : [];
+  const results = [];
+  for (const eventRow of list) {
+    const issues = buildImmediateProjectionIssues({
+      event: eventRow && eventRow.event,
+      position,
+    });
+    if (!issues.length) {
+      results.push({
+        fillId: eventRow && eventRow.fillId ? eventRow.fillId : null,
+        event: eventRow && eventRow.event ? eventRow.event : null,
+        audited: true,
+        unverified: false,
+        issues: [],
+      });
+      continue;
+    }
+    if (eventRow && eventRow.fillId) {
+      await markUnverified({
+        fillId: eventRow.fillId,
+        event: eventRow.event,
+        issues,
+      });
+    }
+    await sendAlert({
+      symbol: eventRow && eventRow.symbol,
+      event: eventRow && eventRow.event,
+      issues,
+      position,
+    });
+    results.push({
+      fillId: eventRow && eventRow.fillId ? eventRow.fillId : null,
+      event: eventRow && eventRow.event ? eventRow.event : null,
+      audited: true,
+      unverified: true,
+      issues: issues.slice(),
+    });
+  }
+  return {
+    ok: true,
+    audited_n: results.length,
+    unverified_n: results.filter((row) => row.unverified).length,
+    results,
+  };
+}
+
 function shouldSendImmediateProjectionMismatchAlert({ symbol, event, issues = [], nowMs = Date.now() } = {}) {
   const sym = normalizeSymbol(symbol);
   const ev = String(event || "").trim().toUpperCase() || "UNKNOWN";
@@ -1758,27 +1810,12 @@ async function syncMarketTrades({
   if (insertedProjectionAuditEvents.length) {
     try {
       const currentPos = await getPosition({ exchange: "BINANCEFUT", symbol: sym });
-      const latestAuditEvent = insertedProjectionAuditEvents
-        .sort((a, b) => Number(b.tradeMs || 0) - Number(a.tradeMs || 0))[0];
-      const issues = buildImmediateProjectionIssues({
-        event: latestAuditEvent && latestAuditEvent.event,
+      await auditImmediateProjectionEvents({
+        events: insertedProjectionAuditEvents
+          .slice()
+          .sort((a, b) => Number(b.tradeMs || 0) - Number(a.tradeMs || 0)),
         position: currentPos,
       });
-      if (issues.length) {
-        if (latestAuditEvent && latestAuditEvent.fillId) {
-          await markExternalFillUnverified({
-            fillId: latestAuditEvent.fillId,
-            event: latestAuditEvent.event,
-            issues,
-          });
-        }
-        await sendImmediateProjectionMismatchAlert({
-          symbol: sym,
-          event: latestAuditEvent && latestAuditEvent.event,
-          issues,
-          position: currentPos,
-        });
-      }
     } catch (e) {
       console.warn("[BINANCEFUT_FILL_SYNC_IMMEDIATE_AUDIT_FAIL]", e && e.message ? e.message : String(e));
     }
@@ -1902,6 +1939,7 @@ module.exports = {
     isTrailExitEligible,
     inferStageConstrainedTakeProfitKind,
     buildImmediateProjectionIssues,
+    auditImmediateProjectionEvents,
     shouldSendImmediateProjectionMismatchAlert,
   },
 };
