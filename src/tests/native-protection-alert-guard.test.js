@@ -4,6 +4,11 @@ const assert = require("assert");
 const { __test } = require("../engine/paperUpbitRunner");
 
 async function run() {
+  assert.strictEqual(typeof __test.resolveNativeProtectionPositionMeta, "function", "resolveNativeProtectionPositionMeta export missing");
+  assert.deepStrictEqual(__test.resolveNativeProtectionPositionMeta(null), {}, "null position meta must coerce to empty object");
+  const meta = { entry_event_id: "ENTRY__X" };
+  assert.strictEqual(__test.resolveNativeProtectionPositionMeta(meta), meta, "object position meta should be passed through");
+
   let called = 0;
   const result = await __test.notifyNativeProtectionResult({
     nativeProtection: {

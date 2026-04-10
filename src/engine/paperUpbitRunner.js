@@ -7543,6 +7543,10 @@ function resolveNativeProtectionStageState(posMeta = null) {
   };
 }
 
+function resolveNativeProtectionPositionMeta(positionMeta = null) {
+  return (positionMeta && typeof positionMeta === "object") ? positionMeta : {};
+}
+
 function shouldCleanupExternalFlatOrders({
   active = false,
   prevActive = false,
@@ -8526,6 +8530,7 @@ async function executeLiveFuturesOrder({
       ? ((Number.isFinite(Number(qtyFraction)) && Number(qtyFraction) > 0) ? Number(qtyFraction) : 1)
       : (filledNotional / (budgetMax * leverageMult)));
   let nativeProtection = null;
+  const nativeProtectionMeta = resolveNativeProtectionPositionMeta(positionMeta);
 
   if (isExit && !liveCfg.liveDryRun && Number.isFinite(posQtyBase) && posQtyBase > 0) {
     const step = Number(info && info.stepSize);
@@ -8577,7 +8582,7 @@ async function executeLiveFuturesOrder({
         fallbackEntryPrice: Number.isFinite(execPrice) ? execPrice : priceRef,
         fallbackLeverage: leverageMult,
         exitRulesOverride,
-        posMeta,
+        posMeta: nativeProtectionMeta,
       });
     } catch (nativeErr) {
       nativeProtection = {
@@ -14754,6 +14759,7 @@ module.exports = {
     shouldCleanupExternalFlatOrders,
     collectCriticalExitRuleViolations,
     resolveNativeProtectionStageState,
+    resolveNativeProtectionPositionMeta,
     computeBinanceNativeProtectionPrices,
     shouldRepairActiveExitRuntimeState,
     repairActivePositionExitRuntimeState,
