@@ -6,7 +6,16 @@ const { buildBinanceFillProjectionAudit, __test } = require("../services/binance
 (() => {
   assert.strictEqual(typeof buildBinanceFillProjectionAudit, "function", "buildBinanceFillProjectionAudit export missing");
   assert.strictEqual(typeof __test.isActivePosition, "function", "isActivePosition export missing");
+  assert.strictEqual(typeof __test.fillMatchesCurrentEntry, "function", "fillMatchesCurrentEntry export missing");
   assert.strictEqual(__test.isActivePosition({ exchange: "BINANCEFUT", state: "ACTIVE", qty_base: 1 }), true);
+  assert.strictEqual(__test.fillMatchesCurrentEntry(
+    { entry_event_id: "CURR" },
+    { entry_event_id: "CURR" }
+  ), true);
+  assert.strictEqual(__test.fillMatchesCurrentEntry(
+    { entry_event_id: "OLD" },
+    { entry_event_id: "CURR" }
+  ), false);
 
   const nowMs = Date.parse("2026-04-10T03:00:00.000Z");
   const positions = [
@@ -43,18 +52,30 @@ const { buildBinanceFillProjectionAudit, __test } = require("../services/binance
       symbol: "DOGEUSDT",
       event: "EXIT_TP_P0_0.8P",
       created_at: "2026-04-10T02:58:00.000Z",
+      entry_event_id: "DOGE_CURR",
     },
     {
       exchange: "BINANCEFUT",
       symbol: "AXSUSDT",
       event: "EXIT_TP_P1_1.65P",
       created_at: "2026-04-10T02:40:00.000Z",
+      entry_event_id: "AXS_CURR",
+    },
+    {
+      exchange: "BINANCEFUT",
+      symbol: "DOGEUSDT",
+      event: "EXIT_TP_P1_1.65P",
+      created_at: "2026-04-10T02:59:00.000Z",
+      entry_event_id: "DOGE_OLD",
     },
   ];
 
+  positions[0].meta.entry_event_id = "DOGE_CURR";
+  positions[1].meta.entry_event_id = "AXS_CURR";
+
   const audit = buildBinanceFillProjectionAudit({ positions, fills, nowMs, tp1TrailGraceMs: 60 * 1000 });
   assert.strictEqual(audit.active_position_n, 2);
-  assert.strictEqual(audit.recent_fill_n, 2);
+  assert.strictEqual(audit.recent_fill_n, 3);
   assert.strictEqual(audit.tp0_fill_projection_missing_n, 1);
   assert.strictEqual(audit.tp1_fill_projection_missing_n, 0);
   assert.strictEqual(audit.tp1_fill_trail_inactive_n, 1);

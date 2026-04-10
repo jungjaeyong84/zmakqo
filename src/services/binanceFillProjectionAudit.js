@@ -42,6 +42,18 @@ function pickLatestFill(rows = [], predicate = () => false) {
   return best;
 }
 
+function fillMatchesCurrentEntry(fill = {}, meta = {}) {
+  const fillEntry = String(fill.entry_event_id || fill.entryEventId || "").trim();
+  const metaEntry = String(meta.entry_event_id || "").trim();
+  if (fillEntry && metaEntry) return fillEntry === metaEntry;
+  const fillMs = parseMs(fill.exec_bar_close_time_utc_ms || fill.exec_ms || fill.created_at || fill.updated_at);
+  const entryExecMs = parseMs(meta.entry_exec_bar_ms);
+  if (Number.isFinite(fillMs) && Number.isFinite(entryExecMs)) {
+    return (fillMs + 30000) >= entryExecMs;
+  }
+  return true;
+}
+
 function makeIssue({ symbol, code, detail, fill = null } = {}) {
   return {
     symbol: String(symbol || "").toUpperCase(),
@@ -84,8 +96,12 @@ function buildBinanceFillProjectionAudit({
     const meta = pos && typeof pos.meta === "object" ? pos.meta : {};
     if (!symbol) continue;
     const marketFills = recentFills.filter((row) => toUpper(row.symbol || row.symbol_or_pair_id) === symbol);
-    const latestTp0Fill = pickLatestFill(marketFills, (row) => eventMatches(row, "EXIT_TP_P0"));
-    const latestTp1Fill = pickLatestFill(marketFills, (row) => eventMatches(row, "EXIT_TP_P1"));
+    const latestTp0Fill = pickLatestFill(marketFills, (row) => {
+      return eventMatches(row, "EXIT_TP_P0") && fillMatchesCurrentEntry(row, meta);
+    });
+    const latestTp1Fill = pickLatestFill(marketFills, (row) => {
+      return eventMatches(row, "EXIT_TP_P1") && fillMatchesCurrentEntry(row, meta);
+    });
 
     if (latestTp0Fill && meta.tp_p0_done !== true) {
       issues.push(makeIssue({
@@ -156,5 +172,6 @@ module.exports = {
     isActivePosition,
     pickLatestFill,
     countIssuesByCode,
+    fillMatchesCurrentEntry,
   },
 };
