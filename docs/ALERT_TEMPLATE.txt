@@ -3,7 +3,7 @@
 1) 차트에 돈벌자 Ω 스크립트를 적용합니다.
 2) 알림 만들기 클릭
 3) 조건: 돈벌자 Ω (Any alert() function call)
-4) 웹훅 URL: https://donbeolja-350958953672.asia-northeast3.run.app/webhook/signal?token=9e67f7680f6704e10e1f8e2cd59bd23a47e458c73881675abe8fa7bd0326f114
+4) 웹훅 URL: https://donbeolja-350958953672.asia-northeast3.run.app/webhook/signal?token=<WEBHOOK_TOKEN>
 5) 메시지: 비워두기 (스크립트가 JSON을 자동으로 보냅니다)
 6) 알림 이름: 예) DONBEOLJA_KRW-BTC_60m
 

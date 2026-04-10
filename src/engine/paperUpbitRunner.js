@@ -931,6 +931,65 @@ function sleepMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, waitMs));
 }
 
+function buildBinanceNativeRefreshLeaseDocPath(exchange, symbol) {
+  const ex = String(exchange || "").trim().toUpperCase() || "BINANCEFUT";
+  const sym = String(symbol || "").trim().toUpperCase() || "UNKNOWN";
+  return `runtime_locks/binance_native_refresh__${ex}__${sym}`;
+}
+
+async function acquireBinanceNativeRefreshLease({
+  exchange,
+  symbol,
+  ttlMs = BINANCE_NATIVE_REFRESH_LEASE_TTL_MS,
+  holderId = binanceNativeRefreshLeaseHolderId,
+} = {}) {
+  const db = getFirestore();
+  const now = Date.now();
+  const leaseUntil = now + Math.max(2000, Math.floor(Number(ttlMs) || BINANCE_NATIVE_REFRESH_LEASE_TTL_MS));
+  const ref = db.doc(buildBinanceNativeRefreshLeaseDocPath(exchange, symbol));
+  let acquired = false;
+  let holder = null;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.exists ? (snap.data() || {}) : {};
+    const owner = String(data.owner || "");
+    const leaseUntilMs = Number(data.lease_until_ms);
+    const expired = !Number.isFinite(leaseUntilMs) || leaseUntilMs <= now;
+    if (!owner || owner === holderId || expired) {
+      acquired = true;
+      tx.set(ref, {
+        owner: holderId,
+        lease_until_ms: leaseUntil,
+        heartbeat_ms: now,
+        heartbeat_at: new Date(now).toISOString(),
+      }, { merge: true });
+      return;
+    }
+    acquired = false;
+    holder = owner;
+  });
+  return { acquired, holder, leaseUntil, holderId };
+}
+
+async function releaseBinanceNativeRefreshLease({
+  exchange,
+  symbol,
+  holderId = binanceNativeRefreshLeaseHolderId,
+} = {}) {
+  const db = getFirestore();
+  const ref = db.doc(buildBinanceNativeRefreshLeaseDocPath(exchange, symbol));
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const data = snap.data() || {};
+    if (String(data.owner || "") !== String(holderId || "")) return;
+    tx.set(ref, {
+      lease_until_ms: Date.now() - 1,
+      released_at: new Date().toISOString(),
+    }, { merge: true });
+  });
+}
+
 function normalizeFuturesSymbolKey(raw) {
   const s = String(raw || "").trim().toUpperCase();
   if (!s) return "";
@@ -1287,10 +1346,16 @@ const BINANCE_NATIVE_WORKING_TYPE = String(process.env.BINANCE_NATIVE_WORKING_TY
 const BINANCE_NATIVE_PRICE_PROTECT = String(process.env.BINANCE_NATIVE_PRICE_PROTECT || "1") !== "0";
 const BINANCE_NATIVE_PROTECTION_RETRY_COUNT = Math.max(0, Math.min(5, Math.floor(Number(process.env.BINANCE_NATIVE_PROTECTION_RETRY_COUNT || 1))));
 const BINANCE_NATIVE_PROTECTION_RETRY_DELAY_MS = Math.max(0, Math.floor(Number(process.env.BINANCE_NATIVE_PROTECTION_RETRY_DELAY_MS || 1200)));
+const BINANCE_NATIVE_REFRESH_LEASE_TTL_MS = Math.max(2000, Math.floor(Number(process.env.BINANCE_NATIVE_REFRESH_LEASE_TTL_MS || 8000)));
 const BINANCE_NATIVE_ALERT_ENABLED = String(process.env.BINANCE_NATIVE_ALERT_ENABLED || "1") !== "0";
 const BINANCE_NATIVE_ALERT_TELEGRAM_ONLY = String(process.env.BINANCE_NATIVE_ALERT_TELEGRAM_ONLY || "1") !== "0";
 const BINANCE_NATIVE_ALERT_CHANNEL_CACHE_MS = Math.max(5000, Math.floor(Number(process.env.BINANCE_NATIVE_ALERT_CHANNEL_CACHE_MS || 30000)));
 const BINANCE_NATIVE_ALERT_COOLDOWN_MS = Math.max(10000, Math.floor(Number(process.env.BINANCE_NATIVE_ALERT_COOLDOWN_MS || 60000)));
+const binanceNativeRefreshLeaseHolderId = [
+  process.env.K_SERVICE || "local",
+  process.env.K_REVISION || "dev",
+  process.pid,
+].join(":");
 const futures3xStatsCache = new Map();
 const futures3xState = new Map();
 const futuresExitProfileState = new Map();
@@ -6200,6 +6265,7 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
       })
       : 0)
     : null;
+  let externalFlatOrderCleanup = { attempted: false, ok: false, reason: "NOT_REQUIRED" };
   if (externalFlatSyncGuard.defer) {
     const deferMeta = mergeMeta(prevMeta, {
       external_flat_sync_deferred: true,
@@ -6245,6 +6311,22 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     external_leverage: Number.isFinite(leverageRaw) ? leverageRaw : null,
   };
   if (!active) {
+    if (shouldCleanupExternalFlatOrders({ active, prevActive, liveCfg })) {
+      try {
+        await cancelFuturesOpenOrders({
+          apiKey: liveCfg.apiKey,
+          apiSecret: liveCfg.apiSecret,
+          symbol,
+        });
+        externalFlatOrderCleanup = { attempted: true, ok: true, reason: null };
+      } catch (cleanupErr) {
+        externalFlatOrderCleanup = {
+          attempted: true,
+          ok: false,
+          reason: String(cleanupErr && cleanupErr.message || cleanupErr).slice(0, 160),
+        };
+      }
+    }
     metaPatch.tp_p0_done = false;
     metaPatch.tp_p0_price = null;
     metaPatch.tp_p0_at = null;
@@ -6311,6 +6393,9 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     metaPatch.add_chain_last_qty_base = null;
     metaPatch.add_chain_last_loss_pct = null;
     metaPatch.add_chain_base_qty_pct = null;
+    metaPatch.external_flat_sync_order_cleanup_attempted = externalFlatOrderCleanup.attempted === true;
+    metaPatch.external_flat_sync_order_cleanup_ok = externalFlatOrderCleanup.ok === true;
+    metaPatch.external_flat_sync_order_cleanup_reason = externalFlatOrderCleanup.reason || null;
     if (prevActive) {
       metaPatch.last_exit_bar_ms = syncEventMs;
       metaPatch.last_exit_dir = prevSide || null;
@@ -7337,33 +7422,50 @@ async function refreshBinanceNativeProtectionWithRetry({
   exitRulesOverride,
   posMeta,
 } = {}) {
+  const lease = await acquireBinanceNativeRefreshLease({ exchange, symbol });
+  if (!lease.acquired) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: "NATIVE_REFRESH_LEASE_HELD",
+      holder: lease.holder || null,
+      attempts: 0,
+      max_attempts: BINANCE_NATIVE_PROTECTION_RETRY_COUNT + 1,
+    };
+  }
   const totalAttempts = BINANCE_NATIVE_PROTECTION_RETRY_COUNT + 1;
   let lastResult = null;
-  for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
-    const result = await refreshBinanceNativeProtection({
-      liveCfg,
-      exchange,
-      symbol,
-      fallbackSide,
-      fallbackEntryPrice,
-      fallbackLeverage,
-      exitRulesOverride,
-      posMeta,
-    });
-    const enriched = {
-      ...(result && typeof result === "object" ? result : {}),
-      attempts: attempt,
-      max_attempts: totalAttempts,
-    };
-    if (enriched.ok === true) return enriched;
-    lastResult = enriched;
-    const reason = resolveNativeProtectionAlertReason(enriched);
-    if (attempt >= totalAttempts || !isRetryableNativeProtectionReason(reason)) break;
-    if (BINANCE_NATIVE_PROTECTION_RETRY_DELAY_MS > 0) {
-      await sleepMs(BINANCE_NATIVE_PROTECTION_RETRY_DELAY_MS);
+  try {
+    for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+      const result = await refreshBinanceNativeProtection({
+        liveCfg,
+        exchange,
+        symbol,
+        fallbackSide,
+        fallbackEntryPrice,
+        fallbackLeverage,
+        exitRulesOverride,
+        posMeta,
+      });
+      const enriched = {
+        ...(result && typeof result === "object" ? result : {}),
+        attempts: attempt,
+        max_attempts: totalAttempts,
+      };
+      if (enriched.ok === true) return enriched;
+      lastResult = enriched;
+      const reason = resolveNativeProtectionAlertReason(enriched);
+      if (attempt >= totalAttempts || !isRetryableNativeProtectionReason(reason)) break;
+      if (BINANCE_NATIVE_PROTECTION_RETRY_DELAY_MS > 0) {
+        await sleepMs(BINANCE_NATIVE_PROTECTION_RETRY_DELAY_MS);
+      }
     }
+    return lastResult || { ok: false, reason: "UNKNOWN", attempts: totalAttempts, max_attempts: totalAttempts };
+  } finally {
+    try {
+      await releaseBinanceNativeRefreshLease({ exchange, symbol });
+    } catch (_) {}
   }
-  return lastResult || { ok: false, reason: "UNKNOWN", attempts: totalAttempts, max_attempts: totalAttempts };
 }
 
 function resolveNativeProtectionStageState(posMeta = null) {
@@ -7375,6 +7477,17 @@ function resolveNativeProtectionStageState(posMeta = null) {
     tp0Eligible: tp0Done !== true && tp1Done !== true && trailActive !== true,
     tp1Eligible: tp1Done !== true && trailActive !== true,
   };
+}
+
+function shouldCleanupExternalFlatOrders({
+  active = false,
+  prevActive = false,
+  liveCfg = null,
+} = {}) {
+  if (active === true) return false;
+  if (prevActive !== true) return false;
+  if (!liveCfg || !liveCfg.apiKey || !liveCfg.apiSecret) return false;
+  return true;
 }
 
 function isBinanceImmediateTriggerError(error) {
@@ -14553,6 +14666,8 @@ module.exports = {
     resolveTp1LadderConfig,
     resolveTp1LadderRuntimeState,
     resolveTp1LadderKpiForContext,
+    buildBinanceNativeRefreshLeaseDocPath,
+    shouldCleanupExternalFlatOrders,
     collectCriticalExitRuleViolations,
     resolveNativeProtectionStageState,
     computeBinanceNativeProtectionPrices,

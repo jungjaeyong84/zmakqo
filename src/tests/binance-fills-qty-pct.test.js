@@ -93,8 +93,23 @@ async function run() {
   assert.strictEqual(picked.intent_id, "valid_intent");
 
   const resolveExternalExitEvent = __test && __test.resolveExternalExitEvent;
+  const inferStageConstrainedTakeProfitKind = __test && __test.inferStageConstrainedTakeProfitKind;
   assert.strictEqual(typeof resolveExternalExitEvent, "function", "resolveExternalExitEvent export missing");
+  assert.strictEqual(typeof inferStageConstrainedTakeProfitKind, "function", "inferStageConstrainedTakeProfitKind export missing");
   const rules = { SL: -0.015, TP_P1: 0.03, TRAIL_PCT: 0.01 };
+
+  assert.strictEqual(
+    inferStageConstrainedTakeProfitKind({ tpP0Done: false, tpP1Done: false, trailActive: false }, null),
+    "TP0"
+  );
+  assert.strictEqual(
+    inferStageConstrainedTakeProfitKind({ tpP0Done: true, tpP1Done: false, trailActive: false }, null),
+    "TP1"
+  );
+  assert.strictEqual(
+    inferStageConstrainedTakeProfitKind({ tpP0Done: true, tpP1Done: true, trailActive: true }, "TP1"),
+    null
+  );
 
   const overridden = await resolveExternalExitEvent({
     intent: { event: "EXIT_TP_P1_3P" },
@@ -151,6 +166,26 @@ async function run() {
     qtyPct: 0.5,
   });
   assert.strictEqual(inferredTp1, "EXIT_TP_P1_3P");
+
+  const stageFallbackTp0 = await resolveExternalExitEvent({
+    intent: null,
+    trade: { symbol: "SOLUSDT", realizedPnl: 10 },
+    orderMeta: { orderId: 1274, orderType: "TAKE_PROFIT_MARKET", closePosition: false, reduceOnly: true, clientOrderId: "native_z" },
+    positionCtx: { trailActive: false, tpP0Done: false, tpP1Done: false },
+    rules: { SL: -0.015, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.03, TP_P1_QTY: 0.5, TRAIL_PCT: 0.01 },
+    qtyPct: null,
+  });
+  assert.strictEqual(stageFallbackTp0, "EXIT_TP_P0_0.8P");
+
+  const stageFallbackTp1 = await resolveExternalExitEvent({
+    intent: null,
+    trade: { symbol: "SOLUSDT", realizedPnl: 10 },
+    orderMeta: { orderId: 1275, orderType: "TAKE_PROFIT_MARKET", closePosition: false, reduceOnly: true, clientOrderId: "native_k" },
+    positionCtx: { trailActive: false, tpP0Done: true, tpP1Done: false },
+    rules: { SL: -0.015, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.03, TP_P1_QTY: 0.5, TRAIL_PCT: 0.01 },
+    qtyPct: null,
+  });
+  assert.strictEqual(stageFallbackTp1, "EXIT_TP_P1_3P");
 
   process.env.BINANCE_NATIVE_TP_ENABLED = "0";
   const nativeTrackedMarketStop = await resolveExternalExitEvent({

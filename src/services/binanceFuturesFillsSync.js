@@ -1016,6 +1016,17 @@ function inferTakeProfitKindFromQtyPct(qtyPct, rules) {
   return best.kind;
 }
 
+function inferStageConstrainedTakeProfitKind(positionCtx, inferredKind) {
+  const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
+  const tp0Done = ctx.tpP0Done === true;
+  const tp1Done = ctx.tpP1Done === true;
+  const trailActive = ctx.trailActive === true;
+  if (tp1Done || trailActive) return null;
+  if (!tp0Done) return "TP0";
+  if (inferredKind === "TP0" || inferredKind === "TP1") return inferredKind;
+  return "TP1";
+}
+
 function isSyntheticExternalFillExitEvent(event) {
   const ev = String(event || "").toUpperCase();
   if (!ev) return false;
@@ -1165,6 +1176,7 @@ async function resolveExternalExitEvent({
   const sameOrderAsNativeTp1 = isSameOrderAsNativeTp1(orderMeta, positionCtx);
   const trailEligible = isTrailExitEligible(positionCtx, recentTp1);
   const inferredTakeProfitKind = inferTakeProfitKindFromQtyPct(qtyPct, rules);
+  const stageConstrainedTakeProfitKind = inferStageConstrainedTakeProfitKind(positionCtx, inferredTakeProfitKind);
   const recentAddProtectionRefresh = isRecentAddNativeProtectionRefresh({
     positionCtx,
     tradeMs: Number(trade && trade.time),
@@ -1179,6 +1191,7 @@ async function resolveExternalExitEvent({
       if (sameOrderAsNativeTp1) return buildExitEventByKind("TP1", rules);
       if (trailEligible) return buildExitEventByKind("TRAIL", rules);
       if (inferredTakeProfitKind) return buildExitEventByKind(inferredTakeProfitKind, rules);
+      if (stageConstrainedTakeProfitKind) return buildExitEventByKind(stageConstrainedTakeProfitKind, rules);
       return buildExitEventByKind("TP1", rules);
     }
     if (trackedClientOrder && orderType === "MARKET" && !isNativeTpEnabled()) {
@@ -1233,6 +1246,7 @@ async function resolveExternalExitEvent({
     if (sameOrderAsNativeTp1) return buildExitEventByKind("TP1", rules);
     if (trailEligible) return buildExitEventByKind("TRAIL", rules);
     if (inferredTakeProfitKind) return buildExitEventByKind(inferredTakeProfitKind, rules);
+    if (stageConstrainedTakeProfitKind) return buildExitEventByKind(stageConstrainedTakeProfitKind, rules);
     return buildExitEventByKind("TP1", rules);
   }
 
@@ -1240,6 +1254,7 @@ async function resolveExternalExitEvent({
   if (!Number.isFinite(realized)) return buildExitEventByKind("UNKNOWN", rules);
   if (realized < 0) return buildExitEventByKind("SL", rules);
   if (trailEligible) return buildExitEventByKind("TRAIL", rules);
+  if (stageConstrainedTakeProfitKind) return buildExitEventByKind(stageConstrainedTakeProfitKind, rules);
   return buildExitEventByKind("TP1", rules);
 }
 
@@ -1791,5 +1806,6 @@ module.exports = {
     isSameOrderAsRecentTp1,
     isSyntheticExternalFillExitEvent,
     isTrailExitEligible,
+    inferStageConstrainedTakeProfitKind,
   },
 };

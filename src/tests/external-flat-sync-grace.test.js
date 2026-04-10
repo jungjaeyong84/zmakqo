@@ -2,6 +2,7 @@ const assert = require("assert");
 const { __test } = require("../engine/paperUpbitRunner");
 
 assert.strictEqual(typeof __test.resolveRecentExternalFlatSyncGuard, "function", "resolveRecentExternalFlatSyncGuard export missing");
+assert.strictEqual(typeof __test.shouldCleanupExternalFlatOrders, "function", "shouldCleanupExternalFlatOrders export missing");
 
 const nowMs = Date.parse("2026-04-05T05:00:25.200Z");
 
@@ -54,6 +55,33 @@ const nowMs = Date.parse("2026-04-05T05:00:25.200Z");
   });
   assert.strictEqual(out.defer, false);
   assert.strictEqual(out.reason, "NO_RECENT_ENTRY_SIGNAL");
+}
+
+{
+  const out = __test.shouldCleanupExternalFlatOrders({
+    active: false,
+    prevActive: true,
+    liveCfg: { apiKey: "k", apiSecret: "s" },
+  });
+  assert.strictEqual(out, true);
+}
+
+{
+  const out = __test.shouldCleanupExternalFlatOrders({
+    active: false,
+    prevActive: false,
+    liveCfg: { apiKey: "k", apiSecret: "s" },
+  });
+  assert.strictEqual(out, false);
+}
+
+{
+  const out = __test.shouldCleanupExternalFlatOrders({
+    active: true,
+    prevActive: true,
+    liveCfg: { apiKey: "k", apiSecret: "s" },
+  });
+  assert.strictEqual(out, false);
 }
 
 console.log("EXTERNAL_FLAT_SYNC_GRACE_TEST_OK");
