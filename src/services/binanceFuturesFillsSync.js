@@ -715,24 +715,7 @@ function resolveFillSyncAlertCloseRatio({ event, intent, qtyScale, execQtyBase, 
   if (isTpP1Event(event) && Number.isFinite(syncedQtyPct) && syncedQtyPct > 0) {
     return syncedQtyPct;
   }
-  const intentQtyFraction = clamp01(intent && intent.qty_fraction);
-  const scaledRatio = clamp01(qtyScale && qtyScale.ratio);
-  if (Number.isFinite(intentQtyFraction) && intentQtyFraction > 0) {
-    if (Number.isFinite(scaledRatio) && scaledRatio > 0) {
-      return clamp01(intentQtyFraction * scaledRatio);
-    }
-    return intentQtyFraction;
-  }
-  if (Number.isFinite(scaledRatio) && scaledRatio > 0) return scaledRatio;
   const execQty = Number(execQtyBase);
-  const positionQtyBase = Number(positionCtx && positionCtx.qtyBase);
-  if (Number.isFinite(execQty) && execQty > 0 && Number.isFinite(positionQtyBase) && positionQtyBase > 0) {
-    return clamp01(execQty / positionQtyBase);
-  }
-  if (eventUpper.startsWith("EXIT_TP_P0")) {
-    const nativeTp0QtyRatio = clamp01(positionCtx && positionCtx.nativeProtectionTp0QtyRatio);
-    if (Number.isFinite(nativeTp0QtyRatio) && nativeTp0QtyRatio > 0) return nativeTp0QtyRatio;
-  }
   if (isTpP1Event(event)) {
     const nativeTpQtyRatio = clamp01(positionCtx && positionCtx.nativeProtectionTpQtyRatio);
     const nativeTpQtyBase = Number(positionCtx && positionCtx.nativeProtectionTpQtyBase);
@@ -744,6 +727,26 @@ function resolveFillSyncAlertCloseRatio({ event, intent, qtyScale, execQtyBase, 
       return clamp01((execQty / nativeTpQtyBase) * nativeTpQtyRatio);
     }
     if (Number.isFinite(nativeTpQtyRatio) && nativeTpQtyRatio > 0) return nativeTpQtyRatio;
+  }
+  const intentQtyFraction = clamp01(intent && intent.qty_fraction);
+  const scaledRatio = clamp01(qtyScale && qtyScale.ratio);
+  if (Number.isFinite(intentQtyFraction) && intentQtyFraction > 0) {
+    if (Number.isFinite(scaledRatio) && scaledRatio > 0) {
+      return clamp01(intentQtyFraction * scaledRatio);
+    }
+    return intentQtyFraction;
+  }
+  if (Number.isFinite(scaledRatio) && scaledRatio > 0) return scaledRatio;
+  const positionQtyBase = Number(positionCtx && positionCtx.qtyBase);
+  if (isTpP1Event(event)) {
+    return null;
+  }
+  if (Number.isFinite(execQty) && execQty > 0 && Number.isFinite(positionQtyBase) && positionQtyBase > 0) {
+    return clamp01(execQty / positionQtyBase);
+  }
+  if (eventUpper.startsWith("EXIT_TP_P0")) {
+    const nativeTp0QtyRatio = clamp01(positionCtx && positionCtx.nativeProtectionTp0QtyRatio);
+    if (Number.isFinite(nativeTp0QtyRatio) && nativeTp0QtyRatio > 0) return nativeTp0QtyRatio;
   }
   return null;
 }

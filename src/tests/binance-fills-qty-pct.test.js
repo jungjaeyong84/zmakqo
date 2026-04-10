@@ -72,7 +72,16 @@ async function run() {
     execQtyBase: 737,
     positionCtx: { qtyBase: 1474 },
   });
-  assert.ok(Math.abs(fallbackCloseRatio - 0.5) < 1e-12);
+  assert.strictEqual(fallbackCloseRatio, null, "tp1 alerts must not infer 100% from generic position ratio fallback");
+
+  const nativeTp1CloseRatio = resolveFillSyncAlertCloseRatio({
+    event: "EXIT_TP_P1_1.65P",
+    intent: null,
+    qtyScale: { qtyPct: null, ratio: null },
+    execQtyBase: 737,
+    positionCtx: { qtyBase: 737, nativeProtectionTpQtyBase: 1500, nativeProtectionTpQtyRatio: 0.49 },
+  });
+  assert.ok(Math.abs(nativeTp1CloseRatio - ((737 / 1500) * 0.49)) < 1e-12, "tp1 alerts should prefer native tp sizing over stale position size");
 
   const flatTrailIssues = __test.buildImmediateProjectionIssues({
     event: "EXIT_TRAIL_1P",
