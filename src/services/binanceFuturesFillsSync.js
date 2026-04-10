@@ -724,12 +724,16 @@ function resolveFillSyncAlertCloseRatio({ event, intent, qtyScale, execQtyBase, 
     return intentQtyFraction;
   }
   if (Number.isFinite(scaledRatio) && scaledRatio > 0) return scaledRatio;
+  const execQty = Number(execQtyBase);
+  const positionQtyBase = Number(positionCtx && positionCtx.qtyBase);
+  if (Number.isFinite(execQty) && execQty > 0 && Number.isFinite(positionQtyBase) && positionQtyBase > 0) {
+    return clamp01(execQty / positionQtyBase);
+  }
   if (eventUpper.startsWith("EXIT_TP_P0")) {
     const nativeTp0QtyRatio = clamp01(positionCtx && positionCtx.nativeProtectionTp0QtyRatio);
     if (Number.isFinite(nativeTp0QtyRatio) && nativeTp0QtyRatio > 0) return nativeTp0QtyRatio;
   }
   if (isTpP1Event(event)) {
-    const execQty = Number(execQtyBase);
     const nativeTpQtyRatio = clamp01(positionCtx && positionCtx.nativeProtectionTpQtyRatio);
     const nativeTpQtyBase = Number(positionCtx && positionCtx.nativeProtectionTpQtyBase);
     if (
@@ -1510,7 +1514,15 @@ async function resolveExternalExitEvent({
   const sameOrderAsNativeTp0 = isSameOrderAsNativeTp0(orderMeta, positionCtx);
   const sameOrderAsNativeTp1 = isSameOrderAsNativeTp1(orderMeta, positionCtx);
   const trailEligible = isTrailExitEligible(positionCtx, recentTp1);
-  const inferredTakeProfitKind = inferTakeProfitKindFromQtyPct(qtyPct, rules);
+  const observedQtyPct = Number.isFinite(Number(qtyPct))
+    ? Number(qtyPct)
+    : (() => {
+        const execQty = Number(trade && trade.qty);
+        const positionQtyBase = Number(positionCtx && positionCtx.qtyBase);
+        if (!Number.isFinite(execQty) || execQty <= 0 || !Number.isFinite(positionQtyBase) || positionQtyBase <= 0) return null;
+        return clamp01(execQty / positionQtyBase);
+      })();
+  const inferredTakeProfitKind = inferTakeProfitKindFromQtyPct(observedQtyPct, rules);
   const stageConstrainedTakeProfitKind = inferStageConstrainedTakeProfitKind(positionCtx, inferredTakeProfitKind);
   const recentAddProtectionRefresh = isRecentAddNativeProtectionRefresh({
     positionCtx,
@@ -1982,6 +1994,10 @@ async function syncMarketTrades({
             });
           }
         }
+      }
+
+      if (positionEntryCache && typeof positionEntryCache.delete === "function") {
+        positionEntryCache.delete(`BINANCEFUT:${sym}`);
       }
 
       if (!Number.isFinite(lastTradeMs) || tradeMs > lastTradeMs) {

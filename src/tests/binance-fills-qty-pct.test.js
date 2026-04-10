@@ -23,6 +23,8 @@ async function run() {
 
   const fn = __test && __test.computeSyncedQtyPct;
   assert.strictEqual(typeof fn, "function", "computeSyncedQtyPct export missing");
+  const resolveFillSyncAlertCloseRatio = __test && __test.resolveFillSyncAlertCloseRatio;
+  assert.strictEqual(typeof resolveFillSyncAlertCloseRatio, "function", "resolveFillSyncAlertCloseRatio export missing");
 
   const scaledByNotional = fn({
     intent: { qty_pct: 0.15, budget_used_krw: 15000 },
@@ -62,6 +64,15 @@ async function run() {
   });
   assert.strictEqual(noIntentQty.qtyPct, null);
   assert.strictEqual(noIntentQty.mode, "NO_INTENT_QTY");
+
+  const fallbackCloseRatio = resolveFillSyncAlertCloseRatio({
+    event: "EXIT_TP_P1_1.65P",
+    intent: null,
+    qtyScale: { qtyPct: null, ratio: null },
+    execQtyBase: 737,
+    positionCtx: { qtyBase: 1474 },
+  });
+  assert.ok(Math.abs(fallbackCloseRatio - 0.5) < 1e-12);
 
   const flatTrailIssues = __test.buildImmediateProjectionIssues({
     event: "EXIT_TRAIL_1P",
@@ -312,6 +323,21 @@ async function run() {
     qtyPct: 0.75,
   });
   assert.strictEqual(staleTp0IntentMustYieldTp1ByStage, "EXIT_TP_P1_1.65P");
+
+  const staleTp0IntentMustYieldTp1ByObservedQty = await resolveExternalExitEvent({
+    intent: { event: "EXIT_TP_P0_0.8P" },
+    trade: { symbol: "XRPUSDT", realizedPnl: 8.181, time: Date.parse("2026-04-10T08:00:00Z"), qty: 737 },
+    orderMeta: { orderId: 777102, orderType: "MARKET", closePosition: false, reduceOnly: true, clientOrderId: "dbj_tp1_observed_qty" },
+    positionCtx: {
+      trailActive: false,
+      tpP0Done: true,
+      tpP1Done: false,
+      qtyBase: 1474,
+    },
+    rules: { SL: -0.0165, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.0165, TP_P1_QTY: 0.5, TRAIL_R_MULTIPLE: 0.6, BE_PCT: 0.0015 },
+    qtyPct: null,
+  });
+  assert.strictEqual(staleTp0IntentMustYieldTp1ByObservedQty, "EXIT_TP_P1_1.65P");
 
   const syntheticTimeStop = await resolveExternalExitEvent({
     intent: { event: "EXIT_TIME_STOP_18B" },
