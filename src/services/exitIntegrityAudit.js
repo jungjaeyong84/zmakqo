@@ -8,10 +8,9 @@ const {
 const { getExchangeSettingsForProvider } = require("../utils/exchangeSettings");
 const { defaultMarketsFromEnv, normalizeMarketSymbolForProvider } = require("../utils/marketConfig");
 const { getFirestore } = require("../storage/firestore");
-const { getPositionRuntimeObservation, __test: observationTest } = require("../storage/positionRuntimeObservations");
+const { getPositionRuntimeObservation, resolveTrailObservationSnapshot } = require("../storage/positionRuntimeObservations");
 const { resolveExitRulesForPosition } = require("../engine/signalEngine");
 const { normalizePositionSide, resolveCloseSide, resolvePositionSideFromPosition } = require("../utils/positionSide");
-const { resolveTrailObservationSnapshot } = observationTest;
 
 function toBool(v, def = false) {
   if (v == null) return def;

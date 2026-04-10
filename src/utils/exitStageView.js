@@ -1,7 +1,7 @@
 "use strict";
 
 const { resolveExitRulesForPosition, computeRunnerExitStopPrice, resolveEntryRDistance, resolveTrailDelayState, resolveTpP0Pct } = require("../engine/signalEngine");
-const { resolveTrailObservationSnapshot } = require("../storage/positionRuntimeObservations").__test;
+const { resolveTrailObservationSnapshot } = require("../storage/positionRuntimeObservations");
 
 function toNum(v) {
   if (v === null || v === undefined || v === "") return null;

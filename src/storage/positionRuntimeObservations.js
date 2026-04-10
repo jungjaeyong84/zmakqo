@@ -176,6 +176,7 @@ module.exports = {
   upsertSameDirectionTrailProfitObservation,
   upsertTrailObservation,
   upsertSelfHealFailureObservation,
+  resolveTrailObservationSnapshot,
   __test: {
     observationId,
     buildTrailObservationPayload,

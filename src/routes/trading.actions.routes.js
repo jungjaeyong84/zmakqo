@@ -7,6 +7,7 @@ const { getPosition } = require("../storage/positions");
 const { getPosition: getPaperPosition, upsertPosition: upsertPaperPosition } = require("../storage/positionsPaper");
 const { upsertIntent, cancelPendingIntentsByMarket } = require("../storage/orderIntentsPaper");
 const { getSystemSettingsForProvider } = require("../storage/settings");
+const { getPositionRuntimeObservation, resolveTrailObservationSnapshot } = require("../storage/positionRuntimeObservations");
 const { toKstStringFromMs } = require("../utils/timeKst");
 const { fetchFuturesUserTrades } = require("../exchanges/binanceFuturesPrivate");
 const { syncBinanceFuturesFills } = require("../services/binanceFuturesFillsSync");
@@ -587,6 +588,8 @@ function createTradingActionsRoutes() {
       });
       const pos = await getPaperPosition({ exchange, symbol: market });
       const meta = (pos && typeof pos.meta === "object") ? pos.meta : {};
+      const observation = await getPositionRuntimeObservation({ exchange, symbol: market });
+      const trailSnapshot = resolveTrailObservationSnapshot({ meta, observation });
 
       return res.json({
         ok: true,
@@ -599,6 +602,11 @@ function createTradingActionsRoutes() {
         tp_p0_done: meta.tp_p0_done === true,
         tp_p1_done: meta.tp_p1_done === true,
         trail_active: meta.trail_active === true,
+        trail_high: trailSnapshot.trail_high,
+        trail_high_at_ms: trailSnapshot.trail_high_at_ms,
+        trail_low: trailSnapshot.trail_low,
+        trail_low_at_ms: trailSnapshot.trail_low_at_ms,
+        trail_source: trailSnapshot.trail_source || null,
         native_refresh_status: meta.native_protection_refresh_status || null,
       });
     } catch (err) {
