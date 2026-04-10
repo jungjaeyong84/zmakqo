@@ -417,6 +417,29 @@ async function run() {
     "BINANCEFUT|BNBUSDT|15m|1775799000000|LONG|LONG",
     "external entry transition should prefer recovered lineage over stale persisted lineage"
   );
+  const clearedTransitionLineage = __test.resolveActiveEntryLineageForSync({
+    externalEntryTransition: true,
+    persistedEntryLineage: {
+      entry_event_id: "BINANCEFUT|AXSUSDT|15m|1775747700000|LONG|LONG",
+      entry_signal_type: "LONG",
+      entry_exec_bar_ms: 1775747700000,
+    },
+    recoveredEntryLineage: {
+      entry_event_id: null,
+      entry_signal_type: "SYNC_FILL",
+      entry_exec_bar_ms: 1775803523144,
+    },
+  });
+  assert.strictEqual(
+    clearedTransitionLineage.entry_event_id,
+    null,
+    "external entry transition must not fall back to stale persisted lineage when recovered entry id is missing"
+  );
+  assert.strictEqual(
+    clearedTransitionLineage.entry_signal_type,
+    "SYNC_FILL",
+    "external entry transition should preserve recovered non-stale context while clearing stale lineage"
+  );
 
   const baseSizeAware = __test.evaluateLiveRescueAdd({
     cfg,

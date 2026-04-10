@@ -6592,8 +6592,18 @@ function resolveActiveEntryLineageForSync({
   const recoveredId = String(recovered.entry_event_id || "").trim() || null;
   if (externalEntryTransition) {
     if (recoveredId) return recovered;
-    if (persistedId) return persisted;
-    return recoveredId ? recovered : persisted;
+    return {
+      entry_event_id: null,
+      entry_signal_type: recovered.entry_signal_type || null,
+      entry_grade: recovered.entry_grade || null,
+      entry_qty_profile: recovered.entry_qty_profile || null,
+      entry_signal_bar_ms: Number.isFinite(Number(recovered.entry_signal_bar_ms))
+        ? Number(recovered.entry_signal_bar_ms)
+        : null,
+      entry_exec_bar_ms: Number.isFinite(Number(recovered.entry_exec_bar_ms))
+        ? Number(recovered.entry_exec_bar_ms)
+        : null,
+    };
   }
   if (persistedId) return persisted;
   if (recoveredId) return recovered;
