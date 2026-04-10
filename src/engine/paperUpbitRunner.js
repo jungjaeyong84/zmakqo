@@ -7547,6 +7547,29 @@ function resolveNativeProtectionPositionMeta(positionMeta = null) {
   return (positionMeta && typeof positionMeta === "object") ? positionMeta : {};
 }
 
+function buildLiveNativeProtectionRefreshArgs({
+  liveCfg,
+  exchange,
+  symbol,
+  side,
+  execPrice,
+  priceRef,
+  leverageMult,
+  exitRulesOverride,
+  positionMeta,
+} = {}) {
+  return {
+    liveCfg,
+    exchange,
+    symbol,
+    fallbackSide: side,
+    fallbackEntryPrice: Number.isFinite(execPrice) ? execPrice : priceRef,
+    fallbackLeverage: leverageMult,
+    exitRulesOverride,
+    posMeta: resolveNativeProtectionPositionMeta(positionMeta),
+  };
+}
+
 function shouldCleanupExternalFlatOrders({
   active = false,
   prevActive = false,
@@ -8574,16 +8597,19 @@ async function executeLiveFuturesOrder({
 
   if (!liveCfg.liveDryRun) {
     try {
-      nativeProtection = await refreshBinanceNativeProtectionWithRetry({
-        liveCfg,
-        exchange,
-        symbol,
-        fallbackSide: side,
-        fallbackEntryPrice: Number.isFinite(execPrice) ? execPrice : priceRef,
-        fallbackLeverage: leverageMult,
-        exitRulesOverride,
-        posMeta: nativeProtectionMeta,
-      });
+      nativeProtection = await refreshBinanceNativeProtectionWithRetry(
+        buildLiveNativeProtectionRefreshArgs({
+          liveCfg,
+          exchange,
+          symbol,
+          side,
+          execPrice,
+          priceRef,
+          leverageMult,
+          exitRulesOverride,
+          positionMeta: nativeProtectionMeta,
+        })
+      );
     } catch (nativeErr) {
       nativeProtection = {
         ok: false,
@@ -14760,6 +14786,7 @@ module.exports = {
     collectCriticalExitRuleViolations,
     resolveNativeProtectionStageState,
     resolveNativeProtectionPositionMeta,
+    buildLiveNativeProtectionRefreshArgs,
     computeBinanceNativeProtectionPrices,
     shouldRepairActiveExitRuntimeState,
     repairActivePositionExitRuntimeState,

@@ -8,6 +8,31 @@ async function run() {
   assert.deepStrictEqual(__test.resolveNativeProtectionPositionMeta(null), {}, "null position meta must coerce to empty object");
   const meta = { entry_event_id: "ENTRY__X" };
   assert.strictEqual(__test.resolveNativeProtectionPositionMeta(meta), meta, "object position meta should be passed through");
+  assert.strictEqual(typeof __test.buildLiveNativeProtectionRefreshArgs, "function", "buildLiveNativeProtectionRefreshArgs export missing");
+  assert.deepStrictEqual(
+    __test.buildLiveNativeProtectionRefreshArgs({
+      liveCfg: { liveEnabled: true },
+      exchange: "BINANCEFUT",
+      symbol: "DOGEUSDT",
+      side: "SELL",
+      execPrice: 0.0941,
+      priceRef: 0.094,
+      leverageMult: 2,
+      exitRulesOverride: { TP_P0: 0.008 },
+      positionMeta: meta,
+    }),
+    {
+      liveCfg: { liveEnabled: true },
+      exchange: "BINANCEFUT",
+      symbol: "DOGEUSDT",
+      fallbackSide: "SELL",
+      fallbackEntryPrice: 0.0941,
+      fallbackLeverage: 2,
+      exitRulesOverride: { TP_P0: 0.008 },
+      posMeta: meta,
+    },
+    "live native refresh args must carry positionMeta into posMeta"
+  );
 
   let called = 0;
   const result = await __test.notifyNativeProtectionResult({
