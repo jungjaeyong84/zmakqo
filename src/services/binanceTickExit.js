@@ -722,7 +722,7 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
         if (_tSide === "LONG") {
           const prevHigh = Number(_tMeta.trail_high);
           if (!Number.isFinite(prevHigh) || price > prevHigh) {
-            _trailPatch = { "meta.trail_high": price };
+            _trailPatch = { "meta.trail_high": price, "meta.trail_high_at_ms": tickNow };
             _trailField = "trail_high";
             _trailNext = price;
             _trailPrev = prevHigh;
@@ -730,7 +730,7 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
         } else if (_tSide === "SHORT") {
           const prevLow = Number(_tMeta.trail_low);
           if (!Number.isFinite(prevLow) || price < prevLow) {
-            _trailPatch = { "meta.trail_low": price };
+            _trailPatch = { "meta.trail_low": price, "meta.trail_low_at_ms": tickNow };
             _trailField = "trail_low";
             _trailNext = price;
             _trailPrev = prevLow;

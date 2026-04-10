@@ -174,7 +174,9 @@ function buildFlatMetaProjection(meta = {}) {
     tp_p1_pending_event: null,
     trail_active: false,
     trail_high: null,
+    trail_high_at_ms: null,
     trail_low: null,
+    trail_low_at_ms: null,
     native_protection_refresh_status: null,
     native_protection_refresh_reason: null,
     native_protection_refresh_context: null,
@@ -252,11 +254,23 @@ function reconcileBinancePositionMetaWithExchange({
   const hasTrailObservation = side === "SHORT"
     ? Number.isFinite(Number(nextMeta.trail_low))
     : Number.isFinite(Number(nextMeta.trail_high));
-  if (nextMeta.tp_p1_done === true && hasTrailObservation) {
+  const trailObservedAtMs = side === "SHORT"
+    ? Number(nextMeta.trail_low_at_ms)
+    : Number(nextMeta.trail_high_at_ms);
+  const tp1ObservedAtMs = Number(nextMeta.tp_p1_bar_ms) || Date.parse(String(nextMeta.tp_p1_at || ""));
+  const hasFreshTrailObservation = hasTrailObservation && (
+    !Number.isFinite(tp1ObservedAtMs)
+    || tp1ObservedAtMs <= 0
+    || (Number.isFinite(trailObservedAtMs) && trailObservedAtMs >= tp1ObservedAtMs)
+  );
+  if (nextMeta.tp_p1_done === true && hasFreshTrailObservation) {
     nextMeta.trail_active = true;
   }
 
   const invariants = [];
+  if (nextMeta.tp_p1_done === true && hasTrailObservation && !hasFreshTrailObservation) {
+    invariants.push("STALE_TRAIL_OBSERVATION");
+  }
   if (nextMeta.trail_active === true && nextMeta.tp_p1_done !== true) {
     invariants.push("TRAIL_WITHOUT_TP1");
     nextMeta.trail_active = false;

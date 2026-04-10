@@ -3,7 +3,7 @@
 const assert = require("assert");
 const { __test } = require("../engine/paperUpbitRunner");
 
-function run() {
+async function run() {
   assert.strictEqual(typeof __test.resolveLiveRescueAddConfig, "function", "resolveLiveRescueAddConfig export missing");
   assert.strictEqual(typeof __test.evaluateLiveRescueAdd, "function", "evaluateLiveRescueAdd export missing");
   assert.strictEqual(typeof __test.resolveReplayRescueAddConfig, "function", "resolveReplayRescueAddConfig export missing");
@@ -21,6 +21,8 @@ function run() {
   assert.strictEqual(typeof __test.applyAddAndProtectionMetaOnFill, "function", "applyAddAndProtectionMetaOnFill export missing");
   assert.strictEqual(typeof __test.applyBarLoopObservationMetaUpdate, "function", "applyBarLoopObservationMetaUpdate export missing");
   assert.strictEqual(typeof __test.applyTpP1IntentFillMetaUpdate, "function", "applyTpP1IntentFillMetaUpdate export missing");
+  assert.strictEqual(typeof __test.buildFuturesPositionSyncKey, "function", "buildFuturesPositionSyncKey export missing");
+  assert.strictEqual(typeof __test.serializeFuturesPositionSync, "function", "serializeFuturesPositionSync export missing");
   assert.strictEqual(typeof __test.buildOpenCloseProjectionResetMetaPatch, "function", "buildOpenCloseProjectionResetMetaPatch export missing");
   assert.strictEqual(typeof __test.buildOpenCloseTransitionMetaPatch, "function", "buildOpenCloseTransitionMetaPatch export missing");
   assert.strictEqual(typeof __test.buildClosingFillMetaPatch, "function", "buildClosingFillMetaPatch export missing");
@@ -225,6 +227,40 @@ function run() {
   assert.strictEqual(tpP1Update.meta.native_protection_tp0_order_id, null);
   assert.strictEqual(tpP1Update.nextTrailHigh, 101.6);
   assert.strictEqual(tpP1Update.nextTrailLow, null);
+
+  assert.strictEqual(
+    __test.buildFuturesPositionSyncKey("binancefut", "dogeusdt"),
+    "BINANCEFUT::DOGEUSDT"
+  );
+
+  const ordered = [];
+  const firstSync = __test.serializeFuturesPositionSync({
+    exchange: "BINANCEFUT",
+    symbol: "DOGEUSDT",
+    runner: async () => {
+      ordered.push("first-start");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      ordered.push("first-end");
+      return "first";
+    },
+  });
+  const secondSync = __test.serializeFuturesPositionSync({
+    exchange: "BINANCEFUT",
+    symbol: "DOGEUSDT",
+    runner: async () => {
+      ordered.push("second-start");
+      ordered.push("second-end");
+      return "second";
+    },
+  });
+  const [firstResult, secondResult] = await Promise.all([firstSync, secondSync]);
+  assert.strictEqual(firstResult, "first");
+  assert.strictEqual(secondResult, "second");
+  assert.deepStrictEqual(
+    ordered,
+    ["first-start", "first-end", "second-start", "second-end"],
+    "same-symbol futures sync should serialize in-order"
+  );
 
   const resetPatch = __test.buildOpenCloseProjectionResetMetaPatch({ closing: false });
   assert.strictEqual(resetPatch.trail_active, false);
@@ -863,10 +899,9 @@ function run() {
   assert.strictEqual(committedSameBarBlocked.reason, "REPLAY_RESCUE_ADD_SAME_BAR_BLOCKED");
 }
 
-try {
-  run();
+run().then(() => {
   console.log("LIVE_RESCUE_ADD_PLAN_TEST_OK");
-} catch (err) {
+}).catch((err) => {
   console.error("LIVE_RESCUE_ADD_PLAN_TEST_FAIL", err && err.stack ? err.stack : err);
   process.exit(1);
-}
+});

@@ -1,5 +1,7 @@
 "use strict";
 
+const crypto = require("crypto");
+const { getFirestore } = require("../storage/firestore");
 const { resolveBinanceFuturesKeys } = require("../utils/binanceKeyResolver");
 const {
   createFuturesListenKey,
@@ -13,11 +15,23 @@ const { syncBinanceFuturesFills } = require("./binanceFuturesFillsSync");
 const KEEPALIVE_INTERVAL_MS = Math.max(60_000, Number(process.env.BINANCE_USER_STREAM_KEEPALIVE_MS) || (30 * 60 * 1000));
 const RECONNECT_DELAY_MS = Math.max(5_000, Number(process.env.BINANCE_USER_STREAM_RECONNECT_MS) || 10_000);
 const EVENT_SYNC_DEDUPE_MS = Math.max(1_000, Number(process.env.BINANCE_USER_STREAM_SYNC_DEDUPE_MS) || 5_000);
+const USER_STREAM_LEASE_ENABLED = String(process.env.BINANCE_USER_STREAM_LEASE_ENABLED || "1") !== "0";
+const USER_STREAM_LEASE_MIN_TTL_MS = Math.max(15_000, Number(process.env.BINANCE_USER_STREAM_LEASE_TTL_MS) || 45_000);
+const USER_STREAM_LEASE_DOC = String(
+  process.env.BINANCE_USER_STREAM_LEASE_DOC || "runtime/binance_user_stream_leader"
+).trim();
+const userStreamInstanceId = [
+  process.env.K_SERVICE || "local",
+  process.env.K_REVISION || "rev",
+  process.pid,
+  crypto.randomBytes(4).toString("hex"),
+].join(":");
 
 let ws = null;
 let started = false;
 let reconnectTimer = null;
 let keepaliveTimer = null;
+let leaseHeartbeatTimer = null;
 let currentListenKey = null;
 let currentApiKey = null;
 let stopRequested = false;
@@ -99,6 +113,94 @@ function clearRecentSyncMark(symbol) {
   const sym = normalizeSymbol(symbol);
   if (!sym) return false;
   return recentEventSyncAt.delete(sym);
+}
+
+async function acquireUserStreamLease({ ttlMs = USER_STREAM_LEASE_MIN_TTL_MS } = {}) {
+  if (!USER_STREAM_LEASE_ENABLED) return { ok: true, acquired: true, leaseDisabled: true, holder: userStreamInstanceId };
+  const ttl = Math.max(USER_STREAM_LEASE_MIN_TTL_MS, Number(ttlMs) || USER_STREAM_LEASE_MIN_TTL_MS);
+  const now = Date.now();
+  const leaseUntil = now + ttl;
+  const db = getFirestore();
+  const ref = db.doc(USER_STREAM_LEASE_DOC);
+  try {
+    let acquired = false;
+    let holder = null;
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const data = snap.exists ? (snap.data() || {}) : {};
+      const owner = String(data.owner || "");
+      const leaseUntilMs = Number(data.lease_until_ms);
+      const heartbeatMs = Number(data.heartbeat_ms);
+      const expired = !Number.isFinite(leaseUntilMs) || leaseUntilMs <= now;
+      const heartbeatFreshMaxMs = Math.max(ttl * 2, 10000);
+      const heartbeatFresh = Number.isFinite(heartbeatMs) && (now - heartbeatMs) <= heartbeatFreshMaxMs;
+      const staleHolder = !!owner && owner !== userStreamInstanceId && !expired && !heartbeatFresh;
+      if (!owner || owner === userStreamInstanceId || expired || staleHolder) {
+        acquired = true;
+        tx.set(ref, {
+          owner: userStreamInstanceId,
+          lease_until_ms: leaseUntil,
+          heartbeat_ms: now,
+          heartbeat_at: new Date(now).toISOString(),
+        }, { merge: true });
+      } else {
+        holder = owner || null;
+      }
+    });
+    return { ok: true, acquired, holder, leaseUntil };
+  } catch (e) {
+    return { ok: false, acquired: false, error: e && e.message ? e.message : String(e) };
+  }
+}
+
+async function heartbeatUserStreamLease({ ttlMs = USER_STREAM_LEASE_MIN_TTL_MS } = {}) {
+  if (!USER_STREAM_LEASE_ENABLED) return { ok: true, leaseDisabled: true };
+  const ttl = Math.max(USER_STREAM_LEASE_MIN_TTL_MS, Number(ttlMs) || USER_STREAM_LEASE_MIN_TTL_MS);
+  const now = Date.now();
+  const leaseUntil = now + ttl;
+  const db = getFirestore();
+  const ref = db.doc(USER_STREAM_LEASE_DOC);
+  try {
+    let ok = false;
+    let holder = null;
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const data = snap.data() || {};
+      const owner = String(data.owner || "");
+      if (owner !== userStreamInstanceId) {
+        holder = owner || null;
+        return;
+      }
+      ok = true;
+      tx.set(ref, {
+        lease_until_ms: leaseUntil,
+        heartbeat_ms: now,
+        heartbeat_at: new Date(now).toISOString(),
+      }, { merge: true });
+    });
+    return { ok, holder, leaseUntil };
+  } catch (e) {
+    return { ok: false, error: e && e.message ? e.message : String(e) };
+  }
+}
+
+async function releaseUserStreamLease() {
+  if (!USER_STREAM_LEASE_ENABLED) return;
+  const db = getFirestore();
+  const ref = db.doc(USER_STREAM_LEASE_DOC);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const data = snap.data() || {};
+      if (String(data.owner || "") !== userStreamInstanceId) return;
+      tx.set(ref, {
+        lease_until_ms: Date.now() - 1,
+        released_at: new Date().toISOString(),
+      }, { merge: true });
+    });
+  } catch (_) {}
 }
 
 async function syncSymbolsForEvent(payload = {}, {
@@ -187,22 +289,55 @@ function scheduleReconnect() {
   }, RECONNECT_DELAY_MS);
 }
 
+function stopLeaseHeartbeat() {
+  if (leaseHeartbeatTimer) clearInterval(leaseHeartbeatTimer);
+  leaseHeartbeatTimer = null;
+}
+
+function startLeaseHeartbeat() {
+  stopLeaseHeartbeat();
+  if (!USER_STREAM_LEASE_ENABLED) return;
+  const everyMs = Math.max(5_000, Math.floor(USER_STREAM_LEASE_MIN_TTL_MS / 3));
+  leaseHeartbeatTimer = setInterval(() => {
+    heartbeatUserStreamLease({ ttlMs: USER_STREAM_LEASE_MIN_TTL_MS }).then((heartbeat) => {
+      if (heartbeat && heartbeat.ok === false) {
+        console.warn("[BINANCE_USER_STREAM_LEASE_LOST]", heartbeat.holder || heartbeat.error || "UNKNOWN");
+        try { ws && ws.close(); } catch (_) {}
+      }
+    }).catch(() => {
+      try { ws && ws.close(); } catch (_) {}
+    });
+  }, everyMs);
+}
+
 async function connectOnce() {
   const WebSocketCtor = getWebSocketCtor();
   if (!WebSocketCtor) return { ok: false, reason: "WS_UNAVAILABLE" };
+  const lease = await acquireUserStreamLease({ ttlMs: USER_STREAM_LEASE_MIN_TTL_MS });
+  if (!lease.ok) return { ok: false, reason: "LEASE_FAIL", error: lease.error || "UNKNOWN" };
+  if (lease.acquired !== true) {
+    return { ok: false, skipped: true, reason: "LEASE_HELD", holder: lease.holder || null };
+  }
   const keys = await resolveBinanceFuturesKeys({ ttlMs: 5000 });
-  if (!keys || !keys.apiKey || !keys.apiSecret) return { ok: false, reason: "BINANCEFUT_KEYS_MISSING" };
+  if (!keys || !keys.apiKey || !keys.apiSecret) {
+    await releaseUserStreamLease();
+    return { ok: false, reason: "BINANCEFUT_KEYS_MISSING" };
+  }
 
   currentApiKey = keys.apiKey;
   const listenKeyRes = await createFuturesListenKey({ apiKey: keys.apiKey });
   const listenKey = String(listenKeyRes && listenKeyRes.listenKey || "").trim();
-  if (!listenKey) return { ok: false, reason: "LISTEN_KEY_MISSING" };
+  if (!listenKey) {
+    await releaseUserStreamLease();
+    return { ok: false, reason: "LISTEN_KEY_MISSING" };
+  }
   currentListenKey = listenKey;
 
   const url = buildUserDataStreamUrl(listenKey);
   ws = new WebSocketCtor(url);
 
   const onOpen = () => {
+    startLeaseHeartbeat();
     if (keepaliveTimer) clearInterval(keepaliveTimer);
     keepaliveTimer = setInterval(() => {
       if (!currentListenKey || !currentApiKey) return;
@@ -230,11 +365,13 @@ async function connectOnce() {
   };
 
   const onClose = () => {
+    stopLeaseHeartbeat();
     if (keepaliveTimer) clearInterval(keepaliveTimer);
     keepaliveTimer = null;
     ws = null;
     clearCurrentListenKey().catch(() => {});
     currentListenKey = null;
+    releaseUserStreamLease().catch(() => {});
     if (!stopRequested) scheduleReconnect();
   };
 
@@ -271,6 +408,7 @@ async function stopBinanceUserDataStream() {
   started = false;
   if (reconnectTimer) clearTimeout(reconnectTimer);
   reconnectTimer = null;
+  stopLeaseHeartbeat();
   if (keepaliveTimer) clearInterval(keepaliveTimer);
   keepaliveTimer = null;
   try {
@@ -280,6 +418,7 @@ async function stopBinanceUserDataStream() {
   await clearCurrentListenKey();
   currentListenKey = null;
   currentApiKey = null;
+  await releaseUserStreamLease();
   recentEventSyncAt.clear();
   return { ok: true, stopped: true };
 }
@@ -292,6 +431,11 @@ module.exports = {
     buildUserDataStreamUrl,
     extractSymbolsFromUserDataEvent,
     isTradeExecutionUpdate,
+    acquireUserStreamLease,
+    heartbeatUserStreamLease,
+    releaseUserStreamLease,
+    USER_STREAM_LEASE_DOC,
+    userStreamInstanceId,
     clearRecentSyncMark,
     syncSymbolsForEvent,
     handleUserDataMessage,

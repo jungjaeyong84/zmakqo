@@ -91,6 +91,7 @@ const recentFillsCache = {
   ts: 0,
   rows: [],
 };
+const futuresPositionSyncQueue = new Map();
 const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
 const OPENCLAW_MARKET_REGIME_BOARD_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_openclaw_market_regime_board_latest.json");
 const PERFORMANCE_KPI_UPGRADE_CONTRACT_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_performance_kpi_upgrade_contract_latest.json");
@@ -831,14 +832,24 @@ function computeTrailingMetaUpdate({ exchange, bar, position, posMeta, positionS
     "LONG"
   ).toUpperCase();
   const updates = {};
+  const trailObservedAtMs = resolveEventRefMs(
+    bar && (bar.bar_close_time_utc_ms ?? bar.close_time_utc_ms ?? bar.closeTime ?? bar.t),
+    Date.now()
+  );
   if (side === "SHORT") {
     const prevLow = Number(posMeta.trail_low);
     const nextLow = Number.isFinite(prevLow) ? Math.min(prevLow, closePx) : closePx;
-    if (!Number.isFinite(prevLow) || nextLow !== prevLow) updates.trail_low = nextLow;
+    if (!Number.isFinite(prevLow) || nextLow !== prevLow) {
+      updates.trail_low = nextLow;
+      updates.trail_low_at_ms = trailObservedAtMs;
+    }
   } else {
     const prevHigh = Number(posMeta.trail_high);
     const nextHigh = Number.isFinite(prevHigh) ? Math.max(prevHigh, closePx) : closePx;
-    if (!Number.isFinite(prevHigh) || nextHigh !== prevHigh) updates.trail_high = nextHigh;
+    if (!Number.isFinite(prevHigh) || nextHigh !== prevHigh) {
+      updates.trail_high = nextHigh;
+      updates.trail_high_at_ms = trailObservedAtMs;
+    }
   }
   if (!Object.keys(updates).length) return null;
   return updates;
@@ -3715,7 +3726,9 @@ function applyTpP1IntentFillMetaUpdate({
         fillPrice,
       }),
       trail_high: nextTrailHigh,
+      trail_high_at_ms: nextTrailHigh != null ? (Number(execBarCloseMs) || Date.now()) : null,
       trail_low: nextTrailLow,
+      trail_low_at_ms: nextTrailLow != null ? (Number(execBarCloseMs) || Date.now()) : null,
       trail_active: false,
       tp_p1_pending: false,
       tp_p1_pending_at_ms: null,
@@ -3768,7 +3781,9 @@ function buildOpenCloseProjectionResetMetaPatch({ closing = false } = {}) {
     tp_p1_price: null,
     tp_p1_target_price: null,
     trail_high: null,
+    trail_high_at_ms: null,
     trail_low: null,
+    trail_low_at_ms: null,
     trail_active: false,
     tp_p1_pending: false,
     tp_p1_pending_at_ms: null,
@@ -4061,9 +4076,13 @@ function reconcileTpP1MetaFromFill({ posMeta, pos, fill } = {}) {
     trail_delay_mode: "ONE_BAR_OR_MFE",
   };
   if (side === "SHORT") {
-    if (Number.isFinite(execPrice)) patch.trail_low = execPrice;
+    if (Number.isFinite(execPrice)) {
+      patch.trail_low = execPrice;
+      patch.trail_low_at_ms = Number.isFinite(fillMs) ? fillMs : Date.now();
+    }
   } else if (Number.isFinite(execPrice)) {
     patch.trail_high = execPrice;
+    patch.trail_high_at_ms = Number.isFinite(fillMs) ? fillMs : Date.now();
   }
   return mergeMeta(posMeta, patch);
 }
@@ -4124,7 +4143,9 @@ async function applyTpP1SkipOnCancel({
         })
       : null,
     trail_high: keepFullAndTrail ? trailHigh : null,
+    trail_high_at_ms: keepFullAndTrail && trailHigh != null ? (Number(bar && (bar.bar_close_time_utc_ms || bar.t)) || Date.now()) : null,
     trail_low: keepFullAndTrail ? trailLow : null,
+    trail_low_at_ms: keepFullAndTrail && trailLow != null ? (Number(bar && (bar.bar_close_time_utc_ms || bar.t)) || Date.now()) : null,
     trail_active: false,
     tp_p1_pending: false,
     tp_p1_pending_at_ms: null,
@@ -7175,6 +7196,26 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
   return { ok: true, position: payload, active };
 }
 
+function buildFuturesPositionSyncKey(exchange, symbol) {
+  return `${String(exchange || "").toUpperCase()}::${String(symbol || "").toUpperCase()}`;
+}
+
+async function serializeFuturesPositionSync({ exchange, symbol, runner } = {}) {
+  const key = buildFuturesPositionSyncKey(exchange, symbol);
+  const prev = futuresPositionSyncQueue.get(key) || Promise.resolve();
+  const current = prev
+    .catch(() => {})
+    .then(async () => runner());
+  futuresPositionSyncQueue.set(key, current);
+  try {
+    return await current;
+  } finally {
+    if (futuresPositionSyncQueue.get(key) === current) {
+      futuresPositionSyncQueue.delete(key);
+    }
+  }
+}
+
 async function syncFuturesPositionOnly({ runId, exchange, symbol } = {}) {
   const ex = String(exchange || "").toUpperCase();
   if (!ex.includes("BINANCE")) return { ok: false, skipped: true, reason: "EXCHANGE_NOT_BINANCE" };
@@ -7183,14 +7224,18 @@ async function syncFuturesPositionOnly({ runId, exchange, symbol } = {}) {
     return { ok: false, skipped: true, reason: "BINANCEFUT_KEYS_MISSING" };
   }
   const riskBudget = await resolveRiskBudget(symbol, exchange);
-  return syncBinanceFuturesPosition({
-    runId,
+  return serializeFuturesPositionSync({
     exchange,
     symbol,
-    riskBudget,
-    liveCfg,
-    // Avoid unconditional refresh on every market/tick; only force when explicitly marked.
-    forceRefresh: shouldForceFuturesRefresh(symbol),
+    runner: () => syncBinanceFuturesPosition({
+      runId,
+      exchange,
+      symbol,
+      riskBudget,
+      liveCfg,
+      // Avoid unconditional refresh on every market/tick; only force when explicitly marked.
+      forceRefresh: shouldForceFuturesRefresh(symbol),
+    }),
   });
 }
 
@@ -14933,6 +14978,8 @@ module.exports = {
     mergeCanonicalDecisionDetail,
     stripExchangeOwnedProjectionMeta,
     resolveOptimisticNativeProtectionMetaPatch,
+    buildFuturesPositionSyncKey,
+    serializeFuturesPositionSync,
     shouldForceImmediateLiveFuturesReconcile,
     sanitizeBarLoopMetaUpdates,
     applyBarLoopObservationMetaUpdate,

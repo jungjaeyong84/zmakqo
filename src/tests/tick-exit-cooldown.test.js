@@ -11,9 +11,10 @@ function run() {
   assert.strictEqual(typeof __test.heartbeatTickExitLease, "function", "tick exit lease heartbeat helper missing");
   assert.strictEqual(typeof __test.runTickExitSelfHealPhase, "function", "tick exit self-heal helper missing");
 
-  const obsPatch = __test.buildTickTrailObservationDocUpdate({ "meta.trail_high": 1.23 }, "2026-04-10T00:00:00.000Z");
+  const obsPatch = __test.buildTickTrailObservationDocUpdate({ "meta.trail_high": 1.23, "meta.trail_high_at_ms": 123 }, "2026-04-10T00:00:00.000Z");
   assert.deepStrictEqual(obsPatch, {
     "meta.trail_high": 1.23,
+    "meta.trail_high_at_ms": 123,
     updated_at: "2026-04-10T00:00:00.000Z",
   }, "tick exit should only write trail observation fields directly");
   assert.strictEqual(
@@ -26,12 +27,12 @@ function run() {
   assert.strictEqual(typeof runnerTest.sanitizeBarLoopMetaUpdates, "function", "sanitizeBarLoopMetaUpdates export missing");
   const trailUpdate = runnerTest.computeTrailingMetaUpdate({
     exchange: "BINANCEFUT",
-    bar: { close: 101 },
+    bar: { close: 101, bar_close_time_utc_ms: 555 },
     position: { state: "ACTIVE", position_side: "LONG" },
     posMeta: { tp_p1_done: true, trail_active: false, trail_high: 100, exit_rules_override: { TRAIL_R_MULTIPLE: 0.6 } },
     positionSideFallback: "LONG",
   });
-  assert.deepStrictEqual(trailUpdate, { trail_high: 101 }, "runner trailing update should only write observation fields");
+  assert.deepStrictEqual(trailUpdate, { trail_high: 101, trail_high_at_ms: 555 }, "runner trailing update should only write observation fields");
   assert.deepStrictEqual(
     runnerTest.sanitizeBarLoopMetaUpdates({
       tp_p1_pending: true,

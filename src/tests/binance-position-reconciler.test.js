@@ -50,6 +50,8 @@ async function run() {
       tp_p1_done: true,
       trail_active: false,
       trail_high: 111,
+      trail_high_at_ms: 200,
+      tp_p1_bar_ms: 150,
       native_protection_tp0_order_id: "old-tp0",
       native_protection_tp_order_id: "old-tp1",
     },
@@ -69,6 +71,27 @@ async function run() {
   assert.strictEqual(trailPatch.meta.native_protection_tp_order_id, "tp1-1");
   assert.strictEqual(trailPatch.meta.trail_active, true);
   assert.ok(trailPatch.invariants.includes("TP1_DONE_WITH_TP_ORDER"));
+
+  const staleTrail = reconcileBinancePositionMetaWithExchange({
+    active: true,
+    meta: {
+      tp_p1_done: true,
+      trail_active: false,
+      trail_high: 111,
+      trail_high_at_ms: 100,
+      tp_p1_bar_ms: 150,
+    },
+    positionSide: "LONG",
+    qtyBase: 12,
+    entryPrice: 100,
+    leverage: 2,
+    openOrders: [],
+    algoOrders: [
+      { orderId: "stop-1", type: "STOP_MARKET", side: "SELL", closePosition: true, stopPrice: "109" },
+    ],
+  });
+  assert.strictEqual(staleTrail.meta.trail_active, false);
+  assert.ok(staleTrail.invariants.includes("STALE_TRAIL_OBSERVATION"));
 
   const invalidTrail = reconcileBinancePositionMetaWithExchange({
     active: true,
