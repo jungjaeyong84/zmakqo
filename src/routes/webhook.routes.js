@@ -798,8 +798,19 @@ function createWebhookRoutes() {
     };
   }
 
+  function resolveAcceptedWebhookTokens() {
+    const values = [
+      process.env.WEBHOOK_TOKEN,
+      process.env.WEBHOOK_TOKEN_PREVIOUS,
+    ];
+    return values
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+  }
+
   function checkToken(req, res, next) {
-    const required = process.env.WEBHOOK_TOKEN || "";
+    const accepted = resolveAcceptedWebhookTokens();
+    const required = accepted[0] || "";
     const isProd = process.env.NODE_ENV === "production";
     if (isProd && !required) {
       console.error("[WEBHOOK_SECURITY] WEBHOOK_TOKEN not configured in production");
@@ -811,7 +822,10 @@ function createWebhookRoutes() {
     }
     if (!required) return next();
     const got = req.headers["x-webhook-token"] || req.query.token || "";
-    if (String(got) !== String(required)) return res.status(403).json({ ok: false, stage: "WEBHOOK_FORBIDDEN" });
+    const gotText = String(got || "").trim();
+    if (!accepted.includes(gotText)) {
+      return res.status(403).json({ ok: false, stage: "WEBHOOK_FORBIDDEN" });
+    }
     return next();
   }
 
