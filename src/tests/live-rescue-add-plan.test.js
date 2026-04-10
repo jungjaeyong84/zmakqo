@@ -319,11 +319,13 @@ async function run() {
   assert.strictEqual(openingTransitionReset.initial_stop_price, null);
   assert.strictEqual(openingTransitionReset.trail_active, false);
   assert.strictEqual(openingTransitionReset.add_chain_last_qty_base, null);
+  assert.strictEqual(openingTransitionReset.same_direction_trail_profit_exit_wall_ms, null);
 
   const futuresTransitionReset = __test.buildOpenCloseTransitionMetaPatch({ closing: false, includeEntryRiskReset: false });
   assert.strictEqual(futuresTransitionReset.initial_stop_price, undefined);
   assert.strictEqual(futuresTransitionReset.entry_r_distance, undefined);
   assert.strictEqual(futuresTransitionReset.trail_active, false);
+  assert.strictEqual(futuresTransitionReset.same_direction_trail_profit_exit_event, null);
 
   const closingPatch = __test.buildClosingFillMetaPatch({
     execBarCloseMs: 456,
@@ -334,6 +336,7 @@ async function run() {
   assert.strictEqual(closingPatch.last_exit_dir, "LONG");
   assert.strictEqual(closingPatch.exit_profile, null);
   assert.strictEqual(closingPatch.exit_profile_rollback_active, undefined);
+  assert.strictEqual(closingPatch.same_direction_trail_profit_exit_dir, null);
 
   const closingPatchWithRollback = __test.buildClosingFillMetaPatch({
     execBarCloseMs: 789,
@@ -342,6 +345,7 @@ async function run() {
   });
   assert.strictEqual(closingPatchWithRollback.exit_profile_rollback_active, false);
   assert.strictEqual(closingPatchWithRollback.exit_profile_rollback_until_ms, null);
+  assert.strictEqual(closingPatchWithRollback.same_direction_trail_profit_exit_source, null);
 
   const openingPatchSimple = __test.buildOpeningFillMetaPatch({
     leverageValue: 2,
@@ -364,6 +368,7 @@ async function run() {
   assert.strictEqual(openingPatchSimple.initial_stop_price, undefined);
   assert.strictEqual(openingPatchSimple.openclaw_market_regime_cohort, "TRANSITION");
   assert.strictEqual(openingPatchSimple.entry_event_id, "ENTRY-1");
+  assert.strictEqual(openingPatchSimple.same_direction_trail_profit_exit_realized_pnl, null);
 
   const openingPatchFull = __test.buildOpeningFillMetaPatch({
     leverageValue: 3,
@@ -391,6 +396,7 @@ async function run() {
   assert.strictEqual(openingPatchFull.initial_stop_source, "STRUCTURE");
   assert.strictEqual(openingPatchFull.entry_r_distance, 1.2);
   assert.strictEqual(openingPatchFull.trail_r_multiple, 0.6);
+  assert.strictEqual(openingPatchFull.same_direction_trail_profit_exit_wall_ms, null);
 
   const baseSizeAware = __test.evaluateLiveRescueAdd({
     cfg,

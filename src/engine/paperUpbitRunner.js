@@ -2797,6 +2797,16 @@ function buildSameDirectionTrailProfitObservationPayload(metaPatch = null) {
   };
 }
 
+function buildSameDirectionTrailProfitLegacyResetMetaPatch() {
+  return {
+    same_direction_trail_profit_exit_dir: null,
+    same_direction_trail_profit_exit_wall_ms: null,
+    same_direction_trail_profit_exit_event: null,
+    same_direction_trail_profit_exit_realized_pnl: null,
+    same_direction_trail_profit_exit_source: null,
+  };
+}
+
 function resolveSameDirectionTrailProfitCooldownBlock({
   cfg,
   posMeta,
@@ -3884,6 +3894,7 @@ function buildOpenCloseTransitionMetaPatch({ closing = false, includeEntryRiskRe
     add_chain_last_qty_base: null,
     add_chain_last_loss_pct: null,
     add_chain_base_qty_pct: closing ? null : undefined,
+    ...buildSameDirectionTrailProfitLegacyResetMetaPatch(),
     ...buildOpenCloseProjectionResetMetaPatch({ closing }),
   };
 }
@@ -3920,6 +3931,7 @@ function buildClosingFillMetaPatch({
     exit_profile_rollback_until_ms: includeExitProfileRollback ? null : undefined,
     exit_profile_rollback_reason: includeExitProfileRollback ? null : undefined,
     exit_policy_source: null,
+    ...buildSameDirectionTrailProfitLegacyResetMetaPatch(),
   };
 }
 
@@ -3970,6 +3982,7 @@ function buildOpeningFillMetaPatch({
       ? Number(marketRegimeRow.objective_score)
       : null,
     openclaw_market_regime_drop_verdict: marketRegimeRow ? String(marketRegimeRow.drop_verdict || "").trim().toUpperCase() || null : null,
+    ...buildSameDirectionTrailProfitLegacyResetMetaPatch(),
     ...buildEntryLineageMetaPatch({
       entry_event_id: entryEventIdFromIntent || null,
       entry_signal_type: entrySignalTypeFromIntent || null,
@@ -15175,6 +15188,7 @@ module.exports = {
     resolveSameDirectionTrailProfitCooldownConfig,
     buildSameDirectionTrailProfitCooldownMetaPatch,
     buildSameDirectionTrailProfitObservationPayload,
+    buildSameDirectionTrailProfitLegacyResetMetaPatch,
     resolveSameDirectionTrailProfitCooldownBlock,
     resolveSameDirectionTrailProfitCooldownSnapshot,
     loadSameDirectionTrailProfitObservationSafe,
