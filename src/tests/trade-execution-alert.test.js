@@ -67,6 +67,7 @@ async function run() {
   assert.ok(timeStop, "time stop message should exist");
   assert.strictEqual(timeStop.title, "SOLUSDT TIME_STOP_18B 전량 청산");
   assert.ok(timeStop.body.includes("종류: 시간청산 18봉 (pre-TP1)"), "pre-tp1 time stop label should be explicit");
+  assert.ok(timeStop.body.includes("실행계약: TIME_STOP_18B"), "exit alert should show executed contract");
   assert.ok(timeStop.body.includes("시장군: RESCUE"), "exit alert should include cohort");
   assert.ok(timeStop.body.includes("이벤트: EXIT_TIME_STOP_18B"), "raw exit event should remain visible");
 
@@ -88,8 +89,9 @@ async function run() {
   assert.ok(tp1Failure, "tp1 failure message should exist");
   assert.strictEqual(tp1Failure.title, "SOLUSDT 익절(TP1) 1.65% 주문 실패");
   assert.ok(tp1Failure.body.includes("방향: 숏 청산"), "failure message should include exit direction");
+  assert.ok(tp1Failure.body.includes("실행계약: TP1_1.65"), "failure message should show executed contract");
   assert.ok(tp1Failure.body.includes("주문비율: 50%"), "failure message should include close ratio");
-  assert.ok(tp1Failure.body.includes("TRAIL_0.9R"), "failure message should include R-based trailing rule");
+  assert.ok(tp1Failure.body.includes("전략계약: SL_1.65 / TP1_3.25 / TRAIL_0.9R / RUNNER_MIN_2 / BE_0.25"), "failure message should separate strategy contract from executed stage");
   assert.ok(tp1Failure.body.includes("RUNNER_MIN_2"), "failure message should include runner floor rule");
   assert.ok(tp1Failure.body.includes("실패사유: MARGIN_TYPE_SET_FAILED"), "failure reason should be explicit");
   assert.ok(tp1Failure.body.includes("메모: margin type change rejected"), "failure note should be explicit");
@@ -111,6 +113,8 @@ async function run() {
   });
   assert.ok(tp0Failure, "tp0 failure message should exist");
   assert.ok(tp0Failure.title.includes("익절(TP0) 0.8% 주문 실패"), "tp0 failure title should be explicit");
+  assert.ok(tp0Failure.body.includes("실행계약: TP0_0.8"), "tp0 failure should show executed contract");
+  assert.ok(tp0Failure.body.includes("전략계약: SL_1.65 / TP1_2.8 / TRAIL_0.9R / RUNNER_MIN_2 / BE_0.25"), "tp0 failure should keep strategy contract under separate label");
   assert.ok(tp0Failure.body.includes("시장군: RESCUE"), "tp0 failure should include cohort");
 
   console.log("TRADE_EXECUTION_ALERT_TEST_OK");

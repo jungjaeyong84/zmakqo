@@ -1299,6 +1299,41 @@ function isSameOrderAsNativeTp1(orderMeta, positionCtx) {
   return Number.isFinite(orderId) && Number.isFinite(nativeOrderId) && orderId === nativeOrderId;
 }
 
+function shouldTrustMatchedIntentExitEvent({
+  intentEvent,
+  orderMeta,
+  positionCtx,
+  recentTp1,
+  qtyPct,
+  rules,
+} = {}) {
+  const ev = String(intentEvent || "").trim().toUpperCase();
+  if (!ev || !ev.startsWith("EXIT_")) return false;
+  const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
+  const sameOrderTp0 = isSameOrderAsNativeTp0(orderMeta, ctx);
+  const sameOrderTp1 = isSameOrderAsNativeTp1(orderMeta, ctx);
+  const sameOrderRecentTp1 = isSameOrderAsRecentTp1(orderMeta, recentTp1);
+  const inferredKind = inferTakeProfitKindFromQtyPct(qtyPct, rules);
+
+  if (ev.startsWith("EXIT_TP_P0")) {
+    if (sameOrderTp1 || sameOrderRecentTp1) return false;
+    if (ctx.tpP0Done === true || ctx.tpP1Done === true || ctx.trailActive === true) return false;
+    return true;
+  }
+
+  if (isTpP1Event(ev)) {
+    if (sameOrderTp0) return false;
+    if (ctx.tpP0Done !== true && inferredKind === "TP0") return false;
+    return true;
+  }
+
+  if (ev.startsWith("EXIT_TRAIL")) {
+    return isTrailExitEligible(ctx, recentTp1);
+  }
+
+  return true;
+}
+
 function isTrailExitEligible(positionCtx, recentTp1) {
   const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
   const recentTp1Event = String(recentTp1 && recentTp1.event || "").toUpperCase();
@@ -1531,7 +1566,16 @@ async function resolveExternalExitEvent({
       );
       return "EXIT_EXTERNAL_SYNC";
     }
-    return normalizeExitEventForRules(intentEvent, rules);
+    if (shouldTrustMatchedIntentExitEvent({
+      intentEvent,
+      orderMeta,
+      positionCtx,
+      recentTp1,
+      qtyPct,
+      rules,
+    })) {
+      return normalizeExitEventForRules(intentEvent, rules);
+    }
   }
 
   if (sameOrderAsRecentTp1 && isTpP1Event(recentTp1 && recentTp1.event)) {

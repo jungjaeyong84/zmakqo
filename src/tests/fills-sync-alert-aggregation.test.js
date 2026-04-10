@@ -334,7 +334,8 @@ async function run() {
     features: { openclaw_market_regime_cohort: "RESCUE" },
     exitRules: rescueExitRules,
   });
-  assert.ok(rescueTrailMsg.body.includes("청산규칙: SL_1.65 / TP1_1.65 / TRAIL_0.6R / RUNNER_MIN_1.2 / BE_0.15"), "trail alert must reflect current rescue cohort rules");
+  assert.ok(rescueTrailMsg.body.includes("실행계약: TRAIL"), "trail alert must show executed contract separately");
+  assert.ok(rescueTrailMsg.body.includes("전략계약: SL_1.65 / TP1_1.65 / TRAIL_0.6R / RUNNER_MIN_1.2 / BE_0.15"), "trail alert must reflect current rescue cohort rules under strategy label");
 
   const sameOrderAsRecentTp1 = fillsSyncTest.isSameOrderAsRecentTp1(
     { orderId: 14608292413, clientOrderId: "dbj_same_order" },

@@ -250,6 +250,12 @@ function resolveExitLabel(payload = {}, exitMeta = {}) {
   return exitMeta.label;
 }
 
+function resolveExecutedExitContract(event) {
+  const meta = parseExitEventMeta(event);
+  const token = String(meta && meta.token || "").trim();
+  return token || null;
+}
+
 function formatEventTag(event) {
   const ev = String(event || "").trim().toUpperCase();
   if (!ev) return "-";
@@ -409,10 +415,12 @@ function buildMessage(payload) {
   if (intent === "EXIT") {
     const exitMeta = parseExitEventMeta(event);
     const exitLabel = resolveExitLabel(payload, exitMeta);
+    const executedContract = resolveExecutedExitContract(event);
     const qtyText = fullExit ? "전량" : (formatPercent(closeRatio) || "부분");
     const title = `${symbol} ${exitMeta.token} ${qtyText} 청산`;
     const lines = [];
     lines.push(`종류: ${exitLabel}`);
+    if (executedContract) lines.push(`실행계약: ${executedContract}`);
     if (Number.isFinite(notional)) lines.push(`청산규모: ${formatMoney(notional, { unit })} ${unit}`);
     if (Number.isFinite(pnl)) {
       const pnlLabel = pnl >= 0 ? "수익" : "손익";
@@ -424,7 +432,7 @@ function buildMessage(payload) {
     }
     lines.push(...resolveMarketRegimeLines(payload, feat));
     const rulesTxt = formatExitRulesCompact(payload.exitRules || payload.exit_rules);
-    if (rulesTxt) lines.push(`청산규칙: ${rulesTxt}`);
+    if (rulesTxt) lines.push(`전략계약: ${rulesTxt}`);
     lines.push(`이벤트: ${formatEventTag(event)}`);
     return { title, body: lines.join("\n") };
   }
@@ -445,6 +453,7 @@ function buildFailureMessage(payload) {
   const unit = exchange.includes("BINANCE") ? "USDT" : "KRW";
   const exitMeta = parseExitEventMeta(event);
   const exitLabel = resolveExitLabel(payload, exitMeta);
+  const executedContract = resolveExecutedExitContract(event);
   const closeRatio = Number(payload.closeRatio);
   const qtyPct = Number(payload.qtyPct);
   const execPrice = Number(payload.execPrice);
@@ -467,6 +476,7 @@ function buildFailureMessage(payload) {
 
   const title = `${symbol} ${exitLabel} 주문 실패`;
   const lines = [`종류: ${exitLabel}`];
+  if (executedContract) lines.push(`실행계약: ${executedContract}`);
   if (directionKo) lines.push(`방향: ${directionKo} 청산`);
   if (qtyLabel) lines.push(`주문비율: ${qtyLabel}`);
   if (Number.isFinite(execPrice)) lines.push(`기준가: ${formatMoney(execPrice, { unit })} ${unit}`);
@@ -475,7 +485,7 @@ function buildFailureMessage(payload) {
   }
   lines.push(...resolveMarketRegimeLines(payload, feat));
   const rulesTxt = formatExitRulesCompact(payload.exitRules || payload.exit_rules);
-  if (rulesTxt) lines.push(`청산규칙: ${rulesTxt}`);
+  if (rulesTxt) lines.push(`전략계약: ${rulesTxt}`);
   lines.push(`실패사유: ${reason}`);
   if (note) lines.push(`메모: ${note.slice(0, 240)}`);
   lines.push(`이벤트: ${formatEventTag(event)}`);

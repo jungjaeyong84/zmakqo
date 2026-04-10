@@ -283,6 +283,36 @@ async function run() {
   });
   assert.strictEqual(tp1ByIntent, "EXIT_TP_P1_3P");
 
+  const staleTp0IntentMustYieldTp1 = await resolveExternalExitEvent({
+    intent: { event: "EXIT_TP_P0_0.8P" },
+    trade: { symbol: "XRPUSDT", realizedPnl: 8.181, time: Date.parse("2026-04-10T08:00:00Z") },
+    orderMeta: { orderId: 777001, orderType: "TAKE_PROFIT_MARKET", closePosition: false, reduceOnly: true, clientOrderId: "dbj_tp1_live" },
+    positionCtx: {
+      trailActive: false,
+      tpP0Done: true,
+      tpP1Done: false,
+      nativeProtectionTpOrderId: 777001,
+      nativeProtectionTp0OrderId: 777000,
+    },
+    rules: { SL: -0.0165, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.0165, TP_P1_QTY: 0.75, TRAIL_R_MULTIPLE: 0.6, BE_PCT: 0.0015 },
+    qtyPct: 0.75,
+  });
+  assert.strictEqual(staleTp0IntentMustYieldTp1, "EXIT_TP_P1_1.65P");
+
+  const staleTp0IntentMustYieldTp1ByStage = await resolveExternalExitEvent({
+    intent: { event: "EXIT_TP_P0_0.8P" },
+    trade: { symbol: "XRPUSDT", realizedPnl: 8.181, time: Date.parse("2026-04-10T08:00:00Z") },
+    orderMeta: { orderId: 777101, orderType: "TAKE_PROFIT_MARKET", closePosition: false, reduceOnly: true, clientOrderId: "dbj_tp1_stage" },
+    positionCtx: {
+      trailActive: false,
+      tpP0Done: true,
+      tpP1Done: false,
+    },
+    rules: { SL: -0.0165, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.0165, TP_P1_QTY: 0.75, TRAIL_R_MULTIPLE: 0.6, BE_PCT: 0.0015 },
+    qtyPct: 0.75,
+  });
+  assert.strictEqual(staleTp0IntentMustYieldTp1ByStage, "EXIT_TP_P1_1.65P");
+
   const syntheticTimeStop = await resolveExternalExitEvent({
     intent: { event: "EXIT_TIME_STOP_18B" },
     trade: { symbol: "SOLUSDT", realizedPnl: -0.018 },
