@@ -851,7 +851,7 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
     symbol ||
     ""
   );
-  const meta = (pos.meta && typeof pos.meta === "object") ? pos.meta : {};
+  const meta = resolveTrailSnapshotMeta((pos.meta && typeof pos.meta === "object") ? pos.meta : {});
   const entryExecMs = toNum(meta.entry_exec_bar_ms);
   const currentBarMs = toNum(currentBarCloseMs);
   if (Number.isFinite(entryExecMs) && Number.isFinite(currentBarMs) && currentBarMs <= entryExecMs) {

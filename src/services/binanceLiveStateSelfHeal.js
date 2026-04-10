@@ -7,6 +7,7 @@ const { upsertSelfHealFailureObservation } = require("../storage/positionRuntime
 const { sendAlert } = require("../utils/alerts");
 const {
   syncFuturesPositionOnly,
+  runDistributedFuturesPositionSync,
   resolveFuturesPositionSyncRequest,
   resolveLiveFuturesConfig,
   repairActivePositionExitRuntimeState,
@@ -85,110 +86,116 @@ async function healBinanceLivePosition({
 } = {}) {
   const sym = normalizeSymbol(symbol);
   if (!sym) return { ok: false, skipped: true, reason: "SYMBOL_REQUIRED" };
-
-  const syncRunId = runId || `RUN__SELF_HEAL__${String(exchange || "").toUpperCase()}__${sym}__${Date.now()}`;
-  const syncBefore = await syncFuturesPositionOnly(resolveFuturesPositionSyncRequest({
-    source: "SELF_HEAL_PRECHECK",
-    runId: syncRunId,
+  return runDistributedFuturesPositionSync({
     exchange,
     symbol: sym,
-  }));
-
-  let pos = await getPosition({ exchange, symbol: sym });
-  if (!isActivePaperPosition(pos)) {
-    return {
-      ok: true,
-      skipped: true,
-      reason: "NO_ACTIVE_POSITION",
-      symbol: sym,
-      sync_before: syncBefore,
-      position: pos,
-    };
-  }
-
-  const meta = (pos && typeof pos.meta === "object") ? pos.meta : {};
-  const needsRepair = forceRepair === true || shouldRepairBinanceLivePosition(meta);
-  let repaired = false;
-
-  if (needsRepair) {
-    try {
-      const sys = await getSystemSettingsForProvider(exchange, 2000);
-      const sysCfg = sys && sys.data ? sys.data : {};
-      const liveCfg = await resolveLiveFuturesConfig({ exchange, symbol: sym });
-      await repairActivePositionExitRuntimeState({
+    ttlMs: 120000,
+    runner: async () => {
+      const syncRunId = runId || `RUN__SELF_HEAL__${String(exchange || "").toUpperCase()}__${sym}__${Date.now()}`;
+      const syncBefore = await syncFuturesPositionOnly(resolveFuturesPositionSyncRequest({
+        source: "SELF_HEAL_PRECHECK",
+        runId: syncRunId,
         exchange,
         symbol: sym,
-        positionSide: pos.position_side || meta.position_side || null,
-        entryPrice: pos.avg_price,
-        leverage: meta.leverage || meta.native_protection_leverage || null,
-        liveCfg,
-        posMeta: meta,
-        cohort: meta.openclaw_market_regime_cohort || meta.market_regime_cohort || null,
-        sysCfg,
-        execBarCloseMs: Number(meta.entry_exec_bar_ms || meta.last_entry_bar_ms) || null,
-      });
-      repaired = true;
-      await syncFuturesPositionOnly(resolveFuturesPositionSyncRequest({
-        source: "SELF_HEAL_POST_REPAIR",
-        runId: `${syncRunId}__POST_REPAIR`,
-        exchange,
-        symbol: sym,
-        force: true,
       }));
-      pos = await getPosition({ exchange, symbol: sym });
-    } catch (e) {
-      const errorText = e && e.message ? e.message : String(e);
-      await upsertSelfHealFailureObservation({
-        exchange,
-        symbol: sym,
-        reason: "REPAIR_EXCEPTION",
-        error: errorText,
-      });
-      await sendSelfHealFailureAlert({
-        exchange,
-        symbol: sym,
-        reason: "REPAIR_EXCEPTION",
-        error: errorText,
-      }).catch(() => {});
-      return {
-        ok: false,
-        symbol: sym,
-        repaired: false,
-        error: errorText,
-        sync_before: syncBefore,
-        position: await getPosition({ exchange, symbol: sym }),
-      };
-    }
-    const nextMeta = (pos && pos.meta && typeof pos.meta === "object") ? pos.meta : {};
-    if (shouldRepairBinanceLivePosition(nextMeta)) {
-      const failurePatch = buildSelfHealFailureMetaPatch({
-        reason: "REPAIR_POST_SYNC_MISMATCH",
-        error: Array.isArray(nextMeta.exchange_projection_invariants) ? nextMeta.exchange_projection_invariants.join(",") : null,
-      });
-      await upsertSelfHealFailureObservation({
-        exchange,
-        symbol: sym,
-        reason: failurePatch.native_protection_refresh_reason,
-        error: failurePatch.last_self_heal_error,
-        atMs: failurePatch.last_self_heal_at_ms,
-      });
-      await sendSelfHealFailureAlert({
-        exchange,
-        symbol: sym,
-        reason: "REPAIR_POST_SYNC_MISMATCH",
-        error: failurePatch.last_self_heal_error,
-      }).catch(() => {});
-      pos = await getPosition({ exchange, symbol: sym });
-    }
-  }
 
-  return {
-    ok: true,
-    symbol: sym,
-    repaired,
-    sync_before: syncBefore,
-    position: pos,
-  };
+      let pos = await getPosition({ exchange, symbol: sym });
+      if (!isActivePaperPosition(pos)) {
+        return {
+          ok: true,
+          skipped: true,
+          reason: "NO_ACTIVE_POSITION",
+          symbol: sym,
+          sync_before: syncBefore,
+          position: pos,
+        };
+      }
+
+      const meta = (pos && typeof pos.meta === "object") ? pos.meta : {};
+      const needsRepair = forceRepair === true || shouldRepairBinanceLivePosition(meta);
+      let repaired = false;
+
+      if (needsRepair) {
+        try {
+          const sys = await getSystemSettingsForProvider(exchange, 2000);
+          const sysCfg = sys && sys.data ? sys.data : {};
+          const liveCfg = await resolveLiveFuturesConfig({ exchange, symbol: sym });
+          await repairActivePositionExitRuntimeState({
+            exchange,
+            symbol: sym,
+            positionSide: pos.position_side || meta.position_side || null,
+            entryPrice: pos.avg_price,
+            leverage: meta.leverage || meta.native_protection_leverage || null,
+            liveCfg,
+            posMeta: meta,
+            cohort: meta.openclaw_market_regime_cohort || meta.market_regime_cohort || null,
+            sysCfg,
+            execBarCloseMs: Number(meta.entry_exec_bar_ms || meta.last_entry_bar_ms) || null,
+          });
+          repaired = true;
+          await syncFuturesPositionOnly(resolveFuturesPositionSyncRequest({
+            source: "SELF_HEAL_POST_REPAIR",
+            runId: `${syncRunId}__POST_REPAIR`,
+            exchange,
+            symbol: sym,
+            force: true,
+          }));
+          pos = await getPosition({ exchange, symbol: sym });
+        } catch (e) {
+          const errorText = e && e.message ? e.message : String(e);
+          await upsertSelfHealFailureObservation({
+            exchange,
+            symbol: sym,
+            reason: "REPAIR_EXCEPTION",
+            error: errorText,
+          });
+          await sendSelfHealFailureAlert({
+            exchange,
+            symbol: sym,
+            reason: "REPAIR_EXCEPTION",
+            error: errorText,
+          }).catch(() => {});
+          return {
+            ok: false,
+            symbol: sym,
+            repaired: false,
+            error: errorText,
+            sync_before: syncBefore,
+            position: await getPosition({ exchange, symbol: sym }),
+          };
+        }
+        const nextMeta = (pos && pos.meta && typeof pos.meta === "object") ? pos.meta : {};
+        if (shouldRepairBinanceLivePosition(nextMeta)) {
+          const failurePatch = buildSelfHealFailureMetaPatch({
+            reason: "REPAIR_POST_SYNC_MISMATCH",
+            error: Array.isArray(nextMeta.exchange_projection_invariants) ? nextMeta.exchange_projection_invariants.join(",") : null,
+          });
+          await upsertSelfHealFailureObservation({
+            exchange,
+            symbol: sym,
+            reason: failurePatch.native_protection_refresh_reason,
+            error: failurePatch.last_self_heal_error,
+            atMs: failurePatch.last_self_heal_at_ms,
+          });
+          await sendSelfHealFailureAlert({
+            exchange,
+            symbol: sym,
+            reason: "REPAIR_POST_SYNC_MISMATCH",
+            error: failurePatch.last_self_heal_error,
+          }).catch(() => {});
+          pos = await getPosition({ exchange, symbol: sym });
+        }
+      }
+
+      return {
+        ok: true,
+        symbol: sym,
+        repaired,
+        sync_before: syncBefore,
+        position: pos,
+      };
+    },
+  });
 }
 
 async function runBinanceLiveStateSelfHeal({

@@ -52,6 +52,31 @@ function run() {
   });
   assert.ok(Array.isArray(linked) && linked.length > 0, "linked TP1 meta should produce exit signal");
   assert.strictEqual(linked[0].event, "EXIT_BE_0.15P", "linked TP1 meta should produce BE signal");
+
+  const snapshotMerged = generateSignals({
+    ...common,
+    bar: { close: 99.7, c: 99.7 },
+    currentBarCloseMs: entryExecMs + (2 * 60_000),
+    position: {
+      ...common.position,
+      size_pct: 0.5,
+      meta: {
+        ...common.position.meta,
+        tp_p1_at: new Date(entryExecMs + 60_000).toISOString(),
+        tp_p1_entry_event_id: "ENTRY__CUR",
+        tp_p1_entry_exec_bar_ms: entryExecMs,
+        trail_active: true,
+        trail_low: null,
+        trail_observation_snapshot: {
+          trail_low: 99.4,
+          trail_low_at_ms: entryExecMs + 90_000,
+          trail_active: true,
+        },
+      },
+    },
+  });
+  assert.ok(Array.isArray(snapshotMerged) && snapshotMerged.length > 0, "embedded trail snapshot should be used by generateSignals");
+  assert.strictEqual(snapshotMerged[0].event, "EXIT_TRAIL");
 }
 
 try {

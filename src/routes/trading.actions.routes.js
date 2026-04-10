@@ -15,6 +15,7 @@ const { healBinanceLivePosition } = require("../services/binanceLiveStateSelfHea
 const {
   runPaperFuturesForBar,
   syncFuturesPositionOnly,
+  runDistributedFuturesPositionSync,
 } = require("../engine/paperUpbitRunner");
 const { runActionPreHooks, runActionPostHooks } = require("../utils/actionExecutionHooks");
 
@@ -256,119 +257,154 @@ function createTradingActionsRoutes() {
       }
 
       const runId = `RUN__MANUAL_RETRY__${exchange}__${market}__${Date.now()}`;
-      await syncFuturesPositionOnly({ runId, exchange, symbol: market });
-      const curPos = await getPosition({ exchange, symbol: market });
-      const curState = String(curPos && curPos.state || "").toUpperCase();
-      const curQtyBase = Number(curPos && curPos.qty_base);
-      if (curState === "ACTIVE" && Number.isFinite(curQtyBase) && curQtyBase > 0) {
-        return res.status(409).json({ ok: false, error: "POSITION_ALREADY_ACTIVE" });
-      }
-
-      let qtyBase = Number(body.qty_base ?? body.qtyBase);
-      const apiKey = String(process.env.BINANCEFUT_API_KEY || (exCfg && exCfg.api_key) || "");
-      const apiSecret = String(process.env.BINANCEFUT_API_SECRET || (exCfg && exCfg.api_secret) || "");
-      let qtySource = "request";
-      if ((!Number.isFinite(qtyBase) || qtyBase <= 0) && apiKey && apiSecret) {
-        const recentTrades = await fetchFuturesUserTrades({ apiKey, apiSecret, symbol: market, limit: 30 });
-        qtyBase = resolveRetryQtyBaseFromTrades(recentTrades, side);
-        qtySource = "recent_exit_trade";
-      }
-      if (!Number.isFinite(qtyBase) || qtyBase <= 0) {
-        return res.status(400).json({ ok: false, error: "QTY_BASE_REQUIRED" });
-      }
-
-      const bars = await fetchCandles(exchange, market, "15m", 2);
-      const bar = Array.isArray(bars) && bars.length ? bars[bars.length - 1] : null;
-      const execBarCloseMs = Number(bar && bar.closeTimeUtcMs);
-      const execBarCloseUtc = String(bar && bar.closeTimeUtc || "");
-      if (!Number.isFinite(execBarCloseMs) || !execBarCloseUtc) {
-        return res.status(500).json({ ok: false, error: "LATEST_BAR_MISSING" });
-      }
-      const signalTf = (Array.isArray(exCfg && exCfg.tf_allowlist) && exCfg.tf_allowlist.length)
-        ? String(exCfg.tf_allowlist[0])
-        : (defaultExecTfFromEnv() || "15m");
-      const execTf = String((exCfg && exCfg.exec_tf) || "15m");
-      if (execTf !== "15m") {
-        return res.status(400).json({ ok: false, error: "MANUAL_RETRY_EXEC_TF_UNSUPPORTED", exec_tf: execTf });
-      }
-
-      const fracRaw = body.fraction ?? body.qty_fraction ?? body.qty_pct ?? body.pct;
-      const fraction = normalizeFraction(fracRaw) || 1;
-      const sys = await getSystemSettingsForProvider(exchange, 2000);
-      const execModeRaw = String(sys && sys.data && sys.data.execution_mode ? sys.data.execution_mode : "PAPER").toUpperCase();
-      const executionMode = execModeRaw === "LIVE" ? "LIVE" : "PAPER";
-      const signalMs = Date.now();
-      const pre = runActionPreHooks({
-        action: "TRADING_MANUAL_RETRY_ENTRY",
-        runId,
+      const leaseResult = await runDistributedFuturesPositionSync({
         exchange,
         symbol: market,
-        tf: signalTf,
-        signalEvent: event,
-        decisionReason: "MANUAL_RETRY_BY_USER",
-        source: "TRADING_ACTIONS_ROUTE",
-        executionMode,
-        intent: "ENTRY",
-        qtyPct: fraction,
-        features: {
-          action: "ENTRY",
-          _manual_retry_by_user: true,
-          _manual_retry_qty_base: qtyBase,
-          _manual_retry_source: qtySource,
-          _entry_exec_timing: "EXEC_CURRENT_BAR",
+        ttlMs: 120000,
+        runner: async () => {
+          await syncFuturesPositionOnly({ runId, exchange, symbol: market, force: true });
+          const curPos = await getPosition({ exchange, symbol: market });
+          const curState = String(curPos && curPos.state || "").toUpperCase();
+          const curQtyBase = Number(curPos && curPos.qty_base);
+          if (curState === "ACTIVE" && Number.isFinite(curQtyBase) && curQtyBase > 0) {
+            return { ok: false, statusCode: 409, error: "POSITION_ALREADY_ACTIVE" };
+          }
+
+          let qtyBase = Number(body.qty_base ?? body.qtyBase);
+          const apiKey = String(process.env.BINANCEFUT_API_KEY || (exCfg && exCfg.api_key) || "");
+          const apiSecret = String(process.env.BINANCEFUT_API_SECRET || (exCfg && exCfg.api_secret) || "");
+          let qtySource = "request";
+          if ((!Number.isFinite(qtyBase) || qtyBase <= 0) && apiKey && apiSecret) {
+            const recentTrades = await fetchFuturesUserTrades({ apiKey, apiSecret, symbol: market, limit: 30 });
+            qtyBase = resolveRetryQtyBaseFromTrades(recentTrades, side);
+            qtySource = "recent_exit_trade";
+          }
+          if (!Number.isFinite(qtyBase) || qtyBase <= 0) {
+            return { ok: false, statusCode: 400, error: "QTY_BASE_REQUIRED" };
+          }
+
+          const bars = await fetchCandles(exchange, market, "15m", 2);
+          const bar = Array.isArray(bars) && bars.length ? bars[bars.length - 1] : null;
+          const execBarCloseMs = Number(bar && bar.closeTimeUtcMs);
+          const execBarCloseUtc = String(bar && bar.closeTimeUtc || "");
+          if (!Number.isFinite(execBarCloseMs) || !execBarCloseUtc) {
+            return { ok: false, statusCode: 500, error: "LATEST_BAR_MISSING" };
+          }
+          const signalTf = (Array.isArray(exCfg && exCfg.tf_allowlist) && exCfg.tf_allowlist.length)
+            ? String(exCfg.tf_allowlist[0])
+            : (defaultExecTfFromEnv() || "15m");
+          const execTf = String((exCfg && exCfg.exec_tf) || "15m");
+          if (execTf !== "15m") {
+            return { ok: false, statusCode: 400, error: "MANUAL_RETRY_EXEC_TF_UNSUPPORTED", exec_tf: execTf };
+          }
+
+          const fracRaw = body.fraction ?? body.qty_fraction ?? body.qty_pct ?? body.pct;
+          const fraction = normalizeFraction(fracRaw) || 1;
+          const sys = await getSystemSettingsForProvider(exchange, 2000);
+          const execModeRaw = String(sys && sys.data && sys.data.execution_mode ? sys.data.execution_mode : "PAPER").toUpperCase();
+          const executionMode = execModeRaw === "LIVE" ? "LIVE" : "PAPER";
+          const signalMs = Date.now();
+          const pre = runActionPreHooks({
+            action: "TRADING_MANUAL_RETRY_ENTRY",
+            runId,
+            exchange,
+            symbol: market,
+            tf: signalTf,
+            signalEvent: event,
+            decisionReason: "MANUAL_RETRY_BY_USER",
+            source: "TRADING_ACTIONS_ROUTE",
+            executionMode,
+            intent: "ENTRY",
+            qtyPct: fraction,
+            features: {
+              action: "ENTRY",
+              _manual_retry_by_user: true,
+              _manual_retry_qty_base: qtyBase,
+              _manual_retry_source: qtySource,
+              _entry_exec_timing: "EXEC_CURRENT_BAR",
+            },
+            persist: true,
+          });
+          actionEnvelope = pre.envelope;
+          if (!pre.ok) {
+            return {
+              ok: false,
+              statusCode: 409,
+              error: "MANUAL_RETRY_PRE_HOOK_BLOCKED",
+              reason: pre.reason,
+            };
+          }
+
+          const intent = await upsertIntent({
+            exchange,
+            symbol: market,
+            tf: signalTf,
+            signalBarCloseTimeUtc: new Date(signalMs).toISOString(),
+            signalBarCloseTimeUtcMs: signalMs,
+            scheduledExecBarCloseUtc: execBarCloseUtc,
+            scheduledExecBarCloseUtcMs: execBarCloseMs,
+            event,
+            side,
+            qtyPct: fraction,
+            qtyFraction: fraction,
+            reason: "MANUAL_RETRY_BY_USER",
+            pendingReason: "MANUAL_RETRY_BY_USER",
+            pendingNote: String(body.note || "FALSE_EXIT_RETRY").slice(0, 160),
+            executionMode,
+            features: {
+              ...pre.featuresPatch,
+            },
+            runId,
+            execTf,
+            requestId,
+            decisionReason: "MANUAL_RETRY_BY_USER",
+          });
+          if (actionEnvelope) actionEnvelope.intent_id = intent && (intent.intent_id || intent.id) ? (intent.intent_id || intent.id) : null;
+
+          const result = await runPaperFuturesForBar({
+            runId,
+            exchange,
+            symbol: market,
+            tf: signalTf,
+            execTf,
+            barCloseUtc: execBarCloseUtc,
+            barCloseMs: execBarCloseMs,
+            bar,
+            gate: null,
+            trading_mode: "RUNNING",
+          });
+
+          await syncFuturesPositionOnly({ runId, exchange, symbol: market, force: true });
+          const nextPos = await getPosition({ exchange, symbol: market });
+          return {
+            ok: true,
+            exchange,
+            market,
+            event,
+            side,
+            qty_base: qtyBase,
+            qty_source: qtySource,
+            intent_id: intent && (intent.intent_id || intent.id) ? (intent.intent_id || intent.id) : null,
+            scheduled_exec_kst: toKstStringFromMs(execBarCloseMs, { fallback: null }),
+            result,
+            position: nextPos,
+          };
         },
-        persist: true,
       });
-      actionEnvelope = pre.envelope;
-      if (!pre.ok) {
-        return res.status(409).json({
-          ok: false,
-          error: "MANUAL_RETRY_PRE_HOOK_BLOCKED",
-          reason: pre.reason,
-        });
+      if (leaseResult && leaseResult.ok === false) {
+        if (leaseResult.error === "MANUAL_RETRY_PRE_HOOK_BLOCKED") {
+          return res.status(409).json({
+            ok: false,
+            error: "MANUAL_RETRY_PRE_HOOK_BLOCKED",
+            reason: leaseResult.reason,
+          });
+        }
+        if (leaseResult.reason === "LEASE_HELD" || leaseResult.reason === "LEASE_LOST") {
+          return res.status(409).json({ ok: false, error: "MANUAL_RETRY_BUSY", reason: leaseResult.reason });
+        }
+        return res.status(Number(leaseResult.statusCode) || 400).json(leaseResult);
       }
-
-      const intent = await upsertIntent({
-        exchange,
-        symbol: market,
-        tf: signalTf,
-        signalBarCloseTimeUtc: new Date(signalMs).toISOString(),
-        signalBarCloseTimeUtcMs: signalMs,
-        scheduledExecBarCloseUtc: execBarCloseUtc,
-        scheduledExecBarCloseUtcMs: execBarCloseMs,
-        event,
-        side,
-        qtyPct: fraction,
-        qtyFraction: fraction,
-        reason: "MANUAL_RETRY_BY_USER",
-        pendingReason: "MANUAL_RETRY_BY_USER",
-        pendingNote: String(body.note || "FALSE_EXIT_RETRY").slice(0, 160),
-        executionMode,
-        features: {
-          ...pre.featuresPatch,
-        },
-        runId,
-        execTf,
-        requestId,
-        decisionReason: "MANUAL_RETRY_BY_USER",
-      });
-      if (actionEnvelope) actionEnvelope.intent_id = intent && (intent.intent_id || intent.id) ? (intent.intent_id || intent.id) : null;
-
-      const result = await runPaperFuturesForBar({
-        runId,
-        exchange,
-        symbol: market,
-        tf: signalTf,
-        execTf,
-        barCloseUtc: execBarCloseUtc,
-        barCloseMs: execBarCloseMs,
-        bar,
-        gate: null,
-        trading_mode: "RUNNING",
-      });
-
-      await syncFuturesPositionOnly({ runId, exchange, symbol: market });
-      const nextPos = await getPosition({ exchange, symbol: market });
+      const nextPos = leaseResult.position;
       runActionPostHooks({
         envelope: actionEnvelope,
         ok: true,
@@ -376,25 +412,13 @@ function createTradingActionsRoutes() {
         persist: true,
         result: {
           intent_id: actionEnvelope && actionEnvelope.intent_id,
-          fills_executed: Number(result && result.fills_executed) || 0,
-          intents_created: Number(result && result.intents_created) || 0,
+          fills_executed: Number(leaseResult.result && leaseResult.result.fills_executed) || 0,
+          intents_created: Number(leaseResult.result && leaseResult.result.intents_created) || 0,
           position_state: String(nextPos && nextPos.state || "").toUpperCase() || null,
         },
       });
 
-      return res.json({
-        ok: true,
-        exchange,
-        market,
-        event,
-        side,
-        qty_base: qtyBase,
-        qty_source: qtySource,
-        intent_id: intent && (intent.intent_id || intent.id) ? (intent.intent_id || intent.id) : null,
-        scheduled_exec_kst: toKstStringFromMs(execBarCloseMs, { fallback: null }),
-        result,
-        position: nextPos,
-      });
+      return res.json(leaseResult);
     } catch (err) {
       runActionPostHooks({
         envelope: actionEnvelope || {

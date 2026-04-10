@@ -15419,6 +15419,7 @@ module.exports = {
   runPaperUpbitForBar,
   runPaperFuturesForBar,
   syncFuturesPositionOnly,
+  runDistributedFuturesPositionSync,
   refreshBinanceNativeProtectionWithRetry,
   buildNativeProtectionMetaPatch,
   notifyNativeProtectionResult,

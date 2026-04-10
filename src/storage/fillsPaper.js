@@ -432,17 +432,24 @@ async function markExternalFillUnverified({
   if (!fillId) throw new Error("markExternalFillUnverified: fillId required");
   const db = getFirestore();
   const ref = db.collection("fills_paper").doc(fillId);
-  const snap = await ref.get();
-  if (!snap.exists) return { ok: false, skipped: true, reason: "FILL_NOT_FOUND" };
-  const current = snap.data() || {};
-  const payload = buildExternalFillUnverifiedPatch({
-    current,
-    event,
-    issues,
-    decisionReason,
+  let result = { ok: false, skipped: true, reason: "UNKNOWN", fill_id: fillId };
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) {
+      result = { ok: false, skipped: true, reason: "FILL_NOT_FOUND", fill_id: fillId };
+      return;
+    }
+    const current = snap.data() || {};
+    const payload = buildExternalFillUnverifiedPatch({
+      current,
+      event,
+      issues,
+      decisionReason,
+    });
+    tx.set(ref, payload, { merge: true });
+    result = { ok: true, fill_id: fillId, event: payload.event };
   });
-  await ref.set(payload, { merge: true });
-  return { ok: true, fill_id: fillId, event: payload.event };
+  return result;
 }
 
 module.exports = {
