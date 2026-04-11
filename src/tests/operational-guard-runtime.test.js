@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("assert");
-const { buildOperationalGuardState } = require("../services/operationalGuardRuntime");
+const { buildOperationalGuardState, __test } = require("../services/operationalGuardRuntime");
 
 (() => {
   const state = buildOperationalGuardState({
@@ -56,6 +56,19 @@ const { buildOperationalGuardState } = require("../services/operationalGuardRunt
   assert.strictEqual(state.stale, true);
   assert.strictEqual(state.block_new_entries, true);
   assert.strictEqual(state.reason, "OPS_GUARD_STALE");
+})();
+
+(() => {
+  const state = __test.normalizeLoadedOperationalGuardState({
+    status: "진행",
+    block_new_entries: false,
+    fail_closed: true,
+    generated_at_ms: Date.parse("2026-04-11T00:00:00.000Z"),
+    max_age_ms: 60 * 60 * 1000,
+  }, Date.parse("2026-04-11T00:10:00.000Z"));
+
+  assert.strictEqual(state.stale, false);
+  assert.strictEqual(state.block_new_entries, false);
 })();
 
 console.log("OPERATIONAL_GUARD_RUNTIME_TEST_OK");

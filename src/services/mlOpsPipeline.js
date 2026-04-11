@@ -8,7 +8,9 @@ const { KST_OFFSET_MS, toKstString } = require("../utils/timeKst");
 const { buildFeatureLabelDataset } = require("./featureLabelDataset");
 const { recordShadowCanaryGate } = require("../storage/shadowCanaryGates");
 const { recordMlServingState } = require("../storage/mlServingStates");
+const { recordMlServingBinding } = require("../storage/mlServingBindings");
 const { buildMlServingState } = require("./mlServingRuntime");
+const { getAiGuardSettingsCached } = require("../storage/settings");
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
@@ -40,6 +42,14 @@ function statMtimeMs(filePath) {
   }
 }
 
+function safeReadJson(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch (_) {
+    return null;
+  }
+}
+
 function nowKstMeta(nowMs = Date.now()) {
   const k = new Date(nowMs + KST_OFFSET_MS);
   const pad2 = (n) => String(n).padStart(2, "0");
@@ -59,6 +69,30 @@ function upper(value) {
 function toNum(value) {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
+}
+
+function norm(value) {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+function boolSetting(raw, fallback = true) {
+  if (raw == null) return fallback;
+  const text = String(raw).trim().toLowerCase();
+  if (!text) return fallback;
+  return !["0", "false", "off", "no"].includes(text);
+}
+
+function buildServingBindingSnapshot({ aiGuard = null } = {}) {
+  const guard = aiGuard && typeof aiGuard === "object" ? aiGuard : {};
+  return {
+    provider_mode: upper(process.env.SIGNAL_AI_PROVIDER_MODE) || "ENSEMBLE",
+    claude_model: norm(process.env.SIGNAL_AI_CLAUDE_MODEL || process.env.SIGNAL_AI_MODEL || guard.claude_model || process.env.CLAUDE_MODEL || "claude-opus-4-5-20251101"),
+    openai_model: norm(process.env.SIGNAL_AI_GPT_MODEL || process.env.SIGNAL_AI_OPENAI_MODEL || process.env.OPENAI_MODEL || "gpt-5.2"),
+    openai_reasoning_effort: norm(process.env.SIGNAL_AI_OPENAI_REASONING_EFFORT || process.env.OPENAI_REASONING_EFFORT || "medium"),
+    ensemble_enabled: boolSetting(process.env.SIGNAL_AI_ENSEMBLE_ENABLED, true),
+    require_live_serving: false,
+  };
 }
 
 function parseMarkets(value, fallbackExchange = null) {
@@ -484,6 +518,8 @@ async function runShadowInferenceCanaryJob({
   const latestGateMd = path.join(OPS_DAILY_DIR, "shadow_inference_canary_gate_latest.md");
   const latestServingJson = path.join(OPS_DAILY_DIR, "ml_serving_state_latest.json");
   const latestServingMd = path.join(OPS_DAILY_DIR, "ml_serving_state_latest.md");
+  const executionServingContract = safeReadJson(path.join(OPS_DAILY_DIR, "best_self_evolution_execution_serving_contract_latest.json"));
+  const mlModelContract = safeReadJson(path.join(OPS_DAILY_DIR, "best_self_evolution_ml_model_contract_latest.json"));
   const latestMtimeMs = statMtimeMs(latestJson);
   if (force !== true && Number.isFinite(latestMtimeMs) && (nowMeta.nowMs - latestMtimeMs) < minIntervalMs) {
     return {
@@ -528,6 +564,8 @@ async function runShadowInferenceCanaryJob({
       gate: payload.gate,
       summary: payload.summary,
     },
+    executionServingContract,
+    mlModelContract,
   });
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}_shadow_inference_canary`;
   const jsonPath = path.join(OPS_DAILY_DIR, `${base}.json`);
@@ -601,6 +639,25 @@ async function runShadowInferenceCanaryJob({
       latest_gate_md: latestGateMd,
     },
   }).catch(() => null);
+  const aiGuard = await getAiGuardSettingsCached(30_000)
+    .then((res) => (res && res.data ? res.data : null))
+    .catch(() => null);
+  const binding = buildServingBindingSnapshot({ aiGuard });
+  await recordMlServingBinding({
+    exchange: exchangeUpper,
+    binding,
+    source: "SHADOW_INFERENCE_CANARY",
+    generatedAt: nowMeta.iso,
+  }).catch(() => null);
+  if (payload.serving_state && payload.serving_state.preferred_model_artifact_id) {
+    await recordMlServingBinding({
+      exchange: exchangeUpper,
+      artifactId: payload.serving_state.preferred_model_artifact_id,
+      binding,
+      source: "SHADOW_INFERENCE_CANARY",
+      generatedAt: nowMeta.iso,
+    }).catch(() => null);
+  }
 
   return {
     ok: true,
@@ -649,5 +706,6 @@ module.exports = {
     renderShadowInferenceCanaryMarkdown,
     renderShadowCanaryGateMarkdown,
     renderMlServingStateMarkdown,
+    buildServingBindingSnapshot,
   },
 };

@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { getOperationalRuntimeState } = require("../storage/operationalRuntimeStates");
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
@@ -85,6 +86,35 @@ function buildOperationalGuardState({
   };
 }
 
+function normalizeLoadedOperationalGuardState(state = null, nowMs = Date.now()) {
+  const raw = state && typeof state === "object" ? JSON.parse(JSON.stringify(state)) : null;
+  if (!raw) return null;
+  const hasRuntimeShape = Object.prototype.hasOwnProperty.call(raw, "block_new_entries")
+    || Object.prototype.hasOwnProperty.call(raw, "reason")
+    || Object.prototype.hasOwnProperty.call(raw, "fail_closed");
+  if (!hasRuntimeShape) {
+    return buildOperationalGuardState({ summary: raw, nowMs });
+  }
+
+  const resolvedFailClosed = raw.fail_closed == null
+    ? (String(process.env.OPERATIONAL_GUARD_FAIL_CLOSED || "1").trim() !== "0")
+    : (raw.fail_closed === true);
+  const resolvedMaxAgeMs = Math.max(5 * 60 * 1000, Number(raw.max_age_ms || process.env.OPERATIONAL_GUARD_MAX_AGE_MS || (6 * 60 * 60 * 1000)));
+  const generatedAtMs = toTimeMs(raw.generated_at_ms || raw.generated_at || raw.generated_at_iso || raw.generated_at_kst || null);
+  const stale = Number.isFinite(generatedAtMs) ? (Math.max(0, nowMs - generatedAtMs) > resolvedMaxAgeMs) : true;
+
+  raw.available = raw.available !== false;
+  raw.fail_closed = resolvedFailClosed;
+  raw.max_age_ms = resolvedMaxAgeMs;
+  raw.generated_at_ms = generatedAtMs;
+  raw.stale = stale;
+  if (stale) {
+    raw.block_new_entries = resolvedFailClosed;
+    raw.reason = "OPS_GUARD_STALE";
+  }
+  return raw;
+}
+
 async function loadOperationalGuardRuntime({
   exchange = null,
   force = false,
@@ -97,6 +127,13 @@ async function loadOperationalGuardRuntime({
       return JSON.parse(JSON.stringify(cached.value));
     }
   }
+  const stateDoc = await getOperationalRuntimeState({ exchange: cacheKey }).catch(() => null)
+    || (cacheKey !== "ALL" ? await getOperationalRuntimeState({ exchange: null }).catch(() => null) : null);
+  if (stateDoc && stateDoc.state && typeof stateDoc.state === "object") {
+    const value = normalizeLoadedOperationalGuardState(stateDoc.state, nowMs);
+    runtimeCache.set(cacheKey, { ts_ms: nowMs, value });
+    return JSON.parse(JSON.stringify(value));
+  }
   const summary = safeReadJson(LATEST_PATH);
   const value = buildOperationalGuardState({ summary, nowMs });
   runtimeCache.set(cacheKey, { ts_ms: nowMs, value });
@@ -106,4 +143,7 @@ async function loadOperationalGuardRuntime({
 module.exports = {
   buildOperationalGuardState,
   loadOperationalGuardRuntime,
+  __test: {
+    normalizeLoadedOperationalGuardState,
+  },
 };

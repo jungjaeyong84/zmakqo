@@ -52,6 +52,14 @@ function run() {
   assert.strictEqual(gate.promotion_blocked, true);
   assert.ok(__test.renderShadowInferenceCanaryMarkdown({ generated_at_kst: "2026-04-11 12:00:00 KST", exchange: "BINANCEFUT", summary: canarySummary }).includes("Shadow Inference Canary"));
   assert.ok(__test.renderShadowCanaryGateMarkdown({ generated_at_kst: "2026-04-11 12:00:00 KST", exchange: "BINANCEFUT", summary: canarySummary, gate }).includes("Shadow Canary Gate"));
+  const binding = __test.buildServingBindingSnapshot({
+    aiGuard: {
+      claude_model: "claude-guard-test",
+    },
+  });
+  assert.ok(binding.provider_mode);
+  assert.ok(binding.claude_model);
+  assert.ok(binding.openai_model);
 
   console.log("ML_OPS_PIPELINE_TEST_OK");
 }

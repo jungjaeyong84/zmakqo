@@ -5,6 +5,7 @@ const path = require("path");
 const { toKstString, kstDateKey } = require("../src/utils/timeKst");
 const { parseErrorCount } = require("./lib/report-metrics");
 const { fetchRuntimeErrorSummary24h } = require("./lib/runtime-error-counter");
+const { recordOperationalRuntimeState } = require("../src/storage/operationalRuntimeStates");
 
 function toNum(value, fallback = 0) {
   const n = Number(value);
@@ -566,6 +567,33 @@ async function main() {
   });
   fs.writeFileSync(outputMdPath, md, "utf8");
 
+  let firestoreStateWritten = false;
+  try {
+    const writes = await Promise.allSettled([
+      recordOperationalRuntimeState({
+        exchange: null,
+        generatedAt: summary.generated_at_iso || null,
+        state: summary,
+        source: "DAILY_SYSTEM_OPS_CHECK",
+        artifacts: {
+          latest_json: outputJsonPath,
+          latest_md: outputMdPath,
+        },
+      }),
+      recordOperationalRuntimeState({
+        exchange: "BINANCEFUT",
+        generatedAt: summary.generated_at_iso || null,
+        state: summary,
+        source: "DAILY_SYSTEM_OPS_CHECK",
+        artifacts: {
+          latest_json: outputJsonPath,
+          latest_md: outputMdPath,
+        },
+      }),
+    ]);
+    firestoreStateWritten = writes.some((row) => row.status === "fulfilled");
+  } catch (_) {}
+
   console.log(JSON.stringify({
     ok: true,
     output_json: outputJsonPath,
@@ -578,6 +606,7 @@ async function main() {
     execution_health_available: executionHealth.available,
     drop_tp1_pending_count: executionHealth.drop_tp1_pending_count,
     qty_pct_non_positive_count: executionHealth.qty_pct_non_positive_count,
+    firestore_state_written: firestoreStateWritten,
   }, null, 2));
 }
 

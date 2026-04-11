@@ -13,6 +13,7 @@ const { normalizeProviderId } = require("../utils/providerUtils");
 const { resolveBinanceFuturesKeys } = require("../utils/binanceKeyResolver");
 const { normalizePositionSide } = require("../utils/positionSide");
 const { listExchangePositionReadViews } = require("./positionReadModel");
+const { loadLiveInferenceRouter } = require("./liveInferenceRouter");
 
 
 const DECISION_CACHE_TTL_MS = Number(process.env.SIGNAL_AI_CACHE_TTL_MS || 60_000);
@@ -946,13 +947,13 @@ async function evaluateSignalWithAi({ exchange, symbol, tf, event, side, qtyPct,
   const enabled = boolEnv("SIGNAL_AI_ENABLED", false);
   if (!enabled) return { ok: false, disabled: true, meta: { ai_enabled: false } };
 
-  const model = String(
+  let model = String(
     process.env.SIGNAL_AI_CLAUDE_MODEL
     || process.env.SIGNAL_AI_MODEL
     || process.env.CLAUDE_MODEL
     || "claude-opus-4-5-20251101"
   ).trim();
-  const gptModel = String(
+  let gptModel = String(
     process.env.SIGNAL_AI_GPT_MODEL
     || process.env.SIGNAL_AI_OPENAI_MODEL
     || process.env.OPENAI_MODEL
@@ -974,6 +975,19 @@ async function evaluateSignalWithAi({ exchange, symbol, tf, event, side, qtyPct,
     const guardRes = await getAiGuardSettingsCached(30_000);
     guardData = guardRes && guardRes.data ? guardRes.data : null;
   } catch (_) {}
+  let inferenceRouter = null;
+  try {
+    inferenceRouter = await loadLiveInferenceRouter({ exchange });
+  } catch (_) {}
+  if (inferenceRouter && inferenceRouter.claude_model) model = String(inferenceRouter.claude_model).trim();
+  if (inferenceRouter && inferenceRouter.openai_model) gptModel = String(inferenceRouter.openai_model).trim();
+  const routerProviderMode = String((inferenceRouter && inferenceRouter.provider_mode) || "ENSEMBLE").trim().toUpperCase() || "ENSEMBLE";
+  const openaiReasoningEffort = String(
+    (inferenceRouter && inferenceRouter.openai_reasoning_effort)
+    || process.env.SIGNAL_AI_OPENAI_REASONING_EFFORT
+    || process.env.OPENAI_REASONING_EFFORT
+    || "medium"
+  ).trim().toLowerCase();
 
   // Firestore에 별도 API키가 있으면 우선 사용
   const guardKey = guardData && guardData.claude_api_key ? String(guardData.claude_api_key) : "";
@@ -981,10 +995,16 @@ async function evaluateSignalWithAi({ exchange, symbol, tf, event, side, qtyPct,
   const guardEnsembleEnabled = (guardData && typeof guardData.ensemble_enabled === "boolean")
     ? guardData.ensemble_enabled
     : null;
-  const ensembleEnabled = boolEnv(
+  let ensembleEnabled = boolEnv(
     "SIGNAL_AI_ENSEMBLE_ENABLED",
     guardEnsembleEnabled != null ? guardEnsembleEnabled : true
   );
+  if (inferenceRouter && typeof inferenceRouter.ensemble_enabled === "boolean") {
+    ensembleEnabled = inferenceRouter.ensemble_enabled;
+  }
+  if (routerProviderMode === "CLAUDE_PRIMARY" || routerProviderMode === "OPENAI_PRIMARY") {
+    ensembleEnabled = false;
+  }
   const ensembleWGptRaw = Number(
     process.env.SIGNAL_AI_ENSEMBLE_W_GPT
     || (guardData && guardData.ensemble_w_gpt)
@@ -1155,8 +1175,8 @@ async function evaluateSignalWithAi({ exchange, symbol, tf, event, side, qtyPct,
     return { ok: false, attempted: true, attempts, reason: fallbackReason, res };
   };
 
-  const claudeEnabled = !!apiKey;
-  const gptEnabled = !!gptApiKey && ensembleEnabled;
+  const claudeEnabled = !!apiKey && routerProviderMode !== "OPENAI_PRIMARY";
+  const gptEnabled = !!gptApiKey && (routerProviderMode === "OPENAI_PRIMARY" || ensembleEnabled);
   const [claudeRun, gptRun] = await Promise.all([
     runModelWithRetry({
       tag: "CLAUDE",
@@ -1182,6 +1202,7 @@ async function evaluateSignalWithAi({ exchange, symbol, tf, event, side, qtyPct,
         temperature: 0.2,
         maxTokens: 600,
         jsonMode: true,
+        reasoningEffort: openaiReasoningEffort,
       }),
     }),
   ]);
@@ -1194,13 +1215,25 @@ async function evaluateSignalWithAi({ exchange, symbol, tf, event, side, qtyPct,
       claudeRun.reason ? `CLAUDE:${claudeRun.reason}` : null,
       gptRun.reason ? `GPT:${gptRun.reason}` : null,
     ].filter(Boolean).join("|") || "AI_FAIL";
+    const failedModel = routerProviderMode === "OPENAI_PRIMARY"
+      ? gptModel
+      : (routerProviderMode === "CLAUDE_PRIMARY"
+        ? model
+        : (ensembleEnabled ? `${gptModel}+${model}` : model));
     const meta = {
       ai_enabled: true,
       ai_ok: false,
       ai_reason: failReason,
-      ai_model: ensembleEnabled ? `${gptModel}+${model}` : model,
+      ai_model: failedModel,
       ai_retry_count: Math.max(0, Math.max(claudeRun.attempts, gptRun.attempts) - 1),
       ai_timeout_ms: timeoutMs,
+      ai_serving_router_source: inferenceRouter && inferenceRouter.source ? inferenceRouter.source : "DEFAULT",
+      ai_serving_provider_mode: routerProviderMode,
+      ai_serving_preferred_model_artifact_id: inferenceRouter && inferenceRouter.preferred_model_artifact_id ? inferenceRouter.preferred_model_artifact_id : null,
+      ai_serving_binding_found: inferenceRouter ? inferenceRouter.binding_found === true : false,
+      ai_serving_live_allowed: inferenceRouter ? inferenceRouter.live_serving_allowed === true : false,
+      ai_serving_block_new_entries: inferenceRouter ? inferenceRouter.block_new_entries === true : false,
+      ai_openai_reasoning_effort: gptRun.attempted ? openaiReasoningEffort : null,
       news_provider: newsRes.provider || newsProvider,
       news_ok: newsRes.ok === true,
       news_reason: newsRes.reason || null,
@@ -1425,10 +1458,18 @@ async function evaluateSignalWithAi({ exchange, symbol, tf, event, side, qtyPct,
     ai_qty_final: Number.isFinite(finalQtyPct) ? Number(finalQtyPct) : null,
     ai_max_risk_pct_total: parsed ? parsed.max_risk_pct_total : null,
     ai_pro_status_sanitized: exchangeNorm === "BINANCEFUT",
+    ai_serving_router_source: inferenceRouter && inferenceRouter.source ? inferenceRouter.source : "DEFAULT",
+    ai_serving_provider_mode: routerProviderMode,
+    ai_serving_preferred_model_artifact_id: inferenceRouter && inferenceRouter.preferred_model_artifact_id ? inferenceRouter.preferred_model_artifact_id : null,
+    ai_serving_binding_found: inferenceRouter ? inferenceRouter.binding_found === true : false,
+    ai_serving_live_allowed: inferenceRouter ? inferenceRouter.live_serving_allowed === true : false,
+    ai_serving_block_new_entries: inferenceRouter ? inferenceRouter.block_new_entries === true : false,
     ai_gpt_decision: gptDecisionNorm ? gptDecisionNorm.decision : null,
     ai_gpt_confidence: gptParsed && Number.isFinite(gptParsed.confidence) ? gptParsed.confidence : null,
     ai_gpt_reason: gptParsed && gptParsed.reason ? gptParsed.reason : (gptRun.reason || null),
     ai_gpt_block_softened: gptDecisionNorm ? !!gptDecisionNorm.blockSoftened : null,
+    ai_gpt_model: gptRun.attempted ? gptModel : null,
+    ai_gpt_reasoning_effort: gptRun.attempted ? openaiReasoningEffort : null,
     ai_claude_enabled: claudeEnabled,
     ai_claude_attempted: claudeRun.attempted === true,
     ai_claude_ok: !!claudeParsed,
