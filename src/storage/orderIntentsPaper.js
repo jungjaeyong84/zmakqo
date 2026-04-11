@@ -8,6 +8,8 @@ const { deriveSignalDocId } = require("../utils/signalDocId");
 const { isIntentCanceledLikeStatus, classifyIntentTerminalStatus } = require("../utils/intentStatus");
 const { buildEventEnvelope } = require("../utils/eventEnvelope");
 const { extractLiveExecutionPolicyTrace, toLiveExecutionPolicyTopLevel } = require("../utils/liveExecutionPolicyTrace");
+const { recordUnifiedEvent } = require("./unifiedEventTimeline");
+const { recordOrderIntentEvent } = require("./orderIntentEvents");
 
 const LINEAGE_STRICT_ENABLED = String(process.env.LINEAGE_STRICT_ENABLED || "1").trim() !== "0";
 
@@ -56,6 +58,65 @@ function buildTraceMeta({ signalId = null, intentId = null, runId = null, reques
     requestId ? `req:${requestId}` : null,
     decisionReason ? `reason:${decisionReason}` : null,
   ].filter(Boolean).join(" | ") || null;
+}
+
+async function recordIntentUnifiedEventSafe(doc = null, eventSource = "ORDER_INTENTS_PAPER") {
+  if (!doc || typeof doc !== "object") return;
+  try {
+    await recordUnifiedEvent({
+      eventKind: "INTENT",
+      eventSource,
+      sourceDocumentId: doc.intent_id || null,
+      exchange: doc.exchange,
+      symbol: doc.symbol_or_pair_id || doc.symbol,
+      event: doc.event,
+      traceId: doc.trace_id || null,
+      requestId: doc.request_id || null,
+      runId: doc.run_id || null,
+      signalId: doc.signal_id || null,
+      intentId: doc.intent_id || null,
+      createdAt: doc.created_at || doc.updated_at || null,
+      payload: {
+        status: doc.status || null,
+        side: doc.side || null,
+        event_intent: doc.event_intent || null,
+        qty_pct: Number.isFinite(Number(doc.qty_pct)) ? Number(doc.qty_pct) : null,
+        decision_reason: doc.decision_reason || null,
+      },
+      raw: doc,
+    });
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    console.warn("[UNIFIED_TIMELINE_INTENT_FAIL]", msg);
+  }
+}
+
+async function recordIntentMutationEventSafe({
+  before = null,
+  after = null,
+  mutationType = "UPSERT",
+  extra = null,
+} = {}) {
+  const doc = after || before;
+  if (!doc || typeof doc !== "object") return;
+  try {
+    await recordOrderIntentEvent({
+      intentId: doc.intent_id || null,
+      mutationType,
+      exchange: doc.exchange || null,
+      symbol: doc.symbol_or_pair_id || doc.symbol || null,
+      traceId: doc.trace_id || null,
+      requestId: doc.request_id || null,
+      runId: doc.run_id || null,
+      createdAt: doc.updated_at || doc.created_at || null,
+      before,
+      after,
+      extra,
+    });
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    console.warn("[ORDER_INTENT_EVENT_FAIL]", msg);
+  }
 }
 
 function intentTtlMs(tf) {
@@ -188,7 +249,7 @@ async function upsertIntent({
   const scopeKey = intentScopeKey({ exchange, symbol, tf });
   const execKeyValue = execKey({ exchange, symbol, tf, execBarCloseMs: execMs });
 
-  return await db.runTransaction(async (tx) => {
+  const committedResult = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const featureEntryEventId = String(normalizedFeatures && normalizedFeatures.entry_event_id || "").trim() || null;
     const featureEntrySignalType = String(normalizedFeatures && normalizedFeatures.entry_signal_type || "").toUpperCase() || null;
@@ -198,7 +259,13 @@ async function upsertIntent({
       const st = String(cur.status || "PENDING").toUpperCase();
 
       // ✅ FILLED/CANCELED는 절대 되돌리지 않는다
-      if (st === "FILLED" || isIntentCanceledLikeStatus(st)) return cur;
+      if (st === "FILLED" || isIntentCanceledLikeStatus(st)) {
+        return {
+          doc: cur,
+          before: cur,
+          mutationType: "UPSERT_SKIPPED_TERMINAL",
+        };
+      }
 
       // ✅ status는 건드리지 않고 부가정보만 갱신
       const patch = {
@@ -256,7 +323,11 @@ async function upsertIntent({
         updated_at: t,
       };
       tx.set(ref, patch, { merge: true });
-      return { ...cur, ...patch };
+      return {
+        doc: { ...cur, ...patch },
+        before: cur,
+        mutationType: "UPSERT_PATCH",
+      };
     }
 
     const payload = {
@@ -328,8 +399,24 @@ async function upsertIntent({
       updated_at: t,
     };
     tx.set(ref, payload, { merge: true });
-    return payload;
+    return {
+      doc: payload,
+      before: null,
+      mutationType: "UPSERT_CREATE",
+    };
   });
+  const committed = committedResult && committedResult.doc ? committedResult.doc : null;
+  await recordIntentUnifiedEventSafe(committed);
+  await recordIntentMutationEventSafe({
+    before: committedResult && committedResult.before ? committedResult.before : null,
+    after: committed,
+    mutationType: committedResult && committedResult.mutationType ? committedResult.mutationType : "UPSERT",
+    extra: {
+      execution_mode: committed && committed.execution_mode ? committed.execution_mode : null,
+      event_intent: committed && committed.event_intent ? committed.event_intent : null,
+    },
+  });
+  return committed;
 }
 
 async function listPendingIntentsForExec({ exchange, symbol, tf, execBarCloseMs, limitN = 50 } = {}) {
@@ -525,6 +612,25 @@ async function markIntentStatus(intentIdValue, status, patch = {}) {
     updated_at: nowIso(),
     ...patch,
   }, { merge: true });
+  try {
+    const snap = await ref.get();
+    if (snap.exists) {
+      const doc = snap.data() || {};
+      await recordIntentUnifiedEventSafe(doc, "INTENT_STATUS");
+      await recordIntentMutationEventSafe({
+        before: current,
+        after: doc,
+        mutationType: `STATUS_${statusToWrite || "UNKNOWN"}`,
+        extra: {
+          status_family: resolved.statusFamily || null,
+          terminal_failure_status: resolved.terminalFailureStatus || null,
+        },
+      });
+    }
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    console.warn("[UNIFIED_TIMELINE_INTENT_STATUS_FAIL]", msg);
+  }
 
   if (isIntentCanceledLikeStatus(statusToWrite)) {
     try {
@@ -597,6 +703,24 @@ async function patchIntent(intentIdValue, patch = {}) {
     updated_at: nowIso(),
     ...patch,
   }, { merge: true });
+  try {
+    const snap = await ref.get();
+    if (snap.exists) {
+      const doc = snap.data() || {};
+      await recordIntentUnifiedEventSafe(doc, "INTENT_PATCH");
+      await recordIntentMutationEventSafe({
+        before: current,
+        after: doc,
+        mutationType: "PATCH",
+        extra: {
+          patch_keys: Object.keys(patch || {}).sort(),
+        },
+      });
+    }
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    console.warn("[UNIFIED_TIMELINE_INTENT_PATCH_FAIL]", msg);
+  }
 }
 
 async function cancelPendingIntentsByMarket({

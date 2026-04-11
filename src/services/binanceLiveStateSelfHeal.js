@@ -1,10 +1,11 @@
 "use strict";
 
 const { getFirestore } = require("../storage/firestore");
-const { getPosition, upsertPositionMetaOnly } = require("../storage/positionsPaper");
+const { getPosition, upsertPositionMetaOnly, runWithPositionWriterLease } = require("../storage/positionsPaper");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { upsertSelfHealFailureObservation } = require("../storage/positionRuntimeObservations");
 const { sendAlert } = require("../utils/alerts");
+const { getPositionReadView, listExchangePositionReadViews } = require("./positionReadModel");
 const {
   syncFuturesPositionOnly,
   runDistributedFuturesPositionSync,
@@ -78,6 +79,16 @@ async function sendSelfHealFailureAlert({
   });
 }
 
+async function loadPositionReadState(exchange, symbol) {
+  const fallback = await getPosition({ exchange, symbol });
+  const position = await getPositionReadView({
+    exchange,
+    symbol,
+    fallbackPosition: fallback,
+  });
+  return { fallback, position };
+}
+
 async function healBinanceLivePosition({
   exchange = "BINANCEFUT",
   symbol,
@@ -90,7 +101,12 @@ async function healBinanceLivePosition({
     exchange,
     symbol: sym,
     ttlMs: 120000,
-    runner: async () => {
+    runner: async () => runWithPositionWriterLease({
+      exchange,
+      symbol: sym,
+      ttlMs: 120000,
+      waitMs: 3000,
+      runner: async () => {
       const syncRunId = runId || `RUN__SELF_HEAL__${String(exchange || "").toUpperCase()}__${sym}__${Date.now()}`;
       const syncBefore = await syncFuturesPositionOnly(resolveFuturesPositionSyncRequest({
         source: "SELF_HEAL_PRECHECK",
@@ -99,7 +115,7 @@ async function healBinanceLivePosition({
         symbol: sym,
       }));
 
-      let pos = await getPosition({ exchange, symbol: sym });
+      let { fallback: rawPos, position: pos } = await loadPositionReadState(exchange, sym);
       if (!isActivePaperPosition(pos)) {
         return {
           ok: true,
@@ -139,6 +155,9 @@ async function healBinanceLivePosition({
               runId: `${syncRunId}__REPAIR_META`,
               executionMode: "LIVE",
               meta: repairedMeta,
+              expectedWriteToken: rawPos && Object.prototype.hasOwnProperty.call(rawPos, "position_write_token")
+                ? (rawPos.position_write_token ?? null)
+                : null,
             });
           }
           repaired = true;
@@ -149,7 +168,7 @@ async function healBinanceLivePosition({
             symbol: sym,
             force: true,
           }));
-          pos = await getPosition({ exchange, symbol: sym });
+          ({ fallback: rawPos, position: pos } = await loadPositionReadState(exchange, sym));
         } catch (e) {
           const errorText = e && e.message ? e.message : String(e);
           await upsertSelfHealFailureObservation({
@@ -170,7 +189,7 @@ async function healBinanceLivePosition({
             repaired: false,
             error: errorText,
             sync_before: syncBefore,
-            position: await getPosition({ exchange, symbol: sym }),
+            position: (await loadPositionReadState(exchange, sym)).position,
           };
         }
         const nextMeta = (pos && pos.meta && typeof pos.meta === "object") ? pos.meta : {};
@@ -192,7 +211,7 @@ async function healBinanceLivePosition({
             reason: "REPAIR_POST_SYNC_MISMATCH",
             error: failurePatch.last_self_heal_error,
           }).catch(() => {});
-          pos = await getPosition({ exchange, symbol: sym });
+          ({ fallback: rawPos, position: pos } = await loadPositionReadState(exchange, sym));
         }
       }
 
@@ -203,7 +222,8 @@ async function healBinanceLivePosition({
         sync_before: syncBefore,
         position: pos,
       };
-    },
+      },
+    }),
   });
 }
 
@@ -220,13 +240,10 @@ async function runBinanceLiveStateSelfHeal({
   let targets = explicitSymbols;
 
   if (!targets.length) {
-    const db = getFirestore();
-    const snap = await db.collection("positions_paper")
-      .where("exchange", "==", String(exchange || "").toUpperCase())
-      .limit(Math.max(50, Number(maxPositions) * 4 || 80))
-      .get();
-    const rows = [];
-    snap.forEach((doc) => rows.push(doc.data() || {}));
+    const rows = await listExchangePositionReadViews({
+      exchange,
+      limit: Math.max(50, Number(maxPositions) * 4 || 80),
+    }).catch(() => []);
     targets = rows
       .filter((row) => isActivePaperPosition(row))
       .sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")))

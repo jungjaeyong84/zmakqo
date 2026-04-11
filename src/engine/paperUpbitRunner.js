@@ -3828,6 +3828,9 @@ async function applyBarLoopObservationMetaUpdate({
     budgetUsedKrw: pos.budget_used_krw ?? null,
     budgetSource: pos.budget_source ?? null,
     meta: merged,
+    expectedWriteToken: Object.prototype.hasOwnProperty.call(pos, "position_write_token")
+      ? (pos.position_write_token ?? null)
+      : null,
   });
   return merged;
 }
@@ -4367,6 +4370,9 @@ async function applyTpP1SkipOnCancel({
     budgetUsedKrw: pos.budget_used_krw ?? null,
     budgetSource: pos.budget_source ?? null,
     meta: merged,
+    expectedWriteToken: Object.prototype.hasOwnProperty.call(pos, "position_write_token")
+      ? (pos.position_write_token ?? null)
+      : null,
   });
 
   return merged;
@@ -7018,6 +7024,9 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
       budgetUsedKrw: prevPos && prevPos.budget_used_krw != null ? prevPos.budget_used_krw : budgetUsedKrw,
       budgetSource: prevPos && prevPos.budget_source != null ? prevPos.budget_source : ((riskBudget && riskBudget.enabled) ? riskBudget.source : null),
       meta: deferMeta,
+      expectedWriteToken: prevPos && Object.prototype.hasOwnProperty.call(prevPos, "position_write_token")
+        ? (prevPos.position_write_token ?? null)
+        : null,
     });
     return { ok: true, position: payload, active: true, deferredFlatSync: true };
   }
@@ -7471,6 +7480,9 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     budgetUsedKrw,
     budgetSource: (riskBudget && riskBudget.enabled) ? riskBudget.source : null,
     meta,
+    expectedWriteToken: prevPos && Object.prototype.hasOwnProperty.call(prevPos, "position_write_token")
+      ? (prevPos.position_write_token ?? null)
+      : null,
   });
 
   return { ok: true, position: payload, active };
@@ -11128,6 +11140,9 @@ async function runPaperUpbitForBar({
         runId,
         executionMode,
         meta: projectedMetaForWrite,
+        expectedWriteToken: Object.prototype.hasOwnProperty.call(pos, "position_write_token")
+          ? (pos.position_write_token ?? null)
+          : null,
       });
     } else {
       await upsertPosition({
@@ -11144,6 +11159,9 @@ async function runPaperUpbitForBar({
         budgetUsedKrw: useBudget ? (riskBudget.maxKrw * newSize) : null,
         budgetSource: useBudget ? riskBudget.source : null,
         meta: projectedMetaForWrite,
+        expectedWriteToken: Object.prototype.hasOwnProperty.call(pos, "position_write_token")
+          ? (pos.position_write_token ?? null)
+          : null,
       });
     }
 
@@ -13859,6 +13877,9 @@ async function runPaperFuturesForBar({
         runId,
         executionMode,
         meta: projectedMetaForWrite,
+        expectedWriteToken: Object.prototype.hasOwnProperty.call(pos, "position_write_token")
+          ? (pos.position_write_token ?? null)
+          : null,
       });
     } else {
       await upsertPosition({
@@ -13875,6 +13896,9 @@ async function runPaperFuturesForBar({
         budgetUsedKrw: useBudget ? budgetUsedForPosition : null,
         budgetSource: useBudget ? riskBudget.source : null,
         meta: projectedMetaForWrite,
+        expectedWriteToken: Object.prototype.hasOwnProperty.call(pos, "position_write_token")
+          ? (pos.position_write_token ?? null)
+          : null,
       });
     }
 

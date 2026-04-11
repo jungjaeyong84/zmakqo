@@ -2,6 +2,8 @@ const { getFirestore } = require("./firestore");
 const { buildEventEnvelope } = require("../utils/eventEnvelope");
 const { deriveSignalDocId } = require("../utils/signalDocId");
 const { extractLiveExecutionPolicyTrace, toLiveExecutionPolicyTopLevel } = require("../utils/liveExecutionPolicyTrace");
+const { recordUnifiedEvent } = require("./unifiedEventTimeline");
+const { recordFillEvent } = require("./fillEvents");
 
 const LINEAGE_STRICT_ENABLED = String(process.env.LINEAGE_STRICT_ENABLED || "1").trim() !== "0";
 
@@ -115,6 +117,67 @@ function buildExternalFillUnverifiedPatch({
     classification_issues: Array.isArray(issues) ? issues.slice() : [],
     updated_at: nowIso(),
   };
+}
+
+async function recordFillUnifiedEventSafe(doc = null, eventSource = "FILLS_PAPER") {
+  if (!doc || typeof doc !== "object") return;
+  try {
+    await recordUnifiedEvent({
+      eventKind: "FILL",
+      eventSource,
+      sourceDocumentId: doc.fill_id || null,
+      exchange: doc.exchange,
+      symbol: doc.symbol || doc.symbol_or_pair_id,
+      event: doc.event,
+      traceId: doc.trace_id || doc.idempotency_key || null,
+      requestId: doc.request_id || null,
+      runId: doc.run_id || null,
+      signalId: doc.signal_id || null,
+      intentId: doc.intent_id || null,
+      fillId: doc.fill_id || null,
+      createdAt: doc.created_at || doc.updated_at || null,
+      payload: {
+        side: doc.side || null,
+        qty_pct: Number.isFinite(Number(doc.qty_pct)) ? Number(doc.qty_pct) : null,
+        qty_fraction: Number.isFinite(Number(doc.qty_fraction)) ? Number(doc.qty_fraction) : null,
+        exec_price: Number.isFinite(Number(doc.exec_price)) ? Number(doc.exec_price) : null,
+        decision_reason: doc.decision_reason || null,
+        classification_verified: doc.classification_verified !== false,
+      },
+      raw: doc,
+    });
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    console.warn("[UNIFIED_TIMELINE_FILL_FAIL]", msg);
+  }
+}
+
+async function recordFillMutationEventSafe({
+  before = null,
+  after = null,
+  mutationType = "UPSERT",
+  extra = null,
+} = {}) {
+  const doc = after || before;
+  if (!doc || typeof doc !== "object") return;
+  try {
+    await recordFillEvent({
+      fillId: doc.fill_id || null,
+      mutationType,
+      exchange: doc.exchange || null,
+      symbol: doc.symbol || doc.symbol_or_pair_id || null,
+      traceId: doc.trace_id || doc.idempotency_key || null,
+      requestId: doc.request_id || null,
+      runId: doc.run_id || null,
+      createdAt: doc.updated_at || doc.created_at || null,
+      before,
+      after,
+      extra,
+    });
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    console.warn("[FILL_EVENT_FAIL]", msg);
+  }
 }
 
 // fills_paper: intent 실행 결과(체결) 기록
@@ -260,6 +323,16 @@ async function upsertFill({
   if (normalizedFeaturesJson) payload.features_json = normalizedFeaturesJson;
 
   await ref.set(payload, { merge: false });
+  await recordFillUnifiedEventSafe(payload, "FILLS_PAPER_INTERNAL");
+  await recordFillMutationEventSafe({
+    before: null,
+    after: payload,
+    mutationType: "INTERNAL_INSERT",
+    extra: {
+      intent_id: intentId || null,
+      execution_mode: executionMode || null,
+    },
+  });
   return { ok: true, fill_id: ref.id };
 }
 
@@ -420,6 +493,16 @@ async function upsertExternalFill({
   if (normalizedFeaturesJson) payload.features_json = normalizedFeaturesJson;
 
   await ref.set(payload, { merge: true });
+  await recordFillUnifiedEventSafe(payload, "FILLS_PAPER_EXTERNAL");
+  await recordFillMutationEventSafe({
+    before: existing,
+    after: payload,
+    mutationType: createdNew ? "EXTERNAL_INSERT" : "EXTERNAL_MERGE",
+    extra: {
+      inserted: createdNew,
+      classification_verified: payload.classification_verified !== false,
+    },
+  });
   return { ok: true, fill_id: fillId, inserted: createdNew };
 }
 
@@ -447,8 +530,29 @@ async function markExternalFillUnverified({
       decisionReason,
     });
     tx.set(ref, payload, { merge: true });
-    result = { ok: true, fill_id: fillId, event: payload.event };
+    result = {
+      ok: true,
+      fill_id: fillId,
+      event: payload.event,
+      before: current,
+      doc: { ...current, ...payload },
+    };
   });
+  if (result.ok === true && result.doc) {
+    await recordFillUnifiedEventSafe(result.doc, "FILLS_PAPER_UNVERIFIED");
+    await recordFillMutationEventSafe({
+      before: result.before || null,
+      after: result.doc,
+      mutationType: "MARK_UNVERIFIED",
+      extra: {
+        classification_issues: Array.isArray(result.doc.classification_issues)
+          ? result.doc.classification_issues.slice()
+          : [],
+      },
+    });
+    delete result.before;
+    delete result.doc;
+  }
   return result;
 }
 

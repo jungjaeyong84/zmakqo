@@ -141,6 +141,9 @@ async function handleOrderFill(values) {
     positionSide: nextQty > 0 ? "LONG" : null,
     executionMode: "LIVE",
     meta: { source: "KIWOOM_WS", last_fill_at: nowIso() },
+    expectedWriteToken: Object.prototype.hasOwnProperty.call(pos || {}, "position_write_token")
+      ? (pos.position_write_token ?? null)
+      : null,
   });
 }
 
@@ -150,6 +153,7 @@ async function handleBalance(values) {
   const qty = toNumber(values["930"]);
   const avgPrice = toNumber(values["931"]);
   if (qty == null || qty < 0) return;
+  const pos = await getPosition({ exchange: "KIWOOM", symbol });
 
   await upsertPosition({
     exchange: "KIWOOM",
@@ -161,6 +165,9 @@ async function handleBalance(values) {
     positionSide: qty > 0 ? "LONG" : null,
     executionMode: "LIVE",
     meta: { source: "KIWOOM_WS", last_balance_at: nowIso() },
+    expectedWriteToken: Object.prototype.hasOwnProperty.call(pos || {}, "position_write_token")
+      ? (pos.position_write_token ?? null)
+      : null,
   });
 }
 
