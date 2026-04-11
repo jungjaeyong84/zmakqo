@@ -12,6 +12,7 @@ const { normalizeMarketSymbolForProvider, normalizeTf, defaultExecTfFromEnv } = 
 const { normalizeProviderId } = require("../utils/providerUtils");
 const { resolveBinanceFuturesKeys } = require("../utils/binanceKeyResolver");
 const { normalizePositionSide } = require("../utils/positionSide");
+const { listExchangePositionReadViews } = require("./positionReadModel");
 
 
 const DECISION_CACHE_TTL_MS = Number(process.env.SIGNAL_AI_CACHE_TTL_MS || 60_000);
@@ -265,12 +266,7 @@ async function listActivePositionsByExchange(exchange) {
   if (cached && (now - cached.ts) <= POSITIONS_CACHE_TTL_MS) return cached.data;
   let rows = [];
   try {
-    const db = getFirestore();
-    const snap = await db.collection("positions_paper").where("exchange", "==", ex).get();
-    snap.forEach((doc) => {
-      const data = doc.data();
-      if (data && typeof data === "object") rows.push(data);
-    });
+    rows = await listExchangePositionReadViews({ exchange: ex });
   } catch (err) {
     console.warn("[AI_SIGNAL][CROSS_ASSET_POSITIONS_FAIL]", { exchange: ex, reason: err && err.message ? err.message : String(err) });
     rows = [];

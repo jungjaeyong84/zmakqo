@@ -7,8 +7,8 @@ const {
 } = require("../exchanges/binanceFuturesPrivate");
 const { getExchangeSettingsForProvider } = require("../utils/exchangeSettings");
 const { defaultMarketsFromEnv, normalizeMarketSymbolForProvider } = require("../utils/marketConfig");
-const { getFirestore } = require("../storage/firestore");
 const { getPositionRuntimeObservation, resolveTrailObservationSnapshot } = require("../storage/positionRuntimeObservations");
+const { listExchangePositionReadViews } = require("./positionReadModel");
 const { resolveExitRulesForPosition } = require("../engine/signalEngine");
 const { normalizePositionSide, resolveCloseSide, resolvePositionSideFromPosition } = require("../utils/positionSide");
 
@@ -130,14 +130,13 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
   const keys = await resolveBinanceKeys();
   if (!keys) return { ok: false, reason: "BINANCE_KEYS_MISSING", updated_at: nowIso(), issues: [], markets: [] };
 
-  const db = getFirestore();
   const baseMarkets = Array.isArray(symbols) && symbols.length
     ? symbols.map((s) => normalizeMarketSymbolForProvider(s, "BINANCEFUT")).filter(Boolean)
     : defaultMarketsFromEnv("BINANCEFUT");
 
-  const [account, posSnap] = await Promise.all([
+  const [account, readPositions] = await Promise.all([
     fetchBinanceFuturesAccount({ ...keys }),
-    db.collection("positions_paper").where("exchange", "==", "BINANCEFUT").get(),
+    listExchangePositionReadViews({ exchange: "BINANCEFUT" }).catch(() => []),
   ]);
 
   const externalPositions = new Map();
@@ -149,12 +148,11 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
   }
 
   const internalPositions = new Map();
-  posSnap.forEach((doc) => {
-    const data = doc.data() || {};
+  for (const data of readPositions) {
     const symbol = normalizeMarketSymbolForProvider(data.symbol_or_pair_id || data.symbol, "BINANCEFUT");
-    if (!symbol) return;
+    if (!symbol) continue;
     internalPositions.set(symbol, data);
-  });
+  }
 
   const symbolSet = new Set(baseMarkets);
   for (const sym of externalPositions.keys()) symbolSet.add(sym);

@@ -9,6 +9,7 @@ const { getMarketsExpected, getEffectiveExchangesSettings, getMultiExchangesSett
 const { inferExchangeFromMarket } = require("../utils/marketExchange");
 const { isLiveDocForExchange } = require("../utils/liveOnly");
 const { resolvePositionBudgetUsedKrw } = require("../utils/budgetUsageView");
+const { listExchangePositionReadViews } = require("../services/positionReadModel");
 
 const router = express.Router();
 
@@ -58,19 +59,18 @@ async function computeBudgetSnapshot(db, markets, exchange) {
     const defaultMax = Number(rb.default_max_krw || 0);
     const totalMaxRaw = Number(rb.total_max_krw || 0);
 
-    const posSnap = await db.collection("positions_paper").get();
+    const readPositions = await listExchangePositionReadViews({ exchange });
     const posByMarket = {};
-    posSnap.forEach((d) => {
-      const x = d.data() || {};
-      const posId = String(x.pos_id || d.id || "");
-      if (!posId.startsWith("POS__")) return;
+    for (const x of readPositions) {
+      const posId = String(x && (x.pos_id || x.id) || "");
+      if (!posId.startsWith("POS__")) continue;
       const ex = String(x.exchange || "").toUpperCase();
-      if (ex && exchange && ex !== exchange) return;
-      if (!isLiveDocForExchange(exchange, x)) return;
+      if (ex && exchange && ex !== exchange) continue;
+      if (!isLiveDocForExchange(exchange, x)) continue;
       const mk = x.symbol_or_pair_id || x.symbol;
-      if (!mk) return;
+      if (!mk) continue;
       posByMarket[mk] = x;
-    });
+    }
 
     let totalUsed = 0;
     let sumMax = 0;

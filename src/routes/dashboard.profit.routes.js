@@ -17,6 +17,7 @@ const {
   resolvePositionLeverageReason,
   buildLeverageSummary,
 } = require("../utils/leverageView");
+const { listExchangePositionReadViews } = require("../services/positionReadModel");
 
 const PROFIT_CACHE_MS = Number(process.env.DASHBOARD_CACHE_MS || 60000);
 const profitCache = new Map();
@@ -245,20 +246,19 @@ function buildBinanceCompatAgg(baseAgg, daySummary) {
 }
 
 async function loadPositionsByMarket(db, exchange) {
-  const snap = await db.collection("positions_paper").get();
+  const readPositions = await listExchangePositionReadViews({ exchange });
   const posByMarket = {};
-  snap.forEach((d) => {
-    const x = d.data() || {};
-    const posId = String(x.pos_id || d.id || "");
-    if (!posId.startsWith("POS__")) return;
+  for (const x of readPositions) {
+    const posId = String(x && (x.pos_id || x.id) || "");
+    if (!posId.startsWith("POS__")) continue;
     const mk = x.symbol_or_pair_id || x.symbol;
-    if (!mk) return;
+    if (!mk) continue;
     const ex = String(x.exchange || "").toUpperCase();
     const exResolved = ex || inferExchangeFromMarket(mk);
-    if (!exResolved || exResolved !== exchange) return;
-    if (!isLiveDocForExchange(exchange, x)) return;
+    if (!exResolved || exResolved !== exchange) continue;
+    if (!isLiveDocForExchange(exchange, x)) continue;
     posByMarket[String(mk)] = x;
-  });
+  }
   return posByMarket;
 }
 

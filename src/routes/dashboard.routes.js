@@ -1,6 +1,7 @@
 // src/routes/dashboard.routes.js
 const express = require("express");
-const { getLastTrades } = require("../storage/firestore");
+const { getLastTrades, getFirestore } = require("../storage/firestore");
+const { listExchangePositionReadViews } = require("../services/positionReadModel");
 
 const { getLatestRun } = require("../storage/runLedger");
 const { getLatestGateEvent } = require("../storage/gateEvents");
@@ -78,12 +79,21 @@ function createDashboardRoutes(stateMachine, scheduler) {
     let recentSnapshots = [];
     let barWindow = null;
     let latestPaperRun = null;
+    let activePositions = 0;
 
     try { recentRuns = await getRecentRuns(10); } catch (e) { errors.push({ part: "recent_runs", message: e?.message || String(e) }); }
     try { recentGates = await getRecentGates(10); } catch (e) { errors.push({ part: "recent_gates", message: e?.message || String(e) }); }
     try { recentSnapshots = await getRecentSnapshots(10); } catch (e) { errors.push({ part: "recent_snapshots", message: e?.message || String(e) }); }
     try { barWindow = await getBarWindowCounters({ windowBars: 24, gateFetchN: 500 }); } catch (e) { errors.push({ part: "bar_window_counters", message: e?.message || String(e) }); }
     try { latestPaperRun = await getLatestPaperRun({ lookbackN: 500 }); } catch (e) { errors.push({ part: "latest_paper_run", message: e?.message || String(e) }); }
+    try {
+      const readPositions = await listExchangePositionReadViews({ exchange: "BINANCEFUT" });
+      activePositions = readPositions.filter((row) => {
+        const stateName = String(row && (row.position_state || row.state) || "").toUpperCase();
+        const sizePct = Number(row && row.size_pct);
+        return stateName !== "FLAT" && Number.isFinite(sizePct) && sizePct > 0;
+      }).length;
+    } catch (e) { errors.push({ part: "active_positions", message: e?.message || String(e) }); }
 
     const sources = {
       state: "memory",
@@ -128,6 +138,7 @@ function createDashboardRoutes(stateMachine, scheduler) {
       latest_error: latestError,
       counters: { bar_window: barWindow },
       latest_paper_run: latestPaperRun,
+      active_positions: activePositions,
       recent: { recent_runs: recentRuns, recent_gates: recentGates, recent_snapshots: recentSnapshots },
       lastTrades,
     });
@@ -174,17 +185,19 @@ function createDashboardRoutes(stateMachine, scheduler) {
       });
 
       // Active positions count
-      const posSnap = await db.collection("positions_paper")
-        .where("exchange", "==", exchange)
-        .where("status", "==", "ACTIVE")
-        .get();
+      const readPositions = await listExchangePositionReadViews({ exchange });
+      const activePositions = readPositions.filter((row) => {
+        const state = String(row && (row.position_state || row.state) || "").toUpperCase();
+        const sizePct = Number(row && row.size_pct);
+        return state !== "FLAT" && Number.isFinite(sizePct) && sizePct > 0;
+      }).length;
 
       res.json({
         ok: true,
         ts: new Date().toISOString(),
         signals,
         fills,
-        active_positions: posSnap.size,
+        active_positions: activePositions,
       });
     } catch (e) {
       res.json({ ok: false, error: e.message || String(e), signals: [], fills: [], active_positions: 0 });

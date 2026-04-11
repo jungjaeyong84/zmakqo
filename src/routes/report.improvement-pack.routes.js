@@ -23,6 +23,7 @@ const {
   canonicalExternalEntryEvent,
   isLegacyTierEntryEvent,
 } = require("../utils/liveEntryTaxonomy");
+const { listExchangePositionReadViews } = require("../services/positionReadModel");
 
 const router = express.Router();
 
@@ -2841,26 +2842,25 @@ router.get("/api/report/improvement-pack", async (req, res) => {
     ];
     addGzipFile("data/trades/trade_ledger.csv.gz", toCsv(tradeLedger, tradeCols), tradeLedger.length);
 
-    const posSnap = await db.collection("positions_paper").get();
     const exchangeSet = new Set(exchanges.map((x) => String(x || "").toUpperCase()).filter(Boolean));
     const positions = [];
-    posSnap.forEach((d) => {
-      const x = d.data() || {};
-      const ex = String(x.exchange || "").toUpperCase();
-      if (exchangeSet.size && ex && !exchangeSet.has(ex)) return;
-      if (!isLiveDocForExchange(ex || (exchanges[0] || "BINANCEFUT"), x)) return;
-      positions.push({
-        pos_id: x.pos_id || d.id,
-        exchange: x.exchange || null,
-        market: x.symbol_or_pair_id || x.symbol || null,
-        tf: x.tf || null,
-        state: x.state || null,
-        size_pct: x.size_pct ?? null,
-        avg_price: x.avg_price ?? null,
-        updated_at_utc: x.updated_at || null,
-        updated_at_kst: toKstStringSafe(x.updated_at || null),
-      });
-    });
+    for (const exchangeKey of Array.from(exchangeSet)) {
+      const readPositions = await listExchangePositionReadViews({ exchange: exchangeKey });
+      for (const x of readPositions) {
+        if (!isLiveDocForExchange(exchangeKey || (exchanges[0] || "BINANCEFUT"), x)) continue;
+        positions.push({
+          pos_id: x.pos_id || x.id,
+          exchange: x.exchange || null,
+          market: x.symbol_or_pair_id || x.symbol || null,
+          tf: x.tf || null,
+          state: x.state || null,
+          size_pct: x.size_pct ?? null,
+          avg_price: x.avg_price ?? null,
+          updated_at_utc: x.updated_at || null,
+          updated_at_kst: toKstStringSafe(x.updated_at || null),
+        });
+      }
+    }
     addTextFile("data/trades/position_snapshots.json", JSON.stringify(positions, null, 2), positions.length);
 
     // analysis

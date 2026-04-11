@@ -46,6 +46,7 @@ const {
 } = require("../utils/budgetUsageView");
 const { summarizeFebtRows, summarizeFebtPhase0Artifact } = require("../utils/febtSummary");
 const { buildMissionControlViewModel } = require("../utils/controlPlaneViewModels");
+const { listExchangePositionReadViews } = require("../services/positionReadModel");
 
 const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
 const FEBT_PHASE0_LATEST_PATH = path.join(OPS_DAILY_DIR, "febt_phase0_baseline_latest.json");
@@ -834,20 +835,19 @@ router.get("/dashboard/home", async (req, res) => {
     }
 
     // positions_paper (market별)
-    const posSnap = await db.collection("positions_paper").get();
+    const readPositions = await listExchangePositionReadViews({ exchange });
     const posByMarket = {};
-    posSnap.forEach((d) => {
-      const x = d.data() || {};
-      const posId = String(x.pos_id || d.id || "");
-      if (!posId.startsWith("POS__")) return;
+    for (const x of readPositions) {
+      const posId = String(x && (x.pos_id || x.id) || "");
+      if (!posId.startsWith("POS__")) continue;
       const mk = x.symbol_or_pair_id || x.symbol;
-      if (!mk) return;
+      if (!mk) continue;
       const ex = String(x.exchange || "").toUpperCase();
       const exResolved = ex || inferExchangeFromMarket(mk);
-      if (!exResolved || exResolved !== exchange) return;
-      if (!isLiveDocForExchange(exchange, x)) return;
+      if (!exResolved || exResolved !== exchange) continue;
+      if (!isLiveDocForExchange(exchange, x)) continue;
       posByMarket[String(mk)] = x;
-    });
+    }
 
     const exitRules = getExitRulesForExchange(exchange);
     const tpThreshold = tpP1ForExchange(exchange);

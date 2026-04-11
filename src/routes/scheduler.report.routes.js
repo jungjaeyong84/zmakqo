@@ -8,6 +8,7 @@ const { resolveExecTfForExchange, resolveRuntimeMarketsForExchange } = require("
 const { buildKpiLatestByMarket } = require("../utils/kpiLatestView");
 const { isLiveDocForExchange } = require("../utils/liveOnly");
 const { defaultExecTfFromEnv } = require("../utils/marketConfig");
+const { listExchangePositionReadViews } = require("../services/positionReadModel");
 
 function requireSchedulerAuth(req, res, next) {
   const expected = String(process.env.SCHEDULER_TOKEN || "");
@@ -99,17 +100,16 @@ async function computeOverallSnapshotNow(db, { exchange }) {
   const execTf = await resolveExecTfForExchange(exchangeWanted, (exCfg && exCfg.exec_tf) || defaultExecTfFromEnv() || "15m", 2000);
   const markets_expected = await resolveRuntimeMarketsForExchange(exchangeWanted, 2000);
 
-  const posSnap = await db.collection("positions_paper").get();
+  const readPositions = await listExchangePositionReadViews({ exchange: exchangeWanted });
   const posByMarket = {};
-  posSnap.forEach(d => {
-    const x = d.data() || {};
+  for (const x of readPositions) {
     const ex = String(x.exchange || "").toUpperCase();
     const m = x.symbol_or_pair_id || x.symbol;
     const exResolved = ex || inferExchangeFromMarket(m);
-    if (!exResolved || exResolved !== exchangeWanted) return;
-    if (!isLiveDocForExchange(exchangeWanted, x)) return;
-    if (!m) return;
-    if (!String(x.pos_id || d.id).startsWith("POS__")) return;
+    if (!exResolved || exResolved !== exchangeWanted) continue;
+    if (!isLiveDocForExchange(exchangeWanted, x)) continue;
+    if (!m) continue;
+    if (!String(x.pos_id || x.id).startsWith("POS__")) continue;
     posByMarket[m] = {
       state: x.state || null,
       size_pct: (x.size_pct === undefined ? null : x.size_pct),
@@ -117,7 +117,7 @@ async function computeOverallSnapshotNow(db, { exchange }) {
       position_side: x.position_side || x.side || null,
       updated_at: x.updated_at || null,
     };
-  });
+  }
 
   const barsSnap = await db.collection("bars_snapshots")
     .orderBy("created_at", "desc")

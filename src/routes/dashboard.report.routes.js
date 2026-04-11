@@ -15,6 +15,7 @@ const { isLiveDocForExchange } = require("../utils/liveOnly");
 const { checkCharterConsistency } = require("../services/charterCheck");
 const { buildTailSummary } = require("../utils/tailSummary");
 const { toKstString } = require("../utils/timeKst");
+const { listExchangePositionReadViews } = require("../services/positionReadModel");
 const {
   resolvePositionLeverage,
   resolvePositionLeverageReason,
@@ -543,39 +544,18 @@ async function computeOverallNow(db, exchangeArg, execTfArg = "15m", fallbackTfA
     return isBinanceExchange ? 2 : 1;
   })();
 
-  const posSnap = await db.collection("positions_paper")
-    .select(
-      "pos_id",
-      "exchange",
-      "symbol",
-      "symbol_or_pair_id",
-      "state",
-      "size_pct",
-      "avg_price",
-      "position_side",
-      "side",
-      "budget_used_krw",
-      "updated_at",
-      "meta",
-      "leverage",
-      "futures_leverage",
-      "execution_mode",
-      "live_order_id"
-    )
-    .get();
-
+  const readPositions = await listExchangePositionReadViews({ exchange });
   const posByMarket = {};
-  posSnap.forEach(d => {
-    const x = d.data() || {};
-    const posId = String(x.pos_id || d.id || "");
-    if (!posId.startsWith("POS__")) return;
+  for (const x of readPositions) {
+    const posId = String(x && (x.pos_id || x.id) || "");
+    if (!posId.startsWith("POS__")) continue;
     const posEx = String(x.exchange || "").toUpperCase();
     const mk = x.symbol_or_pair_id || x.symbol;
     const posResolved = posEx || inferExchangeFromMarket(mk);
-    if (!posResolved || posResolved !== exchange) return;
-    if (!isLiveDocForExchange(exchange, x)) return;
-    if (!mk) return;
-    if (markets_expected.length && !markets_expected.includes(mk)) return;
+    if (!posResolved || posResolved !== exchange) continue;
+    if (!isLiveDocForExchange(exchange, x)) continue;
+    if (!mk) continue;
+    if (markets_expected.length && !markets_expected.includes(mk)) continue;
     const leverage = resolvePositionLeverage(x, {
       fallback: isBinanceExchange ? defaultFuturesLeverage : 1,
     });
@@ -590,7 +570,7 @@ async function computeOverallNow(db, exchangeArg, execTfArg = "15m", fallbackTfA
       leverage_reason: resolvePositionLeverageReason(x),
       updated_at: x.updated_at || null,
     };
-  });
+  }
 
   const barsSnap = await db.collection("bars_snapshots")
     .select("symbol","symbol_or_pair_id","ohlcv_json","created_at")

@@ -2,6 +2,7 @@
 
 const { getFirestore } = require("../storage/firestore");
 const { getExchangeSettingsForProvider } = require("../utils/exchangeSettings");
+const { listExchangePositionReadViews } = require("./positionReadModel");
 
 const DYNAMIC_SCALE_ENABLED = String(process.env.TICK_EXIT_DYNAMIC_SCALE_ENABLED || "1") !== "0";
 const EXIT_WORKER_SERVICE = String(process.env.EXIT_WORKER_SERVICE || "donbeolja-exit-worker").trim();
@@ -197,19 +198,20 @@ async function patchWorkerTrafficToLatest() {
 }
 
 async function countActiveBinancePositions() {
-  const db = getFirestore();
   const exCfg = await getExchangeSettingsForProvider("BINANCEFUT", 5000);
   const markets = Array.isArray(exCfg && exCfg.markets) ? exCfg.markets : [];
-  const snap = await db.collection("positions_paper").where("exchange", "==", "BINANCEFUT").limit(500).get();
+  const positions = await listExchangePositionReadViews({
+    exchange: "BINANCEFUT",
+    limit: 500,
+  }).catch(() => []);
   let count = 0;
   let scanned = 0;
-  snap.forEach((doc) => {
-    const pos = doc.data() || {};
+  for (const pos of positions) {
     scanned += 1;
     const size = Number(pos.size_pct);
-    const state = String(pos.state || "").toUpperCase();
+    const state = String(pos.position_state || pos.state || "").toUpperCase();
     if (Number.isFinite(size) && size > 0 && state !== "FLAT") count += 1;
-  });
+  }
   return { count, marketCount: markets.length, scanned };
 }
 

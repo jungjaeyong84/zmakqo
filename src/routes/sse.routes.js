@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { getFirestore } = require("../storage/firestore");
+const { listExchangePositionReadViews } = require("../services/positionReadModel");
 
 // Track connected clients
 const clients = new Set();
@@ -95,17 +96,19 @@ async function fetchDashboardData(exchange) {
     });
 
     // Active positions count
-    const posSnap = await db.collection("positions_paper")
-      .where("exchange", "==", exchange)
-      .where("status", "==", "ACTIVE")
-      .get();
+    const readPositions = await listExchangePositionReadViews({ exchange });
+    const activePositions = readPositions.filter((row) => {
+      const state = String(row && (row.position_state || row.state) || "").toUpperCase();
+      const sizePct = Number(row && row.size_pct);
+      return state !== "FLAT" && Number.isFinite(sizePct) && sizePct > 0;
+    });
 
     return {
       ok: true,
       ts: new Date().toISOString(),
       signals,
       fills,
-      active_positions: posSnap.size,
+      active_positions: activePositions.length,
     };
   } catch (e) {
     return { ok: false, ts: new Date().toISOString(), error: e.message, signals: [], fills: [], active_positions: 0 };

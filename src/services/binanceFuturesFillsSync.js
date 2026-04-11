@@ -19,6 +19,7 @@ const { getExitRulesForExchange, resolveExitRulesForPosition } = require("../eng
 const { syncFuturesPositionOnly, resolveFuturesPositionSyncRequest } = require("../engine/paperUpbitRunner");
 const { sendTradeExecutionAlert } = require("./tradeExecutionAlert");
 const { triggerExitWorkerRun } = require("./exitWorkerClient");
+const { getPositionReadView } = require("./positionReadModel");
 const { sendAlert } = require("../utils/alerts");
 const { resolvePositionSideFromPosition } = require("../utils/positionSide");
 const { isIntentCanceledLikeStatus } = require("../utils/intentStatus");
@@ -1189,7 +1190,12 @@ async function loadPositionEntryContext(exchange, symbol, cacheMap) {
     position: null,
   };
   try {
-    const pos = await getPosition({ exchange, symbol });
+    const fallback = await getPosition({ exchange, symbol });
+    const pos = await getPositionReadView({
+      exchange,
+      symbol,
+      fallbackPosition: fallback,
+    });
     const meta = (pos && typeof pos.meta === "object") ? pos.meta : {};
     const entryEventId = String(meta.entry_event_id || "").trim() || null;
     const entrySignalType = String(meta.entry_signal_type || "").toUpperCase() || null;

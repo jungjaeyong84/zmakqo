@@ -32,6 +32,7 @@ const { sendAlert } = require("../utils/alerts");
 const { runActionPreHooks, runActionPostHooks, emitActionEvent } = require("../utils/actionExecutionHooks");
 const { auditBinanceExitIntegrity } = require("./exitIntegrityAudit");
 const { runBinanceLiveStateSelfHeal } = require("./binanceLiveStateSelfHeal");
+const { getPositionReadView, listExchangePositionReadViews } = require("./positionReadModel");
 
 function nowMs() {
   return Date.now();
@@ -693,12 +694,13 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
   const symbolSet = new Set(markets.map((s) => String(s || "").toUpperCase()).filter(Boolean));
 
   try {
-    const db = getFirestore();
-    const posSnap = await db.collection("positions_paper").where("exchange", "==", "BINANCEFUT").limit(200).get();
-    posSnap.forEach((d) => {
-      const p = d.data() || {};
+    const positions = await listExchangePositionReadViews({
+      exchange: "BINANCEFUT",
+      limit: 200,
+    });
+    positions.forEach((p) => {
       const size = Number(p.size_pct || 0);
-      const state = String(p.state || "").toUpperCase();
+      const state = String(p.position_state || p.state || "").toUpperCase();
       const symbol = String(p.symbol_or_pair_id || p.symbol || "").toUpperCase();
       if (!symbol) return;
       if (!Number.isFinite(size) || size <= 0 || state === "FLAT") return;
@@ -709,7 +711,14 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
   const symbolsToCheck = Array.from(symbolSet);
   if (!symbolsToCheck.length) return { ok: false, skipped: true, reason: "NO_MARKETS" };
 
-  const positions = await Promise.all(symbolsToCheck.map((mk) => getPosition({ exchange: "BINANCEFUT", symbol: mk })));
+  const positions = await Promise.all(symbolsToCheck.map(async (mk) => {
+    const fallback = await getPosition({ exchange: "BINANCEFUT", symbol: mk });
+    return getPositionReadView({
+      exchange: "BINANCEFUT",
+      symbol: mk,
+      fallbackPosition: fallback,
+    });
+  }));
   const active = positions.filter((p) => {
     const size = Number(p && p.size_pct);
     const state = String(p && p.state || "").toUpperCase();

@@ -12,6 +12,7 @@ const { buildKpiLatestByMarket } = require("../utils/kpiLatestView");
 const { isLiveDocForExchange } = require("../utils/liveOnly");
 const { defaultExecTfFromEnv } = require("../utils/marketConfig");
 const { loadTradeQualitySummaryForExchange } = require("../services/tradeQualitySummary");
+const { listExchangePositionReadViews } = require("../services/positionReadModel");
 
 function allowLocalNoOauth(req) {
   const isProd = String(process.env.NODE_ENV || "").toLowerCase() === "production";
@@ -77,15 +78,14 @@ async function computeOverallSnapshotNow(db, { exchange }) {
   const execTf = await resolveExecTfForExchange(exchange, (exCfg && exCfg.exec_tf) || defaultExecTfFromEnv() || "15m", 2000);
   const marketsExpected = await resolveRuntimeMarketsForExchange(exchange, 2000);
 
-  const posSnap = await db.collection("positions_paper").get();
+  const readPositions = await listExchangePositionReadViews({ exchange });
   const posByMarket = {};
-  posSnap.forEach((d) => {
-    const x = d.data() || {};
+  for (const x of readPositions) {
     const m = x.symbol_or_pair_id || x.symbol;
     const ex = String(x.exchange || "").toUpperCase() || inferExchangeFromMarket(m);
-    if (!m || ex !== exchange) return;
-    if (!isLiveDocForExchange(exchange, x)) return;
-    if (!String(x.pos_id || d.id).startsWith("POS__")) return;
+    if (!m || ex !== exchange) continue;
+    if (!isLiveDocForExchange(exchange, x)) continue;
+    if (!String(x.pos_id || x.id).startsWith("POS__")) continue;
     posByMarket[m] = {
       state: x.state || null,
       size_pct: x.size_pct == null ? null : x.size_pct,
@@ -93,7 +93,7 @@ async function computeOverallSnapshotNow(db, { exchange }) {
       position_side: x.position_side || x.side || null,
       updated_at: x.updated_at || null,
     };
-  });
+  }
 
   const barsSnap = await db.collection("bars_snapshots").orderBy("created_at", "desc").limit(1500).get();
   const closeByMarket = {};

@@ -37,6 +37,7 @@ const { isLiveDocForExchange } = require("../utils/liveOnly");
 const { kstDateParts } = require("../utils/timeKst");
 const { resolvePositionBudgetUsedKrw } = require("../utils/budgetUsageView");
 const { resolveRegimeRecord } = require("../utils/regime");
+const { listExchangePositionReadViews } = require("../services/positionReadModel");
 const {
   SIGNAL_EVAL_VERSION,
   SIGNAL_EVAL_HORIZON_BARS,
@@ -426,17 +427,16 @@ router.get("/api/report/pack", async (req, res) => {
     const intervalMs = tfToMs(tf) || (15 * 60 * 1000);
 
     // position snapshot (now)
-    const posSnap = await db.collection("positions_paper").get();
+    const readPositions = await listExchangePositionReadViews({ exchange });
     const posByMarket = {};
-    posSnap.forEach((d) => {
-      const x = d.data() || {};
-      if (!String(x.pos_id || "").startsWith("POS__")) return;
+    for (const x of readPositions) {
+      if (!String(x.pos_id || x.id || "").startsWith("POS__")) continue;
       const posEx = String(x.exchange || "").toUpperCase();
-      if (posEx && posEx !== exchange) return;
-      if (!isLiveDocForExchange(exchange, x)) return;
+      if (posEx && posEx !== exchange) continue;
+      if (!isLiveDocForExchange(exchange, x)) continue;
       const rawMarket = x.symbol_or_pair_id || x.symbol;
       const m = normalizeMarketForExchange(rawMarket, exchange);
-      if (!m) return;
+      if (!m) continue;
       posByMarket[m] = {
         market: m,
         state: x.state || null,
@@ -447,7 +447,7 @@ router.get("/api/report/pack", async (req, res) => {
         budget_max_krw: x.budget_max_krw ?? null,
         updated_at: x.updated_at || null,
       };
-    });
+    }
 
     const barsSnap = await db.collection("bars_snapshots")
       .orderBy("created_at", "desc")
