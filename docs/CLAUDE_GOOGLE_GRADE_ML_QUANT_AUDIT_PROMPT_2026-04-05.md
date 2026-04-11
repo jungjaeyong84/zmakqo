@@ -54,7 +54,7 @@
 13. /Users/jeongjaeyong/Projects/donbeolja/src/utils/openclawReasoningJournal.js
 14. /Users/jeongjaeyong/Projects/donbeolja/src/routes/webhook.routes.js
 15. /Users/jeongjaeyong/Projects/donbeolja/src/scheduler/marketRunner.js
-16. /Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js
+16. /Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js
 
 첫 단계에서 반드시 아래 표를 만들어라.
 - artifact path

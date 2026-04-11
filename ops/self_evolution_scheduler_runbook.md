@@ -43,6 +43,42 @@ curl -sS -X POST "http://127.0.0.1:3000/scheduler/analytics-local-cache-refresh"
   -d '{}'
 ```
 
+## Runtime Guards Route
+
+```bash
+curl -sS -X POST "http://127.0.0.1:3000/scheduler/system-runtime-guards" \
+  -H "content-type: application/json" \
+  -H "x-scheduler-token: ${SCHEDULER_TOKEN}" \
+  -d '{"exchange":"BINANCEFUT","remediate_on_block":true}'
+```
+
+Dry-run:
+
+```bash
+curl -sS -X POST "http://127.0.0.1:3000/scheduler/system-runtime-guards" \
+  -H "content-type: application/json" \
+  -H "x-scheduler-token: ${SCHEDULER_TOKEN}" \
+  -d '{"exchange":"BINANCEFUT","remediate_on_block":true,"dry_run":true}'
+```
+
+## Trail Authority Feedback Route
+
+```bash
+curl -sS -X POST "http://127.0.0.1:3000/scheduler/trail-authority-feedback" \
+  -H "content-type: application/json" \
+  -H "x-scheduler-token: ${SCHEDULER_TOKEN}" \
+  -d '{"exchange":"BINANCEFUT","lookback_hours":24,"fetch_limit":3000}'
+```
+
+## ML Ops Pipeline Route
+
+```bash
+curl -sS -X POST "http://127.0.0.1:3000/scheduler/ml-ops-pipeline" \
+  -H "content-type: application/json" \
+  -H "x-scheduler-token: ${SCHEDULER_TOKEN}" \
+  -d '{"exchange":"BINANCEFUT","force":true}'
+```
+
 ## Authenticated Route
 
 ```bash
@@ -105,6 +141,45 @@ gcloud scheduler jobs create http donbeolja-analytics-cache-refresh \
   --message-body='{}'
 ```
 
+Runtime guards:
+
+```bash
+gcloud scheduler jobs create http donbeolja-system-runtime-guards \
+  --location=asia-northeast3 \
+  --time-zone=Asia/Seoul \
+  --schedule="2,17,32,47 * * * *" \
+  --uri="https://donbeolja-350958953672.asia-northeast3.run.app/scheduler/system-runtime-guards" \
+  --http-method=POST \
+  --headers="content-type=application/json,x-scheduler-token=${SCHEDULER_TOKEN}" \
+  --message-body='{\"exchange\":\"BINANCEFUT\",\"remediate_on_block\":true}'
+```
+
+Trail authority feedback:
+
+```bash
+gcloud scheduler jobs create http donbeolja-trail-authority-feedback \
+  --location=asia-northeast3 \
+  --time-zone=Asia/Seoul \
+  --schedule="7 * * * *" \
+  --uri="https://donbeolja-350958953672.asia-northeast3.run.app/scheduler/trail-authority-feedback" \
+  --http-method=POST \
+  --headers="content-type=application/json,x-scheduler-token=${SCHEDULER_TOKEN}" \
+  --message-body='{\"exchange\":\"BINANCEFUT\",\"lookback_hours\":24,\"fetch_limit\":3000}'
+```
+
+ML Ops pipeline:
+
+```bash
+gcloud scheduler jobs create http donbeolja-ml-ops-pipeline \
+  --location=asia-northeast3 \
+  --time-zone=Asia/Seoul \
+  --schedule="8 */4 * * *" \
+  --uri="https://donbeolja-350958953672.asia-northeast3.run.app/scheduler/ml-ops-pipeline" \
+  --http-method=POST \
+  --headers="content-type=application/json,x-scheduler-token=${SCHEDULER_TOKEN}" \
+  --message-body='{\"exchange\":\"BINANCEFUT\",\"force\":true}'
+```
+
 Update existing job:
 
 ```bash
@@ -118,6 +193,32 @@ gcloud scheduler jobs update http donbeolja-self-evolution \
   --message-body='{}'
 ```
 
+Runtime guards update:
+
+```bash
+gcloud scheduler jobs update http donbeolja-system-runtime-guards \
+  --location=asia-northeast3 \
+  --time-zone=Asia/Seoul \
+  --schedule="2,17,32,47 * * * *" \
+  --uri="https://donbeolja-350958953672.asia-northeast3.run.app/scheduler/system-runtime-guards" \
+  --http-method=POST \
+  --headers="content-type=application/json,x-scheduler-token=${SCHEDULER_TOKEN}" \
+  --message-body='{\"exchange\":\"BINANCEFUT\",\"remediate_on_block\":true}'
+```
+
+ML Ops pipeline update:
+
+```bash
+gcloud scheduler jobs update http donbeolja-ml-ops-pipeline \
+  --location=asia-northeast3 \
+  --time-zone=Asia/Seoul \
+  --schedule="8 */4 * * *" \
+  --uri="https://donbeolja-350958953672.asia-northeast3.run.app/scheduler/ml-ops-pipeline" \
+  --http-method=POST \
+  --headers="content-type=application/json,x-scheduler-token=${SCHEDULER_TOKEN}" \
+  --message-body='{\"exchange\":\"BINANCEFUT\",\"force\":true}'
+```
+
 ## Cron Example
 
 ```bash
@@ -128,6 +229,8 @@ gcloud scheduler jobs update http donbeolja-self-evolution \
 ## Recommended Policy
 
 - Primary: external HTTP scheduler hitting `/scheduler/self-evolution`
+- Runtime safety: external HTTP scheduler hitting `/scheduler/system-runtime-guards`
+- ML closed loop: external HTTP scheduler hitting `/scheduler/ml-ops-pipeline`
 - Precondition: keep analytics local cache fresh via `/scheduler/analytics-local-cache-refresh`
 - Internal app auto hook: keep `AUTO_SELF_EVOLUTION=0` unless you intentionally want local fallback
 - Do not run both on overlapping cadences

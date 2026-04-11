@@ -37,13 +37,13 @@
 2. `ADD` 후 최종 `size_pct`가 `1.0`을 넘지 않게 강제하고
 3. 남은 여유가 100% add에 부족하면 `자동 축소`한다.
 
-이 규칙은 현재 `paperUpbitRunner.js`의 `remaining = 1 - curSize` 및 `TOTAL_BUDGET_EXCEEDED` 분기와 연결된다.
+이 규칙은 현재 `paperBinanceRunner.js`의 `remaining = 1 - curSize` 및 `TOTAL_BUDGET_EXCEEDED` 분기와 연결된다.
 
 참조:
 
-1. [paperUpbitRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js#L5486)
-2. [paperUpbitRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js#L5532)
-3. [paperUpbitRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js#L5698)
+1. [paperBinanceRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js#L5486)
+2. [paperBinanceRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js#L5532)
+3. [paperBinanceRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js#L5698)
 
 ## 3. 현재 재사용 가능한 기반
 
@@ -58,9 +58,9 @@
 
 참조:
 
-1. [paperUpbitRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js#L2283)
-2. [paperUpbitRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js#L2341)
-3. [paperUpbitRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js#L2414)
+1. [paperBinanceRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js#L2283)
+2. [paperBinanceRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js#L2341)
+3. [paperBinanceRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js#L2414)
 
 ### 3.2 평균단가 / 수량 갱신
 
@@ -72,9 +72,9 @@
 
 참조:
 
-1. [paperUpbitRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js#L5692)
-2. [paperUpbitRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js#L5735)
-3. [paperUpbitRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js#L5741)
+1. [paperBinanceRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js#L5692)
+2. [paperBinanceRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js#L5735)
+3. [paperBinanceRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js#L5741)
 
 ### 3.3 네이티브 보호주문 재설정 함수
 
@@ -90,10 +90,10 @@
 
 참조:
 
-1. [paperUpbitRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js#L3995)
-2. [paperUpbitRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js#L4028)
-3. [paperUpbitRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js#L4084)
-4. [paperUpbitRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js#L4105)
+1. [paperBinanceRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js#L3995)
+2. [paperBinanceRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js#L4028)
+3. [paperBinanceRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js#L4084)
+4. [paperBinanceRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js#L4105)
 
 ### 3.4 외부 fill sync 재분류
 
@@ -175,7 +175,7 @@ fills sync는 `closePosition=true`인 보호주문 체결을 `SL/TP1/TRAIL`로 �
 
 주 변경 파일:
 
-1. [paperUpbitRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js)
+1. [paperBinanceRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js)
 
 변경 포인트:
 

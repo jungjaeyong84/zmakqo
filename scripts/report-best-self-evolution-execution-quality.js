@@ -110,6 +110,7 @@ function main() {
 
   const report = {
     ok: true,
+    generated_at: new Date().toISOString(),
     generated_at_kst: nowMeta.kst,
     cycle_id: reportCycleId,
     generation_id: reportCycleId,

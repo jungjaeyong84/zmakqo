@@ -113,7 +113,7 @@ flowchart LR
 핵심 파일:
 
 1. `/Users/jeongjaeyong/Projects/donbeolja/src/scheduler/marketRunner.js`
-2. `/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js`
+2. `/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js`
 3. `/Users/jeongjaeyong/Projects/donbeolja/src/routes/webhook.routes.js`
 4. `/Users/jeongjaeyong/Projects/donbeolja/src/storage/signals.js`
 5. `/Users/jeongjaeyong/Projects/donbeolja/src/storage/signalsQuery.js`

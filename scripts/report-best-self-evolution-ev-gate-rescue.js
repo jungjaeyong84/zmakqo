@@ -15,7 +15,7 @@ const {
   writeText,
 } = require("./lib/automation-utils");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
-const { __test: evGateTest } = require("../src/engine/paperUpbitRunner");
+const { __test: evGateTest } = require("../src/engine/paperBinanceRunner");
 
 const SIGNAL_DROPS_CACHE_PATH = path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "signals_dropped.json");
 const WEEKLY_GOVERNANCE_LATEST_PATH = path.join(OPS_DAILY_DIR, "weekly_filter_governance_latest.json");

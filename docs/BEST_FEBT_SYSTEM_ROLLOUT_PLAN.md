@@ -68,7 +68,7 @@
 대상 파일:
 
 1. `/Users/jeongjaeyong/Projects/donbeolja/src/routes/webhook.routes.js`
-2. `/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js`
+2. `/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js`
 3. `/Users/jeongjaeyong/Projects/donbeolja/src/services/waitOneBarPolicy.js`
 4. `/Users/jeongjaeyong/Projects/donbeolja/src/services/evTp1Probability.js`
 5. `/Users/jeongjaeyong/Projects/donbeolja/src/utils/filterFeatureBuckets.js`
@@ -200,7 +200,7 @@ flowchart LR
 대상:
 
 1. `/Users/jeongjaeyong/Projects/donbeolja/src/routes/webhook.routes.js`
-2. `/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js`
+2. `/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js`
 3. `/Users/jeongjaeyong/Projects/donbeolja/src/utils/filterFeatureBuckets.js`
 
 작업:

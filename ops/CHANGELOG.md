@@ -9,7 +9,7 @@
 - settings: add Claude API key field under risk settings (stored in settings/ai_guard)
 - settings: add ensemble allow/reduce thresholds under risk settings (settings/ai_guard)
 - settings: add Claude model selector under risk settings (settings/ai_guard)
-- fix: remove duplicate eventUpper declaration in paperUpbitRunner (prevents runtime SyntaxError)
+- fix: remove duplicate eventUpper declaration in paperBinanceRunner (prevents runtime SyntaxError)
 - AI guard: ignore pro action/risk text for short signals (only checked on long)
 - engine: drop repeated TP_P1 exit signals after tp_p1_done to prevent duplicate P1 orders
 - dashboard: add cashflow tab with Binance wallet deposit/withdraw summary

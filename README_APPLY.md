@@ -24,7 +24,7 @@ rsync -a /tmp/donbeolja_patch/ ./
 
 node -c src/storage/gate.js
 node -c src/routes/pipeline.routes.js
-node -c src/engine/paperUpbitRunner.js
+node -c src/engine/paperBinanceRunner.js
 ```
 
 ## 3) 검증 방법
@@ -52,5 +52,5 @@ curl -sS -X POST "http://localhost:3000/scheduler/tick" | egrep -o '"overall_gat
 - `src/storage/gate.js`
   - bars 정렬/필드명 정규화 + validateBars 시그니처 정합
   - stable_enough/graceMs 반영
-- `src/engine/paperUpbitRunner.js`
+- `src/engine/paperBinanceRunner.js`
   - `runPaperMarket` alias 추가 (scheduler import 호환)

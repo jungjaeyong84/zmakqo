@@ -363,7 +363,7 @@ Pine의 남는 역할:
    - `core_score_abs`
    - `transition_core_score_abs`
    - 필요 시 `enabled`, `shadow_enabled`
-3. `paperUpbitRunner.js`에서 시장별 `SERVER_PRIMARY` 분기 추가
+3. `paperBinanceRunner.js`에서 시장별 `SERVER_PRIMARY` 분기 추가
 
 산출물:
 1. market-scoped source mode settings schema
@@ -640,7 +640,7 @@ canonical engine 전환은 FEBT rollout과 충돌하지 않는다. 오히려 FEB
 
 1. `/Users/jeongjaeyong/Projects/donbeolja/src/routes/webhook.routes.js`
    - Pine-origin webhook와 server-origin canonical decision을 함께 수용
-2. `/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js`
+2. `/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js`
    - entry source를 `PINE_PRIMARY | SERVER_SHADOW | SERVER_PRIMARY`로 분기
 3. `/Users/jeongjaeyong/Projects/donbeolja/scripts/automation-self-evolution-loop.js`
    - candidate 분류에 `SERVER_POLICY / PINE_THRESHOLD / PINE_LOGIC / ENGINE_LOGIC` 추가

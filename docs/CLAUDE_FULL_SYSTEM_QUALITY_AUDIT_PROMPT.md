@@ -97,7 +97,7 @@ Server canonical signal generation -> webhook ingress / shadow ingest -> 1~5차 
 1. /Users/jeongjaeyong/Projects/donbeolja/code/donbeolja.pine.txt
 2. /Users/jeongjaeyong/Projects/donbeolja/code/donbeolja_latest_generated.pine.txt
 3. /Users/jeongjaeyong/Projects/donbeolja/src/routes/webhook.routes.js
-4. /Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js
+4. /Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js
 5. /Users/jeongjaeyong/Projects/donbeolja/src/utils/alerts.js
 6. /Users/jeongjaeyong/Projects/donbeolja/scripts/automation-filter-shadow-canary.js
 7. /Users/jeongjaeyong/Projects/donbeolja/scripts/automation-weekly-filter-governance.js

@@ -92,7 +92,7 @@
 17. /Users/jeongjaeyong/Projects/donbeolja/src/utils/bestSelfEvolutionDeploymentGuards.js
 18. /Users/jeongjaeyong/Projects/donbeolja/src/utils/bestSelfEvolutionLoopMonitor.js
 19. /Users/jeongjaeyong/Projects/donbeolja/src/utils/bestSelfEvolutionWeightTuning.js
-20. /Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js
+20. /Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js
 
 이전 감사 문서는 마지막에만 읽어라.
 그리고 현재 상태 근거로 직접 사용하지 마라.

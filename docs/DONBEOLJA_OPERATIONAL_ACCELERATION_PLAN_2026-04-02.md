@@ -25,7 +25,7 @@
 1. 의사결정/실행
   - `/Users/jeongjaeyong/Projects/donbeolja/src/services/aiSignalGuard.js`
   - `/Users/jeongjaeyong/Projects/donbeolja/src/engine/signalEngine.js`
-  - `/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js`
+  - `/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js`
 2. 무결성/감사
   - `/Users/jeongjaeyong/Projects/donbeolja/src/services/exitIntegrityAudit.js`
   - `/Users/jeongjaeyong/Projects/donbeolja/src/services/binanceTickExit.js`
@@ -46,7 +46,7 @@
 
 1. `Decision Layer`
   - 신호 판단, EV 게이트, 리스크 게이트
-  - 주 모듈: `paperUpbitRunner`, `evTp1Probability`
+  - 주 모듈: `paperBinanceRunner`, `evTp1Probability`
 2. `Policy Layer` (신규 핵심)
   - `Action Registry + Permission Mode + Pre/Post Hook`
   - 권한 분리: `READ`, `PLAN`, `EXECUTE_LIVE`
@@ -63,10 +63,10 @@
 ## 4.1 P0 (즉시, 1주)
 
 1. `executionQuality + quarantine` 실주문 하드 게이트
-  - 적용: `src/routes/webhook.routes.js`, `src/engine/paperUpbitRunner.js`
+  - 적용: `src/routes/webhook.routes.js`, `src/engine/paperBinanceRunner.js`
   - 실패 시 원칙: `fail-closed` + 표준 reason code 기록
 2. `allocation_score`를 `qty_pct`에 직접 반영
-  - 적용: `src/services/aiAllocation.js`, `src/engine/paperUpbitRunner.js`
+  - 적용: `src/services/aiAllocation.js`, `src/engine/paperBinanceRunner.js`
   - 목표: 품질 불량 시장 자동 감속, 고품질 시장 점진 증량
 
 ## 4.2 P1 (2~3주)
@@ -191,7 +191,7 @@
 
 1. `executionQuality/quarantine` 실주문 게이트 연결 완료
   - `src/routes/webhook.routes.js`
-  - `src/engine/paperUpbitRunner.js`
+  - `src/engine/paperBinanceRunner.js`
   - `src/utils/liveExecutionPolicy.js`
 2. 공통 pre/post action hook 연결 완료
   - `src/routes/trading.actions.routes.js`

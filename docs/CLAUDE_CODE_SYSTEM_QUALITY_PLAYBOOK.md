@@ -168,7 +168,7 @@ Claude Code는 전체 감사를 시작하기 전에 아래 문서를 먼저 읽�
 
 - `src/engine/signalEngine.js`
 - `src/engine/paperExecution.js`
-- `src/engine/paperUpbitRunner.js`
+- `src/engine/paperBinanceRunner.js`
 - `src/paper/engine.js`
 - `src/paper/paperBroker.js`
 - `src/worker/tickExitWorker.js`

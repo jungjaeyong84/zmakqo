@@ -154,7 +154,7 @@
 
 주 변경 파일:
 
-1. [paperUpbitRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperUpbitRunner.js)
+1. [paperBinanceRunner.js](/Users/jeongjaeyong/Projects/donbeolja/src/engine/paperBinanceRunner.js)
 
 예정 변경:
 

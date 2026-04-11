@@ -72,4 +72,23 @@ create_index "funding_fees(exchange,symbol,time_ms)" \
   --field-config=field-path=symbol,order=ascending \
   --field-config=field-path=time_ms,order=ascending
 
+create_index "position_events(exchange,sequence_ms desc)" \
+  --collection-group=position_events \
+  --query-scope=COLLECTION \
+  --field-config=field-path=exchange,order=ascending \
+  --field-config=field-path=sequence_ms,order=descending
+
+create_index "unified_event_timeline(exchange,symbol,ts_ms)" \
+  --collection-group=unified_event_timeline \
+  --query-scope=COLLECTION \
+  --field-config=field-path=exchange,order=ascending \
+  --field-config=field-path=symbol,order=ascending \
+  --field-config=field-path=ts_ms,order=ascending
+
+create_index "position_read_model_latest(exchange,ts_ms desc)" \
+  --collection-group=position_read_model_latest \
+  --query-scope=COLLECTION \
+  --field-config=field-path=exchange,order=ascending \
+  --field-config=field-path=ts_ms,order=descending
+
 echo "[INDEX] done"

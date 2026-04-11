@@ -33,7 +33,7 @@
 ## Commit 2: Writer Authority + State Machine
 - `src/storage/positionsPaper.js`
 - `src/services/positionStateMachine.js`
-- `src/engine/paperUpbitRunner.js`
+- `src/engine/paperBinanceRunner.js`
 - `src/services/binanceLiveStateSelfHeal.js`
 - `src/services/kiwoomWsSync.js`
 - `src/storage/fillsPaper.js`

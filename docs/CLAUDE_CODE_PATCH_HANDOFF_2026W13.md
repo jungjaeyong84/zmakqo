@@ -104,7 +104,7 @@ Claude가 이 문서를 읽으면 아래 4가지를 바로 판단할 수 있어�
 - `src/services/webhookReverseException.js`
 - `src/services/aiSignalGuard.js`
 - `src/services/exitIntegrityAudit.js`
-- `src/engine/paperUpbitRunner.js`
+- `src/engine/paperBinanceRunner.js`
 - `src/engine/signalEngine.js`
 - `src/services/binanceFuturesFillsSync.js`
 - `src/services/binanceTickExit.js`
@@ -127,7 +127,7 @@ Claude가 이 문서를 읽으면 아래 4가지를 바로 판단할 수 있어�
 - `src/storage/tradesPaper.js`
   - `buildTradeId()` export
   - `intent_id`, `fill_id`, `entry_event_id`, `entry_signal_type`, `exec_ms` 저장
-- `src/engine/paperUpbitRunner.js`
+- `src/engine/paperBinanceRunner.js`
   - fill write와 trade write에 동일 `trade_id` 연결
 - `src/services/binanceFuturesFillsSync.js`
   - external fill에도 `trade_id` 연결
@@ -451,7 +451,7 @@ Claude는 아래 경로로 먼저 점검한다.
 5. `src/routes/dashboard.home.routes.js`
 6. `src/storage/fillsPaper.js`
 7. `src/storage/tradesPaper.js`
-8. `src/engine/paperUpbitRunner.js`
+8. `src/engine/paperBinanceRunner.js`
 9. `src/services/binanceFuturesFillsSync.js`
 10. `src/services/tradesFromFills.js`
 11. `src/services/evTp1Probability.js`
@@ -496,7 +496,7 @@ Claude는 아래 경로로 먼저 점검한다.
 - src/routes/dashboard.home.routes.js
 - src/storage/fillsPaper.js
 - src/storage/tradesPaper.js
-- src/engine/paperUpbitRunner.js
+- src/engine/paperBinanceRunner.js
 - src/services/binanceFuturesFillsSync.js
 - src/services/tradesFromFills.js
 - src/services/evTp1Probability.js
