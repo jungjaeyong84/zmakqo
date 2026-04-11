@@ -369,6 +369,73 @@ async function run() {
     "EXIT_TP_P1_3.25P",
     "split fills from the same triggered TP1 order must stay classified as TP1, not TRAIL"
   );
+
+  const sentPayloads = [];
+  const crossRunBatches1 = new Map();
+  fillsSyncTest.queueFillSyncAlertBatch(crossRunBatches1, {
+    symbol: "DOGEUSDT",
+    event: "EXIT_TP_P1_1.65P",
+    intent: "EXIT",
+    side: "SELL",
+    orderMeta: { orderId: 96035243539, clientOrderId: "doge_tp1_same_order" },
+    tradeMs: 1_777_900_000_000,
+    payload: {
+      exchange: "BINANCEFUT",
+      symbol: "DOGEUSDT",
+      event: "EXIT_TP_P1_1.65P",
+      side: "SELL",
+      intent: "EXIT",
+      executionMode: "LIVE",
+      notional: 119.7,
+      execPrice: 0.095,
+      closeRatio: 0.49,
+      fullExit: false,
+      realizedPnl: 1.499,
+      positionSideBefore: "LONG",
+      runId: "FILL_SYNC__DOGEUSDT",
+      orderId: 96035243539,
+      clientOrderId: "doge_tp1_same_order",
+    },
+  });
+  await fillsSyncTest.flushFillSyncAlertBatches(crossRunBatches1, {
+    sendTradeAlert: async (payload) => {
+      sentPayloads.push(payload);
+      return { ok: true };
+    },
+  });
+  const crossRunBatches2 = new Map();
+  fillsSyncTest.queueFillSyncAlertBatch(crossRunBatches2, {
+    symbol: "DOGEUSDT",
+    event: "EXIT_TP_P1_1.65P",
+    intent: "EXIT",
+    side: "SELL",
+    orderMeta: { orderId: 96035243539, clientOrderId: "doge_tp1_same_order" },
+    tradeMs: 1_777_900_030_000,
+    payload: {
+      exchange: "BINANCEFUT",
+      symbol: "DOGEUSDT",
+      event: "EXIT_TP_P1_1.65P",
+      side: "SELL",
+      intent: "EXIT",
+      executionMode: "LIVE",
+      notional: 7.315,
+      execPrice: 0.095,
+      closeRatio: 0.03,
+      fullExit: false,
+      realizedPnl: 0.092,
+      positionSideBefore: "LONG",
+      runId: "FILL_SYNC__DOGEUSDT",
+      orderId: 96035243539,
+      clientOrderId: "doge_tp1_same_order",
+    },
+  });
+  await fillsSyncTest.flushFillSyncAlertBatches(crossRunBatches2, {
+    sendTradeAlert: async (payload) => {
+      sentPayloads.push(payload);
+      return { ok: true };
+    },
+  });
+  assert.strictEqual(sentPayloads.length, 1, "same order partial fills across sync runs must emit only one alert");
 }
 
 (async () => {

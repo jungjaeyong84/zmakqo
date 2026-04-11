@@ -75,6 +75,7 @@ function buildOperationalGuardState({
     generated_at_ms: generatedAtMs,
     max_age_ms: resolvedMaxAgeMs,
     error_count: toNum(doc.error_count),
+    active_error_count: toNum(doc.active_error_count),
     cost_ratio_pct: toNum(doc.cost_ratio_pct),
     cost_limit_pct: toNum(doc.cost_limit_pct),
     net_pnl_pct: toNum(doc.net_pnl_pct),

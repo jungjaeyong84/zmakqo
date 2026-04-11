@@ -2,10 +2,8 @@ const express = require("express");
 const crypto = require("crypto");
 const router = express.Router();
 
-const upbit = require("../exchanges/upbitPrivate");
 const binance = require("../exchanges/binanceFuturesPrivate");
 const binancePublic = require("../exchanges/binanceFutures");
-const kiwoom = require("../exchanges/kiwoomRest");
 
 const EGRESS_VERBOSE_SUCCESS_LOGS = String(process.env.EGRESS_PROXY_VERBOSE_SUCCESS_LOGS || "0") === "1";
 const EGRESS_SUMMARY_INTERVAL_MS = (() => {
@@ -93,12 +91,6 @@ function ensureEgressAuth(req, res, next) {
 }
 
 const handlers = {
-  upbit: {
-    fetchAccounts: (payload) => upbit.fetchAccounts(payload || {}),
-    placeMarketBuy: (payload) => upbit.placeMarketBuy(payload || {}),
-    placeMarketSell: (payload) => upbit.placeMarketSell(payload || {}),
-    fetchOrder: (payload) => upbit.fetchOrder(payload || {}),
-  },
   binancefut: {
     fetchBinanceFuturesAccount: (payload) => binance.fetchBinanceFuturesAccount(payload || {}),
     fetchFuturesPositionMode: (payload) => binance.fetchFuturesPositionMode(payload || {}),
@@ -125,14 +117,6 @@ const handlers = {
     placeFuturesStopMarketOrder: (payload) => binance.placeFuturesStopMarketOrder(payload || {}),
     placeFuturesTakeProfitMarketOrder: (payload) => binance.placeFuturesTakeProfitMarketOrder(payload || {}),
     cancelFuturesOpenOrders: (payload) => binance.cancelFuturesOpenOrders(payload || {}),
-  },
-  kiwoom: {
-    getToken: (payload) => kiwoom.getToken(payload && payload.auth ? payload.auth : payload || {}),
-    placeOrder: (payload) => kiwoom.placeOrder(payload || {}),
-    cancelOrder: (payload) => kiwoom.cancelOrder(payload || {}),
-    modifyOrder: (payload) => kiwoom.modifyOrder(payload || {}),
-    fetchAccount: (payload) => kiwoom.fetchAccount(payload || {}),
-    fetchBars: (payload) => kiwoom.fetchBars(payload || {}),
   },
 };
 

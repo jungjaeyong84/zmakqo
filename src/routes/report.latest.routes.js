@@ -13,6 +13,7 @@ const { isLiveDocForExchange } = require("../utils/liveOnly");
 const { defaultExecTfFromEnv } = require("../utils/marketConfig");
 const { loadTradeQualitySummaryForExchange } = require("../services/tradeQualitySummary");
 const { listExchangePositionReadViews } = require("../services/positionReadModel");
+const { loadSystemRuntimeGuardView } = require("../services/systemRuntimeGuardView");
 
 function allowLocalNoOauth(req) {
   const isProd = String(process.env.NODE_ENV || "").toLowerCase() === "production";
@@ -190,12 +191,14 @@ router.get("/api/report/latest", async (req, res) => {
         topN: 5,
       });
     }
+    const systemRuntimeGuards = await loadSystemRuntimeGuardView({ exchange });
     return res.json({
       ok: true,
       id: key,
       mode,
       exists: snap.exists,
       data,
+      system_runtime_guards: systemRuntimeGuards,
     });
   } catch (e) {
     return res.status(500).json({ ok: false, error: "REPORT_LATEST_ERROR", message: e.message });

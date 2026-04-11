@@ -1,9 +1,7 @@
 const { fetchNews } = require("./newsFetch");
 const { callOpenAI, safeJsonParse } = require("./openaiClient");
 const { callClaude } = require("./claudeClient");
-const { getUpbitAccountSummary } = require("./upbitAccountSummary");
 const { getBinanceFuturesAccountSummary } = require("./binanceFuturesAccountSummary");
-const { fetchAccount: fetchKiwoomAccount } = require("../exchanges/kiwoomRest");
 const { fetchCandles } = require("../exchanges");
 const { getAiGuardSettingsCached } = require("../storage/settings");
 const { getFirestore } = require("../storage/firestore");
@@ -522,26 +520,7 @@ async function evaluateCrossAssetOpposite({ exchange, symbol, side, intent, qtyP
 }
 
 function buildKeywordsForProvider(provider, symbol) {
-  const p = normalizeProviderId(provider || "BINANCEFUT");
   const token = normalizeMarketToken(symbol);
-  if (p === "KIWOOM") {
-    const base = [
-      "KOSPI",
-      "KOSDAQ",
-      "Korea stocks",
-      "Korean stocks",
-      "KRX",
-      "DART",
-      "공시",
-      "실적",
-      "환율",
-      "금리",
-      "반도체",
-      "수출",
-    ];
-    if (token) base.push(token);
-    return base;
-  }
   const base = [
     "crypto",
     "bitcoin",
@@ -558,7 +537,6 @@ function buildKeywordsForProvider(provider, symbol) {
 }
 
 function buildAllowedDomainsForProvider(provider) {
-  const p = normalizeProviderId(provider || "BINANCEFUT");
   const base = [
     "reuters.com",
     "bloomberg.com",
@@ -570,18 +548,6 @@ function buildAllowedDomainsForProvider(provider) {
     "naver.com",
     "daum.net",
   ];
-  if (p === "KIWOOM") {
-    return [
-      ...base,
-      "dart.fss.or.kr",
-      "fss.or.kr",
-      "kind.krx.co.kr",
-      "krx.co.kr",
-      "yna.co.kr",
-      "mk.co.kr",
-      "hankyung.com",
-    ];
-  }
   return [
     ...base,
     "coindesk.com",
@@ -650,44 +616,17 @@ async function getAccountContext(provider) {
   const now = nowMs();
   if (cached && (now - cached.ts) <= ACCOUNT_CACHE_TTL_MS) return cached.data;
 
-  let data = { ok: false, provider: p, total_value: null, unit: p === "BINANCEFUT" ? "USDT" : "KRW", error: null };
+  let data = { ok: false, provider: p, total_value: null, unit: "USDT", error: null };
   try {
-    const ex = await getExchangeSettingsForProvider(p, 5000);
-    if (p === "UPBIT") {
-      const accessKey = String(process.env.UPBIT_ACCESS_KEY || (ex && ex.api_key) || "");
-      const secretKey = String(process.env.UPBIT_SECRET_KEY || (ex && ex.api_secret) || "");
-      if (!accessKey || !secretKey) throw new Error("UPBIT_KEYS_MISSING");
-      const summary = await getUpbitAccountSummary({ accessKey, secretKey });
-      const total = Number(summary && summary.total_krw);
-      if (!Number.isFinite(total) || total <= 0) throw new Error("UPBIT_TOTAL_EMPTY");
-      data = { ok: true, provider: p, total_value: total, unit: "KRW", source: "upbit_summary" };
-    } else if (p === "BINANCEFUT") {
-      const keys = await resolveBinanceFuturesKeys({ ttlMs: 5000 });
-      const apiKey = String(keys && keys.apiKey || "");
-      const apiSecret = String(keys && keys.apiSecret || "");
-      if (!apiKey || !apiSecret) throw new Error("BINANCEFUT_KEYS_MISSING");
-      const summary = await getBinanceFuturesAccountSummary({ apiKey, apiSecret });
-      const total = Number(summary && summary.total_value);
-      if (!Number.isFinite(total) || total <= 0) throw new Error("BINANCEFUT_TOTAL_EMPTY");
-      data = { ok: true, provider: p, total_value: total, unit: String(summary.unit || "USDT"), source: "binance_summary" };
-    } else if (p === "KIWOOM") {
-      const apiKey = String(process.env.KIWOOM_APP_KEY || (ex && ex.api_key) || "");
-      const apiSecret = String(process.env.KIWOOM_APP_SECRET || (ex && ex.api_secret) || "");
-      if (!apiKey || !apiSecret) throw new Error("KIWOOM_KEYS_MISSING");
-      const account = await fetchKiwoomAccount({ appkey: apiKey, secretkey: apiSecret });
-      if (!account || account.ok !== true) throw new Error((account && (account.message || account.error)) || "KIWOOM_ACCOUNT_FAILED");
-      const cash = Number(account.cash_krw);
-      const holdings = Array.isArray(account.holdings) ? account.holdings : [];
-      let holdingsValue = 0;
-      for (const h of holdings) {
-        const qty = Number(h.qty);
-        const last = Number(h.last_price);
-        if (Number.isFinite(qty) && Number.isFinite(last)) holdingsValue += qty * last;
-      }
-      const total = (Number.isFinite(cash) ? cash : 0) + holdingsValue;
-      if (!Number.isFinite(total) || total <= 0) throw new Error("KIWOOM_TOTAL_EMPTY");
-      data = { ok: true, provider: p, total_value: total, unit: "KRW", source: "kiwoom_account" };
-    }
+    await getExchangeSettingsForProvider(p, 5000);
+    const keys = await resolveBinanceFuturesKeys({ ttlMs: 5000 });
+    const apiKey = String(keys && keys.apiKey || "");
+    const apiSecret = String(keys && keys.apiSecret || "");
+    if (!apiKey || !apiSecret) throw new Error("BINANCEFUT_KEYS_MISSING");
+    const summary = await getBinanceFuturesAccountSummary({ apiKey, apiSecret });
+    const total = Number(summary && summary.total_value);
+    if (!Number.isFinite(total) || total <= 0) throw new Error("BINANCEFUT_TOTAL_EMPTY");
+    data = { ok: true, provider: "BINANCEFUT", total_value: total, unit: String(summary.unit || "USDT"), source: "binance_summary" };
   } catch (err) {
     data = { ...data, ok: false, error: err && err.message ? err.message : String(err) };
   }
@@ -1069,7 +1008,7 @@ async function evaluateSignalWithAi({ exchange, symbol, tf, event, side, qtyPct,
     toIso,
     pageSize: Number(process.env.SIGNAL_AI_NEWS_MAX || 40),
     provider: newsProvider,
-    language: normalizeProviderId(exchange) === "KIWOOM" ? "ko" : "en",
+    language: "en",
     model: newsModel,
     allowedDomains,
   });

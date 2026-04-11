@@ -11,7 +11,7 @@ const {
   resolveLiveFuturesConfig,
   refreshBinanceNativeProtectionWithRetry,
   buildNativeProtectionMetaPatch,
-} = require("../src/engine/paperUpbitRunner");
+} = require("../src/engine/paperBinanceRunner");
 
 const BOARD_LATEST_PATH = path.join(
   __dirname,

@@ -47,6 +47,7 @@ const {
 const { summarizeFebtRows, summarizeFebtPhase0Artifact } = require("../utils/febtSummary");
 const { buildMissionControlViewModel } = require("../utils/controlPlaneViewModels");
 const { listExchangePositionReadViews } = require("../services/positionReadModel");
+const { loadSystemRuntimeGuardView } = require("../services/systemRuntimeGuardView");
 
 const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
 const FEBT_PHASE0_LATEST_PATH = path.join(OPS_DAILY_DIR, "febt_phase0_baseline_latest.json");
@@ -689,7 +690,8 @@ router.get("/dashboard/home", async (req, res) => {
     const cacheKey = `${exchange}__${signalTf}__${execTf}__${weekly.from}__${weekly.to}`;
     const cached = getHomeCache(cacheKey);
     if (cached) {
-      const cachedPayload = { ...cached, mission_control: buildMissionControlViewModel() };
+      const systemRuntimeGuards = await loadSystemRuntimeGuardView({ exchange }).catch(() => null);
+      const cachedPayload = { ...cached, mission_control: buildMissionControlViewModel(), system_runtime_guards: systemRuntimeGuards };
       setHomeCache(cacheKey, cachedPayload);
       return res.render(String(req.query.legacy || "").trim() === "1" ? "home.legacy.ejs" : "home", cachedPayload);
     }
@@ -1556,6 +1558,7 @@ router.get("/dashboard/home", async (req, res) => {
       }));
 
     const asOfKst = toKstString(new Date().toISOString());
+    const systemRuntimeGuards = await loadSystemRuntimeGuardView({ exchange }).catch(() => null);
     const payload = {
       service: String(process.env.K_SERVICE || "donbeolja"),
       exchange,
@@ -1600,6 +1603,7 @@ router.get("/dashboard/home", async (req, res) => {
       intent_failures: intentFailures,
       mission_control: buildMissionControlViewModel(),
       active_positions: activePositions,
+      system_runtime_guards: systemRuntimeGuards,
     };
     setHomeCache(cacheKey, payload);
     return res.render(String(req.query.legacy || "").trim() === "1" ? "home.legacy.ejs" : "home", payload);
@@ -1652,6 +1656,7 @@ router.get("/dashboard/home", async (req, res) => {
         febt_phase0_latest: null,
         intent_failures: [],
         mission_control: null,
+        system_runtime_guards: null,
         _error: { code: errorRef, message: '데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.' },
       });
     } catch (renderErr) {

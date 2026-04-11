@@ -302,6 +302,7 @@ function buildSnapshot({
 
 (() => {
   const nowMs = Date.now();
+  const expectedLineageReportPath = require("path").resolve(process.cwd(), "ops/daily/signal_lineage_health_latest.json");
   const snap = __test.buildSnapshotFromArtifacts({
     allocatorDoc: { summary: { by_market: [{ market: "BTCUSDT", allocation_score: 1, recommended_action: "HOLD" }] } },
     quarantineDoc: { summary: { by_market: [] } },
@@ -327,11 +328,11 @@ function buildSnapshot({
   });
   assert.strictEqual(res.ok, false);
   assert.ok(String(res.reason || "").startsWith("LINEAGE_SLO_"));
-  assert.strictEqual(res.policy.lineage_report_path, "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/signal_lineage_health_latest.json");
+  assert.strictEqual(res.policy.lineage_report_path, expectedLineageReportPath);
   assert.ok(Number.isFinite(Number(res.policy.lineage_report_age_ms)));
   assert.strictEqual(typeof res.policy.lineage_report_generated_at_kst, "string");
   assert.strictEqual(res.policy.lineage_report_source, "ARTIFACT_TIMESTAMP");
-  assert.strictEqual(res.featuresPatch._live_exec_policy_lineage_report_path, "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/signal_lineage_health_latest.json");
+  assert.strictEqual(res.featuresPatch._live_exec_policy_lineage_report_path, expectedLineageReportPath);
   assert.ok(Number.isFinite(Number(res.featuresPatch._live_exec_policy_lineage_report_age_ms)));
   assert.strictEqual(typeof res.featuresPatch._live_exec_policy_lineage_report_generated_at_kst, "string");
   assert.strictEqual(res.featuresPatch._live_exec_policy_lineage_report_source, "ARTIFACT_TIMESTAMP");
@@ -490,6 +491,7 @@ function buildSnapshot({
 
 (() => {
   const olderLocalIso = new Date(Date.now() - (3 * 60 * 60 * 1000)).toISOString();
+  const expectedLineageReportPath = require("path").resolve(process.cwd(), "ops/daily/signal_lineage_health_latest.json");
   const selected = __test.selectPreferredLineageInput({
     localDoc: {
       generated_at: olderLocalIso,
@@ -513,13 +515,14 @@ function buildSnapshot({
       },
     }),
   });
-  assert.strictEqual(selected.path, "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/signal_lineage_health_latest.json");
+  assert.strictEqual(selected.path, expectedLineageReportPath);
   assert.strictEqual(selected.source, null);
 })();
 
 (() => {
   const olderLocalIso = new Date(Date.now() - (3 * 60 * 60 * 1000)).toISOString();
   const newerSharedIso = new Date(Date.now() - (5 * 60 * 1000)).toISOString();
+  const expectedLineageReportPath = require("path").resolve(process.cwd(), "ops/daily/signal_lineage_health_latest.json");
   const selected = __test.selectPreferredLineageInput({
     localDoc: {
       generated_at: olderLocalIso,
@@ -544,7 +547,7 @@ function buildSnapshot({
       },
     }),
   });
-  assert.strictEqual(selected.path, "/Users/jeongjaeyong/Projects/donbeolja/ops/daily/signal_lineage_health_latest.json");
+  assert.strictEqual(selected.path, expectedLineageReportPath);
   assert.strictEqual(selected.source, null);
   assert.strictEqual(selected.doc.summary.entry_fills_intent_id_null_rate, 0);
 })();
@@ -773,6 +776,122 @@ function buildSnapshot({
     mode: "비용 차단",
     reason: "OPS_GUARD_HOLD",
     block_new_entries: true,
+    cost_ratio_pct: 0.62,
+    cost_limit_pct: 0.2,
+    error_count: 0,
+    audit_issue_count: 0,
+    qty_pct_non_positive_count: 0,
+  };
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    intent: "ENTRY",
+    qtyPct: 1,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.reason, "LIVE_POLICY_OK");
+  assert.ok(Number(res.qtyPctFinal) > 0 && Number(res.qtyPctFinal) < 1);
+  assert.strictEqual(res.featuresPatch._live_exec_policy_ops_guard_soft_scale_active, true);
+  assert.strictEqual(Number(res.featuresPatch._live_exec_policy_ops_guard_soft_scale), 0.7);
+  assert.strictEqual(Number(res.featuresPatch._live_exec_policy_ops_guard_soft_scale_severity), 0);
+})();
+
+(() => {
+  const snap = buildSnapshot({
+    allocatorRows: [{ market: "AXSUSDT", allocation_score: 1.0, recommended_action: "HOLD" }],
+    qualityRows: [{ market: "AXSUSDT", avg_created_to_fill_ms: 700000, partial_fill_rate_pct: 88, avg_slippage_bps: 9 }],
+  });
+  snap.operationalGuard = {
+    status: "보류",
+    mode: "비용 차단",
+    reason: "OPS_GUARD_HOLD",
+    block_new_entries: true,
+    cost_ratio_pct: 0.62,
+    cost_limit_pct: 0.2,
+    error_count: 0,
+    audit_issue_count: 0,
+    qty_pct_non_positive_count: 0,
+  };
+  snap.systemSlo = {
+    status: "WARN",
+    reason: "OPS_GUARD_HOLD",
+    block_new_entries: true,
+    issues: ["OPS_GUARD_HOLD", "EXECUTION_LATENCY_P95_HIGH"],
+  };
+  snap.quality = {
+    status: "EXECUTION_QUALITY_REVIEW",
+    top_watch_markets: [
+      { market: "AXSUSDT", avg_created_to_fill_ms: 700000, partial_fill_rate_pct: 88, avg_slippage_bps: 9 },
+    ],
+  };
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "AXSUSDT",
+    intent: "ENTRY",
+    qtyPct: 1,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.reason, "LIVE_POLICY_OK");
+  assert.ok(Number(res.qtyPctFinal) > 0 && Number(res.qtyPctFinal) < 1);
+  assert.strictEqual(res.featuresPatch._live_exec_policy_system_slo_soft_scale_active, true);
+  assert.strictEqual(Number(res.featuresPatch._live_exec_policy_ops_guard_soft_scale), 0.35);
+  assert.strictEqual(Number(res.featuresPatch._live_exec_policy_ops_guard_soft_scale_severity), 3);
+  assert.strictEqual(Number(res.featuresPatch._live_exec_policy_ops_guard_soft_scale_top_watch_index), 0);
+})();
+
+(() => {
+  const snap = buildSnapshot({
+    allocatorRows: [{ market: "BTCUSDT", allocation_score: 1.0, recommended_action: "HOLD" }],
+    qualityRows: [{ market: "BTCUSDT", avg_created_to_fill_ms: 1000, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }],
+  });
+  snap.operationalGuard = {
+    status: "보류",
+    mode: "비용 차단",
+    reason: "OPS_GUARD_HOLD",
+    block_new_entries: true,
+    cost_ratio_pct: 0.62,
+    cost_limit_pct: 0.2,
+    error_count: 0,
+    audit_issue_count: 0,
+    qty_pct_non_positive_count: 0,
+  };
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    intent: "ENTRY",
+    qtyPct: 0.4,
+    features: {},
+    stage: "TEST",
+    applyScale: false,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(Number(res.qtyPctFinal), 0.4);
+})();
+
+(() => {
+  const snap = buildSnapshot({
+    allocatorRows: [{ market: "BTCUSDT", allocation_score: 1.0, recommended_action: "HOLD" }],
+    qualityRows: [{ market: "BTCUSDT", avg_created_to_fill_ms: 1000, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }],
+  });
+  snap.operationalGuard = {
+    status: "보류",
+    mode: "비용 차단",
+    reason: "OPS_GUARD_HOLD",
+    block_new_entries: true,
+    cost_ratio_pct: 0.62,
+    cost_limit_pct: 0.2,
+    error_count: 2,
+    audit_issue_count: 0,
+    qty_pct_non_positive_count: 0,
   };
   const res = evaluateLiveEntryPolicy({
     exchange: "BINANCEFUT",
@@ -786,6 +905,58 @@ function buildSnapshot({
   });
   assert.strictEqual(res.ok, false);
   assert.strictEqual(res.reason, "OPS_GUARD_HOLD");
+})();
+
+(() => {
+  const snap = buildSnapshot({
+    allocatorRows: [{ market: "BTCUSDT", allocation_score: 1.0, recommended_action: "HOLD" }],
+    qualityRows: [{ market: "BTCUSDT", avg_created_to_fill_ms: 1000, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }],
+  });
+  snap.systemSlo = {
+    status: "BLOCK",
+    reason: "SYSTEM_SLO_TEST_BLOCK",
+    block_new_entries: true,
+    issues: ["SYSTEM_SLO_TEST_BLOCK"],
+  };
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    intent: "ENTRY",
+    qtyPct: 1,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.reason, "SYSTEM_SLO_TEST_BLOCK");
+  assert.strictEqual(res.featuresPatch._live_exec_policy_system_slo_status, "BLOCK");
+})();
+
+(() => {
+  const snap = buildSnapshot({
+    allocatorRows: [{ market: "ETHUSDT", allocation_score: 1.0, recommended_action: "HOLD" }],
+    qualityRows: [{ market: "ETHUSDT", avg_created_to_fill_ms: 1000, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }],
+  });
+  snap.systemAnomaly = {
+    status: "BLOCK",
+    reason: "ANOMALY_TEST_CIRCUIT",
+    circuit_breaker_open: true,
+    issues: ["ANOMALY_TEST_CIRCUIT"],
+  };
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    intent: "ENTRY",
+    qtyPct: 1,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.reason, "ANOMALY_TEST_CIRCUIT");
+  assert.strictEqual(res.featuresPatch._live_exec_policy_system_anomaly_circuit_breaker_open, true);
 })();
 
 (() => {

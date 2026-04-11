@@ -1,5 +1,5 @@
 const assert = require("assert");
-const engine = require("../engine/paperUpbitRunner");
+const engine = require("../engine/paperBinanceRunner");
 const tradingActionsRoutes = require("../routes/trading.actions.routes");
 
 function run() {

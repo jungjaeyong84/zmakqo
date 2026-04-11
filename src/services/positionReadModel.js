@@ -14,6 +14,7 @@ function upper(value) {
 }
 
 function toTimeMs(value) {
+  if (value === null || value === undefined || value === "") return null;
   if (Number.isFinite(Number(value))) return Number(value);
   const parsed = Date.parse(String(value || ""));
   return Number.isFinite(parsed) ? parsed : null;
@@ -27,6 +28,17 @@ function safeClone(value) {
     return null;
   }
 }
+
+function boolEnv(name, fallback = false) {
+  const raw = String(process.env[name] == null ? "" : process.env[name]).trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
+  return fallback;
+}
+
+const POSITION_READ_MODEL_RAW_FALLBACK_ENABLED = boolEnv("POSITION_READ_MODEL_RAW_FALLBACK_ENABLED", false);
+const POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY = boolEnv("POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY", false);
 
 function pickLatestPositionMutationRow(rows = []) {
   return (Array.isArray(rows) ? rows : [])
@@ -71,7 +83,7 @@ function buildLatestTimelineRowFromIndex(doc = null) {
   if (!doc || typeof doc !== "object") return null;
   return {
     event_kind: "POSITION_MUTATION",
-    ts_ms: Number.isFinite(Number(doc.ts_ms)) ? Number(doc.ts_ms) : null,
+    ts_ms: toTimeMs(doc.ts_ms),
     created_at: doc.created_at || null,
     event: doc.mutation_kind || null,
     trace_id: doc.trace_id || null,
@@ -142,21 +154,32 @@ async function listExchangePositionReadViews({
   exchange,
   limit = null,
 } = {}) {
-  const db = getFirestore();
-  let query = db.collection("positions_paper")
-    .where("exchange", "==", upper(exchange));
-  if (Number.isFinite(Number(limit)) && Number(limit) > 0) {
-    query = query.limit(Math.trunc(Number(limit)));
+  const enabled = String(process.env.POSITION_READ_MODEL_USE_UNIFIED_TIMELINE || "1").trim() !== "0";
+  const normalizedLimit = Number.isFinite(Number(limit)) && Number(limit) > 0
+    ? Math.trunc(Number(limit))
+    : 2000;
+  if (enabled) {
+    const latestDocs = await listLatestPositionReadModelsByExchange({
+      exchange,
+      limit: normalizedLimit,
+    }).catch(() => []);
+    if (latestDocs.length || POSITION_READ_MODEL_RAW_FALLBACK_ENABLED !== true || POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY === true) {
+      return latestDocs.map((doc) => buildPositionReadView({
+        storedPosition: null,
+        latestTimelineRow: buildLatestTimelineRowFromIndex(doc),
+      }));
+    }
   }
+
+  const db = getFirestore();
+  let query = db.collection("positions_paper").where("exchange", "==", upper(exchange));
+  if (normalizedLimit > 0) query = query.limit(normalizedLimit);
   const snap = await query.get();
   const rawPositions = [];
   snap.forEach((doc) => {
     rawPositions.push({ id: doc.id, ...(doc.data() || {}) });
   });
-  return listPositionReadViews({
-    exchange,
-    positions: rawPositions,
-  });
+  return listPositionReadViews({ exchange, positions: rawPositions });
 }
 
 async function getPositionReadViewsBySymbols({
@@ -194,7 +217,7 @@ async function getPositionReadViewsBySymbols({
 
   const missingSymbols = uniqueSymbols.filter((symbol) => !latestBySymbol.has(symbol));
   const fallbackBySymbol = new Map();
-  if (missingSymbols.length) {
+  if (missingSymbols.length && POSITION_READ_MODEL_RAW_FALLBACK_ENABLED === true && POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY !== true) {
     const rawPositions = await Promise.all(missingSymbols.map((symbol) => getPosition({ exchange, symbol }).catch(() => null)));
     missingSymbols.forEach((symbol, index) => {
       fallbackBySymbol.set(symbol, rawPositions[index] || null);
@@ -230,7 +253,12 @@ async function getPositionReadView({
       latestTimelineRow: buildLatestTimelineRowFromIndex(latestDoc),
     });
   }
-  const rawPosition = storedPosition || await getPosition({ exchange, symbol });
+  if (POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY === true) {
+    return storedPosition || null;
+  }
+  const rawPosition = (storedPosition || POSITION_READ_MODEL_RAW_FALLBACK_ENABLED === true)
+    ? (storedPosition || await getPosition({ exchange, symbol }))
+    : null;
   const rows = await fetchUnifiedEventTimeline({
     exchange,
     symbol,
@@ -252,5 +280,6 @@ module.exports = {
     buildPositionReadView,
     buildPositionReadViews,
     buildLatestTimelineRowFromIndex,
+    POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY,
   },
 };

@@ -15,9 +15,7 @@ const {
   submitAndCollectResponses,
   parseResponsesBatchResults,
 } = require("./openaiBatchClient");
-const { getUpbitAccountSummary } = require("./upbitAccountSummary");
 const { getBinanceFuturesAccountSummary } = require("./binanceFuturesAccountSummary");
-const { fetchAccount: fetchKiwoomAccount } = require("../exchanges/kiwoomRest");
 const { normalizeProviderId } = require("../utils/providerUtils");
 const { getEffectiveExchangesSettings, getExchangeSettingsForProvider, getRiskBudgetForProvider } = require("../utils/exchangeSettings");
 const { defaultMarketsFromEnv, normalizeMarketSymbolForProvider } = require("../utils/marketConfig");
@@ -188,25 +186,10 @@ function resolveApplyReason({ apply, applyLive, liveOk, confirmRequired, force }
 }
 
 function buildRecommendationGroups(provider) {
-  const p = String(provider || "").toUpperCase();
-  if (p === "BINANCEFUT") {
-    return {
-      large_sector: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"],
-      growth: ["ADAUSDT", "AVAXUSDT", "LTCUSDT", "LINKUSDT", "ATOMUSDT"],
-      momentum: ["DOGEUSDT", "PEPEUSDT", "SHIBUSDT", "ARBUSDT", "OPUSDT"],
-    };
-  }
-  if (p === "KIWOOM") {
-    return {
-      large_sector: ["KRX:005930", "KRX:000660", "KRX:005380", "KRX:051910", "KRX:035420"],
-      growth: ["KRX:373220", "KRX:207940", "KRX:068270", "KRX:035720", "KRX:096770"],
-      momentum: ["KRX:006400", "KRX:028260", "KRX:066570", "KRX:003670", "KRX:034730"],
-    };
-  }
   return {
-    large_sector: ["KRW-BTC", "KRW-ETH", "KRW-XRP", "KRW-SOL", "KRW-ADA"],
-    growth: ["KRW-AVAX", "KRW-LINK", "KRW-DOT", "KRW-ATOM", "KRW-MATIC"],
-    momentum: ["KRW-DOGE", "KRW-BCH", "KRW-ETC", "KRW-NEAR", "KRW-APT"],
+    large_sector: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"],
+    growth: ["ADAUSDT", "AVAXUSDT", "LTCUSDT", "LINKUSDT", "ATOMUSDT"],
+    momentum: ["DOGEUSDT", "PEPEUSDT", "SHIBUSDT", "ARBUSDT", "OPUSDT"],
   };
 }
 
@@ -374,7 +357,7 @@ function resolveRunHours({ provider, runHoursRaw, runHourRaw }) {
   const runHour = Number(runHourRaw);
   const p = String(provider || "").toUpperCase();
   const isBinance = p === "BINANCEFUT" || p === "BINANCE";
-  if (p === "UPBIT" || isBinance) {
+  if (isBinance) {
     if (Number.isFinite(runHour)) {
       const base = Math.trunc(runHour);
       const alt = (base + 12) % 24;
@@ -553,58 +536,10 @@ function buildNewsKeywords(markets) {
 }
 
 function buildNewsKeywordsForProvider(provider, markets) {
-  const p = normalizeProviderId(provider || "BINANCEFUT");
-  if (p === "KIWOOM") {
-    const core = [
-      "KOSPI",
-      "KOSDAQ",
-      "Korea stocks",
-      "Korean stocks",
-      "Korea market",
-      "Bank of Korea",
-      "KRW",
-      "USD/KRW",
-    ];
-    const sectors = [
-      "semiconductor",
-      "Samsung",
-      "SK Hynix",
-      "auto",
-      "shipbuilding",
-      "battery",
-      "export",
-      "inflation",
-      "rate",
-      "bond",
-      "yield",
-    ];
-    const merged = [...core, ...sectors];
-    const uniq = [];
-    for (const k of merged) {
-      const key = String(k || "").trim();
-      if (!key || uniq.includes(key)) continue;
-      uniq.push(key);
-    }
-    return uniq;
-  }
   return buildNewsKeywords(markets);
 }
 
 function buildNewsPrompt(provider, headlines) {
-  const p = normalizeProviderId(provider || "BINANCEFUT");
-  if (p === "KIWOOM") {
-    return [
-      "You are a risk-aware quant assistant for Korean equities.",
-      "Given the last 7 days of KOSPI/KOSDAQ + KR macro headlines, decide market risk mode and directional bias.",
-      "Focus on how rates, KRW, export/semiconductor cycle, and global risk affect Korea stocks.",
-      "- aggressive, neutral, or conservative",
-      "- direction: long, short, or neutral",
-      "Return JSON only: {\"mode\":\"aggressive|neutral|conservative\",\"confidence\":0-1,\"direction\":\"long|short|neutral\",\"direction_confidence\":0-1,\"direction_score\":-1..1,\"reason\":\"short\"}",
-      "",
-      "Headlines:",
-      headlines,
-    ].join("\n");
-  }
   return [
     "You are a risk-aware quant assistant.",
     "Given the last 7 days of crypto + global macro headlines, decide market risk mode and directional bias.",
@@ -619,11 +554,9 @@ function buildNewsPrompt(provider, headlines) {
 }
 
 function buildNewsFilterPrompt(provider, headlines) {
-  const p = normalizeProviderId(provider || "BINANCEFUT");
   const lines = (Array.isArray(headlines) ? headlines : []).map((h, i) => `${i + 1}. ${String(h || "").trim()}`).filter(Boolean);
-  const marketLabel = p === "KIWOOM" ? "Korean equities" : "crypto";
   return [
-    `You are a strict news relevance filter for ${marketLabel}.`,
+    "You are a strict news relevance filter for crypto.",
     "Task: keep only headlines with direct market impact in the next 24-72 hours.",
     "Drop generic, duplicate, old, promotional, or weak-signal headlines.",
     "Return JSON only: {\"keep_indices\":[1,2,...],\"reason\":\"short\"}",
@@ -663,17 +596,6 @@ function parseNewsFilterDecision(text, headlines) {
 }
 
 function buildEventAnalysisPrompt(provider, headlines) {
-  const p = normalizeProviderId(provider || "BINANCEFUT");
-  if (p === "KIWOOM") {
-    return [
-      "You are an event analyst for Korean equities.",
-      "Identify dominant risk events from headlines and map to market regime and direction.",
-      "Return JSON only: {\"mode\":\"aggressive|neutral|conservative\",\"confidence\":0-1,\"direction\":\"long|short|neutral\",\"direction_confidence\":0-1,\"direction_score\":-1..1,\"reason\":\"short\"}",
-      "",
-      "Headlines:",
-      headlines,
-    ].join("\n");
-  }
   return [
     "You are an event analyst for crypto macro.",
     "Identify dominant risk events from headlines and map to market regime and direction.",
@@ -685,17 +607,6 @@ function buildEventAnalysisPrompt(provider, headlines) {
 }
 
 function buildImpactAnalysisPrompt(provider, headlines) {
-  const p = normalizeProviderId(provider || "BINANCEFUT");
-  if (p === "KIWOOM") {
-    return [
-      "You are a market impact analyst for Korean equities.",
-      "Estimate next 24-72h market impact from headlines, emphasizing direction and confidence.",
-      "Return JSON only: {\"mode\":\"aggressive|neutral|conservative\",\"confidence\":0-1,\"direction\":\"long|short|neutral\",\"direction_confidence\":0-1,\"direction_score\":-1..1,\"reason\":\"short\"}",
-      "",
-      "Headlines:",
-      headlines,
-    ].join("\n");
-  }
   return [
     "You are a market impact analyst for crypto.",
     "Estimate next 24-72h market impact from headlines, emphasizing direction and confidence.",
@@ -1391,102 +1302,7 @@ async function runAiAllocation({ apply = false, provider: providerRaw = null, fo
   const risk = (await getRiskBudgetForProvider(provider, 5000)).data || {};
   let baseTotal = 0;
   let accountSummary = null;
-  if (provider === "UPBIT") {
-    const accessKey = String(process.env.UPBIT_ACCESS_KEY || (ex && ex.api_key) || "");
-    const secretKey = String(process.env.UPBIT_SECRET_KEY || (ex && ex.api_secret) || "");
-    if (!accessKey || !secretKey) {
-      if (allowFallback) {
-        const fallback = Number(risk.total_max_krw || risk.default_max_krw || 0);
-        baseTotal = Number.isFinite(fallback) ? fallback : 0;
-        accountSummary = { total_krw: baseTotal || 0, updated_at: nowIso(), source: "fallback_risk_budget" };
-      } else {
-        return { ok: false, error: "UPBIT_KEYS_MISSING", message: "Upbit keys required for total budget" };
-      }
-    } else {
-      try {
-        accountSummary = await getUpbitAccountSummary({ accessKey, secretKey });
-      } catch (e) {
-        if (allowFallback) {
-          const fallback = Number(risk.total_max_krw || risk.default_max_krw || 0);
-          baseTotal = Number.isFinite(fallback) ? fallback : 0;
-          accountSummary = { total_krw: baseTotal || 0, updated_at: nowIso(), source: "fallback_risk_budget" };
-        } else {
-          return { ok: false, error: "UPBIT_ACCOUNT_SUMMARY_FAIL", message: e?.message || String(e) };
-        }
-      }
-      if (accountSummary) {
-        baseTotal = Number(accountSummary && accountSummary.total_krw) || 0;
-      }
-      if (!baseTotal) {
-        if (allowFallback) {
-          const fallback = Number(risk.total_max_krw || risk.default_max_krw || 0);
-          baseTotal = Number.isFinite(fallback) ? fallback : 0;
-          accountSummary = { total_krw: baseTotal || 0, updated_at: nowIso(), source: "fallback_risk_budget" };
-        } else {
-          return { ok: false, error: "UPBIT_TOTAL_EMPTY", message: "Upbit total_krw is empty" };
-        }
-      }
-    }
-  } else if (provider === "KIWOOM") {
-    const apiKey = String(process.env.KIWOOM_APP_KEY || (ex && ex.api_key) || "");
-    const apiSecret = String(process.env.KIWOOM_APP_SECRET || (ex && ex.api_secret) || "");
-    if (!apiKey || !apiSecret) {
-      if (allowFallback) {
-        const fallback = Number(risk.total_max_krw || risk.default_max_krw || 0);
-        baseTotal = Number.isFinite(fallback) ? fallback : 0;
-        accountSummary = { total_krw: baseTotal || 0, updated_at: nowIso(), source: "fallback_risk_budget" };
-      } else {
-        return { ok: false, error: "KIWOOM_KEYS_MISSING", message: "Kiwoom keys required for total budget" };
-      }
-    } else {
-      let account = null;
-      try {
-        account = await fetchKiwoomAccount({ appkey: apiKey, secretkey: apiSecret });
-      } catch (e) {
-        if (allowFallback) {
-          const fallback = Number(risk.total_max_krw || risk.default_max_krw || 0);
-          baseTotal = Number.isFinite(fallback) ? fallback : 0;
-          accountSummary = { total_krw: baseTotal || 0, updated_at: nowIso(), source: "fallback_risk_budget" };
-        } else {
-          return { ok: false, error: "KIWOOM_ACCOUNT_FAILED", message: e?.message || String(e) };
-        }
-      }
-      if (account) {
-        if (!account.ok) {
-          if (allowFallback) {
-            const fallback = Number(risk.total_max_krw || risk.default_max_krw || 0);
-            baseTotal = Number.isFinite(fallback) ? fallback : 0;
-            accountSummary = { total_krw: baseTotal || 0, updated_at: nowIso(), source: "fallback_risk_budget" };
-          } else {
-            return { ok: false, error: "KIWOOM_ACCOUNT_FAILED", message: account && (account.message || account.error) };
-          }
-        } else {
-          const holdings = Array.isArray(account.holdings) ? account.holdings : [];
-          let holdingsValue = 0;
-          for (const h of holdings) {
-            const qty = Number(h.qty);
-            const last = Number(h.last_price);
-            if (Number.isFinite(qty) && Number.isFinite(last)) holdingsValue += qty * last;
-          }
-          const cash = Number(account.cash_krw);
-          baseTotal = (Number.isFinite(cash) ? cash : 0) + holdingsValue;
-          accountSummary = {
-            total_krw: Number.isFinite(baseTotal) ? baseTotal : null,
-            updated_at: nowIso(),
-          };
-          if (!baseTotal) {
-            if (allowFallback) {
-              const fallback = Number(risk.total_max_krw || risk.default_max_krw || 0);
-              baseTotal = Number.isFinite(fallback) ? fallback : 0;
-              accountSummary = { total_krw: baseTotal || 0, updated_at: nowIso(), source: "fallback_risk_budget" };
-            } else {
-              return { ok: false, error: "KIWOOM_TOTAL_EMPTY", message: "Kiwoom total_krw is empty" };
-            }
-          }
-        }
-      }
-    }
-  } else if (provider === "BINANCEFUT") {
+  if (provider === "BINANCEFUT") {
     const apiKey = String(process.env.BINANCEFUT_API_KEY || (ex && ex.api_key) || "");
     const apiSecret = String(process.env.BINANCEFUT_API_SECRET || (ex && ex.api_secret) || "");
     if (!apiKey || !apiSecret) {
@@ -1535,25 +1351,12 @@ async function runAiAllocation({ apply = false, provider: providerRaw = null, fo
 
   const isUpbitMarket = (m) => String(m || "").toUpperCase().startsWith("KRW-");
   const isBinanceMarket = (m) => String(m || "").toUpperCase().includes("USDT");
-  const isKiwoomMarket = (m) => {
-    const s = String(m || "").toUpperCase().trim();
-    if (s.startsWith("KRX:")) return true;
-    return /^[0-9]{4,6}$/.test(s);
-  };
 
   let eligibleMarkets = uniqueMarkets;
-  if (provider === "UPBIT") {
-    eligibleMarkets = uniqueMarkets.filter(isUpbitMarket);
-  } else if (provider === "BINANCEFUT") {
+  if (provider === "BINANCEFUT") {
     eligibleMarkets = uniqueMarkets.filter(isBinanceMarket);
-  } else if (provider === "KIWOOM") {
-    eligibleMarkets = uniqueMarkets.filter(isKiwoomMarket);
-    if (!eligibleMarkets.length) {
-      const fallback = defaultMarketsFromEnv("KIWOOM") || [];
-      eligibleMarkets = fallback.filter(isKiwoomMarket);
-    }
   }
-  // Ensure AI recommendation list has 5 markets for BINANCEFUT/KIWOOM.
+  // Ensure AI recommendation list has 5 markets for BINANCEFUT.
   if (provider === "BINANCEFUT") {
     const fallback = defaultMarketsFromEnv("BINANCEFUT") || [];
     const seen = new Set(eligibleMarkets);
@@ -1563,12 +1366,6 @@ async function runAiAllocation({ apply = false, provider: providerRaw = null, fo
         eligibleMarkets.push(m);
         seen.add(m);
       }
-    }
-  }
-  if (provider === "KIWOOM") {
-    const fallback = (defaultMarketsFromEnv("KIWOOM") || []).filter(isKiwoomMarket);
-    if (fallback.length) {
-      eligibleMarkets = fallback.slice(0, 5);
     }
   }
   const excludedMarkets = uniqueMarkets.filter((m) => !eligibleMarkets.includes(m));
@@ -1648,7 +1445,7 @@ async function runAiAllocation({ apply = false, provider: providerRaw = null, fo
   const ensembleWGpt = Number.isFinite(ensembleWGptRaw) ? ensembleWGptRaw : AI_ALLOCATION_DEFAULTS.ensemble_w_gpt;
   const ensembleWClaude = Number.isFinite(ensembleWClaudeRaw) ? ensembleWClaudeRaw : AI_ALLOCATION_DEFAULTS.ensemble_w_claude;
   const keywords = buildNewsKeywordsForProvider(provider, eligibleMarkets);
-  const newsLanguage = aiCfg.news_language || (provider === "KIWOOM" ? "ko" : "en");
+  const newsLanguage = aiCfg.news_language || "en";
   let modeInfo = await getNewsMode({
     provider,
     keywords,

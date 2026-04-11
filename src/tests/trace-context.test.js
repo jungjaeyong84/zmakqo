@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("assert");
-const { buildTraceId, normalizeTraceContext } = require("../utils/traceContext");
+const { buildTraceId, buildOtelTraceContext, normalizeTraceContext } = require("../utils/traceContext");
 
 function run() {
   const explicit = buildTraceId({
@@ -41,6 +41,20 @@ function run() {
   assert.strictEqual(trace.mutation_kind, "POSITION_META_UPSERT");
   assert.strictEqual(trace.source, "TICK_EXIT");
   assert.ok(trace.trace_id);
+  assert.ok(/^[0-9a-f]{32}$/.test(trace.otel_trace_id));
+  assert.ok(/^[0-9a-f]{16}$/.test(trace.otel_span_id));
+  assert.ok(/^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/.test(trace.traceparent));
+
+  const otel = buildOtelTraceContext({
+    traceId: "abc123",
+    requestId: "REQ-2",
+    runId: "RUN-2",
+    exchange: "binancefut",
+    symbol: "ethusdt",
+    mutationKind: "position_meta_upsert",
+    source: "tick_exit",
+  });
+  assert.ok(otel.traceparent.includes(otel.otel_trace_id));
 
   console.log("TRACE_CONTEXT_TEST_OK");
 }

@@ -3,6 +3,12 @@ const path = require("path");
 const { unwrapDisplayAndRawReport } = require("./jsonDisplayFields");
 
 const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
+const ARTIFACT_INDEX_TTL_MS = Math.max(5_000, Number(process.env.CONTROL_PLANE_ARTIFACT_INDEX_TTL_MS || 30_000));
+
+let artifactIndexCache = {
+  tsMs: 0,
+  files: [],
+};
 
 function readJsonSafe(filePath, fallback = null) {
   try {
@@ -12,9 +18,81 @@ function readJsonSafe(filePath, fallback = null) {
   }
 }
 
+function tryReadJson(filePath) {
+  try {
+    return {
+      ok: true,
+      data: JSON.parse(fs.readFileSync(filePath, "utf8")),
+      error: null,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      data: null,
+      error: err && err.message ? String(err.message) : "JSON_READ_FAILED",
+    };
+  }
+}
+
+function hasArtifactContent(file = null) {
+  if (!file || typeof file !== "object") return false;
+  if (Array.isArray(file)) return file.length > 0;
+  return Object.keys(file).length > 0;
+}
+
+function listDailyArtifactFiles({ force = false } = {}) {
+  const nowMs = Date.now();
+  if (!force && Array.isArray(artifactIndexCache.files) && artifactIndexCache.files.length && (nowMs - artifactIndexCache.tsMs) <= ARTIFACT_INDEX_TTL_MS) {
+    return artifactIndexCache.files.slice();
+  }
+  let files = [];
+  try {
+    files = fs.readdirSync(OPS_DAILY_DIR).filter((name) => name.endsWith(".json"));
+  } catch (_err) {
+    files = [];
+  }
+  artifactIndexCache = {
+    tsMs: nowMs,
+    files: files.slice(),
+  };
+  return files;
+}
+
+function buildFallbackArtifactCandidates(fileName) {
+  const baseName = String(fileName || "").trim();
+  if (!baseName.endsWith("_latest.json")) return [];
+  const coreName = baseName.slice(0, -"_latest.json".length);
+  const suffix = `_${coreName}.json`;
+  return listDailyArtifactFiles()
+    .filter((name) => name !== baseName && name.endsWith(suffix))
+    .sort()
+    .reverse();
+}
+
 function loadLatestArtifact(fileName) {
   const absPath = path.join(OPS_DAILY_DIR, fileName);
-  const file = readJsonSafe(absPath, null);
+  const latestRead = tryReadJson(absPath);
+  let sourceFileName = fileName;
+  let sourcePath = absPath;
+  let sourceKind = "latest";
+  let readError = latestRead.ok ? null : latestRead.error;
+  let file = latestRead.ok && hasArtifactContent(latestRead.data) ? latestRead.data : null;
+
+  if (!file) {
+    const candidates = buildFallbackArtifactCandidates(fileName);
+    for (const candidateName of candidates) {
+      const candidatePath = path.join(OPS_DAILY_DIR, candidateName);
+      const candidateRead = tryReadJson(candidatePath);
+      if (!candidateRead.ok || !hasArtifactContent(candidateRead.data)) continue;
+      file = candidateRead.data;
+      sourceFileName = candidateName;
+      sourcePath = candidatePath;
+      sourceKind = latestRead.ok ? "fallback_empty_latest" : "fallback_after_latest_read_fail";
+      if (!readError) readError = candidateRead.error;
+      break;
+    }
+  }
+
   const raw = unwrapDisplayAndRawReport(file);
   const display = file && typeof file === "object" && !Array.isArray(file) && file.display && typeof file.display === "object"
     ? file.display
@@ -28,6 +106,11 @@ function loadLatestArtifact(fileName) {
   return {
     fileName,
     absPath,
+    sourceFileName,
+    sourcePath,
+    sourceKind,
+    readError,
+    missing: !file,
     file,
     raw,
     display,
@@ -123,6 +206,84 @@ function buildRowsPreview(rows, mapper, limit = 5) {
   return rows.slice(0, Math.max(0, limit)).map(mapper).filter(Boolean);
 }
 
+function toNum(value, fallback = null) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function resolveRuntimeGuardSoftScale({
+  ops = null,
+  slo = null,
+  anomaly = null,
+} = {}) {
+  const opsStatus = String(ops && ops.status || "").trim();
+  const opsCostRatio = toNum(ops && ops.cost_ratio_pct, null);
+  const opsCostLimit = toNum(ops && ops.cost_limit_pct, null);
+  const opsActiveErrors = toNum(ops && ops.active_error_count, null);
+  const opsAuditIssues = toNum(ops && ops.execution_health && ops.execution_health.audit_issue_count, 0);
+  const opsQtyIssues = toNum(ops && ops.execution_health && ops.execution_health.qty_pct_non_positive_count, 0);
+  const anomalyState = anomaly && anomaly.state && typeof anomaly.state === "object" ? anomaly.state : {};
+  const sloState = slo && slo.state && typeof slo.state === "object" ? slo.state : {};
+
+  if (anomalyState.circuit_breaker_open === true) {
+    return { scale: 0, mode: "BLOCK", reason: "CIRCUIT_BREAKER_OPEN" };
+  }
+  if (opsStatus === "중단") {
+    return { scale: 0, mode: "BLOCK", reason: "OPS_GUARD_STOP" };
+  }
+  if (String(sloState.status || "").trim().toUpperCase() === "BLOCK") {
+    return { scale: 0, mode: "BLOCK", reason: String(sloState.reason || "SYSTEM_SLO_BLOCK").trim() || "SYSTEM_SLO_BLOCK" };
+  }
+  const costHoldSoftScaleReady = (
+    opsStatus === "보류"
+    && Number.isFinite(opsCostRatio)
+    && Number.isFinite(opsCostLimit)
+    && opsCostRatio > opsCostLimit
+    && (!Number.isFinite(opsActiveErrors) || opsActiveErrors <= 0)
+    && (!Number.isFinite(opsAuditIssues) || opsAuditIssues <= 0)
+    && (!Number.isFinite(opsQtyIssues) || opsQtyIssues <= 0)
+  );
+  if (costHoldSoftScaleReady) {
+    return { scale: 0.7, mode: "SOFT_SCALE", reason: "OPS_GUARD_HOLD_COST_SOFT_SCALE" };
+  }
+  if (opsStatus === "보류") {
+    return { scale: 0, mode: "BLOCK", reason: "OPS_GUARD_HOLD" };
+  }
+  return { scale: 1, mode: "PASS", reason: "NO_RUNTIME_GUARD_BLOCK" };
+}
+
+function formatRuntimeGuardReason(code) {
+  const key = String(code || "").trim().toUpperCase();
+  const map = {
+    OPS_GUARD_HOLD: "운영 보류",
+    OPS_GUARD_STOP: "운영 중단",
+    ANOMALY_SYSTEM_SLO_HOLD: "시스템 SLO 보류 연동",
+    ANOMALY_OPS_GUARD_HOLD: "운영 보류 연동",
+    ANOMALY_LATENCY_P95_HIGH: "실행 지연 높음",
+    EXECUTION_LATENCY_P95_HIGH: "실행 지연 높음",
+    OPS_GUARD_HOLD_COST_SOFT_SCALE: "비용 홀드 감속 적용",
+    CIRCUIT_BREAKER_OPEN: "서킷 브레이커 열림",
+    NO_RUNTIME_GUARD_BLOCK: "추가 차단 없음",
+  };
+  return map[key] || compactText(code);
+}
+
+function buildArtifactHealthCard(artifacts = [], { limit = 6 } = {}) {
+  const degraded = (Array.isArray(artifacts) ? artifacts : []).filter((artifact) => artifact && (artifact.missing || artifact.sourceKind !== "latest"));
+  if (!degraded.length) return null;
+  return {
+    title: "Artifact Health",
+    tone: degraded.some((artifact) => artifact.missing) ? "bad" : "warn",
+    rows: buildRowsPreview(degraded, (artifact) => ({
+      label: compactText(String(artifact.fileName || "").replace(/_latest\.json$/i, ""), 28),
+      value: artifact.missing
+        ? "MISSING"
+        : (artifact.sourceKind === "fallback_after_latest_read_fail" ? "FALLBACK_AFTER_READ_FAIL" : "FALLBACK_EMPTY_LATEST"),
+    }), limit),
+    notes: degraded.slice(0, limit).map((artifact) => compactText(`${artifact.fileName} -> ${artifact.sourceFileName || "missing"}`, 120)),
+  };
+}
+
 function buildUrl(basePath, params = {}) {
   const qs = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -189,6 +350,26 @@ const UI_TEXT_MAP = {
   "Ops": "운영",
   "Strategic State": "핵심 운영 상태",
   "Operator Strip": "핵심 운영 상태",
+  "Runtime Guards": "런타임 가드",
+  "Ops Status": "운영 상태",
+  "Ops Reason": "운영 보류 사유",
+  "Active Errors": "활성 오류",
+  "Writer Authority 24h": "Writer Authority 24h",
+  "Cost Ratio": "비용 비율",
+  "SLO": "시스템 SLO",
+  "Anomaly": "이상 감지",
+  "Entry Scale": "신규 진입 배율",
+  "Scale Reason": "배율 사유",
+  "Count": "건수",
+  "Severity": "심각도",
+  "Action": "조치",
+  "Latency P95": "지연 P95",
+  "Webhook P95": "웹훅 P95",
+  "Slippage P95": "슬리피지 P95",
+  "Partial Fill": "부분 체결률",
+  "Top Latency": "지연 상위 마켓",
+  "Top Delay Cause": "지연 주요 원인",
+  "Execution Runtime": "실행 품질",
   "Why Blocked": "현재 막힌 이유",
   "Root Cause": "핵심 원인",
   "Failed Checks": "실패 항목",
@@ -387,6 +568,7 @@ const UI_TEXT_MAP = {
   "Loop Rows": "루프 행",
   "Loop": "루프",
   "Stage Autopilot Caveat": "단계 자동조종 주의",
+  "Artifact Health": "산출물 상태",
   "Focused Drill-Through": "집중 추적",
   "Focused Target": "집중 대상",
   "Focus": "집중",
@@ -481,6 +663,9 @@ const VALUE_REPLACEMENTS = [
   ["SHORT", "숏"],
   ["ENTRY", "진입"],
   ["DROP", "드롭"],
+  ["FALLBACK_AFTER_READ_FAIL", "latest 읽기 실패로 직전 산출물 사용"],
+  ["FALLBACK_EMPTY_LATEST", "latest 비어 직전 산출물 사용"],
+  ["MISSING", "산출물 없음"],
 ];
 
 function translateStaticText(value) {
@@ -527,6 +712,10 @@ function localizeViewModel(node, parentKey = "") {
 
 function buildReportUrl(market) {
   return buildUrl("/dashboard/report", { mode: "weekly", market });
+}
+
+function buildExecutionUrl(market) {
+  return buildUrl("/dashboard/execution", { exchange: "BINANCEFUT", market });
 }
 
 function buildAuditUrl(params = {}) {
@@ -833,9 +1022,37 @@ function buildRecoveryViewModel() {
   const signalQuality = loadLatestArtifact("server_signal_quality_latest.json");
   const signalRuntime = loadLatestArtifact("server_signal_runtime_latest.json");
   const autonomyContract = loadLatestArtifact("best_self_evolution_openclaw_autonomy_contract_latest.json");
+  const executionQuality = loadLatestArtifact("best_self_evolution_execution_quality_latest.json");
   const monthlyStrategy = loadLatestArtifact("objective_monthly_strategy_latest.json");
   const weeklyStrategy = loadLatestArtifact("objective_weekly_strategy_latest.json");
   const dailyStrategy = loadLatestArtifact("objective_daily_strategy_latest.json");
+  const systemOps = loadLatestArtifact("system_ops_check_latest.json");
+  const systemSlo = loadLatestArtifact("system_slo_state_latest.json");
+  const systemAnomaly = loadLatestArtifact("system_anomaly_state_latest.json");
+  const runtimeGuardScale = resolveRuntimeGuardSoftScale({
+    ops: systemOps.raw,
+    slo: systemSlo.raw,
+    anomaly: systemAnomaly.raw,
+  });
+  const artifactHealthCard = buildArtifactHealthCard([
+    governor,
+    effect,
+    objectiveSupervisor,
+    replay,
+    canary,
+    deploymentGuards,
+    signalAuthority,
+    signalQuality,
+    signalRuntime,
+    autonomyContract,
+    executionQuality,
+    monthlyStrategy,
+    weeklyStrategy,
+    dailyStrategy,
+    systemOps,
+    systemSlo,
+    systemAnomaly,
+  ]);
   const nextAction = Array.isArray(governor.summary.next_actions) && governor.summary.next_actions.length
     ? governor.summary.next_actions[0]
     : null;
@@ -855,6 +1072,9 @@ function buildRecoveryViewModel() {
         { label: "Replay", value: governor.summary.replay_pass ? "PASS" : "HOLD", tone: statusTone(governor.summary.replay_pass ? "PASS" : "HOLD") },
         { label: "Canary", value: governor.summary.canary_ready ? "READY" : "HOLD", tone: statusTone(governor.summary.canary_ready ? "READY" : "HOLD") },
         { label: "Guards", value: governor.summary.deployment_guards_pass ? "PASS" : "FAIL", tone: statusTone(governor.summary.deployment_guards_pass ? "PASS" : "FAIL") },
+        { label: "Active Errors", value: numberText(systemOps.raw && systemOps.raw.active_error_count, 0), tone: toNum(systemOps.raw && systemOps.raw.active_error_count, 0) > 0 ? "bad" : "ok" },
+        { label: "Entry Scale", value: runtimeGuardScale.scale <= 0 ? "BLOCK" : `${numberText(runtimeGuardScale.scale, 2)}x`, tone: runtimeGuardScale.scale <= 0 ? "bad" : (runtimeGuardScale.scale < 1 ? "warn" : "ok") },
+        { label: "Latency P95", value: `${numberText(executionQuality.summary.guard_created_to_fill_p95_ms ?? executionQuality.summary.created_to_fill_p95_ms, 0)}ms`, tone: toNum(executionQuality.summary.guard_created_to_fill_p95_ms ?? executionQuality.summary.created_to_fill_p95_ms, 0) > 3000 ? "warn" : "ok" },
       ],
     },
     metrics: [
@@ -869,6 +1089,93 @@ function buildRecoveryViewModel() {
         description: "운영자가 먼저 보는 회복 판단 3가지를 고정합니다.",
         columns: 3,
         cards: [
+          ...(artifactHealthCard ? [artifactHealthCard] : []),
+          {
+            title: "Runtime Guards",
+            tone: runtimeGuardScale.scale <= 0 ? "bad" : (runtimeGuardScale.scale < 1 ? "warn" : "ok"),
+            rows: [
+              { label: "Ops Status", value: compactText(systemOps.raw && systemOps.raw.status) },
+              { label: "Ops Reason", value: compactText(joinList(systemOps.raw && systemOps.raw.reasons, "-")) },
+              { label: "Active Errors", value: numberText(systemOps.raw && systemOps.raw.active_error_count, 0) },
+              { label: "Writer Authority 24h", value: numberText(systemOps.raw && systemOps.raw.position_writer_authority_24h && systemOps.raw.position_writer_authority_24h.occurrence_count, 0) },
+              { label: "Cost Ratio", value: `${numberText(systemOps.raw && systemOps.raw.cost_ratio_pct, 2)}% / ${numberText(systemOps.raw && systemOps.raw.cost_limit_pct, 2)}%` },
+              { label: "SLO", value: formatRuntimeGuardReason(systemSlo.raw && systemSlo.raw.state && systemSlo.raw.state.reason) },
+              { label: "Anomaly", value: formatRuntimeGuardReason(systemAnomaly.raw && systemAnomaly.raw.state && systemAnomaly.raw.state.reason) },
+              { label: "Entry Scale", value: runtimeGuardScale.scale <= 0 ? "BLOCK" : `${numberText(runtimeGuardScale.scale, 2)}x` },
+              { label: "Scale Reason", value: formatRuntimeGuardReason(runtimeGuardScale.reason) },
+            ],
+            table: systemOps.raw
+              && systemOps.raw.position_writer_authority_24h
+              && Array.isArray(systemOps.raw.position_writer_authority_24h.remediation_candidates)
+              && systemOps.raw.position_writer_authority_24h.remediation_candidates.length
+              ? {
+                columns: [
+                  { key: "symbol", label: "Market" },
+                  { key: "count", label: "Count" },
+                  { key: "severity", label: "Severity" },
+                  { key: "action", label: "Action" },
+                  { key: "open", label: "Open" },
+                ],
+                rows: buildRowsPreview(
+                  systemOps.raw.position_writer_authority_24h.remediation_candidates,
+                  (row) => ({
+                    symbol: buildLink(compactText(row.symbol), buildReportUrl(row.symbol)),
+                    count: numberText(row.count, 0),
+                    severity: compactText(row.severity),
+                    action: compactText(row.action, 44),
+                    open: buildLink("Execution", buildExecutionUrl(row.symbol)),
+                  }),
+                  5,
+                ),
+              }
+              : null,
+            notes: sliceList(
+              []
+                .concat((systemSlo.raw && systemSlo.raw.state && Array.isArray(systemSlo.raw.state.issues) ? systemSlo.raw.state.issues : []))
+                .concat((systemAnomaly.raw && systemAnomaly.raw.state && Array.isArray(systemAnomaly.raw.state.issues) ? systemAnomaly.raw.state.issues : []))
+                .concat(
+                  systemOps.raw
+                  && systemOps.raw.position_writer_authority_24h
+                  && Array.isArray(systemOps.raw.position_writer_authority_24h.top_symbols)
+                    ? systemOps.raw.position_writer_authority_24h.top_symbols.map((row) => `writer-authority ${row.symbol}(${row.count})`)
+                    : []
+                ),
+              6,
+            ),
+          },
+          {
+            title: "Execution Runtime",
+            tone: statusTone(executionQuality.summary.status || "WARN"),
+            rows: [
+              { label: "Latency P95", value: `${numberText(executionQuality.summary.guard_created_to_fill_p95_ms ?? executionQuality.summary.created_to_fill_p95_ms, 0)}ms` },
+              { label: "Webhook P95", value: `${numberText(executionQuality.summary.webhook_to_fill_p95_ms, 0)}ms` },
+              { label: "Slippage P95", value: `${numberText(executionQuality.summary.adverse_slippage_p95_bps, 2)}bps` },
+              { label: "Partial Fill", value: `${numberText(executionQuality.summary.partial_fill_rate_pct, 1)}%` },
+              { label: "Top Latency", value: compactText(executionQuality.summary.top_latency_market) },
+              { label: "Top Delay Cause", value: compactText(executionQuality.summary.top_operational_webhook_delay_cause) },
+            ],
+            table: Array.isArray(executionQuality.summary.top_watch_markets) && executionQuality.summary.top_watch_markets.length ? {
+              columns: [
+                { key: "market", label: "Market" },
+                { key: "latency", label: "Latency" },
+                { key: "partial", label: "Partial" },
+                { key: "slippage", label: "Slippage" },
+                { key: "open", label: "Open" },
+              ],
+              rows: buildRowsPreview(
+                executionQuality.summary.top_watch_markets,
+                (row) => ({
+                  market: buildLink(compactText(row.market), buildReportUrl(row.market)),
+                  latency: `${numberText(row.avg_created_to_fill_ms, 0)}ms`,
+                  partial: `${numberText(row.partial_fill_rate_pct, 1)}%`,
+                  slippage: `${numberText(row.avg_slippage_bps, 2)}bps`,
+                  open: buildLink("Execution", buildExecutionUrl(row.market)),
+                }),
+                5,
+              ),
+            } : null,
+            notes: sliceList(executionQuality.summary.review_reasons || [], 6),
+          },
           {
             title: "Signal Authority",
             tone: statusTone(signalAuthority.summary.drift_status || "PARITY_UNKNOWN"),
@@ -1765,4 +2072,10 @@ module.exports = {
   buildServerPrimaryViewModel,
   buildAuditViewModel,
   buildControlPlaneRouteModel,
+  __test: {
+    hasArtifactContent,
+    buildFallbackArtifactCandidates,
+    listDailyArtifactFiles,
+    loadLatestArtifact,
+  },
 };

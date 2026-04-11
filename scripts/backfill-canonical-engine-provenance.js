@@ -11,7 +11,7 @@ const { getFirestore } = require("../src/storage/firestore");
 const { getSystemSettingsForProvider } = require("../src/storage/settings");
 const { evaluateCanonicalDecision } = require("../src/services/canonicalEngine");
 const { isPrimaryLongShortEvent } = require("../src/utils/liveEntryTaxonomy");
-const { __test: runnerTest } = require("../src/engine/paperUpbitRunner");
+const { __test: runnerTest } = require("../src/engine/paperBinanceRunner");
 
 const OPS_DAILY_DIR = path.join(__dirname, "..", "ops", "daily");
 const APPLY = String(process.env.APPLY || "0") === "1";

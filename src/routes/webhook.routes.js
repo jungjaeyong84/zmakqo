@@ -5,10 +5,11 @@ const rateLimit = require("express-rate-limit");
 const env = require("../config/env");
 const { upsertSignal } = require("../storage/signals");
 const { recordSignalDrops } = require("../storage/signalDrops");
-const { getPosition } = require("../storage/positionsPaper");
 const { getPositionReadView } = require("../services/positionReadModel");
 const { loadMlServingRuntime } = require("../services/mlServingRuntime");
 const { loadOperationalGuardRuntime } = require("../services/operationalGuardRuntime");
+const { loadSystemSloRuntime } = require("../services/systemSloRuntime");
+const { loadSystemAnomalyRuntime } = require("../services/systemAnomalyRuntime");
 const { deriveGroupSubtype } = require("../services/signalTaxonomy");
 const { resolveEventMapping, SIGNAL_MAPPING_VERSION } = require("../services/signalMapping");
 const { evaluateSignalWithAi } = require("../services/aiSignalGuard");
@@ -78,8 +79,7 @@ function nowIso() {
 }
 
 async function getOperationalPositionView({ exchange, symbol } = {}) {
-  const fallback = await getPosition({ exchange, symbol });
-  return getPositionReadView({ exchange, symbol, fallbackPosition: fallback });
+  return getPositionReadView({ exchange, symbol });
 }
 
 function repairMalformedWebhookJson(raw) {
@@ -2193,9 +2193,11 @@ function createWebhookRoutes() {
       const intentUpperForPolicy = String(intent || "").trim().toUpperCase();
       const policyEntryIntent = intentUpperForPolicy === "ENTRY" || intentUpperForPolicy === "ADD";
       if (!isDrop && policyEntryIntent) {
-        const [mlServing, operationalGuard] = await Promise.all([
+        const [mlServing, operationalGuard, systemSlo, systemAnomaly] = await Promise.all([
           loadMlServingRuntime({ exchange }),
           loadOperationalGuardRuntime({ exchange }),
+          loadSystemSloRuntime({ exchange }),
+          loadSystemAnomalyRuntime({ exchange }),
         ]);
         const policyEval = evaluateLiveEntryPolicy({
           exchange,
@@ -2208,6 +2210,8 @@ function createWebhookRoutes() {
           snapshotOverride: {
             mlServing,
             operationalGuard,
+            systemSlo,
+            systemAnomaly,
           },
         });
         if (policyEval && policyEval.featuresPatch && typeof policyEval.featuresPatch === "object") {

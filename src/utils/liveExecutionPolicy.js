@@ -2,7 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { getFirestore } = require("../storage/firestore");
+const { listExchangePositionReadViews } = require("../services/positionReadModel");
 
 const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
 const CAPITAL_ALLOCATOR_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_market_capital_allocator_latest.json");
@@ -14,7 +14,7 @@ const SIGNAL_LINEAGE_HEALTH_PATH = path.join(OPS_DAILY_DIR, "signal_lineage_heal
 const DRIFT_REMEDIATION_APPLY_PATH = path.join(OPS_DAILY_DIR, "server_signal_drift_remediation_apply_latest.json");
 const LINEAGE_REPORT_LATEST_COLLECTION = String(process.env.LIVE_EXEC_POLICY_LINEAGE_REPORT_LATEST_COLLECTION || "report_latest").trim() || "report_latest";
 const LINEAGE_REPORT_LATEST_DOC_ID = String(process.env.LIVE_EXEC_POLICY_LINEAGE_REPORT_LATEST_DOC_ID || "LATEST__signal_lineage_health__GLOBAL").trim() || "LATEST__signal_lineage_health__GLOBAL";
-const POSITIONS_COLLECTION = String(process.env.LIVE_EXEC_POLICY_POSITIONS_COLLECTION || "positions_paper").trim() || "positions_paper";
+const USE_POSITION_READ_MODEL = String(process.env.LIVE_EXEC_POLICY_USE_POSITION_READ_MODEL || "1").trim() !== "0";
 
 const CACHE_TTL_MS = (() => {
   const n = Number(process.env.LIVE_EXEC_POLICY_CACHE_TTL_MS);
@@ -115,6 +115,71 @@ const SCORE_SCALE_NEG_EXTREME = (() => {
   const n = Number(process.env.LIVE_EXEC_POLICY_SCALE_SCORE_NEG_EXTREME);
   if (Number.isFinite(n) && n > 0 && n <= 2) return n;
   return 0.3;
+})();
+const OPS_GUARD_HOLD_SOFT_SCALE = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_OPS_GUARD_HOLD_SOFT_SCALE);
+  if (Number.isFinite(n) && n > 0 && n <= 1) return n;
+  return 0.7;
+})();
+const SYSTEM_SLO_HOLD_SOFT_SCALE = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_SYSTEM_SLO_HOLD_SOFT_SCALE);
+  if (Number.isFinite(n) && n > 0 && n <= 1) return n;
+  return OPS_GUARD_HOLD_SOFT_SCALE;
+})();
+const OPS_GUARD_HOLD_SOFT_SCALE_MILD = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_OPS_GUARD_HOLD_SOFT_SCALE_MILD);
+  if (Number.isFinite(n) && n > 0 && n <= 1) return n;
+  return 0.6;
+})();
+const OPS_GUARD_HOLD_SOFT_SCALE_HIGH = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_OPS_GUARD_HOLD_SOFT_SCALE_HIGH);
+  if (Number.isFinite(n) && n > 0 && n <= 1) return n;
+  return 0.5;
+})();
+const OPS_GUARD_HOLD_SOFT_SCALE_SEVERE = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_OPS_GUARD_HOLD_SOFT_SCALE_SEVERE);
+  if (Number.isFinite(n) && n > 0 && n <= 1) return n;
+  return 0.35;
+})();
+const OPS_GUARD_HOLD_LATENCY_MS_MILD = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_OPS_GUARD_HOLD_LATENCY_MS_MILD);
+  if (Number.isFinite(n) && n > 0) return n;
+  return 300000;
+})();
+const OPS_GUARD_HOLD_LATENCY_MS_HIGH = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_OPS_GUARD_HOLD_LATENCY_MS_HIGH);
+  if (Number.isFinite(n) && n > 0) return n;
+  return 450000;
+})();
+const OPS_GUARD_HOLD_LATENCY_MS_SEVERE = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_OPS_GUARD_HOLD_LATENCY_MS_SEVERE);
+  if (Number.isFinite(n) && n > 0) return n;
+  return 600000;
+})();
+const OPS_GUARD_HOLD_PARTIAL_PCT_MILD = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_OPS_GUARD_HOLD_PARTIAL_PCT_MILD);
+  if (Number.isFinite(n) && n > 0) return n;
+  return 65;
+})();
+const OPS_GUARD_HOLD_PARTIAL_PCT_HIGH = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_OPS_GUARD_HOLD_PARTIAL_PCT_HIGH);
+  if (Number.isFinite(n) && n > 0) return n;
+  return 75;
+})();
+const OPS_GUARD_HOLD_PARTIAL_PCT_SEVERE = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_OPS_GUARD_HOLD_PARTIAL_PCT_SEVERE);
+  if (Number.isFinite(n) && n > 0) return n;
+  return 85;
+})();
+const OPS_GUARD_HOLD_SLIPPAGE_BPS_MILD = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_OPS_GUARD_HOLD_SLIPPAGE_BPS_MILD);
+  if (Number.isFinite(n) && n > 0) return n;
+  return 4;
+})();
+const OPS_GUARD_HOLD_SLIPPAGE_BPS_HIGH = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_OPS_GUARD_HOLD_SLIPPAGE_BPS_HIGH);
+  if (Number.isFinite(n) && n > 0) return n;
+  return 8;
 })();
 
 const QUALITY_SCALE_LATENCY_HIGH = (() => {
@@ -448,16 +513,16 @@ function buildActivePositionsSnapshot(rows = []) {
 
 function maybeRefreshActivePositionsSnapshot(now = Date.now()) {
   if (!PORTFOLIO_CLUSTER_ENABLED) return;
+  if (!USE_POSITION_READ_MODEL) return;
   if (activePositionsCache.refreshPromise) return;
   if (activePositionsCache.ts && (now - activePositionsCache.ts) < PORTFOLIO_CLUSTER_REFRESH_MS) return;
   activePositionsCache.refreshPromise = Promise.resolve()
     .then(async () => {
-      const db = getFirestore();
-      const snap = await db.collection(POSITIONS_COLLECTION).get();
-      const rows = [];
-      snap.forEach((doc) => {
-        rows.push({ id: doc.id, data: doc.data() || {} });
-      });
+      const positions = await listExchangePositionReadViews({ exchange: "BINANCEFUT" });
+      const rows = (Array.isArray(positions) ? positions : []).map((position) => ({
+        id: position && (position.pos_id || position.id) || null,
+        data: position || {},
+      }));
       activePositionsCache = {
         ts: Date.now(),
         snapshot: buildActivePositionsSnapshot(rows),
@@ -887,7 +952,7 @@ function deriveQualityHardBlock(row = null) {
 
 function deriveGlobalQualityHardBlock(summary = null, market = null) {
   const status = upper(summary && summary.status);
-  const latency = toNum(summary && summary.created_to_fill_p95_ms);
+  const latency = toNum(summary && (summary.guard_created_to_fill_p95_ms ?? summary.created_to_fill_p95_ms));
   const partial = toNum(summary && summary.partial_fill_rate_pct);
   const slippage = toNum(summary && summary.adverse_slippage_p95_bps);
   if (!EXEC_QUALITY_GLOBAL_GUARD_ENABLED) return { blocked: false, reason: null };
@@ -947,7 +1012,7 @@ function deriveObjectiveScale(summary = null) {
 
 function deriveGlobalExecutionQualityScale(summary = null) {
   const status = upper(summary && summary.status);
-  const latency = toNum(summary && summary.created_to_fill_p95_ms);
+  const latency = toNum(summary && (summary.guard_created_to_fill_p95_ms ?? summary.created_to_fill_p95_ms));
   const partial = toNum(summary && summary.partial_fill_rate_pct);
   const slippage = toNum(summary && summary.adverse_slippage_p95_bps);
   let scale = 1.0;
@@ -1105,10 +1170,136 @@ function deriveOperationalGuard(snapshot = null) {
     blockNewEntries: state.block_new_entries === true,
     stale: state.stale === true,
     errorCount: toNum(state.error_count),
+    activeErrorCount: toNum(state.active_error_count),
     costRatioPct: toNum(state.cost_ratio_pct),
     costLimitPct: toNum(state.cost_limit_pct),
     auditIssueCount: toNum(state.audit_issue_count),
     qtyPctNonPositiveCount: toNum(state.qty_pct_non_positive_count),
+    reasons: Array.isArray(state.reasons) ? state.reasons.slice(0, 20).map((row) => String(row || "").trim()).filter(Boolean) : [],
+  };
+}
+
+function deriveSystemSloGuard(snapshot = null) {
+  const state = snapshot && snapshot.systemSlo && typeof snapshot.systemSlo === "object"
+    ? snapshot.systemSlo
+    : {};
+  const components = state.components && typeof state.components === "object" ? state.components : {};
+  return {
+    available: Object.keys(state).length > 0,
+    status: upper(state.status),
+    reason: upper(state.reason),
+    blockNewEntries: state.block_new_entries === true,
+    stale: state.stale === true,
+    issues: Array.isArray(state.issues) ? state.issues.slice(0, 20).map((row) => upper(row)).filter(Boolean) : [],
+    executionQualityStatus: upper(components.execution_quality_status),
+    executionQualityLatencyP95Ms: toNum(components.execution_quality_latency_p95_ms),
+    executionQualityPartialFillRatePct: toNum(components.execution_quality_partial_fill_rate_pct),
+    executionQualitySlippageP95Bps: toNum(components.execution_quality_slippage_p95_bps),
+    lineageFresh: components.lineage_fresh === true,
+  };
+}
+
+function shouldSoftScaleOperationalHold(guard = null) {
+  if (!guard || typeof guard !== "object") return false;
+  if (guard.blockNewEntries !== true) return false;
+  if (upper(guard.reason) !== "OPS_GUARD_HOLD") return false;
+  if (!(Number.isFinite(guard.costRatioPct) && Number.isFinite(guard.costLimitPct) && guard.costRatioPct > guard.costLimitPct)) return false;
+  if (Number.isFinite(guard.auditIssueCount) && guard.auditIssueCount > 0) return false;
+  if (Number.isFinite(guard.qtyPctNonPositiveCount) && guard.qtyPctNonPositiveCount > 0) return false;
+  const effectiveErrorCount = Number.isFinite(guard.activeErrorCount) ? guard.activeErrorCount : guard.errorCount;
+  if (Number.isFinite(effectiveErrorCount) && effectiveErrorCount > 0) return false;
+  return true;
+}
+
+function deriveOperationalHoldSoftScaleMeta({
+  guard = null,
+  market = null,
+  qualityRow = null,
+  qualitySummary = null,
+} = {}) {
+  if (!shouldSoftScaleOperationalHold(guard)) {
+    return {
+      scale: 1,
+      severity: 0,
+      topWatchIndex: -1,
+      topWatchIncluded: false,
+    };
+  }
+  const mk = upper(market);
+  const topWatch = Array.isArray(qualitySummary && qualitySummary.top_watch_markets)
+    ? qualitySummary.top_watch_markets
+    : [];
+  const topWatchIndex = mk
+    ? topWatch.findIndex((row) => upper(row && row.market) === mk)
+    : -1;
+  const topWatchRow = topWatchIndex >= 0 ? topWatch[topWatchIndex] : null;
+  const latency = toNum(
+    qualityRow && qualityRow.avg_created_to_fill_ms,
+    toNum(topWatchRow && topWatchRow.avg_created_to_fill_ms)
+  );
+  const partial = toNum(
+    qualityRow && qualityRow.partial_fill_rate_pct,
+    toNum(topWatchRow && topWatchRow.partial_fill_rate_pct)
+  );
+  const slippage = toNum(
+    qualityRow && qualityRow.avg_slippage_bps,
+    toNum(topWatchRow && topWatchRow.avg_slippage_bps)
+  );
+
+  let severity = 0;
+  if (topWatchIndex === 0) severity = Math.max(severity, 3);
+  else if (topWatchIndex >= 0 && topWatchIndex <= 2) severity = Math.max(severity, 2);
+  else if (topWatchIndex >= 0 && topWatchIndex <= 5) severity = Math.max(severity, 1);
+
+  if (Number.isFinite(latency) && latency >= OPS_GUARD_HOLD_LATENCY_MS_SEVERE) severity = Math.max(severity, 3);
+  else if (Number.isFinite(latency) && latency >= OPS_GUARD_HOLD_LATENCY_MS_HIGH) severity = Math.max(severity, 2);
+  else if (Number.isFinite(latency) && latency >= OPS_GUARD_HOLD_LATENCY_MS_MILD) severity = Math.max(severity, 1);
+
+  if (Number.isFinite(partial) && partial >= OPS_GUARD_HOLD_PARTIAL_PCT_SEVERE) severity = Math.max(severity, 3);
+  else if (Number.isFinite(partial) && partial >= OPS_GUARD_HOLD_PARTIAL_PCT_HIGH) severity = Math.max(severity, 2);
+  else if (Number.isFinite(partial) && partial >= OPS_GUARD_HOLD_PARTIAL_PCT_MILD) severity = Math.max(severity, 1);
+
+  if (Number.isFinite(slippage) && slippage >= OPS_GUARD_HOLD_SLIPPAGE_BPS_HIGH) severity = Math.max(severity, 2);
+  else if (Number.isFinite(slippage) && slippage >= OPS_GUARD_HOLD_SLIPPAGE_BPS_MILD) severity = Math.max(severity, 1);
+
+  const scale = severity >= 3
+    ? OPS_GUARD_HOLD_SOFT_SCALE_SEVERE
+    : severity === 2
+      ? OPS_GUARD_HOLD_SOFT_SCALE_HIGH
+      : severity === 1
+        ? OPS_GUARD_HOLD_SOFT_SCALE_MILD
+        : OPS_GUARD_HOLD_SOFT_SCALE;
+  return {
+    scale,
+    severity,
+    topWatchIndex,
+    topWatchIncluded: topWatchIndex >= 0,
+  };
+}
+
+function shouldSoftScaleSystemSloHold(guard = null) {
+  if (!guard || typeof guard !== "object") return false;
+  if (guard.blockNewEntries !== true) return false;
+  if (upper(guard.status) !== "WARN") return false;
+  if (upper(guard.reason) !== "OPS_GUARD_HOLD") return false;
+  return true;
+}
+
+function deriveSystemAnomalyGuard(snapshot = null) {
+  const state = snapshot && snapshot.systemAnomaly && typeof snapshot.systemAnomaly === "object"
+    ? snapshot.systemAnomaly
+    : {};
+  const components = state.components && typeof state.components === "object" ? state.components : {};
+  return {
+    available: Object.keys(state).length > 0,
+    status: upper(state.status),
+    reason: upper(state.reason),
+    circuitBreakerOpen: state.circuit_breaker_open === true,
+    stale: state.stale === true,
+    issues: Array.isArray(state.issues) ? state.issues.slice(0, 20).map((row) => upper(row)).filter(Boolean) : [],
+    operationalAuditIssueCount: toNum(components.operational_audit_issue_count),
+    operationalQtyPctNonPositiveCount: toNum(components.operational_qty_pct_non_positive_count),
+    operationalErrorCount: toNum(components.operational_error_count),
   };
 }
 
@@ -1269,6 +1460,17 @@ function evaluateLiveEntryPolicy({
   } = derived;
   const mlServing = deriveMlServingGuard(snapshot);
   const operationalGuard = deriveOperationalGuard(snapshot);
+  const systemSlo = deriveSystemSloGuard(snapshot);
+  const systemAnomaly = deriveSystemAnomalyGuard(snapshot);
+  const operationalHoldSoftScaleMeta = deriveOperationalHoldSoftScaleMeta({
+    guard: operationalGuard,
+    market,
+    qualityRow,
+    qualitySummary,
+  });
+  const operationalGuardSoftScale = operationalHoldSoftScaleMeta.scale;
+  const systemSloSoftScale = shouldSoftScaleSystemSloHold(systemSlo) ? SYSTEM_SLO_HOLD_SOFT_SCALE : 1;
+  const runtimeGuardSoftScale = Math.min(operationalGuardSoftScale, systemSloSoftScale);
   const suppressLineageFillIntentReason = lineageSlo
     && lineageSlo.blocked === true
     && String(lineageSlo.reason || "").trim().toUpperCase() === "LINEAGE_SLO_FILL_INTENT_NULL_RATE"
@@ -1285,7 +1487,7 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_quality_partial_pct: toNum(qualityRow && qualityRow.partial_fill_rate_pct),
     _live_exec_policy_quality_slippage_bps: toNum(qualityRow && qualityRow.avg_slippage_bps),
     _live_exec_policy_quality_global_status: upper(qualitySummary.status),
-    _live_exec_policy_quality_global_latency_p95_ms: toNum(qualitySummary.created_to_fill_p95_ms),
+    _live_exec_policy_quality_global_latency_p95_ms: toNum(qualitySummary.guard_created_to_fill_p95_ms ?? qualitySummary.created_to_fill_p95_ms),
     _live_exec_policy_quality_global_partial_pct: toNum(qualitySummary.partial_fill_rate_pct),
     _live_exec_policy_quality_global_slippage_p95_bps: toNum(qualitySummary.adverse_slippage_p95_bps),
     _live_exec_policy_lineage_slo_enabled: LINEAGE_SLO_ENABLED,
@@ -1348,13 +1550,33 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_ops_guard_block_new_entries: operationalGuard.blockNewEntries,
     _live_exec_policy_ops_guard_stale: operationalGuard.stale,
     _live_exec_policy_ops_guard_error_count: operationalGuard.errorCount,
+    _live_exec_policy_ops_guard_active_error_count: operationalGuard.activeErrorCount,
     _live_exec_policy_ops_guard_cost_ratio_pct: operationalGuard.costRatioPct,
     _live_exec_policy_ops_guard_cost_limit_pct: operationalGuard.costLimitPct,
     _live_exec_policy_ops_guard_audit_issue_count: operationalGuard.auditIssueCount,
     _live_exec_policy_ops_guard_qty_pct_non_positive_count: operationalGuard.qtyPctNonPositiveCount,
+    _live_exec_policy_ops_guard_soft_scale: operationalGuardSoftScale,
+    _live_exec_policy_ops_guard_soft_scale_active: operationalGuardSoftScale < 1,
+    _live_exec_policy_ops_guard_soft_scale_severity: operationalHoldSoftScaleMeta.severity,
+    _live_exec_policy_ops_guard_soft_scale_top_watch_index: operationalHoldSoftScaleMeta.topWatchIndex,
+    _live_exec_policy_ops_guard_soft_scale_top_watch_included: operationalHoldSoftScaleMeta.topWatchIncluded,
+    _live_exec_policy_system_slo_available: systemSlo.available,
+    _live_exec_policy_system_slo_status: systemSlo.status,
+    _live_exec_policy_system_slo_reason: systemSlo.reason,
+    _live_exec_policy_system_slo_block_new_entries: systemSlo.blockNewEntries,
+    _live_exec_policy_system_slo_stale: systemSlo.stale,
+    _live_exec_policy_system_slo_issues: systemSlo.issues,
+    _live_exec_policy_system_slo_soft_scale: systemSloSoftScale,
+    _live_exec_policy_system_slo_soft_scale_active: systemSloSoftScale < 1,
+    _live_exec_policy_system_anomaly_available: systemAnomaly.available,
+    _live_exec_policy_system_anomaly_status: systemAnomaly.status,
+    _live_exec_policy_system_anomaly_reason: systemAnomaly.reason,
+    _live_exec_policy_system_anomaly_circuit_breaker_open: systemAnomaly.circuitBreakerOpen,
+    _live_exec_policy_system_anomaly_stale: systemAnomaly.stale,
+    _live_exec_policy_system_anomaly_issues: systemAnomaly.issues,
   };
 
-  if (operationalGuard.blockNewEntries) {
+  if (operationalGuard.blockNewEntries && operationalGuardSoftScale >= 1) {
     const reason = operationalGuard.reason || "OPS_GUARD_BLOCK_NEW_ENTRIES";
     return {
       ok: false,
@@ -1396,6 +1618,50 @@ function evaluateLiveEntryPolicy({
         ml_serving_mode: mlServing.servingMode,
         ml_serving_gate_status: mlServing.gateStatus,
         ml_serving_gate_reason: mlServing.gateReason,
+      },
+    };
+  }
+
+  if (systemSlo.blockNewEntries && systemSloSoftScale >= 1) {
+    const reason = systemSlo.reason || "SYSTEM_SLO_BLOCK_NEW_ENTRIES";
+    return {
+      ok: false,
+      qtyPctFinal: 0,
+      reason,
+      featuresPatch: {
+        ...commonTracePatch,
+        _live_exec_policy_reason: reason,
+      },
+      policy: {
+        stage,
+        exchange: ex,
+        market,
+        blocked: true,
+        reason,
+        system_slo_status: systemSlo.status,
+        system_slo_issues: systemSlo.issues,
+      },
+    };
+  }
+
+  if (systemAnomaly.circuitBreakerOpen) {
+    const reason = systemAnomaly.reason || "SYSTEM_ANOMALY_CIRCUIT_BREAKER_OPEN";
+    return {
+      ok: false,
+      qtyPctFinal: 0,
+      reason,
+      featuresPatch: {
+        ...commonTracePatch,
+        _live_exec_policy_reason: reason,
+      },
+      policy: {
+        stage,
+        exchange: ex,
+        market,
+        blocked: true,
+        reason,
+        system_anomaly_status: systemAnomaly.status,
+        system_anomaly_issues: systemAnomaly.issues,
       },
     };
   }
@@ -1591,6 +1857,7 @@ function evaluateLiveEntryPolicy({
   let objectiveQtyScale = objectiveScale.scale;
   let qualityGlobalQtyScale = qualityGlobalScale;
   let portfolioClusterScale = 1.0;
+  let runtimeGuardQtyScale = runtimeGuardSoftScale;
   const alreadyScaled = baseFeatures._live_exec_policy_scale_applied === true;
 
   if (applyScale && !alreadyScaled) {
@@ -1611,6 +1878,7 @@ function evaluateLiveEntryPolicy({
       * qualityGlobalQtyScale
       * objectiveQtyScale
       * portfolioClusterScale
+      * runtimeGuardQtyScale
       * planGlobalScale
       * planMarketScale,
       SCALE_MIN,
@@ -1650,6 +1918,7 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_quality_global_scale: qualityGlobalQtyScale,
     _live_exec_policy_portfolio_cluster_scale: featurePortfolioClusterScale,
     _live_exec_policy_portfolio_cluster_reduce: portfolioCluster.reduce,
+    _live_exec_policy_runtime_guard_scale: runtimeGuardQtyScale,
     _live_exec_policy_scale_applied: featureScaledFlag,
     _live_exec_policy_scale: featureScaleApplied,
     _live_exec_policy_profile: POLICY_PROFILE,
@@ -1679,6 +1948,7 @@ function evaluateLiveEntryPolicy({
       quality_global_scale: qualityGlobalQtyScale,
       portfolio_cluster_scale: featurePortfolioClusterScale,
       portfolio_cluster_reduce: portfolioCluster.reduce,
+      runtime_guard_scale: runtimeGuardQtyScale,
       objective_scale: objectiveQtyScale,
       objective_verdict: objectiveScale.verdict,
       objective_score: objectiveScale.objectiveScore,
@@ -1703,6 +1973,8 @@ function evaluateLiveEntryPolicy({
       ml_serving_mode: mlServing.servingMode,
       ml_serving_live_allowed: mlServing.liveServingAllowed,
       ml_serving_gate_status: mlServing.gateStatus,
+      system_slo_status: systemSlo.status,
+      system_anomaly_status: systemAnomaly.status,
     },
   };
 }
@@ -1747,6 +2019,11 @@ module.exports = {
     lineage_slo_max_fill_signal_null_rate: LINEAGE_SLO_MAX_FILL_SIGNAL_NULL_RATE,
     lineage_slo_max_fill_intent_null_rate: LINEAGE_SLO_MAX_FILL_INTENT_NULL_RATE,
     lineage_slo_max_report_age_ms: LINEAGE_SLO_MAX_REPORT_AGE_MS,
+    use_position_read_model: USE_POSITION_READ_MODEL,
+    ops_guard_hold_soft_scale: OPS_GUARD_HOLD_SOFT_SCALE,
+    ops_guard_hold_soft_scale_mild: OPS_GUARD_HOLD_SOFT_SCALE_MILD,
+    ops_guard_hold_soft_scale_high: OPS_GUARD_HOLD_SOFT_SCALE_HIGH,
+    ops_guard_hold_soft_scale_severe: OPS_GUARD_HOLD_SOFT_SCALE_SEVERE,
   }),
   __test: {
     buildSnapshotFromArtifacts,
@@ -1761,5 +2038,7 @@ module.exports = {
     deriveAllocatorScoreScale,
     deriveQualityScale,
     deriveQualityHardBlock,
+    deriveSystemSloGuard,
+    deriveSystemAnomalyGuard,
   },
 };

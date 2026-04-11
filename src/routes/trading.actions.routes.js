@@ -15,11 +15,13 @@ const { healBinanceLivePosition } = require("../services/binanceLiveStateSelfHea
 const { getPositionReadView } = require("../services/positionReadModel");
 const { loadMlServingRuntime } = require("../services/mlServingRuntime");
 const { loadOperationalGuardRuntime } = require("../services/operationalGuardRuntime");
+const { loadSystemSloRuntime } = require("../services/systemSloRuntime");
+const { loadSystemAnomalyRuntime } = require("../services/systemAnomalyRuntime");
 const {
   runPaperFuturesForBar,
   syncFuturesPositionOnly,
   runDistributedFuturesPositionSync,
-} = require("../engine/paperUpbitRunner");
+} = require("../engine/paperBinanceRunner");
 const { runActionPreHooks, runActionPostHooks } = require("../utils/actionExecutionHooks");
 
 function nowMs() {
@@ -88,8 +90,7 @@ function resolveRetryQtyBaseFromTrades(trades, entrySide) {
 }
 
 async function getOperationalPositionView({ exchange, symbol } = {}) {
-  const fallback = await getPosition({ exchange, symbol });
-  return getPositionReadView({ exchange, symbol, fallbackPosition: fallback });
+  return getPositionReadView({ exchange, symbol });
 }
 
 function createTradingActionsRoutes() {
@@ -317,9 +318,11 @@ function createTradingActionsRoutes() {
           const execModeRaw = String(sys && sys.data && sys.data.execution_mode ? sys.data.execution_mode : "PAPER").toUpperCase();
           const executionMode = execModeRaw === "LIVE" ? "LIVE" : "PAPER";
           const signalMs = Date.now();
-          const [mlServing, operationalGuard] = await Promise.all([
+          const [mlServing, operationalGuard, systemSlo, systemAnomaly] = await Promise.all([
             loadMlServingRuntime({ exchange }),
             loadOperationalGuardRuntime({ exchange }),
+            loadSystemSloRuntime({ exchange }),
+            loadSystemAnomalyRuntime({ exchange }),
           ]);
           const pre = runActionPreHooks({
             action: "TRADING_MANUAL_RETRY_ENTRY",
@@ -344,6 +347,8 @@ function createTradingActionsRoutes() {
             snapshotOverride: {
               mlServing,
               operationalGuard,
+              systemSlo,
+              systemAnomaly,
             },
           });
           actionEnvelope = pre.envelope;

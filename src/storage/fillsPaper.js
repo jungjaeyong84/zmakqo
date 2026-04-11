@@ -2,8 +2,9 @@ const { getFirestore } = require("./firestore");
 const { buildEventEnvelope } = require("../utils/eventEnvelope");
 const { deriveSignalDocId } = require("../utils/signalDocId");
 const { extractLiveExecutionPolicyTrace, toLiveExecutionPolicyTopLevel } = require("../utils/liveExecutionPolicyTrace");
-const { recordUnifiedEvent } = require("./unifiedEventTimeline");
+const { recordUnifiedEvent, buildUnifiedEventDoc } = require("./unifiedEventTimeline");
 const { recordFillEvent } = require("./fillEvents");
+const { __test: fillEventsTest } = require("./fillEvents");
 
 const LINEAGE_STRICT_ENABLED = String(process.env.LINEAGE_STRICT_ENABLED || "1").trim() !== "0";
 
@@ -119,6 +120,69 @@ function buildExternalFillUnverifiedPatch({
   };
 }
 
+function buildExternalFillEventReclassificationPatch({
+  current = null,
+  event = null,
+  intentId = null,
+  signalId = null,
+  signalDocId = null,
+  decisionReason = "INTENT_EVENT_RECLASSIFIED",
+  reclassifyReason = "MATCHED_INTENT_EVENT",
+  reclassifyScript = null,
+} = {}) {
+  const doc = current && typeof current === "object" ? current : {};
+  const exchange = doc.exchange || null;
+  const symbol = doc.symbol || doc.symbol_or_pair_id || null;
+  const tf = doc.tf || null;
+  const execBarCloseTimeUtcMs = Number(doc.exec_bar_close_time_utc_ms);
+  const side = doc.side || null;
+  const nextEvent = String(event || "").trim().toUpperCase();
+  if (!nextEvent) {
+    throw new Error("buildExternalFillEventReclassificationPatch: event required");
+  }
+  const resolvedIntentId = String(intentId || doc.intent_id || "").trim() || null;
+  const refs = resolveFillSignalRefs({
+    exchange,
+    symbol,
+    tf,
+    signalBarCloseTimeUtcMs: Number(doc.signal_bar_close_time_utc_ms) || null,
+    execBarCloseTimeUtcMs,
+    event: nextEvent,
+    signalId: signalId || doc.signal_id || null,
+    signalDocId: signalDocId || doc.signal_doc_id || null,
+  });
+  const ts = nowIso();
+  return {
+    event: nextEvent,
+    action: nextEvent,
+    intent: nextEvent,
+    intent_id: resolvedIntentId,
+    signal_id: refs.signalId || null,
+    signal_doc_id: refs.signalDocId || null,
+    decision_reason: decisionReason || "INTENT_EVENT_RECLASSIFIED",
+    canonical_event_id: canonicalEventId({
+      exchange,
+      symbol,
+      tf,
+      signalBarCloseMs: Number(doc.signal_bar_close_time_utc_ms) || execBarCloseTimeUtcMs,
+      event: nextEvent,
+      side,
+    }),
+    trace_meta: buildTraceMeta({
+      signalId: refs.signalId || null,
+      intentId: resolvedIntentId,
+      fillId: doc.fill_id || null,
+      runId: doc.run_id || null,
+      requestId: doc.request_id || null,
+      decisionReason: decisionReason || nextEvent,
+    }),
+    updated_at: ts,
+    reclassified_at: ts,
+    reclassify_reason: reclassifyReason || "MATCHED_INTENT_EVENT",
+    reclassify_script: reclassifyScript || null,
+  };
+}
+
 async function recordFillUnifiedEventSafe(doc = null, eventSource = "FILLS_PAPER") {
   if (!doc || typeof doc !== "object") return;
   try {
@@ -150,6 +214,36 @@ async function recordFillUnifiedEventSafe(doc = null, eventSource = "FILLS_PAPER
     const msg = err && err.message ? err.message : String(err);
     console.warn("[UNIFIED_TIMELINE_FILL_FAIL]", msg);
   }
+}
+
+function buildFillSnapshotUnifiedEventDoc(doc = null, eventSource = "FILLS_PAPER") {
+  if (!doc || typeof doc !== "object") return null;
+  const sourceSuffix = String(doc.updated_at || doc.created_at || nowIso()).trim() || nowIso();
+  return buildUnifiedEventDoc({
+    eventKind: "FILL",
+    eventSource,
+    sourceDocumentId: `${doc.fill_id || "UNKNOWN"}__${sourceSuffix}`,
+    exchange: doc.exchange,
+    symbol: doc.symbol || doc.symbol_or_pair_id,
+    event: doc.event,
+    traceId: doc.trace_id || doc.idempotency_key || null,
+    requestId: doc.request_id || null,
+    runId: doc.run_id || null,
+    signalId: doc.signal_id || null,
+    intentId: doc.intent_id || null,
+    fillId: doc.fill_id || null,
+    createdAt: doc.created_at || doc.updated_at || null,
+    tsMs: doc.updated_at || doc.created_at || null,
+    payload: {
+      side: doc.side || null,
+      qty_pct: Number.isFinite(Number(doc.qty_pct)) ? Number(doc.qty_pct) : null,
+      qty_fraction: Number.isFinite(Number(doc.qty_fraction)) ? Number(doc.qty_fraction) : null,
+      exec_price: Number.isFinite(Number(doc.exec_price)) ? Number(doc.exec_price) : null,
+      decision_reason: doc.decision_reason || null,
+      classification_verified: doc.classification_verified !== false,
+    },
+    raw: doc,
+  });
 }
 
 async function recordFillMutationEventSafe({
@@ -322,16 +416,30 @@ async function upsertFill({
 
   if (normalizedFeaturesJson) payload.features_json = normalizedFeaturesJson;
 
-  await ref.set(payload, { merge: false });
-  await recordFillUnifiedEventSafe(payload, "FILLS_PAPER_INTERNAL");
-  await recordFillMutationEventSafe({
+  const unifiedDoc = buildFillSnapshotUnifiedEventDoc(payload, "FILLS_PAPER_INTERNAL");
+  const fillEventDoc = fillEventsTest.buildFillEventDoc({
+    fillId: payload.fill_id,
+    mutationType: "INTERNAL_INSERT",
+    exchange: payload.exchange,
+    symbol: payload.symbol || payload.symbol_or_pair_id || null,
+    traceId: payload.trace_id || payload.idempotency_key || null,
+    requestId: payload.request_id || null,
+    runId: payload.run_id || null,
+    createdAt: payload.updated_at || payload.created_at || null,
     before: null,
     after: payload,
-    mutationType: "INTERNAL_INSERT",
     extra: {
       intent_id: intentId || null,
       execution_mode: executionMode || null,
     },
+    deterministicKey: `${payload.fill_id}|INTERNAL_INSERT|${payload.updated_at || payload.created_at || ""}`,
+  });
+  const fillEventUnifiedDoc = fillEventsTest.buildFillEventUnifiedDoc(fillEventDoc);
+  await db.runTransaction(async (tx) => {
+    tx.set(ref, payload, { merge: false });
+    if (unifiedDoc) tx.set(db.collection("unified_event_timeline").doc(unifiedDoc.unified_event_id), unifiedDoc, { merge: false });
+    tx.set(db.collection("fill_events").doc(fillEventDoc.fill_event_id), fillEventDoc, { merge: false });
+    tx.set(db.collection("unified_event_timeline").doc(fillEventUnifiedDoc.unified_event_id), fillEventUnifiedDoc, { merge: false });
   });
   return { ok: true, fill_id: ref.id };
 }
@@ -396,114 +504,122 @@ async function upsertExternalFill({
     if (!refs.signalId) throw new Error("FILL_LINEAGE_SIGNAL_ID_REQUIRED");
   }
   const ref = db.collection("fills_paper").doc(fillId);
-  const snap = await ref.get();
-  const createdNew = !snap.exists;
-  const now = nowIso();
-  const existing = snap.exists ? snap.data() : null;
-  const created_at = existing && existing.created_at ? existing.created_at : (createdAt || now);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const createdNew = !snap.exists;
+    const now = nowIso();
+    const existing = snap.exists ? (snap.data() || null) : null;
+    const created_at = existing && existing.created_at ? existing.created_at : (createdAt || now);
 
-  const qtyPctVal = (qtyPct === null || qtyPct === undefined || qtyPct === "") ? null : Number(qtyPct);
-  const qtyFractionVal = (qtyFraction === null || qtyFraction === undefined || qtyFraction === "") ? null : Number(qtyFraction);
+    const qtyPctVal = (qtyPct === null || qtyPct === undefined || qtyPct === "") ? null : Number(qtyPct);
+    const qtyFractionVal = (qtyFraction === null || qtyFraction === undefined || qtyFraction === "") ? null : Number(qtyFraction);
 
-  const normalizedFeaturesJson = normalizeFeaturesJson(featuresJson);
-  const liveExecPolicyTopLevel = toLiveExecutionPolicyTopLevel(extractLiveExecutionPolicyTrace(normalizedFeaturesJson));
-  const payload = {
-    fill_id: fillId,
-    ...buildEventEnvelope({
-      requestId,
-      runId,
-      signalId: refs.signalId,
-      intentId,
-      event,
+    const normalizedFeaturesJson = normalizeFeaturesJson(featuresJson);
+    const liveExecPolicyTopLevel = toLiveExecutionPolicyTopLevel(extractLiveExecutionPolicyTrace(normalizedFeaturesJson));
+    const payload = {
+      fill_id: fillId,
+      ...buildEventEnvelope({
+        requestId,
+        runId,
+        signalId: refs.signalId,
+        intentId,
+        event,
+        exchange,
+        symbol,
+        tf,
+        decisionReason: decisionReason || event,
+        action: event,
+        intent: event,
+        executionMode,
+        source: execPriceSource,
+        barCloseMs: execBarCloseTimeUtcMs,
+        createdAt,
+      }),
+      intent_id: intentId || null,
+      trade_id: tradeId || null,
+      run_id: runId || null,
       exchange,
       symbol,
       tf,
-      decisionReason: decisionReason || event,
-      action: event,
-      intent: event,
-      executionMode,
-      source: execPriceSource,
-      barCloseMs: execBarCloseTimeUtcMs,
-      createdAt,
-    }),
-    intent_id: intentId || null,
-    trade_id: tradeId || null,
-    run_id: runId || null,
+      exec_bar_close_time_utc: execBarCloseTimeUtc || null,
+      exec_bar_close_time_utc_ms: (typeof execBarCloseTimeUtcMs === "number") ? execBarCloseTimeUtcMs : Number(execBarCloseTimeUtcMs),
+      side,
+      event,
+      qty_pct: Number.isFinite(qtyPctVal) ? qtyPctVal : null,
+      qty_fraction: Number.isFinite(qtyFractionVal) ? qtyFractionVal : null,
+      exec_price: Number(execPrice),
+      fee_bps: Number(feeBps || 0),
+      slippage_bps: normalizeOptionalNumber(slippageBps),
+      fee_value: (feeValue === null || feeValue === undefined) ? null : Number(feeValue),
+      notional: (notional === null || notional === undefined) ? null : Number(notional),
+      notional_krw: (notionalKrw === null || notionalKrw === undefined) ? null : Number(notionalKrw),
+      budget_max_krw: (budgetMaxKrw === null || budgetMaxKrw === undefined) ? null : Number(budgetMaxKrw),
+      budget_used_krw: (budgetUsedKrw === null || budgetUsedKrw === undefined) ? null : Number(budgetUsedKrw),
+      exec_price_source: execPriceSource || "BINANCE_USER_TRADES",
+      execution_mode: executionMode || null,
+      live_order_id: liveOrderId || null,
+      exec_qty_base: (execQtyBase == null ? null : Number(execQtyBase)),
+      signal_bar_close_time_utc_ms: (typeof signalBarCloseTimeUtcMs === "number") ? signalBarCloseTimeUtcMs : (signalBarCloseTimeUtcMs == null ? null : Number(signalBarCloseTimeUtcMs)),
+      signal_id: refs.signalId || null,
+      signal_doc_id: refs.signalDocId || null,
+      canonical_event_id: canonicalEventId({ exchange, symbol, tf, signalBarCloseMs: signalBarCloseTimeUtcMs || execBarCloseTimeUtcMs, event, side }),
+      signal_price: (signalPrice == null ? null : Number(signalPrice)),
+      signal_price_diff: (signalPriceDiff == null ? null : Number(signalPriceDiff)),
+      signal_price_diff_pct: (signalPriceDiffPct == null ? null : Number(signalPriceDiffPct)),
+      signal_price_source: signalPriceSource || null,
+      decision_reason: decisionReason || null,
+      entry_event_id: entryEventId || null,
+      entry_signal_type: entrySignalType || null,
+      leverage_applied: (leverageApplied == null ? null : Number(leverageApplied)),
+      applied_leverage: (leverageApplied == null ? null : Number(leverageApplied)),
+      leverage_reason: leverageReason || null,
+      ...liveExecPolicyTopLevel,
+      trace_meta: buildTraceMeta({
+        signalId: refs.signalId || null,
+        intentId: intentId || null,
+        fillId,
+        runId,
+        requestId,
+        decisionReason: decisionReason || event || null,
+      }),
+      created_at,
+      updated_at: now,
+      classification_verified: existing && existing.classification_verified === false ? false : true,
+      classification_issues: existing && existing.classification_verified === false
+        ? (Array.isArray(existing.classification_issues) ? existing.classification_issues.slice() : [])
+        : [],
+    };
 
-    exchange,
-    symbol,
-    tf,
+    if (extra && typeof extra === "object") Object.assign(payload, extra);
+    if (normalizedFeaturesJson) payload.features_json = normalizedFeaturesJson;
 
-    exec_bar_close_time_utc: execBarCloseTimeUtc || null,
-    exec_bar_close_time_utc_ms: (typeof execBarCloseTimeUtcMs === "number") ? execBarCloseTimeUtcMs : Number(execBarCloseTimeUtcMs),
-
-    side,
-    event,
-    qty_pct: Number.isFinite(qtyPctVal) ? qtyPctVal : null,
-    qty_fraction: Number.isFinite(qtyFractionVal) ? qtyFractionVal : null,
-    exec_price: Number(execPrice),
-
-    fee_bps: Number(feeBps || 0),
-    slippage_bps: normalizeOptionalNumber(slippageBps),
-    fee_value: (feeValue === null || feeValue === undefined) ? null : Number(feeValue),
-    notional: (notional === null || notional === undefined) ? null : Number(notional),
-    notional_krw: (notionalKrw === null || notionalKrw === undefined) ? null : Number(notionalKrw),
-    budget_max_krw: (budgetMaxKrw === null || budgetMaxKrw === undefined) ? null : Number(budgetMaxKrw),
-    budget_used_krw: (budgetUsedKrw === null || budgetUsedKrw === undefined) ? null : Number(budgetUsedKrw),
-
-    exec_price_source: execPriceSource || "BINANCE_USER_TRADES",
-    execution_mode: executionMode || null,
-    live_order_id: liveOrderId || null,
-    exec_qty_base: (execQtyBase == null ? null : Number(execQtyBase)),
-    signal_bar_close_time_utc_ms: (typeof signalBarCloseTimeUtcMs === "number") ? signalBarCloseTimeUtcMs : (signalBarCloseTimeUtcMs == null ? null : Number(signalBarCloseTimeUtcMs)),
-    signal_id: refs.signalId || null,
-    signal_doc_id: refs.signalDocId || null,
-    canonical_event_id: canonicalEventId({ exchange, symbol, tf, signalBarCloseMs: signalBarCloseTimeUtcMs || execBarCloseTimeUtcMs, event, side }),
-    signal_price: (signalPrice == null ? null : Number(signalPrice)),
-    signal_price_diff: (signalPriceDiff == null ? null : Number(signalPriceDiff)),
-    signal_price_diff_pct: (signalPriceDiffPct == null ? null : Number(signalPriceDiffPct)),
-    signal_price_source: signalPriceSource || null,
-    decision_reason: decisionReason || null,
-    entry_event_id: entryEventId || null,
-    entry_signal_type: entrySignalType || null,
-    leverage_applied: (leverageApplied == null ? null : Number(leverageApplied)),
-    applied_leverage: (leverageApplied == null ? null : Number(leverageApplied)),
-    leverage_reason: leverageReason || null,
-    ...liveExecPolicyTopLevel,
-    trace_meta: buildTraceMeta({
-      signalId: refs.signalId || null,
-      intentId: intentId || null,
+    const unifiedDoc = buildFillSnapshotUnifiedEventDoc(payload, "FILLS_PAPER_EXTERNAL");
+    const mutationType = createdNew ? "EXTERNAL_INSERT" : "EXTERNAL_MERGE";
+    const fillEventDoc = fillEventsTest.buildFillEventDoc({
       fillId,
-      runId,
-      requestId,
-      decisionReason: decisionReason || event || null,
-    }),
+      mutationType,
+      exchange: payload.exchange,
+      symbol: payload.symbol || payload.symbol_or_pair_id || null,
+      traceId: payload.trace_id || payload.idempotency_key || null,
+      requestId: payload.request_id || null,
+      runId: payload.run_id || null,
+      createdAt: payload.updated_at || payload.created_at || null,
+      before: existing,
+      after: payload,
+      extra: {
+        inserted: createdNew,
+        classification_verified: payload.classification_verified !== false,
+      },
+      deterministicKey: `${fillId}|${mutationType}|${payload.updated_at || payload.created_at || ""}`,
+    });
+    const fillEventUnifiedDoc = fillEventsTest.buildFillEventUnifiedDoc(fillEventDoc);
 
-    created_at,
-    updated_at: now,
-    classification_verified: existing && existing.classification_verified === false ? false : true,
-    classification_issues: existing && existing.classification_verified === false
-      ? (Array.isArray(existing.classification_issues) ? existing.classification_issues.slice() : [])
-      : [],
-  };
-
-  if (extra && typeof extra === "object") {
-    Object.assign(payload, extra);
-  }
-  if (normalizedFeaturesJson) payload.features_json = normalizedFeaturesJson;
-
-  await ref.set(payload, { merge: true });
-  await recordFillUnifiedEventSafe(payload, "FILLS_PAPER_EXTERNAL");
-  await recordFillMutationEventSafe({
-    before: existing,
-    after: payload,
-    mutationType: createdNew ? "EXTERNAL_INSERT" : "EXTERNAL_MERGE",
-    extra: {
-      inserted: createdNew,
-      classification_verified: payload.classification_verified !== false,
-    },
+    tx.set(ref, payload, { merge: true });
+    if (unifiedDoc) tx.set(db.collection("unified_event_timeline").doc(unifiedDoc.unified_event_id), unifiedDoc, { merge: false });
+    tx.set(db.collection("fill_events").doc(fillEventDoc.fill_event_id), fillEventDoc, { merge: false });
+    tx.set(db.collection("unified_event_timeline").doc(fillEventUnifiedDoc.unified_event_id), fillEventUnifiedDoc, { merge: false });
+    return { ok: true, fill_id: fillId, inserted: createdNew };
   });
-  return { ok: true, fill_id: fillId, inserted: createdNew };
 }
 
 async function markExternalFillUnverified({
@@ -529,27 +645,129 @@ async function markExternalFillUnverified({
       issues,
       decisionReason,
     });
+    const nextDoc = { ...current, ...payload };
+    const unifiedDoc = buildFillSnapshotUnifiedEventDoc(nextDoc, "FILLS_PAPER_UNVERIFIED");
+    const fillEventDoc = fillEventsTest.buildFillEventDoc({
+      fillId,
+      mutationType: "MARK_UNVERIFIED",
+      exchange: nextDoc.exchange,
+      symbol: nextDoc.symbol || nextDoc.symbol_or_pair_id || null,
+      traceId: nextDoc.trace_id || nextDoc.idempotency_key || null,
+      requestId: nextDoc.request_id || null,
+      runId: nextDoc.run_id || null,
+      createdAt: nextDoc.updated_at || nextDoc.created_at || null,
+      before: current,
+      after: nextDoc,
+      extra: {
+        classification_issues: Array.isArray(nextDoc.classification_issues) ? nextDoc.classification_issues.slice() : [],
+      },
+      deterministicKey: `${fillId}|MARK_UNVERIFIED|${nextDoc.updated_at || nextDoc.created_at || ""}`,
+    });
+    const fillEventUnifiedDoc = fillEventsTest.buildFillEventUnifiedDoc(fillEventDoc);
     tx.set(ref, payload, { merge: true });
+    if (unifiedDoc) tx.set(db.collection("unified_event_timeline").doc(unifiedDoc.unified_event_id), unifiedDoc, { merge: false });
+    tx.set(db.collection("fill_events").doc(fillEventDoc.fill_event_id), fillEventDoc, { merge: false });
+    tx.set(db.collection("unified_event_timeline").doc(fillEventUnifiedDoc.unified_event_id), fillEventUnifiedDoc, { merge: false });
     result = {
       ok: true,
       fill_id: fillId,
       event: payload.event,
       before: current,
-      doc: { ...current, ...payload },
+      doc: nextDoc,
     };
   });
   if (result.ok === true && result.doc) {
-    await recordFillUnifiedEventSafe(result.doc, "FILLS_PAPER_UNVERIFIED");
-    await recordFillMutationEventSafe({
-      before: result.before || null,
-      after: result.doc,
-      mutationType: "MARK_UNVERIFIED",
-      extra: {
-        classification_issues: Array.isArray(result.doc.classification_issues)
-          ? result.doc.classification_issues.slice()
-          : [],
-      },
+    delete result.before;
+    delete result.doc;
+  }
+  return result;
+}
+
+async function reclassifyExternalFillEvent({
+  fillId,
+  event,
+  intentId = null,
+  signalId = null,
+  signalDocId = null,
+  decisionReason = "INTENT_EVENT_RECLASSIFIED",
+  reclassifyReason = "MATCHED_INTENT_EVENT",
+  reclassifyScript = null,
+} = {}) {
+  if (!fillId) throw new Error("reclassifyExternalFillEvent: fillId required");
+  if (!event) throw new Error("reclassifyExternalFillEvent: event required");
+  const db = getFirestore();
+  const ref = db.collection("fills_paper").doc(fillId);
+  let result = { ok: false, skipped: true, reason: "UNKNOWN", fill_id: fillId };
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) {
+      result = { ok: false, skipped: true, reason: "FILL_NOT_FOUND", fill_id: fillId };
+      return;
+    }
+    const current = snap.data() || {};
+    const currentEvent = String(current.event || "").trim().toUpperCase();
+    const nextEvent = String(event || "").trim().toUpperCase();
+    const currentIntentId = String(current.intent_id || "").trim() || null;
+    const currentSignalId = String(current.signal_id || "").trim() || null;
+    const currentSignalDocId = String(current.signal_doc_id || "").trim() || null;
+    const nextIntentId = String(intentId || current.intent_id || "").trim() || null;
+    const nextSignalId = String(signalId || current.signal_id || current.signal_doc_id || "").trim() || null;
+    const nextSignalDocId = String(signalDocId || current.signal_doc_id || current.signal_id || "").trim() || null;
+    if (
+      currentEvent === nextEvent
+      && currentIntentId === nextIntentId
+      && currentSignalId === nextSignalId
+      && currentSignalDocId === nextSignalDocId
+    ) {
+      result = { ok: true, skipped: true, reason: "EVENT_AND_REFS_UNCHANGED", fill_id: fillId, event: currentEvent };
+      return;
+    }
+    const payload = buildExternalFillEventReclassificationPatch({
+      current,
+      event: nextEvent,
+      intentId,
+      signalId,
+      signalDocId,
+      decisionReason,
+      reclassifyReason,
+      reclassifyScript,
     });
+    const nextDoc = { ...current, ...payload };
+    const unifiedDoc = buildFillSnapshotUnifiedEventDoc(nextDoc, "FILLS_PAPER_RECLASSIFIED");
+    const fillEventDoc = fillEventsTest.buildFillEventDoc({
+      fillId,
+      mutationType: "RECLASSIFY_EVENT",
+      exchange: nextDoc.exchange,
+      symbol: nextDoc.symbol || nextDoc.symbol_or_pair_id || null,
+      traceId: nextDoc.trace_id || nextDoc.idempotency_key || null,
+      requestId: nextDoc.request_id || null,
+      runId: nextDoc.run_id || null,
+      createdAt: nextDoc.updated_at || nextDoc.created_at || null,
+      before: current,
+      after: nextDoc,
+      extra: {
+        from_event: current && current.event ? current.event : null,
+        to_event: nextDoc.event || null,
+        intent_id: nextDoc.intent_id || null,
+        signal_id: nextDoc.signal_id || null,
+        reclassify_reason: nextDoc.reclassify_reason || null,
+      },
+      deterministicKey: `${fillId}|RECLASSIFY_EVENT|${nextDoc.updated_at || nextDoc.created_at || ""}`,
+    });
+    const fillEventUnifiedDoc = fillEventsTest.buildFillEventUnifiedDoc(fillEventDoc);
+    tx.set(ref, payload, { merge: true });
+    if (unifiedDoc) tx.set(db.collection("unified_event_timeline").doc(unifiedDoc.unified_event_id), unifiedDoc, { merge: false });
+    tx.set(db.collection("fill_events").doc(fillEventDoc.fill_event_id), fillEventDoc, { merge: false });
+    tx.set(db.collection("unified_event_timeline").doc(fillEventUnifiedDoc.unified_event_id), fillEventUnifiedDoc, { merge: false });
+    result = {
+      ok: true,
+      fill_id: fillId,
+      event: nextEvent,
+      before: current,
+      doc: nextDoc,
+    };
+  });
+  if (result.ok === true && result.doc) {
     delete result.before;
     delete result.doc;
   }
@@ -560,10 +778,12 @@ module.exports = {
   upsertFill,
   upsertExternalFill,
   markExternalFillUnverified,
+  reclassifyExternalFillEvent,
   __test: {
     shouldRequireLineageForFill,
     resolveFillSignalRefs,
     canonicalEventId,
     buildExternalFillUnverifiedPatch,
+    buildExternalFillEventReclassificationPatch,
   },
 };

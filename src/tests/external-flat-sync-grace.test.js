@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { __test } = require("../engine/paperUpbitRunner");
+const { __test } = require("../engine/paperBinanceRunner");
 
 assert.strictEqual(typeof __test.resolveRecentExternalFlatSyncGuard, "function", "resolveRecentExternalFlatSyncGuard export missing");
 assert.strictEqual(typeof __test.shouldCleanupExternalFlatOrders, "function", "shouldCleanupExternalFlatOrders export missing");

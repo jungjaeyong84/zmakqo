@@ -85,6 +85,10 @@ function main() {
   const generatedAtKst = toKstString(nowIso, { fallbackToString: true });
 
   const tasks = [
+    { id: "system_runtime_guards", label: "시스템 런타임 가드", bin: "node", args: ["scripts/run-system-runtime-guards.js"] },
+    { id: "trail_authority_feedback", label: "트레일 권한 피드백", bin: "node", args: ["scripts/run-trail-authority-feedback.js"] },
+    { id: "runtime_error_family_remediation", label: "런타임 오류 family remediation", bin: "node", args: ["scripts/runtime-error-family-remediation.js"] },
+    { id: "ml_ops_pipeline", label: "ML 운영 파이프라인", bin: "node", args: ["scripts/run-ml-ops-pipeline.js"] },
     { id: "system_ops", label: "시스템 운영 점검", bin: "node", args: ["scripts/daily-system-ops-check.js"] },
     { id: "improvement_pack", label: "슬리피지 원천 팩 생성", bin: "node", args: ["scripts/build-improvement-pack-local.js"] },
     { id: "failure_mode", label: "실패 모드 사전점검", bin: "node", args: ["scripts/qa-failure-mode-precheck.js"] },

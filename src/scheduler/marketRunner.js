@@ -14,7 +14,7 @@ const { getCursor, setCursor } = require("../storage/cursors");
 const { getFirestore } = require("../storage/firestore");
 const { listSignalsByMarket } = require("../storage/signalsQuery");
 const { findRecentWebhookSummaryForBar } = require("../storage/webhookLedger");
-const { runPaperMarket, syncFuturesPositionOnly, resolveFuturesPositionSyncRequest } = require("../engine/paperUpbitRunner");
+const { runPaperMarket, syncFuturesPositionOnly, resolveFuturesPositionSyncRequest } = require("../engine/paperBinanceRunner");
 const { tfToMs, normalizeTf, defaultExecTfFromEnv } = require("../utils/marketConfig");
 const { computeTradingMode: computeGateTradingMode } = require("../utils/tradingMode");
 const { sendSignalCompareAlert } = require("../services/signalLifecycleAlert");
@@ -358,7 +358,7 @@ async function refreshLatestBarSnapshot({ exchange, market, tf, runId } = {}) {
 
 async function computeGateForMarket({ exchange, market, tf, lastProcessedBarCloseMs, nowMs }) {
     const bars = await queryBars({
-      exchange: exchange || "UPBIT",
+      exchange: exchange || "BINANCEFUT",
       symbol: market,
       tf: tf || DEFAULT_EXEC_TF,
       limit: Number(env.gate.barsLimit || 200),
@@ -546,7 +546,7 @@ async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHi
       const barQueryLimit = backfillEnabled ? Math.max(2, maxBackfillBars + 1) : 1;
 
       const barsForPaper = await queryBars({
-        exchange: exchange || "UPBIT",
+        exchange: exchange || "BINANCEFUT",
         symbol: market,
         tf: execTfFinal,
         limit: barQueryLimit,

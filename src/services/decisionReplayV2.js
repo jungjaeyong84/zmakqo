@@ -1,5 +1,6 @@
 "use strict";
 
+const crypto = require("crypto");
 const { fetchUnifiedEventTimeline } = require("../storage/unifiedEventTimeline");
 
 function upper(value) {
@@ -177,13 +178,15 @@ function normalizeUnifiedTimelineRow(row = {}) {
     created_at: row.created_at || null,
     exchange: upper(row.exchange),
     symbol: upper(row.symbol),
-    event: upper(row.event),
+    event: upper(row.event || row.event_name),
     trace_id: row.trace_id || null,
     request_id: row.request_id || null,
     run_id: row.run_id || null,
     signal_id: row.signal_id || null,
     intent_id: row.intent_id || null,
     fill_id: row.fill_id || null,
+    unified_event_id: row.unified_event_id || null,
+    source_document_id: row.source_document_id || null,
     payload: safeClone(row.payload),
     raw: safeClone(row.raw || row),
   };
@@ -197,7 +200,8 @@ const TIMELINE_PRIORITY = Object.freeze({
   FILL_MUTATION: 5,
   EXCHANGE_ACK: 6,
   FILL_AUDIT: 7,
-  POSITION_MUTATION: 8,
+  TRAIL_RUNTIME: 8,
+  POSITION_MUTATION: 9,
 });
 
 function sortTimeline(rows = []) {
@@ -209,6 +213,98 @@ function sortTimeline(rows = []) {
     if (pa !== pb) return pa - pb;
     return String(a.event || "").localeCompare(String(b.event || ""));
   });
+}
+
+function buildTimelineHash(timeline = []) {
+  const canonical = (Array.isArray(timeline) ? timeline : []).map((row) => ({
+    ts_ms: Number(row.ts_ms || 0),
+    kind: row.kind || null,
+    event: row.event || null,
+    exchange: row.exchange || null,
+    symbol: row.symbol || null,
+    unified_event_id: row.unified_event_id || null,
+    source_document_id: row.source_document_id || null,
+    payload: row.payload || null,
+  }));
+  return crypto.createHash("sha256").update(JSON.stringify(canonical), "utf8").digest("hex");
+}
+
+function buildSummaryHash(value = null) {
+  return crypto.createHash("sha256").update(JSON.stringify(value || null), "utf8").digest("hex");
+}
+
+function buildReplayValidations(timeline = []) {
+  const rows = Array.isArray(timeline) ? timeline : [];
+  const issues = [];
+  if (!rows.length) issues.push("UNIFIED_TIMELINE_EMPTY");
+  if (rows.some((row) => !String(row && row.unified_event_id || "").trim())) issues.push("UNIFIED_EVENT_ID_MISSING");
+  if (!rows.some((row) => row.kind === "POSITION_MUTATION")) issues.push("POSITION_MUTATION_MISSING");
+  if (!rows.some((row) => row.kind === "INTENT_MUTATION")) issues.push("INTENT_MUTATION_MISSING");
+  if (!rows.some((row) => row.kind === "FILL_MUTATION" || row.kind === "EXCHANGE_ACK")) issues.push("FILL_MUTATION_MISSING");
+  const duplicateUnifiedEventIds = new Set();
+  const seenUnifiedEventIds = new Set();
+  for (const row of rows) {
+    const eventId = String(row && row.unified_event_id || "").trim();
+    if (!eventId) continue;
+    if (seenUnifiedEventIds.has(eventId)) duplicateUnifiedEventIds.add(eventId);
+    seenUnifiedEventIds.add(eventId);
+  }
+  if (duplicateUnifiedEventIds.size > 0) issues.push("UNIFIED_EVENT_ID_DUPLICATED");
+  let monotonic = true;
+  for (let i = 1; i < rows.length; i += 1) {
+    if (Number(rows[i].ts_ms || 0) < Number(rows[i - 1].ts_ms || 0)) {
+      monotonic = false;
+      break;
+    }
+  }
+  if (!monotonic) issues.push("TIMELINE_NOT_MONOTONIC");
+  return {
+    issues,
+    authoritative_ready: issues.length === 0,
+    authoritative_verdict: issues.length === 0 ? "PASS" : "BLOCK",
+  };
+}
+
+function replayUnifiedEventTimelineAuthoritative(unifiedRows = [], meta = {}) {
+  const timeline = sortTimeline((Array.isArray(unifiedRows) ? unifiedRows : []).map(normalizeUnifiedTimelineRow));
+  const lastPositionMutation = timeline.filter((row) => row.kind === "POSITION_MUTATION").slice(-1)[0] || null;
+  const lastExchangeAck = timeline.filter((row) => row.kind === "EXCHANGE_ACK").slice(-1)[0] || null;
+  const validations = buildReplayValidations(timeline);
+  const latestPositionSummary = lastPositionMutation && lastPositionMutation.payload
+    ? lastPositionMutation.payload.after_summary || null
+    : null;
+  return {
+    exchange: upper(meta.exchange),
+    symbol: upper(meta.symbol),
+    from_ms: Number.isFinite(Number(meta.fromMs)) ? Number(meta.fromMs) : null,
+    to_ms: Number.isFinite(Number(meta.toMs)) ? Number(meta.toMs) : null,
+    schema_version: "DECISION_REPLAY_V2",
+    source_collection: "UNIFIED_EVENT_TIMELINE",
+    authoritative_source: "UNIFIED_EVENT_TIMELINE",
+    event_only: true,
+    legacy_fallback_used: false,
+    authoritative_ready: validations.authoritative_ready,
+    authoritative_verdict: validations.authoritative_verdict,
+    residual_issues: validations.issues.slice(),
+    timeline_n: timeline.length,
+    timeline_hash: buildTimelineHash(timeline),
+    latest_position_hash: buildSummaryHash(latestPositionSummary),
+    source_event_ids: timeline.map((row) => row.unified_event_id || row.source_document_id).filter(Boolean),
+    counts: {
+      decisions_n: timeline.filter((row) => row.kind === "DECISION").length,
+      intents_n: timeline.filter((row) => row.kind === "INTENT").length,
+      intent_mutations_n: timeline.filter((row) => row.kind === "INTENT_MUTATION").length,
+      fills_n: timeline.filter((row) => row.kind === "FILL").length,
+      fill_mutations_n: timeline.filter((row) => row.kind === "FILL_MUTATION").length,
+      exchange_ack_n: timeline.filter((row) => row.kind === "EXCHANGE_ACK").length,
+      trail_runtime_n: timeline.filter((row) => row.kind === "TRAIL_RUNTIME").length,
+      position_mutations_n: timeline.filter((row) => row.kind === "POSITION_MUTATION").length,
+    },
+    latest_exchange_ack: lastExchangeAck ? safeClone(lastExchangeAck.payload) : null,
+    latest_position_summary: latestPositionSummary,
+    validations,
+    timeline,
+  };
 }
 
 function replayDecisionTimelineV2FromRows({
@@ -257,7 +353,11 @@ async function replayDecisionTimelineV2({
   fromMs = null,
   toMs = null,
   limitPerCollection = 500,
+  authoritativeEventOnly = null,
 } = {}) {
+  const eventOnly = authoritativeEventOnly == null
+    ? !["0", "false", "off", "no"].includes(String(process.env.DECISION_REPLAY_EVENT_ONLY || "true").trim().toLowerCase())
+    : authoritativeEventOnly === true;
   const unifiedRows = await fetchUnifiedEventTimeline({
     exchange,
     symbol,
@@ -265,32 +365,28 @@ async function replayDecisionTimelineV2({
     toMs,
     limit: limitPerCollection * 4,
   }).catch(() => []);
-  const timeline = sortTimeline(unifiedRows.map(normalizeUnifiedTimelineRow));
-  const lastPositionMutation = timeline.filter((row) => row.kind === "POSITION_MUTATION").slice(-1)[0] || null;
-  const lastExchangeAck = timeline.filter((row) => row.kind === "EXCHANGE_ACK").slice(-1)[0] || null;
-  return {
-    exchange: upper(exchange),
-    symbol: upper(symbol),
-    from_ms: Number.isFinite(Number(fromMs)) ? Number(fromMs) : null,
-    to_ms: Number.isFinite(Number(toMs)) ? Number(toMs) : null,
-    schema_version: "DECISION_REPLAY_V2",
-    source_collection: "UNIFIED_EVENT_TIMELINE",
-    timeline_n: timeline.length,
-    counts: {
-      decisions_n: timeline.filter((row) => row.kind === "DECISION").length,
-      intents_n: timeline.filter((row) => row.kind === "INTENT").length,
-      intent_mutations_n: timeline.filter((row) => row.kind === "INTENT_MUTATION").length,
-      fills_n: timeline.filter((row) => row.kind === "FILL").length,
-      fill_mutations_n: timeline.filter((row) => row.kind === "FILL_MUTATION").length,
-      exchange_ack_n: timeline.filter((row) => row.kind === "EXCHANGE_ACK").length,
-      position_mutations_n: timeline.filter((row) => row.kind === "POSITION_MUTATION").length,
-    },
-    latest_exchange_ack: lastExchangeAck ? safeClone(lastExchangeAck.payload) : null,
-    latest_position_summary: lastPositionMutation && lastPositionMutation.payload
-      ? lastPositionMutation.payload.after_summary || null
-      : null,
-    timeline,
-  };
+  if (eventOnly) {
+    const replay = replayUnifiedEventTimelineAuthoritative(unifiedRows, {
+      exchange,
+      symbol,
+      fromMs,
+      toMs,
+    });
+    const strictReady = !["0", "false", "off", "no"].includes(String(process.env.DECISION_REPLAY_STRICT_READY_REQUIRED || "1").trim().toLowerCase());
+    if (strictReady && replay.authoritative_ready !== true) {
+      const err = new Error(`DECISION_REPLAY_AUTHORITATIVE_NOT_READY ${replay.residual_issues.join(",")}`);
+      err.code = "DECISION_REPLAY_AUTHORITATIVE_NOT_READY";
+      err.replay = replay;
+      throw err;
+    }
+    return replay;
+  }
+  return replayUnifiedEventTimelineAuthoritative(unifiedRows, {
+    exchange,
+    symbol,
+    fromMs,
+    toMs,
+  });
 }
 
 module.exports = {
@@ -305,7 +401,11 @@ module.exports = {
     normalizeExchangeAckRow,
     normalizePositionEventRow,
     normalizeUnifiedTimelineRow,
+    replayUnifiedEventTimelineAuthoritative,
     replayDecisionTimelineV2FromRows,
     sortTimeline,
+    buildTimelineHash,
+    buildReplayValidations,
+    buildSummaryHash,
   },
 };

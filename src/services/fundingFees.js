@@ -3,8 +3,7 @@ const { getFirestore } = require("../storage/firestore");
 function normalizeExchangeId(v) {
   const raw = String(v || "").toUpperCase();
   if (raw.includes("BINANCE")) return "BINANCEFUT";
-  if (raw.includes("KIWOOM")) return "KIWOOM";
-  return "UPBIT";
+  return "BINANCEFUT";
 }
 
 function toNum(v) {

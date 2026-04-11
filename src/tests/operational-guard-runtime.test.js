@@ -10,6 +10,7 @@ const { buildOperationalGuardState, __test } = require("../services/operationalG
       status: "진행",
       mode: "수익 확대 가능",
       error_count: 0,
+      active_error_count: 0,
       cost_ratio_pct: 0.1,
       cost_limit_pct: 0.2,
       execution_health: {
@@ -22,6 +23,7 @@ const { buildOperationalGuardState, __test } = require("../services/operationalG
 
   assert.strictEqual(state.block_new_entries, false);
   assert.strictEqual(state.reason, null);
+  assert.strictEqual(state.active_error_count, 0);
 })();
 
 (() => {

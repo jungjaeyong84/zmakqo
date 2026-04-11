@@ -1,7 +1,6 @@
 "use strict";
 
-const { getFirestore } = require("../storage/firestore");
-const { getPosition, upsertPositionMetaOnly, runWithPositionWriterLease } = require("../storage/positionsPaper");
+const { upsertPositionMetaOnly, runWithPositionWriterLease } = require("../storage/positionsPaper");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { upsertSelfHealFailureObservation } = require("../storage/positionRuntimeObservations");
 const { sendAlert } = require("../utils/alerts");
@@ -12,7 +11,7 @@ const {
   resolveFuturesPositionSyncRequest,
   resolveLiveFuturesConfig,
   repairActivePositionExitRuntimeState,
-} = require("../engine/paperUpbitRunner");
+} = require("../engine/paperBinanceRunner");
 
 function normalizeSymbol(symbol) {
   return String(symbol || "").trim().toUpperCase() || null;
@@ -80,13 +79,11 @@ async function sendSelfHealFailureAlert({
 }
 
 async function loadPositionReadState(exchange, symbol) {
-  const fallback = await getPosition({ exchange, symbol });
   const position = await getPositionReadView({
     exchange,
     symbol,
-    fallbackPosition: fallback,
   });
-  return { fallback, position };
+  return { position };
 }
 
 async function healBinanceLivePosition({
@@ -115,7 +112,7 @@ async function healBinanceLivePosition({
         symbol: sym,
       }));
 
-      let { fallback: rawPos, position: pos } = await loadPositionReadState(exchange, sym);
+      let { position: pos } = await loadPositionReadState(exchange, sym);
       if (!isActivePaperPosition(pos)) {
         return {
           ok: true,
@@ -155,8 +152,11 @@ async function healBinanceLivePosition({
               runId: `${syncRunId}__REPAIR_META`,
               executionMode: "LIVE",
               meta: repairedMeta,
-              expectedWriteToken: rawPos && Object.prototype.hasOwnProperty.call(rawPos, "position_write_token")
-                ? (rawPos.position_write_token ?? null)
+              source: "SELF_HEAL",
+              mutationKind: "POSITION_META_UPSERT",
+              reason: "SELF_HEAL_REPAIR_META",
+              expectedWriteToken: pos && Object.prototype.hasOwnProperty.call(pos, "position_write_token")
+                ? (pos.position_write_token ?? null)
                 : null,
             });
           }
@@ -168,7 +168,7 @@ async function healBinanceLivePosition({
             symbol: sym,
             force: true,
           }));
-          ({ fallback: rawPos, position: pos } = await loadPositionReadState(exchange, sym));
+          ({ position: pos } = await loadPositionReadState(exchange, sym));
         } catch (e) {
           const errorText = e && e.message ? e.message : String(e);
           await upsertSelfHealFailureObservation({
@@ -211,7 +211,7 @@ async function healBinanceLivePosition({
             reason: "REPAIR_POST_SYNC_MISMATCH",
             error: failurePatch.last_self_heal_error,
           }).catch(() => {});
-          ({ fallback: rawPos, position: pos } = await loadPositionReadState(exchange, sym));
+          ({ position: pos } = await loadPositionReadState(exchange, sym));
         }
       }
 

@@ -16,6 +16,17 @@ function run() {
     deterministicKey: "intent-1|UPSERT_CREATE|1",
   });
   assert.strictEqual(intentA, intentB);
+  const intentDoc = intentEventsTest.buildOrderIntentEventDoc({
+    intentId: "intent-1",
+    mutationType: "UPSERT_CREATE",
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    createdAt: "2026-04-11T00:00:00.000Z",
+    after: { status: "PENDING" },
+    deterministicKey: "intent-doc",
+  });
+  const intentUnified = intentEventsTest.buildOrderIntentEventUnifiedDoc(intentDoc);
+  assert.strictEqual(intentUnified.event_kind, "INTENT_MUTATION");
 
   const fillA = fillEventsTest.buildFillEventId({
     fillId: "fill-1",
@@ -43,6 +54,18 @@ function run() {
     tsMs: 1775865600000,
   });
   assert.notStrictEqual(fillRandomA, fillRandomB);
+  const fillDoc = fillEventsTest.buildFillEventDoc({
+    fillId: "fill-3",
+    mutationType: "EXTERNAL_INSERT",
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    createdAt: "2026-04-11T00:00:00.000Z",
+    after: { classification_verified: false },
+    deterministicKey: "fill-doc",
+  });
+  const fillUnified = fillEventsTest.buildFillEventUnifiedDoc(fillDoc);
+  assert.strictEqual(fillUnified.event_kind, "EXCHANGE_ACK");
+  assert.strictEqual(fillUnified.payload.classification_verified, false);
 
   console.log("INTENT_FILL_EVENTS_TEST_OK");
 }

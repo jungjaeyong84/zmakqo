@@ -131,7 +131,7 @@ function toPoint(b) {
 }
 
 async function runPaper(market, options = {}) {
-  const exchange = options.exchange || "UPBIT";
+  const exchange = options.exchange || "BINANCEFUT";
   const tf = normalizeTf(options.tf || defaultExecTfFromEnv()) || "15m";
   const barsCount = options.barsCount || 5;
 

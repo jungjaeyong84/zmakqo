@@ -384,10 +384,20 @@ const { __test } = require("../../scripts/automation-stage-autopilot");
   assert.strictEqual(
     __test.resolveStageAutopilotCanaryPass({
       shadowCanaryPass: true,
+      shadowCanaryGatePass: true,
       selfEvolutionCanary: { apply_pass: false },
       selfEvolutionServerPrimaryCanary: { apply_pass: true },
     }),
     true
+  );
+  assert.strictEqual(
+    __test.resolveStageAutopilotCanaryPass({
+      shadowCanaryPass: true,
+      shadowCanaryGatePass: false,
+      selfEvolutionCanary: { apply_pass: true },
+      selfEvolutionServerPrimaryCanary: { apply_pass: true },
+    }),
+    false
   );
 
   const pinePromote = __test.buildPineCandidate(

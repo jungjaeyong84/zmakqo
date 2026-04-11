@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { __test } = require("../engine/paperUpbitRunner");
+const { __test } = require("../engine/paperBinanceRunner");
 
 (() => {
   const signalFeatures = {

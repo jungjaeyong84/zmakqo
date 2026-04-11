@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("assert");
-const { __test } = require("../engine/paperUpbitRunner");
+const { __test } = require("../engine/paperBinanceRunner");
 
 function run() {
   assert.strictEqual(typeof __test.resolveAiBiasEntryGateConfig, "function");

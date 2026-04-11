@@ -87,7 +87,7 @@ function resolveContractExitQtyPct(size, targetQtyPct) {
   if (!Number.isFinite(currentSize) || currentSize <= 0) return 0;
   const target = Number(targetQtyPct);
   if (!Number.isFinite(target) || target <= 0) return currentSize;
-  return Math.min(currentSize, Math.max(0, target));
+  return Math.min(currentSize, Math.max(0, currentSize * target));
 }
 
 function resolveTpP1State(meta = {}) {
@@ -487,32 +487,6 @@ const BINANCE_MIN_TRAIL_GUARANTEE_PCT = 0.0165;
 const TP_P1_DEBUG = parseBoolEnv("TP_P1_DEBUG", false);
 
 const EXCHANGE_RULES = {
-  UPBIT: {
-    SL: -0.015,
-    TP_P0: 0.008,
-    TP_P0_QTY: 0.25,
-    TP_P0_ATR_MULTIPLE: 0.8,
-    TP_P1: 0.03,
-    TP_P1_RESCUE_COHORT: 0.0165,
-    TP_P1_MIXED_COHORT: 0.025,
-    TP_P1_QTY: 0.3,
-    TP_C: null,
-    BE_PCT_RESCUE_COHORT: 0.0015,
-    BE_PCT_MIXED_COHORT: 0.002,
-    TRAIL_R_MULTIPLE_RESCUE_COHORT: 0.6,
-    TRAIL_R_MULTIPLE_MIXED_COHORT: 0.75,
-    RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: null,
-    RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: null,
-    BE_ENABLE: true,
-    BE_PCT: null,
-    PRE_TP1_TIME_STOP_BARS_EARLY: 4,
-    PRE_TP1_TIME_STOP_BARS_CORE: 6,
-    PRE_TP1_TIME_STOP_PROGRESS_FRACTION: 0.5,
-    TRAIL_DELAY_BARS: 1,
-    TRAIL_DELAY_MFE_PCT: 0.005,
-    TRAIL_R_MULTIPLE: 1.0,
-    TRAIL_PCT: 0.015,
-  },
   BINANCEFUT: {
     SL: -0.0165,
     TP_P0: 0.008,
@@ -541,21 +515,6 @@ const EXCHANGE_RULES = {
     // Legacy fallback for positions without entry R metadata.
     TRAIL_PCT: 0.01,
     RUNNER_MIN_PROFIT_PCT: 0.02,
-  },
-  KIWOOM: {
-    SL: -0.03,
-    TP_P0: 0.008,
-    TP_P0_QTY: 0.25,
-    TP_P0_ATR_MULTIPLE: 0.8,
-    TP_P1: 0.05,
-    TP_P1_QTY: 0.5,
-    TP_C: null,
-    BE_ENABLE: true,
-    BE_PCT: null,
-    TRAIL_DELAY_BARS: 1,
-    TRAIL_DELAY_MFE_PCT: 0.005,
-    TRAIL_R_MULTIPLE: 1.0,
-    TRAIL_PCT: 0.03,
   },
 };
 
@@ -588,11 +547,7 @@ const BINANCE_FUTURES_AGGRESSIVE_RULES = {
 };
 
 function normalizeExchangeKey(exchange) {
-  const ex = String(exchange || "").toUpperCase();
-  if (ex.includes("BINANCE")) return "BINANCEFUT";
-  if (ex.includes("KIWOOM")) return "KIWOOM";
-  if (ex.includes("UPBIT")) return "UPBIT";
-  return ex || "BINANCEFUT";
+  return "BINANCEFUT";
 }
 
 function getExitRulesForExchange(exchange) {
@@ -869,7 +824,7 @@ function computeRunnerExitStopPrice({
 }
 
 /**
- * generateSignals input (paperUpbitRunner에서 호출)
+ * generateSignals input (paperBinanceRunner에서 호출)
  * {
  *   exchange, symbol, tf,
  *   bar, gate,

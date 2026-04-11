@@ -10,10 +10,11 @@ const { __test } = require("../services/liveInferenceRouter");
       status: "PASS",
       serving_mode: "LIVE_ACTIVE",
       live_serving_allowed: true,
+      active_model_artifact_id: "MODEL_SCOPE__ACTIVE",
       preferred_model_artifact_id: "MODEL_SCOPE__2",
     },
     bindingDoc: {
-      artifact_id: "MODEL_SCOPE__2",
+      artifact_id: "MODEL_SCOPE__ACTIVE",
       binding: {
         provider_mode: "OPENAI_PRIMARY",
         openai_model: "gpt-5.4",
@@ -28,6 +29,7 @@ const { __test } = require("../services/liveInferenceRouter");
   assert.strictEqual(config.provider_mode, "OPENAI_PRIMARY");
   assert.strictEqual(config.openai_model, "gpt-5.4");
   assert.strictEqual(config.openai_reasoning_effort, "high");
+  assert.strictEqual(config.active_model_artifact_id, "MODEL_SCOPE__ACTIVE");
   assert.strictEqual(config.preferred_model_artifact_id, "MODEL_SCOPE__2");
   assert.strictEqual(config.binding_found, true);
   assert.strictEqual(config.live_serving_allowed, true);

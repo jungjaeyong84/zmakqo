@@ -22,6 +22,5 @@ async function handleCandles(req, res, exchangeDefault = "BINANCEFUT") {
 }
 
 router.get("/candles", (req, res) => handleCandles(req, res, "BINANCEFUT"));
-router.get("/upbit/candles", (req, res) => handleCandles(req, res, "BINANCEFUT"));
 
 module.exports = router;

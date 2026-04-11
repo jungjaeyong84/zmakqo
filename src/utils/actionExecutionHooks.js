@@ -108,7 +108,7 @@ function recordActionShadowEvaluationSafe({
     exchange: envelope.exchange,
     symbol: envelope.symbol,
     event: envelope.event,
-    traceId: envelope.idempotency_key,
+    traceId: envelope.trace_id || envelope.idempotency_key,
     requestId: envelope.request_id,
     runId: envelope.run_id,
     source: envelope.source || "ACTION_PRE_HOOK",

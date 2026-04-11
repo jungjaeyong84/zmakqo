@@ -22,7 +22,7 @@ settings.getSystemSettingsForProvider = async function patchedGetSystemSettingsF
   return { ...(res || {}), data };
 };
 
-const { runPaperFuturesForBar } = require("../src/engine/paperUpbitRunner");
+const { runPaperFuturesForBar } = require("../src/engine/paperBinanceRunner");
 const { upsertBarSnapshot } = require("../src/storage/barsSnapshots");
 const { buildTradesFromFills } = require("../src/services/tradesFromFills");
 

@@ -6,10 +6,12 @@ const { getFirestore } = require("../storage/firestore");
 const { defaultMarketsFromEnv, defaultExecTfFromEnv } = require("../utils/marketConfig");
 const { KST_OFFSET_MS, toKstString } = require("../utils/timeKst");
 const { buildFeatureLabelDataset } = require("./featureLabelDataset");
+const { runOpenClawPolicyTuningReport } = require("./openclawPolicyTuning");
 const { recordShadowCanaryGate } = require("../storage/shadowCanaryGates");
 const { recordMlServingState } = require("../storage/mlServingStates");
 const { recordMlServingBinding, ensureMlServingBinding } = require("../storage/mlServingBindings");
 const { buildMlServingState } = require("./mlServingRuntime");
+const { applyMlServingActuation } = require("./mlServingActuator");
 const { getAiGuardSettingsCached } = require("../storage/settings");
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
@@ -95,6 +97,40 @@ function buildServingBindingSnapshot({ aiGuard = null } = {}) {
   };
 }
 
+function buildShadowPromotionAction({
+  gate = null,
+  servingState = null,
+} = {}) {
+  const resolvedGate = gate && typeof gate === "object" ? gate : {};
+  const resolvedServing = servingState && typeof servingState === "object" ? servingState : {};
+  const preferredArtifactId = norm(resolvedServing.preferred_model_artifact_id);
+  if (resolvedGate.promotion_blocked === true || upper(resolvedGate.status) === "BLOCK") {
+    return {
+      action: "ROLLBACK_AND_BLOCK",
+      rollback_triggered: true,
+      block_new_entries: true,
+      target_artifact_id: preferredArtifactId,
+      reason: upper(resolvedGate.reason) || "SHADOW_CANARY_BLOCK",
+    };
+  }
+  if (resolvedServing.live_serving_allowed === true && preferredArtifactId) {
+    return {
+      action: "PROMOTE_PREFERRED_ARTIFACT",
+      rollback_triggered: false,
+      block_new_entries: resolvedServing.block_new_entries === true,
+      target_artifact_id: preferredArtifactId,
+      reason: upper(resolvedServing.reason) || "ML_SERVING_CANARY_PASS",
+    };
+  }
+  return {
+    action: "HOLD_SHADOW_ONLY",
+    rollback_triggered: false,
+    block_new_entries: resolvedServing.block_new_entries === true,
+    target_artifact_id: preferredArtifactId,
+    reason: upper(resolvedServing.reason) || upper(resolvedGate.reason) || "SHADOW_ONLY",
+  };
+}
+
 function parseMarkets(value, fallbackExchange = null) {
   const raw = Array.isArray(value)
     ? value
@@ -108,6 +144,8 @@ function parseMarkets(value, fallbackExchange = null) {
 
 function renderFeatureLabelDatasetMarkdown(payload = {}) {
   const summary = payload.summary || {};
+  const dataset = payload.dataset || {};
+  const manifest = dataset.source_manifest || {};
   const topMarkets = (Array.isArray(summary.top_markets) ? summary.top_markets : [])
     .map((row) => `${row.market} ${row.rows_n}`)
     .join(" / ") || "N/A";
@@ -118,6 +156,7 @@ function renderFeatureLabelDatasetMarkdown(payload = {}) {
     `- exchange: ${payload.exchange || "N/A"} / tf: ${payload.tf || "N/A"}`,
     `- markets_n: ${payload.markets_n != null ? payload.markets_n : "N/A"} / rows_n: ${summary.rows_n != null ? summary.rows_n : "N/A"}`,
     `- window_from_ms: ${payload.window && payload.window.from_ms != null ? payload.window.from_ms : "N/A"} / window_to_ms: ${payload.window && payload.window.to_ms != null ? payload.window.to_ms : "N/A"}`,
+    `- dataset_hash: ${dataset.dataset_hash || "N/A"} / manifest_hash: ${manifest.manifest_hash || "N/A"}`,
     `- top_markets: ${topMarkets}`,
   ].join("\n") + "\n";
 }
@@ -394,6 +433,7 @@ function renderShadowCanaryGateMarkdown(payload = {}) {
 
 function renderMlServingStateMarkdown(payload = {}) {
   const state = payload.state || {};
+  const promotionAction = state.promotion_action || {};
   return [
     "# ML Serving State",
     "",
@@ -403,6 +443,7 @@ function renderMlServingStateMarkdown(payload = {}) {
     `- serving_mode: ${state.serving_mode || "N/A"} / live_allowed: ${state.live_serving_allowed === true ? "YES" : "NO"} / block_new_entries: ${state.block_new_entries === true ? "YES" : "NO"}`,
     `- gate_status: ${state.gate_status || "N/A"} / gate_reason: ${state.gate_reason || "N/A"} / stale: ${state.stale === true ? "YES" : "NO"}`,
     `- preferred_model_artifact_id: ${state.preferred_model_artifact_id || "N/A"}`,
+    `- promotion_action: ${promotionAction.action || "N/A"} / rollback_triggered: ${promotionAction.rollback_triggered === true ? "YES" : "NO"} / target_artifact_id: ${promotionAction.target_artifact_id || "N/A"}`,
   ].join("\n") + "\n";
 }
 
@@ -567,6 +608,21 @@ async function runShadowInferenceCanaryJob({
     executionServingContract,
     mlModelContract,
   });
+  payload.promotion_action = buildShadowPromotionAction({
+    gate: payload.gate,
+    servingState: payload.serving_state,
+  });
+  payload.actuation = await applyMlServingActuation({
+    exchange: exchangeUpper,
+    servingState: {
+      ...(payload.serving_state || {}),
+      promotion_action: payload.promotion_action,
+    },
+    generatedAt: nowMeta.iso,
+  }).catch(() => null);
+  if (payload.actuation && payload.actuation.next_serving_state) {
+    payload.serving_state = payload.actuation.next_serving_state;
+  }
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}_shadow_inference_canary`;
   const jsonPath = path.join(OPS_DAILY_DIR, `${base}.json`);
   const mdPath = path.join(OPS_DAILY_DIR, `${base}.md`);
@@ -594,7 +650,11 @@ async function runShadowInferenceCanaryJob({
     ok: true,
     generated_at_kst: payload.generated_at_kst,
     exchange: payload.exchange,
-    state: payload.serving_state,
+    state: {
+      ...(payload.serving_state || {}),
+      promotion_action: payload.promotion_action,
+      actuation: payload.actuation,
+    },
     artifacts: {
       canary_json: jsonPath,
       gate_json: gateJsonPath,
@@ -630,7 +690,11 @@ async function runShadowInferenceCanaryJob({
   await recordMlServingState({
     exchange: exchangeUpper,
     generatedAt: nowMeta.iso,
-    state: payload.serving_state,
+    state: {
+      ...(payload.serving_state || {}),
+      promotion_action: payload.promotion_action,
+      actuation: payload.actuation,
+    },
     source: "SHADOW_INFERENCE_CANARY",
     artifacts: {
       latest_json: latestServingJson,
@@ -643,12 +707,14 @@ async function runShadowInferenceCanaryJob({
     .then((res) => (res && res.data ? res.data : null))
     .catch(() => null);
   const binding = buildServingBindingSnapshot({ aiGuard });
-  await recordMlServingBinding({
-    exchange: exchangeUpper,
-    binding,
-    source: "SHADOW_INFERENCE_CANARY",
-    generatedAt: nowMeta.iso,
-  }).catch(() => null);
+  if (!(payload.actuation && payload.actuation.apply === true)) {
+    await recordMlServingBinding({
+      exchange: exchangeUpper,
+      binding,
+      source: "SHADOW_INFERENCE_CANARY",
+      generatedAt: nowMeta.iso,
+    }).catch(() => null);
+  }
   if (payload.serving_state && payload.serving_state.preferred_model_artifact_id) {
     await ensureMlServingBinding({
       exchange: exchangeUpper,
@@ -672,6 +738,8 @@ async function runShadowInferenceCanaryJob({
     rollback_triggered: payload.summary.rollback_triggered,
     gate: payload.gate,
     serving_state: payload.serving_state,
+    promotion_action: payload.promotion_action,
+    actuation: payload.actuation,
     exchange: payload.exchange,
   };
 }
@@ -680,11 +748,13 @@ async function runMlOpsPipelineJob(options = {}) {
   const dataset = await runFeatureLabelDatasetJob(options);
   const shadow = await runShadowEvaluationSummaryJob(options);
   const shadowCanary = await runShadowInferenceCanaryJob(options);
+  const openclaw = await runOpenClawPolicyTuningReport(options);
   return {
-    ok: dataset.ok === true && shadow.ok === true && shadowCanary.ok === true,
+    ok: dataset.ok === true && shadow.ok === true && shadowCanary.ok === true && openclaw.ok === true,
     dataset,
     shadow,
     shadow_canary: shadowCanary,
+    openclaw,
   };
 }
 
@@ -707,5 +777,6 @@ module.exports = {
     renderShadowCanaryGateMarkdown,
     renderMlServingStateMarkdown,
     buildServingBindingSnapshot,
+    buildShadowPromotionAction,
   },
 };

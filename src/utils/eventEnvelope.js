@@ -1,6 +1,7 @@
 "use strict";
 
 const crypto = require("crypto");
+const { buildTraceId } = require("./traceContext");
 
 function upper(value) {
   return String(value || "").trim().toUpperCase() || null;
@@ -65,6 +66,8 @@ function buildEventEnvelope({
   reasonFamily = null,
   authority = null,
   idempotencyKey = null,
+  traceId = null,
+  mutationKind = null,
 } = {}) {
   const resolvedIdempotencyKey = pickText(idempotencyKey) || buildIdempotencyKey({
     requestId,
@@ -76,6 +79,15 @@ function buildEventEnvelope({
     symbol,
     tf,
     barCloseMs,
+  });
+  const resolvedMutationKind = upper(mutationKind) || upper(event) || upper(action) || upper(intent);
+  const resolvedTraceId = pickText(traceId) || buildTraceId({
+    traceId,
+    requestId,
+    runId,
+    exchange,
+    symbol,
+    mutationKind: resolvedMutationKind,
   });
   return {
     schema_version: pickText(schemaVersion) || "EVENT_ENVELOPE_V2",
@@ -96,6 +108,8 @@ function buildEventEnvelope({
     reason_family: upper(reasonFamily),
     authority: upper(authority),
     idempotency_key: resolvedIdempotencyKey,
+    trace_id: resolvedTraceId,
+    mutation_kind: resolvedMutationKind,
     bar_close_time_utc_ms: pickNumber(barCloseMs),
   };
 }

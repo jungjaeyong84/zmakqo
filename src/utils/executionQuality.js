@@ -159,7 +159,7 @@ function summarizeExecutionQuality({
     .filter((row) => Number.isFinite(toNum(row.partial_fill_rate_pct)))
     .sort((a, b) => (toNum(b.partial_fill_rate_pct) || 0) - (toNum(a.partial_fill_rate_pct) || 0))[0] || null;
 
-  const createdToFillP95 = toNum(latency.created_to_fill_p95_ms);
+  const createdToFillP95Raw = toNum(latency.created_to_fill_p95_ms);
   const adverseSlippageP95 = toNum(slippage.adverse_p95_bps);
   const partialRate = toNum(partial.partial_fill_rate_pct);
   const webhookToFillP95 = bridge.webhook_to_fill_ms && typeof bridge.webhook_to_fill_ms === "object"
@@ -169,6 +169,7 @@ function summarizeExecutionQuality({
   const topOperationalDelay = Array.isArray(executionModelSummary.top_operational_webhook_delay_causes)
     ? executionModelSummary.top_operational_webhook_delay_causes[0]
     : null;
+  const topOperationalDelayCause = topOperationalDelay && topOperationalDelay.key ? String(topOperationalDelay.key).trim() : null;
   const topOperationalIntentDelayGroup = Array.isArray(executionModelSummary.top_operational_immediate_intent_delay_groups)
     ? executionModelSummary.top_operational_immediate_intent_delay_groups[0]
     : null;
@@ -181,14 +182,23 @@ function summarizeExecutionQuality({
   const topScopeFalsePositiveGroup = Array.isArray(executionScopeInferenceSummary.top_false_positive_groups)
     ? executionScopeInferenceSummary.top_false_positive_groups[0]
     : null;
+  const createdToFillP95Guard = (
+    topOperationalDelayCause === "LEGACY_WEBHOOK_OUTCOME_ONLY"
+    && Number.isFinite(webhookToFillP95)
+  )
+    ? webhookToFillP95
+    : createdToFillP95Raw;
 
   const reviewReasons = [];
-  if (createdToFillP95 != null && createdToFillP95 > 60000) reviewReasons.push("CREATED_TO_FILL_P95_HIGH");
+  if (createdToFillP95Guard != null && createdToFillP95Guard > 60000) reviewReasons.push("CREATED_TO_FILL_P95_HIGH");
   if (adverseSlippageP95 != null && adverseSlippageP95 > 80) reviewReasons.push("ADVERSE_SLIPPAGE_P95_HIGH");
   if (partialRate != null && partialRate > 60) reviewReasons.push("PARTIAL_FILL_RATE_HIGH");
   if (webhookToFillP95 != null && webhookToFillP95 > 60000) reviewReasons.push("WEBHOOK_TO_FILL_P95_HIGH");
-  if ((topOperationalDelay && String(topOperationalDelay.key || "").trim()) || String(executionModelSummary.top_operational_webhook_delay_cause || "").trim()) {
+  if ((topOperationalDelayCause) || String(executionModelSummary.top_operational_webhook_delay_cause || "").trim()) {
     reviewReasons.push("OPERATIONAL_WEBHOOK_DELAY_PRESENT");
+  }
+  if (topOperationalDelayCause === "LEGACY_WEBHOOK_OUTCOME_ONLY" && Number.isFinite(createdToFillP95Raw) && Number.isFinite(webhookToFillP95)) {
+    reviewReasons.push("LEGACY_LATENCY_GUARD_FALLBACK_ACTIVE");
   }
   if ((topNoFillReason && String(topNoFillReason.key || "").trim()) || String(executionModelSummary.top_no_fill_reason || "").trim()) {
     reviewReasons.push("NO_FILL_REASON_PRESENT");
@@ -200,7 +210,9 @@ function summarizeExecutionQuality({
   return {
     summary: {
       status: reviewReasons.length ? "EXECUTION_QUALITY_REVIEW" : "EXECUTION_QUALITY_STABLE",
-      created_to_fill_p95_ms: createdToFillP95,
+      created_to_fill_p95_ms: createdToFillP95Guard,
+      created_to_fill_p95_ms_raw: createdToFillP95Raw,
+      guard_created_to_fill_p95_ms: createdToFillP95Guard,
       adverse_slippage_p95_bps: adverseSlippageP95,
       partial_fill_rate_pct: partialRate,
       webhook_to_fill_p95_ms: webhookToFillP95,
@@ -208,7 +220,7 @@ function summarizeExecutionQuality({
       top_latency_market: topLatency ? topLatency.market : null,
       top_slippage_market: topSlippage ? topSlippage.market : null,
       top_partial_market: topPartial ? topPartial.market : null,
-      top_operational_webhook_delay_cause: topOperationalDelay && topOperationalDelay.key ? topOperationalDelay.key : null,
+      top_operational_webhook_delay_cause: topOperationalDelayCause,
       top_operational_webhook_delay_rows_n: topOperationalDelay && Number.isFinite(toNum(topOperationalDelay.rows_n)) ? toNum(topOperationalDelay.rows_n) : null,
       top_operational_immediate_intent_delay_group: topOperationalIntentDelayGroup && topOperationalIntentDelayGroup.key ? topOperationalIntentDelayGroup.key : null,
       top_no_fill_reason: topNoFillReason && topNoFillReason.key ? topNoFillReason.key : null,

@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { __test } = require("../engine/paperUpbitRunner");
+const { __test } = require("../engine/paperBinanceRunner");
 
 async function run() {
   assert.strictEqual(typeof __test.pickLatestTpP0Fill, "function", "pickLatestTpP0Fill export missing");

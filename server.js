@@ -31,15 +31,6 @@ const PORT = Number(process.env.PORT || 3000);
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server listening on port ${PORT}`);
-  try {
-    const providers = String(process.env.EXCHANGE_PROVIDERS || "").toUpperCase();
-    if (providers.includes("KIWOOM")) {
-      const { startKiwoomWsSync } = require("./src/services/kiwoomWsSync");
-      startKiwoomWsSync({ enabled: true }).catch(() => {});
-    }
-  } catch (e) {
-    console.log("[WARN] KIWOOM WS sync start failed:", e && e.message ? e.message : String(e));
-  }
 
   try {
     const { logDeployOnce } = require("./src/services/devChangeLog");

@@ -2,7 +2,7 @@
 
 const crypto = require("crypto");
 const { getFirestore } = require("./firestore");
-const { recordUnifiedEvent } = require("./unifiedEventTimeline");
+const { buildUnifiedEventDoc } = require("./unifiedEventTimeline");
 
 function nowIso() {
   return new Date().toISOString();
@@ -46,7 +46,7 @@ function resolveUnifiedFillEventKind(mutationType) {
   return "FILL_MUTATION";
 }
 
-async function recordFillEvent({
+function buildFillEventDoc({
   fillId,
   mutationType,
   exchange = null,
@@ -60,9 +60,8 @@ async function recordFillEvent({
   extra = null,
   deterministicKey = null,
 } = {}) {
-  const db = getFirestore();
   const tsMs = Date.parse(String(createdAt || "")) || Date.now();
-  const doc = {
+  return {
     fill_event_id: buildFillEventId({
       fillId,
       mutationType,
@@ -82,28 +81,64 @@ async function recordFillEvent({
     after: safeClone(after),
     extra: safeClone(extra),
   };
+}
+
+function buildFillEventUnifiedDoc(doc = {}) {
+  return buildUnifiedEventDoc({
+    eventKind: resolveUnifiedFillEventKind(doc.mutation_type),
+    eventSource: "FILL_EVENTS",
+    sourceDocumentId: doc.fill_event_id,
+    exchange: doc.exchange,
+    symbol: doc.symbol,
+    event: doc.mutation_type,
+    traceId: doc.trace_id || null,
+    requestId: doc.request_id || null,
+    runId: doc.run_id || null,
+    fillId: doc.fill_id || null,
+    tsMs: doc.ts_ms,
+    createdAt: doc.created_at,
+    payload: {
+      mutation_type: doc.mutation_type,
+      extra: safeClone(doc.extra),
+      classification_verified: doc.after && doc.after.classification_verified === false ? false : true,
+    },
+    raw: doc,
+  });
+}
+
+async function recordFillEvent({
+  fillId,
+  mutationType,
+  exchange = null,
+  symbol = null,
+  traceId = null,
+  requestId = null,
+  runId = null,
+  createdAt = null,
+  before = null,
+  after = null,
+  extra = null,
+  deterministicKey = null,
+} = {}) {
+  const db = getFirestore();
+  const doc = buildFillEventDoc({
+    fillId,
+    mutationType,
+    exchange,
+    symbol,
+    traceId,
+    requestId,
+    runId,
+    createdAt,
+    before,
+    after,
+    extra,
+    deterministicKey,
+  });
   await db.collection("fill_events").doc(doc.fill_event_id).set(doc, { merge: false });
   try {
-    await recordUnifiedEvent({
-      eventKind: resolveUnifiedFillEventKind(doc.mutation_type),
-      eventSource: "FILL_EVENTS",
-      sourceDocumentId: doc.fill_event_id,
-      exchange: doc.exchange,
-      symbol: doc.symbol,
-      event: doc.mutation_type,
-      traceId: doc.trace_id || null,
-      requestId: doc.request_id || null,
-      runId: doc.run_id || null,
-      fillId: doc.fill_id || null,
-      tsMs: doc.ts_ms,
-      createdAt: doc.created_at,
-      payload: {
-        mutation_type: doc.mutation_type,
-        extra: safeClone(doc.extra),
-        classification_verified: doc.after && doc.after.classification_verified === false ? false : true,
-      },
-      raw: doc,
-    });
+    const unifiedDoc = buildFillEventUnifiedDoc(doc);
+    await db.collection("unified_event_timeline").doc(unifiedDoc.unified_event_id).set(unifiedDoc, { merge: false });
   } catch (err) {
     const msg = err && err.message ? err.message : String(err);
     console.warn("[UNIFIED_TIMELINE_FILL_EVENT_FAIL]", msg);
@@ -115,6 +150,8 @@ module.exports = {
   recordFillEvent,
   __test: {
     buildFillEventId,
+    buildFillEventDoc,
+    buildFillEventUnifiedDoc,
     resolveUnifiedFillEventKind,
   },
 };

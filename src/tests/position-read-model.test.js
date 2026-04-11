@@ -76,6 +76,24 @@ function run() {
   assert.strictEqual(readViews.length, 1);
   assert.strictEqual(readViews[0].state, "SCALE_OUT");
 
+  const latestFromIndex = __test.buildLatestTimelineRowFromIndex({
+    ts_ms: null,
+    created_at: "2026-04-11T00:00:10.000Z",
+    after_snapshot: {
+      state: "ACTIVE",
+    },
+  });
+  assert.strictEqual(latestFromIndex.ts_ms, null);
+
+  const prevStrict = process.env.POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY;
+  process.env.POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY = "1";
+  delete require.cache[require.resolve("../services/positionReadModel")];
+  const strictModule = require("../services/positionReadModel");
+  assert.strictEqual(strictModule.__test.POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY, true);
+  if (prevStrict == null) delete process.env.POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY;
+  else process.env.POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY = prevStrict;
+  delete require.cache[require.resolve("../services/positionReadModel")];
+  require("../services/positionReadModel");
   console.log("POSITION_READ_MODEL_TEST_OK");
 }
 

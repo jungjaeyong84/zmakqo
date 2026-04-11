@@ -23,6 +23,19 @@
     { label: '30일', value: home_profit_ranges && home_profit_ranges.d30 ? home_profit_ranges.d30.total : null },
     { label: '전체', value: home_profit_ranges && home_profit_ranges.total ? home_profit_ranges.total.total : null },
   ];
+  var systemGuards = (typeof system_runtime_guards !== 'undefined' && system_runtime_guards) ? system_runtime_guards : null;
+  var systemGuardTone = systemGuards && systemGuards.circuit_breaker_open ? 'warn' : (systemGuards && systemGuards.block_new_entries ? 'warn' : 'ok');
+  var systemGuardTitle = systemGuards
+    ? (systemGuards.circuit_breaker_open ? '런타임 가드 차단' : (systemGuards.block_new_entries ? '런타임 가드 보류' : '런타임 가드 정상'))
+    : '런타임 가드 확인 중';
+  var systemGuardDetail = systemGuards
+    ? [systemGuards.anomaly_reason || null, systemGuards.slo_reason || null].filter(Boolean).join(' · ')
+    : '';
+  var systemGuardRemediation = systemGuards && systemGuards.remediation ? systemGuards.remediation : null;
+  var systemGuardWriterAuthority = systemGuards && systemGuards.writer_authority ? systemGuards.writer_authority : null;
+  var systemGuardWriterTop = systemGuardWriterAuthority && Array.isArray(systemGuardWriterAuthority.remediation_candidates) && systemGuardWriterAuthority.remediation_candidates.length
+    ? systemGuardWriterAuthority.remediation_candidates[0]
+    : null;
   var missionHeroRaw = (typeof mission_control !== 'undefined' && mission_control && mission_control.hero) ? mission_control.hero : {};
   var statusKoMap = {
     'OBJECTIVE_RECOVERY_REQUIRED': '수익 회복 진행 중',
@@ -200,6 +213,29 @@
             <div class="side-item-value"><%= weekly_range_perf && weekly_range_perf.trades_n != null ? fmtN(weekly_range_perf.trades_n, 0) : '-' %>건</div>
           </div>
         </div>
+      </div>
+
+      <div class="status-row">
+        <span class="status-dot <%= systemGuardTone %>"></span>
+        <strong style="font-size:13px"><%= systemGuardTitle %></strong>
+        <% if (systemGuardRemediation && (systemGuardRemediation.remediated_positions > 0 || systemGuardRemediation.skipped === true)) { %>
+          <span class="body-sm" style="color:var(--md-on-surface-variant)">
+            <%= systemGuardRemediation.skipped === true
+              ? '조치 없음'
+              : ('flatten ' + systemGuardRemediation.remediated_positions + '건') %>
+          </span>
+        <% } %>
+        <% if (systemGuardDetail) { %>
+          <span style="flex:1"></span>
+          <span class="body-sm" style="color:var(--md-on-surface-variant)"><%= systemGuardDetail %></span>
+        <% } else if (systemGuardWriterTop) { %>
+          <span style="flex:1"></span>
+        <% } %>
+        <% if (systemGuardWriterTop) { %>
+          <span class="body-sm" style="color:var(--md-on-surface-variant)">
+            writer authority <%= systemGuardWriterTop.symbol %> <%= systemGuardWriterTop.count %>건
+          </span>
+        <% } %>
       </div>
 
       <!-- 자동매매 상태 -->

@@ -2,7 +2,7 @@
 
 const assert = require("assert");
 const { __test } = require("../services/binanceTickExit");
-const { __test: runnerTest } = require("../engine/paperUpbitRunner");
+const { __test: runnerTest } = require("../engine/paperBinanceRunner");
 const { __test: observationTest } = require("../storage/positionRuntimeObservations");
 
 function run() {
@@ -13,6 +13,7 @@ function run() {
   assert.strictEqual(typeof __test.runTickExitSelfHealPhase, "function", "tick exit self-heal helper missing");
   assert.strictEqual(typeof __test.applyTrailObservationToPosition, "function", "tick exit trail observation apply helper missing");
   assert.strictEqual(typeof __test.isNativeStopLessProtectiveThanTrigger, "function", "tick exit trail floor helper missing");
+  assert.strictEqual(typeof __test.collectTriggeredKinds, "function", "tick exit trigger collector helper missing");
   assert.strictEqual(typeof observationTest.buildTrailObservationPayload, "function", "trail observation payload helper missing");
   assert.strictEqual(typeof observationTest.resolveTrailObservationSnapshot, "function", "trail observation snapshot helper missing");
   assert.strictEqual(typeof runnerTest.applyTrailObservationSnapshotToMeta, "function", "trail observation apply helper missing");
@@ -231,6 +232,16 @@ function run() {
     }),
     false,
     "already protective long native stop must not trigger refresh"
+  );
+  assert.deepStrictEqual(
+    __test.collectTriggeredKinds({
+      price: 99.1,
+      triggers: [{ kind: "TRAIL", price: 99.2 }, { kind: "SL", price: 98.4 }],
+      nearPct: 0.002,
+      side: "LONG",
+    }),
+    ["TRAIL"],
+    "trail trigger collector should isolate trail-only near/crossed states"
   );
 
   assert.strictEqual(typeof runnerTest.computeTrailingMetaUpdate, "function", "computeTrailingMetaUpdate export missing");

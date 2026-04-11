@@ -15,6 +15,12 @@ function safeClone(value) {
   }
 }
 
+function toOptionalNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function buildPositionReadModelLatestId(exchange, symbol) {
   return `POSITION_READ_MODEL_LATEST__${upper(exchange) || "UNKNOWN"}__${upper(symbol) || "UNKNOWN"}`;
 }
@@ -51,11 +57,49 @@ async function upsertLatestPositionReadModel({
   const db = getFirestore();
   const docId = buildPositionReadModelLatestId(exchange, symbol);
   const ref = db.collection("position_read_model_latest").doc(docId);
-  const candidate = {
+  const candidate = buildLatestPositionReadModelDoc({
+    exchange,
+    symbol,
+    tsMs,
+    createdAt,
+    positionEventId,
+    traceId,
+    requestId,
+    runId,
+    mutationKind,
+    source,
+    afterSummary,
+    afterSnapshot,
+  });
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const previous = snap.exists ? (snap.data() || null) : null;
+    if (!shouldReplaceLatestPositionReadModel(previous, candidate)) return;
+    tx.set(ref, candidate, { merge: false });
+  });
+  return candidate;
+}
+
+function buildLatestPositionReadModelDoc({
+  exchange,
+  symbol,
+  tsMs,
+  createdAt = null,
+  positionEventId = null,
+  traceId = null,
+  requestId = null,
+  runId = null,
+  mutationKind = null,
+  source = null,
+  afterSummary = null,
+  afterSnapshot = null,
+} = {}) {
+  const docId = buildPositionReadModelLatestId(exchange, symbol);
+  return {
     read_model_id: docId,
     exchange: upper(exchange),
     symbol: upper(symbol),
-    ts_ms: Number.isFinite(Number(tsMs)) ? Number(tsMs) : null,
+    ts_ms: toOptionalNumber(tsMs),
     created_at: createdAt || new Date().toISOString(),
     position_event_id: String(positionEventId || "").trim() || null,
     trace_id: String(traceId || "").trim() || null,
@@ -66,13 +110,6 @@ async function upsertLatestPositionReadModel({
     after_summary: safeClone(afterSummary),
     after_snapshot: safeClone(afterSnapshot),
   };
-  await db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    const previous = snap.exists ? (snap.data() || null) : null;
-    if (!shouldReplaceLatestPositionReadModel(previous, candidate)) return;
-    tx.set(ref, candidate, { merge: false });
-  });
-  return candidate;
 }
 
 async function getLatestPositionReadModel({ exchange, symbol } = {}) {
@@ -120,12 +157,14 @@ async function listLatestPositionReadModelsBySymbols({
 }
 
 module.exports = {
+  buildLatestPositionReadModelDoc,
   upsertLatestPositionReadModel,
   getLatestPositionReadModel,
   listLatestPositionReadModelsByExchange,
   listLatestPositionReadModelsBySymbols,
   __test: {
     buildPositionReadModelLatestId,
+    buildLatestPositionReadModelDoc,
     shouldReplaceLatestPositionReadModel,
   },
 };

@@ -261,17 +261,22 @@ async function fetchRecentImmutableFills({
     toMs,
     limit: Math.max(20, Math.trunc(Number(limitN) || 1000) * 8),
   }).catch(() => []);
-  const out = [];
+  const latestByFillId = new Map();
   for (const row of rows) {
     const kind = String(row && (row.event_kind || row.kind) || "").trim().toUpperCase();
-    if (kind !== "FILL") continue;
+    if (!["FILL_MUTATION", "EXCHANGE_ACK", "FILL_AUDIT"].includes(kind)) continue;
     const raw = row && row.raw && typeof row.raw === "object" ? row.raw : null;
-    if (!raw) continue;
+    const snapshot = raw && raw.after && typeof raw.after === "object" ? raw.after : null;
+    if (!snapshot) continue;
     const fill = {
-      ...raw,
-      symbol: raw.symbol || raw.market || raw.symbol_or_pair_id || symbol,
-      tf: raw.tf || tf || null,
-      exec_price_source: raw.exec_price_source || raw.external_source || "UNIFIED_EVENT_TIMELINE",
+      ...snapshot,
+      symbol: snapshot.symbol || snapshot.market || snapshot.symbol_or_pair_id || symbol,
+      tf: snapshot.tf || tf || null,
+      exec_price_source: snapshot.exec_price_source || snapshot.external_source || "UNIFIED_EVENT_TIMELINE",
+      source_event_id: row.unified_event_id || null,
+      source_document_id: row.source_document_id || null,
+      source_event_kind: kind,
+      source_event_ts_ms: safeMs(row.ts_ms) || null,
     };
     if (fill.exchange !== exchange) continue;
     if (!isLiveDocForExchange(exchange, fill)) continue;
@@ -282,8 +287,23 @@ async function fetchRecentImmutableFills({
     fill.exec_bar_close_time_utc_ms = execMs;
     if (fromMs != null && Number.isFinite(Number(fromMs)) && execMs < Number(fromMs)) continue;
     if (toMs != null && Number.isFinite(Number(toMs)) && execMs > Number(toMs)) continue;
-    out.push(fill);
+    const key = String(fill.fill_id || "").trim();
+    if (!key) continue;
+    const previous = latestByFillId.get(key);
+    const currentTs = safeMs(row.ts_ms) || execMs || 0;
+    const previousTs = previous ? (safeMs(previous.__timeline_ts_ms) || 0) : -1;
+    if (!previous || currentTs >= previousTs) {
+      latestByFillId.set(key, {
+        ...fill,
+        __timeline_ts_ms: currentTs,
+      });
+    }
   }
+  const out = [...latestByFillId.values()].map((row) => {
+    const copy = { ...row };
+    delete copy.__timeline_ts_ms;
+    return copy;
+  });
   out.sort((a, b) => safeMs(a.exec_bar_close_time_utc_ms) - safeMs(b.exec_bar_close_time_utc_ms));
   if (out.length <= limitN) return out;
   return out.slice(out.length - Math.max(1, Math.trunc(Number(limitN) || 1000)));
@@ -309,6 +329,20 @@ function buildTradesFromFills(fills, opts = {}) {
   let currentEntryEventId = null;
   let currentEntrySignalType = null;
   let currentEntryFeaturesJson = null;
+  let currentSourceEventIds = [];
+  let currentSourceFillIds = [];
+  let currentSourceEventRefs = [];
+
+  function appendSourceEventRef(fill = null) {
+    const eventId = fill && fill.source_event_id ? String(fill.source_event_id).trim() : null;
+    if (!eventId) return;
+    currentSourceEventRefs.push({
+      unified_event_id: eventId,
+      source_document_id: fill && fill.source_document_id ? String(fill.source_document_id).trim() : null,
+      event_kind: fill && fill.source_event_kind ? String(fill.source_event_kind).trim().toUpperCase() : null,
+      ts_ms: safeMs(fill && (fill.source_event_ts_ms || fill.exec_bar_close_time_utc_ms)) || null,
+    });
+  }
 
   for (const f of fills) {
     const side = String(f.side || "").toUpperCase();
@@ -347,6 +381,16 @@ function buildTradesFromFills(fills, opts = {}) {
         fee_value: feeValue,
         funding_paid: 0,
         fill_id: f.fill_id || f.id,
+        source_event_ids: [...new Set([f.source_event_id || null].filter(Boolean))],
+        source_fill_ids: [...new Set([f.fill_id || f.id || null].filter(Boolean))],
+        source_event_refs: [
+          {
+            unified_event_id: f.source_event_id || null,
+            source_document_id: f.source_document_id || null,
+            event_kind: f.source_event_kind || null,
+            ts_ms: safeMs(f.source_event_ts_ms || f.exec_bar_close_time_utc_ms) || null,
+          },
+        ].filter((row) => row.unified_event_id),
         close_type: "EXTERNAL_REALIZED",
         pnl_mode: mode,
         position_side: side === "SELL" ? "SHORT" : "LONG",
@@ -370,6 +414,10 @@ function buildTradesFromFills(fills, opts = {}) {
         currentEntryEventId = pickEntryEventId(f);
         currentEntrySignalType = pickEntrySignalType(f);
         currentEntryFeaturesJson = pickFeaturesJson(f);
+        currentSourceEventIds = [f.source_event_id].filter(Boolean);
+        currentSourceFillIds = [f.fill_id || f.id].filter(Boolean);
+        currentSourceEventRefs = [];
+        appendSourceEventRef(f);
       } else if (posSide === "LONG") {
         const prevNotional = posSize;
         const nextNotional = posSize + qty;
@@ -378,6 +426,9 @@ function buildTradesFromFills(fills, opts = {}) {
         if (!currentEntryEventId) currentEntryEventId = pickEntryEventId(f);
         if (!currentEntrySignalType) currentEntrySignalType = pickEntrySignalType(f);
         if (!currentEntryFeaturesJson) currentEntryFeaturesJson = pickFeaturesJson(f);
+        if (f.source_event_id) currentSourceEventIds.push(f.source_event_id);
+        if (f.fill_id || f.id) currentSourceFillIds.push(f.fill_id || f.id);
+        appendSourceEventRef(f);
       } else if (posSide === "SHORT") {
         const closeQty = Math.min(qty, posSize);
         const pnlPct = (posAvg - px) / posAvg;
@@ -427,6 +478,21 @@ function buildTradesFromFills(fills, opts = {}) {
           fee_value: feeValue,
           funding_paid: fundingPaid,
           fill_id: f.fill_id || f.id,
+          source_event_ids: [...new Set(currentSourceEventIds.concat([f.source_event_id]).filter(Boolean))],
+          source_fill_ids: [...new Set(currentSourceFillIds.concat([f.fill_id || f.id]).filter(Boolean))],
+          source_event_refs: currentSourceEventRefs
+            .concat([{
+              unified_event_id: f.source_event_id || null,
+              source_document_id: f.source_document_id || null,
+              event_kind: f.source_event_kind || null,
+              ts_ms: safeMs(f.source_event_ts_ms || f.exec_bar_close_time_utc_ms) || null,
+            }])
+            .filter((row) => row && row.unified_event_id)
+            .reduce((acc, row) => {
+              if (acc.some((item) => item.unified_event_id === row.unified_event_id)) return acc;
+              acc.push(row);
+              return acc;
+            }, []),
           entry_event_id: currentEntryEventId,
           entry_signal_type: currentEntrySignalType,
           exit_event: String(f.event || "").toUpperCase() || null,
@@ -454,6 +520,9 @@ function buildTradesFromFills(fills, opts = {}) {
           currentEntryEventId = null;
           currentEntrySignalType = null;
           currentEntryFeaturesJson = null;
+          currentSourceEventIds = [];
+          currentSourceFillIds = [];
+          currentSourceEventRefs = [];
         }
       }
       continue;
@@ -469,6 +538,10 @@ function buildTradesFromFills(fills, opts = {}) {
         currentEntryEventId = pickEntryEventId(f);
         currentEntrySignalType = pickEntrySignalType(f);
         currentEntryFeaturesJson = pickFeaturesJson(f);
+        currentSourceEventIds = [f.source_event_id].filter(Boolean);
+        currentSourceFillIds = [f.fill_id || f.id].filter(Boolean);
+        currentSourceEventRefs = [];
+        appendSourceEventRef(f);
         continue;
       }
 
@@ -480,6 +553,9 @@ function buildTradesFromFills(fills, opts = {}) {
         if (!currentEntryEventId) currentEntryEventId = pickEntryEventId(f);
         if (!currentEntrySignalType) currentEntrySignalType = pickEntrySignalType(f);
         if (!currentEntryFeaturesJson) currentEntryFeaturesJson = pickFeaturesJson(f);
+        if (f.source_event_id) currentSourceEventIds.push(f.source_event_id);
+        if (f.fill_id || f.id) currentSourceFillIds.push(f.fill_id || f.id);
+        appendSourceEventRef(f);
         continue;
       }
 
@@ -533,6 +609,21 @@ function buildTradesFromFills(fills, opts = {}) {
         fee_value: feeValue,
         funding_paid: fundingPaid,
         fill_id: f.fill_id || f.id,
+        source_event_ids: [...new Set(currentSourceEventIds.concat([f.source_event_id]).filter(Boolean))],
+        source_fill_ids: [...new Set(currentSourceFillIds.concat([f.fill_id || f.id]).filter(Boolean))],
+        source_event_refs: currentSourceEventRefs
+          .concat([{
+            unified_event_id: f.source_event_id || null,
+            source_document_id: f.source_document_id || null,
+            event_kind: f.source_event_kind || null,
+            ts_ms: safeMs(f.source_event_ts_ms || f.exec_bar_close_time_utc_ms) || null,
+          }])
+          .filter((row) => row && row.unified_event_id)
+          .reduce((acc, row) => {
+            if (acc.some((item) => item.unified_event_id === row.unified_event_id)) return acc;
+            acc.push(row);
+            return acc;
+          }, []),
         entry_event_id: currentEntryEventId,
         entry_signal_type: currentEntrySignalType,
         exit_event: String(f.event || "").toUpperCase() || null,
@@ -561,6 +652,9 @@ function buildTradesFromFills(fills, opts = {}) {
         currentEntryEventId = null;
         currentEntrySignalType = null;
         currentEntryFeaturesJson = null;
+        currentSourceEventIds = [];
+        currentSourceFillIds = [];
+        currentSourceEventRefs = [];
       }
     }
   }

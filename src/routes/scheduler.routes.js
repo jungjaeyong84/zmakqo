@@ -15,6 +15,15 @@ const { fetchRecentNewFills, buildTradesFromFillsWithFunding } = require("../ser
 const { resolveRealizedRowsByMarket } = require("../services/realizedPnlResolver");
 const { runSelfEvolutionLoop } = require("../scheduler/selfEvolutionRunner");
 const { runAnalyticsLocalCacheRefresh } = require("../scheduler/analyticsLocalCacheRunner");
+const {
+  runFeatureLabelDatasetJob,
+  runShadowEvaluationSummaryJob,
+  runShadowInferenceCanaryJob,
+  runMlOpsPipelineJob,
+} = require("../services/mlOpsPipeline");
+const { runSystemRuntimeGuardsJob } = require("../services/systemRuntimeGuardsJob");
+const { runTrailAuthorityFeedbackJob } = require("../services/trailAuthorityFeedback");
+const { runRuntimeErrorFamilyRemediationJob } = require("../../scripts/runtime-error-family-remediation");
 
 const DEFAULT_EXEC_TF = defaultExecTfFromEnv() || "15m";
 
@@ -629,6 +638,115 @@ const markets = (tickResult && tickResult.markets) ? tickResult.markets : [];
       return res.json({ ok: true, result });
     } catch (e) {
       return res.status(500).json({ ok: false, error: "ANALYTICS_LOCAL_CACHE_ROUTE_FAIL", message: e && e.message ? e.message : String(e) });
+    }
+  });
+
+  router.post("/scheduler/feature-label-dataset", requireSchedulerAuth, async (req, res) => {
+    try {
+      const body = (req && req.body && typeof req.body === "object") ? req.body : {};
+      const result = await runFeatureLabelDatasetJob({
+        exchange: body.exchange || body.provider || null,
+        markets: body.markets || null,
+        tf: body.tf || null,
+        limitN: body.limit_n || body.limitN || null,
+        windowDays: body.window_days || body.windowDays || null,
+        fromMs: body.from_ms || body.fromMs || null,
+        force: body.force === true || String(body.force || "").trim() === "1",
+      });
+      return res.json({ ok: true, result });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: "FEATURE_LABEL_DATASET_ROUTE_FAIL", message: e && e.message ? e.message : String(e) });
+    }
+  });
+
+  router.post("/scheduler/shadow-eval-summary", requireSchedulerAuth, async (req, res) => {
+    try {
+      const body = (req && req.body && typeof req.body === "object") ? req.body : {};
+      const result = await runShadowEvaluationSummaryJob({
+        exchange: body.exchange || body.provider || null,
+        fromMs: body.from_ms || body.fromMs || null,
+        windowHours: body.window_hours || body.windowHours || null,
+        limit: body.limit || null,
+        force: body.force === true || String(body.force || "").trim() === "1",
+      });
+      return res.json({ ok: true, result });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: "SHADOW_EVAL_SUMMARY_ROUTE_FAIL", message: e && e.message ? e.message : String(e) });
+    }
+  });
+
+  router.post("/scheduler/shadow-inference-canary", requireSchedulerAuth, async (req, res) => {
+    try {
+      const body = (req && req.body && typeof req.body === "object") ? req.body : {};
+      const result = await runShadowInferenceCanaryJob({
+        exchange: body.exchange || body.provider || null,
+        fromMs: body.from_ms || body.fromMs || null,
+        windowHours: body.window_hours || body.windowHours || null,
+        limit: body.limit || null,
+        force: body.force === true || String(body.force || "").trim() === "1",
+      });
+      return res.json({ ok: true, result });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: "SHADOW_INFERENCE_CANARY_ROUTE_FAIL", message: e && e.message ? e.message : String(e) });
+    }
+  });
+
+  router.post("/scheduler/ml-ops-pipeline", requireSchedulerAuth, async (req, res) => {
+    try {
+      const body = (req && req.body && typeof req.body === "object") ? req.body : {};
+      const result = await runMlOpsPipelineJob({
+        exchange: body.exchange || body.provider || null,
+        markets: body.markets || null,
+        tf: body.tf || null,
+        limitN: body.limit_n || body.limitN || null,
+        windowDays: body.window_days || body.windowDays || null,
+        fromMs: body.from_ms || body.fromMs || null,
+        windowHours: body.window_hours || body.windowHours || null,
+        limit: body.limit || null,
+        force: body.force === true || String(body.force || "").trim() === "1",
+      });
+      return res.json({ ok: true, result });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: "ML_OPS_PIPELINE_ROUTE_FAIL", message: e && e.message ? e.message : String(e) });
+    }
+  });
+
+  router.post("/scheduler/system-runtime-guards", requireSchedulerAuth, async (req, res) => {
+    try {
+      const body = (req && req.body && typeof req.body === "object") ? req.body : {};
+      const result = await runSystemRuntimeGuardsJob({
+        exchange: body.exchange || body.provider || null,
+        remediateOnBlock: body.remediate_on_block === false
+          ? false
+          : String(body.remediate_on_block || body.remediateOnBlock || "1").trim() !== "0",
+        dryRun: body.dry_run === true || String(body.dry_run || body.dryRun || "").trim() === "1",
+      });
+      return res.json({ ok: true, result });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: "SYSTEM_RUNTIME_GUARDS_ROUTE_FAIL", message: e && e.message ? e.message : String(e) });
+    }
+  });
+
+  router.post("/scheduler/trail-authority-feedback", requireSchedulerAuth, async (req, res) => {
+    try {
+      const body = (req && req.body && typeof req.body === "object") ? req.body : {};
+      const result = await runTrailAuthorityFeedbackJob({
+        exchange: body.exchange || body.provider || null,
+        lookbackHours: body.lookback_hours || body.lookbackHours || null,
+        fetchLimit: body.fetch_limit || body.fetchLimit || body.limit || null,
+      });
+      return res.json({ ok: true, result });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: "TRAIL_AUTHORITY_FEEDBACK_ROUTE_FAIL", message: e && e.message ? e.message : String(e) });
+    }
+  });
+
+  router.post("/scheduler/runtime-error-family-remediation", requireSchedulerAuth, async (req, res) => {
+    try {
+      const result = await runRuntimeErrorFamilyRemediationJob();
+      return res.json({ ok: true, result });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: "RUNTIME_ERROR_FAMILY_REMEDIATION_ROUTE_FAIL", message: e && e.message ? e.message : String(e) });
     }
   });
 

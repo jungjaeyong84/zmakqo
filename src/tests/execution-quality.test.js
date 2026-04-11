@@ -129,4 +129,30 @@ const { summarizeExecutionQuality } = require("../utils/executionQuality");
   assert.strictEqual(report.by_market[1].market, "SOLUSDT");
 })();
 
+(() => {
+  const report = summarizeExecutionQuality({
+    microstructure: {
+      metrics: {
+        latency: { created_to_fill_p95_ms: 59871 },
+        slippage: { adverse_p95_bps: 20 },
+        partial_fill: { partial_fill_rate_pct: 10 },
+      },
+    },
+    bridgeLatency: {
+      webhook_to_fill_ms: { p95: 3979 },
+    },
+    executionModelDataset: {
+      summary: {
+        top_operational_webhook_delay_causes: [{ key: "LEGACY_WEBHOOK_OUTCOME_ONLY", rows_n: 15 }],
+      },
+    },
+  });
+
+  assert.strictEqual(report.summary.created_to_fill_p95_ms_raw, 59871);
+  assert.strictEqual(report.summary.guard_created_to_fill_p95_ms, 3979);
+  assert.strictEqual(report.summary.created_to_fill_p95_ms, 3979);
+  assert.ok(report.summary.review_reasons.includes("LEGACY_LATENCY_GUARD_FALLBACK_ACTIVE"));
+  assert.ok(!report.summary.review_reasons.includes("CREATED_TO_FILL_P95_HIGH"));
+})();
+
 console.log("EXECUTION_QUALITY_TEST_OK");

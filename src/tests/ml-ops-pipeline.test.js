@@ -52,6 +52,30 @@ function run() {
   assert.strictEqual(gate.promotion_blocked, true);
   assert.ok(__test.renderShadowInferenceCanaryMarkdown({ generated_at_kst: "2026-04-11 12:00:00 KST", exchange: "BINANCEFUT", summary: canarySummary }).includes("Shadow Inference Canary"));
   assert.ok(__test.renderShadowCanaryGateMarkdown({ generated_at_kst: "2026-04-11 12:00:00 KST", exchange: "BINANCEFUT", summary: canarySummary, gate }).includes("Shadow Canary Gate"));
+  const rollbackAction = __test.buildShadowPromotionAction({
+    gate,
+    servingState: {
+      preferred_model_artifact_id: "artifact-shadow-1",
+      live_serving_allowed: false,
+      block_new_entries: true,
+      reason: "ML_SERVING_BLOCK",
+    },
+  });
+  assert.strictEqual(rollbackAction.action, "ROLLBACK_AND_BLOCK");
+  const promoteAction = __test.buildShadowPromotionAction({
+    gate: {
+      status: "PASS",
+      reason: "SHADOW_CANARY_OK",
+      promotion_blocked: false,
+    },
+    servingState: {
+      preferred_model_artifact_id: "artifact-live-1",
+      live_serving_allowed: true,
+      block_new_entries: false,
+      reason: "ML_SERVING_OK",
+    },
+  });
+  assert.strictEqual(promoteAction.action, "PROMOTE_PREFERRED_ARTIFACT");
   const binding = __test.buildServingBindingSnapshot({
     aiGuard: {
       claude_model: "claude-guard-test",

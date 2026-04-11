@@ -48,8 +48,8 @@ function buildLiveInferenceRouterConfig({
     : (bindingDoc && typeof bindingDoc === "object" ? bindingDoc : null);
   const fallback = buildDefaultBinding({ aiGuard });
   const active = binding ? { ...fallback, ...binding } : fallback;
-  const providerMode = resolveProviderMode(active);
-  const artifactId = norm(state.preferred_model_artifact_id || (bindingDoc && bindingDoc.artifact_id) || null);
+  const activeArtifactId = norm(state.active_model_artifact_id || (bindingDoc && bindingDoc.artifact_id) || null);
+  const preferredArtifactId = norm(state.preferred_model_artifact_id || null);
   const requireLiveServing = active.require_live_serving === true;
   const liveServingAllowed = state.live_serving_allowed === true;
   const canUseBinding = !!binding && (!requireLiveServing || liveServingAllowed);
@@ -66,7 +66,8 @@ function buildLiveInferenceRouterConfig({
     serving_mode: upper(state.serving_mode),
     live_serving_allowed: liveServingAllowed,
     block_new_entries: state.block_new_entries === true,
-    preferred_model_artifact_id: artifactId,
+    active_model_artifact_id: activeArtifactId,
+    preferred_model_artifact_id: preferredArtifactId,
     provider_mode: selectedProviderMode,
     claude_model: norm(selected.claude_model),
     openai_model: norm(selected.openai_model),
@@ -100,7 +101,7 @@ async function loadLiveInferenceRouter({
   ]);
   const bindingDoc = await getMlServingBinding({
     exchange: ex,
-    artifactId: resolvedServingState && resolvedServingState.preferred_model_artifact_id,
+    artifactId: resolvedServingState && (resolvedServingState.active_model_artifact_id || resolvedServingState.preferred_model_artifact_id),
   }).catch(() => null);
   const value = buildLiveInferenceRouterConfig({
     exchange: ex,

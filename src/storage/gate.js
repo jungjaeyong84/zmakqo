@@ -11,7 +11,6 @@
 
 const { fetchCandles } = require("../exchanges");
 const { defaultMarketsFromEnv, tfToMs, defaultExecTfFromEnv } = require("../utils/marketConfig");
-const { isKrxMarketOpenKst } = require("../utils/krxCalendar");
 
 function isoZ(s) {
   if (!s) return null;
@@ -95,15 +94,6 @@ function getGateStatus(bars, opts = {}) {
 
   const stableEnough = bars.length >= minStableBars;
   let lagOk = lagMs <= maxLagMs;
-  if (exchange === "KIWOOM") {
-    const krxOpen = isKrxMarketOpenKst(nowMs);
-    metrics.krx_market_open = krxOpen;
-    if (!krxOpen) {
-      lagOk = true;
-      metrics.lag_ignored = true;
-    }
-  }
-
   if (!stableEnough) {
     status = "FAIL";
     severity = "SOFT";
@@ -136,16 +126,9 @@ function getGateStatus(bars, opts = {}) {
 
       if (tooSmall || tooLarge) {
         metrics.interval_ok = false;
-        // Allow session gaps for KIWOOM (stock market closed hours)
-        const isSessionGap = (exchange === "KIWOOM") && dt > expectedMs * 2;
-        if (isSessionGap) {
-          metrics.session_gap = true;
-          reasonCodes.push("SESSION_GAP");
-        } else {
-          status = "FAIL";
-          severity = "SOFT";
-          reasonCodes.push("BAR_INTERVAL_MISMATCH");
-        }
+        status = "FAIL";
+        severity = "SOFT";
+        reasonCodes.push("BAR_INTERVAL_MISMATCH");
       } else {
         metrics.interval_ok = true;
       }
@@ -171,13 +154,13 @@ async function getGateStatusAsync(ctxOrBars, opts = {}) {
 
   const ctx = ctxOrBars && typeof ctxOrBars === "object" ? ctxOrBars : {};
   const fallbackMarkets = defaultMarketsFromEnv();
-  const market = ctx.market ? String(ctx.market) : String(opts.market || fallbackMarkets[0] || "KRW-BTC");
+  const market = ctx.market ? String(ctx.market) : String(opts.market || fallbackMarkets[0] || "BTCUSDT");
   const tf = ctx.tf ? String(ctx.tf) : String(opts.tf || defaultExecTfFromEnv() || "15m");
   const nowMs = Number.isFinite(Number(ctx.nowMs)) ? Number(ctx.nowMs) : Number.isFinite(Number(opts.nowMs)) ? Number(opts.nowMs) : Date.now();
   const count = Number.isFinite(Number(ctx.count)) ? Number(ctx.count) : Number.isFinite(Number(opts.count)) ? Number(opts.count) : 2;
 
   try {
-    const raw = await fetchCandles(opts.exchange || "UPBIT", market, tf, Math.max(2, count));
+    const raw = await fetchCandles(opts.exchange || "BINANCEFUT", market, tf, Math.max(2, count));
     // raw candles already contain candle_date_time_utc and timestamp; map to a stable bar shape.
     const bars = (raw || []).map((c) => {
       const closeIso = c && c.candle_date_time_utc ? `${c.candle_date_time_utc}Z` : null;

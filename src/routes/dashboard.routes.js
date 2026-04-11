@@ -15,6 +15,7 @@ const {
 } = require("../storage/observability");
 
 const { detectAccessScope } = require("../utils/accessScope");
+const { loadSystemRuntimeGuardView } = require("../services/systemRuntimeGuardView");
 
 function nowIso() {
   return new Date().toISOString();
@@ -80,12 +81,14 @@ function createDashboardRoutes(stateMachine, scheduler) {
     let barWindow = null;
     let latestPaperRun = null;
     let activePositions = 0;
+    let systemRuntimeGuards = null;
 
     try { recentRuns = await getRecentRuns(10); } catch (e) { errors.push({ part: "recent_runs", message: e?.message || String(e) }); }
     try { recentGates = await getRecentGates(10); } catch (e) { errors.push({ part: "recent_gates", message: e?.message || String(e) }); }
     try { recentSnapshots = await getRecentSnapshots(10); } catch (e) { errors.push({ part: "recent_snapshots", message: e?.message || String(e) }); }
     try { barWindow = await getBarWindowCounters({ windowBars: 24, gateFetchN: 500 }); } catch (e) { errors.push({ part: "bar_window_counters", message: e?.message || String(e) }); }
     try { latestPaperRun = await getLatestPaperRun({ lookbackN: 500 }); } catch (e) { errors.push({ part: "latest_paper_run", message: e?.message || String(e) }); }
+    try { systemRuntimeGuards = await loadSystemRuntimeGuardView({ exchange: "BINANCEFUT" }); } catch (e) { errors.push({ part: "system_runtime_guards", message: e?.message || String(e) }); }
     try {
       const readPositions = await listExchangePositionReadViews({ exchange: "BINANCEFUT" });
       activePositions = readPositions.filter((row) => {
@@ -106,6 +109,7 @@ function createDashboardRoutes(stateMachine, scheduler) {
       recent_snapshots: "firestore",
       bar_window_counters: "firestore_gate_events",
       latest_paper_run: "firestore_system_runs",
+      system_runtime_guards: "firestore_runtime_state",
     };
 
     const latestError =
@@ -136,6 +140,7 @@ function createDashboardRoutes(stateMachine, scheduler) {
       latest_run: latestRun,
       latest_gate: latestGate,
       latest_error: latestError,
+      system_runtime_guards: systemRuntimeGuards,
       counters: { bar_window: barWindow },
       latest_paper_run: latestPaperRun,
       active_positions: activePositions,
@@ -191,6 +196,7 @@ function createDashboardRoutes(stateMachine, scheduler) {
         const sizePct = Number(row && row.size_pct);
         return state !== "FLAT" && Number.isFinite(sizePct) && sizePct > 0;
       }).length;
+      const systemRuntimeGuards = await loadSystemRuntimeGuardView({ exchange });
 
       res.json({
         ok: true,
@@ -198,9 +204,10 @@ function createDashboardRoutes(stateMachine, scheduler) {
         signals,
         fills,
         active_positions: activePositions,
+        system_runtime_guards: systemRuntimeGuards,
       });
     } catch (e) {
-      res.json({ ok: false, error: e.message || String(e), signals: [], fills: [], active_positions: 0 });
+      res.json({ ok: false, error: e.message || String(e), signals: [], fills: [], active_positions: 0, system_runtime_guards: null });
     }
   });
 

@@ -27,7 +27,7 @@ async function run() {
   assert.strictEqual(typeof resolveFillSyncAlertCloseRatio, "function", "resolveFillSyncAlertCloseRatio export missing");
 
   const scaledByNotional = fn({
-    intent: { qty_pct: 0.15, budget_used_krw: 15000 },
+    intent: { qty_pct: 0.15, notional: 15000 },
     tradeNotional: 1500,
     execQtyBase: 1,
   });
@@ -35,7 +35,7 @@ async function run() {
   assert.strictEqual(scaledByNotional.mode, "SCALED_NOTIONAL");
 
   const capped = fn({
-    intent: { qty_pct: 0.15, budget_used_krw: 15000 },
+    intent: { qty_pct: 0.15, notional: 15000 },
     tradeNotional: 30000,
     execQtyBase: 1,
   });
@@ -58,12 +58,20 @@ async function run() {
   assert.strictEqual(noScale.mode, "UNSCALED_INTENT");
 
   const noIntentQty = fn({
-    intent: { qty_pct: null, budget_used_krw: 10000 },
+    intent: { qty_pct: null, notional: 10000 },
     tradeNotional: 1000,
     execQtyBase: 1,
   });
   assert.strictEqual(noIntentQty.qtyPct, null);
   assert.strictEqual(noIntentQty.mode, "NO_INTENT_QTY");
+
+  const noBudgetOnlyScale = fn({
+    intent: { qty_pct: 0.5, budget_used_krw: 7.5 },
+    tradeNotional: 3547.095,
+    execQtyBase: 2657,
+  });
+  assert.strictEqual(noBudgetOnlyScale.qtyPct, null);
+  assert.strictEqual(noBudgetOnlyScale.mode, "UNSCALED_INTENT");
 
   const fallbackCloseRatio = resolveFillSyncAlertCloseRatio({
     event: "EXIT_TP_P1_1.65P",
@@ -77,7 +85,7 @@ async function run() {
   const nativeTp1CloseRatio = resolveFillSyncAlertCloseRatio({
     event: "EXIT_TP_P1_1.65P",
     intent: null,
-    qtyScale: { qtyPct: null, ratio: null },
+    qtyScale: { qtyPct: 0.5, ratio: 1 },
     execQtyBase: 737,
     positionCtx: { qtyBase: 737, nativeProtectionTpQtyBase: 1500, nativeProtectionTpQtyRatio: 0.49 },
   });
@@ -95,6 +103,8 @@ async function run() {
 
   const immediateAlertGate = __test && __test.shouldSendImmediateProjectionMismatchAlert;
   assert.strictEqual(typeof immediateAlertGate, "function", "shouldSendImmediateProjectionMismatchAlert export missing");
+  const reconcileExternalFillPositionSync = __test && __test.reconcileExternalFillPositionSync;
+  assert.strictEqual(typeof reconcileExternalFillPositionSync, "function", "reconcileExternalFillPositionSync export missing");
   const immediateAlertFirst = immediateAlertGate({
     symbol: "SOLUSDT",
     event: "EXIT_TP_P1_3P",
@@ -119,6 +129,33 @@ async function run() {
   });
   assert.strictEqual(immediateAlertThird.send, true);
   assert.strictEqual(immediateAlertThird.repeatCount, 3);
+
+  {
+    const requests = [];
+    let attempts = 0;
+    const reconciled = await reconcileExternalFillPositionSync({
+      exchange: "BINANCEFUT",
+      symbol: "XRPUSDT",
+      maxAttempts: 2,
+      retryDelayMs: 0,
+      buildSyncRequest: (payload) => payload,
+      syncPosition: async (payload) => {
+        attempts += 1;
+        requests.push(payload);
+        if (attempts === 1) {
+          const err = new Error("POSITION_WRITE_TOKEN_MISMATCH expected=a actual=b");
+          err.code = "POSITION_WRITE_TOKEN_MISMATCH";
+          throw err;
+        }
+        return { ok: true, attempt: attempts };
+      },
+    });
+    assert.strictEqual(attempts, 2);
+    assert.strictEqual(requests[0].source, "FILL_SYNC_RECONCILE");
+    assert.ok(String(requests[0].runId).includes("__A1__"));
+    assert.ok(String(requests[1].runId).includes("__A2__"));
+    assert.deepStrictEqual(reconciled, { ok: true, attempt: 2 });
+  }
 
   const pickIntentForTrade = __test && __test.pickIntentForTrade;
   assert.strictEqual(typeof pickIntentForTrade, "function", "pickIntentForTrade export missing");
@@ -148,6 +185,51 @@ async function run() {
   const picked = pickIntentForTrade(trade, intents, 2 * 60 * 60 * 1000, 3000);
   assert.ok(picked, "intent should be matched");
   assert.strictEqual(picked.intent_id, "valid_intent");
+
+  const staleFilledIntentIgnored = pickIntentForTrade(
+    {
+      symbol: "DOGEUSDT",
+      side: "BUY",
+      time: Date.parse("2026-04-11T06:36:48.252Z"),
+    },
+    [{
+      exchange: "BINANCEFUT",
+      symbol_or_pair_id: "DOGEUSDT",
+      side: "BUY",
+      event: "EXIT_TP_P1_1.65P",
+      status: "FILLED",
+      signal_bar_close_time_utc_ms: Date.parse("2026-04-11T06:15:00.000Z"),
+      created_at: "2026-04-11T06:15:00.000Z",
+      filled_at: "2026-04-11T06:15:34.810Z",
+      intent_id: "stale_tp1",
+    }],
+    2 * 60 * 60 * 1000,
+    3000
+  );
+  assert.strictEqual(staleFilledIntentIgnored, null);
+
+  const freshFilledIntentAllowed = pickIntentForTrade(
+    {
+      symbol: "DOGEUSDT",
+      side: "BUY",
+      time: Date.parse("2026-04-11T06:15:36.000Z"),
+    },
+    [{
+      exchange: "BINANCEFUT",
+      symbol_or_pair_id: "DOGEUSDT",
+      side: "BUY",
+      event: "EXIT_TP_P1_1.65P",
+      status: "FILLED",
+      signal_bar_close_time_utc_ms: Date.parse("2026-04-11T06:15:00.000Z"),
+      created_at: "2026-04-11T06:15:00.000Z",
+      filled_at: "2026-04-11T06:15:34.810Z",
+      intent_id: "fresh_tp1",
+    }],
+    2 * 60 * 60 * 1000,
+    3000
+  );
+  assert.ok(freshFilledIntentAllowed);
+  assert.strictEqual(freshFilledIntentAllowed.intent_id, "fresh_tp1");
 
   const resolveExternalExitEvent = __test && __test.resolveExternalExitEvent;
   const inferStageConstrainedTakeProfitKind = __test && __test.inferStageConstrainedTakeProfitKind;
@@ -356,6 +438,36 @@ async function run() {
     rules,
   });
   assert.strictEqual(syntheticTimeStop, "EXIT_EXTERNAL_SYNC");
+
+  const forcedExitAllMustBeatTrailFallback = await resolveExternalExitEvent({
+    intent: { event: "FORCE_EXIT_ALL", intent_id: "force-doge" },
+    trade: { symbol: "DOGEUSDT", realizedPnl: 0.115, qty: 112, time: Date.parse("2026-04-11T07:09:24.598Z") },
+    orderMeta: {
+      orderId: 96035243539,
+      orderType: "MARKET",
+      closePosition: false,
+      reduceOnly: true,
+      clientOrderId: "dbj_force_exit",
+      status: "FILLED",
+    },
+    positionCtx: {
+      qtyBase: 112,
+      tpP0Done: true,
+      tpP1Done: true,
+      trailActive: true,
+    },
+    recentTp1: {
+      event: "EXIT_TP_P1_1.65P",
+      tradeMs: Date.parse("2026-04-11T07:05:00.000Z"),
+    },
+    rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, BE_PCT: 0.0015 },
+    qtyPct: 1,
+  });
+  assert.strictEqual(
+    forcedExitAllMustBeatTrailFallback,
+    "FORCE_EXIT_ALL",
+    "matched forced exit intent must override trail fallback classification"
+  );
 
   console.log("BINANCE_FILLS_QTY_PCT_TEST_OK");
 }

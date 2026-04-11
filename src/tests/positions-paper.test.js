@@ -1,5 +1,6 @@
 const assert = require("assert");
 const { __test } = require("../storage/positionsPaper");
+const { __test: runnerTest } = require("../engine/paperBinanceRunner");
 
 async function run() {
   assert.strictEqual(
@@ -59,6 +60,20 @@ async function run() {
   assert.strictEqual(
     __test.buildPositionWriterLeaseDocPath("binancefut", "xrpusdt"),
     "runtime_locks/positions_paper_writer__BINANCEFUT__XRPUSDT"
+  );
+  assert.strictEqual(
+    __test.shouldSuppressPositionWriterAuthorityAlert(
+      { code: "POSITION_WRITE_LEASE_HELD", holder: "positions_paper_writer__donbeolja-exit-worker-00627-b7m__1" },
+      { source: "BINANCE_FUTURES_POSITION_SYNC" }
+    ),
+    true
+  );
+  assert.strictEqual(
+    __test.shouldSuppressPositionWriterAuthorityAlert(
+      { code: "POSITION_WRITE_LEASE_HELD", holder: "positions_paper_writer__donbeolja-main-00012-aa1__1" },
+      { source: "BINANCE_FUTURES_POSITION_SYNC" }
+    ),
+    false
   );
   let acquireCount = 0;
   const leased = await __test.runWithPositionWriterLease({
@@ -120,6 +135,66 @@ async function run() {
   assert.strictEqual(nestedResult, "NESTED_OK");
   assert.strictEqual(nestedAcquireCount, 1);
   assert.strictEqual(nestedReleaseCount, 1);
+
+  {
+    let readCount = 0;
+    const stalePos = {
+      position_write_token: "stale-token",
+      meta: {
+        last_fill_intent: "INTENT_OLD",
+        local_hint: "OLD",
+        tp_p1_done: true,
+      },
+    };
+    const freshPos = {
+      position_write_token: "fresh-token",
+      meta: {
+        last_fill_intent: "INTENT_SYNC",
+        other_runtime_flag: "KEEP",
+        trail_active: true,
+      },
+    };
+    const writes = [];
+    const result = await runnerTest.upsertPositionMetaOnlyWithLatestRetry({
+      exchange: "BINANCEFUT",
+      symbol: "XRPUSDT",
+      runId: "RUN__TEST__WEBHOOK__XRPUSDT",
+      executionMode: "LIVE",
+      position: stalePos,
+      metaPatch: {
+        last_fill_intent: "INTENT_NEW",
+        local_hint: "LATEST",
+      },
+      source: "INTENT_FILL",
+      reason: "INTENT_FILL_FORCE_LIVE_RECONCILE",
+      maxAttempts: 2,
+      retryDelayMs: 0,
+      readPosition: async () => {
+        readCount += 1;
+        return freshPos;
+      },
+      writePositionMeta: async (args) => {
+        writes.push(args);
+        if (writes.length === 1) {
+          const err = new Error("POSITION_WRITE_TOKEN_MISMATCH expected=stale-token actual=fresh-token");
+          err.code = "POSITION_WRITE_TOKEN_MISMATCH";
+          throw err;
+        }
+        return args;
+      },
+    });
+    assert.strictEqual(readCount, 1);
+    assert.strictEqual(writes.length, 2);
+    assert.strictEqual(writes[0].expectedWriteToken, "stale-token");
+    assert.strictEqual(writes[1].expectedWriteToken, "fresh-token");
+    assert.strictEqual(writes[1].source, "INTENT_FILL");
+    assert.strictEqual(writes[1].reason, "INTENT_FILL_FORCE_LIVE_RECONCILE");
+    assert.strictEqual(writes[1].meta.last_fill_intent, "INTENT_NEW");
+    assert.strictEqual(writes[1].meta.local_hint, "LATEST");
+    assert.strictEqual(writes[1].meta.other_runtime_flag, "KEEP");
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(writes[1].meta, "trail_active"), false);
+    assert.strictEqual(result.expectedWriteToken, "fresh-token");
+  }
   console.log("POSITIONS_PAPER_TEST_OK");
 }
 

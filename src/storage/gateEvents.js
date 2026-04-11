@@ -5,8 +5,7 @@ function normalizeExchange(raw) {
   const v = String(raw || "").trim().toUpperCase();
   if (!v) return null;
   if (v.includes("BINANCE")) return "BINANCEFUT";
-  if (v.includes("UPBIT")) return "UPBIT";
-  return v;
+  return "BINANCEFUT";
 }
 
 function normalizeGateEvent(input = {}) {

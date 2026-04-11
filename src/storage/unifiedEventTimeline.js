@@ -12,6 +12,7 @@ function upper(value) {
 }
 
 function toTimeMs(value) {
+  if (value === null || value === undefined || value === "") return null;
   if (Number.isFinite(Number(value))) return Number(value);
   const parsed = Date.parse(String(value || ""));
   return Number.isFinite(parsed) ? parsed : null;
@@ -50,7 +51,7 @@ function buildUnifiedEventId({
     upper(symbol) || "UNKNOWN",
     upper(eventKind) || "EVENT",
     upper(eventSource) || "SOURCE",
-    Number.isFinite(Number(tsMs)) ? Number(tsMs) : Date.now(),
+    toTimeMs(tsMs) != null ? toTimeMs(tsMs) : Date.now(),
     String(traceId || "").trim() || "TRACE",
     String(entityId || "").trim() || "ENTITY",
     crypto.randomBytes(6).toString("hex"),
@@ -79,8 +80,53 @@ async function recordUnifiedEvent({
   unifiedEventId = null,
 } = {}) {
   const db = getFirestore();
-  const resolvedTsMs = Number.isFinite(Number(tsMs))
-    ? Number(tsMs)
+  const doc = buildUnifiedEventDoc({
+    eventKind,
+    eventSource,
+    exchange,
+    symbol,
+    event,
+    traceId,
+    requestId,
+    runId,
+    signalId,
+    intentId,
+    fillId,
+    positionEventId,
+    sourceDocumentId,
+    tsMs,
+    createdAt,
+    payload,
+    raw,
+    unifiedEventId,
+  });
+  await db.collection("unified_event_timeline").doc(doc.unified_event_id).set(doc, { merge: false });
+  return doc;
+}
+
+function buildUnifiedEventDoc({
+  eventKind,
+  eventSource,
+  exchange,
+  symbol,
+  event = null,
+  traceId = null,
+  requestId = null,
+  runId = null,
+  signalId = null,
+  intentId = null,
+  fillId = null,
+  positionEventId = null,
+  sourceDocumentId = null,
+  tsMs = null,
+  createdAt = null,
+  payload = null,
+  raw = null,
+  unifiedEventId = null,
+} = {}) {
+  const normalizedTsMs = toTimeMs(tsMs);
+  const resolvedTsMs = normalizedTsMs != null
+    ? normalizedTsMs
     : (toTimeMs(createdAt) || Date.now());
   const resolvedCreatedAt = createdAt || nowIso();
   const entityId = intentId || fillId || positionEventId || signalId || null;
@@ -114,7 +160,6 @@ async function recordUnifiedEvent({
     raw: safeClone(raw),
   };
   if (String(unifiedEventId || "").trim()) doc.unified_event_id = String(unifiedEventId).trim();
-  await db.collection("unified_event_timeline").doc(doc.unified_event_id).set(doc, { merge: false });
   return doc;
 }
 
@@ -126,22 +171,44 @@ async function fetchUnifiedEventTimeline({
   limit = 500,
 } = {}) {
   const db = getFirestore();
-  let query = db.collection("unified_event_timeline")
-    .where("exchange", "==", upper(exchange))
-    .where("symbol", "==", upper(symbol))
-    .orderBy("ts_ms", "asc")
-    .limit(Math.max(1, Math.trunc(Number(limit) || 500)));
-  if (Number.isFinite(Number(fromMs))) query = query.where("ts_ms", ">=", Number(fromMs));
-  if (Number.isFinite(Number(toMs))) query = query.where("ts_ms", "<", Number(toMs));
-  const snap = await query.get();
-  return snap.docs.map((doc) => doc.data() || {});
+  const resolvedExchange = upper(exchange);
+  const resolvedSymbol = upper(symbol);
+  const resolvedLimit = Math.max(1, Math.trunc(Number(limit) || 500));
+  const resolvedFromMs = toTimeMs(fromMs);
+  const resolvedToMs = toTimeMs(toMs);
+  try {
+    let query = db.collection("unified_event_timeline")
+      .where("exchange", "==", resolvedExchange)
+      .where("symbol", "==", resolvedSymbol)
+      .orderBy("ts_ms", "asc")
+      .limit(resolvedLimit);
+    if (resolvedFromMs != null) query = query.where("ts_ms", ">=", resolvedFromMs);
+    if (resolvedToMs != null) query = query.where("ts_ms", "<", resolvedToMs);
+    const snap = await query.get();
+    const rows = snap.docs.map((doc) => doc.data() || {});
+    if (rows.length > 0) return rows;
+  } catch (_) {}
+  const fallbackSnap = await db.collection("unified_event_timeline").get();
+  return fallbackSnap.docs
+    .map((doc) => doc.data() || {})
+    .filter((row) => row.exchange === resolvedExchange && row.symbol === resolvedSymbol)
+    .filter((row) => {
+      const ts = toTimeMs(row.ts_ms);
+      if (resolvedFromMs != null && (ts == null || ts < resolvedFromMs)) return false;
+      if (resolvedToMs != null && (ts == null || ts >= resolvedToMs)) return false;
+      return true;
+    })
+    .sort((a, b) => Number(toTimeMs(a.ts_ms) || 0) - Number(toTimeMs(b.ts_ms) || 0))
+    .slice(0, resolvedLimit);
 }
 
 module.exports = {
+  buildUnifiedEventDoc,
   recordUnifiedEvent,
   fetchUnifiedEventTimeline,
   __test: {
     buildUnifiedEventId,
+    buildUnifiedEventDoc,
     toTimeMs,
   },
 };

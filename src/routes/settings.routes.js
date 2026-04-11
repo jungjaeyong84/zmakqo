@@ -24,9 +24,7 @@ const {
 } = require("../utils/marketConfig");
 const { getEnvExchangeOverride, getExchangeSettingsForProvider } = require("../utils/exchangeSettings");
 const { normalizeProviderId, pickProviderEntry } = require("../utils/providerUtils");
-const { fetchAccounts } = require("../exchanges/upbitPrivate");
 const { fetchBinanceFuturesAccount, fetchFuturesPositionMode } = require("../exchanges/binanceFuturesPrivate");
-const { fetchAccount: fetchKiwoomAccount } = require("../exchanges/kiwoomRest");
 const { getBinanceFuturesAccountSummary } = require("../services/binanceFuturesAccountSummary");
 
 function allowLocal() {

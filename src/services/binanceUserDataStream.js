@@ -9,7 +9,7 @@ const {
   deleteFuturesListenKey,
   getFuturesBaseUrl,
 } = require("../exchanges/binanceFuturesPrivate");
-const { syncFuturesPositionOnly } = require("../engine/paperUpbitRunner");
+const { syncFuturesPositionOnly } = require("../engine/paperBinanceRunner");
 const { syncBinanceFuturesFills } = require("./binanceFuturesFillsSync");
 
 const KEEPALIVE_INTERVAL_MS = Math.max(60_000, Number(process.env.BINANCE_USER_STREAM_KEEPALIVE_MS) || (30 * 60 * 1000));

@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("assert");
-const { __test } = require("../engine/paperUpbitRunner");
+const { __test } = require("../engine/paperBinanceRunner");
 
 async function run() {
   assert.strictEqual(typeof __test.resolveRiskBudget, "function", "resolveRiskBudget export missing");

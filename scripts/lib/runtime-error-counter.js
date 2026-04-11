@@ -5,6 +5,20 @@ const { isIntentCanceledLikeStatus } = require("../../src/utils/intentStatus");
 
 const DEFAULT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_FETCH_LIMIT = 1500;
+const ACTIVE_WINDOW_DEFAULT_MS = 24 * 60 * 60 * 1000;
+const ACTIVE_WINDOW_TRANSIENT_INFRA_MS = 6 * 60 * 60 * 1000;
+const ACTIVE_WINDOW_POSITION_WRITE_TOKEN_MISMATCH_SINGLE_MS = Math.max(
+  15 * 60 * 1000,
+  Number(process.env.RUNTIME_ERROR_ACTIVE_WINDOW_POSITION_WRITE_TOKEN_MISMATCH_SINGLE_MS || (90 * 60 * 1000))
+);
+const ACTIVE_WINDOW_POSITION_WRITE_TOKEN_MISMATCH_REPEAT_MS = Math.max(
+  ACTIVE_WINDOW_POSITION_WRITE_TOKEN_MISMATCH_SINGLE_MS,
+  Number(process.env.RUNTIME_ERROR_ACTIVE_WINDOW_POSITION_WRITE_TOKEN_MISMATCH_REPEAT_MS || (6 * 60 * 60 * 1000))
+);
+const ACTIVE_WINDOW_POSITION_WRITE_LEASE_MS = Math.max(
+  15 * 60 * 1000,
+  Number(process.env.RUNTIME_ERROR_ACTIVE_WINDOW_POSITION_WRITE_LEASE_MS || (60 * 60 * 1000))
+);
 
 function toMs(value) {
   const raw = String(value || "").trim();
@@ -34,6 +48,11 @@ function isNonRuntimeLiveReject(row = {}) {
   if (note.includes("INSUFFICIENT MARGIN")) return true;
   if (note.includes('"CODE":-2019')) return true;
   if (note.includes("CODE=-2019")) return true;
+  if (note.includes("REDUCEONLY ORDER IS REJECTED")) return true;
+  if (note.includes('"CODE":-2022')) return true;
+  if (note.includes("CODE=-2022")) return true;
+  if (note.includes("NO_POSITION")) return true;
+  if (note.includes("POSITION DOES NOT EXIST")) return true;
   return false;
 }
 
@@ -42,7 +61,54 @@ function resolveIntentCancelOperationalFamily(row = {}) {
   return normalizeOperationalReason(row && (row.cancel_reason || row.status_reason || row.reason));
 }
 
-function upsertFamily(map, family, { source, at, symbol, reason } = {}) {
+function normalizeOperationalDetail(value) {
+  const detail = String(value || "").trim().toUpperCase();
+  return detail || null;
+}
+
+function isRetryableInfraOperationalDetail(value) {
+  const detail = normalizeOperationalDetail(value);
+  if (!detail) return false;
+  return (
+    detail.includes("EGRESS_PROXY_TIMEOUT")
+    || detail.includes("EGRESS_PROXY_FETCH_FAIL")
+    || detail.includes("FETCH FAILED")
+    || detail.includes("TIMEOUT")
+    || detail.includes("UNAVAILABLE")
+    || detail.includes("ECONNRESET")
+    || detail.includes("ETIMEDOUT")
+    || detail.includes("ENOTFOUND")
+    || detail.includes("EAI_AGAIN")
+  );
+}
+
+function resolveOperationalActiveWindowMs(item = {}) {
+  const family = String(item.family || "").trim().toUpperCase();
+  const detail = normalizeOperationalDetail(item.latest_detail || item.sample_detail || item.detail || "");
+  const count = Number(item.count || 0);
+  if (family === "POSITION_WRITE_TOKEN_MISMATCH") {
+    return count >= 2
+      ? ACTIVE_WINDOW_POSITION_WRITE_TOKEN_MISMATCH_REPEAT_MS
+      : ACTIVE_WINDOW_POSITION_WRITE_TOKEN_MISMATCH_SINGLE_MS;
+  }
+  if (family === "POSITION_WRITE_LEASE_HELD" || family === "POSITION_WRITE_LEASE_LOST") {
+    return ACTIVE_WINDOW_POSITION_WRITE_LEASE_MS;
+  }
+  if (family === "LEVERAGE_SET_FAILED") return ACTIVE_WINDOW_TRANSIENT_INFRA_MS;
+  if ((family === "LIVE_EXCEPTION" || family === "LIVE_FAILED") && isRetryableInfraOperationalDetail(detail)) {
+    return ACTIVE_WINDOW_TRANSIENT_INFRA_MS;
+  }
+  return ACTIVE_WINDOW_DEFAULT_MS;
+}
+
+function isOperationalFamilyActive(item = {}, nowMs = Date.now()) {
+  const latestMs = toMs(item.latest_at);
+  if (!Number.isFinite(latestMs)) return false;
+  const windowMs = resolveOperationalActiveWindowMs(item);
+  return (latestMs + Math.max(60 * 1000, Number(windowMs) || ACTIVE_WINDOW_DEFAULT_MS)) > nowMs;
+}
+
+function upsertFamily(map, family, { source, at, symbol, reason, detail } = {}) {
   const key = String(family || "").trim().toUpperCase();
   if (!key) return;
   const item = map.get(key) || {
@@ -52,16 +118,20 @@ function upsertFamily(map, family, { source, at, symbol, reason } = {}) {
     sources: new Set(),
     symbols: new Set(),
     sample_reason: null,
+    sample_detail: null,
+    latest_detail: null,
   };
   item.count += 1;
   if (source) item.sources.add(String(source));
   if (symbol) item.symbols.add(String(symbol).toUpperCase());
   if (!item.sample_reason && reason) item.sample_reason = String(reason);
+  if (!item.sample_detail && detail) item.sample_detail = String(detail);
   if (at) {
     const atMs = toMs(at);
     const prevMs = toMs(item.latest_at);
     if (Number.isFinite(atMs) && (!Number.isFinite(prevMs) || atMs >= prevMs)) {
       item.latest_at = at;
+      item.latest_detail = detail ? String(detail) : item.latest_detail;
     }
   }
   map.set(key, item);
@@ -76,6 +146,8 @@ function finalizeFamilies(map) {
       sources: Array.from(item.sources).sort(),
       symbols: Array.from(item.symbols).sort(),
       sample_reason: item.sample_reason,
+      sample_detail: item.sample_detail,
+      latest_detail: item.latest_detail,
     }))
     .sort((a, b) => {
       if (b.count !== a.count) return b.count - a.count;
@@ -88,6 +160,8 @@ function summarizeRuntimeErrorFamilies({
   droppedSignals = [],
   gateEvents = [],
   aiRuns = [],
+  positionWriterAuthorityEvents = [],
+  nowMs = Date.now(),
 } = {}) {
   const families = new Map();
 
@@ -99,6 +173,7 @@ function summarizeRuntimeErrorFamilies({
       at: row.updated_at || row.created_at || null,
       symbol: row.symbol_or_pair_id || row.symbol || null,
       reason: row.cancel_reason || row.status_reason || row.reason || null,
+      detail: row.cancel_note || row.last_error || row.error_message || null,
     });
   }
 
@@ -171,11 +246,27 @@ function summarizeRuntimeErrorFamilies({
     }
   }
 
+  for (const row of positionWriterAuthorityEvents || []) {
+    const family = String(row && row.code || "").trim().toUpperCase();
+    if (!family) continue;
+    upsertFamily(families, family, {
+      source: "position_writer_authority_events",
+      at: row.created_at || row.updated_at || null,
+      symbol: row.symbol || null,
+      reason: row.code || null,
+      detail: row.error || null,
+    });
+  }
+
   const finalized = finalizeFamilies(families);
+  const activeFamilies = finalized.filter((item) => isOperationalFamilyActive(item, nowMs));
   return {
     error_count_24h: finalized.length,
     error_occurrence_count_24h: finalized.reduce((acc, item) => acc + Number(item.count || 0), 0),
     error_families_24h: finalized,
+    active_error_count_24h: activeFamilies.length,
+    active_error_occurrence_count_24h: activeFamilies.reduce((acc, item) => acc + Number(item.count || 0), 0),
+    active_error_families_24h: activeFamilies,
   };
 }
 
@@ -197,11 +288,12 @@ async function fetchRuntimeErrorSummary24h({
   fetchLimit = DEFAULT_FETCH_LIMIT,
 } = {}) {
   const sinceMs = Date.now() - Math.max(60 * 60 * 1000, Number(windowMs) || DEFAULT_WINDOW_MS);
-  const [intentRows, dropRows, gateRows, aiRows] = await Promise.all([
+  const [intentRows, dropRows, gateRows, aiRows, writerAuthorityRows] = await Promise.all([
     fetchRecentDocs({ collection: "order_intents_paper", orderByField: "updated_at", limit: fetchLimit, sinceMs }),
     fetchRecentDocs({ collection: "signals_dropped", orderByField: "created_at", limit: fetchLimit, sinceMs }),
     fetchRecentDocs({ collection: "gate_events", orderByField: "created_at", limit: fetchLimit, sinceMs }),
     fetchRecentDocs({ collection: "ai_allocation_runs", orderByField: "created_at", limit: Math.min(fetchLimit, 200), sinceMs }),
+    fetchRecentDocs({ collection: "position_writer_authority_events", orderByField: "created_at", limit: Math.min(fetchLimit, 300), sinceMs }),
   ]);
 
   const intentCancels = intentRows.filter((row) => isIntentCanceledLikeStatus(row && row.status));
@@ -210,6 +302,7 @@ async function fetchRuntimeErrorSummary24h({
     droppedSignals: dropRows,
     gateEvents: gateRows,
     aiRuns: aiRows,
+    positionWriterAuthorityEvents: writerAuthorityRows,
   });
 
   return {
@@ -224,7 +317,11 @@ async function fetchRuntimeErrorSummary24h({
 module.exports = {
   isNonRuntimeLiveReject,
   normalizeOperationalReason,
+  normalizeOperationalDetail,
   resolveIntentCancelOperationalFamily,
+  isRetryableInfraOperationalDetail,
+  resolveOperationalActiveWindowMs,
+  isOperationalFamilyActive,
   summarizeRuntimeErrorFamilies,
   fetchRuntimeErrorSummary24h,
 };

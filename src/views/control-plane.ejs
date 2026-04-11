@@ -347,6 +347,11 @@
                   }
                 });
               }
+              const hasCardContent = visibleRows.length
+                || hiddenRows.length
+                || (Array.isArray(card.notes) && card.notes.length)
+                || (card.table && Array.isArray(card.table.columns) && Array.isArray(card.table.rows) && card.table.rows.length)
+                || (Array.isArray(card.actions) && card.actions.length);
             %>
             <% if (visibleRows.length) { %>
               <div class="cp-kv">
@@ -369,6 +374,9 @@
                   <% }) %>
                 </div>
               </div>
+            <% } %>
+            <% if (!hasCardContent) { %>
+              <div class="body-sm" style="color:var(--md-on-surface-variant);">데이터 없음</div>
             <% } %>
             <% if (Array.isArray(card.notes) && card.notes.length) { %>
               <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:12px;">

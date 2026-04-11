@@ -23,6 +23,7 @@ async function recordMlServingBinding({
   binding = null,
   source = null,
   generatedAt = null,
+  meta = null,
 } = {}) {
   const db = getFirestore();
   const doc = {
@@ -33,6 +34,7 @@ async function recordMlServingBinding({
     generated_at: generatedAt || new Date().toISOString(),
     updated_at: new Date().toISOString(),
     binding: binding && typeof binding === "object" ? JSON.parse(JSON.stringify(binding)) : null,
+    binding_meta: meta && typeof meta === "object" ? JSON.parse(JSON.stringify(meta)) : null,
   };
   await db.collection("ml_serving_bindings").doc(doc.binding_id).set(doc, { merge: true });
   return doc;
@@ -44,6 +46,7 @@ async function ensureMlServingBinding({
   binding = null,
   source = null,
   generatedAt = null,
+  meta = null,
 } = {}) {
   const db = getFirestore();
   const docId = bindingDocId({ exchange, artifactId });
@@ -63,6 +66,7 @@ async function ensureMlServingBinding({
       updated_at: nowIso,
       binding_locked: !!artifact,
       binding: binding && typeof binding === "object" ? JSON.parse(JSON.stringify(binding)) : null,
+      binding_meta: meta && typeof meta === "object" ? JSON.parse(JSON.stringify(meta)) : null,
     };
     tx.set(ref, doc, { merge: true });
     return doc;

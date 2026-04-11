@@ -48,6 +48,31 @@
         { "fieldPath": "symbol", "order": "ASCENDING" },
         { "fieldPath": "time_ms", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "position_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "exchange", "order": "ASCENDING" },
+        { "fieldPath": "sequence_ms", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "unified_event_timeline",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "exchange", "order": "ASCENDING" },
+        { "fieldPath": "symbol", "order": "ASCENDING" },
+        { "fieldPath": "ts_ms", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "position_read_model_latest",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "exchange", "order": "ASCENDING" },
+        { "fieldPath": "ts_ms", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

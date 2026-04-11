@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("assert");
-const { __test } = require("../engine/paperUpbitRunner");
+const { __test } = require("../engine/paperBinanceRunner");
 
 async function run() {
   assert.strictEqual(typeof __test.resolveLiveRescueAddConfig, "function", "resolveLiveRescueAddConfig export missing");
@@ -936,8 +936,8 @@ async function run() {
   });
   assert.strictEqual(nativeProtectionPricesAfterTp0.tpQtyRatio, 0.5);
   assert.ok(
-    Math.abs(nativeProtectionPricesAfterTp0.tpOrderQtyRatio - (2 / 3)) < 1e-9,
-    "TP1 native order must expand to 66.7% of the remaining position to preserve the 50% original contract"
+    Math.abs(nativeProtectionPricesAfterTp0.tpOrderQtyRatio - 0.5) < 1e-9,
+    "TP1 native order must use 50% of the remaining position after TP0"
   );
 
   assert.strictEqual(

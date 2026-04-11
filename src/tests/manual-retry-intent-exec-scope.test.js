@@ -4,7 +4,7 @@ const assert = require("assert");
 const fs = require("fs");
 
 function run() {
-  const src = fs.readFileSync(require.resolve("../engine/paperUpbitRunner"), "utf8");
+  const src = fs.readFileSync(require.resolve("../engine/paperBinanceRunner"), "utf8");
   const anchor = "const executeIntentList = async (intentsList) => {";
   const idx = src.indexOf(anchor);
   assert.ok(idx >= 0, "executeIntentList block must exist");

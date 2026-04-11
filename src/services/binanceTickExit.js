@@ -18,7 +18,7 @@ const {
   resolveLiveFuturesConfig,
   refreshBinanceNativeProtectionWithRetry,
   syncFuturesPositionOnly,
-} = require("../engine/paperUpbitRunner");
+} = require("../engine/paperBinanceRunner");
 const { resolveCloseSide, resolvePositionSideFromPosition } = require("../utils/positionSide");
 const {
   getFuturesBaseUrl,
@@ -33,6 +33,14 @@ const { runActionPreHooks, runActionPostHooks, emitActionEvent } = require("../u
 const { auditBinanceExitIntegrity } = require("./exitIntegrityAudit");
 const { runBinanceLiveStateSelfHeal } = require("./binanceLiveStateSelfHeal");
 const { getPositionReadView, listExchangePositionReadViews } = require("./positionReadModel");
+const { loadOperationalGuardRuntime } = require("./operationalGuardRuntime");
+const { loadSystemSloRuntime } = require("./systemSloRuntime");
+const { loadSystemAnomalyRuntime } = require("./systemAnomalyRuntime");
+const {
+  loadTrailAuthorityRuntime,
+  publishTrailAuthorityState,
+  recordTrailRuntimeEvent,
+} = require("./trailAuthorityRuntime");
 
 function nowMs() {
   return Date.now();
@@ -630,26 +638,36 @@ function computeExitTriggers({ pos, rules, leverageEff, nativeProtectionState } 
 }
 
 function shouldCheckNear({ price, triggers, nearPct, side }) {
-  if (!Number.isFinite(price) || !Array.isArray(triggers) || !triggers.length) return false;
+  return collectTriggeredKinds({ price, triggers, nearPct, side }).length > 0;
+}
+
+function collectTriggeredKinds({ price, triggers, nearPct, side }) {
+  if (!Number.isFinite(price) || !Array.isArray(triggers) || !triggers.length) return [];
   const pct = Number(nearPct);
   const sideUpper = String(side || "LONG").toUpperCase();
+  const kinds = [];
 
-  return triggers.some((t) => {
+  triggers.forEach((t) => {
     const trg = Number(t && t.price);
     const kind = String(t && t.kind || "").toUpperCase();
-    if (!Number.isFinite(trg) || trg <= 0) return false;
+    if (!Number.isFinite(trg) || trg <= 0) return;
 
     // 가격이 이미 트리거를 통과한 경우(급등/급락)는 nearPct와 무관하게 즉시 검사
     const isTakeProfit = kind === "TP_P0" || kind === "TP_P1" || kind === "TP_C";
     const crossed = sideUpper === "SHORT"
       ? (isTakeProfit ? (price <= trg) : (price >= trg))
       : (isTakeProfit ? (price >= trg) : (price <= trg));
-    if (crossed) return true;
+    if (crossed) {
+      kinds.push(kind);
+      return;
+    }
 
-    if (!Number.isFinite(pct) || pct <= 0) return false;
+    if (!Number.isFinite(pct) || pct <= 0) return;
     const diff = Math.abs((price - trg) / trg);
-    return diff <= pct;
+    if (diff <= pct) kinds.push(kind);
   });
+
+  return Array.from(new Set(kinds));
 }
 
 function shouldActivateFastLane({ pos, price, triggers, fastLanePct, side } = {}) {
@@ -712,11 +730,9 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
   if (!symbolsToCheck.length) return { ok: false, skipped: true, reason: "NO_MARKETS" };
 
   const positions = await Promise.all(symbolsToCheck.map(async (mk) => {
-    const fallback = await getPosition({ exchange: "BINANCEFUT", symbol: mk });
     return getPositionReadView({
       exchange: "BINANCEFUT",
       symbol: mk,
-      fallbackPosition: fallback,
     });
   }));
   const active = positions.filter((p) => {
@@ -725,6 +741,12 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
     return Number.isFinite(size) && size > 0 && state !== "FLAT";
   });
   if (!active.length) return { ok: true, checked: 0, triggered: 0 };
+
+  const [operationalGuard, systemSlo, systemAnomaly] = await Promise.all([
+    loadOperationalGuardRuntime({ exchange: "BINANCEFUT" }).catch(() => null),
+    loadSystemSloRuntime({ exchange: "BINANCEFUT" }).catch(() => null),
+    loadSystemAnomalyRuntime({ exchange: "BINANCEFUT" }).catch(() => null),
+  ]);
 
   const symbols = active.map((p) => String(p.symbol_or_pair_id || p.symbol || "")).filter(Boolean);
   const priceMap = await fetchBinanceFuturesPrices(symbols);
@@ -804,6 +826,19 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
                 trailLowAtMs: pos.meta && Number.isFinite(Number(pos.meta.trail_low_at_ms)) ? Number(pos.meta.trail_low_at_ms) : null,
                 source: "TICK_EXIT",
               });
+              await recordTrailRuntimeEvent({
+                exchange: "BINANCEFUT",
+                symbol,
+                event: "TRAIL_WATERMARK_UPDATED",
+                runId: buildTickTrailReconcileRunId(symbol, tickNow),
+                tsMs: tickNow,
+                payload: {
+                  side: _tSide,
+                  field: _trailField || (_tSide === "LONG" ? "TRAIL_HIGH" : "TRAIL_LOW"),
+                  prev: Number.isFinite(_trailPrev) ? _trailPrev : null,
+                  next: Number.isFinite(_trailNext) ? _trailNext : null,
+                },
+              }).catch(() => null);
             } catch (_trailObsErr) {
               structuredLog("tick_exit_trail_observation_write_error", {
                 exchange: "BINANCEFUT",
@@ -897,6 +932,33 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
       const triggers = computeExitTriggers({ pos: effectivePos, rules, leverageEff, nativeProtectionState });
       const resolvedPosSide = resolvePositionSideFromPosition(effectivePos, effectivePos.meta, "LONG");
       const trailTrigger = triggers.find((t) => String(t && t.kind || "").toUpperCase() === "TRAIL");
+      const trailAuthority = trailTrigger
+        ? await loadTrailAuthorityRuntime({
+          exchange: "BINANCEFUT",
+          symbol,
+          position: effectivePos,
+          activePositions: active,
+          operationalGuard,
+          systemSlo,
+          systemAnomaly,
+        }).catch(() => null)
+        : null;
+      const effectiveNearPct = Number.isFinite(Number(nearPct))
+        ? (Number(nearPct) * Math.max(1, Number(trailAuthority && trailAuthority.near_pct_multiplier) || 1))
+        : nearPct;
+      const triggeredKinds = collectTriggeredKinds({
+        price,
+        triggers,
+        nearPct: effectiveNearPct,
+        side: resolvedPosSide,
+      });
+      if (trailAuthority) {
+        await publishTrailAuthorityState({
+          state: trailAuthority,
+          source: "BINANCE_TICK_EXIT",
+          triggerKinds: triggeredKinds,
+        }).catch(() => null);
+      }
       const trailProtectionDeficit = trailTrigger && isNativeStopLessProtectiveThanTrigger({
         meta: effectivePos.meta,
         triggerPrice: trailTrigger.price,
@@ -943,17 +1005,34 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
           } catch (_) {}
         }
       }
-      const nearHit = shouldCheckNear({ price, triggers, nearPct, side: resolvedPosSide });
+      const nearHit = triggeredKinds.length > 0;
       const fastLaneHit = shouldActivateFastLane({
         pos: effectivePos,
         price,
         triggers,
-        fastLanePct: env.tickExit && env.tickExit.fastLanePct,
+        fastLanePct: Number(env.tickExit && env.tickExit.fastLanePct || 0) * Math.max(1, Number(trailAuthority && trailAuthority.near_pct_multiplier) || 1),
         side: resolvedPosSide,
-      });
+      }) || !!(trailAuthority && trailAuthority.force_fast_lane === true);
       if (fastLaneHit) {
         fastLaneActive = true;
         fastLaneSymbols.add(String(symbol).toUpperCase());
+      }
+      const trailOnlyTriggered = triggeredKinds.length > 0 && triggeredKinds.every((kind) => kind === "TRAIL");
+      if (trailAuthority && trailAuthority.block_synthetic_trail === true && trailOnlyTriggered) {
+        await recordTrailRuntimeEvent({
+          exchange: "BINANCEFUT",
+          symbol,
+          event: "TRAIL_TRIGGER_BLOCKED",
+          tsMs: tickNow,
+          payload: {
+            status: trailAuthority.status,
+            reason: trailAuthority.reason,
+            issues: Array.isArray(trailAuthority.issues) ? trailAuthority.issues.slice() : [],
+            remediation_action: trailAuthority.remediation_action || null,
+            triggered_kinds: triggeredKinds,
+          },
+        }).catch(() => null);
+        continue;
       }
       let pendingForced = false;
       if (!nearHit) {
@@ -1015,6 +1094,23 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
         v: 0,
       };
       const runId = `RUN__BINANCEFUT__${symbol}__TICK_EXIT__${now}`;
+      if (triggeredKinds.includes("TRAIL")) {
+        await recordTrailRuntimeEvent({
+          exchange: "BINANCEFUT",
+          symbol,
+          event: "TRAIL_TRIGGER_ENQUEUED",
+          runId,
+          tsMs: now,
+          payload: {
+            status: trailAuthority && trailAuthority.status || "CLEAR",
+            reason: trailAuthority && trailAuthority.reason || "TRAIL_AUTHORITY_OK",
+            issues: trailAuthority && Array.isArray(trailAuthority.issues) ? trailAuthority.issues.slice() : [],
+            near_pct: effectiveNearPct,
+            force_fast_lane: !!(trailAuthority && trailAuthority.force_fast_lane === true),
+            triggered_kinds: triggeredKinds,
+          },
+        }).catch(() => null);
+      }
       const pre = runActionPreHooks({
         action: "BINANCE_TICK_EXIT_MARKET_RUN",
         runId,
@@ -1054,6 +1150,23 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
           pending_forced: pendingForced === true,
         },
       });
+      if (triggeredKinds.includes("TRAIL")) {
+        await recordTrailRuntimeEvent({
+          exchange: "BINANCEFUT",
+          symbol,
+          event: "TRAIL_TRIGGER_COMPLETED",
+          runId,
+          tsMs: nowMs(),
+          payload: {
+            status: trailAuthority && trailAuthority.status || "CLEAR",
+            reason: trailAuthority && trailAuthority.reason || "TRAIL_AUTHORITY_OK",
+            triggered_kinds: triggeredKinds,
+            fills_executed: Number(runResult && runResult.fills_executed) || 0,
+            intents_created: Number(runResult && runResult.intents_created) || 0,
+            pending_forced: pendingForced === true,
+          },
+        }).catch(() => null);
+      }
       if ((Number(runResult && runResult.fills_executed) || 0) > 0 || (Number(runResult && runResult.intents_created) || 0) > 0) {
         try {
           const integrity = await auditBinanceExitIntegrity({ symbols: [symbol], includeFlat: true });
@@ -1500,6 +1613,7 @@ module.exports = {
     heartbeatTickExitLease,
     computeExitTriggers,
     shouldCheckNear,
+    collectTriggeredKinds,
     shouldActivateFastLane,
     applyTrailObservationToPosition,
     isNativeStopLessProtectiveThanTrigger,

@@ -8,8 +8,9 @@ const { deriveSignalDocId } = require("../utils/signalDocId");
 const { isIntentCanceledLikeStatus, classifyIntentTerminalStatus } = require("../utils/intentStatus");
 const { buildEventEnvelope } = require("../utils/eventEnvelope");
 const { extractLiveExecutionPolicyTrace, toLiveExecutionPolicyTopLevel } = require("../utils/liveExecutionPolicyTrace");
-const { recordUnifiedEvent } = require("./unifiedEventTimeline");
+const { recordUnifiedEvent, buildUnifiedEventDoc } = require("./unifiedEventTimeline");
 const { recordOrderIntentEvent } = require("./orderIntentEvents");
+const { __test: orderIntentEventsTest } = require("./orderIntentEvents");
 
 const LINEAGE_STRICT_ENABLED = String(process.env.LINEAGE_STRICT_ENABLED || "1").trim() !== "0";
 
@@ -89,6 +90,34 @@ async function recordIntentUnifiedEventSafe(doc = null, eventSource = "ORDER_INT
     const msg = err && err.message ? err.message : String(err);
     console.warn("[UNIFIED_TIMELINE_INTENT_FAIL]", msg);
   }
+}
+
+function buildIntentSnapshotUnifiedEventDoc(doc = null, eventSource = "ORDER_INTENTS_PAPER") {
+  if (!doc || typeof doc !== "object") return null;
+  const sourceSuffix = String(doc.updated_at || doc.created_at || nowIso()).trim() || nowIso();
+  return buildUnifiedEventDoc({
+    eventKind: "INTENT",
+    eventSource,
+    sourceDocumentId: `${doc.intent_id || "UNKNOWN"}__${sourceSuffix}`,
+    exchange: doc.exchange,
+    symbol: doc.symbol_or_pair_id || doc.symbol,
+    event: doc.event,
+    traceId: doc.trace_id || null,
+    requestId: doc.request_id || null,
+    runId: doc.run_id || null,
+    signalId: doc.signal_id || null,
+    intentId: doc.intent_id || null,
+    createdAt: doc.created_at || doc.updated_at || null,
+    tsMs: doc.updated_at || doc.created_at || null,
+    payload: {
+      status: doc.status || null,
+      side: doc.side || null,
+      event_intent: doc.event_intent || null,
+      qty_pct: Number.isFinite(Number(doc.qty_pct)) ? Number(doc.qty_pct) : null,
+      decision_reason: doc.decision_reason || null,
+    },
+    raw: doc,
+  });
 }
 
 async function recordIntentMutationEventSafe({
@@ -322,9 +351,32 @@ async function upsertIntent({
         }),
         updated_at: t,
       };
+      const nextDoc = { ...cur, ...patch };
+      const unifiedDoc = buildIntentSnapshotUnifiedEventDoc(nextDoc, "ORDER_INTENTS_PAPER");
+      const intentEventDoc = orderIntentEventsTest.buildOrderIntentEventDoc({
+        intentId: id,
+        mutationType: "UPSERT_PATCH",
+        exchange: nextDoc.exchange,
+        symbol: nextDoc.symbol_or_pair_id || nextDoc.symbol || null,
+        traceId: nextDoc.trace_id || null,
+        requestId: nextDoc.request_id || null,
+        runId: nextDoc.run_id || null,
+        createdAt: nextDoc.updated_at || nextDoc.created_at || null,
+        before: cur,
+        after: nextDoc,
+        extra: {
+          execution_mode: nextDoc.execution_mode || null,
+          event_intent: nextDoc.event_intent || null,
+        },
+        deterministicKey: `${id}|UPSERT_PATCH|${nextDoc.updated_at || nextDoc.created_at || ""}`,
+      });
+      const intentEventUnifiedDoc = orderIntentEventsTest.buildOrderIntentEventUnifiedDoc(intentEventDoc);
       tx.set(ref, patch, { merge: true });
+      if (unifiedDoc) tx.set(db.collection("unified_event_timeline").doc(unifiedDoc.unified_event_id), unifiedDoc, { merge: false });
+      tx.set(db.collection("order_intent_events").doc(intentEventDoc.intent_event_id), intentEventDoc, { merge: false });
+      tx.set(db.collection("unified_event_timeline").doc(intentEventUnifiedDoc.unified_event_id), intentEventUnifiedDoc, { merge: false });
       return {
-        doc: { ...cur, ...patch },
+        doc: nextDoc,
         before: cur,
         mutationType: "UPSERT_PATCH",
       };
@@ -398,25 +450,36 @@ async function upsertIntent({
       created_at: t,
       updated_at: t,
     };
+    const unifiedDoc = buildIntentSnapshotUnifiedEventDoc(payload, "ORDER_INTENTS_PAPER");
+    const intentEventDoc = orderIntentEventsTest.buildOrderIntentEventDoc({
+      intentId: id,
+      mutationType: "UPSERT_CREATE",
+      exchange: payload.exchange,
+      symbol: payload.symbol_or_pair_id || payload.symbol || null,
+      traceId: payload.trace_id || null,
+      requestId: payload.request_id || null,
+      runId: payload.run_id || null,
+      createdAt: payload.updated_at || payload.created_at || null,
+      before: null,
+      after: payload,
+      extra: {
+        execution_mode: payload.execution_mode || null,
+        event_intent: payload.event_intent || null,
+      },
+      deterministicKey: `${id}|UPSERT_CREATE|${payload.updated_at || payload.created_at || ""}`,
+    });
+    const intentEventUnifiedDoc = orderIntentEventsTest.buildOrderIntentEventUnifiedDoc(intentEventDoc);
     tx.set(ref, payload, { merge: true });
+    if (unifiedDoc) tx.set(db.collection("unified_event_timeline").doc(unifiedDoc.unified_event_id), unifiedDoc, { merge: false });
+    tx.set(db.collection("order_intent_events").doc(intentEventDoc.intent_event_id), intentEventDoc, { merge: false });
+    tx.set(db.collection("unified_event_timeline").doc(intentEventUnifiedDoc.unified_event_id), intentEventUnifiedDoc, { merge: false });
     return {
       doc: payload,
       before: null,
       mutationType: "UPSERT_CREATE",
     };
   });
-  const committed = committedResult && committedResult.doc ? committedResult.doc : null;
-  await recordIntentUnifiedEventSafe(committed);
-  await recordIntentMutationEventSafe({
-    before: committedResult && committedResult.before ? committedResult.before : null,
-    after: committed,
-    mutationType: committedResult && committedResult.mutationType ? committedResult.mutationType : "UPSERT",
-    extra: {
-      execution_mode: committed && committed.execution_mode ? committed.execution_mode : null,
-      event_intent: committed && committed.event_intent ? committed.event_intent : null,
-    },
-  });
-  return committed;
+  return committedResult && committedResult.doc ? committedResult.doc : null;
 }
 
 async function listPendingIntentsForExec({ exchange, symbol, tf, execBarCloseMs, limitN = 50 } = {}) {
@@ -561,95 +624,99 @@ async function markIntentStatus(intentIdValue, status, patch = {}) {
   const db = getFirestore();
   const ref = db.collection("order_intents_paper").doc(intentIdValue);
   let current = null;
-  try {
-    const snap = await ref.get();
-    current = snap.exists ? (snap.data() || {}) : null;
-  } catch (_) {
-    current = null;
-  }
+  let committed = null;
   const resolved = classifyIntentTerminalStatus(status, patch);
   const statusToWrite = resolved.status || String(status || "").toUpperCase() || null;
-  const runId = patch.run_id || (current && current.run_id) || null;
-  const requestId = patch.request_id || (current && current.request_id) || null;
-  const signalId = patch.signal_id || (current && current.signal_id) || null;
-  const event = patch.event || (current && current.event) || null;
-  const exchange = patch.exchange || (current && current.exchange) || null;
-  const symbol = patch.symbol_or_pair_id || patch.symbol || (current && (current.symbol_or_pair_id || current.symbol)) || null;
-  const tf = patch.tf || (current && current.tf) || null;
-  const decisionReason = patch.decision_reason || patch.status_reason || patch.cancel_reason || (current && current.decision_reason) || null;
-  const eventIntent = patch.event_intent || (current && current.event_intent) || null;
-  const executionMode = patch.execution_mode || (current && current.execution_mode) || null;
-  await ref.set({
-    ...buildEventEnvelope({
-      requestId,
-      runId,
-      signalId,
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    current = snap.exists ? (snap.data() || {}) : null;
+    const runId = patch.run_id || (current && current.run_id) || null;
+    const requestId = patch.request_id || (current && current.request_id) || null;
+    const signalId = patch.signal_id || (current && current.signal_id) || null;
+    const event = patch.event || (current && current.event) || null;
+    const exchange = patch.exchange || (current && current.exchange) || null;
+    const symbol = patch.symbol_or_pair_id || patch.symbol || (current && (current.symbol_or_pair_id || current.symbol)) || null;
+    const tf = patch.tf || (current && current.tf) || null;
+    const decisionReason = patch.decision_reason || patch.status_reason || patch.cancel_reason || (current && current.decision_reason) || null;
+    const eventIntent = patch.event_intent || (current && current.event_intent) || null;
+    const executionMode = patch.execution_mode || (current && current.execution_mode) || null;
+    const payload = {
+      ...buildEventEnvelope({
+        requestId,
+        runId,
+        signalId,
+        intentId: intentIdValue,
+        event,
+        exchange,
+        symbol,
+        tf,
+        decisionReason,
+        action: eventIntent,
+        intent: eventIntent,
+        executionMode,
+        source: "INTENT_STATUS",
+        barCloseMs: current && current.signal_bar_close_time_utc_ms ? current.signal_bar_close_time_utc_ms : null,
+      }),
+      status: statusToWrite,
+      status_family: resolved.statusFamily || null,
+      terminal_failure_status: resolved.terminalFailureStatus || null,
+      request_id: requestId,
+      run_id: runId,
+      decision_reason: String(decisionReason || "").trim() || null,
+      trace_meta: buildTraceMeta({
+        signalId,
+        intentId: intentIdValue,
+        runId,
+        requestId,
+        decisionReason,
+      }),
+      updated_at: nowIso(),
+      ...patch,
+    };
+    committed = { ...(current || {}), ...payload };
+    const unifiedDoc = buildIntentSnapshotUnifiedEventDoc(committed, "INTENT_STATUS");
+    const mutationType = `STATUS_${statusToWrite || "UNKNOWN"}`;
+    const intentEventDoc = orderIntentEventsTest.buildOrderIntentEventDoc({
       intentId: intentIdValue,
-      event,
-      exchange,
-      symbol,
-      tf,
-      decisionReason,
-      action: eventIntent,
-      intent: eventIntent,
-      executionMode,
-      source: "INTENT_STATUS",
-      barCloseMs: current && current.signal_bar_close_time_utc_ms ? current.signal_bar_close_time_utc_ms : null,
-    }),
-    status: statusToWrite,
-    status_family: resolved.statusFamily || null,
-    terminal_failure_status: resolved.terminalFailureStatus || null,
-    request_id: requestId,
-    run_id: runId,
-    decision_reason: String(decisionReason || "").trim() || null,
-    trace_meta: buildTraceMeta({
-      signalId,
-      intentId: intentIdValue,
-      runId,
-      requestId,
-      decisionReason,
-    }),
-    updated_at: nowIso(),
-    ...patch,
-  }, { merge: true });
-  try {
-    const snap = await ref.get();
-    if (snap.exists) {
-      const doc = snap.data() || {};
-      await recordIntentUnifiedEventSafe(doc, "INTENT_STATUS");
-      await recordIntentMutationEventSafe({
-        before: current,
-        after: doc,
-        mutationType: `STATUS_${statusToWrite || "UNKNOWN"}`,
-        extra: {
-          status_family: resolved.statusFamily || null,
-          terminal_failure_status: resolved.terminalFailureStatus || null,
-        },
-      });
-    }
-  } catch (err) {
-    const msg = err && err.message ? err.message : String(err);
-    console.warn("[UNIFIED_TIMELINE_INTENT_STATUS_FAIL]", msg);
-  }
+      mutationType,
+      exchange: committed.exchange,
+      symbol: committed.symbol_or_pair_id || committed.symbol || null,
+      traceId: committed.trace_id || null,
+      requestId: committed.request_id || null,
+      runId: committed.run_id || null,
+      createdAt: committed.updated_at || committed.created_at || null,
+      before: current,
+      after: committed,
+      extra: {
+        status_family: resolved.statusFamily || null,
+        terminal_failure_status: resolved.terminalFailureStatus || null,
+      },
+      deterministicKey: `${intentIdValue}|${mutationType}|${committed.updated_at || committed.created_at || ""}`,
+    });
+    const intentEventUnifiedDoc = orderIntentEventsTest.buildOrderIntentEventUnifiedDoc(intentEventDoc);
+    tx.set(ref, payload, { merge: true });
+    if (unifiedDoc) tx.set(db.collection("unified_event_timeline").doc(unifiedDoc.unified_event_id), unifiedDoc, { merge: false });
+    tx.set(db.collection("order_intent_events").doc(intentEventDoc.intent_event_id), intentEventDoc, { merge: false });
+    tx.set(db.collection("unified_event_timeline").doc(intentEventUnifiedDoc.unified_event_id), intentEventUnifiedDoc, { merge: false });
+  });
 
   if (isIntentCanceledLikeStatus(statusToWrite)) {
     try {
-      const snap = await ref.get();
-      if (snap.exists) {
-        const doc = snap.data() || {};
+      const doc = committed;
+      if (doc && typeof doc === "object") {
         const reason = String(doc.cancel_reason || doc.status_reason || doc.decision_reason || "").trim() || null;
         if (reason) {
           sendSignalDroppedAlert({
-            exchange: doc.exchange || exchange || null,
-            symbol: doc.symbol_or_pair_id || doc.symbol || symbol || null,
-            tf: doc.tf || tf || null,
-            event: doc.event || event || null,
+            exchange: doc.exchange || null,
+            symbol: doc.symbol_or_pair_id || doc.symbol || null,
+            tf: doc.tf || null,
+            event: doc.event || null,
             side: doc.side || null,
             qtyPct: doc.qty_pct != null ? doc.qty_pct : null,
             reason,
             dropReasonCode: reason,
-            signalId: doc.signal_id || signalId || null,
-            executionMode: doc.execution_mode || executionMode || null,
+            signalId: doc.signal_id || null,
+            executionMode: doc.execution_mode || null,
             source: "SERVER",
             authoritative: true,
             dropGroup: doc.features_json && doc.features_json._event_group ? doc.features_json._event_group : null,
@@ -664,9 +731,8 @@ async function markIntentStatus(intentIdValue, status, patch = {}) {
 
   // TP1 cancel should immediately release pending lock; otherwise TP1 can stay blocked for too long.
   try {
-    const snap = await ref.get();
-    if (!snap.exists) return;
-    const doc = snap.data() || {};
+    const doc = committed;
+    if (!doc || typeof doc !== "object") return;
     if (!isTpP1Event(doc.event)) return;
     const ex = String(doc.exchange || "").trim();
     const sym = String(doc.symbol_or_pair_id || "").trim();
@@ -683,44 +749,51 @@ async function markIntentStatus(intentIdValue, status, patch = {}) {
 async function patchIntent(intentIdValue, patch = {}) {
   const db = getFirestore();
   const ref = db.collection("order_intents_paper").doc(intentIdValue);
-  const currentSnap = await ref.get().catch(() => null);
-  const current = currentSnap && currentSnap.exists ? (currentSnap.data() || {}) : null;
-  const runId = patch.run_id || (current && current.run_id) || null;
-  const requestId = patch.request_id || (current && current.request_id) || null;
-  const signalId = patch.signal_id || (current && current.signal_id) || null;
-  const decisionReason = patch.decision_reason || patch.status_reason || patch.cancel_reason || patch.reason || (current && current.decision_reason) || null;
-  await ref.set({
-    request_id: requestId,
-    run_id: runId,
-    decision_reason: String(decisionReason || "").trim() || null,
-    trace_meta: buildTraceMeta({
-      signalId,
+  await db.runTransaction(async (tx) => {
+    const currentSnap = await tx.get(ref);
+    const current = currentSnap && currentSnap.exists ? (currentSnap.data() || {}) : null;
+    const runId = patch.run_id || (current && current.run_id) || null;
+    const requestId = patch.request_id || (current && current.request_id) || null;
+    const signalId = patch.signal_id || (current && current.signal_id) || null;
+    const decisionReason = patch.decision_reason || patch.status_reason || patch.cancel_reason || patch.reason || (current && current.decision_reason) || null;
+    const payload = {
+      request_id: requestId,
+      run_id: runId,
+      decision_reason: String(decisionReason || "").trim() || null,
+      trace_meta: buildTraceMeta({
+        signalId,
+        intentId: intentIdValue,
+        runId,
+        requestId,
+        decisionReason,
+      }),
+      updated_at: nowIso(),
+      ...patch,
+    };
+    const committed = { ...(current || {}), ...payload };
+    const unifiedDoc = buildIntentSnapshotUnifiedEventDoc(committed, "INTENT_PATCH");
+    const intentEventDoc = orderIntentEventsTest.buildOrderIntentEventDoc({
       intentId: intentIdValue,
-      runId,
-      requestId,
-      decisionReason,
-    }),
-    updated_at: nowIso(),
-    ...patch,
-  }, { merge: true });
-  try {
-    const snap = await ref.get();
-    if (snap.exists) {
-      const doc = snap.data() || {};
-      await recordIntentUnifiedEventSafe(doc, "INTENT_PATCH");
-      await recordIntentMutationEventSafe({
-        before: current,
-        after: doc,
-        mutationType: "PATCH",
-        extra: {
-          patch_keys: Object.keys(patch || {}).sort(),
-        },
-      });
-    }
-  } catch (err) {
-    const msg = err && err.message ? err.message : String(err);
-    console.warn("[UNIFIED_TIMELINE_INTENT_PATCH_FAIL]", msg);
-  }
+      mutationType: "PATCH",
+      exchange: committed.exchange,
+      symbol: committed.symbol_or_pair_id || committed.symbol || null,
+      traceId: committed.trace_id || null,
+      requestId: committed.request_id || null,
+      runId: committed.run_id || null,
+      createdAt: committed.updated_at || committed.created_at || null,
+      before: current,
+      after: committed,
+      extra: {
+        patch_keys: Object.keys(patch || {}).sort(),
+      },
+      deterministicKey: `${intentIdValue}|PATCH|${committed.updated_at || committed.created_at || ""}`,
+    });
+    const intentEventUnifiedDoc = orderIntentEventsTest.buildOrderIntentEventUnifiedDoc(intentEventDoc);
+    tx.set(ref, payload, { merge: true });
+    if (unifiedDoc) tx.set(db.collection("unified_event_timeline").doc(unifiedDoc.unified_event_id), unifiedDoc, { merge: false });
+    tx.set(db.collection("order_intent_events").doc(intentEventDoc.intent_event_id), intentEventDoc, { merge: false });
+    tx.set(db.collection("unified_event_timeline").doc(intentEventUnifiedDoc.unified_event_id), intentEventUnifiedDoc, { merge: false });
+  });
 }
 
 async function cancelPendingIntentsByMarket({

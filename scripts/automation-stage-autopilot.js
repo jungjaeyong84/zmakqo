@@ -27,6 +27,8 @@ const {
 const { readBestFebtSupervisorContext } = require("./lib/best-febt-supervisor");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
 const { normalizePreparedOverride } = require("../src/utils/selfEvolutionPreparedOverride");
+const { getShadowCanaryGate } = require("../src/storage/shadowCanaryGates");
+const { buildShadowCanaryGateContext, resolveShadowCanaryGatePass } = require("../src/services/shadowCanaryGateView");
 const {
   STATE_MACHINE,
   appendStageHistory,
@@ -1288,12 +1290,13 @@ function summarizeFilterCanaryDriftContext(data = null) {
 
 function resolveStageAutopilotCanaryPass({
   shadowCanaryPass = false,
+  shadowCanaryGatePass = true,
   selfEvolutionCanary = {},
   selfEvolutionServerPrimaryCanary = {},
 } = {}) {
   const selfEvolutionApplyPass = selfEvolutionCanary && selfEvolutionCanary.apply_pass === true;
   const serverPrimaryApplyPass = selfEvolutionServerPrimaryCanary && selfEvolutionServerPrimaryCanary.apply_pass === true;
-  return Boolean(shadowCanaryPass && (selfEvolutionApplyPass || serverPrimaryApplyPass));
+  return Boolean(shadowCanaryPass && shadowCanaryGatePass && (selfEvolutionApplyPass || serverPrimaryApplyPass));
 }
 
 function readSnapshotFromArtifactPath(filePath) {
@@ -2013,6 +2016,8 @@ async function main() {
   const evArtifact = readArtifact("ev_tp1_threshold_tune", evArtifactPath, FRESHNESS_HOURS.ev);
   const waitArtifact = readArtifact("wait_one_bar_tune", path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.json"), FRESHNESS_HOURS.wait);
   const canaryArtifact = readArtifact("filter_shadow_canary", path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json"), FRESHNESS_HOURS.canary);
+  const shadowCanaryGateArtifact = readArtifact("shadow_canary_gate", path.join(OPS_DAILY_DIR, "shadow_inference_canary_gate_latest.json"), FRESHNESS_HOURS.canary);
+  const shadowCanaryGateDoc = await getShadowCanaryGate({ exchange: PROVIDER }).catch(() => null);
   const selfEvolutionCanaryArtifact = readArtifact("best_self_evolution_canary", SELF_EVOLUTION_CANARY_LATEST_PATH, FRESHNESS_HOURS.selfEvolutionCanary);
   const selfEvolutionCanonicalParityArtifact = readArtifact("best_self_evolution_canonical_parity", SELF_EVOLUTION_CANONICAL_PARITY_LATEST_PATH, FRESHNESS_HOURS.objective);
   const selfEvolutionServerSignalAuthorityArtifact = readArtifact("best_self_evolution_server_signal_authority", SELF_EVOLUTION_SERVER_SIGNAL_AUTHORITY_LATEST_PATH, FRESHNESS_HOURS.serverSignalAuthority);
@@ -2038,6 +2043,10 @@ async function main() {
   const stateData = autopilotStore.data || { stages: {}, history: [] };
   let history = Array.isArray(stateData.history) ? stateData.history : [];
   const canaryDriftContext = summarizeFilterCanaryDriftContext(canaryArtifact && canaryArtifact.data ? canaryArtifact.data : null);
+  const shadowCanaryGate = buildShadowCanaryGateContext(
+    shadowCanaryGateDoc || (shadowCanaryGateArtifact.exists ? shadowCanaryGateArtifact.data : null)
+  );
+  const shadowCanaryGatePass = resolveShadowCanaryGatePass(shadowCanaryGate);
   const shadowCanaryPass = Boolean(
     canaryArtifact && canaryArtifact.data
     && (canaryDriftContext.golden_drift || 0) === 0
@@ -2111,10 +2120,13 @@ async function main() {
       : {};
   const canaryPass = resolveStageAutopilotCanaryPass({
     shadowCanaryPass,
+    shadowCanaryGatePass,
     selfEvolutionCanary,
     selfEvolutionServerPrimaryCanary,
   });
-  const canaryReason = !shadowCanaryPass
+  const canaryReason = !shadowCanaryGatePass
+    ? "SHADOW_CANARY_GATE_BLOCK"
+    : !shadowCanaryPass
     ? "CANARY_DRIFT"
     : (canaryPass === true ? null : "SELF_EVOLUTION_CANARY_BLOCK");
   const selfEvolutionRollbackReady = Number(selfEvolutionCanary.rollback_ready_n || 0) > 0;
@@ -2633,6 +2645,7 @@ async function main() {
     provider: PROVIDER,
     objective_verdict: String(objectiveArtifactForLoop && objectiveArtifactForLoop.data && objectiveArtifactForLoop.data.verdict || "N/A"),
     canary_pass: canaryPass,
+    shadow_canary_gate: shadowCanaryGate,
     self_evolution_canary: {
       available: !!(selfEvolutionCanaryArtifact && selfEvolutionCanaryArtifact.data),
       apply_pass: Boolean(selfEvolutionCanary.apply_pass === true),

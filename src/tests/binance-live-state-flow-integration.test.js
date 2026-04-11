@@ -5,7 +5,7 @@ const { __test: userStreamTest } = require("../services/binanceUserDataStream");
 const { reconcileBinancePositionMetaWithExchange } = require("../services/binancePositionReconciler");
 const { __test: selfHealTest } = require("../services/binanceLiveStateSelfHeal");
 const { __test: tickExitTest } = require("../services/binanceTickExit");
-const { __test: runnerTest } = require("../engine/paperUpbitRunner");
+const { __test: runnerTest } = require("../engine/paperBinanceRunner");
 
 (async () => {
   userStreamTest.clearRecentSyncMark("BNBUSDT");

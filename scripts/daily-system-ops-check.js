@@ -6,6 +6,7 @@ const { toKstString, kstDateKey } = require("../src/utils/timeKst");
 const { parseErrorCount } = require("./lib/report-metrics");
 const { fetchRuntimeErrorSummary24h } = require("./lib/runtime-error-counter");
 const { recordOperationalRuntimeState } = require("../src/storage/operationalRuntimeStates");
+const { listExchangePositionReadViews } = require("../src/services/positionReadModel");
 
 function toNum(value, fallback = 0) {
   const n = Number(value);
@@ -255,6 +256,36 @@ function loadExecutionHealth({ repoRoot, dateKey }) {
   return out;
 }
 
+function loadPositionReadModelCutoverHealth({ repoRoot } = {}) {
+  const latestPath = path.join(repoRoot, "ops", "daily", "position_read_model_cutover_latest.json");
+  const read = readJsonSafe(latestPath);
+  if (!read.ok || !read.data || typeof read.data !== "object") {
+    return {
+      available: false,
+      source_path: latestPath,
+      latest_ready: false,
+      dominant_status: "MISSING",
+      query_blockers: ["ARTIFACT_MISSING"],
+    };
+  }
+  const summary = read.data.summary && typeof read.data.summary === "object"
+    ? read.data.summary
+    : {};
+  return {
+    available: true,
+    source_path: latestPath,
+    latest_ready: summary.latest_ready === true,
+    dominant_status: String(summary.dominant_status || "").trim().toUpperCase() || "UNKNOWN",
+    query_blockers: Array.isArray(summary.query_blockers) ? summary.query_blockers.slice() : [],
+    latest_count: toNum(summary.position_read_model_latest_count, null),
+    positions_count: toNum(summary.positions_paper_count, null),
+    events_count: toNum(summary.position_events_count, null),
+    timeline_count: toNum(summary.unified_position_timeline_count, null),
+    latest_coverage_pct: toNum(summary.latest_coverage_pct, null),
+    timeline_coverage_pct: toNum(summary.timeline_coverage_pct, null),
+  };
+}
+
 function hasExecutionFlowCoverage(health) {
   if (!health || health.available !== true) return false;
   const hasSignalSide = (
@@ -278,22 +309,37 @@ function decideStatus({
   netPnlPct,
   costRatioPct,
   errorCount,
+  activeErrorCount = null,
+  activeErrorFamilies = [],
   costLimitPct,
   lossStopPct,
   stopErrorCount,
   executionHealth,
+  positionReadModelCutover,
+  activePositionCount = null,
 }) {
   const reasons = [];
   let status = "진행";
+  const writerAuthorityOnlyWithoutActivePositions = Number(activePositionCount) === 0
+    && Array.isArray(activeErrorFamilies)
+    && activeErrorFamilies.length > 0
+    && activeErrorFamilies.every((item) => String(item && item.family || "").trim().toUpperCase().startsWith("POSITION_WRITE_"));
+  const effectiveStopErrorCount = writerAuthorityOnlyWithoutActivePositions
+    ? 0
+    : (Number.isFinite(activeErrorCount) ? activeErrorCount : errorCount);
+  const effectiveHoldErrorCount = writerAuthorityOnlyWithoutActivePositions
+    ? 0
+    : (Number.isFinite(activeErrorCount) ? activeErrorCount : errorCount);
 
   if (Number.isFinite(netPnlPct) && netPnlPct <= lossStopPct) {
     status = "중단";
     reasons.push(`일 손실률 ${fmt(netPnlPct)}% <= ${fmt(lossStopPct)}%`);
   }
 
-  if (Number.isFinite(errorCount) && errorCount >= stopErrorCount) {
+  if (Number.isFinite(effectiveStopErrorCount) && effectiveStopErrorCount >= stopErrorCount) {
     status = "중단";
-    reasons.push(`핵심 오류 ${errorCount}건 >= ${stopErrorCount}건`);
+    if (Number.isFinite(activeErrorCount)) reasons.push(`활성 핵심 오류 ${activeErrorCount}건 >= ${stopErrorCount}건`);
+    else reasons.push(`핵심 오류 ${errorCount}건 >= ${stopErrorCount}건`);
   }
 
   if (status !== "중단") {
@@ -301,13 +347,21 @@ function decideStatus({
       status = "보류";
       reasons.push(`비용 비율 ${fmt(costRatioPct)}% > ${fmt(costLimitPct)}%`);
     }
-    if (Number.isFinite(errorCount) && errorCount >= 1) {
+    if (Number.isFinite(effectiveHoldErrorCount) && effectiveHoldErrorCount >= 1) {
       if (status === "진행") status = "보류";
-      reasons.push(`24시간 오류 ${errorCount}건`);
+      if (Number.isFinite(activeErrorCount)) reasons.push(`활성 핵심 오류 ${activeErrorCount}건`);
+      else reasons.push(`24시간 오류 ${errorCount}건`);
     }
     if (!hasExecutionFlowCoverage(executionHealth)) {
       if (status === "진행") status = "보류";
       reasons.push("신호→주문→체결 감사 데이터 미수집");
+    }
+    if (!positionReadModelCutover || positionReadModelCutover.available !== true) {
+      if (status === "진행") status = "보류";
+      reasons.push("position read-model cutover 증적 미수집");
+    } else if (positionReadModelCutover.latest_ready !== true) {
+      if (status === "진행") status = "보류";
+      reasons.push(`position read-model 미준비 (${positionReadModelCutover.dominant_status || "UNKNOWN"})`);
     }
     if (executionHealth && executionHealth.available) {
       if (executionHealth.firestore_dns_ok === false) {
@@ -332,7 +386,11 @@ function decideStatus({
 function buildIssueLines(summary) {
   const lines = [];
   const health = summary.execution_health || {};
+  const cutover = summary.position_read_model_cutover || {};
   const flowCoverageReady = hasExecutionFlowCoverage(health);
+  const writerAuthority = summary.position_writer_authority_24h && typeof summary.position_writer_authority_24h === "object"
+    ? summary.position_writer_authority_24h
+    : {};
 
   if (Number.isFinite(summary.cost_ratio_pct) && Number.isFinite(summary.cost_limit_pct) && summary.cost_ratio_pct > summary.cost_limit_pct) {
     lines.push(`[ISSUE] H | 비용 비율 ${fmt(summary.cost_ratio_pct)}%로 상한 ${fmt(summary.cost_limit_pct)}% 초과 | 신규 진입 확대 금지 유지`);
@@ -340,10 +398,25 @@ function buildIssueLines(summary) {
     lines.push("[ISSUE] L | 비용 비율 상한 내 유지 | 현재 비용 차단 규칙 유지");
   }
 
-  if (Number.isFinite(summary.error_count) && summary.error_count >= 1) {
+  if (Number.isFinite(summary.active_error_count)) {
+    if (summary.active_error_count >= 1) {
+      lines.push(`[ISSUE] M | 활성 핵심 오류 ${summary.active_error_count}건 존재 | 동일 오류 재발 방지 2건 실행 필요`);
+    } else if (Number.isFinite(summary.error_count) && summary.error_count >= 1) {
+      lines.push(`[ISSUE] L | 최근 24시간 오류 ${summary.error_count}건은 있으나 현재 활성 오류는 없음 | 동일 오류 재발 모니터링 유지`);
+    } else {
+      lines.push("[ISSUE] L | 최근 24시간 핵심 오류 없음 | 현재 장애 복구 플랜 유지");
+    }
+  } else if (Number.isFinite(summary.error_count) && summary.error_count >= 1) {
     lines.push(`[ISSUE] M | 최근 24시간 오류 ${summary.error_count}건 존재 | 동일 오류 재발 방지 2건 실행 필요`);
   } else {
     lines.push("[ISSUE] L | 최근 24시간 핵심 오류 없음 | 현재 장애 복구 플랜 유지");
+  }
+
+  if (Number.isFinite(writerAuthority.occurrence_count) && writerAuthority.occurrence_count >= 1) {
+    const topSymbols = Array.isArray(writerAuthority.top_symbols) && writerAuthority.top_symbols.length
+      ? writerAuthority.top_symbols.map((row) => `${row.symbol}(${row.count})`).join(", ")
+      : "UNKNOWN";
+    lines.push(`[ISSUE] M | positions_paper writer authority 경합 ${writerAuthority.occurrence_count}건 | 상위 심볼 ${topSymbols} 우선 점검 필요`);
   }
 
   if (Number.isFinite(summary.net_pnl_pct) && Number.isFinite(summary.gap_pct) && summary.gap_pct < 0) {
@@ -370,7 +443,45 @@ function buildIssueLines(summary) {
     lines.push("[ISSUE] H | 주문 경로 감사 파일 미수집 | 신호/체결 점검 스크립트 재실행 및 수집 경로 복구 필요");
   }
 
+  if (cutover.available !== true) {
+    lines.push("[ISSUE] H | position read-model cutover 증적 미수집 | cutover 리포트 재생성 및 운영 gate 재확인 필요");
+  } else if (cutover.latest_ready !== true) {
+    const blockers = Array.isArray(cutover.query_blockers) && cutover.query_blockers.length
+      ? cutover.query_blockers.join(", ")
+      : "none";
+    lines.push(`[ISSUE] H | position read-model cutover 미준비 (${cutover.dominant_status || "UNKNOWN"}) | blocker=${blockers}`);
+  } else {
+    lines.push("[ISSUE] L | position read-model cutover 준비 완료 | latest index 기준 운영 read 유지");
+  }
+
   return lines;
+}
+
+function buildWriterAuthorityRemediationCandidates(writerAuthority = {}) {
+  const topSymbols = Array.isArray(writerAuthority && writerAuthority.top_symbols)
+    ? writerAuthority.top_symbols
+    : [];
+  return topSymbols
+    .filter((row) => Number.isFinite(Number(row && row.count)) && Number(row.count) > 0)
+    .slice(0, 5)
+    .map((row, idx) => {
+      const count = Number(row.count);
+      const symbol = String(row.symbol || "").trim().toUpperCase() || "UNKNOWN";
+      const severity = count >= 5 ? "HIGH" : (count >= 3 ? "MEDIUM" : "LOW");
+      const priority = idx + 1;
+      const action = count >= 5
+        ? "WEBHOOK/FILL_SYNC 동시 경합 구간 재검토 및 즉시 writer trace 확인"
+        : (count >= 3
+          ? "해당 심볼의 webhook immediate + external fill reconcile 로그 재검토"
+          : "재발 여부 모니터링 및 다음 발생 시 trace 수집");
+      return {
+        symbol,
+        count,
+        priority,
+        severity,
+        action,
+      };
+    });
 }
 
 function buildMarkdown({
@@ -386,6 +497,7 @@ function buildMarkdown({
   const statusLine = `${summary.status} (${summary.reasons.join(" / ")})`;
   const executionCheckDone = executionHealth && executionHealth.available;
   const health = executionHealth || {};
+  const cutover = summary.position_read_model_cutover || {};
   const issueLines = buildIssueLines(summary);
   const approvalLines = (Array.isArray(summary.approvals) ? summary.approvals : [])
     .map((item) =>
@@ -422,7 +534,18 @@ function buildMarkdown({
    - TP1/트레일링 신호: \`${health.tp1_signal_count == null ? "N/A" : health.tp1_signal_count}\` / \`${health.trailing_signal_count == null ? "N/A" : health.trailing_signal_count}\`
    - DROP_TP_P1_PENDING: \`${health.drop_tp1_pending_count == null ? "N/A" : health.drop_tp1_pending_count}\`건
    - 감사 이슈/중복체결: \`${health.audit_issue_count == null ? "N/A" : health.audit_issue_count}\`건 / \`${health.duplicate_signal_fill_count == null ? "N/A" : health.duplicate_signal_fill_count}\`건
-5. 오늘 운영 가드 모드 확정: \`${mode}\`
+5. position read-model cutover 점검 완료
+   - latest_ready: \`${cutover.available !== true ? "N/A" : (cutover.latest_ready ? "yes" : "no")}\`
+   - dominant_status: \`${cutover.dominant_status || "N/A"}\`
+   - coverage/latest/events/timeline: \`${cutover.latest_coverage_pct == null ? "N/A" : fmt(cutover.latest_coverage_pct * 100)}%\` / \`${cutover.latest_count == null ? "N/A" : cutover.latest_count}\` / \`${cutover.events_count == null ? "N/A" : cutover.events_count}\` / \`${cutover.timeline_count == null ? "N/A" : cutover.timeline_count}\`
+   - query_blockers: \`${Array.isArray(cutover.query_blockers) && cutover.query_blockers.length ? cutover.query_blockers.join(", ") : "none"}\`
+6. 24시간 runtime error family 요약
+   - family 수: \`${summary.error_count == null ? "N/A" : summary.error_count}\`
+   - occurrence 수: \`${summary.error_occurrence_count == null ? "N/A" : summary.error_occurrence_count}\`
+   - 최근 family: \`${Array.isArray(summary.error_families_24h) && summary.error_families_24h.length ? summary.error_families_24h.map((item) => `${item.family}(${item.count})`).join(", ") : "없음"}\`
+   - writer authority: \`${summary.position_writer_authority_24h && Number.isFinite(summary.position_writer_authority_24h.occurrence_count) ? summary.position_writer_authority_24h.occurrence_count : 0}\`건 / 상위 심볼 \`${summary.position_writer_authority_24h && Array.isArray(summary.position_writer_authority_24h.top_symbols) && summary.position_writer_authority_24h.top_symbols.length ? summary.position_writer_authority_24h.top_symbols.map((item) => `${item.symbol}(${item.count})`).join(", ") : "없음"}\`
+   - remediation 후보: \`${summary.position_writer_authority_24h && Array.isArray(summary.position_writer_authority_24h.remediation_candidates) && summary.position_writer_authority_24h.remediation_candidates.length ? summary.position_writer_authority_24h.remediation_candidates.map((item) => `${item.symbol}:${item.action}`).join(" | ") : "없음"}\`
+7. 오늘 운영 가드 모드 확정: \`${mode}\`
 
 ## 장애/보안 리스크
 ${issueLines.join("\n")}
@@ -431,6 +554,7 @@ ${issueLines.join("\n")}
 - [x] 기준 데이터 시각 확인 (${summary.snapshot_end_kst || "N/A"})
 - [x] 비용/손익/오류 3개 지표 재계산
 - ${executionCheckDone ? "[x]" : "[ ]"} 주문 경로 건강도 점검 (${executionCheckDone ? "완료" : "파일 미수집"})
+- [${cutover.available === true && cutover.latest_ready === true ? "x" : " "}] position read-model cutover 확인 (${cutover.dominant_status || "미수집"})
 - [x] 상태 판정 (${statusLine})
 - [x] 비용 초과 시 운영 가드 모드 \`비용 차단\` 고정
 - [ ] 20:30 KST까지 오류 재발방지 액션 2건 확정
@@ -486,6 +610,36 @@ async function main() {
 
   const runtimeErrorSummary = await fetchRuntimeErrorSummary24h({}).catch(() => null);
   const runtimeErrorCount = toNum(runtimeErrorSummary && runtimeErrorSummary.error_count_24h, null);
+  const runtimeErrorOccurrenceCount = toNum(runtimeErrorSummary && runtimeErrorSummary.error_occurrence_count_24h, null);
+  const runtimeErrorFamilies = Array.isArray(runtimeErrorSummary && runtimeErrorSummary.error_families_24h)
+    ? runtimeErrorSummary.error_families_24h
+    : [];
+  const runtimeActiveErrorCount = toNum(runtimeErrorSummary && runtimeErrorSummary.active_error_count_24h, null);
+  const runtimeActiveErrorOccurrenceCount = toNum(runtimeErrorSummary && runtimeErrorSummary.active_error_occurrence_count_24h, null);
+  const runtimeActiveErrorFamilies = Array.isArray(runtimeErrorSummary && runtimeErrorSummary.active_error_families_24h)
+    ? runtimeErrorSummary.active_error_families_24h
+    : [];
+  const writerAuthorityFamilies = runtimeErrorFamilies.filter((item) =>
+    String(item && item.family || "").startsWith("POSITION_WRITE_")
+  );
+  const writerAuthoritySymbolCounts = new Map();
+  for (const item of writerAuthorityFamilies) {
+    for (const symbol of Array.isArray(item && item.symbols) ? item.symbols : []) {
+      const key = String(symbol || "").trim().toUpperCase();
+      if (!key) continue;
+      writerAuthoritySymbolCounts.set(key, Number(writerAuthoritySymbolCounts.get(key) || 0) + Number(item.count || 0));
+    }
+  }
+  const writerAuthorityTopSymbols = Array.from(writerAuthoritySymbolCounts.entries())
+    .map(([symbol, count]) => ({ symbol, count }))
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return String(a.symbol).localeCompare(String(b.symbol));
+    })
+    .slice(0, 5);
+  const writerAuthorityRemediationCandidates = buildWriterAuthorityRemediationCandidates({
+    top_symbols: writerAuthorityTopSymbols,
+  });
   const snapshotErrorCount = toNum(snapshot && snapshot.derived && snapshot.derived.error_count_24h, null);
   const reportErrorCount = parseErrorCount(reportRaw);
   const errorCount = Number.isFinite(runtimeErrorCount)
@@ -496,6 +650,10 @@ async function main() {
   const generatedAtKst = toKstString(nowIso, { fallbackToString: true });
   const dateKey = kstDateKey(snapshot.end_kst || nowIso) || kstDateKey(nowIso) || "unknown-date";
   const executionHealth = loadExecutionHealth({ repoRoot, dateKey });
+  const positionReadModelCutover = loadPositionReadModelCutoverHealth({ repoRoot });
+  const activePositionCount = await listExchangePositionReadViews({ exchange: "BINANCEFUT", limit: 200 })
+    .then((rows) => rows.filter((row) => Number(row && row.size_pct) > 0 && String(row && row.state || "").toUpperCase() !== "FLAT").length)
+    .catch(() => null);
 
   const summary = {
     generated_at_iso: nowIso,
@@ -523,11 +681,24 @@ async function main() {
     loss_stop_pct: round(lossStopPct, 4),
     stop_error_count: stopErrorCount,
     error_count: Number.isFinite(errorCount) ? errorCount : null,
+    error_occurrence_count: Number.isFinite(runtimeErrorOccurrenceCount) ? runtimeErrorOccurrenceCount : null,
+    active_error_count: Number.isFinite(runtimeActiveErrorCount) ? runtimeActiveErrorCount : null,
+    active_error_occurrence_count: Number.isFinite(runtimeActiveErrorOccurrenceCount) ? runtimeActiveErrorOccurrenceCount : null,
     error_count_source: Number.isFinite(runtimeErrorCount)
       ? "runtime_error_counter"
       : (Number.isFinite(snapshotErrorCount) ? "snapshot.derived.error_count_24h" : (Number.isFinite(reportErrorCount) ? "report_parse" : "unresolved")),
+    error_families_24h: runtimeErrorFamilies,
+    active_error_families_24h: runtimeActiveErrorFamilies,
+    position_writer_authority_24h: {
+      family_count: writerAuthorityFamilies.length,
+      occurrence_count: writerAuthorityFamilies.reduce((acc, item) => acc + Number(item.count || 0), 0),
+      families: writerAuthorityFamilies,
+      top_symbols: writerAuthorityTopSymbols,
+      remediation_candidates: writerAuthorityRemediationCandidates,
+    },
     mode: "수익 확대 가능",
     execution_health: executionHealth,
+    position_read_model_cutover: positionReadModelCutover,
     approvals: [],
   };
 
@@ -535,10 +706,14 @@ async function main() {
     netPnlPct,
     costRatioPct,
     errorCount,
+    activeErrorCount: runtimeActiveErrorCount,
+    activeErrorFamilies: runtimeActiveErrorFamilies,
     costLimitPct,
     lossStopPct,
     stopErrorCount,
     executionHealth,
+    positionReadModelCutover,
+    activePositionCount,
   });
   summary.status = statusResultWithHealth.status;
   summary.reasons = statusResultWithHealth.reasons;
@@ -603,7 +778,13 @@ async function main() {
     cost_ratio_pct: summary.cost_ratio_pct,
     net_pnl_pct: summary.net_pnl_pct,
     error_count: summary.error_count,
+    active_error_count: summary.active_error_count,
+    position_writer_authority_occurrence_count: summary.position_writer_authority_24h
+      ? summary.position_writer_authority_24h.occurrence_count
+      : null,
     execution_health_available: executionHealth.available,
+    position_read_model_cutover_ready: positionReadModelCutover.latest_ready === true,
+    position_read_model_cutover_status: positionReadModelCutover.dominant_status || null,
     drop_tp1_pending_count: executionHealth.drop_tp1_pending_count,
     qty_pct_non_positive_count: executionHealth.qty_pct_non_positive_count,
     firestore_state_written: firestoreStateWritten,
@@ -623,7 +804,11 @@ module.exports = {
     docDateKey,
     countDocsForDate,
     loadExecutionHealth,
+    loadPositionReadModelCutoverHealth,
     hasExecutionFlowCoverage,
+    decideStatus,
+    buildIssueLines,
+    buildWriterAuthorityRemediationCandidates,
     isLearningEpochActive,
     resolveRelaxedCostLimitPct,
   },

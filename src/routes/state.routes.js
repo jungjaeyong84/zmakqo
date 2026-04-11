@@ -860,6 +860,7 @@ function createStateRoutes() {
       });
 
       const asOfKst = toKstString(new Date().toISOString());
+      const selectedMarket = normalizeMarketSymbolForProvider(String(req.query.market || "").trim(), exchangeNorm) || null;
       return res.render(String(req.query.legacy || "").trim() === "1" ? "state.legacy.ejs" : "state", {
         markets_expected: markets,
         exchange,
@@ -879,6 +880,7 @@ function createStateRoutes() {
         intent_summary: intentSummary,
         kpi_summary: kpiSummary,
         show_shadow_signals: showShadowSignals,
+        selected_market: selectedMarket,
       });
     } catch (e) {
       return res.status(500).send("STATE_ROUTE_ERROR: " + (e?.message || String(e)));

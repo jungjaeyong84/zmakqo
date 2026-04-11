@@ -44,12 +44,16 @@ const { resolveStatPhysFeatures } = require("../src/utils/statPhysFeatures");
 const { normalizePreparedOverride } = require("../src/utils/selfEvolutionPreparedOverride");
 const { normalizePlanStatus } = require("../src/utils/selfEvolutionPlanStatus");
 const { resolveSelfEvolutionRuntimeState } = require("../src/utils/selfEvolutionRuntimeState");
+const { getShadowCanaryGate } = require("../src/storage/shadowCanaryGates");
+const { buildShadowCanaryGateContext, resolveShadowCanaryGatePass } = require("../src/services/shadowCanaryGateView");
 const {
   buildOpenClawMarketRegimeRows,
   buildOpenClawMarketRegimeSummary,
 } = require("../src/utils/openclawMarketRegimeBoard");
 
 loadLocalEnv();
+
+const PROVIDER = String(process.env.OBJECTIVE_SUPERVISOR_PROVIDER || "BINANCEFUT").trim().toUpperCase();
 
 function resolveLatestArtifactPath(...names) {
   for (const name of names) {
@@ -2043,7 +2047,7 @@ function buildObjectiveSupervisorTelegramAlertSections(report = {}) {
   }));
 }
 
-function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionMarketObjectiveScore, selfEvolutionServerVsPinePerformanceDelta, selfEvolutionExplorationBudget, selfEvolutionServerMarketCapitalAllocator, selfEvolutionServerMarketQuarantine, selfEvolutionExplorationProposal, selfEvolutionExplorationApplyCandidate, selfEvolutionChangeResultAttribution, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionCanonicalParity, selfEvolutionServerSignalAuthority, selfEvolutionServerSignalQuality, selfEvolutionServerSignalCutoverReadiness, selfEvolutionDropValidation, selfEvolutionProvisionalRealizedOutcome, selfEvolutionOverrideAuthority, selfEvolutionExecutionQuality, selfEvolutionReversePolicy, selfEvolutionServerPrimaryLearningEpoch, selfEvolutionInitialSignalQualityContract, selfEvolutionExitTrailingContract, selfEvolutionServerNativeHtfModeComparison, selfEvolutionServerNativeHtfModeGovernor, selfEvolutionCanonicalProvenance, selfEvolutionServerPrimaryCanary, selfEvolutionServerPrimaryAcceptanceWatch, selfEvolutionPineShadowDrift, selfEvolutionDeploymentProbe, selfEvolutionBundleActivation, selfEvolutionEvGateRescue, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache, preparedOverride } = {}) {
+function evaluateSupervisor({ governance, changeControl, canary, shadowCanaryGate, ml, ev, wait, phase0, selfEvolutionDataset, selfEvolutionObjective, selfEvolutionMarketObjectiveScore, selfEvolutionServerVsPinePerformanceDelta, selfEvolutionExplorationBudget, selfEvolutionServerMarketCapitalAllocator, selfEvolutionServerMarketQuarantine, selfEvolutionExplorationProposal, selfEvolutionExplorationApplyCandidate, selfEvolutionChangeResultAttribution, selfEvolutionAttribution, selfEvolutionCandidates, selfEvolutionReplay, selfEvolutionCanary, selfEvolutionCanonicalParity, selfEvolutionServerSignalAuthority, selfEvolutionServerSignalQuality, selfEvolutionServerSignalCutoverReadiness, selfEvolutionDropValidation, selfEvolutionProvisionalRealizedOutcome, selfEvolutionOverrideAuthority, selfEvolutionExecutionQuality, selfEvolutionReversePolicy, selfEvolutionServerPrimaryLearningEpoch, selfEvolutionInitialSignalQualityContract, selfEvolutionExitTrailingContract, selfEvolutionServerNativeHtfModeComparison, selfEvolutionServerNativeHtfModeGovernor, selfEvolutionCanonicalProvenance, selfEvolutionServerPrimaryCanary, selfEvolutionServerPrimaryAcceptanceWatch, selfEvolutionPineShadowDrift, selfEvolutionDeploymentProbe, selfEvolutionBundleActivation, selfEvolutionEvGateRescue, selfEvolutionMemory, selfEvolutionLoopMonitor, selfEvolutionCycleState, codex, stageAutopilot, retrospective, weeklyHistory, manualPasteAck, signalsCache, preparedOverride } = {}) {
   governance = unwrapArtifactPayload(governance);
   retrospective = unwrapArtifactPayload(retrospective);
   const objective = governance && governance.current && governance.current.objective ? governance.current.objective : {};
@@ -2066,6 +2070,8 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
   const retrospectiveSummary = summarizeRetrospective(retrospective);
   const physicsSummary = summarizeGovernancePhysics(governance);
   const canaryDriftContext = summarizeCanaryDriftContext(canary);
+  const shadowCanaryGateContext = buildShadowCanaryGateContext(shadowCanaryGate);
+  const shadowCanaryGatePass = resolveShadowCanaryGatePass(shadowCanaryGateContext);
   const filterLayers = buildFilterLayerSummary({
     governance,
     changeControl,
@@ -2298,6 +2304,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
     || (canaryDriftContext.golden_drift || 0) > 0
     || ((canaryDriftContext.shadow_drift || 0) > 0 && canaryDriftContext.shadow_ai_only_drift !== true)
   ) blockers.push("CANARY_DRIFT");
+  if (!shadowCanaryGatePass) blockers.push("SHADOW_CANARY_GATE_BLOCK");
   if (changeControlRelevant && (!changeControl || String(changeControl.verdict || "").toUpperCase() === "HOLD")) {
     blockers.push("CHANGE_CONTROL_HOLD");
   }
@@ -2611,7 +2618,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       based_on_week_key: String(rollback.based_on_week_key || "").trim() || null,
     },
     guards: {
-      canary_pass: Boolean(canary && canarySummary.drift === 0 && canaryGolden.drift === 0),
+      canary_pass: Boolean(canary && canarySummary.drift === 0 && canaryGolden.drift === 0 && shadowCanaryGatePass),
       canary_shadow_drift: toNum(canarySummary.drift) || 0,
       canary_golden_drift: toNum(canaryGolden.drift) || 0,
       coverage_pass: Boolean(changeControl && changeControl.coverage_guard && changeControl.coverage_guard.pass === true),
@@ -2669,6 +2676,7 @@ function evaluateSupervisor({ governance, changeControl, canary, ml, ev, wait, p
       standalone_recompute: true,
     },
     filter_canary_drift_context: canaryDriftContext,
+    shadow_canary_gate: shadowCanaryGateContext,
     ev_tuner_context: evTunerContext,
     retrospective_activity_context: {
       source: "RETROSPECTIVE_DAILY",
@@ -2981,6 +2989,8 @@ async function main() {
   const governanceArtifact = readArtifact("weekly_governance", GOVERNANCE_LATEST_PATH, FRESHNESS_HOURS.governance);
   const changeArtifact = readArtifact("change_control", CHANGE_CONTROL_LATEST_PATH, FRESHNESS_HOURS.changeControl);
   const canaryArtifact = readArtifact("shadow_canary", CANARY_LATEST_PATH, FRESHNESS_HOURS.canary);
+  const shadowCanaryGateArtifact = readArtifact("shadow_canary_gate", path.join(OPS_DAILY_DIR, "shadow_inference_canary_gate_latest.json"), FRESHNESS_HOURS.canary);
+  const shadowCanaryGateDoc = await getShadowCanaryGate({ exchange: PROVIDER }).catch(() => null);
   const mlArtifact = readArtifact("ml_policy", ML_LATEST_PATH, FRESHNESS_HOURS.ml);
   const evArtifact = readArtifact("ev_tuner", EV_LATEST_PATH, FRESHNESS_HOURS.ev);
   const waitArtifact = readArtifact("wait_tuner", WAIT_LATEST_PATH, FRESHNESS_HOURS.wait);
@@ -3098,6 +3108,7 @@ async function main() {
     governance: governanceArtifact.data,
     changeControl: changeArtifact.data,
     canary: canaryArtifact.data,
+    shadowCanaryGate: shadowCanaryGateDoc || (shadowCanaryGateArtifact.exists ? shadowCanaryGateArtifact.data : null),
     ml: mlArtifact.data,
     ev: evArtifact.exists ? { ...evArtifact.data, fresh: evArtifact.fresh, age_hours: evArtifact.ageHours } : null,
     wait: waitArtifact.data,

@@ -1,6 +1,6 @@
 const assert = require("assert");
 const { generateSignals } = require("../engine/signalEngine");
-const { __test } = require("../engine/paperUpbitRunner");
+const { __test } = require("../engine/paperBinanceRunner");
 
 function run() {
   const canEvaluateInternalExitSignalsForBar = __test && __test.canEvaluateInternalExitSignalsForBar;

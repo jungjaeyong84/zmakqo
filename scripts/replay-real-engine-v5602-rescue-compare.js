@@ -23,7 +23,7 @@ settings.getSystemSettingsForProvider = async function patchedGetSystemSettingsF
   return { ...(res || {}), data };
 };
 
-const { runPaperFuturesForBar } = require("../src/engine/paperUpbitRunner");
+const { runPaperFuturesForBar } = require("../src/engine/paperBinanceRunner");
 const { buildTradesFromFills } = require("../src/services/tradesFromFills");
 
 const HOUR_MS = 60 * 60 * 1000;

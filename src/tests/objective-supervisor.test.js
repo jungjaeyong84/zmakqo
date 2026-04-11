@@ -447,6 +447,31 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   assert.strictEqual(aiOnlyShadowDrift.filter_canary_drift_context.shadow_ai_only_drift, true);
   assert.strictEqual(aiOnlyShadowDrift.blockers.includes("CANARY_DRIFT"), false);
 
+  const shadowGateBlocked = __test.evaluateSupervisor({
+    ...base,
+    canary: {
+      shadow: { summary: { drift: 0, byMarket: {}, byStage: {} } },
+      golden: { summary: { drift: 0, byMarket: {}, byStage: {} } },
+    },
+    shadowCanaryGate: {
+      gate: { status: "BLOCK", reason: "DISAGREEMENT_RATE_HIGH", promotion_blocked: true, enough_samples: true },
+      summary: { compared_n: 24, disagreement_rate: 0.25 },
+    },
+    phase0: {
+      fresh: true,
+      provider: "BINANCEFUT",
+      tf: "15m",
+      legacy_wait_baseline: {},
+      bridge_latency: { webhook_to_fill_ms: { p95: 1420 }, duplicate_count: 0, reject_count: 0 },
+    },
+    selfEvolutionDataset: {
+      fresh: true,
+      summary: { rows_n: 10, executed_n: 5, drop_n: 3, missed_n: 1, features_coverage_rate: 0.9, febt_coverage_rate: 0.8 },
+    },
+  });
+  assert.strictEqual(shadowGateBlocked.blockers.includes("SHADOW_CANARY_GATE_BLOCK"), true);
+  assert.strictEqual(shadowGateBlocked.guards.canary_pass, false);
+
   const memoryBlockedPromotion = __test.evaluateSupervisor({
     ...base,
     phase0: {

@@ -341,9 +341,7 @@ function applyExecutionDefaults(provider, data = {}) {
   const p = normalizeProviderId(provider || data.provider || "BINANCEFUT");
   const defaults = (p === "BINANCEFUT")
     ? { fee_bps: 4, slippage_bps: 5, slippage_model: "FIXED" }
-    : (p === "KIWOOM")
-      ? { fee_bps: 5, slippage_bps: 10, slippage_model: "FIXED" }
-      : { fee_bps: 5, slippage_bps: 10, slippage_model: "FIXED" };
+    : { fee_bps: 4, slippage_bps: 5, slippage_model: "FIXED" };
 
   const out = { ...data };
   out.fee_bps = coerceBps(out.fee_bps, defaults.fee_bps);

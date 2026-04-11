@@ -48,7 +48,9 @@ function buildSnapshot({
   assert.strictEqual(blocked.reason, "LIVE_POLICY_QUARANTINE_HARD_BLOCK");
   assert.strictEqual(blocked.envelope.run_id, "RUN__1");
   assert.strictEqual(blocked.envelope.symbol, "AXSUSDT");
+  assert.ok(blocked.envelope.trace_id);
   assert.strictEqual(events[0].event, "action_pre_blocked");
+  assert.strictEqual(events[0].payload.trace_id, blocked.envelope.trace_id);
 
   const passed = runActionPreHooks({
     action: "TRADING_FORCE_EXIT",

@@ -1,7 +1,9 @@
 // src/storage/positionsPaper.js
 const crypto = require("crypto");
 const { getFirestore } = require("./firestore");
-const { recordPositionEvent } = require("./positionEvents");
+const { __test: positionEventTest } = require("./positionEvents");
+const { __test: latestReadModelTest } = require("./positionReadModelLatest");
+const { recordPositionWriterAuthorityEvent } = require("./positionWriterAuthorityEvents");
 const { validatePositionSnapshotTransition } = require("../services/positionStateMachine");
 const { normalizeTraceContext } = require("../utils/traceContext");
 const { sendAlert } = require("../utils/alerts");
@@ -345,6 +347,18 @@ function shouldSendPositionWriterAlert({
   return true;
 }
 
+function shouldSuppressPositionWriterAuthorityAlert(err, {
+  source = null,
+} = {}) {
+  const code = upper(err && err.code) || upper(err && err.message) || null;
+  const holder = String(err && err.holder || "").trim().toLowerCase();
+  const src = upper(source);
+  if (code !== "POSITION_WRITE_LEASE_HELD") return false;
+  if (src !== "BINANCE_FUTURES_POSITION_SYNC") return false;
+  if (!holder.includes("donbeolja-exit-worker")) return false;
+  return true;
+}
+
 async function notifyPositionWriterAuthorityFailure(err, {
   exchange,
   symbol,
@@ -358,6 +372,26 @@ async function notifyPositionWriterAuthorityFailure(err, {
   if (!["POSITION_WRITE_TOKEN_REQUIRED", "POSITION_WRITE_TOKEN_MISMATCH", "POSITION_WRITE_LEASE_HELD", "POSITION_WRITE_LEASE_LOST"].includes(code)) {
     return false;
   }
+  try {
+    await recordPositionWriterAuthorityEvent({
+      exchange,
+      symbol,
+      mutationKind,
+      source,
+      code,
+      requestId,
+      runId,
+      traceId,
+      error: String((err && err.message) || err || "").trim() || "UNKNOWN",
+      expectedWriteToken: err && err.expected_write_token ? err.expected_write_token : null,
+      actualWriteToken: err && err.actual_write_token ? err.actual_write_token : null,
+      holder: err && err.holder ? err.holder : null,
+    });
+  } catch (recordErr) {
+    const msg = recordErr && recordErr.message ? recordErr.message : String(recordErr);
+    console.warn("[POSITION_WRITER_AUTHORITY_EVENT_FAIL]", msg);
+  }
+  if (shouldSuppressPositionWriterAuthorityAlert(err, { source })) return false;
   if (POSITION_WRITER_ALERT_ENABLED !== true) return false;
   if (!POSITION_WRITER_ALERT_CHANNEL) return false;
   if (!shouldSendPositionWriterAlert({ exchange, symbol, mutationKind, code })) return false;
@@ -387,16 +421,56 @@ async function notifyPositionWriterAuthorityFailure(err, {
   }
 }
 
-async function recordPositionEventSafe(params = {}) {
-  if (!POSITION_EVENT_LOG_ENABLED) return null;
-  try {
-    return await recordPositionEvent(params);
-  } catch (err) {
-    if (POSITION_EVENT_LOG_STRICT) throw err;
-    const msg = err && err.message ? err.message : String(err);
-    console.warn("[POSITION_EVENT_LOG_FAIL]", msg);
-    return null;
+async function commitPositionMutationTransaction({
+  tx,
+  ref,
+  trace,
+  exchange,
+  symbol,
+  reason = null,
+  previous = null,
+  payload = null,
+  transitionValidation = null,
+  extra = null,
+} = {}) {
+  if (!POSITION_EVENT_LOG_ENABLED) {
+    tx.set(ref, payload, { merge: true });
+    return { bundle: null, afterSnapshot: { ...(previous || {}), ...(payload || {}), meta: payload && payload.meta ? payload.meta : ((previous && previous.meta) || {}) } };
   }
+  const afterSnapshot = {
+    ...(previous && typeof previous === "object" ? previous : {}),
+    ...(payload && typeof payload === "object" ? payload : {}),
+    meta: payload && Object.prototype.hasOwnProperty.call(payload, "meta")
+      ? payload.meta
+      : ((previous && previous.meta) || {}),
+  };
+  const bundle = positionEventTest.buildPositionEventBundle({
+    exchange,
+    symbol,
+    mutationKind: trace && trace.mutation_kind,
+    requestId: trace && trace.request_id,
+    runId: trace && trace.run_id,
+    traceId: trace && trace.trace_id,
+    source: trace && trace.source,
+    reason,
+    before: cloneValue(previous),
+    after: cloneValue(afterSnapshot),
+    transition: transitionValidation,
+    extra,
+  });
+  const latestRef = ref.firestore.collection("position_read_model_latest").doc(bundle.latestReadModelDoc.read_model_id);
+  const latestSnap = await tx.get(latestRef);
+  const latestPrev = latestSnap.exists ? (latestSnap.data() || null) : null;
+  tx.set(ref, payload, { merge: true });
+  tx.set(ref.firestore.collection("position_events").doc(bundle.eventId), bundle.eventDoc, { merge: false });
+  tx.set(ref.firestore.collection("unified_event_timeline").doc(bundle.unifiedEventDoc.unified_event_id), bundle.unifiedEventDoc, { merge: false });
+  if (latestReadModelTest.shouldReplaceLatestPositionReadModel(latestPrev, bundle.latestReadModelDoc)) {
+    tx.set(latestRef, bundle.latestReadModelDoc, { merge: false });
+  }
+  return {
+    bundle,
+    afterSnapshot,
+  };
 }
 
 function matchesTpP1PendingSnapshot(meta = {}, {
@@ -440,36 +514,40 @@ async function clearTpP1PendingIfUnchanged({
   clearedReason = "PENDING_EXPIRED_NO_ACTIVE_INTENT",
   clearedAt = null,
 } = {}) {
-  const db = getFirestore();
-  const id = posId({ exchange, symbol });
-  const ref = db.collection("positions_paper").doc(id);
-  const clearedAtIso = clearedAt || nowIso();
-  let result = { ok: true, cleared: false, reason: "UNKNOWN", pos_id: id };
-
-  await db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists) {
-      result = { ok: true, cleared: false, reason: "POSITION_NOT_FOUND", pos_id: id };
-      return;
-    }
-    const current = snap.data() || {};
-    const meta = (current && typeof current.meta === "object") ? current.meta : {};
-    if (!matchesTpP1PendingSnapshot(meta, { pendingAtMs, pendingUntilMs, pendingEvent })) {
-      result = { ok: true, cleared: false, reason: "PENDING_STATE_MISMATCH", pos_id: id };
-      return;
-    }
-    const nextMeta = buildTpP1PendingClearedMeta(meta, {
-      clearedAt: clearedAtIso,
-      clearedReason,
-    });
-    tx.set(ref, {
-      meta: nextMeta,
-      updated_at: clearedAtIso,
-    }, { merge: true });
-    result = { ok: true, cleared: true, reason: "CLEARED", pos_id: id };
+  const current = await getPosition({ exchange, symbol });
+  if (!current || !current.pos_id) {
+    return { ok: true, cleared: false, reason: "POSITION_NOT_FOUND", pos_id: posId({ exchange, symbol }) };
+  }
+  const meta = (current && typeof current.meta === "object") ? current.meta : {};
+  if (!matchesTpP1PendingSnapshot(meta, { pendingAtMs, pendingUntilMs, pendingEvent })) {
+    return { ok: true, cleared: false, reason: "PENDING_STATE_MISMATCH", pos_id: current.pos_id || posId({ exchange, symbol }) };
+  }
+  const nextMeta = buildTpP1PendingClearedMeta(meta, {
+    clearedAt: clearedAt || nowIso(),
+    clearedReason,
   });
-
-  return result;
+  try {
+    await upsertPositionMetaOnly({
+      exchange,
+      symbol,
+      runId: current.run_id || null,
+      executionMode: current.execution_mode || null,
+      meta: nextMeta,
+      source: "TP_P1_PENDING_CLEAR",
+      mutationKind: "POSITION_META_CLEAR_TP_P1_PENDING",
+      reason: clearedReason,
+      expectedWriteToken: Object.prototype.hasOwnProperty.call(current || {}, "position_write_token")
+        ? (current.position_write_token ?? null)
+        : null,
+    });
+    return { ok: true, cleared: true, reason: "CLEARED", pos_id: current.pos_id || posId({ exchange, symbol }) };
+  } catch (err) {
+    const code = upper(err && err.code) || null;
+    if (["POSITION_WRITE_TOKEN_MISMATCH", "POSITION_WRITE_LEASE_HELD", "POSITION_WRITE_LEASE_LOST"].includes(code)) {
+      return { ok: true, cleared: false, reason: code, pos_id: current.pos_id || posId({ exchange, symbol }) };
+    }
+    throw err;
+  }
 }
 
 async function getPosition({ exchange, symbol } = {}) {
@@ -586,38 +664,32 @@ async function upsertPosition({
               ...versions,
               updated_at: nowIso(),
             };
-            tx.set(ref, payload, { merge: true });
+            const committed = await commitPositionMutationTransaction({
+              tx,
+              ref,
+              trace,
+              exchange,
+              symbol,
+              reason,
+              previous,
+              payload,
+              transitionValidation,
+              extra: {
+                execution_mode: executionMode || null,
+                budget_source: budgetSource || null,
+                writer_version: payload.writer_version,
+                core_writer_version: payload.core_writer_version,
+                previous_position_write_token: payload.previous_position_write_token || null,
+                position_write_token: payload.position_write_token || null,
+              },
+            });
             return {
               previous,
               payload,
               transitionValidation,
+              bundle: committed.bundle,
             };
           }),
-        });
-        await recordPositionEventSafe({
-          exchange,
-          symbol,
-          mutationKind: trace.mutation_kind,
-          requestId: trace.request_id,
-          runId: trace.run_id,
-          traceId: trace.trace_id,
-          source: trace.source,
-          reason,
-          before: cloneValue(committed.previous),
-          after: cloneValue({
-            ...committed.previous,
-            ...committed.payload,
-            meta: committed.payload.meta,
-          }),
-          transition: committed.transitionValidation,
-          extra: {
-            execution_mode: executionMode || null,
-            budget_source: budgetSource || null,
-            writer_version: committed.payload.writer_version,
-            core_writer_version: committed.payload.core_writer_version,
-            previous_position_write_token: committed.payload.previous_position_write_token || null,
-            position_write_token: committed.payload.position_write_token || null,
-          },
         });
         return committed.payload;
       } catch (err) {
@@ -721,37 +793,31 @@ async function upsertPositionMetaOnly({
               ...versions,
               updated_at: nowIso(),
             };
-            tx.set(ref, payload, { merge: true });
+            const committed = await commitPositionMutationTransaction({
+              tx,
+              ref,
+              trace,
+              exchange,
+              symbol,
+              reason,
+              previous,
+              payload,
+              transitionValidation,
+              extra: {
+                execution_mode: executionMode || null,
+                writer_version: payload.writer_version,
+                meta_writer_version: payload.meta_writer_version,
+                previous_position_write_token: payload.previous_position_write_token || null,
+                position_write_token: payload.position_write_token || null,
+              },
+            });
             return {
               previous,
               payload,
               transitionValidation,
+              bundle: committed.bundle,
             };
           }),
-        });
-        await recordPositionEventSafe({
-          exchange,
-          symbol,
-          mutationKind: trace.mutation_kind,
-          requestId: trace.request_id,
-          runId: trace.run_id,
-          traceId: trace.trace_id,
-          source: trace.source,
-          reason,
-          before: cloneValue(committed.previous),
-          after: cloneValue({
-            ...committed.previous,
-            ...committed.payload,
-            meta: committed.payload.meta,
-          }),
-          transition: committed.transitionValidation,
-          extra: {
-            execution_mode: executionMode || null,
-            writer_version: committed.payload.writer_version,
-            meta_writer_version: committed.payload.meta_writer_version,
-            previous_position_write_token: committed.payload.previous_position_write_token || null,
-            position_write_token: committed.payload.position_write_token || null,
-          },
         });
         return committed.payload;
       } catch (err) {
@@ -789,6 +855,7 @@ module.exports = {
     assertExpectedWriteToken,
     assertExpectedWriteTokenProvided,
     shouldSendPositionWriterAlert,
+    shouldSuppressPositionWriterAuthorityAlert,
     serializePositionMutation,
     runWithPositionWriterLease,
   },
