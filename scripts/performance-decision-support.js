@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { toKstString, kstDateKey } = require("../src/utils/timeKst");
+const { loadSystemOpsLatestSync } = require("./lib/system-ops-runtime");
 
 function toNum(value, fallback = null) {
   if (value === null || value === undefined || value === "") return fallback;
@@ -79,7 +80,9 @@ function main() {
   const opsPath = process.argv[3] || path.join(repoRoot, "ops", "daily", "system_ops_check_latest.json");
 
   const metric = JSON.parse(fs.readFileSync(metricPath, "utf8"));
-  const ops = JSON.parse(fs.readFileSync(opsPath, "utf8"));
+  const ops = process.argv[3]
+    ? JSON.parse(fs.readFileSync(opsPath, "utf8"))
+    : loadSystemOpsLatestSync({ fallbackPath: opsPath });
 
   const dateKey = metric.date_key || kstDateKey(new Date().toISOString());
   if (!dateKey) {

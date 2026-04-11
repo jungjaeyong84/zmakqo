@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { toKstString, kstDateKey } = require("../src/utils/timeKst");
 const { parseErrorCount } = require("./lib/report-metrics");
+const { loadSystemOpsLatestSync } = require("./lib/system-ops-runtime");
 
 function toNum(value, fallback = null) {
   const n = Number(value);
@@ -122,7 +123,7 @@ function main() {
 
   const snapshotRead = readJsonSafe(snapshotPath);
   const reportRead = readTextSafe(reportPath);
-  const opsRead = readJsonSafe(opsPath);
+  const opsRead = { ok: true, data: loadSystemOpsLatestSync({ fallbackPath: opsPath }) };
   const improvementRead = readJsonSafe(improvementPath);
 
   const checks = [];

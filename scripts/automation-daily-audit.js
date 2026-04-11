@@ -20,6 +20,7 @@ const {
   ensureExchangeApiKeys,
 } = require("./lib/automation-utils");
 const { readBestFebtSupervisorContext } = require("./lib/best-febt-supervisor");
+const { loadSystemOpsLatestSync } = require("./lib/system-ops-runtime");
 const { getFirestore } = require("../src/storage/firestore");
 const { auditBinanceExitIntegrity } = require("../src/services/exitIntegrityAudit");
 
@@ -208,7 +209,7 @@ async function main() {
       : null;
   const runA = runDailySystemOpsCheck();
   const runB = runScript("node scripts/strategy-id-alignment-check.js");
-  const ops = readJsonSafe(path.join(OPS_DAILY_DIR, "system_ops_check_latest.json"), {});
+  const ops = loadSystemOpsLatestSync({ fallbackPath: path.join(OPS_DAILY_DIR, "system_ops_check_latest.json") });
   const align = readJsonSafe(path.join(OPS_DAILY_DIR, "strategy_id_alignment_latest.json"), {});
   const previousAuditPath = findPreviousDailyAuditReport(meta.dateKey);
   const previousAudit = previousAuditPath ? readJsonSafe(previousAuditPath, {}) : {};

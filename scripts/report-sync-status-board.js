@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { toKstString } = require("../src/utils/timeKst");
+const { loadSystemOpsLatestSync } = require("./lib/system-ops-runtime");
 const {
   loadSubmissionLedger,
   upsertSubmissionEntry,
@@ -377,7 +378,7 @@ function buildSummary(rows) {
 
 function buildRuntimeSnapshot() {
   const autoCycle = readJsonSafe(path.join(OPS_DAILY, "system_autonomous_cycle_latest.json"));
-  const systemOps = readJsonSafe(path.join(OPS_DAILY, "system_ops_check_latest.json"));
+  const systemOps = loadSystemOpsLatestSync({ fallbackPath: path.join(OPS_DAILY, "system_ops_check_latest.json") });
   const runtime = readJsonSafe(path.join(OPS_DAILY, "role_bot_runtime_check_latest.json"));
   const approval = readJsonSafe(path.join(OPS_DAILY, "approval_execution_latest.json"));
 

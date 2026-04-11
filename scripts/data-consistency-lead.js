@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { toKstString, kstDateKey } = require("../src/utils/timeKst");
+const { loadSystemOpsLatestSync } = require("./lib/system-ops-runtime");
 
 function readJsonSafe(filePath) {
   try {
@@ -221,7 +222,7 @@ function main() {
     read[key] = filePath ? readJsonSafe(filePath) : { ok: false, data: null, error: "path_missing" };
   }
 
-  const systemOps = read.system_ops.ok ? read.system_ops.data : {};
+  const systemOps = loadSystemOpsLatestSync({ fallbackPath: sourcePaths.system_ops });
   const perfMetrics = read.performance_metrics.ok ? read.performance_metrics.data : {};
   const perfSupport = read.performance_support.ok ? read.performance_support.data : {};
   const risk = read.risk_controller.ok ? read.risk_controller.data : {};

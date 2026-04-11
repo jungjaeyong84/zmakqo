@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { toKstString } = require("../src/utils/timeKst");
+const { loadSystemOpsLatestSync } = require("./lib/system-ops-runtime");
 
 const ROOT = path.resolve(__dirname, "..");
 const OPS_DAILY = path.join(ROOT, "ops", "daily");
@@ -253,7 +254,7 @@ function main() {
   };
 
   const systemAuto = readJsonSafe(fileMap.system_autonomous).data || {};
-  const systemOps = readJsonSafe(fileMap.system_ops).data || {};
+  const systemOps = loadSystemOpsLatestSync({ fallbackPath: fileMap.system_ops });
   const qaFailure = readJsonSafe(fileMap.qa_failure).data || {};
   const runtime = readJsonSafe(fileMap.runtime).data || {};
   const gap = readJsonSafe(fileMap.gap_conflict).data || {};

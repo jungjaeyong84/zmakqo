@@ -18,6 +18,7 @@ const {
   readJsonRawSafe,
 } = require("./lib/automation-utils");
 const { readBestFebtSupervisorContext } = require("./lib/best-febt-supervisor");
+const { loadSystemOpsLatestSync } = require("./lib/system-ops-runtime");
 const { getFirestore } = require("../src/storage/firestore");
 const { auditBinanceExitIntegrity } = require("../src/services/exitIntegrityAudit");
 const { resolveMarketStateSummary } = require("../src/utils/marketStateSummary");
@@ -267,7 +268,7 @@ async function main() {
     ? bestFebtContext.contract
     : {};
   const sinceMs = meta.nowMs - (90 * 60 * 1000);
-  const ops = require("./lib/automation-utils").readJsonSafe(path.join(OPS_DAILY_DIR, "system_ops_check_latest.json"), {});
+  const ops = loadSystemOpsLatestSync({ fallbackPath: path.join(OPS_DAILY_DIR, "system_ops_check_latest.json") });
   const align = require("./lib/automation-utils").readJsonSafe(path.join(OPS_DAILY_DIR, "strategy_id_alignment_latest.json"), {});
   const phase0Latest = readJsonRawSafe(FEBT_PHASE0_LATEST_PATH, null);
 

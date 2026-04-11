@@ -8,7 +8,7 @@ const { KST_OFFSET_MS, toKstString } = require("../utils/timeKst");
 const { buildFeatureLabelDataset } = require("./featureLabelDataset");
 const { recordShadowCanaryGate } = require("../storage/shadowCanaryGates");
 const { recordMlServingState } = require("../storage/mlServingStates");
-const { recordMlServingBinding } = require("../storage/mlServingBindings");
+const { recordMlServingBinding, ensureMlServingBinding } = require("../storage/mlServingBindings");
 const { buildMlServingState } = require("./mlServingRuntime");
 const { getAiGuardSettingsCached } = require("../storage/settings");
 
@@ -650,7 +650,7 @@ async function runShadowInferenceCanaryJob({
     generatedAt: nowMeta.iso,
   }).catch(() => null);
   if (payload.serving_state && payload.serving_state.preferred_model_artifact_id) {
-    await recordMlServingBinding({
+    await ensureMlServingBinding({
       exchange: exchangeUpper,
       artifactId: payload.serving_state.preferred_model_artifact_id,
       binding,

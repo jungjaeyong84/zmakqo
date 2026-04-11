@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { toKstString, kstDateKey } = require("../src/utils/timeKst");
+const { loadSystemOpsLatestSync } = require("./lib/system-ops-runtime");
 
 function toNum(value, fallback = null) {
   const n = Number(value);
@@ -310,7 +311,7 @@ function main() {
   const postApplySignalProbePath = path.join(dailyDir, "post_apply_signal_probe_latest.json");
   const strategyIdAlignmentPath = path.join(dailyDir, "strategy_id_alignment_latest.json");
 
-  const systemOpsRead = readJsonSafe(systemOpsPath);
+  const systemOpsRead = { ok: true, data: loadSystemOpsLatestSync({ fallbackPath: systemOpsPath }) };
   const failureModeRead = readJsonSafe(failureModePath);
   const executionSafetyRead = readJsonSafe(executionSafetyPath);
   const dataConsistencyRead = readJsonSafe(dataConsistencyPath);

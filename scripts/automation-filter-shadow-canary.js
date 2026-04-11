@@ -11,6 +11,7 @@ const engineTest = require("../src/engine/paperUpbitRunner").__test;
 const { classifySignalReasonStage } = require("../src/utils/signalReasonView");
 const { resolveEntryTimingTier, resolveEntrySide } = require("../src/utils/liveEntryTaxonomy");
 const { getCachedRecentByCreatedAt } = require("./lib/firestore-recent-cache");
+const { loadSystemOpsLatestSync } = require("./lib/system-ops-runtime");
 const {
   OPS_DAILY_DIR,
   copyLatest,
@@ -1176,7 +1177,7 @@ async function main() {
   const goldenResults = await replayCases(fixture.cases || []);
   const shadow = await buildShadowCases({ baselineMs: fixture.baseline_created_at_ms });
   const shadowResults = await replayCases(shadow.cases || []);
-  const systemOps = summarizeSystemOps(readJsonRawSafe(SYSTEM_OPS_LATEST_JSON, null));
+  const systemOps = summarizeSystemOps(loadSystemOpsLatestSync({ fallbackPath: SYSTEM_OPS_LATEST_JSON }));
   const report = {
     generated_at_kst: meta.kst,
     cycle_id: cycleMeta.cycle_id,

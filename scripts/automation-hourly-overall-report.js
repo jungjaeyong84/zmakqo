@@ -17,6 +17,7 @@ const {
   readJsonSafe,
   ensureExchangeApiKeys,
 } = require("./lib/automation-utils");
+const { loadSystemOpsLatestSync } = require("./lib/system-ops-runtime");
 const { getFirestore } = require("../src/storage/firestore");
 const { getSystemSettingsForProvider } = require("../src/storage/settings");
 const { getPositionRuntimeObservation } = require("../src/storage/positionRuntimeObservations");
@@ -409,7 +410,7 @@ async function main() {
   }
 
   const snapshot = readJsonSafe(snapshotPath, {});
-  const ops = readJsonSafe(path.join(REPO_ROOT, "ops", "daily", "system_ops_check_latest.json"), {});
+  const ops = loadSystemOpsLatestSync({ fallbackPath: path.join(REPO_ROOT, "ops", "daily", "system_ops_check_latest.json") });
   const evGateRun = execJson("node scripts/report-ev-gate-impact.js --rolling-24h", { cwd: REPO_ROOT });
   const integrity = await auditBinanceExitIntegrity({ includeFlat: false });
   const positionsRaw = await readActivePositions();

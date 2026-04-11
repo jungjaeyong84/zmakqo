@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { toKstString, kstDateKey } = require("../src/utils/timeKst");
+const { loadSystemOpsLatestSync } = require("./lib/system-ops-runtime");
 
 function toNum(value, fallback = null) {
   const n = Number(value);
@@ -278,7 +279,8 @@ function main() {
   const binancePrivatePath = path.join(repoRoot, "src", "exchanges", "binanceFuturesPrivate.js");
   const settingsPath = path.join(repoRoot, "src", "storage", "settings.js");
 
-  const systemOpsRead = readJsonSafe(systemOpsPath);
+  const systemOpsArtifactRead = readJsonSafe(systemOpsPath);
+  const systemOpsRead = { ok: true, data: loadSystemOpsLatestSync({ fallbackPath: systemOpsPath }) };
   const dataConsistencyRead = readJsonSafe(dataConsistencyPath);
   const riskControllerRead = readJsonSafe(riskControllerPath);
   const postApplySignalProbeRead = readJsonSafe(postApplySignalProbePath);
@@ -289,7 +291,7 @@ function main() {
     system_ops: resolveSourceFreshness({
       label: "system_ops_check_latest",
       filePath: systemOpsPath,
-      readResult: systemOpsRead,
+      readResult: systemOpsArtifactRead,
       nowMs,
       thresholdMin: freshnessThresholdMin,
     }),

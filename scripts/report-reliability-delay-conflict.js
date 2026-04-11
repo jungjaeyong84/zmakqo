@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { loadSystemOpsLatestSync } = require("./lib/system-ops-runtime");
 const {
   loadSubmissionLedger,
   upsertSubmissionEntry,
@@ -313,7 +314,7 @@ function buildRuntimeSnapshot() {
   const dataConsistencyPath = path.join(OPS_DAILY, "data_consistency_lead_latest.json");
 
   const autoCycle = readJsonSafe(autoCyclePath);
-  const systemOps = readJsonSafe(systemOpsPath);
+  const systemOps = loadSystemOpsLatestSync({ fallbackPath: systemOpsPath });
   const roleRuntime = readJsonSafe(runtimePath);
   const approval = readJsonSafe(approvalPath);
   const dataConsistency = readJsonSafe(dataConsistencyPath);
