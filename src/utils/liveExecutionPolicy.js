@@ -1074,6 +1074,44 @@ function deriveLearningEpochRelease(snapshot = null) {
   };
 }
 
+function deriveMlServingGuard(snapshot = null) {
+  const state = snapshot && snapshot.mlServing && typeof snapshot.mlServing === "object"
+    ? snapshot.mlServing
+    : {};
+  return {
+    available: Object.keys(state).length > 0,
+    status: upper(state.status),
+    reason: upper(state.reason),
+    servingMode: upper(state.serving_mode),
+    liveServingAllowed: state.live_serving_allowed === true,
+    blockNewEntries: state.block_new_entries === true,
+    stale: state.stale === true,
+    gateStatus: upper(state.gate_status),
+    gateReason: upper(state.gate_reason),
+    preferredModelArtifactId: String(state.preferred_model_artifact_id || "").trim() || null,
+    preferredTrainRunId: String(state.preferred_train_run_id || "").trim() || null,
+  };
+}
+
+function deriveOperationalGuard(snapshot = null) {
+  const state = snapshot && snapshot.operationalGuard && typeof snapshot.operationalGuard === "object"
+    ? snapshot.operationalGuard
+    : {};
+  return {
+    available: Object.keys(state).length > 0,
+    status: String(state.status || "").trim() || null,
+    mode: String(state.mode || "").trim() || null,
+    reason: upper(state.reason),
+    blockNewEntries: state.block_new_entries === true,
+    stale: state.stale === true,
+    errorCount: toNum(state.error_count),
+    costRatioPct: toNum(state.cost_ratio_pct),
+    costLimitPct: toNum(state.cost_limit_pct),
+    auditIssueCount: toNum(state.audit_issue_count),
+    qtyPctNonPositiveCount: toNum(state.qty_pct_non_positive_count),
+  };
+}
+
 function evaluateLiveEntryPolicy({
   exchange,
   symbol,
@@ -1185,7 +1223,9 @@ function evaluateLiveEntryPolicy({
     };
   }
 
-  let snapshot = snapshotOverride || loadPolicySnapshot();
+  let snapshot = snapshotOverride && typeof snapshotOverride === "object"
+    ? { ...loadPolicySnapshot(), ...snapshotOverride }
+    : loadPolicySnapshot();
   let derived = derivePolicyState(snapshot);
   if (
     !snapshotOverride
@@ -1227,6 +1267,8 @@ function evaluateLiveEntryPolicy({
     policyPlanWatchOnlyBlocked,
     policyPlanHoldBlocked,
   } = derived;
+  const mlServing = deriveMlServingGuard(snapshot);
+  const operationalGuard = deriveOperationalGuard(snapshot);
   const suppressLineageFillIntentReason = lineageSlo
     && lineageSlo.blocked === true
     && String(lineageSlo.reason || "").trim().toUpperCase() === "LINEAGE_SLO_FILL_INTENT_NULL_RATE"
@@ -1288,7 +1330,75 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_portfolio_cluster_correlated_same_side_exposure_after: portfolioCluster.correlatedSameSideExposureAfter,
     _live_exec_policy_portfolio_cluster_active_same_side_markets: portfolioCluster.activeSameSideMarkets || [],
     _live_exec_policy_portfolio_cluster_active_correlated_same_side_markets: portfolioCluster.activeCorrelatedSameSideMarkets || [],
+    _live_exec_policy_ml_serving_available: mlServing.available,
+    _live_exec_policy_ml_serving_status: mlServing.status,
+    _live_exec_policy_ml_serving_reason: mlServing.reason,
+    _live_exec_policy_ml_serving_mode: mlServing.servingMode,
+    _live_exec_policy_ml_serving_live_allowed: mlServing.liveServingAllowed,
+    _live_exec_policy_ml_serving_block_new_entries: mlServing.blockNewEntries,
+    _live_exec_policy_ml_serving_stale: mlServing.stale,
+    _live_exec_policy_ml_serving_gate_status: mlServing.gateStatus,
+    _live_exec_policy_ml_serving_gate_reason: mlServing.gateReason,
+    _live_exec_policy_ml_serving_model_artifact_id: mlServing.preferredModelArtifactId,
+    _live_exec_policy_ml_serving_train_run_id: mlServing.preferredTrainRunId,
+    _live_exec_policy_ops_guard_available: operationalGuard.available,
+    _live_exec_policy_ops_guard_status: operationalGuard.status,
+    _live_exec_policy_ops_guard_mode: operationalGuard.mode,
+    _live_exec_policy_ops_guard_reason: operationalGuard.reason,
+    _live_exec_policy_ops_guard_block_new_entries: operationalGuard.blockNewEntries,
+    _live_exec_policy_ops_guard_stale: operationalGuard.stale,
+    _live_exec_policy_ops_guard_error_count: operationalGuard.errorCount,
+    _live_exec_policy_ops_guard_cost_ratio_pct: operationalGuard.costRatioPct,
+    _live_exec_policy_ops_guard_cost_limit_pct: operationalGuard.costLimitPct,
+    _live_exec_policy_ops_guard_audit_issue_count: operationalGuard.auditIssueCount,
+    _live_exec_policy_ops_guard_qty_pct_non_positive_count: operationalGuard.qtyPctNonPositiveCount,
   };
+
+  if (operationalGuard.blockNewEntries) {
+    const reason = operationalGuard.reason || "OPS_GUARD_BLOCK_NEW_ENTRIES";
+    return {
+      ok: false,
+      qtyPctFinal: 0,
+      reason,
+      featuresPatch: {
+        ...commonTracePatch,
+        _live_exec_policy_reason: reason,
+      },
+      policy: {
+        stage,
+        exchange: ex,
+        market,
+        blocked: true,
+        reason,
+        ops_guard_status: operationalGuard.status,
+        ops_guard_mode: operationalGuard.mode,
+      },
+    };
+  }
+
+  if (mlServing.blockNewEntries) {
+    const reason = mlServing.reason || "ML_SERVING_BLOCK_NEW_ENTRIES";
+    return {
+      ok: false,
+      qtyPctFinal: 0,
+      reason,
+      featuresPatch: {
+        ...commonTracePatch,
+        _live_exec_policy_reason: reason,
+      },
+      policy: {
+        stage,
+        exchange: ex,
+        market,
+        blocked: true,
+        reason,
+        ml_serving_status: mlServing.status,
+        ml_serving_mode: mlServing.servingMode,
+        ml_serving_gate_status: mlServing.gateStatus,
+        ml_serving_gate_reason: mlServing.gateReason,
+      },
+    };
+  }
 
   if (quarantineBlocked) {
     const reason = "LIVE_POLICY_QUARANTINE_HARD_BLOCK";
@@ -1589,6 +1699,10 @@ function evaluateLiveEntryPolicy({
       qty_after: qtyPctFinal,
       already_scaled: alreadyScaled,
       apply_scale_requested: applyScale === true,
+      ml_serving_status: mlServing.status,
+      ml_serving_mode: mlServing.servingMode,
+      ml_serving_live_allowed: mlServing.liveServingAllowed,
+      ml_serving_gate_status: mlServing.gateStatus,
     },
   };
 }

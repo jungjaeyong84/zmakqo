@@ -6,6 +6,9 @@ const env = require("../config/env");
 const { upsertSignal } = require("../storage/signals");
 const { recordSignalDrops } = require("../storage/signalDrops");
 const { getPosition } = require("../storage/positionsPaper");
+const { getPositionReadView } = require("../services/positionReadModel");
+const { loadMlServingRuntime } = require("../services/mlServingRuntime");
+const { loadOperationalGuardRuntime } = require("../services/operationalGuardRuntime");
 const { deriveGroupSubtype } = require("../services/signalTaxonomy");
 const { resolveEventMapping, SIGNAL_MAPPING_VERSION } = require("../services/signalMapping");
 const { evaluateSignalWithAi } = require("../services/aiSignalGuard");
@@ -72,6 +75,11 @@ function writeJsonSafe(filePath, payload) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+async function getOperationalPositionView({ exchange, symbol } = {}) {
+  const fallback = await getPosition({ exchange, symbol });
+  return getPositionReadView({ exchange, symbol, fallbackPosition: fallback });
 }
 
 function repairMalformedWebhookJson(raw) {
@@ -1337,7 +1345,7 @@ function createWebhookRoutes() {
       let sideCandidate = p.side;
       let pos = null;
       if (exitCandidate) {
-        pos = await getPosition({ exchange, symbol });
+        pos = await getOperationalPositionView({ exchange, symbol });
         const posState = String(pos.state || "").toUpperCase();
         const posSize = Number(pos.size_pct || 0);
         if (posState !== "ACTIVE" || !Number.isFinite(posSize) || posSize <= 0) {
@@ -1517,7 +1525,7 @@ function createWebhookRoutes() {
       const price = (priceRaw === null || priceRaw === undefined || priceRaw === "") ? null : Number(priceRaw);
       if (!isDrop && (intent === "ENTRY" || intent === "ADD")) {
         if (!pos) {
-          pos = await getPosition({ exchange, symbol });
+          pos = await getOperationalPositionView({ exchange, symbol });
         }
         posSnap = normalizePositionSnapshot(pos);
         const normalized = normalizeEntryIntentWithPosition({ intent, side, posSnap });
@@ -1534,7 +1542,7 @@ function createWebhookRoutes() {
         (intentBeforeOverride === "ENTRY" || intentBeforeOverride === "ADD")
       ) {
         if (!pos) {
-          pos = await getPosition({ exchange, symbol });
+          pos = await getOperationalPositionView({ exchange, symbol });
         }
         if (!posSnap) {
           posSnap = normalizePositionSnapshot(pos);
@@ -1559,7 +1567,7 @@ function createWebhookRoutes() {
         (intentBeforeOverride === "ENTRY" || intentBeforeOverride === "ADD")
       ) {
         if (!pos) {
-          pos = await getPosition({ exchange, symbol });
+          pos = await getOperationalPositionView({ exchange, symbol });
         }
         if (!posSnap) {
           posSnap = normalizePositionSnapshot(pos);
@@ -2185,6 +2193,10 @@ function createWebhookRoutes() {
       const intentUpperForPolicy = String(intent || "").trim().toUpperCase();
       const policyEntryIntent = intentUpperForPolicy === "ENTRY" || intentUpperForPolicy === "ADD";
       if (!isDrop && policyEntryIntent) {
+        const [mlServing, operationalGuard] = await Promise.all([
+          loadMlServingRuntime({ exchange }),
+          loadOperationalGuardRuntime({ exchange }),
+        ]);
         const policyEval = evaluateLiveEntryPolicy({
           exchange,
           symbol,
@@ -2193,6 +2205,10 @@ function createWebhookRoutes() {
           features,
           stage: "WEBHOOK_SIGNAL",
           applyScale: true,
+          snapshotOverride: {
+            mlServing,
+            operationalGuard,
+          },
         });
         if (policyEval && policyEval.featuresPatch && typeof policyEval.featuresPatch === "object") {
           Object.assign(features, policyEval.featuresPatch);

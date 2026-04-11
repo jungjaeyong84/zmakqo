@@ -1,6 +1,5 @@
 "use strict";
 
-const { getFirestore } = require("../storage/firestore");
 const { fetchUnifiedEventTimeline } = require("../storage/unifiedEventTimeline");
 
 function upper(value) {
@@ -252,36 +251,6 @@ function replayDecisionTimelineV2FromRows({
   };
 }
 
-async function fetchRecentRows({ collection, orderField, limit = 500 } = {}) {
-  const db = getFirestore();
-  const snap = await db.collection(collection)
-    .orderBy(orderField, "desc")
-    .limit(Math.max(1, Math.trunc(Number(limit) || 500)))
-    .get();
-  return snap.docs.map((doc) => ({ id: doc.id, ...(doc.data() || {}) }));
-}
-
-function filterRows(rows = [], {
-  exchange = null,
-  symbol = null,
-  fromMs = null,
-  toMs: toMsLimit = null,
-  pickMs = null,
-  pickSymbol = null,
-} = {}) {
-  const ex = upper(exchange);
-  const sym = upper(symbol);
-  return (Array.isArray(rows) ? rows : []).filter((row) => {
-    if (ex && upper(row.exchange) !== ex) return false;
-    const rowSymbol = upper(pickSymbol ? pickSymbol(row) : (row.symbol || row.symbol_or_pair_id));
-    if (sym && rowSymbol !== sym) return false;
-    const ms = Number(pickMs ? pickMs(row) : (toTimeMs(row && row.created_at) || 0));
-    if (Number.isFinite(Number(fromMs)) && ms < Number(fromMs)) return false;
-    if (Number.isFinite(Number(toMsLimit)) && ms > Number(toMsLimit)) return false;
-    return true;
-  });
-}
-
 async function replayDecisionTimelineV2({
   exchange,
   symbol,
@@ -289,122 +258,38 @@ async function replayDecisionTimelineV2({
   toMs = null,
   limitPerCollection = 500,
 } = {}) {
-  const useUnifiedTimeline = String(process.env.DECISION_REPLAY_V2_USE_UNIFIED_TIMELINE || "1").trim() !== "0";
-  if (useUnifiedTimeline) {
-    const unifiedRows = await fetchUnifiedEventTimeline({
-      exchange,
-      symbol,
-      fromMs,
-      toMs,
-      limit: limitPerCollection * 4,
-    }).catch(() => []);
-    if (Array.isArray(unifiedRows) && unifiedRows.length) {
-      const timeline = sortTimeline(unifiedRows.map(normalizeUnifiedTimelineRow));
-      const lastPositionMutation = timeline.filter((row) => row.kind === "POSITION_MUTATION").slice(-1)[0] || null;
-      const lastExchangeAck = timeline.filter((row) => row.kind === "EXCHANGE_ACK").slice(-1)[0] || null;
-      return {
-        exchange: upper(exchange),
-        symbol: upper(symbol),
-        from_ms: Number.isFinite(Number(fromMs)) ? Number(fromMs) : null,
-        to_ms: Number.isFinite(Number(toMs)) ? Number(toMs) : null,
-        schema_version: "DECISION_REPLAY_V2",
-        source_collection: "UNIFIED_EVENT_TIMELINE",
-        timeline_n: timeline.length,
-        counts: {
-          decisions_n: timeline.filter((row) => row.kind === "DECISION").length,
-          intents_n: timeline.filter((row) => row.kind === "INTENT").length,
-          intent_mutations_n: timeline.filter((row) => row.kind === "INTENT_MUTATION").length,
-          fills_n: timeline.filter((row) => row.kind === "FILL").length,
-          fill_mutations_n: timeline.filter((row) => row.kind === "FILL_MUTATION").length,
-          exchange_ack_n: timeline.filter((row) => row.kind === "EXCHANGE_ACK").length,
-          position_mutations_n: timeline.filter((row) => row.kind === "POSITION_MUTATION").length,
-        },
-        latest_exchange_ack: lastExchangeAck ? safeClone(lastExchangeAck.payload) : null,
-        latest_position_summary: lastPositionMutation && lastPositionMutation.payload
-          ? lastPositionMutation.payload.after_summary || null
-          : null,
-        timeline,
-      };
-    }
-  }
-  const [decisionsRaw, intentsRaw, intentEventsRaw, fillsRaw, fillEventsRaw, positionEventsRaw] = await Promise.all([
-    fetchRecentRows({ collection: "action_hook_ledger", orderField: "created_at", limit: limitPerCollection }),
-    fetchRecentRows({ collection: "order_intents_paper", orderField: "created_at", limit: limitPerCollection }),
-    fetchRecentRows({ collection: "order_intent_events", orderField: "ts_ms", limit: limitPerCollection }),
-    fetchRecentRows({ collection: "fills_paper", orderField: "created_at", limit: limitPerCollection }),
-    fetchRecentRows({ collection: "fill_events", orderField: "ts_ms", limit: limitPerCollection }),
-    fetchRecentRows({ collection: "position_events", orderField: "sequence_ms", limit: limitPerCollection }),
-  ]);
-
+  const unifiedRows = await fetchUnifiedEventTimeline({
+    exchange,
+    symbol,
+    fromMs,
+    toMs,
+    limit: limitPerCollection * 4,
+  }).catch(() => []);
+  const timeline = sortTimeline(unifiedRows.map(normalizeUnifiedTimelineRow));
+  const lastPositionMutation = timeline.filter((row) => row.kind === "POSITION_MUTATION").slice(-1)[0] || null;
+  const lastExchangeAck = timeline.filter((row) => row.kind === "EXCHANGE_ACK").slice(-1)[0] || null;
   return {
     exchange: upper(exchange),
     symbol: upper(symbol),
     from_ms: Number.isFinite(Number(fromMs)) ? Number(fromMs) : null,
     to_ms: Number.isFinite(Number(toMs)) ? Number(toMs) : null,
-    ...replayDecisionTimelineV2FromRows({
-      decisions: filterRows(decisionsRaw, {
-        exchange,
-        symbol,
-        fromMs,
-        toMs,
-        pickMs: (row) => toTimeMs(row.created_at) || 0,
-        pickSymbol: (row) => row.symbol,
-      }),
-      intents: filterRows(intentsRaw, {
-        exchange,
-        symbol,
-        fromMs,
-        toMs,
-        pickMs: (row) => toTimeMs(row.created_at) || toTimeMs(row.updated_at) || 0,
-        pickSymbol: (row) => row.symbol_or_pair_id,
-      }),
-      intentEvents: filterRows(intentEventsRaw, {
-        exchange,
-        symbol,
-        fromMs,
-        toMs,
-        pickMs: (row) => Number.isFinite(Number(row.ts_ms)) ? Number(row.ts_ms) : (toTimeMs(row.created_at) || 0),
-        pickSymbol: (row) => row.symbol,
-      }),
-      fills: filterRows(fillsRaw, {
-        exchange,
-        symbol,
-        fromMs,
-        toMs,
-        pickMs: (row) => toTimeMs(row.created_at) || toTimeMs(row.updated_at) || 0,
-        pickSymbol: (row) => row.symbol,
-      }),
-      fillEvents: filterRows(fillEventsRaw, {
-        exchange,
-        symbol,
-        fromMs,
-        toMs,
-        pickMs: (row) => Number.isFinite(Number(row.ts_ms)) ? Number(row.ts_ms) : (toTimeMs(row.created_at) || 0),
-        pickSymbol: (row) => row.symbol,
-      }).filter((row) => {
-        const type = upper(row.mutation_type);
-        return type !== "EXTERNAL_INSERT" && type !== "EXTERNAL_MERGE";
-      }),
-      exchangeAcks: filterRows(fillEventsRaw, {
-        exchange,
-        symbol,
-        fromMs,
-        toMs,
-        pickMs: (row) => Number.isFinite(Number(row.ts_ms)) ? Number(row.ts_ms) : (toTimeMs(row.created_at) || 0),
-        pickSymbol: (row) => row.symbol,
-      }).filter((row) => {
-        const type = upper(row.mutation_type);
-        return type === "EXTERNAL_INSERT" || type === "EXTERNAL_MERGE";
-      }),
-      positionEvents: filterRows(positionEventsRaw, {
-        exchange,
-        symbol,
-        fromMs,
-        toMs,
-        pickMs: (row) => Number(row.sequence_ms || 0),
-        pickSymbol: (row) => row.symbol,
-      }),
-    }),
+    schema_version: "DECISION_REPLAY_V2",
+    source_collection: "UNIFIED_EVENT_TIMELINE",
+    timeline_n: timeline.length,
+    counts: {
+      decisions_n: timeline.filter((row) => row.kind === "DECISION").length,
+      intents_n: timeline.filter((row) => row.kind === "INTENT").length,
+      intent_mutations_n: timeline.filter((row) => row.kind === "INTENT_MUTATION").length,
+      fills_n: timeline.filter((row) => row.kind === "FILL").length,
+      fill_mutations_n: timeline.filter((row) => row.kind === "FILL_MUTATION").length,
+      exchange_ack_n: timeline.filter((row) => row.kind === "EXCHANGE_ACK").length,
+      position_mutations_n: timeline.filter((row) => row.kind === "POSITION_MUTATION").length,
+    },
+    latest_exchange_ack: lastExchangeAck ? safeClone(lastExchangeAck.payload) : null,
+    latest_position_summary: lastPositionMutation && lastPositionMutation.payload
+      ? lastPositionMutation.payload.after_summary || null
+      : null,
+    timeline,
   };
 }
 

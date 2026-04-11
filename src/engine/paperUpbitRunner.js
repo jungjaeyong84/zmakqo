@@ -32,6 +32,8 @@ const { tfToMs, normalizeTf, defaultExecTfFromEnv } = require("../utils/marketCo
 const { normalizeEvalExchange, evalLatestId, matchesEvalTf } = require("../utils/evalDoc");
 const { deriveSignalDocId } = require("../utils/signalDocId");
 const { buildExitStageView } = require("../utils/exitStageView");
+const { loadMlServingRuntime } = require("../services/mlServingRuntime");
+const { loadOperationalGuardRuntime } = require("../services/operationalGuardRuntime");
 const { resolveBinanceFuturesKeys } = require("../utils/binanceKeyResolver");
 const { normalizePositionSide } = require("../utils/positionSide");
 const {
@@ -10579,6 +10581,10 @@ async function runPaperUpbitForBar({
     }
 
     if (intentIsEntry) {
+      const [mlServing, operationalGuard] = await Promise.all([
+        loadMlServingRuntime({ exchange }),
+        loadOperationalGuardRuntime({ exchange }),
+      ]);
       const policyEval = evaluateLiveEntryPolicy({
         exchange,
         symbol,
@@ -10587,6 +10593,10 @@ async function runPaperUpbitForBar({
         features: it.features_json,
         stage: "RUNNER_INTENT_EXEC",
         applyScale: false,
+        snapshotOverride: {
+          mlServing,
+          operationalGuard,
+        },
       });
       if (policyEval && policyEval.featuresPatch && typeof policyEval.featuresPatch === "object") {
         it.features_json = policyEval.featuresPatch;
@@ -12047,6 +12057,10 @@ async function runPaperUpbitForBar({
     }
 
     if (intentIsEntry) {
+      const [mlServing, operationalGuard] = await Promise.all([
+        loadMlServingRuntime({ exchange }),
+        loadOperationalGuardRuntime({ exchange }),
+      ]);
       const policyEval = evaluateLiveEntryPolicy({
         exchange,
         symbol,
@@ -12055,6 +12069,10 @@ async function runPaperUpbitForBar({
         features: s.features,
         stage: "RUNNER_SIGNAL",
         applyScale: true,
+        snapshotOverride: {
+          mlServing,
+          operationalGuard,
+        },
       });
       if (policyEval && policyEval.featuresPatch && typeof policyEval.featuresPatch === "object") {
         s.features = policyEval.featuresPatch;
@@ -12894,6 +12912,10 @@ async function runPaperFuturesForBar({
     }
 
     if (intentIsEntry) {
+      const [mlServing, operationalGuard] = await Promise.all([
+        loadMlServingRuntime({ exchange }),
+        loadOperationalGuardRuntime({ exchange }),
+      ]);
       const policyEval = evaluateLiveEntryPolicy({
         exchange,
         symbol,
@@ -12902,6 +12924,10 @@ async function runPaperFuturesForBar({
         features: it.features_json,
         stage: "RUNNER_INTENT_EXEC",
         applyScale: false,
+        snapshotOverride: {
+          mlServing,
+          operationalGuard,
+        },
       });
       if (policyEval && policyEval.featuresPatch && typeof policyEval.featuresPatch === "object") {
         it.features_json = policyEval.featuresPatch;
@@ -15059,6 +15085,10 @@ async function runPaperFuturesForBar({
     }
 
     if (intentIsEntry) {
+      const [mlServing, operationalGuard] = await Promise.all([
+        loadMlServingRuntime({ exchange }),
+        loadOperationalGuardRuntime({ exchange }),
+      ]);
       const policyEval = evaluateLiveEntryPolicy({
         exchange,
         symbol,
@@ -15067,6 +15097,10 @@ async function runPaperFuturesForBar({
         features: s.features,
         stage: "RUNNER_SIGNAL",
         applyScale: true,
+        snapshotOverride: {
+          mlServing,
+          operationalGuard,
+        },
       });
       if (policyEval && policyEval.featuresPatch && typeof policyEval.featuresPatch === "object") {
         s.features = policyEval.featuresPatch;

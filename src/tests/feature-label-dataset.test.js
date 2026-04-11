@@ -11,7 +11,8 @@ async function run() {
     limitN: 10,
   });
 
-  assert.strictEqual(dataset.schema_version, "FEATURE_LABEL_DATASET_V1");
+  assert.strictEqual(dataset.schema_version, "FEATURE_LABEL_DATASET_V2");
+  assert.strictEqual(dataset.source_collection, "UNIFIED_EVENT_TIMELINE");
   assert.strictEqual(dataset.rows_n, 0);
   assert.deepStrictEqual(dataset.rows, []);
   assert.ok(dataset.created_at);

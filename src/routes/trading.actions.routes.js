@@ -4,7 +4,7 @@ const { normalizeMarketSymbolForProvider, tfToMs, defaultExecTfFromEnv } = requi
 const { normalizeProviderId } = require("../utils/providerUtils");
 const { fetchCandles } = require("../exchanges");
 const { getPosition } = require("../storage/positions");
-const { getPosition: getPaperPosition, upsertPosition: upsertPaperPosition } = require("../storage/positionsPaper");
+const { getPosition: getPaperPosition, upsertPosition: upsertPaperPosition, runWithPositionWriterLease } = require("../storage/positionsPaper");
 const { upsertIntent, cancelPendingIntentsByMarket } = require("../storage/orderIntentsPaper");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { getPositionRuntimeObservation, resolveTrailObservationSnapshot } = require("../storage/positionRuntimeObservations");
@@ -12,6 +12,9 @@ const { toKstStringFromMs } = require("../utils/timeKst");
 const { fetchFuturesUserTrades } = require("../exchanges/binanceFuturesPrivate");
 const { syncBinanceFuturesFills } = require("../services/binanceFuturesFillsSync");
 const { healBinanceLivePosition } = require("../services/binanceLiveStateSelfHeal");
+const { getPositionReadView } = require("../services/positionReadModel");
+const { loadMlServingRuntime } = require("../services/mlServingRuntime");
+const { loadOperationalGuardRuntime } = require("../services/operationalGuardRuntime");
 const {
   runPaperFuturesForBar,
   syncFuturesPositionOnly,
@@ -84,6 +87,11 @@ function resolveRetryQtyBaseFromTrades(trades, entrySide) {
   return null;
 }
 
+async function getOperationalPositionView({ exchange, symbol } = {}) {
+  const fallback = await getPosition({ exchange, symbol });
+  return getPositionReadView({ exchange, symbol, fallbackPosition: fallback });
+}
+
 function createTradingActionsRoutes() {
   const router = express.Router();
 
@@ -116,7 +124,7 @@ function createTradingActionsRoutes() {
         return res.status(400).json({ ok: false, error: "MARKET_NOT_ALLOWED" });
       }
 
-      const pos = await getPosition({ exchange, symbol: market });
+      const pos = await getOperationalPositionView({ exchange, symbol: market });
       const state = String(pos && pos.state || "").toUpperCase();
       const sizePct = Number(pos && pos.size_pct);
       if (state !== "ACTIVE" || !Number.isFinite(sizePct) || sizePct <= 0) {
@@ -261,9 +269,14 @@ function createTradingActionsRoutes() {
         exchange,
         symbol: market,
         ttlMs: 120000,
-        runner: async () => {
+        runner: async () => runWithPositionWriterLease({
+          exchange,
+          symbol: market,
+          ttlMs: 120000,
+          waitMs: 3000,
+          runner: async () => {
           await syncFuturesPositionOnly({ runId, exchange, symbol: market, force: true });
-          const curPos = await getPosition({ exchange, symbol: market });
+          const curPos = await getOperationalPositionView({ exchange, symbol: market });
           const curState = String(curPos && curPos.state || "").toUpperCase();
           const curQtyBase = Number(curPos && curPos.qty_base);
           if (curState === "ACTIVE" && Number.isFinite(curQtyBase) && curQtyBase > 0) {
@@ -304,6 +317,10 @@ function createTradingActionsRoutes() {
           const execModeRaw = String(sys && sys.data && sys.data.execution_mode ? sys.data.execution_mode : "PAPER").toUpperCase();
           const executionMode = execModeRaw === "LIVE" ? "LIVE" : "PAPER";
           const signalMs = Date.now();
+          const [mlServing, operationalGuard] = await Promise.all([
+            loadMlServingRuntime({ exchange }),
+            loadOperationalGuardRuntime({ exchange }),
+          ]);
           const pre = runActionPreHooks({
             action: "TRADING_MANUAL_RETRY_ENTRY",
             runId,
@@ -324,6 +341,10 @@ function createTradingActionsRoutes() {
               _entry_exec_timing: "EXEC_CURRENT_BAR",
             },
             persist: true,
+            snapshotOverride: {
+              mlServing,
+              operationalGuard,
+            },
           });
           actionEnvelope = pre.envelope;
           if (!pre.ok) {
@@ -375,7 +396,7 @@ function createTradingActionsRoutes() {
           });
 
           await syncFuturesPositionOnly({ runId, exchange, symbol: market, force: true });
-          const nextPos = await getPosition({ exchange, symbol: market });
+          const nextPos = await getOperationalPositionView({ exchange, symbol: market });
           return {
             ok: true,
             exchange,
@@ -389,7 +410,8 @@ function createTradingActionsRoutes() {
             result,
             position: nextPos,
           };
-        },
+          },
+        }),
       });
       if (leaseResult && leaseResult.ok === false) {
         if (leaseResult.error === "MANUAL_RETRY_PRE_HOOK_BLOCKED") {
@@ -543,7 +565,11 @@ function createTradingActionsRoutes() {
         runId: `RUN__REPAIR_NATIVE__${exchange}__${market}__${Date.now()}`,
         forceRepair: true,
       });
-      const pos = healed && healed.position ? healed.position : await getPaperPosition({ exchange, symbol: market });
+      const pos = await getPositionReadView({
+        exchange,
+        symbol: market,
+        fallbackPosition: healed && healed.position ? healed.position : await getPaperPosition({ exchange, symbol: market }),
+      });
       const sizePct = Number(pos && pos.size_pct);
       if (!pos || String(pos.position_state || pos.state || "").toUpperCase() === "FLAT" || !Number.isFinite(sizePct) || sizePct <= 0) {
         return res.status(400).json({ ok: false, error: "NO_ACTIVE_POSITION" });
@@ -610,7 +636,11 @@ function createTradingActionsRoutes() {
         exchange,
         symbol: market,
       });
-      const pos = await getPaperPosition({ exchange, symbol: market });
+      const pos = await getPositionReadView({
+        exchange,
+        symbol: market,
+        fallbackPosition: await getPaperPosition({ exchange, symbol: market }),
+      });
       const meta = (pos && typeof pos.meta === "object") ? pos.meta : {};
       const observation = await getPositionRuntimeObservation({ exchange, symbol: market });
       const trailSnapshot = resolveTrailObservationSnapshot({ meta, observation });

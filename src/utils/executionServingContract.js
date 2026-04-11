@@ -31,6 +31,7 @@ function buildExecutionServingContract({
   executionFillInference = null,
   mlModelContract = null,
   experimentRegistry = null,
+  shadowCanaryGate = null,
 } = {}) {
   const truth = readSummary(truthPreservationAudit);
   const scopeTrain = readSummary(executionScopeTrainRun);
@@ -39,6 +40,7 @@ function buildExecutionServingContract({
   const fillInference = readSummary(executionFillInference);
   const modelContract = readSummary(mlModelContract);
   const registry = readSummary(experimentRegistry);
+  const canaryGate = readSummary(shadowCanaryGate);
 
   const truthReady = truth.truth_preservation_ready === true;
   const scopeQualityReady = scopeTrain.quality_gate_ready === true;
@@ -60,6 +62,9 @@ function buildExecutionServingContract({
 
   const fillQualityReady = fillTrain.quality_gate_ready === true;
   const fillInferenceReady = toUpper(fillInference.status) === "EXECUTION_FILL_INFERENCE_READY";
+  const shadowGatePass = canaryGate.promotion_blocked !== true;
+  const shadowGateAvailable = Object.keys(canaryGate).length > 0;
+  const modelCanaryReady = toUpper(modelContract.status) === "ML_MODEL_CONTRACT_CANARY_READY";
 
   const blockingReasons = [];
   if (!truthReady) blockingReasons.push("TRUTH_PRESERVATION_NOT_READY");
@@ -72,6 +77,7 @@ function buildExecutionServingContract({
   if (!scopeFeatureStoreVersionAligned) blockingReasons.push("SCOPE_FEATURE_STORE_VERSION_MISMATCH");
   if (!scopeExecutionDatasetVersionAligned) blockingReasons.push("SCOPE_EXECUTION_DATASET_VERSION_MISMATCH");
   if (!scopeMismatchReady) blockingReasons.push("SCOPE_MISMATCH_TOO_HIGH");
+  if (shadowGateAvailable && !shadowGatePass) blockingReasons.push("SHADOW_CANARY_GATE_BLOCK");
 
   const warningReasons = [];
   if (!fillQualityReady) warningReasons.push("FILL_MODEL_QUALITY_NOT_READY");
@@ -104,17 +110,26 @@ function buildExecutionServingContract({
   } else if (!scopeMismatchReady) {
     servingStage = "BLOCKED_SCOPE_MISMATCH";
     servingDecision = "HOLD_SCOPE_MISMATCH";
+  } else if (shadowGateAvailable && !shadowGatePass) {
+    servingStage = "BLOCKED_SHADOW_CANARY";
+    servingDecision = "ROLLBACK_SHADOW_CANARY";
   } else {
     servingStage = "SHADOW_READY";
     servingDecision = "ENABLE_SCOPE_SHADOW";
   }
+
+  const liveServingAllowed = (
+    shadowReady
+    && shadowGatePass
+    && modelCanaryReady
+  );
 
   return {
     status: "EXECUTION_SERVING_CONTRACT_READY",
     serving_stage: servingStage,
     serving_decision: servingDecision,
     shadow_ready: shadowReady,
-    live_serving_allowed: false,
+    live_serving_allowed: liveServingAllowed,
     preferred_model_family: "EXECUTION_SCOPE",
     preferred_model_kind: String(scopeTrain.model_kind || "").trim() || null,
     preferred_train_run_id: String(scopeTrain.train_run_id || "").trim() || null,
@@ -141,6 +156,10 @@ function buildExecutionServingContract({
     fill_inference_mismatch_rate: toNum(fillInference.mismatch_rate),
     global_model_contract_status: toUpper(modelContract.status) || null,
     global_model_contract_canary_gate_status: String(modelContract.canary_gate_status || "").trim().toUpperCase() || null,
+    shadow_canary_gate_available: shadowGateAvailable,
+    shadow_canary_gate_status: toUpper(canaryGate.status) || null,
+    shadow_canary_gate_reason: toUpper(canaryGate.reason) || null,
+    shadow_canary_gate_pass: shadowGatePass,
     blocking_reason_n: blockingReasons.length,
     blocking_reasons: blockingReasons,
     warning_reason_n: warningReasons.length,

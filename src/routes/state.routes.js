@@ -28,7 +28,7 @@ const {
   buildRollbackSummary,
 } = require("../utils/leverageView");
 const { defaultExecTfFromEnv } = require("../utils/marketConfig");
-const { getPositionReadView } = require("../services/positionReadModel");
+const { getPositionReadView, getPositionReadViewsBySymbols } = require("../services/positionReadModel");
 
 function toMsSafe(v) {
   if (v == null) return null;
@@ -319,18 +319,7 @@ function createStateRoutes() {
       };
 
       // positions: docId direct lookup (POS__BINANCEFUT__BTCUSDT)
-      const posDocs = await Promise.all(
-        markets.map((mk) => db.collection("positions_paper").doc(`POS__${exchange}__${mk}`).get())
-      );
-      const positionsByMarket = {};
-      await Promise.all(markets.map(async (mk, i) => {
-        const d = posDocs[i];
-        const data = d.exists ? (d.data() || {}) : null;
-        const fallback = (data && isLiveDocForExchange(exchange, data)) ? data : null;
-        positionsByMarket[mk] = fallback
-          ? await getPositionReadView({ exchange, symbol: mk, fallbackPosition: fallback })
-          : null;
-      }));
+      const positionsByMarket = await getPositionReadViewsBySymbols({ exchange, symbols: markets });
       const observationsByMarket = {};
       await Promise.all(markets.map(async (mk) => {
         try {
@@ -956,18 +945,7 @@ function createStateRoutes() {
       const lastSignalAnyMsSafe = Number.isFinite(lastSignalAnyMs) && lastSignalAnyMs >= 0 ? lastSignalAnyMs : null;
       const lastSignalAny = signalsMerged[0] || null;
 
-      const posDocs = await Promise.all(
-        markets.map((mk) => db.collection("positions_paper").doc(`POS__${exchange}__${mk}`).get())
-      );
-      const positionsByMarket = {};
-      await Promise.all(markets.map(async (mk, i) => {
-        const d = posDocs[i];
-        const data = d.exists ? (d.data() || {}) : null;
-        const fallback = (data && isLiveDocForExchange(exchange, data)) ? data : null;
-        positionsByMarket[mk] = fallback
-          ? await getPositionReadView({ exchange, symbol: mk, fallbackPosition: fallback })
-          : null;
-      }));
+      const positionsByMarket = await getPositionReadViewsBySymbols({ exchange, symbols: markets });
       const isBinanceExchange = String(exchange || "").toUpperCase().includes("BINANCE");
       const defaultFuturesLeverage = isBinanceExchange ? 2 : 1;
       const nowMs = Date.now();

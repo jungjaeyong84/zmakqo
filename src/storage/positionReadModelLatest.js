@@ -96,10 +96,34 @@ async function listLatestPositionReadModelsByExchange({
   return snap.docs.map((doc) => doc.data() || {});
 }
 
+async function listLatestPositionReadModelsBySymbols({
+  exchange,
+  symbols = [],
+} = {}) {
+  const db = getFirestore();
+  const out = [];
+  const seen = new Set();
+  const uniqueSymbols = (Array.isArray(symbols) ? symbols : [])
+    .map((symbol) => upper(symbol))
+    .filter((symbol) => symbol && !seen.has(symbol) && seen.add(symbol));
+  const docs = await Promise.all(uniqueSymbols.map((symbol) =>
+    db.collection("position_read_model_latest")
+      .doc(buildPositionReadModelLatestId(exchange, symbol))
+      .get()
+      .catch(() => null)
+  ));
+  for (const snap of docs) {
+    if (!snap || !snap.exists) continue;
+    out.push(snap.data() || {});
+  }
+  return out;
+}
+
 module.exports = {
   upsertLatestPositionReadModel,
   getLatestPositionReadModel,
   listLatestPositionReadModelsByExchange,
+  listLatestPositionReadModelsBySymbols,
   __test: {
     buildPositionReadModelLatestId,
     shouldReplaceLatestPositionReadModel,

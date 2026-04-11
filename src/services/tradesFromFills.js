@@ -1,4 +1,5 @@
 const { getFirestore } = require("../storage/firestore");
+const { fetchUnifiedEventTimeline } = require("../storage/unifiedEventTimeline");
 const { isLiveDocForExchange } = require("../utils/liveOnly");
 const { buildFundingIndexForFills, sumFunding } = require("./fundingFees");
 
@@ -243,6 +244,49 @@ async function fetchRecentNewFills({ exchange, symbol, tf, limitN = 1000, fromMs
 
   out.sort((a, b) => safeMs(a.exec_bar_close_time_utc_ms) - safeMs(b.exec_bar_close_time_utc_ms));
   return out;
+}
+
+async function fetchRecentImmutableFills({
+  exchange,
+  symbol,
+  tf = null,
+  limitN = 1000,
+  fromMs = null,
+  toMs = null,
+} = {}) {
+  const rows = await fetchUnifiedEventTimeline({
+    exchange,
+    symbol,
+    fromMs,
+    toMs,
+    limit: Math.max(20, Math.trunc(Number(limitN) || 1000) * 8),
+  }).catch(() => []);
+  const out = [];
+  for (const row of rows) {
+    const kind = String(row && (row.event_kind || row.kind) || "").trim().toUpperCase();
+    if (kind !== "FILL") continue;
+    const raw = row && row.raw && typeof row.raw === "object" ? row.raw : null;
+    if (!raw) continue;
+    const fill = {
+      ...raw,
+      symbol: raw.symbol || raw.market || raw.symbol_or_pair_id || symbol,
+      tf: raw.tf || tf || null,
+      exec_price_source: raw.exec_price_source || raw.external_source || "UNIFIED_EVENT_TIMELINE",
+    };
+    if (fill.exchange !== exchange) continue;
+    if (!isLiveDocForExchange(exchange, fill)) continue;
+    if ((fill.symbol || fill.market || fill.symbol_or_pair_id) !== symbol) continue;
+    if (tf && fill.tf && fill.tf !== tf) continue;
+    const execMs = safeMs(fill.exec_bar_close_time_utc_ms) || safeMs(row.ts_ms) || safeMs(fill.created_at);
+    if (execMs == null) continue;
+    fill.exec_bar_close_time_utc_ms = execMs;
+    if (fromMs != null && Number.isFinite(Number(fromMs)) && execMs < Number(fromMs)) continue;
+    if (toMs != null && Number.isFinite(Number(toMs)) && execMs > Number(toMs)) continue;
+    out.push(fill);
+  }
+  out.sort((a, b) => safeMs(a.exec_bar_close_time_utc_ms) - safeMs(b.exec_bar_close_time_utc_ms));
+  if (out.length <= limitN) return out;
+  return out.slice(out.length - Math.max(1, Math.trunc(Number(limitN) || 1000)));
 }
 
 /*
@@ -586,6 +630,7 @@ function buildExternalPnlRowsFromFills(fills, opts = {}) {
 
 module.exports = {
   fetchRecentNewFills,
+  fetchRecentImmutableFills,
   buildTradesFromFills,
   buildTradesFromFillsWithFunding,
   buildExternalPnlRowsFromFills,

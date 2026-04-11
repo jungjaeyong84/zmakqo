@@ -2,7 +2,11 @@
 
 const { getFirestore } = require("../storage/firestore");
 const { getPosition } = require("../storage/positionsPaper");
-const { getLatestPositionReadModel, listLatestPositionReadModelsByExchange } = require("../storage/positionReadModelLatest");
+const {
+  getLatestPositionReadModel,
+  listLatestPositionReadModelsByExchange,
+  listLatestPositionReadModelsBySymbols,
+} = require("../storage/positionReadModelLatest");
 const { fetchUnifiedEventTimeline } = require("../storage/unifiedEventTimeline");
 
 function upper(value) {
@@ -155,14 +159,69 @@ async function listExchangePositionReadViews({
   });
 }
 
+async function getPositionReadViewsBySymbols({
+  exchange,
+  symbols = [],
+} = {}) {
+  const enabled = String(process.env.POSITION_READ_MODEL_USE_UNIFIED_TIMELINE || "1").trim() !== "0";
+  const uniqueSymbols = [];
+  const seen = new Set();
+  for (const rawSymbol of (Array.isArray(symbols) ? symbols : [])) {
+    const symbol = upper(rawSymbol);
+    if (!symbol || seen.has(symbol)) continue;
+    seen.add(symbol);
+    uniqueSymbols.push(symbol);
+  }
+  if (!uniqueSymbols.length) return {};
+  if (!enabled) {
+    const rawPositions = await Promise.all(uniqueSymbols.map((symbol) => getPosition({ exchange, symbol }).catch(() => null)));
+    return uniqueSymbols.reduce((acc, symbol, index) => {
+      acc[symbol] = rawPositions[index] || null;
+      return acc;
+    }, {});
+  }
+
+  const latestDocs = await listLatestPositionReadModelsBySymbols({
+    exchange,
+    symbols: uniqueSymbols,
+  }).catch(() => []);
+  const latestBySymbol = new Map();
+  for (const doc of latestDocs) {
+    const symbol = upper(doc && doc.symbol);
+    if (!symbol || latestBySymbol.has(symbol)) continue;
+    latestBySymbol.set(symbol, doc);
+  }
+
+  const missingSymbols = uniqueSymbols.filter((symbol) => !latestBySymbol.has(symbol));
+  const fallbackBySymbol = new Map();
+  if (missingSymbols.length) {
+    const rawPositions = await Promise.all(missingSymbols.map((symbol) => getPosition({ exchange, symbol }).catch(() => null)));
+    missingSymbols.forEach((symbol, index) => {
+      fallbackBySymbol.set(symbol, rawPositions[index] || null);
+    });
+  }
+
+  return uniqueSymbols.reduce((acc, symbol) => {
+    const latestDoc = latestBySymbol.get(symbol) || null;
+    const fallback = fallbackBySymbol.get(symbol) || null;
+    acc[symbol] = latestDoc
+      ? buildPositionReadView({
+        storedPosition: null,
+        latestTimelineRow: buildLatestTimelineRowFromIndex(latestDoc),
+      })
+      : fallback;
+    return acc;
+  }, {});
+}
+
 async function getPositionReadView({
   exchange,
   symbol,
   fallbackPosition = null,
   timelineLimit = 30,
 } = {}) {
-  const storedPosition = fallbackPosition || await getPosition({ exchange, symbol });
   const enabled = String(process.env.POSITION_READ_MODEL_USE_UNIFIED_TIMELINE || "1").trim() !== "0";
+  const storedPosition = fallbackPosition || null;
   if (!enabled) return storedPosition;
   const latestDoc = await getLatestPositionReadModel({ exchange, symbol }).catch(() => null);
   if (latestDoc) {
@@ -171,19 +230,21 @@ async function getPositionReadView({
       latestTimelineRow: buildLatestTimelineRowFromIndex(latestDoc),
     });
   }
+  const rawPosition = storedPosition || await getPosition({ exchange, symbol });
   const rows = await fetchUnifiedEventTimeline({
     exchange,
     symbol,
     limit: Math.max(5, Math.trunc(Number(timelineLimit) || 30)),
   }).catch(() => []);
   return buildPositionReadView({
-    storedPosition,
+    storedPosition: rawPosition,
     latestTimelineRow: pickLatestPositionMutationRow(rows),
   });
 }
 
 module.exports = {
   getPositionReadView,
+  getPositionReadViewsBySymbols,
   listPositionReadViews,
   listExchangePositionReadViews,
   __test: {

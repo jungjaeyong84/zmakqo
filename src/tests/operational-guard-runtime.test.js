@@ -1,0 +1,61 @@
+"use strict";
+
+const assert = require("assert");
+const { buildOperationalGuardState } = require("../services/operationalGuardRuntime");
+
+(() => {
+  const state = buildOperationalGuardState({
+    summary: {
+      generated_at_iso: "2026-04-11T00:00:00.000Z",
+      status: "진행",
+      mode: "수익 확대 가능",
+      error_count: 0,
+      cost_ratio_pct: 0.1,
+      cost_limit_pct: 0.2,
+      execution_health: {
+        available: true,
+        audit_issue_count: 0,
+      },
+    },
+    nowMs: Date.parse("2026-04-11T00:10:00.000Z"),
+  });
+
+  assert.strictEqual(state.block_new_entries, false);
+  assert.strictEqual(state.reason, null);
+})();
+
+(() => {
+  const state = buildOperationalGuardState({
+    summary: {
+      generated_at_iso: "2026-04-11T00:00:00.000Z",
+      status: "보류",
+      mode: "비용 차단",
+      execution_health: {
+        available: true,
+        qty_pct_non_positive_count: 1,
+      },
+    },
+    nowMs: Date.parse("2026-04-11T00:10:00.000Z"),
+  });
+
+  assert.strictEqual(state.block_new_entries, true);
+  assert.strictEqual(state.reason, "OPS_GUARD_HOLD");
+})();
+
+(() => {
+  const state = buildOperationalGuardState({
+    summary: {
+      generated_at_iso: "2026-04-10T00:00:00.000Z",
+      status: "진행",
+    },
+    nowMs: Date.parse("2026-04-10T07:30:00.000Z"),
+    failClosed: true,
+    maxAgeMs: 60 * 60 * 1000,
+  });
+
+  assert.strictEqual(state.stale, true);
+  assert.strictEqual(state.block_new_entries, true);
+  assert.strictEqual(state.reason, "OPS_GUARD_STALE");
+})();
+
+console.log("OPERATIONAL_GUARD_RUNTIME_TEST_OK");

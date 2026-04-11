@@ -765,6 +765,31 @@ function buildSnapshot({
 
 (() => {
   const snap = buildSnapshot({
+    allocatorRows: [{ market: "BTCUSDT", allocation_score: 1.0, recommended_action: "HOLD" }],
+    qualityRows: [{ market: "BTCUSDT", avg_created_to_fill_ms: 1000, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }],
+  });
+  snap.operationalGuard = {
+    status: "보류",
+    mode: "비용 차단",
+    reason: "OPS_GUARD_HOLD",
+    block_new_entries: true,
+  };
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    intent: "ENTRY",
+    qtyPct: 1,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.reason, "OPS_GUARD_HOLD");
+})();
+
+(() => {
+  const snap = buildSnapshot({
     allocatorRows: [{ market: "DOGEUSDT", allocation_score: 1.0, recommended_action: "HOLD" }],
     qualityRows: [{ market: "DOGEUSDT", avg_created_to_fill_ms: 1000, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }],
   });

@@ -7,6 +7,8 @@ const { defaultMarketsFromEnv, defaultExecTfFromEnv } = require("../utils/market
 const { KST_OFFSET_MS, toKstString } = require("../utils/timeKst");
 const { buildFeatureLabelDataset } = require("./featureLabelDataset");
 const { recordShadowCanaryGate } = require("../storage/shadowCanaryGates");
+const { recordMlServingState } = require("../storage/mlServingStates");
+const { buildMlServingState } = require("./mlServingRuntime");
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
@@ -356,6 +358,20 @@ function renderShadowCanaryGateMarkdown(payload = {}) {
   ].join("\n") + "\n";
 }
 
+function renderMlServingStateMarkdown(payload = {}) {
+  const state = payload.state || {};
+  return [
+    "# ML Serving State",
+    "",
+    `- generated_at_kst: ${payload.generated_at_kst || "N/A"}`,
+    `- exchange: ${payload.exchange || "ALL"}`,
+    `- status: ${state.status || "N/A"} / reason: ${state.reason || "N/A"}`,
+    `- serving_mode: ${state.serving_mode || "N/A"} / live_allowed: ${state.live_serving_allowed === true ? "YES" : "NO"} / block_new_entries: ${state.block_new_entries === true ? "YES" : "NO"}`,
+    `- gate_status: ${state.gate_status || "N/A"} / gate_reason: ${state.gate_reason || "N/A"} / stale: ${state.stale === true ? "YES" : "NO"}`,
+    `- preferred_model_artifact_id: ${state.preferred_model_artifact_id || "N/A"}`,
+  ].join("\n") + "\n";
+}
+
 function renderShadowSummaryMarkdown(payload = {}) {
   const summary = payload.summary || {};
   const line = (rows) => (Array.isArray(rows) ? rows : []).map((row) => `${row.key} ${row.count}`).join(" / ") || "N/A";
@@ -466,6 +482,8 @@ async function runShadowInferenceCanaryJob({
   const latestMd = path.join(OPS_DAILY_DIR, "shadow_inference_canary_latest.md");
   const latestGateJson = path.join(OPS_DAILY_DIR, "shadow_inference_canary_gate_latest.json");
   const latestGateMd = path.join(OPS_DAILY_DIR, "shadow_inference_canary_gate_latest.md");
+  const latestServingJson = path.join(OPS_DAILY_DIR, "ml_serving_state_latest.json");
+  const latestServingMd = path.join(OPS_DAILY_DIR, "ml_serving_state_latest.md");
   const latestMtimeMs = statMtimeMs(latestJson);
   if (force !== true && Number.isFinite(latestMtimeMs) && (nowMeta.nowMs - latestMtimeMs) < minIntervalMs) {
     return {
@@ -503,11 +521,21 @@ async function runShadowInferenceCanaryJob({
     })),
   };
   payload.gate = buildShadowCanaryGate(payload.summary);
+  payload.serving_state = buildMlServingState({
+    exchange: exchangeUpper,
+    shadowCanaryGate: {
+      generated_at: nowMeta.iso,
+      gate: payload.gate,
+      summary: payload.summary,
+    },
+  });
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}_shadow_inference_canary`;
   const jsonPath = path.join(OPS_DAILY_DIR, `${base}.json`);
   const mdPath = path.join(OPS_DAILY_DIR, `${base}.md`);
   const gateJsonPath = path.join(OPS_DAILY_DIR, `${base}_gate.json`);
   const gateMdPath = path.join(OPS_DAILY_DIR, `${base}_gate.md`);
+  const servingJsonPath = path.join(OPS_DAILY_DIR, `${base}_serving_state.json`);
+  const servingMdPath = path.join(OPS_DAILY_DIR, `${base}_serving_state.md`);
 
   writeJson(jsonPath, payload);
   writeText(mdPath, renderShadowInferenceCanaryMarkdown(payload));
@@ -524,10 +552,27 @@ async function runShadowInferenceCanaryJob({
     },
   });
   writeText(gateMdPath, renderShadowCanaryGateMarkdown(payload));
+  writeJson(servingJsonPath, {
+    ok: true,
+    generated_at_kst: payload.generated_at_kst,
+    exchange: payload.exchange,
+    state: payload.serving_state,
+    artifacts: {
+      canary_json: jsonPath,
+      gate_json: gateJsonPath,
+    },
+  });
+  writeText(servingMdPath, renderMlServingStateMarkdown({
+    generated_at_kst: payload.generated_at_kst,
+    exchange: payload.exchange,
+    state: payload.serving_state,
+  }));
   copyLatest(jsonPath, latestJson);
   copyLatest(mdPath, latestMd);
   copyLatest(gateJsonPath, latestGateJson);
   copyLatest(gateMdPath, latestGateMd);
+  copyLatest(servingJsonPath, latestServingJson);
+  copyLatest(servingMdPath, latestServingMd);
   await recordShadowCanaryGate({
     exchange: exchangeUpper,
     generatedAt: nowMeta.iso,
@@ -540,6 +585,20 @@ async function runShadowInferenceCanaryJob({
       latest_md: latestMd,
       latest_gate_json: latestGateJson,
       latest_gate_md: latestGateMd,
+      latest_serving_json: latestServingJson,
+      latest_serving_md: latestServingMd,
+    },
+  }).catch(() => null);
+  await recordMlServingState({
+    exchange: exchangeUpper,
+    generatedAt: nowMeta.iso,
+    state: payload.serving_state,
+    source: "SHADOW_INFERENCE_CANARY",
+    artifacts: {
+      latest_json: latestServingJson,
+      latest_md: latestServingMd,
+      latest_gate_json: latestGateJson,
+      latest_gate_md: latestGateMd,
     },
   }).catch(() => null);
 
@@ -549,10 +608,13 @@ async function runShadowInferenceCanaryJob({
     latest_md: latestMd,
     latest_gate_json: latestGateJson,
     latest_gate_md: latestGateMd,
+    latest_serving_json: latestServingJson,
+    latest_serving_md: latestServingMd,
     compared_n: payload.summary.compared_n,
     disagreement_n: payload.summary.disagreement_n,
     rollback_triggered: payload.summary.rollback_triggered,
     gate: payload.gate,
+    serving_state: payload.serving_state,
     exchange: payload.exchange,
   };
 }
@@ -586,5 +648,6 @@ module.exports = {
     renderShadowSummaryMarkdown,
     renderShadowInferenceCanaryMarkdown,
     renderShadowCanaryGateMarkdown,
+    renderMlServingStateMarkdown,
   },
 };

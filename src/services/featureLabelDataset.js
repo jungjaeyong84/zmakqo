@@ -1,7 +1,7 @@
 "use strict";
 
 const { defaultExecTfFromEnv } = require("../utils/marketConfig");
-const { fetchRecentNewFills, buildTradesFromFillsWithFunding } = require("./tradesFromFills");
+const { fetchRecentImmutableFills, buildTradesFromFillsWithFunding } = require("./tradesFromFills");
 const { labelOutcome } = require("./outcomeLabeler");
 
 function toNum(value) {
@@ -18,7 +18,7 @@ async function buildFeatureLabelDataset({
 } = {}) {
   const rows = [];
   for (const market of (Array.isArray(markets) ? markets : [])) {
-    const fills = await fetchRecentNewFills({
+    const fills = await fetchRecentImmutableFills({
       exchange,
       symbol: market,
       tf,
@@ -54,8 +54,9 @@ async function buildFeatureLabelDataset({
   }
   rows.sort((a, b) => Number(a.close_ms || 0) - Number(b.close_ms || 0));
   return {
-    schema_version: "FEATURE_LABEL_DATASET_V1",
+    schema_version: "FEATURE_LABEL_DATASET_V2",
     created_at: new Date().toISOString(),
+    source_collection: "UNIFIED_EVENT_TIMELINE",
     rows_n: rows.length,
     rows,
   };

@@ -2,6 +2,7 @@
 
 const { evaluateLiveEntryPolicy } = require("./liveExecutionPolicy");
 const { recordActionHookEvent } = require("../storage/actionHookLedger");
+const { recordShadowEvaluation } = require("../storage/shadowEvaluations");
 const { buildEventEnvelope } = require("./eventEnvelope");
 
 function upper(value) {
@@ -88,6 +89,52 @@ function isEntryLikeIntent(intent) {
   return normalized === "ENTRY" || normalized === "ADD";
 }
 
+function recordActionShadowEvaluationSafe({
+  envelope,
+  policyEval,
+  features = null,
+  intent = null,
+  qtyPct = null,
+} = {}) {
+  if (!envelope || !policyEval) return;
+  const normalizedShadowInference = {
+    ok: policyEval.ok === true,
+    reason: upper(policyEval.reason),
+    qty_pct_final: Number.isFinite(Number(policyEval.qtyPctFinal)) ? Number(policyEval.qtyPctFinal) : null,
+    policy_blocked: !!(policyEval.policy && policyEval.policy.blocked),
+    action: upper(policyEval.policy && policyEval.policy.action),
+  };
+  Promise.resolve(recordShadowEvaluation({
+    exchange: envelope.exchange,
+    symbol: envelope.symbol,
+    event: envelope.event,
+    traceId: envelope.idempotency_key,
+    requestId: envelope.request_id,
+    runId: envelope.run_id,
+    source: envelope.source || "ACTION_PRE_HOOK",
+    modelKey: "LIVE_ENTRY_POLICY_SHADOW_V1",
+    baselineDecision: {
+      ok: policyEval.ok === true,
+      reason: upper(policyEval.reason),
+      qty_pct_final: Number.isFinite(Number(policyEval.qtyPctFinal)) ? Number(policyEval.qtyPctFinal) : null,
+      intent: upper(intent),
+      qty_pct_requested: Number.isFinite(Number(qtyPct)) ? Number(qtyPct) : null,
+    },
+    shadowDecision: {
+      policy: policyEval.policy || null,
+      features_patch: policyEval.featuresPatch || null,
+      inference: normalizedShadowInference,
+    },
+    features: features && typeof features === "object" ? { ...features } : null,
+    extra: {
+      policy_stage: "ACTION_PRE_HOOK",
+    },
+  })).catch((err) => {
+    const msg = err && err.message ? err.message : String(err);
+    console.warn("[SHADOW_EVALUATION_FAIL]", msg);
+  });
+}
+
 function runActionPreHooks({
   action = null,
   runId = null,
@@ -159,6 +206,13 @@ function runActionPreHooks({
   const featuresPatch = policyEval && policyEval.featuresPatch && typeof policyEval.featuresPatch === "object"
     ? policyEval.featuresPatch
     : baseFeatures;
+  recordActionShadowEvaluationSafe({
+    envelope,
+    policyEval,
+    features: featuresPatch,
+    intent,
+    qtyPct,
+  });
 
   if (!policyEval || policyEval.ok !== true || !Number.isFinite(Number(policyEval.qtyPctFinal)) || Number(policyEval.qtyPctFinal) <= 0) {
     const reason = upper(policyEval && policyEval.reason) || "ACTION_PRE_HOOK_BLOCKED";
