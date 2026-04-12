@@ -38,6 +38,7 @@ const { buildExitStageView } = require("../utils/exitStageView");
   assert.equal(stage.compact_headline.left_price, 98.35);
   assert.equal(stage.compact_headline.right_price, 103.25);
   assert.equal(stage.native_protection_active, true);
+  assert.equal(stage.tp1_qty_pct, 0.375);
 })();
 
 (() => {

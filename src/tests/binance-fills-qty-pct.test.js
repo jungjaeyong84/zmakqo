@@ -25,6 +25,21 @@ async function run() {
   assert.strictEqual(typeof fn, "function", "computeSyncedQtyPct export missing");
   const resolveFillSyncAlertCloseRatio = __test && __test.resolveFillSyncAlertCloseRatio;
   assert.strictEqual(typeof resolveFillSyncAlertCloseRatio, "function", "resolveFillSyncAlertCloseRatio export missing");
+  const applyExternalExitQtyAuthorityFn = __test && __test.applyExternalExitQtyAuthority;
+  assert.strictEqual(typeof applyExternalExitQtyAuthorityFn, "function", "applyExternalExitQtyAuthority export missing");
+
+  const tp1Authority = applyExternalExitQtyAuthorityFn({
+    authorityMap: new Map(),
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    event: "EXIT_TP_P1_1.65P",
+    entryEventId: "ENTRY_A",
+    qtyPct: 0.5,
+    rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
+  });
+  assert.ok(Math.abs(tp1Authority.acceptedQtyPct - 0.375) < 1e-12);
+  assert.ok(Math.abs(tp1Authority.droppedQtyPct - 0.125) < 1e-12);
+  assert.strictEqual(tp1Authority.capped, true);
 
   const scaledByNotional = fn({
     intent: { qty_pct: 0.15, notional: 15000 },
@@ -263,12 +278,22 @@ async function run() {
 
   {
     const authorityMap = new Map();
+    const tp0 = applyExternalExitQtyAuthority({
+      authorityMap,
+      exchange: "BINANCEFUT",
+      symbol: "DOGEUSDT",
+      event: "EXIT_TP_P0_0.8P",
+      entryEventId: "ENTRY__DOGE",
+      orderMeta: { orderId: 0 },
+      qtyPct: 0.25,
+      rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
+    });
     const first = applyExternalExitQtyAuthority({
       authorityMap,
       exchange: "BINANCEFUT",
       symbol: "DOGEUSDT",
       event: "EXIT_TP_P1_1.65P",
-      signalDocId: "SIG__DOGE__TP1",
+      entryEventId: "ENTRY__DOGE",
       orderMeta: { orderId: 1 },
       qtyPct: 0.5,
       rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
@@ -278,7 +303,7 @@ async function run() {
       exchange: "BINANCEFUT",
       symbol: "DOGEUSDT",
       event: "EXIT_TP_P1_1.65P",
-      signalDocId: "SIG__DOGE__TP1",
+      entryEventId: "ENTRY__DOGE",
       orderMeta: { orderId: 2 },
       qtyPct: 0.5,
       rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
@@ -288,15 +313,16 @@ async function run() {
       exchange: "BINANCEFUT",
       symbol: "DOGEUSDT",
       event: "EXIT_TRAIL",
-      signalDocId: "SIG__DOGE__TP1",
+      entryEventId: "ENTRY__DOGE",
       orderMeta: { orderId: 3 },
       qtyPct: 1,
       rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
     });
-    assert.strictEqual(first.acceptedQtyPct, 0.5);
+    assert.strictEqual(tp0.acceptedQtyPct, 0.25);
+    assert.strictEqual(first.acceptedQtyPct, 0.375);
     assert.strictEqual(duplicate.acceptedQtyPct, null);
     assert.strictEqual(duplicate.duplicateSuspected, true);
-    assert.strictEqual(trail.acceptedQtyPct, 0.5);
+    assert.strictEqual(trail.acceptedQtyPct, 0.375);
   }
 
   const nativeSl = await resolveExternalExitEvent({
@@ -352,7 +378,7 @@ async function run() {
     orderMeta: { orderId: 1273, orderType: "TAKE_PROFIT_MARKET", closePosition: false, reduceOnly: true, clientOrderId: "native_y" },
     positionCtx: { trailActive: false, tpP1Done: false },
     rules: { SL: -0.015, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.03, TP_P1_QTY: 0.5, TRAIL_PCT: 0.01 },
-    qtyPct: 0.5,
+    qtyPct: 0.375,
   });
   assert.strictEqual(inferredTp1, "EXIT_TP_P1_3P");
 

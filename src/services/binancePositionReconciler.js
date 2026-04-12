@@ -1,6 +1,10 @@
 "use strict";
 
 const { normalizePositionSide, resolveCloseSide } = require("../utils/positionSide");
+const {
+  resolveTp0ContractQtyRatio,
+  resolveTp1AbsoluteContractQtyRatio,
+} = require("../utils/exitQtyContract");
 
 function toNum(value) {
   const n = Number(value);
@@ -115,8 +119,11 @@ function pickTakeProfitCandidates(orders = [], positionSide, qtyBase) {
 
 function inferTakeProfitKindFromQtyRatio(qtyRatio, tp0QtyRatio = 0.25, tp1QtyRatio = 0.5) {
   const ratio = toNum(qtyRatio);
-  const tp0Ref = toNum(tp0QtyRatio);
-  const tp1Ref = toNum(tp1QtyRatio);
+  const tp0Ref = resolveTp0ContractQtyRatio(tp0QtyRatio, 0.25);
+  const tp1Ref = resolveTp1AbsoluteContractQtyRatio({
+    tp0QtyRatio: tp0QtyRatio,
+    tp1RemainingQtyRatio: tp1QtyRatio,
+  });
   if (!Number.isFinite(ratio) || ratio <= 0) return null;
   const candidates = [];
   if (Number.isFinite(tp0Ref) && tp0Ref > 0) {

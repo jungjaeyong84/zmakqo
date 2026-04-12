@@ -7,6 +7,7 @@ const fs = require("fs");
 const path = require("path");
 const { getFirestore } = require("../src/storage/firestore");
 const { resolveExitRulesForPosition } = require("../src/engine/signalEngine");
+const { resolveExitStageAbsoluteContractQtyRatio } = require("../src/utils/exitQtyContract");
 
 const LOOKBACK_DAYS = Math.max(1, Number(process.env.EXIT_QTY_CONTRACT_AUDIT_LOOKBACK_DAYS || 7));
 const PAGE_SIZE = Math.max(100, Number(process.env.EXIT_QTY_CONTRACT_AUDIT_PAGE_SIZE || 1000));
@@ -151,8 +152,14 @@ function buildAuthoritativeFillSet(fills = []) {
 
 function auditChain(chain) {
   const issues = [];
-  const expectedTp0 = Number.isFinite(chain.expected_tp0_qty) ? chain.expected_tp0_qty : 0.25;
-  const expectedTp1 = Number.isFinite(chain.expected_tp1_qty) ? chain.expected_tp1_qty : 0.5;
+  const expectedTp0 = resolveExitStageAbsoluteContractQtyRatio("TP0", {
+    TP_P0_QTY: chain.expected_tp0_qty,
+    TP_P1_QTY: chain.expected_tp1_qty,
+  });
+  const expectedTp1 = resolveExitStageAbsoluteContractQtyRatio("TP1", {
+    TP_P0_QTY: chain.expected_tp0_qty,
+    TP_P1_QTY: chain.expected_tp1_qty,
+  });
   if (chain.tp0_qty > (expectedTp0 + QTY_TOL)) {
     issues.push({
       code: "TP0_ABS_OVER",

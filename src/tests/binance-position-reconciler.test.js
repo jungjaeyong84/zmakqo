@@ -18,7 +18,7 @@ async function run() {
   assert.strictEqual(__test.inferTakeProfitKindFromQtyRatio(0.25), "TP0");
   assert.strictEqual(__test.inferTakeProfitKindFromQtyRatio(0.5), "TP1");
   assert.strictEqual(__test.inferTakeProfitKindFromQtyRatio(0.3), "TP0");
-  assert.strictEqual(__test.inferTakeProfitKindFromQtyRatio(0.375), null);
+  assert.strictEqual(__test.inferTakeProfitKindFromQtyRatio(0.375), "TP1");
 
   const classifiedShort = __test.classifyTakeProfitOrders({
     orders: [

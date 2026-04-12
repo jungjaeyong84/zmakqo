@@ -48,6 +48,7 @@ const { summarizeFebtRows, summarizeFebtPhase0Artifact } = require("../utils/feb
 const { buildMissionControlViewModel } = require("../utils/controlPlaneViewModels");
 const { listExchangePositionReadViews } = require("../services/positionReadModel");
 const { loadSystemRuntimeGuardView } = require("../services/systemRuntimeGuardView");
+const { resolveExitStageAbsoluteContractQtyRatio } = require("../utils/exitQtyContract");
 
 const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
 const FEBT_PHASE0_LATEST_PATH = path.join(OPS_DAILY_DIR, "febt_phase0_baseline_latest.json");
@@ -155,6 +156,30 @@ function summarizeExitRuleValue(ruleList, field, fallback) {
   const nums = (ruleList || [])
     .map((rules) => Number(rules && rules[field]))
     .filter((v) => Number.isFinite(v));
+  if (!nums.length) {
+    return {
+      value: Number.isFinite(Number(fallback)) ? Number(fallback) : null,
+      min: Number.isFinite(Number(fallback)) ? Number(fallback) : null,
+      max: Number.isFinite(Number(fallback)) ? Number(fallback) : null,
+      mixed: false,
+    };
+  }
+  const min = Math.min(...nums);
+  const max = Math.max(...nums);
+  const mixed = Math.abs(max - min) > 1e-9;
+  return {
+    value: mixed ? null : nums[0],
+    min,
+    max,
+    mixed,
+  };
+}
+
+function summarizeTp1AbsoluteExitQtyValue(ruleList, fallbackRules = null) {
+  const nums = (ruleList || [])
+    .map((rules) => resolveExitStageAbsoluteContractQtyRatio("TP1", rules))
+    .filter((v) => Number.isFinite(v));
+  const fallback = resolveExitStageAbsoluteContractQtyRatio("TP1", fallbackRules || {});
   if (!nums.length) {
     return {
       value: Number.isFinite(Number(fallback)) ? Number(fallback) : null,
@@ -853,14 +878,15 @@ router.get("/dashboard/home", async (req, res) => {
 
     const exitRules = getExitRulesForExchange(exchange);
     const tpThreshold = tpP1ForExchange(exchange);
+    const tp1AbsoluteQty = resolveExitStageAbsoluteContractQtyRatio("TP1", exitRules);
     const tpStatus = {
       exec_tf: execTf,
       threshold_pct: tpThreshold,
       threshold_pct_min: tpThreshold,
       threshold_pct_max: tpThreshold,
-      tp_qty_pct: exitRules.TP_P1_QTY,
-      tp_qty_pct_min: exitRules.TP_P1_QTY,
-      tp_qty_pct_max: exitRules.TP_P1_QTY,
+      tp_qty_pct: tp1AbsoluteQty,
+      tp_qty_pct_min: tp1AbsoluteQty,
+      tp_qty_pct_max: tp1AbsoluteQty,
       trail_r_multiple: exitRules.TRAIL_R_MULTIPLE,
       trail_r_multiple_min: exitRules.TRAIL_R_MULTIPLE,
       trail_r_multiple_max: exitRules.TRAIL_R_MULTIPLE,
@@ -919,7 +945,7 @@ router.get("/dashboard/home", async (req, res) => {
     }
     if (activeResolvedRules.length > 0) {
       const thresholdSummary = summarizeExitRuleValue(activeResolvedRules, "TP_P1", tpThreshold);
-      const tpQtySummary = summarizeExitRuleValue(activeResolvedRules, "TP_P1_QTY", exitRules.TP_P1_QTY);
+      const tpQtySummary = summarizeTp1AbsoluteExitQtyValue(activeResolvedRules, exitRules);
       const trailRSummary = summarizeExitRuleValue(activeResolvedRules, "TRAIL_R_MULTIPLE", exitRules.TRAIL_R_MULTIPLE);
       const trailSummary = summarizeExitRuleValue(activeResolvedRules, "TRAIL_PCT", exitRules.TRAIL_PCT);
       const runnerSummary = summarizeExitRuleValue(activeResolvedRules, "RUNNER_MIN_PROFIT_PCT", exitRules.RUNNER_MIN_PROFIT_PCT);

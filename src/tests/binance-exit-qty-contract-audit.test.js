@@ -26,7 +26,7 @@ function run() {
       entry_event_id: "ENTRY_A",
       fill_id: "F2",
       event: "EXIT_TP_P1_1.65P",
-      qty_pct: 0.5,
+      qty_pct: 0.375,
       created_at: "2026-04-12T00:01:00.000Z",
     },
     {
@@ -35,7 +35,7 @@ function run() {
       entry_event_id: "ENTRY_A",
       fill_id: "F3",
       event: "EXIT_TRAIL",
-      qty_pct: 0.25,
+      qty_pct: 0.375,
       created_at: "2026-04-12T00:02:00.000Z",
     },
   ];

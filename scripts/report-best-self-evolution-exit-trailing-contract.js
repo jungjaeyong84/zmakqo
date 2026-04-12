@@ -7,6 +7,7 @@ const { CHARTER_EXPECTATIONS } = require("../src/config/charterExpectations");
 const { checkCharterConsistency } = require("../src/services/charterCheck");
 const { resolveExitRulesForPosition } = require("../src/engine/signalEngine");
 const { getSystemSettingsForProvider } = require("../src/storage/settings");
+const { resolveExitStageAbsoluteContractQtyRatio } = require("../src/utils/exitQtyContract");
 const {
   OPS_DAILY_DIR,
   copyLatest,
@@ -56,7 +57,7 @@ function summarizeRules(rules = null) {
   return {
     sl_pct_abs: pctAbs(r.SL),
     tp1_pct: pctSigned(r.TP_P1),
-    tp1_qty_pct: pctSigned(r.TP_P1_QTY),
+    tp1_qty_pct: pctSigned(resolveExitStageAbsoluteContractQtyRatio("TP1", r)),
     be_pct: pctSigned(r.BE_PCT),
     trail_r_multiple: toNum(r.TRAIL_R_MULTIPLE),
     trail_pct_fallback: pctSigned(r.TRAIL_PCT),

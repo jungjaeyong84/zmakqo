@@ -26,6 +26,7 @@ const { isIntentCanceledLikeStatus } = require("../utils/intentStatus");
 const { deriveSignalDocId } = require("../utils/signalDocId");
 const { inferTakeProfitKindFromQtyRatio } = require("./binancePositionReconciler");
 const { sendKoreanTelegramSummary } = require("../../scripts/lib/automation-utils");
+const { resolveExitStageAbsoluteContractQtyRatio } = require("../utils/exitQtyContract");
 
 const DEFAULT_LOOKBACK_MS = 72 * 60 * 60 * 1000;
 const DEFAULT_MIN_INTERVAL_MS = 3 * 60 * 1000;
@@ -1677,8 +1678,8 @@ function applyExternalExitQtyAuthority({
     };
   }
   const state = getExitAuthorityState(authorityMap, chainKey);
-  const tp0Cap = Number.isFinite(Number(rules && rules.TP_P0_QTY)) ? Number(rules.TP_P0_QTY) : 0.25;
-  const tp1Cap = Number.isFinite(Number(rules && rules.TP_P1_QTY)) ? Number(rules.TP_P1_QTY) : 0.5;
+  const tp0Cap = resolveExitStageAbsoluteContractQtyRatio("TP0", rules);
+  const tp1Cap = resolveExitStageAbsoluteContractQtyRatio("TP1", rules);
   let remaining = null;
   if (stage === "TP0") remaining = Math.max(0, tp0Cap - state.tp0);
   else if (stage === "TP1") remaining = Math.max(0, tp1Cap - state.tp1);

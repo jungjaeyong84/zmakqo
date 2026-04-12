@@ -2,6 +2,7 @@
 
 const { resolveExitRulesForPosition, computeRunnerExitStopPrice, resolveEntryRDistance, resolveTrailDelayState, resolveTpP0Pct } = require("../engine/signalEngine");
 const { resolveTrailObservationSnapshot } = require("../storage/positionRuntimeObservations");
+const { resolveExitStageAbsoluteContractQtyRatio } = require("./exitQtyContract");
 
 function toNum(v) {
   if (v === null || v === undefined || v === "") return null;
@@ -182,7 +183,7 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     tp1_price: tp1Price,
     sl_price: slPrice,
     be_price: bePrice,
-    tp1_qty_pct: toNum(rules.TP_P1_QTY),
+    tp1_qty_pct: resolveExitStageAbsoluteContractQtyRatio("TP1", rules),
     trail_r_multiple: toNum(rules.TRAIL_R_MULTIPLE),
     trail_pct: toNum(rules.TRAIL_PCT),
     tp0_done: tpP0Done,
