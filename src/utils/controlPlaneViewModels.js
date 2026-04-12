@@ -1091,6 +1091,13 @@ function buildRecoveryViewModel() {
   const failureLearning = loadLatestArtifact("best_self_evolution_failure_learning_loop_latest.json");
   const serverMarketCapitalAllocator = loadLatestArtifact("best_self_evolution_server_market_capital_allocator_latest.json");
   const mlPromotionGate = loadLatestArtifact("best_self_evolution_ml_promotion_gate_latest.json");
+  const openclawPolicyAuthority = loadLatestArtifact("openclaw_policy_authority_latest.json");
+  const openclaw7 = openclawPolicyAuthority.raw && openclawPolicyAuthority.raw.periods
+    ? openclawPolicyAuthority.raw.periods.DAYS_7
+    : null;
+  const openclaw14 = openclawPolicyAuthority.raw && openclawPolicyAuthority.raw.periods
+    ? openclawPolicyAuthority.raw.periods.DAYS_14
+    : null;
   const runtimeGuardScale = resolveRuntimeGuardSoftScale({
     ops: systemOps.raw,
     slo: systemSlo.raw,
@@ -1557,6 +1564,31 @@ function buildRecoveryViewModel() {
                 open: buildLink("Report", buildReportUrl(row.market)),
               }), 6),
             },
+          },
+          {
+            title: "OpenClaw Authority",
+            tone: openclaw7 && openclaw7.gate && openclaw7.gate.verdict === "PASS" ? "ok" : "warn",
+            rows: [
+              { label: "7D Gate", value: compactText(openclaw7 && openclaw7.gate && openclaw7.gate.verdict || "N/A") },
+              { label: "7D Decisions", value: numberText(openclaw7 && openclaw7.decision_summary && openclaw7.decision_summary.rows_n, 0) },
+              { label: "7D Blocked", value: `${numberText(openclaw7 && openclaw7.decision_summary && openclaw7.decision_summary.blocked_n, 0)} (${toDisplayPercent(openclaw7 && openclaw7.decision_summary && openclaw7.decision_summary.blocked_rate, 0)})` },
+              { label: "7D Reduced", value: `${numberText(openclaw7 && openclaw7.decision_summary && openclaw7.decision_summary.reduced_n, 0)} (${toDisplayPercent(openclaw7 && openclaw7.decision_summary && openclaw7.decision_summary.reduced_rate, 0)})` },
+              { label: "14D Gate", value: compactText(openclaw14 && openclaw14.gate && openclaw14.gate.verdict || "N/A") },
+              { label: "14D Decisions", value: numberText(openclaw14 && openclaw14.decision_summary && openclaw14.decision_summary.rows_n, 0) },
+              { label: "Top 7D Reason", value: compactText(openclaw7 && openclaw7.decision_summary && Array.isArray(openclaw7.decision_summary.by_reason) && openclaw7.decision_summary.by_reason[0] && openclaw7.decision_summary.by_reason[0].key) },
+            ],
+            table: openclaw7 && openclaw7.decision_summary && Array.isArray(openclaw7.decision_summary.by_reason)
+              ? {
+                columns: [
+                  { key: "reason", label: "7D Reason" },
+                  { key: "count", label: "Count" },
+                ],
+                rows: buildRowsPreview(openclaw7.decision_summary.by_reason, (row) => ({
+                  reason: compactText(row.key),
+                  count: numberText(row.count, 0),
+                }), 5),
+              }
+              : null,
           },
         ],
       },

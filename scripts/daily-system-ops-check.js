@@ -392,6 +392,69 @@ function hasExecutionFlowCoverage(health) {
   return hasSignalSide && hasFillSide;
 }
 
+function upper(value) {
+  return String(value || "").trim().toUpperCase() || null;
+}
+
+function toTimeMs(value) {
+  if (Number.isFinite(Number(value))) return Number(value);
+  const parsed = Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function resolvePositionReadViewSymbol(row = {}) {
+  return upper(row.symbol || row.symbol_or_pair_id || row.market || null);
+}
+
+function resolvePositionReadViewCommitMs(row = {}) {
+  return (
+    toTimeMs(row.read_model_event_ts_ms)
+    || toTimeMs(row.writer_committed_at)
+    || toTimeMs(row.updated_at)
+    || toTimeMs(row.external_synced_at)
+    || toTimeMs(row.meta && row.meta.external_synced_at)
+    || null
+  );
+}
+
+function hasHealthySupersedingPositionView(family = {}, positionRows = []) {
+  const familyName = upper(family.family);
+  if (familyName !== "POSITION_WRITE_TOKEN_MISMATCH") return false;
+  const familyLatestMs = toTimeMs(family.latest_at);
+  if (!Number.isFinite(familyLatestMs)) return false;
+  const symbols = Array.isArray(family.symbols)
+    ? family.symbols.map((row) => upper(row)).filter(Boolean)
+    : [];
+  if (!symbols.length) return false;
+  const rowsBySymbol = new Map();
+  for (const row of positionRows || []) {
+    const symbol = resolvePositionReadViewSymbol(row);
+    if (!symbol || rowsBySymbol.has(symbol)) continue;
+    rowsBySymbol.set(symbol, row);
+  }
+  return symbols.every((symbol) => {
+    const row = rowsBySymbol.get(symbol);
+    if (!row) return false;
+    const commitMs = resolvePositionReadViewCommitMs(row);
+    if (!Number.isFinite(commitMs) || commitMs <= familyLatestMs) return false;
+    const meta = row && typeof row.meta === "object" ? row.meta : {};
+    const projectionInSync = meta.exchange_projection_in_sync;
+    const protectionOk = upper(meta.native_protection_refresh_status || "");
+    return projectionInSync === true && (!protectionOk || protectionOk === "OK");
+  });
+}
+
+function filterSupersededActiveErrorFamilies(activeFamilies = [], positionRows = []) {
+  const active = Array.isArray(activeFamilies) ? activeFamilies : [];
+  const superseded = [];
+  const effective = [];
+  for (const family of active) {
+    if (hasHealthySupersedingPositionView(family, positionRows)) superseded.push(family);
+    else effective.push(family);
+  }
+  return { effective, superseded };
+}
+
 function decideStatus({
   netPnlPct,
   costRatioPct,
@@ -809,9 +872,15 @@ async function main() {
   const fillSyncAlertDuplication = loadFillSyncAlertDuplicationHealth({ repoRoot });
   const trailRunnerFloorAudit = loadTrailRunnerFloorAuditHealth({ repoRoot });
   const binanceExitQtyContractAudit = loadBinanceExitQtyContractAuditHealth({ repoRoot });
-  const activePositionCount = await listExchangePositionReadViews({ exchange: "BINANCEFUT", limit: 200 })
-    .then((rows) => rows.filter((row) => Number(row && row.size_pct) > 0 && String(row && row.state || "").toUpperCase() !== "FLAT").length)
-    .catch(() => null);
+  const positionReadViews = await listExchangePositionReadViews({ exchange: "BINANCEFUT", limit: 200 }).catch(() => []);
+  const activePositionCount = Array.isArray(positionReadViews)
+    ? positionReadViews.filter((row) => Number(row && row.size_pct) > 0 && String(row && row.state || "").toUpperCase() !== "FLAT").length
+    : null;
+  const runtimeActiveFamilyResolution = filterSupersededActiveErrorFamilies(runtimeActiveErrorFamilies, positionReadViews);
+  const effectiveRuntimeActiveErrorFamilies = runtimeActiveFamilyResolution.effective;
+  const supersededRuntimeActiveErrorFamilies = runtimeActiveFamilyResolution.superseded;
+  const effectiveRuntimeActiveErrorCount = effectiveRuntimeActiveErrorFamilies.length;
+  const effectiveRuntimeActiveErrorOccurrenceCount = effectiveRuntimeActiveErrorFamilies.reduce((acc, item) => acc + Number(item.count || 0), 0);
 
   const summary = {
     generated_at_iso: nowIso,
@@ -840,13 +909,14 @@ async function main() {
     stop_error_count: stopErrorCount,
     error_count: Number.isFinite(errorCount) ? errorCount : null,
     error_occurrence_count: Number.isFinite(runtimeErrorOccurrenceCount) ? runtimeErrorOccurrenceCount : null,
-    active_error_count: Number.isFinite(runtimeActiveErrorCount) ? runtimeActiveErrorCount : null,
-    active_error_occurrence_count: Number.isFinite(runtimeActiveErrorOccurrenceCount) ? runtimeActiveErrorOccurrenceCount : null,
+    active_error_count: effectiveRuntimeActiveErrorCount,
+    active_error_occurrence_count: effectiveRuntimeActiveErrorOccurrenceCount,
     error_count_source: Number.isFinite(runtimeErrorCount)
       ? "runtime_error_counter"
       : (Number.isFinite(snapshotErrorCount) ? "snapshot.derived.error_count_24h" : (Number.isFinite(reportErrorCount) ? "report_parse" : "unresolved")),
     error_families_24h: runtimeErrorFamilies,
-    active_error_families_24h: runtimeActiveErrorFamilies,
+    active_error_families_24h: effectiveRuntimeActiveErrorFamilies,
+    active_error_families_superseded_24h: supersededRuntimeActiveErrorFamilies,
     position_writer_authority_24h: {
       family_count: writerAuthorityFamilies.length,
       occurrence_count: writerAuthorityFamilies.reduce((acc, item) => acc + Number(item.count || 0), 0),
@@ -867,8 +937,8 @@ async function main() {
     netPnlPct,
     costRatioPct,
     errorCount,
-    activeErrorCount: runtimeActiveErrorCount,
-    activeErrorFamilies: runtimeActiveErrorFamilies,
+    activeErrorCount: effectiveRuntimeActiveErrorCount,
+    activeErrorFamilies: effectiveRuntimeActiveErrorFamilies,
     costLimitPct,
     lossStopPct,
     stopErrorCount,
@@ -980,6 +1050,8 @@ module.exports = {
     loadTrailRunnerFloorAuditHealth,
     loadBinanceExitQtyContractAuditHealth,
     hasExecutionFlowCoverage,
+    hasHealthySupersedingPositionView,
+    filterSupersededActiveErrorFamilies,
     decideStatus,
     buildIssueLines,
     buildWriterAuthorityRemediationCandidates,

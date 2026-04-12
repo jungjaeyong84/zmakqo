@@ -286,6 +286,26 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
   assert.strictEqual(writerAuthorityWithActivePositionsStillBlocks.status, "보류");
   assert.ok(writerAuthorityWithActivePositionsStillBlocks.reasons.includes("활성 핵심 오류 1건"));
 
+  const supersededWriterFamily = dailySystemOpsCheck.__test.filterSupersededActiveErrorFamilies([
+    {
+      family: "POSITION_WRITE_TOKEN_MISMATCH",
+      count: 1,
+      latest_at: "2026-04-12T04:30:17.436Z",
+      symbols: ["SOLUSDT"],
+    },
+  ], [
+    {
+      symbol_or_pair_id: "SOLUSDT",
+      writer_committed_at: "2026-04-12T05:15:16.534Z",
+      meta: {
+        exchange_projection_in_sync: true,
+        native_protection_refresh_status: "OK",
+      },
+    },
+  ]);
+  assert.strictEqual(supersededWriterFamily.effective.length, 0);
+  assert.strictEqual(supersededWriterFamily.superseded.length, 1);
+
   const missingExitQtyAuditBlocks = dailySystemOpsCheck.__test.decideStatus({
     netPnlPct: 0.8,
     costRatioPct: 0.05,

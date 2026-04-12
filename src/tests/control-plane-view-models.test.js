@@ -15,6 +15,8 @@ function run() {
   const systemOpsBackup = fs.existsSync(systemOpsPath) ? fs.readFileSync(systemOpsPath, "utf8") : null;
   const trailAuditPath = path.join(opsDailyDir, "trail_runner_floor_audit_latest.json");
   const trailAuditBackup = fs.existsSync(trailAuditPath) ? fs.readFileSync(trailAuditPath, "utf8") : null;
+  const openclawAuthorityPath = path.join(opsDailyDir, "openclaw_policy_authority_latest.json");
+  const openclawAuthorityBackup = fs.existsSync(openclawAuthorityPath) ? fs.readFileSync(openclawAuthorityPath, "utf8") : null;
   const latestPath = path.join(opsDailyDir, latestName);
   const fallbackPath = path.join(opsDailyDir, fallbackName);
   const controlPlaneTemplatePath = path.resolve(__dirname, "../views/control-plane.ejs");
@@ -58,6 +60,30 @@ function run() {
         position_side: "LONG",
       },
     ],
+  }, null, 2), "utf8");
+  fs.writeFileSync(openclawAuthorityPath, JSON.stringify({
+    periods: {
+      DAYS_7: {
+        gate: { verdict: "PASS" },
+        decision_summary: {
+          rows_n: 12,
+          blocked_n: 2,
+          blocked_rate: 0.1666,
+          reduced_n: 5,
+          reduced_rate: 0.4166,
+          by_reason: [
+            { key: "OPENCLAW_EXECUTOR_COHORT_REDUCE", count: 4 },
+            { key: "OPENCLAW_EXECUTOR_SAME_SIDE_CLUSTER_BLOCK", count: 2 },
+          ],
+        },
+      },
+      DAYS_14: {
+        gate: { verdict: "HOLD" },
+        decision_summary: {
+          rows_n: 24,
+        },
+      },
+    },
   }, null, 2), "utf8");
 
   try {
@@ -112,6 +138,14 @@ function run() {
     assert.ok(decisionCenterCard.rows.some((row) => String(row && row.label || "").includes("Fee/PnL")));
     assert.ok(Array.isArray(vm.hero && vm.hero.pills));
     assert.ok(vm.hero.pills.some((pill) => String(pill && pill.label || "").includes("신규 진입 배율")));
+    const allCards = vm.sections.flatMap((section) => Array.isArray(section && section.cards) ? section.cards : []);
+    const openclawAuthorityCard = allCards.find((card) => String(card && card.title || "").includes("OpenClaw Authority"));
+    assert.ok(openclawAuthorityCard);
+    assert.ok(Array.isArray(openclawAuthorityCard.rows));
+    assert.ok(openclawAuthorityCard.rows.some((row) => String(row && row.label || "").includes("7D Gate")));
+    assert.ok(openclawAuthorityCard.table);
+    assert.ok(Array.isArray(openclawAuthorityCard.table.rows));
+    assert.ok(String(openclawAuthorityCard.table.rows[0].reason || "").includes("OPENCLAW_EXECUTOR_COHORT_REDUCE"));
 
     const html = ejs.render(fs.readFileSync(controlPlaneTemplatePath, "utf8"), { model: vm }, { filename: controlPlaneTemplatePath });
     assert.ok(html.includes("핵심 운영 상태"));
@@ -121,6 +155,7 @@ function run() {
     assert.ok(html.includes("XRPUSDT"));
     assert.ok(html.includes("/dashboard/execution"));
     assert.ok(html.includes("의사결정 센터"));
+    assert.ok(html.includes("OpenClaw Authority"));
   } finally {
     try { fs.unlinkSync(latestPath); } catch (_) {}
     try { fs.unlinkSync(fallbackPath); } catch (_) {}
@@ -128,6 +163,8 @@ function run() {
     else try { fs.unlinkSync(systemOpsPath); } catch (_) {}
     if (trailAuditBackup != null) fs.writeFileSync(trailAuditPath, trailAuditBackup, "utf8");
     else try { fs.unlinkSync(trailAuditPath); } catch (_) {}
+    if (openclawAuthorityBackup != null) fs.writeFileSync(openclawAuthorityPath, openclawAuthorityBackup, "utf8");
+    else try { fs.unlinkSync(openclawAuthorityPath); } catch (_) {}
   }
 
   console.log("CONTROL_PLANE_VIEW_MODELS_TEST_OK");
