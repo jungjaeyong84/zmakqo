@@ -6,6 +6,8 @@ function run() {
   const buildExternalFillUnverifiedPatch = __test && __test.buildExternalFillUnverifiedPatch;
   const buildExternalFillEventReclassificationPatch = __test && __test.buildExternalFillEventReclassificationPatch;
   const normalizeFeaturesJson = __test && __test.normalizeFeaturesJson;
+  const canFinalizeIntentFromExternalFill = fillsSyncTest && fillsSyncTest.canFinalizeIntentFromExternalFill;
+  const applyAuthoritativeIntentEventOverride = fillsSyncTest && fillsSyncTest.applyAuthoritativeIntentEventOverride;
   assert.strictEqual(
     typeof buildExternalFillUnverifiedPatch,
     "function",
@@ -20,6 +22,16 @@ function run() {
     typeof normalizeFeaturesJson,
     "function",
     "normalizeFeaturesJson export missing"
+  );
+  assert.strictEqual(
+    typeof canFinalizeIntentFromExternalFill,
+    "function",
+    "canFinalizeIntentFromExternalFill export missing"
+  );
+  assert.strictEqual(
+    typeof applyAuthoritativeIntentEventOverride,
+    "function",
+    "applyAuthoritativeIntentEventOverride export missing"
   );
 
   const normalizedFeatures = normalizeFeaturesJson({
@@ -199,6 +211,20 @@ function run() {
   assert.strictEqual(isAuthoritativeForcedExitIntentEvent("FORCE_EXIT_ALL"), true);
   assert.strictEqual(isAuthoritativeForcedExitIntentEvent("FORCE_EXIT_HALF"), true);
   assert.strictEqual(isAuthoritativeForcedExitIntentEvent("EXIT_TP_P0_0.8P"), false);
+  assert.strictEqual(canFinalizeIntentFromExternalFill({ status: "PENDING" }), true);
+  assert.strictEqual(
+    canFinalizeIntentFromExternalFill({ status: "CANCELED", cancel_reason: "LIVE_FAILED" }),
+    true
+  );
+  assert.strictEqual(canFinalizeIntentFromExternalFill({ status: "FILLED" }), false);
+  assert.strictEqual(
+    applyAuthoritativeIntentEventOverride("EXIT_TP_P0_0.8P", { event: "FORCE_EXIT_ALL" }),
+    "FORCE_EXIT_ALL"
+  );
+  assert.strictEqual(
+    applyAuthoritativeIntentEventOverride("EXIT_TP_P0_0.8P", { event: "EXIT_TP_P0_0.8P" }),
+    "EXIT_TP_P0_0.8P"
+  );
   assert.strictEqual(
     shouldSuppressMatchedExternalFillAlert({
       event: "FORCE_EXIT_ALL",

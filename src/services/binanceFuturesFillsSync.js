@@ -1391,6 +1391,31 @@ function canRecoverCanceledIntent(intent) {
   return reason === "LIVE_EXCEPTION" || reason === "LIVE_FAILED" || reason.startsWith("LIVE_");
 }
 
+function canFinalizeIntentFromExternalFill(intent) {
+  if (!intent || typeof intent !== "object") return false;
+  const status = String(intent.status || "").toUpperCase();
+  if (status === "PENDING") return true;
+  return canRecoverCanceledIntent(intent);
+}
+
+function applyAuthoritativeIntentEventOverride(event, intent) {
+  const currentEvent = String(event || "").trim().toUpperCase();
+  const intentEvent = String(intent && intent.event || "").trim().toUpperCase();
+  if (isAuthoritativeForcedExitIntentEvent(intentEvent)) return intentEvent;
+  return currentEvent;
+}
+
+async function loadIntentById(intentId) {
+  const id = String(intentId || "").trim();
+  if (!id) return null;
+  try {
+    const snap = await getFirestore().collection("order_intents_paper").doc(id).get();
+    return snap.exists ? (snap.data() || null) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function recoverIntentFromExternalFill({
   intent,
   intentId,
@@ -1400,7 +1425,7 @@ async function recoverIntentFromExternalFill({
   notional,
   tradeId,
 } = {}) {
-  if (!intentId || !canRecoverCanceledIntent(intent)) return false;
+  if (!intentId || !canFinalizeIntentFromExternalFill(intent)) return false;
   const recoveredAt = nowIso();
   const prevReason = String(intent.cancel_reason || intent.status_reason || "").toUpperCase() || null;
   await patchIntent(intentId, {
@@ -2252,7 +2277,7 @@ async function syncMarketTrades({
         }
       }
 
-      const intent = pickIntentForTrade(t, intents, matchWindowMs || DEFAULT_MATCH_WINDOW_MS, intentFutureAllowMs);
+      let intent = pickIntentForTrade(t, intents, matchWindowMs || DEFAULT_MATCH_WINDOW_MS, intentFutureAllowMs);
       const positionCtx = await loadPositionEntryContext("BINANCEFUT", sym, positionEntryCache);
       const exitRules = resolveAlertExitRules(positionCtx, defaultExitRules);
       const recentTp1 = recentTp1BySymbol.get(sym) || null;
@@ -2273,7 +2298,7 @@ async function syncMarketTrades({
         symbol: sym,
         orderMetaCache,
       });
-      const event = await resolveExternalExitEvent({
+      let event = await resolveExternalExitEvent({
         intent,
         trade: t,
         orderMeta,
@@ -2356,6 +2381,11 @@ async function syncMarketTrades({
           signalBarCloseMs: signalRefs.signalBarCloseMs,
         });
       }
+      if ((!intent || !intent.intent_id) && intentId) {
+        const recoveredIntent = await loadIntentById(intentId);
+        if (recoveredIntent) intent = recoveredIntent;
+      }
+      event = applyAuthoritativeIntentEventOverride(event, intent);
       const linkedTradeId = Number.isFinite(tradeMs)
         ? buildTradeId({
           exchange: "BINANCEFUT",
@@ -2808,5 +2838,7 @@ module.exports = {
     buildFillSyncAlertCooldownKey,
     shouldSendFillSyncTradeAlert,
     flushFillSyncAlertBatches,
+    canFinalizeIntentFromExternalFill,
+    applyAuthoritativeIntentEventOverride,
   },
 };
