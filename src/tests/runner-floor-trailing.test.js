@@ -154,6 +154,45 @@ function run() {
   assert.strictEqual(stage.compact_headline.left_label, "Trail");
   assert.ok(Math.abs(stage.trail_stop - 98.795) < 1e-9, "displayed trail stop should reflect current trail rule");
   assert.ok(Math.abs(stage.trail_stop_raw - 98.795) < 1e-9, "raw trail stop should remain visible for debugging");
+
+  const breachedHardExit = tickExitTest.shouldTriggerTrailHardExit({
+    position: {
+      avg_price: 100,
+      position_side: "SHORT",
+      meta: {
+        external_leverage: 2,
+        tp_p1_done: true,
+        trail_active: true,
+        trail_low: 99.2,
+        openclaw_market_regime_cohort: "RESCUE",
+        exit_policy_source: "BINANCE_DEFAULT",
+      },
+    },
+    price: 99.21,
+    side: "SHORT",
+    rules: rescueRules,
+  });
+  assert.strictEqual(breachedHardExit.trigger, true, "runner floor breach must trigger hard exit");
+  assert.ok(Math.abs(breachedHardExit.stopPrice - 99.175) < 1e-9);
+
+  const safeHardExit = tickExitTest.shouldTriggerTrailHardExit({
+    position: {
+      avg_price: 100,
+      position_side: "SHORT",
+      meta: {
+        external_leverage: 2,
+        tp_p1_done: true,
+        trail_active: true,
+        trail_low: 99.2,
+        openclaw_market_regime_cohort: "RESCUE",
+        exit_policy_source: "BINANCE_DEFAULT",
+      },
+    },
+    price: 99.15,
+    side: "SHORT",
+    rules: rescueRules,
+  });
+  assert.strictEqual(safeHardExit.trigger, false, "price above floor only after breach should force exit");
 }
 
 try {

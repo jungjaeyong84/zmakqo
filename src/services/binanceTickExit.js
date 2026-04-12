@@ -3,6 +3,7 @@
 const env = require("../config/env");
 const os = require("os");
 const { getExchangeSettingsForProvider } = require("../utils/exchangeSettings");
+const { tfToMs } = require("../utils/marketConfig");
 const { getFirestore } = require("../storage/firestore");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const {
@@ -12,6 +13,8 @@ const {
 } = require("../storage/positionRuntimeObservations");
 const { getPosition } = require("../storage/positions");
 const { clearTpP1PendingIfUnchanged } = require("../storage/positionsPaper");
+const { upsertIntent } = require("../storage/orderIntentsPaper");
+const { upsertExitOrderContract } = require("../storage/exitOrderContracts");
 const { resolveExitRulesForPosition, computeRunnerExitStopPrice, resolveTrailDelayState, resolveTpP0Pct } = require("../engine/signalEngine");
 const {
   runPaperMarket,
@@ -26,6 +29,7 @@ const {
   fetchFuturesAlgoOpenOrders,
   fetchFuturesOrder,
   fetchFuturesAlgoOrder,
+  placeFuturesMarketOrder,
   __test: binancePrivateTest,
 } = require("../exchanges/binanceFuturesPrivate");
 const { sendAlert } = require("../utils/alerts");
@@ -52,6 +56,179 @@ function normalizeIntervalMs(raw, fallback) {
   return Math.max(1000, Math.round(n));
 }
 
+function alignCurrentBarCloseLocal(ms, tfMs) {
+  const now = Number(ms);
+  const size = Number(tfMs);
+  if (!Number.isFinite(now) || !Number.isFinite(size) || size <= 0) return null;
+  return Math.floor(now / size) * size;
+}
+
+function ratioToPctTokenLocal(ratio) {
+  const n = Math.abs(Number(ratio));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const pct = Math.round(n * 10000) / 100;
+  return String(pct).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+}
+
+function shouldTriggerTrailHardExit({
+  position,
+  price,
+  side,
+  rules,
+} = {}) {
+  const pos = position && typeof position === "object" ? position : null;
+  const meta = pos && pos.meta && typeof pos.meta === "object" ? pos.meta : {};
+  const tpP1Done = meta.tp_p1_done === true;
+  const tpP1Pending = meta.tp_p1_pending === true;
+  const trailActive = meta.trail_active === true || tpP1Pending;
+  if ((!tpP1Done && !tpP1Pending) || !trailActive) {
+    return { trigger: false, reason: "NOT_TRAIL_STAGE" };
+  }
+  const avg = Number(pos && pos.avg_price);
+  const leverageEff = Number(meta.external_leverage || meta.leverage || pos.leverage || 1);
+  const runnerExit = computeRunnerExitStopPrice({
+    avg,
+    leverageEff,
+    side,
+    rules,
+    tpP1Done,
+    trailActive: meta.trail_active === true,
+    trailHigh: Number(meta.trail_high),
+    trailLow: Number(meta.trail_low),
+    entryRDistance: Number(meta.entry_r_distance),
+  });
+  const stopPrice = Number(runnerExit && runnerExit.stopPrice);
+  if (!Number.isFinite(price) || !Number.isFinite(stopPrice) || stopPrice <= 0) {
+    return { trigger: false, reason: "STOP_UNAVAILABLE", runnerExit };
+  }
+  const sideUpper = String(side || "LONG").toUpperCase() === "SHORT" ? "SHORT" : "LONG";
+  const crossed = sideUpper === "SHORT" ? (price >= stopPrice) : (price <= stopPrice);
+  return {
+    trigger: crossed,
+    reason: crossed ? "TRAIL_STOP_BREACHED" : "SAFE",
+    stopPrice,
+    runnerExit,
+  };
+}
+
+async function runTrailHardExit({
+  exchange = "BINANCEFUT",
+  symbol,
+  position,
+  price,
+  signalTf,
+  execTf,
+  hardExit,
+} = {}) {
+  const pos = position && typeof position === "object" ? position : null;
+  const meta = pos && pos.meta && typeof pos.meta === "object" ? pos.meta : {};
+  const qtyBase = Number(pos && pos.qty_base);
+  if (!pos || !Number.isFinite(qtyBase) || qtyBase <= 0) {
+    return { ok: false, skipped: true, reason: "NO_ACTIVE_POSITION" };
+  }
+  const liveCfg = await resolveLiveFuturesConfig({ exchange, symbol });
+  if (!liveCfg || !liveCfg.apiKey || !liveCfg.apiSecret) {
+    return { ok: false, skipped: true, reason: "BINANCEFUT_KEYS_MISSING" };
+  }
+  const side = resolveCloseSide(resolvePositionSideFromPosition(pos, meta, "LONG"));
+  const tfMs = Math.max(60 * 1000, Number(tfToMs(signalTf) || 15 * 60 * 1000));
+  const now = Date.now();
+  const signalBarCloseMs = alignCurrentBarCloseLocal(now, tfMs) || now;
+  const execBarCloseMs = signalBarCloseMs;
+  const event = "FORCE_EXIT_ALL";
+  const runId = `RUN__TICK_EXIT_HARD_EXIT__${exchange}__${symbol}__${now}`;
+  const requestId = `tick_exit_hard_exit_${symbol}_${now}`;
+  const pre = await runActionPreHooks({
+    action: "TRAIL_HARD_EXIT",
+    runId,
+    exchange,
+    symbol,
+    tf: signalTf,
+    signalEvent: event,
+    decisionReason: "TRAIL_STOP_BREACHED",
+    source: "BINANCE_TICK_EXIT",
+    executionMode: "LIVE",
+    intent: "EXIT",
+    qtyPct: 1,
+    persist: true,
+  });
+  const intent = await upsertIntent({
+    exchange,
+    symbol,
+    tf: signalTf,
+    signalBarCloseTimeUtc: new Date(signalBarCloseMs).toISOString(),
+    signalBarCloseTimeUtcMs: signalBarCloseMs,
+    scheduledExecBarCloseUtc: new Date(execBarCloseMs).toISOString(),
+    scheduledExecBarCloseUtcMs: execBarCloseMs,
+    event,
+    side,
+    qtyPct: 1,
+    qtyFraction: 1,
+    reason: "TRAIL_STOP_BREACHED",
+    pendingReason: "TRAIL_STOP_BREACHED",
+    pendingNote: `stop=${Number(hardExit && hardExit.stopPrice).toFixed(6)} price=${Number(price).toFixed(6)}`,
+    executionMode: "LIVE",
+    features: {
+      _tick_exit_hard_exit: true,
+      _trail_stop_price: Number.isFinite(Number(hardExit && hardExit.stopPrice)) ? Number(hardExit.stopPrice) : null,
+      _trail_stop_source: hardExit && hardExit.runnerExit ? hardExit.runnerExit.stopSource || null : null,
+      _observed_price: Number.isFinite(Number(price)) ? Number(price) : null,
+      position_side: resolvePositionSideFromPosition(pos, meta, "LONG"),
+    },
+    runId,
+    execTf: execTf || signalTf,
+    requestId,
+    decisionReason: "TRAIL_STOP_BREACHED",
+  });
+  const order = await placeFuturesMarketOrder({
+    apiKey: liveCfg.apiKey,
+    apiSecret: liveCfg.apiSecret,
+    symbol,
+    side,
+    quantity: qtyBase,
+    reduceOnly: true,
+    idempotencyKey: `${runId}__FORCE_EXIT_ALL`,
+  });
+  await upsertExitOrderContract({
+    exchange,
+    symbol,
+    orderId: order && order.orderId,
+    clientOrderId: order && order.clientOrderId,
+    event,
+    stage: "FORCE_EXIT_ALL",
+    intentId: intent && (intent.intent_id || intent.id) ? (intent.intent_id || intent.id) : null,
+    signalId: intent && intent.signal_id ? intent.signal_id : null,
+    signalDocId: intent && intent.signal_doc_id ? intent.signal_doc_id : null,
+    positionSide: resolvePositionSideFromPosition(pos, meta, "LONG"),
+    closeSide: side,
+    expectedQtyBase: qtyBase,
+    expectedQtyRatio: 1,
+    triggerPrice: Number.isFinite(Number(hardExit && hardExit.stopPrice)) ? Number(hardExit.stopPrice) : null,
+    triggerSource: hardExit && hardExit.runnerExit ? hardExit.runnerExit.stopSource || null : null,
+    reduceOnly: true,
+    closePosition: false,
+    status: "OPEN",
+    source: "TICK_EXIT_HARD_EXIT",
+  }).catch(() => null);
+  runActionPostHooks({
+    envelope: { ...((pre && pre.envelope) || {}), intent_id: intent && (intent.intent_id || intent.id) ? (intent.intent_id || intent.id) : null },
+    ok: true,
+    reason: "TRAIL_HARD_EXIT_ORDER_PLACED",
+    persist: true,
+    result: {
+      order_id: order && order.orderId ? String(order.orderId) : null,
+      qty_base: qtyBase,
+      stop_price: Number.isFinite(Number(hardExit && hardExit.stopPrice)) ? Number(hardExit.stopPrice) : null,
+      observed_price: Number.isFinite(Number(price)) ? Number(price) : null,
+    },
+  });
+  return {
+    ok: true,
+    intentId: intent && (intent.intent_id || intent.id) ? (intent.intent_id || intent.id) : null,
+    orderId: order && order.orderId ? String(order.orderId) : null,
+  };
+}
+
 const symbolCooldownState = new Map();
 const symbolCooldownLogState = new Map();
 const pendingIntentState = new Map();
@@ -73,7 +250,9 @@ const tickExitInstanceId = [
 let leaseSkippedLogAt = 0;
 const tickExitFailureAlertState = new Map();
 const nativeProtectionStateCache = new Map();
+const trailHardExitCooldownState = new Map();
 const TICK_EXIT_NATIVE_PROTECTION_VERIFY_TTL_MS = normalizeIntervalMs(process.env.TICK_EXIT_NATIVE_PROTECTION_VERIFY_TTL_MS, 10000);
+const TICK_EXIT_HARD_EXIT_COOLDOWN_MS = normalizeIntervalMs(process.env.TICK_EXIT_HARD_EXIT_COOLDOWN_MS, 60000);
 
 function resolveTfFromMsLocal(ms) {
   const n = Number(ms);
@@ -1005,6 +1184,61 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
           } catch (_) {}
         }
       }
+      const hardExit = shouldTriggerTrailHardExit({
+        position: effectivePos,
+        price,
+        side: resolvedPosSide,
+        rules,
+      });
+      if (hardExit.trigger === true) {
+        const hardExitKey = `TRAIL_HARD_EXIT__${String(symbol).toUpperCase()}`;
+        const lastHardExitAt = Number(trailHardExitCooldownState.get(hardExitKey));
+        if (!Number.isFinite(lastHardExitAt) || (tickNow - lastHardExitAt) >= TICK_EXIT_HARD_EXIT_COOLDOWN_MS) {
+          trailHardExitCooldownState.set(hardExitKey, tickNow);
+          try {
+            const hardExitResult = await runTrailHardExit({
+              exchange: "BINANCEFUT",
+              symbol,
+              position: effectivePos,
+              price,
+              signalTf,
+              execTf,
+              hardExit,
+            });
+            structuredLog("tick_exit_trail_hard_exit", {
+              exchange: "BINANCEFUT",
+              symbol: String(symbol).toUpperCase(),
+              side: resolvedPosSide,
+              price,
+              stop_price: hardExit.stopPrice,
+              stop_source: hardExit.runnerExit && hardExit.runnerExit.stopSource ? hardExit.runnerExit.stopSource : null,
+              order_id: hardExitResult && hardExitResult.orderId ? hardExitResult.orderId : null,
+              ok: hardExitResult && hardExitResult.ok === true,
+              reason: hardExitResult && hardExitResult.reason ? hardExitResult.reason : hardExit.reason,
+            }, hardExitResult && hardExitResult.ok === true ? "log" : "warn");
+            try {
+              nativeProtectionStateCache.delete(`BINANCEFUT__${String(symbol || "").toUpperCase()}`);
+              await syncFuturesPositionOnly({
+                runId: buildTickTrailReconcileRunId(symbol, Date.now()),
+                exchange: "BINANCEFUT",
+                symbol,
+              });
+            } catch (_) {}
+            checked += 1;
+            triggered += 1;
+            continue;
+          } catch (hardExitErr) {
+            structuredLog("tick_exit_trail_hard_exit_error", {
+              exchange: "BINANCEFUT",
+              symbol: String(symbol).toUpperCase(),
+              side: resolvedPosSide,
+              price,
+              stop_price: hardExit.stopPrice,
+              error: String(hardExitErr && hardExitErr.message || hardExitErr).slice(0, 200),
+            }, "warn");
+          }
+        }
+      }
       const nearHit = triggeredKinds.length > 0;
       const fastLaneHit = shouldActivateFastLane({
         pos: effectivePos,
@@ -1597,6 +1831,7 @@ function stopBinanceTickExitLoop() {
   pendingIntentState.clear();
   pendingIntentLogState.clear();
   nativeProtectionStateCache.clear();
+  trailHardExitCooldownState.clear();
   releaseTickExitLease().catch(() => {});
   return { ok: true, running: false };
 }
@@ -1621,6 +1856,7 @@ module.exports = {
     shouldBypassNativeProtectionCache,
     hasNativeStopProtection,
     hasNativeTpProtection,
+    shouldTriggerTrailHardExit,
     shouldRunBySymbolCooldown,
     _symbolCooldownState: symbolCooldownState,
     shouldSendTickExitFailureAlert,

@@ -11,12 +11,18 @@ const { normalizeMarketSymbolForProvider, normalizeTf, defaultExecTfFromEnv } = 
 const { getFirestore } = require("../storage/firestore");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { upsertExternalFill, markExternalFillUnverified } = require("../storage/fillsPaper");
+const { getExitOrderContractByOrderId, markExitOrderContractConsumed } = require("../storage/exitOrderContracts");
 const { getPosition, upsertPosition } = require("../storage/positionsPaper");
 const { upsertSameDirectionTrailProfitObservation } = require("../storage/positionRuntimeObservations");
 const { patchIntent } = require("../storage/orderIntentsPaper");
 const { buildTradeId } = require("../storage/tradesPaper");
 const { getExitRulesForExchange, resolveExitRulesForPosition } = require("../engine/signalEngine");
-const { syncFuturesPositionOnly, resolveFuturesPositionSyncRequest } = require("../engine/paperBinanceRunner");
+const {
+  syncFuturesPositionOnly,
+  resolveFuturesPositionSyncRequest,
+  resolveLiveFuturesConfig,
+  refreshBinanceNativeProtectionWithRetry,
+} = require("../engine/paperBinanceRunner");
 const { sendTradeExecutionAlert } = require("./tradeExecutionAlert");
 const { triggerExitWorkerRun } = require("./exitWorkerClient");
 const { getPositionReadView } = require("./positionReadModel");
@@ -1398,6 +1404,13 @@ function canFinalizeIntentFromExternalFill(intent) {
   return canRecoverCanceledIntent(intent);
 }
 
+function applyAuthoritativeExitContractOverride(event, exitContract) {
+  const currentEvent = String(event || "").trim().toUpperCase();
+  const contractEvent = String(exitContract && exitContract.event || "").trim().toUpperCase();
+  if (contractEvent) return contractEvent;
+  return currentEvent;
+}
+
 function applyAuthoritativeIntentEventOverride(event, intent) {
   const currentEvent = String(event || "").trim().toUpperCase();
   const intentEvent = String(intent && intent.event || "").trim().toUpperCase();
@@ -1414,6 +1427,16 @@ async function loadIntentById(intentId) {
   } catch (_) {
     return null;
   }
+}
+
+async function loadExitOrderContract({ exchange, symbol, orderMeta, cacheMap } = {}) {
+  const orderId = Number(orderMeta && orderMeta.orderId);
+  if (!Number.isFinite(orderId)) return null;
+  const key = `${String(exchange || "").toUpperCase()}__${String(symbol || "").toUpperCase()}__${orderId}`;
+  if (cacheMap && cacheMap.has(key)) return cacheMap.get(key);
+  const doc = await getExitOrderContractByOrderId({ exchange, symbol, orderId }).catch(() => null);
+  if (cacheMap) cacheMap.set(key, doc || null);
+  return doc || null;
 }
 
 async function recoverIntentFromExternalFill({
@@ -2237,6 +2260,7 @@ async function syncMarketTrades({
   let pageStartMs = startMs;
   const positionEntryCache = new Map();
   const orderMetaCache = new Map();
+  const exitOrderContractCache = new Map();
   const recentTp1BySymbol = new Map();
   const recentTp0BySymbol = new Map();
   const pendingAlertBatches = new Map();
@@ -2297,6 +2321,12 @@ async function syncMarketTrades({
         apiSecret,
         symbol: sym,
         orderMetaCache,
+      });
+      const exitOrderContract = await loadExitOrderContract({
+        exchange: "BINANCEFUT",
+        symbol: sym,
+        orderMeta,
+        cacheMap: exitOrderContractCache,
       });
       let event = await resolveExternalExitEvent({
         intent,
@@ -2385,6 +2415,7 @@ async function syncMarketTrades({
         const recoveredIntent = await loadIntentById(intentId);
         if (recoveredIntent) intent = recoveredIntent;
       }
+      event = applyAuthoritativeExitContractOverride(event, exitOrderContract);
       event = applyAuthoritativeIntentEventOverride(event, intent);
       const linkedTradeId = Number.isFinite(tradeMs)
         ? buildTradeId({
@@ -2570,6 +2601,22 @@ async function syncMarketTrades({
       }
 
       if (upserted && upserted.inserted) inserted += 1;
+      if (looksLikeExit && exitOrderContract && Number.isFinite(Number(orderMeta && orderMeta.orderId))) {
+        try {
+          await markExitOrderContractConsumed({
+            exchange: "BINANCEFUT",
+            symbol: sym,
+            orderId: Number(orderMeta.orderId),
+            fillId,
+            tradeId,
+            consumedEvent: event,
+            consumedQtyBase: execQtyBase,
+            consumedAt: execTimeIso,
+          });
+        } catch (e) {
+          console.warn("[EXIT_ORDER_CONTRACT_CONSUME_FAIL]", e && e.message ? e.message : String(e));
+        }
+      }
       if (upserted && upserted.inserted && shouldAuditProjectionImmediately(event)) {
         try {
           await auditProjectionEventImmediately({
@@ -2689,10 +2736,34 @@ async function syncMarketTrades({
       console.warn("[BINANCEFUT_FILL_SYNC_DUST_CLOSE_FAIL]", e && e.message ? e.message : String(e));
     }
     try {
-      await reconcileExternalFillPositionSync({
+      const syncResult = await reconcileExternalFillPositionSync({
         exchange: "BINANCEFUT",
         symbol: sym,
       });
+      const syncedPosition = syncResult && syncResult.position ? syncResult.position : null;
+      const syncedMeta = syncedPosition && typeof syncedPosition.meta === "object" ? syncedPosition.meta : {};
+      const syncedState = String(syncedPosition && syncedPosition.state || "").toUpperCase();
+      const syncedQtyBase = Number(syncedPosition && syncedPosition.qty_base);
+      const trailStageActive = syncedMeta.tp_p1_done === true || syncedMeta.trail_active === true || syncedMeta.tp_p1_pending === true;
+      if (syncedPosition && syncedState === "ACTIVE" && Number.isFinite(syncedQtyBase) && syncedQtyBase > 0 && trailStageActive) {
+        try {
+          const liveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol: sym });
+          if (liveCfg && liveCfg.apiKey && liveCfg.apiSecret) {
+            await refreshBinanceNativeProtectionWithRetry({
+              liveCfg,
+              exchange: "BINANCEFUT",
+              symbol: sym,
+              fallbackSide: syncedMeta.position_side || syncedPosition.position_side || syncedPosition.side || null,
+              fallbackEntryPrice: Number(syncedPosition.avg_price),
+              fallbackLeverage: Number(syncedMeta.external_leverage || syncedMeta.leverage || syncedPosition.leverage || 1),
+              exitRulesOverride: syncedMeta.exit_rules_override || null,
+              posMeta: syncedMeta,
+            });
+          }
+        } catch (refreshErr) {
+          console.warn("[BINANCEFUT_FILL_SYNC_NATIVE_REFRESH_FAIL]", refreshErr && refreshErr.message ? refreshErr.message : String(refreshErr));
+        }
+      }
     } catch (e) {
       console.warn("[BINANCEFUT_FILL_SYNC_POSITION_RECONCILE_FAIL]", e && e.message ? e.message : String(e));
     }
@@ -2839,6 +2910,7 @@ module.exports = {
     shouldSendFillSyncTradeAlert,
     flushFillSyncAlertBatches,
     canFinalizeIntentFromExternalFill,
+    applyAuthoritativeExitContractOverride,
     applyAuthoritativeIntentEventOverride,
   },
 };

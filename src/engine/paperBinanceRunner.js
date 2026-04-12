@@ -14,6 +14,7 @@ const { computeFillPrice, computeFeeValue } = require("./paperExecution");
 const { listPendingIntentsForExec, listPendingIntentsOverdue, cancelExpiredPendingIntents, markIntentStatus, upsertIntent, patchIntent } = require("../storage/orderIntentsPaper");
 const { upsertFill } = require("../storage/fillsPaper");
 const { upsertPosition, upsertPositionMetaOnly, getPosition } = require("../storage/positionsPaper");
+const { upsertExitOrderContract } = require("../storage/exitOrderContracts");
 const {
   getPositionRuntimeObservation,
   upsertSameDirectionTrailProfitObservation,
@@ -111,6 +112,42 @@ const tp1LadderKpiCache = {
   mtimeMs: null,
   value: null,
 };
+
+function ratioToPctTokenLocal(ratio) {
+  const n = Math.abs(Number(ratio));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const pct = Math.round(n * 10000) / 100;
+  return String(pct).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+}
+
+function buildExitOrderContractEvent(kind, rules) {
+  const stage = String(kind || "").trim().toUpperCase();
+  if (stage === "TP0") {
+    const token = ratioToPctTokenLocal(rules && rules.TP_P0);
+    return token ? `EXIT_TP_P0_${token}P` : "EXIT_TP_P0";
+  }
+  if (stage === "TP1") {
+    const token = ratioToPctTokenLocal(rules && rules.TP_P1);
+    return token ? `EXIT_TP_P1_${token}P` : "EXIT_TP_P1";
+  }
+  if (stage === "SL") {
+    const token = ratioToPctTokenLocal(rules && rules.SL);
+    return token ? `EXIT_SL_${token}P` : "EXIT_SL";
+  }
+  if (stage === "TRAIL") return "EXIT_TRAIL";
+  if (stage === "FORCE_EXIT_ALL") return "FORCE_EXIT_ALL";
+  if (stage === "FORCE_EXIT_HALF") return "FORCE_EXIT_HALF";
+  return stage || null;
+}
+
+async function recordExitOrderContractSafe(payload = {}) {
+  try {
+    return await upsertExitOrderContract(payload);
+  } catch (err) {
+    console.warn("[EXIT_ORDER_CONTRACT_UPSERT_FAIL]", err && err.message ? err.message : String(err));
+    return null;
+  }
+}
 
 const TP_P1_SKIP_REASONS = new Set([
   "ORDER_TOO_SMALL",
@@ -9052,6 +9089,67 @@ async function refreshBinanceNativeProtection({
         }
       }
     }
+    const stopContractKind = (posMeta && (posMeta.tp_p1_done === true || posMeta.trail_active === true || posMeta.tp_p1_pending === true))
+      ? "TRAIL"
+      : "SL";
+    await recordExitOrderContractSafe({
+      exchange,
+      symbol,
+      orderId: stopOrder && stopOrder.orderId,
+      clientOrderId: stopOrder && stopOrder.clientOrderId,
+      event: buildExitOrderContractEvent(stopContractKind, rules),
+      stage: stopContractKind,
+      positionSide,
+      closeSide: prices.closeSide,
+      expectedQtyBase: Number(context.qtyBase),
+      expectedQtyRatio: 1,
+      triggerPrice: prices.stopTriggerPx,
+      triggerSource: stopContractKind === "TRAIL" ? "RUNNER_EXIT_STOP" : "SL_STOP",
+      reduceOnly: true,
+      closePosition: true,
+      status: "OPEN",
+      source: "BINANCE_NATIVE_PROTECTION",
+    });
+    if (tp0Order && tp0Status === "OK") {
+      await recordExitOrderContractSafe({
+        exchange,
+        symbol,
+        orderId: tp0Order.orderId,
+        clientOrderId: tp0Order.clientOrderId,
+        event: buildExitOrderContractEvent("TP0", rules),
+        stage: "TP0",
+        positionSide,
+        closeSide: prices.closeSide,
+        expectedQtyBase: tp0QtyBase,
+        expectedQtyRatio: tp0QtyRatio,
+        triggerPrice: prices.tp0TriggerPx,
+        triggerSource: "TP0_NATIVE",
+        reduceOnly: true,
+        closePosition: false,
+        status: "OPEN",
+        source: "BINANCE_NATIVE_PROTECTION",
+      });
+    }
+    if (tpOrder && tpStatus === "OK") {
+      await recordExitOrderContractSafe({
+        exchange,
+        symbol,
+        orderId: tpOrder.orderId,
+        clientOrderId: tpOrder.clientOrderId,
+        event: buildExitOrderContractEvent("TP1", rules),
+        stage: "TP1",
+        positionSide,
+        closeSide: prices.closeSide,
+        expectedQtyBase: tpQtyBase,
+        expectedQtyRatio: tpQtyRatio,
+        triggerPrice: prices.tpTriggerPx,
+        triggerSource: "TP1_NATIVE",
+        reduceOnly: true,
+        closePosition: false,
+        status: "OPEN",
+        source: "BINANCE_NATIVE_PROTECTION",
+      });
+    }
     return {
       ok: true,
       state: "ACTIVE",
@@ -9658,6 +9756,34 @@ async function executeLiveFuturesOrder({
       : (filledNotional / (budgetMax * leverageMult)));
   let nativeProtection = null;
   const nativeProtectionMeta = resolveNativeProtectionPositionMeta(positionMeta);
+
+  if (isExit) {
+    await recordExitOrderContractSafe({
+      exchange,
+      symbol,
+      orderId: detail && detail.orderId,
+      clientOrderId: detail && detail.clientOrderId,
+      event,
+      stage: null,
+      intentId: orderIntentId || null,
+      signalId: signalId || null,
+      signalDocId: signalDocId || null,
+      entryEventId: entryEventId || null,
+      positionSide: side === "BUY" ? "SHORT" : "LONG",
+      closeSide: side,
+      expectedQtyBase: execQtyBase,
+      expectedQtyRatio: qtyFractionUsed,
+      triggerPrice: Number.isFinite(execPrice) ? execPrice : priceRef,
+      triggerSource: "LIVE_EXIT_MARKET_ORDER",
+      reduceOnly,
+      closePosition: false,
+      status: "OPEN",
+      source: "LIVE_EXECUTOR",
+      extra: {
+        execution_mode: "LIVE",
+      },
+    });
+  }
 
   if (isExit && !liveCfg.liveDryRun && Number.isFinite(posQtyBase) && posQtyBase > 0) {
     const step = Number(info && info.stepSize);

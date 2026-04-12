@@ -7,6 +7,7 @@ function run() {
   const buildExternalFillEventReclassificationPatch = __test && __test.buildExternalFillEventReclassificationPatch;
   const normalizeFeaturesJson = __test && __test.normalizeFeaturesJson;
   const canFinalizeIntentFromExternalFill = fillsSyncTest && fillsSyncTest.canFinalizeIntentFromExternalFill;
+  const applyAuthoritativeExitContractOverride = fillsSyncTest && fillsSyncTest.applyAuthoritativeExitContractOverride;
   const applyAuthoritativeIntentEventOverride = fillsSyncTest && fillsSyncTest.applyAuthoritativeIntentEventOverride;
   assert.strictEqual(
     typeof buildExternalFillUnverifiedPatch,
@@ -27,6 +28,11 @@ function run() {
     typeof canFinalizeIntentFromExternalFill,
     "function",
     "canFinalizeIntentFromExternalFill export missing"
+  );
+  assert.strictEqual(
+    typeof applyAuthoritativeExitContractOverride,
+    "function",
+    "applyAuthoritativeExitContractOverride export missing"
   );
   assert.strictEqual(
     typeof applyAuthoritativeIntentEventOverride,
@@ -217,6 +223,10 @@ function run() {
     true
   );
   assert.strictEqual(canFinalizeIntentFromExternalFill({ status: "FILLED" }), false);
+  assert.strictEqual(
+    applyAuthoritativeExitContractOverride("EXIT_TP_P0_0.8P", { event: "FORCE_EXIT_ALL" }),
+    "FORCE_EXIT_ALL"
+  );
   assert.strictEqual(
     applyAuthoritativeIntentEventOverride("EXIT_TP_P0_0.8P", { event: "FORCE_EXIT_ALL" }),
     "FORCE_EXIT_ALL"
