@@ -109,6 +109,7 @@ function addFillToChain(chain, fill) {
     decision_reason: fill.decision_reason || null,
     execution_mode: fill.execution_mode || null,
     live_order_id: fill.live_order_id || null,
+    extra: fill.extra && typeof fill.extra === "object" ? { ...fill.extra } : null,
   };
   chain.fills.push(row);
   if (!Number.isFinite(qty)) return;
@@ -148,6 +149,17 @@ function buildAuthoritativeFillSet(fills = []) {
     out.push(...rows.filter((row) => row.source_kind === "EXTERNAL"));
   }
   return out.sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")) || String(a.fill_id || "").localeCompare(String(b.fill_id || "")));
+}
+
+function isBackfilledExitQtyIssueFill(fill = {}) {
+  return !!(
+    fill
+    && fill.extra
+    && (
+      fill.extra.exit_qty_contract_issue_backfilled_at
+      || fill.extra.exit_qty_contract_backfilled_at
+    )
+  );
 }
 
 function auditChain(chain) {
@@ -223,7 +235,7 @@ async function fetchRecentBinanceExitFills(db) {
   return out;
 }
 
-function buildReport(fills = []) {
+function buildIssueRows(fills = []) {
   const chains = new Map();
   const issueRows = [];
   for (const fill of fills) {
@@ -275,24 +287,62 @@ function buildReport(fills = []) {
       issues,
       raw_fill_count: chain.fills.length,
       authoritative_fill_count: authoritativeFills.length,
+      backfilled: authoritativeFills.length > 0 && authoritativeFills.every((fill) => isBackfilledExitQtyIssueFill(fill)),
+      fills_all: authoritativeFills.slice(),
       fills: authoritativeFills.slice(0, 20),
     });
   }
+  return issueRows;
+}
+
+function buildIssueReportRows(rows = [], limit = ISSUE_LIMIT) {
+  return rows.slice(0, limit).map((row) => ({
+    ...row,
+    fills: Array.isArray(row.fills) ? row.fills.slice(0, 20) : [],
+    fills_all: undefined,
+  }));
+}
+
+function buildCodeCounts(rows = []) {
   const byCode = {};
-  const bySymbol = {};
-  for (const row of issueRows) {
-    bySymbol[row.symbol] = (bySymbol[row.symbol] || 0) + 1;
-    for (const issue of row.issues) byCode[issue.code] = (byCode[issue.code] || 0) + 1;
+  for (const row of rows) {
+    for (const issue of Array.isArray(row.issues) ? row.issues : []) {
+      byCode[issue.code] = (byCode[issue.code] || 0) + 1;
+    }
   }
+  return Object.entries(byCode)
+    .sort((a, b) => b[1] - a[1])
+    .map(([code, count]) => ({ code, count }));
+}
+
+function buildSymbolCounts(rows = []) {
+  const bySymbol = {};
+  for (const row of rows) {
+    bySymbol[row.symbol] = (bySymbol[row.symbol] || 0) + 1;
+  }
+  return Object.entries(bySymbol)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20)
+    .map(([symbol, count]) => ({ symbol, count }));
+}
+
+function buildReport(fills = []) {
+  const issueRowsAll = buildIssueRows(fills);
+  const unresolvedIssueRows = issueRowsAll.filter((row) => row.backfilled !== true);
   return {
     generated_at_iso: nowIso(),
     lookback_days: LOOKBACK_DAYS,
     fill_count: fills.length,
-    chain_count: chains.size,
-    issue_chain_count: issueRows.length,
-    issue_code_counts: Object.entries(byCode).sort((a, b) => b[1] - a[1]).map(([code, count]) => ({ code, count })),
-    top_symbols: Object.entries(bySymbol).sort((a, b) => b[1] - a[1]).slice(0, 20).map(([symbol, count]) => ({ symbol, count })),
-    issues: issueRows.slice(0, ISSUE_LIMIT),
+    chain_count: new Set(fills.map((fill) => buildChainKey(fill))).size,
+    issue_chain_total_n: issueRowsAll.length,
+    issue_chain_backfilled_n: issueRowsAll.filter((row) => row.backfilled === true).length,
+    issue_chain_count: unresolvedIssueRows.length,
+    issue_code_total_counts: buildCodeCounts(issueRowsAll),
+    issue_code_counts: buildCodeCounts(unresolvedIssueRows),
+    top_symbols_total: buildSymbolCounts(issueRowsAll),
+    top_symbols: buildSymbolCounts(unresolvedIssueRows),
+    issues_total: buildIssueReportRows(issueRowsAll, ISSUE_LIMIT),
+    issues: buildIssueReportRows(unresolvedIssueRows, ISSUE_LIMIT),
   };
 }
 
@@ -304,7 +354,9 @@ function buildMarkdown(report) {
   lines.push(`- lookback_days: ${report.lookback_days}`);
   lines.push(`- fills: ${report.fill_count}`);
   lines.push(`- chains: ${report.chain_count}`);
-  lines.push(`- issue_chains: ${report.issue_chain_count}`);
+  lines.push(`- issue_chains_unresolved: ${report.issue_chain_count}`);
+  lines.push(`- issue_chains_total: ${report.issue_chain_total_n}`);
+  lines.push(`- issue_chains_backfilled: ${report.issue_chain_backfilled_n}`);
   lines.push("");
   lines.push("## Issue Codes");
   if (!Array.isArray(report.issue_code_counts) || !report.issue_code_counts.length) {
@@ -318,6 +370,13 @@ function buildMarkdown(report) {
     lines.push("- none");
   } else {
     for (const row of report.top_symbols) lines.push(`- ${row.symbol}: ${row.count}`);
+  }
+  lines.push("");
+  lines.push("## Total Issue Codes");
+  if (!Array.isArray(report.issue_code_total_counts) || !report.issue_code_total_counts.length) {
+    lines.push("- none");
+  } else {
+    for (const row of report.issue_code_total_counts) lines.push(`- ${row.code}: ${row.count}`);
   }
   lines.push("");
   lines.push("## Sample Issues");
@@ -376,7 +435,12 @@ module.exports = {
     buildChainSummary,
     addFillToChain,
     buildAuthoritativeFillSet,
+    isBackfilledExitQtyIssueFill,
     auditChain,
+    buildIssueRows,
+    buildIssueReportRows,
+    buildCodeCounts,
+    buildSymbolCounts,
     buildReport,
   },
 };

@@ -366,9 +366,24 @@ function loadBinanceExitQtyContractAuditHealth({ repoRoot } = {}) {
     source_path: latestPath,
     fill_count: toNum(read.data.fill_count, null),
     chain_count: toNum(read.data.chain_count, null),
+    issue_chain_total_n: toNum(read.data.issue_chain_total_n, null),
+    issue_chain_backfilled_n: toNum(read.data.issue_chain_backfilled_n, null),
     issue_chain_count: toNum(read.data.issue_chain_count, null),
     issue_code_counts: issueCodeCounts,
+    issue_code_total_counts: Array.isArray(read.data.issue_code_total_counts)
+      ? read.data.issue_code_total_counts
+          .filter((row) => row && typeof row === "object")
+          .reduce((acc, row) => {
+            const code = String(row.code || "").trim();
+            if (!code) return acc;
+            acc[code] = toNum(row.count, 0);
+            return acc;
+          }, {})
+      : (read.data.issue_code_total_counts && typeof read.data.issue_code_total_counts === "object"
+        ? { ...read.data.issue_code_total_counts }
+        : {}),
     top_symbols: Array.isArray(read.data.top_symbols) ? read.data.top_symbols.slice(0, 10) : [],
+    top_symbols_total: Array.isArray(read.data.top_symbols_total) ? read.data.top_symbols_total.slice(0, 10) : [],
     top_issues: Array.isArray(read.data.top_issues) ? read.data.top_issues.slice(0, 10) : [],
   };
 }
@@ -644,6 +659,13 @@ function buildIssueLines(summary) {
         ? `${exitQtyAudit.top_symbols[0].symbol}(${exitQtyAudit.top_symbols[0].count})`
         : "UNKNOWN";
       lines.push(`[ISSUE] M | Binance exit 수량 계약 위반 chain ${exitQtyAudit.issue_chain_count}건 | 최다 코드 ${topCode ? `${topCode[0]}(${topCode[1]})` : "N/A"}, 상위 심볼 ${topSymbol}, 과거 누적 이슈 분리 정리 필요`);
+    } else if (Number.isFinite(exitQtyAudit.issue_chain_total_n) && exitQtyAudit.issue_chain_total_n >= 1) {
+      const topCode = Object.entries(exitQtyAudit.issue_code_total_counts || {})
+        .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))[0];
+      const topSymbol = Array.isArray(exitQtyAudit.top_symbols_total) && exitQtyAudit.top_symbols_total.length
+        ? `${exitQtyAudit.top_symbols_total[0].symbol}(${exitQtyAudit.top_symbols_total[0].count})`
+        : "UNKNOWN";
+      lines.push(`[ISSUE] L | Binance exit 수량 계약 과거 위반 ${exitQtyAudit.issue_chain_total_n}건은 backfill 정리됨 | 최다 코드 ${topCode ? `${topCode[0]}(${topCode[1]})` : "N/A"}, 상위 심볼 ${topSymbol}, 신규 unresolved chain만 모니터링`);
     } else {
       lines.push("[ISSUE] L | Binance exit 수량 계약 위반 없음 | TP0/TP1/TRAIL 수량 계약 유지");
     }
@@ -1024,6 +1046,8 @@ async function main() {
     trail_runner_floor_violation_n: trailRunnerFloorAudit.violation_n,
     trail_runner_floor_violation_total_n: trailRunnerFloorAudit.violation_total_n,
     binance_exit_qty_contract_issue_chain_count: binanceExitQtyContractAudit.issue_chain_count,
+    binance_exit_qty_contract_issue_chain_total_n: binanceExitQtyContractAudit.issue_chain_total_n,
+    binance_exit_qty_contract_issue_chain_backfilled_n: binanceExitQtyContractAudit.issue_chain_backfilled_n,
     binance_exit_qty_contract_top_code: Object.entries(binanceExitQtyContractAudit.issue_code_counts || {})
       .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
       .map((row) => row[0])[0] || null,

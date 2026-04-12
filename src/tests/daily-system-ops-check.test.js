@@ -57,12 +57,22 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
     fill_count: 12,
     chain_count: 5,
     issue_chain_count: 2,
+    issue_chain_total_n: 4,
+    issue_chain_backfilled_n: 2,
     issue_code_counts: {
       TP1_ABS_OVER: 1,
       TOTAL_EXIT_OVER_100: 2,
     },
+    issue_code_total_counts: {
+      TP1_ABS_OVER: 2,
+      TOTAL_EXIT_OVER_100: 3,
+    },
     top_symbols: [
       { symbol: "BTCUSDT", count: 2 },
+      { symbol: "DOGEUSDT", count: 1 },
+    ],
+    top_symbols_total: [
+      { symbol: "BTCUSDT", count: 3 },
       { symbol: "DOGEUSDT", count: 1 },
     ],
     top_issues: [],
@@ -92,6 +102,8 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
   assert.strictEqual(exitQtyAudit.fill_count, 12);
   assert.strictEqual(exitQtyAudit.chain_count, 5);
   assert.strictEqual(exitQtyAudit.issue_chain_count, 2);
+  assert.strictEqual(exitQtyAudit.issue_chain_total_n, 4);
+  assert.strictEqual(exitQtyAudit.issue_chain_backfilled_n, 2);
 
   fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "objective_retrospective_latest.json"), JSON.stringify({
     display: {
@@ -195,6 +207,34 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
   assert.ok(issueLines.some((line) => line.includes("Binance exit 수량 계약 위반 chain 2건")));
   assert.ok(issueLines.some((line) => line.includes("TOTAL_EXIT_OVER_100(2)")));
   assert.ok(issueLines.some((line) => line.includes("BTCUSDT(2)")));
+
+  const historicalExitQtyLines = dailySystemOpsCheck.__test.buildIssueLines({
+    cost_ratio_pct: 0.05,
+    cost_limit_pct: 0.2,
+    error_count: 0,
+    active_error_count: 0,
+    execution_health: {
+      available: true,
+      signals_count: 1,
+      fills_count: 1,
+      firestore_dns_ok: true,
+      drop_tp1_pending_count: 0,
+      qty_pct_non_positive_count: 0,
+    },
+    position_read_model_cutover: cutover,
+    trail_runner_floor_audit: trailAudit,
+    binance_exit_qty_contract_audit: {
+      ...exitQtyAudit,
+      issue_chain_count: 0,
+    },
+    position_writer_authority_24h: {
+      occurrence_count: 0,
+      top_symbols: [],
+    },
+  });
+  assert.ok(historicalExitQtyLines.some((line) => line.includes("과거 위반 4건은 backfill 정리됨")));
+  assert.ok(historicalExitQtyLines.some((line) => line.includes("TOTAL_EXIT_OVER_100(3)")));
+  assert.ok(historicalExitQtyLines.some((line) => line.includes("BTCUSDT(3)")));
 
   const writerCandidates = dailySystemOpsCheck.__test.buildWriterAuthorityRemediationCandidates({
     top_symbols: [

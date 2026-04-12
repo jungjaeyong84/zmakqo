@@ -84,11 +84,41 @@ function run() {
   ];
   const report = __test.buildReport(badRows);
   assert.strictEqual(report.issue_chain_count, 2);
+  assert.strictEqual(report.issue_chain_total_n, 2);
+  assert.strictEqual(report.issue_chain_backfilled_n, 0);
   const codes = new Set(report.issue_code_counts.map((row) => row.code));
   assert.ok(codes.has("TP1_ABS_OVER"));
   assert.ok(codes.has("TP_CHAIN_ABS_OVER"));
   assert.ok(codes.has("TOTAL_EXIT_OVER_100"));
   assert.ok(codes.has("FORCE_EXIT_WITH_STAGE_EXIT"));
+
+  const backfilledReport = __test.buildReport([
+    ...badRows,
+    {
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      entry_event_id: "ENTRY_D",
+      fill_id: "F8",
+      event: "EXIT_TP_P0_0.8P",
+      qty_pct: 0.25,
+      created_at: "2026-04-12T00:07:00.000Z",
+      extra: { exit_qty_contract_backfilled_at: "2026-04-12T00:10:00.000Z" },
+    },
+    {
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      entry_event_id: "ENTRY_D",
+      fill_id: "F9",
+      event: "EXIT_TP_P1_1.65P",
+      qty_pct: 1.0,
+      created_at: "2026-04-12T00:08:00.000Z",
+      extra: { exit_qty_contract_backfilled_at: "2026-04-12T00:10:00.000Z" },
+    },
+  ]);
+  assert.strictEqual(backfilledReport.issue_chain_total_n, 3);
+  assert.strictEqual(backfilledReport.issue_chain_count, 2);
+  assert.strictEqual(backfilledReport.issue_chain_backfilled_n, 1);
+  assert.ok(backfilledReport.issue_code_total_counts.some((row) => row.code === "TP1_ABS_OVER"));
 
   const authoritative = __test.buildAuthoritativeFillSet([
     {
