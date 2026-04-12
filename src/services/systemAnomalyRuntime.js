@@ -22,6 +22,13 @@ function toNum(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function resolveOperationalErrorBurstCount(ops = null) {
+  const row = ops && typeof ops === "object" ? ops : {};
+  const active = toNum(row.active_error_count);
+  const total = toNum(row.error_count);
+  return Number.isFinite(active) ? active : total;
+}
+
 function resolveExecutionQualityLatencyMs(summary = null) {
   const row = summary && typeof summary === "object" ? summary : {};
   return toNum(row.guard_created_to_fill_p95_ms ?? row.created_to_fill_p95_ms);
@@ -91,7 +98,7 @@ function buildSystemAnomalyState({
   if (serving.block_new_entries === true) issues.push("ANOMALY_ML_SERVING_BLOCK");
   if (toNum(ops.audit_issue_count) > 0) issues.push("ANOMALY_AUDIT_ISSUE_PRESENT");
   if (toNum(ops.qty_pct_non_positive_count) > 0) issues.push("ANOMALY_QTY_PCT_NON_POSITIVE");
-  if (toNum(ops.error_count) >= 3) issues.push("ANOMALY_RUNTIME_ERROR_BURST");
+  if (resolveOperationalErrorBurstCount(ops) >= 3) issues.push("ANOMALY_RUNTIME_ERROR_BURST");
   if (toNum(quality.partial_fill_rate_pct) >= 80) issues.push("ANOMALY_PARTIAL_FILL_BURST");
   if (resolveExecutionQualityLatencyMs(quality) >= 3000) issues.push("ANOMALY_LATENCY_P95_HIGH");
   if (toNum(nativeProtection.gap_count) > 0) issues.push("ANOMALY_NATIVE_TRAIL_PROTECTION_GAP");
@@ -127,6 +134,7 @@ function buildSystemAnomalyState({
       execution_quality_partial_fill_rate_pct: toNum(quality.partial_fill_rate_pct),
       operational_audit_issue_count: toNum(ops.audit_issue_count),
       operational_qty_pct_non_positive_count: toNum(ops.qty_pct_non_positive_count),
+      operational_active_error_count: toNum(ops.active_error_count),
       operational_error_count: toNum(ops.error_count),
       native_trail_protection_gap_count: toNum(nativeProtection.gap_count),
     },
@@ -177,5 +185,6 @@ module.exports = {
   __test: {
     normalizeLoadedSystemAnomalyState,
     resolveExecutionQualityLatencyMs,
+    resolveOperationalErrorBurstCount,
   },
 };
