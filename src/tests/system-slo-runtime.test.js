@@ -112,6 +112,41 @@ function run() {
   assert.strictEqual(held.reason, "OPS_GUARD_HOLD");
   assert.strictEqual(held.block_new_entries, true);
 
+  const softScaled = buildSystemSloState({
+    exchange: "BINANCEFUT",
+    operationalGuard: {
+      status: "보류",
+      reason: "OPS_GUARD_HOLD_COST_SOFT_SCALE",
+      block_new_entries: false,
+    },
+    mlServing: {
+      status: "PASS",
+      reason: "ML_SERVING_OK",
+      block_new_entries: false,
+    },
+    executionQuality: {
+      summary: {
+        generated_at: "2026-04-11T08:30:00.000Z",
+        status: "EXECUTION_QUALITY_OK",
+        created_to_fill_p95_ms: 1200,
+        partial_fill_rate_pct: 12,
+        adverse_slippage_p95_bps: 8,
+      },
+    },
+    lineageHealth: {
+      summary: {
+        generated_at: "2026-04-11T08:31:00.000Z",
+        intents_signal_doc_id_null_rate: 0.001,
+        fills_signal_doc_id_null_rate: 0.001,
+        entry_fills_intent_id_null_rate: 0.001,
+      },
+    },
+    nowMs,
+  });
+  assert.strictEqual(softScaled.status, "PASS");
+  assert.strictEqual(softScaled.reason, "SYSTEM_SLO_HEALTHY");
+  assert.strictEqual(softScaled.block_new_entries, false);
+
   const trailGap = buildSystemSloState({
     exchange: "BINANCEFUT",
     operationalGuard: {

@@ -109,6 +109,40 @@ function run() {
   assert.strictEqual(held.guard_action, "WARN_ONLY");
   assert.ok(held.issues.includes("ANOMALY_OPS_GUARD_HOLD"));
 
+  const softScaled = buildSystemAnomalyState({
+    exchange: "BINANCEFUT",
+    systemSlo: {
+      status: "PASS",
+      reason: "SYSTEM_SLO_HEALTHY",
+      block_new_entries: false,
+    },
+    operationalGuard: {
+      status: "보류",
+      reason: "OPS_GUARD_HOLD_COST_SOFT_SCALE",
+      block_new_entries: false,
+      audit_issue_count: 0,
+      qty_pct_non_positive_count: 0,
+      error_count: 3,
+    },
+    mlServing: {
+      status: "PASS",
+      reason: "ML_SERVING_OK",
+      block_new_entries: false,
+    },
+    executionQuality: {
+      summary: {
+        status: "EXECUTION_QUALITY_OK",
+        created_to_fill_p95_ms: 900,
+        partial_fill_rate_pct: 12,
+      },
+    },
+    nowMs,
+  });
+  assert.strictEqual(softScaled.status, "WARN");
+  assert.strictEqual(softScaled.reason, "ANOMALY_RUNTIME_ERROR_BURST");
+  assert.strictEqual(softScaled.circuit_breaker_open, false);
+  assert.ok(!softScaled.issues.includes("ANOMALY_OPS_GUARD_HOLD"));
+
   const trailGap = buildSystemAnomalyState({
     exchange: "BINANCEFUT",
     systemSlo: {

@@ -29,6 +29,28 @@ function safeReadJson(filePath) {
   }
 }
 
+function isCostOnlySoftScaleEligible(doc = null) {
+  const row = doc && typeof doc === "object" ? doc : {};
+  const executionHealth = row.execution_health && typeof row.execution_health === "object"
+    ? row.execution_health
+    : {};
+  const costRatioPct = toNum(row.cost_ratio_pct);
+  const costLimitPct = toNum(row.cost_limit_pct);
+  const activeErrorCount = toNum(row.active_error_count);
+  const errorCount = toNum(row.error_count);
+  const effectiveErrorCount = Number.isFinite(activeErrorCount) ? activeErrorCount : errorCount;
+  const auditIssueCount = toNum(executionHealth.audit_issue_count);
+  const qtyPctNonPositiveCount = toNum(executionHealth.qty_pct_non_positive_count);
+  const duplicateSignalFillCount = toNum(executionHealth.duplicate_signal_fill_count);
+
+  if (!(Number.isFinite(costRatioPct) && Number.isFinite(costLimitPct) && costRatioPct > costLimitPct)) return false;
+  if (Number.isFinite(effectiveErrorCount) && effectiveErrorCount > 0) return false;
+  if (Number.isFinite(auditIssueCount) && auditIssueCount > 0) return false;
+  if (Number.isFinite(qtyPctNonPositiveCount) && qtyPctNonPositiveCount > 0) return false;
+  if (Number.isFinite(duplicateSignalFillCount) && duplicateSignalFillCount > 0) return false;
+  return true;
+}
+
 function buildOperationalGuardState({
   summary = null,
   nowMs = Date.now(),
@@ -57,8 +79,13 @@ function buildOperationalGuardState({
     blockNewEntries = true;
     reason = "OPS_GUARD_STOP";
   } else if (status === "보류") {
-    blockNewEntries = true;
-    reason = "OPS_GUARD_HOLD";
+    if (isCostOnlySoftScaleEligible(doc)) {
+      blockNewEntries = false;
+      reason = "OPS_GUARD_HOLD_COST_SOFT_SCALE";
+    } else {
+      blockNewEntries = true;
+      reason = "OPS_GUARD_HOLD";
+    }
   } else if (!status) {
     blockNewEntries = resolvedFailClosed;
     reason = "OPS_GUARD_MISSING";
@@ -78,6 +105,7 @@ function buildOperationalGuardState({
     active_error_count: toNum(doc.active_error_count),
     cost_ratio_pct: toNum(doc.cost_ratio_pct),
     cost_limit_pct: toNum(doc.cost_limit_pct),
+    soft_scale_only: reason === "OPS_GUARD_HOLD_COST_SOFT_SCALE",
     net_pnl_pct: toNum(doc.net_pnl_pct),
     execution_health_available: executionHealth.available === true,
     drop_tp1_pending_count: toNum(executionHealth.drop_tp1_pending_count),
@@ -146,5 +174,6 @@ module.exports = {
   loadOperationalGuardRuntime,
   __test: {
     normalizeLoadedOperationalGuardState,
+    isCostOnlySoftScaleEligible,
   },
 };

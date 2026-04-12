@@ -47,6 +47,31 @@ const { buildOperationalGuardState, __test } = require("../services/operationalG
 (() => {
   const state = buildOperationalGuardState({
     summary: {
+      generated_at_iso: "2026-04-11T00:00:00.000Z",
+      status: "보류",
+      mode: "비용 차단",
+      cost_ratio_pct: 0.49,
+      cost_limit_pct: 0.4,
+      error_count: 3,
+      active_error_count: 0,
+      execution_health: {
+        available: true,
+        audit_issue_count: 0,
+        qty_pct_non_positive_count: 0,
+        duplicate_signal_fill_count: 0,
+      },
+    },
+    nowMs: Date.parse("2026-04-11T00:10:00.000Z"),
+  });
+
+  assert.strictEqual(state.block_new_entries, false);
+  assert.strictEqual(state.reason, "OPS_GUARD_HOLD_COST_SOFT_SCALE");
+  assert.strictEqual(state.soft_scale_only, true);
+})();
+
+(() => {
+  const state = buildOperationalGuardState({
+    summary: {
       generated_at_iso: "2026-04-10T00:00:00.000Z",
       status: "진행",
     },
