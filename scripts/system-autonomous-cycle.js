@@ -86,6 +86,7 @@ function main() {
 
   const tasks = [
     { id: "execution_quality", label: "실행 품질 리포트", bin: "node", args: ["scripts/report-best-self-evolution-execution-quality.js"] },
+    { id: "quant_ml_core", label: "퀀트 ML 코어 리포트", bin: "node", args: ["scripts/report-best-self-evolution-quant-ml-core.js"] },
     { id: "signal_lineage_health", label: "시그널 라인리지 건강도", bin: "node", args: ["scripts/report-signal-lineage-health.js"] },
     { id: "system_runtime_guards", label: "시스템 런타임 가드", bin: "node", args: ["scripts/run-system-runtime-guards.js"] },
     { id: "trail_authority_feedback", label: "트레일 권한 피드백", bin: "node", args: ["scripts/run-trail-authority-feedback.js"] },

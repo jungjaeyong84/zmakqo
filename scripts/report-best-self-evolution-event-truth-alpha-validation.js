@@ -19,6 +19,7 @@ const INPUTS = Object.freeze({
 
 function renderMarkdown(report = {}) {
   const summary = report.summary || {};
+  const periods = summary.periods && typeof summary.periods === "object" ? summary.periods : {};
   return [
     "# BEST Self-Evolution Event Truth Alpha Validation",
     "",
@@ -31,7 +32,12 @@ function renderMarkdown(report = {}) {
     `- positive_rate: ${summary.positive_rate != null ? Number(summary.positive_rate).toFixed(4) : "N/A"} / avg_realized_ret_net: ${summary.avg_realized_ret_net != null ? Number(summary.avg_realized_ret_net).toFixed(6) : "N/A"}`,
     `- tp0_hit_rate: ${summary.tp0_hit_rate != null ? Number(summary.tp0_hit_rate).toFixed(4) : "N/A"} / tp0_to_tp1_conversion_rate: ${summary.tp0_to_tp1_conversion_rate != null ? Number(summary.tp0_to_tp1_conversion_rate).toFixed(4) : "N/A"}`,
     `- top_positive_market: ${summary.top_positive_market || "N/A"} / top_negative_market: ${summary.top_negative_market || "N/A"}`,
+    `- top_positive_strategy: ${summary.top_positive_strategy || "N/A"} / top_negative_strategy: ${summary.top_negative_strategy || "N/A"}`,
+    `- top_positive_regime: ${summary.top_positive_regime || "N/A"} / top_negative_regime: ${summary.top_negative_regime || "N/A"}`,
     `- blocking_reasons: ${Array.isArray(summary.blocking_reasons) && summary.blocking_reasons.length ? summary.blocking_reasons.join(", ") : "none"}`,
+    "",
+    "## Rolling Windows",
+    ...(Object.entries(periods).map(([key, row]) => `- ${key} (${row.label || key}): ${row.evidence_status || "N/A"} / realized=${row.realized_rows_n ?? "N/A"} / positive_rate=${row.positive_rate != null ? Number(row.positive_rate).toFixed(4) : "N/A"} / avg_ret=${row.avg_realized_ret_net != null ? Number(row.avg_realized_ret_net).toFixed(6) : "N/A"}`)),
     "",
   ].join("\n");
 }

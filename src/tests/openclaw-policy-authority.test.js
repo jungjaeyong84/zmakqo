@@ -55,10 +55,12 @@ function run() {
 
   const nowMs = Date.parse("2026-04-11T12:34:56.000Z");
   const periods = tuningTest.buildPeriods(nowMs);
-  assert.deepStrictEqual(Object.keys(periods), ["DAILY", "WEEKLY", "DAYS_7", "DAYS_14", "MONTHLY", "YEARLY"]);
+  assert.deepStrictEqual(Object.keys(periods), ["DAILY", "WEEKLY", "DAYS_7", "DAYS_14", "DAYS_30", "DAYS_90", "MONTHLY", "YEARLY"]);
   assert.strictEqual(periods.DAILY.label, "일간");
   assert.strictEqual(periods.DAYS_7.label, "최근 7일");
   assert.strictEqual(periods.DAYS_14.label, "최근 14일");
+  assert.strictEqual(periods.DAYS_30.label, "최근 30일");
+  assert.strictEqual(periods.DAYS_90.label, "최근 90일");
   assert.strictEqual(periods.WEEKLY.label, "주간");
   assert.strictEqual(periods.MONTHLY.label, "월간");
   assert.strictEqual(periods.YEARLY.label, "연간");
@@ -165,6 +167,8 @@ function run() {
       WEEKLY: { ...periodSummary, label: "주간" },
       DAYS_7: { ...periodSummary, label: "최근 7일" },
       DAYS_14: { ...periodSummary, label: "최근 14일" },
+      DAYS_30: { ...periodSummary, label: "최근 30일" },
+      DAYS_90: { ...periodSummary, label: "최근 90일" },
       MONTHLY: { ...periodSummary, label: "월간" },
       YEARLY: { ...periodSummary, label: "연간" },
     },
@@ -173,6 +177,8 @@ function run() {
   assert.ok(markdown.includes("주간"));
   assert.ok(markdown.includes("최근 7일"));
   assert.ok(markdown.includes("최근 14일"));
+  assert.ok(markdown.includes("최근 30일"));
+  assert.ok(markdown.includes("최근 90일"));
   assert.ok(markdown.includes("월간"));
   assert.ok(markdown.includes("연간"));
 

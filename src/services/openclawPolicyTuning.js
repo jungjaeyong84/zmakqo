@@ -121,6 +121,8 @@ function buildPeriods(nowMs = Date.now()) {
     WEEKLY: { label: "주간", from_ms: kstStartOfWeekMs(nowMs), to_ms: nowMs },
     DAYS_7: { label: "최근 7일", from_ms: nowMs - (7 * 24 * 60 * 60 * 1000), to_ms: nowMs },
     DAYS_14: { label: "최근 14일", from_ms: nowMs - (14 * 24 * 60 * 60 * 1000), to_ms: nowMs },
+    DAYS_30: { label: "최근 30일", from_ms: nowMs - (30 * 24 * 60 * 60 * 1000), to_ms: nowMs },
+    DAYS_90: { label: "최근 90일", from_ms: nowMs - (90 * 24 * 60 * 60 * 1000), to_ms: nowMs },
     MONTHLY: { label: "월간", from_ms: kstStartOfMonthMs(nowMs), to_ms: nowMs },
     YEARLY: { label: "연간", from_ms: kstStartOfYearMs(nowMs), to_ms: nowMs },
   };
@@ -426,7 +428,7 @@ function renderMarkdown(payload = {}) {
     `- exchange: ${payload.exchange || "N/A"}`,
     "",
   ];
-  for (const key of ["DAILY", "WEEKLY", "DAYS_7", "DAYS_14", "MONTHLY", "YEARLY"]) {
+  for (const key of ["DAILY", "WEEKLY", "DAYS_7", "DAYS_14", "DAYS_30", "DAYS_90", "MONTHLY", "YEARLY"]) {
     if (!periods[key]) continue;
     lines.push(renderPeriodSection(`${key} (${periods[key].label || key})`, periods[key]));
   }

@@ -289,23 +289,33 @@ function buildDecisionCenterCard({
   failureLearning = null,
   allocator = null,
   promotionGate = null,
+  quantMlCore = null,
 } = {}) {
   const feeSummary = feePnlKpi && feePnlKpi.summary ? feePnlKpi.summary : {};
   const failureSummary = failureLearning && failureLearning.summary ? failureLearning.summary : {};
   const allocatorSummary = allocator && allocator.summary ? allocator.summary : {};
   const promotionSummary = promotionGate && promotionGate.summary ? promotionGate.summary : {};
+  const quantSummary = quantMlCore && quantMlCore.summary ? quantMlCore.summary : {};
+  const quantAxes = quantSummary.axes && typeof quantSummary.axes === "object" ? quantSummary.axes : {};
   return {
     title: "Decision Center",
     tone: statusTone(
-      promotionSummary.promotion_decision
+      quantSummary.status
+      || quantSummary.overall_axis_status
+      || (quantAxes.continuous_alpha_proof && quantAxes.continuous_alpha_proof.status)
+      || (quantAxes.openclaw_single_authority && quantAxes.openclaw_single_authority.status)
+      || promotionSummary.promotion_decision
       || feeSummary.evidence_status
       || failureSummary.evidence_status
       || allocatorSummary.status
       || "WARN"
     ),
     rows: [
+      { label: "Quant ML", value: compactText(quantSummary.status || quantSummary.overall_axis_status || "-") },
       { label: "Promotion", value: compactText(promotionSummary.promotion_decision || promotionSummary.promotion_stage || "-") },
       { label: "Fee/PnL", value: compactText(feeSummary.evidence_status || "-") },
+      { label: "Alpha", value: compactText(quantAxes.continuous_alpha_proof && quantAxes.continuous_alpha_proof.evidence_status || "-") },
+      { label: "OpenClaw", value: compactText(quantAxes.openclaw_single_authority && quantAxes.openclaw_single_authority.days_30_gate || quantAxes.openclaw_single_authority && quantAxes.openclaw_single_authority.days_14_gate || "-") },
       { label: "Failure Learning", value: compactText(failureSummary.evidence_status || "-") },
       { label: "Allocator", value: compactText(allocatorSummary.status || "-") },
       { label: "Top Fee Drag", value: compactText(feeSummary.top_fee_drag_market || "-") },
@@ -321,6 +331,16 @@ function buildDecisionCenterCard({
         .concat(
           failureSummary.fail_rate != null
             ? [`failure fail_rate=${numberText(failureSummary.fail_rate, 4)} pattern=${compactText(failureSummary.dominant_failure_pattern)}`]
+            : []
+        )
+        .concat(
+          quantAxes.execution_edge && quantAxes.execution_edge.created_to_fill_p95_ms != null
+            ? [`execution latency p95=${numberText(quantAxes.execution_edge.created_to_fill_p95_ms, 0)}ms partial=${numberText(quantAxes.execution_edge.partial_fill_rate_pct, 1)}%`]
+            : []
+        )
+        .concat(
+          quantAxes.continuous_alpha_proof && quantAxes.continuous_alpha_proof.top_negative_strategy
+            ? [`alpha weakest strategy=${compactText(quantAxes.continuous_alpha_proof.top_negative_strategy)}`]
             : []
         )
         .concat(
@@ -1093,12 +1113,19 @@ function buildRecoveryViewModel() {
   const failureLearning = loadLatestArtifact("best_self_evolution_failure_learning_loop_latest.json");
   const serverMarketCapitalAllocator = loadLatestArtifact("best_self_evolution_server_market_capital_allocator_latest.json");
   const mlPromotionGate = loadLatestArtifact("best_self_evolution_ml_promotion_gate_latest.json");
+  const quantMlCore = loadLatestArtifact("best_self_evolution_quant_ml_core_latest.json");
   const openclawPolicyAuthority = loadLatestArtifact("openclaw_policy_authority_latest.json");
   const openclaw7 = openclawPolicyAuthority.raw && openclawPolicyAuthority.raw.periods
     ? openclawPolicyAuthority.raw.periods.DAYS_7
     : null;
   const openclaw14 = openclawPolicyAuthority.raw && openclawPolicyAuthority.raw.periods
     ? openclawPolicyAuthority.raw.periods.DAYS_14
+    : null;
+  const openclaw30 = openclawPolicyAuthority.raw && openclawPolicyAuthority.raw.periods
+    ? openclawPolicyAuthority.raw.periods.DAYS_30
+    : null;
+  const openclaw90 = openclawPolicyAuthority.raw && openclawPolicyAuthority.raw.periods
+    ? openclawPolicyAuthority.raw.periods.DAYS_90
     : null;
   const runtimeGuardScale = resolveRuntimeGuardSoftScale({
     ops: systemOps.raw,
@@ -1128,6 +1155,7 @@ function buildRecoveryViewModel() {
     failureLearning,
     serverMarketCapitalAllocator,
     mlPromotionGate,
+    quantMlCore,
   ]);
   const nextAction = Array.isArray(governor.summary.next_actions) && governor.summary.next_actions.length
     ? governor.summary.next_actions[0]
@@ -1337,6 +1365,7 @@ function buildRecoveryViewModel() {
             failureLearning,
             allocator: serverMarketCapitalAllocator,
             promotionGate: mlPromotionGate,
+            quantMlCore,
           }),
           {
             title: "Signal Authority",
@@ -1609,7 +1638,10 @@ function buildRecoveryViewModel() {
           },
           {
             title: "OpenClaw Authority",
-            tone: openclaw7 && openclaw7.gate && openclaw7.gate.verdict === "PASS" ? "ok" : "warn",
+            tone: (openclaw30 && openclaw30.gate && (openclaw30.gate.status || openclaw30.gate.verdict) === "PASS")
+              || (openclaw7 && openclaw7.gate && (openclaw7.gate.status || openclaw7.gate.verdict) === "PASS")
+              ? "ok"
+              : "warn",
             rows: [
               { label: "7D Gate", value: compactText(openclaw7 && openclaw7.gate && openclaw7.gate.verdict || "N/A") },
               { label: "7D Decisions", value: numberText(openclaw7 && openclaw7.decision_summary && openclaw7.decision_summary.rows_n, 0) },
@@ -1617,6 +1649,8 @@ function buildRecoveryViewModel() {
               { label: "7D Reduced", value: `${numberText(openclaw7 && openclaw7.decision_summary && openclaw7.decision_summary.reduced_n, 0)} (${toDisplayPercent(openclaw7 && openclaw7.decision_summary && openclaw7.decision_summary.reduced_rate, 0)})` },
               { label: "14D Gate", value: compactText(openclaw14 && openclaw14.gate && openclaw14.gate.verdict || "N/A") },
               { label: "14D Decisions", value: numberText(openclaw14 && openclaw14.decision_summary && openclaw14.decision_summary.rows_n, 0) },
+              { label: "30D Gate", value: compactText(openclaw30 && openclaw30.gate && (openclaw30.gate.verdict || openclaw30.gate.status) || "N/A") },
+              { label: "90D Gate", value: compactText(openclaw90 && openclaw90.gate && (openclaw90.gate.verdict || openclaw90.gate.status) || "N/A") },
               { label: "Top 7D Reason", value: compactText(openclaw7 && openclaw7.decision_summary && Array.isArray(openclaw7.decision_summary.by_reason) && openclaw7.decision_summary.by_reason[0] && openclaw7.decision_summary.by_reason[0].key) },
             ],
             table: openclaw7 && openclaw7.decision_summary && Array.isArray(openclaw7.decision_summary.by_reason)
