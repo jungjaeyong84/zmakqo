@@ -4148,7 +4148,7 @@ async function upsertPositionMetaOnlyWithLatestRetry({
   source = null,
   mutationKind = "POSITION_META_UPSERT",
   reason = null,
-  maxAttempts = 2,
+  maxAttempts = 4,
   retryDelayMs = 50,
   readPosition = getPosition,
   writePositionMeta = upsertPositionMetaOnly,
@@ -4179,6 +4179,8 @@ async function upsertPositionMetaOnlyWithLatestRetry({
           ? (currentPos.position_write_token ?? null)
           : null,
         suppressAuthorityAlert: attempt < totalAttempts,
+        suppressAuthorityRuntimeFamily: attempt < totalAttempts,
+        suppressAuthorityRuntimeFamilyReason: "WRITER_RETRY_IN_PROGRESS",
       });
     } catch (err) {
       const code = String(err && err.code || "").trim().toUpperCase();

@@ -187,8 +187,10 @@ async function run() {
     assert.strictEqual(writes.length, 2);
     assert.strictEqual(writes[0].expectedWriteToken, "stale-token");
     assert.strictEqual(writes[0].suppressAuthorityAlert, true);
+    assert.strictEqual(writes[0].suppressAuthorityRuntimeFamily, true);
     assert.strictEqual(writes[1].expectedWriteToken, "fresh-token");
     assert.strictEqual(writes[1].suppressAuthorityAlert, false);
+    assert.strictEqual(writes[1].suppressAuthorityRuntimeFamily, false);
     assert.strictEqual(writes[1].source, "INTENT_FILL");
     assert.strictEqual(writes[1].reason, "INTENT_FILL_FORCE_LIVE_RECONCILE");
     assert.strictEqual(writes[1].meta.last_fill_intent, "INTENT_NEW");
@@ -196,6 +198,60 @@ async function run() {
     assert.strictEqual(writes[1].meta.other_runtime_flag, "KEEP");
     assert.strictEqual(Object.prototype.hasOwnProperty.call(writes[1].meta, "trail_active"), false);
     assert.strictEqual(result.expectedWriteToken, "fresh-token");
+  }
+
+  {
+    let readCount = 0;
+    const writes = [];
+    const tokens = ["stale-token", "fresh-token-1", "fresh-token-2", "fresh-token-3"];
+    const result = await runnerTest.upsertPositionMetaOnlyWithLatestRetry({
+      exchange: "BINANCEFUT",
+      symbol: "SOLUSDT",
+      runId: "RUN__TEST__WEBHOOK__SOLUSDT",
+      executionMode: "LIVE",
+      position: {
+        position_write_token: tokens[0],
+        meta: {
+          last_fill_intent: "INTENT_OLD",
+        },
+      },
+      metaPatch: {
+        last_fill_intent: "INTENT_NEW",
+      },
+      source: "INTENT_FILL",
+      reason: "INTENT_FILL_FORCE_LIVE_RECONCILE",
+      retryDelayMs: 0,
+      readPosition: async () => {
+        const idx = Math.min(readCount + 1, tokens.length - 1);
+        readCount += 1;
+        return {
+          position_write_token: tokens[idx],
+          meta: {
+            last_fill_intent: `INTENT_SYNC_${idx}`,
+          },
+        };
+      },
+      writePositionMeta: async (args) => {
+        writes.push(args);
+        if (writes.length < 4) {
+          const err = new Error(`POSITION_WRITE_TOKEN_MISMATCH expected=${args.expectedWriteToken} actual=${tokens[Math.min(writes.length, tokens.length - 1)]}`);
+          err.code = "POSITION_WRITE_TOKEN_MISMATCH";
+          throw err;
+        }
+        return args;
+      },
+    });
+    assert.strictEqual(readCount, 3);
+    assert.strictEqual(writes.length, 4);
+    assert.deepStrictEqual(
+      writes.map((row) => row.expectedWriteToken),
+      ["stale-token", "fresh-token-1", "fresh-token-2", "fresh-token-3"]
+    );
+    assert.deepStrictEqual(
+      writes.map((row) => row.suppressAuthorityRuntimeFamily),
+      [true, true, true, false]
+    );
+    assert.strictEqual(result.expectedWriteToken, "fresh-token-3");
   }
 
   {
