@@ -443,7 +443,8 @@ function assessSchedulerTickSla(statusRes) {
   const nowMs = Date.now();
   const base = {
     name: "scheduler_tick_sla",
-    severity: "FAIL",
+    severity: "PASS",
+    configuredSeverity: "FAIL",
     checkedAtMs: nowMs,
     baseUrl: statusRes && statusRes.baseUrl || null,
     issueCode: null,
@@ -466,6 +467,7 @@ function assessSchedulerTickSla(statusRes) {
       : (statusRes && statusRes.statusCode === 404 ? "SCHEDULER_STATUS_NOT_FOUND" : "SCHEDULER_STATUS_UNREACHABLE");
     return {
       ...base,
+      severity: "FAIL",
       issueCode: code,
       issueSeverity: "FAIL",
       error: statusRes && statusRes.error ? String(statusRes.error) : "STATUS_REQUEST_FAILED",
@@ -502,6 +504,7 @@ function assessSchedulerTickSla(statusRes) {
 
   return {
     ...base,
+    severity: issueSeverity || "PASS",
     reachable: true,
     signalTf: signalTf || null,
     pollMs: Number.isFinite(pollMs) ? pollMs : null,

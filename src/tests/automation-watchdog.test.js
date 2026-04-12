@@ -176,6 +176,7 @@ const { __test } = require("../../scripts/automation-automation-watchdog");
   });
   assert.strictEqual(staleRow.issueCode, "SCHEDULER_TICK_STALE");
   assert.strictEqual(staleRow.issueSeverity, "FAIL");
+  assert.strictEqual(staleRow.severity, "FAIL");
 
   const passRow = __test.assessSchedulerTickSla({
     ok: true,
@@ -196,6 +197,7 @@ const { __test } = require("../../scripts/automation-automation-watchdog");
     },
   });
   assert.strictEqual(passRow.issueCode, null);
+  assert.strictEqual(passRow.severity, "PASS");
 
   assert.strictEqual(
     __test.shouldAttemptSchedulerRecovery(
