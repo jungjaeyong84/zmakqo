@@ -91,6 +91,7 @@ function main() {
     { id: "trail_authority_feedback", label: "트레일 권한 피드백", bin: "node", args: ["scripts/run-trail-authority-feedback.js"] },
     { id: "trail_runner_floor_audit", label: "트레일 floor 감사", bin: "node", args: ["scripts/report-trail-runner-floor-audit.js"] },
     { id: "binance_exit_qty_contract_audit", label: "Binance exit 수량 계약 감사", bin: "node", args: ["scripts/report-binance-exit-qty-contract-audit.js"] },
+    { id: "binance_exit_execution_drilldown", label: "Binance exit 실행 drilldown", bin: "node", args: ["scripts/report-binance-exit-execution-drilldown.js"] },
     { id: "openclaw_policy_authority", label: "OpenClaw 정책 권한 리포트", bin: "node", args: ["scripts/report-openclaw-policy-authority.js"] },
     { id: "runtime_error_family_remediation", label: "런타임 오류 family remediation", bin: "node", args: ["scripts/runtime-error-family-remediation.js"] },
     { id: "ml_ops_pipeline", label: "ML 운영 파이프라인", bin: "node", args: ["scripts/run-ml-ops-pipeline.js"] },

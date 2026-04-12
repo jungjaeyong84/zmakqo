@@ -1085,6 +1085,8 @@ function buildRecoveryViewModel() {
   const dailyStrategy = loadLatestArtifact("objective_daily_strategy_latest.json");
   const systemOps = loadLatestArtifact("system_ops_check_latest.json");
   const trailRunnerFloorAudit = loadLatestArtifact("trail_runner_floor_audit_latest.json");
+  const binanceExitQtyContractAudit = loadLatestArtifact("binance_exit_qty_contract_audit_latest.json");
+  const binanceExitExecutionDrilldown = loadLatestArtifact("binance_exit_execution_drilldown_latest.json");
   const systemSlo = loadLatestArtifact("system_slo_state_latest.json");
   const systemAnomaly = loadLatestArtifact("system_anomaly_state_latest.json");
   const feePnlKpi = loadLatestArtifact("best_self_evolution_fee_pnl_kpi_authority_latest.json");
@@ -1253,6 +1255,46 @@ function buildRecoveryViewModel() {
             notes: sliceList(
               Array.isArray(trailRunnerFloorAudit.raw && trailRunnerFloorAudit.raw.top_violations)
                 ? trailRunnerFloorAudit.raw.top_violations.map((row) => `${row.symbol} ${row.position_side} exec=${row.exec_price} floor=${row.runner_floor_px} gap=${row.floor_gap_pct}%`)
+                : [],
+              5,
+            ),
+          },
+          {
+            title: "Exit Qty Contract",
+            tone: toNum(binanceExitQtyContractAudit.raw && binanceExitQtyContractAudit.raw.issue_chain_count, 0) > 0
+              ? "bad"
+              : (toNum(binanceExitQtyContractAudit.raw && binanceExitQtyContractAudit.raw.issue_chain_total_n, 0) > 0 ? "warn" : "ok"),
+            rows: [
+              { label: "Unresolved", value: numberText(binanceExitQtyContractAudit.raw && binanceExitQtyContractAudit.raw.issue_chain_count, 0) },
+              { label: "Total", value: numberText(binanceExitQtyContractAudit.raw && binanceExitQtyContractAudit.raw.issue_chain_total_n, 0) },
+              { label: "Backfilled", value: numberText(binanceExitQtyContractAudit.raw && binanceExitQtyContractAudit.raw.issue_chain_backfilled_n, 0) },
+              { label: "Top Code", value: compactText(Array.isArray(binanceExitQtyContractAudit.raw && binanceExitQtyContractAudit.raw.issue_code_counts) && binanceExitQtyContractAudit.raw.issue_code_counts[0] ? `${binanceExitQtyContractAudit.raw.issue_code_counts[0].code}(${binanceExitQtyContractAudit.raw.issue_code_counts[0].count})` : (Array.isArray(binanceExitQtyContractAudit.raw && binanceExitQtyContractAudit.raw.issue_code_total_counts) && binanceExitQtyContractAudit.raw.issue_code_total_counts[0] ? `${binanceExitQtyContractAudit.raw.issue_code_total_counts[0].code}(${binanceExitQtyContractAudit.raw.issue_code_total_counts[0].count})` : null)) },
+            ],
+            table: Array.isArray(binanceExitExecutionDrilldown.raw && binanceExitExecutionDrilldown.raw.top_historical_symbols) && binanceExitExecutionDrilldown.raw.top_historical_symbols.length ? {
+              columns: [
+                { key: "market", label: "Market" },
+                { key: "state", label: "State" },
+                { key: "issues", label: "Issues" },
+                { key: "tp", label: "TP0/TP1" },
+                { key: "trail", label: "Trail" },
+                { key: "open", label: "Open" },
+              ],
+              rows: buildRowsPreview(
+                binanceExitExecutionDrilldown.raw.top_historical_symbols,
+                (row) => ({
+                  market: buildLink(compactText(row.symbol), buildReportUrl(row.symbol)),
+                  state: compactText(row.contract_state),
+                  issues: `${numberText(row.unresolved_issue_chain_n, 0)} / ${numberText(row.issue_chain_total_n, 0)}`,
+                  tp: `TP0 ${numberText(row.tp0_fill_n, 0)} / TP1 ${numberText(row.tp1_fill_n, 0)}`,
+                  trail: `${numberText(row.trail_fill_n, 0)} / ${numberText(row.trail_qty_pct_sum, 3)}`,
+                  open: buildLink("Execution", buildExecutionUrl(row.symbol)),
+                }),
+                5,
+              ),
+            } : null,
+            notes: sliceList(
+              Array.isArray(binanceExitExecutionDrilldown.raw && binanceExitExecutionDrilldown.raw.top_historical_symbols)
+                ? binanceExitExecutionDrilldown.raw.top_historical_symbols.map((row) => `${row.symbol} ${row.contract_state} unresolved=${row.unresolved_issue_chain_n} total=${row.issue_chain_total_n} latest=${row.latest_event || "N/A"}`)
                 : [],
               5,
             ),

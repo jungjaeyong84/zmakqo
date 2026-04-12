@@ -15,6 +15,10 @@ function run() {
   const systemOpsBackup = fs.existsSync(systemOpsPath) ? fs.readFileSync(systemOpsPath, "utf8") : null;
   const trailAuditPath = path.join(opsDailyDir, "trail_runner_floor_audit_latest.json");
   const trailAuditBackup = fs.existsSync(trailAuditPath) ? fs.readFileSync(trailAuditPath, "utf8") : null;
+  const exitQtyAuditPath = path.join(opsDailyDir, "binance_exit_qty_contract_audit_latest.json");
+  const exitQtyAuditBackup = fs.existsSync(exitQtyAuditPath) ? fs.readFileSync(exitQtyAuditPath, "utf8") : null;
+  const exitExecutionDrilldownPath = path.join(opsDailyDir, "binance_exit_execution_drilldown_latest.json");
+  const exitExecutionDrilldownBackup = fs.existsSync(exitExecutionDrilldownPath) ? fs.readFileSync(exitExecutionDrilldownPath, "utf8") : null;
   const openclawAuthorityPath = path.join(opsDailyDir, "openclaw_policy_authority_latest.json");
   const openclawAuthorityBackup = fs.existsSync(openclawAuthorityPath) ? fs.readFileSync(openclawAuthorityPath, "utf8") : null;
   const latestPath = path.join(opsDailyDir, latestName);
@@ -58,6 +62,30 @@ function run() {
         signal_price: 1.3639,
         floor_gap_pct: -0.4664,
         position_side: "LONG",
+      },
+    ],
+  }, null, 2), "utf8");
+  fs.writeFileSync(exitQtyAuditPath, JSON.stringify({
+    issue_chain_count: 0,
+    issue_chain_total_n: 4,
+    issue_chain_backfilled_n: 4,
+    issue_code_counts: [],
+    issue_code_total_counts: [
+      { code: "TOTAL_EXIT_OVER_100", count: 3 },
+    ],
+  }, null, 2), "utf8");
+  fs.writeFileSync(exitExecutionDrilldownPath, JSON.stringify({
+    top_historical_symbols: [
+      {
+        symbol: "BNBUSDT",
+        contract_state: "BACKFILLED_ONLY",
+        unresolved_issue_chain_n: 0,
+        issue_chain_total_n: 3,
+        tp0_fill_n: 1,
+        tp1_fill_n: 2,
+        trail_fill_n: 5,
+        trail_qty_pct_sum: 3.25,
+        latest_event: "EXIT_TRAIL",
       },
     ],
   }, null, 2), "utf8");
@@ -118,6 +146,16 @@ function run() {
     assert.ok(trailAuditCard.table);
     assert.ok(Array.isArray(trailAuditCard.table.rows));
     assert.ok(String(trailAuditCard.table.rows[0].market && trailAuditCard.table.rows[0].market.label || "").includes("XRPUSDT"));
+    const exitQtyCard = Array.isArray(operatorSection.cards)
+      ? operatorSection.cards.find((card) => String(card && card.title || "").includes("Exit Qty Contract"))
+      : null;
+    assert.ok(exitQtyCard);
+    assert.ok(Array.isArray(exitQtyCard.rows));
+    assert.ok(exitQtyCard.rows.some((row) => String(row && row.label || "").includes("Backfilled")));
+    assert.ok(exitQtyCard.table);
+    assert.ok(Array.isArray(exitQtyCard.table.rows));
+    assert.ok(String(exitQtyCard.table.rows[0].market && exitQtyCard.table.rows[0].market.label || "").includes("BNBUSDT"));
+    assert.ok(String(exitQtyCard.table.rows[0].state || "").includes("BACKFILLED_ONLY"));
     const executionCard = Array.isArray(operatorSection.cards)
       ? operatorSection.cards.find((card) => String(card && card.title || "").includes("실행 품질"))
       : null;
@@ -152,7 +190,9 @@ function run() {
     assert.ok(html.includes("런타임 가드"));
     assert.ok(html.includes("Writer Authority 24h"));
     assert.ok(html.includes("Trail Floor Audit"));
+    assert.ok(html.includes("Exit Qty Contract"));
     assert.ok(html.includes("XRPUSDT"));
+    assert.ok(html.includes("BNBUSDT"));
     assert.ok(html.includes("/dashboard/execution"));
     assert.ok(html.includes("의사결정 센터"));
     assert.ok(html.includes("OpenClaw Authority"));
@@ -163,6 +203,10 @@ function run() {
     else try { fs.unlinkSync(systemOpsPath); } catch (_) {}
     if (trailAuditBackup != null) fs.writeFileSync(trailAuditPath, trailAuditBackup, "utf8");
     else try { fs.unlinkSync(trailAuditPath); } catch (_) {}
+    if (exitQtyAuditBackup != null) fs.writeFileSync(exitQtyAuditPath, exitQtyAuditBackup, "utf8");
+    else try { fs.unlinkSync(exitQtyAuditPath); } catch (_) {}
+    if (exitExecutionDrilldownBackup != null) fs.writeFileSync(exitExecutionDrilldownPath, exitExecutionDrilldownBackup, "utf8");
+    else try { fs.unlinkSync(exitExecutionDrilldownPath); } catch (_) {}
     if (openclawAuthorityBackup != null) fs.writeFileSync(openclawAuthorityPath, openclawAuthorityBackup, "utf8");
     else try { fs.unlinkSync(openclawAuthorityPath); } catch (_) {}
   }
