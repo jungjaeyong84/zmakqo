@@ -108,6 +108,29 @@ function run() {
     String(reclassified.canonical_event_id || "").includes("FORCE_EXIT_ALL"),
     "canonical_event_id should reflect reclassified event"
   );
+  assert.strictEqual(reclassified.classification_verified, true);
+  assert.deepStrictEqual(reclassified.classification_issues, []);
+
+  const reclassifiedFromUnverified = buildExternalFillEventReclassificationPatch({
+    current: {
+      fill_id: "fill-eth-1",
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      tf: "15m",
+      exec_bar_close_time_utc_ms: 1776026600000,
+      signal_bar_close_time_utc_ms: 1776026500000,
+      side: "SELL",
+      event: "EXIT_TP_P1_1.65P_UNVERIFIED",
+      classification_verified: false,
+      classification_issues: ["TP1_FILL_PROJECTION_MISSING"],
+    },
+    event: "EXIT_TP_P1_1.65P",
+    decisionReason: "POST_SYNC_PROJECTION_CONFIRMED",
+    reclassifyReason: "TP1_PROJECTION_CONFIRMED_AFTER_SYNC",
+  });
+  assert.strictEqual(reclassifiedFromUnverified.classification_verified, true);
+  assert.deepStrictEqual(reclassifiedFromUnverified.classification_issues, []);
+  assert.strictEqual(reclassifiedFromUnverified.event, "EXIT_TP_P1_1.65P");
 
   const relinkOnly = buildExternalFillEventReclassificationPatch({
     current: {

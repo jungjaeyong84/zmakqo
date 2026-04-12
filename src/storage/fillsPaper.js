@@ -143,6 +143,7 @@ function buildExternalFillEventReclassificationPatch({
     throw new Error("buildExternalFillEventReclassificationPatch: event required");
   }
   const resolvedIntentId = String(intentId || doc.intent_id || "").trim() || null;
+  const nextClassificationVerified = !nextEvent.endsWith("_UNVERIFIED");
   const refs = resolveFillSignalRefs({
     exchange,
     symbol,
@@ -182,6 +183,10 @@ function buildExternalFillEventReclassificationPatch({
     reclassified_at: ts,
     reclassify_reason: reclassifyReason || "MATCHED_INTENT_EVENT",
     reclassify_script: reclassifyScript || null,
+    classification_verified: nextClassificationVerified,
+    classification_issues: nextClassificationVerified
+      ? []
+      : (Array.isArray(doc.classification_issues) ? doc.classification_issues.slice() : []),
   };
 }
 
@@ -715,11 +720,14 @@ async function reclassifyExternalFillEvent({
     const nextIntentId = String(intentId || current.intent_id || "").trim() || null;
     const nextSignalId = String(signalId || current.signal_id || current.signal_doc_id || "").trim() || null;
     const nextSignalDocId = String(signalDocId || current.signal_doc_id || current.signal_id || "").trim() || null;
+    const nextClassificationVerified = !nextEvent.endsWith("_UNVERIFIED");
+    const currentClassificationVerified = current.classification_verified !== false;
     if (
       currentEvent === nextEvent
       && currentIntentId === nextIntentId
       && currentSignalId === nextSignalId
       && currentSignalDocId === nextSignalDocId
+      && currentClassificationVerified === nextClassificationVerified
     ) {
       result = { ok: true, skipped: true, reason: "EVENT_AND_REFS_UNCHANGED", fill_id: fillId, event: currentEvent };
       return;
