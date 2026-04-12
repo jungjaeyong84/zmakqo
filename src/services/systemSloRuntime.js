@@ -87,6 +87,7 @@ function buildSystemSloState({
   mlServing = null,
   executionQuality = null,
   lineageHealth = null,
+  nativeTrailProtection = null,
   nowMs = Date.now(),
   maxAgeMs = null,
 } = {}) {
@@ -94,6 +95,7 @@ function buildSystemSloState({
   const serving = mlServing && typeof mlServing === "object" ? mlServing : {};
   const qualityDoc = executionQuality && typeof executionQuality === "object" ? executionQuality : {};
   const lineageDoc = lineageHealth && typeof lineageHealth === "object" ? lineageHealth : {};
+  const nativeProtection = nativeTrailProtection && typeof nativeTrailProtection === "object" ? nativeTrailProtection : {};
   const quality = readSummary(qualityDoc);
   const lineage = readSummary(lineageDoc);
   const resolvedMaxAgeMs = Math.max(60 * 1000, Number(maxAgeMs || process.env.SYSTEM_SLO_MAX_AGE_MS || (6 * 60 * 60 * 1000)));
@@ -110,6 +112,10 @@ function buildSystemSloState({
   if (serving.block_new_entries === true) issues.push("ML_SERVING_BLOCK");
   if (!qualityFresh) issues.push("EXECUTION_QUALITY_STALE");
   if (!lineageFresh) issues.push("LINEAGE_HEALTH_STALE");
+  const nativeTrailProtectionGapCount = toNum(nativeProtection.gap_count);
+  if (Number.isFinite(nativeTrailProtectionGapCount) && nativeTrailProtectionGapCount > 0) {
+    issues.push("NATIVE_TRAIL_PROTECTION_GAP");
+  }
 
   const qualityStatus = upper(quality.status);
   if (qualityStatus === "EXECUTION_QUALITY_FAIL") issues.push("EXECUTION_QUALITY_FAIL");
@@ -139,6 +145,7 @@ function buildSystemSloState({
     status = "WARN";
     reason = issues[0];
     if (issues.includes("OPS_GUARD_HOLD")) blockNewEntries = true;
+    if (issues.includes("NATIVE_TRAIL_PROTECTION_GAP")) blockNewEntries = true;
   }
 
   return {
@@ -180,6 +187,8 @@ function buildSystemSloState({
       lineage_intent_signal_null_rate: lineageIntentSignalNullRate,
       lineage_fill_signal_null_rate: lineageFillSignalNullRate,
       lineage_fill_intent_null_rate: lineageEntryFillIntentNullRate,
+      native_trail_protection_gap_count: nativeTrailProtectionGapCount,
+      native_trail_protection_top_symbols: Array.isArray(nativeProtection.top_symbols) ? nativeProtection.top_symbols.slice(0, 10) : [],
     },
   };
 }

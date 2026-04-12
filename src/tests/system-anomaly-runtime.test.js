@@ -109,6 +109,43 @@ function run() {
   assert.strictEqual(held.guard_action, "WARN_ONLY");
   assert.ok(held.issues.includes("ANOMALY_OPS_GUARD_HOLD"));
 
+  const trailGap = buildSystemAnomalyState({
+    exchange: "BINANCEFUT",
+    systemSlo: {
+      status: "WARN",
+      reason: "NATIVE_TRAIL_PROTECTION_GAP",
+      block_new_entries: true,
+    },
+    operationalGuard: {
+      status: "PASS",
+      reason: "OPS_GUARD_OK",
+      block_new_entries: false,
+      audit_issue_count: 0,
+      qty_pct_non_positive_count: 0,
+      error_count: 0,
+    },
+    mlServing: {
+      status: "PASS",
+      reason: "ML_SERVING_OK",
+      block_new_entries: false,
+    },
+    executionQuality: {
+      summary: {
+        status: "EXECUTION_QUALITY_OK",
+        created_to_fill_p95_ms: 900,
+        partial_fill_rate_pct: 12,
+      },
+    },
+    nativeTrailProtection: {
+      gap_count: 2,
+    },
+    nowMs,
+  });
+  assert.strictEqual(trailGap.status, "BLOCK");
+  assert.strictEqual(trailGap.reason, "ANOMALY_SYSTEM_SLO_HOLD");
+  assert.strictEqual(trailGap.circuit_breaker_open, true);
+  assert.ok(trailGap.issues.includes("ANOMALY_NATIVE_TRAIL_PROTECTION_GAP"));
+
   const staleLoaded = __test.normalizeLoadedSystemAnomalyState({
     status: "CLEAR",
     reason: "SYSTEM_ANOMALY_CLEAR",

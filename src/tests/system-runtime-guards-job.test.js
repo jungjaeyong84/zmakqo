@@ -37,6 +37,7 @@ async function run() {
     artifactsDir,
     loadOpsRuntime: async () => ({ status: "PASS", reason: "OPS_GUARD_OK", block_new_entries: false }),
     loadServingRuntime: async () => ({ status: "PASS", reason: "ML_SERVING_OK", block_new_entries: false }),
+    loadNativeTrailProtection: async () => ({ available: true, gap_count: 1, top_symbols: [{ symbol: "ETHUSDT", count: 1 }] }),
     buildSlo: () => ({ status: "PASS", reason: "SYSTEM_SLO_HEALTHY", block_new_entries: false }),
     buildAnomaly: () => ({
       status: "BLOCK",
@@ -75,7 +76,9 @@ async function run() {
   assert.strictEqual(result.otel_export.ok, true);
   assert.ok(String(result.artifacts.system_slo_latest_json || "").startsWith(artifactsDir));
   assert.ok(String(result.artifacts.system_anomaly_latest_json || "").startsWith(artifactsDir));
+  assert.ok(String(result.artifacts.native_trail_protection_latest_json || "").startsWith(artifactsDir));
   assert.ok(String(result.trace.traceparent || "").startsWith("00-"));
+  assert.strictEqual(result.native_trail_protection.gap_count, 1);
 
   let capturedExecutionQuality = null;
   let capturedLineageHealth = null;
@@ -89,6 +92,7 @@ async function run() {
     loadServingRuntime: async () => ({ status: "PASS", reason: "ML_SERVING_OK", block_new_entries: false }),
     loadExecutionQuality: () => ({ generated_at: "2026-04-11T01:59:00.000Z", summary: { status: "EXECUTION_QUALITY_OK" } }),
     loadLineageHealth: () => ({ generated_at: "2026-04-11T01:59:00.000Z", summary: { verdict: "PASS" } }),
+    loadNativeTrailProtection: () => ({ available: true, gap_count: 0, top_symbols: [] }),
     buildSlo: (payload) => {
       capturedExecutionQuality = payload.executionQuality;
       capturedLineageHealth = payload.lineageHealth;

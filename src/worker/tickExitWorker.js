@@ -3,13 +3,16 @@
 const http = require("http");
 const env = require("../config/env");
 const { runBinanceTickExitBurst } = require("../services/binanceTickExit");
+const { runExitWorkerExecution } = require("../services/exitWorkerExecution");
 
 const port = Number(process.env.PORT || env.port || 8080);
 const state = {
   startedAt: new Date().toISOString(),
   lastDispatchAt: null,
   lastExecuteAt: null,
+  lastFinishedAt: null,
   lastResult: null,
+  inFlight: null,
 };
 
 function respondJson(res, code, payload) {
@@ -78,12 +81,19 @@ async function dispatchSelfExecute(payload = {}) {
 }
 
 async function executeBurst(payload = {}) {
-  state.lastExecuteAt = new Date().toISOString();
-  const result = await runBinanceTickExitBurst({
-    maxDurationMs: Number(process.env.EXIT_WORKER_BURST_MAX_MS || 55000),
-    maxIterations: Number(process.env.EXIT_WORKER_BURST_MAX_ITERATIONS || 20),
+  const maxDurationMs = Number(process.env.EXIT_WORKER_BURST_MAX_MS || 55000);
+  const result = await runExitWorkerExecution({
+    payload,
+    state,
+    timeoutMs: Number(process.env.EXIT_WORKER_EXEC_TIMEOUT_MS || (maxDurationMs + 15000)),
+    onTimeout: (timeoutResult) => {
+      console.warn("[WORKER] execute burst timeout", timeoutResult);
+    },
+    runBurst: () => runBinanceTickExitBurst({
+      maxDurationMs,
+      maxIterations: Number(process.env.EXIT_WORKER_BURST_MAX_ITERATIONS || 20),
+    }),
   });
-  state.lastResult = result;
   const chainDepth = Math.max(0, Math.floor(Number(payload.chain_depth || 0)));
   if (result && result.ok && result.reschedule_recommended === true && chainDepth < 100) {
     const dispatch = await dispatchSelfExecute({
@@ -110,6 +120,8 @@ const server = http.createServer((req, res) => {
         started_at: state.startedAt,
         last_dispatch_at: state.lastDispatchAt,
         last_execute_at: state.lastExecuteAt,
+        last_finished_at: state.lastFinishedAt,
+        in_flight: state.inFlight,
         last_result: state.lastResult,
       });
       return;

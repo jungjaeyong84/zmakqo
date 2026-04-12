@@ -14,6 +14,7 @@ const { runSystemAnomalyRemediation } = require("./systemAnomalyRemediation");
 const { applyMlServingActuation } = require("./mlServingActuator");
 const { exportTraceContext } = require("./otelExporter");
 const { normalizeTraceContext } = require("../utils/traceContext");
+const { loadNativeTrailProtectionRuntime } = require("./nativeTrailProtectionRuntime");
 const {
   loadPreferredExecutionQualityInput,
   loadPreferredLineageHealthInput,
@@ -65,6 +66,7 @@ async function runSystemRuntimeGuardsJob({
   exportTrace = exportTraceContext,
   loadExecutionQuality = loadPreferredExecutionQualityInput,
   loadLineageHealth = loadPreferredLineageHealthInput,
+  loadNativeTrailProtection = loadNativeTrailProtectionRuntime,
 } = {}) {
   const ex = String(exchange || "BINANCEFUT").trim().toUpperCase();
   const generatedAtIso = new Date(nowMs).toISOString();
@@ -74,9 +76,10 @@ async function runSystemRuntimeGuardsJob({
     loadOpsRuntime({ exchange: ex, force: true }),
     loadServingRuntime({ exchange: ex, force: true }),
   ]);
-  const [executionQuality, lineageHealth] = await Promise.all([
+  const [executionQuality, lineageHealth, nativeTrailProtection] = await Promise.all([
     Promise.resolve().then(() => loadExecutionQuality()),
     Promise.resolve().then(() => loadLineageHealth()),
+    Promise.resolve().then(() => loadNativeTrailProtection({ exchange: ex })),
   ]);
   const trace = normalizeTraceContext({
     requestId: null,
@@ -93,6 +96,7 @@ async function runSystemRuntimeGuardsJob({
     mlServing,
     executionQuality,
     lineageHealth,
+    nativeTrailProtection,
     nowMs,
   });
   const anomalyState = buildAnomaly({
@@ -101,12 +105,14 @@ async function runSystemRuntimeGuardsJob({
     operationalGuard,
     mlServing,
     executionQuality,
+    nativeTrailProtection,
     nowMs,
   });
 
   const artifactBaseDir = path.resolve(String(artifactsDir || OPS_DAILY_DIR));
   const sloPath = path.join(artifactBaseDir, "system_slo_state_latest.json");
   const anomalyPath = path.join(artifactBaseDir, "system_anomaly_state_latest.json");
+  const nativeTrailProtectionPath = path.join(artifactBaseDir, "native_trail_protection_gap_latest.json");
   writeJson(sloPath, {
     ok: true,
     generated_at_kst: generatedAtKst,
@@ -120,6 +126,13 @@ async function runSystemRuntimeGuardsJob({
     exchange: ex,
     trace,
     state: anomalyState,
+  });
+  writeJson(nativeTrailProtectionPath, {
+    ok: true,
+    generated_at_kst: generatedAtKst,
+    exchange: ex,
+    trace,
+    summary: nativeTrailProtection,
   });
 
   await Promise.allSettled([
@@ -220,6 +233,7 @@ async function runSystemRuntimeGuardsJob({
       rollback_action: anomalyState.rollback_action || null,
       remediation_skipped: remediation && remediation.skipped === true,
       actuation_skipped: actuation && actuation.skipped === true,
+      native_trail_protection_gap_count: Number(nativeTrailProtection && nativeTrailProtection.gap_count || 0),
     },
   });
 
@@ -239,9 +253,11 @@ async function runSystemRuntimeGuardsJob({
     actuation,
     remediation,
     otel_export: otelExport,
+    native_trail_protection: nativeTrailProtection,
     artifacts: {
       system_slo_latest_json: sloPath,
       system_anomaly_latest_json: anomalyPath,
+      native_trail_protection_latest_json: nativeTrailProtectionPath,
       system_anomaly_remediation_latest_json: remediation && remediation.artifacts ? remediation.artifacts.latest_json : null,
     },
   };

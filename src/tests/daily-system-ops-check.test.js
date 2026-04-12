@@ -77,6 +77,14 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
     ],
     top_issues: [],
   }), "utf8");
+  fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "native_trail_protection_gap_latest.json"), JSON.stringify({
+    summary: {
+      gap_count: 0,
+      active_position_count: 2,
+      top_symbols: [],
+      rows: [],
+    },
+  }), "utf8");
 
   const health = dailySystemOpsCheck.__test.loadExecutionHealth({
     repoRoot: tmpRoot,
@@ -104,6 +112,9 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
   assert.strictEqual(exitQtyAudit.issue_chain_count, 2);
   assert.strictEqual(exitQtyAudit.issue_chain_total_n, 4);
   assert.strictEqual(exitQtyAudit.issue_chain_backfilled_n, 2);
+  const nativeTrailGap = dailySystemOpsCheck.__test.loadNativeTrailProtectionGapHealth({ repoRoot: tmpRoot });
+  assert.strictEqual(nativeTrailGap.available, true);
+  assert.strictEqual(nativeTrailGap.gap_count, 0);
 
   fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "objective_retrospective_latest.json"), JSON.stringify({
     display: {
@@ -149,6 +160,7 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
     },
     trailRunnerFloorAudit: trailAudit,
     binanceExitQtyContractAudit: exitQtyAudit,
+    nativeTrailProtectionGap: nativeTrailGap,
     positionReadModelCutover: cutover,
   });
   assert.strictEqual(proceed.status, "진행");
@@ -172,6 +184,7 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
     },
     trailRunnerFloorAudit: trailAudit,
     binanceExitQtyContractAudit: exitQtyAudit,
+    nativeTrailProtectionGap: nativeTrailGap,
     positionReadModelCutover: cutover,
   });
   assert.strictEqual(stopped.status, "중단");
@@ -193,6 +206,11 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
     position_read_model_cutover: cutover,
     trail_runner_floor_audit: trailAudit,
     binance_exit_qty_contract_audit: exitQtyAudit,
+    native_trail_protection_gap: {
+      available: true,
+      gap_count: 2,
+      top_symbols: [{ symbol: "ETHUSDT", count: 1 }],
+    },
     position_writer_authority_24h: {
       occurrence_count: 3,
       top_symbols: [
@@ -207,6 +225,7 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
   assert.ok(issueLines.some((line) => line.includes("Binance exit 수량 계약 위반 chain 2건")));
   assert.ok(issueLines.some((line) => line.includes("TOTAL_EXIT_OVER_100(2)")));
   assert.ok(issueLines.some((line) => line.includes("BTCUSDT(2)")));
+  assert.ok(issueLines.some((line) => line.includes("native stop 누락 2건")));
 
   const historicalExitQtyLines = dailySystemOpsCheck.__test.buildIssueLines({
     cost_ratio_pct: 0.05,
@@ -226,6 +245,11 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
     binance_exit_qty_contract_audit: {
       ...exitQtyAudit,
       issue_chain_count: 0,
+    },
+    native_trail_protection_gap: {
+      available: true,
+      gap_count: 0,
+      top_symbols: [],
     },
     position_writer_authority_24h: {
       occurrence_count: 0,
