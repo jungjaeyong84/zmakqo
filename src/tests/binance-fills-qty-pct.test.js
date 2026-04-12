@@ -16,10 +16,14 @@ async function run() {
   assert.strictEqual(clearedProtectionMeta.native_protection_stop_order_id, "stop-1");
   assert.strictEqual(clearedProtectionMeta.native_protection_tp0_order_id, null);
   assert.strictEqual(clearedProtectionMeta.native_protection_tp_order_id, null);
+  assert.strictEqual(clearedProtectionMeta.native_protection_consumed_tp0_order_id, "tp0-1");
+  assert.strictEqual(clearedProtectionMeta.native_protection_consumed_tp_order_id, "tp1-1");
   assert.strictEqual(clearedProtectionMeta.native_protection_tp0_status, null);
   assert.strictEqual(clearedProtectionMeta.native_protection_tp_status, null);
   assert.strictEqual(clearedProtectionMeta.native_protection_tp0_qty_ratio, null);
   assert.strictEqual(clearedProtectionMeta.native_protection_tp_qty_ratio, null);
+  assert.strictEqual(clearedProtectionMeta.native_protection_consumed_tp0_qty_ratio, 0.25);
+  assert.strictEqual(clearedProtectionMeta.native_protection_consumed_tp_qty_ratio, 0.5);
 
   const fn = __test && __test.computeSyncedQtyPct;
   assert.strictEqual(typeof fn, "function", "computeSyncedQtyPct export missing");
@@ -105,6 +109,38 @@ async function run() {
     positionCtx: { qtyBase: 737, nativeProtectionTpQtyBase: 1500, nativeProtectionTpQtyRatio: 0.49 },
   });
   assert.ok(Math.abs(nativeTp1CloseRatio - ((737 / 1500) * 0.49)) < 1e-12, "tp1 alerts should prefer native tp sizing over stale position size");
+
+  const consumedTp0CloseRatio = resolveFillSyncAlertCloseRatio({
+    event: "EXIT_TP_P0_0.8P",
+    intent: null,
+    qtyScale: { qtyPct: null, ratio: null },
+    execQtyBase: 0.01,
+    positionCtx: {
+      qtyBase: 0.339,
+      nativeProtectionConsumedTp0QtyBase: 0.225,
+      nativeProtectionConsumedTp0QtyRatio: 0.25,
+    },
+  });
+  assert.ok(
+    Math.abs(consumedTp0CloseRatio - ((0.01 / 0.225) * 0.25)) < 1e-12,
+    "tp0 alerts must prefer consumed native tp0 sizing over current remaining position qty"
+  );
+
+  const consumedTp1CloseRatio = resolveFillSyncAlertCloseRatio({
+    event: "EXIT_TP_P1_1.65P",
+    intent: null,
+    qtyScale: { qtyPct: null, ratio: null },
+    execQtyBase: 0.337,
+    positionCtx: {
+      qtyBase: 0.339,
+      nativeProtectionConsumedTpQtyBase: 0.337,
+      nativeProtectionConsumedTpQtyRatio: 0.5,
+    },
+  });
+  assert.ok(
+    Math.abs(consumedTp1CloseRatio - 0.5) < 1e-12,
+    "tp1 alerts must use consumed native tp sizing after protection ids are cleared"
+  );
 
   const flatTrailIssues = __test.buildImmediateProjectionIssues({
     event: "EXIT_TRAIL_1P",
@@ -401,6 +437,34 @@ async function run() {
     qtyPct: null,
   });
   assert.strictEqual(stageFallbackTp1, "EXIT_TP_P1_3P");
+
+  const consumedTp0Order = await resolveExternalExitEvent({
+    intent: null,
+    trade: { symbol: "ETHUSDT", realizedPnl: 0.09 },
+    orderMeta: { orderId: 111, orderType: "TAKE_PROFIT_MARKET", closePosition: false, reduceOnly: true },
+    positionCtx: {
+      tpP0Done: true,
+      tpP1Done: false,
+      trailActive: false,
+      nativeProtectionConsumedTp0OrderId: 111,
+    },
+    rules: { SL: -0.0165, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.0165, TP_P1_QTY: 0.5, TRAIL_R_MULTIPLE: 0.6 },
+  });
+  assert.strictEqual(consumedTp0Order, "EXIT_TP_P0_0.8P");
+
+  const consumedTp1Order = await resolveExternalExitEvent({
+    intent: null,
+    trade: { symbol: "ETHUSDT", realizedPnl: 1.924 },
+    orderMeta: { orderId: 222, orderType: "TAKE_PROFIT_MARKET", closePosition: false, reduceOnly: true },
+    positionCtx: {
+      tpP0Done: true,
+      tpP1Done: true,
+      trailActive: true,
+      nativeProtectionConsumedTpOrderId: 222,
+    },
+    rules: { SL: -0.0165, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.0165, TP_P1_QTY: 0.5, TRAIL_R_MULTIPLE: 0.6 },
+  });
+  assert.strictEqual(consumedTp1Order, "EXIT_TP_P1_1.65P");
 
   process.env.BINANCE_NATIVE_TP_ENABLED = "0";
   const nativeTrackedMarketStop = await resolveExternalExitEvent({

@@ -193,6 +193,31 @@ function resolveIntentSignalRefs({
   };
 }
 
+async function enrichIntentFeaturesWithSignalRegime({
+  features = {},
+  signalId = null,
+  signalDocId = null,
+  signalLookupFn = null,
+} = {}) {
+  const baseMeta = enrichFeaturesWithRegime(features || {});
+  if (baseMeta.regime) return baseMeta;
+  const lookupId = String(signalDocId || signalId || "").trim();
+  if (!lookupId) return baseMeta;
+  let signalRow = null;
+  try {
+    if (typeof signalLookupFn === "function") {
+      signalRow = await signalLookupFn(lookupId);
+    } else {
+      const snap = await getFirestore().collection("signals").doc(lookupId).get();
+      signalRow = snap.exists ? (snap.data() || null) : null;
+    }
+  } catch (_) {
+    signalRow = null;
+  }
+  if (!signalRow || typeof signalRow !== "object") return baseMeta;
+  return enrichFeaturesWithRegime(baseMeta.features, signalRow);
+}
+
 async function upsertIntent({
   exchange, symbol, tf,
   signalBarCloseTimeUtc, signalBarCloseTimeUtcMs,
@@ -211,8 +236,8 @@ async function upsertIntent({
   decisionReason = null,
 } = {}) {
   const db = getFirestore();
-  const regimeMeta = enrichFeaturesWithRegime(features || {});
-  const normalizedFeatures = regimeMeta.features;
+  let regimeMeta = enrichFeaturesWithRegime(features || {});
+  let normalizedFeatures = regimeMeta.features;
   const resolvedSignalRefs = resolveIntentSignalRefs({
     exchange,
     symbol,
@@ -226,6 +251,12 @@ async function upsertIntent({
   let resolvedSignalId = resolvedSignalRefs.signalId;
   const resolvedSignalDocId = resolvedSignalRefs.signalDocId;
   if (!resolvedSignalId && resolvedSignalDocId) resolvedSignalId = resolvedSignalDocId;
+  regimeMeta = await enrichIntentFeaturesWithSignalRegime({
+    features: resolvedSignalRefs.features,
+    signalId: resolvedSignalId,
+    signalDocId: resolvedSignalDocId,
+  });
+  normalizedFeatures = regimeMeta.features;
   if (LINEAGE_STRICT_ENABLED && shouldRequireLineageForEvent(event)) {
     if (!resolvedSignalDocId) {
       throw new Error("LINEAGE_SIGNAL_DOC_ID_REQUIRED");
@@ -877,6 +908,7 @@ module.exports = {
   cancelPendingIntentsByMarket,
   __test: {
     resolveIntentSignalRefs,
+    enrichIntentFeaturesWithSignalRegime,
     buildTraceMeta,
     shouldRequireLineageForEvent,
     canonicalEventId,

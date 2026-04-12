@@ -715,8 +715,36 @@ function computeAdverseSlippageBps({ side, signalPrice, execPrice } = {}) {
 
 function clearConsumedTakeProfitProtectionMeta(meta = {}) {
   const prevMeta = meta && typeof meta === "object" ? meta : {};
+  const preservedTp0OrderId = prevMeta.native_protection_tp0_order_id ?? prevMeta.native_protection_consumed_tp0_order_id ?? null;
+  const preservedTpOrderId = prevMeta.native_protection_tp_order_id ?? prevMeta.native_protection_consumed_tp_order_id ?? null;
+  const preservedTp0QtyBase = Number.isFinite(Number(prevMeta.native_protection_tp0_qty_base))
+    ? Number(prevMeta.native_protection_tp0_qty_base)
+    : (Number.isFinite(Number(prevMeta.native_protection_consumed_tp0_qty_base))
+      ? Number(prevMeta.native_protection_consumed_tp0_qty_base)
+      : null);
+  const preservedTpQtyBase = Number.isFinite(Number(prevMeta.native_protection_tp_qty_base))
+    ? Number(prevMeta.native_protection_tp_qty_base)
+    : (Number.isFinite(Number(prevMeta.native_protection_consumed_tp_qty_base))
+      ? Number(prevMeta.native_protection_consumed_tp_qty_base)
+      : null);
+  const preservedTp0QtyRatio = Number.isFinite(Number(prevMeta.native_protection_tp0_qty_ratio))
+    ? Number(prevMeta.native_protection_tp0_qty_ratio)
+    : (Number.isFinite(Number(prevMeta.native_protection_consumed_tp0_qty_ratio))
+      ? Number(prevMeta.native_protection_consumed_tp0_qty_ratio)
+      : null);
+  const preservedTpQtyRatio = Number.isFinite(Number(prevMeta.native_protection_tp_qty_ratio))
+    ? Number(prevMeta.native_protection_tp_qty_ratio)
+    : (Number.isFinite(Number(prevMeta.native_protection_consumed_tp_qty_ratio))
+      ? Number(prevMeta.native_protection_consumed_tp_qty_ratio)
+      : null);
   return {
     ...prevMeta,
+    native_protection_consumed_tp0_order_id: preservedTp0OrderId,
+    native_protection_consumed_tp_order_id: preservedTpOrderId,
+    native_protection_consumed_tp0_qty_base: preservedTp0QtyBase,
+    native_protection_consumed_tp_qty_base: preservedTpQtyBase,
+    native_protection_consumed_tp0_qty_ratio: preservedTp0QtyRatio,
+    native_protection_consumed_tp_qty_ratio: preservedTpQtyRatio,
     native_protection_tp0_order_id: null,
     native_protection_tp_order_id: null,
     native_protection_tp0_status: null,
@@ -795,6 +823,30 @@ function resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale, execQtyBa
   const eventUpper = String(event || "").toUpperCase();
   const syncedQtyPct = clamp01(qtyScale && qtyScale.qtyPct);
   const qtyScaleMode = String(qtyScale && qtyScale.mode || "").trim().toUpperCase();
+  const nativeTp0QtyRatio = clamp01(
+    positionCtx && (
+      positionCtx.nativeProtectionTp0QtyRatio
+      ?? positionCtx.nativeProtectionConsumedTp0QtyRatio
+    )
+  );
+  const nativeTp0QtyBase = Number(
+    positionCtx && (
+      positionCtx.nativeProtectionTp0QtyBase
+      ?? positionCtx.nativeProtectionConsumedTp0QtyBase
+    )
+  );
+  const nativeTpQtyRatio = clamp01(
+    positionCtx && (
+      positionCtx.nativeProtectionTpQtyRatio
+      ?? positionCtx.nativeProtectionConsumedTpQtyRatio
+    )
+  );
+  const nativeTpQtyBase = Number(
+    positionCtx && (
+      positionCtx.nativeProtectionTpQtyBase
+      ?? positionCtx.nativeProtectionConsumedTpQtyBase
+    )
+  );
   if (eventUpper.startsWith("EXIT_TP_P0") && Number.isFinite(syncedQtyPct) && syncedQtyPct > 0) {
     return {
       closeRatio: syncedQtyPct,
@@ -803,9 +855,27 @@ function resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale, execQtyBa
     };
   }
   const execQty = Number(execQtyBase);
+  if (eventUpper.startsWith("EXIT_TP_P0")) {
+    if (
+      Number.isFinite(execQty) && execQty > 0
+      && Number.isFinite(nativeTp0QtyBase) && nativeTp0QtyBase > 0
+      && Number.isFinite(nativeTp0QtyRatio) && nativeTp0QtyRatio > 0
+    ) {
+      return {
+        closeRatio: clamp01((execQty / nativeTp0QtyBase) * nativeTp0QtyRatio),
+        aggregation: "SUM",
+        source: "NATIVE_TP0_QTY_BASE",
+      };
+    }
+    if (Number.isFinite(nativeTp0QtyRatio) && nativeTp0QtyRatio > 0) {
+      return {
+        closeRatio: nativeTp0QtyRatio,
+        aggregation: "MAX",
+        source: "NATIVE_TP0_QTY_RATIO",
+      };
+    }
+  }
   if (isTpP1Event(event)) {
-    const nativeTpQtyRatio = clamp01(positionCtx && positionCtx.nativeProtectionTpQtyRatio);
-    const nativeTpQtyBase = Number(positionCtx && positionCtx.nativeProtectionTpQtyBase);
     if (
       Number.isFinite(execQty) && execQty > 0
       && Number.isFinite(nativeTpQtyBase) && nativeTpQtyBase > 0
@@ -866,16 +936,6 @@ function resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale, execQtyBa
       source: "POSITION_QTY_BASE",
     };
   }
-  if (eventUpper.startsWith("EXIT_TP_P0")) {
-    const nativeTp0QtyRatio = clamp01(positionCtx && positionCtx.nativeProtectionTp0QtyRatio);
-    if (Number.isFinite(nativeTp0QtyRatio) && nativeTp0QtyRatio > 0) {
-      return {
-        closeRatio: nativeTp0QtyRatio,
-        aggregation: "MAX",
-        source: "NATIVE_TP0_QTY_RATIO",
-      };
-    }
-  }
   return empty;
 }
 
@@ -910,7 +970,6 @@ function resolveFillSyncAlertFullExit({ event, orderMeta, closeRatio } = {}) {
   if (Number.isFinite(closeRatio) && closeRatio >= 0.999) return true;
   if (
     ev.startsWith("EXIT_SL")
-    || ev.startsWith("EXIT_TRAIL")
     || ev.startsWith("EXIT_TIME_STOP")
     || ev === "EXIT_EXTERNAL_SYNC"
     || ev === "EXIT_OPPOSITE_SIGNAL"
@@ -1434,6 +1493,7 @@ async function loadPositionEntryContext(exchange, symbol, cacheMap) {
       entryEventId,
       entrySignalType,
       positionSide,
+      tpP0Done: meta.tp_p0_done === true,
       qtyBase: Number.isFinite(Number(pos && pos.qty_base))
         ? Number(pos.qty_base)
         : (Number.isFinite(Number(meta.qty_base ?? meta.external_qty_base))
@@ -1455,17 +1515,35 @@ async function loadPositionEntryContext(exchange, symbol, cacheMap) {
       nativeProtectionTpOrderId: Number.isFinite(Number(meta.native_protection_tp_order_id))
         ? Number(meta.native_protection_tp_order_id)
         : null,
+      nativeProtectionConsumedTp0OrderId: Number.isFinite(Number(meta.native_protection_consumed_tp0_order_id))
+        ? Number(meta.native_protection_consumed_tp0_order_id)
+        : null,
+      nativeProtectionConsumedTpOrderId: Number.isFinite(Number(meta.native_protection_consumed_tp_order_id))
+        ? Number(meta.native_protection_consumed_tp_order_id)
+        : null,
       nativeProtectionTp0QtyBase: Number.isFinite(Number(meta.native_protection_tp0_qty_base))
         ? Number(meta.native_protection_tp0_qty_base)
         : null,
       nativeProtectionTp0QtyRatio: Number.isFinite(Number(meta.native_protection_tp0_qty_ratio))
         ? Number(meta.native_protection_tp0_qty_ratio)
         : null,
+      nativeProtectionConsumedTp0QtyBase: Number.isFinite(Number(meta.native_protection_consumed_tp0_qty_base))
+        ? Number(meta.native_protection_consumed_tp0_qty_base)
+        : null,
+      nativeProtectionConsumedTp0QtyRatio: Number.isFinite(Number(meta.native_protection_consumed_tp0_qty_ratio))
+        ? Number(meta.native_protection_consumed_tp0_qty_ratio)
+        : null,
       nativeProtectionTpQtyBase: Number.isFinite(Number(meta.native_protection_tp_qty_base))
         ? Number(meta.native_protection_tp_qty_base)
         : null,
       nativeProtectionTpQtyRatio: Number.isFinite(Number(meta.native_protection_tp_qty_ratio))
         ? Number(meta.native_protection_tp_qty_ratio)
+        : null,
+      nativeProtectionConsumedTpQtyBase: Number.isFinite(Number(meta.native_protection_consumed_tp_qty_base))
+        ? Number(meta.native_protection_consumed_tp_qty_base)
+        : null,
+      nativeProtectionConsumedTpQtyRatio: Number.isFinite(Number(meta.native_protection_consumed_tp_qty_ratio))
+        ? Number(meta.native_protection_consumed_tp_qty_ratio)
         : null,
       exitRulesOverride: (meta.exit_rules_override && typeof meta.exit_rules_override === "object")
         ? meta.exit_rules_override
@@ -1532,13 +1610,21 @@ function normalizeExitEventForRules(event, rules) {
 function isSameOrderAsNativeTp0(orderMeta, positionCtx) {
   const orderId = Number(orderMeta && orderMeta.orderId);
   const nativeOrderId = Number(positionCtx && positionCtx.nativeProtectionTp0OrderId);
-  return Number.isFinite(orderId) && Number.isFinite(nativeOrderId) && orderId === nativeOrderId;
+  const consumedOrderId = Number(positionCtx && positionCtx.nativeProtectionConsumedTp0OrderId);
+  return Number.isFinite(orderId) && (
+    (Number.isFinite(nativeOrderId) && orderId === nativeOrderId)
+    || (Number.isFinite(consumedOrderId) && orderId === consumedOrderId)
+  );
 }
 
 function isSameOrderAsNativeTp1(orderMeta, positionCtx) {
   const orderId = Number(orderMeta && orderMeta.orderId);
   const nativeOrderId = Number(positionCtx && positionCtx.nativeProtectionTpOrderId);
-  return Number.isFinite(orderId) && Number.isFinite(nativeOrderId) && orderId === nativeOrderId;
+  const consumedOrderId = Number(positionCtx && positionCtx.nativeProtectionConsumedTpOrderId);
+  return Number.isFinite(orderId) && (
+    (Number.isFinite(nativeOrderId) && orderId === nativeOrderId)
+    || (Number.isFinite(consumedOrderId) && orderId === consumedOrderId)
+  );
 }
 
 function shouldTrustMatchedIntentExitEvent({

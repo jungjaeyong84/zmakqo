@@ -130,7 +130,10 @@ function buildFeatureSnapshot({
 } = {}) {
   const item = trade && typeof trade === "object" ? trade : {};
   const features = item.features_json && typeof item.features_json === "object" ? item.features_json : {};
-  const canonicalRegime = resolveRegimeRecord({ features_json: features });
+  const canonicalRegime = resolveRegimeRecord({
+    ...item,
+    features_json: features,
+  });
   return {
     market: String(market || "").toUpperCase(),
     tf: String(tf || "").trim() || null,

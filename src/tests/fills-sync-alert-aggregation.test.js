@@ -49,6 +49,24 @@ async function run() {
     false,
     "TP1 must not be classified as full exit"
   );
+  assert.strictEqual(
+    fillsSyncTest.resolveFillSyncAlertFullExit({
+      event: "EXIT_TRAIL",
+      orderMeta: { closePosition: false },
+      closeRatio: 0.375,
+    }),
+    false,
+    "partial trailing fills must not be classified as full exit"
+  );
+  assert.strictEqual(
+    fillsSyncTest.resolveFillSyncAlertFullExit({
+      event: "EXIT_TRAIL",
+      orderMeta: { closePosition: false },
+      closeRatio: 1,
+    }),
+    true,
+    "trailing fills may be classified as full exit only when the close ratio proves it"
+  );
 
   const batches = new Map();
   fillsSyncTest.queueFillSyncAlertBatch(batches, {

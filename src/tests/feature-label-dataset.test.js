@@ -80,6 +80,19 @@ async function run() {
   assert.strictEqual(featureSnapshot.regime, "TREND");
   assert.strictEqual(featureSnapshot.openclaw_market_regime_cohort, "RESCUE");
 
+  const topLevelRegimeSnapshot = __test.buildFeatureSnapshot({
+    market: "ETHUSDT",
+    tf: "15m",
+    trade: {
+      regime: "range",
+      market_regime: "range",
+      features_json: {
+        confidence: 0.52,
+      },
+    },
+  });
+  assert.strictEqual(topLevelRegimeSnapshot.regime, "RANGE");
+
   const normalizedTradeFeatures = tradesFromFillsTest.pickFeaturesJson({
     features_json: {
       pro_regime_state: "t\rend",
