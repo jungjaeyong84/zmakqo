@@ -130,11 +130,20 @@ function run() {
 
   const blockGate = tuningTest.buildPromotionGate({
     decisionSummary: { rows_n: 80 },
-    fillSummary: { fee_to_abs_realized_ratio: 0.61, aggressive_exit_n: 10, aggressive_realized_pnl_sum: -2.5 },
+    fillSummary: {
+      fee_to_abs_realized_ratio: 0.61,
+      aggressive_exit_n: 10,
+      aggressive_realized_pnl_sum: -2.5,
+      by_symbol: [
+        { symbol: "DOGEUSDT", fee_to_abs_realized_ratio: 1.8, realized_pnl_sum: -4.2 },
+      ],
+    },
     shadowSummary: { rows_n: 80 },
     recommendations,
   });
   assert.strictEqual(blockGate.status, "BLOCK");
+  assert.strictEqual(blockGate.top_cost_symbol, "DOGEUSDT");
+  assert.strictEqual(blockGate.top_cost_symbol_fee_to_abs_realized_ratio, 1.8);
 
   const periodSummary = tuningTest.buildPeriodSummary({
     period: periods.DAYS_7,

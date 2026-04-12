@@ -2,6 +2,7 @@
 
 const crypto = require("crypto");
 const { defaultExecTfFromEnv } = require("../utils/marketConfig");
+const { resolveRegimeRecord } = require("../utils/regime");
 const { fetchRecentImmutableFills, buildTradesFromFillsWithFunding } = require("./tradesFromFills");
 const { labelOutcome } = require("./outcomeLabeler");
 
@@ -129,6 +130,7 @@ function buildFeatureSnapshot({
 } = {}) {
   const item = trade && typeof trade === "object" ? trade : {};
   const features = item.features_json && typeof item.features_json === "object" ? item.features_json : {};
+  const canonicalRegime = resolveRegimeRecord({ features_json: features });
   return {
     market: String(market || "").toUpperCase(),
     tf: String(tf || "").trim() || null,
@@ -154,9 +156,18 @@ function buildFeatureSnapshot({
       ?? features.buy_posterior
       ?? features.sell_posterior
     ),
+    regime: String(
+      canonicalRegime
+      || features.market_regime
+      || features.regime
+      || features.pro_regime_state
+      || features.regime_state
+      || ""
+    ).trim().toUpperCase() || null,
     openclaw_market_regime_cohort: String(
       features.openclaw_market_regime_cohort
       || features.market_regime_cohort
+      || canonicalRegime
       || ""
     ).trim().toUpperCase() || null,
   };

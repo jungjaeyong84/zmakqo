@@ -355,6 +355,7 @@ function buildRecommendations({ decisionSummary = {}, fillSummary = {}, shadowSu
 
 function buildPromotionGate({ decisionSummary = {}, fillSummary = {}, shadowSummary = {}, recommendations = [] } = {}) {
   const feeRatio = toNum(fillSummary.fee_to_abs_realized_ratio);
+  const topCostSymbol = Array.isArray(fillSummary.by_symbol) && fillSummary.by_symbol[0] ? fillSummary.by_symbol[0] : null;
   const enoughDecisions = Number(decisionSummary.rows_n || 0) >= 40;
   const enoughShadow = Number(shadowSummary.rows_n || 0) >= 40;
   const aggressiveExitN = Number(fillSummary.aggressive_exit_n || 0);
@@ -380,6 +381,9 @@ function buildPromotionGate({ decisionSummary = {}, fillSummary = {}, shadowSumm
     enough_decisions: enoughDecisions,
     enough_shadow: enoughShadow,
     fee_to_abs_realized_ratio: feeRatio,
+    top_cost_symbol: topCostSymbol ? topCostSymbol.symbol : null,
+    top_cost_symbol_fee_to_abs_realized_ratio: topCostSymbol ? toNum(topCostSymbol.fee_to_abs_realized_ratio) : null,
+    top_cost_symbol_realized_pnl_sum: topCostSymbol ? toNum(topCostSymbol.realized_pnl_sum) : null,
     aggressive_exit_n: aggressiveExitN,
     aggressive_realized_pnl_sum: aggressivePnl,
     recommendation_count: Array.isArray(recommendations) ? recommendations.length : 0,
@@ -413,6 +417,7 @@ function renderPeriodSection(name, summary = {}) {
     `- gate: ${gate.status || "N/A"} / ${gate.reason || "N/A"} / promotion_ready=${gate.promotion_ready === true ? "YES" : "NO"}`,
     `- decisions: total ${decision.rows_n ?? "N/A"} / block ${decision.blocked_n ?? "N/A"} / reduce ${decision.reduced_n ?? "N/A"} / aggressive ${decision.aggressive_n ?? "N/A"}`,
     `- fills: exit ${fill.exit_fills_n ?? "N/A"} / realized ${fill.realized_pnl_sum != null ? Number(fill.realized_pnl_sum).toFixed(4) : "N/A"} / fee ${fill.fee_sum != null ? Number(fill.fee_sum).toFixed(4) : "N/A"} / fee_ratio ${fill.fee_to_abs_realized_ratio != null ? Number(fill.fee_to_abs_realized_ratio).toFixed(4) : "N/A"}`,
+    `- top_cost_symbol: ${gate.top_cost_symbol || "N/A"} / fee_ratio ${gate.top_cost_symbol_fee_to_abs_realized_ratio != null ? Number(gate.top_cost_symbol_fee_to_abs_realized_ratio).toFixed(4) : "N/A"} / realized ${gate.top_cost_symbol_realized_pnl_sum != null ? Number(gate.top_cost_symbol_realized_pnl_sum).toFixed(4) : "N/A"}`,
     `- top_reason: ${Array.isArray(decision.by_reason) && decision.by_reason[0] ? `${decision.by_reason[0].key} ${decision.by_reason[0].count}` : "N/A"}`,
     `- recommendations: ${Array.isArray(summary.recommendations) && summary.recommendations.length ? summary.recommendations.map((row) => row.key).join(", ") : "none"}`,
     "",

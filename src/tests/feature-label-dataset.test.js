@@ -66,6 +66,7 @@ async function run() {
         confidence: 0.88,
         long_posterior: 0.71,
         openclaw_market_regime_cohort: "RESCUE",
+        pro_regime_state: "trend",
       },
     },
   });
@@ -75,6 +76,7 @@ async function run() {
   assert.strictEqual(featureSnapshot.exit_event, "EXIT_TP_P0_0.8P");
   assert.strictEqual(featureSnapshot.confidence, 0.88);
   assert.strictEqual(featureSnapshot.posterior, 0.71);
+  assert.strictEqual(featureSnapshot.regime, "TREND");
   assert.strictEqual(featureSnapshot.openclaw_market_regime_cohort, "RESCUE");
 
   console.log("FEATURE_LABEL_DATASET_TEST_OK");
