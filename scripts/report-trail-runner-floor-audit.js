@@ -132,6 +132,7 @@ async function main() {
     violation_n: violations.length,
     live_bar_runner_violation_total_n: violationsAll.filter((row) => row.live_bar_runner).length,
     live_bar_runner_violation_n: violations.filter((row) => row.live_bar_runner).length,
+    top_violations_all: violationsAll.slice(0, 50),
     top_violations: violations.slice(0, 50),
   };
 

@@ -320,6 +320,7 @@ function loadTrailRunnerFloorAuditHealth({ repoRoot } = {}) {
       violation_total_n: null,
       live_bar_runner_violation_n: null,
       live_bar_runner_violation_total_n: null,
+      top_violations_all: [],
       top_violations: [],
     };
   }
@@ -330,7 +331,34 @@ function loadTrailRunnerFloorAuditHealth({ repoRoot } = {}) {
     violation_total_n: toNum(read.data.violation_total_n, null),
     live_bar_runner_violation_n: toNum(read.data.live_bar_runner_violation_n, null),
     live_bar_runner_violation_total_n: toNum(read.data.live_bar_runner_violation_total_n, null),
+    top_violations_all: Array.isArray(read.data.top_violations_all) ? read.data.top_violations_all.slice(0, 10) : [],
     top_violations: Array.isArray(read.data.top_violations) ? read.data.top_violations.slice(0, 10) : [],
+  };
+}
+
+function loadTrailRunnerFloorLiveSeparationHealth({ repoRoot } = {}) {
+  const latestPath = path.join(repoRoot, "ops", "daily", "trail_runner_floor_live_separation_latest.json");
+  const read = readJsonSafe(latestPath);
+  if (!read.ok || !read.data || typeof read.data !== "object") {
+    return {
+      available: false,
+      source_path: latestPath,
+      live_violation_n: null,
+      historical_backfilled_violation_n: null,
+      overlap_symbols: [],
+      live_symbols: [],
+      historical_backfilled_symbols: [],
+    };
+  }
+  return {
+    available: true,
+    source_path: latestPath,
+    live_violation_n: toNum(read.data.live_violation_n, null),
+    live_violation_total_n: toNum(read.data.live_violation_total_n, null),
+    historical_backfilled_violation_n: toNum(read.data.historical_backfilled_violation_n, null),
+    overlap_symbols: Array.isArray(read.data.overlap_symbols) ? read.data.overlap_symbols.slice(0, 10) : [],
+    live_symbols: Array.isArray(read.data.live_symbols) ? read.data.live_symbols.slice(0, 10) : [],
+    historical_backfilled_symbols: Array.isArray(read.data.historical_backfilled_symbols) ? read.data.historical_backfilled_symbols.slice(0, 10) : [],
   };
 }
 
@@ -385,6 +413,61 @@ function loadBinanceExitQtyContractAuditHealth({ repoRoot } = {}) {
     top_symbols: Array.isArray(read.data.top_symbols) ? read.data.top_symbols.slice(0, 10) : [],
     top_symbols_total: Array.isArray(read.data.top_symbols_total) ? read.data.top_symbols_total.slice(0, 10) : [],
     top_issues: Array.isArray(read.data.top_issues) ? read.data.top_issues.slice(0, 10) : [],
+  };
+}
+
+function loadBinanceExitQtyLiveSeparationHealth({ repoRoot } = {}) {
+  const latestPath = path.join(repoRoot, "ops", "daily", "binance_exit_qty_live_separation_latest.json");
+  const read = readJsonSafe(latestPath);
+  if (!read.ok || !read.data || typeof read.data !== "object") {
+    return {
+      available: false,
+      source_path: latestPath,
+      live_issue_chain_n: null,
+      historical_backfilled_issue_chain_n: null,
+      overlap_symbols: [],
+      live_symbols: [],
+      historical_backfilled_symbols: [],
+    };
+  }
+  return {
+    available: true,
+    source_path: latestPath,
+    live_issue_chain_n: toNum(read.data.live_issue_chain_n, null),
+    historical_backfilled_issue_chain_n: toNum(read.data.historical_backfilled_issue_chain_n, null),
+    overlap_symbols: Array.isArray(read.data.overlap_symbols) ? read.data.overlap_symbols.slice(0, 10) : [],
+    live_symbols: Array.isArray(read.data.live_symbols) ? read.data.live_symbols.slice(0, 10) : [],
+    historical_backfilled_symbols: Array.isArray(read.data.historical_backfilled_symbols) ? read.data.historical_backfilled_symbols.slice(0, 10) : [],
+  };
+}
+
+function loadRegimeLineageGapHealth({ repoRoot } = {}) {
+  const latestPath = path.join(repoRoot, "ops", "daily", "regime_lineage_gap_latest.json");
+  const read = readJsonSafe(latestPath);
+  if (!read.ok || !read.data || typeof read.data !== "object") {
+    return {
+      available: false,
+      source_path: latestPath,
+      signals_missing_n: null,
+      signals_missing_rate: null,
+      intents_missing_n: null,
+      intents_missing_rate: null,
+      fills_missing_n: null,
+      fills_missing_rate: null,
+    };
+  }
+  const signals = read.data.signals && typeof read.data.signals === "object" ? read.data.signals : {};
+  const intents = read.data.intents && typeof read.data.intents === "object" ? read.data.intents : {};
+  const fills = read.data.fills && typeof read.data.fills === "object" ? read.data.fills : {};
+  return {
+    available: true,
+    source_path: latestPath,
+    signals_missing_n: toNum(signals.missing_n, null),
+    signals_missing_rate: toNum(signals.missing_rate, null),
+    intents_missing_n: toNum(intents.missing_n, null),
+    intents_missing_rate: toNum(intents.missing_rate, null),
+    fills_missing_n: toNum(fills.missing_n, null),
+    fills_missing_rate: toNum(fills.missing_rate, null),
   };
 }
 
@@ -618,8 +701,11 @@ function buildIssueLines(summary) {
   const cutover = summary.position_read_model_cutover || {};
   const duplication = summary.fill_sync_alert_duplication || {};
   const trailFloor = summary.trail_runner_floor_audit || {};
+  const trailFloorLiveSeparation = summary.trail_runner_floor_live_separation || {};
   const exitQtyAudit = summary.binance_exit_qty_contract_audit || {};
+  const exitQtyLiveSeparation = summary.binance_exit_qty_live_separation || {};
   const nativeTrailProtectionGap = summary.native_trail_protection_gap || {};
+  const regimeLineageGap = summary.regime_lineage_gap || {};
   const flowCoverageReady = hasExecutionFlowCoverage(health);
   const writerAuthority = summary.position_writer_authority_24h && typeof summary.position_writer_authority_24h === "object"
     ? summary.position_writer_authority_24h
@@ -677,7 +763,9 @@ function buildIssueLines(summary) {
   }
 
   if (trailFloor.available === true) {
-    if (Number.isFinite(trailFloor.violation_n) && trailFloor.violation_n >= 1) {
+    if (trailFloorLiveSeparation.available === true && Number.isFinite(trailFloorLiveSeparation.live_violation_n) && trailFloorLiveSeparation.live_violation_n >= 1) {
+      lines.push(`[ISSUE] M | trailing floor live unresolved ${trailFloorLiveSeparation.live_violation_n}건 | historical backfilled ${fmt(trailFloorLiveSeparation.historical_backfilled_violation_n, 0)}건과 분리, 현재 심볼 ${trailFloorLiveSeparation.live_symbols.join(", ") || "UNKNOWN"} 즉시 점검 필요`);
+    } else if (Number.isFinite(trailFloor.violation_n) && trailFloor.violation_n >= 1) {
       lines.push(`[ISSUE] M | trailing floor 미해결 위반 ${trailFloor.violation_n}건 | bar-runner synthetic trail 재발 여부 즉시 점검 필요`);
     } else if (Number.isFinite(trailFloor.violation_total_n) && trailFloor.violation_total_n >= 1) {
       lines.push(`[ISSUE] L | trailing floor 과거 위반 ${trailFloor.violation_total_n}건은 backfill 정리됨 | 신규 unresolved 위반만 모니터링`);
@@ -702,7 +790,12 @@ function buildIssueLines(summary) {
   }
 
   if (exitQtyAudit.available === true) {
-    if (Number.isFinite(exitQtyAudit.issue_chain_count) && exitQtyAudit.issue_chain_count >= 1) {
+    if (exitQtyLiveSeparation.available === true && Number.isFinite(exitQtyLiveSeparation.live_issue_chain_n) && exitQtyLiveSeparation.live_issue_chain_n >= 1) {
+      const overlap = Array.isArray(exitQtyLiveSeparation.overlap_symbols) && exitQtyLiveSeparation.overlap_symbols.length
+        ? exitQtyLiveSeparation.overlap_symbols.join(", ")
+        : "none";
+      lines.push(`[ISSUE] M | Binance exit 수량 계약 live unresolved ${exitQtyLiveSeparation.live_issue_chain_n}건 | historical backfilled ${fmt(exitQtyLiveSeparation.historical_backfilled_issue_chain_n, 0)}건과 분리, overlap ${overlap}`);
+    } else if (Number.isFinite(exitQtyAudit.issue_chain_count) && exitQtyAudit.issue_chain_count >= 1) {
       const topCode = Object.entries(exitQtyAudit.issue_code_counts || {})
         .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))[0];
       const topSymbol = Array.isArray(exitQtyAudit.top_symbols) && exitQtyAudit.top_symbols.length
@@ -721,6 +814,17 @@ function buildIssueLines(summary) {
     }
   } else {
     lines.push("[ISSUE] M | Binance exit 수량 계약 감사 리포트 미수집 | TP 단계 수량 계약 재발 감시 필요");
+  }
+
+  if (regimeLineageGap.available === true) {
+    if (Number.isFinite(regimeLineageGap.signals_missing_n) && regimeLineageGap.signals_missing_n >= 1) {
+      lines.push(`[ISSUE] M | signal regime missing ${regimeLineageGap.signals_missing_n}건 (${fmt((regimeLineageGap.signals_missing_rate || 0) * 100)}%) | signal lineage/backfill 보강 필요`);
+    }
+    if (Number.isFinite(regimeLineageGap.intents_missing_n) && regimeLineageGap.intents_missing_n >= 1) {
+      lines.push(`[ISSUE] M | intent regime missing ${regimeLineageGap.intents_missing_n}건 (${fmt((regimeLineageGap.intents_missing_rate || 0) * 100)}%) | signal->intent regime 상속/보강 backfill 필요`);
+    }
+  } else {
+    lines.push("[ISSUE] L | regime lineage gap 리포트 미수집 | signal/intent regime 누락률 추적 필요");
   }
 
   if (duplication.available === true) {
@@ -943,8 +1047,11 @@ async function main() {
   const positionReadModelCutover = loadPositionReadModelCutoverHealth({ repoRoot });
   const fillSyncAlertDuplication = loadFillSyncAlertDuplicationHealth({ repoRoot });
   const trailRunnerFloorAudit = loadTrailRunnerFloorAuditHealth({ repoRoot });
+  const trailRunnerFloorLiveSeparation = loadTrailRunnerFloorLiveSeparationHealth({ repoRoot });
   const binanceExitQtyContractAudit = loadBinanceExitQtyContractAuditHealth({ repoRoot });
+  const binanceExitQtyLiveSeparation = loadBinanceExitQtyLiveSeparationHealth({ repoRoot });
   const nativeTrailProtectionGap = loadNativeTrailProtectionGapHealth({ repoRoot });
+  const regimeLineageGap = loadRegimeLineageGapHealth({ repoRoot });
   const positionReadViews = await listExchangePositionReadViews({ exchange: "BINANCEFUT", limit: 200 }).catch(() => []);
   const activePositionCount = Array.isArray(positionReadViews)
     ? positionReadViews.filter((row) => Number(row && row.size_pct) > 0 && String(row && row.state || "").toUpperCase() !== "FLAT").length
@@ -1001,8 +1108,11 @@ async function main() {
     execution_health: executionHealth,
     fill_sync_alert_duplication: fillSyncAlertDuplication,
     trail_runner_floor_audit: trailRunnerFloorAudit,
+    trail_runner_floor_live_separation: trailRunnerFloorLiveSeparation,
     binance_exit_qty_contract_audit: binanceExitQtyContractAudit,
+    binance_exit_qty_live_separation: binanceExitQtyLiveSeparation,
     native_trail_protection_gap: nativeTrailProtectionGap,
+    regime_lineage_gap: regimeLineageGap,
     position_read_model_cutover: positionReadModelCutover,
     approvals: [],
   };
@@ -1126,8 +1236,11 @@ module.exports = {
     loadExecutionHealth,
     loadPositionReadModelCutoverHealth,
     loadTrailRunnerFloorAuditHealth,
+    loadTrailRunnerFloorLiveSeparationHealth,
     loadBinanceExitQtyContractAuditHealth,
+    loadBinanceExitQtyLiveSeparationHealth,
     loadNativeTrailProtectionGapHealth,
+    loadRegimeLineageGapHealth,
     hasExecutionFlowCoverage,
     hasHealthySupersedingPositionView,
     filterSupersededActiveErrorFamilies,

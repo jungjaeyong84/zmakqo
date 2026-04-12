@@ -51,7 +51,17 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
     violation_total_n: 3,
     live_bar_runner_violation_n: 0,
     live_bar_runner_violation_total_n: 2,
+    top_violations_all: [
+      { symbol: "ETHUSDT", backfilled: true },
+    ],
     top_violations: [],
+  }), "utf8");
+  fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "trail_runner_floor_live_separation_latest.json"), JSON.stringify({
+    live_violation_n: 0,
+    historical_backfilled_violation_n: 3,
+    overlap_symbols: [],
+    live_symbols: [],
+    historical_backfilled_symbols: ["ETHUSDT"],
   }), "utf8");
   fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "binance_exit_qty_contract_audit_latest.json"), JSON.stringify({
     fill_count: 12,
@@ -77,6 +87,13 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
     ],
     top_issues: [],
   }), "utf8");
+  fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "binance_exit_qty_live_separation_latest.json"), JSON.stringify({
+    live_issue_chain_n: 2,
+    historical_backfilled_issue_chain_n: 4,
+    overlap_symbols: ["BTCUSDT"],
+    live_symbols: ["BTCUSDT", "DOGEUSDT"],
+    historical_backfilled_symbols: ["BTCUSDT", "ETHUSDT"],
+  }), "utf8");
   fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "native_trail_protection_gap_latest.json"), JSON.stringify({
     summary: {
       gap_count: 0,
@@ -84,6 +101,11 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
       top_symbols: [],
       rows: [],
     },
+  }), "utf8");
+  fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "regime_lineage_gap_latest.json"), JSON.stringify({
+    signals: { missing_n: 1, missing_rate: 0.1 },
+    intents: { missing_n: 2, missing_rate: 0.2 },
+    fills: { missing_n: 0, missing_rate: 0 },
   }), "utf8");
 
   const health = dailySystemOpsCheck.__test.loadExecutionHealth({
@@ -105,6 +127,9 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
   assert.strictEqual(trailAudit.available, true);
   assert.strictEqual(trailAudit.violation_n, 0);
   assert.strictEqual(trailAudit.violation_total_n, 3);
+  const trailLiveSeparation = dailySystemOpsCheck.__test.loadTrailRunnerFloorLiveSeparationHealth({ repoRoot: tmpRoot });
+  assert.strictEqual(trailLiveSeparation.available, true);
+  assert.strictEqual(trailLiveSeparation.historical_backfilled_violation_n, 3);
   const exitQtyAudit = dailySystemOpsCheck.__test.loadBinanceExitQtyContractAuditHealth({ repoRoot: tmpRoot });
   assert.strictEqual(exitQtyAudit.available, true);
   assert.strictEqual(exitQtyAudit.fill_count, 12);
@@ -112,9 +137,16 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
   assert.strictEqual(exitQtyAudit.issue_chain_count, 2);
   assert.strictEqual(exitQtyAudit.issue_chain_total_n, 4);
   assert.strictEqual(exitQtyAudit.issue_chain_backfilled_n, 2);
+  const exitQtyLiveSeparation = dailySystemOpsCheck.__test.loadBinanceExitQtyLiveSeparationHealth({ repoRoot: tmpRoot });
+  assert.strictEqual(exitQtyLiveSeparation.available, true);
+  assert.strictEqual(exitQtyLiveSeparation.live_issue_chain_n, 2);
   const nativeTrailGap = dailySystemOpsCheck.__test.loadNativeTrailProtectionGapHealth({ repoRoot: tmpRoot });
   assert.strictEqual(nativeTrailGap.available, true);
   assert.strictEqual(nativeTrailGap.gap_count, 0);
+  const regimeGap = dailySystemOpsCheck.__test.loadRegimeLineageGapHealth({ repoRoot: tmpRoot });
+  assert.strictEqual(regimeGap.available, true);
+  assert.strictEqual(regimeGap.signals_missing_n, 1);
+  assert.strictEqual(regimeGap.intents_missing_n, 2);
 
   fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "objective_retrospective_latest.json"), JSON.stringify({
     display: {
@@ -205,12 +237,15 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
     },
     position_read_model_cutover: cutover,
     trail_runner_floor_audit: trailAudit,
+    trail_runner_floor_live_separation: trailLiveSeparation,
     binance_exit_qty_contract_audit: exitQtyAudit,
+    binance_exit_qty_live_separation: exitQtyLiveSeparation,
     native_trail_protection_gap: {
       available: true,
       gap_count: 2,
       top_symbols: [{ symbol: "ETHUSDT", count: 1 }],
     },
+    regime_lineage_gap: regimeGap,
     position_writer_authority_24h: {
       occurrence_count: 3,
       top_symbols: [
@@ -222,9 +257,10 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
   assert.ok(issueLines.some((line) => line.includes("positions_paper writer authority 경합 3건")));
   assert.ok(issueLines.some((line) => line.includes("XRPUSDT(2)")));
   assert.ok(issueLines.some((line) => line.includes("trailing floor 과거 위반 3건은 backfill 정리됨")));
-  assert.ok(issueLines.some((line) => line.includes("Binance exit 수량 계약 위반 chain 2건")));
-  assert.ok(issueLines.some((line) => line.includes("TOTAL_EXIT_OVER_100(2)")));
-  assert.ok(issueLines.some((line) => line.includes("BTCUSDT(2)")));
+  assert.ok(issueLines.some((line) => line.includes("Binance exit 수량 계약 live unresolved 2건")));
+  assert.ok(issueLines.some((line) => line.includes("historical backfilled 4건")));
+  assert.ok(issueLines.some((line) => line.includes("signal regime missing 1건")));
+  assert.ok(issueLines.some((line) => line.includes("intent regime missing 2건")));
   assert.ok(issueLines.some((line) => line.includes("native stop 누락 2건")));
 
   const historicalExitQtyLines = dailySystemOpsCheck.__test.buildIssueLines({
@@ -242,14 +278,24 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
     },
     position_read_model_cutover: cutover,
     trail_runner_floor_audit: trailAudit,
+    trail_runner_floor_live_separation: trailLiveSeparation,
     binance_exit_qty_contract_audit: {
       ...exitQtyAudit,
       issue_chain_count: 0,
+    },
+    binance_exit_qty_live_separation: {
+      ...exitQtyLiveSeparation,
+      live_issue_chain_n: 0,
     },
     native_trail_protection_gap: {
       available: true,
       gap_count: 0,
       top_symbols: [],
+    },
+    regime_lineage_gap: {
+      available: true,
+      signals_missing_n: 0,
+      intents_missing_n: 0,
     },
     position_writer_authority_24h: {
       occurrence_count: 0,
