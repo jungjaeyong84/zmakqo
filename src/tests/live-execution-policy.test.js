@@ -145,6 +145,36 @@ function buildSnapshot({
 
 (() => {
   const snap = buildSnapshot({
+    allocatorRows: [{ market: "BNBUSDT", allocation_score: 0.8, recommended_action: "HOLD" }],
+    qualityRows: [],
+  });
+  snap.quality = {
+    status: "EXECUTION_QUALITY_REVIEW",
+    top_latency_market: "BNBUSDT",
+    top_slippage_market: "BNBUSDT",
+    top_partial_market: null,
+    top_watch_markets: [
+      { market: "BNBUSDT", avg_created_to_fill_ms: 420000, partial_fill_rate_pct: 72, avg_slippage_bps: 18 },
+    ],
+  };
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "BNBUSDT",
+    intent: "ENTRY",
+    qtyPct: 1,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, true);
+  assert.ok(res.qtyPctFinal > 0 && res.qtyPctFinal < 0.7);
+  assert.strictEqual(res.featuresPatch._live_exec_policy_quality_top_watch_index, 0);
+  assert.strictEqual(res.featuresPatch._live_exec_policy_quality_top_latency_match, true);
+})();
+
+(() => {
+  const snap = buildSnapshot({
     allocatorRows: [{ market: "ETHUSDT", allocation_score: 0.5, recommended_action: "HOLD" }],
     allocatorSummary: { learning_epoch_active: true },
     quarantineSummary: { learning_epoch_active: true },

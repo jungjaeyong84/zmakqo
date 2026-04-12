@@ -207,6 +207,26 @@ const QUALITY_SCALE_SLIPPAGE_HIGH = (() => {
   if (Number.isFinite(n) && n > 0 && n <= 1) return n;
   return 0.65;
 })();
+const QUALITY_SCALE_TOP_WATCH_RANK_1 = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_SCALE_QUALITY_TOP_WATCH_RANK_1);
+  if (Number.isFinite(n) && n > 0 && n <= 1) return n;
+  return 0.55;
+})();
+const QUALITY_SCALE_TOP_WATCH_RANK_3 = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_SCALE_QUALITY_TOP_WATCH_RANK_3);
+  if (Number.isFinite(n) && n > 0 && n <= 1) return n;
+  return 0.7;
+})();
+const QUALITY_SCALE_TOP_WATCH_RANK_6 = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_SCALE_QUALITY_TOP_WATCH_RANK_6);
+  if (Number.isFinite(n) && n > 0 && n <= 1) return n;
+  return 0.82;
+})();
+const QUALITY_SCALE_TOP_WATCH_PRIMARY = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_SCALE_QUALITY_TOP_WATCH_PRIMARY);
+  if (Number.isFinite(n) && n > 0 && n <= 1) return n;
+  return 0.6;
+})();
 
 const QUALITY_GLOBAL_BLOCK_MAX_LATENCY_MS = (() => {
   const n = Number(process.env.LIVE_EXEC_POLICY_QUALITY_GLOBAL_BLOCK_MAX_LATENCY_MS);
@@ -934,6 +954,42 @@ function deriveQualityScale(row = null) {
   return clamp(scale, SCALE_MIN, SCALE_MAX);
 }
 
+function resolveQualityContext({ row = null, summary = null, market = null } = {}) {
+  const mk = upper(market);
+  const topWatch = Array.isArray(summary && summary.top_watch_markets) ? summary.top_watch_markets : [];
+  const topWatchIndex = mk ? topWatch.findIndex((item) => upper(item && item.market) === mk) : -1;
+  const topWatchRow = topWatchIndex >= 0 ? topWatch[topWatchIndex] : null;
+  return {
+    latency: toNum((row && row.avg_created_to_fill_ms) ?? (topWatchRow && topWatchRow.avg_created_to_fill_ms)),
+    partial: toNum((row && row.partial_fill_rate_pct) ?? (topWatchRow && topWatchRow.partial_fill_rate_pct)),
+    slippage: toNum((row && row.avg_slippage_bps) ?? (topWatchRow && topWatchRow.avg_slippage_bps)),
+    topWatchIndex,
+    topWatchIncluded: topWatchIndex >= 0,
+    topLatencyMatch: mk && upper(summary && summary.top_latency_market) === mk,
+    topSlippageMatch: mk && upper(summary && summary.top_slippage_market) === mk,
+    topPartialMatch: mk && upper(summary && summary.top_partial_market) === mk,
+  };
+}
+
+function deriveQualityActuatorScale({ row = null, summary = null, market = null } = {}) {
+  const ctx = resolveQualityContext({ row, summary, market });
+  let scale = deriveQualityScale({
+    avg_created_to_fill_ms: ctx.latency,
+    partial_fill_rate_pct: ctx.partial,
+    avg_slippage_bps: ctx.slippage,
+  });
+  if (ctx.topWatchIndex === 0) scale = Math.min(scale, QUALITY_SCALE_TOP_WATCH_RANK_1);
+  else if (ctx.topWatchIndex >= 0 && ctx.topWatchIndex <= 2) scale = Math.min(scale, QUALITY_SCALE_TOP_WATCH_RANK_3);
+  else if (ctx.topWatchIndex >= 0 && ctx.topWatchIndex <= 5) scale = Math.min(scale, QUALITY_SCALE_TOP_WATCH_RANK_6);
+  if (ctx.topLatencyMatch || ctx.topSlippageMatch || ctx.topPartialMatch) {
+    scale = Math.min(scale, QUALITY_SCALE_TOP_WATCH_PRIMARY);
+  }
+  return {
+    ...ctx,
+    scale: clamp(scale, SCALE_MIN, SCALE_MAX),
+  };
+}
+
 function deriveQualityHardBlock(row = null) {
   const latency = toNum(row && row.avg_created_to_fill_ms);
   const partial = toNum(row && row.partial_fill_rate_pct);
@@ -1355,6 +1411,7 @@ function evaluateLiveEntryPolicy({
     const policyPlanMarketMode = upper(policyPlanRow && policyPlanRow.mode);
     const policyPlanStatus = upper(policyPlanSummary.status);
     const objectiveScale = deriveObjectiveScale(objectiveSummary);
+    const qualityActuator = deriveQualityActuatorScale({ row: qualityRow, summary: qualitySummary, market });
     const qualityGlobalScale = deriveGlobalExecutionQualityScale(qualitySummary);
     const qualityHard = deriveQualityHardBlock(qualityRow);
     const qualityGlobalHard = deriveGlobalQualityHardBlock(qualitySummary, market);
@@ -1399,6 +1456,7 @@ function evaluateLiveEntryPolicy({
       policyPlanMarketMode,
       policyPlanStatus,
       objectiveScale,
+      qualityActuator,
       qualityGlobalScale,
       qualityHard,
       qualityGlobalHard,
@@ -1445,6 +1503,7 @@ function evaluateLiveEntryPolicy({
     policyPlanMarketMode,
     policyPlanStatus,
     objectiveScale,
+    qualityActuator,
     qualityGlobalScale,
     qualityHard,
     qualityGlobalHard,
@@ -1483,9 +1542,14 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_action: action || null,
     _live_exec_policy_allocation_score: allocationScore,
     _live_exec_policy_quarantine_reason: quarantineReason || null,
-    _live_exec_policy_quality_latency_ms: toNum(qualityRow && qualityRow.avg_created_to_fill_ms),
-    _live_exec_policy_quality_partial_pct: toNum(qualityRow && qualityRow.partial_fill_rate_pct),
-    _live_exec_policy_quality_slippage_bps: toNum(qualityRow && qualityRow.avg_slippage_bps),
+    _live_exec_policy_quality_latency_ms: qualityActuator.latency,
+    _live_exec_policy_quality_partial_pct: qualityActuator.partial,
+    _live_exec_policy_quality_slippage_bps: qualityActuator.slippage,
+    _live_exec_policy_quality_top_watch_index: qualityActuator.topWatchIndex,
+    _live_exec_policy_quality_top_watch_included: qualityActuator.topWatchIncluded,
+    _live_exec_policy_quality_top_latency_match: qualityActuator.topLatencyMatch,
+    _live_exec_policy_quality_top_slippage_match: qualityActuator.topSlippageMatch,
+    _live_exec_policy_quality_top_partial_match: qualityActuator.topPartialMatch,
     _live_exec_policy_quality_global_status: upper(qualitySummary.status),
     _live_exec_policy_quality_global_latency_p95_ms: toNum(qualitySummary.guard_created_to_fill_p95_ms ?? qualitySummary.created_to_fill_p95_ms),
     _live_exec_policy_quality_global_partial_pct: toNum(qualitySummary.partial_fill_rate_pct),
@@ -1863,7 +1927,7 @@ function evaluateLiveEntryPolicy({
   if (applyScale && !alreadyScaled) {
     actionScale = deriveAllocatorActionScale(action);
     scoreScale = deriveAllocatorScoreScale(allocationScore);
-    qualityScale = deriveQualityScale(qualityRow);
+    qualityScale = qualityActuator.scale;
     const planGlobalScale = (applyPolicyPlan && Number.isFinite(policyPlanGlobalScale))
       ? policyPlanGlobalScale
       : 1;
