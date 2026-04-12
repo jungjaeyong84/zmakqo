@@ -33,10 +33,6 @@ const { tfToMs, normalizeTf, defaultExecTfFromEnv } = require("../utils/marketCo
 const { normalizeEvalExchange, evalLatestId, matchesEvalTf } = require("../utils/evalDoc");
 const { deriveSignalDocId } = require("../utils/signalDocId");
 const { buildExitStageView } = require("../utils/exitStageView");
-const { loadMlServingRuntime } = require("../services/mlServingRuntime");
-const { loadOperationalGuardRuntime } = require("../services/operationalGuardRuntime");
-const { loadSystemSloRuntime } = require("../services/systemSloRuntime");
-const { loadSystemAnomalyRuntime } = require("../services/systemAnomalyRuntime");
 const { getPositionReadView, listExchangePositionReadViews } = require("../services/positionReadModel");
 const { resolveBinanceFuturesKeys } = require("../utils/binanceKeyResolver");
 const { normalizePositionSide } = require("../utils/positionSide");
@@ -49,8 +45,7 @@ const {
   resolveRegimeRecord,
 } = require("../utils/regime");
 const { resolveMarketStateSummary } = require("../utils/marketStateSummary");
-const { evaluateLiveEntryPolicy } = require("../utils/liveExecutionPolicy");
-const { evaluateOpenClawExecutionDecision } = require("../services/openclawExecutionExecutor");
+const { evaluateOpenClawExecutionAuthority } = require("../services/openclawExecutionAuthority");
 const { resolveEventMapping } = require("../services/signalMapping");
 const { normalizeEvent, deriveGroupSubtype } = require("../services/signalStandard");
 const {
@@ -216,7 +211,7 @@ async function applyOpenClawExecutorDecision({
   const baseQty = Number.isFinite(Number(qtyPct)) ? Number(qtyPct) : 0;
   const baseFeatures = (features && typeof features === "object") ? { ...features } : {};
   try {
-    const result = await evaluateOpenClawExecutionDecision({
+    const result = await evaluateOpenClawExecutionAuthority({
       exchange,
       symbol,
       intent,
@@ -242,6 +237,8 @@ async function applyOpenClawExecutorDecision({
           _openclaw_executor_reason: String(result && result.reason || "OPENCLAW_EXECUTOR_NO_PATCH"),
         },
       decision: result && result.decision ? result.decision : null,
+      policy: result && result.policy ? result.policy : null,
+      authority: result && result.authority ? result.authority : null,
     };
     await recordOpenClawPolicyDecision({
       exchange,
@@ -264,7 +261,11 @@ async function applyOpenClawExecutorDecision({
       blocked: normalizedResult.ok !== true || Number(normalizedResult.qtyPctFinal) <= 0,
       exitProfileMode: normalizedResult.exitProfileMode,
       cohort,
-      decision: normalizedResult.decision,
+      decision: {
+        openclaw: normalizedResult.decision,
+        live_policy: normalizedResult.policy,
+        authority: normalizedResult.authority,
+      },
       featuresPatch: normalizedResult.featuresPatch,
       createdAt: new Date(Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now()).toISOString(),
     }).catch((err) => {
@@ -10666,32 +10667,9 @@ async function runPaperBinanceForBar({
         await markIntentStatus(it.intent_id, "CANCELED", { cancel_reason: reason, status_reason: reason });
         continue;
       }
-      const [mlServing, operationalGuard, systemSlo, systemAnomaly] = await Promise.all([
-        loadMlServingRuntime({ exchange }),
-        loadOperationalGuardRuntime({ exchange }),
-        loadSystemSloRuntime({ exchange }),
-        loadSystemAnomalyRuntime({ exchange }),
-      ]);
-      const policyEval = evaluateLiveEntryPolicy({
-        exchange,
-        symbol,
-        intent,
-        qtyPct: qtyFraction,
-        features: it.features_json,
-        stage: "RUNNER_INTENT_EXEC",
-        applyScale: false,
-        snapshotOverride: {
-          mlServing,
-          operationalGuard,
-          systemSlo,
-          systemAnomaly,
-        },
-      });
-      if (policyEval && policyEval.featuresPatch && typeof policyEval.featuresPatch === "object") {
-        it.features_json = policyEval.featuresPatch;
-      }
-      if (!policyEval || policyEval.ok !== true) {
-        const reason = String(policyEval && policyEval.reason || "LIVE_POLICY_BLOCK").trim().toUpperCase() || "LIVE_POLICY_BLOCK";
+      qtyFraction = Number(openclawEval.qtyPctFinal);
+      if (!Number.isFinite(qtyFraction) || qtyFraction <= 0) {
+        const reason = String(openclawEval.reason || "OPENCLAW_EXECUTION_AUTHORITY_BLOCK").trim().toUpperCase() || "OPENCLAW_EXECUTION_AUTHORITY_BLOCK";
         await markIntentStatus(it.intent_id, "CANCELED", { cancel_reason: reason, status_reason: reason });
         continue;
       }
@@ -13041,32 +13019,9 @@ async function runPaperFuturesForBar({
         continue;
       }
 
-      const [mlServing, operationalGuard, systemSlo, systemAnomaly] = await Promise.all([
-        loadMlServingRuntime({ exchange }),
-        loadOperationalGuardRuntime({ exchange }),
-        loadSystemSloRuntime({ exchange }),
-        loadSystemAnomalyRuntime({ exchange }),
-      ]);
-      const policyEval = evaluateLiveEntryPolicy({
-        exchange,
-        symbol,
-        intent,
-        qtyPct: qtyFraction,
-        features: it.features_json,
-        stage: "RUNNER_INTENT_EXEC",
-        applyScale: false,
-        snapshotOverride: {
-          mlServing,
-          operationalGuard,
-          systemSlo,
-          systemAnomaly,
-        },
-      });
-      if (policyEval && policyEval.featuresPatch && typeof policyEval.featuresPatch === "object") {
-        it.features_json = policyEval.featuresPatch;
-      }
-      if (!policyEval || policyEval.ok !== true) {
-        const reason = String(policyEval && policyEval.reason || "LIVE_POLICY_BLOCK").trim().toUpperCase() || "LIVE_POLICY_BLOCK";
+      qtyFraction = Number(openclawEval.qtyPctFinal);
+      if (!Number.isFinite(qtyFraction) || qtyFraction <= 0) {
+        const reason = String(openclawEval.reason || "OPENCLAW_EXECUTION_AUTHORITY_BLOCK").trim().toUpperCase() || "OPENCLAW_EXECUTION_AUTHORITY_BLOCK";
         await markIntentStatus(it.intent_id, "CANCELED", { cancel_reason: reason, status_reason: reason });
         continue;
       }
@@ -15266,34 +15221,8 @@ async function runPaperFuturesForBar({
         continue;
       }
       qtyFraction = Number(openclawEval.qtyPctFinal);
-
-      const [mlServing, operationalGuard, systemSlo, systemAnomaly] = await Promise.all([
-        loadMlServingRuntime({ exchange }),
-        loadOperationalGuardRuntime({ exchange }),
-        loadSystemSloRuntime({ exchange }),
-        loadSystemAnomalyRuntime({ exchange }),
-      ]);
-      const policyEval = evaluateLiveEntryPolicy({
-        exchange,
-        symbol,
-        intent,
-        qtyPct: qtyFraction,
-        features: s.features,
-        stage: "RUNNER_SIGNAL",
-        applyScale: true,
-        snapshotOverride: {
-          mlServing,
-          operationalGuard,
-          systemSlo,
-          systemAnomaly,
-        },
-      });
-      if (policyEval && policyEval.featuresPatch && typeof policyEval.featuresPatch === "object") {
-        s.features = policyEval.featuresPatch;
-        Object.assign(features, policyEval.featuresPatch);
-      }
-      if (!policyEval || policyEval.ok !== true || !Number.isFinite(Number(policyEval.qtyPctFinal)) || Number(policyEval.qtyPctFinal) <= 0) {
-        const reason = String(policyEval && policyEval.reason || "DROP_LIVE_POLICY_BLOCK").trim().toUpperCase() || "DROP_LIVE_POLICY_BLOCK";
+      if (!Number.isFinite(qtyFraction) || qtyFraction <= 0) {
+        const reason = String(openclawEval.reason || "DROP_OPENCLAW_EXECUTION_AUTHORITY").trim().toUpperCase() || "DROP_OPENCLAW_EXECUTION_AUTHORITY";
         signalDrops.push({
           ...s,
           bar_close_time_utc_ms: effectiveBarMs,

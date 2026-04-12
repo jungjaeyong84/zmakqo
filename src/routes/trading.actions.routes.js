@@ -153,7 +153,7 @@ function createTradingActionsRoutes() {
       const execModeRaw = String(sys && sys.data && sys.data.execution_mode ? sys.data.execution_mode : "PAPER").toUpperCase();
       const executionMode = execModeRaw === "LIVE" ? "LIVE" : "PAPER";
       const runId = `RUN__MANUAL_FORCE_EXIT__${exchange}__${market}__${Date.now()}`;
-      const pre = runActionPreHooks({
+      const pre = await runActionPreHooks({
         action: "TRADING_FORCE_EXIT",
         runId,
         exchange,
@@ -324,7 +324,7 @@ function createTradingActionsRoutes() {
             loadSystemSloRuntime({ exchange }),
             loadSystemAnomalyRuntime({ exchange }),
           ]);
-          const pre = runActionPreHooks({
+          const pre = await runActionPreHooks({
             action: "TRADING_MANUAL_RETRY_ENTRY",
             runId,
             exchange,
@@ -486,7 +486,7 @@ function createTradingActionsRoutes() {
       if (!market || (markets.length && !markets.includes(market))) {
         return res.status(400).json({ ok: false, error: "MARKET_NOT_ALLOWED" });
       }
-      const pre = runActionPreHooks({
+      const pre = await runActionPreHooks({
         action: "TRADING_CANCEL_PENDING",
         runId: `RUN__CANCEL_PENDING__${exchange}__${market}__${Date.now()}`,
         exchange,

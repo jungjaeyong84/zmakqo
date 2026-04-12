@@ -6,10 +6,6 @@ const env = require("../config/env");
 const { upsertSignal } = require("../storage/signals");
 const { recordSignalDrops } = require("../storage/signalDrops");
 const { getPositionReadView } = require("../services/positionReadModel");
-const { loadMlServingRuntime } = require("../services/mlServingRuntime");
-const { loadOperationalGuardRuntime } = require("../services/operationalGuardRuntime");
-const { loadSystemSloRuntime } = require("../services/systemSloRuntime");
-const { loadSystemAnomalyRuntime } = require("../services/systemAnomalyRuntime");
 const { deriveGroupSubtype } = require("../services/signalTaxonomy");
 const { resolveEventMapping, SIGNAL_MAPPING_VERSION } = require("../services/signalMapping");
 const { evaluateSignalWithAi } = require("../services/aiSignalGuard");
@@ -45,7 +41,7 @@ const {
   normalizeReasonCode,
   sideToPositionDir,
 } = require("../services/webhookReverseException");
-const { evaluateLiveEntryPolicy } = require("../utils/liveExecutionPolicy");
+const { evaluateOpenClawExecutionAuthority } = require("../services/openclawExecutionAuthority");
 
 const ROOT = path.resolve(__dirname, "../..");
 const OPS_DAILY = path.join(ROOT, "ops", "daily");
@@ -2193,13 +2189,7 @@ function createWebhookRoutes() {
       const intentUpperForPolicy = String(intent || "").trim().toUpperCase();
       const policyEntryIntent = intentUpperForPolicy === "ENTRY" || intentUpperForPolicy === "ADD";
       if (!isDrop && policyEntryIntent) {
-        const [mlServing, operationalGuard, systemSlo, systemAnomaly] = await Promise.all([
-          loadMlServingRuntime({ exchange }),
-          loadOperationalGuardRuntime({ exchange }),
-          loadSystemSloRuntime({ exchange }),
-          loadSystemAnomalyRuntime({ exchange }),
-        ]);
-        const policyEval = evaluateLiveEntryPolicy({
+        const authorityEval = await evaluateOpenClawExecutionAuthority({
           exchange,
           symbol,
           intent: intentUpperForPolicy,
@@ -2207,18 +2197,12 @@ function createWebhookRoutes() {
           features,
           stage: "WEBHOOK_SIGNAL",
           applyScale: true,
-          snapshotOverride: {
-            mlServing,
-            operationalGuard,
-            systemSlo,
-            systemAnomaly,
-          },
         });
-        if (policyEval && policyEval.featuresPatch && typeof policyEval.featuresPatch === "object") {
-          Object.assign(features, policyEval.featuresPatch);
+        if (authorityEval && authorityEval.featuresPatch && typeof authorityEval.featuresPatch === "object") {
+          Object.assign(features, authorityEval.featuresPatch);
         }
-        if (!policyEval || policyEval.ok !== true || !Number.isFinite(Number(policyEval.qtyPctFinal)) || Number(policyEval.qtyPctFinal) <= 0) {
-          const policyReason = String(policyEval && policyEval.reason || "LIVE_POLICY_BLOCK").trim().toUpperCase() || "LIVE_POLICY_BLOCK";
+        if (!authorityEval || authorityEval.ok !== true || !Number.isFinite(Number(authorityEval.qtyPctFinal)) || Number(authorityEval.qtyPctFinal) <= 0) {
+          const policyReason = String(authorityEval && authorityEval.reason || "OPENCLAW_EXECUTION_AUTHORITY_BLOCK").trim().toUpperCase() || "OPENCLAW_EXECUTION_AUTHORITY_BLOCK";
           await recordSignalDrops({
             exchange,
             symbol,
@@ -2293,7 +2277,7 @@ function createWebhookRoutes() {
             },
           });
         }
-        qtyPctFinal = Number(policyEval.qtyPctFinal);
+        qtyPctFinal = Number(authorityEval.qtyPctFinal);
       }
       if (features._qty_pct_final == null) {
         features._qty_pct_final = qtyPctFinal;

@@ -21,15 +21,15 @@ function buildSnapshot({
   };
 }
 
-(() => {
+async function run() {
   const events = [];
   const writer = (event, payload) => events.push({ event, payload });
 
-  const blocked = runActionPreHooks({
+  const blocked = await runActionPreHooks({
     action: "TRADING_MANUAL_RETRY_ENTRY",
     runId: "RUN__1",
     exchange: "BINANCEFUT",
-    symbol: "AXSUSDT",
+    symbol: "TESTUSDT",
     tf: "15m",
     signalEvent: "SHORT",
     decisionReason: "MANUAL_RETRY_BY_USER",
@@ -40,19 +40,20 @@ function buildSnapshot({
     writer,
     persist: false,
     snapshotOverride: buildSnapshot({
-      quarantineRows: [{ market: "AXSUSDT", quarantine_reason: "EXECUTION_QUALITY_PENALTY" }],
+      quarantineRows: [{ market: "TESTUSDT", quarantine_reason: "EXECUTION_QUALITY_PENALTY" }],
     }),
   });
   assert.strictEqual(blocked.ok, false);
   assert.strictEqual(blocked.blocked, true);
   assert.strictEqual(blocked.reason, "LIVE_POLICY_QUARANTINE_HARD_BLOCK");
+  assert.strictEqual(blocked.authority.blockingLayer, "LIVE_ENTRY_POLICY");
   assert.strictEqual(blocked.envelope.run_id, "RUN__1");
-  assert.strictEqual(blocked.envelope.symbol, "AXSUSDT");
+  assert.strictEqual(blocked.envelope.symbol, "TESTUSDT");
   assert.ok(blocked.envelope.trace_id);
   assert.strictEqual(events[0].event, "action_pre_blocked");
   assert.strictEqual(events[0].payload.trace_id, blocked.envelope.trace_id);
 
-  const passed = runActionPreHooks({
+  const passed = await runActionPreHooks({
     action: "TRADING_FORCE_EXIT",
     runId: "RUN__2",
     exchange: "BINANCEFUT",
@@ -73,4 +74,9 @@ function buildSnapshot({
   assert.strictEqual(passed.envelope.action, "TRADING_FORCE_EXIT");
 
   console.log("ACTION_EXECUTION_HOOKS_TEST_OK");
-})();
+}
+
+run().catch((err) => {
+  console.error(err && err.stack ? err.stack : err);
+  process.exit(1);
+});

@@ -1,6 +1,6 @@
 "use strict";
 
-const { evaluateLiveEntryPolicy } = require("./liveExecutionPolicy");
+const { evaluateOpenClawExecutionAuthority } = require("../services/openclawExecutionAuthority");
 const { recordActionHookEvent } = require("../storage/actionHookLedger");
 const { recordShadowEvaluation } = require("../storage/shadowEvaluations");
 const { buildEventEnvelope } = require("./eventEnvelope");
@@ -91,18 +91,19 @@ function isEntryLikeIntent(intent) {
 
 function recordActionShadowEvaluationSafe({
   envelope,
-  policyEval,
+  authorityEval,
   features = null,
   intent = null,
   qtyPct = null,
 } = {}) {
-  if (!envelope || !policyEval) return;
+  if (!envelope || !authorityEval) return;
+  const policyEval = authorityEval.policy || null;
   const normalizedShadowInference = {
-    ok: policyEval.ok === true,
-    reason: upper(policyEval.reason),
-    qty_pct_final: Number.isFinite(Number(policyEval.qtyPctFinal)) ? Number(policyEval.qtyPctFinal) : null,
-    policy_blocked: !!(policyEval.policy && policyEval.policy.blocked),
-    action: upper(policyEval.policy && policyEval.policy.action),
+    ok: authorityEval.ok === true,
+    reason: upper(authorityEval.reason),
+    qty_pct_final: Number.isFinite(Number(authorityEval.qtyPctFinal)) ? Number(authorityEval.qtyPctFinal) : null,
+    policy_blocked: !!(policyEval && policyEval.policy && policyEval.policy.blocked),
+    action: upper(policyEval && policyEval.policy && policyEval.policy.action),
   };
   Promise.resolve(recordShadowEvaluation({
     exchange: envelope.exchange,
@@ -112,17 +113,19 @@ function recordActionShadowEvaluationSafe({
     requestId: envelope.request_id,
     runId: envelope.run_id,
     source: envelope.source || "ACTION_PRE_HOOK",
-    modelKey: "LIVE_ENTRY_POLICY_SHADOW_V1",
+    modelKey: "OPENCLAW_EXECUTION_AUTHORITY_SHADOW_V1",
     baselineDecision: {
-      ok: policyEval.ok === true,
-      reason: upper(policyEval.reason),
-      qty_pct_final: Number.isFinite(Number(policyEval.qtyPctFinal)) ? Number(policyEval.qtyPctFinal) : null,
+      ok: authorityEval.ok === true,
+      reason: upper(authorityEval.reason),
+      qty_pct_final: Number.isFinite(Number(authorityEval.qtyPctFinal)) ? Number(authorityEval.qtyPctFinal) : null,
       intent: upper(intent),
       qty_pct_requested: Number.isFinite(Number(qtyPct)) ? Number(qtyPct) : null,
     },
     shadowDecision: {
-      policy: policyEval.policy || null,
-      features_patch: policyEval.featuresPatch || null,
+      authority: authorityEval.authority || null,
+      openclaw_decision: authorityEval.decision || null,
+      policy: policyEval && policyEval.policy ? policyEval.policy : null,
+      features_patch: authorityEval.featuresPatch || null,
       inference: normalizedShadowInference,
     },
     features: features && typeof features === "object" ? { ...features } : null,
@@ -135,7 +138,7 @@ function recordActionShadowEvaluationSafe({
   });
 }
 
-function runActionPreHooks({
+async function runActionPreHooks({
   action = null,
   runId = null,
   signalId = null,
@@ -193,7 +196,7 @@ function runActionPreHooks({
     };
   }
 
-  const policyEval = evaluateLiveEntryPolicy({
+  const authorityEval = await evaluateOpenClawExecutionAuthority({
     exchange,
     symbol,
     intent,
@@ -203,19 +206,19 @@ function runActionPreHooks({
     applyScale: false,
     snapshotOverride,
   });
-  const featuresPatch = policyEval && policyEval.featuresPatch && typeof policyEval.featuresPatch === "object"
-    ? policyEval.featuresPatch
+  const featuresPatch = authorityEval && authorityEval.featuresPatch && typeof authorityEval.featuresPatch === "object"
+    ? authorityEval.featuresPatch
     : baseFeatures;
   recordActionShadowEvaluationSafe({
     envelope,
-    policyEval,
+    authorityEval,
     features: featuresPatch,
     intent,
     qtyPct,
   });
 
-  if (!policyEval || policyEval.ok !== true || !Number.isFinite(Number(policyEval.qtyPctFinal)) || Number(policyEval.qtyPctFinal) <= 0) {
-    const reason = upper(policyEval && policyEval.reason) || "ACTION_PRE_HOOK_BLOCKED";
+  if (!authorityEval || authorityEval.ok !== true || !Number.isFinite(Number(authorityEval.qtyPctFinal)) || Number(authorityEval.qtyPctFinal) <= 0) {
+    const reason = upper(authorityEval && authorityEval.reason) || "ACTION_PRE_HOOK_BLOCKED";
     emitActionEvent({
       event: "action_pre_blocked",
       envelope,
@@ -223,6 +226,7 @@ function runActionPreHooks({
         hook: "pre",
         policy_stage: upper(policyStage),
         policy_reason: reason,
+        policy_blocking_layer: upper(authorityEval && authorityEval.authority && authorityEval.authority.blockingLayer),
         intent: upper(intent),
       },
       level: "warn",
@@ -235,30 +239,32 @@ function runActionPreHooks({
       reason,
       envelope,
       featuresPatch,
-      policy: policyEval && policyEval.policy ? policyEval.policy : null,
+      policy: authorityEval && authorityEval.policy ? authorityEval.policy : null,
+      authority: authorityEval && authorityEval.authority ? authorityEval.authority : null,
     };
   }
 
   emitActionEvent({
     event: "action_pre_ok",
     envelope,
-    extra: {
-      hook: "pre",
-      policy_stage: upper(policyStage),
-      policy_reason: upper(policyEval && policyEval.reason) || "LIVE_POLICY_OK",
-      intent: upper(intent),
-      qty_pct_final: Number(policyEval.qtyPctFinal),
-    },
-    writer,
-    persist,
+      extra: {
+        hook: "pre",
+        policy_stage: upper(policyStage),
+        policy_reason: upper(authorityEval && authorityEval.reason) || "OPENCLAW_EXECUTION_AUTHORITY_OK",
+        intent: upper(intent),
+        qty_pct_final: Number(authorityEval.qtyPctFinal),
+      },
+      writer,
+      persist,
   });
   return {
     ok: true,
     blocked: false,
-    reason: upper(policyEval && policyEval.reason) || "LIVE_POLICY_OK",
+    reason: upper(authorityEval && authorityEval.reason) || "OPENCLAW_EXECUTION_AUTHORITY_OK",
     envelope,
     featuresPatch,
-    policy: policyEval && policyEval.policy ? policyEval.policy : null,
+    policy: authorityEval && authorityEval.policy ? authorityEval.policy : null,
+    authority: authorityEval && authorityEval.authority ? authorityEval.authority : null,
   };
 }
 

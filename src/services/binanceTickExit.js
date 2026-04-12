@@ -1111,7 +1111,7 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
           },
         }).catch(() => null);
       }
-      const pre = runActionPreHooks({
+      const pre = await runActionPreHooks({
         action: "BINANCE_TICK_EXIT_MARKET_RUN",
         runId,
         exchange: "BINANCEFUT",
