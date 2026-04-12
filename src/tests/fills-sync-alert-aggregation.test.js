@@ -142,8 +142,32 @@ async function run() {
       nativeProtectionTp0QtyBase: 24.595,
       nativeProtectionTp0QtyRatio: 0.25,
     },
+    rules: { TP_P0_QTY: 0.25 },
   });
   assert.ok(approxEqual(nativeTp0CloseRatio, 0.25), "native TP0 close ratio must use TP0 quantity metadata");
+
+  const missingTp0MetaCloseRatioInfo = fillsSyncTest.resolveFillSyncAlertCloseRatioInfo({
+    event: "EXIT_TP_P0_0.8P",
+    intent: null,
+    qtyScale: { ratio: null, qtyPct: null, mode: "NO_INTENT_QTY" },
+    execQtyBase: 0.342,
+    positionCtx: { qtyBase: 0.344 },
+    rules: { TP_P0_QTY: 0.25 },
+  });
+  assert.ok(
+    approxEqual(missingTp0MetaCloseRatioInfo.closeRatio, 0.25),
+    "TP0 without reliable qty metadata must fall back to the contract TP0 quantity"
+  );
+  assert.strictEqual(
+    missingTp0MetaCloseRatioInfo.aggregation,
+    "MAX",
+    "TP0 contract fallback must not sum split fills into an oversized ratio"
+  );
+  assert.strictEqual(
+    missingTp0MetaCloseRatioInfo.source,
+    "CONTRACT_TP0_QTY_FALLBACK",
+    "TP0 contract fallback source must be explicit for auditability"
+  );
 
   assert.strictEqual(
     fillsSyncTest.normalizeExitEventForRules("EXIT_TP_P0_0.8P", rescueExitRules),
@@ -467,6 +491,60 @@ async function run() {
     sameOrderEvent,
     "EXIT_TP_P1_3.25P",
     "split fills from the same triggered TP1 order must stay classified as TP1, not TRAIL"
+  );
+
+  const postFillRemainingAwareTp0 = await fillsSyncTest.resolveExternalExitEvent({
+    intent: null,
+    trade: { realizedPnl: 2.1, qty: 0.228, time: 1_777_777_777_000, symbol: "ETHUSDT" },
+    orderMeta: {
+      orderId: 12345001,
+      clientOrderId: "eth_tp0_ambiguous",
+      orderType: "TAKE_PROFIT",
+      closePosition: false,
+      reduceOnly: true,
+    },
+    positionCtx: {
+      qtyBase: 0.686,
+      tpP0Done: false,
+      tpP1Done: false,
+      trailActive: false,
+    },
+    recentTp1: null,
+    recentTp0: null,
+    rules: { SL: -0.0165, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.0165, TP_P1_QTY: 0.5 },
+    qtyPct: null,
+  });
+  assert.strictEqual(
+    postFillRemainingAwareTp0,
+    "EXIT_TP_P0_0.8P",
+    "post-fill remaining-aware inference must still keep true first-stage TP0 exits as TP0"
+  );
+
+  const postFillRemainingAwareTp1 = await fillsSyncTest.resolveExternalExitEvent({
+    intent: null,
+    trade: { realizedPnl: 7.209, qty: 0.342, time: 1_777_777_888_000, symbol: "ETHUSDT" },
+    orderMeta: {
+      orderId: 12345002,
+      clientOrderId: "eth_tp1_ambiguous",
+      orderType: "TAKE_PROFIT",
+      closePosition: false,
+      reduceOnly: true,
+    },
+    positionCtx: {
+      qtyBase: 0.344,
+      tpP0Done: false,
+      tpP1Done: false,
+      trailActive: false,
+    },
+    recentTp1: null,
+    recentTp0: null,
+    rules: { SL: -0.0165, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.0165, TP_P1_QTY: 0.5 },
+    qtyPct: null,
+  });
+  assert.strictEqual(
+    postFillRemainingAwareTp1,
+    "EXIT_TP_P1_1.65P",
+    "post-fill remaining-aware inference must reclassify ETH-like oversized TP0 alerts to TP1"
   );
 
   const sentPayloads = [];

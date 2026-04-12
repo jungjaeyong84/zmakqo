@@ -26,7 +26,11 @@ const { isIntentCanceledLikeStatus } = require("../utils/intentStatus");
 const { deriveSignalDocId } = require("../utils/signalDocId");
 const { inferTakeProfitKindFromQtyRatio } = require("./binancePositionReconciler");
 const { sendKoreanTelegramSummary } = require("../../scripts/lib/automation-utils");
-const { resolveExitStageAbsoluteContractQtyRatio } = require("../utils/exitQtyContract");
+const {
+  resolveExitStageAbsoluteContractQtyRatio,
+  resolveTp0ContractQtyRatio,
+  resolveTp1RemainingContractQtyRatio,
+} = require("../utils/exitQtyContract");
 
 const DEFAULT_LOOKBACK_MS = 72 * 60 * 60 * 1000;
 const DEFAULT_MIN_INTERVAL_MS = 3 * 60 * 1000;
@@ -817,7 +821,7 @@ function isScaledQtyPctMode(mode) {
   return normalized === "SCALED_NOTIONAL" || normalized === "SCALED_QTY_BASE";
 }
 
-function resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale, execQtyBase, positionCtx } = {}) {
+function resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale, execQtyBase, positionCtx, rules } = {}) {
   const empty = { closeRatio: null, aggregation: "SUM", source: null };
   if (!isExitEvent(event)) return empty;
   const eventUpper = String(event || "").toUpperCase();
@@ -872,6 +876,14 @@ function resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale, execQtyBa
         closeRatio: nativeTp0QtyRatio,
         aggregation: "MAX",
         source: "NATIVE_TP0_QTY_RATIO",
+      };
+    }
+    const tp0ContractQtyRatio = resolveExitStageAbsoluteContractQtyRatio("TP0", rules);
+    if (Number.isFinite(tp0ContractQtyRatio) && tp0ContractQtyRatio > 0) {
+      return {
+        closeRatio: tp0ContractQtyRatio,
+        aggregation: "MAX",
+        source: "CONTRACT_TP0_QTY_FALLBACK",
       };
     }
   }
@@ -939,8 +951,8 @@ function resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale, execQtyBa
   return empty;
 }
 
-function resolveFillSyncAlertCloseRatio({ event, intent, qtyScale, execQtyBase, positionCtx } = {}) {
-  const resolved = resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale, execQtyBase, positionCtx });
+function resolveFillSyncAlertCloseRatio({ event, intent, qtyScale, execQtyBase, positionCtx, rules } = {}) {
+  const resolved = resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale, execQtyBase, positionCtx, rules });
   return resolved && Number.isFinite(Number(resolved.closeRatio)) ? resolved.closeRatio : null;
 }
 
@@ -1803,6 +1815,29 @@ function inferTakeProfitKindFromQtyPct(qtyPct, rules) {
   );
 }
 
+function inferTakeProfitKindFromPostFillRemainingAwareQty(execQtyBase, positionQtyBase, rules) {
+  const execQty = Number(execQtyBase);
+  const remainingQty = Number(positionQtyBase);
+  if (!Number.isFinite(execQty) || execQty <= 0 || !Number.isFinite(remainingQty) || remainingQty < 0) return null;
+  const ratio = clamp01(execQty / (remainingQty + execQty));
+  if (!Number.isFinite(ratio) || ratio <= 0) return null;
+  const tp0Ref = resolveTp0ContractQtyRatio(rules, 0.25);
+  const tp1Ref = resolveTp1RemainingContractQtyRatio(rules, 0.5);
+  const candidates = [];
+  if (Number.isFinite(tp0Ref) && tp0Ref > 0) {
+    candidates.push({ kind: "TP0", dist: Math.abs(ratio - tp0Ref), ref: tp0Ref });
+  }
+  if (Number.isFinite(tp1Ref) && tp1Ref > 0) {
+    candidates.push({ kind: "TP1", dist: Math.abs(ratio - tp1Ref), ref: tp1Ref });
+  }
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => a.dist - b.dist);
+  const best = candidates[0];
+  if (!Number.isFinite(best.ref) || best.ref <= 0) return null;
+  if (best.dist > Math.max(0.05, best.ref * 0.4)) return null;
+  return best.kind;
+}
+
 function inferStageConstrainedTakeProfitKind(positionCtx, inferredKind, recentTp0) {
   const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
   const tp0Done = ctx.tpP0Done === true;
@@ -1994,7 +2029,17 @@ async function resolveExternalExitEvent({
         return clamp01(execQty / positionQtyBase);
       })();
   const inferredTakeProfitKind = inferTakeProfitKindFromQtyPct(observedQtyPct, rules);
+  const inferredPostFillTakeProfitKind = inferTakeProfitKindFromPostFillRemainingAwareQty(
+    Number(trade && trade.qty),
+    Number(positionCtx && positionCtx.qtyBase),
+    rules
+  );
   const stageConstrainedTakeProfitKind = inferStageConstrainedTakeProfitKind(positionCtx, inferredTakeProfitKind, recentTp0);
+  const fallbackTakeProfitKind = inferredTakeProfitKind
+    || (stageConstrainedTakeProfitKind === "TP1" ? "TP1" : null)
+    || inferredPostFillTakeProfitKind
+    || stageConstrainedTakeProfitKind
+    || null;
   const recentAddProtectionRefresh = isRecentAddNativeProtectionRefresh({
     positionCtx,
     tradeMs: Number(trade && trade.time),
@@ -2022,8 +2067,7 @@ async function resolveExternalExitEvent({
       if (sameOrderAsNativeTp0) return buildExitEventByKind("TP0", rules);
       if (sameOrderAsNativeTp1) return buildExitEventByKind("TP1", rules);
       if (trailEligible) return buildExitEventByKind("TRAIL", rules);
-      if (inferredTakeProfitKind) return buildExitEventByKind(inferredTakeProfitKind, rules);
-      if (stageConstrainedTakeProfitKind) return buildExitEventByKind(stageConstrainedTakeProfitKind, rules);
+      if (fallbackTakeProfitKind) return buildExitEventByKind(fallbackTakeProfitKind, rules);
       return buildExitEventByKind("TP1", rules);
     }
     if (trackedClientOrder && orderType === "MARKET" && !isNativeTpEnabled()) {
@@ -2105,8 +2149,7 @@ async function resolveExternalExitEvent({
     if (sameOrderAsNativeTp0) return buildExitEventByKind("TP0", rules);
     if (sameOrderAsNativeTp1) return buildExitEventByKind("TP1", rules);
     if (trailEligible) return buildExitEventByKind("TRAIL", rules);
-    if (inferredTakeProfitKind) return buildExitEventByKind(inferredTakeProfitKind, rules);
-    if (stageConstrainedTakeProfitKind) return buildExitEventByKind(stageConstrainedTakeProfitKind, rules);
+    if (fallbackTakeProfitKind) return buildExitEventByKind(fallbackTakeProfitKind, rules);
     return buildExitEventByKind("TP1", rules);
   }
 
@@ -2114,7 +2157,7 @@ async function resolveExternalExitEvent({
   if (!Number.isFinite(realized)) return buildExitEventByKind("UNKNOWN", rules);
   if (realized < 0) return buildExitEventByKind("SL", rules);
   if (trailEligible) return buildExitEventByKind("TRAIL", rules);
-  if (stageConstrainedTakeProfitKind) return buildExitEventByKind(stageConstrainedTakeProfitKind, rules);
+  if (fallbackTakeProfitKind) return buildExitEventByKind(fallbackTakeProfitKind, rules);
   return buildExitEventByKind("TP1", rules);
 }
 
@@ -2364,7 +2407,7 @@ async function syncMarketTrades({
         }
         : qtyScale;
       const closeRatioInfo = looksLikeExit
-        ? resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale: authoritativeQtyScale, execQtyBase, positionCtx })
+        ? resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale: authoritativeQtyScale, execQtyBase, positionCtx, rules: exitRules })
         : null;
       const closeRatio = closeRatioInfo && Number.isFinite(Number(closeRatioInfo.closeRatio))
         ? closeRatioInfo.closeRatio

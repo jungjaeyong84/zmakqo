@@ -38,7 +38,11 @@ async function run() {
     rules,
     qtyPct: null,
   });
-  assert.strictEqual(ambiguousWithoutRecentTp0, "EXIT_TP_P0_0.8P");
+  assert.strictEqual(
+    ambiguousWithoutRecentTp0,
+    "EXIT_TP_P1_1.65P",
+    "when post-fill remaining-aware quantity is closer to TP1, the classifier must not default back to TP0"
+  );
 
   const ambiguousAfterRecentTp0 = await __test.resolveExternalExitEvent({
     intent: null,
