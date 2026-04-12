@@ -129,6 +129,35 @@ async function run() {
 
   await withEnv({
     OPENCLAW_EXECUTOR_ENABLED: "1",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD: "1.2",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "2.2",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CLUSTER_REDUCE_SCALE: "0.65",
+  }, async () => {
+    const { evaluateOpenClawExecutionDecision } = freshRequire("../services/openclawExecutionExecutor");
+    const res = await evaluateOpenClawExecutionDecision({
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      intent: "ENTRY",
+      event: "SHORT",
+      side: "SELL",
+      qtyPct: 1,
+      features: {},
+      positionViews: [
+        { symbol: "SOLUSDT", state: "ACTIVE", position_side: "SHORT", size_pct: 1, qty_base: 1 },
+      ],
+      recentTimelineRows: [],
+      capitalAllocatorSnapshot: { by_market: [] },
+    });
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE");
+    assert.ok(Math.abs(res.qtyPctFinal - 0.65) < 1e-9);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_same_side_exposure_after, 2);
+  });
+
+  await withEnv({
+    OPENCLAW_EXECUTOR_ENABLED: "1",
     OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD: "99",
     OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
     OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
