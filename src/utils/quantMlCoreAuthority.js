@@ -95,6 +95,38 @@ function worstStatus(values = []) {
     .sort((a, b) => (ranks[b] || 0) - (ranks[a] || 0))[0] || "UNKNOWN";
 }
 
+function findBlockingAxis({ executionSummary = {}, feeSummary = {}, alphaSummary = {}, allocatorSummary = {}, openclawPeriods = {} } = {}) {
+  const openclaw30 = openclawPeriods.DAYS_30 || openclawPeriods.DAYS_14 || openclawPeriods.DAYS_7 || {};
+  const axes = [
+    {
+      axis: "OPENCLAW_SINGLE_AUTHORITY",
+      status: axisStatusFromOpenClaw(openclaw30),
+      reason: upper(openclaw30.gate && openclaw30.gate.reason) || null,
+    },
+    {
+      axis: "FEE_PNL",
+      status: axisStatusFromFee(feeSummary),
+      reason: upper(feeSummary.evidence_status) || null,
+    },
+    {
+      axis: "CONTINUOUS_ALPHA_PROOF",
+      status: axisStatusFromAlpha(alphaSummary),
+      reason: upper(alphaSummary.evidence_status) || null,
+    },
+    {
+      axis: "PORTFOLIO_ML",
+      status: axisStatusFromAllocator(allocatorSummary),
+      reason: upper(allocatorSummary.status) || null,
+    },
+    {
+      axis: "EXECUTION_EDGE",
+      status: axisStatusFromExecution(executionSummary),
+      reason: upper(executionSummary.status) || null,
+    },
+  ];
+  return axes.find((row) => row.status === "BLOCK") || axes.find((row) => row.status === "WARN") || null;
+}
+
 function buildQuantMlCoreAuthority({
   dataset = null,
   executionQuality = null,
@@ -154,12 +186,21 @@ function buildQuantMlCoreAuthority({
     axisStatusFromOpenClaw(openclawPeriods.DAYS_30 || openclawPeriods.DAYS_14 || {}),
     axisStatusFromAllocator(allocatorSummary),
   ]);
+  const primaryBlockingAxis = findBlockingAxis({
+    executionSummary,
+    feeSummary,
+    alphaSummary,
+    allocatorSummary,
+    openclawPeriods,
+  });
 
   return {
     status: overallStatus === "PASS"
       ? "QUANT_ML_CORE_READY"
       : (overallStatus === "WARN" ? "QUANT_ML_CORE_REVIEW" : "QUANT_ML_CORE_BLOCK"),
     overall_axis_status: overallStatus,
+    primary_blocking_axis: primaryBlockingAxis ? primaryBlockingAxis.axis : null,
+    primary_blocking_reason: primaryBlockingAxis ? primaryBlockingAxis.reason : null,
     axes: {
       execution_edge: {
         status: axisStatusFromExecution(executionSummary),
@@ -178,9 +219,13 @@ function buildQuantMlCoreAuthority({
         status: axisStatusFromOpenClaw(openclawPeriods.DAYS_30 || openclawPeriods.DAYS_14 || {}),
         final_decider: "OPENCLAW_EXECUTION_AUTHORITY",
         days_7_gate: upper(openclawPeriods.DAYS_7 && openclawPeriods.DAYS_7.gate && (openclawPeriods.DAYS_7.gate.status || openclawPeriods.DAYS_7.gate.verdict)) || null,
+        days_7_reason: upper(openclawPeriods.DAYS_7 && openclawPeriods.DAYS_7.gate && openclawPeriods.DAYS_7.gate.reason) || null,
         days_14_gate: upper(openclawPeriods.DAYS_14 && openclawPeriods.DAYS_14.gate && (openclawPeriods.DAYS_14.gate.status || openclawPeriods.DAYS_14.gate.verdict)) || null,
+        days_14_reason: upper(openclawPeriods.DAYS_14 && openclawPeriods.DAYS_14.gate && openclawPeriods.DAYS_14.gate.reason) || null,
         days_30_gate: upper(openclawPeriods.DAYS_30 && openclawPeriods.DAYS_30.gate && (openclawPeriods.DAYS_30.gate.status || openclawPeriods.DAYS_30.gate.verdict)) || null,
+        days_30_reason: upper(openclawPeriods.DAYS_30 && openclawPeriods.DAYS_30.gate && openclawPeriods.DAYS_30.gate.reason) || null,
         days_90_gate: upper(openclawPeriods.DAYS_90 && openclawPeriods.DAYS_90.gate && (openclawPeriods.DAYS_90.gate.status || openclawPeriods.DAYS_90.gate.verdict)) || null,
+        days_90_reason: upper(openclawPeriods.DAYS_90 && openclawPeriods.DAYS_90.gate && openclawPeriods.DAYS_90.gate.reason) || null,
       },
       portfolio_ml: {
         status: axisStatusFromAllocator(allocatorSummary),

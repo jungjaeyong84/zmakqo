@@ -284,6 +284,19 @@ function resolveExecutorCohort({ cohort = null, features = null } = {}) {
   );
 }
 
+function resolveExecutorRegime(features = null) {
+  return upper(
+    features && (
+      features.openclaw_market_regime_cohort
+      || features.market_regime_cohort
+      || features.pro_regime_state
+      || features.market_regime
+      || features.regime
+      || features._openclaw_market_regime_cohort
+    )
+  ) || "UNKNOWN";
+}
+
 function loadCapitalAllocatorSnapshot({ force = false } = {}) {
   const nowMs = Date.now();
   const mtimeMs = statMtimeMs(CAPITAL_ALLOCATOR_PATH);
@@ -556,6 +569,7 @@ async function evaluateOpenClawExecutionDecision({
   const confidence = resolveConfidence(baseFeatures);
   const posterior = resolvePosterior(baseFeatures, desiredSide);
   const entryTier = resolveEntryTier(baseFeatures, event);
+  const executorRegime = resolveExecutorRegime(baseFeatures);
   const highConfidence = Number.isFinite(confidence) && confidence >= CONFIDENCE_HIGH_MIN
     && Number.isFinite(posterior) && posterior >= POSTERIOR_HIGH_MIN
     && (entryTier === "CORE" || entryTier === "REAL");
@@ -572,6 +586,27 @@ async function evaluateOpenClawExecutionDecision({
   const allocatorPenaltyReasons = Array.isArray(allocatorRow && allocatorRow.penalty_reasons)
     ? allocatorRow.penalty_reasons.map((item) => upper(item)).filter(Boolean)
     : [];
+  const allocatorAlphaContextRows = Array.isArray(allocatorSnapshot.summary && allocatorSnapshot.summary.alpha_penalty_context_rows)
+    ? allocatorSnapshot.summary.alpha_penalty_context_rows
+    : [];
+  const matchedAlphaContext = allocatorAlphaContextRows.find((row) => {
+    if (upper(row && row.market) !== resolvedSymbol) return false;
+    if (upper(row && row.position_side) !== upper(desiredSide)) return false;
+    const rowRegime = upper(row && row.regime_key) || "UNKNOWN";
+    return rowRegime === executorRegime || rowRegime === "UNKNOWN" || executorRegime === "UNKNOWN";
+  }) || null;
+  const matchedAlphaSeverity = upper(matchedAlphaContext && matchedAlphaContext.severity);
+  if (!blocked && matchedAlphaSeverity === "HARD") {
+    blocked = true;
+    reason = "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_BLOCK";
+    exitProfileMode = "BASE";
+    notes.push(reason);
+  } else if (!blocked && matchedAlphaSeverity === "SOFT") {
+    scale = minScale(scale, ALLOCATOR_REDUCE_SCALE);
+    exitProfileMode = exitProfileMode || "BASE";
+    reason = "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_REDUCE";
+    notes.push(reason);
+  }
   if (!blocked && (allocatorAction === "QUARANTINE" || allocatorAction === "BLOCK")) {
     blocked = true;
     reason = allocatorAction === "BLOCK"
@@ -620,9 +655,11 @@ async function evaluateOpenClawExecutionDecision({
     _openclaw_executor_confidence: confidence,
     _openclaw_executor_posterior: posterior,
     _openclaw_executor_entry_tier: entryTier,
+    _openclaw_executor_regime: executorRegime,
     _openclaw_executor_allocator_action: allocatorAction,
     _openclaw_executor_allocator_score: allocatorScore,
     _openclaw_executor_allocator_penalty_reasons: allocatorPenaltyReasons,
+    _openclaw_executor_alpha_context: matchedAlphaContext,
   };
   if (exitProfileMode) {
     featuresPatch._openclaw_executor_exit_profile_mode = exitProfileMode;
@@ -656,9 +693,11 @@ async function evaluateOpenClawExecutionDecision({
       confidence,
       posterior,
       entryTier,
+      executorRegime,
       allocatorAction,
       allocatorScore,
       allocatorPenaltyReasons,
+      alphaContext: matchedAlphaContext,
       notes,
     },
     featuresPatch,

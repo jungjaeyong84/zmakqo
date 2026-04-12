@@ -29,6 +29,8 @@ const { buildEventTruthAlphaValidation, __test } = require("../utils/eventTruthA
   assert.strictEqual(summary.top_positive_market, "ETHUSDT");
   assert.ok(Array.isArray(summary.by_strategy));
   assert.ok(Array.isArray(summary.by_regime));
+  assert.ok(Array.isArray(summary.by_market_side));
+  assert.ok(Array.isArray(summary.by_market_side_regime));
   assert.ok(summary.periods && summary.periods.DAYS_30);
   assert.strictEqual(summary.evidence_status, "EVENT_TRUTH_SAMPLE_LOW");
 })();
@@ -81,6 +83,7 @@ const { buildEventTruthAlphaValidation, __test } = require("../utils/eventTruthA
   assert.strictEqual(summary.alpha_ready, true);
   assert.ok(summary.top_positive_strategy);
   assert.ok(summary.top_positive_regime);
+  assert.ok(summary.by_market_side_regime.find((row) => row.key === "BTCUSDT|UNKNOWN|UNKNOWN"));
   assert.ok(summary.periods && summary.periods.DAYS_90);
   assert.strictEqual(summary.periods.DAYS_30.label, "최근 30일");
   assert.strictEqual(summary.periods.DAYS_90.label, "최근 90일");

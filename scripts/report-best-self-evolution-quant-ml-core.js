@@ -44,6 +44,8 @@ function renderMarkdown(payload = {}) {
     `- generated_at_kst: ${payload.generated_at_kst || "N/A"}`,
     `- status: ${summary.status || "N/A"}`,
     `- overall_axis_status: ${summary.overall_axis_status || "N/A"}`,
+    `- primary_blocking_axis: ${summary.primary_blocking_axis || "N/A"}`,
+    `- primary_blocking_reason: ${summary.primary_blocking_reason || "N/A"}`,
     "",
     "## Axes",
     "### execution_edge",

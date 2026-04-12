@@ -75,10 +75,10 @@ const { buildQuantMlCoreAuthority } = require("../utils/quantMlCoreAuthority");
     },
     openclawPolicyAuthority: {
       periods: {
-        DAYS_7: { gate: { status: "PASS" } },
-        DAYS_14: { gate: { status: "PASS" } },
-        DAYS_30: { gate: { status: "WARN" } },
-        DAYS_90: { gate: { status: "PASS" } },
+        DAYS_7: { gate: { status: "PASS", reason: "OPENCLAW_POLICY_STABLE" } },
+        DAYS_14: { gate: { status: "PASS", reason: "OPENCLAW_POLICY_STABLE" } },
+        DAYS_30: { gate: { status: "WARN", reason: "OPENCLAW_POLICY_COST_TOO_HIGH" } },
+        DAYS_90: { gate: { status: "PASS", reason: "OPENCLAW_POLICY_STABLE" } },
       },
     },
     capitalAllocator: {
@@ -101,7 +101,10 @@ const { buildQuantMlCoreAuthority } = require("../utils/quantMlCoreAuthority");
   assert.strictEqual(summary.axes.portfolio_ml.alpha_hard_penalty_market_n, 1);
   assert.strictEqual(summary.axes.portfolio_ml.execution_hard_penalty_market_n, 1);
   assert.strictEqual(summary.axes.openclaw_single_authority.days_30_gate, "WARN");
+  assert.strictEqual(summary.axes.openclaw_single_authority.days_30_reason, "OPENCLAW_POLICY_COST_TOO_HIGH");
   assert.strictEqual(summary.axes.continuous_alpha_proof.days_30_status, "EVENT_TRUTH_ALPHA_PASS");
+  assert.strictEqual(summary.primary_blocking_axis, "OPENCLAW_SINGLE_AUTHORITY");
+  assert.strictEqual(summary.primary_blocking_reason, "OPENCLAW_POLICY_COST_TOO_HIGH");
   assert.ok(summary.periods.DAYS_30);
   assert.strictEqual(summary.periods.DAYS_30.label, "최근 30일");
   assert.ok(summary.periods.DAYS_90);

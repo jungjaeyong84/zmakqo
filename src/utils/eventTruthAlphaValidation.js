@@ -58,12 +58,18 @@ function resolveRegimeKey(row = null) {
 function normalizeRows(rows = []) {
   return (Array.isArray(rows) ? rows : [])
     .map((row) => {
+      const feature = row && row.feature_snapshot && typeof row.feature_snapshot === "object" ? row.feature_snapshot : {};
       const label = row && row.label_snapshot && typeof row.label_snapshot === "object" ? row.label_snapshot : {};
+      const positionSide = upper(feature.position_side) || "UNKNOWN";
+      const regimeKey = resolveRegimeKey(row);
       return {
         market: upper(row && row.market) || "UNKNOWN",
         close_ms: toNum(row && row.close_ms),
         strategy_key: resolveStrategyKey(row),
-        regime_key: resolveRegimeKey(row),
+        regime_key: regimeKey,
+        position_side: positionSide,
+        market_side_key: `${upper(row && row.market) || "UNKNOWN"}|${positionSide}`,
+        market_side_regime_key: `${upper(row && row.market) || "UNKNOWN"}|${positionSide}|${regimeKey}`,
         is_executed: label.is_executed === true,
         is_realized: label.is_realized === true,
         realized_direction: upper(label.realized_direction),
@@ -149,6 +155,8 @@ function summarizeAlphaRows(rows = [], {
   const tp0ToTp1Rows = tp0HitRows.filter((row) => row.tp0_to_tp1_converted === true);
 
   const byMarket = summarizeGroupRows(realizedRows.concat(executedRows.filter((row) => !row.is_realized)), "market");
+  const byMarketSide = summarizeGroupRows(realizedRows.concat(executedRows.filter((row) => !row.is_realized)), "market_side_key");
+  const byMarketSideRegime = summarizeGroupRows(realizedRows.concat(executedRows.filter((row) => !row.is_realized)), "market_side_regime_key");
   const byStrategy = summarizeGroupRows(realizedRows.concat(executedRows.filter((row) => !row.is_realized)), "strategy_key");
   const byRegime = summarizeGroupRows(realizedRows.concat(executedRows.filter((row) => !row.is_realized)), "regime_key");
 
@@ -195,6 +203,8 @@ function summarizeAlphaRows(rows = [], {
     top_positive_regime: strongestRegime ? strongestRegime.key : null,
     top_negative_regime: weakestRegime ? weakestRegime.key : null,
     by_market: marketRows.slice(0, 10),
+    by_market_side: byMarketSide.slice(0, 20),
+    by_market_side_regime: byMarketSideRegime.slice(0, 30),
     by_strategy: byStrategy.slice(0, 10),
     by_regime: byRegime.slice(0, 10),
     blocking_reason_n: blockingReasons.length,
@@ -270,6 +280,8 @@ function buildEventTruthAlphaValidation({
     top_positive_regime: summary.top_positive_regime,
     top_negative_regime: summary.top_negative_regime,
     by_market: summary.by_market,
+    by_market_side: summary.by_market_side,
+    by_market_side_regime: summary.by_market_side_regime,
     by_strategy: summary.by_strategy,
     by_regime: summary.by_regime,
     periods,

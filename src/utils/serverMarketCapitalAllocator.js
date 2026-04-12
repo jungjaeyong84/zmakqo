@@ -125,8 +125,10 @@ function buildFeePnlPenaltyMarkets(feePnlSummary = {}) {
 
 function buildAlphaPenaltyMarkets(alphaValidationSummary = {}) {
   const rows = Array.isArray(alphaValidationSummary.by_market) ? alphaValidationSummary.by_market : [];
+  const contextRows = Array.isArray(alphaValidationSummary.by_market_side_regime) ? alphaValidationSummary.by_market_side_regime : [];
   const hardPenaltyMarkets = new Set();
   const softPenaltyMarkets = new Set();
+  const contextRowsByMarket = new Map();
   for (const row of rows) {
     const market = upper(row && row.key);
     if (!market) continue;
@@ -153,7 +155,57 @@ function buildAlphaPenaltyMarkets(alphaValidationSummary = {}) {
       softPenaltyMarkets.add(market);
     }
   }
-  return { hardPenaltyMarkets, softPenaltyMarkets };
+  for (const row of contextRows) {
+    const rawKey = upper(row && row.key);
+    if (!rawKey) continue;
+    const [market, positionSide, regimeKey] = rawKey.split("|");
+    if (!market) continue;
+    const realizedN = toNum(row && row.realized_n) || 0;
+    const positiveRate = toNum(row && row.positive_rate);
+    const avgRet = toNum(row && row.avg_realized_ret_net);
+    let severity = null;
+    if (
+      realizedN >= 3
+      && Number.isFinite(avgRet)
+      && avgRet < 0
+      && Number.isFinite(positiveRate)
+      && positiveRate < 0.45
+    ) {
+      severity = "HARD";
+    } else if (
+      realizedN >= 2
+      && (
+        (Number.isFinite(avgRet) && avgRet < 0)
+        || (Number.isFinite(positiveRate) && positiveRate < 0.5)
+      )
+    ) {
+      severity = "SOFT";
+    }
+    if (!severity) continue;
+    const bucket = contextRowsByMarket.get(market) || [];
+    bucket.push({
+      key: rawKey,
+      market,
+      position_side: positionSide || "UNKNOWN",
+      regime_key: regimeKey || "UNKNOWN",
+      realized_n: realizedN,
+      positive_rate: positiveRate,
+      avg_realized_ret_net: avgRet,
+      severity,
+    });
+    contextRowsByMarket.set(market, bucket);
+  }
+  for (const [market, bucket] of contextRowsByMarket.entries()) {
+    bucket.sort((a, b) => {
+      const sevGap = (a.severity === "HARD" ? 1 : 0) - (b.severity === "HARD" ? 1 : 0);
+      if (sevGap !== 0) return -sevGap;
+      const retA = toNum(a.avg_realized_ret_net);
+      const retB = toNum(b.avg_realized_ret_net);
+      if (Number.isFinite(retA) && Number.isFinite(retB) && retA !== retB) return retA - retB;
+      return (toNum(b.realized_n) || 0) - (toNum(a.realized_n) || 0);
+    });
+  }
+  return { hardPenaltyMarkets, softPenaltyMarkets, contextRowsByMarket };
 }
 
 function classifyAction({ market, score, production, exploration, deferred, severePenalty, reversePenalty, objectiveBand }) {
@@ -197,7 +249,7 @@ function deriveServerMarketCapitalAllocator({
   const { executionHardPenaltyMarkets, executionSoftPenaltyMarkets, reversePenaltyMarkets } = buildPenaltySets(executionSummary, reverseSummary);
   const { hardPenaltyMarkets, softPenaltyMarkets } = buildFailurePenaltyMarkets(failureLearningSummary);
   const { hardPenaltyMarkets: feeHardPenaltyMarkets, softPenaltyMarkets: feeSoftPenaltyMarkets } = buildFeePnlPenaltyMarkets(feePnlSummary);
-  const { hardPenaltyMarkets: alphaHardPenaltyMarkets, softPenaltyMarkets: alphaSoftPenaltyMarkets } = buildAlphaPenaltyMarkets(alphaValidationSummary);
+  const { hardPenaltyMarkets: alphaHardPenaltyMarkets, softPenaltyMarkets: alphaSoftPenaltyMarkets, contextRowsByMarket: alphaContextRowsByMarket } = buildAlphaPenaltyMarkets(alphaValidationSummary);
 
   const rows = objectiveRows.map((row) => {
     const market = upper(row.market);
@@ -216,6 +268,7 @@ function deriveServerMarketCapitalAllocator({
     const feePnlSoftPenalty = feeSoftPenaltyMarkets.has(market);
     const alphaHardPenalty = alphaHardPenaltyMarkets.has(market);
     const alphaSoftPenalty = alphaSoftPenaltyMarkets.has(market);
+    const alphaPenaltyContexts = (alphaContextRowsByMarket.get(market) || []).slice(0, 5);
     const baseScore = objectiveScore + clamp(recoveryPriorityScore / 4, -2, 3) + clamp(avgProxy / 20, -1, 2);
     const slotBoost = production ? 1.25 : (exploration ? Number((0.5 * epochExplorationBoost).toFixed(4)) : 0);
     const penaltyScore = (
@@ -274,6 +327,7 @@ function deriveServerMarketCapitalAllocator({
       fee_pnl_hard_penalty: feePnlHardPenalty,
       alpha_soft_penalty: alphaSoftPenalty,
       alpha_hard_penalty: alphaHardPenalty,
+      alpha_penalty_contexts: alphaPenaltyContexts,
       penalty_reasons: penaltyReasons,
       allocation_score: allocationScore,
       recommended_action: action,
@@ -322,6 +376,17 @@ function deriveServerMarketCapitalAllocator({
     fee_pnl_hard_penalty_markets: Array.from(feeHardPenaltyMarkets),
     alpha_soft_penalty_markets: Array.from(alphaSoftPenaltyMarkets),
     alpha_hard_penalty_markets: Array.from(alphaHardPenaltyMarkets),
+    alpha_penalty_context_rows: Array.from(alphaContextRowsByMarket.values())
+      .flat()
+      .sort((a, b) => {
+        const sevGap = (a.severity === "HARD" ? 1 : 0) - (b.severity === "HARD" ? 1 : 0);
+        if (sevGap !== 0) return -sevGap;
+        const retA = toNum(a.avg_realized_ret_net);
+        const retB = toNum(b.avg_realized_ret_net);
+        if (Number.isFinite(retA) && Number.isFinite(retB) && retA !== retB) return retA - retB;
+        return (toNum(b.realized_n) || 0) - (toNum(a.realized_n) || 0);
+      })
+      .slice(0, 30),
     learning_epoch_status: upper(epochSummary.status),
     learning_epoch_active: epochActive,
     learning_epoch_penalty_weight: epochPenaltyWeight,
@@ -343,6 +408,7 @@ function deriveServerMarketCapitalAllocator({
       fee_pnl_hard_penalty: row.fee_pnl_hard_penalty,
       alpha_soft_penalty: row.alpha_soft_penalty,
       alpha_hard_penalty: row.alpha_hard_penalty,
+      alpha_penalty_contexts: row.alpha_penalty_contexts,
       penalty_reasons: row.penalty_reasons,
     })),
     global_objective_score: toNum(objectiveSummary.global_objective_score),

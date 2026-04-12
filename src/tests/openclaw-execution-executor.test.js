@@ -249,6 +249,45 @@ async function run() {
 
   await withEnv({
     OPENCLAW_EXECUTOR_ENABLED: "1",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_ALLOCATOR_REDUCE_SCALE: "0.4",
+  }, async () => {
+    const { evaluateOpenClawExecutionDecision } = freshRequire("../services/openclawExecutionExecutor");
+    const res = await evaluateOpenClawExecutionDecision({
+      exchange: "BINANCEFUT",
+      symbol: "BTCUSDT",
+      intent: "ENTRY",
+      event: "ENTRY_LONG_REAL",
+      side: "BUY",
+      qtyPct: 0.5,
+      features: {
+        position_side: "LONG",
+        openclaw_market_regime_cohort: "TREND",
+      },
+      positionViews: [],
+      recentTimelineRows: [],
+      capitalAllocatorSnapshot: {
+        summary: {
+          alpha_penalty_context_rows: [
+            { market: "BTCUSDT", position_side: "LONG", regime_key: "TREND", severity: "SOFT", realized_n: 3, positive_rate: 0.4, avg_realized_ret_net: -0.002 },
+          ],
+        },
+        by_market: [
+          { market: "BTCUSDT", recommended_action: "HOLD", allocation_score: 0.2, penalty_reasons: [] },
+        ],
+      },
+    });
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_REDUCE");
+    assert.ok(Math.abs(res.qtyPctFinal - 0.2) < 1e-9);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context.severity, "SOFT");
+  });
+
+  await withEnv({
+    OPENCLAW_EXECUTOR_ENABLED: "1",
     OPENCLAW_EXECUTOR_ALLOW_UPSCALE: "1",
     OPENCLAW_EXECUTOR_HIGH_CONF_SCALE: "1.1",
   }, async () => {

@@ -41,6 +41,10 @@ const { deriveServerMarketCapitalAllocator } = require("../utils/serverMarketCap
           { key: "BTCUSDT", realized_n: 4, positive_rate: 0.25, avg_realized_ret_net: -0.012 },
           { key: "XRPUSDT", realized_n: 2, positive_rate: 0.49, avg_realized_ret_net: -0.001 },
         ],
+        by_market_side_regime: [
+          { key: "BTCUSDT|LONG|TREND", realized_n: 4, positive_rate: 0.25, avg_realized_ret_net: -0.012 },
+          { key: "XRPUSDT|SHORT|REVERSAL", realized_n: 2, positive_rate: 0.49, avg_realized_ret_net: -0.001 },
+        ],
       },
     },
     executionQuality: {
@@ -71,6 +75,9 @@ const { deriveServerMarketCapitalAllocator } = require("../utils/serverMarketCap
   assert.ok(summary.alpha_soft_penalty_markets.includes("XRPUSDT"));
   assert.ok(Array.isArray(btc.penalty_reasons) && btc.penalty_reasons.includes("ALPHA_HARD"));
   assert.ok(Array.isArray(xrp.penalty_reasons) && xrp.penalty_reasons.includes("ALPHA_SOFT"));
+  assert.strictEqual(Array.isArray(btc.alpha_penalty_contexts), true);
+  assert.strictEqual(btc.alpha_penalty_contexts[0].key, "BTCUSDT|LONG|TREND");
+  assert.ok(Array.isArray(summary.alpha_penalty_context_rows));
 })();
 
 console.log("SERVER_MARKET_CAPITAL_ALLOCATOR_TEST_OK");
