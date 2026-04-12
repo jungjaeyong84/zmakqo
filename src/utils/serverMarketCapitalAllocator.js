@@ -123,10 +123,43 @@ function buildFeePnlPenaltyMarkets(feePnlSummary = {}) {
   return { hardPenaltyMarkets, softPenaltyMarkets };
 }
 
-function classifyAction({ market, score, production, exploration, deferred, executionPenalty, reversePenalty, objectiveBand }) {
+function buildAlphaPenaltyMarkets(alphaValidationSummary = {}) {
+  const rows = Array.isArray(alphaValidationSummary.by_market) ? alphaValidationSummary.by_market : [];
+  const hardPenaltyMarkets = new Set();
+  const softPenaltyMarkets = new Set();
+  for (const row of rows) {
+    const market = upper(row && row.key);
+    if (!market) continue;
+    const realizedN = toNum(row && row.realized_n) || 0;
+    const positiveRate = toNum(row && row.positive_rate);
+    const avgRet = toNum(row && row.avg_realized_ret_net);
+    if (
+      realizedN >= 3
+      && Number.isFinite(avgRet)
+      && avgRet < 0
+      && Number.isFinite(positiveRate)
+      && positiveRate < 0.45
+    ) {
+      hardPenaltyMarkets.add(market);
+      continue;
+    }
+    if (
+      realizedN >= 2
+      && (
+        (Number.isFinite(avgRet) && avgRet < 0)
+        || (Number.isFinite(positiveRate) && positiveRate < 0.5)
+      )
+    ) {
+      softPenaltyMarkets.add(market);
+    }
+  }
+  return { hardPenaltyMarkets, softPenaltyMarkets };
+}
+
+function classifyAction({ market, score, production, exploration, deferred, severePenalty, reversePenalty, objectiveBand }) {
   const severeDrag = objectiveBand === "SEVERE_DRAG" || score <= -3;
-  if (deferred && (executionPenalty || reversePenalty || severeDrag)) return "QUARANTINE";
-  if (severeDrag && (executionPenalty || reversePenalty)) return "QUARANTINE";
+  if (deferred && (severePenalty || reversePenalty || severeDrag)) return "QUARANTINE";
+  if (severeDrag && (severePenalty || reversePenalty)) return "QUARANTINE";
   if (production && score >= 1.5) return "INCREASE";
   if (production && score > -1) return "HOLD";
   if (exploration && score >= 0) return "EXPLORE_LIGHT";
@@ -143,6 +176,7 @@ function deriveServerMarketCapitalAllocator({
   serverPrimaryLearningEpoch = null,
   failureLearningLoop = null,
   feePnlKpiAuthority = null,
+  eventTruthAlphaValidation = null,
 } = {}) {
   const objectiveSummary = readSummary(marketObjectiveScore);
   const objectiveRows = readRows(marketObjectiveScore, "by_market");
@@ -152,6 +186,7 @@ function deriveServerMarketCapitalAllocator({
   const epochSummary = readSummary(serverPrimaryLearningEpoch);
   const failureLearningSummary = readSummary(failureLearningLoop);
   const feePnlSummary = readSummary(feePnlKpiAuthority);
+  const alphaValidationSummary = readSummary(eventTruthAlphaValidation);
   const epochActive = epochSummary.active === true || upper(epochSummary.status) === "SERVER_PRIMARY_EPOCH_ACTIVE";
   const epochPenaltyWeight = epochActive ? (toNum(epochSummary.penalty_weight) || 0.35) : 1;
   const epochExplorationBoost = epochActive ? (toNum(epochSummary.exploration_boost) || 1.15) : 1;
@@ -162,6 +197,7 @@ function deriveServerMarketCapitalAllocator({
   const { executionHardPenaltyMarkets, executionSoftPenaltyMarkets, reversePenaltyMarkets } = buildPenaltySets(executionSummary, reverseSummary);
   const { hardPenaltyMarkets, softPenaltyMarkets } = buildFailurePenaltyMarkets(failureLearningSummary);
   const { hardPenaltyMarkets: feeHardPenaltyMarkets, softPenaltyMarkets: feeSoftPenaltyMarkets } = buildFeePnlPenaltyMarkets(feePnlSummary);
+  const { hardPenaltyMarkets: alphaHardPenaltyMarkets, softPenaltyMarkets: alphaSoftPenaltyMarkets } = buildAlphaPenaltyMarkets(alphaValidationSummary);
 
   const rows = objectiveRows.map((row) => {
     const market = upper(row.market);
@@ -178,6 +214,8 @@ function deriveServerMarketCapitalAllocator({
     const failureSoftPenalty = softPenaltyMarkets.has(market);
     const feePnlHardPenalty = feeHardPenaltyMarkets.has(market);
     const feePnlSoftPenalty = feeSoftPenaltyMarkets.has(market);
+    const alphaHardPenalty = alphaHardPenaltyMarkets.has(market);
+    const alphaSoftPenalty = alphaSoftPenaltyMarkets.has(market);
     const baseScore = objectiveScore + clamp(recoveryPriorityScore / 4, -2, 3) + clamp(avgProxy / 20, -1, 2);
     const slotBoost = production ? 1.25 : (exploration ? Number((0.5 * epochExplorationBoost).toFixed(4)) : 0);
     const penaltyScore = (
@@ -189,15 +227,29 @@ function deriveServerMarketCapitalAllocator({
       + (failureHardPenalty ? 2.0 : 0)
       + (feePnlSoftPenalty ? 0.8 : 0)
       + (feePnlHardPenalty ? 1.6 : 0)
+      + (alphaSoftPenalty ? 0.8 : 0)
+      + (alphaHardPenalty ? 1.8 : 0)
     ) * epochPenaltyWeight;
     const allocationScore = Number((baseScore + slotBoost - penaltyScore).toFixed(4));
+    const penaltyReasons = [
+      executionHardPenalty ? "EXECUTION_HARD" : null,
+      executionSoftPenalty ? "EXECUTION_SOFT" : null,
+      reversePenalty ? "REVERSE_POLICY" : null,
+      deferred ? "DEFERRED_PENALTY" : null,
+      failureHardPenalty ? "FAILURE_HARD" : null,
+      failureSoftPenalty ? "FAILURE_SOFT" : null,
+      feePnlHardPenalty ? "FEE_PNL_HARD" : null,
+      feePnlSoftPenalty ? "FEE_PNL_SOFT" : null,
+      alphaHardPenalty ? "ALPHA_HARD" : null,
+      alphaSoftPenalty ? "ALPHA_SOFT" : null,
+    ].filter(Boolean);
     const action = classifyAction({
       market,
       score: allocationScore,
       production,
       exploration,
-      deferred: deferred || failureHardPenalty || feePnlHardPenalty || executionHardPenalty,
-      executionPenalty: executionHardPenalty || failureHardPenalty || feePnlHardPenalty,
+      deferred: deferred || failureHardPenalty || feePnlHardPenalty || executionHardPenalty || alphaHardPenalty,
+      severePenalty: executionHardPenalty || failureHardPenalty || feePnlHardPenalty || alphaHardPenalty,
       reversePenalty,
       objectiveBand: upper(row.objective_band),
     });
@@ -220,6 +272,9 @@ function deriveServerMarketCapitalAllocator({
       failure_hard_penalty: failureHardPenalty,
       fee_pnl_soft_penalty: feePnlSoftPenalty,
       fee_pnl_hard_penalty: feePnlHardPenalty,
+      alpha_soft_penalty: alphaSoftPenalty,
+      alpha_hard_penalty: alphaHardPenalty,
+      penalty_reasons: penaltyReasons,
       allocation_score: allocationScore,
       recommended_action: action,
     };
@@ -265,6 +320,8 @@ function deriveServerMarketCapitalAllocator({
     failure_hard_penalty_markets: Array.from(hardPenaltyMarkets),
     fee_pnl_soft_penalty_markets: Array.from(feeSoftPenaltyMarkets),
     fee_pnl_hard_penalty_markets: Array.from(feeHardPenaltyMarkets),
+    alpha_soft_penalty_markets: Array.from(alphaSoftPenaltyMarkets),
+    alpha_hard_penalty_markets: Array.from(alphaHardPenaltyMarkets),
     learning_epoch_status: upper(epochSummary.status),
     learning_epoch_active: epochActive,
     learning_epoch_penalty_weight: epochPenaltyWeight,
@@ -284,6 +341,9 @@ function deriveServerMarketCapitalAllocator({
       failure_hard_penalty: row.failure_hard_penalty,
       fee_pnl_soft_penalty: row.fee_pnl_soft_penalty,
       fee_pnl_hard_penalty: row.fee_pnl_hard_penalty,
+      alpha_soft_penalty: row.alpha_soft_penalty,
+      alpha_hard_penalty: row.alpha_hard_penalty,
+      penalty_reasons: row.penalty_reasons,
     })),
     global_objective_score: toNum(objectiveSummary.global_objective_score),
   };

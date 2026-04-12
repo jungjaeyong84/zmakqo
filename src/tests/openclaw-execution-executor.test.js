@@ -219,6 +219,36 @@ async function run() {
 
   await withEnv({
     OPENCLAW_EXECUTOR_ENABLED: "1",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
+  }, async () => {
+    const { evaluateOpenClawExecutionDecision } = freshRequire("../services/openclawExecutionExecutor");
+    const res = await evaluateOpenClawExecutionDecision({
+      exchange: "BINANCEFUT",
+      symbol: "LINKUSDT",
+      intent: "ENTRY",
+      event: "ENTRY_SHORT_REAL",
+      side: "SELL",
+      qtyPct: 0.7,
+      features: {},
+      positionViews: [],
+      recentTimelineRows: [],
+      capitalAllocatorSnapshot: {
+        by_market: [
+          { market: "LINKUSDT", recommended_action: "BLOCK", allocation_score: -4.2, penalty_reasons: ["ALPHA_HARD", "EXECUTION_HARD"] },
+        ],
+      },
+    });
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_ALLOCATOR_BLOCK");
+    assert.strictEqual(res.qtyPctFinal, 0);
+    assert.deepStrictEqual(res.featuresPatch._openclaw_executor_allocator_penalty_reasons, ["ALPHA_HARD", "EXECUTION_HARD"]);
+  });
+
+  await withEnv({
+    OPENCLAW_EXECUTOR_ENABLED: "1",
     OPENCLAW_EXECUTOR_ALLOW_UPSCALE: "1",
     OPENCLAW_EXECUTOR_HIGH_CONF_SCALE: "1.1",
   }, async () => {

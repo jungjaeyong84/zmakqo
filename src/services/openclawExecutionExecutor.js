@@ -569,9 +569,14 @@ async function evaluateOpenClawExecutionDecision({
 
   const allocatorAction = upper(allocatorRow && allocatorRow.recommended_action);
   const allocatorScore = toNum(allocatorRow && allocatorRow.allocation_score);
-  if (!blocked && allocatorAction === "QUARANTINE") {
+  const allocatorPenaltyReasons = Array.isArray(allocatorRow && allocatorRow.penalty_reasons)
+    ? allocatorRow.penalty_reasons.map((item) => upper(item)).filter(Boolean)
+    : [];
+  if (!blocked && (allocatorAction === "QUARANTINE" || allocatorAction === "BLOCK")) {
     blocked = true;
-    reason = "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE";
+    reason = allocatorAction === "BLOCK"
+      ? "OPENCLAW_EXECUTOR_ALLOCATOR_BLOCK"
+      : "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE";
     exitProfileMode = "BASE";
     notes.push(reason);
   } else if (!blocked && allocatorAction === "REDUCE") {
@@ -617,6 +622,7 @@ async function evaluateOpenClawExecutionDecision({
     _openclaw_executor_entry_tier: entryTier,
     _openclaw_executor_allocator_action: allocatorAction,
     _openclaw_executor_allocator_score: allocatorScore,
+    _openclaw_executor_allocator_penalty_reasons: allocatorPenaltyReasons,
   };
   if (exitProfileMode) {
     featuresPatch._openclaw_executor_exit_profile_mode = exitProfileMode;
@@ -652,6 +658,7 @@ async function evaluateOpenClawExecutionDecision({
       entryTier,
       allocatorAction,
       allocatorScore,
+      allocatorPenaltyReasons,
       notes,
     },
     featuresPatch,

@@ -24,6 +24,7 @@ const EXPLORATION_BUDGET_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_ex
 const SERVER_PRIMARY_LEARNING_EPOCH_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_learning_epoch_latest.json");
 const FAILURE_LEARNING_LOOP_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_failure_learning_loop_latest.json");
 const FEE_PNL_KPI_AUTHORITY_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_fee_pnl_kpi_authority_latest.json");
+const EVENT_TRUTH_ALPHA_VALIDATION_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_event_truth_alpha_validation_latest.json");
 
 function renderMarkdown(report = {}) {
   const summary = report.summary || {};
@@ -39,10 +40,11 @@ function renderMarkdown(report = {}) {
     `- explore: ${summary.top_explore_market || "N/A"} / ${summary.top_explore_score != null ? summary.top_explore_score : "N/A"}`,
     `- learning_epoch: ${summary.learning_epoch_status || "N/A"} / penalty_weight=${summary.learning_epoch_penalty_weight != null ? summary.learning_epoch_penalty_weight : "N/A"}`,
     `- fee_pnl_hard_penalty_markets: ${Array.isArray(summary.fee_pnl_hard_penalty_markets) && summary.fee_pnl_hard_penalty_markets.length ? summary.fee_pnl_hard_penalty_markets.join(", ") : "none"}`,
+    `- alpha_hard_penalty_markets: ${Array.isArray(summary.alpha_hard_penalty_markets) && summary.alpha_hard_penalty_markets.length ? summary.alpha_hard_penalty_markets.join(", ") : "none"}`,
     "",
     "## Markets",
     ...(Array.isArray(summary.top_watch_markets) && summary.top_watch_markets.length
-      ? summary.top_watch_markets.map((row) => `- ${row.market}: ${row.recommended_action} / score=${row.allocation_score != null ? row.allocation_score : "N/A"} / prod=${row.production_slot ? "YES" : "NO"} / explore=${row.exploration_slot ? "YES" : "NO"} / deferred=${row.deferred_penalty ? "YES" : "NO"}`)
+      ? summary.top_watch_markets.map((row) => `- ${row.market}: ${row.recommended_action} / score=${row.allocation_score != null ? row.allocation_score : "N/A"} / prod=${row.production_slot ? "YES" : "NO"} / explore=${row.exploration_slot ? "YES" : "NO"} / deferred=${row.deferred_penalty ? "YES" : "NO"} / penalties=${Array.isArray(row.penalty_reasons) && row.penalty_reasons.length ? row.penalty_reasons.join("|") : "none"}`)
       : ["- none"]),
   ];
   return `${lines.join("\n")}\n`;
@@ -58,10 +60,11 @@ function main() {
   const serverPrimaryLearningEpoch = readJsonRawSafe(SERVER_PRIMARY_LEARNING_EPOCH_PATH, null);
   const failureLearningLoop = readJsonRawSafe(FAILURE_LEARNING_LOOP_PATH, null);
   const feePnlKpiAuthority = readJsonRawSafe(FEE_PNL_KPI_AUTHORITY_PATH, null);
+  const eventTruthAlphaValidation = readJsonRawSafe(EVENT_TRUTH_ALPHA_VALIDATION_PATH, null);
   const reportCycleId = resolveAnchoredReportCycleId({
     preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
     fallbackCycleId: cycleMeta.cycle_id,
-    sources: [marketObjectiveScore, executionQuality, reversePolicy, explorationBudget, serverPrimaryLearningEpoch, failureLearningLoop, feePnlKpiAuthority],
+    sources: [marketObjectiveScore, executionQuality, reversePolicy, explorationBudget, serverPrimaryLearningEpoch, failureLearningLoop, feePnlKpiAuthority, eventTruthAlphaValidation],
   });
 
   const summary = deriveServerMarketCapitalAllocator({
@@ -72,6 +75,7 @@ function main() {
     serverPrimaryLearningEpoch,
     failureLearningLoop,
     feePnlKpiAuthority,
+    eventTruthAlphaValidation,
   });
   const report = {
     ok: true,
@@ -86,6 +90,7 @@ function main() {
       server_primary_learning_epoch: SERVER_PRIMARY_LEARNING_EPOCH_PATH,
       failure_learning_loop: FAILURE_LEARNING_LOOP_PATH,
       fee_pnl_kpi_authority: FEE_PNL_KPI_AUTHORITY_PATH,
+      event_truth_alpha_validation: EVENT_TRUTH_ALPHA_VALIDATION_PATH,
     },
     summary,
   };

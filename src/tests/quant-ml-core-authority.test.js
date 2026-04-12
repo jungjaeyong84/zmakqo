@@ -87,6 +87,9 @@ const { buildQuantMlCoreAuthority } = require("../utils/quantMlCoreAuthority");
         top_quarantine_market: null,
         top_reduce_market: "ETHUSDT",
         top_increase_market: "BTCUSDT",
+        alpha_hard_penalty_markets: ["ETHUSDT"],
+        fee_pnl_hard_penalty_markets: [],
+        execution_hard_penalty_markets: ["BTCUSDT"],
       },
     },
   });
@@ -95,7 +98,10 @@ const { buildQuantMlCoreAuthority } = require("../utils/quantMlCoreAuthority");
   assert.strictEqual(summary.axes.fee_pnl.status, "PASS");
   assert.strictEqual(summary.axes.continuous_alpha_proof.status, "PASS");
   assert.strictEqual(summary.axes.portfolio_ml.status, "PASS");
+  assert.strictEqual(summary.axes.portfolio_ml.alpha_hard_penalty_market_n, 1);
+  assert.strictEqual(summary.axes.portfolio_ml.execution_hard_penalty_market_n, 1);
   assert.strictEqual(summary.axes.openclaw_single_authority.days_30_gate, "WARN");
+  assert.strictEqual(summary.axes.continuous_alpha_proof.days_30_status, "EVENT_TRUTH_ALPHA_PASS");
   assert.ok(summary.periods.DAYS_30);
   assert.strictEqual(summary.periods.DAYS_30.label, "최근 30일");
   assert.ok(summary.periods.DAYS_90);

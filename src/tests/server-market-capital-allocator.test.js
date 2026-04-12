@@ -35,6 +35,14 @@ const { deriveServerMarketCapitalAllocator } = require("../utils/serverMarketCap
         ],
       },
     },
+    eventTruthAlphaValidation: {
+      summary: {
+        by_market: [
+          { key: "BTCUSDT", realized_n: 4, positive_rate: 0.25, avg_realized_ret_net: -0.012 },
+          { key: "XRPUSDT", realized_n: 2, positive_rate: 0.49, avg_realized_ret_net: -0.001 },
+        ],
+      },
+    },
     executionQuality: {
       summary: {
         top_watch_markets: [
@@ -59,6 +67,10 @@ const { deriveServerMarketCapitalAllocator } = require("../utils/serverMarketCap
   assert.ok(summary.fee_pnl_soft_penalty_markets.includes("XRPUSDT"));
   assert.ok(summary.execution_hard_penalty_markets.includes("BTCUSDT"));
   assert.ok(summary.execution_soft_penalty_markets.includes("XRPUSDT"));
+  assert.ok(summary.alpha_hard_penalty_markets.includes("BTCUSDT"));
+  assert.ok(summary.alpha_soft_penalty_markets.includes("XRPUSDT"));
+  assert.ok(Array.isArray(btc.penalty_reasons) && btc.penalty_reasons.includes("ALPHA_HARD"));
+  assert.ok(Array.isArray(xrp.penalty_reasons) && xrp.penalty_reasons.includes("ALPHA_SOFT"));
 })();
 
 console.log("SERVER_MARKET_CAPITAL_ALLOCATOR_TEST_OK");
