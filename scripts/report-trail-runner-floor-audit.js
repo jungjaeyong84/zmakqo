@@ -55,6 +55,21 @@ function buildMd(report) {
   return `${lines.join("\n")}\n`;
 }
 
+function buildCliResult(report, latestJson, datedMd) {
+  return {
+    ok: true,
+    status: report.violation_n > 0 ? "WARN" : "OK",
+    reason: report.violation_n > 0 ? "RUNNER_FLOOR_VIOLATIONS_PRESENT" : null,
+    candidate_rows: report.candidate_rows,
+    violation_n: report.violation_n,
+    violation_total_n: report.violation_total_n,
+    live_bar_runner_violation_n: report.live_bar_runner_violation_n,
+    live_bar_runner_violation_total_n: report.live_bar_runner_violation_total_n,
+    jsonPath: latestJson,
+    mdPath: datedMd,
+  };
+}
+
 async function main() {
   const lookbackDays = Math.max(1, Number(process.env.TRAIL_RUNNER_FLOOR_AUDIT_LOOKBACK_DAYS || 7));
   const limit = Math.max(100, Number(process.env.TRAIL_RUNNER_FLOOR_AUDIT_LIMIT || 5000));
@@ -127,12 +142,18 @@ async function main() {
   fs.writeFileSync(latestJson, JSON.stringify(report, null, 2));
   fs.writeFileSync(datedMd, buildMd(report));
 
-  console.log(`TRAIL_RUNNER_FLOOR_AUDIT_OK candidates=${report.candidate_rows} violations=${report.violation_n} violations_total=${report.violation_total_n} live_bar_runner=${report.live_bar_runner_violation_n} live_bar_runner_total=${report.live_bar_runner_violation_total_n}`);
-  console.log(`TRAIL_RUNNER_FLOOR_AUDIT_JSON=${latestJson}`);
-  console.log(`TRAIL_RUNNER_FLOOR_AUDIT_MD=${datedMd}`);
+  console.log(JSON.stringify(buildCliResult(report, latestJson, datedMd)));
 }
 
-main().catch((err) => {
-  console.error("TRAIL_RUNNER_FLOOR_AUDIT_FAIL", err && err.stack ? err.stack : err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("TRAIL_RUNNER_FLOOR_AUDIT_FAIL", err && err.stack ? err.stack : err);
+    process.exit(1);
+  });
+} else {
+  module.exports = {
+    __test: {
+      buildCliResult,
+    },
+  };
+}
