@@ -121,10 +121,18 @@ function run() {
 
   const recommendations = tuningTest.buildRecommendations({
     decisionSummary: { rows_n: 60, blocked_rate: 0.05 },
-    fillSummary: { fee_to_abs_realized_ratio: 0.42, aggressive_exit_n: 8, aggressive_realized_pnl_sum: -1.2 },
+    fillSummary: {
+      fee_to_abs_realized_ratio: 0.42,
+      aggressive_exit_n: 8,
+      aggressive_realized_pnl_sum: -1.2,
+      by_symbol: [
+        { symbol: "ETHUSDT", fee_to_abs_realized_ratio: 2.1, realized_pnl_sum: -3.2, exit_fills_n: 7 },
+      ],
+    },
     shadowSummary: { rows_n: 39 },
   });
-  assert.ok(recommendations.some((row) => row.key === "RAISE_RECENT_REENTRY_GUARD"));
+  assert.ok(recommendations.some((row) => row.key === "RAISE_RECENT_REENTRY_GUARD" && row.target_symbol === "ETHUSDT"));
+  assert.ok(recommendations.some((row) => row.key === "REVIEW_TOP_COST_SYMBOL" && row.target_symbol === "ETHUSDT"));
   assert.ok(recommendations.some((row) => row.key === "DISABLE_AGGRESSIVE_UPSCALE"));
   assert.ok(recommendations.some((row) => row.key === "INSUFFICIENT_POLICY_EVIDENCE"));
 
@@ -152,7 +160,7 @@ function run() {
       {
         symbol: "DOGEUSDT",
         event: "EXIT_TP_P0_0.8P",
-        fee_value: 0.4,
+        fee_value: 2.4,
         external_realized_pnl: 1.2,
         exit_profile: "BASE",
         created_at: "2026-04-11T00:00:00.000Z",
@@ -168,6 +176,7 @@ function run() {
       },
     ],
   });
+  assert.ok(periodSummary.recommendations.some((row) => row.key === "REVIEW_TOP_COST_SYMBOL"));
   const markdown = tuningTest.renderMarkdown({
     generated_at_kst: "2026-04-11 21:34:56 KST",
     exchange: "BINANCEFUT",
@@ -190,6 +199,7 @@ function run() {
   assert.ok(markdown.includes("최근 90일"));
   assert.ok(markdown.includes("월간"));
   assert.ok(markdown.includes("연간"));
+  assert.ok(markdown.includes("REVIEW_TOP_COST_SYMBOL"));
 
   console.log("OPENCLAW_POLICY_AUTHORITY_TEST_OK");
 }

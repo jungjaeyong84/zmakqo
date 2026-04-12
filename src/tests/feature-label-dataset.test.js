@@ -2,6 +2,7 @@
 
 const assert = require("assert");
 const { buildFeatureLabelDataset, __test } = require("../services/featureLabelDataset");
+const { __test: tradesFromFillsTest } = require("../services/tradesFromFills");
 
 async function run() {
   const dataset = await buildFeatureLabelDataset({
@@ -78,6 +79,15 @@ async function run() {
   assert.strictEqual(featureSnapshot.posterior, 0.71);
   assert.strictEqual(featureSnapshot.regime, "TREND");
   assert.strictEqual(featureSnapshot.openclaw_market_regime_cohort, "RESCUE");
+
+  const normalizedTradeFeatures = tradesFromFillsTest.pickFeaturesJson({
+    features_json: {
+      pro_regime_state: "t\rend",
+      signal_id: "SIG__BINANCEFUT__BTCUSDT__15m__1__LONG",
+    },
+  });
+  assert.strictEqual(normalizedTradeFeatures.pro_regime_state, "trend");
+  assert.strictEqual(normalizedTradeFeatures.market_regime, "trend");
 
   console.log("FEATURE_LABEL_DATASET_TEST_OK");
 }

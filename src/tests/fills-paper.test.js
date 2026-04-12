@@ -5,6 +5,7 @@ const { __test: fillsSyncTest } = require("../services/binanceFuturesFillsSync")
 function run() {
   const buildExternalFillUnverifiedPatch = __test && __test.buildExternalFillUnverifiedPatch;
   const buildExternalFillEventReclassificationPatch = __test && __test.buildExternalFillEventReclassificationPatch;
+  const normalizeFeaturesJson = __test && __test.normalizeFeaturesJson;
   assert.strictEqual(
     typeof buildExternalFillUnverifiedPatch,
     "function",
@@ -15,6 +16,18 @@ function run() {
     "function",
     "buildExternalFillEventReclassificationPatch export missing"
   );
+  assert.strictEqual(
+    typeof normalizeFeaturesJson,
+    "function",
+    "normalizeFeaturesJson export missing"
+  );
+
+  const normalizedFeatures = normalizeFeaturesJson({
+    pro_regime_state: "t\rend",
+    signal_id: "SIG__ETH",
+  });
+  assert.strictEqual(normalizedFeatures.pro_regime_state, "trend");
+  assert.strictEqual(normalizedFeatures.market_regime, "trend");
 
   const patch = buildExternalFillUnverifiedPatch({
     current: {

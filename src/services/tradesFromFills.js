@@ -1,6 +1,7 @@
 const { getFirestore } = require("../storage/firestore");
 const { fetchUnifiedEventTimeline } = require("../storage/unifiedEventTimeline");
 const { isLiveDocForExchange } = require("../utils/liveOnly");
+const { enrichFeaturesWithRegime } = require("../utils/regime");
 const { buildFundingIndexForFills, sumFunding } = require("./fundingFees");
 
 function toNum(x) {
@@ -32,7 +33,8 @@ function pickFeaturesJson(fill) {
     : null;
   if (!featuresJson) return null;
   try {
-    return JSON.parse(JSON.stringify(featuresJson));
+    const cloned = JSON.parse(JSON.stringify(featuresJson));
+    return enrichFeaturesWithRegime(cloned).features;
   } catch (_err) {
     return null;
   }
@@ -728,4 +730,7 @@ module.exports = {
   buildTradesFromFills,
   buildTradesFromFillsWithFunding,
   buildExternalPnlRowsFromFills,
+  __test: {
+    pickFeaturesJson,
+  },
 };

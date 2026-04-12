@@ -2,6 +2,7 @@ const { getFirestore } = require("./firestore");
 const { buildEventEnvelope } = require("../utils/eventEnvelope");
 const { deriveSignalDocId } = require("../utils/signalDocId");
 const { extractLiveExecutionPolicyTrace, toLiveExecutionPolicyTopLevel } = require("../utils/liveExecutionPolicyTrace");
+const { enrichFeaturesWithRegime } = require("../utils/regime");
 const { recordUnifiedEvent, buildUnifiedEventDoc } = require("./unifiedEventTimeline");
 const { recordFillEvent } = require("./fillEvents");
 const { __test: fillEventsTest } = require("./fillEvents");
@@ -21,7 +22,8 @@ function normalizeOptionalNumber(value) {
 function normalizeFeaturesJson(featuresJson) {
   if (!featuresJson || typeof featuresJson !== "object" || Array.isArray(featuresJson)) return null;
   try {
-    return JSON.parse(JSON.stringify(featuresJson));
+    const cloned = JSON.parse(JSON.stringify(featuresJson));
+    return enrichFeaturesWithRegime(cloned).features;
   } catch (_err) {
     return null;
   }
@@ -783,6 +785,7 @@ module.exports = {
     shouldRequireLineageForFill,
     resolveFillSignalRefs,
     canonicalEventId,
+    normalizeFeaturesJson,
     buildExternalFillUnverifiedPatch,
     buildExternalFillEventReclassificationPatch,
   },

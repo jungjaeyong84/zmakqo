@@ -308,15 +308,32 @@ function buildRecommendations({ decisionSummary = {}, fillSummary = {}, shadowSu
   const blockedRate = toNum(decisionSummary.blocked_rate) || 0;
   const aggressiveExitN = Number(fillSummary.aggressive_exit_n || 0);
   const aggressivePnl = Number(fillSummary.aggressive_realized_pnl_sum || 0);
+  const topCostSymbol = Array.isArray(fillSummary.by_symbol) && fillSummary.by_symbol[0] ? fillSummary.by_symbol[0] : null;
   if (Number.isFinite(feeRatio) && feeRatio >= 0.35) {
     recommendations.push({
       key: "RAISE_RECENT_REENTRY_GUARD",
       priority: 1,
       reason: "FEE_TO_REALIZED_RATIO_HIGH",
+      target_symbol: topCostSymbol ? topCostSymbol.symbol : null,
+      target_fee_to_abs_realized_ratio: topCostSymbol ? toNum(topCostSymbol.fee_to_abs_realized_ratio) : null,
+      target_realized_pnl_sum: topCostSymbol ? toNum(topCostSymbol.realized_pnl_sum) : null,
+      target_exit_fills_n: topCostSymbol ? Number(topCostSymbol.exit_fills_n || 0) : 0,
       suggested_env: {
         OPENCLAW_EXECUTOR_RECENT_EXIT_BLOCK_MS: 45 * 60 * 1000,
         OPENCLAW_EXECUTOR_RECENT_EXIT_SCALE: 0.45,
       },
+    });
+  }
+  if (topCostSymbol && Number.isFinite(toNum(topCostSymbol.fee_to_abs_realized_ratio)) && toNum(topCostSymbol.fee_to_abs_realized_ratio) >= 1) {
+    recommendations.push({
+      key: "REVIEW_TOP_COST_SYMBOL",
+      priority: 1,
+      reason: "TOP_COST_SYMBOL_FEE_DRAG",
+      target_symbol: topCostSymbol.symbol,
+      target_fee_to_abs_realized_ratio: toNum(topCostSymbol.fee_to_abs_realized_ratio),
+      target_realized_pnl_sum: toNum(topCostSymbol.realized_pnl_sum),
+      target_exit_fills_n: Number(topCostSymbol.exit_fills_n || 0),
+      suggested_env: null,
     });
   }
   if (blockedRate < 0.08 && Number.isFinite(feeRatio) && feeRatio >= 0.25) {
@@ -419,7 +436,7 @@ function renderPeriodSection(name, summary = {}) {
     `- fills: exit ${fill.exit_fills_n ?? "N/A"} / realized ${fill.realized_pnl_sum != null ? Number(fill.realized_pnl_sum).toFixed(4) : "N/A"} / fee ${fill.fee_sum != null ? Number(fill.fee_sum).toFixed(4) : "N/A"} / fee_ratio ${fill.fee_to_abs_realized_ratio != null ? Number(fill.fee_to_abs_realized_ratio).toFixed(4) : "N/A"}`,
     `- top_cost_symbol: ${gate.top_cost_symbol || "N/A"} / fee_ratio ${gate.top_cost_symbol_fee_to_abs_realized_ratio != null ? Number(gate.top_cost_symbol_fee_to_abs_realized_ratio).toFixed(4) : "N/A"} / realized ${gate.top_cost_symbol_realized_pnl_sum != null ? Number(gate.top_cost_symbol_realized_pnl_sum).toFixed(4) : "N/A"}`,
     `- top_reason: ${Array.isArray(decision.by_reason) && decision.by_reason[0] ? `${decision.by_reason[0].key} ${decision.by_reason[0].count}` : "N/A"}`,
-    `- recommendations: ${Array.isArray(summary.recommendations) && summary.recommendations.length ? summary.recommendations.map((row) => row.key).join(", ") : "none"}`,
+    `- recommendations: ${Array.isArray(summary.recommendations) && summary.recommendations.length ? summary.recommendations.map((row) => row.target_symbol ? `${row.key}(${row.target_symbol})` : row.key).join(", ") : "none"}`,
     "",
   ].join("\n");
 }
