@@ -2,6 +2,7 @@
 set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/google-cloud-sdk/bin"
 export CLOUDSDK_CONFIG="/Users/jeongjaeyong/Projects/donbeolja/.gcloud"
+. /Users/jeongjaeyong/Projects/donbeolja/ops/launchd/load_ai_cli_env.sh
 cd /Users/jeongjaeyong/Projects/donbeolja
 LATEST_CANARY_JSON="/Users/jeongjaeyong/Projects/donbeolja/ops/daily/filter_shadow_canary_latest.json"
 LATEST_GOVERNANCE_JSON="/Users/jeongjaeyong/Projects/donbeolja/ops/daily/weekly_filter_governance_latest.json"
