@@ -286,6 +286,93 @@ function loadPositionReadModelCutoverHealth({ repoRoot } = {}) {
   };
 }
 
+function loadFillSyncAlertDuplicationHealth({ repoRoot } = {}) {
+  const latestPath = path.join(repoRoot, "ops", "daily", "fill_sync_alert_duplication_latest.json");
+  const read = readJsonSafe(latestPath);
+  if (!read.ok || !read.data || typeof read.data !== "object") {
+    return {
+      available: false,
+      source_path: latestPath,
+      duplicate_group_n: null,
+      suppressed_alert_estimate_n: null,
+      raw_external_exit_fill_n: null,
+      top_duplicate_groups: [],
+    };
+  }
+  return {
+    available: true,
+    source_path: latestPath,
+    duplicate_group_n: toNum(read.data.duplicate_group_n, null),
+    suppressed_alert_estimate_n: toNum(read.data.suppressed_alert_estimate_n, null),
+    raw_external_exit_fill_n: toNum(read.data.raw_external_exit_fill_n, null),
+    top_duplicate_groups: Array.isArray(read.data.top_duplicate_groups) ? read.data.top_duplicate_groups.slice(0, 10) : [],
+  };
+}
+
+function loadTrailRunnerFloorAuditHealth({ repoRoot } = {}) {
+  const latestPath = path.join(repoRoot, "ops", "daily", "trail_runner_floor_audit_latest.json");
+  const read = readJsonSafe(latestPath);
+  if (!read.ok || !read.data || typeof read.data !== "object") {
+    return {
+      available: false,
+      source_path: latestPath,
+      violation_n: null,
+      violation_total_n: null,
+      live_bar_runner_violation_n: null,
+      live_bar_runner_violation_total_n: null,
+      top_violations: [],
+    };
+  }
+  return {
+    available: true,
+    source_path: latestPath,
+    violation_n: toNum(read.data.violation_n, null),
+    violation_total_n: toNum(read.data.violation_total_n, null),
+    live_bar_runner_violation_n: toNum(read.data.live_bar_runner_violation_n, null),
+    live_bar_runner_violation_total_n: toNum(read.data.live_bar_runner_violation_total_n, null),
+    top_violations: Array.isArray(read.data.top_violations) ? read.data.top_violations.slice(0, 10) : [],
+  };
+}
+
+function loadBinanceExitQtyContractAuditHealth({ repoRoot } = {}) {
+  const latestPath = path.join(repoRoot, "ops", "daily", "binance_exit_qty_contract_audit_latest.json");
+  const read = readJsonSafe(latestPath);
+  if (!read.ok || !read.data || typeof read.data !== "object") {
+    return {
+      available: false,
+      source_path: latestPath,
+      fill_count: null,
+      chain_count: null,
+      issue_chain_count: null,
+      issue_code_counts: {},
+      top_symbols: [],
+      top_issues: [],
+    };
+  }
+  const issueCodeCounts = Array.isArray(read.data.issue_code_counts)
+    ? read.data.issue_code_counts
+        .filter((row) => row && typeof row === "object")
+        .reduce((acc, row) => {
+          const code = String(row.code || "").trim();
+          if (!code) return acc;
+          acc[code] = toNum(row.count, 0);
+          return acc;
+        }, {})
+    : (read.data.issue_code_counts && typeof read.data.issue_code_counts === "object"
+      ? { ...read.data.issue_code_counts }
+      : {});
+  return {
+    available: true,
+    source_path: latestPath,
+    fill_count: toNum(read.data.fill_count, null),
+    chain_count: toNum(read.data.chain_count, null),
+    issue_chain_count: toNum(read.data.issue_chain_count, null),
+    issue_code_counts: issueCodeCounts,
+    top_symbols: Array.isArray(read.data.top_symbols) ? read.data.top_symbols.slice(0, 10) : [],
+    top_issues: Array.isArray(read.data.top_issues) ? read.data.top_issues.slice(0, 10) : [],
+  };
+}
+
 function hasExecutionFlowCoverage(health) {
   if (!health || health.available !== true) return false;
   const hasSignalSide = (
@@ -315,6 +402,9 @@ function decideStatus({
   lossStopPct,
   stopErrorCount,
   executionHealth,
+  fillSyncAlertDuplication,
+  trailRunnerFloorAudit,
+  binanceExitQtyContractAudit,
   positionReadModelCutover,
   activePositionCount = null,
 }) {
@@ -377,6 +467,31 @@ function decideStatus({
         reasons.push(`체결 수량 비율 이상치 ${executionHealth.qty_pct_non_positive_count}건`);
       }
     }
+    if (
+      fillSyncAlertDuplication
+      && fillSyncAlertDuplication.available === true
+      && Number.isFinite(fillSyncAlertDuplication.duplicate_group_n)
+      && fillSyncAlertDuplication.duplicate_group_n >= Math.max(1, Number(process.env.FILL_SYNC_ALERT_DUPLICATION_HOLD_GROUPS || 5))
+    ) {
+      if (status === "진행") status = "보류";
+      reasons.push(`fill sync 중복 알림 그룹 ${fillSyncAlertDuplication.duplicate_group_n}건`);
+    }
+    if (
+      trailRunnerFloorAudit
+      && trailRunnerFloorAudit.available === true
+      && Number.isFinite(trailRunnerFloorAudit.violation_n)
+      && trailRunnerFloorAudit.violation_n >= Math.max(1, Number(process.env.TRAIL_RUNNER_FLOOR_HOLD_VIOLATIONS || 1))
+    ) {
+      if (status === "진행") status = "보류";
+      reasons.push(`trailing floor 미해결 위반 ${trailRunnerFloorAudit.violation_n}건`);
+    }
+    if (
+      binanceExitQtyContractAudit
+      && binanceExitQtyContractAudit.available !== true
+    ) {
+      if (status === "진행") status = "보류";
+      reasons.push("binance exit 수량 계약 감사 미수집");
+    }
   }
 
   if (!reasons.length) reasons.push("핵심 리스크 신호 없음");
@@ -387,6 +502,9 @@ function buildIssueLines(summary) {
   const lines = [];
   const health = summary.execution_health || {};
   const cutover = summary.position_read_model_cutover || {};
+  const duplication = summary.fill_sync_alert_duplication || {};
+  const trailFloor = summary.trail_runner_floor_audit || {};
+  const exitQtyAudit = summary.binance_exit_qty_contract_audit || {};
   const flowCoverageReady = hasExecutionFlowCoverage(health);
   const writerAuthority = summary.position_writer_authority_24h && typeof summary.position_writer_authority_24h === "object"
     ? summary.position_writer_authority_24h
@@ -441,6 +559,43 @@ function buildIssueLines(summary) {
     }
   } else {
     lines.push("[ISSUE] H | 주문 경로 감사 파일 미수집 | 신호/체결 점검 스크립트 재실행 및 수집 경로 복구 필요");
+  }
+
+  if (trailFloor.available === true) {
+    if (Number.isFinite(trailFloor.violation_n) && trailFloor.violation_n >= 1) {
+      lines.push(`[ISSUE] M | trailing floor 미해결 위반 ${trailFloor.violation_n}건 | bar-runner synthetic trail 재발 여부 즉시 점검 필요`);
+    } else if (Number.isFinite(trailFloor.violation_total_n) && trailFloor.violation_total_n >= 1) {
+      lines.push(`[ISSUE] L | trailing floor 과거 위반 ${trailFloor.violation_total_n}건은 backfill 정리됨 | 신규 unresolved 위반만 모니터링`);
+    } else {
+      lines.push("[ISSUE] L | trailing floor 위반 없음 | 현재 trail authority 구조 유지");
+    }
+  } else {
+    lines.push("[ISSUE] M | trailing floor 감사 리포트 미수집 | runner floor 위반 재발 감시 필요");
+  }
+
+  if (exitQtyAudit.available === true) {
+    if (Number.isFinite(exitQtyAudit.issue_chain_count) && exitQtyAudit.issue_chain_count >= 1) {
+      const topCode = Object.entries(exitQtyAudit.issue_code_counts || {})
+        .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))[0];
+      const topSymbol = Array.isArray(exitQtyAudit.top_symbols) && exitQtyAudit.top_symbols.length
+        ? `${exitQtyAudit.top_symbols[0].symbol}(${exitQtyAudit.top_symbols[0].count})`
+        : "UNKNOWN";
+      lines.push(`[ISSUE] M | Binance exit 수량 계약 위반 chain ${exitQtyAudit.issue_chain_count}건 | 최다 코드 ${topCode ? `${topCode[0]}(${topCode[1]})` : "N/A"}, 상위 심볼 ${topSymbol}, 과거 누적 이슈 분리 정리 필요`);
+    } else {
+      lines.push("[ISSUE] L | Binance exit 수량 계약 위반 없음 | TP0/TP1/TRAIL 수량 계약 유지");
+    }
+  } else {
+    lines.push("[ISSUE] M | Binance exit 수량 계약 감사 리포트 미수집 | TP 단계 수량 계약 재발 감시 필요");
+  }
+
+  if (duplication.available === true) {
+    if (Number.isFinite(duplication.duplicate_group_n) && duplication.duplicate_group_n >= 1) {
+      lines.push(`[ISSUE] M | fill sync 중복 알림 그룹 ${duplication.duplicate_group_n}건, 예상 억제 가능 알림 ${fmt(duplication.suppressed_alert_estimate_n, 0)}건 | duplicate alert backfill 및 aggregation 재발 점검 필요`);
+    } else {
+      lines.push("[ISSUE] L | fill sync 중복 알림 그룹 없음 | 현재 aggregation guard 유지");
+    }
+  } else {
+    lines.push("[ISSUE] M | fill sync duplication 리포트 미수집 | duplication report 재생성 및 gate 확인 필요");
   }
 
   if (cutover.available !== true) {
@@ -651,6 +806,9 @@ async function main() {
   const dateKey = kstDateKey(snapshot.end_kst || nowIso) || kstDateKey(nowIso) || "unknown-date";
   const executionHealth = loadExecutionHealth({ repoRoot, dateKey });
   const positionReadModelCutover = loadPositionReadModelCutoverHealth({ repoRoot });
+  const fillSyncAlertDuplication = loadFillSyncAlertDuplicationHealth({ repoRoot });
+  const trailRunnerFloorAudit = loadTrailRunnerFloorAuditHealth({ repoRoot });
+  const binanceExitQtyContractAudit = loadBinanceExitQtyContractAuditHealth({ repoRoot });
   const activePositionCount = await listExchangePositionReadViews({ exchange: "BINANCEFUT", limit: 200 })
     .then((rows) => rows.filter((row) => Number(row && row.size_pct) > 0 && String(row && row.state || "").toUpperCase() !== "FLAT").length)
     .catch(() => null);
@@ -698,6 +856,9 @@ async function main() {
     },
     mode: "수익 확대 가능",
     execution_health: executionHealth,
+    fill_sync_alert_duplication: fillSyncAlertDuplication,
+    trail_runner_floor_audit: trailRunnerFloorAudit,
+    binance_exit_qty_contract_audit: binanceExitQtyContractAudit,
     position_read_model_cutover: positionReadModelCutover,
     approvals: [],
   };
@@ -712,6 +873,9 @@ async function main() {
     lossStopPct,
     stopErrorCount,
     executionHealth,
+    fillSyncAlertDuplication,
+    trailRunnerFloorAudit,
+    binanceExitQtyContractAudit,
     positionReadModelCutover,
     activePositionCount,
   });
@@ -785,6 +949,14 @@ async function main() {
     execution_health_available: executionHealth.available,
     position_read_model_cutover_ready: positionReadModelCutover.latest_ready === true,
     position_read_model_cutover_status: positionReadModelCutover.dominant_status || null,
+    fill_sync_alert_duplicate_group_n: fillSyncAlertDuplication.duplicate_group_n,
+    fill_sync_alert_suppressed_estimate_n: fillSyncAlertDuplication.suppressed_alert_estimate_n,
+    trail_runner_floor_violation_n: trailRunnerFloorAudit.violation_n,
+    trail_runner_floor_violation_total_n: trailRunnerFloorAudit.violation_total_n,
+    binance_exit_qty_contract_issue_chain_count: binanceExitQtyContractAudit.issue_chain_count,
+    binance_exit_qty_contract_top_code: Object.entries(binanceExitQtyContractAudit.issue_code_counts || {})
+      .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+      .map((row) => row[0])[0] || null,
     drop_tp1_pending_count: executionHealth.drop_tp1_pending_count,
     qty_pct_non_positive_count: executionHealth.qty_pct_non_positive_count,
     firestore_state_written: firestoreStateWritten,
@@ -805,6 +977,8 @@ module.exports = {
     countDocsForDate,
     loadExecutionHealth,
     loadPositionReadModelCutoverHealth,
+    loadTrailRunnerFloorAuditHealth,
+    loadBinanceExitQtyContractAuditHealth,
     hasExecutionFlowCoverage,
     decideStatus,
     buildIssueLines,

@@ -233,8 +233,10 @@ async function run() {
 
   const resolveExternalExitEvent = __test && __test.resolveExternalExitEvent;
   const inferStageConstrainedTakeProfitKind = __test && __test.inferStageConstrainedTakeProfitKind;
+  const applyExternalExitQtyAuthority = __test && __test.applyExternalExitQtyAuthority;
   assert.strictEqual(typeof resolveExternalExitEvent, "function", "resolveExternalExitEvent export missing");
   assert.strictEqual(typeof inferStageConstrainedTakeProfitKind, "function", "inferStageConstrainedTakeProfitKind export missing");
+  assert.strictEqual(typeof applyExternalExitQtyAuthority, "function", "applyExternalExitQtyAuthority export missing");
   const rules = { SL: -0.015, TP_P1: 0.03, TRAIL_PCT: 0.01 };
 
   assert.strictEqual(
@@ -258,6 +260,44 @@ async function run() {
     rules,
   });
   assert.strictEqual(overridden, "EXIT_EXTERNAL_SYNC");
+
+  {
+    const authorityMap = new Map();
+    const first = applyExternalExitQtyAuthority({
+      authorityMap,
+      exchange: "BINANCEFUT",
+      symbol: "DOGEUSDT",
+      event: "EXIT_TP_P1_1.65P",
+      signalDocId: "SIG__DOGE__TP1",
+      orderMeta: { orderId: 1 },
+      qtyPct: 0.5,
+      rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
+    });
+    const duplicate = applyExternalExitQtyAuthority({
+      authorityMap,
+      exchange: "BINANCEFUT",
+      symbol: "DOGEUSDT",
+      event: "EXIT_TP_P1_1.65P",
+      signalDocId: "SIG__DOGE__TP1",
+      orderMeta: { orderId: 2 },
+      qtyPct: 0.5,
+      rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
+    });
+    const trail = applyExternalExitQtyAuthority({
+      authorityMap,
+      exchange: "BINANCEFUT",
+      symbol: "DOGEUSDT",
+      event: "EXIT_TRAIL",
+      signalDocId: "SIG__DOGE__TP1",
+      orderMeta: { orderId: 3 },
+      qtyPct: 1,
+      rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
+    });
+    assert.strictEqual(first.acceptedQtyPct, 0.5);
+    assert.strictEqual(duplicate.acceptedQtyPct, null);
+    assert.strictEqual(duplicate.duplicateSuspected, true);
+    assert.strictEqual(trail.acceptedQtyPct, 0.5);
+  }
 
   const nativeSl = await resolveExternalExitEvent({
     intent: null,

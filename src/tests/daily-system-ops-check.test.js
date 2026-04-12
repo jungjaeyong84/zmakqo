@@ -46,6 +46,27 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
       query_blockers: [],
     },
   }), "utf8");
+  fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "trail_runner_floor_audit_latest.json"), JSON.stringify({
+    violation_n: 0,
+    violation_total_n: 3,
+    live_bar_runner_violation_n: 0,
+    live_bar_runner_violation_total_n: 2,
+    top_violations: [],
+  }), "utf8");
+  fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "binance_exit_qty_contract_audit_latest.json"), JSON.stringify({
+    fill_count: 12,
+    chain_count: 5,
+    issue_chain_count: 2,
+    issue_code_counts: {
+      TP1_ABS_OVER: 1,
+      TOTAL_EXIT_OVER_100: 2,
+    },
+    top_symbols: [
+      { symbol: "BTCUSDT", count: 2 },
+      { symbol: "DOGEUSDT", count: 1 },
+    ],
+    top_issues: [],
+  }), "utf8");
 
   const health = dailySystemOpsCheck.__test.loadExecutionHealth({
     repoRoot: tmpRoot,
@@ -62,6 +83,15 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
   assert.strictEqual(cutover.available, true);
   assert.strictEqual(cutover.latest_ready, true);
   assert.strictEqual(cutover.dominant_status, "LATEST_READY");
+  const trailAudit = dailySystemOpsCheck.__test.loadTrailRunnerFloorAuditHealth({ repoRoot: tmpRoot });
+  assert.strictEqual(trailAudit.available, true);
+  assert.strictEqual(trailAudit.violation_n, 0);
+  assert.strictEqual(trailAudit.violation_total_n, 3);
+  const exitQtyAudit = dailySystemOpsCheck.__test.loadBinanceExitQtyContractAuditHealth({ repoRoot: tmpRoot });
+  assert.strictEqual(exitQtyAudit.available, true);
+  assert.strictEqual(exitQtyAudit.fill_count, 12);
+  assert.strictEqual(exitQtyAudit.chain_count, 5);
+  assert.strictEqual(exitQtyAudit.issue_chain_count, 2);
 
   fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "objective_retrospective_latest.json"), JSON.stringify({
     display: {
@@ -105,6 +135,8 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
       drop_tp1_pending_count: 0,
       qty_pct_non_positive_count: 0,
     },
+    trailRunnerFloorAudit: trailAudit,
+    binanceExitQtyContractAudit: exitQtyAudit,
     positionReadModelCutover: cutover,
   });
   assert.strictEqual(proceed.status, "진행");
@@ -126,6 +158,8 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
       drop_tp1_pending_count: 0,
       qty_pct_non_positive_count: 0,
     },
+    trailRunnerFloorAudit: trailAudit,
+    binanceExitQtyContractAudit: exitQtyAudit,
     positionReadModelCutover: cutover,
   });
   assert.strictEqual(stopped.status, "중단");
@@ -145,6 +179,8 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
       qty_pct_non_positive_count: 0,
     },
     position_read_model_cutover: cutover,
+    trail_runner_floor_audit: trailAudit,
+    binance_exit_qty_contract_audit: exitQtyAudit,
     position_writer_authority_24h: {
       occurrence_count: 3,
       top_symbols: [
@@ -155,6 +191,10 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
   });
   assert.ok(issueLines.some((line) => line.includes("positions_paper writer authority 경합 3건")));
   assert.ok(issueLines.some((line) => line.includes("XRPUSDT(2)")));
+  assert.ok(issueLines.some((line) => line.includes("trailing floor 과거 위반 3건은 backfill 정리됨")));
+  assert.ok(issueLines.some((line) => line.includes("Binance exit 수량 계약 위반 chain 2건")));
+  assert.ok(issueLines.some((line) => line.includes("TOTAL_EXIT_OVER_100(2)")));
+  assert.ok(issueLines.some((line) => line.includes("BTCUSDT(2)")));
 
   const writerCandidates = dailySystemOpsCheck.__test.buildWriterAuthorityRemediationCandidates({
     top_symbols: [
@@ -185,6 +225,8 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
       drop_tp1_pending_count: 0,
       qty_pct_non_positive_count: 0,
     },
+    trailRunnerFloorAudit: trailAudit,
+    binanceExitQtyContractAudit: exitQtyAudit,
     positionReadModelCutover: cutover,
   });
   assert.strictEqual(historicalOnly.status, "진행");
@@ -209,6 +251,8 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
       drop_tp1_pending_count: 0,
       qty_pct_non_positive_count: 0,
     },
+    trailRunnerFloorAudit: trailAudit,
+    binanceExitQtyContractAudit: exitQtyAudit,
     positionReadModelCutover: cutover,
     activePositionCount: 0,
   });
@@ -234,11 +278,35 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
       drop_tp1_pending_count: 0,
       qty_pct_non_positive_count: 0,
     },
+    trailRunnerFloorAudit: trailAudit,
+    binanceExitQtyContractAudit: exitQtyAudit,
     positionReadModelCutover: cutover,
     activePositionCount: 1,
   });
   assert.strictEqual(writerAuthorityWithActivePositionsStillBlocks.status, "보류");
   assert.ok(writerAuthorityWithActivePositionsStillBlocks.reasons.includes("활성 핵심 오류 1건"));
+
+  const missingExitQtyAuditBlocks = dailySystemOpsCheck.__test.decideStatus({
+    netPnlPct: 0.8,
+    costRatioPct: 0.05,
+    errorCount: 0,
+    costLimitPct: 0.2,
+    lossStopPct: -1.5,
+    stopErrorCount: 2,
+    executionHealth: {
+      available: true,
+      signals_count: 1,
+      fills_count: 1,
+      firestore_dns_ok: true,
+      drop_tp1_pending_count: 0,
+      qty_pct_non_positive_count: 0,
+    },
+    trailRunnerFloorAudit: trailAudit,
+    binanceExitQtyContractAudit: { available: false },
+    positionReadModelCutover: cutover,
+  });
+  assert.strictEqual(missingExitQtyAuditBlocks.status, "보류");
+  assert.ok(missingExitQtyAuditBlocks.reasons.includes("binance exit 수량 계약 감사 미수집"));
 
   const cutoverBlocked = dailySystemOpsCheck.__test.decideStatus({
     netPnlPct: 0.8,
@@ -255,6 +323,7 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
       drop_tp1_pending_count: 0,
       qty_pct_non_positive_count: 0,
     },
+    trailRunnerFloorAudit: trailAudit,
     positionReadModelCutover: {
       available: true,
       latest_ready: false,
@@ -264,6 +333,33 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
   });
   assert.strictEqual(cutoverBlocked.status, "보류");
   assert.ok(cutoverBlocked.reasons.includes("position read-model 미준비 (INDEX_MISSING)"));
+
+  const trailFloorBlocked = dailySystemOpsCheck.__test.decideStatus({
+    netPnlPct: 0.8,
+    costRatioPct: 0.05,
+    errorCount: 0,
+    costLimitPct: 0.2,
+    lossStopPct: -1.5,
+    stopErrorCount: 2,
+    executionHealth: {
+      available: true,
+      signals_count: 1,
+      fills_count: 1,
+      firestore_dns_ok: true,
+      drop_tp1_pending_count: 0,
+      qty_pct_non_positive_count: 0,
+    },
+    trailRunnerFloorAudit: {
+      available: true,
+      violation_n: 2,
+      violation_total_n: 5,
+      live_bar_runner_violation_n: 2,
+      live_bar_runner_violation_total_n: 4,
+    },
+    positionReadModelCutover: cutover,
+  });
+  assert.strictEqual(trailFloorBlocked.status, "보류");
+  assert.ok(trailFloorBlocked.reasons.includes("trailing floor 미해결 위반 2건"));
 
   console.log("DAILY_SYSTEM_OPS_CHECK_TEST_OK");
 })();

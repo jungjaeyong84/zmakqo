@@ -27,6 +27,9 @@ function buildMlPromotionGate({
   modelSpecificCanary = null,
   mlRollbackArm = null,
   serverPrimaryCanary = null,
+  eventTruthAlphaValidation = null,
+  failureLearningLoop = null,
+  feePnlKpiAuthority = null,
 } = {}) {
   const truth = readSummary(truthPreservationAudit);
   const serving = readSummary(executionServingContract);
@@ -35,6 +38,9 @@ function buildMlPromotionGate({
   const modelSpecificCanarySummary = readSummary(modelSpecificCanary);
   const rollbackArmSummary = readSummary(mlRollbackArm);
   const serverPrimarySummary = readSummary(serverPrimaryCanary);
+  const alphaSummary = readSummary(eventTruthAlphaValidation);
+  const failureLearningSummary = readSummary(failureLearningLoop);
+  const feePnlSummary = readSummary(feePnlKpiAuthority);
 
   const preferredModelArtifactId = norm(serving.preferred_model_artifact_id || scopeTrain.model_artifact_id);
   const preferredTrainRunId = norm(serving.preferred_train_run_id || scopeTrain.train_run_id);
@@ -48,6 +54,9 @@ function buildMlPromotionGate({
   const modelSpecificCanaryReady = modelSpecificCanarySummary.model_specific_canary_ready === true;
   const serverPrimaryPass = serverPrimarySummary.apply_pass === true && serverPrimarySummary.acceptance_ready === true;
   const rollbackReady = rollbackArmSummary.rollback_arm_ready === true;
+  const alphaPass = alphaSummary.alpha_ready === true;
+  const failureLearningPass = !/FAIL_RATE_HIGH|NEGATIVE_DOMINANT/.test(String(failureLearningSummary.evidence_status || "").toUpperCase());
+  const feePnlPass = feePnlSummary.kpi_ready === true && String(feePnlSummary.evidence_status || "").trim().toUpperCase() === "FEE_PNL_KPI_PASS";
   const bindingMode = toUpper(modelSpecificCanarySummary.binding_mode);
   const evidenceStatus = toUpper(modelSpecificCanarySummary.evidence_status);
   const globalCanaryEvidenceStatus = toUpper(globalCanaryEvidenceSummary.evidence_status);
@@ -59,6 +68,15 @@ function buildMlPromotionGate({
   if (!replayPass) {
     promotion_stage = "OFFLINE_ONLY";
     promotion_decision = "HOLD_REPLAY";
+  } else if (!alphaPass) {
+    promotion_stage = "OFFLINE_ONLY";
+    promotion_decision = "HOLD_EVENT_TRUTH_ALPHA";
+  } else if (!feePnlPass) {
+    promotion_stage = "SHADOW_READY";
+    promotion_decision = "HOLD_FEE_PNL_KPI";
+  } else if (!failureLearningPass) {
+    promotion_stage = "SHADOW_READY";
+    promotion_decision = "HOLD_FAILURE_LEARNING";
   } else if (!shadowPass) {
     promotion_stage = "OFFLINE_ONLY";
     promotion_decision = "HOLD_SHADOW_READINESS";
@@ -78,6 +96,9 @@ function buildMlPromotionGate({
 
   const blockingReasons = [];
   if (!replayPass) blockingReasons.push("REPLAY_GATE_NOT_READY");
+  if (!alphaPass) blockingReasons.push("EVENT_TRUTH_ALPHA_NOT_READY");
+  if (!feePnlPass) blockingReasons.push("FEE_PNL_KPI_NOT_READY");
+  if (!failureLearningPass) blockingReasons.push("FAILURE_LEARNING_NOT_READY");
   if (!shadowPass) blockingReasons.push("SHADOW_GATE_NOT_READY");
   if (!globalCanaryPass) blockingReasons.push("GLOBAL_CANARY_NOT_READY");
   if (bindingMode === "MODEL_BINDING_MISSING") blockingReasons.push("MODEL_SPECIFIC_CANARY_EVIDENCE_MISSING");
@@ -140,6 +161,22 @@ function buildMlPromotionGate({
     model_specific_canary_ready: modelSpecificCanaryReady,
     truth_preservation_ready: truth.truth_preservation_ready === true,
     scope_quality_gate_ready: scopeTrain.quality_gate_ready === true,
+    event_truth_alpha_gate_status: alphaPass ? "PASS" : "BLOCK",
+    event_truth_alpha_status: String(alphaSummary.status || "").trim() || null,
+    event_truth_alpha_evidence_status: norm(alphaSummary.evidence_status),
+    event_truth_alpha_positive_rate: toNum(alphaSummary.positive_rate),
+    event_truth_alpha_avg_realized_ret_net: toNum(alphaSummary.avg_realized_ret_net),
+    fee_pnl_gate_status: feePnlPass ? "PASS" : "BLOCK",
+    fee_pnl_status: String(feePnlSummary.status || "").trim() || null,
+    fee_pnl_evidence_status: norm(feePnlSummary.evidence_status),
+    fee_pnl_realized_n: toNum(feePnlSummary.realized_n),
+    fee_pnl_cost_to_abs_realized_ratio: toNum(feePnlSummary.cost_to_abs_realized_ratio),
+    fee_pnl_top_fee_drag_market: norm(feePnlSummary.top_fee_drag_market),
+    failure_learning_gate_status: failureLearningPass ? "PASS" : "BLOCK",
+    failure_learning_status: String(failureLearningSummary.status || "").trim() || null,
+    failure_learning_evidence_status: norm(failureLearningSummary.evidence_status),
+    failure_learning_fail_rate: toNum(failureLearningSummary.fail_rate),
+    failure_learning_dominant_pattern: norm(failureLearningSummary.dominant_failure_pattern),
     scope_mismatch_rate: toNum(serving.scope_inference_mismatch_rate),
     blocking_reason_n: blockingReasons.length,
     blocking_reasons: blockingReasons,

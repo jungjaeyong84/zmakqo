@@ -3,6 +3,7 @@
 "use strict";
 
 const path = require("path");
+const { getFirestore } = require("../src/storage/firestore");
 const {
   OPS_DAILY_DIR,
   copyLatest,
@@ -28,6 +29,8 @@ const EXECUTION_SCOPE_TIER_DIAGNOSTICS_PATH = path.join(OPS_DAILY_DIR, "best_sel
 const EXECUTION_SCOPE_TIER_RAW_DIFF_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_execution_scope_tier_raw_diff_latest.json");
 const FILLS_PATH = path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "fills_paper.json");
 const INTENTS_PATH = path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "order_intents_paper.json");
+const REPORT_LATEST_COLLECTION = "report_latest";
+const REPORT_LATEST_DOC_ID = "LATEST__best_self_evolution_execution_quality__GLOBAL";
 
 function renderMarkdown(report = {}) {
   const summary = report.summary || {};
@@ -73,7 +76,29 @@ function renderMarkdown(report = {}) {
   return `${lines.join("\n")}\n`;
 }
 
-function main() {
+async function publishSharedLatest(report = {}, meta = {}, latestJsonPath = null, latestMdPath = null) {
+  try {
+    const db = getFirestore();
+    await db.collection(REPORT_LATEST_COLLECTION).doc(REPORT_LATEST_DOC_ID).set({
+      updated_at: new Date().toISOString(),
+      report_type: "best_self_evolution_execution_quality",
+      generated_at_kst: report.generated_at_kst || null,
+      generated_at: report.generated_at || null,
+      date_key: meta.dateKey || null,
+      hhmm: meta.hhmm || null,
+      latest_json_path: latestJsonPath || null,
+      latest_markdown_path: latestMdPath || null,
+      summary: report.summary || {},
+      report,
+    }, { merge: true });
+    return true;
+  } catch (err) {
+    console.error(`[EXECUTION_QUALITY_SHARED_LATEST_WRITE_FAIL] ${err.message}`);
+    return false;
+  }
+}
+
+async function main() {
   const nowMeta = nowKstMeta();
   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
   const objective = readJsonRawSafe(OBJECTIVE_LATEST_PATH, null);
@@ -144,6 +169,7 @@ function main() {
   copyLatest(mdPath, latestMdPath);
   copyLatest(jsonPath, selfEvolutionSnapshotLatestPath("execution_quality_latest.json"));
   copyLatest(mdPath, selfEvolutionSnapshotLatestPath("execution_quality_latest.md"));
+  const shared_latest_written = await publishSharedLatest(report, nowMeta, latestJsonPath, latestMdPath);
 
   console.log(JSON.stringify({
     ok: true,
@@ -152,7 +178,12 @@ function main() {
     top_latency_market: report.summary.top_latency_market,
     top_slippage_market: report.summary.top_slippage_market,
     latest_json: latestJsonPath,
+    shared_latest_written,
+    shared_latest_doc: `${REPORT_LATEST_COLLECTION}/${REPORT_LATEST_DOC_ID}`,
   }));
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

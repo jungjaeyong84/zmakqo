@@ -401,6 +401,27 @@ async function main() {
     throw new Error("NOYE_REFRESH_OUTPUT_MISSING");
   }
 
+  const executionQualityRun = execJson("node scripts/report-best-self-evolution-execution-quality.js", { cwd: REPO_ROOT });
+  if (!executionQualityRun.ok) {
+    throw new Error(`EXECUTION_QUALITY_REPORT_FAILED:${executionQualityRun.error || JSON.stringify(executionQualityRun.data || {})}`);
+  }
+  const lineageHealthRun = execJson("node scripts/report-signal-lineage-health.js", { cwd: REPO_ROOT });
+  if (!lineageHealthRun.ok) {
+    throw new Error(`SIGNAL_LINEAGE_HEALTH_FAILED:${lineageHealthRun.error || JSON.stringify(lineageHealthRun.data || {})}`);
+  }
+  const openClawPolicyAuthorityRun = execJson("node scripts/report-openclaw-policy-authority.js", { cwd: REPO_ROOT });
+  if (!openClawPolicyAuthorityRun.ok) {
+    throw new Error(`OPENCLAW_POLICY_AUTHORITY_FAILED:${openClawPolicyAuthorityRun.error || JSON.stringify(openClawPolicyAuthorityRun.data || {})}`);
+  }
+  const trailFloorAuditRun = execJson("node scripts/report-trail-runner-floor-audit.js", { cwd: REPO_ROOT });
+  if (!trailFloorAuditRun.ok) {
+    throw new Error(`TRAIL_RUNNER_FLOOR_AUDIT_FAILED:${trailFloorAuditRun.error || JSON.stringify(trailFloorAuditRun.data || {})}`);
+  }
+  const exitQtyContractAuditRun = execJson("node scripts/report-binance-exit-qty-contract-audit.js", { cwd: REPO_ROOT });
+  if (!exitQtyContractAuditRun.ok) {
+    throw new Error(`BINANCE_EXIT_QTY_CONTRACT_AUDIT_FAILED:${exitQtyContractAuditRun.error || JSON.stringify(exitQtyContractAuditRun.data || {})}`);
+  }
+
   const opsRun = execJson(
     `node scripts/daily-system-ops-check.js ${JSON.stringify(snapshotPath)} ${JSON.stringify(reportPath)}`,
     { cwd: REPO_ROOT }

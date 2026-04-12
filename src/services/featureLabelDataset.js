@@ -122,6 +122,46 @@ function buildDatasetManifest({
   };
 }
 
+function buildFeatureSnapshot({
+  market = null,
+  tf = null,
+  trade = null,
+} = {}) {
+  const item = trade && typeof trade === "object" ? trade : {};
+  const features = item.features_json && typeof item.features_json === "object" ? item.features_json : {};
+  return {
+    market: String(market || "").toUpperCase(),
+    tf: String(tf || "").trim() || null,
+    pnl_krw_gross: toNum(item.pnl_krw_gross),
+    fee_value: toNum(item.fee_value),
+    funding_paid: toNum(item.funding_paid),
+    notional_krw: toNum(item.notional_krw),
+    entry_tier: String(
+      features.entry_tier
+      || features.entry_grade
+      || features.signal_tier
+      || item.entry_signal_type
+      || ""
+    ).trim().toUpperCase() || null,
+    position_side: String(item.position_side || features.position_side || "").trim().toUpperCase() || null,
+    close_type: String(item.close_type || "").trim().toUpperCase() || null,
+    exit_event: String(item.exit_event || "").trim().toUpperCase() || null,
+    confidence: toNum(features.confidence ?? features.conf ?? features.signal_confidence),
+    posterior: toNum(
+      features.posterior
+      ?? features.long_posterior
+      ?? features.short_posterior
+      ?? features.buy_posterior
+      ?? features.sell_posterior
+    ),
+    openclaw_market_regime_cohort: String(
+      features.openclaw_market_regime_cohort
+      || features.market_regime_cohort
+      || ""
+    ).trim().toUpperCase() || null,
+  };
+}
+
 function assertImmutableEventProvenance(rows = []) {
   for (const row of (Array.isArray(rows) ? rows : [])) {
     const provenance = row && row.provenance && typeof row.provenance === "object" ? row.provenance : null;
@@ -173,14 +213,7 @@ async function buildFeatureLabelDataset({
         close_ms: toNum(trade.close_ms),
         close_type: String(trade.close_type || "").trim().toUpperCase() || null,
         entry_event_id: trade.entry_event_id || null,
-        feature_snapshot: {
-          market: String(market || "").toUpperCase(),
-          tf: String(tf || "").trim() || null,
-          pnl_krw_gross: toNum(trade.pnl_krw_gross),
-          fee_value: toNum(trade.fee_value),
-          funding_paid: toNum(trade.funding_paid),
-          notional_krw: toNum(trade.notional_krw),
-        },
+        feature_snapshot: buildFeatureSnapshot({ market, tf, trade }),
         label_snapshot: outcome,
         provenance,
       });
@@ -219,6 +252,7 @@ module.exports = {
   __test: {
     buildRowProvenance,
     buildDatasetManifest,
+    buildFeatureSnapshot,
     buildStableHash,
     assertImmutableEventProvenance,
   },

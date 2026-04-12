@@ -37,6 +37,8 @@ async function recordPositionWriterAuthorityEvent({
   expectedWriteToken = null,
   actualWriteToken = null,
   holder = null,
+  runtimeFamilySuppressed = false,
+  runtimeFamilySuppressedReason = null,
 } = {}) {
   const db = getFirestore();
   const createdAt = new Date().toISOString();
@@ -60,6 +62,10 @@ async function recordPositionWriterAuthorityEvent({
     expected_write_token: String(expectedWriteToken || "").trim() || null,
     actual_write_token: String(actualWriteToken || "").trim() || null,
     holder: String(holder || "").trim() || null,
+    runtime_family_suppressed: runtimeFamilySuppressed === true,
+    runtime_family_suppressed_reason: runtimeFamilySuppressed === true
+      ? (String(runtimeFamilySuppressedReason || "").trim() || "SUPPRESSED_BY_WRITER_RETRY")
+      : null,
     created_at: createdAt,
     updated_at: createdAt,
   };

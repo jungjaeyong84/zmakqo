@@ -1,5 +1,7 @@
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
 const { listExchangePositionReadViews } = require("./positionReadModel");
 const { fetchUnifiedEventTimeline } = require("../storage/unifiedEventTimeline");
 
@@ -48,9 +50,26 @@ const CORRELATED_GROUPS_ENV = String(
   process.env.OPENCLAW_EXECUTOR_CORRELATED_GROUPS
   || "ALT_BETA:DOGEUSDT|XRPUSDT|SOLUSDT|AXSUSDT|LINKUSDT,MAJORS:BTCUSDT|ETHUSDT|BNBUSDT"
 ).trim();
+const ALLOCATOR_REDUCE_SCALE = numEnv("OPENCLAW_EXECUTOR_ALLOCATOR_REDUCE_SCALE", 0.55, { min: 0.05, max: 1 });
+const ALLOCATOR_EXPLORE_SCALE = numEnv("OPENCLAW_EXECUTOR_ALLOCATOR_EXPLORE_SCALE", 0.7, { min: 0.05, max: 1 });
+const ALLOCATOR_INCREASE_SCALE = numEnv("OPENCLAW_EXECUTOR_ALLOCATOR_INCREASE_SCALE", 1.08, { min: 1, max: 1.5 });
+const SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD", 1.0, { min: 0, max: 10 });
+const SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD", 1.6, { min: 0, max: 10 });
+const CORRELATED_EXPOSURE_REDUCE_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD", 0.8, { min: 0, max: 10 });
+const CORRELATED_EXPOSURE_BLOCK_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD", 1.2, { min: 0, max: 10 });
+
+const REPO_ROOT = path.resolve(__dirname, "../..");
+const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
+const CAPITAL_ALLOCATOR_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_market_capital_allocator_latest.json");
 
 const positionViewCache = new Map();
 const recentTimelineCache = new Map();
+const allocatorCache = {
+  ts: 0,
+  mtimeMs: null,
+  summary: null,
+  byMarket: new Map(),
+};
 
 function clampQty(value) {
   const n = toNum(value);
@@ -95,6 +114,22 @@ function safeClone(value) {
   if (value == null) return null;
   try {
     return JSON.parse(JSON.stringify(value));
+  } catch (_) {
+    return null;
+  }
+}
+
+function safeReadJson(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch (_) {
+    return null;
+  }
+}
+
+function statMtimeMs(filePath) {
+  try {
+    return fs.statSync(filePath).mtimeMs;
   } catch (_) {
     return null;
   }
@@ -249,6 +284,28 @@ function resolveExecutorCohort({ cohort = null, features = null } = {}) {
   );
 }
 
+function loadCapitalAllocatorSnapshot({ force = false } = {}) {
+  const nowMs = Date.now();
+  const mtimeMs = statMtimeMs(CAPITAL_ALLOCATOR_PATH);
+  if (!force && allocatorCache.summary && allocatorCache.ts && (nowMs - allocatorCache.ts) < CACHE_TTL_MS && allocatorCache.mtimeMs === mtimeMs) {
+    return allocatorCache;
+  }
+  const doc = safeReadJson(CAPITAL_ALLOCATOR_PATH);
+  const summary = doc && doc.summary && typeof doc.summary === "object" ? doc.summary : {};
+  const rows = Array.isArray(summary.by_market) ? summary.by_market : [];
+  const byMarket = new Map();
+  for (const row of rows) {
+    const market = upper(row && row.market);
+    if (!market) continue;
+    byMarket.set(market, row);
+  }
+  allocatorCache.ts = nowMs;
+  allocatorCache.mtimeMs = mtimeMs;
+  allocatorCache.summary = summary;
+  allocatorCache.byMarket = byMarket;
+  return allocatorCache;
+}
+
 async function listActivePositionViews({ exchange, override = null } = {}) {
   if (Array.isArray(override)) return override.slice();
   const key = upper(exchange) || "UNKNOWN";
@@ -290,6 +347,7 @@ function summarizeExposure({ exchange, symbol, desiredSide, positionViews = [] }
       exchange: upper(exchange),
       symbol: rowSymbol,
       side: rowSide,
+      size_pct: toNum(row.size_pct) || 1,
       sameSymbol: rowSymbol === targetSymbol,
       sameSide: !!(side && rowSide && rowSide === side),
       groupOverlap: targetGroups.filter((name) => resolveSymbolGroups(rowSymbol).includes(name)),
@@ -297,12 +355,16 @@ function summarizeExposure({ exchange, symbol, desiredSide, positionViews = [] }
   }
   const sameSideActive = exposures.filter((row) => row.sameSide && !row.sameSymbol);
   const correlatedActive = exposures.filter((row) => row.sameSide && !row.sameSymbol && row.groupOverlap.length > 0);
+  const sameSideExposure = sameSideActive.reduce((sum, row) => sum + (toNum(row.size_pct) || 1), 0);
+  const correlatedExposure = correlatedActive.reduce((sum, row) => sum + (toNum(row.size_pct) || 1), 0);
   return {
     exposures,
     sameSideActive,
     correlatedActive,
     sameSideCountAfter: sameSideActive.length + 1,
     correlatedCountAfter: correlatedActive.length + 1,
+    sameSideExposureAfter: sameSideExposure,
+    correlatedExposureAfter: correlatedExposure,
     targetGroups,
   };
 }
@@ -322,6 +384,7 @@ async function evaluateOpenClawExecutionDecision({
   cohort = null,
   positionViews = null,
   recentTimelineRows = null,
+  capitalAllocatorSnapshot = null,
 } = {}) {
   const resolvedExchange = upper(exchange);
   const resolvedSymbol = upper(symbol);
@@ -394,6 +457,21 @@ async function evaluateOpenClawExecutionDecision({
     listActivePositionViews({ exchange: resolvedExchange, override: positionViews }),
     listRecentTimelineRows({ exchange: resolvedExchange, symbol: resolvedSymbol, nowMs, override: recentTimelineRows }),
   ]);
+  const allocatorSnapshot = capitalAllocatorSnapshot && typeof capitalAllocatorSnapshot === "object"
+    ? {
+        summary: capitalAllocatorSnapshot.summary || {},
+        byMarket: capitalAllocatorSnapshot.byMarket instanceof Map
+          ? capitalAllocatorSnapshot.byMarket
+          : new Map(
+            Array.isArray(capitalAllocatorSnapshot.by_market)
+              ? capitalAllocatorSnapshot.by_market
+                  .map((row) => [upper(row && row.market), row])
+                  .filter((row) => row[0])
+              : []
+          ),
+      }
+    : loadCapitalAllocatorSnapshot();
+  const allocatorRow = allocatorSnapshot.byMarket.get(resolvedSymbol) || null;
 
   const latestExit = extractLatestExitRow(timelineRows);
   const latestExitTsMs = toNum(latestExit && latestExit.ts_ms);
@@ -420,6 +498,9 @@ async function evaluateOpenClawExecutionDecision({
     desiredSide,
     positionViews: views,
   });
+  const incomingExposure = qtyBefore;
+  const sameSideExposureAfter = exposure.sameSideExposureAfter + incomingExposure;
+  const correlatedExposureAfter = exposure.correlatedExposureAfter + (exposure.targetGroups.length > 0 ? incomingExposure : 0);
 
   if (!blocked && exposure.sameSideCountAfter >= SAME_SIDE_BLOCK_THRESHOLD) {
     blocked = true;
@@ -446,6 +527,25 @@ async function evaluateOpenClawExecutionDecision({
     }
   }
 
+  if (!blocked && sameSideExposureAfter > SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD) {
+    blocked = true;
+    reason = "OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK";
+    exitProfileMode = "BASE";
+    notes.push(reason);
+  } else if (!blocked && correlatedExposureAfter > CORRELATED_EXPOSURE_BLOCK_THRESHOLD) {
+    blocked = true;
+    reason = "OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK";
+    exitProfileMode = "BASE";
+    notes.push(reason);
+  } else if (!blocked && (sameSideExposureAfter > SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD || correlatedExposureAfter > CORRELATED_EXPOSURE_REDUCE_THRESHOLD)) {
+    scale = minScale(scale, CLUSTER_REDUCE_SCALE);
+    exitProfileMode = "BASE";
+    reason = correlatedExposureAfter > CORRELATED_EXPOSURE_REDUCE_THRESHOLD
+      ? "OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE"
+      : "OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE";
+    notes.push(reason);
+  }
+
   if (!blocked && ["RESCUE", "HOLD_SAMPLE", "WATCH_ONLY", "LEARNING"].includes(resolvedCohort)) {
     scale = minScale(scale, RESCUE_SCALE);
     exitProfileMode = "BASE";
@@ -467,6 +567,30 @@ async function evaluateOpenClawExecutionDecision({
     if (ALLOW_UPSCALE && applyScale) scale = maxScale(scale, HIGH_CONF_SCALE);
   }
 
+  const allocatorAction = upper(allocatorRow && allocatorRow.recommended_action);
+  const allocatorScore = toNum(allocatorRow && allocatorRow.allocation_score);
+  if (!blocked && allocatorAction === "QUARANTINE") {
+    blocked = true;
+    reason = "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE";
+    exitProfileMode = "BASE";
+    notes.push(reason);
+  } else if (!blocked && allocatorAction === "REDUCE") {
+    scale = minScale(scale, ALLOCATOR_REDUCE_SCALE);
+    exitProfileMode = exitProfileMode || "BASE";
+    reason = "OPENCLAW_EXECUTOR_ALLOCATOR_REDUCE";
+    notes.push(reason);
+  } else if (!blocked && allocatorAction === "EXPLORE_LIGHT") {
+    scale = minScale(scale, ALLOCATOR_EXPLORE_SCALE);
+    exitProfileMode = exitProfileMode || "BASE";
+    reason = "OPENCLAW_EXECUTOR_ALLOCATOR_EXPLORE_SCALE";
+    notes.push(reason);
+  } else if (!blocked && allocatorAction === "INCREASE" && ALLOW_UPSCALE && applyScale) {
+    scale = maxScale(scale, ALLOCATOR_INCREASE_SCALE);
+    if (exitProfileMode == null) exitProfileMode = "AGGRESSIVE";
+    reason = "OPENCLAW_EXECUTOR_ALLOCATOR_INCREASE";
+    notes.push(reason);
+  }
+
   const scaleApplied = applyScale ? (Number.isFinite(scale) ? scale : 1) : 1;
   const qtyPctFinal = blocked ? 0 : clampQty(qtyBefore * scaleApplied);
   const featuresPatch = {
@@ -481,6 +605,8 @@ async function evaluateOpenClawExecutionDecision({
     _openclaw_executor_apply_scale: applyScale === true,
     _openclaw_executor_same_side_count_after: exposure.sameSideCountAfter,
     _openclaw_executor_correlated_count_after: exposure.correlatedCountAfter,
+    _openclaw_executor_same_side_exposure_after: sameSideExposureAfter,
+    _openclaw_executor_correlated_exposure_after: correlatedExposureAfter,
     _openclaw_executor_groups: exposure.targetGroups.slice(),
     _openclaw_executor_recent_exit_event: latestExitEvent,
     _openclaw_executor_recent_exit_age_ms: latestExitAgeMs,
@@ -489,6 +615,8 @@ async function evaluateOpenClawExecutionDecision({
     _openclaw_executor_confidence: confidence,
     _openclaw_executor_posterior: posterior,
     _openclaw_executor_entry_tier: entryTier,
+    _openclaw_executor_allocator_action: allocatorAction,
+    _openclaw_executor_allocator_score: allocatorScore,
   };
   if (exitProfileMode) {
     featuresPatch._openclaw_executor_exit_profile_mode = exitProfileMode;
@@ -512,6 +640,8 @@ async function evaluateOpenClawExecutionDecision({
       desiredSide,
       sameSideCountAfter: exposure.sameSideCountAfter,
       correlatedCountAfter: exposure.correlatedCountAfter,
+      sameSideExposureAfter,
+      correlatedExposureAfter,
       groups: exposure.targetGroups.slice(),
       recentExitEvent: latestExitEvent,
       recentExitAgeMs: latestExitAgeMs,
@@ -520,6 +650,8 @@ async function evaluateOpenClawExecutionDecision({
       confidence,
       posterior,
       entryTier,
+      allocatorAction,
+      allocatorScore,
       notes,
     },
     featuresPatch,

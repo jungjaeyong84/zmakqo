@@ -11,9 +11,16 @@ function toBool(value) {
 }
 
 function labelOutcome(row = {}) {
-  const outcomeState = String(row.outcome_state || "").trim().toUpperCase() || "UNKNOWN";
-  const realizedRetNet = toNum(row.realized_ret_net);
-  const realizedPnlQuote = toNum(row.realized_pnl_quote);
+  const fallbackSourceRowType = row && (row.close_type || row.exit_event || row.qty_closed != null)
+    ? "EXECUTED"
+    : "UNKNOWN";
+  const outcomeState = String(
+    row.outcome_state
+    || row.close_type
+    || (fallbackSourceRowType === "EXECUTED" ? "REALIZED" : "")
+  ).trim().toUpperCase() || "UNKNOWN";
+  const realizedRetNet = toNum(row.realized_ret_net ?? row.pnl_pct);
+  const realizedPnlQuote = toNum(row.realized_pnl_quote ?? row.pnl_krw);
   const tp0Hit = toBool(row.tp0_hit);
   const tp0First = toBool(row.tp0_first);
   const tp0ToTp1Converted = toBool(row.tp0_to_tp1_converted);
@@ -27,7 +34,7 @@ function labelOutcome(row = {}) {
   const timeToTp1Minutes = toNum(row.time_to_tp1_minutes);
   const mfePct = toNum(row.mfe_pct);
   const maePct = toNum(row.mae_pct);
-  const sourceRowType = String(row.source_row_type || "").trim().toUpperCase() || "UNKNOWN";
+  const sourceRowType = String(row.source_row_type || fallbackSourceRowType).trim().toUpperCase() || "UNKNOWN";
 
   return {
     outcome_state: outcomeState,

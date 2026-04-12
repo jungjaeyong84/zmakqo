@@ -5,6 +5,10 @@ const path = require("path");
 const { getSystemSloState } = require("../storage/systemSloStates");
 const { loadOperationalGuardRuntime } = require("./operationalGuardRuntime");
 const { loadMlServingRuntime } = require("./mlServingRuntime");
+const {
+  loadPreferredExecutionQualityInput,
+  loadPreferredLineageHealthInput,
+} = require("./systemSloArtifactInputs");
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
@@ -204,12 +208,16 @@ async function loadSystemSloRuntime({
     operationalGuard && typeof operationalGuard === "object" ? operationalGuard : loadOperationalGuardRuntime({ exchange: ex }).catch(() => null),
     mlServing && typeof mlServing === "object" ? mlServing : loadMlServingRuntime({ exchange: ex }).catch(() => null),
   ]);
+  const [executionQuality, lineageHealth] = await Promise.all([
+    loadPreferredExecutionQualityInput(),
+    loadPreferredLineageHealthInput(),
+  ]);
   const value = buildSystemSloState({
     exchange: ex,
     operationalGuard: resolvedOps,
     mlServing: resolvedServing,
-    executionQuality: safeReadJson(EXECUTION_QUALITY_PATH),
-    lineageHealth: safeReadJson(LINEAGE_HEALTH_PATH),
+    executionQuality,
+    lineageHealth,
     nowMs,
   });
   runtimeCache.set(cacheKey, { ts_ms: nowMs, value });

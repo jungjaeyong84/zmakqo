@@ -186,7 +186,9 @@ async function run() {
     assert.strictEqual(readCount, 1);
     assert.strictEqual(writes.length, 2);
     assert.strictEqual(writes[0].expectedWriteToken, "stale-token");
+    assert.strictEqual(writes[0].suppressAuthorityAlert, true);
     assert.strictEqual(writes[1].expectedWriteToken, "fresh-token");
+    assert.strictEqual(writes[1].suppressAuthorityAlert, false);
     assert.strictEqual(writes[1].source, "INTENT_FILL");
     assert.strictEqual(writes[1].reason, "INTENT_FILL_FORCE_LIVE_RECONCILE");
     assert.strictEqual(writes[1].meta.last_fill_intent, "INTENT_NEW");
@@ -195,6 +197,79 @@ async function run() {
     assert.strictEqual(Object.prototype.hasOwnProperty.call(writes[1].meta, "trail_active"), false);
     assert.strictEqual(result.expectedWriteToken, "fresh-token");
   }
+
+  {
+    let readCount = 0;
+    const stalePos = {
+      position_write_token: "stale-token",
+      state: "ACTIVE",
+      position_side: "LONG",
+      size_pct: 1,
+      avg_price: 1.23,
+      qty_base: 100,
+      budget_max_krw: null,
+      budget_used_krw: null,
+      budget_source: null,
+      meta: {
+        entry_event_id: "ENTRY_OLD",
+      },
+    };
+    const freshPos = {
+      ...stalePos,
+      position_write_token: "fresh-token",
+      meta: {
+        entry_event_id: "ENTRY_SYNC",
+      },
+    };
+    const writes = [];
+    const result = await runnerTest.upsertPositionWithLatestRetry({
+      exchange: "BINANCEFUT",
+      symbol: "DOGEUSDT",
+      runId: "RUN__TEST__WEBHOOK__DOGEUSDT",
+      executionMode: "LIVE",
+      position: stalePos,
+      state: "ACTIVE",
+      positionSide: "LONG",
+      sizePct: 0.75,
+      avgPrice: 0.091,
+      qtyBase: 250,
+      meta: {
+        entry_event_id: "ENTRY_NEW",
+        tp_p0_done: true,
+      },
+      source: "INTENT_FILL",
+      reason: "INTENT_FILL_PROJECTED_POSITION_WRITE",
+      maxAttempts: 2,
+      retryDelayMs: 0,
+      readPosition: async () => {
+        readCount += 1;
+        return freshPos;
+      },
+      writePosition: async (args) => {
+        writes.push(args);
+        if (writes.length === 1) {
+          const err = new Error("POSITION_WRITE_TOKEN_MISMATCH expected=stale-token actual=fresh-token");
+          err.code = "POSITION_WRITE_TOKEN_MISMATCH";
+          throw err;
+        }
+        return args;
+      },
+    });
+    assert.strictEqual(readCount, 1);
+    assert.strictEqual(writes.length, 2);
+    assert.strictEqual(writes[0].expectedWriteToken, "stale-token");
+    assert.strictEqual(writes[0].suppressAuthorityAlert, true);
+    assert.strictEqual(writes[0].suppressAuthorityRuntimeFamily, true);
+    assert.strictEqual(writes[1].expectedWriteToken, "fresh-token");
+    assert.strictEqual(writes[1].suppressAuthorityAlert, false);
+    assert.strictEqual(writes[1].suppressAuthorityRuntimeFamily, false);
+    assert.strictEqual(writes[1].source, "INTENT_FILL");
+    assert.strictEqual(writes[1].reason, "INTENT_FILL_PROJECTED_POSITION_WRITE");
+    assert.strictEqual(writes[1].meta.entry_event_id, "ENTRY_NEW");
+    assert.strictEqual(writes[1].qtyBase, 250);
+    assert.strictEqual(result.expectedWriteToken, "fresh-token");
+  }
+
   console.log("POSITIONS_PAPER_TEST_OK");
 }
 

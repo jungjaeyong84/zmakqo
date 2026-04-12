@@ -284,6 +284,55 @@ function buildArtifactHealthCard(artifacts = [], { limit = 6 } = {}) {
   };
 }
 
+function buildDecisionCenterCard({
+  feePnlKpi = null,
+  failureLearning = null,
+  allocator = null,
+  promotionGate = null,
+} = {}) {
+  const feeSummary = feePnlKpi && feePnlKpi.summary ? feePnlKpi.summary : {};
+  const failureSummary = failureLearning && failureLearning.summary ? failureLearning.summary : {};
+  const allocatorSummary = allocator && allocator.summary ? allocator.summary : {};
+  const promotionSummary = promotionGate && promotionGate.summary ? promotionGate.summary : {};
+  return {
+    title: "Decision Center",
+    tone: statusTone(
+      promotionSummary.promotion_decision
+      || feeSummary.evidence_status
+      || failureSummary.evidence_status
+      || allocatorSummary.status
+      || "WARN"
+    ),
+    rows: [
+      { label: "Promotion", value: compactText(promotionSummary.promotion_decision || promotionSummary.promotion_stage || "-") },
+      { label: "Fee/PnL", value: compactText(feeSummary.evidence_status || "-") },
+      { label: "Failure Learning", value: compactText(failureSummary.evidence_status || "-") },
+      { label: "Allocator", value: compactText(allocatorSummary.status || "-") },
+      { label: "Top Fee Drag", value: compactText(feeSummary.top_fee_drag_market || "-") },
+      { label: "Top Quarantine", value: compactText(allocatorSummary.top_quarantine_market || "-") },
+    ],
+    notes: sliceList(
+      []
+        .concat(
+          feeSummary.cost_to_abs_realized_ratio != null
+            ? [`fee/cost to abs realized=${numberText(feeSummary.cost_to_abs_realized_ratio, 4)}`]
+            : []
+        )
+        .concat(
+          failureSummary.fail_rate != null
+            ? [`failure fail_rate=${numberText(failureSummary.fail_rate, 4)} pattern=${compactText(failureSummary.dominant_failure_pattern)}`]
+            : []
+        )
+        .concat(
+          Array.isArray(promotionSummary.blocking_reasons)
+            ? promotionSummary.blocking_reasons
+            : []
+        ),
+      6,
+    ),
+  };
+}
+
 function buildUrl(basePath, params = {}) {
   const qs = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -534,6 +583,7 @@ const UI_TEXT_MAP = {
   "Focus Source": "집중 원천",
   "Focus Collection": "집중 컬렉션",
   "Meaning": "의미",
+  "Decision Center": "의사결정 센터",
   "Interpretation": "해석",
   "Recent Cache": "최근 캐시",
   "Fallback SOT": "대체 정본",
@@ -546,6 +596,13 @@ const UI_TEXT_MAP = {
   "Max Disagreement": "최대 불일치",
   "Max Rollback": "최대 롤백",
   "Ready": "준비",
+  "HOLD_FAILURE_LEARNING": "실패 학습 보류",
+  "HOLD_FEE_PNL_KPI": "비용 대비 손익 보류",
+  "FEE_PNL_KPI_PASS": "비용 대비 손익 통과",
+  "FEE_PNL_KPI_REVIEW": "비용 대비 손익 점검 필요",
+  "FEE_PNL_KPI_BLOCK": "비용 대비 손익 차단",
+  "FAILURE_LEARNING_NEGATIVE_DOMINANT": "실패 학습 음수 편중",
+  "QUARANTINE_REVIEW": "격리 검토",
   "Market Evidence": "마켓 증거",
   "Realized": "실현",
   "Disagreement": "불일치율",
@@ -1027,8 +1084,13 @@ function buildRecoveryViewModel() {
   const weeklyStrategy = loadLatestArtifact("objective_weekly_strategy_latest.json");
   const dailyStrategy = loadLatestArtifact("objective_daily_strategy_latest.json");
   const systemOps = loadLatestArtifact("system_ops_check_latest.json");
+  const trailRunnerFloorAudit = loadLatestArtifact("trail_runner_floor_audit_latest.json");
   const systemSlo = loadLatestArtifact("system_slo_state_latest.json");
   const systemAnomaly = loadLatestArtifact("system_anomaly_state_latest.json");
+  const feePnlKpi = loadLatestArtifact("best_self_evolution_fee_pnl_kpi_authority_latest.json");
+  const failureLearning = loadLatestArtifact("best_self_evolution_failure_learning_loop_latest.json");
+  const serverMarketCapitalAllocator = loadLatestArtifact("best_self_evolution_server_market_capital_allocator_latest.json");
+  const mlPromotionGate = loadLatestArtifact("best_self_evolution_ml_promotion_gate_latest.json");
   const runtimeGuardScale = resolveRuntimeGuardSoftScale({
     ops: systemOps.raw,
     slo: systemSlo.raw,
@@ -1050,8 +1112,13 @@ function buildRecoveryViewModel() {
     weeklyStrategy,
     dailyStrategy,
     systemOps,
+    trailRunnerFloorAudit,
     systemSlo,
     systemAnomaly,
+    feePnlKpi,
+    failureLearning,
+    serverMarketCapitalAllocator,
+    mlPromotionGate,
   ]);
   const nextAction = Array.isArray(governor.summary.next_actions) && governor.summary.next_actions.length
     ? governor.summary.next_actions[0]
@@ -1144,6 +1211,46 @@ function buildRecoveryViewModel() {
             ),
           },
           {
+            title: "Trail Floor Audit",
+            tone: toNum(trailRunnerFloorAudit.raw && trailRunnerFloorAudit.raw.violation_n, 0) > 0
+              ? "bad"
+              : (toNum(trailRunnerFloorAudit.raw && trailRunnerFloorAudit.raw.violation_total_n, 0) > 0 ? "warn" : "ok"),
+            rows: [
+              { label: "Unresolved", value: numberText(trailRunnerFloorAudit.raw && trailRunnerFloorAudit.raw.violation_n, 0) },
+              { label: "Total", value: numberText(trailRunnerFloorAudit.raw && trailRunnerFloorAudit.raw.violation_total_n, 0) },
+              { label: "Live Bar Runner", value: numberText(trailRunnerFloorAudit.raw && trailRunnerFloorAudit.raw.live_bar_runner_violation_n, 0) },
+              { label: "Historical Bar Runner", value: numberText(trailRunnerFloorAudit.raw && trailRunnerFloorAudit.raw.live_bar_runner_violation_total_n, 0) },
+            ],
+            table: Array.isArray(trailRunnerFloorAudit.raw && trailRunnerFloorAudit.raw.top_violations) && trailRunnerFloorAudit.raw.top_violations.length ? {
+              columns: [
+                { key: "market", label: "Market" },
+                { key: "exec_price", label: "Exec" },
+                { key: "runner_floor_px", label: "Runner Floor" },
+                { key: "signal_price", label: "Signal" },
+                { key: "gap_pct", label: "Gap %" },
+                { key: "open", label: "Open" },
+              ],
+              rows: buildRowsPreview(
+                trailRunnerFloorAudit.raw.top_violations,
+                (row) => ({
+                  market: buildLink(compactText(row.symbol), buildReportUrl(row.symbol)),
+                  exec_price: numberText(row.exec_price, 4),
+                  runner_floor_px: numberText(row.runner_floor_px, 4),
+                  signal_price: numberText(row.signal_price, 4),
+                  gap_pct: `${numberText(row.floor_gap_pct, 4)}%`,
+                  open: buildLink("Execution", buildExecutionUrl(row.symbol)),
+                }),
+                5,
+              ),
+            } : null,
+            notes: sliceList(
+              Array.isArray(trailRunnerFloorAudit.raw && trailRunnerFloorAudit.raw.top_violations)
+                ? trailRunnerFloorAudit.raw.top_violations.map((row) => `${row.symbol} ${row.position_side} exec=${row.exec_price} floor=${row.runner_floor_px} gap=${row.floor_gap_pct}%`)
+                : [],
+              5,
+            ),
+          },
+          {
             title: "Execution Runtime",
             tone: statusTone(executionQuality.summary.status || "WARN"),
             rows: [
@@ -1176,6 +1283,12 @@ function buildRecoveryViewModel() {
             } : null,
             notes: sliceList(executionQuality.summary.review_reasons || [], 6),
           },
+          buildDecisionCenterCard({
+            feePnlKpi,
+            failureLearning,
+            allocator: serverMarketCapitalAllocator,
+            promotionGate: mlPromotionGate,
+          }),
           {
             title: "Signal Authority",
             tone: statusTone(signalAuthority.summary.drift_status || "PARITY_UNKNOWN"),
@@ -1575,6 +1688,10 @@ function buildExecutionViewModel(query = {}) {
   const focusedSource = String(query.source || "").trim();
   const recentRuntimeRows = buildRecentRuntimeRows(dataset, 6);
   const latestRuntimeRow = recentRuntimeRows[0] || null;
+  const feePnlKpi = loadLatestArtifact("best_self_evolution_fee_pnl_kpi_authority_latest.json");
+  const failureLearning = loadLatestArtifact("best_self_evolution_failure_learning_loop_latest.json");
+  const serverMarketCapitalAllocator = loadLatestArtifact("best_self_evolution_server_market_capital_allocator_latest.json");
+  const mlPromotionGate = loadLatestArtifact("best_self_evolution_ml_promotion_gate_latest.json");
   return localizeViewModel({
     active: "execution",
     title: "Execution",
@@ -1637,6 +1754,12 @@ function buildExecutionViewModel(query = {}) {
               { label: "Focused Source", value: compactText(focusedSource || "all") },
             ],
           },
+          buildDecisionCenterCard({
+            feePnlKpi,
+            failureLearning,
+            allocator: serverMarketCapitalAllocator,
+            promotionGate: mlPromotionGate,
+          }),
         ],
       },
       {

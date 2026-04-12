@@ -2,6 +2,42 @@
 const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 
+function normalizeBaseUrl(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  return text.replace(/\/+$/, "");
+}
+
+function firstHeaderValue(value) {
+  return String(value || "")
+    .split(",")[0]
+    .trim();
+}
+
+function resolveGoogleBaseUrl(req = null) {
+  const envBaseUrl = normalizeBaseUrl(
+    process.env.GOOGLE_OAUTH_BASE_URL ||
+    process.env.PUBLIC_BASE_URL ||
+    process.env.BASE_URL
+  );
+  if (!req || typeof req !== "object") {
+    return envBaseUrl || "http://localhost:3000";
+  }
+
+  const forwardedProto = firstHeaderValue(req.headers && req.headers["x-forwarded-proto"]);
+  const forwardedHost = firstHeaderValue(req.headers && req.headers["x-forwarded-host"]);
+  const host = forwardedHost || firstHeaderValue(req.get && req.get("host"));
+  const proto = forwardedProto || req.protocol || (envBaseUrl && envBaseUrl.startsWith("https://") ? "https" : "http");
+  if (host) {
+    return `${proto}://${host}`.replace(/\/+$/, "");
+  }
+  return envBaseUrl || "http://localhost:3000";
+}
+
+function resolveGoogleCallbackUrl(req = null) {
+  return `${resolveGoogleBaseUrl(req)}/auth/google/callback`;
+}
+
 // allowlist
 function isAllowedEmail(email) {
   const allow = (process.env.ALLOWLIST_EMAIL || "").trim().toLowerCase();
@@ -25,8 +61,8 @@ function setupGoogleAuth() {
   const clientID = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
-  const baseUrl = process.env.BASE_URL || "http://localhost:3000";
-  const callbackURL = `${baseUrl}/auth/google/callback`;
+  const baseUrl = resolveGoogleBaseUrl();
+  const callbackURL = resolveGoogleCallbackUrl();
 
   // DEBUG: print runtime oauth config once
   // eslint-disable-next-line no-console
@@ -120,4 +156,14 @@ function ensureAuth(req, res, next) {
   return res.redirect("/login");
 }
 
-module.exports = { setupGoogleAuth, ensureAuth };
+module.exports = {
+  setupGoogleAuth,
+  ensureAuth,
+  resolveGoogleBaseUrl,
+  resolveGoogleCallbackUrl,
+  __test: {
+    normalizeBaseUrl,
+    resolveGoogleBaseUrl,
+    resolveGoogleCallbackUrl,
+  },
+};

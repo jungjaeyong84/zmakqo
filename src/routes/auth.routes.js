@@ -1,5 +1,6 @@
 const express = require("express");
 const passport = require("passport");
+const { resolveGoogleCallbackUrl } = require("../auth/google");
 
 const router = express.Router();
 
@@ -36,9 +37,11 @@ router.get("/auth/google", (req, res, next) => {
     if (allowLocalNoOauth()) return res.redirect("/dashboard/home");
     return res.status(500).send("GOOGLE_OAUTH_NOT_CONFIGURED");
   }
+  const callbackURL = resolveGoogleCallbackUrl(req);
   return passport.authenticate("google", {
     scope: ["openid", "email", "profile"],
     prompt: "select_account",
+    callbackURL,
   })(req, res, next);
 });
 
@@ -49,7 +52,8 @@ router.get("/auth/google/callback", (req, res, next) => {
     return res.redirect("/login");
   }
   const startedAt = Date.now();
-  return passport.authenticate("google", { session: true }, (err, user, info) => {
+  const callbackURL = resolveGoogleCallbackUrl(req);
+  return passport.authenticate("google", { session: true, callbackURL }, (err, user, info) => {
     const elapsedMs = Date.now() - startedAt;
     if (err) {
       console.error("[OAUTH_CALLBACK_ERROR]", err, { elapsedMs });

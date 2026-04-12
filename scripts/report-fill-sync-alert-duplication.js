@@ -37,6 +37,10 @@ function isExternalFill(row) {
   return fillId.startsWith("EXT__");
 }
 
+function isBackfilledAlertDuplication(row) {
+  return !!(row && row.extra && row.extra.alert_duplication_backfilled_at);
+}
+
 async function scanRecentExternalExitFills(db) {
   const rows = [];
   const sinceMs = Date.now() - (LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
@@ -92,6 +96,7 @@ async function main() {
       total_realized_pnl: 0,
       first_at: row.created_at || null,
       last_at: row.created_at || null,
+      backfilled: true,
     };
     current.fill_count += 1;
     current.fill_ids.push(row.fill_id || row.id);
@@ -99,6 +104,7 @@ async function main() {
     current.total_realized_pnl += Number(row.realized_pnl || 0) || 0;
     current.first_at = !current.first_at || String(row.created_at || "") < String(current.first_at) ? row.created_at : current.first_at;
     current.last_at = !current.last_at || String(row.created_at || "") > String(current.last_at) ? row.created_at : current.last_at;
+    current.backfilled = current.backfilled && isBackfilledAlertDuplication(row);
     byKey.set(key, current);
     bySymbol.set(symbol, (bySymbol.get(symbol) || 0) + 1);
   }
@@ -106,17 +112,19 @@ async function main() {
   const duplicateGroups = Array.from(byKey.values())
     .filter((row) => row.fill_count > 1)
     .sort((a, b) => b.fill_count - a.fill_count || String(a.symbol).localeCompare(String(b.symbol)));
-  const suppressedEstimate = duplicateGroups.reduce((acc, row) => acc + Math.max(0, row.fill_count - 1), 0);
+  const unresolvedDuplicateGroups = duplicateGroups.filter((row) => !row.backfilled);
+  const suppressedEstimate = unresolvedDuplicateGroups.reduce((acc, row) => acc + Math.max(0, row.fill_count - 1), 0);
 
   const report = {
     generated_at: nowIso(),
     lookback_days: LOOKBACK_DAYS,
     raw_external_exit_fill_n: rows.length,
     unique_alert_group_n: byKey.size,
-    duplicate_group_n: duplicateGroups.length,
+    duplicate_group_total_n: duplicateGroups.length,
+    duplicate_group_n: unresolvedDuplicateGroups.length,
     suppressed_alert_estimate_n: suppressedEstimate,
     by_symbol_raw_fill_n: Object.fromEntries(Array.from(bySymbol.entries()).sort((a, b) => String(a[0]).localeCompare(String(b[0])))),
-    top_duplicate_groups: duplicateGroups.slice(0, 30),
+    top_duplicate_groups: unresolvedDuplicateGroups.slice(0, 30),
   };
 
   fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -131,6 +139,7 @@ async function main() {
     `- lookback_days: ${report.lookback_days}`,
     `- raw_external_exit_fill_n: ${report.raw_external_exit_fill_n}`,
     `- unique_alert_group_n: ${report.unique_alert_group_n}`,
+    `- duplicate_group_total_n: ${report.duplicate_group_total_n}`,
     `- duplicate_group_n: ${report.duplicate_group_n}`,
     `- suppressed_alert_estimate_n: ${report.suppressed_alert_estimate_n}`,
     "",

@@ -115,6 +115,56 @@ function runDailySystemOpsCheck() {
       reportPath,
     };
   }
+  const executionQuality = runScript("node scripts/report-best-self-evolution-execution-quality.js");
+  if (!executionQuality.ok) {
+    return {
+      ok: false,
+      skipped: false,
+      error: `EXECUTION_QUALITY_REPORT_FAILED:${executionQuality.error}`,
+      snapshotPath,
+      reportPath,
+    };
+  }
+  const lineageHealth = runScript("node scripts/report-signal-lineage-health.js");
+  if (!lineageHealth.ok) {
+    return {
+      ok: false,
+      skipped: false,
+      error: `SIGNAL_LINEAGE_HEALTH_FAILED:${lineageHealth.error}`,
+      snapshotPath,
+      reportPath,
+    };
+  }
+  const openClawPolicyAuthority = runScript("node scripts/report-openclaw-policy-authority.js");
+  if (!openClawPolicyAuthority.ok) {
+    return {
+      ok: false,
+      skipped: false,
+      error: `OPENCLAW_POLICY_AUTHORITY_FAILED:${openClawPolicyAuthority.error}`,
+      snapshotPath,
+      reportPath,
+    };
+  }
+  const trailFloorAudit = runScript("node scripts/report-trail-runner-floor-audit.js");
+  if (!trailFloorAudit.ok) {
+    return {
+      ok: false,
+      skipped: false,
+      error: `TRAIL_RUNNER_FLOOR_AUDIT_FAILED:${trailFloorAudit.error}`,
+      snapshotPath,
+      reportPath,
+    };
+  }
+  const exitQtyContractAudit = runScript("node scripts/report-binance-exit-qty-contract-audit.js");
+  if (!exitQtyContractAudit.ok) {
+    return {
+      ok: false,
+      skipped: false,
+      error: `BINANCE_EXIT_QTY_CONTRACT_AUDIT_FAILED:${exitQtyContractAudit.error}`,
+      snapshotPath,
+      reportPath,
+    };
+  }
   return runScript(`node scripts/daily-system-ops-check.js ${JSON.stringify(snapshotPath)} ${JSON.stringify(reportPath)}`);
 }
 

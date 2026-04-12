@@ -32,11 +32,15 @@ function buildMlGlobalCanaryEvidence({
   replayEvidence = null,
   evReplaySampleGap = null,
   replayUnblockProjection = null,
+  eventTruthAlphaValidation = null,
+  failureLearningLoop = null,
 } = {}) {
   const summary = readSummary(canary);
   const replay = readSummary(replayEvidence);
   const sampleGap = readSummary(evReplaySampleGap);
   const replayProjection = readSummary(replayUnblockProjection);
+  const alpha = readSummary(eventTruthAlphaValidation);
+  const failureLearning = readSummary(failureLearningLoop);
   const rows = Array.isArray(canary && canary.rows) ? canary.rows : [];
 
   const totalN = toNum(summary.total_n) || rows.length;
@@ -64,6 +68,12 @@ function buildMlGlobalCanaryEvidence({
     if (dominantBlocker) blockingReasons.push(`GLOBAL_CANARY_BLOCKER_${dominantBlocker}`);
     if (!blockingReasons.length) blockingReasons.push("GLOBAL_CANARY_APPLY_BLOCKED");
   }
+  if (alpha.alpha_ready !== true) {
+    blockingReasons.push(`GLOBAL_CANARY_ALPHA_${String(alpha.evidence_status || "NOT_READY").trim().toUpperCase()}`);
+  }
+  if (failureLearning.evidence_status && /FAIL_RATE_HIGH|NEGATIVE_DOMINANT/.test(String(failureLearning.evidence_status).toUpperCase())) {
+    blockingReasons.push(`GLOBAL_CANARY_FAILURE_${String(failureLearning.evidence_status).trim().toUpperCase()}`);
+  }
 
   let evidenceStatus = "GLOBAL_CANARY_EVIDENCE_READY";
   if (globalCanaryPass && applyPass) evidenceStatus = "GLOBAL_CANARY_PASS_READY";
@@ -74,6 +84,10 @@ function buildMlGlobalCanaryEvidence({
   else if (dominantBlocker === "OBJECTIVE_SCORE_NEGATIVE") evidenceStatus = "GLOBAL_CANARY_OBJECTIVE_BLOCKED";
   else if (dominantBlocker) evidenceStatus = `GLOBAL_CANARY_BLOCKED_${dominantBlocker}`;
   else if (!applyPass) evidenceStatus = "GLOBAL_CANARY_APPLY_BLOCKED";
+  if (alpha.alpha_ready !== true) evidenceStatus = "GLOBAL_CANARY_ALPHA_BLOCKED";
+  else if (failureLearning.evidence_status && /FAIL_RATE_HIGH|NEGATIVE_DOMINANT/.test(String(failureLearning.evidence_status).toUpperCase())) {
+    evidenceStatus = "GLOBAL_CANARY_FAILURE_LEARNING_BLOCKED";
+  }
 
   return {
     status: "ML_GLOBAL_CANARY_EVIDENCE_READY",
@@ -107,6 +121,18 @@ function buildMlGlobalCanaryEvidence({
     replay_sample_dominant_dimension: norm(sampleGap.dominant_sample_dimension),
     replay_projected_ready_if_sample_gap_closed: replayProjection.projected_replay_ready_if_sample_gap_closed === true,
     replay_projected_residual_issue_after_sample_gap_closed: norm(replayProjection.projected_residual_issue_after_sample_gap_closed),
+    alpha_validation_status: norm(alpha.status),
+    alpha_validation_ready: alpha.alpha_ready === true,
+    alpha_evidence_status: norm(alpha.evidence_status),
+    alpha_rows_n: toNum(alpha.realized_rows_n),
+    alpha_positive_rate: toNum(alpha.positive_rate),
+    alpha_avg_realized_ret_net: toNum(alpha.avg_realized_ret_net),
+    failure_learning_status: norm(failureLearning.status),
+    failure_learning_ready: failureLearning.learning_ready === true,
+    failure_learning_evidence_status: norm(failureLearning.evidence_status),
+    failure_learning_fail_rate: toNum(failureLearning.fail_rate),
+    failure_learning_dominant_pattern: norm(failureLearning.dominant_failure_pattern),
+    failure_learning_top_market: norm(failureLearning.top_failure_market),
     top_ready_market: norm(summary.top_ready_market),
     top_rollback_market: norm(summary.top_rollback_market),
     top_shadow_drift_market: norm(summary.top_shadow_drift_market),

@@ -47,12 +47,34 @@ const { buildMlGlobalCanaryEvidence } = require("../utils/mlGlobalCanaryEvidence
         projected_residual_issue_after_sample_gap_closed: "NEGATIVE_OBJECTIVE_DELTA",
       },
     },
+    eventTruthAlphaValidation: {
+      summary: {
+        status: "EVENT_TRUTH_ALPHA_VALIDATION_READY",
+        alpha_ready: false,
+        evidence_status: "EVENT_TRUTH_ALPHA_NOT_POSITIVE",
+        positive_rate: 0.42,
+        avg_realized_ret_net: -0.001,
+      },
+    },
+    failureLearningLoop: {
+      summary: {
+        status: "FAILURE_LEARNING_LOOP_READY",
+        learning_ready: true,
+        evidence_status: "FAILURE_LEARNING_NEGATIVE_DOMINANT",
+        fail_rate: 0.55,
+        dominant_failure_pattern: "SL_FIRST",
+        top_failure_market: "BTCUSDT",
+      },
+    },
   });
 
   assert.strictEqual(blocked.status, "ML_GLOBAL_CANARY_EVIDENCE_READY");
   assert.strictEqual(blocked.global_canary_ready, false);
-  assert.strictEqual(blocked.evidence_status, "GLOBAL_CANARY_REPLAY_BLOCKED");
+  assert.strictEqual(blocked.evidence_status, "GLOBAL_CANARY_ALPHA_BLOCKED");
   assert.strictEqual(blocked.dominant_blocker, "SELF_EVOLUTION_REPLAY_NOT_PASS");
+  assert.strictEqual(blocked.alpha_validation_ready, false);
+  assert.strictEqual(blocked.alpha_evidence_status, "EVENT_TRUTH_ALPHA_NOT_POSITIVE");
+  assert.strictEqual(blocked.failure_learning_evidence_status, "FAILURE_LEARNING_NEGATIVE_DOMINANT");
   assert.strictEqual(blocked.replay_evidence_status, "REPLAY_WARN_INSUFFICIENT_SAMPLE");
   assert.strictEqual(blocked.replay_dominant_issue, "EV_TUNER_INSUFFICIENT_SAMPLE");
   assert.strictEqual(blocked.replay_sample_gap_status, "EV_REPLAY_SAMPLE_GAP");
@@ -60,6 +82,8 @@ const { buildMlGlobalCanaryEvidence } = require("../utils/mlGlobalCanaryEvidence
   assert.strictEqual(blocked.replay_projected_ready_if_sample_gap_closed, false);
   assert.strictEqual(blocked.replay_projected_residual_issue_after_sample_gap_closed, "NEGATIVE_OBJECTIVE_DELTA");
   assert.ok(blocked.blocking_reasons.includes("GLOBAL_CANARY_BLOCKER_SELF_EVOLUTION_REPLAY_NOT_PASS"));
+  assert.ok(blocked.blocking_reasons.includes("GLOBAL_CANARY_ALPHA_EVENT_TRUTH_ALPHA_NOT_POSITIVE"));
+  assert.ok(blocked.blocking_reasons.includes("GLOBAL_CANARY_FAILURE_FAILURE_LEARNING_NEGATIVE_DOMINANT"));
 
   const ready = buildMlGlobalCanaryEvidence({
     canary: {
@@ -75,6 +99,20 @@ const { buildMlGlobalCanaryEvidence } = require("../utils/mlGlobalCanaryEvidence
         { market: "BTCUSDT", current_stage: "SOFT", canary_verdict: "READY", blockers: [] },
         { market: "SOLUSDT", current_stage: "SOFT", canary_verdict: "READY", blockers: [] },
       ],
+    },
+    eventTruthAlphaValidation: {
+      summary: {
+        status: "EVENT_TRUTH_ALPHA_VALIDATION_READY",
+        alpha_ready: true,
+        evidence_status: "EVENT_TRUTH_ALPHA_PASS",
+      },
+    },
+    failureLearningLoop: {
+      summary: {
+        status: "FAILURE_LEARNING_LOOP_READY",
+        learning_ready: true,
+        evidence_status: "FAILURE_LEARNING_PASS",
+      },
     },
   });
 

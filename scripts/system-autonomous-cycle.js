@@ -85,8 +85,13 @@ function main() {
   const generatedAtKst = toKstString(nowIso, { fallbackToString: true });
 
   const tasks = [
+    { id: "execution_quality", label: "실행 품질 리포트", bin: "node", args: ["scripts/report-best-self-evolution-execution-quality.js"] },
+    { id: "signal_lineage_health", label: "시그널 라인리지 건강도", bin: "node", args: ["scripts/report-signal-lineage-health.js"] },
     { id: "system_runtime_guards", label: "시스템 런타임 가드", bin: "node", args: ["scripts/run-system-runtime-guards.js"] },
     { id: "trail_authority_feedback", label: "트레일 권한 피드백", bin: "node", args: ["scripts/run-trail-authority-feedback.js"] },
+    { id: "trail_runner_floor_audit", label: "트레일 floor 감사", bin: "node", args: ["scripts/report-trail-runner-floor-audit.js"] },
+    { id: "binance_exit_qty_contract_audit", label: "Binance exit 수량 계약 감사", bin: "node", args: ["scripts/report-binance-exit-qty-contract-audit.js"] },
+    { id: "openclaw_policy_authority", label: "OpenClaw 정책 권한 리포트", bin: "node", args: ["scripts/report-openclaw-policy-authority.js"] },
     { id: "runtime_error_family_remediation", label: "런타임 오류 family remediation", bin: "node", args: ["scripts/runtime-error-family-remediation.js"] },
     { id: "ml_ops_pipeline", label: "ML 운영 파이프라인", bin: "node", args: ["scripts/run-ml-ops-pipeline.js"] },
     { id: "system_ops", label: "시스템 운영 점검", bin: "node", args: ["scripts/daily-system-ops-check.js"] },

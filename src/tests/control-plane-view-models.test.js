@@ -13,6 +13,8 @@ function run() {
   const fallbackName = "2099-12-31_2359_tmp_control_plane_recovery.json";
   const systemOpsPath = path.join(opsDailyDir, "system_ops_check_latest.json");
   const systemOpsBackup = fs.existsSync(systemOpsPath) ? fs.readFileSync(systemOpsPath, "utf8") : null;
+  const trailAuditPath = path.join(opsDailyDir, "trail_runner_floor_audit_latest.json");
+  const trailAuditBackup = fs.existsSync(trailAuditPath) ? fs.readFileSync(trailAuditPath, "utf8") : null;
   const latestPath = path.join(opsDailyDir, latestName);
   const fallbackPath = path.join(opsDailyDir, fallbackName);
   const controlPlaneTemplatePath = path.resolve(__dirname, "../views/control-plane.ejs");
@@ -41,6 +43,22 @@ function run() {
       ],
     },
   }, null, 2), "utf8");
+  fs.writeFileSync(trailAuditPath, JSON.stringify({
+    violation_n: 1,
+    violation_total_n: 4,
+    live_bar_runner_violation_n: 1,
+    live_bar_runner_violation_total_n: 3,
+    top_violations: [
+      {
+        symbol: "XRPUSDT",
+        exec_price: 1.3595,
+        runner_floor_px: 1.365876275,
+        signal_price: 1.3639,
+        floor_gap_pct: -0.4664,
+        position_side: "LONG",
+      },
+    ],
+  }, null, 2), "utf8");
 
   try {
     const artifact = controlPlaneTest.loadLatestArtifact(latestName);
@@ -65,6 +83,15 @@ function run() {
     assert.ok(runtimeCard.table);
     assert.ok(Array.isArray(runtimeCard.table.rows));
     assert.ok(String(runtimeCard.table.rows[0].symbol && runtimeCard.table.rows[0].symbol.label || "").includes("XRPUSDT"));
+    const trailAuditCard = Array.isArray(operatorSection.cards)
+      ? operatorSection.cards.find((card) => String(card && card.title || "").includes("Trail Floor Audit"))
+      : null;
+    assert.ok(trailAuditCard);
+    assert.ok(Array.isArray(trailAuditCard.rows));
+    assert.ok(trailAuditCard.rows.some((row) => String(row && row.label || "").includes("Unresolved")));
+    assert.ok(trailAuditCard.table);
+    assert.ok(Array.isArray(trailAuditCard.table.rows));
+    assert.ok(String(trailAuditCard.table.rows[0].market && trailAuditCard.table.rows[0].market.label || "").includes("XRPUSDT"));
     const executionCard = Array.isArray(operatorSection.cards)
       ? operatorSection.cards.find((card) => String(card && card.title || "").includes("실행 품질"))
       : null;
@@ -76,6 +103,13 @@ function run() {
     assert.ok(executionCard.table.rows[0].market && executionCard.table.rows[0].market.href);
     assert.ok(executionCard.table.rows[0].open && executionCard.table.rows[0].open.href);
     assert.ok(String(executionCard.table.rows[0].open.href).includes("/dashboard/execution"));
+    const decisionCenterCard = Array.isArray(operatorSection.cards)
+      ? operatorSection.cards.find((card) => String(card && card.title || "").includes("의사결정 센터"))
+      : null;
+    assert.ok(decisionCenterCard);
+    assert.ok(Array.isArray(decisionCenterCard.rows));
+    assert.ok(decisionCenterCard.rows.some((row) => String(row && row.label || "").includes("Promotion")));
+    assert.ok(decisionCenterCard.rows.some((row) => String(row && row.label || "").includes("Fee/PnL")));
     assert.ok(Array.isArray(vm.hero && vm.hero.pills));
     assert.ok(vm.hero.pills.some((pill) => String(pill && pill.label || "").includes("신규 진입 배율")));
 
@@ -83,12 +117,17 @@ function run() {
     assert.ok(html.includes("핵심 운영 상태"));
     assert.ok(html.includes("런타임 가드"));
     assert.ok(html.includes("Writer Authority 24h"));
+    assert.ok(html.includes("Trail Floor Audit"));
     assert.ok(html.includes("XRPUSDT"));
     assert.ok(html.includes("/dashboard/execution"));
+    assert.ok(html.includes("의사결정 센터"));
   } finally {
     try { fs.unlinkSync(latestPath); } catch (_) {}
     try { fs.unlinkSync(fallbackPath); } catch (_) {}
     if (systemOpsBackup != null) fs.writeFileSync(systemOpsPath, systemOpsBackup, "utf8");
+    else try { fs.unlinkSync(systemOpsPath); } catch (_) {}
+    if (trailAuditBackup != null) fs.writeFileSync(trailAuditPath, trailAuditBackup, "utf8");
+    else try { fs.unlinkSync(trailAuditPath); } catch (_) {}
   }
 
   console.log("CONTROL_PLANE_VIEW_MODELS_TEST_OK");

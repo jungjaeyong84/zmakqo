@@ -18,6 +18,8 @@ const INPUTS = Object.freeze({
   replayEvidence: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_replay_evidence_latest.json"),
   evReplaySampleGap: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_ev_replay_sample_gap_latest.json"),
   replayUnblockProjection: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_replay_unblock_projection_latest.json"),
+  eventTruthAlphaValidation: path.join(OPS_DAILY_DIR, "best_self_evolution_event_truth_alpha_validation_latest.json"),
+  failureLearningLoop: path.join(OPS_DAILY_DIR, "best_self_evolution_failure_learning_loop_latest.json"),
 });
 
 function renderMarkdown(report = {}) {
@@ -31,6 +33,8 @@ function renderMarkdown(report = {}) {
     `- evidence_status: ${summary.evidence_status || "N/A"}`,
     `- dominant_blocker: ${summary.dominant_blocker || "N/A"}`,
     `- replay_evidence: ${summary.replay_evidence_status || "N/A"} / issue=${summary.replay_dominant_issue || "N/A"}`,
+    `- alpha_validation: ${summary.alpha_validation_status || "N/A"} / ready=${summary.alpha_validation_ready ? "YES" : "NO"} / evidence=${summary.alpha_evidence_status || "N/A"} / positive_rate=${summary.alpha_positive_rate ?? "N/A"} / avg_ret=${summary.alpha_avg_realized_ret_net ?? "N/A"}`,
+    `- failure_learning: ${summary.failure_learning_status || "N/A"} / ready=${summary.failure_learning_ready ? "YES" : "NO"} / evidence=${summary.failure_learning_evidence_status || "N/A"} / fail_rate=${summary.failure_learning_fail_rate ?? "N/A"} / pattern=${summary.failure_learning_dominant_pattern || "N/A"} / market=${summary.failure_learning_top_market || "N/A"}`,
     `- replay_sample_gap: ${summary.replay_sample_gap_status || "N/A"} / required=${summary.replay_sample_required_realized_n ?? "N/A"} / current=${summary.replay_sample_current_effective_realized_n ?? "N/A"} / gap=${summary.replay_sample_gap_n ?? "N/A"} / dimension=${summary.replay_sample_dominant_dimension || "N/A"}`,
     `- replay_projection: ready_if_gap_closed=${summary.replay_projected_ready_if_sample_gap_closed ? "YES" : "NO"} / residual=${summary.replay_projected_residual_issue_after_sample_gap_closed || "N/A"}`,
     `- blocked/ready/rollback: ${summary.blocked_n ?? "N/A"} / ${summary.ready_n ?? "N/A"} / ${summary.rollback_ready_n ?? "N/A"}`,
@@ -48,6 +52,8 @@ function main() {
     replayEvidence: readJsonRawSafe(INPUTS.replayEvidence, null),
     evReplaySampleGap: readJsonRawSafe(INPUTS.evReplaySampleGap, null),
     replayUnblockProjection: readJsonRawSafe(INPUTS.replayUnblockProjection, null),
+    eventTruthAlphaValidation: readJsonRawSafe(INPUTS.eventTruthAlphaValidation, null),
+    failureLearningLoop: readJsonRawSafe(INPUTS.failureLearningLoop, null),
   });
   const payload = { ok: true, generated_at_kst: nowMeta.kst, inputs: INPUTS, summary };
   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}_best_self_evolution_ml_global_canary_evidence`;

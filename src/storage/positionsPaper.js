@@ -367,6 +367,9 @@ async function notifyPositionWriterAuthorityFailure(err, {
   requestId = null,
   runId = null,
   traceId = null,
+  suppressAlert = false,
+  suppressRuntimeFamily = false,
+  suppressRuntimeFamilyReason = null,
 } = {}) {
   const code = upper(err && err.code) || upper(err && err.message) || "UNKNOWN";
   if (!["POSITION_WRITE_TOKEN_REQUIRED", "POSITION_WRITE_TOKEN_MISMATCH", "POSITION_WRITE_LEASE_HELD", "POSITION_WRITE_LEASE_LOST"].includes(code)) {
@@ -386,11 +389,14 @@ async function notifyPositionWriterAuthorityFailure(err, {
       expectedWriteToken: err && err.expected_write_token ? err.expected_write_token : null,
       actualWriteToken: err && err.actual_write_token ? err.actual_write_token : null,
       holder: err && err.holder ? err.holder : null,
+      runtimeFamilySuppressed: suppressRuntimeFamily === true,
+      runtimeFamilySuppressedReason: suppressRuntimeFamilyReason || null,
     });
   } catch (recordErr) {
     const msg = recordErr && recordErr.message ? recordErr.message : String(recordErr);
     console.warn("[POSITION_WRITER_AUTHORITY_EVENT_FAIL]", msg);
   }
+  if (suppressAlert === true) return false;
   if (shouldSuppressPositionWriterAuthorityAlert(err, { source })) return false;
   if (POSITION_WRITER_ALERT_ENABLED !== true) return false;
   if (!POSITION_WRITER_ALERT_CHANNEL) return false;
@@ -581,6 +587,9 @@ async function upsertPosition({
   mutationKind = "POSITION_UPSERT",
   reason = null,
   expectedWriteToken = null,
+  suppressAuthorityAlert = false,
+  suppressAuthorityRuntimeFamily = false,
+  suppressAuthorityRuntimeFamilyReason = null,
 } = {}) {
   const expectedWriteTokenProvided = Object.prototype.hasOwnProperty.call(arguments[0] || {}, "expectedWriteToken");
   return serializePositionMutation({
@@ -701,6 +710,9 @@ async function upsertPosition({
           requestId: trace.request_id,
           runId: trace.run_id,
           traceId: trace.trace_id,
+          suppressAlert: suppressAuthorityAlert === true,
+          suppressRuntimeFamily: suppressAuthorityRuntimeFamily === true,
+          suppressRuntimeFamilyReason: suppressAuthorityRuntimeFamilyReason || null,
         });
         throw err;
       }
@@ -720,6 +732,9 @@ async function upsertPositionMetaOnly({
   mutationKind = "POSITION_META_UPSERT",
   reason = null,
   expectedWriteToken = null,
+  suppressAuthorityAlert = false,
+  suppressAuthorityRuntimeFamily = false,
+  suppressAuthorityRuntimeFamilyReason = null,
 } = {}) {
   const expectedWriteTokenProvided = Object.prototype.hasOwnProperty.call(arguments[0] || {}, "expectedWriteToken");
   return serializePositionMutation({
@@ -829,6 +844,9 @@ async function upsertPositionMetaOnly({
           requestId: trace.request_id,
           runId: trace.run_id,
           traceId: trace.trace_id,
+          suppressAlert: suppressAuthorityAlert === true,
+          suppressRuntimeFamily: suppressAuthorityRuntimeFamily === true,
+          suppressRuntimeFamilyReason: suppressAuthorityRuntimeFamilyReason || null,
         });
         throw err;
       }
@@ -856,6 +874,7 @@ module.exports = {
     assertExpectedWriteTokenProvided,
     shouldSendPositionWriterAlert,
     shouldSuppressPositionWriterAuthorityAlert,
+    notifyPositionWriterAuthorityFailure,
     serializePositionMutation,
     runWithPositionWriterLease,
   },

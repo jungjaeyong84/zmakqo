@@ -14,6 +14,10 @@ const { runSystemAnomalyRemediation } = require("./systemAnomalyRemediation");
 const { applyMlServingActuation } = require("./mlServingActuator");
 const { exportTraceContext } = require("./otelExporter");
 const { normalizeTraceContext } = require("../utils/traceContext");
+const {
+  loadPreferredExecutionQualityInput,
+  loadPreferredLineageHealthInput,
+} = require("./systemSloArtifactInputs");
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
@@ -59,8 +63,8 @@ async function runSystemRuntimeGuardsJob({
   remediate = runSystemAnomalyRemediation,
   actuateServing = applyMlServingActuation,
   exportTrace = exportTraceContext,
-  loadExecutionQuality = () => safeReadJson(EXECUTION_QUALITY_LATEST_PATH),
-  loadLineageHealth = () => safeReadJson(LINEAGE_HEALTH_LATEST_PATH),
+  loadExecutionQuality = loadPreferredExecutionQualityInput,
+  loadLineageHealth = loadPreferredLineageHealthInput,
 } = {}) {
   const ex = String(exchange || "BINANCEFUT").trim().toUpperCase();
   const generatedAtIso = new Date(nowMs).toISOString();

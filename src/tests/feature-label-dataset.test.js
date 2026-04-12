@@ -50,6 +50,33 @@ async function run() {
   assert.ok(/^[0-9a-f]{64}$/.test(provenance.source_event_manifest_hash));
   __test.assertImmutableEventProvenance([{ provenance }]);
 
+  const featureSnapshot = __test.buildFeatureSnapshot({
+    market: "BTCUSDT",
+    tf: "15m",
+    trade: {
+      pnl_krw_gross: 100,
+      fee_value: 1,
+      funding_paid: 0,
+      notional_krw: 1000,
+      entry_signal_type: "core",
+      position_side: "LONG",
+      close_type: "PARTIAL_CLOSE",
+      exit_event: "EXIT_TP_P0_0.8P",
+      features_json: {
+        confidence: 0.88,
+        long_posterior: 0.71,
+        openclaw_market_regime_cohort: "RESCUE",
+      },
+    },
+  });
+  assert.strictEqual(featureSnapshot.entry_tier, "CORE");
+  assert.strictEqual(featureSnapshot.position_side, "LONG");
+  assert.strictEqual(featureSnapshot.close_type, "PARTIAL_CLOSE");
+  assert.strictEqual(featureSnapshot.exit_event, "EXIT_TP_P0_0.8P");
+  assert.strictEqual(featureSnapshot.confidence, 0.88);
+  assert.strictEqual(featureSnapshot.posterior, 0.71);
+  assert.strictEqual(featureSnapshot.openclaw_market_regime_cohort, "RESCUE");
+
   console.log("FEATURE_LABEL_DATASET_TEST_OK");
 }
 

@@ -1,0 +1,3837 @@
+diff --git a/cloudbuild.yaml b/cloudbuild.yaml
+index 7044db3..2ca4a74 100644
+--- a/cloudbuild.yaml
++++ b/cloudbuild.yaml
+@@ -44,7 +44,7 @@ steps:
+         "--max-instances", "3",
+         "--cpu-throttling",
+         "--timeout", "120s",
+-        "--set-env-vars", "^;^GOOGLE_CLIENT_ID=350958953672-a4434l780u05o2a1ppa29p4fpa2s6l8r.apps.googleusercontent.com;ALLOWLIST_EMAIL=jungjaeyong@gmail.com;EXCHANGE_PROVIDERS=BINANCEFUT;EXCHANGE_TF_ALLOWLIST=15m;EXCHANGE_EXEC_TF=15m;BINANCEFUT_MARKETS=BTCUSDT,ETHUSDT,BNBUSDT,XRPUSDT,SOLUSDT,AXSUSDT,DOGEUSDT,LINKUSDT;AI_ALLOC_SUMMARY_ALERT_PROVIDERS=BINANCEFUT;SIGNAL_LIFECYCLE_ALERT_EXCHANGES=BINANCEFUT;TRADE_ALERT_EXCHANGES=BINANCEFUT;SIGNAL_LIFECYCLE_ALERT_CHANNEL=telegram:7428566524;TRADE_ALERT_CHANNEL=telegram:7428566524;EXIT_INTEGRITY_ALERT_CHANNEL=telegram:7428566524;TELEGRAM_CHAT_ID=7428566524;BASE_URL=https://donbeolja-4ljfegivrq-du.a.run.app;DONBEOLJA_STRATEGY_ID=donbeolja_v6.1.1.0;WEBHOOK_STRATEGY_GATE_ENABLED=1;WEBHOOK_STRATEGY_REQUIRE_ID=1;WEBHOOK_ALLOWED_STRATEGY_IDS=donbeolja_v6.1.1.0,donbeolja_v6.0.3.3,donbeolja_v6.0.3.2,donbeolja_v6.0.3.1,donbeolja_v6.0.3.0,donbeolja_v6.0.2.2,donbeolja_v6.0.2.1,donbeolja_v6.0.2.0,donbeolja_v6.0.1.2,STRAT_v010,STRAT_v002,donbeolja_v5.6.0.2,donbeolja_v5.5.9.1,donbeolja_v5.5.9.0,donbeolja_v5.5.8.0,donbeolja_v5.5.6.0,donbeolja_v5.5.5.9,donbeolja_v5.6.0.4,donbeolja_v5.6.0.3,donbeolja_v6.0.0.0,donbeolja_v5.6.0.7,donbeolja_v5.6.0.6;ENGINE_VERSION=6.1.1.0;FORCE_ALL_SIGNALS_ADD=0;WEBHOOK_FORCE_ALL_SIGNALS_ADD=0;MAX_LAG_MS=1200000;EXIT_IMMEDIATE_ENABLED=1;TICK_EXIT_ENABLED=0;TICK_EXIT_INTERVAL_MS=5000;TICK_EXIT_SYMBOL_COOLDOWN_MS=5000;TICK_EXIT_NEAR_PCT=0.006;TICK_EXIT_PENDING_INTENT_TTL_MS=2000;TICK_EXIT_DYNAMIC_SCALE_ENABLED=0;EXIT_WORKER_SERVICE=donbeolja-exit-worker;EXIT_WORKER_REGION=asia-northeast3;EXIT_WORKER_PROJECT=$PROJECT_ID;EXIT_WORKER_URL=https://donbeolja-exit-worker-4ljfegivrq-du.a.run.app;TICK_EXIT_IDLE_OFF_MINUTES=5;TICK_EXIT_OFF_HYSTERESIS_MINUTES=3;TICK_EXIT_WORKER_MIN_ON=1;BINANCE_NATIVE_PROTECTION_ENABLED=1;BINANCE_NATIVE_TP_ENABLED=1;BINANCE_NATIVE_WORKING_TYPE=MARK_PRICE;BINANCE_NATIVE_PRICE_PROTECT=1;TP_P1_DEBUG=1;EXIT_BACKFILL_ENABLED=1;EXIT_BACKFILL_MAX_BARS=8;EXIT_BACKFILL_ALLOW_ENTRY_BARS=3;CLAUDE_MODEL=claude-opus-4-5-20251101;CLAUDE_MODEL_CANARY=claude-opus-4-5-20251101;CLAUDE_CANARY_PCT=0;AI_ALLOC_CLAUDE_MODEL=claude-opus-4-5-20251101;AI_ALLOC_CLAUDE_MODEL_CANARY=claude-opus-4-5-20251101;AI_ALLOC_CLAUDE_CANARY_PCT=0;AI_ALLOC_CLAUDE_TIMEOUT_MS=12000;SIGNAL_AI_CLAUDE_MODEL=claude-opus-4-5-20251101;SIGNAL_AI_CLAUDE_MODEL_CANARY=claude-opus-4-5-20251101;SIGNAL_AI_CLAUDE_CANARY_PCT=0;SIGNAL_AI_CLAUDE_TIMEOUT_MS=12000;NEWS_PROVIDER=openai_web;NEWS_WEB_MODEL=gpt-5.2;SIGNAL_AI_ENABLED=1;SIGNAL_AI_CAN_BLOCK=1;SIGNAL_AI_CAN_ADJUST=1;SIGNAL_AI_FAIL_MODE=REDUCE;SIGNAL_AI_MODEL=claude-sonnet-4-6-20260514;SIGNAL_AI_CORR_TF=15m;COMMISSION_GATE_ENABLED=0;COMMISSION_GATE_ENFORCE=0;SIGNAL_AI_NEWS_PROVIDER=openai_web;SIGNAL_AI_NEWS_MODEL=gpt-5.2;SIGNAL_AI_NEWS_MAX=40;SIGNAL_AI_TIMEOUT_MS=8000;SIGNAL_AI_RETRY_MAX=2;SIGNAL_AI_RETRY_BASE_MS=250;SIGNALS_FALLBACK_SCAN_LIMIT=500;SIGNALS_FALLBACK_MAX_CALLS_PER_MIN=30;SIGNALS_FALLBACK_COOLDOWN_MS=900000;SIGNALS_FALLBACK_ALERT_MIN_INTERVAL_MS=300000;BINANCEFUT_FILLS_SYNC_INTERVAL_MS=120000;BINANCE_USER_STREAM_ENABLED=1;BINANCEFUT_FUNDING_SYNC_INTERVAL_MS=3600000;POSITION_READ_MODEL_USE_UNIFIED_TIMELINE=1;POSITION_READ_MODEL_RAW_FALLBACK_ENABLED=0;POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY=$_POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY;POSITION_WRITE_TOKEN_REQUIRED=1;POSITION_WRITER_LEASE_ENABLED=1;LIVE_EXEC_POLICY_USE_POSITION_READ_MODEL=1;ML_LIVE_SERVING_ARMED=$_ML_LIVE_SERVING_ARMED;OTEL_EXPORTER_ENABLED=$_OTEL_EXPORTER_ENABLED;OTEL_EXPORTER_OTLP_ENDPOINT=$_OTEL_EXPORTER_OTLP_ENDPOINT;OTEL_EXPORTER_OTLP_HEADERS=$_OTEL_EXPORTER_OTLP_HEADERS;OTEL_EXPORTER_OTLP_USE_GOOGLE_AUTH=$_OTEL_EXPORTER_OTLP_USE_GOOGLE_AUTH;OTEL_GCP_PROJECT_ID=$PROJECT_ID;OTEL_SERVICE_NAME=donbeolja-main;OTEL_SERVICE_ENV=$_OTEL_SERVICE_ENV;OTEL_SERVICE_VERSION=6.1.1.0;OTEL_EXPORTER_TIMEOUT_MS=$_OTEL_EXPORTER_TIMEOUT_MS;EGRESS_PROXY_URL=https://donbeolja-egress-4ljfegivrq-du.a.run.app;EGRESS_PROXY_BINANCE_PRIVATE_URL=https://donbeolja-egress-private-4ljfegivrq-du.a.run.app;EGRESS_PROXY_MODE=client;EGRESS_PROXY_TIMEOUT_MS=20000;WEBHOOK_IMMEDIATE_TIMEOUT_MS=30000;WEBHOOK_IMMEDIATE_RETRY_MAX=2;WEBHOOK_IMMEDIATE_RETRY_DELAY_MS=1000;WEBHOOK_IMMEDIATE_RETRY_TIMEOUT_MS=45000;SESSION_STORE=firestore;SESSION_TTL_MS=604800000;SESSION_COOKIE_SAMESITE=none;SESSION_COOKIE_SECURE=true",
++        "--set-env-vars", "^;^GOOGLE_CLIENT_ID=350958953672-a4434l780u05o2a1ppa29p4fpa2s6l8r.apps.googleusercontent.com;ALLOWLIST_EMAIL=jungjaeyong@gmail.com;EXCHANGE_PROVIDERS=BINANCEFUT;EXCHANGE_TF_ALLOWLIST=15m;EXCHANGE_EXEC_TF=15m;BINANCEFUT_MARKETS=BTCUSDT,ETHUSDT,BNBUSDT,XRPUSDT,SOLUSDT,AXSUSDT,DOGEUSDT,LINKUSDT;AI_ALLOC_SUMMARY_ALERT_PROVIDERS=BINANCEFUT;SIGNAL_LIFECYCLE_ALERT_EXCHANGES=BINANCEFUT;TRADE_ALERT_EXCHANGES=BINANCEFUT;SIGNAL_LIFECYCLE_ALERT_CHANNEL=telegram:7428566524;TRADE_ALERT_CHANNEL=telegram:7428566524;EXIT_INTEGRITY_ALERT_CHANNEL=telegram:7428566524;TELEGRAM_CHAT_ID=7428566524;BASE_URL=https://donbeolja-350958953672.asia-northeast3.run.app;DONBEOLJA_STRATEGY_ID=donbeolja_v6.1.1.0;WEBHOOK_STRATEGY_GATE_ENABLED=1;WEBHOOK_STRATEGY_REQUIRE_ID=1;WEBHOOK_ALLOWED_STRATEGY_IDS=donbeolja_v6.1.1.0,donbeolja_v6.0.3.3,donbeolja_v6.0.3.2,donbeolja_v6.0.3.1,donbeolja_v6.0.3.0,donbeolja_v6.0.2.2,donbeolja_v6.0.2.1,donbeolja_v6.0.2.0,donbeolja_v6.0.1.2,STRAT_v010,STRAT_v002,donbeolja_v5.6.0.2,donbeolja_v5.5.9.1,donbeolja_v5.5.9.0,donbeolja_v5.5.8.0,donbeolja_v5.5.6.0,donbeolja_v5.5.5.9,donbeolja_v5.6.0.4,donbeolja_v5.6.0.3,donbeolja_v6.0.0.0,donbeolja_v5.6.0.7,donbeolja_v5.6.0.6;ENGINE_VERSION=6.1.1.0;FORCE_ALL_SIGNALS_ADD=0;WEBHOOK_FORCE_ALL_SIGNALS_ADD=0;MAX_LAG_MS=1200000;EXIT_IMMEDIATE_ENABLED=1;TICK_EXIT_ENABLED=0;TICK_EXIT_INTERVAL_MS=5000;TICK_EXIT_SYMBOL_COOLDOWN_MS=5000;TICK_EXIT_NEAR_PCT=0.006;TICK_EXIT_PENDING_INTENT_TTL_MS=2000;TICK_EXIT_DYNAMIC_SCALE_ENABLED=0;EXIT_WORKER_SERVICE=donbeolja-exit-worker;EXIT_WORKER_REGION=asia-northeast3;EXIT_WORKER_PROJECT=$PROJECT_ID;EXIT_WORKER_URL=https://donbeolja-exit-worker-4ljfegivrq-du.a.run.app;TICK_EXIT_IDLE_OFF_MINUTES=5;TICK_EXIT_OFF_HYSTERESIS_MINUTES=3;TICK_EXIT_WORKER_MIN_ON=1;BINANCE_NATIVE_PROTECTION_ENABLED=1;BINANCE_NATIVE_TP_ENABLED=1;BINANCE_NATIVE_WORKING_TYPE=MARK_PRICE;BINANCE_NATIVE_PRICE_PROTECT=1;TP_P1_DEBUG=1;EXIT_BACKFILL_ENABLED=1;EXIT_BACKFILL_MAX_BARS=8;EXIT_BACKFILL_ALLOW_ENTRY_BARS=3;CLAUDE_MODEL=claude-opus-4-5-20251101;CLAUDE_MODEL_CANARY=claude-opus-4-5-20251101;CLAUDE_CANARY_PCT=0;AI_ALLOC_CLAUDE_MODEL=claude-opus-4-5-20251101;AI_ALLOC_CLAUDE_MODEL_CANARY=claude-opus-4-5-20251101;AI_ALLOC_CLAUDE_CANARY_PCT=0;AI_ALLOC_CLAUDE_TIMEOUT_MS=12000;SIGNAL_AI_CLAUDE_MODEL=claude-opus-4-5-20251101;SIGNAL_AI_CLAUDE_MODEL_CANARY=claude-opus-4-5-20251101;SIGNAL_AI_CLAUDE_CANARY_PCT=0;SIGNAL_AI_CLAUDE_TIMEOUT_MS=12000;NEWS_PROVIDER=openai_web;NEWS_WEB_MODEL=gpt-5.2;SIGNAL_AI_ENABLED=1;SIGNAL_AI_CAN_BLOCK=1;SIGNAL_AI_CAN_ADJUST=1;SIGNAL_AI_FAIL_MODE=REDUCE;SIGNAL_AI_MODEL=claude-sonnet-4-6-20260514;SIGNAL_AI_CORR_TF=15m;COMMISSION_GATE_ENABLED=0;COMMISSION_GATE_ENFORCE=0;SIGNAL_AI_NEWS_PROVIDER=openai_web;SIGNAL_AI_NEWS_MODEL=gpt-5.2;SIGNAL_AI_NEWS_MAX=40;SIGNAL_AI_TIMEOUT_MS=8000;SIGNAL_AI_RETRY_MAX=2;SIGNAL_AI_RETRY_BASE_MS=250;SIGNALS_FALLBACK_SCAN_LIMIT=500;SIGNALS_FALLBACK_MAX_CALLS_PER_MIN=30;SIGNALS_FALLBACK_COOLDOWN_MS=900000;SIGNALS_FALLBACK_ALERT_MIN_INTERVAL_MS=300000;BINANCEFUT_FILLS_SYNC_INTERVAL_MS=120000;BINANCE_USER_STREAM_ENABLED=1;BINANCEFUT_FUNDING_SYNC_INTERVAL_MS=3600000;POSITION_READ_MODEL_USE_UNIFIED_TIMELINE=1;POSITION_READ_MODEL_RAW_FALLBACK_ENABLED=0;POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY=$_POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY;POSITION_WRITE_TOKEN_REQUIRED=1;POSITION_WRITER_LEASE_ENABLED=1;LIVE_EXEC_POLICY_USE_POSITION_READ_MODEL=1;ML_LIVE_SERVING_ARMED=$_ML_LIVE_SERVING_ARMED;OTEL_EXPORTER_ENABLED=$_OTEL_EXPORTER_ENABLED;OTEL_EXPORTER_OTLP_ENDPOINT=$_OTEL_EXPORTER_OTLP_ENDPOINT;OTEL_EXPORTER_OTLP_HEADERS=$_OTEL_EXPORTER_OTLP_HEADERS;OTEL_EXPORTER_OTLP_USE_GOOGLE_AUTH=$_OTEL_EXPORTER_OTLP_USE_GOOGLE_AUTH;OTEL_GCP_PROJECT_ID=$PROJECT_ID;OTEL_SERVICE_NAME=donbeolja-main;OTEL_SERVICE_ENV=$_OTEL_SERVICE_ENV;OTEL_SERVICE_VERSION=6.1.1.0;OTEL_EXPORTER_TIMEOUT_MS=$_OTEL_EXPORTER_TIMEOUT_MS;EGRESS_PROXY_URL=https://donbeolja-egress-4ljfegivrq-du.a.run.app;EGRESS_PROXY_BINANCE_PRIVATE_URL=https://donbeolja-egress-private-4ljfegivrq-du.a.run.app;EGRESS_PROXY_MODE=client;EGRESS_PROXY_TIMEOUT_MS=20000;WEBHOOK_IMMEDIATE_TIMEOUT_MS=30000;WEBHOOK_IMMEDIATE_RETRY_MAX=2;WEBHOOK_IMMEDIATE_RETRY_DELAY_MS=1000;WEBHOOK_IMMEDIATE_RETRY_TIMEOUT_MS=45000;SESSION_STORE=firestore;SESSION_TTL_MS=604800000;SESSION_COOKIE_SAMESITE=none;SESSION_COOKIE_SECURE=true",
+         "--set-secrets", "GOOGLE_CLIENT_SECRET=DONBEOLJA_GOOGLE_CLIENT_SECRET:latest,SESSION_SECRET=DONBEOLJA_SESSION_SECRET:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,ANTHROPIC_API_KEY=CLAUDE_API_KEY:latest,NEWS_API_KEY=NEWS_API_KEY:latest,BINANCEFUT_API_KEY=BINANCEFUT_API_KEY:latest,BINANCEFUT_API_SECRET=BINANCEFUT_API_SECRET:latest,TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest,WEBHOOK_TOKEN=DONBEOLJA_WEBHOOK_TOKEN:latest,WEBHOOK_TOKEN_PREVIOUS=DONBEOLJA_WEBHOOK_TOKEN_PREVIOUS:latest,SCHEDULER_TOKEN=DONBEOLJA_SCHEDULER_TOKEN:latest,EXIT_WORKER_TRIGGER_TOKEN=DONBEOLJA_EXIT_WORKER_TRIGGER_TOKEN:latest,EGRESS_PROXY_TOKEN=DONBEOLJA_EGRESS_PROXY_TOKEN:latest",
+         "--allow-unauthenticated"
+       ]
+diff --git a/openclaw-ops-workspace/.openclaw/workspace-state.json b/openclaw-ops-workspace/.openclaw/workspace-state.json
+index 9170871..fb8a7cc 100644
+--- a/openclaw-ops-workspace/.openclaw/workspace-state.json
++++ b/openclaw-ops-workspace/.openclaw/workspace-state.json
+@@ -1,4 +1,4 @@
+ {
+   "version": 1,
+-  "onboardingCompletedAt": "2026-03-31T11:48:56.350Z"
++  "setupCompletedAt": "2026-03-31T11:48:56.350Z"
+ }
+diff --git a/scripts/automation-daily-audit.js b/scripts/automation-daily-audit.js
+index aec27b3..9f32d2c 100644
+--- a/scripts/automation-daily-audit.js
++++ b/scripts/automation-daily-audit.js
+@@ -115,6 +115,56 @@ function runDailySystemOpsCheck() {
+       reportPath,
+     };
+   }
++  const executionQuality = runScript("node scripts/report-best-self-evolution-execution-quality.js");
++  if (!executionQuality.ok) {
++    return {
++      ok: false,
++      skipped: false,
++      error: `EXECUTION_QUALITY_REPORT_FAILED:${executionQuality.error}`,
++      snapshotPath,
++      reportPath,
++    };
++  }
++  const lineageHealth = runScript("node scripts/report-signal-lineage-health.js");
++  if (!lineageHealth.ok) {
++    return {
++      ok: false,
++      skipped: false,
++      error: `SIGNAL_LINEAGE_HEALTH_FAILED:${lineageHealth.error}`,
++      snapshotPath,
++      reportPath,
++    };
++  }
++  const openClawPolicyAuthority = runScript("node scripts/report-openclaw-policy-authority.js");
++  if (!openClawPolicyAuthority.ok) {
++    return {
++      ok: false,
++      skipped: false,
++      error: `OPENCLAW_POLICY_AUTHORITY_FAILED:${openClawPolicyAuthority.error}`,
++      snapshotPath,
++      reportPath,
++    };
++  }
++  const trailFloorAudit = runScript("node scripts/report-trail-runner-floor-audit.js");
++  if (!trailFloorAudit.ok) {
++    return {
++      ok: false,
++      skipped: false,
++      error: `TRAIL_RUNNER_FLOOR_AUDIT_FAILED:${trailFloorAudit.error}`,
++      snapshotPath,
++      reportPath,
++    };
++  }
++  const exitQtyContractAudit = runScript("node scripts/report-binance-exit-qty-contract-audit.js");
++  if (!exitQtyContractAudit.ok) {
++    return {
++      ok: false,
++      skipped: false,
++      error: `BINANCE_EXIT_QTY_CONTRACT_AUDIT_FAILED:${exitQtyContractAudit.error}`,
++      snapshotPath,
++      reportPath,
++    };
++  }
+   return runScript(`node scripts/daily-system-ops-check.js ${JSON.stringify(snapshotPath)} ${JSON.stringify(reportPath)}`);
+ }
+ 
+diff --git a/scripts/automation-hourly-overall-report.js b/scripts/automation-hourly-overall-report.js
+index 36f0790..f3c9919 100644
+--- a/scripts/automation-hourly-overall-report.js
++++ b/scripts/automation-hourly-overall-report.js
+@@ -401,6 +401,27 @@ async function main() {
+     throw new Error("NOYE_REFRESH_OUTPUT_MISSING");
+   }
+ 
++  const executionQualityRun = execJson("node scripts/report-best-self-evolution-execution-quality.js", { cwd: REPO_ROOT });
++  if (!executionQualityRun.ok) {
++    throw new Error(`EXECUTION_QUALITY_REPORT_FAILED:${executionQualityRun.error || JSON.stringify(executionQualityRun.data || {})}`);
++  }
++  const lineageHealthRun = execJson("node scripts/report-signal-lineage-health.js", { cwd: REPO_ROOT });
++  if (!lineageHealthRun.ok) {
++    throw new Error(`SIGNAL_LINEAGE_HEALTH_FAILED:${lineageHealthRun.error || JSON.stringify(lineageHealthRun.data || {})}`);
++  }
++  const openClawPolicyAuthorityRun = execJson("node scripts/report-openclaw-policy-authority.js", { cwd: REPO_ROOT });
++  if (!openClawPolicyAuthorityRun.ok) {
++    throw new Error(`OPENCLAW_POLICY_AUTHORITY_FAILED:${openClawPolicyAuthorityRun.error || JSON.stringify(openClawPolicyAuthorityRun.data || {})}`);
++  }
++  const trailFloorAuditRun = execJson("node scripts/report-trail-runner-floor-audit.js", { cwd: REPO_ROOT });
++  if (!trailFloorAuditRun.ok) {
++    throw new Error(`TRAIL_RUNNER_FLOOR_AUDIT_FAILED:${trailFloorAuditRun.error || JSON.stringify(trailFloorAuditRun.data || {})}`);
++  }
++  const exitQtyContractAuditRun = execJson("node scripts/report-binance-exit-qty-contract-audit.js", { cwd: REPO_ROOT });
++  if (!exitQtyContractAuditRun.ok) {
++    throw new Error(`BINANCE_EXIT_QTY_CONTRACT_AUDIT_FAILED:${exitQtyContractAuditRun.error || JSON.stringify(exitQtyContractAuditRun.data || {})}`);
++  }
++
+   const opsRun = execJson(
+     `node scripts/daily-system-ops-check.js ${JSON.stringify(snapshotPath)} ${JSON.stringify(reportPath)}`,
+     { cwd: REPO_ROOT }
+diff --git a/scripts/automation-openclaw-hourly-cycle.js b/scripts/automation-openclaw-hourly-cycle.js
+index cf5f09b..e273413 100644
+--- a/scripts/automation-openclaw-hourly-cycle.js
++++ b/scripts/automation-openclaw-hourly-cycle.js
+@@ -100,12 +100,28 @@ function buildStepRegistry() {
+         };
+       },
+     },
++    {
++      id: "execution_quality",
++      kind: "script",
++      script: "report-best-self-evolution-execution-quality.js",
++      criticality: "HIGH",
++      depends_on: [],
++      produces_artifact: "best_self_evolution_execution_quality_latest.json",
++      run() {
++        const res = runScript(this.script);
++        return {
++          status: res.ok ? "PASS" : "FAIL",
++          summary: res.parsed && (res.parsed.status || res.parsed.reason || "OK") || "OK",
++          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? `EXIT_${res.exit_code}` : null),
++        };
++      },
++    },
+     {
+       id: "signal_lineage_health",
+       kind: "script",
+       script: "report-signal-lineage-health.js",
+       criticality: "HIGH",
+-      depends_on: [],
++      depends_on: ["execution_quality"],
+       produces_artifact: "signal_lineage_health_latest.json",
+       run() {
+         const res = runScript(this.script);
+@@ -116,6 +132,22 @@ function buildStepRegistry() {
+         };
+       },
+     },
++    {
++      id: "openclaw_policy_authority",
++      kind: "script",
++      script: "report-openclaw-policy-authority.js",
++      criticality: "HIGH",
++      depends_on: ["signal_lineage_health"],
++      produces_artifact: "openclaw_policy_authority_latest.json",
++      run() {
++        const res = runScript(this.script);
++        return {
++          status: res.ok ? "PASS" : "FAIL",
++          summary: res.parsed && (res.parsed.reason || res.parsed.status || "OK") || "OK",
++          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? `EXIT_${res.exit_code}` : null),
++        };
++      },
++    },
+     {
+       id: "doc_artifact_parity",
+       kind: "script",
+diff --git a/scripts/automation-self-evolution-loop.js b/scripts/automation-self-evolution-loop.js
+index c6d8abd..c0fe95e 100644
+--- a/scripts/automation-self-evolution-loop.js
++++ b/scripts/automation-self-evolution-loop.js
+@@ -194,7 +194,6 @@ function buildStepPlan(context = {}, capabilityDefs = null) {
+     { id: "server_vs_pine_performance_delta", script: "report-best-self-evolution-server-vs-pine-performance-delta.js" },
+     { id: "openclaw_market_regime_board", script: "report-best-self-evolution-openclaw-market-regime-board.js" },
+     { id: "exploration_budget", script: "report-best-self-evolution-exploration-budget.js" },
+-    { id: "server_market_capital_allocator", script: "report-best-self-evolution-server-market-capital-allocator.js" },
+     { id: "server_market_quarantine", script: "report-best-self-evolution-server-market-quarantine.js" },
+     { id: "policy_parameter_plan", script: "report-best-self-evolution-policy-parameter-plan.js" },
+     { id: "cohort_regime_parameter_split_contract", script: "report-best-self-evolution-cohort-regime-parameter-split-contract.js" },
+@@ -205,6 +204,10 @@ function buildStepPlan(context = {}, capabilityDefs = null) {
+     { id: "candidates", script: "report-best-self-evolution-candidates.js" },
+     { id: "replay", script: "report-best-self-evolution-replay.js" },
+     { id: "ml_replay_evidence", script: "report-best-self-evolution-ml-replay-evidence.js" },
++    { id: "event_truth_alpha_validation", script: "report-best-self-evolution-event-truth-alpha-validation.js" },
++    { id: "failure_learning_loop", script: "report-best-self-evolution-failure-learning-loop.js" },
++    { id: "fee_pnl_kpi_authority", script: "report-best-self-evolution-fee-pnl-kpi-authority.js" },
++    { id: "server_market_capital_allocator", script: "report-best-self-evolution-server-market-capital-allocator.js" },
+     { id: "ml_ev_replay_sample_gap", script: "report-best-self-evolution-ml-ev-replay-sample-gap.js" },
+     { id: "ml_replay_unblock_projection", script: "report-best-self-evolution-ml-replay-unblock-projection.js" },
+     { id: "ml_ev_replay_delta_diagnostics", script: "report-best-self-evolution-ml-ev-replay-delta-diagnostics.js" },
+diff --git a/scripts/daily-system-ops-check.js b/scripts/daily-system-ops-check.js
+index d2a537e..51b234c 100755
+--- a/scripts/daily-system-ops-check.js
++++ b/scripts/daily-system-ops-check.js
+@@ -286,6 +286,93 @@ function loadPositionReadModelCutoverHealth({ repoRoot } = {}) {
+   };
+ }
+ 
++function loadFillSyncAlertDuplicationHealth({ repoRoot } = {}) {
++  const latestPath = path.join(repoRoot, "ops", "daily", "fill_sync_alert_duplication_latest.json");
++  const read = readJsonSafe(latestPath);
++  if (!read.ok || !read.data || typeof read.data !== "object") {
++    return {
++      available: false,
++      source_path: latestPath,
++      duplicate_group_n: null,
++      suppressed_alert_estimate_n: null,
++      raw_external_exit_fill_n: null,
++      top_duplicate_groups: [],
++    };
++  }
++  return {
++    available: true,
++    source_path: latestPath,
++    duplicate_group_n: toNum(read.data.duplicate_group_n, null),
++    suppressed_alert_estimate_n: toNum(read.data.suppressed_alert_estimate_n, null),
++    raw_external_exit_fill_n: toNum(read.data.raw_external_exit_fill_n, null),
++    top_duplicate_groups: Array.isArray(read.data.top_duplicate_groups) ? read.data.top_duplicate_groups.slice(0, 10) : [],
++  };
++}
++
++function loadTrailRunnerFloorAuditHealth({ repoRoot } = {}) {
++  const latestPath = path.join(repoRoot, "ops", "daily", "trail_runner_floor_audit_latest.json");
++  const read = readJsonSafe(latestPath);
++  if (!read.ok || !read.data || typeof read.data !== "object") {
++    return {
++      available: false,
++      source_path: latestPath,
++      violation_n: null,
++      violation_total_n: null,
++      live_bar_runner_violation_n: null,
++      live_bar_runner_violation_total_n: null,
++      top_violations: [],
++    };
++  }
++  return {
++    available: true,
++    source_path: latestPath,
++    violation_n: toNum(read.data.violation_n, null),
++    violation_total_n: toNum(read.data.violation_total_n, null),
++    live_bar_runner_violation_n: toNum(read.data.live_bar_runner_violation_n, null),
++    live_bar_runner_violation_total_n: toNum(read.data.live_bar_runner_violation_total_n, null),
++    top_violations: Array.isArray(read.data.top_violations) ? read.data.top_violations.slice(0, 10) : [],
++  };
++}
++
++function loadBinanceExitQtyContractAuditHealth({ repoRoot } = {}) {
++  const latestPath = path.join(repoRoot, "ops", "daily", "binance_exit_qty_contract_audit_latest.json");
++  const read = readJsonSafe(latestPath);
++  if (!read.ok || !read.data || typeof read.data !== "object") {
++    return {
++      available: false,
++      source_path: latestPath,
++      fill_count: null,
++      chain_count: null,
++      issue_chain_count: null,
++      issue_code_counts: {},
++      top_symbols: [],
++      top_issues: [],
++    };
++  }
++  const issueCodeCounts = Array.isArray(read.data.issue_code_counts)
++    ? read.data.issue_code_counts
++        .filter((row) => row && typeof row === "object")
++        .reduce((acc, row) => {
++          const code = String(row.code || "").trim();
++          if (!code) return acc;
++          acc[code] = toNum(row.count, 0);
++          return acc;
++        }, {})
++    : (read.data.issue_code_counts && typeof read.data.issue_code_counts === "object"
++      ? { ...read.data.issue_code_counts }
++      : {});
++  return {
++    available: true,
++    source_path: latestPath,
++    fill_count: toNum(read.data.fill_count, null),
++    chain_count: toNum(read.data.chain_count, null),
++    issue_chain_count: toNum(read.data.issue_chain_count, null),
++    issue_code_counts: issueCodeCounts,
++    top_symbols: Array.isArray(read.data.top_symbols) ? read.data.top_symbols.slice(0, 10) : [],
++    top_issues: Array.isArray(read.data.top_issues) ? read.data.top_issues.slice(0, 10) : [],
++  };
++}
++
+ function hasExecutionFlowCoverage(health) {
+   if (!health || health.available !== true) return false;
+   const hasSignalSide = (
+@@ -315,6 +402,9 @@ function decideStatus({
+   lossStopPct,
+   stopErrorCount,
+   executionHealth,
++  fillSyncAlertDuplication,
++  trailRunnerFloorAudit,
++  binanceExitQtyContractAudit,
+   positionReadModelCutover,
+   activePositionCount = null,
+ }) {
+@@ -377,6 +467,31 @@ function decideStatus({
+         reasons.push(`체결 수량 비율 이상치 ${executionHealth.qty_pct_non_positive_count}건`);
+       }
+     }
++    if (
++      fillSyncAlertDuplication
++      && fillSyncAlertDuplication.available === true
++      && Number.isFinite(fillSyncAlertDuplication.duplicate_group_n)
++      && fillSyncAlertDuplication.duplicate_group_n >= Math.max(1, Number(process.env.FILL_SYNC_ALERT_DUPLICATION_HOLD_GROUPS || 5))
++    ) {
++      if (status === "진행") status = "보류";
++      reasons.push(`fill sync 중복 알림 그룹 ${fillSyncAlertDuplication.duplicate_group_n}건`);
++    }
++    if (
++      trailRunnerFloorAudit
++      && trailRunnerFloorAudit.available === true
++      && Number.isFinite(trailRunnerFloorAudit.violation_n)
++      && trailRunnerFloorAudit.violation_n >= Math.max(1, Number(process.env.TRAIL_RUNNER_FLOOR_HOLD_VIOLATIONS || 1))
++    ) {
++      if (status === "진행") status = "보류";
++      reasons.push(`trailing floor 미해결 위반 ${trailRunnerFloorAudit.violation_n}건`);
++    }
++    if (
++      binanceExitQtyContractAudit
++      && binanceExitQtyContractAudit.available !== true
++    ) {
++      if (status === "진행") status = "보류";
++      reasons.push("binance exit 수량 계약 감사 미수집");
++    }
+   }
+ 
+   if (!reasons.length) reasons.push("핵심 리스크 신호 없음");
+@@ -387,6 +502,9 @@ function buildIssueLines(summary) {
+   const lines = [];
+   const health = summary.execution_health || {};
+   const cutover = summary.position_read_model_cutover || {};
++  const duplication = summary.fill_sync_alert_duplication || {};
++  const trailFloor = summary.trail_runner_floor_audit || {};
++  const exitQtyAudit = summary.binance_exit_qty_contract_audit || {};
+   const flowCoverageReady = hasExecutionFlowCoverage(health);
+   const writerAuthority = summary.position_writer_authority_24h && typeof summary.position_writer_authority_24h === "object"
+     ? summary.position_writer_authority_24h
+@@ -443,6 +561,43 @@ function buildIssueLines(summary) {
+     lines.push("[ISSUE] H | 주문 경로 감사 파일 미수집 | 신호/체결 점검 스크립트 재실행 및 수집 경로 복구 필요");
+   }
+ 
++  if (trailFloor.available === true) {
++    if (Number.isFinite(trailFloor.violation_n) && trailFloor.violation_n >= 1) {
++      lines.push(`[ISSUE] M | trailing floor 미해결 위반 ${trailFloor.violation_n}건 | bar-runner synthetic trail 재발 여부 즉시 점검 필요`);
++    } else if (Number.isFinite(trailFloor.violation_total_n) && trailFloor.violation_total_n >= 1) {
++      lines.push(`[ISSUE] L | trailing floor 과거 위반 ${trailFloor.violation_total_n}건은 backfill 정리됨 | 신규 unresolved 위반만 모니터링`);
++    } else {
++      lines.push("[ISSUE] L | trailing floor 위반 없음 | 현재 trail authority 구조 유지");
++    }
++  } else {
++    lines.push("[ISSUE] M | trailing floor 감사 리포트 미수집 | runner floor 위반 재발 감시 필요");
++  }
++
++  if (exitQtyAudit.available === true) {
++    if (Number.isFinite(exitQtyAudit.issue_chain_count) && exitQtyAudit.issue_chain_count >= 1) {
++      const topCode = Object.entries(exitQtyAudit.issue_code_counts || {})
++        .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))[0];
++      const topSymbol = Array.isArray(exitQtyAudit.top_symbols) && exitQtyAudit.top_symbols.length
++        ? `${exitQtyAudit.top_symbols[0].symbol}(${exitQtyAudit.top_symbols[0].count})`
++        : "UNKNOWN";
++      lines.push(`[ISSUE] M | Binance exit 수량 계약 위반 chain ${exitQtyAudit.issue_chain_count}건 | 최다 코드 ${topCode ? `${topCode[0]}(${topCode[1]})` : "N/A"}, 상위 심볼 ${topSymbol}, 과거 누적 이슈 분리 정리 필요`);
++    } else {
++      lines.push("[ISSUE] L | Binance exit 수량 계약 위반 없음 | TP0/TP1/TRAIL 수량 계약 유지");
++    }
++  } else {
++    lines.push("[ISSUE] M | Binance exit 수량 계약 감사 리포트 미수집 | TP 단계 수량 계약 재발 감시 필요");
++  }
++
++  if (duplication.available === true) {
++    if (Number.isFinite(duplication.duplicate_group_n) && duplication.duplicate_group_n >= 1) {
++      lines.push(`[ISSUE] M | fill sync 중복 알림 그룹 ${duplication.duplicate_group_n}건, 예상 억제 가능 알림 ${fmt(duplication.suppressed_alert_estimate_n, 0)}건 | duplicate alert backfill 및 aggregation 재발 점검 필요`);
++    } else {
++      lines.push("[ISSUE] L | fill sync 중복 알림 그룹 없음 | 현재 aggregation guard 유지");
++    }
++  } else {
++    lines.push("[ISSUE] M | fill sync duplication 리포트 미수집 | duplication report 재생성 및 gate 확인 필요");
++  }
++
+   if (cutover.available !== true) {
+     lines.push("[ISSUE] H | position read-model cutover 증적 미수집 | cutover 리포트 재생성 및 운영 gate 재확인 필요");
+   } else if (cutover.latest_ready !== true) {
+@@ -651,6 +806,9 @@ async function main() {
+   const dateKey = kstDateKey(snapshot.end_kst || nowIso) || kstDateKey(nowIso) || "unknown-date";
+   const executionHealth = loadExecutionHealth({ repoRoot, dateKey });
+   const positionReadModelCutover = loadPositionReadModelCutoverHealth({ repoRoot });
++  const fillSyncAlertDuplication = loadFillSyncAlertDuplicationHealth({ repoRoot });
++  const trailRunnerFloorAudit = loadTrailRunnerFloorAuditHealth({ repoRoot });
++  const binanceExitQtyContractAudit = loadBinanceExitQtyContractAuditHealth({ repoRoot });
+   const activePositionCount = await listExchangePositionReadViews({ exchange: "BINANCEFUT", limit: 200 })
+     .then((rows) => rows.filter((row) => Number(row && row.size_pct) > 0 && String(row && row.state || "").toUpperCase() !== "FLAT").length)
+     .catch(() => null);
+@@ -698,6 +856,9 @@ async function main() {
+     },
+     mode: "수익 확대 가능",
+     execution_health: executionHealth,
++    fill_sync_alert_duplication: fillSyncAlertDuplication,
++    trail_runner_floor_audit: trailRunnerFloorAudit,
++    binance_exit_qty_contract_audit: binanceExitQtyContractAudit,
+     position_read_model_cutover: positionReadModelCutover,
+     approvals: [],
+   };
+@@ -712,6 +873,9 @@ async function main() {
+     lossStopPct,
+     stopErrorCount,
+     executionHealth,
++    fillSyncAlertDuplication,
++    trailRunnerFloorAudit,
++    binanceExitQtyContractAudit,
+     positionReadModelCutover,
+     activePositionCount,
+   });
+@@ -785,6 +949,14 @@ async function main() {
+     execution_health_available: executionHealth.available,
+     position_read_model_cutover_ready: positionReadModelCutover.latest_ready === true,
+     position_read_model_cutover_status: positionReadModelCutover.dominant_status || null,
++    fill_sync_alert_duplicate_group_n: fillSyncAlertDuplication.duplicate_group_n,
++    fill_sync_alert_suppressed_estimate_n: fillSyncAlertDuplication.suppressed_alert_estimate_n,
++    trail_runner_floor_violation_n: trailRunnerFloorAudit.violation_n,
++    trail_runner_floor_violation_total_n: trailRunnerFloorAudit.violation_total_n,
++    binance_exit_qty_contract_issue_chain_count: binanceExitQtyContractAudit.issue_chain_count,
++    binance_exit_qty_contract_top_code: Object.entries(binanceExitQtyContractAudit.issue_code_counts || {})
++      .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
++      .map((row) => row[0])[0] || null,
+     drop_tp1_pending_count: executionHealth.drop_tp1_pending_count,
+     qty_pct_non_positive_count: executionHealth.qty_pct_non_positive_count,
+     firestore_state_written: firestoreStateWritten,
+@@ -805,6 +977,8 @@ module.exports = {
+     countDocsForDate,
+     loadExecutionHealth,
+     loadPositionReadModelCutoverHealth,
++    loadTrailRunnerFloorAuditHealth,
++    loadBinanceExitQtyContractAuditHealth,
+     hasExecutionFlowCoverage,
+     decideStatus,
+     buildIssueLines,
+diff --git a/scripts/lib/runtime-error-counter.js b/scripts/lib/runtime-error-counter.js
+index eb56e3e..6d08e11 100644
+--- a/scripts/lib/runtime-error-counter.js
++++ b/scripts/lib/runtime-error-counter.js
+@@ -247,6 +247,8 @@ function summarizeRuntimeErrorFamilies({
+   }
+ 
+   for (const row of positionWriterAuthorityEvents || []) {
++    if (row && (row.runtime_family_suppressed === true || row.runtime_family_suppressed === "true")) continue;
++    if (row && row.resolved_at) continue;
+     const family = String(row && row.code || "").trim().toUpperCase();
+     if (!family) continue;
+     upsertFamily(families, family, {
+diff --git a/scripts/report-best-self-evolution-execution-quality.js b/scripts/report-best-self-evolution-execution-quality.js
+index b34d8a9..1e646e1 100644
+--- a/scripts/report-best-self-evolution-execution-quality.js
++++ b/scripts/report-best-self-evolution-execution-quality.js
+@@ -3,6 +3,7 @@
+ "use strict";
+ 
+ const path = require("path");
++const { getFirestore } = require("../src/storage/firestore");
+ const {
+   OPS_DAILY_DIR,
+   copyLatest,
+@@ -28,6 +29,8 @@ const EXECUTION_SCOPE_TIER_DIAGNOSTICS_PATH = path.join(OPS_DAILY_DIR, "best_sel
+ const EXECUTION_SCOPE_TIER_RAW_DIFF_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_execution_scope_tier_raw_diff_latest.json");
+ const FILLS_PATH = path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "fills_paper.json");
+ const INTENTS_PATH = path.join(OPS_DAILY_DIR, "cache", "firestore_recent", "order_intents_paper.json");
++const REPORT_LATEST_COLLECTION = "report_latest";
++const REPORT_LATEST_DOC_ID = "LATEST__best_self_evolution_execution_quality__GLOBAL";
+ 
+ function renderMarkdown(report = {}) {
+   const summary = report.summary || {};
+@@ -73,7 +76,29 @@ function renderMarkdown(report = {}) {
+   return `${lines.join("\n")}\n`;
+ }
+ 
+-function main() {
++async function publishSharedLatest(report = {}, meta = {}, latestJsonPath = null, latestMdPath = null) {
++  try {
++    const db = getFirestore();
++    await db.collection(REPORT_LATEST_COLLECTION).doc(REPORT_LATEST_DOC_ID).set({
++      updated_at: new Date().toISOString(),
++      report_type: "best_self_evolution_execution_quality",
++      generated_at_kst: report.generated_at_kst || null,
++      generated_at: report.generated_at || null,
++      date_key: meta.dateKey || null,
++      hhmm: meta.hhmm || null,
++      latest_json_path: latestJsonPath || null,
++      latest_markdown_path: latestMdPath || null,
++      summary: report.summary || {},
++      report,
++    }, { merge: true });
++    return true;
++  } catch (err) {
++    console.error(`[EXECUTION_QUALITY_SHARED_LATEST_WRITE_FAIL] ${err.message}`);
++    return false;
++  }
++}
++
++async function main() {
+   const nowMeta = nowKstMeta();
+   const cycleMeta = resolveAutomationCycleMeta({ envKey: "BEST_SELF_EVOLUTION_CYCLE_ID", prefix: "best_self_evolution", nowMeta });
+   const objective = readJsonRawSafe(OBJECTIVE_LATEST_PATH, null);
+@@ -144,6 +169,7 @@ function main() {
+   copyLatest(mdPath, latestMdPath);
+   copyLatest(jsonPath, selfEvolutionSnapshotLatestPath("execution_quality_latest.json"));
+   copyLatest(mdPath, selfEvolutionSnapshotLatestPath("execution_quality_latest.md"));
++  const shared_latest_written = await publishSharedLatest(report, nowMeta, latestJsonPath, latestMdPath);
+ 
+   console.log(JSON.stringify({
+     ok: true,
+@@ -152,7 +178,12 @@ function main() {
+     top_latency_market: report.summary.top_latency_market,
+     top_slippage_market: report.summary.top_slippage_market,
+     latest_json: latestJsonPath,
++    shared_latest_written,
++    shared_latest_doc: `${REPORT_LATEST_COLLECTION}/${REPORT_LATEST_DOC_ID}`,
+   }));
+ }
+ 
+-main();
++main().catch((err) => {
++  console.error(err);
++  process.exit(1);
++});
+diff --git a/scripts/report-best-self-evolution-ml-global-canary-evidence.js b/scripts/report-best-self-evolution-ml-global-canary-evidence.js
+index df54eb9..924f89c 100644
+--- a/scripts/report-best-self-evolution-ml-global-canary-evidence.js
++++ b/scripts/report-best-self-evolution-ml-global-canary-evidence.js
+@@ -18,6 +18,8 @@ const INPUTS = Object.freeze({
+   replayEvidence: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_replay_evidence_latest.json"),
+   evReplaySampleGap: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_ev_replay_sample_gap_latest.json"),
+   replayUnblockProjection: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_replay_unblock_projection_latest.json"),
++  eventTruthAlphaValidation: path.join(OPS_DAILY_DIR, "best_self_evolution_event_truth_alpha_validation_latest.json"),
++  failureLearningLoop: path.join(OPS_DAILY_DIR, "best_self_evolution_failure_learning_loop_latest.json"),
+ });
+ 
+ function renderMarkdown(report = {}) {
+@@ -31,6 +33,8 @@ function renderMarkdown(report = {}) {
+     `- evidence_status: ${summary.evidence_status || "N/A"}`,
+     `- dominant_blocker: ${summary.dominant_blocker || "N/A"}`,
+     `- replay_evidence: ${summary.replay_evidence_status || "N/A"} / issue=${summary.replay_dominant_issue || "N/A"}`,
++    `- alpha_validation: ${summary.alpha_validation_status || "N/A"} / ready=${summary.alpha_validation_ready ? "YES" : "NO"} / evidence=${summary.alpha_evidence_status || "N/A"} / positive_rate=${summary.alpha_positive_rate ?? "N/A"} / avg_ret=${summary.alpha_avg_realized_ret_net ?? "N/A"}`,
++    `- failure_learning: ${summary.failure_learning_status || "N/A"} / ready=${summary.failure_learning_ready ? "YES" : "NO"} / evidence=${summary.failure_learning_evidence_status || "N/A"} / fail_rate=${summary.failure_learning_fail_rate ?? "N/A"} / pattern=${summary.failure_learning_dominant_pattern || "N/A"} / market=${summary.failure_learning_top_market || "N/A"}`,
+     `- replay_sample_gap: ${summary.replay_sample_gap_status || "N/A"} / required=${summary.replay_sample_required_realized_n ?? "N/A"} / current=${summary.replay_sample_current_effective_realized_n ?? "N/A"} / gap=${summary.replay_sample_gap_n ?? "N/A"} / dimension=${summary.replay_sample_dominant_dimension || "N/A"}`,
+     `- replay_projection: ready_if_gap_closed=${summary.replay_projected_ready_if_sample_gap_closed ? "YES" : "NO"} / residual=${summary.replay_projected_residual_issue_after_sample_gap_closed || "N/A"}`,
+     `- blocked/ready/rollback: ${summary.blocked_n ?? "N/A"} / ${summary.ready_n ?? "N/A"} / ${summary.rollback_ready_n ?? "N/A"}`,
+@@ -48,6 +52,8 @@ function main() {
+     replayEvidence: readJsonRawSafe(INPUTS.replayEvidence, null),
+     evReplaySampleGap: readJsonRawSafe(INPUTS.evReplaySampleGap, null),
+     replayUnblockProjection: readJsonRawSafe(INPUTS.replayUnblockProjection, null),
++    eventTruthAlphaValidation: readJsonRawSafe(INPUTS.eventTruthAlphaValidation, null),
++    failureLearningLoop: readJsonRawSafe(INPUTS.failureLearningLoop, null),
+   });
+   const payload = { ok: true, generated_at_kst: nowMeta.kst, inputs: INPUTS, summary };
+   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}_best_self_evolution_ml_global_canary_evidence`;
+diff --git a/scripts/report-best-self-evolution-ml-promotion-gate.js b/scripts/report-best-self-evolution-ml-promotion-gate.js
+index b403959..e3a0709 100644
+--- a/scripts/report-best-self-evolution-ml-promotion-gate.js
++++ b/scripts/report-best-self-evolution-ml-promotion-gate.js
+@@ -21,6 +21,9 @@ const INPUTS = Object.freeze({
+   modelSpecificCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_model_specific_canary_latest.json"),
+   mlRollbackArm: path.join(OPS_DAILY_DIR, "best_self_evolution_ml_rollback_arm_latest.json"),
+   serverPrimaryCanary: path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_canary_latest.json"),
++  eventTruthAlphaValidation: path.join(OPS_DAILY_DIR, "best_self_evolution_event_truth_alpha_validation_latest.json"),
++  feePnlKpiAuthority: path.join(OPS_DAILY_DIR, "best_self_evolution_fee_pnl_kpi_authority_latest.json"),
++  failureLearningLoop: path.join(OPS_DAILY_DIR, "best_self_evolution_failure_learning_loop_latest.json"),
+ });
+ 
+ function renderMarkdown(report = {}) {
+@@ -36,6 +39,9 @@ function renderMarkdown(report = {}) {
+     `- preferred_model_kind: ${summary.preferred_model_kind || "N/A"}`,
+     `- preferred_model_artifact_id: ${summary.preferred_model_artifact_id || "N/A"}`,
+     `- replay_gate: ${summary.replay_gate_status || "N/A"}`,
++    `- event_truth_alpha_gate: ${summary.event_truth_alpha_gate_status || "N/A"} / ${summary.event_truth_alpha_evidence_status || "N/A"} / positive_rate=${summary.event_truth_alpha_positive_rate ?? "N/A"} / avg_ret=${summary.event_truth_alpha_avg_realized_ret_net ?? "N/A"}`,
++    `- fee_pnl_gate: ${summary.fee_pnl_gate_status || "N/A"} / ${summary.fee_pnl_evidence_status || "N/A"} / realized_n=${summary.fee_pnl_realized_n ?? "N/A"} / cost_to_abs_realized_ratio=${summary.fee_pnl_cost_to_abs_realized_ratio ?? "N/A"} / top_fee_drag=${summary.fee_pnl_top_fee_drag_market || "N/A"}`,
++    `- failure_learning_gate: ${summary.failure_learning_gate_status || "N/A"} / ${summary.failure_learning_evidence_status || "N/A"} / fail_rate=${summary.failure_learning_fail_rate ?? "N/A"} / pattern=${summary.failure_learning_dominant_pattern || "N/A"}`,
+     `- shadow_gate: ${summary.shadow_gate_status || "N/A"}`,
+     `- global_canary_gate: ${summary.global_canary_gate_status || "N/A"} / evidence=${summary.global_canary_evidence_status || "N/A"} / blocker=${summary.global_canary_dominant_blocker || "N/A"} / replay=${summary.global_canary_replay_evidence_status || "N/A"}:${summary.global_canary_replay_dominant_issue || "N/A"} / sample_gap=${summary.global_canary_replay_sample_gap_status || "N/A"}:${summary.global_canary_replay_sample_gap_n ?? "N/A"} / projected_ready_if_gap_closed=${summary.global_canary_replay_projected_ready_if_sample_gap_closed ? "YES" : "NO"} / residual=${summary.global_canary_replay_projected_residual_issue_after_sample_gap_closed || "N/A"}`,
+     `- model_specific_canary_status: ${summary.model_specific_canary_status || "N/A"}`,
+@@ -59,6 +65,9 @@ function main() {
+     modelSpecificCanary: readJsonRawSafe(INPUTS.modelSpecificCanary, null),
+     mlRollbackArm: readJsonRawSafe(INPUTS.mlRollbackArm, null),
+     serverPrimaryCanary: readJsonRawSafe(INPUTS.serverPrimaryCanary, null),
++    eventTruthAlphaValidation: readJsonRawSafe(INPUTS.eventTruthAlphaValidation, null),
++    feePnlKpiAuthority: readJsonRawSafe(INPUTS.feePnlKpiAuthority, null),
++    failureLearningLoop: readJsonRawSafe(INPUTS.failureLearningLoop, null),
+   });
+   const payload = { ok: true, generated_at_kst: nowMeta.kst, inputs: INPUTS, summary };
+   const base = `${nowMeta.dateKey}_${nowMeta.hhmm}_best_self_evolution_ml_promotion_gate`;
+diff --git a/scripts/report-best-self-evolution-server-market-capital-allocator.js b/scripts/report-best-self-evolution-server-market-capital-allocator.js
+index 9692b45..b153cd7 100644
+--- a/scripts/report-best-self-evolution-server-market-capital-allocator.js
++++ b/scripts/report-best-self-evolution-server-market-capital-allocator.js
+@@ -22,6 +22,8 @@ const EXECUTION_QUALITY_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_exe
+ const REVERSE_POLICY_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_reverse_policy_latest.json");
+ const EXPLORATION_BUDGET_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_budget_latest.json");
+ const SERVER_PRIMARY_LEARNING_EPOCH_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_learning_epoch_latest.json");
++const FAILURE_LEARNING_LOOP_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_failure_learning_loop_latest.json");
++const FEE_PNL_KPI_AUTHORITY_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_fee_pnl_kpi_authority_latest.json");
+ 
+ function renderMarkdown(report = {}) {
+   const summary = report.summary || {};
+@@ -36,6 +38,7 @@ function renderMarkdown(report = {}) {
+     `- quarantine: ${summary.top_quarantine_market || "N/A"} / ${summary.top_quarantine_score != null ? summary.top_quarantine_score : "N/A"}`,
+     `- explore: ${summary.top_explore_market || "N/A"} / ${summary.top_explore_score != null ? summary.top_explore_score : "N/A"}`,
+     `- learning_epoch: ${summary.learning_epoch_status || "N/A"} / penalty_weight=${summary.learning_epoch_penalty_weight != null ? summary.learning_epoch_penalty_weight : "N/A"}`,
++    `- fee_pnl_hard_penalty_markets: ${Array.isArray(summary.fee_pnl_hard_penalty_markets) && summary.fee_pnl_hard_penalty_markets.length ? summary.fee_pnl_hard_penalty_markets.join(", ") : "none"}`,
+     "",
+     "## Markets",
+     ...(Array.isArray(summary.top_watch_markets) && summary.top_watch_markets.length
+@@ -53,10 +56,12 @@ function main() {
+   const reversePolicy = readJsonRawSafe(REVERSE_POLICY_PATH, null);
+   const explorationBudget = readJsonRawSafe(EXPLORATION_BUDGET_PATH, null);
+   const serverPrimaryLearningEpoch = readJsonRawSafe(SERVER_PRIMARY_LEARNING_EPOCH_PATH, null);
++  const failureLearningLoop = readJsonRawSafe(FAILURE_LEARNING_LOOP_PATH, null);
++  const feePnlKpiAuthority = readJsonRawSafe(FEE_PNL_KPI_AUTHORITY_PATH, null);
+   const reportCycleId = resolveAnchoredReportCycleId({
+     preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
+     fallbackCycleId: cycleMeta.cycle_id,
+-    sources: [marketObjectiveScore, executionQuality, reversePolicy, explorationBudget, serverPrimaryLearningEpoch],
++    sources: [marketObjectiveScore, executionQuality, reversePolicy, explorationBudget, serverPrimaryLearningEpoch, failureLearningLoop, feePnlKpiAuthority],
+   });
+ 
+   const summary = deriveServerMarketCapitalAllocator({
+@@ -65,6 +70,8 @@ function main() {
+     reversePolicy,
+     explorationBudget,
+     serverPrimaryLearningEpoch,
++    failureLearningLoop,
++    feePnlKpiAuthority,
+   });
+   const report = {
+     ok: true,
+@@ -77,6 +84,8 @@ function main() {
+       reverse_policy: REVERSE_POLICY_PATH,
+       exploration_budget: EXPLORATION_BUDGET_PATH,
+       server_primary_learning_epoch: SERVER_PRIMARY_LEARNING_EPOCH_PATH,
++      failure_learning_loop: FAILURE_LEARNING_LOOP_PATH,
++      fee_pnl_kpi_authority: FEE_PNL_KPI_AUTHORITY_PATH,
+     },
+     summary,
+   };
+diff --git a/scripts/report-fill-sync-alert-duplication.js b/scripts/report-fill-sync-alert-duplication.js
+index 67cf52e..0116de0 100644
+--- a/scripts/report-fill-sync-alert-duplication.js
++++ b/scripts/report-fill-sync-alert-duplication.js
+@@ -37,6 +37,10 @@ function isExternalFill(row) {
+   return fillId.startsWith("EXT__");
+ }
+ 
++function isBackfilledAlertDuplication(row) {
++  return !!(row && row.extra && row.extra.alert_duplication_backfilled_at);
++}
++
+ async function scanRecentExternalExitFills(db) {
+   const rows = [];
+   const sinceMs = Date.now() - (LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+@@ -92,6 +96,7 @@ async function main() {
+       total_realized_pnl: 0,
+       first_at: row.created_at || null,
+       last_at: row.created_at || null,
++      backfilled: true,
+     };
+     current.fill_count += 1;
+     current.fill_ids.push(row.fill_id || row.id);
+@@ -99,6 +104,7 @@ async function main() {
+     current.total_realized_pnl += Number(row.realized_pnl || 0) || 0;
+     current.first_at = !current.first_at || String(row.created_at || "") < String(current.first_at) ? row.created_at : current.first_at;
+     current.last_at = !current.last_at || String(row.created_at || "") > String(current.last_at) ? row.created_at : current.last_at;
++    current.backfilled = current.backfilled && isBackfilledAlertDuplication(row);
+     byKey.set(key, current);
+     bySymbol.set(symbol, (bySymbol.get(symbol) || 0) + 1);
+   }
+@@ -106,17 +112,19 @@ async function main() {
+   const duplicateGroups = Array.from(byKey.values())
+     .filter((row) => row.fill_count > 1)
+     .sort((a, b) => b.fill_count - a.fill_count || String(a.symbol).localeCompare(String(b.symbol)));
+-  const suppressedEstimate = duplicateGroups.reduce((acc, row) => acc + Math.max(0, row.fill_count - 1), 0);
++  const unresolvedDuplicateGroups = duplicateGroups.filter((row) => !row.backfilled);
++  const suppressedEstimate = unresolvedDuplicateGroups.reduce((acc, row) => acc + Math.max(0, row.fill_count - 1), 0);
+ 
+   const report = {
+     generated_at: nowIso(),
+     lookback_days: LOOKBACK_DAYS,
+     raw_external_exit_fill_n: rows.length,
+     unique_alert_group_n: byKey.size,
+-    duplicate_group_n: duplicateGroups.length,
++    duplicate_group_total_n: duplicateGroups.length,
++    duplicate_group_n: unresolvedDuplicateGroups.length,
+     suppressed_alert_estimate_n: suppressedEstimate,
+     by_symbol_raw_fill_n: Object.fromEntries(Array.from(bySymbol.entries()).sort((a, b) => String(a[0]).localeCompare(String(b[0])))),
+-    top_duplicate_groups: duplicateGroups.slice(0, 30),
++    top_duplicate_groups: unresolvedDuplicateGroups.slice(0, 30),
+   };
+ 
+   fs.mkdirSync(OUT_DIR, { recursive: true });
+@@ -131,6 +139,7 @@ async function main() {
+     `- lookback_days: ${report.lookback_days}`,
+     `- raw_external_exit_fill_n: ${report.raw_external_exit_fill_n}`,
+     `- unique_alert_group_n: ${report.unique_alert_group_n}`,
++    `- duplicate_group_total_n: ${report.duplicate_group_total_n}`,
+     `- duplicate_group_n: ${report.duplicate_group_n}`,
+     `- suppressed_alert_estimate_n: ${report.suppressed_alert_estimate_n}`,
+     "",
+diff --git a/scripts/system-autonomous-cycle.js b/scripts/system-autonomous-cycle.js
+index 7eaaac4..b04ae43 100644
+--- a/scripts/system-autonomous-cycle.js
++++ b/scripts/system-autonomous-cycle.js
+@@ -85,8 +85,13 @@ function main() {
+   const generatedAtKst = toKstString(nowIso, { fallbackToString: true });
+ 
+   const tasks = [
++    { id: "execution_quality", label: "실행 품질 리포트", bin: "node", args: ["scripts/report-best-self-evolution-execution-quality.js"] },
++    { id: "signal_lineage_health", label: "시그널 라인리지 건강도", bin: "node", args: ["scripts/report-signal-lineage-health.js"] },
+     { id: "system_runtime_guards", label: "시스템 런타임 가드", bin: "node", args: ["scripts/run-system-runtime-guards.js"] },
+     { id: "trail_authority_feedback", label: "트레일 권한 피드백", bin: "node", args: ["scripts/run-trail-authority-feedback.js"] },
++    { id: "trail_runner_floor_audit", label: "트레일 floor 감사", bin: "node", args: ["scripts/report-trail-runner-floor-audit.js"] },
++    { id: "binance_exit_qty_contract_audit", label: "Binance exit 수량 계약 감사", bin: "node", args: ["scripts/report-binance-exit-qty-contract-audit.js"] },
++    { id: "openclaw_policy_authority", label: "OpenClaw 정책 권한 리포트", bin: "node", args: ["scripts/report-openclaw-policy-authority.js"] },
+     { id: "runtime_error_family_remediation", label: "런타임 오류 family remediation", bin: "node", args: ["scripts/runtime-error-family-remediation.js"] },
+     { id: "ml_ops_pipeline", label: "ML 운영 파이프라인", bin: "node", args: ["scripts/run-ml-ops-pipeline.js"] },
+     { id: "system_ops", label: "시스템 운영 점검", bin: "node", args: ["scripts/daily-system-ops-check.js"] },
+diff --git a/src/auth/google.js b/src/auth/google.js
+index 82f6508..de9ca0c 100644
+--- a/src/auth/google.js
++++ b/src/auth/google.js
+@@ -2,6 +2,42 @@
+ const passport = require("passport");
+ const GoogleStrategy = require("passport-google-oauth20").Strategy;
+ 
++function normalizeBaseUrl(value) {
++  const text = String(value || "").trim();
++  if (!text) return null;
++  return text.replace(/\/+$/, "");
++}
++
++function firstHeaderValue(value) {
++  return String(value || "")
++    .split(",")[0]
++    .trim();
++}
++
++function resolveGoogleBaseUrl(req = null) {
++  const envBaseUrl = normalizeBaseUrl(
++    process.env.GOOGLE_OAUTH_BASE_URL ||
++    process.env.PUBLIC_BASE_URL ||
++    process.env.BASE_URL
++  );
++  if (!req || typeof req !== "object") {
++    return envBaseUrl || "http://localhost:3000";
++  }
++
++  const forwardedProto = firstHeaderValue(req.headers && req.headers["x-forwarded-proto"]);
++  const forwardedHost = firstHeaderValue(req.headers && req.headers["x-forwarded-host"]);
++  const host = forwardedHost || firstHeaderValue(req.get && req.get("host"));
++  const proto = forwardedProto || req.protocol || (envBaseUrl && envBaseUrl.startsWith("https://") ? "https" : "http");
++  if (host) {
++    return `${proto}://${host}`.replace(/\/+$/, "");
++  }
++  return envBaseUrl || "http://localhost:3000";
++}
++
++function resolveGoogleCallbackUrl(req = null) {
++  return `${resolveGoogleBaseUrl(req)}/auth/google/callback`;
++}
++
+ // allowlist
+ function isAllowedEmail(email) {
+   const allow = (process.env.ALLOWLIST_EMAIL || "").trim().toLowerCase();
+@@ -25,8 +61,8 @@ function setupGoogleAuth() {
+   const clientID = process.env.GOOGLE_CLIENT_ID;
+   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+ 
+-  const baseUrl = process.env.BASE_URL || "http://localhost:3000";
+-  const callbackURL = `${baseUrl}/auth/google/callback`;
++  const baseUrl = resolveGoogleBaseUrl();
++  const callbackURL = resolveGoogleCallbackUrl();
+ 
+   // DEBUG: print runtime oauth config once
+   // eslint-disable-next-line no-console
+@@ -120,4 +156,14 @@ function ensureAuth(req, res, next) {
+   return res.redirect("/login");
+ }
+ 
+-module.exports = { setupGoogleAuth, ensureAuth };
++module.exports = {
++  setupGoogleAuth,
++  ensureAuth,
++  resolveGoogleBaseUrl,
++  resolveGoogleCallbackUrl,
++  __test: {
++    normalizeBaseUrl,
++    resolveGoogleBaseUrl,
++    resolveGoogleCallbackUrl,
++  },
++};
+diff --git a/src/engine/paperBinanceRunner.js b/src/engine/paperBinanceRunner.js
+index 9366de0..c43afad 100644
+--- a/src/engine/paperBinanceRunner.js
++++ b/src/engine/paperBinanceRunner.js
+@@ -3965,6 +3965,56 @@ function dedupeEntrySignalsByFamily(signals = []) {
+   return out;
+ }
+ 
++function shouldSuppressLiveFuturesInternalExitSignal({
++  exchange,
++  liveCfg,
++  signal,
++} = {}) {
++  const exUpper = String(exchange || "").toUpperCase();
++  if (!exUpper.includes("BINANCEFUT")) return false;
++  const mode = String(liveCfg && liveCfg.executionMode || "").toUpperCase();
++  if (mode !== "LIVE" && mode !== "LIVE_DRY_RUN") return false;
++  if (!signal || typeof signal !== "object") return false;
++  if (signal.signal_id) return false;
++  const eventUpper = String(signal.event || "").toUpperCase();
++  if (eventUpper !== "EXIT_TRAIL") return false;
++  const reasonUpper = String(signal.reason || "").toUpperCase();
++  if (reasonUpper !== "EXIT_TRAIL_STOP" && reasonUpper !== "EXIT_TRAIL_STOP_RUNNER_FLOOR") return false;
++  return true;
++}
++
++function shouldSuppressInternalLiveExitFillAlert({
++  exchange,
++  executionMode,
++  intent,
++} = {}) {
++  const exUpper = String(exchange || "").toUpperCase();
++  if (!exUpper.includes("BINANCEFUT")) return false;
++  const mode = String(executionMode || "").toUpperCase();
++  if (mode !== "LIVE" && mode !== "LIVE_DRY_RUN") return false;
++  return String(intent || "").toUpperCase() === "EXIT";
++}
++
++function filterLiveFuturesInternalSignals({
++  exchange,
++  liveCfg,
++  signals,
++  runId,
++  symbol,
++  tf,
++} = {}) {
++  if (!Array.isArray(signals) || !signals.length) return [];
++  return signals.filter((signal) => {
++    const suppress = shouldSuppressLiveFuturesInternalExitSignal({ exchange, liveCfg, signal });
++    if (suppress) {
++      console.log(
++        `[live_trail_authority_skip] ex=${exchange} sym=${symbol} tf=${tf} ev=${signal && signal.event} reason=${signal && signal.reason} run=${runId || "-"}`
++      );
++    }
++    return !suppress;
++  });
++}
++
+ function hasPositionSize(sizePct) {
+   const n = Number(sizePct);
+   if (!Number.isFinite(n)) return false;
+@@ -4128,6 +4178,73 @@ async function upsertPositionMetaOnlyWithLatestRetry({
+         expectedWriteToken: Object.prototype.hasOwnProperty.call(currentPos || {}, "position_write_token")
+           ? (currentPos.position_write_token ?? null)
+           : null,
++        suppressAuthorityAlert: attempt < totalAttempts,
++      });
++    } catch (err) {
++      const code = String(err && err.code || "").trim().toUpperCase();
++      if (!["POSITION_WRITE_TOKEN_MISMATCH", "POSITION_WRITE_LEASE_HELD", "POSITION_WRITE_LEASE_LOST"].includes(code)) {
++        throw err;
++      }
++      if (attempt >= totalAttempts) throw err;
++      if (Number(retryDelayMs) > 0) await sleep(Number(retryDelayMs));
++      currentPos = await readPosition({ exchange, symbol });
++    }
++  }
++  return currentPos;
++}
++
++async function upsertPositionWithLatestRetry({
++  exchange,
++  symbol,
++  runId = null,
++  executionMode = null,
++  position = null,
++  state,
++  positionSide,
++  sizePct,
++  avgPrice,
++  qtyBase = null,
++  budgetMaxKrw = null,
++  budgetUsedKrw = null,
++  budgetSource = null,
++  meta = {},
++  source = null,
++  mutationKind = "POSITION_UPSERT",
++  reason = null,
++  maxAttempts = 2,
++  retryDelayMs = 50,
++  readPosition = getPosition,
++  writePosition = upsertPosition,
++} = {}) {
++  let currentPos = (position && typeof position === "object")
++    ? position
++    : await readPosition({ exchange, symbol });
++  const totalAttempts = Math.max(1, Math.floor(Number(maxAttempts) || 0));
++  for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
++    try {
++      return await writePosition({
++        exchange,
++        symbol,
++        state,
++        positionSide,
++        sizePct,
++        avgPrice,
++        qtyBase,
++        runId,
++        executionMode,
++        budgetMaxKrw,
++        budgetUsedKrw,
++        budgetSource,
++        meta,
++        source,
++        mutationKind,
++        reason: attempt > 1 ? (reason || "RETRY_AFTER_POSITION_REFRESH") : reason,
++        expectedWriteToken: Object.prototype.hasOwnProperty.call(currentPos || {}, "position_write_token")
++          ? (currentPos.position_write_token ?? null)
++          : null,
++        suppressAuthorityAlert: attempt < totalAttempts,
++        suppressAuthorityRuntimeFamily: attempt < totalAttempts,
++        suppressAuthorityRuntimeFamilyReason: "WRITER_RETRY_IN_PROGRESS",
+       });
+     } catch (err) {
+       const code = String(err && err.code || "").trim().toUpperCase();
+@@ -4157,9 +4274,10 @@ async function applyBarLoopObservationMetaUpdate({
+   }
+   const pos = (position && typeof position === "object") ? position : {};
+   const merged = mergeMeta(posMeta, metaPatch);
+-  await upsertPosition({
++  await upsertPositionWithLatestRetry({
+     exchange,
+     symbol,
++    position: pos,
+     state: pos.state,
+     positionSide: pos.position_side || positionSide || null,
+     sizePct: pos.size_pct,
+@@ -4171,9 +4289,8 @@ async function applyBarLoopObservationMetaUpdate({
+     budgetUsedKrw: pos.budget_used_krw ?? null,
+     budgetSource: pos.budget_source ?? null,
+     meta: merged,
+-    expectedWriteToken: Object.prototype.hasOwnProperty.call(pos, "position_write_token")
+-      ? (pos.position_write_token ?? null)
+-      : null,
++    source: "BAR_LOOP_OBSERVATION",
++    reason: "BAR_LOOP_META_UPDATE",
+   });
+   return merged;
+ }
+@@ -4699,9 +4816,10 @@ async function applyTpP1SkipOnCancel({
+     tp_p1_skip_at: nowIso,
+   });
+ 
+-  await upsertPosition({
++  await upsertPositionWithLatestRetry({
+     exchange,
+     symbol,
++    position: pos,
+     state: pos.state,
+     positionSide: pos.position_side || null,
+     sizePct: pos.size_pct,
+@@ -4713,9 +4831,8 @@ async function applyTpP1SkipOnCancel({
+     budgetUsedKrw: pos.budget_used_krw ?? null,
+     budgetSource: pos.budget_source ?? null,
+     meta: merged,
+-    expectedWriteToken: Object.prototype.hasOwnProperty.call(pos, "position_write_token")
+-      ? (pos.position_write_token ?? null)
+-      : null,
++    source: "TP1_SKIP_PROTECT",
++    reason: reasonKey || "TP1_SKIP_PROTECT",
+   });
+ 
+   return merged;
+@@ -7257,9 +7374,10 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
+       external_flat_sync_snapshot_entry_price: Number.isFinite(entryPrice) ? entryPrice : null,
+       external_flat_sync_snapshot_mark_price: Number.isFinite(markPrice) ? markPrice : null,
+     });
+-    const payload = await upsertPosition({
++    const payload = await upsertPositionWithLatestRetry({
+       exchange,
+       symbol,
++      position: prevPos,
+       state: prevPos && prevPos.state ? prevPos.state : (prevState || "ACTIVE"),
+       positionSide: prevSide || (prevPos && prevPos.position_side) || null,
+       sizePct: Number.isFinite(prevSizePct) ? prevSizePct : 1,
+@@ -7272,9 +7390,7 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
+       budgetSource: prevPos && prevPos.budget_source != null ? prevPos.budget_source : ((riskBudget && riskBudget.enabled) ? riskBudget.source : null),
+       meta: deferMeta,
+       source: "BINANCE_FUTURES_POSITION_SYNC",
+-      expectedWriteToken: prevPos && Object.prototype.hasOwnProperty.call(prevPos, "position_write_token")
+-        ? (prevPos.position_write_token ?? null)
+-        : null,
++      reason: externalFlatSyncGuard.reason || "EXTERNAL_FLAT_SYNC_DEFERRED",
+     });
+     return { ok: true, position: payload, active: true, deferredFlatSync: true };
+   }
+@@ -7714,9 +7830,10 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
+     });
+   }
+ 
+-  const payload = await upsertPosition({
++  const payload = await upsertPositionWithLatestRetry({
+     exchange,
+     symbol,
++    position: prevPos,
+     state,
+     positionSide: active ? side : null,
+     sizePct,
+@@ -7729,9 +7846,7 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
+     budgetSource: (riskBudget && riskBudget.enabled) ? riskBudget.source : null,
+     meta,
+     source: "BINANCE_FUTURES_POSITION_SYNC",
+-    expectedWriteToken: prevPos && Object.prototype.hasOwnProperty.call(prevPos, "position_write_token")
+-      ? (prevPos.position_write_token ?? null)
+-      : null,
++    reason: "BINANCE_FUTURES_POSITION_SYNC",
+   });
+ 
+   return { ok: true, position: payload, active };
+@@ -10922,31 +11037,33 @@ async function runPaperBinanceForBar({
+       exitProfileReason: appliedExitProfileReason || null,
+       decisionReason: it.reason || it.event || null,
+     });
+-    sendTradeExecutionAlert({
+-      exchange,
+-      symbol,
+-      event: it.event,
+-      side: it.side,
+-      intent,
+-      executionMode,
+-      notional,
+-      execQtyBase,
+-      execPrice: fillPrice,
+-      closeRatio,
+-      fullExit: intent === "EXIT" && newState === "FLAT",
+-      realizedPnl: realizedPnlQuote,
+-      positionSideBefore,
+-      positionSideAfter: newState === "FLAT" ? null : positionSideBefore,
+-      appliedLeverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
+-      leverageReason: appliedLeverageReason,
+-      exitProfile: appliedExitProfile || null,
+-      exitProfileReason: appliedExitProfileReason || null,
+-      exitRules: appliedExitRules || null,
+-      features: it.features_json || {},
+-      runId,
+-    }).catch((e) => {
+-      console.warn("[TRADE_EXEC_ALERT_FAIL]", e && e.message ? e.message : String(e));
+-    });
++    if (!shouldSuppressInternalLiveExitFillAlert({ exchange, executionMode, intent })) {
++      sendTradeExecutionAlert({
++        exchange,
++        symbol,
++        event: it.event,
++        side: it.side,
++        intent,
++        executionMode,
++        notional,
++        execQtyBase,
++        execPrice: fillPrice,
++        closeRatio,
++        fullExit: intent === "EXIT" && newState === "FLAT",
++        realizedPnl: realizedPnlQuote,
++        positionSideBefore,
++        positionSideAfter: newState === "FLAT" ? null : positionSideBefore,
++        appliedLeverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
++        leverageReason: appliedLeverageReason,
++        exitProfile: appliedExitProfile || null,
++        exitProfileReason: appliedExitProfileReason || null,
++        exitRules: appliedExitRules || null,
++        features: it.features_json || {},
++        runId,
++      }).catch((e) => {
++        console.warn("[TRADE_EXEC_ALERT_FAIL]", e && e.message ? e.message : String(e));
++      });
++    }
+ 
+     await markIntentStatus(it.intent_id, "FILLED", {
+       filled_at: new Date().toISOString(),
+@@ -11131,9 +11248,10 @@ async function runPaperBinanceForBar({
+         reason: "INTENT_FILL_FORCE_LIVE_RECONCILE",
+       });
+     } else {
+-      await upsertPosition({
++      await upsertPositionWithLatestRetry({
+         exchange,
+         symbol,
++        position: pos,
+         state: newState,
+         positionSide: newState === "ACTIVE" ? "LONG" : null,
+         sizePct: newSize,
+@@ -11145,9 +11263,8 @@ async function runPaperBinanceForBar({
+         budgetUsedKrw: useBudget ? (riskBudget.maxKrw * newSize) : null,
+         budgetSource: useBudget ? riskBudget.source : null,
+         meta: projectedMetaForWrite,
+-        expectedWriteToken: Object.prototype.hasOwnProperty.call(pos, "position_write_token")
+-          ? (pos.position_write_token ?? null)
+-          : null,
++        source: "INTENT_FILL",
++        reason: "INTENT_FILL_PROJECTED_POSITION_WRITE",
+       });
+     }
+ 
+@@ -11292,13 +11409,20 @@ async function runPaperBinanceForBar({
+     ...(liqSignal ? [liqSignal] : []),
+     ...(timeStopSignal ? [timeStopSignal] : []),
+   ];
+-  const internalSignals = finalizeInternalSignals({
+-    signals: internalSignalsRaw,
+-    posMeta,
+-    barCloseMs,
+-    fallbackUtc: signalBarCloseUtc,
++  const internalSignals = filterLiveFuturesInternalSignals({
+     exchange,
++    liveCfg,
++    signals: finalizeInternalSignals({
++      signals: internalSignalsRaw,
++      posMeta,
++      barCloseMs,
++      fallbackUtc: signalBarCloseUtc,
++      exchange,
++      symbol,
++    }),
++    runId,
+     symbol,
++    tf,
+   });
+ 
+   // 외부 신호(signals 컬렉션)
+@@ -13651,31 +13775,33 @@ async function runPaperFuturesForBar({
+       exitProfileReason: appliedExitProfileReason || null,
+       decisionReason: it.reason || it.event || null,
+     });
+-    sendTradeExecutionAlert({
+-      exchange,
+-      symbol,
+-      event: it.event,
+-      side: actionSide,
+-      intent,
+-      executionMode,
+-      notional,
+-      execQtyBase,
+-      execPrice: fillPrice,
+-      closeRatio,
+-      fullExit: intent === "EXIT" && newState === "FLAT",
+-      realizedPnl: realizedPnlQuote,
+-      positionSideBefore,
+-      positionSideAfter: newState === "FLAT" ? null : nextPosSide || positionSideBefore,
+-      appliedLeverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
+-      leverageReason: appliedLeverageReason,
+-      exitProfile: appliedExitProfile || null,
+-      exitProfileReason: appliedExitProfileReason || null,
+-      exitRules: appliedExitRules || null,
+-      features: it.features_json || {},
+-      runId,
+-    }).catch((e) => {
+-      console.warn("[TRADE_EXEC_ALERT_FAIL]", e && e.message ? e.message : String(e));
+-    });
++    if (!shouldSuppressInternalLiveExitFillAlert({ exchange, executionMode, intent })) {
++      sendTradeExecutionAlert({
++        exchange,
++        symbol,
++        event: it.event,
++        side: actionSide,
++        intent,
++        executionMode,
++        notional,
++        execQtyBase,
++        execPrice: fillPrice,
++        closeRatio,
++        fullExit: intent === "EXIT" && newState === "FLAT",
++        realizedPnl: realizedPnlQuote,
++        positionSideBefore,
++        positionSideAfter: newState === "FLAT" ? null : nextPosSide || positionSideBefore,
++        appliedLeverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
++        leverageReason: appliedLeverageReason,
++        exitProfile: appliedExitProfile || null,
++        exitProfileReason: appliedExitProfileReason || null,
++        exitRules: appliedExitRules || null,
++        features: it.features_json || {},
++        runId,
++      }).catch((e) => {
++        console.warn("[TRADE_EXEC_ALERT_FAIL]", e && e.message ? e.message : String(e));
++      });
++    }
+ 
+     await markIntentStatus(it.intent_id, "FILLED", {
+       filled_at: new Date().toISOString(),
+@@ -13919,9 +14045,10 @@ async function runPaperFuturesForBar({
+         reason: "INTENT_FILL_FORCE_LIVE_RECONCILE",
+       });
+     } else {
+-      await upsertPosition({
++      await upsertPositionWithLatestRetry({
+         exchange,
+         symbol,
++        position: pos,
+         state: newState,
+         positionSide: nextPosSide,
+         sizePct: newSize,
+@@ -13933,9 +14060,8 @@ async function runPaperFuturesForBar({
+         budgetUsedKrw: useBudget ? budgetUsedForPosition : null,
+         budgetSource: useBudget ? riskBudget.source : null,
+         meta: projectedMetaForWrite,
+-        expectedWriteToken: Object.prototype.hasOwnProperty.call(pos, "position_write_token")
+-          ? (pos.position_write_token ?? null)
+-          : null,
++        source: "INTENT_FILL",
++        reason: "INTENT_FILL_PROJECTED_POSITION_WRITE",
+       });
+     }
+ 
+@@ -14102,13 +14228,20 @@ async function runPaperFuturesForBar({
+     }),
+     ...(timeStopSignal ? [timeStopSignal] : []),
+   ];
+-  const internalSignals = finalizeInternalSignals({
+-    signals: internalSignalsRaw,
+-    posMeta,
+-    barCloseMs,
+-    fallbackUtc: signalBarCloseUtc,
++  const internalSignals = filterLiveFuturesInternalSignals({
+     exchange,
++    liveCfg,
++    signals: finalizeInternalSignals({
++      signals: internalSignalsRaw,
++      posMeta,
++      barCloseMs,
++      fallbackUtc: signalBarCloseUtc,
++      exchange,
++      symbol,
++    }),
++    runId,
+     symbol,
++    tf,
+   });
+ 
+   const externalSignalsRaw = Number.isFinite(signalBarCloseMs)
+@@ -15620,6 +15753,9 @@ module.exports = {
+     inferEntryMetaDirection,
+     canEvaluateInternalExitSignalsForBar,
+     finalizeInternalSignals,
++    shouldSuppressLiveFuturesInternalExitSignal,
++    shouldSuppressInternalLiveExitFillAlert,
++    filterLiveFuturesInternalSignals,
+     scaleBaseBarCountByTf,
+     resolveTfFromMs,
+     resolveBinanceMaxHoldBars,
+@@ -15680,6 +15816,7 @@ module.exports = {
+     runDistributedFuturesPositionSync,
+     shouldForceImmediateLiveFuturesReconcile,
+     buildMetaPatch,
++    upsertPositionWithLatestRetry,
+     upsertPositionMetaOnlyWithLatestRetry,
+     sanitizeBarLoopMetaUpdates,
+     applyBarLoopObservationMetaUpdate,
+diff --git a/src/routes/auth.routes.js b/src/routes/auth.routes.js
+index ff246da..33d08f5 100644
+--- a/src/routes/auth.routes.js
++++ b/src/routes/auth.routes.js
+@@ -1,5 +1,6 @@
+ const express = require("express");
+ const passport = require("passport");
++const { resolveGoogleCallbackUrl } = require("../auth/google");
+ 
+ const router = express.Router();
+ 
+@@ -36,9 +37,11 @@ router.get("/auth/google", (req, res, next) => {
+     if (allowLocalNoOauth()) return res.redirect("/dashboard/home");
+     return res.status(500).send("GOOGLE_OAUTH_NOT_CONFIGURED");
+   }
++  const callbackURL = resolveGoogleCallbackUrl(req);
+   return passport.authenticate("google", {
+     scope: ["openid", "email", "profile"],
+     prompt: "select_account",
++    callbackURL,
+   })(req, res, next);
+ });
+ 
+@@ -49,7 +52,8 @@ router.get("/auth/google/callback", (req, res, next) => {
+     return res.redirect("/login");
+   }
+   const startedAt = Date.now();
+-  return passport.authenticate("google", { session: true }, (err, user, info) => {
++  const callbackURL = resolveGoogleCallbackUrl(req);
++  return passport.authenticate("google", { session: true, callbackURL }, (err, user, info) => {
+     const elapsedMs = Date.now() - startedAt;
+     if (err) {
+       console.error("[OAUTH_CALLBACK_ERROR]", err, { elapsedMs });
+diff --git a/src/services/binanceFuturesFillsSync.js b/src/services/binanceFuturesFillsSync.js
+index 985f73e..daa1008 100644
+--- a/src/services/binanceFuturesFillsSync.js
++++ b/src/services/binanceFuturesFillsSync.js
+@@ -783,12 +783,23 @@ function sumFiniteValues(a, b) {
+   return null;
+ }
+ 
+-function resolveFillSyncAlertCloseRatio({ event, intent, qtyScale, execQtyBase, positionCtx } = {}) {
+-  if (!isExitEvent(event)) return null;
++function isScaledQtyPctMode(mode) {
++  const normalized = String(mode || "").trim().toUpperCase();
++  return normalized === "SCALED_NOTIONAL" || normalized === "SCALED_QTY_BASE";
++}
++
++function resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale, execQtyBase, positionCtx } = {}) {
++  const empty = { closeRatio: null, aggregation: "SUM", source: null };
++  if (!isExitEvent(event)) return empty;
+   const eventUpper = String(event || "").toUpperCase();
+   const syncedQtyPct = clamp01(qtyScale && qtyScale.qtyPct);
++  const qtyScaleMode = String(qtyScale && qtyScale.mode || "").trim().toUpperCase();
+   if (eventUpper.startsWith("EXIT_TP_P0") && Number.isFinite(syncedQtyPct) && syncedQtyPct > 0) {
+-    return syncedQtyPct;
++    return {
++      closeRatio: syncedQtyPct,
++      aggregation: isScaledQtyPctMode(qtyScaleMode) ? "SUM" : "MAX",
++      source: qtyScaleMode || "SYNCED_QTY_PCT",
++    };
+   }
+   const execQty = Number(execQtyBase);
+   if (isTpP1Event(event)) {
+@@ -799,34 +810,95 @@ function resolveFillSyncAlertCloseRatio({ event, intent, qtyScale, execQtyBase,
+       && Number.isFinite(nativeTpQtyBase) && nativeTpQtyBase > 0
+       && Number.isFinite(nativeTpQtyRatio) && nativeTpQtyRatio > 0
+     ) {
+-      return clamp01((execQty / nativeTpQtyBase) * nativeTpQtyRatio);
++      return {
++        closeRatio: clamp01((execQty / nativeTpQtyBase) * nativeTpQtyRatio),
++        aggregation: "SUM",
++        source: "NATIVE_TP_QTY_BASE",
++      };
++    }
++    if (Number.isFinite(nativeTpQtyRatio) && nativeTpQtyRatio > 0) {
++      return {
++        closeRatio: nativeTpQtyRatio,
++        aggregation: "MAX",
++        source: "NATIVE_TP_QTY_RATIO",
++      };
+     }
+-    if (Number.isFinite(nativeTpQtyRatio) && nativeTpQtyRatio > 0) return nativeTpQtyRatio;
+     if (Number.isFinite(syncedQtyPct) && syncedQtyPct > 0) {
+-      return syncedQtyPct;
++      return {
++        closeRatio: syncedQtyPct,
++        aggregation: isScaledQtyPctMode(qtyScaleMode) ? "SUM" : "MAX",
++        source: qtyScaleMode || "SYNCED_QTY_PCT",
++      };
+     }
+   }
+   const intentQtyFraction = clamp01(intent && intent.qty_fraction);
+   const scaledRatio = clamp01(qtyScale && qtyScale.ratio);
+   if (Number.isFinite(intentQtyFraction) && intentQtyFraction > 0) {
+     if (Number.isFinite(scaledRatio) && scaledRatio > 0) {
+-      return clamp01(intentQtyFraction * scaledRatio);
++      return {
++        closeRatio: clamp01(intentQtyFraction * scaledRatio),
++        aggregation: "SUM",
++        source: "INTENT_QTY_FRACTION_SCALED",
++      };
+     }
+-    return intentQtyFraction;
++    return {
++      closeRatio: intentQtyFraction,
++      aggregation: "MAX",
++      source: "INTENT_QTY_FRACTION",
++    };
++  }
++  if (Number.isFinite(scaledRatio) && scaledRatio > 0) {
++    return {
++      closeRatio: scaledRatio,
++      aggregation: "SUM",
++      source: "QTY_SCALE_RATIO",
++    };
+   }
+-  if (Number.isFinite(scaledRatio) && scaledRatio > 0) return scaledRatio;
+   const positionQtyBase = Number(positionCtx && positionCtx.qtyBase);
+   if (isTpP1Event(event)) {
+-    return null;
++    return empty;
+   }
+   if (Number.isFinite(execQty) && execQty > 0 && Number.isFinite(positionQtyBase) && positionQtyBase > 0) {
+-    return clamp01(execQty / positionQtyBase);
++    return {
++      closeRatio: clamp01(execQty / positionQtyBase),
++      aggregation: "SUM",
++      source: "POSITION_QTY_BASE",
++    };
+   }
+   if (eventUpper.startsWith("EXIT_TP_P0")) {
+     const nativeTp0QtyRatio = clamp01(positionCtx && positionCtx.nativeProtectionTp0QtyRatio);
+-    if (Number.isFinite(nativeTp0QtyRatio) && nativeTp0QtyRatio > 0) return nativeTp0QtyRatio;
++    if (Number.isFinite(nativeTp0QtyRatio) && nativeTp0QtyRatio > 0) {
++      return {
++        closeRatio: nativeTp0QtyRatio,
++        aggregation: "MAX",
++        source: "NATIVE_TP0_QTY_RATIO",
++      };
++    }
+   }
+-  return null;
++  return empty;
++}
++
++function resolveFillSyncAlertCloseRatio({ event, intent, qtyScale, execQtyBase, positionCtx } = {}) {
++  const resolved = resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale, execQtyBase, positionCtx });
++  return resolved && Number.isFinite(Number(resolved.closeRatio)) ? resolved.closeRatio : null;
++}
++
++function mergeFillSyncAlertCloseRatio(currentPayload = {}, payload = {}) {
++  const currentCloseRatio = Number(currentPayload.closeRatio);
++  const payloadCloseRatio = Number(payload.closeRatio);
++  if (!(Number.isFinite(currentCloseRatio) || Number.isFinite(payloadCloseRatio))) return null;
++  const currentAggregation = String(currentPayload.closeRatioAggregation || "").trim().toUpperCase();
++  const payloadAggregation = String(payload.closeRatioAggregation || "").trim().toUpperCase();
++  if (currentAggregation === "MAX" && payloadAggregation === "MAX") {
++    return clamp01(Math.max(
++      Number.isFinite(currentCloseRatio) ? currentCloseRatio : 0,
++      Number.isFinite(payloadCloseRatio) ? payloadCloseRatio : 0,
++    ));
++  }
++  return clamp01(
++    (Number.isFinite(currentCloseRatio) ? currentCloseRatio : 0)
++    + (Number.isFinite(payloadCloseRatio) ? payloadCloseRatio : 0)
++  );
+ }
+ 
+ function resolveFillSyncAlertFullExit({ event, orderMeta, closeRatio } = {}) {
+@@ -941,17 +1013,17 @@ function queueFillSyncAlertBatch(batchMap, {
+   }
+ 
+   const nextTradeMs = Number.isFinite(Number(tradeMs)) ? Number(tradeMs) : current.latestTradeMs;
+-  const currentCloseRatio = Number(current.payload.closeRatio);
+-  const payloadCloseRatio = Number(payload.closeRatio);
+-  const mergedCloseRatio = (Number.isFinite(currentCloseRatio) || Number.isFinite(payloadCloseRatio))
+-    ? clamp01((Number.isFinite(currentCloseRatio) ? currentCloseRatio : 0) + (Number.isFinite(payloadCloseRatio) ? payloadCloseRatio : 0))
+-    : null;
++  const mergedCloseRatio = mergeFillSyncAlertCloseRatio(current.payload, payload);
+   const mergedPayload = {
+     ...current.payload,
+     ...payload,
+     notional: sumFiniteValues(current.payload.notional, payload.notional),
+     realizedPnl: sumFiniteValues(current.payload.realizedPnl, payload.realizedPnl),
+     closeRatio: mergedCloseRatio,
++    closeRatioAggregation: (
++      String(current.payload.closeRatioAggregation || "").trim().toUpperCase() === "MAX"
++      && String(payload.closeRatioAggregation || "").trim().toUpperCase() === "MAX"
++    ) ? "MAX" : "SUM",
+     fullExit: current.payload.fullExit === true || payload.fullExit === true,
+   };
+   if (!(Number.isFinite(Number(payload.execPrice)) && nextTradeMs >= current.latestTradeMs)) {
+@@ -1519,6 +1591,123 @@ function isTpP0Event(event) {
+   return ev.startsWith("EXIT_TP_P0");
+ }
+ 
++function classifyExitAuthorityStage(event) {
++  const ev = String(event || "").toUpperCase();
++  if (!ev) return "OTHER";
++  if (ev.startsWith("EXIT_TP_P0")) return "TP0";
++  if (ev.startsWith("EXIT_TP_P1")) return "TP1";
++  if (ev.startsWith("EXIT_TRAIL")) return "TRAIL";
++  if (ev.startsWith("EXIT_SL")) return "SL";
++  if (ev === "FORCE_EXIT_ALL" || ev === "EXIT_ALL" || ev === "EXIT_FORCE_ALL") return "FORCE_EXIT_ALL";
++  if (ev === "FORCE_EXIT_HALF") return "FORCE_EXIT_HALF";
++  if (ev.startsWith("EXIT_")) return "OTHER_EXIT";
++  return "OTHER";
++}
++
++function buildExitAuthorityChainKey({
++  exchange,
++  symbol,
++  event,
++  entryEventId = null,
++  signalDocId = null,
++  orderMeta = null,
++} = {}) {
++  const ex = String(exchange || "").trim().toUpperCase() || "UNKNOWN";
++  const sym = String(symbol || "").trim().toUpperCase() || "UNKNOWN";
++  const stage = classifyExitAuthorityStage(event);
++  const entryKey = String(entryEventId || "").trim();
++  if (entryKey) return `${ex}__${sym}__ENTRY__${entryKey}`;
++  const signalKey = String(signalDocId || "").trim();
++  if (signalKey) return `${ex}__${sym}__SIGNAL__${signalKey}`;
++  const orderId = Number(orderMeta && orderMeta.orderId);
++  if (Number.isFinite(orderId)) return `${ex}__${sym}__ORDER__${orderId}`;
++  const clientOrderId = String(orderMeta && orderMeta.clientOrderId || "").trim();
++  if (clientOrderId) return `${ex}__${sym}__CLIENT__${clientOrderId}`;
++  return `${ex}__${sym}__STAGE__${stage}`;
++}
++
++function getExitAuthorityState(map, chainKey) {
++  if (!map.has(chainKey)) {
++    map.set(chainKey, {
++      tp0: 0,
++      tp1: 0,
++      trail: 0,
++      sl: 0,
++      forceExitAll: 0,
++      forceExitHalf: 0,
++      otherExit: 0,
++      total: 0,
++    });
++  }
++  return map.get(chainKey);
++}
++
++function applyExternalExitQtyAuthority({
++  authorityMap,
++  exchange,
++  symbol,
++  event,
++  entryEventId = null,
++  signalDocId = null,
++  orderMeta = null,
++  qtyPct = null,
++  rules = null,
++  tolerance = 0.03,
++} = {}) {
++  const rawQty = Number(qtyPct);
++  const stage = classifyExitAuthorityStage(event);
++  const chainKey = buildExitAuthorityChainKey({
++    exchange,
++    symbol,
++    event,
++    entryEventId,
++    signalDocId,
++    orderMeta,
++  });
++  if (!Number.isFinite(rawQty) || rawQty <= 0 || !authorityMap || stage === "OTHER") {
++    return {
++      chainKey,
++      stage,
++      rawQtyPct: Number.isFinite(rawQty) ? rawQty : null,
++      acceptedQtyPct: Number.isFinite(rawQty) ? rawQty : null,
++      droppedQtyPct: null,
++      capped: false,
++      duplicateSuspected: false,
++      reason: "PASS_THROUGH",
++    };
++  }
++  const state = getExitAuthorityState(authorityMap, chainKey);
++  const tp0Cap = Number.isFinite(Number(rules && rules.TP_P0_QTY)) ? Number(rules.TP_P0_QTY) : 0.25;
++  const tp1Cap = Number.isFinite(Number(rules && rules.TP_P1_QTY)) ? Number(rules.TP_P1_QTY) : 0.5;
++  let remaining = null;
++  if (stage === "TP0") remaining = Math.max(0, tp0Cap - state.tp0);
++  else if (stage === "TP1") remaining = Math.max(0, tp1Cap - state.tp1);
++  else remaining = Math.max(0, 1 - state.total);
++  const acceptedQtyPct = Math.max(0, Math.min(rawQty, remaining));
++  const droppedQtyPct = Math.max(0, rawQty - acceptedQtyPct);
++  const capped = droppedQtyPct > 1e-9;
++  if (acceptedQtyPct > 1e-9) {
++    state.total += acceptedQtyPct;
++    if (stage === "TP0") state.tp0 += acceptedQtyPct;
++    else if (stage === "TP1") state.tp1 += acceptedQtyPct;
++    else if (stage === "TRAIL") state.trail += acceptedQtyPct;
++    else if (stage === "SL") state.sl += acceptedQtyPct;
++    else if (stage === "FORCE_EXIT_ALL") state.forceExitAll += acceptedQtyPct;
++    else if (stage === "FORCE_EXIT_HALF") state.forceExitHalf += acceptedQtyPct;
++    else state.otherExit += acceptedQtyPct;
++  }
++  return {
++    chainKey,
++    stage,
++    rawQtyPct: rawQty,
++    acceptedQtyPct: acceptedQtyPct > 1e-9 ? acceptedQtyPct : null,
++    droppedQtyPct: droppedQtyPct > 1e-9 ? droppedQtyPct : null,
++    capped,
++    duplicateSuspected: capped && droppedQtyPct > Math.max(1e-9, Number(tolerance) || 0.03),
++    reason: capped ? "CHAIN_QTY_CAP_APPLIED" : "CHAIN_QTY_ACCEPTED",
++  };
++}
++
+ function inferTakeProfitKindFromQtyPct(qtyPct, rules) {
+   return inferTakeProfitKindFromQtyRatio(
+     qtyPct,
+@@ -1898,6 +2087,7 @@ async function syncMarketTrades({
+   const pendingAlertBatches = new Map();
+   let lastExitTradeMs = null;
+   let observedExitFill = false;
++  const exitQtyAuthorityMap = new Map();
+   const defaultExitRules = getExitRulesForExchange("BINANCEFUT");
+   const alertEnabled = resolveEnvBool(process.env.BINANCEFUT_FILLS_SYNC_ALERT_ENABLED, true);
+   const intentFutureAllowMs = Number(process.env.BINANCEFUT_FILLS_SYNC_INTENT_FUTURE_ALLOW_MS) || DEFAULT_INTENT_FUTURE_ALLOW_MS;
+@@ -2052,8 +2242,45 @@ async function syncMarketTrades({
+       const entryEventId = intentEntryCtx.entryEventId || inferredEntryCtx.entryEventId || null;
+       const entrySignalType = intentEntryCtx.entrySignalType || inferredEntryCtx.entrySignalType || null;
+       const positionSideBefore = inferPositionSideBefore({ trade: t, positionCtx });
+-      const closeRatio = looksLikeExit
+-        ? resolveFillSyncAlertCloseRatio({ event, intent, qtyScale, execQtyBase, positionCtx })
++      const authorityDecision = looksLikeExit
++        ? applyExternalExitQtyAuthority({
++          authorityMap: exitQtyAuthorityMap,
++          exchange: "BINANCEFUT",
++          symbol: sym,
++          event,
++          entryEventId,
++          signalDocId,
++          orderMeta,
++          qtyPct,
++          rules: exitRules,
++        })
++        : {
++          chainKey: null,
++          stage: "OTHER",
++          rawQtyPct: Number.isFinite(Number(qtyPct)) ? Number(qtyPct) : null,
++          acceptedQtyPct: Number.isFinite(Number(qtyPct)) ? Number(qtyPct) : null,
++          droppedQtyPct: null,
++          capped: false,
++          duplicateSuspected: false,
++          reason: "PASS_THROUGH",
++        };
++      const authoritativeQtyPct = looksLikeExit
++        ? authorityDecision.acceptedQtyPct
++        : qtyPct;
++      const authoritativeQtyFraction = Number.isFinite(Number(authoritativeQtyPct))
++        ? Number(authoritativeQtyPct)
++        : null;
++      const authoritativeQtyScale = looksLikeExit
++        ? {
++          ...qtyScale,
++          qtyPct: Number.isFinite(Number(authoritativeQtyPct)) ? Number(authoritativeQtyPct) : null,
++        }
++        : qtyScale;
++      const closeRatioInfo = looksLikeExit
++        ? resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale: authoritativeQtyScale, execQtyBase, positionCtx })
++        : null;
++      const closeRatio = closeRatioInfo && Number.isFinite(Number(closeRatioInfo.closeRatio))
++        ? closeRatioInfo.closeRatio
+         : null;
+       const fullExit = looksLikeExit
+         ? resolveFillSyncAlertFullExit({
+@@ -2074,14 +2301,14 @@ async function syncMarketTrades({
+         execBarCloseTimeUtcMs: Number.isFinite(tradeMs) ? tradeMs : null,
+         side: String(t.side || "").toUpperCase(),
+         event,
+-        qtyPct,
++        qtyPct: authoritativeQtyPct,
+         execPrice,
+         feeBps: 0,
+         slippageBps,
+         feeValue,
+         notional,
+         notionalKrw: notional,
+-        qtyFraction,
++        qtyFraction: authoritativeQtyFraction,
+         execPriceSource: "BINANCE_USER_TRADES",
+         executionMode: "LIVE",
+         liveOrderId: t.orderId ? String(t.orderId) : null,
+@@ -2121,6 +2348,14 @@ async function syncMarketTrades({
+           qty_pct_intent_raw: Number.isFinite(qtyScale.intentQtyPct) ? qtyScale.intentQtyPct : null,
+           qty_pct_intent_notional: Number.isFinite(qtyScale.intentNotional) ? qtyScale.intentNotional : null,
+           qty_pct_intent_qty_base: Number.isFinite(qtyScale.intentQtyBase) ? qtyScale.intentQtyBase : null,
++          authoritative_exit_chain_key: authorityDecision.chainKey || null,
++          authoritative_exit_stage: authorityDecision.stage || null,
++          authoritative_qty_pct_raw: Number.isFinite(Number(authorityDecision.rawQtyPct)) ? Number(authorityDecision.rawQtyPct) : null,
++          authoritative_qty_pct_accepted: Number.isFinite(Number(authorityDecision.acceptedQtyPct)) ? Number(authorityDecision.acceptedQtyPct) : null,
++          authoritative_qty_pct_dropped: Number.isFinite(Number(authorityDecision.droppedQtyPct)) ? Number(authorityDecision.droppedQtyPct) : null,
++          authoritative_qty_cap_applied: authorityDecision.capped === true,
++          authoritative_duplicate_suspected: authorityDecision.duplicateSuspected === true,
++          authoritative_qty_reason: authorityDecision.reason || null,
+         },
+       });
+ 
+@@ -2192,7 +2427,14 @@ async function syncMarketTrades({
+         const isEntryLikeEvent = !isExitEvent && event !== "SYNC_FILL";
+         const allowExitAlert = isExitEvent && isMeaningfulRealizedPnl(realizedPnl);
+         const allowEntryAlert = isEntryLikeEvent;
++        const duplicateSuppressed = looksLikeExit
++          && authorityDecision
++          && authorityDecision.duplicateSuspected === true
++          && (!Number.isFinite(Number(authoritativeQtyPct)) || Number(authoritativeQtyPct) <= 0);
+         if (allowExitAlert || allowEntryAlert) {
++          if (duplicateSuppressed) {
++            continue;
++          }
+           const eventAgeMs = Number.isFinite(tradeMs) ? (Date.now() - tradeMs) : null;
+           if (!Number.isFinite(eventAgeMs) || eventAgeMs <= alertMaxAgeMs) {
+             const matchedIntentEvent = String(intent && intent.event || "").toUpperCase();
+@@ -2228,6 +2470,8 @@ async function syncMarketTrades({
+               notional,
+               execPrice,
+               closeRatio,
++              closeRatioAggregation: closeRatioInfo ? closeRatioInfo.aggregation : null,
++              closeRatioSource: closeRatioInfo ? closeRatioInfo.source : null,
+               fullExit,
+               realizedPnl: isExitEvent ? realizedPnl : null,
+               positionSideBefore,
+@@ -2407,8 +2651,10 @@ module.exports = {
+     resolveAlertExitRules,
+     normalizeExitEventForRules,
+     resolveFillSyncAlertCloseRatio,
++    resolveFillSyncAlertCloseRatioInfo,
+     resolveFillSyncAlertFullExit,
+     resolveTinyResidualCloseDecision,
++    mergeFillSyncAlertCloseRatio,
+     queueFillSyncAlertBatch,
+     pickIntentForTrade,
+     resolveExternalExitEvent,
+@@ -2416,6 +2662,9 @@ module.exports = {
+     isSyntheticExternalFillExitEvent,
+     isAuthoritativeForcedExitIntentEvent,
+     isTrailExitEligible,
++    classifyExitAuthorityStage,
++    buildExitAuthorityChainKey,
++    applyExternalExitQtyAuthority,
+     inferStageConstrainedTakeProfitKind,
+     buildImmediateProjectionIssues,
+     auditImmediateProjectionEvents,
+diff --git a/src/services/featureLabelDataset.js b/src/services/featureLabelDataset.js
+index 612bc18..8ce0e41 100644
+--- a/src/services/featureLabelDataset.js
++++ b/src/services/featureLabelDataset.js
+@@ -122,6 +122,46 @@ function buildDatasetManifest({
+   };
+ }
+ 
++function buildFeatureSnapshot({
++  market = null,
++  tf = null,
++  trade = null,
++} = {}) {
++  const item = trade && typeof trade === "object" ? trade : {};
++  const features = item.features_json && typeof item.features_json === "object" ? item.features_json : {};
++  return {
++    market: String(market || "").toUpperCase(),
++    tf: String(tf || "").trim() || null,
++    pnl_krw_gross: toNum(item.pnl_krw_gross),
++    fee_value: toNum(item.fee_value),
++    funding_paid: toNum(item.funding_paid),
++    notional_krw: toNum(item.notional_krw),
++    entry_tier: String(
++      features.entry_tier
++      || features.entry_grade
++      || features.signal_tier
++      || item.entry_signal_type
++      || ""
++    ).trim().toUpperCase() || null,
++    position_side: String(item.position_side || features.position_side || "").trim().toUpperCase() || null,
++    close_type: String(item.close_type || "").trim().toUpperCase() || null,
++    exit_event: String(item.exit_event || "").trim().toUpperCase() || null,
++    confidence: toNum(features.confidence ?? features.conf ?? features.signal_confidence),
++    posterior: toNum(
++      features.posterior
++      ?? features.long_posterior
++      ?? features.short_posterior
++      ?? features.buy_posterior
++      ?? features.sell_posterior
++    ),
++    openclaw_market_regime_cohort: String(
++      features.openclaw_market_regime_cohort
++      || features.market_regime_cohort
++      || ""
++    ).trim().toUpperCase() || null,
++  };
++}
++
+ function assertImmutableEventProvenance(rows = []) {
+   for (const row of (Array.isArray(rows) ? rows : [])) {
+     const provenance = row && row.provenance && typeof row.provenance === "object" ? row.provenance : null;
+@@ -173,14 +213,7 @@ async function buildFeatureLabelDataset({
+         close_ms: toNum(trade.close_ms),
+         close_type: String(trade.close_type || "").trim().toUpperCase() || null,
+         entry_event_id: trade.entry_event_id || null,
+-        feature_snapshot: {
+-          market: String(market || "").toUpperCase(),
+-          tf: String(tf || "").trim() || null,
+-          pnl_krw_gross: toNum(trade.pnl_krw_gross),
+-          fee_value: toNum(trade.fee_value),
+-          funding_paid: toNum(trade.funding_paid),
+-          notional_krw: toNum(trade.notional_krw),
+-        },
++        feature_snapshot: buildFeatureSnapshot({ market, tf, trade }),
+         label_snapshot: outcome,
+         provenance,
+       });
+@@ -219,6 +252,7 @@ module.exports = {
+   __test: {
+     buildRowProvenance,
+     buildDatasetManifest,
++    buildFeatureSnapshot,
+     buildStableHash,
+     assertImmutableEventProvenance,
+   },
+diff --git a/src/services/openclawExecutionExecutor.js b/src/services/openclawExecutionExecutor.js
+index 36c08c1..eb968bd 100644
+--- a/src/services/openclawExecutionExecutor.js
++++ b/src/services/openclawExecutionExecutor.js
+@@ -1,5 +1,7 @@
+ "use strict";
+ 
++const fs = require("fs");
++const path = require("path");
+ const { listExchangePositionReadViews } = require("./positionReadModel");
+ const { fetchUnifiedEventTimeline } = require("../storage/unifiedEventTimeline");
+ 
+@@ -48,9 +50,26 @@ const CORRELATED_GROUPS_ENV = String(
+   process.env.OPENCLAW_EXECUTOR_CORRELATED_GROUPS
+   || "ALT_BETA:DOGEUSDT|XRPUSDT|SOLUSDT|AXSUSDT|LINKUSDT,MAJORS:BTCUSDT|ETHUSDT|BNBUSDT"
+ ).trim();
++const ALLOCATOR_REDUCE_SCALE = numEnv("OPENCLAW_EXECUTOR_ALLOCATOR_REDUCE_SCALE", 0.55, { min: 0.05, max: 1 });
++const ALLOCATOR_EXPLORE_SCALE = numEnv("OPENCLAW_EXECUTOR_ALLOCATOR_EXPLORE_SCALE", 0.7, { min: 0.05, max: 1 });
++const ALLOCATOR_INCREASE_SCALE = numEnv("OPENCLAW_EXECUTOR_ALLOCATOR_INCREASE_SCALE", 1.08, { min: 1, max: 1.5 });
++const SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD", 1.0, { min: 0, max: 10 });
++const SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD", 1.6, { min: 0, max: 10 });
++const CORRELATED_EXPOSURE_REDUCE_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD", 0.8, { min: 0, max: 10 });
++const CORRELATED_EXPOSURE_BLOCK_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD", 1.2, { min: 0, max: 10 });
++
++const REPO_ROOT = path.resolve(__dirname, "../..");
++const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
++const CAPITAL_ALLOCATOR_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_market_capital_allocator_latest.json");
+ 
+ const positionViewCache = new Map();
+ const recentTimelineCache = new Map();
++const allocatorCache = {
++  ts: 0,
++  mtimeMs: null,
++  summary: null,
++  byMarket: new Map(),
++};
+ 
+ function clampQty(value) {
+   const n = toNum(value);
+@@ -100,6 +119,22 @@ function safeClone(value) {
+   }
+ }
+ 
++function safeReadJson(filePath) {
++  try {
++    return JSON.parse(fs.readFileSync(filePath, "utf8"));
++  } catch (_) {
++    return null;
++  }
++}
++
++function statMtimeMs(filePath) {
++  try {
++    return fs.statSync(filePath).mtimeMs;
++  } catch (_) {
++    return null;
++  }
++}
++
+ function inferIntentDirection({ event = null, side = null, features = null } = {}) {
+   const eventUpper = upper(event);
+   const sideUpper = upper(side);
+@@ -249,6 +284,28 @@ function resolveExecutorCohort({ cohort = null, features = null } = {}) {
+   );
+ }
+ 
++function loadCapitalAllocatorSnapshot({ force = false } = {}) {
++  const nowMs = Date.now();
++  const mtimeMs = statMtimeMs(CAPITAL_ALLOCATOR_PATH);
++  if (!force && allocatorCache.summary && allocatorCache.ts && (nowMs - allocatorCache.ts) < CACHE_TTL_MS && allocatorCache.mtimeMs === mtimeMs) {
++    return allocatorCache;
++  }
++  const doc = safeReadJson(CAPITAL_ALLOCATOR_PATH);
++  const summary = doc && doc.summary && typeof doc.summary === "object" ? doc.summary : {};
++  const rows = Array.isArray(summary.by_market) ? summary.by_market : [];
++  const byMarket = new Map();
++  for (const row of rows) {
++    const market = upper(row && row.market);
++    if (!market) continue;
++    byMarket.set(market, row);
++  }
++  allocatorCache.ts = nowMs;
++  allocatorCache.mtimeMs = mtimeMs;
++  allocatorCache.summary = summary;
++  allocatorCache.byMarket = byMarket;
++  return allocatorCache;
++}
++
+ async function listActivePositionViews({ exchange, override = null } = {}) {
+   if (Array.isArray(override)) return override.slice();
+   const key = upper(exchange) || "UNKNOWN";
+@@ -290,6 +347,7 @@ function summarizeExposure({ exchange, symbol, desiredSide, positionViews = [] }
+       exchange: upper(exchange),
+       symbol: rowSymbol,
+       side: rowSide,
++      size_pct: toNum(row.size_pct) || 1,
+       sameSymbol: rowSymbol === targetSymbol,
+       sameSide: !!(side && rowSide && rowSide === side),
+       groupOverlap: targetGroups.filter((name) => resolveSymbolGroups(rowSymbol).includes(name)),
+@@ -297,12 +355,16 @@ function summarizeExposure({ exchange, symbol, desiredSide, positionViews = [] }
+   }
+   const sameSideActive = exposures.filter((row) => row.sameSide && !row.sameSymbol);
+   const correlatedActive = exposures.filter((row) => row.sameSide && !row.sameSymbol && row.groupOverlap.length > 0);
++  const sameSideExposure = sameSideActive.reduce((sum, row) => sum + (toNum(row.size_pct) || 1), 0);
++  const correlatedExposure = correlatedActive.reduce((sum, row) => sum + (toNum(row.size_pct) || 1), 0);
+   return {
+     exposures,
+     sameSideActive,
+     correlatedActive,
+     sameSideCountAfter: sameSideActive.length + 1,
+     correlatedCountAfter: correlatedActive.length + 1,
++    sameSideExposureAfter: sameSideExposure,
++    correlatedExposureAfter: correlatedExposure,
+     targetGroups,
+   };
+ }
+@@ -322,6 +384,7 @@ async function evaluateOpenClawExecutionDecision({
+   cohort = null,
+   positionViews = null,
+   recentTimelineRows = null,
++  capitalAllocatorSnapshot = null,
+ } = {}) {
+   const resolvedExchange = upper(exchange);
+   const resolvedSymbol = upper(symbol);
+@@ -394,6 +457,21 @@ async function evaluateOpenClawExecutionDecision({
+     listActivePositionViews({ exchange: resolvedExchange, override: positionViews }),
+     listRecentTimelineRows({ exchange: resolvedExchange, symbol: resolvedSymbol, nowMs, override: recentTimelineRows }),
+   ]);
++  const allocatorSnapshot = capitalAllocatorSnapshot && typeof capitalAllocatorSnapshot === "object"
++    ? {
++        summary: capitalAllocatorSnapshot.summary || {},
++        byMarket: capitalAllocatorSnapshot.byMarket instanceof Map
++          ? capitalAllocatorSnapshot.byMarket
++          : new Map(
++            Array.isArray(capitalAllocatorSnapshot.by_market)
++              ? capitalAllocatorSnapshot.by_market
++                  .map((row) => [upper(row && row.market), row])
++                  .filter((row) => row[0])
++              : []
++          ),
++      }
++    : loadCapitalAllocatorSnapshot();
++  const allocatorRow = allocatorSnapshot.byMarket.get(resolvedSymbol) || null;
+ 
+   const latestExit = extractLatestExitRow(timelineRows);
+   const latestExitTsMs = toNum(latestExit && latestExit.ts_ms);
+@@ -420,6 +498,9 @@ async function evaluateOpenClawExecutionDecision({
+     desiredSide,
+     positionViews: views,
+   });
++  const incomingExposure = qtyBefore;
++  const sameSideExposureAfter = exposure.sameSideExposureAfter + incomingExposure;
++  const correlatedExposureAfter = exposure.correlatedExposureAfter + (exposure.targetGroups.length > 0 ? incomingExposure : 0);
+ 
+   if (!blocked && exposure.sameSideCountAfter >= SAME_SIDE_BLOCK_THRESHOLD) {
+     blocked = true;
+@@ -446,6 +527,25 @@ async function evaluateOpenClawExecutionDecision({
+     }
+   }
+ 
++  if (!blocked && sameSideExposureAfter > SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD) {
++    blocked = true;
++    reason = "OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK";
++    exitProfileMode = "BASE";
++    notes.push(reason);
++  } else if (!blocked && correlatedExposureAfter > CORRELATED_EXPOSURE_BLOCK_THRESHOLD) {
++    blocked = true;
++    reason = "OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK";
++    exitProfileMode = "BASE";
++    notes.push(reason);
++  } else if (!blocked && (sameSideExposureAfter > SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD || correlatedExposureAfter > CORRELATED_EXPOSURE_REDUCE_THRESHOLD)) {
++    scale = minScale(scale, CLUSTER_REDUCE_SCALE);
++    exitProfileMode = "BASE";
++    reason = correlatedExposureAfter > CORRELATED_EXPOSURE_REDUCE_THRESHOLD
++      ? "OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE"
++      : "OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE";
++    notes.push(reason);
++  }
++
+   if (!blocked && ["RESCUE", "HOLD_SAMPLE", "WATCH_ONLY", "LEARNING"].includes(resolvedCohort)) {
+     scale = minScale(scale, RESCUE_SCALE);
+     exitProfileMode = "BASE";
+@@ -467,6 +567,30 @@ async function evaluateOpenClawExecutionDecision({
+     if (ALLOW_UPSCALE && applyScale) scale = maxScale(scale, HIGH_CONF_SCALE);
+   }
+ 
++  const allocatorAction = upper(allocatorRow && allocatorRow.recommended_action);
++  const allocatorScore = toNum(allocatorRow && allocatorRow.allocation_score);
++  if (!blocked && allocatorAction === "QUARANTINE") {
++    blocked = true;
++    reason = "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE";
++    exitProfileMode = "BASE";
++    notes.push(reason);
++  } else if (!blocked && allocatorAction === "REDUCE") {
++    scale = minScale(scale, ALLOCATOR_REDUCE_SCALE);
++    exitProfileMode = exitProfileMode || "BASE";
++    reason = "OPENCLAW_EXECUTOR_ALLOCATOR_REDUCE";
++    notes.push(reason);
++  } else if (!blocked && allocatorAction === "EXPLORE_LIGHT") {
++    scale = minScale(scale, ALLOCATOR_EXPLORE_SCALE);
++    exitProfileMode = exitProfileMode || "BASE";
++    reason = "OPENCLAW_EXECUTOR_ALLOCATOR_EXPLORE_SCALE";
++    notes.push(reason);
++  } else if (!blocked && allocatorAction === "INCREASE" && ALLOW_UPSCALE && applyScale) {
++    scale = maxScale(scale, ALLOCATOR_INCREASE_SCALE);
++    if (exitProfileMode == null) exitProfileMode = "AGGRESSIVE";
++    reason = "OPENCLAW_EXECUTOR_ALLOCATOR_INCREASE";
++    notes.push(reason);
++  }
++
+   const scaleApplied = applyScale ? (Number.isFinite(scale) ? scale : 1) : 1;
+   const qtyPctFinal = blocked ? 0 : clampQty(qtyBefore * scaleApplied);
+   const featuresPatch = {
+@@ -481,6 +605,8 @@ async function evaluateOpenClawExecutionDecision({
+     _openclaw_executor_apply_scale: applyScale === true,
+     _openclaw_executor_same_side_count_after: exposure.sameSideCountAfter,
+     _openclaw_executor_correlated_count_after: exposure.correlatedCountAfter,
++    _openclaw_executor_same_side_exposure_after: sameSideExposureAfter,
++    _openclaw_executor_correlated_exposure_after: correlatedExposureAfter,
+     _openclaw_executor_groups: exposure.targetGroups.slice(),
+     _openclaw_executor_recent_exit_event: latestExitEvent,
+     _openclaw_executor_recent_exit_age_ms: latestExitAgeMs,
+@@ -489,6 +615,8 @@ async function evaluateOpenClawExecutionDecision({
+     _openclaw_executor_confidence: confidence,
+     _openclaw_executor_posterior: posterior,
+     _openclaw_executor_entry_tier: entryTier,
++    _openclaw_executor_allocator_action: allocatorAction,
++    _openclaw_executor_allocator_score: allocatorScore,
+   };
+   if (exitProfileMode) {
+     featuresPatch._openclaw_executor_exit_profile_mode = exitProfileMode;
+@@ -512,6 +640,8 @@ async function evaluateOpenClawExecutionDecision({
+       desiredSide,
+       sameSideCountAfter: exposure.sameSideCountAfter,
+       correlatedCountAfter: exposure.correlatedCountAfter,
++      sameSideExposureAfter,
++      correlatedExposureAfter,
+       groups: exposure.targetGroups.slice(),
+       recentExitEvent: latestExitEvent,
+       recentExitAgeMs: latestExitAgeMs,
+@@ -520,6 +650,8 @@ async function evaluateOpenClawExecutionDecision({
+       confidence,
+       posterior,
+       entryTier,
++      allocatorAction,
++      allocatorScore,
+       notes,
+     },
+     featuresPatch,
+diff --git a/src/services/outcomeLabeler.js b/src/services/outcomeLabeler.js
+index 1889528..db2d485 100644
+--- a/src/services/outcomeLabeler.js
++++ b/src/services/outcomeLabeler.js
+@@ -11,9 +11,16 @@ function toBool(value) {
+ }
+ 
+ function labelOutcome(row = {}) {
+-  const outcomeState = String(row.outcome_state || "").trim().toUpperCase() || "UNKNOWN";
+-  const realizedRetNet = toNum(row.realized_ret_net);
+-  const realizedPnlQuote = toNum(row.realized_pnl_quote);
++  const fallbackSourceRowType = row && (row.close_type || row.exit_event || row.qty_closed != null)
++    ? "EXECUTED"
++    : "UNKNOWN";
++  const outcomeState = String(
++    row.outcome_state
++    || row.close_type
++    || (fallbackSourceRowType === "EXECUTED" ? "REALIZED" : "")
++  ).trim().toUpperCase() || "UNKNOWN";
++  const realizedRetNet = toNum(row.realized_ret_net ?? row.pnl_pct);
++  const realizedPnlQuote = toNum(row.realized_pnl_quote ?? row.pnl_krw);
+   const tp0Hit = toBool(row.tp0_hit);
+   const tp0First = toBool(row.tp0_first);
+   const tp0ToTp1Converted = toBool(row.tp0_to_tp1_converted);
+@@ -27,7 +34,7 @@ function labelOutcome(row = {}) {
+   const timeToTp1Minutes = toNum(row.time_to_tp1_minutes);
+   const mfePct = toNum(row.mfe_pct);
+   const maePct = toNum(row.mae_pct);
+-  const sourceRowType = String(row.source_row_type || "").trim().toUpperCase() || "UNKNOWN";
++  const sourceRowType = String(row.source_row_type || fallbackSourceRowType).trim().toUpperCase() || "UNKNOWN";
+ 
+   return {
+     outcome_state: outcomeState,
+diff --git a/src/services/systemRuntimeGuardsJob.js b/src/services/systemRuntimeGuardsJob.js
+index 225456d..80d9869 100644
+--- a/src/services/systemRuntimeGuardsJob.js
++++ b/src/services/systemRuntimeGuardsJob.js
+@@ -14,6 +14,10 @@ const { runSystemAnomalyRemediation } = require("./systemAnomalyRemediation");
+ const { applyMlServingActuation } = require("./mlServingActuator");
+ const { exportTraceContext } = require("./otelExporter");
+ const { normalizeTraceContext } = require("../utils/traceContext");
++const {
++  loadPreferredExecutionQualityInput,
++  loadPreferredLineageHealthInput,
++} = require("./systemSloArtifactInputs");
+ 
+ const REPO_ROOT = path.resolve(__dirname, "../..");
+ const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
+@@ -59,8 +63,8 @@ async function runSystemRuntimeGuardsJob({
+   remediate = runSystemAnomalyRemediation,
+   actuateServing = applyMlServingActuation,
+   exportTrace = exportTraceContext,
+-  loadExecutionQuality = () => safeReadJson(EXECUTION_QUALITY_LATEST_PATH),
+-  loadLineageHealth = () => safeReadJson(LINEAGE_HEALTH_LATEST_PATH),
++  loadExecutionQuality = loadPreferredExecutionQualityInput,
++  loadLineageHealth = loadPreferredLineageHealthInput,
+ } = {}) {
+   const ex = String(exchange || "BINANCEFUT").trim().toUpperCase();
+   const generatedAtIso = new Date(nowMs).toISOString();
+diff --git a/src/services/systemSloRuntime.js b/src/services/systemSloRuntime.js
+index 936459a..07a6abe 100644
+--- a/src/services/systemSloRuntime.js
++++ b/src/services/systemSloRuntime.js
+@@ -5,6 +5,10 @@ const path = require("path");
+ const { getSystemSloState } = require("../storage/systemSloStates");
+ const { loadOperationalGuardRuntime } = require("./operationalGuardRuntime");
+ const { loadMlServingRuntime } = require("./mlServingRuntime");
++const {
++  loadPreferredExecutionQualityInput,
++  loadPreferredLineageHealthInput,
++} = require("./systemSloArtifactInputs");
+ 
+ const REPO_ROOT = path.resolve(__dirname, "../..");
+ const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
+@@ -204,12 +208,16 @@ async function loadSystemSloRuntime({
+     operationalGuard && typeof operationalGuard === "object" ? operationalGuard : loadOperationalGuardRuntime({ exchange: ex }).catch(() => null),
+     mlServing && typeof mlServing === "object" ? mlServing : loadMlServingRuntime({ exchange: ex }).catch(() => null),
+   ]);
++  const [executionQuality, lineageHealth] = await Promise.all([
++    loadPreferredExecutionQualityInput(),
++    loadPreferredLineageHealthInput(),
++  ]);
+   const value = buildSystemSloState({
+     exchange: ex,
+     operationalGuard: resolvedOps,
+     mlServing: resolvedServing,
+-    executionQuality: safeReadJson(EXECUTION_QUALITY_PATH),
+-    lineageHealth: safeReadJson(LINEAGE_HEALTH_PATH),
++    executionQuality,
++    lineageHealth,
+     nowMs,
+   });
+   runtimeCache.set(cacheKey, { ts_ms: nowMs, value });
+diff --git a/src/storage/positionWriterAuthorityEvents.js b/src/storage/positionWriterAuthorityEvents.js
+index c4656e0..8b50bf4 100644
+--- a/src/storage/positionWriterAuthorityEvents.js
++++ b/src/storage/positionWriterAuthorityEvents.js
+@@ -37,6 +37,8 @@ async function recordPositionWriterAuthorityEvent({
+   expectedWriteToken = null,
+   actualWriteToken = null,
+   holder = null,
++  runtimeFamilySuppressed = false,
++  runtimeFamilySuppressedReason = null,
+ } = {}) {
+   const db = getFirestore();
+   const createdAt = new Date().toISOString();
+@@ -60,6 +62,10 @@ async function recordPositionWriterAuthorityEvent({
+     expected_write_token: String(expectedWriteToken || "").trim() || null,
+     actual_write_token: String(actualWriteToken || "").trim() || null,
+     holder: String(holder || "").trim() || null,
++    runtime_family_suppressed: runtimeFamilySuppressed === true,
++    runtime_family_suppressed_reason: runtimeFamilySuppressed === true
++      ? (String(runtimeFamilySuppressedReason || "").trim() || "SUPPRESSED_BY_WRITER_RETRY")
++      : null,
+     created_at: createdAt,
+     updated_at: createdAt,
+   };
+diff --git a/src/storage/positionsPaper.js b/src/storage/positionsPaper.js
+index 6d821e8..85b3671 100644
+--- a/src/storage/positionsPaper.js
++++ b/src/storage/positionsPaper.js
+@@ -367,6 +367,9 @@ async function notifyPositionWriterAuthorityFailure(err, {
+   requestId = null,
+   runId = null,
+   traceId = null,
++  suppressAlert = false,
++  suppressRuntimeFamily = false,
++  suppressRuntimeFamilyReason = null,
+ } = {}) {
+   const code = upper(err && err.code) || upper(err && err.message) || "UNKNOWN";
+   if (!["POSITION_WRITE_TOKEN_REQUIRED", "POSITION_WRITE_TOKEN_MISMATCH", "POSITION_WRITE_LEASE_HELD", "POSITION_WRITE_LEASE_LOST"].includes(code)) {
+@@ -386,11 +389,14 @@ async function notifyPositionWriterAuthorityFailure(err, {
+       expectedWriteToken: err && err.expected_write_token ? err.expected_write_token : null,
+       actualWriteToken: err && err.actual_write_token ? err.actual_write_token : null,
+       holder: err && err.holder ? err.holder : null,
++      runtimeFamilySuppressed: suppressRuntimeFamily === true,
++      runtimeFamilySuppressedReason: suppressRuntimeFamilyReason || null,
+     });
+   } catch (recordErr) {
+     const msg = recordErr && recordErr.message ? recordErr.message : String(recordErr);
+     console.warn("[POSITION_WRITER_AUTHORITY_EVENT_FAIL]", msg);
+   }
++  if (suppressAlert === true) return false;
+   if (shouldSuppressPositionWriterAuthorityAlert(err, { source })) return false;
+   if (POSITION_WRITER_ALERT_ENABLED !== true) return false;
+   if (!POSITION_WRITER_ALERT_CHANNEL) return false;
+@@ -581,6 +587,9 @@ async function upsertPosition({
+   mutationKind = "POSITION_UPSERT",
+   reason = null,
+   expectedWriteToken = null,
++  suppressAuthorityAlert = false,
++  suppressAuthorityRuntimeFamily = false,
++  suppressAuthorityRuntimeFamilyReason = null,
+ } = {}) {
+   const expectedWriteTokenProvided = Object.prototype.hasOwnProperty.call(arguments[0] || {}, "expectedWriteToken");
+   return serializePositionMutation({
+@@ -701,6 +710,9 @@ async function upsertPosition({
+           requestId: trace.request_id,
+           runId: trace.run_id,
+           traceId: trace.trace_id,
++          suppressAlert: suppressAuthorityAlert === true,
++          suppressRuntimeFamily: suppressAuthorityRuntimeFamily === true,
++          suppressRuntimeFamilyReason: suppressAuthorityRuntimeFamilyReason || null,
+         });
+         throw err;
+       }
+@@ -720,6 +732,9 @@ async function upsertPositionMetaOnly({
+   mutationKind = "POSITION_META_UPSERT",
+   reason = null,
+   expectedWriteToken = null,
++  suppressAuthorityAlert = false,
++  suppressAuthorityRuntimeFamily = false,
++  suppressAuthorityRuntimeFamilyReason = null,
+ } = {}) {
+   const expectedWriteTokenProvided = Object.prototype.hasOwnProperty.call(arguments[0] || {}, "expectedWriteToken");
+   return serializePositionMutation({
+@@ -829,6 +844,9 @@ async function upsertPositionMetaOnly({
+           requestId: trace.request_id,
+           runId: trace.run_id,
+           traceId: trace.trace_id,
++          suppressAlert: suppressAuthorityAlert === true,
++          suppressRuntimeFamily: suppressAuthorityRuntimeFamily === true,
++          suppressRuntimeFamilyReason: suppressAuthorityRuntimeFamilyReason || null,
+         });
+         throw err;
+       }
+@@ -856,6 +874,7 @@ module.exports = {
+     assertExpectedWriteTokenProvided,
+     shouldSendPositionWriterAlert,
+     shouldSuppressPositionWriterAuthorityAlert,
++    notifyPositionWriterAuthorityFailure,
+     serializePositionMutation,
+     runWithPositionWriterLease,
+   },
+diff --git a/src/tests/binance-fills-qty-pct.test.js b/src/tests/binance-fills-qty-pct.test.js
+index 76936be..3bccc04 100644
+--- a/src/tests/binance-fills-qty-pct.test.js
++++ b/src/tests/binance-fills-qty-pct.test.js
+@@ -233,8 +233,10 @@ async function run() {
+ 
+   const resolveExternalExitEvent = __test && __test.resolveExternalExitEvent;
+   const inferStageConstrainedTakeProfitKind = __test && __test.inferStageConstrainedTakeProfitKind;
++  const applyExternalExitQtyAuthority = __test && __test.applyExternalExitQtyAuthority;
+   assert.strictEqual(typeof resolveExternalExitEvent, "function", "resolveExternalExitEvent export missing");
+   assert.strictEqual(typeof inferStageConstrainedTakeProfitKind, "function", "inferStageConstrainedTakeProfitKind export missing");
++  assert.strictEqual(typeof applyExternalExitQtyAuthority, "function", "applyExternalExitQtyAuthority export missing");
+   const rules = { SL: -0.015, TP_P1: 0.03, TRAIL_PCT: 0.01 };
+ 
+   assert.strictEqual(
+@@ -259,6 +261,44 @@ async function run() {
+   });
+   assert.strictEqual(overridden, "EXIT_EXTERNAL_SYNC");
+ 
++  {
++    const authorityMap = new Map();
++    const first = applyExternalExitQtyAuthority({
++      authorityMap,
++      exchange: "BINANCEFUT",
++      symbol: "DOGEUSDT",
++      event: "EXIT_TP_P1_1.65P",
++      signalDocId: "SIG__DOGE__TP1",
++      orderMeta: { orderId: 1 },
++      qtyPct: 0.5,
++      rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
++    });
++    const duplicate = applyExternalExitQtyAuthority({
++      authorityMap,
++      exchange: "BINANCEFUT",
++      symbol: "DOGEUSDT",
++      event: "EXIT_TP_P1_1.65P",
++      signalDocId: "SIG__DOGE__TP1",
++      orderMeta: { orderId: 2 },
++      qtyPct: 0.5,
++      rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
++    });
++    const trail = applyExternalExitQtyAuthority({
++      authorityMap,
++      exchange: "BINANCEFUT",
++      symbol: "DOGEUSDT",
++      event: "EXIT_TRAIL",
++      signalDocId: "SIG__DOGE__TP1",
++      orderMeta: { orderId: 3 },
++      qtyPct: 1,
++      rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
++    });
++    assert.strictEqual(first.acceptedQtyPct, 0.5);
++    assert.strictEqual(duplicate.acceptedQtyPct, null);
++    assert.strictEqual(duplicate.duplicateSuspected, true);
++    assert.strictEqual(trail.acceptedQtyPct, 0.5);
++  }
++
+   const nativeSl = await resolveExternalExitEvent({
+     intent: null,
+     trade: { symbol: "SOLUSDT", realizedPnl: -10 },
+diff --git a/src/tests/control-plane-view-models.test.js b/src/tests/control-plane-view-models.test.js
+index 9654b88..c416a1f 100644
+--- a/src/tests/control-plane-view-models.test.js
++++ b/src/tests/control-plane-view-models.test.js
+@@ -13,6 +13,8 @@ function run() {
+   const fallbackName = "2099-12-31_2359_tmp_control_plane_recovery.json";
+   const systemOpsPath = path.join(opsDailyDir, "system_ops_check_latest.json");
+   const systemOpsBackup = fs.existsSync(systemOpsPath) ? fs.readFileSync(systemOpsPath, "utf8") : null;
++  const trailAuditPath = path.join(opsDailyDir, "trail_runner_floor_audit_latest.json");
++  const trailAuditBackup = fs.existsSync(trailAuditPath) ? fs.readFileSync(trailAuditPath, "utf8") : null;
+   const latestPath = path.join(opsDailyDir, latestName);
+   const fallbackPath = path.join(opsDailyDir, fallbackName);
+   const controlPlaneTemplatePath = path.resolve(__dirname, "../views/control-plane.ejs");
+@@ -41,6 +43,22 @@ function run() {
+       ],
+     },
+   }, null, 2), "utf8");
++  fs.writeFileSync(trailAuditPath, JSON.stringify({
++    violation_n: 1,
++    violation_total_n: 4,
++    live_bar_runner_violation_n: 1,
++    live_bar_runner_violation_total_n: 3,
++    top_violations: [
++      {
++        symbol: "XRPUSDT",
++        exec_price: 1.3595,
++        runner_floor_px: 1.365876275,
++        signal_price: 1.3639,
++        floor_gap_pct: -0.4664,
++        position_side: "LONG",
++      },
++    ],
++  }, null, 2), "utf8");
+ 
+   try {
+     const artifact = controlPlaneTest.loadLatestArtifact(latestName);
+@@ -65,6 +83,15 @@ function run() {
+     assert.ok(runtimeCard.table);
+     assert.ok(Array.isArray(runtimeCard.table.rows));
+     assert.ok(String(runtimeCard.table.rows[0].symbol && runtimeCard.table.rows[0].symbol.label || "").includes("XRPUSDT"));
++    const trailAuditCard = Array.isArray(operatorSection.cards)
++      ? operatorSection.cards.find((card) => String(card && card.title || "").includes("Trail Floor Audit"))
++      : null;
++    assert.ok(trailAuditCard);
++    assert.ok(Array.isArray(trailAuditCard.rows));
++    assert.ok(trailAuditCard.rows.some((row) => String(row && row.label || "").includes("Unresolved")));
++    assert.ok(trailAuditCard.table);
++    assert.ok(Array.isArray(trailAuditCard.table.rows));
++    assert.ok(String(trailAuditCard.table.rows[0].market && trailAuditCard.table.rows[0].market.label || "").includes("XRPUSDT"));
+     const executionCard = Array.isArray(operatorSection.cards)
+       ? operatorSection.cards.find((card) => String(card && card.title || "").includes("실행 품질"))
+       : null;
+@@ -76,6 +103,13 @@ function run() {
+     assert.ok(executionCard.table.rows[0].market && executionCard.table.rows[0].market.href);
+     assert.ok(executionCard.table.rows[0].open && executionCard.table.rows[0].open.href);
+     assert.ok(String(executionCard.table.rows[0].open.href).includes("/dashboard/execution"));
++    const decisionCenterCard = Array.isArray(operatorSection.cards)
++      ? operatorSection.cards.find((card) => String(card && card.title || "").includes("의사결정 센터"))
++      : null;
++    assert.ok(decisionCenterCard);
++    assert.ok(Array.isArray(decisionCenterCard.rows));
++    assert.ok(decisionCenterCard.rows.some((row) => String(row && row.label || "").includes("Promotion")));
++    assert.ok(decisionCenterCard.rows.some((row) => String(row && row.label || "").includes("Fee/PnL")));
+     assert.ok(Array.isArray(vm.hero && vm.hero.pills));
+     assert.ok(vm.hero.pills.some((pill) => String(pill && pill.label || "").includes("신규 진입 배율")));
+ 
+@@ -83,12 +117,17 @@ function run() {
+     assert.ok(html.includes("핵심 운영 상태"));
+     assert.ok(html.includes("런타임 가드"));
+     assert.ok(html.includes("Writer Authority 24h"));
++    assert.ok(html.includes("Trail Floor Audit"));
+     assert.ok(html.includes("XRPUSDT"));
+     assert.ok(html.includes("/dashboard/execution"));
++    assert.ok(html.includes("의사결정 센터"));
+   } finally {
+     try { fs.unlinkSync(latestPath); } catch (_) {}
+     try { fs.unlinkSync(fallbackPath); } catch (_) {}
+     if (systemOpsBackup != null) fs.writeFileSync(systemOpsPath, systemOpsBackup, "utf8");
++    else try { fs.unlinkSync(systemOpsPath); } catch (_) {}
++    if (trailAuditBackup != null) fs.writeFileSync(trailAuditPath, trailAuditBackup, "utf8");
++    else try { fs.unlinkSync(trailAuditPath); } catch (_) {}
+   }
+ 
+   console.log("CONTROL_PLANE_VIEW_MODELS_TEST_OK");
+diff --git a/src/tests/daily-system-ops-check.test.js b/src/tests/daily-system-ops-check.test.js
+index 9bce800..cb26df5 100644
+--- a/src/tests/daily-system-ops-check.test.js
++++ b/src/tests/daily-system-ops-check.test.js
+@@ -46,6 +46,27 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
+       query_blockers: [],
+     },
+   }), "utf8");
++  fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "trail_runner_floor_audit_latest.json"), JSON.stringify({
++    violation_n: 0,
++    violation_total_n: 3,
++    live_bar_runner_violation_n: 0,
++    live_bar_runner_violation_total_n: 2,
++    top_violations: [],
++  }), "utf8");
++  fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "binance_exit_qty_contract_audit_latest.json"), JSON.stringify({
++    fill_count: 12,
++    chain_count: 5,
++    issue_chain_count: 2,
++    issue_code_counts: {
++      TP1_ABS_OVER: 1,
++      TOTAL_EXIT_OVER_100: 2,
++    },
++    top_symbols: [
++      { symbol: "BTCUSDT", count: 2 },
++      { symbol: "DOGEUSDT", count: 1 },
++    ],
++    top_issues: [],
++  }), "utf8");
+ 
+   const health = dailySystemOpsCheck.__test.loadExecutionHealth({
+     repoRoot: tmpRoot,
+@@ -62,6 +83,15 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
+   assert.strictEqual(cutover.available, true);
+   assert.strictEqual(cutover.latest_ready, true);
+   assert.strictEqual(cutover.dominant_status, "LATEST_READY");
++  const trailAudit = dailySystemOpsCheck.__test.loadTrailRunnerFloorAuditHealth({ repoRoot: tmpRoot });
++  assert.strictEqual(trailAudit.available, true);
++  assert.strictEqual(trailAudit.violation_n, 0);
++  assert.strictEqual(trailAudit.violation_total_n, 3);
++  const exitQtyAudit = dailySystemOpsCheck.__test.loadBinanceExitQtyContractAuditHealth({ repoRoot: tmpRoot });
++  assert.strictEqual(exitQtyAudit.available, true);
++  assert.strictEqual(exitQtyAudit.fill_count, 12);
++  assert.strictEqual(exitQtyAudit.chain_count, 5);
++  assert.strictEqual(exitQtyAudit.issue_chain_count, 2);
+ 
+   fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "objective_retrospective_latest.json"), JSON.stringify({
+     display: {
+@@ -105,6 +135,8 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
+       drop_tp1_pending_count: 0,
+       qty_pct_non_positive_count: 0,
+     },
++    trailRunnerFloorAudit: trailAudit,
++    binanceExitQtyContractAudit: exitQtyAudit,
+     positionReadModelCutover: cutover,
+   });
+   assert.strictEqual(proceed.status, "진행");
+@@ -126,6 +158,8 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
+       drop_tp1_pending_count: 0,
+       qty_pct_non_positive_count: 0,
+     },
++    trailRunnerFloorAudit: trailAudit,
++    binanceExitQtyContractAudit: exitQtyAudit,
+     positionReadModelCutover: cutover,
+   });
+   assert.strictEqual(stopped.status, "중단");
+@@ -145,6 +179,8 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
+       qty_pct_non_positive_count: 0,
+     },
+     position_read_model_cutover: cutover,
++    trail_runner_floor_audit: trailAudit,
++    binance_exit_qty_contract_audit: exitQtyAudit,
+     position_writer_authority_24h: {
+       occurrence_count: 3,
+       top_symbols: [
+@@ -155,6 +191,10 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
+   });
+   assert.ok(issueLines.some((line) => line.includes("positions_paper writer authority 경합 3건")));
+   assert.ok(issueLines.some((line) => line.includes("XRPUSDT(2)")));
++  assert.ok(issueLines.some((line) => line.includes("trailing floor 과거 위반 3건은 backfill 정리됨")));
++  assert.ok(issueLines.some((line) => line.includes("Binance exit 수량 계약 위반 chain 2건")));
++  assert.ok(issueLines.some((line) => line.includes("TOTAL_EXIT_OVER_100(2)")));
++  assert.ok(issueLines.some((line) => line.includes("BTCUSDT(2)")));
+ 
+   const writerCandidates = dailySystemOpsCheck.__test.buildWriterAuthorityRemediationCandidates({
+     top_symbols: [
+@@ -185,6 +225,8 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
+       drop_tp1_pending_count: 0,
+       qty_pct_non_positive_count: 0,
+     },
++    trailRunnerFloorAudit: trailAudit,
++    binanceExitQtyContractAudit: exitQtyAudit,
+     positionReadModelCutover: cutover,
+   });
+   assert.strictEqual(historicalOnly.status, "진행");
+@@ -209,6 +251,8 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
+       drop_tp1_pending_count: 0,
+       qty_pct_non_positive_count: 0,
+     },
++    trailRunnerFloorAudit: trailAudit,
++    binanceExitQtyContractAudit: exitQtyAudit,
+     positionReadModelCutover: cutover,
+     activePositionCount: 0,
+   });
+@@ -234,12 +278,36 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
+       drop_tp1_pending_count: 0,
+       qty_pct_non_positive_count: 0,
+     },
++    trailRunnerFloorAudit: trailAudit,
++    binanceExitQtyContractAudit: exitQtyAudit,
+     positionReadModelCutover: cutover,
+     activePositionCount: 1,
+   });
+   assert.strictEqual(writerAuthorityWithActivePositionsStillBlocks.status, "보류");
+   assert.ok(writerAuthorityWithActivePositionsStillBlocks.reasons.includes("활성 핵심 오류 1건"));
+ 
++  const missingExitQtyAuditBlocks = dailySystemOpsCheck.__test.decideStatus({
++    netPnlPct: 0.8,
++    costRatioPct: 0.05,
++    errorCount: 0,
++    costLimitPct: 0.2,
++    lossStopPct: -1.5,
++    stopErrorCount: 2,
++    executionHealth: {
++      available: true,
++      signals_count: 1,
++      fills_count: 1,
++      firestore_dns_ok: true,
++      drop_tp1_pending_count: 0,
++      qty_pct_non_positive_count: 0,
++    },
++    trailRunnerFloorAudit: trailAudit,
++    binanceExitQtyContractAudit: { available: false },
++    positionReadModelCutover: cutover,
++  });
++  assert.strictEqual(missingExitQtyAuditBlocks.status, "보류");
++  assert.ok(missingExitQtyAuditBlocks.reasons.includes("binance exit 수량 계약 감사 미수집"));
++
+   const cutoverBlocked = dailySystemOpsCheck.__test.decideStatus({
+     netPnlPct: 0.8,
+     costRatioPct: 0.05,
+@@ -255,6 +323,7 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
+       drop_tp1_pending_count: 0,
+       qty_pct_non_positive_count: 0,
+     },
++    trailRunnerFloorAudit: trailAudit,
+     positionReadModelCutover: {
+       available: true,
+       latest_ready: false,
+@@ -265,5 +334,32 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
+   assert.strictEqual(cutoverBlocked.status, "보류");
+   assert.ok(cutoverBlocked.reasons.includes("position read-model 미준비 (INDEX_MISSING)"));
+ 
++  const trailFloorBlocked = dailySystemOpsCheck.__test.decideStatus({
++    netPnlPct: 0.8,
++    costRatioPct: 0.05,
++    errorCount: 0,
++    costLimitPct: 0.2,
++    lossStopPct: -1.5,
++    stopErrorCount: 2,
++    executionHealth: {
++      available: true,
++      signals_count: 1,
++      fills_count: 1,
++      firestore_dns_ok: true,
++      drop_tp1_pending_count: 0,
++      qty_pct_non_positive_count: 0,
++    },
++    trailRunnerFloorAudit: {
++      available: true,
++      violation_n: 2,
++      violation_total_n: 5,
++      live_bar_runner_violation_n: 2,
++      live_bar_runner_violation_total_n: 4,
++    },
++    positionReadModelCutover: cutover,
++  });
++  assert.strictEqual(trailFloorBlocked.status, "보류");
++  assert.ok(trailFloorBlocked.reasons.includes("trailing floor 미해결 위반 2건"));
++
+   console.log("DAILY_SYSTEM_OPS_CHECK_TEST_OK");
+ })();
+diff --git a/src/tests/feature-label-dataset.test.js b/src/tests/feature-label-dataset.test.js
+index f29b273..9b514eb 100644
+--- a/src/tests/feature-label-dataset.test.js
++++ b/src/tests/feature-label-dataset.test.js
+@@ -50,6 +50,33 @@ async function run() {
+   assert.ok(/^[0-9a-f]{64}$/.test(provenance.source_event_manifest_hash));
+   __test.assertImmutableEventProvenance([{ provenance }]);
+ 
++  const featureSnapshot = __test.buildFeatureSnapshot({
++    market: "BTCUSDT",
++    tf: "15m",
++    trade: {
++      pnl_krw_gross: 100,
++      fee_value: 1,
++      funding_paid: 0,
++      notional_krw: 1000,
++      entry_signal_type: "core",
++      position_side: "LONG",
++      close_type: "PARTIAL_CLOSE",
++      exit_event: "EXIT_TP_P0_0.8P",
++      features_json: {
++        confidence: 0.88,
++        long_posterior: 0.71,
++        openclaw_market_regime_cohort: "RESCUE",
++      },
++    },
++  });
++  assert.strictEqual(featureSnapshot.entry_tier, "CORE");
++  assert.strictEqual(featureSnapshot.position_side, "LONG");
++  assert.strictEqual(featureSnapshot.close_type, "PARTIAL_CLOSE");
++  assert.strictEqual(featureSnapshot.exit_event, "EXIT_TP_P0_0.8P");
++  assert.strictEqual(featureSnapshot.confidence, 0.88);
++  assert.strictEqual(featureSnapshot.posterior, 0.71);
++  assert.strictEqual(featureSnapshot.openclaw_market_regime_cohort, "RESCUE");
++
+   console.log("FEATURE_LABEL_DATASET_TEST_OK");
+ }
+ 
+diff --git a/src/tests/fills-sync-alert-aggregation.test.js b/src/tests/fills-sync-alert-aggregation.test.js
+index edbddc2..e3c5aae 100644
+--- a/src/tests/fills-sync-alert-aggregation.test.js
++++ b/src/tests/fills-sync-alert-aggregation.test.js
+@@ -112,6 +112,7 @@ async function run() {
+   assert.ok(approxEqual(merged.payload.realizedPnl, 6.374), "aggregated pnl must be summed");
+   assert.ok(approxEqual(merged.payload.closeRatio, 0.5), "aggregated close ratio must represent 50% TP1");
+   assert.strictEqual(merged.payload.fullExit, false, "aggregated TP1 alert must remain partial");
++  assert.strictEqual(merged.payload.closeRatioAggregation, "SUM", "scaled split TP1 must sum close ratio");
+ 
+   const nativeTp0CloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({
+     event: "EXIT_TP_P0_0.8P",
+@@ -226,6 +227,86 @@ async function run() {
+   assert.ok(msg.body.includes("종류: 익절(TP1) 3.25%"), "TP1 label must be preserved");
+   assert.ok(msg.body.includes("청산규모: 402.37 USDT"), "aggregated notional must be visible");
+ 
++  const repeatedContractRatioBatches = new Map();
++  for (const [tradeMs, notional, realizedPnl] of [
++    [1_777_910_000_000, 15.1, 0.12],
++    [1_777_910_000_100, 293.0, 2.1],
++    [1_777_910_000_200, 187.69, 1.54],
++  ]) {
++    fillsSyncTest.queueFillSyncAlertBatch(repeatedContractRatioBatches, {
++      symbol: "BNBUSDT",
++      event: "EXIT_TP_P0_0.8P",
++      intent: "EXIT",
++      side: "SELL",
++      orderMeta: { orderId: 88629471310, clientOrderId: "fut_bnb_tp0" },
++      tradeMs,
++      payload: {
++        exchange: "BINANCEFUT",
++        symbol: "BNBUSDT",
++        event: "EXIT_TP_P0_0.8P",
++        side: "SELL",
++        intent: "EXIT",
++        executionMode: "LIVE",
++        notional,
++        execPrice: 606.2,
++        closeRatio: 0.25,
++        closeRatioAggregation: "MAX",
++        fullExit: false,
++        realizedPnl,
++        positionSideBefore: "LONG",
++        positionSideAfter: null,
++        appliedLeverage: 2,
++        leverageReason: "BINANCE_USER_TRADES_SYNC",
++        exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_PCT: 0.01, BE_PCT: 0.0015 },
++        runId: "FILL_SYNC__BNBUSDT",
++      },
++    });
++  }
++  assert.strictEqual(repeatedContractRatioBatches.size, 1, "same TP0 order split fills must collapse into one alert");
++  const repeatedContractRatioMerged = Array.from(repeatedContractRatioBatches.values())[0];
++  assert.ok(approxEqual(repeatedContractRatioMerged.payload.notional, 495.79), "split TP0 notional must still sum");
++  assert.ok(approxEqual(repeatedContractRatioMerged.payload.realizedPnl, 3.76), "split TP0 pnl must still sum");
++  assert.ok(approxEqual(repeatedContractRatioMerged.payload.closeRatio, 0.25), "repeated TP0 order contract ratio must not over-sum across split fills");
++  assert.strictEqual(repeatedContractRatioMerged.payload.closeRatioAggregation, "MAX", "repeated TP0 contract ratio must use MAX merge");
++
++  const repeatedTp1ContractRatioBatches = new Map();
++  for (const [tradeMs, notional, realizedPnl] of [
++    [1_777_920_000_000, 112.38, 1.12],
++    [1_777_920_000_050, 7.32, 0.09],
++  ]) {
++    fillsSyncTest.queueFillSyncAlertBatch(repeatedTp1ContractRatioBatches, {
++      symbol: "DOGEUSDT",
++      event: "EXIT_TP_P1_1.65P",
++      intent: "EXIT",
++      side: "SELL",
++      orderMeta: { orderId: 96030000001, clientOrderId: "fut_doge_tp1" },
++      tradeMs,
++      payload: {
++        exchange: "BINANCEFUT",
++        symbol: "DOGEUSDT",
++        event: "EXIT_TP_P1_1.65P",
++        side: "SELL",
++        intent: "EXIT",
++        executionMode: "LIVE",
++        notional,
++        execPrice: 0.095,
++        closeRatio: 0.5,
++        closeRatioAggregation: "MAX",
++        fullExit: false,
++        realizedPnl,
++        positionSideBefore: "LONG",
++        positionSideAfter: null,
++        appliedLeverage: 2,
++        leverageReason: "BINANCE_USER_TRADES_SYNC",
++        exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_PCT: 0.01, BE_PCT: 0.0015 },
++        runId: "FILL_SYNC__DOGEUSDT",
++      },
++    });
++  }
++  const repeatedTp1ContractRatioMerged = Array.from(repeatedTp1ContractRatioBatches.values())[0];
++  assert.ok(approxEqual(repeatedTp1ContractRatioMerged.payload.closeRatio, 0.5), "repeated TP1 order contract ratio must remain 50%");
++  assert.strictEqual(repeatedTp1ContractRatioMerged.payload.fullExit, false, "repeated TP1 order contract ratio must not become full exit");
++
+   const oppositeBatches = new Map();
+   fillsSyncTest.queueFillSyncAlertBatch(oppositeBatches, {
+     symbol: "BTCUSDT",
+diff --git a/src/tests/ml-global-canary-evidence.test.js b/src/tests/ml-global-canary-evidence.test.js
+index 56e5800..c98be05 100644
+--- a/src/tests/ml-global-canary-evidence.test.js
++++ b/src/tests/ml-global-canary-evidence.test.js
+@@ -47,12 +47,34 @@ const { buildMlGlobalCanaryEvidence } = require("../utils/mlGlobalCanaryEvidence
+         projected_residual_issue_after_sample_gap_closed: "NEGATIVE_OBJECTIVE_DELTA",
+       },
+     },
++    eventTruthAlphaValidation: {
++      summary: {
++        status: "EVENT_TRUTH_ALPHA_VALIDATION_READY",
++        alpha_ready: false,
++        evidence_status: "EVENT_TRUTH_ALPHA_NOT_POSITIVE",
++        positive_rate: 0.42,
++        avg_realized_ret_net: -0.001,
++      },
++    },
++    failureLearningLoop: {
++      summary: {
++        status: "FAILURE_LEARNING_LOOP_READY",
++        learning_ready: true,
++        evidence_status: "FAILURE_LEARNING_NEGATIVE_DOMINANT",
++        fail_rate: 0.55,
++        dominant_failure_pattern: "SL_FIRST",
++        top_failure_market: "BTCUSDT",
++      },
++    },
+   });
+ 
+   assert.strictEqual(blocked.status, "ML_GLOBAL_CANARY_EVIDENCE_READY");
+   assert.strictEqual(blocked.global_canary_ready, false);
+-  assert.strictEqual(blocked.evidence_status, "GLOBAL_CANARY_REPLAY_BLOCKED");
++  assert.strictEqual(blocked.evidence_status, "GLOBAL_CANARY_ALPHA_BLOCKED");
+   assert.strictEqual(blocked.dominant_blocker, "SELF_EVOLUTION_REPLAY_NOT_PASS");
++  assert.strictEqual(blocked.alpha_validation_ready, false);
++  assert.strictEqual(blocked.alpha_evidence_status, "EVENT_TRUTH_ALPHA_NOT_POSITIVE");
++  assert.strictEqual(blocked.failure_learning_evidence_status, "FAILURE_LEARNING_NEGATIVE_DOMINANT");
+   assert.strictEqual(blocked.replay_evidence_status, "REPLAY_WARN_INSUFFICIENT_SAMPLE");
+   assert.strictEqual(blocked.replay_dominant_issue, "EV_TUNER_INSUFFICIENT_SAMPLE");
+   assert.strictEqual(blocked.replay_sample_gap_status, "EV_REPLAY_SAMPLE_GAP");
+@@ -60,6 +82,8 @@ const { buildMlGlobalCanaryEvidence } = require("../utils/mlGlobalCanaryEvidence
+   assert.strictEqual(blocked.replay_projected_ready_if_sample_gap_closed, false);
+   assert.strictEqual(blocked.replay_projected_residual_issue_after_sample_gap_closed, "NEGATIVE_OBJECTIVE_DELTA");
+   assert.ok(blocked.blocking_reasons.includes("GLOBAL_CANARY_BLOCKER_SELF_EVOLUTION_REPLAY_NOT_PASS"));
++  assert.ok(blocked.blocking_reasons.includes("GLOBAL_CANARY_ALPHA_EVENT_TRUTH_ALPHA_NOT_POSITIVE"));
++  assert.ok(blocked.blocking_reasons.includes("GLOBAL_CANARY_FAILURE_FAILURE_LEARNING_NEGATIVE_DOMINANT"));
+ 
+   const ready = buildMlGlobalCanaryEvidence({
+     canary: {
+@@ -76,6 +100,20 @@ const { buildMlGlobalCanaryEvidence } = require("../utils/mlGlobalCanaryEvidence
+         { market: "SOLUSDT", current_stage: "SOFT", canary_verdict: "READY", blockers: [] },
+       ],
+     },
++    eventTruthAlphaValidation: {
++      summary: {
++        status: "EVENT_TRUTH_ALPHA_VALIDATION_READY",
++        alpha_ready: true,
++        evidence_status: "EVENT_TRUTH_ALPHA_PASS",
++      },
++    },
++    failureLearningLoop: {
++      summary: {
++        status: "FAILURE_LEARNING_LOOP_READY",
++        learning_ready: true,
++        evidence_status: "FAILURE_LEARNING_PASS",
++      },
++    },
+   });
+ 
+   assert.strictEqual(ready.global_canary_ready, true);
+diff --git a/src/tests/ml-promotion-gate.test.js b/src/tests/ml-promotion-gate.test.js
+index 0fcaca0..d904c31 100644
+--- a/src/tests/ml-promotion-gate.test.js
++++ b/src/tests/ml-promotion-gate.test.js
+@@ -34,6 +34,34 @@ const { buildMlPromotionGate } = require("../utils/mlPromotionGate");
+         replay_projected_residual_issue_after_sample_gap_closed: "NEGATIVE_OBJECTIVE_DELTA",
+       },
+     },
++    eventTruthAlphaValidation: {
++      summary: {
++        status: "EVENT_TRUTH_ALPHA_VALIDATION_READY",
++        alpha_ready: true,
++        evidence_status: "EVENT_TRUTH_ALPHA_PASS",
++        positive_rate: 0.57,
++        avg_realized_ret_net: 0.0042,
++      },
++    },
++    feePnlKpiAuthority: {
++      summary: {
++        status: "FEE_PNL_KPI_AUTHORITY_READY",
++        kpi_ready: true,
++        evidence_status: "FEE_PNL_KPI_PASS",
++        realized_n: 48,
++        cost_to_abs_realized_ratio: 0.18,
++        top_fee_drag_market: "BTCUSDT",
++      },
++    },
++    failureLearningLoop: {
++      summary: {
++        status: "FAILURE_LEARNING_LOOP_READY",
++        learning_ready: true,
++        evidence_status: "FAILURE_LEARNING_PASS",
++        fail_rate: 0.33,
++        dominant_failure_pattern: "TP0_NO_TP1_CONVERT",
++      },
++    },
+     modelSpecificCanary: {
+       summary: {
+         status: "ML_MODEL_SPECIFIC_CANARY_READY",
+@@ -62,6 +90,8 @@ const { buildMlPromotionGate } = require("../utils/mlPromotionGate");
+   assert.strictEqual(shadowOnly.promotion_stage, "SHADOW_READY");
+   assert.strictEqual(shadowOnly.promotion_decision, "HOLD_MODEL_SPECIFIC_CANARY");
+   assert.strictEqual(shadowOnly.replay_gate_status, "PASS");
++  assert.strictEqual(shadowOnly.event_truth_alpha_gate_status, "PASS");
++  assert.strictEqual(shadowOnly.failure_learning_gate_status, "PASS");
+   assert.strictEqual(shadowOnly.shadow_gate_status, "PASS");
+   assert.strictEqual(shadowOnly.global_canary_gate_status, "BLOCK");
+   assert.strictEqual(shadowOnly.global_canary_evidence_status, "GLOBAL_CANARY_REPLAY_BLOCKED");
+@@ -88,6 +118,34 @@ const { buildMlPromotionGate } = require("../utils/mlPromotionGate");
+         replay_evidence_status: "REPLAY_PASS_READY",
+       },
+     },
++    eventTruthAlphaValidation: {
++      summary: {
++        status: "EVENT_TRUTH_ALPHA_VALIDATION_READY",
++        alpha_ready: true,
++        evidence_status: "EVENT_TRUTH_ALPHA_PASS",
++        positive_rate: 0.61,
++        avg_realized_ret_net: 0.0061,
++      },
++    },
++    feePnlKpiAuthority: {
++      summary: {
++        status: "FEE_PNL_KPI_AUTHORITY_READY",
++        kpi_ready: true,
++        evidence_status: "FEE_PNL_KPI_PASS",
++        realized_n: 64,
++        cost_to_abs_realized_ratio: 0.14,
++        top_fee_drag_market: "ETHUSDT",
++      },
++    },
++    failureLearningLoop: {
++      summary: {
++        status: "FAILURE_LEARNING_LOOP_READY",
++        learning_ready: true,
++        evidence_status: "FAILURE_LEARNING_PASS",
++        fail_rate: 0.28,
++        dominant_failure_pattern: "SL_FIRST",
++      },
++    },
+     modelSpecificCanary: {
+       summary: {
+         status: "ML_MODEL_SPECIFIC_CANARY_READY",
+@@ -119,6 +177,152 @@ const { buildMlPromotionGate } = require("../utils/mlPromotionGate");
+   assert.strictEqual(canaryReady.promotion_decision, "READY_FOR_CANARY_REVIEW");
+   assert.strictEqual(canaryReady.model_specific_canary_gate_status, "PASS");
+   assert.strictEqual(canaryReady.global_canary_gate_status, "PASS");
++  assert.strictEqual(canaryReady.event_truth_alpha_gate_status, "PASS");
++  assert.strictEqual(canaryReady.failure_learning_gate_status, "PASS");
++
++  const alphaBlocked = buildMlPromotionGate({
++    truthPreservationAudit: { summary: { truth_preservation_ready: true } },
++    executionServingContract: { summary: { shadow_ready: true } },
++    executionScopeTrainRun: { summary: { quality_gate_ready: true } },
++    mlGlobalCanaryEvidence: { summary: { global_canary_ready: true, evidence_status: "GLOBAL_CANARY_PASS_READY" } },
++    eventTruthAlphaValidation: {
++      summary: {
++        status: "EVENT_TRUTH_ALPHA_VALIDATION_READY",
++        alpha_ready: false,
++        evidence_status: "EVENT_TRUTH_ALPHA_NOT_POSITIVE",
++      },
++    },
++    feePnlKpiAuthority: {
++      summary: {
++        status: "FEE_PNL_KPI_AUTHORITY_READY",
++        kpi_ready: true,
++        evidence_status: "FEE_PNL_KPI_PASS",
++        realized_n: 36,
++        cost_to_abs_realized_ratio: 0.16,
++      },
++    },
++    failureLearningLoop: {
++      summary: {
++        status: "FAILURE_LEARNING_LOOP_READY",
++        learning_ready: true,
++        evidence_status: "FAILURE_LEARNING_PASS",
++      },
++    },
++    modelSpecificCanary: { summary: { model_specific_canary_ready: true, model_specific_canary_artifact_aligned: true, model_specific_canary_train_run_aligned: true } },
++    mlRollbackArm: { summary: { rollback_arm_ready: true } },
++    serverPrimaryCanary: { summary: { apply_pass: true, acceptance_ready: true } },
++  });
++  assert.strictEqual(alphaBlocked.promotion_decision, "HOLD_EVENT_TRUTH_ALPHA");
++  assert.strictEqual(alphaBlocked.event_truth_alpha_gate_status, "BLOCK");
++  assert.ok(alphaBlocked.blocking_reasons.includes("EVENT_TRUTH_ALPHA_NOT_READY"));
++
++  const failureBlocked = buildMlPromotionGate({
++    truthPreservationAudit: { summary: { truth_preservation_ready: true } },
++    executionServingContract: { summary: { shadow_ready: true } },
++    executionScopeTrainRun: { summary: { quality_gate_ready: true } },
++    mlGlobalCanaryEvidence: { summary: { global_canary_ready: true, evidence_status: "GLOBAL_CANARY_PASS_READY" } },
++    eventTruthAlphaValidation: {
++      summary: {
++        status: "EVENT_TRUTH_ALPHA_VALIDATION_READY",
++        alpha_ready: true,
++        evidence_status: "EVENT_TRUTH_ALPHA_PASS",
++      },
++    },
++    feePnlKpiAuthority: {
++      summary: {
++        status: "FEE_PNL_KPI_AUTHORITY_READY",
++        kpi_ready: true,
++        evidence_status: "FEE_PNL_KPI_PASS",
++        realized_n: 52,
++        cost_to_abs_realized_ratio: 0.19,
++      },
++    },
++    failureLearningLoop: {
++      summary: {
++        status: "FAILURE_LEARNING_LOOP_READY",
++        learning_ready: true,
++        evidence_status: "FAILURE_LEARNING_FAIL_RATE_HIGH",
++        fail_rate: 0.62,
++      },
++    },
++    modelSpecificCanary: { summary: { model_specific_canary_ready: true, model_specific_canary_artifact_aligned: true, model_specific_canary_train_run_aligned: true } },
++    mlRollbackArm: { summary: { rollback_arm_ready: true } },
++    serverPrimaryCanary: { summary: { apply_pass: true, acceptance_ready: true } },
++  });
++  assert.strictEqual(failureBlocked.promotion_stage, "SHADOW_READY");
++  assert.strictEqual(failureBlocked.promotion_decision, "HOLD_FAILURE_LEARNING");
++  assert.strictEqual(failureBlocked.failure_learning_gate_status, "BLOCK");
++  assert.ok(failureBlocked.blocking_reasons.includes("FAILURE_LEARNING_NOT_READY"));
++
++  const failureReviewAllowed = buildMlPromotionGate({
++    truthPreservationAudit: { summary: { truth_preservation_ready: true } },
++    executionServingContract: { summary: { shadow_ready: true } },
++    executionScopeTrainRun: { summary: { quality_gate_ready: true } },
++    mlGlobalCanaryEvidence: { summary: { global_canary_ready: true, evidence_status: "GLOBAL_CANARY_PASS_READY" } },
++    eventTruthAlphaValidation: {
++      summary: {
++        status: "EVENT_TRUTH_ALPHA_VALIDATION_READY",
++        alpha_ready: true,
++        evidence_status: "EVENT_TRUTH_ALPHA_PASS",
++      },
++    },
++    feePnlKpiAuthority: {
++      summary: {
++        status: "FEE_PNL_KPI_AUTHORITY_READY",
++        kpi_ready: true,
++        evidence_status: "FEE_PNL_KPI_PASS",
++      },
++    },
++    failureLearningLoop: {
++      summary: {
++        status: "FAILURE_LEARNING_LOOP_READY",
++        learning_ready: true,
++        evidence_status: "FAILURE_LEARNING_NEGATIVE_REVIEW",
++        fail_rate: 0.28,
++      },
++    },
++    modelSpecificCanary: { summary: { model_specific_canary_ready: true, model_specific_canary_artifact_aligned: true, model_specific_canary_train_run_aligned: true } },
++    mlRollbackArm: { summary: { rollback_arm_ready: true } },
++    serverPrimaryCanary: { summary: { apply_pass: true, acceptance_ready: true } },
++  });
++  assert.strictEqual(failureReviewAllowed.failure_learning_gate_status, "PASS");
++
++  const feeBlocked = buildMlPromotionGate({
++    truthPreservationAudit: { summary: { truth_preservation_ready: true } },
++    executionServingContract: { summary: { shadow_ready: true } },
++    executionScopeTrainRun: { summary: { quality_gate_ready: true } },
++    mlGlobalCanaryEvidence: { summary: { global_canary_ready: true, evidence_status: "GLOBAL_CANARY_PASS_READY" } },
++    eventTruthAlphaValidation: {
++      summary: {
++        status: "EVENT_TRUTH_ALPHA_VALIDATION_READY",
++        alpha_ready: true,
++        evidence_status: "EVENT_TRUTH_ALPHA_PASS",
++      },
++    },
++    feePnlKpiAuthority: {
++      summary: {
++        status: "FEE_PNL_KPI_AUTHORITY_READY",
++        kpi_ready: true,
++        evidence_status: "FEE_PNL_KPI_REVIEW",
++        realized_n: 80,
++        cost_to_abs_realized_ratio: 0.39,
++        top_fee_drag_market: "DOGEUSDT",
++      },
++    },
++    failureLearningLoop: {
++      summary: {
++        status: "FAILURE_LEARNING_LOOP_READY",
++        learning_ready: true,
++        evidence_status: "FAILURE_LEARNING_PASS",
++      },
++    },
++    modelSpecificCanary: { summary: { model_specific_canary_ready: true, model_specific_canary_artifact_aligned: true, model_specific_canary_train_run_aligned: true } },
++    mlRollbackArm: { summary: { rollback_arm_ready: true } },
++    serverPrimaryCanary: { summary: { apply_pass: true, acceptance_ready: true } },
++  });
++  assert.strictEqual(feeBlocked.promotion_decision, "HOLD_FEE_PNL_KPI");
++  assert.strictEqual(feeBlocked.fee_pnl_gate_status, "BLOCK");
++  assert.ok(feeBlocked.blocking_reasons.includes("FEE_PNL_KPI_NOT_READY"));
+ 
+   console.log("ML_PROMOTION_GATE_TEST_OK");
+ })();
+diff --git a/src/tests/openclaw-execution-executor.test.js b/src/tests/openclaw-execution-executor.test.js
+index 4b95191..fdd4134 100644
+--- a/src/tests/openclaw-execution-executor.test.js
++++ b/src/tests/openclaw-execution-executor.test.js
+@@ -71,6 +71,10 @@ async function run() {
+     OPENCLAW_EXECUTOR_ENABLED: "1",
+     OPENCLAW_EXECUTOR_SAME_SIDE_REDUCE_THRESHOLD: "2",
+     OPENCLAW_EXECUTOR_SAME_SIDE_BLOCK_THRESHOLD: "5",
++    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD: "99",
++    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
++    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
++    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
+     OPENCLAW_EXECUTOR_CLUSTER_REDUCE_SCALE: "0.5",
+   }, async () => {
+     const { evaluateOpenClawExecutionDecision } = freshRequire("../services/openclawExecutionExecutor");
+@@ -86,6 +90,7 @@ async function run() {
+         { symbol: "DOGEUSDT", state: "ACTIVE", position_side: "LONG", qty_base: 10 },
+       ],
+       recentTimelineRows: [],
++      capitalAllocatorSnapshot: { by_market: [] },
+     });
+     assert.strictEqual(res.ok, true);
+     assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_CORRELATED_CLUSTER_REDUCE");
+@@ -93,6 +98,96 @@ async function run() {
+     assert.strictEqual(res.featuresPatch.openclaw_executor_exit_profile_mode, "BASE");
+   });
+ 
++  await withEnv({
++    OPENCLAW_EXECUTOR_ENABLED: "1",
++    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD: "0.9",
++    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
++    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
++    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
++    OPENCLAW_EXECUTOR_CLUSTER_REDUCE_SCALE: "0.5",
++  }, async () => {
++    const { evaluateOpenClawExecutionDecision } = freshRequire("../services/openclawExecutionExecutor");
++    const res = await evaluateOpenClawExecutionDecision({
++      exchange: "BINANCEFUT",
++      symbol: "XRPUSDT",
++      intent: "ENTRY",
++      event: "ENTRY_LONG_REAL",
++      side: "BUY",
++      qtyPct: 0.8,
++      features: {},
++      positionViews: [
++        { symbol: "BTCUSDT", state: "ACTIVE", position_side: "LONG", size_pct: 0.4 },
++      ],
++      recentTimelineRows: [],
++      capitalAllocatorSnapshot: { by_market: [] },
++    });
++    assert.strictEqual(res.ok, true);
++    assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE");
++    assert.strictEqual(res.qtyPctFinal, 0.4);
++    assert.ok(res.featuresPatch._openclaw_executor_same_side_exposure_after > 1.1);
++  });
++
++  await withEnv({
++    OPENCLAW_EXECUTOR_ENABLED: "1",
++    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD: "99",
++    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
++    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
++    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
++  }, async () => {
++    const { evaluateOpenClawExecutionDecision } = freshRequire("../services/openclawExecutionExecutor");
++    const res = await evaluateOpenClawExecutionDecision({
++      exchange: "BINANCEFUT",
++      symbol: "XRPUSDT",
++      intent: "ENTRY",
++      event: "ENTRY_LONG_REAL",
++      side: "BUY",
++      qtyPct: 0.8,
++      features: {},
++      positionViews: [],
++      recentTimelineRows: [],
++      capitalAllocatorSnapshot: {
++        by_market: [
++          { market: "XRPUSDT", recommended_action: "QUARANTINE", allocation_score: -0.91 },
++        ],
++      },
++    });
++    assert.strictEqual(res.ok, false);
++    assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE");
++    assert.strictEqual(res.qtyPctFinal, 0);
++    assert.strictEqual(res.featuresPatch._openclaw_executor_allocator_action, "QUARANTINE");
++  });
++
++  await withEnv({
++    OPENCLAW_EXECUTOR_ENABLED: "1",
++    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD: "99",
++    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
++    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
++    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
++    OPENCLAW_EXECUTOR_ALLOCATOR_REDUCE_SCALE: "0.4",
++  }, async () => {
++    const { evaluateOpenClawExecutionDecision } = freshRequire("../services/openclawExecutionExecutor");
++    const res = await evaluateOpenClawExecutionDecision({
++      exchange: "BINANCEFUT",
++      symbol: "SOLUSDT",
++      intent: "ENTRY",
++      event: "ENTRY_LONG_REAL",
++      side: "BUY",
++      qtyPct: 0.8,
++      features: {},
++      positionViews: [],
++      recentTimelineRows: [],
++      capitalAllocatorSnapshot: {
++        by_market: [
++          { market: "SOLUSDT", recommended_action: "REDUCE", allocation_score: 0.12 },
++        ],
++      },
++    });
++    assert.strictEqual(res.ok, true);
++    assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_ALLOCATOR_REDUCE");
++    assert.ok(Math.abs(res.qtyPctFinal - 0.32) < 1e-9);
++    assert.strictEqual(res.featuresPatch._openclaw_executor_allocator_action, "REDUCE");
++  });
++
+   await withEnv({
+     OPENCLAW_EXECUTOR_ENABLED: "1",
+     OPENCLAW_EXECUTOR_ALLOW_UPSCALE: "1",
+@@ -114,6 +209,7 @@ async function run() {
+       },
+       positionViews: [],
+       recentTimelineRows: [],
++      capitalAllocatorSnapshot: { by_market: [] },
+     });
+     assert.strictEqual(res.ok, true);
+     assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_HIGH_CONF_AGGRESSIVE");
+diff --git a/src/tests/outcome-labeler.test.js b/src/tests/outcome-labeler.test.js
+index 4784e78..c1ab9d1 100644
+--- a/src/tests/outcome-labeler.test.js
++++ b/src/tests/outcome-labeler.test.js
+@@ -62,6 +62,21 @@ function run() {
+   assert.strictEqual(timeStop.pre_tp1_time_stop, true);
+   assert.strictEqual(timeStop.realized_direction, "NEGATIVE");
+ 
++  const reconstructedTrade = labelOutcome({
++    close_type: "PARTIAL_CLOSE",
++    pnl_pct: 0.012,
++    pnl_krw: 1800,
++    qty_closed: 0.5,
++    tp0_hit: true,
++    tp0_to_tp1_converted: false,
++  });
++  assert.strictEqual(reconstructedTrade.is_executed, true);
++  assert.strictEqual(reconstructedTrade.is_realized, true);
++  assert.strictEqual(reconstructedTrade.outcome_state, "PARTIAL_CLOSE");
++  assert.strictEqual(reconstructedTrade.realized_direction, "POSITIVE");
++  assert.strictEqual(reconstructedTrade.realized_ret_net, 0.012);
++  assert.strictEqual(reconstructedTrade.realized_pnl_quote, 1800);
++
+   console.log("OUTCOME_LABELER_TEST_OK");
+ }
+ 
+diff --git a/src/tests/positions-paper.test.js b/src/tests/positions-paper.test.js
+index 949d5dc..7c6b499 100644
+--- a/src/tests/positions-paper.test.js
++++ b/src/tests/positions-paper.test.js
+@@ -186,7 +186,9 @@ async function run() {
+     assert.strictEqual(readCount, 1);
+     assert.strictEqual(writes.length, 2);
+     assert.strictEqual(writes[0].expectedWriteToken, "stale-token");
++    assert.strictEqual(writes[0].suppressAuthorityAlert, true);
+     assert.strictEqual(writes[1].expectedWriteToken, "fresh-token");
++    assert.strictEqual(writes[1].suppressAuthorityAlert, false);
+     assert.strictEqual(writes[1].source, "INTENT_FILL");
+     assert.strictEqual(writes[1].reason, "INTENT_FILL_FORCE_LIVE_RECONCILE");
+     assert.strictEqual(writes[1].meta.last_fill_intent, "INTENT_NEW");
+@@ -195,6 +197,79 @@ async function run() {
+     assert.strictEqual(Object.prototype.hasOwnProperty.call(writes[1].meta, "trail_active"), false);
+     assert.strictEqual(result.expectedWriteToken, "fresh-token");
+   }
++
++  {
++    let readCount = 0;
++    const stalePos = {
++      position_write_token: "stale-token",
++      state: "ACTIVE",
++      position_side: "LONG",
++      size_pct: 1,
++      avg_price: 1.23,
++      qty_base: 100,
++      budget_max_krw: null,
++      budget_used_krw: null,
++      budget_source: null,
++      meta: {
++        entry_event_id: "ENTRY_OLD",
++      },
++    };
++    const freshPos = {
++      ...stalePos,
++      position_write_token: "fresh-token",
++      meta: {
++        entry_event_id: "ENTRY_SYNC",
++      },
++    };
++    const writes = [];
++    const result = await runnerTest.upsertPositionWithLatestRetry({
++      exchange: "BINANCEFUT",
++      symbol: "DOGEUSDT",
++      runId: "RUN__TEST__WEBHOOK__DOGEUSDT",
++      executionMode: "LIVE",
++      position: stalePos,
++      state: "ACTIVE",
++      positionSide: "LONG",
++      sizePct: 0.75,
++      avgPrice: 0.091,
++      qtyBase: 250,
++      meta: {
++        entry_event_id: "ENTRY_NEW",
++        tp_p0_done: true,
++      },
++      source: "INTENT_FILL",
++      reason: "INTENT_FILL_PROJECTED_POSITION_WRITE",
++      maxAttempts: 2,
++      retryDelayMs: 0,
++      readPosition: async () => {
++        readCount += 1;
++        return freshPos;
++      },
++      writePosition: async (args) => {
++        writes.push(args);
++        if (writes.length === 1) {
++          const err = new Error("POSITION_WRITE_TOKEN_MISMATCH expected=stale-token actual=fresh-token");
++          err.code = "POSITION_WRITE_TOKEN_MISMATCH";
++          throw err;
++        }
++        return args;
++      },
++    });
++    assert.strictEqual(readCount, 1);
++    assert.strictEqual(writes.length, 2);
++    assert.strictEqual(writes[0].expectedWriteToken, "stale-token");
++    assert.strictEqual(writes[0].suppressAuthorityAlert, true);
++    assert.strictEqual(writes[0].suppressAuthorityRuntimeFamily, true);
++    assert.strictEqual(writes[1].expectedWriteToken, "fresh-token");
++    assert.strictEqual(writes[1].suppressAuthorityAlert, false);
++    assert.strictEqual(writes[1].suppressAuthorityRuntimeFamily, false);
++    assert.strictEqual(writes[1].source, "INTENT_FILL");
++    assert.strictEqual(writes[1].reason, "INTENT_FILL_PROJECTED_POSITION_WRITE");
++    assert.strictEqual(writes[1].meta.entry_event_id, "ENTRY_NEW");
++    assert.strictEqual(writes[1].qtyBase, 250);
++    assert.strictEqual(result.expectedWriteToken, "fresh-token");
++  }
++
+   console.log("POSITIONS_PAPER_TEST_OK");
+ }
+ 
+diff --git a/src/tests/runtime-error-counter.test.js b/src/tests/runtime-error-counter.test.js
+index be78800..98413c6 100644
+--- a/src/tests/runtime-error-counter.test.js
++++ b/src/tests/runtime-error-counter.test.js
+@@ -195,6 +195,28 @@ function run() {
+   const repeatedFamily = repeatedWriter.error_families_24h.find((item) => item.family === "POSITION_WRITE_TOKEN_MISMATCH");
+   assert.strictEqual(resolveOperationalActiveWindowMs(repeatedFamily), 6 * 60 * 60 * 1000);
+   assert.strictEqual(repeatedWriter.active_error_count_24h, 1);
++
++  const suppressedWriter = summarizeRuntimeErrorFamilies({
++    nowMs: Date.parse("2026-04-11T15:00:00.000Z"),
++    positionWriterAuthorityEvents: [
++      {
++        code: "POSITION_WRITE_TOKEN_MISMATCH",
++        symbol: "DOGEUSDT",
++        created_at: "2026-04-11T14:55:14.484Z",
++        runtime_family_suppressed: true,
++        error: "POSITION_WRITE_TOKEN_MISMATCH expected=e actual=f",
++      },
++      {
++        code: "POSITION_WRITE_TOKEN_MISMATCH",
++        symbol: "BTCUSDT",
++        created_at: "2026-04-11T14:56:14.484Z",
++        resolved_at: "2026-04-11T14:58:14.484Z",
++        error: "POSITION_WRITE_TOKEN_MISMATCH expected=g actual=h",
++      },
++    ],
++  });
++  assert.strictEqual(suppressedWriter.error_count_24h, 0);
++  assert.strictEqual(suppressedWriter.active_error_count_24h, 0);
+ }
+ 
+ try {
+diff --git a/src/utils/controlPlaneViewModels.js b/src/utils/controlPlaneViewModels.js
+index 257b063..b45fa8b 100644
+--- a/src/utils/controlPlaneViewModels.js
++++ b/src/utils/controlPlaneViewModels.js
+@@ -284,6 +284,55 @@ function buildArtifactHealthCard(artifacts = [], { limit = 6 } = {}) {
+   };
+ }
+ 
++function buildDecisionCenterCard({
++  feePnlKpi = null,
++  failureLearning = null,
++  allocator = null,
++  promotionGate = null,
++} = {}) {
++  const feeSummary = feePnlKpi && feePnlKpi.summary ? feePnlKpi.summary : {};
++  const failureSummary = failureLearning && failureLearning.summary ? failureLearning.summary : {};
++  const allocatorSummary = allocator && allocator.summary ? allocator.summary : {};
++  const promotionSummary = promotionGate && promotionGate.summary ? promotionGate.summary : {};
++  return {
++    title: "Decision Center",
++    tone: statusTone(
++      promotionSummary.promotion_decision
++      || feeSummary.evidence_status
++      || failureSummary.evidence_status
++      || allocatorSummary.status
++      || "WARN"
++    ),
++    rows: [
++      { label: "Promotion", value: compactText(promotionSummary.promotion_decision || promotionSummary.promotion_stage || "-") },
++      { label: "Fee/PnL", value: compactText(feeSummary.evidence_status || "-") },
++      { label: "Failure Learning", value: compactText(failureSummary.evidence_status || "-") },
++      { label: "Allocator", value: compactText(allocatorSummary.status || "-") },
++      { label: "Top Fee Drag", value: compactText(feeSummary.top_fee_drag_market || "-") },
++      { label: "Top Quarantine", value: compactText(allocatorSummary.top_quarantine_market || "-") },
++    ],
++    notes: sliceList(
++      []
++        .concat(
++          feeSummary.cost_to_abs_realized_ratio != null
++            ? [`fee/cost to abs realized=${numberText(feeSummary.cost_to_abs_realized_ratio, 4)}`]
++            : []
++        )
++        .concat(
++          failureSummary.fail_rate != null
++            ? [`failure fail_rate=${numberText(failureSummary.fail_rate, 4)} pattern=${compactText(failureSummary.dominant_failure_pattern)}`]
++            : []
++        )
++        .concat(
++          Array.isArray(promotionSummary.blocking_reasons)
++            ? promotionSummary.blocking_reasons
++            : []
++        ),
++      6,
++    ),
++  };
++}
++
+ function buildUrl(basePath, params = {}) {
+   const qs = new URLSearchParams();
+   Object.entries(params).forEach(([key, value]) => {
+@@ -534,6 +583,7 @@ const UI_TEXT_MAP = {
+   "Focus Source": "집중 원천",
+   "Focus Collection": "집중 컬렉션",
+   "Meaning": "의미",
++  "Decision Center": "의사결정 센터",
+   "Interpretation": "해석",
+   "Recent Cache": "최근 캐시",
+   "Fallback SOT": "대체 정본",
+@@ -546,6 +596,13 @@ const UI_TEXT_MAP = {
+   "Max Disagreement": "최대 불일치",
+   "Max Rollback": "최대 롤백",
+   "Ready": "준비",
++  "HOLD_FAILURE_LEARNING": "실패 학습 보류",
++  "HOLD_FEE_PNL_KPI": "비용 대비 손익 보류",
++  "FEE_PNL_KPI_PASS": "비용 대비 손익 통과",
++  "FEE_PNL_KPI_REVIEW": "비용 대비 손익 점검 필요",
++  "FEE_PNL_KPI_BLOCK": "비용 대비 손익 차단",
++  "FAILURE_LEARNING_NEGATIVE_DOMINANT": "실패 학습 음수 편중",
++  "QUARANTINE_REVIEW": "격리 검토",
+   "Market Evidence": "마켓 증거",
+   "Realized": "실현",
+   "Disagreement": "불일치율",
+@@ -1027,8 +1084,13 @@ function buildRecoveryViewModel() {
+   const weeklyStrategy = loadLatestArtifact("objective_weekly_strategy_latest.json");
+   const dailyStrategy = loadLatestArtifact("objective_daily_strategy_latest.json");
+   const systemOps = loadLatestArtifact("system_ops_check_latest.json");
++  const trailRunnerFloorAudit = loadLatestArtifact("trail_runner_floor_audit_latest.json");
+   const systemSlo = loadLatestArtifact("system_slo_state_latest.json");
+   const systemAnomaly = loadLatestArtifact("system_anomaly_state_latest.json");
++  const feePnlKpi = loadLatestArtifact("best_self_evolution_fee_pnl_kpi_authority_latest.json");
++  const failureLearning = loadLatestArtifact("best_self_evolution_failure_learning_loop_latest.json");
++  const serverMarketCapitalAllocator = loadLatestArtifact("best_self_evolution_server_market_capital_allocator_latest.json");
++  const mlPromotionGate = loadLatestArtifact("best_self_evolution_ml_promotion_gate_latest.json");
+   const runtimeGuardScale = resolveRuntimeGuardSoftScale({
+     ops: systemOps.raw,
+     slo: systemSlo.raw,
+@@ -1050,8 +1112,13 @@ function buildRecoveryViewModel() {
+     weeklyStrategy,
+     dailyStrategy,
+     systemOps,
++    trailRunnerFloorAudit,
+     systemSlo,
+     systemAnomaly,
++    feePnlKpi,
++    failureLearning,
++    serverMarketCapitalAllocator,
++    mlPromotionGate,
+   ]);
+   const nextAction = Array.isArray(governor.summary.next_actions) && governor.summary.next_actions.length
+     ? governor.summary.next_actions[0]
+@@ -1143,6 +1210,46 @@ function buildRecoveryViewModel() {
+               6,
+             ),
+           },
++          {
++            title: "Trail Floor Audit",
++            tone: toNum(trailRunnerFloorAudit.raw && trailRunnerFloorAudit.raw.violation_n, 0) > 0
++              ? "bad"
++              : (toNum(trailRunnerFloorAudit.raw && trailRunnerFloorAudit.raw.violation_total_n, 0) > 0 ? "warn" : "ok"),
++            rows: [
++              { label: "Unresolved", value: numberText(trailRunnerFloorAudit.raw && trailRunnerFloorAudit.raw.violation_n, 0) },
++              { label: "Total", value: numberText(trailRunnerFloorAudit.raw && trailRunnerFloorAudit.raw.violation_total_n, 0) },
++              { label: "Live Bar Runner", value: numberText(trailRunnerFloorAudit.raw && trailRunnerFloorAudit.raw.live_bar_runner_violation_n, 0) },
++              { label: "Historical Bar Runner", value: numberText(trailRunnerFloorAudit.raw && trailRunnerFloorAudit.raw.live_bar_runner_violation_total_n, 0) },
++            ],
++            table: Array.isArray(trailRunnerFloorAudit.raw && trailRunnerFloorAudit.raw.top_violations) && trailRunnerFloorAudit.raw.top_violations.length ? {
++              columns: [
++                { key: "market", label: "Market" },
++                { key: "exec_price", label: "Exec" },
++                { key: "runner_floor_px", label: "Runner Floor" },
++                { key: "signal_price", label: "Signal" },
++                { key: "gap_pct", label: "Gap %" },
++                { key: "open", label: "Open" },
++              ],
++              rows: buildRowsPreview(
++                trailRunnerFloorAudit.raw.top_violations,
++                (row) => ({
++                  market: buildLink(compactText(row.symbol), buildReportUrl(row.symbol)),
++                  exec_price: numberText(row.exec_price, 4),
++                  runner_floor_px: numberText(row.runner_floor_px, 4),
++                  signal_price: numberText(row.signal_price, 4),
++                  gap_pct: `${numberText(row.floor_gap_pct, 4)}%`,
++                  open: buildLink("Execution", buildExecutionUrl(row.symbol)),
++                }),
++                5,
++              ),
++            } : null,
++            notes: sliceList(
++              Array.isArray(trailRunnerFloorAudit.raw && trailRunnerFloorAudit.raw.top_violations)
++                ? trailRunnerFloorAudit.raw.top_violations.map((row) => `${row.symbol} ${row.position_side} exec=${row.exec_price} floor=${row.runner_floor_px} gap=${row.floor_gap_pct}%`)
++                : [],
++              5,
++            ),
++          },
+           {
+             title: "Execution Runtime",
+             tone: statusTone(executionQuality.summary.status || "WARN"),
+@@ -1176,6 +1283,12 @@ function buildRecoveryViewModel() {
+             } : null,
+             notes: sliceList(executionQuality.summary.review_reasons || [], 6),
+           },
++          buildDecisionCenterCard({
++            feePnlKpi,
++            failureLearning,
++            allocator: serverMarketCapitalAllocator,
++            promotionGate: mlPromotionGate,
++          }),
+           {
+             title: "Signal Authority",
+             tone: statusTone(signalAuthority.summary.drift_status || "PARITY_UNKNOWN"),
+@@ -1575,6 +1688,10 @@ function buildExecutionViewModel(query = {}) {
+   const focusedSource = String(query.source || "").trim();
+   const recentRuntimeRows = buildRecentRuntimeRows(dataset, 6);
+   const latestRuntimeRow = recentRuntimeRows[0] || null;
++  const feePnlKpi = loadLatestArtifact("best_self_evolution_fee_pnl_kpi_authority_latest.json");
++  const failureLearning = loadLatestArtifact("best_self_evolution_failure_learning_loop_latest.json");
++  const serverMarketCapitalAllocator = loadLatestArtifact("best_self_evolution_server_market_capital_allocator_latest.json");
++  const mlPromotionGate = loadLatestArtifact("best_self_evolution_ml_promotion_gate_latest.json");
+   return localizeViewModel({
+     active: "execution",
+     title: "Execution",
+@@ -1637,6 +1754,12 @@ function buildExecutionViewModel(query = {}) {
+               { label: "Focused Source", value: compactText(focusedSource || "all") },
+             ],
+           },
++          buildDecisionCenterCard({
++            feePnlKpi,
++            failureLearning,
++            allocator: serverMarketCapitalAllocator,
++            promotionGate: mlPromotionGate,
++          }),
+         ],
+       },
+       {
+diff --git a/src/utils/mlGlobalCanaryEvidence.js b/src/utils/mlGlobalCanaryEvidence.js
+index f393d4a..45b6f7f 100644
+--- a/src/utils/mlGlobalCanaryEvidence.js
++++ b/src/utils/mlGlobalCanaryEvidence.js
+@@ -32,11 +32,15 @@ function buildMlGlobalCanaryEvidence({
+   replayEvidence = null,
+   evReplaySampleGap = null,
+   replayUnblockProjection = null,
++  eventTruthAlphaValidation = null,
++  failureLearningLoop = null,
+ } = {}) {
+   const summary = readSummary(canary);
+   const replay = readSummary(replayEvidence);
+   const sampleGap = readSummary(evReplaySampleGap);
+   const replayProjection = readSummary(replayUnblockProjection);
++  const alpha = readSummary(eventTruthAlphaValidation);
++  const failureLearning = readSummary(failureLearningLoop);
+   const rows = Array.isArray(canary && canary.rows) ? canary.rows : [];
+ 
+   const totalN = toNum(summary.total_n) || rows.length;
+@@ -64,6 +68,12 @@ function buildMlGlobalCanaryEvidence({
+     if (dominantBlocker) blockingReasons.push(`GLOBAL_CANARY_BLOCKER_${dominantBlocker}`);
+     if (!blockingReasons.length) blockingReasons.push("GLOBAL_CANARY_APPLY_BLOCKED");
+   }
++  if (alpha.alpha_ready !== true) {
++    blockingReasons.push(`GLOBAL_CANARY_ALPHA_${String(alpha.evidence_status || "NOT_READY").trim().toUpperCase()}`);
++  }
++  if (failureLearning.evidence_status && /FAIL_RATE_HIGH|NEGATIVE_DOMINANT/.test(String(failureLearning.evidence_status).toUpperCase())) {
++    blockingReasons.push(`GLOBAL_CANARY_FAILURE_${String(failureLearning.evidence_status).trim().toUpperCase()}`);
++  }
+ 
+   let evidenceStatus = "GLOBAL_CANARY_EVIDENCE_READY";
+   if (globalCanaryPass && applyPass) evidenceStatus = "GLOBAL_CANARY_PASS_READY";
+@@ -74,6 +84,10 @@ function buildMlGlobalCanaryEvidence({
+   else if (dominantBlocker === "OBJECTIVE_SCORE_NEGATIVE") evidenceStatus = "GLOBAL_CANARY_OBJECTIVE_BLOCKED";
+   else if (dominantBlocker) evidenceStatus = `GLOBAL_CANARY_BLOCKED_${dominantBlocker}`;
+   else if (!applyPass) evidenceStatus = "GLOBAL_CANARY_APPLY_BLOCKED";
++  if (alpha.alpha_ready !== true) evidenceStatus = "GLOBAL_CANARY_ALPHA_BLOCKED";
++  else if (failureLearning.evidence_status && /FAIL_RATE_HIGH|NEGATIVE_DOMINANT/.test(String(failureLearning.evidence_status).toUpperCase())) {
++    evidenceStatus = "GLOBAL_CANARY_FAILURE_LEARNING_BLOCKED";
++  }
+ 
+   return {
+     status: "ML_GLOBAL_CANARY_EVIDENCE_READY",
+@@ -107,6 +121,18 @@ function buildMlGlobalCanaryEvidence({
+     replay_sample_dominant_dimension: norm(sampleGap.dominant_sample_dimension),
+     replay_projected_ready_if_sample_gap_closed: replayProjection.projected_replay_ready_if_sample_gap_closed === true,
+     replay_projected_residual_issue_after_sample_gap_closed: norm(replayProjection.projected_residual_issue_after_sample_gap_closed),
++    alpha_validation_status: norm(alpha.status),
++    alpha_validation_ready: alpha.alpha_ready === true,
++    alpha_evidence_status: norm(alpha.evidence_status),
++    alpha_rows_n: toNum(alpha.realized_rows_n),
++    alpha_positive_rate: toNum(alpha.positive_rate),
++    alpha_avg_realized_ret_net: toNum(alpha.avg_realized_ret_net),
++    failure_learning_status: norm(failureLearning.status),
++    failure_learning_ready: failureLearning.learning_ready === true,
++    failure_learning_evidence_status: norm(failureLearning.evidence_status),
++    failure_learning_fail_rate: toNum(failureLearning.fail_rate),
++    failure_learning_dominant_pattern: norm(failureLearning.dominant_failure_pattern),
++    failure_learning_top_market: norm(failureLearning.top_failure_market),
+     top_ready_market: norm(summary.top_ready_market),
+     top_rollback_market: norm(summary.top_rollback_market),
+     top_shadow_drift_market: norm(summary.top_shadow_drift_market),
+diff --git a/src/utils/mlPromotionGate.js b/src/utils/mlPromotionGate.js
+index 23dd9e4..ce9e90f 100644
+--- a/src/utils/mlPromotionGate.js
++++ b/src/utils/mlPromotionGate.js
+@@ -27,6 +27,9 @@ function buildMlPromotionGate({
+   modelSpecificCanary = null,
+   mlRollbackArm = null,
+   serverPrimaryCanary = null,
++  eventTruthAlphaValidation = null,
++  failureLearningLoop = null,
++  feePnlKpiAuthority = null,
+ } = {}) {
+   const truth = readSummary(truthPreservationAudit);
+   const serving = readSummary(executionServingContract);
+@@ -35,6 +38,9 @@ function buildMlPromotionGate({
+   const modelSpecificCanarySummary = readSummary(modelSpecificCanary);
+   const rollbackArmSummary = readSummary(mlRollbackArm);
+   const serverPrimarySummary = readSummary(serverPrimaryCanary);
++  const alphaSummary = readSummary(eventTruthAlphaValidation);
++  const failureLearningSummary = readSummary(failureLearningLoop);
++  const feePnlSummary = readSummary(feePnlKpiAuthority);
+ 
+   const preferredModelArtifactId = norm(serving.preferred_model_artifact_id || scopeTrain.model_artifact_id);
+   const preferredTrainRunId = norm(serving.preferred_train_run_id || scopeTrain.train_run_id);
+@@ -48,6 +54,9 @@ function buildMlPromotionGate({
+   const modelSpecificCanaryReady = modelSpecificCanarySummary.model_specific_canary_ready === true;
+   const serverPrimaryPass = serverPrimarySummary.apply_pass === true && serverPrimarySummary.acceptance_ready === true;
+   const rollbackReady = rollbackArmSummary.rollback_arm_ready === true;
++  const alphaPass = alphaSummary.alpha_ready === true;
++  const failureLearningPass = !/FAIL_RATE_HIGH|NEGATIVE_DOMINANT/.test(String(failureLearningSummary.evidence_status || "").toUpperCase());
++  const feePnlPass = feePnlSummary.kpi_ready === true && String(feePnlSummary.evidence_status || "").trim().toUpperCase() === "FEE_PNL_KPI_PASS";
+   const bindingMode = toUpper(modelSpecificCanarySummary.binding_mode);
+   const evidenceStatus = toUpper(modelSpecificCanarySummary.evidence_status);
+   const globalCanaryEvidenceStatus = toUpper(globalCanaryEvidenceSummary.evidence_status);
+@@ -59,6 +68,15 @@ function buildMlPromotionGate({
+   if (!replayPass) {
+     promotion_stage = "OFFLINE_ONLY";
+     promotion_decision = "HOLD_REPLAY";
++  } else if (!alphaPass) {
++    promotion_stage = "OFFLINE_ONLY";
++    promotion_decision = "HOLD_EVENT_TRUTH_ALPHA";
++  } else if (!feePnlPass) {
++    promotion_stage = "SHADOW_READY";
++    promotion_decision = "HOLD_FEE_PNL_KPI";
++  } else if (!failureLearningPass) {
++    promotion_stage = "SHADOW_READY";
++    promotion_decision = "HOLD_FAILURE_LEARNING";
+   } else if (!shadowPass) {
+     promotion_stage = "OFFLINE_ONLY";
+     promotion_decision = "HOLD_SHADOW_READINESS";
+@@ -78,6 +96,9 @@ function buildMlPromotionGate({
+ 
+   const blockingReasons = [];
+   if (!replayPass) blockingReasons.push("REPLAY_GATE_NOT_READY");
++  if (!alphaPass) blockingReasons.push("EVENT_TRUTH_ALPHA_NOT_READY");
++  if (!feePnlPass) blockingReasons.push("FEE_PNL_KPI_NOT_READY");
++  if (!failureLearningPass) blockingReasons.push("FAILURE_LEARNING_NOT_READY");
+   if (!shadowPass) blockingReasons.push("SHADOW_GATE_NOT_READY");
+   if (!globalCanaryPass) blockingReasons.push("GLOBAL_CANARY_NOT_READY");
+   if (bindingMode === "MODEL_BINDING_MISSING") blockingReasons.push("MODEL_SPECIFIC_CANARY_EVIDENCE_MISSING");
+@@ -140,6 +161,22 @@ function buildMlPromotionGate({
+     model_specific_canary_ready: modelSpecificCanaryReady,
+     truth_preservation_ready: truth.truth_preservation_ready === true,
+     scope_quality_gate_ready: scopeTrain.quality_gate_ready === true,
++    event_truth_alpha_gate_status: alphaPass ? "PASS" : "BLOCK",
++    event_truth_alpha_status: String(alphaSummary.status || "").trim() || null,
++    event_truth_alpha_evidence_status: norm(alphaSummary.evidence_status),
++    event_truth_alpha_positive_rate: toNum(alphaSummary.positive_rate),
++    event_truth_alpha_avg_realized_ret_net: toNum(alphaSummary.avg_realized_ret_net),
++    fee_pnl_gate_status: feePnlPass ? "PASS" : "BLOCK",
++    fee_pnl_status: String(feePnlSummary.status || "").trim() || null,
++    fee_pnl_evidence_status: norm(feePnlSummary.evidence_status),
++    fee_pnl_realized_n: toNum(feePnlSummary.realized_n),
++    fee_pnl_cost_to_abs_realized_ratio: toNum(feePnlSummary.cost_to_abs_realized_ratio),
++    fee_pnl_top_fee_drag_market: norm(feePnlSummary.top_fee_drag_market),
++    failure_learning_gate_status: failureLearningPass ? "PASS" : "BLOCK",
++    failure_learning_status: String(failureLearningSummary.status || "").trim() || null,
++    failure_learning_evidence_status: norm(failureLearningSummary.evidence_status),
++    failure_learning_fail_rate: toNum(failureLearningSummary.fail_rate),
++    failure_learning_dominant_pattern: norm(failureLearningSummary.dominant_failure_pattern),
+     scope_mismatch_rate: toNum(serving.scope_inference_mismatch_rate),
+     blocking_reason_n: blockingReasons.length,
+     blocking_reasons: blockingReasons,
+diff --git a/src/utils/serverMarketCapitalAllocator.js b/src/utils/serverMarketCapitalAllocator.js
+index 18bf2b3..4616d76 100644
+--- a/src/utils/serverMarketCapitalAllocator.js
++++ b/src/utils/serverMarketCapitalAllocator.js
+@@ -34,18 +34,93 @@ function clamp(value, min, max) {
+ }
+ 
+ function buildPenaltySets(executionQualitySummary = {}, reversePolicySummary = {}) {
+-  const executionPenaltyMarkets = new Set([
++  const executionHardPenaltyMarkets = new Set();
++  const executionSoftPenaltyMarkets = new Set();
++  const topWatchRows = Array.isArray(executionQualitySummary.top_watch_markets) ? executionQualitySummary.top_watch_markets : [];
++  const executionHardLatencyMs = 600000;
++  const executionSoftLatencyMs = 450000;
++  const executionHardPartialPct = 80;
++  const executionSoftPartialPct = 65;
++  const executionHardSlippageBps = 8;
++  const executionSoftSlippageBps = 4;
++
++  for (const row of topWatchRows) {
++    const market = upper(row && row.market);
++    if (!market) continue;
++    const latency = toNum(row && row.avg_created_to_fill_ms);
++    const partial = toNum(row && row.partial_fill_rate_pct);
++    const slippage = toNum(row && row.avg_slippage_bps);
++    if (
++      (Number.isFinite(latency) && latency >= executionHardLatencyMs)
++      || (Number.isFinite(partial) && partial >= executionHardPartialPct)
++      || (Number.isFinite(slippage) && slippage >= executionHardSlippageBps)
++    ) {
++      executionHardPenaltyMarkets.add(market);
++      continue;
++    }
++    if (
++      (Number.isFinite(latency) && latency >= executionSoftLatencyMs)
++      || (Number.isFinite(partial) && partial >= executionSoftPartialPct)
++      || (Number.isFinite(slippage) && slippage >= executionSoftSlippageBps)
++    ) {
++      executionSoftPenaltyMarkets.add(market);
++    }
++  }
++
++  [
+     executionQualitySummary.top_latency_market,
+     executionQualitySummary.top_slippage_market,
+     executionQualitySummary.top_partial_market,
+-  ].map((row) => upper(row)).filter(Boolean));
++  ].map((row) => upper(row)).filter(Boolean).forEach((market) => executionSoftPenaltyMarkets.add(market));
++
+   const reversePenaltyMarkets = new Set([
+     reversePolicySummary.top_watch_market,
+     ...(Array.isArray(reversePolicySummary.top_watch_markets)
+       ? reversePolicySummary.top_watch_markets.map((row) => upper(row && row.market))
+       : []),
+   ].filter(Boolean));
+-  return { executionPenaltyMarkets, reversePenaltyMarkets };
++  return { executionHardPenaltyMarkets, executionSoftPenaltyMarkets, reversePenaltyMarkets };
++}
++
++function buildFailurePenaltyMarkets(failureLearningSummary = {}) {
++  const rows = Array.isArray(failureLearningSummary.market_breakdown) ? failureLearningSummary.market_breakdown : [];
++  const hardPenaltyMarkets = new Set();
++  const softPenaltyMarkets = new Set();
++  for (const row of rows) {
++    const market = upper(row && row.market);
++    if (!market) continue;
++    const failN = toNum(row && row.fail_n) || 0;
++    const avgRet = toNum(row && row.avg_realized_ret_net);
++    const dominantPattern = upper(row && row.dominant_failure_pattern);
++    const negativeN = toNum(row && row.negative_realized_n) || 0;
++    if (failN >= 4 && negativeN >= 2 && Number.isFinite(avgRet) && avgRet < 0 && (dominantPattern === "NEGATIVE_REALIZED" || dominantPattern === "SL_FIRST")) {
++      hardPenaltyMarkets.add(market);
++      continue;
++    }
++    if (failN >= 2 && ((Number.isFinite(avgRet) && avgRet < 0) || dominantPattern === "NEGATIVE_REALIZED" || dominantPattern === "TP0_NO_TP1_CONVERT")) {
++      softPenaltyMarkets.add(market);
++    }
++  }
++  return { hardPenaltyMarkets, softPenaltyMarkets };
++}
++
++function buildFeePnlPenaltyMarkets(feePnlSummary = {}) {
++  const rows = Array.isArray(feePnlSummary.by_market) ? feePnlSummary.by_market : [];
++  const hardPenaltyMarkets = new Set();
++  const softPenaltyMarkets = new Set();
++  for (const row of rows) {
++    const market = upper(row && row.market);
++    if (!market) continue;
++    const evidenceStatus = upper(row && row.evidence_status);
++    if (evidenceStatus === "FEE_PNL_MARKET_BLOCK") {
++      hardPenaltyMarkets.add(market);
++      continue;
++    }
++    if (evidenceStatus === "FEE_PNL_MARKET_REVIEW") {
++      softPenaltyMarkets.add(market);
++    }
++  }
++  return { hardPenaltyMarkets, softPenaltyMarkets };
+ }
+ 
+ function classifyAction({ market, score, production, exploration, deferred, executionPenalty, reversePenalty, objectiveBand }) {
+@@ -66,6 +141,8 @@ function deriveServerMarketCapitalAllocator({
+   reversePolicy = null,
+   explorationBudget = null,
+   serverPrimaryLearningEpoch = null,
++  failureLearningLoop = null,
++  feePnlKpiAuthority = null,
+ } = {}) {
+   const objectiveSummary = readSummary(marketObjectiveScore);
+   const objectiveRows = readRows(marketObjectiveScore, "by_market");
+@@ -73,6 +150,8 @@ function deriveServerMarketCapitalAllocator({
+   const reverseSummary = readSummary(reversePolicy);
+   const budgetSummary = readSummary(explorationBudget);
+   const epochSummary = readSummary(serverPrimaryLearningEpoch);
++  const failureLearningSummary = readSummary(failureLearningLoop);
++  const feePnlSummary = readSummary(feePnlKpiAuthority);
+   const epochActive = epochSummary.active === true || upper(epochSummary.status) === "SERVER_PRIMARY_EPOCH_ACTIVE";
+   const epochPenaltyWeight = epochActive ? (toNum(epochSummary.penalty_weight) || 0.35) : 1;
+   const epochExplorationBoost = epochActive ? (toNum(epochSummary.exploration_boost) || 1.15) : 1;
+@@ -80,7 +159,9 @@ function deriveServerMarketCapitalAllocator({
+   const productionMarkets = new Set((Array.isArray(budgetSummary.production_markets) ? budgetSummary.production_markets : []).map((row) => upper(row)).filter(Boolean));
+   const explorationMarkets = new Set((Array.isArray(budgetSummary.exploration_markets) ? budgetSummary.exploration_markets : []).map((row) => upper(row)).filter(Boolean));
+   const deferredMarkets = new Set((Array.isArray(budgetSummary.deferred_penalty_markets) ? budgetSummary.deferred_penalty_markets : []).map((row) => upper(row)).filter(Boolean));
+-  const { executionPenaltyMarkets, reversePenaltyMarkets } = buildPenaltySets(executionSummary, reverseSummary);
++  const { executionHardPenaltyMarkets, executionSoftPenaltyMarkets, reversePenaltyMarkets } = buildPenaltySets(executionSummary, reverseSummary);
++  const { hardPenaltyMarkets, softPenaltyMarkets } = buildFailurePenaltyMarkets(failureLearningSummary);
++  const { hardPenaltyMarkets: feeHardPenaltyMarkets, softPenaltyMarkets: feeSoftPenaltyMarkets } = buildFeePnlPenaltyMarkets(feePnlSummary);
+ 
+   const rows = objectiveRows.map((row) => {
+     const market = upper(row.market);
+@@ -90,19 +171,33 @@ function deriveServerMarketCapitalAllocator({
+     const production = productionMarkets.has(market);
+     const exploration = explorationMarkets.has(market);
+     const deferred = deferredMarkets.has(market);
+-    const executionPenalty = executionPenaltyMarkets.has(market);
++    const executionHardPenalty = executionHardPenaltyMarkets.has(market);
++    const executionSoftPenalty = executionSoftPenaltyMarkets.has(market);
+     const reversePenalty = reversePenaltyMarkets.has(market);
++    const failureHardPenalty = hardPenaltyMarkets.has(market);
++    const failureSoftPenalty = softPenaltyMarkets.has(market);
++    const feePnlHardPenalty = feeHardPenaltyMarkets.has(market);
++    const feePnlSoftPenalty = feeSoftPenaltyMarkets.has(market);
+     const baseScore = objectiveScore + clamp(recoveryPriorityScore / 4, -2, 3) + clamp(avgProxy / 20, -1, 2);
+     const slotBoost = production ? 1.25 : (exploration ? Number((0.5 * epochExplorationBoost).toFixed(4)) : 0);
+-    const penaltyScore = ((executionPenalty ? 1.5 : 0) + (reversePenalty ? 1.0 : 0) + (deferred ? 1.0 : 0)) * epochPenaltyWeight;
++    const penaltyScore = (
++      + (executionSoftPenalty ? 0.8 : 0)
++      + (executionHardPenalty ? 1.4 : 0)
++      + (reversePenalty ? 1.0 : 0)
++      + (deferred ? 1.0 : 0)
++      + (failureSoftPenalty ? 0.9 : 0)
++      + (failureHardPenalty ? 2.0 : 0)
++      + (feePnlSoftPenalty ? 0.8 : 0)
++      + (feePnlHardPenalty ? 1.6 : 0)
++    ) * epochPenaltyWeight;
+     const allocationScore = Number((baseScore + slotBoost - penaltyScore).toFixed(4));
+     const action = classifyAction({
+       market,
+       score: allocationScore,
+       production,
+       exploration,
+-      deferred,
+-      executionPenalty,
++      deferred: deferred || failureHardPenalty || feePnlHardPenalty || executionHardPenalty,
++      executionPenalty: executionHardPenalty || failureHardPenalty || feePnlHardPenalty,
+       reversePenalty,
+       objectiveBand: upper(row.objective_band),
+     });
+@@ -117,8 +212,14 @@ function deriveServerMarketCapitalAllocator({
+       production_slot: production,
+       exploration_slot: exploration,
+       deferred_penalty: deferred,
+-      execution_quality_penalty: executionPenalty,
++      execution_quality_penalty: executionSoftPenalty || executionHardPenalty,
++      execution_quality_soft_penalty: executionSoftPenalty,
++      execution_quality_hard_penalty: executionHardPenalty,
+       reverse_policy_penalty: reversePenalty,
++      failure_soft_penalty: failureSoftPenalty,
++      failure_hard_penalty: failureHardPenalty,
++      fee_pnl_soft_penalty: feePnlSoftPenalty,
++      fee_pnl_hard_penalty: feePnlHardPenalty,
+       allocation_score: allocationScore,
+       recommended_action: action,
+     };
+@@ -158,6 +259,12 @@ function deriveServerMarketCapitalAllocator({
+     production_markets: Array.from(productionMarkets),
+     exploration_markets: Array.from(explorationMarkets),
+     deferred_penalty_markets: Array.from(deferredMarkets),
++    execution_soft_penalty_markets: Array.from(executionSoftPenaltyMarkets),
++    execution_hard_penalty_markets: Array.from(executionHardPenaltyMarkets),
++    failure_soft_penalty_markets: Array.from(softPenaltyMarkets),
++    failure_hard_penalty_markets: Array.from(hardPenaltyMarkets),
++    fee_pnl_soft_penalty_markets: Array.from(feeSoftPenaltyMarkets),
++    fee_pnl_hard_penalty_markets: Array.from(feeHardPenaltyMarkets),
+     learning_epoch_status: upper(epochSummary.status),
+     learning_epoch_active: epochActive,
+     learning_epoch_penalty_weight: epochPenaltyWeight,
+@@ -170,7 +277,13 @@ function deriveServerMarketCapitalAllocator({
+       exploration_slot: row.exploration_slot,
+       deferred_penalty: row.deferred_penalty,
+       execution_quality_penalty: row.execution_quality_penalty,
++      execution_quality_soft_penalty: row.execution_quality_soft_penalty,
++      execution_quality_hard_penalty: row.execution_quality_hard_penalty,
+       reverse_policy_penalty: row.reverse_policy_penalty,
++      failure_soft_penalty: row.failure_soft_penalty,
++      failure_hard_penalty: row.failure_hard_penalty,
++      fee_pnl_soft_penalty: row.fee_pnl_soft_penalty,
++      fee_pnl_hard_penalty: row.fee_pnl_hard_penalty,
+     })),
+     global_objective_score: toNum(objectiveSummary.global_objective_score),
+   };

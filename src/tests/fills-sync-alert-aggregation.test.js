@@ -112,6 +112,7 @@ async function run() {
   assert.ok(approxEqual(merged.payload.realizedPnl, 6.374), "aggregated pnl must be summed");
   assert.ok(approxEqual(merged.payload.closeRatio, 0.5), "aggregated close ratio must represent 50% TP1");
   assert.strictEqual(merged.payload.fullExit, false, "aggregated TP1 alert must remain partial");
+  assert.strictEqual(merged.payload.closeRatioAggregation, "SUM", "scaled split TP1 must sum close ratio");
 
   const nativeTp0CloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({
     event: "EXIT_TP_P0_0.8P",
@@ -225,6 +226,86 @@ async function run() {
   assert.strictEqual(msg.title, "XRPUSDT TP1_3.25 50% 청산");
   assert.ok(msg.body.includes("종류: 익절(TP1) 3.25%"), "TP1 label must be preserved");
   assert.ok(msg.body.includes("청산규모: 402.37 USDT"), "aggregated notional must be visible");
+
+  const repeatedContractRatioBatches = new Map();
+  for (const [tradeMs, notional, realizedPnl] of [
+    [1_777_910_000_000, 15.1, 0.12],
+    [1_777_910_000_100, 293.0, 2.1],
+    [1_777_910_000_200, 187.69, 1.54],
+  ]) {
+    fillsSyncTest.queueFillSyncAlertBatch(repeatedContractRatioBatches, {
+      symbol: "BNBUSDT",
+      event: "EXIT_TP_P0_0.8P",
+      intent: "EXIT",
+      side: "SELL",
+      orderMeta: { orderId: 88629471310, clientOrderId: "fut_bnb_tp0" },
+      tradeMs,
+      payload: {
+        exchange: "BINANCEFUT",
+        symbol: "BNBUSDT",
+        event: "EXIT_TP_P0_0.8P",
+        side: "SELL",
+        intent: "EXIT",
+        executionMode: "LIVE",
+        notional,
+        execPrice: 606.2,
+        closeRatio: 0.25,
+        closeRatioAggregation: "MAX",
+        fullExit: false,
+        realizedPnl,
+        positionSideBefore: "LONG",
+        positionSideAfter: null,
+        appliedLeverage: 2,
+        leverageReason: "BINANCE_USER_TRADES_SYNC",
+        exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_PCT: 0.01, BE_PCT: 0.0015 },
+        runId: "FILL_SYNC__BNBUSDT",
+      },
+    });
+  }
+  assert.strictEqual(repeatedContractRatioBatches.size, 1, "same TP0 order split fills must collapse into one alert");
+  const repeatedContractRatioMerged = Array.from(repeatedContractRatioBatches.values())[0];
+  assert.ok(approxEqual(repeatedContractRatioMerged.payload.notional, 495.79), "split TP0 notional must still sum");
+  assert.ok(approxEqual(repeatedContractRatioMerged.payload.realizedPnl, 3.76), "split TP0 pnl must still sum");
+  assert.ok(approxEqual(repeatedContractRatioMerged.payload.closeRatio, 0.25), "repeated TP0 order contract ratio must not over-sum across split fills");
+  assert.strictEqual(repeatedContractRatioMerged.payload.closeRatioAggregation, "MAX", "repeated TP0 contract ratio must use MAX merge");
+
+  const repeatedTp1ContractRatioBatches = new Map();
+  for (const [tradeMs, notional, realizedPnl] of [
+    [1_777_920_000_000, 112.38, 1.12],
+    [1_777_920_000_050, 7.32, 0.09],
+  ]) {
+    fillsSyncTest.queueFillSyncAlertBatch(repeatedTp1ContractRatioBatches, {
+      symbol: "DOGEUSDT",
+      event: "EXIT_TP_P1_1.65P",
+      intent: "EXIT",
+      side: "SELL",
+      orderMeta: { orderId: 96030000001, clientOrderId: "fut_doge_tp1" },
+      tradeMs,
+      payload: {
+        exchange: "BINANCEFUT",
+        symbol: "DOGEUSDT",
+        event: "EXIT_TP_P1_1.65P",
+        side: "SELL",
+        intent: "EXIT",
+        executionMode: "LIVE",
+        notional,
+        execPrice: 0.095,
+        closeRatio: 0.5,
+        closeRatioAggregation: "MAX",
+        fullExit: false,
+        realizedPnl,
+        positionSideBefore: "LONG",
+        positionSideAfter: null,
+        appliedLeverage: 2,
+        leverageReason: "BINANCE_USER_TRADES_SYNC",
+        exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_PCT: 0.01, BE_PCT: 0.0015 },
+        runId: "FILL_SYNC__DOGEUSDT",
+      },
+    });
+  }
+  const repeatedTp1ContractRatioMerged = Array.from(repeatedTp1ContractRatioBatches.values())[0];
+  assert.ok(approxEqual(repeatedTp1ContractRatioMerged.payload.closeRatio, 0.5), "repeated TP1 order contract ratio must remain 50%");
+  assert.strictEqual(repeatedTp1ContractRatioMerged.payload.fullExit, false, "repeated TP1 order contract ratio must not become full exit");
 
   const oppositeBatches = new Map();
   fillsSyncTest.queueFillSyncAlertBatch(oppositeBatches, {

@@ -22,6 +22,8 @@ const EXECUTION_QUALITY_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_exe
 const REVERSE_POLICY_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_reverse_policy_latest.json");
 const EXPLORATION_BUDGET_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_exploration_budget_latest.json");
 const SERVER_PRIMARY_LEARNING_EPOCH_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_primary_learning_epoch_latest.json");
+const FAILURE_LEARNING_LOOP_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_failure_learning_loop_latest.json");
+const FEE_PNL_KPI_AUTHORITY_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_fee_pnl_kpi_authority_latest.json");
 
 function renderMarkdown(report = {}) {
   const summary = report.summary || {};
@@ -36,6 +38,7 @@ function renderMarkdown(report = {}) {
     `- quarantine: ${summary.top_quarantine_market || "N/A"} / ${summary.top_quarantine_score != null ? summary.top_quarantine_score : "N/A"}`,
     `- explore: ${summary.top_explore_market || "N/A"} / ${summary.top_explore_score != null ? summary.top_explore_score : "N/A"}`,
     `- learning_epoch: ${summary.learning_epoch_status || "N/A"} / penalty_weight=${summary.learning_epoch_penalty_weight != null ? summary.learning_epoch_penalty_weight : "N/A"}`,
+    `- fee_pnl_hard_penalty_markets: ${Array.isArray(summary.fee_pnl_hard_penalty_markets) && summary.fee_pnl_hard_penalty_markets.length ? summary.fee_pnl_hard_penalty_markets.join(", ") : "none"}`,
     "",
     "## Markets",
     ...(Array.isArray(summary.top_watch_markets) && summary.top_watch_markets.length
@@ -53,10 +56,12 @@ function main() {
   const reversePolicy = readJsonRawSafe(REVERSE_POLICY_PATH, null);
   const explorationBudget = readJsonRawSafe(EXPLORATION_BUDGET_PATH, null);
   const serverPrimaryLearningEpoch = readJsonRawSafe(SERVER_PRIMARY_LEARNING_EPOCH_PATH, null);
+  const failureLearningLoop = readJsonRawSafe(FAILURE_LEARNING_LOOP_PATH, null);
+  const feePnlKpiAuthority = readJsonRawSafe(FEE_PNL_KPI_AUTHORITY_PATH, null);
   const reportCycleId = resolveAnchoredReportCycleId({
     preferredCycleId: String(process.env.BEST_SELF_EVOLUTION_CYCLE_ID || "").trim() || null,
     fallbackCycleId: cycleMeta.cycle_id,
-    sources: [marketObjectiveScore, executionQuality, reversePolicy, explorationBudget, serverPrimaryLearningEpoch],
+    sources: [marketObjectiveScore, executionQuality, reversePolicy, explorationBudget, serverPrimaryLearningEpoch, failureLearningLoop, feePnlKpiAuthority],
   });
 
   const summary = deriveServerMarketCapitalAllocator({
@@ -65,6 +70,8 @@ function main() {
     reversePolicy,
     explorationBudget,
     serverPrimaryLearningEpoch,
+    failureLearningLoop,
+    feePnlKpiAuthority,
   });
   const report = {
     ok: true,
@@ -77,6 +84,8 @@ function main() {
       reverse_policy: REVERSE_POLICY_PATH,
       exploration_budget: EXPLORATION_BUDGET_PATH,
       server_primary_learning_epoch: SERVER_PRIMARY_LEARNING_EPOCH_PATH,
+      failure_learning_loop: FAILURE_LEARNING_LOOP_PATH,
+      fee_pnl_kpi_authority: FEE_PNL_KPI_AUTHORITY_PATH,
     },
     summary,
   };

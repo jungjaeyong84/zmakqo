@@ -62,6 +62,21 @@ function run() {
   assert.strictEqual(timeStop.pre_tp1_time_stop, true);
   assert.strictEqual(timeStop.realized_direction, "NEGATIVE");
 
+  const reconstructedTrade = labelOutcome({
+    close_type: "PARTIAL_CLOSE",
+    pnl_pct: 0.012,
+    pnl_krw: 1800,
+    qty_closed: 0.5,
+    tp0_hit: true,
+    tp0_to_tp1_converted: false,
+  });
+  assert.strictEqual(reconstructedTrade.is_executed, true);
+  assert.strictEqual(reconstructedTrade.is_realized, true);
+  assert.strictEqual(reconstructedTrade.outcome_state, "PARTIAL_CLOSE");
+  assert.strictEqual(reconstructedTrade.realized_direction, "POSITIVE");
+  assert.strictEqual(reconstructedTrade.realized_ret_net, 0.012);
+  assert.strictEqual(reconstructedTrade.realized_pnl_quote, 1800);
+
   console.log("OUTCOME_LABELER_TEST_OK");
 }
 

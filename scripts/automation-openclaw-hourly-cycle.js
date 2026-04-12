@@ -101,17 +101,49 @@ function buildStepRegistry() {
       },
     },
     {
+      id: "execution_quality",
+      kind: "script",
+      script: "report-best-self-evolution-execution-quality.js",
+      criticality: "HIGH",
+      depends_on: [],
+      produces_artifact: "best_self_evolution_execution_quality_latest.json",
+      run() {
+        const res = runScript(this.script);
+        return {
+          status: res.ok ? "PASS" : "FAIL",
+          summary: res.parsed && (res.parsed.status || res.parsed.reason || "OK") || "OK",
+          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+        };
+      },
+    },
+    {
       id: "signal_lineage_health",
       kind: "script",
       script: "report-signal-lineage-health.js",
       criticality: "HIGH",
-      depends_on: [],
+      depends_on: ["execution_quality"],
       produces_artifact: "signal_lineage_health_latest.json",
       run() {
         const res = runScript(this.script);
         return {
           status: res.ok ? "PASS" : "FAIL",
           summary: res.parsed && (res.parsed.verdict || res.parsed.reason || res.parsed.status) || "OK",
+          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+        };
+      },
+    },
+    {
+      id: "openclaw_policy_authority",
+      kind: "script",
+      script: "report-openclaw-policy-authority.js",
+      criticality: "HIGH",
+      depends_on: ["signal_lineage_health"],
+      produces_artifact: "openclaw_policy_authority_latest.json",
+      run() {
+        const res = runScript(this.script);
+        return {
+          status: res.ok ? "PASS" : "FAIL",
+          summary: res.parsed && (res.parsed.reason || res.parsed.status || "OK") || "OK",
           reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? `EXIT_${res.exit_code}` : null),
         };
       },

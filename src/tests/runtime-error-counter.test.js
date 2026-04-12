@@ -195,6 +195,28 @@ function run() {
   const repeatedFamily = repeatedWriter.error_families_24h.find((item) => item.family === "POSITION_WRITE_TOKEN_MISMATCH");
   assert.strictEqual(resolveOperationalActiveWindowMs(repeatedFamily), 6 * 60 * 60 * 1000);
   assert.strictEqual(repeatedWriter.active_error_count_24h, 1);
+
+  const suppressedWriter = summarizeRuntimeErrorFamilies({
+    nowMs: Date.parse("2026-04-11T15:00:00.000Z"),
+    positionWriterAuthorityEvents: [
+      {
+        code: "POSITION_WRITE_TOKEN_MISMATCH",
+        symbol: "DOGEUSDT",
+        created_at: "2026-04-11T14:55:14.484Z",
+        runtime_family_suppressed: true,
+        error: "POSITION_WRITE_TOKEN_MISMATCH expected=e actual=f",
+      },
+      {
+        code: "POSITION_WRITE_TOKEN_MISMATCH",
+        symbol: "BTCUSDT",
+        created_at: "2026-04-11T14:56:14.484Z",
+        resolved_at: "2026-04-11T14:58:14.484Z",
+        error: "POSITION_WRITE_TOKEN_MISMATCH expected=g actual=h",
+      },
+    ],
+  });
+  assert.strictEqual(suppressedWriter.error_count_24h, 0);
+  assert.strictEqual(suppressedWriter.active_error_count_24h, 0);
 }
 
 try {

@@ -247,6 +247,8 @@ function summarizeRuntimeErrorFamilies({
   }
 
   for (const row of positionWriterAuthorityEvents || []) {
+    if (row && (row.runtime_family_suppressed === true || row.runtime_family_suppressed === "true")) continue;
+    if (row && row.resolved_at) continue;
     const family = String(row && row.code || "").trim().toUpperCase();
     if (!family) continue;
     upsertFamily(families, family, {

@@ -34,18 +34,93 @@ function clamp(value, min, max) {
 }
 
 function buildPenaltySets(executionQualitySummary = {}, reversePolicySummary = {}) {
-  const executionPenaltyMarkets = new Set([
+  const executionHardPenaltyMarkets = new Set();
+  const executionSoftPenaltyMarkets = new Set();
+  const topWatchRows = Array.isArray(executionQualitySummary.top_watch_markets) ? executionQualitySummary.top_watch_markets : [];
+  const executionHardLatencyMs = 600000;
+  const executionSoftLatencyMs = 450000;
+  const executionHardPartialPct = 80;
+  const executionSoftPartialPct = 65;
+  const executionHardSlippageBps = 8;
+  const executionSoftSlippageBps = 4;
+
+  for (const row of topWatchRows) {
+    const market = upper(row && row.market);
+    if (!market) continue;
+    const latency = toNum(row && row.avg_created_to_fill_ms);
+    const partial = toNum(row && row.partial_fill_rate_pct);
+    const slippage = toNum(row && row.avg_slippage_bps);
+    if (
+      (Number.isFinite(latency) && latency >= executionHardLatencyMs)
+      || (Number.isFinite(partial) && partial >= executionHardPartialPct)
+      || (Number.isFinite(slippage) && slippage >= executionHardSlippageBps)
+    ) {
+      executionHardPenaltyMarkets.add(market);
+      continue;
+    }
+    if (
+      (Number.isFinite(latency) && latency >= executionSoftLatencyMs)
+      || (Number.isFinite(partial) && partial >= executionSoftPartialPct)
+      || (Number.isFinite(slippage) && slippage >= executionSoftSlippageBps)
+    ) {
+      executionSoftPenaltyMarkets.add(market);
+    }
+  }
+
+  [
     executionQualitySummary.top_latency_market,
     executionQualitySummary.top_slippage_market,
     executionQualitySummary.top_partial_market,
-  ].map((row) => upper(row)).filter(Boolean));
+  ].map((row) => upper(row)).filter(Boolean).forEach((market) => executionSoftPenaltyMarkets.add(market));
+
   const reversePenaltyMarkets = new Set([
     reversePolicySummary.top_watch_market,
     ...(Array.isArray(reversePolicySummary.top_watch_markets)
       ? reversePolicySummary.top_watch_markets.map((row) => upper(row && row.market))
       : []),
   ].filter(Boolean));
-  return { executionPenaltyMarkets, reversePenaltyMarkets };
+  return { executionHardPenaltyMarkets, executionSoftPenaltyMarkets, reversePenaltyMarkets };
+}
+
+function buildFailurePenaltyMarkets(failureLearningSummary = {}) {
+  const rows = Array.isArray(failureLearningSummary.market_breakdown) ? failureLearningSummary.market_breakdown : [];
+  const hardPenaltyMarkets = new Set();
+  const softPenaltyMarkets = new Set();
+  for (const row of rows) {
+    const market = upper(row && row.market);
+    if (!market) continue;
+    const failN = toNum(row && row.fail_n) || 0;
+    const avgRet = toNum(row && row.avg_realized_ret_net);
+    const dominantPattern = upper(row && row.dominant_failure_pattern);
+    const negativeN = toNum(row && row.negative_realized_n) || 0;
+    if (failN >= 4 && negativeN >= 2 && Number.isFinite(avgRet) && avgRet < 0 && (dominantPattern === "NEGATIVE_REALIZED" || dominantPattern === "SL_FIRST")) {
+      hardPenaltyMarkets.add(market);
+      continue;
+    }
+    if (failN >= 2 && ((Number.isFinite(avgRet) && avgRet < 0) || dominantPattern === "NEGATIVE_REALIZED" || dominantPattern === "TP0_NO_TP1_CONVERT")) {
+      softPenaltyMarkets.add(market);
+    }
+  }
+  return { hardPenaltyMarkets, softPenaltyMarkets };
+}
+
+function buildFeePnlPenaltyMarkets(feePnlSummary = {}) {
+  const rows = Array.isArray(feePnlSummary.by_market) ? feePnlSummary.by_market : [];
+  const hardPenaltyMarkets = new Set();
+  const softPenaltyMarkets = new Set();
+  for (const row of rows) {
+    const market = upper(row && row.market);
+    if (!market) continue;
+    const evidenceStatus = upper(row && row.evidence_status);
+    if (evidenceStatus === "FEE_PNL_MARKET_BLOCK") {
+      hardPenaltyMarkets.add(market);
+      continue;
+    }
+    if (evidenceStatus === "FEE_PNL_MARKET_REVIEW") {
+      softPenaltyMarkets.add(market);
+    }
+  }
+  return { hardPenaltyMarkets, softPenaltyMarkets };
 }
 
 function classifyAction({ market, score, production, exploration, deferred, executionPenalty, reversePenalty, objectiveBand }) {
@@ -66,6 +141,8 @@ function deriveServerMarketCapitalAllocator({
   reversePolicy = null,
   explorationBudget = null,
   serverPrimaryLearningEpoch = null,
+  failureLearningLoop = null,
+  feePnlKpiAuthority = null,
 } = {}) {
   const objectiveSummary = readSummary(marketObjectiveScore);
   const objectiveRows = readRows(marketObjectiveScore, "by_market");
@@ -73,6 +150,8 @@ function deriveServerMarketCapitalAllocator({
   const reverseSummary = readSummary(reversePolicy);
   const budgetSummary = readSummary(explorationBudget);
   const epochSummary = readSummary(serverPrimaryLearningEpoch);
+  const failureLearningSummary = readSummary(failureLearningLoop);
+  const feePnlSummary = readSummary(feePnlKpiAuthority);
   const epochActive = epochSummary.active === true || upper(epochSummary.status) === "SERVER_PRIMARY_EPOCH_ACTIVE";
   const epochPenaltyWeight = epochActive ? (toNum(epochSummary.penalty_weight) || 0.35) : 1;
   const epochExplorationBoost = epochActive ? (toNum(epochSummary.exploration_boost) || 1.15) : 1;
@@ -80,7 +159,9 @@ function deriveServerMarketCapitalAllocator({
   const productionMarkets = new Set((Array.isArray(budgetSummary.production_markets) ? budgetSummary.production_markets : []).map((row) => upper(row)).filter(Boolean));
   const explorationMarkets = new Set((Array.isArray(budgetSummary.exploration_markets) ? budgetSummary.exploration_markets : []).map((row) => upper(row)).filter(Boolean));
   const deferredMarkets = new Set((Array.isArray(budgetSummary.deferred_penalty_markets) ? budgetSummary.deferred_penalty_markets : []).map((row) => upper(row)).filter(Boolean));
-  const { executionPenaltyMarkets, reversePenaltyMarkets } = buildPenaltySets(executionSummary, reverseSummary);
+  const { executionHardPenaltyMarkets, executionSoftPenaltyMarkets, reversePenaltyMarkets } = buildPenaltySets(executionSummary, reverseSummary);
+  const { hardPenaltyMarkets, softPenaltyMarkets } = buildFailurePenaltyMarkets(failureLearningSummary);
+  const { hardPenaltyMarkets: feeHardPenaltyMarkets, softPenaltyMarkets: feeSoftPenaltyMarkets } = buildFeePnlPenaltyMarkets(feePnlSummary);
 
   const rows = objectiveRows.map((row) => {
     const market = upper(row.market);
@@ -90,19 +171,33 @@ function deriveServerMarketCapitalAllocator({
     const production = productionMarkets.has(market);
     const exploration = explorationMarkets.has(market);
     const deferred = deferredMarkets.has(market);
-    const executionPenalty = executionPenaltyMarkets.has(market);
+    const executionHardPenalty = executionHardPenaltyMarkets.has(market);
+    const executionSoftPenalty = executionSoftPenaltyMarkets.has(market);
     const reversePenalty = reversePenaltyMarkets.has(market);
+    const failureHardPenalty = hardPenaltyMarkets.has(market);
+    const failureSoftPenalty = softPenaltyMarkets.has(market);
+    const feePnlHardPenalty = feeHardPenaltyMarkets.has(market);
+    const feePnlSoftPenalty = feeSoftPenaltyMarkets.has(market);
     const baseScore = objectiveScore + clamp(recoveryPriorityScore / 4, -2, 3) + clamp(avgProxy / 20, -1, 2);
     const slotBoost = production ? 1.25 : (exploration ? Number((0.5 * epochExplorationBoost).toFixed(4)) : 0);
-    const penaltyScore = ((executionPenalty ? 1.5 : 0) + (reversePenalty ? 1.0 : 0) + (deferred ? 1.0 : 0)) * epochPenaltyWeight;
+    const penaltyScore = (
+      + (executionSoftPenalty ? 0.8 : 0)
+      + (executionHardPenalty ? 1.4 : 0)
+      + (reversePenalty ? 1.0 : 0)
+      + (deferred ? 1.0 : 0)
+      + (failureSoftPenalty ? 0.9 : 0)
+      + (failureHardPenalty ? 2.0 : 0)
+      + (feePnlSoftPenalty ? 0.8 : 0)
+      + (feePnlHardPenalty ? 1.6 : 0)
+    ) * epochPenaltyWeight;
     const allocationScore = Number((baseScore + slotBoost - penaltyScore).toFixed(4));
     const action = classifyAction({
       market,
       score: allocationScore,
       production,
       exploration,
-      deferred,
-      executionPenalty,
+      deferred: deferred || failureHardPenalty || feePnlHardPenalty || executionHardPenalty,
+      executionPenalty: executionHardPenalty || failureHardPenalty || feePnlHardPenalty,
       reversePenalty,
       objectiveBand: upper(row.objective_band),
     });
@@ -117,8 +212,14 @@ function deriveServerMarketCapitalAllocator({
       production_slot: production,
       exploration_slot: exploration,
       deferred_penalty: deferred,
-      execution_quality_penalty: executionPenalty,
+      execution_quality_penalty: executionSoftPenalty || executionHardPenalty,
+      execution_quality_soft_penalty: executionSoftPenalty,
+      execution_quality_hard_penalty: executionHardPenalty,
       reverse_policy_penalty: reversePenalty,
+      failure_soft_penalty: failureSoftPenalty,
+      failure_hard_penalty: failureHardPenalty,
+      fee_pnl_soft_penalty: feePnlSoftPenalty,
+      fee_pnl_hard_penalty: feePnlHardPenalty,
       allocation_score: allocationScore,
       recommended_action: action,
     };
@@ -158,6 +259,12 @@ function deriveServerMarketCapitalAllocator({
     production_markets: Array.from(productionMarkets),
     exploration_markets: Array.from(explorationMarkets),
     deferred_penalty_markets: Array.from(deferredMarkets),
+    execution_soft_penalty_markets: Array.from(executionSoftPenaltyMarkets),
+    execution_hard_penalty_markets: Array.from(executionHardPenaltyMarkets),
+    failure_soft_penalty_markets: Array.from(softPenaltyMarkets),
+    failure_hard_penalty_markets: Array.from(hardPenaltyMarkets),
+    fee_pnl_soft_penalty_markets: Array.from(feeSoftPenaltyMarkets),
+    fee_pnl_hard_penalty_markets: Array.from(feeHardPenaltyMarkets),
     learning_epoch_status: upper(epochSummary.status),
     learning_epoch_active: epochActive,
     learning_epoch_penalty_weight: epochPenaltyWeight,
@@ -170,7 +277,13 @@ function deriveServerMarketCapitalAllocator({
       exploration_slot: row.exploration_slot,
       deferred_penalty: row.deferred_penalty,
       execution_quality_penalty: row.execution_quality_penalty,
+      execution_quality_soft_penalty: row.execution_quality_soft_penalty,
+      execution_quality_hard_penalty: row.execution_quality_hard_penalty,
       reverse_policy_penalty: row.reverse_policy_penalty,
+      failure_soft_penalty: row.failure_soft_penalty,
+      failure_hard_penalty: row.failure_hard_penalty,
+      fee_pnl_soft_penalty: row.fee_pnl_soft_penalty,
+      fee_pnl_hard_penalty: row.fee_pnl_hard_penalty,
     })),
     global_objective_score: toNum(objectiveSummary.global_objective_score),
   };

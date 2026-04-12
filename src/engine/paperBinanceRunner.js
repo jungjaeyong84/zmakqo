@@ -3965,6 +3965,56 @@ function dedupeEntrySignalsByFamily(signals = []) {
   return out;
 }
 
+function shouldSuppressLiveFuturesInternalExitSignal({
+  exchange,
+  liveCfg,
+  signal,
+} = {}) {
+  const exUpper = String(exchange || "").toUpperCase();
+  if (!exUpper.includes("BINANCEFUT")) return false;
+  const mode = String(liveCfg && liveCfg.executionMode || "").toUpperCase();
+  if (mode !== "LIVE" && mode !== "LIVE_DRY_RUN") return false;
+  if (!signal || typeof signal !== "object") return false;
+  if (signal.signal_id) return false;
+  const eventUpper = String(signal.event || "").toUpperCase();
+  if (eventUpper !== "EXIT_TRAIL") return false;
+  const reasonUpper = String(signal.reason || "").toUpperCase();
+  if (reasonUpper !== "EXIT_TRAIL_STOP" && reasonUpper !== "EXIT_TRAIL_STOP_RUNNER_FLOOR") return false;
+  return true;
+}
+
+function shouldSuppressInternalLiveExitFillAlert({
+  exchange,
+  executionMode,
+  intent,
+} = {}) {
+  const exUpper = String(exchange || "").toUpperCase();
+  if (!exUpper.includes("BINANCEFUT")) return false;
+  const mode = String(executionMode || "").toUpperCase();
+  if (mode !== "LIVE" && mode !== "LIVE_DRY_RUN") return false;
+  return String(intent || "").toUpperCase() === "EXIT";
+}
+
+function filterLiveFuturesInternalSignals({
+  exchange,
+  liveCfg,
+  signals,
+  runId,
+  symbol,
+  tf,
+} = {}) {
+  if (!Array.isArray(signals) || !signals.length) return [];
+  return signals.filter((signal) => {
+    const suppress = shouldSuppressLiveFuturesInternalExitSignal({ exchange, liveCfg, signal });
+    if (suppress) {
+      console.log(
+        `[live_trail_authority_skip] ex=${exchange} sym=${symbol} tf=${tf} ev=${signal && signal.event} reason=${signal && signal.reason} run=${runId || "-"}`
+      );
+    }
+    return !suppress;
+  });
+}
+
 function hasPositionSize(sizePct) {
   const n = Number(sizePct);
   if (!Number.isFinite(n)) return false;
@@ -4128,6 +4178,73 @@ async function upsertPositionMetaOnlyWithLatestRetry({
         expectedWriteToken: Object.prototype.hasOwnProperty.call(currentPos || {}, "position_write_token")
           ? (currentPos.position_write_token ?? null)
           : null,
+        suppressAuthorityAlert: attempt < totalAttempts,
+      });
+    } catch (err) {
+      const code = String(err && err.code || "").trim().toUpperCase();
+      if (!["POSITION_WRITE_TOKEN_MISMATCH", "POSITION_WRITE_LEASE_HELD", "POSITION_WRITE_LEASE_LOST"].includes(code)) {
+        throw err;
+      }
+      if (attempt >= totalAttempts) throw err;
+      if (Number(retryDelayMs) > 0) await sleep(Number(retryDelayMs));
+      currentPos = await readPosition({ exchange, symbol });
+    }
+  }
+  return currentPos;
+}
+
+async function upsertPositionWithLatestRetry({
+  exchange,
+  symbol,
+  runId = null,
+  executionMode = null,
+  position = null,
+  state,
+  positionSide,
+  sizePct,
+  avgPrice,
+  qtyBase = null,
+  budgetMaxKrw = null,
+  budgetUsedKrw = null,
+  budgetSource = null,
+  meta = {},
+  source = null,
+  mutationKind = "POSITION_UPSERT",
+  reason = null,
+  maxAttempts = 2,
+  retryDelayMs = 50,
+  readPosition = getPosition,
+  writePosition = upsertPosition,
+} = {}) {
+  let currentPos = (position && typeof position === "object")
+    ? position
+    : await readPosition({ exchange, symbol });
+  const totalAttempts = Math.max(1, Math.floor(Number(maxAttempts) || 0));
+  for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+    try {
+      return await writePosition({
+        exchange,
+        symbol,
+        state,
+        positionSide,
+        sizePct,
+        avgPrice,
+        qtyBase,
+        runId,
+        executionMode,
+        budgetMaxKrw,
+        budgetUsedKrw,
+        budgetSource,
+        meta,
+        source,
+        mutationKind,
+        reason: attempt > 1 ? (reason || "RETRY_AFTER_POSITION_REFRESH") : reason,
+        expectedWriteToken: Object.prototype.hasOwnProperty.call(currentPos || {}, "position_write_token")
+          ? (currentPos.position_write_token ?? null)
+          : null,
+        suppressAuthorityAlert: attempt < totalAttempts,
+        suppressAuthorityRuntimeFamily: attempt < totalAttempts,
+        suppressAuthorityRuntimeFamilyReason: "WRITER_RETRY_IN_PROGRESS",
       });
     } catch (err) {
       const code = String(err && err.code || "").trim().toUpperCase();
@@ -4157,9 +4274,10 @@ async function applyBarLoopObservationMetaUpdate({
   }
   const pos = (position && typeof position === "object") ? position : {};
   const merged = mergeMeta(posMeta, metaPatch);
-  await upsertPosition({
+  await upsertPositionWithLatestRetry({
     exchange,
     symbol,
+    position: pos,
     state: pos.state,
     positionSide: pos.position_side || positionSide || null,
     sizePct: pos.size_pct,
@@ -4171,9 +4289,8 @@ async function applyBarLoopObservationMetaUpdate({
     budgetUsedKrw: pos.budget_used_krw ?? null,
     budgetSource: pos.budget_source ?? null,
     meta: merged,
-    expectedWriteToken: Object.prototype.hasOwnProperty.call(pos, "position_write_token")
-      ? (pos.position_write_token ?? null)
-      : null,
+    source: "BAR_LOOP_OBSERVATION",
+    reason: "BAR_LOOP_META_UPDATE",
   });
   return merged;
 }
@@ -4699,9 +4816,10 @@ async function applyTpP1SkipOnCancel({
     tp_p1_skip_at: nowIso,
   });
 
-  await upsertPosition({
+  await upsertPositionWithLatestRetry({
     exchange,
     symbol,
+    position: pos,
     state: pos.state,
     positionSide: pos.position_side || null,
     sizePct: pos.size_pct,
@@ -4713,9 +4831,8 @@ async function applyTpP1SkipOnCancel({
     budgetUsedKrw: pos.budget_used_krw ?? null,
     budgetSource: pos.budget_source ?? null,
     meta: merged,
-    expectedWriteToken: Object.prototype.hasOwnProperty.call(pos, "position_write_token")
-      ? (pos.position_write_token ?? null)
-      : null,
+    source: "TP1_SKIP_PROTECT",
+    reason: reasonKey || "TP1_SKIP_PROTECT",
   });
 
   return merged;
@@ -7257,9 +7374,10 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
       external_flat_sync_snapshot_entry_price: Number.isFinite(entryPrice) ? entryPrice : null,
       external_flat_sync_snapshot_mark_price: Number.isFinite(markPrice) ? markPrice : null,
     });
-    const payload = await upsertPosition({
+    const payload = await upsertPositionWithLatestRetry({
       exchange,
       symbol,
+      position: prevPos,
       state: prevPos && prevPos.state ? prevPos.state : (prevState || "ACTIVE"),
       positionSide: prevSide || (prevPos && prevPos.position_side) || null,
       sizePct: Number.isFinite(prevSizePct) ? prevSizePct : 1,
@@ -7272,9 +7390,7 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
       budgetSource: prevPos && prevPos.budget_source != null ? prevPos.budget_source : ((riskBudget && riskBudget.enabled) ? riskBudget.source : null),
       meta: deferMeta,
       source: "BINANCE_FUTURES_POSITION_SYNC",
-      expectedWriteToken: prevPos && Object.prototype.hasOwnProperty.call(prevPos, "position_write_token")
-        ? (prevPos.position_write_token ?? null)
-        : null,
+      reason: externalFlatSyncGuard.reason || "EXTERNAL_FLAT_SYNC_DEFERRED",
     });
     return { ok: true, position: payload, active: true, deferredFlatSync: true };
   }
@@ -7714,9 +7830,10 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     });
   }
 
-  const payload = await upsertPosition({
+  const payload = await upsertPositionWithLatestRetry({
     exchange,
     symbol,
+    position: prevPos,
     state,
     positionSide: active ? side : null,
     sizePct,
@@ -7729,9 +7846,7 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     budgetSource: (riskBudget && riskBudget.enabled) ? riskBudget.source : null,
     meta,
     source: "BINANCE_FUTURES_POSITION_SYNC",
-    expectedWriteToken: prevPos && Object.prototype.hasOwnProperty.call(prevPos, "position_write_token")
-      ? (prevPos.position_write_token ?? null)
-      : null,
+    reason: "BINANCE_FUTURES_POSITION_SYNC",
   });
 
   return { ok: true, position: payload, active };
@@ -10922,31 +11037,33 @@ async function runPaperBinanceForBar({
       exitProfileReason: appliedExitProfileReason || null,
       decisionReason: it.reason || it.event || null,
     });
-    sendTradeExecutionAlert({
-      exchange,
-      symbol,
-      event: it.event,
-      side: it.side,
-      intent,
-      executionMode,
-      notional,
-      execQtyBase,
-      execPrice: fillPrice,
-      closeRatio,
-      fullExit: intent === "EXIT" && newState === "FLAT",
-      realizedPnl: realizedPnlQuote,
-      positionSideBefore,
-      positionSideAfter: newState === "FLAT" ? null : positionSideBefore,
-      appliedLeverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
-      leverageReason: appliedLeverageReason,
-      exitProfile: appliedExitProfile || null,
-      exitProfileReason: appliedExitProfileReason || null,
-      exitRules: appliedExitRules || null,
-      features: it.features_json || {},
-      runId,
-    }).catch((e) => {
-      console.warn("[TRADE_EXEC_ALERT_FAIL]", e && e.message ? e.message : String(e));
-    });
+    if (!shouldSuppressInternalLiveExitFillAlert({ exchange, executionMode, intent })) {
+      sendTradeExecutionAlert({
+        exchange,
+        symbol,
+        event: it.event,
+        side: it.side,
+        intent,
+        executionMode,
+        notional,
+        execQtyBase,
+        execPrice: fillPrice,
+        closeRatio,
+        fullExit: intent === "EXIT" && newState === "FLAT",
+        realizedPnl: realizedPnlQuote,
+        positionSideBefore,
+        positionSideAfter: newState === "FLAT" ? null : positionSideBefore,
+        appliedLeverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
+        leverageReason: appliedLeverageReason,
+        exitProfile: appliedExitProfile || null,
+        exitProfileReason: appliedExitProfileReason || null,
+        exitRules: appliedExitRules || null,
+        features: it.features_json || {},
+        runId,
+      }).catch((e) => {
+        console.warn("[TRADE_EXEC_ALERT_FAIL]", e && e.message ? e.message : String(e));
+      });
+    }
 
     await markIntentStatus(it.intent_id, "FILLED", {
       filled_at: new Date().toISOString(),
@@ -11131,9 +11248,10 @@ async function runPaperBinanceForBar({
         reason: "INTENT_FILL_FORCE_LIVE_RECONCILE",
       });
     } else {
-      await upsertPosition({
+      await upsertPositionWithLatestRetry({
         exchange,
         symbol,
+        position: pos,
         state: newState,
         positionSide: newState === "ACTIVE" ? "LONG" : null,
         sizePct: newSize,
@@ -11145,9 +11263,8 @@ async function runPaperBinanceForBar({
         budgetUsedKrw: useBudget ? (riskBudget.maxKrw * newSize) : null,
         budgetSource: useBudget ? riskBudget.source : null,
         meta: projectedMetaForWrite,
-        expectedWriteToken: Object.prototype.hasOwnProperty.call(pos, "position_write_token")
-          ? (pos.position_write_token ?? null)
-          : null,
+        source: "INTENT_FILL",
+        reason: "INTENT_FILL_PROJECTED_POSITION_WRITE",
       });
     }
 
@@ -11292,13 +11409,20 @@ async function runPaperBinanceForBar({
     ...(liqSignal ? [liqSignal] : []),
     ...(timeStopSignal ? [timeStopSignal] : []),
   ];
-  const internalSignals = finalizeInternalSignals({
-    signals: internalSignalsRaw,
-    posMeta,
-    barCloseMs,
-    fallbackUtc: signalBarCloseUtc,
+  const internalSignals = filterLiveFuturesInternalSignals({
     exchange,
+    liveCfg,
+    signals: finalizeInternalSignals({
+      signals: internalSignalsRaw,
+      posMeta,
+      barCloseMs,
+      fallbackUtc: signalBarCloseUtc,
+      exchange,
+      symbol,
+    }),
+    runId,
     symbol,
+    tf,
   });
 
   // 외부 신호(signals 컬렉션)
@@ -13651,31 +13775,33 @@ async function runPaperFuturesForBar({
       exitProfileReason: appliedExitProfileReason || null,
       decisionReason: it.reason || it.event || null,
     });
-    sendTradeExecutionAlert({
-      exchange,
-      symbol,
-      event: it.event,
-      side: actionSide,
-      intent,
-      executionMode,
-      notional,
-      execQtyBase,
-      execPrice: fillPrice,
-      closeRatio,
-      fullExit: intent === "EXIT" && newState === "FLAT",
-      realizedPnl: realizedPnlQuote,
-      positionSideBefore,
-      positionSideAfter: newState === "FLAT" ? null : nextPosSide || positionSideBefore,
-      appliedLeverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
-      leverageReason: appliedLeverageReason,
-      exitProfile: appliedExitProfile || null,
-      exitProfileReason: appliedExitProfileReason || null,
-      exitRules: appliedExitRules || null,
-      features: it.features_json || {},
-      runId,
-    }).catch((e) => {
-      console.warn("[TRADE_EXEC_ALERT_FAIL]", e && e.message ? e.message : String(e));
-    });
+    if (!shouldSuppressInternalLiveExitFillAlert({ exchange, executionMode, intent })) {
+      sendTradeExecutionAlert({
+        exchange,
+        symbol,
+        event: it.event,
+        side: actionSide,
+        intent,
+        executionMode,
+        notional,
+        execQtyBase,
+        execPrice: fillPrice,
+        closeRatio,
+        fullExit: intent === "EXIT" && newState === "FLAT",
+        realizedPnl: realizedPnlQuote,
+        positionSideBefore,
+        positionSideAfter: newState === "FLAT" ? null : nextPosSide || positionSideBefore,
+        appliedLeverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
+        leverageReason: appliedLeverageReason,
+        exitProfile: appliedExitProfile || null,
+        exitProfileReason: appliedExitProfileReason || null,
+        exitRules: appliedExitRules || null,
+        features: it.features_json || {},
+        runId,
+      }).catch((e) => {
+        console.warn("[TRADE_EXEC_ALERT_FAIL]", e && e.message ? e.message : String(e));
+      });
+    }
 
     await markIntentStatus(it.intent_id, "FILLED", {
       filled_at: new Date().toISOString(),
@@ -13919,9 +14045,10 @@ async function runPaperFuturesForBar({
         reason: "INTENT_FILL_FORCE_LIVE_RECONCILE",
       });
     } else {
-      await upsertPosition({
+      await upsertPositionWithLatestRetry({
         exchange,
         symbol,
+        position: pos,
         state: newState,
         positionSide: nextPosSide,
         sizePct: newSize,
@@ -13933,9 +14060,8 @@ async function runPaperFuturesForBar({
         budgetUsedKrw: useBudget ? budgetUsedForPosition : null,
         budgetSource: useBudget ? riskBudget.source : null,
         meta: projectedMetaForWrite,
-        expectedWriteToken: Object.prototype.hasOwnProperty.call(pos, "position_write_token")
-          ? (pos.position_write_token ?? null)
-          : null,
+        source: "INTENT_FILL",
+        reason: "INTENT_FILL_PROJECTED_POSITION_WRITE",
       });
     }
 
@@ -14102,13 +14228,20 @@ async function runPaperFuturesForBar({
     }),
     ...(timeStopSignal ? [timeStopSignal] : []),
   ];
-  const internalSignals = finalizeInternalSignals({
-    signals: internalSignalsRaw,
-    posMeta,
-    barCloseMs,
-    fallbackUtc: signalBarCloseUtc,
+  const internalSignals = filterLiveFuturesInternalSignals({
     exchange,
+    liveCfg,
+    signals: finalizeInternalSignals({
+      signals: internalSignalsRaw,
+      posMeta,
+      barCloseMs,
+      fallbackUtc: signalBarCloseUtc,
+      exchange,
+      symbol,
+    }),
+    runId,
     symbol,
+    tf,
   });
 
   const externalSignalsRaw = Number.isFinite(signalBarCloseMs)
@@ -15620,6 +15753,9 @@ module.exports = {
     inferEntryMetaDirection,
     canEvaluateInternalExitSignalsForBar,
     finalizeInternalSignals,
+    shouldSuppressLiveFuturesInternalExitSignal,
+    shouldSuppressInternalLiveExitFillAlert,
+    filterLiveFuturesInternalSignals,
     scaleBaseBarCountByTf,
     resolveTfFromMs,
     resolveBinanceMaxHoldBars,
@@ -15680,6 +15816,7 @@ module.exports = {
     runDistributedFuturesPositionSync,
     shouldForceImmediateLiveFuturesReconcile,
     buildMetaPatch,
+    upsertPositionWithLatestRetry,
     upsertPositionMetaOnlyWithLatestRetry,
     sanitizeBarLoopMetaUpdates,
     applyBarLoopObservationMetaUpdate,
