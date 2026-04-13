@@ -88,12 +88,17 @@ function resolveRegimeDetail(row) {
   const candidates = [
     { value: row && row.regime, source: "row.regime" },
     { value: row && row.market_regime, source: "row.market_regime" },
+    { value: row && row.market_state, source: "row.market_state" },
     { value: f.regime, source: "features.regime" },
     { value: f.market_regime, source: "features.market_regime" },
+    { value: f.market_state, source: "features.market_state" },
+    { value: f.market_state_label, source: "features.market_state_label" },
     { value: f.regime_label, source: "features.regime_label" },
     { value: f.zz_regime, source: "features.zz_regime" },
     { value: f.pro_regime_state, source: "features.pro_regime_state" },
     { value: f.regime_state, source: "features.regime_state" },
+    { value: f._openclaw_executor_regime, source: "features._openclaw_executor_regime" },
+    { value: f.openclaw_executor_regime, source: "features.openclaw_executor_regime" },
   ];
   for (const candidate of candidates) {
     const detail = detailFromToken(candidate.value, candidate.source);

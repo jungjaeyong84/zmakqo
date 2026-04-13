@@ -7,6 +7,7 @@ const fs = require("fs");
 const path = require("path");
 const { getFirestore } = require("../src/storage/firestore");
 const { enrichFeaturesWithRegime } = require("../src/utils/regime");
+const { isEntryTierEvent } = require("../src/utils/liveEntryTaxonomy");
 
 const LOOKBACK_DAYS = Math.max(1, Number(process.env.REGIME_GAP_LOOKBACK_DAYS || 14));
 const PAGE_SIZE = Math.max(100, Number(process.env.REGIME_GAP_PAGE_SIZE || 500));
@@ -40,6 +41,19 @@ function buildRegimeState(row = null) {
   };
 }
 
+function isRegimeApplicable(collectionName, row = null) {
+  const eventIntent = upper(row && row.event_intent);
+  if (collectionName === "order_intents_paper") {
+    if (eventIntent === "ENTRY" || eventIntent === "ADD") return true;
+    return isEntryTierEvent(row);
+  }
+  if (collectionName === "fills_paper") {
+    if (eventIntent === "ENTRY" || eventIntent === "ADD") return true;
+    return isEntryTierEvent(row);
+  }
+  return isEntryTierEvent(row);
+}
+
 async function fetchRecentDocs(db, collectionName) {
   const rows = [];
   const sinceIso = new Date(Date.now() - (LOOKBACK_DAYS * 24 * 60 * 60 * 1000)).toISOString();
@@ -63,10 +77,13 @@ async function fetchRecentDocs(db, collectionName) {
   return rows;
 }
 
-function summarizeMissing(rows = []) {
+function summarizeMissing(rows = [], collectionName = "signals") {
   const missing = [];
   const bySymbol = new Map();
+  let scoped = 0;
   for (const row of rows) {
+    if (!isRegimeApplicable(collectionName, row)) continue;
+    scoped += 1;
     const state = buildRegimeState(row);
     if (state.regime) continue;
     const symbol = upper(row.symbol || row.symbol_or_pair_id || row.market) || "UNKNOWN";
@@ -81,9 +98,9 @@ function summarizeMissing(rows = []) {
     bySymbol.set(symbol, (bySymbol.get(symbol) || 0) + 1);
   }
   return {
-    scoped_n: rows.length,
+    scoped_n: scoped,
     missing_n: missing.length,
-    missing_rate: rows.length > 0 ? Number((missing.length / rows.length).toFixed(6)) : null,
+    missing_rate: scoped > 0 ? Number((missing.length / scoped).toFixed(6)) : null,
     top_symbols: Array.from(bySymbol.entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 20)
@@ -97,9 +114,9 @@ function buildReport({ signals = [], intents = [], fills = [] } = {}) {
     generated_at_iso: nowIso(),
     lookback_days: LOOKBACK_DAYS,
     exchange: PROVIDER,
-    signals: summarizeMissing(signals),
-    intents: summarizeMissing(intents),
-    fills: summarizeMissing(fills),
+    signals: summarizeMissing(signals, "signals"),
+    intents: summarizeMissing(intents, "order_intents_paper"),
+    fills: summarizeMissing(fills, "fills_paper"),
   };
 }
 
@@ -158,6 +175,7 @@ if (require.main === module) {
 
 module.exports = {
   __test: {
+    isRegimeApplicable,
     summarizeMissing,
     buildReport,
   },
