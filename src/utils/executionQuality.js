@@ -1,5 +1,7 @@
 "use strict";
 
+const { defaultMarketsFromEnv } = require("./marketConfig");
+
 function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
@@ -21,6 +23,10 @@ function allowVenue(venue = "") {
   return venue === "BINANCEFUT";
 }
 
+function allowedMarketsSet() {
+  return new Set(defaultMarketsFromEnv("BINANCEFUT"));
+}
+
 function summarizeExecutionQuality({
   microstructure = null,
   bridgeLatency = null,
@@ -40,6 +46,7 @@ function summarizeExecutionQuality({
   const slippage = metrics.slippage && typeof metrics.slippage === "object" ? metrics.slippage : {};
   const partial = metrics.partial_fill && typeof metrics.partial_fill === "object" ? metrics.partial_fill : {};
   const bridge = bridgeLatency && typeof bridgeLatency === "object" ? bridgeLatency : {};
+  const allowedMarkets = allowedMarketsSet();
   const fillDocs = (Array.isArray(fills) ? fills : []).filter((row) => allowVenue(normalizeVenue(row)));
   const intentDocs = (Array.isArray(intents) ? intents : []).filter((row) => allowVenue(normalizeVenue(row)));
   const executionModelSummary = executionModelDataset && typeof executionModelDataset === "object"
@@ -99,16 +106,16 @@ function summarizeExecutionQuality({
   for (const fill of fillDocs) {
     const market = String(fill && (fill.symbol || fill.symbol_or_pair_id) || "").trim().toUpperCase();
     if (!market) continue;
+    if (allowedMarkets.size && !allowedMarkets.has(market)) continue;
     const row = byMarket.get(market) || {
       market,
       fill_n: 0,
       slippage_bps_sum: 0,
       slippage_bps_n: 0,
-      created_to_fill_ms_sum: 0,
-      created_to_fill_ms_n: 0,
       partial_fill_n: 0,
       intent_seen: new Set(),
       fill_count_by_intent: new Map(),
+      first_fill_ms_by_intent: new Map(),
     };
     row.fill_n += 1;
     const slippageBps = toNum(fill && fill.slippage_bps);
@@ -121,8 +128,11 @@ function summarizeExecutionQuality({
     const intent = intentId ? intentsById.get(intentId) : null;
     const intentCreatedMs = intent ? toIsoMs(intent.created_at) : null;
     if (fillCreatedMs != null && intentCreatedMs != null && fillCreatedMs >= intentCreatedMs) {
-      row.created_to_fill_ms_sum += (fillCreatedMs - intentCreatedMs);
-      row.created_to_fill_ms_n += 1;
+      const deltaMs = fillCreatedMs - intentCreatedMs;
+      if (intentId) {
+        const prev = row.first_fill_ms_by_intent.get(intentId);
+        if (!Number.isFinite(prev) || deltaMs < prev) row.first_fill_ms_by_intent.set(intentId, deltaMs);
+      }
     }
     if (intentId) {
       row.intent_seen.add(intentId);
@@ -134,12 +144,16 @@ function summarizeExecutionQuality({
   const rows = Array.from(byMarket.values()).map((row) => {
     const partialFillN = Array.from(row.fill_count_by_intent.values()).filter((count) => count > 1).length;
     const intentCount = row.intent_seen.size;
+    const firstFillLatencies = Array.from(row.first_fill_ms_by_intent.values()).filter((value) => Number.isFinite(value));
+    const createdToFillMsAvg = firstFillLatencies.length > 0
+      ? (firstFillLatencies.reduce((sum, value) => sum + value, 0) / firstFillLatencies.length)
+      : null;
     return {
       market: row.market,
       fill_n: row.fill_n,
       intent_n: intentCount,
       avg_slippage_bps: row.slippage_bps_n > 0 ? row.slippage_bps_sum / row.slippage_bps_n : null,
-      avg_created_to_fill_ms: row.created_to_fill_ms_n > 0 ? row.created_to_fill_ms_sum / row.created_to_fill_ms_n : null,
+      avg_created_to_fill_ms: createdToFillMsAvg,
       partial_fill_intent_n: partialFillN,
       partial_fill_rate_pct: intentCount > 0 ? (partialFillN / intentCount) * 100 : null,
     };
@@ -158,6 +172,18 @@ function summarizeExecutionQuality({
   const topPartial = rows
     .filter((row) => Number.isFinite(toNum(row.partial_fill_rate_pct)))
     .sort((a, b) => (toNum(b.partial_fill_rate_pct) || 0) - (toNum(a.partial_fill_rate_pct) || 0))[0] || null;
+  const topLatencyRows = rows
+    .filter((row) => Number.isFinite(toNum(row.avg_created_to_fill_ms)))
+    .sort((a, b) => (toNum(b.avg_created_to_fill_ms) || 0) - (toNum(a.avg_created_to_fill_ms) || 0))
+    .slice(0, 10);
+  const topSlippageRows = rows
+    .filter((row) => Number.isFinite(toNum(row.avg_slippage_bps)))
+    .sort((a, b) => (toNum(b.avg_slippage_bps) || 0) - (toNum(a.avg_slippage_bps) || 0))
+    .slice(0, 10);
+  const topPartialRows = rows
+    .filter((row) => Number.isFinite(toNum(row.partial_fill_rate_pct)))
+    .sort((a, b) => (toNum(b.partial_fill_rate_pct) || 0) - (toNum(a.partial_fill_rate_pct) || 0))
+    .slice(0, 10);
 
   const createdToFillP95Raw = toNum(latency.created_to_fill_p95_ms);
   const adverseSlippageP95 = toNum(slippage.adverse_p95_bps);
@@ -220,6 +246,9 @@ function summarizeExecutionQuality({
       top_latency_market: topLatency ? topLatency.market : null,
       top_slippage_market: topSlippage ? topSlippage.market : null,
       top_partial_market: topPartial ? topPartial.market : null,
+      top_latency_rows: topLatencyRows,
+      top_slippage_rows: topSlippageRows,
+      top_partial_rows: topPartialRows,
       top_operational_webhook_delay_cause: topOperationalDelayCause,
       top_operational_webhook_delay_rows_n: topOperationalDelay && Number.isFinite(toNum(topOperationalDelay.rows_n)) ? toNum(topOperationalDelay.rows_n) : null,
       top_operational_immediate_intent_delay_group: topOperationalIntentDelayGroup && topOperationalIntentDelayGroup.key ? topOperationalIntentDelayGroup.key : null,

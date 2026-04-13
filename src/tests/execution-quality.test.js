@@ -99,6 +99,12 @@ const { summarizeExecutionQuality } = require("../utils/executionQuality");
   assert.ok(report.summary.review_reasons.includes("OPERATIONAL_WEBHOOK_DELAY_PRESENT"));
   assert.ok(report.summary.review_reasons.includes("NO_FILL_REASON_PRESENT"));
   assert.strictEqual(report.summary.top_partial_market, "SOLUSDT");
+  assert.strictEqual(report.summary.top_latency_rows[0].market, "BTCUSDT");
+  assert.strictEqual(report.summary.top_latency_rows[1].market, "SOLUSDT");
+  assert.strictEqual(report.summary.top_latency_rows[0].avg_created_to_fill_ms, 120000);
+  assert.strictEqual(report.summary.top_latency_rows[1].avg_created_to_fill_ms, 60000);
+  assert.strictEqual(report.summary.top_slippage_rows[0].market, "SOLUSDT");
+  assert.strictEqual(report.summary.top_partial_rows[0].market, "SOLUSDT");
   assert.strictEqual(report.summary.top_operational_webhook_delay_cause, "IMMEDIATE_EXEC_TRUE_INTENT_DELAY");
   assert.strictEqual(report.summary.top_operational_immediate_intent_delay_group, "TV_WEBHOOK|EARLY_LONG|BTCUSDT");
   assert.strictEqual(report.summary.top_no_fill_reason, "LIVE_EXCEPTION");
@@ -153,6 +159,22 @@ const { summarizeExecutionQuality } = require("../utils/executionQuality");
   assert.strictEqual(report.summary.created_to_fill_p95_ms, 3979);
   assert.ok(report.summary.review_reasons.includes("LEGACY_LATENCY_GUARD_FALLBACK_ACTIVE"));
   assert.ok(!report.summary.review_reasons.includes("CREATED_TO_FILL_P95_HIGH"));
+})();
+
+(() => {
+  const report = summarizeExecutionQuality({
+    intents: [
+      { intent_id: "i1", created_at: "2026-04-01T00:00:00.000Z" },
+      { intent_id: "i2", created_at: "2026-04-01T00:00:00.000Z" },
+    ],
+    fills: [
+      { intent_id: "i1", symbol: "BTCUSDT", created_at: "2026-04-01T00:00:10.000Z", slippage_bps: 1 },
+      { intent_id: "i2", symbol: "LTCUSDT", created_at: "2026-04-01T00:00:05.000Z", slippage_bps: 9 },
+    ],
+  });
+
+  assert.strictEqual(report.by_market.length, 1);
+  assert.strictEqual(report.by_market[0].market, "BTCUSDT");
 })();
 
 console.log("EXECUTION_QUALITY_TEST_OK");
