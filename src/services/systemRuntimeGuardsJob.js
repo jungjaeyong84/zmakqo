@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { spawnSync } = require("child_process");
 const { toKstString } = require("../utils/timeKst");
 const { loadOperationalGuardRuntime } = require("./operationalGuardRuntime");
 const { loadMlServingRuntime } = require("./mlServingRuntime");
@@ -24,6 +25,8 @@ const REPO_ROOT = path.resolve(__dirname, "../..");
 const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
 const EXECUTION_QUALITY_LATEST_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_execution_quality_latest.json");
 const LINEAGE_HEALTH_LATEST_PATH = path.join(OPS_DAILY_DIR, "signal_lineage_health_latest.json");
+const EXECUTION_QUALITY_REFRESH_SCRIPT = path.join(REPO_ROOT, "scripts", "report-best-self-evolution-execution-quality.js");
+const LINEAGE_HEALTH_REFRESH_SCRIPT = path.join(REPO_ROOT, "scripts", "report-signal-lineage-health.js");
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -40,6 +43,23 @@ function safeReadJson(filePath) {
   } catch (_) {
     return null;
   }
+}
+
+function runRefreshScript(scriptPath) {
+  const res = spawnSync(process.execPath, [scriptPath], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (res.status !== 0) {
+    const stderr = String(res.stderr || "").trim();
+    const stdout = String(res.stdout || "").trim();
+    throw new Error(stderr || stdout || `refresh script failed: ${path.basename(scriptPath)}`);
+  }
+  return {
+    ok: true,
+    script: scriptPath,
+  };
 }
 
 function deriveSummaryStatus({ sloState = null, anomalyState = null } = {}) {
@@ -67,6 +87,8 @@ async function runSystemRuntimeGuardsJob({
   loadExecutionQuality = loadPreferredExecutionQualityInput,
   loadLineageHealth = loadPreferredLineageHealthInput,
   loadNativeTrailProtection = loadNativeTrailProtectionRuntime,
+  refreshExecutionQualityInput = () => runRefreshScript(EXECUTION_QUALITY_REFRESH_SCRIPT),
+  refreshLineageHealthInput = () => runRefreshScript(LINEAGE_HEALTH_REFRESH_SCRIPT),
 } = {}) {
   const ex = String(exchange || "BINANCEFUT").trim().toUpperCase();
   const generatedAtIso = new Date(nowMs).toISOString();
@@ -76,9 +98,18 @@ async function runSystemRuntimeGuardsJob({
     loadOpsRuntime({ exchange: ex, force: true }),
     loadServingRuntime({ exchange: ex, force: true }),
   ]);
+  const staleMaxAgeMs = Math.max(60 * 1000, Number(process.env.SYSTEM_SLO_MAX_AGE_MS || (6 * 60 * 60 * 1000)));
   const [executionQuality, lineageHealth, nativeTrailProtection] = await Promise.all([
-    Promise.resolve().then(() => loadExecutionQuality()),
-    Promise.resolve().then(() => loadLineageHealth()),
+    Promise.resolve().then(() => loadExecutionQuality({
+      maxAgeMs: staleMaxAgeMs,
+      nowMs,
+      refreshLocal: refreshExecutionQualityInput,
+    })),
+    Promise.resolve().then(() => loadLineageHealth({
+      maxAgeMs: staleMaxAgeMs,
+      nowMs,
+      refreshLocal: refreshLineageHealthInput,
+    })),
     Promise.resolve().then(() => loadNativeTrailProtection({ exchange: ex })),
   ]);
   const trace = normalizeTraceContext({
@@ -267,5 +298,6 @@ module.exports = {
   runSystemRuntimeGuardsJob,
   __test: {
     deriveSummaryStatus,
+    runRefreshScript,
   },
 };

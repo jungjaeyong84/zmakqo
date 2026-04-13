@@ -112,6 +112,53 @@ async function run() {
   });
   assert.strictEqual(capturedExecutionQuality.summary.status, "EXECUTION_QUALITY_OK");
   assert.strictEqual(capturedLineageHealth.summary.verdict, "PASS");
+
+  let refreshedExecutionQuality = 0;
+  let refreshedLineage = 0;
+  let refreshedExecutionQualityUsed = null;
+  let refreshedLineageUsed = null;
+  await runSystemRuntimeGuardsJob({
+    exchange: "BINANCEFUT",
+    nowMs: Date.parse("2026-04-13T04:00:00.000Z"),
+    remediateOnBlock: false,
+    dryRun: true,
+    artifactsDir,
+    loadOpsRuntime: async () => ({ status: "PASS", reason: "OPS_GUARD_OK", block_new_entries: false }),
+    loadServingRuntime: async () => ({ status: "PASS", reason: "ML_SERVING_OK", block_new_entries: false }),
+    loadExecutionQuality: async (options) => {
+      assert.ok(options && typeof options.refreshLocal === "function");
+      await options.refreshLocal();
+      return { generated_at: "2026-04-13T03:59:00.000Z", summary: { status: "EXECUTION_QUALITY_OK" } };
+    },
+    loadLineageHealth: async (options) => {
+      assert.ok(options && typeof options.refreshLocal === "function");
+      await options.refreshLocal();
+      return { generated_at: "2026-04-13T03:59:00.000Z", summary: { verdict: "PASS" } };
+    },
+    refreshExecutionQualityInput: async () => { refreshedExecutionQuality += 1; },
+    refreshLineageHealthInput: async () => { refreshedLineage += 1; },
+    loadNativeTrailProtection: async () => ({ available: true, gap_count: 0, top_symbols: [] }),
+    buildSlo: (payload) => {
+      refreshedExecutionQualityUsed = payload.executionQuality;
+      refreshedLineageUsed = payload.lineageHealth;
+      return { status: "PASS", reason: "SYSTEM_SLO_HEALTHY", block_new_entries: false };
+    },
+    buildAnomaly: () => ({
+      status: "PASS",
+      reason: "SYSTEM_ANOMALY_HEALTHY",
+      circuit_breaker_open: false,
+      rollback_action: "NONE",
+    }),
+    recordSlo: async () => {},
+    recordAnomaly: async () => {},
+    recordRemediation: async () => {},
+    actuateServing: async () => ({ ok: true, skipped: true, reason: "NOOP" }),
+    exportTrace: async () => ({ ok: true, skipped: true, reason: "OTEL_EXPORT_SKIPPED" }),
+  });
+  assert.strictEqual(refreshedExecutionQuality, 1);
+  assert.strictEqual(refreshedLineage, 1);
+  assert.strictEqual(refreshedExecutionQualityUsed.summary.status, "EXECUTION_QUALITY_OK");
+  assert.strictEqual(refreshedLineageUsed.summary.verdict, "PASS");
 }
 
 run()

@@ -77,20 +77,55 @@ function choosePreferredInput({ localDoc = null, sharedDoc = null } = {}) {
   return sharedDoc && typeof sharedDoc === "object" ? sharedDoc : null;
 }
 
-async function loadPreferredExecutionQualityInput() {
-  const [localDoc, sharedDoc] = await Promise.all([
-    Promise.resolve().then(() => safeReadJson(EXECUTION_QUALITY_PATH)),
-    loadSharedLatestDoc(EXECUTION_QUALITY_REPORT_LATEST_COLLECTION, EXECUTION_QUALITY_REPORT_LATEST_DOC_ID),
-  ]);
-  return choosePreferredInput({ localDoc, sharedDoc });
+function isStaleDoc(doc = null, maxAgeMs = null, nowMs = Date.now()) {
+  if (!doc || typeof doc !== "object") return true;
+  const generatedAtMs = resolveGeneratedAtMs(doc);
+  if (!Number.isFinite(generatedAtMs)) return true;
+  if (!Number.isFinite(maxAgeMs) || maxAgeMs <= 0) return false;
+  return Math.max(0, nowMs - generatedAtMs) > maxAgeMs;
 }
 
-async function loadPreferredLineageHealthInput() {
-  const [localDoc, sharedDoc] = await Promise.all([
-    Promise.resolve().then(() => safeReadJson(LINEAGE_HEALTH_PATH)),
-    loadSharedLatestDoc(LINEAGE_REPORT_LATEST_COLLECTION, LINEAGE_REPORT_LATEST_DOC_ID),
-  ]);
-  return choosePreferredInput({ localDoc, sharedDoc });
+async function loadPreferredInput({
+  localPath = null,
+  sharedCollection = null,
+  sharedDocId = null,
+  maxAgeMs = null,
+  nowMs = Date.now(),
+  refreshLocal = null,
+} = {}) {
+  async function loadPair() {
+    return Promise.all([
+      Promise.resolve().then(() => safeReadJson(localPath)),
+      loadSharedLatestDoc(sharedCollection, sharedDocId),
+    ]);
+  }
+
+  let [localDoc, sharedDoc] = await loadPair();
+  let chosen = choosePreferredInput({ localDoc, sharedDoc });
+  if (typeof refreshLocal === "function" && isStaleDoc(chosen, maxAgeMs, nowMs)) {
+    await Promise.resolve().then(() => refreshLocal());
+    [localDoc, sharedDoc] = await loadPair();
+    chosen = choosePreferredInput({ localDoc, sharedDoc });
+  }
+  return chosen;
+}
+
+async function loadPreferredExecutionQualityInput(options = null) {
+  return loadPreferredInput({
+    localPath: EXECUTION_QUALITY_PATH,
+    sharedCollection: EXECUTION_QUALITY_REPORT_LATEST_COLLECTION,
+    sharedDocId: EXECUTION_QUALITY_REPORT_LATEST_DOC_ID,
+    ...(options && typeof options === "object" ? options : {}),
+  });
+}
+
+async function loadPreferredLineageHealthInput(options = null) {
+  return loadPreferredInput({
+    localPath: LINEAGE_HEALTH_PATH,
+    sharedCollection: LINEAGE_REPORT_LATEST_COLLECTION,
+    sharedDocId: LINEAGE_REPORT_LATEST_DOC_ID,
+    ...(options && typeof options === "object" ? options : {}),
+  });
 }
 
 module.exports = {
@@ -101,5 +136,7 @@ module.exports = {
     readSummary,
     resolveGeneratedAtMs,
     choosePreferredInput,
+    isStaleDoc,
+    loadPreferredInput,
   },
 };
