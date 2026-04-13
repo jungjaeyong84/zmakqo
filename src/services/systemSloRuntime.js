@@ -88,6 +88,7 @@ function buildSystemSloState({
   executionQuality = null,
   lineageHealth = null,
   nativeTrailProtection = null,
+  exitIntegrityCycle = null,
   nowMs = Date.now(),
   maxAgeMs = null,
 } = {}) {
@@ -96,6 +97,10 @@ function buildSystemSloState({
   const qualityDoc = executionQuality && typeof executionQuality === "object" ? executionQuality : {};
   const lineageDoc = lineageHealth && typeof lineageHealth === "object" ? lineageHealth : {};
   const nativeProtection = nativeTrailProtection && typeof nativeTrailProtection === "object" ? nativeTrailProtection : {};
+  const exitIntegrityDoc = exitIntegrityCycle && typeof exitIntegrityCycle === "object" ? exitIntegrityCycle : {};
+  const exitIntegritySummary = exitIntegrityDoc.summary && typeof exitIntegrityDoc.summary === "object"
+    ? exitIntegrityDoc.summary
+    : exitIntegrityDoc;
   const quality = readSummary(qualityDoc);
   const lineage = readSummary(lineageDoc);
   const resolvedMaxAgeMs = Math.max(60 * 1000, Number(maxAgeMs || process.env.SYSTEM_SLO_MAX_AGE_MS || (6 * 60 * 60 * 1000)));
@@ -115,6 +120,13 @@ function buildSystemSloState({
   const nativeTrailProtectionGapCount = toNum(nativeProtection.gap_count);
   if (Number.isFinite(nativeTrailProtectionGapCount) && nativeTrailProtectionGapCount > 0) {
     issues.push("NATIVE_TRAIL_PROTECTION_GAP");
+  }
+  const exitIntegrityLiveIssueCount = toNum(exitIntegritySummary.live_issue_count);
+  const exitIntegrityStatus = upper(exitIntegritySummary.status);
+  if (Number.isFinite(exitIntegrityLiveIssueCount) && exitIntegrityLiveIssueCount > 0) {
+    issues.push("EXIT_INTEGRITY_LIVE_ISSUE");
+  } else if (exitIntegrityStatus && exitIntegrityStatus !== "OK") {
+    issues.push("EXIT_INTEGRITY_STATUS_WARN");
   }
 
   const qualityStatus = upper(quality.status);
@@ -146,6 +158,7 @@ function buildSystemSloState({
     reason = issues[0];
     if (issues.includes("OPS_GUARD_HOLD")) blockNewEntries = true;
     if (issues.includes("NATIVE_TRAIL_PROTECTION_GAP")) blockNewEntries = true;
+    if (issues.includes("EXIT_INTEGRITY_LIVE_ISSUE")) blockNewEntries = true;
   }
 
   return {
@@ -189,6 +202,8 @@ function buildSystemSloState({
       lineage_fill_intent_null_rate: lineageEntryFillIntentNullRate,
       native_trail_protection_gap_count: nativeTrailProtectionGapCount,
       native_trail_protection_top_symbols: Array.isArray(nativeProtection.top_symbols) ? nativeProtection.top_symbols.slice(0, 10) : [],
+      exit_integrity_status: exitIntegrityStatus,
+      exit_integrity_live_issue_count: exitIntegrityLiveIssueCount,
     },
   };
 }

@@ -16,6 +16,7 @@ const { applyMlServingActuation } = require("./mlServingActuator");
 const { exportTraceContext } = require("./otelExporter");
 const { normalizeTraceContext } = require("../utils/traceContext");
 const { loadNativeTrailProtectionRuntime } = require("./nativeTrailProtectionRuntime");
+const { runBinanceExitIntegrityCycle } = require("../../scripts/run-binance-exit-integrity-cycle");
 const {
   loadPreferredExecutionQualityInput,
   loadPreferredLineageHealthInput,
@@ -87,12 +88,33 @@ async function runSystemRuntimeGuardsJob({
   loadExecutionQuality = loadPreferredExecutionQualityInput,
   loadLineageHealth = loadPreferredLineageHealthInput,
   loadNativeTrailProtection = loadNativeTrailProtectionRuntime,
+  runExitIntegrityCycle = runBinanceExitIntegrityCycle,
   refreshExecutionQualityInput = () => runRefreshScript(EXECUTION_QUALITY_REFRESH_SCRIPT),
   refreshLineageHealthInput = () => runRefreshScript(LINEAGE_HEALTH_REFRESH_SCRIPT),
 } = {}) {
   const ex = String(exchange || "BINANCEFUT").trim().toUpperCase();
   const generatedAtIso = new Date(nowMs).toISOString();
   const generatedAtKst = toKstString(generatedAtIso, { fallbackToString: true });
+  const artifactBaseDir = path.resolve(String(artifactsDir || OPS_DAILY_DIR));
+  const exitIntegrityApply = dryRun === true
+    ? false
+    : !["0", "false", "off", "no"].includes(String(process.env.SYSTEM_RUNTIME_GUARDS_EXIT_INTEGRITY_APPLY || "true").trim().toLowerCase());
+  const exitIntegrityCycle = await Promise.resolve().then(() => runExitIntegrityCycle({
+    apply: exitIntegrityApply,
+    exchange: ex,
+    opsDailyDir: artifactBaseDir,
+  })).catch((err) => ({
+    ok: false,
+    status: "FAIL",
+    reason: err && err.message ? err.message : String(err),
+    summary: {
+      status: "FAIL",
+      live_issue_count: null,
+      reasons: [err && err.message ? err.message : String(err)],
+    },
+    output_json: path.join(artifactBaseDir, "binance_exit_integrity_cycle_latest.json"),
+    output_md: path.join(artifactBaseDir, "binance_exit_integrity_cycle_latest.md"),
+  }));
 
   const [operationalGuard, mlServing] = await Promise.all([
     loadOpsRuntime({ exchange: ex, force: true }),
@@ -128,6 +150,7 @@ async function runSystemRuntimeGuardsJob({
     executionQuality,
     lineageHealth,
     nativeTrailProtection,
+    exitIntegrityCycle,
     nowMs,
   });
   const anomalyState = buildAnomaly({
@@ -137,10 +160,9 @@ async function runSystemRuntimeGuardsJob({
     mlServing,
     executionQuality,
     nativeTrailProtection,
+    exitIntegrityCycle,
     nowMs,
   });
-
-  const artifactBaseDir = path.resolve(String(artifactsDir || OPS_DAILY_DIR));
   const sloPath = path.join(artifactBaseDir, "system_slo_state_latest.json");
   const anomalyPath = path.join(artifactBaseDir, "system_anomaly_state_latest.json");
   const nativeTrailProtectionPath = path.join(artifactBaseDir, "native_trail_protection_gap_latest.json");
@@ -172,14 +194,20 @@ async function runSystemRuntimeGuardsJob({
       generatedAt: generatedAtIso,
       state: sloState,
       source: "RUN_SYSTEM_RUNTIME_GUARDS",
-      artifacts: { latest_json: sloPath },
+      artifacts: {
+        latest_json: sloPath,
+        binance_exit_integrity_cycle_latest_json: exitIntegrityCycle && exitIntegrityCycle.output_json ? exitIntegrityCycle.output_json : null,
+      },
     }),
     recordAnomaly({
       exchange: ex,
       generatedAt: generatedAtIso,
       state: anomalyState,
       source: "RUN_SYSTEM_RUNTIME_GUARDS",
-      artifacts: { latest_json: anomalyPath },
+      artifacts: {
+        latest_json: anomalyPath,
+        binance_exit_integrity_cycle_latest_json: exitIntegrityCycle && exitIntegrityCycle.output_json ? exitIntegrityCycle.output_json : null,
+      },
     }),
   ]);
 
@@ -265,6 +293,8 @@ async function runSystemRuntimeGuardsJob({
       remediation_skipped: remediation && remediation.skipped === true,
       actuation_skipped: actuation && actuation.skipped === true,
       native_trail_protection_gap_count: Number(nativeTrailProtection && nativeTrailProtection.gap_count || 0),
+      exit_integrity_status: String(exitIntegrityCycle && exitIntegrityCycle.status || exitIntegrityCycle && exitIntegrityCycle.summary && exitIntegrityCycle.summary.status || "UNKNOWN"),
+      exit_integrity_live_issue_count: Number(exitIntegrityCycle && exitIntegrityCycle.summary && exitIntegrityCycle.summary.live_issue_count || 0),
     },
   });
 
@@ -285,10 +315,12 @@ async function runSystemRuntimeGuardsJob({
     remediation,
     otel_export: otelExport,
     native_trail_protection: nativeTrailProtection,
+    exit_integrity_cycle: exitIntegrityCycle,
     artifacts: {
       system_slo_latest_json: sloPath,
       system_anomaly_latest_json: anomalyPath,
       native_trail_protection_latest_json: nativeTrailProtectionPath,
+      binance_exit_integrity_cycle_latest_json: exitIntegrityCycle && exitIntegrityCycle.output_json ? exitIntegrityCycle.output_json : null,
       system_anomaly_remediation_latest_json: remediation && remediation.artifacts ? remediation.artifacts.latest_json : null,
     },
   };

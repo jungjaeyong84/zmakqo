@@ -78,6 +78,7 @@ function buildSystemAnomalyState({
   mlServing = null,
   executionQuality = null,
   nativeTrailProtection = null,
+  exitIntegrityCycle = null,
   nowMs = Date.now(),
 } = {}) {
   const slo = systemSlo && typeof systemSlo === "object" ? systemSlo : {};
@@ -85,6 +86,10 @@ function buildSystemAnomalyState({
   const serving = mlServing && typeof mlServing === "object" ? mlServing : {};
   const quality = readSummary(executionQuality);
   const nativeProtection = nativeTrailProtection && typeof nativeTrailProtection === "object" ? nativeTrailProtection : {};
+  const exitIntegrityDoc = exitIntegrityCycle && typeof exitIntegrityCycle === "object" ? exitIntegrityCycle : {};
+  const exitIntegritySummary = exitIntegrityDoc.summary && typeof exitIntegrityDoc.summary === "object"
+    ? exitIntegrityDoc.summary
+    : exitIntegrityDoc;
   const issues = [];
 
   if (slo.block_new_entries === true) {
@@ -102,8 +107,9 @@ function buildSystemAnomalyState({
   if (toNum(quality.partial_fill_rate_pct) >= 80) issues.push("ANOMALY_PARTIAL_FILL_BURST");
   if (resolveExecutionQualityLatencyMs(quality) >= 3000) issues.push("ANOMALY_LATENCY_P95_HIGH");
   if (toNum(nativeProtection.gap_count) > 0) issues.push("ANOMALY_NATIVE_TRAIL_PROTECTION_GAP");
+  if (toNum(exitIntegritySummary.live_issue_count) > 0) issues.push("ANOMALY_EXIT_INTEGRITY_LIVE_ISSUE");
 
-  const hard = issues.some((code) => code.endsWith("_BLOCK") || code.includes("AUDIT_ISSUE") || code.includes("QTY_PCT") || code === "ANOMALY_NATIVE_TRAIL_PROTECTION_GAP");
+  const hard = issues.some((code) => code.endsWith("_BLOCK") || code.includes("AUDIT_ISSUE") || code.includes("QTY_PCT") || code === "ANOMALY_NATIVE_TRAIL_PROTECTION_GAP" || code === "ANOMALY_EXIT_INTEGRITY_LIVE_ISSUE");
   const autoRemediationEnabled = !["0", "false", "off", "no"].includes(String(process.env.SYSTEM_ANOMALY_AUTO_REMEDIATION_ENABLED || "true").trim().toLowerCase());
   const rollbackTriggered = autoRemediationEnabled && (
     serving.block_new_entries === true
@@ -137,6 +143,8 @@ function buildSystemAnomalyState({
       operational_active_error_count: toNum(ops.active_error_count),
       operational_error_count: toNum(ops.error_count),
       native_trail_protection_gap_count: toNum(nativeProtection.gap_count),
+      exit_integrity_status: upper(exitIntegritySummary.status),
+      exit_integrity_live_issue_count: toNum(exitIntegritySummary.live_issue_count),
     },
   };
 }

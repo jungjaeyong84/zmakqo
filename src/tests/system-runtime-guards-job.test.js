@@ -35,6 +35,13 @@ async function run() {
     remediateOnBlock: true,
     dryRun: true,
     artifactsDir,
+    runExitIntegrityCycle: async () => ({
+      ok: true,
+      status: "OK",
+      summary: { status: "OK", live_issue_count: 0 },
+      output_json: path.join(artifactsDir, "binance_exit_integrity_cycle_latest.json"),
+      output_md: path.join(artifactsDir, "binance_exit_integrity_cycle_latest.md"),
+    }),
     loadOpsRuntime: async () => ({ status: "PASS", reason: "OPS_GUARD_OK", block_new_entries: false }),
     loadServingRuntime: async () => ({ status: "PASS", reason: "ML_SERVING_OK", block_new_entries: false }),
     loadNativeTrailProtection: async () => ({ available: true, gap_count: 1, top_symbols: [{ symbol: "ETHUSDT", count: 1 }] }),
@@ -77,8 +84,10 @@ async function run() {
   assert.ok(String(result.artifacts.system_slo_latest_json || "").startsWith(artifactsDir));
   assert.ok(String(result.artifacts.system_anomaly_latest_json || "").startsWith(artifactsDir));
   assert.ok(String(result.artifacts.native_trail_protection_latest_json || "").startsWith(artifactsDir));
+  assert.ok(String(result.artifacts.binance_exit_integrity_cycle_latest_json || "").startsWith(artifactsDir));
   assert.ok(String(result.trace.traceparent || "").startsWith("00-"));
   assert.strictEqual(result.native_trail_protection.gap_count, 1);
+  assert.strictEqual(result.exit_integrity_cycle.summary.live_issue_count, 0);
 
   let capturedExecutionQuality = null;
   let capturedLineageHealth = null;
@@ -88,6 +97,13 @@ async function run() {
     remediateOnBlock: false,
     dryRun: true,
     artifactsDir,
+    runExitIntegrityCycle: async () => ({
+      ok: true,
+      status: "OK",
+      summary: { status: "OK", live_issue_count: 0 },
+      output_json: path.join(artifactsDir, "binance_exit_integrity_cycle_latest.json"),
+      output_md: path.join(artifactsDir, "binance_exit_integrity_cycle_latest.md"),
+    }),
     loadOpsRuntime: async () => ({ status: "보류", reason: "OPS_GUARD_HOLD", block_new_entries: true }),
     loadServingRuntime: async () => ({ status: "PASS", reason: "ML_SERVING_OK", block_new_entries: false }),
     loadExecutionQuality: () => ({ generated_at: "2026-04-11T01:59:00.000Z", summary: { status: "EXECUTION_QUALITY_OK" } }),
@@ -123,6 +139,13 @@ async function run() {
     remediateOnBlock: false,
     dryRun: true,
     artifactsDir,
+    runExitIntegrityCycle: async () => ({
+      ok: true,
+      status: "OK",
+      summary: { status: "OK", live_issue_count: 0 },
+      output_json: path.join(artifactsDir, "binance_exit_integrity_cycle_latest.json"),
+      output_md: path.join(artifactsDir, "binance_exit_integrity_cycle_latest.md"),
+    }),
     loadOpsRuntime: async () => ({ status: "PASS", reason: "OPS_GUARD_OK", block_new_entries: false }),
     loadServingRuntime: async () => ({ status: "PASS", reason: "ML_SERVING_OK", block_new_entries: false }),
     loadExecutionQuality: async (options) => {
@@ -159,6 +182,46 @@ async function run() {
   assert.strictEqual(refreshedLineage, 1);
   assert.strictEqual(refreshedExecutionQualityUsed.summary.status, "EXECUTION_QUALITY_OK");
   assert.strictEqual(refreshedLineageUsed.summary.verdict, "PASS");
+
+  const exitIntegrityBlocked = await runSystemRuntimeGuardsJob({
+    exchange: "BINANCEFUT",
+    nowMs: Date.parse("2026-04-13T05:00:00.000Z"),
+    remediateOnBlock: false,
+    dryRun: true,
+    artifactsDir,
+    runExitIntegrityCycle: async () => ({
+      ok: true,
+      status: "WARN",
+      summary: { status: "WARN", live_issue_count: 2, reasons: ["exit integrity unresolved"] },
+      output_json: path.join(artifactsDir, "binance_exit_integrity_cycle_latest.json"),
+      output_md: path.join(artifactsDir, "binance_exit_integrity_cycle_latest.md"),
+    }),
+    loadOpsRuntime: async () => ({ status: "PASS", reason: "OPS_GUARD_OK", block_new_entries: false }),
+    loadServingRuntime: async () => ({ status: "PASS", reason: "ML_SERVING_OK", block_new_entries: false }),
+    loadExecutionQuality: async () => ({ generated_at: "2026-04-13T04:59:00.000Z", summary: { status: "EXECUTION_QUALITY_OK" } }),
+    loadLineageHealth: async () => ({ generated_at: "2026-04-13T04:59:00.000Z", summary: { verdict: "PASS" } }),
+    loadNativeTrailProtection: async () => ({ available: true, gap_count: 0, top_symbols: [] }),
+    buildSlo: (payload) => {
+      assert.strictEqual(payload.exitIntegrityCycle.summary.live_issue_count, 2);
+      return { status: "WARN", reason: "EXIT_INTEGRITY_LIVE_ISSUE", block_new_entries: true };
+    },
+    buildAnomaly: (payload) => {
+      assert.strictEqual(payload.exitIntegrityCycle.summary.live_issue_count, 2);
+      return {
+        status: "BLOCK",
+        reason: "ANOMALY_EXIT_INTEGRITY_LIVE_ISSUE",
+        circuit_breaker_open: true,
+        rollback_action: "NONE",
+      };
+    },
+    recordSlo: async () => {},
+    recordAnomaly: async () => {},
+    recordRemediation: async () => {},
+    actuateServing: async () => ({ ok: true, skipped: true, reason: "NOOP" }),
+    exportTrace: async () => ({ ok: true, skipped: true, reason: "OTEL_EXPORT_SKIPPED" }),
+  });
+  assert.strictEqual(exitIntegrityBlocked.status, "중단");
+  assert.strictEqual(exitIntegrityBlocked.exit_integrity_cycle.summary.live_issue_count, 2);
 }
 
 run()
