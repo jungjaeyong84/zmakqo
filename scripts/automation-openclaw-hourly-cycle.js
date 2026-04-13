@@ -133,11 +133,29 @@ function buildStepRegistry() {
       },
     },
     {
+      id: "binance_exit_integrity_cycle",
+      kind: "script",
+      script: "run-binance-exit-integrity-cycle.js",
+      criticality: "HIGH",
+      depends_on: ["signal_lineage_health"],
+      produces_artifact: "binance_exit_integrity_cycle_latest.json",
+      run() {
+        const res = runScript(this.script, {
+          APPLY: String(process.env.OPENCLAW_EXIT_INTEGRITY_CYCLE_APPLY || "0"),
+        });
+        return {
+          status: res.ok ? "PASS" : "FAIL",
+          summary: res.parsed && (`status=${res.parsed.status || "N/A"} live_issue_count=${res.parsed.summary && res.parsed.summary.live_issue_count != null ? res.parsed.summary.live_issue_count : "N/A"}`) || "N/A",
+          reason: res.parsed && (res.parsed.status || res.parsed.reason) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+        };
+      },
+    },
+    {
       id: "openclaw_policy_authority",
       kind: "script",
       script: "report-openclaw-policy-authority.js",
       criticality: "HIGH",
-      depends_on: ["signal_lineage_health"],
+      depends_on: ["signal_lineage_health", "binance_exit_integrity_cycle"],
       produces_artifact: "openclaw_policy_authority_latest.json",
       run() {
         const res = runScript(this.script);

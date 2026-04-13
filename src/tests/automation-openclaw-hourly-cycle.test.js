@@ -7,13 +7,14 @@ const { __test: trailRunnerFloorAuditTest } = require("../../scripts/report-trai
 (() => {
   const registry = __test.buildStepRegistry();
   assert.ok(Array.isArray(registry));
-  assert.strictEqual(registry.length, 12);
+  assert.strictEqual(registry.length, 13);
 
   const ids = registry.map((row) => row.id);
   assert.deepStrictEqual(ids, [
     "analytics_local_cache",
     "execution_quality",
     "signal_lineage_health",
+    "binance_exit_integrity_cycle",
     "openclaw_policy_authority",
     "doc_artifact_parity",
     "server_signal_drift_remediation_plan",
@@ -25,6 +26,10 @@ const { __test: trailRunnerFloorAuditTest } = require("../../scripts/report-trai
     "hourly_overall_report",
   ]);
 
+  const exitIntegrityStep = registry.find((row) => row.id === "binance_exit_integrity_cycle");
+  assert.deepStrictEqual(exitIntegrityStep.depends_on, ["signal_lineage_health"]);
+  assert.strictEqual(exitIntegrityStep.produces_artifact, "binance_exit_integrity_cycle_latest.json");
+
   const applyStep = registry.find((row) => row.id === "server_signal_drift_remediation_apply");
   assert.deepStrictEqual(applyStep.depends_on, ["server_signal_drift_remediation_plan"]);
   assert.strictEqual(applyStep.produces_artifact, "server_signal_drift_remediation_apply_latest.json");
@@ -32,6 +37,9 @@ const { __test: trailRunnerFloorAuditTest } = require("../../scripts/report-trai
   const watchdogStep = registry.find((row) => row.id === "automation_watchdog");
   assert.deepStrictEqual(watchdogStep.depends_on, ["server_signal_post_remediation_refresh"]);
   assert.strictEqual(watchdogStep.produces_artifact, "automation_watchdog_latest.json");
+
+  const authorityStep = registry.find((row) => row.id === "openclaw_policy_authority");
+  assert.deepStrictEqual(authorityStep.depends_on, ["signal_lineage_health", "binance_exit_integrity_cycle"]);
 
   const overallReportStep = registry.find((row) => row.id === "hourly_overall_report");
   assert.deepStrictEqual(overallReportStep.depends_on, ["current_version_pine_sync"]);
