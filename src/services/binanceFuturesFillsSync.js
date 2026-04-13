@@ -1901,6 +1901,37 @@ function inferStageConstrainedTakeProfitKind(positionCtx, inferredKind, recentTp
   return "TP1";
 }
 
+function applyActiveExitStageBackstopOverride({
+  event,
+  trade,
+  orderMeta,
+  positionCtx,
+  recentTp0,
+  recentTp1,
+  rules,
+  qtyPct,
+} = {}) {
+  const currentEvent = String(event || "").trim().toUpperCase();
+  if (!currentEvent.startsWith("EXIT_TP_P0")) return currentEvent;
+  const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
+  if (ctx.tpP0Done !== true) return currentEvent;
+
+  const inferredQtyKind = inferTakeProfitKindFromQtyPct(qtyPct, rules);
+  const inferredPostFillKind = inferTakeProfitKindFromPostFillRemainingAwareQty(
+    Number(trade && trade.qty),
+    Number(ctx.qtyBase),
+    rules
+  );
+  const constrainedKind = inferStageConstrainedTakeProfitKind(ctx, inferredQtyKind, recentTp0);
+  const trailEligible = isTrailExitEligible(ctx, recentTp1);
+  const closePosition = !!(orderMeta && orderMeta.closePosition === true);
+
+  if (trailEligible && closePosition) return buildExitEventByKind("TRAIL", rules);
+  if (ctx.tpP1Done === true || ctx.trailActive === true) return buildExitEventByKind("TP1", rules);
+  if (inferredPostFillKind === "TP1" || constrainedKind === "TP1") return buildExitEventByKind("TP1", rules);
+  return currentEvent;
+}
+
 function isSyntheticExternalFillExitEvent(event) {
   const ev = String(event || "").toUpperCase();
   if (!ev) return false;
@@ -2417,6 +2448,16 @@ async function syncMarketTrades({
       }
       event = applyAuthoritativeExitContractOverride(event, exitOrderContract);
       event = applyAuthoritativeIntentEventOverride(event, intent);
+      event = applyActiveExitStageBackstopOverride({
+        event,
+        trade: t,
+        orderMeta,
+        positionCtx,
+        recentTp0,
+        recentTp1,
+        rules: exitRules,
+        qtyPct,
+      });
       const linkedTradeId = Number.isFinite(tradeMs)
         ? buildTradeId({
           exchange: "BINANCEFUT",
@@ -2897,6 +2938,7 @@ module.exports = {
     buildExitAuthorityChainKey,
     applyExternalExitQtyAuthority,
     inferStageConstrainedTakeProfitKind,
+    applyActiveExitStageBackstopOverride,
     buildImmediateProjectionIssues,
     auditImmediateProjectionEvents,
     auditProjectionEventImmediately,

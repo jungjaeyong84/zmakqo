@@ -547,6 +547,60 @@ async function run() {
     "post-fill remaining-aware inference must reclassify ETH-like oversized TP0 alerts to TP1"
   );
 
+  const activeExitStageBackstop = fillsSyncTest.applyActiveExitStageBackstopOverride({
+    event: "EXIT_TP_P0_0.8P",
+    trade: { qty: 698 },
+    orderMeta: {
+      orderId: 14728630395,
+      clientOrderId: "dbj_axs_tp1_split",
+      orderType: "MARKET",
+      closePosition: false,
+      reduceOnly: true,
+    },
+    positionCtx: {
+      qtyBase: 699,
+      tpP0Done: true,
+      tpP1Done: false,
+      trailActive: false,
+    },
+    recentTp1: null,
+    recentTp0: { event: "EXIT_TP_P0_0.8P" },
+    rules: { SL: -0.0165, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.0165, TP_P1_QTY: 0.5 },
+    qtyPct: null,
+  });
+  assert.strictEqual(
+    activeExitStageBackstop,
+    "EXIT_TP_P1_1.65P",
+    "active stage backstop must promote repeated TP0 classifications to TP1 once TP0 is already done"
+  );
+
+  const firstStageTp0Preserved = fillsSyncTest.applyActiveExitStageBackstopOverride({
+    event: "EXIT_TP_P0_0.8P",
+    trade: { qty: 0.085 },
+    orderMeta: {
+      orderId: 12345003,
+      clientOrderId: "eth_tp0_real",
+      orderType: "TAKE_PROFIT",
+      closePosition: false,
+      reduceOnly: true,
+    },
+    positionCtx: {
+      qtyBase: 0.686,
+      tpP0Done: false,
+      tpP1Done: false,
+      trailActive: false,
+    },
+    recentTp1: null,
+    recentTp0: null,
+    rules: { SL: -0.0165, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.0165, TP_P1_QTY: 0.5 },
+    qtyPct: null,
+  });
+  assert.strictEqual(
+    firstStageTp0Preserved,
+    "EXIT_TP_P0_0.8P",
+    "active stage backstop must preserve genuine first-stage TP0 exits"
+  );
+
   const sentPayloads = [];
   const crossRunBatches1 = new Map();
   fillsSyncTest.queueFillSyncAlertBatch(crossRunBatches1, {

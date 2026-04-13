@@ -157,6 +157,9 @@ function buildStageSummary(position, fills = []) {
   const shouldTrail = shouldTp1 && currentQtyBase > tolQtyBase;
   const latestExitFill = authoritativeFills[authoritativeFills.length - 1] || null;
   const latestStage = classifyExitEvent(latestExitFill && latestExitFill.event);
+  const latestExitOrderId = latestExitFill
+    ? String(latestExitFill.external_order_id || latestExitFill.live_order_id || latestExitFill.order_id || "").trim() || null
+    : null;
   const issues = [];
   if (shouldTp0 && meta.tp_p0_done !== true) issues.push("TP0_DONE_MISSING_BY_QTY");
   if (shouldTp1 && meta.tp_p1_done !== true) issues.push("TP1_DONE_MISSING_BY_QTY");
@@ -182,11 +185,30 @@ function buildStageSummary(position, fills = []) {
     actual_tp1_done: meta.tp_p1_done === true,
     actual_trail_active: meta.trail_active === true,
     latest_exit_fill_id: latestExitFill ? String(latestExitFill.id || latestExitFill.fill_id || "") : null,
+    latest_exit_order_id: latestExitOrderId,
     latest_exit_event: latestExitFill ? upper(latestExitFill.event) : null,
     latest_exit_created_at: latestExitFill ? (latestExitFill.created_at || null) : null,
     latest_exit_qty_base: latestExitFill ? (toNum(latestExitFill.exec_qty_base) || null) : null,
+    authoritative_fills: authoritativeFills.map((fill) => ({
+      fill_id: String(fill.id || fill.fill_id || "").trim() || null,
+      event: upper(fill.event),
+      order_id: String(fill.external_order_id || fill.live_order_id || fill.order_id || "").trim() || null,
+      created_at: fill.created_at || null,
+      exec_qty_base: toNum(fill.exec_qty_base),
+    })),
     issues,
   };
+}
+
+function buildStageReclassificationTargets(summary = {}) {
+  const fills = Array.isArray(summary.authoritative_fills) ? summary.authoritative_fills : [];
+  const latestOrderId = String(summary.latest_exit_order_id || "").trim();
+  if (!latestOrderId) return [];
+  return fills
+    .filter((fill) => String(fill.order_id || "").trim() === latestOrderId)
+    .filter((fill) => classifyExitEvent(fill.event) === "TP0")
+    .map((fill) => String(fill.fill_id || "").trim())
+    .filter(Boolean);
 }
 
 async function main() {
@@ -216,24 +238,30 @@ async function main() {
       symbol,
       issues: summary.issues.slice(),
       latest_exit_fill_id: summary.latest_exit_fill_id,
+      latest_exit_order_id: summary.latest_exit_order_id,
       latest_exit_event: summary.latest_exit_event,
-      reclassified_fill_id: null,
+      reclassified_fill_ids: [],
       sync_run_id: null,
       status: "PENDING",
     };
 
     try {
-      if (summary.issues.includes("LATEST_TP0_SHOULD_BE_TP1") && summary.latest_exit_fill_id) {
+      const tp1Targets = summary.issues.includes("LATEST_TP0_SHOULD_BE_TP1")
+        ? buildStageReclassificationTargets(summary)
+        : [];
+      if (tp1Targets.length) {
         if (!DRY_RUN) {
-          await reclassifyExternalFillEvent({
-            fillId: summary.latest_exit_fill_id,
-            event: "EXIT_TP_P1_1.65P",
-            decisionReason: "ACTIVE_EXIT_STAGE_BACKFILL_RECLASSIFIED",
-            reclassifyReason: "CURRENT_QTY_FLOW_IMPLIES_TP1",
-            reclassifyScript: "scripts/backfill-binance-active-exit-stage.js",
-          });
+          for (const fillId of tp1Targets) {
+            await reclassifyExternalFillEvent({
+              fillId,
+              event: "EXIT_TP_P1_1.65P",
+              decisionReason: "ACTIVE_EXIT_STAGE_BACKFILL_RECLASSIFIED",
+              reclassifyReason: "CURRENT_QTY_FLOW_IMPLIES_TP1",
+              reclassifyScript: "scripts/backfill-binance-active-exit-stage.js",
+            });
+          }
         }
-        action.reclassified_fill_id = summary.latest_exit_fill_id;
+        action.reclassified_fill_ids = tp1Targets.slice();
       }
 
       if (!DRY_RUN) {
@@ -310,11 +338,25 @@ async function main() {
       issues: row.issues,
       latest_exit_event: row.latest_exit_event,
       latest_exit_fill_id: row.latest_exit_fill_id,
+      latest_exit_order_id: row.latest_exit_order_id,
+      reclassification_targets: buildStageReclassificationTargets(row),
     })),
   }, null, 2));
 }
 
-main().catch((err) => {
-  console.error("BACKFILL_BINANCE_ACTIVE_EXIT_STAGE_FAIL", err && err.stack ? err.stack : err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("BACKFILL_BINANCE_ACTIVE_EXIT_STAGE_FAIL", err && err.stack ? err.stack : err);
+    process.exit(1);
+  });
+} else {
+  module.exports = {
+    __test: {
+      buildStageSummary,
+      buildStageReclassificationTargets,
+      buildAuthoritativeFillSet,
+      filterCurrentEntryFills,
+      classifyExitEvent,
+    },
+  };
+}
