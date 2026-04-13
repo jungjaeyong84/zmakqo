@@ -6,6 +6,12 @@ const { getSystemAnomalyState } = require("../storage/systemAnomalyStates");
 const { loadSystemSloRuntime } = require("./systemSloRuntime");
 const { loadOperationalGuardRuntime } = require("./operationalGuardRuntime");
 const { loadMlServingRuntime } = require("./mlServingRuntime");
+const {
+  resolveExecutionQualityLatencyMs,
+  isLegacyOutcomeOnlyLatencyFallback,
+  resolveExecutionQualityLatencyBudgetMs,
+  isExecutionQualityLatencyHigh,
+} = require("./executionQualityRuntime");
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
@@ -27,11 +33,6 @@ function resolveOperationalErrorBurstCount(ops = null) {
   const active = toNum(row.active_error_count);
   const total = toNum(row.error_count);
   return Number.isFinite(active) ? active : total;
-}
-
-function resolveExecutionQualityLatencyMs(summary = null) {
-  const row = summary && typeof summary === "object" ? summary : {};
-  return toNum(row.guard_created_to_fill_p95_ms ?? row.created_to_fill_p95_ms);
 }
 
 function parseDateMs(value) {
@@ -105,7 +106,16 @@ function buildSystemAnomalyState({
   if (toNum(ops.qty_pct_non_positive_count) > 0) issues.push("ANOMALY_QTY_PCT_NON_POSITIVE");
   if (resolveOperationalErrorBurstCount(ops) >= 3) issues.push("ANOMALY_RUNTIME_ERROR_BURST");
   if (toNum(quality.partial_fill_rate_pct) >= 80) issues.push("ANOMALY_PARTIAL_FILL_BURST");
-  if (resolveExecutionQualityLatencyMs(quality) >= 3000) issues.push("ANOMALY_LATENCY_P95_HIGH");
+  const qualityLatencyP95Ms = resolveExecutionQualityLatencyMs(quality);
+  const qualityLatencyBudgetMs = resolveExecutionQualityLatencyBudgetMs(quality, {
+    standardBudgetMs: Number(process.env.SYSTEM_ANOMALY_LATENCY_P95_BUDGET_MS || 3000),
+    legacyFallbackBudgetMs: Number(process.env.SYSTEM_ANOMALY_LEGACY_LATENCY_P95_BUDGET_MS || 5000),
+  });
+  const qualityLatencyUsesLegacyFallback = isLegacyOutcomeOnlyLatencyFallback(quality);
+  if (isExecutionQualityLatencyHigh(quality, {
+    standardBudgetMs: Number(process.env.SYSTEM_ANOMALY_LATENCY_P95_BUDGET_MS || 3000),
+    legacyFallbackBudgetMs: Number(process.env.SYSTEM_ANOMALY_LEGACY_LATENCY_P95_BUDGET_MS || 5000),
+  })) issues.push("ANOMALY_LATENCY_P95_HIGH");
   if (toNum(nativeProtection.gap_count) > 0) issues.push("ANOMALY_NATIVE_TRAIL_PROTECTION_GAP");
   if (toNum(exitIntegritySummary.live_issue_count) > 0) issues.push("ANOMALY_EXIT_INTEGRITY_LIVE_ISSUE");
 
@@ -136,7 +146,9 @@ function buildSystemAnomalyState({
       operational_guard_status: upper(ops.status),
       ml_serving_status: upper(serving.status),
       execution_quality_status: upper(quality.status),
-      execution_quality_latency_p95_ms: resolveExecutionQualityLatencyMs(quality),
+      execution_quality_latency_p95_ms: qualityLatencyP95Ms,
+      execution_quality_latency_p95_budget_ms: qualityLatencyBudgetMs,
+      execution_quality_latency_legacy_fallback: qualityLatencyUsesLegacyFallback,
       execution_quality_partial_fill_rate_pct: toNum(quality.partial_fill_rate_pct),
       operational_audit_issue_count: toNum(ops.audit_issue_count),
       operational_qty_pct_non_positive_count: toNum(ops.qty_pct_non_positive_count),
@@ -194,5 +206,8 @@ module.exports = {
     normalizeLoadedSystemAnomalyState,
     resolveExecutionQualityLatencyMs,
     resolveOperationalErrorBurstCount,
+    isLegacyOutcomeOnlyLatencyFallback,
+    resolveExecutionQualityLatencyBudgetMs,
+    isExecutionQualityLatencyHigh,
   },
 };

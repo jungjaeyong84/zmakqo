@@ -213,6 +213,81 @@ function run() {
   assert.strictEqual(trailGap.circuit_breaker_open, true);
   assert.ok(trailGap.issues.includes("ANOMALY_NATIVE_TRAIL_PROTECTION_GAP"));
 
+  const legacyLatencyAllowed = buildSystemAnomalyState({
+    exchange: "BINANCEFUT",
+    systemSlo: {
+      status: "PASS",
+      reason: "SYSTEM_SLO_HEALTHY",
+      block_new_entries: false,
+    },
+    operationalGuard: {
+      status: "PASS",
+      reason: "OPS_GUARD_OK",
+      block_new_entries: false,
+      audit_issue_count: 0,
+      qty_pct_non_positive_count: 0,
+      error_count: 0,
+    },
+    mlServing: {
+      status: "PASS",
+      reason: "ML_SERVING_OK",
+      block_new_entries: false,
+    },
+    executionQuality: {
+      summary: {
+        status: "EXECUTION_QUALITY_REVIEW",
+        guard_created_to_fill_p95_ms: 3979,
+        webhook_to_fill_p95_ms: 3979,
+        partial_fill_rate_pct: 12,
+        top_operational_webhook_delay_cause: "LEGACY_WEBHOOK_OUTCOME_ONLY",
+        top_operational_immediate_intent_delay_group: null,
+        review_reasons: ["LEGACY_LATENCY_GUARD_FALLBACK_ACTIVE"],
+      },
+    },
+    nowMs,
+  });
+  assert.strictEqual(legacyLatencyAllowed.status, "CLEAR");
+  assert.ok(!legacyLatencyAllowed.issues.includes("ANOMALY_LATENCY_P95_HIGH"));
+  assert.strictEqual(legacyLatencyAllowed.components.execution_quality_latency_p95_budget_ms, 5000);
+  assert.strictEqual(legacyLatencyAllowed.components.execution_quality_latency_legacy_fallback, true);
+
+  const immediateLatencyWarn = buildSystemAnomalyState({
+    exchange: "BINANCEFUT",
+    systemSlo: {
+      status: "PASS",
+      reason: "SYSTEM_SLO_HEALTHY",
+      block_new_entries: false,
+    },
+    operationalGuard: {
+      status: "PASS",
+      reason: "OPS_GUARD_OK",
+      block_new_entries: false,
+      audit_issue_count: 0,
+      qty_pct_non_positive_count: 0,
+      error_count: 0,
+    },
+    mlServing: {
+      status: "PASS",
+      reason: "ML_SERVING_OK",
+      block_new_entries: false,
+    },
+    executionQuality: {
+      summary: {
+        status: "EXECUTION_QUALITY_REVIEW",
+        guard_created_to_fill_p95_ms: 3979,
+        partial_fill_rate_pct: 12,
+        top_operational_webhook_delay_cause: "IMMEDIATE_INTENT_DELAY",
+        top_operational_immediate_intent_delay_group: "CREATE_TO_ORDER_ACK",
+        review_reasons: [],
+      },
+    },
+    nowMs,
+  });
+  assert.strictEqual(immediateLatencyWarn.status, "WARN");
+  assert.ok(immediateLatencyWarn.issues.includes("ANOMALY_LATENCY_P95_HIGH"));
+  assert.strictEqual(immediateLatencyWarn.components.execution_quality_latency_p95_budget_ms, 3000);
+  assert.strictEqual(immediateLatencyWarn.components.execution_quality_latency_legacy_fallback, false);
+
   const staleLoaded = __test.normalizeLoadedSystemAnomalyState({
     status: "CLEAR",
     reason: "SYSTEM_ANOMALY_CLEAR",

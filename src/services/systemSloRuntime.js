@@ -9,6 +9,12 @@ const {
   loadPreferredExecutionQualityInput,
   loadPreferredLineageHealthInput,
 } = require("./systemSloArtifactInputs");
+const {
+  resolveExecutionQualityLatencyMs,
+  isLegacyOutcomeOnlyLatencyFallback,
+  resolveExecutionQualityLatencyBudgetMs,
+  isExecutionQualityLatencyHigh,
+} = require("./executionQualityRuntime");
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
@@ -31,11 +37,6 @@ function parseDateMs(value) {
   if (Number.isFinite(Number(value))) return Number(value);
   const parsed = Date.parse(String(value || ""));
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function resolveExecutionQualityLatencyMs(summary = null) {
-  const row = summary && typeof summary === "object" ? summary : {};
-  return toNum(row.guard_created_to_fill_p95_ms ?? row.created_to_fill_p95_ms);
 }
 
 function safeReadJson(filePath) {
@@ -132,9 +133,17 @@ function buildSystemSloState({
   const qualityStatus = upper(quality.status);
   if (qualityStatus === "EXECUTION_QUALITY_FAIL") issues.push("EXECUTION_QUALITY_FAIL");
   const qualityLatencyP95Ms = resolveExecutionQualityLatencyMs(quality);
+  const qualityLatencyBudgetMs = resolveExecutionQualityLatencyBudgetMs(quality, {
+    standardBudgetMs: Number(process.env.SYSTEM_SLO_LATENCY_P95_BUDGET_MS || 3000),
+    legacyFallbackBudgetMs: Number(process.env.SYSTEM_SLO_LEGACY_LATENCY_P95_BUDGET_MS || 5000),
+  });
+  const qualityLatencyUsesLegacyFallback = isLegacyOutcomeOnlyLatencyFallback(quality);
   const qualityPartialPct = toNum(quality.partial_fill_rate_pct);
   const qualitySlippageP95Bps = toNum(quality.adverse_slippage_p95_bps);
-  if (Number.isFinite(qualityLatencyP95Ms) && qualityLatencyP95Ms > 3000) issues.push("EXECUTION_LATENCY_P95_HIGH");
+  if (isExecutionQualityLatencyHigh(quality, {
+    standardBudgetMs: Number(process.env.SYSTEM_SLO_LATENCY_P95_BUDGET_MS || 3000),
+    legacyFallbackBudgetMs: Number(process.env.SYSTEM_SLO_LEGACY_LATENCY_P95_BUDGET_MS || 5000),
+  })) issues.push("EXECUTION_LATENCY_P95_HIGH");
   if (Number.isFinite(qualityPartialPct) && qualityPartialPct > 80) issues.push("EXECUTION_PARTIAL_HIGH");
   if (Number.isFinite(qualitySlippageP95Bps) && qualitySlippageP95Bps > 90) issues.push("EXECUTION_SLIPPAGE_HIGH");
 
@@ -168,12 +177,15 @@ function buildSystemSloState({
     block_new_entries: blockNewEntries,
     slo_budget: {
       execution_latency_p95_ms_budget: Number(process.env.SYSTEM_SLO_LATENCY_P95_BUDGET_MS || 3000),
+      execution_latency_p95_ms_legacy_fallback_budget: Number(process.env.SYSTEM_SLO_LEGACY_LATENCY_P95_BUDGET_MS || 5000),
       execution_partial_fill_rate_pct_budget: Number(process.env.SYSTEM_SLO_PARTIAL_FILL_RATE_BUDGET_PCT || 80),
       execution_slippage_p95_bps_budget: Number(process.env.SYSTEM_SLO_SLIPPAGE_P95_BUDGET_BPS || 90),
       lineage_null_rate_budget: Number(process.env.SYSTEM_SLO_LINEAGE_NULL_RATE_BUDGET || 0.02),
     },
     slo_budget_burn: {
-      execution_latency_p95_ms_ratio: Number.isFinite(qualityLatencyP95Ms) ? (qualityLatencyP95Ms / Number(process.env.SYSTEM_SLO_LATENCY_P95_BUDGET_MS || 3000)) : null,
+      execution_latency_p95_ms_ratio: Number.isFinite(qualityLatencyP95Ms) && Number.isFinite(qualityLatencyBudgetMs) && qualityLatencyBudgetMs > 0
+        ? (qualityLatencyP95Ms / qualityLatencyBudgetMs)
+        : null,
       execution_partial_fill_rate_pct_ratio: Number.isFinite(qualityPartialPct) ? (qualityPartialPct / Number(process.env.SYSTEM_SLO_PARTIAL_FILL_RATE_BUDGET_PCT || 80)) : null,
       execution_slippage_p95_bps_ratio: Number.isFinite(qualitySlippageP95Bps) ? (qualitySlippageP95Bps / Number(process.env.SYSTEM_SLO_SLIPPAGE_P95_BUDGET_BPS || 90)) : null,
       lineage_intent_signal_null_rate_ratio: Number.isFinite(lineageIntentSignalNullRate) ? (lineageIntentSignalNullRate / Number(process.env.SYSTEM_SLO_LINEAGE_NULL_RATE_BUDGET || 0.02)) : null,
@@ -193,6 +205,8 @@ function buildSystemSloState({
       execution_quality_generated_at_ms: qualityGeneratedAtMs,
       execution_quality_fresh: qualityFresh,
       execution_quality_latency_p95_ms: qualityLatencyP95Ms,
+      execution_quality_latency_p95_budget_ms: qualityLatencyBudgetMs,
+      execution_quality_latency_legacy_fallback: qualityLatencyUsesLegacyFallback,
       execution_quality_partial_fill_rate_pct: qualityPartialPct,
       execution_quality_slippage_p95_bps: qualitySlippageP95Bps,
       lineage_generated_at_ms: lineageGeneratedAtMs,
@@ -255,5 +269,8 @@ module.exports = {
     normalizeLoadedSystemSloState,
     resolveGeneratedAtMs,
     resolveExecutionQualityLatencyMs,
+    isLegacyOutcomeOnlyLatencyFallback,
+    resolveExecutionQualityLatencyBudgetMs,
+    isExecutionQualityLatencyHigh,
   },
 };

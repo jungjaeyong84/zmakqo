@@ -188,6 +188,123 @@ function run() {
   assert.ok(trailGap.issues.includes("NATIVE_TRAIL_PROTECTION_GAP"));
   assert.strictEqual(trailGap.components.native_trail_protection_gap_count, 1);
 
+  const legacyFallbackAllowed = buildSystemSloState({
+    exchange: "BINANCEFUT",
+    operationalGuard: {
+      status: "PASS",
+      reason: "OPS_GUARD_OK",
+      block_new_entries: false,
+    },
+    mlServing: {
+      status: "PASS",
+      reason: "ML_SERVING_OK",
+      block_new_entries: false,
+    },
+    executionQuality: {
+      summary: {
+        generated_at: "2026-04-11T08:30:00.000Z",
+        status: "EXECUTION_QUALITY_REVIEW",
+        guard_created_to_fill_p95_ms: 3979,
+        webhook_to_fill_p95_ms: 3979,
+        partial_fill_rate_pct: 12,
+        adverse_slippage_p95_bps: 8,
+        top_operational_webhook_delay_cause: "LEGACY_WEBHOOK_OUTCOME_ONLY",
+        top_operational_immediate_intent_delay_group: null,
+        review_reasons: ["LEGACY_LATENCY_GUARD_FALLBACK_ACTIVE"],
+      },
+    },
+    lineageHealth: {
+      summary: {
+        generated_at: "2026-04-11T08:31:00.000Z",
+        intents_signal_doc_id_null_rate: 0.001,
+        fills_signal_doc_id_null_rate: 0.001,
+        entry_fills_intent_id_null_rate: 0.001,
+      },
+    },
+    nowMs,
+  });
+  assert.strictEqual(legacyFallbackAllowed.status, "PASS");
+  assert.ok(!legacyFallbackAllowed.issues.includes("EXECUTION_LATENCY_P95_HIGH"));
+  assert.strictEqual(legacyFallbackAllowed.components.execution_quality_latency_p95_budget_ms, 5000);
+  assert.strictEqual(legacyFallbackAllowed.components.execution_quality_latency_legacy_fallback, true);
+
+  const realLatencyWarn = buildSystemSloState({
+    exchange: "BINANCEFUT",
+    operationalGuard: {
+      status: "PASS",
+      reason: "OPS_GUARD_OK",
+      block_new_entries: false,
+    },
+    mlServing: {
+      status: "PASS",
+      reason: "ML_SERVING_OK",
+      block_new_entries: false,
+    },
+    executionQuality: {
+      summary: {
+        generated_at: "2026-04-11T08:30:00.000Z",
+        status: "EXECUTION_QUALITY_REVIEW",
+        guard_created_to_fill_p95_ms: 3979,
+        partial_fill_rate_pct: 12,
+        adverse_slippage_p95_bps: 8,
+        top_operational_webhook_delay_cause: "IMMEDIATE_INTENT_DELAY",
+        top_operational_immediate_intent_delay_group: "CREATE_TO_ORDER_ACK",
+        review_reasons: [],
+      },
+    },
+    lineageHealth: {
+      summary: {
+        generated_at: "2026-04-11T08:31:00.000Z",
+        intents_signal_doc_id_null_rate: 0.001,
+        fills_signal_doc_id_null_rate: 0.001,
+        entry_fills_intent_id_null_rate: 0.001,
+      },
+    },
+    nowMs,
+  });
+  assert.strictEqual(realLatencyWarn.status, "WARN");
+  assert.ok(realLatencyWarn.issues.includes("EXECUTION_LATENCY_P95_HIGH"));
+  assert.strictEqual(realLatencyWarn.components.execution_quality_latency_p95_budget_ms, 3000);
+  assert.strictEqual(realLatencyWarn.components.execution_quality_latency_legacy_fallback, false);
+
+  const legacyFallbackStillWarnsWhenTooHigh = buildSystemSloState({
+    exchange: "BINANCEFUT",
+    operationalGuard: {
+      status: "PASS",
+      reason: "OPS_GUARD_OK",
+      block_new_entries: false,
+    },
+    mlServing: {
+      status: "PASS",
+      reason: "ML_SERVING_OK",
+      block_new_entries: false,
+    },
+    executionQuality: {
+      summary: {
+        generated_at: "2026-04-11T08:30:00.000Z",
+        status: "EXECUTION_QUALITY_REVIEW",
+        guard_created_to_fill_p95_ms: 5100,
+        webhook_to_fill_p95_ms: 5100,
+        partial_fill_rate_pct: 12,
+        adverse_slippage_p95_bps: 8,
+        top_operational_webhook_delay_cause: "LEGACY_WEBHOOK_OUTCOME_ONLY",
+        top_operational_immediate_intent_delay_group: null,
+        review_reasons: ["LEGACY_LATENCY_GUARD_FALLBACK_ACTIVE"],
+      },
+    },
+    lineageHealth: {
+      summary: {
+        generated_at: "2026-04-11T08:31:00.000Z",
+        intents_signal_doc_id_null_rate: 0.001,
+        fills_signal_doc_id_null_rate: 0.001,
+        entry_fills_intent_id_null_rate: 0.001,
+      },
+    },
+    nowMs,
+  });
+  assert.strictEqual(legacyFallbackStillWarnsWhenTooHigh.status, "WARN");
+  assert.ok(legacyFallbackStillWarnsWhenTooHigh.issues.includes("EXECUTION_LATENCY_P95_HIGH"));
+
   const staleLoaded = __test.normalizeLoadedSystemSloState({
     status: "PASS",
     reason: "SYSTEM_SLO_HEALTHY",
