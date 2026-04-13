@@ -117,11 +117,27 @@ function buildStepRegistry() {
       },
     },
     {
+      id: "execution_watch_markets",
+      kind: "script",
+      script: "report-best-self-evolution-execution-watch-markets.js",
+      criticality: "HIGH",
+      depends_on: ["execution_quality"],
+      produces_artifact: "best_self_evolution_execution_watch_markets_latest.json",
+      run() {
+        const res = runScript(this.script);
+        return {
+          status: res.ok ? "PASS" : "FAIL",
+          summary: res.parsed && (`status=${res.parsed.status || "N/A"} top=${res.parsed.top_watch_market || "N/A"} market_n=${res.parsed.review_market_n ?? "N/A"}`) || "OK",
+          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+        };
+      },
+    },
+    {
       id: "signal_lineage_health",
       kind: "script",
       script: "report-signal-lineage-health.js",
       criticality: "HIGH",
-      depends_on: ["execution_quality"],
+      depends_on: ["execution_quality", "execution_watch_markets"],
       produces_artifact: "signal_lineage_health_latest.json",
       run() {
         const res = runScript(this.script);

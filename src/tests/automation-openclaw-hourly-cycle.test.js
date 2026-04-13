@@ -7,12 +7,13 @@ const { __test: trailRunnerFloorAuditTest } = require("../../scripts/report-trai
 (() => {
   const registry = __test.buildStepRegistry();
   assert.ok(Array.isArray(registry));
-  assert.strictEqual(registry.length, 13);
+  assert.strictEqual(registry.length, 14);
 
   const ids = registry.map((row) => row.id);
   assert.deepStrictEqual(ids, [
     "analytics_local_cache",
     "execution_quality",
+    "execution_watch_markets",
     "signal_lineage_health",
     "binance_exit_integrity_cycle",
     "openclaw_policy_authority",
@@ -25,6 +26,10 @@ const { __test: trailRunnerFloorAuditTest } = require("../../scripts/report-trai
     "current_version_pine_sync",
     "hourly_overall_report",
   ]);
+
+  const watchMarketsStep = registry.find((row) => row.id === "execution_watch_markets");
+  assert.deepStrictEqual(watchMarketsStep.depends_on, ["execution_quality"]);
+  assert.strictEqual(watchMarketsStep.produces_artifact, "best_self_evolution_execution_watch_markets_latest.json");
 
   const exitIntegrityStep = registry.find((row) => row.id === "binance_exit_integrity_cycle");
   assert.deepStrictEqual(exitIntegrityStep.depends_on, ["signal_lineage_health"]);

@@ -216,6 +216,12 @@ function summarizeExecutionQuality({
   const topNoFillReasonFamily = Array.isArray(executionModelSummary.top_no_fill_reason_families)
     ? executionModelSummary.top_no_fill_reason_families[0]
     : null;
+  const topNoFillBucket = Array.isArray(executionModelSummary.top_no_fill_buckets)
+    ? executionModelSummary.top_no_fill_buckets[0]
+    : null;
+  const topNoFillMarketBucket = Array.isArray(executionModelSummary.top_no_fill_market_buckets)
+    ? executionModelSummary.top_no_fill_market_buckets[0]
+    : null;
   const topScopeFalsePositiveGroup = Array.isArray(executionScopeInferenceSummary.top_false_positive_groups)
     ? executionScopeInferenceSummary.top_false_positive_groups[0]
     : null;
@@ -276,6 +282,8 @@ function summarizeExecutionQuality({
       driver_reason: topNoFillReason && topNoFillReason.key ? topNoFillReason.key : null,
       driver_subtype: topNoFillSubtype && topNoFillSubtype.key ? topNoFillSubtype.key : null,
       driver_family: topNoFillReasonFamily && topNoFillReasonFamily.key ? topNoFillReasonFamily.key : null,
+      driver_bucket: topNoFillBucket && topNoFillBucket.key ? topNoFillBucket.key : null,
+      driver_market: topNoFillMarketBucket && topNoFillMarketBucket.market ? topNoFillMarketBucket.market : null,
       severity: (topNoFillReason && String(topNoFillReason.key || "").trim()) ? "WARN" : "OK",
       action_hint: (topNoFillReason && String(topNoFillReason.key || "").trim()) ? "INSPECT_RUNTIME_FAILURE_AND_TIMING_PATH" : null,
     },
@@ -309,6 +317,8 @@ function summarizeExecutionQuality({
       top_no_fill_reason: topNoFillReason && topNoFillReason.key ? topNoFillReason.key : null,
       top_no_fill_subtype: topNoFillSubtype && topNoFillSubtype.key ? topNoFillSubtype.key : null,
       top_no_fill_reason_family: topNoFillReasonFamily && topNoFillReasonFamily.key ? topNoFillReasonFamily.key : null,
+      top_no_fill_bucket: topNoFillBucket && topNoFillBucket.key ? topNoFillBucket.key : null,
+      top_no_fill_market: topNoFillMarketBucket && topNoFillMarketBucket.market ? topNoFillMarketBucket.market : null,
       execution_scope_train_run_status: String(executionScopeTrainRunSummary.status || "").trim() || null,
       execution_scope_quality_gate_status: String(executionScopeTrainRunSummary.quality_gate_status || "").trim() || null,
       execution_scope_quality_gate_ready: executionScopeTrainRunSummary.quality_gate_ready === true,

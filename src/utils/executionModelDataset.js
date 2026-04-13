@@ -928,6 +928,8 @@ function summarizeExecutionModelRows(rows = []) {
   const byNoFillReason = new Map();
   const byNoFillReasonFamily = new Map();
   const byNoFillSubtype = new Map();
+  const byNoFillBucket = new Map();
+  const byNoFillMarketBucket = new Map();
   for (const row of scoped) {
     const key = String(
       row && row.context && row.context.primary_fill_source
@@ -971,9 +973,33 @@ function summarizeExecutionModelRows(rows = []) {
       if (!byNoFillSubtype.has(noFillSubtype)) {
         byNoFillSubtype.set(noFillSubtype, { key: noFillSubtype, rows_n: 0 });
       }
+      const noFillBucketKey = `${noFillReasonFamily}|${noFillReason}|${noFillSubtype}`;
+      if (!byNoFillBucket.has(noFillBucketKey)) {
+        byNoFillBucket.set(noFillBucketKey, {
+          key: noFillBucketKey,
+          family: noFillReasonFamily,
+          reason: noFillReason,
+          subtype: noFillSubtype,
+          rows_n: 0,
+        });
+      }
+      const market = String(row.context && row.context.market || "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
+      const noFillMarketBucketKey = `${market}|${noFillReasonFamily}|${noFillReason}|${noFillSubtype}`;
+      if (!byNoFillMarketBucket.has(noFillMarketBucketKey)) {
+        byNoFillMarketBucket.set(noFillMarketBucketKey, {
+          key: noFillMarketBucketKey,
+          market,
+          family: noFillReasonFamily,
+          reason: noFillReason,
+          subtype: noFillSubtype,
+          rows_n: 0,
+        });
+      }
       byNoFillReason.get(noFillReason).rows_n += 1;
       byNoFillReasonFamily.get(noFillReasonFamily).rows_n += 1;
       byNoFillSubtype.get(noFillSubtype).rows_n += 1;
+      byNoFillBucket.get(noFillBucketKey).rows_n += 1;
+      byNoFillMarketBucket.get(noFillMarketBucketKey).rows_n += 1;
     }
   }
   const p95 = (values) => {
@@ -1113,6 +1139,12 @@ function summarizeExecutionModelRows(rows = []) {
     top_no_fill_subtypes: Array.from(byNoFillSubtype.values())
       .sort((a, b) => (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
       .slice(0, 12),
+    top_no_fill_buckets: Array.from(byNoFillBucket.values())
+      .sort((a, b) => (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
+      .slice(0, 12),
+    top_no_fill_market_buckets: Array.from(byNoFillMarketBucket.values())
+      .sort((a, b) => (b.rows_n - a.rows_n) || a.key.localeCompare(b.key))
+      .slice(0, 24),
     top_entry_latency_groups: Array.from(byEntryLatencyGroup.values())
       .map((row) => ({
         key: row.key,

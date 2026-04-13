@@ -67,6 +67,8 @@ assert.equal(unknownBucket.slippage_measured_n, 1);
 assert.equal(summary.top_no_fill_reasons[0].key, 'MARGIN');
 assert.equal(summary.top_no_fill_reason_families[0].key, 'RUNTIME_ERROR');
 assert.equal(summary.top_no_fill_subtypes[0].key, 'MARGIN');
+assert.equal(summary.top_no_fill_buckets[0].key, 'RUNTIME_ERROR|MARGIN|MARGIN');
+assert.equal(summary.top_no_fill_market_buckets[0].key, 'SOLUSDT|RUNTIME_ERROR|MARGIN|MARGIN');
 const split = splitExecutionModelRows(rows);
 assert.equal(split.entry_rows.length, 2);
 assert.equal(split.exit_rows.length, 0);

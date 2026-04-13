@@ -57,6 +57,8 @@ function renderMarkdown(report = {}) {
     `- top_no_fill_reason: ${summary.top_no_fill_reason || "N/A"}`,
     `- top_no_fill_subtype: ${summary.top_no_fill_subtype || "N/A"}`,
     `- top_no_fill_reason_family: ${summary.top_no_fill_reason_family || "N/A"}`,
+    `- top_no_fill_bucket: ${summary.top_no_fill_bucket || "N/A"}`,
+    `- top_no_fill_market: ${summary.top_no_fill_market || "N/A"}`,
     `- execution_scope_quality_gate: ${summary.execution_scope_quality_gate_status || "N/A"} / ready=${summary.execution_scope_quality_gate_ready ? "YES" : "NO"}`,
     `- execution_scope_mismatch_rate: ${summary.execution_scope_inference_mismatch_rate ?? "N/A"}`,
     `- execution_scope_test_early_macro_recall: ${summary.execution_scope_test_early_macro_recall ?? "N/A"} / rows=${summary.execution_scope_test_early_rows_n ?? "N/A"}`,
@@ -73,7 +75,7 @@ function renderMarkdown(report = {}) {
     `- latency: severity=${rootCause.latency && rootCause.latency.severity || "N/A"} / driver=${rootCause.latency && rootCause.latency.driver || "N/A"} / guard_p95=${rootCause.latency && rootCause.latency.guard_latency_p95_ms != null ? rootCause.latency.guard_latency_p95_ms : "N/A"} / raw_p95=${rootCause.latency && rootCause.latency.raw_latency_p95_ms != null ? rootCause.latency.raw_latency_p95_ms : "N/A"} / action=${rootCause.latency && rootCause.latency.action_hint || "N/A"}`,
     `- slippage: severity=${rootCause.slippage && rootCause.slippage.severity || "N/A"} / market=${rootCause.slippage && rootCause.slippage.driver_market || "N/A"} / p95=${rootCause.slippage && rootCause.slippage.adverse_slippage_p95_bps != null ? rootCause.slippage.adverse_slippage_p95_bps : "N/A"} / top_market_avg=${rootCause.slippage && rootCause.slippage.top_market_avg_slippage_bps != null ? rootCause.slippage.top_market_avg_slippage_bps : "N/A"} / action=${rootCause.slippage && rootCause.slippage.action_hint || "N/A"}`,
     `- partial_fill: severity=${rootCause.partial_fill && rootCause.partial_fill.severity || "N/A"} / market=${rootCause.partial_fill && rootCause.partial_fill.driver_market || "N/A"} / global=${rootCause.partial_fill && rootCause.partial_fill.partial_fill_rate_pct != null ? rootCause.partial_fill.partial_fill_rate_pct : "N/A"} / top_market=${rootCause.partial_fill && rootCause.partial_fill.top_market_partial_fill_rate_pct != null ? rootCause.partial_fill.top_market_partial_fill_rate_pct : "N/A"} / action=${rootCause.partial_fill && rootCause.partial_fill.action_hint || "N/A"}`,
-    `- no_fill: severity=${rootCause.no_fill && rootCause.no_fill.severity || "N/A"} / family=${rootCause.no_fill && rootCause.no_fill.driver_family || "N/A"} / reason=${rootCause.no_fill && rootCause.no_fill.driver_reason || "N/A"} / subtype=${rootCause.no_fill && rootCause.no_fill.driver_subtype || "N/A"} / action=${rootCause.no_fill && rootCause.no_fill.action_hint || "N/A"}`,
+    `- no_fill: severity=${rootCause.no_fill && rootCause.no_fill.severity || "N/A"} / market=${rootCause.no_fill && rootCause.no_fill.driver_market || "N/A"} / family=${rootCause.no_fill && rootCause.no_fill.driver_family || "N/A"} / reason=${rootCause.no_fill && rootCause.no_fill.driver_reason || "N/A"} / subtype=${rootCause.no_fill && rootCause.no_fill.driver_subtype || "N/A"} / bucket=${rootCause.no_fill && rootCause.no_fill.driver_bucket || "N/A"} / action=${rootCause.no_fill && rootCause.no_fill.action_hint || "N/A"}`,
     "",
     "## Markets",
   ];
