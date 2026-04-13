@@ -12,6 +12,7 @@ const POLICY_PARAMETER_PLAN_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution
 const OBJECTIVE_SUPERVISOR_PATH = path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json");
 const SIGNAL_LINEAGE_HEALTH_PATH = path.join(OPS_DAILY_DIR, "signal_lineage_health_latest.json");
 const DRIFT_REMEDIATION_APPLY_PATH = path.join(OPS_DAILY_DIR, "server_signal_drift_remediation_apply_latest.json");
+const EVENT_TRUTH_ALPHA_VALIDATION_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_event_truth_alpha_validation_latest.json");
 const LINEAGE_REPORT_LATEST_COLLECTION = String(process.env.LIVE_EXEC_POLICY_LINEAGE_REPORT_LATEST_COLLECTION || "report_latest").trim() || "report_latest";
 const LINEAGE_REPORT_LATEST_DOC_ID = String(process.env.LIVE_EXEC_POLICY_LINEAGE_REPORT_LATEST_DOC_ID || "LATEST__signal_lineage_health__GLOBAL").trim() || "LATEST__signal_lineage_health__GLOBAL";
 const USE_POSITION_READ_MODEL = String(process.env.LIVE_EXEC_POLICY_USE_POSITION_READ_MODEL || "1").trim() !== "0";
@@ -69,6 +70,23 @@ const LINEAGE_SLO_REQUIRE_FRESH = String(process.env.LIVE_EXEC_POLICY_LINEAGE_SL
 const DRIFT_REMEDIATION_ENABLED = String(process.env.LIVE_EXEC_POLICY_DRIFT_REMEDIATION_ENABLED || "1").trim() !== "0";
 const DRIFT_REMEDIATION_WATCH_ONLY_BLOCK = String(process.env.LIVE_EXEC_POLICY_DRIFT_REMEDIATION_WATCH_ONLY_BLOCK || "1").trim() !== "0";
 const LEARNING_EPOCH_EXCEPTION_RELEASE_ENABLED = String(process.env.LIVE_EXEC_POLICY_LEARNING_EPOCH_EXCEPTION_RELEASE_ENABLED || "1").trim() !== "0";
+const RECENT_WIN_RATE_GUARD_ENABLED = String(process.env.LIVE_EXEC_POLICY_RECENT_WIN_RATE_GUARD_ENABLED || "1").trim() !== "0";
+const RECENT_WIN_RATE_GUARD_PERIOD = String(process.env.LIVE_EXEC_POLICY_RECENT_WIN_RATE_GUARD_PERIOD || "DAYS_7").trim().toUpperCase() || "DAYS_7";
+const RECENT_WIN_RATE_GUARD_THRESHOLD = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_RECENT_WIN_RATE_GUARD_THRESHOLD);
+  if (Number.isFinite(n) && n >= 0 && n <= 1) return n;
+  return 0.6;
+})();
+const RECENT_WIN_RATE_GUARD_SCALE = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_RECENT_WIN_RATE_GUARD_SCALE);
+  if (Number.isFinite(n) && n > 0 && n <= 1) return n;
+  return 0.5;
+})();
+const RECENT_WIN_RATE_GUARD_MIN_REALIZED_N = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_RECENT_WIN_RATE_GUARD_MIN_REALIZED_N);
+  if (Number.isFinite(n) && n >= 0) return Math.floor(n);
+  return 20;
+})();
 
 const ACTION_SCALE_REDUCE = (() => {
   const n = Number(process.env.LIVE_EXEC_POLICY_SCALE_ACTION_REDUCE);
@@ -700,6 +718,7 @@ function buildSnapshotFromArtifacts({
   executionQualityDoc = null,
   policyParameterPlanDoc = null,
   objectiveSupervisorDoc = null,
+  eventTruthAlphaValidationDoc = null,
   lineageHealthDoc = null,
   lineageHealthMtimeMs = null,
   lineageHealthPath = null,
@@ -713,6 +732,7 @@ function buildSnapshotFromArtifacts({
   const qualitySummary = readSummary(executionQualityDoc);
   const policyPlanSummary = readSummary(policyParameterPlanDoc);
   const objectiveSummary = readSummary(objectiveSupervisorDoc);
+  const eventTruthAlphaValidationSummary = readSummary(eventTruthAlphaValidationDoc);
   const lineageSummary = readSummary(lineageHealthDoc);
 
   const allocatorRows = readRows(allocatorDoc, "by_market");
@@ -771,6 +791,7 @@ function buildSnapshotFromArtifacts({
     quality: qualitySummary,
     policyPlan: policyPlanSummary,
     objective: objectiveSummary,
+    eventTruthAlphaValidation: eventTruthAlphaValidationSummary,
     lineage: lineageSummary,
     lineageGeneratedAtKst:
       String(
@@ -890,6 +911,7 @@ function loadPolicySnapshot({ force = false } = {}) {
   const executionQualityDoc = readJsonSafe(EXECUTION_QUALITY_PATH, null);
   const policyParameterPlanDoc = POLICY_PLAN_ENABLED ? readJsonSafe(POLICY_PARAMETER_PLAN_PATH, null) : null;
   const objectiveSupervisorDoc = OBJECTIVE_SCALE_ENABLED ? readJsonSafe(OBJECTIVE_SUPERVISOR_PATH, null) : null;
+  const eventTruthAlphaValidationDoc = RECENT_WIN_RATE_GUARD_ENABLED ? readJsonSafe(EVENT_TRUTH_ALPHA_VALIDATION_PATH, null) : null;
   const localLineageHealthDoc = LINEAGE_SLO_ENABLED ? readJsonSafe(SIGNAL_LINEAGE_HEALTH_PATH, null) : null;
   const localLineageHealthMtimeMs = LINEAGE_SLO_ENABLED ? readFileMtimeMs(SIGNAL_LINEAGE_HEALTH_PATH) : null;
   const selectedLineageInput = selectPreferredLineageInput({
@@ -904,6 +926,7 @@ function loadPolicySnapshot({ force = false } = {}) {
     executionQualityDoc,
     policyParameterPlanDoc,
     objectiveSupervisorDoc,
+    eventTruthAlphaValidationDoc,
     lineageHealthDoc: selectedLineageInput.doc,
     lineageHealthMtimeMs: selectedLineageInput.mtimeMs,
     lineageHealthPath: selectedLineageInput.path,
@@ -1359,6 +1382,63 @@ function deriveSystemAnomalyGuard(snapshot = null) {
   };
 }
 
+function deriveRecentWinRateGuard(snapshot = null) {
+  const summary = snapshot && snapshot.eventTruthAlphaValidation && typeof snapshot.eventTruthAlphaValidation === "object"
+    ? snapshot.eventTruthAlphaValidation
+    : {};
+  const periods = summary.periods && typeof summary.periods === "object" ? summary.periods : {};
+  const period = periods[RECENT_WIN_RATE_GUARD_PERIOD] && typeof periods[RECENT_WIN_RATE_GUARD_PERIOD] === "object"
+    ? periods[RECENT_WIN_RATE_GUARD_PERIOD]
+    : null;
+  const source = period || summary;
+  const winRate = toNum(
+    source && (
+      source.win_rate
+      ?? source.positive_rate
+      ?? source.success_rate
+    )
+  );
+  const realizedN = toNum(
+    source && (
+      source.realized_n
+      ?? source.realized_rows_n
+      ?? source.executed_n
+      ?? source.executed_rows_n
+      ?? source.rows_n
+    )
+  );
+  const evidenceStatus = upper(source && (source.evidence_status || summary.evidence_status));
+  const alphaReady = source && typeof source.alpha_ready === "boolean"
+    ? source.alpha_ready
+    : summary.alpha_ready === true;
+  const hasEvidence = Number.isFinite(winRate) && Number.isFinite(realizedN);
+  const insufficientSamples = !Number.isFinite(realizedN) || realizedN < RECENT_WIN_RATE_GUARD_MIN_REALIZED_N;
+  const pass = hasEvidence && alphaReady && !insufficientSamples && winRate > RECENT_WIN_RATE_GUARD_THRESHOLD;
+  return {
+    enabled: RECENT_WIN_RATE_GUARD_ENABLED,
+    period: RECENT_WIN_RATE_GUARD_PERIOD,
+    threshold: RECENT_WIN_RATE_GUARD_THRESHOLD,
+    scale: RECENT_WIN_RATE_GUARD_SCALE,
+    minRealizedN: RECENT_WIN_RATE_GUARD_MIN_REALIZED_N,
+    winRate,
+    realizedN,
+    alphaReady,
+    evidenceStatus,
+    hasEvidence,
+    insufficientSamples,
+    active: RECENT_WIN_RATE_GUARD_ENABLED && !pass,
+    reason: !RECENT_WIN_RATE_GUARD_ENABLED
+      ? null
+      : (!hasEvidence
+          ? "LIVE_POLICY_RECENT_WIN_RATE_EVIDENCE_MISSING"
+          : (insufficientSamples
+              ? "LIVE_POLICY_RECENT_WIN_RATE_SAMPLE_SHORT"
+              : (winRate > RECENT_WIN_RATE_GUARD_THRESHOLD
+                  ? "LIVE_POLICY_RECENT_WIN_RATE_PASS"
+                  : "LIVE_POLICY_RECENT_WIN_RATE_BELOW_THRESHOLD"))),
+  };
+}
+
 function evaluateLiveEntryPolicy({
   exchange,
   symbol,
@@ -1521,6 +1601,7 @@ function evaluateLiveEntryPolicy({
   const operationalGuard = deriveOperationalGuard(snapshot);
   const systemSlo = deriveSystemSloGuard(snapshot);
   const systemAnomaly = deriveSystemAnomalyGuard(snapshot);
+  const recentWinRateGuard = deriveRecentWinRateGuard(snapshot);
   const operationalHoldSoftScaleMeta = deriveOperationalHoldSoftScaleMeta({
     guard: operationalGuard,
     market,
@@ -1638,6 +1719,17 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_system_anomaly_circuit_breaker_open: systemAnomaly.circuitBreakerOpen,
     _live_exec_policy_system_anomaly_stale: systemAnomaly.stale,
     _live_exec_policy_system_anomaly_issues: systemAnomaly.issues,
+    _live_exec_policy_recent_win_rate_guard_enabled: recentWinRateGuard.enabled,
+    _live_exec_policy_recent_win_rate_guard_period: recentWinRateGuard.period,
+    _live_exec_policy_recent_win_rate_guard_threshold: recentWinRateGuard.threshold,
+    _live_exec_policy_recent_win_rate_guard_scale: recentWinRateGuard.scale,
+    _live_exec_policy_recent_win_rate_guard_min_realized_n: recentWinRateGuard.minRealizedN,
+    _live_exec_policy_recent_win_rate_guard_win_rate: recentWinRateGuard.winRate,
+    _live_exec_policy_recent_win_rate_guard_realized_n: recentWinRateGuard.realizedN,
+    _live_exec_policy_recent_win_rate_guard_alpha_ready: recentWinRateGuard.alphaReady,
+    _live_exec_policy_recent_win_rate_guard_evidence_status: recentWinRateGuard.evidenceStatus,
+    _live_exec_policy_recent_win_rate_guard_active: recentWinRateGuard.active,
+    _live_exec_policy_recent_win_rate_guard_reason: recentWinRateGuard.reason,
   };
 
   if (operationalGuard.blockNewEntries && operationalGuardSoftScale >= 1) {
@@ -1922,6 +2014,7 @@ function evaluateLiveEntryPolicy({
   let qualityGlobalQtyScale = qualityGlobalScale;
   let portfolioClusterScale = 1.0;
   let runtimeGuardQtyScale = runtimeGuardSoftScale;
+  let recentWinRateQtyScale = 1.0;
   const alreadyScaled = baseFeatures._live_exec_policy_scale_applied === true;
 
   if (applyScale && !alreadyScaled) {
@@ -1934,6 +2027,7 @@ function evaluateLiveEntryPolicy({
     const planMarketScale = (applyPolicyPlan && Number.isFinite(policyPlanMarketScale))
       ? policyPlanMarketScale
       : 1;
+    recentWinRateQtyScale = recentWinRateGuard.active ? recentWinRateGuard.scale : 1;
     portfolioClusterScale = portfolioCluster.reduce ? portfolioCluster.scale : 1;
     scaleApplied = clamp(
       actionScale
@@ -1941,6 +2035,7 @@ function evaluateLiveEntryPolicy({
       * qualityScale
       * qualityGlobalQtyScale
       * objectiveQtyScale
+      * recentWinRateQtyScale
       * portfolioClusterScale
       * runtimeGuardQtyScale
       * planGlobalScale
@@ -1960,6 +2055,9 @@ function evaluateLiveEntryPolicy({
   const featureQualityScale = Number.isFinite(toNum(baseFeatures._live_exec_policy_quality_scale))
     ? Number(baseFeatures._live_exec_policy_quality_scale)
     : qualityScale;
+  const featureRecentWinRateScale = Number.isFinite(toNum(baseFeatures._live_exec_policy_recent_win_rate_guard_scale_applied))
+    ? Number(baseFeatures._live_exec_policy_recent_win_rate_guard_scale_applied)
+    : recentWinRateQtyScale;
   const featurePortfolioClusterScale = Number.isFinite(toNum(baseFeatures._live_exec_policy_portfolio_cluster_scale))
     ? Number(baseFeatures._live_exec_policy_portfolio_cluster_scale)
     : portfolioClusterScale;
@@ -1980,6 +2078,7 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_score_scale: featureScoreScale,
     _live_exec_policy_quality_scale: featureQualityScale,
     _live_exec_policy_quality_global_scale: qualityGlobalQtyScale,
+    _live_exec_policy_recent_win_rate_guard_scale_applied: featureRecentWinRateScale,
     _live_exec_policy_portfolio_cluster_scale: featurePortfolioClusterScale,
     _live_exec_policy_portfolio_cluster_reduce: portfolioCluster.reduce,
     _live_exec_policy_runtime_guard_scale: runtimeGuardQtyScale,
@@ -2010,6 +2109,13 @@ function evaluateLiveEntryPolicy({
       score_scale: scoreScale,
       quality_scale: qualityScale,
       quality_global_scale: qualityGlobalQtyScale,
+      recent_win_rate_guard_scale: featureRecentWinRateScale,
+      recent_win_rate_guard_active: recentWinRateGuard.active,
+      recent_win_rate_guard_reason: recentWinRateGuard.reason,
+      recent_win_rate_guard_period: recentWinRateGuard.period,
+      recent_win_rate_guard_threshold: recentWinRateGuard.threshold,
+      recent_win_rate_guard_win_rate: recentWinRateGuard.winRate,
+      recent_win_rate_guard_realized_n: recentWinRateGuard.realizedN,
       portfolio_cluster_scale: featurePortfolioClusterScale,
       portfolio_cluster_reduce: portfolioCluster.reduce,
       runtime_guard_scale: runtimeGuardQtyScale,

@@ -10,16 +10,28 @@ function buildSnapshot({
   policyPlanSummary = null,
   policyPlanRows = [],
   objectiveSummary = null,
+  eventTruthAlphaValidationSummary = null,
   lineageSummary = null,
   driftRemediationApply = null,
 } = {}) {
   const nowIso = new Date().toISOString();
+  const normalizedEventTruthAlphaValidationSummary = eventTruthAlphaValidationSummary || {
+    periods: {
+      DAYS_7: {
+        alpha_ready: true,
+        evidence_status: "EVENT_TRUTH_ALPHA_PASS",
+        realized_rows_n: 100,
+        positive_rate: 0.7,
+      },
+    },
+  };
   return __test.buildSnapshotFromArtifacts({
     allocatorDoc: { summary: { ...(allocatorSummary || {}), by_market: allocatorRows } },
     quarantineDoc: { summary: { ...(quarantineSummary || {}), by_market: quarantineRows } },
     executionQualityDoc: { summary: { by_market: qualityRows } },
     policyParameterPlanDoc: { summary: { ...(policyPlanSummary || {}) }, recommendations: { by_market: policyPlanRows } },
     objectiveSupervisorDoc: { summary: { ...(objectiveSummary || {}) } },
+    eventTruthAlphaValidationDoc: { summary: normalizedEventTruthAlphaValidationSummary },
     lineageHealthDoc: {
       generated_at: nowIso,
       summary: {
@@ -1015,6 +1027,76 @@ function buildSnapshot({
   assert.strictEqual(res.policy.reason, undefined);
   assert.ok(Number(res.featuresPatch._live_exec_policy_portfolio_cluster_scale) < 0.35);
   assert.ok(Number(res.featuresPatch._live_exec_policy_portfolio_cluster_same_side_exposure_after) > 2.5);
+})();
+
+(() => {
+  const snap = buildSnapshot({
+    allocatorRows: [{ market: "BTCUSDT", allocation_score: 1.0, recommended_action: "HOLD" }],
+    qualityRows: [{ market: "BTCUSDT", avg_created_to_fill_ms: 1000, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }],
+    eventTruthAlphaValidationSummary: {
+      periods: {
+        DAYS_7: {
+          alpha_ready: true,
+          evidence_status: "EVENT_TRUTH_ALPHA_PASS",
+          realized_rows_n: 42,
+          positive_rate: 0.58,
+        },
+      },
+    },
+  });
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    intent: "ENTRY",
+    qtyPct: 1,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.policy.recent_win_rate_guard_active, true);
+  assert.strictEqual(res.policy.recent_win_rate_guard_reason, "LIVE_POLICY_RECENT_WIN_RATE_BELOW_THRESHOLD");
+  assert.strictEqual(res.policy.recent_win_rate_guard_period, "DAYS_7");
+  assert.strictEqual(res.policy.recent_win_rate_guard_threshold, 0.6);
+  assert.strictEqual(res.policy.recent_win_rate_guard_win_rate, 0.58);
+  assert.strictEqual(res.policy.recent_win_rate_guard_realized_n, 42);
+  assert.strictEqual(res.policy.recent_win_rate_guard_scale, 0.5);
+  assert.strictEqual(res.featuresPatch._live_exec_policy_recent_win_rate_guard_active, true);
+  assert.strictEqual(res.featuresPatch._live_exec_policy_recent_win_rate_guard_reason, "LIVE_POLICY_RECENT_WIN_RATE_BELOW_THRESHOLD");
+  assert.strictEqual(res.featuresPatch._live_exec_policy_recent_win_rate_guard_scale_applied, 0.5);
+  assert.ok(res.qtyPctFinal <= 0.5);
+})();
+
+(() => {
+  const snap = buildSnapshot({
+    allocatorRows: [{ market: "ETHUSDT", allocation_score: 1.0, recommended_action: "HOLD" }],
+    qualityRows: [{ market: "ETHUSDT", avg_created_to_fill_ms: 1000, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }],
+    eventTruthAlphaValidationSummary: {
+      periods: {
+        DAYS_7: {
+          alpha_ready: true,
+          evidence_status: "EVENT_TRUTH_ALPHA_PASS",
+          realized_rows_n: 42,
+          positive_rate: 0.6428571428571429,
+        },
+      },
+    },
+  });
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    intent: "ENTRY",
+    qtyPct: 1,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.policy.recent_win_rate_guard_active, false);
+  assert.strictEqual(res.policy.recent_win_rate_guard_reason, "LIVE_POLICY_RECENT_WIN_RATE_PASS");
+  assert.strictEqual(res.featuresPatch._live_exec_policy_recent_win_rate_guard_scale_applied, 1);
 })();
 
 console.log("LIVE_EXECUTION_POLICY_TEST_OK");
