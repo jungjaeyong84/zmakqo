@@ -75,7 +75,7 @@ const RECENT_WIN_RATE_GUARD_PERIOD = String(process.env.LIVE_EXEC_POLICY_RECENT_
 const RECENT_WIN_RATE_GUARD_THRESHOLD = (() => {
   const n = Number(process.env.LIVE_EXEC_POLICY_RECENT_WIN_RATE_GUARD_THRESHOLD);
   if (Number.isFinite(n) && n >= 0 && n <= 1) return n;
-  return 0.6;
+  return 0;
 })();
 const RECENT_WIN_RATE_GUARD_SCALE = (() => {
   const n = Number(process.env.LIVE_EXEC_POLICY_RECENT_WIN_RATE_GUARD_SCALE);
@@ -1391,11 +1391,19 @@ function deriveRecentWinRateGuard(snapshot = null) {
     ? periods[RECENT_WIN_RATE_GUARD_PERIOD]
     : null;
   const source = period || summary;
-  const winRate = toNum(
+  const positiveRate = toNum(
     source && (
       source.win_rate
       ?? source.positive_rate
       ?? source.success_rate
+    )
+  );
+  const metricName = "AVG_REALIZED_PNL_QUOTE";
+  const metricValue = toNum(
+    source && (
+      source.avg_realized_pnl_quote
+      ?? source.realized_pnl_sum_quote
+      ?? source.avg_realized_ret_net
     )
   );
   const realizedN = toNum(
@@ -1411,16 +1419,19 @@ function deriveRecentWinRateGuard(snapshot = null) {
   const alphaReady = source && typeof source.alpha_ready === "boolean"
     ? source.alpha_ready
     : summary.alpha_ready === true;
-  const hasEvidence = Number.isFinite(winRate) && Number.isFinite(realizedN);
+  const hasEvidence = Number.isFinite(metricValue) && Number.isFinite(realizedN);
   const insufficientSamples = !Number.isFinite(realizedN) || realizedN < RECENT_WIN_RATE_GUARD_MIN_REALIZED_N;
-  const pass = hasEvidence && alphaReady && !insufficientSamples && winRate > RECENT_WIN_RATE_GUARD_THRESHOLD;
+  const pass = hasEvidence && alphaReady && !insufficientSamples && metricValue > RECENT_WIN_RATE_GUARD_THRESHOLD;
   return {
     enabled: RECENT_WIN_RATE_GUARD_ENABLED,
     period: RECENT_WIN_RATE_GUARD_PERIOD,
     threshold: RECENT_WIN_RATE_GUARD_THRESHOLD,
     scale: RECENT_WIN_RATE_GUARD_SCALE,
     minRealizedN: RECENT_WIN_RATE_GUARD_MIN_REALIZED_N,
-    winRate,
+    winRate: positiveRate,
+    positiveRate,
+    metricName,
+    metricValue,
     realizedN,
     alphaReady,
     evidenceStatus,
@@ -1433,9 +1444,9 @@ function deriveRecentWinRateGuard(snapshot = null) {
           ? "LIVE_POLICY_RECENT_WIN_RATE_EVIDENCE_MISSING"
           : (insufficientSamples
               ? "LIVE_POLICY_RECENT_WIN_RATE_SAMPLE_SHORT"
-              : (winRate > RECENT_WIN_RATE_GUARD_THRESHOLD
-                  ? "LIVE_POLICY_RECENT_WIN_RATE_PASS"
-                  : "LIVE_POLICY_RECENT_WIN_RATE_BELOW_THRESHOLD"))),
+              : (metricValue > RECENT_WIN_RATE_GUARD_THRESHOLD
+                  ? "LIVE_POLICY_RECENT_NET_PNL_PASS"
+                  : "LIVE_POLICY_RECENT_NET_PNL_BELOW_THRESHOLD"))),
   };
 }
 
@@ -1730,6 +1741,11 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_recent_win_rate_guard_evidence_status: recentWinRateGuard.evidenceStatus,
     _live_exec_policy_recent_win_rate_guard_active: recentWinRateGuard.active,
     _live_exec_policy_recent_win_rate_guard_reason: recentWinRateGuard.reason,
+    _live_exec_policy_recent_performance_guard_metric: recentWinRateGuard.metricName,
+    _live_exec_policy_recent_performance_guard_value: recentWinRateGuard.metricValue,
+    _live_exec_policy_recent_performance_guard_threshold: recentWinRateGuard.threshold,
+    _live_exec_policy_recent_performance_guard_active: recentWinRateGuard.active,
+    _live_exec_policy_recent_performance_guard_reason: recentWinRateGuard.reason,
   };
 
   if (operationalGuard.blockNewEntries && operationalGuardSoftScale >= 1) {
@@ -2079,6 +2095,7 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_quality_scale: featureQualityScale,
     _live_exec_policy_quality_global_scale: qualityGlobalQtyScale,
     _live_exec_policy_recent_win_rate_guard_scale_applied: featureRecentWinRateScale,
+    _live_exec_policy_recent_performance_guard_scale_applied: featureRecentWinRateScale,
     _live_exec_policy_portfolio_cluster_scale: featurePortfolioClusterScale,
     _live_exec_policy_portfolio_cluster_reduce: portfolioCluster.reduce,
     _live_exec_policy_runtime_guard_scale: runtimeGuardQtyScale,
@@ -2116,6 +2133,12 @@ function evaluateLiveEntryPolicy({
       recent_win_rate_guard_threshold: recentWinRateGuard.threshold,
       recent_win_rate_guard_win_rate: recentWinRateGuard.winRate,
       recent_win_rate_guard_realized_n: recentWinRateGuard.realizedN,
+      recent_performance_guard_metric: recentWinRateGuard.metricName,
+      recent_performance_guard_value: recentWinRateGuard.metricValue,
+      recent_performance_guard_threshold: recentWinRateGuard.threshold,
+      recent_performance_guard_active: recentWinRateGuard.active,
+      recent_performance_guard_reason: recentWinRateGuard.reason,
+      recent_performance_guard_scale: featureRecentWinRateScale,
       portfolio_cluster_scale: featurePortfolioClusterScale,
       portfolio_cluster_reduce: portfolioCluster.reduce,
       runtime_guard_scale: runtimeGuardQtyScale,

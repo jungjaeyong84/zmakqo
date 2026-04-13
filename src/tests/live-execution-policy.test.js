@@ -22,6 +22,7 @@ function buildSnapshot({
         evidence_status: "EVENT_TRUTH_ALPHA_PASS",
         realized_rows_n: 100,
         positive_rate: 0.7,
+        avg_realized_pnl_quote: 5,
       },
     },
   };
@@ -1040,6 +1041,7 @@ function buildSnapshot({
           evidence_status: "EVENT_TRUTH_ALPHA_PASS",
           realized_rows_n: 42,
           positive_rate: 0.58,
+          avg_realized_pnl_quote: -3.233954785852168,
         },
       },
     },
@@ -1055,16 +1057,18 @@ function buildSnapshot({
     snapshotOverride: snap,
   });
   assert.strictEqual(res.ok, true);
-  assert.strictEqual(res.policy.recent_win_rate_guard_active, true);
-  assert.strictEqual(res.policy.recent_win_rate_guard_reason, "LIVE_POLICY_RECENT_WIN_RATE_BELOW_THRESHOLD");
+  assert.strictEqual(res.policy.recent_performance_guard_active, true);
+  assert.strictEqual(res.policy.recent_performance_guard_reason, "LIVE_POLICY_RECENT_NET_PNL_BELOW_THRESHOLD");
   assert.strictEqual(res.policy.recent_win_rate_guard_period, "DAYS_7");
-  assert.strictEqual(res.policy.recent_win_rate_guard_threshold, 0.6);
+  assert.strictEqual(res.policy.recent_performance_guard_threshold, 0);
   assert.strictEqual(res.policy.recent_win_rate_guard_win_rate, 0.58);
+  assert.strictEqual(res.policy.recent_performance_guard_metric, "AVG_REALIZED_PNL_QUOTE");
+  assert.strictEqual(res.policy.recent_performance_guard_value, -3.233954785852168);
   assert.strictEqual(res.policy.recent_win_rate_guard_realized_n, 42);
-  assert.strictEqual(res.policy.recent_win_rate_guard_scale, 0.5);
-  assert.strictEqual(res.featuresPatch._live_exec_policy_recent_win_rate_guard_active, true);
-  assert.strictEqual(res.featuresPatch._live_exec_policy_recent_win_rate_guard_reason, "LIVE_POLICY_RECENT_WIN_RATE_BELOW_THRESHOLD");
-  assert.strictEqual(res.featuresPatch._live_exec_policy_recent_win_rate_guard_scale_applied, 0.5);
+  assert.strictEqual(res.policy.recent_performance_guard_scale, 0.5);
+  assert.strictEqual(res.featuresPatch._live_exec_policy_recent_performance_guard_active, true);
+  assert.strictEqual(res.featuresPatch._live_exec_policy_recent_performance_guard_reason, "LIVE_POLICY_RECENT_NET_PNL_BELOW_THRESHOLD");
+  assert.strictEqual(res.featuresPatch._live_exec_policy_recent_performance_guard_scale_applied, 0.5);
   assert.ok(res.qtyPctFinal <= 0.5);
 })();
 
@@ -1079,6 +1083,7 @@ function buildSnapshot({
           evidence_status: "EVENT_TRUTH_ALPHA_PASS",
           realized_rows_n: 42,
           positive_rate: 0.6428571428571429,
+          avg_realized_pnl_quote: 2.5,
         },
       },
     },
@@ -1094,9 +1099,10 @@ function buildSnapshot({
     snapshotOverride: snap,
   });
   assert.strictEqual(res.ok, true);
-  assert.strictEqual(res.policy.recent_win_rate_guard_active, false);
-  assert.strictEqual(res.policy.recent_win_rate_guard_reason, "LIVE_POLICY_RECENT_WIN_RATE_PASS");
-  assert.strictEqual(res.featuresPatch._live_exec_policy_recent_win_rate_guard_scale_applied, 1);
+  assert.strictEqual(res.policy.recent_performance_guard_active, false);
+  assert.strictEqual(res.policy.recent_performance_guard_reason, "LIVE_POLICY_RECENT_NET_PNL_PASS");
+  assert.strictEqual(res.policy.recent_performance_guard_value, 2.5);
+  assert.strictEqual(res.featuresPatch._live_exec_policy_recent_performance_guard_scale_applied, 1);
 })();
 
 console.log("LIVE_EXECUTION_POLICY_TEST_OK");
