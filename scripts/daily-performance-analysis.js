@@ -74,6 +74,19 @@ function parseTelegramRows(logText, dateKey) {
   return rows;
 }
 
+function buildSnapshotOnlyRows(snapshot = {}, snapshotEndTs = null) {
+  const totalUsdt = toNum(snapshot.total_equity, null);
+  if (!Number.isFinite(totalUsdt) || !snapshotEndTs) return [];
+  return [{
+    ts: snapshotEndTs,
+    total_usdt: totalUsdt,
+    interval_return_pct: null,
+    realized_usdt: toNum(snapshot.realized_pnl, null),
+    cost_usdt: (toNum(snapshot.commission, 0) + toNum(snapshot.funding, 0)),
+    error_count_24h: null,
+  }];
+}
+
 function timeBucket(ts) {
   const hour = Number(String(ts || "").slice(11, 13));
   if (!Number.isFinite(hour)) return "unknown";
@@ -134,24 +147,24 @@ function main() {
   }
 
   const rows = parseTelegramRows(telegramLog, dateKey);
-  if (!rows.length) {
-    throw new Error(`telegram_send.log에서 ${dateKey} 데이터 미발견`);
-  }
-
   const snapshotEndTs = formatSnapshotTs(snapshot.end_kst);
-  const timeline = rows.map((r) => ({
+  const effectiveRows = rows.length ? rows : buildSnapshotOnlyRows(snapshot, snapshotEndTs);
+  if (!effectiveRows.length) {
+    throw new Error(`telegram_send.log에서 ${dateKey} 데이터 미발견, snapshot fallback도 불가`);
+  }
+  const timeline = effectiveRows.map((r) => ({
     ts: r.ts,
     total_usdt: r.total_usdt,
     realized_usdt: r.realized_usdt,
     cost_usdt: r.cost_usdt,
-    source: "telegram",
+    source: rows.length ? "telegram" : "snapshot_fallback",
   }));
 
-  const lastRow = rows[rows.length - 1];
+  const lastRow = effectiveRows[effectiveRows.length - 1];
   const snapshotTotal = toNum(snapshot.total_equity, null);
   const snapshotRealized = toNum(snapshot.realized_pnl, null);
   const snapshotCost = toNum(snapshot.commission, 0) + toNum(snapshot.funding, 0);
-  const needSnapshotPoint = Number.isFinite(snapshotTotal)
+  const needSnapshotPoint = rows.length > 0 && Number.isFinite(snapshotTotal)
     && (Math.abs(snapshotTotal - toNum(lastRow.total_usdt, 0)) > 0.2 || snapshotEndTs !== lastRow.ts);
 
   if (needSnapshotPoint) {
@@ -322,6 +335,7 @@ function main() {
       "승률/손익비는 체결 1건 단위가 아니라 시계열 구간(메시지 간격) 기준 proxy 입니다.",
       "비용 상위 시간대는 텔레그램 누적 비용 변화(정수 반올림 포함) 기준입니다.",
       "MDD는 당일 시계열 관측점 기준이며 틱 단위 최저점은 반영되지 않았습니다.",
+      ...(rows.length ? [] : ["telegram_send.log 당일 데이터가 없어 snapshot-only fallback 으로 계산했습니다."]),
     ],
     source_files: {
       snapshot: path.relative(repoRoot, snapshotPath),
@@ -330,6 +344,7 @@ function main() {
     },
     sample_counts: {
       telegram_rows: rows.length,
+      effective_rows: effectiveRows.length,
       timeline_points: timeline.length,
       intervals: intervals.length,
     },
