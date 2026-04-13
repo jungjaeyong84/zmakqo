@@ -83,6 +83,9 @@ function buildScriptResult(parsed) {
   });
   assert.ok(md.includes("native_gap_after"));
 
+  const parsedPretty = __test.extractJson('{\n  "ok": true,\n  "duplicate_group_n": 6\n}\n');
+  assert.deepStrictEqual(parsedPretty, { ok: true, duplicate_group_n: 6 });
+
   console.log("BINANCE_EXIT_INTEGRITY_CYCLE_TEST_OK");
 })().catch((err) => {
   console.error("BINANCE_EXIT_INTEGRITY_CYCLE_TEST_FAIL", err && err.stack ? err.stack : err);

@@ -21,7 +21,14 @@ function envBool(value, fallback = false) {
 }
 
 function extractJson(stdout = "") {
-  const lines = String(stdout || "").trim().split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const raw = String(stdout || "").trim();
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (_err) {
+    // fall through
+  }
+  const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   for (let i = lines.length - 1; i >= 0; i -= 1) {
     try {
       return JSON.parse(lines[i]);
@@ -200,6 +207,7 @@ if (require.main === module) {
   module.exports = {
     runBinanceExitIntegrityCycle,
     __test: {
+      extractJson,
       buildSummary,
       buildMarkdown,
     },
