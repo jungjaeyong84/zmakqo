@@ -27,6 +27,14 @@ function allowedMarketsSet() {
   return new Set(defaultMarketsFromEnv("BINANCEFUT"));
 }
 
+function severityFromValue(value, warnThreshold, critThreshold) {
+  const n = toNum(value);
+  if (!Number.isFinite(n)) return "UNKNOWN";
+  if (Number.isFinite(critThreshold) && n >= critThreshold) return "CRITICAL";
+  if (Number.isFinite(warnThreshold) && n >= warnThreshold) return "WARN";
+  return "OK";
+}
+
 function summarizeExecutionQuality({
   microstructure = null,
   bridgeLatency = null,
@@ -205,6 +213,9 @@ function summarizeExecutionQuality({
   const topNoFillSubtype = Array.isArray(executionModelSummary.top_no_fill_subtypes)
     ? executionModelSummary.top_no_fill_subtypes[0]
     : null;
+  const topNoFillReasonFamily = Array.isArray(executionModelSummary.top_no_fill_reason_families)
+    ? executionModelSummary.top_no_fill_reason_families[0]
+    : null;
   const topScopeFalsePositiveGroup = Array.isArray(executionScopeInferenceSummary.top_false_positive_groups)
     ? executionScopeInferenceSummary.top_false_positive_groups[0]
     : null;
@@ -233,6 +244,49 @@ function summarizeExecutionQuality({
     reviewReasons.push("EXECUTION_SCOPE_MODEL_PRESENT");
   }
 
+  const rootCause = {
+    latency: {
+      driver: topOperationalDelayCause === "LEGACY_WEBHOOK_OUTCOME_ONLY"
+        ? "LEGACY_WEBHOOK_OUTCOME_ONLY"
+        : (topOperationalIntentDelayGroup && topOperationalIntentDelayGroup.key ? topOperationalIntentDelayGroup.key : topOperationalDelayCause),
+      guard_latency_p95_ms: createdToFillP95Guard,
+      raw_latency_p95_ms: createdToFillP95Raw,
+      webhook_to_fill_p95_ms: webhookToFillP95,
+      severity: severityFromValue(createdToFillP95Guard, 3000, 60000),
+      legacy_fallback_active: topOperationalDelayCause === "LEGACY_WEBHOOK_OUTCOME_ONLY" && Number.isFinite(createdToFillP95Raw) && Number.isFinite(webhookToFillP95),
+      action_hint: topOperationalDelayCause === "LEGACY_WEBHOOK_OUTCOME_ONLY"
+        ? "SEPARATE_LEGACY_OUTCOME_LATENCY_FROM_IMMEDIATE_PATH"
+        : "TRIM_IMMEDIATE_INTENT_DELAY_PATH",
+    },
+    slippage: {
+      driver_market: topSlippage ? topSlippage.market : null,
+      adverse_slippage_p95_bps: adverseSlippageP95,
+      top_market_avg_slippage_bps: topSlippage ? topSlippage.avg_slippage_bps : null,
+      severity: severityFromValue(adverseSlippageP95, 12, 80),
+      action_hint: "TIGHTEN_ENTRY_EXECUTION_AND_LIMIT_CHASING",
+    },
+    partial_fill: {
+      driver_market: topPartial ? topPartial.market : null,
+      partial_fill_rate_pct: partialRate,
+      top_market_partial_fill_rate_pct: topPartial ? topPartial.partial_fill_rate_pct : null,
+      severity: severityFromValue(partialRate, 35, 60),
+      action_hint: "REDUCE_MULTI_SLICE_FRAGMENTATION_AND_REPRICE_RETRY",
+    },
+    no_fill: {
+      driver_reason: topNoFillReason && topNoFillReason.key ? topNoFillReason.key : null,
+      driver_subtype: topNoFillSubtype && topNoFillSubtype.key ? topNoFillSubtype.key : null,
+      driver_family: topNoFillReasonFamily && topNoFillReasonFamily.key ? topNoFillReasonFamily.key : null,
+      severity: (topNoFillReason && String(topNoFillReason.key || "").trim()) ? "WARN" : "OK",
+      action_hint: (topNoFillReason && String(topNoFillReason.key || "").trim()) ? "INSPECT_RUNTIME_FAILURE_AND_TIMING_PATH" : null,
+    },
+    watch_markets: rows.slice(0, 6).map((row) => ({
+      market: row.market,
+      avg_created_to_fill_ms: row.avg_created_to_fill_ms,
+      avg_slippage_bps: row.avg_slippage_bps,
+      partial_fill_rate_pct: row.partial_fill_rate_pct,
+    })),
+  };
+
   return {
     summary: {
       status: reviewReasons.length ? "EXECUTION_QUALITY_REVIEW" : "EXECUTION_QUALITY_STABLE",
@@ -254,6 +308,7 @@ function summarizeExecutionQuality({
       top_operational_immediate_intent_delay_group: topOperationalIntentDelayGroup && topOperationalIntentDelayGroup.key ? topOperationalIntentDelayGroup.key : null,
       top_no_fill_reason: topNoFillReason && topNoFillReason.key ? topNoFillReason.key : null,
       top_no_fill_subtype: topNoFillSubtype && topNoFillSubtype.key ? topNoFillSubtype.key : null,
+      top_no_fill_reason_family: topNoFillReasonFamily && topNoFillReasonFamily.key ? topNoFillReasonFamily.key : null,
       execution_scope_train_run_status: String(executionScopeTrainRunSummary.status || "").trim() || null,
       execution_scope_quality_gate_status: String(executionScopeTrainRunSummary.quality_gate_status || "").trim() || null,
       execution_scope_quality_gate_ready: executionScopeTrainRunSummary.quality_gate_ready === true,
@@ -305,12 +360,8 @@ function summarizeExecutionQuality({
       execution_scope_tier_raw_diff_pre_bar_close_rows_n: preBarCloseRowsN || 0,
       review_reasons: reviewReasons,
       market_n: rows.length,
-      top_watch_markets: rows.slice(0, 6).map((row) => ({
-        market: row.market,
-        avg_created_to_fill_ms: row.avg_created_to_fill_ms,
-        avg_slippage_bps: row.avg_slippage_bps,
-        partial_fill_rate_pct: row.partial_fill_rate_pct,
-      })),
+      top_watch_markets: rootCause.watch_markets,
+      root_cause: rootCause,
     },
     by_market: rows,
   };

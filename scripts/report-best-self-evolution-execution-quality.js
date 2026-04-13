@@ -34,6 +34,7 @@ const REPORT_LATEST_DOC_ID = "LATEST__best_self_evolution_execution_quality__GLO
 
 function renderMarkdown(report = {}) {
   const summary = report.summary || {};
+  const rootCause = summary.root_cause && typeof summary.root_cause === "object" ? summary.root_cause : {};
   const rows = Array.isArray(report.by_market) ? report.by_market : [];
   const lines = [
     "# BEST Self-Evolution Execution Quality",
@@ -55,6 +56,7 @@ function renderMarkdown(report = {}) {
     `- top_operational_immediate_intent_delay_group: ${summary.top_operational_immediate_intent_delay_group || "N/A"}`,
     `- top_no_fill_reason: ${summary.top_no_fill_reason || "N/A"}`,
     `- top_no_fill_subtype: ${summary.top_no_fill_subtype || "N/A"}`,
+    `- top_no_fill_reason_family: ${summary.top_no_fill_reason_family || "N/A"}`,
     `- execution_scope_quality_gate: ${summary.execution_scope_quality_gate_status || "N/A"} / ready=${summary.execution_scope_quality_gate_ready ? "YES" : "NO"}`,
     `- execution_scope_mismatch_rate: ${summary.execution_scope_inference_mismatch_rate ?? "N/A"}`,
     `- execution_scope_test_early_macro_recall: ${summary.execution_scope_test_early_macro_recall ?? "N/A"} / rows=${summary.execution_scope_test_early_rows_n ?? "N/A"}`,
@@ -66,6 +68,12 @@ function renderMarkdown(report = {}) {
     `- execution_scope_top_false_positive_group: ${summary.execution_scope_top_false_positive_group || "N/A"}`,
     `- execution_scope_fp_diagnostics: ${summary.execution_scope_fp_diagnostics_status || "N/A"} / top_shared=${summary.execution_scope_fp_diagnostics_top_shared_feature || "N/A"} / top_profile=${summary.execution_scope_fp_diagnostics_top_context_profile || "N/A"} / reference_rows=${summary.execution_scope_fp_diagnostics_reference_rows_n ?? "N/A"}`,
     `- review_reasons: ${Array.isArray(summary.review_reasons) && summary.review_reasons.length ? summary.review_reasons.join("|") : "none"}`,
+    "",
+    "## Root Cause",
+    `- latency: severity=${rootCause.latency && rootCause.latency.severity || "N/A"} / driver=${rootCause.latency && rootCause.latency.driver || "N/A"} / guard_p95=${rootCause.latency && rootCause.latency.guard_latency_p95_ms != null ? rootCause.latency.guard_latency_p95_ms : "N/A"} / raw_p95=${rootCause.latency && rootCause.latency.raw_latency_p95_ms != null ? rootCause.latency.raw_latency_p95_ms : "N/A"} / action=${rootCause.latency && rootCause.latency.action_hint || "N/A"}`,
+    `- slippage: severity=${rootCause.slippage && rootCause.slippage.severity || "N/A"} / market=${rootCause.slippage && rootCause.slippage.driver_market || "N/A"} / p95=${rootCause.slippage && rootCause.slippage.adverse_slippage_p95_bps != null ? rootCause.slippage.adverse_slippage_p95_bps : "N/A"} / top_market_avg=${rootCause.slippage && rootCause.slippage.top_market_avg_slippage_bps != null ? rootCause.slippage.top_market_avg_slippage_bps : "N/A"} / action=${rootCause.slippage && rootCause.slippage.action_hint || "N/A"}`,
+    `- partial_fill: severity=${rootCause.partial_fill && rootCause.partial_fill.severity || "N/A"} / market=${rootCause.partial_fill && rootCause.partial_fill.driver_market || "N/A"} / global=${rootCause.partial_fill && rootCause.partial_fill.partial_fill_rate_pct != null ? rootCause.partial_fill.partial_fill_rate_pct : "N/A"} / top_market=${rootCause.partial_fill && rootCause.partial_fill.top_market_partial_fill_rate_pct != null ? rootCause.partial_fill.top_market_partial_fill_rate_pct : "N/A"} / action=${rootCause.partial_fill && rootCause.partial_fill.action_hint || "N/A"}`,
+    `- no_fill: severity=${rootCause.no_fill && rootCause.no_fill.severity || "N/A"} / family=${rootCause.no_fill && rootCause.no_fill.driver_family || "N/A"} / reason=${rootCause.no_fill && rootCause.no_fill.driver_reason || "N/A"} / subtype=${rootCause.no_fill && rootCause.no_fill.driver_subtype || "N/A"} / action=${rootCause.no_fill && rootCause.no_fill.action_hint || "N/A"}`,
     "",
     "## Markets",
   ];

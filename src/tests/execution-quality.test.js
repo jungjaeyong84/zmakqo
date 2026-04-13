@@ -109,6 +109,15 @@ const { summarizeExecutionQuality } = require("../utils/executionQuality");
   assert.strictEqual(report.summary.top_operational_immediate_intent_delay_group, "TV_WEBHOOK|EARLY_LONG|BTCUSDT");
   assert.strictEqual(report.summary.top_no_fill_reason, "LIVE_EXCEPTION");
   assert.strictEqual(report.summary.top_no_fill_subtype, "TIMING_IMMEDIATE_EXEC");
+  assert.strictEqual(report.summary.top_no_fill_reason_family, null);
+  assert.strictEqual(report.summary.root_cause.latency.driver, "TV_WEBHOOK|EARLY_LONG|BTCUSDT");
+  assert.strictEqual(report.summary.root_cause.latency.severity, "CRITICAL");
+  assert.strictEqual(report.summary.root_cause.slippage.driver_market, "SOLUSDT");
+  assert.strictEqual(report.summary.root_cause.slippage.severity, "CRITICAL");
+  assert.strictEqual(report.summary.root_cause.partial_fill.driver_market, "SOLUSDT");
+  assert.strictEqual(report.summary.root_cause.partial_fill.severity, "CRITICAL");
+  assert.strictEqual(report.summary.root_cause.no_fill.driver_reason, "LIVE_EXCEPTION");
+  assert.strictEqual(report.summary.root_cause.no_fill.driver_subtype, "TIMING_IMMEDIATE_EXEC");
   assert.strictEqual(report.summary.execution_scope_quality_gate_status, "POLICY_BLOCKED_RECALL_TOO_LOW");
   assert.strictEqual(report.summary.execution_scope_quality_gate_ready, false);
   assert.strictEqual(report.summary.execution_scope_inference_mismatch_rate, 0.29);
@@ -150,6 +159,7 @@ const { summarizeExecutionQuality } = require("../utils/executionQuality");
     executionModelDataset: {
       summary: {
         top_operational_webhook_delay_causes: [{ key: "LEGACY_WEBHOOK_OUTCOME_ONLY", rows_n: 15 }],
+        top_no_fill_reason_families: [{ key: "RUNTIME_ERROR", rows_n: 8 }],
       },
     },
   });
@@ -159,6 +169,10 @@ const { summarizeExecutionQuality } = require("../utils/executionQuality");
   assert.strictEqual(report.summary.created_to_fill_p95_ms, 3979);
   assert.ok(report.summary.review_reasons.includes("LEGACY_LATENCY_GUARD_FALLBACK_ACTIVE"));
   assert.ok(!report.summary.review_reasons.includes("CREATED_TO_FILL_P95_HIGH"));
+  assert.strictEqual(report.summary.top_no_fill_reason_family, "RUNTIME_ERROR");
+  assert.strictEqual(report.summary.root_cause.latency.driver, "LEGACY_WEBHOOK_OUTCOME_ONLY");
+  assert.strictEqual(report.summary.root_cause.latency.legacy_fallback_active, true);
+  assert.strictEqual(report.summary.root_cause.latency.severity, "WARN");
 })();
 
 (() => {

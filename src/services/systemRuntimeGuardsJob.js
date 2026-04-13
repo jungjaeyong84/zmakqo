@@ -163,6 +163,12 @@ async function runSystemRuntimeGuardsJob({
     exitIntegrityCycle,
     nowMs,
   });
+  const executionQualitySummary = executionQuality && typeof executionQuality === "object"
+    ? (executionQuality.summary && typeof executionQuality.summary === "object" ? executionQuality.summary : executionQuality)
+    : {};
+  const executionQualityRootCause = executionQualitySummary.root_cause && typeof executionQualitySummary.root_cause === "object"
+    ? executionQualitySummary.root_cause
+    : {};
   const sloPath = path.join(artifactBaseDir, "system_slo_state_latest.json");
   const anomalyPath = path.join(artifactBaseDir, "system_anomaly_state_latest.json");
   const nativeTrailProtectionPath = path.join(artifactBaseDir, "native_trail_protection_gap_latest.json");
@@ -295,6 +301,10 @@ async function runSystemRuntimeGuardsJob({
       native_trail_protection_gap_count: Number(nativeTrailProtection && nativeTrailProtection.gap_count || 0),
       exit_integrity_status: String(exitIntegrityCycle && exitIntegrityCycle.status || exitIntegrityCycle && exitIntegrityCycle.summary && exitIntegrityCycle.summary.status || "UNKNOWN"),
       exit_integrity_live_issue_count: Number(exitIntegrityCycle && exitIntegrityCycle.summary && exitIntegrityCycle.summary.live_issue_count || 0),
+      execution_quality_latency_driver: executionQualityRootCause.latency && executionQualityRootCause.latency.driver || null,
+      execution_quality_partial_driver_market: executionQualityRootCause.partial_fill && executionQualityRootCause.partial_fill.driver_market || null,
+      execution_quality_slippage_driver_market: executionQualityRootCause.slippage && executionQualityRootCause.slippage.driver_market || null,
+      execution_quality_no_fill_reason: executionQualityRootCause.no_fill && executionQualityRootCause.no_fill.driver_reason || null,
     },
   });
 
@@ -314,6 +324,7 @@ async function runSystemRuntimeGuardsJob({
     actuation,
     remediation,
     otel_export: otelExport,
+    execution_quality_focus: executionQualityRootCause,
     native_trail_protection: nativeTrailProtection,
     exit_integrity_cycle: exitIntegrityCycle,
     artifacts: {
