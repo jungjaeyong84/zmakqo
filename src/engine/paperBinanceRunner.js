@@ -8569,6 +8569,79 @@ async function computeFuturesOrderQty({ symbol, priceRef, notionalQuote, reduceO
   return { ok: true, qty, minNotional };
 }
 
+function resolveEntryMinOrderBudgetAdjustment({
+  minRequiredQuote,
+  notionalQuote,
+  budgetMax,
+  leverageMult,
+  maxFractionAllowed,
+  qtyFraction,
+  maxEntryNotional,
+  marketCapBudget,
+  currentPosBudgetUsed,
+} = {}) {
+  const minQuote = Number(minRequiredQuote);
+  const currentNotional = Number(notionalQuote);
+  const maxAllowed = Number.isFinite(Number(maxFractionAllowed))
+    ? Number(maxFractionAllowed)
+    : Number(qtyFraction || 0);
+  const baseBudget = Number(budgetMax) * Number(leverageMult);
+  const requiredFraction = (Number.isFinite(baseBudget) && baseBudget > 0)
+    ? (minQuote / baseBudget)
+    : null;
+  const availableEntryNotional = Number.isFinite(Number(maxEntryNotional))
+    ? Number(maxEntryNotional)
+    : ((Number.isFinite(baseBudget) && baseBudget > 0) ? baseBudget : null);
+
+  if (!Number.isFinite(minQuote) || minQuote <= 0 || (Number.isFinite(currentNotional) && currentNotional >= minQuote)) {
+    return {
+      ok: true,
+      adjusted: false,
+      notionalQuote: currentNotional,
+      maxAllowed,
+      requiredFraction,
+      availableEntryNotional,
+    };
+  }
+
+  if (Number.isFinite(availableEntryNotional) && availableEntryNotional >= minQuote) {
+    return {
+      ok: true,
+      adjusted: true,
+      notionalQuote: minQuote,
+      maxAllowed,
+      requiredFraction,
+      availableEntryNotional,
+      adjustmentSource: (
+        Number.isFinite(requiredFraction) &&
+        requiredFraction > 0 &&
+        Number.isFinite(maxAllowed) &&
+        requiredFraction <= maxAllowed
+      )
+        ? "FRACTIONAL_MIN_BUMP"
+        : "AVAILABLE_NOTIONAL_MIN_BUMP",
+    };
+  }
+
+  return {
+    ok: false,
+    adjusted: false,
+    reason: "MIN_ORDER_EXCEEDS_BUDGET",
+    maxAllowed,
+    requiredFraction,
+    availableEntryNotional,
+    note: [
+      `min_required=${minQuote}`,
+      `notional=${currentNotional}`,
+      `max_allowed=${maxAllowed}`,
+      `required_fraction=${Number.isFinite(requiredFraction) ? requiredFraction : "NA"}`,
+      `max_entry_notional=${Number.isFinite(availableEntryNotional) ? availableEntryNotional : "NA"}`,
+      `market_cap_budget=${Number.isFinite(Number(marketCapBudget)) ? Number(marketCapBudget) : "NA"}`,
+      `pos_budget_used=${Number.isFinite(Number(currentPosBudgetUsed)) ? Number(currentPosBudgetUsed) : "NA"}`,
+    ].join(", "),
+  };
+}
+
 function resolvePosQtyBase(pos) {
   const base = Number(pos && (pos.qty_base ?? (pos.meta && (pos.meta.qty_base ?? pos.meta.external_qty_base))));
   if (Number.isFinite(base) && base > 0) return base;
@@ -9933,6 +10006,9 @@ async function executeLiveFuturesOrder({
 
   const budgetMax = Number.isFinite(budgetBaseRaw) && budgetBaseRaw > 0 ? budgetBaseRaw : null;
   const posNotional = Number.isFinite(posQtyBase) ? (posQtyBase * priceRef) : null;
+  let marketCapBudget = null;
+  let currentPosBudgetUsed = null;
+  let maxEntryNotional = null;
   if (isExit && Number.isFinite(minQty) && minQty > 0 && Number.isFinite(posQtyBase) && posQtyBase > 0 && posQtyBase < minQty) {
     return { ok: false, mode: "LIVE", reason: "POSITION_TOO_SMALL", note: `pos_qty=${posQtyBase}, min_qty=${minQty}` };
   }
@@ -9947,7 +10023,7 @@ async function executeLiveFuturesOrder({
 
   if (!isExit && !manualRetryEntry) {
     // Entry/ADD budget cap is managed on capital(margin) basis, while order size is notional.
-    const marketCapBudget = Number.isFinite(budgetMax) && budgetMax > 0 ? budgetMax : null;
+    marketCapBudget = Number.isFinite(budgetMax) && budgetMax > 0 ? budgetMax : null;
     const currentPosNotional = Number.isFinite(posNotional) && posNotional > 0 ? posNotional : 0;
     const currentPosLeverageRaw = Number(
       positionMeta && (
@@ -9962,14 +10038,14 @@ async function executeLiveFuturesOrder({
         : leverageMult,
       3
     );
-    const currentPosBudgetUsed = (
+    currentPosBudgetUsed = (
       currentPosNotional > 0 &&
       Number.isFinite(currentPosLeverage) &&
       currentPosLeverage > 0
     )
       ? (currentPosNotional / currentPosLeverage)
       : 0;
-    let maxEntryNotional = Number.POSITIVE_INFINITY;
+    maxEntryNotional = Number.POSITIVE_INFINITY;
     if (Number.isFinite(liveCfg.maxOrderQuote) && liveCfg.maxOrderQuote > 0) {
       maxEntryNotional = Math.min(maxEntryNotional, liveCfg.maxOrderQuote);
     }
@@ -10036,19 +10112,25 @@ async function executeLiveFuturesOrder({
     }
     if (!isExit) {
       // 진입/추가: 예산 내에서 최소 금액까지 자동 보정
-      const baseBudget = budgetMax * leverageMult;
-      const requiredFraction = (Number.isFinite(baseBudget) && baseBudget > 0)
-        ? (minRequiredQuote / baseBudget)
-        : null;
-      const maxAllowed = Number.isFinite(maxFractionAllowed) ? maxFractionAllowed : Number(qtyFraction || 0);
-      if (Number.isFinite(requiredFraction) && requiredFraction > 0 && requiredFraction <= maxAllowed) {
-        notionalQuote = minRequiredQuote;
+      const minOrderAdjustment = resolveEntryMinOrderBudgetAdjustment({
+        minRequiredQuote,
+        notionalQuote,
+        budgetMax,
+        leverageMult,
+        maxFractionAllowed,
+        qtyFraction,
+        maxEntryNotional,
+        marketCapBudget,
+        currentPosBudgetUsed,
+      });
+      if (minOrderAdjustment.ok) {
+        notionalQuote = minOrderAdjustment.notionalQuote;
       } else {
         return {
           ok: false,
           mode: "LIVE",
-          reason: "MIN_ORDER_EXCEEDS_BUDGET",
-          note: `min_required=${minRequiredQuote}, notional=${notionalQuote}, max_allowed=${maxAllowed}`,
+          reason: minOrderAdjustment.reason || "MIN_ORDER_EXCEEDS_BUDGET",
+          note: minOrderAdjustment.note,
         };
       }
     } else {
@@ -16525,6 +16607,7 @@ module.exports = {
     resolveEntrySignalsByFamily,
     logEntrySignalFamilyResolutions,
     dedupeEntrySignalsByFamily,
+    resolveEntryMinOrderBudgetAdjustment,
     resolveEntryTierBudgetMax,
     evaluateCommittedRescueAddGate,
     collectActivePendingAddIntentState,
