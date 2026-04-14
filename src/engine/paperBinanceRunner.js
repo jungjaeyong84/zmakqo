@@ -4218,22 +4218,68 @@ async function loadServerNativeInitialSignals({ exchange, symbol, signalTf, barC
   }
 }
 
+function isExternalEntrySignalCandidate(signal = {}) {
+  if (!signal || typeof signal !== "object") return false;
+  if (String(signal.signal_id || "").trim()) return true;
+  if (String(signal.signal_doc_id || "").trim()) return true;
+  const features = signal.features && typeof signal.features === "object" ? signal.features : {};
+  if (String(features.signal_id || "").trim()) return true;
+  if (String(features.signal_doc_id || "").trim()) return true;
+  const source = String(signal.source || features.source || signal.reason || "").trim().toUpperCase();
+  return source === "TV_WEBHOOK" || source === "PINE_SHADOW";
+}
+
+function compareEntrySignalPriority(a = {}, b = {}) {
+  const aExternal = isExternalEntrySignalCandidate(a);
+  const bExternal = isExternalEntrySignalCandidate(b);
+  if (aExternal !== bExternal) return aExternal ? 1 : -1;
+  const aQty = Number(a && a.qty_pct);
+  const bQty = Number(b && b.qty_pct);
+  const aHasQty = Number.isFinite(aQty) && aQty > 0;
+  const bHasQty = Number.isFinite(bQty) && bQty > 0;
+  if (aHasQty !== bHasQty) return aHasQty ? 1 : -1;
+  return 0;
+}
+
 function dedupeEntrySignalsByFamily(signals = []) {
   const rows = Array.isArray(signals) ? signals : [];
-  const seen = new Set();
-  const out = [];
-  for (const s of rows) {
+  const familySlots = new Map();
+  const passthrough = [];
+
+  rows.forEach((s, index) => {
     const intent = intentFromSignal({ event: s && s.event, side: s && s.side, features: s && s.features });
-    if (intent === "ENTRY" || intent === "ADD") {
-      const dir = directionFromSignal({ event: s && s.event, side: s && s.side });
-      const tier = resolveEntryQualityTier(String(s && s.event || "").toUpperCase(), s && s.features);
-      const family = `${intent}__${dir || "NA"}__${tier || "NA"}`;
-      if (seen.has(family)) continue;
-      seen.add(family);
+    if (intent !== "ENTRY" && intent !== "ADD") {
+      passthrough.push({ index, signal: s });
+      return;
     }
-    out.push(s);
-  }
-  return out;
+
+    const dir = directionFromSignal({ event: s && s.event, side: s && s.side });
+    const tier = resolveEntryQualityTier(String(s && s.event || "").toUpperCase(), s && s.features);
+    const family = `${intent}__${dir || "NA"}__${tier || "NA"}`;
+    const existing = familySlots.get(family);
+    if (!existing) {
+      familySlots.set(family, { index, orderIndex: index, signal: s });
+      return;
+    }
+
+    if (compareEntrySignalPriority(s, existing.signal) > 0) {
+      familySlots.set(family, {
+        index,
+        orderIndex: existing.orderIndex,
+        signal: s,
+      });
+    }
+  });
+
+  return [
+    ...passthrough,
+    ...Array.from(familySlots.values()).map((row) => ({
+      index: row.orderIndex,
+      signal: row.signal,
+    })),
+  ]
+    .sort((a, b) => a.index - b.index)
+    .map((row) => row.signal);
 }
 
 function shouldSuppressLiveFuturesInternalExitSignal({
@@ -16386,6 +16432,9 @@ module.exports = {
     resolveSignalTier,
     computeTrailingMetaUpdate,
     resolveEntryQualityTier,
+    isExternalEntrySignalCandidate,
+    compareEntrySignalPriority,
+    dedupeEntrySignalsByFamily,
     resolveEntryTierBudgetMax,
     evaluateCommittedRescueAddGate,
     collectActivePendingAddIntentState,
