@@ -262,14 +262,92 @@ function augmentRowWithCanonicalEvidence(row = {}, evidence = null) {
   };
 }
 
+function buildReportSummary(rows = []) {
+  const summary = {
+    status: "PASS",
+    active_position_n: Array.isArray(rows) ? rows.length : 0,
+    pass_n: 0,
+    fail_n: 0,
+    failing_symbols: [],
+    stage_counts: {
+      TP0: 0,
+      TP1: 0,
+      TRAIL: 0,
+      OTHER: 0,
+    },
+    canonical_evidence_fail_n: 0,
+    minimum_guarantee_fail_n: 0,
+    trail_hard_exit_missed_n: 0,
+    stop_authority_fail_n: 0,
+    top_issue_codes: [],
+  };
+  const issueCounts = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const stage = upper(row && row.canonical_stage);
+    if (stage === "TP0" || stage === "TP1" || stage === "TRAIL") summary.stage_counts[stage] += 1;
+    else summary.stage_counts.OTHER += 1;
+
+    if (String(row && row.verdict || "").trim().toUpperCase() === "FAIL") {
+      summary.fail_n += 1;
+      if (row && row.symbol) summary.failing_symbols.push(String(row.symbol).trim().toUpperCase());
+    } else {
+      summary.pass_n += 1;
+    }
+
+    const reportIssueCodes = Array.isArray(row && row.report_issue_codes) ? row.report_issue_codes : [];
+    if (reportIssueCodes.some((code) => String(code || "").trim().toUpperCase().startsWith("CANONICAL_EVIDENCE_"))) {
+      summary.canonical_evidence_fail_n += 1;
+    }
+    if (reportIssueCodes.includes("RUNNER_MIN_GUARANTEE_MISSED")) {
+      summary.minimum_guarantee_fail_n += 1;
+    }
+    if (reportIssueCodes.includes("TRAIL_HARD_EXIT_MISSED")) {
+      summary.trail_hard_exit_missed_n += 1;
+    }
+    if (reportIssueCodes.some((code) => [
+      "TRAIL_STOP_CHOSEN_SOURCE_MISMATCH",
+      "TRAIL_STOP_SOURCE_PRICE_INCONSISTENT",
+      "TRAIL_STOP_SOURCE_UNDECLARED",
+      "TRAIL_R_STOP_MISSING",
+      "TRAIL_HARD_EXIT_MISSED",
+    ].includes(String(code || "").trim().toUpperCase()))) {
+      summary.stop_authority_fail_n += 1;
+    }
+
+    for (const code of reportIssueCodes) {
+      const normalized = String(code || "").trim().toUpperCase();
+      if (!normalized) continue;
+      issueCounts.set(normalized, Number(issueCounts.get(normalized) || 0) + 1);
+    }
+  }
+  summary.status = summary.fail_n > 0 ? "FAIL" : "PASS";
+  summary.top_issue_codes = Array.from(issueCounts.entries())
+    .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
+    .map(([code, count]) => ({ code, count }));
+  return summary;
+}
+
 function buildMarkdown(report) {
+  const summary = report && report.summary && typeof report.summary === "object"
+    ? report.summary
+    : buildReportSummary(report && report.rows);
   const lines = [];
   lines.push("# Binance Canonical Exit Stage QA");
   lines.push("");
   lines.push(`- generated_at: ${report.generated_at || "N/A"}`);
-  lines.push(`- active_position_n: ${report.active_position_n || 0}`);
-  lines.push(`- fail_n: ${report.fail_n || 0}`);
-  lines.push(`- failing_symbols: ${Array.isArray(report.failing_symbols) && report.failing_symbols.length ? report.failing_symbols.join(", ") : "none"}`);
+  lines.push(`- status: ${summary.status || "PASS"}`);
+  lines.push(`- active_position_n: ${summary.active_position_n || 0}`);
+  lines.push(`- pass_n: ${summary.pass_n || 0}`);
+  lines.push(`- fail_n: ${summary.fail_n || 0}`);
+  lines.push(`- failing_symbols: ${Array.isArray(summary.failing_symbols) && summary.failing_symbols.length ? summary.failing_symbols.join(", ") : "none"}`);
+  lines.push("");
+  lines.push("## Summary");
+  lines.push(`- stage_counts: TP0=${summary.stage_counts && summary.stage_counts.TP0 || 0} / TP1=${summary.stage_counts && summary.stage_counts.TP1 || 0} / TRAIL=${summary.stage_counts && summary.stage_counts.TRAIL || 0} / OTHER=${summary.stage_counts && summary.stage_counts.OTHER || 0}`);
+  lines.push(`- canonical_evidence_fail_n: ${summary.canonical_evidence_fail_n || 0}`);
+  lines.push(`- minimum_guarantee_fail_n: ${summary.minimum_guarantee_fail_n || 0}`);
+  lines.push(`- trail_hard_exit_missed_n: ${summary.trail_hard_exit_missed_n || 0}`);
+  lines.push(`- stop_authority_fail_n: ${summary.stop_authority_fail_n || 0}`);
+  lines.push(`- top_issue_codes: ${Array.isArray(summary.top_issue_codes) && summary.top_issue_codes.length ? summary.top_issue_codes.map((item) => `${item.code}:${item.count}`).join(", ") : "none"}`);
   lines.push("");
   lines.push("## Rows");
   if (!Array.isArray(report.rows) || !report.rows.length) {
@@ -315,13 +393,14 @@ async function main() {
     rows.push(augmentRowWithCanonicalEvidence(baseRow, evidenceBySymbol.get(symbol) || null));
   }
   rows.sort((a, b) => String(a.symbol).localeCompare(String(b.symbol)));
-  const failingRows = rows.filter((row) => row.verdict === "FAIL");
+  const summary = buildReportSummary(rows);
   const report = {
     generated_at: nowIso(),
     exchange: "BINANCEFUT",
-    active_position_n: rows.length,
-    fail_n: failingRows.length,
-    failing_symbols: failingRows.map((row) => row.symbol),
+    active_position_n: summary.active_position_n,
+    fail_n: summary.fail_n,
+    failing_symbols: summary.failing_symbols,
+    summary,
     rows,
   };
   ensureDir(OUT_JSON);
@@ -343,6 +422,7 @@ module.exports = {
     resolveCanonicalEvidenceStage,
     augmentRowWithCanonicalEvidence,
     loadPrimaryTransitionEvents,
+    buildReportSummary,
   },
 };
 

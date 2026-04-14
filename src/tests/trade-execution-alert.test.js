@@ -7,6 +7,7 @@ async function run() {
   assert.strictEqual(typeof __test.buildFailureMessage, "function", "buildFailureMessage export missing");
   assert.strictEqual(typeof __test.parseExitEventMeta, "function", "parseExitEventMeta export missing");
   assert.strictEqual(typeof __test.resolveEffectiveExitMeta, "function", "resolveEffectiveExitMeta export missing");
+  assert.strictEqual(typeof __test.resolveCanonicalExitAlertRequirement, "function", "resolveCanonicalExitAlertRequirement export missing");
   assert.strictEqual(typeof __test.resolveDirection, "function", "resolveDirection export missing");
 
   const shortEntry = __test.buildMessage({
@@ -235,6 +236,32 @@ async function run() {
     exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.ok(canonicalTrailWithRawEvidence.body.includes("이벤트: EXIT_TP_P1_1.65P"), "raw evidence event should remain visible even when payload.event is canonical");
+
+  const missingCanonicalRequirement = __test.resolveCanonicalExitAlertRequirement({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_TP_P1_1.65P",
+    intent: "EXIT",
+  });
+  assert.strictEqual(missingCanonicalRequirement.required, true);
+  assert.strictEqual(missingCanonicalRequirement.satisfied, false);
+  assert.strictEqual(missingCanonicalRequirement.reason, "MISSING_CANONICAL_EXIT_TRANSITION");
+
+  const missingCanonicalExitAlert = __test.buildMessage({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_TP_P1_1.65P",
+    intent: "EXIT",
+    side: "SELL",
+    positionSideBefore: "LONG",
+    executionMode: "LIVE",
+    notional: 190,
+    execPrice: 2330.94,
+    closeRatio: 0.5,
+    realizedPnl: 3.8,
+    exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
+  });
+  assert.strictEqual(missingCanonicalExitAlert, null, "stageful exit alerts must require canonical transition evidence");
 
   console.log("TRADE_EXECUTION_ALERT_TEST_OK");
 }

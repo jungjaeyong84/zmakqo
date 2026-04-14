@@ -60,6 +60,35 @@ function run() {
   assert.strictEqual(augmentedPass.canonical_evidence_stage, "TRAIL");
   assert.strictEqual(augmentedPass.verdict, "PASS");
 
+  const summary = __test.buildReportSummary([
+    augmentedMismatch,
+    {
+      symbol: "BTCUSDT",
+      canonical_stage: "TP1",
+      report_issue_codes: ["RUNNER_MIN_GUARANTEE_MISSED", "TRAIL_HARD_EXIT_MISSED"],
+      verdict: "FAIL",
+    },
+    {
+      symbol: "XRPUSDT",
+      canonical_stage: "TP0",
+      report_issue_codes: [],
+      verdict: "PASS",
+    },
+  ]);
+  assert.strictEqual(summary.status, "FAIL");
+  assert.strictEqual(summary.active_position_n, 3);
+  assert.strictEqual(summary.pass_n, 1);
+  assert.strictEqual(summary.fail_n, 2);
+  assert.strictEqual(summary.stage_counts.TP0, 1);
+  assert.strictEqual(summary.stage_counts.TP1, 1);
+  assert.strictEqual(summary.stage_counts.TRAIL, 1);
+  assert.strictEqual(summary.canonical_evidence_fail_n, 1);
+  assert.strictEqual(summary.minimum_guarantee_fail_n, 1);
+  assert.strictEqual(summary.trail_hard_exit_missed_n, 1);
+  assert.strictEqual(summary.stop_authority_fail_n, 1);
+  assert.deepStrictEqual(summary.failing_symbols, ["ETHUSDT", "BTCUSDT"]);
+  assert.deepStrictEqual(summary.top_issue_codes[0], { code: "CANONICAL_EVIDENCE_STAGE_MISMATCH", count: 1 });
+
   console.log("REPORT_BINANCE_CANONICAL_EXIT_STAGE_QA_TEST_OK");
 }
 

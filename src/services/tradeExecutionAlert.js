@@ -233,6 +233,11 @@ function inferExitStageFromEvent(event) {
   return classifyExitEventStage(event);
 }
 
+function isCanonicalStageExit(stage) {
+  const normalized = String(stage || "").trim().toUpperCase();
+  return normalized === "TP0" || normalized === "TP1" || normalized === "TRAIL";
+}
+
 function resolveRawEvidenceEvent(payload = {}, event = null) {
   const raw = String(payload.rawEvidenceEvent || payload.raw_evidence_event || event || "").trim().toUpperCase();
   return raw || null;
@@ -256,6 +261,30 @@ function resolveCanonicalTransitionEventList(payload = {}) {
       seen.add(item);
       return true;
     });
+}
+
+function resolveCanonicalExitAlertRequirement(payload = {}, rawEvent = null) {
+  const rawEvidenceEvent = resolveRawEvidenceEvent(payload, rawEvent || payload.event);
+  const rawStage = inferExitStageFromEvent(rawEvidenceEvent);
+  const canonicalEvent = String(payload.canonicalExitEvent || payload.canonical_exit_event || "").trim().toUpperCase();
+  const canonicalTransitionEvents = resolveCanonicalTransitionEventList(payload);
+  const canonicalStage = resolveCanonicalAlertExitStage({
+    primaryTransitionEvent: payload.canonicalTransitionEvent || payload.canonical_primary_transition_event || null,
+    transitionEvents: canonicalTransitionEvents,
+    fallbackStage: payload.canonicalExitStage || payload.canonical_exit_stage || inferExitStageFromEvent(canonicalEvent) || rawStage,
+  });
+  const effectiveStage = String(canonicalStage || rawStage || "").trim().toUpperCase() || null;
+  const required = isCanonicalStageExit(effectiveStage);
+  return {
+    required,
+    satisfied: !required || canonicalTransitionEvents.length > 0,
+    reason: required && canonicalTransitionEvents.length === 0 ? "MISSING_CANONICAL_EXIT_TRANSITION" : null,
+    rawEvidenceEvent,
+    rawStage,
+    canonicalEvent: canonicalEvent || null,
+    canonicalStage: effectiveStage,
+    canonicalTransitionEvents,
+  };
 }
 
 function buildGenericExitMeta(stage) {
@@ -598,6 +627,11 @@ function buildMessage(payload) {
   }
 
   if (intent === "EXIT") {
+    const canonicalRequirement = resolveCanonicalExitAlertRequirement({
+      ...payload,
+      rawEvidenceEvent: payload.rawEvidenceEvent || payload.raw_evidence_event || inputEvent,
+    }, event);
+    if (canonicalRequirement.required && canonicalRequirement.satisfied !== true) return null;
     const resolvedExitMeta = resolveEffectiveExitMeta({
       ...payload,
       rawEvidenceEvent: payload.rawEvidenceEvent || payload.raw_evidence_event || inputEvent,
@@ -716,6 +750,30 @@ async function sendTradeExecutionAlert(payload = {}) {
     }
   }
 
+  const intent = resolveIntent(payload);
+  const exchangeEvent = normalizeTpP1EventForExchange(String(payload.event || "").trim().toUpperCase(), exchange);
+  const canonicalRequirement = intent === "EXIT"
+    ? resolveCanonicalExitAlertRequirement({
+      ...payload,
+      rawEvidenceEvent: payload.rawEvidenceEvent || payload.raw_evidence_event || payload.event,
+    }, exchangeEvent)
+    : null;
+  if (canonicalRequirement && canonicalRequirement.required && canonicalRequirement.satisfied !== true) {
+    appendTradeExecutionAlertAudit({
+      type: "TRADE_EXECUTION_ALERT",
+      exchange,
+      symbol: String(payload.symbol || "").toUpperCase() || null,
+      event: String(payload.event || "").trim().toUpperCase() || null,
+      intent,
+      execution_mode: mode,
+      ok: false,
+      skipped: true,
+      reason: canonicalRequirement.reason,
+      source: "tradeExecutionAlert.sendTradeExecutionAlert",
+    });
+    return { ok: false, skipped: true, reason: canonicalRequirement.reason };
+  }
+
   const msg = buildMessage(payload);
   if (!msg) return { ok: false, skipped: true, reason: "UNSUPPORTED_EVENT" };
 
@@ -805,6 +863,7 @@ module.exports = {
     buildFailureMessage,
     parseExitEventMeta,
     resolveEffectiveExitMeta,
+    resolveCanonicalExitAlertRequirement,
     resolveRawEvidenceEvent,
     resolveDirection,
     resolveExternalSyncContextLines,
