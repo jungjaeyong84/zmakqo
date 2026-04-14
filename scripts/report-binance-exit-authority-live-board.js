@@ -9,6 +9,7 @@ const { listExchangePositionReadViews } = require("../src/services/positionReadM
 const { getPositionRuntimeObservation, resolveTrailObservationSnapshot } = require("../src/storage/positionRuntimeObservations");
 const { resolveExitRulesForPosition } = require("../src/engine/signalEngine");
 const { resolveTp1RemainingContractQtyRatio } = require("../src/utils/exitQtyContract");
+const { resolveCanonicalPositionExitStage } = require("../src/services/positionStateMachine");
 
 function nowIso() {
   return new Date().toISOString();
@@ -53,15 +54,16 @@ function isArtifactIssueCode(code) {
   return /_ARTIFACT$/.test(String(code || "").trim().toUpperCase());
 }
 
-function resolveStage(meta = {}, trailSnapshot = {}) {
-  const runtimeTrailRepair = Number.isFinite(toNum(trailSnapshot.runtime_eval_at_ms))
-    && Number.isFinite(toNum(trailSnapshot.runner_floor_stop))
-    && Number.isFinite(toNum(trailSnapshot.native_stop_price));
-  if (runtimeTrailRepair) return "TRAIL";
-  if (meta.trail_active === true) return "TRAIL";
-  if (meta.tp_p1_done === true) return "TP1_DONE_NOT_TRAIL";
-  if (meta.tp_p0_done === true) return "BETWEEN_TP0_TP1";
-  return "PRE_TP0";
+function resolveStage(row = {}) {
+  const meta = row && typeof row.meta === "object" ? row.meta : {};
+  const canonical = resolveCanonicalPositionExitStage({
+    positionSnapshot: row,
+    fallbackStage: meta.canonical_exit_stage || meta.authoritative_exit_stage || null,
+  });
+  if (canonical.stage === "TRAIL") return { canonical_stage: "TRAIL", stage: "TRAIL", source: canonical.source };
+  if (canonical.stage === "TP1") return { canonical_stage: "TP1", stage: "TP1_DONE_NOT_TRAIL", source: canonical.source };
+  if (canonical.stage === "TP0") return { canonical_stage: "TP0", stage: "BETWEEN_TP0_TP1", source: canonical.source };
+  return { canonical_stage: canonical.stage, stage: "PRE_TP0", source: canonical.source };
 }
 
 function summarizeLivePosition(row = {}, context = {}) {
@@ -85,7 +87,8 @@ function summarizeLivePosition(row = {}, context = {}) {
   const stopOrderId = trailSnapshot.native_stop_order_id || meta.native_protection_stop_order_id || null;
   const tpOrderId = meta.native_protection_tp_order_id || null;
   const refreshStatus = upper(trailSnapshot.native_refresh_status || meta.native_protection_refresh_status);
-  const stage = resolveStage(meta, trailSnapshot);
+  const stageInfo = resolveStage(row);
+  const stage = stageInfo.stage;
   const trailStopByR = toNum(trailSnapshot.trail_stop_by_r);
   const chosenStopPrice = toNum(trailSnapshot.chosen_stop_price ?? trailSnapshot.computed_trail_stop);
   const chosenStopSource = upper(trailSnapshot.chosen_stop_source);
@@ -176,6 +179,8 @@ function summarizeLivePosition(row = {}, context = {}) {
     qty_base: qtyBase,
     avg_price: toNum(row.avg_price),
     stage,
+    canonical_stage: stageInfo.canonical_stage,
+    canonical_stage_source: stageInfo.source,
     tp_p0_done: tp0Done,
     tp_p1_done: tp1Done,
     trail_active: trailActive,

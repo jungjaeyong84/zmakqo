@@ -179,9 +179,10 @@ async function run() {
     exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.ok(canonicalTrail, "canonical trail message should exist");
-  assert.strictEqual(canonicalTrail.title, "ETHUSDT TRAIL 50% 청산");
+  assert.strictEqual(canonicalTrail.title, "ETHUSDT 정본재분류 TP1_1.65->TRAIL 50% 청산");
   assert.ok(canonicalTrail.body.includes("종류: 트레일링"), "canonical override should switch label to trail");
   assert.ok(canonicalTrail.body.includes("실행계약: TRAIL"), "canonical override should switch executed contract to trail");
+  assert.ok(canonicalTrail.body.includes("정본재분류: TP1_1.65 -> TRAIL"), "canonical override should expose explicit reclassification");
   assert.ok(canonicalTrail.body.includes("체결수량(base): 0.167"), "alert should include observed absolute fill qty");
   assert.ok(canonicalTrail.body.includes("계약수량(base): ENTRY 0.887 / TP0 0.22175 / TP1 0.332625 / RUNNER 0.167"), "alert should include absolute contract ledger");
   assert.ok(canonicalTrail.body.includes("정본단계: TRAIL"), "canonical override should expose canonical stage");
@@ -210,9 +211,30 @@ async function run() {
     exitRules: { SL: -0.0165, TP_P1: 0.03, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.ok(canonicalTp1Event, "canonical tp1 event message should exist");
-  assert.strictEqual(canonicalTp1Event.title, "BTCUSDT TP1_3 50% 청산");
+  assert.strictEqual(canonicalTp1Event.title, "BTCUSDT 정본재분류 TP1_5->TP1_3 50% 청산");
   assert.ok(canonicalTp1Event.body.includes("종류: 익절(TP1) 3%"), "canonical exit event should control displayed label");
   assert.ok(canonicalTp1Event.body.includes("실행계약: TP1_3"), "canonical exit event should control executed contract");
+
+  const canonicalTrailWithRawEvidence = __test.buildMessage({
+    exchange: "BINANCEFUT",
+    symbol: "BNBUSDT",
+    event: "EXIT_TRAIL",
+    rawEvidenceEvent: "EXIT_TP_P1_1.65P",
+    intent: "EXIT",
+    side: "SELL",
+    positionSideBefore: "LONG",
+    executionMode: "LIVE",
+    notional: 190,
+    execPrice: 610.5,
+    closeRatio: 0.188,
+    realizedPnl: 3.8,
+    canonicalExitEvent: "EXIT_TRAIL",
+    canonicalExitStage: "TRAIL",
+    canonicalTransitionEvent: "TRAIL_PARTIAL",
+    canonicalTransitionEvents: ["TRAIL_PARTIAL"],
+    exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
+  });
+  assert.ok(canonicalTrailWithRawEvidence.body.includes("이벤트: EXIT_TP_P1_1.65P"), "raw evidence event should remain visible even when payload.event is canonical");
 
   console.log("TRADE_EXECUTION_ALERT_TEST_OK");
 }

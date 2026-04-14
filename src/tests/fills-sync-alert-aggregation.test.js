@@ -336,6 +336,20 @@ async function run() {
   });
   const mergedAfterTp1 = Array.from(batchesAfterTp1.values())[0];
   assert.strictEqual(mergedAfterTp1.payload.event, "EXIT_TRAIL", "batch merge must preserve TRAIL once canonical stage is locked");
+  assert.strictEqual(
+    fillsSyncTest.buildFillSyncAlertCooldownKey({
+      symbol: "ETHUSDT",
+      event: "EXIT_TP_P1_1.65P",
+      intent: "EXIT",
+      side: "SELL",
+      orderMeta: { orderId: 12345, clientOrderId: "fut_eth_runner" },
+      payload: {
+        canonicalExitEvent: "EXIT_TRAIL",
+      },
+    }).includes("EXIT_TRAIL"),
+    true,
+    "alert identity keys must follow canonical exit event"
+  );
 
   const mergedHintedMeta = fillsSyncTest.mergeRecentExitHintsIntoMeta(
     { tp_p0_done: false, tp_p1_done: false, trail_active: false },

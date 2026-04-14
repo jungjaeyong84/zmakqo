@@ -280,6 +280,42 @@ function resolveCanonicalAlertExitStage({
   return normalizeExitStage(fallbackStage);
 }
 
+function resolveCanonicalPositionExitStage({
+  positionSnapshot = null,
+  fallbackStage = null,
+} = {}) {
+  const snapshot = normalizeSnapshot(positionSnapshot || {});
+  const meta = snapshot.meta && typeof snapshot.meta === "object" ? snapshot.meta : {};
+  const fallback = normalizeExitStage(
+    fallbackStage
+    || meta.authoritative_exit_stage
+    || meta.canonical_exit_stage
+    || classifyExitEventStage(meta.canonical_exit_event || meta.event)
+  );
+  if (snapshot.trail_active === true) {
+    return {
+      stage: "TRAIL",
+      source: fallback === "TRAIL" ? "META" : "POSITION_STATE_MACHINE_TRAIL_ACTIVE",
+    };
+  }
+  if (snapshot.tp_p1_done === true) {
+    return {
+      stage: "TP1",
+      source: fallback === "TP1" ? "META" : "POSITION_STATE_MACHINE_TP1_DONE",
+    };
+  }
+  if (snapshot.tp_p0_done === true) {
+    return {
+      stage: "TP0",
+      source: fallback === "TP0" ? "META" : "POSITION_STATE_MACHINE_TP0_DONE",
+    };
+  }
+  if (fallback && fallback !== "OTHER" && fallback !== "OTHER_EXIT") {
+    return { stage: fallback, source: "POSITION_STATE_MACHINE_CANONICAL_META" };
+  }
+  return { stage: null, source: null };
+}
+
 function resolveCanonicalExitStageFromCycleEvidence({
   cycleTrades = null,
   positionQty = null,
@@ -521,6 +557,7 @@ module.exports = {
   resolveCanonicalExitAuthorityDecision,
   resolveCanonicalExitTransitionEvents,
   resolveCanonicalAlertExitStage,
+  resolveCanonicalPositionExitStage,
   resolveCanonicalExitStageFromCycleEvidence,
   resolveCanonicalExitWritePayload,
   buildExitQuantityContractLedger,
@@ -535,6 +572,7 @@ module.exports = {
     resolveCanonicalExitAuthorityDecision,
     resolveCanonicalExitTransitionEvents,
     resolveCanonicalAlertExitStage,
+    resolveCanonicalPositionExitStage,
     resolveCanonicalExitStageFromCycleEvidence,
     resolveCanonicalExitWritePayload,
     buildExitQuantityContractLedger,

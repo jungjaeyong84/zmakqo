@@ -1185,7 +1185,7 @@ function resolveFillSyncAlertFullExit({ event, orderMeta, closeRatio } = {}) {
 
 function buildFillSyncAlertKey({ symbol, event, intent, side, orderMeta, tradeMs, payload } = {}) {
   const sym = normalizeSymbol(symbol) || String(symbol || "").trim().toUpperCase() || "UNKNOWN";
-  const ev = String(event || "").trim().toUpperCase() || "UNKNOWN";
+  const ev = resolveFillSyncAlertIdentityEvent(event, payload);
   const it = String(intent || "").trim().toUpperCase() || "UNKNOWN";
   const tradeSide = String(side || "").trim().toUpperCase() || "NA";
   const entryEventId = String(payload && payload.entryEventId || "").trim() || "NA";
@@ -1219,7 +1219,7 @@ function isVerifiedFillSyncAlertEvent(event, payload = {}) {
 
 function buildFillSyncAlertChainKey({ symbol, event, intent, side, orderMeta, tradeMs, payload } = {}) {
   const sym = normalizeSymbol(symbol) || String(symbol || "").trim().toUpperCase() || "UNKNOWN";
-  const ev = String(event || "").trim().toUpperCase() || "UNKNOWN";
+  const ev = resolveFillSyncAlertIdentityEvent(event, payload);
   const it = String(intent || "").trim().toUpperCase() || "UNKNOWN";
   const tradeSide = String(side || "").trim().toUpperCase() || "NA";
   const entryEventId = String(payload && payload.entryEventId || "").trim() || "NA";
@@ -1257,9 +1257,22 @@ function resolvePreferredFillSyncStageEvent(stage, currentEvent, nextEvent, curr
   return nextEvent || currentEvent;
 }
 
+function resolveFillSyncAlertIdentityEvent(event, payload = {}) {
+  const canonicalEvent = String(
+    payload && (
+      payload.canonicalExitEvent
+      || payload.canonical_exit_event
+      || payload.canonicalAlertEvent
+      || payload.canonical_alert_event
+    ) || ""
+  ).trim().toUpperCase();
+  const rawEvent = String(event || "").trim().toUpperCase();
+  return stripFillSyncUnverifiedSuffix(canonicalEvent || rawEvent) || "UNKNOWN";
+}
+
 function resolvePreferredFillSyncAlertEvent(currentPayload = {}, payload = {}) {
-  const currentEvent = stripFillSyncUnverifiedSuffix(currentPayload.event);
-  const nextEvent = stripFillSyncUnverifiedSuffix(payload.event);
+  const currentEvent = resolveFillSyncAlertIdentityEvent(currentPayload.event, currentPayload);
+  const nextEvent = resolveFillSyncAlertIdentityEvent(payload.event, payload);
   if (!currentEvent) return nextEvent;
   if (!nextEvent) return currentEvent;
   if (currentEvent === nextEvent) {
@@ -1330,7 +1343,7 @@ function findExistingFillSyncAlertBatchByChainKey(batchMap, chainKey) {
 
 function buildFillSyncAlertCooldownKey({ symbol, event, intent, side, orderMeta, payload } = {}) {
   const sym = normalizeSymbol(symbol) || String(symbol || "").trim().toUpperCase() || "UNKNOWN";
-  const ev = String(event || "").trim().toUpperCase() || "UNKNOWN";
+  const ev = resolveFillSyncAlertIdentityEvent(event, payload);
   const it = String(intent || "").trim().toUpperCase() || "UNKNOWN";
   const tradeSide = String(side || "").trim().toUpperCase() || "NA";
   const entryEventId = String(payload && payload.entryEventId || "").trim() || "NA";
@@ -3015,6 +3028,7 @@ async function syncMarketTrades({
       }
       const entryEventId = intentEntryCtx.entryEventId || inferredEntryCtx.entryEventId || null;
       const entrySignalType = intentEntryCtx.entrySignalType || inferredEntryCtx.entrySignalType || null;
+      const rawEvidenceEvent = event;
       canonicalStageDecision = resolveCanonicalExternalExitEvent({
         authorityMap: exitQtyAuthorityMap,
         exchange: "BINANCEFUT",
@@ -3414,6 +3428,7 @@ async function syncMarketTrades({
               canonicalTransitionEvents: Array.isArray(canonicalTransitionDecision.transitionEvents)
                 ? canonicalTransitionDecision.transitionEvents
                 : [],
+              rawEvidenceEvent,
               stopDivergenceItems: Array.isArray(positionCtx && positionCtx.stopDivergenceItems)
                 ? positionCtx.stopDivergenceItems
                 : [],
@@ -3691,6 +3706,7 @@ module.exports = {
     shouldLogFillSyncOverride,
     shouldSuppressMatchedExternalFillAlert,
     buildFillSyncAlertCooldownKey,
+    resolveFillSyncAlertIdentityEvent,
     shouldSendFillSyncTradeAlert,
     flushFillSyncAlertBatches,
     canFinalizeIntentFromExternalFill,

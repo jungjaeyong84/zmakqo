@@ -4,6 +4,7 @@ const { resolveExitRulesForPosition, computeRunnerExitStopPrice, resolveEntryRDi
 const { resolveTrailObservationSnapshot } = require("../storage/positionRuntimeObservations");
 const { resolveExitStageAbsoluteContractQtyRatio } = require("./exitQtyContract");
 const { buildStopDivergenceItems } = require("./exitIntegrityPolicy");
+const { resolveCanonicalPositionExitStage } = require("../services/positionStateMachine");
 
 function toNum(v) {
   if (v === null || v === undefined || v === "") return null;
@@ -97,7 +98,6 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
   const tpP0Done = meta.tp_p0_done === true;
   const tpP1Done = meta.tp_p1_done === true;
   const tpP1Pending = meta.tp_p1_pending === true;
-  const canonicalExitStage = String(meta.canonical_exit_stage || "").trim().toUpperCase() || null;
   const trailDelay = resolveTrailDelayState({
     meta,
     tpP1Done,
@@ -108,9 +108,16 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     rules,
   });
   const trailActive = trailDelay.trailActive;
-  const effectiveCanonicalStage = trailActive
-    ? "TRAIL"
-    : (canonicalExitStage || (tpP1Done ? "TP1" : (tpP0Done ? "TP0" : null)));
+  const canonicalPositionStage = resolveCanonicalPositionExitStage({
+    positionSnapshot: {
+      ...position,
+      tpP0Done,
+      tpP1Done,
+      trailActive,
+    },
+    fallbackStage: meta.canonical_exit_stage || null,
+  });
+  const effectiveCanonicalStage = canonicalPositionStage.stage;
   const canonicalRunnerRemainingAbs = toNum(meta.canonical_runner_remaining_abs)
     ?? ((effectiveCanonicalStage === "TRAIL" || effectiveCanonicalStage === "TP1") && Number.isFinite(qtyBase) && qtyBase > 0 ? qtyBase : null);
   const canonicalRunnerRemainingSource = toNum(meta.canonical_runner_remaining_abs) != null
@@ -244,7 +251,7 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     be_price: bePrice,
     tp1_qty_pct: resolveExitStageAbsoluteContractQtyRatio("TP1", rules),
     canonical_exit_stage: effectiveCanonicalStage,
-    canonical_exit_stage_source: canonicalExitStage ? "META" : (effectiveCanonicalStage ? "DERIVED_VIEW" : null),
+    canonical_exit_stage_source: canonicalPositionStage.source,
     canonical_runner_remaining_abs: canonicalRunnerRemainingAbs,
     canonical_runner_remaining_source: canonicalRunnerRemainingSource,
     trail_r_multiple: toNum(rules.TRAIL_R_MULTIPLE),

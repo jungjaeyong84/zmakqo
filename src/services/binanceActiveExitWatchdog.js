@@ -13,6 +13,7 @@ const { resolvePositionSideFromPosition } = require("../utils/positionSide");
 const { resolveTp1RemainingContractQtyRatio } = require("../utils/exitQtyContract");
 const { healBinanceLivePosition } = require("./binanceLiveStateSelfHeal");
 const { recordExitRepairRequest } = require("../storage/exitRepairRequests");
+const { resolveCanonicalPositionExitStage } = require("./positionStateMachine");
 
 function upper(value) {
   return String(value || "").trim().toUpperCase() || null;
@@ -107,17 +108,16 @@ function isWatchdogTarget(row = {}) {
     || meta.trail_active === true;
 }
 
-function resolveStage(row = {}, trailSnapshot = null) {
+function resolveStage(row = {}) {
   const meta = row && typeof row.meta === "object" ? row.meta : {};
-  const snapshot = trailSnapshot && typeof trailSnapshot === "object" ? trailSnapshot : {};
-  const runtimeTrailRepair = Number.isFinite(toNum(snapshot.runtime_eval_at_ms))
-    && Number.isFinite(toNum(snapshot.runner_floor_stop))
-    && Number.isFinite(toNum(snapshot.native_stop_price));
-  if (runtimeTrailRepair) return "TRAIL";
-  if (meta.trail_active === true) return "TRAIL";
-  if (meta.tp_p1_done === true) return "TP1_DONE_NOT_TRAIL";
-  if (meta.tp_p0_done === true || meta.tp_p1_pending === true) return "BETWEEN_TP0_TP1";
-  return "PRE_TP0";
+  const canonical = resolveCanonicalPositionExitStage({
+    positionSnapshot: row,
+    fallbackStage: meta.canonical_exit_stage || meta.authoritative_exit_stage || null,
+  });
+  if (canonical.stage === "TRAIL") return { canonical_stage: "TRAIL", stage: "TRAIL", source: canonical.source };
+  if (canonical.stage === "TP1") return { canonical_stage: "TP1", stage: "TP1_DONE_NOT_TRAIL", source: canonical.source };
+  if (canonical.stage === "TP0") return { canonical_stage: "TP0", stage: "BETWEEN_TP0_TP1", source: canonical.source };
+  return { canonical_stage: canonical.stage, stage: "PRE_TP0", source: canonical.source };
 }
 
 function groupOrdersBySymbol(orders = []) {
@@ -212,7 +212,8 @@ function inspectExitProtection({
     ...normalizeAlgoOrderFetchResult(algoOrders).orders,
   ];
   const positionSide = resolvePositionSideFromPosition(row, meta, null);
-  const stage = resolveStage(row, trailSnapshot);
+  const stageInfo = resolveStage(row);
+  const stage = stageInfo.stage;
   const qtyBase = toNum(row.qty_base, 0);
   const issues = [];
   const refreshStatus = upper(trailSnapshot.native_refresh_status || meta.native_protection_refresh_status);
@@ -415,6 +416,8 @@ function inspectExitProtection({
   return {
     symbol: upper(symbol || row.symbol_or_pair_id || row.symbol),
     stage,
+    canonical_stage: stageInfo.canonical_stage,
+    canonical_stage_source: stageInfo.source,
     position_side: positionSide,
     qty_base: qtyBase,
     avg_price: toNum(row.avg_price),

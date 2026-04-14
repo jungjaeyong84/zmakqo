@@ -233,6 +233,11 @@ function inferExitStageFromEvent(event) {
   return classifyExitEventStage(event);
 }
 
+function resolveRawEvidenceEvent(payload = {}, event = null) {
+  const raw = String(payload.rawEvidenceEvent || payload.raw_evidence_event || event || "").trim().toUpperCase();
+  return raw || null;
+}
+
 function resolveCanonicalTransitionEventList(payload = {}) {
   const items = [];
   if (Array.isArray(payload.canonicalTransitionEvents)) {
@@ -261,10 +266,10 @@ function buildGenericExitMeta(stage) {
 }
 
 function resolveEffectiveExitMeta(payload = {}, rawEvent) {
-  const event = String(rawEvent || "").trim().toUpperCase();
-  const rawMeta = parseExitEventMeta(event);
-  const rawStage = inferExitStageFromEvent(event);
-  const canonicalEvent = String(payload.canonicalExitEvent || payload.canonical_exit_event || "").trim().toUpperCase();
+  const rawEvidenceEvent = resolveRawEvidenceEvent(payload, rawEvent);
+  const rawMeta = parseExitEventMeta(rawEvidenceEvent);
+  const rawStage = inferExitStageFromEvent(rawEvidenceEvent);
+  const canonicalEvent = String(payload.canonicalExitEvent || payload.canonical_exit_event || rawEvent || "").trim().toUpperCase();
   const canonicalEventMeta = canonicalEvent ? parseExitEventMeta(canonicalEvent) : null;
   const canonicalTransitionEvents = resolveCanonicalTransitionEventList(payload);
   const canonicalStage = resolveCanonicalAlertExitStage({
@@ -274,7 +279,7 @@ function resolveEffectiveExitMeta(payload = {}, rawEvent) {
   });
   const overrideApplied = !!canonicalStage && (
     canonicalStage !== rawStage
-    || (!!canonicalEvent && canonicalEvent !== event)
+    || (!!canonicalEvent && canonicalEvent !== rawEvidenceEvent)
   );
   const meta = canonicalEventMeta
     ? canonicalEventMeta
@@ -287,9 +292,18 @@ function resolveEffectiveExitMeta(payload = {}, rawEvent) {
     canonicalEvent: canonicalEvent || null,
     canonicalStage,
     rawStage,
+    rawEvidenceEvent,
     overrideApplied,
     canonicalTransitionEvents,
   };
+}
+
+function resolveCanonicalReclassificationLine(resolved = {}) {
+  if (!resolved || resolved.overrideApplied !== true) return null;
+  const rawToken = String(resolved.rawMeta && resolved.rawMeta.token || resolved.rawStage || "").trim();
+  const canonicalToken = String(resolved.meta && resolved.meta.token || resolved.canonicalStage || "").trim();
+  if (!rawToken || !canonicalToken || rawToken === canonicalToken) return null;
+  return `${rawToken} -> ${canonicalToken}`;
 }
 
 function normalizeCohort(value) {
@@ -345,6 +359,10 @@ function resolveCanonicalStageLines(payload = {}, resolved = {}) {
   const transitionEvents = Array.isArray(resolved.canonicalTransitionEvents)
     ? resolved.canonicalTransitionEvents
     : [];
+  const reclassification = resolveCanonicalReclassificationLine(resolved);
+  if (reclassification) {
+    lines.push(`정본재분류: ${reclassification}`);
+  }
   if (resolved.overrideApplied && canonicalStage) {
     lines.push(`정본단계: ${canonicalStage}`);
   }
@@ -526,7 +544,8 @@ function isExitFailureEvent(event) {
 function buildMessage(payload) {
   const exchange = normalizeExchange(payload.exchange);
   const symbol = String(payload.symbol || "").toUpperCase();
-  const event = normalizeTpP1EventForExchange(payload.event, exchange);
+  const inputEvent = String(payload.event || "").trim().toUpperCase();
+  const event = normalizeTpP1EventForExchange(inputEvent, exchange);
   const intent = resolveIntent(payload);
   if (!symbol || !event || !intent) return null;
   const feat = (payload.features && typeof payload.features === "object")
@@ -579,12 +598,18 @@ function buildMessage(payload) {
   }
 
   if (intent === "EXIT") {
-    const resolvedExitMeta = resolveEffectiveExitMeta(payload, event);
+    const resolvedExitMeta = resolveEffectiveExitMeta({
+      ...payload,
+      rawEvidenceEvent: payload.rawEvidenceEvent || payload.raw_evidence_event || inputEvent,
+    }, event);
     const exitMeta = resolvedExitMeta.meta;
     const exitLabel = resolveExitLabel(payload, exitMeta);
     const executedContract = String(exitMeta && exitMeta.token || "").trim() || resolveExecutedExitContract(event);
     const qtyText = fullExit ? "전량" : (formatPercent(closeRatio) || "부분");
-    const title = `${symbol} ${exitMeta.token} ${qtyText} 청산`;
+    const reclassification = resolveCanonicalReclassificationLine(resolvedExitMeta);
+    const title = reclassification
+      ? `${symbol} 정본재분류 ${reclassification.replace(/\s*->\s*/g, "->")} ${qtyText} 청산`
+      : `${symbol} ${exitMeta.token} ${qtyText} 청산`;
     const lines = [];
     lines.push(`종류: ${exitLabel}`);
     if (executedContract) lines.push(`실행계약: ${executedContract}`);
@@ -604,7 +629,7 @@ function buildMessage(payload) {
     lines.push(...resolveMarketRegimeLines(payload, feat));
     const rulesTxt = formatExitRulesCompact(payload.exitRules || payload.exit_rules);
     if (rulesTxt) lines.push(`전략계약: ${rulesTxt}`);
-    lines.push(`이벤트: ${formatEventTag(event)}`);
+    lines.push(`이벤트: ${formatEventTag(resolvedExitMeta.rawEvidenceEvent || event)}`);
     return { title, body: lines.join("\n") };
   }
 
@@ -614,7 +639,8 @@ function buildMessage(payload) {
 function buildFailureMessage(payload) {
   const exchange = normalizeExchange(payload.exchange);
   const symbol = String(payload.symbol || "").toUpperCase();
-  const event = normalizeTpP1EventForExchange(payload.event, exchange);
+  const inputEvent = String(payload.event || "").trim().toUpperCase();
+  const event = normalizeTpP1EventForExchange(inputEvent, exchange);
   const intent = resolveIntent(payload);
   if (!symbol || intent !== "EXIT" || !isExitFailureEvent(event)) return null;
   const feat = (payload.features && typeof payload.features === "object")
@@ -622,7 +648,10 @@ function buildFailureMessage(payload) {
     : ((payload.features_json && typeof payload.features_json === "object") ? payload.features_json : {});
 
   const unit = exchange.includes("BINANCE") ? "USDT" : "KRW";
-  const resolvedExitMeta = resolveEffectiveExitMeta(payload, event);
+  const resolvedExitMeta = resolveEffectiveExitMeta({
+    ...payload,
+    rawEvidenceEvent: payload.rawEvidenceEvent || payload.raw_evidence_event || inputEvent,
+  }, event);
   const exitMeta = resolvedExitMeta.meta;
   const exitLabel = resolveExitLabel(payload, exitMeta);
   const executedContract = String(exitMeta && exitMeta.token || "").trim() || resolveExecutedExitContract(event);
@@ -646,7 +675,10 @@ function buildFailureMessage(payload) {
     ? "전량"
     : (formatPercent(closeRatio) || formatPercent(qtyPct) || null);
 
-  const title = `${symbol} ${exitLabel} 주문 실패`;
+  const reclassification = resolveCanonicalReclassificationLine(resolvedExitMeta);
+  const title = reclassification
+    ? `${symbol} 정본재분류 ${reclassification.replace(/\s*->\s*/g, "->")} 주문 실패`
+    : `${symbol} ${exitLabel} 주문 실패`;
   const lines = [`종류: ${exitLabel}`];
   if (executedContract) lines.push(`실행계약: ${executedContract}`);
   if (directionKo) lines.push(`방향: ${directionKo} 청산`);
@@ -663,7 +695,7 @@ function buildFailureMessage(payload) {
   if (rulesTxt) lines.push(`전략계약: ${rulesTxt}`);
   lines.push(`실패사유: ${reason}`);
   if (note) lines.push(`메모: ${note.slice(0, 240)}`);
-  lines.push(`이벤트: ${formatEventTag(event)}`);
+  lines.push(`이벤트: ${formatEventTag(resolvedExitMeta.rawEvidenceEvent || event)}`);
   return { title, body: lines.join("\n") };
 }
 
@@ -773,6 +805,7 @@ module.exports = {
     buildFailureMessage,
     parseExitEventMeta,
     resolveEffectiveExitMeta,
+    resolveRawEvidenceEvent,
     resolveDirection,
     resolveExternalSyncContextLines,
     appendTradeExecutionAlertAudit,

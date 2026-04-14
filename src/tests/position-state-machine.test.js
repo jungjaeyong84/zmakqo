@@ -6,6 +6,7 @@ const {
   resolveCanonicalExitAuthorityDecision,
   resolveCanonicalExitTransitionEvents,
   resolveCanonicalAlertExitStage,
+  resolveCanonicalPositionExitStage,
   resolveCanonicalExitStageFromCycleEvidence,
   resolveCanonicalExitWritePayload,
   buildExitQuantityContractLedger,
@@ -162,6 +163,17 @@ function run() {
     fallbackStage: "TP1",
   });
   assert.strictEqual(alertStage, "TP1");
+
+  const canonicalPositionStage = resolveCanonicalPositionExitStage({
+    positionSnapshot: {
+      qty_base: 0.167,
+      meta: { tp_p0_done: true, tp_p1_done: true, trail_active: true, canonical_exit_stage: "TP1" },
+    },
+  });
+  assert.deepStrictEqual(canonicalPositionStage, {
+    stage: "TRAIL",
+    source: "POSITION_STATE_MACHINE_TRAIL_ACTIVE",
+  });
 
   const cycleStage = resolveCanonicalExitStageFromCycleEvidence({
     cycleTrades: [
