@@ -16,6 +16,7 @@ const { resolveBinanceKeys } = require("./binanceApiKeys");
 const { upsertTrailObservation } = require("../storage/positionRuntimeObservations");
 const { getPosition, upsertPositionMetaOnly } = require("../storage/positionsPaper");
 const { recordExitRepairRequest } = require("../storage/exitRepairRequests");
+const { resolveCanonicalExitStageFromCycleEvidence } = require("./positionStateMachine");
 
 function normalizeSymbol(value) {
   return String(value || "").trim().toUpperCase();
@@ -24,12 +25,6 @@ function normalizeSymbol(value) {
 function toNum(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
-}
-
-function approxEqual(a, b, tolerance = 0.03) {
-  const left = Number(a);
-  const right = Number(b);
-  return Number.isFinite(left) && Number.isFinite(right) && Math.abs(left - right) <= tolerance;
 }
 
 function shouldEnforceSingleStopWriter() {
@@ -105,31 +100,13 @@ function extractActiveCycleTrades(groupedTrades, { positionQty, positionSide } =
   return null;
 }
 
-function inferStageFromCycle(cycleTrades, {
-  positionQty,
-  tp0QtyRatio = 0.25,
-  tp1QtyRatio = 0.5,
-} = {}) {
-  if (!Array.isArray(cycleTrades) || cycleTrades.length === 0) {
-    return { stage: "UNKNOWN", reason: "CYCLE_EMPTY" };
-  }
-  const entries = cycleTrades.filter((trade) => Number(trade.signedQty) > 0);
-  const exits = cycleTrades.filter((trade) => Number(trade.signedQty) < 0);
-  const totalEntryQty = entries.reduce((sum, trade) => sum + Number(trade.qty || 0), 0);
-  const remainingQty = Number(positionQty);
-  if (!Number.isFinite(totalEntryQty) || totalEntryQty <= 0 || !Number.isFinite(remainingQty) || remainingQty <= 0) {
-    return { stage: "UNKNOWN", reason: "QTY_INVALID" };
-  }
-  const remainingRatio = remainingQty / totalEntryQty;
-  const expectedAfterTp0 = Math.max(0, 1 - Number(tp0QtyRatio || 0.25));
-  const expectedAfterTp1 = expectedAfterTp0 * Math.max(0, 1 - Number(tp1QtyRatio || 0.5));
-  if (exits.length >= 2 && approxEqual(remainingRatio, expectedAfterTp1, 0.04)) {
-    return { stage: "TRAIL", entries, exits, totalEntryQty, remainingQty, remainingRatio, expectedAfterTp1 };
-  }
-  if (exits.length >= 1 && approxEqual(remainingRatio, expectedAfterTp0, 0.04)) {
-    return { stage: "TP0", entries, exits, totalEntryQty, remainingQty, remainingRatio, expectedAfterTp0 };
-  }
-  return { stage: "UNKNOWN", entries, exits, totalEntryQty, remainingQty, remainingRatio, expectedAfterTp0, expectedAfterTp1 };
+function inferStageFromCycle(cycleTrades, options = {}) {
+  return resolveCanonicalExitStageFromCycleEvidence({
+    cycleTrades,
+    positionQty: options && options.positionQty,
+    tp0QtyRatio: options && options.tp0QtyRatio,
+    tp1QtyRatio: options && options.tp1QtyRatio,
+  });
 }
 
 function buildRepairedMeta(meta = {}, stageInfo = {}) {

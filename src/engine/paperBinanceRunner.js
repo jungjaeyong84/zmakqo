@@ -21,6 +21,7 @@ const {
   resolveTrailObservationSnapshot,
 } = require("../storage/positionRuntimeObservations");
 const { buildTradeId, upsertTradeEvent } = require("../storage/tradesPaper");
+const { recordCanonicalExitTransitions } = require("../storage/canonicalExitTransitions");
 const { upsertSignal } = require("../storage/signals");
 const { markSignalConsumed, tryLockSignal } = require("../storage/signalsConsume");
 const { recordOpenClawPolicyDecision } = require("../storage/openclawPolicyDecisions");
@@ -53,6 +54,10 @@ const {
   evaluateCanonicalDecision,
   resolveCanonicalEngineConfig: resolveCanonicalEngineConfigShared,
 } = require("../services/canonicalEngine");
+const {
+  buildExitQuantityContractLedger,
+  resolveCanonicalExitWritePayload,
+} = require("../services/positionStateMachine");
 const { sendTradeExecutionAlert, sendTradeExecutionFailureAlert } = require("../services/tradeExecutionAlert");
 const { sendSignalReceivedAlert, sendSignalProgressAlert } = require("../services/signalLifecycleAlert");
 const { sendAlert } = require("../utils/alerts");
@@ -118,6 +123,199 @@ function ratioToPctTokenLocal(ratio) {
   if (!Number.isFinite(n) || n <= 0) return null;
   const pct = Math.round(n * 10000) / 100;
   return String(pct).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+}
+
+function buildExitContractAlertPayload({ pos = null, posMeta = null, exitRules = null, observedQtyAbs = null } = {}) {
+  const position = pos && typeof pos === "object" ? pos : {};
+  const meta = posMeta && typeof posMeta === "object" ? posMeta : {};
+  const ledger = buildExitQuantityContractLedger({
+    positionSnapshot: {
+      qty_base: Number(position.qty_base),
+      entry_qty_base: position.entry_qty_base ?? meta.entry_qty_base ?? null,
+      meta,
+    },
+    rules: exitRules || null,
+  });
+  return {
+    contractEntryQtyAbs: Number.isFinite(Number(ledger.entry_qty_abs)) ? Number(ledger.entry_qty_abs) : null,
+    contractTp0AllowedAbs: Number.isFinite(Number(ledger.tp0_allowed_abs)) ? Number(ledger.tp0_allowed_abs) : null,
+    contractTp0ConsumedAbs: Number.isFinite(Number(ledger.tp0_consumed_abs)) ? Number(ledger.tp0_consumed_abs) : null,
+    contractTp1AllowedAbs: Number.isFinite(Number(ledger.tp1_allowed_abs)) ? Number(ledger.tp1_allowed_abs) : null,
+    contractTp1ConsumedAbs: Number.isFinite(Number(ledger.tp1_consumed_abs)) ? Number(ledger.tp1_consumed_abs) : null,
+    contractRunnerAllowedAbs: Number.isFinite(Number(ledger.runner_allowed_abs)) ? Number(ledger.runner_allowed_abs) : null,
+    contractRunnerRemainingAbs: Number.isFinite(Number(ledger.runner_remaining_abs)) ? Number(ledger.runner_remaining_abs) : null,
+    contractTrailConsumedAbs: Number.isFinite(Number(ledger.trail_consumed_abs)) ? Number(ledger.trail_consumed_abs) : null,
+    contractObservedQtyAbs: Number.isFinite(Number(observedQtyAbs)) ? Number(observedQtyAbs) : null,
+  };
+}
+
+function buildStoredExitLedgerMetaPatch({
+  position = null,
+  posMeta = null,
+  exitRules = null,
+  qtyBaseOverride = null,
+  entryQtyBaseOverride = null,
+} = {}) {
+  const meta = posMeta && typeof posMeta === "object" ? posMeta : {};
+  const ledger = buildExitQuantityContractLedger({
+    positionSnapshot: {
+      qty_base: Number.isFinite(Number(qtyBaseOverride))
+        ? Number(qtyBaseOverride)
+        : Number(position && position.qty_base),
+      entry_qty_base: Number.isFinite(Number(entryQtyBaseOverride))
+        ? Number(entryQtyBaseOverride)
+        : (position && position.entry_qty_base != null ? position.entry_qty_base : (meta.entry_qty_base ?? meta.entry_qty_abs ?? null)),
+      meta,
+    },
+    rules: exitRules || null,
+  });
+  return {
+    entry_qty_base: Number.isFinite(Number(ledger.entry_qty_abs)) ? Number(ledger.entry_qty_abs) : null,
+    entry_qty_abs: Number.isFinite(Number(ledger.entry_qty_abs)) ? Number(ledger.entry_qty_abs) : null,
+    tp_p0_allowed_qty_abs: Number.isFinite(Number(ledger.tp0_allowed_abs)) ? Number(ledger.tp0_allowed_abs) : null,
+    tp_p1_allowed_qty_abs: Number.isFinite(Number(ledger.tp1_allowed_abs)) ? Number(ledger.tp1_allowed_abs) : null,
+    runner_allowed_qty_abs: Number.isFinite(Number(ledger.runner_allowed_abs)) ? Number(ledger.runner_allowed_abs) : null,
+    runner_remaining_qty_abs: Number.isFinite(Number(ledger.runner_remaining_abs)) ? Number(ledger.runner_remaining_abs) : null,
+    trail_consumed_qty_abs: Number.isFinite(Number(ledger.trail_consumed_abs)) ? Number(ledger.trail_consumed_abs) : null,
+    tp_p0_allowed_qty_ratio: Number.isFinite(Number(ledger.tp0_allowed_ratio)) ? Number(ledger.tp0_allowed_ratio) : null,
+    tp_p1_allowed_qty_ratio: Number.isFinite(Number(ledger.tp1_allowed_ratio)) ? Number(ledger.tp1_allowed_ratio) : null,
+    runner_allowed_qty_ratio: Number.isFinite(Number(ledger.runner_allowed_ratio)) ? Number(ledger.runner_allowed_ratio) : null,
+    runner_remaining_qty_ratio: Number.isFinite(Number(ledger.runner_remaining_ratio)) ? Number(ledger.runner_remaining_ratio) : null,
+  };
+}
+
+function buildCanonicalExitAlertPayload({
+  event = null,
+  position = null,
+  posMeta = null,
+  exitRules = null,
+  observedQtyRatio = null,
+  fullExit = false,
+} = {}) {
+  const pos = position && typeof position === "object" ? position : {};
+  const meta = posMeta && typeof posMeta === "object" ? posMeta : {};
+  const decision = resolveCanonicalExitWritePayload({
+    event,
+    positionSnapshot: {
+      ...pos,
+      meta,
+    },
+    rules: exitRules || null,
+    observedQtyRatio,
+    fullExit,
+  });
+  if (!decision || !decision.stage || decision.stage === "OTHER" || decision.stage === "OTHER_EXIT") return {};
+  const ledger = buildExitQuantityContractLedger({
+    positionSnapshot: {
+      qty_base: Number(pos.qty_base),
+      entry_qty_base: pos.entry_qty_base ?? meta.entry_qty_base ?? meta.entry_qty_abs ?? null,
+      meta,
+    },
+    rules: exitRules || null,
+  });
+  return {
+    canonicalExitEvent: decision.event || null,
+    canonicalExitStage: decision.stage,
+    canonicalTransitionEvent: decision.primaryTransitionEvent || null,
+    canonicalTransitionEvents: Array.isArray(decision.transitionEvents) ? decision.transitionEvents : [],
+    canonicalExitReason: decision.reason || null,
+    canonicalExitChainKey: decision.chainKey || null,
+    canonicalExitBlockedInvariant: decision.blockedInvariant === true,
+    canonicalExitLedger: ledger,
+  };
+}
+
+function buildInternalFillCanonicalExtra({
+  canonicalExitAlertPayload = null,
+  exitContractAlertPayload = null,
+} = {}) {
+  const canonical = canonicalExitAlertPayload && typeof canonicalExitAlertPayload === "object"
+    ? canonicalExitAlertPayload
+    : {};
+  const contract = exitContractAlertPayload && typeof exitContractAlertPayload === "object"
+    ? exitContractAlertPayload
+    : {};
+  return {
+    canonical_exit_event: canonical.canonicalExitEvent || null,
+    canonical_exit_stage: canonical.canonicalExitStage || null,
+    canonical_primary_transition_event: canonical.canonicalTransitionEvent || null,
+    canonical_transition_events: Array.isArray(canonical.canonicalTransitionEvents)
+      ? canonical.canonicalTransitionEvents
+      : [],
+    contract_entry_qty_abs: Number.isFinite(Number(contract.contractEntryQtyAbs)) ? Number(contract.contractEntryQtyAbs) : null,
+    contract_tp0_allowed_abs: Number.isFinite(Number(contract.contractTp0AllowedAbs)) ? Number(contract.contractTp0AllowedAbs) : null,
+    contract_tp0_consumed_abs: Number.isFinite(Number(contract.contractTp0ConsumedAbs)) ? Number(contract.contractTp0ConsumedAbs) : null,
+    contract_tp1_allowed_abs: Number.isFinite(Number(contract.contractTp1AllowedAbs)) ? Number(contract.contractTp1AllowedAbs) : null,
+    contract_tp1_consumed_abs: Number.isFinite(Number(contract.contractTp1ConsumedAbs)) ? Number(contract.contractTp1ConsumedAbs) : null,
+    contract_runner_allowed_abs: Number.isFinite(Number(contract.contractRunnerAllowedAbs)) ? Number(contract.contractRunnerAllowedAbs) : null,
+    contract_runner_remaining_abs: Number.isFinite(Number(contract.contractRunnerRemainingAbs)) ? Number(contract.contractRunnerRemainingAbs) : null,
+    contract_trail_consumed_abs: Number.isFinite(Number(contract.contractTrailConsumedAbs)) ? Number(contract.contractTrailConsumedAbs) : null,
+    contract_observed_qty_abs: Number.isFinite(Number(contract.contractObservedQtyAbs)) ? Number(contract.contractObservedQtyAbs) : null,
+  };
+}
+
+async function recordInternalCanonicalExitTransitions({
+  exchange,
+  symbol,
+  fillId,
+  tradeId = null,
+  tradeMs = null,
+  event = null,
+  canonicalExitAlertPayload = null,
+  exitContractAlertPayload = null,
+  entryEventId = null,
+  signalDocId = null,
+} = {}) {
+  const canonical = canonicalExitAlertPayload && typeof canonicalExitAlertPayload === "object"
+    ? canonicalExitAlertPayload
+    : {};
+  const transitions = Array.isArray(canonical.canonicalTransitionEvents)
+    ? canonical.canonicalTransitionEvents.filter(Boolean)
+    : [];
+  if (!transitions.length) return [];
+  return recordCanonicalExitTransitions({
+    exchange,
+    symbol,
+    fillId,
+    tradeId,
+    tradeMs,
+    canonicalEvent: canonical.canonicalExitEvent || event,
+    transitionEvents: transitions,
+    chainKey: signalDocId || entryEventId || null,
+    reason: "INTERNAL_INTENT_FILL",
+    entryEventId,
+    signalDocId,
+    ledger: {
+      entry_qty_abs: exitContractAlertPayload && Number.isFinite(Number(exitContractAlertPayload.contractEntryQtyAbs))
+        ? Number(exitContractAlertPayload.contractEntryQtyAbs)
+        : null,
+      tp0_allowed_abs: exitContractAlertPayload && Number.isFinite(Number(exitContractAlertPayload.contractTp0AllowedAbs))
+        ? Number(exitContractAlertPayload.contractTp0AllowedAbs)
+        : null,
+      tp0_consumed_abs: exitContractAlertPayload && Number.isFinite(Number(exitContractAlertPayload.contractTp0ConsumedAbs))
+        ? Number(exitContractAlertPayload.contractTp0ConsumedAbs)
+        : null,
+      tp1_allowed_abs: exitContractAlertPayload && Number.isFinite(Number(exitContractAlertPayload.contractTp1AllowedAbs))
+        ? Number(exitContractAlertPayload.contractTp1AllowedAbs)
+        : null,
+      tp1_consumed_abs: exitContractAlertPayload && Number.isFinite(Number(exitContractAlertPayload.contractTp1ConsumedAbs))
+        ? Number(exitContractAlertPayload.contractTp1ConsumedAbs)
+        : null,
+      runner_allowed_abs: exitContractAlertPayload && Number.isFinite(Number(exitContractAlertPayload.contractRunnerAllowedAbs))
+        ? Number(exitContractAlertPayload.contractRunnerAllowedAbs)
+        : null,
+      runner_remaining_abs: exitContractAlertPayload && Number.isFinite(Number(exitContractAlertPayload.contractRunnerRemainingAbs))
+        ? Number(exitContractAlertPayload.contractRunnerRemainingAbs)
+        : null,
+      trail_consumed_abs: exitContractAlertPayload && Number.isFinite(Number(exitContractAlertPayload.contractTrailConsumedAbs))
+        ? Number(exitContractAlertPayload.contractTrailConsumedAbs)
+        : null,
+      observed_qty_abs: exitContractAlertPayload && Number.isFinite(Number(exitContractAlertPayload.contractObservedQtyAbs))
+        ? Number(exitContractAlertPayload.contractObservedQtyAbs)
+        : null,
+    },
+    source: "PAPER_BINANCE_RUNNER",
+  });
 }
 
 function buildExitOrderContractEvent(kind, rules) {
@@ -11050,6 +11248,24 @@ async function runPaperBinanceForBar({
     const appliedExitProfile = exitProfileSnapshot.profile === "AGGRESSIVE" ? "AGGRESSIVE" : "BASE";
     const appliedExitProfileReason = exitProfileSnapshot.reason;
     const appliedExitRules = cloneExitRules(exitProfileSnapshot.rules);
+    const canonicalExitAlertPayload = intent === "EXIT"
+      ? buildCanonicalExitAlertPayload({
+        event: it.event,
+        position: pos,
+        posMeta,
+        exitRules: appliedExitRules || null,
+        observedQtyRatio: closeRatio ?? qtyFraction,
+        fullExit: newState === "FLAT",
+      })
+      : null;
+    const exitContractAlertPayload = intent === "EXIT"
+      ? buildExitContractAlertPayload({
+        pos,
+        posMeta,
+        exitRules: appliedExitRules || null,
+        observedQtyAbs: execQtyBase,
+      })
+      : null;
     const intentSignalId = it.signal_id || (it.features_json && it.features_json.signal_id) || null;
     const intentSignalDocId = it.signal_doc_id ||
       (it.features_json && it.features_json.signal_doc_id) ||
@@ -11142,7 +11358,29 @@ async function runPaperBinanceForBar({
       exitProfile: appliedExitProfile || null,
       exitProfileReason: appliedExitProfileReason || null,
       decisionReason: it.reason || it.event || null,
+      extra: buildInternalFillCanonicalExtra({
+        canonicalExitAlertPayload,
+        exitContractAlertPayload,
+      }),
     });
+    if (intent === "EXIT" && fillWrite && fillWrite.fill_id) {
+      try {
+        await recordInternalCanonicalExitTransitions({
+          exchange,
+          symbol,
+          fillId: fillWrite.fill_id,
+          tradeId: linkedTradeId,
+          tradeMs: tradeExecMs || execBarCloseMs,
+          event: it.event,
+          canonicalExitAlertPayload,
+          exitContractAlertPayload,
+          entryEventId: entryEventIdForFill,
+          signalDocId: intentSignalDocId,
+        });
+      } catch (e) {
+        console.warn("[INTERNAL_CANONICAL_EXIT_TRANSITION_FAIL]", e && e.message ? e.message : String(e));
+      }
+    }
     if (!shouldSuppressInternalLiveExitFillAlert({ exchange, executionMode, intent })) {
       sendTradeExecutionAlert({
         exchange,
@@ -11157,6 +11395,7 @@ async function runPaperBinanceForBar({
         closeRatio,
         fullExit: intent === "EXIT" && newState === "FLAT",
         realizedPnl: realizedPnlQuote,
+        ...(canonicalExitAlertPayload || {}),
         positionSideBefore,
         positionSideAfter: newState === "FLAT" ? null : positionSideBefore,
         appliedLeverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
@@ -11164,6 +11403,7 @@ async function runPaperBinanceForBar({
         exitProfile: appliedExitProfile || null,
         exitProfileReason: appliedExitProfileReason || null,
         exitRules: appliedExitRules || null,
+        ...(exitContractAlertPayload || {}),
         features: it.features_json || {},
         runId,
       }).catch((e) => {
@@ -11264,6 +11504,13 @@ async function runPaperBinanceForBar({
         includeLeverageReason: false,
         includeEntryRiskFields: false,
       }));
+      nextMeta = mergeMeta(nextMeta, buildStoredExitLedgerMetaPatch({
+        position: pos,
+        posMeta: nextMeta,
+        exitRules: appliedExitRules || null,
+        qtyBaseOverride: newQtyBase,
+        entryQtyBaseOverride: newQtyBase,
+      }));
     }
     let profitableTrailCooldownMeta = null;
     if (closing) {
@@ -11336,6 +11583,14 @@ async function runPaperBinanceForBar({
       lossPct: it.features_json && it.features_json._rescue_add_loss_pct,
     });
     nextMeta = mergeMeta(nextMeta, { qty_base: newQtyBase });
+    if (newState === "ACTIVE") {
+      nextMeta = mergeMeta(nextMeta, buildStoredExitLedgerMetaPatch({
+        position: pos,
+        posMeta: nextMeta,
+        exitRules: appliedExitRules || null,
+        qtyBaseOverride: newQtyBase,
+      }));
+    }
 
     const projectedMetaForWrite = forceLiveReconcile ? stripExchangeOwnedProjectionMeta(nextMeta) : nextMeta;
     const projectedMetaPatch = forceLiveReconcile
@@ -13765,6 +14020,24 @@ async function runPaperFuturesForBar({
     const closeRatio = intent === "EXIT"
       ? resolveIntentFillCloseRatio({ qtyFraction, prevSize, useBudget })
       : null;
+    const canonicalExitAlertPayload = intent === "EXIT"
+      ? buildCanonicalExitAlertPayload({
+        event: it.event,
+        position: pos,
+        posMeta,
+        exitRules: appliedExitRules || null,
+        observedQtyRatio: closeRatio ?? qtyFraction,
+        fullExit: newState === "FLAT",
+      })
+      : null;
+    const exitContractAlertPayload = intent === "EXIT"
+      ? buildExitContractAlertPayload({
+        pos,
+        posMeta,
+        exitRules: appliedExitRules || null,
+        observedQtyAbs: execQtyBase,
+      })
+      : null;
     const intentSignalId = it.signal_id || (it.features_json && it.features_json.signal_id) || null;
     const intentSignalDocId = it.signal_doc_id ||
       (it.features_json && it.features_json.signal_doc_id) ||
@@ -13857,7 +14130,29 @@ async function runPaperFuturesForBar({
       exitProfile: appliedExitProfile || null,
       exitProfileReason: appliedExitProfileReason || null,
       decisionReason: it.reason || it.event || null,
+      extra: buildInternalFillCanonicalExtra({
+        canonicalExitAlertPayload,
+        exitContractAlertPayload,
+      }),
     });
+    if (intent === "EXIT" && fillWrite && fillWrite.fill_id) {
+      try {
+        await recordInternalCanonicalExitTransitions({
+          exchange,
+          symbol,
+          fillId: fillWrite.fill_id,
+          tradeId: linkedTradeId,
+          tradeMs: tradeExecMs || execBarCloseMs,
+          event: it.event,
+          canonicalExitAlertPayload,
+          exitContractAlertPayload,
+          entryEventId: entryEventIdForFill,
+          signalDocId: intentSignalDocId,
+        });
+      } catch (e) {
+        console.warn("[INTERNAL_CANONICAL_EXIT_TRANSITION_FAIL]", e && e.message ? e.message : String(e));
+      }
+    }
     if (!shouldSuppressInternalLiveExitFillAlert({ exchange, executionMode, intent })) {
       sendTradeExecutionAlert({
         exchange,
@@ -13872,6 +14167,7 @@ async function runPaperFuturesForBar({
         closeRatio,
         fullExit: intent === "EXIT" && newState === "FLAT",
         realizedPnl: realizedPnlQuote,
+        ...(canonicalExitAlertPayload || {}),
         positionSideBefore,
         positionSideAfter: newState === "FLAT" ? null : nextPosSide || positionSideBefore,
         appliedLeverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
@@ -13879,6 +14175,7 @@ async function runPaperFuturesForBar({
         exitProfile: appliedExitProfile || null,
         exitProfileReason: appliedExitProfileReason || null,
         exitRules: appliedExitRules || null,
+        ...(exitContractAlertPayload || {}),
         features: it.features_json || {},
         runId,
       }).catch((e) => {
@@ -14005,6 +14302,13 @@ async function runPaperFuturesForBar({
         includeLeverageReason: true,
         includeEntryRiskFields: true,
       }));
+      nextMeta = mergeMeta(nextMeta, buildStoredExitLedgerMetaPatch({
+        position: pos,
+        posMeta: nextMeta,
+        exitRules: appliedExitRules || null,
+        qtyBaseOverride: Number.isFinite(newQtyBase) ? newQtyBase : (pos.qty_base ?? null),
+        entryQtyBaseOverride: Number.isFinite(newQtyBase) ? newQtyBase : (pos.qty_base ?? null),
+      }));
     }
     let profitableTrailCooldownMeta = null;
     if (closing) {
@@ -14080,6 +14384,14 @@ async function runPaperFuturesForBar({
         nativeProtectionMetaPatch,
       }),
     });
+    if (newState === "ACTIVE") {
+      nextMeta = mergeMeta(nextMeta, buildStoredExitLedgerMetaPatch({
+        position: pos,
+        posMeta: nextMeta,
+        exitRules: appliedExitRules || null,
+        qtyBaseOverride: Number.isFinite(newQtyBase) ? newQtyBase : (pos.qty_base ?? null),
+      }));
+    }
 
     let budgetUsedForPosition = useBudget ? (budgetMaxForIntent * newSize) : null;
     if (useBudget && String(exchange || "").toUpperCase().includes("BINANCE")) {

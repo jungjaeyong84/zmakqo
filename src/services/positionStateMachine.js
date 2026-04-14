@@ -30,7 +30,13 @@ function normalizeSnapshot(snapshot = {}) {
     size_pct: sizePct,
     qty_base: qtyBase,
     position_side: toUpper(snapshot.position_side || meta.position_side, null),
-    entry_qty_base: toNum(snapshot.entry_qty_base || meta.entry_qty_base),
+    entry_qty_base: snapshot.entry_qty_base == null
+      ? (
+        meta.entry_qty_base == null
+          ? (meta.entry_qty_abs == null ? null : toNum(meta.entry_qty_abs))
+          : toNum(meta.entry_qty_base)
+      )
+      : toNum(snapshot.entry_qty_base),
     tp_p0_done: meta.tp_p0_done === true || snapshot.tpP0Done === true,
     tp_p1_done: meta.tp_p1_done === true || snapshot.tpP1Done === true,
     trail_active: meta.trail_active === true || snapshot.trailActive === true,
@@ -53,6 +59,71 @@ function normalizeExitStage(value) {
   if (upper === "FORCE_EXIT_ALL" || upper === "FORCE_EXIT_HALF") return upper;
   if (upper === "OTHER_EXIT" || upper === "OTHER") return upper;
   return upper;
+}
+
+function normalizeTransitionEvent(value) {
+  return toUpper(value, null);
+}
+
+function trimPctToken(raw) {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  const rounded = Math.round(n * 1000) / 1000;
+  const asInt = Math.round(rounded);
+  if (Math.abs(rounded - asInt) < 1e-9) return String(asInt);
+  return String(rounded).replace(/\.?0+$/, "");
+}
+
+function ratioToPctToken(rawRatio) {
+  const n = Number(rawRatio);
+  if (!Number.isFinite(n)) return null;
+  return trimPctToken(Math.abs(n) * 100);
+}
+
+function classifyExitEventStage(event) {
+  const ev = toUpper(event, null);
+  if (!ev) return null;
+  if (ev.startsWith("EXIT_TP_P0")) return "TP0";
+  if (ev.startsWith("EXIT_TP_P1") || ev.startsWith("EXIT_TP_C")) return "TP1";
+  if (ev.startsWith("EXIT_TRAIL")) return "TRAIL";
+  if (ev.startsWith("EXIT_SL")) return "SL";
+  if (ev === "FORCE_EXIT_ALL" || ev === "EXIT_ALL" || ev === "EXIT_FORCE_ALL") return "FORCE_EXIT_ALL";
+  if (ev === "FORCE_EXIT_HALF") return "FORCE_EXIT_HALF";
+  if (ev.startsWith("EXIT_")) return "OTHER_EXIT";
+  return null;
+}
+
+function buildCanonicalExitEvent({
+  stage = null,
+  rules = null,
+  fallbackEvent = null,
+} = {}) {
+  const resolvedStage = normalizeExitStage(stage);
+  const fallback = toUpper(fallbackEvent, null);
+  if (resolvedStage === "TP0") {
+    const token = ratioToPctToken(rules && rules.TP_P0);
+    if (fallback && fallback.startsWith("EXIT_TP_P0")) return fallback;
+    return token ? `EXIT_TP_P0_${token}P` : "EXIT_TP_P0";
+  }
+  if (resolvedStage === "TP1") {
+    const token = ratioToPctToken(rules && rules.TP_P1);
+    if (fallback && (fallback.startsWith("EXIT_TP_P1") || fallback.startsWith("EXIT_TP_C"))) return fallback;
+    return token ? `EXIT_TP_P1_${token}P` : "EXIT_TP_P1";
+  }
+  if (resolvedStage === "TRAIL") {
+    if (fallback && fallback.startsWith("EXIT_TRAIL")) return fallback;
+    const trailR = toNum(rules && rules.TRAIL_R_MULTIPLE);
+    if (Number.isFinite(trailR) && trailR > 0) return "EXIT_TRAIL";
+    const token = ratioToPctToken(rules && rules.TRAIL_PCT);
+    return token ? `EXIT_TRAIL_${token}P` : "EXIT_TRAIL";
+  }
+  if (resolvedStage === "SL") {
+    const token = ratioToPctToken(rules && rules.SL);
+    if (fallback && fallback.startsWith("EXIT_SL")) return fallback;
+    return token ? `EXIT_SL_${token}P` : "EXIT_SL";
+  }
+  if (resolvedStage === "FORCE_EXIT_ALL" || resolvedStage === "FORCE_EXIT_HALF") return resolvedStage;
+  return fallback;
 }
 
 function resolveExitStageAbsoluteContractQtyRatio(stage, rules = {}) {
@@ -121,8 +192,17 @@ function buildExitQuantityContractLedger({
   const trailConsumedRatio = clamp01(state.trail) ?? 0;
   const lowerBoundTotal = tp0ConsumedRatio + tp1ConsumedRatio + trailConsumedRatio;
   const totalConsumedRatio = clamp01(Math.max(state.total, lowerBoundTotal)) ?? 0;
+  const runnerAllowedRatio = clamp01(1 - Math.min(1, tp0AllowedRatio + tp1AllowedRatio)) ?? 0;
   const runnerRemainingRatio = clamp01(1 - Math.min(1, tp0ConsumedRatio + tp1ConsumedRatio + trailConsumedRatio)) ?? 0;
-  const entryQtyAbs = toNum(snapshot.entry_qty_base);
+  const currentQtyAbs = snapshot.qty_base == null ? null : toNum(snapshot.qty_base);
+  let entryQtyAbs = snapshot.entry_qty_base == null ? null : toNum(snapshot.entry_qty_base);
+  if (!Number.isFinite(entryQtyAbs) && Number.isFinite(currentQtyAbs) && currentQtyAbs > 0) {
+    if (runnerRemainingRatio > 0.000001) {
+      entryQtyAbs = currentQtyAbs / runnerRemainingRatio;
+    } else if (snapshot.trail_active !== true && snapshot.tp_p1_done !== true && snapshot.tp_p0_done !== true) {
+      entryQtyAbs = currentQtyAbs;
+    }
+  }
   return {
     entry_qty_abs: entryQtyAbs,
     entry_qty_ratio: 1,
@@ -130,6 +210,7 @@ function buildExitQuantityContractLedger({
     tp0_consumed_ratio: tp0ConsumedRatio,
     tp1_allowed_ratio: tp1AllowedRatio,
     tp1_consumed_ratio: tp1ConsumedRatio,
+    runner_allowed_ratio: runnerAllowedRatio,
     trail_consumed_ratio: trailConsumedRatio,
     total_consumed_ratio: totalConsumedRatio,
     runner_remaining_ratio: runnerRemainingRatio,
@@ -137,6 +218,7 @@ function buildExitQuantityContractLedger({
     tp0_consumed_abs: Number.isFinite(entryQtyAbs) ? entryQtyAbs * tp0ConsumedRatio : null,
     tp1_allowed_abs: Number.isFinite(entryQtyAbs) ? entryQtyAbs * tp1AllowedRatio : null,
     tp1_consumed_abs: Number.isFinite(entryQtyAbs) ? entryQtyAbs * tp1ConsumedRatio : null,
+    runner_allowed_abs: Number.isFinite(entryQtyAbs) ? entryQtyAbs * runnerAllowedRatio : null,
     trail_consumed_abs: Number.isFinite(entryQtyAbs) ? entryQtyAbs * trailConsumedRatio : null,
     runner_remaining_abs: Number.isFinite(entryQtyAbs) ? entryQtyAbs * runnerRemainingRatio : null,
   };
@@ -173,6 +255,120 @@ function resolveCanonicalExitTransitionEvents({
   return {
     transitionEvents: events,
     primaryTransitionEvent: events.length ? events[events.length - 1] : null,
+  };
+}
+
+function resolveCanonicalAlertExitStage({
+  primaryTransitionEvent = null,
+  transitionEvents = null,
+  fallbackStage = null,
+} = {}) {
+  const events = Array.isArray(transitionEvents)
+    ? transitionEvents.map((item) => normalizeTransitionEvent(item)).filter(Boolean)
+    : [];
+  const primary = normalizeTransitionEvent(primaryTransitionEvent);
+  const ordered = primary ? [primary, ...events.filter((item) => item !== primary)] : events;
+
+  if (ordered.includes("TRAIL_FINAL_EXIT") || ordered.includes("TRAIL_PARTIAL")) return "TRAIL";
+  if (ordered.includes("TP1_REACHED")) return "TP1";
+  if (ordered.includes("TP0_REACHED")) return "TP0";
+  if (ordered.includes("TRAIL_ACTIVE")) {
+    const fallback = normalizeExitStage(fallbackStage);
+    if (fallback === "TP1") return "TP1";
+    return "TRAIL";
+  }
+  return normalizeExitStage(fallbackStage);
+}
+
+function resolveCanonicalExitStageFromCycleEvidence({
+  cycleTrades = null,
+  positionQty = null,
+  tp0QtyRatio = 0.25,
+  tp1QtyRatio = 0.5,
+} = {}) {
+  if (!Array.isArray(cycleTrades) || cycleTrades.length === 0) {
+    return { stage: "UNKNOWN", reason: "CYCLE_EMPTY" };
+  }
+  const entries = cycleTrades.filter((trade) => Number(trade && trade.signedQty) > 0);
+  const exits = cycleTrades.filter((trade) => Number(trade && trade.signedQty) < 0);
+  const totalEntryQty = entries.reduce((sum, trade) => sum + (toNum(trade && trade.qty) || 0), 0);
+  const remainingQty = toNum(positionQty);
+  if (!Number.isFinite(totalEntryQty) || totalEntryQty <= 0 || !Number.isFinite(remainingQty) || remainingQty <= 0) {
+    return { stage: "UNKNOWN", reason: "QTY_INVALID" };
+  }
+  const remainingRatio = remainingQty / totalEntryQty;
+  const tp0RemainingRatio = Math.max(0, 1 - (toNum(tp0QtyRatio) ?? 0.25));
+  const tp1AbsRatio = resolveExitStageAbsoluteContractQtyRatio("TP1", {
+    TP_P0_QTY: tp0QtyRatio,
+    TP_P1_QTY: tp1QtyRatio,
+  }) ?? 0.375;
+  const trailRemainingRatio = Math.max(0, 1 - ((toNum(tp0QtyRatio) ?? 0.25) + tp1AbsRatio));
+  if (exits.length >= 2 && Math.abs(remainingRatio - trailRemainingRatio) <= 0.04) {
+    return { stage: "TRAIL", entries, exits, totalEntryQty, remainingQty, remainingRatio, expectedAfterTp1: trailRemainingRatio };
+  }
+  if (exits.length >= 1 && Math.abs(remainingRatio - tp0RemainingRatio) <= 0.04) {
+    return { stage: "TP0", entries, exits, totalEntryQty, remainingQty, remainingRatio, expectedAfterTp0: tp0RemainingRatio };
+  }
+  return {
+    stage: "UNKNOWN",
+    entries,
+    exits,
+    totalEntryQty,
+    remainingQty,
+    remainingRatio,
+    expectedAfterTp0: tp0RemainingRatio,
+    expectedAfterTp1: trailRemainingRatio,
+  };
+}
+
+function resolveCanonicalExitWritePayload({
+  exchange,
+  symbol,
+  event = null,
+  currentStage = null,
+  chainKey = null,
+  entryEventId = null,
+  signalDocId = null,
+  orderMeta = null,
+  positionSnapshot = null,
+  authorityState = null,
+  recentStages = null,
+  rules = null,
+  observedQtyRatio = null,
+  fullExit = false,
+} = {}) {
+  const rawEvent = toUpper(event, null);
+  const rawStage = normalizeExitStage(currentStage || classifyExitEventStage(rawEvent));
+  const decision = resolveCanonicalExitAuthorityDecision({
+    exchange,
+    symbol,
+    currentStage: rawStage,
+    chainKey,
+    entryEventId,
+    signalDocId,
+    orderMeta,
+    positionSnapshot,
+    authorityState,
+    recentStages,
+    rules,
+    observedQtyRatio,
+    fullExit,
+  });
+  return {
+    rawEvent,
+    rawStage,
+    event: buildCanonicalExitEvent({
+      stage: decision.stage,
+      rules,
+      fallbackEvent: decision.stage === rawStage ? rawEvent : null,
+    }) || rawEvent,
+    stage: decision.stage,
+    chainKey: decision.chainKey,
+    reason: decision.reason,
+    blockedInvariant: decision.blockedInvariant === true,
+    ledger: decision.ledger || null,
+    transitionEvents: Array.isArray(decision.transitionEvents) ? decision.transitionEvents : [],
+    primaryTransitionEvent: decision.primaryTransitionEvent || null,
   };
 }
 
@@ -324,16 +520,27 @@ module.exports = {
   validatePositionSnapshotTransition,
   resolveCanonicalExitAuthorityDecision,
   resolveCanonicalExitTransitionEvents,
+  resolveCanonicalAlertExitStage,
+  resolveCanonicalExitStageFromCycleEvidence,
+  resolveCanonicalExitWritePayload,
   buildExitQuantityContractLedger,
   buildCanonicalExitChainKey,
+  buildCanonicalExitEvent,
+  classifyExitEventStage,
   __test: {
     normalizeSnapshot,
     normalizeExitStage,
+    normalizeTransitionEvent,
     resolveExitStageAbsoluteContractQtyRatio,
     resolveCanonicalExitAuthorityDecision,
     resolveCanonicalExitTransitionEvents,
+    resolveCanonicalAlertExitStage,
+    resolveCanonicalExitStageFromCycleEvidence,
+    resolveCanonicalExitWritePayload,
     buildExitQuantityContractLedger,
     buildCanonicalExitChainKey,
+    buildCanonicalExitEvent,
+    classifyExitEventStage,
     ALLOWED_POSITION_STATE_TRANSITIONS,
   },
 };

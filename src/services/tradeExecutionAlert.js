@@ -5,6 +5,7 @@ const path = require("path");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { sendAlert } = require("../utils/alerts");
 const { resolveEventMapping } = require("./signalStandard");
+const { resolveCanonicalAlertExitStage, classifyExitEventStage } = require("./positionStateMachine");
 const { canonicalExternalEntryEvent, resolveEntryTimingTier } = require("../utils/liveEntryTaxonomy");
 
 const channelCache = new Map();
@@ -140,6 +141,27 @@ function formatBaseQty(value) {
   });
 }
 
+function resolveExitContractLedgerLines(payload = {}) {
+  const lines = [];
+  const observed = Number(payload.contractObservedQtyAbs);
+  const entry = Number(payload.contractEntryQtyAbs);
+  const tp0Allowed = Number(payload.contractTp0AllowedAbs);
+  const tp1Allowed = Number(payload.contractTp1AllowedAbs);
+  const runnerRemaining = Number(payload.contractRunnerRemainingAbs);
+  if (Number.isFinite(observed) && observed > 0) {
+    lines.push(`체결수량(base): ${formatBaseQty(observed)}`);
+  }
+  const contractParts = [];
+  if (Number.isFinite(entry) && entry > 0) contractParts.push(`ENTRY ${formatBaseQty(entry)}`);
+  if (Number.isFinite(tp0Allowed) && tp0Allowed > 0) contractParts.push(`TP0 ${formatBaseQty(tp0Allowed)}`);
+  if (Number.isFinite(tp1Allowed) && tp1Allowed > 0) contractParts.push(`TP1 ${formatBaseQty(tp1Allowed)}`);
+  if (Number.isFinite(runnerRemaining) && runnerRemaining >= 0) contractParts.push(`RUNNER ${formatBaseQty(runnerRemaining)}`);
+  if (contractParts.length) {
+    lines.push(`계약수량(base): ${contractParts.join(" / ")}`);
+  }
+  return lines;
+}
+
 function resolveBaseAssetSymbol(symbol) {
   const raw = String(symbol || "").trim().toUpperCase();
   if (!raw) return null;
@@ -207,6 +229,69 @@ function parseExitEventMeta(event) {
   return { token: "EXIT", label: "청산" };
 }
 
+function inferExitStageFromEvent(event) {
+  return classifyExitEventStage(event);
+}
+
+function resolveCanonicalTransitionEventList(payload = {}) {
+  const items = [];
+  if (Array.isArray(payload.canonicalTransitionEvents)) {
+    items.push(...payload.canonicalTransitionEvents);
+  }
+  if (Array.isArray(payload.canonical_transition_events)) {
+    items.push(...payload.canonical_transition_events);
+  }
+  const primary = payload.canonicalTransitionEvent || payload.canonical_primary_transition_event;
+  if (primary) items.unshift(primary);
+  const seen = new Set();
+  return items
+    .map((item) => String(item || "").trim().toUpperCase())
+    .filter((item) => {
+      if (!item || seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    });
+}
+
+function buildGenericExitMeta(stage) {
+  if (stage === "TP0") return { token: "TP0", label: "익절(TP0)" };
+  if (stage === "TP1") return { token: "TP1", label: "익절(TP1)" };
+  if (stage === "TRAIL") return { token: "TRAIL", label: "트레일링" };
+  return null;
+}
+
+function resolveEffectiveExitMeta(payload = {}, rawEvent) {
+  const event = String(rawEvent || "").trim().toUpperCase();
+  const rawMeta = parseExitEventMeta(event);
+  const rawStage = inferExitStageFromEvent(event);
+  const canonicalEvent = String(payload.canonicalExitEvent || payload.canonical_exit_event || "").trim().toUpperCase();
+  const canonicalEventMeta = canonicalEvent ? parseExitEventMeta(canonicalEvent) : null;
+  const canonicalTransitionEvents = resolveCanonicalTransitionEventList(payload);
+  const canonicalStage = resolveCanonicalAlertExitStage({
+    primaryTransitionEvent: payload.canonicalTransitionEvent || payload.canonical_primary_transition_event || null,
+    transitionEvents: canonicalTransitionEvents,
+    fallbackStage: payload.canonicalExitStage || payload.canonical_exit_stage || inferExitStageFromEvent(canonicalEvent) || rawStage,
+  });
+  const overrideApplied = !!canonicalStage && (
+    canonicalStage !== rawStage
+    || (!!canonicalEvent && canonicalEvent !== event)
+  );
+  const meta = canonicalEventMeta
+    ? canonicalEventMeta
+    : overrideApplied
+    ? (buildGenericExitMeta(canonicalStage) || rawMeta)
+    : rawMeta;
+  return {
+    meta,
+    rawMeta,
+    canonicalEvent: canonicalEvent || null,
+    canonicalStage,
+    rawStage,
+    overrideApplied,
+    canonicalTransitionEvents,
+  };
+}
+
 function normalizeCohort(value) {
   const upper = String(value || "").trim().toUpperCase();
   if (upper === "RESCUE" || upper === "MIXED" || upper === "KEEP_DROP" || upper === "HOLD_SAMPLE") return upper;
@@ -252,6 +337,21 @@ function resolveExitLabel(payload = {}, exitMeta = {}) {
     return `${exitMeta.label} (pre-TP1)`;
   }
   return exitMeta.label;
+}
+
+function resolveCanonicalStageLines(payload = {}, resolved = {}) {
+  const lines = [];
+  const canonicalStage = String(resolved.canonicalStage || "").trim().toUpperCase();
+  const transitionEvents = Array.isArray(resolved.canonicalTransitionEvents)
+    ? resolved.canonicalTransitionEvents
+    : [];
+  if (resolved.overrideApplied && canonicalStage) {
+    lines.push(`정본단계: ${canonicalStage}`);
+  }
+  if (transitionEvents.length) {
+    lines.push(`정본전이: ${transitionEvents.join(" -> ")}`);
+  }
+  return lines;
 }
 
 function resolveExternalSyncContextLines(payload = {}) {
@@ -450,9 +550,10 @@ function buildMessage(payload) {
   }
 
   if (intent === "EXIT") {
-    const exitMeta = parseExitEventMeta(event);
+    const resolvedExitMeta = resolveEffectiveExitMeta(payload, event);
+    const exitMeta = resolvedExitMeta.meta;
     const exitLabel = resolveExitLabel(payload, exitMeta);
-    const executedContract = resolveExecutedExitContract(event);
+    const executedContract = String(exitMeta && exitMeta.token || "").trim() || resolveExecutedExitContract(event);
     const qtyText = fullExit ? "전량" : (formatPercent(closeRatio) || "부분");
     const title = `${symbol} ${exitMeta.token} ${qtyText} 청산`;
     const lines = [];
@@ -464,10 +565,12 @@ function buildMessage(payload) {
       lines.push(`${pnlLabel}: ${formatMoney(pnl, { unit, signed: true })} ${unit}`);
     }
     if (Number.isFinite(execPrice)) lines.push(`체결가: ${formatMoney(execPrice, { unit })} ${unit}`);
+    lines.push(...resolveExitContractLedgerLines(payload));
     if (leverageLabel) {
       lines.push(`배율: ${leverageLabel}${leverageReason ? ` (${leverageReason})` : ""}`);
     }
     lines.push(...resolveExternalSyncContextLines(payload));
+    lines.push(...resolveCanonicalStageLines(payload, resolvedExitMeta));
     lines.push(...resolveMarketRegimeLines(payload, feat));
     const rulesTxt = formatExitRulesCompact(payload.exitRules || payload.exit_rules);
     if (rulesTxt) lines.push(`전략계약: ${rulesTxt}`);
@@ -489,9 +592,10 @@ function buildFailureMessage(payload) {
     : ((payload.features_json && typeof payload.features_json === "object") ? payload.features_json : {});
 
   const unit = exchange.includes("BINANCE") ? "USDT" : "KRW";
-  const exitMeta = parseExitEventMeta(event);
+  const resolvedExitMeta = resolveEffectiveExitMeta(payload, event);
+  const exitMeta = resolvedExitMeta.meta;
   const exitLabel = resolveExitLabel(payload, exitMeta);
-  const executedContract = resolveExecutedExitContract(event);
+  const executedContract = String(exitMeta && exitMeta.token || "").trim() || resolveExecutedExitContract(event);
   const closeRatio = Number(payload.closeRatio);
   const qtyPct = Number(payload.qtyPct);
   const execPrice = Number(payload.execPrice);
@@ -521,6 +625,8 @@ function buildFailureMessage(payload) {
   if (leverageLabel) {
     lines.push(`배율: ${leverageLabel}${leverageReason ? ` (${leverageReason})` : ""}`);
   }
+  lines.push(...resolveExitContractLedgerLines(payload));
+  lines.push(...resolveCanonicalStageLines(payload, resolvedExitMeta));
   lines.push(...resolveMarketRegimeLines(payload, feat));
   const rulesTxt = formatExitRulesCompact(payload.exitRules || payload.exit_rules);
   if (rulesTxt) lines.push(`전략계약: ${rulesTxt}`);
@@ -635,6 +741,7 @@ module.exports = {
     buildMessage,
     buildFailureMessage,
     parseExitEventMeta,
+    resolveEffectiveExitMeta,
     resolveDirection,
     resolveExternalSyncContextLines,
     appendTradeExecutionAlertAudit,

@@ -39,9 +39,11 @@ const {
 } = require("../utils/exitQtyContract");
 const { recordUnifiedEvent } = require("../storage/unifiedEventTimeline");
 const { recordExitRepairRequest } = require("../storage/exitRepairRequests");
+const { recordCanonicalExitTransitions } = require("../storage/canonicalExitTransitions");
 const {
-  resolveCanonicalExitAuthorityDecision,
   resolveCanonicalExitTransitionEvents,
+  buildExitQuantityContractLedger,
+  resolveCanonicalExitWritePayload,
 } = require("./positionStateMachine");
 
 const DEFAULT_LOOKBACK_MS = 72 * 60 * 60 * 1000;
@@ -71,6 +73,51 @@ const FILL_SYNC_TRADE_ALERT_COOLDOWN_MS = 10 * 60 * 1000;
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function buildExitLedgerMetaPatch({
+  position = null,
+  nextMeta = null,
+  rules = null,
+} = {}) {
+  const pos = position && typeof position === "object" ? position : {};
+  const meta = nextMeta && typeof nextMeta === "object" ? nextMeta : {};
+  const ledger = buildExitQuantityContractLedger({
+    positionSnapshot: {
+      qty_base: Number(pos.qty_base),
+      entry_qty_base: pos.entry_qty_base ?? meta.entry_qty_base ?? meta.entry_qty_abs ?? null,
+      meta,
+    },
+    rules: rules || null,
+  });
+  return {
+    entry_qty_base: Number.isFinite(Number(ledger.entry_qty_abs)) ? Number(ledger.entry_qty_abs) : null,
+    entry_qty_abs: Number.isFinite(Number(ledger.entry_qty_abs)) ? Number(ledger.entry_qty_abs) : null,
+    tp_p0_allowed_qty_abs: Number.isFinite(Number(ledger.tp0_allowed_abs)) ? Number(ledger.tp0_allowed_abs) : null,
+    tp_p1_allowed_qty_abs: Number.isFinite(Number(ledger.tp1_allowed_abs)) ? Number(ledger.tp1_allowed_abs) : null,
+    runner_allowed_qty_abs: Number.isFinite(Number(ledger.runner_allowed_abs)) ? Number(ledger.runner_allowed_abs) : null,
+    runner_remaining_qty_abs: Number.isFinite(Number(ledger.runner_remaining_abs)) ? Number(ledger.runner_remaining_abs) : null,
+    trail_consumed_qty_abs: Number.isFinite(Number(ledger.trail_consumed_abs)) ? Number(ledger.trail_consumed_abs) : null,
+    tp_p0_allowed_qty_ratio: Number.isFinite(Number(ledger.tp0_allowed_ratio)) ? Number(ledger.tp0_allowed_ratio) : null,
+    tp_p1_allowed_qty_ratio: Number.isFinite(Number(ledger.tp1_allowed_ratio)) ? Number(ledger.tp1_allowed_ratio) : null,
+    runner_allowed_qty_ratio: Number.isFinite(Number(ledger.runner_allowed_ratio)) ? Number(ledger.runner_allowed_ratio) : null,
+    runner_remaining_qty_ratio: Number.isFinite(Number(ledger.runner_remaining_ratio)) ? Number(ledger.runner_remaining_ratio) : null,
+  };
+}
+
+function buildExitLedgerPayload(ledger = null, observedQtyAbs = null) {
+  const source = ledger && typeof ledger === "object" ? ledger : {};
+  return {
+    contractEntryQtyAbs: Number.isFinite(Number(source.entry_qty_abs)) ? Number(source.entry_qty_abs) : null,
+    contractTp0AllowedAbs: Number.isFinite(Number(source.tp0_allowed_abs)) ? Number(source.tp0_allowed_abs) : null,
+    contractTp0ConsumedAbs: Number.isFinite(Number(source.tp0_consumed_abs)) ? Number(source.tp0_consumed_abs) : null,
+    contractTp1AllowedAbs: Number.isFinite(Number(source.tp1_allowed_abs)) ? Number(source.tp1_allowed_abs) : null,
+    contractTp1ConsumedAbs: Number.isFinite(Number(source.tp1_consumed_abs)) ? Number(source.tp1_consumed_abs) : null,
+    contractRunnerAllowedAbs: Number.isFinite(Number(source.runner_allowed_abs)) ? Number(source.runner_allowed_abs) : null,
+    contractRunnerRemainingAbs: Number.isFinite(Number(source.runner_remaining_abs)) ? Number(source.runner_remaining_abs) : null,
+    contractTrailConsumedAbs: Number.isFinite(Number(source.trail_consumed_abs)) ? Number(source.trail_consumed_abs) : null,
+    contractObservedQtyAbs: Number.isFinite(Number(observedQtyAbs)) ? Number(observedQtyAbs) : null,
+  };
 }
 
 function sleep(ms) {
@@ -1025,7 +1072,19 @@ async function promotePositionStageHintsFromExternalExit({
       return { ok: true, skipped: true, reason: "POSITION_FLAT" };
     }
     const currentMeta = (pos.meta && typeof pos.meta === "object") ? pos.meta : {};
-    const nextMeta = buildStageHintedMeta(currentMeta, ev, trade);
+    const hintedMeta = buildStageHintedMeta(currentMeta, ev, trade);
+    const nextMeta = {
+      ...hintedMeta,
+      ...buildExitLedgerMetaPatch({
+        position: pos,
+        nextMeta: hintedMeta,
+        rules: hintedMeta.exit_rules_override && typeof hintedMeta.exit_rules_override === "object"
+          ? hintedMeta.exit_rules_override
+          : (currentMeta.exit_rules_override && typeof currentMeta.exit_rules_override === "object"
+            ? currentMeta.exit_rules_override
+            : null),
+      }),
+    };
     const unchanged = JSON.stringify(nextMeta) === JSON.stringify(currentMeta);
     if (unchanged) {
       return { ok: true, skipped: true, reason: "META_ALREADY_HINTED", position: pos };
@@ -2135,7 +2194,6 @@ function resolveCanonicalExternalExitEvent({
   rules = null,
 } = {}) {
   const currentEvent = String(event || "").trim().toUpperCase();
-  const currentStage = classifyExitAuthorityStage(currentEvent);
   const chainKey = buildExitAuthorityChainKey({
     exchange,
     symbol,
@@ -2144,11 +2202,10 @@ function resolveCanonicalExternalExitEvent({
     signalDocId,
     orderMeta,
   });
-  const recentTrailEvent = String(recentTrail && recentTrail.event || "").trim().toUpperCase();
-  const decision = resolveCanonicalExitAuthorityDecision({
+  return resolveCanonicalExitWritePayload({
     exchange,
     symbol,
-    currentStage,
+    event: currentEvent,
     chainKey,
     entryEventId,
     signalDocId,
@@ -2160,23 +2217,10 @@ function resolveCanonicalExternalExitEvent({
     recentStages: {
       tp0: isTpP0Event(recentTp0 && recentTp0.event) ? "TP0" : null,
       tp1: isTpP1Event(recentTp1 && recentTp1.event) ? "TP1" : null,
-      trail: recentTrailEvent.startsWith("EXIT_TRAIL") ? "TRAIL" : null,
+      trail: String(recentTrail && recentTrail.event || "").trim().toUpperCase().startsWith("EXIT_TRAIL") ? "TRAIL" : null,
     },
     rules,
   });
-  const resolvedEvent = decision.stage === currentStage
-    ? currentEvent
-    : buildExitEventByKind(decision.stage, rules);
-  return {
-    event: resolvedEvent,
-    stage: decision.stage,
-    chainKey,
-    reason: decision.reason,
-    ledger: decision.ledger || null,
-    blockedInvariant: decision.blockedInvariant === true,
-    transitionEvents: decision.transitionEvents || [],
-    primaryTransitionEvent: decision.primaryTransitionEvent || null,
-  };
 }
 
 function shouldEnforceSingleStopWriter() {
@@ -2198,35 +2242,21 @@ async function recordCanonicalExitTransitionsForFill({
   orderMeta = null,
   tradeId = null,
 } = {}) {
-  const transitions = Array.isArray(transitionEvents) ? transitionEvents.filter(Boolean) : [];
-  if (!transitions.length) return [];
-  const createdAt = Number.isFinite(Number(tradeMs)) ? new Date(Number(tradeMs)).toISOString() : nowIso();
-  const results = [];
-  for (const transitionEvent of transitions) {
-    const recorded = await recordUnifiedEvent({
-      eventKind: "CANONICAL_EXIT_TRANSITION",
-      eventSource: "BINANCE_FUTURES_FILLS_SYNC",
-      exchange,
-      symbol,
-      event: transitionEvent,
-      fillId,
-      tsMs: Number.isFinite(Number(tradeMs)) ? Number(tradeMs) : null,
-      createdAt,
-      sourceDocumentId: `CANONICAL_EXIT_TRANSITION__${fillId}__${transitionEvent}`,
-      payload: {
-        canonical_transition_event: transitionEvent,
-        canonical_event: event,
-        canonical_exit_chain_key: chainKey || null,
-        canonical_exit_reason: reason || null,
-        entry_event_id: entryEventId || null,
-        external_order_id: Number.isFinite(Number(orderMeta && orderMeta.orderId)) ? Number(orderMeta.orderId) : null,
-        external_trade_id: Number.isFinite(Number(tradeId)) ? Number(tradeId) : null,
-        quantity_contract_ledger: ledger || null,
-      },
-    });
-    results.push(recorded);
-  }
-  return results;
+  return recordCanonicalExitTransitions({
+    exchange,
+    symbol,
+    fillId,
+    tradeId,
+    tradeMs,
+    canonicalEvent: event,
+    transitionEvents,
+    chainKey,
+    reason,
+    entryEventId,
+    orderMeta,
+    ledger,
+    source: "BINANCE_FUTURES_FILLS_SYNC",
+  });
 }
 
 function getExitAuthorityState(map, chainKey) {
@@ -3043,6 +3073,9 @@ async function syncMarketTrades({
           fullExit,
         })
         : { transitionEvents: [], primaryTransitionEvent: null };
+      const exitLedgerPayload = looksLikeExit
+        ? buildExitLedgerPayload(canonicalStageDecision.ledger || null, execQtyBase)
+        : null;
 
       const upserted = await upsertExternalFill({
         fillId,
@@ -3097,6 +3130,7 @@ async function syncMarketTrades({
           external_after_tp1_sec: Number.isFinite(recentTp1LagSec) ? recentTp1LagSec : null,
           external_position_side: t.positionSide || null,
           external_realized_pnl: realizedPnl,
+          canonical_exit_event: canonicalStageDecision.event || null,
           canonical_transition_events: Array.isArray(canonicalTransitionDecision.transitionEvents)
             ? canonicalTransitionDecision.transitionEvents
             : [],
@@ -3117,6 +3151,33 @@ async function syncMarketTrades({
           authoritative_qty_cap_applied: authorityDecision.capped === true,
           authoritative_duplicate_suspected: authorityDecision.duplicateSuspected === true,
           authoritative_qty_reason: authorityDecision.reason || null,
+          contract_entry_qty_abs: exitLedgerPayload && Number.isFinite(Number(exitLedgerPayload.contractEntryQtyAbs))
+            ? Number(exitLedgerPayload.contractEntryQtyAbs)
+            : null,
+          contract_tp0_allowed_abs: exitLedgerPayload && Number.isFinite(Number(exitLedgerPayload.contractTp0AllowedAbs))
+            ? Number(exitLedgerPayload.contractTp0AllowedAbs)
+            : null,
+          contract_tp0_consumed_abs: exitLedgerPayload && Number.isFinite(Number(exitLedgerPayload.contractTp0ConsumedAbs))
+            ? Number(exitLedgerPayload.contractTp0ConsumedAbs)
+            : null,
+          contract_tp1_allowed_abs: exitLedgerPayload && Number.isFinite(Number(exitLedgerPayload.contractTp1AllowedAbs))
+            ? Number(exitLedgerPayload.contractTp1AllowedAbs)
+            : null,
+          contract_tp1_consumed_abs: exitLedgerPayload && Number.isFinite(Number(exitLedgerPayload.contractTp1ConsumedAbs))
+            ? Number(exitLedgerPayload.contractTp1ConsumedAbs)
+            : null,
+          contract_runner_allowed_abs: exitLedgerPayload && Number.isFinite(Number(exitLedgerPayload.contractRunnerAllowedAbs))
+            ? Number(exitLedgerPayload.contractRunnerAllowedAbs)
+            : null,
+          contract_runner_remaining_abs: exitLedgerPayload && Number.isFinite(Number(exitLedgerPayload.contractRunnerRemainingAbs))
+            ? Number(exitLedgerPayload.contractRunnerRemainingAbs)
+            : null,
+          contract_trail_consumed_abs: exitLedgerPayload && Number.isFinite(Number(exitLedgerPayload.contractTrailConsumedAbs))
+            ? Number(exitLedgerPayload.contractTrailConsumedAbs)
+            : null,
+          contract_observed_qty_abs: exitLedgerPayload && Number.isFinite(Number(exitLedgerPayload.contractObservedQtyAbs))
+            ? Number(exitLedgerPayload.contractObservedQtyAbs)
+            : null,
         },
       });
 
@@ -3327,12 +3388,14 @@ async function syncMarketTrades({
               leverageReason: intentLeverageReason || "BINANCE_USER_TRADES_SYNC",
               exitRules,
               entryEventId: entryEventId || null,
+              canonicalExitEvent: canonicalStageDecision.event || null,
               canonicalExitStage: canonicalStageDecision.stage || authorityDecision.stage || null,
               canonicalExitChainKey: canonicalStageDecision.chainKey || authorityDecision.chainKey || null,
               canonicalTransitionEvent: canonicalTransitionDecision.primaryTransitionEvent || null,
               canonicalTransitionEvents: Array.isArray(canonicalTransitionDecision.transitionEvents)
                 ? canonicalTransitionDecision.transitionEvents
                 : [],
+              ...(exitLedgerPayload || {}),
               classificationVerified: !String(event || "").trim().toUpperCase().endsWith("_UNVERIFIED"),
               alertStageHintTp0Done: (positionCtx && positionCtx.tpP0Done === true) || isTpP0Event(recentTp0 && recentTp0.event),
               alertStageHintTp1Done: (positionCtx && positionCtx.tpP1Done === true) || isTpP1Event(recentTp1 && recentTp1.event),

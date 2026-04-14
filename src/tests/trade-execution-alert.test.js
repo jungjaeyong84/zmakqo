@@ -6,6 +6,7 @@ async function run() {
   assert.strictEqual(typeof __test.buildMessage, "function", "buildMessage export missing");
   assert.strictEqual(typeof __test.buildFailureMessage, "function", "buildFailureMessage export missing");
   assert.strictEqual(typeof __test.parseExitEventMeta, "function", "parseExitEventMeta export missing");
+  assert.strictEqual(typeof __test.resolveEffectiveExitMeta, "function", "resolveEffectiveExitMeta export missing");
   assert.strictEqual(typeof __test.resolveDirection, "function", "resolveDirection export missing");
 
   const shortEntry = __test.buildMessage({
@@ -143,6 +144,64 @@ async function run() {
   assert.ok(externalSync.body.includes("동기화맥락: 트레일 종료 후 외부 동기화"), "external sync should explain prior stage context");
   assert.ok(externalSync.body.includes("동기화사유: EXTERNAL_FILL_RECONCILED"), "external sync should include reconciliation reason");
   assert.ok(externalSync.body.includes("동기화주문: MARKET / close_position=false"), "external sync should include order context");
+
+  const canonicalTrail = __test.buildMessage({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_TP_P1_1.65P",
+    intent: "EXIT",
+    side: "SELL",
+    positionSideBefore: "LONG",
+    executionMode: "LIVE",
+    notional: 389.27,
+    execPrice: 2330.94,
+    closeRatio: 0.5,
+    fullExit: false,
+    realizedPnl: 12.168,
+    canonicalExitEvent: "EXIT_TRAIL",
+    canonicalExitStage: "TRAIL",
+    canonicalTransitionEvent: "TRAIL_PARTIAL",
+    canonicalTransitionEvents: ["TRAIL_PARTIAL"],
+    contractEntryQtyAbs: 0.887,
+    contractTp0AllowedAbs: 0.22175,
+    contractTp1AllowedAbs: 0.332625,
+    contractRunnerRemainingAbs: 0.167,
+    contractObservedQtyAbs: 0.167,
+    exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
+  });
+  assert.ok(canonicalTrail, "canonical trail message should exist");
+  assert.strictEqual(canonicalTrail.title, "ETHUSDT TRAIL 50% 청산");
+  assert.ok(canonicalTrail.body.includes("종류: 트레일링"), "canonical override should switch label to trail");
+  assert.ok(canonicalTrail.body.includes("실행계약: TRAIL"), "canonical override should switch executed contract to trail");
+  assert.ok(canonicalTrail.body.includes("체결수량(base): 0.167"), "alert should include observed absolute fill qty");
+  assert.ok(canonicalTrail.body.includes("계약수량(base): ENTRY 0.887 / TP0 0.22175 / TP1 0.332625 / RUNNER 0.167"), "alert should include absolute contract ledger");
+  assert.ok(canonicalTrail.body.includes("정본단계: TRAIL"), "canonical override should expose canonical stage");
+  assert.ok(canonicalTrail.body.includes("정본전이: TRAIL_PARTIAL"), "canonical override should expose transition");
+  assert.ok(canonicalTrail.body.includes("이벤트: EXIT_TP_P1_1.65P"), "raw event should remain visible for evidence");
+
+  const canonicalTp1Event = __test.buildMessage({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    event: "EXIT_TP_P1_5P",
+    intent: "EXIT",
+    side: "SELL",
+    positionSideBefore: "LONG",
+    executionMode: "LIVE",
+    notional: 200,
+    execPrice: 70000,
+    closeRatio: 0.5,
+    fullExit: false,
+    realizedPnl: 4.2,
+    canonicalExitEvent: "EXIT_TP_P1_3P",
+    canonicalExitStage: "TP1",
+    canonicalTransitionEvent: "TP1_REACHED",
+    canonicalTransitionEvents: ["TP1_REACHED", "TRAIL_ACTIVE"],
+    exitRules: { SL: -0.0165, TP_P1: 0.03, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
+  });
+  assert.ok(canonicalTp1Event, "canonical tp1 event message should exist");
+  assert.strictEqual(canonicalTp1Event.title, "BTCUSDT TP1_3 50% 청산");
+  assert.ok(canonicalTp1Event.body.includes("종류: 익절(TP1) 3%"), "canonical exit event should control displayed label");
+  assert.ok(canonicalTp1Event.body.includes("실행계약: TP1_3"), "canonical exit event should control executed contract");
 
   console.log("TRADE_EXECUTION_ALERT_TEST_OK");
 }

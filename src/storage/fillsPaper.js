@@ -323,6 +323,7 @@ async function upsertFill({
   featuresJson = null,
   requestId = null,
   decisionReason = null,
+  extra = null,
 } = {}) {
   const db = getFirestore();
 
@@ -421,6 +422,7 @@ async function upsertFill({
     updated_at: nowIso(),
   };
 
+  if (extra && typeof extra === "object") Object.assign(payload, extra);
   if (normalizedFeaturesJson) payload.features_json = normalizedFeaturesJson;
 
   const unifiedDoc = buildFillSnapshotUnifiedEventDoc(payload, "FILLS_PAPER_INTERNAL");

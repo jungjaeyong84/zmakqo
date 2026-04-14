@@ -5,6 +5,9 @@ const {
   validatePositionSnapshotTransition,
   resolveCanonicalExitAuthorityDecision,
   resolveCanonicalExitTransitionEvents,
+  resolveCanonicalAlertExitStage,
+  resolveCanonicalExitStageFromCycleEvidence,
+  resolveCanonicalExitWritePayload,
   buildExitQuantityContractLedger,
 } = require("../services/positionStateMachine");
 
@@ -98,6 +101,26 @@ function run() {
   assert.strictEqual(postTp1Decision.stage, "TRAIL");
   assert.strictEqual(postTp1Decision.blockedInvariant, true);
 
+  const postTp1WriteDecision = resolveCanonicalExitWritePayload({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_TP_P1_1.65P",
+    entryEventId: "ENTRY__ETH",
+    positionSnapshot: {
+      qty_base: 0.167,
+      entry_qty_base: 0.887,
+      meta: { tp_p0_done: true, tp_p1_done: true, trail_active: true },
+    },
+    authorityState: { tp0: 0.25, tp1: 0.375, total: 0.625 },
+    recentStages: { tp1: "TP1", trail: "TRAIL" },
+    rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5, TRAIL_R_MULTIPLE: 0.6 },
+    observedQtyRatio: 0.188,
+    fullExit: false,
+  });
+  assert.strictEqual(postTp1WriteDecision.stage, "TRAIL");
+  assert.strictEqual(postTp1WriteDecision.event, "EXIT_TRAIL");
+  assert.ok(postTp1WriteDecision.transitionEvents.includes("TRAIL_PARTIAL"));
+
   const ledger = buildExitQuantityContractLedger({
     positionSnapshot: {
       entry_qty_base: 1,
@@ -109,7 +132,18 @@ function run() {
   });
   assert.strictEqual(ledger.tp0_allowed_abs, 0.25);
   assert.strictEqual(ledger.tp1_allowed_abs, 0.375);
+  assert.strictEqual(ledger.runner_allowed_abs, 0.375);
   assert.ok(Math.abs(ledger.runner_remaining_ratio - 0.187) < 0.001);
+
+  const derivedEntryLedger = buildExitQuantityContractLedger({
+    positionSnapshot: {
+      qty_base: 0.167,
+      meta: { tp_p0_done: true, tp_p1_done: true, trail_active: true },
+    },
+    rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
+  });
+  assert.ok(Math.abs(derivedEntryLedger.entry_qty_abs - 0.4453333333) < 0.001);
+  assert.ok(Math.abs(derivedEntryLedger.runner_remaining_abs - 0.167) < 0.001);
 
   const trailTransition = resolveCanonicalExitTransitionEvents({
     resolvedStage: "TRAIL",
@@ -122,6 +156,24 @@ function run() {
     fullExit: false,
   });
   assert.ok(trailTransition.transitionEvents.includes("TRAIL_FINAL_EXIT"));
+
+  const alertStage = resolveCanonicalAlertExitStage({
+    transitionEvents: ["TP1_REACHED", "TRAIL_ACTIVE"],
+    fallbackStage: "TP1",
+  });
+  assert.strictEqual(alertStage, "TP1");
+
+  const cycleStage = resolveCanonicalExitStageFromCycleEvidence({
+    cycleTrades: [
+      { signedQty: 0.887, qty: 0.887 },
+      { signedQty: -0.221, qty: 0.221 },
+      { signedQty: -0.332, qty: 0.332 },
+    ],
+    positionQty: 0.334,
+    tp0QtyRatio: 0.25,
+    tp1QtyRatio: 0.5,
+  });
+  assert.strictEqual(cycleStage.stage, "TRAIL");
 
   console.log("POSITION_STATE_MACHINE_TEST_OK");
 }
