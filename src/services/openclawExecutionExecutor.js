@@ -59,6 +59,16 @@ const ALLOCATOR_QUARANTINE_EPOCH_RELEASE_SCALE = numEnv(
   1,
   { min: 0.05, max: 1 }
 );
+const ALLOCATOR_SNAPSHOT_STALE_MAX_AGE_MS = numEnv(
+  "OPENCLAW_EXECUTOR_ALLOCATOR_STALE_MAX_AGE_MS",
+  12 * 60 * 60 * 1000,
+  { min: 0, max: 7 * 24 * 60 * 60 * 1000 }
+);
+const ALLOCATOR_SNAPSHOT_STALE_REDUCE_SCALE = numEnv(
+  "OPENCLAW_EXECUTOR_ALLOCATOR_STALE_REDUCE_SCALE",
+  ALLOCATOR_REDUCE_SCALE,
+  { min: 0.05, max: 1 }
+);
 const SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD", 1.2, { min: 0, max: 10 });
 const SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD", 2.2, { min: 0, max: 10 });
 const CORRELATED_EXPOSURE_REDUCE_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD", 0.8, { min: 0, max: 10 });
@@ -478,7 +488,34 @@ function loadCapitalAllocatorSnapshot({ force = false } = {}) {
   allocatorCache.mtimeMs = mtimeMs;
   allocatorCache.summary = summary;
   allocatorCache.byMarket = byMarket;
+  allocatorCache.generatedAtKst = doc && typeof doc.generated_at_kst === "string" ? doc.generated_at_kst : null;
   return allocatorCache;
+}
+
+function normalizeCapitalAllocatorSnapshot(snapshot = null) {
+  if (!snapshot || typeof snapshot !== "object") return loadCapitalAllocatorSnapshot();
+  return {
+    summary: snapshot.summary || {},
+    byMarket: snapshot.byMarket instanceof Map
+      ? snapshot.byMarket
+      : new Map(
+        Array.isArray(snapshot.by_market)
+          ? snapshot.by_market
+              .map((row) => [upper(row && row.market), row])
+              .filter((row) => row[0])
+          : []
+      ),
+    mtimeMs: toNum(snapshot.mtimeMs),
+    generatedAtKst: typeof snapshot.generatedAtKst === "string"
+      ? snapshot.generatedAtKst
+      : (typeof snapshot.generated_at_kst === "string" ? snapshot.generated_at_kst : null),
+  };
+}
+
+function resolveAllocatorSnapshotAgeMs(snapshot = null, nowMs = Date.now()) {
+  const mtimeMs = toNum(snapshot && snapshot.mtimeMs);
+  if (!Number.isFinite(mtimeMs)) return null;
+  return Math.max(0, nowMs - mtimeMs);
 }
 
 async function listActivePositionViews({ exchange, override = null } = {}) {
@@ -636,21 +673,12 @@ async function evaluateOpenClawExecutionDecision({
     listActivePositionViews({ exchange: resolvedExchange, override: positionViews }),
     listRecentTimelineRows({ exchange: resolvedExchange, symbol: resolvedSymbol, nowMs, override: recentTimelineRows }),
   ]);
-  const allocatorSnapshot = capitalAllocatorSnapshot && typeof capitalAllocatorSnapshot === "object"
-    ? {
-        summary: capitalAllocatorSnapshot.summary || {},
-        byMarket: capitalAllocatorSnapshot.byMarket instanceof Map
-          ? capitalAllocatorSnapshot.byMarket
-          : new Map(
-            Array.isArray(capitalAllocatorSnapshot.by_market)
-              ? capitalAllocatorSnapshot.by_market
-                  .map((row) => [upper(row && row.market), row])
-                  .filter((row) => row[0])
-              : []
-          ),
-      }
-    : loadCapitalAllocatorSnapshot();
+  const allocatorSnapshot = normalizeCapitalAllocatorSnapshot(capitalAllocatorSnapshot);
   const allocatorRow = allocatorSnapshot.byMarket.get(resolvedSymbol) || null;
+  const allocatorSnapshotAgeMs = resolveAllocatorSnapshotAgeMs(allocatorSnapshot, nowMs);
+  const allocatorSnapshotStale = Number.isFinite(allocatorSnapshotAgeMs)
+    && ALLOCATOR_SNAPSHOT_STALE_MAX_AGE_MS >= 0
+    && allocatorSnapshotAgeMs > ALLOCATOR_SNAPSHOT_STALE_MAX_AGE_MS;
 
   const latestExit = extractLatestExitRow(timelineRows);
   const latestExitTsMs = toNum(latestExit && latestExit.ts_ms);
@@ -776,7 +804,14 @@ async function evaluateOpenClawExecutionDecision({
     notes.push(reason);
   }
   if (!blocked && (allocatorAction === "QUARANTINE" || allocatorAction === "BLOCK")) {
-    if (allocatorAction === "QUARANTINE" && allocatorQuarantineEpochReleaseActive) {
+    if (allocatorSnapshotStale) {
+      scale = minScale(scale, ALLOCATOR_SNAPSHOT_STALE_REDUCE_SCALE);
+      exitProfileMode = exitProfileMode || "BASE";
+      reason = "OPENCLAW_EXECUTOR_ALLOCATOR_STALE_REDUCE";
+      notes.push("OPENCLAW_EXECUTOR_ALLOCATOR_SNAPSHOT_STALE");
+      notes.push(`OPENCLAW_EXECUTOR_ALLOCATOR_${allocatorAction}`);
+      notes.push(reason);
+    } else if (allocatorAction === "QUARANTINE" && allocatorQuarantineEpochReleaseActive) {
       const releaseScale = Number.isFinite(ALLOCATOR_QUARANTINE_EPOCH_RELEASE_SCALE)
         ? ALLOCATOR_QUARANTINE_EPOCH_RELEASE_SCALE
         : 1;
@@ -841,6 +876,9 @@ async function evaluateOpenClawExecutionDecision({
     _openclaw_executor_allocator_score: allocatorScore,
     _openclaw_executor_allocator_learning_epoch_active: allocatorLearningEpochActive,
     _openclaw_executor_allocator_quarantine_epoch_release_active: allocatorQuarantineEpochReleaseActive,
+    _openclaw_executor_allocator_snapshot_age_ms: allocatorSnapshotAgeMs,
+    _openclaw_executor_allocator_snapshot_stale: allocatorSnapshotStale,
+    _openclaw_executor_allocator_generated_at_kst: allocatorSnapshot.generatedAtKst || null,
     _openclaw_executor_allocator_penalty_reasons: allocatorPenaltyReasons,
     _openclaw_executor_alpha_context: matchedAlphaContext,
   };
@@ -881,6 +919,9 @@ async function evaluateOpenClawExecutionDecision({
       allocatorScore,
       allocatorLearningEpochActive,
       allocatorQuarantineEpochReleaseActive,
+      allocatorSnapshotAgeMs,
+      allocatorSnapshotStale,
+      allocatorGeneratedAtKst: allocatorSnapshot.generatedAtKst || null,
       allocatorPenaltyReasons,
       alphaContext: matchedAlphaContext,
       sameSideExposureRows: exposure.sameSideActive.map((row) => ({
@@ -916,6 +957,8 @@ module.exports = {
     resolvePosterior,
     resolveEntryTier,
     resolveExecutorCohort,
+    normalizeCapitalAllocatorSnapshot,
+    resolveAllocatorSnapshotAgeMs,
     parseCorrelatedGroups,
     hasActiveExposure,
     resolveRunnerAllowedRatioFromView,

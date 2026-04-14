@@ -284,6 +284,45 @@ async function run() {
     OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
     OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
     OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_ALLOCATOR_STALE_MAX_AGE_MS: "21600000",
+    OPENCLAW_EXECUTOR_ALLOCATOR_STALE_REDUCE_SCALE: "0.4",
+  }, async () => {
+    const { evaluateOpenClawExecutionDecision } = freshRequire("../services/openclawExecutionExecutor");
+    const nowMs = Date.parse("2026-04-14T08:00:00.000Z");
+    const res = await evaluateOpenClawExecutionDecision({
+      exchange: "BINANCEFUT",
+      symbol: "XRPUSDT",
+      intent: "ENTRY",
+      event: "ENTRY_LONG_REAL",
+      side: "BUY",
+      qtyPct: 0.8,
+      features: {},
+      nowMs,
+      positionViews: [],
+      recentTimelineRows: [],
+      capitalAllocatorSnapshot: {
+        summary: { learning_epoch_active: false },
+        mtimeMs: Date.parse("2026-04-12T10:46:33.601Z"),
+        generated_at_kst: "2026-04-12 19:46:33 KST",
+        by_market: [
+          { market: "XRPUSDT", recommended_action: "QUARANTINE", allocation_score: -5.5417, penalty_reasons: ["EXECUTION_HARD"] },
+        ],
+      },
+    });
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_ALLOCATOR_STALE_REDUCE");
+    assert.ok(Math.abs(res.qtyPctFinal - 0.32) < 1e-9);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_allocator_action, "QUARANTINE");
+    assert.strictEqual(res.featuresPatch._openclaw_executor_allocator_snapshot_stale, true);
+    assert.ok(res.featuresPatch._openclaw_executor_allocator_snapshot_age_ms > 21600000);
+  });
+
+  await withEnv({
+    OPENCLAW_EXECUTOR_ENABLED: "1",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
     OPENCLAW_EXECUTOR_ALLOCATOR_REDUCE_SCALE: "0.4",
     OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_RELEASE_ENABLED: "1",
     OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_RELEASE_SCALE: "0.4",
