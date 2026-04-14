@@ -55,10 +55,16 @@ function isAllowedFailureExchange(exchange) {
 }
 
 function resolveIntent({ intent, event } = {}) {
+  const ev = String(event || "").trim().toUpperCase();
+  if (
+    ev.startsWith("EXIT_")
+    || ev === "FORCE_EXIT_ALL"
+    || ev === "FORCE_EXIT_HALF"
+    || ev === "EXIT_ALL"
+    || ev === "EXIT_FORCE_ALL"
+  ) return "EXIT";
   const rawIntent = String(intent || "").trim().toUpperCase();
   if (rawIntent === "ENTRY" || rawIntent === "ADD" || rawIntent === "EXIT") return rawIntent;
-  const ev = String(event || "").trim().toUpperCase();
-  if (ev.startsWith("EXIT_")) return "EXIT";
   if (ev === "LONG" || ev === "SHORT") return "ENTRY";
   if (ev.startsWith("CORE_") || ev.startsWith("EARLY_")) return "ENTRY";
   return null;
@@ -223,6 +229,12 @@ function parseExitEventMeta(event) {
   if (ev.startsWith("EXIT_TRAIL")) return { token: "TRAIL", label: "트레일링" };
   if (ev.startsWith("EXIT_SL")) return { token: "SL", label: "손절" };
   if (ev.startsWith("EXIT_BE")) return { token: "BE", label: "브레이크이븐" };
+  if (ev === "FORCE_EXIT_ALL" || ev === "EXIT_ALL" || ev === "EXIT_FORCE_ALL") {
+    return { token: "FORCE_EXIT_ALL", label: "강제 전량 청산" };
+  }
+  if (ev === "FORCE_EXIT_HALF") {
+    return { token: "FORCE_EXIT_HALF", label: "강제 부분 청산" };
+  }
   if (ev === "EXIT_OPPOSITE_SIGNAL") return { token: "OPPOSITE", label: "반대신호 청산" };
   if (ev === "EXIT_LIQUIDATION_RISK") return { token: "RISK", label: "리스크 청산" };
   if (ev === "EXIT_EXTERNAL_SYNC") return { token: "EXTERNAL_SYNC", label: "외부 동기화 청산" };

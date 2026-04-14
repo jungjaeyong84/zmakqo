@@ -287,6 +287,24 @@ async function run() {
   });
   assert.strictEqual(missingCanonicalFailureAlert, null, "stageful failure alerts must require canonical transition evidence");
 
+  const forcedExitMessage = __test.buildMessage({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "FORCE_EXIT_ALL",
+    intent: "ENTRY",
+    side: "SELL",
+    positionSideBefore: "LONG",
+    executionMode: "LIVE",
+    fullExit: true,
+    notional: 240,
+    execPrice: 2330.94,
+    realizedPnl: 12.1,
+  });
+  assert.ok(forcedExitMessage, "forced exit should emit an exit alert even when raw intent is malformed");
+  assert.ok(!forcedExitMessage.title.includes("진입"), "forced exit must not be rendered as an entry");
+  assert.ok(forcedExitMessage.body.includes("종류: 강제 전량 청산"));
+  assert.ok(forcedExitMessage.body.includes("이벤트: FORCE_EXIT_ALL"));
+
   console.log("TRADE_EXECUTION_ALERT_TEST_OK");
 }
 

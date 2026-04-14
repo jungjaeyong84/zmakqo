@@ -285,6 +285,41 @@ async function run() {
     OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
     OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
     OPENCLAW_EXECUTOR_ALLOCATOR_REDUCE_SCALE: "0.4",
+    OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_RELEASE_ENABLED: "1",
+    OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_RELEASE_SCALE: "0.4",
+  }, async () => {
+    const { evaluateOpenClawExecutionDecision } = freshRequire("../services/openclawExecutionExecutor");
+    const res = await evaluateOpenClawExecutionDecision({
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      intent: "ENTRY",
+      event: "ENTRY_LONG_REAL",
+      side: "BUY",
+      qtyPct: 0.8,
+      features: {},
+      positionViews: [],
+      recentTimelineRows: [],
+      capitalAllocatorSnapshot: {
+        summary: { learning_epoch_active: true },
+        by_market: [
+          { market: "ETHUSDT", recommended_action: "QUARANTINE", allocation_score: 0.54, penalty_reasons: ["REVERSE_POLICY", "FAILURE_HARD"] },
+        ],
+      },
+    });
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_REDUCE");
+    assert.ok(Math.abs(res.qtyPctFinal - 0.32) < 1e-9);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_allocator_learning_epoch_active, true);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_allocator_quarantine_epoch_release_active, true);
+  });
+
+  await withEnv({
+    OPENCLAW_EXECUTOR_ENABLED: "1",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_ALLOCATOR_REDUCE_SCALE: "0.4",
   }, async () => {
     const { evaluateOpenClawExecutionDecision } = freshRequire("../services/openclawExecutionExecutor");
     const res = await evaluateOpenClawExecutionDecision({

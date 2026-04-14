@@ -53,6 +53,12 @@ const CORRELATED_GROUPS_ENV = String(
 const ALLOCATOR_REDUCE_SCALE = numEnv("OPENCLAW_EXECUTOR_ALLOCATOR_REDUCE_SCALE", 0.55, { min: 0.05, max: 1 });
 const ALLOCATOR_EXPLORE_SCALE = numEnv("OPENCLAW_EXECUTOR_ALLOCATOR_EXPLORE_SCALE", 0.7, { min: 0.05, max: 1 });
 const ALLOCATOR_INCREASE_SCALE = numEnv("OPENCLAW_EXECUTOR_ALLOCATOR_INCREASE_SCALE", 1.08, { min: 1, max: 1.5 });
+const ALLOCATOR_QUARANTINE_EPOCH_RELEASE_ENABLED = boolEnv("OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_RELEASE_ENABLED", true);
+const ALLOCATOR_QUARANTINE_EPOCH_RELEASE_SCALE = numEnv(
+  "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_RELEASE_SCALE",
+  ALLOCATOR_REDUCE_SCALE,
+  { min: 0.05, max: 1 }
+);
 const SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD", 1.2, { min: 0, max: 10 });
 const SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD", 2.2, { min: 0, max: 10 });
 const CORRELATED_EXPOSURE_REDUCE_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD", 0.8, { min: 0, max: 10 });
@@ -743,6 +749,8 @@ async function evaluateOpenClawExecutionDecision({
 
   const allocatorAction = upper(allocatorRow && allocatorRow.recommended_action);
   const allocatorScore = toNum(allocatorRow && allocatorRow.allocation_score);
+  const allocatorLearningEpochActive = allocatorSnapshot.summary && allocatorSnapshot.summary.learning_epoch_active === true;
+  const allocatorQuarantineEpochReleaseActive = allocatorLearningEpochActive && ALLOCATOR_QUARANTINE_EPOCH_RELEASE_ENABLED;
   const allocatorPenaltyReasons = Array.isArray(allocatorRow && allocatorRow.penalty_reasons)
     ? allocatorRow.penalty_reasons.map((item) => upper(item)).filter(Boolean)
     : [];
@@ -768,12 +776,20 @@ async function evaluateOpenClawExecutionDecision({
     notes.push(reason);
   }
   if (!blocked && (allocatorAction === "QUARANTINE" || allocatorAction === "BLOCK")) {
-    blocked = true;
-    reason = allocatorAction === "BLOCK"
-      ? "OPENCLAW_EXECUTOR_ALLOCATOR_BLOCK"
-      : "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE";
-    exitProfileMode = "BASE";
-    notes.push(reason);
+    if (allocatorAction === "QUARANTINE" && allocatorQuarantineEpochReleaseActive) {
+      scale = minScale(scale, ALLOCATOR_QUARANTINE_EPOCH_RELEASE_SCALE);
+      exitProfileMode = exitProfileMode || "BASE";
+      reason = "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_REDUCE";
+      notes.push("OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE");
+      notes.push(reason);
+    } else {
+      blocked = true;
+      reason = allocatorAction === "BLOCK"
+        ? "OPENCLAW_EXECUTOR_ALLOCATOR_BLOCK"
+        : "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE";
+      exitProfileMode = "BASE";
+      notes.push(reason);
+    }
   } else if (!blocked && allocatorAction === "REDUCE") {
     scale = minScale(scale, ALLOCATOR_REDUCE_SCALE);
     exitProfileMode = exitProfileMode || "BASE";
@@ -818,6 +834,8 @@ async function evaluateOpenClawExecutionDecision({
     _openclaw_executor_regime: executorRegime,
     _openclaw_executor_allocator_action: allocatorAction,
     _openclaw_executor_allocator_score: allocatorScore,
+    _openclaw_executor_allocator_learning_epoch_active: allocatorLearningEpochActive,
+    _openclaw_executor_allocator_quarantine_epoch_release_active: allocatorQuarantineEpochReleaseActive,
     _openclaw_executor_allocator_penalty_reasons: allocatorPenaltyReasons,
     _openclaw_executor_alpha_context: matchedAlphaContext,
   };
@@ -856,6 +874,8 @@ async function evaluateOpenClawExecutionDecision({
       executorRegime,
       allocatorAction,
       allocatorScore,
+      allocatorLearningEpochActive,
+      allocatorQuarantineEpochReleaseActive,
       allocatorPenaltyReasons,
       alphaContext: matchedAlphaContext,
       sameSideExposureRows: exposure.sameSideActive.map((row) => ({
