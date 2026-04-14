@@ -57,6 +57,7 @@ const SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_SAME_SIDE_
 const SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD", 2.2, { min: 0, max: 10 });
 const CORRELATED_EXPOSURE_REDUCE_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD", 0.8, { min: 0, max: 10 });
 const CORRELATED_EXPOSURE_BLOCK_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD", 1.2, { min: 0, max: 10 });
+const RUNNER_EXPOSURE_FALLBACK = numEnv("OPENCLAW_EXECUTOR_RUNNER_EXPOSURE_FALLBACK", 0.2, { min: 0, max: 1 });
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
@@ -77,6 +78,22 @@ function clampQty(value) {
   if (n <= 0) return 0;
   if (n >= 1) return 1;
   return n;
+}
+
+function clamp01(value) {
+  const n = toNum(value);
+  if (!Number.isFinite(n)) return null;
+  if (n <= 0) return 0;
+  if (n >= 1) return 1;
+  return n;
+}
+
+function pickPositiveNum(...values) {
+  for (const value of values) {
+    const n = toNum(value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
 }
 
 function parseCorrelatedGroups(raw = "") {
@@ -164,6 +181,145 @@ function hasActiveExposure(view = null) {
   const qtyBase = toNum(view.qty_base);
   if (state && state !== "FLAT" && state !== "CLOSED") return true;
   return (Number.isFinite(sizePct) && sizePct > 0) || (Number.isFinite(qtyBase) && qtyBase > 0);
+}
+
+function resolveExitRulesFromView(view = null) {
+  const meta = view && view.meta && typeof view.meta === "object" ? view.meta : {};
+  const sources = [
+    view && view.exit_rules_override,
+    view && view.exit_rules,
+    meta.exit_rules_override,
+    meta.exit_rules,
+  ];
+  for (const source of sources) {
+    if (source && typeof source === "object") return source;
+  }
+  return {};
+}
+
+function resolveRunnerAllowedRatioFromView(view = null) {
+  const meta = view && view.meta && typeof view.meta === "object" ? view.meta : {};
+  const direct = clamp01(
+    view && (
+      view.runner_allowed_qty_ratio
+      ?? view.contract_runner_allowed_ratio
+      ?? meta.runner_allowed_qty_ratio
+      ?? meta.runner_allowed_ratio
+      ?? meta.contract_runner_allowed_ratio
+      ?? meta.contract_runner_allowed_qty_ratio
+    )
+  );
+  if (direct != null) return direct;
+  const legacyDirect = clamp01(
+    view && (
+      view.runner_remaining_qty_ratio
+      ?? view.canonical_runner_remaining_ratio
+      ?? meta.runner_remaining_qty_ratio
+      ?? meta.canonical_runner_remaining_ratio
+    )
+  );
+  if (legacyDirect != null) return legacyDirect;
+  const rules = resolveExitRulesFromView(view);
+  const tp0QtyRatio = clamp01(rules.TP_P0_QTY) ?? 0.25;
+  const tp1QtyRatio = clamp01(rules.TP_P1_QTY) ?? 0.5;
+  return clamp01((1 - tp0QtyRatio) * (1 - tp1QtyRatio)) ?? RUNNER_EXPOSURE_FALLBACK;
+}
+
+function isRunnerStageView(view = null) {
+  const meta = view && view.meta && typeof view.meta === "object" ? view.meta : {};
+  const positionState = upper(view && (view.position_state || view.state));
+  const canonicalStage = upper(
+    view && (
+      view.canonical_exit_stage
+      || view.exit_stage
+      || view.stage
+      || meta.canonical_exit_stage
+      || meta.exit_stage
+    )
+  );
+  return (
+    meta.trail_active === true
+    || meta.tp_p1_done === true
+    || canonicalStage === "TRAIL"
+    || canonicalStage === "FINAL_EXIT"
+    || positionState === "SCALE_OUT"
+  );
+}
+
+function resolveEffectiveExposureSizePct(view = null) {
+  const meta = view && view.meta && typeof view.meta === "object" ? view.meta : {};
+  const rawSizePct = clamp01(view && (view.size_pct ?? meta.size_pct));
+  const currentQtyAbs = pickPositiveNum(
+    view && view.qty_base,
+    meta.qty_base,
+    view && view.canonical_runner_remaining_abs,
+    view && view.runner_remaining_qty_abs,
+    meta.canonical_runner_remaining_abs,
+    meta.runner_remaining_qty_abs,
+    meta.runner_remaining_abs,
+    meta.contract_runner_remaining_abs
+  );
+  const entryQtyAbs = pickPositiveNum(
+    view && view.entry_qty_base,
+    view && view.entry_qty_abs,
+    meta.entry_qty_base,
+    meta.entry_qty_abs,
+    meta.contract_entry_qty_abs,
+    meta.entryQtyAbs
+  );
+  if (Number.isFinite(currentQtyAbs) && Number.isFinite(entryQtyAbs) && entryQtyAbs > 0) {
+    return {
+      sizePct: clamp01(currentQtyAbs / entryQtyAbs) ?? 1,
+      source: "CURRENT_OVER_ENTRY_QTY",
+      rawSizePct,
+    };
+  }
+
+  const runnerRemainingRatio = clamp01(
+    view && (
+      view.runner_remaining_qty_ratio
+      ?? view.canonical_runner_remaining_ratio
+      ?? meta.runner_remaining_qty_ratio
+      ?? meta.canonical_runner_remaining_ratio
+    )
+  );
+  if (runnerRemainingRatio != null) {
+    return {
+      sizePct: runnerRemainingRatio,
+      source: "RUNNER_REMAINING_RATIO",
+      rawSizePct,
+    };
+  }
+
+  const runnerAllowedAbs = pickPositiveNum(
+    view && view.runner_allowed_qty_abs,
+    view && view.contract_runner_allowed_abs,
+    meta.runner_allowed_qty_abs,
+    meta.runner_allowed_abs,
+    meta.contract_runner_allowed_abs
+  );
+  const runnerAllowedRatio = resolveRunnerAllowedRatioFromView(view);
+  if (Number.isFinite(currentQtyAbs) && Number.isFinite(runnerAllowedAbs) && runnerAllowedAbs > 0 && runnerAllowedRatio != null) {
+    return {
+      sizePct: clamp01((currentQtyAbs / runnerAllowedAbs) * runnerAllowedRatio) ?? runnerAllowedRatio,
+      source: "CURRENT_OVER_RUNNER_ALLOWED",
+      rawSizePct,
+    };
+  }
+
+  if (isRunnerStageView(view)) {
+    return {
+      sizePct: clamp01(Math.min(runnerAllowedRatio ?? RUNNER_EXPOSURE_FALLBACK, RUNNER_EXPOSURE_FALLBACK)) ?? RUNNER_EXPOSURE_FALLBACK,
+      source: "RUNNER_STAGE_FALLBACK",
+      rawSizePct,
+    };
+  }
+
+  return {
+    sizePct: rawSizePct ?? 1,
+    source: rawSizePct != null ? "RAW_SIZE_PCT" : "FULL_SLOT_DEFAULT",
+    rawSizePct,
+  };
 }
 
 function resolveRecentEvent(row = null) {
@@ -356,14 +512,18 @@ function summarizeExposure({ exchange, symbol, desiredSide, positionViews = [] }
     const rowSymbol = upper(row.symbol || row.symbol_or_pair_id);
     if (!rowSymbol) continue;
     const rowSide = normalizePositionSideFromView(row);
+    const exposureSizing = resolveEffectiveExposureSizePct(row);
+    const rowGroups = resolveSymbolGroups(rowSymbol);
     exposures.push({
       exchange: upper(exchange),
       symbol: rowSymbol,
       side: rowSide,
-      size_pct: toNum(row.size_pct) || 1,
+      size_pct: exposureSizing.sizePct,
+      raw_size_pct: exposureSizing.rawSizePct,
+      exposure_size_source: exposureSizing.source,
       sameSymbol: rowSymbol === targetSymbol,
       sameSide: !!(side && rowSide && rowSide === side),
-      groupOverlap: targetGroups.filter((name) => resolveSymbolGroups(rowSymbol).includes(name)),
+      groupOverlap: targetGroups.filter((name) => rowGroups.includes(name)),
     });
   }
   const sameSideActive = exposures.filter((row) => row.sameSide && !row.sameSymbol);
@@ -698,6 +858,22 @@ async function evaluateOpenClawExecutionDecision({
       allocatorScore,
       allocatorPenaltyReasons,
       alphaContext: matchedAlphaContext,
+      sameSideExposureRows: exposure.sameSideActive.map((row) => ({
+        symbol: row.symbol,
+        side: row.side,
+        size_pct: row.size_pct,
+        raw_size_pct: row.raw_size_pct,
+        exposure_size_source: row.exposure_size_source,
+        groupOverlap: row.groupOverlap.slice(),
+      })),
+      correlatedExposureRows: exposure.correlatedActive.map((row) => ({
+        symbol: row.symbol,
+        side: row.side,
+        size_pct: row.size_pct,
+        raw_size_pct: row.raw_size_pct,
+        exposure_size_source: row.exposure_size_source,
+        groupOverlap: row.groupOverlap.slice(),
+      })),
       notes,
     },
     featuresPatch,
@@ -717,5 +893,7 @@ module.exports = {
     resolveExecutorCohort,
     parseCorrelatedGroups,
     hasActiveExposure,
+    resolveRunnerAllowedRatioFromView,
+    resolveEffectiveExposureSizePct,
   },
 };

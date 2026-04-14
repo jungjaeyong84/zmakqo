@@ -158,6 +158,98 @@ async function run() {
 
   await withEnv({
     OPENCLAW_EXECUTOR_ENABLED: "1",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "0.8",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "1.2",
+    OPENCLAW_EXECUTOR_CLUSTER_REDUCE_SCALE: "0.65",
+  }, async () => {
+    const { evaluateOpenClawExecutionDecision, __test } = freshRequire("../services/openclawExecutionExecutor");
+    const trailRow = {
+      symbol: "ETHUSDT",
+      state: "ACTIVE",
+      position_state: "SCALE_OUT",
+      position_side: "LONG",
+      size_pct: 1,
+      qty_base: 0.167,
+      runner_allowed_qty_abs: 0.333,
+      meta: {
+        tp_p0_done: true,
+        tp_p1_done: true,
+        trail_active: true,
+        canonical_exit_stage: "TRAIL",
+        runner_allowed_qty_abs: 0.333,
+        canonical_runner_remaining_abs: 0.167,
+        exit_rules_override: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
+      },
+    };
+    const sizing = __test.resolveEffectiveExposureSizePct(trailRow);
+    assert.ok(Math.abs(sizing.sizePct - (0.167 / 0.333 * 0.375)) < 1e-6);
+    assert.strictEqual(sizing.source, "CURRENT_OVER_RUNNER_ALLOWED");
+
+    const res = await evaluateOpenClawExecutionDecision({
+      exchange: "BINANCEFUT",
+      symbol: "BNBUSDT",
+      intent: "ENTRY",
+      event: "ENTRY_LONG_REAL",
+      side: "BUY",
+      qtyPct: 1,
+      features: {},
+      positionViews: [trailRow],
+      recentTimelineRows: [],
+      capitalAllocatorSnapshot: { by_market: [] },
+    });
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE");
+    assert.ok(Math.abs(res.qtyPctFinal - 0.65) < 1e-9);
+    assert.ok(Math.abs(res.featuresPatch._openclaw_executor_correlated_exposure_after - 1.188063063063063) < 1e-9);
+  });
+
+  await withEnv({
+    OPENCLAW_EXECUTOR_ENABLED: "1",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "0.8",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "1.2",
+    OPENCLAW_EXECUTOR_CLUSTER_REDUCE_SCALE: "0.65",
+    OPENCLAW_EXECUTOR_RUNNER_EXPOSURE_FALLBACK: "0.2",
+  }, async () => {
+    const { evaluateOpenClawExecutionDecision, __test } = freshRequire("../services/openclawExecutionExecutor");
+    const trailRow = {
+      symbol: "ETHUSDT",
+      state: "ACTIVE",
+      position_state: "SCALE_OUT",
+      position_side: "LONG",
+      size_pct: 1,
+      qty_base: 0.167,
+      meta: {
+        tp_p0_done: true,
+        tp_p1_done: true,
+        trail_active: true,
+        canonical_exit_stage: "TRAIL",
+        exit_rules_override: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
+      },
+    };
+    const sizing = __test.resolveEffectiveExposureSizePct(trailRow);
+    assert.strictEqual(sizing.sizePct, 0.2);
+    assert.strictEqual(sizing.source, "RUNNER_STAGE_FALLBACK");
+
+    const res = await evaluateOpenClawExecutionDecision({
+      exchange: "BINANCEFUT",
+      symbol: "BTCUSDT",
+      intent: "ENTRY",
+      event: "ENTRY_LONG_REAL",
+      side: "BUY",
+      qtyPct: 1,
+      features: {},
+      positionViews: [trailRow],
+      recentTimelineRows: [],
+      capitalAllocatorSnapshot: { by_market: [] },
+    });
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE");
+    assert.ok(Math.abs(res.qtyPctFinal - 0.65) < 1e-9);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_correlated_exposure_after, 1.2);
+  });
+
+  await withEnv({
+    OPENCLAW_EXECUTOR_ENABLED: "1",
     OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD: "99",
     OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
     OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
