@@ -9,6 +9,8 @@ function run() {
   const canFinalizeIntentFromExternalFill = fillsSyncTest && fillsSyncTest.canFinalizeIntentFromExternalFill;
   const applyAuthoritativeExitContractOverride = fillsSyncTest && fillsSyncTest.applyAuthoritativeExitContractOverride;
   const applyAuthoritativeIntentEventOverride = fillsSyncTest && fillsSyncTest.applyAuthoritativeIntentEventOverride;
+  const inferAuthoritativeForcedExitEventFromRefs = fillsSyncTest && fillsSyncTest.inferAuthoritativeForcedExitEventFromRefs;
+  const applyAuthoritativeForcedExitRefOverride = fillsSyncTest && fillsSyncTest.applyAuthoritativeForcedExitRefOverride;
   assert.strictEqual(
     typeof buildExternalFillUnverifiedPatch,
     "function",
@@ -38,6 +40,16 @@ function run() {
     typeof applyAuthoritativeIntentEventOverride,
     "function",
     "applyAuthoritativeIntentEventOverride export missing"
+  );
+  assert.strictEqual(
+    typeof inferAuthoritativeForcedExitEventFromRefs,
+    "function",
+    "inferAuthoritativeForcedExitEventFromRefs export missing"
+  );
+  assert.strictEqual(
+    typeof applyAuthoritativeForcedExitRefOverride,
+    "function",
+    "applyAuthoritativeForcedExitRefOverride export missing"
   );
 
   const normalizedFeatures = normalizeFeaturesJson({
@@ -234,6 +246,31 @@ function run() {
   assert.strictEqual(
     applyAuthoritativeIntentEventOverride("EXIT_TP_P0_0.8P", { event: "EXIT_TP_P0_0.8P" }),
     "EXIT_TP_P0_0.8P"
+  );
+  assert.strictEqual(
+    inferAuthoritativeForcedExitEventFromRefs(
+      null,
+      "SIG__BINANCEFUT__DOGEUSDT__15m__1776114000000__FORCE_EXIT_ALL"
+    ),
+    "FORCE_EXIT_ALL"
+  );
+  assert.strictEqual(
+    inferAuthoritativeForcedExitEventFromRefs("ACTIVE_NATIVE_STOP_MISSING_FORCE_EXIT"),
+    "FORCE_EXIT_ALL"
+  );
+  assert.strictEqual(
+    applyAuthoritativeForcedExitRefOverride({
+      event: "EXIT_TP_P0_0.8P",
+      signalId: "SIG__BINANCEFUT__DOGEUSDT__15m__1776114000000__FORCE_EXIT_ALL",
+    }),
+    "FORCE_EXIT_ALL"
+  );
+  assert.strictEqual(
+    applyAuthoritativeForcedExitRefOverride({
+      event: "EXIT_TP_P0_0.8P",
+      decisionReason: "ACTIVE_NATIVE_STOP_MISSING_FORCE_EXIT",
+    }),
+    "FORCE_EXIT_ALL"
   );
   assert.strictEqual(
     shouldSuppressMatchedExternalFillAlert({

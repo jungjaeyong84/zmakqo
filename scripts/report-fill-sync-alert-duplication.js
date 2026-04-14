@@ -41,32 +41,7 @@ function isBackfilledAlertDuplication(row) {
   return !!(row && row.extra && row.extra.alert_duplication_backfilled_at);
 }
 
-async function scanRecentExternalExitFills(db) {
-  const rows = [];
-  const sinceMs = Date.now() - (LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
-  const sinceIso = new Date(sinceMs).toISOString();
-  let last = null;
-  for (;;) {
-    let q = db.collection("fills_paper").orderBy("created_at", "desc").limit(PAGE_SIZE);
-    if (last) q = q.startAfter(last);
-    const snap = await q.get();
-    if (snap.empty) break;
-    for (const doc of snap.docs) {
-      const row = { id: doc.id, ...doc.data() };
-      if (String(row.created_at || "") < sinceIso) continue;
-      if (!isExternalFill(row)) continue;
-      if (!isExitLikeEvent(row.event)) continue;
-      rows.push(row);
-    }
-    if (snap.size < PAGE_SIZE) break;
-    last = snap.docs[snap.docs.length - 1];
-  }
-  return rows;
-}
-
-async function main() {
-  const db = getFirestore();
-  const rows = await scanRecentExternalExitFills(db);
+function buildDuplicateGroups(rows = []) {
   const byKey = new Map();
   const bySymbol = new Map();
   for (const row of rows) {
@@ -113,19 +88,84 @@ async function main() {
     .filter((row) => row.fill_count > 1)
     .sort((a, b) => b.fill_count - a.fill_count || String(a.symbol).localeCompare(String(b.symbol)));
   const unresolvedDuplicateGroups = duplicateGroups.filter((row) => !row.backfilled);
+  const historicalBackfilledDuplicateGroups = duplicateGroups.filter((row) => row.backfilled);
   const suppressedEstimate = unresolvedDuplicateGroups.reduce((acc, row) => acc + Math.max(0, row.fill_count - 1), 0);
 
-  const report = {
+  return {
+    bySymbol,
+    duplicateGroups,
+    unresolvedDuplicateGroups,
+    historicalBackfilledDuplicateGroups,
+    suppressedEstimate,
+  };
+}
+
+function buildDuplicationReport(rows = []) {
+  const {
+    bySymbol,
+    duplicateGroups,
+    unresolvedDuplicateGroups,
+    historicalBackfilledDuplicateGroups,
+    suppressedEstimate,
+  } = buildDuplicateGroups(rows);
+  return {
     generated_at: nowIso(),
     lookback_days: LOOKBACK_DAYS,
     raw_external_exit_fill_n: rows.length,
-    unique_alert_group_n: byKey.size,
+    unique_alert_group_n: new Set(
+      rows.map((row) => fillsSyncTest.buildFillSyncAlertCooldownKey({
+        symbol: row.symbol || row.symbol_or_pair_id,
+        event: row.event,
+        intent: "EXIT",
+        side: row.side,
+        orderMeta: {
+          orderId: normalizeOrderId(row.live_order_id || row.external_order_id || row.order_id),
+          clientOrderId: row.client_order_id || null,
+        },
+        payload: {
+          entryEventId: row.entry_event_id || null,
+          positionSideBefore: row.position_side_before || row.position_side || null,
+        },
+      }))
+    ).size,
     duplicate_group_total_n: duplicateGroups.length,
     duplicate_group_n: unresolvedDuplicateGroups.length,
+    historical_backfilled_duplicate_group_n: historicalBackfilledDuplicateGroups.length,
     suppressed_alert_estimate_n: suppressedEstimate,
     by_symbol_raw_fill_n: Object.fromEntries(Array.from(bySymbol.entries()).sort((a, b) => String(a[0]).localeCompare(String(b[0])))),
     top_duplicate_groups: unresolvedDuplicateGroups.slice(0, 30),
+    top_duplicate_groups_all: duplicateGroups.slice(0, 100),
+    historical_backfilled_duplicate_groups: historicalBackfilledDuplicateGroups.slice(0, 100),
   };
+}
+
+async function scanRecentExternalExitFills(db) {
+  const rows = [];
+  const sinceMs = Date.now() - (LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+  const sinceIso = new Date(sinceMs).toISOString();
+  let last = null;
+  for (;;) {
+    let q = db.collection("fills_paper").orderBy("created_at", "desc").limit(PAGE_SIZE);
+    if (last) q = q.startAfter(last);
+    const snap = await q.get();
+    if (snap.empty) break;
+    for (const doc of snap.docs) {
+      const row = { id: doc.id, ...doc.data() };
+      if (String(row.created_at || "") < sinceIso) continue;
+      if (!isExternalFill(row)) continue;
+      if (!isExitLikeEvent(row.event)) continue;
+      rows.push(row);
+    }
+    if (snap.size < PAGE_SIZE) break;
+    last = snap.docs[snap.docs.length - 1];
+  }
+  return rows;
+}
+
+async function main() {
+  const db = getFirestore();
+  const rows = await scanRecentExternalExitFills(db);
+  const report = buildDuplicationReport(rows);
 
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const jsonPath = path.join(OUT_DIR, "fill_sync_alert_duplication_latest.json");
@@ -155,7 +195,16 @@ async function main() {
   console.log(JSON.stringify({ ok: true, json: jsonPath, md: mdPath, report }, null, 2));
 }
 
-main().catch((err) => {
-  console.error("REPORT_FILL_SYNC_ALERT_DUPLICATION_FAILED:", err && err.stack ? err.stack : String(err));
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("REPORT_FILL_SYNC_ALERT_DUPLICATION_FAILED:", err && err.stack ? err.stack : String(err));
+    process.exit(1);
+  });
+} else {
+  module.exports = {
+    __test: {
+      buildDuplicateGroups,
+      buildDuplicationReport,
+    },
+  };
+}

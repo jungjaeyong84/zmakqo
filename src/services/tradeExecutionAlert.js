@@ -1,11 +1,15 @@
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { sendAlert } = require("../utils/alerts");
 const { resolveEventMapping } = require("./signalStandard");
 const { canonicalExternalEntryEvent, resolveEntryTimingTier } = require("../utils/liveEntryTaxonomy");
 
 const channelCache = new Map();
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
+const TRADE_ALERT_AUDIT_PATH = path.join(REPO_ROOT, "ops", "runtime", "trade_execution_alert_audit.jsonl");
 
 function toBool(v, def = false) {
   if (v == null) return def;
@@ -250,6 +254,27 @@ function resolveExitLabel(payload = {}, exitMeta = {}) {
   return exitMeta.label;
 }
 
+function resolveExternalSyncContextLines(payload = {}) {
+  const ev = String(payload.event || "").trim().toUpperCase();
+  if (ev !== "EXIT_EXTERNAL_SYNC") return [];
+  const stage = String(payload.externalSyncHintStage || "").trim().toUpperCase();
+  const reason = String(
+    payload.reason || payload.statusReason || payload.cancelReason || payload.decisionReason || ""
+  ).trim().toUpperCase();
+  const orderType = String(payload.externalSyncOrderType || "").trim().toUpperCase();
+  const closePosition = payload.externalSyncClosePosition;
+  const lines = [];
+  if (stage === "TRAIL_AFTER_TP1") lines.push("동기화맥락: 트레일 종료 후 외부 동기화");
+  else if (stage === "AFTER_TP1") lines.push("동기화맥락: TP1 이후 외부 동기화");
+  else if (stage === "AFTER_TP0") lines.push("동기화맥락: TP0 이후 외부 동기화");
+  else if (stage === "UNTRACKED_CLOSE_POSITION") lines.push("동기화맥락: 비추적 closePosition 외부 청산");
+  if (reason) lines.push(`동기화사유: ${reason}`);
+  if (orderType || typeof closePosition === "boolean") {
+    lines.push(`동기화주문: ${orderType || "UNKNOWN"} / close_position=${typeof closePosition === "boolean" ? String(closePosition) : "NA"}`);
+  }
+  return lines;
+}
+
 function resolveExecutedExitContract(event) {
   const meta = parseExitEventMeta(event);
   const token = String(meta && meta.token || "").trim();
@@ -320,6 +345,18 @@ function isTelegramChannel(raw) {
 function filterTelegramChannels(raw) {
   const list = parseList(raw).filter(isTelegramChannel);
   return list.join(",");
+}
+
+function appendTradeExecutionAlertAudit(entry = {}) {
+  try {
+    fs.mkdirSync(path.dirname(TRADE_ALERT_AUDIT_PATH), { recursive: true });
+    fs.appendFileSync(TRADE_ALERT_AUDIT_PATH, `${JSON.stringify({
+      ts: new Date().toISOString(),
+      ...entry,
+    })}\n`, "utf8");
+  } catch (err) {
+    console.warn("[TRADE_EXEC_AUDIT_APPEND_FAIL]", err && err.message ? err.message : String(err));
+  }
 }
 
 async function resolveAlertChannel(exchange) {
@@ -430,6 +467,7 @@ function buildMessage(payload) {
     if (leverageLabel) {
       lines.push(`배율: ${leverageLabel}${leverageReason ? ` (${leverageReason})` : ""}`);
     }
+    lines.push(...resolveExternalSyncContextLines(payload));
     lines.push(...resolveMarketRegimeLines(payload, feat));
     const rulesTxt = formatExitRulesCompact(payload.exitRules || payload.exit_rules);
     if (rulesTxt) lines.push(`전략계약: ${rulesTxt}`);
@@ -519,12 +557,27 @@ async function sendTradeExecutionAlert(payload = {}) {
   const channel = telegramOnly ? filterTelegramChannels(rawChannel) : rawChannel;
   if (!channel) return { ok: false, skipped: true, reason: "NO_TELEGRAM_CHANNEL" };
 
-  return sendAlert({
+  const result = await sendAlert({
     channel,
     title: msg.title,
     body: msg.body,
     severity: "INFO",
   });
+  appendTradeExecutionAlertAudit({
+    type: "TRADE_EXECUTION_ALERT",
+    exchange,
+    symbol: String(payload.symbol || "").toUpperCase() || null,
+    event: String(payload.event || "").trim().toUpperCase() || null,
+    intent: resolveIntent(payload),
+    execution_mode: mode,
+    channel,
+    title: msg.title,
+    body: msg.body,
+    ok: result && result.ok === true,
+    skipped: false,
+    source: "tradeExecutionAlert.sendTradeExecutionAlert",
+  });
+  return result;
 }
 
 async function sendTradeExecutionFailureAlert(payload = {}) {
@@ -552,12 +605,27 @@ async function sendTradeExecutionFailureAlert(payload = {}) {
   const channel = telegramOnly ? filterTelegramChannels(rawChannel) : rawChannel;
   if (!channel) return { ok: false, skipped: true, reason: "NO_TELEGRAM_CHANNEL" };
 
-  return sendAlert({
+  const result = await sendAlert({
     channel,
     title: msg.title,
     body: msg.body,
     severity: "WARN",
   });
+  appendTradeExecutionAlertAudit({
+    type: "TRADE_EXECUTION_FAILURE_ALERT",
+    exchange,
+    symbol: String(payload.symbol || "").toUpperCase() || null,
+    event: String(payload.event || "").trim().toUpperCase() || null,
+    intent: resolveIntent(payload),
+    execution_mode: mode,
+    channel,
+    title: msg.title,
+    body: msg.body,
+    ok: result && result.ok === true,
+    skipped: false,
+    source: "tradeExecutionAlert.sendTradeExecutionFailureAlert",
+  });
+  return result;
 }
 
 module.exports = {
@@ -568,5 +636,7 @@ module.exports = {
     buildFailureMessage,
     parseExitEventMeta,
     resolveDirection,
+    resolveExternalSyncContextLines,
+    appendTradeExecutionAlertAudit,
   },
 };

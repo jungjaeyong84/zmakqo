@@ -226,12 +226,128 @@ async function run() {
     qtyScale: { ratio: null },
     execQtyBase: 0.165,
     positionCtx: { qtyBase: 0.166 },
+    rules: { TP_P1_QTY: 0.5 },
   });
-  assert.strictEqual(
-    missingTpMetaCloseRatio,
-    null,
-    "TP1 without reliable intent/native metadata must not guess a close ratio from current remaining qty"
+  assert.ok(
+    approxEqual(missingTpMetaCloseRatio, 0.5),
+    "TP1 without reliable intent/native metadata must fall back to the contract remaining quantity"
   );
+
+  const tp1HintedMeta = fillsSyncTest.buildStageHintedMeta(
+    { tp_p0_done: false, tp_p1_done: false, trail_active: false, tp_p1_pending: true },
+    "EXIT_TP_P1_1.65P",
+    { time: 1_777_777_000_000, price: 2276.75 }
+  );
+  assert.strictEqual(tp1HintedMeta.tp_p0_done, true, "TP1 stage hint must imply TP0 done");
+  assert.strictEqual(tp1HintedMeta.tp_p1_done, true, "TP1 stage hint must promote TP1 done");
+  assert.strictEqual(tp1HintedMeta.trail_active, true, "TP1 stage hint must immediately arm trailing state");
+  assert.strictEqual(tp1HintedMeta.tp_p1_pending, false, "TP1 stage hint must clear pending TP1");
+
+  const repeatedTp1HintedMeta = fillsSyncTest.buildStageHintedMeta(
+    {
+      tp_p0_done: true,
+      tp_p1_done: true,
+      trail_active: true,
+      tp_p1_price: 2276.75,
+      tp_p1_at: "2026-04-13T22:07:04.040Z",
+      tp_p1_bar_ms: 1_777_777_000_000,
+    },
+    "EXIT_TP_P1_1.65P",
+    { time: 1_777_778_000_000, price: 2330.94 }
+  );
+  assert.strictEqual(repeatedTp1HintedMeta.tp_p1_price, 2276.75, "repeated post-TP1 fills must not overwrite the original TP1 price");
+  assert.strictEqual(repeatedTp1HintedMeta.tp_p1_at, "2026-04-13T22:07:04.040Z", "repeated post-TP1 fills must not overwrite the original TP1 time");
+  assert.strictEqual(repeatedTp1HintedMeta.tp_p1_bar_ms, 1_777_777_000_000, "repeated post-TP1 fills must not overwrite the original TP1 bar timestamp");
+
+  const canonicalTrail = fillsSyncTest.resolveCanonicalExternalExitEvent({
+    authorityMap: new Map(),
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_TP_P1_1.65P",
+    entryEventId: "ENTRY__ETH",
+    orderMeta: { orderId: 12345 },
+    positionCtx: { tpP0Done: true, tpP1Done: true, trailActive: true },
+    recentTp1: { event: "EXIT_TP_P1_1.65P" },
+    rules: { TP_P0: 0.008, TP_P1: 0.0165, TP_P0_QTY: 0.25, TP_P1_QTY: 0.5, TRAIL_R_MULTIPLE: 0.6 },
+  });
+  assert.strictEqual(canonicalTrail.stage, "TRAIL", "post-TP1 fills must be canonically locked to TRAIL");
+  assert.strictEqual(canonicalTrail.event, "EXIT_TRAIL", "post-TP1 fills must emit trail event only");
+
+  const batchesAfterTp1 = new Map();
+  fillsSyncTest.queueFillSyncAlertBatch(batchesAfterTp1, {
+    symbol: "ETHUSDT",
+    event: "EXIT_TRAIL",
+    intent: "EXIT",
+    side: "SELL",
+    orderMeta: { orderId: 12345, clientOrderId: "fut_eth_runner" },
+    tradeMs: 1_777_778_000_000,
+    payload: {
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      event: "EXIT_TRAIL",
+      canonicalExitStage: "TRAIL",
+      side: "SELL",
+      intent: "EXIT",
+      executionMode: "LIVE",
+      notional: 100,
+      execPrice: 2330.94,
+      closeRatio: 0.188,
+      closeRatioAggregation: "SUM",
+      fullExit: false,
+      realizedPnl: 12.16,
+      positionSideBefore: "LONG",
+      exitRules: { TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6 },
+      entryEventId: "ENTRY__ETH",
+      classificationVerified: true,
+      alertStageHintTp0Done: true,
+      alertStageHintTp1Done: true,
+      alertStageHintTrailActive: true,
+    },
+  });
+  fillsSyncTest.queueFillSyncAlertBatch(batchesAfterTp1, {
+    symbol: "ETHUSDT",
+    event: "EXIT_TP_P1_1.65P",
+    intent: "EXIT",
+    side: "SELL",
+    orderMeta: { orderId: 12345, clientOrderId: "fut_eth_runner" },
+    tradeMs: 1_777_778_000_100,
+    payload: {
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      event: "EXIT_TP_P1_1.65P",
+      canonicalExitStage: "TRAIL",
+      side: "SELL",
+      intent: "EXIT",
+      executionMode: "LIVE",
+      notional: 120,
+      execPrice: 2331.12,
+      closeRatio: 0.188,
+      closeRatioAggregation: "SUM",
+      fullExit: false,
+      realizedPnl: 12.4,
+      positionSideBefore: "LONG",
+      exitRules: { TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6 },
+      entryEventId: "ENTRY__ETH",
+      classificationVerified: true,
+      alertStageHintTp0Done: true,
+      alertStageHintTp1Done: true,
+      alertStageHintTrailActive: true,
+    },
+  });
+  const mergedAfterTp1 = Array.from(batchesAfterTp1.values())[0];
+  assert.strictEqual(mergedAfterTp1.payload.event, "EXIT_TRAIL", "batch merge must preserve TRAIL once canonical stage is locked");
+
+  const mergedHintedMeta = fillsSyncTest.mergeRecentExitHintsIntoMeta(
+    { tp_p0_done: false, tp_p1_done: false, trail_active: false },
+    {
+      recentTp0: { event: "EXIT_TP_P0_0.8P" },
+      recentTp1: { event: "EXIT_TP_P1_1.65P" },
+      recentTrail: null,
+    }
+  );
+  assert.strictEqual(mergedHintedMeta.tp_p0_done, true, "recent TP0 hint must survive across sync runs");
+  assert.strictEqual(mergedHintedMeta.tp_p1_done, true, "recent TP1 hint must survive across sync runs");
+  assert.strictEqual(mergedHintedMeta.trail_active, true, "recent TP1 hint must re-arm trailing refresh");
 
   const tinyResidual = fillsSyncTest.resolveTinyResidualCloseDecision({
     position: {
@@ -574,6 +690,62 @@ async function run() {
     "active stage backstop must promote repeated TP0 classifications to TP1 once TP0 is already done"
   );
 
+  const tp0AfterTp1MustTrail = fillsSyncTest.applyActiveExitStageBackstopOverride({
+    event: "EXIT_TP_P0_0.8P",
+    trade: { qty: 0.167 },
+    orderMeta: {
+      orderId: 8389766154752959000,
+      clientOrderId: "dbj_eth_runner_reduce",
+      orderType: "MARKET",
+      closePosition: false,
+      reduceOnly: true,
+    },
+    positionCtx: {
+      qtyBase: 0.334,
+      tpP0Done: true,
+      tpP1Done: true,
+      trailActive: true,
+    },
+    recentTp1: { event: "EXIT_TP_P1_1.65P" },
+    recentTp0: { event: "EXIT_TP_P0_0.8P" },
+    recentTrail: null,
+    rules: { SL: -0.0165, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.0165, TP_P1_QTY: 0.5, TRAIL_R_MULTIPLE: 0.6 },
+    qtyPct: null,
+  });
+  assert.strictEqual(
+    tp0AfterTp1MustTrail,
+    "EXIT_TRAIL",
+    "once TP1 is done, any later TP0-like runner reduction must be forced into trail stage"
+  );
+
+  const repeatedTp1AfterTrailMustStayTrail = fillsSyncTest.applyActiveExitStageBackstopOverride({
+    event: "EXIT_TP_P1_1.65P",
+    trade: { qty: 0.167 },
+    orderMeta: {
+      orderId: 8389766154752959000,
+      clientOrderId: "dbj_eth_runner_reduce",
+      orderType: "MARKET",
+      closePosition: false,
+      reduceOnly: true,
+    },
+    positionCtx: {
+      qtyBase: 0.167,
+      tpP0Done: true,
+      tpP1Done: true,
+      trailActive: true,
+    },
+    recentTp1: { event: "EXIT_TP_P1_1.65P" },
+    recentTp0: { event: "EXIT_TP_P0_0.8P" },
+    recentTrail: { event: "EXIT_TRAIL" },
+    rules: { SL: -0.0165, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.0165, TP_P1_QTY: 0.5, TRAIL_R_MULTIPLE: 0.6 },
+    qtyPct: null,
+  });
+  assert.strictEqual(
+    repeatedTp1AfterTrailMustStayTrail,
+    "EXIT_TRAIL",
+    "once trailing is active, repeated TP1 labels must be force-canonicalized to trail"
+  );
+
   const firstStageTp0Preserved = fillsSyncTest.applyActiveExitStageBackstopOverride({
     event: "EXIT_TP_P0_0.8P",
     trade: { qty: 0.085 },
@@ -667,6 +839,171 @@ async function run() {
     },
   });
   assert.strictEqual(sentPayloads.length, 1, "same order partial fills across sync runs must emit only one alert");
+
+  const conflictingStageBatches = new Map();
+  fillsSyncTest.queueFillSyncAlertBatch(conflictingStageBatches, {
+    symbol: "AXSUSDT",
+    event: "EXIT_TP_P1_1.65P_UNVERIFIED",
+    intent: "EXIT",
+    side: "BUY",
+    orderMeta: { orderId: 14728630395, clientOrderId: "dbj_axs_tp_conflict" },
+    tradeMs: 1_777_810_115_000,
+    payload: {
+      exchange: "BINANCEFUT",
+      symbol: "AXSUSDT",
+      event: "EXIT_TP_P1_1.65P_UNVERIFIED",
+      side: "BUY",
+      intent: "EXIT",
+      executionMode: "LIVE",
+      notional: 44.21,
+      execPrice: 1.061,
+      closeRatio: 0.089,
+      closeRatioAggregation: "SUM",
+      fullExit: false,
+      realizedPnl: 0.167,
+      positionSideBefore: "SHORT",
+      classificationVerified: false,
+      alertStageHintTp0Done: true,
+      alertStageHintTp1Done: false,
+      alertStageHintTrailActive: false,
+      appliedLeverage: 2,
+      leverageReason: "BINANCE_USER_TRADES_SYNC",
+      exitRules: { SL: -0.0165, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.0165, TP_P1_QTY: 0.5, TRAIL_R_MULTIPLE: 0.6, BE_PCT: 0.0015 },
+      runId: "FILL_SYNC__AXSUSDT",
+      orderId: 14728630395,
+      clientOrderId: "dbj_axs_tp_conflict",
+    },
+  });
+  fillsSyncTest.queueFillSyncAlertBatch(conflictingStageBatches, {
+    symbol: "AXSUSDT",
+    event: "EXIT_TP_P0_0.8P",
+    intent: "EXIT",
+    side: "BUY",
+    orderMeta: { orderId: 14728630395, clientOrderId: "dbj_axs_tp_conflict" },
+    tradeMs: 1_777_810_115_010,
+    payload: {
+      exchange: "BINANCEFUT",
+      symbol: "AXSUSDT",
+      event: "EXIT_TP_P0_0.8P",
+      side: "BUY",
+      intent: "EXIT",
+      executionMode: "LIVE",
+      notional: 88.42,
+      execPrice: 1.061,
+      closeRatio: 0.25,
+      closeRatioAggregation: "MAX",
+      fullExit: false,
+      realizedPnl: 0.333,
+      positionSideBefore: "SHORT",
+      classificationVerified: true,
+      alertStageHintTp0Done: true,
+      alertStageHintTp1Done: false,
+      alertStageHintTrailActive: false,
+      appliedLeverage: 2,
+      leverageReason: "BINANCE_USER_TRADES_SYNC",
+      exitRules: { SL: -0.0165, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.0165, TP_P1_QTY: 0.5, TRAIL_R_MULTIPLE: 0.6, BE_PCT: 0.0015 },
+      runId: "FILL_SYNC__AXSUSDT",
+      orderId: 14728630395,
+      clientOrderId: "dbj_axs_tp_conflict",
+    },
+  });
+  fillsSyncTest.queueFillSyncAlertBatch(conflictingStageBatches, {
+    symbol: "AXSUSDT",
+    event: "EXIT_TP_P1_1.65P_UNVERIFIED",
+    intent: "EXIT",
+    side: "BUY",
+    orderMeta: { orderId: 14728630395, clientOrderId: "dbj_axs_tp_conflict" },
+    tradeMs: 1_777_810_115_020,
+    payload: {
+      exchange: "BINANCEFUT",
+      symbol: "AXSUSDT",
+      event: "EXIT_TP_P1_1.65P_UNVERIFIED",
+      side: "BUY",
+      intent: "EXIT",
+      executionMode: "LIVE",
+      notional: 22.11,
+      execPrice: 1.061,
+      closeRatio: 0.044,
+      closeRatioAggregation: "SUM",
+      fullExit: false,
+      realizedPnl: 0.084,
+      positionSideBefore: "SHORT",
+      classificationVerified: false,
+      alertStageHintTp0Done: true,
+      alertStageHintTp1Done: false,
+      alertStageHintTrailActive: false,
+      appliedLeverage: 2,
+      leverageReason: "BINANCE_USER_TRADES_SYNC",
+      exitRules: { SL: -0.0165, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.0165, TP_P1_QTY: 0.5, TRAIL_R_MULTIPLE: 0.6, BE_PCT: 0.0015 },
+      runId: "FILL_SYNC__AXSUSDT",
+      orderId: 14728630395,
+      clientOrderId: "dbj_axs_tp_conflict",
+    },
+  });
+  assert.strictEqual(conflictingStageBatches.size, 1, "same-order conflicting TP0/TP1 sync fills must collapse into one authoritative alert");
+  const conflictingStageMerged = Array.from(conflictingStageBatches.values())[0];
+  assert.strictEqual(conflictingStageMerged.payload.event, "EXIT_TP_P0_0.8P", "verified TP0 must beat conflicting TP1_UNVERIFIED alert labels");
+  assert.ok(approxEqual(conflictingStageMerged.payload.closeRatio, 0.25), "conflicting same-order TP close ratios must clamp to authoritative TP0 contract ratio");
+  assert.strictEqual(conflictingStageMerged.payload.closeRatioAggregation, "MAX", "conflicting same-order TP stages must not over-sum close ratios");
+  const conflictingStageMsg = alertTest.buildMessage(conflictingStageMerged.payload);
+  assert.strictEqual(conflictingStageMsg.title, "AXSUSDT TP0_0.8 25% 청산");
+
+  const oppositeNoEntryBatches = new Map();
+  fillsSyncTest.queueFillSyncAlertBatch(oppositeNoEntryBatches, {
+    symbol: "ETHUSDT",
+    event: "EXIT_OPPOSITE_SIGNAL",
+    intent: "EXIT",
+    side: "SELL",
+    orderMeta: { orderId: 10001, clientOrderId: "NA" },
+    tradeMs: 1_777_900_100_000,
+    payload: {
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      event: "EXIT_OPPOSITE_SIGNAL",
+      side: "SELL",
+      intent: "EXIT",
+      executionMode: "LIVE",
+      notional: 1000,
+      execPrice: 2200,
+      closeRatio: 1,
+      fullExit: true,
+      realizedPnl: 0.1,
+      positionSideBefore: "SHORT",
+      appliedLeverage: 2,
+      leverageReason: "BINANCE_USER_TRADES_SYNC",
+      runId: "FILL_SYNC__ETHUSDT",
+    },
+  });
+  fillsSyncTest.queueFillSyncAlertBatch(oppositeNoEntryBatches, {
+    symbol: "ETHUSDT",
+    event: "EXIT_OPPOSITE_SIGNAL",
+    intent: "EXIT",
+    side: "SELL",
+    orderMeta: { orderId: 10002, clientOrderId: "NA" },
+    tradeMs: 1_777_900_160_000,
+    payload: {
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      event: "EXIT_OPPOSITE_SIGNAL",
+      side: "SELL",
+      intent: "EXIT",
+      executionMode: "LIVE",
+      notional: 1100,
+      execPrice: 2210,
+      closeRatio: 1,
+      fullExit: true,
+      realizedPnl: 0.2,
+      positionSideBefore: "SHORT",
+      appliedLeverage: 2,
+      leverageReason: "BINANCE_USER_TRADES_SYNC",
+      runId: "FILL_SYNC__ETHUSDT",
+    },
+  });
+  assert.strictEqual(
+    oppositeNoEntryBatches.size,
+    2,
+    "opposite-signal alerts without entry_event_id must stay separated by order identity"
+  );
 }
 
 (async () => {

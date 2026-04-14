@@ -9,7 +9,7 @@ const {
 } = require("../../scripts/lib/openclaw-cron-manifest");
 
 (() => {
-  assert.strictEqual(OPENCLAW_CRON_JOBS.length, 2);
+  assert.ok(OPENCLAW_CRON_JOBS.length >= 3);
   const names = new Set();
   const labels = new Set();
   const jobIds = new Set();

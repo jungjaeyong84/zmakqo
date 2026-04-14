@@ -3,6 +3,9 @@
 const fs = require("fs");
 const path = require("path");
 const { getFirestore } = require("../src/storage/firestore");
+const { listExchangePositionReadViews } = require("../src/services/positionReadModel");
+const { resolveExitRulesForPosition, computeRunnerExitStopPrice } = require("../src/engine/signalEngine");
+const { resolvePositionSideFromPosition } = require("../src/utils/positionSide");
 
 function toNum(v) {
   const n = Number(v);
@@ -30,6 +33,72 @@ function violationDirection(row) {
   return exec < floor ? "BELOW_FLOOR_LONG" : null;
 }
 
+function activeStopViolationDirection({ side, stopPrice, floorPrice } = {}) {
+  const sideUpper = String(side || "").toUpperCase() === "SHORT" ? "SHORT" : "LONG";
+  const stop = toNum(stopPrice);
+  const floor = toNum(floorPrice);
+  if (!Number.isFinite(stop) || !Number.isFinite(floor)) return null;
+  const tolerance = Math.max(Math.abs(floor) * 0.0001, 1e-8);
+  if (sideUpper === "SHORT") return stop > (floor + tolerance) ? "ABOVE_FLOOR_SHORT" : null;
+  return stop < (floor - tolerance) ? "BELOW_FLOOR_LONG" : null;
+}
+
+function hasActiveExposure(row = {}) {
+  return Number(toNum(row.qty_base)) > 0 && String(row.position_state || row.state || "").toUpperCase() !== "FLAT";
+}
+
+function buildActiveRunnerFloorViolation(row = {}) {
+  const meta = row && typeof row.meta === "object" ? row.meta : {};
+  if (meta.tp_p1_done !== true || meta.trail_active !== true) return null;
+  if (!hasActiveExposure(row)) return null;
+  const side = resolvePositionSideFromPosition(row, meta, "LONG");
+  const runnerExit = computeRunnerExitStopPrice({
+    avg: Number(row.avg_price),
+    leverageEff: Number(meta.external_leverage || meta.leverage || row.leverage || 1),
+    side,
+    rules: resolveExitRulesForPosition({
+      exchange: String(row.exchange || "BINANCEFUT").toUpperCase(),
+      position: row,
+    }),
+    tpP1Done: meta.tp_p1_done === true,
+    trailActive: meta.trail_active === true,
+    trailHigh: Number(meta.trail_high),
+    trailLow: Number(meta.trail_low),
+    entryRDistance: Number(meta.entry_r_distance),
+  });
+  const violation = activeStopViolationDirection({
+    side,
+    stopPrice: meta.native_protection_stop_price,
+    floorPrice: runnerExit && runnerExit.stopPrice,
+  });
+  if (!violation) return null;
+  const stopPrice = toNum(meta.native_protection_stop_price);
+  const expectedStopPrice = toNum(runnerExit && runnerExit.stopPrice);
+  const gapPct = Number.isFinite(stopPrice) && Number.isFinite(expectedStopPrice) && expectedStopPrice !== 0
+    ? ((stopPrice - expectedStopPrice) / expectedStopPrice)
+    : null;
+  return {
+    symbol: String(row.symbol || row.symbol_or_pair_id || "").toUpperCase(),
+    created_at: row.updated_at || null,
+    source: "ACTIVE_NATIVE_STOP",
+    run_id: String(row.run_id || ""),
+    execution_mode: String(row.execution_mode || ""),
+    position_side: side,
+    avg_price: toNum(row.avg_price),
+    qty_base: toNum(row.qty_base),
+    native_stop_price: stopPrice,
+    expected_stop_price: expectedStopPrice,
+    expected_stop_source: String(runnerExit && runnerExit.stopSource || "").toUpperCase() || null,
+    runner_floor_px: toNum(runnerExit && runnerExit.runnerFloorStop),
+    trail_stop_px: toNum(runnerExit && runnerExit.trailStop),
+    refresh_status: String(meta.native_protection_refresh_status || "").toUpperCase() || null,
+    violation,
+    floor_gap_pct: Number.isFinite(gapPct) ? Number((gapPct * 100).toFixed(4)) : null,
+    live_bar_runner: true,
+    backfilled: false,
+  };
+}
+
 function buildMd(report) {
   const lines = [];
   lines.push(`# Trail Runner Floor Audit`);
@@ -42,9 +111,18 @@ function buildMd(report) {
   lines.push(`- violation_n: ${report.violation_n}`);
   lines.push(`- live_bar_runner_violation_total_n: ${report.live_bar_runner_violation_total_n}`);
   lines.push(`- live_bar_runner_violation_n: ${report.live_bar_runner_violation_n}`);
+  lines.push(`- active_live_violation_n: ${report.active_live_violation_n || 0}`);
   lines.push(``);
   if (!report.top_violations.length) {
     lines.push(`최근 조회 범위에서 unresolved runner floor 위반은 없습니다.`);
+    if (Array.isArray(report.top_active_live_violations) && report.top_active_live_violations.length) {
+      lines.push(``);
+      lines.push(`## Active Native Stop Deficits`);
+      lines.push(``);
+      for (const row of report.top_active_live_violations) {
+        lines.push(`- ${row.symbol} ${row.position_side} stop=${row.native_stop_price} expected=${row.expected_stop_price} source=${row.expected_stop_source || "N/A"} trail=${row.trail_stop_px ?? "N/A"} floor=${row.runner_floor_px ?? "N/A"} diff_pct=${row.floor_gap_pct} refresh=${row.refresh_status || "N/A"} updated=${row.created_at || "N/A"}`);
+      }
+    }
     return `${lines.join("\n")}\n`;
   }
   lines.push(`## Top Unresolved Violations`);
@@ -58,13 +136,16 @@ function buildMd(report) {
 function buildCliResult(report, latestJson, datedMd) {
   return {
     ok: true,
-    status: report.violation_n > 0 ? "WARN" : "OK",
-    reason: report.violation_n > 0 ? "RUNNER_FLOOR_VIOLATIONS_PRESENT" : null,
+    status: (report.violation_n > 0 || report.active_live_violation_n > 0) ? "WARN" : "OK",
+    reason: report.violation_n > 0
+      ? "RUNNER_FLOOR_VIOLATIONS_PRESENT"
+      : (report.active_live_violation_n > 0 ? "ACTIVE_NATIVE_STOP_RUNNER_FLOOR_DEFICIT" : null),
     candidate_rows: report.candidate_rows,
     violation_n: report.violation_n,
     violation_total_n: report.violation_total_n,
     live_bar_runner_violation_n: report.live_bar_runner_violation_n,
     live_bar_runner_violation_total_n: report.live_bar_runner_violation_total_n,
+    active_live_violation_n: report.active_live_violation_n || 0,
     jsonPath: latestJson,
     mdPath: datedMd,
   };
@@ -76,6 +157,7 @@ async function main() {
   const sinceMs = Date.now() - (lookbackDays * 24 * 60 * 60 * 1000);
   const sinceIso = new Date(sinceMs).toISOString();
   const db = getFirestore();
+  const activePositions = await listExchangePositionReadViews({ exchange: "BINANCEFUT", limit: 500 }).catch(() => []);
 
   const snap = await db.collection("fills_paper").orderBy("created_at", "desc").limit(limit).get();
   const scanned = [];
@@ -122,6 +204,10 @@ async function main() {
 
   violationsAll.sort((a, b) => Math.abs(Number(b.floor_gap_pct || 0)) - Math.abs(Number(a.floor_gap_pct || 0)));
   const violations = violationsAll.filter((row) => !row.backfilled);
+  const activeLiveViolations = activePositions
+    .map((row) => buildActiveRunnerFloorViolation(row))
+    .filter(Boolean)
+    .sort((a, b) => Math.abs(Number(b.floor_gap_pct || 0)) - Math.abs(Number(a.floor_gap_pct || 0)));
 
   const report = {
     generated_at: new Date().toISOString(),
@@ -132,8 +218,11 @@ async function main() {
     violation_n: violations.length,
     live_bar_runner_violation_total_n: violationsAll.filter((row) => row.live_bar_runner).length,
     live_bar_runner_violation_n: violations.filter((row) => row.live_bar_runner).length,
+    active_live_violation_n: activeLiveViolations.length,
+    active_live_symbols: activeLiveViolations.map((row) => row.symbol),
     top_violations_all: violationsAll.slice(0, 50),
     top_violations: violations.slice(0, 50),
+    top_active_live_violations: activeLiveViolations.slice(0, 50),
   };
 
   const outDir = path.join(process.cwd(), "ops", "daily");
@@ -155,6 +244,8 @@ if (require.main === module) {
   module.exports = {
     __test: {
       buildCliResult,
+      activeStopViolationDirection,
+      buildActiveRunnerFloorViolation,
     },
   };
 }

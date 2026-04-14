@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 const { runBinanceLiveStateSelfHeal } = require("../src/services/binanceLiveStateSelfHeal");
+const { runBinanceActiveExitWatchdog } = require("../src/services/binanceActiveExitWatchdog");
 const { generateNativeTrailProtectionGapReport } = require("./report-native-trail-protection-gap");
 
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -68,9 +69,16 @@ function buildMarkdown(report = {}) {
   lines.push(`- native_gap_before: ${summary.native_gap_before ?? "N/A"}`);
   lines.push(`- native_gap_after: ${summary.native_gap_after ?? "N/A"}`);
   lines.push(`- stage_issue_symbol_n: ${summary.stage_issue_symbol_n ?? "N/A"}`);
+  lines.push(`- watchdog_issue_symbol_n: ${summary.watchdog_issue_symbol_n ?? "N/A"}`);
+  lines.push(`- watchdog_repaired_symbol_n: ${summary.watchdog_repaired_symbol_n ?? "N/A"}`);
   lines.push(`- exit_qty_live_issue_chain_n: ${summary.exit_qty_live_issue_chain_n ?? "N/A"}`);
   lines.push(`- trail_floor_live_violation_n: ${summary.trail_floor_live_violation_n ?? "N/A"}`);
   lines.push(`- fill_sync_duplicate_group_n: ${summary.fill_sync_duplicate_group_n ?? "N/A"}`);
+  lines.push(`- fill_sync_alert_event_issue_n: ${summary.fill_sync_alert_event_issue_n ?? "N/A"}`);
+  lines.push(`- trade_execution_alert_missing_fill_n: ${summary.trade_execution_alert_missing_fill_n ?? "N/A"}`);
+  lines.push(`- duplication_live_group_n: ${summary.duplication_live_group_n ?? "N/A"}`);
+  lines.push(`- authority_live_issue_position_n: ${summary.authority_live_issue_position_n ?? "N/A"}`);
+  lines.push(`- canonical_exit_stage_fail_n: ${summary.canonical_exit_stage_fail_n ?? "N/A"}`);
   lines.push("");
   lines.push("## Reasons");
   const reasons = Array.isArray(summary.reasons) ? summary.reasons : [];
@@ -93,24 +101,52 @@ function buildSummary(report = {}) {
   const beforeGap = Number(report.native_trail_gap_before && report.native_trail_gap_before.summary && report.native_trail_gap_before.summary.gap_count || 0);
   const afterGap = Number(report.native_trail_gap_after && report.native_trail_gap_after.summary && report.native_trail_gap_after.summary.gap_count || 0);
   const stageIssueSymbolN = Number(report.active_exit_stage_backfill && report.active_exit_stage_backfill.parsed && report.active_exit_stage_backfill.parsed.issue_symbol_n || 0);
+  const watchdogIssueSymbolN = Number(report.active_exit_watchdog && report.active_exit_watchdog.issue_symbol_n || 0);
+  const watchdogRepairedSymbolN = Number(report.active_exit_watchdog && report.active_exit_watchdog.repaired_symbol_n || 0);
   const exitQtyLiveIssueChainN = Number(report.binance_exit_qty_live_separation && report.binance_exit_qty_live_separation.parsed && report.binance_exit_qty_live_separation.parsed.live_issue_chain_n || 0);
   const trailFloorLiveViolationN = Number(report.trail_runner_floor_live_separation && report.trail_runner_floor_live_separation.parsed && report.trail_runner_floor_live_separation.parsed.live_violation_n || 0);
   const fillSyncDuplicateGroupN = Number(report.fill_sync_alert_duplication && report.fill_sync_alert_duplication.parsed && report.fill_sync_alert_duplication.parsed.report && report.fill_sync_alert_duplication.parsed.report.duplicate_group_n || report.fill_sync_alert_duplication && report.fill_sync_alert_duplication.parsed && report.fill_sync_alert_duplication.parsed.duplicate_group_n || 0);
-  const liveIssueCount = afterGap + exitQtyLiveIssueChainN + trailFloorLiveViolationN + fillSyncDuplicateGroupN;
+  const fillSyncAlertEventIssueN = Number(report.fill_sync_alert_event_consistency && report.fill_sync_alert_event_consistency.parsed && report.fill_sync_alert_event_consistency.parsed.issue_n || 0);
+  const tradeExecutionAlertCoverageReady = !!(report.trade_execution_alert_cross_audit && report.trade_execution_alert_cross_audit.parsed && report.trade_execution_alert_cross_audit.parsed.coverage_ready === true);
+  const tradeExecutionAlertMissingFillN = tradeExecutionAlertCoverageReady
+    ? Number(report.trade_execution_alert_cross_audit && report.trade_execution_alert_cross_audit.parsed && report.trade_execution_alert_cross_audit.parsed.missing_alert_fill_n || 0)
+    : 0;
+  const duplicationLiveGroupN = Number(report.fill_sync_alert_duplication_live_separation && report.fill_sync_alert_duplication_live_separation.parsed && report.fill_sync_alert_duplication_live_separation.parsed.live_duplicate_group_n || 0);
+  const authorityLiveIssuePositionN = Number(report.binance_exit_authority_live_board && report.binance_exit_authority_live_board.parsed && report.binance_exit_authority_live_board.parsed.live_issue_position_n || 0);
+  const authorityActionableLiveIssuePositionN = Number(report.binance_exit_authority_live_board && report.binance_exit_authority_live_board.parsed && report.binance_exit_authority_live_board.parsed.actionable_live_issue_position_n || 0);
+  const authorityArtifactOnlyLiveIssuePositionN = Number(report.binance_exit_authority_live_board && report.binance_exit_authority_live_board.parsed && report.binance_exit_authority_live_board.parsed.artifact_only_live_issue_position_n || 0);
+  const canonicalExitStageFailN = Number(report.binance_canonical_exit_stage_qa && report.binance_canonical_exit_stage_qa.parsed && report.binance_canonical_exit_stage_qa.parsed.fail_n || 0);
+  const duplicationIssueN = duplicationLiveGroupN > 0 ? duplicationLiveGroupN : fillSyncDuplicateGroupN;
+  const liveIssueCount = afterGap + watchdogIssueSymbolN + exitQtyLiveIssueChainN + trailFloorLiveViolationN + duplicationIssueN + fillSyncAlertEventIssueN + tradeExecutionAlertMissingFillN + authorityActionableLiveIssuePositionN + canonicalExitStageFailN;
   const reasons = [];
   if (afterGap > 0) reasons.push(`native trail protection gap ${afterGap}건`);
+  if (watchdogIssueSymbolN > 0) reasons.push(`active exit watchdog issue ${watchdogIssueSymbolN}건`);
   if (exitQtyLiveIssueChainN > 0) reasons.push(`exit qty live issue chain ${exitQtyLiveIssueChainN}건`);
   if (trailFloorLiveViolationN > 0) reasons.push(`trail floor live violation ${trailFloorLiveViolationN}건`);
-  if (fillSyncDuplicateGroupN > 0) reasons.push(`fill sync duplicate group ${fillSyncDuplicateGroupN}건`);
+  if (duplicationIssueN > 0) reasons.push(`fill sync duplicate group ${duplicationIssueN}건`);
+  if (fillSyncAlertEventIssueN > 0) reasons.push(`fill sync alert event mismatch ${fillSyncAlertEventIssueN}건`);
+  if (tradeExecutionAlertMissingFillN > 0) reasons.push(`trade execution alert missing fill ${tradeExecutionAlertMissingFillN}건`);
+  if (authorityActionableLiveIssuePositionN > 0) reasons.push(`authority actionable issue position ${authorityActionableLiveIssuePositionN}건`);
+  if (canonicalExitStageFailN > 0) reasons.push(`canonical exit stage fail ${canonicalExitStageFailN}건`);
   return {
     status: liveIssueCount > 0 ? "WARN" : "OK",
     live_issue_count: liveIssueCount,
     native_gap_before: beforeGap,
     native_gap_after: afterGap,
     stage_issue_symbol_n: stageIssueSymbolN,
+    watchdog_issue_symbol_n: watchdogIssueSymbolN,
+    watchdog_repaired_symbol_n: watchdogRepairedSymbolN,
     exit_qty_live_issue_chain_n: exitQtyLiveIssueChainN,
     trail_floor_live_violation_n: trailFloorLiveViolationN,
     fill_sync_duplicate_group_n: fillSyncDuplicateGroupN,
+    fill_sync_alert_event_issue_n: fillSyncAlertEventIssueN,
+    trade_execution_alert_missing_fill_n: tradeExecutionAlertMissingFillN,
+    trade_execution_alert_coverage_ready: tradeExecutionAlertCoverageReady,
+    duplication_live_group_n: duplicationLiveGroupN,
+    authority_live_issue_position_n: authorityLiveIssuePositionN,
+    authority_actionable_live_issue_position_n: authorityActionableLiveIssuePositionN,
+    authority_artifact_only_live_issue_position_n: authorityArtifactOnlyLiveIssuePositionN,
+    canonical_exit_stage_fail_n: canonicalExitStageFailN,
     reasons,
   };
 }
@@ -120,6 +156,7 @@ async function runBinanceExitIntegrityCycle({
   exchange = "BINANCEFUT",
   opsDailyDir = OPS_DAILY_DIR,
   reportNativeGap = generateNativeTrailProtectionGapReport,
+  runWatchdog = runBinanceActiveExitWatchdog,
   selfHeal = runBinanceLiveStateSelfHeal,
   runScriptImpl = runScript,
 } = {}) {
@@ -132,6 +169,11 @@ async function runBinanceExitIntegrityCycle({
 
   const stageBackfill = runScriptImpl("backfill-binance-active-exit-stage.js", {
     DRY_RUN: apply ? "0" : "1",
+  });
+  const activeExitWatchdog = await runWatchdog({
+    exchange,
+    apply,
+    maxRepairCount: Number(process.env.ACTIVE_EXIT_WATCHDOG_MAX_REPAIR_COUNT || 10),
   });
 
   let selfHealResult = {
@@ -155,10 +197,15 @@ async function runBinanceExitIntegrityCycle({
 
   const nativeGapAfter = await reportNativeGap({ exchange, outDir: opsDailyDir });
   const fillSyncAlertDuplication = runScriptImpl("report-fill-sync-alert-duplication.js");
+  const fillSyncAlertEventConsistency = runScriptImpl("report-fill-sync-alert-event-consistency.js");
+  const tradeExecutionAlertCrossAudit = runScriptImpl("report-trade-execution-alert-cross-audit.js");
+  const fillSyncAlertDuplicationLiveSeparation = runScriptImpl("report-fill-sync-alert-duplication-live-separation.js");
   const exitQtyContractAudit = runScriptImpl("report-binance-exit-qty-contract-audit.js");
   const exitQtyLiveSeparation = runScriptImpl("report-binance-exit-qty-live-separation.js");
   const trailRunnerFloorAudit = runScriptImpl("report-trail-runner-floor-audit.js");
   const trailRunnerFloorLiveSeparation = runScriptImpl("report-trail-runner-floor-live-separation.js");
+  const authorityLiveBoard = runScriptImpl("report-binance-exit-authority-live-board.js");
+  const canonicalExitStageQa = runScriptImpl("report-binance-canonical-exit-stage-qa.js");
 
   const report = {
     ok: true,
@@ -166,16 +213,23 @@ async function runBinanceExitIntegrityCycle({
     exchange,
     apply,
     active_exit_stage_backfill: stageBackfill,
+    active_exit_watchdog: activeExitWatchdog,
     native_trail_gap_before: nativeGapBefore,
     self_heal: selfHealResult,
     native_trail_gap_after: nativeGapAfter,
     fill_sync_alert_duplication: fillSyncAlertDuplication,
+    fill_sync_alert_event_consistency: fillSyncAlertEventConsistency,
+    trade_execution_alert_cross_audit: tradeExecutionAlertCrossAudit,
+    fill_sync_alert_duplication_live_separation: fillSyncAlertDuplicationLiveSeparation,
     binance_exit_qty_contract_audit: exitQtyContractAudit,
     binance_exit_qty_live_separation: exitQtyLiveSeparation,
     trail_runner_floor_audit: trailRunnerFloorAudit,
     trail_runner_floor_live_separation: trailRunnerFloorLiveSeparation,
+    binance_exit_authority_live_board: authorityLiveBoard,
+    binance_canonical_exit_stage_qa: canonicalExitStageQa,
   };
   report.summary = buildSummary(report);
+  Object.assign(report, report.summary);
 
   const latestJson = path.join(opsDailyDir, "binance_exit_integrity_cycle_latest.json");
   const latestMd = path.join(opsDailyDir, "binance_exit_integrity_cycle_latest.md");

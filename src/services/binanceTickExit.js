@@ -318,6 +318,15 @@ function applyTrailObservationToPosition({ pos, observation } = {}) {
       trail_high_at_ms: snapshot.trail_high_at_ms,
       trail_low: snapshot.trail_low,
       trail_low_at_ms: snapshot.trail_low_at_ms,
+      ...(snapshot.native_stop_price != null || meta.native_protection_stop_price != null
+        ? { native_protection_stop_price: snapshot.native_stop_price ?? meta.native_protection_stop_price }
+        : {}),
+      ...((snapshot.native_stop_order_id || meta.native_protection_stop_order_id)
+        ? { native_protection_stop_order_id: snapshot.native_stop_order_id ?? meta.native_protection_stop_order_id }
+        : {}),
+      ...((snapshot.native_refresh_status || meta.native_protection_refresh_status)
+        ? { native_protection_refresh_status: snapshot.native_refresh_status ?? meta.native_protection_refresh_status }
+        : {}),
     },
   };
 }
@@ -982,6 +991,10 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
           }
         }
         if (_trailPatch) {
+          const _trailEvalMs = nowMs();
+          const _exitRules = resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: pos });
+          let _nativeRefresh = null;
+          let _runnerExit = null;
           try {
             if (pos.meta && _trailField === "trail_high" && Number.isFinite(_trailNext)) {
               pos.meta.trail_high = _trailNext;
@@ -990,42 +1003,17 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
               pos.meta.trail_low = _trailNext;
               pos.meta.trail_low_at_ms = tickNow;
             }
-            try {
-              await upsertTrailObservation({
-                exchange: "BINANCEFUT",
-                symbol,
-                side: _tSide,
-                entryEventId: pos.meta && pos.meta.entry_event_id ? pos.meta.entry_event_id : null,
-                entryExecBarMs: pos.meta && Number.isFinite(Number(pos.meta.entry_exec_bar_ms))
-                  ? Number(pos.meta.entry_exec_bar_ms)
-                  : null,
-                trailHigh: pos.meta && Number.isFinite(Number(pos.meta.trail_high)) ? Number(pos.meta.trail_high) : null,
-                trailHighAtMs: pos.meta && Number.isFinite(Number(pos.meta.trail_high_at_ms)) ? Number(pos.meta.trail_high_at_ms) : null,
-                trailLow: pos.meta && Number.isFinite(Number(pos.meta.trail_low)) ? Number(pos.meta.trail_low) : null,
-                trailLowAtMs: pos.meta && Number.isFinite(Number(pos.meta.trail_low_at_ms)) ? Number(pos.meta.trail_low_at_ms) : null,
-                source: "TICK_EXIT",
-              });
-              await recordTrailRuntimeEvent({
-                exchange: "BINANCEFUT",
-                symbol,
-                event: "TRAIL_WATERMARK_UPDATED",
-                runId: buildTickTrailReconcileRunId(symbol, tickNow),
-                tsMs: tickNow,
-                payload: {
-                  side: _tSide,
-                  field: _trailField || (_tSide === "LONG" ? "TRAIL_HIGH" : "TRAIL_LOW"),
-                  prev: Number.isFinite(_trailPrev) ? _trailPrev : null,
-                  next: Number.isFinite(_trailNext) ? _trailNext : null,
-                },
-              }).catch(() => null);
-            } catch (_trailObsErr) {
-              structuredLog("tick_exit_trail_observation_write_error", {
-                exchange: "BINANCEFUT",
-                symbol: String(symbol).toUpperCase(),
-                error: String(_trailObsErr && _trailObsErr.message || _trailObsErr).slice(0, 200),
-              }, "warn");
-              throw _trailObsErr;
-            }
+            _runnerExit = computeRunnerExitStopPrice({
+              avg: Number(pos && pos.avg_price),
+              leverageEff: Number(_tMeta && (_tMeta.external_leverage || _tMeta.leverage || pos.leverage || 1)),
+              side: _tSide,
+              rules: _exitRules,
+              tpP1Done: _tMeta.tp_p1_done === true,
+              trailActive: _tMeta.trail_active === true,
+              trailHigh: pos.meta && Number.isFinite(Number(pos.meta.trail_high)) ? Number(pos.meta.trail_high) : null,
+              trailLow: pos.meta && Number.isFinite(Number(pos.meta.trail_low)) ? Number(pos.meta.trail_low) : null,
+              entryRDistance: Number(_tMeta && _tMeta.entry_r_distance),
+            });
             const _tLogKey = `trail_upd_${String(symbol).toUpperCase()}`;
             const _tNow = nowMs();
             const _tLastLog = Number(symbolCooldownLogState.get(_tLogKey));
@@ -1043,7 +1031,7 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
 
             try {
               const _liveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol });
-              await refreshBinanceNativeProtectionWithRetry({
+              _nativeRefresh = await refreshBinanceNativeProtectionWithRetry({
                 liveCfg: _liveCfg,
                 exchange: "BINANCEFUT",
                 symbol,
@@ -1059,6 +1047,81 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
                 symbol: String(symbol).toUpperCase(),
                 error: String(_nativeRefreshErr && _nativeRefreshErr.message || _nativeRefreshErr).slice(0, 200),
               }, "warn");
+              _nativeRefresh = {
+                ok: false,
+                reason: String(_nativeRefreshErr && _nativeRefreshErr.message || _nativeRefreshErr).slice(0, 200),
+              };
+            }
+
+            try {
+              const _obsWriteAtMs = nowMs();
+              const _obsNativeStopPrice = _nativeRefresh && _nativeRefresh.ok === true
+                ? Number(_nativeRefresh.stop_price)
+                : (pos.meta && Number.isFinite(Number(pos.meta.native_protection_stop_price))
+                  ? Number(pos.meta.native_protection_stop_price)
+                  : null);
+              const _obsNativeStopOrderId = _nativeRefresh && _nativeRefresh.ok === true
+                ? (_nativeRefresh.stop_order_id || null)
+                : (pos.meta && pos.meta.native_protection_stop_order_id ? pos.meta.native_protection_stop_order_id : null);
+              const _obsNativeRefreshStatus = _nativeRefresh
+                ? (_nativeRefresh.ok === true
+                  ? "OK"
+                  : String(_nativeRefresh.reason || "FAILED").trim().toUpperCase())
+                : (pos.meta && pos.meta.native_protection_refresh_status ? pos.meta.native_protection_refresh_status : null);
+              await upsertTrailObservation({
+                exchange: "BINANCEFUT",
+                symbol,
+                side: _tSide,
+                entryEventId: pos.meta && pos.meta.entry_event_id ? pos.meta.entry_event_id : null,
+                entryExecBarMs: pos.meta && Number.isFinite(Number(pos.meta.entry_exec_bar_ms))
+                  ? Number(pos.meta.entry_exec_bar_ms)
+                  : null,
+                entryPrice: Number(pos && pos.avg_price),
+                entryRDistance: pos.meta && Number.isFinite(Number(pos.meta.entry_r_distance))
+                  ? Number(pos.meta.entry_r_distance)
+                  : null,
+                trailRMultiple: Number(_exitRules && _exitRules.TRAIL_R_MULTIPLE),
+                trailHigh: pos.meta && Number.isFinite(Number(pos.meta.trail_high)) ? Number(pos.meta.trail_high) : null,
+                trailHighAtMs: pos.meta && Number.isFinite(Number(pos.meta.trail_high_at_ms)) ? Number(pos.meta.trail_high_at_ms) : null,
+                trailLow: pos.meta && Number.isFinite(Number(pos.meta.trail_low)) ? Number(pos.meta.trail_low) : null,
+                trailLowAtMs: pos.meta && Number.isFinite(Number(pos.meta.trail_low_at_ms)) ? Number(pos.meta.trail_low_at_ms) : null,
+                runnerFloorStop: Number(_runnerExit && _runnerExit.runnerFloorStop),
+                computedTrailStop: Number(_runnerExit && _runnerExit.stopPrice),
+                trailStopRaw: Number(_runnerExit && _runnerExit.trailStop),
+                trailStopByR: Number(_runnerExit && _runnerExit.trailStopByR),
+                trailStopByPct: Number(_runnerExit && _runnerExit.trailStopByPct),
+                chosenStopSource: _runnerExit && _runnerExit.stopSource ? _runnerExit.stopSource : null,
+                chosenStopPrice: Number(_runnerExit && _runnerExit.stopPrice),
+                nativeStopPrice: Number.isFinite(_obsNativeStopPrice) ? _obsNativeStopPrice : null,
+                nativeStopOrderId: _obsNativeStopOrderId,
+                nativeRefreshStatus: _obsNativeRefreshStatus,
+                lastRepriceAtMs: _obsWriteAtMs,
+                runtimeEvalAtMs: _trailEvalMs,
+                source: "TICK_EXIT",
+              });
+              await recordTrailRuntimeEvent({
+                exchange: "BINANCEFUT",
+                symbol,
+                event: "TRAIL_WATERMARK_UPDATED",
+                runId: buildTickTrailReconcileRunId(symbol, tickNow),
+                tsMs: tickNow,
+                payload: {
+                  side: _tSide,
+                  field: _trailField || (_tSide === "LONG" ? "TRAIL_HIGH" : "TRAIL_LOW"),
+                  prev: Number.isFinite(_trailPrev) ? _trailPrev : null,
+                  next: Number.isFinite(_trailNext) ? _trailNext : null,
+                  computed_trail_stop: Number(_runnerExit && _runnerExit.stopPrice),
+                  runner_floor_stop: Number(_runnerExit && _runnerExit.runnerFloorStop),
+                  native_stop_price: Number.isFinite(_obsNativeStopPrice) ? _obsNativeStopPrice : null,
+                },
+              }).catch(() => null);
+            } catch (_trailObsErr) {
+              structuredLog("tick_exit_trail_observation_write_error", {
+                exchange: "BINANCEFUT",
+                symbol: String(symbol).toUpperCase(),
+                error: String(_trailObsErr && _trailObsErr.message || _trailObsErr).slice(0, 200),
+              }, "warn");
+              throw _trailObsErr;
             } finally {
               try {
                 await syncFuturesPositionOnly({

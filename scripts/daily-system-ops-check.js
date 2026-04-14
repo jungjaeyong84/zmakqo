@@ -309,6 +309,83 @@ function loadFillSyncAlertDuplicationHealth({ repoRoot } = {}) {
   };
 }
 
+function loadFillSyncAlertEventConsistencyHealth({ repoRoot } = {}) {
+  const latestPath = path.join(repoRoot, "ops", "daily", "fill_sync_alert_event_consistency_latest.json");
+  const read = readJsonSafe(latestPath);
+  if (!read.ok || !read.data || typeof read.data !== "object") {
+    return {
+      available: false,
+      source_path: latestPath,
+      scanned_fill_n: null,
+      issue_fill_n: null,
+      issue_n: null,
+      top_issue_codes: [],
+      top_symbols: [],
+    };
+  }
+  return {
+    available: true,
+    source_path: latestPath,
+    scanned_fill_n: toNum(read.data.scanned_fill_n, null),
+    issue_fill_n: toNum(read.data.issue_fill_n, null),
+    issue_n: toNum(read.data.issue_n, null),
+    top_issue_codes: Array.isArray(read.data.top_issue_codes) ? read.data.top_issue_codes.slice(0, 10) : [],
+    top_symbols: Array.isArray(read.data.top_symbols) ? read.data.top_symbols.slice(0, 10) : [],
+  };
+}
+
+function loadTradeExecutionAlertCrossAuditHealth({ repoRoot } = {}) {
+  const latestPath = path.join(repoRoot, "ops", "daily", "trade_execution_alert_cross_audit_latest.json");
+  const read = readJsonSafe(latestPath);
+  if (!read.ok || !read.data || typeof read.data !== "object") {
+    return {
+      available: false,
+      source_path: latestPath,
+      coverage_ready: false,
+      fill_n: null,
+      matched_fill_n: null,
+      missing_alert_fill_n: null,
+      unmatched_alert_n: null,
+      telegram_trade_alert_row_n: null,
+      audit_trade_alert_row_n: null,
+    };
+  }
+  return {
+    available: true,
+    source_path: latestPath,
+    coverage_ready: read.data.coverage_ready === true,
+    fill_n: toNum(read.data.fill_n, null),
+    matched_fill_n: toNum(read.data.matched_fill_n, null),
+    missing_alert_fill_n: toNum(read.data.missing_alert_fill_n, null),
+    unmatched_alert_n: toNum(read.data.unmatched_alert_n, null),
+    telegram_trade_alert_row_n: toNum(read.data.telegram_trade_alert_row_n, null),
+    audit_trade_alert_row_n: toNum(read.data.audit_trade_alert_row_n, null),
+  };
+}
+
+function loadActiveExitWatchdogHealth({ repoRoot } = {}) {
+  const latestPath = path.join(repoRoot, "ops", "daily", "binance_active_exit_watchdog_latest.json");
+  const read = readJsonSafe(latestPath);
+  if (!read.ok || !read.data || typeof read.data !== "object") {
+    return {
+      available: false,
+      source_path: latestPath,
+      issue_symbol_n: null,
+      repaired_symbol_n: null,
+      issue_symbols: [],
+      status: "MISSING",
+    };
+  }
+  return {
+    available: true,
+    source_path: latestPath,
+    issue_symbol_n: toNum(read.data.issue_symbol_n, null),
+    repaired_symbol_n: toNum(read.data.repaired_symbol_n, null),
+    issue_symbols: Array.isArray(read.data.issue_symbols) ? read.data.issue_symbols.slice(0, 20) : [],
+    status: String(read.data.status || "").trim().toUpperCase() || "UNKNOWN",
+  };
+}
+
 function loadTrailRunnerFloorAuditHealth({ repoRoot } = {}) {
   const latestPath = path.join(repoRoot, "ops", "daily", "trail_runner_floor_audit_latest.json");
   const read = readJsonSafe(latestPath);
@@ -590,6 +667,9 @@ function decideStatus({
   stopErrorCount,
   executionHealth,
   fillSyncAlertDuplication,
+  fillSyncAlertEventConsistency,
+  tradeExecutionAlertCrossAudit,
+  activeExitWatchdog,
   trailRunnerFloorAudit,
   binanceExitQtyContractAudit,
   nativeTrailProtectionGap,
@@ -665,6 +745,34 @@ function decideStatus({
       reasons.push(`fill sync 중복 알림 그룹 ${fillSyncAlertDuplication.duplicate_group_n}건`);
     }
     if (
+      fillSyncAlertEventConsistency
+      && fillSyncAlertEventConsistency.available === true
+      && Number.isFinite(fillSyncAlertEventConsistency.issue_n)
+      && fillSyncAlertEventConsistency.issue_n >= 1
+    ) {
+      if (status === "진행") status = "보류";
+      reasons.push(`fill sync alert event mismatch ${fillSyncAlertEventConsistency.issue_n}건`);
+    }
+    if (
+      tradeExecutionAlertCrossAudit
+      && tradeExecutionAlertCrossAudit.available === true
+      && tradeExecutionAlertCrossAudit.coverage_ready === true
+      && Number.isFinite(tradeExecutionAlertCrossAudit.missing_alert_fill_n)
+      && tradeExecutionAlertCrossAudit.missing_alert_fill_n >= 1
+    ) {
+      if (status === "진행") status = "보류";
+      reasons.push(`trade execution alert missing fill ${tradeExecutionAlertCrossAudit.missing_alert_fill_n}건`);
+    }
+    if (
+      activeExitWatchdog
+      && activeExitWatchdog.available === true
+      && Number.isFinite(activeExitWatchdog.issue_symbol_n)
+      && activeExitWatchdog.issue_symbol_n >= 1
+    ) {
+      if (status === "진행") status = "보류";
+      reasons.push(`active exit watchdog issue ${activeExitWatchdog.issue_symbol_n}건`);
+    }
+    if (
       trailRunnerFloorAudit
       && trailRunnerFloorAudit.available === true
       && Number.isFinite(trailRunnerFloorAudit.violation_n)
@@ -700,6 +808,9 @@ function buildIssueLines(summary) {
   const health = summary.execution_health || {};
   const cutover = summary.position_read_model_cutover || {};
   const duplication = summary.fill_sync_alert_duplication || {};
+  const consistency = summary.fill_sync_alert_event_consistency || {};
+  const tradeAlertCrossAudit = summary.trade_execution_alert_cross_audit || {};
+  const activeExitWatchdog = summary.active_exit_watchdog || {};
   const trailFloor = summary.trail_runner_floor_audit || {};
   const trailFloorLiveSeparation = summary.trail_runner_floor_live_separation || {};
   const exitQtyAudit = summary.binance_exit_qty_contract_audit || {};
@@ -740,6 +851,12 @@ function buildIssueLines(summary) {
 
   if (Number.isFinite(summary.net_pnl_pct) && Number.isFinite(summary.gap_pct) && summary.gap_pct < 0) {
     lines.push(`[ISSUE] M | 순손익 ${fmt(summary.net_pnl_pct)}%로 월 목표 일평균 대비 ${fmt(summary.gap_pct)}%p 미달 | 고비용 구간 진입 억제 적용 필요`);
+  }
+  if (Number.isFinite(activeExitWatchdog.issue_symbol_n) && activeExitWatchdog.issue_symbol_n >= 1) {
+    const symbols = Array.isArray(activeExitWatchdog.issue_symbols) && activeExitWatchdog.issue_symbols.length
+      ? activeExitWatchdog.issue_symbols.join(", ")
+      : "UNKNOWN";
+    lines.push(`[ISSUE] H | active exit watchdog 이슈 ${activeExitWatchdog.issue_symbol_n}건 | 심볼 ${symbols} 즉시 정합 필요`);
   }
 
   if (health.available) {
@@ -835,6 +952,34 @@ function buildIssueLines(summary) {
     }
   } else {
     lines.push("[ISSUE] M | fill sync duplication 리포트 미수집 | duplication report 재생성 및 gate 확인 필요");
+  }
+
+  if (consistency.available === true) {
+    if (Number.isFinite(consistency.issue_n) && consistency.issue_n >= 1) {
+      const topCode = Array.isArray(consistency.top_issue_codes) && consistency.top_issue_codes.length
+        ? `${consistency.top_issue_codes[0].code}(${consistency.top_issue_codes[0].count})`
+        : "N/A";
+      const topSymbol = Array.isArray(consistency.top_symbols) && consistency.top_symbols.length
+        ? `${consistency.top_symbols[0].symbol}(${consistency.top_symbols[0].count})`
+        : "UNKNOWN";
+      lines.push(`[ISSUE] M | fill sync alert-event mismatch ${consistency.issue_n}건 | 최다 코드 ${topCode}, 상위 심볼 ${topSymbol}, alert stage 재오염 즉시 점검 필요`);
+    } else {
+      lines.push("[ISSUE] L | fill sync alert-event mismatch 없음 | alert event consistency guard 유지");
+    }
+  } else {
+    lines.push("[ISSUE] M | fill sync alert-event consistency 리포트 미수집 | stage mismatch 감사 리포트 재생성 필요");
+  }
+
+  if (tradeAlertCrossAudit.available === true) {
+    if (tradeAlertCrossAudit.coverage_ready !== true) {
+      lines.push("[ISSUE] L | trade execution alert cross audit bootstrap 구간 | audit log 누적 후 미발송 감시 활성화");
+    } else if (Number.isFinite(tradeAlertCrossAudit.missing_alert_fill_n) && tradeAlertCrossAudit.missing_alert_fill_n >= 1) {
+      lines.push(`[ISSUE] M | trade execution alert 미발송 추정 fill ${tradeAlertCrossAudit.missing_alert_fill_n}건 | audit row ${fmt(tradeAlertCrossAudit.audit_trade_alert_row_n, 0)}건, telegram row ${fmt(tradeAlertCrossAudit.telegram_trade_alert_row_n, 0)}건 기준 교차점검 필요`);
+    } else {
+      lines.push("[ISSUE] L | trade execution alert cross audit 기준 미발송 fill 없음 | alert delivery audit 유지");
+    }
+  } else {
+    lines.push("[ISSUE] M | trade execution alert cross audit 리포트 미수집 | telegram/audit log 교차감사 리포트 재생성 필요");
   }
 
   if (cutover.available !== true) {
@@ -1046,6 +1191,9 @@ async function main() {
   const executionHealth = loadExecutionHealth({ repoRoot, dateKey });
   const positionReadModelCutover = loadPositionReadModelCutoverHealth({ repoRoot });
   const fillSyncAlertDuplication = loadFillSyncAlertDuplicationHealth({ repoRoot });
+  const fillSyncAlertEventConsistency = loadFillSyncAlertEventConsistencyHealth({ repoRoot });
+  const tradeExecutionAlertCrossAudit = loadTradeExecutionAlertCrossAuditHealth({ repoRoot });
+  const activeExitWatchdog = loadActiveExitWatchdogHealth({ repoRoot });
   const trailRunnerFloorAudit = loadTrailRunnerFloorAuditHealth({ repoRoot });
   const trailRunnerFloorLiveSeparation = loadTrailRunnerFloorLiveSeparationHealth({ repoRoot });
   const binanceExitQtyContractAudit = loadBinanceExitQtyContractAuditHealth({ repoRoot });
@@ -1107,6 +1255,9 @@ async function main() {
     mode: "수익 확대 가능",
     execution_health: executionHealth,
     fill_sync_alert_duplication: fillSyncAlertDuplication,
+    fill_sync_alert_event_consistency: fillSyncAlertEventConsistency,
+    trade_execution_alert_cross_audit: tradeExecutionAlertCrossAudit,
+    active_exit_watchdog: activeExitWatchdog,
     trail_runner_floor_audit: trailRunnerFloorAudit,
     trail_runner_floor_live_separation: trailRunnerFloorLiveSeparation,
     binance_exit_qty_contract_audit: binanceExitQtyContractAudit,
@@ -1128,6 +1279,9 @@ async function main() {
     stopErrorCount,
     executionHealth,
     fillSyncAlertDuplication,
+    fillSyncAlertEventConsistency,
+    tradeExecutionAlertCrossAudit,
+    activeExitWatchdog,
     trailRunnerFloorAudit,
     binanceExitQtyContractAudit,
     nativeTrailProtectionGap,
@@ -1205,6 +1359,9 @@ async function main() {
     position_read_model_cutover_ready: positionReadModelCutover.latest_ready === true,
     position_read_model_cutover_status: positionReadModelCutover.dominant_status || null,
     fill_sync_alert_duplicate_group_n: fillSyncAlertDuplication.duplicate_group_n,
+    fill_sync_alert_event_issue_n: fillSyncAlertEventConsistency.issue_n,
+    trade_execution_alert_missing_fill_n: tradeExecutionAlertCrossAudit.missing_alert_fill_n,
+    active_exit_watchdog_issue_symbol_n: activeExitWatchdog.issue_symbol_n,
     fill_sync_alert_suppressed_estimate_n: fillSyncAlertDuplication.suppressed_alert_estimate_n,
     trail_runner_floor_violation_n: trailRunnerFloorAudit.violation_n,
     trail_runner_floor_violation_total_n: trailRunnerFloorAudit.violation_total_n,

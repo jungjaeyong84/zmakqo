@@ -10,7 +10,12 @@ const { listExchangePositionReadViews } = require("../src/services/positionReadM
 const { resolveExitRulesForPosition } = require("../src/engine/signalEngine");
 const { resolveExitStageAbsoluteContractQtyRatio } = require("../src/utils/exitQtyContract");
 const { reclassifyExternalFillEvent } = require("../src/storage/fillsPaper");
-const { syncFuturesPositionOnly, resolveFuturesPositionSyncRequest } = require("../src/engine/paperBinanceRunner");
+const { getPosition, upsertPositionMetaOnly } = require("../src/storage/positionsPaper");
+const {
+  syncFuturesPositionOnly,
+  resolveFuturesPositionSyncRequest,
+  __test: paperRunnerTest,
+} = require("../src/engine/paperBinanceRunner");
 const { __test: fillProjectionAuditTest } = require("../src/services/binanceFillProjectionAudit");
 
 const EXCHANGE = "BINANCEFUT";
@@ -164,6 +169,8 @@ function buildStageSummary(position, fills = []) {
   if (shouldTp0 && meta.tp_p0_done !== true) issues.push("TP0_DONE_MISSING_BY_QTY");
   if (shouldTp1 && meta.tp_p1_done !== true) issues.push("TP1_DONE_MISSING_BY_QTY");
   if (shouldTrail && meta.trail_active !== true) issues.push("TRAIL_ACTIVE_MISSING_BY_QTY");
+  if (meta.tp_p1_done === true && meta.tp_p0_done !== true) issues.push("TP1_DONE_WITHOUT_TP0_DONE");
+  if (meta.trail_active === true && meta.tp_p0_done !== true) issues.push("TRAIL_ACTIVE_WITHOUT_TP0_DONE");
   if (latestStage === "TP0" && shouldTp1) issues.push("LATEST_TP0_SHOULD_BE_TP1");
   return {
     symbol: upper(pos.symbol || pos.symbol_or_pair_id),
@@ -200,7 +207,7 @@ function buildStageSummary(position, fills = []) {
   };
 }
 
-function buildStageReclassificationTargets(summary = {}) {
+function buildTp0ToTp1ReclassificationTargets(summary = {}) {
   const fills = Array.isArray(summary.authoritative_fills) ? summary.authoritative_fills : [];
   const latestOrderId = String(summary.latest_exit_order_id || "").trim();
   if (!latestOrderId) return [];
@@ -209,6 +216,92 @@ function buildStageReclassificationTargets(summary = {}) {
     .filter((fill) => classifyExitEvent(fill.event) === "TP0")
     .map((fill) => String(fill.fill_id || "").trim())
     .filter(Boolean);
+}
+
+function buildTp1ToTp0ReclassificationTargets(summary = {}) {
+  const fills = Array.isArray(summary.authoritative_fills) ? summary.authoritative_fills : [];
+  const expectedTp0Qty = Math.max(0, toNum(summary.expected_tp0_qty_base) || 0);
+  const tp0Qty = Math.max(0, toNum(summary.tp0_qty_base) || 0);
+  const tolQty = Math.max(0.00000001, toNum(summary.inferred_entry_qty_base) || 0) * QTY_TOL_RATIO;
+  const missingTp0Qty = Math.max(0, expectedTp0Qty - tp0Qty);
+  if (!(missingTp0Qty > 0)) return [];
+  return fills
+    .filter((fill) => classifyExitEvent(fill.event) === "TP1")
+    .filter((fill) => {
+      const qty = Math.max(0, toNum(fill.exec_qty_base) || 0);
+      return Math.abs(qty - missingTp0Qty) <= Math.max(tolQty, missingTp0Qty * 0.4, 0.00000001);
+    })
+    .sort((a, b) => (parseMs(a.created_at) || 0) - (parseMs(b.created_at) || 0))
+    .map((fill) => String(fill.fill_id || "").trim())
+    .filter(Boolean);
+}
+
+function buildStageReclassificationPlan(summary = {}) {
+  const plan = [];
+  if (Array.isArray(summary.issues) && summary.issues.includes("LATEST_TP0_SHOULD_BE_TP1")) {
+    for (const fillId of buildTp0ToTp1ReclassificationTargets(summary)) {
+      plan.push({
+        fill_id: fillId,
+        from_event_stage: "TP0",
+        to_event: "EXIT_TP_P1_1.65P",
+        decision_reason: "ACTIVE_EXIT_STAGE_BACKFILL_RECLASSIFIED",
+        reclassify_reason: "CURRENT_QTY_FLOW_IMPLIES_TP1",
+      });
+    }
+  }
+  if (Array.isArray(summary.issues) && summary.issues.includes("TP1_DONE_WITHOUT_TP0_DONE")) {
+    for (const fillId of buildTp1ToTp0ReclassificationTargets(summary)) {
+      plan.push({
+        fill_id: fillId,
+        from_event_stage: "TP1",
+        to_event: "EXIT_TP_P0_0.8P",
+        decision_reason: "ACTIVE_EXIT_STAGE_BACKFILL_RECLASSIFIED",
+        reclassify_reason: "TP1_LABEL_WITH_TP0_SIZE_MUST_BE_TP0",
+      });
+    }
+  }
+  return plan;
+}
+
+function applyReclassificationPlanToFills(fills = [], plan = []) {
+  const byId = new Map((Array.isArray(plan) ? plan : []).map((row) => [String(row.fill_id || "").trim(), row]));
+  return (Array.isArray(fills) ? fills : []).map((fill) => {
+    const planRow = byId.get(String(fill && (fill.id || fill.fill_id) || "").trim());
+    if (!planRow) return fill;
+    return {
+      ...fill,
+      event: planRow.to_event,
+    };
+  });
+}
+
+function buildReconciledMetaFromSummary(position = {}, summary = {}) {
+  const pos = position || {};
+  const currentMeta = (pos && typeof pos.meta === "object") ? pos.meta : {};
+  const authoritativeFills = Array.isArray(summary.authoritative_fills) ? summary.authoritative_fills : [];
+  let nextMeta = { ...currentMeta };
+  const latestTp0Fill = paperRunnerTest.pickLatestTpP0Fill(authoritativeFills, EXCHANGE, summary.symbol);
+  const latestTp1Fill = paperRunnerTest.pickLatestTpP1Fill(authoritativeFills, EXCHANGE, summary.symbol);
+  if (latestTp0Fill) {
+    nextMeta = paperRunnerTest.reconcileTpP0MetaFromFill({
+      posMeta: nextMeta,
+      pos,
+      fill: latestTp0Fill,
+    });
+  }
+  if (latestTp1Fill) {
+    nextMeta = paperRunnerTest.reconcileTpP1MetaFromFill({
+      posMeta: nextMeta,
+      pos,
+      fill: latestTp1Fill,
+    });
+  }
+  if (summary.should_tp0_done) nextMeta.tp_p0_done = true;
+  if (summary.should_tp1_done) nextMeta.tp_p1_done = true;
+  if (summary.should_trail_active) nextMeta.trail_active = true;
+  if (nextMeta.trail_active === true) nextMeta.tp_p1_done = true;
+  if (nextMeta.tp_p1_done === true) nextMeta.tp_p0_done = true;
+  return nextMeta;
 }
 
 async function main() {
@@ -241,27 +334,52 @@ async function main() {
       latest_exit_order_id: summary.latest_exit_order_id,
       latest_exit_event: summary.latest_exit_event,
       reclassified_fill_ids: [],
+      meta_repaired: false,
       sync_run_id: null,
       status: "PENDING",
     };
 
     try {
-      const tp1Targets = summary.issues.includes("LATEST_TP0_SHOULD_BE_TP1")
-        ? buildStageReclassificationTargets(summary)
-        : [];
-      if (tp1Targets.length) {
+      const reclassificationPlan = buildStageReclassificationPlan(summary);
+      if (reclassificationPlan.length) {
         if (!DRY_RUN) {
-          for (const fillId of tp1Targets) {
+          for (const step of reclassificationPlan) {
             await reclassifyExternalFillEvent({
-              fillId,
-              event: "EXIT_TP_P1_1.65P",
-              decisionReason: "ACTIVE_EXIT_STAGE_BACKFILL_RECLASSIFIED",
-              reclassifyReason: "CURRENT_QTY_FLOW_IMPLIES_TP1",
+              fillId: step.fill_id,
+              event: step.to_event,
+              decisionReason: step.decision_reason,
+              reclassifyReason: step.reclassify_reason,
               reclassifyScript: "scripts/backfill-binance-active-exit-stage.js",
             });
           }
         }
-        action.reclassified_fill_ids = tp1Targets.slice();
+        action.reclassified_fill_ids = reclassificationPlan.map((row) => row.fill_id);
+      }
+
+      const nextSummary = reclassificationPlan.length
+        ? buildStageSummary(pos, applyReclassificationPlanToFills(fillsBySymbol.get(symbol) || [], reclassificationPlan))
+        : summary;
+      const currentPosition = DRY_RUN ? pos : await getPosition({ exchange: EXCHANGE, symbol });
+      const currentMeta = (currentPosition && typeof currentPosition.meta === "object") ? currentPosition.meta : {};
+      const nextMeta = buildReconciledMetaFromSummary(currentPosition || pos, nextSummary);
+      const metaChanged = JSON.stringify(currentMeta || {}) !== JSON.stringify(nextMeta || {});
+      if (metaChanged) {
+        if (!DRY_RUN) {
+          await upsertPositionMetaOnly({
+            exchange: EXCHANGE,
+            symbol,
+            runId: `RUN__ACTIVE_EXIT_STAGE_META_REPAIR__${symbol}__${Date.now()}`,
+            executionMode: currentPosition && currentPosition.execution_mode ? currentPosition.execution_mode : null,
+            meta: nextMeta,
+            source: "ACTIVE_EXIT_STAGE_BACKFILL",
+            mutationKind: "POSITION_META_EXIT_STAGE_BACKFILL",
+            reason: "ACTIVE_EXIT_STAGE_SUMMARY_RECONCILED",
+            expectedWriteToken: Object.prototype.hasOwnProperty.call(currentPosition || {}, "position_write_token")
+              ? (currentPosition.position_write_token ?? null)
+              : null,
+          });
+        }
+        action.meta_repaired = true;
       }
 
       if (!DRY_RUN) {
@@ -339,7 +457,7 @@ async function main() {
       latest_exit_event: row.latest_exit_event,
       latest_exit_fill_id: row.latest_exit_fill_id,
       latest_exit_order_id: row.latest_exit_order_id,
-      reclassification_targets: buildStageReclassificationTargets(row),
+      reclassification_targets: buildStageReclassificationPlan(row),
     })),
   }, null, 2));
 }
@@ -353,7 +471,12 @@ if (require.main === module) {
   module.exports = {
     __test: {
       buildStageSummary,
-      buildStageReclassificationTargets,
+      buildStageReclassificationTargets: buildStageReclassificationPlan,
+      buildTp0ToTp1ReclassificationTargets,
+      buildTp1ToTp0ReclassificationTargets,
+      buildStageReclassificationPlan,
+      buildReconciledMetaFromSummary,
+      applyReclassificationPlanToFills,
       buildAuthoritativeFillSet,
       filterCurrentEntryFills,
       classifyExitEvent,

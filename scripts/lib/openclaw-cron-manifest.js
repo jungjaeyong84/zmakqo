@@ -5,6 +5,21 @@ const OPENCLAW_SCHEDULER_SOT = "OPENCLAW_CRON";
 
 const OPENCLAW_CRON_JOBS = Object.freeze([
   {
+    job_id: "binance_exit_integrity_cycle",
+    label: "com.jeongjaeyong.donbeolja.exitintegrity",
+    name: "donbeolja-binance-exit-integrity-cycle",
+    wrapper: `${REPO_ROOT}/ops/launchd/run_binance_exit_integrity_cycle.sh`,
+    cron: "* * * * *",
+    runAtLoad: true,
+    owner: "openclaw",
+    criticality: "HIGH",
+    produces_artifact: "binance_exit_integrity_cycle_latest.json",
+    artifact_sla_hours: 1,
+    depends_on: [],
+    recovery_strategy: "re-run-once",
+    scheduler_sot: OPENCLAW_SCHEDULER_SOT,
+  },
+  {
     job_id: "openclaw_hourly_cycle",
     label: "com.jeongjaeyong.donbeolja.openclawhourly",
     name: "donbeolja-openclaw-hourly-cycle",

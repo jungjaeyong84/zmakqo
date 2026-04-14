@@ -55,12 +55,69 @@ async function main() {
   assert(summary.issues.includes("TRAIL_ACTIVE_MISSING_BY_QTY"));
 
   const targets = __test.buildStageReclassificationTargets(summary);
-  assert.deepStrictEqual(targets, [
-    "tp1-fill-1",
-    "tp1-fill-2",
-    "tp1-fill-3",
-    "tp1-fill-4",
+  assert.deepStrictEqual(targets.map((row) => row.fill_id), ["tp1-fill-1", "tp1-fill-2", "tp1-fill-3", "tp1-fill-4"]);
+
+  const btcLikePosition = {
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    state: "ACTIVE",
+    position_side: "LONG",
+    qty_base: 0.011,
+    meta: {
+      entry_event_id: "ENTRY_EVT_BTC",
+      entry_exec_bar_ms: 1776075627000,
+      tp_p0_done: false,
+      tp_p1_done: true,
+      trail_active: true,
+      exit_rules_override: {
+        TP_P0_QTY: 0.25,
+        TP_P1_QTY: 0.5,
+        TP_P0: 0.008,
+        TP_P1: 0.0165,
+      },
+    },
+  };
+  const btcFills = [
+    {
+      id: "btc-tp1-mislabel",
+      fill_id: "btc-tp1-mislabel",
+      exchange: "BINANCEFUT",
+      symbol: "BTCUSDT",
+      event: "EXIT_TP_P1_1.65P",
+      exec_qty_base: 0.007,
+      external_order_id: "btc-order-tp1",
+      created_at: "2026-04-13T13:49:25.045Z",
+      entry_event_id: "ENTRY_EVT_BTC",
+      entry_exec_bar_ms: 1776075627000,
+      exec_price: 73745.6,
+    },
+    {
+      id: "btc-trail",
+      fill_id: "btc-trail",
+      exchange: "BINANCEFUT",
+      symbol: "BTCUSDT",
+      event: "EXIT_TRAIL",
+      exec_qty_base: 0.01,
+      external_order_id: "btc-order-trail",
+      created_at: "2026-04-13T13:50:07.038Z",
+      entry_event_id: "ENTRY_EVT_BTC",
+      entry_exec_bar_ms: 1776075627000,
+      exec_price: 73623,
+    },
+  ];
+  const btcSummary = __test.buildStageSummary(btcLikePosition, btcFills);
+  assert.ok(btcSummary.issues.includes("TP1_DONE_WITHOUT_TP0_DONE"));
+  const btcPlan = __test.buildStageReclassificationPlan(btcSummary);
+  assert.deepStrictEqual(btcPlan.map((row) => ({ fill_id: row.fill_id, to_event: row.to_event })), [
+    { fill_id: "btc-tp1-mislabel", to_event: "EXIT_TP_P0_0.8P" },
   ]);
+  const repairedMeta = __test.buildReconciledMetaFromSummary(
+    btcLikePosition,
+    __test.buildStageSummary(btcLikePosition, __test.applyReclassificationPlanToFills(btcFills, btcPlan))
+  );
+  assert.strictEqual(repairedMeta.tp_p0_done, true);
+  assert.strictEqual(repairedMeta.tp_p1_done, true);
+  assert.strictEqual(repairedMeta.trail_active, true);
 
   console.log("BACKFILL_BINANCE_ACTIVE_EXIT_STAGE_TEST_OK");
 }

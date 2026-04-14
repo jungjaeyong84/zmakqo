@@ -113,14 +113,18 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
   const trailStop = runnerExit.stopPrice;
   const runnerFloorStop = runnerExit.runnerFloorStop;
   const rawTrailStop = runnerExit.trailStop;
-  const nativeStopPrice = toNum(meta.native_protection_stop_price);
+  const nativeStopPrice = toNum(trailSnapshot.native_stop_price) ?? toNum(meta.native_protection_stop_price);
   const nativeTpPrice = toNum(meta.native_protection_tp_price);
   const nativeTpQtyBase = toNum(meta.native_protection_tp_qty_base);
   const nativeTpQtyRatio = toNum(meta.native_protection_tp_qty_ratio);
-  const nativeRefreshStatus = meta.native_protection_refresh_status ? String(meta.native_protection_refresh_status) : null;
+  const nativeRefreshStatus = trailSnapshot.native_refresh_status
+    ? String(trailSnapshot.native_refresh_status)
+    : (meta.native_protection_refresh_status ? String(meta.native_protection_refresh_status) : null);
   const nativeTpStatus = meta.native_protection_tp_status ? String(meta.native_protection_tp_status) : null;
   const nativeTpReason = meta.native_protection_tp_reason ? String(meta.native_protection_tp_reason) : null;
-  const nativeStopOrderId = meta.native_protection_stop_order_id ? String(meta.native_protection_stop_order_id) : null;
+  const nativeStopOrderId = trailSnapshot.native_stop_order_id
+    ? String(trailSnapshot.native_stop_order_id)
+    : (meta.native_protection_stop_order_id ? String(meta.native_protection_stop_order_id) : null);
   const nativeTpOrderId = meta.native_protection_tp_order_id ? String(meta.native_protection_tp_order_id) : null;
   const nativeProtectionStale = meta.native_protection_stale === true;
   const nativeProtectionActive = hasNativeProtection({
@@ -204,7 +208,7 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     trail_stop: trailStop,
     trail_stop_raw: rawTrailStop,
     runner_floor_pct: toNum(rules.RUNNER_MIN_PROFIT_PCT),
-    runner_floor_stop: runnerFloorStop,
+    runner_floor_stop: toNum(trailSnapshot.runner_floor_stop) ?? runnerFloorStop,
     runner_stop_source: runnerExit.stopSource,
     native_stop_price: nativeStopPrice,
     native_tp_price: nativeTpPrice,

@@ -12,7 +12,7 @@ const { getFirestore } = require("../storage/firestore");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { upsertExternalFill, markExternalFillUnverified } = require("../storage/fillsPaper");
 const { getExitOrderContractByOrderId, markExitOrderContractConsumed } = require("../storage/exitOrderContracts");
-const { getPosition, upsertPosition } = require("../storage/positionsPaper");
+const { getPosition, upsertPosition, upsertPositionMetaOnly } = require("../storage/positionsPaper");
 const { upsertSameDirectionTrailProfitObservation } = require("../storage/positionRuntimeObservations");
 const { patchIntent } = require("../storage/orderIntentsPaper");
 const { buildTradeId } = require("../storage/tradesPaper");
@@ -37,6 +37,12 @@ const {
   resolveTp0ContractQtyRatio,
   resolveTp1RemainingContractQtyRatio,
 } = require("../utils/exitQtyContract");
+const { recordUnifiedEvent } = require("../storage/unifiedEventTimeline");
+const { recordExitRepairRequest } = require("../storage/exitRepairRequests");
+const {
+  resolveCanonicalExitAuthorityDecision,
+  resolveCanonicalExitTransitionEvents,
+} = require("./positionStateMachine");
 
 const DEFAULT_LOOKBACK_MS = 72 * 60 * 60 * 1000;
 const DEFAULT_MIN_INTERVAL_MS = 3 * 60 * 1000;
@@ -919,6 +925,14 @@ function resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale, execQtyBa
         source: qtyScaleMode || "SYNCED_QTY_PCT",
       };
     }
+    const tp1RemainingContractQtyRatio = resolveTp1RemainingContractQtyRatio(rules, 0.5);
+    if (Number.isFinite(tp1RemainingContractQtyRatio) && tp1RemainingContractQtyRatio > 0) {
+      return {
+        closeRatio: tp1RemainingContractQtyRatio,
+        aggregation: "MAX",
+        source: "CONTRACT_TP1_REMAINING_QTY_FALLBACK",
+      };
+    }
   }
   const intentQtyFraction = clamp01(intent && intent.qty_fraction);
   const scaledRatio = clamp01(qtyScale && qtyScale.ratio);
@@ -955,6 +969,116 @@ function resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale, execQtyBa
     };
   }
   return empty;
+}
+
+function buildStageHintedMeta(meta = {}, event = "", trade = null) {
+  const nextMeta = { ...(meta && typeof meta === "object" ? meta : {}) };
+  const ev = String(event || "").trim().toUpperCase();
+  const tradeMs = Number(trade && trade.time);
+  const execPrice = Number(trade && trade.price);
+  const execAtIso = Number.isFinite(tradeMs) ? new Date(tradeMs).toISOString() : null;
+  const alreadyPastTp1 = nextMeta.tp_p1_done === true || nextMeta.trail_active === true;
+  if (isTpP0Event(ev)) {
+    nextMeta.tp_p0_done = true;
+    if (Number.isFinite(execPrice) && execPrice > 0) nextMeta.tp_p0_price = execPrice;
+    if (execAtIso) nextMeta.tp_p0_at = execAtIso;
+    if (Number.isFinite(tradeMs) && tradeMs > 0) nextMeta.tp_p0_bar_ms = tradeMs;
+  }
+  if (isTpP1Event(ev)) {
+    nextMeta.tp_p0_done = true;
+    nextMeta.tp_p1_done = true;
+    nextMeta.trail_active = true;
+    nextMeta.tp_p1_pending = false;
+    nextMeta.tp_p1_pending_at_ms = null;
+    nextMeta.tp_p1_pending_until_ms = null;
+    nextMeta.tp_p1_pending_event = null;
+    if (!alreadyPastTp1) {
+      if (Number.isFinite(execPrice) && execPrice > 0) nextMeta.tp_p1_price = execPrice;
+      if (execAtIso) nextMeta.tp_p1_at = execAtIso;
+      if (Number.isFinite(tradeMs) && tradeMs > 0) nextMeta.tp_p1_bar_ms = tradeMs;
+    }
+  }
+  if (ev.startsWith("EXIT_TRAIL")) {
+    nextMeta.tp_p0_done = true;
+    nextMeta.tp_p1_done = true;
+    nextMeta.trail_active = true;
+  }
+  return nextMeta;
+}
+
+async function promotePositionStageHintsFromExternalExit({
+  exchange = "BINANCEFUT",
+  symbol,
+  event,
+  trade = null,
+  runId = null,
+} = {}) {
+  const ev = String(event || "").trim().toUpperCase();
+  if (!(isTpP0Event(ev) || isTpP1Event(ev) || ev.startsWith("EXIT_TRAIL"))) {
+    return { ok: false, skipped: true, reason: "NOT_STAGE_EXIT" };
+  }
+  const sym = normalizeSymbol(symbol);
+  if (!sym) return { ok: false, skipped: true, reason: "SYMBOL_INVALID" };
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const pos = await getPosition({ exchange, symbol: sym }).catch(() => null);
+    if (!pos || isSettledFlatProjection(pos)) {
+      return { ok: true, skipped: true, reason: "POSITION_FLAT" };
+    }
+    const currentMeta = (pos.meta && typeof pos.meta === "object") ? pos.meta : {};
+    const nextMeta = buildStageHintedMeta(currentMeta, ev, trade);
+    const unchanged = JSON.stringify(nextMeta) === JSON.stringify(currentMeta);
+    if (unchanged) {
+      return { ok: true, skipped: true, reason: "META_ALREADY_HINTED", position: pos };
+    }
+    try {
+      const updated = await upsertPositionMetaOnly({
+        exchange,
+        symbol: sym,
+        runId: runId || `RUN__FILL_SYNC_STAGE_HINT__${exchange}__${sym}__${Number(trade && trade.time || Date.now())}`,
+        executionMode: String(pos.execution_mode || "LIVE").trim().toUpperCase() || "LIVE",
+        meta: nextMeta,
+        source: "BINANCE_USER_TRADES_SYNC",
+        mutationKind: "POSITION_META_UPSERT",
+        reason: "EXTERNAL_EXIT_STAGE_HINT",
+        expectedWriteToken: Object.prototype.hasOwnProperty.call(pos || {}, "position_write_token")
+          ? (String(pos.position_write_token || "").trim() || null)
+          : null,
+        suppressAuthorityRuntimeFamily: true,
+        suppressAuthorityRuntimeFamilyReason: "FILL_SYNC_STAGE_HINT_RETRY",
+      });
+      return { ok: true, updated, position: { ...pos, meta: nextMeta } };
+    } catch (err) {
+      const code = String(err && (err.code || err.message) || "").toUpperCase();
+      if (!code.includes("POSITION_WRITE_TOKEN_MISMATCH") || attempt >= 3) throw err;
+    }
+  }
+  return { ok: false, skipped: true, reason: "STAGE_HINT_RETRY_EXHAUSTED" };
+}
+
+function mergeRecentExitHintsIntoMeta(meta = {}, {
+  recentTp0 = null,
+  recentTp1 = null,
+  recentTrail = null,
+} = {}) {
+  const nextMeta = { ...(meta && typeof meta === "object" ? meta : {}) };
+  if (recentTp0 && isTpP0Event(recentTp0.event)) {
+    nextMeta.tp_p0_done = true;
+  }
+  if (recentTp1 && isTpP1Event(recentTp1.event)) {
+    nextMeta.tp_p0_done = true;
+    nextMeta.tp_p1_done = true;
+    nextMeta.trail_active = true;
+    nextMeta.tp_p1_pending = false;
+    nextMeta.tp_p1_pending_at_ms = null;
+    nextMeta.tp_p1_pending_until_ms = null;
+    nextMeta.tp_p1_pending_event = null;
+  }
+  if (recentTrail && String(recentTrail.event || "").trim().toUpperCase().startsWith("EXIT_TRAIL")) {
+    nextMeta.tp_p0_done = true;
+    nextMeta.tp_p1_done = true;
+    nextMeta.trail_active = true;
+  }
+  return nextMeta;
 }
 
 function resolveFillSyncAlertCloseRatio({ event, intent, qtyScale, execQtyBase, positionCtx, rules } = {}) {
@@ -1013,9 +1137,134 @@ function buildFillSyncAlertKey({ symbol, event, intent, side, orderMeta, tradeMs
     ? String(Math.floor(Number(tradeMs) / 60000))
     : "NA";
   if (ev === "EXIT_OPPOSITE_SIGNAL") {
+    if (entryEventId === "NA") {
+      return [sym, ev, it, tradeSide, orderId, clientOrderId, positionSideBefore, tradeBucket].join("|");
+    }
     return [sym, ev, it, tradeSide, entryEventId, positionSideBefore, tradeBucket].join("|");
   }
   return [sym, ev, it, tradeSide, orderId, clientOrderId, tradeBucket].join("|");
+}
+
+function stripFillSyncUnverifiedSuffix(event) {
+  const ev = String(event || "").trim().toUpperCase();
+  return ev.endsWith("_UNVERIFIED") ? ev.slice(0, -"_UNVERIFIED".length) : ev;
+}
+
+function isVerifiedFillSyncAlertEvent(event, payload = {}) {
+  if (payload && payload.classificationVerified === false) return false;
+  if (payload && payload.classificationVerified === true) return true;
+  return !String(event || "").trim().toUpperCase().endsWith("_UNVERIFIED");
+}
+
+function buildFillSyncAlertChainKey({ symbol, event, intent, side, orderMeta, tradeMs, payload } = {}) {
+  const sym = normalizeSymbol(symbol) || String(symbol || "").trim().toUpperCase() || "UNKNOWN";
+  const ev = String(event || "").trim().toUpperCase() || "UNKNOWN";
+  const it = String(intent || "").trim().toUpperCase() || "UNKNOWN";
+  const tradeSide = String(side || "").trim().toUpperCase() || "NA";
+  const entryEventId = String(payload && payload.entryEventId || "").trim() || "NA";
+  const positionSideBefore = String(payload && payload.positionSideBefore || "").trim().toUpperCase() || "NA";
+  const orderId = Number.isFinite(Number(orderMeta && orderMeta.orderId))
+    ? String(Number(orderMeta.orderId))
+    : "NA";
+  const clientOrderId = String(orderMeta && orderMeta.clientOrderId || "").trim() || "NA";
+  const tradeBucket = Number.isFinite(Number(tradeMs))
+    ? String(Math.floor(Number(tradeMs) / 60000))
+    : "NA";
+  if (ev === "EXIT_OPPOSITE_SIGNAL") {
+    return [sym, it, tradeSide, entryEventId, positionSideBefore, tradeBucket].join("|");
+  }
+  if (orderId === "NA" && clientOrderId === "NA") return null;
+  return [sym, it, tradeSide, orderId, clientOrderId, tradeBucket].join("|");
+}
+
+function resolvePreferredFillSyncStageEvent(stage, currentEvent, nextEvent, currentPayload = {}, nextPayload = {}) {
+  if (stage === "TP0") {
+    if (isTpP0Event(nextEvent)) return nextEvent;
+    if (isTpP0Event(currentEvent)) return currentEvent;
+    return buildExitEventByKind("TP0", nextPayload.exitRules || currentPayload.exitRules);
+  }
+  if (stage === "TP1") {
+    if (isTpP1Event(nextEvent)) return nextEvent;
+    if (isTpP1Event(currentEvent)) return currentEvent;
+    return buildExitEventByKind("TP1", nextPayload.exitRules || currentPayload.exitRules);
+  }
+  if (stage === "TRAIL") {
+    if (String(nextEvent || "").trim().toUpperCase().startsWith("EXIT_TRAIL")) return nextEvent;
+    if (String(currentEvent || "").trim().toUpperCase().startsWith("EXIT_TRAIL")) return currentEvent;
+    return buildExitEventByKind("TRAIL", nextPayload.exitRules || currentPayload.exitRules);
+  }
+  return nextEvent || currentEvent;
+}
+
+function resolvePreferredFillSyncAlertEvent(currentPayload = {}, payload = {}) {
+  const currentEvent = stripFillSyncUnverifiedSuffix(currentPayload.event);
+  const nextEvent = stripFillSyncUnverifiedSuffix(payload.event);
+  if (!currentEvent) return nextEvent;
+  if (!nextEvent) return currentEvent;
+  if (currentEvent === nextEvent) {
+    return isVerifiedFillSyncAlertEvent(payload.event, payload) ? nextEvent : currentEvent;
+  }
+
+  const currentVerified = isVerifiedFillSyncAlertEvent(currentPayload.event, currentPayload);
+  const nextVerified = isVerifiedFillSyncAlertEvent(payload.event, payload);
+  if (currentVerified !== nextVerified) {
+    return currentVerified ? currentEvent : nextEvent;
+  }
+
+  const currentStage = classifyExitAuthorityStage(currentEvent);
+  const nextStage = classifyExitAuthorityStage(nextEvent);
+  const currentCanonicalStage = String(currentPayload.canonicalExitStage || "").trim().toUpperCase() || null;
+  const nextCanonicalStage = String(payload.canonicalExitStage || "").trim().toUpperCase() || null;
+  const tp0Done = currentPayload.alertStageHintTp0Done === true || payload.alertStageHintTp0Done === true;
+  const tp1Done = currentPayload.alertStageHintTp1Done === true || payload.alertStageHintTp1Done === true;
+  const trailActive = currentPayload.alertStageHintTrailActive === true || payload.alertStageHintTrailActive === true;
+
+  if (currentCanonicalStage === "TRAIL" || nextCanonicalStage === "TRAIL") {
+    return resolvePreferredFillSyncStageEvent("TRAIL", currentEvent, nextEvent, currentPayload, payload);
+  }
+  if (
+    (currentCanonicalStage === "TP1" || nextCanonicalStage === "TP1")
+    && (currentStage === "TP0" || currentStage === "TP1")
+    && (nextStage === "TP0" || nextStage === "TP1")
+  ) {
+    return resolvePreferredFillSyncStageEvent("TP1", currentEvent, nextEvent, currentPayload, payload);
+  }
+
+  if ((currentStage === "TP0" && nextStage === "TP1") || (currentStage === "TP1" && nextStage === "TP0")) {
+    if (trailActive || tp1Done) {
+      return resolvePreferredFillSyncStageEvent("TP1", currentEvent, nextEvent, currentPayload, payload);
+    }
+    if (tp0Done) {
+      return resolvePreferredFillSyncStageEvent("TP0", currentEvent, nextEvent, currentPayload, payload);
+    }
+    return resolvePreferredFillSyncStageEvent("TP0", currentEvent, nextEvent, currentPayload, payload);
+  }
+
+  if ((currentStage === "TP1" && nextStage === "TRAIL") || (currentStage === "TRAIL" && nextStage === "TP1")) {
+    if (trailActive) {
+      return resolvePreferredFillSyncStageEvent("TRAIL", currentEvent, nextEvent, currentPayload, payload);
+    }
+    return resolvePreferredFillSyncStageEvent("TP1", currentEvent, nextEvent, currentPayload, payload);
+  }
+
+  return nextEvent;
+}
+
+function shouldClampConflictingFillSyncAlertCloseRatio(currentPayload = {}, payload = {}, preferredEvent = null) {
+  const currentEvent = stripFillSyncUnverifiedSuffix(currentPayload.event);
+  const nextEvent = stripFillSyncUnverifiedSuffix(payload.event);
+  const preferred = stripFillSyncUnverifiedSuffix(preferredEvent);
+  if (!currentEvent || !nextEvent || currentEvent === nextEvent) return false;
+  if (isTpP0Event(preferred) || isTpP1Event(preferred)) return true;
+  return false;
+}
+
+function findExistingFillSyncAlertBatchByChainKey(batchMap, chainKey) {
+  if (!(batchMap instanceof Map) || !chainKey) return null;
+  for (const item of batchMap.values()) {
+    if (item && item.chainKey === chainKey) return item;
+  }
+  return null;
 }
 
 function buildFillSyncAlertCooldownKey({ symbol, event, intent, side, orderMeta, payload } = {}) {
@@ -1030,6 +1279,9 @@ function buildFillSyncAlertCooldownKey({ symbol, event, intent, side, orderMeta,
     : "NA";
   const clientOrderId = String(orderMeta && orderMeta.clientOrderId || "").trim() || "NA";
   if (ev === "EXIT_OPPOSITE_SIGNAL") {
+    if (entryEventId === "NA") {
+      return [sym, ev, it, tradeSide, orderId, clientOrderId, positionSideBefore].join("|");
+    }
     return [sym, ev, it, tradeSide, entryEventId, positionSideBefore].join("|");
   }
   return [sym, ev, it, tradeSide, orderId, clientOrderId].join("|");
@@ -1079,10 +1331,12 @@ function queueFillSyncAlertBatch(batchMap, {
 } = {}) {
   if (!(batchMap instanceof Map) || !payload || typeof payload !== "object") return;
   const key = buildFillSyncAlertKey({ symbol, event, intent, side, orderMeta, tradeMs, payload });
-  const current = batchMap.get(key);
+  const chainKey = buildFillSyncAlertChainKey({ symbol, event, intent, side, orderMeta, tradeMs, payload });
+  const current = batchMap.get(key) || findExistingFillSyncAlertBatchByChainKey(batchMap, chainKey);
   if (!current) {
     batchMap.set(key, {
       key,
+      chainKey,
       latestTradeMs: Number.isFinite(Number(tradeMs)) ? Number(tradeMs) : 0,
       fillCount: 1,
       payload: { ...payload },
@@ -1091,14 +1345,24 @@ function queueFillSyncAlertBatch(batchMap, {
   }
 
   const nextTradeMs = Number.isFinite(Number(tradeMs)) ? Number(tradeMs) : current.latestTradeMs;
-  const mergedCloseRatio = mergeFillSyncAlertCloseRatio(current.payload, payload);
+  const preferredEvent = resolvePreferredFillSyncAlertEvent(current.payload, payload);
+  const conflictingStageMerge = shouldClampConflictingFillSyncAlertCloseRatio(current.payload, payload, preferredEvent);
+  const mergedCloseRatio = conflictingStageMerge
+    ? clamp01(Math.max(
+      Number.isFinite(Number(current.payload.closeRatio)) ? Number(current.payload.closeRatio) : 0,
+      Number.isFinite(Number(payload.closeRatio)) ? Number(payload.closeRatio) : 0,
+    ))
+    : mergeFillSyncAlertCloseRatio(current.payload, payload);
   const mergedPayload = {
     ...current.payload,
     ...payload,
+    event: preferredEvent,
     notional: sumFiniteValues(current.payload.notional, payload.notional),
     realizedPnl: sumFiniteValues(current.payload.realizedPnl, payload.realizedPnl),
     closeRatio: mergedCloseRatio,
-    closeRatioAggregation: (
+    closeRatioAggregation: conflictingStageMerge
+      ? "MAX"
+      : (
       String(current.payload.closeRatioAggregation || "").trim().toUpperCase() === "MAX"
       && String(payload.closeRatioAggregation || "").trim().toUpperCase() === "MAX"
     ) ? "MAX" : "SUM",
@@ -1108,8 +1372,20 @@ function queueFillSyncAlertBatch(batchMap, {
     mergedPayload.execPrice = current.payload.execPrice;
   }
 
-  batchMap.set(key, {
-    key,
+  const nextKey = buildFillSyncAlertKey({
+    symbol,
+    event: preferredEvent,
+    intent,
+    side,
+    orderMeta,
+    tradeMs: nextTradeMs,
+    payload: mergedPayload,
+  });
+  if (current.key !== nextKey) batchMap.delete(current.key);
+
+  batchMap.set(nextKey, {
+    key: nextKey,
+    chainKey: current.chainKey || chainKey || null,
     latestTradeMs: Math.max(current.latestTradeMs, nextTradeMs),
     fillCount: current.fillCount + 1,
     payload: mergedPayload,
@@ -1415,6 +1691,77 @@ function applyAuthoritativeIntentEventOverride(event, intent) {
   const currentEvent = String(event || "").trim().toUpperCase();
   const intentEvent = String(intent && intent.event || "").trim().toUpperCase();
   if (isAuthoritativeForcedExitIntentEvent(intentEvent)) return intentEvent;
+  return currentEvent;
+}
+
+function resolveExternalSyncHintStage({
+  event,
+  orderMeta,
+  positionCtx,
+  recentTp0,
+  recentTp1,
+} = {}) {
+  if (String(event || "").trim().toUpperCase() !== "EXIT_EXTERNAL_SYNC") return null;
+  const clientOrderId = String(orderMeta && orderMeta.clientOrderId || "").trim();
+  const trackedClientOrder = !!(clientOrderId && /^(fut_|dbj_)/.test(clientOrderId));
+  if (orderMeta && orderMeta.closePosition === true && !trackedClientOrder) {
+    return "UNTRACKED_CLOSE_POSITION";
+  }
+  const trailActive = !!(
+    (positionCtx && positionCtx.trailActive === true)
+    || isTrailExitEligible(positionCtx, recentTp1)
+  );
+  if (trailActive) return "TRAIL_AFTER_TP1";
+  if (
+    (positionCtx && positionCtx.tpP1Done === true)
+    || isTpP1Event(recentTp1 && recentTp1.event)
+  ) {
+    return "AFTER_TP1";
+  }
+  if (
+    (positionCtx && positionCtx.tpP0Done === true)
+    || isTpP0Event(recentTp0 && recentTp0.event)
+  ) {
+    return "AFTER_TP0";
+  }
+  return "UNKNOWN";
+}
+
+function inferAuthoritativeForcedExitEventFromRefs(...values) {
+  for (const value of values) {
+    const raw = String(value || "").trim().toUpperCase();
+    if (!raw) continue;
+    if (raw === "FORCE_EXIT_HALF" || raw.includes("FORCE_EXIT_HALF")) return "FORCE_EXIT_HALF";
+    if (raw === "FORCE_EXIT_ALL" || raw.includes("FORCE_EXIT_ALL")) return "FORCE_EXIT_ALL";
+    if (raw === "EXIT_FORCE_ALL" || raw.includes("EXIT_FORCE_ALL")) return "FORCE_EXIT_ALL";
+    if (raw === "ACTIVE_NATIVE_STOP_MISSING_FORCE_EXIT") return "FORCE_EXIT_ALL";
+  }
+  return null;
+}
+
+function applyAuthoritativeForcedExitRefOverride({
+  event,
+  intent = null,
+  exitOrderContract = null,
+  intentId = null,
+  signalId = null,
+  signalDocId = null,
+  runId = null,
+  requestId = null,
+  decisionReason = null,
+} = {}) {
+  const currentEvent = String(event || "").trim().toUpperCase();
+  const forcedEvent = inferAuthoritativeForcedExitEventFromRefs(
+    exitOrderContract && exitOrderContract.event,
+    intent && intent.event,
+    intentId,
+    signalId,
+    signalDocId,
+    runId,
+    requestId,
+    decisionReason
+  );
+  if (isAuthoritativeForcedExitIntentEvent(forcedEvent)) return forcedEvent;
   return currentEvent;
 }
 
@@ -1773,6 +2120,115 @@ function buildExitAuthorityChainKey({
   return `${ex}__${sym}__STAGE__${stage}`;
 }
 
+function resolveCanonicalExternalExitEvent({
+  authorityMap,
+  exchange,
+  symbol,
+  event,
+  entryEventId = null,
+  signalDocId = null,
+  orderMeta = null,
+  positionCtx = null,
+  recentTp0 = null,
+  recentTp1 = null,
+  recentTrail = null,
+  rules = null,
+} = {}) {
+  const currentEvent = String(event || "").trim().toUpperCase();
+  const currentStage = classifyExitAuthorityStage(currentEvent);
+  const chainKey = buildExitAuthorityChainKey({
+    exchange,
+    symbol,
+    event: currentEvent,
+    entryEventId,
+    signalDocId,
+    orderMeta,
+  });
+  const recentTrailEvent = String(recentTrail && recentTrail.event || "").trim().toUpperCase();
+  const decision = resolveCanonicalExitAuthorityDecision({
+    exchange,
+    symbol,
+    currentStage,
+    chainKey,
+    entryEventId,
+    signalDocId,
+    orderMeta,
+    positionSnapshot: positionCtx,
+    authorityState: authorityMap instanceof Map && authorityMap.has(chainKey)
+      ? authorityMap.get(chainKey)
+      : null,
+    recentStages: {
+      tp0: isTpP0Event(recentTp0 && recentTp0.event) ? "TP0" : null,
+      tp1: isTpP1Event(recentTp1 && recentTp1.event) ? "TP1" : null,
+      trail: recentTrailEvent.startsWith("EXIT_TRAIL") ? "TRAIL" : null,
+    },
+    rules,
+  });
+  const resolvedEvent = decision.stage === currentStage
+    ? currentEvent
+    : buildExitEventByKind(decision.stage, rules);
+  return {
+    event: resolvedEvent,
+    stage: decision.stage,
+    chainKey,
+    reason: decision.reason,
+    ledger: decision.ledger || null,
+    blockedInvariant: decision.blockedInvariant === true,
+    transitionEvents: decision.transitionEvents || [],
+    primaryTransitionEvent: decision.primaryTransitionEvent || null,
+  };
+}
+
+function shouldEnforceSingleStopWriter() {
+  const raw = String(process.env.BINANCE_EXIT_SINGLE_STOP_WRITER_ENFORCED || "1").trim().toLowerCase();
+  return raw !== "0" && raw !== "false" && raw !== "off" && raw !== "no";
+}
+
+async function recordCanonicalExitTransitionsForFill({
+  exchange,
+  symbol,
+  fillId,
+  tradeMs,
+  event,
+  transitionEvents,
+  chainKey,
+  ledger,
+  reason,
+  entryEventId = null,
+  orderMeta = null,
+  tradeId = null,
+} = {}) {
+  const transitions = Array.isArray(transitionEvents) ? transitionEvents.filter(Boolean) : [];
+  if (!transitions.length) return [];
+  const createdAt = Number.isFinite(Number(tradeMs)) ? new Date(Number(tradeMs)).toISOString() : nowIso();
+  const results = [];
+  for (const transitionEvent of transitions) {
+    const recorded = await recordUnifiedEvent({
+      eventKind: "CANONICAL_EXIT_TRANSITION",
+      eventSource: "BINANCE_FUTURES_FILLS_SYNC",
+      exchange,
+      symbol,
+      event: transitionEvent,
+      fillId,
+      tsMs: Number.isFinite(Number(tradeMs)) ? Number(tradeMs) : null,
+      createdAt,
+      sourceDocumentId: `CANONICAL_EXIT_TRANSITION__${fillId}__${transitionEvent}`,
+      payload: {
+        canonical_transition_event: transitionEvent,
+        canonical_event: event,
+        canonical_exit_chain_key: chainKey || null,
+        canonical_exit_reason: reason || null,
+        entry_event_id: entryEventId || null,
+        external_order_id: Number.isFinite(Number(orderMeta && orderMeta.orderId)) ? Number(orderMeta.orderId) : null,
+        external_trade_id: Number.isFinite(Number(tradeId)) ? Number(tradeId) : null,
+        quantity_contract_ledger: ledger || null,
+      },
+    });
+    results.push(recorded);
+  }
+  return results;
+}
+
 function getExitAuthorityState(map, chainKey) {
   if (!map.has(chainKey)) {
     map.set(chainKey, {
@@ -1908,12 +2364,22 @@ function applyActiveExitStageBackstopOverride({
   positionCtx,
   recentTp0,
   recentTp1,
+  recentTrail,
   rules,
   qtyPct,
 } = {}) {
   const currentEvent = String(event || "").trim().toUpperCase();
-  if (!currentEvent.startsWith("EXIT_TP_P0")) return currentEvent;
+  const currentIsTp0 = isTpP0Event(currentEvent);
+  const currentIsTp1 = isTpP1Event(currentEvent);
+  if (!(currentIsTp0 || currentIsTp1)) return currentEvent;
   const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
+  const recentTrailEvent = String(recentTrail && recentTrail.event || "").trim().toUpperCase();
+  const trailEligible = isTrailExitEligible(ctx, recentTp1) || recentTrailEvent.startsWith("EXIT_TRAIL");
+
+  if (ctx.tpP1Done === true || ctx.trailActive === true || trailEligible) {
+    return buildExitEventByKind("TRAIL", rules);
+  }
+  if (!currentIsTp0) return currentEvent;
   if (ctx.tpP0Done !== true) return currentEvent;
 
   const inferredQtyKind = inferTakeProfitKindFromQtyPct(qtyPct, rules);
@@ -1923,11 +2389,9 @@ function applyActiveExitStageBackstopOverride({
     rules
   );
   const constrainedKind = inferStageConstrainedTakeProfitKind(ctx, inferredQtyKind, recentTp0);
-  const trailEligible = isTrailExitEligible(ctx, recentTp1);
   const closePosition = !!(orderMeta && orderMeta.closePosition === true);
 
   if (trailEligible && closePosition) return buildExitEventByKind("TRAIL", rules);
-  if (ctx.tpP1Done === true || ctx.trailActive === true) return buildExitEventByKind("TP1", rules);
   if (inferredPostFillKind === "TP1" || constrainedKind === "TP1") return buildExitEventByKind("TP1", rules);
   return currentEvent;
 }
@@ -2294,6 +2758,7 @@ async function syncMarketTrades({
   const exitOrderContractCache = new Map();
   const recentTp1BySymbol = new Map();
   const recentTp0BySymbol = new Map();
+  const recentTrailBySymbol = new Map();
   const pendingAlertBatches = new Map();
   let lastExitTradeMs = null;
   let observedExitFill = false;
@@ -2337,6 +2802,7 @@ async function syncMarketTrades({
       const exitRules = resolveAlertExitRules(positionCtx, defaultExitRules);
       const recentTp1 = recentTp1BySymbol.get(sym) || null;
       const recentTp0 = recentTp0BySymbol.get(sym) || null;
+      const recentTrail = recentTrailBySymbol.get(sym) || null;
       const execPrice = Number(t.price);
       const execQtyBase = Number(t.qty);
       const notional = Number(t.quoteQty) || (Number.isFinite(execPrice) && Number.isFinite(execQtyBase) ? execPrice * execQtyBase : null);
@@ -2379,6 +2845,21 @@ async function syncMarketTrades({
       });
       const signalId = signalRefs.signalId;
       const signalDocId = signalRefs.signalDocId;
+      let canonicalStageDecision = resolveCanonicalExternalExitEvent({
+        authorityMap: exitQtyAuthorityMap,
+        exchange: "BINANCEFUT",
+        symbol: sym,
+        event,
+        entryEventId: (positionCtx && positionCtx.entryEventId) || null,
+        signalDocId,
+        orderMeta,
+        positionCtx,
+        recentTp0,
+        recentTp1,
+        recentTrail,
+        rules: exitRules,
+      });
+      event = canonicalStageDecision.event;
       const qtyFraction = intent ? intent.qty_fraction : null;
       const intentEntryCtx = extractEntryContextFromIntent(intent);
       const signalPrice = intent
@@ -2448,6 +2929,17 @@ async function syncMarketTrades({
       }
       event = applyAuthoritativeExitContractOverride(event, exitOrderContract);
       event = applyAuthoritativeIntentEventOverride(event, intent);
+      event = applyAuthoritativeForcedExitRefOverride({
+        event,
+        intent,
+        exitOrderContract,
+        intentId,
+        signalId,
+        signalDocId,
+        runId: intent && intent.run_id,
+        requestId: intent && intent.request_id,
+        decisionReason: intent && (intent.reason || intent.status_reason || intent.cancel_reason),
+      });
       event = applyActiveExitStageBackstopOverride({
         event,
         trade: t,
@@ -2455,6 +2947,7 @@ async function syncMarketTrades({
         positionCtx,
         recentTp0,
         recentTp1,
+        recentTrail,
         rules: exitRules,
         qtyPct,
       });
@@ -2473,6 +2966,21 @@ async function syncMarketTrades({
       }
       const entryEventId = intentEntryCtx.entryEventId || inferredEntryCtx.entryEventId || null;
       const entrySignalType = intentEntryCtx.entrySignalType || inferredEntryCtx.entrySignalType || null;
+      canonicalStageDecision = resolveCanonicalExternalExitEvent({
+        authorityMap: exitQtyAuthorityMap,
+        exchange: "BINANCEFUT",
+        symbol: sym,
+        event,
+        entryEventId,
+        signalDocId,
+        orderMeta,
+        positionCtx,
+        recentTp0,
+        recentTp1,
+        recentTrail,
+        rules: exitRules,
+      });
+      event = canonicalStageDecision.event;
       const positionSideBefore = inferPositionSideBefore({ trade: t, positionCtx });
       const authorityDecision = looksLikeExit
         ? applyExternalExitQtyAuthority({
@@ -2521,6 +3029,20 @@ async function syncMarketTrades({
           closeRatio,
         })
         : false;
+      const canonicalTransitionDecision = looksLikeExit
+        ? resolveCanonicalExitTransitionEvents({
+          resolvedStage: canonicalStageDecision.stage || authorityDecision.stage || null,
+          positionSnapshot: positionCtx,
+          recentStages: {
+            tp0: isTpP0Event(recentTp0 && recentTp0.event) ? "TP0" : null,
+            tp1: isTpP1Event(recentTp1 && recentTp1.event) ? "TP1" : null,
+            trail: String(recentTrail && recentTrail.event || "").trim().toUpperCase().startsWith("EXIT_TRAIL") ? "TRAIL" : null,
+          },
+          ledger: canonicalStageDecision.ledger || null,
+          observedQtyRatio: authoritativeQtyPct,
+          fullExit,
+        })
+        : { transitionEvents: [], primaryTransitionEvent: null };
 
       const upserted = await upsertExternalFill({
         fillId,
@@ -2575,6 +3097,10 @@ async function syncMarketTrades({
           external_after_tp1_sec: Number.isFinite(recentTp1LagSec) ? recentTp1LagSec : null,
           external_position_side: t.positionSide || null,
           external_realized_pnl: realizedPnl,
+          canonical_transition_events: Array.isArray(canonicalTransitionDecision.transitionEvents)
+            ? canonicalTransitionDecision.transitionEvents
+            : [],
+          canonical_primary_transition_event: canonicalTransitionDecision.primaryTransitionEvent || null,
           qty_pct_mode: qtyScale.mode,
           qty_pct_ratio: Number.isFinite(qtyScale.ratio) ? qtyScale.ratio : null,
           qty_pct_intent_raw: Number.isFinite(qtyScale.intentQtyPct) ? qtyScale.intentQtyPct : null,
@@ -2582,6 +3108,9 @@ async function syncMarketTrades({
           qty_pct_intent_qty_base: Number.isFinite(qtyScale.intentQtyBase) ? qtyScale.intentQtyBase : null,
           authoritative_exit_chain_key: authorityDecision.chainKey || null,
           authoritative_exit_stage: authorityDecision.stage || null,
+          canonical_exit_chain_key: canonicalStageDecision.chainKey || authorityDecision.chainKey || null,
+          canonical_exit_stage: canonicalStageDecision.stage || authorityDecision.stage || null,
+          canonical_exit_reason: canonicalStageDecision.reason || null,
           authoritative_qty_pct_raw: Number.isFinite(Number(authorityDecision.rawQtyPct)) ? Number(authorityDecision.rawQtyPct) : null,
           authoritative_qty_pct_accepted: Number.isFinite(Number(authorityDecision.acceptedQtyPct)) ? Number(authorityDecision.acceptedQtyPct) : null,
           authoritative_qty_pct_dropped: Number.isFinite(Number(authorityDecision.droppedQtyPct)) ? Number(authorityDecision.droppedQtyPct) : null,
@@ -2608,6 +3137,56 @@ async function syncMarketTrades({
           clientOrderId,
           execPrice: Number.isFinite(execPrice) ? execPrice : null,
         });
+      }
+      if (String(event || "").trim().toUpperCase().startsWith("EXIT_TRAIL")) {
+        recentTrailBySymbol.set(sym, {
+          tradeMs,
+          event,
+          orderId: Number.isFinite(Number(orderMeta && orderMeta.orderId)) ? Number(orderMeta.orderId) : null,
+          clientOrderId,
+          execPrice: Number.isFinite(execPrice) ? execPrice : null,
+        });
+      }
+
+      if (upserted && upserted.inserted && looksLikeExit) {
+        try {
+          await recordCanonicalExitTransitionsForFill({
+            exchange: "BINANCEFUT",
+            symbol: sym,
+            fillId,
+            tradeMs,
+            event,
+            transitionEvents: canonicalTransitionDecision.transitionEvents,
+            chainKey: canonicalStageDecision.chainKey || authorityDecision.chainKey || null,
+            ledger: canonicalStageDecision.ledger || null,
+            reason: canonicalStageDecision.reason || null,
+            entryEventId,
+            orderMeta,
+            tradeId,
+          });
+        } catch (transitionErr) {
+          console.warn("[BINANCEFUT_CANONICAL_EXIT_TRANSITION_RECORD_FAIL]", transitionErr && transitionErr.message ? transitionErr.message : String(transitionErr));
+        }
+        try {
+          const stageHintResult = await promotePositionStageHintsFromExternalExit({
+            exchange: "BINANCEFUT",
+            symbol: sym,
+            event,
+            trade: t,
+            runId: `RUN__FILL_SYNC_STAGE_HINT__${sym}__${tradeMs}`,
+          });
+          if (stageHintResult && stageHintResult.position) {
+            positionEntryCache.set(`BINANCEFUT__${sym}`, {
+              ...(positionCtx && typeof positionCtx === "object" ? positionCtx : {}),
+              tpP0Done: stageHintResult.position.meta && stageHintResult.position.meta.tp_p0_done === true,
+              tpP1Done: stageHintResult.position.meta && stageHintResult.position.meta.tp_p1_done === true,
+              trailActive: stageHintResult.position.meta && stageHintResult.position.meta.trail_active === true,
+              position: stageHintResult.position,
+            });
+          }
+        } catch (stageErr) {
+          console.warn("[BINANCEFUT_FILL_SYNC_STAGE_HINT_FAIL]", stageErr && stageErr.message ? stageErr.message : String(stageErr));
+        }
       }
 
       if (intentId) {
@@ -2673,7 +3252,13 @@ async function syncMarketTrades({
         const isForcedExitEvent = isAuthoritativeForcedExitIntentEvent(event);
         const isExitEvent = event.startsWith("EXIT_") || isForcedExitEvent;
         const isEntryLikeEvent = !isExitEvent && event !== "SYNC_FILL";
-        const allowExitAlert = isExitEvent && isMeaningfulRealizedPnl(realizedPnl);
+        const canonicalStageForAlert = String(canonicalStageDecision.stage || authorityDecision.stage || "").trim().toUpperCase();
+        const canonicalTransitionRequired = looksLikeExit
+          && (canonicalStageForAlert === "TP0" || canonicalStageForAlert === "TP1" || canonicalStageForAlert === "TRAIL");
+        const allowExitAlert = isExitEvent && (
+          isMeaningfulRealizedPnl(realizedPnl)
+          || event === "EXIT_EXTERNAL_SYNC"
+        ) && (!canonicalTransitionRequired || canonicalTransitionDecision.transitionEvents.length > 0);
         const allowEntryAlert = isEntryLikeEvent;
         const duplicateSuppressed = looksLikeExit
           && authorityDecision
@@ -2722,6 +3307,18 @@ async function syncMarketTrades({
               closeRatioSource: closeRatioInfo ? closeRatioInfo.source : null,
               fullExit,
               realizedPnl: isExitEvent ? realizedPnl : null,
+              reason: isExitEvent
+                ? (String(
+                  (intent && (intent.reason || intent.status_reason || intent.cancel_reason))
+                  || (event === "EXIT_EXTERNAL_SYNC" ? "EXTERNAL_FILL_RECONCILED" : "")
+                ).trim() || null)
+                : null,
+              decisionReason: isExitEvent
+                ? (String(
+                  (intent && (intent.status_reason || intent.reason || intent.cancel_reason))
+                  || (event === "EXIT_EXTERNAL_SYNC" ? "EXTERNAL_FILL_RECONCILED" : "")
+                ).trim() || null)
+                : null,
               positionSideBefore,
               positionSideAfter: isExitEvent ? null : resolvePositionSideForTrade(t, positionSideBefore),
               appliedLeverage: Number.isFinite(intentLeverage)
@@ -2730,6 +3327,29 @@ async function syncMarketTrades({
               leverageReason: intentLeverageReason || "BINANCE_USER_TRADES_SYNC",
               exitRules,
               entryEventId: entryEventId || null,
+              canonicalExitStage: canonicalStageDecision.stage || authorityDecision.stage || null,
+              canonicalExitChainKey: canonicalStageDecision.chainKey || authorityDecision.chainKey || null,
+              canonicalTransitionEvent: canonicalTransitionDecision.primaryTransitionEvent || null,
+              canonicalTransitionEvents: Array.isArray(canonicalTransitionDecision.transitionEvents)
+                ? canonicalTransitionDecision.transitionEvents
+                : [],
+              classificationVerified: !String(event || "").trim().toUpperCase().endsWith("_UNVERIFIED"),
+              alertStageHintTp0Done: (positionCtx && positionCtx.tpP0Done === true) || isTpP0Event(recentTp0 && recentTp0.event),
+              alertStageHintTp1Done: (positionCtx && positionCtx.tpP1Done === true) || isTpP1Event(recentTp1 && recentTp1.event),
+              alertStageHintTrailActive: positionCtx && positionCtx.trailActive === true,
+              externalSyncHintStage: resolveExternalSyncHintStage({
+                event,
+                orderMeta,
+                positionCtx,
+                recentTp0,
+                recentTp1,
+              }),
+              externalSyncOrderType: event === "EXIT_EXTERNAL_SYNC"
+                ? (String(orderMeta && orderMeta.orderType || "").trim().toUpperCase() || null)
+                : null,
+              externalSyncClosePosition: event === "EXIT_EXTERNAL_SYNC"
+                ? !!(orderMeta && orderMeta.closePosition === true)
+                : null,
               features: (intent && intent.features_json && typeof intent.features_json === "object") ? intent.features_json : {},
               runId: `FILL_SYNC__${sym}`,
               orderId: Number.isFinite(Number(orderMeta && orderMeta.orderId)) ? Number(orderMeta.orderId) : null,
@@ -2785,21 +3405,42 @@ async function syncMarketTrades({
       const syncedMeta = syncedPosition && typeof syncedPosition.meta === "object" ? syncedPosition.meta : {};
       const syncedState = String(syncedPosition && syncedPosition.state || "").toUpperCase();
       const syncedQtyBase = Number(syncedPosition && syncedPosition.qty_base);
-      const trailStageActive = syncedMeta.tp_p1_done === true || syncedMeta.trail_active === true || syncedMeta.tp_p1_pending === true;
-      if (syncedPosition && syncedState === "ACTIVE" && Number.isFinite(syncedQtyBase) && syncedQtyBase > 0 && trailStageActive) {
+      const hintedMeta = mergeRecentExitHintsIntoMeta(syncedMeta, {
+        recentTp0: recentTp0BySymbol.get(sym) || null,
+        recentTp1: recentTp1BySymbol.get(sym) || null,
+        recentTrail: recentTrailBySymbol.get(sym) || null,
+      });
+      if (syncedPosition && syncedState === "ACTIVE" && Number.isFinite(syncedQtyBase) && syncedQtyBase > 0) {
         try {
-          const liveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol: sym });
-          if (liveCfg && liveCfg.apiKey && liveCfg.apiSecret) {
-            await refreshBinanceNativeProtectionWithRetry({
-              liveCfg,
+          if (shouldEnforceSingleStopWriter()) {
+            await recordExitRepairRequest({
               exchange: "BINANCEFUT",
               symbol: sym,
-              fallbackSide: syncedMeta.position_side || syncedPosition.position_side || syncedPosition.side || null,
-              fallbackEntryPrice: Number(syncedPosition.avg_price),
-              fallbackLeverage: Number(syncedMeta.external_leverage || syncedMeta.leverage || syncedPosition.leverage || 1),
-              exitRulesOverride: syncedMeta.exit_rules_override || null,
-              posMeta: syncedMeta,
+              source: "BINANCE_FUTURES_FILLS_SYNC",
+              requestKind: "NATIVE_STOP_REFRESH",
+              reason: "NON_AUTHORITY_LAYER_REQUEST",
+              dedupeKey: `BINANCEFUT__${sym}__FILL_SYNC__NATIVE_STOP_REFRESH`,
+              payload: {
+                fallback_side: hintedMeta.position_side || syncedPosition.position_side || syncedPosition.side || null,
+                fallback_entry_price: Number(syncedPosition.avg_price),
+                fallback_leverage: Number(hintedMeta.external_leverage || hintedMeta.leverage || syncedPosition.leverage || 1),
+                exit_rules_override: hintedMeta.exit_rules_override || null,
+              },
             });
+          } else {
+            const liveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol: sym });
+            if (liveCfg && liveCfg.apiKey && liveCfg.apiSecret) {
+              await refreshBinanceNativeProtectionWithRetry({
+                liveCfg,
+                exchange: "BINANCEFUT",
+                symbol: sym,
+                fallbackSide: hintedMeta.position_side || syncedPosition.position_side || syncedPosition.side || null,
+                fallbackEntryPrice: Number(syncedPosition.avg_price),
+                fallbackLeverage: Number(hintedMeta.external_leverage || hintedMeta.leverage || syncedPosition.leverage || 1),
+                exitRulesOverride: hintedMeta.exit_rules_override || null,
+                posMeta: hintedMeta,
+              });
+            }
           }
         } catch (refreshErr) {
           console.warn("[BINANCEFUT_FILL_SYNC_NATIVE_REFRESH_FAIL]", refreshErr && refreshErr.message ? refreshErr.message : String(refreshErr));
@@ -2937,8 +3578,11 @@ module.exports = {
     classifyExitAuthorityStage,
     buildExitAuthorityChainKey,
     applyExternalExitQtyAuthority,
+    resolveCanonicalExternalExitEvent,
     inferStageConstrainedTakeProfitKind,
     applyActiveExitStageBackstopOverride,
+    buildStageHintedMeta,
+    mergeRecentExitHintsIntoMeta,
     buildImmediateProjectionIssues,
     auditImmediateProjectionEvents,
     auditProjectionEventImmediately,
@@ -2952,6 +3596,9 @@ module.exports = {
     shouldSendFillSyncTradeAlert,
     flushFillSyncAlertBatches,
     canFinalizeIntentFromExternalFill,
+    resolveExternalSyncHintStage,
+    inferAuthoritativeForcedExitEventFromRefs,
+    applyAuthoritativeForcedExitRefOverride,
     applyAuthoritativeExitContractOverride,
     applyAuthoritativeIntentEventOverride,
   },

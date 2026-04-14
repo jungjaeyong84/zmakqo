@@ -117,6 +117,33 @@ async function run() {
   assert.ok(tp0Failure.body.includes("전략계약: SL_1.65 / TP1_2.8 / TRAIL_0.9R / RUNNER_MIN_2 / BE_0.25"), "tp0 failure should keep strategy contract under separate label");
   assert.ok(tp0Failure.body.includes("시장군: RESCUE"), "tp0 failure should include cohort");
 
+  const externalSync = __test.buildMessage({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    event: "EXIT_EXTERNAL_SYNC",
+    intent: "EXIT",
+    side: "SELL",
+    positionSideBefore: "LONG",
+    executionMode: "LIVE",
+    notional: 515.4,
+    execPrice: 73623,
+    fullExit: true,
+    realizedPnl: 1.23,
+    appliedLeverage: 2,
+    leverageReason: "BINANCE_USER_TRADES_SYNC",
+    reason: "EXTERNAL_FILL_RECONCILED",
+    externalSyncHintStage: "TRAIL_AFTER_TP1",
+    externalSyncOrderType: "MARKET",
+    externalSyncClosePosition: false,
+    exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
+  });
+  assert.ok(externalSync, "external sync message should exist");
+  assert.strictEqual(externalSync.title, "BTCUSDT EXTERNAL_SYNC 전량 청산");
+  assert.ok(externalSync.body.includes("종류: 외부 동기화 청산"), "external sync label should be explicit");
+  assert.ok(externalSync.body.includes("동기화맥락: 트레일 종료 후 외부 동기화"), "external sync should explain prior stage context");
+  assert.ok(externalSync.body.includes("동기화사유: EXTERNAL_FILL_RECONCILED"), "external sync should include reconciliation reason");
+  assert.ok(externalSync.body.includes("동기화주문: MARKET / close_position=false"), "external sync should include order context");
+
   console.log("TRADE_EXECUTION_ALERT_TEST_OK");
 }
 

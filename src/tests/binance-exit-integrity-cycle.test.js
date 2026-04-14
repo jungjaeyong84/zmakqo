@@ -47,13 +47,37 @@ function buildScriptResult(parsed) {
       skipped_n: 0,
       results: symbols.map((symbol) => ({ ok: true, symbol, repaired: true })),
     }),
+    runWatchdog: async () => ({
+      ok: true,
+      status: "OK",
+      active_symbol_n: 2,
+      target_symbol_n: 2,
+      issue_symbol_n: 0,
+      issue_symbols: [],
+      repaired_symbol_n: 0,
+      repaired_symbols: [],
+      rows: [],
+      actionable_rows: [],
+      repaired_rows: [],
+    }),
     runScriptImpl: (script) => {
       if (script === "backfill-binance-active-exit-stage.js") return buildScriptResult({ issue_symbol_n: 2 });
       if (script === "report-fill-sync-alert-duplication.js") return buildScriptResult({ duplicate_group_n: 0, report: { duplicate_group_n: 0 } });
+      if (script === "report-fill-sync-alert-event-consistency.js") return buildScriptResult({ issue_n: 0 });
+      if (script === "report-trade-execution-alert-cross-audit.js") return buildScriptResult({ coverage_ready: true, missing_alert_fill_n: 0 });
+      if (script === "report-fill-sync-alert-duplication-live-separation.js") return buildScriptResult({ live_duplicate_group_n: 0 });
       if (script === "report-binance-exit-qty-contract-audit.js") return buildScriptResult({ issue_chain_count: 0 });
       if (script === "report-binance-exit-qty-live-separation.js") return buildScriptResult({ live_issue_chain_n: 0 });
       if (script === "report-trail-runner-floor-audit.js") return buildScriptResult({ violation_n: 0 });
       if (script === "report-trail-runner-floor-live-separation.js") return buildScriptResult({ live_violation_n: 0 });
+      if (script === "report-binance-exit-authority-live-board.js") {
+        return buildScriptResult({
+          live_issue_position_n: 0,
+          actionable_live_issue_position_n: 0,
+          artifact_only_live_issue_position_n: 0,
+        });
+      }
+      if (script === "report-binance-canonical-exit-stage-qa.js") return buildScriptResult({ fail_n: 0 });
       throw new Error(`unexpected script ${script}`);
     },
   });
@@ -71,9 +95,21 @@ function buildScriptResult(parsed) {
     binance_exit_qty_live_separation: { parsed: { live_issue_chain_n: 2 } },
     trail_runner_floor_live_separation: { parsed: { live_violation_n: 1 } },
     fill_sync_alert_duplication: { parsed: { duplicate_group_n: 4 } },
+    fill_sync_alert_event_consistency: { parsed: { issue_n: 2 } },
+    trade_execution_alert_cross_audit: { parsed: { coverage_ready: true, missing_alert_fill_n: 3 } },
+    fill_sync_alert_duplication_live_separation: { parsed: { live_duplicate_group_n: 2 } },
+    binance_exit_authority_live_board: { parsed: { live_issue_position_n: 3, actionable_live_issue_position_n: 1, artifact_only_live_issue_position_n: 2 } },
+    binance_canonical_exit_stage_qa: { parsed: { fail_n: 2 } },
   });
   assert.strictEqual(warnSummary.status, "WARN");
-  assert.strictEqual(warnSummary.live_issue_count, 8);
+  assert.strictEqual(warnSummary.live_issue_count, 14);
+  assert.strictEqual(warnSummary.fill_sync_alert_event_issue_n, 2);
+  assert.strictEqual(warnSummary.trade_execution_alert_missing_fill_n, 3);
+  assert.strictEqual(warnSummary.trade_execution_alert_coverage_ready, true);
+  assert.strictEqual(warnSummary.authority_live_issue_position_n, 3);
+  assert.strictEqual(warnSummary.authority_actionable_live_issue_position_n, 1);
+  assert.strictEqual(warnSummary.authority_artifact_only_live_issue_position_n, 2);
+  assert.strictEqual(warnSummary.canonical_exit_stage_fail_n, 2);
 
   const md = __test.buildMarkdown({
     generated_at: "2026-04-13T00:00:00.000Z",

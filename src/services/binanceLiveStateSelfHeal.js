@@ -5,6 +5,7 @@ const { getSystemSettingsForProvider } = require("../storage/settings");
 const { upsertSelfHealFailureObservation } = require("../storage/positionRuntimeObservations");
 const { sendAlert } = require("../utils/alerts");
 const { getPositionReadView, listExchangePositionReadViews } = require("./positionReadModel");
+const { repairLiveTrailingStageForSymbol } = require("./liveTrailingStageRepair");
 const {
   syncFuturesPositionOnly,
   runDistributedFuturesPositionSync,
@@ -193,10 +194,38 @@ async function healBinanceLivePosition({
           };
         }
         const nextMeta = (pos && pos.meta && typeof pos.meta === "object") ? pos.meta : {};
-        if (shouldRepairBinanceLivePosition(nextMeta)) {
+        if (forceRepair === true || shouldRepairBinanceLivePosition(nextMeta)) {
+          try {
+            const trailingRepair = await repairLiveTrailingStageForSymbol({
+              exchange,
+              symbol: sym,
+            });
+            if (trailingRepair && trailingRepair.ok === true && trailingRepair.skipped !== true) {
+              repaired = true;
+              await syncFuturesPositionOnly(resolveFuturesPositionSyncRequest({
+                source: "SELF_HEAL_POST_TRAIL_REPAIR",
+                runId: `${syncRunId}__POST_TRAIL_REPAIR`,
+                exchange,
+                symbol: sym,
+                force: true,
+              }));
+              ({ position: pos } = await loadPositionReadState(exchange, sym));
+            }
+          } catch (trailRepairErr) {
+            const errorText = trailRepairErr && trailRepairErr.message ? trailRepairErr.message : String(trailRepairErr);
+            await upsertSelfHealFailureObservation({
+              exchange,
+              symbol: sym,
+              reason: "TRAIL_STAGE_REPAIR_EXCEPTION",
+              error: errorText,
+            });
+          }
+        }
+        const finalMeta = (pos && pos.meta && typeof pos.meta === "object") ? pos.meta : {};
+        if (shouldRepairBinanceLivePosition(finalMeta)) {
           const failurePatch = buildSelfHealFailureMetaPatch({
             reason: "REPAIR_POST_SYNC_MISMATCH",
-            error: Array.isArray(nextMeta.exchange_projection_invariants) ? nextMeta.exchange_projection_invariants.join(",") : null,
+            error: Array.isArray(finalMeta.exchange_projection_invariants) ? finalMeta.exchange_projection_invariants.join(",") : null,
           });
           await upsertSelfHealFailureObservation({
             exchange,
