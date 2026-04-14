@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("assert");
-const { buildQuantMlCoreAuthority } = require("../utils/quantMlCoreAuthority");
+const { buildQuantMlCoreAuthority, __test } = require("../utils/quantMlCoreAuthority");
 
 (() => {
   const nowMs = Date.parse("2026-04-12T03:00:00.000Z");
@@ -108,6 +108,15 @@ const { buildQuantMlCoreAuthority } = require("../utils/quantMlCoreAuthority");
   assert.ok(summary.periods.DAYS_30);
   assert.strictEqual(summary.periods.DAYS_30.label, "최근 30일");
   assert.ok(summary.periods.DAYS_90);
+})();
+
+(() => {
+  assert.strictEqual(__test.axisStatusFromAllocator({
+    status: "CAPITAL_ALLOCATION_ACTIVE",
+    input_freshness_status: "STALE_INPUTS",
+    input_stale: true,
+    inputs_fresh: false,
+  }), "WARN");
 })();
 
 console.log("QUANT_ML_CORE_AUTHORITY_TEST_OK");

@@ -518,6 +518,34 @@ function resolveAllocatorSnapshotAgeMs(snapshot = null, nowMs = Date.now()) {
   return Math.max(0, nowMs - mtimeMs);
 }
 
+function resolveAllocatorSnapshotStaleness(snapshot = null, nowMs = Date.now()) {
+  const summary = snapshot && snapshot.summary && typeof snapshot.summary === "object" ? snapshot.summary : {};
+  const ageMs = resolveAllocatorSnapshotAgeMs(snapshot, nowMs);
+  const reasons = [];
+  if (
+    summary.input_stale === true
+    || summary.inputs_stale === true
+    || summary.inputs_fresh === false
+    || summary.stale === true
+    || upper(summary.input_freshness_status) === "STALE_INPUTS"
+    || upper(summary.evidence_status) === "SERVER_MARKET_CAPITAL_ALLOCATOR_STALE_INPUTS"
+  ) {
+    reasons.push("SUMMARY_INPUT_STALE");
+  }
+  if (
+    Number.isFinite(ageMs)
+    && ALLOCATOR_SNAPSHOT_STALE_MAX_AGE_MS >= 0
+    && ageMs > ALLOCATOR_SNAPSHOT_STALE_MAX_AGE_MS
+  ) {
+    reasons.push("FILE_AGE_EXCEEDED");
+  }
+  return {
+    ageMs,
+    stale: reasons.length > 0,
+    reasons,
+  };
+}
+
 async function listActivePositionViews({ exchange, override = null } = {}) {
   if (Array.isArray(override)) return override.slice();
   const key = upper(exchange) || "UNKNOWN";
@@ -675,10 +703,10 @@ async function evaluateOpenClawExecutionDecision({
   ]);
   const allocatorSnapshot = normalizeCapitalAllocatorSnapshot(capitalAllocatorSnapshot);
   const allocatorRow = allocatorSnapshot.byMarket.get(resolvedSymbol) || null;
-  const allocatorSnapshotAgeMs = resolveAllocatorSnapshotAgeMs(allocatorSnapshot, nowMs);
-  const allocatorSnapshotStale = Number.isFinite(allocatorSnapshotAgeMs)
-    && ALLOCATOR_SNAPSHOT_STALE_MAX_AGE_MS >= 0
-    && allocatorSnapshotAgeMs > ALLOCATOR_SNAPSHOT_STALE_MAX_AGE_MS;
+  const allocatorSnapshotFreshness = resolveAllocatorSnapshotStaleness(allocatorSnapshot, nowMs);
+  const allocatorSnapshotAgeMs = allocatorSnapshotFreshness.ageMs;
+  const allocatorSnapshotStale = allocatorSnapshotFreshness.stale;
+  const allocatorSnapshotStaleReasons = allocatorSnapshotFreshness.reasons;
 
   const latestExit = extractLatestExitRow(timelineRows);
   const latestExitTsMs = toNum(latestExit && latestExit.ts_ms);
@@ -878,6 +906,7 @@ async function evaluateOpenClawExecutionDecision({
     _openclaw_executor_allocator_quarantine_epoch_release_active: allocatorQuarantineEpochReleaseActive,
     _openclaw_executor_allocator_snapshot_age_ms: allocatorSnapshotAgeMs,
     _openclaw_executor_allocator_snapshot_stale: allocatorSnapshotStale,
+    _openclaw_executor_allocator_snapshot_stale_reasons: allocatorSnapshotStaleReasons.slice(),
     _openclaw_executor_allocator_generated_at_kst: allocatorSnapshot.generatedAtKst || null,
     _openclaw_executor_allocator_penalty_reasons: allocatorPenaltyReasons,
     _openclaw_executor_alpha_context: matchedAlphaContext,
@@ -921,6 +950,7 @@ async function evaluateOpenClawExecutionDecision({
       allocatorQuarantineEpochReleaseActive,
       allocatorSnapshotAgeMs,
       allocatorSnapshotStale,
+      allocatorSnapshotStaleReasons: allocatorSnapshotStaleReasons.slice(),
       allocatorGeneratedAtKst: allocatorSnapshot.generatedAtKst || null,
       allocatorPenaltyReasons,
       alphaContext: matchedAlphaContext,
@@ -959,6 +989,7 @@ module.exports = {
     resolveExecutorCohort,
     normalizeCapitalAllocatorSnapshot,
     resolveAllocatorSnapshotAgeMs,
+    resolveAllocatorSnapshotStaleness,
     parseCorrelatedGroups,
     hasActiveExposure,
     resolveRunnerAllowedRatioFromView,

@@ -73,6 +73,10 @@ function axisStatusFromAlpha(summary = {}) {
 }
 
 function axisStatusFromAllocator(summary = {}) {
+  const stale = summary.input_stale === true
+    || summary.inputs_fresh === false
+    || upper(summary.input_freshness_status) === "STALE_INPUTS";
+  if (stale) return "WARN";
   const status = upper(summary.status);
   if (status === "CAPITAL_ALLOCATION_ACTIVE") return "PASS";
   if (status === "QUARANTINE_REVIEW" || status === "CAPITAL_ALLOCATION_HOLD") return "WARN";

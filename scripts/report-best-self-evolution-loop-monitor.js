@@ -389,10 +389,16 @@ async function main() {
     loop: "SERVER_MARKET_CAPITAL_ALLOCATOR",
     fresh: artifacts.serverMarketCapitalAllocator && artifacts.serverMarketCapitalAllocator.fresh === true,
     cycle_id: String(serverMarketCapitalAllocatorRaw.cycle_id || serverMarketCapitalAllocatorRaw.generation_id || "").trim() || null,
-    status: String(serverMarketCapitalAllocatorSummary.status || "").trim().toUpperCase() === "CAPITAL_ALLOCATION_ACTIVE"
+    status: (
+      serverMarketCapitalAllocatorSummary.input_stale === true
+      || serverMarketCapitalAllocatorSummary.inputs_fresh === false
+      || String(serverMarketCapitalAllocatorSummary.input_freshness_status || "").trim().toUpperCase() === "STALE_INPUTS"
+    )
+      ? "WARN"
+      : String(serverMarketCapitalAllocatorSummary.status || "").trim().toUpperCase() === "CAPITAL_ALLOCATION_ACTIVE"
       ? "PASS"
       : (String(serverMarketCapitalAllocatorSummary.status || "").trim().toUpperCase() === "QUARANTINE_REVIEW" ? "WARN" : "N/A"),
-    reason: `increase=${serverMarketCapitalAllocatorSummary.top_increase_market || "N/A"} / reduce=${serverMarketCapitalAllocatorSummary.top_reduce_market || "N/A"} / quarantine=${serverMarketCapitalAllocatorSummary.top_quarantine_market || "N/A"} / explore=${serverMarketCapitalAllocatorSummary.top_explore_market || "N/A"}`,
+    reason: `freshness=${serverMarketCapitalAllocatorSummary.input_freshness_status || "N/A"} / increase=${serverMarketCapitalAllocatorSummary.top_increase_market || "N/A"} / reduce=${serverMarketCapitalAllocatorSummary.top_reduce_market || "N/A"} / quarantine=${serverMarketCapitalAllocatorSummary.top_quarantine_market || "N/A"} / explore=${serverMarketCapitalAllocatorSummary.top_explore_market || "N/A"}`,
   };
   if (!rows.find((row) => row.loop === "SERVER_MARKET_CAPITAL_ALLOCATOR")) {
     rows.splice(17, 0, serverMarketCapitalAllocatorRow);
