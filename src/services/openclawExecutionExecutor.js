@@ -821,10 +821,18 @@ async function evaluateOpenClawExecutionDecision({
   }) || null;
   const matchedAlphaSeverity = upper(matchedAlphaContext && matchedAlphaContext.severity);
   if (!blocked && matchedAlphaSeverity === "HARD") {
-    blocked = true;
-    reason = "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_BLOCK";
-    exitProfileMode = "BASE";
-    notes.push(reason);
+    if (allocatorSnapshotStale) {
+      scale = minScale(scale, ALLOCATOR_SNAPSHOT_STALE_REDUCE_SCALE);
+      exitProfileMode = exitProfileMode || "BASE";
+      reason = "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_STALE_REDUCE";
+      notes.push("OPENCLAW_EXECUTOR_ALLOCATOR_SNAPSHOT_STALE");
+      notes.push(reason);
+    } else {
+      blocked = true;
+      reason = "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_BLOCK";
+      exitProfileMode = "BASE";
+      notes.push(reason);
+    }
   } else if (!blocked && matchedAlphaSeverity === "SOFT") {
     scale = minScale(scale, ALLOCATOR_REDUCE_SCALE);
     exitProfileMode = exitProfileMode || "BASE";

@@ -530,6 +530,50 @@ async function run() {
 
   await withEnv({
     OPENCLAW_EXECUTOR_ENABLED: "1",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_ALLOCATOR_STALE_REDUCE_SCALE: "0.5",
+  }, async () => {
+    const { evaluateOpenClawExecutionDecision } = freshRequire("../services/openclawExecutionExecutor");
+    const nowMs = Date.parse("2026-04-14T08:00:00.000Z");
+    const res = await evaluateOpenClawExecutionDecision({
+      exchange: "BINANCEFUT",
+      symbol: "DOGEUSDT",
+      intent: "ENTRY",
+      event: "ENTRY_SHORT_REAL",
+      side: "SELL",
+      qtyPct: 0.6,
+      features: {
+        position_side: "SHORT",
+        openclaw_market_regime_cohort: "TREND",
+      },
+      nowMs,
+      positionViews: [],
+      recentTimelineRows: [],
+      capitalAllocatorSnapshot: {
+        summary: {
+          input_freshness_status: "STALE_INPUTS",
+          input_stale: true,
+          alpha_penalty_context_rows: [
+            { market: "DOGEUSDT", position_side: "SHORT", regime_key: "TREND", severity: "HARD", realized_n: 2 },
+          ],
+        },
+        mtimeMs: nowMs,
+        generated_at_kst: "2026-04-14 17:00:00 KST",
+        by_market: [],
+      },
+    });
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_STALE_REDUCE");
+    assert.ok(Math.abs(res.qtyPctFinal - 0.3) < 1e-9);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_allocator_snapshot_stale, true);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context.severity, "HARD");
+  });
+
+  await withEnv({
+    OPENCLAW_EXECUTOR_ENABLED: "1",
     OPENCLAW_EXECUTOR_ALLOW_UPSCALE: "1",
     OPENCLAW_EXECUTOR_HIGH_CONF_SCALE: "1.1",
   }, async () => {
