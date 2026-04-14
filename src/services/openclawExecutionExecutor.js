@@ -56,7 +56,7 @@ const ALLOCATOR_INCREASE_SCALE = numEnv("OPENCLAW_EXECUTOR_ALLOCATOR_INCREASE_SC
 const ALLOCATOR_QUARANTINE_EPOCH_RELEASE_ENABLED = boolEnv("OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_RELEASE_ENABLED", true);
 const ALLOCATOR_QUARANTINE_EPOCH_RELEASE_SCALE = numEnv(
   "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_RELEASE_SCALE",
-  ALLOCATOR_REDUCE_SCALE,
+  1,
   { min: 0.05, max: 1 }
 );
 const SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD", 1.2, { min: 0, max: 10 });
@@ -777,9 +777,14 @@ async function evaluateOpenClawExecutionDecision({
   }
   if (!blocked && (allocatorAction === "QUARANTINE" || allocatorAction === "BLOCK")) {
     if (allocatorAction === "QUARANTINE" && allocatorQuarantineEpochReleaseActive) {
-      scale = minScale(scale, ALLOCATOR_QUARANTINE_EPOCH_RELEASE_SCALE);
+      const releaseScale = Number.isFinite(ALLOCATOR_QUARANTINE_EPOCH_RELEASE_SCALE)
+        ? ALLOCATOR_QUARANTINE_EPOCH_RELEASE_SCALE
+        : 1;
+      scale = minScale(scale, releaseScale);
       exitProfileMode = exitProfileMode || "BASE";
-      reason = "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_REDUCE";
+      reason = releaseScale < 0.999999
+        ? "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_REDUCE"
+        : "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_RELEASE";
       notes.push("OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE");
       notes.push(reason);
     } else {

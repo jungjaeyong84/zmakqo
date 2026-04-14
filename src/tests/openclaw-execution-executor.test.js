@@ -319,6 +319,39 @@ async function run() {
     OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
     OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
     OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
+  }, async () => {
+    const { evaluateOpenClawExecutionDecision } = freshRequire("../services/openclawExecutionExecutor");
+    const res = await evaluateOpenClawExecutionDecision({
+      exchange: "BINANCEFUT",
+      symbol: "DOGEUSDT",
+      intent: "ENTRY",
+      event: "ENTRY_LONG_REAL",
+      side: "BUY",
+      qtyPct: 0.8,
+      features: {},
+      positionViews: [],
+      recentTimelineRows: [],
+      capitalAllocatorSnapshot: {
+        summary: { learning_epoch_active: true },
+        by_market: [
+          { market: "DOGEUSDT", recommended_action: "QUARANTINE", allocation_score: -0.24 },
+        ],
+      },
+    });
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_RELEASE");
+    assert.ok(Math.abs(res.qtyPctFinal - 0.8) < 1e-9);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_allocator_learning_epoch_active, true);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_allocator_quarantine_epoch_release_active, true);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_allocator_action, "QUARANTINE");
+  });
+
+  await withEnv({
+    OPENCLAW_EXECUTOR_ENABLED: "1",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
     OPENCLAW_EXECUTOR_ALLOCATOR_REDUCE_SCALE: "0.4",
   }, async () => {
     const { evaluateOpenClawExecutionDecision } = freshRequire("../services/openclawExecutionExecutor");
