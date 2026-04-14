@@ -79,13 +79,40 @@ function extractExitIntegritySummary(doc = null) {
   const reasons = Array.isArray(summary && summary.reasons)
     ? summary.reasons.map((reason) => String(reason || "").trim()).filter(Boolean)
     : [];
+  const canonicalExitStageFailN = toNum(summary && summary.canonical_exit_stage_fail_n, 0);
+  const exitQtyLiveIssueChainN = toNum(summary && summary.exit_qty_live_issue_chain_n, 0);
+  const trailFloorLiveViolationN = toNum(summary && summary.trail_floor_live_violation_n, 0);
+  const fillSyncDuplicateGroupN = toNum(summary && summary.fill_sync_duplicate_group_n, 0);
+  const duplicationLiveGroupN = toNum(summary && summary.duplication_live_group_n, 0);
+  const fillSyncAlertEventIssueN = toNum(summary && summary.fill_sync_alert_event_issue_n, 0);
+  const stopDivergenceSymbolN = toNum(summary && summary.stop_divergence_symbol_n, 0);
+  const canonicalTransitionBackfillOk = summary
+    ? (Object.prototype.hasOwnProperty.call(summary, "canonical_transition_backfill_ok")
+      ? summary.canonical_transition_backfill_ok === true
+      : true)
+    : true;
+  const issueStrikeFamilies = [];
+  if (canonicalExitStageFailN > 0) issueStrikeFamilies.push("CANONICAL_EXIT_STAGE");
+  if (exitQtyLiveIssueChainN > 0) issueStrikeFamilies.push("EXIT_QTY_CONTRACT");
+  if (trailFloorLiveViolationN > 0) issueStrikeFamilies.push("MIN_GUARANTEE");
+  if (stopDivergenceSymbolN > 0) issueStrikeFamilies.push("STOP_DIVERGENCE");
+  if ((fillSyncDuplicateGroupN + duplicationLiveGroupN + fillSyncAlertEventIssueN) > 0) issueStrikeFamilies.push("DUPLICATE_ALERT");
+  if (!canonicalTransitionBackfillOk) issueStrikeFamilies.push("CANONICAL_BACKFILL");
   return {
     available: !!summary,
     status: upper(summary && summary.status),
     liveGateBlocked: summary && summary.live_gate_blocked === true,
     stopDivergenceGate: upper(summary && summary.stop_divergence_gate),
-    stopDivergenceSymbolN: toNum(summary && summary.stop_divergence_symbol_n, 0),
-    canonicalTransitionBackfillOk: summary && summary.canonical_transition_backfill_ok === true,
+    stopDivergenceSymbolN,
+    canonicalExitStageFailN,
+    exitQtyLiveIssueChainN,
+    trailFloorLiveViolationN,
+    fillSyncDuplicateGroupN,
+    duplicationLiveGroupN,
+    fillSyncAlertEventIssueN,
+    canonicalTransitionBackfillOk,
+    issueStrikeFamilies,
+    issueStrikeCount: issueStrikeFamilies.length,
     reasons,
   };
 }
@@ -98,16 +125,33 @@ function readExitIntegrityReport(filePath = EXIT_INTEGRITY_REPORT_PATH) {
   }
 }
 
-function deriveExitIntegrityExposureGuard(doc = null, { blockedScale = 0.5 } = {}) {
+function deriveExitIntegrityExposureGuard(doc = null, {
+  blockedScale = 0.5,
+  singleStrikeScale = 0.75,
+  doubleStrikeScale = blockedScale,
+  tripleStrikeScale = 0,
+} = {}) {
   const summary = extractExitIntegritySummary(doc);
-  const scale = summary.stopDivergenceGate === "BLOCK"
-    ? clamp(blockedScale, 0, 1)
-    : 1;
+  let scale = 1;
+  let reason = null;
+  let blockNewEntries = false;
+  if (summary.issueStrikeCount >= 3) {
+    scale = clamp(tripleStrikeScale, 0, 1);
+    reason = "LIVE_POLICY_EXIT_INTEGRITY_TRIPLE_STRIKE_BLOCK";
+    blockNewEntries = scale <= 0;
+  } else if (summary.issueStrikeCount === 2) {
+    scale = clamp(doubleStrikeScale, 0, 1);
+    reason = "LIVE_POLICY_EXIT_INTEGRITY_DOUBLE_STRIKE_SCALE";
+  } else if (summary.issueStrikeCount === 1) {
+    scale = clamp(singleStrikeScale, 0, 1);
+    reason = "LIVE_POLICY_EXIT_INTEGRITY_SINGLE_STRIKE_SCALE";
+  }
   return {
     ...summary,
     scale,
     active: scale < 1,
-    reason: scale < 1 ? "LIVE_POLICY_EXIT_INTEGRITY_STOP_DIVERGENCE_SCALE" : null,
+    reason: scale < 1 ? reason : null,
+    blockNewEntries,
   };
 }
 

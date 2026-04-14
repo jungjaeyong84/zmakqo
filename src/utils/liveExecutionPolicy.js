@@ -1768,6 +1768,9 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_exit_integrity_live_gate_blocked: exitIntegrityGuard.liveGateBlocked,
     _live_exec_policy_exit_integrity_stop_divergence_gate: exitIntegrityGuard.stopDivergenceGate,
     _live_exec_policy_exit_integrity_stop_divergence_symbol_n: exitIntegrityGuard.stopDivergenceSymbolN,
+    _live_exec_policy_exit_integrity_strike_count: exitIntegrityGuard.issueStrikeCount,
+    _live_exec_policy_exit_integrity_strike_families: exitIntegrityGuard.issueStrikeFamilies,
+    _live_exec_policy_exit_integrity_block_new_entries: exitIntegrityGuard.blockNewEntries === true,
     _live_exec_policy_exit_integrity_active: exitIntegrityGuard.active,
     _live_exec_policy_exit_integrity_reason: exitIntegrityGuard.reason,
   };
@@ -2045,6 +2048,31 @@ function evaluateLiveEntryPolicy({
     };
   }
 
+  if (exitIntegrityGuard.blockNewEntries) {
+    const reason = exitIntegrityGuard.reason || "LIVE_POLICY_EXIT_INTEGRITY_BLOCK_NEW_ENTRIES";
+    return {
+      ok: false,
+      qtyPctFinal: 0,
+      reason,
+      featuresPatch: {
+        ...commonTracePatch,
+        _live_exec_policy_reason: reason,
+      },
+      policy: {
+        stage,
+        exchange: ex,
+        market,
+        blocked: true,
+        reason,
+        exit_integrity_status: exitIntegrityGuard.status,
+        exit_integrity_live_gate_blocked: exitIntegrityGuard.liveGateBlocked,
+        exit_integrity_stop_divergence_gate: exitIntegrityGuard.stopDivergenceGate,
+        exit_integrity_strike_count: exitIntegrityGuard.issueStrikeCount,
+        exit_integrity_strike_families: exitIntegrityGuard.issueStrikeFamilies,
+      },
+    };
+  }
+
   let qtyPctFinal = qty;
   let scaleApplied = 1.0;
   let actionScale = 1.0;
@@ -2177,6 +2205,9 @@ function evaluateLiveEntryPolicy({
       exit_integrity_live_gate_blocked: exitIntegrityGuard.liveGateBlocked,
       exit_integrity_stop_divergence_gate: exitIntegrityGuard.stopDivergenceGate,
       exit_integrity_stop_divergence_symbol_n: exitIntegrityGuard.stopDivergenceSymbolN,
+      exit_integrity_strike_count: exitIntegrityGuard.issueStrikeCount,
+      exit_integrity_strike_families: exitIntegrityGuard.issueStrikeFamilies,
+      exit_integrity_block_new_entries: exitIntegrityGuard.blockNewEntries === true,
       exit_integrity_scale: featureExitIntegrityScale,
       exit_integrity_active: featureExitIntegrityScale < 1,
       exit_integrity_reason: exitIntegrityGuard.reason,

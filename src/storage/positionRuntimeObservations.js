@@ -17,6 +17,15 @@ function normalizeOptionalString(value) {
   return text || null;
 }
 
+function maxFinite(values = []) {
+  let current = Number.NEGATIVE_INFINITY;
+  for (const value of values) {
+    const n = normalizeOptionalFiniteNumber(value);
+    if (Number.isFinite(n) && n > current) current = n;
+  }
+  return Number.isFinite(current) ? current : null;
+}
+
 function stopTolerance(value) {
   const n = normalizeOptionalFiniteNumber(value);
   if (!Number.isFinite(n)) return 1e-8;
@@ -124,6 +133,7 @@ function buildTrailObservationPayload({
   trailStopByPct = null,
   chosenStopSource = null,
   chosenStopPrice = null,
+  finalEffectiveStop = null,
   nativeStopPrice = null,
   nativeStopOrderId = null,
   nativeRefreshStatus = null,
@@ -158,9 +168,15 @@ function buildTrailObservationPayload({
       computed_trail_stop: normalizeOptionalFiniteNumber(computedTrailStop),
       trail_stop_raw: normalizeOptionalFiniteNumber(trailStopRaw),
       trail_stop_by_r: normalizeOptionalFiniteNumber(trailStopByR),
+      r_based_trail_stop: normalizeOptionalFiniteNumber(trailStopByR),
       trail_stop_by_pct: normalizeOptionalFiniteNumber(trailStopByPct),
       chosen_stop_source: normalizeOptionalString(normalizedChosen.chosenStopSource),
       chosen_stop_price: normalizeOptionalFiniteNumber(normalizedChosen.chosenStopPrice),
+      final_effective_stop: normalizeOptionalFiniteNumber(
+        finalEffectiveStop !== null && finalEffectiveStop !== undefined
+          ? finalEffectiveStop
+          : normalizedChosen.chosenStopPrice
+      ),
       native_stop_price: normalizeOptionalFiniteNumber(nativeStopPrice),
       native_stop_order_id: normalizeOptionalString(nativeStopOrderId),
       native_refresh_status: normalizeOptionalString(nativeRefreshStatus),
@@ -197,7 +213,7 @@ function resolveTrailObservationSnapshot({
       ? normalizeOptionalFiniteNumber(observed.runner_floor_stop)
       : null,
     trailStopByR: useObservedRuntime
-      ? normalizeOptionalFiniteNumber(observed.trail_stop_by_r)
+      ? normalizeOptionalFiniteNumber(observed.trail_stop_by_r ?? observed.r_based_trail_stop)
       : null,
     trailStopByPct: useObservedRuntime
       ? normalizeOptionalFiniteNumber(observed.trail_stop_by_pct)
@@ -240,13 +256,19 @@ function resolveTrailObservationSnapshot({
       ? normalizeOptionalFiniteNumber(observed.trail_stop_raw)
       : null,
     trail_stop_by_r: useObservedRuntime
-      ? normalizeOptionalFiniteNumber(observed.trail_stop_by_r)
+      ? normalizeOptionalFiniteNumber(observed.trail_stop_by_r ?? observed.r_based_trail_stop)
+      : null,
+    r_based_trail_stop: useObservedRuntime
+      ? normalizeOptionalFiniteNumber(observed.r_based_trail_stop ?? observed.trail_stop_by_r)
       : null,
     trail_stop_by_pct: useObservedRuntime
       ? normalizeOptionalFiniteNumber(observed.trail_stop_by_pct)
       : null,
     chosen_stop_source: normalizeOptionalString(normalizedChosen.chosenStopSource),
     chosen_stop_price: normalizeOptionalFiniteNumber(normalizedChosen.chosenStopPrice),
+    final_effective_stop: useObservedRuntime
+      ? normalizeOptionalFiniteNumber(observed.final_effective_stop ?? normalizedChosen.chosenStopPrice)
+      : normalizeOptionalFiniteNumber(metaSafe.final_effective_stop ?? metaSafe.native_protection_stop_price),
     native_stop_price: useObservedRuntime
       ? normalizeOptionalFiniteNumber(observed.native_stop_price)
       : normalizeOptionalFiniteNumber(metaSafe.native_protection_stop_price),
@@ -261,6 +283,26 @@ function resolveTrailObservationSnapshot({
       : normalizeOptionalFiniteNumber(metaSafe.native_protection_refresh_at_ms),
     runtime_eval_at_ms: useObservedRuntime ? obsRuntimeEvalAtMs : metaRuntimeAtMs,
   };
+}
+
+function resolveTrailObservationFreshnessMs(trailObservation = null) {
+  const observed = (trailObservation && typeof trailObservation === "object") ? trailObservation : {};
+  return maxFinite([
+    observed.runtime_eval_at_ms,
+    observed.last_reprice_at_ms,
+    observed.trail_high_at_ms,
+    observed.trail_low_at_ms,
+  ]);
+}
+
+function shouldRejectStaleTrailObservation({
+  currentObservation = null,
+  nextObservation = null,
+} = {}) {
+  const currentFreshnessMs = resolveTrailObservationFreshnessMs(currentObservation);
+  const nextFreshnessMs = resolveTrailObservationFreshnessMs(nextObservation);
+  if (!Number.isFinite(currentFreshnessMs) || !Number.isFinite(nextFreshnessMs)) return false;
+  return nextFreshnessMs < currentFreshnessMs;
 }
 
 async function upsertTrailObservation({
@@ -283,6 +325,7 @@ async function upsertTrailObservation({
   trailStopByPct = null,
   chosenStopSource = null,
   chosenStopPrice = null,
+  finalEffectiveStop = null,
   nativeStopPrice = null,
   nativeStopOrderId = null,
   nativeRefreshStatus = null,
@@ -311,6 +354,7 @@ async function upsertTrailObservation({
     trailStopByPct,
     chosenStopSource,
     chosenStopPrice,
+    finalEffectiveStop,
     nativeStopPrice,
     nativeStopOrderId,
     nativeRefreshStatus,
@@ -319,7 +363,21 @@ async function upsertTrailObservation({
     source,
   });
   const ref = db.collection("position_runtime_observations").doc(payload.observation_id);
-  await ref.set(payload, { merge: true });
+  if (typeof db.runTransaction === "function") {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const current = snap.exists && snap.data() && snap.data().trail_observation && typeof snap.data().trail_observation === "object"
+        ? snap.data().trail_observation
+        : null;
+      if (shouldRejectStaleTrailObservation({
+        currentObservation: current,
+        nextObservation: payload.trail_observation,
+      })) return;
+      tx.set(ref, payload, { merge: true });
+    });
+  } else {
+    await ref.set(payload, { merge: true });
+  }
   return payload;
 }
 
@@ -359,5 +417,7 @@ module.exports = {
     buildTrailObservationPayload,
     resolveTrailObservationSnapshot,
     normalizeChosenStopAuthority,
+    resolveTrailObservationFreshnessMs,
+    shouldRejectStaleTrailObservation,
   },
 };

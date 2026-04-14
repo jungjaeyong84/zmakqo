@@ -16,6 +16,7 @@ function run() {
   assert.strictEqual(typeof __test.collectTriggeredKinds, "function", "tick exit trigger collector helper missing");
   assert.strictEqual(typeof observationTest.buildTrailObservationPayload, "function", "trail observation payload helper missing");
   assert.strictEqual(typeof observationTest.resolveTrailObservationSnapshot, "function", "trail observation snapshot helper missing");
+  assert.strictEqual(typeof observationTest.shouldRejectStaleTrailObservation, "function", "trail observation stale guard helper missing");
   assert.strictEqual(typeof runnerTest.applyTrailObservationSnapshotToMeta, "function", "trail observation apply helper missing");
 
   const obsPatch = __test.buildTickTrailObservationDocUpdate({ "meta.trail_high": 1.23, "meta.trail_high_at_ms": 123 }, "2026-04-10T00:00:00.000Z");
@@ -55,9 +56,11 @@ function run() {
       computed_trail_stop: null,
       trail_stop_raw: null,
       trail_stop_by_r: null,
+      r_based_trail_stop: null,
       trail_stop_by_pct: null,
       chosen_stop_source: null,
       chosen_stop_price: null,
+      final_effective_stop: null,
       native_stop_price: null,
       native_stop_order_id: null,
       native_refresh_status: null,
@@ -110,9 +113,11 @@ function run() {
       computed_trail_stop: 1.251,
       trail_stop_raw: null,
       trail_stop_by_r: null,
+      r_based_trail_stop: null,
       trail_stop_by_pct: null,
       chosen_stop_source: null,
       chosen_stop_price: null,
+      final_effective_stop: null,
       native_stop_price: 1.251,
       native_stop_order_id: "new_stop",
       native_refresh_status: "OK",
@@ -133,6 +138,14 @@ function run() {
       chosenStopPrice: 2276.70916,
     },
     "chosen stop authority should normalize stale TRAIL labels back to runner floor when price matches floor"
+  );
+  assert.strictEqual(
+    observationTest.shouldRejectStaleTrailObservation({
+      currentObservation: { runtime_eval_at_ms: 200 },
+      nextObservation: { runtime_eval_at_ms: 100 },
+    }),
+    true,
+    "older runtime observations must not overwrite newer trail truth"
   );
   assert.deepStrictEqual(
     runnerTest.applyTrailObservationSnapshotToMeta({

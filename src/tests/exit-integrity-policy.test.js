@@ -22,15 +22,40 @@ const {
 })();
 
 (() => {
-  const blocked = deriveExitIntegrityExposureGuard({
+  const singleStrike = deriveExitIntegrityExposureGuard({
     status: "WARN",
     stop_divergence_gate: "BLOCK",
     stop_divergence_symbol_n: 3,
     live_gate_blocked: false,
   }, { blockedScale: 0.5 });
-  assert.strictEqual(blocked.active, true);
-  assert.strictEqual(blocked.scale, 0.5);
-  assert.strictEqual(blocked.reason, "LIVE_POLICY_EXIT_INTEGRITY_STOP_DIVERGENCE_SCALE");
+  assert.strictEqual(singleStrike.active, true);
+  assert.strictEqual(singleStrike.scale, 0.75);
+  assert.strictEqual(singleStrike.reason, "LIVE_POLICY_EXIT_INTEGRITY_SINGLE_STRIKE_SCALE");
+  assert.strictEqual(singleStrike.issueStrikeCount, 1);
+
+  const doubleStrike = deriveExitIntegrityExposureGuard({
+    status: "WARN",
+    stop_divergence_gate: "BLOCK",
+    stop_divergence_symbol_n: 3,
+    canonical_exit_stage_fail_n: 1,
+    live_gate_blocked: false,
+  }, { blockedScale: 0.5 });
+  assert.strictEqual(doubleStrike.active, true);
+  assert.strictEqual(doubleStrike.scale, 0.5);
+  assert.strictEqual(doubleStrike.reason, "LIVE_POLICY_EXIT_INTEGRITY_DOUBLE_STRIKE_SCALE");
+  assert.strictEqual(doubleStrike.issueStrikeCount, 2);
+
+  const tripleStrike = deriveExitIntegrityExposureGuard({
+    status: "WARN",
+    stop_divergence_gate: "BLOCK",
+    stop_divergence_symbol_n: 1,
+    canonical_exit_stage_fail_n: 1,
+    trail_floor_live_violation_n: 1,
+    live_gate_blocked: true,
+  }, { blockedScale: 0.5 });
+  assert.strictEqual(tripleStrike.scale, 0);
+  assert.strictEqual(tripleStrike.reason, "LIVE_POLICY_EXIT_INTEGRITY_TRIPLE_STRIKE_BLOCK");
+  assert.strictEqual(tripleStrike.blockNewEntries, true);
 
   const pass = deriveExitIntegrityExposureGuard({
     status: "OK",

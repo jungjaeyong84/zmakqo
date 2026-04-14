@@ -235,7 +235,8 @@ async function repairLiveTrailingStageForSymbol({
     nextMeta,
   });
   let nativeProtection = null;
-  if (shouldEnforceSingleStopWriter()) {
+  const singleStopWriter = shouldEnforceSingleStopWriter();
+  if (singleStopWriter) {
     await recordExitRepairRequest({
       exchange,
       symbol: sym,
@@ -253,7 +254,7 @@ async function repairLiveTrailingStageForSymbol({
     nativeProtection = {
       ok: false,
       skipped: true,
-      reason: "NON_AUTHORITY_LAYER_REQUEST",
+      reason: "REPAIR_REQUESTED_NON_AUTHORITY_LAYER",
       stop_price: Number(nextMeta.native_protection_stop_price || meta.native_protection_stop_price) || null,
       stop_order_id: nextMeta.native_protection_stop_order_id || meta.native_protection_stop_order_id || null,
     };
@@ -270,11 +271,13 @@ async function repairLiveTrailingStageForSymbol({
       posMeta: nextMeta,
     });
   }
-  const nativeProtectionMetaPatch = buildNativeProtectionMetaPatch({
-    nativeProtection,
-    intent: "ENTRY",
-    execBarCloseMs: null,
-  });
+  const nativeProtectionMetaPatch = singleStopWriter
+    ? null
+    : buildNativeProtectionMetaPatch({
+      nativeProtection,
+      intent: "ENTRY",
+      execBarCloseMs: null,
+    });
   if (nativeProtectionMetaPatch && typeof nativeProtectionMetaPatch === "object") {
     await patchPositionMetaOnlyWithRetry({
       exchange,
@@ -319,9 +322,12 @@ async function repairLiveTrailingStageForSymbol({
     trailStopByPct: Number(runnerExit && runnerExit.trailStopByPct) || null,
     chosenStopSource: runnerExit && runnerExit.stopSource ? runnerExit.stopSource : null,
     chosenStopPrice: Number(runnerExit && runnerExit.stopPrice) || null,
+    finalEffectiveStop: Number(runnerExit && runnerExit.stopPrice) || null,
     nativeStopPrice: Number(nativeProtection && nativeProtection.stop_price) || null,
     nativeStopOrderId: nativeProtection && nativeProtection.stop_order_id ? nativeProtection.stop_order_id : null,
-    nativeRefreshStatus: nativeProtection && nativeProtection.ok === true ? "OK" : String(nativeProtection && nativeProtection.reason || "FAILED"),
+    nativeRefreshStatus: singleStopWriter
+      ? "REPAIR_REQUESTED"
+      : (nativeProtection && nativeProtection.ok === true ? "OK" : String(nativeProtection && nativeProtection.reason || "FAILED")),
     lastRepriceAtMs: Date.now(),
     runtimeEvalAtMs: Date.now(),
     source: "LIVE_STAGE_REPAIR",

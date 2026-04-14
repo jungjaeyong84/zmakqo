@@ -1095,10 +1095,38 @@ function buildSnapshot({
     snapshotOverride: snap,
   });
   assert.strictEqual(res.ok, true);
-  assert.strictEqual(Number(res.qtyPctFinal), 0.5);
+  assert.strictEqual(Number(res.qtyPctFinal), 0.75);
   assert.strictEqual(res.featuresPatch._live_exec_policy_exit_integrity_stop_divergence_gate, "BLOCK");
-  assert.strictEqual(Number(res.featuresPatch._live_exec_policy_exit_integrity_scale_applied), 0.5);
-  assert.strictEqual(res.policy.exit_integrity_reason, "LIVE_POLICY_EXIT_INTEGRITY_STOP_DIVERGENCE_SCALE");
+  assert.strictEqual(Number(res.featuresPatch._live_exec_policy_exit_integrity_scale_applied), 0.75);
+  assert.strictEqual(res.featuresPatch._live_exec_policy_exit_integrity_strike_count, 1);
+  assert.strictEqual(res.policy.exit_integrity_reason, "LIVE_POLICY_EXIT_INTEGRITY_SINGLE_STRIKE_SCALE");
+})();
+
+(() => {
+  const snap = buildSnapshot({
+    allocatorRows: [{ market: "BTCUSDT", allocation_score: 2.0, recommended_action: "HOLD" }],
+    exitIntegritySummary: {
+      status: "WARN",
+      stop_divergence_gate: "BLOCK",
+      stop_divergence_symbol_n: 2,
+      canonical_exit_stage_fail_n: 1,
+      trail_floor_live_violation_n: 1,
+      live_gate_blocked: true,
+    },
+  });
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    intent: "ENTRY",
+    qtyPct: 1,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(Number(res.qtyPctFinal), 0);
+  assert.strictEqual(res.reason, "LIVE_POLICY_EXIT_INTEGRITY_TRIPLE_STRIKE_BLOCK");
 })();
 
 (() => {

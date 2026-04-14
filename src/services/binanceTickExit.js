@@ -37,6 +37,7 @@ const { runActionPreHooks, runActionPostHooks, emitActionEvent } = require("../u
 const { auditBinanceExitIntegrity } = require("./exitIntegrityAudit");
 const { runBinanceLiveStateSelfHeal } = require("./binanceLiveStateSelfHeal");
 const { getPositionReadView, listExchangePositionReadViews } = require("./positionReadModel");
+const { resolveCanonicalPositionExitStage } = require("./positionStateMachine");
 const { loadOperationalGuardRuntime } = require("./operationalGuardRuntime");
 const { loadSystemSloRuntime } = require("./systemSloRuntime");
 const { loadSystemAnomalyRuntime } = require("./systemAnomalyRuntime");
@@ -70,6 +71,25 @@ function ratioToPctTokenLocal(ratio) {
   return String(pct).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
 }
 
+function resolveCanonicalExitStageForPosition(position) {
+  const pos = position && typeof position === "object" ? position : null;
+  const meta = pos && pos.meta && typeof pos.meta === "object" ? pos.meta : {};
+  const canonical = resolveCanonicalPositionExitStage({
+    positionSnapshot: pos,
+    fallbackStage: meta.authoritative_exit_stage || meta.canonical_exit_stage || null,
+  });
+  return canonical && canonical.stage ? canonical.stage : null;
+}
+
+function hasCanonicalTpP1Reached(stage) {
+  const normalized = String(stage || "").trim().toUpperCase();
+  return normalized === "TP1" || normalized === "TRAIL";
+}
+
+function isCanonicalTrailStage(stage) {
+  return String(stage || "").trim().toUpperCase() === "TRAIL";
+}
+
 function shouldTriggerTrailHardExit({
   position,
   price,
@@ -78,25 +98,26 @@ function shouldTriggerTrailHardExit({
 } = {}) {
   const pos = position && typeof position === "object" ? position : null;
   const meta = pos && pos.meta && typeof pos.meta === "object" ? pos.meta : {};
-  const tpP1Done = meta.tp_p1_done === true;
+  const canonicalStage = resolveCanonicalExitStageForPosition(pos);
+  const tpP1Done = hasCanonicalTpP1Reached(canonicalStage);
   const tpP1Pending = meta.tp_p1_pending === true;
-  const trailActive = meta.trail_active === true || tpP1Pending;
+  const trailActive = isCanonicalTrailStage(canonicalStage) || tpP1Pending;
   if ((!tpP1Done && !tpP1Pending) || !trailActive) {
     return { trigger: false, reason: "NOT_TRAIL_STAGE" };
   }
   const avg = Number(pos && pos.avg_price);
   const leverageEff = Number(meta.external_leverage || meta.leverage || pos.leverage || 1);
   const runnerExit = computeRunnerExitStopPrice({
-    avg,
-    leverageEff,
-    side,
-    rules,
-    tpP1Done,
-    trailActive: meta.trail_active === true,
-    trailHigh: Number(meta.trail_high),
-    trailLow: Number(meta.trail_low),
-    entryRDistance: Number(meta.entry_r_distance),
-  });
+      avg,
+      leverageEff,
+      side,
+      rules,
+      tpP1Done,
+      trailActive: isCanonicalTrailStage(canonicalStage),
+      trailHigh: Number(meta.trail_high),
+      trailLow: Number(meta.trail_low),
+      entryRDistance: Number(meta.entry_r_distance),
+    });
   const stopPrice = Number(runnerExit && runnerExit.stopPrice);
   if (!Number.isFinite(price) || !Number.isFinite(stopPrice) || stopPrice <= 0) {
     return { trigger: false, reason: "STOP_UNAVAILABLE", runnerExit };
@@ -758,7 +779,8 @@ function computeExitTriggers({ pos, rules, leverageEff, nativeProtectionState } 
   if (!Number.isFinite(avg) || avg <= 0) return out;
   const meta = pos && pos.meta ? pos.meta : {};
   const side = resolvePositionSideFromPosition(pos, meta, "LONG");
-  const tpP1Done = meta.tp_p1_done === true;
+  const canonicalStage = resolveCanonicalExitStageForPosition(pos);
+  const tpP1Done = hasCanonicalTpP1Reached(canonicalStage);
   const tpP0Done = meta.tp_p0_done === true || tpP1Done;
   const tpP1Pending = meta.tp_p1_pending === true;
   const nativeStopActive = nativeProtectionState && typeof nativeProtectionState.stopActive === "boolean"
@@ -804,7 +826,7 @@ function computeExitTriggers({ pos, rules, leverageEff, nativeProtectionState } 
     leverageEff,
     rules,
   });
-  const trailEnabled = trailDelay.trailActive || tpP1Pending;
+  const trailEnabled = isCanonicalTrailStage(canonicalStage) || trailDelay.trailActive || tpP1Pending;
   if ((tpP1Done || tpP1Pending) && trailEnabled && (Number.isFinite(rules.TRAIL_R_MULTIPLE) || Number.isFinite(rules.TRAIL_PCT))) {
     const runnerExit = computeRunnerExitStopPrice({
       avg,
@@ -812,7 +834,7 @@ function computeExitTriggers({ pos, rules, leverageEff, nativeProtectionState } 
       side,
       rules,
       tpP1Done,
-      trailActive: trailDelay.trailActive,
+      trailActive: isCanonicalTrailStage(canonicalStage),
       trailHigh: Number(meta.trail_high),
       trailLow: Number(meta.trail_low),
       entryRDistance: Number(meta.entry_r_distance),
@@ -863,18 +885,20 @@ function shouldActivateFastLane({ pos, price, triggers, fastLanePct, side } = {}
   const pct = Number(fastLanePct);
   if (!Number.isFinite(pct) || pct <= 0) return false;
   const meta = (pos && typeof pos.meta === "object") ? pos.meta : {};
+  const canonicalStage = resolveCanonicalExitStageForPosition(pos);
+  const tpP1Done = hasCanonicalTpP1Reached(canonicalStage);
   const rules = resolveExitRulesForPosition({ exchange: pos.exchange, position: pos });
   const trailDelay = resolveTrailDelayState({
     meta,
-    tpP1Done: meta.tp_p1_done === true,
+    tpP1Done,
     currentBarMs: Date.now(),
     closePx: price,
     side,
     leverageEff: Number(meta.external_leverage || pos.leverage || 1),
     rules,
   });
-  const trailEnabled = trailDelay.trailActive || meta.tp_p1_pending === true;
-  const trailReady = meta.tp_p1_done === true || meta.tp_p1_pending === true;
+  const trailEnabled = isCanonicalTrailStage(canonicalStage) || trailDelay.trailActive || meta.tp_p1_pending === true;
+  const trailReady = tpP1Done || meta.tp_p1_pending === true;
   if (!trailReady || !trailEnabled) return false;
 
   const trailTrigger = triggers.find((t) => String(t && t.kind || "").toUpperCase() === "TRAIL");
@@ -966,8 +990,11 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
       }
 
       const _tMeta = (pos && typeof pos.meta === "object") ? pos.meta : {};
-      const _trailEnabled = _tMeta.trail_active === true || _tMeta.tp_p1_pending === true;
-      if ((_tMeta.tp_p1_done === true || _tMeta.tp_p1_pending === true) && _trailEnabled) {
+      const _canonicalStage = resolveCanonicalExitStageForPosition(pos);
+      const _tpP1Done = hasCanonicalTpP1Reached(_canonicalStage);
+      const _trailStage = isCanonicalTrailStage(_canonicalStage);
+      const _trailEnabled = _trailStage || _tMeta.tp_p1_pending === true;
+      if ((_tpP1Done || _tMeta.tp_p1_pending === true) && _trailEnabled) {
         const _tSide = resolvePositionSideFromPosition(pos, _tMeta, "LONG");
         let _trailPatch = null;
         let _trailField = null;
@@ -1008,8 +1035,8 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
               leverageEff: Number(_tMeta && (_tMeta.external_leverage || _tMeta.leverage || pos.leverage || 1)),
               side: _tSide,
               rules: _exitRules,
-              tpP1Done: _tMeta.tp_p1_done === true,
-              trailActive: _tMeta.trail_active === true,
+              tpP1Done: _tpP1Done,
+              trailActive: _trailStage,
               trailHigh: pos.meta && Number.isFinite(Number(pos.meta.trail_high)) ? Number(pos.meta.trail_high) : null,
               trailLow: pos.meta && Number.isFinite(Number(pos.meta.trail_low)) ? Number(pos.meta.trail_low) : null,
               entryRDistance: Number(_tMeta && _tMeta.entry_r_distance),
@@ -1092,6 +1119,7 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
                 trailStopByPct: Number(_runnerExit && _runnerExit.trailStopByPct),
                 chosenStopSource: _runnerExit && _runnerExit.stopSource ? _runnerExit.stopSource : null,
                 chosenStopPrice: Number(_runnerExit && _runnerExit.stopPrice),
+                finalEffectiveStop: Number(_runnerExit && _runnerExit.stopPrice),
                 nativeStopPrice: Number.isFinite(_obsNativeStopPrice) ? _obsNativeStopPrice : null,
                 nativeStopOrderId: _obsNativeStopOrderId,
                 nativeRefreshStatus: _obsNativeRefreshStatus,
