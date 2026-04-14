@@ -245,7 +245,8 @@ function inspectExitProtection({
   const trailStopByR = toNum(trailSnapshot.trail_stop_by_r ?? (runnerExit && runnerExit.trailStopByR));
   const trailRMultiple = toNum(trailSnapshot.trail_r_multiple ?? rules.TRAIL_R_MULTIPLE);
   const canonicalRunnerRemainingAbs = toNum(
-    meta.runner_remaining_qty_abs
+    meta.canonical_runner_remaining_abs
+    ?? meta.runner_remaining_qty_abs
     ?? meta.runner_remaining_abs
     ?? meta.contract_runner_remaining_abs
   );

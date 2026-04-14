@@ -79,6 +79,8 @@ function buildMarkdown(report = {}) {
   lines.push(`- duplication_live_group_n: ${summary.duplication_live_group_n ?? "N/A"}`);
   lines.push(`- authority_live_issue_position_n: ${summary.authority_live_issue_position_n ?? "N/A"}`);
   lines.push(`- canonical_exit_stage_fail_n: ${summary.canonical_exit_stage_fail_n ?? "N/A"}`);
+  lines.push(`- canonical_exit_stage_gate: ${summary.canonical_exit_stage_gate || "N/A"}`);
+  lines.push(`- live_gate_blocked: ${summary.live_gate_blocked === true ? "YES" : "NO"}`);
   lines.push("");
   lines.push("## Reasons");
   const reasons = Array.isArray(summary.reasons) ? summary.reasons : [];
@@ -130,6 +132,7 @@ function buildSummary(report = {}) {
   if (canonicalExitStageFailN > 0) reasons.push(`canonical exit stage fail ${canonicalExitStageFailN}건`);
   return {
     status: liveIssueCount > 0 ? "WARN" : "OK",
+    live_gate_blocked: liveIssueCount > 0,
     live_issue_count: liveIssueCount,
     native_gap_before: beforeGap,
     native_gap_after: afterGap,
@@ -147,6 +150,7 @@ function buildSummary(report = {}) {
     authority_actionable_live_issue_position_n: authorityActionableLiveIssuePositionN,
     authority_artifact_only_live_issue_position_n: authorityArtifactOnlyLiveIssuePositionN,
     canonical_exit_stage_fail_n: canonicalExitStageFailN,
+    canonical_exit_stage_gate: canonicalExitStageFailN > 0 ? "BLOCK" : "PASS",
     reasons,
   };
 }

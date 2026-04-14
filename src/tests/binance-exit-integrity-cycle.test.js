@@ -110,6 +110,8 @@ function buildScriptResult(parsed) {
   assert.strictEqual(warnSummary.authority_actionable_live_issue_position_n, 1);
   assert.strictEqual(warnSummary.authority_artifact_only_live_issue_position_n, 2);
   assert.strictEqual(warnSummary.canonical_exit_stage_fail_n, 2);
+  assert.strictEqual(warnSummary.canonical_exit_stage_gate, "BLOCK");
+  assert.strictEqual(warnSummary.live_gate_blocked, true);
 
   const md = __test.buildMarkdown({
     generated_at: "2026-04-13T00:00:00.000Z",

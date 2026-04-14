@@ -301,6 +301,14 @@ function buildReconciledMetaFromSummary(position = {}, summary = {}) {
   if (summary.should_trail_active) nextMeta.trail_active = true;
   if (nextMeta.trail_active === true) nextMeta.tp_p1_done = true;
   if (nextMeta.tp_p1_done === true) nextMeta.tp_p0_done = true;
+  const currentQtyBase = Math.max(0, toNum(summary.current_qty_base) || 0);
+  const canonicalStage = nextMeta.trail_active === true
+    ? "TRAIL"
+    : (nextMeta.tp_p1_done === true ? "TP1" : (nextMeta.tp_p0_done === true ? "TP0" : null));
+  nextMeta.canonical_exit_stage = canonicalStage;
+  nextMeta.canonical_runner_remaining_abs = (nextMeta.tp_p1_done === true || nextMeta.trail_active === true) && currentQtyBase > 0
+    ? currentQtyBase
+    : null;
   return nextMeta;
 }
 
@@ -325,7 +333,6 @@ async function main() {
     const symbol = upper(pos.symbol || pos.symbol_or_pair_id);
     const summary = buildStageSummary(pos, fillsBySymbol.get(symbol) || []);
     reportRows.push(summary);
-    if (!summary.issues.length) continue;
 
     const action = {
       symbol,
@@ -336,7 +343,7 @@ async function main() {
       reclassified_fill_ids: [],
       meta_repaired: false,
       sync_run_id: null,
-      status: "PENDING",
+      status: "NOOP",
     };
 
     try {
@@ -363,7 +370,7 @@ async function main() {
       const currentMeta = (currentPosition && typeof currentPosition.meta === "object") ? currentPosition.meta : {};
       const nextMeta = buildReconciledMetaFromSummary(currentPosition || pos, nextSummary);
       const metaChanged = JSON.stringify(currentMeta || {}) !== JSON.stringify(nextMeta || {});
-      if (metaChanged) {
+      if (metaChanged || reclassificationPlan.length) {
         if (!DRY_RUN) {
           await upsertPositionMetaOnly({
             exchange: EXCHANGE,
@@ -382,7 +389,7 @@ async function main() {
         action.meta_repaired = true;
       }
 
-      if (!DRY_RUN) {
+      if (!DRY_RUN && (metaChanged || reclassificationPlan.length)) {
         action.sync_run_id = `RUN__ACTIVE_EXIT_STAGE_BACKFILL__${symbol}__${Date.now()}`;
         await syncFuturesPositionOnly(resolveFuturesPositionSyncRequest({
           source: "ACTIVE_EXIT_STAGE_BACKFILL",
@@ -392,12 +399,14 @@ async function main() {
           force: true,
         }));
       }
-      action.status = DRY_RUN ? "DRY_RUN" : "APPLIED";
+      action.status = (metaChanged || reclassificationPlan.length)
+        ? (DRY_RUN ? "DRY_RUN" : "APPLIED")
+        : "NOOP";
     } catch (err) {
       action.status = "FAILED";
       action.error = err && err.message ? err.message : String(err);
     }
-    actions.push(action);
+    if (action.status !== "NOOP" || action.issues.length) actions.push(action);
   }
 
   const latestViews = DRY_RUN
@@ -430,6 +439,8 @@ async function main() {
         tp_p0_done: meta.tp_p0_done === true,
         tp_p1_done: meta.tp_p1_done === true,
         trail_active: meta.trail_active === true,
+        canonical_exit_stage: meta.canonical_exit_stage || null,
+        canonical_runner_remaining_abs: toNum(meta.canonical_runner_remaining_abs),
         qty_base: toNum(next && next.qty_base),
         updated_at: next && next.updated_at ? next.updated_at : null,
       };

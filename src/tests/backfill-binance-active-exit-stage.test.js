@@ -118,6 +118,8 @@ async function main() {
   assert.strictEqual(repairedMeta.tp_p0_done, true);
   assert.strictEqual(repairedMeta.tp_p1_done, true);
   assert.strictEqual(repairedMeta.trail_active, true);
+  assert.strictEqual(repairedMeta.canonical_exit_stage, "TRAIL");
+  assert.strictEqual(repairedMeta.canonical_runner_remaining_abs, 0.011);
 
   console.log("BACKFILL_BINANCE_ACTIVE_EXIT_STAGE_TEST_OK");
 }
