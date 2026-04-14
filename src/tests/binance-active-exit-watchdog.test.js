@@ -308,6 +308,117 @@ function run() {
   });
   assert.ok(materialGuaranteeMiss.actionable_issue_codes.includes("RUNNER_MIN_GUARANTEE_MISSED"));
 
+  const missingTrailRStop = __test.inspectExitProtection({
+    symbol: "BNBUSDT",
+    internalPosition: {
+      exchange: "BINANCEFUT",
+      symbol: "BNBUSDT",
+      position_state: "ACTIVE",
+      position_side: "LONG",
+      qty_base: 0.167,
+      avg_price: 600,
+      leverage: 2,
+      meta: {
+        tp_p0_done: true,
+        tp_p1_done: true,
+        trail_active: true,
+        runner_remaining_qty_abs: 0.167,
+        native_protection_refresh_status: "OK",
+        exit_rules_override: {
+          TP_P0: 0.008,
+          TP_P1: 0.0165,
+          TP_P0_QTY: 0.25,
+          TP_P1_QTY: 0.5,
+          RUNNER_MIN_PROFIT_PCT: 0.0165,
+          TRAIL_R_MULTIPLE: 0.6,
+          SL: -0.0165,
+        },
+      },
+    },
+    observation: {
+      trail_observation: {
+        runner_floor_stop: 605,
+        computed_trail_stop: 605,
+        chosen_stop_source: "RUNNER_FLOOR",
+        chosen_stop_price: 605,
+        native_stop_price: 605,
+        native_stop_order_id: "5001",
+        native_refresh_status: "OK",
+        runtime_eval_at_ms: 300,
+        source: "TICK_EXIT",
+      },
+    },
+    externalPosition: { symbol: "BNBUSDT", positionAmt: "0.167" },
+    openOrders: [],
+    algoOrders: [
+      {
+        symbol: "BNBUSDT",
+        side: "SELL",
+        type: "STOP_MARKET",
+        closePosition: true,
+        stopPrice: "605",
+        orderId: "5001",
+      },
+    ],
+  });
+  assert.ok(missingTrailRStop.actionable_issue_codes.includes("TRAIL_R_STOP_MISSING"));
+
+  const runnerQtyMismatch = __test.inspectExitProtection({
+    symbol: "SOLUSDT",
+    internalPosition: {
+      exchange: "BINANCEFUT",
+      symbol: "SOLUSDT",
+      position_state: "ACTIVE",
+      position_side: "LONG",
+      qty_base: 0.167,
+      avg_price: 150,
+      leverage: 2,
+      meta: {
+        tp_p0_done: true,
+        tp_p1_done: true,
+        trail_active: true,
+        runner_remaining_qty_abs: 0.29,
+        native_protection_refresh_status: "OK",
+        exit_rules_override: {
+          TP_P0: 0.008,
+          TP_P1: 0.0165,
+          TP_P0_QTY: 0.25,
+          TP_P1_QTY: 0.5,
+          RUNNER_MIN_PROFIT_PCT: 0.0165,
+          TRAIL_R_MULTIPLE: 0.6,
+          SL: -0.0165,
+        },
+      },
+    },
+    observation: {
+      trail_observation: {
+        runner_floor_stop: 151.5,
+        computed_trail_stop: 151.5,
+        trail_stop_by_r: 153.0,
+        chosen_stop_source: "RUNNER_FLOOR",
+        chosen_stop_price: 151.5,
+        native_stop_price: 151.5,
+        native_stop_order_id: "5002",
+        native_refresh_status: "OK",
+        runtime_eval_at_ms: 300,
+        source: "TICK_EXIT",
+      },
+    },
+    externalPosition: { symbol: "SOLUSDT", positionAmt: "0.167" },
+    openOrders: [],
+    algoOrders: [
+      {
+        symbol: "SOLUSDT",
+        side: "SELL",
+        type: "STOP_MARKET",
+        closePosition: true,
+        stopPrice: "151.5",
+        orderId: "5002",
+      },
+    ],
+  });
+  assert.ok(runnerQtyMismatch.actionable_issue_codes.includes("RUNNER_REMAINING_QTY_MISMATCH"));
+
   console.log("BINANCE_ACTIVE_EXIT_WATCHDOG_TEST_OK");
 }
 

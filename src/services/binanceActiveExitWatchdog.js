@@ -70,6 +70,12 @@ function stopTolerance(value) {
   return Math.max(Math.abs(n) * 0.0001, 1e-8);
 }
 
+function qtyTolerance(value) {
+  const n = toNum(value);
+  if (!Number.isFinite(n)) return 1e-8;
+  return Math.max(Math.abs(n) * 0.03, 1e-8);
+}
+
 function normalizeAlgoOrderFetchResult(payload) {
   if (Array.isArray(payload)) return { orders: payload, endpointUnavailable: false, note: null };
   if (payload && typeof payload === "object" && payload.endpointUnavailable === true) {
@@ -237,6 +243,12 @@ function inspectExitProtection({
   const expectedStopPrice = toNum(trailSnapshot.computed_trail_stop ?? (runnerExit && runnerExit.stopPrice));
   const floorStopPrice = toNum(trailSnapshot.runner_floor_stop ?? (runnerExit && runnerExit.runnerFloorStop));
   const trailStopByR = toNum(trailSnapshot.trail_stop_by_r ?? (runnerExit && runnerExit.trailStopByR));
+  const trailRMultiple = toNum(trailSnapshot.trail_r_multiple ?? rules.TRAIL_R_MULTIPLE);
+  const canonicalRunnerRemainingAbs = toNum(
+    meta.runner_remaining_qty_abs
+    ?? meta.runner_remaining_abs
+    ?? meta.contract_runner_remaining_abs
+  );
   const normalizedChosenStop = positionRuntimeObservationTest.normalizeChosenStopAuthority({
     runnerFloorStop: floorStopPrice,
     trailStopByR,
@@ -292,6 +304,33 @@ function inspectExitProtection({
   if (stage === "TRAIL" || stage === "TP1_DONE_NOT_TRAIL") {
     if (!stopCandidate && !Number.isFinite(actualStopPrice)) {
       issues.push(buildIssue("TRAIL_STOP_MISSING", "TP1/Trail 단계인데 거래소 stop protection이 없습니다."));
+    }
+    if (Number.isFinite(trailRMultiple) && trailRMultiple > 0 && !Number.isFinite(trailStopByR)) {
+      issues.push(buildIssue(
+        "TRAIL_R_STOP_MISSING",
+        `TRAIL_R_MULTIPLE=${trailRMultiple} 인데 trail_stop_by_r가 없습니다.`,
+        { trail_r_multiple: trailRMultiple }
+      ));
+    }
+    if (Number.isFinite(minGuaranteedProfitPct) && minGuaranteedProfitPct > 0 && !Number.isFinite(floorStopPrice)) {
+      issues.push(buildIssue(
+        "RUNNER_FLOOR_STOP_MISSING",
+        `RUNNER_MIN_PROFIT_PCT=${minGuaranteedProfitPct} 인데 runner_floor_stop가 없습니다.`,
+        { min_guaranteed_profit_pct: minGuaranteedProfitPct }
+      ));
+    }
+    if (Number.isFinite(canonicalRunnerRemainingAbs) && canonicalRunnerRemainingAbs > 0 && Number.isFinite(qtyBase) && qtyBase > 0) {
+      const tolerance = qtyTolerance(canonicalRunnerRemainingAbs);
+      if (Math.abs(qtyBase - canonicalRunnerRemainingAbs) > tolerance) {
+        issues.push(buildIssue(
+          "RUNNER_REMAINING_QTY_MISMATCH",
+          `qty=${qtyBase} runner_remaining=${canonicalRunnerRemainingAbs}`,
+          {
+            current_qty_base: qtyBase,
+            expected_runner_remaining_abs: canonicalRunnerRemainingAbs,
+          }
+        ));
+      }
     }
     if (meta.tp_p1_done === true && meta.trail_active !== true) {
       issues.push(buildIssue("TP1_DONE_WITHOUT_TRAIL_ACTIVE", "tp_p1_done=true 인데 trail_active=false 입니다."));
@@ -396,6 +435,8 @@ function inspectExitProtection({
     chosen_stop_price: chosenStopPrice,
     chosen_stop_source: chosenStopSource,
     trail_stop_by_r: trailStopByR,
+    trail_r_multiple: trailRMultiple,
+    canonical_runner_remaining_abs: canonicalRunnerRemainingAbs,
     min_guaranteed_profit_pct: minGuaranteedProfitPct,
     current_guaranteed_profit_pct: currentGuaranteedProfitPct,
     issues,

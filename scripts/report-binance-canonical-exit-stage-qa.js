@@ -5,10 +5,12 @@ require("dotenv").config();
 
 const fs = require("fs");
 const path = require("path");
+const { getFirestore } = require("../src/storage/firestore");
 const { fetchBinanceFuturesAccount, fetchFuturesOpenOrders, fetchFuturesAlgoOpenOrders } = require("../src/exchanges/binanceFuturesPrivate");
 const { resolveExitRulesForPosition } = require("../src/engine/signalEngine");
 const { listExchangePositionReadViews } = require("../src/services/positionReadModel");
 const { getPositionRuntimeObservation, resolveTrailObservationSnapshot } = require("../src/storage/positionRuntimeObservations");
+const { resolveCanonicalAlertExitStage } = require("../src/services/positionStateMachine");
 const { __test: watchdogTest } = require("../src/services/binanceActiveExitWatchdog");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -88,6 +90,12 @@ function buildRow({
   });
   const minGuaranteedPct = toNum(rules.RUNNER_MIN_PROFIT_PCT);
   const chosenStopSource = upper(watchdogRow.chosen_stop_source || trailSnapshot.chosen_stop_source);
+  const guaranteePassRaw = Number.isFinite(minGuaranteedPct) && Number.isFinite(currentProfitPct)
+    ? currentProfitPct + 1e-9 >= minGuaranteedPct
+    : null;
+  const guaranteePass = Array.isArray(watchdogRow.actionable_issue_codes)
+    ? !watchdogRow.actionable_issue_codes.includes("RUNNER_MIN_GUARANTEE_MISSED")
+    : guaranteePassRaw;
   return {
     symbol,
     position_side: watchdogRow.position_side,
@@ -108,15 +116,149 @@ function buildRow({
     trail_r_multiple: toNum(trailSnapshot.trail_r_multiple || rules.TRAIL_R_MULTIPLE),
     min_guaranteed_profit_pct: minGuaranteedPct,
     current_guaranteed_profit_pct: currentProfitPct,
-    guarantee_pass: Number.isFinite(minGuaranteedPct) && Number.isFinite(currentProfitPct)
-      ? currentProfitPct + 1e-9 >= minGuaranteedPct
-      : null,
+    guarantee_pass_raw: guaranteePassRaw,
+    guarantee_pass: guaranteePass,
     open_order_n: Array.isArray(openOrders) ? openOrders.length : 0,
     algo_order_n: Array.isArray(algoOrders) ? algoOrders.length : 0,
     actionable_issue_n: watchdogRow.actionable_issue_n,
     actionable_issue_codes: watchdogRow.actionable_issue_codes || [],
     issues: Array.isArray(watchdogRow.issues) ? watchdogRow.issues : [],
     verdict: Number(watchdogRow.actionable_issue_n || 0) > 0 ? "FAIL" : "PASS",
+  };
+}
+
+function resolveWatchdogCanonicalStage(stage) {
+  const current = upper(stage);
+  if (current === "BETWEEN_TP0_TP1") return "TP1";
+  if (current === "TP1_DONE_NOT_TRAIL") return "TP1";
+  if (current === "TRAIL") return "TRAIL";
+  return null;
+}
+
+function loadPrimaryTransitionEvents(fill = null, transition = null) {
+  const events = [];
+  const fillPrimary = upper(fill && fill.canonical_primary_transition_event);
+  if (fillPrimary) events.push(fillPrimary);
+  const transitionPrimary = upper(transition && transition.canonical_transition_event);
+  if (transitionPrimary) events.push(transitionPrimary);
+  const fillList = Array.isArray(fill && fill.canonical_transition_events)
+    ? fill.canonical_transition_events
+    : [];
+  for (const item of fillList) {
+    const value = upper(item);
+    if (value) events.push(value);
+  }
+  const seen = new Set();
+  return events.filter((value) => {
+    if (!value || seen.has(value)) return false;
+    seen.add(value);
+    return true;
+  });
+}
+
+function resolveCanonicalEvidenceStage({ fill = null, transition = null } = {}) {
+  const transitionEvents = loadPrimaryTransitionEvents(fill, transition);
+  return resolveCanonicalAlertExitStage({
+    primaryTransitionEvent: upper(transition && transition.canonical_transition_event) || upper(fill && fill.canonical_primary_transition_event) || null,
+    transitionEvents,
+    fallbackStage: upper(fill && fill.canonical_exit_stage),
+  });
+}
+
+async function loadLatestCanonicalEvidenceBySymbols({
+  exchange = "BINANCEFUT",
+  symbols = [],
+  fillScanLimit = 400,
+  transitionScanLimit = 400,
+  db = getFirestore(),
+} = {}) {
+  const target = new Set((Array.isArray(symbols) ? symbols : []).map((item) => upper(item)).filter(Boolean));
+  const bySymbol = new Map();
+  if (!target.size) return bySymbol;
+
+  const fillSnap = await db.collection("fills_paper")
+    .orderBy("created_at", "desc")
+    .limit(Math.max(1, Number(fillScanLimit) || 400))
+    .get();
+  fillSnap.forEach((doc) => {
+    const row = doc.data() || {};
+    const symbol = upper(row.symbol || row.symbol_or_pair_id);
+    if (!symbol || !target.has(symbol)) return;
+    if (upper(row.exchange) !== upper(exchange)) return;
+    const existing = bySymbol.get(symbol) || {};
+    if (existing.fill) return;
+    const event = upper(row.event);
+    const canonicalStage = upper(row.canonical_exit_stage);
+    if (!(event && event.startsWith("EXIT_")) && !canonicalStage) return;
+    bySymbol.set(symbol, {
+      ...existing,
+      fill: {
+        fill_id: row.fill_id || null,
+        trade_id: toNum(row.trade_id),
+        created_at: row.created_at || null,
+        event,
+        canonical_exit_event: upper(row.canonical_exit_event),
+        canonical_exit_stage: canonicalStage,
+        canonical_primary_transition_event: upper(row.canonical_primary_transition_event),
+        canonical_transition_events: Array.isArray(row.canonical_transition_events) ? row.canonical_transition_events.map((item) => upper(item)).filter(Boolean) : [],
+      },
+    });
+  });
+
+  const transitionSnap = await db.collection("canonical_exit_transitions")
+    .orderBy("created_at", "desc")
+    .limit(Math.max(1, Number(transitionScanLimit) || 400))
+    .get();
+  transitionSnap.forEach((doc) => {
+    const row = doc.data() || {};
+    const symbol = upper(row.symbol);
+    if (!symbol || !target.has(symbol)) return;
+    if (upper(row.exchange) !== upper(exchange)) return;
+    const existing = bySymbol.get(symbol) || {};
+    if (existing.transition) return;
+    bySymbol.set(symbol, {
+      ...existing,
+      transition: {
+        canonical_transition_event: upper(row.canonical_transition_event),
+        canonical_event: upper(row.canonical_event),
+        canonical_exit_chain_key: row.canonical_exit_chain_key || null,
+        fill_id: row.fill_id || null,
+        created_at: row.created_at || null,
+      },
+    });
+  });
+
+  return bySymbol;
+}
+
+function augmentRowWithCanonicalEvidence(row = {}, evidence = null) {
+  const fill = evidence && evidence.fill ? evidence.fill : null;
+  const transition = evidence && evidence.transition ? evidence.transition : null;
+  const watchdogStage = upper(row.canonical_stage);
+  const expectedStage = resolveWatchdogCanonicalStage(watchdogStage);
+  const evidenceStage = resolveCanonicalEvidenceStage({ fill, transition });
+  const evidenceIssues = [];
+  if (expectedStage && !evidenceStage) {
+    evidenceIssues.push("CANONICAL_EVIDENCE_MISSING");
+  } else if (expectedStage && evidenceStage && expectedStage !== evidenceStage) {
+    evidenceIssues.push("CANONICAL_EVIDENCE_STAGE_MISMATCH");
+  }
+  const watchdogIssues = Array.isArray(row.actionable_issue_codes) ? row.actionable_issue_codes : [];
+  const reportIssueCodes = [...watchdogIssues, ...evidenceIssues];
+  return {
+    ...row,
+    latest_fill_event: fill && fill.event || null,
+    latest_fill_canonical_exit_event: fill && fill.canonical_exit_event || null,
+    latest_fill_canonical_exit_stage: fill && fill.canonical_exit_stage || null,
+    latest_fill_transition_events: fill && fill.canonical_transition_events || [],
+    latest_transition_event: transition && transition.canonical_transition_event || null,
+    latest_transition_canonical_event: transition && transition.canonical_event || null,
+    latest_transition_chain_key: transition && transition.canonical_exit_chain_key || null,
+    canonical_evidence_stage: evidenceStage || null,
+    canonical_evidence_issue_codes: evidenceIssues,
+    report_issue_n: reportIssueCodes.length,
+    report_issue_codes: reportIssueCodes,
+    verdict: reportIssueCodes.length > 0 ? "FAIL" : "PASS",
   };
 }
 
@@ -135,7 +277,7 @@ function buildMarkdown(report) {
     return `${lines.join("\n")}\n`;
   }
   for (const row of report.rows) {
-    lines.push(`- ${row.symbol} | stage=${row.canonical_stage} | qty=${row.qty_base} | stop=${row.native_stop_price ?? "N/A"} | floor=${row.expected_floor_stop_price ?? "N/A"} | r_stop=${row.trail_stop_by_r ?? "N/A"} | chosen=${row.chosen_stop_source || "N/A"}:${row.chosen_stop_price ?? "N/A"} | min_gp=${row.min_guaranteed_profit_pct ?? "N/A"} | current_gp=${row.current_guaranteed_profit_pct ?? "N/A"} | issues=${(row.actionable_issue_codes || []).join(",") || "none"} | verdict=${row.verdict}`);
+    lines.push(`- ${row.symbol} | stage=${row.canonical_stage} | evidence=${row.canonical_evidence_stage || "N/A"} | fill=${row.latest_fill_canonical_exit_event || row.latest_fill_event || "N/A"} | transition=${row.latest_transition_event || "N/A"} | qty=${row.qty_base} | stop=${row.native_stop_price ?? "N/A"} | floor=${row.expected_floor_stop_price ?? "N/A"} | r_stop=${row.trail_stop_by_r ?? "N/A"} | chosen=${row.chosen_stop_source || "N/A"}:${row.chosen_stop_price ?? "N/A"} | min_gp=${row.min_guaranteed_profit_pct ?? "N/A"} | current_gp=${row.current_guaranteed_profit_pct ?? "N/A"} | issues=${(row.report_issue_codes || []).join(",") || "none"} | verdict=${row.verdict}`);
   }
   return `${lines.join("\n")}\n`;
 }
@@ -154,18 +296,23 @@ async function main() {
       .filter(([symbol]) => !!symbol)
   );
   const openOrdersBySymbol = groupBySymbol(await fetchFuturesOpenOrders({ ...keys }).catch(() => []));
+  const evidenceBySymbol = await loadLatestCanonicalEvidenceBySymbols({
+    exchange: "BINANCEFUT",
+    symbols: positions.map((position) => upper(position.symbol || position.symbol_or_pair_id)).filter(Boolean),
+  }).catch(() => new Map());
   const rows = [];
   for (const position of positions) {
     const symbol = upper(position.symbol || position.symbol_or_pair_id);
     const observation = await getPositionRuntimeObservation({ exchange: "BINANCEFUT", symbol }).catch(() => null);
     const algoOrders = await fetchFuturesAlgoOpenOrders({ ...keys, symbol }).catch(() => []);
-    rows.push(buildRow({
+    const baseRow = buildRow({
       position,
       externalPosition: externalBySymbol.get(symbol) || null,
       observation,
       openOrders: openOrdersBySymbol.get(symbol) || [],
       algoOrders,
-    }));
+    });
+    rows.push(augmentRowWithCanonicalEvidence(baseRow, evidenceBySymbol.get(symbol) || null));
   }
   rows.sort((a, b) => String(a.symbol).localeCompare(String(b.symbol)));
   const failingRows = rows.filter((row) => row.verdict === "FAIL");
@@ -190,7 +337,18 @@ async function main() {
   }, null, 2));
 }
 
-main().catch((err) => {
-  console.error("BINANCE_CANONICAL_EXIT_STAGE_QA_FAILED", err && err.stack ? err.stack : err);
-  process.exit(1);
-});
+module.exports = {
+  __test: {
+    resolveWatchdogCanonicalStage,
+    resolveCanonicalEvidenceStage,
+    augmentRowWithCanonicalEvidence,
+    loadPrimaryTransitionEvents,
+  },
+};
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("BINANCE_CANONICAL_EXIT_STAGE_QA_FAILED", err && err.stack ? err.stack : err);
+    process.exit(1);
+  });
+}
