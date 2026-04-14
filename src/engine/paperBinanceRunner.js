@@ -2312,23 +2312,22 @@ async function repairActivePositionExitRuntimeState({
       } catch (_) {}
     } else {
       try {
-        await recordExitRepairRequest({
+        await requestBinanceNativeProtectionRefresh({
           exchange,
           symbol,
+          fallbackSide,
+          fallbackEntryPrice: Number(entryPrice),
+          fallbackLeverage: Number.isFinite(Number(leverage)) && Number(leverage) > 0 ? Number(leverage) : FUTURES_BASE_LEVERAGE,
+          exitRulesOverride: adjustment.appliedExitRules || null,
+          posMeta: nextMeta,
           source: "ACTIVE_POSITION_EXIT_RUNTIME_REPAIR",
-          requestKind: "NATIVE_STOP_REFRESH",
           reason: "NON_AUTHORITY_LAYER_REQUEST",
-          dedupeKey: `${String(exchange || "").toUpperCase()}__${String(symbol || "").toUpperCase()}__ACTIVE_POSITION_EXIT_RUNTIME_REPAIR__NATIVE_STOP_REFRESH`,
-          payload: {
-            fallback_side: fallbackSide,
-            fallback_entry_price: Number(entryPrice),
-            fallback_leverage: Number.isFinite(Number(leverage)) && Number(leverage) > 0 ? Number(leverage) : FUTURES_BASE_LEVERAGE,
-            exit_rules_override: adjustment.appliedExitRules || null,
-          },
+          dispatchReason: `ACTIVE_POSITION_EXIT_RUNTIME_REPAIR_NATIVE_STOP_REFRESH_${String(exchange || "").toUpperCase()}_${String(symbol || "").toUpperCase()}`,
         });
         nextMeta = mergeMeta(nextMeta, {
           native_protection_refresh_status: "REPAIR_REQUESTED_NON_AUTHORITY_LAYER",
           native_protection_refresh_reason: "NON_AUTHORITY_LAYER_REQUEST",
+          native_protection_refresh_at_ms: Date.now(),
           native_protection_refresh_requested_at_ms: Date.now(),
         });
       } catch (_) {}
@@ -8985,6 +8984,65 @@ function buildLiveNativeProtectionRefreshArgs({
   };
 }
 
+async function requestBinanceNativeProtectionRefresh({
+  exchange,
+  symbol,
+  fallbackSide,
+  fallbackEntryPrice,
+  fallbackLeverage,
+  exitRulesOverride,
+  posMeta,
+  source = "UNKNOWN_SOURCE",
+  reason = "NON_AUTHORITY_LAYER_REQUEST",
+  dispatchReason = null,
+} = {}) {
+  const exchangeUpper = String(exchange || "").trim().toUpperCase() || "UNKNOWN";
+  const symbolUpper = String(symbol || "").trim().toUpperCase() || "UNKNOWN";
+  const sourceUpper = String(source || "UNKNOWN_SOURCE").trim().toUpperCase() || "UNKNOWN_SOURCE";
+  const fallbackSideUpper = String(fallbackSide || "").trim().toUpperCase();
+  const fallbackPosSide = (fallbackSideUpper === "SELL" || fallbackSideUpper === "SHORT") ? "SHORT" : "LONG";
+  const request = await recordExitRepairRequest({
+    exchange: exchangeUpper,
+    symbol: symbolUpper,
+    source: sourceUpper,
+    requestKind: "NATIVE_STOP_REFRESH",
+    reason,
+    dedupeKey: `${exchangeUpper}__${symbolUpper}__${sourceUpper}__NATIVE_STOP_REFRESH`,
+    payload: {
+      fallback_side: fallbackSideUpper || null,
+      fallback_entry_price: Number.isFinite(Number(fallbackEntryPrice)) ? Number(fallbackEntryPrice) : null,
+      fallback_leverage: Number.isFinite(Number(fallbackLeverage)) ? Number(fallbackLeverage) : null,
+      exit_rules_override: exitRulesOverride || null,
+      pos_meta_entry_event_id: posMeta && posMeta.entry_event_id ? posMeta.entry_event_id : null,
+    },
+  });
+  const triggerResult = await triggerExitWorkerRun({
+    reason: String(
+      dispatchReason ||
+      `${sourceUpper}_NATIVE_STOP_REFRESH_${exchangeUpper}_${symbolUpper}`
+    ).trim(),
+    dispatchOnly: true,
+  }).catch((error) => ({
+    ok: false,
+    skipped: true,
+    reason: "EXIT_WORKER_TRIGGER_FETCH_FAIL",
+    error: error && error.message ? error.message : String(error),
+  }));
+  return {
+    ok: false,
+    skipped: true,
+    reason: "REPAIR_REQUESTED_NON_AUTHORITY_LAYER",
+    request_id: request && request.exit_repair_request_id ? request.exit_repair_request_id : null,
+    entry_price: Number.isFinite(Number(fallbackEntryPrice)) ? Number(fallbackEntryPrice) : null,
+    position_side: fallbackPosSide,
+    attempts: 0,
+    max_attempts: 0,
+    dispatch_ok: triggerResult && triggerResult.ok === true,
+    dispatch_reason: triggerResult && triggerResult.reason ? String(triggerResult.reason) : null,
+    dispatch_error: triggerResult && triggerResult.error ? String(triggerResult.error) : null,
+  };
+}
+
 function shouldCleanupExternalFlatOrders({
   active = false,
   prevActive = false,
@@ -9045,12 +9103,15 @@ function buildNativeProtectionMetaPatch({
   const intentUpper = String(intent || "").toUpperCase();
   if (!nativeProtection || (intentUpper !== "ENTRY" && intentUpper !== "ADD")) return null;
   const refreshAtMs = Date.now();
+  const resolvedReason = resolveNativeProtectionAlertReason(nativeProtection);
   const status = nativeProtection.ok === true
     ? "OK"
-    : (nativeProtection.skipped === true ? "SKIPPED" : "FAILED");
+    : (resolvedReason === "REPAIR_REQUESTED_NON_AUTHORITY_LAYER"
+      ? "REPAIR_REQUESTED_NON_AUTHORITY_LAYER"
+      : (nativeProtection.skipped === true ? "SKIPPED" : "FAILED"));
   const reason = nativeProtection.ok === true
     ? null
-    : resolveNativeProtectionAlertReason(nativeProtection);
+    : resolvedReason;
   const basePatch = {
     native_protection_refresh_status: status,
     native_protection_refresh_reason: reason,
@@ -9461,8 +9522,12 @@ async function notifyNativeProtectionResult({
   exchange,
   liveMode = "LIVE",
   alertFn,
-} = {}) {
+  } = {}) {
   if (!nativeProtection) return { ok: true, skipped: true };
+  const npReason = resolveNativeProtectionAlertReason(nativeProtection);
+  if (nativeProtection.skipped === true && npReason === "REPAIR_REQUESTED_NON_AUTHORITY_LAYER") {
+    return { ok: true, skipped: true, reason: npReason };
+  }
   if (nativeProtection.ok === true) {
     if (String(nativeProtection.tp_status || "").toUpperCase() === "FAILED") {
       const reason = String(nativeProtection.tp_reason || "").trim() || "TP_PARTIAL_PLACE_FAIL";
@@ -9487,7 +9552,6 @@ async function notifyNativeProtectionResult({
     }
     return { ok: true, skipped: true };
   }
-  const npReason = resolveNativeProtectionAlertReason(nativeProtection);
   console.warn(
     `[BINANCE_NATIVE_PROTECT_WARN] ${String(symbol || "").toUpperCase()} ${npReason} ` +
     `${nativeProtection.error || ""}`.trim()
@@ -10098,19 +10162,29 @@ async function executeLiveFuturesOrder({
 
   if (!liveCfg.liveDryRun) {
     try {
-      nativeProtection = await refreshBinanceNativeProtectionWithRetry(
-        buildLiveNativeProtectionRefreshArgs({
-          liveCfg,
-          exchange,
-          symbol,
-          side,
-          execPrice,
-          priceRef,
-          leverageMult,
-          exitRulesOverride,
-          positionMeta: nativeProtectionMeta,
-        })
-      );
+      const requestArgs = buildLiveNativeProtectionRefreshArgs({
+        liveCfg,
+        exchange,
+        symbol,
+        side,
+        execPrice,
+        priceRef,
+        leverageMult,
+        exitRulesOverride,
+        positionMeta: nativeProtectionMeta,
+      });
+      nativeProtection = await requestBinanceNativeProtectionRefresh({
+        exchange,
+        symbol,
+        fallbackSide: requestArgs.fallbackSide,
+        fallbackEntryPrice: requestArgs.fallbackEntryPrice,
+        fallbackLeverage: requestArgs.fallbackLeverage,
+        exitRulesOverride: requestArgs.exitRulesOverride,
+        posMeta: requestArgs.posMeta,
+        source: "LIVE_EXECUTOR",
+        reason: isExit ? "LIVE_EXECUTOR_POST_EXIT_FILL" : "LIVE_EXECUTOR_POST_ENTRY_FILL",
+        dispatchReason: `LIVE_EXECUTOR_NATIVE_STOP_REFRESH_${String(exchange || "").toUpperCase()}_${String(symbol || "").toUpperCase()}_${String(intent || "").toUpperCase() || "UNKNOWN"}`,
+      });
     } catch (nativeErr) {
       nativeProtection = {
         ok: false,
@@ -16224,6 +16298,7 @@ module.exports = {
   runDistributedFuturesPositionSync,
   resolveFuturesPositionSyncRequest,
   refreshBinanceNativeProtectionWithRetry,
+  requestBinanceNativeProtectionRefresh,
   buildNativeProtectionMetaPatch,
   notifyNativeProtectionResult,
   resolveLiveFuturesConfig,
@@ -16332,6 +16407,7 @@ module.exports = {
     resolveNativeProtectionStageState,
     resolveNativeProtectionPositionMeta,
     buildLiveNativeProtectionRefreshArgs,
+    requestBinanceNativeProtectionRefresh,
     buildRescueAddRepriceAlertContext,
     computeBinanceNativeProtectionPrices,
     shouldRepairActiveExitRuntimeState,

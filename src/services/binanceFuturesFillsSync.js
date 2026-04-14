@@ -20,6 +20,7 @@ const { getExitRulesForExchange, resolveExitRulesForPosition } = require("../eng
 const {
   syncFuturesPositionOnly,
   resolveFuturesPositionSyncRequest,
+  requestBinanceNativeProtectionRefresh,
 } = require("../engine/paperBinanceRunner");
 const { sendTradeExecutionAlert } = require("./tradeExecutionAlert");
 const { triggerExitWorkerRun } = require("./exitWorkerClient");
@@ -37,7 +38,6 @@ const {
   resolveTp1RemainingContractQtyRatio,
 } = require("../utils/exitQtyContract");
 const { recordUnifiedEvent } = require("../storage/unifiedEventTimeline");
-const { recordExitRepairRequest } = require("../storage/exitRepairRequests");
 const { recordCanonicalExitTransitions } = require("../storage/canonicalExitTransitions");
 const {
   resolveCanonicalExitTransitionEvents,
@@ -3531,19 +3531,17 @@ async function syncMarketTrades({
       });
       if (syncedPosition && syncedState === "ACTIVE" && Number.isFinite(syncedQtyBase) && syncedQtyBase > 0) {
         try {
-          await recordExitRepairRequest({
+          await requestBinanceNativeProtectionRefresh({
             exchange: "BINANCEFUT",
             symbol: sym,
+            fallbackSide: hintedMeta.position_side || syncedPosition.position_side || syncedPosition.side || null,
+            fallbackEntryPrice: Number(syncedPosition.avg_price),
+            fallbackLeverage: Number(hintedMeta.external_leverage || hintedMeta.leverage || syncedPosition.leverage || 1),
+            exitRulesOverride: hintedMeta.exit_rules_override || null,
+            posMeta: hintedMeta,
             source: "BINANCE_FUTURES_FILLS_SYNC",
-            requestKind: "NATIVE_STOP_REFRESH",
             reason: "NON_AUTHORITY_LAYER_REQUEST",
-            dedupeKey: `BINANCEFUT__${sym}__FILL_SYNC__NATIVE_STOP_REFRESH`,
-            payload: {
-              fallback_side: hintedMeta.position_side || syncedPosition.position_side || syncedPosition.side || null,
-              fallback_entry_price: Number(syncedPosition.avg_price),
-              fallback_leverage: Number(hintedMeta.external_leverage || hintedMeta.leverage || syncedPosition.leverage || 1),
-              exit_rules_override: hintedMeta.exit_rules_override || null,
-            },
+            dispatchReason: `BINANCE_FUTURES_FILLS_SYNC_NATIVE_STOP_REFRESH_BINANCEFUT_${String(sym || "").toUpperCase()}`,
           });
         } catch (refreshErr) {
           console.warn("[BINANCEFUT_FILL_SYNC_NATIVE_REFRESH_FAIL]", refreshErr && refreshErr.message ? refreshErr.message : String(refreshErr));

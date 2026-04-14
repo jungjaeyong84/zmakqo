@@ -53,6 +53,25 @@ async function run() {
   assert.strictEqual(called, 1, "alert function must be called once");
   assert.strictEqual(result.ok, false, "failed native protection should stay failed");
   assert.strictEqual(result.reason, "NATIVE_PLACE_FAIL");
+
+  let skippedCalled = 0;
+  const skippedResult = await __test.notifyNativeProtectionResult({
+    nativeProtection: {
+      ok: false,
+      skipped: true,
+      reason: "REPAIR_REQUESTED_NON_AUTHORITY_LAYER",
+      attempts: 0,
+    },
+    symbol: "ETHUSDT",
+    exchange: "BINANCEFUT",
+    alertFn: async () => {
+      skippedCalled += 1;
+      return { ok: true };
+    },
+  });
+  assert.strictEqual(skippedCalled, 0, "request-only native protection should not alert");
+  assert.strictEqual(skippedResult.ok, true, "request-only native protection should be treated as non-failure");
+  assert.strictEqual(skippedResult.reason, "REPAIR_REQUESTED_NON_AUTHORITY_LAYER");
 }
 
 run()

@@ -271,8 +271,10 @@ const tickExitInstanceId = [
 let leaseSkippedLogAt = 0;
 const tickExitFailureAlertState = new Map();
 const nativeProtectionStateCache = new Map();
+const nativeProtectionRefreshAttemptState = new Map();
 const trailHardExitCooldownState = new Map();
 const TICK_EXIT_NATIVE_PROTECTION_VERIFY_TTL_MS = normalizeIntervalMs(process.env.TICK_EXIT_NATIVE_PROTECTION_VERIFY_TTL_MS, 10000);
+const TICK_EXIT_NATIVE_PROTECTION_REFRESH_COOLDOWN_MS = normalizeIntervalMs(process.env.TICK_EXIT_NATIVE_PROTECTION_REFRESH_COOLDOWN_MS, 3000);
 const TICK_EXIT_HARD_EXIT_COOLDOWN_MS = normalizeIntervalMs(process.env.TICK_EXIT_HARD_EXIT_COOLDOWN_MS, 60000);
 
 function resolveTfFromMsLocal(ms) {
@@ -316,6 +318,18 @@ function clearNativeProtectionStateCache(symbol) {
   const key = String(symbol || "").toUpperCase();
   if (!key) return;
   nativeProtectionStateCache.delete(key);
+}
+
+function shouldRunNativeProtectionRefreshCooldown({ symbol, now = nowMs(), cooldownMs = TICK_EXIT_NATIVE_PROTECTION_REFRESH_COOLDOWN_MS } = {}) {
+  const key = String(symbol || "").toUpperCase();
+  if (!key) return false;
+  const current = Number(now);
+  if (!Number.isFinite(current)) return false;
+  const cooldown = Math.max(1000, Number(cooldownMs) || TICK_EXIT_NATIVE_PROTECTION_REFRESH_COOLDOWN_MS);
+  const last = Number(nativeProtectionRefreshAttemptState.get(key));
+  if (Number.isFinite(last) && (current - last) < cooldown) return false;
+  nativeProtectionRefreshAttemptState.set(key, current);
+  return true;
 }
 
 function structuredLog(event, payload = {}, level = "log") {
@@ -612,6 +626,30 @@ function hasNativeTpProtection(meta) {
     && tpStatus === "OK"
     && stale !== true
     && ((Number.isFinite(tpPrice) && tpPrice > 0) || !!tpOrderId);
+}
+
+function shouldEagerRefreshNativeProtection({ pos, nativeProtectionState } = {}) {
+  const position = pos && typeof pos === "object" ? pos : null;
+  if (!position) return { needed: false, reason: "NO_POSITION" };
+  const meta = position && typeof position.meta === "object" ? position.meta : {};
+  const canonicalStage = resolveCanonicalExitStageForPosition(position);
+  const tpP1Done = hasCanonicalTpP1Reached(canonicalStage);
+  const tpP1Pending = meta.tp_p1_pending === true;
+  const stopActive = nativeProtectionState && typeof nativeProtectionState.stopActive === "boolean"
+    ? nativeProtectionState.stopActive
+    : hasNativeStopProtection(meta);
+  const tpActive = nativeProtectionState && typeof nativeProtectionState.tpActive === "boolean"
+    ? nativeProtectionState.tpActive
+    : hasNativeTpProtection(meta);
+  const refreshStatus = String(meta.native_protection_refresh_status || "").trim().toUpperCase() || null;
+  const needsStop = stopActive !== true;
+  const needsTp = !tpP1Done && !tpP1Pending && tpActive !== true;
+  return {
+    needed: needsStop || needsTp,
+    reason: refreshStatus || (needsStop ? "NATIVE_STOP_MISSING" : (needsTp ? "NATIVE_TP_MISSING" : "UP_TO_DATE")),
+    needsStop,
+    needsTp,
+  };
 }
 
 function isNativeStopLessProtectiveThanTrigger({ meta, triggerPrice, side } = {}) {
@@ -1189,10 +1227,10 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
           symbol,
         });
       } catch (_) {}
-      const effectivePos = applyTrailObservationToPosition({ pos, observation: trailObservation });
-      const leverageEff = resolveLeverageEff(pos, "BINANCEFUT");
-      const rules = resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: effectivePos });
-      const nativeProtectionState = await resolveLiveNativeProtectionState({ exCfg, symbol, pos: effectivePos });
+      let effectivePos = applyTrailObservationToPosition({ pos, observation: trailObservation });
+      let leverageEff = resolveLeverageEff(pos, "BINANCEFUT");
+      let rules = resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: effectivePos });
+      let nativeProtectionState = await resolveLiveNativeProtectionState({ exCfg, symbol, pos: effectivePos });
       if (nativeProtectionState && nativeProtectionState.verify_error) {
         const logKey = `native_verify_${String(symbol).toUpperCase()}`;
         const lastLogged = Number(symbolCooldownLogState.get(logKey));
@@ -1205,8 +1243,69 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
           }, "warn");
         }
       }
+      const eagerProtectionRefresh = shouldEagerRefreshNativeProtection({
+        pos: effectivePos,
+        nativeProtectionState,
+      });
+      let resolvedPosSide = resolvePositionSideFromPosition(effectivePos, effectivePos.meta, "LONG");
+      if (eagerProtectionRefresh.needed && shouldRunNativeProtectionRefreshCooldown({ symbol, now: tickNow })) {
+        try {
+          const liveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol });
+          const refreshed = await refreshBinanceNativeProtectionWithRetry({
+            liveCfg,
+            exchange: "BINANCEFUT",
+            symbol,
+            fallbackSide: resolvedPosSide === "SHORT" ? "SELL" : "BUY",
+            fallbackEntryPrice: Number(effectivePos && effectivePos.avg_price),
+            fallbackLeverage: Number(effectivePos && effectivePos.meta && (effectivePos.meta.external_leverage || effectivePos.meta.leverage || effectivePos.leverage || 1)),
+            exitRulesOverride: effectivePos && effectivePos.meta && effectivePos.meta.exit_rules_override ? effectivePos.meta.exit_rules_override : null,
+            posMeta: effectivePos.meta || {},
+          });
+          structuredLog("tick_exit_native_protection_refresh", {
+            exchange: "BINANCEFUT",
+            symbol: String(symbol).toUpperCase(),
+            side: resolvePositionSideFromPosition(effectivePos, effectivePos.meta, "LONG"),
+            needs_stop: eagerProtectionRefresh.needsStop === true,
+            needs_tp: eagerProtectionRefresh.needsTp === true,
+            refresh_reason: eagerProtectionRefresh.reason,
+            refreshed: refreshed && refreshed.ok === true,
+            refresh_result_reason: refreshed && refreshed.reason ? String(refreshed.reason) : null,
+          });
+        } catch (nativeRefreshErr) {
+          structuredLog("tick_exit_native_protection_refresh_error", {
+            exchange: "BINANCEFUT",
+            symbol: String(symbol).toUpperCase(),
+            refresh_reason: eagerProtectionRefresh.reason,
+            error: String(nativeRefreshErr && nativeRefreshErr.message || nativeRefreshErr).slice(0, 200),
+          }, "warn");
+        } finally {
+          try {
+            clearNativeProtectionStateCache(symbol);
+            await syncFuturesPositionOnly({
+              runId: buildTickTrailReconcileRunId(symbol, Date.now()),
+              exchange: "BINANCEFUT",
+              symbol,
+              force: true,
+            });
+            trailObservation = await getPositionRuntimeObservation({
+              exchange: "BINANCEFUT",
+              symbol,
+            }).catch(() => trailObservation);
+            effectivePos = applyTrailObservationToPosition({
+              pos: await getPositionReadView({
+                exchange: "BINANCEFUT",
+                symbol,
+              }),
+              observation: trailObservation,
+            });
+            leverageEff = resolveLeverageEff(effectivePos || pos, "BINANCEFUT");
+            rules = resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: effectivePos });
+            nativeProtectionState = await resolveLiveNativeProtectionState({ exCfg, symbol, pos: effectivePos });
+            resolvedPosSide = resolvePositionSideFromPosition(effectivePos, effectivePos.meta, "LONG");
+          } catch (_) {}
+        }
+      }
       const triggers = computeExitTriggers({ pos: effectivePos, rules, leverageEff, nativeProtectionState });
-      const resolvedPosSide = resolvePositionSideFromPosition(effectivePos, effectivePos.meta, "LONG");
       const trailTrigger = triggers.find((t) => String(t && t.kind || "").toUpperCase() === "TRAIL");
       const trailAuthority = trailTrigger
         ? await loadTrailAuthorityRuntime({
@@ -1928,6 +2027,7 @@ function stopBinanceTickExitLoop() {
   pendingIntentState.clear();
   pendingIntentLogState.clear();
   nativeProtectionStateCache.clear();
+  nativeProtectionRefreshAttemptState.clear();
   trailHardExitCooldownState.clear();
   releaseTickExitLease().catch(() => {});
   return { ok: true, running: false };
@@ -1953,6 +2053,8 @@ module.exports = {
     shouldBypassNativeProtectionCache,
     hasNativeStopProtection,
     hasNativeTpProtection,
+    shouldEagerRefreshNativeProtection,
+    shouldRunNativeProtectionRefreshCooldown,
     shouldTriggerTrailHardExit,
     shouldRunBySymbolCooldown,
     _symbolCooldownState: symbolCooldownState,

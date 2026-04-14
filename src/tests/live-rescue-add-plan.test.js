@@ -894,6 +894,22 @@ async function run() {
   assert.strictEqual(nativeProtectionMeta.native_protection_stop_price, null);
   assert.strictEqual(nativeProtectionMeta.native_protection_tp_order_id, null);
 
+  const requestedNativeProtectionMeta = __test.buildNativeProtectionMetaPatch({
+    nativeProtection: {
+      ok: false,
+      skipped: true,
+      reason: "REPAIR_REQUESTED_NON_AUTHORITY_LAYER",
+      entry_price: 100,
+      position_side: "LONG",
+    },
+    intent: "ADD",
+    execBarCloseMs: Date.parse("2026-03-11T02:00:00Z"),
+  });
+  assert.strictEqual(requestedNativeProtectionMeta.native_protection_refresh_context, "ADD");
+  assert.strictEqual(requestedNativeProtectionMeta.native_protection_refresh_status, "REPAIR_REQUESTED_NON_AUTHORITY_LAYER");
+  assert.strictEqual(requestedNativeProtectionMeta.native_protection_refresh_reason, "REPAIR_REQUESTED_NON_AUTHORITY_LAYER");
+  assert.strictEqual(requestedNativeProtectionMeta.native_protection_stale, true);
+
   const nativeProtectionTpMeta = __test.buildNativeProtectionMetaPatch({
     nativeProtection: {
       ok: true,

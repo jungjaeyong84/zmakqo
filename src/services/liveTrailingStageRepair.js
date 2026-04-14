@@ -8,11 +8,11 @@ const {
 } = require("../exchanges/binanceFuturesPrivate");
 const { computeRunnerExitStopPrice } = require("../engine/signalEngine");
 const {
+  requestBinanceNativeProtectionRefresh,
 } = require("../engine/paperBinanceRunner");
 const { resolveBinanceKeys } = require("./binanceApiKeys");
 const { upsertTrailObservation } = require("../storage/positionRuntimeObservations");
 const { getPosition, upsertPositionMetaOnly } = require("../storage/positionsPaper");
-const { recordExitRepairRequest } = require("../storage/exitRepairRequests");
 const { resolveCanonicalExitStageFromCycleEvidence } = require("./positionStateMachine");
 
 function normalizeSymbol(value) {
@@ -231,27 +231,20 @@ async function repairLiveTrailingStageForSymbol({
     nextMeta,
   });
   let nativeProtection = null;
-  await recordExitRepairRequest({
+  nativeProtection = await requestBinanceNativeProtectionRefresh({
     exchange,
     symbol: sym,
+    fallbackSide: positionSide,
+    fallbackEntryPrice: Number(position.avg_price),
+    fallbackLeverage: Number(position.leverage || meta.external_leverage || meta.leverage || 1),
+    exitRulesOverride: nextMeta.exit_rules_override || null,
+    posMeta: nextMeta,
     source: "LIVE_TRAILING_STAGE_REPAIR",
-    requestKind: "NATIVE_STOP_REFRESH",
     reason: "NON_AUTHORITY_LAYER_REQUEST",
-    dedupeKey: `${exchange}__${sym}__LIVE_TRAILING_STAGE_REPAIR__NATIVE_STOP_REFRESH`,
-    payload: {
-      fallback_side: positionSide,
-      fallback_entry_price: Number(position.avg_price),
-      fallback_leverage: Number(position.leverage || meta.external_leverage || meta.leverage || 1),
-      exit_rules_override: nextMeta.exit_rules_override || null,
-    },
+    dispatchReason: `LIVE_TRAILING_STAGE_REPAIR_NATIVE_STOP_REFRESH_${String(exchange || "").toUpperCase()}_${String(sym || "").toUpperCase()}`,
   });
-  nativeProtection = {
-    ok: false,
-    skipped: true,
-    reason: "REPAIR_REQUESTED_NON_AUTHORITY_LAYER",
-    stop_price: Number(nextMeta.native_protection_stop_price || meta.native_protection_stop_price) || null,
-    stop_order_id: nextMeta.native_protection_stop_order_id || meta.native_protection_stop_order_id || null,
-  };
+  nativeProtection.stop_price = Number(nextMeta.native_protection_stop_price || meta.native_protection_stop_price) || null;
+  nativeProtection.stop_order_id = nextMeta.native_protection_stop_order_id || meta.native_protection_stop_order_id || null;
   const nativeProtectionMetaPatch = null;
   if (nativeProtectionMetaPatch && typeof nativeProtectionMetaPatch === "object") {
     await patchPositionMetaOnlyWithRetry({
