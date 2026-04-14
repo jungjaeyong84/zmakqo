@@ -119,6 +119,7 @@ const { __test: trailRunnerFloorAuditTest } = require("../../scripts/report-trai
     violation_total_n: 2,
     live_bar_runner_violation_n: 1,
     live_bar_runner_violation_total_n: 1,
+    active_live_violation_n: 0,
     jsonPath: "/tmp/trail_runner_floor_audit_latest.json",
     mdPath: "/tmp/2026-04-12_trail_runner_floor_audit.md",
   });
