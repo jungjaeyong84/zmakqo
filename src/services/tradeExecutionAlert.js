@@ -354,6 +354,35 @@ function resolveCanonicalStageLines(payload = {}, resolved = {}) {
   return lines;
 }
 
+function resolveExitIntegrityLines(payload = {}) {
+  const lines = [];
+  const items = Array.isArray(payload.stopDivergenceItems)
+    ? payload.stopDivergenceItems
+    : [];
+  const divergence = items
+    .map((item) => String(item && (item.display || item.code) || "").trim())
+    .filter(Boolean);
+  if (divergence.length) {
+    lines.push(`청산경고: ${divergence.join(" / ")}`);
+  }
+  const chosenSource = String(payload.chosenStopSource || "").trim().toUpperCase();
+  const chosenStopPrice = Number(payload.chosenStopPrice);
+  const runnerFloorStop = Number(payload.runnerFloorStop);
+  const trailStopByR = Number(payload.trailStopByR);
+  const nativeStopPrice = Number(payload.nativeStopPrice);
+  const stopParts = [];
+  if (chosenSource || Number.isFinite(chosenStopPrice)) {
+    stopParts.push(`chosen ${chosenSource || "-"} ${Number.isFinite(chosenStopPrice) ? formatMoney(chosenStopPrice) : "-"}`);
+  }
+  if (Number.isFinite(runnerFloorStop)) stopParts.push(`floor ${formatMoney(runnerFloorStop)}`);
+  if (Number.isFinite(trailStopByR)) stopParts.push(`r ${formatMoney(trailStopByR)}`);
+  if (Number.isFinite(nativeStopPrice)) stopParts.push(`native ${formatMoney(nativeStopPrice)}`);
+  if (stopParts.length) {
+    lines.push(`stop근거: ${stopParts.join(" / ")}`);
+  }
+  return lines;
+}
+
 function resolveExternalSyncContextLines(payload = {}) {
   const ev = String(payload.event || "").trim().toUpperCase();
   if (ev !== "EXIT_EXTERNAL_SYNC") return [];
@@ -571,6 +600,7 @@ function buildMessage(payload) {
     }
     lines.push(...resolveExternalSyncContextLines(payload));
     lines.push(...resolveCanonicalStageLines(payload, resolvedExitMeta));
+    lines.push(...resolveExitIntegrityLines(payload));
     lines.push(...resolveMarketRegimeLines(payload, feat));
     const rulesTxt = formatExitRulesCompact(payload.exitRules || payload.exit_rules);
     if (rulesTxt) lines.push(`전략계약: ${rulesTxt}`);
@@ -627,6 +657,7 @@ function buildFailureMessage(payload) {
   }
   lines.push(...resolveExitContractLedgerLines(payload));
   lines.push(...resolveCanonicalStageLines(payload, resolvedExitMeta));
+  lines.push(...resolveExitIntegrityLines(payload));
   lines.push(...resolveMarketRegimeLines(payload, feat));
   const rulesTxt = formatExitRulesCompact(payload.exitRules || payload.exit_rules);
   if (rulesTxt) lines.push(`전략계약: ${rulesTxt}`);

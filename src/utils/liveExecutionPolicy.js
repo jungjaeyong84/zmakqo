@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { listExchangePositionReadViews } = require("../services/positionReadModel");
+const { readExitIntegrityReport, deriveExitIntegrityExposureGuard } = require("./exitIntegrityPolicy");
 
 const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
 const CAPITAL_ALLOCATOR_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_market_capital_allocator_latest.json");
@@ -86,6 +87,12 @@ const RECENT_WIN_RATE_GUARD_MIN_REALIZED_N = (() => {
   const n = Number(process.env.LIVE_EXEC_POLICY_RECENT_WIN_RATE_GUARD_MIN_REALIZED_N);
   if (Number.isFinite(n) && n >= 0) return Math.floor(n);
   return 20;
+})();
+const EXIT_INTEGRITY_ENABLED = String(process.env.LIVE_EXEC_POLICY_EXIT_INTEGRITY_ENABLED || "1").trim() !== "0";
+const EXIT_INTEGRITY_STOP_DIVERGENCE_SCALE = (() => {
+  const n = Number(process.env.LIVE_EXEC_POLICY_EXIT_INTEGRITY_STOP_DIVERGENCE_SCALE);
+  if (Number.isFinite(n) && n > 0 && n <= 1) return n;
+  return 0.5;
 })();
 
 const ACTION_SCALE_REDUCE = (() => {
@@ -719,6 +726,7 @@ function buildSnapshotFromArtifacts({
   policyParameterPlanDoc = null,
   objectiveSupervisorDoc = null,
   eventTruthAlphaValidationDoc = null,
+  exitIntegrityDoc = null,
   lineageHealthDoc = null,
   lineageHealthMtimeMs = null,
   lineageHealthPath = null,
@@ -733,6 +741,7 @@ function buildSnapshotFromArtifacts({
   const policyPlanSummary = readSummary(policyParameterPlanDoc);
   const objectiveSummary = readSummary(objectiveSupervisorDoc);
   const eventTruthAlphaValidationSummary = readSummary(eventTruthAlphaValidationDoc);
+  const exitIntegritySummary = exitIntegrityDoc ? readSummary(exitIntegrityDoc) : null;
   const lineageSummary = readSummary(lineageHealthDoc);
 
   const allocatorRows = readRows(allocatorDoc, "by_market");
@@ -792,6 +801,8 @@ function buildSnapshotFromArtifacts({
     policyPlan: policyPlanSummary,
     objective: objectiveSummary,
     eventTruthAlphaValidation: eventTruthAlphaValidationSummary,
+    exitIntegrity: exitIntegritySummary,
+    exitIntegrityGeneratedAtKst: String(exitIntegrityDoc && exitIntegrityDoc.generated_at || "").trim() || null,
     lineage: lineageSummary,
     lineageGeneratedAtKst:
       String(
@@ -912,6 +923,7 @@ function loadPolicySnapshot({ force = false } = {}) {
   const policyParameterPlanDoc = POLICY_PLAN_ENABLED ? readJsonSafe(POLICY_PARAMETER_PLAN_PATH, null) : null;
   const objectiveSupervisorDoc = OBJECTIVE_SCALE_ENABLED ? readJsonSafe(OBJECTIVE_SUPERVISOR_PATH, null) : null;
   const eventTruthAlphaValidationDoc = RECENT_WIN_RATE_GUARD_ENABLED ? readJsonSafe(EVENT_TRUTH_ALPHA_VALIDATION_PATH, null) : null;
+  const exitIntegrityDoc = EXIT_INTEGRITY_ENABLED ? readExitIntegrityReport() : null;
   const localLineageHealthDoc = LINEAGE_SLO_ENABLED ? readJsonSafe(SIGNAL_LINEAGE_HEALTH_PATH, null) : null;
   const localLineageHealthMtimeMs = LINEAGE_SLO_ENABLED ? readFileMtimeMs(SIGNAL_LINEAGE_HEALTH_PATH) : null;
   const selectedLineageInput = selectPreferredLineageInput({
@@ -927,6 +939,7 @@ function loadPolicySnapshot({ force = false } = {}) {
     policyParameterPlanDoc,
     objectiveSupervisorDoc,
     eventTruthAlphaValidationDoc,
+    exitIntegrityDoc,
     lineageHealthDoc: selectedLineageInput.doc,
     lineageHealthMtimeMs: selectedLineageInput.mtimeMs,
     lineageHealthPath: selectedLineageInput.path,
@@ -1613,6 +1626,9 @@ function evaluateLiveEntryPolicy({
   const systemSlo = deriveSystemSloGuard(snapshot);
   const systemAnomaly = deriveSystemAnomalyGuard(snapshot);
   const recentWinRateGuard = deriveRecentWinRateGuard(snapshot);
+  const exitIntegrityGuard = deriveExitIntegrityExposureGuard(snapshot && snapshot.exitIntegrity, {
+    blockedScale: EXIT_INTEGRITY_STOP_DIVERGENCE_SCALE,
+  });
   const operationalHoldSoftScaleMeta = deriveOperationalHoldSoftScaleMeta({
     guard: operationalGuard,
     market,
@@ -1746,6 +1762,14 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_recent_performance_guard_threshold: recentWinRateGuard.threshold,
     _live_exec_policy_recent_performance_guard_active: recentWinRateGuard.active,
     _live_exec_policy_recent_performance_guard_reason: recentWinRateGuard.reason,
+    _live_exec_policy_exit_integrity_enabled: EXIT_INTEGRITY_ENABLED,
+    _live_exec_policy_exit_integrity_available: exitIntegrityGuard.available,
+    _live_exec_policy_exit_integrity_status: exitIntegrityGuard.status,
+    _live_exec_policy_exit_integrity_live_gate_blocked: exitIntegrityGuard.liveGateBlocked,
+    _live_exec_policy_exit_integrity_stop_divergence_gate: exitIntegrityGuard.stopDivergenceGate,
+    _live_exec_policy_exit_integrity_stop_divergence_symbol_n: exitIntegrityGuard.stopDivergenceSymbolN,
+    _live_exec_policy_exit_integrity_active: exitIntegrityGuard.active,
+    _live_exec_policy_exit_integrity_reason: exitIntegrityGuard.reason,
   };
 
   if (operationalGuard.blockNewEntries && operationalGuardSoftScale >= 1) {
@@ -2031,6 +2055,7 @@ function evaluateLiveEntryPolicy({
   let portfolioClusterScale = 1.0;
   let runtimeGuardQtyScale = runtimeGuardSoftScale;
   let recentWinRateQtyScale = 1.0;
+  let exitIntegrityQtyScale = 1.0;
   const alreadyScaled = baseFeatures._live_exec_policy_scale_applied === true;
 
   if (applyScale && !alreadyScaled) {
@@ -2045,6 +2070,7 @@ function evaluateLiveEntryPolicy({
       : 1;
     recentWinRateQtyScale = recentWinRateGuard.active ? recentWinRateGuard.scale : 1;
     portfolioClusterScale = portfolioCluster.reduce ? portfolioCluster.scale : 1;
+    exitIntegrityQtyScale = exitIntegrityGuard.scale;
     scaleApplied = clamp(
       actionScale
       * scoreScale
@@ -2053,6 +2079,7 @@ function evaluateLiveEntryPolicy({
       * objectiveQtyScale
       * recentWinRateQtyScale
       * portfolioClusterScale
+      * exitIntegrityQtyScale
       * runtimeGuardQtyScale
       * planGlobalScale
       * planMarketScale,
@@ -2077,6 +2104,9 @@ function evaluateLiveEntryPolicy({
   const featurePortfolioClusterScale = Number.isFinite(toNum(baseFeatures._live_exec_policy_portfolio_cluster_scale))
     ? Number(baseFeatures._live_exec_policy_portfolio_cluster_scale)
     : portfolioClusterScale;
+  const featureExitIntegrityScale = Number.isFinite(toNum(baseFeatures._live_exec_policy_exit_integrity_scale_applied))
+    ? Number(baseFeatures._live_exec_policy_exit_integrity_scale_applied)
+    : exitIntegrityQtyScale;
   const featureScaleApplied = Number.isFinite(toNum(baseFeatures._live_exec_policy_scale))
     ? Number(baseFeatures._live_exec_policy_scale)
     : scaleApplied;
@@ -2098,6 +2128,8 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_recent_performance_guard_scale_applied: featureRecentWinRateScale,
     _live_exec_policy_portfolio_cluster_scale: featurePortfolioClusterScale,
     _live_exec_policy_portfolio_cluster_reduce: portfolioCluster.reduce,
+    _live_exec_policy_exit_integrity_scale_applied: featureExitIntegrityScale,
+    _live_exec_policy_exit_integrity_scale_active: featureExitIntegrityScale < 1,
     _live_exec_policy_runtime_guard_scale: runtimeGuardQtyScale,
     _live_exec_policy_scale_applied: featureScaledFlag,
     _live_exec_policy_scale: featureScaleApplied,
@@ -2141,6 +2173,13 @@ function evaluateLiveEntryPolicy({
       recent_performance_guard_scale: featureRecentWinRateScale,
       portfolio_cluster_scale: featurePortfolioClusterScale,
       portfolio_cluster_reduce: portfolioCluster.reduce,
+      exit_integrity_status: exitIntegrityGuard.status,
+      exit_integrity_live_gate_blocked: exitIntegrityGuard.liveGateBlocked,
+      exit_integrity_stop_divergence_gate: exitIntegrityGuard.stopDivergenceGate,
+      exit_integrity_stop_divergence_symbol_n: exitIntegrityGuard.stopDivergenceSymbolN,
+      exit_integrity_scale: featureExitIntegrityScale,
+      exit_integrity_active: featureExitIntegrityScale < 1,
+      exit_integrity_reason: exitIntegrityGuard.reason,
       runtime_guard_scale: runtimeGuardQtyScale,
       objective_scale: objectiveQtyScale,
       objective_verdict: objectiveScale.verdict,
@@ -2191,6 +2230,8 @@ module.exports = {
     lineage_slo_require_fresh: LINEAGE_SLO_REQUIRE_FRESH,
     drift_remediation_enabled: DRIFT_REMEDIATION_ENABLED,
     drift_remediation_watch_only_block: DRIFT_REMEDIATION_WATCH_ONLY_BLOCK,
+    exit_integrity_enabled: EXIT_INTEGRITY_ENABLED,
+    exit_integrity_stop_divergence_scale: EXIT_INTEGRITY_STOP_DIVERGENCE_SCALE,
     portfolio_cluster_enabled: PORTFOLIO_CLUSTER_ENABLED,
     portfolio_cluster_reduce_same_side_after: PORTFOLIO_CLUSTER_REDUCE_SAME_SIDE_AFTER,
     portfolio_cluster_block_same_side_after: PORTFOLIO_CLUSTER_BLOCK_SAME_SIDE_AFTER,

@@ -1570,18 +1570,22 @@ router.get("/dashboard/home", async (req, res) => {
     const gate_latest = await getLatestGateForExchange(db, exchange);
 
     // Active positions for "지금" home view
-    const activePositions = Object.values(posByMarket)
-      .filter((p) => String(p.state || p.status || "").toUpperCase() === "ACTIVE")
-      .map((p) => ({
-        symbol: p.symbol_or_pair_id || p.symbol || "",
-        side: p.position_side || p.side || "",
-        avg_price: p.avg_price || null,
-        size_pct: p.size_pct || 0,
-        entry_at: p.entry_at || p.created_at || null,
-        pnl_pct: p.unrealized_pnl_pct || p.pnl_pct || null,
-        pnl_value: p.unrealized_pnl || null,
-        leverage: p.leverage || null,
-      }));
+    const activePositions = markets
+      .filter((row) => String(row && row.position_state || "").toUpperCase() === "ACTIVE")
+      .map((row) => {
+        const pos = row && row.position ? row.position : {};
+        return {
+          symbol: row.market || pos.symbol_or_pair_id || pos.symbol || "",
+          side: pos.position_side || pos.side || "",
+          avg_price: pos.avg_price || null,
+          size_pct: pos.size_pct || 0,
+          entry_at: pos.entry_at || pos.created_at || null,
+          pnl_pct: row.unrealized_pnl_pct ?? pos.unrealized_pnl_pct ?? pos.pnl_pct ?? null,
+          pnl_value: pos.unrealized_pnl || null,
+          leverage: row.position_leverage || pos.leverage || null,
+          exit_stage: row.exit_stage || null,
+        };
+      });
 
     const asOfKst = toKstString(new Date().toISOString());
     const systemRuntimeGuards = await loadSystemRuntimeGuardView({ exchange }).catch(() => null);

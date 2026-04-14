@@ -16,6 +16,9 @@
   var signals = Array.isArray(signals12) ? signals12 : [];
   var fills = Array.isArray(fills12) ? fills12 : [];
   var positions = Array.isArray(typeof active_positions !== 'undefined' ? active_positions : []) ? (typeof active_positions !== 'undefined' ? active_positions : []) : [];
+  var divergencePositions = positions.filter(function(p) {
+    return p && p.exit_stage && Array.isArray(p.exit_stage.stop_divergence_codes) && p.exit_stage.stop_divergence_codes.length;
+  });
   var topMarkets = Array.isArray(weekly_range_perf && weekly_range_perf.top3) ? weekly_range_perf.top3.slice(0, 4) : [];
   var quickMetrics = [
     { label: '오늘', value: home_profit_ranges && home_profit_ranges.today ? home_profit_ranges.today.total : null },
@@ -86,6 +89,12 @@
   .pos-card { display: grid; grid-template-columns: 56px 48px 1fr auto; gap: 8px; align-items: center; padding: 12px 16px; border: 1px solid var(--md-outline-variant); border-radius: var(--md-shape-md); background: var(--md-surface); }
   .pos-sym { font-weight: 600; font-size: 14px; }
   .pos-meta { font-size: 11px; color: var(--md-on-surface-variant); }
+  .pos-meta.alert { color: var(--md-warning, #e65100); }
+  .warn-card { border: 1px solid var(--md-warning, #f59e0b); background: color-mix(in srgb, var(--md-warning, #f59e0b) 8%, var(--md-surface)); }
+  .warn-list { display:flex; flex-direction:column; gap:8px; }
+  .warn-item { padding:10px 12px; border:1px solid var(--md-outline-variant); border-radius: var(--md-shape-md); background: var(--md-surface); }
+  .warn-item-title { font-weight:600; font-size:13px; }
+  .warn-item-meta { margin-top:4px; font-size:11px; color: var(--md-on-surface-variant); }
   .pos-pnl { font-weight: 500; font-size: 13px; text-align: right; }
   .trade-row { display: grid; grid-template-columns: 80px 44px 1fr auto; gap: 8px; align-items: center; padding: 8px 12px; border-radius: var(--md-shape-sm); }
   .trade-row:hover { background: var(--md-surface-container-low); }
@@ -142,7 +151,18 @@
             <div class="pos-card">
               <div class="pos-sym"><%= (p.symbol||'-').replace('USDT','') %></div>
               <div><span class="chip sm <%= p.side==='LONG'?'long':'short' %>"><%= sideKo(p.side) %></span></div>
-              <div class="pos-meta"><%= p.avg_price ? fmtN(p.avg_price,2) : '-' %><% if (elapsed(p.entry_at)) { %> &middot; <%= elapsed(p.entry_at) %><% } %></div>
+              <div>
+                <div class="pos-meta"><%= p.avg_price ? fmtN(p.avg_price,2) : '-' %><% if (elapsed(p.entry_at)) { %> &middot; <%= elapsed(p.entry_at) %><% } %></div>
+                <% if (p.exit_stage && p.exit_stage.canonical_exit_stage) { %>
+                  <div class="pos-meta <%= p.exit_stage.stop_divergence ? 'alert' : '' %>">
+                    <%= p.exit_stage.canonical_exit_stage %>
+                    <% if (p.exit_stage.canonical_runner_remaining_abs != null) { %> · rem <%= fmtN(p.exit_stage.canonical_runner_remaining_abs, 3) %><% } %>
+                    <% if (p.exit_stage.chosen_stop_source || p.exit_stage.chosen_stop_price != null) { %>
+                      · <%= p.exit_stage.chosen_stop_source || '-' %> <%= p.exit_stage.chosen_stop_price != null ? fmtN(p.exit_stage.chosen_stop_price, 2) : '-' %>
+                    <% } %>
+                  </div>
+                <% } %>
+              </div>
               <div class="pos-pnl <%= pnlCls(p.pnl_pct) %>"><%= p.pnl_pct!=null ? (p.pnl_pct>0?'+':'')+(p.pnl_pct*100).toFixed(2)+'%' : '-' %></div>
             </div>
           <% }) } else { %>
@@ -178,6 +198,44 @@
 
     <!-- 사이드 -->
     <div class="home-side">
+      <div class="card <%= divergencePositions.length ? 'warn-card' : '' %>">
+        <div class="card-header">
+          <div>
+            <div class="card-title">청산 무결성</div>
+            <div class="card-subtitle"><%= divergencePositions.length ? (divergencePositions.length + '개 심볼 경고') : '실시간 divergence 없음' %></div>
+          </div>
+          <a href="/dashboard/trading" class="btn btn-text sm">상세 &rarr;</a>
+        </div>
+        <div class="card-body">
+          <% if (divergencePositions.length) { %>
+            <div class="warn-list">
+              <% divergencePositions.slice(0, 4).forEach(function(p) { %>
+                <div class="warn-item">
+                  <div class="warn-item-title"><%= (p.symbol||'-').replace('USDT','') %> <%= p.side === 'LONG' ? '매수' : '매도' %></div>
+                  <div class="warn-item-meta">
+                    canon <%= p.exit_stage.canonical_exit_stage || '-' %>
+                    <% if (p.exit_stage.chosen_stop_source || p.exit_stage.chosen_stop_price != null) { %>
+                      · chosen <%= p.exit_stage.chosen_stop_source || '-' %> <%= p.exit_stage.chosen_stop_price != null ? fmtN(p.exit_stage.chosen_stop_price, 2) : '-' %>
+                    <% } %>
+                    · floor <%= p.exit_stage.runner_floor_stop != null ? fmtN(p.exit_stage.runner_floor_stop, 2) : '-' %>
+                    · r <%= p.exit_stage.trail_stop_by_r != null ? fmtN(p.exit_stage.trail_stop_by_r, 2) : '-' %>
+                    · native <%= p.exit_stage.native_stop_price != null ? fmtN(p.exit_stage.native_stop_price, 2) : '-' %>
+                  </div>
+                  <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">
+                    <% var divergenceItems = (Array.isArray(p.exit_stage.stop_divergence_items) && p.exit_stage.stop_divergence_items.length) ? p.exit_stage.stop_divergence_items : (p.exit_stage.stop_divergence_codes || []).map(function(code) { return { display: code }; }); %>
+                    <% divergenceItems.forEach(function(item) { %>
+                      <span class="chip sm warning"><%= item.display %></span>
+                    <% }) %>
+                  </div>
+                </div>
+              <% }) %>
+            </div>
+          <% } else { %>
+            <div style="text-align:center;padding:12px;color:var(--md-on-surface-variant);font-size:13px">현재 활성 포지션 기준 divergence 없음</div>
+          <% } %>
+        </div>
+      </div>
+
       <!-- 종목별 수익 -->
       <div class="card">
         <div class="card-header"><div><div class="card-title">종목별 수익</div><div class="card-subtitle">이번 주</div></div></div>

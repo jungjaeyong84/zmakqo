@@ -431,6 +431,20 @@
                   <%= r.exit_stage.compact_headline.left_label %> <%= fmtKrw(r.exit_stage.compact_headline.left_price) %>
                   · <%= r.exit_stage.compact_headline.right_label %> <%= fmtKrw(r.exit_stage.compact_headline.right_price) %>
                 </div>
+                <div class="subtle mono" style="margin-top:6px;">
+                  canon <%= r.exit_stage.canonical_exit_stage || '-' %>
+                  <% if (r.exit_stage.canonical_runner_remaining_abs != null) { %>
+                    · rem <%= fmtNum(r.exit_stage.canonical_runner_remaining_abs) %>
+                  <% } %>
+                  <% if (r.exit_stage.chosen_stop_source || r.exit_stage.chosen_stop_price != null) { %>
+                    · chosen <%= r.exit_stage.chosen_stop_source || '-' %> <%= fmtKrw(r.exit_stage.chosen_stop_price) %>
+                  <% } %>
+                </div>
+                <div class="subtle mono" style="margin-top:4px;">
+                  floor <%= fmtKrw(r.exit_stage.runner_floor_stop) %>
+                  · r <%= fmtKrw(r.exit_stage.trail_stop_by_r) %>
+                  · native <%= fmtKrw(r.exit_stage.native_stop_price) %>
+                </div>
                 <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">
                   <% if (r.exit_stage.tp1_pending) { %>
                     <span class="pill warn">TP1 진행</span>
@@ -446,6 +460,12 @@
                   <% } %>
                   <% if (r.exit_stage.tp1_skip_reason) { %>
                     <span class="pill bad"><%= r.exit_stage.tp1_skip_reason %></span>
+                  <% } %>
+                  <% var divergenceItems = (Array.isArray(r.exit_stage.stop_divergence_items) && r.exit_stage.stop_divergence_items.length) ? r.exit_stage.stop_divergence_items : (r.exit_stage.stop_divergence_codes || []).map(function(code) { return { display: code }; }); %>
+                  <% if (Array.isArray(divergenceItems)) { %>
+                    <% divergenceItems.forEach(function(item) { %>
+                      <span class="pill bad"><%= item.display %></span>
+                    <% }) %>
                   <% } %>
                 </div>
               <% } else { %>

@@ -258,6 +258,19 @@ async function readActivePositions() {
       tp_p1_done: Boolean(d.tp_p1_done ?? meta.tp_p1_done),
       trail_active: Boolean(d.trail_active ?? meta.trail_active),
       exit_stage_label: exitStage && exitStage.label ? String(exitStage.label) : null,
+      canonical_exit_stage: exitStage && exitStage.canonical_exit_stage ? String(exitStage.canonical_exit_stage) : null,
+      canonical_exit_stage_source: exitStage && exitStage.canonical_exit_stage_source ? String(exitStage.canonical_exit_stage_source) : null,
+      canonical_runner_remaining_abs: toNumber(exitStage && exitStage.canonical_runner_remaining_abs, null),
+      trail_stop: toNumber(exitStage && exitStage.trail_stop, null),
+      runner_floor_stop: toNumber(exitStage && exitStage.runner_floor_stop, null),
+      stop_divergence_items: Array.isArray(exitStage && exitStage.stop_divergence_items)
+        ? exitStage.stop_divergence_items.map((item) => ({
+            code: String(item && item.code || "").trim() || null,
+            label: String(item && item.label || "").trim() || null,
+            display: String(item && item.display || item && item.code || "").trim() || null,
+            severity: String(item && item.severity || "").trim() || null,
+          })).filter((item) => item.display)
+        : [],
       native_sl: toNumber(d.native_protection_stop_price ?? meta.native_protection_stop_price, null),
       native_tp1: toNumber(d.native_protection_tp_price ?? meta.native_protection_tp_price, null),
       native_tp_qty_base: toNumber(d.native_protection_tp_qty_base ?? meta.native_protection_tp_qty_base, null),
@@ -598,7 +611,12 @@ async function main() {
             `- 수량: \`${row.qty_base ?? "N/A"}\``,
             `- 평균단가: \`${row.avg_price ?? "N/A"}\``,
             `- 상태: \`${positionStatusLabel(row)}\``,
+            row.canonical_exit_stage ? `- Canonical stage: \`${row.canonical_exit_stage}\`${row.canonical_exit_stage_source ? ` (${row.canonical_exit_stage_source})` : ""}` : null,
             row.status_warning ? `- 상태 경고: \`${row.status_warning}\`${row.status_warning_kst ? ` (${row.status_warning_kst})` : ""}` : null,
+            row.canonical_runner_remaining_abs != null ? `- Runner 잔량: \`${row.canonical_runner_remaining_abs}\`` : null,
+            row.trail_stop != null ? `- Trail stop: \`${row.trail_stop}\`` : null,
+            row.runner_floor_stop != null ? `- Runner floor stop: \`${row.runner_floor_stop}\`` : null,
+            row.stop_divergence_items && row.stop_divergence_items.length ? `- 청산 경고: \`${row.stop_divergence_items.map((item) => item.display).join(" | ")}\`` : null,
             `- 네이티브 SL: \`${row.native_sl ?? "N/A"}\``,
             `- 네이티브 TP1: \`${row.native_tp1 ?? "N/A"}\``,
             row.native_tp_qty_base != null ? `- TP1 수량: \`${row.native_tp_qty_base}\`` : null,
@@ -661,7 +679,15 @@ async function main() {
       {
         header: "포지션",
         lines: positions.length
-          ? positions.map((row) => `${row.symbol} ${row.side || ""} · ${positionStatusLabel(row)}${row.status_warning ? " · 상태지연경고" : ""} · 보호주문 ${row.native_status || "N/A"}`.trim())
+          ? positions.map((row) => [
+              `${row.symbol} ${row.side || ""}`,
+              positionStatusLabel(row),
+              row.canonical_exit_stage ? `canon ${row.canonical_exit_stage}` : null,
+              row.canonical_runner_remaining_abs != null ? `rem ${roundAmount(row.canonical_runner_remaining_abs)}` : null,
+              row.stop_divergence_items && row.stop_divergence_items.length ? `warn ${row.stop_divergence_items.map((item) => item.display).join(" / ")}` : null,
+              row.status_warning ? "상태지연경고" : null,
+              `보호주문 ${row.native_status || "N/A"}`,
+            ].filter(Boolean).join(" · ").trim())
           : ["현재 활성 포지션 없음"],
       },
       {

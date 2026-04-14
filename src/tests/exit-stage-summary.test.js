@@ -39,6 +39,8 @@ const { buildExitStageView } = require("../utils/exitStageView");
   assert.equal(stage.compact_headline.right_price, 103.25);
   assert.equal(stage.native_protection_active, true);
   assert.equal(stage.tp1_qty_pct, 0.375);
+  assert.equal(stage.canonical_exit_stage, null);
+  assert.equal(stage.canonical_exit_stage_source, null);
 })();
 
 (() => {
@@ -56,6 +58,8 @@ const { buildExitStageView } = require("../utils/exitStageView");
         tp_p1_done: true,
         trail_active: true,
         trail_high: 110,
+        canonical_exit_stage: "TRAIL",
+        canonical_runner_remaining_abs: 0.125,
         native_protection_stop_price: 98.35,
         exit_rules_override: {
           SL: 0.0165,
@@ -74,6 +78,14 @@ const { buildExitStageView } = require("../utils/exitStageView");
   assert.equal(stage.compact_headline.left_price, 109.505);
   assert.equal(stage.compact_headline.right_label, "SL");
   assert.equal(stage.compact_headline.right_price, 98.35);
+  assert.equal(stage.canonical_exit_stage, "TRAIL");
+  assert.equal(stage.canonical_exit_stage_source, "META");
+  assert.equal(stage.canonical_runner_remaining_abs, 0.125);
+  assert.equal(stage.canonical_runner_remaining_source, "META");
+  assert.equal(stage.trail_stop_by_r, 109.505);
+  assert.equal(stage.chosen_stop_source, "TRAIL");
+  assert.equal(stage.chosen_stop_price, 109.505);
+  assert.deepStrictEqual(stage.stop_divergence_codes, ["NATIVE_STOP_MISMATCH"]);
 })();
 
 console.log("EXIT_STAGE_SUMMARY_TEST_OK");

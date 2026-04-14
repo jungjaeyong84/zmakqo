@@ -154,6 +154,11 @@ function run() {
   assert.strictEqual(stage.compact_headline.left_label, "Trail");
   assert.ok(Math.abs(stage.trail_stop - 98.795) < 1e-9, "displayed trail stop should reflect current trail rule");
   assert.ok(Math.abs(stage.trail_stop_raw - 98.795) < 1e-9, "raw trail stop should remain visible for debugging");
+  assert.strictEqual(stage.canonical_exit_stage, "TRAIL");
+  assert.strictEqual(stage.canonical_exit_stage_source, "DERIVED_VIEW");
+  assert.strictEqual(stage.chosen_stop_source, "TRAIL");
+  assert.ok(Math.abs(stage.chosen_stop_price - 98.795) < 1e-9);
+  assert.deepStrictEqual(stage.stop_divergence_codes, []);
 
   const breachedHardExit = tickExitTest.shouldTriggerTrailHardExit({
     position: {

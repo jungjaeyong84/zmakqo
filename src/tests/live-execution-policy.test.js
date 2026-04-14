@@ -11,6 +11,7 @@ function buildSnapshot({
   policyPlanRows = [],
   objectiveSummary = null,
   eventTruthAlphaValidationSummary = null,
+  exitIntegritySummary = null,
   lineageSummary = null,
   driftRemediationApply = null,
 } = {}) {
@@ -33,6 +34,7 @@ function buildSnapshot({
     policyParameterPlanDoc: { summary: { ...(policyPlanSummary || {}) }, recommendations: { by_market: policyPlanRows } },
     objectiveSupervisorDoc: { summary: { ...(objectiveSummary || {}) } },
     eventTruthAlphaValidationDoc: { summary: normalizedEventTruthAlphaValidationSummary },
+    exitIntegrityDoc: exitIntegritySummary ? { generated_at: nowIso, summary: exitIntegritySummary } : null,
     lineageHealthDoc: {
       generated_at: nowIso,
       summary: {
@@ -1070,6 +1072,33 @@ function buildSnapshot({
   assert.strictEqual(res.featuresPatch._live_exec_policy_recent_performance_guard_reason, "LIVE_POLICY_RECENT_NET_PNL_BELOW_THRESHOLD");
   assert.strictEqual(res.featuresPatch._live_exec_policy_recent_performance_guard_scale_applied, 0.5);
   assert.ok(res.qtyPctFinal <= 0.5);
+})();
+
+(() => {
+  const snap = buildSnapshot({
+    allocatorRows: [{ market: "BTCUSDT", allocation_score: 2.0, recommended_action: "HOLD" }],
+    exitIntegritySummary: {
+      status: "WARN",
+      stop_divergence_gate: "BLOCK",
+      stop_divergence_symbol_n: 2,
+      live_gate_blocked: false,
+    },
+  });
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    intent: "ENTRY",
+    qtyPct: 1,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(Number(res.qtyPctFinal), 0.5);
+  assert.strictEqual(res.featuresPatch._live_exec_policy_exit_integrity_stop_divergence_gate, "BLOCK");
+  assert.strictEqual(Number(res.featuresPatch._live_exec_policy_exit_integrity_scale_applied), 0.5);
+  assert.strictEqual(res.policy.exit_integrity_reason, "LIVE_POLICY_EXIT_INTEGRITY_STOP_DIVERGENCE_SCALE");
 })();
 
 (() => {

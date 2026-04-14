@@ -167,6 +167,15 @@ async function run() {
     contractTp1AllowedAbs: 0.332625,
     contractRunnerRemainingAbs: 0.167,
     contractObservedQtyAbs: 0.167,
+    stopDivergenceItems: [
+      { code: "RUNNER_MIN_GUARANTEE_MISSED", display: "RUNNER_MIN_GUARANTEE_MISSED · 최소 보장 수익 미준수" },
+      { code: "TRAIL_R_MISMATCH", display: "TRAIL_R_MISMATCH · TRAIL_R_MULTIPLE 불일치" },
+    ],
+    chosenStopSource: "RUNNER_FLOOR",
+    chosenStopPrice: 2276.7092,
+    runnerFloorStop: 2276.7092,
+    trailStopByR: 2323.5347,
+    nativeStopPrice: 2276.7,
     exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.ok(canonicalTrail, "canonical trail message should exist");
@@ -177,6 +186,8 @@ async function run() {
   assert.ok(canonicalTrail.body.includes("계약수량(base): ENTRY 0.887 / TP0 0.22175 / TP1 0.332625 / RUNNER 0.167"), "alert should include absolute contract ledger");
   assert.ok(canonicalTrail.body.includes("정본단계: TRAIL"), "canonical override should expose canonical stage");
   assert.ok(canonicalTrail.body.includes("정본전이: TRAIL_PARTIAL"), "canonical override should expose transition");
+  assert.ok(canonicalTrail.body.includes("청산경고: RUNNER_MIN_GUARANTEE_MISSED · 최소 보장 수익 미준수 / TRAIL_R_MISMATCH · TRAIL_R_MULTIPLE 불일치"), "alert should expose canonical stop divergence codes");
+  assert.ok(canonicalTrail.body.includes("stop근거: chosen RUNNER_FLOOR 2,276.71 / floor 2,276.71 / r 2,323.53 / native 2,276.70"), "alert should expose stop authority evidence");
   assert.ok(canonicalTrail.body.includes("이벤트: EXIT_TP_P1_1.65P"), "raw event should remain visible for evidence");
 
   const canonicalTp1Event = __test.buildMessage({

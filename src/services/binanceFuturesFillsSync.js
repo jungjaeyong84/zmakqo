@@ -13,7 +13,7 @@ const { getSystemSettingsForProvider } = require("../storage/settings");
 const { upsertExternalFill, markExternalFillUnverified } = require("../storage/fillsPaper");
 const { getExitOrderContractByOrderId, markExitOrderContractConsumed } = require("../storage/exitOrderContracts");
 const { getPosition, upsertPosition, upsertPositionMetaOnly } = require("../storage/positionsPaper");
-const { upsertSameDirectionTrailProfitObservation } = require("../storage/positionRuntimeObservations");
+const { upsertSameDirectionTrailProfitObservation, getPositionRuntimeObservation } = require("../storage/positionRuntimeObservations");
 const { patchIntent } = require("../storage/orderIntentsPaper");
 const { buildTradeId } = require("../storage/tradesPaper");
 const { getExitRulesForExchange, resolveExitRulesForPosition } = require("../engine/signalEngine");
@@ -28,6 +28,7 @@ const { triggerExitWorkerRun } = require("./exitWorkerClient");
 const { getPositionReadView } = require("./positionReadModel");
 const { sendAlert } = require("../utils/alerts");
 const { resolvePositionSideFromPosition } = require("../utils/positionSide");
+const { buildExitStageView } = require("../utils/exitStageView");
 const { isIntentCanceledLikeStatus } = require("../utils/intentStatus");
 const { deriveSignalDocId } = require("../utils/signalDocId");
 const { inferTakeProfitKindFromQtyRatio } = require("./binancePositionReconciler");
@@ -1956,6 +1957,16 @@ async function loadPositionEntryContext(exchange, symbol, cacheMap) {
     const entrySignalType = String(meta.entry_signal_type || "").toUpperCase() || null;
     const positionSide = resolvePositionSideFromPosition(pos, meta);
     const leverageRaw = Number(meta.external_leverage ?? meta.leverage ?? pos.leverage);
+    const leverage = Number.isFinite(leverageRaw) && leverageRaw > 0 ? leverageRaw : null;
+    const observation = await getPositionRuntimeObservation({ exchange, symbol }).catch(() => null);
+    const exitStage = pos
+      ? buildExitStageView({
+          exchange,
+          position: pos,
+          leverageFallback: leverage || 1,
+          observation,
+        })
+      : null;
     ctx = {
       entryEventId,
       entrySignalType,
@@ -1966,10 +1977,17 @@ async function loadPositionEntryContext(exchange, symbol, cacheMap) {
         : (Number.isFinite(Number(meta.qty_base ?? meta.external_qty_base))
           ? Number(meta.qty_base ?? meta.external_qty_base)
           : null),
-      leverage: Number.isFinite(leverageRaw) && leverageRaw > 0 ? leverageRaw : null,
+      leverage,
       tpP1Done: meta.tp_p1_done === true,
       trailActive: meta.trail_active === true,
       position: pos || null,
+      exitStage: exitStage || null,
+      stopDivergenceItems: Array.isArray(exitStage && exitStage.stop_divergence_items) ? exitStage.stop_divergence_items : [],
+      chosenStopSource: exitStage && exitStage.chosen_stop_source ? String(exitStage.chosen_stop_source) : null,
+      chosenStopPrice: Number.isFinite(Number(exitStage && exitStage.chosen_stop_price)) ? Number(exitStage.chosen_stop_price) : null,
+      runnerFloorStop: Number.isFinite(Number(exitStage && exitStage.runner_floor_stop)) ? Number(exitStage.runner_floor_stop) : null,
+      trailStopByR: Number.isFinite(Number(exitStage && exitStage.trail_stop_by_r)) ? Number(exitStage.trail_stop_by_r) : null,
+      nativeStopPrice: Number.isFinite(Number(exitStage && exitStage.native_stop_price)) ? Number(exitStage.native_stop_price) : null,
       nativeProtectionStale: meta.native_protection_stale === true,
       nativeProtectionRefreshStatus: String(meta.native_protection_refresh_status || "").toUpperCase() || null,
       nativeProtectionRefreshContext: String(meta.native_protection_refresh_context || "").toUpperCase() || null,
@@ -3396,6 +3414,22 @@ async function syncMarketTrades({
               canonicalTransitionEvents: Array.isArray(canonicalTransitionDecision.transitionEvents)
                 ? canonicalTransitionDecision.transitionEvents
                 : [],
+              stopDivergenceItems: Array.isArray(positionCtx && positionCtx.stopDivergenceItems)
+                ? positionCtx.stopDivergenceItems
+                : [],
+              chosenStopSource: positionCtx && positionCtx.chosenStopSource || null,
+              chosenStopPrice: positionCtx && Number.isFinite(Number(positionCtx.chosenStopPrice))
+                ? Number(positionCtx.chosenStopPrice)
+                : null,
+              runnerFloorStop: positionCtx && Number.isFinite(Number(positionCtx.runnerFloorStop))
+                ? Number(positionCtx.runnerFloorStop)
+                : null,
+              trailStopByR: positionCtx && Number.isFinite(Number(positionCtx.trailStopByR))
+                ? Number(positionCtx.trailStopByR)
+                : null,
+              nativeStopPrice: positionCtx && Number.isFinite(Number(positionCtx.nativeStopPrice))
+                ? Number(positionCtx.nativeStopPrice)
+                : null,
               ...(exitLedgerPayload || {}),
               classificationVerified: !String(event || "").trim().toUpperCase().endsWith("_UNVERIFIED"),
               alertStageHintTp0Done: (positionCtx && positionCtx.tpP0Done === true) || isTpP0Event(recentTp0 && recentTp0.event),

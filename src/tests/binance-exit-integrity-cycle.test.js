@@ -62,6 +62,7 @@ function buildScriptResult(parsed) {
     }),
     runScriptImpl: (script) => {
       if (script === "backfill-binance-active-exit-stage.js") return buildScriptResult({ issue_symbol_n: 2 });
+      if (script === "backfill-canonical-exit-transitions.js") return buildScriptResult({ created_transition_n: 5 });
       if (script === "report-fill-sync-alert-duplication.js") return buildScriptResult({ duplicate_group_n: 0, report: { duplicate_group_n: 0 } });
       if (script === "report-fill-sync-alert-event-consistency.js") return buildScriptResult({ issue_n: 0 });
       if (script === "report-trade-execution-alert-cross-audit.js") return buildScriptResult({ coverage_ready: true, missing_alert_fill_n: 0 });
@@ -85,6 +86,8 @@ function buildScriptResult(parsed) {
   assert.strictEqual(result.status, "OK");
   assert.strictEqual(result.summary.native_gap_before, 2);
   assert.strictEqual(result.summary.native_gap_after, 0);
+  assert.strictEqual(result.summary.canonical_transition_backfill_ok, true);
+  assert.strictEqual(result.summary.canonical_transition_backfill_created_transition_n, 5);
   assert.ok(fs.existsSync(path.join(opsDailyDir, "binance_exit_integrity_cycle_latest.json")));
   assert.ok(fs.existsSync(path.join(opsDailyDir, "binance_exit_integrity_cycle_latest.md")));
 
@@ -92,6 +95,14 @@ function buildScriptResult(parsed) {
     native_trail_gap_before: { summary: { gap_count: 1 } },
     native_trail_gap_after: { summary: { gap_count: 1 } },
     active_exit_stage_backfill: { parsed: { issue_symbol_n: 3 } },
+    active_exit_watchdog: {
+      actionable_rows: [
+        { symbol: "ETHUSDT", actionable_issue_codes: ["TRAIL_STOP_CHOSEN_SOURCE_MISMATCH"] },
+        { symbol: "BTCUSDT", actionable_issue_codes: ["RUNNER_MIN_GUARANTEE_MISSED"] },
+        { symbol: "XRPUSDT", actionable_issue_codes: ["TP1_ORDER_MISSING"] },
+      ],
+    },
+    canonical_exit_transition_backfill: { ok: true, parsed: { created_transition_n: 7 } },
     binance_exit_qty_live_separation: { parsed: { live_issue_chain_n: 2 } },
     trail_runner_floor_live_separation: { parsed: { live_violation_n: 1 } },
     fill_sync_alert_duplication: { parsed: { duplicate_group_n: 4 } },
@@ -111,6 +122,10 @@ function buildScriptResult(parsed) {
   assert.strictEqual(warnSummary.authority_artifact_only_live_issue_position_n, 2);
   assert.strictEqual(warnSummary.canonical_exit_stage_fail_n, 2);
   assert.strictEqual(warnSummary.canonical_exit_stage_gate, "BLOCK");
+  assert.strictEqual(warnSummary.canonical_transition_backfill_ok, true);
+  assert.strictEqual(warnSummary.canonical_transition_backfill_created_transition_n, 7);
+  assert.strictEqual(warnSummary.stop_divergence_symbol_n, 2);
+  assert.strictEqual(warnSummary.stop_divergence_gate, "BLOCK");
   assert.strictEqual(warnSummary.live_gate_blocked, true);
 
   const md = __test.buildMarkdown({
@@ -120,6 +135,15 @@ function buildScriptResult(parsed) {
     self_heal: { scanned: 2, healed_n: 1, skipped_n: 1 },
   });
   assert.ok(md.includes("native_gap_after"));
+  assert.ok(md.includes("stop_divergence_gate"));
+
+  assert.strictEqual(__test.countStopDivergenceSymbols({
+    actionable_rows: [
+      { symbol: "ETHUSDT", actionable_issue_codes: ["TRAIL_R_STOP_MISSING"] },
+      { symbol: "ETHUSDT", actionable_issue_codes: ["RUNNER_MIN_GUARANTEE_MISSED"] },
+      { symbol: "BNBUSDT", actionable_issue_codes: ["TP1_ORDER_MISSING"] },
+    ],
+  }), 1);
 
   const parsedPretty = __test.extractJson('{\n  "ok": true,\n  "duplicate_group_n": 6\n}\n');
   assert.deepStrictEqual(parsedPretty, { ok: true, duplicate_group_n: 6 });

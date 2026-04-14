@@ -6,6 +6,7 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 const { runBinanceLiveStateSelfHeal } = require("../src/services/binanceLiveStateSelfHeal");
 const { runBinanceActiveExitWatchdog } = require("../src/services/binanceActiveExitWatchdog");
+const { STOP_DIVERGENCE_CODES } = require("../src/utils/exitIntegrityPolicy");
 const { generateNativeTrailProtectionGapReport } = require("./report-native-trail-protection-gap");
 
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -80,6 +81,10 @@ function buildMarkdown(report = {}) {
   lines.push(`- authority_live_issue_position_n: ${summary.authority_live_issue_position_n ?? "N/A"}`);
   lines.push(`- canonical_exit_stage_fail_n: ${summary.canonical_exit_stage_fail_n ?? "N/A"}`);
   lines.push(`- canonical_exit_stage_gate: ${summary.canonical_exit_stage_gate || "N/A"}`);
+  lines.push(`- canonical_transition_backfill_ok: ${summary.canonical_transition_backfill_ok === true ? "YES" : "NO"}`);
+  lines.push(`- canonical_transition_backfill_created_transition_n: ${summary.canonical_transition_backfill_created_transition_n ?? "N/A"}`);
+  lines.push(`- stop_divergence_symbol_n: ${summary.stop_divergence_symbol_n ?? "N/A"}`);
+  lines.push(`- stop_divergence_gate: ${summary.stop_divergence_gate || "N/A"}`);
   lines.push(`- live_gate_blocked: ${summary.live_gate_blocked === true ? "YES" : "NO"}`);
   lines.push("");
   lines.push("## Reasons");
@@ -97,6 +102,20 @@ function buildMarkdown(report = {}) {
   lines.push(`- skipped_n: ${selfHeal.skipped_n ?? "N/A"}`);
   lines.push("");
   return lines.join("\n");
+}
+
+function countStopDivergenceSymbols(watchdog = {}) {
+  const rows = Array.isArray(watchdog.actionable_rows)
+    ? watchdog.actionable_rows
+    : (Array.isArray(watchdog.rows) ? watchdog.rows : []);
+  const seen = new Set();
+  for (const row of rows) {
+    const codes = Array.isArray(row && row.actionable_issue_codes) ? row.actionable_issue_codes : [];
+    if (!codes.some((code) => STOP_DIVERGENCE_CODES.has(String(code || "").trim().toUpperCase()))) continue;
+    const symbol = String(row && row.symbol || "").trim().toUpperCase();
+    if (symbol) seen.add(symbol);
+  }
+  return seen.size;
 }
 
 function buildSummary(report = {}) {
@@ -118,6 +137,9 @@ function buildSummary(report = {}) {
   const authorityActionableLiveIssuePositionN = Number(report.binance_exit_authority_live_board && report.binance_exit_authority_live_board.parsed && report.binance_exit_authority_live_board.parsed.actionable_live_issue_position_n || 0);
   const authorityArtifactOnlyLiveIssuePositionN = Number(report.binance_exit_authority_live_board && report.binance_exit_authority_live_board.parsed && report.binance_exit_authority_live_board.parsed.artifact_only_live_issue_position_n || 0);
   const canonicalExitStageFailN = Number(report.binance_canonical_exit_stage_qa && report.binance_canonical_exit_stage_qa.parsed && report.binance_canonical_exit_stage_qa.parsed.fail_n || 0);
+  const canonicalTransitionBackfillOk = !!(report.canonical_exit_transition_backfill && report.canonical_exit_transition_backfill.ok === true);
+  const canonicalTransitionBackfillCreatedTransitionN = Number(report.canonical_exit_transition_backfill && report.canonical_exit_transition_backfill.parsed && report.canonical_exit_transition_backfill.parsed.created_transition_n || 0);
+  const stopDivergenceSymbolN = countStopDivergenceSymbols(report.active_exit_watchdog || {});
   const duplicationIssueN = duplicationLiveGroupN > 0 ? duplicationLiveGroupN : fillSyncDuplicateGroupN;
   const liveIssueCount = afterGap + watchdogIssueSymbolN + exitQtyLiveIssueChainN + trailFloorLiveViolationN + duplicationIssueN + fillSyncAlertEventIssueN + tradeExecutionAlertMissingFillN + authorityActionableLiveIssuePositionN + canonicalExitStageFailN;
   const reasons = [];
@@ -130,9 +152,12 @@ function buildSummary(report = {}) {
   if (tradeExecutionAlertMissingFillN > 0) reasons.push(`trade execution alert missing fill ${tradeExecutionAlertMissingFillN}건`);
   if (authorityActionableLiveIssuePositionN > 0) reasons.push(`authority actionable issue position ${authorityActionableLiveIssuePositionN}건`);
   if (canonicalExitStageFailN > 0) reasons.push(`canonical exit stage fail ${canonicalExitStageFailN}건`);
+  if (!canonicalTransitionBackfillOk) reasons.push("canonical exit transition backfill failed");
+  if (stopDivergenceSymbolN > 0) reasons.push(`stop divergence symbol ${stopDivergenceSymbolN}건`);
+  const liveGateBlocked = liveIssueCount > 0 || !canonicalTransitionBackfillOk;
   return {
-    status: liveIssueCount > 0 ? "WARN" : "OK",
-    live_gate_blocked: liveIssueCount > 0,
+    status: liveGateBlocked ? "WARN" : "OK",
+    live_gate_blocked: liveGateBlocked,
     live_issue_count: liveIssueCount,
     native_gap_before: beforeGap,
     native_gap_after: afterGap,
@@ -151,6 +176,10 @@ function buildSummary(report = {}) {
     authority_artifact_only_live_issue_position_n: authorityArtifactOnlyLiveIssuePositionN,
     canonical_exit_stage_fail_n: canonicalExitStageFailN,
     canonical_exit_stage_gate: canonicalExitStageFailN > 0 ? "BLOCK" : "PASS",
+    canonical_transition_backfill_ok: canonicalTransitionBackfillOk,
+    canonical_transition_backfill_created_transition_n: canonicalTransitionBackfillCreatedTransitionN,
+    stop_divergence_symbol_n: stopDivergenceSymbolN,
+    stop_divergence_gate: stopDivergenceSymbolN > 0 ? "BLOCK" : "PASS",
     reasons,
   };
 }
@@ -200,6 +229,18 @@ async function runBinanceExitIntegrityCycle({
   }
 
   const nativeGapAfter = await reportNativeGap({ exchange, outDir: opsDailyDir });
+  const canonicalExitTransitionBackfill = runScriptImpl("backfill-canonical-exit-transitions.js", {
+    CANONICAL_EXIT_TRANSITION_BACKFILL_LOOKBACK_DAYS: String(
+      process.env.EXIT_INTEGRITY_CANONICAL_TRANSITION_LOOKBACK_DAYS
+      || process.env.CANONICAL_EXIT_TRANSITION_BACKFILL_LOOKBACK_DAYS
+      || 7
+    ),
+    CANONICAL_EXIT_TRANSITION_BACKFILL_PAGE_SIZE: String(
+      process.env.EXIT_INTEGRITY_CANONICAL_TRANSITION_PAGE_SIZE
+      || process.env.CANONICAL_EXIT_TRANSITION_BACKFILL_PAGE_SIZE
+      || 500
+    ),
+  });
   const fillSyncAlertDuplication = runScriptImpl("report-fill-sync-alert-duplication.js");
   const fillSyncAlertEventConsistency = runScriptImpl("report-fill-sync-alert-event-consistency.js");
   const tradeExecutionAlertCrossAudit = runScriptImpl("report-trade-execution-alert-cross-audit.js");
@@ -221,6 +262,7 @@ async function runBinanceExitIntegrityCycle({
     native_trail_gap_before: nativeGapBefore,
     self_heal: selfHealResult,
     native_trail_gap_after: nativeGapAfter,
+    canonical_exit_transition_backfill: canonicalExitTransitionBackfill,
     fill_sync_alert_duplication: fillSyncAlertDuplication,
     fill_sync_alert_event_consistency: fillSyncAlertEventConsistency,
     trade_execution_alert_cross_audit: tradeExecutionAlertCrossAudit,
@@ -268,6 +310,7 @@ if (require.main === module) {
       extractJson,
       buildSummary,
       buildMarkdown,
+      countStopDivergenceSymbols,
     },
   };
 }
