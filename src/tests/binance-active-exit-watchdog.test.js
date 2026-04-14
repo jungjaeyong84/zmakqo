@@ -142,7 +142,10 @@ function run() {
   });
   assert.strictEqual(trailingFromObservation.stage, "TRAIL");
   assert.strictEqual(trailingFromObservation.actual_stop_price, 2276.70916);
-  assert.strictEqual(trailingFromObservation.actionable_issue_n, 0, "fresh trail observation snapshot should suppress stale-meta false positives");
+  assert.ok(
+    trailingFromObservation.actionable_issue_codes.includes("TRAIL_STOP_CHOSEN_SOURCE_MISMATCH"),
+    "fresh trail observation must still flag a floor-only stop when R-stop is stronger"
+  );
 
   const chosenSourceMismatch = __test.inspectExitProtection({
     symbol: "ETHUSDT",
@@ -251,7 +254,10 @@ function run() {
       },
     ],
   });
-  assert.strictEqual(guaranteeMiss.actionable_issue_n, 0, "one-tick rounding and normalized floor source should not trigger live blocker");
+  assert.ok(
+    guaranteeMiss.actionable_issue_codes.includes("TRAIL_STOP_CHOSEN_SOURCE_MISMATCH"),
+    "stronger trail stop must not be masked by floor-only chosen source normalization"
+  );
 
   const materialGuaranteeMiss = __test.inspectExitProtection({
     symbol: "ETHUSDT",
@@ -307,6 +313,70 @@ function run() {
     ],
   });
   assert.ok(materialGuaranteeMiss.actionable_issue_codes.includes("RUNNER_MIN_GUARANTEE_MISSED"));
+  assert.ok(materialGuaranteeMiss.actionable_issue_codes.includes("TRAIL_STOP_CHOSEN_SOURCE_MISMATCH"));
+
+  const hardExitMissed = __test.inspectExitProtection({
+    symbol: "ETHUSDT",
+    internalPosition: {
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      position_state: "ACTIVE",
+      position_side: "LONG",
+      qty_base: 0.167,
+      avg_price: 2258.08,
+      leverage: 2,
+      meta: {
+        tp_p0_done: true,
+        tp_p1_done: true,
+        trail_active: true,
+        trail_high: 2387.46,
+        entry_r_distance: 12.342241553682925,
+        native_protection_refresh_status: "OK",
+        exit_rules_override: {
+          TP_P0: 0.008,
+          TP_P1: 0.0165,
+          TP_P0_QTY: 0.25,
+          TP_P1_QTY: 0.5,
+          RUNNER_MIN_PROFIT_PCT: 0.0165,
+          TRAIL_R_MULTIPLE: 0.6,
+          SL: -0.0165,
+        },
+      },
+    },
+    observation: {
+      trail_observation: {
+        side: "LONG",
+        runner_floor_stop: 2276.70916,
+        computed_trail_stop: 2276.70916,
+        trail_stop_by_r: 2380.0546550677905,
+        chosen_stop_source: "RUNNER_FLOOR",
+        chosen_stop_price: 2276.70916,
+        native_stop_price: 2276.7,
+        native_stop_order_id: "4000001083283507",
+        native_refresh_status: "OK",
+        runtime_eval_at_ms: 300,
+        source: "TICK_EXIT",
+      },
+    },
+    externalPosition: {
+      symbol: "ETHUSDT",
+      positionAmt: "0.167",
+      notional: "395.33556",
+      markPrice: "2366.68",
+    },
+    openOrders: [],
+    algoOrders: [
+      {
+        symbol: "ETHUSDT",
+        side: "SELL",
+        type: "STOP_MARKET",
+        closePosition: true,
+        stopPrice: "2276.7",
+        orderId: "4000001083283507",
+      },
+    ],
+  });
+  assert.ok(hardExitMissed.actionable_issue_codes.includes("TRAIL_HARD_EXIT_MISSED"));
 
   const missingTrailRStop = __test.inspectExitProtection({
     symbol: "BNBUSDT",

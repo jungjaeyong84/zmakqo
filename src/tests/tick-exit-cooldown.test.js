@@ -115,9 +115,9 @@ function run() {
       trail_stop_by_r: null,
       r_based_trail_stop: null,
       trail_stop_by_pct: null,
-      chosen_stop_source: null,
-      chosen_stop_price: null,
-      final_effective_stop: null,
+      chosen_stop_source: "RUNNER_FLOOR",
+      chosen_stop_price: 1.25,
+      final_effective_stop: 1.25,
       native_stop_price: 1.251,
       native_stop_order_id: "new_stop",
       native_refresh_status: "OK",
@@ -128,16 +128,17 @@ function run() {
   );
   assert.deepStrictEqual(
     observationTest.normalizeChosenStopAuthority({
+      side: "LONG",
       runnerFloorStop: 2276.70916,
       trailStopByR: 2335.9146,
       chosenStopSource: "TRAIL",
       chosenStopPrice: 2276.70916,
     }),
     {
-      chosenStopSource: "RUNNER_FLOOR",
-      chosenStopPrice: 2276.70916,
+      chosenStopSource: "TRAIL",
+      chosenStopPrice: 2335.9146,
     },
-    "chosen stop authority should normalize stale TRAIL labels back to runner floor when price matches floor"
+    "chosen stop authority should prefer the stronger trail stop over a stale floor-labelled price"
   );
   assert.strictEqual(
     observationTest.shouldRejectStaleTrailObservation({

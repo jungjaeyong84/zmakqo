@@ -49,6 +49,17 @@ function normalizeOrderQty(order) {
   return toNum(order && (order.origQty || order.quantity || order.qty || order.executedQty));
 }
 
+function resolveExternalMarkPrice(position = null) {
+  const direct = toNum(position && (position.markPrice || position.mark_price));
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const notional = toNum(position && position.notional);
+  const amt = toNum(position && (position.positionAmt || position.position_amt));
+  if (Number.isFinite(notional) && Number.isFinite(amt) && Math.abs(amt) > 0) {
+    return Math.abs(notional / amt);
+  }
+  return null;
+}
+
 function normalizeOrderId(order) {
   const raw = order && (order.orderId || order.algoId || order.clientOrderId || order.clientAlgoId);
   const text = String(raw || "").trim();
@@ -252,6 +263,7 @@ function inspectExitProtection({
     ?? meta.contract_runner_remaining_abs
   );
   const normalizedChosenStop = positionRuntimeObservationTest.normalizeChosenStopAuthority({
+    side: positionSide,
     runnerFloorStop: floorStopPrice,
     trailStopByR,
     trailStopByPct: null,
@@ -268,6 +280,7 @@ function inspectExitProtection({
     leverage: toNum(meta.external_leverage || meta.leverage || row.leverage || 1),
   });
   const externalActive = isExternalActivePosition(externalPosition || {});
+  const currentMarkPrice = resolveExternalMarkPrice(externalPosition);
 
   if (externalActive !== true) {
     issues.push(buildIssue("EXTERNAL_POSITION_MISSING", "내부 활성 포지션인데 거래소 실포지션이 없습니다."));
@@ -366,6 +379,23 @@ function inspectExitProtection({
         ));
       }
     }
+    if (Number.isFinite(currentMarkPrice) && Number.isFinite(chosenStopPrice)) {
+      const chosenTolerance = stopTolerance(chosenStopPrice);
+      const breached = upper(positionSide) === "SHORT"
+        ? currentMarkPrice >= chosenStopPrice + chosenTolerance
+        : currentMarkPrice <= chosenStopPrice - chosenTolerance;
+      if (breached) {
+        issues.push(buildIssue(
+          "TRAIL_HARD_EXIT_MISSED",
+          `mark=${currentMarkPrice} chosen=${chosenStopPrice} source=${chosenStopSource || "UNKNOWN"}`,
+          {
+            current_mark_price: currentMarkPrice,
+            chosen_stop_price: chosenStopPrice,
+            chosen_stop_source: chosenStopSource,
+          }
+        ));
+      }
+    }
     if (!chosenStopSource && Number.isFinite(trailStopByR) && Number.isFinite(floorStopPrice)) {
       const sourceTolerance = floorTolerance;
       if (Math.abs(trailStopByR - floorStopPrice) > sourceTolerance) {
@@ -443,6 +473,7 @@ function inspectExitProtection({
     canonical_runner_remaining_abs: canonicalRunnerRemainingAbs,
     min_guaranteed_profit_pct: minGuaranteedProfitPct,
     current_guaranteed_profit_pct: currentGuaranteedProfitPct,
+    current_mark_price: currentMarkPrice,
     issues,
     actionable_issue_n: actionableIssues.length,
     actionable_issue_codes: actionableIssues.map((issue) => issue.code),

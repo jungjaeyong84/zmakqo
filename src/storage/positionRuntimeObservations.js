@@ -32,20 +32,84 @@ function stopTolerance(value) {
   return Math.max(Math.abs(n) * 0.0001, 1e-8);
 }
 
+function normalizeSide(value) {
+  return String(value || "").trim().toUpperCase() === "SHORT" ? "SHORT" : "LONG";
+}
+
+function isLessProtectiveStop({ side = null, candidate = null, baseline = null } = {}) {
+  const candidateStop = normalizeOptionalFiniteNumber(candidate);
+  const baselineStop = normalizeOptionalFiniteNumber(baseline);
+  if (!Number.isFinite(candidateStop) || !Number.isFinite(baselineStop)) return false;
+  const sideUpper = normalizeSide(side);
+  const tolerance = Math.max(stopTolerance(candidateStop), stopTolerance(baselineStop));
+  if (sideUpper === "SHORT") return candidateStop > baselineStop + tolerance;
+  return candidateStop < baselineStop - tolerance;
+}
+
+function resolvePreferredTrailStop({
+  side = null,
+  runnerFloorStop = null,
+  trailStopByR = null,
+  trailStopByPct = null,
+} = {}) {
+  const sideUpper = normalizeSide(side);
+  const floor = normalizeOptionalFiniteNumber(runnerFloorStop);
+  const trailByR = normalizeOptionalFiniteNumber(trailStopByR);
+  const trailByPct = normalizeOptionalFiniteNumber(trailStopByPct);
+  const trail = Number.isFinite(trailByR) ? trailByR : trailByPct;
+  let chosenStopPrice = null;
+  let chosenStopSource = null;
+  if (Number.isFinite(trail)) {
+    chosenStopPrice = trail;
+    chosenStopSource = "TRAIL";
+  }
+  if (Number.isFinite(floor)) {
+    if (!Number.isFinite(chosenStopPrice)) {
+      chosenStopPrice = floor;
+      chosenStopSource = "RUNNER_FLOOR";
+    } else if (sideUpper === "SHORT") {
+      if (floor < chosenStopPrice) {
+        chosenStopPrice = floor;
+        chosenStopSource = "RUNNER_FLOOR";
+      }
+    } else if (floor > chosenStopPrice) {
+      chosenStopPrice = floor;
+      chosenStopSource = "RUNNER_FLOOR";
+    }
+  }
+  return {
+    chosenStopSource,
+    chosenStopPrice,
+    floorStopPrice: floor,
+    trailStopPrice: trail,
+  };
+}
+
 function normalizeChosenStopAuthority({
+  side = null,
   runnerFloorStop = null,
   trailStopByR = null,
   trailStopByPct = null,
   chosenStopSource = null,
   chosenStopPrice = null,
 } = {}) {
-  const floor = normalizeOptionalFiniteNumber(runnerFloorStop);
-  const trailByR = normalizeOptionalFiniteNumber(trailStopByR);
-  const trailByPct = normalizeOptionalFiniteNumber(trailStopByPct);
-  const trail = Number.isFinite(trailByR) ? trailByR : trailByPct;
+  const preferred = resolvePreferredTrailStop({
+    side,
+    runnerFloorStop,
+    trailStopByR,
+    trailStopByPct,
+  });
+  const floor = preferred.floorStopPrice;
+  const trail = preferred.trailStopPrice;
   const rawSource = normalizeOptionalString(chosenStopSource);
   const rawPrice = normalizeOptionalFiniteNumber(chosenStopPrice);
   if (!Number.isFinite(rawPrice)) {
+    if (preferred.chosenStopSource && Number.isFinite(preferred.chosenStopPrice)) {
+      return {
+        chosenStopSource: preferred.chosenStopSource,
+        chosenStopPrice: preferred.chosenStopPrice,
+      };
+    }
     if (rawSource === "RUNNER_FLOOR" && Number.isFinite(floor)) return { chosenStopSource: "RUNNER_FLOOR", chosenStopPrice: floor };
     if (rawSource === "TRAIL" && Number.isFinite(trail)) return { chosenStopSource: "TRAIL", chosenStopPrice: trail };
     return { chosenStopSource: rawSource, chosenStopPrice: rawPrice };
@@ -54,13 +118,31 @@ function normalizeChosenStopAuthority({
   const trailGap = Number.isFinite(trail) ? Math.abs(rawPrice - trail) : Number.POSITIVE_INFINITY;
   const nearFloor = Number.isFinite(floor) && floorGap <= stopTolerance(floor);
   const nearTrail = Number.isFinite(trail) && trailGap <= stopTolerance(trail);
+  let normalized = { chosenStopSource: rawSource, chosenStopPrice: rawPrice };
   if (nearFloor || nearTrail) {
-    if (nearFloor && !nearTrail) return { chosenStopSource: "RUNNER_FLOOR", chosenStopPrice: floor };
-    if (nearTrail && !nearFloor) return { chosenStopSource: "TRAIL", chosenStopPrice: trail };
-    if (floorGap <= trailGap && Number.isFinite(floor)) return { chosenStopSource: "RUNNER_FLOOR", chosenStopPrice: floor };
-    if (Number.isFinite(trail)) return { chosenStopSource: "TRAIL", chosenStopPrice: trail };
+    if (nearFloor && !nearTrail) normalized = { chosenStopSource: "RUNNER_FLOOR", chosenStopPrice: floor };
+    else if (nearTrail && !nearFloor) normalized = { chosenStopSource: "TRAIL", chosenStopPrice: trail };
+    else if (floorGap <= trailGap && Number.isFinite(floor)) normalized = { chosenStopSource: "RUNNER_FLOOR", chosenStopPrice: floor };
+    else if (Number.isFinite(trail)) normalized = { chosenStopSource: "TRAIL", chosenStopPrice: trail };
   }
-  return { chosenStopSource: rawSource, chosenStopPrice: rawPrice };
+  if (
+    preferred.chosenStopSource
+    && Number.isFinite(preferred.chosenStopPrice)
+    && (
+      !Number.isFinite(normalized.chosenStopPrice)
+      || isLessProtectiveStop({
+        side,
+        candidate: normalized.chosenStopPrice,
+        baseline: preferred.chosenStopPrice,
+      })
+    )
+  ) {
+    return {
+      chosenStopSource: preferred.chosenStopSource,
+      chosenStopPrice: preferred.chosenStopPrice,
+    };
+  }
+  return normalized;
 }
 
 function observationId({ exchange, symbol } = {}) {
@@ -143,6 +225,7 @@ function buildTrailObservationPayload({
 } = {}) {
   const id = observationId({ exchange, symbol });
   const normalizedChosen = normalizeChosenStopAuthority({
+    side,
     runnerFloorStop,
     trailStopByR,
     trailStopByPct,
@@ -208,7 +291,9 @@ function resolveTrailObservationSnapshot({
     && (!Number.isFinite(metaLowAtMs) || obsLowAtMs > metaLowAtMs);
   const useObservedRuntime = Number.isFinite(obsRuntimeEvalAtMs)
     && (!Number.isFinite(metaRuntimeAtMs) || obsRuntimeEvalAtMs >= metaRuntimeAtMs);
+  const side = normalizeOptionalString(observed.side) || normalizeOptionalString(metaSafe.position_side) || "LONG";
   const normalizedChosen = normalizeChosenStopAuthority({
+    side,
     runnerFloorStop: useObservedRuntime
       ? normalizeOptionalFiniteNumber(observed.runner_floor_stop)
       : null,
@@ -267,7 +352,15 @@ function resolveTrailObservationSnapshot({
     chosen_stop_source: normalizeOptionalString(normalizedChosen.chosenStopSource),
     chosen_stop_price: normalizeOptionalFiniteNumber(normalizedChosen.chosenStopPrice),
     final_effective_stop: useObservedRuntime
-      ? normalizeOptionalFiniteNumber(observed.final_effective_stop ?? normalizedChosen.chosenStopPrice)
+      ? normalizeOptionalFiniteNumber(
+        isLessProtectiveStop({
+          side,
+          candidate: observed.final_effective_stop,
+          baseline: normalizedChosen.chosenStopPrice,
+        })
+          ? normalizedChosen.chosenStopPrice
+          : (observed.final_effective_stop ?? normalizedChosen.chosenStopPrice)
+      )
       : normalizeOptionalFiniteNumber(metaSafe.final_effective_stop ?? metaSafe.native_protection_stop_price),
     native_stop_price: useObservedRuntime
       ? normalizeOptionalFiniteNumber(observed.native_stop_price)
@@ -417,6 +510,8 @@ module.exports = {
     buildTrailObservationPayload,
     resolveTrailObservationSnapshot,
     normalizeChosenStopAuthority,
+    resolvePreferredTrailStop,
+    isLessProtectiveStop,
     resolveTrailObservationFreshnessMs,
     shouldRejectStaleTrailObservation,
   },

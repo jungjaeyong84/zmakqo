@@ -312,6 +312,12 @@ function shouldBypassNativeProtectionCache({ cached, refreshAtMs, now } = {}) {
   return false;
 }
 
+function clearNativeProtectionStateCache(symbol) {
+  const key = String(symbol || "").toUpperCase();
+  if (!key) return;
+  nativeProtectionStateCache.delete(key);
+}
+
 function structuredLog(event, payload = {}, level = "log") {
   const record = { event, ts: new Date().toISOString(), ...payload };
   const fn = level === "warn" ? "warn" : "log";
@@ -1266,7 +1272,7 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
           }, "warn");
         } finally {
           try {
-            nativeProtectionStateCache.delete(`BINANCEFUT__${String(symbol || "").toUpperCase()}`);
+            clearNativeProtectionStateCache(symbol);
             await syncFuturesPositionOnly({
               runId: buildTickTrailReconcileRunId(symbol, Date.now()),
               exchange: "BINANCEFUT",
@@ -1308,7 +1314,7 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
               reason: hardExitResult && hardExitResult.reason ? hardExitResult.reason : hardExit.reason,
             }, hardExitResult && hardExitResult.ok === true ? "log" : "warn");
             try {
-              nativeProtectionStateCache.delete(`BINANCEFUT__${String(symbol || "").toUpperCase()}`);
+              clearNativeProtectionStateCache(symbol);
               await syncFuturesPositionOnly({
                 runId: buildTickTrailReconcileRunId(symbol, Date.now()),
                 exchange: "BINANCEFUT",
