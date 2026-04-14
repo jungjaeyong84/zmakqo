@@ -20,8 +20,6 @@ const { getExitRulesForExchange, resolveExitRulesForPosition } = require("../eng
 const {
   syncFuturesPositionOnly,
   resolveFuturesPositionSyncRequest,
-  resolveLiveFuturesConfig,
-  refreshBinanceNativeProtectionWithRetry,
 } = require("../engine/paperBinanceRunner");
 const { sendTradeExecutionAlert } = require("./tradeExecutionAlert");
 const { triggerExitWorkerRun } = require("./exitWorkerClient");
@@ -95,15 +93,24 @@ function buildExitLedgerMetaPatch({
     entry_qty_base: Number.isFinite(Number(ledger.entry_qty_abs)) ? Number(ledger.entry_qty_abs) : null,
     entry_qty_abs: Number.isFinite(Number(ledger.entry_qty_abs)) ? Number(ledger.entry_qty_abs) : null,
     tp_p0_allowed_qty_abs: Number.isFinite(Number(ledger.tp0_allowed_abs)) ? Number(ledger.tp0_allowed_abs) : null,
+    tp_p0_consumed_qty_abs: Number.isFinite(Number(ledger.tp0_consumed_abs)) ? Number(ledger.tp0_consumed_abs) : null,
     tp_p1_allowed_qty_abs: Number.isFinite(Number(ledger.tp1_allowed_abs)) ? Number(ledger.tp1_allowed_abs) : null,
+    tp_p1_consumed_qty_abs: Number.isFinite(Number(ledger.tp1_consumed_abs)) ? Number(ledger.tp1_consumed_abs) : null,
     runner_allowed_qty_abs: Number.isFinite(Number(ledger.runner_allowed_abs)) ? Number(ledger.runner_allowed_abs) : null,
     runner_remaining_qty_abs: Number.isFinite(Number(ledger.runner_remaining_abs)) ? Number(ledger.runner_remaining_abs) : null,
     canonical_runner_remaining_abs: Number.isFinite(Number(ledger.runner_remaining_abs)) ? Number(ledger.runner_remaining_abs) : null,
     trail_consumed_qty_abs: Number.isFinite(Number(ledger.trail_consumed_abs)) ? Number(ledger.trail_consumed_abs) : null,
+    total_consumed_qty_abs: (
+      Number.isFinite(Number(ledger.entry_qty_abs)) && Number.isFinite(Number(ledger.total_consumed_ratio))
+    ) ? (Number(ledger.entry_qty_abs) * Number(ledger.total_consumed_ratio)) : null,
     tp_p0_allowed_qty_ratio: Number.isFinite(Number(ledger.tp0_allowed_ratio)) ? Number(ledger.tp0_allowed_ratio) : null,
+    tp_p0_consumed_qty_ratio: Number.isFinite(Number(ledger.tp0_consumed_ratio)) ? Number(ledger.tp0_consumed_ratio) : null,
     tp_p1_allowed_qty_ratio: Number.isFinite(Number(ledger.tp1_allowed_ratio)) ? Number(ledger.tp1_allowed_ratio) : null,
+    tp_p1_consumed_qty_ratio: Number.isFinite(Number(ledger.tp1_consumed_ratio)) ? Number(ledger.tp1_consumed_ratio) : null,
     runner_allowed_qty_ratio: Number.isFinite(Number(ledger.runner_allowed_ratio)) ? Number(ledger.runner_allowed_ratio) : null,
     runner_remaining_qty_ratio: Number.isFinite(Number(ledger.runner_remaining_ratio)) ? Number(ledger.runner_remaining_ratio) : null,
+    trail_consumed_qty_ratio: Number.isFinite(Number(ledger.trail_consumed_ratio)) ? Number(ledger.trail_consumed_ratio) : null,
+    total_consumed_qty_ratio: Number.isFinite(Number(ledger.total_consumed_ratio)) ? Number(ledger.total_consumed_ratio) : null,
   };
 }
 
@@ -2256,8 +2263,7 @@ function resolveCanonicalExternalExitEvent({
 }
 
 function shouldEnforceSingleStopWriter() {
-  const raw = String(process.env.BINANCE_EXIT_SINGLE_STOP_WRITER_ENFORCED || "1").trim().toLowerCase();
-  return raw !== "0" && raw !== "false" && raw !== "off" && raw !== "no";
+  return true;
 }
 
 async function recordCanonicalExitTransitionsForFill({
@@ -3525,36 +3531,20 @@ async function syncMarketTrades({
       });
       if (syncedPosition && syncedState === "ACTIVE" && Number.isFinite(syncedQtyBase) && syncedQtyBase > 0) {
         try {
-          if (shouldEnforceSingleStopWriter()) {
-            await recordExitRepairRequest({
-              exchange: "BINANCEFUT",
-              symbol: sym,
-              source: "BINANCE_FUTURES_FILLS_SYNC",
-              requestKind: "NATIVE_STOP_REFRESH",
-              reason: "NON_AUTHORITY_LAYER_REQUEST",
-              dedupeKey: `BINANCEFUT__${sym}__FILL_SYNC__NATIVE_STOP_REFRESH`,
-              payload: {
-                fallback_side: hintedMeta.position_side || syncedPosition.position_side || syncedPosition.side || null,
-                fallback_entry_price: Number(syncedPosition.avg_price),
-                fallback_leverage: Number(hintedMeta.external_leverage || hintedMeta.leverage || syncedPosition.leverage || 1),
-                exit_rules_override: hintedMeta.exit_rules_override || null,
-              },
-            });
-          } else {
-            const liveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol: sym });
-            if (liveCfg && liveCfg.apiKey && liveCfg.apiSecret) {
-              await refreshBinanceNativeProtectionWithRetry({
-                liveCfg,
-                exchange: "BINANCEFUT",
-                symbol: sym,
-                fallbackSide: hintedMeta.position_side || syncedPosition.position_side || syncedPosition.side || null,
-                fallbackEntryPrice: Number(syncedPosition.avg_price),
-                fallbackLeverage: Number(hintedMeta.external_leverage || hintedMeta.leverage || syncedPosition.leverage || 1),
-                exitRulesOverride: hintedMeta.exit_rules_override || null,
-                posMeta: hintedMeta,
-              });
-            }
-          }
+          await recordExitRepairRequest({
+            exchange: "BINANCEFUT",
+            symbol: sym,
+            source: "BINANCE_FUTURES_FILLS_SYNC",
+            requestKind: "NATIVE_STOP_REFRESH",
+            reason: "NON_AUTHORITY_LAYER_REQUEST",
+            dedupeKey: `BINANCEFUT__${sym}__FILL_SYNC__NATIVE_STOP_REFRESH`,
+            payload: {
+              fallback_side: hintedMeta.position_side || syncedPosition.position_side || syncedPosition.side || null,
+              fallback_entry_price: Number(syncedPosition.avg_price),
+              fallback_leverage: Number(hintedMeta.external_leverage || hintedMeta.leverage || syncedPosition.leverage || 1),
+              exit_rules_override: hintedMeta.exit_rules_override || null,
+            },
+          });
         } catch (refreshErr) {
           console.warn("[BINANCEFUT_FILL_SYNC_NATIVE_REFRESH_FAIL]", refreshErr && refreshErr.message ? refreshErr.message : String(refreshErr));
         }

@@ -33,8 +33,7 @@ function normalizeBool(value) {
 }
 
 function shouldAllowWatchdogMutation() {
-  const raw = String(process.env.BINANCE_ACTIVE_EXIT_WATCHDOG_ALLOW_MUTATION || "0").trim().toLowerCase();
-  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+  return false;
 }
 
 function normalizeOrderType(order) {
@@ -662,6 +661,7 @@ module.exports = {
     resolveStage,
     inspectExitProtection,
     shouldRepairIssue,
+    shouldAllowWatchdogMutation,
     groupOrdersBySymbol,
     resolveBinanceKeys,
     loadWatchdogSnapshot,

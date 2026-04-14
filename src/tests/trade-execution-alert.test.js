@@ -86,13 +86,19 @@ async function run() {
     closeRatio: 0.5,
     appliedLeverage: 2,
     leverageReason: "REGIME_NOT_TREND",
+    canonicalExitEvent: "EXIT_TP_P1_3.25P",
+    canonicalExitStage: "TP1",
+    canonicalTransitionEvent: "TP1_REACHED",
+    canonicalTransitionEvents: ["TP1_REACHED", "TRAIL_ACTIVE"],
     exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
   });
   assert.ok(tp1Failure, "tp1 failure message should exist");
-  assert.strictEqual(tp1Failure.title, "SOLUSDT 익절(TP1) 1.65% 주문 실패");
+  assert.strictEqual(tp1Failure.title, "SOLUSDT 정본재분류 TP1_1.65->TP1_3.25 주문 실패");
   assert.ok(tp1Failure.body.includes("방향: 숏 청산"), "failure message should include exit direction");
-  assert.ok(tp1Failure.body.includes("실행계약: TP1_1.65"), "failure message should show executed contract");
+  assert.ok(tp1Failure.body.includes("종류: 익절(TP1) 3.25%"), "failure message should use canonical stage label");
+  assert.ok(tp1Failure.body.includes("실행계약: TP1_3.25"), "failure message should show canonical executed contract");
   assert.ok(tp1Failure.body.includes("주문비율: 50%"), "failure message should include close ratio");
+  assert.ok(tp1Failure.body.includes("정본재분류: TP1_1.65 -> TP1_3.25"), "failure message should expose canonical reclassification");
   assert.ok(tp1Failure.body.includes("전략계약: SL_1.65 / TP1_3.25 / TRAIL_0.9R / RUNNER_MIN_2 / BE_0.25"), "failure message should separate strategy contract from executed stage");
   assert.ok(tp1Failure.body.includes("RUNNER_MIN_2"), "failure message should include runner floor rule");
   assert.ok(tp1Failure.body.includes("실패사유: MARGIN_TYPE_SET_FAILED"), "failure reason should be explicit");
@@ -111,6 +117,10 @@ async function run() {
     features: {
       openclaw_market_regime_cohort: "RESCUE",
     },
+    canonicalExitEvent: "EXIT_TP_P0_0.8P",
+    canonicalExitStage: "TP0",
+    canonicalTransitionEvent: "TP0_REACHED",
+    canonicalTransitionEvents: ["TP0_REACHED"],
     exitRules: { SL: -0.0165, TP_P1: 0.028, TRAIL_R_MULTIPLE: 0.9, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
   });
   assert.ok(tp0Failure, "tp0 failure message should exist");
@@ -262,6 +272,20 @@ async function run() {
     exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.strictEqual(missingCanonicalExitAlert, null, "stageful exit alerts must require canonical transition evidence");
+
+  const missingCanonicalFailureAlert = __test.buildFailureMessage({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_TP_P1_1.65P",
+    intent: "EXIT",
+    side: "SELL",
+    positionSideBefore: "LONG",
+    executionMode: "LIVE",
+    reason: "LIVE_FAILED",
+    closeRatio: 0.5,
+    exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
+  });
+  assert.strictEqual(missingCanonicalFailureAlert, null, "stageful failure alerts must require canonical transition evidence");
 
   console.log("TRADE_EXECUTION_ALERT_TEST_OK");
 }

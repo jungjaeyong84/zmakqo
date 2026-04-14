@@ -132,8 +132,12 @@ function run() {
     rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
   });
   assert.strictEqual(ledger.tp0_allowed_abs, 0.25);
+  assert.strictEqual(ledger.tp0_consumed_abs, 0.25);
   assert.strictEqual(ledger.tp1_allowed_abs, 0.375);
+  assert.strictEqual(ledger.tp1_consumed_abs, 0.375);
   assert.strictEqual(ledger.runner_allowed_abs, 0.375);
+  assert.ok(Math.abs(ledger.trail_consumed_abs - 0.188) < 0.000001);
+  assert.ok(Math.abs(ledger.total_consumed_ratio - 0.813) < 0.000001);
   assert.ok(Math.abs(ledger.runner_remaining_ratio - 0.187) < 0.001);
 
   const derivedEntryLedger = buildExitQuantityContractLedger({

@@ -6,6 +6,8 @@ const { __test } = require("../services/binanceActiveExitWatchdog");
 function run() {
   assert.strictEqual(typeof __test.inspectExitProtection, "function");
   assert.strictEqual(typeof __test.isWatchdogTarget, "function");
+  assert.strictEqual(typeof __test.shouldAllowWatchdogMutation, "function");
+  assert.strictEqual(__test.shouldAllowWatchdogMutation(), false);
 
   const betweenTp = __test.inspectExitProtection({
     symbol: "XRPUSDT",

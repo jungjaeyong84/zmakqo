@@ -677,6 +677,11 @@ function buildFailureMessage(payload) {
   const event = normalizeTpP1EventForExchange(inputEvent, exchange);
   const intent = resolveIntent(payload);
   if (!symbol || intent !== "EXIT" || !isExitFailureEvent(event)) return null;
+  const canonicalRequirement = resolveCanonicalExitAlertRequirement({
+    ...payload,
+    rawEvidenceEvent: payload.rawEvidenceEvent || payload.raw_evidence_event || inputEvent,
+  }, event);
+  if (canonicalRequirement.required && canonicalRequirement.satisfied !== true) return null;
   const feat = (payload.features && typeof payload.features === "object")
     ? payload.features
     : ((payload.features_json && typeof payload.features_json === "object") ? payload.features_json : {});
@@ -822,6 +827,30 @@ async function sendTradeExecutionFailureAlert(payload = {}) {
     return { ok: false, skipped: true, reason: "NON_LIVE_MODE" };
   }
 
+  const intent = resolveIntent(payload);
+  const exchangeEvent = normalizeTpP1EventForExchange(String(payload.event || "").trim().toUpperCase(), exchange);
+  const canonicalRequirement = intent === "EXIT"
+    ? resolveCanonicalExitAlertRequirement({
+      ...payload,
+      rawEvidenceEvent: payload.rawEvidenceEvent || payload.raw_evidence_event || payload.event,
+    }, exchangeEvent)
+    : null;
+  if (canonicalRequirement && canonicalRequirement.required && canonicalRequirement.satisfied !== true) {
+    appendTradeExecutionAlertAudit({
+      type: "TRADE_EXECUTION_FAILURE_ALERT",
+      exchange,
+      symbol: String(payload.symbol || "").toUpperCase() || null,
+      event: String(payload.event || "").trim().toUpperCase() || null,
+      intent,
+      execution_mode: mode,
+      ok: false,
+      skipped: true,
+      reason: canonicalRequirement.reason,
+      source: "tradeExecutionAlert.sendTradeExecutionFailureAlert",
+    });
+    return { ok: false, skipped: true, reason: canonicalRequirement.reason };
+  }
+
   const msg = buildFailureMessage(payload);
   if (!msg) return { ok: false, skipped: true, reason: "UNSUPPORTED_EVENT" };
 
@@ -843,7 +872,7 @@ async function sendTradeExecutionFailureAlert(payload = {}) {
     exchange,
     symbol: String(payload.symbol || "").toUpperCase() || null,
     event: String(payload.event || "").trim().toUpperCase() || null,
-    intent: resolveIntent(payload),
+    intent,
     execution_mode: mode,
     channel,
     title: msg.title,

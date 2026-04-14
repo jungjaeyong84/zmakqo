@@ -8,9 +8,6 @@ const {
 } = require("../exchanges/binanceFuturesPrivate");
 const { computeRunnerExitStopPrice } = require("../engine/signalEngine");
 const {
-  resolveLiveFuturesConfig,
-  refreshBinanceNativeProtectionWithRetry,
-  buildNativeProtectionMetaPatch,
 } = require("../engine/paperBinanceRunner");
 const { resolveBinanceKeys } = require("./binanceApiKeys");
 const { upsertTrailObservation } = require("../storage/positionRuntimeObservations");
@@ -28,8 +25,7 @@ function toNum(value) {
 }
 
 function shouldEnforceSingleStopWriter() {
-  const raw = String(process.env.BINANCE_EXIT_SINGLE_STOP_WRITER_ENFORCED || "1").trim().toLowerCase();
-  return raw !== "0" && raw !== "false" && raw !== "off" && raw !== "no";
+  return true;
 }
 
 function groupTrades(trades = []) {
@@ -235,49 +231,28 @@ async function repairLiveTrailingStageForSymbol({
     nextMeta,
   });
   let nativeProtection = null;
-  const singleStopWriter = shouldEnforceSingleStopWriter();
-  if (singleStopWriter) {
-    await recordExitRepairRequest({
-      exchange,
-      symbol: sym,
-      source: "LIVE_TRAILING_STAGE_REPAIR",
-      requestKind: "NATIVE_STOP_REFRESH",
-      reason: "NON_AUTHORITY_LAYER_REQUEST",
-      dedupeKey: `${exchange}__${sym}__LIVE_TRAILING_STAGE_REPAIR__NATIVE_STOP_REFRESH`,
-      payload: {
-        fallback_side: positionSide,
-        fallback_entry_price: Number(position.avg_price),
-        fallback_leverage: Number(position.leverage || meta.external_leverage || meta.leverage || 1),
-        exit_rules_override: nextMeta.exit_rules_override || null,
-      },
-    });
-    nativeProtection = {
-      ok: false,
-      skipped: true,
-      reason: "REPAIR_REQUESTED_NON_AUTHORITY_LAYER",
-      stop_price: Number(nextMeta.native_protection_stop_price || meta.native_protection_stop_price) || null,
-      stop_order_id: nextMeta.native_protection_stop_order_id || meta.native_protection_stop_order_id || null,
-    };
-  } else {
-    const liveCfg = await resolveLiveFuturesConfig({ exchange, symbol: sym });
-    nativeProtection = await refreshBinanceNativeProtectionWithRetry({
-      liveCfg,
-      exchange,
-      symbol: sym,
-      fallbackSide: positionSide,
-      fallbackEntryPrice: Number(position.avg_price),
-      fallbackLeverage: Number(position.leverage || meta.external_leverage || meta.leverage || 1),
-      exitRulesOverride: nextMeta.exit_rules_override || null,
-      posMeta: nextMeta,
-    });
-  }
-  const nativeProtectionMetaPatch = singleStopWriter
-    ? null
-    : buildNativeProtectionMetaPatch({
-      nativeProtection,
-      intent: "ENTRY",
-      execBarCloseMs: null,
-    });
+  await recordExitRepairRequest({
+    exchange,
+    symbol: sym,
+    source: "LIVE_TRAILING_STAGE_REPAIR",
+    requestKind: "NATIVE_STOP_REFRESH",
+    reason: "NON_AUTHORITY_LAYER_REQUEST",
+    dedupeKey: `${exchange}__${sym}__LIVE_TRAILING_STAGE_REPAIR__NATIVE_STOP_REFRESH`,
+    payload: {
+      fallback_side: positionSide,
+      fallback_entry_price: Number(position.avg_price),
+      fallback_leverage: Number(position.leverage || meta.external_leverage || meta.leverage || 1),
+      exit_rules_override: nextMeta.exit_rules_override || null,
+    },
+  });
+  nativeProtection = {
+    ok: false,
+    skipped: true,
+    reason: "REPAIR_REQUESTED_NON_AUTHORITY_LAYER",
+    stop_price: Number(nextMeta.native_protection_stop_price || meta.native_protection_stop_price) || null,
+    stop_order_id: nextMeta.native_protection_stop_order_id || meta.native_protection_stop_order_id || null,
+  };
+  const nativeProtectionMetaPatch = null;
   if (nativeProtectionMetaPatch && typeof nativeProtectionMetaPatch === "object") {
     await patchPositionMetaOnlyWithRetry({
       exchange,
@@ -355,5 +330,6 @@ module.exports = {
     extractActiveCycleTrades,
     inferStageFromCycle,
     buildRepairedMeta,
+    shouldEnforceSingleStopWriter,
   },
 };

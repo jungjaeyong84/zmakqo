@@ -25,6 +25,7 @@ const { recordCanonicalExitTransitions } = require("../storage/canonicalExitTran
 const { upsertSignal } = require("../storage/signals");
 const { markSignalConsumed, tryLockSignal } = require("../storage/signalsConsume");
 const { recordOpenClawPolicyDecision } = require("../storage/openclawPolicyDecisions");
+const { recordExitRepairRequest } = require("../storage/exitRepairRequests");
 const { getSignalsForBar } = require("../storage/signalsQuery");
 const { queryBars } = require("../storage/barsSnapshots");
 const { recordSignalDrops } = require("../storage/signalDrops");
@@ -173,15 +174,24 @@ function buildStoredExitLedgerMetaPatch({
     entry_qty_base: Number.isFinite(Number(ledger.entry_qty_abs)) ? Number(ledger.entry_qty_abs) : null,
     entry_qty_abs: Number.isFinite(Number(ledger.entry_qty_abs)) ? Number(ledger.entry_qty_abs) : null,
     tp_p0_allowed_qty_abs: Number.isFinite(Number(ledger.tp0_allowed_abs)) ? Number(ledger.tp0_allowed_abs) : null,
+    tp_p0_consumed_qty_abs: Number.isFinite(Number(ledger.tp0_consumed_abs)) ? Number(ledger.tp0_consumed_abs) : null,
     tp_p1_allowed_qty_abs: Number.isFinite(Number(ledger.tp1_allowed_abs)) ? Number(ledger.tp1_allowed_abs) : null,
+    tp_p1_consumed_qty_abs: Number.isFinite(Number(ledger.tp1_consumed_abs)) ? Number(ledger.tp1_consumed_abs) : null,
     runner_allowed_qty_abs: Number.isFinite(Number(ledger.runner_allowed_abs)) ? Number(ledger.runner_allowed_abs) : null,
     runner_remaining_qty_abs: Number.isFinite(Number(ledger.runner_remaining_abs)) ? Number(ledger.runner_remaining_abs) : null,
     canonical_runner_remaining_abs: Number.isFinite(Number(ledger.runner_remaining_abs)) ? Number(ledger.runner_remaining_abs) : null,
     trail_consumed_qty_abs: Number.isFinite(Number(ledger.trail_consumed_abs)) ? Number(ledger.trail_consumed_abs) : null,
+    total_consumed_qty_abs: (
+      Number.isFinite(Number(ledger.entry_qty_abs)) && Number.isFinite(Number(ledger.total_consumed_ratio))
+    ) ? (Number(ledger.entry_qty_abs) * Number(ledger.total_consumed_ratio)) : null,
     tp_p0_allowed_qty_ratio: Number.isFinite(Number(ledger.tp0_allowed_ratio)) ? Number(ledger.tp0_allowed_ratio) : null,
+    tp_p0_consumed_qty_ratio: Number.isFinite(Number(ledger.tp0_consumed_ratio)) ? Number(ledger.tp0_consumed_ratio) : null,
     tp_p1_allowed_qty_ratio: Number.isFinite(Number(ledger.tp1_allowed_ratio)) ? Number(ledger.tp1_allowed_ratio) : null,
+    tp_p1_consumed_qty_ratio: Number.isFinite(Number(ledger.tp1_consumed_ratio)) ? Number(ledger.tp1_consumed_ratio) : null,
     runner_allowed_qty_ratio: Number.isFinite(Number(ledger.runner_allowed_ratio)) ? Number(ledger.runner_allowed_ratio) : null,
     runner_remaining_qty_ratio: Number.isFinite(Number(ledger.runner_remaining_ratio)) ? Number(ledger.runner_remaining_ratio) : null,
+    trail_consumed_qty_ratio: Number.isFinite(Number(ledger.trail_consumed_ratio)) ? Number(ledger.trail_consumed_ratio) : null,
+    total_consumed_qty_ratio: Number.isFinite(Number(ledger.total_consumed_ratio)) ? Number(ledger.total_consumed_ratio) : null,
   };
 }
 
@@ -2232,6 +2242,7 @@ async function repairActivePositionExitRuntimeState({
   cohort = null,
   sysCfg = null,
   execBarCloseMs = null,
+  allowNativeProtectionWrite = false,
 } = {}) {
   const metaSafe = (posMeta && typeof posMeta === "object") ? posMeta : {};
   const explicitExitPolicySrc = String(metaSafe.exit_policy_source || "").trim().toUpperCase();
@@ -2280,24 +2291,48 @@ async function repairActivePositionExitRuntimeState({
 
   const fallbackSide = String(positionSide || "").toUpperCase() === "SHORT" ? "SELL" : "BUY";
   if (liveCfg && liveCfg.apiKey && liveCfg.apiSecret && Number.isFinite(Number(entryPrice)) && Number(entryPrice) > 0) {
-    try {
-      const nativeProtection = await refreshBinanceNativeProtectionWithRetry({
-        liveCfg,
-        exchange,
-        symbol,
-        fallbackSide,
-        fallbackEntryPrice: Number(entryPrice),
-        fallbackLeverage: Number.isFinite(Number(leverage)) && Number(leverage) > 0 ? Number(leverage) : FUTURES_BASE_LEVERAGE,
-        exitRulesOverride: adjustment.appliedExitRules,
-        posMeta: nextMeta,
-      });
-      const nativePatch = buildNativeProtectionMetaPatch({
-        nativeProtection,
-        intent: "ENTRY",
-        execBarCloseMs,
-      });
-      if (nativePatch) nextMeta = mergeMeta(nextMeta, nativePatch);
-    } catch (_) {}
+    if (allowNativeProtectionWrite === true) {
+      try {
+        const nativeProtection = await refreshBinanceNativeProtectionWithRetry({
+          liveCfg,
+          exchange,
+          symbol,
+          fallbackSide,
+          fallbackEntryPrice: Number(entryPrice),
+          fallbackLeverage: Number.isFinite(Number(leverage)) && Number(leverage) > 0 ? Number(leverage) : FUTURES_BASE_LEVERAGE,
+          exitRulesOverride: adjustment.appliedExitRules,
+          posMeta: nextMeta,
+        });
+        const nativePatch = buildNativeProtectionMetaPatch({
+          nativeProtection,
+          intent: "ENTRY",
+          execBarCloseMs,
+        });
+        if (nativePatch) nextMeta = mergeMeta(nextMeta, nativePatch);
+      } catch (_) {}
+    } else {
+      try {
+        await recordExitRepairRequest({
+          exchange,
+          symbol,
+          source: "ACTIVE_POSITION_EXIT_RUNTIME_REPAIR",
+          requestKind: "NATIVE_STOP_REFRESH",
+          reason: "NON_AUTHORITY_LAYER_REQUEST",
+          dedupeKey: `${String(exchange || "").toUpperCase()}__${String(symbol || "").toUpperCase()}__ACTIVE_POSITION_EXIT_RUNTIME_REPAIR__NATIVE_STOP_REFRESH`,
+          payload: {
+            fallback_side: fallbackSide,
+            fallback_entry_price: Number(entryPrice),
+            fallback_leverage: Number.isFinite(Number(leverage)) && Number(leverage) > 0 ? Number(leverage) : FUTURES_BASE_LEVERAGE,
+            exit_rules_override: adjustment.appliedExitRules || null,
+          },
+        });
+        nextMeta = mergeMeta(nextMeta, {
+          native_protection_refresh_status: "REPAIR_REQUESTED_NON_AUTHORITY_LAYER",
+          native_protection_refresh_reason: "NON_AUTHORITY_LAYER_REQUEST",
+          native_protection_refresh_requested_at_ms: Date.now(),
+        });
+      } catch (_) {}
+    }
   }
   return nextMeta;
 }
@@ -8794,6 +8829,43 @@ function resolveFailureAlertCloseRatio({ pos, qtyFraction } = {}) {
   return Math.max(0, Math.min(1, qty / prevSize));
 }
 
+function buildFailureExitAlertPayload({
+  event = null,
+  pos = null,
+  posMeta = null,
+  exitRules = null,
+  qtyFraction = null,
+  prevSize = null,
+  useBudget = false,
+} = {}) {
+  const closeRatio = resolveIntentFillCloseRatio({ qtyFraction, prevSize, useBudget });
+  const currentQtyBase = Number(pos && pos.qty_base);
+  const observedQtyAbs = (
+    Number.isFinite(currentQtyBase) && currentQtyBase > 0 &&
+    Number.isFinite(closeRatio) && closeRatio > 0
+  ) ? (currentQtyBase * closeRatio) : null;
+  const fullExit = Number.isFinite(closeRatio)
+    ? closeRatio >= 0.999
+    : Number(qtyFraction) >= 0.999;
+  return {
+    closeRatio,
+    ...buildCanonicalExitAlertPayload({
+      event,
+      position: pos,
+      posMeta,
+      exitRules: exitRules || null,
+      observedQtyRatio: closeRatio ?? qtyFraction,
+      fullExit,
+    }),
+    ...buildExitContractAlertPayload({
+      pos,
+      posMeta,
+      exitRules: exitRules || null,
+      observedQtyAbs,
+    }),
+  };
+}
+
 function notifyTradeExitFailureAlert(payload = {}) {
   if (String(payload.intent || "").toUpperCase() !== "EXIT") return;
   if (!isExitFailureAlertEvent(payload.event)) return;
@@ -11055,9 +11127,17 @@ async function runPaperBinanceForBar({
           executionMode: "LIVE",
           reason: liveReason,
           qtyPct: qtyFraction,
-          closeRatio: resolveFailureAlertCloseRatio({ pos, qtyFraction }),
           positionSideBefore: resolveFailureAlertPositionSide(pos),
           exitRules: (pos && pos.meta && pos.meta.exit_rules_override) || pos.exit_rules_override || null,
+          ...buildFailureExitAlertPayload({
+            event: it.event,
+            pos,
+            posMeta: pos && pos.meta,
+            exitRules: (pos && pos.meta && pos.meta.exit_rules_override) || pos.exit_rules_override || null,
+            qtyFraction,
+            prevSize,
+            useBudget,
+          }),
         });
         continue;
       }
@@ -11091,9 +11171,17 @@ async function runPaperBinanceForBar({
           note: liveResult.note || null,
           error: liveResult.error || null,
           qtyPct: qtyFraction,
-          closeRatio: resolveFailureAlertCloseRatio({ pos, qtyFraction }),
           positionSideBefore: resolveFailureAlertPositionSide(pos),
           exitRules: (pos && pos.meta && pos.meta.exit_rules_override) || pos.exit_rules_override || null,
+          ...buildFailureExitAlertPayload({
+            event: it.event,
+            pos,
+            posMeta: pos && pos.meta,
+            exitRules: (pos && pos.meta && pos.meta.exit_rules_override) || pos.exit_rules_override || null,
+            qtyFraction,
+            prevSize,
+            useBudget,
+          }),
         });
         continue;
       }
@@ -13763,11 +13851,19 @@ async function runPaperFuturesForBar({
           executionMode: "LIVE",
           reason: liveReason,
           qtyPct: qtyFraction,
-          closeRatio: resolveFailureAlertCloseRatio({ pos, qtyFraction }),
           positionSideBefore: resolveFailureAlertPositionSide(pos),
           appliedLeverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
           leverageReason: appliedLeverageReason,
           exitRules: appliedExitRules || null,
+          ...buildFailureExitAlertPayload({
+            event: it.event,
+            pos,
+            posMeta,
+            exitRules: appliedExitRules || null,
+            qtyFraction,
+            prevSize,
+            useBudget,
+          }),
         });
         continue;
       }
@@ -13836,11 +13932,19 @@ async function runPaperFuturesForBar({
           reason: "LIVE_EXCEPTION",
           note: cancelNote || errMsg,
           qtyPct: qtyFraction,
-          closeRatio: resolveFailureAlertCloseRatio({ pos, qtyFraction }),
           positionSideBefore: resolveFailureAlertPositionSide(pos),
           appliedLeverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
           leverageReason: appliedLeverageReason,
           exitRules: appliedExitRules || null,
+          ...buildFailureExitAlertPayload({
+            event: it.event,
+            pos,
+            posMeta,
+            exitRules: appliedExitRules || null,
+            qtyFraction,
+            prevSize,
+            useBudget,
+          }),
         });
         continue;
       }
@@ -13866,11 +13970,19 @@ async function runPaperFuturesForBar({
           note: liveResult.note || null,
           error: liveResult.error || null,
           qtyPct: qtyFraction,
-          closeRatio: resolveFailureAlertCloseRatio({ pos, qtyFraction }),
           positionSideBefore: resolveFailureAlertPositionSide(pos),
           appliedLeverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
           leverageReason: appliedLeverageReason,
           exitRules: appliedExitRules || null,
+          ...buildFailureExitAlertPayload({
+            event: it.event,
+            pos,
+            posMeta,
+            exitRules: appliedExitRules || null,
+            qtyFraction,
+            prevSize,
+            useBudget,
+          }),
         });
         if (intent === "EXIT") {
           posMeta = await applyTpP1SkipOnCancel({

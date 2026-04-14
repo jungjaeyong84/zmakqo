@@ -8,6 +8,8 @@ function run() {
   assert.strictEqual(typeof __test.extractActiveCycleTrades, "function");
   assert.strictEqual(typeof __test.inferStageFromCycle, "function");
   assert.strictEqual(typeof __test.buildRepairedMeta, "function");
+  assert.strictEqual(typeof __test.shouldEnforceSingleStopWriter, "function");
+  assert.strictEqual(__test.shouldEnforceSingleStopWriter(), true);
 
   const grouped = __test.groupTrades([
     { orderId: 1, time: 100, side: "BUY", qty: 0.887, quoteQty: 2002.91696, realizedPnl: 0, price: 2258.08 },
