@@ -4241,10 +4241,45 @@ function compareEntrySignalPriority(a = {}, b = {}) {
   return 0;
 }
 
-function dedupeEntrySignalsByFamily(signals = []) {
+function buildEntrySignalResolutionDetail({
+  family,
+  selected,
+  suppressed,
+} = {}) {
+  const selectedFeatures = selected && typeof selected.features === "object" ? selected.features : {};
+  const suppressedFeatures = suppressed && typeof suppressed.features === "object" ? suppressed.features : {};
+  return {
+    family: String(family || ""),
+    selected_signal_id: String(selected && (selected.signal_id || selected.signal_doc_id || selectedFeatures.signal_id || selectedFeatures.signal_doc_id) || "").trim() || null,
+    suppressed_signal_id: String(suppressed && (suppressed.signal_id || suppressed.signal_doc_id || suppressedFeatures.signal_id || suppressedFeatures.signal_doc_id) || "").trim() || null,
+    selected_event: selected && selected.event ? String(selected.event) : null,
+    suppressed_event: suppressed && suppressed.event ? String(suppressed.event) : null,
+    selected_side: selected && selected.side ? String(selected.side) : null,
+    suppressed_side: suppressed && suppressed.side ? String(suppressed.side) : null,
+    selected_qty_pct: Number.isFinite(Number(selected && selected.qty_pct)) ? Number(selected.qty_pct) : null,
+    suppressed_qty_pct: Number.isFinite(Number(suppressed && suppressed.qty_pct)) ? Number(suppressed.qty_pct) : null,
+    selected_reason: String(
+      selectedFeatures._openclaw_executor_reason
+      || selected && selected.reason
+      || selectedFeatures.reason
+      || ""
+    ).trim() || null,
+    suppressed_reason: String(
+      suppressedFeatures._openclaw_executor_reason
+      || suppressed && suppressed.reason
+      || suppressedFeatures.reason
+      || ""
+    ).trim() || null,
+    selected_external: isExternalEntrySignalCandidate(selected),
+    suppressed_external: isExternalEntrySignalCandidate(suppressed),
+  };
+}
+
+function resolveEntrySignalsByFamily(signals = []) {
   const rows = Array.isArray(signals) ? signals : [];
   const familySlots = new Map();
   const passthrough = [];
+  const resolutions = [];
 
   rows.forEach((s, index) => {
     const intent = intentFromSignal({ event: s && s.event, side: s && s.side, features: s && s.features });
@@ -4263,15 +4298,27 @@ function dedupeEntrySignalsByFamily(signals = []) {
     }
 
     if (compareEntrySignalPriority(s, existing.signal) > 0) {
+      resolutions.push(buildEntrySignalResolutionDetail({
+        family,
+        selected: s,
+        suppressed: existing.signal,
+      }));
       familySlots.set(family, {
         index,
         orderIndex: existing.orderIndex,
         signal: s,
       });
+      return;
     }
+
+    resolutions.push(buildEntrySignalResolutionDetail({
+      family,
+      selected: existing.signal,
+      suppressed: s,
+    }));
   });
 
-  return [
+  const signalsOut = [
     ...passthrough,
     ...Array.from(familySlots.values()).map((row) => ({
       index: row.orderIndex,
@@ -4280,6 +4327,34 @@ function dedupeEntrySignalsByFamily(signals = []) {
   ]
     .sort((a, b) => a.index - b.index)
     .map((row) => row.signal);
+
+  return {
+    signals: signalsOut,
+    resolutions,
+  };
+}
+
+function logEntrySignalFamilyResolutions(resolutions = [], context = {}) {
+  const rows = Array.isArray(resolutions) ? resolutions : [];
+  rows.forEach((row) => {
+    console.log(JSON.stringify({
+      event: "entry_signal_family_resolution",
+      exchange: context.exchange || null,
+      symbol: context.symbol || null,
+      tf: context.tf || null,
+      run_id: context.runId || null,
+      stage: context.stage || null,
+      ...row,
+    }));
+  });
+}
+
+function dedupeEntrySignalsByFamily(signals = [], context = null) {
+  const resolved = resolveEntrySignalsByFamily(signals);
+  if (context && resolved.resolutions.length) {
+    logEntrySignalFamilyResolutions(resolved.resolutions, context);
+  }
+  return resolved.signals;
 }
 
 function shouldSuppressLiveFuturesInternalExitSignal({
@@ -12045,7 +12120,13 @@ async function runPaperBinanceForBar({
     };
   });
 
-  const signals = dedupeEntrySignalsByFamily([...internalSignals, ...externalSignals]);
+  const signals = dedupeEntrySignalsByFamily([...internalSignals, ...externalSignals], {
+    exchange,
+    symbol,
+    tf: signalTf,
+    runId,
+    stage: "BAR_SIGNAL_FANIN",
+  });
   const signalDrops = [];
   const metaUpdates = pendingMetaPatch ? { ...pendingMetaPatch } : {};
   const posSideNow = normalizePositionSide(
@@ -14922,7 +15003,13 @@ async function runPaperFuturesForBar({
     };
   });
 
-  const rawSignals = dedupeEntrySignalsByFamily([...internalSignals, ...externalSignals]);
+  const rawSignals = dedupeEntrySignalsByFamily([...internalSignals, ...externalSignals], {
+    exchange,
+    symbol,
+    tf: signalTf,
+    runId,
+    stage: "BAR_SIGNAL_FANIN_FUTURES",
+  });
   const signals = [];
   const signalDrops = [];
   const metaUpdates = pendingMetaPatch ? { ...pendingMetaPatch } : {};
@@ -16434,6 +16521,9 @@ module.exports = {
     resolveEntryQualityTier,
     isExternalEntrySignalCandidate,
     compareEntrySignalPriority,
+    buildEntrySignalResolutionDetail,
+    resolveEntrySignalsByFamily,
+    logEntrySignalFamilyResolutions,
     dedupeEntrySignalsByFamily,
     resolveEntryTierBudgetMax,
     evaluateCommittedRescueAddGate,
