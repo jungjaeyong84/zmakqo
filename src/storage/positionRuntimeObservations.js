@@ -333,24 +333,30 @@ function resolveTrailObservationSnapshot({
       : normalizeOptionalFiniteNumber(metaSafe.trail_r_multiple),
     runner_floor_stop: useObservedRuntime
       ? normalizeOptionalFiniteNumber(observed.runner_floor_stop)
-      : null,
+      : normalizeOptionalFiniteNumber(metaSafe.runner_floor_stop),
     computed_trail_stop: useObservedRuntime
       ? normalizeOptionalFiniteNumber(observed.computed_trail_stop)
-      : null,
+      : normalizeOptionalFiniteNumber(metaSafe.computed_trail_stop),
     trail_stop_raw: useObservedRuntime
       ? normalizeOptionalFiniteNumber(observed.trail_stop_raw)
-      : null,
+      : normalizeOptionalFiniteNumber(metaSafe.trail_stop_raw),
     trail_stop_by_r: useObservedRuntime
       ? normalizeOptionalFiniteNumber(observed.trail_stop_by_r ?? observed.r_based_trail_stop)
-      : null,
+      : normalizeOptionalFiniteNumber(metaSafe.trail_stop_by_r ?? metaSafe.r_based_trail_stop),
     r_based_trail_stop: useObservedRuntime
       ? normalizeOptionalFiniteNumber(observed.r_based_trail_stop ?? observed.trail_stop_by_r)
-      : null,
+      : normalizeOptionalFiniteNumber(metaSafe.r_based_trail_stop ?? metaSafe.trail_stop_by_r),
     trail_stop_by_pct: useObservedRuntime
       ? normalizeOptionalFiniteNumber(observed.trail_stop_by_pct)
-      : null,
-    chosen_stop_source: normalizeOptionalString(normalizedChosen.chosenStopSource),
-    chosen_stop_price: normalizeOptionalFiniteNumber(normalizedChosen.chosenStopPrice),
+      : normalizeOptionalFiniteNumber(metaSafe.trail_stop_by_pct),
+    chosen_stop_source: normalizeOptionalString(
+      normalizedChosen.chosenStopSource
+      || (!useObservedRuntime ? metaSafe.chosen_stop_source : null)
+    ),
+    chosen_stop_price: normalizeOptionalFiniteNumber(
+      normalizedChosen.chosenStopPrice
+      ?? (!useObservedRuntime ? metaSafe.chosen_stop_price : null)
+    ),
     final_effective_stop: useObservedRuntime
       ? normalizeOptionalFiniteNumber(
         isLessProtectiveStop({
@@ -361,7 +367,12 @@ function resolveTrailObservationSnapshot({
           ? normalizedChosen.chosenStopPrice
           : (observed.final_effective_stop ?? normalizedChosen.chosenStopPrice)
       )
-      : normalizeOptionalFiniteNumber(metaSafe.final_effective_stop ?? metaSafe.native_protection_stop_price),
+      : normalizeOptionalFiniteNumber(
+        metaSafe.final_effective_stop
+        ?? metaSafe.chosen_stop_price
+        ?? normalizedChosen.chosenStopPrice
+        ?? metaSafe.computed_trail_stop
+      ),
     native_stop_price: useObservedRuntime
       ? normalizeOptionalFiniteNumber(observed.native_stop_price)
       : normalizeOptionalFiniteNumber(metaSafe.native_protection_stop_price),

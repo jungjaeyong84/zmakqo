@@ -82,7 +82,8 @@ async function triggerExitWorkerRun({
   const requestStartedAt = Date.now();
   recentTriggerState.set(cooldown.key, requestStartedAt);
   try {
-    const res = await fetch(`${baseUrl}/run`, {
+    const endpoint = dispatchOnly !== false ? "/run" : "/run-execute";
+    const res = await fetch(`${baseUrl}${endpoint}`, {
       method: "POST",
       headers: {
         "content-type": "application/json",

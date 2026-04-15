@@ -31,7 +31,7 @@ steps:
     entrypoint: "sh"
     env:
       - "NODE_OPTIONS=--max-old-space-size=4096"
-    args: ["-lc", "npm ci --no-audit --no-fund && npm test"]
+    args: ["-lc", "npm ci --no-audit --no-fund && npm test && npm run check:binance-exit-integrity-gate"]
 
   - name: "gcr.io/cloud-builders/docker"
     args: ["build", "-t", "gcr.io/$PROJECT_ID/$_SERVICE:$_TAG", "."]

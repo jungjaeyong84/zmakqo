@@ -280,6 +280,41 @@ function buildInternalFillCanonicalExtra({
   };
 }
 
+function resolveCanonicalExitAlertBlock(canonicalExitAlertPayload = null) {
+  const canonical = canonicalExitAlertPayload && typeof canonicalExitAlertPayload === "object"
+    ? canonicalExitAlertPayload
+    : {};
+  const stage = String(canonical.canonicalExitStage || "").trim().toUpperCase();
+  const transitions = Array.isArray(canonical.canonicalTransitionEvents)
+    ? canonical.canonicalTransitionEvents.filter(Boolean)
+    : [];
+  if (canonical.canonicalExitLedgerBlockedInvariant === true) {
+    return {
+      blocked: true,
+      reason: "CANONICAL_EXIT_LEDGER_BLOCKED",
+      issueCodes: Array.isArray(canonical.canonicalExitLedgerIssueCodes)
+        ? canonical.canonicalExitLedgerIssueCodes.filter(Boolean)
+        : [],
+    };
+  }
+  if ((stage === "TP0" || stage === "TP1" || stage === "TRAIL") && !transitions.length) {
+    return {
+      blocked: true,
+      reason: "CANONICAL_EXIT_TRANSITION_MISSING",
+      issueCodes: [],
+    };
+  }
+  return {
+    blocked: false,
+    reason: null,
+    issueCodes: [],
+  };
+}
+
+function shouldEmitCanonicalExitAlert(canonicalExitAlertPayload = null) {
+  return resolveCanonicalExitAlertBlock(canonicalExitAlertPayload).blocked !== true;
+}
+
 async function recordInternalCanonicalExitTransitions({
   exchange,
   symbol,
@@ -295,6 +330,8 @@ async function recordInternalCanonicalExitTransitions({
   const canonical = canonicalExitAlertPayload && typeof canonicalExitAlertPayload === "object"
     ? canonicalExitAlertPayload
     : {};
+  const alertBlock = resolveCanonicalExitAlertBlock(canonical);
+  if (alertBlock.blocked === true) return [];
   const transitions = Array.isArray(canonical.canonicalTransitionEvents)
     ? canonical.canonicalTransitionEvents.filter(Boolean)
     : [];
@@ -9227,6 +9264,7 @@ async function requestBinanceNativeProtectionRefresh({
   reason = "NON_AUTHORITY_LAYER_REQUEST",
   dispatchReason = null,
   dispatchExitWorker = true,
+  executeImmediately = false,
 } = {}) {
   const exchangeUpper = String(exchange || "").trim().toUpperCase() || "UNKNOWN";
   const symbolUpper = String(symbol || "").trim().toUpperCase() || "UNKNOWN";
@@ -9259,7 +9297,8 @@ async function requestBinanceNativeProtectionRefresh({
         dispatchReason ||
         `${sourceUpper}_NATIVE_STOP_REFRESH_${exchangeUpper}_${symbolUpper}`
       ).trim(),
-      dispatchOnly: true,
+      dispatchOnly: executeImmediately !== true,
+      timeoutMs: executeImmediately === true ? 15000 : 5000,
     }).catch((error) => ({
       ok: false,
       skipped: true,
@@ -11890,7 +11929,13 @@ async function runPaperBinanceForBar({
         console.warn("[INTERNAL_CANONICAL_EXIT_TRANSITION_FAIL]", e && e.message ? e.message : String(e));
       }
     }
-    if (!shouldSuppressInternalLiveExitFillAlert({ exchange, executionMode, intent })) {
+    const canonicalExitAlertBlock = intent === "EXIT"
+      ? resolveCanonicalExitAlertBlock(canonicalExitAlertPayload)
+      : { blocked: false, reason: null, issueCodes: [] };
+    if (
+      !shouldSuppressInternalLiveExitFillAlert({ exchange, executionMode, intent }) &&
+      canonicalExitAlertBlock.blocked !== true
+    ) {
       await dispatchTradeExecutionAlert({
         exchange,
         symbol,
@@ -11917,6 +11962,10 @@ async function runPaperBinanceForBar({
         runId,
         sourceFillId: fillWrite && fillWrite.fill_id ? fillWrite.fill_id : null,
       });
+    } else if (intent === "EXIT" && canonicalExitAlertBlock.blocked === true) {
+      console.warn(
+        `[INTERNAL_CANONICAL_EXIT_ALERT_SUPPRESSED] exchange=${exchange} symbol=${symbol} reason=${canonicalExitAlertBlock.reason || "UNKNOWN"} issue_codes=${(canonicalExitAlertBlock.issueCodes || []).join(",") || "-"}`,
+      );
     }
 
     await markIntentStatus(it.intent_id, "FILLED", {
@@ -14726,7 +14775,13 @@ async function runPaperFuturesForBar({
         console.warn("[INTERNAL_CANONICAL_EXIT_TRANSITION_FAIL]", e && e.message ? e.message : String(e));
       }
     }
-    if (!shouldSuppressInternalLiveExitFillAlert({ exchange, executionMode, intent })) {
+    const canonicalExitAlertBlock = intent === "EXIT"
+      ? resolveCanonicalExitAlertBlock(canonicalExitAlertPayload)
+      : { blocked: false, reason: null, issueCodes: [] };
+    if (
+      !shouldSuppressInternalLiveExitFillAlert({ exchange, executionMode, intent }) &&
+      canonicalExitAlertBlock.blocked !== true
+    ) {
       await dispatchTradeExecutionAlert({
         exchange,
         symbol,
@@ -14753,6 +14808,10 @@ async function runPaperFuturesForBar({
         runId,
         sourceFillId: fillWrite && fillWrite.fill_id ? fillWrite.fill_id : null,
       });
+    } else if (intent === "EXIT" && canonicalExitAlertBlock.blocked === true) {
+      console.warn(
+        `[INTERNAL_CANONICAL_EXIT_ALERT_SUPPRESSED] exchange=${exchange} symbol=${symbol} reason=${canonicalExitAlertBlock.reason || "UNKNOWN"} issue_codes=${(canonicalExitAlertBlock.issueCodes || []).join(",") || "-"}`,
+      );
     }
 
     await markIntentStatus(it.intent_id, "FILLED", {
@@ -16735,6 +16794,8 @@ module.exports = {
     resolveLogicalCurrentQtyPctForBudget,
     resolveLiveExitCurrentQtyPct,
     resolveIntentFillCloseRatio,
+    resolveCanonicalExitAlertBlock,
+    shouldEmitCanonicalExitAlert,
     resolveSyncedAddChainBaseQtyPct,
     resolveBudgetUsedFromNotional,
     resolveBinanceBudgetUsedKrw,

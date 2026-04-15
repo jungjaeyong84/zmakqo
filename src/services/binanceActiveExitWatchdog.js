@@ -119,10 +119,8 @@ function isWatchdogTarget(row = {}) {
 }
 
 function resolveStage(row = {}) {
-  const meta = row && typeof row.meta === "object" ? row.meta : {};
   const canonical = resolveCanonicalPositionExitStage({
     positionSnapshot: row,
-    fallbackStage: meta.canonical_exit_stage || meta.authoritative_exit_stage || null,
   });
   if (canonical.stage === "TRAIL") return { canonical_stage: "TRAIL", stage: "TRAIL", source: canonical.source };
   if (canonical.stage === "TP1") return { canonical_stage: "TP1", stage: "TP1_DONE_NOT_TRAIL", source: canonical.source };
@@ -251,10 +249,11 @@ function inspectExitProtection({
     entryRDistance: toNum(trailSnapshot.entry_r_distance ?? meta.entry_r_distance),
   });
   const actualStopPrice = toNum((stopCandidate && stopCandidate.trigger_price), toNum(trailSnapshot.native_stop_price ?? meta.native_protection_stop_price));
-  const expectedStopPrice = toNum(trailSnapshot.computed_trail_stop ?? (runnerExit && runnerExit.stopPrice));
+  const computedStopPrice = toNum(trailSnapshot.computed_trail_stop ?? (runnerExit && runnerExit.stopPrice));
   const floorStopPrice = toNum(trailSnapshot.runner_floor_stop ?? (runnerExit && runnerExit.runnerFloorStop));
   const trailStopByR = toNum(trailSnapshot.trail_stop_by_r ?? (runnerExit && runnerExit.trailStopByR));
   const trailRMultiple = toNum(trailSnapshot.trail_r_multiple ?? rules.TRAIL_R_MULTIPLE);
+  const finalEffectiveStop = toNum(trailSnapshot.final_effective_stop ?? trailSnapshot.chosen_stop_price ?? computedStopPrice);
   const canonicalRunnerRemainingAbs = toNum(
     meta.canonical_runner_remaining_abs
     ?? meta.runner_remaining_qty_abs
@@ -267,10 +266,11 @@ function inspectExitProtection({
     trailStopByR,
     trailStopByPct: null,
     chosenStopSource: trailSnapshot.chosen_stop_source || null,
-    chosenStopPrice: trailSnapshot.chosen_stop_price ?? expectedStopPrice,
+    chosenStopPrice: trailSnapshot.chosen_stop_price ?? finalEffectiveStop ?? computedStopPrice,
   });
-  const chosenStopPrice = toNum(normalizedChosenStop.chosenStopPrice ?? expectedStopPrice);
+  const chosenStopPrice = toNum(normalizedChosenStop.chosenStopPrice ?? finalEffectiveStop ?? computedStopPrice);
   const chosenStopSource = upper(normalizedChosenStop.chosenStopSource || null);
+  const expectedStopPrice = Number.isFinite(finalEffectiveStop) ? finalEffectiveStop : chosenStopPrice;
   const minGuaranteedProfitPct = toNum(rules.RUNNER_MIN_PROFIT_PCT);
   const currentGuaranteedProfitPct = computeCurrentProfitPct({
     avgPrice: toNum(row.avg_price),
@@ -464,9 +464,11 @@ function inspectExitProtection({
     stop_order_id: stopCandidate && stopCandidate.order_id || null,
     actual_stop_price: actualStopPrice,
     expected_stop_price: expectedStopPrice,
+    computed_stop_price: computedStopPrice,
     expected_floor_stop_price: floorStopPrice,
     chosen_stop_price: chosenStopPrice,
     chosen_stop_source: chosenStopSource,
+    final_effective_stop: expectedStopPrice,
     trail_stop_by_r: trailStopByR,
     trail_r_multiple: trailRMultiple,
     canonical_runner_remaining_abs: canonicalRunnerRemainingAbs,
@@ -487,6 +489,8 @@ function shouldRepairIssue(row = {}) {
     "TRAIL_STOP_MISSING",
     "TRAIL_STOP_ABOVE_RUNNER_FLOOR_SHORT",
     "TRAIL_STOP_BELOW_RUNNER_FLOOR_LONG",
+    "TRAIL_STOP_CHOSEN_SOURCE_MISMATCH",
+    "TRAIL_STOP_SOURCE_PRICE_INCONSISTENT",
     "NATIVE_REFRESH_UNHEALTHY",
     "TP1_DONE_WITHOUT_TRAIL_ACTIVE",
   ]);

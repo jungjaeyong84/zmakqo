@@ -32,6 +32,7 @@
     "report:position-read-model-cutover": "node scripts/report-position-read-model-cutover.js",
     "report:native-trail-protection-gap": "node scripts/report-native-trail-protection-gap.js",
     "run:binance-exit-integrity-cycle": "node scripts/run-binance-exit-integrity-cycle.js",
+    "check:binance-exit-integrity-gate": "node scripts/check-binance-exit-integrity-gate.js",
     "migrate:unified-event-timeline": "node scripts/backfill-unified-event-timeline.js",
     "migrate:intent-fill-events": "node scripts/backfill-intent-fill-events.js",
     "migrate:position-read-model-latest": "node scripts/backfill-position-read-model-latest.js",

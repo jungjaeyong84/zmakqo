@@ -301,6 +301,20 @@ async function run() {
     assert.strictEqual(adjustment.snapSource, "REQUESTED_QTY");
   });
 
+  await withEnv({}, async () => {
+    const { __test } = freshRequire("../services/openclawExecutionAuthority");
+    assert.strictEqual(
+      __test.resolveRequestedQtyPct({
+        requestedQtyPct: null,
+        qtyPct: 0.2,
+        features: {
+          _entry_budget_signal_floor_prev_qty_pct: 1,
+        },
+      }),
+      1
+    );
+  });
+
   await withEnv({
     OPENCLAW_EXECUTOR_ENABLED: "1",
     LIVE_EXEC_POLICY_ENABLED: "1",

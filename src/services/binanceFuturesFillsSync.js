@@ -3214,8 +3214,8 @@ async function syncMarketTrades({
           qty_pct_intent_qty_base: Number.isFinite(qtyScale.intentQtyBase) ? qtyScale.intentQtyBase : null,
           authoritative_exit_chain_key: authorityDecision.chainKey || null,
           authoritative_exit_stage: authorityDecision.stage || null,
-          canonical_exit_chain_key: canonicalStageDecision.chainKey || authorityDecision.chainKey || null,
-          canonical_exit_stage: canonicalStageDecision.stage || authorityDecision.stage || null,
+          canonical_exit_chain_key: canonicalStageDecision.chainKey || null,
+          canonical_exit_stage: canonicalStageDecision.stage || null,
           canonical_exit_reason: canonicalStageDecision.reason || null,
           authoritative_qty_pct_raw: Number.isFinite(Number(authorityDecision.rawQtyPct)) ? Number(authorityDecision.rawQtyPct) : null,
           authoritative_qty_pct_accepted: Number.isFinite(Number(authorityDecision.acceptedQtyPct)) ? Number(authorityDecision.acceptedQtyPct) : null,
@@ -3297,7 +3297,7 @@ async function syncMarketTrades({
               tradeMs,
               event,
               transitionEvents: canonicalTransitionDecision.transitionEvents,
-              chainKey: canonicalStageDecision.chainKey || authorityDecision.chainKey || null,
+              chainKey: canonicalStageDecision.chainKey || null,
               ledger: canonicalStageDecision.ledger || null,
               reason: canonicalStageDecision.reason || null,
               entryEventId,
@@ -3393,7 +3393,7 @@ async function syncMarketTrades({
         const isForcedExitEvent = isAuthoritativeForcedExitIntentEvent(event);
         const isExitEvent = event.startsWith("EXIT_") || isForcedExitEvent;
         const isEntryLikeEvent = !isExitEvent && event !== "SYNC_FILL";
-        const canonicalStageForAlert = String(canonicalStageDecision.stage || authorityDecision.stage || "").trim().toUpperCase();
+        const canonicalStageForAlert = String(canonicalStageDecision.stage || "").trim().toUpperCase();
         const canonicalTransitionRequired = looksLikeExit
           && (canonicalStageForAlert === "TP0" || canonicalStageForAlert === "TP1" || canonicalStageForAlert === "TRAIL");
         const allowExitAlert = isExitEvent && (
@@ -3470,8 +3470,8 @@ async function syncMarketTrades({
               exitRules,
               entryEventId: entryEventId || null,
               canonicalExitEvent: canonicalStageDecision.event || null,
-              canonicalExitStage: canonicalStageDecision.stage || authorityDecision.stage || null,
-              canonicalExitChainKey: canonicalStageDecision.chainKey || authorityDecision.chainKey || null,
+              canonicalExitStage: canonicalStageDecision.stage || null,
+              canonicalExitChainKey: canonicalStageDecision.chainKey || null,
               canonicalTransitionEvent: canonicalTransitionDecision.primaryTransitionEvent || null,
               canonicalTransitionEvents: Array.isArray(canonicalTransitionDecision.transitionEvents)
                 ? canonicalTransitionDecision.transitionEvents
@@ -3585,7 +3585,8 @@ async function syncMarketTrades({
             source: "BINANCE_FUTURES_FILLS_SYNC",
             reason: "NON_AUTHORITY_LAYER_REQUEST",
             dispatchReason: `BINANCE_FUTURES_FILLS_SYNC_NATIVE_STOP_REFRESH_BINANCEFUT_${String(sym || "").toUpperCase()}`,
-            dispatchExitWorker: false,
+            dispatchExitWorker: true,
+            executeImmediately: true,
           });
         } catch (refreshErr) {
           console.warn("[BINANCEFUT_FILL_SYNC_NATIVE_REFRESH_FAIL]", refreshErr && refreshErr.message ? refreshErr.message : String(refreshErr));

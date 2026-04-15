@@ -95,8 +95,9 @@ function recordActionShadowEvaluationSafe({
   features = null,
   intent = null,
   qtyPct = null,
+  enabled = true,
 } = {}) {
-  if (!envelope || !authorityEval) return;
+  if (!envelope || !authorityEval || enabled !== true) return;
   const policyEval = authorityEval.policy || null;
   const normalizedShadowInference = {
     ok: authorityEval.ok === true,
@@ -157,6 +158,9 @@ async function runActionPreHooks({
   persist = false,
   snapshotOverride = null,
   policyStage = "ACTION_PRE_HOOK",
+  positionViews = null,
+  recentTimelineRows = null,
+  capitalAllocatorSnapshot = null,
 } = {}) {
   const envelope = buildActionEnvelope({
     action,
@@ -196,6 +200,15 @@ async function runActionPreHooks({
     };
   }
 
+  const executorPositionViews = Array.isArray(positionViews)
+    ? positionViews
+    : (snapshotOverride ? [] : null);
+  const executorRecentTimelineRows = Array.isArray(recentTimelineRows)
+    ? recentTimelineRows
+    : (snapshotOverride ? [] : null);
+  const executorCapitalAllocatorSnapshot = capitalAllocatorSnapshot
+    || (snapshotOverride && snapshotOverride.allocator ? snapshotOverride.allocator : null);
+
   const authorityEval = await evaluateOpenClawExecutionAuthority({
     exchange,
     symbol,
@@ -204,6 +217,9 @@ async function runActionPreHooks({
     features: baseFeatures,
     stage: policyStage,
     applyScale: false,
+    positionViews: executorPositionViews,
+    recentTimelineRows: executorRecentTimelineRows,
+    capitalAllocatorSnapshot: executorCapitalAllocatorSnapshot,
     snapshotOverride,
   });
   const featuresPatch = authorityEval && authorityEval.featuresPatch && typeof authorityEval.featuresPatch === "object"
@@ -215,6 +231,7 @@ async function runActionPreHooks({
     features: featuresPatch,
     intent,
     qtyPct,
+    enabled: persist === true,
   });
 
   if (!authorityEval || authorityEval.ok !== true || !Number.isFinite(Number(authorityEval.qtyPctFinal)) || Number(authorityEval.qtyPctFinal) <= 0) {

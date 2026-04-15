@@ -240,6 +240,15 @@ function validateExitQuantityContractLedger({
   const totalConsumedRatio = toNum(source.total_consumed_ratio);
   const runnerRemainingRatio = toNum(source.runner_remaining_ratio);
   const entryQtyAbs = toNum(source.entry_qty_abs);
+  const tp0AllowedAbs = toNum(source.tp0_allowed_abs);
+  const tp0ConsumedAbs = toNum(source.tp0_consumed_abs);
+  const tp1AllowedAbs = toNum(source.tp1_allowed_abs);
+  const tp1ConsumedAbs = toNum(source.tp1_consumed_abs);
+  const runnerAllowedAbs = toNum(source.runner_allowed_abs);
+  const trailConsumedAbs = toNum(source.trail_consumed_abs);
+  const totalConsumedAbs = Number.isFinite(entryQtyAbs) && Number.isFinite(totalConsumedRatio)
+    ? entryQtyAbs * totalConsumedRatio
+    : null;
   const currentQtyAbs = toNum(snapshot.qty_base);
   const runnerRemainingAbs = toNum(source.runner_remaining_abs);
   const hasExposure = (
@@ -247,12 +256,21 @@ function validateExitQuantityContractLedger({
     || (Number.isFinite(snapshot.qty_base) && snapshot.qty_base > 0)
   );
   const ratioTolerance = 0.03;
+  const absTolerance = Number.isFinite(entryQtyAbs)
+    ? Math.max(Math.abs(entryQtyAbs) * 0.03, 1e-8)
+    : 1e-8;
 
   if (hasExposure && !Number.isFinite(entryQtyAbs)) {
     issues.push({
-      code: "ENTRY_QTY_ABS_MISSING",
-      severity: "warn",
-      message: "Active exposure is missing entry_qty_abs, so absolute contract auditing is degraded.",
+      code: snapshot.tp_p0_done === true || snapshot.tp_p1_done === true || snapshot.trail_active === true
+        ? "ENTRY_QTY_ABS_REQUIRED"
+        : "ENTRY_QTY_ABS_MISSING",
+      severity: snapshot.tp_p0_done === true || snapshot.tp_p1_done === true || snapshot.trail_active === true
+        ? "critical"
+        : "warn",
+      message: snapshot.tp_p0_done === true || snapshot.tp_p1_done === true || snapshot.trail_active === true
+        ? "Absolute qty contract cannot be audited after TP milestones without entry_qty_abs."
+        : "Active exposure is missing entry_qty_abs, so absolute contract auditing is degraded.",
     });
   }
 
@@ -334,6 +352,82 @@ function validateExitQuantityContractLedger({
       });
     }
   }
+  if (
+    Number.isFinite(entryQtyAbs)
+    && Number.isFinite(tp0AllowedAbs)
+    && Number.isFinite(tp1AllowedAbs)
+    && Number.isFinite(runnerAllowedAbs)
+    && Math.abs((tp0AllowedAbs + tp1AllowedAbs + runnerAllowedAbs) - entryQtyAbs) > absTolerance
+  ) {
+    issues.push({
+      code: "EXIT_ALLOWED_ABS_SUM_MISMATCH",
+      severity: "critical",
+      message: `tp0/tp1/runner allowed abs must sum to entry_qty_abs. observed=${tp0AllowedAbs + tp1AllowedAbs + runnerAllowedAbs} entry=${entryQtyAbs}`,
+    });
+  }
+  if (
+    Number.isFinite(tp0AllowedAbs)
+    && Number.isFinite(tp0ConsumedAbs)
+    && tp0ConsumedAbs > (tp0AllowedAbs + absTolerance)
+  ) {
+    issues.push({
+      code: "TP0_CONSUMED_ABS_EXCEEDS_ALLOWED",
+      severity: "critical",
+      message: `tp0 consumed abs exceeded allowed contract. consumed=${tp0ConsumedAbs} allowed=${tp0AllowedAbs}`,
+    });
+  }
+  if (
+    Number.isFinite(tp1AllowedAbs)
+    && Number.isFinite(tp1ConsumedAbs)
+    && tp1ConsumedAbs > (tp1AllowedAbs + absTolerance)
+  ) {
+    issues.push({
+      code: "TP1_CONSUMED_ABS_EXCEEDS_ALLOWED",
+      severity: "critical",
+      message: `tp1 consumed abs exceeded allowed contract. consumed=${tp1ConsumedAbs} allowed=${tp1AllowedAbs}`,
+    });
+  }
+  if (
+    Number.isFinite(runnerAllowedAbs)
+    && Number.isFinite(trailConsumedAbs)
+    && trailConsumedAbs > (runnerAllowedAbs + absTolerance)
+  ) {
+    issues.push({
+      code: "TRAIL_CONSUMED_ABS_EXCEEDS_RUNNER",
+      severity: "critical",
+      message: `trail consumed abs exceeded runner contract. consumed=${trailConsumedAbs} allowed=${runnerAllowedAbs}`,
+    });
+  }
+  if (
+    Number.isFinite(entryQtyAbs)
+    && Number.isFinite(totalConsumedAbs)
+    && totalConsumedAbs > (entryQtyAbs + absTolerance)
+  ) {
+    issues.push({
+      code: "EXIT_TOTAL_CONSUMED_ABS_EXCEEDS_ENTRY",
+      severity: "critical",
+      message: `total consumed abs cannot exceed entry qty. consumed=${totalConsumedAbs} entry=${entryQtyAbs}`,
+    });
+  }
+  if (
+    Number.isFinite(entryQtyAbs)
+    && Number.isFinite(totalConsumedAbs)
+    && Number.isFinite(runnerRemainingAbs)
+    && Math.abs((totalConsumedAbs + runnerRemainingAbs) - entryQtyAbs) > absTolerance
+  ) {
+    issues.push({
+      code: "RUNNER_REMAINING_ABS_MISMATCH",
+      severity: "critical",
+      message: `runner remaining abs must complement consumed abs. observed=${totalConsumedAbs + runnerRemainingAbs} entry=${entryQtyAbs}`,
+    });
+  }
+  if (Number.isFinite(runnerRemainingRatio) && runnerRemainingRatio < -ratioTolerance) {
+    issues.push({
+      code: "RUNNER_REMAINING_NEGATIVE",
+      severity: "critical",
+      message: `runner remaining ratio cannot be negative. observed=${runnerRemainingRatio}`,
+    });
+  }
 
   return {
     ok: !issues.some((issue) => issue.severity === "critical"),
@@ -390,12 +484,8 @@ function resolveCanonicalAlertExitStage({
   if (ordered.includes("TRAIL_FINAL_EXIT") || ordered.includes("TRAIL_PARTIAL")) return "TRAIL";
   if (ordered.includes("TP1_REACHED")) return "TP1";
   if (ordered.includes("TP0_REACHED")) return "TP0";
-  if (ordered.includes("TRAIL_ACTIVE")) {
-    const fallback = normalizeExitStage(fallbackStage);
-    if (fallback === "TP1") return "TP1";
-    return "TRAIL";
-  }
-  return normalizeExitStage(fallbackStage);
+  if (ordered.includes("TRAIL_ACTIVE") || ordered.includes("TRAIL_ACTIVATED")) return "TRAIL";
+  return null;
 }
 
 function resolveCanonicalPositionExitStage({
@@ -408,24 +498,23 @@ function resolveCanonicalPositionExitStage({
     fallbackStage
     || meta.authoritative_exit_stage
     || meta.canonical_exit_stage
-    || classifyExitEventStage(meta.canonical_exit_event || meta.event)
   );
   if (snapshot.trail_active === true) {
     return {
       stage: "TRAIL",
-      source: fallback === "TRAIL" ? "META" : "POSITION_STATE_MACHINE_TRAIL_ACTIVE",
+      source: "POSITION_STATE_MACHINE_TRAIL_ACTIVE",
     };
   }
   if (snapshot.tp_p1_done === true) {
     return {
       stage: "TP1",
-      source: fallback === "TP1" ? "META" : "POSITION_STATE_MACHINE_TP1_DONE",
+      source: "POSITION_STATE_MACHINE_TP1_DONE",
     };
   }
   if (snapshot.tp_p0_done === true) {
     return {
       stage: "TP0",
-      source: fallback === "TP0" ? "META" : "POSITION_STATE_MACHINE_TP0_DONE",
+      source: "POSITION_STATE_MACHINE_TP0_DONE",
     };
   }
   if (fallback && fallback !== "OTHER" && fallback !== "OTHER_EXIT") {

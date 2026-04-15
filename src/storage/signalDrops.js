@@ -64,6 +64,7 @@ function buildDropAlertPayload(drop = null) {
   const payload = drop && typeof drop === "object" ? drop : {};
   const features = resolveFeatureBag(payload);
   const authorityTrace = extractOpenClawAuthorityTrace(features);
+  const bucket = resolveDropStageBucket(payload);
   return {
     exchange: payload.exchange,
     symbol: payload.symbol_or_pair_id,
@@ -83,8 +84,8 @@ function buildDropAlertPayload(drop = null) {
     executionMode: payload.execution_mode,
     source: payload.source || "SERVER",
     authoritative: true,
-    dropGroup: payload.event_group,
-    dropSubtype: payload.event_subtype,
+    dropGroup: payload.event_group || bucket.group,
+    dropSubtype: payload.event_subtype || bucket.subtype,
   };
 }
 
@@ -193,12 +194,26 @@ function inferDropStageBucketFromReason(reasonRaw = null) {
   const reason = upper(reasonRaw);
   if (!reason) return { group: null, subtype: null };
   if (reason === "MIN_ORDER_EXCEEDS_BUDGET") {
-    return { group: "ENTRY", subtype: "BUDGET" };
+    return { group: "ENTRY", subtype: "MIN_ORDER_BUDGET" };
   }
   if (reason.startsWith("OPENCLAW_EXECUTOR_")) {
-    return { group: "ENTRY", subtype: "OPENCLAW" };
+    if (reason.startsWith("OPENCLAW_EXECUTOR_ALPHA_CONTEXT_")) {
+      return { group: "ENTRY", subtype: "OPENCLAW_ALPHA_CONTEXT" };
+    }
+    if (reason.startsWith("OPENCLAW_EXECUTOR_ALLOCATOR_")) {
+      return { group: "ENTRY", subtype: "OPENCLAW_ALLOCATOR" };
+    }
+    if (reason.startsWith("OPENCLAW_EXECUTOR_CORRELATED_")) {
+      return { group: "ENTRY", subtype: "OPENCLAW_CORRELATED_RISK" };
+    }
+    if (reason.startsWith("OPENCLAW_EXECUTOR_SAME_SIDE_")) {
+      return { group: "ENTRY", subtype: "OPENCLAW_SAME_SIDE_RISK" };
+    }
+    return { group: "ENTRY", subtype: "OPENCLAW_EXECUTOR" };
   }
   if (reason.startsWith("LIVE_POLICY_")) {
+    if (reason.includes("QUARANTINE")) return { group: "ENTRY", subtype: "LIVE_POLICY_QUARANTINE" };
+    if (reason.includes("EXECUTION_QUALITY")) return { group: "ENTRY", subtype: "LIVE_POLICY_EXECUTION_QUALITY" };
     return { group: "ENTRY", subtype: "LIVE_POLICY" };
   }
   if (reason.startsWith("LIVE_RESCUE_ADD_")) {

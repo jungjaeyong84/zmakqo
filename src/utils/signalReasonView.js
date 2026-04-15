@@ -230,6 +230,8 @@ function explainSignalReason(reason) {
     LINEAGE_SLO_FAIL_CLOSED: "추적 무결성을 확신할 수 없어 fail-closed로 진입을 보류했습니다.",
     MIN_ORDER_EXCEEDS_BUDGET: "현재 예산과 배율로는 거래소 최소주문 수량을 만족할 수 없어 진입을 보류했습니다.",
     OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE: "자본 배분기에서 해당 시장을 격리 상태로 판단해 신규 진입을 막았습니다.",
+    OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_REDUCE: "자본 배분기 격리 상태지만 학습 epoch 예외로 완전 차단 대신 감산만 적용했습니다.",
+    OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_RELEASE: "자본 배분기 격리 상태지만 학습 epoch 예외로 차단을 일시 해제했습니다.",
     OPENCLAW_EXECUTOR_ALLOCATOR_BLOCK: "자본 배분기에서 해당 시장을 차단 상태로 판단해 신규 진입을 막았습니다.",
     OPENCLAW_EXECUTOR_ALLOCATOR_STALE_REDUCE: "자본 배분 스냅샷이 오래돼 신규 진입을 완전 차단하지 않고 보수적으로 감산했습니다.",
     OPENCLAW_EXECUTOR_ALLOCATOR_REDUCE: "자본 배분 점수가 낮아 신규 진입 수량을 줄였습니다.",

@@ -115,14 +115,13 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
       tpP1Done,
       trailActive,
     },
-    fallbackStage: meta.canonical_exit_stage || null,
   });
   const effectiveCanonicalStage = canonicalPositionStage.stage;
   const canonicalRunnerRemainingAbs = toNum(meta.canonical_runner_remaining_abs)
-    ?? ((effectiveCanonicalStage === "TRAIL" || effectiveCanonicalStage === "TP1") && Number.isFinite(qtyBase) && qtyBase > 0 ? qtyBase : null);
-  const canonicalRunnerRemainingSource = toNum(meta.canonical_runner_remaining_abs) != null
-    ? "META"
-    : (canonicalRunnerRemainingAbs != null ? "POSITION_QTY_FALLBACK" : null);
+    ?? toNum(meta.runner_remaining_qty_abs)
+    ?? toNum(meta.runner_remaining_abs)
+    ?? toNum(meta.contract_runner_remaining_abs);
+  const canonicalRunnerRemainingSource = canonicalRunnerRemainingAbs != null ? "META" : null;
   const tpSkipReason = meta.tp_p1_skip_reason ? String(meta.tp_p1_skip_reason) : null;
   const trailRef = side === "SHORT" ? toNum(trailSnapshot.trail_low) : toNum(trailSnapshot.trail_high);
   const entryRDistance = resolveEntryRDistance({
@@ -149,7 +148,15 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
   const trailStopByR = toNum(trailSnapshot.trail_stop_by_r) ?? toNum(runnerExit.trailStopByR);
   const trailStopByPct = toNum(trailSnapshot.trail_stop_by_pct) ?? toNum(runnerExit.trailStopByPct);
   const chosenStopSource = upper(trailSnapshot.chosen_stop_source) || (runnerExit.stopSource || null);
+  const finalEffectiveStop = toNum(trailSnapshot.final_effective_stop)
+    ?? toNum(trailSnapshot.chosen_stop_price)
+    ?? toNum(trailSnapshot.computed_trail_stop)
+    ?? trailStop;
   const chosenStopPrice = toNum(trailSnapshot.chosen_stop_price)
+    ?? finalEffectiveStop
+    ?? toNum(trailSnapshot.computed_trail_stop)
+    ?? trailStop;
+  const expectedStopPrice = finalEffectiveStop
     ?? toNum(trailSnapshot.computed_trail_stop)
     ?? trailStop;
   const nativeStopPrice = toNum(trailSnapshot.native_stop_price) ?? toNum(meta.native_protection_stop_price);
@@ -173,14 +180,14 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     nativeTpStatus,
   });
   const stopDivergenceCodes = [];
-  if (trailActive && !Number.isFinite(chosenStopPrice)) {
+  if (trailActive && !Number.isFinite(expectedStopPrice)) {
     stopDivergenceCodes.push("CHOSEN_STOP_MISSING");
   }
-  if (trailActive && Number.isFinite(nativeStopPrice) && Number.isFinite(chosenStopPrice)
-    && Math.abs(nativeStopPrice - chosenStopPrice) > stopTolerance(chosenStopPrice)) {
+  if (trailActive && Number.isFinite(nativeStopPrice) && Number.isFinite(expectedStopPrice)
+    && Math.abs(nativeStopPrice - expectedStopPrice) > stopTolerance(expectedStopPrice)) {
     stopDivergenceCodes.push("NATIVE_STOP_MISMATCH");
   }
-  if (trailActive && isWorseThanFloor({ side, chosen: chosenStopPrice, floor: runnerFloorStop })) {
+  if (trailActive && isWorseThanFloor({ side, chosen: expectedStopPrice, floor: runnerFloorStop })) {
     stopDivergenceCodes.push("RUNNER_FLOOR_BROKEN");
   }
   if (trailActive && chosenStopSource === "TRAIL" && Number.isFinite(trailStopByR) && Number.isFinite(chosenStopPrice)
@@ -188,11 +195,11 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     stopDivergenceCodes.push("TRAIL_R_MISMATCH");
   }
   const stopDivergenceItems = buildStopDivergenceItems(stopDivergenceCodes);
-  const nativeStopGapAbs = Number.isFinite(nativeStopPrice) && Number.isFinite(chosenStopPrice)
-    ? Math.abs(nativeStopPrice - chosenStopPrice)
+  const nativeStopGapAbs = Number.isFinite(nativeStopPrice) && Number.isFinite(expectedStopPrice)
+    ? Math.abs(nativeStopPrice - expectedStopPrice)
     : null;
-  const nativeStopGapPct = Number.isFinite(nativeStopGapAbs) && Number.isFinite(chosenStopPrice) && chosenStopPrice !== 0
-    ? (nativeStopGapAbs / Math.abs(chosenStopPrice))
+  const nativeStopGapPct = Number.isFinite(nativeStopGapAbs) && Number.isFinite(expectedStopPrice) && expectedStopPrice !== 0
+    ? (nativeStopGapAbs / Math.abs(expectedStopPrice))
     : null;
 
   const tp1GapPct = buildGapPct({ currentPrice: close, targetPrice: tp1Price, side });
@@ -274,12 +281,14 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     trail_stop: trailStop,
     trail_stop_raw: rawTrailStop,
     trail_stop_by_r: trailStopByR,
+    r_based_trail_stop: trailStopByR,
     trail_stop_by_pct: trailStopByPct,
     runner_floor_pct: toNum(rules.RUNNER_MIN_PROFIT_PCT),
     runner_floor_stop: toNum(trailSnapshot.runner_floor_stop) ?? runnerFloorStop,
     runner_stop_source: runnerExit.stopSource,
     chosen_stop_source: chosenStopSource,
     chosen_stop_price: chosenStopPrice,
+    final_effective_stop: expectedStopPrice,
     stop_divergence: stopDivergenceCodes.length > 0,
     stop_divergence_codes: stopDivergenceCodes,
     stop_divergence_items: stopDivergenceItems,

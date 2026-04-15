@@ -156,10 +156,16 @@ function run() {
       entry_qty_abs: 1,
       tp0_allowed_ratio: 0.25,
       tp0_consumed_ratio: 0.25,
+      tp0_allowed_abs: 0.25,
+      tp0_consumed_abs: 0.25,
       tp1_allowed_ratio: 0.375,
       tp1_consumed_ratio: 0.45,
+      tp1_allowed_abs: 0.375,
+      tp1_consumed_abs: 0.45,
       runner_allowed_ratio: 0.375,
       trail_consumed_ratio: 0.45,
+      runner_allowed_abs: 0.375,
+      trail_consumed_abs: 0.45,
       total_consumed_ratio: 1.15,
       runner_remaining_ratio: -0.15,
       runner_remaining_abs: 0.2,
@@ -175,6 +181,10 @@ function run() {
   assert.ok(invalidLedger.issues.some((issue) => issue.code === "TRAIL_CONSUMED_EXCEEDS_RUNNER"));
   assert.ok(invalidLedger.issues.some((issue) => issue.code === "EXIT_TOTAL_CONSUMED_EXCEEDS_ENTRY"));
   assert.ok(invalidLedger.issues.some((issue) => issue.code === "RUNNER_REMAINING_QTY_MISMATCH"));
+  assert.ok(invalidLedger.issues.some((issue) => issue.code === "TP1_CONSUMED_ABS_EXCEEDS_ALLOWED"));
+  assert.ok(invalidLedger.issues.some((issue) => issue.code === "TRAIL_CONSUMED_ABS_EXCEEDS_RUNNER"));
+  assert.ok(invalidLedger.issues.some((issue) => issue.code === "EXIT_TOTAL_CONSUMED_ABS_EXCEEDS_ENTRY"));
+  assert.ok(invalidLedger.issues.some((issue) => issue.code === "RUNNER_REMAINING_ABS_MISMATCH"));
 
   const ledgerBlockedDecision = resolveCanonicalExitWritePayload({
     exchange: "BINANCEFUT",
@@ -205,6 +215,26 @@ function run() {
   assert.ok(Math.abs(derivedEntryLedger.entry_qty_abs - 0.4453333333) < 0.001);
   assert.ok(Math.abs(derivedEntryLedger.runner_remaining_abs - 0.167) < 0.001);
 
+  const missingEntryLedger = validateExitQuantityContractLedger({
+    ledger: {
+      tp0_allowed_ratio: 0.25,
+      tp0_consumed_ratio: 0.25,
+      tp1_allowed_ratio: 0.375,
+      tp1_consumed_ratio: 0.375,
+      runner_allowed_ratio: 0.375,
+      trail_consumed_ratio: 0.1,
+      total_consumed_ratio: 0.725,
+      runner_remaining_ratio: 0.275,
+      runner_remaining_abs: 0.167,
+    },
+    positionSnapshot: {
+      qty_base: 0.167,
+      meta: { tp_p0_done: true, tp_p1_done: true, trail_active: true },
+    },
+  });
+  assert.strictEqual(missingEntryLedger.ok, false);
+  assert.ok(missingEntryLedger.issues.some((issue) => issue.code === "ENTRY_QTY_ABS_REQUIRED"));
+
   const trailTransition = resolveCanonicalExitTransitionEvents({
     resolvedStage: "TRAIL",
     positionSnapshot: {
@@ -219,9 +249,9 @@ function run() {
 
   const alertStage = resolveCanonicalAlertExitStage({
     transitionEvents: ["TP1_REACHED", "TRAIL_ACTIVE"],
-    fallbackStage: "TP1",
   });
   assert.strictEqual(alertStage, "TP1");
+  assert.strictEqual(resolveCanonicalAlertExitStage({ fallbackStage: "TP1" }), null);
 
   const canonicalPositionStage = resolveCanonicalPositionExitStage({
     positionSnapshot: {
@@ -232,6 +262,15 @@ function run() {
   assert.deepStrictEqual(canonicalPositionStage, {
     stage: "TRAIL",
     source: "POSITION_STATE_MACHINE_TRAIL_ACTIVE",
+  });
+  assert.deepStrictEqual(resolveCanonicalPositionExitStage({
+    positionSnapshot: {
+      qty_base: 0.167,
+      meta: { event: "EXIT_TP_P1_1.65P" },
+    },
+  }), {
+    stage: null,
+    source: null,
   });
 
   const cycleStage = resolveCanonicalExitStageFromCycleEvidence({

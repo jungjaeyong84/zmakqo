@@ -4,32 +4,24 @@ const assert = require("assert");
 const { __test } = require("../services/liveTrailingStageRepair");
 
 function run() {
-  assert.strictEqual(typeof __test.groupTrades, "function");
-  assert.strictEqual(typeof __test.extractActiveCycleTrades, "function");
-  assert.strictEqual(typeof __test.inferStageFromCycle, "function");
+  assert.strictEqual(typeof __test.resolveRepairTargetStage, "function");
   assert.strictEqual(typeof __test.buildRepairedMeta, "function");
   assert.strictEqual(typeof __test.shouldEnforceSingleStopWriter, "function");
   assert.strictEqual(__test.shouldEnforceSingleStopWriter(), true);
 
-  const grouped = __test.groupTrades([
-    { orderId: 1, time: 100, side: "BUY", qty: 0.887, quoteQty: 2002.91696, realizedPnl: 0, price: 2258.08 },
-    { orderId: 2, time: 200, side: "SELL", qty: 0.221, quoteQty: 501.11971, realizedPnl: 2.08403, price: 2267.51 },
-    { orderId: 3, time: 300, side: "SELL", qty: 0.332, quoteQty: 755.87884, realizedPnl: 6.19628, price: 2276.74 },
-  ]);
-  assert.strictEqual(grouped.length, 3);
-
-  const cycle = __test.extractActiveCycleTrades(grouped, {
-    positionQty: 0.334,
-    positionSide: "LONG",
-  });
-  assert.strictEqual(cycle.length, 3);
-
-  const stage = __test.inferStageFromCycle(cycle, {
-    positionQty: 0.334,
-    tp0QtyRatio: 0.25,
-    tp1QtyRatio: 0.5,
+  const stage = __test.resolveRepairTargetStage({
+    positionSnapshot: {
+      qty_base: 0.167,
+      meta: {
+        tp_p0_done: true,
+        tp_p1_done: true,
+        trail_active: false,
+      },
+    },
+    externalQty: 0.167,
   });
   assert.strictEqual(stage.stage, "TRAIL");
+  assert.strictEqual(stage.reason, "TP1_DONE_WITH_OPEN_RUNNER");
 
   const nextMeta = __test.buildRepairedMeta({
     tp_p0_done: false,

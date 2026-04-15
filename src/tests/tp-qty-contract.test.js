@@ -41,4 +41,45 @@ const nativeProtectionAfterTp0 = runnerTest.computeBinanceNativeProtectionPrices
 });
 assert.ok(Math.abs(nativeProtectionAfterTp0.tpOrderQtyRatio - 0.5) < 1e-9);
 
+assert.deepStrictEqual(
+  runnerTest.resolveCanonicalExitAlertBlock({
+    canonicalExitStage: "TRAIL",
+    canonicalExitLedgerBlockedInvariant: true,
+    canonicalExitLedgerIssueCodes: ["RUNNER_REMAINING_ABS_MISMATCH"],
+    canonicalTransitionEvents: ["TRAIL_PARTIAL"],
+  }),
+  {
+    blocked: true,
+    reason: "CANONICAL_EXIT_LEDGER_BLOCKED",
+    issueCodes: ["RUNNER_REMAINING_ABS_MISMATCH"],
+  },
+);
+assert.strictEqual(
+  runnerTest.shouldEmitCanonicalExitAlert({
+    canonicalExitStage: "TRAIL",
+    canonicalExitLedgerBlockedInvariant: true,
+    canonicalExitLedgerIssueCodes: ["RUNNER_REMAINING_ABS_MISMATCH"],
+    canonicalTransitionEvents: ["TRAIL_PARTIAL"],
+  }),
+  false,
+);
+assert.deepStrictEqual(
+  runnerTest.resolveCanonicalExitAlertBlock({
+    canonicalExitStage: "TP1",
+    canonicalTransitionEvents: [],
+  }),
+  {
+    blocked: true,
+    reason: "CANONICAL_EXIT_TRANSITION_MISSING",
+    issueCodes: [],
+  },
+);
+assert.strictEqual(
+  runnerTest.shouldEmitCanonicalExitAlert({
+    canonicalExitStage: "TRAIL",
+    canonicalTransitionEvents: ["TRAIL_PARTIAL"],
+  }),
+  true,
+);
+
 console.log("TP_QTY_CONTRACT_TEST_OK");

@@ -2,7 +2,6 @@
 
 const {
   fetchBinanceFuturesAccount,
-  fetchFuturesUserTrades,
   fetchFuturesOpenOrders,
   fetchFuturesAlgoOpenOrders,
 } = require("../exchanges/binanceFuturesPrivate");
@@ -13,7 +12,7 @@ const {
 const { resolveBinanceKeys } = require("./binanceApiKeys");
 const { upsertTrailObservation } = require("../storage/positionRuntimeObservations");
 const { getPosition, upsertPositionMetaOnly } = require("../storage/positionsPaper");
-const { resolveCanonicalExitStageFromCycleEvidence } = require("./positionStateMachine");
+const { resolveCanonicalPositionExitStage } = require("./positionStateMachine");
 
 function normalizeSymbol(value) {
   return String(value || "").trim().toUpperCase();
@@ -28,96 +27,48 @@ function shouldEnforceSingleStopWriter() {
   return true;
 }
 
-function groupTrades(trades = []) {
-  const grouped = new Map();
-  for (const trade of trades || []) {
-    const key = [
-      String(trade.orderId || "").trim(),
-      String(trade.time || "").trim(),
-      String(trade.side || "").trim().toUpperCase(),
-    ].join("|");
-    const current = grouped.get(key) || {
-      orderId: trade.orderId || null,
-      time: Number(trade.time) || null,
-      side: String(trade.side || "").trim().toUpperCase(),
-      qty: 0,
-      quoteQty: 0,
-      realizedPnl: 0,
-      minPrice: Infinity,
-      maxPrice: 0,
+function resolveRepairTargetStage({
+  positionSnapshot = null,
+  externalQty = null,
+} = {}) {
+  const canonical = resolveCanonicalPositionExitStage({ positionSnapshot });
+  const currentQty = Number(externalQty);
+  if (canonical.stage === "TRAIL") {
+    return {
+      stage: "TRAIL",
+      source: canonical.source,
+      reason: "CANONICAL_TRAIL_STAGE",
     };
-    current.qty += Number(trade.qty) || 0;
-    current.quoteQty += Number(trade.quoteQty) || 0;
-    current.realizedPnl += Number(trade.realizedPnl) || 0;
-    const price = Number(trade.price) || 0;
-    if (price > 0) {
-      current.minPrice = Math.min(current.minPrice, price);
-      current.maxPrice = Math.max(current.maxPrice, price);
-    }
-    grouped.set(key, current);
   }
-  return Array.from(grouped.values())
-    .map((item) => ({
-      ...item,
-      avgPrice: item.qty > 0 ? item.quoteQty / item.qty : null,
-      iso: Number.isFinite(item.time) ? new Date(item.time).toISOString() : null,
-    }))
-    .sort((a, b) => Number(a.time || 0) - Number(b.time || 0));
-}
-
-function resolveForwardSignedQty(trade, positionSide) {
-  const side = String(trade && trade.side || "").trim().toUpperCase();
-  if (positionSide === "SHORT") {
-    return side === "SELL" ? Number(trade.qty || 0) : -Number(trade.qty || 0);
+  if (canonical.stage === "TP1" && Number.isFinite(currentQty) && currentQty > 0) {
+    return {
+      stage: "TRAIL",
+      source: "CANONICAL_TP1_WITH_OPEN_RUNNER",
+      reason: "TP1_DONE_WITH_OPEN_RUNNER",
+    };
   }
-  return side === "BUY" ? Number(trade.qty || 0) : -Number(trade.qty || 0);
-}
-
-function extractActiveCycleTrades(groupedTrades, { positionQty, positionSide } = {}) {
-  const currentQty = Number(positionQty);
-  if (!Number.isFinite(currentQty) || currentQty <= 0) return null;
-  const cycle = [];
-  let balance = currentQty;
-  for (let idx = groupedTrades.length - 1; idx >= 0; idx -= 1) {
-    const trade = groupedTrades[idx];
-    const signedQty = resolveForwardSignedQty(trade, positionSide);
-    const prevBalance = balance - signedQty;
-    cycle.unshift({
-      ...trade,
-      signedQty,
-      balanceAfter: balance,
-      balanceBefore: prevBalance,
-    });
-    balance = prevBalance;
-    if (Math.abs(balance) <= 0.02) {
-      return cycle;
-    }
+  if (canonical.stage === "TP0") {
+    return {
+      stage: "TP0",
+      source: canonical.source,
+      reason: "CANONICAL_TP0_STAGE",
+    };
   }
-  return null;
-}
-
-function inferStageFromCycle(cycleTrades, options = {}) {
-  return resolveCanonicalExitStageFromCycleEvidence({
-    cycleTrades,
-    positionQty: options && options.positionQty,
-    tp0QtyRatio: options && options.tp0QtyRatio,
-    tp1QtyRatio: options && options.tp1QtyRatio,
-  });
+  return {
+    stage: null,
+    source: canonical.source || null,
+    reason: "CANONICAL_STAGE_REQUIRED",
+  };
 }
 
 function buildRepairedMeta(meta = {}, stageInfo = {}) {
   const nextMeta = { ...(meta && typeof meta === "object" ? meta : {}) };
-  const exits = Array.isArray(stageInfo.exits) ? stageInfo.exits : [];
-  const tp0Trade = exits[0] || null;
-  const tp1Trade = exits[1] || null;
-  if (tp0Trade) {
+  const stage = normalizeSymbol(stageInfo.stage);
+  if (stage === "TP0" || stage === "TRAIL") {
     nextMeta.tp_p0_done = true;
     nextMeta.tp_p0_source = nextMeta.tp_p0_source || "LIVE_STAGE_REPAIR";
-    nextMeta.tp_p0_price = Number.isFinite(Number(tp0Trade.avgPrice)) ? Number(tp0Trade.avgPrice) : nextMeta.tp_p0_price;
-    nextMeta.tp_p0_at = tp0Trade.iso || nextMeta.tp_p0_at || null;
-    nextMeta.tp_p0_bar_ms = Number.isFinite(Number(tp0Trade.time)) ? Number(tp0Trade.time) : nextMeta.tp_p0_bar_ms || null;
   }
-  if (stageInfo.stage === "TRAIL" && tp1Trade) {
+  if (stage === "TRAIL") {
     nextMeta.tp_p0_done = true;
     nextMeta.tp_p1_done = true;
     nextMeta.trail_active = true;
@@ -126,9 +77,10 @@ function buildRepairedMeta(meta = {}, stageInfo = {}) {
     nextMeta.tp_p1_pending_until_ms = null;
     nextMeta.tp_p1_pending_event = null;
     nextMeta.tp_p1_source = nextMeta.tp_p1_source || "LIVE_STAGE_REPAIR";
-    nextMeta.tp_p1_price = Number.isFinite(Number(tp1Trade.avgPrice)) ? Number(tp1Trade.avgPrice) : nextMeta.tp_p1_price;
-    nextMeta.tp_p1_at = tp1Trade.iso || nextMeta.tp_p1_at || null;
-    nextMeta.tp_p1_bar_ms = Number.isFinite(Number(tp1Trade.time)) ? Number(tp1Trade.time) : nextMeta.tp_p1_bar_ms || null;
+  }
+  if (stage === "TP0" || stage === "TRAIL") {
+    nextMeta.canonical_exit_stage = stage;
+    nextMeta.authoritative_exit_stage = stage;
   }
   return nextMeta;
 }
@@ -198,32 +150,21 @@ async function repairLiveTrailingStageForSymbol({
     return { ok: true, skipped: true, reason: "POSITION_READ_MODEL_MISSING", symbol: sym };
   }
   const meta = (position.meta && typeof position.meta === "object") ? position.meta : {};
-  const rules = (meta.exit_rules_override && typeof meta.exit_rules_override === "object") ? meta.exit_rules_override : {};
-  const groupedTrades = groupTrades(await fetchFuturesUserTrades({
-    apiKey: resolvedKeys.apiKey,
-    apiSecret: resolvedKeys.apiSecret,
-    symbol: sym,
-    startTime: Date.now() - (7 * 24 * 60 * 60 * 1000),
-    limit: 500,
-  }));
-  const cycleTrades = extractActiveCycleTrades(groupedTrades, { positionQty, positionSide });
-  if (!cycleTrades) return { ok: true, skipped: true, reason: "ACTIVE_CYCLE_NOT_FOUND", symbol: sym };
-  const stageInfo = inferStageFromCycle(cycleTrades, {
-    positionQty,
-    tp0QtyRatio: toNum(rules.TP_P0_QTY) || 0.25,
-    tp1QtyRatio: toNum(rules.TP_P1_QTY) || 0.5,
+  const repairStage = resolveRepairTargetStage({
+    positionSnapshot: position,
+    externalQty: positionQty,
   });
-  if (stageInfo.stage !== "TRAIL" && stageInfo.stage !== "TP0") {
+  if (repairStage.stage !== "TRAIL" && repairStage.stage !== "TP0") {
     return {
       ok: true,
       skipped: true,
-      reason: "STAGE_NOT_REPAIRABLE",
+      reason: repairStage.reason || "CANONICAL_STAGE_REQUIRED",
       symbol: sym,
-      remaining_ratio: stageInfo.remainingRatio,
-      exits_n: Array.isArray(stageInfo.exits) ? stageInfo.exits.length : 0,
+      canonical_stage: repairStage.stage,
+      canonical_stage_source: repairStage.source,
     };
   }
-  const nextMeta = buildRepairedMeta(meta, stageInfo);
+  const nextMeta = buildRepairedMeta(meta, repairStage);
   const singleStopWriter = shouldEnforceSingleStopWriter();
   await patchPositionMetaOnlyWithRetry({
     exchange,
@@ -244,20 +185,6 @@ async function repairLiveTrailingStageForSymbol({
     reason: "NON_AUTHORITY_LAYER_REQUEST",
     dispatchReason: `LIVE_TRAILING_STAGE_REPAIR_NATIVE_STOP_REFRESH_${String(exchange || "").toUpperCase()}_${String(sym || "").toUpperCase()}`,
   });
-  nativeProtection.stop_price = Number(nextMeta.native_protection_stop_price || meta.native_protection_stop_price) || null;
-  nativeProtection.stop_order_id = nextMeta.native_protection_stop_order_id || meta.native_protection_stop_order_id || null;
-  const nativeProtectionMetaPatch = null;
-  if (nativeProtectionMetaPatch && typeof nativeProtectionMetaPatch === "object") {
-    await patchPositionMetaOnlyWithRetry({
-      exchange,
-      symbol: sym,
-      executionMode: position.execution_mode || "LIVE",
-      nextMeta: {
-        ...nextMeta,
-        ...nativeProtectionMetaPatch,
-      },
-    });
-  }
   const entryPrice = Number(position.avg_price);
   const leverage = Number(position.leverage || meta.external_leverage || meta.leverage || 1);
   const runnerExit = computeRunnerExitStopPrice({
@@ -292,8 +219,8 @@ async function repairLiveTrailingStageForSymbol({
     chosenStopSource: runnerExit && runnerExit.stopSource ? runnerExit.stopSource : null,
     chosenStopPrice: Number(runnerExit && runnerExit.stopPrice) || null,
     finalEffectiveStop: Number(runnerExit && runnerExit.stopPrice) || null,
-    nativeStopPrice: Number(nativeProtection && nativeProtection.stop_price) || null,
-    nativeStopOrderId: nativeProtection && nativeProtection.stop_order_id ? nativeProtection.stop_order_id : null,
+    nativeStopPrice: Number(nextMeta.native_protection_stop_price || meta.native_protection_stop_price) || null,
+    nativeStopOrderId: nextMeta.native_protection_stop_order_id || meta.native_protection_stop_order_id || null,
     nativeRefreshStatus: singleStopWriter
       ? "REPAIR_REQUESTED"
       : (nativeProtection && nativeProtection.ok === true ? "OK" : String(nativeProtection && nativeProtection.reason || "FAILED")),
@@ -305,10 +232,9 @@ async function repairLiveTrailingStageForSymbol({
   return {
     ok: true,
     symbol: sym,
-    stage: stageInfo.stage,
-    total_entry_qty: stageInfo.totalEntryQty,
+    stage: repairStage.stage,
+    canonical_stage_source: repairStage.source,
     remaining_qty: positionQty,
-    remaining_ratio: stageInfo.remainingRatio,
     native_protection: nativeProtection,
     open_orders_n: orders.openOrders.length,
     algo_orders_n: orders.algoOrders.length,
@@ -320,9 +246,7 @@ async function repairLiveTrailingStageForSymbol({
 module.exports = {
   repairLiveTrailingStageForSymbol,
   __test: {
-    groupTrades,
-    extractActiveCycleTrades,
-    inferStageFromCycle,
+    resolveRepairTargetStage,
     buildRepairedMeta,
     shouldEnforceSingleStopWriter,
   },

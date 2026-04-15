@@ -166,6 +166,30 @@ function patchPolicyEvalQty(policyEval, qtyPctFinal, extraFeatures = {}) {
   };
 }
 
+function resolveRequestedQtyPct({
+  requestedQtyPct = null,
+  qtyPct = null,
+  features = null,
+} = {}) {
+  const featureBag = (features && typeof features === "object") ? features : {};
+  const candidates = [
+    requestedQtyPct,
+    featureBag._openclaw_authority_qty_requested,
+    featureBag._entry_budget_signal_floor_prev_qty_pct,
+    featureBag._entry_budget_signal_floor_qty_pct,
+    featureBag._signal_requested_qty_pct,
+    featureBag.qty_requested_pct,
+    featureBag.requestedQtyPct,
+    featureBag._rescue_add_requested_qty_pct,
+    qtyPct,
+  ];
+  for (const candidate of candidates) {
+    const value = toNum(candidate);
+    if (Number.isFinite(value) && value > 0) return value;
+  }
+  return null;
+}
+
 function mergeAuthorityFeatures({
   baseFeatures = null,
   openclawEval = null,
@@ -257,13 +281,12 @@ async function evaluateOpenClawExecutionAuthority({
   failOpenOnExecutorError = true,
   entryBudgetGuardOverride = null,
 } = {}) {
-  const qtyRequestedOverride = toNum(requestedQtyPct);
-  const qtyRequested = (
-    Number.isFinite(qtyRequestedOverride) && qtyRequestedOverride > 0
-      ? qtyRequestedOverride
-      : toNum(qtyPct)
-  );
   const baseFeatures = (features && typeof features === "object") ? { ...features } : {};
+  const qtyRequested = resolveRequestedQtyPct({
+    requestedQtyPct,
+    qtyPct,
+    features: baseFeatures,
+  });
 
   let openclawEval;
   try {
@@ -471,5 +494,6 @@ module.exports = {
     mergeAuthorityFeatures,
     patchPolicyEvalQty,
     resolveEntryBudgetGuardMinQtyFloor,
+    resolveRequestedQtyPct,
   },
 };

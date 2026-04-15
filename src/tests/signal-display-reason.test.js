@@ -138,6 +138,20 @@ const { buildSignalDisplayReason, classifySignalReasonStage } = require('../util
   assert.strictEqual(alphaContextBlocked.stage_text, 'OpenClaw 실행 가드');
   assert.strictEqual(alphaContextBlocked.reason_ko, '알파 컨텍스트 패널티가 강하게 걸려 있어 현재 구간의 신규 진입을 막았습니다.');
 
+  const allocatorQuarantineEpochReduce = buildSignalDisplayReason(
+    { reason: 'OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_REDUCE' },
+    {}
+  );
+  assert.strictEqual(allocatorQuarantineEpochReduce.stage_key, 'EXECUTOR');
+  assert.strictEqual(allocatorQuarantineEpochReduce.reason_ko, '자본 배분기 격리 상태지만 학습 epoch 예외로 완전 차단 대신 감산만 적용했습니다.');
+
+  const allocatorQuarantineEpochRelease = buildSignalDisplayReason(
+    { reason: 'OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_RELEASE' },
+    {}
+  );
+  assert.strictEqual(allocatorQuarantineEpochRelease.stage_key, 'EXECUTOR');
+  assert.strictEqual(allocatorQuarantineEpochRelease.reason_ko, '자본 배분기 격리 상태지만 학습 epoch 예외로 차단을 일시 해제했습니다.');
+
   const livePolicyBlocked = buildSignalDisplayReason(
     { reason: 'LIVE_POLICY_QUARANTINE_HARD_BLOCK' },
     {}

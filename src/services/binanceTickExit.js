@@ -73,10 +73,8 @@ function ratioToPctTokenLocal(ratio) {
 
 function resolveCanonicalExitStageForPosition(position) {
   const pos = position && typeof position === "object" ? position : null;
-  const meta = pos && pos.meta && typeof pos.meta === "object" ? pos.meta : {};
   const canonical = resolveCanonicalPositionExitStage({
     positionSnapshot: pos,
-    fallbackStage: meta.authoritative_exit_stage || meta.canonical_exit_stage || null,
   });
   return canonical && canonical.stage ? canonical.stage : null;
 }
@@ -353,24 +351,52 @@ function applyTrailObservationToPosition({ pos, observation } = {}) {
   if (!position) return position;
   const meta = (position.meta && typeof position.meta === "object") ? position.meta : {};
   const snapshot = resolveTrailObservationSnapshot({ meta, observation });
+  const nextMeta = {
+    ...meta,
+    trail_high: snapshot.trail_high,
+    trail_high_at_ms: snapshot.trail_high_at_ms,
+    trail_low: snapshot.trail_low,
+    trail_low_at_ms: snapshot.trail_low_at_ms,
+    ...(snapshot.entry_r_distance != null || meta.entry_r_distance != null
+      ? { entry_r_distance: snapshot.entry_r_distance ?? meta.entry_r_distance }
+      : {}),
+    ...(snapshot.trail_r_multiple != null || meta.trail_r_multiple != null
+      ? { trail_r_multiple: snapshot.trail_r_multiple ?? meta.trail_r_multiple }
+      : {}),
+    ...(snapshot.runner_floor_stop != null || meta.runner_floor_stop != null
+      ? { runner_floor_stop: snapshot.runner_floor_stop ?? meta.runner_floor_stop }
+      : {}),
+    ...(snapshot.trail_stop_by_r != null || snapshot.r_based_trail_stop != null || meta.trail_stop_by_r != null || meta.r_based_trail_stop != null
+      ? {
+        trail_stop_by_r: snapshot.trail_stop_by_r ?? snapshot.r_based_trail_stop ?? meta.trail_stop_by_r ?? meta.r_based_trail_stop,
+        r_based_trail_stop: snapshot.r_based_trail_stop ?? snapshot.trail_stop_by_r ?? meta.r_based_trail_stop ?? meta.trail_stop_by_r,
+      }
+      : {}),
+    ...(snapshot.trail_stop_by_pct != null || meta.trail_stop_by_pct != null
+      ? { trail_stop_by_pct: snapshot.trail_stop_by_pct ?? meta.trail_stop_by_pct }
+      : {}),
+    ...(snapshot.chosen_stop_source || meta.chosen_stop_source
+      ? { chosen_stop_source: snapshot.chosen_stop_source ?? meta.chosen_stop_source }
+      : {}),
+    ...(snapshot.chosen_stop_price != null || meta.chosen_stop_price != null
+      ? { chosen_stop_price: snapshot.chosen_stop_price ?? meta.chosen_stop_price }
+      : {}),
+    ...(snapshot.final_effective_stop != null || meta.final_effective_stop != null
+      ? { final_effective_stop: snapshot.final_effective_stop ?? meta.final_effective_stop }
+      : {}),
+    ...(snapshot.native_stop_price != null || meta.native_protection_stop_price != null
+      ? { native_protection_stop_price: snapshot.native_stop_price ?? meta.native_protection_stop_price }
+      : {}),
+    ...((snapshot.native_stop_order_id || meta.native_protection_stop_order_id)
+      ? { native_protection_stop_order_id: snapshot.native_stop_order_id ?? meta.native_protection_stop_order_id }
+      : {}),
+    ...((snapshot.native_refresh_status || meta.native_protection_refresh_status)
+      ? { native_protection_refresh_status: snapshot.native_refresh_status ?? meta.native_protection_refresh_status }
+      : {}),
+  };
   return {
     ...position,
-    meta: {
-      ...meta,
-      trail_high: snapshot.trail_high,
-      trail_high_at_ms: snapshot.trail_high_at_ms,
-      trail_low: snapshot.trail_low,
-      trail_low_at_ms: snapshot.trail_low_at_ms,
-      ...(snapshot.native_stop_price != null || meta.native_protection_stop_price != null
-        ? { native_protection_stop_price: snapshot.native_stop_price ?? meta.native_protection_stop_price }
-        : {}),
-      ...((snapshot.native_stop_order_id || meta.native_protection_stop_order_id)
-        ? { native_protection_stop_order_id: snapshot.native_stop_order_id ?? meta.native_protection_stop_order_id }
-        : {}),
-      ...((snapshot.native_refresh_status || meta.native_protection_refresh_status)
-        ? { native_protection_refresh_status: snapshot.native_refresh_status ?? meta.native_protection_refresh_status }
-        : {}),
-    },
+    meta: nextMeta,
   };
 }
 

@@ -105,7 +105,7 @@ function run() {
 
   assert.deepStrictEqual(
     __test.inferDropStageBucketFromReason("MIN_ORDER_EXCEEDS_BUDGET"),
-    { group: "ENTRY", subtype: "BUDGET" }
+    { group: "ENTRY", subtype: "MIN_ORDER_BUDGET" }
   );
 
   assert.deepStrictEqual(
@@ -113,7 +113,15 @@ function run() {
       reason: "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_BLOCK",
       features_json: {},
     }),
-    { group: "ENTRY", subtype: "OPENCLAW" }
+    { group: "ENTRY", subtype: "OPENCLAW_ALPHA_CONTEXT" }
+  );
+
+  assert.deepStrictEqual(
+    __test.resolveDropStageBucket({
+      reason: "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE",
+      features_json: {},
+    }),
+    { group: "ENTRY", subtype: "OPENCLAW_ALLOCATOR" }
   );
 
   assert.strictEqual(__test.deriveReasonFamily("MIN_ORDER_EXCEEDS_BUDGET"), "ENTRY_BUDGET_GUARD");
@@ -197,8 +205,25 @@ function run() {
       source: "SERVER",
       authoritative: true,
       dropGroup: "UNKNOWN",
-      dropSubtype: null,
+      dropSubtype: "MIN_ORDER_BUDGET",
     }
+  );
+
+  assert.deepStrictEqual(
+    __test.buildDropAlertPayload({
+      exchange: "BINANCEFUT",
+      symbol_or_pair_id: "XRPUSDT",
+      tf: "15m",
+      event: "LONG",
+      side: "BUY",
+      qty_pct: 1,
+      reason: "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE",
+      drop_reason_code: "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE",
+      signal_id: "SIG__BINANCEFUT__XRPUSDT__15m__1776158100000__LONG",
+      execution_mode: "LIVE",
+      source: "SERVER",
+    }).dropSubtype,
+    "OPENCLAW_ALLOCATOR"
   );
 
   console.log("SIGNAL_DROPS_TEST_OK");

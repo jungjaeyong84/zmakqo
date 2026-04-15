@@ -262,6 +262,14 @@ function resolveRawEvidenceEvent(payload = {}, event = null) {
 }
 
 function resolveCanonicalTransitionEventList(payload = {}) {
+  const allowed = new Set([
+    "TP0_REACHED",
+    "TP1_REACHED",
+    "TRAIL_ACTIVE",
+    "TRAIL_ACTIVATED",
+    "TRAIL_PARTIAL",
+    "TRAIL_FINAL_EXIT",
+  ]);
   const items = [];
   if (Array.isArray(payload.canonicalTransitionEvents)) {
     items.push(...payload.canonicalTransitionEvents);
@@ -275,7 +283,7 @@ function resolveCanonicalTransitionEventList(payload = {}) {
   return items
     .map((item) => String(item || "").trim().toUpperCase())
     .filter((item) => {
-      if (!item || seen.has(item)) return false;
+      if (!item || seen.has(item) || !allowed.has(item)) return false;
       seen.add(item);
       return true;
     });
