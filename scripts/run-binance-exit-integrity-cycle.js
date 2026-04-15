@@ -57,6 +57,48 @@ function appendWithCap(current = "", chunk = "", maxChars = 1024 * 1024 * 4) {
   return next.slice(-maxChars);
 }
 
+function buildSkippedNativeGapReport(exchange = "BINANCEFUT") {
+  return {
+    summary: {
+      generated_at: new Date().toISOString(),
+      exchange,
+      active_position_count: 0,
+      gap_count: 0,
+      rows: [],
+      top_symbols: [],
+      skipped: true,
+      reason: "EXCHANGE_IO_DISABLED",
+    },
+    cli: {
+      ok: true,
+      status: "SKIPPED",
+      reason: "EXCHANGE_IO_DISABLED",
+      gap_count: 0,
+      active_position_count: 0,
+      top_symbols: [],
+      jsonPath: null,
+      mdPath: null,
+    },
+  };
+}
+
+function buildSkippedWatchdogReport() {
+  return {
+    ok: true,
+    status: "SKIPPED",
+    reason: "EXCHANGE_IO_DISABLED",
+    active_symbol_n: 0,
+    target_symbol_n: 0,
+    issue_symbol_n: 0,
+    issue_symbols: [],
+    repaired_symbol_n: 0,
+    repaired_symbols: [],
+    rows: [],
+    actionable_rows: [],
+    repaired_rows: [],
+  };
+}
+
 async function runScript(script, env = {}) {
   const scriptPath = path.join(REPO_ROOT, "scripts", script);
   const timeoutMs = resolveScriptTimeoutMs(script, env);
@@ -290,21 +332,26 @@ async function runBinanceExitIntegrityCycle({
   runWatchdog = runBinanceActiveExitWatchdog,
   selfHeal = runBinanceLiveStateSelfHeal,
   runScriptImpl = runScript,
+  disableExchangeIo = envBool(process.env.EXIT_INTEGRITY_CI_NO_EXCHANGE_IO, false),
 } = {}) {
   fs.mkdirSync(opsDailyDir, { recursive: true });
 
   const runScriptStep = (script, env = {}) => Promise.resolve(runScriptImpl(script, env));
 
   const [nativeGapBefore, stageBackfill, activeExitWatchdog] = await Promise.all([
-    reportNativeGap({ exchange, outDir: opsDailyDir }),
+    disableExchangeIo
+      ? Promise.resolve(buildSkippedNativeGapReport(exchange))
+      : reportNativeGap({ exchange, outDir: opsDailyDir }),
     runScriptStep("backfill-binance-active-exit-stage.js", {
       DRY_RUN: apply ? "0" : "1",
     }),
-    runWatchdog({
-      exchange,
-      apply,
-      maxRepairCount: Number(process.env.ACTIVE_EXIT_WATCHDOG_MAX_REPAIR_COUNT || 10),
-    }),
+    disableExchangeIo
+      ? Promise.resolve(buildSkippedWatchdogReport())
+      : runWatchdog({
+        exchange,
+        apply,
+        maxRepairCount: Number(process.env.ACTIVE_EXIT_WATCHDOG_MAX_REPAIR_COUNT || 10),
+      }),
   ]);
   const gapSymbols = Array.isArray(nativeGapBefore.summary && nativeGapBefore.summary.rows)
     ? nativeGapBefore.summary.rows.map((row) => String(row && row.symbol || "").trim().toUpperCase()).filter(Boolean)
@@ -319,7 +366,7 @@ async function runBinanceExitIntegrityCycle({
     skipped_n: 0,
     results: [],
   };
-  if (apply && gapSymbols.length) {
+  if (!disableExchangeIo && apply && gapSymbols.length) {
     selfHealResult = await selfHeal({
       exchange,
       symbols: gapSymbols,
@@ -329,7 +376,7 @@ async function runBinanceExitIntegrityCycle({
     });
   }
 
-  const nativeGapAfter = apply
+  const nativeGapAfter = (!disableExchangeIo && apply)
     ? await reportNativeGap({ exchange, outDir: opsDailyDir })
     : nativeGapBefore;
   const [
@@ -376,6 +423,7 @@ async function runBinanceExitIntegrityCycle({
     generated_at: new Date().toISOString(),
     exchange,
     apply,
+    exchange_io_disabled: disableExchangeIo,
     active_exit_stage_backfill: stageBackfill,
     active_exit_watchdog: activeExitWatchdog,
     native_trail_gap_before: nativeGapBefore,

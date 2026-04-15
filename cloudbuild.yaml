@@ -33,6 +33,7 @@ steps:
     env:
       - "NODE_OPTIONS=--max-old-space-size=4096"
       - "EXIT_INTEGRITY_SCRIPT_TIMEOUT_MS=$_EXIT_INTEGRITY_SCRIPT_TIMEOUT_MS"
+      - "EXIT_INTEGRITY_CI_NO_EXCHANGE_IO=1"
     args: ["-lc", "npm ci --no-audit --no-fund && npm test && npm run check:binance-exit-integrity-gate"]
 
   - name: "gcr.io/cloud-builders/docker"

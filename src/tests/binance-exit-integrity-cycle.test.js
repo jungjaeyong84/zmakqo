@@ -149,6 +149,41 @@ function buildScriptResult(parsed) {
   assert.deepStrictEqual(scriptFailureSummary.script_failures, ["active_exit_stage_backfill:TIMEOUT"]);
   assert.strictEqual(scriptFailureSummary.live_gate_blocked, true);
 
+  let reportNativeGapCalled = false;
+  let runWatchdogCalled = false;
+  const ciModeResult = await runBinanceExitIntegrityCycle({
+    apply: false,
+    exchange: "BINANCEFUT",
+    opsDailyDir,
+    disableExchangeIo: true,
+    reportNativeGap: async () => {
+      reportNativeGapCalled = true;
+      throw new Error("reportNativeGap must be skipped when exchange IO is disabled");
+    },
+    runWatchdog: async () => {
+      runWatchdogCalled = true;
+      throw new Error("runWatchdog must be skipped when exchange IO is disabled");
+    },
+    runScriptImpl: (script) => {
+      if (script === "backfill-binance-active-exit-stage.js") return buildScriptResult({ issue_symbol_n: 0 });
+      if (script === "backfill-canonical-exit-transitions.js") return buildScriptResult({ created_transition_n: 0 });
+      if (script === "report-fill-sync-alert-duplication.js") return buildScriptResult({ duplicate_group_n: 0, report: { duplicate_group_n: 0 } });
+      if (script === "report-fill-sync-alert-event-consistency.js") return buildScriptResult({ issue_n: 0 });
+      if (script === "report-trade-execution-alert-cross-audit.js") return buildScriptResult({ coverage_ready: false, missing_alert_fill_n: 0, missing_verified_exit_alert_fill_n: 0 });
+      if (script === "report-fill-sync-alert-duplication-live-separation.js") return buildScriptResult({ live_duplicate_group_n: 0 });
+      if (script === "report-binance-exit-qty-contract-audit.js") return buildScriptResult({ issue_chain_count: 0 });
+      if (script === "report-binance-exit-qty-live-separation.js") return buildScriptResult({ live_issue_chain_n: 0 });
+      if (script === "report-trail-runner-floor-audit.js") return buildScriptResult({ violation_n: 0 });
+      if (script === "report-trail-runner-floor-live-separation.js") return buildScriptResult({ live_violation_n: 0 });
+      if (script === "report-binance-exit-authority-live-board.js") return buildScriptResult({ live_issue_position_n: 0, actionable_live_issue_position_n: 0, artifact_only_live_issue_position_n: 0 });
+      if (script === "report-binance-canonical-exit-stage-qa.js") return buildScriptResult({ fail_n: 0 });
+      throw new Error(`unexpected ci-mode script ${script}`);
+    },
+  });
+  assert.strictEqual(reportNativeGapCalled, false);
+  assert.strictEqual(runWatchdogCalled, false);
+  assert.strictEqual(ciModeResult.summary.live_gate_blocked, false);
+
   assert.strictEqual(__test.countStopDivergenceSymbols({
     actionable_rows: [
       { symbol: "ETHUSDT", actionable_issue_codes: ["TRAIL_R_STOP_MISSING"] },
