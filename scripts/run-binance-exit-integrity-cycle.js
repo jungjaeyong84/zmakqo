@@ -180,6 +180,25 @@ function collectScriptFailures(report = {}) {
   return failures;
 }
 
+function buildSkippedScriptStep(parsed = {}) {
+  return {
+    ok: true,
+    exit_code: 0,
+    signal: null,
+    parsed: {
+      skipped: true,
+      reason: "EXCHANGE_IO_DISABLED",
+      ...parsed,
+    },
+    stdout_tail: [],
+    stderr_tail: [],
+    timed_out: false,
+    timeout_ms: null,
+    duration_ms: 0,
+    error: null,
+  };
+}
+
 function buildMarkdown(report = {}) {
   const lines = [];
   const summary = report.summary || {};
@@ -405,7 +424,9 @@ async function runBinanceExitIntegrityCycle({
     runScriptStep("report-trade-execution-alert-cross-audit.js"),
     runScriptStep("report-binance-exit-qty-contract-audit.js"),
     runScriptStep("report-trail-runner-floor-audit.js"),
-    runScriptStep("report-binance-canonical-exit-stage-qa.js"),
+    disableExchangeIo
+      ? Promise.resolve(buildSkippedScriptStep({ fail_n: 0, active_position_n: 0 }))
+      : runScriptStep("report-binance-canonical-exit-stage-qa.js"),
   ]);
   const [
     fillSyncAlertDuplicationLiveSeparation,

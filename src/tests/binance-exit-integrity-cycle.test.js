@@ -176,7 +176,7 @@ function buildScriptResult(parsed) {
       if (script === "report-trail-runner-floor-audit.js") return buildScriptResult({ violation_n: 0 });
       if (script === "report-trail-runner-floor-live-separation.js") return buildScriptResult({ live_violation_n: 0 });
       if (script === "report-binance-exit-authority-live-board.js") return buildScriptResult({ live_issue_position_n: 0, actionable_live_issue_position_n: 0, artifact_only_live_issue_position_n: 0 });
-      if (script === "report-binance-canonical-exit-stage-qa.js") return buildScriptResult({ fail_n: 0 });
+      if (script === "report-binance-canonical-exit-stage-qa.js") throw new Error("canonical exit stage qa must be skipped when exchange IO is disabled");
       throw new Error(`unexpected ci-mode script ${script}`);
     },
   });
