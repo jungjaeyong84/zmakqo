@@ -166,7 +166,7 @@ function buildScriptResult(parsed) {
     },
     runScriptImpl: (script) => {
       if (script === "backfill-binance-active-exit-stage.js") return buildScriptResult({ issue_symbol_n: 0 });
-      if (script === "backfill-canonical-exit-transitions.js") return buildScriptResult({ created_transition_n: 0 });
+      if (script === "backfill-canonical-exit-transitions.js") throw new Error("canonical exit transition backfill must be skipped when exchange IO is disabled");
       if (script === "report-fill-sync-alert-duplication.js") return buildScriptResult({ duplicate_group_n: 0, report: { duplicate_group_n: 0 } });
       if (script === "report-fill-sync-alert-event-consistency.js") return buildScriptResult({ issue_n: 0 });
       if (script === "report-trade-execution-alert-cross-audit.js") return buildScriptResult({ coverage_ready: false, missing_alert_fill_n: 0, missing_verified_exit_alert_fill_n: 0 });

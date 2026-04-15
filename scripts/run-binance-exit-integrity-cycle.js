@@ -407,18 +407,20 @@ async function runBinanceExitIntegrityCycle({
     trailRunnerFloorAudit,
     canonicalExitStageQa,
   ] = await Promise.all([
-    runScriptStep("backfill-canonical-exit-transitions.js", {
-      CANONICAL_EXIT_TRANSITION_BACKFILL_LOOKBACK_DAYS: String(
-        process.env.EXIT_INTEGRITY_CANONICAL_TRANSITION_LOOKBACK_DAYS
-        || process.env.CANONICAL_EXIT_TRANSITION_BACKFILL_LOOKBACK_DAYS
-        || 7
-      ),
-      CANONICAL_EXIT_TRANSITION_BACKFILL_PAGE_SIZE: String(
-        process.env.EXIT_INTEGRITY_CANONICAL_TRANSITION_PAGE_SIZE
-        || process.env.CANONICAL_EXIT_TRANSITION_BACKFILL_PAGE_SIZE
-        || 500
-      ),
-    }),
+    disableExchangeIo
+      ? Promise.resolve(buildSkippedScriptStep({ created_transition_n: 0 }))
+      : runScriptStep("backfill-canonical-exit-transitions.js", {
+        CANONICAL_EXIT_TRANSITION_BACKFILL_LOOKBACK_DAYS: String(
+          process.env.EXIT_INTEGRITY_CANONICAL_TRANSITION_LOOKBACK_DAYS
+          || process.env.CANONICAL_EXIT_TRANSITION_BACKFILL_LOOKBACK_DAYS
+          || 7
+        ),
+        CANONICAL_EXIT_TRANSITION_BACKFILL_PAGE_SIZE: String(
+          process.env.EXIT_INTEGRITY_CANONICAL_TRANSITION_PAGE_SIZE
+          || process.env.CANONICAL_EXIT_TRANSITION_BACKFILL_PAGE_SIZE
+          || 500
+        ),
+      }),
     runScriptStep("report-fill-sync-alert-duplication.js"),
     runScriptStep("report-fill-sync-alert-event-consistency.js"),
     runScriptStep("report-trade-execution-alert-cross-audit.js"),
