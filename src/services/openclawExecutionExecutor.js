@@ -69,6 +69,27 @@ const ALLOCATOR_SNAPSHOT_STALE_REDUCE_SCALE = numEnv(
   ALLOCATOR_REDUCE_SCALE,
   { min: 0.05, max: 1 }
 );
+const ALPHA_CONTEXT_EPOCH_RELEASE_ENABLED = boolEnv("OPENCLAW_EXECUTOR_ALPHA_CONTEXT_EPOCH_RELEASE_ENABLED", true);
+const ALPHA_CONTEXT_EPOCH_RELEASE_SCALE = numEnv(
+  "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_EPOCH_RELEASE_SCALE",
+  ALLOCATOR_REDUCE_SCALE,
+  { min: 0.05, max: 1 }
+);
+const ALPHA_CONTEXT_HARD_MIN_REALIZED_N = Math.trunc(numEnv(
+  "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_HARD_MIN_REALIZED_N",
+  20,
+  { min: 1, max: 1000 }
+));
+const ALPHA_CONTEXT_HARD_MAX_POSITIVE_RATE = numEnv(
+  "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_HARD_MAX_POSITIVE_RATE",
+  0.15,
+  { min: 0, max: 1 }
+);
+const ALPHA_CONTEXT_HARD_MAX_AVG_REALIZED_RET_NET = numEnv(
+  "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_HARD_MAX_AVG_REALIZED_RET_NET",
+  -0.003,
+  { min: -1, max: 1 }
+);
 const SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD", 1.2, { min: 0, max: 10 });
 const SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD", 2.2, { min: 0, max: 10 });
 const CORRELATED_EXPOSURE_REDUCE_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD", 0.8, { min: 0, max: 10 });
@@ -110,6 +131,54 @@ function pickPositiveNum(...values) {
     if (Number.isFinite(n) && n > 0) return n;
   }
   return null;
+}
+
+function resolveEffectiveAlphaContext(meta = null) {
+  const requestedSeverity = upper(meta && meta.severity);
+  const realizedN = toNum(meta && meta.realized_n);
+  const positiveRate = toNum(meta && meta.positive_rate);
+  const avgRealizedRetNet = toNum(meta && meta.avg_realized_ret_net);
+  if (!requestedSeverity) {
+    return {
+      requestedSeverity: null,
+      effectiveSeverity: null,
+      hardEligible: false,
+      realizedN,
+      positiveRate,
+      avgRealizedRetNet,
+      reason: null,
+    };
+  }
+  if (requestedSeverity !== "HARD") {
+    return {
+      requestedSeverity,
+      effectiveSeverity: requestedSeverity,
+      hardEligible: false,
+      realizedN,
+      positiveRate,
+      avgRealizedRetNet,
+      reason: "ALPHA_CONTEXT_NON_HARD",
+    };
+  }
+  const hardEligible = (
+    Number.isFinite(realizedN) &&
+    realizedN >= ALPHA_CONTEXT_HARD_MIN_REALIZED_N &&
+    Number.isFinite(positiveRate) &&
+    positiveRate <= ALPHA_CONTEXT_HARD_MAX_POSITIVE_RATE &&
+    Number.isFinite(avgRealizedRetNet) &&
+    avgRealizedRetNet <= ALPHA_CONTEXT_HARD_MAX_AVG_REALIZED_RET_NET
+  );
+  return {
+    requestedSeverity,
+    effectiveSeverity: hardEligible ? "HARD" : "SOFT",
+    hardEligible,
+    realizedN,
+    positiveRate,
+    avgRealizedRetNet,
+    reason: hardEligible
+      ? "ALPHA_CONTEXT_HARD_CONFIRMED"
+      : "ALPHA_CONTEXT_HARD_DOWNGRADED_TO_SOFT",
+  };
 }
 
 function parseCorrelatedGroups(raw = "") {
@@ -807,6 +876,7 @@ async function evaluateOpenClawExecutionDecision({
   const allocatorScore = toNum(allocatorRow && allocatorRow.allocation_score);
   const allocatorLearningEpochActive = allocatorSnapshot.summary && allocatorSnapshot.summary.learning_epoch_active === true;
   const allocatorQuarantineEpochReleaseActive = allocatorLearningEpochActive && ALLOCATOR_QUARANTINE_EPOCH_RELEASE_ENABLED;
+  const alphaContextEpochReleaseActive = allocatorLearningEpochActive && ALPHA_CONTEXT_EPOCH_RELEASE_ENABLED;
   const allocatorPenaltyReasons = Array.isArray(allocatorRow && allocatorRow.penalty_reasons)
     ? allocatorRow.penalty_reasons.map((item) => upper(item)).filter(Boolean)
     : [];
@@ -819,13 +889,25 @@ async function evaluateOpenClawExecutionDecision({
     const rowRegime = upper(row && row.regime_key) || "UNKNOWN";
     return rowRegime === executorRegime || rowRegime === "UNKNOWN" || executorRegime === "UNKNOWN";
   }) || null;
-  const matchedAlphaSeverity = upper(matchedAlphaContext && matchedAlphaContext.severity);
+  const alphaContextMeta = resolveEffectiveAlphaContext(matchedAlphaContext);
+  const matchedAlphaSeverity = alphaContextMeta.effectiveSeverity;
   if (!blocked && matchedAlphaSeverity === "HARD") {
     if (allocatorSnapshotStale) {
       scale = minScale(scale, ALLOCATOR_SNAPSHOT_STALE_REDUCE_SCALE);
       exitProfileMode = exitProfileMode || "BASE";
       reason = "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_STALE_REDUCE";
       notes.push("OPENCLAW_EXECUTOR_ALLOCATOR_SNAPSHOT_STALE");
+      notes.push(reason);
+    } else if (alphaContextEpochReleaseActive) {
+      const releaseScale = Number.isFinite(ALPHA_CONTEXT_EPOCH_RELEASE_SCALE)
+        ? ALPHA_CONTEXT_EPOCH_RELEASE_SCALE
+        : ALLOCATOR_REDUCE_SCALE;
+      scale = minScale(scale, releaseScale);
+      exitProfileMode = exitProfileMode || "BASE";
+      reason = releaseScale < 0.999999
+        ? "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_EPOCH_REDUCE"
+        : "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_EPOCH_RELEASE";
+      notes.push("OPENCLAW_EXECUTOR_ALPHA_CONTEXT_HARD");
       notes.push(reason);
     } else {
       blocked = true;
@@ -912,12 +994,17 @@ async function evaluateOpenClawExecutionDecision({
     _openclaw_executor_allocator_score: allocatorScore,
     _openclaw_executor_allocator_learning_epoch_active: allocatorLearningEpochActive,
     _openclaw_executor_allocator_quarantine_epoch_release_active: allocatorQuarantineEpochReleaseActive,
+    _openclaw_executor_alpha_context_epoch_release_active: alphaContextEpochReleaseActive,
     _openclaw_executor_allocator_snapshot_age_ms: allocatorSnapshotAgeMs,
     _openclaw_executor_allocator_snapshot_stale: allocatorSnapshotStale,
     _openclaw_executor_allocator_snapshot_stale_reasons: allocatorSnapshotStaleReasons.slice(),
     _openclaw_executor_allocator_generated_at_kst: allocatorSnapshot.generatedAtKst || null,
     _openclaw_executor_allocator_penalty_reasons: allocatorPenaltyReasons,
     _openclaw_executor_alpha_context: matchedAlphaContext,
+    _openclaw_executor_alpha_context_requested_severity: alphaContextMeta.requestedSeverity,
+    _openclaw_executor_alpha_context_effective_severity: alphaContextMeta.effectiveSeverity,
+    _openclaw_executor_alpha_context_hard_eligible: alphaContextMeta.hardEligible,
+    _openclaw_executor_alpha_context_gate_reason: alphaContextMeta.reason,
   };
   if (exitProfileMode) {
     featuresPatch._openclaw_executor_exit_profile_mode = exitProfileMode;
@@ -956,6 +1043,7 @@ async function evaluateOpenClawExecutionDecision({
       allocatorScore,
       allocatorLearningEpochActive,
       allocatorQuarantineEpochReleaseActive,
+      alphaContextEpochReleaseActive,
       allocatorSnapshotAgeMs,
       allocatorSnapshotStale,
       allocatorSnapshotStaleReasons: allocatorSnapshotStaleReasons.slice(),
@@ -998,6 +1086,7 @@ module.exports = {
     normalizeCapitalAllocatorSnapshot,
     resolveAllocatorSnapshotAgeMs,
     resolveAllocatorSnapshotStaleness,
+    resolveEffectiveAlphaContext,
     parseCorrelatedGroups,
     hasActiveExposure,
     resolveRunnerAllowedRatioFromView,

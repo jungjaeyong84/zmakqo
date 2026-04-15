@@ -85,6 +85,10 @@ async function run() {
       executionMode: "LIVE",
       notional: 158.49,
       execPrice: 1.395,
+      canonicalExitEvent: "EXIT_TP_P1_3.25P",
+      canonicalExitStage: "TP1",
+      canonicalTransitionEvent: "TP1_REACHED",
+      canonicalTransitionEvents: ["TP1_REACHED", "TRAIL_ACTIVE"],
       closeRatio: firstCloseRatio,
       fullExit: false,
       realizedPnl: 2.511,
@@ -112,6 +116,10 @@ async function run() {
       executionMode: "LIVE",
       notional: 243.88,
       execPrice: 1.395,
+      canonicalExitEvent: "EXIT_TP_P1_3.25P",
+      canonicalExitStage: "TP1",
+      canonicalTransitionEvent: "TP1_REACHED",
+      canonicalTransitionEvents: ["TP1_REACHED", "TRAIL_ACTIVE"],
       closeRatio: secondCloseRatio,
       fullExit: false,
       realizedPnl: 3.863,
@@ -131,6 +139,95 @@ async function run() {
   assert.ok(approxEqual(merged.payload.closeRatio, 0.5), "aggregated close ratio must represent 50% TP1");
   assert.strictEqual(merged.payload.fullExit, false, "aggregated TP1 alert must remain partial");
   assert.strictEqual(merged.payload.closeRatioAggregation, "SUM", "scaled split TP1 must sum close ratio");
+
+  const trailTransitionCooldownKey = fillsSyncTest.buildFillSyncAlertCooldownKey({
+    symbol: "ETHUSDT",
+    event: "EXIT_TRAIL",
+    intent: "EXIT",
+    side: "SELL",
+    orderMeta: { orderId: 7711, clientOrderId: "trail_eth" },
+    payload: {
+      symbol: "ETHUSDT",
+      event: "EXIT_TRAIL",
+      intent: "EXIT",
+      side: "SELL",
+      canonicalExitEvent: "EXIT_TRAIL",
+      canonicalTransitionEvent: "TRAIL_PARTIAL",
+      canonicalTransitionEvents: ["TRAIL_PARTIAL"],
+    },
+  });
+  const trailFinalCooldownKey = fillsSyncTest.buildFillSyncAlertCooldownKey({
+    symbol: "ETHUSDT",
+    event: "EXIT_TRAIL",
+    intent: "EXIT",
+    side: "SELL",
+    orderMeta: { orderId: 7711, clientOrderId: "trail_eth" },
+    payload: {
+      symbol: "ETHUSDT",
+      event: "EXIT_TRAIL",
+      intent: "EXIT",
+      side: "SELL",
+      canonicalExitEvent: "EXIT_TRAIL",
+      canonicalTransitionEvent: "TRAIL_FINAL_EXIT",
+      canonicalTransitionEvents: ["TRAIL_FINAL_EXIT"],
+    },
+  });
+  assert.notStrictEqual(
+    trailTransitionCooldownKey,
+    trailFinalCooldownKey,
+    "trailing partial/final alerts must use distinct cooldown identities"
+  );
+
+  const trailingBatches = new Map();
+  fillsSyncTest.queueFillSyncAlertBatch(trailingBatches, {
+    symbol: "ETHUSDT",
+    event: "EXIT_TRAIL",
+    intent: "EXIT",
+    side: "SELL",
+    orderMeta: { orderId: 7711, clientOrderId: "trail_eth" },
+    tradeMs: 1_777_777_201_000,
+    payload: {
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      event: "EXIT_TRAIL",
+      side: "SELL",
+      intent: "EXIT",
+      canonicalExitEvent: "EXIT_TRAIL",
+      canonicalExitStage: "TRAIL",
+      canonicalTransitionEvent: "TRAIL_PARTIAL",
+      canonicalTransitionEvents: ["TRAIL_PARTIAL"],
+      closeRatio: 0.1,
+      fullExit: false,
+      positionSideBefore: "LONG",
+    },
+  });
+  fillsSyncTest.queueFillSyncAlertBatch(trailingBatches, {
+    symbol: "ETHUSDT",
+    event: "EXIT_TRAIL",
+    intent: "EXIT",
+    side: "SELL",
+    orderMeta: { orderId: 7711, clientOrderId: "trail_eth" },
+    tradeMs: 1_777_777_201_200,
+    payload: {
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      event: "EXIT_TRAIL",
+      side: "SELL",
+      intent: "EXIT",
+      canonicalExitEvent: "EXIT_TRAIL",
+      canonicalExitStage: "TRAIL",
+      canonicalTransitionEvent: "TRAIL_FINAL_EXIT",
+      canonicalTransitionEvents: ["TRAIL_FINAL_EXIT"],
+      closeRatio: 0.275,
+      fullExit: true,
+      positionSideBefore: "LONG",
+    },
+  });
+  assert.strictEqual(
+    trailingBatches.size,
+    2,
+    "TRAIL_PARTIAL and TRAIL_FINAL_EXIT must not collapse into one fill-sync batch"
+  );
 
   const nativeTp0CloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({
     event: "EXIT_TP_P0_0.8P",
@@ -345,10 +442,12 @@ async function run() {
       orderMeta: { orderId: 12345, clientOrderId: "fut_eth_runner" },
       payload: {
         canonicalExitEvent: "EXIT_TRAIL",
+        canonicalTransitionEvent: "TRAIL_PARTIAL",
+        canonicalTransitionEvents: ["TRAIL_PARTIAL"],
       },
-    }).includes("EXIT_TRAIL"),
+    }).includes("TRANSITION::TRAIL_PARTIAL"),
     true,
-    "alert identity keys must follow canonical exit event"
+    "alert identity keys must follow canonical transition identity"
   );
 
   const mergedHintedMeta = fillsSyncTest.mergeRecentExitHintsIntoMeta(
@@ -573,6 +672,10 @@ async function run() {
     exchange: "BINANCEFUT",
     symbol: "ETHUSDT",
     event: "EXIT_TRAIL",
+    canonicalExitEvent: "EXIT_TRAIL",
+    canonicalExitStage: "TRAIL",
+    canonicalTransitionEvent: "TRAIL_FINAL_EXIT",
+    canonicalTransitionEvents: ["TRAIL_FINAL_EXIT"],
     side: "BUY",
     intent: "EXIT",
     executionMode: "LIVE",
@@ -904,6 +1007,10 @@ async function run() {
       executionMode: "LIVE",
       notional: 88.42,
       execPrice: 1.061,
+      canonicalExitEvent: "EXIT_TP_P0_0.8P",
+      canonicalExitStage: "TP0",
+      canonicalTransitionEvent: "TP0_REACHED",
+      canonicalTransitionEvents: ["TP0_REACHED"],
       closeRatio: 0.25,
       closeRatioAggregation: "MAX",
       fullExit: false,

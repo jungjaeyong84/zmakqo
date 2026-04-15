@@ -10,6 +10,7 @@ const {
   resolveCanonicalExitStageFromCycleEvidence,
   resolveCanonicalExitWritePayload,
   buildExitQuantityContractLedger,
+  validateExitQuantityContractLedger,
 } = require("../services/positionStateMachine");
 
 function run() {
@@ -95,7 +96,7 @@ function run() {
       qty_base: 0.167,
       meta: { tp_p0_done: true, tp_p1_done: true, trail_active: true },
     },
-    authorityState: { tp0: 0.25, tp1: 0.375, total: 0.625 },
+    authorityState: { tp0: 0.25, tp1: 0.375, trail: 0.187, total: 0.812 },
     recentStages: { tp1: "TP1", trail: "TRAIL" },
     rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
   });
@@ -112,7 +113,7 @@ function run() {
       entry_qty_base: 0.887,
       meta: { tp_p0_done: true, tp_p1_done: true, trail_active: true },
     },
-    authorityState: { tp0: 0.25, tp1: 0.375, total: 0.625 },
+    authorityState: { tp0: 0.25, tp1: 0.375, trail: 0.187, total: 0.812 },
     recentStages: { tp1: "TP1", trail: "TRAIL" },
     rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5, TRAIL_R_MULTIPLE: 0.6 },
     observedQtyRatio: 0.188,
@@ -120,7 +121,7 @@ function run() {
   });
   assert.strictEqual(postTp1WriteDecision.stage, "TRAIL");
   assert.strictEqual(postTp1WriteDecision.event, "EXIT_TRAIL");
-  assert.ok(postTp1WriteDecision.transitionEvents.includes("TRAIL_PARTIAL"));
+  assert.ok(postTp1WriteDecision.transitionEvents.includes("TRAIL_FINAL_EXIT"));
 
   const ledger = buildExitQuantityContractLedger({
     positionSnapshot: {
@@ -128,7 +129,7 @@ function run() {
       qty_base: 0.167,
       meta: { tp_p0_done: true, tp_p1_done: true, trail_active: true },
     },
-    authorityState: { tp0: 0.25, tp1: 0.375, trail: 0.188, total: 0.813 },
+    authorityState: { tp0: 0.25, tp1: 0.375, trail: 0.208, total: 0.833 },
     rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
   });
   assert.strictEqual(ledger.tp0_allowed_abs, 0.25);
@@ -136,9 +137,63 @@ function run() {
   assert.strictEqual(ledger.tp1_allowed_abs, 0.375);
   assert.strictEqual(ledger.tp1_consumed_abs, 0.375);
   assert.strictEqual(ledger.runner_allowed_abs, 0.375);
-  assert.ok(Math.abs(ledger.trail_consumed_abs - 0.188) < 0.000001);
-  assert.ok(Math.abs(ledger.total_consumed_ratio - 0.813) < 0.000001);
-  assert.ok(Math.abs(ledger.runner_remaining_ratio - 0.187) < 0.001);
+  assert.ok(Math.abs(ledger.trail_consumed_abs - 0.208) < 0.000001);
+  assert.ok(Math.abs(ledger.total_consumed_ratio - 0.833) < 0.000001);
+  assert.ok(Math.abs(ledger.runner_remaining_ratio - 0.167) < 0.001);
+  const validLedger = validateExitQuantityContractLedger({
+    ledger,
+    positionSnapshot: {
+      entry_qty_base: 1,
+      qty_base: 0.167,
+      meta: { tp_p0_done: true, tp_p1_done: true, trail_active: true },
+    },
+  });
+  assert.strictEqual(validLedger.ok, true);
+  assert.deepStrictEqual(validLedger.issues, []);
+
+  const invalidLedger = validateExitQuantityContractLedger({
+    ledger: {
+      entry_qty_abs: 1,
+      tp0_allowed_ratio: 0.25,
+      tp0_consumed_ratio: 0.25,
+      tp1_allowed_ratio: 0.375,
+      tp1_consumed_ratio: 0.45,
+      runner_allowed_ratio: 0.375,
+      trail_consumed_ratio: 0.45,
+      total_consumed_ratio: 1.15,
+      runner_remaining_ratio: -0.15,
+      runner_remaining_abs: 0.2,
+    },
+    positionSnapshot: {
+      entry_qty_base: 1,
+      qty_base: 0.01,
+      meta: { tp_p0_done: true, tp_p1_done: true, trail_active: true },
+    },
+  });
+  assert.strictEqual(invalidLedger.ok, false);
+  assert.ok(invalidLedger.issues.some((issue) => issue.code === "TP1_CONSUMED_EXCEEDS_ALLOWED"));
+  assert.ok(invalidLedger.issues.some((issue) => issue.code === "TRAIL_CONSUMED_EXCEEDS_RUNNER"));
+  assert.ok(invalidLedger.issues.some((issue) => issue.code === "EXIT_TOTAL_CONSUMED_EXCEEDS_ENTRY"));
+  assert.ok(invalidLedger.issues.some((issue) => issue.code === "RUNNER_REMAINING_QTY_MISMATCH"));
+
+  const ledgerBlockedDecision = resolveCanonicalExitWritePayload({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_TRAIL",
+    entryEventId: "ENTRY__ETH",
+    positionSnapshot: {
+      qty_base: 0.167,
+      entry_qty_base: 1,
+      meta: { tp_p0_done: true, tp_p1_done: true, trail_active: true },
+    },
+    authorityState: { tp0: 0.25, tp1: 0.45, trail: 0.45, total: 1.15 },
+    rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5, TRAIL_R_MULTIPLE: 0.6 },
+    observedQtyRatio: 0.45,
+    fullExit: false,
+  });
+  assert.strictEqual(ledgerBlockedDecision.ledgerBlockedInvariant, true);
+  assert.deepStrictEqual(ledgerBlockedDecision.transitionEvents, []);
+  assert.strictEqual(ledgerBlockedDecision.primaryTransitionEvent, null);
 
   const derivedEntryLedger = buildExitQuantityContractLedger({
     positionSnapshot: {

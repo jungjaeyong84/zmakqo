@@ -122,5 +122,29 @@ const { buildSignalDisplayReason, classifySignalReasonStage } = require('../util
   assert.strictEqual(rescueAddBlocked.stage_key, 'OPS');
   assert.strictEqual(rescueAddBlocked.reason_ko, '현재 손실 폭이 구조보강 ADD 허용 구간 밖이라 추가 진입을 보류했습니다.');
 
+  const budgetBlocked = buildSignalDisplayReason(
+    { reason: 'MIN_ORDER_EXCEEDS_BUDGET' },
+    {}
+  );
+  assert.strictEqual(budgetBlocked.stage_key, 'BUDGET');
+  assert.strictEqual(budgetBlocked.stage_text, '예산/최소주문 가드');
+  assert.strictEqual(budgetBlocked.reason_ko, '현재 예산과 배율로는 거래소 최소주문 수량을 만족할 수 없어 진입을 보류했습니다.');
+
+  const alphaContextBlocked = buildSignalDisplayReason(
+    { reason: 'OPENCLAW_EXECUTOR_ALPHA_CONTEXT_BLOCK' },
+    {}
+  );
+  assert.strictEqual(alphaContextBlocked.stage_key, 'EXECUTOR');
+  assert.strictEqual(alphaContextBlocked.stage_text, 'OpenClaw 실행 가드');
+  assert.strictEqual(alphaContextBlocked.reason_ko, '알파 컨텍스트 패널티가 강하게 걸려 있어 현재 구간의 신규 진입을 막았습니다.');
+
+  const livePolicyBlocked = buildSignalDisplayReason(
+    { reason: 'LIVE_POLICY_QUARANTINE_HARD_BLOCK' },
+    {}
+  );
+  assert.strictEqual(livePolicyBlocked.stage_key, 'LIVE_POLICY');
+  assert.strictEqual(livePolicyBlocked.stage_text, '라이브 운영 정책');
+  assert.strictEqual(livePolicyBlocked.reason_ko, '현재 시장이 격리(quarantine) 상태라 진입을 보류했습니다.');
+
   console.log('SIGNAL_DISPLAY_REASON_TEST_OK');
 })();

@@ -40,7 +40,6 @@ const {
 const { recordUnifiedEvent } = require("../storage/unifiedEventTimeline");
 const { recordCanonicalExitTransitions } = require("../storage/canonicalExitTransitions");
 const {
-  resolveCanonicalExitTransitionEvents,
   buildExitQuantityContractLedger,
   resolveCanonicalExitWritePayload,
 } = require("./positionStateMachine");
@@ -1190,9 +1189,43 @@ function resolveFillSyncAlertFullExit({ event, orderMeta, closeRatio } = {}) {
   return false;
 }
 
+function resolveFillSyncAlertIdentityTransitionToken(payload = {}) {
+  const items = [];
+  const primary = String(
+    payload && (
+      payload.canonicalTransitionEvent
+      || payload.canonical_primary_transition_event
+    ) || ""
+  ).trim().toUpperCase();
+  if (primary) items.push(primary);
+  if (Array.isArray(payload && payload.canonicalTransitionEvents)) {
+    items.push(...payload.canonicalTransitionEvents);
+  }
+  if (Array.isArray(payload && payload.canonical_transition_events)) {
+    items.push(...payload.canonical_transition_events);
+  }
+  const deduped = [];
+  const seen = new Set();
+  for (const item of items) {
+    const normalized = String(item || "").trim().toUpperCase();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    deduped.push(normalized);
+  }
+  if (!deduped.length) return null;
+  const trailTransitionItems = deduped.filter((item) => item === "TRAIL_PARTIAL" || item === "TRAIL_FINAL_EXIT");
+  if (!trailTransitionItems.length) return null;
+  return `TRANSITION::${trailTransitionItems.join("+")}`;
+}
+
+function resolveFillSyncAlertIdentityToken({ event, payload } = {}) {
+  return resolveFillSyncAlertIdentityTransitionToken(payload)
+    || resolveFillSyncAlertIdentityEvent(event, payload);
+}
+
 function buildFillSyncAlertKey({ symbol, event, intent, side, orderMeta, tradeMs, payload } = {}) {
   const sym = normalizeSymbol(symbol) || String(symbol || "").trim().toUpperCase() || "UNKNOWN";
-  const ev = resolveFillSyncAlertIdentityEvent(event, payload);
+  const ev = resolveFillSyncAlertIdentityToken({ event, payload });
   const it = String(intent || "").trim().toUpperCase() || "UNKNOWN";
   const tradeSide = String(side || "").trim().toUpperCase() || "NA";
   const entryEventId = String(payload && payload.entryEventId || "").trim() || "NA";
@@ -1226,7 +1259,7 @@ function isVerifiedFillSyncAlertEvent(event, payload = {}) {
 
 function buildFillSyncAlertChainKey({ symbol, event, intent, side, orderMeta, tradeMs, payload } = {}) {
   const sym = normalizeSymbol(symbol) || String(symbol || "").trim().toUpperCase() || "UNKNOWN";
-  const ev = resolveFillSyncAlertIdentityEvent(event, payload);
+  const transitionToken = resolveFillSyncAlertIdentityTransitionToken(payload);
   const it = String(intent || "").trim().toUpperCase() || "UNKNOWN";
   const tradeSide = String(side || "").trim().toUpperCase() || "NA";
   const entryEventId = String(payload && payload.entryEventId || "").trim() || "NA";
@@ -1238,10 +1271,16 @@ function buildFillSyncAlertChainKey({ symbol, event, intent, side, orderMeta, tr
   const tradeBucket = Number.isFinite(Number(tradeMs))
     ? String(Math.floor(Number(tradeMs) / 60000))
     : "NA";
-  if (ev === "EXIT_OPPOSITE_SIGNAL") {
+  if (String(event || "").trim().toUpperCase() === "EXIT_OPPOSITE_SIGNAL") {
+    if (transitionToken) {
+      return [sym, transitionToken, it, tradeSide, entryEventId, positionSideBefore, tradeBucket].join("|");
+    }
     return [sym, it, tradeSide, entryEventId, positionSideBefore, tradeBucket].join("|");
   }
   if (orderId === "NA" && clientOrderId === "NA") return null;
+  if (transitionToken) {
+    return [sym, transitionToken, it, tradeSide, orderId, clientOrderId, tradeBucket].join("|");
+  }
   return [sym, it, tradeSide, orderId, clientOrderId, tradeBucket].join("|");
 }
 
@@ -1350,7 +1389,7 @@ function findExistingFillSyncAlertBatchByChainKey(batchMap, chainKey) {
 
 function buildFillSyncAlertCooldownKey({ symbol, event, intent, side, orderMeta, payload } = {}) {
   const sym = normalizeSymbol(symbol) || String(symbol || "").trim().toUpperCase() || "UNKNOWN";
-  const ev = resolveFillSyncAlertIdentityEvent(event, payload);
+  const ev = resolveFillSyncAlertIdentityToken({ event, payload });
   const it = String(intent || "").trim().toUpperCase() || "UNKNOWN";
   const tradeSide = String(side || "").trim().toUpperCase() || "NA";
   const entryEventId = String(payload && payload.entryEventId || "").trim() || "NA";
@@ -3099,18 +3138,12 @@ async function syncMarketTrades({
         })
         : false;
       const canonicalTransitionDecision = looksLikeExit
-        ? resolveCanonicalExitTransitionEvents({
-          resolvedStage: canonicalStageDecision.stage || authorityDecision.stage || null,
-          positionSnapshot: positionCtx,
-          recentStages: {
-            tp0: isTpP0Event(recentTp0 && recentTp0.event) ? "TP0" : null,
-            tp1: isTpP1Event(recentTp1 && recentTp1.event) ? "TP1" : null,
-            trail: String(recentTrail && recentTrail.event || "").trim().toUpperCase().startsWith("EXIT_TRAIL") ? "TRAIL" : null,
-          },
-          ledger: canonicalStageDecision.ledger || null,
-          observedQtyRatio: authoritativeQtyPct,
-          fullExit,
-        })
+        ? {
+          transitionEvents: Array.isArray(canonicalStageDecision.transitionEvents)
+            ? canonicalStageDecision.transitionEvents
+            : [],
+          primaryTransitionEvent: canonicalStageDecision.primaryTransitionEvent || null,
+        }
         : { transitionEvents: [], primaryTransitionEvent: null };
       const exitLedgerPayload = looksLikeExit
         ? buildExitLedgerPayload(canonicalStageDecision.ledger || null, execQtyBase)
@@ -3190,6 +3223,12 @@ async function syncMarketTrades({
           authoritative_qty_cap_applied: authorityDecision.capped === true,
           authoritative_duplicate_suspected: authorityDecision.duplicateSuspected === true,
           authoritative_qty_reason: authorityDecision.reason || null,
+          canonical_exit_stage_relocked: canonicalStageDecision.stageRelocked === true,
+          canonical_exit_blocked_invariant: canonicalStageDecision.blockedInvariant === true,
+          canonical_exit_ledger_blocked_invariant: canonicalStageDecision.ledgerBlockedInvariant === true,
+          canonical_exit_ledger_issue_codes: Array.isArray(canonicalStageDecision.ledgerValidation && canonicalStageDecision.ledgerValidation.issues)
+            ? canonicalStageDecision.ledgerValidation.issues.map((issue) => String(issue && issue.code || "").trim().toUpperCase()).filter(Boolean)
+            : [],
           contract_entry_qty_abs: exitLedgerPayload && Number.isFinite(Number(exitLedgerPayload.contractEntryQtyAbs))
             ? Number(exitLedgerPayload.contractEntryQtyAbs)
             : null,
@@ -3250,20 +3289,22 @@ async function syncMarketTrades({
 
       if (upserted && upserted.inserted && looksLikeExit) {
         try {
-          await recordCanonicalExitTransitionsForFill({
-            exchange: "BINANCEFUT",
-            symbol: sym,
-            fillId,
-            tradeMs,
-            event,
-            transitionEvents: canonicalTransitionDecision.transitionEvents,
-            chainKey: canonicalStageDecision.chainKey || authorityDecision.chainKey || null,
-            ledger: canonicalStageDecision.ledger || null,
-            reason: canonicalStageDecision.reason || null,
-            entryEventId,
-            orderMeta,
-            tradeId,
-          });
+          if (canonicalStageDecision.ledgerBlockedInvariant !== true) {
+            await recordCanonicalExitTransitionsForFill({
+              exchange: "BINANCEFUT",
+              symbol: sym,
+              fillId,
+              tradeMs,
+              event,
+              transitionEvents: canonicalTransitionDecision.transitionEvents,
+              chainKey: canonicalStageDecision.chainKey || authorityDecision.chainKey || null,
+              ledger: canonicalStageDecision.ledger || null,
+              reason: canonicalStageDecision.reason || null,
+              entryEventId,
+              orderMeta,
+              tradeId,
+            });
+          }
         } catch (transitionErr) {
           console.warn("[BINANCEFUT_CANONICAL_EXIT_TRANSITION_RECORD_FAIL]", transitionErr && transitionErr.message ? transitionErr.message : String(transitionErr));
         }
@@ -3358,7 +3399,8 @@ async function syncMarketTrades({
         const allowExitAlert = isExitEvent && (
           isMeaningfulRealizedPnl(realizedPnl)
           || event === "EXIT_EXTERNAL_SYNC"
-        ) && (!canonicalTransitionRequired || canonicalTransitionDecision.transitionEvents.length > 0);
+        ) && (!canonicalTransitionRequired || canonicalTransitionDecision.transitionEvents.length > 0)
+          && canonicalStageDecision.ledgerBlockedInvariant !== true;
         const allowEntryAlert = isEntryLikeEvent;
         const duplicateSuppressed = looksLikeExit
           && authorityDecision
@@ -3473,6 +3515,7 @@ async function syncMarketTrades({
               runId: `FILL_SYNC__${sym}`,
               orderId: Number.isFinite(Number(orderMeta && orderMeta.orderId)) ? Number(orderMeta.orderId) : null,
               clientOrderId: String(orderMeta && orderMeta.clientOrderId || "").trim() || null,
+              sourceFillId: fillId,
               },
             });
           }
@@ -3542,6 +3585,7 @@ async function syncMarketTrades({
             source: "BINANCE_FUTURES_FILLS_SYNC",
             reason: "NON_AUTHORITY_LAYER_REQUEST",
             dispatchReason: `BINANCE_FUTURES_FILLS_SYNC_NATIVE_STOP_REFRESH_BINANCEFUT_${String(sym || "").toUpperCase()}`,
+            dispatchExitWorker: false,
           });
         } catch (refreshErr) {
           console.warn("[BINANCEFUT_FILL_SYNC_NATIVE_REFRESH_FAIL]", refreshErr && refreshErr.message ? refreshErr.message : String(refreshErr));
@@ -3693,7 +3737,10 @@ module.exports = {
     runDistributedFillsSync,
     shouldLogFillSyncOverride,
     shouldSuppressMatchedExternalFillAlert,
+    buildFillSyncAlertKey,
+    buildFillSyncAlertChainKey,
     buildFillSyncAlertCooldownKey,
+    resolveFillSyncAlertIdentityToken,
     resolveFillSyncAlertIdentityEvent,
     shouldSendFillSyncTradeAlert,
     flushFillSyncAlertBatches,

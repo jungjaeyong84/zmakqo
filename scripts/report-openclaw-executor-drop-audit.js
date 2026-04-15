@@ -30,6 +30,36 @@ function toNum(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function resolveFeatureBag(row = {}) {
+  if (row.features_json && typeof row.features_json === "object") return row.features_json;
+  if (row.features && typeof row.features === "object") return row.features;
+  return {};
+}
+
+function readMetric(row = {}, topLevelKey, featureKey) {
+  const topLevel = toNum(row[topLevelKey]);
+  if (topLevel != null) return topLevel;
+  const features = resolveFeatureBag(row);
+  return toNum(features[featureKey]);
+}
+
+function readBoolMetric(row = {}, topLevelKey, featureKey) {
+  if (typeof row[topLevelKey] === "boolean") return row[topLevelKey];
+  const features = resolveFeatureBag(row);
+  return features[featureKey] === true;
+}
+
+function extractAuthorityQtyTrace(row = {}) {
+  return {
+    requested_qty_pct: readMetric(row, "qty_requested_pct", "_openclaw_authority_qty_requested"),
+    qty_after_openclaw_pct: readMetric(row, "qty_after_openclaw_pct", "_openclaw_authority_qty_after_openclaw"),
+    qty_final_pct: readMetric(row, "qty_final_pct", "_openclaw_authority_qty_final"),
+    required_qty_pct: readMetric(row, "entry_budget_required_qty_pct", "_openclaw_authority_entry_budget_guard_required_qty_pct"),
+    floor_applied: readBoolMetric(row, "entry_budget_floor_applied", "_openclaw_authority_entry_budget_guard_floor_applied"),
+    floor_qty_pct: readMetric(row, "entry_budget_floor_qty_pct", "_openclaw_authority_entry_budget_guard_floor_qty_pct"),
+  };
+}
+
 function parseArgs(argv = []) {
   const out = { hours: DEFAULT_HOURS, exchange: "BINANCEFUT" };
   for (const raw of argv) {
@@ -60,6 +90,8 @@ function resolveDropReason(row = {}) {
 
 function classifyReason(reason = "") {
   const upperReason = upper(reason) || "UNKNOWN";
+  if (upperReason === "MIN_ORDER_EXCEEDS_BUDGET") return "ENTRY_BUDGET_GUARD";
+  if (upperReason.startsWith("OPENCLAW_EXECUTOR_ALPHA_CONTEXT_")) return "ALPHA_CONTEXT";
   if (upperReason.startsWith("OPENCLAW_EXECUTOR_ALLOCATOR_")) return "ALLOCATOR";
   if (upperReason === "OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK") return "CORRELATED_EXPOSURE_BLOCK";
   if (upperReason === "OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE") return "CORRELATED_EXPOSURE_REDUCE";
@@ -74,6 +106,8 @@ function classifyLiveIssue({ family, allocatorStale }) {
   if (family === "ALLOCATOR") {
     return allocatorStale ? "STALE_ALLOCATOR_AFFECTED" : "LIVE_ALLOCATOR_POLICY";
   }
+  if (family === "ALPHA_CONTEXT") return "LIVE_ALPHA_CONTEXT_POLICY";
+  if (family === "ENTRY_BUDGET_GUARD") return "LIVE_ENTRY_BUDGET_POLICY";
   if (family === "CORRELATED_EXPOSURE_BLOCK") return "LIVE_CORRELATED_EXPOSURE_BLOCK";
   if (family === "RECENT_WIN_RATE_GUARD") return "LIVE_RECENT_WIN_RATE_GUARD";
   return "OTHER";
@@ -154,7 +188,7 @@ function renderMarkdown(report = {}) {
     "",
     "## Recent Examples",
     ...(Array.isArray(report.examples) && report.examples.length
-      ? report.examples.map((row) => `- ${row.created_at || "N/A"} / ${row.symbol || "N/A"} / ${row.reason || "N/A"} / live_issue=${row.live_issue || "N/A"} / drop_qty=${row.drop_qty_pct != null ? row.drop_qty_pct : "N/A"} / signal_qty=${row.signal_qty_pct != null ? row.signal_qty_pct : "N/A"} / signal_id=${row.signal_id || "N/A"}`)
+      ? report.examples.map((row) => `- ${row.created_at || "N/A"} / ${row.symbol || "N/A"} / ${row.reason || "N/A"} / live_issue=${row.live_issue || "N/A"} / requested_qty=${row.requested_qty_pct != null ? row.requested_qty_pct : "N/A"} / openclaw_qty=${row.qty_after_openclaw_pct != null ? row.qty_after_openclaw_pct : "N/A"} / final_qty=${row.qty_final_pct != null ? row.qty_final_pct : "N/A"} / required_qty=${row.required_qty_pct != null ? row.required_qty_pct : "N/A"} / snapped_qty=${row.floor_qty_pct != null ? row.floor_qty_pct : "N/A"} / signal_qty=${row.signal_qty_pct != null ? row.signal_qty_pct : "N/A"} / signal_id=${row.signal_id || "N/A"}`)
       : ["- none"]),
   ];
   return `${lines.join("\n")}\n`;
@@ -197,6 +231,7 @@ async function main() {
     increment(byLiveIssue, liveIssue);
     if (examples.length < 15) {
       const signal = signalId ? signalDocs.get(signalId) : null;
+      const authorityQty = extractAuthorityQtyTrace(row);
       examples.push({
         created_at: row.created_at || null,
         signal_id: signalId,
@@ -206,6 +241,12 @@ async function main() {
         live_issue: liveIssue,
         drop_qty_pct: toNum(row.qty_pct),
         signal_qty_pct: toNum(signal && signal.qty_pct),
+        requested_qty_pct: authorityQty.requested_qty_pct,
+        qty_after_openclaw_pct: authorityQty.qty_after_openclaw_pct,
+        qty_final_pct: authorityQty.qty_final_pct,
+        required_qty_pct: authorityQty.required_qty_pct,
+        floor_applied: authorityQty.floor_applied,
+        floor_qty_pct: authorityQty.floor_qty_pct,
       });
     }
   }

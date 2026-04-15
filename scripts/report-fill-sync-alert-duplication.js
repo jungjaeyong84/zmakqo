@@ -8,6 +8,7 @@ const { __test: fillsSyncTest } = require("../src/services/binanceFuturesFillsSy
 
 const LOOKBACK_DAYS = Math.max(1, Number(process.env.LOOKBACK_DAYS || 7));
 const PAGE_SIZE = Math.max(50, Number(process.env.PAGE_SIZE || 500));
+const ALERT_MATCH_WINDOW_MS = Math.max(60_000, Number(process.env.FILL_SYNC_ALERT_DUPLICATION_MATCH_WINDOW_MS || 15 * 60 * 1000));
 const OUT_DIR = path.join(process.cwd(), "ops", "daily");
 
 function nowIso() {
@@ -41,7 +42,60 @@ function isBackfilledAlertDuplication(row) {
   return !!(row && row.extra && row.extra.alert_duplication_backfilled_at);
 }
 
-function buildDuplicateGroups(rows = []) {
+function readJsonl(filePath) {
+  if (!fs.existsSync(filePath)) return [];
+  return String(fs.readFileSync(filePath, "utf8") || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch (_) {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+function toMs(value) {
+  const ms = Date.parse(String(value || ""));
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function isSuccessfulTradeExecutionAlert(row) {
+  return normalizeEvent(row && row.type) === "TRADE_EXECUTION_ALERT"
+    && row
+    && row.ok === true
+    && row.skipped !== true;
+}
+
+function countMatchingAuditAlerts(group, auditRows = []) {
+  const firstMs = toMs(group && group.first_at);
+  const lastMs = toMs(group && group.last_at);
+  const orderId = normalizeOrderId(group && group.order_id);
+  const event = normalizeEvent(group && group.event);
+  const symbol = normalizeSymbol(group && group.symbol);
+  let count = 0;
+  for (const row of auditRows) {
+    if (!isSuccessfulTradeExecutionAlert(row)) continue;
+    if (normalizeSymbol(row.symbol) !== symbol) continue;
+    if (normalizeEvent(row.event) !== event) continue;
+    const auditOrderId = normalizeOrderId(row.order_id);
+    if (orderId != null && auditOrderId != null) {
+      if (auditOrderId === orderId) count += 1;
+      continue;
+    }
+    const auditMs = toMs(row.ts);
+    if (auditMs == null || firstMs == null || lastMs == null) continue;
+    if (auditMs < (firstMs - ALERT_MATCH_WINDOW_MS)) continue;
+    if (auditMs > (lastMs + ALERT_MATCH_WINDOW_MS)) continue;
+    count += 1;
+  }
+  return count;
+}
+
+function buildDuplicateGroups(rows = [], auditRows = []) {
   const byKey = new Map();
   const bySymbol = new Map();
   for (const row of rows) {
@@ -86,28 +140,35 @@ function buildDuplicateGroups(rows = []) {
 
   const duplicateGroups = Array.from(byKey.values())
     .filter((row) => row.fill_count > 1)
+    .map((row) => ({
+      ...row,
+      alert_send_n: countMatchingAuditAlerts(row, auditRows),
+    }))
     .sort((a, b) => b.fill_count - a.fill_count || String(a.symbol).localeCompare(String(b.symbol)));
-  const unresolvedDuplicateGroups = duplicateGroups.filter((row) => !row.backfilled);
+  const unresolvedDuplicateGroups = duplicateGroups.filter((row) => !row.backfilled && row.alert_send_n > 1);
   const historicalBackfilledDuplicateGroups = duplicateGroups.filter((row) => row.backfilled);
-  const suppressedEstimate = unresolvedDuplicateGroups.reduce((acc, row) => acc + Math.max(0, row.fill_count - 1), 0);
+  const suppressedOrCollapsedGroups = duplicateGroups.filter((row) => !row.backfilled && row.alert_send_n <= 1);
+  const suppressedEstimate = suppressedOrCollapsedGroups.reduce((acc, row) => acc + Math.max(0, row.fill_count - 1), 0);
 
   return {
     bySymbol,
     duplicateGroups,
     unresolvedDuplicateGroups,
     historicalBackfilledDuplicateGroups,
+    suppressedOrCollapsedGroups,
     suppressedEstimate,
   };
 }
 
-function buildDuplicationReport(rows = []) {
+function buildDuplicationReport(rows = [], auditRows = []) {
   const {
     bySymbol,
     duplicateGroups,
     unresolvedDuplicateGroups,
     historicalBackfilledDuplicateGroups,
+    suppressedOrCollapsedGroups,
     suppressedEstimate,
-  } = buildDuplicateGroups(rows);
+  } = buildDuplicateGroups(rows, auditRows);
   return {
     generated_at: nowIso(),
     lookback_days: LOOKBACK_DAYS,
@@ -131,9 +192,11 @@ function buildDuplicationReport(rows = []) {
     duplicate_group_total_n: duplicateGroups.length,
     duplicate_group_n: unresolvedDuplicateGroups.length,
     historical_backfilled_duplicate_group_n: historicalBackfilledDuplicateGroups.length,
+    suppressed_or_collapsed_group_n: suppressedOrCollapsedGroups.length,
     suppressed_alert_estimate_n: suppressedEstimate,
     by_symbol_raw_fill_n: Object.fromEntries(Array.from(bySymbol.entries()).sort((a, b) => String(a[0]).localeCompare(String(b[0])))),
     top_duplicate_groups: unresolvedDuplicateGroups.slice(0, 30),
+    top_suppressed_or_collapsed_groups: suppressedOrCollapsedGroups.slice(0, 30),
     top_duplicate_groups_all: duplicateGroups.slice(0, 100),
     historical_backfilled_duplicate_groups: historicalBackfilledDuplicateGroups.slice(0, 100),
   };
@@ -163,9 +226,11 @@ async function scanRecentExternalExitFills(db) {
 }
 
 async function main() {
+  const repoRoot = process.cwd();
   const db = getFirestore();
   const rows = await scanRecentExternalExitFills(db);
-  const report = buildDuplicationReport(rows);
+  const auditRows = readJsonl(path.join(repoRoot, "ops", "runtime", "trade_execution_alert_audit.jsonl"));
+  const report = buildDuplicationReport(rows, auditRows);
 
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const jsonPath = path.join(OUT_DIR, "fill_sync_alert_duplication_latest.json");
@@ -203,6 +268,7 @@ if (require.main === module) {
 } else {
   module.exports = {
     __test: {
+      countMatchingAuditAlerts,
       buildDuplicateGroups,
       buildDuplicationReport,
     },

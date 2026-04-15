@@ -224,6 +224,7 @@ async function repairLiveTrailingStageForSymbol({
     };
   }
   const nextMeta = buildRepairedMeta(meta, stageInfo);
+  const singleStopWriter = shouldEnforceSingleStopWriter();
   await patchPositionMetaOnlyWithRetry({
     exchange,
     symbol: sym,

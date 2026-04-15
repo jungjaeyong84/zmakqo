@@ -1,5 +1,7 @@
 "use strict";
 
+const recentTriggerState = new Map();
+
 function resolveExitWorkerUrl() {
   return String(process.env.EXIT_WORKER_URL || "").trim().replace(/\/+$/, "");
 }
@@ -13,7 +15,44 @@ function resolveExitWorkerTriggerToken() {
   ).trim();
 }
 
-async function triggerExitWorkerRun({ reason, dispatchOnly = true, timeoutMs = 5000 } = {}) {
+function resolveTriggerCooldownMs(raw = null) {
+  const fallback = 15000;
+  const value = raw == null ? process.env.EXIT_WORKER_TRIGGER_COOLDOWN_MS : raw;
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 0) return fallback;
+  return Math.floor(num);
+}
+
+function buildTriggerCooldownKey(reason) {
+  return String(reason || "UNSPECIFIED").trim().toUpperCase() || "UNSPECIFIED";
+}
+
+function isTriggerCooldownActive({ reason, now = Date.now(), cooldownMs = null } = {}) {
+  const resolvedCooldownMs = resolveTriggerCooldownMs(cooldownMs);
+  if (resolvedCooldownMs <= 0) {
+    return { active: false, key: buildTriggerCooldownKey(reason), remainingMs: 0, cooldownMs: resolvedCooldownMs };
+  }
+  const key = buildTriggerCooldownKey(reason);
+  const lastAt = Number(recentTriggerState.get(key));
+  if (!Number.isFinite(lastAt)) {
+    return { active: false, key, remainingMs: 0, cooldownMs: resolvedCooldownMs };
+  }
+  const remainingMs = resolvedCooldownMs - Math.max(0, now - lastAt);
+  return {
+    active: remainingMs > 0,
+    key,
+    remainingMs: Math.max(0, remainingMs),
+    cooldownMs: resolvedCooldownMs,
+  };
+}
+
+async function triggerExitWorkerRun({
+  reason,
+  dispatchOnly = true,
+  timeoutMs = 5000,
+  bypassCooldown = false,
+  cooldownMs = null,
+} = {}) {
   const baseUrl = resolveExitWorkerUrl();
   if (!baseUrl) {
     return { ok: false, skipped: true, reason: "EXIT_WORKER_URL_MISSING" };
@@ -22,9 +61,26 @@ async function triggerExitWorkerRun({ reason, dispatchOnly = true, timeoutMs = 5
   if (!token) {
     return { ok: false, skipped: true, reason: "EXIT_WORKER_TRIGGER_TOKEN_MISSING" };
   }
+  const resolvedReason = String(reason || "UNSPECIFIED").trim() || "UNSPECIFIED";
+  const cooldown = isTriggerCooldownActive({
+    reason: resolvedReason,
+    cooldownMs,
+  });
+  if (bypassCooldown !== true && cooldown.active) {
+    return {
+      ok: true,
+      skipped: true,
+      dispatched: false,
+      reason: "EXIT_WORKER_TRIGGER_COOLDOWN",
+      cooldown_ms: cooldown.cooldownMs,
+      cooldown_remaining_ms: cooldown.remainingMs,
+    };
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.max(1000, Number(timeoutMs) || 5000));
+  const requestStartedAt = Date.now();
+  recentTriggerState.set(cooldown.key, requestStartedAt);
   try {
     const res = await fetch(`${baseUrl}/run`, {
       method: "POST",
@@ -33,7 +89,7 @@ async function triggerExitWorkerRun({ reason, dispatchOnly = true, timeoutMs = 5
         "x-scheduler-token": token,
       },
       body: JSON.stringify({
-        reason: String(reason || "UNSPECIFIED"),
+        reason: resolvedReason,
         dispatch_only: dispatchOnly !== false,
       }),
       signal: controller.signal,
@@ -52,6 +108,9 @@ async function triggerExitWorkerRun({ reason, dispatchOnly = true, timeoutMs = 5
     }
     return { ok: true, dispatched: true, response: json || null };
   } catch (e) {
+    if (Number(recentTriggerState.get(cooldown.key)) === requestStartedAt) {
+      recentTriggerState.delete(cooldown.key);
+    }
     return {
       ok: false,
       skipped: true,
@@ -68,5 +127,11 @@ module.exports = {
   __test: {
     resolveExitWorkerUrl,
     resolveExitWorkerTriggerToken,
+    resolveTriggerCooldownMs,
+    buildTriggerCooldownKey,
+    isTriggerCooldownActive,
+    clearTriggerCooldownState() {
+      recentTriggerState.clear();
+    },
   },
 };

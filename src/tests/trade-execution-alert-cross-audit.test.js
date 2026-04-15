@@ -6,6 +6,7 @@ const { __test } = require("../../scripts/report-trade-execution-alert-cross-aud
 function run() {
   assert.strictEqual(typeof __test.classifyEvent, "function", "classifyEvent export missing");
   assert.strictEqual(typeof __test.parseTelegramTradeAlertRows, "function", "parseTelegramTradeAlertRows export missing");
+  assert.strictEqual(typeof __test.pickMatchingAlert, "function", "pickMatchingAlert export missing");
   assert.strictEqual(typeof __test.buildReport, "function", "buildReport export missing");
 
   assert.strictEqual(__test.classifyEvent("EXIT_TP_P0_0.8P"), "TP0");
@@ -32,6 +33,26 @@ function run() {
   assert.strictEqual(report.missing_alert_fill_n, 1);
   assert.strictEqual(report.telegram_trade_alert_row_n, 1);
   assert.strictEqual(report.audit_trade_alert_row_n, 1);
+
+  const sourceFillIdMatch = __test.pickMatchingAlert(
+    {
+      fill_id: "fill-late-replay",
+      symbol: "SOLUSDT",
+      event: "SHORT",
+      created_ms: Date.parse("2026-04-14T09:10:00.000Z"),
+    },
+    [
+      {
+        ts: "2026-04-14T12:55:00.000Z",
+        symbol: "SOLUSDT",
+        event: "SHORT",
+        source_fill_id: "fill-late-replay",
+        title: "SOLUSDT 숏 진입",
+      },
+    ]
+  );
+  assert.ok(sourceFillIdMatch, "source_fill_id should match even outside time window");
+  assert.strictEqual(sourceFillIdMatch.source_fill_id, "fill-late-replay");
 
   console.log("TRADE_EXECUTION_ALERT_CROSS_AUDIT_TEST_OK");
 }

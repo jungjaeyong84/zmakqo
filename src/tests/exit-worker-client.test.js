@@ -7,13 +7,17 @@ async function run() {
   const oldEnv = {
     EXIT_WORKER_URL: process.env.EXIT_WORKER_URL,
     EXIT_WORKER_TRIGGER_TOKEN: process.env.EXIT_WORKER_TRIGGER_TOKEN,
+    EXIT_WORKER_TRIGGER_COOLDOWN_MS: process.env.EXIT_WORKER_TRIGGER_COOLDOWN_MS,
   };
   const originalFetch = global.fetch;
   process.env.EXIT_WORKER_URL = "https://donbeolja-exit-worker-4ljfegivrq-du.a.run.app";
   process.env.EXIT_WORKER_TRIGGER_TOKEN = "tok";
+  process.env.EXIT_WORKER_TRIGGER_COOLDOWN_MS = "15000";
 
   let captured = null;
+  let fetchCount = 0;
   global.fetch = async (url, opts) => {
+    fetchCount += 1;
     captured = { url, opts };
     return {
       ok: true,
@@ -24,6 +28,7 @@ async function run() {
   try {
     assert.strictEqual(__test.resolveExitWorkerUrl(), "https://donbeolja-exit-worker-4ljfegivrq-du.a.run.app");
     assert.strictEqual(__test.resolveExitWorkerTriggerToken(), "tok");
+    __test.clearTriggerCooldownState();
 
     const result = await triggerExitWorkerRun({ reason: "ENTRY_BINANCEFUT_BTCUSDT" });
     assert.strictEqual(result.ok, true);
@@ -33,6 +38,12 @@ async function run() {
     const body = JSON.parse(String(captured.opts.body || "{}"));
     assert.strictEqual(body.reason, "ENTRY_BINANCEFUT_BTCUSDT");
     assert.strictEqual(body.dispatch_only, true);
+
+    const cooldownResult = await triggerExitWorkerRun({ reason: "ENTRY_BINANCEFUT_BTCUSDT" });
+    assert.strictEqual(cooldownResult.ok, true);
+    assert.strictEqual(cooldownResult.skipped, true);
+    assert.strictEqual(cooldownResult.reason, "EXIT_WORKER_TRIGGER_COOLDOWN");
+    assert.strictEqual(fetchCount, 1);
   } finally {
     global.fetch = originalFetch;
     for (const [key, value] of Object.entries(oldEnv)) {

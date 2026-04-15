@@ -142,6 +142,37 @@ function fmtQty(raw) {
   return `${pct.toFixed(digits)}%`;
 }
 
+function isFiniteNum(value) {
+  return Number.isFinite(Number(value));
+}
+
+function appendDropQtyLines(lines, payload = {}, options = {}) {
+  const requested = Number(payload.qtyPct);
+  const afterOpenclaw = Number(payload.qtyAfterOpenclawPct);
+  const finalQty = Number(payload.qtyFinalPct);
+  const requiredQty = Number(payload.requiredQtyPct);
+  const floorQty = Number(payload.floorQtyPct);
+  const isTimingDefer = options.isTimingDefer === true;
+
+  if (!isFiniteNum(finalQty)) {
+    if (isTimingDefer) {
+      lines.push(`수량: ${fmtQty(requested)}`);
+      return;
+    }
+    lines.push(`수량(요청): ${fmtQty(requested)}`);
+    lines.push("수량(최종): 0%");
+    return;
+  }
+
+  lines.push(`수량(요청): ${fmtQty(requested)}`);
+  if (isFiniteNum(afterOpenclaw)) lines.push(`수량(OpenClaw 후): ${fmtQty(afterOpenclaw)}`);
+  lines.push(`수량(최종): ${fmtQty(finalQty)}`);
+  if (isFiniteNum(requiredQty)) lines.push(`최소필요수량: ${fmtQty(requiredQty)}`);
+  if (payload.floorApplied === true && isFiniteNum(floorQty)) {
+    lines.push(`floor 보정수량: ${fmtQty(floorQty)}`);
+  }
+}
+
 function fmtSide(side) {
   const s = String(side || "").trim().toUpperCase();
   if (s === "BUY") return "매수";
@@ -233,9 +264,9 @@ function buildDroppedMessage(payload = {}) {
     `드롭 위치: ${dropLocation || stage.text || "미분류"}`,
     `사유: ${dropReason}`,
     `해석: ${reasonKo || "현재 조건상 신호를 보류했습니다."}`,
-    `수량: ${fmtQty(payload.qtyPct)}`,
     `실행모드: ${String(payload.executionMode || "-")}`,
   ];
+  appendDropQtyLines(lines, payload, { isTimingDefer });
   if (payload.signalId) lines.push(`signal_id: ${payload.signalId}`);
   return { title, body: lines.join("\n"), severity: isTimingDefer ? "INFO" : "WARN" };
 }

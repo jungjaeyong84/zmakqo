@@ -36,7 +36,7 @@ const { sendAlert } = require("../utils/alerts");
 const { runActionPreHooks, runActionPostHooks, emitActionEvent } = require("../utils/actionExecutionHooks");
 const { auditBinanceExitIntegrity } = require("./exitIntegrityAudit");
 const { runBinanceLiveStateSelfHeal } = require("./binanceLiveStateSelfHeal");
-const { getPositionReadView, listExchangePositionReadViews } = require("./positionReadModel");
+const { getPositionReadView, getPositionReadViewsBySymbols } = require("./positionReadModel");
 const { resolveCanonicalPositionExitStage } = require("./positionStateMachine");
 const { loadOperationalGuardRuntime } = require("./operationalGuardRuntime");
 const { loadSystemSloRuntime } = require("./systemSloRuntime");
@@ -257,7 +257,7 @@ const pendingIntentLogState = new Map();
 const PENDING_INTENT_CHECK_TTL_MS = normalizeIntervalMs(process.env.TICK_EXIT_PENDING_INTENT_TTL_MS, 3000);
 const pendingIntentScopeScanLimitRaw = Number(process.env.TICK_EXIT_PENDING_INTENT_SCOPE_SCAN_LIMIT);
 const PENDING_INTENT_SCOPE_SCAN_LIMIT = Number.isFinite(pendingIntentScopeScanLimitRaw)
-  ? Math.max(50, Math.round(pendingIntentScopeScanLimitRaw))
+  ? Math.max(20, Math.round(pendingIntentScopeScanLimitRaw))
   : 300;
 const TICK_EXIT_LEASE_ENABLED = String(process.env.TICK_EXIT_LEASE_ENABLED || "1") !== "0";
 const TICK_EXIT_LEASE_DOC = String(process.env.TICK_EXIT_LEASE_DOC || "runtime_locks/binance_tick_exit_loop");
@@ -276,6 +276,8 @@ const trailHardExitCooldownState = new Map();
 const TICK_EXIT_NATIVE_PROTECTION_VERIFY_TTL_MS = normalizeIntervalMs(process.env.TICK_EXIT_NATIVE_PROTECTION_VERIFY_TTL_MS, 10000);
 const TICK_EXIT_NATIVE_PROTECTION_REFRESH_COOLDOWN_MS = normalizeIntervalMs(process.env.TICK_EXIT_NATIVE_PROTECTION_REFRESH_COOLDOWN_MS, 3000);
 const TICK_EXIT_HARD_EXIT_COOLDOWN_MS = normalizeIntervalMs(process.env.TICK_EXIT_HARD_EXIT_COOLDOWN_MS, 60000);
+const BINANCE_LIVE_STATE_SELF_HEAL_COOLDOWN_MS = normalizeIntervalMs(process.env.BINANCE_LIVE_STATE_SELF_HEAL_COOLDOWN_MS, 5 * 60 * 1000);
+let lastTickExitSelfHealAt = 0;
 
 function resolveTfFromMsLocal(ms) {
   const n = Number(ms);
@@ -382,6 +384,82 @@ function buildTickTrailObservationDocUpdate(trailPatch, updatedAt = null) {
 
 function buildTickTrailReconcileRunId(symbol, atMs = Date.now()) {
   return `RUN__TRAIL_RECONCILE__BINANCEFUT__${String(symbol || "").toUpperCase()}__${Number(atMs)}`;
+}
+
+async function syncTickExitTrailObservation({
+  exchange = "BINANCEFUT",
+  symbol,
+  position = null,
+  rules = null,
+  nativeProtection = null,
+  runtimeEvalAtMs = null,
+  source = "TICK_EXIT",
+} = {}) {
+  const pos = position && typeof position === "object" ? position : null;
+  if (!pos) return null;
+  const meta = pos.meta && typeof pos.meta === "object" ? pos.meta : {};
+  const canonicalStage = resolveCanonicalExitStageForPosition(pos);
+  if (!hasCanonicalTpP1Reached(canonicalStage) && meta.tp_p1_pending !== true) return null;
+  const side = resolvePositionSideFromPosition(pos, meta, "LONG");
+  const exitRules = rules || resolveExitRulesForPosition({ exchange, position: pos });
+  const runnerExit = computeRunnerExitStopPrice({
+    avg: Number(pos && pos.avg_price),
+    leverageEff: Number(meta && (meta.external_leverage || meta.leverage || pos.leverage || 1)),
+    side,
+    rules: exitRules,
+    tpP1Done: hasCanonicalTpP1Reached(canonicalStage),
+    trailActive: isCanonicalTrailStage(canonicalStage),
+    trailHigh: meta && Number.isFinite(Number(meta.trail_high)) ? Number(meta.trail_high) : null,
+    trailLow: meta && Number.isFinite(Number(meta.trail_low)) ? Number(meta.trail_low) : null,
+    entryRDistance: Number(meta && meta.entry_r_distance),
+  });
+  const refresh = nativeProtection && typeof nativeProtection === "object" ? nativeProtection : null;
+  const nativeStopPrice = refresh && refresh.ok === true
+    ? Number(refresh.stop_price)
+    : (meta && Number.isFinite(Number(meta.native_protection_stop_price))
+      ? Number(meta.native_protection_stop_price)
+      : null);
+  const nativeStopOrderId = refresh && refresh.ok === true
+    ? (refresh.stop_order_id || null)
+    : (meta && meta.native_protection_stop_order_id ? meta.native_protection_stop_order_id : null);
+  const nativeRefreshStatus = refresh
+    ? (refresh.ok === true
+      ? "OK"
+      : String(refresh.reason || "FAILED").trim().toUpperCase())
+    : (meta && meta.native_protection_refresh_status ? meta.native_protection_refresh_status : null);
+  const observedAtMs = nowMs();
+  return upsertTrailObservation({
+    exchange,
+    symbol,
+    side,
+    entryEventId: meta && meta.entry_event_id ? meta.entry_event_id : null,
+    entryExecBarMs: meta && Number.isFinite(Number(meta.entry_exec_bar_ms))
+      ? Number(meta.entry_exec_bar_ms)
+      : null,
+    entryPrice: Number(pos && pos.avg_price),
+    entryRDistance: meta && Number.isFinite(Number(meta.entry_r_distance))
+      ? Number(meta.entry_r_distance)
+      : null,
+    trailRMultiple: Number(exitRules && exitRules.TRAIL_R_MULTIPLE),
+    trailHigh: meta && Number.isFinite(Number(meta.trail_high)) ? Number(meta.trail_high) : null,
+    trailHighAtMs: meta && Number.isFinite(Number(meta.trail_high_at_ms)) ? Number(meta.trail_high_at_ms) : null,
+    trailLow: meta && Number.isFinite(Number(meta.trail_low)) ? Number(meta.trail_low) : null,
+    trailLowAtMs: meta && Number.isFinite(Number(meta.trail_low_at_ms)) ? Number(meta.trail_low_at_ms) : null,
+    runnerFloorStop: Number(runnerExit && runnerExit.runnerFloorStop),
+    computedTrailStop: Number(runnerExit && runnerExit.stopPrice),
+    trailStopRaw: Number(runnerExit && runnerExit.trailStop),
+    trailStopByR: Number(runnerExit && runnerExit.trailStopByR),
+    trailStopByPct: Number(runnerExit && runnerExit.trailStopByPct),
+    chosenStopSource: runnerExit && runnerExit.stopSource ? runnerExit.stopSource : null,
+    chosenStopPrice: Number(runnerExit && runnerExit.stopPrice),
+    finalEffectiveStop: Number(runnerExit && runnerExit.stopPrice),
+    nativeStopPrice: Number.isFinite(nativeStopPrice) ? nativeStopPrice : null,
+    nativeStopOrderId,
+    nativeRefreshStatus,
+    lastRepriceAtMs: observedAtMs,
+    runtimeEvalAtMs: Number.isFinite(Number(runtimeEvalAtMs)) ? Number(runtimeEvalAtMs) : observedAtMs,
+    source,
+  });
 }
 
 async function resolveTickExitAlertChannel(exchange = "BINANCEFUT") {
@@ -964,33 +1042,18 @@ function shouldActivateFastLane({ pos, price, triggers, fastLanePct, side } = {}
 async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
   const exCfg = await getExchangeSettingsForProvider("BINANCEFUT", 2000);
   if (!exCfg || exCfg.enabled === false) return { ok: false, skipped: true, reason: "BINANCE_DISABLED" };
-  const markets = Array.isArray(exCfg.markets) ? exCfg.markets : [];
-  const symbolSet = new Set(markets.map((s) => String(s || "").toUpperCase()).filter(Boolean));
-
-  try {
-    const positions = await listExchangePositionReadViews({
-      exchange: "BINANCEFUT",
-      limit: 200,
-    });
-    positions.forEach((p) => {
-      const size = Number(p.size_pct || 0);
-      const state = String(p.position_state || p.state || "").toUpperCase();
-      const symbol = String(p.symbol_or_pair_id || p.symbol || "").toUpperCase();
-      if (!symbol) return;
-      if (!Number.isFinite(size) || size <= 0 || state === "FLAT") return;
-      symbolSet.add(symbol);
-    });
-  } catch (_) {}
-
-  const symbolsToCheck = Array.from(symbolSet);
+  const symbolsToCheck = Array.from(new Set(
+    (Array.isArray(exCfg.markets) ? exCfg.markets : [])
+      .map((symbol) => String(symbol || "").trim().toUpperCase())
+      .filter(Boolean)
+  ));
   if (!symbolsToCheck.length) return { ok: false, skipped: true, reason: "NO_MARKETS" };
 
-  const positions = await Promise.all(symbolsToCheck.map(async (mk) => {
-    return getPositionReadView({
-      exchange: "BINANCEFUT",
-      symbol: mk,
-    });
-  }));
+  const positionMap = await getPositionReadViewsBySymbols({
+    exchange: "BINANCEFUT",
+    symbols: symbolsToCheck,
+  }).catch(() => ({}));
+  const positions = symbolsToCheck.map((symbol) => positionMap[symbol] || null);
   const active = positions.filter((p) => {
     const size = Number(p && p.size_pct);
     const state = String(p && p.state || "").toUpperCase();
@@ -1111,6 +1174,7 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
                 fallbackLeverage: Number(_tMeta && (_tMeta.external_leverage || _tMeta.leverage || 1)),
                 exitRulesOverride: _tMeta && _tMeta.exit_rules_override ? _tMeta.exit_rules_override : null,
                 posMeta: pos.meta || _tMeta,
+                writerSource: "BINANCE_TICK_EXIT",
               });
             } catch (_nativeRefreshErr) {
               structuredLog("tick_exit_trail_native_refresh_error", {
@@ -1249,9 +1313,10 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
       });
       let resolvedPosSide = resolvePositionSideFromPosition(effectivePos, effectivePos.meta, "LONG");
       if (eagerProtectionRefresh.needed && shouldRunNativeProtectionRefreshCooldown({ symbol, now: tickNow })) {
+        let refreshed = null;
         try {
           const liveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol });
-          const refreshed = await refreshBinanceNativeProtectionWithRetry({
+          refreshed = await refreshBinanceNativeProtectionWithRetry({
             liveCfg,
             exchange: "BINANCEFUT",
             symbol,
@@ -1260,6 +1325,7 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
             fallbackLeverage: Number(effectivePos && effectivePos.meta && (effectivePos.meta.external_leverage || effectivePos.meta.leverage || effectivePos.leverage || 1)),
             exitRulesOverride: effectivePos && effectivePos.meta && effectivePos.meta.exit_rules_override ? effectivePos.meta.exit_rules_override : null,
             posMeta: effectivePos.meta || {},
+            writerSource: "BINANCE_TICK_EXIT",
           });
           structuredLog("tick_exit_native_protection_refresh", {
             exchange: "BINANCEFUT",
@@ -1302,6 +1368,15 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
             rules = resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: effectivePos });
             nativeProtectionState = await resolveLiveNativeProtectionState({ exCfg, symbol, pos: effectivePos });
             resolvedPosSide = resolvePositionSideFromPosition(effectivePos, effectivePos.meta, "LONG");
+            await syncTickExitTrailObservation({
+              exchange: "BINANCEFUT",
+              symbol,
+              position: effectivePos,
+              rules,
+              nativeProtection: refreshed,
+              runtimeEvalAtMs: tickNow,
+              source: "TICK_EXIT_NATIVE_REFRESH",
+            }).catch(() => null);
           } catch (_) {}
         }
       }
@@ -1340,9 +1415,10 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
         side: resolvedPosSide,
       });
       if (trailProtectionDeficit) {
+        let refreshed = null;
         try {
           const liveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol });
-          const refreshed = await refreshBinanceNativeProtectionWithRetry({
+          refreshed = await refreshBinanceNativeProtectionWithRetry({
             liveCfg,
             exchange: "BINANCEFUT",
             symbol,
@@ -1351,6 +1427,7 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
             fallbackLeverage: Number(effectivePos && effectivePos.meta && (effectivePos.meta.external_leverage || effectivePos.meta.leverage || effectivePos.leverage || 1)),
             exitRulesOverride: effectivePos && effectivePos.meta && effectivePos.meta.exit_rules_override ? effectivePos.meta.exit_rules_override : null,
             posMeta: effectivePos.meta || {},
+            writerSource: "BINANCE_TICK_EXIT",
           });
           structuredLog("tick_exit_trail_native_floor_refresh", {
             exchange: "BINANCEFUT",
@@ -1377,6 +1454,28 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
               exchange: "BINANCEFUT",
               symbol,
             });
+            effectivePos = applyTrailObservationToPosition({
+              pos: await getPositionReadView({
+                exchange: "BINANCEFUT",
+                symbol,
+              }),
+              observation: await getPositionRuntimeObservation({
+                exchange: "BINANCEFUT",
+                symbol,
+              }).catch(() => trailObservation),
+            });
+            rules = resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: effectivePos });
+            nativeProtectionState = await resolveLiveNativeProtectionState({ exCfg, symbol, pos: effectivePos });
+            resolvedPosSide = resolvePositionSideFromPosition(effectivePos, effectivePos.meta, "LONG");
+            await syncTickExitTrailObservation({
+              exchange: "BINANCEFUT",
+              symbol,
+              position: effectivePos,
+              rules,
+              nativeProtection: refreshed,
+              runtimeEvalAtMs: tickNow,
+              source: "TICK_EXIT_NATIVE_FLOOR_REFRESH",
+            }).catch(() => null);
           } catch (_) {}
         }
       }
@@ -1794,6 +1893,7 @@ async function runTickExitSelfHealPhase({
   reason = "TICK_EXIT_LOOP",
   leaseHeartbeatOk = true,
   maxPositions = Math.max(1, Number(process.env.BINANCE_LIVE_STATE_SELF_HEAL_MAX_POSITIONS || 12)),
+  cooldownMs = BINANCE_LIVE_STATE_SELF_HEAL_COOLDOWN_MS,
   runSelfHeal = runBinanceLiveStateSelfHeal,
 } = {}) {
   if (enabled !== true) {
@@ -1802,12 +1902,25 @@ async function runTickExitSelfHealPhase({
   if (leaseHeartbeatOk !== true) {
     return { ok: false, skipped: true, reason: "LEASE_LOST" };
   }
+  const now = nowMs();
+  const resolvedCooldownMs = Math.max(0, Number(cooldownMs) || 0);
+  if (resolvedCooldownMs > 0 && Number.isFinite(lastTickExitSelfHealAt) && (now - lastTickExitSelfHealAt) < resolvedCooldownMs) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "COOLDOWN",
+      cooldown_ms: resolvedCooldownMs,
+      cooldown_remaining_ms: Math.max(0, resolvedCooldownMs - (now - lastTickExitSelfHealAt)),
+    };
+  }
   try {
-    return await runSelfHeal({
+    const result = await runSelfHeal({
       exchange: "BINANCEFUT",
       maxPositions,
       reason,
     });
+    lastTickExitSelfHealAt = now;
+    return result;
   } catch (e) {
     return {
       ok: false,
@@ -2041,6 +2154,7 @@ module.exports = {
   __test: {
     buildTickTrailObservationDocUpdate,
     buildTickTrailReconcileRunId,
+    syncTickExitTrailObservation,
     runTickExitSelfHealPhase,
     heartbeatTickExitLease,
     computeExitTriggers,
@@ -2058,6 +2172,9 @@ module.exports = {
     shouldTriggerTrailHardExit,
     shouldRunBySymbolCooldown,
     _symbolCooldownState: symbolCooldownState,
+    clearSelfHealCooldown() {
+      lastTickExitSelfHealAt = 0;
+    },
     shouldSendTickExitFailureAlert,
   },
 };

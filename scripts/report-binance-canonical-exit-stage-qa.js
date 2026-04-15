@@ -129,7 +129,7 @@ function buildRow({
 
 function resolveWatchdogCanonicalStage(stage) {
   const current = upper(stage);
-  if (current === "BETWEEN_TP0_TP1") return "TP1";
+  if (current === "BETWEEN_TP0_TP1") return "TP0";
   if (current === "TP1_DONE_NOT_TRAIL") return "TP1";
   if (current === "TRAIL") return "TRAIL";
   return null;

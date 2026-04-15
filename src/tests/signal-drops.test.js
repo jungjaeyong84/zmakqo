@@ -103,6 +103,104 @@ function run() {
     { group: "UNKNOWN", subtype: "GEN" }
   );
 
+  assert.deepStrictEqual(
+    __test.inferDropStageBucketFromReason("MIN_ORDER_EXCEEDS_BUDGET"),
+    { group: "ENTRY", subtype: "BUDGET" }
+  );
+
+  assert.deepStrictEqual(
+    __test.resolveDropStageBucket({
+      reason: "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_BLOCK",
+      features_json: {},
+    }),
+    { group: "ENTRY", subtype: "OPENCLAW" }
+  );
+
+  assert.strictEqual(__test.deriveReasonFamily("MIN_ORDER_EXCEEDS_BUDGET"), "ENTRY_BUDGET_GUARD");
+  assert.strictEqual(__test.deriveReasonFamily("OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE"), "OPENCLAW_EXECUTOR");
+  assert.strictEqual(__test.deriveReasonFamily("LIVE_POLICY_QUARANTINE_HARD_BLOCK"), "LIVE_EXEC_POLICY");
+
+  assert.deepStrictEqual(
+    __test.extractOpenClawAuthorityTrace({
+      _openclaw_authority_qty_requested: 0.5,
+      _openclaw_authority_qty_after_openclaw: 0.375,
+      _openclaw_authority_qty_final: 0.075,
+      _openclaw_authority_entry_budget_guard_required_qty_pct: 0.1666666667,
+      _openclaw_authority_entry_budget_guard_floor_applied: true,
+      _openclaw_authority_entry_budget_guard_floor_qty_pct: 0.1666666667,
+      _openclaw_authority_entry_budget_guard_floor_reason: "min_order_exceeds_budget",
+    }),
+    {
+      qty_requested_pct: 0.5,
+      qty_after_openclaw_pct: 0.375,
+      qty_final_pct: 0.075,
+      entry_budget_required_qty_pct: 0.1666666667,
+      entry_budget_required_budget: null,
+      entry_budget_min_required_quote: null,
+      entry_budget_notional_quote: null,
+      entry_budget_budget_max: null,
+      entry_budget_leverage: null,
+      entry_budget_shortfall_quote: null,
+      entry_budget_floor_applied: true,
+      entry_budget_floor_previous_qty_pct: null,
+      entry_budget_floor_qty_pct: 0.1666666667,
+      entry_budget_floor_max_snap_qty_pct: null,
+      entry_budget_floor_reason: "MIN_ORDER_EXCEEDS_BUDGET",
+    }
+  );
+
+  assert.deepStrictEqual(
+    __test.buildDropAlertPayload({
+      exchange: "BINANCEFUT",
+      symbol_or_pair_id: "ETHUSDT",
+      tf: "15m",
+      event: "SHORT",
+      side: "SELL",
+      qty_pct: 1,
+      reason: "MIN_ORDER_EXCEEDS_BUDGET",
+      drop_reason_code: "MIN_ORDER_EXCEEDS_BUDGET",
+      signal_id: "SIG__BINANCEFUT__ETHUSDT__15m__1776170700000__SHORT",
+      execution_mode: "LIVE",
+      source: "SERVER",
+      event_group: "UNKNOWN",
+      event_subtype: null,
+      qty_requested_pct: null,
+      qty_after_openclaw_pct: null,
+      qty_final_pct: null,
+      entry_budget_required_qty_pct: null,
+      entry_budget_floor_applied: null,
+      entry_budget_floor_qty_pct: null,
+      features_json: {
+        _openclaw_authority_qty_requested: 1,
+        _openclaw_authority_qty_after_openclaw: 0.65,
+        _openclaw_authority_qty_final: 0.13,
+        _openclaw_authority_entry_budget_guard_required_qty_pct: 0.5,
+      },
+    }),
+    {
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      tf: "15m",
+      event: "SHORT",
+      side: "SELL",
+      qtyPct: 1,
+      qtyRequestedPct: 1,
+      qtyAfterOpenclawPct: 0.65,
+      qtyFinalPct: 0.13,
+      requiredQtyPct: 0.5,
+      floorApplied: false,
+      floorQtyPct: null,
+      reason: "MIN_ORDER_EXCEEDS_BUDGET",
+      dropReasonCode: "MIN_ORDER_EXCEEDS_BUDGET",
+      signalId: "SIG__BINANCEFUT__ETHUSDT__15m__1776170700000__SHORT",
+      executionMode: "LIVE",
+      source: "SERVER",
+      authoritative: true,
+      dropGroup: "UNKNOWN",
+      dropSubtype: null,
+    }
+  );
+
   console.log("SIGNAL_DROPS_TEST_OK");
 }
 

@@ -19,6 +19,9 @@ const STAGE_DISPLAY_MAP = Object.freeze({
   MARKET: "3차 상태 기반 Soft Sizing",
   EV: "4차 EV/시간가치층",
   TIMING: "5차 WAIT 타이밍층",
+  BUDGET: "예산/최소주문 가드",
+  EXECUTOR: "OpenClaw 실행 가드",
+  LIVE_POLICY: "라이브 운영 정책",
   OPS: "운영/기타",
 });
 

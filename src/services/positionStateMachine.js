@@ -224,6 +224,124 @@ function buildExitQuantityContractLedger({
   };
 }
 
+function validateExitQuantityContractLedger({
+  ledger = null,
+  positionSnapshot = null,
+} = {}) {
+  const source = ledger && typeof ledger === "object" ? ledger : {};
+  const snapshot = normalizeSnapshot(positionSnapshot || {});
+  const issues = [];
+  const tp0AllowedRatio = toNum(source.tp0_allowed_ratio);
+  const tp1AllowedRatio = toNum(source.tp1_allowed_ratio);
+  const runnerAllowedRatio = toNum(source.runner_allowed_ratio);
+  const tp0ConsumedRatio = toNum(source.tp0_consumed_ratio);
+  const tp1ConsumedRatio = toNum(source.tp1_consumed_ratio);
+  const trailConsumedRatio = toNum(source.trail_consumed_ratio);
+  const totalConsumedRatio = toNum(source.total_consumed_ratio);
+  const runnerRemainingRatio = toNum(source.runner_remaining_ratio);
+  const entryQtyAbs = toNum(source.entry_qty_abs);
+  const currentQtyAbs = toNum(snapshot.qty_base);
+  const runnerRemainingAbs = toNum(source.runner_remaining_abs);
+  const hasExposure = (
+    (Number.isFinite(snapshot.size_pct) && snapshot.size_pct > 0)
+    || (Number.isFinite(snapshot.qty_base) && snapshot.qty_base > 0)
+  );
+  const ratioTolerance = 0.03;
+
+  if (hasExposure && !Number.isFinite(entryQtyAbs)) {
+    issues.push({
+      code: "ENTRY_QTY_ABS_MISSING",
+      severity: "warn",
+      message: "Active exposure is missing entry_qty_abs, so absolute contract auditing is degraded.",
+    });
+  }
+
+  const allowedRatioTotal = [
+    tp0AllowedRatio,
+    tp1AllowedRatio,
+    runnerAllowedRatio,
+  ].reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0);
+  if (Number.isFinite(allowedRatioTotal) && Math.abs(allowedRatioTotal - 1) > ratioTolerance) {
+    issues.push({
+      code: "EXIT_ALLOWED_RATIO_SUM_MISMATCH",
+      severity: "critical",
+      message: `tp0/tp1/runner allowed ratios must sum to 1. observed=${allowedRatioTotal}`,
+    });
+  }
+  if (
+    Number.isFinite(tp0AllowedRatio)
+    && Number.isFinite(tp0ConsumedRatio)
+    && tp0ConsumedRatio > (tp0AllowedRatio + ratioTolerance)
+  ) {
+    issues.push({
+      code: "TP0_CONSUMED_EXCEEDS_ALLOWED",
+      severity: "critical",
+      message: `tp0 consumed ratio exceeded allowed contract. consumed=${tp0ConsumedRatio} allowed=${tp0AllowedRatio}`,
+    });
+  }
+  if (
+    Number.isFinite(tp1AllowedRatio)
+    && Number.isFinite(tp1ConsumedRatio)
+    && tp1ConsumedRatio > (tp1AllowedRatio + ratioTolerance)
+  ) {
+    issues.push({
+      code: "TP1_CONSUMED_EXCEEDS_ALLOWED",
+      severity: "critical",
+      message: `tp1 consumed ratio exceeded allowed contract. consumed=${tp1ConsumedRatio} allowed=${tp1AllowedRatio}`,
+    });
+  }
+  if (
+    Number.isFinite(runnerAllowedRatio)
+    && Number.isFinite(trailConsumedRatio)
+    && trailConsumedRatio > (runnerAllowedRatio + ratioTolerance)
+  ) {
+    issues.push({
+      code: "TRAIL_CONSUMED_EXCEEDS_RUNNER",
+      severity: "critical",
+      message: `trail consumed ratio exceeded runner contract. consumed=${trailConsumedRatio} allowed=${runnerAllowedRatio}`,
+    });
+  }
+  if (Number.isFinite(totalConsumedRatio) && totalConsumedRatio > (1 + ratioTolerance)) {
+    issues.push({
+      code: "EXIT_TOTAL_CONSUMED_EXCEEDS_ENTRY",
+      severity: "critical",
+      message: `total consumed ratio cannot exceed 1. observed=${totalConsumedRatio}`,
+    });
+  }
+  if (
+    Number.isFinite(totalConsumedRatio)
+    && Number.isFinite(runnerRemainingRatio)
+    && Math.abs((totalConsumedRatio + runnerRemainingRatio) - 1) > ratioTolerance
+  ) {
+    issues.push({
+      code: "RUNNER_REMAINING_MISMATCH",
+      severity: "critical",
+      message: `runner remaining ratio must complement total consumed ratio. observed=${totalConsumedRatio + runnerRemainingRatio}`,
+    });
+  }
+  if (
+    hasExposure
+    && Number.isFinite(currentQtyAbs)
+    && Number.isFinite(runnerRemainingAbs)
+    && runnerRemainingAbs > 0
+  ) {
+    const qtyTolerance = Math.max(Math.abs(runnerRemainingAbs) * 0.03, 1e-8);
+    if (Math.abs(currentQtyAbs - runnerRemainingAbs) > qtyTolerance) {
+      issues.push({
+        code: "RUNNER_REMAINING_QTY_MISMATCH",
+        severity: "critical",
+        message: `current qty must match runner remaining abs. qty=${currentQtyAbs} runner_remaining=${runnerRemainingAbs}`,
+      });
+    }
+  }
+
+  return {
+    ok: !issues.some((issue) => issue.severity === "critical"),
+    issues,
+    blocked: issues.some((issue) => issue.severity === "critical"),
+  };
+}
+
 function resolveCanonicalExitTransitionEvents({
   resolvedStage,
   positionSnapshot = null,
@@ -401,8 +519,11 @@ function resolveCanonicalExitWritePayload({
     stage: decision.stage,
     chainKey: decision.chainKey,
     reason: decision.reason,
+    stageRelocked: decision.stageRelocked === true,
+    ledgerBlockedInvariant: decision.ledgerBlockedInvariant === true,
     blockedInvariant: decision.blockedInvariant === true,
     ledger: decision.ledger || null,
+    ledgerValidation: decision.ledgerValidation || null,
     transitionEvents: Array.isArray(decision.transitionEvents) ? decision.transitionEvents : [],
     primaryTransitionEvent: decision.primaryTransitionEvent || null,
   };
@@ -438,6 +559,10 @@ function resolveCanonicalExitAuthorityDecision({
     authorityState,
     rules,
   });
+  const ledgerValidation = validateExitQuantityContractLedger({
+    ledger,
+    positionSnapshot: snapshot,
+  });
   const recent = recentStages && typeof recentStages === "object" ? recentStages : {};
   const recentTrail = normalizeExitStage(recent.trail) === "TRAIL";
   const recentTp0 = normalizeExitStage(recent.tp0) === "TP0";
@@ -461,22 +586,29 @@ function resolveCanonicalExitAuthorityDecision({
     }
   }
 
-  const transition = resolveCanonicalExitTransitionEvents({
-    resolvedStage,
-    positionSnapshot: snapshot,
-    recentStages: recent,
-    ledger,
-    observedQtyRatio,
-    fullExit,
-  });
+  const stageRelocked = resolvedStage !== stage && reason !== "PASS_THROUGH";
+  const ledgerBlockedInvariant = ledgerValidation.blocked === true;
+  const transition = ledgerBlockedInvariant
+    ? { transitionEvents: [], primaryTransitionEvent: null }
+    : resolveCanonicalExitTransitionEvents({
+      resolvedStage,
+      positionSnapshot: snapshot,
+      recentStages: recent,
+      ledger,
+      observedQtyRatio,
+      fullExit,
+    });
 
   return {
     chainKey: resolvedChainKey,
     currentStage: stage,
     stage: resolvedStage,
     reason,
-    blockedInvariant: postTp1Locked && (stage === "TP0" || stage === "TP1") && resolvedStage === "TRAIL",
+    stageRelocked,
+    ledgerBlockedInvariant,
+    blockedInvariant: stageRelocked || ledgerBlockedInvariant,
     ledger,
+    ledgerValidation,
     transitionEvents: transition.transitionEvents,
     primaryTransitionEvent: transition.primaryTransitionEvent,
   };
@@ -561,6 +693,7 @@ module.exports = {
   resolveCanonicalExitStageFromCycleEvidence,
   resolveCanonicalExitWritePayload,
   buildExitQuantityContractLedger,
+  validateExitQuantityContractLedger,
   buildCanonicalExitChainKey,
   buildCanonicalExitEvent,
   classifyExitEventStage,
@@ -576,6 +709,7 @@ module.exports = {
     resolveCanonicalExitStageFromCycleEvidence,
     resolveCanonicalExitWritePayload,
     buildExitQuantityContractLedger,
+    validateExitQuantityContractLedger,
     buildCanonicalExitChainKey,
     buildCanonicalExitEvent,
     classifyExitEventStage,

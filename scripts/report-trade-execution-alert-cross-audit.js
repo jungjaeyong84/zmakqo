@@ -23,6 +23,10 @@ function upper(value) {
   return String(value || "").trim().toUpperCase() || null;
 }
 
+function trimOrNull(value) {
+  return String(value || "").trim() || null;
+}
+
 function readJsonl(filePath) {
   if (!fs.existsSync(filePath)) return [];
   return String(fs.readFileSync(filePath, "utf8") || "")
@@ -110,6 +114,14 @@ async function fetchRecentFillRows(db, sinceIso) {
 }
 
 function pickMatchingAlert(fill, alerts = []) {
+  const fillId = trimOrNull(fill && fill.fill_id);
+  if (fillId) {
+    const bySourceFillId = alerts.filter((alert) => trimOrNull(alert && alert.source_fill_id) === fillId);
+    if (bySourceFillId.length) {
+      bySourceFillId.sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")));
+      return bySourceFillId[0];
+    }
+  }
   const fillMs = Number(fill && fill.created_ms);
   if (!Number.isFinite(fillMs)) return null;
   let best = null;
@@ -145,6 +157,7 @@ function buildReport({ fills = [], alertAuditRows = [], telegramTradeRows = [], 
         event: fill.event,
         fill_created_at: fill.created_at,
         alert_ts: match.ts,
+        source_fill_id: match.source_fill_id || null,
         title: match.title,
       });
     } else {
@@ -163,6 +176,7 @@ function buildReport({ fills = [], alertAuditRows = [], telegramTradeRows = [], 
         ts: alert.ts,
         symbol: alert.symbol,
         event: alert.event,
+        source_fill_id: alert.source_fill_id || null,
         title: alert.title,
       });
     }
@@ -226,6 +240,7 @@ async function main() {
       ts: row.ts,
       symbol: upper(row.symbol),
       event: upper(row.event),
+      source_fill_id: trimOrNull(row.source_fill_id || row.sourceFillId || row.fill_id || row.fillId),
       title: row.title || null,
       body: row.body || null,
       source: "trade_execution_alert_audit",
@@ -258,6 +273,8 @@ async function main() {
   fs.writeFileSync(mdPath, buildMarkdown(report), "utf8");
   console.log(JSON.stringify({
     ok: true,
+    coverage_ready: report.coverage_ready,
+    audit_window_start_iso: report.audit_window_start_iso,
     fill_n: report.fill_n,
     matched_fill_n: report.matched_fill_n,
     missing_alert_fill_n: report.missing_alert_fill_n,
@@ -279,6 +296,7 @@ if (require.main === module) {
     __test: {
       classifyEvent,
       parseTelegramTradeAlertRows,
+      pickMatchingAlert,
       buildReport,
     },
   };

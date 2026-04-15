@@ -5,7 +5,7 @@ const { __test } = require("../../scripts/report-binance-canonical-exit-stage-qa
 
 function run() {
   assert.ok(__test, "__test export missing");
-  assert.strictEqual(__test.resolveWatchdogCanonicalStage("BETWEEN_TP0_TP1"), "TP1");
+  assert.strictEqual(__test.resolveWatchdogCanonicalStage("BETWEEN_TP0_TP1"), "TP0");
   assert.strictEqual(__test.resolveWatchdogCanonicalStage("TRAIL"), "TRAIL");
 
   const evidenceStage = __test.resolveCanonicalEvidenceStage({

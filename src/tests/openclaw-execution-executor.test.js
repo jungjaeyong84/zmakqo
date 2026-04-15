@@ -534,6 +534,145 @@ async function run() {
     OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
     OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
     OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_ALLOCATOR_REDUCE_SCALE: "0.4",
+    OPENCLAW_EXECUTOR_ALPHA_CONTEXT_HARD_MIN_REALIZED_N: "20",
+    OPENCLAW_EXECUTOR_ALPHA_CONTEXT_HARD_MAX_POSITIVE_RATE: "0.15",
+    OPENCLAW_EXECUTOR_ALPHA_CONTEXT_HARD_MAX_AVG_REALIZED_RET_NET: "-0.003",
+  }, async () => {
+    const { evaluateOpenClawExecutionDecision } = freshRequire("../services/openclawExecutionExecutor");
+    const res = await evaluateOpenClawExecutionDecision({
+      exchange: "BINANCEFUT",
+      symbol: "XRPUSDT",
+      intent: "ENTRY",
+      event: "ENTRY_LONG_REAL",
+      side: "BUY",
+      qtyPct: 0.5,
+      features: {
+        position_side: "LONG",
+        openclaw_market_regime_cohort: "TREND",
+      },
+      positionViews: [],
+      recentTimelineRows: [],
+      capitalAllocatorSnapshot: {
+        summary: {
+          alpha_penalty_context_rows: [
+            { market: "XRPUSDT", position_side: "LONG", regime_key: "TREND", severity: "HARD", realized_n: 3, positive_rate: 0, avg_realized_ret_net: -0.005 },
+          ],
+        },
+        by_market: [
+          { market: "XRPUSDT", recommended_action: "HOLD", allocation_score: 0.1, penalty_reasons: [] },
+        ],
+      },
+    });
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_REDUCE");
+    assert.ok(Math.abs(res.qtyPctFinal - 0.2) < 1e-9);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context_requested_severity, "HARD");
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context_effective_severity, "SOFT");
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context_hard_eligible, false);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context_gate_reason, "ALPHA_CONTEXT_HARD_DOWNGRADED_TO_SOFT");
+  });
+
+  await withEnv({
+    OPENCLAW_EXECUTOR_ENABLED: "1",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_ALLOCATOR_REDUCE_SCALE: "0.4",
+    OPENCLAW_EXECUTOR_ALPHA_CONTEXT_HARD_MIN_REALIZED_N: "20",
+    OPENCLAW_EXECUTOR_ALPHA_CONTEXT_HARD_MAX_POSITIVE_RATE: "0.15",
+    OPENCLAW_EXECUTOR_ALPHA_CONTEXT_HARD_MAX_AVG_REALIZED_RET_NET: "-0.003",
+  }, async () => {
+    const { evaluateOpenClawExecutionDecision } = freshRequire("../services/openclawExecutionExecutor");
+    const res = await evaluateOpenClawExecutionDecision({
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      intent: "ENTRY",
+      event: "ENTRY_SHORT_REAL",
+      side: "SELL",
+      qtyPct: 0.5,
+      features: {
+        position_side: "SHORT",
+        openclaw_market_regime_cohort: "TREND",
+      },
+      positionViews: [],
+      recentTimelineRows: [],
+      capitalAllocatorSnapshot: {
+        summary: {
+          alpha_penalty_context_rows: [
+            { market: "ETHUSDT", position_side: "SHORT", regime_key: "TREND", severity: "HARD", realized_n: 30, positive_rate: 0.05, avg_realized_ret_net: -0.005 },
+          ],
+        },
+        by_market: [
+          { market: "ETHUSDT", recommended_action: "HOLD", allocation_score: -0.1, penalty_reasons: [] },
+        ],
+      },
+    });
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_BLOCK");
+    assert.strictEqual(res.qtyPctFinal, 0);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context_requested_severity, "HARD");
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context_effective_severity, "HARD");
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context_hard_eligible, true);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context_gate_reason, "ALPHA_CONTEXT_HARD_CONFIRMED");
+  });
+
+  await withEnv({
+    OPENCLAW_EXECUTOR_ENABLED: "1",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_ALPHA_CONTEXT_EPOCH_RELEASE_ENABLED: "1",
+    OPENCLAW_EXECUTOR_ALPHA_CONTEXT_EPOCH_RELEASE_SCALE: "0.6",
+    OPENCLAW_EXECUTOR_ALPHA_CONTEXT_HARD_MIN_REALIZED_N: "20",
+    OPENCLAW_EXECUTOR_ALPHA_CONTEXT_HARD_MAX_POSITIVE_RATE: "0.15",
+    OPENCLAW_EXECUTOR_ALPHA_CONTEXT_HARD_MAX_AVG_REALIZED_RET_NET: "-0.003",
+  }, async () => {
+    const { evaluateOpenClawExecutionDecision } = freshRequire("../services/openclawExecutionExecutor");
+    const res = await evaluateOpenClawExecutionDecision({
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      intent: "ENTRY",
+      event: "ENTRY_SHORT_REAL",
+      side: "SELL",
+      qtyPct: 0.5,
+      features: {
+        position_side: "SHORT",
+        openclaw_market_regime_cohort: "TREND",
+      },
+      positionViews: [],
+      recentTimelineRows: [],
+      capitalAllocatorSnapshot: {
+        summary: {
+          learning_epoch_active: true,
+          alpha_penalty_context_rows: [
+            { market: "ETHUSDT", position_side: "SHORT", regime_key: "TREND", severity: "HARD", realized_n: 30, positive_rate: 0.05, avg_realized_ret_net: -0.005 },
+          ],
+        },
+        by_market: [
+          { market: "ETHUSDT", recommended_action: "HOLD", allocation_score: -0.1, penalty_reasons: [] },
+        ],
+      },
+    });
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_EPOCH_REDUCE");
+    assert.ok(Math.abs(res.qtyPctFinal - 0.3) < 1e-9);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_allocator_learning_epoch_active, true);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context_epoch_release_active, true);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context_requested_severity, "HARD");
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context_effective_severity, "HARD");
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context_hard_eligible, true);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context_gate_reason, "ALPHA_CONTEXT_HARD_CONFIRMED");
+  });
+
+  await withEnv({
+    OPENCLAW_EXECUTOR_ENABLED: "1",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
     OPENCLAW_EXECUTOR_ALLOCATOR_STALE_REDUCE_SCALE: "0.5",
   }, async () => {
     const { evaluateOpenClawExecutionDecision } = freshRequire("../services/openclawExecutionExecutor");
@@ -566,10 +705,14 @@ async function run() {
       },
     });
     assert.strictEqual(res.ok, true);
-    assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_STALE_REDUCE");
-    assert.ok(Math.abs(res.qtyPctFinal - 0.3) < 1e-9);
+    assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_REDUCE");
+    assert.ok(Math.abs(res.qtyPctFinal - 0.33) < 1e-9);
     assert.strictEqual(res.featuresPatch._openclaw_executor_allocator_snapshot_stale, true);
     assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context.severity, "HARD");
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context_requested_severity, "HARD");
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context_effective_severity, "SOFT");
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context_hard_eligible, false);
+    assert.strictEqual(res.featuresPatch._openclaw_executor_alpha_context_gate_reason, "ALPHA_CONTEXT_HARD_DOWNGRADED_TO_SOFT");
   });
 
   await withEnv({

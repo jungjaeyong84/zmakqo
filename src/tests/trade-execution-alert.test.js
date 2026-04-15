@@ -147,6 +147,7 @@ async function run() {
     externalSyncHintStage: "TRAIL_AFTER_TP1",
     externalSyncOrderType: "MARKET",
     externalSyncClosePosition: false,
+    replayReason: "TRADE_EXECUTION_ALERT_MISSING_FILL_REPLAY",
     exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.ok(externalSync, "external sync message should exist");
@@ -155,6 +156,7 @@ async function run() {
   assert.ok(externalSync.body.includes("동기화맥락: 트레일 종료 후 외부 동기화"), "external sync should explain prior stage context");
   assert.ok(externalSync.body.includes("동기화사유: EXTERNAL_FILL_RECONCILED"), "external sync should include reconciliation reason");
   assert.ok(externalSync.body.includes("동기화주문: MARKET / close_position=false"), "external sync should include order context");
+  assert.ok(externalSync.body.includes("재발송사유: TRADE_EXECUTION_ALERT_MISSING_FILL_REPLAY"), "replay reason should be explicit when present");
 
   const canonicalTrail = __test.buildMessage({
     exchange: "BINANCEFUT",
@@ -256,6 +258,15 @@ async function run() {
   assert.strictEqual(missingCanonicalRequirement.required, true);
   assert.strictEqual(missingCanonicalRequirement.satisfied, false);
   assert.strictEqual(missingCanonicalRequirement.reason, "MISSING_CANONICAL_EXIT_TRANSITION");
+
+  const rawOnlyExitMeta = __test.resolveEffectiveExitMeta({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_TP_P1_1.65P",
+    intent: "EXIT",
+  }, "EXIT_TP_P1_1.65P");
+  assert.strictEqual(rawOnlyExitMeta.overrideApplied, false);
+  assert.strictEqual(rawOnlyExitMeta.canonicalStage, null);
 
   const missingCanonicalExitAlert = __test.buildMessage({
     exchange: "BINANCEFUT",

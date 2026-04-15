@@ -44,6 +44,36 @@ function classifySignalReasonStage(reason) {
     };
   }
 
+  if (code === "MIN_ORDER_EXCEEDS_BUDGET") {
+    return {
+      step: null,
+      key: "BUDGET",
+      label: "예산/최소주문 가드",
+      text: "예산/최소주문 가드",
+      code,
+    };
+  }
+
+  if (code.startsWith("OPENCLAW_EXECUTOR_")) {
+    return {
+      step: null,
+      key: "EXECUTOR",
+      label: "OpenClaw 실행 가드",
+      text: "OpenClaw 실행 가드",
+      code,
+    };
+  }
+
+  if (code.startsWith("LIVE_POLICY_")) {
+    return {
+      step: null,
+      key: "LIVE_POLICY",
+      label: "라이브 운영 정책",
+      text: "라이브 운영 정책",
+      code,
+    };
+  }
+
   if (
     code.startsWith("DROP_ENTRY_QUALITY_") ||
     code === "DROP_LOW_SCORE" ||
@@ -198,6 +228,29 @@ function explainSignalReason(reason) {
     LINEAGE_SLO_FILL_SIGNAL_NULL_RATE: "체결과 신호 연결 누락 비율이 높아 진입을 보류했습니다.",
     LINEAGE_SLO_FILL_INTENT_NULL_RATE: "체결과 주문 의도 연결 누락 비율이 높아 진입을 보류했습니다.",
     LINEAGE_SLO_FAIL_CLOSED: "추적 무결성을 확신할 수 없어 fail-closed로 진입을 보류했습니다.",
+    MIN_ORDER_EXCEEDS_BUDGET: "현재 예산과 배율로는 거래소 최소주문 수량을 만족할 수 없어 진입을 보류했습니다.",
+    OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE: "자본 배분기에서 해당 시장을 격리 상태로 판단해 신규 진입을 막았습니다.",
+    OPENCLAW_EXECUTOR_ALLOCATOR_BLOCK: "자본 배분기에서 해당 시장을 차단 상태로 판단해 신규 진입을 막았습니다.",
+    OPENCLAW_EXECUTOR_ALLOCATOR_STALE_REDUCE: "자본 배분 스냅샷이 오래돼 신규 진입을 완전 차단하지 않고 보수적으로 감산했습니다.",
+    OPENCLAW_EXECUTOR_ALLOCATOR_REDUCE: "자본 배분 점수가 낮아 신규 진입 수량을 줄였습니다.",
+    OPENCLAW_EXECUTOR_ALLOCATOR_EXPLORE_SCALE: "탐색 모드 시장으로 분류되어 신규 진입 수량을 줄였습니다.",
+    OPENCLAW_EXECUTOR_ALLOCATOR_INCREASE: "자본 배분 점수가 높아 신규 진입 수량을 확대했습니다.",
+    OPENCLAW_EXECUTOR_ALPHA_CONTEXT_BLOCK: "알파 컨텍스트 패널티가 강하게 걸려 있어 현재 구간의 신규 진입을 막았습니다.",
+    OPENCLAW_EXECUTOR_ALPHA_CONTEXT_REDUCE: "알파 컨텍스트 패널티가 있어 신규 진입 수량을 줄였습니다.",
+    OPENCLAW_EXECUTOR_ALPHA_CONTEXT_STALE_REDUCE: "알파 컨텍스트 스냅샷이 오래돼 완전 차단 대신 보수적으로 감산했습니다.",
+    OPENCLAW_EXECUTOR_ALPHA_CONTEXT_EPOCH_REDUCE: "학습 epoch 예외로 완전 차단 대신 감산만 적용했습니다.",
+    OPENCLAW_EXECUTOR_ALPHA_CONTEXT_EPOCH_RELEASE: "학습 epoch 예외로 알파 컨텍스트 차단을 일시 해제했습니다.",
+    OPENCLAW_EXECUTOR_SAME_SIDE_CLUSTER_BLOCK: "같은 방향 포지션 군집 수가 기준을 넘어 신규 진입을 막았습니다.",
+    OPENCLAW_EXECUTOR_SAME_SIDE_CLUSTER_REDUCE: "같은 방향 포지션 군집이 커서 신규 진입 수량을 줄였습니다.",
+    OPENCLAW_EXECUTOR_CORRELATED_CLUSTER_BLOCK: "상관된 시장의 같은 방향 포지션 군집 수가 기준을 넘어 신규 진입을 막았습니다.",
+    OPENCLAW_EXECUTOR_CORRELATED_CLUSTER_REDUCE: "상관된 시장 군집 노출이 커서 신규 진입 수량을 줄였습니다.",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK: "같은 방향 총노출이 기준을 넘어 신규 진입을 막았습니다.",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE: "같은 방향 총노출이 높아 신규 진입 수량을 줄였습니다.",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK: "상관된 시장까지 포함한 총노출이 기준을 넘어 신규 진입을 막았습니다.",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE: "상관된 시장까지 포함한 총노출이 높아 신규 진입 수량을 줄였습니다.",
+    OPENCLAW_EXECUTOR_RECENT_REENTRY_BLOCK: "직전 청산 직후 재진입 금지 구간이라 신규 진입을 막았습니다.",
+    OPENCLAW_EXECUTOR_RECENT_REENTRY_REDUCE: "직전 청산 직후 완화 구간이라 신규 진입 수량을 줄였습니다.",
+    OPENCLAW_EXECUTOR_COHORT_REDUCE: "현재 cohort가 보수 운영 구간으로 분류되어 신규 진입 수량을 줄였습니다.",
   };
   if (direct[code]) return direct[code];
 

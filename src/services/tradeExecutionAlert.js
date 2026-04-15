@@ -3,9 +3,10 @@
 const fs = require("fs");
 const path = require("path");
 const { getSystemSettingsForProvider } = require("../storage/settings");
+const { prepareTradeAlertOutbox, markTradeAlertOutboxResult } = require("../storage/tradeAlertOutbox");
 const { sendAlert } = require("../utils/alerts");
 const { resolveEventMapping } = require("./signalStandard");
-const { resolveCanonicalAlertExitStage, classifyExitEventStage } = require("./positionStateMachine");
+const { resolveCanonicalAlertExitStage } = require("./positionStateMachine");
 const { canonicalExternalEntryEvent, resolveEntryTimingTier } = require("../utils/liveEntryTaxonomy");
 
 const channelCache = new Map();
@@ -241,13 +242,18 @@ function parseExitEventMeta(event) {
   return { token: "EXIT", label: "청산" };
 }
 
-function inferExitStageFromEvent(event) {
-  return classifyExitEventStage(event);
-}
-
 function isCanonicalStageExit(stage) {
   const normalized = String(stage || "").trim().toUpperCase();
   return normalized === "TP0" || normalized === "TP1" || normalized === "TRAIL";
+}
+
+function isCanonicalExitEvidenceEvent(event) {
+  const raw = String(event || "").trim().toUpperCase();
+  if (!raw) return false;
+  return raw.startsWith("EXIT_TP_P0")
+    || raw.startsWith("EXIT_TP_P1")
+    || raw.startsWith("EXIT_TP_C")
+    || raw.startsWith("EXIT_TRAIL");
 }
 
 function resolveRawEvidenceEvent(payload = {}, event = null) {
@@ -275,24 +281,47 @@ function resolveCanonicalTransitionEventList(payload = {}) {
     });
 }
 
+function normalizeResolvedCanonicalAlertStage(stage, {
+  explicitCanonicalStage = null,
+  canonicalTransitionEvents = [],
+  primaryTransitionEvent = null,
+} = {}) {
+  const normalized = String(stage || "").trim().toUpperCase() || null;
+  if (
+    normalized === "OTHER"
+    && !String(explicitCanonicalStage || "").trim()
+    && !String(primaryTransitionEvent || "").trim()
+    && (!Array.isArray(canonicalTransitionEvents) || canonicalTransitionEvents.length === 0)
+  ) {
+    return null;
+  }
+  return normalized;
+}
+
 function resolveCanonicalExitAlertRequirement(payload = {}, rawEvent = null) {
   const rawEvidenceEvent = resolveRawEvidenceEvent(payload, rawEvent || payload.event);
-  const rawStage = inferExitStageFromEvent(rawEvidenceEvent);
   const canonicalEvent = String(payload.canonicalExitEvent || payload.canonical_exit_event || "").trim().toUpperCase();
   const canonicalTransitionEvents = resolveCanonicalTransitionEventList(payload);
+  const explicitCanonicalStage = String(payload.canonicalExitStage || payload.canonical_exit_stage || "").trim().toUpperCase() || null;
+  const primaryTransitionEvent = payload.canonicalTransitionEvent || payload.canonical_primary_transition_event || null;
   const canonicalStage = resolveCanonicalAlertExitStage({
-    primaryTransitionEvent: payload.canonicalTransitionEvent || payload.canonical_primary_transition_event || null,
+    primaryTransitionEvent,
     transitionEvents: canonicalTransitionEvents,
-    fallbackStage: payload.canonicalExitStage || payload.canonical_exit_stage || inferExitStageFromEvent(canonicalEvent) || rawStage,
+    fallbackStage: explicitCanonicalStage,
   });
-  const effectiveStage = String(canonicalStage || rawStage || "").trim().toUpperCase() || null;
-  const required = isCanonicalStageExit(effectiveStage);
+  const effectiveStage = normalizeResolvedCanonicalAlertStage(canonicalStage, {
+    explicitCanonicalStage,
+    canonicalTransitionEvents,
+    primaryTransitionEvent,
+  }) || explicitCanonicalStage;
+  const required = isCanonicalStageExit(effectiveStage)
+    || isCanonicalExitEvidenceEvent(rawEvidenceEvent)
+    || isCanonicalExitEvidenceEvent(canonicalEvent);
   return {
     required,
     satisfied: !required || canonicalTransitionEvents.length > 0,
     reason: required && canonicalTransitionEvents.length === 0 ? "MISSING_CANONICAL_EXIT_TRANSITION" : null,
     rawEvidenceEvent,
-    rawStage,
     canonicalEvent: canonicalEvent || null,
     canonicalStage: effectiveStage,
     canonicalTransitionEvents,
@@ -309,30 +338,38 @@ function buildGenericExitMeta(stage) {
 function resolveEffectiveExitMeta(payload = {}, rawEvent) {
   const rawEvidenceEvent = resolveRawEvidenceEvent(payload, rawEvent);
   const rawMeta = parseExitEventMeta(rawEvidenceEvent);
-  const rawStage = inferExitStageFromEvent(rawEvidenceEvent);
-  const canonicalEvent = String(payload.canonicalExitEvent || payload.canonical_exit_event || rawEvent || "").trim().toUpperCase();
+  const canonicalEvent = String(payload.canonicalExitEvent || payload.canonical_exit_event || "").trim().toUpperCase();
   const canonicalEventMeta = canonicalEvent ? parseExitEventMeta(canonicalEvent) : null;
   const canonicalTransitionEvents = resolveCanonicalTransitionEventList(payload);
+  const explicitCanonicalStage = String(payload.canonicalExitStage || payload.canonical_exit_stage || "").trim().toUpperCase() || null;
+  const primaryTransitionEvent = payload.canonicalTransitionEvent || payload.canonical_primary_transition_event || null;
   const canonicalStage = resolveCanonicalAlertExitStage({
-    primaryTransitionEvent: payload.canonicalTransitionEvent || payload.canonical_primary_transition_event || null,
+    primaryTransitionEvent,
     transitionEvents: canonicalTransitionEvents,
-    fallbackStage: payload.canonicalExitStage || payload.canonical_exit_stage || inferExitStageFromEvent(canonicalEvent) || rawStage,
+    fallbackStage: explicitCanonicalStage,
   });
-  const overrideApplied = !!canonicalStage && (
-    canonicalStage !== rawStage
+  const effectiveCanonicalStage = normalizeResolvedCanonicalAlertStage(canonicalStage, {
+    explicitCanonicalStage,
+    canonicalTransitionEvents,
+    primaryTransitionEvent,
+  });
+  const rawToken = String(rawMeta && rawMeta.token || "").trim().toUpperCase() || null;
+  const canonicalToken = String(canonicalEventMeta && canonicalEventMeta.token || effectiveCanonicalStage || "").trim().toUpperCase() || null;
+  const overrideApplied = (
+    (!!canonicalToken && canonicalToken !== rawToken)
     || (!!canonicalEvent && canonicalEvent !== rawEvidenceEvent)
   );
   const meta = canonicalEventMeta
     ? canonicalEventMeta
-    : overrideApplied
-    ? (buildGenericExitMeta(canonicalStage) || rawMeta)
+    : (effectiveCanonicalStage && canonicalTransitionEvents.length > 0 && overrideApplied)
+    ? (buildGenericExitMeta(effectiveCanonicalStage) || rawMeta)
     : rawMeta;
   return {
     meta,
     rawMeta,
     canonicalEvent: canonicalEvent || null,
-    canonicalStage,
-    rawStage,
+    canonicalStage: effectiveCanonicalStage,
+    rawStage: rawToken,
     rawEvidenceEvent,
     overrideApplied,
     canonicalTransitionEvents,
@@ -547,6 +584,84 @@ function appendTradeExecutionAlertAudit(entry = {}) {
   }
 }
 
+function appendTradeExecutionAlertDecisionAudit({
+  type = "TRADE_EXECUTION_ALERT",
+  exchange = null,
+  payload = {},
+  intent = null,
+  executionMode = null,
+  channel = null,
+  title = null,
+  body = null,
+  ok = false,
+  skipped = false,
+  reason = null,
+  source = null,
+} = {}) {
+  appendTradeExecutionAlertAudit({
+    type,
+    exchange,
+    symbol: String(payload.symbol || "").toUpperCase() || null,
+    event: String(payload.event || "").trim().toUpperCase() || null,
+    intent,
+    execution_mode: executionMode,
+    channel,
+    title,
+    body,
+    ok,
+    skipped,
+    reason,
+    order_id: Number.isFinite(Number(payload.orderId ?? payload.order_id))
+      ? Number(payload.orderId ?? payload.order_id)
+      : null,
+    client_order_id: String(payload.clientOrderId || payload.client_order_id || "").trim() || null,
+    entry_event_id: String(payload.entryEventId || payload.entry_event_id || "").trim() || null,
+    source_fill_id: String(
+      payload.sourceFillId
+      || payload.source_fill_id
+      || payload.fillId
+      || payload.fill_id
+      || ""
+    ).trim() || null,
+    source,
+  });
+}
+
+function resolveTradeAlertSourceFillId(payload = {}) {
+  return String(
+    payload.sourceFillId
+    || payload.source_fill_id
+    || payload.fillId
+    || payload.fill_id
+    || ""
+  ).trim() || null;
+}
+
+function resolveTradeAlertReplayReason(payload = {}) {
+  return String(payload.replayReason || payload.replay_reason || "").trim() || null;
+}
+
+function resolveTradeAlertDedupeKey(payload = {}) {
+  return String(
+    payload.tradeAlertDedupeKey
+    || payload.trade_alert_dedupe_key
+    || payload.idempotencyKey
+    || payload.idempotency_key
+    || ""
+  ).trim() || null;
+}
+
+function shouldAllowTradeAlertResend(payload = {}) {
+  return payload.forceAlertReplay === true || payload.force_alert_replay === true;
+}
+
+function resolveAlertSendResultReason(result = null) {
+  if (result && String(result.reason || "").trim()) return String(result.reason).trim();
+  if (!result || !Array.isArray(result.results)) return null;
+  const failed = result.results.find((row) => row && String(row.error || "").trim());
+  return failed ? String(failed.error).trim() : null;
+}
+
 async function resolveAlertChannel(exchange) {
   const envChannel = String(process.env.TRADE_ALERT_CHANNEL || "").trim();
   if (envChannel) return envChannel;
@@ -634,6 +749,8 @@ function buildMessage(payload) {
     lines.push(...resolveMarketRegimeLines(payload, feat));
     const rulesTxt = formatExitRulesCompact(payload.exitRules || payload.exit_rules);
     if (rulesTxt) lines.push(`청산규칙: ${rulesTxt}`);
+    const replayReason = resolveTradeAlertReplayReason(payload);
+    if (replayReason) lines.push(`재발송사유: ${replayReason}`);
     lines.push(`이벤트: ${formatEventTag(event)}`);
     return { title, body: lines.join("\n") };
   }
@@ -675,6 +792,8 @@ function buildMessage(payload) {
     lines.push(...resolveMarketRegimeLines(payload, feat));
     const rulesTxt = formatExitRulesCompact(payload.exitRules || payload.exit_rules);
     if (rulesTxt) lines.push(`전략계약: ${rulesTxt}`);
+    const replayReason = resolveTradeAlertReplayReason(payload);
+    if (replayReason) lines.push(`재발송사유: ${replayReason}`);
     lines.push(`이벤트: ${formatEventTag(resolvedExitMeta.rawEvidenceEvent || event)}`);
     return { title, body: lines.join("\n") };
   }
@@ -746,28 +865,61 @@ function buildFailureMessage(payload) {
   if (rulesTxt) lines.push(`전략계약: ${rulesTxt}`);
   lines.push(`실패사유: ${reason}`);
   if (note) lines.push(`메모: ${note.slice(0, 240)}`);
+  const replayReason = resolveTradeAlertReplayReason(payload);
+  if (replayReason) lines.push(`재발송사유: ${replayReason}`);
   lines.push(`이벤트: ${formatEventTag(resolvedExitMeta.rawEvidenceEvent || event)}`);
   return { title, body: lines.join("\n") };
 }
 
 async function sendTradeExecutionAlert(payload = {}) {
+  const exchange = normalizeExchange(payload.exchange);
+  const mode = String(payload.executionMode || "").trim().toUpperCase();
+  const intent = resolveIntent(payload);
+
   if (!toBool(process.env.TRADE_ALERT_ENABLED, true)) {
+    appendTradeExecutionAlertDecisionAudit({
+      exchange,
+      payload,
+      intent,
+      executionMode: mode,
+      ok: false,
+      skipped: true,
+      reason: "DISABLED",
+      source: "tradeExecutionAlert.sendTradeExecutionAlert",
+    });
     return { ok: false, skipped: true, reason: "DISABLED" };
   }
 
-  const exchange = normalizeExchange(payload.exchange);
   if (!isAllowedExchange(exchange)) {
+    appendTradeExecutionAlertDecisionAudit({
+      exchange,
+      payload,
+      intent,
+      executionMode: mode,
+      ok: false,
+      skipped: true,
+      reason: "EXCHANGE_FILTERED",
+      source: "tradeExecutionAlert.sendTradeExecutionAlert",
+    });
     return { ok: false, skipped: true, reason: "EXCHANGE_FILTERED" };
   }
 
-  const mode = String(payload.executionMode || "").trim().toUpperCase();
   if (!toBool(process.env.TRADE_ALERT_INCLUDE_PAPER, false)) {
     if (mode !== "LIVE" && mode !== "LIVE_DRY_RUN") {
+      appendTradeExecutionAlertDecisionAudit({
+        exchange,
+        payload,
+        intent,
+        executionMode: mode,
+        ok: false,
+        skipped: true,
+        reason: "NON_LIVE_MODE",
+        source: "tradeExecutionAlert.sendTradeExecutionAlert",
+      });
       return { ok: false, skipped: true, reason: "NON_LIVE_MODE" };
     }
   }
 
-  const intent = resolveIntent(payload);
   const exchangeEvent = normalizeTpP1EventForExchange(String(payload.event || "").trim().toUpperCase(), exchange);
   const canonicalRequirement = intent === "EXIT"
     ? resolveCanonicalExitAlertRequirement({
@@ -792,54 +944,222 @@ async function sendTradeExecutionAlert(payload = {}) {
   }
 
   const msg = buildMessage(payload);
-  if (!msg) return { ok: false, skipped: true, reason: "UNSUPPORTED_EVENT" };
+  if (!msg) {
+    appendTradeExecutionAlertDecisionAudit({
+      exchange,
+      payload,
+      intent,
+      executionMode: mode,
+      ok: false,
+      skipped: true,
+      reason: "UNSUPPORTED_EVENT",
+      source: "tradeExecutionAlert.sendTradeExecutionAlert",
+    });
+    return { ok: false, skipped: true, reason: "UNSUPPORTED_EVENT" };
+  }
+
+  const sourceFillId = resolveTradeAlertSourceFillId(payload);
+  let outboxState = null;
+  try {
+    outboxState = await prepareTradeAlertOutbox({
+      type: "TRADE_EXECUTION_ALERT",
+      exchange,
+      symbol: payload.symbol,
+      event: payload.event,
+      title: msg.title,
+      body: msg.body,
+      payload,
+      sourceFillId,
+      dedupeKey: resolveTradeAlertDedupeKey(payload),
+      allowResend: shouldAllowTradeAlertResend(payload),
+      source: "tradeExecutionAlert.sendTradeExecutionAlert",
+    });
+  } catch (err) {
+    console.warn("[TRADE_EXEC_ALERT_OUTBOX_PREP_FAIL]", err && err.message ? err.message : String(err));
+  }
+  if (outboxState && outboxState.skipSend === true) {
+    appendTradeExecutionAlertDecisionAudit({
+      exchange,
+      payload,
+      intent,
+      executionMode: mode,
+      title: msg.title,
+      body: msg.body,
+      ok: true,
+      skipped: true,
+      reason: "OUTBOX_ALREADY_SENT",
+      source: "tradeExecutionAlert.sendTradeExecutionAlert",
+    });
+    return {
+      ok: true,
+      skipped: true,
+      reason: "OUTBOX_ALREADY_SENT",
+      outboxId: outboxState.outboxId,
+    };
+  }
 
   const rawChannel = await resolveAlertChannel(exchange);
-  if (!rawChannel) return { ok: false, skipped: true, reason: "NO_CHANNEL" };
+  if (!rawChannel) {
+    if (outboxState && outboxState.outboxId) {
+      await markTradeAlertOutboxResult({
+        outboxId: outboxState.outboxId,
+        ok: false,
+        skipped: true,
+        reason: "NO_CHANNEL",
+        title: msg.title,
+        body: msg.body,
+        source: "tradeExecutionAlert.sendTradeExecutionAlert",
+      }).catch(() => null);
+    }
+    appendTradeExecutionAlertDecisionAudit({
+      exchange,
+      payload,
+      intent,
+      executionMode: mode,
+      title: msg.title,
+      body: msg.body,
+      ok: false,
+      skipped: true,
+      reason: "NO_CHANNEL",
+      source: "tradeExecutionAlert.sendTradeExecutionAlert",
+    });
+    return { ok: false, skipped: true, reason: "NO_CHANNEL" };
+  }
 
   const telegramOnly = toBool(process.env.TRADE_ALERT_TELEGRAM_ONLY, true);
   const channel = telegramOnly ? filterTelegramChannels(rawChannel) : rawChannel;
-  if (!channel) return { ok: false, skipped: true, reason: "NO_TELEGRAM_CHANNEL" };
+  if (!channel) {
+    if (outboxState && outboxState.outboxId) {
+      await markTradeAlertOutboxResult({
+        outboxId: outboxState.outboxId,
+        ok: false,
+        skipped: true,
+        reason: "NO_TELEGRAM_CHANNEL",
+        title: msg.title,
+        body: msg.body,
+        source: "tradeExecutionAlert.sendTradeExecutionAlert",
+      }).catch(() => null);
+    }
+    appendTradeExecutionAlertDecisionAudit({
+      exchange,
+      payload,
+      intent,
+      executionMode: mode,
+      title: msg.title,
+      body: msg.body,
+      ok: false,
+      skipped: true,
+      reason: "NO_TELEGRAM_CHANNEL",
+      source: "tradeExecutionAlert.sendTradeExecutionAlert",
+    });
+    return { ok: false, skipped: true, reason: "NO_TELEGRAM_CHANNEL" };
+  }
 
-  const result = await sendAlert({
-    channel,
-    title: msg.title,
-    body: msg.body,
-    severity: "INFO",
-  });
-  appendTradeExecutionAlertAudit({
-    type: "TRADE_EXECUTION_ALERT",
+  let result = null;
+  try {
+    result = await sendAlert({
+      channel,
+      title: msg.title,
+      body: msg.body,
+      severity: "INFO",
+    });
+  } catch (err) {
+    if (outboxState && outboxState.outboxId) {
+      await markTradeAlertOutboxResult({
+        outboxId: outboxState.outboxId,
+        ok: false,
+        skipped: false,
+        reason: err && err.message ? err.message : String(err),
+        error: err && err.stack ? err.stack : (err && err.message ? err.message : String(err)),
+        channel,
+        title: msg.title,
+        body: msg.body,
+        source: "tradeExecutionAlert.sendTradeExecutionAlert",
+      }).catch(() => null);
+    }
+    throw err;
+  }
+  if (outboxState && outboxState.outboxId) {
+    await markTradeAlertOutboxResult({
+      outboxId: outboxState.outboxId,
+      ok: result && result.ok === true,
+      skipped: false,
+      reason: resolveAlertSendResultReason(result),
+      result,
+      channel,
+      title: msg.title,
+      body: msg.body,
+      source: "tradeExecutionAlert.sendTradeExecutionAlert",
+    }).catch(() => null);
+  }
+  appendTradeExecutionAlertDecisionAudit({
     exchange,
-    symbol: String(payload.symbol || "").toUpperCase() || null,
-    event: String(payload.event || "").trim().toUpperCase() || null,
-    intent: resolveIntent(payload),
-    execution_mode: mode,
+    payload,
+    intent,
+    executionMode: mode,
     channel,
     title: msg.title,
     body: msg.body,
     ok: result && result.ok === true,
     skipped: false,
+    reason: resolveAlertSendResultReason(result),
     source: "tradeExecutionAlert.sendTradeExecutionAlert",
   });
-  return result;
+  return outboxState && outboxState.outboxId
+    ? { ...(result || {}), outboxId: outboxState.outboxId }
+    : result;
 }
 
 async function sendTradeExecutionFailureAlert(payload = {}) {
+  const exchange = normalizeExchange(payload.exchange);
+  const mode = String(payload.executionMode || "").trim().toUpperCase();
+  const intent = resolveIntent(payload);
+
   if (!toBool(process.env.TRADE_FAILURE_ALERT_ENABLED, true)) {
+    appendTradeExecutionAlertDecisionAudit({
+      type: "TRADE_EXECUTION_FAILURE_ALERT",
+      exchange,
+      payload,
+      intent,
+      executionMode: mode,
+      ok: false,
+      skipped: true,
+      reason: "DISABLED",
+      source: "tradeExecutionAlert.sendTradeExecutionFailureAlert",
+    });
     return { ok: false, skipped: true, reason: "DISABLED" };
   }
 
-  const exchange = normalizeExchange(payload.exchange);
   if (!isAllowedFailureExchange(exchange)) {
+    appendTradeExecutionAlertDecisionAudit({
+      type: "TRADE_EXECUTION_FAILURE_ALERT",
+      exchange,
+      payload,
+      intent,
+      executionMode: mode,
+      ok: false,
+      skipped: true,
+      reason: "EXCHANGE_FILTERED",
+      source: "tradeExecutionAlert.sendTradeExecutionFailureAlert",
+    });
     return { ok: false, skipped: true, reason: "EXCHANGE_FILTERED" };
   }
 
-  const mode = String(payload.executionMode || "").trim().toUpperCase();
   if (mode !== "LIVE") {
+    appendTradeExecutionAlertDecisionAudit({
+      type: "TRADE_EXECUTION_FAILURE_ALERT",
+      exchange,
+      payload,
+      intent,
+      executionMode: mode,
+      ok: false,
+      skipped: true,
+      reason: "NON_LIVE_MODE",
+      source: "tradeExecutionAlert.sendTradeExecutionFailureAlert",
+    });
     return { ok: false, skipped: true, reason: "NON_LIVE_MODE" };
   }
 
-  const intent = resolveIntent(payload);
   const exchangeEvent = normalizeTpP1EventForExchange(String(payload.event || "").trim().toUpperCase(), exchange);
   const canonicalRequirement = intent === "EXIT"
     ? resolveCanonicalExitAlertRequirement({
@@ -864,36 +1184,175 @@ async function sendTradeExecutionFailureAlert(payload = {}) {
   }
 
   const msg = buildFailureMessage(payload);
-  if (!msg) return { ok: false, skipped: true, reason: "UNSUPPORTED_EVENT" };
+  if (!msg) {
+    appendTradeExecutionAlertDecisionAudit({
+      type: "TRADE_EXECUTION_FAILURE_ALERT",
+      exchange,
+      payload,
+      intent,
+      executionMode: mode,
+      ok: false,
+      skipped: true,
+      reason: "UNSUPPORTED_EVENT",
+      source: "tradeExecutionAlert.sendTradeExecutionFailureAlert",
+    });
+    return { ok: false, skipped: true, reason: "UNSUPPORTED_EVENT" };
+  }
+
+  const sourceFillId = resolveTradeAlertSourceFillId(payload);
+  let outboxState = null;
+  try {
+    outboxState = await prepareTradeAlertOutbox({
+      type: "TRADE_EXECUTION_FAILURE_ALERT",
+      exchange,
+      symbol: payload.symbol,
+      event: payload.event,
+      title: msg.title,
+      body: msg.body,
+      payload,
+      sourceFillId,
+      dedupeKey: resolveTradeAlertDedupeKey(payload),
+      allowResend: shouldAllowTradeAlertResend(payload),
+      source: "tradeExecutionAlert.sendTradeExecutionFailureAlert",
+    });
+  } catch (err) {
+    console.warn("[TRADE_EXEC_FAIL_ALERT_OUTBOX_PREP_FAIL]", err && err.message ? err.message : String(err));
+  }
+  if (outboxState && outboxState.skipSend === true) {
+    appendTradeExecutionAlertDecisionAudit({
+      type: "TRADE_EXECUTION_FAILURE_ALERT",
+      exchange,
+      payload,
+      intent,
+      executionMode: mode,
+      title: msg.title,
+      body: msg.body,
+      ok: true,
+      skipped: true,
+      reason: "OUTBOX_ALREADY_SENT",
+      source: "tradeExecutionAlert.sendTradeExecutionFailureAlert",
+    });
+    return {
+      ok: true,
+      skipped: true,
+      reason: "OUTBOX_ALREADY_SENT",
+      outboxId: outboxState.outboxId,
+    };
+  }
 
   const rawChannel = await resolveFailureAlertChannel(exchange);
-  if (!rawChannel) return { ok: false, skipped: true, reason: "NO_CHANNEL" };
+  if (!rawChannel) {
+    if (outboxState && outboxState.outboxId) {
+      await markTradeAlertOutboxResult({
+        outboxId: outboxState.outboxId,
+        ok: false,
+        skipped: true,
+        reason: "NO_CHANNEL",
+        title: msg.title,
+        body: msg.body,
+        source: "tradeExecutionAlert.sendTradeExecutionFailureAlert",
+      }).catch(() => null);
+    }
+    appendTradeExecutionAlertDecisionAudit({
+      type: "TRADE_EXECUTION_FAILURE_ALERT",
+      exchange,
+      payload,
+      intent,
+      executionMode: mode,
+      title: msg.title,
+      body: msg.body,
+      ok: false,
+      skipped: true,
+      reason: "NO_CHANNEL",
+      source: "tradeExecutionAlert.sendTradeExecutionFailureAlert",
+    });
+    return { ok: false, skipped: true, reason: "NO_CHANNEL" };
+  }
 
   const telegramOnly = toBool(process.env.TRADE_FAILURE_ALERT_TELEGRAM_ONLY, true);
   const channel = telegramOnly ? filterTelegramChannels(rawChannel) : rawChannel;
-  if (!channel) return { ok: false, skipped: true, reason: "NO_TELEGRAM_CHANNEL" };
+  if (!channel) {
+    if (outboxState && outboxState.outboxId) {
+      await markTradeAlertOutboxResult({
+        outboxId: outboxState.outboxId,
+        ok: false,
+        skipped: true,
+        reason: "NO_TELEGRAM_CHANNEL",
+        title: msg.title,
+        body: msg.body,
+        source: "tradeExecutionAlert.sendTradeExecutionFailureAlert",
+      }).catch(() => null);
+    }
+    appendTradeExecutionAlertDecisionAudit({
+      type: "TRADE_EXECUTION_FAILURE_ALERT",
+      exchange,
+      payload,
+      intent,
+      executionMode: mode,
+      title: msg.title,
+      body: msg.body,
+      ok: false,
+      skipped: true,
+      reason: "NO_TELEGRAM_CHANNEL",
+      source: "tradeExecutionAlert.sendTradeExecutionFailureAlert",
+    });
+    return { ok: false, skipped: true, reason: "NO_TELEGRAM_CHANNEL" };
+  }
 
-  const result = await sendAlert({
-    channel,
-    title: msg.title,
-    body: msg.body,
-    severity: "WARN",
-  });
-  appendTradeExecutionAlertAudit({
+  let result = null;
+  try {
+    result = await sendAlert({
+      channel,
+      title: msg.title,
+      body: msg.body,
+      severity: "WARN",
+    });
+  } catch (err) {
+    if (outboxState && outboxState.outboxId) {
+      await markTradeAlertOutboxResult({
+        outboxId: outboxState.outboxId,
+        ok: false,
+        skipped: false,
+        reason: err && err.message ? err.message : String(err),
+        error: err && err.stack ? err.stack : (err && err.message ? err.message : String(err)),
+        channel,
+        title: msg.title,
+        body: msg.body,
+        source: "tradeExecutionAlert.sendTradeExecutionFailureAlert",
+      }).catch(() => null);
+    }
+    throw err;
+  }
+  if (outboxState && outboxState.outboxId) {
+    await markTradeAlertOutboxResult({
+      outboxId: outboxState.outboxId,
+      ok: result && result.ok === true,
+      skipped: false,
+      reason: resolveAlertSendResultReason(result),
+      result,
+      channel,
+      title: msg.title,
+      body: msg.body,
+      source: "tradeExecutionAlert.sendTradeExecutionFailureAlert",
+    }).catch(() => null);
+  }
+  appendTradeExecutionAlertDecisionAudit({
     type: "TRADE_EXECUTION_FAILURE_ALERT",
     exchange,
-    symbol: String(payload.symbol || "").toUpperCase() || null,
-    event: String(payload.event || "").trim().toUpperCase() || null,
+    payload,
     intent,
-    execution_mode: mode,
+    executionMode: mode,
     channel,
     title: msg.title,
     body: msg.body,
     ok: result && result.ok === true,
     skipped: false,
+    reason: resolveAlertSendResultReason(result),
     source: "tradeExecutionAlert.sendTradeExecutionFailureAlert",
   });
-  return result;
+  return outboxState && outboxState.outboxId
+    ? { ...(result || {}), outboxId: outboxState.outboxId }
+    : result;
 }
 
 module.exports = {
@@ -909,5 +1368,7 @@ module.exports = {
     resolveDirection,
     resolveExternalSyncContextLines,
     appendTradeExecutionAlertAudit,
+    resolveTradeAlertSourceFillId,
+    resolveAlertSendResultReason,
   },
 };

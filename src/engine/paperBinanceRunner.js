@@ -216,7 +216,7 @@ function buildCanonicalExitAlertPayload({
     fullExit,
   });
   if (!decision || !decision.stage || decision.stage === "OTHER" || decision.stage === "OTHER_EXIT") return {};
-  const ledger = buildExitQuantityContractLedger({
+  const ledger = decision.ledger || buildExitQuantityContractLedger({
     positionSnapshot: {
       qty_base: Number(pos.qty_base),
       entry_qty_base: pos.entry_qty_base ?? meta.entry_qty_base ?? meta.entry_qty_abs ?? null,
@@ -231,7 +231,12 @@ function buildCanonicalExitAlertPayload({
     canonicalTransitionEvents: Array.isArray(decision.transitionEvents) ? decision.transitionEvents : [],
     canonicalExitReason: decision.reason || null,
     canonicalExitChainKey: decision.chainKey || null,
+    canonicalExitStageRelocked: decision.stageRelocked === true,
     canonicalExitBlockedInvariant: decision.blockedInvariant === true,
+    canonicalExitLedgerBlockedInvariant: decision.ledgerBlockedInvariant === true,
+    canonicalExitLedgerIssueCodes: Array.isArray(decision.ledgerValidation && decision.ledgerValidation.issues)
+      ? decision.ledgerValidation.issues.map((issue) => String(issue && issue.code || "").trim().toUpperCase()).filter(Boolean)
+      : [],
     canonicalExitLedger: ledger,
   };
 }
@@ -252,6 +257,12 @@ function buildInternalFillCanonicalExtra({
     canonical_primary_transition_event: canonical.canonicalTransitionEvent || null,
     canonical_transition_events: Array.isArray(canonical.canonicalTransitionEvents)
       ? canonical.canonicalTransitionEvents
+      : [],
+    canonical_exit_stage_relocked: canonical.canonicalExitStageRelocked === true,
+    canonical_exit_blocked_invariant: canonical.canonicalExitBlockedInvariant === true,
+    canonical_exit_ledger_blocked_invariant: canonical.canonicalExitLedgerBlockedInvariant === true,
+    canonical_exit_ledger_issue_codes: Array.isArray(canonical.canonicalExitLedgerIssueCodes)
+      ? canonical.canonicalExitLedgerIssueCodes
       : [],
     contract_entry_qty_abs: Number.isFinite(Number(contract.contractEntryQtyAbs)) ? Number(contract.contractEntryQtyAbs) : null,
     contract_tp0_allowed_abs: Number.isFinite(Number(contract.contractTp0AllowedAbs)) ? Number(contract.contractTp0AllowedAbs) : null,
@@ -2291,47 +2302,30 @@ async function repairActivePositionExitRuntimeState({
 
   const fallbackSide = String(positionSide || "").toUpperCase() === "SHORT" ? "SELL" : "BUY";
   if (liveCfg && liveCfg.apiKey && liveCfg.apiSecret && Number.isFinite(Number(entryPrice)) && Number(entryPrice) > 0) {
-    if (allowNativeProtectionWrite === true) {
-      try {
-        const nativeProtection = await refreshBinanceNativeProtectionWithRetry({
-          liveCfg,
-          exchange,
-          symbol,
-          fallbackSide,
-          fallbackEntryPrice: Number(entryPrice),
-          fallbackLeverage: Number.isFinite(Number(leverage)) && Number(leverage) > 0 ? Number(leverage) : FUTURES_BASE_LEVERAGE,
-          exitRulesOverride: adjustment.appliedExitRules,
-          posMeta: nextMeta,
-        });
-        const nativePatch = buildNativeProtectionMetaPatch({
-          nativeProtection,
-          intent: "ENTRY",
-          execBarCloseMs,
-        });
-        if (nativePatch) nextMeta = mergeMeta(nextMeta, nativePatch);
-      } catch (_) {}
-    } else {
-      try {
-        await requestBinanceNativeProtectionRefresh({
-          exchange,
-          symbol,
-          fallbackSide,
-          fallbackEntryPrice: Number(entryPrice),
-          fallbackLeverage: Number.isFinite(Number(leverage)) && Number(leverage) > 0 ? Number(leverage) : FUTURES_BASE_LEVERAGE,
-          exitRulesOverride: adjustment.appliedExitRules || null,
-          posMeta: nextMeta,
-          source: "ACTIVE_POSITION_EXIT_RUNTIME_REPAIR",
-          reason: "NON_AUTHORITY_LAYER_REQUEST",
-          dispatchReason: `ACTIVE_POSITION_EXIT_RUNTIME_REPAIR_NATIVE_STOP_REFRESH_${String(exchange || "").toUpperCase()}_${String(symbol || "").toUpperCase()}`,
-        });
-        nextMeta = mergeMeta(nextMeta, {
-          native_protection_refresh_status: "REPAIR_REQUESTED_NON_AUTHORITY_LAYER",
-          native_protection_refresh_reason: "NON_AUTHORITY_LAYER_REQUEST",
-          native_protection_refresh_at_ms: Date.now(),
-          native_protection_refresh_requested_at_ms: Date.now(),
-        });
-      } catch (_) {}
-    }
+    try {
+      await requestBinanceNativeProtectionRefresh({
+        exchange,
+        symbol,
+        fallbackSide,
+        fallbackEntryPrice: Number(entryPrice),
+        fallbackLeverage: Number.isFinite(Number(leverage)) && Number(leverage) > 0 ? Number(leverage) : FUTURES_BASE_LEVERAGE,
+        exitRulesOverride: adjustment.appliedExitRules || null,
+        posMeta: nextMeta,
+        source: "ACTIVE_POSITION_EXIT_RUNTIME_REPAIR",
+        reason: allowNativeProtectionWrite === true
+          ? "NON_AUTHORITY_LAYER_WRITE_DOWNGRADED_TO_REPAIR_REQUEST"
+          : "NON_AUTHORITY_LAYER_REQUEST",
+        dispatchReason: `ACTIVE_POSITION_EXIT_RUNTIME_REPAIR_NATIVE_STOP_REFRESH_${String(exchange || "").toUpperCase()}_${String(symbol || "").toUpperCase()}`,
+      });
+      nextMeta = mergeMeta(nextMeta, {
+        native_protection_refresh_status: "REPAIR_REQUESTED_NON_AUTHORITY_LAYER",
+        native_protection_refresh_reason: allowNativeProtectionWrite === true
+          ? "NON_AUTHORITY_LAYER_WRITE_DOWNGRADED_TO_REPAIR_REQUEST"
+          : "NON_AUTHORITY_LAYER_REQUEST",
+        native_protection_refresh_at_ms: Date.now(),
+        native_protection_refresh_requested_at_ms: Date.now(),
+      });
+    } catch (_) {}
   }
   return nextMeta;
 }
@@ -9067,6 +9061,25 @@ function notifyTradeExitFailureAlert(payload = {}) {
   });
 }
 
+async function dispatchTradeExecutionAlert(payload = {}) {
+  try {
+    const result = await sendTradeExecutionAlert(payload);
+    if (result && result.skipped === true) {
+      console.warn(
+        `[TRADE_EXEC_ALERT_SKIP] sym=${payload.symbol || "-"} ev=${payload.event || "-"} reason=${result.reason || "UNKNOWN"}`
+      );
+    } else if (result && result.ok !== true) {
+      console.warn(
+        `[TRADE_EXEC_ALERT_UNCONFIRMED] sym=${payload.symbol || "-"} ev=${payload.event || "-"} reason=${result.reason || "UNKNOWN"}`
+      );
+    }
+    return result;
+  } catch (e) {
+    console.warn("[TRADE_EXEC_ALERT_FAIL]", e && e.message ? e.message : String(e));
+    return { ok: false, skipped: false, reason: e && e.message ? e.message : String(e) };
+  }
+}
+
 async function refreshBinanceNativeProtectionWithRetry({
   liveCfg,
   exchange,
@@ -9076,7 +9089,18 @@ async function refreshBinanceNativeProtectionWithRetry({
   fallbackLeverage,
   exitRulesOverride,
   posMeta,
+  writerSource = null,
 } = {}) {
+  if (!isAuthorizedBinanceNativeStopWriter(writerSource)) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: "NATIVE_STOP_WRITE_NON_AUTHORITY_LAYER",
+      writer_source: String(writerSource || "UNKNOWN").trim().toUpperCase() || "UNKNOWN",
+      attempts: 0,
+      max_attempts: 0,
+    };
+  }
   const lease = await acquireBinanceNativeRefreshLease({ exchange, symbol });
   if (!lease.acquired) {
     return {
@@ -9140,6 +9164,10 @@ async function refreshBinanceNativeProtectionWithRetry({
   }
 }
 
+function isAuthorizedBinanceNativeStopWriter(writerSource = null) {
+  return String(writerSource || "").trim().toUpperCase() === "BINANCE_TICK_EXIT";
+}
+
 function resolveNativeProtectionStageState(posMeta = null) {
   const meta = (posMeta && typeof posMeta === "object") ? posMeta : {};
   const tp0Done = meta.tp_p0_done === true;
@@ -9189,6 +9217,7 @@ async function requestBinanceNativeProtectionRefresh({
   source = "UNKNOWN_SOURCE",
   reason = "NON_AUTHORITY_LAYER_REQUEST",
   dispatchReason = null,
+  dispatchExitWorker = true,
 } = {}) {
   const exchangeUpper = String(exchange || "").trim().toUpperCase() || "UNKNOWN";
   const symbolUpper = String(symbol || "").trim().toUpperCase() || "UNKNOWN";
@@ -9210,18 +9239,25 @@ async function requestBinanceNativeProtectionRefresh({
       pos_meta_entry_event_id: posMeta && posMeta.entry_event_id ? posMeta.entry_event_id : null,
     },
   });
-  const triggerResult = await triggerExitWorkerRun({
-    reason: String(
-      dispatchReason ||
-      `${sourceUpper}_NATIVE_STOP_REFRESH_${exchangeUpper}_${symbolUpper}`
-    ).trim(),
-    dispatchOnly: true,
-  }).catch((error) => ({
+  let triggerResult = {
     ok: false,
     skipped: true,
-    reason: "EXIT_WORKER_TRIGGER_FETCH_FAIL",
-    error: error && error.message ? error.message : String(error),
-  }));
+    reason: "EXIT_WORKER_TRIGGER_DISABLED",
+  };
+  if (dispatchExitWorker === true) {
+    triggerResult = await triggerExitWorkerRun({
+      reason: String(
+        dispatchReason ||
+        `${sourceUpper}_NATIVE_STOP_REFRESH_${exchangeUpper}_${symbolUpper}`
+      ).trim(),
+      dispatchOnly: true,
+    }).catch((error) => ({
+      ok: false,
+      skipped: true,
+      reason: "EXIT_WORKER_TRIGGER_FETCH_FAIL",
+      error: error && error.message ? error.message : String(error),
+    }));
+  }
   return {
     ok: false,
     skipped: true,
@@ -11748,7 +11784,7 @@ async function runPaperBinanceForBar({
       }
     }
     if (!shouldSuppressInternalLiveExitFillAlert({ exchange, executionMode, intent })) {
-      sendTradeExecutionAlert({
+      await dispatchTradeExecutionAlert({
         exchange,
         symbol,
         event: it.event,
@@ -11772,8 +11808,7 @@ async function runPaperBinanceForBar({
         ...(exitContractAlertPayload || {}),
         features: it.features_json || {},
         runId,
-      }).catch((e) => {
-        console.warn("[TRADE_EXEC_ALERT_FAIL]", e && e.message ? e.message : String(e));
+        sourceFillId: fillWrite && fillWrite.fill_id ? fillWrite.fill_id : null,
       });
     }
 
@@ -14550,7 +14585,7 @@ async function runPaperFuturesForBar({
       }
     }
     if (!shouldSuppressInternalLiveExitFillAlert({ exchange, executionMode, intent })) {
-      sendTradeExecutionAlert({
+      await dispatchTradeExecutionAlert({
         exchange,
         symbol,
         event: it.event,
@@ -14574,8 +14609,7 @@ async function runPaperFuturesForBar({
         ...(exitContractAlertPayload || {}),
         features: it.features_json || {},
         runId,
-      }).catch((e) => {
-        console.warn("[TRADE_EXEC_ALERT_FAIL]", e && e.message ? e.message : String(e));
+        sourceFillId: fillWrite && fillWrite.fill_id ? fillWrite.fill_id : null,
       });
     }
 
@@ -16074,7 +16108,6 @@ async function runPaperFuturesForBar({
         });
         continue;
       }
-      qtyFraction = Number(policyEval.qtyPctFinal);
     }
 
     if (intentIsEntry && immediateCfg.enabled && (isRealEvent || isPreRealEvent || isCoreEvent || isEarlyEvent)) {
@@ -16626,6 +16659,7 @@ module.exports = {
     buildBinanceNativeRefreshLeaseDocPath,
     shouldCleanupExternalFlatOrders,
     collectCriticalExitRuleViolations,
+    isAuthorizedBinanceNativeStopWriter,
     resolveNativeProtectionStageState,
     resolveNativeProtectionPositionMeta,
     buildLiveNativeProtectionRefreshArgs,
