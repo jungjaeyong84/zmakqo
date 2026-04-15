@@ -2,9 +2,11 @@
 
 const { evaluateOpenClawExecutionDecision } = require("./openclawExecutionExecutor");
 const { evaluateLiveEntryPolicy } = require("../utils/liveExecutionPolicy");
-const { evaluateEntryBudgetGuard } = require("../utils/entryBudgetGuard");
+const {
+  evaluateEntryBudgetGuard,
+  resolveEntryBudgetGuardFeasibleBand,
+} = require("../utils/entryBudgetGuard");
 const ENTRY_BUDGET_GUARD_MIN_QTY_FLOOR_DEFAULT_MARKETS = Object.freeze(["*"]);
-const ENTRY_BUDGET_GUARD_FULL_ONLY_THRESHOLD_DEFAULT = 0.8;
 const EPSILON = 1e-9;
 
 function upper(value) {
@@ -44,43 +46,6 @@ function isEntryBudgetGuardMinQtyFloorEnabled(symbol) {
   );
   if (allowlist.includes("*")) return true;
   return allowlist.includes(upper(symbol));
-}
-
-function resolveEntryBudgetGuardFullOnlyThreshold() {
-  const threshold = toNum(process.env.ENTRY_BUDGET_GUARD_FULL_ONLY_THRESHOLD);
-  if (Number.isFinite(threshold) && threshold > 0 && threshold <= 1) return threshold;
-  return ENTRY_BUDGET_GUARD_FULL_ONLY_THRESHOLD_DEFAULT;
-}
-
-function resolveEntryBudgetGuardFeasibleBand(entryBudgetGuard = null) {
-  const requiredQtyPct = toNum(entryBudgetGuard && entryBudgetGuard.requiredQtyPct);
-  if (!Number.isFinite(requiredQtyPct) || requiredQtyPct <= 0) {
-    return {
-      band: null,
-      fullOnly: false,
-      minTradableQtyPct: null,
-    };
-  }
-  if (requiredQtyPct > 1 + EPSILON) {
-    return {
-      band: "NOT_FEASIBLE",
-      fullOnly: false,
-      minTradableQtyPct: requiredQtyPct,
-    };
-  }
-  const fullOnlyThreshold = resolveEntryBudgetGuardFullOnlyThreshold();
-  if (requiredQtyPct + EPSILON >= fullOnlyThreshold) {
-    return {
-      band: "FULL_ONLY",
-      fullOnly: true,
-      minTradableQtyPct: requiredQtyPct,
-    };
-  }
-  return {
-    band: "REDUCED_FEASIBLE",
-    fullOnly: false,
-    minTradableQtyPct: requiredQtyPct,
-  };
 }
 
 function buildEntryBudgetGuardResultAtQty(entryBudgetGuard, qtyPct) {
@@ -278,6 +243,7 @@ async function evaluateOpenClawExecutionAuthority({
   event = null,
   side = null,
   qtyPct = null,
+  requestedQtyPct = null,
   features = null,
   stage = "UNKNOWN",
   applyScale = true,
@@ -291,7 +257,12 @@ async function evaluateOpenClawExecutionAuthority({
   failOpenOnExecutorError = true,
   entryBudgetGuardOverride = null,
 } = {}) {
-  const qtyRequested = toNum(qtyPct);
+  const qtyRequestedOverride = toNum(requestedQtyPct);
+  const qtyRequested = (
+    Number.isFinite(qtyRequestedOverride) && qtyRequestedOverride > 0
+      ? qtyRequestedOverride
+      : toNum(qtyPct)
+  );
   const baseFeatures = (features && typeof features === "object") ? { ...features } : {};
 
   let openclawEval;

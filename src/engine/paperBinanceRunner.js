@@ -31,6 +31,10 @@ const { queryBars } = require("../storage/barsSnapshots");
 const { recordSignalDrops } = require("../storage/signalDrops");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { getExchangeSettingsForProvider, getRiskBudgetForProvider } = require("../utils/exchangeSettings");
+const {
+  evaluateEntryBudgetGuard,
+  resolveEntryBudgetGuardFeasibleBand,
+} = require("../utils/entryBudgetGuard");
 const { getFirestore } = require("../storage/firestore");
 const { tfToMs, normalizeTf, defaultExecTfFromEnv } = require("../utils/marketConfig");
 const { normalizeEvalExchange, evalLatestId, matchesEvalTf } = require("../utils/evalDoc");
@@ -454,6 +458,7 @@ async function applyOpenClawExecutorDecision({
   event,
   side,
   qtyPct,
+  requestedQtyPct = null,
   features = null,
   stage = "RUNNER_SIGNAL",
   applyScale = true,
@@ -466,6 +471,9 @@ async function applyOpenClawExecutorDecision({
   intentId = null,
 } = {}) {
   const baseQty = Number.isFinite(Number(qtyPct)) ? Number(qtyPct) : 0;
+  const authorityRequestedQty = Number.isFinite(Number(requestedQtyPct)) && Number(requestedQtyPct) > 0
+    ? Number(requestedQtyPct)
+    : baseQty;
   const baseFeatures = (features && typeof features === "object") ? { ...features } : {};
   try {
     const result = await evaluateOpenClawExecutionAuthority({
@@ -475,6 +483,7 @@ async function applyOpenClawExecutorDecision({
       event,
       side,
       qtyPct: baseQty,
+      requestedQtyPct: authorityRequestedQty,
       features: baseFeatures,
       stage,
       applyScale,
@@ -511,7 +520,7 @@ async function applyOpenClawExecutorDecision({
       signalId,
       intentId,
       source: "PAPER_BINANCE_RUNNER",
-      requestedQtyPct: baseQty,
+      requestedQtyPct: authorityRequestedQty,
       finalQtyPct: normalizedResult.qtyPctFinal,
       scaleApplied: baseQty > 0 ? (normalizedResult.qtyPctFinal / baseQty) : null,
       reason: normalizedResult.reason,
@@ -559,7 +568,7 @@ async function applyOpenClawExecutorDecision({
       signalId,
       intentId,
       source: "PAPER_BINANCE_RUNNER",
-      requestedQtyPct: baseQty,
+      requestedQtyPct: authorityRequestedQty,
       finalQtyPct: baseQty,
       scaleApplied: 1,
       reason: failOpenResult.reason,
@@ -10658,6 +10667,87 @@ function normalizeQtyFraction(raw) {
   return n; // treated as "exceed" when budget is enabled
 }
 
+async function applyEntryBudgetSignalFloor({
+  exchange = null,
+  symbol = null,
+  intent = null,
+  qtyFraction = null,
+  maxQtyPct = null,
+  features = null,
+  nowMs = Date.now(),
+  stage = "UNKNOWN",
+  entryBudgetGuardOverride = null,
+} = {}) {
+  const baseQtyPct = normalizeQtyFraction(qtyFraction);
+  const maxAllowedQtyPct = Number.isFinite(Number(maxQtyPct)) && Number(maxQtyPct) > 0
+    ? Math.min(1, Number(maxQtyPct))
+    : 1;
+  const enabled = String(process.env.ENTRY_BUDGET_SIGNAL_FLOOR_ENABLED || "1").trim() !== "0";
+  const baseFeatures = (features && typeof features === "object") ? { ...features } : {};
+  const intentUpper = String(intent || "").trim().toUpperCase();
+  const stageUpper = String(stage || "").trim().toUpperCase() || "UNKNOWN";
+
+  if (!enabled || !(intentUpper === "ENTRY" || intentUpper === "ADD") || !Number.isFinite(baseQtyPct) || baseQtyPct <= 0) {
+    return {
+      qtyPct: baseQtyPct,
+      requestedQtyPct: baseQtyPct,
+      applied: false,
+      entryBudgetGuard: null,
+      featuresPatch: baseFeatures,
+    };
+  }
+
+  const entryBudgetGuard = entryBudgetGuardOverride || await evaluateEntryBudgetGuard({
+    exchange,
+    symbol,
+    intent,
+    qtyPct: baseQtyPct,
+    nowMs,
+  }).catch(() => null);
+  const feasibleBand = resolveEntryBudgetGuardFeasibleBand(entryBudgetGuard);
+  const requiredQtyPct = normalizeQtyFraction(feasibleBand && feasibleBand.minTradableQtyPct);
+  const canApply = (
+    entryBudgetGuard &&
+    entryBudgetGuard.applicable === true &&
+    entryBudgetGuard.ok !== true &&
+    String(entryBudgetGuard.reason || "").trim().toUpperCase() === "MIN_ORDER_EXCEEDS_BUDGET" &&
+    Number.isFinite(requiredQtyPct) &&
+    requiredQtyPct > baseQtyPct + 1e-9 &&
+    requiredQtyPct <= maxAllowedQtyPct + 1e-9
+  );
+  const nextQtyPct = canApply ? requiredQtyPct : baseQtyPct;
+  const featuresPatch = {
+    ...baseFeatures,
+    _entry_budget_signal_floor_enabled: true,
+    _entry_budget_signal_floor_stage: stageUpper,
+    _entry_budget_signal_floor_prev_qty_pct: baseQtyPct,
+    _entry_budget_signal_floor_qty_pct: nextQtyPct,
+    _entry_budget_signal_floor_max_qty_pct: maxAllowedQtyPct,
+    _entry_budget_signal_floor_required_qty_pct: Number.isFinite(requiredQtyPct) ? requiredQtyPct : null,
+    _entry_budget_signal_floor_applied: canApply,
+    _entry_budget_signal_floor_feasible_band: feasibleBand && feasibleBand.band ? feasibleBand.band : null,
+    _entry_budget_signal_floor_full_only: feasibleBand && feasibleBand.fullOnly === true,
+    _entry_budget_signal_floor_guard_ok: entryBudgetGuard ? entryBudgetGuard.ok === true : null,
+    _entry_budget_signal_floor_blocked_by_max_qty: (
+      Number.isFinite(requiredQtyPct) &&
+      requiredQtyPct > maxAllowedQtyPct + 1e-9
+    ),
+    _entry_budget_signal_floor_reason: canApply
+      ? "ENTRY_BUDGET_GUARD_SIGNAL_FLOOR_APPLIED"
+      : (entryBudgetGuard && entryBudgetGuard.reason
+        ? String(entryBudgetGuard.reason).trim().toUpperCase()
+        : null),
+  };
+
+  return {
+    qtyPct: nextQtyPct,
+    requestedQtyPct: nextQtyPct,
+    applied: canApply,
+    entryBudgetGuard,
+    featuresPatch,
+  };
+}
+
 function resolveEntryTierBudgetMax({
   intent,
   event,
@@ -11351,6 +11441,22 @@ async function runPaperBinanceForBar({
     }
 
     if (intentIsEntry) {
+      const signalFloor = await applyEntryBudgetSignalFloor({
+        exchange,
+        symbol,
+        intent,
+        qtyFraction,
+        maxQtyPct: Math.max(0, 1 - Number(pos && pos.size_pct || 0)),
+        features: it.features_json,
+        nowMs: Number(execBarCloseMs),
+        stage: "RUNNER_INTENT_EXEC",
+      });
+      if (signalFloor.featuresPatch && typeof signalFloor.featuresPatch === "object") {
+        it.features_json = signalFloor.featuresPatch;
+      }
+      if (Number.isFinite(Number(signalFloor.qtyPct)) && Number(signalFloor.qtyPct) > 0) {
+        qtyFraction = Number(signalFloor.qtyPct);
+      }
       const openclawEval = await applyOpenClawExecutorDecision({
         exchange,
         symbol,
@@ -11358,6 +11464,7 @@ async function runPaperBinanceForBar({
         event: it.event,
         side: it.side,
         qtyPct: qtyFraction,
+        requestedQtyPct: signalFloor.requestedQtyPct,
         features: it.features_json,
         stage: "RUNNER_INTENT_EXEC",
         applyScale: false,
@@ -12778,6 +12885,23 @@ async function runPaperBinanceForBar({
     }
 
     if (intentIsEntry) {
+      const signalFloor = await applyEntryBudgetSignalFloor({
+        exchange,
+        symbol,
+        intent,
+        qtyFraction,
+        maxQtyPct: Math.max(0, 1 - Number(pos && pos.size_pct || 0)),
+        features: s.features,
+        nowMs: Number(effectiveBarMs),
+        stage: "RUNNER_SIGNAL",
+      });
+      if (signalFloor.featuresPatch && typeof signalFloor.featuresPatch === "object") {
+        s.features = signalFloor.featuresPatch;
+        Object.assign(features, signalFloor.featuresPatch);
+      }
+      if (Number.isFinite(Number(signalFloor.qtyPct)) && Number(signalFloor.qtyPct) > 0) {
+        qtyFraction = Number(signalFloor.qtyPct);
+      }
       const openclawEval = await applyOpenClawExecutorDecision({
         exchange,
         symbol,
@@ -12785,6 +12909,7 @@ async function runPaperBinanceForBar({
         event: s.event,
         side: s.side,
         qtyPct: qtyFraction,
+        requestedQtyPct: signalFloor.requestedQtyPct,
         features: s.features,
         stage: "RUNNER_SIGNAL",
         applyScale: true,
@@ -13780,6 +13905,22 @@ async function runPaperFuturesForBar({
     }
 
     if (intentIsEntry) {
+      const signalFloor = await applyEntryBudgetSignalFloor({
+        exchange,
+        symbol,
+        intent,
+        qtyFraction,
+        maxQtyPct: Math.max(0, 1 - Number(pos && pos.size_pct || 0)),
+        features: it.features_json,
+        nowMs: Number(execBarCloseMs),
+        stage: "RUNNER_INTENT_EXEC",
+      });
+      if (signalFloor.featuresPatch && typeof signalFloor.featuresPatch === "object") {
+        it.features_json = signalFloor.featuresPatch;
+      }
+      if (Number.isFinite(Number(signalFloor.qtyPct)) && Number(signalFloor.qtyPct) > 0) {
+        qtyFraction = Number(signalFloor.qtyPct);
+      }
       const openclawEval = await applyOpenClawExecutorDecision({
         exchange,
         symbol,
@@ -13787,6 +13928,7 @@ async function runPaperFuturesForBar({
         event: it.event,
         side: it.side,
         qtyPct: qtyFraction,
+        requestedQtyPct: signalFloor.requestedQtyPct,
         features: it.features_json,
         stage: "RUNNER_INTENT_EXEC",
         applyScale: false,
@@ -16060,6 +16202,23 @@ async function runPaperFuturesForBar({
     }
 
     if (intentIsEntry) {
+      const signalFloor = await applyEntryBudgetSignalFloor({
+        exchange,
+        symbol,
+        intent,
+        qtyFraction,
+        maxQtyPct: Math.max(0, 1 - Number(pos && pos.size_pct || 0)),
+        features: s.features,
+        nowMs: Number(effectiveBarMs),
+        stage: "RUNNER_SIGNAL",
+      });
+      if (signalFloor.featuresPatch && typeof signalFloor.featuresPatch === "object") {
+        s.features = signalFloor.featuresPatch;
+        Object.assign(features, signalFloor.featuresPatch);
+      }
+      if (Number.isFinite(Number(signalFloor.qtyPct)) && Number(signalFloor.qtyPct) > 0) {
+        qtyFraction = Number(signalFloor.qtyPct);
+      }
       const openclawEval = await applyOpenClawExecutorDecision({
         exchange,
         symbol,
@@ -16067,6 +16226,7 @@ async function runPaperFuturesForBar({
         event: s.event,
         side: s.side,
         qtyPct: qtyFraction,
+        requestedQtyPct: signalFloor.requestedQtyPct,
         features: s.features,
         stage: "RUNNER_SIGNAL",
         applyScale: true,
@@ -16640,6 +16800,7 @@ module.exports = {
     resolveEntrySignalsByFamily,
     logEntrySignalFamilyResolutions,
     dedupeEntrySignalsByFamily,
+    applyEntryBudgetSignalFloor,
     resolveEntryMinOrderBudgetAdjustment,
     resolveEntryTierBudgetMax,
     evaluateCommittedRescueAddGate,

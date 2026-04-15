@@ -1,7 +1,10 @@
 "use strict";
 
 const assert = require("assert");
-const { evaluateEntryBudgetGuard } = require("../utils/entryBudgetGuard");
+const {
+  evaluateEntryBudgetGuard,
+  resolveEntryBudgetGuardFeasibleBand,
+} = require("../utils/entryBudgetGuard");
 
 async function run() {
   const nonEntry = await evaluateEntryBudgetGuard({
@@ -72,6 +75,34 @@ async function run() {
   assert.strictEqual(dogePass.reason, "ENTRY_BUDGET_GUARD_OK");
   assert.strictEqual(dogePass.notionalQuote, 6);
   assert.strictEqual(dogePass.minRequiredQuote, 5);
+
+  assert.deepStrictEqual(
+    resolveEntryBudgetGuardFeasibleBand({
+      applicable: true,
+      ok: false,
+      reason: "MIN_ORDER_EXCEEDS_BUDGET",
+      requiredQtyPct: 0.25,
+    }),
+    {
+      band: "REDUCED_FEASIBLE",
+      fullOnly: false,
+      minTradableQtyPct: 0.25,
+    }
+  );
+
+  assert.deepStrictEqual(
+    resolveEntryBudgetGuardFeasibleBand({
+      applicable: true,
+      ok: false,
+      reason: "MIN_ORDER_EXCEEDS_BUDGET",
+      requiredQtyPct: 0.85,
+    }),
+    {
+      band: "FULL_ONLY",
+      fullOnly: true,
+      minTradableQtyPct: 0.85,
+    }
+  );
 
   const paperSkip = await evaluateEntryBudgetGuard({
     exchange: "BINANCEFUT",

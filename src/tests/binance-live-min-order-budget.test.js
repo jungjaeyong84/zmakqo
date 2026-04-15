@@ -3,8 +3,9 @@
 const assert = require("assert");
 const { __test } = require("../engine/paperBinanceRunner");
 
-function run() {
+async function run() {
   assert.strictEqual(typeof __test.resolveEntryMinOrderBudgetAdjustment, "function", "resolveEntryMinOrderBudgetAdjustment export missing");
+  assert.strictEqual(typeof __test.applyEntryBudgetSignalFloor, "function", "applyEntryBudgetSignalFloor export missing");
 
   const availableBudgetBump = __test.resolveEntryMinOrderBudgetAdjustment({
     minRequiredQuote: 10,
@@ -53,7 +54,31 @@ function run() {
   assert.strictEqual(insufficientBudget.reason, "MIN_ORDER_EXCEEDS_BUDGET");
   assert.match(insufficientBudget.note, /max_entry_notional=8/);
 
+  const signalFloorApplied = await __test.applyEntryBudgetSignalFloor({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    intent: "ENTRY",
+    qtyFraction: 0.2,
+    maxQtyPct: 1,
+    features: { trace_id: "test-floor" },
+    stage: "RUNNER_SIGNAL",
+    entryBudgetGuardOverride: {
+      applicable: true,
+      ok: false,
+      reason: "MIN_ORDER_EXCEEDS_BUDGET",
+      requiredQtyPct: 0.5,
+    },
+  });
+  assert.strictEqual(signalFloorApplied.applied, true);
+  assert.strictEqual(signalFloorApplied.qtyPct, 0.5);
+  assert.strictEqual(signalFloorApplied.requestedQtyPct, 0.5);
+  assert.strictEqual(signalFloorApplied.featuresPatch._entry_budget_signal_floor_applied, true);
+  assert.strictEqual(signalFloorApplied.featuresPatch._entry_budget_signal_floor_required_qty_pct, 0.5);
+
   console.log("BINANCE_LIVE_MIN_ORDER_BUDGET_TEST_OK");
 }
 
-run();
+run().catch((err) => {
+  console.error(err && err.stack ? err.stack : err);
+  process.exit(1);
+});

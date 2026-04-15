@@ -250,6 +250,55 @@ async function run() {
 
   await withEnv({
     OPENCLAW_EXECUTOR_ENABLED: "1",
+    OPENCLAW_EXECUTOR_SAME_SIDE_REDUCE_THRESHOLD: "2",
+    OPENCLAW_EXECUTOR_SAME_SIDE_BLOCK_THRESHOLD: "3",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD: "99",
+    OPENCLAW_EXECUTOR_WEIGHTED_CLUSTER_COUNT_ENABLED: "1",
+    OPENCLAW_EXECUTOR_RUNNER_CLUSTER_COUNT_MIN_WEIGHT: "0.35",
+  }, async () => {
+    const { evaluateOpenClawExecutionDecision } = freshRequire("../services/openclawExecutionExecutor");
+    const trailRow = {
+      symbol: "ETHUSDT",
+      state: "ACTIVE",
+      position_state: "SCALE_OUT",
+      position_side: "LONG",
+      size_pct: 1,
+      qty_base: 0.167,
+      runner_allowed_qty_abs: 0.333,
+      meta: {
+        tp_p0_done: true,
+        tp_p1_done: true,
+        trail_active: true,
+        canonical_exit_stage: "TRAIL",
+        runner_allowed_qty_abs: 0.333,
+        canonical_runner_remaining_abs: 0.167,
+        exit_rules_override: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
+      },
+    };
+    const res = await evaluateOpenClawExecutionDecision({
+      exchange: "BINANCEFUT",
+      symbol: "BNBUSDT",
+      intent: "ENTRY",
+      event: "ENTRY_LONG_REAL",
+      side: "BUY",
+      qtyPct: 1,
+      features: {},
+      positionViews: [trailRow],
+      recentTimelineRows: [],
+      capitalAllocatorSnapshot: { by_market: [] },
+    });
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(res.reason, "OPENCLAW_EXECUTOR_OK");
+    assert.strictEqual(res.featuresPatch._openclaw_executor_same_side_position_count_after, 2);
+    assert.ok(res.featuresPatch._openclaw_executor_same_side_weighted_count_after < 2);
+    assert.ok(res.featuresPatch._openclaw_executor_same_side_count_after < 2);
+  });
+
+  await withEnv({
+    OPENCLAW_EXECUTOR_ENABLED: "1",
     OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_REDUCE_THRESHOLD: "99",
     OPENCLAW_EXECUTOR_SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD: "99",
     OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD: "99",

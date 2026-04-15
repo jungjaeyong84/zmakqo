@@ -95,6 +95,8 @@ const SAME_SIDE_EXPOSURE_BLOCK_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_SAME_SIDE_E
 const CORRELATED_EXPOSURE_REDUCE_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_REDUCE_THRESHOLD", 0.8, { min: 0, max: 10 });
 const CORRELATED_EXPOSURE_BLOCK_THRESHOLD = numEnv("OPENCLAW_EXECUTOR_CORRELATED_EXPOSURE_BLOCK_THRESHOLD", 1.2, { min: 0, max: 10 });
 const RUNNER_EXPOSURE_FALLBACK = numEnv("OPENCLAW_EXECUTOR_RUNNER_EXPOSURE_FALLBACK", 0.2, { min: 0, max: 1 });
+const WEIGHTED_CLUSTER_COUNT_ENABLED = boolEnv("OPENCLAW_EXECUTOR_WEIGHTED_CLUSTER_COUNT_ENABLED", true);
+const RUNNER_CLUSTER_COUNT_MIN_WEIGHT = numEnv("OPENCLAW_EXECUTOR_RUNNER_CLUSTER_COUNT_MIN_WEIGHT", 0.35, { min: 0, max: 1 });
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
@@ -407,6 +409,23 @@ function resolveEffectiveExposureSizePct(view = null) {
   };
 }
 
+function resolveClusterCountContribution(view = null, exposureSizing = null) {
+  if (!WEIGHTED_CLUSTER_COUNT_ENABLED) return 1;
+  const sizing = (exposureSizing && typeof exposureSizing === "object")
+    ? exposureSizing
+    : resolveEffectiveExposureSizePct(view);
+  const source = upper(sizing && sizing.source);
+  const runnerDerived = (
+    source === "CURRENT_OVER_RUNNER_ALLOWED"
+    || source === "RUNNER_REMAINING_RATIO"
+    || source === "RUNNER_STAGE_FALLBACK"
+  );
+  if (!runnerDerived) return 1;
+  const sizePct = clamp01(sizing && sizing.sizePct);
+  const baseWeight = Number.isFinite(sizePct) && sizePct > 0 ? sizePct : RUNNER_EXPOSURE_FALLBACK;
+  return Math.max(RUNNER_CLUSTER_COUNT_MIN_WEIGHT, Math.min(1, baseWeight));
+}
+
 function resolveRecentEvent(row = null) {
   if (!row || typeof row !== "object") return null;
   return upper(
@@ -653,6 +672,7 @@ function summarizeExposure({ exchange, symbol, desiredSide, positionViews = [] }
     if (!rowSymbol) continue;
     const rowSide = normalizePositionSideFromView(row);
     const exposureSizing = resolveEffectiveExposureSizePct(row);
+    const clusterCountWeight = resolveClusterCountContribution(row, exposureSizing);
     const rowGroups = resolveSymbolGroups(rowSymbol);
     exposures.push({
       exchange: upper(exchange),
@@ -661,6 +681,7 @@ function summarizeExposure({ exchange, symbol, desiredSide, positionViews = [] }
       size_pct: exposureSizing.sizePct,
       raw_size_pct: exposureSizing.rawSizePct,
       exposure_size_source: exposureSizing.source,
+      cluster_count_weight: clusterCountWeight,
       sameSymbol: rowSymbol === targetSymbol,
       sameSide: !!(side && rowSide && rowSide === side),
       groupOverlap: targetGroups.filter((name) => rowGroups.includes(name)),
@@ -670,12 +691,20 @@ function summarizeExposure({ exchange, symbol, desiredSide, positionViews = [] }
   const correlatedActive = exposures.filter((row) => row.sameSide && !row.sameSymbol && row.groupOverlap.length > 0);
   const sameSideExposure = sameSideActive.reduce((sum, row) => sum + (toNum(row.size_pct) || 1), 0);
   const correlatedExposure = correlatedActive.reduce((sum, row) => sum + (toNum(row.size_pct) || 1), 0);
+  const sameSideWeightedCount = sameSideActive.reduce((sum, row) => sum + (toNum(row.cluster_count_weight) || 1), 0);
+  const correlatedWeightedCount = correlatedActive.reduce((sum, row) => sum + (toNum(row.cluster_count_weight) || 1), 0);
+  const sameSideRawCount = sameSideActive.length;
+  const correlatedRawCount = correlatedActive.length;
   return {
     exposures,
     sameSideActive,
     correlatedActive,
-    sameSideCountAfter: sameSideActive.length + 1,
-    correlatedCountAfter: correlatedActive.length + 1,
+    sameSideRawCountAfter: sameSideRawCount + 1,
+    correlatedRawCountAfter: correlatedRawCount + 1,
+    sameSideWeightedCountAfter: sameSideWeightedCount + 1,
+    correlatedWeightedCountAfter: correlatedWeightedCount + 1,
+    sameSideCountAfter: (WEIGHTED_CLUSTER_COUNT_ENABLED ? sameSideWeightedCount : sameSideRawCount) + 1,
+    correlatedCountAfter: (WEIGHTED_CLUSTER_COUNT_ENABLED ? correlatedWeightedCount : correlatedRawCount) + 1,
     sameSideExposureAfter: sameSideExposure,
     correlatedExposureAfter: correlatedExposure,
     targetGroups,
@@ -979,6 +1008,10 @@ async function evaluateOpenClawExecutionDecision({
     _openclaw_executor_apply_scale: applyScale === true,
     _openclaw_executor_same_side_count_after: exposure.sameSideCountAfter,
     _openclaw_executor_correlated_count_after: exposure.correlatedCountAfter,
+    _openclaw_executor_same_side_position_count_after: exposure.sameSideRawCountAfter,
+    _openclaw_executor_correlated_position_count_after: exposure.correlatedRawCountAfter,
+    _openclaw_executor_same_side_weighted_count_after: exposure.sameSideWeightedCountAfter,
+    _openclaw_executor_correlated_weighted_count_after: exposure.correlatedWeightedCountAfter,
     _openclaw_executor_same_side_exposure_after: sameSideExposureAfter,
     _openclaw_executor_correlated_exposure_after: correlatedExposureAfter,
     _openclaw_executor_groups: exposure.targetGroups.slice(),
@@ -1028,6 +1061,10 @@ async function evaluateOpenClawExecutionDecision({
       desiredSide,
       sameSideCountAfter: exposure.sameSideCountAfter,
       correlatedCountAfter: exposure.correlatedCountAfter,
+      sameSideRawCountAfter: exposure.sameSideRawCountAfter,
+      correlatedRawCountAfter: exposure.correlatedRawCountAfter,
+      sameSideWeightedCountAfter: exposure.sameSideWeightedCountAfter,
+      correlatedWeightedCountAfter: exposure.correlatedWeightedCountAfter,
       sameSideExposureAfter,
       correlatedExposureAfter,
       groups: exposure.targetGroups.slice(),
@@ -1056,6 +1093,7 @@ async function evaluateOpenClawExecutionDecision({
         size_pct: row.size_pct,
         raw_size_pct: row.raw_size_pct,
         exposure_size_source: row.exposure_size_source,
+        cluster_count_weight: row.cluster_count_weight,
         groupOverlap: row.groupOverlap.slice(),
       })),
       correlatedExposureRows: exposure.correlatedActive.map((row) => ({
@@ -1064,6 +1102,7 @@ async function evaluateOpenClawExecutionDecision({
         size_pct: row.size_pct,
         raw_size_pct: row.raw_size_pct,
         exposure_size_source: row.exposure_size_source,
+        cluster_count_weight: row.cluster_count_weight,
         groupOverlap: row.groupOverlap.slice(),
       })),
       notes,
@@ -1091,5 +1130,6 @@ module.exports = {
     hasActiveExposure,
     resolveRunnerAllowedRatioFromView,
     resolveEffectiveExposureSizePct,
+    resolveClusterCountContribution,
   },
 };

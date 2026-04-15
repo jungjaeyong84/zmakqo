@@ -1482,6 +1482,7 @@ router.get("/dashboard/home", async (req, res) => {
         authoritative: x.authoritative === true,
         qty_pct: (x.qty_pct === undefined ? (x.qtyPct === undefined ? null : x.qtyPct) : x.qty_pct),
         reason: x.reason || null,
+        reason_family: x.reason_family || null,
         decision_reason: x.decision_reason || x.reason || null,
         request_id: x.request_id || null,
         run_id: x.run_id || (matched && matched.run_id) || null,

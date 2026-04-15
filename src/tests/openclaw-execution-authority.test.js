@@ -210,6 +210,46 @@ async function run() {
   });
 
   await withEnv({
+    OPENCLAW_EXECUTOR_ENABLED: "0",
+    LIVE_EXEC_POLICY_ENABLED: "0",
+    ENTRY_BUDGET_GUARD_MIN_QTY_FLOOR_ENABLED: "1",
+    ENTRY_BUDGET_GUARD_MIN_QTY_FLOOR_MARKETS: null,
+    ENTRY_BUDGET_GUARD_SOFT_REDUCE_BYPASS_ENABLED: "1",
+  }, async () => {
+    const { evaluateOpenClawExecutionAuthority } = freshRequire("../services/openclawExecutionAuthority");
+    const res = await evaluateOpenClawExecutionAuthority({
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      intent: "ENTRY",
+      event: "ENTRY_LONG_REAL",
+      side: "BUY",
+      qtyPct: 0.2,
+      requestedQtyPct: 1,
+      features: {},
+      stage: "RUNNER_SIGNAL",
+      applyScale: true,
+      entryBudgetGuardOverride: {
+        applicable: true,
+        ok: false,
+        reason: "MIN_ORDER_EXCEEDS_BUDGET",
+        budgetMax: 30,
+        leverage: 2,
+        minRequiredQuote: 30,
+        notionalQuote: 12,
+        requiredQtyPct: 0.5,
+        requiredBudget: 75,
+        shortfallQuote: 18,
+      },
+    });
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(res.qtyPctFinal, 0.5);
+    assert.strictEqual(res.authority.entryBudgetFloor.applied, true);
+    assert.strictEqual(res.authority.entryBudgetFloor.softReduceBypassed, true);
+    assert.strictEqual(res.featuresPatch._openclaw_authority_qty_requested, 1);
+    assert.strictEqual(res.featuresPatch._openclaw_authority_entry_budget_guard_floor_qty_pct, 0.5);
+  });
+
+  await withEnv({
     ENTRY_BUDGET_GUARD_MIN_QTY_FLOOR_ENABLED: "1",
     ENTRY_BUDGET_GUARD_MIN_QTY_FLOOR_MARKETS: null,
     ENTRY_BUDGET_GUARD_SOFT_REDUCE_BYPASS_ENABLED: "1",

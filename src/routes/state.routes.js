@@ -540,11 +540,14 @@ function createStateRoutes() {
         return Number.isFinite(ms) && (nowMs - ms) <= dropWindowMs;
       });
       const reasonCounts = new Map();
+      const reasonFamilyCounts = new Map();
       const aiReasonCounts = new Map();
       let aiBlockCount = 0;
       for (const d of dropsRecent) {
         const code = String(d.drop_reason_code || d.reason || "UNKNOWN").toUpperCase().trim() || "UNKNOWN";
+        const family = String(d.reason_family || "UNKNOWN").toUpperCase().trim() || "UNKNOWN";
         reasonCounts.set(code, (reasonCounts.get(code) || 0) + 1);
+        reasonFamilyCounts.set(family, (reasonFamilyCounts.get(family) || 0) + 1);
         if (code === "AI_BLOCK") {
           aiBlockCount += 1;
           const aiReason = String(d.features_json && d.features_json.ai_signal && d.features_json.ai_signal.ai_reason ? d.features_json.ai_signal.ai_reason : "").trim();
@@ -554,6 +557,10 @@ function createStateRoutes() {
         }
       }
       const topReasons = Array.from(reasonCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([k, v]) => `${k}(${v})`);
+      const topReasonFamilies = Array.from(reasonFamilyCounts.entries())
         .sort((a, b) => b[1] - a[1])
         .slice(0, 4)
         .map(([k, v]) => `${k}(${v})`);
@@ -571,13 +578,16 @@ function createStateRoutes() {
             total: 0,
             ai_block: 0,
             reasons: new Map(),
+            reason_families: new Map(),
             ai_reasons: new Map(),
           };
         }
         const bucket = dropByMarket[mk];
         bucket.total += 1;
         const code = String(d.drop_reason_code || d.reason || "UNKNOWN").toUpperCase().trim() || "UNKNOWN";
+        const family = String(d.reason_family || "UNKNOWN").toUpperCase().trim() || "UNKNOWN";
         bucket.reasons.set(code, (bucket.reasons.get(code) || 0) + 1);
+        bucket.reason_families.set(family, (bucket.reason_families.get(family) || 0) + 1);
         if (code === "AI_BLOCK") {
           bucket.ai_block += 1;
           const aiReason = String(d.features_json && d.features_json.ai_signal && d.features_json.ai_signal.ai_reason ? d.features_json.ai_signal.ai_reason : "").trim();
@@ -591,6 +601,10 @@ function createStateRoutes() {
           .sort((a, b2) => b2[1] - a[1])
           .slice(0, 3)
           .map(([k, v]) => `${k}(${v})`);
+        const topReasonFamiliesLocal = Array.from(b.reason_families.entries())
+          .sort((a, b2) => b2[1] - a[1])
+          .slice(0, 3)
+          .map(([k, v]) => `${k}(${v})`);
         const topAiReasonsLocal = Array.from(b.ai_reasons.entries())
           .sort((a, b2) => b2[1] - a[1])
           .slice(0, 2)
@@ -601,6 +615,7 @@ function createStateRoutes() {
           ai_block: b.ai_block,
           ai_block_pct: b.total ? (b.ai_block / b.total) : null,
           top_reasons: topReasonsLocal,
+          top_reason_families: topReasonFamiliesLocal,
           top_ai_reasons: topAiReasonsLocal,
         };
       }).sort((a, b) => b.total - a.total);
@@ -610,6 +625,7 @@ function createStateRoutes() {
         ai_block: aiBlockCount,
         ai_block_pct: dropsRecent.length ? (aiBlockCount / dropsRecent.length) : null,
         top_reasons: topReasons,
+        top_reason_families: topReasonFamilies,
         top_ai_reasons: topAiReasons,
         by_market: dropByMarketSummary,
       };
@@ -799,6 +815,7 @@ function createStateRoutes() {
           run_id: x.run_id || (matched && matched.run_id) || null,
           signal_id: x.signal_id || x.id || null,
           intent_id: matched && (matched.intent_id || matched.id) ? (matched.intent_id || matched.id) : null,
+          reason_family: x.reason_family || null,
           trace_meta: [
             x.signal_id || x.id ? `signal:${x.signal_id || x.id}` : null,
             matched && (matched.intent_id || matched.id) ? `intent:${matched.intent_id || matched.id}` : null,

@@ -308,6 +308,7 @@ async function collectSignalDropsInRange(db, { fromMs, toMsVal, exchange } = {})
       side: x.side || null,
       event: x.event || null,
       reason: x.reason || null,
+      reason_family: x.reason_family || null,
       drop_reason_code: x.drop_reason_code || null,
       event_intent: x.event_intent || null,
       signal_id: x.signal_id || null,

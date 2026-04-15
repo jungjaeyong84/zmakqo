@@ -6,6 +6,8 @@ const { fetchFuturesExchangeInfo } = require("../exchanges/binanceFuturesPrivate
 
 const EXCHANGE_INFO_CACHE_TTL_MS = 60 * 60 * 1000;
 const exchangeInfoCache = new Map();
+const EPSILON = 1e-9;
+const ENTRY_BUDGET_GUARD_FULL_ONLY_THRESHOLD_DEFAULT = 0.8;
 
 function upper(value) {
   return String(value || "").trim().toUpperCase() || null;
@@ -30,6 +32,43 @@ function normalizeFuturesLeverage(raw, maxLev = 3) {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return Math.min(cap, 2);
   return Math.max(1, Math.min(cap, Math.round(n)));
+}
+
+function resolveEntryBudgetGuardFullOnlyThreshold() {
+  const threshold = toNum(process.env.ENTRY_BUDGET_GUARD_FULL_ONLY_THRESHOLD);
+  if (Number.isFinite(threshold) && threshold > 0 && threshold <= 1) return threshold;
+  return ENTRY_BUDGET_GUARD_FULL_ONLY_THRESHOLD_DEFAULT;
+}
+
+function resolveEntryBudgetGuardFeasibleBand(entryBudgetGuard = null) {
+  const requiredQtyPct = toNum(entryBudgetGuard && entryBudgetGuard.requiredQtyPct);
+  if (!Number.isFinite(requiredQtyPct) || requiredQtyPct <= 0) {
+    return {
+      band: null,
+      fullOnly: false,
+      minTradableQtyPct: null,
+    };
+  }
+  if (requiredQtyPct > 1 + EPSILON) {
+    return {
+      band: "NOT_FEASIBLE",
+      fullOnly: false,
+      minTradableQtyPct: requiredQtyPct,
+    };
+  }
+  const fullOnlyThreshold = resolveEntryBudgetGuardFullOnlyThreshold();
+  if (requiredQtyPct + EPSILON >= fullOnlyThreshold) {
+    return {
+      band: "FULL_ONLY",
+      fullOnly: true,
+      minTradableQtyPct: requiredQtyPct,
+    };
+  }
+  return {
+    band: "REDUCED_FEASIBLE",
+    fullOnly: false,
+    minTradableQtyPct: requiredQtyPct,
+  };
 }
 
 async function fetchExchangeInfoCached(symbol, {
@@ -166,9 +205,13 @@ async function evaluateEntryBudgetGuard({
 
 module.exports = {
   evaluateEntryBudgetGuard,
+  resolveEntryBudgetGuardFullOnlyThreshold,
+  resolveEntryBudgetGuardFeasibleBand,
   __test: {
     normalizeExecutionMode,
     normalizeFuturesLeverage,
     fetchExchangeInfoCached,
+    resolveEntryBudgetGuardFullOnlyThreshold,
+    resolveEntryBudgetGuardFeasibleBand,
   },
 };
