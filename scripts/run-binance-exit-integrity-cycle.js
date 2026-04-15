@@ -219,6 +219,8 @@ function buildMarkdown(report = {}) {
   lines.push(`- fill_sync_alert_event_issue_n: ${summary.fill_sync_alert_event_issue_n ?? "N/A"}`);
   lines.push(`- trade_execution_alert_missing_fill_n: ${summary.trade_execution_alert_missing_fill_n ?? "N/A"}`);
   lines.push(`- trade_execution_alert_missing_fill_total_n: ${summary.trade_execution_alert_missing_fill_total_n ?? "N/A"}`);
+  lines.push(`- trade_execution_alert_missing_fill_non_actionable_n: ${summary.trade_execution_alert_missing_fill_non_actionable_n ?? "N/A"}`);
+  lines.push(`- trade_execution_alert_missing_fill_raw_total_n: ${summary.trade_execution_alert_missing_fill_raw_total_n ?? "N/A"}`);
   lines.push(`- duplication_live_group_n: ${summary.duplication_live_group_n ?? "N/A"}`);
   lines.push(`- authority_live_issue_position_n: ${summary.authority_live_issue_position_n ?? "N/A"}`);
   lines.push(`- canonical_exit_stage_fail_n: ${summary.canonical_exit_stage_fail_n ?? "N/A"}`);
@@ -271,7 +273,7 @@ function buildSummary(report = {}) {
   const fillSyncDuplicateGroupN = Number(report.fill_sync_alert_duplication && report.fill_sync_alert_duplication.parsed && report.fill_sync_alert_duplication.parsed.report && report.fill_sync_alert_duplication.parsed.report.duplicate_group_n || report.fill_sync_alert_duplication && report.fill_sync_alert_duplication.parsed && report.fill_sync_alert_duplication.parsed.duplicate_group_n || 0);
   const fillSyncAlertEventIssueN = Number(report.fill_sync_alert_event_consistency && report.fill_sync_alert_event_consistency.parsed && report.fill_sync_alert_event_consistency.parsed.issue_n || 0);
   const tradeExecutionAlertCoverageReady = !!(report.trade_execution_alert_cross_audit && report.trade_execution_alert_cross_audit.parsed && report.trade_execution_alert_cross_audit.parsed.coverage_ready === true);
-  const tradeExecutionAlertMissingFillTotalN = tradeExecutionAlertCoverageReady
+  const tradeExecutionAlertMissingFillRawTotalN = tradeExecutionAlertCoverageReady
     ? Number(report.trade_execution_alert_cross_audit && report.trade_execution_alert_cross_audit.parsed && report.trade_execution_alert_cross_audit.parsed.missing_alert_fill_n || 0)
     : 0;
   const tradeExecutionAlertMissingFillN = tradeExecutionAlertCoverageReady
@@ -285,6 +287,18 @@ function buildSummary(report = {}) {
       || 0
     )
     : 0;
+  const tradeExecutionAlertMissingFillNonActionableN = tradeExecutionAlertCoverageReady
+    ? Number(
+      report.trade_execution_alert_cross_audit
+      && report.trade_execution_alert_cross_audit.parsed
+      && (
+        report.trade_execution_alert_cross_audit.parsed.missing_non_actionable_alert_fill_n
+        ?? (tradeExecutionAlertMissingFillRawTotalN - tradeExecutionAlertMissingFillN)
+      )
+      || 0
+    )
+    : 0;
+  const tradeExecutionAlertMissingFillTotalN = tradeExecutionAlertMissingFillN;
   const duplicationLiveGroupN = Number(report.fill_sync_alert_duplication_live_separation && report.fill_sync_alert_duplication_live_separation.parsed && report.fill_sync_alert_duplication_live_separation.parsed.live_duplicate_group_n || 0);
   const authorityLiveIssuePositionN = Number(report.binance_exit_authority_live_board && report.binance_exit_authority_live_board.parsed && report.binance_exit_authority_live_board.parsed.live_issue_position_n || 0);
   const authorityActionableLiveIssuePositionN = Number(report.binance_exit_authority_live_board && report.binance_exit_authority_live_board.parsed && report.binance_exit_authority_live_board.parsed.actionable_live_issue_position_n || 0);
@@ -328,6 +342,8 @@ function buildSummary(report = {}) {
     fill_sync_alert_event_issue_n: fillSyncAlertEventIssueN,
     trade_execution_alert_missing_fill_n: tradeExecutionAlertMissingFillN,
     trade_execution_alert_missing_fill_total_n: tradeExecutionAlertMissingFillTotalN,
+    trade_execution_alert_missing_fill_non_actionable_n: tradeExecutionAlertMissingFillNonActionableN,
+    trade_execution_alert_missing_fill_raw_total_n: tradeExecutionAlertMissingFillRawTotalN,
     trade_execution_alert_coverage_ready: tradeExecutionAlertCoverageReady,
     duplication_live_group_n: duplicationLiveGroupN,
     authority_live_issue_position_n: authorityLiveIssuePositionN,

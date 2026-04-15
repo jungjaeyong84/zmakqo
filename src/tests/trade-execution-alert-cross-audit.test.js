@@ -59,6 +59,7 @@ const { __test } = require("../../scripts/report-trade-execution-alert-cross-aud
 
   assert.strictEqual(report.missing_alert_fill_n, 3);
   assert.strictEqual(report.missing_verified_exit_alert_fill_n, 1);
+  assert.strictEqual(report.missing_non_actionable_alert_fill_n, 2);
   assert.strictEqual(report.missing_entry_alert_fill_n, 1);
   assert.strictEqual(report.missing_unverified_alert_fill_n, 1);
   assert.strictEqual(report.actionable_issues.length, 1);

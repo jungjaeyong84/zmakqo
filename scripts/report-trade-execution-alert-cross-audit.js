@@ -208,6 +208,10 @@ function buildReport({ fills = [], alertAuditRows = [], telegramTradeRows = [], 
       });
     }
   }
+  const missingNonActionable = Math.max(
+    0,
+    missing.length - missingVerifiedExit.length
+  );
   return {
     generated_at_iso: nowIso(),
     lookback_hours: LOOKBACK_HOURS,
@@ -218,6 +222,7 @@ function buildReport({ fills = [], alertAuditRows = [], telegramTradeRows = [], 
     matched_fill_n: matched.length,
     missing_alert_fill_n: missing.length,
     missing_verified_exit_alert_fill_n: missingVerifiedExit.length,
+    missing_non_actionable_alert_fill_n: missingNonActionable,
     missing_entry_alert_fill_n: missingEntry.length,
     missing_unverified_alert_fill_n: missingUnverified.length,
     unmatched_alert_n: unmatchedAlerts.length,
@@ -241,6 +246,7 @@ function buildMarkdown(report = {}) {
   lines.push(`- matched_fill_n: ${report.matched_fill_n || 0}`);
   lines.push(`- missing_alert_fill_n: ${report.missing_alert_fill_n || 0}`);
   lines.push(`- missing_verified_exit_alert_fill_n: ${report.missing_verified_exit_alert_fill_n || 0}`);
+  lines.push(`- missing_non_actionable_alert_fill_n: ${report.missing_non_actionable_alert_fill_n || 0}`);
   lines.push(`- missing_entry_alert_fill_n: ${report.missing_entry_alert_fill_n || 0}`);
   lines.push(`- missing_unverified_alert_fill_n: ${report.missing_unverified_alert_fill_n || 0}`);
   lines.push(`- unmatched_alert_n: ${report.unmatched_alert_n || 0}`);
@@ -313,6 +319,7 @@ async function main() {
     matched_fill_n: report.matched_fill_n,
     missing_alert_fill_n: report.missing_alert_fill_n,
     missing_verified_exit_alert_fill_n: report.missing_verified_exit_alert_fill_n,
+    missing_non_actionable_alert_fill_n: report.missing_non_actionable_alert_fill_n,
     missing_entry_alert_fill_n: report.missing_entry_alert_fill_n,
     missing_unverified_alert_fill_n: report.missing_unverified_alert_fill_n,
     unmatched_alert_n: report.unmatched_alert_n,

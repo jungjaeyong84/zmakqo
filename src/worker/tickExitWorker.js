@@ -3,7 +3,10 @@
 const http = require("http");
 const env = require("../config/env");
 const { runBinanceTickExitBurst } = require("../services/binanceTickExit");
-const { runExitWorkerExecution } = require("../services/exitWorkerExecution");
+const {
+  runExitWorkerExecution,
+  resolveExitWorkerExecutionConfig,
+} = require("../services/exitWorkerExecution");
 
 const port = Number(process.env.PORT || env.port || 8080);
 const state = {
@@ -122,18 +125,18 @@ async function dispatchSelfExecute(payload = {}) {
 }
 
 async function executeBurst(payload = {}) {
-  const maxDurationMs = Number(process.env.EXIT_WORKER_BURST_MAX_MS || 55000);
+  const executionConfig = resolveExitWorkerExecutionConfig({ payload });
   const result = await runExitWorkerExecution({
     payload,
     state,
-    timeoutMs: Number(process.env.EXIT_WORKER_EXEC_TIMEOUT_MS || (maxDurationMs + 15000)),
+    timeoutMs: executionConfig.timeoutMs,
     onTimeout: (timeoutResult) => {
       console.warn("[WORKER] execute burst timeout", timeoutResult);
     },
     runBurst: () => runBinanceTickExitBurst({
-      maxDurationMs,
-      maxIterations: Number(process.env.EXIT_WORKER_BURST_MAX_ITERATIONS || 20),
-      targetSymbols: payload && payload.target_symbols,
+      maxDurationMs: executionConfig.maxDurationMs,
+      maxIterations: executionConfig.maxIterations,
+      targetSymbols: executionConfig.targetSymbols,
     }),
   });
   const chainDepth = Math.max(0, Math.floor(Number(payload.chain_depth || 0)));

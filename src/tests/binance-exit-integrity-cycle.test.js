@@ -107,7 +107,14 @@ function buildScriptResult(parsed) {
     trail_runner_floor_live_separation: { parsed: { live_violation_n: 1 } },
     fill_sync_alert_duplication: { parsed: { duplicate_group_n: 4 } },
     fill_sync_alert_event_consistency: { parsed: { issue_n: 2 } },
-    trade_execution_alert_cross_audit: { parsed: { coverage_ready: true, missing_alert_fill_n: 7, missing_verified_exit_alert_fill_n: 3 } },
+    trade_execution_alert_cross_audit: {
+      parsed: {
+        coverage_ready: true,
+        missing_alert_fill_n: 7,
+        missing_verified_exit_alert_fill_n: 3,
+        missing_non_actionable_alert_fill_n: 4,
+      },
+    },
     fill_sync_alert_duplication_live_separation: { parsed: { live_duplicate_group_n: 2 } },
     binance_exit_authority_live_board: { parsed: { live_issue_position_n: 3, actionable_live_issue_position_n: 1, artifact_only_live_issue_position_n: 2 } },
     binance_canonical_exit_stage_qa: { parsed: { fail_n: 2 } },
@@ -116,7 +123,9 @@ function buildScriptResult(parsed) {
   assert.strictEqual(warnSummary.live_issue_count, 14);
   assert.strictEqual(warnSummary.fill_sync_alert_event_issue_n, 2);
   assert.strictEqual(warnSummary.trade_execution_alert_missing_fill_n, 3);
-  assert.strictEqual(warnSummary.trade_execution_alert_missing_fill_total_n, 7);
+  assert.strictEqual(warnSummary.trade_execution_alert_missing_fill_total_n, 3);
+  assert.strictEqual(warnSummary.trade_execution_alert_missing_fill_non_actionable_n, 4);
+  assert.strictEqual(warnSummary.trade_execution_alert_missing_fill_raw_total_n, 7);
   assert.strictEqual(warnSummary.trade_execution_alert_coverage_ready, true);
   assert.strictEqual(warnSummary.authority_live_issue_position_n, 3);
   assert.strictEqual(warnSummary.authority_actionable_live_issue_position_n, 1);
