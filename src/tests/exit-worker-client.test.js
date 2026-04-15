@@ -40,22 +40,28 @@ async function run() {
     const body = JSON.parse(String(captured.opts.body || "{}"));
     assert.strictEqual(body.reason, "ENTRY_BINANCEFUT_BTCUSDT");
     assert.strictEqual(body.dispatch_only, true);
+    assert.deepStrictEqual(body.target_symbols || [], []);
 
     const immediateResult = await triggerExitWorkerRun({
       reason: "FILL_SYNC_NATIVE_REFRESH_ETHUSDT",
       dispatchOnly: false,
+      targetSymbols: ["ethusdt", "ETHUSDT", ""],
+      targetExchange: "binancefut",
     });
     assert.strictEqual(immediateResult.ok, true);
     assert.strictEqual(capturedImmediate.url, "https://donbeolja-exit-worker-4ljfegivrq-du.a.run.app/run-execute");
     const immediateBody = JSON.parse(String(capturedImmediate.opts.body || "{}"));
     assert.strictEqual(immediateBody.reason, "FILL_SYNC_NATIVE_REFRESH_ETHUSDT");
     assert.strictEqual(immediateBody.dispatch_only, false);
+    assert.deepStrictEqual(immediateBody.target_symbols, ["ETHUSDT"]);
+    assert.strictEqual(immediateBody.target_exchange, "BINANCEFUT");
 
     const cooldownResult = await triggerExitWorkerRun({ reason: "ENTRY_BINANCEFUT_BTCUSDT" });
     assert.strictEqual(cooldownResult.ok, true);
     assert.strictEqual(cooldownResult.skipped, true);
     assert.strictEqual(cooldownResult.reason, "EXIT_WORKER_TRIGGER_COOLDOWN");
     assert.strictEqual(fetchCount, 2);
+    assert.deepStrictEqual(__test.normalizeTargetSymbols(["btcusdt", "BTCUSDT", "", null]), ["BTCUSDT"]);
   } finally {
     global.fetch = originalFetch;
     for (const [key, value] of Object.entries(oldEnv)) {

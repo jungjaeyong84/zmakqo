@@ -14,6 +14,7 @@ function run() {
   assert.strictEqual(typeof __test.applyTrailObservationToPosition, "function", "tick exit trail observation apply helper missing");
   assert.strictEqual(typeof __test.isNativeStopLessProtectiveThanTrigger, "function", "tick exit trail floor helper missing");
   assert.strictEqual(typeof __test.collectTriggeredKinds, "function", "tick exit trigger collector helper missing");
+  assert.strictEqual(typeof __test.resolveTickExitSymbolsToCheck, "function", "tick exit target symbol resolver helper missing");
   assert.strictEqual(typeof observationTest.buildTrailObservationPayload, "function", "trail observation payload helper missing");
   assert.strictEqual(typeof observationTest.resolveTrailObservationSnapshot, "function", "trail observation snapshot helper missing");
   assert.strictEqual(typeof observationTest.shouldRejectStaleTrailObservation, "function", "trail observation stale guard helper missing");
@@ -29,6 +30,22 @@ function run() {
     __test.buildTickTrailReconcileRunId("dogeusdt", 12345),
     "RUN__TRAIL_RECONCILE__BINANCEFUT__DOGEUSDT__12345",
     "trail reconcile run id must normalize symbol"
+  );
+  assert.deepStrictEqual(
+    __test.resolveTickExitSymbolsToCheck({
+      exCfg: { markets: ["BTCUSDT", "ETHUSDT", "XRPUSDT"] },
+      targetSymbols: ["ethusdt", "ETHUSDT", "DOGEUSDT"],
+    }),
+    ["ETHUSDT"],
+    "targeted exit-worker burst must only scan configured requested symbols"
+  );
+  assert.deepStrictEqual(
+    __test.resolveTickExitSymbolsToCheck({
+      exCfg: { markets: ["BTCUSDT", "ETHUSDT"] },
+      targetSymbols: null,
+    }),
+    ["BTCUSDT", "ETHUSDT"],
+    "full exit-worker burst must keep configured market scope"
   );
   assert.deepStrictEqual(
     observationTest.buildTrailObservationPayload({

@@ -9350,6 +9350,8 @@ async function requestBinanceNativeProtectionRefresh({
       ).trim(),
       dispatchOnly: executeImmediately !== true,
       timeoutMs: executeImmediately === true ? 15000 : 5000,
+      targetSymbols: [symbolUpper],
+      targetExchange: exchangeUpper,
     }).catch((error) => ({
       ok: false,
       skipped: true,
@@ -10021,6 +10023,8 @@ async function executeLiveFuturesOrder({
   if (!isExit && !liveCfg.liveDryRun) {
     triggerExitWorkerRun({
       reason: `ENTRY_${String(exchange || "").toUpperCase()}_${String(symbol || "").toUpperCase()}`,
+      targetSymbols: [String(symbol || "").toUpperCase()],
+      targetExchange: String(exchange || "").toUpperCase(),
     }).catch((e) => {
       const errText = e && e.message ? e.message : String(e);
       console.warn("[EXIT_WORKER_SCALE_ON_FAIL]", errText);
@@ -12189,6 +12193,8 @@ async function runPaperBinanceForBar({
       );
       triggerExitWorkerRun({
         reason: `TP1_TRAIL_ARMED_${String(exchange || "").toUpperCase()}_${String(symbol || "").toUpperCase()}`,
+        targetSymbols: [String(symbol || "").toUpperCase()],
+        targetExchange: String(exchange || "").toUpperCase(),
       }).catch((e) => {
         console.warn("[EXIT_WORKER_SCALE_ON_FAIL][TP1_INTENT_FILL]", e && e.message ? e.message : String(e));
       });
@@ -15064,6 +15070,8 @@ async function runPaperFuturesForBar({
       );
       triggerExitWorkerRun({
         reason: `TP1_TRAIL_ARMED_${String(exchange || "").toUpperCase()}_${String(symbol || "").toUpperCase()}`,
+        targetSymbols: [String(symbol || "").toUpperCase()],
+        targetExchange: String(exchange || "").toUpperCase(),
       }).catch((e) => {
         console.warn("[EXIT_WORKER_SCALE_ON_FAIL][TP1_INTENT_FILL]", e && e.message ? e.message : String(e));
       });

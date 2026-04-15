@@ -57,6 +57,30 @@ function normalizeIntervalMs(raw, fallback) {
   return Math.max(1000, Math.round(n));
 }
 
+function normalizeTargetSymbols(targetSymbols = null) {
+  const list = Array.isArray(targetSymbols)
+    ? targetSymbols
+    : (targetSymbols == null ? [] : [targetSymbols]);
+  return Array.from(new Set(
+    list
+      .map((value) => String(value || "").trim().toUpperCase())
+      .filter(Boolean)
+  ));
+}
+
+function resolveTickExitSymbolsToCheck({ exCfg, targetSymbols = null } = {}) {
+  const configuredSymbols = Array.from(new Set(
+    (Array.isArray(exCfg && exCfg.markets) ? exCfg.markets : [])
+      .map((symbol) => String(symbol || "").trim().toUpperCase())
+      .filter(Boolean)
+  ));
+  const requestedSymbols = normalizeTargetSymbols(targetSymbols);
+  if (!requestedSymbols.length) return configuredSymbols;
+  if (!configuredSymbols.length) return requestedSymbols;
+  const configuredSet = new Set(configuredSymbols);
+  return requestedSymbols.filter((symbol) => configuredSet.has(symbol));
+}
+
 function alignCurrentBarCloseLocal(ms, tfMs) {
   const now = Number(ms);
   const size = Number(tfMs);
@@ -1065,15 +1089,22 @@ function shouldActivateFastLane({ pos, price, triggers, fastLanePct, side } = {}
   return diff <= pct;
 }
 
-async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs } = {}) {
+async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols = null } = {}) {
   const exCfg = await getExchangeSettingsForProvider("BINANCEFUT", 2000);
   if (!exCfg || exCfg.enabled === false) return { ok: false, skipped: true, reason: "BINANCE_DISABLED" };
-  const symbolsToCheck = Array.from(new Set(
-    (Array.isArray(exCfg.markets) ? exCfg.markets : [])
-      .map((symbol) => String(symbol || "").trim().toUpperCase())
-      .filter(Boolean)
-  ));
-  if (!symbolsToCheck.length) return { ok: false, skipped: true, reason: "NO_MARKETS" };
+  const normalizedTargetSymbols = normalizeTargetSymbols(targetSymbols);
+  const symbolsToCheck = resolveTickExitSymbolsToCheck({
+    exCfg,
+    targetSymbols: normalizedTargetSymbols,
+  });
+  if (!symbolsToCheck.length) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: normalizedTargetSymbols.length ? "NO_TARGET_MARKETS" : "NO_MARKETS",
+      target_symbols: normalizedTargetSymbols,
+    };
+  }
 
   const positionMap = await getPositionReadViewsBySymbols({
     exchange: "BINANCEFUT",
@@ -1833,6 +1864,7 @@ async function runBinanceTickExitBurst({
   fastLaneEnabled,
   fastLaneIntervalMs,
   nearPct,
+  targetSymbols = null,
 } = {}) {
   if (!env.tickExit || env.tickExit.enabled !== true) {
     return { ok: false, skipped: true, reason: "DISABLED" };
@@ -1856,6 +1888,7 @@ async function runBinanceTickExitBurst({
   const fastLaneEnabledResolved = fastLaneEnabled != null
     ? fastLaneEnabled === true
     : (env.tickExit && env.tickExit.fastLaneEnabled !== false);
+  const normalizedTargetSymbols = normalizeTargetSymbols(targetSymbols);
   const maxDurationResolved = Math.max(5000, Math.floor(Number(maxDurationMs || 55000)));
   const maxIterationsResolved = Math.max(1, Math.floor(Number(maxIterations || 20)));
   const startedAt = nowMs();
@@ -1881,6 +1914,7 @@ async function runBinanceTickExitBurst({
       lastResult = await runBinanceTickExitOnce({
         nearPct: nearPctResolved,
         symbolCooldownMs: symbolCooldownResolved,
+        targetSymbols: normalizedTargetSymbols,
       });
       iterations += 1;
 
@@ -1909,6 +1943,7 @@ async function runBinanceTickExitBurst({
     elapsed_ms: nowMs() - startedAt,
     next_delay_ms: nextDelayMs,
     reschedule_recommended: activeCount > 0,
+    target_symbols: normalizedTargetSymbols,
     last_result: lastResult,
     self_heal: selfHealResult,
   };
@@ -2197,6 +2232,8 @@ module.exports = {
     shouldRunNativeProtectionRefreshCooldown,
     shouldTriggerTrailHardExit,
     shouldRunBySymbolCooldown,
+    normalizeTargetSymbols,
+    resolveTickExitSymbolsToCheck,
     _symbolCooldownState: symbolCooldownState,
     clearSelfHealCooldown() {
       lastTickExitSelfHealAt = 0;

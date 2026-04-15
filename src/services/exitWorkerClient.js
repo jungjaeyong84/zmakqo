@@ -6,6 +6,17 @@ function resolveExitWorkerUrl() {
   return String(process.env.EXIT_WORKER_URL || "").trim().replace(/\/+$/, "");
 }
 
+function normalizeTargetSymbols(targetSymbols = null) {
+  const list = Array.isArray(targetSymbols)
+    ? targetSymbols
+    : (targetSymbols == null ? [] : [targetSymbols]);
+  return Array.from(new Set(
+    list
+      .map((value) => String(value || "").trim().toUpperCase())
+      .filter(Boolean)
+  ));
+}
+
 function resolveExitWorkerTriggerToken() {
   return String(
     process.env.EXIT_WORKER_TRIGGER_TOKEN ||
@@ -52,6 +63,8 @@ async function triggerExitWorkerRun({
   timeoutMs = 5000,
   bypassCooldown = false,
   cooldownMs = null,
+  targetSymbols = null,
+  targetExchange = null,
 } = {}) {
   const baseUrl = resolveExitWorkerUrl();
   if (!baseUrl) {
@@ -80,6 +93,8 @@ async function triggerExitWorkerRun({
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.max(1000, Number(timeoutMs) || 5000));
   const requestStartedAt = Date.now();
+  const normalizedTargetSymbols = normalizeTargetSymbols(targetSymbols);
+  const normalizedTargetExchange = String(targetExchange || "").trim().toUpperCase() || null;
   recentTriggerState.set(cooldown.key, requestStartedAt);
   try {
     const endpoint = dispatchOnly !== false ? "/run" : "/run-execute";
@@ -92,6 +107,8 @@ async function triggerExitWorkerRun({
       body: JSON.stringify({
         reason: resolvedReason,
         dispatch_only: dispatchOnly !== false,
+        ...(normalizedTargetSymbols.length ? { target_symbols: normalizedTargetSymbols } : {}),
+        ...(normalizedTargetExchange ? { target_exchange: normalizedTargetExchange } : {}),
       }),
       signal: controller.signal,
     });
@@ -131,6 +148,7 @@ module.exports = {
     resolveTriggerCooldownMs,
     buildTriggerCooldownKey,
     isTriggerCooldownActive,
+    normalizeTargetSymbols,
     clearTriggerCooldownState() {
       recentTriggerState.clear();
     },

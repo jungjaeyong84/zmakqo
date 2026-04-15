@@ -15,6 +15,46 @@ const state = {
   inFlight: null,
 };
 
+function normalizeTargetSymbols(targetSymbols = null) {
+  const list = Array.isArray(targetSymbols)
+    ? targetSymbols
+    : (targetSymbols == null ? [] : [targetSymbols]);
+  return Array.from(new Set(
+    list
+      .map((value) => String(value || "").trim().toUpperCase())
+      .filter(Boolean)
+  ));
+}
+
+function buildWorkerPayload(payload = {}, overrides = {}) {
+  const base = (payload && typeof payload === "object") ? payload : {};
+  const nextPayload = {
+    reason: String(overrides.reason || base.reason || "MANUAL"),
+    chain_depth: Math.max(0, Math.floor(Number(
+      overrides.chain_depth != null
+        ? overrides.chain_depth
+        : (base.chain_depth != null ? base.chain_depth : 0)
+    ) || 0)),
+  };
+  if (base.parent_execute_at || overrides.parent_execute_at) {
+    nextPayload.parent_execute_at = overrides.parent_execute_at || base.parent_execute_at;
+  }
+  const targetSymbols = normalizeTargetSymbols(
+    overrides.target_symbols != null
+      ? overrides.target_symbols
+      : (base.target_symbols != null ? base.target_symbols : base.targetSymbols)
+  );
+  if (targetSymbols.length) nextPayload.target_symbols = targetSymbols;
+  const targetExchange = String(
+    overrides.target_exchange ||
+    base.target_exchange ||
+    base.targetExchange ||
+    ""
+  ).trim().toUpperCase();
+  if (targetExchange) nextPayload.target_exchange = targetExchange;
+  return nextPayload;
+}
+
 function respondJson(res, code, payload) {
   res.statusCode = code;
   res.setHeader("content-type", "application/json; charset=utf-8");
@@ -62,6 +102,7 @@ async function dispatchSelfExecute(payload = {}) {
   const selfUrl = resolveSelfUrl();
   const token = resolveTriggerToken();
   if (!selfUrl || !token) return { ok: false, skipped: true, reason: "SELF_URL_OR_TOKEN_MISSING" };
+  const normalizedPayload = buildWorkerPayload(payload);
   try {
     const promise = fetch(`${selfUrl}/run-execute`, {
       method: "POST",
@@ -69,7 +110,7 @@ async function dispatchSelfExecute(payload = {}) {
         "content-type": "application/json",
         "x-scheduler-token": token,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(normalizedPayload),
     });
     promise.catch((e) => {
       console.warn(`[WORKER] self dispatch failed: ${e && e.message ? e.message : String(e)}`);
@@ -92,11 +133,13 @@ async function executeBurst(payload = {}) {
     runBurst: () => runBinanceTickExitBurst({
       maxDurationMs,
       maxIterations: Number(process.env.EXIT_WORKER_BURST_MAX_ITERATIONS || 20),
+      targetSymbols: payload && payload.target_symbols,
     }),
   });
   const chainDepth = Math.max(0, Math.floor(Number(payload.chain_depth || 0)));
   if (result && result.ok && result.reschedule_recommended === true && chainDepth < 100) {
     const dispatch = await dispatchSelfExecute({
+      ...payload,
       reason: String(payload.reason || "CONTINUE"),
       chain_depth: chainDepth + 1,
       parent_execute_at: state.lastExecuteAt,
@@ -144,6 +187,7 @@ const server = http.createServer((req, res) => {
       if (path === "/run") {
         state.lastDispatchAt = new Date().toISOString();
         const dispatch = await dispatchSelfExecute({
+          ...payload,
           reason: String(payload.reason || "MANUAL"),
           chain_depth: 0,
         });
