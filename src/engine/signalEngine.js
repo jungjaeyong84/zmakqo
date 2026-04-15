@@ -87,7 +87,7 @@ function resolveContractExitQtyPct(size, targetQtyPct) {
   if (!Number.isFinite(currentSize) || currentSize <= 0) return 0;
   const target = Number(targetQtyPct);
   if (!Number.isFinite(target) || target <= 0) return currentSize;
-  return Math.min(currentSize, Math.max(0, currentSize * target));
+  return Math.min(currentSize, Math.max(0, target));
 }
 
 function resolveTpP1State(meta = {}) {
@@ -964,9 +964,10 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
     }];
   }
 
+  const takeProfitSignals = [];
   if (!tpP0Done && !tpP1Done && Number.isFinite(TP_P0) && pnlPctEffective >= TP_P0) {
     const qty = resolveContractExitQtyPct(size, TP_P0_QTY);
-    return [{
+    takeProfitSignals.push({
       event: tpP0Event,
       side: exitSide,
       qty_pct: qty,
@@ -983,24 +984,36 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
         tp_p0_atr_pct: toNum(meta.ev_gate_atr_pct),
         tp_p0_atr_multiple: toNum(rules.TP_P0_ATR_MULTIPLE),
       }
-    }];
+    });
   }
 
   // Zone B: 기준 수익 도달 시 부분 익절
-  if (!tpP1Done && pnlPctEffective >= TP_P1) {
+  if (!tpP1Done && Number.isFinite(TP_P1) && pnlPctEffective >= TP_P1) {
     const qty = resolveContractExitQtyPct(size, TP_P1_QTY);
     if (TP_P1_DEBUG) {
       const pnlTxt = Number.isFinite(pnlPctEffective) ? pnlPctEffective.toFixed(6) : "na";
       const pnlRawTxt = Number.isFinite(pnlPct) ? pnlPct.toFixed(6) : "na";
       console.log(`[TP_P1] exchange=${ex} symbol=${sym || "UNKNOWN"} size=${size} tp_p1_qty=${TP_P1_QTY} qty=${qty} pnl=${pnlTxt} pnl_raw=${pnlRawTxt} leverage=${leverageEff}`);
     }
-    return [{
+    takeProfitSignals.push({
       event: tpP1Event,
       side: exitSide,
       qty_pct: qty,
       reason: "EXIT_TAKE_PROFIT_P1",
-      features: { pnl_pct: pnlPctEffective, pnl_pct_raw: pnlPct, leverage: leverageEff, ref_px: closePx, avg_px: avg, position_side: positionSide, exit_profile: exitProfile, tp_p1_pct: TP_P1 }
-    }];
+      features: {
+        pnl_pct: pnlPctEffective,
+        pnl_pct_raw: pnlPct,
+        leverage: leverageEff,
+        ref_px: closePx,
+        avg_px: avg,
+        position_side: positionSide,
+        exit_profile: exitProfile,
+        tp_p1_pct: TP_P1,
+      }
+    });
+  }
+  if (takeProfitSignals.length) {
+    return takeProfitSignals;
   }
 
   // Zone B 이후: 트레일링 스탑

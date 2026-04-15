@@ -2301,6 +2301,13 @@ function resolveCanonicalExternalExitEvent({
   });
 }
 
+function shouldPromoteCanonicalExternalExit(decision = null) {
+  const resolved = decision && typeof decision === "object" ? decision : {};
+  if (resolved.entryLineageMissing === true) return false;
+  if (resolved.ledgerBlockedInvariant === true) return false;
+  return true;
+}
+
 function shouldEnforceSingleStopWriter() {
   return true;
 }
@@ -3145,6 +3152,9 @@ async function syncMarketTrades({
           primaryTransitionEvent: canonicalStageDecision.primaryTransitionEvent || null,
         }
         : { transitionEvents: [], primaryTransitionEvent: null };
+      const canonicalExitMutationAllowed = looksLikeExit
+        ? shouldPromoteCanonicalExternalExit(canonicalStageDecision)
+        : false;
       const exitLedgerPayload = looksLikeExit
         ? buildExitLedgerPayload(canonicalStageDecision.ledger || null, execQtyBase)
         : null;
@@ -3217,6 +3227,8 @@ async function syncMarketTrades({
           canonical_exit_chain_key: canonicalStageDecision.chainKey || null,
           canonical_exit_stage: canonicalStageDecision.stage || null,
           canonical_exit_reason: canonicalStageDecision.reason || null,
+          canonical_entry_lineage_required: canonicalStageDecision.entryLineageRequired === true,
+          canonical_entry_lineage_missing: canonicalStageDecision.entryLineageMissing === true,
           authoritative_qty_pct_raw: Number.isFinite(Number(authorityDecision.rawQtyPct)) ? Number(authorityDecision.rawQtyPct) : null,
           authoritative_qty_pct_accepted: Number.isFinite(Number(authorityDecision.acceptedQtyPct)) ? Number(authorityDecision.acceptedQtyPct) : null,
           authoritative_qty_pct_dropped: Number.isFinite(Number(authorityDecision.droppedQtyPct)) ? Number(authorityDecision.droppedQtyPct) : null,
@@ -3289,7 +3301,7 @@ async function syncMarketTrades({
 
       if (upserted && upserted.inserted && looksLikeExit) {
         try {
-          if (canonicalStageDecision.ledgerBlockedInvariant !== true) {
+          if (canonicalExitMutationAllowed) {
             await recordCanonicalExitTransitionsForFill({
               exchange: "BINANCEFUT",
               symbol: sym,
@@ -3309,21 +3321,23 @@ async function syncMarketTrades({
           console.warn("[BINANCEFUT_CANONICAL_EXIT_TRANSITION_RECORD_FAIL]", transitionErr && transitionErr.message ? transitionErr.message : String(transitionErr));
         }
         try {
-          const stageHintResult = await promotePositionStageHintsFromExternalExit({
-            exchange: "BINANCEFUT",
-            symbol: sym,
-            event,
-            trade: t,
-            runId: `RUN__FILL_SYNC_STAGE_HINT__${sym}__${tradeMs}`,
-          });
-          if (stageHintResult && stageHintResult.position) {
-            positionEntryCache.set(`BINANCEFUT__${sym}`, {
-              ...(positionCtx && typeof positionCtx === "object" ? positionCtx : {}),
-              tpP0Done: stageHintResult.position.meta && stageHintResult.position.meta.tp_p0_done === true,
-              tpP1Done: stageHintResult.position.meta && stageHintResult.position.meta.tp_p1_done === true,
-              trailActive: stageHintResult.position.meta && stageHintResult.position.meta.trail_active === true,
-              position: stageHintResult.position,
+          if (canonicalExitMutationAllowed) {
+            const stageHintResult = await promotePositionStageHintsFromExternalExit({
+              exchange: "BINANCEFUT",
+              symbol: sym,
+              event,
+              trade: t,
+              runId: `RUN__FILL_SYNC_STAGE_HINT__${sym}__${tradeMs}`,
             });
+            if (stageHintResult && stageHintResult.position) {
+              positionEntryCache.set(`BINANCEFUT__${sym}`, {
+                ...(positionCtx && typeof positionCtx === "object" ? positionCtx : {}),
+                tpP0Done: stageHintResult.position.meta && stageHintResult.position.meta.tp_p0_done === true,
+                tpP1Done: stageHintResult.position.meta && stageHintResult.position.meta.tp_p1_done === true,
+                trailActive: stageHintResult.position.meta && stageHintResult.position.meta.trail_active === true,
+                position: stageHintResult.position,
+              });
+            }
           }
         } catch (stageErr) {
           console.warn("[BINANCEFUT_FILL_SYNC_STAGE_HINT_FAIL]", stageErr && stageErr.message ? stageErr.message : String(stageErr));
@@ -3396,11 +3410,13 @@ async function syncMarketTrades({
         const canonicalStageForAlert = String(canonicalStageDecision.stage || "").trim().toUpperCase();
         const canonicalTransitionRequired = looksLikeExit
           && (canonicalStageForAlert === "TP0" || canonicalStageForAlert === "TP1" || canonicalStageForAlert === "TRAIL");
+        const canonicalEntryLineageMissing = looksLikeExit && canonicalStageDecision.entryLineageMissing === true;
         const allowExitAlert = isExitEvent && (
           isMeaningfulRealizedPnl(realizedPnl)
           || event === "EXIT_EXTERNAL_SYNC"
         ) && (!canonicalTransitionRequired || canonicalTransitionDecision.transitionEvents.length > 0)
-          && canonicalStageDecision.ledgerBlockedInvariant !== true;
+          && canonicalStageDecision.ledgerBlockedInvariant !== true
+          && !canonicalEntryLineageMissing;
         const allowEntryAlert = isEntryLikeEvent;
         const duplicateSuppressed = looksLikeExit
           && authorityDecision
@@ -3494,7 +3510,8 @@ async function syncMarketTrades({
                 ? Number(positionCtx.nativeStopPrice)
                 : null,
               ...(exitLedgerPayload || {}),
-              classificationVerified: !String(event || "").trim().toUpperCase().endsWith("_UNVERIFIED"),
+              classificationVerified: !canonicalEntryLineageMissing
+                && !String(event || "").trim().toUpperCase().endsWith("_UNVERIFIED"),
               alertStageHintTp0Done: (positionCtx && positionCtx.tpP0Done === true) || isTpP0Event(recentTp0 && recentTp0.event),
               alertStageHintTp1Done: (positionCtx && positionCtx.tpP1Done === true) || isTpP1Event(recentTp1 && recentTp1.event),
               alertStageHintTrailActive: positionCtx && positionCtx.trailActive === true,
@@ -3725,6 +3742,7 @@ module.exports = {
     buildExitAuthorityChainKey,
     applyExternalExitQtyAuthority,
     resolveCanonicalExternalExitEvent,
+    shouldPromoteCanonicalExternalExit,
     inferStageConstrainedTakeProfitKind,
     applyActiveExitStageBackstopOverride,
     buildStageHintedMeta,

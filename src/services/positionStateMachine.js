@@ -93,6 +93,14 @@ function classifyExitEventStage(event) {
   return null;
 }
 
+function requiresCanonicalExitEntryLineage({
+  currentStage = null,
+  event = null,
+} = {}) {
+  const stage = normalizeExitStage(currentStage || classifyExitEventStage(event));
+  return stage === "TP0" || stage === "TP1" || stage === "TRAIL";
+}
+
 function buildCanonicalExitEvent({
   stage = null,
   rules = null,
@@ -600,17 +608,21 @@ function resolveCanonicalExitWritePayload({
   return {
     rawEvent,
     rawStage,
-    event: buildCanonicalExitEvent({
-      stage: decision.stage,
-      rules,
-      fallbackEvent: decision.stage === rawStage ? rawEvent : null,
-    }) || rawEvent,
+    event: decision.entryLineageMissing === true
+      ? null
+      : (buildCanonicalExitEvent({
+          stage: decision.stage,
+          rules,
+          fallbackEvent: decision.stage === rawStage ? rawEvent : null,
+        }) || rawEvent),
     stage: decision.stage,
     chainKey: decision.chainKey,
     reason: decision.reason,
     stageRelocked: decision.stageRelocked === true,
     ledgerBlockedInvariant: decision.ledgerBlockedInvariant === true,
     blockedInvariant: decision.blockedInvariant === true,
+    entryLineageRequired: decision.entryLineageRequired === true,
+    entryLineageMissing: decision.entryLineageMissing === true,
     ledger: decision.ledger || null,
     ledgerValidation: decision.ledgerValidation || null,
     transitionEvents: Array.isArray(decision.transitionEvents) ? decision.transitionEvents : [],
@@ -635,6 +647,8 @@ function resolveCanonicalExitAuthorityDecision({
 } = {}) {
   const snapshot = normalizeSnapshot(positionSnapshot || {});
   const stage = normalizeExitStage(currentStage);
+  const entryLineageRequired = requiresCanonicalExitEntryLineage({ currentStage: stage });
+  const entryLineageMissing = entryLineageRequired && !String(entryEventId || "").trim();
   const resolvedChainKey = String(chainKey || "").trim() || buildCanonicalExitChainKey({
     exchange,
     symbol,
@@ -663,7 +677,10 @@ function resolveCanonicalExitAuthorityDecision({
   let resolvedStage = stage;
   let reason = "PASS_THROUGH";
 
-  if (stage === "TP0" || stage === "TP1") {
+  if (entryLineageMissing) {
+    resolvedStage = null;
+    reason = "ENTRY_LINEAGE_REQUIRED";
+  } else if (stage === "TP0" || stage === "TP1") {
     if (postTp1Locked) {
       resolvedStage = "TRAIL";
       reason = snapshot.tp_p1_done === true || snapshot.trail_active === true
@@ -675,9 +692,9 @@ function resolveCanonicalExitAuthorityDecision({
     }
   }
 
-  const stageRelocked = resolvedStage !== stage && reason !== "PASS_THROUGH";
+  const stageRelocked = entryLineageMissing !== true && resolvedStage !== stage && reason !== "PASS_THROUGH";
   const ledgerBlockedInvariant = ledgerValidation.blocked === true;
-  const transition = ledgerBlockedInvariant
+  const transition = entryLineageMissing || ledgerBlockedInvariant
     ? { transitionEvents: [], primaryTransitionEvent: null }
     : resolveCanonicalExitTransitionEvents({
       resolvedStage,
@@ -695,7 +712,9 @@ function resolveCanonicalExitAuthorityDecision({
     reason,
     stageRelocked,
     ledgerBlockedInvariant,
-    blockedInvariant: stageRelocked || ledgerBlockedInvariant,
+    blockedInvariant: stageRelocked || ledgerBlockedInvariant || entryLineageMissing,
+    entryLineageRequired,
+    entryLineageMissing,
     ledger,
     ledgerValidation,
     transitionEvents: transition.transitionEvents,
@@ -802,6 +821,7 @@ module.exports = {
     buildCanonicalExitChainKey,
     buildCanonicalExitEvent,
     classifyExitEventStage,
+    requiresCanonicalExitEntryLineage,
     ALLOWED_POSITION_STATE_TRANSITIONS,
   },
 };

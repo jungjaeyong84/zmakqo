@@ -3,8 +3,8 @@ const { resolveContractExitQtyPct } = require("../engine/signalEngine");
 const { __test: runnerTest } = require("../engine/paperBinanceRunner");
 
 assert.strictEqual(resolveContractExitQtyPct(1, 0.25), 0.25);
-assert.strictEqual(resolveContractExitQtyPct(0.75, 0.5), 0.375);
-assert.strictEqual(resolveContractExitQtyPct(0.25, 0.5), 0.125);
+assert.strictEqual(resolveContractExitQtyPct(0.75, 0.5), 0.5);
+assert.strictEqual(resolveContractExitQtyPct(0.25, 0.5), 0.25);
 assert.strictEqual(resolveContractExitQtyPct(0.5, null), 0.5);
 assert.strictEqual(resolveContractExitQtyPct(0, 0.5), 0);
 

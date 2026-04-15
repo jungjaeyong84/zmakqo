@@ -205,6 +205,28 @@ function run() {
   assert.deepStrictEqual(ledgerBlockedDecision.transitionEvents, []);
   assert.strictEqual(ledgerBlockedDecision.primaryTransitionEvent, null);
 
+  const missingEntryLineageDecision = resolveCanonicalExitWritePayload({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_TP_P0_0.8P",
+    positionSnapshot: {
+      qty_base: 0.75,
+      entry_qty_base: 1,
+      meta: { tp_p0_done: false, tp_p1_done: false, trail_active: false },
+    },
+    authorityState: { total: 0.25, tp0: 0.25 },
+    rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
+    observedQtyRatio: 0.25,
+    fullExit: false,
+  });
+  assert.strictEqual(missingEntryLineageDecision.stage, null);
+  assert.strictEqual(missingEntryLineageDecision.event, null);
+  assert.strictEqual(missingEntryLineageDecision.reason, "ENTRY_LINEAGE_REQUIRED");
+  assert.strictEqual(missingEntryLineageDecision.entryLineageRequired, true);
+  assert.strictEqual(missingEntryLineageDecision.entryLineageMissing, true);
+  assert.deepStrictEqual(missingEntryLineageDecision.transitionEvents, []);
+  assert.strictEqual(missingEntryLineageDecision.primaryTransitionEvent, null);
+
   const derivedEntryLedger = buildExitQuantityContractLedger({
     positionSnapshot: {
       qty_base: 0.167,

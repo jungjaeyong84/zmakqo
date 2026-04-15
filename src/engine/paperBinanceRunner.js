@@ -7611,6 +7611,44 @@ function resolveEntryLineageForFill({
   };
 }
 
+function resolveLiveOrderSignalRefs({
+  signalId = null,
+  signalDocId = null,
+  entryEventId = null,
+  features = null,
+  exchange = null,
+  symbol = null,
+  tf = null,
+  barCloseMs = null,
+  event = null,
+} = {}) {
+  const featureBag = (features && typeof features === "object") ? features : {};
+  const resolvedSignalId = String(
+    signalId || featureBag.signal_id || featureBag.signalId || ""
+  ).trim() || null;
+  let resolvedSignalDocId = String(
+    signalDocId || featureBag.signal_doc_id || featureBag.signalDocId || ""
+  ).trim() || null;
+  if (!resolvedSignalDocId && exchange && symbol && tf && Number.isFinite(Number(barCloseMs))) {
+    resolvedSignalDocId = deriveSignalDocId({
+      exchange,
+      symbol,
+      tf,
+      barCloseMs: Number(barCloseMs),
+      event,
+      signalId: resolvedSignalId,
+    });
+  }
+  const resolvedEntryEventId = String(
+    entryEventId || featureBag.entry_event_id || featureBag.entryEventId || ""
+  ).trim() || null;
+  return {
+    signalId: resolvedSignalId,
+    signalDocId: resolvedSignalDocId,
+    entryEventId: resolvedEntryEventId,
+  };
+}
+
 function extractEntryLineageCandidate(row = {}, {
   exchange = null,
   symbol = null,
@@ -9229,6 +9267,19 @@ function resolveNativeProtectionPositionMeta(positionMeta = null) {
   return (positionMeta && typeof positionMeta === "object") ? positionMeta : {};
 }
 
+function shouldExecuteImmediateNativeProtectionRefresh({
+  liveDryRun = false,
+  opening = false,
+  closing = false,
+  remainingQtyBase = null,
+} = {}) {
+  if (liveDryRun === true) return false;
+  if (opening === true) return true;
+  if (closing !== true) return false;
+  if (!Number.isFinite(Number(remainingQtyBase))) return true;
+  return Number(remainingQtyBase) > POS_SIZE_EPSILON;
+}
+
 function buildLiveNativeProtectionRefreshArgs({
   liveCfg,
   exchange,
@@ -9919,6 +9970,9 @@ async function executeLiveFuturesOrder({
   intentId,
   intent,
   event,
+  signalId = null,
+  signalDocId = null,
+  entryEventId = null,
   features,
   positionMeta,
   marketRegimeCohort,
@@ -10378,6 +10432,17 @@ async function executeLiveFuturesOrder({
       : (filledNotional / (budgetMax * leverageMult)));
   let nativeProtection = null;
   const nativeProtectionMeta = resolveNativeProtectionPositionMeta(positionMeta);
+  const liveOrderSignalRefs = resolveLiveOrderSignalRefs({
+    signalId,
+    signalDocId,
+    entryEventId,
+    features,
+    exchange,
+    symbol,
+    tf,
+    barCloseMs,
+    event,
+  });
 
   if (isExit) {
     await recordExitOrderContractSafe({
@@ -10388,9 +10453,9 @@ async function executeLiveFuturesOrder({
       event,
       stage: null,
       intentId: orderIntentId || null,
-      signalId: signalId || null,
-      signalDocId: signalDocId || null,
-      entryEventId: entryEventId || null,
+      signalId: liveOrderSignalRefs.signalId,
+      signalDocId: liveOrderSignalRefs.signalDocId,
+      entryEventId: liveOrderSignalRefs.entryEventId,
       positionSide: side === "BUY" ? "SHORT" : "LONG",
       closeSide: side,
       expectedQtyBase: execQtyBase,
@@ -10448,6 +10513,9 @@ async function executeLiveFuturesOrder({
   }
 
   if (!liveCfg.liveDryRun) {
+    const projectedRemainingQtyBase = isExit && Number.isFinite(posQtyBase) && Number.isFinite(execQtyBase)
+      ? Math.max(0, posQtyBase - execQtyBase)
+      : null;
     try {
       const requestArgs = buildLiveNativeProtectionRefreshArgs({
         liveCfg,
@@ -10471,6 +10539,12 @@ async function executeLiveFuturesOrder({
         source: "LIVE_EXECUTOR",
         reason: isExit ? "LIVE_EXECUTOR_POST_EXIT_FILL" : "LIVE_EXECUTOR_POST_ENTRY_FILL",
         dispatchReason: `LIVE_EXECUTOR_NATIVE_STOP_REFRESH_${String(exchange || "").toUpperCase()}_${String(symbol || "").toUpperCase()}_${String(intent || "").toUpperCase() || "UNKNOWN"}`,
+        executeImmediately: shouldExecuteImmediateNativeProtectionRefresh({
+          liveDryRun: liveCfg.liveDryRun,
+          opening,
+          closing,
+          remainingQtyBase: projectedRemainingQtyBase,
+        }),
       });
     } catch (nativeErr) {
       nativeProtection = {
@@ -14409,6 +14483,9 @@ async function runPaperFuturesForBar({
           intentId: it.intent_id,
           intent,
           event: it.event,
+          signalId: it.signal_id || (it.features_json && it.features_json.signal_id) || null,
+          signalDocId: it.signal_doc_id || (it.features_json && it.features_json.signal_doc_id) || null,
+          entryEventId: it.entry_event_id || (it.features_json && it.features_json.entry_event_id) || null,
           features: it.features_json,
           positionMeta: posMeta,
           marketRegimeCohort: liveMarketRegimeCohort,
@@ -16884,6 +16961,8 @@ module.exports = {
     isAuthorizedBinanceNativeStopWriter,
     resolveNativeProtectionStageState,
     resolveNativeProtectionPositionMeta,
+    shouldExecuteImmediateNativeProtectionRefresh,
+    resolveLiveOrderSignalRefs,
     buildLiveNativeProtectionRefreshArgs,
     requestBinanceNativeProtectionRefresh,
     buildRescueAddRepriceAlertContext,

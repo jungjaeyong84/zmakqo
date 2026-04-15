@@ -159,6 +159,33 @@ function run() {
   assert.strictEqual(rescueTp1[0].event, "EXIT_TP_P1_1.65P");
   assert.strictEqual(rescueTp1[0].qty_pct, 0.5, "TP1 contract must remain 50% of the original position");
 
+  const tp0Tp1Cascade = generateSignals({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    trading_mode: "EXIT_ONLY",
+    leverage: 2,
+    currentBarCloseMs: 1_800_101_000_000,
+    bar: { close: 100.9, c: 100.9 },
+    position: {
+      state: "ACTIVE",
+      size_pct: 1,
+      avg_price: 100,
+      position_side: "LONG",
+      meta: {
+        external_leverage: 2,
+        ev_gate_atr_pct: 0.012,
+        tp_p0_done: false,
+        tp_p1_done: false,
+        openclaw_market_regime_cohort: "RESCUE",
+      },
+    },
+  });
+  assert.strictEqual(tp0Tp1Cascade.length, 2, "when pnl already crossed tp1, tp0 and tp1 must be emitted in the same cycle");
+  assert.strictEqual(tp0Tp1Cascade[0].event, "EXIT_TP_P0_0.96P");
+  assert.strictEqual(tp0Tp1Cascade[1].event, "EXIT_TP_P1_1.65P");
+  assert.strictEqual(tp0Tp1Cascade[0].qty_pct, 0.25);
+  assert.strictEqual(tp0Tp1Cascade[1].qty_pct, 0.5);
+
   const tp1AfterTp0Remaining = generateSignals({
     exchange: "BINANCEFUT",
     symbol: "DOGEUSDT",
