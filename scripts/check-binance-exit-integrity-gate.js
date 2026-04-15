@@ -10,6 +10,7 @@ function toCount(value) {
 
 function buildFailureReasons(summary = {}) {
   const reasons = [];
+  if (toCount(summary.script_failure_n) > 0) reasons.push("SCRIPT_FAILURE");
   if (summary.live_gate_blocked === true) reasons.push("LIVE_GATE_BLOCKED");
   if (String(summary.canonical_exit_stage_gate || "").trim().toUpperCase() === "BLOCK") reasons.push("CANONICAL_EXIT_STAGE_BLOCK");
   if (String(summary.stop_divergence_gate || "").trim().toUpperCase() === "BLOCK") reasons.push("STOP_DIVERGENCE_BLOCK");

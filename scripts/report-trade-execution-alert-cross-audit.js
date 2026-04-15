@@ -58,6 +58,25 @@ function classifyEvent(event) {
   return "OTHER";
 }
 
+function isEntryStage(stage) {
+  const value = upper(stage);
+  return value === "LONG" || value === "SHORT";
+}
+
+function isUnverifiedEvent(event) {
+  return upper(event).endsWith("_UNVERIFIED");
+}
+
+function normalizeComparableEvent(event) {
+  const value = upper(event);
+  if (!value) return null;
+  return value.endsWith("_UNVERIFIED") ? value.slice(0, -"_UNVERIFIED".length) : value;
+}
+
+function isVerifiedExitFill(fill = {}) {
+  return !isEntryStage(fill.stage) && !isUnverifiedEvent(fill.event);
+}
+
 function parseTelegramTradeAlertRows(logText = "", sinceMs = 0) {
   const rows = [];
   for (const line of String(logText || "").split(/\r?\n/)) {
@@ -124,11 +143,12 @@ function pickMatchingAlert(fill, alerts = []) {
   }
   const fillMs = Number(fill && fill.created_ms);
   if (!Number.isFinite(fillMs)) return null;
+  const normalizedFillEvent = normalizeComparableEvent(fill && fill.event);
   let best = null;
   let bestDelta = Infinity;
   for (const alert of alerts) {
     if (upper(alert.symbol) !== fill.symbol) continue;
-    if (upper(alert.event) !== fill.event) continue;
+    if (normalizeComparableEvent(alert.event) !== normalizedFillEvent) continue;
     const tsMs = Date.parse(String(alert.ts || ""));
     if (!Number.isFinite(tsMs)) continue;
     const delta = Math.abs(tsMs - fillMs);
@@ -144,6 +164,9 @@ function pickMatchingAlert(fill, alerts = []) {
 function buildReport({ fills = [], alertAuditRows = [], telegramTradeRows = [], coverageReady = false, auditWindowStartIso = null } = {}) {
   const matched = [];
   const missing = [];
+  const missingVerifiedExit = [];
+  const missingEntry = [];
+  const missingUnverified = [];
   const unmatchedAlerts = [];
   const usedAlertKeys = new Set();
   for (const fill of fills) {
@@ -161,12 +184,16 @@ function buildReport({ fills = [], alertAuditRows = [], telegramTradeRows = [], 
         title: match.title,
       });
     } else {
-      missing.push({
+      const issue = {
         fill_id: fill.fill_id,
         symbol: fill.symbol,
         event: fill.event,
         fill_created_at: fill.created_at,
-      });
+      };
+      missing.push(issue);
+      if (isEntryStage(fill.stage)) missingEntry.push(issue);
+      else if (isUnverifiedEvent(fill.event)) missingUnverified.push(issue);
+      else if (isVerifiedExitFill(fill)) missingVerifiedExit.push(issue);
     }
   }
   for (const alert of alertAuditRows) {
@@ -190,10 +217,14 @@ function buildReport({ fills = [], alertAuditRows = [], telegramTradeRows = [], 
     fill_n: fills.length,
     matched_fill_n: matched.length,
     missing_alert_fill_n: missing.length,
+    missing_verified_exit_alert_fill_n: missingVerifiedExit.length,
+    missing_entry_alert_fill_n: missingEntry.length,
+    missing_unverified_alert_fill_n: missingUnverified.length,
     unmatched_alert_n: unmatchedAlerts.length,
     telegram_trade_alert_row_n: telegramTradeRows.length,
     audit_trade_alert_row_n: alertAuditRows.length,
     issues: missing.slice(0, 100),
+    actionable_issues: missingVerifiedExit.slice(0, 100),
     unmatched_alerts: unmatchedAlerts.slice(0, 100),
   };
 }
@@ -209,6 +240,9 @@ function buildMarkdown(report = {}) {
   lines.push(`- fill_n: ${report.fill_n || 0}`);
   lines.push(`- matched_fill_n: ${report.matched_fill_n || 0}`);
   lines.push(`- missing_alert_fill_n: ${report.missing_alert_fill_n || 0}`);
+  lines.push(`- missing_verified_exit_alert_fill_n: ${report.missing_verified_exit_alert_fill_n || 0}`);
+  lines.push(`- missing_entry_alert_fill_n: ${report.missing_entry_alert_fill_n || 0}`);
+  lines.push(`- missing_unverified_alert_fill_n: ${report.missing_unverified_alert_fill_n || 0}`);
   lines.push(`- unmatched_alert_n: ${report.unmatched_alert_n || 0}`);
   lines.push(`- telegram_trade_alert_row_n: ${report.telegram_trade_alert_row_n || 0}`);
   lines.push(`- audit_trade_alert_row_n: ${report.audit_trade_alert_row_n || 0}`);
@@ -278,6 +312,9 @@ async function main() {
     fill_n: report.fill_n,
     matched_fill_n: report.matched_fill_n,
     missing_alert_fill_n: report.missing_alert_fill_n,
+    missing_verified_exit_alert_fill_n: report.missing_verified_exit_alert_fill_n,
+    missing_entry_alert_fill_n: report.missing_entry_alert_fill_n,
+    missing_unverified_alert_fill_n: report.missing_unverified_alert_fill_n,
     unmatched_alert_n: report.unmatched_alert_n,
     telegram_trade_alert_row_n: report.telegram_trade_alert_row_n,
     audit_trade_alert_row_n: report.audit_trade_alert_row_n,
@@ -295,6 +332,7 @@ if (require.main === module) {
   module.exports = {
     __test: {
       classifyEvent,
+      normalizeComparableEvent,
       parseTelegramTradeAlertRows,
       pickMatchingAlert,
       buildReport,

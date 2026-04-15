@@ -16,6 +16,7 @@ substitutions:
   _OTEL_EXPORTER_OTLP_USE_GOOGLE_AUTH: "1"
   _OTEL_SERVICE_ENV: production
   _OTEL_EXPORTER_TIMEOUT_MS: "5000"
+  _EXIT_INTEGRITY_SCRIPT_TIMEOUT_MS: "90000"
   _LIVE_EXEC_POLICY_RECENT_WIN_RATE_GUARD_ENABLED: "0"
   _LIVE_EXEC_POLICY_RECENT_WIN_RATE_GUARD_PERIOD: "DAYS_7"
   _LIVE_EXEC_POLICY_RECENT_WIN_RATE_GUARD_THRESHOLD: "0"
@@ -31,6 +32,7 @@ steps:
     entrypoint: "sh"
     env:
       - "NODE_OPTIONS=--max-old-space-size=4096"
+      - "EXIT_INTEGRITY_SCRIPT_TIMEOUT_MS=$_EXIT_INTEGRITY_SCRIPT_TIMEOUT_MS"
     args: ["-lc", "npm ci --no-audit --no-fund && npm test && npm run check:binance-exit-integrity-gate"]
 
   - name: "gcr.io/cloud-builders/docker"

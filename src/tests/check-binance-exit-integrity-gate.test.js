@@ -25,6 +25,7 @@ const { __test } = require("../../scripts/check-binance-exit-integrity-gate");
   assert.deepStrictEqual(passed, []);
 
   const detailed = __test.buildFailureReasons({
+    script_failure_n: 1,
     live_gate_blocked: false,
     canonical_exit_stage_gate: "PASS",
     stop_divergence_gate: "PASS",
@@ -42,6 +43,7 @@ const { __test } = require("../../scripts/check-binance-exit-integrity-gate");
     stop_divergence_symbol_n: 11,
   });
   assert.deepStrictEqual(detailed, [
+    "SCRIPT_FAILURE",
     "NATIVE_GAP_AFTER",
     "WATCHDOG_ISSUE_SYMBOL",
     "EXIT_QTY_LIVE_ISSUE_CHAIN",

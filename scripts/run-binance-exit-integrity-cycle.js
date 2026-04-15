@@ -3,7 +3,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { spawn } = require("child_process");
 const { runBinanceLiveStateSelfHeal } = require("../src/services/binanceLiveStateSelfHeal");
 const { runBinanceActiveExitWatchdog } = require("../src/services/binanceActiveExitWatchdog");
 const { STOP_DIVERGENCE_CODES } = require("../src/utils/exitIntegrityPolicy");
@@ -41,21 +41,101 @@ function extractJson(stdout = "") {
   return null;
 }
 
-function runScript(script, env = {}) {
+function resolveScriptTimeoutMs(script, env = {}) {
+  const explicit = Number(
+    env.EXIT_INTEGRITY_SCRIPT_TIMEOUT_MS
+    || process.env.EXIT_INTEGRITY_SCRIPT_TIMEOUT_MS
+    || 120000
+  );
+  if (!Number.isFinite(explicit) || explicit < 1000) return 120000;
+  return Math.floor(explicit);
+}
+
+function appendWithCap(current = "", chunk = "", maxChars = 1024 * 1024 * 4) {
+  const next = `${current}${chunk}`;
+  if (next.length <= maxChars) return next;
+  return next.slice(-maxChars);
+}
+
+async function runScript(script, env = {}) {
   const scriptPath = path.join(REPO_ROOT, "scripts", script);
-  const child = spawnSync(process.execPath, [scriptPath], {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-    env: { ...process.env, ...env },
-    maxBuffer: 1024 * 1024 * 16,
+  const timeoutMs = resolveScriptTimeoutMs(script, env);
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    let timer = null;
+    const child = spawn(process.execPath, [scriptPath], {
+      cwd: REPO_ROOT,
+      env: { ...process.env, ...env },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    let timedOut = false;
+    const finalize = ({ code = null, signal = null, error = null } = {}) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({
+        ok: code === 0 && timedOut !== true && !error,
+        exit_code: code,
+        signal: signal || null,
+        parsed: extractJson(stdout),
+        stdout_tail: String(stdout || "").trim().split(/\r?\n/).filter(Boolean).slice(-10),
+        stderr_tail: String(stderr || "").trim().split(/\r?\n/).filter(Boolean).slice(-10),
+        timed_out: timedOut === true,
+        timeout_ms: timeoutMs,
+        duration_ms: Date.now() - startedAt,
+        error: error && error.message ? error.message : (error ? String(error) : null),
+      });
+    };
+    child.stdout.on("data", (chunk) => {
+      stdout = appendWithCap(stdout, chunk.toString("utf8"));
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr = appendWithCap(stderr, chunk.toString("utf8"));
+    });
+    child.on("error", (error) => finalize({ error }));
+    child.on("close", (code, signal) => finalize({ code, signal }));
+    timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+      setTimeout(() => {
+        if (!settled) child.kill("SIGKILL");
+      }, 5000).unref();
+    }, timeoutMs);
   });
-  return {
-    ok: child.status === 0,
-    exit_code: child.status,
-    parsed: extractJson(child.stdout),
-    stdout_tail: String(child.stdout || "").trim().split(/\r?\n/).filter(Boolean).slice(-10),
-    stderr_tail: String(child.stderr || "").trim().split(/\r?\n/).filter(Boolean).slice(-10),
-  };
+}
+
+function collectScriptFailures(report = {}) {
+  const checks = [
+    ["active_exit_stage_backfill", report.active_exit_stage_backfill],
+    ["canonical_exit_transition_backfill", report.canonical_exit_transition_backfill],
+    ["fill_sync_alert_duplication", report.fill_sync_alert_duplication],
+    ["fill_sync_alert_event_consistency", report.fill_sync_alert_event_consistency],
+    ["trade_execution_alert_cross_audit", report.trade_execution_alert_cross_audit],
+    ["fill_sync_alert_duplication_live_separation", report.fill_sync_alert_duplication_live_separation],
+    ["binance_exit_qty_contract_audit", report.binance_exit_qty_contract_audit],
+    ["binance_exit_qty_live_separation", report.binance_exit_qty_live_separation],
+    ["trail_runner_floor_audit", report.trail_runner_floor_audit],
+    ["trail_runner_floor_live_separation", report.trail_runner_floor_live_separation],
+    ["binance_exit_authority_live_board", report.binance_exit_authority_live_board],
+    ["binance_canonical_exit_stage_qa", report.binance_canonical_exit_stage_qa],
+  ];
+  const failures = [];
+  for (const [name, step] of checks) {
+    if (!step || step.ok === true) continue;
+    if (step.timed_out === true) {
+      failures.push(`${name}:TIMEOUT`);
+      continue;
+    }
+    if (step.error) {
+      failures.push(`${name}:${String(step.error).trim().toUpperCase() || "ERROR"}`);
+      continue;
+    }
+    failures.push(`${name}:EXIT_${step.exit_code == null ? "UNKNOWN" : step.exit_code}`);
+  }
+  return failures;
 }
 
 function buildMarkdown(report = {}) {
@@ -77,6 +157,7 @@ function buildMarkdown(report = {}) {
   lines.push(`- fill_sync_duplicate_group_n: ${summary.fill_sync_duplicate_group_n ?? "N/A"}`);
   lines.push(`- fill_sync_alert_event_issue_n: ${summary.fill_sync_alert_event_issue_n ?? "N/A"}`);
   lines.push(`- trade_execution_alert_missing_fill_n: ${summary.trade_execution_alert_missing_fill_n ?? "N/A"}`);
+  lines.push(`- trade_execution_alert_missing_fill_total_n: ${summary.trade_execution_alert_missing_fill_total_n ?? "N/A"}`);
   lines.push(`- duplication_live_group_n: ${summary.duplication_live_group_n ?? "N/A"}`);
   lines.push(`- authority_live_issue_position_n: ${summary.authority_live_issue_position_n ?? "N/A"}`);
   lines.push(`- canonical_exit_stage_fail_n: ${summary.canonical_exit_stage_fail_n ?? "N/A"}`);
@@ -129,8 +210,19 @@ function buildSummary(report = {}) {
   const fillSyncDuplicateGroupN = Number(report.fill_sync_alert_duplication && report.fill_sync_alert_duplication.parsed && report.fill_sync_alert_duplication.parsed.report && report.fill_sync_alert_duplication.parsed.report.duplicate_group_n || report.fill_sync_alert_duplication && report.fill_sync_alert_duplication.parsed && report.fill_sync_alert_duplication.parsed.duplicate_group_n || 0);
   const fillSyncAlertEventIssueN = Number(report.fill_sync_alert_event_consistency && report.fill_sync_alert_event_consistency.parsed && report.fill_sync_alert_event_consistency.parsed.issue_n || 0);
   const tradeExecutionAlertCoverageReady = !!(report.trade_execution_alert_cross_audit && report.trade_execution_alert_cross_audit.parsed && report.trade_execution_alert_cross_audit.parsed.coverage_ready === true);
-  const tradeExecutionAlertMissingFillN = tradeExecutionAlertCoverageReady
+  const tradeExecutionAlertMissingFillTotalN = tradeExecutionAlertCoverageReady
     ? Number(report.trade_execution_alert_cross_audit && report.trade_execution_alert_cross_audit.parsed && report.trade_execution_alert_cross_audit.parsed.missing_alert_fill_n || 0)
+    : 0;
+  const tradeExecutionAlertMissingFillN = tradeExecutionAlertCoverageReady
+    ? Number(
+      report.trade_execution_alert_cross_audit
+      && report.trade_execution_alert_cross_audit.parsed
+      && (
+        report.trade_execution_alert_cross_audit.parsed.missing_verified_exit_alert_fill_n
+        ?? report.trade_execution_alert_cross_audit.parsed.missing_alert_fill_n
+      )
+      || 0
+    )
     : 0;
   const duplicationLiveGroupN = Number(report.fill_sync_alert_duplication_live_separation && report.fill_sync_alert_duplication_live_separation.parsed && report.fill_sync_alert_duplication_live_separation.parsed.live_duplicate_group_n || 0);
   const authorityLiveIssuePositionN = Number(report.binance_exit_authority_live_board && report.binance_exit_authority_live_board.parsed && report.binance_exit_authority_live_board.parsed.live_issue_position_n || 0);
@@ -141,8 +233,11 @@ function buildSummary(report = {}) {
   const canonicalTransitionBackfillCreatedTransitionN = Number(report.canonical_exit_transition_backfill && report.canonical_exit_transition_backfill.parsed && report.canonical_exit_transition_backfill.parsed.created_transition_n || 0);
   const stopDivergenceSymbolN = countStopDivergenceSymbols(report.active_exit_watchdog || {});
   const duplicationIssueN = duplicationLiveGroupN > 0 ? duplicationLiveGroupN : fillSyncDuplicateGroupN;
+  const scriptFailures = collectScriptFailures(report);
+  const scriptFailureN = scriptFailures.length;
   const liveIssueCount = afterGap + watchdogIssueSymbolN + exitQtyLiveIssueChainN + trailFloorLiveViolationN + duplicationIssueN + fillSyncAlertEventIssueN + tradeExecutionAlertMissingFillN + authorityActionableLiveIssuePositionN + canonicalExitStageFailN;
   const reasons = [];
+  if (scriptFailureN > 0) reasons.push(`script failure ${scriptFailureN}건`);
   if (afterGap > 0) reasons.push(`native trail protection gap ${afterGap}건`);
   if (watchdogIssueSymbolN > 0) reasons.push(`active exit watchdog issue ${watchdogIssueSymbolN}건`);
   if (exitQtyLiveIssueChainN > 0) reasons.push(`exit qty live issue chain ${exitQtyLiveIssueChainN}건`);
@@ -154,10 +249,12 @@ function buildSummary(report = {}) {
   if (canonicalExitStageFailN > 0) reasons.push(`canonical exit stage fail ${canonicalExitStageFailN}건`);
   if (!canonicalTransitionBackfillOk) reasons.push("canonical exit transition backfill failed");
   if (stopDivergenceSymbolN > 0) reasons.push(`stop divergence symbol ${stopDivergenceSymbolN}건`);
-  const liveGateBlocked = liveIssueCount > 0 || !canonicalTransitionBackfillOk;
+  const liveGateBlocked = scriptFailureN > 0 || liveIssueCount > 0 || !canonicalTransitionBackfillOk;
   return {
     status: liveGateBlocked ? "WARN" : "OK",
     live_gate_blocked: liveGateBlocked,
+    script_failure_n: scriptFailureN,
+    script_failures: scriptFailures,
     live_issue_count: liveIssueCount,
     native_gap_before: beforeGap,
     native_gap_after: afterGap,
@@ -169,6 +266,7 @@ function buildSummary(report = {}) {
     fill_sync_duplicate_group_n: fillSyncDuplicateGroupN,
     fill_sync_alert_event_issue_n: fillSyncAlertEventIssueN,
     trade_execution_alert_missing_fill_n: tradeExecutionAlertMissingFillN,
+    trade_execution_alert_missing_fill_total_n: tradeExecutionAlertMissingFillTotalN,
     trade_execution_alert_coverage_ready: tradeExecutionAlertCoverageReady,
     duplication_live_group_n: duplicationLiveGroupN,
     authority_live_issue_position_n: authorityLiveIssuePositionN,
@@ -195,19 +293,22 @@ async function runBinanceExitIntegrityCycle({
 } = {}) {
   fs.mkdirSync(opsDailyDir, { recursive: true });
 
-  const nativeGapBefore = await reportNativeGap({ exchange, outDir: opsDailyDir });
+  const runScriptStep = (script, env = {}) => Promise.resolve(runScriptImpl(script, env));
+
+  const [nativeGapBefore, stageBackfill, activeExitWatchdog] = await Promise.all([
+    reportNativeGap({ exchange, outDir: opsDailyDir }),
+    runScriptStep("backfill-binance-active-exit-stage.js", {
+      DRY_RUN: apply ? "0" : "1",
+    }),
+    runWatchdog({
+      exchange,
+      apply,
+      maxRepairCount: Number(process.env.ACTIVE_EXIT_WATCHDOG_MAX_REPAIR_COUNT || 10),
+    }),
+  ]);
   const gapSymbols = Array.isArray(nativeGapBefore.summary && nativeGapBefore.summary.rows)
     ? nativeGapBefore.summary.rows.map((row) => String(row && row.symbol || "").trim().toUpperCase()).filter(Boolean)
     : [];
-
-  const stageBackfill = runScriptImpl("backfill-binance-active-exit-stage.js", {
-    DRY_RUN: apply ? "0" : "1",
-  });
-  const activeExitWatchdog = await runWatchdog({
-    exchange,
-    apply,
-    maxRepairCount: Number(process.env.ACTIVE_EXIT_WATCHDOG_MAX_REPAIR_COUNT || 10),
-  });
 
   let selfHealResult = {
     ok: true,
@@ -228,29 +329,47 @@ async function runBinanceExitIntegrityCycle({
     });
   }
 
-  const nativeGapAfter = await reportNativeGap({ exchange, outDir: opsDailyDir });
-  const canonicalExitTransitionBackfill = runScriptImpl("backfill-canonical-exit-transitions.js", {
-    CANONICAL_EXIT_TRANSITION_BACKFILL_LOOKBACK_DAYS: String(
-      process.env.EXIT_INTEGRITY_CANONICAL_TRANSITION_LOOKBACK_DAYS
-      || process.env.CANONICAL_EXIT_TRANSITION_BACKFILL_LOOKBACK_DAYS
-      || 7
-    ),
-    CANONICAL_EXIT_TRANSITION_BACKFILL_PAGE_SIZE: String(
-      process.env.EXIT_INTEGRITY_CANONICAL_TRANSITION_PAGE_SIZE
-      || process.env.CANONICAL_EXIT_TRANSITION_BACKFILL_PAGE_SIZE
-      || 500
-    ),
-  });
-  const fillSyncAlertDuplication = runScriptImpl("report-fill-sync-alert-duplication.js");
-  const fillSyncAlertEventConsistency = runScriptImpl("report-fill-sync-alert-event-consistency.js");
-  const tradeExecutionAlertCrossAudit = runScriptImpl("report-trade-execution-alert-cross-audit.js");
-  const fillSyncAlertDuplicationLiveSeparation = runScriptImpl("report-fill-sync-alert-duplication-live-separation.js");
-  const exitQtyContractAudit = runScriptImpl("report-binance-exit-qty-contract-audit.js");
-  const exitQtyLiveSeparation = runScriptImpl("report-binance-exit-qty-live-separation.js");
-  const trailRunnerFloorAudit = runScriptImpl("report-trail-runner-floor-audit.js");
-  const trailRunnerFloorLiveSeparation = runScriptImpl("report-trail-runner-floor-live-separation.js");
-  const authorityLiveBoard = runScriptImpl("report-binance-exit-authority-live-board.js");
-  const canonicalExitStageQa = runScriptImpl("report-binance-canonical-exit-stage-qa.js");
+  const nativeGapAfter = apply
+    ? await reportNativeGap({ exchange, outDir: opsDailyDir })
+    : nativeGapBefore;
+  const [
+    canonicalExitTransitionBackfill,
+    fillSyncAlertDuplication,
+    fillSyncAlertEventConsistency,
+    tradeExecutionAlertCrossAudit,
+    exitQtyContractAudit,
+    trailRunnerFloorAudit,
+    canonicalExitStageQa,
+  ] = await Promise.all([
+    runScriptStep("backfill-canonical-exit-transitions.js", {
+      CANONICAL_EXIT_TRANSITION_BACKFILL_LOOKBACK_DAYS: String(
+        process.env.EXIT_INTEGRITY_CANONICAL_TRANSITION_LOOKBACK_DAYS
+        || process.env.CANONICAL_EXIT_TRANSITION_BACKFILL_LOOKBACK_DAYS
+        || 7
+      ),
+      CANONICAL_EXIT_TRANSITION_BACKFILL_PAGE_SIZE: String(
+        process.env.EXIT_INTEGRITY_CANONICAL_TRANSITION_PAGE_SIZE
+        || process.env.CANONICAL_EXIT_TRANSITION_BACKFILL_PAGE_SIZE
+        || 500
+      ),
+    }),
+    runScriptStep("report-fill-sync-alert-duplication.js"),
+    runScriptStep("report-fill-sync-alert-event-consistency.js"),
+    runScriptStep("report-trade-execution-alert-cross-audit.js"),
+    runScriptStep("report-binance-exit-qty-contract-audit.js"),
+    runScriptStep("report-trail-runner-floor-audit.js"),
+    runScriptStep("report-binance-canonical-exit-stage-qa.js"),
+  ]);
+  const [
+    fillSyncAlertDuplicationLiveSeparation,
+    exitQtyLiveSeparation,
+    trailRunnerFloorLiveSeparation,
+  ] = await Promise.all([
+    runScriptStep("report-fill-sync-alert-duplication-live-separation.js"),
+    runScriptStep("report-binance-exit-qty-live-separation.js"),
+    runScriptStep("report-trail-runner-floor-live-separation.js"),
+  ]);
+  const authorityLiveBoard = await runScriptStep("report-binance-exit-authority-live-board.js");
 
   const report = {
     ok: true,
@@ -311,6 +430,7 @@ if (require.main === module) {
       buildSummary,
       buildMarkdown,
       countStopDivergenceSymbols,
+      collectScriptFailures,
     },
   };
 }
