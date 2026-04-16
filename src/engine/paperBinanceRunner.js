@@ -9094,6 +9094,68 @@ function isCriticalLiveExitExceptionEvent(event) {
     || ev.startsWith("EXIT_TRAIL");
 }
 
+function shouldTrackLiveSubmitEvidence({ intent = null, event = null, executionMode = null } = {}) {
+  const intentUpper = String(intent || "").trim().toUpperCase();
+  const modeUpper = String(executionMode || "").trim().toUpperCase();
+  if (modeUpper !== "LIVE") return false;
+  if (intentUpper !== "EXIT") return false;
+  return isCriticalLiveExitExceptionEvent(event);
+}
+
+function resolveLiveSubmitExceptionFamily(reason = null) {
+  const token = String(reason || "").trim().toUpperCase();
+  if (!token) return null;
+  if (token === "LIVE_EXCEPTION") return "LIVE_EXCEPTION";
+  if (token === "ACK_TIMEOUT" || token === "TP1_ACK_TIMEOUT") return "ACK_TIMEOUT";
+  if (token.startsWith("LIVE_")) return "LIVE_FAILED";
+  if (token.startsWith("TP_P1_")) return "TP_P1_GUARD";
+  return token;
+}
+
+function buildLiveSubmitIntentPatch({
+  state = null,
+  nowMs = Date.now(),
+  orderId = null,
+  clientOrderId = null,
+  exceptionFamily = null,
+  error = null,
+  executionMode = null,
+  execPrice = null,
+  execQtyBase = null,
+} = {}) {
+  const ts = Number.isFinite(Number(nowMs)) ? Math.round(Number(nowMs)) : Date.now();
+  const patch = {
+    live_submit_state: String(state || "").trim().toUpperCase() || null,
+    live_submit_mode: String(executionMode || "").trim().toUpperCase() || null,
+    live_submit_order_id: orderId != null ? String(orderId) : null,
+    live_submit_client_order_id: clientOrderId != null ? String(clientOrderId) : null,
+    live_submit_exception_family: exceptionFamily != null ? String(exceptionFamily) : null,
+    live_submit_error: error != null ? String(error).slice(0, 240) : null,
+  };
+  if (patch.live_submit_state === "SUBMITTING") {
+    patch.live_submit_started_at_ms = ts;
+    patch.live_submit_finished_at_ms = null;
+    patch.live_submit_ack_at_ms = null;
+  } else if (patch.live_submit_state === "ACKED") {
+    patch.live_submit_finished_at_ms = ts;
+    patch.live_submit_ack_at_ms = ts;
+  } else if (patch.live_submit_state) {
+    patch.live_submit_finished_at_ms = ts;
+  }
+  if (Number.isFinite(Number(execPrice))) patch.live_submit_exec_price = Number(execPrice);
+  if (Number.isFinite(Number(execQtyBase))) patch.live_submit_exec_qty_base = Number(execQtyBase);
+  return patch;
+}
+
+async function patchLiveSubmitIntentEvidence(intentId, patch = null) {
+  if (!intentId || !patch || typeof patch !== "object") return;
+  try {
+    await patchIntent(intentId, patch);
+  } catch (err) {
+    console.warn("[LIVE_SUBMIT_INTENT_PATCH_FAIL]", err && err.message ? err.message : String(err));
+  }
+}
+
 function shouldSendLiveExitExceptionAlert({ exchange, symbol, event, intentId } = {}) {
   const key = [
     String(exchange || "").trim().toUpperCase() || "UNKNOWN",
@@ -10676,6 +10738,7 @@ async function executeLiveFuturesOrder({
     qtyFractionUsed,
     budgetMaxUsed: budgetMax,
     liveOrderId: order && order.orderId ? String(order.orderId) : null,
+    liveClientOrderId: detail && detail.clientOrderId ? String(detail.clientOrderId) : (order && order.clientOrderId ? String(order.clientOrderId) : null),
     appliedLeverage: leverageMult,
     leverageReason: leverageResolved && leverageResolved.reason,
     appliedExitProfile: exitProfileResolved && exitProfileResolved.profile ? String(exitProfileResolved.profile).toUpperCase() : "BASE",
@@ -14572,6 +14635,18 @@ async function runPaperFuturesForBar({
           : liveQtyFraction;
       }
       let liveResult = null;
+      const trackLiveSubmit = shouldTrackLiveSubmitEvidence({
+        intent,
+        event: it.event,
+        executionMode: liveCfg.executionMode,
+      });
+      if (trackLiveSubmit) {
+        await patchLiveSubmitIntentEvidence(it.intent_id, buildLiveSubmitIntentPatch({
+          state: "SUBMITTING",
+          nowMs: Date.now(),
+          executionMode: liveCfg.executionMode,
+        }));
+      }
       try {
         liveResult = await executeLiveFuturesOrder({
           liveCfg,
@@ -14615,6 +14690,15 @@ async function runPaperFuturesForBar({
           cancel_note: cancelNote || errMsg,
           last_error: errMsg,
         });
+        if (trackLiveSubmit) {
+          await patchLiveSubmitIntentEvidence(it.intent_id, buildLiveSubmitIntentPatch({
+            state: "EXCEPTION",
+            nowMs: Date.now(),
+            exceptionFamily: "LIVE_EXCEPTION",
+            error: cancelNote || errMsg,
+            executionMode: liveCfg.executionMode,
+          }));
+        }
         await sendLiveExitExceptionIntegrityAlert({
           exchange,
           symbol,
@@ -14661,6 +14745,15 @@ async function runPaperFuturesForBar({
         if (liveResult.note || liveResult.error) cancelPatch.cancel_note = liveResult.note || liveResult.error;
         if (liveResult.error) cancelPatch.last_error = liveResult.error;
         await markIntentStatus(it.intent_id, "CANCELED", cancelPatch);
+        if (trackLiveSubmit) {
+          await patchLiveSubmitIntentEvidence(it.intent_id, buildLiveSubmitIntentPatch({
+            state: "REJECTED",
+            nowMs: Date.now(),
+            exceptionFamily: resolveLiveSubmitExceptionFamily(liveResult.reason || "LIVE_FAILED"),
+            error: liveResult.error || liveResult.note || liveResult.reason || "LIVE_FAILED",
+            executionMode: liveCfg.executionMode,
+          }));
+        }
         notifyTradeExitFailureAlert({
           exchange,
           symbol,
@@ -14701,6 +14794,19 @@ async function runPaperFuturesForBar({
           });
         }
         continue;
+      }
+      if (trackLiveSubmit) {
+        await patchLiveSubmitIntentEvidence(it.intent_id, buildLiveSubmitIntentPatch({
+          state: "ACKED",
+          nowMs: Date.now(),
+          orderId: liveResult.liveOrderId || null,
+          clientOrderId: liveResult.liveClientOrderId || null,
+          exceptionFamily: null,
+          error: null,
+          executionMode: liveCfg.executionMode,
+          execPrice: liveResult.execPrice,
+          execQtyBase: liveResult.execQtyBase,
+        }));
       }
       fillPrice = liveResult.execPrice;
       execPriceSource = liveResult.execPriceSource || "BINANCE_ORDER";

@@ -13,7 +13,7 @@ const {
 } = require("../storage/positionRuntimeObservations");
 const { getPosition } = require("../storage/positions");
 const { clearTpP1PendingIfUnchanged } = require("../storage/positionsPaper");
-const { upsertIntent } = require("../storage/orderIntentsPaper");
+const { upsertIntent, markIntentStatus } = require("../storage/orderIntentsPaper");
 const { upsertExitOrderContract } = require("../storage/exitOrderContracts");
 const { resolveExitRulesForPosition, computeRunnerExitStopPrice, resolveTrailDelayState, resolveTpP0Pct } = require("../engine/signalEngine");
 const {
@@ -277,6 +277,7 @@ const symbolCooldownLogState = new Map();
 const pendingIntentState = new Map();
 const pendingIntentLogState = new Map();
 const tpP1PendingTerminalAlertState = new Map();
+const tpP1AckTimeoutAlertState = new Map();
 const PENDING_INTENT_CHECK_TTL_MS = normalizeIntervalMs(process.env.TICK_EXIT_PENDING_INTENT_TTL_MS, 3000);
 const pendingIntentScopeScanLimitRaw = Number(process.env.TICK_EXIT_PENDING_INTENT_SCOPE_SCAN_LIMIT);
 const PENDING_INTENT_SCOPE_SCAN_LIMIT = Number.isFinite(pendingIntentScopeScanLimitRaw)
@@ -288,6 +289,8 @@ const TICK_EXIT_LEASE_MIN_TTL_MS = normalizeIntervalMs(process.env.TICK_EXIT_LEA
 const TICK_EXIT_LEASE_LOG_COOLDOWN_MS = 60 * 1000;
 const TICK_EXIT_FAILURE_ALERT_COOLDOWN_MS = normalizeIntervalMs(process.env.TICK_EXIT_FAILURE_ALERT_COOLDOWN_MS, 300000);
 const TP_P1_PENDING_TERMINAL_ALERT_COOLDOWN_MS = normalizeIntervalMs(process.env.TP_P1_PENDING_TERMINAL_ALERT_COOLDOWN_MS, 300000);
+const TP_P1_ACK_WATCHDOG_GRACE_MS = normalizeIntervalMs(process.env.TP_P1_ACK_WATCHDOG_GRACE_MS, 45000);
+const TP_P1_ACK_TIMEOUT_ALERT_COOLDOWN_MS = normalizeIntervalMs(process.env.TP_P1_ACK_TIMEOUT_ALERT_COOLDOWN_MS, 300000);
 const tickExitInstanceId = [
   String(process.env.K_REVISION || process.env.HOSTNAME || os.hostname() || "local"),
   String(process.pid || "0"),
@@ -649,6 +652,106 @@ function shouldSendTpP1PendingTerminalAlert({ symbol, intentId, reason } = {}) {
   return true;
 }
 
+function resolveTpP1AckWatchdogDecision({ meta = null, intent = null, now = Date.now(), graceMs = TP_P1_ACK_WATCHDOG_GRACE_MS } = {}) {
+  const positionMeta = (meta && typeof meta === "object") ? meta : {};
+  if (positionMeta.tp_p1_pending !== true) {
+    return { timedOut: false, reason: "TP1_PENDING_INACTIVE" };
+  }
+  if (!intent || typeof intent !== "object") {
+    return { timedOut: false, reason: "TP1_INTENT_MISSING" };
+  }
+  const status = String(intent.status || "").trim().toUpperCase();
+  if (status !== "PENDING") {
+    return { timedOut: false, reason: "TP1_INTENT_NOT_PENDING", status };
+  }
+  const ackAtMsRaw = Number(intent.live_submit_ack_at_ms);
+  const ackAtMs = Number.isFinite(ackAtMsRaw) && ackAtMsRaw > 0 ? ackAtMsRaw : null;
+  const startedAtMsRaw = Number(intent.live_submit_started_at_ms);
+  const startedAtMs = Number.isFinite(startedAtMsRaw) && startedAtMsRaw > 0 ? startedAtMsRaw : null;
+  const orderId = intent.live_submit_order_id != null ? String(intent.live_submit_order_id).trim() : "";
+  const clientOrderId = intent.live_submit_client_order_id != null ? String(intent.live_submit_client_order_id).trim() : "";
+  if (Number.isFinite(ackAtMs) || orderId || clientOrderId) {
+    return {
+      timedOut: false,
+      reason: "TP1_ALREADY_ACKED",
+      status,
+      startedAtMs: Number.isFinite(startedAtMs) ? startedAtMs : null,
+      ackAtMs: Number.isFinite(ackAtMs) ? ackAtMs : null,
+      liveSubmitState: String(intent.live_submit_state || "").trim().toUpperCase() || null,
+      orderId: orderId || null,
+      clientOrderId: clientOrderId || null,
+    };
+  }
+  if (!Number.isFinite(startedAtMs) || startedAtMs <= 0) {
+    return {
+      timedOut: false,
+      reason: "TP1_SUBMIT_NOT_STARTED",
+      status,
+      liveSubmitState: String(intent.live_submit_state || "").trim().toUpperCase() || null,
+    };
+  }
+  const refNow = Number.isFinite(Number(now)) ? Number(now) : Date.now();
+  const grace = Math.max(1000, Number(graceMs) || TP_P1_ACK_WATCHDOG_GRACE_MS);
+  const elapsedMs = Math.max(0, refNow - startedAtMs);
+  return {
+    timedOut: elapsedMs > grace,
+    reason: elapsedMs > grace ? "TP1_ACK_TIMEOUT" : "TP1_ACK_PENDING",
+    status,
+    startedAtMs,
+    ackAtMs: null,
+    elapsedMs,
+    graceMs: grace,
+    liveSubmitState: String(intent.live_submit_state || "").trim().toUpperCase() || null,
+    orderId: null,
+    clientOrderId: null,
+  };
+}
+
+function buildTpP1AckTimeoutAlertPayload({
+  symbol,
+  tf,
+  pendingEvent,
+  pendingAtMs,
+  intent = {},
+  decision = {},
+} = {}) {
+  const normalizedSymbol = String(symbol || "").trim().toUpperCase() || "UNKNOWN";
+  const lines = [
+    "reason: TP1_ACK_TIMEOUT",
+    "phase: TP1_ACK_WATCHDOG",
+    `symbol: ${normalizedSymbol}`,
+    `tf: ${String(tf || "-")}`,
+    `pending_event: ${String(pendingEvent || "EXIT_TP_P1")}`,
+    `intent_id: ${String(intent.intent_id || intent.id || "N/A")}`,
+    `status: ${String(intent.status || "UNKNOWN").toUpperCase() || "UNKNOWN"}`,
+    `live_submit_state: ${String(decision.liveSubmitState || intent.live_submit_state || "UNKNOWN").toUpperCase() || "UNKNOWN"}`,
+    `grace_ms: ${Number.isFinite(Number(decision.graceMs)) ? Number(decision.graceMs) : TP_P1_ACK_WATCHDOG_GRACE_MS}`,
+  ];
+  if (Number.isFinite(Number(pendingAtMs))) lines.push(`pending_at_utc: ${new Date(Number(pendingAtMs)).toISOString()}`);
+  if (Number.isFinite(Number(decision.startedAtMs))) lines.push(`submit_started_at_utc: ${new Date(Number(decision.startedAtMs)).toISOString()}`);
+  if (Number.isFinite(Number(decision.elapsedMs))) lines.push(`elapsed_ms: ${Math.round(Number(decision.elapsedMs))}`);
+  if (intent.live_submit_error) lines.push(`submit_error: ${String(intent.live_submit_error).slice(0, 240)}`);
+  if (intent.last_error) lines.push(`last_error: ${String(intent.last_error).slice(0, 240)}`);
+  return {
+    title: `[P0] ${normalizedSymbol} TP1 submit ACK timeout`,
+    body: lines.join("\n"),
+    severity: "ERROR",
+  };
+}
+
+function shouldSendTpP1AckTimeoutAlert({ symbol, intentId, reason } = {}) {
+  const key = [
+    String(symbol || "").trim().toUpperCase() || "UNKNOWN",
+    String(intentId || "").trim() || "NA",
+    String(reason || "").trim().toUpperCase() || "UNKNOWN",
+  ].join(":");
+  const now = nowMs();
+  const last = Number(tpP1AckTimeoutAlertState.get(key));
+  if (Number.isFinite(last) && (now - last) < TP_P1_ACK_TIMEOUT_ALERT_COOLDOWN_MS) return false;
+  tpP1AckTimeoutAlertState.set(key, now);
+  return true;
+}
+
 async function loadLatestTpP1IntentForScope({ exchange, symbol, tf } = {}) {
   const scope = intentScopeKey(exchange, symbol, tf);
   if (!scope) return null;
@@ -671,6 +774,14 @@ async function loadLatestTpP1IntentForScope({ exchange, symbol, tf } = {}) {
         cancel_reason: data.cancel_reason || null,
         decision_reason: data.decision_reason || data.reason || null,
         last_error: data.last_error || null,
+        live_submit_state: data.live_submit_state || null,
+        live_submit_started_at_ms: data.live_submit_started_at_ms ?? null,
+        live_submit_finished_at_ms: data.live_submit_finished_at_ms ?? null,
+        live_submit_ack_at_ms: data.live_submit_ack_at_ms ?? null,
+        live_submit_order_id: data.live_submit_order_id || null,
+        live_submit_client_order_id: data.live_submit_client_order_id || null,
+        live_submit_exception_family: data.live_submit_exception_family || null,
+        live_submit_error: data.live_submit_error || null,
         updated_at: data.updated_at || null,
         created_at: data.created_at || null,
       });
@@ -742,6 +853,44 @@ async function sendTpP1PendingTerminalAlert({
     });
   } catch (err) {
     console.warn("[TP1_PENDING_TERMINAL_ALERT_FAIL]", err && err.message ? err.message : String(err));
+    return { ok: false, skipped: true, reason: "ALERT_FAIL" };
+  }
+}
+
+async function sendTpP1AckTimeoutAlert({
+  symbol,
+  tf,
+  pendingEvent,
+  pendingAtMs,
+  intent,
+  decision,
+} = {}) {
+  if (!shouldSendTpP1AckTimeoutAlert({
+    symbol,
+    intentId: intent && (intent.intent_id || intent.id),
+    reason: "TP1_ACK_TIMEOUT",
+  })) {
+    return { ok: false, skipped: true, reason: "ALERT_COOLDOWN" };
+  }
+  const channel = String(process.env.EXIT_INTEGRITY_ALERT_CHANNEL || "").trim();
+  if (!channel) return { ok: false, skipped: true, reason: "NO_ALERT_CHANNEL" };
+  const payload = buildTpP1AckTimeoutAlertPayload({
+    symbol,
+    tf,
+    pendingEvent,
+    pendingAtMs,
+    intent,
+    decision,
+  });
+  try {
+    return await sendAlert({
+      channel,
+      title: payload.title,
+      body: payload.body,
+      severity: payload.severity,
+    });
+  } catch (err) {
+    console.warn("[TP1_ACK_TIMEOUT_ALERT_FAIL]", err && err.message ? err.message : String(err));
     return { ok: false, skipped: true, reason: "ALERT_FAIL" };
   }
 }
@@ -905,6 +1054,73 @@ async function clearTerminalFailedTpP1Pending({ pos, symbol, tf, now } = {}) {
     pendingAtMs,
     pendingUntilMs,
     intent: latestIntent,
+  });
+  return true;
+}
+
+async function clearUnackedTpP1Pending({ pos, symbol, tf, now } = {}) {
+  const meta = (pos && typeof pos.meta === "object") ? pos.meta : {};
+  if (meta.tp_p1_pending !== true) return false;
+  if (meta.tp_p1_done === true || meta.trail_active === true) return false;
+
+  const latestIntent = await loadLatestTpP1IntentForScope({
+    exchange: "BINANCEFUT",
+    symbol,
+    tf,
+  });
+  const decision = resolveTpP1AckWatchdogDecision({
+    meta,
+    intent: latestIntent,
+    now,
+  });
+  if (!decision || decision.timedOut !== true || !latestIntent || !latestIntent.intent_id) return false;
+
+  const pendingAtMs = Number(meta.tp_p1_pending_at_ms);
+  const refNow = Number.isFinite(Number(now)) ? Number(now) : Date.now();
+  const clearedAt = new Date(refNow).toISOString();
+  const timeoutNote = `TP1 submit ACK timeout after ${Math.round(Number(decision.elapsedMs) || 0)}ms`;
+
+  await markIntentStatus(latestIntent.intent_id, "CANCELED", {
+    cancel_reason: "TP1_ACK_TIMEOUT",
+    status_reason: "TP1_ACK_TIMEOUT",
+    cancel_note: timeoutNote,
+    last_error: latestIntent.last_error || latestIntent.live_submit_error || timeoutNote,
+    live_submit_state: "ACK_TIMEOUT",
+    live_submit_finished_at_ms: refNow,
+    live_submit_exception_family: "ACK_TIMEOUT",
+    live_submit_error: timeoutNote,
+  });
+
+  const clearedReason = "PENDING_SUBMIT_ACK_TIMEOUT";
+  pendingIntentState.set(intentScopeKey("BINANCEFUT", symbol, tf), { checkedAt: refNow, hasPending: false });
+  pos.meta = {
+    ...meta,
+    tp_p1_pending: false,
+    tp_p1_pending_at_ms: null,
+    tp_p1_pending_until_ms: null,
+    tp_p1_pending_event: null,
+    tp_p1_pending_cleared_at: clearedAt,
+    tp_p1_pending_cleared_reason: clearedReason,
+  };
+
+  structuredLog("tick_exit_tp1_ack_timeout", {
+    exchange: "BINANCEFUT",
+    symbol: String(symbol || "").toUpperCase(),
+    tf: String(tf || ""),
+    intent_id: latestIntent.intent_id || null,
+    live_submit_state: decision.liveSubmitState || latestIntent.live_submit_state || null,
+    live_submit_started_at_ms: Number.isFinite(Number(decision.startedAtMs)) ? Number(decision.startedAtMs) : null,
+    elapsed_ms: Number.isFinite(Number(decision.elapsedMs)) ? Number(decision.elapsedMs) : null,
+    grace_ms: Number.isFinite(Number(decision.graceMs)) ? Number(decision.graceMs) : null,
+  }, "warn");
+
+  await sendTpP1AckTimeoutAlert({
+    symbol,
+    tf,
+    pendingEvent: meta.tp_p1_pending_event || null,
+    pendingAtMs,
+    intent: latestIntent,
+    decision,
   });
   return true;
 }
@@ -1366,6 +1582,15 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
         await clearTerminalFailedTpP1Pending({ pos, symbol, tf: signalTf, now: tickNow });
       } catch (e) {
         structuredLog("tick_exit_clear_failed_tp1_pending_error", {
+          exchange: "BINANCEFUT",
+          symbol: String(symbol).toUpperCase(),
+          error: String(e && e.message || e).slice(0, 200),
+        }, "warn");
+      }
+      try {
+        await clearUnackedTpP1Pending({ pos, symbol, tf: signalTf, now: tickNow });
+      } catch (e) {
+        structuredLog("tick_exit_clear_unacked_tp1_pending_error", {
           exchange: "BINANCEFUT",
           symbol: String(symbol).toUpperCase(),
           error: String(e && e.message || e).slice(0, 200),
@@ -2429,6 +2654,7 @@ function stopBinanceTickExitLoop() {
   pendingIntentState.clear();
   pendingIntentLogState.clear();
   tpP1PendingTerminalAlertState.clear();
+  tpP1AckTimeoutAlertState.clear();
   nativeProtectionStateCache.clear();
   nativeProtectionRefreshAttemptState.clear();
   trailHardExitCooldownState.clear();
@@ -2465,8 +2691,11 @@ module.exports = {
     resolveTickExitSymbolsToCheck,
     isTpP1IntentEvent,
     isTpP1PendingTerminalFailureIntent,
+    resolveTpP1AckWatchdogDecision,
     buildTpP1PendingTerminalAlertPayload,
     shouldSendTpP1PendingTerminalAlert,
+    buildTpP1AckTimeoutAlertPayload,
+    shouldSendTpP1AckTimeoutAlert,
     _symbolCooldownState: symbolCooldownState,
     clearSelfHealCooldown() {
       lastTickExitSelfHealAt = 0;
