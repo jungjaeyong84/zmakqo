@@ -24,6 +24,25 @@ const { __test } = require("../../scripts/report-trade-execution-alert-cross-aud
   );
   assert.ok(matched, "unverified exit must match canonical alert event within window");
 
+  const groupedMatch = __test.pickMatchingAlert(
+    {
+      fill_id: "EXT__GROUP_2",
+      symbol: "AXSUSDT",
+      event: "FORCE_EXIT_ALL",
+      created_at: "2026-04-16T01:57:11.214Z",
+      created_ms: Date.parse("2026-04-16T01:57:11.214Z"),
+    },
+    [{
+      ts: "2026-04-16T02:14:50.303Z",
+      symbol: "AXSUSDT",
+      event: "FORCE_EXIT_ALL",
+      source_fill_id: "EXT__GROUP_1",
+      dedupe_key: "AXSUSDT|FORCE_EXIT_ALL|2026-04-16T01:57:11.214Z",
+      title: "AXS force exit",
+    }]
+  );
+  assert.ok(groupedMatch, "split exit fills must match grouped alert evidence via dedupe key");
+
   const report = __test.buildReport({
     coverageReady: true,
     fills: [
@@ -63,6 +82,26 @@ const { __test } = require("../../scripts/report-trade-execution-alert-cross-aud
   assert.strictEqual(report.missing_entry_alert_fill_n, 1);
   assert.strictEqual(report.missing_unverified_alert_fill_n, 1);
   assert.strictEqual(report.actionable_issues.length, 1);
+
+  const deduped = __test.dedupeAlertAuditRows([
+    {
+      ts: "2026-04-16T01:57:20.000Z",
+      symbol: "AXSUSDT",
+      event: "FORCE_EXIT_ALL",
+      source_fill_id: "EXT__1",
+      title: "AXS force exit",
+      source: "trade_execution_alert_audit",
+    },
+    {
+      ts: "2026-04-16T01:57:20.000Z",
+      symbol: "AXSUSDT",
+      event: "FORCE_EXIT_ALL",
+      source_fill_id: "EXT__1",
+      title: "AXS force exit",
+      source: "trade_execution_alert_audit",
+    },
+  ]);
+  assert.strictEqual(deduped.length, 1);
 
   console.log("TRADE_EXECUTION_ALERT_CROSS_AUDIT_TEST_OK");
 })().catch((err) => {

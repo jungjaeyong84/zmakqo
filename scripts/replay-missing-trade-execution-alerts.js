@@ -41,6 +41,38 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
+function buildReplayIssueGroupKey(issue = {}) {
+  return [
+    upper(issue.symbol) || "UNKNOWN",
+    crossAuditTest.normalizeComparableEvent(issue.event) || upper(issue.event) || "UNKNOWN",
+    trimOrNull(issue.fill_created_at) || "NO_TS",
+  ].join("|");
+}
+
+function selectReplayIssues(crossAudit = {}, { includeNonActionable = false } = {}) {
+  const primary = includeNonActionable === true
+    ? (Array.isArray(crossAudit.issues) ? crossAudit.issues : [])
+    : (Array.isArray(crossAudit.actionable_issues) && crossAudit.actionable_issues.length
+      ? crossAudit.actionable_issues
+      : (Array.isArray(crossAudit.issues) ? crossAudit.issues : []));
+  return primary.filter((issue) => trimOrNull(issue && issue.fill_id));
+}
+
+function groupReplayIssues(issues = []) {
+  const grouped = [];
+  const seen = new Set();
+  for (const issue of Array.isArray(issues) ? issues : []) {
+    const key = buildReplayIssueGroupKey(issue);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    grouped.push({
+      key,
+      issue,
+    });
+  }
+  return grouped;
+}
+
 function deriveExitRules(fill = {}) {
   const base = fill.exit_rules && typeof fill.exit_rules === "object"
     ? { ...fill.exit_rules }
@@ -104,7 +136,7 @@ function deriveIntent(fill = {}) {
   return null;
 }
 
-function buildReplayPayload(fill = {}, fillId = null) {
+function buildReplayPayload(fill = {}, fillId = null, tradeAlertDedupeKey = null) {
   const payload = {
     exchange: upper(fill.exchange) || "BINANCEFUT",
     symbol: upper(fill.symbol),
@@ -149,6 +181,7 @@ function buildReplayPayload(fill = {}, fillId = null) {
     contractObservedQtyAbs: toFinite(fill.contract_observed_qty_abs),
     features: cloneJson(fill.features_json) || {},
     sourceFillId: trimOrNull(fillId || fill.fill_id),
+    tradeAlertDedupeKey: trimOrNull(tradeAlertDedupeKey),
     replayReason: "TRADE_EXECUTION_ALERT_MISSING_FILL_REPLAY",
   };
   return payload;
@@ -175,6 +208,7 @@ async function loadFill(db, fillId) {
 
 async function main() {
   const apply = String(process.env.APPLY || "").trim() === "1";
+  const includeNonActionable = String(process.env.REPLAY_INCLUDE_NON_ACTIONABLE || "").trim() === "1";
   const db = getFirestore();
   const crossAudit = readJson(CROSS_AUDIT_PATH);
   if (!crossAudit || !Array.isArray(crossAudit.issues)) {
@@ -185,17 +219,21 @@ async function main() {
     0
   );
   const rows = [];
-  for (const issue of crossAudit.issues) {
+  const candidateIssues = selectReplayIssues(crossAudit, { includeNonActionable });
+  const groupedIssues = groupReplayIssues(candidateIssues);
+  for (const grouped of groupedIssues) {
+    const issue = grouped.issue;
     const fillId = trimOrNull(issue && issue.fill_id);
     if (!fillId) continue;
     const fill = await loadFill(db, fillId);
     if (!fill) {
-      rows.push({ fill_id: fillId, status: "SKIP", reason: "FILL_NOT_FOUND" });
+      rows.push({ fill_id: fillId, replay_group_key: grouped.key, status: "SKIP", reason: "FILL_NOT_FOUND" });
       continue;
     }
     if (hasTelegramTradeEvidence(fill, telegramRows)) {
       rows.push({
         fill_id: fillId,
+        replay_group_key: grouped.key,
         symbol: upper(fill.symbol),
         event: upper(fill.event),
         status: "SKIP",
@@ -203,10 +241,11 @@ async function main() {
       });
       continue;
     }
-    const payload = buildReplayPayload(fill, fillId);
+    const payload = buildReplayPayload(fill, fillId, grouped.key);
     if (!apply) {
       rows.push({
         fill_id: fillId,
+        replay_group_key: grouped.key,
         symbol: payload.symbol,
         event: payload.event,
         status: "DRY_RUN",
@@ -218,6 +257,7 @@ async function main() {
     const result = await sendTradeExecutionAlert(payload);
     rows.push({
       fill_id: fillId,
+      replay_group_key: grouped.key,
       symbol: payload.symbol,
       event: payload.event,
       status: result && result.ok === true ? "SENT" : (result && result.skipped === true ? "SKIP" : "FAILED"),
@@ -228,7 +268,10 @@ async function main() {
   console.log(JSON.stringify({
     ok: true,
     apply,
-    issue_n: crossAudit.issues.length,
+    issue_n: Array.isArray(crossAudit.issues) ? crossAudit.issues.length : 0,
+    candidate_issue_n: candidateIssues.length,
+    replay_group_n: groupedIssues.length,
+    include_non_actionable: includeNonActionable,
     processed_n: rows.length,
     sent_n: rows.filter((row) => row.status === "SENT").length,
     dry_run_n: rows.filter((row) => row.status === "DRY_RUN").length,
@@ -238,7 +281,17 @@ async function main() {
   }, null, 2));
 }
 
-main().catch((err) => {
-  console.error("REPLAY_MISSING_TRADE_EXECUTION_ALERTS_FAIL", err && err.stack ? err.stack : String(err));
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("REPLAY_MISSING_TRADE_EXECUTION_ALERTS_FAIL", err && err.stack ? err.stack : String(err));
+    process.exit(1);
+  });
+} else {
+  module.exports = {
+    __test: {
+      buildReplayIssueGroupKey,
+      selectReplayIssues,
+      groupReplayIssues,
+    },
+  };
+}

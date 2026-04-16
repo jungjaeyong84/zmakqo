@@ -43,6 +43,11 @@ function readJsonl(filePath) {
     .filter(Boolean);
 }
 
+function toMs(value) {
+  const ms = Date.parse(String(value || ""));
+  return Number.isFinite(ms) ? ms : null;
+}
+
 function classifyEvent(event) {
   const ev = upper(event);
   if (!ev) return "UNKNOWN";
@@ -71,6 +76,14 @@ function normalizeComparableEvent(event) {
   const value = upper(event);
   if (!value) return null;
   return value.endsWith("_UNVERIFIED") ? value.slice(0, -"_UNVERIFIED".length) : value;
+}
+
+function buildFillGroupKey(fill = {}) {
+  const symbol = upper(fill.symbol);
+  const event = normalizeComparableEvent(fill.event);
+  const createdAt = trimOrNull(fill.created_at || fill.fill_created_at);
+  if (!symbol || !event || !createdAt) return null;
+  return [symbol, event, createdAt].join("|");
 }
 
 function isVerifiedExitFill(fill = {}) {
@@ -132,6 +145,57 @@ async function fetchRecentFillRows(db, sinceIso) {
   return rows;
 }
 
+async function fetchRecentOutboxAlertRows(db, sinceMs) {
+  const rows = [];
+  let last = null;
+  for (;;) {
+    let q = db.collection("trade_alert_outbox").orderBy("__name__").limit(PAGE_SIZE);
+    if (last) q = q.startAfter(last);
+    const snap = await q.get();
+    if (snap.empty) break;
+    for (const doc of snap.docs) {
+      const row = { id: doc.id, ...(doc.data() || {}) };
+      if (upper(row.type) !== "TRADE_EXECUTION_ALERT") continue;
+      if (upper(row.status) !== "SENT") continue;
+      const ts = row.sent_at || row.updated_at || row.created_at || null;
+      const tsMs = toMs(ts);
+      if (!Number.isFinite(tsMs) || tsMs < sinceMs) continue;
+      rows.push({
+        ts: new Date(tsMs).toISOString(),
+        symbol: upper(row.symbol),
+        event: upper(row.event),
+        source_fill_id: trimOrNull(row.source_fill_id),
+        dedupe_key: trimOrNull(row.dedupe_key),
+        title: row.last_title || null,
+        body: row.last_body || null,
+        source: "trade_alert_outbox",
+      });
+    }
+    if (snap.size < PAGE_SIZE) break;
+    last = snap.docs[snap.docs.length - 1];
+  }
+  return rows;
+}
+
+function dedupeAlertAuditRows(rows = []) {
+  const seen = new Set();
+  const deduped = [];
+  for (const row of rows) {
+    const key = [
+      trimOrNull(row && row.ts),
+      upper(row && row.symbol),
+      upper(row && row.event),
+      trimOrNull(row && row.source_fill_id),
+      trimOrNull(row && row.title),
+      trimOrNull(row && row.source),
+    ].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(row);
+  }
+  return deduped;
+}
+
 function pickMatchingAlert(fill, alerts = []) {
   const fillId = trimOrNull(fill && fill.fill_id);
   if (fillId) {
@@ -139,6 +203,14 @@ function pickMatchingAlert(fill, alerts = []) {
     if (bySourceFillId.length) {
       bySourceFillId.sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")));
       return bySourceFillId[0];
+    }
+  }
+  const fillGroupKey = buildFillGroupKey(fill);
+  if (fillGroupKey) {
+    const byDedupeKey = alerts.filter((alert) => trimOrNull(alert && alert.dedupe_key) === fillGroupKey);
+    if (byDedupeKey.length) {
+      byDedupeKey.sort((a, b) => String(a.ts || "").localeCompare(String(b.ts || "")));
+      return byDedupeKey[0];
     }
   }
   const fillMs = Number(fill && fill.created_ms);
@@ -281,29 +353,37 @@ async function main() {
       symbol: upper(row.symbol),
       event: upper(row.event),
       source_fill_id: trimOrNull(row.source_fill_id || row.sourceFillId || row.fill_id || row.fillId),
+      dedupe_key: trimOrNull(row.dedupe_key || row.dedupeKey),
       title: row.title || null,
       body: row.body || null,
       source: "trade_execution_alert_audit",
     }));
+  const outboxAlertRows = await fetchRecentOutboxAlertRows(db, sinceMs);
   const telegramTradeRows = parseTelegramTradeAlertRows(
     fs.existsSync(telegramLogPath) ? fs.readFileSync(telegramLogPath, "utf8") : "",
     sinceMs
   );
+  const mergedAlertAuditRows = dedupeAlertAuditRows(alertAuditRows.concat(outboxAlertRows));
   const earliestAuditMs = alertAuditRows.reduce((min, row) => {
     const tsMs = Date.parse(String(row.ts || ""));
     if (!Number.isFinite(tsMs)) return min;
     return min == null ? tsMs : Math.min(min, tsMs);
   }, null);
-  const coverageReady = Number.isFinite(earliestAuditMs) || telegramTradeRows.length > 0;
-  const scopedFills = Number.isFinite(earliestAuditMs)
-    ? fills.filter((row) => Number.isFinite(row.created_ms) && row.created_ms >= (earliestAuditMs - MATCH_WINDOW_MS))
+  const earliestMergedAuditMs = mergedAlertAuditRows.reduce((min, row) => {
+    const tsMs = Date.parse(String(row.ts || ""));
+    if (!Number.isFinite(tsMs)) return min;
+    return min == null ? tsMs : Math.min(min, tsMs);
+  }, null);
+  const coverageReady = Number.isFinite(earliestMergedAuditMs) || telegramTradeRows.length > 0;
+  const scopedFills = Number.isFinite(earliestMergedAuditMs)
+    ? fills.filter((row) => Number.isFinite(row.created_ms) && row.created_ms >= (earliestMergedAuditMs - MATCH_WINDOW_MS))
     : [];
   const report = buildReport({
     fills: coverageReady ? scopedFills : [],
-    alertAuditRows,
+    alertAuditRows: mergedAlertAuditRows,
     telegramTradeRows,
     coverageReady,
-    auditWindowStartIso: Number.isFinite(earliestAuditMs) ? new Date(earliestAuditMs).toISOString() : null,
+    auditWindowStartIso: Number.isFinite(earliestMergedAuditMs) ? new Date(earliestMergedAuditMs).toISOString() : null,
   });
   const outDir = path.join(repoRoot, "ops", "daily");
   fs.mkdirSync(outDir, { recursive: true });
@@ -325,6 +405,7 @@ async function main() {
     unmatched_alert_n: report.unmatched_alert_n,
     telegram_trade_alert_row_n: report.telegram_trade_alert_row_n,
     audit_trade_alert_row_n: report.audit_trade_alert_row_n,
+    outbox_trade_alert_row_n: outboxAlertRows.length,
     output_json: jsonPath,
     output_md: mdPath,
   }, null, 2));
@@ -343,6 +424,7 @@ if (require.main === module) {
       parseTelegramTradeAlertRows,
       pickMatchingAlert,
       buildReport,
+      dedupeAlertAuditRows,
     },
   };
 }

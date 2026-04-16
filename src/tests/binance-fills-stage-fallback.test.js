@@ -106,6 +106,86 @@ async function run() {
   });
   assert.strictEqual(matchedTrailIntentMustStayTrail, "EXIT_TRAIL");
 
+  const matchedTp0IntentMustStayTp0AcrossSplitFills = await __test.resolveExternalExitEvent({
+    intent: {
+      event: "EXIT_TP_P0_0.8P",
+    },
+    trade: {
+      realizedPnl: 0.42,
+      qty: 0.026,
+      time: Date.parse("2026-04-16T01:45:26.083Z"),
+      symbol: "AXSUSDT",
+    },
+    orderMeta: {
+      orderType: "TAKE_PROFIT_MARKET",
+      closePosition: false,
+      orderId: 3001,
+      clientOrderId: "fut_axs_tp0",
+    },
+    positionCtx: {
+      qtyBase: 1.326,
+      tpP0Done: true,
+      tpP1Done: true,
+      trailActive: true,
+    },
+    recentTp0: {
+      event: "EXIT_TP_P0_0.8P",
+      orderId: 3001,
+      clientOrderId: "fut_axs_tp0",
+      tradeMs: Date.parse("2026-04-16T01:45:26.010Z"),
+    },
+    recentTp1: null,
+    rules,
+    qtyPct: 0.0147,
+  });
+  assert.strictEqual(
+    matchedTp0IntentMustStayTp0AcrossSplitFills,
+    "EXIT_TP_P0_0.8P",
+    "split fills under the same TP0 order must stay anchored to TP0 even if cached stage hints already drifted"
+  );
+
+  const tp0BackstopMustNotPromoteMatchedIntentToTrail = __test.applyActiveExitStageBackstopOverride({
+    event: "EXIT_TP_P0_0.8P",
+    intentEvent: "EXIT_TP_P0_0.8P",
+    trade: {
+      qty: 0.026,
+    },
+    orderMeta: {
+      orderId: 3001,
+      clientOrderId: "fut_axs_tp0",
+    },
+    positionCtx: {
+      qtyBase: 1.326,
+      tpP0Done: true,
+      tpP1Done: true,
+      trailActive: true,
+    },
+    recentTp0: {
+      event: "EXIT_TP_P0_0.8P",
+      orderId: 3001,
+      clientOrderId: "fut_axs_tp0",
+      tradeMs: Date.parse("2026-04-16T01:45:26.010Z"),
+    },
+    recentTp1: {
+      event: "EXIT_TP_P1_1.65P",
+      orderId: 3002,
+      clientOrderId: "fut_axs_tp1",
+      tradeMs: Date.parse("2026-04-16T01:46:48.408Z"),
+    },
+    recentTrail: {
+      event: "EXIT_TRAIL",
+      orderId: 3003,
+      tradeMs: Date.parse("2026-04-16T01:46:50.917Z"),
+    },
+    rules,
+    qtyPct: 0.0147,
+  });
+  assert.strictEqual(
+    tp0BackstopMustNotPromoteMatchedIntentToTrail,
+    "EXIT_TP_P0_0.8P",
+    "stage backstop must not rewrite matched TP0 split fills into trail"
+  );
+
   console.log("BINANCE_FILLS_STAGE_FALLBACK_TEST_OK");
 }
 

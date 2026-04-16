@@ -631,6 +631,7 @@ function appendTradeExecutionAlertDecisionAudit({
       || payload.fill_id
       || ""
     ).trim() || null,
+    dedupe_key: resolveTradeAlertDedupeKey(payload),
     source,
   });
 }

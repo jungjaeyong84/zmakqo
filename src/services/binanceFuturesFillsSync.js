@@ -763,6 +763,18 @@ function isSameOrderAsRecentTp1(orderMeta, recentTp1) {
   return false;
 }
 
+function isSameOrderAsRecentTp0(orderMeta, recentTp0) {
+  if (!orderMeta || !recentTp0) return false;
+  const orderId = Number(orderMeta.orderId);
+  const recentOrderId = Number(recentTp0.orderId);
+  if (Number.isFinite(orderId) && Number.isFinite(recentOrderId) && orderId === recentOrderId) return true;
+
+  const clientOrderId = String(orderMeta.clientOrderId || "").trim();
+  const recentClientOrderId = String(recentTp0.clientOrderId || "").trim();
+  if (clientOrderId && recentClientOrderId && clientOrderId === recentClientOrderId) return true;
+  return false;
+}
+
 function pctLabel(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return null;
@@ -2175,6 +2187,7 @@ function shouldTrustMatchedIntentExitEvent({
   intentEvent,
   orderMeta,
   positionCtx,
+  recentTp0,
   recentTp1,
   qtyPct,
   rules,
@@ -2184,17 +2197,19 @@ function shouldTrustMatchedIntentExitEvent({
   const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
   const sameOrderTp0 = isSameOrderAsNativeTp0(orderMeta, ctx);
   const sameOrderTp1 = isSameOrderAsNativeTp1(orderMeta, ctx);
+  const sameOrderRecentTp0 = isSameOrderAsRecentTp0(orderMeta, recentTp0);
   const sameOrderRecentTp1 = isSameOrderAsRecentTp1(orderMeta, recentTp1);
   const inferredKind = inferTakeProfitKindFromQtyPct(qtyPct, rules);
 
   if (ev.startsWith("EXIT_TP_P0")) {
     if (sameOrderTp1 || sameOrderRecentTp1) return false;
-    if (ctx.tpP0Done === true || ctx.tpP1Done === true || ctx.trailActive === true) return false;
+    if (sameOrderTp0 || sameOrderRecentTp0) return true;
     return true;
   }
 
   if (isTpP1Event(ev)) {
     if (sameOrderTp0) return false;
+    if (sameOrderRecentTp1) return true;
     if (ctx.tpP0Done !== true && inferredKind === "TP0") return false;
     return true;
   }
@@ -2473,6 +2488,7 @@ function inferStageConstrainedTakeProfitKind(positionCtx, inferredKind, recentTp
 
 function applyActiveExitStageBackstopOverride({
   event,
+  intentEvent = null,
   trade,
   orderMeta,
   positionCtx,
@@ -2483,9 +2499,12 @@ function applyActiveExitStageBackstopOverride({
   qtyPct,
 } = {}) {
   const currentEvent = String(event || "").trim().toUpperCase();
+  const matchedIntentEvent = String(intentEvent || "").trim().toUpperCase();
   const currentIsTp0 = isTpP0Event(currentEvent);
   const currentIsTp1 = isTpP1Event(currentEvent);
   if (!(currentIsTp0 || currentIsTp1)) return currentEvent;
+  if (currentIsTp0 && matchedIntentEvent.startsWith("EXIT_TP_P0")) return currentEvent;
+  if (currentIsTp1 && isTpP1Event(matchedIntentEvent)) return currentEvent;
   const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
   const recentTrailEvent = String(recentTrail && recentTrail.event || "").trim().toUpperCase();
   const trailEligible = isTrailExitEligible(ctx, recentTp1) || recentTrailEvent.startsWith("EXIT_TRAIL");
@@ -2674,6 +2693,7 @@ async function resolveExternalExitEvent({
   const clientOrderId = String(orderMeta && orderMeta.clientOrderId || "").trim() || null;
   const trackedClientOrder = !!(clientOrderId && /^(fut_|dbj_)/.test(clientOrderId));
   const sameOrderAsRecentTp1 = isSameOrderAsRecentTp1(orderMeta, recentTp1);
+  const sameOrderAsRecentTp0 = isSameOrderAsRecentTp0(orderMeta, recentTp0);
   const sameOrderAsNativeTp0 = isSameOrderAsNativeTp0(orderMeta, positionCtx);
   const sameOrderAsNativeTp1 = isSameOrderAsNativeTp1(orderMeta, positionCtx);
   const trailEligible = isTrailExitEligible(positionCtx, recentTp1);
@@ -2715,6 +2735,7 @@ async function resolveExternalExitEvent({
         intentEvent,
         orderMeta,
         positionCtx,
+        recentTp0,
         recentTp1,
         qtyPct,
         rules,
@@ -2722,6 +2743,7 @@ async function resolveExternalExitEvent({
         return normalizeExitEventForRules(intentEvent, rules);
       }
       if (sameOrderAsNativeTp0) return buildExitEventByKind("TP0", rules);
+      if (sameOrderAsRecentTp0) return buildExitEventByKind("TP0", rules);
       if (sameOrderAsNativeTp1) return buildExitEventByKind("TP1", rules);
       if (trailEligible) return buildExitEventByKind("TRAIL", rules);
       if (fallbackTakeProfitKind) return buildExitEventByKind(fallbackTakeProfitKind, rules);
@@ -2787,6 +2809,7 @@ async function resolveExternalExitEvent({
       intentEvent,
       orderMeta,
       positionCtx,
+      recentTp0,
       recentTp1,
       qtyPct,
       rules,
@@ -2798,12 +2821,16 @@ async function resolveExternalExitEvent({
   if (sameOrderAsRecentTp1 && isTpP1Event(recentTp1 && recentTp1.event)) {
     return buildExitEventByKind("TP1", rules);
   }
+  if (sameOrderAsRecentTp0 && isTpP0Event(recentTp0 && recentTp0.event)) {
+    return buildExitEventByKind("TP0", rules);
+  }
 
   if (orderType === "STOP_MARKET" || orderType === "STOP") {
     return buildExitEventByKind("SL", rules);
   }
   if (orderType === "TAKE_PROFIT_MARKET" || orderType === "TAKE_PROFIT") {
     if (sameOrderAsNativeTp0) return buildExitEventByKind("TP0", rules);
+    if (sameOrderAsRecentTp0) return buildExitEventByKind("TP0", rules);
     if (sameOrderAsNativeTp1) return buildExitEventByKind("TP1", rules);
     if (trailEligible) return buildExitEventByKind("TRAIL", rules);
     if (fallbackTakeProfitKind) return buildExitEventByKind(fallbackTakeProfitKind, rules);
@@ -3056,6 +3083,7 @@ async function syncMarketTrades({
       });
       event = applyActiveExitStageBackstopOverride({
         event,
+        intentEvent: intent && intent.event,
         trade: t,
         orderMeta,
         positionCtx,
@@ -3735,6 +3763,7 @@ module.exports = {
     pickIntentForTrade,
     resolveExternalExitEvent,
     isSameOrderAsRecentTp1,
+    isSameOrderAsRecentTp0,
     isSyntheticExternalFillExitEvent,
     isAuthoritativeForcedExitIntentEvent,
     isTrailExitEligible,
