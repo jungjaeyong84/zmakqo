@@ -342,6 +342,42 @@ async function main() {
   const db = getFirestore();
   const sinceMs = Date.now() - (LOOKBACK_HOURS * 60 * 60 * 1000);
   const sinceIso = new Date(sinceMs).toISOString();
+  const ciNoExchangeIo = String(process.env.EXIT_INTEGRITY_CI_NO_EXCHANGE_IO || "").trim() === "1";
+  if (ciNoExchangeIo) {
+    const report = buildReport({
+      fills: [],
+      alertAuditRows: [],
+      telegramTradeRows: [],
+      coverageReady: false,
+      auditWindowStartIso: null,
+    });
+    const outDir = path.join(repoRoot, "ops", "daily");
+    fs.mkdirSync(outDir, { recursive: true });
+    const jsonPath = path.join(outDir, "trade_execution_alert_cross_audit_latest.json");
+    const mdPath = path.join(outDir, `${isoDate()}_trade_execution_alert_cross_audit.md`);
+    fs.writeFileSync(jsonPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+    fs.writeFileSync(mdPath, buildMarkdown(report), "utf8");
+    console.log(JSON.stringify({
+      ok: true,
+      coverage_ready: false,
+      audit_window_start_iso: null,
+      fill_n: 0,
+      matched_fill_n: 0,
+      missing_alert_fill_n: 0,
+      missing_verified_exit_alert_fill_n: 0,
+      missing_non_actionable_alert_fill_n: 0,
+      missing_entry_alert_fill_n: 0,
+      missing_unverified_alert_fill_n: 0,
+      unmatched_alert_n: 0,
+      telegram_trade_alert_row_n: 0,
+      audit_trade_alert_row_n: 0,
+      outbox_trade_alert_row_n: 0,
+      output_json: jsonPath,
+      output_md: mdPath,
+      mode: "CI_NO_EXCHANGE_IO",
+    }, null, 2));
+    return;
+  }
   const fills = await fetchRecentFillRows(db, sinceIso);
   const auditPath = path.join(repoRoot, "ops", "runtime", "trade_execution_alert_audit.jsonl");
   const telegramLogPath = path.join(repoRoot, "noye", "telegram_send.log");
