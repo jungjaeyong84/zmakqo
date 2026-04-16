@@ -2203,6 +2203,8 @@ function shouldTrustMatchedIntentExitEvent({
 
   if (ev.startsWith("EXIT_TP_P0")) {
     if (sameOrderTp1 || sameOrderRecentTp1) return false;
+    const postTp0Stage = !!(ctx.tpP0Done === true || ctx.tpP1Done === true || ctx.trailActive === true);
+    if (postTp0Stage) return sameOrderTp0 || sameOrderRecentTp0;
     if (sameOrderTp0 || sameOrderRecentTp0) return true;
     return true;
   }
