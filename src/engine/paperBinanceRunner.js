@@ -1947,6 +1947,7 @@ const BINANCE_NATIVE_ALERT_ENABLED = String(process.env.BINANCE_NATIVE_ALERT_ENA
 const BINANCE_NATIVE_ALERT_TELEGRAM_ONLY = String(process.env.BINANCE_NATIVE_ALERT_TELEGRAM_ONLY || "1") !== "0";
 const BINANCE_NATIVE_ALERT_CHANNEL_CACHE_MS = Math.max(5000, Math.floor(Number(process.env.BINANCE_NATIVE_ALERT_CHANNEL_CACHE_MS || 30000)));
 const BINANCE_NATIVE_ALERT_COOLDOWN_MS = Math.max(10000, Math.floor(Number(process.env.BINANCE_NATIVE_ALERT_COOLDOWN_MS || 60000)));
+const LIVE_EXIT_EXCEPTION_ALERT_COOLDOWN_MS = Math.max(10000, Math.floor(Number(process.env.LIVE_EXIT_EXCEPTION_ALERT_COOLDOWN_MS || 300000)));
 const binanceNativeRefreshLeaseHolderId = [
   process.env.K_SERVICE || "local",
   process.env.K_REVISION || "dev",
@@ -1962,6 +1963,7 @@ const futures3xState = new Map();
 const futuresExitProfileState = new Map();
 const nativeProtectionAlertChannelCache = new Map();
 const nativeProtectionAlertCooldownMap = new Map();
+const liveExitExceptionAlertCooldownMap = new Map();
 
 function cloneExitRules(rules) {
   return { ...(rules && typeof rules === "object" ? rules : {}) };
@@ -9082,6 +9084,102 @@ function isExitFailureAlertEvent(event) {
     || ev.startsWith("EXIT_TRAIL");
 }
 
+function isCriticalLiveExitExceptionEvent(event) {
+  const ev = String(event || "").trim().toUpperCase();
+  if (!ev) return false;
+  return ev.startsWith("EXIT_SL")
+    || ev.startsWith("EXIT_TP_P0")
+    || ev.startsWith("EXIT_TP_P1")
+    || ev.startsWith("EXIT_TP_C")
+    || ev.startsWith("EXIT_TRAIL");
+}
+
+function shouldSendLiveExitExceptionAlert({ exchange, symbol, event, intentId } = {}) {
+  const key = [
+    String(exchange || "").trim().toUpperCase() || "UNKNOWN",
+    String(symbol || "").trim().toUpperCase() || "UNKNOWN",
+    String(event || "").trim().toUpperCase() || "UNKNOWN",
+    String(intentId || "").trim() || "NA",
+  ].join(":");
+  const now = Date.now();
+  const last = liveExitExceptionAlertCooldownMap.get(key);
+  if (Number.isFinite(last) && (now - last) < LIVE_EXIT_EXCEPTION_ALERT_COOLDOWN_MS) {
+    return false;
+  }
+  liveExitExceptionAlertCooldownMap.set(key, now);
+  return true;
+}
+
+function buildLiveExitExceptionIntegrityAlertPayload({
+  exchange = null,
+  symbol = null,
+  event = null,
+  intentId = null,
+  signalId = null,
+  error = null,
+  executionMode = null,
+} = {}) {
+  const normalizedExchange = String(exchange || "").trim().toUpperCase() || "UNKNOWN";
+  const normalizedSymbol = String(symbol || "").trim().toUpperCase() || "UNKNOWN";
+  const normalizedEvent = String(event || "").trim().toUpperCase() || "UNKNOWN";
+  const normalizedMode = String(executionMode || "LIVE").trim().toUpperCase() || "LIVE";
+  const lines = [
+    "reason: LIVE_EXCEPTION",
+    "phase: LIVE_EXIT_EXECUTION",
+    `exchange: ${normalizedExchange}`,
+    `symbol: ${normalizedSymbol}`,
+    `event: ${normalizedEvent}`,
+    `intent_id: ${String(intentId || "N/A")}`,
+    `signal_id: ${String(signalId || "N/A")}`,
+    `mode: ${normalizedMode}`,
+  ];
+  if (error) lines.push(`error: ${String(error).slice(0, 240)}`);
+  return {
+    title: `[P0] ${normalizedSymbol} live exit exception`,
+    body: lines.join("\n"),
+    severity: "ERROR",
+  };
+}
+
+async function sendLiveExitExceptionIntegrityAlert({
+  exchange,
+  symbol,
+  event,
+  intentId,
+  signalId,
+  error,
+  executionMode,
+} = {}) {
+  if (!isCriticalLiveExitExceptionEvent(event)) {
+    return { ok: false, skipped: true, reason: "NON_CRITICAL_EXIT_EVENT" };
+  }
+  const channel = String(process.env.EXIT_INTEGRITY_ALERT_CHANNEL || "").trim();
+  if (!channel) return { ok: false, skipped: true, reason: "NO_ALERT_CHANNEL" };
+  if (!shouldSendLiveExitExceptionAlert({ exchange, symbol, event, intentId })) {
+    return { ok: false, skipped: true, reason: "ALERT_COOLDOWN" };
+  }
+  try {
+    const payload = buildLiveExitExceptionIntegrityAlertPayload({
+      exchange,
+      symbol,
+      event,
+      intentId,
+      signalId,
+      error,
+      executionMode,
+    });
+    return await sendAlert({
+      channel,
+      title: payload.title,
+      body: payload.body,
+      severity: payload.severity,
+    });
+  } catch (e) {
+    console.warn("[LIVE_EXIT_EXCEPTION_ALERT_FAIL]", e && e.message ? e.message : String(e));
+    return { ok: false, skipped: true, reason: "ALERT_FAIL" };
+  }
+}
+
 function resolveFailureAlertPositionSide(pos) {
   return normalizePositionSide(
     pos && (
@@ -14464,6 +14562,9 @@ async function runPaperFuturesForBar({
         position: pos,
         fallbackQtyPct: prevSize,
       });
+      const liveSignalId = it.signal_id || (it.features_json && it.features_json.signal_id) || null;
+      const liveSignalDocId = it.signal_doc_id || (it.features_json && it.features_json.signal_doc_id) || null;
+      const liveEntryEventId = it.entry_event_id || (it.features_json && it.features_json.entry_event_id) || null;
       if (intent === "EXIT" && useBudget && Number.isFinite(liveExitCurrentQtyPct) && liveExitCurrentQtyPct > 0) {
         liveQtyFraction = Math.min(1, qtyFraction / liveExitCurrentQtyPct);
         liveMaxFractionAllowed = Number.isFinite(maxFractionAllowed)
@@ -14489,9 +14590,9 @@ async function runPaperFuturesForBar({
           intentId: it.intent_id,
           intent,
           event: it.event,
-          signalId: it.signal_id || (it.features_json && it.features_json.signal_id) || null,
-          signalDocId: it.signal_doc_id || (it.features_json && it.features_json.signal_doc_id) || null,
-          entryEventId: it.entry_event_id || (it.features_json && it.features_json.entry_event_id) || null,
+          signalId: liveSignalId,
+          signalDocId: liveSignalDocId,
+          entryEventId: liveEntryEventId,
           features: it.features_json,
           positionMeta: posMeta,
           marketRegimeCohort: liveMarketRegimeCohort,
@@ -14513,6 +14614,15 @@ async function runPaperFuturesForBar({
           status_reason: "LIVE_EXCEPTION",
           cancel_note: cancelNote || errMsg,
           last_error: errMsg,
+        });
+        await sendLiveExitExceptionIntegrityAlert({
+          exchange,
+          symbol,
+          event: it.event,
+          intentId: it.intent_id,
+          signalId: liveSignalId,
+          error: cancelNote || errMsg,
+          executionMode: liveCfg.executionMode,
         });
         notifyTradeExitFailureAlert({
           exchange,
@@ -16879,6 +16989,8 @@ module.exports = {
     resolveLogicalCurrentQtyPctForBudget,
     resolveLiveExitCurrentQtyPct,
     resolveIntentFillCloseRatio,
+    isCriticalLiveExitExceptionEvent,
+    buildLiveExitExceptionIntegrityAlertPayload,
     resolveCanonicalExitAlertBlock,
     shouldEmitCanonicalExitAlert,
     resolveSyncedAddChainBaseQtyPct,

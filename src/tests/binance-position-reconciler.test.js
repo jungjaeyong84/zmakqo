@@ -138,12 +138,28 @@ async function run() {
       tp_p1_done: true,
       trail_active: true,
       native_protection_stop_order_id: "stop-old",
+      canonical_exit_stage: "TRAIL",
+      canonical_primary_transition_event: "TRAIL_ACTIVATED",
+      entry_qty_abs: 0.86,
+      tp_p0_consumed_qty_abs: 0.215,
+      tp_p1_consumed_qty_abs: 0.3225,
+      runner_remaining_qty_abs: 0.3225,
+      contract_tp1_consumed_abs: 0.3225,
+      tp_p1_bar_ms: 1776281411000,
     },
   });
   assert.strictEqual(flatProjection.meta.tp_p0_done, false);
   assert.strictEqual(flatProjection.meta.tp_p1_done, false);
   assert.strictEqual(flatProjection.meta.trail_active, false);
   assert.strictEqual(flatProjection.meta.native_protection_stop_order_id, null);
+  assert.strictEqual(flatProjection.meta.canonical_exit_stage, null);
+  assert.strictEqual(flatProjection.meta.canonical_primary_transition_event, null);
+  assert.strictEqual(flatProjection.meta.entry_qty_abs, null);
+  assert.strictEqual(flatProjection.meta.tp_p0_consumed_qty_abs, null);
+  assert.strictEqual(flatProjection.meta.tp_p1_consumed_qty_abs, null);
+  assert.strictEqual(flatProjection.meta.runner_remaining_qty_abs, null);
+  assert.strictEqual(flatProjection.meta.contract_tp1_consumed_abs, null);
+  assert.strictEqual(flatProjection.meta.tp_p1_bar_ms, null);
 
   console.log("BINANCE_POSITION_RECONCILER_TEST_OK");
 }
