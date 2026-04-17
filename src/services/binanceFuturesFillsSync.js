@@ -3661,7 +3661,7 @@ async function syncMarketTrades({
       }
       if (upserted && upserted.inserted && alertEnabled) {
         const isForcedExitEvent = isAuthoritativeForcedExitIntentEvent(event);
-        const isExitEvent = event.startsWith("EXIT_") || isForcedExitEvent;
+        const isExitEvent = String(event || "").trim().toUpperCase().startsWith("EXIT_") || isForcedExitEvent;
         const isEntryLikeEvent = !isExitEvent && event !== "SYNC_FILL";
         const canonicalStageForAlert = String(canonicalStageDecision.stage || "").trim().toUpperCase();
         const canonicalEntryLineageMissing = looksLikeExit && canonicalStageDecision.entryLineageMissing === true;

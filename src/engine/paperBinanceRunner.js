@@ -9728,6 +9728,47 @@ async function placeNativeTpMarketFallback({
   };
 }
 
+async function placeNativeStopImmediateTriggerFailClosed({
+  liveCfg,
+  exchange,
+  symbol,
+  positionSide,
+  closeSide,
+  entryPrice,
+  leverage,
+  triggerPrice,
+  quantity,
+  placeOrder = placeFuturesMarketOrder,
+} = {}) {
+  const qty = Number(quantity);
+  if (!Number.isFinite(qty) || qty <= 0) {
+    throw new Error("FAIL_CLOSED_QTY_INVALID");
+  }
+  const idempotencyKey = buildBinanceNativeProtectionIdempotencyKey({
+    exchange,
+    symbol,
+    positionSide,
+    closeSide,
+    entryPrice,
+    leverage,
+    triggerPrice,
+    kind: "STOP_FAIL_CLOSED_MARKET",
+  });
+  const marketOrder = await placeOrder({
+    apiKey: liveCfg.apiKey,
+    apiSecret: liveCfg.apiSecret,
+    symbol,
+    side: closeSide,
+    quantity: qty,
+    reduceOnly: true,
+    idempotencyKey,
+  });
+  return {
+    order: marketOrder,
+    client_order_mode: "MARKET_FAIL_CLOSED",
+  };
+}
+
 function buildNativeProtectionMetaPatch({
   nativeProtection,
   intent,
@@ -9885,17 +9926,58 @@ async function refreshBinanceNativeProtection({
       triggerPrice: prices.stopTriggerPx,
       kind: "STOP",
     });
-    const stopOrder = await placeFuturesStopMarketOrder({
-      apiKey: liveCfg.apiKey,
-      apiSecret: liveCfg.apiSecret,
-      symbol,
-      side: prices.closeSide,
-      stopPrice: prices.stopTriggerPx,
-      closePosition: true,
-      workingType: BINANCE_NATIVE_WORKING_TYPE,
-      priceProtect: BINANCE_NATIVE_PRICE_PROTECT,
-      idempotencyKey: stopIdempotencyKey,
-    });
+    let stopOrder = null;
+    try {
+      stopOrder = await placeFuturesStopMarketOrder({
+        apiKey: liveCfg.apiKey,
+        apiSecret: liveCfg.apiSecret,
+        symbol,
+        side: prices.closeSide,
+        stopPrice: prices.stopTriggerPx,
+        closePosition: true,
+        workingType: BINANCE_NATIVE_WORKING_TYPE,
+        priceProtect: BINANCE_NATIVE_PRICE_PROTECT,
+        idempotencyKey: stopIdempotencyKey,
+      });
+    } catch (stopErr) {
+      if (isBinanceImmediateTriggerError(stopErr) && Number.isFinite(Number(context.qtyBase)) && Number(context.qtyBase) > 0) {
+        const failClosed = await placeNativeStopImmediateTriggerFailClosed({
+          liveCfg,
+          exchange,
+          symbol,
+          positionSide,
+          closeSide: prices.closeSide,
+          entryPrice,
+          leverage,
+          triggerPrice: prices.stopTriggerPx,
+          quantity: Number(context.qtyBase),
+        });
+        return {
+          ok: true,
+          state: "EXITED_FAIL_CLOSED",
+          fail_closed: true,
+          fail_closed_reason: "STOP_ALREADY_BREACHED",
+          fail_closed_trigger_price: prices.stopTriggerPx,
+          fail_closed_order_id: failClosed && failClosed.order && failClosed.order.orderId ? String(failClosed.order.orderId) : null,
+          fail_closed_client_order_mode: failClosed && failClosed.client_order_mode ? String(failClosed.client_order_mode) : null,
+          position_side: positionSide,
+          entry_price: entryPrice,
+          leverage,
+          close_side: prices.closeSide,
+          stop_price: prices.stopTriggerPx,
+          tp0_price: prices.tp0TriggerPx,
+          tp_price: prices.tpTriggerPx,
+          stop_order_id: null,
+          tp0_order_id: null,
+          tp_order_id: null,
+          tp0_status: null,
+          tp_status: null,
+          tp0_reason: null,
+          tp_reason: null,
+        };
+      }
+      throw stopErr;
+    }
     let tp0Order = null;
     let tpOrder = null;
     let tp0QtyBase = null;
@@ -17388,6 +17470,7 @@ module.exports = {
     pickLatestTpP1Fill,
     reconcileTpP1MetaFromFill,
     isRetryableLiveInfraError,
+    placeNativeStopImmediateTriggerFailClosed,
     fetchFuturesExchangeInfoWithCache,
     ensureLiveFuturesLeverage,
   },

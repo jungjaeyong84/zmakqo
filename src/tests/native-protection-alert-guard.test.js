@@ -5,9 +5,15 @@ const { __test } = require("../engine/paperBinanceRunner");
 
 async function run() {
   assert.strictEqual(typeof __test.resolveNativeProtectionPositionMeta, "function", "resolveNativeProtectionPositionMeta export missing");
-  assert.deepStrictEqual(__test.resolveNativeProtectionPositionMeta(null), {}, "null position meta must coerce to empty object");
+  const resolvedNullMeta = __test.resolveNativeProtectionPositionMeta(null);
+  assert.ok(resolvedNullMeta && typeof resolvedNullMeta === "object", "null position meta must coerce to an object");
+  assert.ok(Object.keys(resolvedNullMeta).every((key) => key === "simplified_exit_v2_enabled"),
+    `unexpected null-meta keys: ${JSON.stringify(resolvedNullMeta)}`);
   const meta = { entry_event_id: "ENTRY__X" };
-  assert.strictEqual(__test.resolveNativeProtectionPositionMeta(meta), meta, "object position meta should be passed through");
+  const resolvedMeta = __test.resolveNativeProtectionPositionMeta(meta);
+  assert.strictEqual(resolvedMeta.entry_event_id, "ENTRY__X", "position meta must preserve the entry lineage");
+  assert.ok(Object.keys(resolvedMeta).every((key) => key === "entry_event_id" || key === "simplified_exit_v2_enabled"),
+    `unexpected position-meta keys: ${JSON.stringify(resolvedMeta)}`);
   const prevSimplifiedExitV2Env = process.env.SIMPLIFIED_EXIT_V2_ENABLED;
   process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
   assert.deepStrictEqual(
@@ -21,18 +27,27 @@ async function run() {
   if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
   else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;
   assert.strictEqual(typeof __test.buildLiveNativeProtectionRefreshArgs, "function", "buildLiveNativeProtectionRefreshArgs export missing");
+  const refreshArgs = __test.buildLiveNativeProtectionRefreshArgs({
+    liveCfg: { liveEnabled: true },
+    exchange: "BINANCEFUT",
+    symbol: "DOGEUSDT",
+    side: "SELL",
+    execPrice: 0.0941,
+    priceRef: 0.094,
+    leverageMult: 2,
+    exitRulesOverride: { TP_P0: 0.008 },
+    positionMeta: meta,
+  });
   assert.deepStrictEqual(
-    __test.buildLiveNativeProtectionRefreshArgs({
-      liveCfg: { liveEnabled: true },
-      exchange: "BINANCEFUT",
-      symbol: "DOGEUSDT",
-      side: "SELL",
-      execPrice: 0.0941,
-      priceRef: 0.094,
-      leverageMult: 2,
-      exitRulesOverride: { TP_P0: 0.008 },
-      positionMeta: meta,
-    }),
+    {
+      liveCfg: refreshArgs.liveCfg,
+      exchange: refreshArgs.exchange,
+      symbol: refreshArgs.symbol,
+      fallbackSide: refreshArgs.fallbackSide,
+      fallbackEntryPrice: refreshArgs.fallbackEntryPrice,
+      fallbackLeverage: refreshArgs.fallbackLeverage,
+      exitRulesOverride: refreshArgs.exitRulesOverride,
+    },
     {
       liveCfg: { liveEnabled: true },
       exchange: "BINANCEFUT",
@@ -41,10 +56,12 @@ async function run() {
       fallbackEntryPrice: 0.0941,
       fallbackLeverage: 2,
       exitRulesOverride: { TP_P0: 0.008 },
-      posMeta: meta,
     },
-    "live native refresh args must carry positionMeta into posMeta"
+    "live native refresh args must preserve the entry-side protection inputs"
   );
+  assert.strictEqual(refreshArgs.posMeta.entry_event_id, "ENTRY__X");
+  assert.ok(Object.keys(refreshArgs.posMeta).every((key) => key === "entry_event_id" || key === "simplified_exit_v2_enabled"),
+    `unexpected refresh posMeta keys: ${JSON.stringify(refreshArgs.posMeta)}`);
 
   process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
   assert.deepStrictEqual(
