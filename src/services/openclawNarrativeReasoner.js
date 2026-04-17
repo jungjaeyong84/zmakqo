@@ -23,28 +23,47 @@
 
 const crypto = require("crypto");
 
-// Phase C: live LLM client loaded lazily behind a try/catch so offline
-// tests can exercise the prompt-safety layer without API keys or network.
-let cachedClaudeClient = null;
-function resolveClaudeClient() {
-  if (cachedClaudeClient !== null) return cachedClaudeClient;
+// Phase C: live LLM backend. Defaults to the Claude CLI subprocess adapter
+// (no plaintext API keys) and optionally falls back to the Anthropic HTTP
+// client when `OPENCLAW_NARRATIVE_PROVIDER_MODE=API` is set. Both clients
+// are lazy-required so the test suite stays offline.
+let cachedApiClient = null;
+let cachedCliClient = null;
+function resolveApiClient() {
+  if (cachedApiClient !== null) return cachedApiClient;
   try {
     // eslint-disable-next-line global-require
-    cachedClaudeClient = require("./claudeClient").callClaude || null;
+    cachedApiClient = require("./claudeClient").callClaude || null;
   } catch (_) {
-    cachedClaudeClient = null;
+    cachedApiClient = null;
   }
-  return cachedClaudeClient;
+  return cachedApiClient;
+}
+function resolveCliClient() {
+  if (cachedCliClient !== null) return cachedCliClient;
+  try {
+    // eslint-disable-next-line global-require
+    cachedCliClient = require("./claudeCliClient").callClaudeCli || null;
+  } catch (_) {
+    cachedCliClient = null;
+  }
+  return cachedCliClient;
 }
 
 function liveCallEnabled() {
   return String(process.env.OPENCLAW_NARRATIVE_LIVE_CALL_ENABLED || "").trim() === "1";
 }
 
+function providerMode() {
+  const mode = String(process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE || "CLI").trim().toUpperCase();
+  if (mode === "API" || mode === "HTTP") return "API";
+  return "CLI";
+}
+
 function narrativeModel() {
   const explicit = String(process.env.OPENCLAW_NARRATIVE_MODEL || "").trim();
   if (explicit) return explicit;
-  return "claude-opus-4-7";
+  return providerMode() === "CLI" ? "sonnet" : "claude-opus-4-7";
 }
 
 function narrativeApiKey() {
@@ -189,18 +208,52 @@ function tryParseJsonFromText(text) {
 }
 
 async function runLiveLlm(body, { timeoutMs } = {}) {
-  const callClaude = resolveClaudeClient();
+  const effectiveTimeout = resolveTimeoutMs(timeoutMs);
+  const mode = providerMode();
+  const system = "You are the OpenClaw risk-first narrative reasoner. Always return strict JSON only.";
+
+  if (mode === "CLI") {
+    const callCli = resolveCliClient();
+    if (!callCli) return { ok: false, reason: "CLI_CLIENT_UNAVAILABLE" };
+    try {
+      const completed = await callCli({
+        prompt: body,
+        model: narrativeModel(),
+        systemPrompt: system,
+        timeoutMs: effectiveTimeout,
+      });
+      if (!completed || completed.ok === false) {
+        return {
+          ok: false,
+          reason: (completed && completed.reason) || "CLI_FAIL",
+          provider: "CLI",
+          detail: completed || null,
+        };
+      }
+      return {
+        ok: true,
+        provider: "CLI",
+        parsed: completed.parsed,
+        latency_ms: completed.duration_ms || null,
+        cost_usd: completed.cost_usd || null,
+      };
+    } catch (err) {
+      return { ok: false, reason: err && err.message ? err.message : String(err), provider: "CLI" };
+    }
+  }
+
+  // API mode (fallback)
+  const callClaude = resolveApiClient();
   const apiKey = narrativeApiKey();
   if (!callClaude || !apiKey) {
-    return { ok: false, reason: "LLM_CLIENT_UNAVAILABLE" };
+    return { ok: false, reason: "API_CLIENT_UNAVAILABLE", provider: "API" };
   }
-  const effectiveTimeout = resolveTimeoutMs(timeoutMs);
   try {
     const completed = await Promise.race([
       callClaude({
         apiKey,
         model: narrativeModel(),
-        system: "You are the OpenClaw risk-first narrative reasoner. Always return strict JSON only.",
+        system,
         prompt: body,
         temperature: 0.2,
         maxTokens: 512,
@@ -209,14 +262,14 @@ async function runLiveLlm(body, { timeoutMs } = {}) {
       new Promise((resolve) => setTimeout(() => resolve({ ok: false, reason: "TIMEOUT" }), effectiveTimeout)),
     ]);
     if (!completed || completed.ok === false) {
-      return { ok: false, reason: (completed && completed.reason) || "LLM_FAIL" };
+      return { ok: false, reason: (completed && completed.reason) || "API_FAIL", provider: "API" };
     }
     const text = completed.text || completed.content || completed.body || "";
     const parsed = tryParseJsonFromText(text);
-    if (!parsed) return { ok: false, reason: "LLM_NON_JSON", text };
-    return { ok: true, parsed, raw_text: text, latency_ms: completed.latency_ms || null };
+    if (!parsed) return { ok: false, reason: "API_NON_JSON", text, provider: "API" };
+    return { ok: true, provider: "API", parsed, raw_text: text, latency_ms: completed.latency_ms || null };
   } catch (err) {
-    return { ok: false, reason: err && err.message ? err.message : String(err) };
+    return { ok: false, reason: err && err.message ? err.message : String(err), provider: "API" };
   }
 }
 
@@ -345,6 +398,10 @@ module.exports = {
   MAX_SCALE,
   narrativeEnabled,
   shadowOnly,
+  providerMode,
+  liveCallEnabled,
+  narrativeModel,
+  narrativeApiKey,
   resolveTimeoutMs,
   promptHash,
   buildSignalPromptBody,

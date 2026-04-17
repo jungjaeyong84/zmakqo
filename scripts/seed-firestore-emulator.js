@@ -130,6 +130,35 @@ async function main() {
     updated_at: iso(-30 * 60 * 1000),
   }, { merge: true }));
 
+  // OpenClaw evidence ledger — one shadow-mode SIGNAL_DECIDER record so the
+  // calibration / outcome-linker cron has a shape to exercise. outcome is
+  // null (unlinked); production outcome-linker fills it when a matching
+  // fill lands.
+  const decisionId = `DEC__SIGNAL_DECIDER__${symbol}__${Date.now()}__seed`;
+  writes.push(db.collection("openclaw_evidence_ledger").doc(decisionId).set({
+    decision_id: decisionId,
+    kind: "SIGNAL_DECIDER",
+    at: iso(-45 * 60 * 1000),
+    exchange,
+    symbol,
+    market: symbol,
+    intent: "ENTRY",
+    stage: "TEST",
+    inputs: {
+      features_hash: "seed__abc",
+      qty_pct_in: 0.5,
+      rule_raw_reason: "OPENCLAW_EXECUTOR_OK",
+    },
+    predictions: {
+      rule: { accept: true, scale: 1, reasons: ["OPENCLAW_EXECUTOR_OK"] },
+      ml: { accept: true, tp1_probability: 0.33, calibrated_probability: 0.31, source: "EV_CALIBRATION_EMPIRICAL" },
+      narrative: { disabled: true, role: "SIGNAL_DECIDER", shadow_only: true },
+    },
+    composite: { accept: true, scale: 1, qty_pct_final: 0.5, reason_trace: ["RULE:OPENCLAW_EXECUTOR_OK"] },
+    outcome: null,
+    schema_version: 1,
+  }, { merge: true }));
+
   await Promise.all(writes);
 
   console.log(JSON.stringify({
