@@ -1703,7 +1703,6 @@ function evaluateLiveEntryPolicy({
     qualityGlobalBlocked,
     policyPlanWatchOnlyBlocked,
     policyPlanHoldBlocked,
-    operatorOverrideCtx,
   } = derived;
   const mlServing = deriveMlServingGuard(snapshot);
   const operationalGuard = deriveOperationalGuard(snapshot);

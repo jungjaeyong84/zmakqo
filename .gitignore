@@ -40,3 +40,6 @@ donbeolja/
 2
 24
 =
+
+# Phase 3d — operator override is meant to be host-local, never committed
+ops/runtime/operator_overrides.json
