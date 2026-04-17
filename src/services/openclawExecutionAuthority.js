@@ -278,7 +278,15 @@ async function evaluateOpenClawExecutionAuthority({
   recentTimelineRows = null,
   capitalAllocatorSnapshot = null,
   snapshotOverride = null,
-  failOpenOnExecutorError = true,
+  // C19 invariant (2026-04-17 re-audit): openclaw executor faults now default
+  // to fail-CLOSED. Previously a throw silently turned into a full-qty entry
+  // with reason `OPENCLAW_EXECUTOR_FAIL_OPEN`. The env
+  // `OPENCLAW_EXECUTOR_FAIL_OPEN_ON_ERROR=1` can re-enable the legacy mode
+  // for controlled backfills; production paths should never set it.
+  failOpenOnExecutorError = (() => {
+    const raw = String(process.env.OPENCLAW_EXECUTOR_FAIL_OPEN_ON_ERROR || "").trim().toLowerCase();
+    return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+  })(),
   entryBudgetGuardOverride = null,
 } = {}) {
   const baseFeatures = (features && typeof features === "object") ? { ...features } : {};
@@ -308,7 +316,37 @@ async function evaluateOpenClawExecutionAuthority({
       capitalAllocatorSnapshot,
     });
   } catch (err) {
-    if (failOpenOnExecutorError !== true) throw err;
+    if (failOpenOnExecutorError !== true) {
+      // Fail-closed: convert the executor fault into a structured drop so the
+      // caller surfaces a real reason instead of a thrown exception. No entry
+      // is placed on error.
+      const msg = err && err.message ? String(err.message) : String(err);
+      const featuresPatch = mergeAuthorityFeatures({
+        baseFeatures: {
+          ...baseFeatures,
+          _openclaw_executor_reason: "OPENCLAW_EXECUTOR_FAIL_CLOSED",
+          _openclaw_executor_error: msg,
+        },
+        openclawEval: null,
+        policyEval: null,
+        entryBudgetGuard: null,
+        stage,
+        qtyRequested,
+      });
+      return {
+        ok: false,
+        reason: "OPENCLAW_EXECUTOR_FAIL_CLOSED",
+        qtyPctFinal: 0,
+        exitProfileMode: null,
+        featuresPatch,
+        decision: {
+          enabled: true,
+          executor_error: msg,
+          fail_closed: true,
+          stage: upper(stage),
+        },
+      };
+    }
     const msg = err && err.message ? String(err.message) : String(err);
     openclawEval = {
       ok: true,

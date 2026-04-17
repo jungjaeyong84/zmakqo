@@ -1063,14 +1063,23 @@ function buildStageHintedMeta(meta = {}, event = "", trade = null) {
   const execPrice = Number(trade && trade.price);
   const execAtIso = Number.isFinite(tradeMs) ? new Date(tradeMs).toISOString() : null;
   const alreadyPastTp1 = nextMeta.tp_p1_done === true || nextMeta.trail_active === true;
+  // TP0 retirement policy (2026-04-17): in simplified-exit-v2 mode the only
+  // exit stages are SL / TP1 / Trailing. `tp_p0_done` must not be stamped on
+  // v2 position meta even when an external EXIT_TP_P0 fill arrives (legacy
+  // operator actions, replay, or a misrouted native order). The ledger
+  // validator and canonical transition layer already refuse to escalate TP0
+  // in v2, so zeroing the hint here keeps the meta internally consistent.
+  const v2Enabled = isSimplifiedExitV2Active(nextMeta);
   if (isTpP0Event(ev)) {
-    nextMeta.tp_p0_done = true;
-    if (Number.isFinite(execPrice) && execPrice > 0) nextMeta.tp_p0_price = execPrice;
-    if (execAtIso) nextMeta.tp_p0_at = execAtIso;
-    if (Number.isFinite(tradeMs) && tradeMs > 0) nextMeta.tp_p0_bar_ms = tradeMs;
+    if (!v2Enabled) {
+      nextMeta.tp_p0_done = true;
+      if (Number.isFinite(execPrice) && execPrice > 0) nextMeta.tp_p0_price = execPrice;
+      if (execAtIso) nextMeta.tp_p0_at = execAtIso;
+      if (Number.isFinite(tradeMs) && tradeMs > 0) nextMeta.tp_p0_bar_ms = tradeMs;
+    }
   }
   if (isTpP1Event(ev)) {
-    nextMeta.tp_p0_done = true;
+    if (!v2Enabled) nextMeta.tp_p0_done = true;
     nextMeta.tp_p1_done = true;
     nextMeta.trail_active = true;
     nextMeta.tp_p1_pending = false;
@@ -1084,7 +1093,7 @@ function buildStageHintedMeta(meta = {}, event = "", trade = null) {
     }
   }
   if (ev.startsWith("EXIT_TRAIL")) {
-    nextMeta.tp_p0_done = true;
+    if (!v2Enabled) nextMeta.tp_p0_done = true;
     nextMeta.tp_p1_done = true;
     nextMeta.trail_active = true;
   }
@@ -1201,11 +1210,14 @@ function mergeRecentExitHintsIntoMeta(meta = {}, {
   recentTrail = null,
 } = {}) {
   const nextMeta = { ...(meta && typeof meta === "object" ? meta : {}) };
-  if (recentTp0 && isTpP0Event(recentTp0.event)) {
+  // TP0 retirement policy — v2 positions never stamp tp_p0_done regardless of
+  // which cached hint arrives. See buildStageHintedMeta for rationale.
+  const v2Enabled = isSimplifiedExitV2Active(nextMeta);
+  if (!v2Enabled && recentTp0 && isTpP0Event(recentTp0.event)) {
     nextMeta.tp_p0_done = true;
   }
   if (recentTp1 && isTpP1Event(recentTp1.event)) {
-    nextMeta.tp_p0_done = true;
+    if (!v2Enabled) nextMeta.tp_p0_done = true;
     nextMeta.tp_p1_done = true;
     nextMeta.trail_active = true;
     nextMeta.tp_p1_pending = false;
@@ -1214,7 +1226,7 @@ function mergeRecentExitHintsIntoMeta(meta = {}, {
     nextMeta.tp_p1_pending_event = null;
   }
   if (recentTrail && String(recentTrail.event || "").trim().toUpperCase().startsWith("EXIT_TRAIL")) {
-    nextMeta.tp_p0_done = true;
+    if (!v2Enabled) nextMeta.tp_p0_done = true;
     nextMeta.tp_p1_done = true;
     nextMeta.trail_active = true;
   }

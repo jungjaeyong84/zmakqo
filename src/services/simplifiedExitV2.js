@@ -56,6 +56,37 @@ function isSimplifiedExitV2RuntimeEnabled() {
   return toBool(process.env.SIMPLIFIED_EXIT_V2_ENABLED, DEFAULT_SIMPLIFIED_EXIT_V2_ENABLED);
 }
 
+// TP0 retirement policy (2026-04-17): every NEW position meta must be stamped
+// with `simplified_exit_v2_enabled: true` at entry time. Existing in-flight
+// v1 positions retain their flag (null / false) and continue through the
+// legacy fallback path. This helper is the single authorised source used by
+// position writers at entry to materialise the policy.
+function stampEntryMetaWithSimplifiedExitV2Policy(meta = {}) {
+  const base = meta && typeof meta === "object" ? { ...meta } : {};
+  base.simplified_exit_v2_enabled = true;
+  base.simplifiedExitV2Enabled = true;
+  return base;
+}
+
+// Runtime guard: refuse to start the live exit path with v2 disabled via env.
+// We allow v2 to be turned off for offline tooling (backtests, replay,
+// integrity reports) but not for the live paper/real trading executor.
+function assertSimplifiedExitV2EnabledForLiveRuntime({
+  executionMode = null,
+  envValue = process.env.SIMPLIFIED_EXIT_V2_ENABLED,
+} = {}) {
+  const mode = String(executionMode || "").trim().toUpperCase();
+  if (mode !== "LIVE" && mode !== "LIVE_DRY_RUN") return { ok: true };
+  const explicit = String(envValue == null ? "" : envValue).trim().toLowerCase();
+  if (explicit === "0" || explicit === "false" || explicit === "no" || explicit === "off") {
+    const err = new Error("SIMPLIFIED_EXIT_V2_ENABLED_MUST_BE_TRUE_FOR_LIVE_RUNTIME");
+    err.code = "SIMPLIFIED_EXIT_V2_ENABLED_MUST_BE_TRUE_FOR_LIVE_RUNTIME";
+    err.execution_mode = mode;
+    throw err;
+  }
+  return { ok: true };
+}
+
 // Resolve the simplified-exit-v2 flag strictly from the position/meta snapshot.
 // This is the production path for live trading; the env default is used only as a
 // last resort for brand-new positions at entry time.
@@ -536,6 +567,8 @@ module.exports = {
   isSimplifiedExitV2Active,
   resolveSimplifiedExitV2FlagFromSnapshot,
   requireSimplifiedExitV2Flag,
+  stampEntryMetaWithSimplifiedExitV2Policy,
+  assertSimplifiedExitV2EnabledForLiveRuntime,
   roundDownToStep,
   buildSimplifiedExitPlan,
   accumulateAbsoluteFillQty,

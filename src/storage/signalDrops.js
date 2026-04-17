@@ -93,6 +93,7 @@ function deriveReasonFamily(codeOrReason = null) {
   const s = upper(codeOrReason);
   if (!s) return "UNKNOWN";
   if (s === "MIN_ORDER_EXCEEDS_BUDGET") return "ENTRY_BUDGET_GUARD";
+  if (s.startsWith("TP1_FAIL_CLOSED_")) return "TP1_FAIL_CLOSED";
   if (s.startsWith("OPENCLAW_EXECUTOR_")) return "OPENCLAW_EXECUTOR";
   if (s.startsWith("LIVE_POLICY_")) return "LIVE_EXEC_POLICY";
   if (s.startsWith("LIVE_RESCUE_ADD_")) return "LIVE_RESCUE_ADD";
@@ -109,6 +110,19 @@ function deriveReasonFamily(codeOrReason = null) {
 
 function isLineageFillIntentReason(value) {
   return upper(value) === "LINEAGE_SLO_FILL_INTENT_NULL_RATE";
+}
+
+function isTp1FailClosedQuarantineTrace(trace = null) {
+  const src = trace && typeof trace === "object" ? trace : {};
+  const policyReason = upper(src._live_exec_policy_reason);
+  const quarantineReason = upper(src._live_exec_policy_quarantine_reason);
+  const quarantineSource = upper(src._live_exec_policy_quarantine_source);
+  return (
+    policyReason === "TP1_FAIL_CLOSED_REPEAT_QUARANTINE"
+    || quarantineSource === "TP1_FAIL_CLOSED"
+    || quarantineReason === "REPEATED_TP1_FAIL_CLOSED_ESCALATED"
+    || quarantineReason === "TP1_FAIL_CLOSED_REPEAT_QUARANTINE"
+  );
 }
 
 function deriveEffectiveDropReason({ resolvedReason = null, liveExecPolicyTrace = null } = {}) {
@@ -131,6 +145,9 @@ function deriveEffectiveDropReason({ resolvedReason = null, liveExecPolicyTrace 
       return policyReason;
     }
     if (upper(trace._live_exec_policy_action) === "QUARANTINE") {
+      if (isTp1FailClosedQuarantineTrace(trace)) {
+        return "TP1_FAIL_CLOSED_REPEAT_QUARANTINE";
+      }
       return "LIVE_POLICY_QUARANTINE_HARD_BLOCK";
     }
     if (upper(trace._live_exec_policy_plan_mode) === "WATCH_ONLY") {
@@ -196,6 +213,9 @@ function inferDropStageBucketFromReason(reasonRaw = null) {
   if (reason === "MIN_ORDER_EXCEEDS_BUDGET") {
     return { group: "ENTRY", subtype: "MIN_ORDER_BUDGET" };
   }
+  if (reason.startsWith("TP1_FAIL_CLOSED_")) {
+    return { group: "ENTRY", subtype: "TP1_FAIL_CLOSED_QUARANTINE" };
+  }
   if (reason.startsWith("OPENCLAW_EXECUTOR_")) {
     if (reason.startsWith("OPENCLAW_EXECUTOR_ALPHA_CONTEXT_")) {
       return { group: "ENTRY", subtype: "OPENCLAW_ALPHA_CONTEXT" };
@@ -208,6 +228,9 @@ function inferDropStageBucketFromReason(reasonRaw = null) {
     }
     if (reason.startsWith("OPENCLAW_EXECUTOR_SAME_SIDE_")) {
       return { group: "ENTRY", subtype: "OPENCLAW_SAME_SIDE_RISK" };
+    }
+    if (reason === "OPENCLAW_EXECUTOR_FAIL_CLOSED" || reason === "OPENCLAW_EXECUTOR_FAIL_OPEN") {
+      return { group: "ENTRY", subtype: "OPENCLAW_EXECUTOR_FAULT" };
     }
     return { group: "ENTRY", subtype: "OPENCLAW_EXECUTOR" };
   }
