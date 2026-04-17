@@ -268,8 +268,8 @@ async function run() {
 
   assert.strictEqual(
     fillsSyncTest.normalizeExitEventForRules("EXIT_TP_P0_0.8P", rescueExitRules),
-    "EXIT_TP_P0_0.8P",
-    "TP0 label must remain stable under current rescue rules"
+    "EXIT_TP_P1_1.65P",
+    "legacy TP0 raw evidence must normalize to canonical TP1 under current rules"
   );
 
   const nativeTpCloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({
@@ -749,8 +749,8 @@ async function run() {
   });
   assert.strictEqual(
     postFillRemainingAwareTp0,
-    "EXIT_TP_P0_0.8P",
-    "post-fill remaining-aware inference must still keep true first-stage TP0 exits as TP0"
+    "EXIT_TP_P1_1.65P",
+    "post-fill remaining-aware inference must map legacy TP0 evidence into canonical TP1"
   );
 
   const postFillRemainingAwareTp1 = await fillsSyncTest.resolveExternalExitEvent({
@@ -1067,7 +1067,7 @@ async function run() {
   assert.ok(approxEqual(conflictingStageMerged.payload.closeRatio, 0.25), "conflicting same-order TP close ratios must clamp to authoritative TP0 contract ratio");
   assert.strictEqual(conflictingStageMerged.payload.closeRatioAggregation, "MAX", "conflicting same-order TP stages must not over-sum close ratios");
   const conflictingStageMsg = alertTest.buildMessage(conflictingStageMerged.payload);
-  assert.strictEqual(conflictingStageMsg.title, "AXSUSDT TP0_0.8 25% 청산");
+  assert.strictEqual(conflictingStageMsg, null, "runtime/user-facing alert layer must no longer render TP0 messages");
 
   const oppositeNoEntryBatches = new Map();
   fillsSyncTest.queueFillSyncAlertBatch(oppositeNoEntryBatches, {
