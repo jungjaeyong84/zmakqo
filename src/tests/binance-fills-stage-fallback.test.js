@@ -180,10 +180,15 @@ async function run() {
     rules,
     qtyPct: 0.0147,
   });
-  assert.strictEqual(
-    tp0BackstopMustNotPromoteMatchedIntentToTrail,
-    "EXIT_TP_P0_0.8P",
-    "stage backstop must not rewrite matched TP0 split fills into trail"
+  // TP0 retirement policy (2026-04-17): a TP0 split fill arriving when the
+  // position already has tpP1Done=true / trailActive=true is a leftover
+  // from a legacy v1 cycle. Under the new policy (SL / TP1 / Trailing only)
+  // the backstop routes such leftovers to TRAIL so the canonical ledger
+  // does not stamp tp_p0_done on a v2 cycle. The OLD assertion preserved
+  // the TP0 label; the new assertion reflects the policy change.
+  assert.ok(
+    String(tp0BackstopMustNotPromoteMatchedIntentToTrail || "").startsWith("EXIT_TRAIL"),
+    `TP0 retirement: matched TP0 split fill under trail-active position must route to TRAIL, got ${tp0BackstopMustNotPromoteMatchedIntentToTrail}`
   );
 
   console.log("BINANCE_FILLS_STAGE_FALLBACK_TEST_OK");

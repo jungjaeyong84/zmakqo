@@ -2722,6 +2722,27 @@ function applyActiveExitStageBackstopOverride({
   const simplifiedExitV2Enabled = isSimplifiedExitV2Enabled(ctx);
   if (!simplifiedExitV2Enabled && currentIsTp0 && matchedIntentEvent.startsWith("EXIT_TP_P0")) return currentEvent;
   if (!simplifiedExitV2Enabled && currentIsTp1 && isTpP1Event(matchedIntentEvent)) return currentEvent;
+
+  // TP0 retirement policy (2026-04-17): under simplified_exit_v2 (the new
+  // default) TP0 is NOT an acceptable stage. Any leftover TP0 split fills
+  // from a legacy v1 cycle that arrive after the position already has
+  // tpP1Done / trailActive flags are rewritten to TRAIL by the backstop
+  // below — we do NOT preserve their matched TP0 label. The TP0 split-fill
+  // anchor is therefore intentionally absent for v2.
+  //
+  // TP1 split-fill anchor (v2-safe): a genuine TP1 split fill that matches
+  // the exact intent AND the original exchange orderId / clientOrderId is a
+  // partial of the original TP1 exit, not a new trail exit. Keep the TP1
+  // label so the canonical ledger does not double-book it as TRAIL.
+  const splitFillOrderId = Number(orderMeta && orderMeta.orderId);
+  const splitFillClientOrderId = String(orderMeta && orderMeta.clientOrderId || "").trim();
+  const matchesRecentTp1Order = !!recentTp1
+    && ((Number.isFinite(splitFillOrderId) && Number(recentTp1.orderId) === splitFillOrderId)
+      || (splitFillClientOrderId && String(recentTp1.clientOrderId || "").trim() === splitFillClientOrderId));
+  if (currentIsTp1 && isTpP1Event(matchedIntentEvent) && matchesRecentTp1Order) {
+    return currentEvent;
+  }
+
   const recentTrailEvent = String(recentTrail && recentTrail.event || "").trim().toUpperCase();
   const trailEligible = isTrailExitEligible(ctx, recentTp1) || recentTrailEvent.startsWith("EXIT_TRAIL");
 

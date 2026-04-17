@@ -1,5 +1,7 @@
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
 const env = require("../config/env");
 const os = require("os");
 const { getExchangeSettingsForProvider } = require("../utils/exchangeSettings");
@@ -48,10 +50,25 @@ const {
   publishTrailAuthorityState,
   recordTrailRuntimeEvent,
 } = require("./trailAuthorityRuntime");
-const { resolveSimplifiedExitV2FlagFromSnapshot } = require("./simplifiedExitV2");
+const {
+  isSimplifiedExitV2Active,
+  resolveSimplifiedExitV2FlagFromSnapshot,
+} = require("./simplifiedExitV2");
+
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
+const BINANCE_TICK_EXIT_AUDIT_PATH = path.join(REPO_ROOT, "ops", "runtime", "binance_tick_exit_audit.jsonl");
+const TICK_EXIT_AUDIT_EVENTS = new Set([
+  "tick_exit_tp1_native_gap_fail_closed",
+  "tick_exit_tp1_meta_sync_fail_closed",
+]);
 
 function nowMs() {
   return Date.now();
+}
+
+function sleep(ms) {
+  const waitMs = Math.max(0, Number(ms) || 0);
+  return new Promise((resolve) => setTimeout(resolve, waitMs));
 }
 
 function normalizeIntervalMs(raw, fallback) {
@@ -101,7 +118,13 @@ function ratioToPctTokenLocal(ratio) {
 function isSimplifiedExitV2Position(position = null) {
   const pos = position && typeof position === "object" ? position : {};
   const meta = pos.meta && typeof pos.meta === "object" ? pos.meta : {};
-  return meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true;
+  return isSimplifiedExitV2Active(meta);
+}
+
+function isExplicitLegacyTp0Position(position = null) {
+  const pos = position && typeof position === "object" ? position : {};
+  const meta = pos.meta && typeof pos.meta === "object" ? pos.meta : {};
+  return resolveSimplifiedExitV2FlagFromSnapshot(meta) === false;
 }
 
 function isExplicitLegacyTp0Position(position = null) {
@@ -129,6 +152,15 @@ function isCanonicalTrailStage(stage) {
   return String(stage || "").trim().toUpperCase() === "TRAIL";
 }
 
+function resolveRunnerStageState(position = null) {
+  const canonicalStage = resolveCanonicalExitStageForPosition(position);
+  return {
+    canonicalStage,
+    tpP1Done: hasCanonicalTpP1Reached(canonicalStage),
+    trailStage: isCanonicalTrailStage(canonicalStage),
+  };
+}
+
 function shouldTriggerTrailHardExit({
   position,
   price,
@@ -137,12 +169,9 @@ function shouldTriggerTrailHardExit({
 } = {}) {
   const pos = position && typeof position === "object" ? position : null;
   const meta = pos && pos.meta && typeof pos.meta === "object" ? pos.meta : {};
-  const canonicalStage = resolveCanonicalExitStageForPosition(pos);
-  const tpP1Done = hasCanonicalTpP1Reached(canonicalStage);
-  const tpP1Pending = meta.tp_p1_pending === true;
-  const trailActive = isCanonicalTrailStage(canonicalStage) || tpP1Pending;
-  if ((!tpP1Done && !tpP1Pending) || !trailActive) {
-    return { trigger: false, reason: "NOT_TRAIL_STAGE" };
+  const runnerStage = resolveRunnerStageState(pos);
+  if (runnerStage.tpP1Done !== true) {
+    return { trigger: false, reason: "NOT_RUNNER_STAGE" };
   }
   const avg = Number(pos && pos.avg_price);
   const leverageEff = Number(meta.external_leverage || meta.leverage || pos.leverage || 1);
@@ -151,8 +180,8 @@ function shouldTriggerTrailHardExit({
       leverageEff,
       side,
       rules,
-      tpP1Done,
-      trailActive: isCanonicalTrailStage(canonicalStage),
+      tpP1Done: runnerStage.tpP1Done,
+      trailActive: runnerStage.trailStage,
       trailHigh: Number(meta.trail_high),
       trailLow: Number(meta.trail_low),
       entryRDistance: Number(meta.entry_r_distance),
@@ -296,6 +325,8 @@ const pendingIntentLogState = new Map();
 const tpP1PendingTerminalAlertState = new Map();
 const tpP1AckTimeoutAlertState = new Map();
 const tp1MetaSyncGapAlertState = new Map();
+const tp1NativeProtectionGapState = new Map();
+const tp1NativeProtectionGapAlertState = new Map();
 const PENDING_INTENT_CHECK_TTL_MS = normalizeIntervalMs(process.env.TICK_EXIT_PENDING_INTENT_TTL_MS, 3000);
 const pendingIntentScopeScanLimitRaw = Number(process.env.TICK_EXIT_PENDING_INTENT_SCOPE_SCAN_LIMIT);
 const PENDING_INTENT_SCOPE_SCAN_LIMIT = Number.isFinite(pendingIntentScopeScanLimitRaw)
@@ -310,6 +341,8 @@ const TP_P1_PENDING_TERMINAL_ALERT_COOLDOWN_MS = normalizeIntervalMs(process.env
 const TP_P1_ACK_WATCHDOG_GRACE_MS = normalizeIntervalMs(process.env.TP_P1_ACK_WATCHDOG_GRACE_MS, 45000);
 const TP_P1_ACK_TIMEOUT_ALERT_COOLDOWN_MS = normalizeIntervalMs(process.env.TP_P1_ACK_TIMEOUT_ALERT_COOLDOWN_MS, 300000);
 const TP1_META_SYNC_GAP_ALERT_COOLDOWN_MS = normalizeIntervalMs(process.env.TP1_META_SYNC_GAP_ALERT_COOLDOWN_MS, 300000);
+const TP1_NATIVE_PROTECTION_GAP_ESCALATION_MS = normalizeIntervalMs(process.env.TP1_NATIVE_PROTECTION_GAP_ESCALATION_MS, 15000);
+const TP1_NATIVE_PROTECTION_GAP_ALERT_COOLDOWN_MS = normalizeIntervalMs(process.env.TP1_NATIVE_PROTECTION_GAP_ALERT_COOLDOWN_MS, 300000);
 const tickExitInstanceId = [
   String(process.env.K_REVISION || process.env.HOSTNAME || os.hostname() || "local"),
   String(process.pid || "0"),
@@ -425,6 +458,7 @@ function shouldRunNativeProtectionRefreshCooldown({ symbol, now = nowMs(), coold
 
 function structuredLog(event, payload = {}, level = "log") {
   const record = { event, ts: new Date().toISOString(), ...payload };
+  appendTickExitAudit(record);
   const fn = level === "warn" ? "warn" : "log";
   try {
     console[fn](JSON.stringify(record));
@@ -435,6 +469,23 @@ function structuredLog(event, payload = {}, level = "log") {
 
 function structuredLogWriter(event, payload = {}, level = "log") {
   structuredLog(event, payload, level);
+}
+
+function appendTickExitAudit(entry = {}, overridePath = null) {
+  const event = String(entry && entry.event || "").trim();
+  if (!TICK_EXIT_AUDIT_EVENTS.has(event)) return false;
+  const targetPath = String(overridePath || process.env.BINANCE_TICK_EXIT_AUDIT_PATH || BINANCE_TICK_EXIT_AUDIT_PATH).trim();
+  if (!targetPath) return false;
+  try {
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.appendFileSync(targetPath, `${JSON.stringify(entry)}\n`, "utf8");
+    return true;
+  } catch (err) {
+    try {
+      console.warn("[TICK_EXIT_AUDIT_APPEND_FAIL]", err && err.message ? err.message : String(err));
+    } catch (_) {}
+    return false;
+  }
 }
 
 function applyTrailObservationToPosition({ pos, observation } = {}) {
@@ -515,8 +566,8 @@ async function syncTickExitTrailObservation({
   const pos = position && typeof position === "object" ? position : null;
   if (!pos) return null;
   const meta = pos.meta && typeof pos.meta === "object" ? pos.meta : {};
-  const canonicalStage = resolveCanonicalExitStageForPosition(pos);
-  if (!hasCanonicalTpP1Reached(canonicalStage) && meta.tp_p1_pending !== true) return null;
+  const runnerStage = resolveRunnerStageState(pos);
+  if (runnerStage.tpP1Done !== true) return null;
   const side = resolvePositionSideFromPosition(pos, meta, "LONG");
   const exitRules = rules || resolveExitRulesForPosition({ exchange, position: pos });
   const runnerExit = computeRunnerExitStopPrice({
@@ -524,8 +575,8 @@ async function syncTickExitTrailObservation({
     leverageEff: Number(meta && (meta.external_leverage || meta.leverage || pos.leverage || 1)),
     side,
     rules: exitRules,
-    tpP1Done: hasCanonicalTpP1Reached(canonicalStage),
-    trailActive: isCanonicalTrailStage(canonicalStage),
+    tpP1Done: runnerStage.tpP1Done,
+    trailActive: runnerStage.trailStage,
     trailHigh: meta && Number.isFinite(Number(meta.trail_high)) ? Number(meta.trail_high) : null,
     trailLow: meta && Number.isFinite(Number(meta.trail_low)) ? Number(meta.trail_low) : null,
     entryRDistance: Number(meta && meta.entry_r_distance),
@@ -1404,6 +1455,228 @@ function shouldSendTp1MetaSyncGapAlert({ symbol, issueCodes = [] } = {}) {
   return true;
 }
 
+function resolveTp1NativeProtectionGap({
+  symbol,
+  tf = null,
+  position = null,
+  refreshPlan = null,
+  nativeProtectionState = null,
+  now = nowMs(),
+} = {}) {
+  const pos = position && typeof position === "object" ? position : null;
+  const normalizedSymbol = String(symbol || pos && (pos.symbol_or_pair_id || pos.symbol) || "").trim().toUpperCase() || null;
+  if (!normalizedSymbol) return { active: false, reason: "NO_SYMBOL" };
+  const meta = pos && pos.meta && typeof pos.meta === "object" ? pos.meta : {};
+  const shouldTrack = shouldTrackTp1NativeRefreshLifecycle({
+    position: pos,
+    refreshPlan,
+  });
+  const tpActive = nativeProtectionState && typeof nativeProtectionState.tpActive === "boolean"
+    ? nativeProtectionState.tpActive
+    : hasNativeTpProtection(meta);
+  const needsTp = !!(refreshPlan && refreshPlan.needsTp === true);
+  if (!shouldTrack || !needsTp || tpActive === true) {
+    tp1NativeProtectionGapState.delete(normalizedSymbol);
+    return {
+      active: false,
+      reason: tpActive === true ? "TP_ACTIVE" : (needsTp ? "TRACKING_DISABLED" : "TP_NOT_REQUIRED"),
+      symbol: normalizedSymbol,
+      tf: String(tf || "").trim() || null,
+    };
+  }
+
+  const state = tp1NativeProtectionGapState.get(normalizedSymbol);
+  const refreshAtMs = Number(meta.native_protection_refresh_at_ms);
+  const pendingAtMs = Number(meta.tp_p1_pending_at_ms);
+  const seedMs = Number.isFinite(Number(state && state.since_ms))
+    ? Number(state.since_ms)
+    : (Number.isFinite(refreshAtMs) && refreshAtMs > 0
+      ? refreshAtMs
+      : (Number.isFinite(pendingAtMs) && pendingAtMs > 0 ? pendingAtMs : now));
+  const sinceMs = Math.min(seedMs, now);
+  const ageMs = Math.max(0, now - sinceMs);
+  const issueCodes = [];
+  if (needsTp) {
+    issueCodes.push("NATIVE_TP_MISSING");
+  }
+  if (refreshPlan && refreshPlan.reason) {
+    issueCodes.push(String(refreshPlan.reason).trim().toUpperCase());
+  }
+  if (ageMs >= TP1_NATIVE_PROTECTION_GAP_ESCALATION_MS) {
+    issueCodes.push("TP1_NATIVE_GAP_STALE");
+  }
+  const payload = {
+    active: true,
+    escalated: ageMs >= TP1_NATIVE_PROTECTION_GAP_ESCALATION_MS,
+    exchange: "BINANCEFUT",
+    symbol: normalizedSymbol,
+    tf: String(tf || "").trim() || null,
+    simplified_exit_v2_enabled: isSimplifiedExitV2Position(pos),
+    canonical_exit_stage: resolveCanonicalExitStageForPosition(pos),
+    gap_since_ms: sinceMs,
+    gap_age_ms: ageMs,
+    escalation_ms: TP1_NATIVE_PROTECTION_GAP_ESCALATION_MS,
+    issue_codes: Array.from(new Set(issueCodes.filter(Boolean))),
+    refresh_reason: refreshPlan && refreshPlan.reason ? String(refreshPlan.reason).trim().toUpperCase() : null,
+    native_refresh_status: meta.native_protection_refresh_status ? String(meta.native_protection_refresh_status).trim().toUpperCase() : null,
+    native_refresh_at_ms: Number.isFinite(refreshAtMs) ? refreshAtMs : null,
+    tp_p1_pending: meta.tp_p1_pending === true,
+  };
+  tp1NativeProtectionGapState.set(normalizedSymbol, {
+    since_ms: sinceMs,
+    updated_at_ms: now,
+  });
+  return payload;
+}
+
+function shouldSendTp1NativeProtectionGapAlert({ symbol, issueCodes = [] } = {}) {
+  const key = [
+    String(symbol || "").trim().toUpperCase() || "UNKNOWN",
+    Array.isArray(issueCodes) ? issueCodes.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean).sort().join(",") : "UNKNOWN",
+  ].join(":");
+  const now = nowMs();
+  const last = Number(tp1NativeProtectionGapAlertState.get(key));
+  if (Number.isFinite(last) && (now - last) < TP1_NATIVE_PROTECTION_GAP_ALERT_COOLDOWN_MS) return false;
+  tp1NativeProtectionGapAlertState.set(key, now);
+  return true;
+}
+
+function buildTp1NativeProtectionGapAlertPayload({
+  symbol,
+  tf = null,
+  telemetry = null,
+} = {}) {
+  const row = telemetry && typeof telemetry === "object" ? telemetry : {};
+  const normalizedSymbol = String(symbol || row.symbol || "").trim().toUpperCase() || "UNKNOWN";
+  const issueCodes = Array.isArray(row.issue_codes) ? row.issue_codes : [];
+  const lines = [
+    "reason: TP1_NATIVE_PROTECTION_GAP",
+    "phase: TP1_NATIVE_PROTECTION_WATCHDOG",
+    `symbol: ${normalizedSymbol}`,
+    `tf: ${String(tf || row.tf || "-")}`,
+    `canonical_stage: ${String(row.canonical_exit_stage || "N/A")}`,
+    `gap_age_ms: ${Number.isFinite(Number(row.gap_age_ms)) ? Number(row.gap_age_ms) : 0}`,
+    `escalation_ms: ${Number.isFinite(Number(row.escalation_ms)) ? Number(row.escalation_ms) : TP1_NATIVE_PROTECTION_GAP_ESCALATION_MS}`,
+    `refresh_reason: ${String(row.refresh_reason || "N/A")}`,
+    `native_refresh_status: ${String(row.native_refresh_status || "N/A")}`,
+    `issue_codes: ${issueCodes.length ? issueCodes.join(",") : "NONE"}`,
+  ];
+  return {
+    title: `[P0] ${normalizedSymbol} TP1 native protection gap`,
+    body: lines.join("\n"),
+    severity: "ERROR",
+  };
+}
+
+async function sendTp1NativeProtectionGapAlert({
+  symbol,
+  tf = null,
+  telemetry = null,
+} = {}) {
+  const issueCodes = telemetry && Array.isArray(telemetry.issue_codes) ? telemetry.issue_codes : [];
+  if (!shouldSendTp1NativeProtectionGapAlert({ symbol, issueCodes })) {
+    return { ok: false, skipped: true, reason: "ALERT_COOLDOWN" };
+  }
+  const channel = String(process.env.EXIT_INTEGRITY_ALERT_CHANNEL || "").trim();
+  if (!channel) return { ok: false, skipped: true, reason: "NO_ALERT_CHANNEL" };
+  const payload = buildTp1NativeProtectionGapAlertPayload({ symbol, tf, telemetry });
+  try {
+    return await sendAlert({
+      channel,
+      title: payload.title,
+      body: payload.body,
+      severity: payload.severity,
+    });
+  } catch (err) {
+    console.warn("[TP1_NATIVE_PROTECTION_GAP_ALERT_FAIL]", err && err.message ? err.message : String(err));
+    return { ok: false, skipped: true, reason: "ALERT_FAIL" };
+  }
+}
+
+async function requestTp1NativeProtectionGapRepair({
+  symbol,
+  tf = null,
+  telemetry = null,
+  recordRepairRequest = recordExitRepairRequest,
+  triggerRepairRun = triggerExitWorkerRun,
+} = {}) {
+  const normalizedSymbol = String(symbol || telemetry && telemetry.symbol || "").trim().toUpperCase() || "UNKNOWN";
+  const runId = `RUN__TP1_NATIVE_PROTECTION_GAP__BINANCEFUT__${normalizedSymbol}__${Date.now()}`;
+  const issueCodes = telemetry && Array.isArray(telemetry.issue_codes) ? telemetry.issue_codes : [];
+  const request = await recordRepairRequest({
+    exchange: "BINANCEFUT",
+    symbol: normalizedSymbol,
+    source: "BINANCE_TICK_EXIT",
+    requestKind: "TP1_NATIVE_PROTECTION_REPAIR",
+    reason: "TP1_NATIVE_PROTECTION_GAP",
+    runId,
+    dedupeKey: `BINANCEFUT__${normalizedSymbol}__TICK_EXIT__TP1_NATIVE_PROTECTION_REPAIR`,
+    payload: {
+      tf: String(tf || telemetry && telemetry.tf || "").trim() || null,
+      issue_codes: issueCodes,
+      gap_since_ms: telemetry && Number.isFinite(Number(telemetry.gap_since_ms)) ? Number(telemetry.gap_since_ms) : null,
+      gap_age_ms: telemetry && Number.isFinite(Number(telemetry.gap_age_ms)) ? Number(telemetry.gap_age_ms) : null,
+      refresh_reason: telemetry && telemetry.refresh_reason ? String(telemetry.refresh_reason) : null,
+    },
+  });
+  const triggerResult = await triggerRepairRun({
+    reason: `TP1_NATIVE_PROTECTION_REPAIR_BINANCEFUT_${normalizedSymbol}`,
+    dispatchOnly: true,
+    timeoutMs: 5000,
+    targetSymbols: [normalizedSymbol],
+    targetExchange: "BINANCEFUT",
+  }).catch((error) => ({
+    ok: false,
+    skipped: true,
+    reason: "EXIT_WORKER_TRIGGER_FETCH_FAIL",
+    error: error && error.message ? error.message : String(error),
+  }));
+  return {
+    ok: false,
+    skipped: true,
+    reason: "TP1_NATIVE_PROTECTION_REPAIR_REQUESTED",
+    request_id: request && request.exit_repair_request_id ? request.exit_repair_request_id : null,
+    dispatch_ok: triggerResult && triggerResult.ok === true,
+    dispatch_reason: triggerResult && triggerResult.reason ? String(triggerResult.reason) : null,
+    dispatch_error: triggerResult && triggerResult.error ? String(triggerResult.error) : null,
+  };
+}
+
+async function handleTp1NativeProtectionGap({
+  symbol,
+  tf = null,
+  telemetry = null,
+  sendAlertFn = sendTp1NativeProtectionGapAlert,
+  requestRepairFn = requestTp1NativeProtectionGapRepair,
+} = {}) {
+  const row = telemetry && typeof telemetry === "object" ? telemetry : null;
+  if (!row || row.active !== true || row.escalated !== true) {
+    return { ok: true, skipped: true, reason: "NO_NATIVE_PROTECTION_GAP" };
+  }
+  const issueCodes = Array.isArray(row.issue_codes) ? row.issue_codes : [];
+  const alertResult = await sendAlertFn({
+    symbol,
+    tf,
+    telemetry: row,
+  });
+  const repairResult = await requestRepairFn({
+    symbol,
+    tf,
+    telemetry: row,
+  });
+  return {
+    ok: false,
+    skipped: false,
+    reason: "TP1_NATIVE_PROTECTION_GAP",
+    issue_codes: issueCodes,
+    alert_ok: alertResult && alertResult.ok === true,
+    alert_reason: alertResult && alertResult.reason ? String(alertResult.reason) : null,
+    repair_reason: repairResult && repairResult.reason ? String(repairResult.reason) : null,
+    request_id: repairResult && repairResult.request_id ? String(repairResult.request_id) : null,
+    dispatch_ok: repairResult && repairResult.dispatch_ok === true,
+  };
+}
+
 function buildTp1MetaSyncGapAlertPayload({
   symbol,
   tf = null,
@@ -1713,11 +1986,9 @@ function computeExitTriggers({ pos, rules, leverageEff, nativeProtectionState } 
   const simplifiedExitV2Enabled = isSimplifiedExitV2Position(pos);
   const explicitLegacyTp0Position = isExplicitLegacyTp0Position(pos);
   const side = resolvePositionSideFromPosition(pos, meta, "LONG");
-  const canonicalStage = resolveCanonicalExitStageForPosition(pos);
-  const tpP1Done = hasCanonicalTpP1Reached(canonicalStage);
-  const tpP0Done = simplifiedExitV2Enabled === true
-    ? (meta.tp_p0_done === true)
-    : (meta.tp_p0_done === true || tpP1Done);
+  const runnerStage = resolveRunnerStageState(pos);
+  const tpP1Done = runnerStage.tpP1Done;
+  const tpP0Done = meta.tp_p0_done === true || tpP1Done;
   const tpP1Pending = meta.tp_p1_pending === true;
   const nativeStopActive = nativeProtectionState && typeof nativeProtectionState.stopActive === "boolean"
     ? nativeProtectionState.stopActive
@@ -1737,7 +2008,7 @@ function computeExitTriggers({ pos, rules, leverageEff, nativeProtectionState } 
     if (Number.isFinite(tp0Px)) out.push({ kind: "TP_P0", price: tp0Px });
   }
 
-  if (!tpP1Done && !nativeTpActive) {
+  if (!tpP1Done && !tpP1Pending && !nativeTpActive) {
     const tp1Px = pnlToPrice({ avg, pnlPct: Number(rules.TP_P1) / leverageEff, side });
     if (Number.isFinite(tp1Px)) out.push({ kind: "TP_P1", price: tp1Px });
   }
@@ -1762,15 +2033,15 @@ function computeExitTriggers({ pos, rules, leverageEff, nativeProtectionState } 
     leverageEff,
     rules,
   });
-  const trailEnabled = isCanonicalTrailStage(canonicalStage) || trailDelay.trailActive || tpP1Pending;
-  if ((tpP1Done || tpP1Pending) && trailEnabled && (Number.isFinite(rules.TRAIL_R_MULTIPLE) || Number.isFinite(rules.TRAIL_PCT))) {
+  const trailEnabled = runnerStage.trailStage || trailDelay.trailActive;
+  if (tpP1Done && trailEnabled && (Number.isFinite(rules.TRAIL_R_MULTIPLE) || Number.isFinite(rules.TRAIL_PCT))) {
     const runnerExit = computeRunnerExitStopPrice({
       avg,
       leverageEff,
       side,
       rules,
       tpP1Done,
-      trailActive: isCanonicalTrailStage(canonicalStage),
+      trailActive: runnerStage.trailStage,
       trailHigh: Number(meta.trail_high),
       trailLow: Number(meta.trail_low),
       entryRDistance: Number(meta.entry_r_distance),
@@ -1821,8 +2092,8 @@ function shouldActivateFastLane({ pos, price, triggers, fastLanePct, side } = {}
   const pct = Number(fastLanePct);
   if (!Number.isFinite(pct) || pct <= 0) return false;
   const meta = (pos && typeof pos.meta === "object") ? pos.meta : {};
-  const canonicalStage = resolveCanonicalExitStageForPosition(pos);
-  const tpP1Done = hasCanonicalTpP1Reached(canonicalStage);
+  const runnerStage = resolveRunnerStageState(pos);
+  const tpP1Done = runnerStage.tpP1Done;
   const rules = resolveExitRulesForPosition({ exchange: pos.exchange, position: pos });
   const trailDelay = resolveTrailDelayState({
     meta,
@@ -1833,8 +2104,8 @@ function shouldActivateFastLane({ pos, price, triggers, fastLanePct, side } = {}
     leverageEff: Number(meta.external_leverage || pos.leverage || 1),
     rules,
   });
-  const trailEnabled = isCanonicalTrailStage(canonicalStage) || trailDelay.trailActive || meta.tp_p1_pending === true;
-  const trailReady = tpP1Done || meta.tp_p1_pending === true;
+  const trailEnabled = runnerStage.trailStage || trailDelay.trailActive;
+  const trailReady = tpP1Done;
   if (!trailReady || !trailEnabled) return false;
 
   const trailTrigger = triggers.find((t) => String(t && t.kind || "").toUpperCase() === "TRAIL");
@@ -1936,11 +2207,11 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
       }
 
       const _tMeta = (pos && typeof pos.meta === "object") ? pos.meta : {};
-      const _canonicalStage = resolveCanonicalExitStageForPosition(pos);
-      const _tpP1Done = hasCanonicalTpP1Reached(_canonicalStage);
-      const _trailStage = isCanonicalTrailStage(_canonicalStage);
-      const _trailEnabled = _trailStage || _tMeta.tp_p1_pending === true;
-      if ((_tpP1Done || _tMeta.tp_p1_pending === true) && _trailEnabled) {
+      const _runnerStage = resolveRunnerStageState(pos);
+      const _tpP1Done = _runnerStage.tpP1Done;
+      const _trailStage = _runnerStage.trailStage;
+      const _trailEnabled = _trailStage;
+      if (_tpP1Done && _trailEnabled) {
         const _tSide = resolvePositionSideFromPosition(pos, _tMeta, "LONG");
         let _trailPatch = null;
         let _trailField = null;
@@ -2152,6 +2423,14 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
         refreshPlan: eagerProtectionRefresh,
       });
       const canRunNativeRefresh = eagerProtectionRefresh.needed && shouldRunNativeProtectionRefreshCooldown({ symbol, now: tickNow });
+      const tp1NativeProtectionGap = resolveTp1NativeProtectionGap({
+        symbol,
+        tf: signalTf,
+        position: effectivePos,
+        refreshPlan: eagerProtectionRefresh,
+        nativeProtectionState,
+        now: tickNow,
+      });
       if (shouldTrackTp1Refresh && eagerProtectionRefresh.needsTp === true && !canRunNativeRefresh) {
         structuredLog("tick_exit_tp1_native_refresh_skipped_cooldown", buildTp1NativeRefreshTelemetryPayload({
           symbol,
@@ -2161,6 +2440,33 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
           nativeProtectionState,
           phase: "SKIPPED_COOLDOWN",
         }), "warn");
+        if (tp1NativeProtectionGap && tp1NativeProtectionGap.escalated === true) {
+          const tp1NativeGapResult = await handleTp1NativeProtectionGap({
+            symbol,
+            tf: signalTf,
+            telemetry: tp1NativeProtectionGap,
+          }).catch((error) => ({
+            ok: false,
+            skipped: false,
+            reason: "TP1_NATIVE_PROTECTION_GAP_HANDLER_FAIL",
+            error: error && error.message ? error.message : String(error),
+          }));
+          structuredLog("tick_exit_tp1_native_gap_fail_closed", {
+            exchange: "BINANCEFUT",
+            symbol: String(symbol).toUpperCase(),
+            tf: signalTf,
+            gap_age_ms: tp1NativeProtectionGap.gap_age_ms,
+            escalation_ms: tp1NativeProtectionGap.escalation_ms,
+            issue_codes: tp1NativeProtectionGap.issue_codes,
+            repair_reason: tp1NativeGapResult && tp1NativeGapResult.repair_reason ? tp1NativeGapResult.repair_reason : null,
+            request_id: tp1NativeGapResult && tp1NativeGapResult.request_id ? tp1NativeGapResult.request_id : null,
+            dispatch_ok: tp1NativeGapResult && tp1NativeGapResult.dispatch_ok === true,
+            handler_reason: tp1NativeGapResult && tp1NativeGapResult.reason ? tp1NativeGapResult.reason : null,
+            handler_error: tp1NativeGapResult && tp1NativeGapResult.error ? tp1NativeGapResult.error : null,
+          }, "warn");
+          checked += 1;
+          continue;
+        }
       }
       if (canRunNativeRefresh) {
         let refreshed = null;
@@ -3048,6 +3354,8 @@ function stopBinanceTickExitLoop() {
   tpP1PendingTerminalAlertState.clear();
   tpP1AckTimeoutAlertState.clear();
   tp1MetaSyncGapAlertState.clear();
+  tp1NativeProtectionGapState.clear();
+  tp1NativeProtectionGapAlertState.clear();
   nativeProtectionStateCache.clear();
   nativeProtectionRefreshAttemptState.clear();
   trailHardExitCooldownState.clear();
@@ -3082,6 +3390,7 @@ module.exports = {
     shouldTrackTp1NativeRefreshLifecycle,
     buildTp1NativeRefreshTelemetryPayload,
     buildTp1MetaSyncTelemetryPayload,
+    resolveTp1NativeProtectionGap,
     shouldRunNativeProtectionRefreshCooldown,
     shouldTriggerTrailHardExit,
     shouldRunBySymbolCooldown,
@@ -3098,8 +3407,15 @@ module.exports = {
     buildTp1MetaSyncGapAlertPayload,
     requestTp1MetaSyncGapRepair,
     handleTp1MetaSyncGap,
+    appendTickExitAudit,
+    shouldSendTp1NativeProtectionGapAlert,
+    buildTp1NativeProtectionGapAlertPayload,
+    requestTp1NativeProtectionGapRepair,
+    handleTp1NativeProtectionGap,
     _symbolCooldownState: symbolCooldownState,
     _tp1MetaSyncGapAlertState: tp1MetaSyncGapAlertState,
+    _tp1NativeProtectionGapState: tp1NativeProtectionGapState,
+    _tp1NativeProtectionGapAlertState: tp1NativeProtectionGapAlertState,
     clearSelfHealCooldown() {
       lastTickExitSelfHealAt = 0;
     },
