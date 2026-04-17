@@ -397,10 +397,10 @@ async function run() {
       rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
     });
     assert.strictEqual(tp0.acceptedQtyPct, 0.25);
-    assert.strictEqual(first.acceptedQtyPct, 0.375);
+    assert.strictEqual(first.acceptedQtyPct, 0.125);
     assert.strictEqual(duplicate.acceptedQtyPct, null);
     assert.strictEqual(duplicate.duplicateSuspected, true);
-    assert.strictEqual(trail.acceptedQtyPct, 0.375);
+    assert.strictEqual(trail.acceptedQtyPct, 0.625);
   }
 
   {
@@ -530,7 +530,7 @@ async function run() {
     rules: { SL: -0.015, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.03, TP_P1_QTY: 0.5, TRAIL_PCT: 0.01 },
     qtyPct: 0.25,
   });
-  assert.strictEqual(inferredTp0, "EXIT_TP_P0_0.8P");
+  assert.strictEqual(inferredTp0, "EXIT_TP_P1_3P");
 
   const inferredTp1 = await resolveExternalExitEvent({
     intent: null,
@@ -550,7 +550,7 @@ async function run() {
     rules: { SL: -0.015, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.03, TP_P1_QTY: 0.5, TRAIL_PCT: 0.01 },
     qtyPct: null,
   });
-  assert.strictEqual(stageFallbackTp0, "EXIT_TP_P0_0.8P");
+  assert.strictEqual(stageFallbackTp0, "EXIT_TP_P1_3P");
 
   const stageFallbackTp1 = await resolveExternalExitEvent({
     intent: null,
@@ -574,7 +574,7 @@ async function run() {
     },
     rules: { SL: -0.0165, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.0165, TP_P1_QTY: 0.5, TRAIL_R_MULTIPLE: 0.6 },
   });
-  assert.strictEqual(consumedTp0Order, "EXIT_TP_P0_0.8P");
+  assert.strictEqual(consumedTp0Order, "EXIT_TP_P1_1.65P");
 
   const consumedTp1Order = await resolveExternalExitEvent({
     intent: null,
