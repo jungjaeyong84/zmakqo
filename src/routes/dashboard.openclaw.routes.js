@@ -22,23 +22,35 @@ const path = require("path");
 const router = express.Router();
 
 const { getRecentEvidence, KINDS, MAX_BUFFER } = require("../services/openclawEvidenceLedger");
+const { OPENCLAW_CRON_JOBS } = require("../../scripts/lib/openclaw-cron-manifest");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const OPS_DAILY = path.join(REPO_ROOT, "ops", "daily");
 
-const ARTIFACTS = Object.freeze({
-  evidence_linker: "openclaw_evidence_linker_latest.json",
-  calibration: "openclaw_calibration_latest.json",
-  retrospect: "openclaw_retrospect_latest.json",
+// Map agent-cycle artifacts to their manifest job_id so SLA and filename
+// stay single-sourced from scripts/lib/openclaw-cron-manifest.js. Before
+// this indirection the dashboard carried its own SLA numbers (2/6/6h) which
+// drifted away from the manifest (1/5/5h) — dashboard reported GREEN while
+// the cron SLA monitor considered the same artifact stale.
+const ARTIFACT_JOB_IDS = Object.freeze({
+  evidence_linker: "openclaw_agent_evidence_linker",
+  calibration: "openclaw_agent_calibration",
+  retrospect: "openclaw_agent_retrospect",
 });
 
-// How stale an artifact may be before the dashboard flags it as RED.
-// Mirrors artifact_sla_hours in openclaw-cron-manifest.js (+ grace margin).
-const ARTIFACT_SLA_HOURS = Object.freeze({
-  evidence_linker: 2, // cron every 15m → alarm at >2h
-  calibration: 6, // cron every 4h → alarm at >6h
-  retrospect: 6, // cron every 4h → alarm at >6h
-});
+function resolveArtifactsFromManifest() {
+  const out = {};
+  const slaOut = {};
+  for (const [key, jobId] of Object.entries(ARTIFACT_JOB_IDS)) {
+    const job = OPENCLAW_CRON_JOBS.find((j) => j.job_id === jobId);
+    if (!job || !job.produces_artifact) continue;
+    out[key] = job.produces_artifact;
+    slaOut[key] = Number(job.artifact_sla_hours) || null;
+  }
+  return { filenames: Object.freeze(out), slaHours: Object.freeze(slaOut) };
+}
+
+const { filenames: ARTIFACTS, slaHours: ARTIFACT_SLA_HOURS } = resolveArtifactsFromManifest();
 
 function safeReadJson(absPath) {
   try {

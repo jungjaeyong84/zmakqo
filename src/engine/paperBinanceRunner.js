@@ -14154,12 +14154,22 @@ async function runPaperFuturesForBar({
         pos = sync.position;
       }
     } catch (e) {
-      console.warn("[FUT_POS_SYNC_FAIL]", {
+      const errMsg = e && e.message ? e.message : String(e);
+      const payload = {
         exchange,
         symbol,
         mode: liveCfg.executionMode,
-        error: e && e.message ? e.message : String(e),
-      });
+        error: errMsg,
+      };
+      // Intermittent ReferenceError like "sleep is not defined" has been
+      // firing in LIVE mode without a stack trace (catch swallows it). Attach
+      // the stack for ReferenceError so the NEXT occurrence pinpoints the
+      // actual lexical site. For other errors keep the log terse.
+      if (e instanceof ReferenceError || /is not defined/i.test(errMsg)) {
+        payload.error_name = e && e.name ? e.name : "ReferenceError";
+        payload.stack = e && e.stack ? String(e.stack).slice(0, 2000) : null;
+      }
+      console.warn("[FUT_POS_SYNC_FAIL]", payload);
     }
   }
   let posMeta = (pos && typeof pos.meta === "object") ? { ...pos.meta } : {};
