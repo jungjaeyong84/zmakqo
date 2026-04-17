@@ -61,6 +61,31 @@ function run() {
   assert.ok(report.live_issue_rows.find((row) => row.symbol === "ETHUSDT").issues.some((issue) => issue.code === "TRAIL_STOP_MISSING"));
   assert.ok(report.live_issue_rows.find((row) => row.symbol === "ETHUSDT").issues.some((issue) => issue.code === "TP1_DONE_WITHOUT_TP0_DONE"));
 
+  const simplifiedV2Runner = buildLiveAuthorityBoard({
+    positions: [
+      {
+        exchange: "BINANCEFUT",
+        symbol: "SOLUSDT",
+        position_state: "ACTIVE",
+        position_side: "LONG",
+        qty_base: 12,
+        avg_price: 140,
+        simplified_exit_v2_enabled: true,
+        meta: {
+          simplified_exit_v2_enabled: true,
+          tp_p0_done: false,
+          tp_p1_done: true,
+          trail_active: false,
+          native_protection_refresh_status: "FAILED",
+        },
+      },
+    ],
+  });
+  assert.strictEqual(simplifiedV2Runner.rows[0].stage, "RUNNER");
+  assert.strictEqual(simplifiedV2Runner.rows[0].simplified_exit_v2_enabled, true);
+  assert.ok(!simplifiedV2Runner.rows[0].issues.some((issue) => issue.code === "TP1_DONE_WITHOUT_TP0_DONE"));
+  assert.ok(simplifiedV2Runner.rows[0].issues.some((issue) => issue.code === "NATIVE_REFRESH_UNHEALTHY"));
+
   const artifactOnly = buildLiveAuthorityBoard({
     positions: [
       {

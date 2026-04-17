@@ -57,10 +57,11 @@ function run() {
         _live_exec_policy_lineage_has_entry_fill_intent_metric: false,
         _live_exec_policy_lineage_reason_suppressed: true,
         _live_exec_policy_action: "QUARANTINE",
-        _live_exec_policy_quarantine_reason: "REVERSE_POLICY_PENALTY",
+        _live_exec_policy_quarantine_reason: "REPEATED_TP1_FAIL_CLOSED_ESCALATED",
+        _live_exec_policy_quarantine_source: "TP1_FAIL_CLOSED",
       },
     }),
-    "LIVE_POLICY_QUARANTINE_HARD_BLOCK"
+    "TP1_FAIL_CLOSED_REPEAT_QUARANTINE"
   );
 
   assert.strictEqual(
@@ -109,6 +110,11 @@ function run() {
   );
 
   assert.deepStrictEqual(
+    __test.inferDropStageBucketFromReason("TP1_FAIL_CLOSED_REPEAT_QUARANTINE"),
+    { group: "ENTRY", subtype: "TP1_FAIL_CLOSED_QUARANTINE" }
+  );
+
+  assert.deepStrictEqual(
     __test.resolveDropStageBucket({
       reason: "OPENCLAW_EXECUTOR_ALPHA_CONTEXT_BLOCK",
       features_json: {},
@@ -125,6 +131,7 @@ function run() {
   );
 
   assert.strictEqual(__test.deriveReasonFamily("MIN_ORDER_EXCEEDS_BUDGET"), "ENTRY_BUDGET_GUARD");
+  assert.strictEqual(__test.deriveReasonFamily("TP1_FAIL_CLOSED_REPEAT_QUARANTINE"), "TP1_FAIL_CLOSED");
   assert.strictEqual(__test.deriveReasonFamily("OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE"), "OPENCLAW_EXECUTOR");
   assert.strictEqual(__test.deriveReasonFamily("LIVE_POLICY_QUARANTINE_HARD_BLOCK"), "LIVE_EXEC_POLICY");
 

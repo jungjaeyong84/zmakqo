@@ -160,5 +160,13 @@ const { buildSignalDisplayReason, classifySignalReasonStage } = require('../util
   assert.strictEqual(livePolicyBlocked.stage_text, '라이브 운영 정책');
   assert.strictEqual(livePolicyBlocked.reason_ko, '현재 시장이 격리(quarantine) 상태라 진입을 보류했습니다.');
 
+  const tp1FailClosedBlocked = buildSignalDisplayReason(
+    { reason: 'TP1_FAIL_CLOSED_REPEAT_QUARANTINE' },
+    {}
+  );
+  assert.strictEqual(tp1FailClosedBlocked.stage_key, 'TP1_FAIL_CLOSED');
+  assert.strictEqual(tp1FailClosedBlocked.stage_text, 'TP1 보호 격리');
+  assert.strictEqual(tp1FailClosedBlocked.reason_ko, 'TP1 보호주문 또는 메타 동기화 실패가 반복되어 해당 시장을 일시 격리하고 신규 진입을 보류했습니다.');
+
   console.log('SIGNAL_DISPLAY_REASON_TEST_OK');
 })();

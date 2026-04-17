@@ -148,10 +148,11 @@ async function run() {
     exitRules: { SL: -0.0165, TP_P1: 0.0168, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.ok(simplifiedTp0FailureReclassified, "simplified v2 tp0 failure reclassification should exist");
+  assert.strictEqual(simplifiedTp0FailureReclassified.title, "ETHUSDT 익절(TP1) 1.68% 주문 실패");
   assert.ok(!simplifiedTp0FailureReclassified.title.includes("TP0"), "v2 failure title must not expose TP0");
   assert.ok(simplifiedTp0FailureReclassified.body.includes("종류: 익절(TP1) 1.68%"), "v2 failure must show TP1 label");
   assert.ok(simplifiedTp0FailureReclassified.body.includes("실행계약: TP1_1.68"), "v2 failure must show TP1 executed contract");
-  assert.ok(simplifiedTp0FailureReclassified.body.includes("정본재분류: TP1_0.8 -> TP1_1.68"), "v2 failure must normalize raw TP0 evidence into TP1 namespace");
+  assert.ok(simplifiedTp0FailureReclassified.body.includes("정본재분류: RAW_EVIDENCE -> TP1_1.68"), "v2 failure must keep reclassification while hiding legacy TP0 contract namespace");
   assert.ok(simplifiedTp0FailureReclassified.body.includes("이벤트: EXIT_TP_P0_0.8P"), "raw TP0 evidence should remain visible in v2 failure alert");
 
   const externalSync = __test.buildMessage({
@@ -283,10 +284,11 @@ async function run() {
     exitRules: { SL: -0.0165, TP_P1: 0.0168, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.ok(simplifiedTp0EvidenceReclassified, "simplified v2 tp evidence message should exist");
+  assert.strictEqual(simplifiedTp0EvidenceReclassified.title, "ETHUSDT TP1_1.68 50% 청산");
   assert.ok(!simplifiedTp0EvidenceReclassified.title.includes("TP0"), "v2 alert title must not expose TP0");
   assert.ok(simplifiedTp0EvidenceReclassified.body.includes("종류: 익절(TP1) 1.68%"), "v2 alert should show TP1 label");
   assert.ok(simplifiedTp0EvidenceReclassified.body.includes("실행계약: TP1_1.68"), "v2 alert should show TP1 executed contract");
-  assert.ok(simplifiedTp0EvidenceReclassified.body.includes("정본재분류: TP1_0.8 -> TP1_1.68"), "v2 raw tp0 evidence should be normalized to tp1 namespace");
+  assert.ok(simplifiedTp0EvidenceReclassified.body.includes("정본재분류: RAW_EVIDENCE -> TP1_1.68"), "v2 raw tp0 evidence should be normalized without exposing legacy TP0 contract namespace");
   assert.ok(simplifiedTp0EvidenceReclassified.body.includes("이벤트: EXIT_TP_P0_0.8P"), "raw evidence event should remain visible");
 
   const simplifiedExternalSyncAfterTp0 = __test.buildMessage({
@@ -413,6 +415,31 @@ async function run() {
   assert.strictEqual(simplifiedProjection.enabled, true);
   assert.deepStrictEqual(simplifiedProjection.transitionEvents, ["TRAIL_ACTIVATED"]);
   assert.strictEqual(simplifiedProjection.stage, "TRAIL");
+
+  const simplifiedStopHitProjection = __test.resolveSimplifiedExitV2AlertProjection({
+    simplifiedExitV2Enabled: true,
+    canonicalExitEvent: "EXIT_SL_1.65P",
+    canonicalTransitionEvent: "SL_HIT",
+    canonicalTransitionEvents: ["SL_HIT"],
+  });
+  assert.strictEqual(simplifiedStopHitProjection.enabled, true);
+  assert.deepStrictEqual(simplifiedStopHitProjection.transitionEvents, ["SL_HIT"]);
+  assert.strictEqual(simplifiedStopHitProjection.stage, "SL");
+  assert.strictEqual(simplifiedStopHitProjection.meta.token, "SL_1.65");
+
+  const simplifiedExternalCloseRequirement = __test.resolveCanonicalExitAlertRequirement({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_EXTERNAL_SYNC",
+    intent: "EXIT",
+    simplifiedExitV2Enabled: true,
+    canonicalExitEvent: "EXIT_EXTERNAL_SYNC",
+    canonicalTransitionEvent: "EXTERNAL_CLOSE_SYNC",
+    canonicalTransitionEvents: ["EXTERNAL_CLOSE_SYNC"],
+  });
+  assert.strictEqual(simplifiedExternalCloseRequirement.required, true);
+  assert.strictEqual(simplifiedExternalCloseRequirement.satisfied, true);
+  assert.deepStrictEqual(simplifiedExternalCloseRequirement.canonicalTransitionEvents, ["EXTERNAL_CLOSE_SYNC"]);
 
   const rawOnlyExitMeta = __test.resolveEffectiveExitMeta({
     exchange: "BINANCEFUT",

@@ -3,11 +3,44 @@
 const assert = require("assert");
 const { __test } = require("../services/binanceTickExit");
 
+const prevSimplifiedExitV2Env = process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+
 function kinds(list) {
   return list.map((x) => String(x.kind || "").toUpperCase()).sort();
 }
 
 (() => {
+  delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+  const pos = {
+    exchange: "BINANCEFUT",
+    avg_price: 100,
+    position_side: "LONG",
+    meta: {
+      tp_p0_done: false,
+      tp_p1_done: false,
+      trail_active: false,
+    },
+  };
+  const rules = {
+    SL: -0.0165,
+    TP_P0: 0.008,
+    TP_P0_QTY: 0.25,
+    TP_P1: 0.0325,
+    TRAIL_R_MULTIPLE: 0.9,
+    TRAIL_PCT: 0.01,
+    BE_ENABLE: true,
+  };
+  const triggerKinds = kinds(__test.computeExitTriggers({
+    pos,
+    rules,
+    leverageEff: 2,
+    nativeProtectionState: { stopActive: false, tpActive: false },
+  }));
+  assert(!triggerKinds.includes("TP_P0"), "runtime default must not re-arm TP0 when simplified env is omitted");
+})();
+
+(() => {
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
   const pos = {
     exchange: "BINANCEFUT",
     avg_price: 100,
@@ -120,3 +153,5 @@ function kinds(list) {
 })();
 
 console.log("NATIVE_PROTECTION_TRIGGER_SKIP_TEST_OK");
+if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;

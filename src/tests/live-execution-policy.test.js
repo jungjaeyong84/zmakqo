@@ -6,6 +6,8 @@ function buildSnapshot({
   allocatorSummary = null,
   quarantineRows = [],
   quarantineSummary = null,
+  quarantineOverrideRows = [],
+  quarantineOverrideSummary = null,
   qualityRows = [],
   policyPlanSummary = null,
   policyPlanRows = [],
@@ -30,6 +32,7 @@ function buildSnapshot({
   return __test.buildSnapshotFromArtifacts({
     allocatorDoc: { summary: { ...(allocatorSummary || {}), by_market: allocatorRows } },
     quarantineDoc: { summary: { ...(quarantineSummary || {}), by_market: quarantineRows } },
+    quarantineOverrideDoc: { summary: { ...(quarantineOverrideSummary || {}), by_market: quarantineOverrideRows } },
     executionQualityDoc: { summary: { by_market: qualityRows } },
     policyParameterPlanDoc: { summary: { ...(policyPlanSummary || {}) }, recommendations: { by_market: policyPlanRows } },
     objectiveSupervisorDoc: { summary: { ...(objectiveSummary || {}) } },
@@ -70,6 +73,50 @@ function buildSnapshot({
   assert.strictEqual(res.featuresPatch._live_exec_policy_plan_status, null);
   assert.strictEqual(res.featuresPatch._live_exec_policy_quarantine_reason, "EXECUTION_QUALITY_PENALTY");
   assert.strictEqual(res.featuresPatch._live_exec_policy_quality_global_status, null);
+})();
+
+(() => {
+  const snap = buildSnapshot({
+    allocatorRows: [{ market: "XRPUSDT", allocation_score: 1.2, recommended_action: "HOLD" }],
+    quarantineOverrideRows: [{
+      market: "XRPUSDT",
+      quarantine_reason: "REPEATED_TP1_FAIL_CLOSED_ESCALATED",
+      quarantine_severity: "HIGH",
+      recommended_action: "WATCH_ONLY_NO_EXCLUDE",
+      source: "TP1_FAIL_CLOSED",
+      trigger_count: 4,
+      trigger_threshold: 2,
+      tp1_fail_closed_report_path: "/tmp/tp1_fail_closed_events_latest.json",
+      exit_integrity_report_path: "/tmp/binance_exit_integrity_cycle_latest.json",
+      tp1_drilldown_report_path: "/tmp/simplified_exit_v2_tp1_drilldown_latest.json",
+      live_flow_report_path: "/tmp/simplified_exit_v2_live_flow_latest.json",
+    }],
+    quarantineOverrideSummary: {
+      status: "TP1_FAIL_CLOSED_QUARANTINE_ACTIVE",
+      quarantine_market_n: 1,
+      top_quarantine_market: "XRPUSDT",
+    },
+    qualityRows: [{ market: "XRPUSDT", avg_created_to_fill_ms: 1000, partial_fill_rate_pct: 1, avg_slippage_bps: 1 }],
+  });
+  const res = evaluateLiveEntryPolicy({
+    exchange: "BINANCEFUT",
+    symbol: "XRPUSDT",
+    intent: "ENTRY",
+    qtyPct: 0.4,
+    features: {},
+    stage: "TEST",
+    applyScale: true,
+    snapshotOverride: snap,
+  });
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.reason, "TP1_FAIL_CLOSED_REPEAT_QUARANTINE");
+  assert.strictEqual(res.policy.quarantine_reason, "REPEATED_TP1_FAIL_CLOSED_ESCALATED");
+  assert.strictEqual(res.policy.quarantine_source, "TP1_FAIL_CLOSED");
+  assert.strictEqual(res.policy.quarantine_trigger_count, 4);
+  assert.strictEqual(res.policy.quarantine_evidence_paths.tp1_fail_closed_report_path, "/tmp/tp1_fail_closed_events_latest.json");
+  assert.strictEqual(res.featuresPatch._live_exec_policy_quarantine_tp1_fail_closed_report_path, "/tmp/tp1_fail_closed_events_latest.json");
+  assert.strictEqual(res.featuresPatch._live_exec_policy_tp1_fail_closed_quarantine_status, "TP1_FAIL_CLOSED_QUARANTINE_ACTIVE");
+  assert.strictEqual(res.featuresPatch._live_exec_policy_tp1_fail_closed_top_quarantine_market, "XRPUSDT");
 })();
 
 (() => {

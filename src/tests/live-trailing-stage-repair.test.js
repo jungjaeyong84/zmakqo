@@ -3,6 +3,8 @@
 const assert = require("assert");
 const { __test } = require("../services/liveTrailingStageRepair");
 
+const prevSimplifiedExitV2Env = process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+
 function run() {
   assert.strictEqual(typeof __test.resolveRepairTargetStage, "function");
   assert.strictEqual(typeof __test.buildRepairedMeta, "function");
@@ -12,6 +14,7 @@ function run() {
   assert.strictEqual(__test.shouldEnforceSingleStopWriter(), true);
   assert.strictEqual(__test.resolveNonAuthorityRepairStatus(), "REPAIR_REQUESTED_NON_AUTHORITY_LAYER");
 
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
   const stage = __test.resolveRepairTargetStage({
     positionSnapshot: {
       qty_base: 0.167,
@@ -35,6 +38,7 @@ function run() {
   assert.strictEqual(nextMeta.tp_p1_done, true);
   assert.strictEqual(nextMeta.trail_active, true);
 
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
   const simplifiedStage = __test.resolveRepairTargetStage({
     positionSnapshot: {
       qty_base: 0.25,
@@ -61,6 +65,22 @@ function run() {
   assert.strictEqual(simplifiedNextMeta.trail_active, true);
   assert.strictEqual(simplifiedNextMeta.canonical_exit_stage, "TRAIL");
 
+  const simplifiedRejectedTp0Stage = __test.resolveRepairTargetStage({
+    positionSnapshot: {
+      qty_base: 0.5,
+      meta: {
+        simplified_exit_v2_enabled: true,
+        tp_p0_done: true,
+        tp_p1_done: false,
+        trail_active: false,
+        canonical_exit_stage: "TP0",
+      },
+    },
+    externalQty: 0.5,
+  });
+  assert.strictEqual(simplifiedRejectedTp0Stage.stage, null);
+  assert.strictEqual(simplifiedRejectedTp0Stage.reason, "V2_TP0_STAGE_REJECTED");
+
   const sanitized = __test.sanitizeNativeProtectionResultForNonAuthority({ ok: true, stop_order_id: "123" });
   assert.strictEqual(sanitized.ok, false);
   assert.strictEqual(sanitized.skipped, true);
@@ -76,4 +96,7 @@ try {
 } catch (err) {
   console.error("LIVE_TRAILING_STAGE_REPAIR_TEST_FAIL", err && err.stack ? err.stack : err);
   process.exit(1);
+} finally {
+  if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+  else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;
 }

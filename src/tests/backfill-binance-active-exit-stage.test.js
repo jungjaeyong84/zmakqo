@@ -121,6 +121,58 @@ async function main() {
   assert.strictEqual(repairedMeta.canonical_exit_stage, "TRAIL");
   assert.strictEqual(repairedMeta.canonical_runner_remaining_abs, 0.011);
 
+  const simplifiedV2Position = {
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    state: "ACTIVE",
+    qty_base: 0.5,
+    simplified_exit_v2_enabled: true,
+    meta: {
+      simplified_exit_v2_enabled: true,
+      entry_event_id: "ENTRY_EVT_ETH",
+      entry_exec_bar_ms: 1776075627000,
+      tp_p0_done: false,
+      tp_p1_done: true,
+      trail_active: false,
+      exit_rules_override: {
+        TP_P1_QTY: 0.5,
+        TP_P1: 0.0168,
+      },
+    },
+  };
+  const simplifiedV2Fills = [
+    {
+      id: "eth-v2-mislabel",
+      fill_id: "eth-v2-mislabel",
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      event: "EXIT_TP_P0_0.8P",
+      exec_qty_base: 0.5,
+      external_order_id: "eth-v2-order",
+      created_at: "2026-04-13T13:49:25.045Z",
+      entry_event_id: "ENTRY_EVT_ETH",
+      entry_exec_bar_ms: 1776075627000,
+      exec_price: 2376.1,
+    },
+  ];
+  const simplifiedV2Summary = __test.buildStageSummary(simplifiedV2Position, simplifiedV2Fills);
+  assert.strictEqual(simplifiedV2Summary.simplified_exit_v2_enabled, true);
+  assert.ok(!simplifiedV2Summary.issues.includes("TP1_DONE_WITHOUT_TP0_DONE"));
+  assert.ok(simplifiedV2Summary.issues.includes("LATEST_TP0_SHOULD_BE_TP1"));
+  const simplifiedV2Plan = __test.buildStageReclassificationPlan(simplifiedV2Summary);
+  assert.deepStrictEqual(simplifiedV2Plan.map((row) => ({ fill_id: row.fill_id, to_event: row.to_event })), [
+    { fill_id: "eth-v2-mislabel", to_event: "EXIT_TP_P1_1.68P" },
+  ]);
+  const simplifiedV2RepairedMeta = __test.buildReconciledMetaFromSummary(
+    simplifiedV2Position,
+    __test.buildStageSummary(simplifiedV2Position, __test.applyReclassificationPlanToFills(simplifiedV2Fills, simplifiedV2Plan))
+  );
+  assert.strictEqual(simplifiedV2RepairedMeta.tp_p0_done, false);
+  assert.strictEqual(simplifiedV2RepairedMeta.tp_p1_done, true);
+  assert.strictEqual(simplifiedV2RepairedMeta.trail_active, false);
+  assert.strictEqual(simplifiedV2RepairedMeta.canonical_exit_stage, "TP1");
+  assert.strictEqual(simplifiedV2RepairedMeta.canonical_runner_remaining_abs, 0.5);
+
   console.log("BACKFILL_BINANCE_ACTIVE_EXIT_STAGE_TEST_OK");
 }
 

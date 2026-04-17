@@ -415,6 +415,38 @@ async function run() {
   assert.ok(simplifiedV2TriggerKinds.includes("SL"), "simplified exit v2 must keep SL trigger in tick-exit");
   assert.ok(simplifiedV2TriggerKinds.includes("TP_P1"), "simplified exit v2 must keep TP1 trigger in tick-exit");
 
+  const simplifiedV2PendingTriggerKinds = __test.computeExitTriggers({
+    pos: {
+      avg_price: 100,
+      exchange: "BINANCEFUT",
+      position_side: "LONG",
+      meta: {
+        simplified_exit_v2_enabled: true,
+        tp_p1_pending: true,
+        exit_rules_override: {
+          TP_P0: 0.008,
+          TP_P1: 0.0168,
+          SL: -0.0165,
+          TRAIL_PCT: 0.01,
+        },
+      },
+    },
+    rules: {
+      TP_P0: 0.008,
+      TP_P1: 0.0168,
+      SL: -0.0165,
+      TRAIL_PCT: 0.01,
+    },
+    leverageEff: 2,
+    nativeProtectionState: {
+      stopActive: false,
+      tpActive: false,
+    },
+  }).map((row) => row.kind);
+  assert.ok(!simplifiedV2PendingTriggerKinds.includes("TP_P0"), "simplified exit v2 pending state must not re-arm TP0");
+  assert.ok(!simplifiedV2PendingTriggerKinds.includes("TP_P1"), "tp1 pending must suppress duplicate TP1 tick trigger");
+  assert.ok(!simplifiedV2PendingTriggerKinds.includes("TRAIL"), "tp1 pending alone must not activate runner trail");
+
   process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
   const missingFlagTriggerKinds = __test.computeExitTriggers({
     pos: {
@@ -444,6 +476,31 @@ async function run() {
   assert.ok(missingFlagTriggerKinds.includes("TP_P1"), "missing simplified-exit flag must still keep TP1 tick trigger");
   if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
   else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;
+
+  const simplifiedV2PendingHardExit = __test.shouldTriggerTrailHardExit({
+    position: {
+      avg_price: 100,
+      exchange: "BINANCEFUT",
+      position_side: "LONG",
+      meta: {
+        simplified_exit_v2_enabled: true,
+        tp_p1_done: false,
+        tp_p1_pending: true,
+        trail_active: false,
+        trail_high: 103,
+        entry_r_distance: 1.65,
+      },
+    },
+    price: 100.2,
+    side: "LONG",
+    rules: {
+      TP_P1: 0.0168,
+      SL: -0.0165,
+      TRAIL_PCT: 0.01,
+    },
+  });
+  assert.strictEqual(simplifiedV2PendingHardExit.trigger, false, "tp1 pending alone must not trigger runner hard-exit");
+  assert.strictEqual(simplifiedV2PendingHardExit.reason, "NOT_RUNNER_STAGE");
 
   assert.strictEqual(typeof runnerTest.computeTrailingMetaUpdate, "function", "computeTrailingMetaUpdate export missing");
   assert.strictEqual(typeof runnerTest.sanitizeBarLoopMetaUpdates, "function", "sanitizeBarLoopMetaUpdates export missing");

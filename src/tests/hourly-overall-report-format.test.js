@@ -7,6 +7,8 @@ function run() {
   assert.strictEqual(typeof __test.resolveComparisonLabel, "function", "resolveComparisonLabel export missing");
   assert.strictEqual(typeof __test.formatSignedPercent, "function", "formatSignedPercent export missing");
   assert.strictEqual(typeof __test.positionStatusLabel, "function", "positionStatusLabel export missing");
+  assert.strictEqual(typeof __test.buildSystemOpsPrereportCommands, "function", "buildSystemOpsPrereportCommands export missing");
+  assert.strictEqual(typeof __test.buildTp1FailClosedQuarantineLines, "function", "buildTp1FailClosedQuarantineLines export missing");
 
   assert.strictEqual(
     __test.resolveComparisonLabel({
@@ -39,6 +41,23 @@ function run() {
   );
 
   assert.strictEqual(__test.formatSignedPercent(-1.2345, 4), "-1.2345%");
+  const prereports = __test.buildSystemOpsPrereportCommands();
+  assert.ok(prereports.some((step) => step.command === "node scripts/report-tp1-fail-closed-events.js"));
+  assert.strictEqual(prereports[prereports.length - 1].errorCode, "TP1_FAIL_CLOSED_REPORT_FAILED");
+  assert.deepStrictEqual(
+    __test.buildTp1FailClosedQuarantineLines({
+      tp1_fail_closed: {
+        quarantine_candidate_n: 1,
+        quarantine_candidates: [
+          { symbol: "ETHUSDT", count: 2, severity: "MEDIUM" },
+        ],
+      },
+    }),
+    [
+      "TP1 quarantine 후보 1개",
+      "상위 ETHUSDT(2,MEDIUM)",
+    ]
+  );
   assert.strictEqual(
     __test.positionStatusLabel({
       tp_p1_done: false,

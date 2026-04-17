@@ -112,6 +112,22 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
       reasons: [],
     },
   }), "utf8");
+  fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "tp1_fail_closed_events_latest.json"), JSON.stringify({
+    summary: {
+      total_fail_closed_n: 0,
+      tp1_native_gap_fail_closed_n: 0,
+      tp1_meta_sync_fail_closed_n: 0,
+      dispatch_fail_n: 0,
+      repeat_symbol_threshold: 2,
+      repeat_symbol_n: 0,
+      max_symbol_fail_closed_n: 0,
+      top_symbols: [],
+      repeat_symbols: [],
+      quarantine_candidate_n: 0,
+      quarantine_candidates: [],
+      recent_rows: [],
+    },
+  }), "utf8");
   fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "regime_lineage_gap_latest.json"), JSON.stringify({
     signals: { missing_n: 1, missing_rate: 0.1 },
     intents: { missing_n: 2, missing_rate: 0.2 },
@@ -157,6 +173,11 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
   assert.strictEqual(exitIntegrity.available, true);
   assert.strictEqual(exitIntegrity.tp1_meta_sync_gap_n, 0);
   assert.strictEqual(exitIntegrity.tp1_meta_sync_gate, "PASS");
+  const tp1FailClosed = dailySystemOpsCheck.__test.loadTp1FailClosedHealth({ repoRoot: tmpRoot });
+  assert.strictEqual(tp1FailClosed.available, true);
+  assert.strictEqual(tp1FailClosed.total_fail_closed_n, 0);
+  assert.strictEqual(tp1FailClosed.repeat_symbol_n, 0);
+  assert.strictEqual(tp1FailClosed.quarantine_candidate_n, 0);
   const regimeGap = dailySystemOpsCheck.__test.loadRegimeLineageGapHealth({ repoRoot: tmpRoot });
   assert.strictEqual(regimeGap.available, true);
   assert.strictEqual(regimeGap.signals_missing_n, 1);
@@ -208,6 +229,7 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
     binanceExitQtyContractAudit: exitQtyAudit,
     nativeTrailProtectionGap: nativeTrailGap,
     exitIntegrity,
+    tp1FailClosed,
     positionReadModelCutover: cutover,
   });
   assert.strictEqual(proceed.status, "진행");
@@ -233,6 +255,7 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
     binanceExitQtyContractAudit: exitQtyAudit,
     nativeTrailProtectionGap: nativeTrailGap,
     exitIntegrity,
+    tp1FailClosed,
     positionReadModelCutover: cutover,
   });
   assert.strictEqual(stopped.status, "중단");
@@ -266,6 +289,18 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
       tp1_meta_sync_gap_n: 2,
       tp1_meta_sync_gate: "BLOCK",
     },
+    tp1_fail_closed: {
+      available: true,
+      total_fail_closed_n: 2,
+      tp1_native_gap_fail_closed_n: 1,
+      tp1_meta_sync_fail_closed_n: 1,
+      repeat_symbol_threshold: 2,
+      repeat_symbol_n: 1,
+      repeat_symbols: [{ symbol: "ETHUSDT", count: 2 }],
+      quarantine_candidate_n: 1,
+      quarantine_candidates: [{ symbol: "ETHUSDT", count: 2, severity: "MEDIUM", action: "다음 발생 전 TP1 native/meta trace 선수집 및 quarantine 준비" }],
+      top_symbols: [{ symbol: "ETHUSDT", count: 2 }],
+    },
     regime_lineage_gap: regimeGap,
     position_writer_authority_24h: {
       occurrence_count: 3,
@@ -284,6 +319,8 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
   assert.ok(issueLines.some((line) => line.includes("intent regime missing 2건")));
   assert.ok(issueLines.some((line) => line.includes("native stop 누락 2건")));
   assert.ok(issueLines.some((line) => line.includes("TP1 meta sync gap 2건")));
+  assert.ok(issueLines.some((line) => line.includes("TP1 fail-closed quarantine 후보 1개")));
+  assert.ok(issueLines.some((line) => line.includes("ETHUSDT(2,MEDIUM)")));
 
   const historicalExitQtyLines = dailySystemOpsCheck.__test.buildIssueLines({
     cost_ratio_pct: 0.05,
@@ -548,10 +585,42 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
       tp1_meta_sync_gap_n: 3,
       tp1_meta_sync_gate: "BLOCK",
     },
+    tp1FailClosed: {
+      available: true,
+      total_fail_closed_n: 4,
+      quarantine_candidate_n: 1,
+    },
     positionReadModelCutover: cutover,
   });
   assert.strictEqual(tp1MetaSyncBlocked.status, "보류");
   assert.ok(tp1MetaSyncBlocked.reasons.includes("TP1 meta sync gap 3건"));
+  assert.ok(tp1MetaSyncBlocked.reasons.includes("TP1 fail-closed quarantine 후보 1개"));
+  assert.ok(tp1MetaSyncBlocked.reasons.includes("TP1 fail-closed 4건"));
+
+  const fallbackRuntimePath = path.join(tmpRoot, "ops", "runtime", "binance_tick_exit_audit.jsonl");
+  fs.mkdirSync(path.dirname(fallbackRuntimePath), { recursive: true });
+  fs.unlinkSync(path.join(tmpRoot, "ops", "daily", "tp1_fail_closed_events_latest.json"));
+  const fallbackNow = Date.now();
+  fs.writeFileSync(fallbackRuntimePath, [
+    JSON.stringify({
+      ts: new Date(fallbackNow - 60_000).toISOString(),
+      event: "tick_exit_tp1_native_gap_fail_closed",
+      symbol: "ETHUSDT",
+      dispatch_ok: true,
+    }),
+    JSON.stringify({
+      ts: new Date(fallbackNow - 30_000).toISOString(),
+      event: "tick_exit_tp1_meta_sync_fail_closed",
+      symbol: "ETHUSDT",
+      dispatch_ok: false,
+    }),
+  ].join("\n"), "utf8");
+  const fallbackFailClosed = dailySystemOpsCheck.__test.loadTp1FailClosedHealth({ repoRoot: tmpRoot });
+  assert.strictEqual(fallbackFailClosed.available, true);
+  assert.strictEqual(fallbackFailClosed.fallback_runtime_used, true);
+  assert.strictEqual(fallbackFailClosed.total_fail_closed_n, 2);
+  assert.strictEqual(fallbackFailClosed.repeat_symbol_n, 1);
+  assert.strictEqual(fallbackFailClosed.quarantine_candidate_n, 1);
 
   console.log("DAILY_SYSTEM_OPS_CHECK_TEST_OK");
 })();

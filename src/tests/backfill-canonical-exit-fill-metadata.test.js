@@ -15,6 +15,18 @@ function run() {
     canonical_primary_transition_event: "TRAIL_ACTIVE",
   });
 
+  const simplifiedTp1 = __test.buildCanonicalFillMetadata({
+    event: "EXIT_TP_P1_1.68P",
+    qty_fraction: 0.5,
+    simplified_exit_v2_enabled: true,
+  });
+  assert.deepStrictEqual(simplifiedTp1, {
+    canonical_exit_event: "EXIT_TP_P1_1.68P",
+    canonical_exit_stage: "TP1",
+    canonical_transition_events: ["TP1_REACHED", "TRAIL_ACTIVATED"],
+    canonical_primary_transition_event: "TRAIL_ACTIVATED",
+  });
+
   const trailFinal = __test.buildCanonicalFillMetadata({
     event: "EXIT_TRAIL",
     qty_fraction: 1,
@@ -25,6 +37,24 @@ function run() {
     canonical_transition_events: ["TRAIL_FINAL_EXIT"],
     canonical_primary_transition_event: "TRAIL_FINAL_EXIT",
   });
+
+  const simplifiedTrail = __test.buildCanonicalFillMetadata({
+    event: "EXIT_TRAIL",
+    qty_fraction: 0.25,
+    simplified_exit_v2_enabled: true,
+  });
+  assert.deepStrictEqual(simplifiedTrail, {
+    canonical_exit_event: "EXIT_TRAIL",
+    canonical_exit_stage: "TRAIL",
+    canonical_transition_events: ["TRAIL_FINAL_EXIT"],
+    canonical_primary_transition_event: "TRAIL_FINAL_EXIT",
+  });
+
+  assert.strictEqual(__test.buildCanonicalFillMetadata({
+    event: "EXIT_TP_P0_0.8P",
+    qty_fraction: 0.25,
+    simplified_exit_v2_enabled: true,
+  }), null);
 
   const unchanged = __test.isMetadataUnchanged({
     canonical_exit_event: "EXIT_TRAIL",
