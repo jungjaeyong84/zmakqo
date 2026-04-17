@@ -90,6 +90,19 @@ function isVerifiedExitFill(fill = {}) {
   return !isEntryStage(fill.stage) && !isUnverifiedEvent(fill.event);
 }
 
+function hasCanonicalExitTransition(fill = {}) {
+  const items = [];
+  if (Array.isArray(fill.canonicalTransitionEvents)) items.push(...fill.canonicalTransitionEvents);
+  if (Array.isArray(fill.canonical_transition_events)) items.push(...fill.canonical_transition_events);
+  const primary = trimOrNull(fill.canonicalTransitionEvent || fill.canonical_primary_transition_event);
+  if (primary) items.unshift(primary);
+  return items.some((item) => trimOrNull(item));
+}
+
+function isActionableVerifiedExitFill(fill = {}) {
+  return isVerifiedExitFill(fill) && hasCanonicalExitTransition(fill);
+}
+
 function parseTelegramTradeAlertRows(logText = "", sinceMs = 0) {
   const rows = [];
   for (const line of String(logText || "").split(/\r?\n/)) {
@@ -137,6 +150,12 @@ async function fetchRecentFillRows(db, sinceIso) {
         stage,
         created_at: row.created_at || null,
         created_ms: Date.parse(String(row.created_at || "")),
+        canonicalTransitionEvent: row.canonical_primary_transition_event
+          || (row.extra && row.extra.canonical_primary_transition_event)
+          || null,
+        canonicalTransitionEvents: Array.isArray(row.canonical_transition_events)
+          ? row.canonical_transition_events
+          : (Array.isArray(row.extra && row.extra.canonical_transition_events) ? row.extra.canonical_transition_events : []),
       });
     }
     if (snap.size < PAGE_SIZE) break;
@@ -265,7 +284,7 @@ function buildReport({ fills = [], alertAuditRows = [], telegramTradeRows = [], 
       missing.push(issue);
       if (isEntryStage(fill.stage)) missingEntry.push(issue);
       else if (isUnverifiedEvent(fill.event)) missingUnverified.push(issue);
-      else if (isVerifiedExitFill(fill)) missingVerifiedExit.push(issue);
+      else if (isActionableVerifiedExitFill(fill)) missingVerifiedExit.push(issue);
     }
   }
   for (const alert of alertAuditRows) {
@@ -461,6 +480,8 @@ if (require.main === module) {
       pickMatchingAlert,
       buildReport,
       dedupeAlertAuditRows,
+      hasCanonicalExitTransition,
+      isActionableVerifiedExitFill,
     },
   };
 }

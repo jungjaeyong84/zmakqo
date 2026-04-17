@@ -233,6 +233,23 @@ async function run() {
   assert.strictEqual(tpP1Update.nextTrailHigh, 101.6);
   assert.strictEqual(tpP1Update.nextTrailLow, null);
 
+  const simplifiedTpP0IntentFill = __test.applyTpP0IntentFillMetaUpdate({
+    nextMeta: {
+      simplified_exit_v2_enabled: true,
+      entry_event_id: "ENTRY-1",
+      entry_exec_bar_ms: 123,
+      tp_p0_done: false,
+    },
+    fillPrice: 100.8,
+    qtyFraction: 0.25,
+    execBarCloseMs: 456,
+    entryEventIdForFill: "ENTRY-1",
+    applyOptimisticFillProjection: true,
+  });
+  assert.strictEqual(simplifiedTpP0IntentFill.tp_p0_done, false, "simplified v2 must not mark tp0 done on intent fill");
+  assert.strictEqual(simplifiedTpP0IntentFill.tp_p0_price, undefined);
+  assert.strictEqual(simplifiedTpP0IntentFill.tp_p0_source, undefined);
+
   assert.strictEqual(
     __test.buildFuturesPositionSyncKey("binancefut", "dogeusdt"),
     "BINANCEFUT::DOGEUSDT"
@@ -956,6 +973,28 @@ async function run() {
     "TP1 native order must use 50% of the remaining position after TP0"
   );
 
+  const nativeProtectionPricesSimplifiedV2 = __test.computeBinanceNativeProtectionPrices({
+    positionSide: "LONG",
+    entryPrice: 100,
+    leverage: 2,
+    rules: {
+      SL: -0.0165,
+      TP_P0: 0.008,
+      TP_P0_QTY: 0.25,
+      TP_P1: 0.0168,
+      TP_P1_QTY: 0.5,
+    },
+    posMeta: {
+      simplified_exit_v2_enabled: true,
+    },
+  });
+  assert.strictEqual(nativeProtectionPricesSimplifiedV2.tp0TriggerPx, null);
+  assert.strictEqual(nativeProtectionPricesSimplifiedV2.tp0OrderQtyRatio, 0);
+  assert.ok(
+    Math.abs(nativeProtectionPricesSimplifiedV2.tpOrderQtyRatio - 0.5) < 1e-9,
+    "simplified V2 native order must arm only a single TP1 for 50% of entry size"
+  );
+
   assert.strictEqual(
     __test.resolveLiveExitCurrentQtyPct({
       exchange: "BINANCEFUT",
@@ -1001,6 +1040,40 @@ async function run() {
   });
   assert.strictEqual(nativeProtectionFallbackMeta.native_protection_tp_status, "OK");
   assert.strictEqual(nativeProtectionFallbackMeta.native_protection_tp_reason, "MARKET_FALLBACK");
+
+  const simplifiedV2NativeProtectionMeta = __test.buildNativeProtectionMetaPatch({
+    nativeProtection: {
+      ok: true,
+      stop_order_id: "stop-v2",
+      tp0_order_id: "tp0-leak",
+      tp_order_id: "tp1-v2",
+      stop_price: 98.5,
+      tp0_price: 100.8,
+      tp_price: 101.68,
+      tp0_qty_base: 0.02,
+      tp_qty_base: 0.05,
+      tp0_qty_ratio: 0.25,
+      tp_qty_ratio: 0.5,
+      tp0_status: "OK",
+      tp_status: "OK",
+      tp0_reason: null,
+      tp_reason: null,
+      entry_price: 100,
+      position_side: "LONG",
+    },
+    intent: "ADD",
+    execBarCloseMs: Date.parse("2026-03-11T02:06:00Z"),
+    posMeta: {
+      simplified_exit_v2_enabled: true,
+    },
+  });
+  assert.strictEqual(simplifiedV2NativeProtectionMeta.native_protection_tp0_order_id, null);
+  assert.strictEqual(simplifiedV2NativeProtectionMeta.native_protection_tp0_price, null);
+  assert.strictEqual(simplifiedV2NativeProtectionMeta.native_protection_tp0_qty_base, null);
+  assert.strictEqual(simplifiedV2NativeProtectionMeta.native_protection_tp0_qty_ratio, null);
+  assert.strictEqual(simplifiedV2NativeProtectionMeta.native_protection_tp0_status, null);
+  assert.strictEqual(simplifiedV2NativeProtectionMeta.native_protection_tp0_reason, null);
+  assert.strictEqual(simplifiedV2NativeProtectionMeta.native_protection_tp_order_id, "tp1-v2");
 
   const strippedProjection = __test.stripExchangeOwnedProjectionMeta({
     tp_p0_done: true,

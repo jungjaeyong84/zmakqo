@@ -89,6 +89,36 @@ const { __test: runnerTest } = require("../engine/paperBinanceRunner");
   assert.strictEqual(reconciled.meta.native_protection_tp_order_id, "tp1-1");
   assert.ok(reconciled.invariants.includes("TP1_DONE_WITH_TP_ORDER"));
 
+  const reconciledSimplifiedV2 = reconcileBinancePositionMetaWithExchange({
+    active: true,
+    meta: {
+      simplified_exit_v2_enabled: true,
+      tp_p1_done: false,
+      trail_active: false,
+      native_protection_refresh_status: "OK",
+      exit_rules_override: { TP_P1_QTY: 0.5 },
+    },
+    positionSide: "LONG",
+    qtyBase: 1000,
+    entryPrice: 0.1,
+    leverage: 2,
+    openOrders: [],
+    algoOrders: [
+      { orderId: "stop-1", type: "STOP_MARKET", side: "SELL", closePosition: true, stopPrice: "0.09835" },
+      { orderId: "tp1-v2", type: "TAKE_PROFIT_MARKET", side: "SELL", reduceOnly: true, stopPrice: "0.10168", origQty: "500" },
+    ],
+  });
+  assert.strictEqual(reconciledSimplifiedV2.meta.native_protection_tp0_order_id, null);
+  assert.strictEqual(reconciledSimplifiedV2.meta.native_protection_tp_order_id, "tp1-v2");
+  assert.strictEqual(
+    selfHealTest.shouldRepairBinanceLivePosition({
+      ...reconciledSimplifiedV2.meta,
+      exchange_projection_invariants: reconciledSimplifiedV2.invariants,
+    }),
+    false,
+    "self-heal must not repair healthy simplified V2 positions that only carry TP1"
+  );
+
   assert.strictEqual(
     selfHealTest.shouldRepairBinanceLivePosition({
       ...reconciled.meta,

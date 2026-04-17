@@ -784,6 +784,14 @@ function pctLabel(v) {
   return String(rounded).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
 }
 
+function isSimplifiedExitV2Enabled(positionCtx = null) {
+  const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
+  if (ctx.simplifiedExitV2Enabled === true || ctx.simplified_exit_v2_enabled === true) return true;
+  const position = (ctx.position && typeof ctx.position === "object") ? ctx.position : {};
+  const meta = (position.meta && typeof position.meta === "object") ? position.meta : {};
+  return meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true;
+}
+
 function computeAdverseSlippageBps({ side, signalPrice, execPrice } = {}) {
   const ref = Number(signalPrice);
   const fill = Number(execPrice);
@@ -2101,6 +2109,7 @@ async function loadPositionEntryContext(exchange, symbol, cacheMap) {
       nativeProtectionConsumedTpQtyRatio: Number.isFinite(Number(meta.native_protection_consumed_tp_qty_ratio))
         ? Number(meta.native_protection_consumed_tp_qty_ratio)
         : null,
+      simplifiedExitV2Enabled: meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true,
       exitRulesOverride: (meta.exit_rules_override && typeof meta.exit_rules_override === "object")
         ? meta.exit_rules_override
         : null,
@@ -2134,6 +2143,28 @@ async function loadRecentIntents(limit = 1000) {
 function isMeaningfulRealizedPnl(v) {
   const n = Number(v);
   return Number.isFinite(n) && Math.abs(n) > 1e-12;
+}
+
+function shouldEmitExternalFillSyncExitAlert({
+  event = null,
+  realizedPnl = null,
+  canonicalStage = null,
+  canonicalTransitionEvents = [],
+  ledgerBlockedInvariant = false,
+  canonicalEntryLineageMissing = false,
+} = {}) {
+  const ev = String(event || "").trim().toUpperCase();
+  const stage = String(canonicalStage || "").trim().toUpperCase();
+  const transitions = Array.isArray(canonicalTransitionEvents)
+    ? canonicalTransitionEvents.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean)
+    : [];
+  const canonicalTransitionRequired = stage === "TP0" || stage === "TP1" || stage === "TRAIL";
+  const hasCanonicalTransition = transitions.length > 0;
+  if (ledgerBlockedInvariant === true || canonicalEntryLineageMissing === true) return false;
+  if (canonicalTransitionRequired && !hasCanonicalTransition) return false;
+  if (hasCanonicalTransition) return true;
+  if (ev === "EXIT_EXTERNAL_SYNC") return true;
+  return isMeaningfulRealizedPnl(realizedPnl);
 }
 
 function buildExitEventByKind(kind, rules) {
@@ -2442,7 +2473,11 @@ function applyExternalExitQtyAuthority({
   };
 }
 
-function inferTakeProfitKindFromQtyPct(qtyPct, rules) {
+function inferTakeProfitKindFromQtyPct(qtyPct, rules, positionCtx = null) {
+  if (isSimplifiedExitV2Enabled(positionCtx)) {
+    const ratio = Number(qtyPct);
+    return Number.isFinite(ratio) && ratio > 0 ? "TP1" : null;
+  }
   return inferTakeProfitKindFromQtyRatio(
     qtyPct,
     Number(rules && rules.TP_P0_QTY),
@@ -2450,7 +2485,11 @@ function inferTakeProfitKindFromQtyPct(qtyPct, rules) {
   );
 }
 
-function inferTakeProfitKindFromPostFillRemainingAwareQty(execQtyBase, positionQtyBase, rules) {
+function inferTakeProfitKindFromPostFillRemainingAwareQty(execQtyBase, positionQtyBase, rules, positionCtx = null) {
+  if (isSimplifiedExitV2Enabled(positionCtx)) {
+    const execQty = Number(execQtyBase);
+    return Number.isFinite(execQty) && execQty > 0 ? "TP1" : null;
+  }
   const execQty = Number(execQtyBase);
   const remainingQty = Number(positionQtyBase);
   if (!Number.isFinite(execQty) || execQty <= 0 || !Number.isFinite(remainingQty) || remainingQty < 0) return null;
@@ -2478,6 +2517,10 @@ function inferStageConstrainedTakeProfitKind(positionCtx, inferredKind, recentTp
   const tp0Done = ctx.tpP0Done === true;
   const tp1Done = ctx.tpP1Done === true;
   const trailActive = ctx.trailActive === true;
+  if (isSimplifiedExitV2Enabled(ctx)) {
+    if (tp1Done || trailActive) return null;
+    return "TP1";
+  }
   if (tp1Done || trailActive) return null;
   if (!tp0Done) {
     if (inferredKind === "TP1") return "TP1";
@@ -2508,20 +2551,25 @@ function applyActiveExitStageBackstopOverride({
   if (currentIsTp0 && matchedIntentEvent.startsWith("EXIT_TP_P0")) return currentEvent;
   if (currentIsTp1 && isTpP1Event(matchedIntentEvent)) return currentEvent;
   const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
+  const simplifiedExitV2Enabled = isSimplifiedExitV2Enabled(ctx);
   const recentTrailEvent = String(recentTrail && recentTrail.event || "").trim().toUpperCase();
   const trailEligible = isTrailExitEligible(ctx, recentTp1) || recentTrailEvent.startsWith("EXIT_TRAIL");
 
   if (ctx.tpP1Done === true || ctx.trailActive === true || trailEligible) {
     return buildExitEventByKind("TRAIL", rules);
   }
+  if (simplifiedExitV2Enabled && (currentIsTp0 || currentIsTp1)) {
+    return buildExitEventByKind("TP1", rules);
+  }
   if (!currentIsTp0) return currentEvent;
   if (ctx.tpP0Done !== true) return currentEvent;
 
-  const inferredQtyKind = inferTakeProfitKindFromQtyPct(qtyPct, rules);
+  const inferredQtyKind = inferTakeProfitKindFromQtyPct(qtyPct, rules, ctx);
   const inferredPostFillKind = inferTakeProfitKindFromPostFillRemainingAwareQty(
     Number(trade && trade.qty),
     Number(ctx.qtyBase),
-    rules
+    rules,
+    ctx
   );
   const constrainedKind = inferStageConstrainedTakeProfitKind(ctx, inferredQtyKind, recentTp0);
   const closePosition = !!(orderMeta && orderMeta.closePosition === true);
@@ -2707,14 +2755,16 @@ async function resolveExternalExitEvent({
         if (!Number.isFinite(execQty) || execQty <= 0 || !Number.isFinite(positionQtyBase) || positionQtyBase <= 0) return null;
         return clamp01(execQty / positionQtyBase);
       })();
-  const inferredTakeProfitKind = inferTakeProfitKindFromQtyPct(observedQtyPct, rules);
+  const inferredTakeProfitKind = inferTakeProfitKindFromQtyPct(observedQtyPct, rules, positionCtx);
   const inferredPostFillTakeProfitKind = inferTakeProfitKindFromPostFillRemainingAwareQty(
     Number(trade && trade.qty),
     Number(positionCtx && positionCtx.qtyBase),
-    rules
+    rules,
+    positionCtx
   );
   const stageConstrainedTakeProfitKind = inferStageConstrainedTakeProfitKind(positionCtx, inferredTakeProfitKind, recentTp0);
-  const fallbackTakeProfitKind = inferredTakeProfitKind
+  const fallbackTakeProfitKind = (isSimplifiedExitV2Enabled(positionCtx) ? stageConstrainedTakeProfitKind : null)
+    || inferredTakeProfitKind
     || (stageConstrainedTakeProfitKind === "TP1" ? "TP1" : null)
     || inferredPostFillTakeProfitKind
     || stageConstrainedTakeProfitKind
@@ -3438,15 +3488,15 @@ async function syncMarketTrades({
         const isExitEvent = event.startsWith("EXIT_") || isForcedExitEvent;
         const isEntryLikeEvent = !isExitEvent && event !== "SYNC_FILL";
         const canonicalStageForAlert = String(canonicalStageDecision.stage || "").trim().toUpperCase();
-        const canonicalTransitionRequired = looksLikeExit
-          && (canonicalStageForAlert === "TP0" || canonicalStageForAlert === "TP1" || canonicalStageForAlert === "TRAIL");
         const canonicalEntryLineageMissing = looksLikeExit && canonicalStageDecision.entryLineageMissing === true;
-        const allowExitAlert = isExitEvent && (
-          isMeaningfulRealizedPnl(realizedPnl)
-          || event === "EXIT_EXTERNAL_SYNC"
-        ) && (!canonicalTransitionRequired || canonicalTransitionDecision.transitionEvents.length > 0)
-          && canonicalStageDecision.ledgerBlockedInvariant !== true
-          && !canonicalEntryLineageMissing;
+        const allowExitAlert = isExitEvent && shouldEmitExternalFillSyncExitAlert({
+          event,
+          realizedPnl,
+          canonicalStage: canonicalStageForAlert,
+          canonicalTransitionEvents: canonicalTransitionDecision.transitionEvents,
+          ledgerBlockedInvariant: canonicalStageDecision.ledgerBlockedInvariant === true,
+          canonicalEntryLineageMissing,
+        });
         const allowEntryAlert = isEntryLikeEvent;
         const duplicateSuppressed = looksLikeExit
           && authorityDecision
@@ -3754,6 +3804,7 @@ module.exports = {
     computeSyncedQtyPct,
     resolveIntentNotional,
     resolveIntentQtyBase,
+    shouldEmitExternalFillSyncExitAlert,
     resolveAlertExitRules,
     normalizeExitEventForRules,
     resolveFillSyncAlertCloseRatio,

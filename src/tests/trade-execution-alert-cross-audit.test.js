@@ -59,6 +59,7 @@ const { __test } = require("../../scripts/report-trade-execution-alert-cross-aud
         symbol: "ETHUSDT",
         event: "EXIT_TP_P1_1.65P",
         stage: "TP1",
+        canonicalTransitionEvents: ["TP1_REACHED"],
         created_at: "2026-04-15T19:30:13.408Z",
         created_ms: Date.parse("2026-04-15T19:30:13.408Z"),
       },
@@ -82,6 +83,16 @@ const { __test } = require("../../scripts/report-trade-execution-alert-cross-aud
   assert.strictEqual(report.missing_entry_alert_fill_n, 1);
   assert.strictEqual(report.missing_unverified_alert_fill_n, 1);
   assert.strictEqual(report.actionable_issues.length, 1);
+
+  assert.strictEqual(
+    __test.isActionableVerifiedExitFill({
+      event: "EXIT_TP_P0_0.8P",
+      stage: "TP0",
+      canonicalTransitionEvents: [],
+    }),
+    false,
+    "verified raw TP fills without canonical transitions must not be actionable"
+  );
 
   const deduped = __test.dedupeAlertAuditRows([
     {

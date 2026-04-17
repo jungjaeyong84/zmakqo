@@ -401,6 +401,24 @@ function buildExitOrderContractEvent(kind, rules) {
   return stage || null;
 }
 
+function buildExitOrderContractRecordPayload({
+  kind,
+  rules,
+  posMeta = null,
+  ...payload
+} = {}) {
+  const stage = String(kind || "").trim().toUpperCase();
+  const simplifiedExitV2Enabled = resolveSimplifiedExitV2PositionFlag({ currentMeta: posMeta });
+  if (simplifiedExitV2Enabled === true && stage === "TP0") return null;
+  const event = buildExitOrderContractEvent(stage, rules);
+  if (!event) return null;
+  return {
+    ...payload,
+    event,
+    stage,
+  };
+}
+
 async function recordExitOrderContractSafe(payload = {}) {
   try {
     return await upsertExitOrderContract(payload);
@@ -2244,13 +2262,19 @@ function shouldRepairActiveExitRuntimeState({
   const rules = (metaSafe.exit_rules_override && typeof metaSafe.exit_rules_override === "object")
     ? metaSafe.exit_rules_override
     : null;
-  if (collectCriticalExitRuleViolations({ rules }).length > 0) return true;
+  if (collectCriticalExitRuleViolations({ rules, posMeta: metaSafe }).length > 0) return true;
 
   return false;
 }
 
-function collectCriticalExitRuleViolations({ rules = null } = {}) {
+function collectCriticalExitRuleViolations({
+  rules = null,
+  posMeta = null,
+  simplifiedExitV2Enabled = null,
+} = {}) {
   const ruleSafe = (rules && typeof rules === "object") ? rules : {};
+  const simplifiedV2 = simplifiedExitV2Enabled === true
+    || resolveSimplifiedExitV2PositionFlag({ currentMeta: posMeta });
   const violations = [];
   const tp0 = Number(ruleSafe.TP_P0);
   const tp0Qty = Number(ruleSafe.TP_P0_QTY);
@@ -2262,8 +2286,10 @@ function collectCriticalExitRuleViolations({ rules = null } = {}) {
   const trailPct = Number(ruleSafe.TRAIL_PCT);
   const trailR = Number(ruleSafe.TRAIL_R_MULTIPLE);
 
-  if (!(Number.isFinite(tp0) && tp0 > 0)) violations.push("TP0_MISSING");
-  if (!(Number.isFinite(tp0Qty) && tp0Qty > 0 && tp0Qty <= 1)) violations.push("TP0_QTY_INVALID");
+  if (simplifiedV2 !== true) {
+    if (!(Number.isFinite(tp0) && tp0 > 0)) violations.push("TP0_MISSING");
+    if (!(Number.isFinite(tp0Qty) && tp0Qty > 0 && tp0Qty <= 1)) violations.push("TP0_QTY_INVALID");
+  }
   if (!(Number.isFinite(tp1) && tp1 > 0)) violations.push("TP1_MISSING");
   if (!(Number.isFinite(tp1Qty) && tp1Qty > 0 && tp1Qty <= 1)) violations.push("TP1_QTY_INVALID");
   if (!(Number.isFinite(sl) && sl < 0)) violations.push("SL_INVALID");
@@ -2287,7 +2313,20 @@ function shouldRepairEntryRuntimeExitState({
   const rules = (appliedExitRules && typeof appliedExitRules === "object")
     ? appliedExitRules
     : ((metaSafe.exit_rules_override && typeof metaSafe.exit_rules_override === "object") ? metaSafe.exit_rules_override : null);
-  return collectCriticalExitRuleViolations({ rules }).length > 0;
+  return collectCriticalExitRuleViolations({ rules, posMeta: metaSafe }).length > 0;
+}
+
+function sanitizeExitRulesForSimplifiedExitV2({
+  rules = null,
+  posMeta = null,
+} = {}) {
+  const ruleSafe = cloneExitRules(rules || {}) || {};
+  if (resolveSimplifiedExitV2PositionFlag({ currentMeta: posMeta }) !== true) return ruleSafe;
+  return {
+    ...ruleSafe,
+    TP_P0: 0,
+    TP_P0_QTY: 0,
+  };
 }
 
 async function repairActivePositionExitRuntimeState({
@@ -2325,8 +2364,12 @@ async function repairActivePositionExitRuntimeState({
     cohort,
     market: symbol,
   });
+  const repairedExitRules = sanitizeExitRulesForSimplifiedExitV2({
+    rules: adjustment.appliedExitRules,
+    posMeta: metaSafe,
+  });
   let nextMeta = mergeMeta(metaSafe, {
-    exit_rules_override: cloneExitRules(adjustment.appliedExitRules),
+    exit_rules_override: cloneExitRules(repairedExitRules),
     exit_profile: canonicalRuntimeRules && canonicalRuntimeRules.exit_profile
       ? String(canonicalRuntimeRules.exit_profile).toUpperCase()
       : (metaSafe.exit_profile || null),
@@ -2357,7 +2400,7 @@ async function repairActivePositionExitRuntimeState({
         fallbackSide,
         fallbackEntryPrice: Number(entryPrice),
         fallbackLeverage: Number.isFinite(Number(leverage)) && Number(leverage) > 0 ? Number(leverage) : FUTURES_BASE_LEVERAGE,
-        exitRulesOverride: adjustment.appliedExitRules || null,
+        exitRulesOverride: repairedExitRules || null,
         posMeta: nextMeta,
         source: "ACTIVE_POSITION_EXIT_RUNTIME_REPAIR",
         reason: allowNativeProtectionWrite === true
@@ -4851,6 +4894,28 @@ function applyTpP1IntentFillMetaUpdate({
   };
 }
 
+function applyTpP0IntentFillMetaUpdate({
+  nextMeta = null,
+  fillPrice = null,
+  qtyFraction = null,
+  execBarCloseMs = null,
+  entryEventIdForFill = null,
+  applyOptimisticFillProjection = false,
+} = {}) {
+  const currentMeta = (nextMeta && typeof nextMeta === "object") ? nextMeta : {};
+  if (!applyOptimisticFillProjection) return currentMeta;
+  if (resolveSimplifiedExitV2PositionFlag({ currentMeta }) === true) return currentMeta;
+  return mergeMeta(currentMeta, {
+    tp_p0_done: true,
+    tp_p0_price: fillPrice,
+    tp_p0_at: new Date().toISOString(),
+    tp_p0_source: "INTENT_FILL",
+    tp_p0_qty_ratio: qtyFraction,
+    tp_p0_entry_event_id: (entryEventIdForFill || currentMeta.entry_event_id || null),
+    tp_p0_entry_exec_bar_ms: Number(currentMeta.entry_exec_bar_ms || execBarCloseMs) || null,
+  });
+}
+
 function buildOpenCloseProjectionResetMetaPatch({ closing = false } = {}) {
   return {
     tp_p0_done: false,
@@ -5090,6 +5155,7 @@ function pickLatestTpP0Fill(rows, exchange, symbol) {
 
 function reconcileTpP0MetaFromFill({ posMeta, pos, fill } = {}) {
   if (!fill || !posMeta || posMeta.tp_p0_done === true) return posMeta;
+  if (resolveSimplifiedExitV2PositionFlag({ currentMeta: posMeta }) === true) return posMeta;
   const fillEntry = fill.entry_event_id || fill.entryEventId || null;
   const metaEntry = posMeta.entry_event_id || null;
   if (fillEntry && metaEntry && fillEntry !== metaEntry) return posMeta;
@@ -8796,33 +8862,38 @@ function computeBinanceNativeProtectionPrices({ positionSide, entryPrice, levera
   const slPct = Number(rules && rules.SL);
   const tp0Pct = Number(rules && rules.TP_P0);
   const tpPct = Number(rules && rules.TP_P1);
+  const simplifiedExitV2Enabled = !!(posMeta && (posMeta.simplified_exit_v2_enabled === true || posMeta.simplifiedExitV2Enabled === true));
   const tp0QtyRatioRaw = Number(rules && rules.TP_P0_QTY);
   const tpQtyRatioRaw = Number(rules && rules.TP_P1_QTY);
-  const tp0QtyRatio = Number.isFinite(tp0QtyRatioRaw) && tp0QtyRatioRaw > 0
-    ? Math.min(1, Math.max(POS_SIZE_EPSILON, tp0QtyRatioRaw))
-    : 0.25;
+  const tp0QtyRatio = simplifiedExitV2Enabled
+    ? 0
+    : (Number.isFinite(tp0QtyRatioRaw) && tp0QtyRatioRaw > 0
+      ? Math.min(1, Math.max(POS_SIZE_EPSILON, tp0QtyRatioRaw))
+      : 0.25);
   const tpQtyRatio = Number.isFinite(tpQtyRatioRaw) && tpQtyRatioRaw > 0
     ? Math.min(1, Math.max(POS_SIZE_EPSILON, tpQtyRatioRaw))
     : 0.5;
   const observedTp0QtyRatio = Number(posMeta && posMeta.tp_p0_qty_ratio);
-  const tp0FilledQtyRatio = Number.isFinite(observedTp0QtyRatio) && observedTp0QtyRatio > 0
-    ? Math.min(1, Math.max(POS_SIZE_EPSILON, observedTp0QtyRatio))
-    : tp0QtyRatio;
+  const tp0FilledQtyRatio = simplifiedExitV2Enabled
+    ? 0
+    : (Number.isFinite(observedTp0QtyRatio) && observedTp0QtyRatio > 0
+      ? Math.min(1, Math.max(POS_SIZE_EPSILON, observedTp0QtyRatio))
+      : tp0QtyRatio);
   const tp0Done = posMeta && posMeta.tp_p0_done === true;
-  const remainingQtyRatio = tp0Done
-    ? Math.max(POS_SIZE_EPSILON, 1 - tp0FilledQtyRatio)
-    : 1;
-  const projectedTp1BaseQtyRatio = tp0Done
+  const remainingQtyRatio = (simplifiedExitV2Enabled || !tp0Done)
+    ? 1
+    : Math.max(POS_SIZE_EPSILON, 1 - tp0FilledQtyRatio);
+  const projectedTp1BaseQtyRatio = (simplifiedExitV2Enabled || tp0Done)
     ? 1
     : Math.max(POS_SIZE_EPSILON, 1 - tp0QtyRatio);
-  const tp0OrderQtyRatio = tp0QtyRatio;
-  const tpOrderQtyRatio = tp0Done
+  const tp0OrderQtyRatio = simplifiedExitV2Enabled ? 0 : tp0QtyRatio;
+  const tpOrderQtyRatio = (simplifiedExitV2Enabled || tp0Done)
     ? Math.min(1, Math.max(POS_SIZE_EPSILON, tpQtyRatio))
     : Math.min(1, Math.max(POS_SIZE_EPSILON, projectedTp1BaseQtyRatio * tpQtyRatio));
   if (!Number.isFinite(px) || px <= 0 || (side !== "LONG" && side !== "SHORT")) return null;
   if (!Number.isFinite(slPct) || !Number.isFinite(tpPct)) return null;
   const slMove = slPct / lev;
-  const tp0Move = Number.isFinite(tp0Pct) ? (tp0Pct / lev) : null;
+  const tp0Move = (!simplifiedExitV2Enabled && Number.isFinite(tp0Pct)) ? (tp0Pct / lev) : null;
   const tpMove = tpPct / lev;
   let stopTriggerPx = null;
   let tp0TriggerPx = null;
@@ -9414,17 +9485,31 @@ function isAuthorizedBinanceNativeStopWriter(writerSource = null) {
 
 function resolveNativeProtectionStageState(posMeta = null) {
   const meta = (posMeta && typeof posMeta === "object") ? posMeta : {};
+  const simplifiedExitV2Enabled = meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true;
   const tp0Done = meta.tp_p0_done === true;
   const tp1Done = meta.tp_p1_done === true;
   const trailActive = meta.trail_active === true;
   return {
-    tp0Eligible: tp0Done !== true && tp1Done !== true && trailActive !== true,
+    simplifiedExitV2Enabled,
+    tp0Eligible: simplifiedExitV2Enabled ? false : (tp0Done !== true && tp1Done !== true && trailActive !== true),
     tp1Eligible: tp1Done !== true && trailActive !== true,
   };
 }
 
+function resolveSimplifiedExitV2PositionFlag({ currentMeta = null } = {}) {
+  const meta = (currentMeta && typeof currentMeta === "object") ? currentMeta : {};
+  if (meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true) return true;
+  return normalizeBool(process.env.SIMPLIFIED_EXIT_V2_ENABLED, false);
+}
+
 function resolveNativeProtectionPositionMeta(positionMeta = null) {
-  return (positionMeta && typeof positionMeta === "object") ? positionMeta : {};
+  const meta = (positionMeta && typeof positionMeta === "object") ? positionMeta : {};
+  if (meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true) return meta;
+  if (resolveSimplifiedExitV2PositionFlag({ currentMeta: meta }) !== true) return meta;
+  return {
+    ...meta,
+    simplified_exit_v2_enabled: true,
+  };
 }
 
 function shouldExecuteImmediateNativeProtectionRefresh({
@@ -9590,9 +9675,11 @@ function buildNativeProtectionMetaPatch({
   nativeProtection,
   intent,
   execBarCloseMs,
+  posMeta = null,
 } = {}) {
   const intentUpper = String(intent || "").toUpperCase();
   if (!nativeProtection || (intentUpper !== "ENTRY" && intentUpper !== "ADD")) return null;
+  const simplifiedExitV2Enabled = resolveSimplifiedExitV2PositionFlag({ currentMeta: posMeta });
   const refreshAtMs = Date.now();
   const resolvedReason = resolveNativeProtectionAlertReason(nativeProtection);
   const status = nativeProtection.ok === true
@@ -9617,18 +9704,24 @@ function buildNativeProtectionMetaPatch({
     return {
       ...basePatch,
       native_protection_stop_order_id: nativeProtection.stop_order_id || null,
-      native_protection_tp0_order_id: nativeProtection.tp0_order_id || null,
+      native_protection_tp0_order_id: simplifiedExitV2Enabled ? null : (nativeProtection.tp0_order_id || null),
       native_protection_tp_order_id: nativeProtection.tp_order_id || null,
       native_protection_stop_price: Number.isFinite(Number(nativeProtection.stop_price)) ? Number(nativeProtection.stop_price) : null,
-      native_protection_tp0_price: Number.isFinite(Number(nativeProtection.tp0_price)) ? Number(nativeProtection.tp0_price) : null,
+      native_protection_tp0_price: simplifiedExitV2Enabled
+        ? null
+        : (Number.isFinite(Number(nativeProtection.tp0_price)) ? Number(nativeProtection.tp0_price) : null),
       native_protection_tp_price: Number.isFinite(Number(nativeProtection.tp_price)) ? Number(nativeProtection.tp_price) : null,
-      native_protection_tp0_qty_base: Number.isFinite(Number(nativeProtection.tp0_qty_base)) ? Number(nativeProtection.tp0_qty_base) : null,
+      native_protection_tp0_qty_base: simplifiedExitV2Enabled
+        ? null
+        : (Number.isFinite(Number(nativeProtection.tp0_qty_base)) ? Number(nativeProtection.tp0_qty_base) : null),
       native_protection_tp_qty_base: Number.isFinite(Number(nativeProtection.tp_qty_base)) ? Number(nativeProtection.tp_qty_base) : null,
-      native_protection_tp0_qty_ratio: Number.isFinite(Number(nativeProtection.tp0_qty_ratio)) ? Number(nativeProtection.tp0_qty_ratio) : null,
+      native_protection_tp0_qty_ratio: simplifiedExitV2Enabled
+        ? null
+        : (Number.isFinite(Number(nativeProtection.tp0_qty_ratio)) ? Number(nativeProtection.tp0_qty_ratio) : null),
       native_protection_tp_qty_ratio: Number.isFinite(Number(nativeProtection.tp_qty_ratio)) ? Number(nativeProtection.tp_qty_ratio) : null,
-      native_protection_tp0_status: nativeProtection.tp0_status || null,
+      native_protection_tp0_status: simplifiedExitV2Enabled ? null : (nativeProtection.tp0_status || null),
       native_protection_tp_status: nativeProtection.tp_status || null,
-      native_protection_tp0_reason: nativeProtection.tp0_reason || null,
+      native_protection_tp0_reason: simplifiedExitV2Enabled ? null : (nativeProtection.tp0_reason || null),
       native_protection_tp_reason: nativeProtection.tp_reason || null,
       native_protection_entry_price: Number.isFinite(Number(nativeProtection.entry_price)) ? Number(nativeProtection.entry_price) : null,
       native_protection_side: nativeProtection.position_side || null,
@@ -9755,7 +9848,9 @@ async function refreshBinanceNativeProtection({
     let desiredTp0QtyPlaced = null;
     let desiredTpQtyPlaced = null;
     let tp0Status = BINANCE_NATIVE_TP_ENABLED ? "SKIPPED" : "DISABLED";
-    let tp0Reason = BINANCE_NATIVE_TP_ENABLED ? "TP0_TRIGGER_INVALID" : "NATIVE_TP_DISABLED";
+    let tp0Reason = BINANCE_NATIVE_TP_ENABLED
+      ? (stageState.simplifiedExitV2Enabled ? "SIMPLIFIED_EXIT_V2_TP0_DISABLED" : "TP0_TRIGGER_INVALID")
+      : "NATIVE_TP_DISABLED";
     let tpStatus = BINANCE_NATIVE_TP_ENABLED ? "SKIPPED" : "DISABLED";
     let tpReason = BINANCE_NATIVE_TP_ENABLED ? "TP_TRIGGER_INVALID" : "NATIVE_TP_DISABLED";
     if (BINANCE_NATIVE_TP_ENABLED && stageState.tp0Eligible && Number.isFinite(prices.tp0TriggerPx) && prices.tp0TriggerPx > 0) {
@@ -9915,13 +10010,14 @@ async function refreshBinanceNativeProtection({
     const stopContractKind = (posMeta && (posMeta.tp_p1_done === true || posMeta.trail_active === true || posMeta.tp_p1_pending === true))
       ? "TRAIL"
       : "SL";
-    await recordExitOrderContractSafe({
+    const stopContractPayload = buildExitOrderContractRecordPayload({
+      kind: stopContractKind,
+      rules,
+      posMeta,
       exchange,
       symbol,
       orderId: stopOrder && stopOrder.orderId,
       clientOrderId: stopOrder && stopOrder.clientOrderId,
-      event: buildExitOrderContractEvent(stopContractKind, rules),
-      stage: stopContractKind,
       positionSide,
       closeSide: prices.closeSide,
       expectedQtyBase: Number(context.qtyBase),
@@ -9933,14 +10029,18 @@ async function refreshBinanceNativeProtection({
       status: "OPEN",
       source: "BINANCE_NATIVE_PROTECTION",
     });
+    if (stopContractPayload) {
+      await recordExitOrderContractSafe(stopContractPayload);
+    }
     if (tp0Order && tp0Status === "OK") {
-      await recordExitOrderContractSafe({
+      const tp0ContractPayload = buildExitOrderContractRecordPayload({
+        kind: "TP0",
+        rules,
+        posMeta,
         exchange,
         symbol,
         orderId: tp0Order.orderId,
         clientOrderId: tp0Order.clientOrderId,
-        event: buildExitOrderContractEvent("TP0", rules),
-        stage: "TP0",
         positionSide,
         closeSide: prices.closeSide,
         expectedQtyBase: tp0QtyBase,
@@ -9952,15 +10052,19 @@ async function refreshBinanceNativeProtection({
         status: "OPEN",
         source: "BINANCE_NATIVE_PROTECTION",
       });
+      if (tp0ContractPayload) {
+        await recordExitOrderContractSafe(tp0ContractPayload);
+      }
     }
     if (tpOrder && tpStatus === "OK") {
-      await recordExitOrderContractSafe({
+      const tp1ContractPayload = buildExitOrderContractRecordPayload({
+        kind: "TP1",
+        rules,
+        posMeta,
         exchange,
         symbol,
         orderId: tpOrder.orderId,
         clientOrderId: tpOrder.clientOrderId,
-        event: buildExitOrderContractEvent("TP1", rules),
-        stage: "TP1",
         positionSide,
         closeSide: prices.closeSide,
         expectedQtyBase: tpQtyBase,
@@ -9972,6 +10076,9 @@ async function refreshBinanceNativeProtection({
         status: "OPEN",
         source: "BINANCE_NATIVE_PROTECTION",
       });
+      if (tp1ContractPayload) {
+        await recordExitOrderContractSafe(tp1ContractPayload);
+      }
     }
     return {
       ok: true,
@@ -12265,6 +12372,7 @@ async function runPaperBinanceForBar({
         tp1_ladder_tp0_to_tp1_conversion: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.tp0_to_tp1_conversion : null,
         tp1_ladder_fee_adjusted_expectancy: tp1LadderState && tp1LadderState.kpi ? tp1LadderState.kpi.fee_adjusted_expectancy : null,
         exit_policy_source: exitPolicySrc || null,
+        simplified_exit_v2_enabled: resolveSimplifiedExitV2PositionFlag({ currentMeta: nextMeta }),
       });
       const runtimeExitInvariant = await enforceEntryRuntimeExitState({
         exchange,
@@ -12323,15 +12431,14 @@ async function runPaperBinanceForBar({
         source: "INTENT_FILL",
       });
     }
-    if (isTpP0EventLocal(ev) && newState === "ACTIVE" && applyOptimisticFillProjection) {
-      nextMeta = mergeMeta(nextMeta, {
-        tp_p0_done: true,
-        tp_p0_price: fillPrice,
-        tp_p0_at: new Date().toISOString(),
-        tp_p0_source: "INTENT_FILL",
-        tp_p0_qty_ratio: qtyFraction,
-        tp_p0_entry_event_id: (entryEventIdForFill || nextMeta.entry_event_id || null),
-        tp_p0_entry_exec_bar_ms: Number(nextMeta.entry_exec_bar_ms || execBarCloseMs) || null,
+    if (isTpP0EventLocal(ev) && newState === "ACTIVE") {
+      nextMeta = applyTpP0IntentFillMetaUpdate({
+        nextMeta,
+        fillPrice,
+        qtyFraction,
+        execBarCloseMs,
+        entryEventIdForFill,
+        applyOptimisticFillProjection,
       });
     }
     if ((ev === "EXIT_TP_P1" || ev.startsWith("EXIT_TP_P1_")) && newState === "ACTIVE") {
@@ -14852,6 +14959,7 @@ async function runPaperFuturesForBar({
         nativeProtection: liveResult && liveResult.nativeProtection,
         intent,
         execBarCloseMs,
+        posMeta: nextMeta,
       });
     }
 
@@ -15175,6 +15283,7 @@ async function runPaperFuturesForBar({
         exit_profile_rollback_until_ms: Number.isFinite(appliedExitRollbackUntilMs) ? appliedExitRollbackUntilMs : null,
         exit_profile_rollback_reason: appliedExitRollbackReason || null,
         exit_policy_source: exitPolicySrc || null,
+        simplified_exit_v2_enabled: resolveSimplifiedExitV2PositionFlag({ currentMeta: nextMeta }),
       });
       const runtimeExitInvariant = await enforceEntryRuntimeExitState({
         exchange,
@@ -15255,15 +15364,14 @@ async function runPaperFuturesForBar({
         source: "INTENT_FILL",
       });
     }
-    if (isTpP0EventLocal(ev) && newState === "ACTIVE" && applyOptimisticFillProjection) {
-      nextMeta = mergeMeta(nextMeta, {
-        tp_p0_done: true,
-        tp_p0_price: fillPrice,
-        tp_p0_at: new Date().toISOString(),
-        tp_p0_source: "INTENT_FILL",
-        tp_p0_qty_ratio: qtyFraction,
-        tp_p0_entry_event_id: (entryEventIdForFill || nextMeta.entry_event_id || null),
-        tp_p0_entry_exec_bar_ms: Number(nextMeta.entry_exec_bar_ms || execBarCloseMs) || null,
+    if (isTpP0EventLocal(ev) && newState === "ACTIVE") {
+      nextMeta = applyTpP0IntentFillMetaUpdate({
+        nextMeta,
+        fillPrice,
+        qtyFraction,
+        execBarCloseMs,
+        entryEventIdForFill,
+        applyOptimisticFillProjection,
       });
     }
     if ((ev === "EXIT_TP_P1" || ev.startsWith("EXIT_TP_P1_")) && newState === "ACTIVE") {
@@ -17099,6 +17207,7 @@ module.exports = {
     buildLiveExitExceptionIntegrityAlertPayload,
     resolveCanonicalExitAlertBlock,
     shouldEmitCanonicalExitAlert,
+    buildExitOrderContractRecordPayload,
     resolveSyncedAddChainBaseQtyPct,
     resolveBudgetUsedFromNotional,
     resolveBinanceBudgetUsedKrw,
@@ -17170,6 +17279,7 @@ module.exports = {
     evaluateCommittedRescueAddGate,
     collectActivePendingAddIntentState,
     applyAddAndProtectionMetaOnFill,
+    applyTpP0IntentFillMetaUpdate,
     isBinanceImmediateTriggerError,
     resolveManualRetryQtyBase,
     resolveEventRefMs,
@@ -17186,6 +17296,7 @@ module.exports = {
     collectCriticalExitRuleViolations,
     isAuthorizedBinanceNativeStopWriter,
     resolveNativeProtectionStageState,
+    resolveSimplifiedExitV2PositionFlag,
     resolveNativeProtectionPositionMeta,
     shouldExecuteImmediateNativeProtectionRefresh,
     resolveLiveOrderSignalRefs,
@@ -17220,6 +17331,7 @@ module.exports = {
     applyTrailObservationSnapshotToMeta,
     resolveRiskBudget,
     pickLatestTpP0Fill,
+    reconcileTpP0MetaFromFill,
     reconcileTpP0MetaFromFill,
     pickLatestTpP1Fill,
     reconcileTpP1MetaFromFill,

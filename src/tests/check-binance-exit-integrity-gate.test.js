@@ -40,6 +40,7 @@ const { __test } = require("../../scripts/check-binance-exit-integrity-gate");
     duplication_live_group_n: 8,
     authority_actionable_live_issue_position_n: 9,
     canonical_exit_stage_fail_n: 10,
+    tp1_meta_sync_gap_n: 12,
     stop_divergence_symbol_n: 11,
   });
   assert.deepStrictEqual(detailed, [
@@ -54,6 +55,7 @@ const { __test } = require("../../scripts/check-binance-exit-integrity-gate");
     "DUPLICATION_LIVE_GROUP",
     "AUTHORITY_ACTIONABLE_LIVE_ISSUE_POSITION",
     "CANONICAL_EXIT_STAGE_FAIL",
+    "TP1_META_SYNC_GAP",
     "STOP_DIVERGENCE_SYMBOL",
   ]);
 

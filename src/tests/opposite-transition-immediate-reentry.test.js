@@ -318,6 +318,25 @@ async function run() {
   assert.ok(invalidViolations.includes("BE_INVALID"));
   assert.ok(invalidViolations.includes("TRAIL_INVALID"));
 
+  const simplifiedInvalidViolations = __test.collectCriticalExitRuleViolations({
+    posMeta: {
+      simplified_exit_v2_enabled: true,
+    },
+    rules: {
+      TP_P0: 0,
+      TP_P0_QTY: 0,
+      TP_P1: 0.0168,
+      TP_P1_QTY: 0.5,
+      SL: -0.0165,
+      BE_ENABLE: true,
+      BE_PCT: 0.0025,
+      TRAIL_PCT: 0.01,
+      TRAIL_R_MULTIPLE: null,
+    },
+  });
+  assert.ok(!simplifiedInvalidViolations.includes("TP0_MISSING"));
+  assert.ok(!simplifiedInvalidViolations.includes("TP0_QTY_INVALID"));
+
   const fullyRepairedMeta = await __test.repairActivePositionExitRuntimeState({
     exchange: "BINANCEFUT",
     symbol: "DOGEUSDT",
@@ -354,6 +373,39 @@ async function run() {
     "repair must restore trailing rule"
   );
 
+  const simplifiedFullyRepairedMeta = await __test.repairActivePositionExitRuntimeState({
+    exchange: "BINANCEFUT",
+    symbol: "XRPUSDT",
+    positionSide: "LONG",
+    entryPrice: 2.1,
+    leverage: 2,
+    liveCfg: null,
+    cohort: "HOLD_SAMPLE",
+    posMeta: {
+      simplified_exit_v2_enabled: true,
+      openclaw_market_regime_cohort: "HOLD_SAMPLE",
+      exit_profile: "BASE",
+      exit_profile_reason: "MANUAL_BASE_PROFILE",
+      exit_rules_override: {
+        TP_P0: 0,
+        TP_P0_QTY: 0,
+        TP_P1: null,
+        TP_P1_QTY: 2,
+        SL: 0.01,
+        BE_ENABLE: true,
+        BE_PCT: undefined,
+        TRAIL_PCT: null,
+        TRAIL_R_MULTIPLE: null,
+      },
+      tp1_ladder_profile: "RESCUE",
+      tp1_ladder_stage: 0,
+    },
+  });
+  assert.strictEqual(simplifiedFullyRepairedMeta.exit_rules_override.TP_P0, 0, "simplified V2 repair must keep TP0 disabled");
+  assert.strictEqual(simplifiedFullyRepairedMeta.exit_rules_override.TP_P0_QTY, 0, "simplified V2 repair must keep TP0 qty disabled");
+  assert.ok(simplifiedFullyRepairedMeta.exit_rules_override.TP_P1 > 0, "simplified V2 repair must restore TP1");
+  assert.ok(simplifiedFullyRepairedMeta.exit_rules_override.SL < 0, "simplified V2 repair must restore negative SL");
+
   const tp0DoneStage = __test.resolveNativeProtectionStageState({
     tp_p0_done: true,
     tp_p1_done: false,
@@ -369,6 +421,15 @@ async function run() {
   });
   assert.strictEqual(tp1DoneStage.tp0Eligible, false, "TP0 must stay disabled after TP1");
   assert.strictEqual(tp1DoneStage.tp1Eligible, false, "TP1 must stay disabled after TP1/trail");
+
+  const simplifiedV2Stage = __test.resolveNativeProtectionStageState({
+    simplified_exit_v2_enabled: true,
+    tp_p0_done: false,
+    tp_p1_done: false,
+    trail_active: false,
+  });
+  assert.strictEqual(simplifiedV2Stage.tp0Eligible, false, "simplified V2 must never arm TP0");
+  assert.strictEqual(simplifiedV2Stage.tp1Eligible, true, "simplified V2 should arm only TP1 before runner");
 }
 
 try {

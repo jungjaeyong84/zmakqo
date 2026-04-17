@@ -44,6 +44,32 @@ async function run() {
   assert.strictEqual(classifiedWithStaleMeta.tp0.orderId, "tp0");
   assert.strictEqual(classifiedWithStaleMeta.tp1.orderId, "tp1");
 
+  const classifiedSimplifiedV2 = __test.classifyTakeProfitOrders({
+    orders: [
+      { orderId: "tp1-only", type: "TAKE_PROFIT_MARKET", side: "SELL", reduceOnly: true, stopPrice: "101.68", origQty: "5" },
+    ],
+    positionSide: "LONG",
+    qtyBase: 10,
+    meta: { simplified_exit_v2_enabled: true },
+  });
+  assert.strictEqual(classifiedSimplifiedV2.tp0, null);
+  assert.strictEqual(classifiedSimplifiedV2.tp1.orderId, "tp1-only");
+  assert.deepStrictEqual(classifiedSimplifiedV2.unexpectedTpOrders, []);
+
+  const classifiedSimplifiedV2Multiple = __test.classifyTakeProfitOrders({
+    orders: [
+      { orderId: "tp-legacy-25", type: "TAKE_PROFIT_MARKET", side: "SELL", reduceOnly: true, stopPrice: "100.8", origQty: "2.5" },
+      { orderId: "tp-v2-50", type: "TAKE_PROFIT_MARKET", side: "SELL", reduceOnly: true, stopPrice: "101.68", origQty: "5" },
+    ],
+    positionSide: "LONG",
+    qtyBase: 10,
+    meta: { simplified_exit_v2_enabled: true },
+  });
+  assert.strictEqual(classifiedSimplifiedV2Multiple.tp0, null);
+  assert.strictEqual(classifiedSimplifiedV2Multiple.tp1.orderId, "tp-v2-50");
+  assert.strictEqual(classifiedSimplifiedV2Multiple.unexpectedTpOrders.length, 1);
+  assert.strictEqual(classifiedSimplifiedV2Multiple.unexpectedTpOrders[0].orderId, "tp-legacy-25");
+
   const trailPatch = reconcileBinancePositionMetaWithExchange({
     active: true,
     meta: {
@@ -93,6 +119,52 @@ async function run() {
     ],
   });
   assert.strictEqual(tp1ContractRatioPatch.meta.native_protection_tp_qty_ratio, 0.5, "reconciler must preserve TP1 contract ratio, not current remaining ratio");
+
+  const simplifiedV2Patch = reconcileBinancePositionMetaWithExchange({
+    active: true,
+    meta: {
+      simplified_exit_v2_enabled: true,
+      exit_rules_override: {
+        TP_P1_QTY: 0.5,
+      },
+    },
+    positionSide: "LONG",
+    qtyBase: 10,
+    entryPrice: 100,
+    leverage: 2,
+    openOrders: [],
+    algoOrders: [
+      { orderId: "stop-1", type: "STOP_MARKET", side: "SELL", closePosition: true, stopPrice: "98.35" },
+      { orderId: "tp1-armed", type: "TAKE_PROFIT_MARKET", side: "SELL", reduceOnly: true, stopPrice: "101.68", origQty: "5" },
+    ],
+  });
+  assert.strictEqual(simplifiedV2Patch.meta.native_protection_tp0_order_id, null);
+  assert.strictEqual(simplifiedV2Patch.meta.native_protection_tp_order_id, "tp1-armed");
+  assert.strictEqual(simplifiedV2Patch.meta.native_protection_tp_qty_ratio, 0.5);
+  assert.ok(!simplifiedV2Patch.invariants.includes("SIMPLIFIED_EXIT_V2_MULTIPLE_TP_ORDERS"));
+
+  const simplifiedV2LegacyLeakPatch = reconcileBinancePositionMetaWithExchange({
+    active: true,
+    meta: {
+      simplified_exit_v2_enabled: true,
+      exit_rules_override: {
+        TP_P1_QTY: 0.5,
+      },
+    },
+    positionSide: "LONG",
+    qtyBase: 10,
+    entryPrice: 100,
+    leverage: 2,
+    openOrders: [],
+    algoOrders: [
+      { orderId: "stop-1", type: "STOP_MARKET", side: "SELL", closePosition: true, stopPrice: "98.35" },
+      { orderId: "tp-legacy-25", type: "TAKE_PROFIT_MARKET", side: "SELL", reduceOnly: true, stopPrice: "100.8", origQty: "2.5" },
+      { orderId: "tp-v2-50", type: "TAKE_PROFIT_MARKET", side: "SELL", reduceOnly: true, stopPrice: "101.68", origQty: "5" },
+    ],
+  });
+  assert.strictEqual(simplifiedV2LegacyLeakPatch.meta.native_protection_tp0_order_id, null);
+  assert.strictEqual(simplifiedV2LegacyLeakPatch.meta.native_protection_tp_order_id, "tp-v2-50");
+  assert.ok(simplifiedV2LegacyLeakPatch.invariants.includes("SIMPLIFIED_EXIT_V2_MULTIPLE_TP_ORDERS"));
 
   const staleTrail = reconcileBinancePositionMetaWithExchange({
     active: true,

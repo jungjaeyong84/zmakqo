@@ -35,6 +35,55 @@ function run() {
   assert.strictEqual(tp0Signals[0].reason, "EXIT_TAKE_PROFIT_P0");
   assert.ok(Math.abs(tp0Signals[0].qty_pct - 0.25) < 1e-9);
 
+  const simplifiedNoTp0Signals = generateSignals({
+    exchange: "BINANCEFUT",
+    symbol: "SOLUSDT",
+    trading_mode: "EXIT_ONLY",
+    leverage: 2,
+    currentBarCloseMs: 1_800_000_900_000,
+    bar: { close: 100.5, c: 100.5 },
+    position: {
+      state: "ACTIVE",
+      size_pct: 1,
+      avg_price: 100,
+      position_side: "LONG",
+      meta: {
+        simplified_exit_v2_enabled: true,
+        external_leverage: 2,
+        ev_gate_atr_pct: 0.012,
+        tp_p0_done: false,
+        tp_p1_done: false,
+      },
+    },
+  });
+  assert.deepStrictEqual(simplifiedNoTp0Signals, [], "simplified v2 must not emit tp0-only partial exits");
+
+  const simplifiedTp1OnlySignals = generateSignals({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    trading_mode: "EXIT_ONLY",
+    leverage: 2,
+    currentBarCloseMs: 1_800_101_000_000,
+    bar: { close: 100.9, c: 100.9 },
+    position: {
+      state: "ACTIVE",
+      size_pct: 1,
+      avg_price: 100,
+      position_side: "LONG",
+      meta: {
+        simplified_exit_v2_enabled: true,
+        external_leverage: 2,
+        ev_gate_atr_pct: 0.012,
+        tp_p0_done: false,
+        tp_p1_done: false,
+        openclaw_market_regime_cohort: "RESCUE",
+      },
+    },
+  });
+  assert.strictEqual(simplifiedTp1OnlySignals.length, 1, "simplified v2 must emit only tp1 when profit already crossed tp1");
+  assert.strictEqual(simplifiedTp1OnlySignals[0].event, "EXIT_TP_P1_1.65P");
+  assert.strictEqual(simplifiedTp1OnlySignals[0].qty_pct, 0.5);
+
   const staleTp0Signals = generateSignals({
     exchange: "BINANCEFUT",
     symbol: "SOLUSDT",

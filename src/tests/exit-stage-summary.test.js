@@ -11,9 +11,12 @@ const { buildExitStageView } = require("../utils/exitStageView");
     position: {
       state: "ACTIVE",
       size_pct: 0.15,
+      qty_base: 0.15,
       avg_price: 100,
       position_side: "LONG",
       meta: {
+        simplified_exit_v2_enabled: true,
+        entry_qty_base: 0.15,
         leverage: 2,
         tp_p1_done: false,
         trail_active: false,
@@ -41,6 +44,51 @@ const { buildExitStageView } = require("../utils/exitStageView");
   assert.equal(stage.tp1_qty_pct, 0.375);
   assert.equal(stage.canonical_exit_stage, null);
   assert.equal(stage.canonical_exit_stage_source, null);
+  assert.equal(stage.simplified_exit_v2_available, true);
+  assert.equal(stage.simplified_exit_v2_state, "FULL");
+  assert.deepStrictEqual(stage.simplified_exit_v2_divergence_codes, []);
+  assert(stage.simplified_exit_v2_shadow, "shadow view must exist");
+  assert.equal(stage.simplified_exit_v2_shadow.tp1_target_qty_abs, 0.075);
+  assert.equal(stage.simplified_exit_v2_shadow.runner_qty_abs, 0.075);
+  assert.ok(Math.abs(stage.simplified_exit_v2_shadow.tp1_target_price - 101.68) < 1e-9);
+})();
+
+(() => {
+  const stage = buildExitStageView({
+    exchange: "BINANCEFUT",
+    closePrice: 102,
+    position: {
+      state: "ACTIVE",
+      position_state: "ACTIVE",
+      size_pct: 1,
+      qty_base: 1,
+      avg_price: 100,
+      position_side: "LONG",
+      meta: {
+        simplified_exit_v2_enabled: true,
+        entry_qty_base: 1,
+        tp_p0_done: true,
+        tp_p1_done: false,
+        trail_active: false,
+        exit_rules_override: {
+          SL: 0.0165,
+          TP_P0: 0.008,
+          TP_P1: 0.0168,
+          TP_P1_QTY: 0.5,
+          TRAIL_R_MULTIPLE: 0.6,
+          TRAIL_PCT: 0.01,
+          BE_PCT: 0.0015,
+        },
+      },
+    },
+  });
+  assert(stage, "stage must exist for simplified v2 legacy tp0 leak view");
+  assert.equal(stage.label, "TP1 대기");
+  assert.equal(stage.tp0_done, false);
+  assert.equal(stage.legacy_tp0_done, true);
+  assert.equal(stage.tp0_price, null);
+  assert.ok(Math.abs(stage.legacy_tp0_price - 100.8) < 1e-9);
+  assert.deepStrictEqual(stage.simplified_exit_v2_divergence_codes, ["LEGACY_TP0_PRESENT"]);
 })();
 
 (() => {
@@ -51,9 +99,12 @@ const { buildExitStageView } = require("../utils/exitStageView");
     position: {
       state: "ACTIVE",
       size_pct: 0.15,
+      qty_base: 0.125,
       avg_price: 100,
       position_side: "LONG",
       meta: {
+        simplified_exit_v2_enabled: true,
+        entry_qty_base: 0.25,
         leverage: 2,
         tp_p1_done: true,
         trail_active: true,
@@ -88,6 +139,11 @@ const { buildExitStageView } = require("../utils/exitStageView");
   assert.equal(stage.chosen_stop_price, 109.505);
   assert.equal(stage.final_effective_stop, 109.505);
   assert.deepStrictEqual(stage.stop_divergence_codes, ["NATIVE_STOP_MISMATCH"]);
+  assert.equal(stage.simplified_exit_v2_available, true);
+  assert.equal(stage.simplified_exit_v2_state, "RUNNER");
+  assert.deepStrictEqual(stage.simplified_exit_v2_divergence_codes, []);
+  assert.ok(Math.abs(stage.simplified_exit_v2_shadow.final_effective_stop - 108.9) < 1e-9);
+  assert.equal(stage.simplified_exit_v2_shadow.chosen_stop_source, "TRAIL");
 })();
 
 console.log("EXIT_STAGE_SUMMARY_TEST_OK");

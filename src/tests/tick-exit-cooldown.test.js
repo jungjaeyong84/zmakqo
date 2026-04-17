@@ -5,10 +5,12 @@ const { __test } = require("../services/binanceTickExit");
 const { __test: runnerTest } = require("../engine/paperBinanceRunner");
 const { __test: observationTest } = require("../storage/positionRuntimeObservations");
 
-function run() {
+async function run() {
   __test._symbolCooldownState.clear();
   assert.strictEqual(typeof __test.buildTickTrailObservationDocUpdate, "function", "trail observation update helper missing");
   assert.strictEqual(typeof __test.buildTickTrailReconcileRunId, "function", "trail reconcile run id helper missing");
+  assert.strictEqual(typeof __test.buildBinanceTickExitNativeProtectionRefreshArgs, "function", "tick exit native refresh args helper missing");
+  assert.strictEqual(typeof __test.refreshBinanceTickExitNativeProtection, "function", "tick exit native refresh helper missing");
   assert.strictEqual(typeof __test.heartbeatTickExitLease, "function", "tick exit lease heartbeat helper missing");
   assert.strictEqual(typeof __test.runTickExitSelfHealPhase, "function", "tick exit self-heal helper missing");
   assert.strictEqual(typeof __test.applyTrailObservationToPosition, "function", "tick exit trail observation apply helper missing");
@@ -47,6 +49,62 @@ function run() {
     ["BTCUSDT", "ETHUSDT"],
     "full exit-worker burst must keep configured market scope"
   );
+  assert.deepStrictEqual(
+    __test.buildBinanceTickExitNativeProtectionRefreshArgs({
+      liveCfg: { apiKey: "x", apiSecret: "y" },
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      position: {
+        avg_price: 2258.08,
+        leverage: 2,
+        meta: {
+          external_leverage: 3,
+          exit_rules_override: { TP_P1: 0.0168 },
+          marker: "keep",
+        },
+      },
+      fallbackSide: "SELL",
+    }),
+    {
+      liveCfg: { apiKey: "x", apiSecret: "y" },
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      fallbackSide: "SELL",
+      fallbackEntryPrice: 2258.08,
+      fallbackLeverage: 3,
+      exitRulesOverride: { TP_P1: 0.0168 },
+      posMeta: {
+        external_leverage: 3,
+        exit_rules_override: { TP_P1: 0.0168 },
+        marker: "keep",
+      },
+      writerSource: "BINANCE_TICK_EXIT",
+    },
+    "tick exit native refresh args helper must pin stop authority to BINANCE_TICK_EXIT"
+  );
+  let capturedRefreshArgs = null;
+  await __test.refreshBinanceTickExitNativeProtection({
+    liveCfg: { apiKey: "a", apiSecret: "b" },
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    position: {
+      avg_price: 100,
+      leverage: 2,
+      meta: {
+        position_side: "SHORT",
+        exit_rules_override: { SL: -0.0165 },
+      },
+    },
+    refreshFn: async (args) => {
+      capturedRefreshArgs = args;
+      return { ok: true, reason: "OK" };
+    },
+  });
+  assert.ok(capturedRefreshArgs, "tick exit native refresh helper must call injected refresh fn");
+  assert.strictEqual(capturedRefreshArgs.writerSource, "BINANCE_TICK_EXIT");
+  assert.strictEqual(capturedRefreshArgs.fallbackSide, "SELL");
+  assert.strictEqual(capturedRefreshArgs.fallbackEntryPrice, 100);
+  assert.strictEqual(capturedRefreshArgs.fallbackLeverage, 2);
   assert.deepStrictEqual(
     observationTest.buildTrailObservationPayload({
       exchange: "BINANCEFUT",
@@ -327,6 +385,34 @@ function run() {
     ["TRAIL"],
     "trail trigger collector should isolate trail-only near/crossed states"
   );
+  const simplifiedV2TriggerKinds = __test.computeExitTriggers({
+    pos: {
+      avg_price: 100,
+      exchange: "BINANCEFUT",
+      position_side: "LONG",
+      meta: {
+        simplified_exit_v2_enabled: true,
+        exit_rules_override: {
+          TP_P0: 0.008,
+          TP_P1: 0.0168,
+          SL: -0.0165,
+        },
+      },
+    },
+    rules: {
+      TP_P0: 0.008,
+      TP_P1: 0.0168,
+      SL: -0.0165,
+    },
+    leverageEff: 2,
+    nativeProtectionState: {
+      stopActive: false,
+      tpActive: false,
+    },
+  }).map((row) => row.kind);
+  assert.ok(!simplifiedV2TriggerKinds.includes("TP_P0"), "simplified exit v2 must not emit TP_P0 triggers in tick-exit");
+  assert.ok(simplifiedV2TriggerKinds.includes("SL"), "simplified exit v2 must keep SL trigger in tick-exit");
+  assert.ok(simplifiedV2TriggerKinds.includes("TP_P1"), "simplified exit v2 must keep TP1 trigger in tick-exit");
 
   assert.strictEqual(typeof runnerTest.computeTrailingMetaUpdate, "function", "computeTrailingMetaUpdate export missing");
   assert.strictEqual(typeof runnerTest.sanitizeBarLoopMetaUpdates, "function", "sanitizeBarLoopMetaUpdates export missing");

@@ -1125,6 +1125,32 @@ async function run() {
     2,
     "opposite-signal alerts without entry_event_id must stay separated by order identity"
   );
+
+  assert.strictEqual(
+    fillsSyncTest.shouldEmitExternalFillSyncExitAlert({
+      event: "EXIT_TP_P1_3.25P",
+      realizedPnl: 0,
+      canonicalStage: "TP1",
+      canonicalTransitionEvents: ["TP1_REACHED"],
+      ledgerBlockedInvariant: false,
+      canonicalEntryLineageMissing: false,
+    }),
+    true,
+    "canonical TP exits from external fill sync must alert even when realized pnl is zero"
+  );
+
+  assert.strictEqual(
+    fillsSyncTest.shouldEmitExternalFillSyncExitAlert({
+      event: "EXIT_TP_P0_0.8P",
+      realizedPnl: 0,
+      canonicalStage: "TP0",
+      canonicalTransitionEvents: [],
+      ledgerBlockedInvariant: false,
+      canonicalEntryLineageMissing: false,
+    }),
+    false,
+    "raw TP exits without canonical transitions must remain suppressed"
+  );
 }
 
 (async () => {

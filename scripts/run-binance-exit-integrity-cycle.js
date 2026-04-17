@@ -163,6 +163,7 @@ function collectScriptFailures(report = {}) {
     ["trail_runner_floor_live_separation", report.trail_runner_floor_live_separation],
     ["binance_exit_authority_live_board", report.binance_exit_authority_live_board],
     ["binance_canonical_exit_stage_qa", report.binance_canonical_exit_stage_qa],
+    ["simplified_exit_v2_tp1_drilldown", report.simplified_exit_v2_tp1_drilldown],
   ];
   const failures = [];
   for (const [name, step] of checks) {
@@ -178,6 +179,16 @@ function collectScriptFailures(report = {}) {
     failures.push(`${name}:EXIT_${step.exit_code == null ? "UNKNOWN" : step.exit_code}`);
   }
   return failures;
+}
+
+function countTp1MetaSyncGapIssues(drilldown = {}) {
+  const parsed = drilldown && drilldown.parsed ? drilldown.parsed : {};
+  const issueCodeCounts = parsed && typeof parsed.issue_code_counts === "object" ? parsed.issue_code_counts : {};
+  const keys = [
+    "V2_TP1_ACK_WITHOUT_META_SYNC",
+    "V2_TP1_ORDER_ID_MISMATCH",
+  ];
+  return keys.reduce((sum, key) => sum + Number(issueCodeCounts[key] || 0), 0);
 }
 
 function buildSkippedScriptStep(parsed = {}) {
@@ -227,6 +238,8 @@ function buildMarkdown(report = {}) {
   lines.push(`- canonical_exit_stage_gate: ${summary.canonical_exit_stage_gate || "N/A"}`);
   lines.push(`- canonical_transition_backfill_ok: ${summary.canonical_transition_backfill_ok === true ? "YES" : "NO"}`);
   lines.push(`- canonical_transition_backfill_created_transition_n: ${summary.canonical_transition_backfill_created_transition_n ?? "N/A"}`);
+  lines.push(`- tp1_meta_sync_gap_n: ${summary.tp1_meta_sync_gap_n ?? "N/A"}`);
+  lines.push(`- tp1_meta_sync_gate: ${summary.tp1_meta_sync_gate || "N/A"}`);
   lines.push(`- stop_divergence_symbol_n: ${summary.stop_divergence_symbol_n ?? "N/A"}`);
   lines.push(`- stop_divergence_gate: ${summary.stop_divergence_gate || "N/A"}`);
   lines.push(`- live_gate_blocked: ${summary.live_gate_blocked === true ? "YES" : "NO"}`);
@@ -306,11 +319,12 @@ function buildSummary(report = {}) {
   const canonicalExitStageFailN = Number(report.binance_canonical_exit_stage_qa && report.binance_canonical_exit_stage_qa.parsed && report.binance_canonical_exit_stage_qa.parsed.fail_n || 0);
   const canonicalTransitionBackfillOk = !!(report.canonical_exit_transition_backfill && report.canonical_exit_transition_backfill.ok === true);
   const canonicalTransitionBackfillCreatedTransitionN = Number(report.canonical_exit_transition_backfill && report.canonical_exit_transition_backfill.parsed && report.canonical_exit_transition_backfill.parsed.created_transition_n || 0);
+  const tp1MetaSyncGapN = countTp1MetaSyncGapIssues(report.simplified_exit_v2_tp1_drilldown || {});
   const stopDivergenceSymbolN = countStopDivergenceSymbols(report.active_exit_watchdog || {});
   const duplicationIssueN = duplicationLiveGroupN > 0 ? duplicationLiveGroupN : fillSyncDuplicateGroupN;
   const scriptFailures = collectScriptFailures(report);
   const scriptFailureN = scriptFailures.length;
-  const liveIssueCount = afterGap + watchdogIssueSymbolN + exitQtyLiveIssueChainN + trailFloorLiveViolationN + duplicationIssueN + fillSyncAlertEventIssueN + tradeExecutionAlertMissingFillN + authorityActionableLiveIssuePositionN + canonicalExitStageFailN;
+  const liveIssueCount = afterGap + watchdogIssueSymbolN + exitQtyLiveIssueChainN + trailFloorLiveViolationN + duplicationIssueN + fillSyncAlertEventIssueN + tradeExecutionAlertMissingFillN + authorityActionableLiveIssuePositionN + canonicalExitStageFailN + tp1MetaSyncGapN;
   const reasons = [];
   if (scriptFailureN > 0) reasons.push(`script failure ${scriptFailureN}건`);
   if (afterGap > 0) reasons.push(`native trail protection gap ${afterGap}건`);
@@ -323,6 +337,7 @@ function buildSummary(report = {}) {
   if (authorityActionableLiveIssuePositionN > 0) reasons.push(`authority actionable issue position ${authorityActionableLiveIssuePositionN}건`);
   if (canonicalExitStageFailN > 0) reasons.push(`canonical exit stage fail ${canonicalExitStageFailN}건`);
   if (!canonicalTransitionBackfillOk) reasons.push("canonical exit transition backfill failed");
+  if (tp1MetaSyncGapN > 0) reasons.push(`tp1 meta sync gap ${tp1MetaSyncGapN}건`);
   if (stopDivergenceSymbolN > 0) reasons.push(`stop divergence symbol ${stopDivergenceSymbolN}건`);
   const liveGateBlocked = scriptFailureN > 0 || liveIssueCount > 0 || !canonicalTransitionBackfillOk;
   return {
@@ -353,6 +368,8 @@ function buildSummary(report = {}) {
     canonical_exit_stage_gate: canonicalExitStageFailN > 0 ? "BLOCK" : "PASS",
     canonical_transition_backfill_ok: canonicalTransitionBackfillOk,
     canonical_transition_backfill_created_transition_n: canonicalTransitionBackfillCreatedTransitionN,
+    tp1_meta_sync_gap_n: tp1MetaSyncGapN,
+    tp1_meta_sync_gate: tp1MetaSyncGapN > 0 ? "BLOCK" : "PASS",
     stop_divergence_symbol_n: stopDivergenceSymbolN,
     stop_divergence_gate: stopDivergenceSymbolN > 0 ? "BLOCK" : "PASS",
     reasons,
@@ -422,6 +439,7 @@ async function runBinanceExitIntegrityCycle({
     exitQtyContractAudit,
     trailRunnerFloorAudit,
     canonicalExitStageQa,
+    simplifiedExitV2Tp1Drilldown,
   ] = await Promise.all([
     disableExchangeIo
       ? Promise.resolve(buildSkippedScriptStep({ created_transition_n: 0 }))
@@ -445,6 +463,9 @@ async function runBinanceExitIntegrityCycle({
     disableExchangeIo
       ? Promise.resolve(buildSkippedScriptStep({ fail_n: 0, active_position_n: 0 }))
       : runScriptStep("report-binance-canonical-exit-stage-qa.js"),
+    disableExchangeIo
+      ? Promise.resolve(buildSkippedScriptStep({ actionable_symbol_n: 0, issue_code_counts: {} }))
+      : runScriptStep("report-simplified-exit-v2-tp1-drilldown.js"),
   ]);
   const [
     fillSyncAlertDuplicationLiveSeparation,
@@ -479,6 +500,7 @@ async function runBinanceExitIntegrityCycle({
     trail_runner_floor_live_separation: trailRunnerFloorLiveSeparation,
     binance_exit_authority_live_board: authorityLiveBoard,
     binance_canonical_exit_stage_qa: canonicalExitStageQa,
+    simplified_exit_v2_tp1_drilldown: simplifiedExitV2Tp1Drilldown,
   };
   report.summary = buildSummary(report);
   Object.assign(report, report.summary);
@@ -517,6 +539,7 @@ if (require.main === module) {
       buildSummary,
       buildMarkdown,
       countStopDivergenceSymbols,
+      countTp1MetaSyncGapIssues,
       collectScriptFailures,
     },
   };

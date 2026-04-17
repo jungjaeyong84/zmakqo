@@ -48,6 +48,12 @@ function parseBoolEnv(key, fallback = false) {
   return v === "1" || v === "true" || v === "yes" || v === "y" || v === "on";
 }
 
+function isSimplifiedExitV2Enabled(meta = {}) {
+  const metaSafe = (meta && typeof meta === "object") ? meta : {};
+  if (metaSafe.simplified_exit_v2_enabled === true || metaSafe.simplifiedExitV2Enabled === true) return true;
+  return parseBoolEnv("SIMPLIFIED_EXIT_V2_ENABLED", false);
+}
+
 function pctLabel(pct, { maxDecimals = 2 } = {}) {
   const n = toNum(pct);
   if (n === null) return null;
@@ -857,6 +863,7 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
   }
   const positionSide = resolvePositionSideFromPosition(pos, meta, "LONG");
   const tpP1State = resolveTpP1State(meta);
+  const simplifiedExitV2Enabled = isSimplifiedExitV2Enabled(meta);
   const tpP0State = resolveTpP0State(meta);
   const tpP1Done = tpP1State.tpP1Done;
   const tpP0Done = tpP0State.tpP0Done || tpP1Done;
@@ -879,7 +886,7 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
   // 손절/익절 규칙
   const rules = resolveExitRulesForPosition({ exchange: ex, position: pos, exitProfileMode });
   const SL = rules.SL;
-  const TP_P0 = resolveTpP0Pct({ rules, meta });
+  const TP_P0 = simplifiedExitV2Enabled ? null : resolveTpP0Pct({ rules, meta });
   const TP_P0_QTY = rules.TP_P0_QTY;
   const TP_P1 = rules.TP_P1;
   const TP_C = rules.TP_C;
@@ -965,7 +972,7 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
   }
 
   const takeProfitSignals = [];
-  if (!tpP0Done && !tpP1Done && Number.isFinite(TP_P0) && pnlPctEffective >= TP_P0) {
+  if (!simplifiedExitV2Enabled && !tpP0Done && !tpP1Done && Number.isFinite(TP_P0) && pnlPctEffective >= TP_P0) {
     const qty = resolveContractExitQtyPct(size, TP_P0_QTY);
     takeProfitSignals.push({
       event: tpP0Event,

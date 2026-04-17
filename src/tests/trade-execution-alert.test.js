@@ -6,6 +6,7 @@ async function run() {
   assert.strictEqual(typeof __test.buildMessage, "function", "buildMessage export missing");
   assert.strictEqual(typeof __test.buildFailureMessage, "function", "buildFailureMessage export missing");
   assert.strictEqual(typeof __test.parseExitEventMeta, "function", "parseExitEventMeta export missing");
+  assert.strictEqual(typeof __test.resolveSimplifiedExitV2AlertProjection, "function", "resolveSimplifiedExitV2AlertProjection export missing");
   assert.strictEqual(typeof __test.resolveEffectiveExitMeta, "function", "resolveEffectiveExitMeta export missing");
   assert.strictEqual(typeof __test.resolveCanonicalExitAlertRequirement, "function", "resolveCanonicalExitAlertRequirement export missing");
   assert.strictEqual(typeof __test.resolveDirection, "function", "resolveDirection export missing");
@@ -129,6 +130,30 @@ async function run() {
   assert.ok(tp0Failure.body.includes("전략계약: SL_1.65 / TP1_2.8 / TRAIL_0.9R / RUNNER_MIN_2 / BE_0.25"), "tp0 failure should keep strategy contract under separate label");
   assert.ok(tp0Failure.body.includes("시장군: RESCUE"), "tp0 failure should include cohort");
 
+  const simplifiedTp0FailureReclassified = __test.buildFailureMessage({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_TP_P0_0.8P",
+    intent: "EXIT",
+    side: "SELL",
+    positionSideBefore: "LONG",
+    executionMode: "LIVE",
+    reason: "ORDER_REJECTED",
+    closeRatio: 0.5,
+    simplifiedExitV2Enabled: true,
+    canonicalExitEvent: "EXIT_TP_P1_1.68P",
+    canonicalExitStage: "TP1",
+    canonicalTransitionEvent: "TP1_REACHED",
+    canonicalTransitionEvents: ["TP1_REACHED"],
+    exitRules: { SL: -0.0165, TP_P1: 0.0168, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
+  });
+  assert.ok(simplifiedTp0FailureReclassified, "simplified v2 tp0 failure reclassification should exist");
+  assert.ok(!simplifiedTp0FailureReclassified.title.includes("TP0"), "v2 failure title must not expose TP0");
+  assert.ok(simplifiedTp0FailureReclassified.body.includes("종류: 익절(TP1) 1.68%"), "v2 failure must show TP1 label");
+  assert.ok(simplifiedTp0FailureReclassified.body.includes("실행계약: TP1_1.68"), "v2 failure must show TP1 executed contract");
+  assert.ok(simplifiedTp0FailureReclassified.body.includes("정본재분류: TP1_0.8 -> TP1_1.68"), "v2 failure must normalize raw TP0 evidence into TP1 namespace");
+  assert.ok(simplifiedTp0FailureReclassified.body.includes("이벤트: EXIT_TP_P0_0.8P"), "raw TP0 evidence should remain visible in v2 failure alert");
+
   const externalSync = __test.buildMessage({
     exchange: "BINANCEFUT",
     symbol: "BTCUSDT",
@@ -204,6 +229,85 @@ async function run() {
   assert.ok(canonicalTrail.body.includes("stop근거: chosen RUNNER_FLOOR 2,276.71 / floor 2,276.71 / r 2,323.53 / native 2,276.70"), "alert should expose stop authority evidence");
   assert.ok(canonicalTrail.body.includes("이벤트: EXIT_TP_P1_1.65P"), "raw event should remain visible for evidence");
 
+  const simplifiedTrailLedger = __test.buildMessage({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_TRAIL",
+    intent: "EXIT",
+    side: "SELL",
+    positionSideBefore: "LONG",
+    executionMode: "LIVE",
+    notional: 389.27,
+    execPrice: 2330.94,
+    closeRatio: 0.5,
+    fullExit: false,
+    realizedPnl: 12.168,
+    simplifiedExitV2Enabled: true,
+    canonicalExitEvent: "EXIT_TRAIL",
+    canonicalExitStage: "TRAIL",
+    canonicalTransitionEvent: "TRAIL_FINAL_EXIT",
+    canonicalTransitionEvents: ["TRAIL_FINAL_EXIT"],
+    contractEntryQtyAbs: 0.887,
+    contractTp0AllowedAbs: 0.22175,
+    contractTp1AllowedAbs: 0.4435,
+    contractRunnerRemainingAbs: 0.167,
+    contractObservedQtyAbs: 0.167,
+    exitRules: { SL: -0.0165, TP_P1: 0.0168, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
+  });
+  assert.ok(simplifiedTrailLedger, "simplified v2 trail message should exist");
+  assert.ok(simplifiedTrailLedger.body.includes("계약수량(base): ENTRY 0.887 / TP1 0.4435 / RUNNER 0.167"), "v2 ledger should omit TP0 contract line");
+  assert.ok(!simplifiedTrailLedger.body.includes("/ TP0 "), "v2 ledger should not expose TP0 contract part");
+
+  const simplifiedTp0EvidenceReclassified = __test.buildMessage({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_TP_P0_0.8P",
+    intent: "EXIT",
+    side: "SELL",
+    positionSideBefore: "LONG",
+    executionMode: "LIVE",
+    notional: 389.27,
+    execPrice: 2330.94,
+    closeRatio: 0.5,
+    fullExit: false,
+    realizedPnl: 12.168,
+    simplifiedExitV2Enabled: true,
+    canonicalExitEvent: "EXIT_TP_P1_1.68P",
+    canonicalExitStage: "TP1",
+    canonicalTransitionEvent: "TP1_REACHED",
+    canonicalTransitionEvents: ["TP1_REACHED"],
+    contractEntryQtyAbs: 0.887,
+    contractTp1AllowedAbs: 0.4435,
+    contractRunnerRemainingAbs: 0.4435,
+    contractObservedQtyAbs: 0.4435,
+    exitRules: { SL: -0.0165, TP_P1: 0.0168, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
+  });
+  assert.ok(simplifiedTp0EvidenceReclassified, "simplified v2 tp evidence message should exist");
+  assert.ok(!simplifiedTp0EvidenceReclassified.title.includes("TP0"), "v2 alert title must not expose TP0");
+  assert.ok(simplifiedTp0EvidenceReclassified.body.includes("종류: 익절(TP1) 1.68%"), "v2 alert should show TP1 label");
+  assert.ok(simplifiedTp0EvidenceReclassified.body.includes("실행계약: TP1_1.68"), "v2 alert should show TP1 executed contract");
+  assert.ok(simplifiedTp0EvidenceReclassified.body.includes("정본재분류: TP1_0.8 -> TP1_1.68"), "v2 raw tp0 evidence should be normalized to tp1 namespace");
+  assert.ok(simplifiedTp0EvidenceReclassified.body.includes("이벤트: EXIT_TP_P0_0.8P"), "raw evidence event should remain visible");
+
+  const simplifiedExternalSyncAfterTp0 = __test.buildMessage({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    event: "EXIT_EXTERNAL_SYNC",
+    intent: "EXIT",
+    side: "SELL",
+    positionSideBefore: "LONG",
+    executionMode: "LIVE",
+    simplifiedExitV2Enabled: true,
+    notional: 515.4,
+    execPrice: 73623,
+    fullExit: true,
+    realizedPnl: 1.23,
+    externalSyncHintStage: "AFTER_TP0",
+    reason: "EXTERNAL_FILL_RECONCILED",
+    exitRules: { SL: -0.0165, TP_P1: 0.0168, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
+  });
+  assert.ok(simplifiedExternalSyncAfterTp0.body.includes("동기화맥락: TP1 이전 외부 동기화"), "v2 external sync context must not expose TP0");
+
   const canonicalTp1Event = __test.buildMessage({
     exchange: "BINANCEFUT",
     symbol: "BTCUSDT",
@@ -258,6 +362,57 @@ async function run() {
   assert.strictEqual(missingCanonicalRequirement.required, true);
   assert.strictEqual(missingCanonicalRequirement.satisfied, false);
   assert.strictEqual(missingCanonicalRequirement.reason, "MISSING_CANONICAL_EXIT_TRANSITION");
+
+  const simplifiedTp1 = __test.buildMessage({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_TP_P1_1.65P",
+    intent: "EXIT",
+    side: "SELL",
+    positionSideBefore: "LONG",
+    executionMode: "LIVE",
+    notional: 389.27,
+    execPrice: 2330.94,
+    closeRatio: 0.5,
+    fullExit: false,
+    realizedPnl: 12.168,
+    simplifiedExitV2Enabled: true,
+    canonicalExitEvent: "EXIT_TP_P1_1.68P",
+    canonicalExitStage: "TP1",
+    canonicalTransitionEvent: "TP1_REACHED",
+    canonicalTransitionEvents: ["TP1_REACHED"],
+    exitRules: { SL: -0.0165, TP_P1: 0.0168, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
+  });
+  assert.ok(simplifiedTp1, "simplified v2 tp1 message should exist");
+  assert.strictEqual(simplifiedTp1.title, "ETHUSDT 정본재분류 TP1_1.65->TP1_1.68 50% 청산");
+  assert.ok(simplifiedTp1.body.includes("종류: 익절(TP1) 1.68%"), "v2 projection should prefer canonical tp1 contract");
+  assert.ok(simplifiedTp1.body.includes("실행계약: TP1_1.68"), "v2 projection should prefer canonical executed contract");
+  assert.ok(simplifiedTp1.body.includes("정본전이: TP1_REACHED"), "v2 projection should expose canonical transition only");
+
+  const invalidSimplifiedV2Requirement = __test.resolveCanonicalExitAlertRequirement({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_TRAIL",
+    intent: "EXIT",
+    simplifiedExitV2Enabled: true,
+    canonicalExitEvent: "EXIT_TRAIL",
+    canonicalExitStage: "TRAIL",
+    canonicalTransitionEvent: "TRAIL_PARTIAL",
+    canonicalTransitionEvents: ["TRAIL_PARTIAL"],
+  });
+  assert.strictEqual(invalidSimplifiedV2Requirement.required, true);
+  assert.strictEqual(invalidSimplifiedV2Requirement.satisfied, false);
+  assert.strictEqual(invalidSimplifiedV2Requirement.reason, "INVALID_V2_CANONICAL_TRANSITION");
+
+  const simplifiedProjection = __test.resolveSimplifiedExitV2AlertProjection({
+    simplifiedExitV2Enabled: true,
+    canonicalExitEvent: "EXIT_TRAIL",
+    canonicalTransitionEvent: "TRAIL_ACTIVE",
+    canonicalTransitionEvents: ["TRAIL_ACTIVE"],
+  });
+  assert.strictEqual(simplifiedProjection.enabled, true);
+  assert.deepStrictEqual(simplifiedProjection.transitionEvents, ["TRAIL_ACTIVATED"]);
+  assert.strictEqual(simplifiedProjection.stage, "TRAIL");
 
   const rawOnlyExitMeta = __test.resolveEffectiveExitMeta({
     exchange: "BINANCEFUT",

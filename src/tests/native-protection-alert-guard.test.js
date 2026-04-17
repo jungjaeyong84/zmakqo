@@ -8,6 +8,18 @@ async function run() {
   assert.deepStrictEqual(__test.resolveNativeProtectionPositionMeta(null), {}, "null position meta must coerce to empty object");
   const meta = { entry_event_id: "ENTRY__X" };
   assert.strictEqual(__test.resolveNativeProtectionPositionMeta(meta), meta, "object position meta should be passed through");
+  const prevSimplifiedExitV2Env = process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
+  assert.deepStrictEqual(
+    __test.resolveNativeProtectionPositionMeta({ entry_event_id: "ENTRY__Y" }),
+    {
+      entry_event_id: "ENTRY__Y",
+      simplified_exit_v2_enabled: true,
+    },
+    "native protection refresh meta must inherit simplified exit v2 flag before first fill meta upsert"
+  );
+  if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+  else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;
   assert.strictEqual(typeof __test.buildLiveNativeProtectionRefreshArgs, "function", "buildLiveNativeProtectionRefreshArgs export missing");
   assert.deepStrictEqual(
     __test.buildLiveNativeProtectionRefreshArgs({
@@ -33,6 +45,28 @@ async function run() {
     },
     "live native refresh args must carry positionMeta into posMeta"
   );
+
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
+  assert.deepStrictEqual(
+    __test.buildLiveNativeProtectionRefreshArgs({
+      liveCfg: { liveEnabled: true },
+      exchange: "BINANCEFUT",
+      symbol: "DOGEUSDT",
+      side: "SELL",
+      execPrice: 0.0941,
+      priceRef: 0.094,
+      leverageMult: 2,
+      exitRulesOverride: { TP_P1: 0.0168 },
+      positionMeta: { entry_event_id: "ENTRY__Z" },
+    }).posMeta,
+    {
+      entry_event_id: "ENTRY__Z",
+      simplified_exit_v2_enabled: true,
+    },
+    "native refresh args must propagate simplified exit v2 into immediate post-entry refresh"
+  );
+  if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+  else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;
 
   let called = 0;
   const result = await __test.notifyNativeProtectionResult({

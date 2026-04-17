@@ -5,6 +5,13 @@ const { resolveTrailObservationSnapshot } = require("../storage/positionRuntimeO
 const { resolveExitStageAbsoluteContractQtyRatio } = require("./exitQtyContract");
 const { buildStopDivergenceItems } = require("./exitIntegrityPolicy");
 const { resolveCanonicalPositionExitStage } = require("../services/positionStateMachine");
+const {
+  buildSimplifiedExitShadowView,
+  DEFAULT_TP1_TARGET_PCT,
+  DEFAULT_TP1_QTY_RATIO,
+  DEFAULT_FLOOR_LOCK_PCT,
+  DEFAULT_TRAIL_PCT,
+} = require("../services/simplifiedExitV2");
 
 function toNum(v) {
   if (v === null || v === undefined || v === "") return null;
@@ -83,6 +90,14 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
 
   const meta = position && typeof position.meta === "object" ? position.meta : {};
   const qtyBase = toNum(position.qty_base);
+  const entryQtyAbs = toNum(position.entry_qty_base)
+    ?? toNum(position.entry_qty_abs)
+    ?? toNum(meta.entry_qty_base)
+    ?? toNum(meta.entry_qty_abs)
+    ?? toNum(meta.contract_entry_qty_abs)
+    ?? qtyBase;
+  const simplifiedExitV2Enabled = meta.simplified_exit_v2_enabled === true
+    || meta.simplifiedExitV2Enabled === true;
   const trailSnapshot = resolveTrailObservationSnapshot({ meta, observation });
   const side = normalizeSide(position);
   const leverage = resolveLeverage(position, leverageFallback);
@@ -115,6 +130,7 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
       tpP1Done,
       trailActive,
     },
+    simplifiedExitV2Enabled,
   });
   const effectiveCanonicalStage = canonicalPositionStage.stage;
   const canonicalRunnerRemainingAbs = toNum(meta.canonical_runner_remaining_abs)
@@ -201,13 +217,53 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
   const nativeStopGapPct = Number.isFinite(nativeStopGapAbs) && Number.isFinite(expectedStopPrice) && expectedStopPrice !== 0
     ? (nativeStopGapAbs / Math.abs(expectedStopPrice))
     : null;
+  const tp1FilledQtyAbs = toNum(meta.tp_p1_filled_qty_abs)
+    ?? toNum(meta.tp1_filled_qty_abs)
+    ?? toNum(meta.native_protection_consumed_tp_qty_base)
+    ?? toNum(meta.canonical_tp1_consumed_abs);
+  const simplifiedStopLossPct = Number.isFinite(toNum(rules.SL)) && leverage > 0
+    ? Math.abs(Number(rules.SL)) / leverage
+    : null;
+  const simplifiedFloorLockPct = Number.isFinite(toNum(rules.BE_PCT)) && leverage > 0
+    ? Math.abs(Number(rules.BE_PCT)) / leverage
+    : DEFAULT_FLOOR_LOCK_PCT;
+  const simplifiedTrailPct = Number.isFinite(toNum(rules.TRAIL_PCT))
+    ? Math.abs(Number(rules.TRAIL_PCT))
+    : DEFAULT_TRAIL_PCT;
+  const simplifiedExitV2Shadow = Number.isFinite(entryQtyAbs) && entryQtyAbs > 0
+    ? buildSimplifiedExitShadowView({
+        side,
+        entryPrice: avg,
+        entryQtyAbs,
+        currentQtyAbs: qtyBase,
+        closePrice: close,
+        tp1FilledQtyAbs,
+        tp1Done: tpP1Done,
+        trailHighPrice: toNum(trailSnapshot.trail_high),
+        trailLowPrice: toNum(trailSnapshot.trail_low),
+        currentStopPrice: chosenStopPrice,
+        stopLossPct: simplifiedStopLossPct,
+        floorLockPct: simplifiedFloorLockPct,
+        trailPct: simplifiedTrailPct,
+        tp1QtyRatio: DEFAULT_TP1_QTY_RATIO,
+        tp1TargetPct: DEFAULT_TP1_TARGET_PCT,
+        legacyCanonicalStage: effectiveCanonicalStage,
+        legacyTp0Done: tpP0Done,
+      })
+    : {
+        available: false,
+        issues: [{ code: "ENTRY_QTY_ABS_MISSING" }],
+        divergence_codes: [],
+        legacy_canonical_stage: effectiveCanonicalStage || null,
+        legacy_tp0_done: tpP0Done,
+      };
 
   const tp1GapPct = buildGapPct({ currentPrice: close, targetPrice: tp1Price, side });
   const tp1Near = !tpP1Done && !tpP1Pending && Number.isFinite(tp1GapPct) && tp1GapPct >= 0 && tp1GapPct <= 0.5;
 
   let label = "TP1 대기";
   let pill = "dim";
-  if (tpP0Done && !tpP1Done) {
+  if (tpP0Done && !tpP1Done && !simplifiedExitV2Enabled) {
     label = "TP0 완료";
     pill = "warn";
   }
@@ -252,7 +308,8 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     avg_price: avg,
     current_qty_base: qtyBase,
     current_price: close,
-    tp0_price: tp0Price,
+    tp0_price: simplifiedExitV2Enabled ? null : tp0Price,
+    legacy_tp0_price: tp0Price,
     tp1_price: tp1Price,
     sl_price: slPrice,
     be_price: bePrice,
@@ -263,7 +320,8 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     canonical_runner_remaining_source: canonicalRunnerRemainingSource,
     trail_r_multiple: toNum(rules.TRAIL_R_MULTIPLE),
     trail_pct: toNum(rules.TRAIL_PCT),
-    tp0_done: tpP0Done,
+    tp0_done: simplifiedExitV2Enabled ? false : tpP0Done,
+    legacy_tp0_done: tpP0Done,
     tp1_done: tpP1Done,
     tp1_pending: tpP1Pending,
     trail_active: trailActive,
@@ -305,6 +363,12 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     native_tp_order_id: nativeTpOrderId,
     native_protection_stale: nativeProtectionStale,
     native_protection_active: nativeProtectionActive,
+    simplified_exit_v2_available: simplifiedExitV2Shadow.available === true,
+    simplified_exit_v2_state: simplifiedExitV2Shadow.economic_state || null,
+    simplified_exit_v2_divergence_codes: Array.isArray(simplifiedExitV2Shadow.divergence_codes)
+      ? simplifiedExitV2Shadow.divergence_codes
+      : [],
+    simplified_exit_v2_shadow: simplifiedExitV2Shadow,
     display_sl_price: displaySlPrice,
     display_tp1_price: displayTp1Price,
     compact_headline: compactHeadline,

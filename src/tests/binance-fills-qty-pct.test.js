@@ -285,9 +285,11 @@ async function run() {
   const resolveExternalExitEvent = __test && __test.resolveExternalExitEvent;
   const inferStageConstrainedTakeProfitKind = __test && __test.inferStageConstrainedTakeProfitKind;
   const applyExternalExitQtyAuthority = __test && __test.applyExternalExitQtyAuthority;
+  const applyActiveExitStageBackstopOverride = __test && __test.applyActiveExitStageBackstopOverride;
   assert.strictEqual(typeof resolveExternalExitEvent, "function", "resolveExternalExitEvent export missing");
   assert.strictEqual(typeof inferStageConstrainedTakeProfitKind, "function", "inferStageConstrainedTakeProfitKind export missing");
   assert.strictEqual(typeof applyExternalExitQtyAuthority, "function", "applyExternalExitQtyAuthority export missing");
+  assert.strictEqual(typeof applyActiveExitStageBackstopOverride, "function", "applyActiveExitStageBackstopOverride export missing");
   const rules = { SL: -0.015, TP_P1: 0.03, TRAIL_PCT: 0.01 };
 
   assert.strictEqual(
@@ -301,6 +303,36 @@ async function run() {
   assert.strictEqual(
     inferStageConstrainedTakeProfitKind({ tpP0Done: true, tpP1Done: true, trailActive: true }, "TP1"),
     null
+  );
+  assert.strictEqual(
+    inferStageConstrainedTakeProfitKind({
+      simplifiedExitV2Enabled: true,
+      tpP0Done: false,
+      tpP1Done: false,
+      trailActive: false,
+    }, "TP0"),
+    "TP1"
+  );
+
+  assert.strictEqual(
+    applyActiveExitStageBackstopOverride({
+      event: "EXIT_TP_P0_0.8P",
+      trade: { qty: 5 },
+      orderMeta: { orderType: "TAKE_PROFIT_MARKET", closePosition: false },
+      positionCtx: {
+        simplifiedExitV2Enabled: true,
+        tpP0Done: false,
+        tpP1Done: false,
+        trailActive: false,
+        qtyBase: 5,
+      },
+      recentTp0: null,
+      recentTp1: null,
+      recentTrail: null,
+      rules,
+      qtyPct: 0.5,
+    }),
+    "EXIT_TP_P1_3P"
   );
 
   const overridden = await resolveExternalExitEvent({

@@ -27,11 +27,35 @@ function shouldEnforceSingleStopWriter() {
   return true;
 }
 
+function resolveNonAuthorityRepairStatus() {
+  return "REPAIR_REQUESTED_NON_AUTHORITY_LAYER";
+}
+
+function sanitizeNativeProtectionResultForNonAuthority(result = null) {
+  return {
+    ok: false,
+    skipped: true,
+    reason: resolveNonAuthorityRepairStatus(),
+    requested: true,
+    source_result: result || null,
+  };
+}
+
+function isSimplifiedExitV2Position(positionSnapshot = null) {
+  const snapshot = positionSnapshot && typeof positionSnapshot === "object" ? positionSnapshot : {};
+  const meta = snapshot.meta && typeof snapshot.meta === "object" ? snapshot.meta : {};
+  return meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true;
+}
+
 function resolveRepairTargetStage({
   positionSnapshot = null,
   externalQty = null,
 } = {}) {
-  const canonical = resolveCanonicalPositionExitStage({ positionSnapshot });
+  const simplifiedExitV2Enabled = isSimplifiedExitV2Position(positionSnapshot);
+  const canonical = resolveCanonicalPositionExitStage({
+    positionSnapshot,
+    simplifiedExitV2Enabled,
+  });
   const currentQty = Number(externalQty);
   if (canonical.stage === "TRAIL") {
     return {
@@ -64,12 +88,13 @@ function resolveRepairTargetStage({
 function buildRepairedMeta(meta = {}, stageInfo = {}) {
   const nextMeta = { ...(meta && typeof meta === "object" ? meta : {}) };
   const stage = normalizeSymbol(stageInfo.stage);
-  if (stage === "TP0" || stage === "TRAIL") {
+  const simplifiedExitV2Enabled = isSimplifiedExitV2Position({ meta: nextMeta });
+  if (simplifiedExitV2Enabled !== true && (stage === "TP0" || stage === "TRAIL")) {
     nextMeta.tp_p0_done = true;
     nextMeta.tp_p0_source = nextMeta.tp_p0_source || "LIVE_STAGE_REPAIR";
   }
   if (stage === "TRAIL") {
-    nextMeta.tp_p0_done = true;
+    if (simplifiedExitV2Enabled !== true) nextMeta.tp_p0_done = true;
     nextMeta.tp_p1_done = true;
     nextMeta.trail_active = true;
     nextMeta.tp_p1_pending = false;
@@ -78,7 +103,7 @@ function buildRepairedMeta(meta = {}, stageInfo = {}) {
     nextMeta.tp_p1_pending_event = null;
     nextMeta.tp_p1_source = nextMeta.tp_p1_source || "LIVE_STAGE_REPAIR";
   }
-  if (stage === "TP0" || stage === "TRAIL") {
+  if ((simplifiedExitV2Enabled !== true && stage === "TP0") || stage === "TRAIL") {
     nextMeta.canonical_exit_stage = stage;
     nextMeta.authoritative_exit_stage = stage;
   }
@@ -173,7 +198,7 @@ async function repairLiveTrailingStageForSymbol({
     nextMeta,
   });
   let nativeProtection = null;
-  nativeProtection = await requestBinanceNativeProtectionRefresh({
+  const nativeProtectionRequest = await requestBinanceNativeProtectionRefresh({
     exchange,
     symbol: sym,
     fallbackSide: positionSide,
@@ -185,6 +210,9 @@ async function repairLiveTrailingStageForSymbol({
     reason: "NON_AUTHORITY_LAYER_REQUEST",
     dispatchReason: `LIVE_TRAILING_STAGE_REPAIR_NATIVE_STOP_REFRESH_${String(exchange || "").toUpperCase()}_${String(sym || "").toUpperCase()}`,
   });
+  nativeProtection = singleStopWriter
+    ? sanitizeNativeProtectionResultForNonAuthority(nativeProtectionRequest)
+    : nativeProtectionRequest;
   const entryPrice = Number(position.avg_price);
   const leverage = Number(position.leverage || meta.external_leverage || meta.leverage || 1);
   const runnerExit = computeRunnerExitStopPrice({
@@ -222,7 +250,7 @@ async function repairLiveTrailingStageForSymbol({
     nativeStopPrice: Number(nextMeta.native_protection_stop_price || meta.native_protection_stop_price) || null,
     nativeStopOrderId: nextMeta.native_protection_stop_order_id || meta.native_protection_stop_order_id || null,
     nativeRefreshStatus: singleStopWriter
-      ? "REPAIR_REQUESTED"
+      ? resolveNonAuthorityRepairStatus()
       : (nativeProtection && nativeProtection.ok === true ? "OK" : String(nativeProtection && nativeProtection.reason || "FAILED")),
     lastRepriceAtMs: Date.now(),
     runtimeEvalAtMs: Date.now(),
@@ -249,5 +277,7 @@ module.exports = {
     resolveRepairTargetStage,
     buildRepairedMeta,
     shouldEnforceSingleStopWriter,
+    resolveNonAuthorityRepairStatus,
+    sanitizeNativeProtectionResultForNonAuthority,
   },
 };

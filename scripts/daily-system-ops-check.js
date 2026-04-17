@@ -574,6 +574,36 @@ function loadNativeTrailProtectionGapHealth({ repoRoot } = {}) {
   };
 }
 
+function loadExitIntegrityHealth({ repoRoot } = {}) {
+  const latestPath = path.join(repoRoot, "ops", "daily", "binance_exit_integrity_cycle_latest.json");
+  const read = readJsonSafe(latestPath);
+  if (!read.ok || !read.data || typeof read.data !== "object") {
+    return {
+      available: false,
+      source_path: latestPath,
+      status: "MISSING",
+      live_gate_blocked: null,
+      live_issue_count: null,
+      tp1_meta_sync_gap_n: null,
+      tp1_meta_sync_gate: null,
+      reasons: [],
+    };
+  }
+  const summary = read.data.summary && typeof read.data.summary === "object"
+    ? read.data.summary
+    : read.data;
+  return {
+    available: true,
+    source_path: latestPath,
+    status: String(summary.status || "").trim().toUpperCase() || "UNKNOWN",
+    live_gate_blocked: summary.live_gate_blocked === true,
+    live_issue_count: toNum(summary.live_issue_count, null),
+    tp1_meta_sync_gap_n: toNum(summary.tp1_meta_sync_gap_n, null),
+    tp1_meta_sync_gate: String(summary.tp1_meta_sync_gate || "").trim().toUpperCase() || null,
+    reasons: Array.isArray(summary.reasons) ? summary.reasons.slice(0, 20) : [],
+  };
+}
+
 function hasExecutionFlowCoverage(health) {
   if (!health || health.available !== true) return false;
   const hasSignalSide = (
@@ -673,6 +703,7 @@ function decideStatus({
   trailRunnerFloorAudit,
   binanceExitQtyContractAudit,
   nativeTrailProtectionGap,
+  exitIntegrity,
   positionReadModelCutover,
   activePositionCount = null,
 }) {
@@ -791,6 +822,15 @@ function decideStatus({
       reasons.push(`trailing native stop 공백 ${nativeTrailProtectionGap.gap_count}건`);
     }
     if (
+      exitIntegrity
+      && exitIntegrity.available === true
+      && Number.isFinite(exitIntegrity.tp1_meta_sync_gap_n)
+      && exitIntegrity.tp1_meta_sync_gap_n >= 1
+    ) {
+      if (status === "진행") status = "보류";
+      reasons.push(`TP1 meta sync gap ${exitIntegrity.tp1_meta_sync_gap_n}건`);
+    }
+    if (
       binanceExitQtyContractAudit
       && binanceExitQtyContractAudit.available !== true
     ) {
@@ -816,6 +856,7 @@ function buildIssueLines(summary) {
   const exitQtyAudit = summary.binance_exit_qty_contract_audit || {};
   const exitQtyLiveSeparation = summary.binance_exit_qty_live_separation || {};
   const nativeTrailProtectionGap = summary.native_trail_protection_gap || {};
+  const exitIntegrity = summary.exit_integrity || {};
   const regimeLineageGap = summary.regime_lineage_gap || {};
   const flowCoverageReady = hasExecutionFlowCoverage(health);
   const writerAuthority = summary.position_writer_authority_24h && typeof summary.position_writer_authority_24h === "object"
@@ -904,6 +945,16 @@ function buildIssueLines(summary) {
     }
   } else {
     lines.push("[ISSUE] M | native trail protection gap 리포트 미수집 | live trail 보호주문 공백 감시 필요");
+  }
+
+  if (exitIntegrity.available === true) {
+    if (Number.isFinite(exitIntegrity.tp1_meta_sync_gap_n) && exitIntegrity.tp1_meta_sync_gap_n >= 1) {
+      lines.push(`[ISSUE] H | TP1 meta sync gap ${exitIntegrity.tp1_meta_sync_gap_n}건 | native TP1 ACK 대비 position meta/order id 동기화 실패, 신규 확대 및 배포 보류 유지`);
+    } else {
+      lines.push("[ISSUE] L | TP1 meta sync gap 없음 | V2 TP1 arm/meta sync gate 유지");
+    }
+  } else {
+    lines.push("[ISSUE] M | exit integrity cycle 리포트 미수집 | TP1 meta sync gate 산출물 확인 필요");
   }
 
   if (exitQtyAudit.available === true) {
@@ -1037,6 +1088,7 @@ function buildMarkdown({
   const executionCheckDone = executionHealth && executionHealth.available;
   const health = executionHealth || {};
   const cutover = summary.position_read_model_cutover || {};
+  const exitIntegrity = summary.exit_integrity || {};
   const issueLines = buildIssueLines(summary);
   const approvalLines = (Array.isArray(summary.approvals) ? summary.approvals : [])
     .map((item) =>
@@ -1073,6 +1125,7 @@ function buildMarkdown({
    - TP1/트레일링 신호: \`${health.tp1_signal_count == null ? "N/A" : health.tp1_signal_count}\` / \`${health.trailing_signal_count == null ? "N/A" : health.trailing_signal_count}\`
    - DROP_TP_P1_PENDING: \`${health.drop_tp1_pending_count == null ? "N/A" : health.drop_tp1_pending_count}\`건
    - 감사 이슈/중복체결: \`${health.audit_issue_count == null ? "N/A" : health.audit_issue_count}\`건 / \`${health.duplicate_signal_fill_count == null ? "N/A" : health.duplicate_signal_fill_count}\`건
+   - TP1 meta sync gap/gate: \`${exitIntegrity.tp1_meta_sync_gap_n == null ? "N/A" : exitIntegrity.tp1_meta_sync_gap_n}\`건 / \`${exitIntegrity.tp1_meta_sync_gate || "N/A"}\`
 5. position read-model cutover 점검 완료
    - latest_ready: \`${cutover.available !== true ? "N/A" : (cutover.latest_ready ? "yes" : "no")}\`
    - dominant_status: \`${cutover.dominant_status || "N/A"}\`
@@ -1199,6 +1252,7 @@ async function main() {
   const binanceExitQtyContractAudit = loadBinanceExitQtyContractAuditHealth({ repoRoot });
   const binanceExitQtyLiveSeparation = loadBinanceExitQtyLiveSeparationHealth({ repoRoot });
   const nativeTrailProtectionGap = loadNativeTrailProtectionGapHealth({ repoRoot });
+  const exitIntegrity = loadExitIntegrityHealth({ repoRoot });
   const regimeLineageGap = loadRegimeLineageGapHealth({ repoRoot });
   const positionReadViews = await listExchangePositionReadViews({ exchange: "BINANCEFUT", limit: 200 }).catch(() => []);
   const activePositionCount = Array.isArray(positionReadViews)
@@ -1263,6 +1317,7 @@ async function main() {
     binance_exit_qty_contract_audit: binanceExitQtyContractAudit,
     binance_exit_qty_live_separation: binanceExitQtyLiveSeparation,
     native_trail_protection_gap: nativeTrailProtectionGap,
+    exit_integrity: exitIntegrity,
     regime_lineage_gap: regimeLineageGap,
     position_read_model_cutover: positionReadModelCutover,
     approvals: [],
@@ -1285,6 +1340,7 @@ async function main() {
     trailRunnerFloorAudit,
     binanceExitQtyContractAudit,
     nativeTrailProtectionGap,
+    exitIntegrity,
     positionReadModelCutover,
     activePositionCount,
   });
@@ -1369,6 +1425,9 @@ async function main() {
     binance_exit_qty_contract_issue_chain_total_n: binanceExitQtyContractAudit.issue_chain_total_n,
     binance_exit_qty_contract_issue_chain_backfilled_n: binanceExitQtyContractAudit.issue_chain_backfilled_n,
     native_trail_protection_gap_count: nativeTrailProtectionGap.gap_count,
+    exit_integrity_live_issue_count: exitIntegrity.live_issue_count,
+    exit_integrity_tp1_meta_sync_gap_n: exitIntegrity.tp1_meta_sync_gap_n,
+    exit_integrity_tp1_meta_sync_gate: exitIntegrity.tp1_meta_sync_gate,
     binance_exit_qty_contract_top_code: Object.entries(binanceExitQtyContractAudit.issue_code_counts || {})
       .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
       .map((row) => row[0])[0] || null,
@@ -1397,6 +1456,7 @@ module.exports = {
     loadBinanceExitQtyContractAuditHealth,
     loadBinanceExitQtyLiveSeparationHealth,
     loadNativeTrailProtectionGapHealth,
+    loadExitIntegrityHealth,
     loadRegimeLineageGapHealth,
     hasExecutionFlowCoverage,
     hasHealthySupersedingPositionView,

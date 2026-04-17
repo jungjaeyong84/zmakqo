@@ -11,6 +11,11 @@ function toNum(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function isSimplifiedExitV2Enabled(meta = {}) {
+  const baseMeta = meta && typeof meta === "object" ? meta : {};
+  return baseMeta.simplified_exit_v2_enabled === true || baseMeta.simplifiedExitV2Enabled === true;
+}
+
 function normalizeAlgoOrderFetchResult(payload) {
   if (Array.isArray(payload)) return { orders: payload, endpointUnavailable: false, note: null };
   if (payload && typeof payload === "object" && payload.endpointUnavailable === true) {
@@ -156,6 +161,10 @@ function resolveConfiguredTakeProfitQtyRatio(meta, key, fallback) {
   return null;
 }
 
+function resolveConfiguredTp1QtyRatio(meta, fallback = 0.5) {
+  return resolveConfiguredTakeProfitQtyRatio(meta, "TP_P1_QTY", fallback);
+}
+
 const FLAT_META_FALSE_FIELDS = [
   "tp_p0_done",
   "tp_p1_done",
@@ -274,14 +283,44 @@ const FLAT_META_NULL_FIELDS = [
   "contract_latest",
 ];
 
-function classifyTakeProfitOrders({ orders = [], positionSide, qtyBase } = {}) {
+function classifyTakeProfitOrders({ orders = [], positionSide, qtyBase, meta = {} } = {}) {
   const candidates = pickTakeProfitCandidates(orders, positionSide, qtyBase);
-  if (!candidates.length) return { tp0: null, tp1: null };
+  const simplifiedExitV2Enabled = isSimplifiedExitV2Enabled(meta);
+  if (!candidates.length) {
+    return {
+      tp0: null,
+      tp1: null,
+      simplifiedExitV2Enabled,
+      unexpectedTpOrders: [],
+    };
+  }
+  if (simplifiedExitV2Enabled) {
+    const configuredTp1QtyRatio = resolveConfiguredTp1QtyRatio(meta, 0.5);
+    const [tp1] = [...candidates].sort((a, b) => {
+      const aDist = Number.isFinite(a.qtyRatio) && Number.isFinite(configuredTp1QtyRatio)
+        ? Math.abs(a.qtyRatio - configuredTp1QtyRatio)
+        : Number.POSITIVE_INFINITY;
+      const bDist = Number.isFinite(b.qtyRatio) && Number.isFinite(configuredTp1QtyRatio)
+        ? Math.abs(b.qtyRatio - configuredTp1QtyRatio)
+        : Number.POSITIVE_INFINITY;
+      if (aDist !== bDist) return aDist - bDist;
+      return 0;
+    });
+    const unexpectedTpOrders = candidates.filter((row) => row.orderId !== (tp1 && tp1.orderId));
+    return {
+      tp0: null,
+      tp1: tp1 || null,
+      simplifiedExitV2Enabled,
+      unexpectedTpOrders,
+    };
+  }
   if (candidates.length === 1) {
     const only = candidates[0];
     const inferredKind = inferTakeProfitKindFromQtyRatio(only.qtyRatio);
-    if (inferredKind === "TP0") return { tp0: only, tp1: null };
-    return { tp0: null, tp1: only };
+    if (inferredKind === "TP0") {
+      return { tp0: only, tp1: null, simplifiedExitV2Enabled, unexpectedTpOrders: [] };
+    }
+    return { tp0: null, tp1: only, simplifiedExitV2Enabled, unexpectedTpOrders: [] };
   }
   let [first, second] = candidates;
   const firstLooksLikeTp1 = inferTakeProfitKindFromQtyRatio(first.qtyRatio) === "TP1";
@@ -289,7 +328,12 @@ function classifyTakeProfitOrders({ orders = [], positionSide, qtyBase } = {}) {
   if (firstLooksLikeTp1 && secondLooksLikeTp0) {
     [first, second] = [second, first];
   }
-  return { tp0: first || null, tp1: second || null };
+  return {
+    tp0: first || null,
+    tp1: second || null,
+    simplifiedExitV2Enabled,
+    unexpectedTpOrders: candidates.slice(2),
+  };
 }
 
 function buildFlatMetaProjection(meta = {}) {
@@ -327,10 +371,16 @@ function reconcileBinancePositionMetaWithExchange({
     ...normalizedAlgo.orders,
   ];
   const stop = pickStopCandidate(allOrders, positionSide);
-  const { tp0, tp1 } = classifyTakeProfitOrders({
+  const {
+    tp0,
+    tp1,
+    simplifiedExitV2Enabled,
+    unexpectedTpOrders = [],
+  } = classifyTakeProfitOrders({
     orders: allOrders,
     positionSide,
     qtyBase,
+    meta: baseMeta,
   });
 
   const nextMeta = {
@@ -391,6 +441,9 @@ function reconcileBinancePositionMetaWithExchange({
   nextMeta.native_protection_tp_reason = null;
 
   if (!stop) invariants.push("NATIVE_STOP_MISSING");
+  if (simplifiedExitV2Enabled && unexpectedTpOrders.length > 0) {
+    invariants.push("SIMPLIFIED_EXIT_V2_MULTIPLE_TP_ORDERS");
+  }
   if ((nextMeta.tp_p1_done === true || nextMeta.trail_active === true) && (tp0 || tp1)) {
     invariants.push("TP1_DONE_WITH_TP_ORDER");
   }

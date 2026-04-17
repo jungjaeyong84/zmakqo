@@ -71,6 +71,26 @@ function run() {
   assert.strictEqual(invalidTp1WithoutTp0.ok, false);
   assert.ok(invalidTp1WithoutTp0.issues.some((issue) => issue.code === "TP1_WITHOUT_TP0"));
 
+  const validSimplifiedV2Tp1WithoutTp0 = validatePositionSnapshotTransition({
+    prev: {
+      state: "ACTIVE",
+      position_state: "COMMIT",
+      size_pct: 1,
+      qty_base: 1,
+      meta: { tp_p0_done: false, tp_p1_done: false, trail_active: false, simplified_exit_v2_enabled: true },
+    },
+    next: {
+      state: "ACTIVE",
+      position_state: "SCALE_OUT",
+      size_pct: 0.5,
+      qty_base: 0.5,
+      meta: { tp_p0_done: false, tp_p1_done: true, trail_active: true, simplified_exit_v2_enabled: true },
+    },
+  });
+  assert.strictEqual(validSimplifiedV2Tp1WithoutTp0.ok, true);
+  assert.ok(!validSimplifiedV2Tp1WithoutTp0.issues.some((issue) => issue.code === "TP1_WITHOUT_TP0"));
+  assert.ok(!validSimplifiedV2Tp1WithoutTp0.issues.some((issue) => issue.code === "TRAIL_WITHOUT_TP0"));
+
   const postTp0Decision = resolveCanonicalExitAuthorityDecision({
     exchange: "BINANCEFUT",
     symbol: "ETHUSDT",
@@ -269,6 +289,17 @@ function run() {
   });
   assert.ok(trailTransition.transitionEvents.includes("TRAIL_FINAL_EXIT"));
 
+  const simplifiedTp0Transition = resolveCanonicalExitTransitionEvents({
+    resolvedStage: "TP0",
+    positionSnapshot: {
+      qty_base: 0.75,
+      meta: { tp_p0_done: true, tp_p1_done: false, trail_active: false },
+    },
+    simplifiedExitV2Enabled: true,
+  });
+  assert.deepStrictEqual(simplifiedTp0Transition.transitionEvents, []);
+  assert.strictEqual(simplifiedTp0Transition.primaryTransitionEvent, null);
+
   const alertStage = resolveCanonicalAlertExitStage({
     transitionEvents: ["TP1_REACHED", "TRAIL_ACTIVE"],
   });
@@ -293,6 +324,16 @@ function run() {
   }), {
     stage: null,
     source: null,
+  });
+  assert.deepStrictEqual(resolveCanonicalPositionExitStage({
+    positionSnapshot: {
+      qty_base: 0.75,
+      meta: { tp_p0_done: true, tp_p1_done: false, trail_active: false },
+    },
+    simplifiedExitV2Enabled: true,
+  }), {
+    stage: null,
+    source: "POSITION_STATE_MACHINE_V2_PRE_TP1",
   });
 
   const cycleStage = resolveCanonicalExitStageFromCycleEvidence({

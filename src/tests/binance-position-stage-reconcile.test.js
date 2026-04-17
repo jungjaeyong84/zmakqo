@@ -53,6 +53,17 @@ async function run() {
   assert.strictEqual(afterTp0.tp_p0_done, true);
   assert.strictEqual(afterTp0.tp_p0_price, 0.1);
 
+  const simplifiedAfterTp0 = __test.reconcileTpP0MetaFromFill({
+    posMeta: {
+      ...baseMeta,
+      simplified_exit_v2_enabled: true,
+    },
+    pos: { exchange: "BINANCEFUT", position_side: "LONG" },
+    fill: tp0,
+  });
+  assert.strictEqual(simplifiedAfterTp0.tp_p0_done, false, "simplified v2 must ignore tp0 reconcile projection");
+  assert.strictEqual(simplifiedAfterTp0.tp_p0_price, undefined);
+
   const afterTp1 = __test.reconcileTpP1MetaFromFill({
     posMeta: afterTp0,
     pos: { exchange: "BINANCEFUT", position_side: "LONG" },

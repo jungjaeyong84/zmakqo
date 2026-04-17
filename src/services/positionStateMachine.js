@@ -65,6 +65,17 @@ function normalizeTransitionEvent(value) {
   return toUpper(value, null);
 }
 
+function isSimplifiedExitV2Enabled({
+  simplifiedExitV2Enabled = null,
+  positionSnapshot = null,
+} = {}) {
+  if (simplifiedExitV2Enabled === true) return true;
+  const snapshot = positionSnapshot && typeof positionSnapshot === "object" ? positionSnapshot : {};
+  const meta = (snapshot.meta && typeof snapshot.meta === "object") ? snapshot.meta : {};
+  if (meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true) return true;
+  return false;
+}
+
 function trimPctToken(raw) {
   const n = Number(raw);
   if (!Number.isFinite(n)) return null;
@@ -451,11 +462,22 @@ function resolveCanonicalExitTransitionEvents({
   ledger = null,
   observedQtyRatio = null,
   fullExit = false,
+  simplifiedExitV2Enabled = null,
 } = {}) {
   const snapshot = normalizeSnapshot(positionSnapshot || {});
   const stage = normalizeExitStage(resolvedStage);
+  const simplifiedV2 = isSimplifiedExitV2Enabled({
+    simplifiedExitV2Enabled,
+    positionSnapshot: positionSnapshot || {},
+  });
   const recent = recentStages && typeof recentStages === "object" ? recentStages : {};
   const events = [];
+  if (simplifiedV2 && stage === "TP0") {
+    return {
+      transitionEvents: [],
+      primaryTransitionEvent: null,
+    };
+  }
   if (stage === "TP0") {
     if (snapshot.tp_p0_done !== true) events.push("TP0_REACHED");
   } else if (stage === "TP1") {
@@ -499,9 +521,14 @@ function resolveCanonicalAlertExitStage({
 function resolveCanonicalPositionExitStage({
   positionSnapshot = null,
   fallbackStage = null,
+  simplifiedExitV2Enabled = null,
 } = {}) {
   const snapshot = normalizeSnapshot(positionSnapshot || {});
   const meta = snapshot.meta && typeof snapshot.meta === "object" ? snapshot.meta : {};
+  const simplifiedV2 = isSimplifiedExitV2Enabled({
+    simplifiedExitV2Enabled,
+    positionSnapshot: positionSnapshot || {},
+  });
   const fallback = normalizeExitStage(
     fallbackStage
     || meta.authoritative_exit_stage
@@ -518,6 +545,20 @@ function resolveCanonicalPositionExitStage({
       stage: "TP1",
       source: "POSITION_STATE_MACHINE_TP1_DONE",
     };
+  }
+  if (simplifiedV2) {
+    if (snapshot.tp_p0_done === true) {
+      return {
+        stage: null,
+        source: "POSITION_STATE_MACHINE_V2_PRE_TP1",
+      };
+    }
+    if (fallback === "TP0") {
+      return {
+        stage: null,
+        source: "POSITION_STATE_MACHINE_V2_FALLBACK_SUPPRESSED",
+      };
+    }
   }
   if (snapshot.tp_p0_done === true) {
     return {
@@ -725,6 +766,7 @@ function resolveCanonicalExitAuthorityDecision({
 function validatePositionSnapshotTransition({ prev = null, next = null } = {}) {
   const previous = normalizeSnapshot(prev || {});
   const current = normalizeSnapshot(next || {});
+  const simplifiedV2 = isSimplifiedExitV2Enabled({ positionSnapshot: next || {} });
   const issues = [];
 
   const hasExposure = (Number.isFinite(current.size_pct) && current.size_pct > 0)
@@ -751,7 +793,7 @@ function validatePositionSnapshotTransition({ prev = null, next = null } = {}) {
       message: "SCALE_OUT requires tp_p1_done=true.",
     });
   }
-  if (current.tp_p1_done === true && current.tp_p0_done !== true) {
+  if (simplifiedV2 !== true && current.tp_p1_done === true && current.tp_p0_done !== true) {
     issues.push({
       code: "TP1_WITHOUT_TP0",
       severity: "critical",
@@ -765,7 +807,7 @@ function validatePositionSnapshotTransition({ prev = null, next = null } = {}) {
       message: "trail_active requires tp_p1_done=true.",
     });
   }
-  if (current.trail_active === true && current.tp_p0_done !== true) {
+  if (simplifiedV2 !== true && current.trail_active === true && current.tp_p0_done !== true) {
     issues.push({
       code: "TRAIL_WITHOUT_TP0",
       severity: "critical",
@@ -822,6 +864,7 @@ module.exports = {
     buildCanonicalExitEvent,
     classifyExitEventStage,
     requiresCanonicalExitEntryLineage,
+    isSimplifiedExitV2Enabled,
     ALLOWED_POSITION_STATE_TRANSITIONS,
   },
 };

@@ -150,6 +150,7 @@ function formatBaseQty(value) {
 
 function resolveExitContractLedgerLines(payload = {}) {
   const lines = [];
+  const simplifiedV2 = isSimplifiedExitV2Enabled(payload);
   const observed = Number(payload.contractObservedQtyAbs);
   const entry = Number(payload.contractEntryQtyAbs);
   const tp0Allowed = Number(payload.contractTp0AllowedAbs);
@@ -160,7 +161,7 @@ function resolveExitContractLedgerLines(payload = {}) {
   }
   const contractParts = [];
   if (Number.isFinite(entry) && entry > 0) contractParts.push(`ENTRY ${formatBaseQty(entry)}`);
-  if (Number.isFinite(tp0Allowed) && tp0Allowed > 0) contractParts.push(`TP0 ${formatBaseQty(tp0Allowed)}`);
+  if (simplifiedV2 !== true && Number.isFinite(tp0Allowed) && tp0Allowed > 0) contractParts.push(`TP0 ${formatBaseQty(tp0Allowed)}`);
   if (Number.isFinite(tp1Allowed) && tp1Allowed > 0) contractParts.push(`TP1 ${formatBaseQty(tp1Allowed)}`);
   if (Number.isFinite(runnerRemaining) && runnerRemaining >= 0) contractParts.push(`RUNNER ${formatBaseQty(runnerRemaining)}`);
   if (contractParts.length) {
@@ -206,8 +207,13 @@ function ratioToPctToken(rawRatio, { abs = false } = {}) {
   return trimPctToken(ratio * 100);
 }
 
-function parseExitEventMeta(event) {
+function parseExitEventMeta(event, { simplifiedExitV2Enabled = false } = {}) {
   const ev = String(event || "").toUpperCase();
+  if (simplifiedExitV2Enabled === true) {
+    let v2Tp0 = ev.match(/^EXIT_TP_P0_([0-9]+(?:\.[0-9]+)?)P$/);
+    if (v2Tp0) return { token: `TP1_${v2Tp0[1]}`, label: `익절(TP1) ${v2Tp0[1]}%` };
+    if (ev.startsWith("EXIT_TP_P0")) return { token: "TP1", label: "익절(TP1)" };
+  }
   let m = ev.match(/^EXIT_TP_P0_([0-9]+(?:\.[0-9]+)?)P$/);
   if (m) return { token: `TP0_${m[1]}`, label: `익절(TP0) ${m[1]}%` };
   m = ev.match(/^EXIT_TP_P1_([0-9]+(?:\.[0-9]+)?)P$/);
@@ -240,6 +246,13 @@ function parseExitEventMeta(event) {
   if (ev === "EXIT_LIQUIDATION_RISK") return { token: "RISK", label: "리스크 청산" };
   if (ev === "EXIT_EXTERNAL_SYNC") return { token: "EXTERNAL_SYNC", label: "외부 동기화 청산" };
   return { token: "EXIT", label: "청산" };
+}
+
+function isSimplifiedExitV2Enabled(payload = {}) {
+  if (payload.simplifiedExitV2Enabled === true || payload.simplified_exit_v2_enabled === true) return true;
+  const shadow = payload.simplifiedExitV2Shadow || payload.simplified_exit_v2_shadow;
+  if (shadow && typeof shadow === "object" && shadow.available === true) return true;
+  return false;
 }
 
 function isCanonicalStageExit(stage) {
@@ -289,6 +302,88 @@ function resolveCanonicalTransitionEventList(payload = {}) {
     });
 }
 
+function normalizeSimplifiedExitV2TransitionEvents(payload = {}) {
+  const normalized = [];
+  const seen = new Set();
+  for (const item of resolveCanonicalTransitionEventList(payload)) {
+    let event = item;
+    if (event === "TRAIL_ACTIVE") event = "TRAIL_ACTIVATED";
+    if (event === "ENTRY_FILL") event = "ENTRY_FILLED";
+    if (!event || seen.has(event)) continue;
+    seen.add(event);
+    normalized.push(event);
+  }
+  return normalized;
+}
+
+function resolveSimplifiedExitV2MetaFromTransition({
+  transitionEvent = null,
+  canonicalExitEvent = null,
+} = {}) {
+  const transition = String(transitionEvent || "").trim().toUpperCase();
+  const canonicalMeta = canonicalExitEvent
+    ? parseExitEventMeta(canonicalExitEvent, { simplifiedExitV2Enabled: true })
+    : null;
+  if (transition === "TP1_REACHED") {
+    return canonicalMeta && String(canonicalMeta.token || "").startsWith("TP1")
+      ? canonicalMeta
+      : { token: "TP1", label: "익절(TP1)" };
+  }
+  if (transition === "TRAIL_ACTIVATED" || transition === "TRAIL_FINAL_EXIT") {
+    return canonicalMeta && String(canonicalMeta.token || "").startsWith("TRAIL")
+      ? canonicalMeta
+      : { token: "TRAIL", label: "트레일링" };
+  }
+  if (transition === "SL_HIT") {
+    return canonicalMeta && String(canonicalMeta.token || "").startsWith("SL")
+      ? canonicalMeta
+      : { token: "SL", label: "손절" };
+  }
+  if (transition === "FORCE_EXIT_ALL") return { token: "FORCE_EXIT_ALL", label: "강제 전량 청산" };
+  if (transition === "EXTERNAL_CLOSE_SYNC") return { token: "EXTERNAL_SYNC", label: "외부 동기화 청산" };
+  return canonicalMeta;
+}
+
+function resolveSimplifiedExitV2AlertProjection(payload = {}, rawEvent = null) {
+  const enabled = isSimplifiedExitV2Enabled(payload);
+  const canonicalExitEvent = String(payload.canonicalExitEvent || payload.canonical_exit_event || "").trim().toUpperCase() || null;
+  const rawEvidenceEvent = resolveRawEvidenceEvent(payload, rawEvent || payload.event);
+  const transitionEvents = normalizeSimplifiedExitV2TransitionEvents(payload);
+  const invalidTransitions = transitionEvents.filter((event) => event === "TP0_REACHED" || event === "TRAIL_PARTIAL");
+  const primaryTransitionEvent = transitionEvents[0] || null;
+  const meta = resolveSimplifiedExitV2MetaFromTransition({
+    transitionEvent: primaryTransitionEvent,
+    canonicalExitEvent,
+  });
+  const stage = primaryTransitionEvent === "TP1_REACHED"
+    ? "TP1"
+    : (
+      primaryTransitionEvent === "TRAIL_ACTIVATED" || primaryTransitionEvent === "TRAIL_FINAL_EXIT"
+        ? "TRAIL"
+        : (
+          primaryTransitionEvent === "SL_HIT"
+            ? "SL"
+            : (
+              primaryTransitionEvent === "FORCE_EXIT_ALL"
+                ? "FORCE_EXIT_ALL"
+                : (primaryTransitionEvent === "EXTERNAL_CLOSE_SYNC" ? "EXTERNAL_SYNC" : null)
+            )
+        )
+    );
+  return {
+    enabled,
+    valid: enabled !== true || invalidTransitions.length === 0,
+    reason: invalidTransitions.length ? "INVALID_V2_CANONICAL_TRANSITION" : null,
+    invalidTransitions,
+    transitionEvents,
+    primaryTransitionEvent,
+    canonicalExitEvent,
+    rawEvidenceEvent,
+    stage,
+    meta,
+  };
+}
+
 function normalizeResolvedCanonicalAlertStage(stage, {
   explicitCanonicalStage = null,
   canonicalTransitionEvents = [],
@@ -307,6 +402,7 @@ function normalizeResolvedCanonicalAlertStage(stage, {
 }
 
 function resolveCanonicalExitAlertRequirement(payload = {}, rawEvent = null) {
+  const simplifiedExitV2 = resolveSimplifiedExitV2AlertProjection(payload, rawEvent || payload.event);
   const rawEvidenceEvent = resolveRawEvidenceEvent(payload, rawEvent || payload.event);
   const canonicalEvent = String(payload.canonicalExitEvent || payload.canonical_exit_event || "").trim().toUpperCase();
   const canonicalTransitionEvents = resolveCanonicalTransitionEventList(payload);
@@ -325,6 +421,23 @@ function resolveCanonicalExitAlertRequirement(payload = {}, rawEvent = null) {
   const required = isCanonicalStageExit(effectiveStage)
     || isCanonicalExitEvidenceEvent(rawEvidenceEvent)
     || isCanonicalExitEvidenceEvent(canonicalEvent);
+  if (simplifiedExitV2.enabled === true) {
+    const requiredV2 = required || Boolean(simplifiedExitV2.primaryTransitionEvent) || Boolean(canonicalEvent);
+    const satisfiedV2 = !requiredV2
+      || (simplifiedExitV2.transitionEvents.length > 0 && simplifiedExitV2.valid === true);
+    return {
+      required: requiredV2,
+      satisfied: satisfiedV2,
+      reason: requiredV2 && simplifiedExitV2.valid !== true
+        ? simplifiedExitV2.reason
+        : (requiredV2 && simplifiedExitV2.transitionEvents.length === 0 ? "MISSING_CANONICAL_EXIT_TRANSITION" : null),
+      rawEvidenceEvent,
+      canonicalEvent: canonicalEvent || null,
+      canonicalStage: simplifiedExitV2.stage || effectiveStage,
+      canonicalTransitionEvents: simplifiedExitV2.transitionEvents,
+      simplifiedExitV2,
+    };
+  }
   return {
     required,
     satisfied: !required || canonicalTransitionEvents.length > 0,
@@ -336,18 +449,27 @@ function resolveCanonicalExitAlertRequirement(payload = {}, rawEvent = null) {
   };
 }
 
-function buildGenericExitMeta(stage) {
-  if (stage === "TP0") return { token: "TP0", label: "익절(TP0)" };
+function buildGenericExitMeta(stage, { simplifiedExitV2Enabled = false } = {}) {
+  if (stage === "TP0") {
+    return simplifiedExitV2Enabled === true
+      ? { token: "TP1", label: "익절(TP1)" }
+      : { token: "TP0", label: "익절(TP0)" };
+  }
   if (stage === "TP1") return { token: "TP1", label: "익절(TP1)" };
   if (stage === "TRAIL") return { token: "TRAIL", label: "트레일링" };
   return null;
 }
 
 function resolveEffectiveExitMeta(payload = {}, rawEvent) {
+  const simplifiedExitV2 = resolveSimplifiedExitV2AlertProjection(payload, rawEvent);
   const rawEvidenceEvent = resolveRawEvidenceEvent(payload, rawEvent);
-  const rawMeta = parseExitEventMeta(rawEvidenceEvent);
+  const rawMeta = parseExitEventMeta(rawEvidenceEvent, {
+    simplifiedExitV2Enabled: simplifiedExitV2.enabled === true,
+  });
   const canonicalEvent = String(payload.canonicalExitEvent || payload.canonical_exit_event || "").trim().toUpperCase();
-  const canonicalEventMeta = canonicalEvent ? parseExitEventMeta(canonicalEvent) : null;
+  const canonicalEventMeta = canonicalEvent
+    ? parseExitEventMeta(canonicalEvent, { simplifiedExitV2Enabled: simplifiedExitV2.enabled === true })
+    : null;
   const canonicalTransitionEvents = resolveCanonicalTransitionEventList(payload);
   const explicitCanonicalStage = String(payload.canonicalExitStage || payload.canonical_exit_stage || "").trim().toUpperCase() || null;
   const primaryTransitionEvent = payload.canonicalTransitionEvent || payload.canonical_primary_transition_event || null;
@@ -367,10 +489,25 @@ function resolveEffectiveExitMeta(payload = {}, rawEvent) {
     (!!canonicalToken && canonicalToken !== rawToken)
     || (!!canonicalEvent && canonicalEvent !== rawEvidenceEvent)
   );
+  if (simplifiedExitV2.enabled === true && simplifiedExitV2.valid === true && simplifiedExitV2.primaryTransitionEvent) {
+    const projectedMeta = simplifiedExitV2.meta || rawMeta;
+    const projectedToken = String(projectedMeta && projectedMeta.token || simplifiedExitV2.stage || "").trim().toUpperCase() || null;
+    return {
+      meta: projectedMeta,
+      rawMeta,
+      canonicalEvent: canonicalEvent || null,
+      canonicalStage: simplifiedExitV2.stage || effectiveCanonicalStage,
+      rawStage: rawToken,
+      rawEvidenceEvent,
+      overrideApplied: !!projectedToken && projectedToken !== rawToken,
+      canonicalTransitionEvents: simplifiedExitV2.transitionEvents,
+      simplifiedExitV2,
+    };
+  }
   const meta = canonicalEventMeta
     ? canonicalEventMeta
     : (effectiveCanonicalStage && canonicalTransitionEvents.length > 0 && overrideApplied)
-    ? (buildGenericExitMeta(effectiveCanonicalStage) || rawMeta)
+    ? (buildGenericExitMeta(effectiveCanonicalStage, { simplifiedExitV2Enabled: simplifiedExitV2.enabled === true }) || rawMeta)
     : rawMeta;
   return {
     meta,
@@ -381,6 +518,7 @@ function resolveEffectiveExitMeta(payload = {}, rawEvent) {
     rawEvidenceEvent,
     overrideApplied,
     canonicalTransitionEvents,
+    simplifiedExitV2,
   };
 }
 
@@ -490,6 +628,7 @@ function resolveExitIntegrityLines(payload = {}) {
 function resolveExternalSyncContextLines(payload = {}) {
   const ev = String(payload.event || "").trim().toUpperCase();
   if (ev !== "EXIT_EXTERNAL_SYNC") return [];
+  const simplifiedExitV2Enabled = isSimplifiedExitV2Enabled(payload);
   const stage = String(payload.externalSyncHintStage || "").trim().toUpperCase();
   const reason = String(
     payload.reason || payload.statusReason || payload.cancelReason || payload.decisionReason || ""
@@ -499,7 +638,9 @@ function resolveExternalSyncContextLines(payload = {}) {
   const lines = [];
   if (stage === "TRAIL_AFTER_TP1") lines.push("동기화맥락: 트레일 종료 후 외부 동기화");
   else if (stage === "AFTER_TP1") lines.push("동기화맥락: TP1 이후 외부 동기화");
-  else if (stage === "AFTER_TP0") lines.push("동기화맥락: TP0 이후 외부 동기화");
+  else if (stage === "AFTER_TP0") {
+    lines.push(simplifiedExitV2Enabled ? "동기화맥락: TP1 이전 외부 동기화" : "동기화맥락: TP0 이후 외부 동기화");
+  }
   else if (stage === "UNTRACKED_CLOSE_POSITION") lines.push("동기화맥락: 비추적 closePosition 외부 청산");
   if (reason) lines.push(`동기화사유: ${reason}`);
   if (orderType || typeof closePosition === "boolean") {
@@ -1371,6 +1512,9 @@ module.exports = {
     buildMessage,
     buildFailureMessage,
     parseExitEventMeta,
+    isSimplifiedExitV2Enabled,
+    normalizeSimplifiedExitV2TransitionEvents,
+    resolveSimplifiedExitV2AlertProjection,
     resolveEffectiveExitMeta,
     resolveCanonicalExitAlertRequirement,
     resolveRawEvidenceEvent,

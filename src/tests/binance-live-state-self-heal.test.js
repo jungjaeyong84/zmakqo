@@ -37,6 +37,17 @@ async function run() {
   }), false);
 
   assert.strictEqual(__test.shouldRepairBinanceLivePosition({
+    simplified_exit_v2_enabled: true,
+    tp_p1_done: false,
+    trail_active: false,
+    native_protection_refresh_status: "OK",
+    native_protection_tp0_order_id: null,
+    native_protection_tp_order_id: "tp1",
+    exchange_projection_in_sync: true,
+    exchange_projection_invariants: [],
+  }), false);
+
+  assert.strictEqual(__test.shouldRepairBinanceLivePosition({
     tp_p1_done: true,
     trail_active: true,
     native_protection_refresh_status: "OK",

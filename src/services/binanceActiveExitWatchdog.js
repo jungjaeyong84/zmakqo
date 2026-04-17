@@ -36,6 +36,10 @@ function shouldAllowWatchdogMutation() {
   return false;
 }
 
+function resolveReadOnlyWatchdogRepairReason() {
+  return "REPAIR_REQUESTED_NON_AUTHORITY_LAYER";
+}
+
 function normalizeOrderType(order) {
   return upper(order && (order.type || order.origType || order.orderType || order.algoType)) || "";
 }
@@ -109,8 +113,16 @@ function isInternalActivePosition(row = {}) {
   return qtyBase > 0 && state !== "FLAT";
 }
 
+function isSimplifiedExitV2Position(row = {}) {
+  const meta = row && typeof row.meta === "object" ? row.meta : {};
+  return meta.simplified_exit_v2_enabled === true
+    || meta.simplifiedExitV2Enabled === true
+    || row.simplified_exit_v2_enabled === true;
+}
+
 function isWatchdogTarget(row = {}) {
   if (!isInternalActivePosition(row)) return false;
+  if (isSimplifiedExitV2Position(row)) return true;
   const meta = row && typeof row.meta === "object" ? row.meta : {};
   return meta.tp_p0_done === true
     || meta.tp_p1_done === true
@@ -119,12 +131,17 @@ function isWatchdogTarget(row = {}) {
 }
 
 function resolveStage(row = {}) {
+  const simplifiedExitV2Enabled = isSimplifiedExitV2Position(row);
   const canonical = resolveCanonicalPositionExitStage({
     positionSnapshot: row,
+    simplifiedExitV2Enabled,
   });
   if (canonical.stage === "TRAIL") return { canonical_stage: "TRAIL", stage: "TRAIL", source: canonical.source };
   if (canonical.stage === "TP1") return { canonical_stage: "TP1", stage: "TP1_DONE_NOT_TRAIL", source: canonical.source };
   if (canonical.stage === "TP0") return { canonical_stage: "TP0", stage: "BETWEEN_TP0_TP1", source: canonical.source };
+  if (simplifiedExitV2Enabled) {
+    return { canonical_stage: canonical.stage, stage: "PRE_TP1", source: canonical.source };
+  }
   return { canonical_stage: canonical.stage, stage: "PRE_TP0", source: canonical.source };
 }
 
@@ -214,6 +231,7 @@ function inspectExitProtection({
 } = {}) {
   const row = internalPosition && typeof internalPosition === "object" ? internalPosition : {};
   const meta = row && typeof row.meta === "object" ? row.meta : {};
+  const simplifiedExitV2Enabled = isSimplifiedExitV2Position(row);
   const trailSnapshot = resolveTrailObservationSnapshot({ meta, observation });
   const allOrders = [
     ...(Array.isArray(openOrders) ? openOrders : []),
@@ -287,17 +305,22 @@ function inspectExitProtection({
   if (meta.trail_active === true && meta.tp_p1_done !== true) {
     issues.push(buildIssue("TRAIL_ACTIVE_WITHOUT_TP1_DONE", "trail_active=true 인데 tp_p1_done=false 입니다."));
   }
-  if (meta.tp_p1_done === true && meta.tp_p0_done !== true) {
+  if (simplifiedExitV2Enabled !== true && meta.tp_p1_done === true && meta.tp_p0_done !== true) {
     issues.push(buildIssue("TP1_DONE_WITHOUT_TP0_DONE", "tp_p1_done=true 인데 tp_p0_done=false 입니다."));
   }
-  if ((stage === "BETWEEN_TP0_TP1" || stage === "TRAIL" || stage === "TP1_DONE_NOT_TRAIL")
+  if ((stage === "PRE_TP1" || stage === "BETWEEN_TP0_TP1" || stage === "TRAIL" || stage === "TP1_DONE_NOT_TRAIL")
     && (refreshStatus === "FAILED" || refreshStatus === "MISSING")) {
     issues.push(buildIssue("NATIVE_REFRESH_UNHEALTHY", `native_protection_refresh_status=${refreshStatus}`));
   }
 
-  if (stage === "BETWEEN_TP0_TP1") {
+  if (stage === "PRE_TP1" || stage === "BETWEEN_TP0_TP1") {
     if (!tpCandidate) {
-      issues.push(buildIssue("TP1_ORDER_MISSING", "TP0 이후인데 거래소 TP1 reduce-only 주문이 없습니다."));
+      issues.push(buildIssue(
+        "TP1_ORDER_MISSING",
+        stage === "PRE_TP1"
+          ? "V2 pre-TP1 단계인데 거래소 TP1 reduce-only 주문이 없습니다."
+          : "TP0 이후인데 거래소 TP1 reduce-only 주문이 없습니다."
+      ));
     } else if (Number.isFinite(actualTpQtyRatio) && Number.isFinite(expectedTp1RemainingRatio)) {
       const ratioGap = Math.abs(actualTpQtyRatio - expectedTp1RemainingRatio);
       if (ratioGap > 0.03) {
@@ -447,6 +470,7 @@ function inspectExitProtection({
     stage,
     canonical_stage: stageInfo.canonical_stage,
     canonical_stage_source: stageInfo.source,
+    simplified_exit_v2_enabled: simplifiedExitV2Enabled,
     position_side: positionSide,
     qty_base: qtyBase,
     avg_price: toNum(row.avg_price),
@@ -602,7 +626,7 @@ async function runBinanceActiveExitWatchdog({
           symbol: row.symbol,
           source: "BINANCE_ACTIVE_EXIT_WATCHDOG",
           requestKind: "EXIT_PROTECTION_REPAIR",
-          reason: "READ_ONLY_WATCHDOG_REQUEST",
+          reason: resolveReadOnlyWatchdogRepairReason(),
           runId,
           dedupeKey: `${exchange}__${row.symbol}__WATCHDOG__EXIT_PROTECTION_REPAIR`,
           payload: {
@@ -612,7 +636,7 @@ async function runBinanceActiveExitWatchdog({
         }).then(() => ({
           ok: false,
           skipped: true,
-          reason: "READ_ONLY_WATCHDOG_REQUEST",
+          reason: resolveReadOnlyWatchdogRepairReason(),
         })).catch((error) => ({
           ok: false,
           skipped: false,
@@ -666,6 +690,7 @@ module.exports = {
     inspectExitProtection,
     shouldRepairIssue,
     shouldAllowWatchdogMutation,
+    resolveReadOnlyWatchdogRepairReason,
     groupOrdersBySymbol,
     resolveBinanceKeys,
     loadWatchdogSnapshot,

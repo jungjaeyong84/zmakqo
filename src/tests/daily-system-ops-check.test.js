@@ -102,6 +102,16 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
       rows: [],
     },
   }), "utf8");
+  fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "binance_exit_integrity_cycle_latest.json"), JSON.stringify({
+    summary: {
+      status: "WARN",
+      live_gate_blocked: false,
+      live_issue_count: 0,
+      tp1_meta_sync_gap_n: 0,
+      tp1_meta_sync_gate: "PASS",
+      reasons: [],
+    },
+  }), "utf8");
   fs.writeFileSync(path.join(tmpRoot, "ops", "daily", "regime_lineage_gap_latest.json"), JSON.stringify({
     signals: { missing_n: 1, missing_rate: 0.1 },
     intents: { missing_n: 2, missing_rate: 0.2 },
@@ -143,6 +153,10 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
   const nativeTrailGap = dailySystemOpsCheck.__test.loadNativeTrailProtectionGapHealth({ repoRoot: tmpRoot });
   assert.strictEqual(nativeTrailGap.available, true);
   assert.strictEqual(nativeTrailGap.gap_count, 0);
+  const exitIntegrity = dailySystemOpsCheck.__test.loadExitIntegrityHealth({ repoRoot: tmpRoot });
+  assert.strictEqual(exitIntegrity.available, true);
+  assert.strictEqual(exitIntegrity.tp1_meta_sync_gap_n, 0);
+  assert.strictEqual(exitIntegrity.tp1_meta_sync_gate, "PASS");
   const regimeGap = dailySystemOpsCheck.__test.loadRegimeLineageGapHealth({ repoRoot: tmpRoot });
   assert.strictEqual(regimeGap.available, true);
   assert.strictEqual(regimeGap.signals_missing_n, 1);
@@ -193,6 +207,7 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
     trailRunnerFloorAudit: trailAudit,
     binanceExitQtyContractAudit: exitQtyAudit,
     nativeTrailProtectionGap: nativeTrailGap,
+    exitIntegrity,
     positionReadModelCutover: cutover,
   });
   assert.strictEqual(proceed.status, "진행");
@@ -217,6 +232,7 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
     trailRunnerFloorAudit: trailAudit,
     binanceExitQtyContractAudit: exitQtyAudit,
     nativeTrailProtectionGap: nativeTrailGap,
+    exitIntegrity,
     positionReadModelCutover: cutover,
   });
   assert.strictEqual(stopped.status, "중단");
@@ -245,6 +261,11 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
       gap_count: 2,
       top_symbols: [{ symbol: "ETHUSDT", count: 1 }],
     },
+    exit_integrity: {
+      available: true,
+      tp1_meta_sync_gap_n: 2,
+      tp1_meta_sync_gate: "BLOCK",
+    },
     regime_lineage_gap: regimeGap,
     position_writer_authority_24h: {
       occurrence_count: 3,
@@ -262,6 +283,7 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
   assert.ok(issueLines.some((line) => line.includes("signal regime missing 1건")));
   assert.ok(issueLines.some((line) => line.includes("intent regime missing 2건")));
   assert.ok(issueLines.some((line) => line.includes("native stop 누락 2건")));
+  assert.ok(issueLines.some((line) => line.includes("TP1 meta sync gap 2건")));
 
   const historicalExitQtyLines = dailySystemOpsCheck.__test.buildIssueLines({
     cost_ratio_pct: 0.05,
@@ -292,6 +314,11 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
       gap_count: 0,
       top_symbols: [],
     },
+    exit_integrity: {
+      available: true,
+      tp1_meta_sync_gap_n: 0,
+      tp1_meta_sync_gate: "PASS",
+    },
     regime_lineage_gap: {
       available: true,
       signals_missing_n: 0,
@@ -305,6 +332,7 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
   assert.ok(historicalExitQtyLines.some((line) => line.includes("과거 위반 4건은 backfill 정리됨")));
   assert.ok(historicalExitQtyLines.some((line) => line.includes("TOTAL_EXIT_OVER_100(3)")));
   assert.ok(historicalExitQtyLines.some((line) => line.includes("BTCUSDT(3)")));
+  assert.ok(historicalExitQtyLines.some((line) => line.includes("TP1 meta sync gap 없음")));
 
   const writerCandidates = dailySystemOpsCheck.__test.buildWriterAuthorityRemediationCandidates({
     top_symbols: [
@@ -337,6 +365,7 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
     },
     trailRunnerFloorAudit: trailAudit,
     binanceExitQtyContractAudit: exitQtyAudit,
+    exitIntegrity,
     positionReadModelCutover: cutover,
   });
   assert.strictEqual(historicalOnly.status, "진행");
@@ -363,6 +392,7 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
     },
     trailRunnerFloorAudit: trailAudit,
     binanceExitQtyContractAudit: exitQtyAudit,
+    exitIntegrity,
     positionReadModelCutover: cutover,
     activePositionCount: 0,
   });
@@ -390,6 +420,7 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
     },
     trailRunnerFloorAudit: trailAudit,
     binanceExitQtyContractAudit: exitQtyAudit,
+    exitIntegrity,
     positionReadModelCutover: cutover,
     activePositionCount: 1,
   });
@@ -433,6 +464,7 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
     },
     trailRunnerFloorAudit: trailAudit,
     binanceExitQtyContractAudit: { available: false },
+    exitIntegrity,
     positionReadModelCutover: cutover,
   });
   assert.strictEqual(missingExitQtyAuditBlocks.status, "보류");
@@ -454,6 +486,7 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
       qty_pct_non_positive_count: 0,
     },
     trailRunnerFloorAudit: trailAudit,
+    exitIntegrity,
     positionReadModelCutover: {
       available: true,
       latest_ready: false,
@@ -486,10 +519,39 @@ const dailySystemOpsCheck = require("../../scripts/daily-system-ops-check.js");
       live_bar_runner_violation_n: 2,
       live_bar_runner_violation_total_n: 4,
     },
+    exitIntegrity,
     positionReadModelCutover: cutover,
   });
   assert.strictEqual(trailFloorBlocked.status, "보류");
   assert.ok(trailFloorBlocked.reasons.includes("trailing floor 미해결 위반 2건"));
+
+  const tp1MetaSyncBlocked = dailySystemOpsCheck.__test.decideStatus({
+    netPnlPct: 0.8,
+    costRatioPct: 0.05,
+    errorCount: 0,
+    costLimitPct: 0.2,
+    lossStopPct: -1.5,
+    stopErrorCount: 2,
+    executionHealth: {
+      available: true,
+      signals_count: 1,
+      fills_count: 1,
+      firestore_dns_ok: true,
+      drop_tp1_pending_count: 0,
+      qty_pct_non_positive_count: 0,
+    },
+    trailRunnerFloorAudit: trailAudit,
+    binanceExitQtyContractAudit: exitQtyAudit,
+    nativeTrailProtectionGap: nativeTrailGap,
+    exitIntegrity: {
+      available: true,
+      tp1_meta_sync_gap_n: 3,
+      tp1_meta_sync_gate: "BLOCK",
+    },
+    positionReadModelCutover: cutover,
+  });
+  assert.strictEqual(tp1MetaSyncBlocked.status, "보류");
+  assert.ok(tp1MetaSyncBlocked.reasons.includes("TP1 meta sync gap 3건"));
 
   console.log("DAILY_SYSTEM_OPS_CHECK_TEST_OK");
 })();

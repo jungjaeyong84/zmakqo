@@ -7,7 +7,17 @@ function run() {
   assert.strictEqual(typeof __test.inspectExitProtection, "function");
   assert.strictEqual(typeof __test.isWatchdogTarget, "function");
   assert.strictEqual(typeof __test.shouldAllowWatchdogMutation, "function");
+  assert.strictEqual(typeof __test.resolveReadOnlyWatchdogRepairReason, "function");
   assert.strictEqual(__test.shouldAllowWatchdogMutation(), false);
+  assert.strictEqual(__test.resolveReadOnlyWatchdogRepairReason(), "REPAIR_REQUESTED_NON_AUTHORITY_LAYER");
+  assert.strictEqual(
+    __test.isWatchdogTarget({
+      position_state: "ACTIVE",
+      qty_base: 1,
+      meta: { simplified_exit_v2_enabled: true },
+    }),
+    true
+  );
 
   const betweenTp = __test.inspectExitProtection({
     symbol: "XRPUSDT",
@@ -37,6 +47,38 @@ function run() {
   });
   assert.strictEqual(betweenTp.stage, "BETWEEN_TP0_TP1");
   assert.ok(betweenTp.actionable_issue_codes.includes("TP1_ORDER_MISSING"));
+
+  const simplifiedPreTp1 = __test.inspectExitProtection({
+    symbol: "ADAUSDT",
+    internalPosition: {
+      exchange: "BINANCEFUT",
+      symbol: "ADAUSDT",
+      position_state: "ACTIVE",
+      position_side: "LONG",
+      qty_base: 1200,
+      avg_price: 1.2,
+      meta: {
+        simplified_exit_v2_enabled: true,
+        tp_p0_done: false,
+        tp_p1_done: false,
+        trail_active: false,
+        native_protection_refresh_status: "MISSING",
+        exit_rules_override: {
+          TP_P1_QTY: 0.5,
+          TP_P1: 0.0168,
+          SL: -0.0165,
+        },
+      },
+    },
+    externalPosition: { symbol: "ADAUSDT", positionAmt: "1200" },
+    openOrders: [],
+    algoOrders: [],
+  });
+  assert.strictEqual(simplifiedPreTp1.stage, "PRE_TP1");
+  assert.strictEqual(simplifiedPreTp1.simplified_exit_v2_enabled, true);
+  assert.ok(simplifiedPreTp1.actionable_issue_codes.includes("TP1_ORDER_MISSING"));
+  assert.ok(simplifiedPreTp1.actionable_issue_codes.includes("NATIVE_REFRESH_UNHEALTHY"));
+  assert.ok(!simplifiedPreTp1.actionable_issue_codes.includes("TP1_DONE_WITHOUT_TP0_DONE"));
 
   const trailing = __test.inspectExitProtection({
     symbol: "DOGEUSDT",
@@ -490,6 +532,62 @@ function run() {
     ],
   });
   assert.ok(runnerQtyMismatch.actionable_issue_codes.includes("RUNNER_REMAINING_QTY_MISMATCH"));
+
+  const simplifiedTrail = __test.inspectExitProtection({
+    symbol: "LINKUSDT",
+    internalPosition: {
+      exchange: "BINANCEFUT",
+      symbol: "LINKUSDT",
+      position_state: "ACTIVE",
+      position_side: "LONG",
+      qty_base: 50,
+      avg_price: 20,
+      leverage: 2,
+      meta: {
+        simplified_exit_v2_enabled: true,
+        tp_p0_done: false,
+        tp_p1_done: true,
+        trail_active: true,
+        runner_remaining_qty_abs: 50,
+        native_protection_refresh_status: "OK",
+        exit_rules_override: {
+          TP_P1_QTY: 0.5,
+          TP_P1: 0.0168,
+          RUNNER_MIN_PROFIT_PCT: 0.0168,
+          TRAIL_R_MULTIPLE: 0.6,
+          SL: -0.0165,
+        },
+      },
+    },
+    observation: {
+      trail_observation: {
+        runner_floor_stop: 20.5,
+        computed_trail_stop: 20.5,
+        trail_stop_by_r: 21.0,
+        chosen_stop_source: "RUNNER_FLOOR",
+        chosen_stop_price: 20.5,
+        native_stop_price: 20.5,
+        native_stop_order_id: "9001",
+        native_refresh_status: "OK",
+        runtime_eval_at_ms: 300,
+        source: "TICK_EXIT",
+      },
+    },
+    externalPosition: { symbol: "LINKUSDT", positionAmt: "50" },
+    openOrders: [],
+    algoOrders: [
+      {
+        symbol: "LINKUSDT",
+        side: "SELL",
+        type: "STOP_MARKET",
+        closePosition: true,
+        stopPrice: "20.5",
+        orderId: "9001",
+      },
+    ],
+  });
+  assert.strictEqual(simplifiedTrail.stage, "TRAIL");
+  assert.ok(!simplifiedTrail.actionable_issue_codes.includes("TP1_DONE_WITHOUT_TP0_DONE"));
 
   console.log("BINANCE_ACTIVE_EXIT_WATCHDOG_TEST_OK");
 }
