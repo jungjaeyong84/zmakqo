@@ -170,6 +170,123 @@ but keeps the dual-owner concept alive indefinitely.
 
 ---
 
+## New tickets added during the 2026-04-17 full re-audit (post-Phase-2)
+
+### Ticket P3-07 — Websocket disconnect > 60s drift repair
+
+**Why**: `binanceUserDataStream.js` reconnects every 10s but has no explicit
+drift-repair trigger when the disconnect persists beyond 60s / 5min. Position
+state can silently diverge from Binance during extended outages.
+
+**Scope**
+- Add a `USER_STREAM_DISCONNECT_DRIFT_THRESHOLD_MS` (default 180000, 3min).
+- On cumulative disconnect > threshold: kick `binancePositionReconciler` with
+  a forced full-resync; emit `user_stream_disconnect_drift_alert` operational
+  alert with the disconnect duration.
+- Track disconnect start/resume timestamps explicitly instead of relying on
+  the reconnect loop to recover.
+
+**Acceptance**: integration-style test simulating 5min disconnect → reconciler
+forced-sync invoked exactly once, alert emitted once.
+
+---
+
+### Ticket P3-08 — ML canary staleness must fail-closed by default
+
+**Why**: `mlServingRuntime.js` can return `blockNewEntries=false` when the
+canary doc is stale if `ML_SERVING_FAIL_CLOSED=0`. The name suggests the
+guard is on; the default behaviour should be fail-closed to match the rest
+of the stack.
+
+**Scope**
+- Change `ML_SERVING_FAIL_CLOSED` default to true.
+- Require an explicit `ML_SERVING_FAIL_CLOSED=0` in env to re-enable legacy
+  fail-open — with a startup warning printed.
+- Update `liveInferenceRouter` cache so that a transition from fresh→stale
+  is detected within the cache TTL (force refetch when stale).
+
+**Acceptance**: new test verifying missing/stale canary blocks new entries
+with the default env setting.
+
+---
+
+### Ticket P3-09 — Cloud Run auth / gate env hardening
+
+**Why**: Every Cloud Run service is deployed with `--allow-unauthenticated`
+(`cloudbuild.yaml` lines 59, 78, 98, 120). Combined with the CI env
+`EXIT_INTEGRITY_CI_NO_EXCHANGE_IO=1`, some gate validations are silently
+skipped in the same step that proves deploy readiness.
+
+**Scope**
+- Swap Cloud Run services that do not need public access off
+  `--allow-unauthenticated` (internal-only endpoints).
+- Document every validation that is skipped under
+  `EXIT_INTEGRITY_CI_NO_EXCHANGE_IO=1` and add an explicit counter in the
+  gate summary so operators can see what didn't run.
+
+**Acceptance**: gate artefact includes `skipped_validation_families` array
+and CI refuses to pass if that array is non-empty for publicly deployed
+services.
+
+---
+
+### Ticket P3-10 — Tick exit fast-lane / normal-lane concurrency lock
+
+**Why**: `TICK_EXIT_FASTLANE_ENABLED=1` (local dev) and `=0` (exit-worker
+Cloud Run) — but local runs can race. No symbol-level lock is held across
+lanes when placing native protection orders.
+
+**Scope**
+- Reuse the existing `acquireBinanceNativeRefreshLease` semantics at the
+  tick-exit dispatch layer so fast-lane and normal-lane share a single
+  writer lease per symbol.
+- Add a test asserting that two concurrent dispatches for the same symbol
+  produce exactly one writer call.
+
+---
+
+### Ticket P3-11 — operationalGuardRuntime stale fail-closed
+
+**Why**: Same pattern as P3-08 — `OPERATIONAL_GUARD_FAIL_CLOSED=0` allows
+entries despite stale ops doc (>6h old).
+
+**Scope**: flip default to fail-closed; add startup warning when operator
+explicitly opts out.
+
+---
+
+### Ticket P3-12 — Drop reason rendering on dashboard
+
+**Why**: `src/views/state.ejs` does not render `drop_reason_code` /
+`drop_reason_code_raw`. Silent drops are invisible to operators.
+
+**Scope**: add a collapsible "Recent drops" panel that reads from
+`signals_dropped` (last 24h) and shows reason, family, and execution mode.
+
+---
+
+### Ticket P3-13 — MIN_ORDER_EXCEEDS_BUDGET silent null floor
+
+**Why**: `resolveEntryBudgetGuardMinQtyFloor` returns null when the floor
+cannot be applied; the caller continues without the guard reason being
+surfaced.
+
+**Scope**: return a structured `{ok:false, reason:"BUDGET_FLOOR_INFEASIBLE"}`
+instead of null so the authority layer can turn it into a drop reason.
+
+---
+
+### Ticket P3-14 — Allocator quarantine epoch-release audit log
+
+**Why**: `ALLOCATOR_QUARANTINE_EPOCH_RELEASE_ENABLED=1` (default) can silently
+promote a quarantine → soft reduce. Operators may not notice.
+
+**Scope**: emit `allocator_quarantine_epoch_release_applied` operational log
+every time the epoch-release path is taken, with a rate limiter (one per
+market per day).
+
+---
+
 ## Dependency graph
 
 ```
