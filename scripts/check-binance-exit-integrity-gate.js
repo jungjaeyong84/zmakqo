@@ -20,6 +20,15 @@ function buildFailureReasons(summary = {}, { cycleResult = null } = {}) {
     reasons.push(`STATUS_NOT_OK:${statusUpper}`);
   }
   if (toCount(summary.script_failure_n) > 0) reasons.push("SCRIPT_FAILURE");
+  if (toCount(summary.skipped_validation_family_n) > 0) {
+    // P3-09: when the cycle runs with EXIT_INTEGRITY_CI_NO_EXCHANGE_IO=1 a
+    // subset of validation families is silently skipped. The deploy gate must
+    // not treat that as pass.
+    const fams = Array.isArray(summary.skipped_validation_families)
+      ? summary.skipped_validation_families.map((f) => String(f && f.family || "UNKNOWN").toUpperCase()).join(",")
+      : "UNKNOWN";
+    reasons.push(`SKIPPED_VALIDATION_FAMILY:${fams}`);
+  }
   if (summary.live_gate_blocked === true) reasons.push("LIVE_GATE_BLOCKED");
   if (String(summary.canonical_exit_stage_gate || "").trim().toUpperCase() === "BLOCK") reasons.push("CANONICAL_EXIT_STAGE_BLOCK");
   if (String(summary.stop_divergence_gate || "").trim().toUpperCase() === "BLOCK") reasons.push("STOP_DIVERGENCE_BLOCK");

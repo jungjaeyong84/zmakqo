@@ -54,6 +54,16 @@ function wrapFirestoreWithPaperNamespace(db, paperNamespace) {
   });
 }
 
+// P3-05 emulator support.
+// When FIRESTORE_EMULATOR_HOST is set (host:port) we skip Application
+// Default Credentials and talk to the local emulator. This lets CI gates
+// (check-binance-exit-integrity-gate.js) run against a sealed fixture
+// instead of production Firestore.
+function isFirestoreEmulatorConfigured() {
+  const raw = String(process.env.FIRESTORE_EMULATOR_HOST || "").trim();
+  return raw.length > 0;
+}
+
 function initFirestoreOnce() {
   if (_db) return _db;
 
@@ -63,10 +73,20 @@ function initFirestoreOnce() {
     return _db;
   }
 
-  // 인증: ADC 우선 (GOOGLE_APPLICATION_CREDENTIALS가 있으면 ADC가 그 파일을 사용)
-  admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-  });
+  if (isFirestoreEmulatorConfigured()) {
+    const projectId = String(
+      process.env.GCLOUD_PROJECT
+      || process.env.FIREBASE_PROJECT_ID
+      || process.env.GOOGLE_CLOUD_PROJECT
+      || "donbeolja-emulator"
+    ).trim();
+    admin.initializeApp({ projectId });
+  } else {
+    // 인증: ADC 우선 (GOOGLE_APPLICATION_CREDENTIALS가 있으면 ADC가 그 파일을 사용)
+    admin.initializeApp({
+      credential: admin.credential.applicationDefault(),
+    });
+  }
 
   _db = admin.firestore();
 
@@ -152,8 +172,10 @@ module.exports = {
   idemExists,
   markIdem,
   addTrade,
+  isFirestoreEmulatorConfigured,
   __test: {
     normalizePaperNamespace,
     resolvePaperCollectionName,
+    isFirestoreEmulatorConfigured,
   },
 };

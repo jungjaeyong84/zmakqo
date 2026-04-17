@@ -619,6 +619,29 @@ function createStateRoutes() {
           top_ai_reasons: topAiReasonsLocal,
         };
       }).sort((a, b) => b.total - a.total);
+      // P3-12: expose individual drops (last N sorted newest-first) so ops
+      // can diagnose a silent drop without cross-referencing aggregate chips.
+      // Each row carries only the fields the UI needs so we don't leak raw
+      // feature bags or credentials into the rendered HTML.
+      const recentDropRows = [...dropsRecent]
+        .sort((a, b) => {
+          const am = toMsSafe(a.created_at) ?? toMsSafe(a.created_kst) ?? toMsSafe(a.bar_close_time_utc_ms) ?? 0;
+          const bm = toMsSafe(b.created_at) ?? toMsSafe(b.created_kst) ?? toMsSafe(b.bar_close_time_utc_ms) ?? 0;
+          return bm - am;
+        })
+        .slice(0, 20)
+        .map((d) => ({
+          created_at: d.created_at || d.created_kst || null,
+          symbol: d.symbol_or_pair_id || d.symbol || d.market || null,
+          event: d.event || null,
+          side: d.side || null,
+          reason: String(d.drop_reason_code || d.reason || "UNKNOWN").toUpperCase().trim() || "UNKNOWN",
+          reason_family: String(d.reason_family || "UNKNOWN").toUpperCase().trim() || "UNKNOWN",
+          execution_mode: String(d.execution_mode || "").toUpperCase() || null,
+          source: String(d.source || "").toUpperCase() || null,
+          signal_id: d.signal_id || d.signal_doc_id || null,
+          bar_close_time_utc_ms: toMsSafe(d.bar_close_time_utc_ms) || null,
+        }));
       const dropSummary = {
         window_hours: dropWindowHours,
         total: dropsRecent.length,
@@ -628,6 +651,7 @@ function createStateRoutes() {
         top_reason_families: topReasonFamilies,
         top_ai_reasons: topAiReasons,
         by_market: dropByMarketSummary,
+        recent_rows: recentDropRows,
       };
 
       const barsSnap = await db.collection("bars_snapshots")

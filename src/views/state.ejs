@@ -641,6 +641,33 @@
             <div class="empty-state-text">최근 건너뜀이 없습니다.</div>
           </div>
         <% } %>
+        <%
+          // P3-12: individual drop rows with explicit reason codes so ops can
+          // diagnose a silent drop without parsing aggregate chips.
+          const recentDropRows = Array.isArray(dropSummary && dropSummary.recent_rows)
+            ? dropSummary.recent_rows
+            : [];
+        %>
+        <% if (recentDropRows.length) { %>
+          <div class="card-subtitle" style="margin-top:14px; margin-bottom:6px;">최근 건너뜀 상세</div>
+          <div class="drop-rows-detail">
+            <% recentDropRows.forEach((row) => { %>
+              <div class="drop-row">
+                <div class="rlabel">
+                  <%= row.symbol ? displaySymbol(row.symbol) : '-' %>
+                  <% if (row.side) { %><span class="chip sm"><%= String(row.side).toUpperCase() %></span><% } %>
+                  <% if (row.execution_mode) { %><span class="chip sm"><%= row.execution_mode %></span><% } %>
+                </div>
+                <strong><%= row.reason %></strong>
+                <div class="rmeta">
+                  <%= row.reason_family %>
+                  <% if (row.event) { %> · <%= row.event %><% } %>
+                  <% if (row.created_at) { %> · <%= row.created_at %><% } %>
+                </div>
+              </div>
+            <% }) %>
+          </div>
+        <% } %>
       </div>
     </div>
   </div>

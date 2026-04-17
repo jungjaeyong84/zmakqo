@@ -455,6 +455,10 @@ function buildSummary(report = {}) {
   const duplicationIssueN = duplicationLiveGroupN > 0 ? duplicationLiveGroupN : fillSyncDuplicateGroupN;
   const scriptFailures = collectScriptFailures(report);
   const scriptFailureN = scriptFailures.length;
+  const skippedValidationFamilies = Array.isArray(report.skipped_validation_families)
+    ? report.skipped_validation_families
+    : [];
+  const skippedValidationFamilyN = skippedValidationFamilies.length;
   const liveIssueCount = afterGap + watchdogIssueSymbolN + exitQtyLiveIssueChainN + trailFloorLiveViolationN + duplicationIssueN + fillSyncAlertEventIssueN + tradeExecutionAlertMissingFillN + authorityActionableLiveIssuePositionN + canonicalExitStageFailN + simplifiedExitV2LiveFlowActionableSymbolN + tp1MetaSyncGapN;
   const reasons = [];
   if (scriptFailureN > 0) reasons.push(`script failure ${scriptFailureN}건`);
@@ -471,10 +475,15 @@ function buildSummary(report = {}) {
   if (!canonicalTransitionBackfillOk) reasons.push("canonical exit transition backfill failed");
   if (tp1MetaSyncGapN > 0) reasons.push(`tp1 meta sync gap ${tp1MetaSyncGapN}건`);
   if (stopDivergenceSymbolN > 0) reasons.push(`stop divergence symbol ${stopDivergenceSymbolN}건`);
+  if (skippedValidationFamilyN > 0) {
+    reasons.push(`skipped validation families ${skippedValidationFamilyN}개 (${skippedValidationFamilies.map((f) => f.family || "UNKNOWN").join(", ")})`);
+  }
   const liveGateBlocked = scriptFailureN > 0 || liveIssueCount > 0 || !canonicalTransitionBackfillOk;
   return {
     status: liveGateBlocked ? "WARN" : "OK",
     live_gate_blocked: liveGateBlocked,
+    skipped_validation_family_n: skippedValidationFamilyN,
+    skipped_validation_families: skippedValidationFamilies,
     script_failure_n: scriptFailureN,
     script_failures: scriptFailures,
     live_issue_count: liveIssueCount,
@@ -833,6 +842,29 @@ async function runBinanceExitIntegrityCycle({
   ]);
   const authorityLiveBoard = await runScriptStep("report-binance-exit-authority-live-board.js");
 
+  // P3-09: enumerate which validation families were skipped under the current
+  // CI knob so ops (and the deploy gate) can refuse to treat a skip as pass.
+  const skippedValidationFamilies = (() => {
+    const skipped = [];
+    if (disableExchangeIo) {
+      skipped.push({
+        family: "EXCHANGE_IO",
+        reason: "EXIT_INTEGRITY_CI_NO_EXCHANGE_IO=1",
+        affected: [
+          "native_trail_gap_before",
+          "active_exit_watchdog",
+          "self_heal",
+          "native_trail_gap_after",
+          "canonical_exit_transition_backfill",
+          "binance_canonical_exit_stage_qa",
+          "simplified_exit_v2_live_flow",
+          "simplified_exit_v2_tp1_drilldown",
+        ],
+      });
+    }
+    return skipped;
+  })();
+
   const report = {
     ok: true,
     generated_at: new Date().toISOString(),
@@ -840,6 +872,7 @@ async function runBinanceExitIntegrityCycle({
     apply,
     profile: cycleProfile,
     exchange_io_disabled: disableExchangeIo,
+    skipped_validation_families: skippedValidationFamilies,
     collection_cache: collectionCacheMeta || null,
     active_exit_stage_backfill: stageBackfill,
     active_exit_watchdog: activeExitWatchdog,
