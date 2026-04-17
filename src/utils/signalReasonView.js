@@ -54,6 +54,16 @@ function classifySignalReasonStage(reason) {
     };
   }
 
+  if (code.startsWith("TP1_FAIL_CLOSED_")) {
+    return {
+      step: null,
+      key: "TP1_FAIL_CLOSED",
+      label: "TP1 보호 격리",
+      text: "TP1 보호 격리",
+      code,
+    };
+  }
+
   if (code.startsWith("OPENCLAW_EXECUTOR_")) {
     return {
       step: null,
@@ -220,6 +230,7 @@ function explainSignalReason(reason) {
     LIVE_POLICY_PLAN_HOLD_BLOCK: "현재 운영 계획이 HOLD 상태라 진입을 보류했습니다.",
     LIVE_POLICY_PLAN_WATCH_ONLY_BLOCK: "현재 운영 계획이 WATCH_ONLY 상태라 진입을 보류했습니다.",
     LIVE_POLICY_QUARANTINE_HARD_BLOCK: "현재 시장이 격리(quarantine) 상태라 진입을 보류했습니다.",
+    TP1_FAIL_CLOSED_REPEAT_QUARANTINE: "TP1 보호주문 또는 메타 동기화 실패가 반복되어 해당 시장을 일시 격리하고 신규 진입을 보류했습니다.",
     LIVE_POLICY_EXECUTION_QUALITY_HARD_BLOCK: "최근 실행 품질이 나빠 진입을 보류했습니다.",
     LIVE_POLICY_EXECUTION_QUALITY_GLOBAL_HARD_BLOCK: "전체 실행 품질 경보가 걸려 진입을 보류했습니다.",
     LINEAGE_SLO_REPORT_STALE: "참조한 추적 리포트가 오래돼 안전하게 진입을 보류했습니다.",
@@ -279,6 +290,9 @@ function explainSignalReason(reason) {
   }
   if (code.startsWith("LIVE_RESCUE_ADD_")) {
     return "구조보강 ADD 운영 가드에서 현재 조건상 추가 진입을 보류했습니다.";
+  }
+  if (code.startsWith("TP1_FAIL_CLOSED_")) {
+    return "TP1 보호주문 또는 메타 동기화 실패가 반복되어 해당 시장을 일시 격리하고 신규 진입을 보류했습니다.";
   }
   if (code.startsWith("LIVE_POLICY_")) {
     return "라이브 운영 정책에서 현재 조건상 진입을 보류했습니다.";
