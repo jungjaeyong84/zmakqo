@@ -2,6 +2,7 @@
 /* eslint-disable no-console */
 "use strict";
 
+const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 const {
@@ -20,6 +21,84 @@ loadLocalEnv();
 const REPO_ROOT = path.resolve(__dirname, "..");
 const REPORT_LATEST_JSON = path.join(OPS_DAILY_DIR, "openclaw_hourly_cycle_latest.json");
 const REPORT_LATEST_MD = path.join(OPS_DAILY_DIR, "openclaw_hourly_cycle_latest.md");
+const EXIT_INTEGRITY_REPORT_LATEST_JSON = path.join(OPS_DAILY_DIR, "binance_exit_integrity_cycle_latest.json");
+
+function envBool(value, fallback = false) {
+  const normalized = String(value == null ? "" : value).trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (["1", "true", "yes", "y", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "n", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
+function resolveExitIntegrityMinIntervalMs() {
+  const explicitMs = Number(process.env.OPENCLAW_EXIT_INTEGRITY_CYCLE_MIN_INTERVAL_MS || "");
+  if (Number.isFinite(explicitMs) && explicitMs >= 0) return Math.trunc(explicitMs);
+  const explicitHours = Number(process.env.OPENCLAW_EXIT_INTEGRITY_CYCLE_MIN_INTERVAL_HOURS || "");
+  if (Number.isFinite(explicitHours) && explicitHours >= 0) return Math.trunc(explicitHours * 60 * 60 * 1000);
+  return 4 * 60 * 60 * 1000;
+}
+
+function readExitIntegrityCycleGeneratedAtMs(reportPath = EXIT_INTEGRITY_REPORT_LATEST_JSON) {
+  try {
+    const raw = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+    const candidate = raw && (raw.generated_at || raw.generated_at_iso || raw.generated_at_kst || null);
+    const parsed = Date.parse(String(candidate || ""));
+    if (Number.isFinite(parsed)) return parsed;
+  } catch (_err) {
+    // ignore json parse errors and fall back to mtime
+  }
+  try {
+    const stat = fs.statSync(reportPath);
+    if (Number.isFinite(stat.mtimeMs)) return stat.mtimeMs;
+  } catch (_err) {
+    // missing file
+  }
+  return null;
+}
+
+function shouldRunExitIntegrityCycle({
+  enabled = true,
+  force = false,
+  nowMs = Date.now(),
+  lastRunMs = null,
+  minIntervalMs = resolveExitIntegrityMinIntervalMs(),
+} = {}) {
+  if (enabled !== true) {
+    return {
+      shouldRun: false,
+      reason: "EXIT_INTEGRITY_CYCLE_DISABLED",
+      wait_ms: null,
+    };
+  }
+  if (force === true) {
+    return {
+      shouldRun: true,
+      reason: "EXIT_INTEGRITY_CYCLE_FORCED",
+      wait_ms: 0,
+    };
+  }
+  if (!Number.isFinite(lastRunMs) || !Number.isFinite(minIntervalMs) || minIntervalMs <= 0) {
+    return {
+      shouldRun: true,
+      reason: "EXIT_INTEGRITY_CYCLE_READY",
+      wait_ms: 0,
+    };
+  }
+  const elapsedMs = nowMs - lastRunMs;
+  if (elapsedMs >= minIntervalMs) {
+    return {
+      shouldRun: true,
+      reason: "EXIT_INTEGRITY_CYCLE_READY",
+      wait_ms: 0,
+    };
+  }
+  return {
+    shouldRun: false,
+    reason: "EXIT_INTEGRITY_CYCLE_THROTTLED",
+    wait_ms: Math.max(0, minIntervalMs - elapsedMs),
+  };
+}
 
 function extractJson(stdout = "") {
   const lines = String(stdout || "").trim().split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -156,11 +235,35 @@ function buildStepRegistry() {
       depends_on: ["signal_lineage_health"],
       produces_artifact: "binance_exit_integrity_cycle_latest.json",
       run() {
+        const enabled = envBool(
+          process.env.OPENCLAW_EXIT_INTEGRITY_CYCLE_ENABLED != null
+            ? process.env.OPENCLAW_EXIT_INTEGRITY_CYCLE_ENABLED
+            : process.env.EXIT_INTEGRITY_CYCLE_ENABLED,
+          true
+        );
+        const force = envBool(process.env.OPENCLAW_EXIT_INTEGRITY_CYCLE_FORCE, false);
+        const minIntervalMs = resolveExitIntegrityMinIntervalMs();
+        const cadence = shouldRunExitIntegrityCycle({
+          enabled,
+          force,
+          lastRunMs: readExitIntegrityCycleGeneratedAtMs(),
+          minIntervalMs,
+        });
+        if (cadence.shouldRun !== true) {
+          return {
+            status: "SKIP",
+            summary: `${cadence.reason} wait_ms=${cadence.wait_ms == null ? "N/A" : cadence.wait_ms}`,
+            reason: cadence.reason,
+          };
+        }
         const res = runScript(this.script, {
           APPLY: String(process.env.OPENCLAW_EXIT_INTEGRITY_CYCLE_APPLY || "0"),
+          EXIT_INTEGRITY_SKIP_WHEN_NO_ACTIVE_POSITIONS: String(
+            process.env.EXIT_INTEGRITY_SKIP_WHEN_NO_ACTIVE_POSITIONS || "1"
+          ),
         });
         return {
-          status: res.ok ? "PASS" : "FAIL",
+          status: res.ok ? ((res.parsed && res.parsed.skipped === true) ? "SKIP" : "PASS") : "FAIL",
           summary: res.parsed && (`status=${res.parsed.status || "N/A"} live_issue_count=${res.parsed.summary && res.parsed.summary.live_issue_count != null ? res.parsed.summary.live_issue_count : "N/A"}`) || "N/A",
           reason: res.parsed && (res.parsed.status || res.parsed.reason) || (!res.ok ? `EXIT_${res.exit_code}` : null),
         };
@@ -376,6 +479,9 @@ if (require.main === module) {
       buildStepRegistry,
       toStepResult,
       executeStep,
+      readExitIntegrityCycleGeneratedAtMs,
+      resolveExitIntegrityMinIntervalMs,
+      shouldRunExitIntegrityCycle,
     },
   };
 }

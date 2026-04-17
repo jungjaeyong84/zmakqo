@@ -1,6 +1,9 @@
 "use strict";
 
 const assert = require("assert");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 const { __test } = require("../../scripts/automation-openclaw-hourly-cycle");
 const { __test: trailRunnerFloorAuditTest } = require("../../scripts/report-trail-runner-floor-audit");
 
@@ -98,6 +101,55 @@ const { __test: trailRunnerFloorAuditTest } = require("../../scripts/report-trai
   assert.strictEqual(executed.run_id, "run-2");
   assert.strictEqual(executed.reason, "INLINE_DONE");
   assert.ok(Number.isFinite(executed.duration_ms));
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hourly-cycle-"));
+  const reportPath = path.join(tmpDir, "binance_exit_integrity_cycle_latest.json");
+  fs.writeFileSync(reportPath, `${JSON.stringify({ generated_at: "2026-04-17T00:00:00.000Z" })}\n`, "utf8");
+  assert.strictEqual(
+    __test.readExitIntegrityCycleGeneratedAtMs(reportPath),
+    Date.parse("2026-04-17T00:00:00.000Z")
+  );
+  assert.deepStrictEqual(
+    __test.shouldRunExitIntegrityCycle({
+      enabled: false,
+      nowMs: Date.parse("2026-04-17T04:00:00.000Z"),
+      lastRunMs: Date.parse("2026-04-17T00:00:00.000Z"),
+      minIntervalMs: 4 * 60 * 60 * 1000,
+    }),
+    {
+      shouldRun: false,
+      reason: "EXIT_INTEGRITY_CYCLE_DISABLED",
+      wait_ms: null,
+    }
+  );
+  assert.deepStrictEqual(
+    __test.shouldRunExitIntegrityCycle({
+      enabled: true,
+      force: false,
+      nowMs: Date.parse("2026-04-17T02:00:00.000Z"),
+      lastRunMs: Date.parse("2026-04-17T00:00:00.000Z"),
+      minIntervalMs: 4 * 60 * 60 * 1000,
+    }),
+    {
+      shouldRun: false,
+      reason: "EXIT_INTEGRITY_CYCLE_THROTTLED",
+      wait_ms: 2 * 60 * 60 * 1000,
+    }
+  );
+  assert.deepStrictEqual(
+    __test.shouldRunExitIntegrityCycle({
+      enabled: true,
+      force: true,
+      nowMs: Date.parse("2026-04-17T02:00:00.000Z"),
+      lastRunMs: Date.parse("2026-04-17T00:00:00.000Z"),
+      minIntervalMs: 4 * 60 * 60 * 1000,
+    }),
+    {
+      shouldRun: true,
+      reason: "EXIT_INTEGRITY_CYCLE_FORCED",
+      wait_ms: 0,
+    }
+  );
 
   const cliResult = trailRunnerFloorAuditTest.buildCliResult(
     {

@@ -4,6 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
+const { getFirestore } = require("../src/storage/firestore");
 const { runBinanceLiveStateSelfHeal } = require("../src/services/binanceLiveStateSelfHeal");
 const { runBinanceActiveExitWatchdog } = require("../src/services/binanceActiveExitWatchdog");
 const { STOP_DIVERGENCE_CODES } = require("../src/utils/exitIntegrityPolicy");
@@ -163,6 +164,7 @@ function collectScriptFailures(report = {}) {
     ["trail_runner_floor_live_separation", report.trail_runner_floor_live_separation],
     ["binance_exit_authority_live_board", report.binance_exit_authority_live_board],
     ["binance_canonical_exit_stage_qa", report.binance_canonical_exit_stage_qa],
+    ["simplified_exit_v2_live_flow", report.simplified_exit_v2_live_flow],
     ["simplified_exit_v2_tp1_drilldown", report.simplified_exit_v2_tp1_drilldown],
   ];
   const failures = [];
@@ -238,6 +240,8 @@ function buildMarkdown(report = {}) {
   lines.push(`- canonical_exit_stage_gate: ${summary.canonical_exit_stage_gate || "N/A"}`);
   lines.push(`- canonical_transition_backfill_ok: ${summary.canonical_transition_backfill_ok === true ? "YES" : "NO"}`);
   lines.push(`- canonical_transition_backfill_created_transition_n: ${summary.canonical_transition_backfill_created_transition_n ?? "N/A"}`);
+  lines.push(`- simplified_exit_v2_live_flow_actionable_symbol_n: ${summary.simplified_exit_v2_live_flow_actionable_symbol_n ?? "N/A"}`);
+  lines.push(`- simplified_exit_v2_live_flow_gate: ${summary.simplified_exit_v2_live_flow_gate || "N/A"}`);
   lines.push(`- tp1_meta_sync_gap_n: ${summary.tp1_meta_sync_gap_n ?? "N/A"}`);
   lines.push(`- tp1_meta_sync_gate: ${summary.tp1_meta_sync_gate || "N/A"}`);
   lines.push(`- stop_divergence_symbol_n: ${summary.stop_divergence_symbol_n ?? "N/A"}`);
@@ -319,12 +323,13 @@ function buildSummary(report = {}) {
   const canonicalExitStageFailN = Number(report.binance_canonical_exit_stage_qa && report.binance_canonical_exit_stage_qa.parsed && report.binance_canonical_exit_stage_qa.parsed.fail_n || 0);
   const canonicalTransitionBackfillOk = !!(report.canonical_exit_transition_backfill && report.canonical_exit_transition_backfill.ok === true);
   const canonicalTransitionBackfillCreatedTransitionN = Number(report.canonical_exit_transition_backfill && report.canonical_exit_transition_backfill.parsed && report.canonical_exit_transition_backfill.parsed.created_transition_n || 0);
+  const simplifiedExitV2LiveFlowActionableSymbolN = Number(report.simplified_exit_v2_live_flow && report.simplified_exit_v2_live_flow.parsed && report.simplified_exit_v2_live_flow.parsed.actionable_symbol_n || 0);
   const tp1MetaSyncGapN = countTp1MetaSyncGapIssues(report.simplified_exit_v2_tp1_drilldown || {});
   const stopDivergenceSymbolN = countStopDivergenceSymbols(report.active_exit_watchdog || {});
   const duplicationIssueN = duplicationLiveGroupN > 0 ? duplicationLiveGroupN : fillSyncDuplicateGroupN;
   const scriptFailures = collectScriptFailures(report);
   const scriptFailureN = scriptFailures.length;
-  const liveIssueCount = afterGap + watchdogIssueSymbolN + exitQtyLiveIssueChainN + trailFloorLiveViolationN + duplicationIssueN + fillSyncAlertEventIssueN + tradeExecutionAlertMissingFillN + authorityActionableLiveIssuePositionN + canonicalExitStageFailN + tp1MetaSyncGapN;
+  const liveIssueCount = afterGap + watchdogIssueSymbolN + exitQtyLiveIssueChainN + trailFloorLiveViolationN + duplicationIssueN + fillSyncAlertEventIssueN + tradeExecutionAlertMissingFillN + authorityActionableLiveIssuePositionN + canonicalExitStageFailN + simplifiedExitV2LiveFlowActionableSymbolN + tp1MetaSyncGapN;
   const reasons = [];
   if (scriptFailureN > 0) reasons.push(`script failure ${scriptFailureN}건`);
   if (afterGap > 0) reasons.push(`native trail protection gap ${afterGap}건`);
@@ -336,6 +341,7 @@ function buildSummary(report = {}) {
   if (tradeExecutionAlertMissingFillN > 0) reasons.push(`trade execution alert missing fill ${tradeExecutionAlertMissingFillN}건`);
   if (authorityActionableLiveIssuePositionN > 0) reasons.push(`authority actionable issue position ${authorityActionableLiveIssuePositionN}건`);
   if (canonicalExitStageFailN > 0) reasons.push(`canonical exit stage fail ${canonicalExitStageFailN}건`);
+  if (simplifiedExitV2LiveFlowActionableSymbolN > 0) reasons.push(`simplified exit v2 live flow actionable symbol ${simplifiedExitV2LiveFlowActionableSymbolN}건`);
   if (!canonicalTransitionBackfillOk) reasons.push("canonical exit transition backfill failed");
   if (tp1MetaSyncGapN > 0) reasons.push(`tp1 meta sync gap ${tp1MetaSyncGapN}건`);
   if (stopDivergenceSymbolN > 0) reasons.push(`stop divergence symbol ${stopDivergenceSymbolN}건`);
@@ -368,12 +374,134 @@ function buildSummary(report = {}) {
     canonical_exit_stage_gate: canonicalExitStageFailN > 0 ? "BLOCK" : "PASS",
     canonical_transition_backfill_ok: canonicalTransitionBackfillOk,
     canonical_transition_backfill_created_transition_n: canonicalTransitionBackfillCreatedTransitionN,
+    simplified_exit_v2_live_flow_actionable_symbol_n: simplifiedExitV2LiveFlowActionableSymbolN,
+    simplified_exit_v2_live_flow_gate: simplifiedExitV2LiveFlowActionableSymbolN > 0 ? "BLOCK" : "PASS",
     tp1_meta_sync_gap_n: tp1MetaSyncGapN,
     tp1_meta_sync_gate: tp1MetaSyncGapN > 0 ? "BLOCK" : "PASS",
     stop_divergence_symbol_n: stopDivergenceSymbolN,
     stop_divergence_gate: stopDivergenceSymbolN > 0 ? "BLOCK" : "PASS",
     reasons,
   };
+}
+
+function isNonZeroPosition(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && Math.abs(number) > 1e-12;
+}
+
+function isActivePositionRow(row = {}) {
+  if (!row || typeof row !== "object") return false;
+  if (row.closed === true || row.is_closed === true) return false;
+  const stage = String(row.stage || row.exit_stage || row.position_stage || row.lifecycle_stage || "").trim().toUpperCase();
+  if (["CLOSED", "EXITED", "FLAT", "DONE"].includes(stage)) return false;
+  const status = String(row.status || row.position_status || "").trim().toUpperCase();
+  if (["CLOSED", "EXITED", "FLAT"].includes(status)) return false;
+  const qtyFields = [
+    "runner_remaining_abs",
+    "remaining_qty",
+    "remaining_qty_abs",
+    "qty",
+    "quantity",
+    "size",
+    "position_qty",
+    "position_amt",
+    "net_qty",
+    "contracts",
+    "base_size",
+  ];
+  if (qtyFields.some((key) => isNonZeroPosition(row[key]))) return true;
+  return ["OPEN", "ACTIVE", "PARTIAL", "TP0", "TP1", "TRAIL"].includes(stage)
+    || ["OPEN", "ACTIVE", "PARTIAL"].includes(status);
+}
+
+async function listRawExchangePositions({
+  exchange,
+  limit = 25,
+} = {}) {
+  const db = getFirestore();
+  let query = db.collection("positions_paper").where("exchange", "==", String(exchange || "").trim().toUpperCase());
+  const normalizedLimit = Number.isFinite(Number(limit)) && Number(limit) > 0
+    ? Math.trunc(Number(limit))
+    : 25;
+  if (normalizedLimit > 0) query = query.limit(normalizedLimit);
+  const snap = await query.get();
+  const rows = [];
+  snap.forEach((doc) => {
+    rows.push({ id: doc.id, ...(doc.data() || {}) });
+  });
+  return rows;
+}
+
+function buildSkippedSummary(reason, extra = {}) {
+  return {
+    status: "SKIP",
+    live_gate_blocked: false,
+    script_failure_n: 0,
+    script_failures: [],
+    live_issue_count: 0,
+    native_gap_before: 0,
+    native_gap_after: 0,
+    stage_issue_symbol_n: 0,
+    watchdog_issue_symbol_n: 0,
+    watchdog_repaired_symbol_n: 0,
+    exit_qty_live_issue_chain_n: 0,
+    trail_floor_live_violation_n: 0,
+    fill_sync_duplicate_group_n: 0,
+    fill_sync_alert_event_issue_n: 0,
+    trade_execution_alert_missing_fill_n: 0,
+    trade_execution_alert_missing_fill_total_n: 0,
+    trade_execution_alert_missing_fill_non_actionable_n: 0,
+    trade_execution_alert_missing_fill_raw_total_n: 0,
+    trade_execution_alert_coverage_ready: false,
+    duplication_live_group_n: 0,
+    authority_live_issue_position_n: 0,
+    authority_actionable_live_issue_position_n: 0,
+    authority_artifact_only_live_issue_position_n: 0,
+    canonical_exit_stage_fail_n: 0,
+    canonical_exit_stage_gate: "PASS",
+    canonical_transition_backfill_ok: true,
+    canonical_transition_backfill_created_transition_n: 0,
+    simplified_exit_v2_live_flow_actionable_symbol_n: 0,
+    simplified_exit_v2_live_flow_gate: "PASS",
+    tp1_meta_sync_gap_n: 0,
+    tp1_meta_sync_gate: "PASS",
+    stop_divergence_symbol_n: 0,
+    stop_divergence_gate: "PASS",
+    reasons: [reason],
+    skip_reason: reason,
+    ...extra,
+  };
+}
+
+function buildSkippedCycleReport({
+  exchange,
+  apply,
+  disableExchangeIo,
+  reason,
+  extraSummary = {},
+} = {}) {
+  const generatedAt = new Date().toISOString();
+  const summary = buildSkippedSummary(reason, extraSummary);
+  return {
+    ok: true,
+    skipped: true,
+    generated_at: generatedAt,
+    exchange,
+    apply,
+    exchange_io_disabled: disableExchangeIo === true,
+    summary,
+    ...summary,
+  };
+}
+
+function writeCycleArtifacts(report, opsDailyDir) {
+  const latestJson = path.join(opsDailyDir, "binance_exit_integrity_cycle_latest.json");
+  const latestMd = path.join(opsDailyDir, "binance_exit_integrity_cycle_latest.md");
+  const datedJson = path.join(opsDailyDir, `${isoDate()}_binance_exit_integrity_cycle.json`);
+  fs.writeFileSync(latestJson, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  fs.writeFileSync(datedJson, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  fs.writeFileSync(latestMd, `${buildMarkdown(report)}\n`, "utf8");
+  return { latestJson, latestMd };
 }
 
 async function runBinanceExitIntegrityCycle({
@@ -385,8 +513,64 @@ async function runBinanceExitIntegrityCycle({
   selfHeal = runBinanceLiveStateSelfHeal,
   runScriptImpl = runScript,
   disableExchangeIo = envBool(process.env.EXIT_INTEGRITY_CI_NO_EXCHANGE_IO, false),
+  enabled = envBool(
+    process.env.OPENCLAW_EXIT_INTEGRITY_CYCLE_ENABLED != null
+      ? process.env.OPENCLAW_EXIT_INTEGRITY_CYCLE_ENABLED
+      : process.env.EXIT_INTEGRITY_CYCLE_ENABLED,
+    true
+  ),
+  skipWhenNoActivePositions = envBool(process.env.EXIT_INTEGRITY_SKIP_WHEN_NO_ACTIVE_POSITIONS, false),
+  listActivePositions = listRawExchangePositions,
+  activePositionPrecheckLimit = Number(process.env.EXIT_INTEGRITY_ACTIVE_PRECHECK_LIMIT || 25),
 } = {}) {
   fs.mkdirSync(opsDailyDir, { recursive: true });
+
+  if (enabled !== true) {
+    const skippedReport = buildSkippedCycleReport({
+      exchange,
+      apply,
+      disableExchangeIo,
+      reason: "EXIT_INTEGRITY_CYCLE_DISABLED",
+    });
+    const artifacts = writeCycleArtifacts(skippedReport, opsDailyDir);
+    return {
+      ok: true,
+      skipped: true,
+      status: skippedReport.summary.status,
+      summary: skippedReport.summary,
+      output_json: artifacts.latestJson,
+      output_md: artifacts.latestMd,
+    };
+  }
+
+  if (!disableExchangeIo && skipWhenNoActivePositions === true) {
+    const activeRows = await Promise.resolve(
+      listActivePositions({
+        exchange,
+        limit: activePositionPrecheckLimit,
+      })
+    ).catch(() => null);
+    if (Array.isArray(activeRows) && !activeRows.some((row) => isActivePositionRow(row))) {
+      const skippedReport = buildSkippedCycleReport({
+        exchange,
+        apply,
+        disableExchangeIo,
+        reason: "NO_ACTIVE_POSITIONS",
+        extraSummary: {
+          active_position_precheck_n: activeRows.length,
+        },
+      });
+      const artifacts = writeCycleArtifacts(skippedReport, opsDailyDir);
+      return {
+        ok: true,
+        skipped: true,
+        status: skippedReport.summary.status,
+        summary: skippedReport.summary,
+        output_json: artifacts.latestJson,
+        output_md: artifacts.latestMd,
+      };
+    }
+  }
 
   const runScriptStep = (script, env = {}) => Promise.resolve(runScriptImpl(script, env));
 
@@ -439,6 +623,7 @@ async function runBinanceExitIntegrityCycle({
     exitQtyContractAudit,
     trailRunnerFloorAudit,
     canonicalExitStageQa,
+    simplifiedExitV2LiveFlow,
     simplifiedExitV2Tp1Drilldown,
   ] = await Promise.all([
     disableExchangeIo
@@ -463,6 +648,9 @@ async function runBinanceExitIntegrityCycle({
     disableExchangeIo
       ? Promise.resolve(buildSkippedScriptStep({ fail_n: 0, active_position_n: 0 }))
       : runScriptStep("report-binance-canonical-exit-stage-qa.js"),
+    disableExchangeIo
+      ? Promise.resolve(buildSkippedScriptStep({ actionable_symbol_n: 0, issue_code_counts: {} }))
+      : runScriptStep("report-simplified-exit-v2-live-flow.js"),
     disableExchangeIo
       ? Promise.resolve(buildSkippedScriptStep({ actionable_symbol_n: 0, issue_code_counts: {} }))
       : runScriptStep("report-simplified-exit-v2-tp1-drilldown.js"),
@@ -500,24 +688,20 @@ async function runBinanceExitIntegrityCycle({
     trail_runner_floor_live_separation: trailRunnerFloorLiveSeparation,
     binance_exit_authority_live_board: authorityLiveBoard,
     binance_canonical_exit_stage_qa: canonicalExitStageQa,
+    simplified_exit_v2_live_flow: simplifiedExitV2LiveFlow,
     simplified_exit_v2_tp1_drilldown: simplifiedExitV2Tp1Drilldown,
   };
   report.summary = buildSummary(report);
   Object.assign(report, report.summary);
 
-  const latestJson = path.join(opsDailyDir, "binance_exit_integrity_cycle_latest.json");
-  const latestMd = path.join(opsDailyDir, "binance_exit_integrity_cycle_latest.md");
-  const datedJson = path.join(opsDailyDir, `${isoDate()}_binance_exit_integrity_cycle.json`);
-  fs.writeFileSync(latestJson, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-  fs.writeFileSync(datedJson, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-  fs.writeFileSync(latestMd, `${buildMarkdown(report)}\n`, "utf8");
+  const artifacts = writeCycleArtifacts(report, opsDailyDir);
 
   return {
     ok: true,
     status: report.summary.status,
     summary: report.summary,
-    output_json: latestJson,
-    output_md: latestMd,
+    output_json: artifacts.latestJson,
+    output_md: artifacts.latestMd,
   };
 }
 
@@ -541,6 +725,8 @@ if (require.main === module) {
       countStopDivergenceSymbols,
       countTp1MetaSyncGapIssues,
       collectScriptFailures,
+      isActivePositionRow,
+      buildSkippedSummary,
     },
   };
 }

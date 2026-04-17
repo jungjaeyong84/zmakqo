@@ -79,6 +79,7 @@ function buildScriptResult(parsed) {
         });
       }
       if (script === "report-binance-canonical-exit-stage-qa.js") return buildScriptResult({ fail_n: 0 });
+      if (script === "report-simplified-exit-v2-live-flow.js") return buildScriptResult({ actionable_symbol_n: 0, issue_code_counts: {} });
       if (script === "report-simplified-exit-v2-tp1-drilldown.js") return buildScriptResult({ actionable_symbol_n: 0, issue_code_counts: {} });
       throw new Error(`unexpected script ${script}`);
     },
@@ -119,10 +120,11 @@ function buildScriptResult(parsed) {
     fill_sync_alert_duplication_live_separation: { parsed: { live_duplicate_group_n: 2 } },
     binance_exit_authority_live_board: { parsed: { live_issue_position_n: 3, actionable_live_issue_position_n: 1, artifact_only_live_issue_position_n: 2 } },
     binance_canonical_exit_stage_qa: { parsed: { fail_n: 2 } },
+    simplified_exit_v2_live_flow: { parsed: { actionable_symbol_n: 2, issue_code_counts: { V2_FORBIDDEN_TRAIL_PARTIAL_TRANSITION: 2 } } },
     simplified_exit_v2_tp1_drilldown: { ok: true, parsed: { actionable_symbol_n: 1, issue_code_counts: { V2_TP1_ACK_WITHOUT_META_SYNC: 1, V2_TP1_ORDER_ID_MISMATCH: 2, V2_TP1_TRANSITION_WITHOUT_ALERT: 9 } } },
   });
   assert.strictEqual(warnSummary.status, "WARN");
-  assert.strictEqual(warnSummary.live_issue_count, 17);
+  assert.strictEqual(warnSummary.live_issue_count, 19);
   assert.strictEqual(warnSummary.fill_sync_alert_event_issue_n, 2);
   assert.strictEqual(warnSummary.trade_execution_alert_missing_fill_n, 3);
   assert.strictEqual(warnSummary.trade_execution_alert_missing_fill_total_n, 3);
@@ -136,6 +138,8 @@ function buildScriptResult(parsed) {
   assert.strictEqual(warnSummary.canonical_exit_stage_gate, "BLOCK");
   assert.strictEqual(warnSummary.canonical_transition_backfill_ok, true);
   assert.strictEqual(warnSummary.canonical_transition_backfill_created_transition_n, 7);
+  assert.strictEqual(warnSummary.simplified_exit_v2_live_flow_actionable_symbol_n, 2);
+  assert.strictEqual(warnSummary.simplified_exit_v2_live_flow_gate, "BLOCK");
   assert.strictEqual(warnSummary.tp1_meta_sync_gap_n, 3);
   assert.strictEqual(warnSummary.tp1_meta_sync_gate, "BLOCK");
   assert.strictEqual(warnSummary.stop_divergence_symbol_n, 2);
@@ -149,6 +153,7 @@ function buildScriptResult(parsed) {
     self_heal: { scanned: 2, healed_n: 1, skipped_n: 1 },
   });
   assert.ok(md.includes("native_gap_after"));
+  assert.ok(md.includes("simplified_exit_v2_live_flow_actionable_symbol_n"));
   assert.ok(md.includes("tp1_meta_sync_gap_n"));
   assert.ok(md.includes("stop_divergence_gate"));
 
@@ -157,6 +162,7 @@ function buildScriptResult(parsed) {
     native_trail_gap_after: { summary: { gap_count: 0 } },
     active_exit_watchdog: { actionable_rows: [] },
     canonical_exit_transition_backfill: { ok: true, parsed: { created_transition_n: 0 } },
+    simplified_exit_v2_live_flow: { ok: true, parsed: { actionable_symbol_n: 0, issue_code_counts: {} } },
     simplified_exit_v2_tp1_drilldown: { ok: true, parsed: { actionable_symbol_n: 0, issue_code_counts: {} } },
     active_exit_stage_backfill: { ok: false, timed_out: true },
   });
@@ -192,6 +198,7 @@ function buildScriptResult(parsed) {
       if (script === "report-trail-runner-floor-live-separation.js") return buildScriptResult({ live_violation_n: 0 });
       if (script === "report-binance-exit-authority-live-board.js") return buildScriptResult({ live_issue_position_n: 0, actionable_live_issue_position_n: 0, artifact_only_live_issue_position_n: 0 });
       if (script === "report-binance-canonical-exit-stage-qa.js") throw new Error("canonical exit stage qa must be skipped when exchange IO is disabled");
+      if (script === "report-simplified-exit-v2-live-flow.js") throw new Error("simplified exit v2 live flow must be skipped when exchange IO is disabled");
       if (script === "report-simplified-exit-v2-tp1-drilldown.js") throw new Error("tp1 drilldown must be skipped when exchange IO is disabled");
       throw new Error(`unexpected ci-mode script ${script}`);
     },
@@ -220,6 +227,51 @@ function buildScriptResult(parsed) {
 
   const parsedPretty = __test.extractJson('{\n  "ok": true,\n  "duplicate_group_n": 6\n}\n');
   assert.deepStrictEqual(parsedPretty, { ok: true, duplicate_group_n: 6 });
+
+  const disabledOpsDailyDir = fs.mkdtempSync(path.join(os.tmpdir(), "exit-integrity-disabled-"));
+  const disabledResult = await runBinanceExitIntegrityCycle({
+    apply: false,
+    exchange: "BINANCEFUT",
+    opsDailyDir: disabledOpsDailyDir,
+    enabled: false,
+    reportNativeGap: async () => {
+      throw new Error("disabled cycle must not execute reportNativeGap");
+    },
+    runWatchdog: async () => {
+      throw new Error("disabled cycle must not execute runWatchdog");
+    },
+    runScriptImpl: async () => {
+      throw new Error("disabled cycle must not execute scripts");
+    },
+  });
+  assert.strictEqual(disabledResult.status, "SKIP");
+  assert.strictEqual(disabledResult.summary.skip_reason, "EXIT_INTEGRITY_CYCLE_DISABLED");
+  assert.ok(fs.existsSync(disabledResult.output_json));
+
+  const noActiveOpsDailyDir = fs.mkdtempSync(path.join(os.tmpdir(), "exit-integrity-no-active-"));
+  const noActiveResult = await runBinanceExitIntegrityCycle({
+    apply: false,
+    exchange: "BINANCEFUT",
+    opsDailyDir: noActiveOpsDailyDir,
+    skipWhenNoActivePositions: true,
+    listActivePositions: async () => [],
+    reportNativeGap: async () => {
+      throw new Error("no-active cycle must not execute reportNativeGap");
+    },
+    runWatchdog: async () => {
+      throw new Error("no-active cycle must not execute runWatchdog");
+    },
+    runScriptImpl: async () => {
+      throw new Error("no-active cycle must not execute scripts");
+    },
+  });
+  assert.strictEqual(noActiveResult.status, "SKIP");
+  assert.strictEqual(noActiveResult.summary.skip_reason, "NO_ACTIVE_POSITIONS");
+  assert.strictEqual(noActiveResult.summary.active_position_precheck_n, 0);
+
+  assert.strictEqual(__test.isActivePositionRow({ runner_remaining_abs: 0.1 }), true);
+  assert.strictEqual(__test.isActivePositionRow({ stage: "CLOSED", runner_remaining_abs: 1 }), false);
+  assert.strictEqual(__test.isActivePositionRow({ status: "OPEN" }), true);
 
   console.log("BINANCE_EXIT_INTEGRITY_CYCLE_TEST_OK");
 })().catch((err) => {
