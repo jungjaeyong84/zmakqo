@@ -106,7 +106,7 @@ async function run() {
   });
   assert.strictEqual(matchedTrailIntentMustStayTrail, "EXIT_TRAIL");
 
-  const matchedTp0IntentMustStayTp0AcrossSplitFills = await __test.resolveExternalExitEvent({
+  const matchedLegacyTp0IntentMustNormalizeToTp1AcrossSplitFills = await __test.resolveExternalExitEvent({
     intent: {
       event: "EXIT_TP_P0_0.8P",
     },
@@ -139,9 +139,9 @@ async function run() {
     qtyPct: 0.0147,
   });
   assert.strictEqual(
-    matchedTp0IntentMustStayTp0AcrossSplitFills,
-    "EXIT_TP_P0_0.8P",
-    "split fills under the same TP0 order must stay anchored to TP0 even if cached stage hints already drifted"
+    matchedLegacyTp0IntentMustNormalizeToTp1AcrossSplitFills,
+    "EXIT_TP_P1_1.65P",
+    "under TP0 retirement, split fills from a legacy TP0 order must normalize to TP1 so canonical stage stays on the simplified v2 contract"
   );
 
   const tp0BackstopMustNotPromoteMatchedIntentToTrail = __test.applyActiveExitStageBackstopOverride({

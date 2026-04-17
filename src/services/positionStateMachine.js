@@ -1,6 +1,6 @@
 "use strict";
 
-const { isSimplifiedExitV2Active } = require("./simplifiedExitV2");
+const { isSimplifiedExitV2Active, resolveExecutionMode } = require("./simplifiedExitV2");
 
 function toNum(value) {
   const num = Number(value);
@@ -29,6 +29,7 @@ function normalizeSnapshot(snapshot = {}) {
   return {
     state,
     position_state: positionState,
+    execution_mode: toUpper(snapshot.execution_mode || snapshot.executionMode || meta.execution_mode || meta.executionMode, null),
     size_pct: sizePct,
     qty_base: qtyBase,
     position_side: toUpper(snapshot.position_side || meta.position_side, null),
@@ -76,6 +77,19 @@ function isSimplifiedExitV2Enabled({
   return isSimplifiedExitV2Active(snapshot);
 }
 
+function isTp0RetiredRuntime({
+  simplifiedExitV2Enabled = null,
+  positionSnapshot = null,
+} = {}) {
+  const snapshot = positionSnapshot && typeof positionSnapshot === "object" ? positionSnapshot : {};
+  const meta = snapshot.meta && typeof snapshot.meta === "object" ? snapshot.meta : {};
+  if (simplifiedExitV2Enabled === true) return true;
+  if (snapshot.simplified_exit_v2_enabled === true || snapshot.simplifiedExitV2Enabled === true) return true;
+  if (meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true) return true;
+  const mode = resolveExecutionMode(snapshot);
+  return mode === "LIVE" || mode === "LIVE_DRY_RUN" || mode === "PAPER";
+}
+
 function trimPctToken(raw) {
   const n = Number(raw);
   if (!Number.isFinite(n)) return null;
@@ -94,7 +108,7 @@ function ratioToPctToken(rawRatio) {
 function classifyExitEventStage(event) {
   const ev = toUpper(event, null);
   if (!ev) return null;
-  if (ev.startsWith("EXIT_TP_P0")) return "TP0";
+  if (ev.startsWith("EXIT_TP_P0")) return "TP1";
   if (ev.startsWith("EXIT_TP_P1") || ev.startsWith("EXIT_TP_C")) return "TP1";
   if (ev.startsWith("EXIT_TRAIL")) return "TRAIL";
   if (ev.startsWith("EXIT_SL")) return "SL";
@@ -119,12 +133,7 @@ function buildCanonicalExitEvent({
 } = {}) {
   const resolvedStage = normalizeExitStage(stage);
   const fallback = toUpper(fallbackEvent, null);
-  if (resolvedStage === "TP0") {
-    const token = ratioToPctToken(rules && rules.TP_P0);
-    if (fallback && fallback.startsWith("EXIT_TP_P0")) return fallback;
-    return token ? `EXIT_TP_P0_${token}P` : "EXIT_TP_P0";
-  }
-  if (resolvedStage === "TP1") {
+  if (resolvedStage === "TP0" || resolvedStage === "TP1") {
     const token = ratioToPctToken(rules && rules.TP_P1);
     if (fallback && (fallback.startsWith("EXIT_TP_P1") || fallback.startsWith("EXIT_TP_C"))) return fallback;
     return token ? `EXIT_TP_P1_${token}P` : "EXIT_TP_P1";
@@ -562,12 +571,14 @@ function resolveCanonicalExitTransitionEvents({
     simplifiedExitV2Enabled,
     positionSnapshot: positionSnapshot || {},
   });
+  const tp0RetiredRuntime = isTp0RetiredRuntime({
+    simplifiedExitV2Enabled,
+    positionSnapshot: positionSnapshot || {},
+  });
   const recent = recentStages && typeof recentStages === "object" ? recentStages : {};
   const events = [];
-  const effectiveStage = simplifiedV2 && stage === "TP0" ? "TP1" : stage;
-  if (effectiveStage === "TP0") {
-    if (snapshot.tp_p0_done !== true) events.push("TP0_REACHED");
-  } else if (effectiveStage === "TP1") {
+  const effectiveStage = tp0RetiredRuntime && stage === "TP0" ? "TP1" : stage;
+  if (effectiveStage === "TP1") {
     if (snapshot.tp_p1_done !== true) events.push("TP1_REACHED");
     if (snapshot.trail_active !== true) events.push(simplifiedV2 ? "TRAIL_ACTIVATED" : "TRAIL_ACTIVE");
   } else if (effectiveStage === "TRAIL") {
@@ -600,7 +611,7 @@ function resolveCanonicalAlertExitStage({
 
   if (ordered.includes("TRAIL_FINAL_EXIT") || ordered.includes("TRAIL_PARTIAL")) return "TRAIL";
   if (ordered.includes("TP1_REACHED")) return "TP1";
-  if (ordered.includes("TP0_REACHED")) return "TP0";
+  if (ordered.includes("TP0_REACHED")) return "TP1";
   if (ordered.includes("TRAIL_ACTIVE") || ordered.includes("TRAIL_ACTIVATED")) return "TRAIL";
   return null;
 }
@@ -629,6 +640,10 @@ function resolveCanonicalPositionExitStage({
     simplifiedExitV2Enabled,
     positionSnapshot: positionSnapshot || {},
   });
+  const tp0RetiredRuntime = isTp0RetiredRuntime({
+    simplifiedExitV2Enabled,
+    positionSnapshot: positionSnapshot || {},
+  });
   const fallback = normalizeExitStage(
     fallbackStage
     || meta.authoritative_exit_stage
@@ -646,27 +661,21 @@ function resolveCanonicalPositionExitStage({
       source: "POSITION_STATE_MACHINE_TP1_DONE",
     };
   }
-  if (simplifiedV2) {
+  if (tp0RetiredRuntime) {
     const inferredRunnerStage = inferSimplifiedV2RunnerStage(snapshot);
     if (inferredRunnerStage) return inferredRunnerStage;
     if (snapshot.tp_p0_done === true) {
       return {
         stage: null,
-        source: "POSITION_STATE_MACHINE_V2_PRE_TP1",
+        source: simplifiedV2 ? "POSITION_STATE_MACHINE_V2_PRE_TP1" : "POSITION_STATE_MACHINE_TP0_RETIRED_PRE_TP1",
       };
     }
     if (fallback === "TP0") {
       return {
         stage: null,
-        source: "POSITION_STATE_MACHINE_V2_FALLBACK_SUPPRESSED",
+        source: simplifiedV2 ? "POSITION_STATE_MACHINE_V2_FALLBACK_SUPPRESSED" : "POSITION_STATE_MACHINE_TP0_RETIRED_FALLBACK_SUPPRESSED",
       };
     }
-  }
-  if (snapshot.tp_p0_done === true) {
-    return {
-      stage: "TP0",
-      source: "POSITION_STATE_MACHINE_TP0_DONE",
-    };
   }
   if (fallback && fallback !== "OTHER" && fallback !== "OTHER_EXIT") {
     return { stage: fallback, source: "POSITION_STATE_MACHINE_CANONICAL_META" };
@@ -800,6 +809,9 @@ function resolveCanonicalExitAuthorityDecision({
   const simplifiedV2 = isSimplifiedExitV2Enabled({
     positionSnapshot: snapshot,
   });
+  const tp0RetiredRuntime = isTp0RetiredRuntime({
+    positionSnapshot: snapshot,
+  });
   const entryLineageRequired = requiresCanonicalExitEntryLineage({ currentStage: stage });
   const entryLineageMissing = entryLineageRequired && !String(entryEventId || "").trim();
   const resolvedChainKey = String(chainKey || "").trim() || buildCanonicalExitChainKey({
@@ -822,7 +834,7 @@ function resolveCanonicalExitAuthorityDecision({
   });
   const recent = recentStages && typeof recentStages === "object" ? recentStages : {};
   const recentTrail = normalizeExitStage(recent.trail) === "TRAIL";
-  const recentTp0 = simplifiedV2 ? false : (normalizeExitStage(recent.tp0) === "TP0");
+  const recentTp0 = tp0RetiredRuntime ? false : (normalizeExitStage(recent.tp0) === "TP0");
   const tp0AllowedRatio = resolveExitStageAbsoluteContractQtyRatio("TP0", rules || {}, {
     simplifiedExitV2Enabled: simplifiedV2,
     positionSnapshot: snapshot,
@@ -831,25 +843,25 @@ function resolveCanonicalExitAuthorityDecision({
     simplifiedExitV2Enabled: simplifiedV2,
     positionSnapshot: snapshot,
   }) ?? (simplifiedV2 ? 0.5 : 0.375);
-  const tp0Locked = simplifiedV2
+  const tp0Locked = tp0RetiredRuntime
     ? false
     : (Number(ledger.tp0_consumed_ratio || 0) >= Math.max(0, tp0AllowedRatio - 0.03));
   const tp1Locked = Number(ledger.tp1_consumed_ratio || 0) >= Math.max(0, tp1AllowedRatio - 0.03);
   const postTp1Locked = snapshot.tp_p1_done === true || snapshot.trail_active === true || tp1Locked || recentTrail;
-  let resolvedStage = simplifiedV2 && stage === "TP0" ? "TP1" : stage;
+  let resolvedStage = tp0RetiredRuntime && stage === "TP0" ? "TP1" : stage;
   let reason = "PASS_THROUGH";
 
   if (entryLineageMissing) {
     resolvedStage = null;
     reason = "ENTRY_LINEAGE_REQUIRED";
-  } else if ((stage === "TP0" || stage === "TP1") || (simplifiedV2 && resolvedStage === "TP1")) {
+  } else if ((stage === "TP0" || stage === "TP1") || (tp0RetiredRuntime && resolvedStage === "TP1")) {
     if (postTp1Locked) {
       resolvedStage = "TRAIL";
       reason = snapshot.tp_p1_done === true || snapshot.trail_active === true
         ? "POST_TP1_STAGE_LOCK"
         : "AUTHORITY_TP1_LOCKED";
-    } else if (simplifiedV2 && stage === "TP0") {
-      reason = "V2_TP0_REMAPPED_TO_TP1";
+    } else if (tp0RetiredRuntime && stage === "TP0") {
+      reason = simplifiedV2 ? "V2_TP0_REMAPPED_TO_TP1" : "TP0_RETIRED_RUNTIME_REMAPPED_TO_TP1";
     } else if (stage === "TP0" && (snapshot.tp_p0_done === true || tp0Locked || recentTp0)) {
       resolvedStage = "TP1";
       reason = "POST_TP0_STAGE_LOCK";
@@ -913,7 +925,7 @@ function detectPositionSideFlip({ prev = null, next = null } = {}) {
 function validatePositionSnapshotTransition({ prev = null, next = null } = {}) {
   const previous = normalizeSnapshot(prev || {});
   const current = normalizeSnapshot(next || {});
-  const simplifiedV2 = isSimplifiedExitV2Enabled({ positionSnapshot: next || {} });
+  const tp0RetiredRuntime = isTp0RetiredRuntime({ positionSnapshot: next || {} });
   const issues = [];
 
   const hasExposure = (Number.isFinite(current.size_pct) && current.size_pct > 0)
@@ -940,7 +952,7 @@ function validatePositionSnapshotTransition({ prev = null, next = null } = {}) {
       message: "SCALE_OUT requires tp_p1_done=true.",
     });
   }
-  if (simplifiedV2 !== true && current.tp_p1_done === true && current.tp_p0_done !== true) {
+  if (tp0RetiredRuntime !== true && current.tp_p1_done === true && current.tp_p0_done !== true) {
     issues.push({
       code: "TP1_WITHOUT_TP0",
       severity: "critical",
@@ -954,7 +966,7 @@ function validatePositionSnapshotTransition({ prev = null, next = null } = {}) {
       message: "trail_active requires tp_p1_done=true.",
     });
   }
-  if (simplifiedV2 !== true && current.trail_active === true && current.tp_p0_done !== true) {
+  if (tp0RetiredRuntime !== true && current.trail_active === true && current.tp_p0_done !== true) {
     issues.push({
       code: "TRAIL_WITHOUT_TP0",
       severity: "critical",

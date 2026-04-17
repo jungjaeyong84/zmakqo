@@ -1,6 +1,6 @@
 "use strict";
 
-const { resolveExitRulesForPosition, computeRunnerExitStopPrice, resolveEntryRDistance, resolveTrailDelayState, resolveTpP0Pct } = require("../engine/signalEngine");
+const { resolveExitRulesForPosition, computeRunnerExitStopPrice, resolveEntryRDistance, resolveTrailDelayState } = require("../engine/signalEngine");
 const { resolveTrailObservationSnapshot } = require("../storage/positionRuntimeObservations");
 const { resolveExitStageAbsoluteContractQtyRatio } = require("./exitQtyContract");
 const { buildStopDivergenceItems } = require("./exitIntegrityPolicy");
@@ -104,8 +104,7 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
   const close = toNum(closePrice);
   const rules = resolveExitRulesForPosition({ exchange, position });
 
-  const tp0Pct = resolveTpP0Pct({ rules, meta });
-  const tp0Price = pctToPrice({ avg, pct: tp0Pct, leverage, side, kind: "TP1" });
+  const tp0Price = null;
   const tp1Price = pctToPrice({ avg, pct: rules.TP_P1, leverage, side, kind: "TP1" });
   const slPrice = pctToPrice({ avg, pct: rules.SL, leverage, side, kind: "SL" });
   const bePrice = pctToPrice({ avg, pct: rules.BE_PCT, leverage, side, kind: "BE" });
@@ -253,14 +252,14 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
         tp1QtyRatio: DEFAULT_TP1_QTY_RATIO,
         tp1TargetPct: DEFAULT_TP1_TARGET_PCT,
         legacyCanonicalStage: effectiveCanonicalStage,
-        legacyTp0Done: tpP0Done,
+        legacyTp0Done: false,
       })
     : {
         available: false,
         issues: [{ code: "ENTRY_QTY_ABS_MISSING" }],
         divergence_codes: [],
         legacy_canonical_stage: effectiveCanonicalStage || null,
-        legacy_tp0_done: tpP0Done,
+        legacy_tp0_done: false,
       };
 
   const inferredRunnerStage = simplifiedExitV2Shadow.available === true
@@ -363,8 +362,8 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     avg_price: avg,
     current_qty_base: qtyBase,
     current_price: close,
-    tp0_price: simplifiedExitV2Enabled ? null : tp0Price,
-    legacy_tp0_price: tp0Price,
+    tp0_price: null,
+    legacy_tp0_price: null,
     tp1_price: tp1Price,
     sl_price: slPrice,
     be_price: bePrice,
@@ -375,8 +374,8 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     canonical_runner_remaining_source: canonicalRunnerRemainingSource,
     trail_r_multiple: toNum(rules.TRAIL_R_MULTIPLE),
     trail_pct: toNum(rules.TRAIL_PCT),
-    tp0_done: simplifiedExitV2Enabled ? false : tpP0Done,
-    legacy_tp0_done: tpP0Done,
+    tp0_done: false,
+    legacy_tp0_done: false,
     tp1_done: tpP1Done,
     tp1_pending: tpP1Pending,
     trail_active: trailActive,
