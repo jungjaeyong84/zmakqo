@@ -48,6 +48,7 @@ const {
   publishTrailAuthorityState,
   recordTrailRuntimeEvent,
 } = require("./trailAuthorityRuntime");
+const { resolveSimplifiedExitV2FlagFromSnapshot } = require("./simplifiedExitV2");
 
 function nowMs() {
   return Date.now();
@@ -101,6 +102,12 @@ function isSimplifiedExitV2Position(position = null) {
   const pos = position && typeof position === "object" ? position : {};
   const meta = pos.meta && typeof pos.meta === "object" ? pos.meta : {};
   return meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true;
+}
+
+function isExplicitLegacyTp0Position(position = null) {
+  const pos = position && typeof position === "object" ? position : {};
+  const meta = pos.meta && typeof pos.meta === "object" ? pos.meta : {};
+  return resolveSimplifiedExitV2FlagFromSnapshot(meta) === false;
 }
 
 function resolveCanonicalExitStageForPosition(position) {
@@ -1704,6 +1711,7 @@ function computeExitTriggers({ pos, rules, leverageEff, nativeProtectionState } 
   if (!Number.isFinite(avg) || avg <= 0) return out;
   const meta = pos && pos.meta ? pos.meta : {};
   const simplifiedExitV2Enabled = isSimplifiedExitV2Position(pos);
+  const explicitLegacyTp0Position = isExplicitLegacyTp0Position(pos);
   const side = resolvePositionSideFromPosition(pos, meta, "LONG");
   const canonicalStage = resolveCanonicalExitStageForPosition(pos);
   const tpP1Done = hasCanonicalTpP1Reached(canonicalStage);
@@ -1724,7 +1732,7 @@ function computeExitTriggers({ pos, rules, leverageEff, nativeProtectionState } 
   }
 
   const tpP0Pct = resolveTpP0Pct({ rules, meta });
-  if (simplifiedExitV2Enabled !== true && !tpP0Done && Number.isFinite(tpP0Pct) && tpP0Pct > 0) {
+  if (explicitLegacyTp0Position && simplifiedExitV2Enabled !== true && !tpP0Done && Number.isFinite(tpP0Pct) && tpP0Pct > 0) {
     const tp0Px = pnlToPrice({ avg, pnlPct: Number(tpP0Pct) / leverageEff, side });
     if (Number.isFinite(tp0Px)) out.push({ kind: "TP_P0", price: tp0Px });
   }

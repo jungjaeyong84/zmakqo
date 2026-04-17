@@ -6,6 +6,7 @@ const { __test: runnerTest } = require("../engine/paperBinanceRunner");
 const { __test: observationTest } = require("../storage/positionRuntimeObservations");
 
 async function run() {
+  const prevSimplifiedExitV2Env = process.env.SIMPLIFIED_EXIT_V2_ENABLED;
   __test._symbolCooldownState.clear();
   assert.strictEqual(typeof __test.buildTickTrailObservationDocUpdate, "function", "trail observation update helper missing");
   assert.strictEqual(typeof __test.buildTickTrailReconcileRunId, "function", "trail reconcile run id helper missing");
@@ -413,6 +414,36 @@ async function run() {
   assert.ok(!simplifiedV2TriggerKinds.includes("TP_P0"), "simplified exit v2 must not emit TP_P0 triggers in tick-exit");
   assert.ok(simplifiedV2TriggerKinds.includes("SL"), "simplified exit v2 must keep SL trigger in tick-exit");
   assert.ok(simplifiedV2TriggerKinds.includes("TP_P1"), "simplified exit v2 must keep TP1 trigger in tick-exit");
+
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
+  const missingFlagTriggerKinds = __test.computeExitTriggers({
+    pos: {
+      avg_price: 100,
+      exchange: "BINANCEFUT",
+      position_side: "LONG",
+      meta: {
+        exit_rules_override: {
+          TP_P0: 0.008,
+          TP_P1: 0.0168,
+          SL: -0.0165,
+        },
+      },
+    },
+    rules: {
+      TP_P0: 0.008,
+      TP_P1: 0.0168,
+      SL: -0.0165,
+    },
+    leverageEff: 2,
+    nativeProtectionState: {
+      stopActive: false,
+      tpActive: false,
+    },
+  }).map((row) => row.kind);
+  assert.ok(!missingFlagTriggerKinds.includes("TP_P0"), "missing simplified-exit flag must fail closed for tick-exit TP0");
+  assert.ok(missingFlagTriggerKinds.includes("TP_P1"), "missing simplified-exit flag must still keep TP1 tick trigger");
+  if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+  else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;
 
   assert.strictEqual(typeof runnerTest.computeTrailingMetaUpdate, "function", "computeTrailingMetaUpdate export missing");
   assert.strictEqual(typeof runnerTest.sanitizeBarLoopMetaUpdates, "function", "sanitizeBarLoopMetaUpdates export missing");
