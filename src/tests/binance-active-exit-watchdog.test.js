@@ -22,7 +22,7 @@ function run() {
   );
 
   process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
-  const betweenTp = __test.inspectExitProtection({
+  const preTp1 = __test.inspectExitProtection({
     symbol: "XRPUSDT",
     internalPosition: {
       exchange: "BINANCEFUT",
@@ -48,8 +48,8 @@ function run() {
     openOrders: [],
     algoOrders: [],
   });
-  assert.strictEqual(betweenTp.stage, "BETWEEN_TP0_TP1");
-  assert.ok(betweenTp.actionable_issue_codes.includes("TP1_ORDER_MISSING"));
+  assert.strictEqual(preTp1.stage, "PRE_TP1");
+  assert.ok(preTp1.actionable_issue_codes.includes("TP1_ORDER_MISSING"));
 
   process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
   const simplifiedPreTp1 = __test.inspectExitProtection({
@@ -82,8 +82,6 @@ function run() {
   assert.strictEqual(simplifiedPreTp1.simplified_exit_v2_enabled, true);
   assert.ok(simplifiedPreTp1.actionable_issue_codes.includes("TP1_ORDER_MISSING"));
   assert.ok(simplifiedPreTp1.actionable_issue_codes.includes("NATIVE_REFRESH_UNHEALTHY"));
-  assert.ok(!simplifiedPreTp1.actionable_issue_codes.includes("TP1_DONE_WITHOUT_TP0_DONE"));
-
   const simplifiedRunnerMetaGap = __test.inspectExitProtection({
     symbol: "BTCUSDT",
     internalPosition: {
@@ -177,8 +175,6 @@ function run() {
   });
   assert.strictEqual(simplifiedRunner.stage, "RUNNER");
   assert.ok(simplifiedRunner.actionable_issue_codes.includes("TRAIL_STOP_MISSING"));
-  assert.ok(!simplifiedRunner.actionable_issue_codes.includes("TP1_DONE_WITHOUT_TP0_DONE"));
-
   const trailing = __test.inspectExitProtection({
     symbol: "DOGEUSDT",
     internalPosition: {
