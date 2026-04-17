@@ -4,6 +4,11 @@ const fs = require("fs");
 const path = require("path");
 const { listExchangePositionReadViews } = require("../services/positionReadModel");
 const { readExitIntegrityReport, deriveExitIntegrityExposureGuard } = require("./exitIntegrityPolicy");
+const {
+  resolveOperatorOverrideContext,
+  shouldRelaxQuarantineHardBlock,
+  resolveMarketQtyScaleOverride,
+} = require("./operatorOverrides");
 
 const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
 const CAPITAL_ALLOCATOR_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_market_capital_allocator_latest.json");
@@ -1600,7 +1605,15 @@ function evaluateLiveEntryPolicy({
       && DRIFT_REMEDIATION_WATCH_ONLY_BLOCK
       && !learningEpochRelease.active
       && !!(activeSnapshot && activeSnapshot.driftOtherServerPolicyWatchOnlySet && activeSnapshot.driftOtherServerPolicyWatchOnlySet.has(market));
-    const quarantineBlocked = QUARANTINE_HARD_BLOCK && !learningEpochRelease.active && !!(quarantineRow || action === "QUARANTINE");
+    // Phase 3d operator override — allow quarantine hard-block to be
+    // temporarily relaxed via ops/runtime/operator_overrides.json. Failures
+    // (no file / expired / parse error) fall through to the default policy.
+    const operatorOverrideCtx = resolveOperatorOverrideContext();
+    const quarantineRelaxedByOperator = shouldRelaxQuarantineHardBlock(operatorOverrideCtx);
+    const quarantineBlocked = QUARANTINE_HARD_BLOCK
+      && !learningEpochRelease.active
+      && !quarantineRelaxedByOperator
+      && !!(quarantineRow || action === "QUARANTINE");
     const qualityBlocked = QUALITY_HARD_BLOCK && qualityHard.blocked;
     const qualityGlobalBlocked = QUALITY_HARD_BLOCK && qualityGlobalHard.blocked;
     const policyPlanWatchOnlyBlocked = applyPolicyPlan
@@ -1635,6 +1648,7 @@ function evaluateLiveEntryPolicy({
       lineageSlo,
       learningEpochRelease,
       portfolioCluster,
+      operatorOverrideCtx,
       otherServerPolicyWatchOnlyBlocked,
       quarantineBlocked,
       qualityBlocked,
@@ -1682,12 +1696,14 @@ function evaluateLiveEntryPolicy({
     lineageSlo,
     learningEpochRelease,
     portfolioCluster,
+    operatorOverrideCtx,
     otherServerPolicyWatchOnlyBlocked,
     quarantineBlocked,
     qualityBlocked,
     qualityGlobalBlocked,
     policyPlanWatchOnlyBlocked,
     policyPlanHoldBlocked,
+    operatorOverrideCtx,
   } = derived;
   const mlServing = deriveMlServingGuard(snapshot);
   const operationalGuard = deriveOperationalGuard(snapshot);
@@ -2181,6 +2197,7 @@ function evaluateLiveEntryPolicy({
   let runtimeGuardQtyScale = runtimeGuardSoftScale;
   let recentWinRateQtyScale = 1.0;
   let exitIntegrityQtyScale = 1.0;
+  let operatorMarketScale = 1.0;
   const alreadyScaled = baseFeatures._live_exec_policy_scale_applied === true;
 
   if (applyScale && !alreadyScaled) {
@@ -2196,6 +2213,12 @@ function evaluateLiveEntryPolicy({
     recentWinRateQtyScale = recentWinRateGuard.active ? recentWinRateGuard.scale : 1;
     portfolioClusterScale = portfolioCluster.reduce ? portfolioCluster.scale : 1;
     exitIntegrityQtyScale = exitIntegrityGuard.scale;
+    // Phase 3d — apply the operator market-scale override (e.g. AXSUSDT 1.2x)
+    // after all safety scalers. The override is clamped to [0, 2] inside
+    // operatorOverrides.js, and SCALE_MAX still caps the product so the
+    // override can never push the final qty beyond the global ceiling.
+    const operatorScale = resolveMarketQtyScaleOverride(operatorOverrideCtx, market);
+    operatorMarketScale = Number.isFinite(operatorScale) && operatorScale > 0 ? operatorScale : 1;
     scaleApplied = clamp(
       actionScale
       * scoreScale
@@ -2207,7 +2230,8 @@ function evaluateLiveEntryPolicy({
       * exitIntegrityQtyScale
       * runtimeGuardQtyScale
       * planGlobalScale
-      * planMarketScale,
+      * planMarketScale
+      * operatorMarketScale,
       SCALE_MIN,
       SCALE_MAX
     );
