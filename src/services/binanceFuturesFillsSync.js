@@ -1100,6 +1100,32 @@ function buildStageHintedMeta(meta = {}, event = "", trade = null) {
   return nextMeta;
 }
 
+function buildFillSyncNativeProtectionRefreshArgs({
+  exchange = "BINANCEFUT",
+  symbol,
+  syncedPosition = null,
+  hintedMeta = null,
+} = {}) {
+  const pos = syncedPosition && typeof syncedPosition === "object" ? syncedPosition : {};
+  const meta = hintedMeta && typeof hintedMeta === "object" ? hintedMeta : {};
+  return {
+    exchange,
+    symbol,
+    fallbackSide: meta.position_side || pos.position_side || pos.side || null,
+    fallbackEntryPrice: Number(pos.avg_price),
+    fallbackLeverage: Number(meta.external_leverage || meta.leverage || pos.leverage || 1),
+    exitRulesOverride: meta.exit_rules_override || null,
+    posMeta: meta,
+    source: "BINANCE_FUTURES_FILLS_SYNC",
+    reason: "NON_AUTHORITY_LAYER_REQUEST",
+    dispatchReason: `BINANCE_FUTURES_FILLS_SYNC_NATIVE_STOP_REFRESH_${String(symbol || "").toUpperCase()}`,
+    dispatchExitWorker: true,
+    // Single stop writer contract: fill sync may request repair, but must not
+    // execute the native write inline.
+    executeImmediately: false,
+  };
+}
+
 async function promotePositionStageHintsFromExternalExit({
   exchange = "BINANCEFUT",
   symbol,
@@ -3847,20 +3873,12 @@ async function syncMarketTrades({
       });
       if (syncedPosition && syncedState === "ACTIVE" && Number.isFinite(syncedQtyBase) && syncedQtyBase > 0) {
         try {
-          await requestBinanceNativeProtectionRefresh({
+          await requestBinanceNativeProtectionRefresh(buildFillSyncNativeProtectionRefreshArgs({
             exchange: "BINANCEFUT",
             symbol: sym,
-            fallbackSide: hintedMeta.position_side || syncedPosition.position_side || syncedPosition.side || null,
-            fallbackEntryPrice: Number(syncedPosition.avg_price),
-            fallbackLeverage: Number(hintedMeta.external_leverage || hintedMeta.leverage || syncedPosition.leverage || 1),
-            exitRulesOverride: hintedMeta.exit_rules_override || null,
-            posMeta: hintedMeta,
-            source: "BINANCE_FUTURES_FILLS_SYNC",
-            reason: "NON_AUTHORITY_LAYER_REQUEST",
-            dispatchReason: `BINANCE_FUTURES_FILLS_SYNC_NATIVE_STOP_REFRESH_BINANCEFUT_${String(sym || "").toUpperCase()}`,
-            dispatchExitWorker: true,
-            executeImmediately: true,
-          });
+            syncedPosition,
+            hintedMeta,
+          }));
         } catch (refreshErr) {
           console.warn("[BINANCEFUT_FILL_SYNC_NATIVE_REFRESH_FAIL]", refreshErr && refreshErr.message ? refreshErr.message : String(refreshErr));
         }
@@ -4031,6 +4049,7 @@ module.exports = {
     shouldPromoteCanonicalExternalExit,
     inferStageConstrainedTakeProfitKind,
     applyActiveExitStageBackstopOverride,
+    buildFillSyncNativeProtectionRefreshArgs,
     buildStageHintedMeta,
     mergeRecentExitHintsIntoMeta,
     buildImmediateProjectionIssues,

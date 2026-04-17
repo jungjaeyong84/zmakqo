@@ -288,12 +288,14 @@ async function run() {
   const inferStageConstrainedTakeProfitKind = __test && __test.inferStageConstrainedTakeProfitKind;
   const applyExternalExitQtyAuthority = __test && __test.applyExternalExitQtyAuthority;
   const applyActiveExitStageBackstopOverride = __test && __test.applyActiveExitStageBackstopOverride;
+  const buildFillSyncNativeProtectionRefreshArgs = __test && __test.buildFillSyncNativeProtectionRefreshArgs;
   const buildExitLedgerMetaPatch = __test && __test.buildExitLedgerMetaPatch;
   const buildExitLedgerPayload = __test && __test.buildExitLedgerPayload;
   assert.strictEqual(typeof resolveExternalExitEvent, "function", "resolveExternalExitEvent export missing");
   assert.strictEqual(typeof inferStageConstrainedTakeProfitKind, "function", "inferStageConstrainedTakeProfitKind export missing");
   assert.strictEqual(typeof applyExternalExitQtyAuthority, "function", "applyExternalExitQtyAuthority export missing");
   assert.strictEqual(typeof applyActiveExitStageBackstopOverride, "function", "applyActiveExitStageBackstopOverride export missing");
+  assert.strictEqual(typeof buildFillSyncNativeProtectionRefreshArgs, "function", "buildFillSyncNativeProtectionRefreshArgs export missing");
   assert.strictEqual(typeof buildExitLedgerMetaPatch, "function", "buildExitLedgerMetaPatch export missing");
   assert.strictEqual(typeof buildExitLedgerPayload, "function", "buildExitLedgerPayload export missing");
   const rules = { SL: -0.015, TP_P1: 0.03, TRAIL_PCT: 0.01 };
@@ -418,6 +420,28 @@ async function run() {
     });
     assert.strictEqual(v2Tp0Remapped.stage, "TP1");
     assert.strictEqual(v2Tp0Remapped.acceptedQtyPct, 0.375);
+  }
+
+  {
+    const refreshArgs = buildFillSyncNativeProtectionRefreshArgs({
+      exchange: "BINANCEFUT",
+      symbol: "BTCUSDT",
+      syncedPosition: {
+        avg_price: 74987.2,
+        leverage: 2,
+        position_side: "LONG",
+      },
+      hintedMeta: {
+        position_side: "LONG",
+        external_leverage: 2,
+        exit_rules_override: { TP_P1_QTY: 0.5, TP_P1: 0.0168 },
+      },
+    });
+    assert.strictEqual(refreshArgs.executeImmediately, false, "fill sync must not perform immediate native stop writes");
+    assert.strictEqual(refreshArgs.dispatchExitWorker, true);
+    assert.strictEqual(refreshArgs.source, "BINANCE_FUTURES_FILLS_SYNC");
+    assert.strictEqual(refreshArgs.reason, "NON_AUTHORITY_LAYER_REQUEST");
+    assert.strictEqual(refreshArgs.symbol, "BTCUSDT");
   }
 
   {
