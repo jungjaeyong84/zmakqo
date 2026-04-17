@@ -33,6 +33,7 @@ const DEFAULT_TP1_QTY_RATIO = 0.5;
 const DEFAULT_TP1_TARGET_PCT = 0.0168;
 const DEFAULT_FLOOR_LOCK_PCT = 0.0025;
 const DEFAULT_TRAIL_PCT = 0.01;
+const DEFAULT_SIMPLIFIED_EXIT_V2_ENABLED = true;
 
 function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -42,6 +43,64 @@ function toNum(value) {
 
 function toUpper(value) {
   return String(value || "").trim().toUpperCase();
+}
+
+function toBool(value, fallback = false) {
+  if (value == null || value === "") return fallback;
+  const text = String(value).trim().toLowerCase();
+  if (!text) return fallback;
+  return text === "1" || text === "true" || text === "yes" || text === "y" || text === "on";
+}
+
+function isSimplifiedExitV2RuntimeEnabled() {
+  return toBool(process.env.SIMPLIFIED_EXIT_V2_ENABLED, DEFAULT_SIMPLIFIED_EXIT_V2_ENABLED);
+}
+
+// Resolve the simplified-exit-v2 flag strictly from the position/meta snapshot.
+// This is the production path for live trading; the env default is used only as a
+// last resort for brand-new positions at entry time.
+// Returns null when the snapshot carries no explicit decision and env fallback is
+// suppressed by the caller.
+function resolveSimplifiedExitV2FlagFromSnapshot(input = null) {
+  const source = input && typeof input === "object" ? input : null;
+  if (!source) return null;
+  if (source.simplifiedExitV2Enabled !== undefined && source.simplifiedExitV2Enabled !== null && source.simplifiedExitV2Enabled !== "") {
+    return toBool(source.simplifiedExitV2Enabled, false);
+  }
+  if (source.simplified_exit_v2_enabled !== undefined && source.simplified_exit_v2_enabled !== null && source.simplified_exit_v2_enabled !== "") {
+    return toBool(source.simplified_exit_v2_enabled, false);
+  }
+  const meta = source.meta && typeof source.meta === "object" ? source.meta : source;
+  if (meta && typeof meta === "object") {
+    if (meta.simplified_exit_v2_enabled !== undefined && meta.simplified_exit_v2_enabled !== null && meta.simplified_exit_v2_enabled !== "") {
+      return toBool(meta.simplified_exit_v2_enabled, false);
+    }
+    if (meta.simplifiedExitV2Enabled !== undefined && meta.simplifiedExitV2Enabled !== null && meta.simplifiedExitV2Enabled !== "") {
+      return toBool(meta.simplifiedExitV2Enabled, false);
+    }
+  }
+  return null;
+}
+
+// Backward-compatible resolver. When a snapshot lacks an explicit flag the
+// runtime env is consulted; this is required during the v1→v2 migration window
+// because many in-flight positions were opened before the flag became mandatory.
+//
+// Strict callers (e.g. order creation) should use `requireSimplifiedExitV2Flag`
+// which throws instead of silently defaulting, making env drift impossible.
+function isSimplifiedExitV2Active(input = null) {
+  const resolved = resolveSimplifiedExitV2FlagFromSnapshot(input);
+  if (resolved === true || resolved === false) return resolved;
+  return isSimplifiedExitV2RuntimeEnabled();
+}
+
+function requireSimplifiedExitV2Flag(input = null, { context = "unspecified" } = {}) {
+  const resolved = resolveSimplifiedExitV2FlagFromSnapshot(input);
+  if (resolved === true || resolved === false) return resolved;
+  const err = new Error(`SIMPLIFIED_EXIT_V2_FLAG_MISSING:${context}`);
+  err.code = "SIMPLIFIED_EXIT_V2_FLAG_MISSING";
+  err.context = context;
+  throw err;
 }
 
 function normalizeSide(side) {
@@ -473,6 +532,10 @@ module.exports = {
   DEFAULT_TP1_TARGET_PCT,
   DEFAULT_FLOOR_LOCK_PCT,
   DEFAULT_TRAIL_PCT,
+  isSimplifiedExitV2RuntimeEnabled,
+  isSimplifiedExitV2Active,
+  resolveSimplifiedExitV2FlagFromSnapshot,
+  requireSimplifiedExitV2Flag,
   roundDownToStep,
   buildSimplifiedExitPlan,
   accumulateAbsoluteFillQty,

@@ -17,12 +17,51 @@ const { __test } = require("../../scripts/check-binance-exit-integrity-gate");
   ]);
 
   const passed = __test.buildFailureReasons({
+    status: "OK",
     live_gate_blocked: false,
     canonical_exit_stage_gate: "PASS",
     stop_divergence_gate: "PASS",
     canonical_transition_backfill_ok: true,
   });
   assert.deepStrictEqual(passed, []);
+
+  const skipReasons = __test.buildFailureReasons(
+    {
+      status: "SKIP",
+      skip_reason: "NO_ACTIVE_POSITIONS",
+      live_gate_blocked: false,
+      canonical_exit_stage_gate: "PASS",
+      stop_divergence_gate: "PASS",
+      canonical_transition_backfill_ok: true,
+    },
+    { cycleResult: { skipped: true } }
+  );
+  assert.ok(
+    skipReasons.includes("CYCLE_SKIPPED:NO_ACTIVE_POSITIONS"),
+    `expected CYCLE_SKIPPED reason, got ${JSON.stringify(skipReasons)}`
+  );
+  assert.ok(skipReasons.includes("STATUS_NOT_OK:SKIP"));
+
+  const warnReasons = __test.buildFailureReasons({
+    status: "WARN",
+    live_gate_blocked: false,
+    canonical_exit_stage_gate: "PASS",
+    stop_divergence_gate: "PASS",
+    canonical_transition_backfill_ok: true,
+  });
+  assert.ok(warnReasons.includes("STATUS_NOT_OK:WARN"));
+
+  const missingStatusReasons = __test.buildFailureReasons({
+    live_gate_blocked: false,
+    canonical_exit_stage_gate: "PASS",
+    stop_divergence_gate: "PASS",
+    canonical_transition_backfill_ok: true,
+  });
+  assert.deepStrictEqual(
+    missingStatusReasons,
+    [],
+    "absent status (legacy summary shape) should not be flagged"
+  );
 
   const detailed = __test.buildFailureReasons({
     script_failure_n: 1,
@@ -40,6 +79,7 @@ const { __test } = require("../../scripts/check-binance-exit-integrity-gate");
     duplication_live_group_n: 8,
     authority_actionable_live_issue_position_n: 9,
     canonical_exit_stage_fail_n: 10,
+    simplified_exit_v2_live_flow_actionable_symbol_n: 13,
     tp1_meta_sync_gap_n: 12,
     stop_divergence_symbol_n: 11,
   });
@@ -55,6 +95,7 @@ const { __test } = require("../../scripts/check-binance-exit-integrity-gate");
     "DUPLICATION_LIVE_GROUP",
     "AUTHORITY_ACTIONABLE_LIVE_ISSUE_POSITION",
     "CANONICAL_EXIT_STAGE_FAIL",
+    "SIMPLIFIED_EXIT_V2_LIVE_FLOW_ACTIONABLE_SYMBOL",
     "TP1_META_SYNC_GAP",
     "STOP_DIVERGENCE_SYMBOL",
   ]);

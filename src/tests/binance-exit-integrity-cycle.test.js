@@ -274,8 +274,36 @@ function buildScriptResult(parsed) {
   assert.strictEqual(__test.isActivePositionRow({ status: "OPEN" }), true);
   assert.strictEqual(__test.normalizeCycleProfile("deploy"), "gate");
   assert.strictEqual(__test.normalizeCycleProfile("ops"), "ops");
-  assert.strictEqual(__test.resolveCycleProfileEnv("gate").EXIT_INTEGRITY_PROFILE, "gate");
-  assert.strictEqual(__test.resolveCycleProfileEnv("ops").SIMPLIFIED_EXIT_V2_TP1_DRILLDOWN_LOOKBACK_HOURS, "12");
+  const gateEnv = __test.resolveCycleProfileEnv("gate");
+  const opsEnv = __test.resolveCycleProfileEnv("ops");
+  assert.strictEqual(gateEnv.EXIT_INTEGRITY_PROFILE, "gate");
+  assert.strictEqual(opsEnv.SIMPLIFIED_EXIT_V2_TP1_DRILLDOWN_LOOKBACK_HOURS, "12");
+  // C6 invariant: gate lookbacks/page-sizes must be strictly narrower than ops.
+  const toNumSafe = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+  const gateVsOpsKeys = [
+    "CANONICAL_EXIT_TRANSITION_BACKFILL_LOOKBACK_DAYS",
+    "CANONICAL_EXIT_TRANSITION_BACKFILL_PAGE_SIZE",
+    "TRADE_EXEC_ALERT_CROSS_AUDIT_LOOKBACK_HOURS",
+    "TRADE_EXEC_ALERT_CROSS_AUDIT_PAGE_SIZE",
+    "BINANCE_CANONICAL_EXIT_STAGE_QA_LOOKBACK_HOURS",
+    "BINANCE_CANONICAL_EXIT_STAGE_QA_FILL_SCAN_LIMIT",
+    "BINANCE_CANONICAL_EXIT_STAGE_QA_TRANSITION_SCAN_LIMIT",
+    "SIMPLIFIED_EXIT_V2_LIVE_FLOW_LOOKBACK_HOURS",
+    "SIMPLIFIED_EXIT_V2_LIVE_FLOW_PAGE_SIZE",
+    "SIMPLIFIED_EXIT_V2_TP1_DRILLDOWN_LOOKBACK_HOURS",
+    "SIMPLIFIED_EXIT_V2_TP1_DRILLDOWN_PAGE_SIZE",
+  ];
+  for (const key of gateVsOpsKeys) {
+    const gateValue = toNumSafe(gateEnv[key]);
+    const opsValue = toNumSafe(opsEnv[key]);
+    assert.ok(
+      gateValue != null && opsValue != null && gateValue <= opsValue,
+      `gate ${key}=${gateEnv[key]} must be <= ops ${key}=${opsEnv[key]}`
+    );
+  }
 
   console.log("BINANCE_EXIT_INTEGRITY_CYCLE_TEST_OK");
 })().catch((err) => {

@@ -40,6 +40,7 @@ const { tfToMs, normalizeTf, defaultExecTfFromEnv } = require("../utils/marketCo
 const { normalizeEvalExchange, evalLatestId, matchesEvalTf } = require("../utils/evalDoc");
 const { deriveSignalDocId } = require("../utils/signalDocId");
 const { buildExitStageView } = require("../utils/exitStageView");
+const { isSimplifiedExitV2Active } = require("../services/simplifiedExitV2");
 const { getPositionReadView, listExchangePositionReadViews } = require("../services/positionReadModel");
 const { resolveBinanceFuturesKeys } = require("../utils/binanceKeyResolver");
 const { normalizePositionSide } = require("../utils/positionSide");
@@ -8862,34 +8863,28 @@ function computeBinanceNativeProtectionPrices({ positionSide, entryPrice, levera
   const slPct = Number(rules && rules.SL);
   const tp0Pct = Number(rules && rules.TP_P0);
   const tpPct = Number(rules && rules.TP_P1);
-  const simplifiedExitV2Enabled = !!(posMeta && (posMeta.simplified_exit_v2_enabled === true || posMeta.simplifiedExitV2Enabled === true));
-  const tp0QtyRatioRaw = Number(rules && rules.TP_P0_QTY);
+  const simplifiedExitV2Enabled = resolveSimplifiedExitV2PositionFlag({ currentMeta: posMeta });
   const tpQtyRatioRaw = Number(rules && rules.TP_P1_QTY);
-  const tp0QtyRatio = simplifiedExitV2Enabled
-    ? 0
-    : (Number.isFinite(tp0QtyRatioRaw) && tp0QtyRatioRaw > 0
-      ? Math.min(1, Math.max(POS_SIZE_EPSILON, tp0QtyRatioRaw))
-      : 0.25);
   const tpQtyRatio = Number.isFinite(tpQtyRatioRaw) && tpQtyRatioRaw > 0
     ? Math.min(1, Math.max(POS_SIZE_EPSILON, tpQtyRatioRaw))
     : 0.5;
-  const observedTp0QtyRatio = Number(posMeta && posMeta.tp_p0_qty_ratio);
-  const tp0FilledQtyRatio = simplifiedExitV2Enabled
-    ? 0
-    : (Number.isFinite(observedTp0QtyRatio) && observedTp0QtyRatio > 0
-      ? Math.min(1, Math.max(POS_SIZE_EPSILON, observedTp0QtyRatio))
-      : tp0QtyRatio);
   const tp0Done = posMeta && posMeta.tp_p0_done === true;
-  const remainingQtyRatio = (simplifiedExitV2Enabled || !tp0Done)
-    ? 1
-    : Math.max(POS_SIZE_EPSILON, 1 - tp0FilledQtyRatio);
-  const projectedTp1BaseQtyRatio = (simplifiedExitV2Enabled || tp0Done)
-    ? 1
-    : Math.max(POS_SIZE_EPSILON, 1 - tp0QtyRatio);
-  const tp0OrderQtyRatio = simplifiedExitV2Enabled ? 0 : tp0QtyRatio;
-  const tpOrderQtyRatio = (simplifiedExitV2Enabled || tp0Done)
-    ? Math.min(1, Math.max(POS_SIZE_EPSILON, tpQtyRatio))
-    : Math.min(1, Math.max(POS_SIZE_EPSILON, projectedTp1BaseQtyRatio * tpQtyRatio));
+  let tp0QtyRatio = 0;
+  let tp0OrderQtyRatio = 0;
+  let tpOrderQtyRatio = Math.min(1, Math.max(POS_SIZE_EPSILON, tpQtyRatio));
+  if (!simplifiedExitV2Enabled) {
+    const tp0QtyRatioRaw = Number(rules && rules.TP_P0_QTY);
+    tp0QtyRatio = Number.isFinite(tp0QtyRatioRaw) && tp0QtyRatioRaw > 0
+      ? Math.min(1, Math.max(POS_SIZE_EPSILON, tp0QtyRatioRaw))
+      : 0.25;
+    const projectedTp1BaseQtyRatio = tp0Done
+      ? 1
+      : Math.max(POS_SIZE_EPSILON, 1 - tp0QtyRatio);
+    tp0OrderQtyRatio = tp0QtyRatio;
+    tpOrderQtyRatio = tp0Done
+      ? Math.min(1, Math.max(POS_SIZE_EPSILON, tpQtyRatio))
+      : Math.min(1, Math.max(POS_SIZE_EPSILON, projectedTp1BaseQtyRatio * tpQtyRatio));
+  }
   if (!Number.isFinite(px) || px <= 0 || (side !== "LONG" && side !== "SHORT")) return null;
   if (!Number.isFinite(slPct) || !Number.isFinite(tpPct)) return null;
   const slMove = slPct / lev;
@@ -9485,7 +9480,7 @@ function isAuthorizedBinanceNativeStopWriter(writerSource = null) {
 
 function resolveNativeProtectionStageState(posMeta = null) {
   const meta = (posMeta && typeof posMeta === "object") ? posMeta : {};
-  const simplifiedExitV2Enabled = meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true;
+  const simplifiedExitV2Enabled = resolveSimplifiedExitV2PositionFlag({ currentMeta: meta });
   const tp0Done = meta.tp_p0_done === true;
   const tp1Done = meta.tp_p1_done === true;
   const trailActive = meta.trail_active === true;
@@ -9498,13 +9493,14 @@ function resolveNativeProtectionStageState(posMeta = null) {
 
 function resolveSimplifiedExitV2PositionFlag({ currentMeta = null } = {}) {
   const meta = (currentMeta && typeof currentMeta === "object") ? currentMeta : {};
-  if (meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true) return true;
-  return normalizeBool(process.env.SIMPLIFIED_EXIT_V2_ENABLED, false);
+  return isSimplifiedExitV2Active(meta);
 }
 
 function resolveNativeProtectionPositionMeta(positionMeta = null) {
   const meta = (positionMeta && typeof positionMeta === "object") ? positionMeta : {};
-  if (meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true) return meta;
+  if (resolveSimplifiedExitV2PositionFlag({ currentMeta: meta }) === true) {
+    if (meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true) return meta;
+  }
   if (resolveSimplifiedExitV2PositionFlag({ currentMeta: meta }) !== true) return meta;
   return {
     ...meta,
@@ -9573,7 +9569,12 @@ async function requestBinanceNativeProtectionRefresh({
     source: sourceUpper,
     requestKind: "NATIVE_STOP_REFRESH",
     reason,
-    dedupeKey: `${exchangeUpper}__${symbolUpper}__${sourceUpper}__NATIVE_STOP_REFRESH`,
+    // C11 invariant: dedupe by (exchange, symbol, requestKind) so that
+    // simultaneous repair requests from watchdog, reconciler, repair service,
+    // and tick-exit internal paths coalesce into a single queued job.  The
+    // original source is retained in the payload for observability but no
+    // longer fans out the queue.
+    dedupeKey: `${exchangeUpper}__${symbolUpper}__NATIVE_STOP_REFRESH`,
     payload: {
       fallback_side: fallbackSideUpper || null,
       fallback_entry_price: Number.isFinite(Number(fallbackEntryPrice)) ? Number(fallbackEntryPrice) : null,
@@ -9847,10 +9848,12 @@ async function refreshBinanceNativeProtection({
     let tpQtyRatio = null;
     let desiredTp0QtyPlaced = null;
     let desiredTpQtyPlaced = null;
-    let tp0Status = BINANCE_NATIVE_TP_ENABLED ? "SKIPPED" : "DISABLED";
-    let tp0Reason = BINANCE_NATIVE_TP_ENABLED
-      ? (stageState.simplifiedExitV2Enabled ? "SIMPLIFIED_EXIT_V2_TP0_DISABLED" : "TP0_TRIGGER_INVALID")
-      : "NATIVE_TP_DISABLED";
+    let tp0Status = stageState.simplifiedExitV2Enabled
+      ? null
+      : (BINANCE_NATIVE_TP_ENABLED ? "SKIPPED" : "DISABLED");
+    let tp0Reason = stageState.simplifiedExitV2Enabled
+      ? null
+      : (BINANCE_NATIVE_TP_ENABLED ? "TP0_TRIGGER_INVALID" : "NATIVE_TP_DISABLED");
     let tpStatus = BINANCE_NATIVE_TP_ENABLED ? "SKIPPED" : "DISABLED";
     let tpReason = BINANCE_NATIVE_TP_ENABLED ? "TP_TRIGGER_INVALID" : "NATIVE_TP_DISABLED";
     if (BINANCE_NATIVE_TP_ENABLED && stageState.tp0Eligible && Number.isFinite(prices.tp0TriggerPx) && prices.tp0TriggerPx > 0) {

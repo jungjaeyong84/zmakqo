@@ -67,4 +67,64 @@ const {
   assert.strictEqual(pass.scale, 1);
 })();
 
+(() => {
+  const missing = deriveExitIntegrityExposureGuard(
+    { doc: null, mtimeMs: null, path: "/missing.json", present: false },
+    { blockedScale: 0.5 }
+  );
+  assert.strictEqual(missing.active, true);
+  assert.strictEqual(missing.scale, 0);
+  assert.strictEqual(missing.blockNewEntries, true);
+  assert.strictEqual(missing.reason, "LIVE_POLICY_EXIT_INTEGRITY_REPORT_MISSING");
+  assert.strictEqual(missing.report_missing, true);
+
+  const parseError = deriveExitIntegrityExposureGuard(
+    { doc: null, mtimeMs: Date.now(), path: "/corrupt.json", present: true, parseError: true },
+    { blockedScale: 0.5 }
+  );
+  assert.strictEqual(parseError.active, true);
+  assert.strictEqual(parseError.scale, 0);
+  assert.strictEqual(parseError.blockNewEntries, true);
+  assert.strictEqual(parseError.reason, "LIVE_POLICY_EXIT_INTEGRITY_REPORT_PARSE_ERROR");
+
+  const fixedNow = 2_000_000_000_000;
+  const staleMtimeMs = fixedNow - (6 * 60 * 60 * 1000);
+  const stale = deriveExitIntegrityExposureGuard(
+    {
+      doc: { summary: { status: "OK", reasons: [] } },
+      mtimeMs: staleMtimeMs,
+      path: "/stale.json",
+      present: true,
+    },
+    { blockedScale: 0.5, maxAgeMs: 5 * 60 * 60 * 1000, now: fixedNow }
+  );
+  assert.strictEqual(stale.active, true);
+  assert.strictEqual(stale.scale, 0);
+  assert.strictEqual(stale.blockNewEntries, true);
+  assert.strictEqual(stale.reason, "LIVE_POLICY_EXIT_INTEGRITY_REPORT_STALE");
+  assert.strictEqual(stale.report_stale, true);
+
+  const freshMtimeMs = fixedNow - (60 * 1000);
+  const fresh = deriveExitIntegrityExposureGuard(
+    {
+      doc: { summary: { status: "OK", reasons: [] } },
+      mtimeMs: freshMtimeMs,
+      path: "/fresh.json",
+      present: true,
+    },
+    { blockedScale: 0.5, maxAgeMs: 5 * 60 * 60 * 1000, now: fixedNow }
+  );
+  assert.strictEqual(fresh.active, false);
+  assert.strictEqual(fresh.scale, 1);
+  assert.strictEqual(fresh.blockNewEntries, false);
+  assert.strictEqual(fresh.report_stale, false);
+
+  const legacyDirect = deriveExitIntegrityExposureGuard(
+    { status: "OK", stop_divergence_gate: "PASS", stop_divergence_symbol_n: 0 },
+    { blockedScale: 0.5 }
+  );
+  assert.strictEqual(legacyDirect.scale, 1);
+  assert.strictEqual(legacyDirect.report_missing, false);
+})();
+
 console.log("EXIT_INTEGRITY_POLICY_TEST_OK");

@@ -31,6 +31,7 @@ const { buildExitStageView } = require("../utils/exitStageView");
 const { isIntentCanceledLikeStatus } = require("../utils/intentStatus");
 const { deriveSignalDocId } = require("../utils/signalDocId");
 const { inferTakeProfitKindFromQtyRatio } = require("./binancePositionReconciler");
+const { isSimplifiedExitV2Active } = require("./simplifiedExitV2");
 const { sendKoreanTelegramSummary } = require("../../scripts/lib/automation-utils");
 const {
   resolveExitStageAbsoluteContractQtyRatio,
@@ -42,7 +43,14 @@ const { recordCanonicalExitTransitions } = require("../storage/canonicalExitTran
 const {
   buildExitQuantityContractLedger,
   resolveCanonicalExitWritePayload,
+  validateExitQuantityContractLedger,
 } = require("./positionStateMachine");
+const {
+  COLLECTION: EXIT_AUTHORITY_STATE_COLLECTION,
+  mergeStates: mergeExitAuthorityStates,
+  normalizeState: normalizeExitAuthorityState,
+  persistExitAuthorityStates,
+} = require("../storage/exitAuthorityState");
 
 const DEFAULT_LOOKBACK_MS = 72 * 60 * 60 * 1000;
 const DEFAULT_MIN_INTERVAL_MS = 3 * 60 * 1000;
@@ -88,11 +96,15 @@ function buildExitLedgerMetaPatch({
     },
     rules: rules || null,
   });
+  const simplifiedExitV2Enabled = isSimplifiedExitV2Enabled({
+    position: pos,
+    ...(meta && typeof meta === "object" ? meta : {}),
+  });
   return {
     entry_qty_base: Number.isFinite(Number(ledger.entry_qty_abs)) ? Number(ledger.entry_qty_abs) : null,
     entry_qty_abs: Number.isFinite(Number(ledger.entry_qty_abs)) ? Number(ledger.entry_qty_abs) : null,
-    tp_p0_allowed_qty_abs: Number.isFinite(Number(ledger.tp0_allowed_abs)) ? Number(ledger.tp0_allowed_abs) : null,
-    tp_p0_consumed_qty_abs: Number.isFinite(Number(ledger.tp0_consumed_abs)) ? Number(ledger.tp0_consumed_abs) : null,
+    tp_p0_allowed_qty_abs: simplifiedExitV2Enabled ? null : (Number.isFinite(Number(ledger.tp0_allowed_abs)) ? Number(ledger.tp0_allowed_abs) : null),
+    tp_p0_consumed_qty_abs: simplifiedExitV2Enabled ? null : (Number.isFinite(Number(ledger.tp0_consumed_abs)) ? Number(ledger.tp0_consumed_abs) : null),
     tp_p1_allowed_qty_abs: Number.isFinite(Number(ledger.tp1_allowed_abs)) ? Number(ledger.tp1_allowed_abs) : null,
     tp_p1_consumed_qty_abs: Number.isFinite(Number(ledger.tp1_consumed_abs)) ? Number(ledger.tp1_consumed_abs) : null,
     runner_allowed_qty_abs: Number.isFinite(Number(ledger.runner_allowed_abs)) ? Number(ledger.runner_allowed_abs) : null,
@@ -102,8 +114,8 @@ function buildExitLedgerMetaPatch({
     total_consumed_qty_abs: (
       Number.isFinite(Number(ledger.entry_qty_abs)) && Number.isFinite(Number(ledger.total_consumed_ratio))
     ) ? (Number(ledger.entry_qty_abs) * Number(ledger.total_consumed_ratio)) : null,
-    tp_p0_allowed_qty_ratio: Number.isFinite(Number(ledger.tp0_allowed_ratio)) ? Number(ledger.tp0_allowed_ratio) : null,
-    tp_p0_consumed_qty_ratio: Number.isFinite(Number(ledger.tp0_consumed_ratio)) ? Number(ledger.tp0_consumed_ratio) : null,
+    tp_p0_allowed_qty_ratio: simplifiedExitV2Enabled ? null : (Number.isFinite(Number(ledger.tp0_allowed_ratio)) ? Number(ledger.tp0_allowed_ratio) : null),
+    tp_p0_consumed_qty_ratio: simplifiedExitV2Enabled ? null : (Number.isFinite(Number(ledger.tp0_consumed_ratio)) ? Number(ledger.tp0_consumed_ratio) : null),
     tp_p1_allowed_qty_ratio: Number.isFinite(Number(ledger.tp1_allowed_ratio)) ? Number(ledger.tp1_allowed_ratio) : null,
     tp_p1_consumed_qty_ratio: Number.isFinite(Number(ledger.tp1_consumed_ratio)) ? Number(ledger.tp1_consumed_ratio) : null,
     runner_allowed_qty_ratio: Number.isFinite(Number(ledger.runner_allowed_ratio)) ? Number(ledger.runner_allowed_ratio) : null,
@@ -113,12 +125,12 @@ function buildExitLedgerMetaPatch({
   };
 }
 
-function buildExitLedgerPayload(ledger = null, observedQtyAbs = null) {
+function buildExitLedgerPayload(ledger = null, observedQtyAbs = null, { simplifiedExitV2Enabled = false } = {}) {
   const source = ledger && typeof ledger === "object" ? ledger : {};
   return {
     contractEntryQtyAbs: Number.isFinite(Number(source.entry_qty_abs)) ? Number(source.entry_qty_abs) : null,
-    contractTp0AllowedAbs: Number.isFinite(Number(source.tp0_allowed_abs)) ? Number(source.tp0_allowed_abs) : null,
-    contractTp0ConsumedAbs: Number.isFinite(Number(source.tp0_consumed_abs)) ? Number(source.tp0_consumed_abs) : null,
+    contractTp0AllowedAbs: simplifiedExitV2Enabled ? null : (Number.isFinite(Number(source.tp0_allowed_abs)) ? Number(source.tp0_allowed_abs) : null),
+    contractTp0ConsumedAbs: simplifiedExitV2Enabled ? null : (Number.isFinite(Number(source.tp0_consumed_abs)) ? Number(source.tp0_consumed_abs) : null),
     contractTp1AllowedAbs: Number.isFinite(Number(source.tp1_allowed_abs)) ? Number(source.tp1_allowed_abs) : null,
     contractTp1ConsumedAbs: Number.isFinite(Number(source.tp1_consumed_abs)) ? Number(source.tp1_consumed_abs) : null,
     contractRunnerAllowedAbs: Number.isFinite(Number(source.runner_allowed_abs)) ? Number(source.runner_allowed_abs) : null,
@@ -786,10 +798,11 @@ function pctLabel(v) {
 
 function isSimplifiedExitV2Enabled(positionCtx = null) {
   const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
-  if (ctx.simplifiedExitV2Enabled === true || ctx.simplified_exit_v2_enabled === true) return true;
   const position = (ctx.position && typeof ctx.position === "object") ? ctx.position : {};
-  const meta = (position.meta && typeof position.meta === "object") ? position.meta : {};
-  return meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true;
+  return isSimplifiedExitV2Active({
+    ...ctx,
+    meta: (position.meta && typeof position.meta === "object") ? position.meta : {},
+  });
 }
 
 function computeAdverseSlippageBps({ side, signalPrice, execPrice } = {}) {
@@ -1000,14 +1013,11 @@ function resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale, execQtyBa
         source: qtyScaleMode || "SYNCED_QTY_PCT",
       };
     }
-    const tp1RemainingContractQtyRatio = resolveTp1RemainingContractQtyRatio(rules, 0.5);
-    if (Number.isFinite(tp1RemainingContractQtyRatio) && tp1RemainingContractQtyRatio > 0) {
-      return {
-        closeRatio: tp1RemainingContractQtyRatio,
-        aggregation: "MAX",
-        source: "CONTRACT_TP1_REMAINING_QTY_FALLBACK",
-      };
-    }
+    // C12 invariant: do not fall back to the contract target when neither the
+    // intent nor the exchange-acknowledged qty can prove how much was actually
+    // closed. Publishing `closeRatio=0.5` for an unverified TP1 event tells
+    // operators a lie (intent-shaped, not execution-shaped). Return empty so
+    // downstream alert code surfaces it as coverage_ready=false.
   }
   const intentQtyFraction = clamp01(intent && intent.qty_fraction);
   const scaledRatio = clamp01(qtyScale && qtyScale.ratio);
@@ -1101,18 +1111,61 @@ async function promotePositionStageHintsFromExternalExit({
     }
     const currentMeta = (pos.meta && typeof pos.meta === "object") ? pos.meta : {};
     const hintedMeta = buildStageHintedMeta(currentMeta, ev, trade);
+    const ledgerPatch = buildExitLedgerMetaPatch({
+      position: pos,
+      nextMeta: hintedMeta,
+      rules: hintedMeta.exit_rules_override && typeof hintedMeta.exit_rules_override === "object"
+        ? hintedMeta.exit_rules_override
+        : (currentMeta.exit_rules_override && typeof currentMeta.exit_rules_override === "object"
+          ? currentMeta.exit_rules_override
+          : null),
+    });
     const nextMeta = {
       ...hintedMeta,
-      ...buildExitLedgerMetaPatch({
-        position: pos,
-        nextMeta: hintedMeta,
-        rules: hintedMeta.exit_rules_override && typeof hintedMeta.exit_rules_override === "object"
-          ? hintedMeta.exit_rules_override
-          : (currentMeta.exit_rules_override && typeof currentMeta.exit_rules_override === "object"
-            ? currentMeta.exit_rules_override
-            : null),
-      }),
+      ...ledgerPatch,
     };
+    // C1 invariant: stage-hint writes must pass the absolute-qty contract
+    // validator before they are persisted. This refuses to propagate a hint
+    // that would corrupt the ledger (e.g. TP1 consumed > allowed, runner
+    // remaining mismatch, missing entry_qty_abs after TP milestone).
+    const ledgerValidation = validateExitQuantityContractLedger({
+      ledger: {
+        entry_qty_abs: ledgerPatch.entry_qty_abs,
+        tp0_allowed_ratio: ledgerPatch.tp_p0_allowed_qty_ratio,
+        tp0_consumed_ratio: ledgerPatch.tp_p0_consumed_qty_ratio,
+        tp1_allowed_ratio: ledgerPatch.tp_p1_allowed_qty_ratio,
+        tp1_consumed_ratio: ledgerPatch.tp_p1_consumed_qty_ratio,
+        runner_allowed_ratio: ledgerPatch.runner_allowed_qty_ratio,
+        runner_remaining_ratio: ledgerPatch.runner_remaining_qty_ratio,
+        trail_consumed_ratio: ledgerPatch.trail_consumed_qty_ratio,
+        total_consumed_ratio: ledgerPatch.total_consumed_qty_ratio,
+        tp0_allowed_abs: ledgerPatch.tp_p0_allowed_qty_abs,
+        tp0_consumed_abs: ledgerPatch.tp_p0_consumed_qty_abs,
+        tp1_allowed_abs: ledgerPatch.tp_p1_allowed_qty_abs,
+        tp1_consumed_abs: ledgerPatch.tp_p1_consumed_qty_abs,
+        runner_allowed_abs: ledgerPatch.runner_allowed_qty_abs,
+        runner_remaining_abs: ledgerPatch.runner_remaining_qty_abs,
+        trail_consumed_abs: ledgerPatch.trail_consumed_qty_abs,
+      },
+      positionSnapshot: {
+        state: pos.state,
+        position_state: pos.position_state,
+        size_pct: pos.size_pct,
+        qty_base: pos.qty_base,
+        entry_qty_base: nextMeta.entry_qty_base,
+        meta: nextMeta,
+      },
+    });
+    if (ledgerValidation && ledgerValidation.blocked === true) {
+      return {
+        ok: false,
+        skipped: true,
+        reason: "LEDGER_INVARIANT_VIOLATION",
+        stage_event: ev,
+        issues: Array.isArray(ledgerValidation.issues) ? ledgerValidation.issues : [],
+        position: pos,
+      };
+    }
     const unchanged = JSON.stringify(nextMeta) === JSON.stringify(currentMeta);
     if (unchanged) {
       return { ok: true, skipped: true, reason: "META_ALREADY_HINTED", position: pos };
@@ -2109,7 +2162,7 @@ async function loadPositionEntryContext(exchange, symbol, cacheMap) {
       nativeProtectionConsumedTpQtyRatio: Number.isFinite(Number(meta.native_protection_consumed_tp_qty_ratio))
         ? Number(meta.native_protection_consumed_tp_qty_ratio)
         : null,
-      simplifiedExitV2Enabled: meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true,
+      simplifiedExitV2Enabled: isSimplifiedExitV2Active(meta),
       exitRulesOverride: (meta.exit_rules_override && typeof meta.exit_rules_override === "object")
         ? meta.exit_rules_override
         : null,
@@ -2412,6 +2465,7 @@ function applyExternalExitQtyAuthority({
   exchange,
   symbol,
   event,
+  positionCtx = null,
   entryEventId = null,
   signalDocId = null,
   orderMeta = null,
@@ -2442,28 +2496,30 @@ function applyExternalExitQtyAuthority({
     };
   }
   const state = getExitAuthorityState(authorityMap, chainKey);
+  const simplifiedExitV2Enabled = isSimplifiedExitV2Enabled(positionCtx);
+  const effectiveStage = simplifiedExitV2Enabled && stage === "TP0" ? "TP1" : stage;
   const tp0Cap = resolveExitStageAbsoluteContractQtyRatio("TP0", rules);
   const tp1Cap = resolveExitStageAbsoluteContractQtyRatio("TP1", rules);
   let remaining = null;
-  if (stage === "TP0") remaining = Math.max(0, tp0Cap - state.tp0);
-  else if (stage === "TP1") remaining = Math.max(0, tp1Cap - state.tp1);
+  if (effectiveStage === "TP0") remaining = Math.max(0, tp0Cap - state.tp0);
+  else if (effectiveStage === "TP1") remaining = Math.max(0, tp1Cap - state.tp1);
   else remaining = Math.max(0, 1 - state.total);
   const acceptedQtyPct = Math.max(0, Math.min(rawQty, remaining));
   const droppedQtyPct = Math.max(0, rawQty - acceptedQtyPct);
   const capped = droppedQtyPct > 1e-9;
   if (acceptedQtyPct > 1e-9) {
     state.total += acceptedQtyPct;
-    if (stage === "TP0") state.tp0 += acceptedQtyPct;
-    else if (stage === "TP1") state.tp1 += acceptedQtyPct;
-    else if (stage === "TRAIL") state.trail += acceptedQtyPct;
-    else if (stage === "SL") state.sl += acceptedQtyPct;
-    else if (stage === "FORCE_EXIT_ALL") state.forceExitAll += acceptedQtyPct;
-    else if (stage === "FORCE_EXIT_HALF") state.forceExitHalf += acceptedQtyPct;
+    if (effectiveStage === "TP0") state.tp0 += acceptedQtyPct;
+    else if (effectiveStage === "TP1") state.tp1 += acceptedQtyPct;
+    else if (effectiveStage === "TRAIL") state.trail += acceptedQtyPct;
+    else if (effectiveStage === "SL") state.sl += acceptedQtyPct;
+    else if (effectiveStage === "FORCE_EXIT_ALL") state.forceExitAll += acceptedQtyPct;
+    else if (effectiveStage === "FORCE_EXIT_HALF") state.forceExitHalf += acceptedQtyPct;
     else state.otherExit += acceptedQtyPct;
   }
   return {
     chainKey,
-    stage,
+    stage: effectiveStage,
     rawQtyPct: rawQty,
     acceptedQtyPct: acceptedQtyPct > 1e-9 ? acceptedQtyPct : null,
     droppedQtyPct: droppedQtyPct > 1e-9 ? droppedQtyPct : null,
@@ -2476,7 +2532,17 @@ function applyExternalExitQtyAuthority({
 function inferTakeProfitKindFromQtyPct(qtyPct, rules, positionCtx = null) {
   if (isSimplifiedExitV2Enabled(positionCtx)) {
     const ratio = Number(qtyPct);
-    return Number.isFinite(ratio) && ratio > 0 ? "TP1" : null;
+    if (!Number.isFinite(ratio) || ratio <= 0) return null;
+    // C14 invariant: in v2 the only TP stage is TP1 with a contract target of
+    // `tp1_allowed_ratio`. A fill must be within ±40% of that target (with a
+    // 5pp absolute floor) to be classified as TP1; smaller fractions are
+    // partial-fill noise and must be ignored so that `tp_p1_done` never gets
+    // set on a 5% exit.
+    const target = resolveTp1RemainingContractQtyRatio(rules, 0.5);
+    if (!Number.isFinite(target) || target <= 0) return null;
+    const tolerance = Math.max(0.05, target * 0.4);
+    if (Math.abs(ratio - target) > tolerance) return null;
+    return "TP1";
   }
   return inferTakeProfitKindFromQtyRatio(
     qtyPct,
@@ -2955,7 +3021,26 @@ async function syncMarketTrades({
   const pendingAlertBatches = new Map();
   let lastExitTradeMs = null;
   let observedExitFill = false;
+  // C2 persistence: hydrate the authority accumulator from Firestore so that a
+  // process restart cannot drop the previously-consumed qty cap. Failures are
+  // non-fatal — the legacy per-run Map still enforces within-run invariants.
   const exitQtyAuthorityMap = new Map();
+  const exitQtyAuthorityTouched = new Map();
+  try {
+    const hydrateSnap = await db.collection(EXIT_AUTHORITY_STATE_COLLECTION)
+      .where("exchange", "==", "BINANCEFUT")
+      .where("symbol", "==", sym)
+      .limit(50)
+      .get();
+    hydrateSnap.forEach((doc) => {
+      const data = doc.data() || {};
+      const key = String(data.chain_key || doc.id || "").trim();
+      if (!key) return;
+      exitQtyAuthorityMap.set(key, normalizeExitAuthorityState(data.state || {}));
+    });
+  } catch (_err) {
+    // fall through — in-memory cap still applies
+  }
   const defaultExitRules = getExitRulesForExchange("BINANCEFUT");
   const alertEnabled = resolveEnvBool(process.env.BINANCEFUT_FILLS_SYNC_ALERT_ENABLED, true);
   const intentFutureAllowMs = Number(process.env.BINANCEFUT_FILLS_SYNC_INTENT_FUTURE_ALLOW_MS) || DEFAULT_INTENT_FUTURE_ALLOW_MS;
@@ -3186,6 +3271,7 @@ async function syncMarketTrades({
           entryEventId,
           signalDocId,
           orderMeta,
+          positionCtx,
           qtyPct,
           rules: exitRules,
         })
@@ -3199,6 +3285,16 @@ async function syncMarketTrades({
           duplicateSuspected: false,
           reason: "PASS_THROUGH",
         };
+      // C2 persistence tracking: remember which chainKeys were mutated so the
+      // final authority state can be written back to Firestore at loop exit.
+      if (looksLikeExit
+        && authorityDecision
+        && authorityDecision.chainKey
+        && Number(authorityDecision.acceptedQtyPct) > 0) {
+        exitQtyAuthorityTouched.set(authorityDecision.chainKey, {
+          entryEventId: entryEventId || null,
+        });
+      }
       const authoritativeQtyPct = looksLikeExit
         ? authorityDecision.acceptedQtyPct
         : qtyPct;
@@ -3236,7 +3332,9 @@ async function syncMarketTrades({
         ? shouldPromoteCanonicalExternalExit(canonicalStageDecision)
         : false;
       const exitLedgerPayload = looksLikeExit
-        ? buildExitLedgerPayload(canonicalStageDecision.ledger || null, execQtyBase)
+        ? buildExitLedgerPayload(canonicalStageDecision.ledger || null, execQtyBase, {
+          simplifiedExitV2Enabled: isSimplifiedExitV2Enabled(positionCtx),
+        })
         : null;
 
       const upserted = await upsertExternalFill({
@@ -3709,6 +3807,28 @@ async function syncMarketTrades({
     }, { merge: true });
   }
 
+  // C2 persistence: write back the authority accumulator so a restart cannot
+  // re-apply already-consumed qty. Failures are non-fatal.
+  if (exitQtyAuthorityTouched.size > 0) {
+    const patches = [];
+    for (const [chainKey, meta] of exitQtyAuthorityTouched.entries()) {
+      const state = exitQtyAuthorityMap.get(chainKey);
+      if (!state) continue;
+      patches.push({
+        chainKey,
+        exchange: "BINANCEFUT",
+        symbol: sym,
+        entryEventId: (meta && meta.entryEventId) || null,
+        state,
+      });
+    }
+    try {
+      await persistExitAuthorityStates(db, patches);
+    } catch (_err) {
+      // silent — within-run Map already enforced the cap
+    }
+  }
+
   return { ok: true, symbol: sym, fetched, inserted };
 }
 
@@ -3800,6 +3920,8 @@ async function syncBinanceFuturesFills({
 module.exports = {
   syncBinanceFuturesFills,
   __test: {
+    buildExitLedgerMetaPatch,
+    buildExitLedgerPayload,
     clearConsumedTakeProfitProtectionMeta,
     computeSyncedQtyPct,
     resolveIntentNotional,

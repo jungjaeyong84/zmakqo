@@ -12,7 +12,12 @@ const {
 const { resolveBinanceKeys } = require("./binanceApiKeys");
 const { upsertTrailObservation } = require("../storage/positionRuntimeObservations");
 const { getPosition, upsertPositionMetaOnly } = require("../storage/positionsPaper");
-const { resolveCanonicalPositionExitStage } = require("./positionStateMachine");
+const {
+  resolveCanonicalPositionExitStage,
+  buildExitQuantityContractLedger,
+  validateExitQuantityContractLedger,
+} = require("./positionStateMachine");
+const { isSimplifiedExitV2Active } = require("./simplifiedExitV2");
 
 function normalizeSymbol(value) {
   return String(value || "").trim().toUpperCase();
@@ -44,7 +49,7 @@ function sanitizeNativeProtectionResultForNonAuthority(result = null) {
 function isSimplifiedExitV2Position(positionSnapshot = null) {
   const snapshot = positionSnapshot && typeof positionSnapshot === "object" ? positionSnapshot : {};
   const meta = snapshot.meta && typeof snapshot.meta === "object" ? snapshot.meta : {};
-  return meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true;
+  return isSimplifiedExitV2Active(meta);
 }
 
 function resolveRepairTargetStage({
@@ -69,6 +74,20 @@ function resolveRepairTargetStage({
       stage: "TRAIL",
       source: "CANONICAL_TP1_WITH_OPEN_RUNNER",
       reason: "TP1_DONE_WITH_OPEN_RUNNER",
+    };
+  }
+  if (simplifiedExitV2Enabled === true && positionSnapshot && positionSnapshot.meta && positionSnapshot.meta.tp_p0_done === true) {
+    return {
+      stage: null,
+      source: canonical.source,
+      reason: "V2_TP0_STAGE_REJECTED",
+    };
+  }
+  if (simplifiedExitV2Enabled === true && canonical.stage === "TP0") {
+    return {
+      stage: null,
+      source: canonical.source,
+      reason: "V2_TP0_STAGE_REJECTED",
     };
   }
   if (canonical.stage === "TP0") {
@@ -104,8 +123,13 @@ function buildRepairedMeta(meta = {}, stageInfo = {}) {
     nextMeta.tp_p1_source = nextMeta.tp_p1_source || "LIVE_STAGE_REPAIR";
   }
   if ((simplifiedExitV2Enabled !== true && stage === "TP0") || stage === "TRAIL") {
+    // C17 invariant: canonical_exit_stage is the single source of truth on
+    // position meta going forward. Writing both fields previously created a
+    // dual-owner problem where drift between them could silently diverge.
     nextMeta.canonical_exit_stage = stage;
-    nextMeta.authoritative_exit_stage = stage;
+    // Retain any historical authoritative_exit_stage value so readers with
+    // the legacy fallback keep working during the migration window; do NOT
+    // write a fresh authoritative_exit_stage here.
   }
   return nextMeta;
 }
@@ -190,6 +214,45 @@ async function repairLiveTrailingStageForSymbol({
     };
   }
   const nextMeta = buildRepairedMeta(meta, repairStage);
+  // C3 invariant: repair writes must pass the absolute-qty contract validator.
+  // The ledger is rebuilt from the *repaired* meta against the live exchange
+  // qty so that a stale canonical snapshot cannot self-heal a broken state.
+  const repairLedger = buildExitQuantityContractLedger({
+    positionSnapshot: {
+      qty_base: positionQty,
+      entry_qty_base: nextMeta.entry_qty_base
+        ?? nextMeta.entry_qty_abs
+        ?? meta.entry_qty_base
+        ?? meta.entry_qty_abs
+        ?? position.entry_qty_base
+        ?? null,
+      meta: nextMeta,
+      position_side: positionSide,
+    },
+    rules: nextMeta.exit_rules_override || meta.exit_rules_override || null,
+  });
+  const repairLedgerValidation = validateExitQuantityContractLedger({
+    ledger: repairLedger,
+    positionSnapshot: {
+      state: String(position.state || "").toUpperCase(),
+      position_state: position.position_state,
+      size_pct: position.size_pct,
+      qty_base: positionQty,
+      entry_qty_base: repairLedger.entry_qty_abs,
+      meta: nextMeta,
+    },
+  });
+  if (repairLedgerValidation && repairLedgerValidation.blocked === true) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: "LEDGER_INVARIANT_VIOLATION",
+      symbol: sym,
+      canonical_stage: repairStage.stage,
+      canonical_stage_source: repairStage.source,
+      issues: Array.isArray(repairLedgerValidation.issues) ? repairLedgerValidation.issues : [],
+    };
+  }
   const singleStopWriter = shouldEnforceSingleStopWriter();
   await patchPositionMetaOnlyWithRetry({
     exchange,

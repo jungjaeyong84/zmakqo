@@ -8,6 +8,7 @@ const { readExitIntegrityReport, deriveExitIntegrityExposureGuard } = require(".
 const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
 const CAPITAL_ALLOCATOR_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_market_capital_allocator_latest.json");
 const QUARANTINE_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_server_market_quarantine_latest.json");
+const TP1_FAIL_CLOSED_QUARANTINE_PATH = path.join(OPS_DAILY_DIR, "tp1_fail_closed_quarantine_latest.json");
 const EXECUTION_QUALITY_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_execution_quality_latest.json");
 const POLICY_PARAMETER_PLAN_PATH = path.join(OPS_DAILY_DIR, "best_self_evolution_policy_parameter_plan_latest.json");
 const OBJECTIVE_SUPERVISOR_PATH = path.join(OPS_DAILY_DIR, "objective_supervisor_latest.json");
@@ -521,6 +522,26 @@ function deriveDesiredPositionSide({ features = null } = {}) {
   return null;
 }
 
+function upperOrNull(value) {
+  return String(value || "").trim().toUpperCase() || null;
+}
+
+function isTp1FailClosedQuarantineRow({ quarantineRow = null, quarantineReason = null } = {}) {
+  const source = upperOrNull(quarantineRow && quarantineRow.source);
+  const reason = upperOrNull(quarantineReason || (quarantineRow && quarantineRow.quarantine_reason));
+  return (
+    source === "TP1_FAIL_CLOSED"
+    || reason === "REPEATED_TP1_FAIL_CLOSED_ESCALATED"
+    || reason === "TP1_FAIL_CLOSED_REPEAT_QUARANTINE"
+  );
+}
+
+function resolveQuarantineBlockReason({ quarantineRow = null, quarantineReason = null } = {}) {
+  return isTp1FailClosedQuarantineRow({ quarantineRow, quarantineReason })
+    ? "TP1_FAIL_CLOSED_REPEAT_QUARANTINE"
+    : "LIVE_POLICY_QUARANTINE_HARD_BLOCK";
+}
+
 function normalizeActivePositionRow(row = null, id = null) {
   if (!row || typeof row !== "object") return null;
   const posId = String(row.pos_id || id || "").trim();
@@ -722,11 +743,13 @@ function extractOtherServerPolicyWatchOnlyMarketsByReason(doc = null) {
 function buildSnapshotFromArtifacts({
   allocatorDoc = null,
   quarantineDoc = null,
+  quarantineOverrideDoc = null,
   executionQualityDoc = null,
   policyParameterPlanDoc = null,
   objectiveSupervisorDoc = null,
   eventTruthAlphaValidationDoc = null,
   exitIntegrityDoc = null,
+  exitIntegrityReport = null,
   lineageHealthDoc = null,
   lineageHealthMtimeMs = null,
   lineageHealthPath = null,
@@ -737,15 +760,42 @@ function buildSnapshotFromArtifacts({
 } = {}) {
   const allocatorSummary = readSummary(allocatorDoc);
   const quarantineSummary = readSummary(quarantineDoc);
+  const quarantineOverrideSummary = readSummary(quarantineOverrideDoc);
   const qualitySummary = readSummary(executionQualityDoc);
   const policyPlanSummary = readSummary(policyParameterPlanDoc);
   const objectiveSummary = readSummary(objectiveSupervisorDoc);
   const eventTruthAlphaValidationSummary = readSummary(eventTruthAlphaValidationDoc);
   const exitIntegritySummary = exitIntegrityDoc ? readSummary(exitIntegrityDoc) : null;
+  const exitIntegrityReportMeta = exitIntegrityReport && typeof exitIntegrityReport === "object"
+    ? {
+        doc: exitIntegrityReport.doc || null,
+        mtimeMs: Number.isFinite(Number(exitIntegrityReport.mtimeMs)) ? Number(exitIntegrityReport.mtimeMs) : null,
+        path: exitIntegrityReport.path || null,
+        present: exitIntegrityReport.present === true,
+        parseError: exitIntegrityReport.parseError === true,
+      }
+    : null;
   const lineageSummary = readSummary(lineageHealthDoc);
 
   const allocatorRows = readRows(allocatorDoc, "by_market");
-  const quarantineRows = readRows(quarantineDoc, "by_market");
+  const quarantineBaseRows = readRows(quarantineDoc, "by_market");
+  const quarantineOverrideRows = readRows(quarantineOverrideDoc, "by_market");
+  const quarantineRows = [];
+  const quarantineSeenMarkets = new Set();
+  for (const row of quarantineBaseRows) {
+    const market = upper(row && row.market);
+    if (!market || quarantineSeenMarkets.has(market)) continue;
+    quarantineSeenMarkets.add(market);
+    quarantineRows.push({ ...row, market });
+  }
+  for (const row of quarantineOverrideRows) {
+    const market = upper(row && row.market);
+    if (!market) continue;
+    const normalized = { ...row, market };
+    const existingIdx = quarantineRows.findIndex((item) => upper(item && item.market) === market);
+    if (existingIdx >= 0) quarantineRows.splice(existingIdx, 1, normalized);
+    else quarantineRows.push(normalized);
+  }
   const qualityRows = readRows(executionQualityDoc, "by_market");
   const policyPlanRows = readPolicyPlanMarketRows(policyParameterPlanDoc);
   const driftOtherServerPolicyWatchOnlyMarkets = extractOtherServerPolicyWatchOnlyMarkets(driftRemediationApplyDoc);
@@ -796,12 +846,22 @@ function buildSnapshotFromArtifacts({
 
   return {
     allocator: allocatorSummary,
-    quarantine: quarantineSummary,
+    quarantine: {
+      ...quarantineSummary,
+      tp1FailClosedQuarantineStatus: upper(quarantineOverrideSummary && quarantineOverrideSummary.status),
+      tp1FailClosedQuarantineMarketN: toNum(quarantineOverrideSummary && quarantineOverrideSummary.quarantine_market_n),
+      tp1FailClosedTopQuarantineMarket: upper(quarantineOverrideSummary && quarantineOverrideSummary.top_quarantine_market),
+      learning_epoch_active: (quarantineSummary && quarantineSummary.learning_epoch_active === true)
+        || (quarantineOverrideSummary && quarantineOverrideSummary.learning_epoch_active === true),
+      by_market: quarantineRows,
+    },
+    quarantineOverride: quarantineOverrideSummary,
     quality: qualitySummary,
     policyPlan: policyPlanSummary,
     objective: objectiveSummary,
     eventTruthAlphaValidation: eventTruthAlphaValidationSummary,
     exitIntegrity: exitIntegritySummary,
+    exitIntegrityReport: exitIntegrityReportMeta,
     exitIntegrityGeneratedAtKst: String(exitIntegrityDoc && exitIntegrityDoc.generated_at || "").trim() || null,
     lineage: lineageSummary,
     lineageGeneratedAtKst:
@@ -919,11 +979,17 @@ function loadPolicySnapshot({ force = false } = {}) {
   maybeRefreshActivePositionsSnapshot(now);
   const allocatorDoc = readJsonSafe(CAPITAL_ALLOCATOR_PATH, null);
   const quarantineDoc = readJsonSafe(QUARANTINE_PATH, null);
+  const quarantineOverrideDoc = readJsonSafe(TP1_FAIL_CLOSED_QUARANTINE_PATH, null);
   const executionQualityDoc = readJsonSafe(EXECUTION_QUALITY_PATH, null);
   const policyParameterPlanDoc = POLICY_PLAN_ENABLED ? readJsonSafe(POLICY_PARAMETER_PLAN_PATH, null) : null;
   const objectiveSupervisorDoc = OBJECTIVE_SCALE_ENABLED ? readJsonSafe(OBJECTIVE_SUPERVISOR_PATH, null) : null;
   const eventTruthAlphaValidationDoc = RECENT_WIN_RATE_GUARD_ENABLED ? readJsonSafe(EVENT_TRUTH_ALPHA_VALIDATION_PATH, null) : null;
-  const exitIntegrityDoc = EXIT_INTEGRITY_ENABLED ? readExitIntegrityReport() : null;
+  // Snapshot contract for exit integrity guard:
+  //   - EXIT_INTEGRITY_ENABLED=false: pass null (guard is disabled).
+  //   - EXIT_INTEGRITY_ENABLED=true: always pass the rich read result so missing/stale/parse-error
+  //     cases can fail-closed (see deriveExitIntegrityExposureGuard).
+  const exitIntegrityReport = EXIT_INTEGRITY_ENABLED ? readExitIntegrityReport() : null;
+  const exitIntegrityDoc = exitIntegrityReport && exitIntegrityReport.doc ? exitIntegrityReport.doc : null;
   const localLineageHealthDoc = LINEAGE_SLO_ENABLED ? readJsonSafe(SIGNAL_LINEAGE_HEALTH_PATH, null) : null;
   const localLineageHealthMtimeMs = LINEAGE_SLO_ENABLED ? readFileMtimeMs(SIGNAL_LINEAGE_HEALTH_PATH) : null;
   const selectedLineageInput = selectPreferredLineageInput({
@@ -935,11 +1001,13 @@ function loadPolicySnapshot({ force = false } = {}) {
   const snapshot = buildSnapshotFromArtifacts({
     allocatorDoc,
     quarantineDoc,
+    quarantineOverrideDoc,
     executionQualityDoc,
     policyParameterPlanDoc,
     objectiveSupervisorDoc,
     eventTruthAlphaValidationDoc,
     exitIntegrityDoc,
+    exitIntegrityReport,
     lineageHealthDoc: selectedLineageInput.doc,
     lineageHealthMtimeMs: selectedLineageInput.mtimeMs,
     lineageHealthPath: selectedLineageInput.path,
@@ -1626,7 +1694,17 @@ function evaluateLiveEntryPolicy({
   const systemSlo = deriveSystemSloGuard(snapshot);
   const systemAnomaly = deriveSystemAnomalyGuard(snapshot);
   const recentWinRateGuard = deriveRecentWinRateGuard(snapshot);
-  const exitIntegrityGuard = deriveExitIntegrityExposureGuard(snapshot && snapshot.exitIntegrity, {
+  // The snapshot's exitIntegrityReport is authoritative:
+  //   - null/undefined => integrity guard is disabled for this snapshot (tests or EXIT_INTEGRITY_ENABLED=0)
+  //   - { present: true, doc, mtimeMs } => evaluate normally
+  //   - { present: false } => missing/stale/parse-error branches handle fail-closed
+  let exitIntegrityGuardInput = snapshot && snapshot.exitIntegrityReport
+    ? snapshot.exitIntegrityReport
+    : null;
+  if (!exitIntegrityGuardInput && snapshot && snapshot.exitIntegrity) {
+    exitIntegrityGuardInput = { doc: snapshot.exitIntegrity, present: true, mtimeMs: null, path: null };
+  }
+  const exitIntegrityGuard = deriveExitIntegrityExposureGuard(exitIntegrityGuardInput, {
     blockedScale: EXIT_INTEGRITY_STOP_DIVERGENCE_SCALE,
   });
   const operationalHoldSoftScaleMeta = deriveOperationalHoldSoftScaleMeta({
@@ -1650,6 +1728,16 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_action: action || null,
     _live_exec_policy_allocation_score: allocationScore,
     _live_exec_policy_quarantine_reason: quarantineReason || null,
+    _live_exec_policy_quarantine_source: String((quarantineRow && quarantineRow.source) || "").trim().toUpperCase() || null,
+    _live_exec_policy_quarantine_trigger_count: toNum(quarantineRow && quarantineRow.trigger_count),
+    _live_exec_policy_quarantine_trigger_threshold: toNum(quarantineRow && quarantineRow.trigger_threshold),
+    _live_exec_policy_quarantine_tp1_fail_closed_report_path: String((quarantineRow && quarantineRow.tp1_fail_closed_report_path) || "").trim() || null,
+    _live_exec_policy_quarantine_exit_integrity_report_path: String((quarantineRow && quarantineRow.exit_integrity_report_path) || "").trim() || null,
+    _live_exec_policy_quarantine_tp1_drilldown_report_path: String((quarantineRow && quarantineRow.tp1_drilldown_report_path) || "").trim() || null,
+    _live_exec_policy_quarantine_live_flow_report_path: String((quarantineRow && quarantineRow.live_flow_report_path) || "").trim() || null,
+    _live_exec_policy_tp1_fail_closed_quarantine_status: upper(snapshot && snapshot.quarantine && snapshot.quarantine.tp1FailClosedQuarantineStatus),
+    _live_exec_policy_tp1_fail_closed_quarantine_market_n: toNum(snapshot && snapshot.quarantine && snapshot.quarantine.tp1FailClosedQuarantineMarketN),
+    _live_exec_policy_tp1_fail_closed_top_quarantine_market: upper(snapshot && snapshot.quarantine && snapshot.quarantine.tp1FailClosedTopQuarantineMarket),
     _live_exec_policy_quality_latency_ms: qualityActuator.latency,
     _live_exec_policy_quality_partial_pct: qualityActuator.partial,
     _live_exec_policy_quality_slippage_bps: qualityActuator.slippage,
@@ -1866,7 +1954,7 @@ function evaluateLiveEntryPolicy({
   }
 
   if (quarantineBlocked) {
-    const reason = "LIVE_POLICY_QUARANTINE_HARD_BLOCK";
+    const reason = resolveQuarantineBlockReason({ quarantineRow, quarantineReason });
     return {
       ok: false,
       qtyPctFinal: 0,
@@ -1883,6 +1971,15 @@ function evaluateLiveEntryPolicy({
         blocked: true,
         reason,
         quarantine_reason: quarantineReason || null,
+        quarantine_source: String((quarantineRow && quarantineRow.source) || "").trim().toUpperCase() || null,
+        quarantine_trigger_count: toNum(quarantineRow && quarantineRow.trigger_count),
+        quarantine_trigger_threshold: toNum(quarantineRow && quarantineRow.trigger_threshold),
+        quarantine_evidence_paths: {
+          tp1_fail_closed_report_path: String((quarantineRow && quarantineRow.tp1_fail_closed_report_path) || "").trim() || null,
+          exit_integrity_report_path: String((quarantineRow && quarantineRow.exit_integrity_report_path) || "").trim() || null,
+          tp1_drilldown_report_path: String((quarantineRow && quarantineRow.tp1_drilldown_report_path) || "").trim() || null,
+          live_flow_report_path: String((quarantineRow && quarantineRow.live_flow_report_path) || "").trim() || null,
+        },
         recommended_action: action || null,
         allocation_score: allocationScore,
       },

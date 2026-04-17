@@ -117,21 +117,148 @@ function extractExitIntegritySummary(doc = null) {
   };
 }
 
+const DEFAULT_REPORT_MAX_AGE_MS = (() => {
+  const manifestSlaHours = 5;
+  const n = Number(process.env.LIVE_EXEC_POLICY_EXIT_INTEGRITY_MAX_AGE_MS);
+  if (Number.isFinite(n) && n > 0) return n;
+  return manifestSlaHours * 60 * 60 * 1000;
+})();
+
 function readExitIntegrityReport(filePath = EXIT_INTEGRITY_REPORT_PATH) {
+  let stats = null;
   try {
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+    stats = fs.statSync(filePath);
   } catch (_err) {
-    return null;
+    return { doc: null, mtimeMs: null, path: filePath, present: false };
+  }
+  try {
+    const doc = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return { doc, mtimeMs: stats.mtimeMs || stats.mtime.getTime(), path: filePath, present: true };
+  } catch (_err) {
+    return { doc: null, mtimeMs: stats.mtimeMs || stats.mtime.getTime(), path: filePath, present: true, parseError: true };
   }
 }
 
-function deriveExitIntegrityExposureGuard(doc = null, {
+function resolveReportInput(input = null) {
+  if (input === null || input === undefined) {
+    return {
+      disabled: true,
+      doc: null,
+      mtimeMs: null,
+      path: null,
+      present: false,
+      parseError: false,
+    };
+  }
+  if (input && typeof input === "object" && Object.prototype.hasOwnProperty.call(input, "doc")) {
+    const rawMtime = input.mtimeMs;
+    const mtimeMs = (rawMtime === null || rawMtime === undefined || rawMtime === "")
+      ? null
+      : (Number.isFinite(Number(rawMtime)) ? Number(rawMtime) : null);
+    return {
+      disabled: input.disabled === true,
+      doc: input.doc || null,
+      mtimeMs,
+      path: input.path || null,
+      present: input.present === true,
+      parseError: input.parseError === true,
+    };
+  }
+  // Legacy plain-doc input — treat as an in-memory report with no mtime metadata.
+  return {
+    disabled: false,
+    doc: input,
+    mtimeMs: null,
+    path: null,
+    present: true,
+    parseError: false,
+  };
+}
+
+function deriveExitIntegrityExposureGuard(input = null, {
   blockedScale = 0.5,
   singleStrikeScale = 0.75,
   doubleStrikeScale = blockedScale,
   tripleStrikeScale = 0,
+  maxAgeMs = DEFAULT_REPORT_MAX_AGE_MS,
+  now = Date.now(),
 } = {}) {
-  const summary = extractExitIntegritySummary(doc);
+  const resolved = resolveReportInput(input);
+  const summary = extractExitIntegritySummary(resolved.doc);
+  const ageMs = Number.isFinite(resolved.mtimeMs) ? Math.max(0, now - resolved.mtimeMs) : null;
+  const stale = Number.isFinite(ageMs) && Number.isFinite(maxAgeMs) && ageMs > maxAgeMs;
+  const parseError = resolved.parseError === true;
+  const missing = !parseError && !resolved.disabled && (resolved.present !== true || resolved.doc == null);
+
+  if (resolved.disabled) {
+    return {
+      ...summary,
+      scale: 1,
+      active: false,
+      reason: null,
+      blockNewEntries: false,
+      report_missing: false,
+      report_parse_error: false,
+      report_stale: false,
+      report_mtime_ms: null,
+      report_age_ms: null,
+      report_max_age_ms: maxAgeMs,
+      report_path: null,
+      report_disabled: true,
+    };
+  }
+
+  if (parseError) {
+    return {
+      ...summary,
+      scale: 0,
+      active: true,
+      reason: "LIVE_POLICY_EXIT_INTEGRITY_REPORT_PARSE_ERROR",
+      blockNewEntries: true,
+      report_missing: false,
+      report_parse_error: true,
+      report_stale: false,
+      report_mtime_ms: resolved.mtimeMs,
+      report_age_ms: ageMs,
+      report_max_age_ms: maxAgeMs,
+      report_path: resolved.path,
+    };
+  }
+
+  if (missing) {
+    return {
+      ...summary,
+      scale: 0,
+      active: true,
+      reason: "LIVE_POLICY_EXIT_INTEGRITY_REPORT_MISSING",
+      blockNewEntries: true,
+      report_missing: true,
+      report_parse_error: false,
+      report_stale: false,
+      report_mtime_ms: resolved.mtimeMs,
+      report_age_ms: ageMs,
+      report_max_age_ms: maxAgeMs,
+      report_path: resolved.path,
+    };
+  }
+
+  if (stale) {
+    return {
+      ...summary,
+      scale: 0,
+      active: true,
+      reason: "LIVE_POLICY_EXIT_INTEGRITY_REPORT_STALE",
+      blockNewEntries: true,
+      report_missing: false,
+      report_parse_error: false,
+      report_stale: true,
+      report_mtime_ms: resolved.mtimeMs,
+      report_age_ms: ageMs,
+      report_max_age_ms: maxAgeMs,
+      report_path: resolved.path,
+    };
+  }
+
   let scale = 1;
   let reason = null;
   let blockNewEntries = false;
@@ -152,11 +279,19 @@ function deriveExitIntegrityExposureGuard(doc = null, {
     active: scale < 1,
     reason: scale < 1 ? reason : null,
     blockNewEntries,
+    report_missing: false,
+    report_parse_error: false,
+    report_stale: false,
+    report_mtime_ms: resolved.mtimeMs,
+    report_age_ms: ageMs,
+    report_max_age_ms: maxAgeMs,
+    report_path: resolved.path,
   };
 }
 
 module.exports = {
   EXIT_INTEGRITY_REPORT_PATH,
+  DEFAULT_REPORT_MAX_AGE_MS,
   STOP_DIVERGENCE_CODES,
   normalizeStopDivergenceCodes,
   getStopDivergenceMeta,

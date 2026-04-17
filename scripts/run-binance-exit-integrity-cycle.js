@@ -9,6 +9,11 @@ const { runBinanceLiveStateSelfHeal } = require("../src/services/binanceLiveStat
 const { runBinanceActiveExitWatchdog } = require("../src/services/binanceActiveExitWatchdog");
 const { STOP_DIVERGENCE_CODES } = require("../src/utils/exitIntegrityPolicy");
 const { generateNativeTrailProtectionGapReport } = require("./report-native-trail-protection-gap");
+const {
+  writeExitIntegrityCollectionCache,
+  removeCacheFile,
+  ENV_CACHE_PATH: EXIT_INTEGRITY_COLLECTION_CACHE_ENV,
+} = require("./lib/exit-integrity-collection-cache");
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
@@ -229,9 +234,57 @@ function firstEnv(...values) {
 
 function resolveCycleProfileEnv(profile = "ops") {
   const normalized = normalizeCycleProfile(profile);
+  // C6 invariant: the "gate" profile is meant to be a lightweight deploy
+  // check. It must actually be lighter than ops — every subscript's lookback
+  // window and scan limit is narrowed so CI cannot accidentally trigger a
+  // full-history scan on production Firestore.
   if (normalized === "gate") {
     return {
       EXIT_INTEGRITY_PROFILE: "gate",
+      CANONICAL_EXIT_TRANSITION_BACKFILL_LOOKBACK_DAYS: firstEnv(
+        process.env.EXIT_INTEGRITY_GATE_CANONICAL_TRANSITION_LOOKBACK_DAYS,
+        "1"
+      ),
+      CANONICAL_EXIT_TRANSITION_BACKFILL_PAGE_SIZE: firstEnv(
+        process.env.EXIT_INTEGRITY_GATE_CANONICAL_TRANSITION_PAGE_SIZE,
+        "100"
+      ),
+      TRADE_EXEC_ALERT_CROSS_AUDIT_LOOKBACK_HOURS: firstEnv(
+        process.env.EXIT_INTEGRITY_GATE_TRADE_EXEC_ALERT_CROSS_AUDIT_LOOKBACK_HOURS,
+        "2"
+      ),
+      TRADE_EXEC_ALERT_CROSS_AUDIT_PAGE_SIZE: firstEnv(
+        process.env.EXIT_INTEGRITY_GATE_TRADE_EXEC_ALERT_CROSS_AUDIT_PAGE_SIZE,
+        "100"
+      ),
+      BINANCE_CANONICAL_EXIT_STAGE_QA_LOOKBACK_HOURS: firstEnv(
+        process.env.EXIT_INTEGRITY_GATE_BINANCE_CANONICAL_EXIT_STAGE_QA_LOOKBACK_HOURS,
+        "6"
+      ),
+      BINANCE_CANONICAL_EXIT_STAGE_QA_FILL_SCAN_LIMIT: firstEnv(
+        process.env.EXIT_INTEGRITY_GATE_BINANCE_CANONICAL_EXIT_STAGE_QA_FILL_SCAN_LIMIT,
+        "75"
+      ),
+      BINANCE_CANONICAL_EXIT_STAGE_QA_TRANSITION_SCAN_LIMIT: firstEnv(
+        process.env.EXIT_INTEGRITY_GATE_BINANCE_CANONICAL_EXIT_STAGE_QA_TRANSITION_SCAN_LIMIT,
+        "75"
+      ),
+      SIMPLIFIED_EXIT_V2_LIVE_FLOW_LOOKBACK_HOURS: firstEnv(
+        process.env.EXIT_INTEGRITY_GATE_SIMPLIFIED_EXIT_V2_LIVE_FLOW_LOOKBACK_HOURS,
+        "4"
+      ),
+      SIMPLIFIED_EXIT_V2_LIVE_FLOW_PAGE_SIZE: firstEnv(
+        process.env.EXIT_INTEGRITY_GATE_SIMPLIFIED_EXIT_V2_LIVE_FLOW_PAGE_SIZE,
+        "100"
+      ),
+      SIMPLIFIED_EXIT_V2_TP1_DRILLDOWN_LOOKBACK_HOURS: firstEnv(
+        process.env.EXIT_INTEGRITY_GATE_SIMPLIFIED_EXIT_V2_TP1_DRILLDOWN_LOOKBACK_HOURS,
+        "4"
+      ),
+      SIMPLIFIED_EXIT_V2_TP1_DRILLDOWN_PAGE_SIZE: firstEnv(
+        process.env.EXIT_INTEGRITY_GATE_SIMPLIFIED_EXIT_V2_TP1_DRILLDOWN_PAGE_SIZE,
+        "100"
+      ),
     };
   }
   return {
@@ -600,6 +653,45 @@ async function runBinanceExitIntegrityCycle({
   fs.mkdirSync(opsDailyDir, { recursive: true });
   const cycleProfile = normalizeCycleProfile(profile);
   const cycleProfileEnv = resolveCycleProfileEnv(cycleProfile);
+  // C8 shared cache: snapshot the hot Firestore collections once at the top
+  // of the cycle so that subscripts opting in via
+  // `EXIT_INTEGRITY_COLLECTION_CACHE_PATH` can read from the flat JSON blob
+  // instead of re-issuing equivalent queries. Subscripts that have not
+  // adopted the cache simply ignore the env var and keep their legacy path.
+  let collectionCacheMeta = null;
+  try {
+    if (!disableExchangeIo) {
+      const db = getFirestore();
+      const cacheLookbackMs = Number(
+        process.env.EXIT_INTEGRITY_COLLECTION_CACHE_LOOKBACK_MS
+        || (cycleProfile === "gate" ? 2 * 60 * 60 * 1000 : 6 * 60 * 60 * 1000)
+      );
+      const cache = await writeExitIntegrityCollectionCache({
+        db,
+        outDir: opsDailyDir,
+        lookbackMs: cacheLookbackMs,
+        exchange,
+      });
+      collectionCacheMeta = {
+        path: cache.path,
+        generated_at: cache.payload && cache.payload.generated_at,
+        lookback_ms: cache.payload && cache.payload.lookback_ms,
+        duration_ms: cache.payload && cache.payload.duration_ms,
+        row_counts: Object.fromEntries(
+          Object.entries((cache.payload && cache.payload.collections) || {}).map(([name, entry]) => [
+            name,
+            Array.isArray(entry && entry.rows) ? entry.rows.length : 0,
+          ])
+        ),
+      };
+      cycleProfileEnv[EXIT_INTEGRITY_COLLECTION_CACHE_ENV] = cache.path;
+    }
+  } catch (cacheErr) {
+    collectionCacheMeta = {
+      path: null,
+      error: cacheErr && cacheErr.message ? cacheErr.message : String(cacheErr),
+    };
+  }
 
   if (enabled !== true) {
     const skippedReport = buildSkippedCycleReport({
@@ -748,6 +840,7 @@ async function runBinanceExitIntegrityCycle({
     apply,
     profile: cycleProfile,
     exchange_io_disabled: disableExchangeIo,
+    collection_cache: collectionCacheMeta || null,
     active_exit_stage_backfill: stageBackfill,
     active_exit_watchdog: activeExitWatchdog,
     native_trail_gap_before: nativeGapBefore,
@@ -772,12 +865,17 @@ async function runBinanceExitIntegrityCycle({
 
   const artifacts = writeCycleArtifacts(report, opsDailyDir);
 
+  if (collectionCacheMeta && collectionCacheMeta.path) {
+    removeCacheFile(collectionCacheMeta.path);
+  }
+
   return {
     ok: true,
     status: report.summary.status,
     summary: report.summary,
     output_json: artifacts.latestJson,
     output_md: artifacts.latestMd,
+    collection_cache: collectionCacheMeta || null,
   };
 }
 

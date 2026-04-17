@@ -1,5 +1,7 @@
 "use strict";
 
+const { isSimplifiedExitV2Active } = require("./simplifiedExitV2");
+
 function toNum(value) {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
@@ -71,9 +73,7 @@ function isSimplifiedExitV2Enabled({
 } = {}) {
   if (simplifiedExitV2Enabled === true) return true;
   const snapshot = positionSnapshot && typeof positionSnapshot === "object" ? positionSnapshot : {};
-  const meta = (snapshot.meta && typeof snapshot.meta === "object") ? snapshot.meta : {};
-  if (meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true) return true;
-  return false;
+  return isSimplifiedExitV2Active(snapshot);
 }
 
 function trimPctToken(raw) {
@@ -145,10 +145,12 @@ function buildCanonicalExitEvent({
   return fallback;
 }
 
-function resolveExitStageAbsoluteContractQtyRatio(stage, rules = {}) {
+function resolveExitStageAbsoluteContractQtyRatio(stage, rules = {}, options = {}) {
   const currentStage = normalizeExitStage(stage);
-  if (currentStage === "TP0") return clamp01(toNum(rules.TP_P0_QTY) ?? 0.25);
+  const simplifiedV2 = isSimplifiedExitV2Enabled(options);
+  if (currentStage === "TP0") return simplifiedV2 ? 0 : clamp01(toNum(rules.TP_P0_QTY) ?? 0.25);
   if (currentStage === "TP1") {
+    if (simplifiedV2) return clamp01(toNum(rules.TP_P1_QTY) ?? 0.5);
     const tp0 = clamp01(toNum(rules.TP_P0_QTY) ?? 0.25) ?? 0.25;
     const tp1Remaining = clamp01(toNum(rules.TP_P1_QTY) ?? 0.5) ?? 0.5;
     return clamp01(tp1Remaining * Math.max(0, 1 - tp0));
@@ -195,15 +197,28 @@ function buildExitQuantityContractLedger({
   positionSnapshot = null,
   authorityState = null,
   rules = null,
+  simplifiedExitV2Enabled = null,
 } = {}) {
   const snapshot = normalizeSnapshot(positionSnapshot || {});
   const state = normalizeAuthorityState(authorityState || {});
-  const tp0AllowedRatio = resolveExitStageAbsoluteContractQtyRatio("TP0", rules || {}) ?? 0.25;
-  const tp1AllowedRatio = resolveExitStageAbsoluteContractQtyRatio("TP1", rules || {}) ?? 0.375;
-  const tp0ConsumedRatio = clamp01(Math.max(
-    state.tp0,
-    snapshot.tp_p0_done ? tp0AllowedRatio : 0
-  )) ?? 0;
+  const simplifiedV2 = isSimplifiedExitV2Enabled({
+    simplifiedExitV2Enabled,
+    positionSnapshot: snapshot,
+  });
+  const tp0AllowedRatio = resolveExitStageAbsoluteContractQtyRatio("TP0", rules || {}, {
+    simplifiedExitV2Enabled: simplifiedV2,
+    positionSnapshot: snapshot,
+  }) ?? 0;
+  const tp1AllowedRatio = resolveExitStageAbsoluteContractQtyRatio("TP1", rules || {}, {
+    simplifiedExitV2Enabled: simplifiedV2,
+    positionSnapshot: snapshot,
+  }) ?? (simplifiedV2 ? 0.5 : 0.375);
+  const tp0ConsumedRatio = simplifiedV2
+    ? 0
+    : (clamp01(Math.max(
+        state.tp0,
+        snapshot.tp_p0_done ? tp0AllowedRatio : 0
+      )) ?? 0);
   const tp1ConsumedRatio = clamp01(Math.max(
     state.tp1,
     snapshot.tp_p1_done ? tp1AllowedRatio : 0
@@ -218,7 +233,7 @@ function buildExitQuantityContractLedger({
   if (!Number.isFinite(entryQtyAbs) && Number.isFinite(currentQtyAbs) && currentQtyAbs > 0) {
     if (runnerRemainingRatio > 0.000001) {
       entryQtyAbs = currentQtyAbs / runnerRemainingRatio;
-    } else if (snapshot.trail_active !== true && snapshot.tp_p1_done !== true && snapshot.tp_p0_done !== true) {
+    } else if (snapshot.trail_active !== true && snapshot.tp_p1_done !== true && (simplifiedV2 || snapshot.tp_p0_done !== true)) {
       entryQtyAbs = currentQtyAbs;
     }
   }
@@ -482,17 +497,17 @@ function resolveCanonicalExitTransitionEvents({
     if (snapshot.tp_p0_done !== true) events.push("TP0_REACHED");
   } else if (stage === "TP1") {
     if (snapshot.tp_p1_done !== true) events.push("TP1_REACHED");
-    if (snapshot.trail_active !== true) events.push("TRAIL_ACTIVE");
+    if (snapshot.trail_active !== true) events.push(simplifiedV2 ? "TRAIL_ACTIVATED" : "TRAIL_ACTIVE");
   } else if (stage === "TRAIL") {
     const recentTrail = normalizeExitStage(recent.trail) === "TRAIL";
-    if (snapshot.trail_active !== true && !recentTrail) events.push("TRAIL_ACTIVE");
+    if (snapshot.trail_active !== true && !recentTrail) events.push(simplifiedV2 ? "TRAIL_ACTIVATED" : "TRAIL_ACTIVE");
     const observed = clamp01(observedQtyRatio);
     const remaining = ledger && Number.isFinite(Number(ledger.runner_remaining_ratio))
       ? Number(ledger.runner_remaining_ratio)
       : null;
     const likelyFinal = fullExit === true
       || (Number.isFinite(observed) && Number.isFinite(remaining) && observed >= Math.max(0, remaining - 0.03));
-    events.push(likelyFinal ? "TRAIL_FINAL_EXIT" : "TRAIL_PARTIAL");
+    events.push(simplifiedV2 ? "TRAIL_FINAL_EXIT" : (likelyFinal ? "TRAIL_FINAL_EXIT" : "TRAIL_PARTIAL"));
   }
   return {
     transitionEvents: events,
@@ -515,6 +530,19 @@ function resolveCanonicalAlertExitStage({
   if (ordered.includes("TP1_REACHED")) return "TP1";
   if (ordered.includes("TP0_REACHED")) return "TP0";
   if (ordered.includes("TRAIL_ACTIVE") || ordered.includes("TRAIL_ACTIVATED")) return "TRAIL";
+  return null;
+}
+
+// C17 single-reader contract: prefer `canonical_exit_stage` and fall back to
+// the legacy `authoritative_exit_stage` only for in-flight positions written
+// before the dual-owner cleanup. All new writers must only populate
+// `canonical_exit_stage` on position meta.
+function resolveStoredCanonicalExitStage(meta = null) {
+  const source = meta && typeof meta === "object" ? meta : {};
+  const canonical = normalizeExitStage(source.canonical_exit_stage);
+  if (canonical && canonical !== "OTHER" && canonical !== "OTHER_EXIT") return canonical;
+  const legacy = normalizeExitStage(source.authoritative_exit_stage);
+  if (legacy && legacy !== "OTHER" && legacy !== "OTHER_EXIT") return legacy;
   return null;
 }
 
@@ -577,7 +605,9 @@ function resolveCanonicalExitStageFromCycleEvidence({
   positionQty = null,
   tp0QtyRatio = 0.25,
   tp1QtyRatio = 0.5,
+  simplifiedExitV2Enabled = null,
 } = {}) {
+  const simplifiedV2 = simplifiedExitV2Enabled === true;
   if (!Array.isArray(cycleTrades) || cycleTrades.length === 0) {
     return { stage: "UNKNOWN", reason: "CYCLE_EMPTY" };
   }
@@ -589,12 +619,17 @@ function resolveCanonicalExitStageFromCycleEvidence({
     return { stage: "UNKNOWN", reason: "QTY_INVALID" };
   }
   const remainingRatio = remainingQty / totalEntryQty;
-  const tp0RemainingRatio = Math.max(0, 1 - (toNum(tp0QtyRatio) ?? 0.25));
+  const tp0RemainingRatio = simplifiedV2 ? 1 : Math.max(0, 1 - (toNum(tp0QtyRatio) ?? 0.25));
   const tp1AbsRatio = resolveExitStageAbsoluteContractQtyRatio("TP1", {
     TP_P0_QTY: tp0QtyRatio,
     TP_P1_QTY: tp1QtyRatio,
-  }) ?? 0.375;
-  const trailRemainingRatio = Math.max(0, 1 - ((toNum(tp0QtyRatio) ?? 0.25) + tp1AbsRatio));
+  }, {
+    simplifiedExitV2Enabled: simplifiedV2,
+  }) ?? (simplifiedV2 ? 0.5 : 0.375);
+  const trailRemainingRatio = Math.max(0, 1 - ((simplifiedV2 ? 0 : (toNum(tp0QtyRatio) ?? 0.25)) + tp1AbsRatio));
+  if (simplifiedV2 && exits.length >= 1 && Math.abs(remainingRatio - trailRemainingRatio) <= 0.04) {
+    return { stage: "TP1", entries, exits, totalEntryQty, remainingQty, remainingRatio, expectedAfterTp1: trailRemainingRatio };
+  }
   if (exits.length >= 2 && Math.abs(remainingRatio - trailRemainingRatio) <= 0.04) {
     return { stage: "TRAIL", entries, exits, totalEntryQty, remainingQty, remainingRatio, expectedAfterTp1: trailRemainingRatio };
   }
@@ -688,6 +723,9 @@ function resolveCanonicalExitAuthorityDecision({
 } = {}) {
   const snapshot = normalizeSnapshot(positionSnapshot || {});
   const stage = normalizeExitStage(currentStage);
+  const simplifiedV2 = isSimplifiedExitV2Enabled({
+    positionSnapshot: snapshot,
+  });
   const entryLineageRequired = requiresCanonicalExitEntryLineage({ currentStage: stage });
   const entryLineageMissing = entryLineageRequired && !String(entryEventId || "").trim();
   const resolvedChainKey = String(chainKey || "").trim() || buildCanonicalExitChainKey({
@@ -702,6 +740,7 @@ function resolveCanonicalExitAuthorityDecision({
     positionSnapshot: snapshot,
     authorityState,
     rules,
+    simplifiedExitV2Enabled: simplifiedV2,
   });
   const ledgerValidation = validateExitQuantityContractLedger({
     ledger,
@@ -709,10 +748,18 @@ function resolveCanonicalExitAuthorityDecision({
   });
   const recent = recentStages && typeof recentStages === "object" ? recentStages : {};
   const recentTrail = normalizeExitStage(recent.trail) === "TRAIL";
-  const recentTp0 = normalizeExitStage(recent.tp0) === "TP0";
-  const tp0AllowedRatio = resolveExitStageAbsoluteContractQtyRatio("TP0", rules || {}) ?? 0.25;
-  const tp1AllowedRatio = resolveExitStageAbsoluteContractQtyRatio("TP1", rules || {}) ?? 0.375;
-  const tp0Locked = Number(ledger.tp0_consumed_ratio || 0) >= Math.max(0, tp0AllowedRatio - 0.03);
+  const recentTp0 = simplifiedV2 ? false : (normalizeExitStage(recent.tp0) === "TP0");
+  const tp0AllowedRatio = resolveExitStageAbsoluteContractQtyRatio("TP0", rules || {}, {
+    simplifiedExitV2Enabled: simplifiedV2,
+    positionSnapshot: snapshot,
+  }) ?? 0;
+  const tp1AllowedRatio = resolveExitStageAbsoluteContractQtyRatio("TP1", rules || {}, {
+    simplifiedExitV2Enabled: simplifiedV2,
+    positionSnapshot: snapshot,
+  }) ?? (simplifiedV2 ? 0.5 : 0.375);
+  const tp0Locked = simplifiedV2
+    ? false
+    : (Number(ledger.tp0_consumed_ratio || 0) >= Math.max(0, tp0AllowedRatio - 0.03));
   const tp1Locked = Number(ledger.tp1_consumed_ratio || 0) >= Math.max(0, tp1AllowedRatio - 0.03);
   const postTp1Locked = snapshot.tp_p1_done === true || snapshot.trail_active === true || tp1Locked || recentTrail;
   let resolvedStage = stage;
@@ -760,6 +807,30 @@ function resolveCanonicalExitAuthorityDecision({
     ledgerValidation,
     transitionEvents: transition.transitionEvents,
     primaryTransitionEvent: transition.primaryTransitionEvent,
+  };
+}
+
+// C13 helper: detect a same-symbol direction flip (LONG ↔ SHORT) between two
+// snapshots. A flip without a full ledger reset is a critical invariant
+// violation — the previous cycle's TP/trail/SL accounting cannot be carried
+// over into the opposite direction.
+function detectPositionSideFlip({ prev = null, next = null } = {}) {
+  const previous = normalizeSnapshot(prev || {});
+  const current = normalizeSnapshot(next || {});
+  const prevSide = previous.position_side;
+  const nextSide = current.position_side;
+  const flipped = prevSide && nextSide && prevSide !== nextSide;
+  const ledgerCarried = current.tp_p0_done === true
+    || current.tp_p1_done === true
+    || current.trail_active === true
+    || (Number.isFinite(current.entry_qty_base) && Number.isFinite(previous.entry_qty_base)
+        && current.entry_qty_base > 0
+        && current.entry_qty_base === previous.entry_qty_base);
+  return {
+    flipped: !!flipped,
+    prev_side: prevSide,
+    next_side: nextSide,
+    ledger_carried_over: !!(flipped && ledgerCarried),
   };
 }
 
@@ -815,6 +886,19 @@ function validatePositionSnapshotTransition({ prev = null, next = null } = {}) {
     });
   }
 
+  // C13 invariant: LONG→SHORT (or SHORT→LONG) flip requires the caller to
+  // *completely* reset the exit ledger before writing the next snapshot.
+  // Carrying over tp_p0/tp_p1/trail flags into the opposite direction would
+  // apply the previous cycle's consumed contract against a brand-new entry.
+  const sideFlip = detectPositionSideFlip({ prev, next });
+  if (sideFlip.flipped && sideFlip.ledger_carried_over) {
+    issues.push({
+      code: "SIDE_FLIP_WITHOUT_LEDGER_RESET",
+      severity: "critical",
+      message: `position side flipped from ${sideFlip.prev_side} to ${sideFlip.next_side} but exit ledger flags/entry_qty were carried over.`,
+    });
+  }
+
   const fromState = previous.position_state || "UNKNOWN";
   const toState = current.position_state || "UNKNOWN";
   const allowed = ALLOWED_POSITION_STATE_TRANSITIONS[fromState] || ALLOWED_POSITION_STATE_TRANSITIONS.UNKNOWN;
@@ -831,11 +915,13 @@ function validatePositionSnapshotTransition({ prev = null, next = null } = {}) {
     issues,
     prev: previous,
     next: current,
+    side_flip: sideFlip,
   };
 }
 
 module.exports = {
   validatePositionSnapshotTransition,
+  detectPositionSideFlip,
   resolveCanonicalExitAuthorityDecision,
   resolveCanonicalExitTransitionEvents,
   resolveCanonicalAlertExitStage,
@@ -847,10 +933,12 @@ module.exports = {
   buildCanonicalExitChainKey,
   buildCanonicalExitEvent,
   classifyExitEventStage,
+  resolveStoredCanonicalExitStage,
   __test: {
     normalizeSnapshot,
     normalizeExitStage,
     normalizeTransitionEvent,
+    detectPositionSideFlip,
     resolveExitStageAbsoluteContractQtyRatio,
     resolveCanonicalExitAuthorityDecision,
     resolveCanonicalExitTransitionEvents,
@@ -863,6 +951,7 @@ module.exports = {
     buildCanonicalExitChainKey,
     buildCanonicalExitEvent,
     classifyExitEventStage,
+    resolveStoredCanonicalExitStage,
     requiresCanonicalExitEntryLineage,
     isSimplifiedExitV2Enabled,
     ALLOWED_POSITION_STATE_TRANSITIONS,

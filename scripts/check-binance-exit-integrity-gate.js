@@ -8,8 +8,17 @@ function toCount(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function buildFailureReasons(summary = {}) {
+const ALLOWED_GATE_STATUSES = new Set(["OK"]);
+
+function buildFailureReasons(summary = {}, { cycleResult = null } = {}) {
   const reasons = [];
+  if (cycleResult && cycleResult.skipped === true) {
+    reasons.push(`CYCLE_SKIPPED:${String(summary.skip_reason || "UNKNOWN").toUpperCase()}`);
+  }
+  const statusUpper = String(summary.status || "").trim().toUpperCase();
+  if (statusUpper && !ALLOWED_GATE_STATUSES.has(statusUpper)) {
+    reasons.push(`STATUS_NOT_OK:${statusUpper}`);
+  }
   if (toCount(summary.script_failure_n) > 0) reasons.push("SCRIPT_FAILURE");
   if (summary.live_gate_blocked === true) reasons.push("LIVE_GATE_BLOCKED");
   if (String(summary.canonical_exit_stage_gate || "").trim().toUpperCase() === "BLOCK") reasons.push("CANONICAL_EXIT_STAGE_BLOCK");
@@ -32,20 +41,30 @@ function buildFailureReasons(summary = {}) {
 }
 
 async function main() {
-  const result = await runBinanceExitIntegrityCycle({
-    apply: false,
-    profile: "gate",
-  });
+  let result = null;
+  let runError = null;
+  try {
+    result = await runBinanceExitIntegrityCycle({
+      apply: false,
+      profile: "gate",
+    });
+  } catch (err) {
+    runError = err;
+  }
   const summary = result && result.summary ? result.summary : {};
-  const reasons = buildFailureReasons(summary);
+  const reasons = runError
+    ? [`CYCLE_THROWN:${String(runError.code || runError.message || "UNKNOWN").toUpperCase()}`]
+    : buildFailureReasons(summary, { cycleResult: result });
   if (reasons.length > 0) {
     console.error(JSON.stringify({
       ok: false,
       reason: "EXIT_INTEGRITY_DEPLOY_GATE_BLOCKED",
       reasons,
       summary,
+      skipped: result && result.skipped === true,
       output_json: result && result.output_json ? result.output_json : null,
       output_md: result && result.output_md ? result.output_md : null,
+      error: runError ? { message: runError.message, stack: runError.stack } : null,
     }));
     process.exit(1);
   }

@@ -276,8 +276,13 @@ function resolveRawEvidenceEvent(payload = {}, event = null) {
 
 function resolveCanonicalTransitionEventList(payload = {}) {
   const allowed = new Set([
+    "ENTRY_FILL",
+    "ENTRY_FILLED",
     "TP0_REACHED",
     "TP1_REACHED",
+    "SL_HIT",
+    "FORCE_EXIT_ALL",
+    "EXTERNAL_CLOSE_SYNC",
     "TRAIL_ACTIVE",
     "TRAIL_ACTIVATED",
     "TRAIL_PARTIAL",
@@ -524,7 +529,11 @@ function resolveEffectiveExitMeta(payload = {}, rawEvent) {
 
 function resolveCanonicalReclassificationLine(resolved = {}) {
   if (!resolved || resolved.overrideApplied !== true) return null;
-  const rawToken = String(resolved.rawMeta && resolved.rawMeta.token || resolved.rawStage || "").trim();
+  const rawEvidenceEvent = String(resolved.rawEvidenceEvent || "").trim().toUpperCase();
+  const simplifiedV2Enabled = !!(resolved.simplifiedExitV2 && resolved.simplifiedExitV2.enabled === true);
+  const rawToken = (simplifiedV2Enabled && rawEvidenceEvent.startsWith("EXIT_TP_P0"))
+    ? "RAW_EVIDENCE"
+    : String(resolved.rawMeta && resolved.rawMeta.token || resolved.rawStage || "").trim();
   const canonicalToken = String(resolved.meta && resolved.meta.token || resolved.canonicalStage || "").trim();
   if (!rawToken || !canonicalToken || rawToken === canonicalToken) return null;
   return `${rawToken} -> ${canonicalToken}`;
@@ -747,11 +756,17 @@ function appendTradeExecutionAlertDecisionAudit({
   reason = null,
   source = null,
 } = {}) {
+  const canonicalTransitionEvents = resolveCanonicalTransitionEventList(payload);
   appendTradeExecutionAlertAudit({
     type,
     exchange,
     symbol: String(payload.symbol || "").toUpperCase() || null,
     event: String(payload.event || "").trim().toUpperCase() || null,
+    raw_evidence_event: resolveRawEvidenceEvent(payload, payload.event),
+    canonical_event: String(payload.canonicalExitEvent || payload.canonical_exit_event || "").trim().toUpperCase() || null,
+    canonical_stage: String(payload.canonicalExitStage || payload.canonical_exit_stage || "").trim().toUpperCase() || null,
+    canonical_transition_events: canonicalTransitionEvents,
+    simplified_exit_v2_enabled: isSimplifiedExitV2Enabled(payload),
     intent,
     execution_mode: executionMode,
     channel,
@@ -792,13 +807,30 @@ function resolveTradeAlertReplayReason(payload = {}) {
 }
 
 function resolveTradeAlertDedupeKey(payload = {}) {
-  return String(
+  // C10 invariant: dedupe key MUST bind each alert to its cycle (entry_event_id
+  // or canonical_chain_key) so that a close→reopen on the same symbol in
+  // seconds cannot silently collide with a previous cycle's alert.  The
+  // caller-supplied key is preserved (for replay compatibility) but augmented
+  // with the cycle identifier so rotations produce a distinct outbox row.
+  const baseKey = String(
     payload.tradeAlertDedupeKey
     || payload.trade_alert_dedupe_key
     || payload.idempotencyKey
     || payload.idempotency_key
     || ""
   ).trim() || null;
+  const cycleToken = String(
+    payload.entry_event_id
+    || payload.entryEventId
+    || (payload.meta && (payload.meta.entry_event_id || payload.meta.entryEventId))
+    || payload.canonical_chain_key
+    || payload.canonicalChainKey
+    || (payload.meta && (payload.meta.canonical_chain_key || payload.meta.canonicalChainKey))
+    || ""
+  ).trim();
+  if (!baseKey) return null;
+  if (!cycleToken) return baseKey;
+  return `${baseKey}::CYCLE_${cycleToken}`;
 }
 
 function shouldAllowTradeAlertResend(payload = {}) {
@@ -920,7 +952,13 @@ function buildMessage(payload) {
     const executedContract = String(exitMeta && exitMeta.token || "").trim() || resolveExecutedExitContract(event);
     const qtyText = fullExit ? "전량" : (formatPercent(closeRatio) || "부분");
     const reclassification = resolveCanonicalReclassificationLine(resolvedExitMeta);
-    const title = reclassification
+    const suppressRawTp0V2ReclassTitle = (
+      resolvedExitMeta
+      && resolvedExitMeta.simplifiedExitV2
+      && resolvedExitMeta.simplifiedExitV2.enabled === true
+      && String(resolvedExitMeta.rawEvidenceEvent || "").trim().toUpperCase().startsWith("EXIT_TP_P0")
+    );
+    const title = (reclassification && !suppressRawTp0V2ReclassTitle)
       ? `${symbol} 정본재분류 ${reclassification.replace(/\s*->\s*/g, "->")} ${qtyText} 청산`
       : `${symbol} ${exitMeta.token} ${qtyText} 청산`;
     const lines = [];
@@ -996,7 +1034,13 @@ function buildFailureMessage(payload) {
     : (formatPercent(closeRatio) || formatPercent(qtyPct) || null);
 
   const reclassification = resolveCanonicalReclassificationLine(resolvedExitMeta);
-  const title = reclassification
+  const suppressRawTp0V2ReclassTitle = (
+    resolvedExitMeta
+    && resolvedExitMeta.simplifiedExitV2
+    && resolvedExitMeta.simplifiedExitV2.enabled === true
+    && String(resolvedExitMeta.rawEvidenceEvent || "").trim().toUpperCase().startsWith("EXIT_TP_P0")
+  );
+  const title = (reclassification && !suppressRawTp0V2ReclassTitle)
     ? `${symbol} 정본재분류 ${reclassification.replace(/\s*->\s*/g, "->")} 주문 실패`
     : `${symbol} ${exitLabel} 주문 실패`;
   const lines = [`종류: ${exitLabel}`];
@@ -1523,5 +1567,6 @@ module.exports = {
     appendTradeExecutionAlertAudit,
     resolveTradeAlertSourceFillId,
     resolveAlertSendResultReason,
+    resolveTradeAlertDedupeKey,
   },
 };
