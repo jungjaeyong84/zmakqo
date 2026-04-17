@@ -8932,7 +8932,8 @@ function isRetryableNativeProtectionReason(reason) {
   return code === "POSITION_CONTEXT_FETCH_FAIL"
     || code === "NATIVE_CANCEL_FAIL"
     || code === "NATIVE_PLACE_FAIL"
-    || code === "NATIVE_PRICE_COMPUTE_FAIL";
+    || code === "NATIVE_PRICE_COMPUTE_FAIL"
+    || code === "TP1_NATIVE_PROTECTION_INCOMPLETE";
 }
 
 async function resolveNativeProtectionAlertChannel(exchange = "BINANCEFUT") {
@@ -9450,6 +9451,20 @@ async function refreshBinanceNativeProtectionWithRetry({
           enriched.sync_after_refresh_ok = false;
           enriched.sync_after_refresh_error = syncErr && syncErr.message ? syncErr.message : String(syncErr);
         }
+        try {
+          await syncNativeProtectionMetaAfterRefresh({
+            exchange,
+            symbol,
+            runId: `RUN__NATIVE_PROTECTION_META_SYNC__${String(exchange || "").toUpperCase()}__${String(symbol || "").toUpperCase()}__${Date.now()}`,
+            executionMode: "LIVE",
+            posMeta,
+            nativeProtection: enriched,
+          });
+          enriched.meta_after_refresh_ok = true;
+        } catch (metaErr) {
+          enriched.meta_after_refresh_ok = false;
+          enriched.meta_after_refresh_error = metaErr && metaErr.message ? metaErr.message : String(metaErr);
+        }
         return enriched;
       }
       lastResult = enriched;
@@ -9466,6 +9481,70 @@ async function refreshBinanceNativeProtectionWithRetry({
       await releaseBinanceNativeRefreshLease({ exchange, symbol });
     } catch (_) {}
   }
+}
+
+async function syncNativeProtectionMetaAfterRefresh({
+  exchange,
+  symbol,
+  runId = null,
+  executionMode = "LIVE",
+  posMeta = null,
+  nativeProtection = null,
+  position = null,
+  maxAttempts = 8,
+  retryDelayMs = 250,
+  readPosition = getPosition,
+  writePositionMeta = upsertPositionMetaOnly,
+} = {}) {
+  if (!nativeProtection || typeof nativeProtection !== "object") return null;
+  const metaPatch = buildNativeProtectionMetaPatch({
+    nativeProtection,
+    intent: "ENTRY",
+    execBarCloseMs: Number(posMeta && (posMeta.entry_exec_bar_ms || posMeta.last_entry_bar_ms)) || null,
+    posMeta,
+  });
+  if (!metaPatch || typeof metaPatch !== "object" || !Object.keys(metaPatch).length) return null;
+  let currentPos = (position && typeof position === "object")
+    ? position
+    : await readPosition({ exchange, symbol });
+  const totalAttempts = Math.max(1, Math.floor(Number(maxAttempts) || 0));
+  for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+    const currentMeta = (currentPos && currentPos.meta && typeof currentPos.meta === "object")
+      ? currentPos.meta
+      : {};
+    const mergedMeta = mergeMeta(currentMeta, metaPatch);
+    try {
+      return await writePositionMeta({
+        exchange,
+        symbol,
+        runId,
+        executionMode,
+        meta: mergedMeta,
+        source: "BINANCE_NATIVE_PROTECTION_REFRESH",
+        mutationKind: "POSITION_META_UPSERT",
+        reason: attempt > 1 ? "NATIVE_PROTECTION_REFRESH_META_SYNC_RETRY" : "NATIVE_PROTECTION_REFRESH_META_SYNC",
+        expectedWriteToken: Object.prototype.hasOwnProperty.call(currentPos || {}, "position_write_token")
+          ? (currentPos.position_write_token ?? null)
+          : null,
+        suppressAuthorityAlert: attempt < totalAttempts,
+        suppressAuthorityRuntimeFamily: attempt < totalAttempts,
+        suppressAuthorityRuntimeFamilyReason: "WRITER_RETRY_IN_PROGRESS",
+      });
+    } catch (err) {
+      const code = String(err && err.code || "").trim().toUpperCase();
+      if (!["POSITION_WRITE_TOKEN_MISMATCH", "POSITION_WRITE_LEASE_HELD", "POSITION_WRITE_LEASE_LOST"].includes(code)) {
+        throw err;
+      }
+      if (attempt >= totalAttempts) throw err;
+      const baseDelayMs = Math.max(0, Number(retryDelayMs) || 0);
+      const retryDelayResolvedMs = code === "POSITION_WRITE_TOKEN_MISMATCH"
+        ? baseDelayMs
+        : Math.min(1500, baseDelayMs * attempt);
+      if (retryDelayResolvedMs > 0) await sleep(retryDelayResolvedMs);
+      currentPos = await readPosition({ exchange, symbol });
+    }
+  }
+  return currentPos;
 }
 
 function isAuthorizedBinanceNativeStopWriter(writerSource = null) {
@@ -9523,6 +9602,14 @@ function shouldExecuteImmediateNativeProtectionRefresh({
   if (closing !== true) return false;
   if (!Number.isFinite(Number(remainingQtyBase))) return true;
   return Number(remainingQtyBase) > POS_SIZE_EPSILON;
+}
+
+function resolveLiveNativeProtectionLifecycleFlags(intent = null) {
+  const token = String(intent || "").trim().toUpperCase();
+  return {
+    opening: token === "ENTRY" || token === "ADD",
+    closing: token === "EXIT",
+  };
 }
 
 async function ensureLiveImmediateNativeProtection({
@@ -10427,6 +10514,7 @@ async function executeLiveFuturesOrder({
     ? Number(leverageResolved.leverage)
     : FUTURES_BASE_LEVERAGE;
   const intentUpper = String(intent || "").toUpperCase();
+  const nativeProtectionLifecycle = resolveLiveNativeProtectionLifecycleFlags(intentUpper);
   const metaForProfile = (positionMeta && typeof positionMeta === "object") ? positionMeta : {};
   let exitProfileResolved = null;
   if (intentUpper === "ENTRY" || intentUpper === "ADD") {
@@ -10903,8 +10991,8 @@ async function executeLiveFuturesOrder({
         exchange,
         symbol,
         requestArgs,
-        opening,
-        closing,
+        opening: nativeProtectionLifecycle.opening,
+        closing: nativeProtectionLifecycle.closing,
         remainingQtyBase: projectedRemainingQtyBase,
         intent,
       });
@@ -17441,6 +17529,9 @@ module.exports = {
     computeBinanceNativeProtectionPrices,
     shouldRepairActiveExitRuntimeState,
     repairActivePositionExitRuntimeState,
+    isRetryableNativeProtectionReason,
+    syncNativeProtectionMetaAfterRefresh,
+    resolveLiveNativeProtectionLifecycleFlags,
     applyEntryExitRuleRuntimeAdjustments,
     loadTp1LadderKpiSnapshot,
     resolveStructureInitialStopPrice,
