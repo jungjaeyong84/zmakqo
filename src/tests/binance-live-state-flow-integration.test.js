@@ -8,6 +8,8 @@ const { __test: tickExitTest } = require("../services/binanceTickExit");
 const { __test: runnerTest } = require("../engine/paperBinanceRunner");
 
 (async () => {
+  const prevSimplifiedExitV2Env = process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
   userStreamTest.clearRecentSyncMark("BNBUSDT");
   const calls = [];
   const handled = await userStreamTest.handleUserDataMessage(
@@ -89,6 +91,7 @@ const { __test: runnerTest } = require("../engine/paperBinanceRunner");
   assert.strictEqual(reconciled.meta.native_protection_tp_order_id, "tp1-1");
   assert.ok(reconciled.invariants.includes("TP1_DONE_WITH_TP_ORDER"));
 
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
   const reconciledSimplifiedV2 = reconcileBinancePositionMetaWithExchange({
     active: true,
     meta: {
@@ -199,6 +202,8 @@ const { __test: runnerTest } = require("../engine/paperBinanceRunner");
     "external flat cleanup should not run without live credentials"
   );
 
+  if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+  else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;
   console.log("BINANCE_LIVE_STATE_FLOW_INTEGRATION_TEST_OK");
 })().catch((err) => {
   console.error(err && err.stack ? err.stack : err);
