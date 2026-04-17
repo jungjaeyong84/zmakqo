@@ -3,6 +3,8 @@
 const assert = require("assert");
 const { __test } = require("../services/binanceActiveExitWatchdog");
 
+const prevSimplifiedExitV2Env = process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+
 function run() {
   assert.strictEqual(typeof __test.inspectExitProtection, "function");
   assert.strictEqual(typeof __test.isWatchdogTarget, "function");
@@ -19,6 +21,7 @@ function run() {
     true
   );
 
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
   const betweenTp = __test.inspectExitProtection({
     symbol: "XRPUSDT",
     internalPosition: {
@@ -48,6 +51,7 @@ function run() {
   assert.strictEqual(betweenTp.stage, "BETWEEN_TP0_TP1");
   assert.ok(betweenTp.actionable_issue_codes.includes("TP1_ORDER_MISSING"));
 
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
   const simplifiedPreTp1 = __test.inspectExitProtection({
     symbol: "ADAUSDT",
     internalPosition: {
@@ -79,6 +83,101 @@ function run() {
   assert.ok(simplifiedPreTp1.actionable_issue_codes.includes("TP1_ORDER_MISSING"));
   assert.ok(simplifiedPreTp1.actionable_issue_codes.includes("NATIVE_REFRESH_UNHEALTHY"));
   assert.ok(!simplifiedPreTp1.actionable_issue_codes.includes("TP1_DONE_WITHOUT_TP0_DONE"));
+
+  const simplifiedRunnerMetaGap = __test.inspectExitProtection({
+    symbol: "BTCUSDT",
+    internalPosition: {
+      exchange: "BINANCEFUT",
+      symbol: "BTCUSDT",
+      position_state: "ACTIVE",
+      position_side: "LONG",
+      qty_base: 0.013,
+      entry_qty_base: 0.026,
+      avg_price: 74987.2,
+      meta: {
+        simplified_exit_v2_enabled: true,
+        tp_p0_done: false,
+        tp_p1_done: false,
+        trail_active: false,
+        native_protection_refresh_status: "OK",
+        exit_rules_override: {
+          TP_P1_QTY: 0.5,
+          TP_P1: 0.0168,
+          RUNNER_MIN_PROFIT_PCT: 0.0025,
+          TRAIL_PCT: 0.01,
+          SL: -0.0165,
+        },
+      },
+    },
+    externalPosition: { symbol: "BTCUSDT", positionAmt: "0.013", markPrice: "75647.3" },
+    openOrders: [],
+    algoOrders: [],
+  });
+  assert.strictEqual(simplifiedRunnerMetaGap.stage, "TRAIL");
+  assert.strictEqual(simplifiedRunnerMetaGap.canonical_stage, "TRAIL");
+  assert.ok(simplifiedRunnerMetaGap.actionable_issue_codes.includes("TP1_META_SYNC_GAP"));
+  assert.ok(!simplifiedRunnerMetaGap.actionable_issue_codes.includes("TP1_ORDER_MISSING"));
+
+  const simplifiedLegacyTp0Artifact = __test.inspectExitProtection({
+    symbol: "AVAXUSDT",
+    internalPosition: {
+      exchange: "BINANCEFUT",
+      symbol: "AVAXUSDT",
+      position_state: "ACTIVE",
+      position_side: "LONG",
+      qty_base: 20,
+      avg_price: 25,
+      meta: {
+        simplified_exit_v2_enabled: true,
+        tp_p0_done: true,
+        tp_p1_done: false,
+        trail_active: false,
+        native_protection_refresh_status: "OK",
+        exit_rules_override: {
+          TP_P1_QTY: 0.5,
+          TP_P1: 0.0168,
+          SL: -0.0165,
+        },
+      },
+    },
+    externalPosition: { symbol: "AVAXUSDT", positionAmt: "20" },
+    openOrders: [],
+    algoOrders: [],
+  });
+  assert.strictEqual(simplifiedLegacyTp0Artifact.stage, "PRE_TP1");
+  assert.ok(simplifiedLegacyTp0Artifact.actionable_issue_codes.includes("TP1_ORDER_MISSING"));
+
+  const simplifiedRunner = __test.inspectExitProtection({
+    symbol: "SOLUSDT",
+    internalPosition: {
+      exchange: "BINANCEFUT",
+      symbol: "SOLUSDT",
+      position_state: "SCALE_OUT",
+      position_side: "LONG",
+      qty_base: 12,
+      avg_price: 150,
+      meta: {
+        simplified_exit_v2_enabled: true,
+        tp_p0_done: false,
+        tp_p1_done: true,
+        trail_active: false,
+        native_protection_refresh_status: "OK",
+        exit_rules_override: {
+          TP_P1_QTY: 0.5,
+          TP_P1: 0.0168,
+          RUNNER_MIN_PROFIT_PCT: 0.0168,
+          TRAIL_R_MULTIPLE: 0.6,
+          SL: -0.0165,
+        },
+      },
+    },
+    externalPosition: { symbol: "SOLUSDT", positionAmt: "12" },
+    openOrders: [],
+    algoOrders: [],
+  });
+  assert.strictEqual(simplifiedRunner.stage, "RUNNER");
+  assert.ok(simplifiedRunner.actionable_issue_codes.includes("TRAIL_STOP_MISSING"));
+  assert.ok(!simplifiedRunner.actionable_issue_codes.includes("TP1_DONE_WITHOUT_TP0_DONE"));
 
   const trailing = __test.inspectExitProtection({
     symbol: "DOGEUSDT",
@@ -597,4 +696,7 @@ try {
 } catch (err) {
   console.error("BINANCE_ACTIVE_EXIT_WATCHDOG_TEST_FAIL", err && err.stack ? err.stack : err);
   process.exit(1);
+} finally {
+  if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+  else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;
 }

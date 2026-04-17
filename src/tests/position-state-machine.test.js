@@ -14,6 +14,8 @@ const {
 } = require("../services/positionStateMachine");
 
 function run() {
+  const prevSimplifiedExitV2Env = process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
   const valid = validatePositionSnapshotTransition({
     prev: {
       state: "COMMIT",
@@ -71,6 +73,7 @@ function run() {
   assert.strictEqual(invalidTp1WithoutTp0.ok, false);
   assert.ok(invalidTp1WithoutTp0.issues.some((issue) => issue.code === "TP1_WITHOUT_TP0"));
 
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
   const validSimplifiedV2Tp1WithoutTp0 = validatePositionSnapshotTransition({
     prev: {
       state: "ACTIVE",
@@ -91,6 +94,7 @@ function run() {
   assert.ok(!validSimplifiedV2Tp1WithoutTp0.issues.some((issue) => issue.code === "TP1_WITHOUT_TP0"));
   assert.ok(!validSimplifiedV2Tp1WithoutTp0.issues.some((issue) => issue.code === "TRAIL_WITHOUT_TP0"));
 
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
   const postTp0Decision = resolveCanonicalExitAuthorityDecision({
     exchange: "BINANCEFUT",
     symbol: "ETHUSDT",
@@ -257,6 +261,25 @@ function run() {
   assert.ok(Math.abs(derivedEntryLedger.entry_qty_abs - 0.4453333333) < 0.001);
   assert.ok(Math.abs(derivedEntryLedger.runner_remaining_abs - 0.167) < 0.001);
 
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
+  const simplifiedV2Ledger = buildExitQuantityContractLedger({
+    positionSnapshot: {
+      qty_base: 0.5,
+      meta: { tp_p0_done: false, tp_p1_done: true, trail_active: false, simplified_exit_v2_enabled: true },
+    },
+    rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
+    simplifiedExitV2Enabled: true,
+  });
+  assert.strictEqual(simplifiedV2Ledger.tp0_allowed_ratio, 0);
+  assert.strictEqual(simplifiedV2Ledger.tp0_consumed_ratio, 0);
+  assert.strictEqual(simplifiedV2Ledger.tp0_allowed_abs, 0);
+  assert.strictEqual(simplifiedV2Ledger.tp0_consumed_abs, 0);
+  assert.strictEqual(simplifiedV2Ledger.tp1_allowed_ratio, 0.5);
+  assert.strictEqual(simplifiedV2Ledger.tp1_consumed_ratio, 0.5);
+  assert.strictEqual(simplifiedV2Ledger.runner_allowed_ratio, 0.5);
+  assert.ok(Math.abs(simplifiedV2Ledger.entry_qty_abs - 1) < 0.000001);
+  assert.ok(Math.abs(simplifiedV2Ledger.runner_remaining_abs - 0.5) < 0.000001);
+
   const missingEntryLedger = validateExitQuantityContractLedger({
     ledger: {
       tp0_allowed_ratio: 0.25,
@@ -297,11 +320,36 @@ function run() {
     },
     simplifiedExitV2Enabled: true,
   });
-  assert.deepStrictEqual(simplifiedTp0Transition.transitionEvents, []);
-  assert.strictEqual(simplifiedTp0Transition.primaryTransitionEvent, null);
+  assert.deepStrictEqual(simplifiedTp0Transition.transitionEvents, ["TP1_REACHED", "TRAIL_ACTIVATED"]);
+  assert.strictEqual(simplifiedTp0Transition.primaryTransitionEvent, "TRAIL_ACTIVATED");
+
+  const simplifiedTp1Transition = resolveCanonicalExitTransitionEvents({
+    resolvedStage: "TP1",
+    positionSnapshot: {
+      qty_base: 0.75,
+      meta: { tp_p0_done: false, tp_p1_done: false, trail_active: false },
+    },
+    simplifiedExitV2Enabled: true,
+  });
+  assert.deepStrictEqual(simplifiedTp1Transition.transitionEvents, ["TP1_REACHED", "TRAIL_ACTIVATED"]);
+  assert.strictEqual(simplifiedTp1Transition.primaryTransitionEvent, "TRAIL_ACTIVATED");
+
+  const simplifiedTrailTransition = resolveCanonicalExitTransitionEvents({
+    resolvedStage: "TRAIL",
+    positionSnapshot: {
+      qty_base: 0.167,
+      meta: { tp_p0_done: false, tp_p1_done: true, trail_active: true },
+    },
+    ledger,
+    observedQtyRatio: 0.19,
+    fullExit: false,
+    simplifiedExitV2Enabled: true,
+  });
+  assert.deepStrictEqual(simplifiedTrailTransition.transitionEvents, ["TRAIL_FINAL_EXIT"]);
+  assert.strictEqual(simplifiedTrailTransition.primaryTransitionEvent, "TRAIL_FINAL_EXIT");
 
   const alertStage = resolveCanonicalAlertExitStage({
-    transitionEvents: ["TP1_REACHED", "TRAIL_ACTIVE"],
+    transitionEvents: ["TP1_REACHED", "TRAIL_ACTIVATED"],
   });
   assert.strictEqual(alertStage, "TP1");
   assert.strictEqual(resolveCanonicalAlertExitStage({ fallbackStage: "TP1" }), null);
@@ -325,17 +373,27 @@ function run() {
     stage: null,
     source: null,
   });
-  assert.deepStrictEqual(resolveCanonicalPositionExitStage({
+  const inferredRunnerStage = resolveCanonicalPositionExitStage({
     positionSnapshot: {
-      qty_base: 0.75,
-      meta: { tp_p0_done: true, tp_p1_done: false, trail_active: false },
+      qty_base: 0.5,
+      entry_qty_base: 1,
+      meta: {
+        tp_p0_done: false,
+        tp_p1_done: false,
+        trail_active: false,
+        simplified_exit_v2_enabled: true,
+        exit_rules_override: { TP_P1_QTY: 0.5 },
+      },
     },
     simplifiedExitV2Enabled: true,
-  }), {
-    stage: null,
-    source: "POSITION_STATE_MACHINE_V2_PRE_TP1",
   });
+  assert.strictEqual(inferredRunnerStage.stage, "TRAIL");
+  assert.strictEqual(inferredRunnerStage.source, "POSITION_STATE_MACHINE_V2_RUNNER_QTY");
+  assert.strictEqual(inferredRunnerStage.entry_qty_abs, 1);
+  assert.strictEqual(inferredRunnerStage.current_qty_abs, 0.5);
+  assert.strictEqual(inferredRunnerStage.expected_runner_qty_abs, 0.5);
 
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
   const cycleStage = resolveCanonicalExitStageFromCycleEvidence({
     cycleTrades: [
       { signedQty: 0.887, qty: 0.887 },
@@ -348,6 +406,45 @@ function run() {
   });
   assert.strictEqual(cycleStage.stage, "TRAIL");
 
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
+  const simplifiedV2CycleStage = resolveCanonicalExitStageFromCycleEvidence({
+    cycleTrades: [
+      { signedQty: 1, qty: 1 },
+      { signedQty: -0.5, qty: 0.5 },
+    ],
+    positionQty: 0.5,
+    tp0QtyRatio: 0.25,
+    tp1QtyRatio: 0.5,
+    simplifiedExitV2Enabled: true,
+  });
+  assert.strictEqual(simplifiedV2CycleStage.stage, "TRAIL");
+
+  const simplifiedV2Tp0RemappedDecision = resolveCanonicalExitAuthorityDecision({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    currentStage: "TP0",
+    entryEventId: "ENTRY__ETH_V2",
+    positionSnapshot: {
+      qty_base: 0.5,
+      entry_qty_base: 1,
+      meta: {
+        tp_p0_done: false,
+        tp_p1_done: false,
+        trail_active: false,
+        simplified_exit_v2_enabled: true,
+        exit_rules_override: { TP_P1_QTY: 0.5 },
+      },
+    },
+    authorityState: { tp1: 0, total: 0 },
+    rules: { TP_P1_QTY: 0.5, TP_P1: 0.0168 },
+    observedQtyRatio: 0.5,
+    fullExit: false,
+  });
+  assert.strictEqual(simplifiedV2Tp0RemappedDecision.stage, "TP1");
+  assert.strictEqual(simplifiedV2Tp0RemappedDecision.reason, "V2_TP0_REMAPPED_TO_TP1");
+
+  if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+  else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;
   console.log("POSITION_STATE_MACHINE_TEST_OK");
 }
 

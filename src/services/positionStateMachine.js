@@ -145,6 +145,35 @@ function buildCanonicalExitEvent({
   return fallback;
 }
 
+function inferSimplifiedV2RunnerStage(snapshot = {}) {
+  const meta = snapshot && typeof snapshot.meta === "object" ? snapshot.meta : {};
+  const rules = meta.exit_rules_override && typeof meta.exit_rules_override === "object"
+    ? meta.exit_rules_override
+    : {};
+  const entryQtyAbs = toNum(snapshot.entry_qty_base)
+    ?? toNum(meta.entry_qty_base)
+    ?? toNum(meta.entry_qty_abs);
+  const currentQtyAbs = toNum(snapshot.qty_base);
+  const tp1Ratio = resolveExitStageAbsoluteContractQtyRatio("TP1", rules, {
+    simplifiedExitV2Enabled: true,
+    positionSnapshot: snapshot,
+  }) ?? 0.5;
+  if (!(Number.isFinite(entryQtyAbs) && entryQtyAbs > 0 && Number.isFinite(currentQtyAbs) && currentQtyAbs > 0)) {
+    return null;
+  }
+  const expectedRunnerQtyAbs = entryQtyAbs * Math.max(0, 1 - tp1Ratio);
+  if (!(Number.isFinite(expectedRunnerQtyAbs) && expectedRunnerQtyAbs > 0)) return null;
+  const tolerance = Math.max(1e-8, expectedRunnerQtyAbs * 0.05);
+  if (Math.abs(currentQtyAbs - expectedRunnerQtyAbs) > tolerance) return null;
+  return {
+    stage: "TRAIL",
+    source: "POSITION_STATE_MACHINE_V2_RUNNER_QTY",
+    entry_qty_abs: entryQtyAbs,
+    current_qty_abs: currentQtyAbs,
+    expected_runner_qty_abs: expectedRunnerQtyAbs,
+  };
+}
+
 function resolveExitStageAbsoluteContractQtyRatio(stage, rules = {}, options = {}) {
   const currentStage = normalizeExitStage(stage);
   const simplifiedV2 = isSimplifiedExitV2Enabled(options);
@@ -535,18 +564,13 @@ function resolveCanonicalExitTransitionEvents({
   });
   const recent = recentStages && typeof recentStages === "object" ? recentStages : {};
   const events = [];
-  if (simplifiedV2 && stage === "TP0") {
-    return {
-      transitionEvents: [],
-      primaryTransitionEvent: null,
-    };
-  }
-  if (stage === "TP0") {
+  const effectiveStage = simplifiedV2 && stage === "TP0" ? "TP1" : stage;
+  if (effectiveStage === "TP0") {
     if (snapshot.tp_p0_done !== true) events.push("TP0_REACHED");
-  } else if (stage === "TP1") {
+  } else if (effectiveStage === "TP1") {
     if (snapshot.tp_p1_done !== true) events.push("TP1_REACHED");
     if (snapshot.trail_active !== true) events.push(simplifiedV2 ? "TRAIL_ACTIVATED" : "TRAIL_ACTIVE");
-  } else if (stage === "TRAIL") {
+  } else if (effectiveStage === "TRAIL") {
     const recentTrail = normalizeExitStage(recent.trail) === "TRAIL";
     if (snapshot.trail_active !== true && !recentTrail) events.push(simplifiedV2 ? "TRAIL_ACTIVATED" : "TRAIL_ACTIVE");
     const observed = clamp01(observedQtyRatio);
@@ -623,6 +647,8 @@ function resolveCanonicalPositionExitStage({
     };
   }
   if (simplifiedV2) {
+    const inferredRunnerStage = inferSimplifiedV2RunnerStage(snapshot);
+    if (inferredRunnerStage) return inferredRunnerStage;
     if (snapshot.tp_p0_done === true) {
       return {
         stage: null,
@@ -676,7 +702,7 @@ function resolveCanonicalExitStageFromCycleEvidence({
   }) ?? (simplifiedV2 ? 0.5 : 0.375);
   const trailRemainingRatio = Math.max(0, 1 - ((simplifiedV2 ? 0 : (toNum(tp0QtyRatio) ?? 0.25)) + tp1AbsRatio));
   if (simplifiedV2 && exits.length >= 1 && Math.abs(remainingRatio - trailRemainingRatio) <= 0.04) {
-    return { stage: "TP1", entries, exits, totalEntryQty, remainingQty, remainingRatio, expectedAfterTp1: trailRemainingRatio };
+    return { stage: "TRAIL", entries, exits, totalEntryQty, remainingQty, remainingRatio, expectedAfterTp1: trailRemainingRatio };
   }
   if (exits.length >= 2 && Math.abs(remainingRatio - trailRemainingRatio) <= 0.04) {
     return { stage: "TRAIL", entries, exits, totalEntryQty, remainingQty, remainingRatio, expectedAfterTp1: trailRemainingRatio };
@@ -810,18 +836,20 @@ function resolveCanonicalExitAuthorityDecision({
     : (Number(ledger.tp0_consumed_ratio || 0) >= Math.max(0, tp0AllowedRatio - 0.03));
   const tp1Locked = Number(ledger.tp1_consumed_ratio || 0) >= Math.max(0, tp1AllowedRatio - 0.03);
   const postTp1Locked = snapshot.tp_p1_done === true || snapshot.trail_active === true || tp1Locked || recentTrail;
-  let resolvedStage = stage;
+  let resolvedStage = simplifiedV2 && stage === "TP0" ? "TP1" : stage;
   let reason = "PASS_THROUGH";
 
   if (entryLineageMissing) {
     resolvedStage = null;
     reason = "ENTRY_LINEAGE_REQUIRED";
-  } else if (stage === "TP0" || stage === "TP1") {
+  } else if ((stage === "TP0" || stage === "TP1") || (simplifiedV2 && resolvedStage === "TP1")) {
     if (postTp1Locked) {
       resolvedStage = "TRAIL";
       reason = snapshot.tp_p1_done === true || snapshot.trail_active === true
         ? "POST_TP1_STAGE_LOCK"
         : "AUTHORITY_TP1_LOCKED";
+    } else if (simplifiedV2 && stage === "TP0") {
+      reason = "V2_TP0_REMAPPED_TO_TP1";
     } else if (stage === "TP0" && (snapshot.tp_p0_done === true || tp0Locked || recentTp0)) {
       resolvedStage = "TP1";
       reason = "POST_TP0_STAGE_LOCK";

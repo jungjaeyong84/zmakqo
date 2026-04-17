@@ -2692,10 +2692,10 @@ function applyActiveExitStageBackstopOverride({
   const currentIsTp0 = isTpP0Event(currentEvent);
   const currentIsTp1 = isTpP1Event(currentEvent);
   if (!(currentIsTp0 || currentIsTp1)) return currentEvent;
-  if (currentIsTp0 && matchedIntentEvent.startsWith("EXIT_TP_P0")) return currentEvent;
-  if (currentIsTp1 && isTpP1Event(matchedIntentEvent)) return currentEvent;
   const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
   const simplifiedExitV2Enabled = isSimplifiedExitV2Enabled(ctx);
+  if (!simplifiedExitV2Enabled && currentIsTp0 && matchedIntentEvent.startsWith("EXIT_TP_P0")) return currentEvent;
+  if (!simplifiedExitV2Enabled && currentIsTp1 && isTpP1Event(matchedIntentEvent)) return currentEvent;
   const recentTrailEvent = String(recentTrail && recentTrail.event || "").trim().toUpperCase();
   const trailEligible = isTrailExitEligible(ctx, recentTp1) || recentTrailEvent.startsWith("EXIT_TRAIL");
 

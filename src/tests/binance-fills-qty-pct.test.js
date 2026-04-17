@@ -1,6 +1,8 @@
 const assert = require("assert");
 const { __test } = require("../services/binanceFuturesFillsSync");
 
+const prevSimplifiedExitV2Env = process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+
 async function run() {
   const clearConsumedTakeProfitProtectionMeta = __test && __test.clearConsumedTakeProfitProtectionMeta;
   assert.strictEqual(typeof clearConsumedTakeProfitProtectionMeta, "function", "clearConsumedTakeProfitProtectionMeta export missing");
@@ -286,12 +288,17 @@ async function run() {
   const inferStageConstrainedTakeProfitKind = __test && __test.inferStageConstrainedTakeProfitKind;
   const applyExternalExitQtyAuthority = __test && __test.applyExternalExitQtyAuthority;
   const applyActiveExitStageBackstopOverride = __test && __test.applyActiveExitStageBackstopOverride;
+  const buildExitLedgerMetaPatch = __test && __test.buildExitLedgerMetaPatch;
+  const buildExitLedgerPayload = __test && __test.buildExitLedgerPayload;
   assert.strictEqual(typeof resolveExternalExitEvent, "function", "resolveExternalExitEvent export missing");
   assert.strictEqual(typeof inferStageConstrainedTakeProfitKind, "function", "inferStageConstrainedTakeProfitKind export missing");
   assert.strictEqual(typeof applyExternalExitQtyAuthority, "function", "applyExternalExitQtyAuthority export missing");
   assert.strictEqual(typeof applyActiveExitStageBackstopOverride, "function", "applyActiveExitStageBackstopOverride export missing");
+  assert.strictEqual(typeof buildExitLedgerMetaPatch, "function", "buildExitLedgerMetaPatch export missing");
+  assert.strictEqual(typeof buildExitLedgerPayload, "function", "buildExitLedgerPayload export missing");
   const rules = { SL: -0.015, TP_P1: 0.03, TRAIL_PCT: 0.01 };
 
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
   assert.strictEqual(
     inferStageConstrainedTakeProfitKind({ tpP0Done: false, tpP1Done: false, trailActive: false }, null),
     "TP0"
@@ -317,6 +324,7 @@ async function run() {
   assert.strictEqual(
     applyActiveExitStageBackstopOverride({
       event: "EXIT_TP_P0_0.8P",
+      intentEvent: "EXIT_TP_P0_0.8P",
       trade: { qty: 5 },
       orderMeta: { orderType: "TAKE_PROFIT_MARKET", closePosition: false },
       positionCtx: {
@@ -391,6 +399,66 @@ async function run() {
     assert.strictEqual(duplicate.acceptedQtyPct, null);
     assert.strictEqual(duplicate.duplicateSuspected, true);
     assert.strictEqual(trail.acceptedQtyPct, 0.375);
+  }
+
+  {
+    const authorityMap = new Map();
+    const v2Tp0Remapped = applyExternalExitQtyAuthority({
+      authorityMap,
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      event: "EXIT_TP_P0_0.8P",
+      positionCtx: {
+        simplifiedExitV2Enabled: true,
+      },
+      entryEventId: "ENTRY__ETH",
+      orderMeta: { orderId: 10 },
+      qtyPct: 0.5,
+      rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
+    });
+    assert.strictEqual(v2Tp0Remapped.stage, "TP1");
+    assert.strictEqual(v2Tp0Remapped.acceptedQtyPct, 0.375);
+  }
+
+  {
+    const ledgerMetaPatch = buildExitLedgerMetaPatch({
+      position: {
+        qty_base: 0.5,
+        meta: {
+          simplified_exit_v2_enabled: true,
+          entry_qty_abs: 1,
+          tp_p1_done: false,
+          trail_active: false,
+        },
+      },
+      nextMeta: {
+        simplified_exit_v2_enabled: true,
+        entry_qty_abs: 1,
+        tp_p1_done: false,
+        trail_active: false,
+      },
+      rules: { TP_P0_QTY: 0.25, TP_P1_QTY: 0.5 },
+    });
+    assert.strictEqual(ledgerMetaPatch.tp_p0_allowed_qty_abs, null);
+    assert.strictEqual(ledgerMetaPatch.tp_p0_consumed_qty_abs, null);
+    assert.strictEqual(ledgerMetaPatch.tp_p0_allowed_qty_ratio, null);
+    assert.strictEqual(ledgerMetaPatch.tp_p0_consumed_qty_ratio, null);
+
+    const ledgerPayload = buildExitLedgerPayload({
+      entry_qty_abs: 1,
+      tp0_allowed_abs: 0.25,
+      tp0_consumed_abs: 0.25,
+      tp1_allowed_abs: 0.5,
+      tp1_consumed_abs: 0.25,
+      runner_allowed_abs: 0.5,
+      runner_remaining_abs: 0.5,
+      trail_consumed_abs: 0,
+    }, 0.25, {
+      simplifiedExitV2Enabled: true,
+    });
+    assert.strictEqual(ledgerPayload.contractTp0AllowedAbs, null);
+    assert.strictEqual(ledgerPayload.contractTp0ConsumedAbs, null);
+    assert.strictEqual(ledgerPayload.contractTp1AllowedAbs, 0.5);
   }
 
   const nativeSl = await resolveExternalExitEvent({
@@ -637,4 +705,7 @@ async function run() {
 run().catch((e) => {
   console.error(e);
   process.exit(1);
+}).finally(() => {
+  if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+  else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;
 });

@@ -14,6 +14,7 @@ const { resolveTp1RemainingContractQtyRatio } = require("../utils/exitQtyContrac
 const { healBinanceLivePosition } = require("./binanceLiveStateSelfHeal");
 const { recordExitRepairRequest } = require("../storage/exitRepairRequests");
 const { resolveCanonicalPositionExitStage } = require("./positionStateMachine");
+const { isSimplifiedExitV2Active, buildSimplifiedExitShadowView } = require("./simplifiedExitV2");
 
 function upper(value) {
   return String(value || "").trim().toUpperCase() || null;
@@ -115,9 +116,10 @@ function isInternalActivePosition(row = {}) {
 
 function isSimplifiedExitV2Position(row = {}) {
   const meta = row && typeof row.meta === "object" ? row.meta : {};
-  return meta.simplified_exit_v2_enabled === true
-    || meta.simplifiedExitV2Enabled === true
-    || row.simplified_exit_v2_enabled === true;
+  return isSimplifiedExitV2Active({
+    ...row,
+    meta,
+  });
 }
 
 function isWatchdogTarget(row = {}) {
@@ -137,12 +139,49 @@ function resolveStage(row = {}) {
     simplifiedExitV2Enabled,
   });
   if (canonical.stage === "TRAIL") return { canonical_stage: "TRAIL", stage: "TRAIL", source: canonical.source };
-  if (canonical.stage === "TP1") return { canonical_stage: "TP1", stage: "TP1_DONE_NOT_TRAIL", source: canonical.source };
+  if (canonical.stage === "TP1") return { canonical_stage: "TP1", stage: "RUNNER", source: canonical.source };
+  if (simplifiedExitV2Enabled && canonical.stage === "TP0") {
+    return { canonical_stage: canonical.stage, stage: "PRE_TP1", source: canonical.source };
+  }
   if (canonical.stage === "TP0") return { canonical_stage: "TP0", stage: "BETWEEN_TP0_TP1", source: canonical.source };
   if (simplifiedExitV2Enabled) {
     return { canonical_stage: canonical.stage, stage: "PRE_TP1", source: canonical.source };
   }
   return { canonical_stage: canonical.stage, stage: "PRE_TP0", source: canonical.source };
+}
+
+function resolveSimplifiedV2QtyShadow(row = {}) {
+  if (!isSimplifiedExitV2Position(row)) return null;
+  const meta = row && typeof row.meta === "object" ? row.meta : {};
+  const rules = meta.exit_rules_override && typeof meta.exit_rules_override === "object"
+    ? meta.exit_rules_override
+    : {};
+  const entryQtyAbs = toNum(row.entry_qty_base ?? meta.entry_qty_base ?? meta.entry_qty_abs);
+  const currentQtyAbs = toNum(row.qty_base);
+  const entryPrice = toNum(row.avg_price ?? meta.entry_price);
+  if (!(Number.isFinite(entryQtyAbs) && entryQtyAbs > 0 && Number.isFinite(currentQtyAbs) && currentQtyAbs > 0 && Number.isFinite(entryPrice) && entryPrice > 0)) {
+    return null;
+  }
+  const shadow = buildSimplifiedExitShadowView({
+    side: resolvePositionSideFromPosition(row, meta, null),
+    entryPrice,
+    entryQtyAbs,
+    currentQtyAbs,
+    closePrice: resolveExternalMarkPrice(row) ?? entryPrice,
+    tp1Done: meta.tp_p1_done === true,
+    tp1FilledQtyAbs: Number.isFinite(entryQtyAbs - currentQtyAbs) ? Math.max(0, entryQtyAbs - currentQtyAbs) : null,
+    trailHighPrice: toNum(meta.trail_high),
+    trailLowPrice: toNum(meta.trail_low),
+    currentStopPrice: toNum(meta.native_protection_stop_price),
+    stopLossPct: Math.abs(toNum(rules.SL)),
+    floorLockPct: toNum(rules.RUNNER_MIN_PROFIT_PCT),
+    trailPct: toNum(rules.TRAIL_PCT),
+    tp1QtyRatio: toNum(rules.TP_P1_QTY),
+    tp1TargetPct: toNum(rules.TP_P1),
+    legacyCanonicalStage: meta.canonical_exit_stage ?? meta.authoritative_exit_stage ?? null,
+    legacyTp0Done: meta.tp_p0_done === true,
+  });
+  return shadow && shadow.available === true ? shadow : null;
 }
 
 function groupOrdersBySymbol(orders = []) {
@@ -239,7 +278,12 @@ function inspectExitProtection({
   ];
   const positionSide = resolvePositionSideFromPosition(row, meta, null);
   const stageInfo = resolveStage(row);
-  const stage = stageInfo.stage;
+  const simplifiedQtyShadow = resolveSimplifiedV2QtyShadow(row);
+  const inferredRunnerMetaGap = simplifiedExitV2Enabled
+    && (stageInfo.stage === "PRE_TP1" || stageInfo.source === "POSITION_STATE_MACHINE_V2_RUNNER_QTY")
+    && simplifiedQtyShadow
+    && simplifiedQtyShadow.economic_state === "RUNNER";
+  const stage = inferredRunnerMetaGap ? "TRAIL" : stageInfo.stage;
   const qtyBase = toNum(row.qty_base, 0);
   const issues = [];
   const refreshStatus = upper(trailSnapshot.native_refresh_status || meta.native_protection_refresh_status);
@@ -308,9 +352,20 @@ function inspectExitProtection({
   if (simplifiedExitV2Enabled !== true && meta.tp_p1_done === true && meta.tp_p0_done !== true) {
     issues.push(buildIssue("TP1_DONE_WITHOUT_TP0_DONE", "tp_p1_done=true 인데 tp_p0_done=false 입니다."));
   }
-  if ((stage === "PRE_TP1" || stage === "BETWEEN_TP0_TP1" || stage === "TRAIL" || stage === "TP1_DONE_NOT_TRAIL")
+  if ((stage === "PRE_TP1" || stage === "BETWEEN_TP0_TP1" || stage === "TRAIL" || stage === "RUNNER")
     && (refreshStatus === "FAILED" || refreshStatus === "MISSING")) {
     issues.push(buildIssue("NATIVE_REFRESH_UNHEALTHY", `native_protection_refresh_status=${refreshStatus}`));
+  }
+  if (inferredRunnerMetaGap) {
+    issues.push(buildIssue(
+      "TP1_META_SYNC_GAP",
+      `qty=${qtyBase} runner=${simplifiedQtyShadow.runner_qty_abs} meta still pre-TP1`,
+      {
+        current_qty_base: qtyBase,
+        expected_runner_qty_abs: simplifiedQtyShadow.runner_qty_abs,
+        shadow_canonical_stage: simplifiedQtyShadow.canonical_stage,
+      }
+    ));
   }
 
   if (stage === "PRE_TP1" || stage === "BETWEEN_TP0_TP1") {
@@ -338,9 +393,9 @@ function inspectExitProtection({
     }
   }
 
-  if (stage === "TRAIL" || stage === "TP1_DONE_NOT_TRAIL") {
+  if (stage === "TRAIL" || stage === "RUNNER") {
     if (!stopCandidate && !Number.isFinite(actualStopPrice)) {
-      issues.push(buildIssue("TRAIL_STOP_MISSING", "TP1/Trail 단계인데 거래소 stop protection이 없습니다."));
+      issues.push(buildIssue("TRAIL_STOP_MISSING", "runner/trail 단계인데 거래소 stop protection이 없습니다."));
     }
     if (Number.isFinite(trailRMultiple) && trailRMultiple > 0 && !Number.isFinite(trailStopByR)) {
       issues.push(buildIssue(
@@ -468,8 +523,8 @@ function inspectExitProtection({
   return {
     symbol: upper(symbol || row.symbol_or_pair_id || row.symbol),
     stage,
-    canonical_stage: stageInfo.canonical_stage,
-    canonical_stage_source: stageInfo.source,
+    canonical_stage: inferredRunnerMetaGap ? "TRAIL" : stageInfo.canonical_stage,
+    canonical_stage_source: inferredRunnerMetaGap ? "SIMPLIFIED_V2_QTY_SHADOW" : stageInfo.source,
     simplified_exit_v2_enabled: simplifiedExitV2Enabled,
     position_side: positionSide,
     qty_base: qtyBase,
@@ -499,6 +554,7 @@ function inspectExitProtection({
     min_guaranteed_profit_pct: minGuaranteedProfitPct,
     current_guaranteed_profit_pct: currentGuaranteedProfitPct,
     current_mark_price: currentMarkPrice,
+    simplified_exit_v2_shadow: simplifiedQtyShadow,
     issues,
     actionable_issue_n: actionableIssues.length,
     actionable_issue_codes: actionableIssues.map((issue) => issue.code),
@@ -517,6 +573,7 @@ function shouldRepairIssue(row = {}) {
     "TRAIL_STOP_SOURCE_PRICE_INCONSISTENT",
     "NATIVE_REFRESH_UNHEALTHY",
     "TP1_DONE_WITHOUT_TRAIL_ACTIVE",
+    "TP1_META_SYNC_GAP",
   ]);
   const codes = Array.isArray(row.actionable_issue_codes) ? row.actionable_issue_codes : [];
   return codes.some((code) => repairableCodes.has(String(code || "").trim().toUpperCase()));
