@@ -112,9 +112,10 @@ async function run() {
     intent: "EXIT",
     side: "BUY",
     positionSideBefore: "SHORT",
-    executionMode: "LIVE",
+    executionMode: "PAPER",
     reason: "ORDER_REJECTED",
     closeRatio: 0.25,
+    simplified_exit_v2_enabled: false,
     features: {
       openclaw_market_regime_cohort: "RESCUE",
     },
@@ -122,11 +123,12 @@ async function run() {
     canonicalExitStage: "TP0",
     canonicalTransitionEvent: "TP0_REACHED",
     canonicalTransitionEvents: ["TP0_REACHED"],
-    exitRules: { SL: -0.0165, TP_P1: 0.028, TRAIL_R_MULTIPLE: 0.9, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
+    exitRules: { SL: -0.0165, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.028, TRAIL_R_MULTIPLE: 0.9, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
   });
   assert.ok(tp0Failure, "tp0 failure message should exist");
-  assert.ok(tp0Failure.title.includes("익절(TP0) 0.8% 주문 실패"), "tp0 failure title should be explicit");
-  assert.ok(tp0Failure.body.includes("실행계약: TP0_0.8"), "tp0 failure should show executed contract");
+  assert.ok(tp0Failure.title.includes("익절(TP1) 0.8% 주문 실패"), "tp0 failure title should be normalized to TP1");
+  assert.ok(!tp0Failure.title.includes("TP0"), "tp0 failure title must not expose TP0");
+  assert.ok(tp0Failure.body.includes("실행계약: TP1_0.8"), "tp0 failure should show normalized executed contract");
   assert.ok(tp0Failure.body.includes("전략계약: SL_1.65 / TP1_2.8 / TRAIL_0.9R / RUNNER_MIN_2 / BE_0.25"), "tp0 failure should keep strategy contract under separate label");
   assert.ok(tp0Failure.body.includes("시장군: RESCUE"), "tp0 failure should include cohort");
 
@@ -191,7 +193,8 @@ async function run() {
     intent: "EXIT",
     side: "SELL",
     positionSideBefore: "LONG",
-    executionMode: "LIVE",
+    executionMode: "PAPER",
+    simplified_exit_v2_enabled: false,
     notional: 389.27,
     execPrice: 2330.94,
     closeRatio: 0.5,
@@ -215,7 +218,7 @@ async function run() {
     runnerFloorStop: 2276.7092,
     trailStopByR: 2323.5347,
     nativeStopPrice: 2276.7,
-    exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
+    exitRules: { SL: -0.0165, TP_P0: 0.008, TP_P0_QTY: 0.25, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.ok(canonicalTrail, "canonical trail message should exist");
   assert.strictEqual(canonicalTrail.title, "ETHUSDT 정본재분류 TP1_1.65->TRAIL 50% 청산");
@@ -223,7 +226,8 @@ async function run() {
   assert.ok(canonicalTrail.body.includes("실행계약: TRAIL"), "canonical override should switch executed contract to trail");
   assert.ok(canonicalTrail.body.includes("정본재분류: TP1_1.65 -> TRAIL"), "canonical override should expose explicit reclassification");
   assert.ok(canonicalTrail.body.includes("체결수량(base): 0.167"), "alert should include observed absolute fill qty");
-  assert.ok(canonicalTrail.body.includes("계약수량(base): ENTRY 0.887 / TP0 0.22175 / TP1 0.332625 / RUNNER 0.167"), "alert should include absolute contract ledger");
+  assert.ok(canonicalTrail.body.includes("계약수량(base): ENTRY 0.887 / TP1 0.332625 / RUNNER 0.167"), "alert should include absolute contract ledger");
+  assert.ok(!canonicalTrail.body.includes("/ TP0 "), "alert ledger must not expose TP0");
   assert.ok(canonicalTrail.body.includes("정본단계: TRAIL"), "canonical override should expose canonical stage");
   assert.ok(canonicalTrail.body.includes("정본전이: TRAIL_PARTIAL"), "canonical override should expose transition");
   assert.ok(canonicalTrail.body.includes("청산경고: RUNNER_MIN_GUARANTEE_MISSED · 최소 보장 수익 미준수 / TRAIL_R_MISMATCH · TRAIL_R_MULTIPLE 불일치"), "alert should expose canonical stop divergence codes");
@@ -308,7 +312,7 @@ async function run() {
     reason: "EXTERNAL_FILL_RECONCILED",
     exitRules: { SL: -0.0165, TP_P1: 0.0168, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
-  assert.ok(simplifiedExternalSyncAfterTp0.body.includes("동기화맥락: TP1 이전 외부 동기화"), "v2 external sync context must not expose TP0");
+  assert.ok(simplifiedExternalSyncAfterTp0.body.includes("동기화맥락: 러너 진입 전 외부 동기화"), "v2 external sync context must not expose TP0");
 
   const canonicalTp1Event = __test.buildMessage({
     exchange: "BINANCEFUT",
@@ -349,8 +353,8 @@ async function run() {
     realizedPnl: 3.8,
     canonicalExitEvent: "EXIT_TRAIL",
     canonicalExitStage: "TRAIL",
-    canonicalTransitionEvent: "TRAIL_PARTIAL",
-    canonicalTransitionEvents: ["TRAIL_PARTIAL"],
+    canonicalTransitionEvent: "TRAIL_FINAL_EXIT",
+    canonicalTransitionEvents: ["TRAIL_FINAL_EXIT"],
     exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.ok(canonicalTrailWithRawEvidence.body.includes("이벤트: EXIT_TP_P1_1.65P"), "raw evidence event should remain visible even when payload.event is canonical");
