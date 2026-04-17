@@ -19,12 +19,19 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const OPS_DAILY = path.join(REPO_ROOT, "ops", "daily");
 
 function fakeRes() {
-  const state = { statusCode: 200, body: null };
+  const state = { statusCode: 200, body: null, headers: {} };
   return {
     state,
     json(payload) {
       state.body = payload;
       return payload;
+    },
+    send(payload) {
+      state.body = payload;
+      return payload;
+    },
+    setHeader(k, v) {
+      state.headers[String(k).toLowerCase()] = v;
     },
     status(code) {
       state.statusCode = code;
@@ -40,7 +47,7 @@ function callRoute(router, url = "/dashboard/openclaw") {
   const handler = layer.route.stack[0].handle;
   const res = fakeRes();
   handler({ query: {} }, res, () => {});
-  return res.state.body;
+  return res;
 }
 
 (async function run() {
@@ -80,7 +87,8 @@ function callRoute(router, url = "/dashboard/openclaw") {
   }
 
   const router = require("../routes/dashboard.openclaw.routes");
-  const body = callRoute(router, "/dashboard/openclaw");
+  const jsonRes = callRoute(router, "/dashboard/openclaw");
+  const body = jsonRes.state.body;
 
   assert.strictEqual(body.ok, true, "route must report ok:true");
   assert.ok(body.artifacts && typeof body.artifacts === "object", "artifacts block missing");
@@ -112,6 +120,31 @@ function callRoute(router, url = "/dashboard/openclaw") {
   assert.ok(body.phase && typeof body.phase === "object", "phase block missing");
   assert.strictEqual(typeof body.phase.narrative_enabled, "boolean");
   assert.strictEqual(typeof body.phase.narrative_provider_mode, "string");
+
+  // ── HTML view (/dashboard/openclaw/view) ──────────────────────────
+  // 같은 라우터에 HTML 핸들러가 걸려 있어야 하고, Content-Type 헤더를 text/html로
+  // 세팅하며, 주요 UI 엘리먼트(헬스 뱃지, 카드 섹션, phase 테이블)가 포함된
+  // 단일 자체완결 페이지를 반환해야 한다.
+  // linker 파일을 한 번 더 써서 HTML 케이스에서도 artifact가 ok로 뜨게 한다.
+  fs.writeFileSync(linkerPath, JSON.stringify({
+    generated_at: "2026-04-18T00:00:00.000Z",
+    counts: { linked: 5, tp1_first: 1, sl_first: 4 },
+    dry_run: false,
+  }), "utf8");
+  const htmlRes = callRoute(router, "/dashboard/openclaw/view");
+  const html = htmlRes.state.body;
+  assert.ok(typeof html === "string" && html.length > 500, "HTML body must be returned");
+  assert.ok(
+    String(htmlRes.state.headers["content-type"] || "").toLowerCase().startsWith("text/html"),
+    "HTML view must set Content-Type: text/html"
+  );
+  assert.ok(html.includes("OpenClaw Agent"), "HTML must include dashboard heading");
+  assert.ok(html.includes("현재 Phase 상태"), "HTML must include phase section");
+  assert.ok(html.includes("Evidence Ledger"), "HTML must include evidence section");
+  assert.ok(html.includes("evidence_linker"), "HTML must include artifact cards");
+  // 링커 성공 상태에서는 GREEN/AMBER 뱃지가 떠야 한다 (RED가 아님). 카드 3개 중
+  // 2개가 missing이므로 전체 색은 RED/AMBER이지만, 뱃지 자체는 반드시 렌더링됨.
+  assert.ok(html.includes("badge"), "HTML must include health badge element");
 
   // Clean up the fixture.
   try { fs.unlinkSync(linkerPath); } catch (_) {}
