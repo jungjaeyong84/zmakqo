@@ -1398,6 +1398,10 @@ function sleepMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, waitMs));
 }
 
+function sleep(ms) {
+  return sleepMs(ms);
+}
+
 function isRetryableLiveInfraError(err) {
   const code = String(err && err.code || "").trim().toUpperCase();
   const msg = String(err && err.message || err || "").trim().toUpperCase();
@@ -4629,8 +4633,8 @@ async function upsertPositionMetaOnlyWithLatestRetry({
   source = null,
   mutationKind = "POSITION_META_UPSERT",
   reason = null,
-  maxAttempts = 4,
-  retryDelayMs = 50,
+  maxAttempts = 8,
+  retryDelayMs = 250,
   readPosition = getPosition,
   writePositionMeta = upsertPositionMetaOnly,
 } = {}) {
@@ -4669,7 +4673,11 @@ async function upsertPositionMetaOnlyWithLatestRetry({
         throw err;
       }
       if (attempt >= totalAttempts) throw err;
-      if (Number(retryDelayMs) > 0) await sleep(Number(retryDelayMs));
+      const baseDelayMs = Math.max(0, Number(retryDelayMs) || 0);
+      const retryDelayResolvedMs = code === "POSITION_WRITE_TOKEN_MISMATCH"
+        ? baseDelayMs
+        : Math.min(1500, baseDelayMs * attempt);
+      if (retryDelayResolvedMs > 0) await sleep(retryDelayResolvedMs);
       currentPos = await readPosition({ exchange, symbol });
     }
   }
@@ -4694,8 +4702,8 @@ async function upsertPositionWithLatestRetry({
   source = null,
   mutationKind = "POSITION_UPSERT",
   reason = null,
-  maxAttempts = 2,
-  retryDelayMs = 50,
+  maxAttempts = 8,
+  retryDelayMs = 250,
   readPosition = getPosition,
   writePosition = upsertPosition,
 } = {}) {
@@ -4735,7 +4743,11 @@ async function upsertPositionWithLatestRetry({
         throw err;
       }
       if (attempt >= totalAttempts) throw err;
-      if (Number(retryDelayMs) > 0) await sleep(Number(retryDelayMs));
+      const baseDelayMs = Math.max(0, Number(retryDelayMs) || 0);
+      const retryDelayResolvedMs = code === "POSITION_WRITE_TOKEN_MISMATCH"
+        ? baseDelayMs
+        : Math.min(1500, baseDelayMs * attempt);
+      if (retryDelayResolvedMs > 0) await sleep(retryDelayResolvedMs);
       currentPos = await readPosition({ exchange, symbol });
     }
   }

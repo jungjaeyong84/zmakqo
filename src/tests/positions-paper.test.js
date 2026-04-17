@@ -220,6 +220,7 @@ async function run() {
       },
       source: "INTENT_FILL",
       reason: "INTENT_FILL_FORCE_LIVE_RECONCILE",
+      maxAttempts: 4,
       retryDelayMs: 0,
       readPosition: async () => {
         const idx = Math.min(readCount + 1, tokens.length - 1);
@@ -324,6 +325,66 @@ async function run() {
     assert.strictEqual(writes[1].meta.entry_event_id, "ENTRY_NEW");
     assert.strictEqual(writes[1].qtyBase, 250);
     assert.strictEqual(result.expectedWriteToken, "fresh-token");
+  }
+
+  {
+    let readCount = 0;
+    const writes = [];
+    const result = await runnerTest.upsertPositionWithLatestRetry({
+      exchange: "BINANCEFUT",
+      symbol: "BNBUSDT",
+      runId: "RUN__TEST__LEASE_HELD__BNBUSDT",
+      executionMode: "LIVE",
+      position: {
+        position_write_token: "lease-token-0",
+        state: "ACTIVE",
+        position_side: "LONG",
+        size_pct: 1,
+        avg_price: 100,
+        qty_base: 1,
+        meta: {},
+      },
+      state: "ACTIVE",
+      positionSide: "LONG",
+      sizePct: 1,
+      avgPrice: 101,
+      qtyBase: 1,
+      meta: {
+        native_protection_refresh_status: "OK",
+      },
+      source: "BINANCE_FUTURES_POSITION_SYNC",
+      reason: "BINANCE_FUTURES_POSITION_SYNC",
+      maxAttempts: 4,
+      retryDelayMs: 0,
+      readPosition: async () => {
+        readCount += 1;
+        return {
+          position_write_token: `lease-token-${readCount}`,
+          state: "ACTIVE",
+          position_side: "LONG",
+          size_pct: 1,
+          avg_price: 100,
+          qty_base: 1,
+          meta: {},
+        };
+      },
+      writePosition: async (args) => {
+        writes.push(args);
+        if (writes.length < 3) {
+          const err = new Error(`POSITION_WRITE_LEASE_HELD BINANCEFUT BNBUSDT holder=positions_paper_writer__donbeolja-exit-worker-00748-rpd__1`);
+          err.code = "POSITION_WRITE_LEASE_HELD";
+          throw err;
+        }
+        return args;
+      },
+    });
+    assert.strictEqual(readCount, 2);
+    assert.strictEqual(writes.length, 3);
+    assert.deepStrictEqual(
+      writes.map((row) => row.expectedWriteToken),
+      ["lease-token-0", "lease-token-1", "lease-token-2"]
+    );
+    assert.strictEqual(result.expectedWriteToken, "lease-token-2");
   }
 
   console.log("POSITIONS_PAPER_TEST_OK");

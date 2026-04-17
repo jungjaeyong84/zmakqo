@@ -26,6 +26,19 @@ const { __test: tickExitTest } = require("../services/binanceTickExit");
   assert.strictEqual(executionConfig.timeoutMs, 15000);
   assert.deepStrictEqual(executionConfig.targetSymbols, ["BTCUSDT"]);
 
+  const fallbackConfig = executionTest.resolveExitWorkerExecutionConfig({
+    payload: {
+      reason: "MANUAL_REPAIR_BINANCEFUT_ETHUSDT",
+      target_symbols: ["ETHUSDT", "BNBUSDT"],
+      target_exchange: "BINANCEFUT",
+    },
+    env: {},
+  });
+  assert.strictEqual(fallbackConfig.targetMode, true);
+  assert.strictEqual(fallbackConfig.maxDurationMs, 60000);
+  assert.strictEqual(fallbackConfig.timeoutMs, 90000);
+  assert.deepStrictEqual(fallbackConfig.targetSymbols, ["ETHUSDT", "BNBUSDT"]);
+
   const resolvedSymbols = tickExitTest.resolveTickExitSymbolsToCheck({
     exCfg: { markets: ["BTCUSDT", "ETHUSDT", "XRPUSDT"] },
     targetSymbols: executionConfig.targetSymbols,

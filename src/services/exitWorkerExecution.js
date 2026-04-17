@@ -26,10 +26,13 @@ function resolveExitWorkerExecutionConfig({ payload = {}, env = process.env } = 
     )
   );
   const targetMode = targetSymbols.length > 0;
+  const targetSymbolCount = Math.max(1, targetSymbols.length);
+  const targetDefaultMaxDurationMs = Math.min(120000, 45000 + ((targetSymbolCount - 1) * 15000));
+  const targetDefaultTimeoutMs = Math.min(180000, targetDefaultMaxDurationMs + 30000);
   const maxDurationMs = targetMode
     ? resolvePositiveInt(
         env.EXIT_WORKER_TARGET_BURST_MAX_MS || env.EXIT_WORKER_BURST_TARGET_MAX_MS,
-        8000,
+        targetDefaultMaxDurationMs,
         1000
       )
     : resolvePositiveInt(env.EXIT_WORKER_BURST_MAX_MS, 55000, 1000);
@@ -42,7 +45,7 @@ function resolveExitWorkerExecutionConfig({ payload = {}, env = process.env } = 
   const timeoutMs = targetMode
     ? resolvePositiveInt(
         env.EXIT_WORKER_TARGET_EXEC_TIMEOUT_MS || env.EXIT_WORKER_EXEC_TARGET_TIMEOUT_MS,
-        maxDurationMs + 7000,
+        Math.max(targetDefaultTimeoutMs, maxDurationMs + 15000),
         1000
       )
     : resolvePositiveInt(
