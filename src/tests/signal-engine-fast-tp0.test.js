@@ -9,8 +9,38 @@ const {
   resolveTrailDelayState,
 } = require("../engine/signalEngine");
 
+const prevSimplifiedExitV2Env = process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+
 function run() {
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
   const tp0Signals = generateSignals({
+    exchange: "BINANCEFUT",
+    symbol: "SOLUSDT",
+    trading_mode: "EXIT_ONLY",
+    leverage: 2,
+    currentBarCloseMs: 1_800_000_900_000,
+    bar: { close: 100.5, c: 100.5 },
+    position: {
+      state: "ACTIVE",
+      size_pct: 1,
+      avg_price: 100,
+      position_side: "LONG",
+      meta: {
+        simplified_exit_v2_enabled: false,
+        external_leverage: 2,
+        ev_gate_atr_pct: 0.012,
+        tp_p0_done: false,
+        tp_p1_done: false,
+      },
+    },
+  });
+  assert.strictEqual(tp0Signals.length, 1, "tp0 should emit one partial exit");
+  assert.strictEqual(tp0Signals[0].event, "EXIT_TP_P0_0.96P");
+  assert.strictEqual(tp0Signals[0].reason, "EXIT_TAKE_PROFIT_P0");
+  assert.ok(Math.abs(tp0Signals[0].qty_pct - 0.25) < 1e-9);
+
+  delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+  const defaultNoTp0Signals = generateSignals({
     exchange: "BINANCEFUT",
     symbol: "SOLUSDT",
     trading_mode: "EXIT_ONLY",
@@ -30,10 +60,9 @@ function run() {
       },
     },
   });
-  assert.strictEqual(tp0Signals.length, 1, "tp0 should emit one partial exit");
-  assert.strictEqual(tp0Signals[0].event, "EXIT_TP_P0_0.96P");
-  assert.strictEqual(tp0Signals[0].reason, "EXIT_TAKE_PROFIT_P0");
-  assert.ok(Math.abs(tp0Signals[0].qty_pct - 0.25) < 1e-9);
+  assert.deepStrictEqual(defaultNoTp0Signals, [], "runtime default must fail closed to simplified exit v2 when env is omitted");
+
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
 
   const simplifiedNoTp0Signals = generateSignals({
     exchange: "BINANCEFUT",
@@ -97,6 +126,7 @@ function run() {
       avg_price: 100,
       position_side: "LONG",
       meta: {
+        simplified_exit_v2_enabled: false,
         external_leverage: 2,
         ev_gate_atr_pct: 0.012,
         entry_exec_bar_ms: 1_800_010_000_000,
@@ -122,6 +152,7 @@ function run() {
       avg_price: 100,
       position_side: "SHORT",
       meta: {
+        simplified_exit_v2_enabled: false,
         external_leverage: 2,
         ev_gate_atr_pct: 0.509,
         tp_p0_done: false,
@@ -197,6 +228,7 @@ function run() {
       avg_price: 100,
       position_side: "LONG",
       meta: {
+        simplified_exit_v2_enabled: false,
         external_leverage: 2,
         tp_p0_done: true,
         tp_p1_done: false,
@@ -221,6 +253,7 @@ function run() {
       avg_price: 100,
       position_side: "LONG",
       meta: {
+        simplified_exit_v2_enabled: false,
         external_leverage: 2,
         ev_gate_atr_pct: 0.012,
         tp_p0_done: false,
@@ -394,4 +427,7 @@ try {
 } catch (err) {
   console.error("SIGNAL_ENGINE_FAST_TP0_TEST_FAIL", err && err.stack ? err.stack : err);
   process.exit(1);
+} finally {
+  if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+  else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;
 }

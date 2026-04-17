@@ -4,6 +4,8 @@ const assert = require("assert");
 const { __test } = require("../engine/paperBinanceRunner");
 
 async function run() {
+  const prevSimplifiedExitV2Env = process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
   assert.strictEqual(typeof __test.shouldBypassOppositeEntryCooldown, "function", "shouldBypassOppositeEntryCooldown export missing");
   assert.strictEqual(typeof __test.shouldBlockSignalOverlap, "function", "shouldBlockSignalOverlap export missing");
   assert.strictEqual(typeof __test.resolveOppositeCooldownWindow, "function", "resolveOppositeCooldownWindow export missing");
@@ -373,6 +375,7 @@ async function run() {
     "repair must restore trailing rule"
   );
 
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
   const simplifiedFullyRepairedMeta = await __test.repairActivePositionExitRuntimeState({
     exchange: "BINANCEFUT",
     symbol: "XRPUSDT",
@@ -430,6 +433,17 @@ async function run() {
   });
   assert.strictEqual(simplifiedV2Stage.tp0Eligible, false, "simplified V2 must never arm TP0");
   assert.strictEqual(simplifiedV2Stage.tp1Eligible, true, "simplified V2 should arm only TP1 before runner");
+
+  const missingFlagStage = __test.resolveNativeProtectionStageState({
+    tp_p0_done: false,
+    tp_p1_done: false,
+    trail_active: false,
+  });
+  assert.strictEqual(missingFlagStage.tp0Eligible, false, "missing simplified-exit flag must fail closed for TP0");
+  assert.strictEqual(missingFlagStage.tp1Eligible, true, "missing simplified-exit flag must keep TP1 eligible");
+
+  if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+  else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;
 }
 
 try {

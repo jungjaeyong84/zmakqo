@@ -3791,6 +3791,8 @@ async function syncMarketTrades({
               nativeStopPrice: positionCtx && Number.isFinite(Number(positionCtx.nativeStopPrice))
                 ? Number(positionCtx.nativeStopPrice)
                 : null,
+              simplifiedExitV2Enabled: positionCtx && positionCtx.simplifiedExitV2Enabled === true,
+              simplified_exit_v2_enabled: positionCtx && positionCtx.simplifiedExitV2Enabled === true,
               ...(exitLedgerPayload || {}),
               classificationVerified: !canonicalEntryLineageMissing
                 && !String(event || "").trim().toUpperCase().endsWith("_UNVERIFIED"),

@@ -40,7 +40,10 @@ const { tfToMs, normalizeTf, defaultExecTfFromEnv } = require("../utils/marketCo
 const { normalizeEvalExchange, evalLatestId, matchesEvalTf } = require("../utils/evalDoc");
 const { deriveSignalDocId } = require("../utils/signalDocId");
 const { buildExitStageView } = require("../utils/exitStageView");
-const { isSimplifiedExitV2Active } = require("../services/simplifiedExitV2");
+const {
+  isSimplifiedExitV2Active,
+  resolveSimplifiedExitV2FlagFromSnapshot,
+} = require("../services/simplifiedExitV2");
 const { getPositionReadView, listExchangePositionReadViews } = require("../services/positionReadModel");
 const { resolveBinanceFuturesKeys } = require("../utils/binanceKeyResolver");
 const { normalizePositionSide } = require("../utils/positionSide");
@@ -9481,12 +9484,13 @@ function isAuthorizedBinanceNativeStopWriter(writerSource = null) {
 function resolveNativeProtectionStageState(posMeta = null) {
   const meta = (posMeta && typeof posMeta === "object") ? posMeta : {};
   const simplifiedExitV2Enabled = resolveSimplifiedExitV2PositionFlag({ currentMeta: meta });
+  const explicitLegacyTp0Position = resolveSimplifiedExitV2FlagFromSnapshot(meta) === false;
   const tp0Done = meta.tp_p0_done === true;
   const tp1Done = meta.tp_p1_done === true;
   const trailActive = meta.trail_active === true;
   return {
     simplifiedExitV2Enabled,
-    tp0Eligible: simplifiedExitV2Enabled ? false : (tp0Done !== true && tp1Done !== true && trailActive !== true),
+    tp0Eligible: explicitLegacyTp0Position && tp0Done !== true && tp1Done !== true && trailActive !== true,
     tp1Eligible: tp1Done !== true && trailActive !== true,
   };
 }
@@ -9494,6 +9498,11 @@ function resolveNativeProtectionStageState(posMeta = null) {
 function resolveSimplifiedExitV2PositionFlag({ currentMeta = null } = {}) {
   const meta = (currentMeta && typeof currentMeta === "object") ? currentMeta : {};
   return isSimplifiedExitV2Active(meta);
+}
+
+function isExplicitLegacyTp0Position({ currentMeta = null } = {}) {
+  const meta = (currentMeta && typeof currentMeta === "object") ? currentMeta : {};
+  return resolveSimplifiedExitV2FlagFromSnapshot(meta) === false;
 }
 
 function resolveNativeProtectionPositionMeta(positionMeta = null) {
@@ -17430,6 +17439,7 @@ module.exports = {
     isAuthorizedBinanceNativeStopWriter,
     resolveNativeProtectionStageState,
     resolveSimplifiedExitV2PositionFlag,
+    isExplicitLegacyTp0Position,
     resolveNativeProtectionPositionMeta,
     shouldExecuteImmediateNativeProtectionRefresh,
     ensureLiveImmediateNativeProtection,

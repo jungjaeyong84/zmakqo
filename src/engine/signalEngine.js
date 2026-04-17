@@ -11,6 +11,10 @@
 
 const { CHARTER_EXPECTATIONS } = require("../config/charterExpectations");
 const { resolvePositionSideFromPosition } = require("../utils/positionSide");
+const {
+  isSimplifiedExitV2Active,
+  resolveSimplifiedExitV2FlagFromSnapshot,
+} = require("../services/simplifiedExitV2");
 
 function toNum(x) {
   const n = Number(x);
@@ -49,9 +53,11 @@ function parseBoolEnv(key, fallback = false) {
 }
 
 function isSimplifiedExitV2Enabled(meta = {}) {
-  const metaSafe = (meta && typeof meta === "object") ? meta : {};
-  if (metaSafe.simplified_exit_v2_enabled === true || metaSafe.simplifiedExitV2Enabled === true) return true;
-  return parseBoolEnv("SIMPLIFIED_EXIT_V2_ENABLED", false);
+  return isSimplifiedExitV2Active(meta);
+}
+
+function isExplicitLegacyTp0Enabled(meta = {}) {
+  return resolveSimplifiedExitV2FlagFromSnapshot(meta) === false;
 }
 
 function pctLabel(pct, { maxDecimals = 2 } = {}) {
@@ -886,7 +892,8 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
   // 손절/익절 규칙
   const rules = resolveExitRulesForPosition({ exchange: ex, position: pos, exitProfileMode });
   const SL = rules.SL;
-  const TP_P0 = simplifiedExitV2Enabled ? null : resolveTpP0Pct({ rules, meta });
+  const legacyTp0Enabled = isExplicitLegacyTp0Enabled(meta);
+  const TP_P0 = legacyTp0Enabled ? resolveTpP0Pct({ rules, meta }) : null;
   const TP_P0_QTY = rules.TP_P0_QTY;
   const TP_P1 = rules.TP_P1;
   const TP_C = rules.TP_C;
@@ -972,7 +979,7 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
   }
 
   const takeProfitSignals = [];
-  if (!simplifiedExitV2Enabled && !tpP0Done && !tpP1Done && Number.isFinite(TP_P0) && pnlPctEffective >= TP_P0) {
+  if (legacyTp0Enabled && !tpP0Done && !tpP1Done && Number.isFinite(TP_P0) && pnlPctEffective >= TP_P0) {
     const qty = resolveContractExitQtyPct(size, TP_P0_QTY);
     takeProfitSignals.push({
       event: tpP0Event,
