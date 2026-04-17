@@ -1,9 +1,12 @@
 const assert = require("assert");
 const { reconcileBinancePositionMetaWithExchange, __test } = require("../services/binancePositionReconciler");
 
+const prevSimplifiedExitV2Env = process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+
 async function run() {
   assert.strictEqual(typeof reconcileBinancePositionMetaWithExchange, "function", "reconcileBinancePositionMetaWithExchange export missing");
 
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
   const classifiedLong = __test.classifyTakeProfitOrders({
     orders: [
       { orderId: "tp1", type: "TAKE_PROFIT_MARKET", side: "SELL", reduceOnly: true, stopPrice: "105", origQty: "5" },
@@ -44,6 +47,7 @@ async function run() {
   assert.strictEqual(classifiedWithStaleMeta.tp0.orderId, "tp0");
   assert.strictEqual(classifiedWithStaleMeta.tp1.orderId, "tp1");
 
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
   const classifiedSimplifiedV2 = __test.classifyTakeProfitOrders({
     orders: [
       { orderId: "tp1-only", type: "TAKE_PROFIT_MARKET", side: "SELL", reduceOnly: true, stopPrice: "101.68", origQty: "5" },
@@ -70,6 +74,7 @@ async function run() {
   assert.strictEqual(classifiedSimplifiedV2Multiple.unexpectedTpOrders.length, 1);
   assert.strictEqual(classifiedSimplifiedV2Multiple.unexpectedTpOrders[0].orderId, "tp-legacy-25");
 
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
   const trailPatch = reconcileBinancePositionMetaWithExchange({
     active: true,
     meta: {
@@ -100,6 +105,7 @@ async function run() {
   assert.strictEqual(trailPatch.meta.trail_active, true);
   assert.ok(trailPatch.invariants.includes("TP1_DONE_WITH_TP_ORDER"));
 
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
   const tp1ContractRatioPatch = reconcileBinancePositionMetaWithExchange({
     active: true,
     meta: {
@@ -124,6 +130,10 @@ async function run() {
     active: true,
     meta: {
       simplified_exit_v2_enabled: true,
+      tp_p0_done: true,
+      tp_p0_price: 100.8,
+      tp_p0_at: "2026-04-17T00:00:00.000Z",
+      tp_p0_source: "LEGACY",
       exit_rules_override: {
         TP_P1_QTY: 0.5,
       },
@@ -141,6 +151,10 @@ async function run() {
   assert.strictEqual(simplifiedV2Patch.meta.native_protection_tp0_order_id, null);
   assert.strictEqual(simplifiedV2Patch.meta.native_protection_tp_order_id, "tp1-armed");
   assert.strictEqual(simplifiedV2Patch.meta.native_protection_tp_qty_ratio, 0.5);
+  assert.strictEqual(simplifiedV2Patch.meta.tp_p0_done, false);
+  assert.strictEqual(simplifiedV2Patch.meta.tp_p0_price, null);
+  assert.strictEqual(simplifiedV2Patch.meta.tp_p0_at, null);
+  assert.strictEqual(simplifiedV2Patch.meta.tp_p0_source, null);
   assert.ok(!simplifiedV2Patch.invariants.includes("SIMPLIFIED_EXIT_V2_MULTIPLE_TP_ORDERS"));
 
   const simplifiedV2LegacyLeakPatch = reconcileBinancePositionMetaWithExchange({
@@ -239,4 +253,7 @@ async function run() {
 run().catch((e) => {
   console.error(e);
   process.exit(1);
+}).finally(() => {
+  if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+  else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;
 });
