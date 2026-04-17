@@ -1,7 +1,8 @@
 "use strict";
 
 const { normalizePositionSide, resolveCloseSide } = require("../utils/positionSide");
-const { isSimplifiedExitV2Active } = require("./simplifiedExitV2");
+const { buildExitQuantityContractLedger } = require("./positionStateMachine");
+const { isSimplifiedExitV2Active, buildSimplifiedExitShadowView } = require("./simplifiedExitV2");
 const {
   resolveTp0ContractQtyRatio,
   resolveTp1AbsoluteContractQtyRatio,
@@ -163,6 +164,151 @@ function resolveConfiguredTakeProfitQtyRatio(meta, key, fallback) {
 
 function resolveConfiguredTp1QtyRatio(meta, fallback = 0.5) {
   return resolveConfiguredTakeProfitQtyRatio(meta, "TP_P1_QTY", fallback);
+}
+
+function approxEqual(a, b, { abs = 1e-8, rel = 0.02 } = {}) {
+  const left = toNum(a);
+  const right = toNum(b);
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+  const diff = Math.abs(left - right);
+  if (diff <= abs) return true;
+  const scale = Math.max(Math.abs(left), Math.abs(right), 1);
+  return diff <= (scale * rel);
+}
+
+function finiteOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function buildLedgerMetaPatchFromLedger(ledger = {}) {
+  return {
+    entry_qty_base: Number.isFinite(Number(ledger.entry_qty_abs)) ? Number(ledger.entry_qty_abs) : null,
+    entry_qty_abs: Number.isFinite(Number(ledger.entry_qty_abs)) ? Number(ledger.entry_qty_abs) : null,
+    tp_p0_allowed_qty_abs: Number.isFinite(Number(ledger.tp0_allowed_abs)) ? Number(ledger.tp0_allowed_abs) : null,
+    tp_p0_consumed_qty_abs: Number.isFinite(Number(ledger.tp0_consumed_abs)) ? Number(ledger.tp0_consumed_abs) : null,
+    tp_p1_allowed_qty_abs: Number.isFinite(Number(ledger.tp1_allowed_abs)) ? Number(ledger.tp1_allowed_abs) : null,
+    tp_p1_consumed_qty_abs: Number.isFinite(Number(ledger.tp1_consumed_abs)) ? Number(ledger.tp1_consumed_abs) : null,
+    runner_allowed_qty_abs: Number.isFinite(Number(ledger.runner_allowed_abs)) ? Number(ledger.runner_allowed_abs) : null,
+    runner_remaining_qty_abs: Number.isFinite(Number(ledger.runner_remaining_abs)) ? Number(ledger.runner_remaining_abs) : null,
+    canonical_runner_remaining_abs: Number.isFinite(Number(ledger.runner_remaining_abs)) ? Number(ledger.runner_remaining_abs) : null,
+    trail_consumed_qty_abs: Number.isFinite(Number(ledger.trail_consumed_abs)) ? Number(ledger.trail_consumed_abs) : null,
+    total_consumed_qty_abs: (
+      Number.isFinite(Number(ledger.entry_qty_abs)) && Number.isFinite(Number(ledger.total_consumed_ratio))
+    ) ? (Number(ledger.entry_qty_abs) * Number(ledger.total_consumed_ratio)) : null,
+    tp_p0_allowed_qty_ratio: Number.isFinite(Number(ledger.tp0_allowed_ratio)) ? Number(ledger.tp0_allowed_ratio) : null,
+    tp_p0_consumed_qty_ratio: Number.isFinite(Number(ledger.tp0_consumed_ratio)) ? Number(ledger.tp0_consumed_ratio) : null,
+    tp_p1_allowed_qty_ratio: Number.isFinite(Number(ledger.tp1_allowed_ratio)) ? Number(ledger.tp1_allowed_ratio) : null,
+    tp_p1_consumed_qty_ratio: Number.isFinite(Number(ledger.tp1_consumed_ratio)) ? Number(ledger.tp1_consumed_ratio) : null,
+    runner_allowed_qty_ratio: Number.isFinite(Number(ledger.runner_allowed_ratio)) ? Number(ledger.runner_allowed_ratio) : null,
+    runner_remaining_qty_ratio: Number.isFinite(Number(ledger.runner_remaining_ratio)) ? Number(ledger.runner_remaining_ratio) : null,
+    trail_consumed_qty_ratio: Number.isFinite(Number(ledger.trail_consumed_ratio)) ? Number(ledger.trail_consumed_ratio) : null,
+    total_consumed_qty_ratio: Number.isFinite(Number(ledger.total_consumed_ratio)) ? Number(ledger.total_consumed_ratio) : null,
+    contract_entry_qty_abs: Number.isFinite(Number(ledger.entry_qty_abs)) ? Number(ledger.entry_qty_abs) : null,
+    contract_tp0_allowed_abs: Number.isFinite(Number(ledger.tp0_allowed_abs)) ? Number(ledger.tp0_allowed_abs) : null,
+    contract_tp0_consumed_abs: Number.isFinite(Number(ledger.tp0_consumed_abs)) ? Number(ledger.tp0_consumed_abs) : null,
+    contract_tp1_allowed_abs: Number.isFinite(Number(ledger.tp1_allowed_abs)) ? Number(ledger.tp1_allowed_abs) : null,
+    contract_tp1_consumed_abs: Number.isFinite(Number(ledger.tp1_consumed_abs)) ? Number(ledger.tp1_consumed_abs) : null,
+    contract_runner_allowed_abs: Number.isFinite(Number(ledger.runner_allowed_abs)) ? Number(ledger.runner_allowed_abs) : null,
+    contract_runner_remaining_abs: Number.isFinite(Number(ledger.runner_remaining_abs)) ? Number(ledger.runner_remaining_abs) : null,
+    contract_trail_consumed_abs: Number.isFinite(Number(ledger.trail_consumed_abs)) ? Number(ledger.trail_consumed_abs) : null,
+    contract_observed_qty_abs: Number.isFinite(Number(ledger.observed_qty_abs)) ? Number(ledger.observed_qty_abs) : null,
+    contract_latest: true,
+  };
+}
+
+function recoverSimplifiedExitV2RunnerMetaFromQtyReduction({
+  meta = {},
+  positionSide = null,
+  qtyBase = null,
+  previousQtyBase = null,
+  entryPrice = null,
+  stopOrder = null,
+  tpOrder = null,
+  observedAtIso = new Date().toISOString(),
+} = {}) {
+  const baseMeta = meta && typeof meta === "object" ? meta : {};
+  if (!isSimplifiedExitV2Enabled(baseMeta)) return null;
+  if (baseMeta.tp_p1_done === true || baseMeta.trail_active === true) return null;
+  if (tpOrder || !stopOrder) return null;
+
+  const currentQty = toNum(qtyBase);
+  const persistedEntryQty = toNum(
+    baseMeta.entry_qty_base
+    ?? baseMeta.entry_qty_abs
+    ?? baseMeta.contract_entry_qty_abs
+  );
+  const previousQty = toNum(previousQtyBase);
+  const inferredEntryQty = Number.isFinite(persistedEntryQty) && persistedEntryQty > currentQty
+    ? persistedEntryQty
+    : previousQty;
+  if (!(Number.isFinite(currentQty) && currentQty > 0 && Number.isFinite(inferredEntryQty) && inferredEntryQty > currentQty)) {
+    return null;
+  }
+
+  const rules = (baseMeta.exit_rules_override && typeof baseMeta.exit_rules_override === "object")
+    ? baseMeta.exit_rules_override
+    : {};
+  const shadow = buildSimplifiedExitShadowView({
+    side: normalizePositionSide(positionSide),
+    entryPrice: toNum(entryPrice),
+    entryQtyAbs: inferredEntryQty,
+    currentQtyAbs: currentQty,
+    closePrice: toNum(entryPrice),
+    tp1Done: false,
+    tp1FilledQtyAbs: Math.max(0, inferredEntryQty - currentQty),
+    stopLossPct: Math.abs(toNum(rules.SL)),
+    floorLockPct: toNum(rules.RUNNER_MIN_PROFIT_PCT),
+    trailPct: toNum(rules.TRAIL_PCT),
+    tp1QtyRatio: resolveConfiguredTp1QtyRatio(baseMeta, 0.5),
+    tp1TargetPct: toNum(rules.TP_P1),
+    legacyCanonicalStage: baseMeta.canonical_exit_stage ?? baseMeta.authoritative_exit_stage ?? null,
+    legacyTp0Done: false,
+  });
+  if (!shadow || shadow.available !== true || shadow.tp1_complete !== true || shadow.economic_state !== "RUNNER") {
+    return null;
+  }
+  if (!approxEqual(currentQty, shadow.runner_remaining_qty_abs) || !approxEqual(inferredEntryQty - currentQty, shadow.tp1_filled_qty_abs)) {
+    return null;
+  }
+
+  const nextMeta = {
+    ...baseMeta,
+    tp_p0_done: false,
+    tp_p1_done: true,
+    trail_active: true,
+    tp_p1_pending: false,
+    tp_p1_pending_at_ms: null,
+    tp_p1_pending_until_ms: null,
+    tp_p1_pending_event: null,
+    tp_p1_source: baseMeta.tp_p1_source || "EXCHANGE_QTY_REDUCTION_RECOVERY",
+    tp_p1_at: baseMeta.tp_p1_at || observedAtIso,
+    tp_p1_bar_ms: finiteOrNull(baseMeta.tp_p1_bar_ms)
+      ?? (Date.parse(String(observedAtIso || "")) || null),
+    tp_p1_entry_event_id: baseMeta.tp_p1_entry_event_id || baseMeta.entry_event_id || baseMeta.origin_entry_event_id || null,
+    tp_p1_entry_exec_bar_ms: finiteOrNull(baseMeta.tp_p1_entry_exec_bar_ms)
+      ?? finiteOrNull(baseMeta.entry_exec_bar_ms)
+      ?? finiteOrNull(baseMeta.origin_entry_exec_bar_ms),
+    entry_qty_base: inferredEntryQty,
+    entry_qty_abs: inferredEntryQty,
+  };
+  const ledger = buildExitQuantityContractLedger({
+    positionSnapshot: {
+      qty_base: currentQty,
+      entry_qty_base: inferredEntryQty,
+      meta: nextMeta,
+      position_side: positionSide,
+    },
+    rules,
+  });
+  return {
+    meta: {
+      ...nextMeta,
+      ...buildLedgerMetaPatchFromLedger(ledger),
+    },
+    shadow,
+  };
 }
 
 const FLAT_META_FALSE_FIELDS = [
@@ -396,6 +542,7 @@ function reconcileBinancePositionMetaWithExchange({
   meta,
   positionSide,
   qtyBase,
+  previousQtyBase = null,
   entryPrice,
   leverage,
   openOrders = [],
@@ -484,6 +631,19 @@ function reconcileBinancePositionMetaWithExchange({
   nextMeta.native_protection_tp0_reason = null;
   nextMeta.native_protection_tp_reason = null;
 
+  const qtyReductionRecovery = recoverSimplifiedExitV2RunnerMetaFromQtyReduction({
+    meta: nextMeta,
+    positionSide,
+    qtyBase,
+    previousQtyBase,
+    entryPrice,
+    stopOrder: stop,
+    tpOrder: tp1,
+  });
+  if (qtyReductionRecovery && qtyReductionRecovery.meta) {
+    Object.assign(nextMeta, qtyReductionRecovery.meta);
+  }
+
   if (simplifiedExitV2Enabled) {
     nextMeta.tp_p0_done = false;
     nextMeta.tp_p0_at = null;
@@ -522,6 +682,7 @@ module.exports = {
     inferTakeProfitKindFromQtyRatio,
     resolveConfiguredTakeProfitQtyRatio,
     classifyTakeProfitOrders,
+    recoverSimplifiedExitV2RunnerMetaFromQtyReduction,
     pickStopCandidate,
     buildFlatMetaProjection,
     buildFrozenTrailContext,

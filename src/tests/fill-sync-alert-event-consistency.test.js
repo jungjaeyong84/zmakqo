@@ -6,11 +6,24 @@ const { __test } = require("../../scripts/report-fill-sync-alert-event-consisten
 function run() {
   assert.strictEqual(typeof __test.classifyStage, "function", "classifyStage export missing");
   assert.strictEqual(typeof __test.inferForcedEventFromRefs, "function", "inferForcedEventFromRefs export missing");
+  assert.strictEqual(typeof __test.inferExitEventFromDecisionReason, "function", "inferExitEventFromDecisionReason export missing");
+  assert.strictEqual(typeof __test.resolveComparableFillEvent, "function", "resolveComparableFillEvent export missing");
   assert.strictEqual(typeof __test.buildIssueRows, "function", "buildIssueRows export missing");
   assert.strictEqual(typeof __test.buildReport, "function", "buildReport export missing");
 
   assert.strictEqual(__test.classifyStage("EXIT_TP_P0_0.8P"), "TP0");
   assert.strictEqual(__test.classifyStage("FORCE_EXIT_ALL"), "FORCE_EXIT_ALL");
+  assert.strictEqual(
+    __test.inferExitEventFromDecisionReason("EXIT_TAKE_PROFIT_P1", "EXIT_TP_P1_1.65P"),
+    "EXIT_TP_P1_1.65P"
+  );
+  assert.strictEqual(
+    __test.resolveComparableFillEvent({
+      event: null,
+      decision_reason: "EXIT_TAKE_PROFIT_P1",
+    }, "EXIT_TP_P1_1.65P"),
+    "EXIT_TP_P1_1.65P"
+  );
   assert.strictEqual(
     __test.inferForcedEventFromRefs("SIG__BINANCEFUT__DOGEUSDT__15m__1776114000000__FORCE_EXIT_ALL"),
     "FORCE_EXIT_ALL"
@@ -28,6 +41,17 @@ function run() {
     intent_id: "INTENT__XRP",
   }, "EXIT_TP_P1_1.65P");
   assert.ok(tpStageMismatch.some((row) => row.code === "INTENT_EVENT_STAGE_MISMATCH"));
+
+  const recoveredFromDecisionReason = __test.buildIssueRows({
+    event: null,
+    decision_reason: "EXIT_TAKE_PROFIT_P1",
+    intent_id: "INTENT__BTC",
+  }, "EXIT_TP_P1_1.65P");
+  assert.strictEqual(
+    recoveredFromDecisionReason.some((row) => row.code === "INTENT_EVENT_STAGE_MISMATCH"),
+    false,
+    `decision reason fallback should suppress false mismatch, got ${JSON.stringify(recoveredFromDecisionReason)}`
+  );
 
   const report = __test.buildReport([
     {

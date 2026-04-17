@@ -4,6 +4,7 @@ const { __test } = require("../services/binanceLiveStateSelfHeal");
 async function run() {
   assert.strictEqual(typeof __test.isActivePaperPosition, "function", "isActivePaperPosition export missing");
   assert.strictEqual(typeof __test.shouldRepairBinanceLivePosition, "function", "shouldRepairBinanceLivePosition export missing");
+  assert.strictEqual(typeof __test.shouldForceImmediateSelfHealNativeProtection, "function", "shouldForceImmediateSelfHealNativeProtection export missing");
   assert.strictEqual(typeof __test.buildSelfHealFailureMetaPatch, "function", "buildSelfHealFailureMetaPatch export missing");
 
   assert.strictEqual(__test.isActivePaperPosition({
@@ -54,6 +55,29 @@ async function run() {
     native_protection_stop_order_id: "stop",
     exchange_projection_in_sync: true,
     exchange_projection_invariants: ["TP1_DONE_WITH_TP_ORDER"],
+  }), true);
+
+  assert.strictEqual(__test.shouldForceImmediateSelfHealNativeProtection({
+    tp_p1_done: false,
+    trail_active: false,
+    native_protection_refresh_status: "MISSING",
+    native_protection_tp_order_id: null,
+    native_protection_stop_order_id: null,
+  }), true);
+
+  assert.strictEqual(__test.shouldForceImmediateSelfHealNativeProtection({
+    tp_p1_done: false,
+    trail_active: false,
+    native_protection_refresh_status: "OK",
+    native_protection_tp_order_id: "tp1",
+    native_protection_stop_order_id: "stop",
+  }), false);
+
+  assert.strictEqual(__test.shouldForceImmediateSelfHealNativeProtection({
+    tp_p1_done: true,
+    trail_active: true,
+    native_protection_refresh_status: "OK",
+    native_protection_stop_order_id: null,
   }), true);
 
   assert.deepStrictEqual(__test.buildSelfHealFailureMetaPatch({

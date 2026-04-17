@@ -805,6 +805,33 @@ function isSimplifiedExitV2Enabled(positionCtx = null) {
   });
 }
 
+function resolveExecutionModeFromPositionCtx(positionCtx = null) {
+  const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
+  const position = (ctx.position && typeof ctx.position === "object") ? ctx.position : {};
+  const meta = (position.meta && typeof position.meta === "object") ? position.meta : {};
+  const mode = String(
+    ctx.executionMode
+    || ctx.execution_mode
+    || position.executionMode
+    || position.execution_mode
+    || meta.executionMode
+    || meta.execution_mode
+    || ""
+  ).trim().toUpperCase();
+  return mode || null;
+}
+
+function isTp0RetiredRuntime(positionCtx = null) {
+  const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
+  const position = (ctx.position && typeof ctx.position === "object") ? ctx.position : {};
+  const meta = (position.meta && typeof position.meta === "object") ? position.meta : {};
+  if (ctx.simplified_exit_v2_enabled === true || ctx.simplifiedExitV2Enabled === true) return true;
+  if (position.simplified_exit_v2_enabled === true || position.simplifiedExitV2Enabled === true) return true;
+  if (meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true) return true;
+  const mode = resolveExecutionModeFromPositionCtx(positionCtx);
+  return mode === "LIVE" || mode === "LIVE_DRY_RUN" || mode === "PAPER";
+}
+
 function computeAdverseSlippageBps({ side, signalPrice, execPrice } = {}) {
   const ref = Number(signalPrice);
   const fill = Number(execPrice);
@@ -1013,11 +1040,14 @@ function resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale, execQtyBa
         source: qtyScaleMode || "SYNCED_QTY_PCT",
       };
     }
-    // C12 invariant: do not fall back to the contract target when neither the
-    // intent nor the exchange-acknowledged qty can prove how much was actually
-    // closed. Publishing `closeRatio=0.5` for an unverified TP1 event tells
-    // operators a lie (intent-shaped, not execution-shaped). Return empty so
-    // downstream alert code surfaces it as coverage_ready=false.
+    const tp1ContractQtyRatio = resolveTp1RemainingContractQtyRatio(rules, 0.5);
+    if (Number.isFinite(tp1ContractQtyRatio) && tp1ContractQtyRatio > 0) {
+      return {
+        closeRatio: tp1ContractQtyRatio,
+        aggregation: "MAX",
+        source: "CONTRACT_TP1_QTY_FALLBACK",
+      };
+    }
   }
   const intentQtyFraction = clamp01(intent && intent.qty_fraction);
   const scaledRatio = clamp01(qtyScale && qtyScale.ratio);
@@ -1069,7 +1099,7 @@ function buildStageHintedMeta(meta = {}, event = "", trade = null) {
   // operator actions, replay, or a misrouted native order). The ledger
   // validator and canonical transition layer already refuse to escalate TP0
   // in v2, so zeroing the hint here keeps the meta internally consistent.
-  const v2Enabled = isSimplifiedExitV2Active(nextMeta);
+  const v2Enabled = isTp0RetiredRuntime(nextMeta);
   if (isTpP0Event(ev)) {
     if (!v2Enabled) {
       nextMeta.tp_p0_done = true;
@@ -1238,7 +1268,7 @@ function mergeRecentExitHintsIntoMeta(meta = {}, {
   const nextMeta = { ...(meta && typeof meta === "object" ? meta : {}) };
   // TP0 retirement policy — v2 positions never stamp tp_p0_done regardless of
   // which cached hint arrives. See buildStageHintedMeta for rationale.
-  const v2Enabled = isSimplifiedExitV2Active(nextMeta);
+  const v2Enabled = isTp0RetiredRuntime(nextMeta);
   if (!v2Enabled && recentTp0 && isTpP0Event(recentTp0.event)) {
     nextMeta.tp_p0_done = true;
   }
@@ -1396,20 +1426,22 @@ function buildFillSyncAlertChainKey({ symbol, event, intent, side, orderMeta, tr
 }
 
 function resolvePreferredFillSyncStageEvent(stage, currentEvent, nextEvent, currentPayload = {}, nextPayload = {}) {
+  const tp0RetiredRuntime = isTp0RetiredRuntime(currentPayload) || isTp0RetiredRuntime(nextPayload);
+  if (tp0RetiredRuntime && stage === "TP0") {
+    return resolvePreferredFillSyncStageEvent("TP1", currentEvent, nextEvent, currentPayload, nextPayload);
+  }
   if (stage === "TP0") {
-    if (isTpP0Event(nextEvent)) return nextEvent;
-    if (isTpP0Event(currentEvent)) return currentEvent;
-    return buildExitEventByKind("TP0", nextPayload.exitRules || currentPayload.exitRules);
+    return resolvePreferredFillSyncStageEvent("TP1", currentEvent, nextEvent, currentPayload, nextPayload);
   }
   if (stage === "TP1") {
     if (isTpP1Event(nextEvent)) return nextEvent;
     if (isTpP1Event(currentEvent)) return currentEvent;
-    return buildExitEventByKind("TP1", nextPayload.exitRules || currentPayload.exitRules);
+    return buildExitEventByKind("TP1", nextPayload.exitRules || currentPayload.exitRules, nextPayload);
   }
   if (stage === "TRAIL") {
     if (String(nextEvent || "").trim().toUpperCase().startsWith("EXIT_TRAIL")) return nextEvent;
     if (String(currentEvent || "").trim().toUpperCase().startsWith("EXIT_TRAIL")) return currentEvent;
-    return buildExitEventByKind("TRAIL", nextPayload.exitRules || currentPayload.exitRules);
+    return buildExitEventByKind("TRAIL", nextPayload.exitRules || currentPayload.exitRules, nextPayload);
   }
   return nextEvent || currentEvent;
 }
@@ -1442,8 +1474,8 @@ function resolvePreferredFillSyncAlertEvent(currentPayload = {}, payload = {}) {
     return currentVerified ? currentEvent : nextEvent;
   }
 
-  const currentStage = classifyExitAuthorityStage(currentEvent);
-  const nextStage = classifyExitAuthorityStage(nextEvent);
+  const currentStage = classifyExitAuthorityStage(currentEvent, currentPayload);
+  const nextStage = classifyExitAuthorityStage(nextEvent, payload);
   const currentCanonicalStage = String(currentPayload.canonicalExitStage || "").trim().toUpperCase() || null;
   const nextCanonicalStage = String(payload.canonicalExitStage || "").trim().toUpperCase() || null;
   const tp0Done = currentPayload.alertStageHintTp0Done === true || payload.alertStageHintTp0Done === true;
@@ -1462,13 +1494,11 @@ function resolvePreferredFillSyncAlertEvent(currentPayload = {}, payload = {}) {
   }
 
   if ((currentStage === "TP0" && nextStage === "TP1") || (currentStage === "TP1" && nextStage === "TP0")) {
+    void tp0Done;
     if (trailActive || tp1Done) {
       return resolvePreferredFillSyncStageEvent("TP1", currentEvent, nextEvent, currentPayload, payload);
     }
-    if (tp0Done) {
-      return resolvePreferredFillSyncStageEvent("TP0", currentEvent, nextEvent, currentPayload, payload);
-    }
-    return resolvePreferredFillSyncStageEvent("TP0", currentEvent, nextEvent, currentPayload, payload);
+    return resolvePreferredFillSyncStageEvent("TP1", currentEvent, nextEvent, currentPayload, payload);
   }
 
   if ((currentStage === "TP1" && nextStage === "TRAIL") || (currentStage === "TRAIL" && nextStage === "TP1")) {
@@ -1925,6 +1955,53 @@ function applyAuthoritativeIntentEventOverride(event, intent) {
   return currentEvent;
 }
 
+function inferExitEventFromDecisionReason(decisionReason, { intent = null, rules = null, positionCtx = null } = {}) {
+  const reason = String(decisionReason || "").trim().toUpperCase();
+  if (!reason) return null;
+  const intentEvent = String(intent && intent.event || "").trim().toUpperCase();
+  if (reason === "EXIT_TAKE_PROFIT_P1") {
+    if (intentEvent.startsWith("EXIT_TP_P1")) return intentEvent;
+    return normalizeExitEventForRules("EXIT_TP_P1", rules, positionCtx);
+  }
+  if (reason === "EXIT_TAKE_PROFIT_P0") {
+    if (intentEvent.startsWith("EXIT_TP_P0") || intentEvent.startsWith("EXIT_TP_P1")) return intentEvent;
+    return normalizeExitEventForRules("EXIT_TP_P0", rules, positionCtx);
+  }
+  if (reason === "EXIT_STOP_LOSS") {
+    if (intentEvent.startsWith("EXIT_SL")) return intentEvent;
+    return normalizeExitEventForRules("EXIT_SL", rules, positionCtx);
+  }
+  if (reason === "TRAIL_STOP_BREACHED") {
+    if (intentEvent.startsWith("EXIT_TRAIL")) return intentEvent;
+    return normalizeExitEventForRules("EXIT_TRAIL", rules, positionCtx);
+  }
+  if (reason === "EXTERNAL_FILL_RECONCILED" && intentEvent) {
+    return intentEvent;
+  }
+  return null;
+}
+
+function resolvePersistedExternalExitEvent({
+  event,
+  intent = null,
+  decisionReason = null,
+  canonicalStageDecision = null,
+  rules = null,
+  positionCtx = null,
+} = {}) {
+  const currentEvent = String(event || "").trim().toUpperCase();
+  if (currentEvent) return currentEvent;
+  const canonicalEvent = String(canonicalStageDecision && canonicalStageDecision.event || "").trim().toUpperCase();
+  if (canonicalEvent) return canonicalEvent;
+  const intentEvent = String(intent && intent.event || "").trim().toUpperCase();
+  if (intentEvent) return intentEvent;
+  return inferExitEventFromDecisionReason(decisionReason, {
+    intent,
+    rules,
+    positionCtx,
+  });
+}
+
 function resolveExternalSyncHintStage({
   event,
   orderMeta,
@@ -2258,14 +2335,13 @@ function shouldEmitExternalFillSyncExitAlert({
   return isMeaningfulRealizedPnl(realizedPnl);
 }
 
-function buildExitEventByKind(kind, rules) {
+function buildExitEventByKind(kind, rules, positionCtx = null) {
   const k = String(kind || "").toUpperCase();
   const slLabel = pctLabel(rules && rules.SL);
-  const tp0Label = pctLabel(rules && rules.TP_P0);
   const tpLabel = pctLabel(rules && rules.TP_P1);
   const trailLabel = pctLabel(rules && rules.TRAIL_PCT);
   if (k === "SL") return slLabel ? `EXIT_SL_${slLabel}P` : "EXIT_SL";
-  if (k === "TP0") return tp0Label ? `EXIT_TP_P0_${tp0Label}P` : "EXIT_TP_P0";
+  if (k === "TP0") return buildExitEventByKind("TP1", rules, positionCtx);
   if (k === "TP1") return tpLabel ? `EXIT_TP_P1_${tpLabel}P` : "EXIT_TP_P1";
   if (k === "TRAIL") {
     const trailR = Number(rules && rules.TRAIL_R_MULTIPLE);
@@ -2275,13 +2351,13 @@ function buildExitEventByKind(kind, rules) {
   return "EXIT_EXTERNAL_SYNC";
 }
 
-function normalizeExitEventForRules(event, rules) {
+function normalizeExitEventForRules(event, rules, positionCtx = null) {
   const ev = String(event || "").trim().toUpperCase();
   if (!ev) return ev;
-  if (ev.startsWith("EXIT_TP_P0")) return buildExitEventByKind("TP0", rules);
-  if (ev.startsWith("EXIT_TP_P1")) return buildExitEventByKind("TP1", rules);
-  if (ev.startsWith("EXIT_TRAIL")) return buildExitEventByKind("TRAIL", rules);
-  if (ev.startsWith("EXIT_SL")) return buildExitEventByKind("SL", rules);
+  if (ev.startsWith("EXIT_TP_P0")) return buildExitEventByKind("TP0", rules, positionCtx);
+  if (ev.startsWith("EXIT_TP_P1")) return buildExitEventByKind("TP1", rules, positionCtx);
+  if (ev.startsWith("EXIT_TRAIL")) return buildExitEventByKind("TRAIL", rules, positionCtx);
+  if (ev.startsWith("EXIT_SL")) return buildExitEventByKind("SL", rules, positionCtx);
   return ev;
 }
 
@@ -2321,9 +2397,10 @@ function shouldTrustMatchedIntentExitEvent({
   const sameOrderTp1 = isSameOrderAsNativeTp1(orderMeta, ctx);
   const sameOrderRecentTp0 = isSameOrderAsRecentTp0(orderMeta, recentTp0);
   const sameOrderRecentTp1 = isSameOrderAsRecentTp1(orderMeta, recentTp1);
-  const inferredKind = inferTakeProfitKindFromQtyPct(qtyPct, rules);
+  const inferredKind = inferTakeProfitKindFromQtyPct(qtyPct, rules, ctx);
 
   if (ev.startsWith("EXIT_TP_P0")) {
+    if (isTp0RetiredRuntime(ctx)) return true;
     if (sameOrderTp1 || sameOrderRecentTp1) return false;
     const postTp0Stage = !!(ctx.tpP0Done === true || ctx.tpP1Done === true || ctx.trailActive === true);
     if (postTp0Stage) return sameOrderTp0 || sameOrderRecentTp0;
@@ -2361,10 +2438,11 @@ function isTpP0Event(event) {
   return ev.startsWith("EXIT_TP_P0");
 }
 
-function classifyExitAuthorityStage(event) {
+function classifyExitAuthorityStage(event, positionCtx = null) {
   const ev = String(event || "").toUpperCase();
+  void positionCtx;
   if (!ev) return "OTHER";
-  if (ev.startsWith("EXIT_TP_P0")) return "TP0";
+  if (ev.startsWith("EXIT_TP_P0")) return "TP1";
   if (ev.startsWith("EXIT_TP_P1")) return "TP1";
   if (ev.startsWith("EXIT_TRAIL")) return "TRAIL";
   if (ev.startsWith("EXIT_SL")) return "SL";
@@ -2634,7 +2712,7 @@ function applyExternalExitQtyAuthority({
 }
 
 function inferTakeProfitKindFromQtyPct(qtyPct, rules, positionCtx = null) {
-  if (isSimplifiedExitV2Enabled(positionCtx)) {
+  if (isTp0RetiredRuntime(positionCtx)) {
     const ratio = Number(qtyPct);
     if (!Number.isFinite(ratio) || ratio <= 0) return null;
     // C14 invariant: in v2 the only TP stage is TP1 with a contract target of
@@ -2656,7 +2734,7 @@ function inferTakeProfitKindFromQtyPct(qtyPct, rules, positionCtx = null) {
 }
 
 function inferTakeProfitKindFromPostFillRemainingAwareQty(execQtyBase, positionQtyBase, rules, positionCtx = null) {
-  if (isSimplifiedExitV2Enabled(positionCtx)) {
+  if (isTp0RetiredRuntime(positionCtx)) {
     const execQty = Number(execQtyBase);
     return Number.isFinite(execQty) && execQty > 0 ? "TP1" : null;
   }
@@ -2687,7 +2765,7 @@ function inferStageConstrainedTakeProfitKind(positionCtx, inferredKind, recentTp
   const tp0Done = ctx.tpP0Done === true;
   const tp1Done = ctx.tpP1Done === true;
   const trailActive = ctx.trailActive === true;
-  if (isSimplifiedExitV2Enabled(ctx)) {
+  if (isTp0RetiredRuntime(ctx)) {
     if (tp1Done || trailActive) return null;
     return "TP1";
   }
@@ -2719,9 +2797,7 @@ function applyActiveExitStageBackstopOverride({
   const currentIsTp1 = isTpP1Event(currentEvent);
   if (!(currentIsTp0 || currentIsTp1)) return currentEvent;
   const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
-  const simplifiedExitV2Enabled = isSimplifiedExitV2Enabled(ctx);
-  if (!simplifiedExitV2Enabled && currentIsTp0 && matchedIntentEvent.startsWith("EXIT_TP_P0")) return currentEvent;
-  if (!simplifiedExitV2Enabled && currentIsTp1 && isTpP1Event(matchedIntentEvent)) return currentEvent;
+  const tp0RetiredRuntime = isTp0RetiredRuntime(ctx);
 
   // TP0 retirement policy (2026-04-17): under simplified_exit_v2 (the new
   // default) TP0 is NOT an acceptable stage. Any leftover TP0 split fills
@@ -2747,13 +2823,12 @@ function applyActiveExitStageBackstopOverride({
   const trailEligible = isTrailExitEligible(ctx, recentTp1) || recentTrailEvent.startsWith("EXIT_TRAIL");
 
   if (ctx.tpP1Done === true || ctx.trailActive === true || trailEligible) {
-    return buildExitEventByKind("TRAIL", rules);
+    return buildExitEventByKind("TRAIL", rules, ctx);
   }
-  if (simplifiedExitV2Enabled && (currentIsTp0 || currentIsTp1)) {
-    return buildExitEventByKind("TP1", rules);
+  if (tp0RetiredRuntime && (currentIsTp0 || currentIsTp1)) {
+    return buildExitEventByKind("TP1", rules, ctx);
   }
   if (!currentIsTp0) return currentEvent;
-  if (ctx.tpP0Done !== true) return currentEvent;
 
   const inferredQtyKind = inferTakeProfitKindFromQtyPct(qtyPct, rules, ctx);
   const inferredPostFillKind = inferTakeProfitKindFromPostFillRemainingAwareQty(
@@ -2765,8 +2840,18 @@ function applyActiveExitStageBackstopOverride({
   const constrainedKind = inferStageConstrainedTakeProfitKind(ctx, inferredQtyKind, recentTp0);
   const closePosition = !!(orderMeta && orderMeta.closePosition === true);
 
-  if (trailEligible && closePosition) return buildExitEventByKind("TRAIL", rules);
-  if (inferredPostFillKind === "TP1" || constrainedKind === "TP1") return buildExitEventByKind("TP1", rules);
+  if (!tp0RetiredRuntime && currentIsTp0 && matchedIntentEvent.startsWith("EXIT_TP_P0")
+    && ctx.tpP1Done !== true && ctx.trailActive !== true
+    && inferredPostFillKind !== "TP1" && constrainedKind !== "TP1") {
+    return currentEvent;
+  }
+  if (!tp0RetiredRuntime && currentIsTp1 && isTpP1Event(matchedIntentEvent) && !trailEligible) {
+    return currentEvent;
+  }
+
+  if (trailEligible && closePosition) return buildExitEventByKind("TRAIL", rules, ctx);
+  if (inferredPostFillKind === "TP1" || constrainedKind === "TP1") return buildExitEventByKind("TP1", rules, ctx);
+  if (ctx.tpP0Done !== true) return currentEvent;
   return currentEvent;
 }
 
@@ -2954,12 +3039,21 @@ async function resolveExternalExitEvent({
     positionCtx
   );
   const stageConstrainedTakeProfitKind = inferStageConstrainedTakeProfitKind(positionCtx, inferredTakeProfitKind, recentTp0);
-  const fallbackTakeProfitKind = (isSimplifiedExitV2Enabled(positionCtx) ? stageConstrainedTakeProfitKind : null)
+  const fallbackTakeProfitKind = (isTp0RetiredRuntime(positionCtx) ? stageConstrainedTakeProfitKind : null)
+    || inferredPostFillTakeProfitKind
     || inferredTakeProfitKind
     || (stageConstrainedTakeProfitKind === "TP1" ? "TP1" : null)
-    || inferredPostFillTakeProfitKind
     || stageConstrainedTakeProfitKind
     || null;
+  const staleTp0IntentShouldYieldTp1 = String(intentEvent || "").trim().toUpperCase().startsWith("EXIT_TP_P0")
+    && fallbackTakeProfitKind === "TP1"
+    && !sameOrderAsNativeTp0
+    && !sameOrderAsRecentTp0;
+  const staleLegacyTp0IntentAfterTp0 = String(intentEvent || "").trim().toUpperCase().startsWith("EXIT_TP_P0")
+    && positionCtx
+    && positionCtx.tpP0Done === true
+    && positionCtx.tpP1Done !== true
+    && positionCtx.trailActive !== true;
   const recentAddProtectionRefresh = isRecentAddNativeProtectionRefresh({
     positionCtx,
     tradeMs: Number(trade && trade.time),
@@ -2967,6 +3061,9 @@ async function resolveExternalExitEvent({
 
   if (intentEvent && isAuthoritativeForcedExitIntentEvent(intentEvent)) {
     return intentEvent;
+  }
+  if (staleTp0IntentShouldYieldTp1 || staleLegacyTp0IntentAfterTp0) {
+    return buildExitEventByKind("TP1", rules, positionCtx);
   }
 
   if (closePosition) {
@@ -2983,14 +3080,14 @@ async function resolveExternalExitEvent({
         qtyPct,
         rules,
       })) {
-        return normalizeExitEventForRules(intentEvent, rules);
+        return normalizeExitEventForRules(intentEvent, rules, positionCtx);
       }
-      if (sameOrderAsNativeTp0) return buildExitEventByKind("TP0", rules);
-      if (sameOrderAsRecentTp0) return buildExitEventByKind("TP0", rules);
-      if (sameOrderAsNativeTp1) return buildExitEventByKind("TP1", rules);
-      if (trailEligible) return buildExitEventByKind("TRAIL", rules);
-      if (fallbackTakeProfitKind) return buildExitEventByKind(fallbackTakeProfitKind, rules);
-      return buildExitEventByKind("TP1", rules);
+      if (sameOrderAsNativeTp0) return buildExitEventByKind("TP1", rules, positionCtx);
+      if (sameOrderAsRecentTp0) return buildExitEventByKind("TP1", rules, positionCtx);
+      if (sameOrderAsNativeTp1) return buildExitEventByKind("TP1", rules, positionCtx);
+      if (trailEligible) return buildExitEventByKind("TRAIL", rules, positionCtx);
+      if (fallbackTakeProfitKind) return buildExitEventByKind(fallbackTakeProfitKind, rules, positionCtx);
+      return buildExitEventByKind("TP1", rules, positionCtx);
     }
     if (trackedClientOrder && orderType === "MARKET" && !isNativeTpEnabled()) {
       const sym = normalizeSymbol(trade && trade.symbol);
@@ -3048,7 +3145,7 @@ async function resolveExternalExitEvent({
       }
       return "EXIT_EXTERNAL_SYNC";
     }
-    if (shouldTrustMatchedIntentExitEvent({
+    if (!staleTp0IntentShouldYieldTp1 && shouldTrustMatchedIntentExitEvent({
       intentEvent,
       orderMeta,
       positionCtx,
@@ -3057,35 +3154,35 @@ async function resolveExternalExitEvent({
       qtyPct,
       rules,
     })) {
-      return normalizeExitEventForRules(intentEvent, rules);
+      return normalizeExitEventForRules(intentEvent, rules, positionCtx);
     }
   }
 
   if (sameOrderAsRecentTp1 && isTpP1Event(recentTp1 && recentTp1.event)) {
-    return buildExitEventByKind("TP1", rules);
+    return buildExitEventByKind("TP1", rules, positionCtx);
   }
   if (sameOrderAsRecentTp0 && isTpP0Event(recentTp0 && recentTp0.event)) {
-    return buildExitEventByKind("TP0", rules);
+    return buildExitEventByKind("TP1", rules, positionCtx);
   }
 
   if (orderType === "STOP_MARKET" || orderType === "STOP") {
     return buildExitEventByKind("SL", rules);
   }
   if (orderType === "TAKE_PROFIT_MARKET" || orderType === "TAKE_PROFIT") {
-    if (sameOrderAsNativeTp0) return buildExitEventByKind("TP0", rules);
-    if (sameOrderAsRecentTp0) return buildExitEventByKind("TP0", rules);
-    if (sameOrderAsNativeTp1) return buildExitEventByKind("TP1", rules);
-    if (trailEligible) return buildExitEventByKind("TRAIL", rules);
-    if (fallbackTakeProfitKind) return buildExitEventByKind(fallbackTakeProfitKind, rules);
-    return buildExitEventByKind("TP1", rules);
+    if (sameOrderAsNativeTp0) return buildExitEventByKind("TP1", rules, positionCtx);
+    if (sameOrderAsRecentTp0) return buildExitEventByKind("TP1", rules, positionCtx);
+    if (sameOrderAsNativeTp1) return buildExitEventByKind("TP1", rules, positionCtx);
+    if (trailEligible) return buildExitEventByKind("TRAIL", rules, positionCtx);
+    if (fallbackTakeProfitKind) return buildExitEventByKind(fallbackTakeProfitKind, rules, positionCtx);
+    return buildExitEventByKind("TP1", rules, positionCtx);
   }
 
   const realized = Number(trade && trade.realizedPnl);
   if (!Number.isFinite(realized)) return buildExitEventByKind("UNKNOWN", rules);
   if (realized < 0) return buildExitEventByKind("SL", rules);
-  if (trailEligible) return buildExitEventByKind("TRAIL", rules);
-  if (fallbackTakeProfitKind) return buildExitEventByKind(fallbackTakeProfitKind, rules);
-  return buildExitEventByKind("TP1", rules);
+  if (trailEligible) return buildExitEventByKind("TRAIL", rules, positionCtx);
+  if (fallbackTakeProfitKind) return buildExitEventByKind(fallbackTakeProfitKind, rules, positionCtx);
+  return buildExitEventByKind("TP1", rules, positionCtx);
 }
 
 function inferPositionSideBefore({ trade, positionCtx } = {}) {
@@ -3370,6 +3467,17 @@ async function syncMarketTrades({
       }
       const entryEventId = intentEntryCtx.entryEventId || inferredEntryCtx.entryEventId || null;
       const entrySignalType = intentEntryCtx.entrySignalType || inferredEntryCtx.entrySignalType || null;
+      const decisionReason = intent ? (intent.reason || intent.event || "EXTERNAL_FILL_RECONCILED") : "EXTERNAL_FILL_RECONCILED";
+      event = looksLikeExit
+        ? resolvePersistedExternalExitEvent({
+          event,
+          intent,
+          decisionReason,
+          canonicalStageDecision,
+          rules: exitRules,
+          positionCtx,
+        }) || event
+        : event;
       const rawEvidenceEvent = event;
       canonicalStageDecision = resolveCanonicalExternalExitEvent({
         authorityMap: exitQtyAuthorityMap,
@@ -3501,7 +3609,7 @@ async function syncMarketTrades({
         featuresJson: (intent && intent.features_json && typeof intent.features_json === "object") ? intent.features_json : null,
         createdAt: execTimeIso,
         runId: intent ? (intent.run_id || null) : null,
-        decisionReason: intent ? (intent.reason || intent.event || "EXTERNAL_FILL_RECONCILED") : "EXTERNAL_FILL_RECONCILED",
+        decisionReason,
         extra: {
           external: true,
           external_source: "BINANCE_USER_TRADES",
@@ -4097,5 +4205,7 @@ module.exports = {
     applyAuthoritativeForcedExitRefOverride,
     applyAuthoritativeExitContractOverride,
     applyAuthoritativeIntentEventOverride,
+    inferExitEventFromDecisionReason,
+    resolvePersistedExternalExitEvent,
   },
 };

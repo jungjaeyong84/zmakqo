@@ -48,6 +48,39 @@ function inferForcedEventFromRefs(...values) {
   return null;
 }
 
+function inferExitEventFromDecisionReason(decisionReason, intentEvent = null) {
+  const reason = upper(decisionReason);
+  const intent = upper(intentEvent);
+  if (!reason) return null;
+  if (reason === "EXIT_TAKE_PROFIT_P1") {
+    if (intent && classifyStage(intent) === "TP1") return intent;
+    return "EXIT_TP_P1";
+  }
+  if (reason === "EXIT_TAKE_PROFIT_P0") {
+    if (intent && (classifyStage(intent) === "TP0" || classifyStage(intent) === "TP1")) return intent;
+    return "EXIT_TP_P0";
+  }
+  if (reason === "EXIT_STOP_LOSS") {
+    if (intent && classifyStage(intent) === "SL") return intent;
+    return "EXIT_SL";
+  }
+  if (reason === "TRAIL_STOP_BREACHED") {
+    if (intent && classifyStage(intent) === "TRAIL") return intent;
+    return "EXIT_TRAIL";
+  }
+  if (reason === "EXTERNAL_FILL_RECONCILED" && intent) return intent;
+  return null;
+}
+
+function resolveComparableFillEvent(fill = {}, intentEvent = null) {
+  const fillEvent = upper(fill.event);
+  if (fillEvent) return fillEvent;
+  const extra = fill && fill.extra && typeof fill.extra === "object" ? fill.extra : {};
+  const canonicalEvent = upper(fill.canonical_exit_event || extra.canonical_exit_event || null);
+  if (canonicalEvent) return canonicalEvent;
+  return inferExitEventFromDecisionReason(fill.decision_reason, intentEvent);
+}
+
 function shouldCompareIntentStage(intentStage) {
   return intentStage === "TP0"
     || intentStage === "TP1"
@@ -67,7 +100,7 @@ function stageRank(stage) {
 
 function buildIssueRows(fill = {}, intentEvent = null) {
   const rows = [];
-  const fillEvent = upper(fill.event);
+  const fillEvent = resolveComparableFillEvent(fill, intentEvent);
   const fillStage = classifyStage(fillEvent);
   const canonicalStage = upper(
     (fill.extra && fill.extra.canonical_exit_stage)
@@ -259,6 +292,8 @@ if (require.main === module) {
     __test: {
       classifyStage,
       inferForcedEventFromRefs,
+      inferExitEventFromDecisionReason,
+      resolveComparableFillEvent,
       buildIssueRows,
       buildReport,
       buildMarkdown,

@@ -12,6 +12,7 @@ const {
   resolveFuturesPositionSyncRequest,
   resolveLiveFuturesConfig,
   repairActivePositionExitRuntimeState,
+  requestBinanceNativeProtectionRefresh,
 } = require("../engine/paperBinanceRunner");
 
 function normalizeSymbol(symbol) {
@@ -40,6 +41,24 @@ function shouldRepairBinanceLivePosition(meta = {}) {
   if (invariants.includes("TP1_DONE_WITH_TP_ORDER")) return true;
   if (stageNeedsTpProtection && !state.native_protection_tp0_order_id && !state.native_protection_tp_order_id) {
     return true;
+  }
+  return false;
+}
+
+function shouldForceImmediateSelfHealNativeProtection(meta = {}) {
+  const state = (meta && typeof meta === "object") ? meta : {};
+  const refreshStatus = String(state.native_protection_refresh_status || "").trim().toUpperCase();
+  const stageNeedsTpProtection = state.tp_p1_done !== true && state.trail_active !== true;
+  const hasTpProtection = !!(state.native_protection_tp0_order_id || state.native_protection_tp_order_id);
+  const hasStopProtection = !!state.native_protection_stop_order_id;
+  if (stageNeedsTpProtection) {
+    if (refreshStatus === "MISSING" || refreshStatus === "FAILED") return true;
+    if (!hasTpProtection || !hasStopProtection) return true;
+    return false;
+  }
+  if (state.tp_p1_done === true || state.trail_active === true) {
+    if (refreshStatus === "MISSING" || refreshStatus === "FAILED") return true;
+    if (!hasStopProtection) return true;
   }
   return false;
 }
@@ -170,6 +189,39 @@ async function healBinanceLivePosition({
             force: true,
           }));
           ({ position: pos } = await loadPositionReadState(exchange, sym));
+          let nextMeta = (pos && pos.meta && typeof pos.meta === "object") ? pos.meta : {};
+          if (
+            liveCfg &&
+            liveCfg.apiKey &&
+            liveCfg.apiSecret &&
+            shouldForceImmediateSelfHealNativeProtection(nextMeta)
+          ) {
+            const fallbackEntryPrice = Number(pos && pos.avg_price);
+            const fallbackLeverage = Number(nextMeta.leverage || nextMeta.external_leverage || nextMeta.native_protection_leverage);
+            await requestBinanceNativeProtectionRefresh({
+              exchange,
+              symbol: sym,
+              fallbackSide: pos && pos.position_side ? pos.position_side : (nextMeta.position_side || null),
+              fallbackEntryPrice: Number.isFinite(fallbackEntryPrice) && fallbackEntryPrice > 0 ? fallbackEntryPrice : null,
+              fallbackLeverage: Number.isFinite(fallbackLeverage) && fallbackLeverage > 0 ? fallbackLeverage : null,
+              exitRulesOverride: nextMeta.exit_rules_override || null,
+              posMeta: nextMeta,
+              source: "BINANCE_LIVE_STATE_SELF_HEAL",
+              reason: "SELF_HEAL_NATIVE_PROTECTION_GUARD",
+              dispatchReason: `SELF_HEAL_FORCE_NATIVE_PROTECTION_${String(exchange || "").toUpperCase()}_${sym}`,
+              dispatchExitWorker: true,
+              executeImmediately: true,
+            });
+            await syncFuturesPositionOnly(resolveFuturesPositionSyncRequest({
+              source: "SELF_HEAL_POST_NATIVE_PROTECTION_GUARD",
+              runId: `${syncRunId}__POST_NATIVE_PROTECTION_GUARD`,
+              exchange,
+              symbol: sym,
+              force: true,
+            }));
+            ({ position: pos } = await loadPositionReadState(exchange, sym));
+            nextMeta = (pos && pos.meta && typeof pos.meta === "object") ? pos.meta : {};
+          }
         } catch (e) {
           const errorText = e && e.message ? e.message : String(e);
           await upsertSelfHealFailureObservation({
@@ -316,6 +368,7 @@ module.exports = {
   __test: {
     isActivePaperPosition,
     shouldRepairBinanceLivePosition,
+    shouldForceImmediateSelfHealNativeProtection,
     buildSelfHealFailureMetaPatch,
   },
 };

@@ -5,7 +5,9 @@ const { __test } = require("../../scripts/report-binance-exit-authority-live-boa
 
 function run() {
   const buildLiveAuthorityBoard = __test && __test.buildLiveAuthorityBoard;
+  const resolveAuthorityNativeProtection = __test && __test.resolveAuthorityNativeProtection;
   assert.strictEqual(typeof buildLiveAuthorityBoard, "function", "buildLiveAuthorityBoard export missing");
+  assert.strictEqual(typeof resolveAuthorityNativeProtection, "function", "resolveAuthorityNativeProtection export missing");
 
   const report = buildLiveAuthorityBoard({
     positions: [
@@ -59,7 +61,7 @@ function run() {
   assert.deepStrictEqual(report.live_issue_symbols, ["AXSUSDT", "ETHUSDT"]);
   assert.ok(report.live_issue_rows.find((row) => row.symbol === "AXSUSDT").issues.some((issue) => issue.code === "TP1_REMAINING_RATIO_MISMATCH"));
   assert.ok(report.live_issue_rows.find((row) => row.symbol === "ETHUSDT").issues.some((issue) => issue.code === "TRAIL_STOP_MISSING"));
-  assert.ok(report.live_issue_rows.find((row) => row.symbol === "ETHUSDT").issues.some((issue) => issue.code === "TP1_DONE_WITHOUT_TP0_DONE"));
+  assert.ok(report.live_issue_rows.find((row) => row.symbol === "ETHUSDT").issues.some((issue) => issue.code === "NATIVE_REFRESH_UNHEALTHY"));
 
   const simplifiedV2Runner = buildLiveAuthorityBoard({
     positions: [
@@ -151,6 +153,49 @@ function run() {
   assert.strictEqual(observationPreferred.actionable_live_issue_position_n, 0);
   assert.strictEqual(observationPreferred.rows[0].native_stop_order_id, "4000001083283507");
   assert.ok(!observationPreferred.rows[0].issues.some((issue) => issue.code === "TRAIL_STOP_MISSING"));
+
+  const metaPreferred = buildLiveAuthorityBoard({
+    positions: [
+      {
+        exchange: "BINANCEFUT",
+        symbol: "BNBUSDT",
+        position_state: "ACTIVE",
+        position_side: "LONG",
+        qty_base: 1.57,
+        avg_price: 632.53,
+        leverage: 2,
+        meta: {
+          tp_p0_done: false,
+          tp_p1_done: true,
+          trail_active: true,
+          native_protection_stop_price: 637.75,
+          native_protection_stop_order_id: "4000001106791779",
+          native_protection_refresh_status: "OK",
+          chosen_stop_source: "RUNNER_FLOOR",
+          chosen_stop_price: 637.7483725,
+          trail_stop_by_r: 627.1659481104867,
+        },
+      },
+    ],
+    artifacts: {
+      observationsBySymbol: {
+        BNBUSDT: {
+          trail_observation: {
+            native_stop_price: 637.74,
+            native_stop_order_id: "4000001106637302",
+            native_refresh_status: "OK",
+            runtime_eval_at_ms: 999999,
+            source: "STALE_RUNTIME_OBSERVATION",
+          },
+        },
+      },
+    },
+  });
+  assert.strictEqual(metaPreferred.live_issue_position_n, 0);
+  assert.strictEqual(metaPreferred.rows[0].native_stop_order_id, "4000001106791779");
+  assert.strictEqual(metaPreferred.rows[0].native_stop_price, 637.75);
+  assert.strictEqual(metaPreferred.rows[0].native_protection_state_source, "POSITION_META_NATIVE_PROTECTION");
+  assert.ok(!metaPreferred.rows[0].issues.some((issue) => issue.code === "RUNNER_MIN_GUARANTEE_MISSED"));
 
   console.log("BINANCE_EXIT_AUTHORITY_LIVE_BOARD_TEST_OK");
 }

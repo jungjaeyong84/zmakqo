@@ -75,33 +75,53 @@ function floorToStep(value, step) {
   return Number(floored.toFixed(Math.max(0, Math.min(12, precision))));
 }
 
-async function normalizeFuturesTriggerPrice(symbol, price) {
-  const sym = String(symbol || "").trim().toUpperCase();
+function ceilToStep(value, step) {
+  const v = Number(value);
+  const s = Number(step);
+  if (!Number.isFinite(v) || !Number.isFinite(s) || s <= 0) return null;
+  const precision = decimalPlacesFromStep(s);
+  const units = Math.ceil((v - (s * 1e-12)) / s);
+  const ceiled = units * s;
+  return Number(ceiled.toFixed(Math.max(0, Math.min(12, precision))));
+}
+
+function normalizeFuturesTriggerPriceFromExchangeInfo(price, info, { roundingMode = "floor" } = {}) {
   const raw = Number(price);
-  if (!sym || !Number.isFinite(raw) || raw <= 0) return null;
+  if (!Number.isFinite(raw) || raw <= 0) return null;
 
   let normalized = raw;
   let maxDp = 10;
-  try {
-    const info = await fetchFuturesExchangeInfo(sym);
-    const tickSize = Number(info && info.tickSize);
-    const pricePrecision = Number(info && info.pricePrecision);
-    if (Number.isFinite(tickSize) && tickSize > 0) {
-      const floored = floorToStep(raw, tickSize);
-      if (Number.isFinite(floored) && floored > 0) normalized = floored;
-      else normalized = tickSize;
-      maxDp = decimalPlacesFromStep(tickSize);
-    } else if (Number.isFinite(pricePrecision) && pricePrecision >= 0) {
-      const p = Math.max(0, Math.min(12, Math.floor(pricePrecision)));
-      normalized = Number(raw.toFixed(p));
-      maxDp = p;
-    }
-  } catch (_) {
-    // If exchangeInfo fetch fails, keep raw price and let Binance validate.
+  const tickSize = Number(info && info.tickSize);
+  const pricePrecision = Number(info && info.pricePrecision);
+  if (Number.isFinite(tickSize) && tickSize > 0) {
+    const rounded = roundingMode === "ceil"
+      ? ceilToStep(raw, tickSize)
+      : floorToStep(raw, tickSize);
+    if (Number.isFinite(rounded) && rounded > 0) normalized = rounded;
+    else normalized = tickSize;
+    maxDp = decimalPlacesFromStep(tickSize);
+  } else if (Number.isFinite(pricePrecision) && pricePrecision >= 0) {
+    const p = Math.max(0, Math.min(12, Math.floor(pricePrecision)));
+    normalized = Number(raw.toFixed(p));
+    maxDp = p;
   }
 
   if (!Number.isFinite(normalized) || normalized <= 0) return null;
   return toBinanceNumberString(normalized, Math.max(0, Math.min(12, maxDp)));
+}
+
+async function normalizeFuturesTriggerPrice(symbol, price, options = {}) {
+  const sym = String(symbol || "").trim().toUpperCase();
+  const raw = Number(price);
+  if (!sym || !Number.isFinite(raw) || raw <= 0) return null;
+
+  try {
+    const info = await fetchFuturesExchangeInfo(sym);
+    return normalizeFuturesTriggerPriceFromExchangeInfo(raw, info, options);
+  } catch (_) {
+    // If exchangeInfo fetch fails, keep raw price and let Binance validate.
+    return toBinanceNumberString(raw, 10);
+  }
 }
 
 function parseJsonSafe(text) {
@@ -924,7 +944,9 @@ async function placeFuturesStopMarketOrder({
 } = {}) {
   const sym = String(symbol || "").trim().toUpperCase();
   const s = String(side || "").toUpperCase();
-  const stopPx = await normalizeFuturesTriggerPrice(sym, stopPrice);
+  const stopPx = await normalizeFuturesTriggerPrice(sym, stopPrice, {
+    roundingMode: s === "SELL" ? "ceil" : "floor",
+  });
   const resolvedClientOrderId = resolveClientOrderId({ clientOrderId, idempotencyKey });
   if (!sym || !stopPx || (s !== "BUY" && s !== "SELL")) {
     throw new Error("BINANCEFUT_STOP_ORDER_PARAMS_INVALID");
@@ -1424,5 +1446,8 @@ module.exports = {
     normalizeAlgoOpenOrdersResponse,
     normalizeAlgoOrderResponse,
     sanitizeClientOrderId,
+    floorToStep,
+    ceilToStep,
+    normalizeFuturesTriggerPriceFromExchangeInfo,
   },
 };

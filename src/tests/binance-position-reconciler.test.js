@@ -180,6 +180,95 @@ async function run() {
   assert.strictEqual(simplifiedV2LegacyLeakPatch.meta.native_protection_tp_order_id, "tp-v2-50");
   assert.ok(simplifiedV2LegacyLeakPatch.invariants.includes("SIMPLIFIED_EXIT_V2_MULTIPLE_TP_ORDERS"));
 
+  const simplifiedV2RecoveredRunner = reconcileBinancePositionMetaWithExchange({
+    active: true,
+    meta: {
+      simplified_exit_v2_enabled: true,
+      tp_p1_done: false,
+      trail_active: false,
+      exit_rules_override: {
+        TP_P1_QTY: 0.5,
+        TP_P1: 0.0165,
+        SL: -0.0165,
+        TRAIL_PCT: 0.01,
+        RUNNER_MIN_PROFIT_PCT: 0.0165,
+      },
+    },
+    positionSide: "LONG",
+    qtyBase: 1.57,
+    previousQtyBase: 3.14,
+    entryPrice: 632.53,
+    leverage: 2,
+    openOrders: [],
+    algoOrders: [
+      { orderId: "stop-1", type: "STOP_MARKET", side: "SELL", closePosition: true, stopPrice: "627.31" },
+    ],
+  });
+  assert.strictEqual(simplifiedV2RecoveredRunner.meta.tp_p1_done, true);
+  assert.strictEqual(simplifiedV2RecoveredRunner.meta.trail_active, true);
+  assert.strictEqual(simplifiedV2RecoveredRunner.meta.tp_p1_source, "EXCHANGE_QTY_REDUCTION_RECOVERY");
+  assert.strictEqual(simplifiedV2RecoveredRunner.meta.entry_qty_abs, 3.14);
+  assert.strictEqual(simplifiedV2RecoveredRunner.meta.runner_remaining_qty_abs, 1.57);
+  assert.strictEqual(simplifiedV2RecoveredRunner.meta.tp_p1_consumed_qty_abs, 1.57);
+  assert.strictEqual(simplifiedV2RecoveredRunner.meta.native_protection_tp_order_id, null);
+
+  const simplifiedV2RecoveredRunnerFromPersistedEntry = reconcileBinancePositionMetaWithExchange({
+    active: true,
+    meta: {
+      simplified_exit_v2_enabled: true,
+      entry_qty_abs: 3.14,
+      entry_exec_bar_ms: 1776420023427,
+      tp_p1_done: false,
+      trail_active: false,
+      exit_rules_override: {
+        TP_P1_QTY: 0.5,
+        TP_P1: 0.0165,
+        SL: -0.0165,
+        TRAIL_PCT: 0.01,
+        RUNNER_MIN_PROFIT_PCT: 0.0165,
+      },
+    },
+    positionSide: "LONG",
+    qtyBase: 1.57,
+    previousQtyBase: null,
+    entryPrice: 632.53,
+    leverage: 2,
+    openOrders: [],
+    algoOrders: [
+      { orderId: "stop-1", type: "STOP_MARKET", side: "SELL", closePosition: true, stopPrice: "627.31" },
+    ],
+  });
+  assert.strictEqual(simplifiedV2RecoveredRunnerFromPersistedEntry.meta.tp_p1_done, true);
+  assert.strictEqual(simplifiedV2RecoveredRunnerFromPersistedEntry.meta.trail_active, true);
+  assert.strictEqual(simplifiedV2RecoveredRunnerFromPersistedEntry.meta.tp_p1_entry_exec_bar_ms, 1776420023427);
+
+  const simplifiedV2NoFalseRunnerRecovery = reconcileBinancePositionMetaWithExchange({
+    active: true,
+    meta: {
+      simplified_exit_v2_enabled: true,
+      tp_p1_done: false,
+      trail_active: false,
+      exit_rules_override: {
+        TP_P1_QTY: 0.5,
+        TP_P1: 0.0165,
+        SL: -0.0165,
+        TRAIL_PCT: 0.01,
+        RUNNER_MIN_PROFIT_PCT: 0.0165,
+      },
+    },
+    positionSide: "LONG",
+    qtyBase: 2.1,
+    previousQtyBase: 3.14,
+    entryPrice: 632.53,
+    leverage: 2,
+    openOrders: [],
+    algoOrders: [
+      { orderId: "stop-1", type: "STOP_MARKET", side: "SELL", closePosition: true, stopPrice: "627.31" },
+    ],
+  });
+  assert.strictEqual(simplifiedV2NoFalseRunnerRecovery.meta.tp_p1_done, false);
+  assert.strictEqual(simplifiedV2NoFalseRunnerRecovery.meta.trail_active, false);
+
   const staleTrail = reconcileBinancePositionMetaWithExchange({
     active: true,
     meta: {

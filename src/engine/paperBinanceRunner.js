@@ -387,10 +387,7 @@ async function recordInternalCanonicalExitTransitions({
 
 function buildExitOrderContractEvent(kind, rules) {
   const stage = String(kind || "").trim().toUpperCase();
-  if (stage === "TP0") {
-    const token = ratioToPctTokenLocal(rules && rules.TP_P0);
-    return token ? `EXIT_TP_P0_${token}P` : "EXIT_TP_P0";
-  }
+  if (stage === "TP0") return null;
   if (stage === "TP1") {
     const token = ratioToPctTokenLocal(rules && rules.TP_P1);
     return token ? `EXIT_TP_P1_${token}P` : "EXIT_TP_P1";
@@ -412,8 +409,7 @@ function buildExitOrderContractRecordPayload({
   ...payload
 } = {}) {
   const stage = String(kind || "").trim().toUpperCase();
-  const simplifiedExitV2Enabled = resolveSimplifiedExitV2PositionFlag({ currentMeta: posMeta });
-  if (simplifiedExitV2Enabled === true && stage === "TP0") return null;
+  if (stage === "TP0") return null;
   const event = buildExitOrderContractEvent(stage, rules);
   if (!event) return null;
   return {
@@ -2281,11 +2277,7 @@ function collectCriticalExitRuleViolations({
   simplifiedExitV2Enabled = null,
 } = {}) {
   const ruleSafe = (rules && typeof rules === "object") ? rules : {};
-  const simplifiedV2 = simplifiedExitV2Enabled === true
-    || resolveSimplifiedExitV2PositionFlag({ currentMeta: posMeta });
   const violations = [];
-  const tp0 = Number(ruleSafe.TP_P0);
-  const tp0Qty = Number(ruleSafe.TP_P0_QTY);
   const tp1 = Number(ruleSafe.TP_P1);
   const tp1Qty = Number(ruleSafe.TP_P1_QTY);
   const sl = Number(ruleSafe.SL);
@@ -2293,11 +2285,8 @@ function collectCriticalExitRuleViolations({
   const bePct = Number(ruleSafe.BE_PCT);
   const trailPct = Number(ruleSafe.TRAIL_PCT);
   const trailR = Number(ruleSafe.TRAIL_R_MULTIPLE);
-
-  if (simplifiedV2 !== true) {
-    if (!(Number.isFinite(tp0) && tp0 > 0)) violations.push("TP0_MISSING");
-    if (!(Number.isFinite(tp0Qty) && tp0Qty > 0 && tp0Qty <= 1)) violations.push("TP0_QTY_INVALID");
-  }
+  void posMeta;
+  void simplifiedExitV2Enabled;
   if (!(Number.isFinite(tp1) && tp1 > 0)) violations.push("TP1_MISSING");
   if (!(Number.isFinite(tp1Qty) && tp1Qty > 0 && tp1Qty <= 1)) violations.push("TP1_QTY_INVALID");
   if (!(Number.isFinite(sl) && sl < 0)) violations.push("SL_INVALID");
@@ -2329,7 +2318,7 @@ function sanitizeExitRulesForSimplifiedExitV2({
   posMeta = null,
 } = {}) {
   const ruleSafe = cloneExitRules(rules || {}) || {};
-  if (resolveSimplifiedExitV2PositionFlag({ currentMeta: posMeta }) !== true) return ruleSafe;
+  void posMeta;
   return {
     ...ruleSafe,
     TP_P0: 0,
@@ -4919,17 +4908,12 @@ function applyTpP0IntentFillMetaUpdate({
   applyOptimisticFillProjection = false,
 } = {}) {
   const currentMeta = (nextMeta && typeof nextMeta === "object") ? nextMeta : {};
-  if (!applyOptimisticFillProjection) return currentMeta;
-  if (resolveSimplifiedExitV2PositionFlag({ currentMeta }) === true) return currentMeta;
-  return mergeMeta(currentMeta, {
-    tp_p0_done: true,
-    tp_p0_price: fillPrice,
-    tp_p0_at: new Date().toISOString(),
-    tp_p0_source: "INTENT_FILL",
-    tp_p0_qty_ratio: qtyFraction,
-    tp_p0_entry_event_id: (entryEventIdForFill || currentMeta.entry_event_id || null),
-    tp_p0_entry_exec_bar_ms: Number(currentMeta.entry_exec_bar_ms || execBarCloseMs) || null,
-  });
+  void fillPrice;
+  void qtyFraction;
+  void execBarCloseMs;
+  void entryEventIdForFill;
+  void applyOptimisticFillProjection;
+  return currentMeta;
 }
 
 function buildOpenCloseProjectionResetMetaPatch({ closing = false } = {}) {
@@ -8368,6 +8352,7 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     meta,
     positionSide: active ? side : null,
     qtyBase,
+    previousQtyBase: prevActive ? prevQtyBase : null,
     entryPrice: priceRef,
     leverage,
     openOrders: exchangeOpenOrders,
@@ -8876,52 +8861,31 @@ function computeBinanceNativeProtectionPrices({ positionSide, entryPrice, levera
   const levRaw = Number(leverage);
   const lev = Number.isFinite(levRaw) && levRaw > 0 ? levRaw : 1;
   const slPct = Number(rules && rules.SL);
-  const tp0Pct = Number(rules && rules.TP_P0);
   const tpPct = Number(rules && rules.TP_P1);
-  const simplifiedExitV2Enabled = resolveSimplifiedExitV2PositionFlag({ currentMeta: posMeta });
   const tpQtyRatioRaw = Number(rules && rules.TP_P1_QTY);
   const tpQtyRatio = Number.isFinite(tpQtyRatioRaw) && tpQtyRatioRaw > 0
     ? Math.min(1, Math.max(POS_SIZE_EPSILON, tpQtyRatioRaw))
     : 0.5;
-  const tp0Done = posMeta && posMeta.tp_p0_done === true;
-  let tp0QtyRatio = 0;
-  let tp0OrderQtyRatio = 0;
+  const tp0QtyRatio = 0;
+  const tp0OrderQtyRatio = 0;
   let tpOrderQtyRatio = Math.min(1, Math.max(POS_SIZE_EPSILON, tpQtyRatio));
-  if (!simplifiedExitV2Enabled) {
-    const tp0QtyRatioRaw = Number(rules && rules.TP_P0_QTY);
-    tp0QtyRatio = Number.isFinite(tp0QtyRatioRaw) && tp0QtyRatioRaw > 0
-      ? Math.min(1, Math.max(POS_SIZE_EPSILON, tp0QtyRatioRaw))
-      : 0.25;
-    const projectedTp1BaseQtyRatio = tp0Done
-      ? 1
-      : Math.max(POS_SIZE_EPSILON, 1 - tp0QtyRatio);
-    tp0OrderQtyRatio = tp0QtyRatio;
-    tpOrderQtyRatio = tp0Done
-      ? Math.min(1, Math.max(POS_SIZE_EPSILON, tpQtyRatio))
-      : Math.min(1, Math.max(POS_SIZE_EPSILON, projectedTp1BaseQtyRatio * tpQtyRatio));
-  }
   if (!Number.isFinite(px) || px <= 0 || (side !== "LONG" && side !== "SHORT")) return null;
   if (!Number.isFinite(slPct) || !Number.isFinite(tpPct)) return null;
   const slMove = slPct / lev;
-  const tp0Move = (!simplifiedExitV2Enabled && Number.isFinite(tp0Pct)) ? (tp0Pct / lev) : null;
   const tpMove = tpPct / lev;
   let stopTriggerPx = null;
-  let tp0TriggerPx = null;
+  const tp0TriggerPx = null;
   let tpTriggerPx = null;
   if (side === "LONG") {
     stopTriggerPx = px * (1 + slMove);
-    tp0TriggerPx = Number.isFinite(tp0Move) ? (px * (1 + tp0Move)) : null;
     tpTriggerPx = px * (1 + tpMove);
   } else {
     const slDen = 1 + slMove;
-    const tp0Den = Number.isFinite(tp0Move) ? (1 + tp0Move) : null;
     const tpDen = 1 + tpMove;
     if (slDen > 0) stopTriggerPx = px / slDen;
-    if (Number.isFinite(tp0Den) && tp0Den > 0) tp0TriggerPx = px / tp0Den;
     if (tpDen > 0) tpTriggerPx = px / tpDen;
   }
   if (!Number.isFinite(stopTriggerPx) || stopTriggerPx <= 0) return null;
-  if (!Number.isFinite(tp0TriggerPx) || tp0TriggerPx <= 0) tp0TriggerPx = null;
   if (!Number.isFinite(tpTriggerPx) || tpTriggerPx <= 0) tpTriggerPx = null;
 
   const meta = (posMeta && typeof posMeta === "object") ? posMeta : {};
@@ -9472,7 +9436,22 @@ async function refreshBinanceNativeProtectionWithRetry({
         attempts: attempt,
         max_attempts: totalAttempts,
       };
-      if (enriched.ok === true) return enriched;
+      if (enriched.ok === true) {
+        try {
+          await syncFuturesPositionOnly({
+            runId: `RUN__NATIVE_PROTECTION_SYNC__${String(exchange || "").toUpperCase()}__${String(symbol || "").toUpperCase()}__${Date.now()}`,
+            exchange,
+            symbol,
+            liveCfg: liveCfg || null,
+            force: true,
+          });
+          enriched.sync_after_refresh_ok = true;
+        } catch (syncErr) {
+          enriched.sync_after_refresh_ok = false;
+          enriched.sync_after_refresh_error = syncErr && syncErr.message ? syncErr.message : String(syncErr);
+        }
+        return enriched;
+      }
       lastResult = enriched;
       const reason = resolveNativeProtectionAlertReason(enriched);
       if (attempt >= totalAttempts || !isRetryableNativeProtectionReason(reason)) break;
@@ -9496,13 +9475,11 @@ function isAuthorizedBinanceNativeStopWriter(writerSource = null) {
 function resolveNativeProtectionStageState(posMeta = null) {
   const meta = (posMeta && typeof posMeta === "object") ? posMeta : {};
   const simplifiedExitV2Enabled = resolveSimplifiedExitV2PositionFlag({ currentMeta: meta });
-  const explicitLegacyTp0Position = resolveSimplifiedExitV2FlagFromSnapshot(meta) === false;
-  const tp0Done = meta.tp_p0_done === true;
   const tp1Done = meta.tp_p1_done === true;
   const trailActive = meta.trail_active === true;
   return {
     simplifiedExitV2Enabled,
-    tp0Eligible: explicitLegacyTp0Position && tp0Done !== true && tp1Done !== true && trailActive !== true,
+    tp0Eligible: false,
     tp1Eligible: tp1Done !== true && trailActive !== true,
   };
 }
@@ -9512,9 +9489,15 @@ function resolveSimplifiedExitV2PositionFlag({ currentMeta = null } = {}) {
   return isSimplifiedExitV2Active(meta);
 }
 
+function isForbiddenTp0ExitIntent({ currentMeta = null, event = null } = {}) {
+  const eventUpper = String(event || "").trim().toUpperCase();
+  if (!eventUpper.startsWith("EXIT_TP_P0")) return false;
+  return true;
+}
+
 function isExplicitLegacyTp0Position({ currentMeta = null } = {}) {
-  const meta = (currentMeta && typeof currentMeta === "object") ? currentMeta : {};
-  return resolveSimplifiedExitV2FlagFromSnapshot(meta) === false;
+  void currentMeta;
+  return false;
 }
 
 function resolveNativeProtectionPositionMeta(positionMeta = null) {
@@ -9848,23 +9831,56 @@ function buildNativeProtectionMetaPatch({
   }
   return {
     ...basePatch,
-    native_protection_stop_order_id: null,
-    native_protection_tp0_order_id: null,
-    native_protection_tp_order_id: null,
-    native_protection_stop_price: null,
-    native_protection_tp0_price: null,
-    native_protection_tp_price: null,
-    native_protection_tp0_qty_base: null,
-    native_protection_tp_qty_base: null,
-    native_protection_tp0_qty_ratio: null,
-    native_protection_tp_qty_ratio: null,
-    native_protection_tp0_status: null,
-    native_protection_tp_status: null,
-    native_protection_tp0_reason: null,
-    native_protection_tp_reason: null,
+    native_protection_stop_order_id: nativeProtection && nativeProtection.partial_protection === true && nativeProtection.stop_order_id
+      ? String(nativeProtection.stop_order_id)
+      : null,
+    native_protection_tp0_order_id: simplifiedExitV2Enabled
+      ? null
+      : (nativeProtection && nativeProtection.partial_protection === true && nativeProtection.tp0_order_id ? String(nativeProtection.tp0_order_id) : null),
+    native_protection_tp_order_id: nativeProtection && nativeProtection.partial_protection === true && nativeProtection.tp_order_id
+      ? String(nativeProtection.tp_order_id)
+      : null,
+    native_protection_stop_price: nativeProtection && nativeProtection.partial_protection === true && Number.isFinite(Number(nativeProtection.stop_price))
+      ? Number(nativeProtection.stop_price)
+      : null,
+    native_protection_tp0_price: simplifiedExitV2Enabled
+      ? null
+      : (nativeProtection && nativeProtection.partial_protection === true && Number.isFinite(Number(nativeProtection.tp0_price)) ? Number(nativeProtection.tp0_price) : null),
+    native_protection_tp_price: nativeProtection && nativeProtection.partial_protection === true && Number.isFinite(Number(nativeProtection.tp_price))
+      ? Number(nativeProtection.tp_price)
+      : null,
+    native_protection_tp0_qty_base: simplifiedExitV2Enabled
+      ? null
+      : (nativeProtection && nativeProtection.partial_protection === true && Number.isFinite(Number(nativeProtection.tp0_qty_base)) ? Number(nativeProtection.tp0_qty_base) : null),
+    native_protection_tp_qty_base: nativeProtection && nativeProtection.partial_protection === true && Number.isFinite(Number(nativeProtection.tp_qty_base))
+      ? Number(nativeProtection.tp_qty_base)
+      : null,
+    native_protection_tp0_qty_ratio: simplifiedExitV2Enabled
+      ? null
+      : (nativeProtection && nativeProtection.partial_protection === true && Number.isFinite(Number(nativeProtection.tp0_qty_ratio)) ? Number(nativeProtection.tp0_qty_ratio) : null),
+    native_protection_tp_qty_ratio: nativeProtection && nativeProtection.partial_protection === true && Number.isFinite(Number(nativeProtection.tp_qty_ratio))
+      ? Number(nativeProtection.tp_qty_ratio)
+      : null,
+    native_protection_tp0_status: simplifiedExitV2Enabled ? null : (nativeProtection && nativeProtection.partial_protection === true && nativeProtection.tp0_status ? String(nativeProtection.tp0_status) : null),
+    native_protection_tp_status: nativeProtection && nativeProtection.partial_protection === true && nativeProtection.tp_status ? String(nativeProtection.tp_status) : null,
+    native_protection_tp0_reason: simplifiedExitV2Enabled ? null : (nativeProtection && nativeProtection.partial_protection === true && nativeProtection.tp0_reason ? String(nativeProtection.tp0_reason) : null),
+    native_protection_tp_reason: nativeProtection && nativeProtection.partial_protection === true && nativeProtection.tp_reason ? String(nativeProtection.tp_reason) : null,
     native_protection_entry_price: Number.isFinite(Number(nativeProtection.entry_price)) ? Number(nativeProtection.entry_price) : null,
     native_protection_side: nativeProtection.position_side ? String(nativeProtection.position_side) : null,
   };
+}
+
+function shouldFailClosedForIncompleteTp1Protection({
+  tpEnabled = false,
+  stageState = null,
+  tpStatus = null,
+  tpOrder = null,
+} = {}) {
+  if (tpEnabled !== true) return false;
+  if (!stageState || stageState.tp1Eligible !== true) return false;
+  const status = String(tpStatus || "").trim().toUpperCase();
+  const orderId = tpOrder && tpOrder.orderId ? String(tpOrder.orderId).trim() : "";
+  return status !== "OK" || !orderId;
 }
 
 async function refreshBinanceNativeProtection({
@@ -9986,7 +10002,7 @@ async function refreshBinanceNativeProtection({
           leverage,
           close_side: prices.closeSide,
           stop_price: prices.stopTriggerPx,
-          tp0_price: prices.tp0TriggerPx,
+          tp0_price: null,
           tp_price: prices.tpTriggerPx,
           stop_order_id: null,
           tp0_order_id: null,
@@ -9999,99 +10015,14 @@ async function refreshBinanceNativeProtection({
       }
       throw stopErr;
     }
-    let tp0Order = null;
     let tpOrder = null;
-    let tp0QtyBase = null;
     let tpQtyBase = null;
-    let tp0QtyRatio = null;
     let tpQtyRatio = null;
-    let desiredTp0QtyPlaced = null;
     let desiredTpQtyPlaced = null;
-    let tp0Status = stageState.simplifiedExitV2Enabled
-      ? null
-      : (BINANCE_NATIVE_TP_ENABLED ? "SKIPPED" : "DISABLED");
-    let tp0Reason = stageState.simplifiedExitV2Enabled
-      ? null
-      : (BINANCE_NATIVE_TP_ENABLED ? "TP0_TRIGGER_INVALID" : "NATIVE_TP_DISABLED");
+    const tp0Status = null;
+    const tp0Reason = null;
     let tpStatus = BINANCE_NATIVE_TP_ENABLED ? "SKIPPED" : "DISABLED";
     let tpReason = BINANCE_NATIVE_TP_ENABLED ? "TP_TRIGGER_INVALID" : "NATIVE_TP_DISABLED";
-    if (BINANCE_NATIVE_TP_ENABLED && stageState.tp0Eligible && Number.isFinite(prices.tp0TriggerPx) && prices.tp0TriggerPx > 0) {
-      try {
-        const exchangeInfo = await fetchFuturesExchangeInfoWithCache(symbol);
-        const desiredTp0QtyBase = Number(context.qtyBase) * Number(prices.tp0OrderQtyRatio || prices.tp0QtyRatio || 0.25);
-        const tp0QtyInfo = await computeFuturesOrderQty({
-          symbol,
-          priceRef: prices.tp0TriggerPx,
-          notionalQuote: desiredTp0QtyBase * prices.tp0TriggerPx,
-          reduceOnly: true,
-          info: exchangeInfo,
-          qtyBase: desiredTp0QtyBase,
-        });
-        if (!tp0QtyInfo.ok || !Number.isFinite(tp0QtyInfo.qty) || tp0QtyInfo.qty <= 0) {
-          tp0Status = "SKIPPED";
-          tp0Reason = tp0QtyInfo.reason || "TP0_QTY_INVALID";
-        } else if (tp0QtyInfo.qty + POS_SIZE_EPSILON >= Number(context.qtyBase)) {
-          tp0Status = "SKIPPED";
-          tp0Reason = "TP0_QTY_FULL_POSITION";
-        } else {
-          desiredTp0QtyPlaced = tp0QtyInfo.qty;
-          const tp0IdempotencyKey = buildBinanceNativeProtectionIdempotencyKey({
-            exchange,
-            symbol,
-            positionSide,
-            closeSide: prices.closeSide,
-            entryPrice,
-            leverage,
-            triggerPrice: prices.tp0TriggerPx,
-            kind: "TP0",
-          });
-          tp0Order = await placeFuturesTakeProfitMarketOrder({
-            apiKey: liveCfg.apiKey,
-            apiSecret: liveCfg.apiSecret,
-            symbol,
-            side: prices.closeSide,
-            stopPrice: prices.tp0TriggerPx,
-            closePosition: false,
-            quantity: tp0QtyInfo.qty,
-            reduceOnly: true,
-            workingType: BINANCE_NATIVE_WORKING_TYPE,
-            priceProtect: BINANCE_NATIVE_PRICE_PROTECT,
-            idempotencyKey: tp0IdempotencyKey,
-          });
-          tp0QtyBase = tp0QtyInfo.qty;
-          tp0QtyRatio = Number(context.qtyBase) > 0 ? Math.min(1, tp0QtyInfo.qty / Number(context.qtyBase)) : null;
-          tp0Status = "OK";
-          tp0Reason = null;
-        }
-      } catch (tp0Err) {
-        if (isBinanceImmediateTriggerError(tp0Err) && Number.isFinite(desiredTp0QtyPlaced) && desiredTp0QtyPlaced > 0) {
-          try {
-            const fallback = await placeNativeTpMarketFallback({
-              liveCfg,
-              exchange,
-              symbol,
-              positionSide,
-              closeSide: prices.closeSide,
-              entryPrice,
-              leverage,
-              triggerPrice: prices.tp0TriggerPx,
-              quantity: desiredTp0QtyPlaced,
-            });
-            tp0Order = fallback.order;
-            tp0QtyBase = desiredTp0QtyPlaced;
-            tp0QtyRatio = Number(context.qtyBase) > 0 ? Math.min(1, desiredTp0QtyPlaced / Number(context.qtyBase)) : null;
-            tp0Status = "OK";
-            tp0Reason = "MARKET_FALLBACK";
-          } catch (fallbackErr) {
-            tp0Status = "FAILED";
-            tp0Reason = fallbackErr && fallbackErr.message ? fallbackErr.message : String(fallbackErr);
-          }
-        } else {
-          tp0Status = "FAILED";
-          tp0Reason = tp0Err && tp0Err.message ? tp0Err.message : String(tp0Err);
-        }
-      }
-    }
     if (BINANCE_NATIVE_TP_ENABLED && stageState.tp1Eligible && Number.isFinite(prices.tpTriggerPx) && prices.tpTriggerPx > 0) {
       try {
         const exchangeInfo = await fetchFuturesExchangeInfoWithCache(symbol);
@@ -10194,30 +10125,6 @@ async function refreshBinanceNativeProtection({
     if (stopContractPayload) {
       await recordExitOrderContractSafe(stopContractPayload);
     }
-    if (tp0Order && tp0Status === "OK") {
-      const tp0ContractPayload = buildExitOrderContractRecordPayload({
-        kind: "TP0",
-        rules,
-        posMeta,
-        exchange,
-        symbol,
-        orderId: tp0Order.orderId,
-        clientOrderId: tp0Order.clientOrderId,
-        positionSide,
-        closeSide: prices.closeSide,
-        expectedQtyBase: tp0QtyBase,
-        expectedQtyRatio: tp0QtyRatio,
-        triggerPrice: prices.tp0TriggerPx,
-        triggerSource: "TP0_NATIVE",
-        reduceOnly: true,
-        closePosition: false,
-        status: "OPEN",
-        source: "BINANCE_NATIVE_PROTECTION",
-      });
-      if (tp0ContractPayload) {
-        await recordExitOrderContractSafe(tp0ContractPayload);
-      }
-    }
     if (tpOrder && tpStatus === "OK") {
       const tp1ContractPayload = buildExitOrderContractRecordPayload({
         kind: "TP1",
@@ -10242,6 +10149,36 @@ async function refreshBinanceNativeProtection({
         await recordExitOrderContractSafe(tp1ContractPayload);
       }
     }
+    if (shouldFailClosedForIncompleteTp1Protection({
+      tpEnabled: BINANCE_NATIVE_TP_ENABLED,
+      stageState,
+      tpStatus,
+      tpOrder,
+    })) {
+      return {
+        ok: false,
+        reason: "TP1_NATIVE_PROTECTION_INCOMPLETE",
+        partial_protection: true,
+        position_side: positionSide,
+        entry_price: entryPrice,
+        leverage,
+        close_side: prices.closeSide,
+        stop_price: prices.stopTriggerPx,
+        tp0_price: null,
+        tp_price: prices.tpTriggerPx,
+        tp0_qty_base: null,
+        tp_qty_base: Number.isFinite(tpQtyBase) ? tpQtyBase : null,
+        tp0_qty_ratio: null,
+        tp_qty_ratio: Number.isFinite(tpQtyRatio) ? tpQtyRatio : null,
+        tp0_status: tp0Status,
+        tp_status: tpStatus,
+        tp0_reason: tp0Reason,
+        tp_reason: tpReason || "TP1_ORDER_MISSING",
+        stop_order_id: stopOrder && stopOrder.orderId ? String(stopOrder.orderId) : null,
+        tp0_order_id: null,
+        tp_order_id: tpOrder && tpOrder.orderId ? String(tpOrder.orderId) : null,
+      };
+    }
     return {
       ok: true,
       state: "ACTIVE",
@@ -10250,18 +10187,18 @@ async function refreshBinanceNativeProtection({
       leverage,
       close_side: prices.closeSide,
       stop_price: prices.stopTriggerPx,
-      tp0_price: prices.tp0TriggerPx,
+      tp0_price: null,
       tp_price: prices.tpTriggerPx,
-      tp0_qty_base: Number.isFinite(tp0QtyBase) ? tp0QtyBase : null,
+      tp0_qty_base: null,
       tp_qty_base: Number.isFinite(tpQtyBase) ? tpQtyBase : null,
-      tp0_qty_ratio: Number.isFinite(tp0QtyRatio) ? tp0QtyRatio : null,
+      tp0_qty_ratio: null,
       tp_qty_ratio: Number.isFinite(tpQtyRatio) ? tpQtyRatio : null,
       tp0_status: tp0Status,
       tp_status: tpStatus,
       tp0_reason: tp0Reason,
       tp_reason: tpReason,
       stop_order_id: stopOrder && stopOrder.orderId ? String(stopOrder.orderId) : null,
-      tp0_order_id: tp0Order && tp0Order.orderId ? String(tp0Order.orderId) : null,
+      tp0_order_id: null,
       tp_order_id: tpOrder && tpOrder.orderId ? String(tpOrder.orderId) : null,
     };
   } catch (e) {
@@ -11700,6 +11637,26 @@ async function runPaperBinanceForBar({
     const intentDir = (intent === "EXIT")
       ? directionFromSignal({ event: it.event })
       : directionFromSignal({ event: it.event, side: it.side });
+    if (
+      intent === "EXIT"
+      && isForbiddenTp0ExitIntent({
+        currentMeta: posMeta,
+        event: eventUpper,
+      })
+    ) {
+      await markIntentStatus(it.intent_id, "CANCELED", {
+        cancel_reason: "DROP_SIMPLIFIED_EXIT_V2_FORBIDDEN_TP0",
+        status_reason: "DROP_SIMPLIFIED_EXIT_V2_FORBIDDEN_TP0",
+        cancel_note: JSON.stringify({
+          event: eventUpper,
+          simplified_exit_v2_enabled: true,
+          tp_p0_done: posMeta && posMeta.tp_p0_done === true,
+          tp_p1_done: posMeta && posMeta.tp_p1_done === true,
+          trail_active: posMeta && posMeta.trail_active === true,
+        }),
+      });
+      continue;
+    }
     if (intentIsEntry && !actionAllowsEntry(actionTag)) {
       await markIntentStatus(it.intent_id, "CANCELED", { cancel_reason: "DROP_ACTION_FILTER", status_reason: "DROP_ACTION_FILTER" });
       continue;
@@ -14278,6 +14235,26 @@ async function runPaperFuturesForBar({
     const intentDir = (intent === "EXIT")
       ? directionFromSignal({ event: it.event })
       : directionFromSignal({ event: it.event, side: it.side });
+    if (
+      intent === "EXIT"
+      && isForbiddenTp0ExitIntent({
+        currentMeta: posMeta,
+        event: eventUpper,
+      })
+    ) {
+      await markIntentStatus(it.intent_id, "CANCELED", {
+        cancel_reason: "DROP_SIMPLIFIED_EXIT_V2_FORBIDDEN_TP0",
+        status_reason: "DROP_SIMPLIFIED_EXIT_V2_FORBIDDEN_TP0",
+        cancel_note: JSON.stringify({
+          event: eventUpper,
+          simplified_exit_v2_enabled: true,
+          tp_p0_done: posMeta && posMeta.tp_p0_done === true,
+          tp_p1_done: posMeta && posMeta.tp_p1_done === true,
+          trail_active: posMeta && posMeta.trail_active === true,
+        }),
+      });
+      continue;
+    }
     if (intentIsEntry && !actionAllowsEntry(actionTag)) {
       await markIntentStatus(it.intent_id, "CANCELED", { cancel_reason: "DROP_ACTION_FILTER", status_reason: "DROP_ACTION_FILTER" });
       continue;
@@ -17337,6 +17314,7 @@ module.exports = {
     applyAddRiskMetaOnFill,
     buildTimeStopExitSignal,
     buildNativeProtectionMetaPatch,
+    shouldFailClosedForIncompleteTp1Protection,
     inferEntryMetaDirection,
     canEvaluateInternalExitSignalsForBar,
     finalizeInternalSignals,
@@ -17451,6 +17429,7 @@ module.exports = {
     isAuthorizedBinanceNativeStopWriter,
     resolveNativeProtectionStageState,
     resolveSimplifiedExitV2PositionFlag,
+    isForbiddenTp0ExitIntent,
     isExplicitLegacyTp0Position,
     resolveNativeProtectionPositionMeta,
     shouldExecuteImmediateNativeProtectionRefresh,

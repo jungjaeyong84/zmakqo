@@ -54,22 +54,55 @@ function isArtifactIssueCode(code) {
   return /_ARTIFACT$/.test(String(code || "").trim().toUpperCase());
 }
 
+function isSimplifiedExitV2Position(row = {}) {
+  const meta = row && typeof row.meta === "object" ? row.meta : {};
+  return meta.simplified_exit_v2_enabled === true
+    || meta.simplifiedExitV2Enabled === true
+    || row.simplified_exit_v2_enabled === true;
+}
+
+function resolveAuthorityNativeProtection(meta = {}, trailSnapshot = {}) {
+  const metaStopPrice = toNum(meta.native_protection_stop_price);
+  const metaStopOrderId = String(meta.native_protection_stop_order_id || "").trim() || null;
+  const snapshotStopPrice = toNum(trailSnapshot.native_stop_price);
+  const snapshotStopOrderId = String(trailSnapshot.native_stop_order_id || "").trim() || null;
+  const preferMetaNative = Boolean(metaStopOrderId) || Number.isFinite(metaStopPrice);
+  if (preferMetaNative) {
+    return {
+      stopPrice: metaStopPrice,
+      stopOrderId: metaStopOrderId,
+      refreshStatus: upper(meta.native_protection_refresh_status) || upper(trailSnapshot.native_refresh_status),
+      source: "POSITION_META_NATIVE_PROTECTION",
+    };
+  }
+  return {
+    stopPrice: snapshotStopPrice,
+    stopOrderId: snapshotStopOrderId,
+    refreshStatus: upper(trailSnapshot.native_refresh_status) || upper(meta.native_protection_refresh_status),
+    source: "TRAIL_OBSERVATION_SNAPSHOT",
+  };
+}
+
 function resolveStage(row = {}) {
   const meta = row && typeof row.meta === "object" ? row.meta : {};
+  const simplifiedExitV2Enabled = isSimplifiedExitV2Position(row);
   const canonical = resolveCanonicalPositionExitStage({
     positionSnapshot: row,
+    simplifiedExitV2Enabled,
     fallbackStage: meta.canonical_exit_stage || meta.authoritative_exit_stage || null,
   });
   if (canonical.stage === "TRAIL") return { canonical_stage: "TRAIL", stage: "TRAIL", source: canonical.source };
-  if (canonical.stage === "TP1") return { canonical_stage: "TP1", stage: "TP1_DONE_NOT_TRAIL", source: canonical.source };
-  if (canonical.stage === "TP0") return { canonical_stage: "TP0", stage: "BETWEEN_TP0_TP1", source: canonical.source };
-  return { canonical_stage: canonical.stage, stage: "PRE_TP0", source: canonical.source };
+  if (canonical.stage === "TP1") return { canonical_stage: "TP1", stage: "RUNNER", source: canonical.source };
+  if (canonical.stage === "TP0") return { canonical_stage: "TP1", stage: "PRE_TP1", source: canonical.source };
+  return { canonical_stage: canonical.stage, stage: "PRE_TP1", source: canonical.source };
 }
 
 function summarizeLivePosition(row = {}, context = {}) {
   const meta = row && typeof row.meta === "object" ? row.meta : {};
+  const simplifiedExitV2Enabled = isSimplifiedExitV2Position(row);
   const observation = context.observationsBySymbol && context.observationsBySymbol[upper(row.symbol_or_pair_id || row.symbol)] || null;
   const trailSnapshot = resolveTrailObservationSnapshot({ meta, observation });
+  const nativeProtection = resolveAuthorityNativeProtection(meta, trailSnapshot);
   const rules = resolveExitRulesForPosition({
     exchange: upper(row.exchange) || "BINANCEFUT",
     position: row,
@@ -83,10 +116,10 @@ function summarizeLivePosition(row = {}, context = {}) {
   const actualTp1Ratio = toNum(meta.native_protection_tp_qty_ratio);
   const actualTp1Base = toNum(meta.native_protection_tp_qty_base);
   const expectedTp1Base = qtyBase > 0 ? Number((qtyBase * expectedTp1RemainingRatio).toFixed(8)) : null;
-  const stopPrice = toNum(trailSnapshot.native_stop_price ?? meta.native_protection_stop_price);
-  const stopOrderId = trailSnapshot.native_stop_order_id || meta.native_protection_stop_order_id || null;
+  const stopPrice = nativeProtection.stopPrice;
+  const stopOrderId = nativeProtection.stopOrderId;
   const tpOrderId = meta.native_protection_tp_order_id || null;
-  const refreshStatus = upper(trailSnapshot.native_refresh_status || meta.native_protection_refresh_status);
+  const refreshStatus = nativeProtection.refreshStatus;
   const stageInfo = resolveStage(row);
   const stage = stageInfo.stage;
   const trailStopByR = toNum(trailSnapshot.trail_stop_by_r);
@@ -100,9 +133,9 @@ function summarizeLivePosition(row = {}, context = {}) {
     leverage: toNum(meta.external_leverage || meta.leverage || row.leverage || 1),
   });
   const issues = [];
-  if (stage === "BETWEEN_TP0_TP1") {
+  if (stage === "PRE_TP1") {
     if (!tpOrderId && !Number.isFinite(actualTp1Base) && !Number.isFinite(actualTp1Ratio)) {
-      issues.push({ code: "TP1_PROTECTION_MISSING", detail: "TP0 이후 TP1 native protection 메타가 없음" });
+      issues.push({ code: "TP1_PROTECTION_MISSING", detail: "TP1 native protection 메타가 없음" });
     }
     if (Number.isFinite(actualTp1Ratio) && Math.abs(actualTp1Ratio - expectedTp1RemainingRatio) > 0.03) {
       issues.push({
@@ -128,30 +161,24 @@ function summarizeLivePosition(row = {}, context = {}) {
   if (trailActive && tp1Done !== true) {
     issues.push({ code: "TRAIL_ACTIVE_WITHOUT_TP1_DONE", detail: "trail_active=true 인데 tp_p1_done=false" });
   }
-  if (tp1Done && tp0Done !== true) {
-    issues.push({ code: "TP1_DONE_WITHOUT_TP0_DONE", detail: "tp_p1_done=true 인데 tp_p0_done=false" });
-  }
-  if (trailActive && tp0Done !== true) {
-    issues.push({ code: "TRAIL_ACTIVE_WITHOUT_TP0_DONE", detail: "trail_active=true 인데 tp_p0_done=false" });
-  }
   if (tp1Done && trailActive !== true) {
     issues.push({ code: "TP1_DONE_WITHOUT_TRAIL_ACTIVE", detail: "tp_p1_done=true 인데 trail_active=false" });
   }
-  if ((stage === "BETWEEN_TP0_TP1" || stage === "TRAIL" || stage === "TP1_DONE_NOT_TRAIL") && (refreshStatus === "FAILED" || refreshStatus === "MISSING")) {
+  if ((stage === "PRE_TP1" || stage === "TRAIL" || stage === "RUNNER") && (refreshStatus === "FAILED" || refreshStatus === "MISSING")) {
     issues.push({ code: "NATIVE_REFRESH_UNHEALTHY", detail: `native_protection_refresh_status=${refreshStatus}` });
   }
-  if ((stage === "TRAIL" || stage === "TP1_DONE_NOT_TRAIL") && Number.isFinite(minGuaranteedProfitPct) && Number.isFinite(currentGuaranteedProfitPct)) {
+  if ((stage === "TRAIL" || stage === "RUNNER") && Number.isFinite(minGuaranteedProfitPct) && Number.isFinite(currentGuaranteedProfitPct)) {
     if (currentGuaranteedProfitPct + 1e-9 < minGuaranteedProfitPct) {
       issues.push({ code: "RUNNER_MIN_GUARANTEE_MISSED", detail: `current=${currentGuaranteedProfitPct} required=${minGuaranteedProfitPct}` });
     }
   }
-  if ((stage === "TRAIL" || stage === "TP1_DONE_NOT_TRAIL") && chosenStopSource === "TRAIL" && Number.isFinite(chosenStopPrice) && Number.isFinite(trailStopByR)) {
+  if ((stage === "TRAIL" || stage === "RUNNER") && chosenStopSource === "TRAIL" && Number.isFinite(chosenStopPrice) && Number.isFinite(trailStopByR)) {
     const tolerance = Math.max(Math.abs(trailStopByR) * 0.0001, 1e-8);
     if (Math.abs(chosenStopPrice - trailStopByR) > tolerance) {
       issues.push({ code: "TRAIL_STOP_SOURCE_PRICE_INCONSISTENT", detail: `source=TRAIL chosen=${chosenStopPrice} trail_by_r=${trailStopByR}` });
     }
   }
-  if ((stage === "TRAIL" || stage === "TP1_DONE_NOT_TRAIL") && chosenStopSource === "RUNNER_FLOOR" && Number.isFinite(chosenStopPrice) && Number.isFinite(toNum(trailSnapshot.runner_floor_stop))) {
+  if ((stage === "TRAIL" || stage === "RUNNER") && chosenStopSource === "RUNNER_FLOOR" && Number.isFinite(chosenStopPrice) && Number.isFinite(toNum(trailSnapshot.runner_floor_stop))) {
     const floorStop = toNum(trailSnapshot.runner_floor_stop);
     const tolerance = Math.max(Math.abs(floorStop) * 0.0001, 1e-8);
     if (Math.abs(chosenStopPrice - floorStop) > tolerance) {
@@ -181,6 +208,7 @@ function summarizeLivePosition(row = {}, context = {}) {
     stage,
     canonical_stage: stageInfo.canonical_stage,
     canonical_stage_source: stageInfo.source,
+    simplified_exit_v2_enabled: simplifiedExitV2Enabled,
     tp_p0_done: tp0Done,
     tp_p1_done: tp1Done,
     trail_active: trailActive,
@@ -197,6 +225,7 @@ function summarizeLivePosition(row = {}, context = {}) {
     min_guaranteed_profit_pct: minGuaranteedProfitPct,
     current_guaranteed_profit_pct: currentGuaranteedProfitPct,
     native_refresh_status: refreshStatus || null,
+    native_protection_state_source: nativeProtection.source,
     trail_observation_source: trailSnapshot.trail_source || null,
     trail_observation_runtime_eval_at_ms: toNum(trailSnapshot.runtime_eval_at_ms),
     updated_at: row.updated_at || null,
@@ -313,6 +342,7 @@ if (require.main === module) {
 } else {
   module.exports = {
     __test: {
+      resolveAuthorityNativeProtection,
       summarizeLivePosition,
       buildLiveAuthorityBoard,
       buildMarkdown,

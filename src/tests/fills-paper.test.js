@@ -11,6 +11,8 @@ function run() {
   const applyAuthoritativeIntentEventOverride = fillsSyncTest && fillsSyncTest.applyAuthoritativeIntentEventOverride;
   const inferAuthoritativeForcedExitEventFromRefs = fillsSyncTest && fillsSyncTest.inferAuthoritativeForcedExitEventFromRefs;
   const applyAuthoritativeForcedExitRefOverride = fillsSyncTest && fillsSyncTest.applyAuthoritativeForcedExitRefOverride;
+  const inferExitEventFromDecisionReason = fillsSyncTest && fillsSyncTest.inferExitEventFromDecisionReason;
+  const resolvePersistedExternalExitEvent = fillsSyncTest && fillsSyncTest.resolvePersistedExternalExitEvent;
   assert.strictEqual(
     typeof buildExternalFillUnverifiedPatch,
     "function",
@@ -50,6 +52,16 @@ function run() {
     typeof applyAuthoritativeForcedExitRefOverride,
     "function",
     "applyAuthoritativeForcedExitRefOverride export missing"
+  );
+  assert.strictEqual(
+    typeof inferExitEventFromDecisionReason,
+    "function",
+    "inferExitEventFromDecisionReason export missing"
+  );
+  assert.strictEqual(
+    typeof resolvePersistedExternalExitEvent,
+    "function",
+    "resolvePersistedExternalExitEvent export missing"
   );
 
   const normalizedFeatures = normalizeFeaturesJson({
@@ -271,6 +283,23 @@ function run() {
       decisionReason: "ACTIVE_NATIVE_STOP_MISSING_FORCE_EXIT",
     }),
     "FORCE_EXIT_ALL"
+  );
+  assert.strictEqual(
+    inferExitEventFromDecisionReason("EXIT_TAKE_PROFIT_P1", {
+      intent: { event: "EXIT_TP_P1_1.65P" },
+      rules: { TP_P1: 0.0165 },
+    }),
+    "EXIT_TP_P1_1.65P"
+  );
+  assert.strictEqual(
+    resolvePersistedExternalExitEvent({
+      event: null,
+      intent: { event: "EXIT_TP_P1_1.65P" },
+      decisionReason: "EXIT_TAKE_PROFIT_P1",
+      canonicalStageDecision: { event: null },
+      rules: { TP_P1: 0.0165 },
+    }),
+    "EXIT_TP_P1_1.65P"
   );
   assert.strictEqual(
     shouldSuppressMatchedExternalFillAlert({
