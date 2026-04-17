@@ -10,6 +10,41 @@ const { getFirestore } = require("../src/storage/firestore");
 const LOOKBACK_HOURS = Math.max(1, Number(process.env.TRADE_EXEC_ALERT_CROSS_AUDIT_LOOKBACK_HOURS || 24));
 const PAGE_SIZE = Math.max(100, Number(process.env.TRADE_EXEC_ALERT_CROSS_AUDIT_PAGE_SIZE || 1000));
 const MATCH_WINDOW_MS = Math.max(60_000, Number(process.env.TRADE_EXEC_ALERT_CROSS_AUDIT_MATCH_WINDOW_MS || 15 * 60 * 1000));
+const FILL_SELECT_FIELDS = Object.freeze([
+  "fill_id",
+  "exchange",
+  "symbol",
+  "event",
+  "created_at",
+  "canonical_primary_transition_event",
+  "canonical_transition_events",
+  "canonical_event",
+  "canonical_exit_event",
+  "canonical_stage",
+  "canonical_exit_stage",
+  "simplified_exit_v2_enabled",
+  "simplifiedExitV2Enabled",
+  "extra",
+]);
+const OUTBOX_SELECT_FIELDS = Object.freeze([
+  "created_at",
+  "updated_at",
+  "sent_at",
+  "type",
+  "status",
+  "exchange",
+  "symbol",
+  "event",
+  "source_fill_id",
+  "dedupe_key",
+  "last_title",
+  "last_body",
+  "canonical_transition_events",
+  "canonical_primary_transition_event",
+  "canonical_event",
+  "canonical_stage",
+  "simplified_exit_v2_enabled",
+]);
 
 function nowIso() {
   return new Date().toISOString();
@@ -78,9 +113,42 @@ function normalizeComparableEvent(event) {
   return value.endsWith("_UNVERIFIED") ? value.slice(0, -"_UNVERIFIED".length) : value;
 }
 
+function isSimplifiedExitV2Row(row = {}) {
+  return row.simplified_exit_v2_enabled === true || row.simplifiedExitV2Enabled === true;
+}
+
+function resolveCanonicalTransitionEvents(row = {}) {
+  const items = [];
+  if (Array.isArray(row.canonicalTransitionEvents)) items.push(...row.canonicalTransitionEvents);
+  if (Array.isArray(row.canonical_transition_events)) items.push(...row.canonical_transition_events);
+  const primary = trimOrNull(row.canonicalTransitionEvent || row.canonical_primary_transition_event);
+  if (primary) items.unshift(primary);
+  const seen = new Set();
+  return items
+    .map((item) => upper(item))
+    .filter((item) => {
+      if (!item || seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    });
+}
+
+function hasForbiddenSimplifiedExitV2Transition(row = {}) {
+  if (isSimplifiedExitV2Row(row) !== true) return false;
+  return resolveCanonicalTransitionEvents(row).some((item) => item === "TP0_REACHED" || item === "TRAIL_PARTIAL");
+}
+
+function resolveComparableAuditEvent(row = {}) {
+  const canonicalEvent = normalizeComparableEvent(row.canonical_event || row.canonicalExitEvent || row.canonical_exit_event);
+  if (isSimplifiedExitV2Row(row) === true && canonicalEvent && resolveCanonicalTransitionEvents(row).length > 0) {
+    return canonicalEvent;
+  }
+  return normalizeComparableEvent(row.event);
+}
+
 function buildFillGroupKey(fill = {}) {
   const symbol = upper(fill.symbol);
-  const event = normalizeComparableEvent(fill.event);
+  const event = resolveComparableAuditEvent(fill);
   const createdAt = trimOrNull(fill.created_at || fill.fill_created_at);
   if (!symbol || !event || !createdAt) return null;
   return [symbol, event, createdAt].join("|");
@@ -91,16 +159,13 @@ function isVerifiedExitFill(fill = {}) {
 }
 
 function hasCanonicalExitTransition(fill = {}) {
-  const items = [];
-  if (Array.isArray(fill.canonicalTransitionEvents)) items.push(...fill.canonicalTransitionEvents);
-  if (Array.isArray(fill.canonical_transition_events)) items.push(...fill.canonical_transition_events);
-  const primary = trimOrNull(fill.canonicalTransitionEvent || fill.canonical_primary_transition_event);
-  if (primary) items.unshift(primary);
-  return items.some((item) => trimOrNull(item));
+  return resolveCanonicalTransitionEvents(fill).length > 0;
 }
 
 function isActionableVerifiedExitFill(fill = {}) {
-  return isVerifiedExitFill(fill) && hasCanonicalExitTransition(fill);
+  return isVerifiedExitFill(fill)
+    && hasCanonicalExitTransition(fill)
+    && hasForbiddenSimplifiedExitV2Transition(fill) !== true;
 }
 
 function parseTelegramTradeAlertRows(logText = "", sinceMs = 0) {
@@ -133,14 +198,17 @@ async function fetchRecentFillRows(db, sinceIso) {
   const rows = [];
   let last = null;
   for (;;) {
-    let q = db.collection("fills_paper").orderBy("created_at", "desc").limit(PAGE_SIZE);
+    let q = db.collection("fills_paper")
+      .where("created_at", ">=", sinceIso)
+      .orderBy("created_at", "desc")
+      .select(...FILL_SELECT_FIELDS)
+      .limit(PAGE_SIZE);
     if (last) q = q.startAfter(last);
     const snap = await q.get();
     if (snap.empty) break;
     for (const doc of snap.docs) {
       const row = { id: doc.id, ...(doc.data() || {}) };
       if (upper(row.exchange) !== "BINANCEFUT") continue;
-      if (String(row.created_at || "") < sinceIso) continue;
       const stage = classifyEvent(row.event);
       if (stage === "OTHER" || stage === "UNKNOWN") continue;
       rows.push({
@@ -156,6 +224,11 @@ async function fetchRecentFillRows(db, sinceIso) {
         canonicalTransitionEvents: Array.isArray(row.canonical_transition_events)
           ? row.canonical_transition_events
           : (Array.isArray(row.extra && row.extra.canonical_transition_events) ? row.extra.canonical_transition_events : []),
+        canonical_event: upper(row.canonical_exit_event || (row.extra && row.extra.canonical_exit_event)),
+        canonical_stage: upper(row.canonical_exit_stage || (row.extra && row.extra.canonical_exit_stage)),
+        simplified_exit_v2_enabled: row.simplified_exit_v2_enabled === true
+          || row.simplifiedExitV2Enabled === true
+          || (row.extra && (row.extra.simplified_exit_v2_enabled === true || row.extra.simplifiedExitV2Enabled === true)),
       });
     }
     if (snap.size < PAGE_SIZE) break;
@@ -167,8 +240,13 @@ async function fetchRecentFillRows(db, sinceIso) {
 async function fetchRecentOutboxAlertRows(db, sinceMs) {
   const rows = [];
   let last = null;
+  const sinceIso = new Date(sinceMs).toISOString();
   for (;;) {
-    let q = db.collection("trade_alert_outbox").orderBy("__name__").limit(PAGE_SIZE);
+    let q = db.collection("trade_alert_outbox")
+      .where("created_at", ">=", sinceIso)
+      .orderBy("created_at", "desc")
+      .select(...OUTBOX_SELECT_FIELDS)
+      .limit(PAGE_SIZE);
     if (last) q = q.startAfter(last);
     const snap = await q.get();
     if (snap.empty) break;
@@ -234,12 +312,12 @@ function pickMatchingAlert(fill, alerts = []) {
   }
   const fillMs = Number(fill && fill.created_ms);
   if (!Number.isFinite(fillMs)) return null;
-  const normalizedFillEvent = normalizeComparableEvent(fill && fill.event);
+  const normalizedFillEvent = resolveComparableAuditEvent(fill);
   let best = null;
   let bestDelta = Infinity;
   for (const alert of alerts) {
     if (upper(alert.symbol) !== fill.symbol) continue;
-    if (normalizeComparableEvent(alert.event) !== normalizedFillEvent) continue;
+    if (resolveComparableAuditEvent(alert) !== normalizedFillEvent) continue;
     const tsMs = Date.parse(String(alert.ts || ""));
     if (!Number.isFinite(tsMs)) continue;
     const delta = Math.abs(tsMs - fillMs);
@@ -407,6 +485,10 @@ async function main() {
       ts: row.ts,
       symbol: upper(row.symbol),
       event: upper(row.event),
+      canonical_event: upper(row.canonical_event),
+      canonical_stage: upper(row.canonical_stage),
+      canonical_transition_events: Array.isArray(row.canonical_transition_events) ? row.canonical_transition_events : [],
+      simplified_exit_v2_enabled: row.simplified_exit_v2_enabled === true,
       source_fill_id: trimOrNull(row.source_fill_id || row.sourceFillId || row.fill_id || row.fillId),
       dedupe_key: trimOrNull(row.dedupe_key || row.dedupeKey),
       title: row.title || null,
@@ -476,12 +558,16 @@ if (require.main === module) {
     __test: {
       classifyEvent,
       normalizeComparableEvent,
+      resolveComparableAuditEvent,
       parseTelegramTradeAlertRows,
       pickMatchingAlert,
       buildReport,
       dedupeAlertAuditRows,
       hasCanonicalExitTransition,
+      hasForbiddenSimplifiedExitV2Transition,
       isActionableVerifiedExitFill,
+      FILL_SELECT_FIELDS,
+      OUTBOX_SELECT_FIELDS,
     },
   };
 }

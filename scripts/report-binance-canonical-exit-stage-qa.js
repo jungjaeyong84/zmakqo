@@ -16,6 +16,31 @@ const { __test: watchdogTest } = require("../src/services/binanceActiveExitWatch
 const ROOT = path.resolve(__dirname, "..");
 const OUT_JSON = path.join(ROOT, "ops", "daily", "binance_canonical_exit_stage_qa_latest.json");
 const OUT_MD = path.join(ROOT, "ops", "daily", "binance_canonical_exit_stage_qa_latest.md");
+const LOOKBACK_HOURS = Math.max(1, Number(process.env.BINANCE_CANONICAL_EXIT_STAGE_QA_LOOKBACK_HOURS || 72));
+const FILL_SCAN_LIMIT = Math.max(20, Number(process.env.BINANCE_CANONICAL_EXIT_STAGE_QA_FILL_SCAN_LIMIT || 400));
+const TRANSITION_SCAN_LIMIT = Math.max(20, Number(process.env.BINANCE_CANONICAL_EXIT_STAGE_QA_TRANSITION_SCAN_LIMIT || 400));
+const QA_FILL_SELECT_FIELDS = Object.freeze([
+  "exchange",
+  "symbol",
+  "symbol_or_pair_id",
+  "fill_id",
+  "trade_id",
+  "created_at",
+  "event",
+  "canonical_exit_event",
+  "canonical_exit_stage",
+  "canonical_primary_transition_event",
+  "canonical_transition_events",
+]);
+const QA_TRANSITION_SELECT_FIELDS = Object.freeze([
+  "exchange",
+  "symbol",
+  "canonical_transition_event",
+  "canonical_event",
+  "canonical_exit_chain_key",
+  "fill_id",
+  "created_at",
+]);
 
 function upper(value) {
   return String(value || "").trim().toUpperCase() || null;
@@ -130,6 +155,7 @@ function buildRow({
 function resolveWatchdogCanonicalStage(stage) {
   const current = upper(stage);
   if (current === "BETWEEN_TP0_TP1") return "TP0";
+  if (current === "RUNNER") return "TP1";
   if (current === "TP1_DONE_NOT_TRAIL") return "TP1";
   if (current === "TRAIL") return "TRAIL";
   return null;
@@ -170,14 +196,18 @@ async function loadLatestCanonicalEvidenceBySymbols({
   symbols = [],
   fillScanLimit = 400,
   transitionScanLimit = 400,
+  sinceIso = null,
   db = getFirestore(),
 } = {}) {
   const target = new Set((Array.isArray(symbols) ? symbols : []).map((item) => upper(item)).filter(Boolean));
   const bySymbol = new Map();
   if (!target.size) return bySymbol;
 
-  const fillSnap = await db.collection("fills_paper")
+  let fillQuery = db.collection("fills_paper");
+  if (sinceIso) fillQuery = fillQuery.where("created_at", ">=", sinceIso);
+  const fillSnap = await fillQuery
     .orderBy("created_at", "desc")
+    .select(...QA_FILL_SELECT_FIELDS)
     .limit(Math.max(1, Number(fillScanLimit) || 400))
     .get();
   fillSnap.forEach((doc) => {
@@ -205,8 +235,11 @@ async function loadLatestCanonicalEvidenceBySymbols({
     });
   });
 
-  const transitionSnap = await db.collection("canonical_exit_transitions")
+  let transitionQuery = db.collection("canonical_exit_transitions");
+  if (sinceIso) transitionQuery = transitionQuery.where("created_at", ">=", sinceIso);
+  const transitionSnap = await transitionQuery
     .orderBy("created_at", "desc")
+    .select(...QA_TRANSITION_SELECT_FIELDS)
     .limit(Math.max(1, Number(transitionScanLimit) || 400))
     .get();
   transitionSnap.forEach((doc) => {
@@ -361,6 +394,7 @@ function buildMarkdown(report) {
 }
 
 async function main() {
+  const sinceIso = new Date(Date.now() - (LOOKBACK_HOURS * 60 * 60 * 1000)).toISOString();
   const keys = await watchdogTest.resolveBinanceKeys();
   if (!keys) {
     throw new Error("BINANCE_KEYS_MISSING");
@@ -377,6 +411,9 @@ async function main() {
   const evidenceBySymbol = await loadLatestCanonicalEvidenceBySymbols({
     exchange: "BINANCEFUT",
     symbols: positions.map((position) => upper(position.symbol || position.symbol_or_pair_id)).filter(Boolean),
+    fillScanLimit: FILL_SCAN_LIMIT,
+    transitionScanLimit: TRANSITION_SCAN_LIMIT,
+    sinceIso,
   }).catch(() => new Map());
   const rows = [];
   for (const position of positions) {
@@ -423,6 +460,8 @@ module.exports = {
     augmentRowWithCanonicalEvidence,
     loadPrimaryTransitionEvents,
     buildReportSummary,
+    QA_FILL_SELECT_FIELDS,
+    QA_TRANSITION_SELECT_FIELDS,
   },
 };
 

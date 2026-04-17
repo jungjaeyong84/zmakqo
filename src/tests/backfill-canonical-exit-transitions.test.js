@@ -37,6 +37,17 @@ function run() {
   assert.strictEqual(payload.ledger.entry_qty_abs, 0.887);
   assert.strictEqual(payload.ledger.runner_remaining_abs, 0.167);
 
+  const simplifiedPayload = __test.buildCanonicalTransitionPayload({
+    fill_id: "fill-eth-v2",
+    exchange: "binancefut",
+    symbol: "ethusdt",
+    event: "EXIT_TP_P1_1.68P",
+    created_at: "2026-04-14T01:00:00.000Z",
+    simplified_exit_v2_enabled: true,
+  });
+  assert(simplifiedPayload, "simplified payload should exist");
+  assert.deepStrictEqual(simplifiedPayload.transitionEvents, ["TP1_REACHED", "TRAIL_ACTIVATED"]);
+
   const trailPayload = __test.buildCanonicalTransitionPayload({
     fill_id: "fill-btc-trail",
     exchange: "BINANCEFUT",
@@ -45,6 +56,16 @@ function run() {
     qty_fraction: 1,
   });
   assert.deepStrictEqual(trailPayload.transitionEvents, ["TRAIL_FINAL_EXIT"]);
+  assert.ok(Array.isArray(__test.FILL_SELECT_FIELDS));
+  assert.ok(__test.FILL_SELECT_FIELDS.includes("extra"));
+
+  assert.strictEqual(__test.buildCanonicalTransitionPayload({
+    fill_id: "fill-btc-tp0-v2",
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    event: "EXIT_TP_P0_0.8P",
+    simplified_exit_v2_enabled: true,
+  }), null);
 
   console.log("BACKFILL_CANONICAL_EXIT_TRANSITIONS_TEST_OK");
 }

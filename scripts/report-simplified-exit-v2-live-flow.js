@@ -10,6 +10,39 @@ const { getFirestore } = require("../src/storage/firestore");
 const LOOKBACK_HOURS = Math.max(1, Number(process.env.SIMPLIFIED_EXIT_V2_LIVE_FLOW_LOOKBACK_HOURS || 48));
 const PAGE_SIZE = Math.max(100, Number(process.env.SIMPLIFIED_EXIT_V2_LIVE_FLOW_PAGE_SIZE || 1000));
 const EXCHANGE = "BINANCEFUT";
+const FILL_SELECT_FIELDS = Object.freeze([
+  "exchange",
+  "symbol",
+  "symbol_or_pair_id",
+  "event",
+  "created_at",
+  "canonical_transition_events",
+  "canonical_primary_transition_event",
+]);
+const OUTBOX_SELECT_FIELDS = Object.freeze([
+  "created_at",
+  "updated_at",
+  "sent_at",
+  "type",
+  "status",
+  "exchange",
+  "symbol",
+  "event",
+  "source_fill_id",
+  "last_title",
+  "canonical_transition_events",
+  "canonical_primary_transition_event",
+]);
+const POSITION_SELECT_FIELDS = Object.freeze([
+  "exchange",
+  "symbol",
+  "symbol_or_pair_id",
+  "state",
+  "qty_base",
+  "avg_price",
+  "updated_at",
+  "meta",
+]);
 
 function nowIso() {
   return new Date().toISOString();
@@ -101,6 +134,20 @@ function parseTransitionEvents(row = {}) {
 
 function summarizePosition(row = {}) {
   const meta = row && typeof row.meta === "object" ? row.meta : {};
+  const nativeTpArmed = !!(
+    meta.native_protection_tp_order_id
+    || upper(meta.native_protection_tp_status) === "OK"
+    || (toOptionalNum(meta.native_protection_tp_price) != null && toOptionalNum(meta.native_protection_tp_qty_ratio) != null)
+  );
+  const nativeRefreshAtMs = toOptionalNum(meta.native_protection_refresh_at_ms);
+  const nativeTpGapAgeMs = (
+    meta.tp_p1_done === true
+    || meta.trail_active === true
+    || meta.tp_p1_pending === true
+    || nativeTpArmed
+  )
+    ? null
+    : (Number.isFinite(nativeRefreshAtMs) ? Math.max(0, Date.now() - nativeRefreshAtMs) : null);
   return {
     symbol: upper(row.symbol_or_pair_id || row.symbol),
     state: upper(row.state || row.position_state),
@@ -116,6 +163,9 @@ function summarizePosition(row = {}) {
     native_tp_qty_ratio: toOptionalNum(meta.native_protection_tp_qty_ratio),
     native_stop_order_id: meta.native_protection_stop_order_id || null,
     native_refresh_status: upper(meta.native_protection_refresh_status),
+    native_refresh_at_ms: nativeRefreshAtMs,
+    native_tp_gap_age_ms: nativeTpGapAgeMs,
+    native_tp_gap_escalated: Number.isFinite(nativeTpGapAgeMs) && nativeTpGapAgeMs >= 15000,
     canonical_exit_stage: upper(meta.canonical_exit_stage || meta.authoritative_exit_stage),
     updated_at: row.updated_at || null,
     tp0_meta_leak: !!(
@@ -196,8 +246,10 @@ function collectSymbolFlow({
   const trailFill = fillRows.find((row) => row.stage === "TRAIL");
   const tp1Transition = fillRows.find((row) => row.transitions.includes("TP1_REACHED"))
     || auditRows.find((row) => row.transitions.includes("TP1_REACHED"));
-  const trailTransition = fillRows.find((row) => row.transitions.includes("TRAIL_ACTIVATED") || row.transitions.includes("TRAIL_FINAL_EXIT") || row.transitions.includes("TRAIL_PARTIAL"))
-    || auditRows.find((row) => row.transitions.includes("TRAIL_ACTIVATED") || row.transitions.includes("TRAIL_FINAL_EXIT") || row.transitions.includes("TRAIL_PARTIAL"));
+  const trailTransition = fillRows.find((row) => row.transitions.includes("TRAIL_ACTIVATED") || row.transitions.includes("TRAIL_FINAL_EXIT"))
+    || auditRows.find((row) => row.transitions.includes("TRAIL_ACTIVATED") || row.transitions.includes("TRAIL_FINAL_EXIT"));
+  const forbiddenTrailPartialTransition = fillRows.find((row) => row.transitions.includes("TRAIL_PARTIAL"))
+    || auditRows.find((row) => row.transitions.includes("TRAIL_PARTIAL"));
 
   const issues = [];
   const nativeTpArmed = hasNativeTpArmed(position || {});
@@ -210,6 +262,12 @@ function collectSymbolFlow({
       code: "V2_NATIVE_TP_MISSING_PRE_TP1",
       detail: "active pre-TP1 simplified-exit-v2 position is missing native TP1 protection",
     });
+    if (Number.isFinite(toOptionalNum(position && position.native_tp_gap_age_ms))) {
+      issues.push({
+        code: position.native_tp_gap_escalated === true ? "V2_NATIVE_TP_GAP_ESCALATED" : "V2_NATIVE_TP_GAP_ACTIVE",
+        detail: `native TP gap age ${Number(position.native_tp_gap_age_ms)}ms (refresh_status=${position.native_refresh_status || "N/A"})`,
+      });
+    }
   }
   if (hasTp1Seen && nativeTpArmed !== true) {
     issues.push({
@@ -223,6 +281,12 @@ function collectSymbolFlow({
       detail: "trail transition/fill exists without TP1 transition/fill evidence",
     });
   }
+  if (forbiddenTrailPartialTransition) {
+    issues.push({
+      code: "V2_FORBIDDEN_TRAIL_PARTIAL_TRANSITION",
+      detail: "simplified-exit-v2 flow emitted forbidden TRAIL_PARTIAL transition",
+    });
+  }
   if (position && position.tp0_meta_leak === true) {
     issues.push({
       code: "V2_TP0_NATIVE_META_LEAK",
@@ -233,6 +297,8 @@ function collectSymbolFlow({
   return {
     symbol,
     native_tp_armed: nativeTpArmed,
+    native_tp_gap_age_ms: toOptionalNum(position && position.native_tp_gap_age_ms),
+    native_tp_gap_escalated: position && position.native_tp_gap_escalated === true,
     tp1_fill_seen: !!tp1Fill,
     tp1_transition_seen: !!tp1Transition,
     trail_fill_seen: !!trailFill,
@@ -301,7 +367,7 @@ function buildMarkdown(report = {}) {
     lines.push(`- state=${pos.state || "N/A"} side=${pos.position_side || "N/A"} qty=${pos.qty_base ?? "N/A"} avg=${pos.avg_price ?? "N/A"}`);
     lines.push(`- native_tp_armed=${flow.native_tp_armed ? "1" : "0"} tp1_fill_seen=${flow.tp1_fill_seen ? "1" : "0"} tp1_transition_seen=${flow.tp1_transition_seen ? "1" : "0"}`);
     lines.push(`- trail_fill_seen=${flow.trail_fill_seen ? "1" : "0"} trail_transition_seen=${flow.trail_transition_seen ? "1" : "0"}`);
-    lines.push(`- native_tp_order_id=${pos.native_tp_order_id || "N/A"} native_tp_status=${pos.native_tp_status || "N/A"} native_refresh_status=${pos.native_refresh_status || "N/A"}`);
+    lines.push(`- native_tp_order_id=${pos.native_tp_order_id || "N/A"} native_tp_status=${pos.native_tp_status || "N/A"} native_refresh_status=${pos.native_refresh_status || "N/A"} native_tp_gap_age_ms=${flow.native_tp_gap_age_ms ?? "N/A"} native_tp_gap_escalated=${flow.native_tp_gap_escalated ? "1" : "0"}`);
     if (Array.isArray(flow.issues) && flow.issues.length) {
       lines.push("- issues:");
       for (const issue of flow.issues) {
@@ -319,14 +385,17 @@ async function fetchRecentBinanceFillRows(db, sinceIso) {
   const rows = [];
   let last = null;
   for (;;) {
-    let q = db.collection("fills_paper").orderBy("created_at", "desc").limit(PAGE_SIZE);
+    let q = db.collection("fills_paper")
+      .where("created_at", ">=", sinceIso)
+      .orderBy("created_at", "desc")
+      .select(...FILL_SELECT_FIELDS)
+      .limit(PAGE_SIZE);
     if (last) q = q.startAfter(last);
     const snap = await q.get();
     if (snap.empty) break;
     for (const doc of snap.docs) {
       const row = doc.data() || {};
       if (upper(row.exchange) !== EXCHANGE) continue;
-      if (String(row.created_at || "") < sinceIso) continue;
       rows.push({ id: doc.id, ...row });
     }
     if (snap.size < PAGE_SIZE) break;
@@ -339,7 +408,11 @@ async function fetchRecentTradeAlertOutboxRows(db, sinceIso) {
   const rows = [];
   let last = null;
   for (;;) {
-    let q = db.collection("trade_alert_outbox").orderBy("__name__").limit(PAGE_SIZE);
+    let q = db.collection("trade_alert_outbox")
+      .where("created_at", ">=", sinceIso)
+      .orderBy("created_at", "desc")
+      .select(...OUTBOX_SELECT_FIELDS)
+      .limit(PAGE_SIZE);
     if (last) q = q.startAfter(last);
     const snap = await q.get();
     if (snap.empty) break;
@@ -368,7 +441,10 @@ async function fetchRecentTradeAlertOutboxRows(db, sinceIso) {
 
 async function fetchSimplifiedExitV2Positions(db) {
   const rows = [];
-  const snap = await db.collection("positions_paper").where("exchange", "==", EXCHANGE).get();
+  const snap = await db.collection("positions_paper")
+    .where("exchange", "==", EXCHANGE)
+    .select(...POSITION_SELECT_FIELDS)
+    .get();
   snap.forEach((doc) => {
     const row = doc.data() || {};
     if (!isSimplifiedExitV2Position(row)) return;
@@ -435,6 +511,9 @@ if (require.main === module) {
       toOptionalNum,
       collectSymbolFlow,
       buildReport,
+      FILL_SELECT_FIELDS,
+      OUTBOX_SELECT_FIELDS,
+      POSITION_SELECT_FIELDS,
     },
   };
 }

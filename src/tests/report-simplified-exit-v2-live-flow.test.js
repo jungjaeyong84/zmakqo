@@ -46,12 +46,17 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-live-flow");
       native_tp_status: null,
       native_tp_price: null,
       native_tp_qty_ratio: null,
+      native_refresh_status: "FAILED",
+      native_tp_gap_age_ms: 20_000,
+      native_tp_gap_escalated: true,
       tp0_meta_leak: false,
     },
     fills: [],
     alertAuditRows: [],
   });
   assert.ok(missingNativeTp.issues.some((issue) => issue.code === "V2_NATIVE_TP_MISSING_PRE_TP1"));
+  assert.ok(missingNativeTp.issues.some((issue) => issue.code === "V2_NATIVE_TP_GAP_ESCALATED"));
+  assert.strictEqual(missingNativeTp.native_tp_gap_escalated, true);
 
   const trailWithoutTp1 = __test.collectSymbolFlow({
     symbol: "ETHUSDT",
@@ -79,6 +84,31 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-live-flow");
   assert.ok(trailWithoutTp1.issues.some((issue) => issue.code === "V2_TRAIL_WITHOUT_TP1_TRANSITION"));
   assert.ok(trailWithoutTp1.issues.some((issue) => issue.code === "V2_TP0_NATIVE_META_LEAK"));
 
+  const forbiddenTrailPartial = __test.collectSymbolFlow({
+    symbol: "ETHUSDT",
+    position: {
+      symbol: "ETHUSDT",
+      state: "OPEN",
+      tp_p1_done: true,
+      trail_active: true,
+      native_tp_order_id: "tp-order-1",
+      native_tp_status: "OK",
+      native_tp_price: 2361.84,
+      native_tp_qty_ratio: 0.5,
+      tp0_meta_leak: false,
+    },
+    fills: [
+      {
+        symbol: "ETHUSDT",
+        event: "EXIT_TRAIL",
+        created_at: "2026-04-17T00:00:10.000Z",
+        canonical_transition_events: ["TRAIL_PARTIAL"],
+      },
+    ],
+    alertAuditRows: [],
+  });
+  assert.ok(forbiddenTrailPartial.issues.some((issue) => issue.code === "V2_FORBIDDEN_TRAIL_PARTIAL_TRANSITION"));
+
   const healthyReport = __test.buildReport({
     positions: [
       {
@@ -97,6 +127,7 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-live-flow");
           native_protection_tp_price: 2358.98,
           native_protection_tp_qty_ratio: 0.5,
           native_protection_refresh_status: "OK",
+          native_protection_refresh_at_ms: Date.now(),
           canonical_exit_stage: "TRAIL",
         },
       },
@@ -133,6 +164,9 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-live-flow");
   assert.deepStrictEqual(healthyReport.issue_code_counts, {});
   assert.strictEqual(healthyReport.symbols[0].flow.tp1_fill_seen, true);
   assert.strictEqual(healthyReport.symbols[0].flow.trail_transition_seen, true);
+  assert.strictEqual(healthyReport.symbols[0].flow.native_tp_gap_age_ms, null);
+  assert.ok(__test.FILL_SELECT_FIELDS.includes("canonical_transition_events"));
+  assert.ok(__test.POSITION_SELECT_FIELDS.includes("meta"));
 
   console.log("SIMPLIFIED_EXIT_V2_LIVE_FLOW_TEST_OK");
 })().catch((err) => {

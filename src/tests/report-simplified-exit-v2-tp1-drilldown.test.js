@@ -100,6 +100,9 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-tp1-drilldow
       native_tp_status: null,
       native_tp_price: null,
       native_tp_qty_ratio: null,
+      native_refresh_status: "FAILED",
+      native_tp_gap_age_ms: 20_000,
+      native_tp_gap_escalated: true,
     },
     intents: [
       {
@@ -115,6 +118,7 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-tp1-drilldow
     alertRows: [],
   });
   assert.ok(terminalIntentFailure.issues.some((issue) => issue.code === "V2_TP1_TERMINAL_INTENT_FAILURE"));
+  assert.ok(terminalIntentFailure.issues.some((issue) => issue.code === "V2_TP1_NATIVE_GAP_ESCALATED"));
 
   const ackWithoutMetaSync = __test.collectTp1Drilldown({
     symbol: "ETHUSDT",
@@ -163,6 +167,8 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-tp1-drilldow
           native_protection_tp_status: "OK",
           native_protection_tp_price: 2361.84,
           native_protection_tp_qty_ratio: 0.5,
+          native_protection_refresh_status: "OK",
+          native_protection_refresh_at_ms: Date.now(),
         },
       },
     ],
@@ -205,6 +211,9 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-tp1-drilldow
   assert.deepStrictEqual(healthy.issue_code_counts, {});
   assert.strictEqual(healthy.symbols[0].tp1.tp1_fill_n, 1);
   assert.strictEqual(healthy.symbols[0].tp1.tp1_alert_n, 1);
+  assert.strictEqual(healthy.symbols[0].tp1.native_tp_gap_age_ms, null);
+  assert.ok(__test.INTENT_SELECT_FIELDS.includes("live_submit_order_id"));
+  assert.ok(__test.OUTBOX_SELECT_FIELDS.includes("created_at"));
 
   console.log("SIMPLIFIED_EXIT_V2_TP1_DRILLDOWN_TEST_OK");
 })().catch((err) => {

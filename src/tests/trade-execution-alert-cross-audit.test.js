@@ -6,6 +6,12 @@ const { __test } = require("../../scripts/report-trade-execution-alert-cross-aud
 (async () => {
   assert.strictEqual(__test.normalizeComparableEvent("EXIT_TP_P0_0.8P_UNVERIFIED"), "EXIT_TP_P0_0.8P");
   assert.strictEqual(__test.normalizeComparableEvent("LONG"), "LONG");
+  assert.strictEqual(__test.resolveComparableAuditEvent({
+    event: "EXIT_TP_P0_0.8P",
+    canonical_event: "EXIT_TP_P1_1.68P",
+    canonical_transition_events: ["TP1_REACHED"],
+    simplified_exit_v2_enabled: true,
+  }), "EXIT_TP_P1_1.68P");
 
   const matched = __test.pickMatchingAlert(
     {
@@ -42,6 +48,30 @@ const { __test } = require("../../scripts/report-trade-execution-alert-cross-aud
     }]
   );
   assert.ok(groupedMatch, "split exit fills must match grouped alert evidence via dedupe key");
+
+  const simplifiedV2CanonicalMatch = __test.pickMatchingAlert(
+    {
+      fill_id: "EXT__V2_1",
+      symbol: "ETHUSDT",
+      event: "EXIT_TP_P0_0.8P",
+      canonical_event: "EXIT_TP_P1_1.68P",
+      canonical_transition_events: ["TP1_REACHED"],
+      simplified_exit_v2_enabled: true,
+      created_ms: Date.parse("2026-04-15T17:45:13.228Z"),
+      created_at: "2026-04-15T17:45:13.228Z",
+    },
+    [{
+      ts: "2026-04-15T17:45:49.140Z",
+      symbol: "ETHUSDT",
+      event: "EXIT_TP_P0_0.8P",
+      canonical_event: "EXIT_TP_P1_1.68P",
+      canonical_transition_events: ["TP1_REACHED"],
+      simplified_exit_v2_enabled: true,
+      source_fill_id: null,
+      title: "ETHUSDT TP1_1.68 50% 청산",
+    }]
+  );
+  assert.ok(simplifiedV2CanonicalMatch, "v2 raw tp0 evidence must match by canonical tp1 event");
 
   const report = __test.buildReport({
     coverageReady: true,
@@ -93,6 +123,24 @@ const { __test } = require("../../scripts/report-trade-execution-alert-cross-aud
     false,
     "verified raw TP fills without canonical transitions must not be actionable"
   );
+  assert.strictEqual(
+    __test.hasForbiddenSimplifiedExitV2Transition({
+      event: "EXIT_TRAIL",
+      canonical_transition_events: ["TRAIL_PARTIAL"],
+      simplified_exit_v2_enabled: true,
+    }),
+    true
+  );
+  assert.strictEqual(
+    __test.isActionableVerifiedExitFill({
+      event: "EXIT_TRAIL",
+      stage: "TRAIL",
+      canonical_transition_events: ["TRAIL_PARTIAL"],
+      simplified_exit_v2_enabled: true,
+    }),
+    false,
+    "v2 forbidden transitions must not be treated as actionable verified exits"
+  );
 
   const deduped = __test.dedupeAlertAuditRows([
     {
@@ -113,6 +161,8 @@ const { __test } = require("../../scripts/report-trade-execution-alert-cross-aud
     },
   ]);
   assert.strictEqual(deduped.length, 1);
+  assert.ok(__test.FILL_SELECT_FIELDS.includes("canonical_transition_events"));
+  assert.ok(__test.OUTBOX_SELECT_FIELDS.includes("created_at"));
 
   console.log("TRADE_EXECUTION_ALERT_CROSS_AUDIT_TEST_OK");
 })().catch((err) => {

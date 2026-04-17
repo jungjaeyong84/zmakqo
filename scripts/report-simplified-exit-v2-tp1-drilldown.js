@@ -10,6 +10,58 @@ const { getFirestore } = require("../src/storage/firestore");
 const LOOKBACK_HOURS = Math.max(1, Number(process.env.SIMPLIFIED_EXIT_V2_TP1_DRILLDOWN_LOOKBACK_HOURS || 48));
 const PAGE_SIZE = Math.max(100, Number(process.env.SIMPLIFIED_EXIT_V2_TP1_DRILLDOWN_PAGE_SIZE || 1000));
 const EXCHANGE = "BINANCEFUT";
+const FILL_SELECT_FIELDS = Object.freeze([
+  "exchange",
+  "symbol",
+  "symbol_or_pair_id",
+  "event",
+  "fill_id",
+  "created_at",
+  "canonical_transition_events",
+  "canonical_primary_transition_event",
+]);
+const INTENT_SELECT_FIELDS = Object.freeze([
+  "exchange",
+  "symbol",
+  "symbol_or_pair_id",
+  "event",
+  "intent_id",
+  "created_at",
+  "updated_at",
+  "status",
+  "status_reason",
+  "cancel_reason",
+  "decision_reason",
+  "live_submit_state",
+  "live_submit_started_at_ms",
+  "live_submit_ack_at_ms",
+  "live_submit_order_id",
+  "live_submit_client_order_id",
+  "last_error",
+  "live_submit_error",
+]);
+const OUTBOX_SELECT_FIELDS = Object.freeze([
+  "created_at",
+  "updated_at",
+  "sent_at",
+  "type",
+  "status",
+  "exchange",
+  "symbol",
+  "event",
+  "source_fill_id",
+  "last_title",
+  "canonical_transition_events",
+  "canonical_primary_transition_event",
+]);
+const POSITION_SELECT_FIELDS = Object.freeze([
+  "exchange",
+  "symbol",
+  "symbol_or_pair_id",
+  "state",
+  "updated_at",
+  "meta",
+]);
 
 function nowIso() {
   return new Date().toISOString();
@@ -109,6 +161,20 @@ function dedupeAlertRows(rows = []) {
 
 function summarizePosition(row = {}) {
   const meta = row && typeof row.meta === "object" ? row.meta : {};
+  const nativeTpArmed = !!(
+    trimOrNull(meta.native_protection_tp_order_id)
+    || upper(meta.native_protection_tp_status) === "OK"
+    || (toOptionalNum(meta.native_protection_tp_price) != null && toOptionalNum(meta.native_protection_tp_qty_ratio) != null)
+  );
+  const nativeRefreshAtMs = toOptionalNum(meta.native_protection_refresh_at_ms);
+  const nativeTpGapAgeMs = (
+    meta.tp_p1_done === true
+    || meta.trail_active === true
+    || meta.tp_p1_pending === true
+    || nativeTpArmed
+  )
+    ? null
+    : (Number.isFinite(nativeRefreshAtMs) ? Math.max(0, Date.now() - nativeRefreshAtMs) : null);
   return {
     symbol: upper(row.symbol_or_pair_id || row.symbol),
     state: upper(row.state || row.position_state),
@@ -121,6 +187,10 @@ function summarizePosition(row = {}) {
     native_tp_status: upper(meta.native_protection_tp_status),
     native_tp_price: toOptionalNum(meta.native_protection_tp_price),
     native_tp_qty_ratio: toOptionalNum(meta.native_protection_tp_qty_ratio),
+    native_refresh_status: upper(meta.native_protection_refresh_status),
+    native_refresh_at_ms: nativeRefreshAtMs,
+    native_tp_gap_age_ms: nativeTpGapAgeMs,
+    native_tp_gap_escalated: Number.isFinite(nativeTpGapAgeMs) && nativeTpGapAgeMs >= 15000,
   };
 }
 
@@ -272,6 +342,12 @@ function collectTp1Drilldown({
       detail: "TP1 intent shows ACK/order id but position meta does not carry native TP order id",
     });
   }
+  if (position && position.tp_p1_done !== true && position.trail_active !== true && nativeTpArmed !== true && Number.isFinite(toOptionalNum(position.native_tp_gap_age_ms))) {
+    issues.push({
+      code: position.native_tp_gap_escalated === true ? "V2_TP1_NATIVE_GAP_ESCALATED" : "V2_TP1_NATIVE_GAP_ACTIVE",
+      detail: `pre-TP1 native TP gap age ${Number(position.native_tp_gap_age_ms)}ms (refresh_status=${position.native_refresh_status || "N/A"})`,
+    });
+  }
   if (latestIntent && latestIntent.live_submit_order_id && position && position.native_tp_order_id && latestIntent.live_submit_order_id !== position.native_tp_order_id) {
     issues.push({
       code: "V2_TP1_ORDER_ID_MISMATCH",
@@ -288,6 +364,8 @@ function collectTp1Drilldown({
   return {
     symbol: normalizedSymbol,
     native_tp_armed: nativeTpArmed,
+    native_tp_gap_age_ms: toOptionalNum(position && position.native_tp_gap_age_ms),
+    native_tp_gap_escalated: position && position.native_tp_gap_escalated === true,
     state_claims_tp1: stateClaimsTp1,
     latest_intent: latestIntent,
     latest_fill: latestFill,
@@ -370,6 +448,7 @@ function buildMarkdown(report = {}) {
     lines.push(`## ${row.symbol}`);
     lines.push(`- state=${position.state || "N/A"} tp_p1_done=${position.tp_p1_done === true ? "1" : "0"} trail_active=${position.trail_active === true ? "1" : "0"} pending=${position.tp_p1_pending === true ? "1" : "0"}`);
     lines.push(`- native_tp_armed=${tp1.native_tp_armed ? "1" : "0"} intent_n=${tp1.tp1_intent_n ?? 0} fill_n=${tp1.tp1_fill_n ?? 0} alert_n=${tp1.tp1_alert_n ?? 0}`);
+    lines.push(`- native_tp_gap_age_ms=${tp1.native_tp_gap_age_ms ?? "N/A"} native_tp_gap_escalated=${tp1.native_tp_gap_escalated ? "1" : "0"}`);
     if (tp1.latest_intent) lines.push(`- latest_intent=${tp1.latest_intent.intent_id || "N/A"} status=${tp1.latest_intent.status || "N/A"} reason=${tp1.latest_intent.status_reason || "N/A"} submit=${tp1.latest_intent.live_submit_state || "N/A"}`);
     if (tp1.latest_fill) lines.push(`- latest_fill=${tp1.latest_fill.fill_id || "N/A"} event=${tp1.latest_fill.event || "N/A"} at=${tp1.latest_fill.created_at || "N/A"}`);
     if (tp1.latest_transition) lines.push(`- latest_transition=${tp1.latest_transition.source || "N/A"} event=${tp1.latest_transition.event || "N/A"} at=${tp1.latest_transition.at || "N/A"}`);
@@ -389,14 +468,17 @@ async function fetchRecentBinanceFillRows(db, sinceIso) {
   const rows = [];
   let last = null;
   for (;;) {
-    let q = db.collection("fills_paper").orderBy("created_at", "desc").limit(PAGE_SIZE);
+    let q = db.collection("fills_paper")
+      .where("created_at", ">=", sinceIso)
+      .orderBy("created_at", "desc")
+      .select(...FILL_SELECT_FIELDS)
+      .limit(PAGE_SIZE);
     if (last) q = q.startAfter(last);
     const snap = await q.get();
     if (snap.empty) break;
     for (const doc of snap.docs) {
       const row = doc.data() || {};
       if (upper(row.exchange) !== EXCHANGE) continue;
-      if (String(row.created_at || "") < sinceIso) continue;
       rows.push({ id: doc.id, ...row });
     }
     if (snap.size < PAGE_SIZE) break;
@@ -409,14 +491,17 @@ async function fetchRecentTp1Intents(db, sinceIso) {
   const rows = [];
   let last = null;
   for (;;) {
-    let q = db.collection("order_intents_paper").orderBy("created_at", "desc").limit(PAGE_SIZE);
+    let q = db.collection("order_intents_paper")
+      .where("created_at", ">=", sinceIso)
+      .orderBy("created_at", "desc")
+      .select(...INTENT_SELECT_FIELDS)
+      .limit(PAGE_SIZE);
     if (last) q = q.startAfter(last);
     const snap = await q.get();
     if (snap.empty) break;
     for (const doc of snap.docs) {
       const row = doc.data() || {};
       if (upper(row.exchange) !== EXCHANGE) continue;
-      if (String(row.created_at || "") < sinceIso) continue;
       if (!isTp1Event(row.event)) continue;
       rows.push({ id: doc.id, ...row });
     }
@@ -430,7 +515,11 @@ async function fetchRecentTradeAlertOutboxRows(db, sinceIso) {
   const rows = [];
   let last = null;
   for (;;) {
-    let q = db.collection("trade_alert_outbox").orderBy("__name__").limit(PAGE_SIZE);
+    let q = db.collection("trade_alert_outbox")
+      .where("created_at", ">=", sinceIso)
+      .orderBy("created_at", "desc")
+      .select(...OUTBOX_SELECT_FIELDS)
+      .limit(PAGE_SIZE);
     if (last) q = q.startAfter(last);
     const snap = await q.get();
     if (snap.empty) break;
@@ -459,7 +548,10 @@ async function fetchRecentTradeAlertOutboxRows(db, sinceIso) {
 
 async function fetchSimplifiedExitV2Positions(db) {
   const rows = [];
-  const snap = await db.collection("positions_paper").where("exchange", "==", EXCHANGE).get();
+  const snap = await db.collection("positions_paper")
+    .where("exchange", "==", EXCHANGE)
+    .select(...POSITION_SELECT_FIELDS)
+    .get();
   snap.forEach((doc) => {
     const row = doc.data() || {};
     if (!isSimplifiedExitV2Position(row)) return;
@@ -526,6 +618,10 @@ if (require.main === module) {
       isTp1IntentAcked,
       collectTp1Drilldown,
       buildReport,
+      FILL_SELECT_FIELDS,
+      INTENT_SELECT_FIELDS,
+      OUTBOX_SELECT_FIELDS,
+      POSITION_SELECT_FIELDS,
     },
   };
 }

@@ -212,6 +212,79 @@ function buildSkippedScriptStep(parsed = {}) {
   };
 }
 
+function normalizeCycleProfile(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "gate" || normalized === "deploy" || normalized === "ci") return "gate";
+  return "ops";
+}
+
+function firstEnv(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function resolveCycleProfileEnv(profile = "ops") {
+  const normalized = normalizeCycleProfile(profile);
+  if (normalized === "gate") {
+    return {
+      EXIT_INTEGRITY_PROFILE: "gate",
+    };
+  }
+  return {
+    EXIT_INTEGRITY_PROFILE: "ops",
+    CANONICAL_EXIT_TRANSITION_BACKFILL_LOOKBACK_DAYS: firstEnv(
+      process.env.EXIT_INTEGRITY_CANONICAL_TRANSITION_LOOKBACK_DAYS,
+      process.env.CANONICAL_EXIT_TRANSITION_BACKFILL_LOOKBACK_DAYS,
+      "2"
+    ),
+    CANONICAL_EXIT_TRANSITION_BACKFILL_PAGE_SIZE: firstEnv(
+      process.env.EXIT_INTEGRITY_CANONICAL_TRANSITION_PAGE_SIZE,
+      process.env.CANONICAL_EXIT_TRANSITION_BACKFILL_PAGE_SIZE,
+      "250"
+    ),
+    TRADE_EXEC_ALERT_CROSS_AUDIT_LOOKBACK_HOURS: firstEnv(
+      process.env.TRADE_EXEC_ALERT_CROSS_AUDIT_LOOKBACK_HOURS,
+      "6"
+    ),
+    TRADE_EXEC_ALERT_CROSS_AUDIT_PAGE_SIZE: firstEnv(
+      process.env.TRADE_EXEC_ALERT_CROSS_AUDIT_PAGE_SIZE,
+      "250"
+    ),
+    BINANCE_CANONICAL_EXIT_STAGE_QA_LOOKBACK_HOURS: firstEnv(
+      process.env.BINANCE_CANONICAL_EXIT_STAGE_QA_LOOKBACK_HOURS,
+      "24"
+    ),
+    BINANCE_CANONICAL_EXIT_STAGE_QA_FILL_SCAN_LIMIT: firstEnv(
+      process.env.BINANCE_CANONICAL_EXIT_STAGE_QA_FILL_SCAN_LIMIT,
+      "150"
+    ),
+    BINANCE_CANONICAL_EXIT_STAGE_QA_TRANSITION_SCAN_LIMIT: firstEnv(
+      process.env.BINANCE_CANONICAL_EXIT_STAGE_QA_TRANSITION_SCAN_LIMIT,
+      "150"
+    ),
+    SIMPLIFIED_EXIT_V2_LIVE_FLOW_LOOKBACK_HOURS: firstEnv(
+      process.env.SIMPLIFIED_EXIT_V2_LIVE_FLOW_LOOKBACK_HOURS,
+      "12"
+    ),
+    SIMPLIFIED_EXIT_V2_LIVE_FLOW_PAGE_SIZE: firstEnv(
+      process.env.SIMPLIFIED_EXIT_V2_LIVE_FLOW_PAGE_SIZE,
+      "250"
+    ),
+    SIMPLIFIED_EXIT_V2_TP1_DRILLDOWN_LOOKBACK_HOURS: firstEnv(
+      process.env.SIMPLIFIED_EXIT_V2_TP1_DRILLDOWN_LOOKBACK_HOURS,
+      "12"
+    ),
+    SIMPLIFIED_EXIT_V2_TP1_DRILLDOWN_PAGE_SIZE: firstEnv(
+      process.env.SIMPLIFIED_EXIT_V2_TP1_DRILLDOWN_PAGE_SIZE,
+      "250"
+    ),
+  };
+}
+
 function buildMarkdown(report = {}) {
   const lines = [];
   const summary = report.summary || {};
@@ -522,8 +595,11 @@ async function runBinanceExitIntegrityCycle({
   skipWhenNoActivePositions = envBool(process.env.EXIT_INTEGRITY_SKIP_WHEN_NO_ACTIVE_POSITIONS, false),
   listActivePositions = listRawExchangePositions,
   activePositionPrecheckLimit = Number(process.env.EXIT_INTEGRITY_ACTIVE_PRECHECK_LIMIT || 25),
+  profile = normalizeCycleProfile(process.env.EXIT_INTEGRITY_PROFILE || "ops"),
 } = {}) {
   fs.mkdirSync(opsDailyDir, { recursive: true });
+  const cycleProfile = normalizeCycleProfile(profile);
+  const cycleProfileEnv = resolveCycleProfileEnv(cycleProfile);
 
   if (enabled !== true) {
     const skippedReport = buildSkippedCycleReport({
@@ -629,31 +705,30 @@ async function runBinanceExitIntegrityCycle({
     disableExchangeIo
       ? Promise.resolve(buildSkippedScriptStep({ created_transition_n: 0 }))
       : runScriptStep("backfill-canonical-exit-transitions.js", {
-        CANONICAL_EXIT_TRANSITION_BACKFILL_LOOKBACK_DAYS: String(
-          process.env.EXIT_INTEGRITY_CANONICAL_TRANSITION_LOOKBACK_DAYS
-          || process.env.CANONICAL_EXIT_TRANSITION_BACKFILL_LOOKBACK_DAYS
-          || 7
-        ),
-        CANONICAL_EXIT_TRANSITION_BACKFILL_PAGE_SIZE: String(
-          process.env.EXIT_INTEGRITY_CANONICAL_TRANSITION_PAGE_SIZE
-          || process.env.CANONICAL_EXIT_TRANSITION_BACKFILL_PAGE_SIZE
-          || 500
-        ),
+        ...cycleProfileEnv,
       }),
     runScriptStep("report-fill-sync-alert-duplication.js"),
     runScriptStep("report-fill-sync-alert-event-consistency.js"),
-    runScriptStep("report-trade-execution-alert-cross-audit.js"),
+    runScriptStep("report-trade-execution-alert-cross-audit.js", {
+      ...cycleProfileEnv,
+    }),
     runScriptStep("report-binance-exit-qty-contract-audit.js"),
     runScriptStep("report-trail-runner-floor-audit.js"),
     disableExchangeIo
       ? Promise.resolve(buildSkippedScriptStep({ fail_n: 0, active_position_n: 0 }))
-      : runScriptStep("report-binance-canonical-exit-stage-qa.js"),
+      : runScriptStep("report-binance-canonical-exit-stage-qa.js", {
+        ...cycleProfileEnv,
+      }),
     disableExchangeIo
       ? Promise.resolve(buildSkippedScriptStep({ actionable_symbol_n: 0, issue_code_counts: {} }))
-      : runScriptStep("report-simplified-exit-v2-live-flow.js"),
+      : runScriptStep("report-simplified-exit-v2-live-flow.js", {
+        ...cycleProfileEnv,
+      }),
     disableExchangeIo
       ? Promise.resolve(buildSkippedScriptStep({ actionable_symbol_n: 0, issue_code_counts: {} }))
-      : runScriptStep("report-simplified-exit-v2-tp1-drilldown.js"),
+      : runScriptStep("report-simplified-exit-v2-tp1-drilldown.js", {
+        ...cycleProfileEnv,
+      }),
   ]);
   const [
     fillSyncAlertDuplicationLiveSeparation,
@@ -671,6 +746,7 @@ async function runBinanceExitIntegrityCycle({
     generated_at: new Date().toISOString(),
     exchange,
     apply,
+    profile: cycleProfile,
     exchange_io_disabled: disableExchangeIo,
     active_exit_stage_backfill: stageBackfill,
     active_exit_watchdog: activeExitWatchdog,
@@ -727,6 +803,8 @@ if (require.main === module) {
       collectScriptFailures,
       isActivePositionRow,
       buildSkippedSummary,
+      normalizeCycleProfile,
+      resolveCycleProfileEnv,
     },
   };
 }

@@ -6,6 +6,7 @@ const { __test } = require("../../scripts/report-binance-canonical-exit-stage-qa
 function run() {
   assert.ok(__test, "__test export missing");
   assert.strictEqual(__test.resolveWatchdogCanonicalStage("BETWEEN_TP0_TP1"), "TP0");
+  assert.strictEqual(__test.resolveWatchdogCanonicalStage("RUNNER"), "TP1");
   assert.strictEqual(__test.resolveWatchdogCanonicalStage("TRAIL"), "TRAIL");
 
   const evidenceStage = __test.resolveCanonicalEvidenceStage({
@@ -88,6 +89,8 @@ function run() {
   assert.strictEqual(summary.stop_authority_fail_n, 1);
   assert.deepStrictEqual(summary.failing_symbols, ["ETHUSDT", "BTCUSDT"]);
   assert.deepStrictEqual(summary.top_issue_codes[0], { code: "CANONICAL_EVIDENCE_STAGE_MISMATCH", count: 1 });
+  assert.ok(__test.QA_FILL_SELECT_FIELDS.includes("canonical_transition_events"));
+  assert.ok(__test.QA_TRANSITION_SELECT_FIELDS.includes("canonical_transition_event"));
 
   console.log("REPORT_BINANCE_CANONICAL_EXIT_STAGE_QA_TEST_OK");
 }

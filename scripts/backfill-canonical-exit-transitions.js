@@ -15,6 +15,44 @@ const {
 
 const LOOKBACK_DAYS = Math.max(1, Number(process.env.CANONICAL_EXIT_TRANSITION_BACKFILL_LOOKBACK_DAYS || 30));
 const PAGE_SIZE = Math.max(100, Number(process.env.CANONICAL_EXIT_TRANSITION_BACKFILL_PAGE_SIZE || 1000));
+const FILL_SELECT_FIELDS = Object.freeze([
+  "fill_id",
+  "exchange",
+  "symbol",
+  "symbol_or_pair_id",
+  "event",
+  "created_at",
+  "updated_at",
+  "trade_id",
+  "trade_ms",
+  "external_trade_id",
+  "exec_bar_close_time_utc_ms",
+  "qty_fraction",
+  "qty_pct",
+  "contract_entry_qty_abs",
+  "contract_tp0_allowed_abs",
+  "contract_tp0_consumed_abs",
+  "contract_tp1_allowed_abs",
+  "contract_tp1_consumed_abs",
+  "contract_runner_allowed_abs",
+  "contract_runner_remaining_abs",
+  "contract_trail_consumed_abs",
+  "contract_observed_qty_abs",
+  "canonical_exit_event",
+  "canonical_exit_stage",
+  "canonical_transition_events",
+  "canonical_primary_transition_event",
+  "canonical_exit_chain_key",
+  "canonical_exit_reason",
+  "entry_event_id",
+  "signal_doc_id",
+  "external_order_id",
+  "external_client_order_id",
+  "simplified_exit_v2_enabled",
+  "simplifiedExitV2Enabled",
+  "extra",
+  "meta",
+]);
 
 function upper(value) {
   return String(value || "").trim().toUpperCase() || null;
@@ -25,12 +63,24 @@ function toNum(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+function isSimplifiedExitV2Row(row = {}) {
+  const extra = row && row.extra && typeof row.extra === "object" ? row.extra : {};
+  const meta = row && row.meta && typeof row.meta === "object" ? row.meta : {};
+  return row.simplified_exit_v2_enabled === true
+    || row.simplifiedExitV2Enabled === true
+    || extra.simplified_exit_v2_enabled === true
+    || extra.simplifiedExitV2Enabled === true
+    || meta.simplified_exit_v2_enabled === true
+    || meta.simplifiedExitV2Enabled === true;
+}
+
 function buildTransitionEvents(stage, row) {
   const extra = row && row.extra && typeof row.extra === "object" ? row.extra : {};
   const qty = Number(row.qty_fraction ?? row.qty_pct ?? extra.qty_fraction);
-  if (stage === "TP0") return ["TP0_REACHED"];
-  if (stage === "TP1") return ["TP1_REACHED", "TRAIL_ACTIVE"];
-  if (stage === "TRAIL") return [qty >= 0.999 ? "TRAIL_FINAL_EXIT" : "TRAIL_PARTIAL"];
+  const simplifiedExitV2 = isSimplifiedExitV2Row(row);
+  if (stage === "TP0") return simplifiedExitV2 ? [] : ["TP0_REACHED"];
+  if (stage === "TP1") return simplifiedExitV2 ? ["TP1_REACHED", "TRAIL_ACTIVATED"] : ["TP1_REACHED", "TRAIL_ACTIVE"];
+  if (stage === "TRAIL") return simplifiedExitV2 ? ["TRAIL_FINAL_EXIT"] : [qty >= 0.999 ? "TRAIL_FINAL_EXIT" : "TRAIL_PARTIAL"];
   return [];
 }
 
@@ -109,14 +159,17 @@ async function main() {
   let skippedExistingFillN = 0;
   const rows = [];
   for (;;) {
-    let q = db.collection("fills_paper").orderBy("created_at", "desc").limit(PAGE_SIZE);
+    let q = db.collection("fills_paper")
+      .where("created_at", ">=", sinceIso)
+      .orderBy("created_at", "desc")
+      .select(...FILL_SELECT_FIELDS)
+      .limit(PAGE_SIZE);
     if (last) q = q.startAfter(last);
     const snap = await q.get();
     if (snap.empty) break;
     for (const doc of snap.docs) {
       const row = { id: doc.id, ...(doc.data() || {}) };
       if (upper(row.exchange) !== "BINANCEFUT") continue;
-      if (String(row.created_at || "") < sinceIso) continue;
       scanned += 1;
       const payload = buildCanonicalTransitionPayload(row);
       if (!payload || !payload.fillId) continue;
@@ -164,8 +217,10 @@ if (require.main === module) {
 module.exports = {
   __test: {
     upper,
+    isSimplifiedExitV2Row,
     buildTransitionEvents,
     buildLedger,
     buildCanonicalTransitionPayload,
+    FILL_SELECT_FIELDS,
   },
 };

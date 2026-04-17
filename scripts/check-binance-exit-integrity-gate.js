@@ -25,6 +25,7 @@ function buildFailureReasons(summary = {}) {
   if (toCount(summary.duplication_live_group_n) > 0) reasons.push("DUPLICATION_LIVE_GROUP");
   if (toCount(summary.authority_actionable_live_issue_position_n) > 0) reasons.push("AUTHORITY_ACTIONABLE_LIVE_ISSUE_POSITION");
   if (toCount(summary.canonical_exit_stage_fail_n) > 0) reasons.push("CANONICAL_EXIT_STAGE_FAIL");
+  if (toCount(summary.simplified_exit_v2_live_flow_actionable_symbol_n) > 0) reasons.push("SIMPLIFIED_EXIT_V2_LIVE_FLOW_ACTIONABLE_SYMBOL");
   if (toCount(summary.tp1_meta_sync_gap_n) > 0) reasons.push("TP1_META_SYNC_GAP");
   if (toCount(summary.stop_divergence_symbol_n) > 0) reasons.push("STOP_DIVERGENCE_SYMBOL");
   return reasons;
@@ -33,6 +34,7 @@ function buildFailureReasons(summary = {}) {
 async function main() {
   const result = await runBinanceExitIntegrityCycle({
     apply: false,
+    profile: "gate",
   });
   const summary = result && result.summary ? result.summary : {};
   const reasons = buildFailureReasons(summary);

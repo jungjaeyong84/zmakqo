@@ -272,6 +272,10 @@ function buildScriptResult(parsed) {
   assert.strictEqual(__test.isActivePositionRow({ runner_remaining_abs: 0.1 }), true);
   assert.strictEqual(__test.isActivePositionRow({ stage: "CLOSED", runner_remaining_abs: 1 }), false);
   assert.strictEqual(__test.isActivePositionRow({ status: "OPEN" }), true);
+  assert.strictEqual(__test.normalizeCycleProfile("deploy"), "gate");
+  assert.strictEqual(__test.normalizeCycleProfile("ops"), "ops");
+  assert.strictEqual(__test.resolveCycleProfileEnv("gate").EXIT_INTEGRITY_PROFILE, "gate");
+  assert.strictEqual(__test.resolveCycleProfileEnv("ops").SIMPLIFIED_EXIT_V2_TP1_DRILLDOWN_LOOKBACK_HOURS, "12");
 
   console.log("BINANCE_EXIT_INTEGRITY_CYCLE_TEST_OK");
 })().catch((err) => {
