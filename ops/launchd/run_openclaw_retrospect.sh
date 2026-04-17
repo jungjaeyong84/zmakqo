@@ -10,5 +10,12 @@ export GOOGLE_CLOUD_PROJECT="${GOOGLE_CLOUD_PROJECT:-donbeolja-dev}"
 export GCLOUD_PROJECT="${GCLOUD_PROJECT:-donbeolja-dev}"
 export OPENCLAW_RETROSPECT_LOOKBACK_HOURS="${OPENCLAW_RETROSPECT_LOOKBACK_HOURS:-24}"
 export OPENCLAW_RETROSPECT_LIMIT="${OPENCLAW_RETROSPECT_LIMIT:-50}"
+# OpenClaw phase flags (OPENCLAW_*) — managed by ops/deploy/apply_openclaw_phase.sh.
+if [ -f "$HOME/.env.openclaw" ]; then
+  set -o allexport
+  # shellcheck disable=SC1091
+  . "$HOME/.env.openclaw"
+  set +o allexport
+fi
 cd /Users/jeongjaeyong/Projects/donbeolja
 node scripts/run-openclaw-retrospect.js

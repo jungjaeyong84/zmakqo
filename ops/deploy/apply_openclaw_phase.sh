@@ -207,15 +207,32 @@ echo "--- diff vs backup ---"
 diff -u "$BACKUP" "$ENV_FILE" || true
 
 # ───────────────────────────────────────────────────────────────────
-# Optional restart of the tick service so new env takes effect.
+# Optional restart of the main server (and the tick cron, if present)
+# so the new ~/.env.openclaw takes effect. The server wrapper
+# `ops/launchd/run_server.sh` sources ~/.env.openclaw on boot, so a
+# restart is the canonical way to pick up phase changes.
 # ───────────────────────────────────────────────────────────────────
 if [[ "$RESTART" == "--restart" ]]; then
-  if launchctl list | grep -q 'com.jaeyong.donbeolja.tick'; then
-    echo "[apply_openclaw_phase] restarting com.jaeyong.donbeolja.tick"
-    launchctl unload -w "$HOME/Library/LaunchAgents/com.jaeyong.donbeolja.tick.plist" 2>/dev/null || true
-    launchctl load  -w "$HOME/Library/LaunchAgents/com.jaeyong.donbeolja.tick.plist" 2>/dev/null || true
-  else
-    echo "[apply_openclaw_phase] tick launch agent not loaded; skipping restart"
+  restart_agent() {
+    local label="$1"
+    local plist="$2"
+    if [[ ! -f "$plist" ]]; then
+      echo "[apply_openclaw_phase] plist missing, skipping: $plist"
+      return 0
+    fi
+    echo "[apply_openclaw_phase] restarting $label"
+    launchctl unload -w "$plist" 2>/dev/null || true
+    launchctl load  -w "$plist" 2>/dev/null || true
+  }
+
+  # The product server (KeepAlive agent) — mandatory target.
+  restart_agent "com.jeongjaeyong.donbeolja.server" \
+    "$HOME/Library/LaunchAgents/com.jeongjaeyong.donbeolja.server.plist"
+
+  # Legacy tick agent — optional; only if still installed.
+  if launchctl list 2>/dev/null | grep -q 'com.jaeyong.donbeolja.tick'; then
+    restart_agent "com.jaeyong.donbeolja.tick" \
+      "$HOME/Library/LaunchAgents/com.jaeyong.donbeolja.tick.plist"
   fi
 fi
 

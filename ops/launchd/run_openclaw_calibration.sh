@@ -11,5 +11,12 @@ export GCLOUD_PROJECT="${GCLOUD_PROJECT:-donbeolja-dev}"
 export OPENCLAW_CALIBRATION_LOOKBACK_HOURS="${OPENCLAW_CALIBRATION_LOOKBACK_HOURS:-168}"
 export OPENCLAW_CALIBRATION_MIN_SAMPLE="${OPENCLAW_CALIBRATION_MIN_SAMPLE:-20}"
 export OPENCLAW_CALIBRATION_TRUST_FLOOR="${OPENCLAW_CALIBRATION_TRUST_FLOOR:-0.3}"
+# OpenClaw phase flags (OPENCLAW_*) — managed by ops/deploy/apply_openclaw_phase.sh.
+if [ -f "$HOME/.env.openclaw" ]; then
+  set -o allexport
+  # shellcheck disable=SC1091
+  . "$HOME/.env.openclaw"
+  set +o allexport
+fi
 cd /Users/jeongjaeyong/Projects/donbeolja
 node scripts/report-openclaw-calibration.js

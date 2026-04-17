@@ -12,5 +12,12 @@ export GCLOUD_PROJECT="${GCLOUD_PROJECT:-donbeolja-dev}"
 # the cron is effective the moment OPENCLAW_AGENT_SHADOW_ENABLED=1 is flipped.
 export DRY_RUN="${OPENCLAW_LINKER_DRY_RUN:-0}"
 export OPENCLAW_EVIDENCE_LINKER_LOOKBACK_DAYS="${OPENCLAW_EVIDENCE_LINKER_LOOKBACK_DAYS:-7}"
+# OpenClaw phase flags (OPENCLAW_*) — managed by ops/deploy/apply_openclaw_phase.sh.
+if [ -f "$HOME/.env.openclaw" ]; then
+  set -o allexport
+  # shellcheck disable=SC1091
+  . "$HOME/.env.openclaw"
+  set +o allexport
+fi
 cd /Users/jeongjaeyong/Projects/donbeolja
 node scripts/link-openclaw-evidence-outcomes.js
