@@ -7,6 +7,7 @@ const { prepareTradeAlertOutbox, markTradeAlertOutboxResult } = require("../stor
 const { sendAlert } = require("../utils/alerts");
 const { resolveEventMapping } = require("./signalStandard");
 const { resolveCanonicalAlertExitStage } = require("./positionStateMachine");
+const { isSimplifiedExitV2Active } = require("./simplifiedExitV2");
 const { canonicalExternalEntryEvent, resolveEntryTimingTier } = require("../utils/liveEntryTaxonomy");
 
 const channelCache = new Map();
@@ -161,7 +162,6 @@ function resolveExitContractLedgerLines(payload = {}) {
   }
   const contractParts = [];
   if (Number.isFinite(entry) && entry > 0) contractParts.push(`ENTRY ${formatBaseQty(entry)}`);
-  if (simplifiedV2 !== true && Number.isFinite(tp0Allowed) && tp0Allowed > 0) contractParts.push(`TP0 ${formatBaseQty(tp0Allowed)}`);
   if (Number.isFinite(tp1Allowed) && tp1Allowed > 0) contractParts.push(`TP1 ${formatBaseQty(tp1Allowed)}`);
   if (Number.isFinite(runnerRemaining) && runnerRemaining >= 0) contractParts.push(`RUNNER ${formatBaseQty(runnerRemaining)}`);
   if (contractParts.length) {
@@ -209,13 +209,8 @@ function ratioToPctToken(rawRatio, { abs = false } = {}) {
 
 function parseExitEventMeta(event, { simplifiedExitV2Enabled = false } = {}) {
   const ev = String(event || "").toUpperCase();
-  if (simplifiedExitV2Enabled === true) {
-    let v2Tp0 = ev.match(/^EXIT_TP_P0_([0-9]+(?:\.[0-9]+)?)P$/);
-    if (v2Tp0) return { token: `TP1_${v2Tp0[1]}`, label: `익절(TP1) ${v2Tp0[1]}%` };
-    if (ev.startsWith("EXIT_TP_P0")) return { token: "TP1", label: "익절(TP1)" };
-  }
   let m = ev.match(/^EXIT_TP_P0_([0-9]+(?:\.[0-9]+)?)P$/);
-  if (m) return { token: `TP0_${m[1]}`, label: `익절(TP0) ${m[1]}%` };
+  if (m) return { token: `TP1_${m[1]}`, label: `익절(TP1) ${m[1]}%` };
   m = ev.match(/^EXIT_TP_P1_([0-9]+(?:\.[0-9]+)?)P$/);
   if (m) return { token: `TP1_${m[1]}`, label: `익절(TP1) ${m[1]}%` };
   m = ev.match(/^EXIT_TP_C_([0-9]+(?:\.[0-9]+)?)P$/);
@@ -230,7 +225,7 @@ function parseExitEventMeta(event, { simplifiedExitV2Enabled = false } = {}) {
   if (m) return { token: `BE_${m[1]}`, label: `브레이크이븐 ${m[1]}%` };
   m = ev.match(/^EXIT_TIME_STOP_(\d+)B$/);
   if (m) return { token: `TIME_STOP_${m[1]}B`, label: `시간청산 ${m[1]}봉` };
-  if (ev.startsWith("EXIT_TP_P0")) return { token: "TP0", label: "익절(TP0)" };
+  if (ev.startsWith("EXIT_TP_P0")) return { token: "TP1", label: "익절(TP1)" };
   if (ev.startsWith("EXIT_TP_P1")) return { token: "TP1", label: "익절(TP1)" };
   if (ev.startsWith("EXIT_TP_C")) return { token: "TP1", label: "익절(TP1)" };
   if (ev.startsWith("EXIT_TRAIL")) return { token: "TRAIL", label: "트레일링" };
@@ -252,6 +247,17 @@ function isSimplifiedExitV2Enabled(payload = {}) {
   if (payload.simplifiedExitV2Enabled === true || payload.simplified_exit_v2_enabled === true) return true;
   const shadow = payload.simplifiedExitV2Shadow || payload.simplified_exit_v2_shadow;
   if (shadow && typeof shadow === "object" && shadow.available === true) return true;
+  if (isSimplifiedExitV2Active(payload) === true) return true;
+  const exitRules = (payload.exitRules && typeof payload.exitRules === "object")
+    ? payload.exitRules
+    : ((payload.exit_rules && typeof payload.exit_rules === "object") ? payload.exit_rules : null);
+  if (exitRules) {
+    const tp0Pct = Number(exitRules.TP_P0);
+    const tp0Qty = Number(exitRules.TP_P0_QTY);
+    if ((Number.isFinite(tp0Pct) ? tp0Pct <= 0 : true) && (Number.isFinite(tp0Qty) ? tp0Qty <= 0 : true)) {
+      return true;
+    }
+  }
   return false;
 }
 
@@ -360,7 +366,7 @@ function resolveSimplifiedExitV2AlertProjection(payload = {}, rawEvent = null) {
     transitionEvent: primaryTransitionEvent,
     canonicalExitEvent,
   });
-  const stage = primaryTransitionEvent === "TP1_REACHED"
+  const stage = primaryTransitionEvent === "TP0_REACHED" || primaryTransitionEvent === "TP1_REACHED"
     ? "TP1"
     : (
       primaryTransitionEvent === "TRAIL_ACTIVATED" || primaryTransitionEvent === "TRAIL_FINAL_EXIT"
@@ -456,9 +462,7 @@ function resolveCanonicalExitAlertRequirement(payload = {}, rawEvent = null) {
 
 function buildGenericExitMeta(stage, { simplifiedExitV2Enabled = false } = {}) {
   if (stage === "TP0") {
-    return simplifiedExitV2Enabled === true
-      ? { token: "TP1", label: "익절(TP1)" }
-      : { token: "TP0", label: "익절(TP0)" };
+    return { token: "TP1", label: "익절(TP1)" };
   }
   if (stage === "TP1") return { token: "TP1", label: "익절(TP1)" };
   if (stage === "TRAIL") return { token: "TRAIL", label: "트레일링" };
@@ -531,7 +535,7 @@ function resolveCanonicalReclassificationLine(resolved = {}) {
   if (!resolved || resolved.overrideApplied !== true) return null;
   const rawEvidenceEvent = String(resolved.rawEvidenceEvent || "").trim().toUpperCase();
   const simplifiedV2Enabled = !!(resolved.simplifiedExitV2 && resolved.simplifiedExitV2.enabled === true);
-  const rawToken = (simplifiedV2Enabled && rawEvidenceEvent.startsWith("EXIT_TP_P0"))
+  const rawToken = (rawEvidenceEvent.startsWith("EXIT_TP_P0"))
     ? "RAW_EVIDENCE"
     : String(resolved.rawMeta && resolved.rawMeta.token || resolved.rawStage || "").trim();
   const canonicalToken = String(resolved.meta && resolved.meta.token || resolved.canonicalStage || "").trim();
@@ -647,9 +651,7 @@ function resolveExternalSyncContextLines(payload = {}) {
   const lines = [];
   if (stage === "TRAIL_AFTER_TP1") lines.push("동기화맥락: 트레일 종료 후 외부 동기화");
   else if (stage === "AFTER_TP1") lines.push("동기화맥락: TP1 이후 외부 동기화");
-  else if (stage === "AFTER_TP0") {
-    lines.push(simplifiedExitV2Enabled ? "동기화맥락: TP1 이전 외부 동기화" : "동기화맥락: TP0 이후 외부 동기화");
-  }
+  else if (stage === "AFTER_TP0") lines.push("동기화맥락: 러너 진입 전 외부 동기화");
   else if (stage === "UNTRACKED_CLOSE_POSITION") lines.push("동기화맥락: 비추적 closePosition 외부 청산");
   if (reason) lines.push(`동기화사유: ${reason}`);
   if (orderType || typeof closePosition === "boolean") {
