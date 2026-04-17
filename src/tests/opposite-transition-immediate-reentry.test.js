@@ -297,8 +297,8 @@ async function run() {
   });
   assert.strictEqual(repairedMeta.runtime_exit_repair_applied, true);
   assert.strictEqual(repairedMeta.exit_profile_reason, "ACTIVE_POSITION_RUNTIME_REPAIR");
-  assert.ok(repairedMeta.exit_rules_override && repairedMeta.exit_rules_override.TP_P0 > 0, "runtime repair must restore TP0");
-  assert.strictEqual(repairedMeta.exit_rules_override.TP_P0_QTY, 0.25);
+  assert.strictEqual(repairedMeta.exit_rules_override.TP_P0, 0, "runtime repair must keep TP0 retired");
+  assert.strictEqual(repairedMeta.exit_rules_override.TP_P0_QTY, 0);
   assert.strictEqual(repairedMeta.exit_rules_override.TP_P1, 0.0165);
 
   const invalidViolations = __test.collectCriticalExitRuleViolations({
@@ -314,7 +314,6 @@ async function run() {
       TRAIL_R_MULTIPLE: null,
     },
   });
-  assert.ok(invalidViolations.includes("TP0_MISSING"));
   assert.ok(invalidViolations.includes("TP1_MISSING"));
   assert.ok(invalidViolations.includes("SL_INVALID"));
   assert.ok(invalidViolations.includes("BE_INVALID"));
@@ -366,7 +365,8 @@ async function run() {
       tp1_ladder_stage: 0,
     },
   });
-  assert.ok(fullyRepairedMeta.exit_rules_override.TP_P0 > 0, "repair must restore TP0");
+  assert.strictEqual(fullyRepairedMeta.exit_rules_override.TP_P0, 0, "repair must keep TP0 retired");
+  assert.strictEqual(fullyRepairedMeta.exit_rules_override.TP_P0_QTY, 0, "repair must keep TP0 qty retired");
   assert.ok(fullyRepairedMeta.exit_rules_override.TP_P1 > 0, "repair must restore TP1");
   assert.ok(fullyRepairedMeta.exit_rules_override.SL < 0, "repair must restore negative SL");
   assert.ok(fullyRepairedMeta.exit_rules_override.BE_PCT >= 0, "repair must restore BE");
