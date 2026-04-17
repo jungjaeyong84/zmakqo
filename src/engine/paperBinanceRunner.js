@@ -9521,6 +9521,62 @@ function shouldExecuteImmediateNativeProtectionRefresh({
   return Number(remainingQtyBase) > POS_SIZE_EPSILON;
 }
 
+async function ensureLiveImmediateNativeProtection({
+  liveCfg,
+  exchange,
+  symbol,
+  requestArgs,
+  opening = false,
+  closing = false,
+  remainingQtyBase = null,
+  intent = null,
+  requestRepair = requestBinanceNativeProtectionRefresh,
+  refreshDirect = refreshBinanceNativeProtectionWithRetry,
+} = {}) {
+  const executeImmediately = shouldExecuteImmediateNativeProtectionRefresh({
+    liveDryRun: liveCfg && liveCfg.liveDryRun === true,
+    opening,
+    closing,
+    remainingQtyBase,
+  });
+  const repairResult = await requestRepair({
+    exchange,
+    symbol,
+    fallbackSide: requestArgs && requestArgs.fallbackSide,
+    fallbackEntryPrice: requestArgs && requestArgs.fallbackEntryPrice,
+    fallbackLeverage: requestArgs && requestArgs.fallbackLeverage,
+    exitRulesOverride: requestArgs && requestArgs.exitRulesOverride,
+    posMeta: requestArgs && requestArgs.posMeta,
+    source: "LIVE_EXECUTOR",
+    reason: closing ? "LIVE_EXECUTOR_POST_EXIT_FILL" : "LIVE_EXECUTOR_POST_ENTRY_FILL",
+    dispatchReason: `LIVE_EXECUTOR_NATIVE_STOP_REFRESH_${String(exchange || "").toUpperCase()}_${String(symbol || "").toUpperCase()}_${String(intent || "").toUpperCase() || "UNKNOWN"}`,
+    executeImmediately: false,
+    dispatchExitWorker: executeImmediately !== true,
+  });
+  if (executeImmediately !== true) return repairResult;
+  const directResult = await refreshDirect({
+    liveCfg,
+    exchange,
+    symbol,
+    fallbackSide: requestArgs && requestArgs.fallbackSide,
+    fallbackEntryPrice: requestArgs && requestArgs.fallbackEntryPrice,
+    fallbackLeverage: requestArgs && requestArgs.fallbackLeverage,
+    exitRulesOverride: requestArgs && requestArgs.exitRulesOverride,
+    posMeta: requestArgs && requestArgs.posMeta,
+    writerSource: "BINANCE_TICK_EXIT",
+  });
+  if (directResult && typeof directResult === "object") {
+    return {
+      ...directResult,
+      queued_request_id: repairResult && repairResult.request_id ? repairResult.request_id : null,
+      queued_request_reason: repairResult && repairResult.reason ? String(repairResult.reason) : null,
+      queued_dispatch_ok: repairResult && repairResult.dispatch_ok === true,
+      immediate_authority_refresh: true,
+    };
+  }
+  return directResult;
+}
+
 function buildLiveNativeProtectionRefreshArgs({
   liveCfg,
   exchange,
@@ -10802,23 +10858,15 @@ async function executeLiveFuturesOrder({
         exitRulesOverride,
         positionMeta: nativeProtectionMeta,
       });
-      nativeProtection = await requestBinanceNativeProtectionRefresh({
+      nativeProtection = await ensureLiveImmediateNativeProtection({
+        liveCfg,
         exchange,
         symbol,
-        fallbackSide: requestArgs.fallbackSide,
-        fallbackEntryPrice: requestArgs.fallbackEntryPrice,
-        fallbackLeverage: requestArgs.fallbackLeverage,
-        exitRulesOverride: requestArgs.exitRulesOverride,
-        posMeta: requestArgs.posMeta,
-        source: "LIVE_EXECUTOR",
-        reason: isExit ? "LIVE_EXECUTOR_POST_EXIT_FILL" : "LIVE_EXECUTOR_POST_ENTRY_FILL",
-        dispatchReason: `LIVE_EXECUTOR_NATIVE_STOP_REFRESH_${String(exchange || "").toUpperCase()}_${String(symbol || "").toUpperCase()}_${String(intent || "").toUpperCase() || "UNKNOWN"}`,
-        executeImmediately: shouldExecuteImmediateNativeProtectionRefresh({
-          liveDryRun: liveCfg.liveDryRun,
-          opening,
-          closing,
-          remainingQtyBase: projectedRemainingQtyBase,
-        }),
+        requestArgs,
+        opening,
+        closing,
+        remainingQtyBase: projectedRemainingQtyBase,
+        intent,
       });
     } catch (nativeErr) {
       nativeProtection = {
@@ -17302,6 +17350,7 @@ module.exports = {
     resolveSimplifiedExitV2PositionFlag,
     resolveNativeProtectionPositionMeta,
     shouldExecuteImmediateNativeProtectionRefresh,
+    ensureLiveImmediateNativeProtection,
     resolveLiveOrderSignalRefs,
     buildLiveNativeProtectionRefreshArgs,
     requestBinanceNativeProtectionRefresh,
