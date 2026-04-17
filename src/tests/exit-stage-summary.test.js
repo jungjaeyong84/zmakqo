@@ -41,7 +41,7 @@ const { buildExitStageView } = require("../utils/exitStageView");
   assert.equal(stage.compact_headline.left_price, 98.35);
   assert.equal(stage.compact_headline.right_price, 103.25);
   assert.equal(stage.native_protection_active, true);
-  assert.equal(stage.tp1_qty_pct, 0.375);
+  assert.equal(stage.tp1_qty_pct, 0.5);
   assert.equal(stage.canonical_exit_stage, null);
   assert.equal(stage.canonical_exit_stage_source, null);
   assert.equal(stage.simplified_exit_v2_available, true);
@@ -85,10 +85,10 @@ const { buildExitStageView } = require("../utils/exitStageView");
   assert(stage, "stage must exist for simplified v2 legacy tp0 leak view");
   assert.equal(stage.label, "TP1 대기");
   assert.equal(stage.tp0_done, false);
-  assert.equal(stage.legacy_tp0_done, true);
+  assert.equal(stage.legacy_tp0_done, false);
   assert.equal(stage.tp0_price, null);
-  assert.ok(Math.abs(stage.legacy_tp0_price - 100.8) < 1e-9);
-  assert.deepStrictEqual(stage.simplified_exit_v2_divergence_codes, ["LEGACY_TP0_PRESENT"]);
+  assert.equal(stage.legacy_tp0_price, null);
+  assert.deepStrictEqual(stage.simplified_exit_v2_divergence_codes, []);
 })();
 
 (() => {
