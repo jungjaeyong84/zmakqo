@@ -1,6 +1,7 @@
 "use strict";
 
 const { normalizePositionSide, resolveCloseSide } = require("../utils/positionSide");
+const { isSimplifiedExitV2Active } = require("./simplifiedExitV2");
 const {
   resolveTp0ContractQtyRatio,
   resolveTp1AbsoluteContractQtyRatio,
@@ -12,8 +13,7 @@ function toNum(value) {
 }
 
 function isSimplifiedExitV2Enabled(meta = {}) {
-  const baseMeta = meta && typeof meta === "object" ? meta : {};
-  return baseMeta.simplified_exit_v2_enabled === true || baseMeta.simplifiedExitV2Enabled === true;
+  return isSimplifiedExitV2Active(meta);
 }
 
 function normalizeAlgoOrderFetchResult(payload) {
@@ -336,7 +336,50 @@ function classifyTakeProfitOrders({ orders = [], positionSide, qtyBase, meta = {
   };
 }
 
+// P3-04: when Binance reports qty=0 but internal meta had an active trail,
+// the FLAT projection erases the canonical context before the trail-final
+// fill can be processed. We preserve a forensic "frozen" snapshot so the
+// alert / canonical transition layer can still classify the final fill as
+// TRAIL_FINAL_EXIT instead of EXIT_EXTERNAL_SYNC when fills arrive late.
+// The operational alert emitted here lets ops correlate with the source
+// WebSocket gap or reconciler-first race.
+const FLAT_META_FROZEN_TRAIL_FIELDS = Object.freeze([
+  "canonical_exit_stage",
+  "canonical_exit_chain_key",
+  "trail_active",
+  "trail_high",
+  "trail_low",
+  "trail_stop_by_r",
+  "trail_stop_by_pct",
+  "runner_remaining_qty_abs",
+]);
+
+function buildFrozenTrailContext(meta = {}, { nowIso = new Date().toISOString() } = {}) {
+  if (!meta || typeof meta !== "object") return null;
+  if (meta.trail_active !== true) return null;
+  const frozen = { frozen_trail_context_at: nowIso };
+  for (const field of FLAT_META_FROZEN_TRAIL_FIELDS) {
+    if (meta[field] !== undefined) frozen[`frozen_${field}`] = meta[field];
+  }
+  return frozen;
+}
+
+function emitFlatProjectionTrailContextLostAlert(meta = {}) {
+  if (!meta || meta.trail_active !== true) return false;
+  console.warn("[RECONCILER_FLAT_PROJECTION_TRAIL_CONTEXT_LOST]", JSON.stringify({
+    canonical_exit_chain_key: meta.canonical_exit_chain_key || null,
+    canonical_exit_stage: meta.canonical_exit_stage || null,
+    runner_remaining_qty_abs: Number.isFinite(Number(meta.runner_remaining_qty_abs))
+      ? Number(meta.runner_remaining_qty_abs)
+      : null,
+    at: new Date().toISOString(),
+  }));
+  return true;
+}
+
 function buildFlatMetaProjection(meta = {}) {
+  const frozen = buildFrozenTrailContext(meta);
+  if (frozen) emitFlatProjectionTrailContextLostAlert(meta);
   const next = {
     ...meta,
     exchange_projection_source: "BINANCE_LIVE_STATE",
@@ -344,6 +387,7 @@ function buildFlatMetaProjection(meta = {}) {
   };
   for (const field of FLAT_META_FALSE_FIELDS) next[field] = false;
   for (const field of FLAT_META_NULL_FIELDS) next[field] = null;
+  if (frozen) Object.assign(next, frozen);
   return next;
 }
 
@@ -440,6 +484,19 @@ function reconcileBinancePositionMetaWithExchange({
   nextMeta.native_protection_tp0_reason = null;
   nextMeta.native_protection_tp_reason = null;
 
+  if (simplifiedExitV2Enabled) {
+    nextMeta.tp_p0_done = false;
+    nextMeta.tp_p0_at = null;
+    nextMeta.tp_p0_price = null;
+    nextMeta.tp_p0_source = null;
+    nextMeta.native_protection_tp0_order_id = null;
+    nextMeta.native_protection_tp0_price = null;
+    nextMeta.native_protection_tp0_qty_base = null;
+    nextMeta.native_protection_tp0_qty_ratio = null;
+    nextMeta.native_protection_tp0_status = null;
+    nextMeta.native_protection_tp0_reason = null;
+  }
+
   if (!stop) invariants.push("NATIVE_STOP_MISSING");
   if (simplifiedExitV2Enabled && unexpectedTpOrders.length > 0) {
     invariants.push("SIMPLIFIED_EXIT_V2_MULTIPLE_TP_ORDERS");
@@ -467,5 +524,8 @@ module.exports = {
     classifyTakeProfitOrders,
     pickStopCandidate,
     buildFlatMetaProjection,
+    buildFrozenTrailContext,
+    emitFlatProjectionTrailContextLostAlert,
+    FLAT_META_FROZEN_TRAIL_FIELDS,
   },
 };

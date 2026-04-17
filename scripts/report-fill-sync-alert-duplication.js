@@ -5,6 +5,14 @@ const fs = require("fs");
 const path = require("path");
 const { getFirestore } = require("../src/storage/firestore");
 const { __test: fillsSyncTest } = require("../src/services/binanceFuturesFillsSync");
+// P3-01 pilot: opt in to the shared collection cache when the integrity
+// cycle pre-populates it. Fallback to the legacy Firestore scan remains so
+// running this script on its own (`node scripts/report-fill-sync-alert-duplication.js`)
+// still works without a cache.
+const {
+  readExitIntegrityCollectionCache,
+  getCachedCollectionRows,
+} = require("./lib/exit-integrity-collection-cache");
 
 const LOOKBACK_DAYS = Math.max(1, Number(process.env.LOOKBACK_DAYS || 7));
 const PAGE_SIZE = Math.max(50, Number(process.env.PAGE_SIZE || 500));
@@ -202,10 +210,36 @@ function buildDuplicationReport(rows = [], auditRows = []) {
   };
 }
 
+function scanCachedExternalExitFills(cache, sinceIso) {
+  const cachedRows = getCachedCollectionRows(cache, "fills_paper");
+  if (!Array.isArray(cachedRows)) return null;
+  const rows = [];
+  for (const raw of cachedRows) {
+    const row = raw && raw.__id ? { id: raw.__id, ...raw } : { ...(raw || {}) };
+    if (String(row.created_at || "") < sinceIso) continue;
+    if (!isExternalFill(row)) continue;
+    if (!isExitLikeEvent(row.event)) continue;
+    rows.push(row);
+  }
+  return { rows, cache_path: cache && cache.__path, cache_mtime_ms: cache && cache.__mtime_ms };
+}
+
 async function scanRecentExternalExitFills(db) {
   const rows = [];
   const sinceMs = Date.now() - (LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
   const sinceIso = new Date(sinceMs).toISOString();
+  // P3-01 pilot: prefer the shared cache when fresh. The cache lookback is
+  // written at the top of the integrity cycle with a window >= 2h; if our
+  // lookback exceeds that we still fall back to Firestore.
+  const cache = readExitIntegrityCollectionCache();
+  const cacheLookbackMs = cache && Number.isFinite(Number(cache.lookback_ms)) ? Number(cache.lookback_ms) : null;
+  const requestedLookbackMs = LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
+  if (cache && cacheLookbackMs != null && cacheLookbackMs >= requestedLookbackMs) {
+    const cached = scanCachedExternalExitFills(cache, sinceIso);
+    if (cached && Array.isArray(cached.rows)) {
+      return cached.rows;
+    }
+  }
   let last = null;
   for (;;) {
     let q = db.collection("fills_paper").orderBy("created_at", "desc").limit(PAGE_SIZE);
@@ -271,6 +305,7 @@ if (require.main === module) {
       countMatchingAuditAlerts,
       buildDuplicateGroups,
       buildDuplicationReport,
+      scanCachedExternalExitFills,
     },
   };
 }

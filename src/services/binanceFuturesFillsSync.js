@@ -2348,7 +2348,7 @@ function classifyExitAuthorityStage(event) {
   return "OTHER";
 }
 
-function buildExitAuthorityChainKey({
+function resolveExitAuthorityChainKey({
   exchange,
   symbol,
   event,
@@ -2360,14 +2360,68 @@ function buildExitAuthorityChainKey({
   const sym = String(symbol || "").trim().toUpperCase() || "UNKNOWN";
   const stage = classifyExitAuthorityStage(event);
   const entryKey = String(entryEventId || "").trim();
-  if (entryKey) return `${ex}__${sym}__ENTRY__${entryKey}`;
+  if (entryKey) return { chainKey: `${ex}__${sym}__ENTRY__${entryKey}`, confidence: "ENTRY" };
   const signalKey = String(signalDocId || "").trim();
-  if (signalKey) return `${ex}__${sym}__SIGNAL__${signalKey}`;
-  const orderId = Number(orderMeta && orderMeta.orderId);
-  if (Number.isFinite(orderId)) return `${ex}__${sym}__ORDER__${orderId}`;
+  if (signalKey) return { chainKey: `${ex}__${sym}__SIGNAL__${signalKey}`, confidence: "SIGNAL" };
+  const rawOrderId = orderMeta && orderMeta.orderId != null ? orderMeta.orderId : null;
+  const orderId = rawOrderId == null ? NaN : Number(rawOrderId);
+  if (Number.isFinite(orderId)) return { chainKey: `${ex}__${sym}__ORDER__${orderId}`, confidence: "ORDER" };
   const clientOrderId = String(orderMeta && orderMeta.clientOrderId || "").trim();
-  if (clientOrderId) return `${ex}__${sym}__CLIENT__${clientOrderId}`;
-  return `${ex}__${sym}__STAGE__${stage}`;
+  if (clientOrderId) return { chainKey: `${ex}__${sym}__CLIENT__${clientOrderId}`, confidence: "CLIENT" };
+  return { chainKey: `${ex}__${sym}__STAGE__${stage}`, confidence: "STAGE" };
+}
+
+function buildExitAuthorityChainKey(args = {}) {
+  return resolveExitAuthorityChainKey(args).chainKey;
+}
+
+// P3-03: per-run counter of how often we fall back to the stage-level (weakest)
+// chain key. The integrity cycle surfaces this so ops can see silent
+// entry-lineage loss without having to diff every fill.
+const fillSyncChainKeyLowConfidenceCounts = { ENTRY: 0, SIGNAL: 0, ORDER: 0, CLIENT: 0, STAGE: 0 };
+const fillSyncChainKeyLowConfidenceRecentKeys = new Set();
+const FILL_SYNC_LOW_CONFIDENCE_RECENT_LIMIT = 32;
+
+function observeExitAuthorityChainKeyConfidence({
+  symbol = null,
+  event = null,
+  confidence = "STAGE",
+  chainKey = null,
+} = {}) {
+  const upperConfidence = String(confidence || "STAGE").trim().toUpperCase();
+  if (Object.prototype.hasOwnProperty.call(fillSyncChainKeyLowConfidenceCounts, upperConfidence)) {
+    fillSyncChainKeyLowConfidenceCounts[upperConfidence] += 1;
+  }
+  // "STAGE" is the weakest — two different cycles on the same symbol can
+  // collide. Emit a structured observation log once per unique chainKey per
+  // run so ops can correlate with Firestore.
+  if (upperConfidence === "STAGE") {
+    const token = String(chainKey || `${symbol || "?"}__${event || "?"}`).trim();
+    if (token && !fillSyncChainKeyLowConfidenceRecentKeys.has(token)) {
+      if (fillSyncChainKeyLowConfidenceRecentKeys.size >= FILL_SYNC_LOW_CONFIDENCE_RECENT_LIMIT) {
+        const first = fillSyncChainKeyLowConfidenceRecentKeys.values().next().value;
+        if (first) fillSyncChainKeyLowConfidenceRecentKeys.delete(first);
+      }
+      fillSyncChainKeyLowConfidenceRecentKeys.add(token);
+      console.warn("[FILL_SYNC_CHAIN_KEY_LOW_CONFIDENCE]", JSON.stringify({
+        chain_key: chainKey,
+        symbol: String(symbol || "").toUpperCase() || null,
+        event: String(event || "").toUpperCase() || null,
+        confidence: upperConfidence,
+      }));
+    }
+  }
+}
+
+function getFillSyncChainKeyConfidenceCounts() {
+  return { ...fillSyncChainKeyLowConfidenceCounts };
+}
+
+function resetFillSyncChainKeyConfidenceForTest() {
+  for (const key of Object.keys(fillSyncChainKeyLowConfidenceCounts)) {
+    fillSyncChainKeyLowConfidenceCounts[key] = 0;
+  }
+  fillSyncChainKeyLowConfidenceRecentKeys.clear();
 }
 
 function resolveCanonicalExternalExitEvent({
@@ -2385,13 +2439,19 @@ function resolveCanonicalExternalExitEvent({
   rules = null,
 } = {}) {
   const currentEvent = String(event || "").trim().toUpperCase();
-  const chainKey = buildExitAuthorityChainKey({
+  const { chainKey, confidence: chainKeyConfidence } = resolveExitAuthorityChainKey({
     exchange,
     symbol,
     event: currentEvent,
     entryEventId,
     signalDocId,
     orderMeta,
+  });
+  observeExitAuthorityChainKeyConfidence({
+    symbol,
+    event: currentEvent,
+    confidence: chainKeyConfidence,
+    chainKey,
   });
   return resolveCanonicalExitWritePayload({
     exchange,
@@ -2487,13 +2547,19 @@ function applyExternalExitQtyAuthority({
 } = {}) {
   const rawQty = Number(qtyPct);
   const stage = classifyExitAuthorityStage(event);
-  const chainKey = buildExitAuthorityChainKey({
+  const { chainKey, confidence: chainKeyConfidence } = resolveExitAuthorityChainKey({
     exchange,
     symbol,
     event,
     entryEventId,
     signalDocId,
     orderMeta,
+  });
+  observeExitAuthorityChainKeyConfidence({
+    symbol,
+    event,
+    confidence: chainKeyConfidence,
+    chainKey,
   });
   if (!Number.isFinite(rawQty) || rawQty <= 0 || !authorityMap || stage === "OTHER") {
     return {
@@ -3956,6 +4022,10 @@ module.exports = {
     isTrailExitEligible,
     classifyExitAuthorityStage,
     buildExitAuthorityChainKey,
+    resolveExitAuthorityChainKey,
+    observeExitAuthorityChainKeyConfidence,
+    getFillSyncChainKeyConfidenceCounts,
+    resetFillSyncChainKeyConfidenceForTest,
     applyExternalExitQtyAuthority,
     resolveCanonicalExternalExitEvent,
     shouldPromoteCanonicalExternalExit,

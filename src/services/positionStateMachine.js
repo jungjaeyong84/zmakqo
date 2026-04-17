@@ -158,7 +158,46 @@ function resolveExitStageAbsoluteContractQtyRatio(stage, rules = {}, options = {
   return null;
 }
 
+// Canonical chain-key builder. Returns a plain string for backward
+// compatibility; the P3-03 telemetry uses the `resolveCanonicalExitChainKey`
+// variant below which also reports the "confidence" of the identifier.
 function buildCanonicalExitChainKey({
+  exchange,
+  symbol,
+  currentStage = null,
+  entryEventId = null,
+  signalDocId = null,
+  orderMeta = null,
+} = {}) {
+  return resolveCanonicalExitChainKey({
+    exchange,
+    symbol,
+    currentStage,
+    entryEventId,
+    signalDocId,
+    orderMeta,
+  }).chainKey;
+}
+
+// P3-03 chainKey confidence telemetry.
+// The chain-key fallback cascade is:
+//   ENTRY   — bound to entry_event_id (strongest; unique per cycle)
+//   SIGNAL  — bound to signal_doc_id (shared by a re-submitted signal)
+//   ORDER   — bound to exchange orderId (shared if Binance re-uses an id)
+//   CLIENT  — bound to our clientOrderId (misnaming can collide)
+//   STAGE   — pure fallback (exchange+symbol+stage only; collides across cycles)
+// Anything below ENTRY means the ledger is accounting without a unique cycle
+// identifier and its cap can leak across re-submissions. Callers that observe
+// `confidence !== "ENTRY"` should surface telemetry so ops can escalate.
+const CANONICAL_CHAIN_KEY_CONFIDENCE = Object.freeze({
+  ENTRY: "ENTRY",
+  SIGNAL: "SIGNAL",
+  ORDER: "ORDER",
+  CLIENT: "CLIENT",
+  STAGE: "STAGE",
+});
+
+function resolveCanonicalExitChainKey({
   exchange,
   symbol,
   currentStage = null,
@@ -170,14 +209,23 @@ function buildCanonicalExitChainKey({
   const sym = toUpper(symbol, "UNKNOWN");
   const stage = normalizeExitStage(currentStage);
   const entryKey = String(entryEventId || "").trim();
-  if (entryKey) return `${ex}__${sym}__ENTRY__${entryKey}`;
+  if (entryKey) {
+    return { chainKey: `${ex}__${sym}__ENTRY__${entryKey}`, confidence: "ENTRY", source_token: entryKey };
+  }
   const signalKey = String(signalDocId || "").trim();
-  if (signalKey) return `${ex}__${sym}__SIGNAL__${signalKey}`;
-  const orderId = Number(orderMeta && orderMeta.orderId);
-  if (Number.isFinite(orderId)) return `${ex}__${sym}__ORDER__${orderId}`;
+  if (signalKey) {
+    return { chainKey: `${ex}__${sym}__SIGNAL__${signalKey}`, confidence: "SIGNAL", source_token: signalKey };
+  }
+  const rawOrderId = orderMeta && orderMeta.orderId != null ? orderMeta.orderId : null;
+  const orderId = rawOrderId == null ? NaN : Number(rawOrderId);
+  if (Number.isFinite(orderId)) {
+    return { chainKey: `${ex}__${sym}__ORDER__${orderId}`, confidence: "ORDER", source_token: String(orderId) };
+  }
   const clientOrderId = String(orderMeta && orderMeta.clientOrderId || "").trim();
-  if (clientOrderId) return `${ex}__${sym}__CLIENT__${clientOrderId}`;
-  return `${ex}__${sym}__STAGE__${stage}`;
+  if (clientOrderId) {
+    return { chainKey: `${ex}__${sym}__CLIENT__${clientOrderId}`, confidence: "CLIENT", source_token: clientOrderId };
+  }
+  return { chainKey: `${ex}__${sym}__STAGE__${stage}`, confidence: "STAGE", source_token: stage };
 }
 
 function normalizeAuthorityState(state = {}) {
@@ -931,6 +979,8 @@ module.exports = {
   buildExitQuantityContractLedger,
   validateExitQuantityContractLedger,
   buildCanonicalExitChainKey,
+  resolveCanonicalExitChainKey,
+  CANONICAL_CHAIN_KEY_CONFIDENCE,
   buildCanonicalExitEvent,
   classifyExitEventStage,
   resolveStoredCanonicalExitStage,
@@ -949,6 +999,8 @@ module.exports = {
     buildExitQuantityContractLedger,
     validateExitQuantityContractLedger,
     buildCanonicalExitChainKey,
+    resolveCanonicalExitChainKey,
+    CANONICAL_CHAIN_KEY_CONFIDENCE,
     buildCanonicalExitEvent,
     classifyExitEventStage,
     resolveStoredCanonicalExitStage,
