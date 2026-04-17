@@ -34,10 +34,7 @@ function run() {
       },
     },
   });
-  assert.strictEqual(tp0Signals.length, 1, "tp0 should emit one partial exit");
-  assert.strictEqual(tp0Signals[0].event, "EXIT_TP_P0_0.96P");
-  assert.strictEqual(tp0Signals[0].reason, "EXIT_TAKE_PROFIT_P0");
-  assert.ok(Math.abs(tp0Signals[0].qty_pct - 0.25) < 1e-9);
+  assert.deepStrictEqual(tp0Signals, [], "tp0 retirement must suppress legacy partial exits even when env=false");
 
   delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
   const defaultNoTp0Signals = generateSignals({
@@ -136,8 +133,7 @@ function run() {
       },
     },
   });
-  assert.strictEqual(staleTp0Signals.length, 1, "stale tp0 meta must not suppress fresh tp0");
-  assert.strictEqual(staleTp0Signals[0].event, "EXIT_TP_P0_0.96P");
+  assert.deepStrictEqual(staleTp0Signals, [], "stale tp0 meta must not recreate retired tp0 exits");
 
   const pctPointAtrTp0Signals = generateSignals({
     exchange: "BINANCEFUT",
@@ -160,8 +156,7 @@ function run() {
       },
     },
   });
-  assert.strictEqual(pctPointAtrTp0Signals.length, 1, "percentage-point atr input must not suppress tp0");
-  assert.strictEqual(pctPointAtrTp0Signals[0].event, "EXIT_TP_P0_0.8P");
+  assert.deepStrictEqual(pctPointAtrTp0Signals, [], "percentage-point atr input must not revive retired tp0 exits");
 
   const delayedTrail = generateSignals({
     exchange: "BINANCEFUT",
@@ -262,11 +257,9 @@ function run() {
       },
     },
   });
-  assert.strictEqual(tp0Tp1Cascade.length, 2, "when pnl already crossed tp1, tp0 and tp1 must be emitted in the same cycle");
-  assert.strictEqual(tp0Tp1Cascade[0].event, "EXIT_TP_P0_0.96P");
-  assert.strictEqual(tp0Tp1Cascade[1].event, "EXIT_TP_P1_1.65P");
-  assert.strictEqual(tp0Tp1Cascade[0].qty_pct, 0.25);
-  assert.strictEqual(tp0Tp1Cascade[1].qty_pct, 0.5);
+  assert.strictEqual(tp0Tp1Cascade.length, 1, "when pnl already crossed tp1, only tp1 must be emitted");
+  assert.strictEqual(tp0Tp1Cascade[0].event, "EXIT_TP_P1_1.65P");
+  assert.strictEqual(tp0Tp1Cascade[0].qty_pct, 0.5);
 
   const tp1AfterTp0Remaining = generateSignals({
     exchange: "BINANCEFUT",
