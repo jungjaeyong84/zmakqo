@@ -125,6 +125,7 @@ function buildScriptResult(parsed) {
   });
   assert.strictEqual(warnSummary.status, "WARN");
   assert.strictEqual(warnSummary.live_issue_count, 19);
+  assert.strictEqual(warnSummary.actionable_live_issue_count, 19);
   assert.strictEqual(warnSummary.fill_sync_alert_event_issue_n, 2);
   assert.strictEqual(warnSummary.trade_execution_alert_missing_fill_n, 3);
   assert.strictEqual(warnSummary.trade_execution_alert_missing_fill_total_n, 3);
@@ -145,6 +146,29 @@ function buildScriptResult(parsed) {
   assert.strictEqual(warnSummary.stop_divergence_symbol_n, 2);
   assert.strictEqual(warnSummary.stop_divergence_gate, "BLOCK");
   assert.strictEqual(warnSummary.live_gate_blocked, true);
+
+  const historicalQtyOnlySummary = __test.buildSummary({
+    native_trail_gap_before: { summary: { gap_count: 0 } },
+    native_trail_gap_after: { summary: { gap_count: 0 } },
+    active_exit_stage_backfill: buildScriptResult({ issue_symbol_n: 0 }),
+    active_exit_watchdog: { actionable_rows: [] },
+    canonical_exit_transition_backfill: buildScriptResult({ created_transition_n: 0 }),
+    binance_exit_qty_live_separation: buildScriptResult({ live_issue_chain_n: 3 }),
+    trail_runner_floor_live_separation: buildScriptResult({ live_violation_n: 0 }),
+    fill_sync_alert_duplication: buildScriptResult({ duplicate_group_n: 0, report: { duplicate_group_n: 0 } }),
+    fill_sync_alert_event_consistency: buildScriptResult({ issue_n: 0 }),
+    trade_execution_alert_cross_audit: buildScriptResult({ coverage_ready: true, missing_alert_fill_n: 0 }),
+    fill_sync_alert_duplication_live_separation: buildScriptResult({ live_duplicate_group_n: 0 }),
+    binance_exit_authority_live_board: buildScriptResult({ live_issue_position_n: 0, actionable_live_issue_position_n: 0, artifact_only_live_issue_position_n: 3 }),
+    binance_canonical_exit_stage_qa: buildScriptResult({ fail_n: 0 }),
+    simplified_exit_v2_live_flow: buildScriptResult({ actionable_symbol_n: 0, issue_code_counts: {} }),
+    simplified_exit_v2_tp1_drilldown: { ok: true, parsed: { actionable_symbol_n: 0, issue_code_counts: {} } },
+  });
+  assert.strictEqual(historicalQtyOnlySummary.live_issue_count, 3);
+  assert.strictEqual(historicalQtyOnlySummary.actionable_exit_qty_live_issue_chain_n, 0);
+  assert.strictEqual(historicalQtyOnlySummary.actionable_live_issue_count, 0);
+  assert.strictEqual(historicalQtyOnlySummary.live_gate_blocked, false);
+  assert.strictEqual(historicalQtyOnlySummary.status, "OK");
 
   const md = __test.buildMarkdown({
     generated_at: "2026-04-13T00:00:00.000Z",

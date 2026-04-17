@@ -248,6 +248,21 @@ async function run() {
   });
   assert.strictEqual(simplifiedTpP0IntentFill.tp_p0_done, false, "simplified v2 must not mark tp0 done on intent fill");
   assert.strictEqual(simplifiedTpP0IntentFill.tp_p0_price, undefined);
+  const legacyTpP0IntentFill = __test.applyTpP0IntentFillMetaUpdate({
+    nextMeta: {
+      simplified_exit_v2_enabled: false,
+      entry_event_id: "ENTRY-1",
+      entry_exec_bar_ms: 123,
+      tp_p0_done: false,
+    },
+    fillPrice: 100.8,
+    qtyFraction: 0.25,
+    execBarCloseMs: 456,
+    entryEventIdForFill: "ENTRY-1",
+    applyOptimisticFillProjection: true,
+  });
+  assert.strictEqual(legacyTpP0IntentFill.tp_p0_done, false, "legacy projection도 retired TP0를 다시 쓰면 안 된다");
+  assert.strictEqual(legacyTpP0IntentFill.tp_p0_price, undefined);
   assert.strictEqual(simplifiedTpP0IntentFill.tp_p0_source, undefined);
 
   assert.strictEqual(
@@ -970,8 +985,10 @@ async function run() {
   assert.strictEqual(nativeProtectionPricesAfterTp0.tpQtyRatio, 0.5);
   assert.ok(
     Math.abs(nativeProtectionPricesAfterTp0.tpOrderQtyRatio - 0.5) < 1e-9,
-    "TP1 native order must use 50% of the remaining position after TP0"
+    "TP1 native order must stay 50% of entry size after TP0 retirement"
   );
+  assert.strictEqual(nativeProtectionPricesAfterTp0.tp0TriggerPx, null);
+  assert.strictEqual(nativeProtectionPricesAfterTp0.tp0OrderQtyRatio, 0);
 
   const nativeProtectionPricesSimplifiedV2 = __test.computeBinanceNativeProtectionPrices({
     positionSide: "LONG",
@@ -1074,6 +1091,36 @@ async function run() {
   assert.strictEqual(simplifiedV2NativeProtectionMeta.native_protection_tp0_status, null);
   assert.strictEqual(simplifiedV2NativeProtectionMeta.native_protection_tp0_reason, null);
   assert.strictEqual(simplifiedV2NativeProtectionMeta.native_protection_tp_order_id, "tp1-v2");
+
+  const partialProtectionMeta = __test.buildNativeProtectionMetaPatch({
+    nativeProtection: {
+      ok: false,
+      reason: "TP1_NATIVE_PROTECTION_INCOMPLETE",
+      partial_protection: true,
+      stop_order_id: "stop-partial",
+      stop_price: 98.5,
+      tp_order_id: null,
+      tp_price: 101.68,
+      tp_qty_base: null,
+      tp_qty_ratio: null,
+      tp_status: "FAILED",
+      tp_reason: "TP1_ORDER_MISSING",
+      entry_price: 100,
+      position_side: "LONG",
+    },
+    intent: "ADD",
+    execBarCloseMs: Date.parse("2026-03-11T02:07:00Z"),
+    posMeta: {
+      simplified_exit_v2_enabled: true,
+    },
+  });
+  assert.strictEqual(partialProtectionMeta.native_protection_refresh_status, "FAILED");
+  assert.strictEqual(partialProtectionMeta.native_protection_refresh_reason, "TP1_NATIVE_PROTECTION_INCOMPLETE");
+  assert.strictEqual(partialProtectionMeta.native_protection_stop_order_id, "stop-partial");
+  assert.strictEqual(partialProtectionMeta.native_protection_stop_price, 98.5);
+  assert.strictEqual(partialProtectionMeta.native_protection_tp_order_id, null);
+  assert.strictEqual(partialProtectionMeta.native_protection_tp_status, "FAILED");
+  assert.strictEqual(partialProtectionMeta.native_protection_tp_reason, "TP1_ORDER_MISSING");
 
   const strippedProjection = __test.stripExchangeOwnedProjectionMeta({
     tp_p0_done: true,

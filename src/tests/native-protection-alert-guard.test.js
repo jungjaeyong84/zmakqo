@@ -105,6 +105,37 @@ async function run() {
   assert.strictEqual(result.ok, false, "failed native protection should stay failed");
   assert.strictEqual(result.reason, "NATIVE_PLACE_FAIL");
 
+  assert.strictEqual(
+    __test.shouldFailClosedForIncompleteTp1Protection({
+      tpEnabled: true,
+      stageState: { tp1Eligible: true },
+      tpStatus: "FAILED",
+      tpOrder: null,
+    }),
+    true,
+    "pre-TP1 native refresh must fail closed when TP1 placement failed"
+  );
+  assert.strictEqual(
+    __test.shouldFailClosedForIncompleteTp1Protection({
+      tpEnabled: true,
+      stageState: { tp1Eligible: true },
+      tpStatus: "OK",
+      tpOrder: { orderId: "tp1-order-1" },
+    }),
+    false,
+    "healthy pre-TP1 TP1 placement must not fail closed"
+  );
+  assert.strictEqual(
+    __test.shouldFailClosedForIncompleteTp1Protection({
+      tpEnabled: true,
+      stageState: { tp1Eligible: false },
+      tpStatus: "FAILED",
+      tpOrder: null,
+    }),
+    false,
+    "trail/post-TP1 stage must not require TP1 fail-closed"
+  );
+
   let skippedCalled = 0;
   const skippedResult = await __test.notifyNativeProtectionResult({
     nativeProtection: {

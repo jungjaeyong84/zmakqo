@@ -124,12 +124,7 @@ function isSimplifiedExitV2Position(row = {}) {
 
 function isWatchdogTarget(row = {}) {
   if (!isInternalActivePosition(row)) return false;
-  if (isSimplifiedExitV2Position(row)) return true;
-  const meta = row && typeof row.meta === "object" ? row.meta : {};
-  return meta.tp_p0_done === true
-    || meta.tp_p1_done === true
-    || meta.tp_p1_pending === true
-    || meta.trail_active === true;
+  return true;
 }
 
 function resolveStage(row = {}) {
@@ -140,14 +135,9 @@ function resolveStage(row = {}) {
   });
   if (canonical.stage === "TRAIL") return { canonical_stage: "TRAIL", stage: "TRAIL", source: canonical.source };
   if (canonical.stage === "TP1") return { canonical_stage: "TP1", stage: "RUNNER", source: canonical.source };
-  if (simplifiedExitV2Enabled && canonical.stage === "TP0") {
-    return { canonical_stage: canonical.stage, stage: "PRE_TP1", source: canonical.source };
-  }
-  if (canonical.stage === "TP0") return { canonical_stage: "TP0", stage: "BETWEEN_TP0_TP1", source: canonical.source };
-  if (simplifiedExitV2Enabled) {
-    return { canonical_stage: canonical.stage, stage: "PRE_TP1", source: canonical.source };
-  }
-  return { canonical_stage: canonical.stage, stage: "PRE_TP0", source: canonical.source };
+  if (canonical.stage === "TP0") return { canonical_stage: canonical.stage, stage: "PRE_TP1", source: canonical.source };
+  if (simplifiedExitV2Enabled) return { canonical_stage: canonical.stage, stage: "PRE_TP1", source: canonical.source };
+  return { canonical_stage: canonical.stage, stage: "PRE_TP1", source: canonical.source };
 }
 
 function resolveSimplifiedV2QtyShadow(row = {}) {
@@ -179,7 +169,7 @@ function resolveSimplifiedV2QtyShadow(row = {}) {
     tp1QtyRatio: toNum(rules.TP_P1_QTY),
     tp1TargetPct: toNum(rules.TP_P1),
     legacyCanonicalStage: meta.canonical_exit_stage ?? meta.authoritative_exit_stage ?? null,
-    legacyTp0Done: meta.tp_p0_done === true,
+    legacyTp0Done: false,
   });
   return shadow && shadow.available === true ? shadow : null;
 }
@@ -349,10 +339,7 @@ function inspectExitProtection({
   if (meta.trail_active === true && meta.tp_p1_done !== true) {
     issues.push(buildIssue("TRAIL_ACTIVE_WITHOUT_TP1_DONE", "trail_active=true 인데 tp_p1_done=false 입니다."));
   }
-  if (simplifiedExitV2Enabled !== true && meta.tp_p1_done === true && meta.tp_p0_done !== true) {
-    issues.push(buildIssue("TP1_DONE_WITHOUT_TP0_DONE", "tp_p1_done=true 인데 tp_p0_done=false 입니다."));
-  }
-  if ((stage === "PRE_TP1" || stage === "BETWEEN_TP0_TP1" || stage === "TRAIL" || stage === "RUNNER")
+  if ((stage === "PRE_TP1" || stage === "TRAIL" || stage === "RUNNER")
     && (refreshStatus === "FAILED" || refreshStatus === "MISSING")) {
     issues.push(buildIssue("NATIVE_REFRESH_UNHEALTHY", `native_protection_refresh_status=${refreshStatus}`));
   }
@@ -368,14 +355,9 @@ function inspectExitProtection({
     ));
   }
 
-  if (stage === "PRE_TP1" || stage === "BETWEEN_TP0_TP1") {
+  if (stage === "PRE_TP1") {
     if (!tpCandidate) {
-      issues.push(buildIssue(
-        "TP1_ORDER_MISSING",
-        stage === "PRE_TP1"
-          ? "V2 pre-TP1 단계인데 거래소 TP1 reduce-only 주문이 없습니다."
-          : "TP0 이후인데 거래소 TP1 reduce-only 주문이 없습니다."
-      ));
+      issues.push(buildIssue("TP1_ORDER_MISSING", "pre-TP1 단계인데 거래소 TP1 reduce-only 주문이 없습니다."));
     } else if (Number.isFinite(actualTpQtyRatio) && Number.isFinite(expectedTp1RemainingRatio)) {
       const ratioGap = Math.abs(actualTpQtyRatio - expectedTp1RemainingRatio);
       if (ratioGap > 0.03) {

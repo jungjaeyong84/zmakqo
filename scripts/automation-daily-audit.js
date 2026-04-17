@@ -93,6 +93,47 @@ function runScript(cmd) {
   }
 }
 
+function buildSystemOpsPrereportCommands() {
+  return [
+    {
+      command: "node scripts/report-best-self-evolution-execution-quality.js",
+      errorCode: "EXECUTION_QUALITY_REPORT_FAILED",
+    },
+    {
+      command: "node scripts/report-signal-lineage-health.js",
+      errorCode: "SIGNAL_LINEAGE_HEALTH_FAILED",
+    },
+    {
+      command: "node scripts/report-openclaw-policy-authority.js",
+      errorCode: "OPENCLAW_POLICY_AUTHORITY_FAILED",
+    },
+    {
+      command: "node scripts/report-trail-runner-floor-audit.js",
+      errorCode: "TRAIL_RUNNER_FLOOR_AUDIT_FAILED",
+    },
+    {
+      command: "node scripts/report-binance-exit-qty-contract-audit.js",
+      errorCode: "BINANCE_EXIT_QTY_CONTRACT_AUDIT_FAILED",
+    },
+    {
+      command: "node scripts/report-tp1-fail-closed-events.js",
+      errorCode: "TP1_FAIL_CLOSED_REPORT_FAILED",
+    },
+  ];
+}
+
+function buildTp1FailClosedQuarantineLines(ops = {}) {
+  const tp1 = ops && typeof ops.tp1_fail_closed === "object" ? ops.tp1_fail_closed : {};
+  if (!Number.isFinite(Number(tp1.quarantine_candidate_n)) || Number(tp1.quarantine_candidate_n) < 1) return [];
+  const candidates = Array.isArray(tp1.quarantine_candidates) ? tp1.quarantine_candidates.slice(0, 3) : [];
+  const headline = `TP1 quarantine 후보 ${Number(tp1.quarantine_candidate_n)}개 / repeat ${Number.isFinite(Number(tp1.repeat_symbol_n)) ? Number(tp1.repeat_symbol_n) : 0}개`;
+  if (!candidates.length) return [headline];
+  return [
+    headline,
+    `상위 ${candidates.map((item) => `${item.symbol}(${item.count},${item.severity})`).join(", ")}`,
+  ];
+}
+
 function runDailySystemOpsCheck() {
   const snapshotPath = path.join(REPO_ROOT, "noye", "binance_snapshot_latest.json");
   const reportPath = path.join(REPO_ROOT, "noye", "report.md");
@@ -115,55 +156,17 @@ function runDailySystemOpsCheck() {
       reportPath,
     };
   }
-  const executionQuality = runScript("node scripts/report-best-self-evolution-execution-quality.js");
-  if (!executionQuality.ok) {
-    return {
-      ok: false,
-      skipped: false,
-      error: `EXECUTION_QUALITY_REPORT_FAILED:${executionQuality.error}`,
-      snapshotPath,
-      reportPath,
-    };
-  }
-  const lineageHealth = runScript("node scripts/report-signal-lineage-health.js");
-  if (!lineageHealth.ok) {
-    return {
-      ok: false,
-      skipped: false,
-      error: `SIGNAL_LINEAGE_HEALTH_FAILED:${lineageHealth.error}`,
-      snapshotPath,
-      reportPath,
-    };
-  }
-  const openClawPolicyAuthority = runScript("node scripts/report-openclaw-policy-authority.js");
-  if (!openClawPolicyAuthority.ok) {
-    return {
-      ok: false,
-      skipped: false,
-      error: `OPENCLAW_POLICY_AUTHORITY_FAILED:${openClawPolicyAuthority.error}`,
-      snapshotPath,
-      reportPath,
-    };
-  }
-  const trailFloorAudit = runScript("node scripts/report-trail-runner-floor-audit.js");
-  if (!trailFloorAudit.ok) {
-    return {
-      ok: false,
-      skipped: false,
-      error: `TRAIL_RUNNER_FLOOR_AUDIT_FAILED:${trailFloorAudit.error}`,
-      snapshotPath,
-      reportPath,
-    };
-  }
-  const exitQtyContractAudit = runScript("node scripts/report-binance-exit-qty-contract-audit.js");
-  if (!exitQtyContractAudit.ok) {
-    return {
-      ok: false,
-      skipped: false,
-      error: `BINANCE_EXIT_QTY_CONTRACT_AUDIT_FAILED:${exitQtyContractAudit.error}`,
-      snapshotPath,
-      reportPath,
-    };
+  for (const step of buildSystemOpsPrereportCommands()) {
+    const result = runScript(step.command);
+    if (!result.ok) {
+      return {
+        ok: false,
+        skipped: false,
+        error: `${step.errorCode}:${result.error}`,
+        snapshotPath,
+        reportPath,
+      };
+    }
   }
   return runScript(`node scripts/daily-system-ops-check.js ${JSON.stringify(snapshotPath)} ${JSON.stringify(reportPath)}`);
 }
@@ -339,6 +342,7 @@ async function main() {
   if (Number.isFinite(revisionCount24h) && revisionCount24h >= 6) {
     driftFindings.push(`최근 24시간 Cloud Run 새 리비전 ${revisionCount24h}개`);
   }
+  driftFindings.push(...buildTp1FailClosedQuarantineLines(ops));
 
   const status = driftFindings.length ? "주의" : "정상";
   const report = {
@@ -400,6 +404,7 @@ async function main() {
       `- 원본 지표 시각: ${ops.generated_at_kst || "N/A"} / fresh=${opsFresh ? "yes" : "no"}`,
       `- 전략 정렬: ${align.decision || "N/A"} / mismatch ${align.mismatch && align.mismatch.total_count != null ? align.mismatch.total_count : "N/A"}건`,
       `- 보호주문 감사: ${Number(integrity.issue_count || 0) > 0 ? `ok=${integrity.ok} / issue_count=${integrity.issue_count || 0}` : (integrity.ok ? "정상" : `실패 또는 미완료${integrity.reason ? ` (${integrity.reason})` : ""}`)}`,
+      ...buildTp1FailClosedQuarantineLines(ops).map((line) => `- ${line}`),
       `- Drift: expired intents=${expiredPending == null ? "N/A" : expiredPending}, builds24h=${todayBuildCount == null ? "N/A" : todayBuildCount}, revisions24h=${revisionCount24h}, artifactImages=${artifactCount == null ? "N/A" : artifactCount}`,
       `- BEST/FEBT 계약: ${buildBestFebtDailyAuditLine(bestFebtContract)}`,
       `- 감독관 필터 계층: ${filterLayers ? Object.keys(filterLayers).length : 0}개`,
@@ -427,6 +432,7 @@ async function main() {
             ? `보호주문 이슈 ${integrity.issue_count || 0}건`
             : (integrity.ok ? "보호주문 감사 정상" : `보호주문 감사 실패/미완료${integrity.reason ? ` (${integrity.reason})` : ""}`),
           `시스템 오류 24h ${Number.isFinite(Number(ops.error_count)) ? Number(ops.error_count) : "N/A"}건`,
+          ...buildTp1FailClosedQuarantineLines(ops),
         ],
       },
       {
@@ -469,6 +475,8 @@ if (require.main === module) {
     main,
     __test: {
       buildBestFebtDailyAuditLine,
+      buildSystemOpsPrereportCommands,
+      buildTp1FailClosedQuarantineLines,
     },
   };
 }

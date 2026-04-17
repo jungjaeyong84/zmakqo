@@ -1,0 +1,118 @@
+{
+  "ok": true,
+  "generated_at": "2026-04-17T23:41:12.567Z",
+  "lookback_hours": 168,
+  "min_sample": 20,
+  "trust_floor": 0.3,
+  "linked_n": 0,
+  "per_source": {
+    "rule": {
+      "predicted_accept_n": 0,
+      "predicted_reject_n": 0,
+      "realized_accept_n": 0,
+      "tp1_given_accept_n": 0,
+      "sl_given_accept_n": 0,
+      "tp1_given_accept_rate": null,
+      "sl_given_accept_rate": null
+    },
+    "ml": {
+      "predicted_accept_n": 0,
+      "predicted_reject_n": 0,
+      "realized_accept_n": 0,
+      "tp1_given_accept_n": 0,
+      "sl_given_accept_n": 0,
+      "tp1_given_accept_rate": null,
+      "sl_given_accept_rate": null
+    },
+    "narrative": {
+      "predicted_accept_n": 0,
+      "predicted_reject_n": 0,
+      "realized_accept_n": 0,
+      "tp1_given_accept_n": 0,
+      "sl_given_accept_n": 0,
+      "tp1_given_accept_rate": null,
+      "sl_given_accept_rate": null
+    }
+  },
+  "trust_weights": {
+    "rule": 0.5,
+    "ml": 0.5,
+    "narrative": 0.5
+  },
+  "recommendations": [
+    {
+      "source": "rule",
+      "severity": "INFO",
+      "action": "Collect more samples (have 0, need 20)"
+    },
+    {
+      "source": "ml",
+      "severity": "INFO",
+      "action": "Collect more samples (have 0, need 20)"
+    },
+    {
+      "source": "narrative",
+      "severity": "INFO",
+      "action": "Collect more samples (have 0, need 20)"
+    }
+  ]
+}
+{
+  "ok": true,
+  "generated_at": "2026-04-17T23:41:22.640Z",
+  "lookback_hours": 168,
+  "min_sample": 20,
+  "trust_floor": 0.3,
+  "linked_n": 0,
+  "per_source": {
+    "rule": {
+      "predicted_accept_n": 0,
+      "predicted_reject_n": 0,
+      "realized_accept_n": 0,
+      "tp1_given_accept_n": 0,
+      "sl_given_accept_n": 0,
+      "tp1_given_accept_rate": null,
+      "sl_given_accept_rate": null
+    },
+    "ml": {
+      "predicted_accept_n": 0,
+      "predicted_reject_n": 0,
+      "realized_accept_n": 0,
+      "tp1_given_accept_n": 0,
+      "sl_given_accept_n": 0,
+      "tp1_given_accept_rate": null,
+      "sl_given_accept_rate": null
+    },
+    "narrative": {
+      "predicted_accept_n": 0,
+      "predicted_reject_n": 0,
+      "realized_accept_n": 0,
+      "tp1_given_accept_n": 0,
+      "sl_given_accept_n": 0,
+      "tp1_given_accept_rate": null,
+      "sl_given_accept_rate": null
+    }
+  },
+  "trust_weights": {
+    "rule": 0.5,
+    "ml": 0.5,
+    "narrative": 0.5
+  },
+  "recommendations": [
+    {
+      "source": "rule",
+      "severity": "INFO",
+      "action": "Collect more samples (have 0, need 20)"
+    },
+    {
+      "source": "ml",
+      "severity": "INFO",
+      "action": "Collect more samples (have 0, need 20)"
+    },
+    {
+      "source": "narrative",
+      "severity": "INFO",
+      "action": "Collect more samples (have 0, need 20)"
+    }
+  ]
+}

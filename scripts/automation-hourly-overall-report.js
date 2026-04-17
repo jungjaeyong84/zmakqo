@@ -141,6 +141,47 @@ function findPreviousOverallReports(currentDateKey, currentHhmm) {
   return { previousHour, todayStart, previousDayLatest };
 }
 
+function buildSystemOpsPrereportCommands() {
+  return [
+    {
+      command: "node scripts/report-best-self-evolution-execution-quality.js",
+      errorCode: "EXECUTION_QUALITY_REPORT_FAILED",
+    },
+    {
+      command: "node scripts/report-signal-lineage-health.js",
+      errorCode: "SIGNAL_LINEAGE_HEALTH_FAILED",
+    },
+    {
+      command: "node scripts/report-openclaw-policy-authority.js",
+      errorCode: "OPENCLAW_POLICY_AUTHORITY_FAILED",
+    },
+    {
+      command: "node scripts/report-trail-runner-floor-audit.js",
+      errorCode: "TRAIL_RUNNER_FLOOR_AUDIT_FAILED",
+    },
+    {
+      command: "node scripts/report-binance-exit-qty-contract-audit.js",
+      errorCode: "BINANCE_EXIT_QTY_CONTRACT_AUDIT_FAILED",
+    },
+    {
+      command: "node scripts/report-tp1-fail-closed-events.js",
+      errorCode: "TP1_FAIL_CLOSED_REPORT_FAILED",
+    },
+  ];
+}
+
+function buildTp1FailClosedQuarantineLines(ops = {}) {
+  const tp1 = ops && typeof ops.tp1_fail_closed === "object" ? ops.tp1_fail_closed : {};
+  if (!Number.isFinite(Number(tp1.quarantine_candidate_n)) || Number(tp1.quarantine_candidate_n) < 1) return [];
+  const candidates = Array.isArray(tp1.quarantine_candidates) ? tp1.quarantine_candidates.slice(0, 3) : [];
+  const headline = `TP1 quarantine 후보 ${Number(tp1.quarantine_candidate_n)}개`;
+  if (!candidates.length) return [headline];
+  return [
+    headline,
+    `상위 ${candidates.map((item) => `${item.symbol}(${item.count},${item.severity})`).join(", ")}`,
+  ];
+}
+
 function buildComparison(currentReport, previousReport, label, baselineRef = null) {
   if (!previousReport || typeof previousReport !== "object") {
     return { available: false, label, path: baselineRef && baselineRef.path ? baselineRef.path : null, reason: "BASELINE_MISSING" };
@@ -414,25 +455,11 @@ async function main() {
     throw new Error("NOYE_REFRESH_OUTPUT_MISSING");
   }
 
-  const executionQualityRun = execJson("node scripts/report-best-self-evolution-execution-quality.js", { cwd: REPO_ROOT });
-  if (!executionQualityRun.ok) {
-    throw new Error(`EXECUTION_QUALITY_REPORT_FAILED:${executionQualityRun.error || JSON.stringify(executionQualityRun.data || {})}`);
-  }
-  const lineageHealthRun = execJson("node scripts/report-signal-lineage-health.js", { cwd: REPO_ROOT });
-  if (!lineageHealthRun.ok) {
-    throw new Error(`SIGNAL_LINEAGE_HEALTH_FAILED:${lineageHealthRun.error || JSON.stringify(lineageHealthRun.data || {})}`);
-  }
-  const openClawPolicyAuthorityRun = execJson("node scripts/report-openclaw-policy-authority.js", { cwd: REPO_ROOT });
-  if (!openClawPolicyAuthorityRun.ok) {
-    throw new Error(`OPENCLAW_POLICY_AUTHORITY_FAILED:${openClawPolicyAuthorityRun.error || JSON.stringify(openClawPolicyAuthorityRun.data || {})}`);
-  }
-  const trailFloorAuditRun = execJson("node scripts/report-trail-runner-floor-audit.js", { cwd: REPO_ROOT });
-  if (!trailFloorAuditRun.ok) {
-    throw new Error(`TRAIL_RUNNER_FLOOR_AUDIT_FAILED:${trailFloorAuditRun.error || JSON.stringify(trailFloorAuditRun.data || {})}`);
-  }
-  const exitQtyContractAuditRun = execJson("node scripts/report-binance-exit-qty-contract-audit.js", { cwd: REPO_ROOT });
-  if (!exitQtyContractAuditRun.ok) {
-    throw new Error(`BINANCE_EXIT_QTY_CONTRACT_AUDIT_FAILED:${exitQtyContractAuditRun.error || JSON.stringify(exitQtyContractAuditRun.data || {})}`);
+  for (const step of buildSystemOpsPrereportCommands()) {
+    const result = execJson(step.command, { cwd: REPO_ROOT });
+    if (!result.ok) {
+      throw new Error(`${step.errorCode}:${result.error || JSON.stringify(result.data || {})}`);
+    }
   }
 
   const opsRun = execJson(
@@ -639,6 +666,7 @@ async function main() {
       `- 운영 가드 모드: \`${report.operations.mode}\``,
       `- 이유: \`${(report.operations.reasons || []).join(" | ") || "없음"}\``,
       `- 최근 24시간 시스템 오류: \`${isFiniteNullable(report.operations.error_count_24h) ? `${report.operations.error_count_24h}건` : "N/A"}\``,
+      ...buildTp1FailClosedQuarantineLines(ops).map((line) => `- ${line}`),
       "",
       "## 7. EV gate 24시간 영향",
       "",
@@ -695,6 +723,7 @@ async function main() {
         lines: [
           `실행 엔진 ${report.execution_engine.label}`,
           `운영 가드 ${report.operations.status} / 모드 ${report.operations.mode} / 최근 오류 ${isFiniteNullable(report.operations.error_count_24h) ? `${report.operations.error_count_24h}건` : "N/A"}`,
+          ...buildTp1FailClosedQuarantineLines(ops),
           ...evGateSummary.lines.slice(0, 1),
           `${report.comparisons.previous_hour.label} ${comparisonSummaryLines(report.comparisons.previous_hour, "기준 데이터 없음").join(" / ")}`,
         ],
@@ -721,6 +750,8 @@ if (require.main === module) {
     __test: {
       resolveComparisonLabel,
       buildComparison,
+      buildSystemOpsPrereportCommands,
+      buildTp1FailClosedQuarantineLines,
       formatSignedPercent,
       summarizeExecutionEngine,
       positionStatusLabel,

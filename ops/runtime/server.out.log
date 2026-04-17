@@ -1,0 +1,277 @@
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+Server listening on port 3000
+[BOOT] Binance tick exit loop skipped (DISABLED)
+[BOOT] Binance user-data stream started
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+Server listening on port 3000
+[BOOT] Binance tick exit loop skipped (DISABLED)
+[BOOT] Binance user-data stream started
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+Server listening on port 3000
+[BOOT] Binance tick exit loop skipped (DISABLED)
+[BOOT] Binance user-data stream started
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+Server listening on port 3000
+[BOOT] Binance tick exit loop skipped (DISABLED)
+[BOOT] Binance user-data stream started
+[health] run=RUN__BINANCEFUT__15m__1776414360564 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=660564 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776413700000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776414615002 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15002 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776414600000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776415515002 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15002 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776415500000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776416415001 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15001 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776416400000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776417315046 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15046 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776417300000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776418215011 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15011 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776418200000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776419114993 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14993 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776419100000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[live_trail_authority_skip] ex=BINANCEFUT sym=ETHUSDT tf=15m ev=EXIT_TRAIL reason=EXIT_TRAIL_STOP_RUNNER_FLOOR run=RUN__BINANCEFUT__15m__1776420015005
+[health] run=RUN__BINANCEFUT__15m__1776420015005 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15005 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776420000000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[BINANCE_USER_STREAM] connected wss://fstream.binance.com/ws/GbLXD9LJOMcEqBilUgBj57QDvSAS8mFZ3PTayCYwCc5EsKcFFXFn1zr7nyxLYpCD
+{"event":"signals_query_metrics","ts":"2026-04-17T10:15:57.032Z","window_ms":917617,"query_error":0,"empty_result":8,"fallback_used":0}
+[health] run=RUN__BINANCEFUT__15m__1776420915006 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15006 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776420900000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776421815004 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15004 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776421800000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776422712995 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=12995 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776422700000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776423614996 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14996 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776423600000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776424514996 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14996 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776424500000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+{"event":"signals_query_metrics","ts":"2026-04-17T11:30:46.218Z","window_ms":4489186,"query_error":0,"empty_result":4,"fallback_used":0}
+[health] run=RUN__BINANCEFUT__15m__1776425414997 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14997 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776425400000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776426315012 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15013 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776426300000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776427217020 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=17020 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776427200000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+{"event":"signals_query_metrics","ts":"2026-04-17T12:15:43.252Z","window_ms":2697034,"query_error":0,"empty_result":4,"fallback_used":0}
+[health] run=RUN__BINANCEFUT__15m__1776428114974 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14974 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776428100000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776429014986 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14986 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776429000000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776429914985 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14985 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776429900000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776430815031 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15031 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776430800000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776431712969 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=12969 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776431700000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776432615006 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15006 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776432600000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+{"event":"signals_query_metrics","ts":"2026-04-17T13:49:07.930Z","window_ms":5604678,"query_error":0,"empty_result":4,"fallback_used":0}
+[health] run=RUN__BINANCEFUT__15m__1776433514994 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14994 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776433500000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776434415000 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15000 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776434400000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776435314999 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14999 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776435300000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776436214998 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14998 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776436200000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776437115000 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15000 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776437100000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+{"event":"signals_query_metrics","ts":"2026-04-17T15:01:30.310Z","window_ms":4342380,"query_error":0,"empty_result":4,"fallback_used":0}
+[health] run=RUN__BINANCEFUT__15m__1776438015005 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15005 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776438000000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+{"event":"signals_query_metrics","ts":"2026-04-17T15:15:35.803Z","window_ms":845493,"query_error":0,"empty_result":4,"fallback_used":0}
+[health] run=RUN__BINANCEFUT__15m__1776438914998 overall=PASS gate_fail=0/8 snapshot_fail=1 snapshot_signal_fail=0 lag_max_ms=14998 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776438900000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+{"event":"signals_query_metrics","ts":"2026-04-17T15:30:54.684Z","window_ms":918880,"query_error":0,"empty_result":4,"fallback_used":0}
+[health] run=RUN__BINANCEFUT__15m__1776439814999 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14999 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776439800000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+{"event":"signals_query_metrics","ts":"2026-04-17T15:45:36.986Z","window_ms":882303,"query_error":0,"empty_result":4,"fallback_used":0}
+[health] run=RUN__BINANCEFUT__15m__1776440714999 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14999 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776440700000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+{"event":"signals_query_metrics","ts":"2026-04-17T16:00:48.105Z","window_ms":911118,"query_error":0,"empty_result":4,"fallback_used":0}
+[health] run=RUN__BINANCEFUT__15m__1776441615001 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15001 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776441600000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776442517025 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=17025 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776442500000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776443415001 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15001 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776443400000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776444315089 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15089 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776444300000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776445215028 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15028 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776445200000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776446114958 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14958 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776446100000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776447015000 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15000 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776447000000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776447914999 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15000 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776447900000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776448814999 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14999 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776448800000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+{"event":"signals_query_metrics","ts":"2026-04-17T18:15:28.749Z","window_ms":8080645,"query_error":0,"empty_result":4,"fallback_used":0}
+[health] run=RUN__BINANCEFUT__15m__1776449714991 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14991 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776449700000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+{"event":"signals_query_metrics","ts":"2026-04-17T18:31:04.773Z","window_ms":936023,"query_error":0,"empty_result":8,"fallback_used":0}
+[health] run=RUN__BINANCEFUT__15m__1776450614998 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14998 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776450600000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776451514998 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14998 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776451500000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776452415038 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15038 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776452400000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776453315010 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15010 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776453300000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776454215010 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15010 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776454200000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776455115009 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15009 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776455100000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776456014984 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14984 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776456000000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776456915002 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15003 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776456900000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776457815000 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15000 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776457800000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776458715002 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15002 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776458700000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776459615002 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15002 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776459600000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776460515003 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15003 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776460500000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776461415003 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15003 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776461400000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776462314918 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14918 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776462300000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776463214978 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14978 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776463200000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776464114976 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14976 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776464100000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776465015124 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15124 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776465000000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776465915011 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15011 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776465900000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776466815015 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=15015 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776466800000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+{"event":"signals_query_metrics","ts":"2026-04-17T23:16:03.694Z","window_ms":17098922,"query_error":0,"empty_result":4,"fallback_used":0}
+[health] run=RUN__BINANCEFUT__15m__1776467714901 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14901 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776467700000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[health] run=RUN__BINANCEFUT__15m__1776468614985 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=14985 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776468600000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+Server listening on port 3000
+[BOOT] Binance tick exit loop skipped (DISABLED)
+[BOOT] Binance user-data stream started
+[BINANCE_USER_STREAM] connected wss://fstream.binance.com/ws/GbLXD9LJOMcEqBilUgBj57QDvSAS8mFZ3PTayCYwCc5EsKcFFXFn1zr7nyxLYpCD
+[health] run=RUN__BINANCEFUT__15m__1776469051487 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=451488 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776468600000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+Server listening on port 3000
+[BOOT] Binance tick exit loop skipped (DISABLED)
+[BOOT] Binance user-data stream started
+[health] run=RUN__BINANCEFUT__15m__1776469251524 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=651525 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776468600000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[OAUTH_CONFIG] {
+  baseUrl: 'http://localhost:3000',
+  callbackURL: 'http://localhost:3000/auth/google/callback',
+  allowlist: ''
+}
+[OAUTH_DISABLED_LOCAL] GOOGLE_CLIENT_ID/SECRET missing; running without login
+[BOOT] Scheduler auto-start enabled (local)
+Server listening on port 3000
+[BOOT] Binance tick exit loop skipped (DISABLED)
+[BOOT] Binance user-data stream started
+[health] run=RUN__BINANCEFUT__15m__1776469444722 overall=PASS gate_fail=0/8 snapshot_fail=0 snapshot_signal_fail=0 lag_max_ms=844722 lag_max_mkt=BINANCEFUT:BTCUSDT oldest_bar_ms=1776468600000 oldest_mkt=BINANCEFUT:BTCUSDT samples=OK
+[BINANCE_USER_STREAM] connected wss://fstream.binance.com/ws/GbLXD9LJOMcEqBilUgBj57QDvSAS8mFZ3PTayCYwCc5EsKcFFXFn1zr7nyxLYpCD

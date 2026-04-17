@@ -137,9 +137,14 @@ async function runExitWorkerExecution({
         }, resolvedTimeoutMs);
       }),
     ]);
+    const normalizedResult = result && typeof result === "object" ? { ...result } : null;
+    if (executionConfig.targetMode && normalizedResult && normalizedResult.reschedule_recommended === true) {
+      normalizedResult.reschedule_recommended = false;
+      normalizedResult.target_reschedule_suppressed = true;
+    }
     state.lastResult = result && typeof result === "object"
       ? {
-          ...result,
+          ...(normalizedResult || result),
           started_at: startedAt,
           finished_at: nowIso(),
           target_mode: executionConfig.targetMode,

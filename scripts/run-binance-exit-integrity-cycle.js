@@ -459,12 +459,16 @@ function buildSummary(report = {}) {
     ? report.skipped_validation_families
     : [];
   const skippedValidationFamilyN = skippedValidationFamilies.length;
+  const actionableExitQtyLiveIssueChainN = authorityActionableLiveIssuePositionN > 0
+    ? exitQtyLiveIssueChainN
+    : 0;
   const liveIssueCount = afterGap + watchdogIssueSymbolN + exitQtyLiveIssueChainN + trailFloorLiveViolationN + duplicationIssueN + fillSyncAlertEventIssueN + tradeExecutionAlertMissingFillN + authorityActionableLiveIssuePositionN + canonicalExitStageFailN + simplifiedExitV2LiveFlowActionableSymbolN + tp1MetaSyncGapN;
+  const actionableLiveIssueCount = afterGap + watchdogIssueSymbolN + actionableExitQtyLiveIssueChainN + trailFloorLiveViolationN + duplicationIssueN + fillSyncAlertEventIssueN + tradeExecutionAlertMissingFillN + authorityActionableLiveIssuePositionN + canonicalExitStageFailN + simplifiedExitV2LiveFlowActionableSymbolN + tp1MetaSyncGapN;
   const reasons = [];
   if (scriptFailureN > 0) reasons.push(`script failure ${scriptFailureN}건`);
   if (afterGap > 0) reasons.push(`native trail protection gap ${afterGap}건`);
   if (watchdogIssueSymbolN > 0) reasons.push(`active exit watchdog issue ${watchdogIssueSymbolN}건`);
-  if (exitQtyLiveIssueChainN > 0) reasons.push(`exit qty live issue chain ${exitQtyLiveIssueChainN}건`);
+  if (actionableExitQtyLiveIssueChainN > 0) reasons.push(`exit qty live issue chain ${actionableExitQtyLiveIssueChainN}건`);
   if (trailFloorLiveViolationN > 0) reasons.push(`trail floor live violation ${trailFloorLiveViolationN}건`);
   if (duplicationIssueN > 0) reasons.push(`fill sync duplicate group ${duplicationIssueN}건`);
   if (fillSyncAlertEventIssueN > 0) reasons.push(`fill sync alert event mismatch ${fillSyncAlertEventIssueN}건`);
@@ -478,7 +482,7 @@ function buildSummary(report = {}) {
   if (skippedValidationFamilyN > 0) {
     reasons.push(`skipped validation families ${skippedValidationFamilyN}개 (${skippedValidationFamilies.map((f) => f.family || "UNKNOWN").join(", ")})`);
   }
-  const liveGateBlocked = scriptFailureN > 0 || liveIssueCount > 0 || !canonicalTransitionBackfillOk;
+  const liveGateBlocked = scriptFailureN > 0 || actionableLiveIssueCount > 0 || !canonicalTransitionBackfillOk;
   return {
     status: liveGateBlocked ? "WARN" : "OK",
     live_gate_blocked: liveGateBlocked,
@@ -487,12 +491,14 @@ function buildSummary(report = {}) {
     script_failure_n: scriptFailureN,
     script_failures: scriptFailures,
     live_issue_count: liveIssueCount,
+    actionable_live_issue_count: actionableLiveIssueCount,
     native_gap_before: beforeGap,
     native_gap_after: afterGap,
     stage_issue_symbol_n: stageIssueSymbolN,
     watchdog_issue_symbol_n: watchdogIssueSymbolN,
     watchdog_repaired_symbol_n: watchdogRepairedSymbolN,
     exit_qty_live_issue_chain_n: exitQtyLiveIssueChainN,
+    actionable_exit_qty_live_issue_chain_n: actionableExitQtyLiveIssueChainN,
     trail_floor_live_violation_n: trailFloorLiveViolationN,
     fill_sync_duplicate_group_n: fillSyncDuplicateGroupN,
     fill_sync_alert_event_issue_n: fillSyncAlertEventIssueN,

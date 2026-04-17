@@ -43,6 +43,31 @@ function readJsonSafe(filePath) {
   }
 }
 
+function readJsonlSafe(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return { ok: true, data: [] };
+    const rows = String(fs.readFileSync(filePath, "utf8") || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch (_) {
+          return null;
+        }
+      })
+      .filter(Boolean);
+    return { ok: true, data: rows };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err && err.message ? err.message : String(err),
+      data: [],
+    };
+  }
+}
+
 function isLearningEpochActive(summary = {}) {
   if (!summary || typeof summary !== "object") return false;
   if (summary.active === true) return true;
@@ -604,6 +629,145 @@ function loadExitIntegrityHealth({ repoRoot } = {}) {
   };
 }
 
+function summarizeTp1FailClosedRows(rows = [], {
+  nowMs = Date.now(),
+  lookbackMs = 24 * 60 * 60 * 1000,
+} = {}) {
+  const repeatSymbolThreshold = Math.max(2, Number(process.env.TP1_FAIL_CLOSED_REPEAT_SYMBOL_THRESHOLD || 2));
+  const allowedEvents = new Set([
+    "tick_exit_tp1_native_gap_fail_closed",
+    "tick_exit_tp1_meta_sync_fail_closed",
+  ]);
+  const sinceMs = Number(nowMs) - Number(lookbackMs);
+  const filtered = (Array.isArray(rows) ? rows : [])
+    .filter((row) => allowedEvents.has(String(row && row.event || "").trim()))
+    .map((row) => {
+      const tsMs = toTimeMs(row && row.ts);
+      return {
+        event: String(row && row.event || "").trim(),
+        symbol: String(row && row.symbol || "").trim().toUpperCase() || null,
+        tf: String(row && row.tf || "").trim() || null,
+        ts: row && row.ts ? String(row.ts) : null,
+        ts_ms: tsMs,
+        issue_codes: Array.isArray(row && row.issue_codes) ? row.issue_codes.slice() : [],
+        request_id: row && row.request_id ? String(row.request_id) : null,
+        repair_reason: row && row.repair_reason ? String(row.repair_reason) : null,
+        dispatch_ok: row && row.dispatch_ok === true,
+      };
+    })
+    .filter((row) => Number.isFinite(row.ts_ms) && row.ts_ms >= sinceMs)
+    .sort((a, b) => Number(b.ts_ms || 0) - Number(a.ts_ms || 0));
+  const symbolCounts = new Map();
+  for (const row of filtered) {
+    const key = row.symbol || "UNKNOWN";
+    symbolCounts.set(key, (symbolCounts.get(key) || 0) + 1);
+  }
+  const sortedSymbols = Array.from(symbolCounts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const topSymbols = sortedSymbols
+    .slice(0, 10)
+    .map(([symbol, count]) => ({ symbol, count }));
+  const quarantineCandidates = sortedSymbols
+    .filter(([, count]) => Number(count) >= repeatSymbolThreshold)
+    .slice(0, 10)
+    .map(([symbol, count]) => {
+      const n = Number(count);
+      const severe = n >= (repeatSymbolThreshold + 2);
+      return {
+        symbol,
+        count: n,
+        threshold: repeatSymbolThreshold,
+        severity: severe ? "HIGH" : "MEDIUM",
+        quarantine_recommended: severe,
+        reason: severe ? "REPEATED_TP1_FAIL_CLOSED_ESCALATED" : "REPEATED_TP1_FAIL_CLOSED_WATCH",
+        action: severe
+          ? "즉시 symbol quarantine 검토 및 TP1 native/meta trace 수집"
+          : "다음 발생 전 TP1 native/meta trace 선수집 및 quarantine 준비",
+      };
+    });
+  return {
+    generated_at_iso: new Date(Number(nowMs)).toISOString(),
+    lookback_hours: Math.round(lookbackMs / (60 * 60 * 1000)),
+    repeat_symbol_threshold: repeatSymbolThreshold,
+    total_fail_closed_n: filtered.length,
+    tp1_native_gap_fail_closed_n: filtered.filter((row) => row.event === "tick_exit_tp1_native_gap_fail_closed").length,
+    tp1_meta_sync_fail_closed_n: filtered.filter((row) => row.event === "tick_exit_tp1_meta_sync_fail_closed").length,
+    dispatch_fail_n: filtered.filter((row) => row.dispatch_ok !== true).length,
+    repeat_symbol_n: sortedSymbols.filter(([, count]) => Number(count) >= repeatSymbolThreshold).length,
+    max_symbol_fail_closed_n: sortedSymbols.length ? Number(sortedSymbols[0][1]) : 0,
+    top_symbols: topSymbols,
+    repeat_symbols: sortedSymbols
+      .filter(([, count]) => Number(count) >= repeatSymbolThreshold)
+      .slice(0, 10)
+      .map(([symbol, count]) => ({ symbol, count })),
+    quarantine_candidate_n: quarantineCandidates.length,
+    quarantine_candidates: quarantineCandidates,
+    recent_rows: filtered.slice(0, 20),
+  };
+}
+
+function loadTp1FailClosedHealth({ repoRoot } = {}) {
+  const latestPath = path.join(repoRoot, "ops", "daily", "tp1_fail_closed_events_latest.json");
+  const read = readJsonSafe(latestPath);
+  if (read.ok && read.data && typeof read.data === "object") {
+    const summary = read.data.summary && typeof read.data.summary === "object"
+      ? read.data.summary
+      : read.data;
+    return {
+      available: true,
+      source_path: latestPath,
+      total_fail_closed_n: toNum(summary.total_fail_closed_n, null),
+      tp1_native_gap_fail_closed_n: toNum(summary.tp1_native_gap_fail_closed_n, null),
+      tp1_meta_sync_fail_closed_n: toNum(summary.tp1_meta_sync_fail_closed_n, null),
+      dispatch_fail_n: toNum(summary.dispatch_fail_n, null),
+      repeat_symbol_threshold: toNum(summary.repeat_symbol_threshold, null),
+      repeat_symbol_n: toNum(summary.repeat_symbol_n, null),
+      max_symbol_fail_closed_n: toNum(summary.max_symbol_fail_closed_n, null),
+      top_symbols: Array.isArray(summary.top_symbols) ? summary.top_symbols.slice(0, 10) : [],
+      repeat_symbols: Array.isArray(summary.repeat_symbols) ? summary.repeat_symbols.slice(0, 10) : [],
+      quarantine_candidate_n: toNum(summary.quarantine_candidate_n, null),
+      quarantine_candidates: Array.isArray(summary.quarantine_candidates) ? summary.quarantine_candidates.slice(0, 10) : [],
+      recent_rows: Array.isArray(summary.recent_rows) ? summary.recent_rows.slice(0, 20) : [],
+      fallback_runtime_used: false,
+    };
+  }
+  const runtimePath = path.join(repoRoot, "ops", "runtime", "binance_tick_exit_audit.jsonl");
+  const runtimeRead = readJsonlSafe(runtimePath);
+  if (!runtimeRead.ok) {
+    return {
+      available: false,
+      source_path: latestPath,
+      runtime_source_path: runtimePath,
+      total_fail_closed_n: null,
+      tp1_native_gap_fail_closed_n: null,
+      tp1_meta_sync_fail_closed_n: null,
+      dispatch_fail_n: null,
+      top_symbols: [],
+      recent_rows: [],
+      fallback_runtime_used: false,
+    };
+  }
+  const summary = summarizeTp1FailClosedRows(runtimeRead.data);
+  return {
+    available: true,
+    source_path: latestPath,
+    runtime_source_path: runtimePath,
+    total_fail_closed_n: toNum(summary.total_fail_closed_n, null),
+    tp1_native_gap_fail_closed_n: toNum(summary.tp1_native_gap_fail_closed_n, null),
+    tp1_meta_sync_fail_closed_n: toNum(summary.tp1_meta_sync_fail_closed_n, null),
+    dispatch_fail_n: toNum(summary.dispatch_fail_n, null),
+    repeat_symbol_threshold: toNum(summary.repeat_symbol_threshold, null),
+    repeat_symbol_n: toNum(summary.repeat_symbol_n, null),
+    max_symbol_fail_closed_n: toNum(summary.max_symbol_fail_closed_n, null),
+    top_symbols: Array.isArray(summary.top_symbols) ? summary.top_symbols.slice(0, 10) : [],
+    repeat_symbols: Array.isArray(summary.repeat_symbols) ? summary.repeat_symbols.slice(0, 10) : [],
+    quarantine_candidate_n: toNum(summary.quarantine_candidate_n, null),
+    quarantine_candidates: Array.isArray(summary.quarantine_candidates) ? summary.quarantine_candidates.slice(0, 10) : [],
+    recent_rows: Array.isArray(summary.recent_rows) ? summary.recent_rows.slice(0, 20) : [],
+    fallback_runtime_used: true,
+  };
+}
+
 function hasExecutionFlowCoverage(health) {
   if (!health || health.available !== true) return false;
   const hasSignalSide = (
@@ -704,6 +868,7 @@ function decideStatus({
   binanceExitQtyContractAudit,
   nativeTrailProtectionGap,
   exitIntegrity,
+  tp1FailClosed,
   positionReadModelCutover,
   activePositionCount = null,
 }) {
@@ -831,6 +996,24 @@ function decideStatus({
       reasons.push(`TP1 meta sync gap ${exitIntegrity.tp1_meta_sync_gap_n}건`);
     }
     if (
+      tp1FailClosed
+      && tp1FailClosed.available === true
+      && Number.isFinite(tp1FailClosed.quarantine_candidate_n)
+      && tp1FailClosed.quarantine_candidate_n >= 1
+    ) {
+      if (status === "진행") status = "보류";
+      reasons.push(`TP1 fail-closed quarantine 후보 ${tp1FailClosed.quarantine_candidate_n}개`);
+    }
+    if (
+      tp1FailClosed
+      && tp1FailClosed.available === true
+      && Number.isFinite(tp1FailClosed.total_fail_closed_n)
+      && tp1FailClosed.total_fail_closed_n >= 1
+    ) {
+      if (status === "진행") status = "보류";
+      reasons.push(`TP1 fail-closed ${tp1FailClosed.total_fail_closed_n}건`);
+    }
+    if (
       binanceExitQtyContractAudit
       && binanceExitQtyContractAudit.available !== true
     ) {
@@ -857,6 +1040,7 @@ function buildIssueLines(summary) {
   const exitQtyLiveSeparation = summary.binance_exit_qty_live_separation || {};
   const nativeTrailProtectionGap = summary.native_trail_protection_gap || {};
   const exitIntegrity = summary.exit_integrity || {};
+  const tp1FailClosed = summary.tp1_fail_closed || {};
   const regimeLineageGap = summary.regime_lineage_gap || {};
   const flowCoverageReady = hasExecutionFlowCoverage(health);
   const writerAuthority = summary.position_writer_authority_24h && typeof summary.position_writer_authority_24h === "object"
@@ -955,6 +1139,30 @@ function buildIssueLines(summary) {
     }
   } else {
     lines.push("[ISSUE] M | exit integrity cycle 리포트 미수집 | TP1 meta sync gate 산출물 확인 필요");
+  }
+
+  if (tp1FailClosed.available === true) {
+    if (Number.isFinite(tp1FailClosed.quarantine_candidate_n) && tp1FailClosed.quarantine_candidate_n >= 1) {
+      const candidateSymbols = Array.isArray(tp1FailClosed.quarantine_candidates) && tp1FailClosed.quarantine_candidates.length
+        ? tp1FailClosed.quarantine_candidates.slice(0, 3).map((row) => `${row.symbol}(${row.count},${row.severity})`).join(", ")
+        : "UNKNOWN";
+      lines.push(`[ISSUE] H | TP1 fail-closed quarantine 후보 ${tp1FailClosed.quarantine_candidate_n}개 | 심볼 ${candidateSymbols} 우선 trace, 필요 시 symbol quarantine 검토`);
+    } else if (Number.isFinite(tp1FailClosed.repeat_symbol_n) && tp1FailClosed.repeat_symbol_n >= 1) {
+      const repeatSymbols = Array.isArray(tp1FailClosed.repeat_symbols) && tp1FailClosed.repeat_symbols.length
+        ? tp1FailClosed.repeat_symbols.slice(0, 3).map((row) => `${row.symbol}(${row.count})`).join(", ")
+        : "UNKNOWN";
+      const threshold = Number.isFinite(tp1FailClosed.repeat_symbol_threshold) ? tp1FailClosed.repeat_symbol_threshold : 2;
+      lines.push(`[ISSUE] H | TP1 fail-closed 반복 심볼 ${tp1FailClosed.repeat_symbol_n}개 | threshold ${threshold}, 심볼 ${repeatSymbols}는 quarantine 후보로 즉시 추적 필요`);
+    } else if (Number.isFinite(tp1FailClosed.total_fail_closed_n) && tp1FailClosed.total_fail_closed_n >= 1) {
+      const topSymbol = Array.isArray(tp1FailClosed.top_symbols) && tp1FailClosed.top_symbols.length
+        ? `${tp1FailClosed.top_symbols[0].symbol}(${tp1FailClosed.top_symbols[0].count})`
+        : "UNKNOWN";
+      lines.push(`[ISSUE] M | TP1 fail-closed ${tp1FailClosed.total_fail_closed_n}건 | native gap ${fmt(tp1FailClosed.tp1_native_gap_fail_closed_n, 0)}건 / meta sync ${fmt(tp1FailClosed.tp1_meta_sync_fail_closed_n, 0)}건, 상위 심볼 ${topSymbol}`);
+    } else {
+      lines.push("[ISSUE] L | TP1 fail-closed 없음 | TP1 native gap/meta sync watchdog 유지");
+    }
+  } else {
+    lines.push("[ISSUE] M | TP1 fail-closed 리포트 미수집 | tick_exit runtime audit 경로 확인 필요");
   }
 
   if (exitQtyAudit.available === true) {
@@ -1089,6 +1297,7 @@ function buildMarkdown({
   const health = executionHealth || {};
   const cutover = summary.position_read_model_cutover || {};
   const exitIntegrity = summary.exit_integrity || {};
+  const tp1FailClosed = summary.tp1_fail_closed || {};
   const issueLines = buildIssueLines(summary);
   const approvalLines = (Array.isArray(summary.approvals) ? summary.approvals : [])
     .map((item) =>
@@ -1126,6 +1335,9 @@ function buildMarkdown({
    - DROP_TP_P1_PENDING: \`${health.drop_tp1_pending_count == null ? "N/A" : health.drop_tp1_pending_count}\`건
    - 감사 이슈/중복체결: \`${health.audit_issue_count == null ? "N/A" : health.audit_issue_count}\`건 / \`${health.duplicate_signal_fill_count == null ? "N/A" : health.duplicate_signal_fill_count}\`건
    - TP1 meta sync gap/gate: \`${exitIntegrity.tp1_meta_sync_gap_n == null ? "N/A" : exitIntegrity.tp1_meta_sync_gap_n}\`건 / \`${exitIntegrity.tp1_meta_sync_gate || "N/A"}\`
+   - TP1 fail-closed(native/meta): \`${tp1FailClosed.total_fail_closed_n == null ? "N/A" : tp1FailClosed.total_fail_closed_n}\`건 / \`${tp1FailClosed.tp1_native_gap_fail_closed_n == null ? "N/A" : tp1FailClosed.tp1_native_gap_fail_closed_n}\` / \`${tp1FailClosed.tp1_meta_sync_fail_closed_n == null ? "N/A" : tp1FailClosed.tp1_meta_sync_fail_closed_n}\`
+   - TP1 반복 심볼: \`${tp1FailClosed.repeat_symbol_n == null ? "N/A" : tp1FailClosed.repeat_symbol_n}\`개 / threshold \`${tp1FailClosed.repeat_symbol_threshold == null ? "N/A" : tp1FailClosed.repeat_symbol_threshold}\` / 상위 \`${Array.isArray(tp1FailClosed.repeat_symbols) && tp1FailClosed.repeat_symbols.length ? tp1FailClosed.repeat_symbols.map((item) => `${item.symbol}(${item.count})`).join(", ") : "없음"}\`
+   - TP1 quarantine 후보: \`${tp1FailClosed.quarantine_candidate_n == null ? "N/A" : tp1FailClosed.quarantine_candidate_n}\`개 / \`${Array.isArray(tp1FailClosed.quarantine_candidates) && tp1FailClosed.quarantine_candidates.length ? tp1FailClosed.quarantine_candidates.map((item) => `${item.symbol}:${item.severity}:${item.action}`).join(" | ") : "없음"}\`
 5. position read-model cutover 점검 완료
    - latest_ready: \`${cutover.available !== true ? "N/A" : (cutover.latest_ready ? "yes" : "no")}\`
    - dominant_status: \`${cutover.dominant_status || "N/A"}\`
@@ -1253,6 +1465,7 @@ async function main() {
   const binanceExitQtyLiveSeparation = loadBinanceExitQtyLiveSeparationHealth({ repoRoot });
   const nativeTrailProtectionGap = loadNativeTrailProtectionGapHealth({ repoRoot });
   const exitIntegrity = loadExitIntegrityHealth({ repoRoot });
+  const tp1FailClosed = loadTp1FailClosedHealth({ repoRoot });
   const regimeLineageGap = loadRegimeLineageGapHealth({ repoRoot });
   const positionReadViews = await listExchangePositionReadViews({ exchange: "BINANCEFUT", limit: 200 }).catch(() => []);
   const activePositionCount = Array.isArray(positionReadViews)
@@ -1318,6 +1531,7 @@ async function main() {
     binance_exit_qty_live_separation: binanceExitQtyLiveSeparation,
     native_trail_protection_gap: nativeTrailProtectionGap,
     exit_integrity: exitIntegrity,
+    tp1_fail_closed: tp1FailClosed,
     regime_lineage_gap: regimeLineageGap,
     position_read_model_cutover: positionReadModelCutover,
     approvals: [],
@@ -1341,6 +1555,7 @@ async function main() {
     binanceExitQtyContractAudit,
     nativeTrailProtectionGap,
     exitIntegrity,
+    tp1FailClosed,
     positionReadModelCutover,
     activePositionCount,
   });
@@ -1457,6 +1672,9 @@ module.exports = {
     loadBinanceExitQtyLiveSeparationHealth,
     loadNativeTrailProtectionGapHealth,
     loadExitIntegrityHealth,
+    readJsonlSafe,
+    summarizeTp1FailClosedRows,
+    loadTp1FailClosedHealth,
     loadRegimeLineageGapHealth,
     hasExecutionFlowCoverage,
     hasHealthySupersedingPositionView,

@@ -8,7 +8,7 @@ const path = require("path");
 const { getFirestore } = require("../src/storage/firestore");
 const { listExchangePositionReadViews } = require("../src/services/positionReadModel");
 const { resolveExitRulesForPosition } = require("../src/engine/signalEngine");
-const { resolveExitStageAbsoluteContractQtyRatio } = require("../src/utils/exitQtyContract");
+const { resolveExitStageAbsoluteContractQtyRatio, resolveTp1RemainingContractQtyRatio } = require("../src/utils/exitQtyContract");
 const { reclassifyExternalFillEvent } = require("../src/storage/fillsPaper");
 const { getPosition, upsertPositionMetaOnly } = require("../src/storage/positionsPaper");
 const {
@@ -54,6 +54,13 @@ function isActivePosition(pos = {}) {
   const qtyBase = toNum(pos.qty_base);
   const sizePct = toNum(pos.size_pct);
   return (((Number.isFinite(qtyBase) && qtyBase > 0) || (Number.isFinite(sizePct) && sizePct > 0)) && state !== "FLAT");
+}
+
+function isSimplifiedExitV2Position(position = {}) {
+  const meta = position && typeof position.meta === "object" ? position.meta : {};
+  return meta.simplified_exit_v2_enabled === true
+    || meta.simplifiedExitV2Enabled === true
+    || position.simplified_exit_v2_enabled === true;
 }
 
 function classifyExitEvent(event) {
@@ -132,12 +139,15 @@ function filterCurrentEntryFills(position, fills = []) {
 function buildStageSummary(position, fills = []) {
   const pos = position || {};
   const meta = (pos && typeof pos.meta === "object") ? pos.meta : {};
+  const simplifiedExitV2Enabled = isSimplifiedExitV2Position(pos);
   const rules = resolveExitRulesForPosition({
     exchange: EXCHANGE,
     position: pos,
   });
-  const tp0AbsRatio = resolveExitStageAbsoluteContractQtyRatio("TP0", rules);
-  const tp1AbsRatio = resolveExitStageAbsoluteContractQtyRatio("TP1", rules);
+  const tp0AbsRatio = simplifiedExitV2Enabled ? 0 : resolveExitStageAbsoluteContractQtyRatio("TP0", rules);
+  const tp1AbsRatio = simplifiedExitV2Enabled
+    ? resolveTp1RemainingContractQtyRatio(rules, 0.5)
+    : resolveExitStageAbsoluteContractQtyRatio("TP1", rules);
   const currentQtyBase = Math.max(0, toNum(pos.qty_base) || 0);
   const authoritativeFills = buildAuthoritativeFillSet(filterCurrentEntryFills(pos, fills));
   let tp0QtyBase = 0;
@@ -157,9 +167,11 @@ function buildStageSummary(position, fills = []) {
   const tolQtyBase = inferredEntryQtyBase > 0 ? inferredEntryQtyBase * QTY_TOL_RATIO : 0;
   const expectedTp0QtyBase = inferredEntryQtyBase * (tp0AbsRatio || 0);
   const expectedTp1QtyBase = inferredEntryQtyBase * (tp1AbsRatio || 0);
-  const shouldTp0 = inferredEntryQtyBase > 0 && totalExitQtyBase >= Math.max(0, expectedTp0QtyBase - tolQtyBase);
+  const shouldTp0 = simplifiedExitV2Enabled !== true
+    && inferredEntryQtyBase > 0
+    && totalExitQtyBase >= Math.max(0, expectedTp0QtyBase - tolQtyBase);
   const shouldTp1 = inferredEntryQtyBase > 0 && totalExitQtyBase >= Math.max(0, expectedTp0QtyBase + expectedTp1QtyBase - tolQtyBase);
-  const shouldTrail = shouldTp1 && currentQtyBase > tolQtyBase;
+  const shouldTrail = simplifiedExitV2Enabled !== true && shouldTp1 && currentQtyBase > tolQtyBase;
   const latestExitFill = authoritativeFills[authoritativeFills.length - 1] || null;
   const latestStage = classifyExitEvent(latestExitFill && latestExitFill.event);
   const latestExitOrderId = latestExitFill
@@ -169,11 +181,12 @@ function buildStageSummary(position, fills = []) {
   if (shouldTp0 && meta.tp_p0_done !== true) issues.push("TP0_DONE_MISSING_BY_QTY");
   if (shouldTp1 && meta.tp_p1_done !== true) issues.push("TP1_DONE_MISSING_BY_QTY");
   if (shouldTrail && meta.trail_active !== true) issues.push("TRAIL_ACTIVE_MISSING_BY_QTY");
-  if (meta.tp_p1_done === true && meta.tp_p0_done !== true) issues.push("TP1_DONE_WITHOUT_TP0_DONE");
-  if (meta.trail_active === true && meta.tp_p0_done !== true) issues.push("TRAIL_ACTIVE_WITHOUT_TP0_DONE");
+  if (simplifiedExitV2Enabled !== true && meta.tp_p1_done === true && meta.tp_p0_done !== true) issues.push("TP1_DONE_WITHOUT_TP0_DONE");
+  if (simplifiedExitV2Enabled !== true && meta.trail_active === true && meta.tp_p0_done !== true) issues.push("TRAIL_ACTIVE_WITHOUT_TP0_DONE");
   if (latestStage === "TP0" && shouldTp1) issues.push("LATEST_TP0_SHOULD_BE_TP1");
   return {
     symbol: upper(pos.symbol || pos.symbol_or_pair_id),
+    simplified_exit_v2_enabled: simplifiedExitV2Enabled,
     state: upper(pos.state || pos.position_state),
     current_qty_base: currentQtyBase,
     inferred_entry_qty_base: inferredEntryQtyBase,
@@ -240,10 +253,13 @@ function buildStageReclassificationPlan(summary = {}) {
   const plan = [];
   if (Array.isArray(summary.issues) && summary.issues.includes("LATEST_TP0_SHOULD_BE_TP1")) {
     for (const fillId of buildTp0ToTp1ReclassificationTargets(summary)) {
+      const targetTp1Event = summary.simplified_exit_v2_enabled === true
+        ? "EXIT_TP_P1_1.68P"
+        : "EXIT_TP_P1_1.65P";
       plan.push({
         fill_id: fillId,
         from_event_stage: "TP0",
-        to_event: "EXIT_TP_P1_1.65P",
+        to_event: targetTp1Event,
         decision_reason: "ACTIVE_EXIT_STAGE_BACKFILL_RECLASSIFIED",
         reclassify_reason: "CURRENT_QTY_FLOW_IMPLIES_TP1",
       });
@@ -278,6 +294,7 @@ function applyReclassificationPlanToFills(fills = [], plan = []) {
 function buildReconciledMetaFromSummary(position = {}, summary = {}) {
   const pos = position || {};
   const currentMeta = (pos && typeof pos.meta === "object") ? pos.meta : {};
+  const simplifiedExitV2Enabled = isSimplifiedExitV2Position(pos) || summary.simplified_exit_v2_enabled === true;
   const authoritativeFills = Array.isArray(summary.authoritative_fills) ? summary.authoritative_fills : [];
   let nextMeta = { ...currentMeta };
   const latestTp0Fill = paperRunnerTest.pickLatestTpP0Fill(authoritativeFills, EXCHANGE, summary.symbol);
@@ -300,11 +317,12 @@ function buildReconciledMetaFromSummary(position = {}, summary = {}) {
   if (summary.should_tp1_done) nextMeta.tp_p1_done = true;
   if (summary.should_trail_active) nextMeta.trail_active = true;
   if (nextMeta.trail_active === true) nextMeta.tp_p1_done = true;
-  if (nextMeta.tp_p1_done === true) nextMeta.tp_p0_done = true;
+  if (simplifiedExitV2Enabled === true) nextMeta.tp_p0_done = false;
+  else if (nextMeta.tp_p1_done === true) nextMeta.tp_p0_done = true;
   const currentQtyBase = Math.max(0, toNum(summary.current_qty_base) || 0);
   const canonicalStage = nextMeta.trail_active === true
     ? "TRAIL"
-    : (nextMeta.tp_p1_done === true ? "TP1" : (nextMeta.tp_p0_done === true ? "TP0" : null));
+    : (nextMeta.tp_p1_done === true ? "TP1" : (simplifiedExitV2Enabled === true ? null : (nextMeta.tp_p0_done === true ? "TP0" : null)));
   nextMeta.canonical_exit_stage = canonicalStage;
   nextMeta.canonical_runner_remaining_abs = (nextMeta.tp_p1_done === true || nextMeta.trail_active === true) && currentQtyBase > 0
     ? currentQtyBase

@@ -49,7 +49,7 @@ const { __test } = require("../../scripts/check-binance-exit-integrity-gate");
     stop_divergence_gate: "PASS",
     canonical_transition_backfill_ok: true,
   });
-  assert.ok(warnReasons.includes("STATUS_NOT_OK:WARN"));
+  assert.deepStrictEqual(warnReasons, []);
 
   const missingStatusReasons = __test.buildFailureReasons({
     live_gate_blocked: false,
@@ -99,6 +99,17 @@ const { __test } = require("../../scripts/check-binance-exit-integrity-gate");
     "TP1_META_SYNC_GAP",
     "STOP_DIVERGENCE_SYMBOL",
   ]);
+
+  const historicalQtyOnly = __test.buildFailureReasons({
+    status: "WARN",
+    exit_qty_live_issue_chain_n: 3,
+    authority_actionable_live_issue_position_n: 0,
+    live_gate_blocked: false,
+    canonical_exit_stage_gate: "PASS",
+    stop_divergence_gate: "PASS",
+    canonical_transition_backfill_ok: true,
+  });
+  assert.deepStrictEqual(historicalQtyOnly, []);
 
   console.log("CHECK_BINANCE_EXIT_INTEGRITY_GATE_TEST_OK");
 })().catch((err) => {

@@ -77,6 +77,27 @@ async function run() {
   assert.deepStrictEqual(result.target_symbols, ["BTCUSDT"]);
   assert.strictEqual(state.inFlight, null);
   assert.ok(state.lastFinishedAt);
+
+  const targetedNoReschedule = await runExitWorkerExecution({
+    payload: { reason: "TARGET_AUDIT", chain_depth: 0, target_symbols: ["ETHUSDT", "BNBUSDT"] },
+    state: {
+      lastExecuteAt: null,
+      lastFinishedAt: null,
+      lastResult: null,
+      inFlight: null,
+    },
+    timeoutMs: 10_000,
+    runBurst: async () => ({
+      ok: true,
+      iterations: 1,
+      reschedule_recommended: true,
+      target_symbols: ["ETHUSDT", "BNBUSDT"],
+    }),
+  });
+  assert.strictEqual(targetedNoReschedule.ok, true);
+  assert.strictEqual(targetedNoReschedule.target_mode, true);
+  assert.strictEqual(targetedNoReschedule.reschedule_recommended, false, "target runs must not self-chain");
+  assert.strictEqual(targetedNoReschedule.target_reschedule_suppressed, true);
 }
 
 run()

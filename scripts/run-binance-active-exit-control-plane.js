@@ -32,6 +32,13 @@ function runScript(script, env = {}) {
   return child.status === 0;
 }
 
+function buildDailyOpsScripts() {
+  return [
+    "report-tp1-fail-closed-events.js",
+    "daily-system-ops-check.js",
+  ];
+}
+
 async function main() {
   const watchdogEveryMs = envInt("ACTIVE_EXIT_WATCHDOG_LOOP_MS", 5000);
   const integrityEveryMs = envInt("ACTIVE_EXIT_INTEGRITY_LOOP_MS", 60000);
@@ -54,7 +61,9 @@ async function main() {
       nextIntegrityAt = now + integrityEveryMs;
     }
     if (now >= nextDailyAt) {
-      runScript("daily-system-ops-check.js");
+      for (const script of buildDailyOpsScripts()) {
+        runScript(script);
+      }
       nextDailyAt = now + dailyEveryMs;
     }
     await sleep(watchdogEveryMs);
@@ -66,4 +75,10 @@ if (require.main === module) {
     console.error("RUN_BINANCE_ACTIVE_EXIT_CONTROL_PLANE_FAIL", err && err.stack ? err.stack : String(err));
     process.exit(1);
   });
+} else {
+  module.exports = {
+    __test: {
+      buildDailyOpsScripts,
+    },
+  };
 }

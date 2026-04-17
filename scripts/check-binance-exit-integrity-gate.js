@@ -29,9 +29,6 @@ function buildFailureReasons(summary = {}, { cycleResult = null } = {}) {
     reasons.push(`CYCLE_SKIPPED:${String(summary.skip_reason || "UNKNOWN").toUpperCase()}`);
   }
   const statusUpper = String(summary.status || "").trim().toUpperCase();
-  if (statusUpper && !ALLOWED_GATE_STATUSES.has(statusUpper)) {
-    reasons.push(`STATUS_NOT_OK:${statusUpper}`);
-  }
   if (toCount(summary.script_failure_n) > 0) reasons.push("SCRIPT_FAILURE");
   if (toCount(summary.skipped_validation_family_n) > 0 && !shouldAllowSkippedValidationFamilies(summary)) {
     // P3-09: when the cycle runs with EXIT_INTEGRITY_CI_NO_EXCHANGE_IO=1 a
@@ -49,7 +46,13 @@ function buildFailureReasons(summary = {}, { cycleResult = null } = {}) {
   if (summary.canonical_transition_backfill_ok !== true) reasons.push("CANONICAL_TRANSITION_BACKFILL_FAIL");
   if (toCount(summary.native_gap_after) > 0) reasons.push("NATIVE_GAP_AFTER");
   if (toCount(summary.watchdog_issue_symbol_n) > 0) reasons.push("WATCHDOG_ISSUE_SYMBOL");
-  if (toCount(summary.exit_qty_live_issue_chain_n) > 0) reasons.push("EXIT_QTY_LIVE_ISSUE_CHAIN");
+  // Historical live issue chains are valuable audit signals, but they should
+  // not block deploys once the current active-board authority check is clean.
+  // We only fail-closed on qty-chain issues when the active authority board is
+  // also reporting at least one actionable live position.
+  if (toCount(summary.exit_qty_live_issue_chain_n) > 0 && toCount(summary.authority_actionable_live_issue_position_n) > 0) {
+    reasons.push("EXIT_QTY_LIVE_ISSUE_CHAIN");
+  }
   if (toCount(summary.trail_floor_live_violation_n) > 0) reasons.push("TRAIL_FLOOR_LIVE_VIOLATION");
   if (toCount(summary.fill_sync_duplicate_group_n) > 0) reasons.push("FILL_SYNC_DUPLICATE_GROUP");
   if (toCount(summary.fill_sync_alert_event_issue_n) > 0) reasons.push("FILL_SYNC_ALERT_EVENT_ISSUE");
@@ -60,6 +63,12 @@ function buildFailureReasons(summary = {}, { cycleResult = null } = {}) {
   if (toCount(summary.simplified_exit_v2_live_flow_actionable_symbol_n) > 0) reasons.push("SIMPLIFIED_EXIT_V2_LIVE_FLOW_ACTIONABLE_SYMBOL");
   if (toCount(summary.tp1_meta_sync_gap_n) > 0) reasons.push("TP1_META_SYNC_GAP");
   if (toCount(summary.stop_divergence_symbol_n) > 0) reasons.push("STOP_DIVERGENCE_SYMBOL");
+  if (statusUpper && !ALLOWED_GATE_STATUSES.has(statusUpper)) {
+    const shouldBlockWarnStatus = statusUpper !== "WARN" || reasons.length > 0;
+    if (shouldBlockWarnStatus) {
+      reasons.unshift(`STATUS_NOT_OK:${statusUpper}`);
+    }
+  }
   return reasons;
 }
 

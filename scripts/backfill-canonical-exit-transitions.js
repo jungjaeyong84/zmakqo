@@ -78,7 +78,7 @@ function buildTransitionEvents(stage, row) {
   const extra = row && row.extra && typeof row.extra === "object" ? row.extra : {};
   const qty = Number(row.qty_fraction ?? row.qty_pct ?? extra.qty_fraction);
   const simplifiedExitV2 = isSimplifiedExitV2Row(row);
-  if (stage === "TP0") return simplifiedExitV2 ? [] : ["TP0_REACHED"];
+  if (stage === "TP0") return ["TP1_REACHED"];
   if (stage === "TP1") return simplifiedExitV2 ? ["TP1_REACHED", "TRAIL_ACTIVATED"] : ["TP1_REACHED", "TRAIL_ACTIVE"];
   if (stage === "TRAIL") return simplifiedExitV2 ? ["TRAIL_FINAL_EXIT"] : [qty >= 0.999 ? "TRAIL_FINAL_EXIT" : "TRAIL_PARTIAL"];
   return [];

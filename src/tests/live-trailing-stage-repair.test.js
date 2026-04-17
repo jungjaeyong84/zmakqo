@@ -34,7 +34,7 @@ function run() {
     tp_p1_done: false,
     trail_active: false,
   }, stage);
-  assert.strictEqual(nextMeta.tp_p0_done, true);
+  assert.strictEqual(nextMeta.tp_p0_done, false);
   assert.strictEqual(nextMeta.tp_p1_done, true);
   assert.strictEqual(nextMeta.trail_active, true);
 
@@ -79,7 +79,7 @@ function run() {
     externalQty: 0.5,
   });
   assert.strictEqual(simplifiedRejectedTp0Stage.stage, null);
-  assert.strictEqual(simplifiedRejectedTp0Stage.reason, "V2_TP0_STAGE_REJECTED");
+  assert.strictEqual(simplifiedRejectedTp0Stage.reason, "TP0_STAGE_REJECTED");
 
   const sanitized = __test.sanitizeNativeProtectionResultForNonAuthority({ ok: true, stop_order_id: "123" });
   assert.strictEqual(sanitized.ok, false);

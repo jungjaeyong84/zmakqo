@@ -16,11 +16,23 @@ function upper(value) {
   return String(value || "").trim().toUpperCase() || null;
 }
 
+function isSimplifiedExitV2Row(row = {}) {
+  const extra = row && row.extra && typeof row.extra === "object" ? row.extra : {};
+  const meta = row && row.meta && typeof row.meta === "object" ? row.meta : {};
+  return row.simplified_exit_v2_enabled === true
+    || row.simplifiedExitV2Enabled === true
+    || extra.simplified_exit_v2_enabled === true
+    || extra.simplifiedExitV2Enabled === true
+    || meta.simplified_exit_v2_enabled === true
+    || meta.simplifiedExitV2Enabled === true;
+}
+
 function buildTransitionEvents(stage, row) {
   const qty = Number(row.qty_fraction ?? row.qty_pct);
-  if (stage === "TP0") return ["TP0_REACHED"];
-  if (stage === "TP1") return ["TP1_REACHED", "TRAIL_ACTIVE"];
-  if (stage === "TRAIL") return [qty >= 0.999 ? "TRAIL_FINAL_EXIT" : "TRAIL_PARTIAL"];
+  const simplifiedExitV2 = isSimplifiedExitV2Row(row);
+  if (stage === "TP0") return simplifiedExitV2 ? [] : ["TP0_REACHED"];
+  if (stage === "TP1") return simplifiedExitV2 ? ["TP1_REACHED", "TRAIL_ACTIVATED"] : ["TP1_REACHED", "TRAIL_ACTIVE"];
+  if (stage === "TRAIL") return simplifiedExitV2 ? ["TRAIL_FINAL_EXIT"] : [qty >= 0.999 ? "TRAIL_FINAL_EXIT" : "TRAIL_PARTIAL"];
   return [];
 }
 
@@ -29,6 +41,7 @@ function buildCanonicalFillMetadata(row = {}) {
   const stage = classifyExitEventStage(fallbackEvent);
   if (!stage) return null;
   const transitionEvents = buildTransitionEvents(stage, row);
+  if (!transitionEvents.length) return null;
   const canonicalExitEvent = buildCanonicalExitEvent({
     stage,
     fallbackEvent,
@@ -120,6 +133,7 @@ if (require.main === module) {
 module.exports = {
   __test: {
     upper,
+    isSimplifiedExitV2Row,
     buildTransitionEvents,
     buildCanonicalFillMetadata,
     isMetadataUnchanged,

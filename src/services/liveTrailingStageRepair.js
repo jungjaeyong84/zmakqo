@@ -76,25 +76,18 @@ function resolveRepairTargetStage({
       reason: "TP1_DONE_WITH_OPEN_RUNNER",
     };
   }
-  if (simplifiedExitV2Enabled === true && positionSnapshot && positionSnapshot.meta && positionSnapshot.meta.tp_p0_done === true) {
+  if (positionSnapshot && positionSnapshot.meta && positionSnapshot.meta.tp_p0_done === true) {
     return {
       stage: null,
       source: canonical.source,
-      reason: "V2_TP0_STAGE_REJECTED",
-    };
-  }
-  if (simplifiedExitV2Enabled === true && canonical.stage === "TP0") {
-    return {
-      stage: null,
-      source: canonical.source,
-      reason: "V2_TP0_STAGE_REJECTED",
+      reason: "TP0_STAGE_REJECTED",
     };
   }
   if (canonical.stage === "TP0") {
     return {
-      stage: "TP0",
+      stage: null,
       source: canonical.source,
-      reason: "CANONICAL_TP0_STAGE",
+      reason: "TP0_STAGE_REJECTED",
     };
   }
   return {
@@ -108,12 +101,8 @@ function buildRepairedMeta(meta = {}, stageInfo = {}) {
   const nextMeta = { ...(meta && typeof meta === "object" ? meta : {}) };
   const stage = normalizeSymbol(stageInfo.stage);
   const simplifiedExitV2Enabled = isSimplifiedExitV2Position({ meta: nextMeta });
-  if (simplifiedExitV2Enabled !== true && (stage === "TP0" || stage === "TRAIL")) {
-    nextMeta.tp_p0_done = true;
-    nextMeta.tp_p0_source = nextMeta.tp_p0_source || "LIVE_STAGE_REPAIR";
-  }
+  void simplifiedExitV2Enabled;
   if (stage === "TRAIL") {
-    if (simplifiedExitV2Enabled !== true) nextMeta.tp_p0_done = true;
     nextMeta.tp_p1_done = true;
     nextMeta.trail_active = true;
     nextMeta.tp_p1_pending = false;
@@ -122,7 +111,7 @@ function buildRepairedMeta(meta = {}, stageInfo = {}) {
     nextMeta.tp_p1_pending_event = null;
     nextMeta.tp_p1_source = nextMeta.tp_p1_source || "LIVE_STAGE_REPAIR";
   }
-  if ((simplifiedExitV2Enabled !== true && stage === "TP0") || stage === "TRAIL") {
+  if (stage === "TRAIL") {
     // C17 invariant: canonical_exit_stage is the single source of truth on
     // position meta going forward. Writing both fields previously created a
     // dual-owner problem where drift between them could silently diverge.
@@ -203,7 +192,7 @@ async function repairLiveTrailingStageForSymbol({
     positionSnapshot: position,
     externalQty: positionQty,
   });
-  if (repairStage.stage !== "TRAIL" && repairStage.stage !== "TP0") {
+  if (repairStage.stage !== "TRAIL") {
     return {
       ok: true,
       skipped: true,

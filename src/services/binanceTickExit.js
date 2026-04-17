@@ -117,20 +117,13 @@ function ratioToPctTokenLocal(ratio) {
 
 function isSimplifiedExitV2Position(position = null) {
   const pos = position && typeof position === "object" ? position : {};
-  const meta = pos.meta && typeof pos.meta === "object" ? pos.meta : {};
-  return isSimplifiedExitV2Active(meta);
+  return isSimplifiedExitV2Active(pos);
 }
 
 function isExplicitLegacyTp0Position(position = null) {
   const pos = position && typeof position === "object" ? position : {};
-  const meta = pos.meta && typeof pos.meta === "object" ? pos.meta : {};
-  return resolveSimplifiedExitV2FlagFromSnapshot(meta) === false;
-}
-
-function isExplicitLegacyTp0Position(position = null) {
-  const pos = position && typeof position === "object" ? position : {};
-  const meta = pos.meta && typeof pos.meta === "object" ? pos.meta : {};
-  return resolveSimplifiedExitV2FlagFromSnapshot(meta) === false;
+  return resolveSimplifiedExitV2FlagFromSnapshot(pos) === false
+    && isSimplifiedExitV2Active(pos) !== true;
 }
 
 function resolveCanonicalExitStageForPosition(position) {
@@ -1983,12 +1976,9 @@ function computeExitTriggers({ pos, rules, leverageEff, nativeProtectionState } 
   const avg = Number(pos && pos.avg_price);
   if (!Number.isFinite(avg) || avg <= 0) return out;
   const meta = pos && pos.meta ? pos.meta : {};
-  const simplifiedExitV2Enabled = isSimplifiedExitV2Position(pos);
-  const explicitLegacyTp0Position = isExplicitLegacyTp0Position(pos);
   const side = resolvePositionSideFromPosition(pos, meta, "LONG");
   const runnerStage = resolveRunnerStageState(pos);
   const tpP1Done = runnerStage.tpP1Done;
-  const tpP0Done = meta.tp_p0_done === true || tpP1Done;
   const tpP1Pending = meta.tp_p1_pending === true;
   const nativeStopActive = nativeProtectionState && typeof nativeProtectionState.stopActive === "boolean"
     ? nativeProtectionState.stopActive
@@ -2000,12 +1990,6 @@ function computeExitTriggers({ pos, rules, leverageEff, nativeProtectionState } 
   if (!nativeStopActive) {
     const slPx = pnlToPrice({ avg, pnlPct: Number(rules.SL) / leverageEff, side });
     if (Number.isFinite(slPx)) out.push({ kind: "SL", price: slPx });
-  }
-
-  const tpP0Pct = resolveTpP0Pct({ rules, meta });
-  if (explicitLegacyTp0Position && simplifiedExitV2Enabled !== true && !tpP0Done && Number.isFinite(tpP0Pct) && tpP0Pct > 0) {
-    const tp0Px = pnlToPrice({ avg, pnlPct: Number(tpP0Pct) / leverageEff, side });
-    if (Number.isFinite(tp0Px)) out.push({ kind: "TP_P0", price: tp0Px });
   }
 
   if (!tpP1Done && !tpP1Pending && !nativeTpActive) {
@@ -2070,7 +2054,7 @@ function collectTriggeredKinds({ price, triggers, nearPct, side }) {
     if (!Number.isFinite(trg) || trg <= 0) return;
 
     // 가격이 이미 트리거를 통과한 경우(급등/급락)는 nearPct와 무관하게 즉시 검사
-    const isTakeProfit = kind === "TP_P0" || kind === "TP_P1" || kind === "TP_C";
+    const isTakeProfit = kind === "TP_P1" || kind === "TP_C";
     const crossed = sideUpper === "SHORT"
       ? (isTakeProfit ? (price <= trg) : (price >= trg))
       : (isTakeProfit ? (price >= trg) : (price <= trg));

@@ -86,7 +86,7 @@ function toMs(value) {
 function classifyEvent(event) {
   const ev = upper(event);
   if (!ev) return "UNKNOWN";
-  if (ev.startsWith("EXIT_TP_P0")) return "TP0";
+  if (ev.startsWith("EXIT_TP_P0")) return "TP1";
   if (ev.startsWith("EXIT_TP_P1")) return "TP1";
   if (ev.startsWith("EXIT_TRAIL")) return "TRAIL";
   if (ev.startsWith("EXIT_SL")) return "SL";
@@ -135,7 +135,7 @@ function resolveCanonicalTransitionEvents(row = {}) {
 
 function hasForbiddenSimplifiedExitV2Transition(row = {}) {
   if (isSimplifiedExitV2Row(row) !== true) return false;
-  return resolveCanonicalTransitionEvents(row).some((item) => item === "TP0_REACHED" || item === "TRAIL_PARTIAL");
+  return resolveCanonicalTransitionEvents(row).some((item) => item === "TRAIL_PARTIAL");
 }
 
 function resolveComparableAuditEvent(row = {}) {

@@ -78,13 +78,8 @@ function computeOverallStatus(tasks) {
   return { status, reasons };
 }
 
-function main() {
-  const repoRoot = path.resolve(__dirname, "..");
-  const nowIso = new Date().toISOString();
-  const dateKey = kstDateKey(nowIso) || "unknown-date";
-  const generatedAtKst = toKstString(nowIso, { fallbackToString: true });
-
-  const tasks = [
+function buildTasks() {
+  return [
     { id: "execution_quality", label: "실행 품질 리포트", bin: "node", args: ["scripts/report-best-self-evolution-execution-quality.js"] },
     { id: "quant_ml_core", label: "퀀트 ML 코어 리포트", bin: "node", args: ["scripts/report-best-self-evolution-quant-ml-core.js"] },
     { id: "signal_lineage_health", label: "시그널 라인리지 건강도", bin: "node", args: ["scripts/report-signal-lineage-health.js"] },
@@ -99,6 +94,7 @@ function main() {
     { id: "openclaw_policy_authority", label: "OpenClaw 정책 권한 리포트", bin: "node", args: ["scripts/report-openclaw-policy-authority.js"] },
     { id: "runtime_error_family_remediation", label: "런타임 오류 family remediation", bin: "node", args: ["scripts/runtime-error-family-remediation.js"] },
     { id: "ml_ops_pipeline", label: "ML 운영 파이프라인", bin: "node", args: ["scripts/run-ml-ops-pipeline.js"] },
+    { id: "tp1_fail_closed", label: "TP1 fail-closed 감사", bin: "node", args: ["scripts/report-tp1-fail-closed-events.js"] },
     { id: "system_ops", label: "시스템 운영 점검", bin: "node", args: ["scripts/daily-system-ops-check.js"] },
     { id: "improvement_pack", label: "슬리피지 원천 팩 생성", bin: "node", args: ["scripts/build-improvement-pack-local.js"] },
     { id: "failure_mode", label: "실패 모드 사전점검", bin: "node", args: ["scripts/qa-failure-mode-precheck.js"] },
@@ -106,6 +102,15 @@ function main() {
     { id: "execution_safety", label: "바이낸스 실행 안전 점검", bin: "node", args: ["scripts/binance-execution-safety-check.js"] },
     { id: "recovery_actions", label: "시스템 복구 액션 패키지", bin: "node", args: ["scripts/system-recovery-actions.js"] },
   ];
+}
+
+function main() {
+  const repoRoot = path.resolve(__dirname, "..");
+  const nowIso = new Date().toISOString();
+  const dateKey = kstDateKey(nowIso) || "unknown-date";
+  const generatedAtKst = toKstString(nowIso, { fallbackToString: true });
+
+  const tasks = buildTasks();
 
   const results = tasks.map((task) => runTask(repoRoot, task));
   const overall = computeOverallStatus(results);
@@ -147,9 +152,18 @@ function main() {
   }, null, 2));
 }
 
-try {
-  main();
-} catch (err) {
-  console.error("system-autonomous-cycle failed:", err && err.message ? err.message : err);
-  process.exit(1);
+if (require.main === module) {
+  try {
+    main();
+  } catch (err) {
+    console.error("system-autonomous-cycle failed:", err && err.message ? err.message : err);
+    process.exit(1);
+  }
+} else {
+  module.exports = {
+    __test: {
+      buildTasks,
+      computeOverallStatus,
+    },
+  };
 }
