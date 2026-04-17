@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.jeongjaeyong.donbeolja.openclawweekly</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/zsh</string>
+      <string>/Users/jeongjaeyong/Projects/donbeolja/ops/launchd/run_openclaw_weekly_summary.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/jeongjaeyong/Projects/donbeolja</string>
+
+    <!--
+      Weekly cadence — every Monday 09:00 KST (UTC+09:00).
+      In launchd StartCalendarInterval, times are local; the operator runs
+      on macOS set to KST. The dashboard artifact freshness is 6h worst
+      case, so 09:00 Monday always picks up the most recent retrospect.
+    -->
+    <key>StartCalendarInterval</key>
+    <dict>
+      <key>Weekday</key><integer>1</integer>
+      <key>Hour</key><integer>9</integer>
+      <key>Minute</key><integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/jeongjaeyong/Projects/donbeolja/ops/runtime/openclaw_weekly_summary.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/jeongjaeyong/Projects/donbeolja/ops/runtime/openclaw_weekly_summary.err.log</string>
+  </dict>
+</plist>

@@ -21,8 +21,17 @@ const {
     assert.ok(job.every || job.cron, "schedule missing");
     assert.ok(job.owner, "job.owner missing");
     assert.ok(job.criticality, "job.criticality missing");
-    assert.ok(job.produces_artifact, "job.produces_artifact missing");
-    assert.ok(Number.isFinite(Number(job.artifact_sla_hours)), "job.artifact_sla_hours missing");
+    // Some jobs (e.g. the weekly telegram summary) intentionally publish
+    // only to stdout and have no on-disk artifact. For those we require
+    // produces_artifact/artifact_sla_hours to be explicitly null so the
+    // absence is deliberate — anything else is a misconfigured job.
+    if (job.produces_artifact === null) {
+      assert.strictEqual(job.artifact_sla_hours, null,
+        `job.artifact_sla_hours must be null when produces_artifact is null (job_id=${job.job_id})`);
+    } else {
+      assert.ok(job.produces_artifact, "job.produces_artifact missing");
+      assert.ok(Number.isFinite(Number(job.artifact_sla_hours)), "job.artifact_sla_hours missing");
+    }
     assert.ok(Array.isArray(job.depends_on), "job.depends_on missing");
     assert.ok(job.recovery_strategy, "job.recovery_strategy missing");
     assert.strictEqual(job.scheduler_sot, OPENCLAW_SCHEDULER_SOT);
@@ -32,10 +41,28 @@ const {
     names.add(job.name);
     labels.add(job.label);
     jobIds.add(job.job_id);
-    assert.strictEqual(
-      OPENCLAW_CRON_ARTIFACT_MAP[job.name],
-      String(job.produces_artifact).replace(/_latest\.json$/i, "")
-    );
+    if (job.produces_artifact) {
+      assert.strictEqual(
+        OPENCLAW_CRON_ARTIFACT_MAP[job.name],
+        String(job.produces_artifact).replace(/_latest\.json$/i, "")
+      );
+    } else {
+      assert.strictEqual(
+        OPENCLAW_CRON_ARTIFACT_MAP[job.name],
+        undefined,
+        `artifact-map must not contain ${job.name} when produces_artifact is null`
+      );
+    }
+  }
+
+  // Phase B..E agent jobs must be registered.
+  for (const required of [
+    "openclaw_agent_evidence_linker",
+    "openclaw_agent_calibration",
+    "openclaw_agent_retrospect",
+    "openclaw_agent_weekly_summary",
+  ]) {
+    assert.ok(jobIds.has(required), `required job missing from manifest: ${required}`);
   }
 
   const msg = buildOpenClawCronMessage(OPENCLAW_CRON_JOBS[0]);

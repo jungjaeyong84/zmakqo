@@ -39,6 +39,7 @@ const dashboardBriefingRoutes = require("../routes/dashboard.briefing.routes");
 const dashboardEvalRoutes = require("../routes/dashboard.eval.routes");
 const dashboardJournalRoutes = require("../routes/dashboard.journal.routes");
 const dashboardAiRoutes = require("../routes/dashboard.ai.routes");
+const dashboardOpenClawRoutes = require("../routes/dashboard.openclaw.routes");
 const dashboardSettingsRoutes = require("../routes/dashboard.settings.routes");
 const dashboardRiskRoutes = require("../routes/dashboard.risk.routes");
 const dashboardProfitRoutes = require("../routes/dashboard.profit.routes");
@@ -305,6 +306,7 @@ function createApp() {
   app.use("/", ensureAuthMaybe, dashboardCashflowRoutes);
   app.use("/", ensureAuthMaybe, dashboardJournalRoutes);
   app.use("/", ensureAuthMaybe, dashboardAiRoutes);
+  app.use("/", ensureAuthMaybe, dashboardOpenClawRoutes);
   app.use("/", ensureAuthMaybe, dashboardSettingsRoutes);
   app.use("/", ensureAuthMaybe, dashboardRiskRoutes);
 
