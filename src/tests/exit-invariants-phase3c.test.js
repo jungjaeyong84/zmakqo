@@ -62,6 +62,7 @@ const retireMigrate = require("../../scripts/migrate-retire-authoritative-exit-s
 
 // ---------- P3-09 gate skip-list fail-closed ------------------------------
 (() => {
+  const prevCiNoExchangeIo = process.env.EXIT_INTEGRITY_CI_NO_EXCHANGE_IO;
   // Normal summary (no skip) → no new reason.
   const ok = gateTest.buildFailureReasons({
     status: "OK",
@@ -88,6 +89,34 @@ const retireMigrate = require("../../scripts/migrate-retire-authoritative-exit-s
   assert.ok(skipReason.includes("EXCHANGE_IO"),
     `reason should include family name; got ${skipReason}`);
 
+  process.env.EXIT_INTEGRITY_CI_NO_EXCHANGE_IO = "1";
+  const allowedCiSkip = gateTest.buildFailureReasons({
+    status: "OK",
+    live_gate_blocked: false,
+    canonical_exit_stage_gate: "PASS",
+    stop_divergence_gate: "PASS",
+    canonical_transition_backfill_ok: true,
+    skipped_validation_family_n: 1,
+    skipped_validation_families: [{ family: "EXCHANGE_IO", reason: "CI_NO_IO" }],
+  });
+  assert.ok(!allowedCiSkip.some((r) => r.startsWith("SKIPPED_VALIDATION_FAMILY")),
+    `CI no-exchange-io mode must allow EXCHANGE_IO skip, got ${JSON.stringify(allowedCiSkip)}`);
+
+  const mixedFamilyBlocked = gateTest.buildFailureReasons({
+    status: "OK",
+    live_gate_blocked: false,
+    canonical_exit_stage_gate: "PASS",
+    stop_divergence_gate: "PASS",
+    canonical_transition_backfill_ok: true,
+    skipped_validation_family_n: 2,
+    skipped_validation_families: [
+      { family: "EXCHANGE_IO", reason: "CI_NO_IO" },
+      { family: "DATA", reason: "MISSING_INDEX" },
+    ],
+  });
+  assert.ok(mixedFamilyBlocked.some((r) => r === "SKIPPED_VALIDATION_FAMILY:EXCHANGE_IO,DATA"),
+    `non-EXCHANGE_IO skip must still block, got ${JSON.stringify(mixedFamilyBlocked)}`);
+
   // Throwing cycle is still fail-closed (pre-existing C4 invariant).
   const thrown = gateTest.buildFailureReasons({
     status: "SKIP",
@@ -95,6 +124,8 @@ const retireMigrate = require("../../scripts/migrate-retire-authoritative-exit-s
   }, { cycleResult: { skipped: true } });
   assert.ok(thrown.some((r) => r.startsWith("CYCLE_SKIPPED:")),
     "skipped cycle still flagged");
+  if (prevCiNoExchangeIo == null) delete process.env.EXIT_INTEGRITY_CI_NO_EXCHANGE_IO;
+  else process.env.EXIT_INTEGRITY_CI_NO_EXCHANGE_IO = prevCiNoExchangeIo;
 })();
 
 // ---------- P3-09 buildSummary surfaces skipped families ------------------

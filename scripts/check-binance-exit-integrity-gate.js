@@ -10,6 +10,19 @@ function toCount(value) {
 
 const ALLOWED_GATE_STATUSES = new Set(["OK"]);
 
+function shouldAllowSkippedValidationFamilies(summary = {}) {
+  if (String(process.env.EXIT_INTEGRITY_CI_NO_EXCHANGE_IO || "").trim() !== "1") {
+    return false;
+  }
+  const families = Array.isArray(summary.skipped_validation_families)
+    ? summary.skipped_validation_families
+      .map((f) => String(f && f.family || "").trim().toUpperCase())
+      .filter(Boolean)
+    : [];
+  if (families.length === 0) return false;
+  return families.every((family) => family === "EXCHANGE_IO");
+}
+
 function buildFailureReasons(summary = {}, { cycleResult = null } = {}) {
   const reasons = [];
   if (cycleResult && cycleResult.skipped === true) {
@@ -20,10 +33,11 @@ function buildFailureReasons(summary = {}, { cycleResult = null } = {}) {
     reasons.push(`STATUS_NOT_OK:${statusUpper}`);
   }
   if (toCount(summary.script_failure_n) > 0) reasons.push("SCRIPT_FAILURE");
-  if (toCount(summary.skipped_validation_family_n) > 0) {
+  if (toCount(summary.skipped_validation_family_n) > 0 && !shouldAllowSkippedValidationFamilies(summary)) {
     // P3-09: when the cycle runs with EXIT_INTEGRITY_CI_NO_EXCHANGE_IO=1 a
     // subset of validation families is silently skipped. The deploy gate must
-    // not treat that as pass.
+    // not treat that as pass, except for the explicit CI no-exchange-IO mode
+    // where only EXCHANGE_IO families are intentionally disabled.
     const fams = Array.isArray(summary.skipped_validation_families)
       ? summary.skipped_validation_families.map((f) => String(f && f.family || "UNKNOWN").toUpperCase()).join(",")
       : "UNKNOWN";
@@ -96,6 +110,7 @@ if (require.main === module) {
     main,
     __test: {
       toCount,
+      shouldAllowSkippedValidationFamilies,
       buildFailureReasons,
     },
   };
