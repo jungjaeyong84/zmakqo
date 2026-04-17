@@ -11,6 +11,7 @@ const {
   DEFAULT_TP1_QTY_RATIO,
   DEFAULT_FLOOR_LOCK_PCT,
   DEFAULT_TRAIL_PCT,
+  isSimplifiedExitV2Active,
 } = require("../services/simplifiedExitV2");
 
 function toNum(v) {
@@ -96,8 +97,7 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     ?? toNum(meta.entry_qty_abs)
     ?? toNum(meta.contract_entry_qty_abs)
     ?? qtyBase;
-  const simplifiedExitV2Enabled = meta.simplified_exit_v2_enabled === true
-    || meta.simplifiedExitV2Enabled === true;
+  const simplifiedExitV2Enabled = isSimplifiedExitV2Active(meta);
   const trailSnapshot = resolveTrailObservationSnapshot({ meta, observation });
   const side = normalizeSide(position);
   const leverage = resolveLeverage(position, leverageFallback);
@@ -220,7 +220,12 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
   const tp1FilledQtyAbs = toNum(meta.tp_p1_filled_qty_abs)
     ?? toNum(meta.tp1_filled_qty_abs)
     ?? toNum(meta.native_protection_consumed_tp_qty_base)
-    ?? toNum(meta.canonical_tp1_consumed_abs);
+    ?? toNum(meta.canonical_tp1_consumed_abs)
+    ?? (
+      Number.isFinite(entryQtyAbs) && entryQtyAbs > 0 && Number.isFinite(qtyBase) && qtyBase >= 0
+        ? Math.max(0, entryQtyAbs - qtyBase)
+        : null
+    );
   const simplifiedStopLossPct = Number.isFinite(toNum(rules.SL)) && leverage > 0
     ? Math.abs(Number(rules.SL)) / leverage
     : null;
@@ -258,8 +263,41 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
         legacy_tp0_done: tpP0Done,
       };
 
+  const inferredRunnerStage = simplifiedExitV2Shadow.available === true
+    && simplifiedExitV2Shadow.economic_state === "RUNNER";
+  const canonicalTrailLike = effectiveCanonicalStage === "TRAIL" || inferredRunnerStage;
+  const resolvedRunnerFloorStop = (canonicalTrailLike && (!Number.isFinite(runnerFloorStop) || runnerFloorStop <= 0))
+    ? toNum(simplifiedExitV2Shadow.runner_floor_stop)
+    : runnerFloorStop;
+  const resolvedTrailStop = (canonicalTrailLike && (!Number.isFinite(trailStop) || trailStop <= 0))
+    ? toNum(simplifiedExitV2Shadow.trail_stop)
+    : trailStop;
+  const resolvedTrailStopByR = (canonicalTrailLike && (!Number.isFinite(trailStopByR) || trailStopByR <= 0))
+    ? toNum(simplifiedExitV2Shadow.final_effective_stop)
+    : trailStopByR;
+  const resolvedChosenStopSource = canonicalTrailLike
+    ? (
+      chosenStopSource
+      || upper(simplifiedExitV2Shadow.chosen_stop_source)
+      || null
+    )
+    : chosenStopSource;
+  const resolvedFinalEffectiveStop = (canonicalTrailLike && (!Number.isFinite(finalEffectiveStop) || finalEffectiveStop <= 0))
+    ? toNum(simplifiedExitV2Shadow.final_effective_stop)
+    : finalEffectiveStop;
+  const resolvedChosenStopPrice = (canonicalTrailLike && (!Number.isFinite(chosenStopPrice) || chosenStopPrice <= 0))
+    ? (
+      toNum(simplifiedExitV2Shadow.final_effective_stop)
+      ?? toNum(simplifiedExitV2Shadow.trail_stop)
+    )
+    : chosenStopPrice;
   const tp1GapPct = buildGapPct({ currentPrice: close, targetPrice: tp1Price, side });
-  const tp1Near = !tpP1Done && !tpP1Pending && Number.isFinite(tp1GapPct) && tp1GapPct >= 0 && tp1GapPct <= 0.5;
+  const tp1Near = !canonicalTrailLike
+    && !tpP1Done
+    && !tpP1Pending
+    && Number.isFinite(tp1GapPct)
+    && tp1GapPct >= 0
+    && tp1GapPct <= 0.5;
 
   let label = "TP1 대기";
   let pill = "dim";
@@ -279,17 +317,34 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     label = "TP1 진행";
     pill = "warn";
   }
-  if (tpP1Done) {
-    label = trailActive ? "트레일링" : "TP1 후 대기";
+  if (canonicalTrailLike) {
+    label = "트레일링";
     pill = "ok";
   }
 
-  const displaySlPrice = Number.isFinite(nativeStopPrice) ? nativeStopPrice : slPrice;
+  const compactTrailStop = Number.isFinite(resolvedFinalEffectiveStop) && resolvedFinalEffectiveStop > 0
+    ? resolvedFinalEffectiveStop
+    : (
+      Number.isFinite(resolvedTrailStop) && resolvedTrailStop > 0
+        ? resolvedTrailStop
+        : toNum(simplifiedExitV2Shadow.final_effective_stop)
+    );
+  const compactTrailSource = canonicalTrailLike
+    ? (
+      resolvedChosenStopSource
+      || runnerExit.stopSource
+      || "TRAIL"
+    )
+    : null;
+
+  const displaySlPrice = Number.isFinite(nativeStopPrice)
+    ? nativeStopPrice
+    : (canonicalTrailLike ? compactTrailStop : slPrice);
   const displayTp1Price = Number.isFinite(nativeTpPrice) ? nativeTpPrice : tp1Price;
-  const compactHeadline = (trailActive && Number.isFinite(trailStop))
+  const compactHeadline = (canonicalTrailLike && Number.isFinite(compactTrailStop))
     ? {
-        left_label: runnerExit.stopSource === "RUNNER_FLOOR" ? "Runner" : "Trail",
-        left_price: trailStop,
+        left_label: compactTrailSource === "RUNNER_FLOOR" ? "Runner" : "Trail",
+        left_price: compactTrailStop,
         right_label: "SL",
         right_price: displaySlPrice,
       }
@@ -336,17 +391,17 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     trail_low: toNum(trailSnapshot.trail_low),
     trail_low_at_ms: toNum(trailSnapshot.trail_low_at_ms),
     trail_source: trailSnapshot.trail_source || null,
-    trail_stop: trailStop,
-    trail_stop_raw: rawTrailStop,
-    trail_stop_by_r: trailStopByR,
-    r_based_trail_stop: trailStopByR,
+    trail_stop: resolvedTrailStop,
+    trail_stop_raw: Number.isFinite(rawTrailStop) && rawTrailStop > 0 ? rawTrailStop : resolvedTrailStop,
+    trail_stop_by_r: resolvedTrailStopByR,
+    r_based_trail_stop: resolvedTrailStopByR,
     trail_stop_by_pct: trailStopByPct,
     runner_floor_pct: toNum(rules.RUNNER_MIN_PROFIT_PCT),
-    runner_floor_stop: toNum(trailSnapshot.runner_floor_stop) ?? runnerFloorStop,
-    runner_stop_source: runnerExit.stopSource,
-    chosen_stop_source: chosenStopSource,
-    chosen_stop_price: chosenStopPrice,
-    final_effective_stop: expectedStopPrice,
+    runner_floor_stop: toNum(trailSnapshot.runner_floor_stop) ?? resolvedRunnerFloorStop,
+    runner_stop_source: resolvedChosenStopSource || runnerExit.stopSource,
+    chosen_stop_source: resolvedChosenStopSource,
+    chosen_stop_price: resolvedChosenStopPrice,
+    final_effective_stop: Number.isFinite(resolvedFinalEffectiveStop) ? resolvedFinalEffectiveStop : expectedStopPrice,
     stop_divergence: stopDivergenceCodes.length > 0,
     stop_divergence_codes: stopDivergenceCodes,
     stop_divergence_items: stopDivergenceItems,

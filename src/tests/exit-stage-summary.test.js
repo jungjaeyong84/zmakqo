@@ -146,4 +146,41 @@ const { buildExitStageView } = require("../utils/exitStageView");
   assert.equal(stage.simplified_exit_v2_shadow.chosen_stop_source, "TRAIL");
 })();
 
+(() => {
+  const stage = buildExitStageView({
+    exchange: "BINANCEFUT",
+    closePrice: 75647.3,
+    leverageFallback: 2,
+    position: {
+      state: "ACTIVE",
+      position_state: "ACTIVE",
+      size_pct: 0.5,
+      qty_base: 0.013,
+      entry_qty_base: 0.026,
+      avg_price: 74987.2,
+      position_side: "LONG",
+      meta: {
+        simplified_exit_v2_enabled: true,
+        tp_p1_done: false,
+        trail_active: false,
+        exit_rules_override: {
+          SL: -0.0165,
+          TP_P1: 0.0168,
+          TP_P1_QTY: 0.5,
+          TRAIL_PCT: 0.01,
+          RUNNER_MIN_PROFIT_PCT: 0.0025,
+          BE_PCT: 0.0015,
+        },
+      },
+    },
+  });
+  assert(stage, "runner qty inferred stage must exist");
+  assert.equal(stage.label, "트레일링");
+  assert.equal(stage.canonical_exit_stage, "TRAIL");
+  assert.equal(stage.canonical_exit_stage_source, "POSITION_STATE_MACHINE_V2_RUNNER_QTY");
+  assert.equal(stage.simplified_exit_v2_state, "RUNNER");
+  assert.equal(stage.compact_headline.left_label, "Trail");
+  assert.ok(stage.compact_headline.left_price > 0);
+})();
+
 console.log("EXIT_STAGE_SUMMARY_TEST_OK");
