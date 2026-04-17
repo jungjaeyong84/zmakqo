@@ -1,6 +1,6 @@
 "use strict";
 
-const { isSimplifiedExitV2Active, resolveExecutionMode } = require("./simplifiedExitV2");
+const { isSimplifiedExitV2Active } = require("./simplifiedExitV2");
 
 function toNum(value) {
   const num = Number(value);
@@ -10,6 +10,18 @@ function toNum(value) {
 function toUpper(value, fallback = null) {
   const text = String(value || "").trim().toUpperCase();
   return text || fallback;
+}
+
+function resolveExecutionMode(snapshot = null) {
+  const source = snapshot && typeof snapshot === "object" ? snapshot : {};
+  const meta = source.meta && typeof source.meta === "object" ? source.meta : {};
+  return toUpper(
+    source.execution_mode
+      || source.executionMode
+      || meta.execution_mode
+      || meta.executionMode,
+    null
+  );
 }
 
 function clamp01(value) {
