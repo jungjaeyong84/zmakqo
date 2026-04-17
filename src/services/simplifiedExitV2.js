@@ -52,8 +52,28 @@ function toBool(value, fallback = false) {
   return text === "1" || text === "true" || text === "yes" || text === "y" || text === "on";
 }
 
+function resolveExecutionMode(input = null) {
+  const source = input && typeof input === "object" ? input : {};
+  const meta = source.meta && typeof source.meta === "object" ? source.meta : {};
+  const mode = String(
+    source.execution_mode
+    || source.executionMode
+    || meta.execution_mode
+    || meta.executionMode
+    || ""
+  ).trim().toUpperCase();
+  return mode || null;
+}
+
 function isSimplifiedExitV2RuntimeEnabled() {
   return toBool(process.env.SIMPLIFIED_EXIT_V2_ENABLED, DEFAULT_SIMPLIFIED_EXIT_V2_ENABLED);
+}
+
+function shouldForceSimplifiedExitV2ForLiveRuntime(input = null, env = process.env) {
+  const forceEnabled = toBool(env.SIMPLIFIED_EXIT_V2_FORCE_LIVE, true);
+  if (forceEnabled !== true) return false;
+  const mode = resolveExecutionMode(input);
+  return mode === "LIVE" || mode === "LIVE_DRY_RUN";
 }
 
 // TP0 retirement policy (2026-04-17): every NEW position meta must be stamped
@@ -95,6 +115,7 @@ function assertSimplifiedExitV2EnabledForLiveRuntime({
 function resolveSimplifiedExitV2FlagFromSnapshot(input = null) {
   const source = input && typeof input === "object" ? input : null;
   if (!source) return null;
+  if (shouldForceSimplifiedExitV2ForLiveRuntime(source)) return true;
   if (source.simplifiedExitV2Enabled !== undefined && source.simplifiedExitV2Enabled !== null && source.simplifiedExitV2Enabled !== "") {
     return toBool(source.simplifiedExitV2Enabled, false);
   }
@@ -103,6 +124,7 @@ function resolveSimplifiedExitV2FlagFromSnapshot(input = null) {
   }
   const meta = source.meta && typeof source.meta === "object" ? source.meta : source;
   if (meta && typeof meta === "object") {
+    if (shouldForceSimplifiedExitV2ForLiveRuntime({ ...source, meta })) return true;
     if (meta.simplified_exit_v2_enabled !== undefined && meta.simplified_exit_v2_enabled !== null && meta.simplified_exit_v2_enabled !== "") {
       return toBool(meta.simplified_exit_v2_enabled, false);
     }
@@ -566,6 +588,8 @@ module.exports = {
   isSimplifiedExitV2RuntimeEnabled,
   isSimplifiedExitV2Active,
   resolveSimplifiedExitV2FlagFromSnapshot,
+  resolveExecutionMode,
+  shouldForceSimplifiedExitV2ForLiveRuntime,
   requireSimplifiedExitV2Flag,
   stampEntryMetaWithSimplifiedExitV2Policy,
   assertSimplifiedExitV2EnabledForLiveRuntime,

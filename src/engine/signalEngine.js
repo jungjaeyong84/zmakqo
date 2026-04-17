@@ -14,6 +14,7 @@ const { resolvePositionSideFromPosition } = require("../utils/positionSide");
 const {
   isSimplifiedExitV2Active,
   resolveSimplifiedExitV2FlagFromSnapshot,
+  resolveExecutionMode,
 } = require("../services/simplifiedExitV2");
 
 function toNum(x) {
@@ -52,12 +53,29 @@ function parseBoolEnv(key, fallback = false) {
   return v === "1" || v === "true" || v === "yes" || v === "y" || v === "on";
 }
 
-function isSimplifiedExitV2Enabled(meta = {}) {
-  return isSimplifiedExitV2Active(meta);
+function isSimplifiedExitV2Enabled(snapshot = {}) {
+  return isSimplifiedExitV2Active(snapshot);
 }
 
-function isExplicitLegacyTp0Enabled(meta = {}) {
-  return resolveSimplifiedExitV2FlagFromSnapshot(meta) === false;
+function isTp0RetiredRuntime(snapshot = {}) {
+  void snapshot;
+  return true;
+}
+
+function isExplicitLegacyTp0Enabled(snapshot = {}) {
+  void snapshot;
+  return false;
+}
+
+function stripTp0RulesForSimplifiedExitV2(rules = {}, snapshot = null) {
+  const source = rules && typeof rules === "object" ? rules : {};
+  if (!isTp0RetiredRuntime(snapshot)) return source;
+  return {
+    ...source,
+    TP_P0: 0,
+    TP_P0_QTY: 0,
+    TP_P0_ATR_MULTIPLE: 0,
+  };
 }
 
 function pctLabel(pct, { maxDecimals = 2 } = {}) {
@@ -710,7 +728,12 @@ function resolveExitRulesForPosition({ exchange, position, exitProfileMode } = {
   } else {
     adjusted.exit_profile = profileMode;
   }
-  return adjusted;
+  return stripTp0RulesForSimplifiedExitV2(adjusted, {
+    ...pos,
+    execution_mode: pos.execution_mode,
+    executionMode: pos.executionMode,
+    meta,
+  });
 }
 
 function tpP1ForExchange(exchange) {
@@ -869,7 +892,7 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
   }
   const positionSide = resolvePositionSideFromPosition(pos, meta, "LONG");
   const tpP1State = resolveTpP1State(meta);
-  const simplifiedExitV2Enabled = isSimplifiedExitV2Enabled(meta);
+  const simplifiedExitV2Enabled = isSimplifiedExitV2Enabled(pos);
   const tpP0State = resolveTpP0State(meta);
   const tpP1Done = tpP1State.tpP1Done;
   const tpP0Done = tpP0State.tpP0Done || tpP1Done;
@@ -892,9 +915,6 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
   // 손절/익절 규칙
   const rules = resolveExitRulesForPosition({ exchange: ex, position: pos, exitProfileMode });
   const SL = rules.SL;
-  const legacyTp0Enabled = isExplicitLegacyTp0Enabled(meta);
-  const TP_P0 = legacyTp0Enabled ? resolveTpP0Pct({ rules, meta }) : null;
-  const TP_P0_QTY = rules.TP_P0_QTY;
   const TP_P1 = rules.TP_P1;
   const TP_C = rules.TP_C;
   const BE_ENABLE = rules.BE_ENABLE !== false;
@@ -929,13 +949,11 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
     BE_PCT = -((roundTripBps * 2) / 10000) * leverageEff;
   }
   const slPctLabel = pctLabel(SL);
-  const tpP0Label = pctLabel(TP_P0);
   const tpP1Label = pctLabel(TP_P1);
   const tpCLabel = pctLabel(TP_C);
   const trailLabel = pctLabel(TRAIL_PCT);
   const beLabel = pctLabel(BE_PCT);
   const slEvent = slPctLabel ? `EXIT_SL_${slPctLabel}P` : "EXIT_SL";
-  const tpP0Event = tpP0Label ? `EXIT_TP_P0_${tpP0Label}P` : "EXIT_TP_P0";
   const tpP1Event = tpP1Label ? `EXIT_TP_P1_${tpP1Label}P` : "EXIT_TP_P1";
   const tpCEvent = tpCLabel ? `EXIT_TP_C_${tpCLabel}P` : "EXIT_TP_C";
   const trailEvent = Number.isFinite(TRAIL_R_MULTIPLE) && TRAIL_R_MULTIPLE > 0
@@ -979,28 +997,6 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
   }
 
   const takeProfitSignals = [];
-  if (legacyTp0Enabled && !tpP0Done && !tpP1Done && Number.isFinite(TP_P0) && pnlPctEffective >= TP_P0) {
-    const qty = resolveContractExitQtyPct(size, TP_P0_QTY);
-    takeProfitSignals.push({
-      event: tpP0Event,
-      side: exitSide,
-      qty_pct: qty,
-      reason: "EXIT_TAKE_PROFIT_P0",
-      features: {
-        pnl_pct: pnlPctEffective,
-        pnl_pct_raw: pnlPct,
-        leverage: leverageEff,
-        ref_px: closePx,
-        avg_px: avg,
-        position_side: positionSide,
-        exit_profile: exitProfile,
-        tp_p0_pct: TP_P0,
-        tp_p0_atr_pct: toNum(meta.ev_gate_atr_pct),
-        tp_p0_atr_multiple: toNum(rules.TP_P0_ATR_MULTIPLE),
-      }
-    });
-  }
-
   // Zone B: 기준 수익 도달 시 부분 익절
   if (!tpP1Done && Number.isFinite(TP_P1) && pnlPctEffective >= TP_P1) {
     const qty = resolveContractExitQtyPct(size, TP_P1_QTY);
