@@ -9,6 +9,9 @@ assert.strictEqual(resolveContractExitQtyPct(0.5, null), 0.5);
 assert.strictEqual(resolveContractExitQtyPct(0, 0.5), 0);
 
 const prevSimplifiedExitV2Env = process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+assert.strictEqual(runnerTest.resolveSimplifiedExitV2PositionFlag({ currentMeta: {} }), true);
+process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
 assert.strictEqual(runnerTest.resolveSimplifiedExitV2PositionFlag({ currentMeta: {} }), false);
 process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
 assert.strictEqual(runnerTest.resolveSimplifiedExitV2PositionFlag({ currentMeta: {} }), true);
@@ -16,6 +19,7 @@ assert.strictEqual(runnerTest.resolveSimplifiedExitV2PositionFlag({ currentMeta:
 if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
 else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;
 
+process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
 const nativeProtectionAtEntry = runnerTest.computeBinanceNativeProtectionPrices({
   positionSide: "LONG",
   entryPrice: 100,
@@ -49,6 +53,7 @@ const nativeProtectionAfterTp0 = runnerTest.computeBinanceNativeProtectionPrices
 });
 assert.ok(Math.abs(nativeProtectionAfterTp0.tpOrderQtyRatio - 0.5) < 1e-9);
 
+process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
 const nativeProtectionSimplifiedV2 = runnerTest.computeBinanceNativeProtectionPrices({
   positionSide: "LONG",
   entryPrice: 100,
@@ -56,7 +61,7 @@ const nativeProtectionSimplifiedV2 = runnerTest.computeBinanceNativeProtectionPr
   rules: {
     SL: -0.0165,
     TP_P0: 0.008,
-    TP_P0_QTY: 0.25,
+    TP_P0_QTY: 0.9,
     TP_P1: 0.0168,
     TP_P1_QTY: 0.5,
   },
@@ -66,8 +71,10 @@ const nativeProtectionSimplifiedV2 = runnerTest.computeBinanceNativeProtectionPr
 });
 assert.strictEqual(nativeProtectionSimplifiedV2.tp0TriggerPx, null);
 assert.strictEqual(nativeProtectionSimplifiedV2.tp0OrderQtyRatio, 0);
+assert.strictEqual(nativeProtectionSimplifiedV2.tp0QtyRatio, 0);
 assert.ok(Math.abs(nativeProtectionSimplifiedV2.tpOrderQtyRatio - 0.5) < 1e-9);
 
+process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
 const legacyTp0ContractPayload = runnerTest.buildExitOrderContractRecordPayload({
   kind: "TP0",
   rules: {
@@ -79,6 +86,7 @@ const legacyTp0ContractPayload = runnerTest.buildExitOrderContractRecordPayload(
 assert.strictEqual(legacyTp0ContractPayload.stage, "TP0");
 assert.strictEqual(legacyTp0ContractPayload.event, "EXIT_TP_P0_0.8P");
 
+process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
 const simplifiedV2Tp0ContractPayload = runnerTest.buildExitOrderContractRecordPayload({
   kind: "TP0",
   rules: {
@@ -103,6 +111,9 @@ const simplifiedV2Tp1ContractPayload = runnerTest.buildExitOrderContractRecordPa
 });
 assert.strictEqual(simplifiedV2Tp1ContractPayload.stage, "TP1");
 assert.strictEqual(simplifiedV2Tp1ContractPayload.event, "EXIT_TP_P1_1.68P");
+
+if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
+else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;
 
 assert.deepStrictEqual(
   runnerTest.resolveCanonicalExitAlertBlock({
