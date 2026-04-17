@@ -3,6 +3,10 @@
 const fs = require("fs");
 const path = require("path");
 const { getOperationalRuntimeState } = require("../storage/operationalRuntimeStates");
+const { warnIfFailClosedDisabled } = require("../utils/failClosedEnvGuard");
+// P3-11: emit a single startup WARN if OPERATIONAL_GUARD_FAIL_CLOSED is
+// explicitly disabled. The env defaults to fail-closed ("1").
+warnIfFailClosedDisabled("OPERATIONAL_GUARD_FAIL_CLOSED", { context: "operationalGuardRuntime" });
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");

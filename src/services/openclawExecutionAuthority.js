@@ -105,9 +105,23 @@ function resolveEntryBudgetGuardMinQtyFloor({
   finalQty = null,
   entryBudgetGuard = null,
 } = {}) {
-  if (!isEntryBudgetGuardMinQtyFloorEnabled(symbol)) return null;
-  if (!entryBudgetGuard || entryBudgetGuard.applicable !== true || entryBudgetGuard.ok === true) return null;
-  if (upper(entryBudgetGuard.reason) !== "MIN_ORDER_EXCEEDS_BUDGET") return null;
+  // P3-13: previously this returned null for many branches (feature flag off,
+  // guard not applicable, required qty invalid, floor infeasible). The caller
+  // could not distinguish "nothing to do" from "tried to apply the floor but
+  // it wasn't feasible" — producing silent drops with no surfaced reason.
+  // The return type is now always a structured descriptor with an `applied`
+  // boolean; `reason` is always populated. Callers treat `applied !== true`
+  // exactly as they treated null before, but can now forward the reason to
+  // the drop layer for operator visibility.
+  if (!isEntryBudgetGuardMinQtyFloorEnabled(symbol)) {
+    return { applied: false, reason: "ENTRY_BUDGET_GUARD_MIN_QTY_FLOOR_DISABLED" };
+  }
+  if (!entryBudgetGuard || entryBudgetGuard.applicable !== true || entryBudgetGuard.ok === true) {
+    return { applied: false, reason: "ENTRY_BUDGET_GUARD_NOT_APPLICABLE" };
+  }
+  if (upper(entryBudgetGuard.reason) !== "MIN_ORDER_EXCEEDS_BUDGET") {
+    return { applied: false, reason: "ENTRY_BUDGET_GUARD_REASON_MISMATCH" };
+  }
 
   const feasibleBand = resolveEntryBudgetGuardFeasibleBand(entryBudgetGuard);
   const requiredQtyPct = toNum(feasibleBand.minTradableQtyPct);
@@ -116,8 +130,22 @@ function resolveEntryBudgetGuardMinQtyFloor({
   const requestedQtyPct = toNum(qtyRequested);
   const allowSoftReduceBypass = toBool(process.env.ENTRY_BUDGET_GUARD_SOFT_REDUCE_BYPASS_ENABLED, true);
 
-  if (!Number.isFinite(requiredQtyPct) || requiredQtyPct <= 0 || requiredQtyPct > 1 + EPSILON) return null;
-  if (!Number.isFinite(finalQtyPct) || finalQtyPct <= 0 || finalQtyPct + EPSILON >= requiredQtyPct) return null;
+  if (!Number.isFinite(requiredQtyPct) || requiredQtyPct <= 0 || requiredQtyPct > 1 + EPSILON) {
+    return {
+      applied: false,
+      reason: "ENTRY_BUDGET_GUARD_REQUIRED_QTY_INVALID",
+      requiredQtyPct,
+      feasibleBand: feasibleBand.band,
+    };
+  }
+  if (!Number.isFinite(finalQtyPct) || finalQtyPct <= 0 || finalQtyPct + EPSILON >= requiredQtyPct) {
+    return {
+      applied: false,
+      reason: "ENTRY_BUDGET_GUARD_FINAL_QTY_ALREADY_MEETS_FLOOR",
+      finalQtyPct,
+      requiredQtyPct,
+    };
+  }
 
   const softReduceBypassed = (
     Number.isFinite(requestedQtyPct) &&
@@ -126,7 +154,16 @@ function resolveEntryBudgetGuardMinQtyFloor({
     executorQtyPct > 0 &&
     requiredQtyPct > executorQtyPct + EPSILON
   );
-  if (softReduceBypassed && !allowSoftReduceBypass) return null;
+  if (softReduceBypassed && !allowSoftReduceBypass) {
+    return {
+      applied: false,
+      reason: "ENTRY_BUDGET_GUARD_SOFT_REDUCE_BYPASS_DISABLED",
+      finalQtyPct,
+      requiredQtyPct,
+      executorQtyPct,
+      requestedQtyPct,
+    };
+  }
 
   let maxSnapQtyPct = softReduceBypassed
     ? requestedQtyPct
@@ -136,8 +173,30 @@ function resolveEntryBudgetGuardMinQtyFloor({
       ? requestedQtyPct
       : null;
   }
-  if (!Number.isFinite(maxSnapQtyPct) || maxSnapQtyPct <= 0) return null;
-  if (requiredQtyPct > maxSnapQtyPct + EPSILON) return null;
+  if (!Number.isFinite(maxSnapQtyPct) || maxSnapQtyPct <= 0) {
+    return {
+      applied: false,
+      reason: "ENTRY_BUDGET_GUARD_MAX_SNAP_QTY_INVALID",
+      requiredQtyPct,
+      executorQtyPct,
+      requestedQtyPct,
+    };
+  }
+  if (requiredQtyPct > maxSnapQtyPct + EPSILON) {
+    return {
+      applied: false,
+      // Previously a silent null. Now surfaces "the floor required qty
+      // exceeds the largest qty we are allowed to snap to" — i.e. the trade
+      // is structurally infeasible. The caller can forward this as a drop
+      // reason instead of falling back to whatever downstream code does.
+      reason: "ENTRY_BUDGET_GUARD_FLOOR_INFEASIBLE",
+      requiredQtyPct,
+      maxSnapQtyPct,
+      executorQtyPct,
+      requestedQtyPct,
+      softReduceBypassed,
+    };
+  }
 
   return {
     applied: true,

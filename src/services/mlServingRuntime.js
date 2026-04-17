@@ -4,6 +4,10 @@ const fs = require("fs");
 const path = require("path");
 const { getMlServingState } = require("../storage/mlServingStates");
 const { getShadowCanaryGate } = require("../storage/shadowCanaryGates");
+const { warnIfFailClosedDisabled } = require("../utils/failClosedEnvGuard");
+// P3-08: emit a single startup WARN if ML_SERVING_FAIL_CLOSED is explicitly
+// opted out of fail-closed mode.
+warnIfFailClosedDisabled("ML_SERVING_FAIL_CLOSED", { context: "mlServingRuntime" });
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");

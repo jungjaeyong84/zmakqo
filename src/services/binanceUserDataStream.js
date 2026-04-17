@@ -20,6 +20,17 @@ const USER_STREAM_LEASE_MIN_TTL_MS = Math.max(15_000, Number(process.env.BINANCE
 const USER_STREAM_LEASE_DOC = String(
   process.env.BINANCE_USER_STREAM_LEASE_DOC || "runtime/binance_user_stream_leader"
 ).trim();
+
+// P3-07: disconnect drift-repair thresholds.
+// A single connection attempt naturally re-tries every RECONNECT_DELAY_MS, but
+// a sustained outage (node issue, listenKey server-side expiry, rate-limit
+// storm) can leave us silently desynced from Binance for minutes. When the
+// accumulated "down time" exceeds the threshold we:
+//   1. write an operational alert/log with the cumulative duration.
+//   2. force a full positions+fills resync once reconnection succeeds.
+const USER_STREAM_DRIFT_ALERT_MS = Math.max(30_000, Number(process.env.BINANCE_USER_STREAM_DRIFT_ALERT_MS) || 180_000);
+const USER_STREAM_DRIFT_FORCE_RESYNC_MS = Math.max(USER_STREAM_DRIFT_ALERT_MS, Number(process.env.BINANCE_USER_STREAM_DRIFT_FORCE_RESYNC_MS) || 180_000);
+
 const userStreamInstanceId = [
   process.env.K_SERVICE || "local",
   process.env.K_REVISION || "rev",
@@ -36,6 +47,14 @@ let currentListenKey = null;
 let currentApiKey = null;
 let stopRequested = false;
 const recentEventSyncAt = new Map();
+
+// Disconnect drift bookkeeping.
+// `disconnectStartedAt` is the wall-clock ms when the current connection
+// attempt lost its last successful WS session. It is nulled on successful
+// onOpen so that the next close/reconnect cycle starts a fresh window.
+// `driftAlertEmittedAt` throttles repeated alerts to once per outage.
+let disconnectStartedAt = null;
+let driftAlertEmittedAt = null;
 
 function getWebSocketCtor() {
   try {
@@ -329,10 +348,27 @@ async function clearCurrentListenKey() {
   }
 }
 
+function maybeEmitDisconnectDriftAlert() {
+  if (!Number.isFinite(disconnectStartedAt)) return;
+  const outageMs = Date.now() - disconnectStartedAt;
+  if (outageMs < USER_STREAM_DRIFT_ALERT_MS) return;
+  if (Number.isFinite(driftAlertEmittedAt)) return; // one alert per outage
+  driftAlertEmittedAt = Date.now();
+  console.error("[BINANCE_USER_STREAM_DRIFT_ALERT]", JSON.stringify({
+    outage_ms: outageMs,
+    threshold_ms: USER_STREAM_DRIFT_ALERT_MS,
+    force_resync_ms: USER_STREAM_DRIFT_FORCE_RESYNC_MS,
+    instance: userStreamInstanceId,
+  }));
+}
+
 function scheduleReconnect() {
   if (stopRequested || reconnectTimer) return;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
+    // Re-check the drift window right before each retry so the alert fires
+    // even while reconnection keeps failing.
+    maybeEmitDisconnectDriftAlert();
     connectOnce().then((result) => {
       if (shouldRetryUserStreamConnectResult(result)) scheduleReconnect();
     }).catch((e) => {
@@ -398,6 +434,26 @@ async function connectOnce() {
         console.warn("[BINANCE_USER_STREAM_KEEPALIVE_FAIL]", e && e.message ? e.message : String(e));
       });
     }, KEEPALIVE_INTERVAL_MS);
+    // P3-07: on successful reconnect, if the outage exceeded the force-resync
+    // threshold, trigger a full positions+fills resync so any missed
+    // ORDER_TRADE_UPDATE / ACCOUNT_UPDATE is reconciled against Binance.
+    if (Number.isFinite(disconnectStartedAt)) {
+      const outageMs = Date.now() - disconnectStartedAt;
+      if (outageMs >= USER_STREAM_DRIFT_FORCE_RESYNC_MS) {
+        console.warn("[BINANCE_USER_STREAM_DRIFT_FORCE_RESYNC]", `outage_ms=${outageMs}`);
+        try {
+          // Fire-and-forget. Any failure is logged by the sync services.
+          Promise.resolve(syncFuturesPositionOnly({
+            source: "USER_STREAM_DRIFT_RESYNC",
+            runId: `RUN__USER_STREAM_DRIFT_RESYNC__${Date.now()}`,
+          })).catch((e) => {
+            console.warn("[BINANCE_USER_STREAM_DRIFT_RESYNC_FAIL]", e && e.message ? e.message : String(e));
+          });
+        } catch (_) { /* ignore */ }
+      }
+    }
+    disconnectStartedAt = null;
+    driftAlertEmittedAt = null;
     console.log(`[BINANCE_USER_STREAM] connected ${url}`);
   };
 
@@ -425,6 +481,12 @@ async function connectOnce() {
     clearCurrentListenKey().catch(() => {});
     currentListenKey = null;
     releaseUserStreamLease().catch(() => {});
+    // P3-07: start / continue the outage timer. The timer is cleared in
+    // onOpen after a successful (re)connect.
+    if (!Number.isFinite(disconnectStartedAt)) {
+      disconnectStartedAt = Date.now();
+    }
+    maybeEmitDisconnectDriftAlert();
     if (!stopRequested) scheduleReconnect();
   };
 
@@ -499,5 +561,23 @@ module.exports = {
     normalizeUserStreamStartResult,
     syncSymbolsForEvent,
     handleUserDataMessage,
+    // P3-07 — exported so unit tests can drive the drift window without
+    // touching the live WebSocket connection.
+    USER_STREAM_DRIFT_ALERT_MS,
+    USER_STREAM_DRIFT_FORCE_RESYNC_MS,
+    _resetDriftState() {
+      disconnectStartedAt = null;
+      driftAlertEmittedAt = null;
+    },
+    _markDisconnect(atMs = Date.now()) {
+      if (!Number.isFinite(disconnectStartedAt)) disconnectStartedAt = atMs;
+    },
+    _getDriftState() {
+      return {
+        disconnect_started_at: disconnectStartedAt,
+        drift_alert_emitted_at: driftAlertEmittedAt,
+      };
+    },
+    maybeEmitDisconnectDriftAlert,
   },
 };

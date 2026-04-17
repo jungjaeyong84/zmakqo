@@ -15,6 +15,30 @@ function toNum(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+// P3-14: per-market rate limiter for the allocator quarantine epoch-release
+// audit log. One entry per market per 24h window.
+const allocatorEpochReleaseLogSeen = new Map();
+const ALLOCATOR_EPOCH_RELEASE_LOG_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function logAllocatorQuarantineEpochRelease({ market = null, reason = null, releaseScale = null } = {}) {
+  const mk = upper(market);
+  if (!mk) return;
+  const now = Date.now();
+  const prev = allocatorEpochReleaseLogSeen.get(mk);
+  if (Number.isFinite(prev) && (now - prev) < ALLOCATOR_EPOCH_RELEASE_LOG_WINDOW_MS) return;
+  allocatorEpochReleaseLogSeen.set(mk, now);
+  console.warn("[ALLOCATOR_QUARANTINE_EPOCH_RELEASE]", JSON.stringify({
+    market: mk,
+    reason,
+    release_scale: Number.isFinite(releaseScale) ? releaseScale : null,
+    at: new Date(now).toISOString(),
+  }));
+}
+
+function resetAllocatorEpochReleaseLogForTest() {
+  allocatorEpochReleaseLogSeen.clear();
+}
+
 function boolEnv(name, fallback = false) {
   const raw = String(process.env[name] == null ? "" : process.env[name]).trim().toLowerCase();
   if (!raw) return fallback;
@@ -969,6 +993,17 @@ async function evaluateOpenClawExecutionDecision({
         : "OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE_EPOCH_RELEASE";
       notes.push("OPENCLAW_EXECUTOR_ALLOCATOR_QUARANTINE");
       notes.push(reason);
+      // P3-14: audit log — emit a structured line whenever the epoch-release
+      // path promotes a QUARANTINE into a soft reduce so operators can see
+      // which markets were spared. Rate-limited to once per market per day
+      // to avoid log spam during a learning epoch.
+      try {
+        logAllocatorQuarantineEpochRelease({
+          market: symbol,
+          reason,
+          releaseScale,
+        });
+      } catch (_) { /* never fail the authority path on logging */ }
     } else {
       blocked = true;
       reason = allocatorAction === "BLOCK"
@@ -1131,5 +1166,8 @@ module.exports = {
     resolveRunnerAllowedRatioFromView,
     resolveEffectiveExposureSizePct,
     resolveClusterCountContribution,
+    logAllocatorQuarantineEpochRelease,
+    resetAllocatorEpochReleaseLogForTest,
+    ALLOCATOR_EPOCH_RELEASE_LOG_WINDOW_MS,
   },
 };

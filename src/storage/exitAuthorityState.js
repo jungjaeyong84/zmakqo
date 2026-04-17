@@ -23,6 +23,71 @@
 const COLLECTION = "position_exit_authority_state";
 const SCHEMA_VERSION = 1;
 
+// P3-02 — persist-failure alerting.
+// A silent persistence outage re-opens the cross-run double-consume risk
+// we closed in C2. We keep a small in-memory rolling window of success /
+// failure counters so the integrity cycle (and optional alert sink) can see
+// when persistence is degraded. The counters are capped by time only; the
+// process is expected to be restarted frequently enough that keeping
+// unbounded history is not a concern.
+const PERSIST_WINDOW_MS = 15 * 60 * 1000;
+const PERSIST_FAILURE_ALERT_THRESHOLD = 3;
+const persistCounters = {
+  successes: [],
+  failures: [],
+  lastAlertAt: 0,
+};
+
+function pruneCounter(list, now) {
+  while (list.length && (now - list[0].at) > PERSIST_WINDOW_MS) list.shift();
+}
+
+function recordPersistOutcome(kind, detail = {}) {
+  const now = Date.now();
+  const list = kind === "success" ? persistCounters.successes : persistCounters.failures;
+  list.push({ at: now, ...detail });
+  pruneCounter(persistCounters.successes, now);
+  pruneCounter(persistCounters.failures, now);
+}
+
+function getPersistCounters(now = Date.now()) {
+  pruneCounter(persistCounters.successes, now);
+  pruneCounter(persistCounters.failures, now);
+  return {
+    window_ms: PERSIST_WINDOW_MS,
+    success_n: persistCounters.successes.length,
+    failure_n: persistCounters.failures.length,
+    last_alert_at_ms: persistCounters.lastAlertAt || null,
+  };
+}
+
+function maybeEmitPersistAlert({ sink = null } = {}) {
+  const stats = getPersistCounters();
+  if (stats.failure_n < PERSIST_FAILURE_ALERT_THRESHOLD) return { emitted: false, stats };
+  // Rate-limit: one alert per window.
+  if (Number.isFinite(persistCounters.lastAlertAt)
+    && (Date.now() - persistCounters.lastAlertAt) < PERSIST_WINDOW_MS) {
+    return { emitted: false, stats, skipped: "RATE_LIMITED" };
+  }
+  persistCounters.lastAlertAt = Date.now();
+  const payload = {
+    alert: "EXIT_AUTHORITY_STATE_PERSIST_DEGRADED",
+    ...stats,
+  };
+  if (typeof sink === "function") {
+    try { sink(payload); } catch (_) { /* ignore sink failure */ }
+  } else {
+    console.error("[EXIT_AUTHORITY_STATE_PERSIST_ALERT]", JSON.stringify(payload));
+  }
+  return { emitted: true, stats: { ...stats, last_alert_at_ms: persistCounters.lastAlertAt } };
+}
+
+function resetPersistCountersForTest() {
+  persistCounters.successes.length = 0;
+  persistCounters.failures.length = 0;
+  persistCounters.lastAlertAt = 0;
+}
+
 function normalizeKey(chainKey) {
   return String(chainKey || "").trim();
 }
@@ -81,12 +146,13 @@ async function loadExitAuthorityStates(db = null, chainKeys = []) {
   return out;
 }
 
-async function persistExitAuthorityStates(db = null, patches = []) {
-  if (!db) return { persisted: 0, skipped: true };
+async function persistExitAuthorityStates(db = null, patches = [], { alertSink = null } = {}) {
+  if (!db) return { persisted: 0, failed: 0, skipped: true };
   const rows = Array.isArray(patches) ? patches : [];
-  if (!rows.length) return { persisted: 0, skipped: false };
+  if (!rows.length) return { persisted: 0, failed: 0, skipped: false };
   const nowIso = new Date().toISOString();
   let persisted = 0;
+  let failed = 0;
   await Promise.all(rows.map(async (row) => {
     const key = normalizeKey(row && row.chainKey);
     if (!key) return;
@@ -102,18 +168,41 @@ async function persistExitAuthorityStates(db = null, patches = []) {
         updated_at: nowIso,
       }, { merge: true });
       persisted += 1;
-    } catch (_err) {
-      // Non-fatal — legacy in-memory cap continues to protect the run.
+      recordPersistOutcome("success", { chain_key: key });
+    } catch (err) {
+      failed += 1;
+      recordPersistOutcome("failure", {
+        chain_key: key,
+        error: err && err.message ? err.message : String(err || "UNKNOWN"),
+      });
+      // Legacy in-memory cap continues to protect the run — the failure is
+      // only fatal if it persists across many runs, which maybeEmitPersistAlert
+      // detects via the rolling window.
     }
   }));
-  return { persisted, skipped: false };
+  const alert = maybeEmitPersistAlert({ sink: alertSink });
+  return {
+    persisted,
+    failed,
+    skipped: false,
+    alert_emitted: alert.emitted === true,
+    alert_stats: alert.stats || null,
+  };
 }
 
 module.exports = {
   COLLECTION,
   SCHEMA_VERSION,
+  PERSIST_FAILURE_ALERT_THRESHOLD,
+  PERSIST_WINDOW_MS,
   normalizeState,
   mergeStates,
   loadExitAuthorityStates,
   persistExitAuthorityStates,
+  getPersistCounters,
+  maybeEmitPersistAlert,
+  __test: {
+    recordPersistOutcome,
+    resetPersistCountersForTest,
+  },
 };
