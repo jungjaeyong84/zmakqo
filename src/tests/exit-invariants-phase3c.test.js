@@ -63,6 +63,7 @@ const retireMigrate = require("../../scripts/migrate-retire-authoritative-exit-s
 // ---------- P3-09 gate skip-list fail-closed ------------------------------
 (() => {
   const prevCiNoExchangeIo = process.env.EXIT_INTEGRITY_CI_NO_EXCHANGE_IO;
+  delete process.env.EXIT_INTEGRITY_CI_NO_EXCHANGE_IO;
   // Normal summary (no skip) → no new reason.
   const ok = gateTest.buildFailureReasons({
     status: "OK",
