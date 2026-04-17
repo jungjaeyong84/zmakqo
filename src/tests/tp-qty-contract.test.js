@@ -33,7 +33,10 @@ const nativeProtectionAtEntry = runnerTest.computeBinanceNativeProtectionPrices(
   },
   posMeta: {},
 });
-assert.ok(Math.abs(nativeProtectionAtEntry.tpOrderQtyRatio - 0.375) < 1e-9);
+assert.strictEqual(nativeProtectionAtEntry.tp0TriggerPx, null);
+assert.strictEqual(nativeProtectionAtEntry.tp0OrderQtyRatio, 0);
+assert.strictEqual(nativeProtectionAtEntry.tp0QtyRatio, 0);
+assert.ok(Math.abs(nativeProtectionAtEntry.tpOrderQtyRatio - 0.5) < 1e-9);
 
 const nativeProtectionAfterTp0 = runnerTest.computeBinanceNativeProtectionPrices({
   positionSide: "LONG",
@@ -52,6 +55,9 @@ const nativeProtectionAfterTp0 = runnerTest.computeBinanceNativeProtectionPrices
   },
 });
 assert.ok(Math.abs(nativeProtectionAfterTp0.tpOrderQtyRatio - 0.5) < 1e-9);
+assert.strictEqual(nativeProtectionAfterTp0.tp0TriggerPx, null);
+assert.strictEqual(nativeProtectionAfterTp0.tp0OrderQtyRatio, 0);
+assert.strictEqual(nativeProtectionAfterTp0.tp0QtyRatio, 0);
 
 process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
 const nativeProtectionSimplifiedV2 = runnerTest.computeBinanceNativeProtectionPrices({
@@ -74,7 +80,6 @@ assert.strictEqual(nativeProtectionSimplifiedV2.tp0OrderQtyRatio, 0);
 assert.strictEqual(nativeProtectionSimplifiedV2.tp0QtyRatio, 0);
 assert.ok(Math.abs(nativeProtectionSimplifiedV2.tpOrderQtyRatio - 0.5) < 1e-9);
 
-process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
 const legacyTp0ContractPayload = runnerTest.buildExitOrderContractRecordPayload({
   kind: "TP0",
   rules: {
@@ -83,10 +88,8 @@ const legacyTp0ContractPayload = runnerTest.buildExitOrderContractRecordPayload(
   posMeta: {},
   symbol: "ETHUSDT",
 });
-assert.strictEqual(legacyTp0ContractPayload.stage, "TP0");
-assert.strictEqual(legacyTp0ContractPayload.event, "EXIT_TP_P0_0.8P");
+assert.strictEqual(legacyTp0ContractPayload, null);
 
-process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
 const simplifiedV2Tp0ContractPayload = runnerTest.buildExitOrderContractRecordPayload({
   kind: "TP0",
   rules: {
