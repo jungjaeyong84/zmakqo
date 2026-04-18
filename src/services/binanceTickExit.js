@@ -60,6 +60,15 @@ const BINANCE_TICK_EXIT_AUDIT_PATH = path.join(REPO_ROOT, "ops", "runtime", "bin
 const TICK_EXIT_AUDIT_EVENTS = new Set([
   "tick_exit_tp1_native_gap_fail_closed",
   "tick_exit_tp1_meta_sync_fail_closed",
+  // 2026-04-18: BE-raise diagnostic events. We persist these to the audit
+  // file so post-mortems on "why didn't the stop move after TP1?" can be
+  // performed by grepping the audit jsonl directly, in addition to the
+  // console.log copy that lands in Cloud Logging. Emitted on every tick
+  // where a position has tp_p1_done=true — volume is bounded by the number
+  // of active TP1-done positions × tick interval.
+  "tick_exit_tp1_break_even_stop_decision",
+  "tick_exit_tp1_break_even_stop_raised",
+  "tick_exit_tp1_break_even_stop_error",
 ]);
 
 function nowMs() {
@@ -2269,6 +2278,13 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
       // path below handles later tightening above BE when the watermark
       // moves.
       if (_tpP1Done) {
+        // Diagnostic: emit a single decision log line per tick so Cloud
+        // Logging can answer "why didn't BE-raise fire on <symbol>?" at a
+        // glance. 2026-04-18 root-cause dive — we saw DOGE/BTC stuck with
+        // native_stop well below RUNNER_FLOOR even with tp_p1_done=true,
+        // but no existing log revealed which guard short-circuited. The
+        // `decision_stage` field locks this in: INPUT_INVALID →
+        // RAISE_NOT_NEEDED → COOLDOWN_HELD → REFRESH_DISPATCHED.
         try {
           const _beSide = resolvePositionSideFromPosition(pos, _tMeta, "LONG");
           const _beRules = resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: pos });
@@ -2276,43 +2292,76 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
           const _beLev = Number(_tMeta && (_tMeta.external_leverage || _tMeta.leverage || pos.leverage || 1));
           const _beFloorPct = Number(_beRules && _beRules.RUNNER_MIN_PROFIT_PCT);
           const _currentStop = Number(_tMeta && _tMeta.native_protection_stop_price);
-          if (
+          const _inputsValid = (
             Number.isFinite(_beAvg) && _beAvg > 0
             && Number.isFinite(_beLev) && _beLev > 0
             && Number.isFinite(_beFloorPct) && _beFloorPct > 0
-          ) {
-            const _bePrice = _beSide === "SHORT"
+          );
+          const _bePrice = _inputsValid
+            ? (_beSide === "SHORT"
               ? _beAvg * (1 - (_beFloorPct / _beLev))
-              : _beAvg * (1 + (_beFloorPct / _beLev));
-            // Raise only — never lower. For LONG the new stop must be
-            // HIGHER than the current stop (closer to entry). For SHORT
-            // the new stop must be LOWER than the current stop.
-            const _shouldRaiseStop = !Number.isFinite(_currentStop)
-              || (_beSide === "LONG" && _bePrice > _currentStop + 1e-9)
-              || (_beSide === "SHORT" && _bePrice < _currentStop - 1e-9);
-            if (_shouldRaiseStop && shouldRunNativeProtectionRefreshCooldown({ symbol, now: tickNow, cooldownMs: 5000 })) {
-              const _beLiveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol });
-              const _beRefreshRes = await refreshBinanceTickExitNativeProtection({
-                liveCfg: _beLiveCfg,
-                exchange: "BINANCEFUT",
-                symbol,
-                position: pos,
-                fallbackSide: _beSide === "SHORT" ? "SELL" : "BUY",
-              });
-              structuredLog("tick_exit_tp1_break_even_stop_raised", {
-                exchange: "BINANCEFUT",
-                symbol: String(symbol).toUpperCase(),
-                side: _beSide,
-                entry: _beAvg,
-                prev_stop: Number.isFinite(_currentStop) ? _currentStop : null,
-                be_price: _bePrice,
-                floor_pct: _beFloorPct,
-                trail_enabled: _trailEnabled === true,
-                refresh_ok: !!(_beRefreshRes && _beRefreshRes.ok === true),
-                refresh_reason: _beRefreshRes && _beRefreshRes.reason ? String(_beRefreshRes.reason) : null,
-              });
-            }
+              : _beAvg * (1 + (_beFloorPct / _beLev)))
+            : null;
+          // Raise only — never lower. For LONG the new stop must be HIGHER
+          // than the current stop (closer to entry). For SHORT the new
+          // stop must be LOWER than the current stop.
+          const _shouldRaiseStop = _inputsValid && (
+            !Number.isFinite(_currentStop)
+            || (_beSide === "LONG" && _bePrice > _currentStop + 1e-9)
+            || (_beSide === "SHORT" && _bePrice < _currentStop - 1e-9)
+          );
+          let _cooldownPassed = false;
+          let _decisionStage = "INPUT_INVALID";
+          if (_inputsValid && !_shouldRaiseStop) {
+            _decisionStage = "RAISE_NOT_NEEDED";
+          } else if (_inputsValid && _shouldRaiseStop) {
+            _cooldownPassed = shouldRunNativeProtectionRefreshCooldown({ symbol, now: tickNow, cooldownMs: 5000 });
+            _decisionStage = _cooldownPassed ? "REFRESH_DISPATCHED" : "COOLDOWN_HELD";
           }
+          let _beRefreshRes = null;
+          if (_decisionStage === "REFRESH_DISPATCHED") {
+            const _beLiveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol });
+            _beRefreshRes = await refreshBinanceTickExitNativeProtection({
+              liveCfg: _beLiveCfg,
+              exchange: "BINANCEFUT",
+              symbol,
+              position: pos,
+              fallbackSide: _beSide === "SHORT" ? "SELL" : "BUY",
+            });
+            structuredLog("tick_exit_tp1_break_even_stop_raised", {
+              exchange: "BINANCEFUT",
+              symbol: String(symbol).toUpperCase(),
+              side: _beSide,
+              entry: _beAvg,
+              prev_stop: Number.isFinite(_currentStop) ? _currentStop : null,
+              be_price: _bePrice,
+              floor_pct: _beFloorPct,
+              trail_enabled: _trailEnabled === true,
+              refresh_ok: !!(_beRefreshRes && _beRefreshRes.ok === true),
+              refresh_reason: _beRefreshRes && _beRefreshRes.reason ? String(_beRefreshRes.reason) : null,
+            });
+          }
+          // Always-on decision trace — bounded to TP1-done positions, so
+          // volume is O(active runners × tick interval). One line captures
+          // every branch, letting a post-mortem answer "which guard?".
+          structuredLog("tick_exit_tp1_break_even_stop_decision", {
+            exchange: "BINANCEFUT",
+            symbol: String(symbol).toUpperCase(),
+            side: _beSide,
+            tp_p1_done: _tpP1Done === true,
+            trail_enabled: _trailEnabled === true,
+            inputs_valid: _inputsValid,
+            avg: Number.isFinite(_beAvg) ? _beAvg : null,
+            leverage: Number.isFinite(_beLev) ? _beLev : null,
+            floor_pct: Number.isFinite(_beFloorPct) ? _beFloorPct : null,
+            current_stop: Number.isFinite(_currentStop) ? _currentStop : null,
+            be_price: _bePrice,
+            should_raise_stop: _shouldRaiseStop === true,
+            cooldown_passed: _cooldownPassed,
+            decision_stage: _decisionStage,
+            refresh_ok: _beRefreshRes ? _beRefreshRes.ok === true : null,
+            refresh_reason: _beRefreshRes && _beRefreshRes.reason ? String(_beRefreshRes.reason) : null,
+          });
         } catch (_beErr) {
           structuredLog("tick_exit_tp1_break_even_stop_error", {
             exchange: "BINANCEFUT",

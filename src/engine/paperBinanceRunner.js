@@ -10085,6 +10085,44 @@ async function refreshBinanceNativeProtection({
     posMeta,
   });
   const stageState = resolveNativeProtectionStageState(posMeta);
+  // 2026-04-18 diagnostic: when the BE-raise block in binanceTickExit.js
+  // dispatches a refresh but the native stop does not move toward RUNNER_FLOOR,
+  // we need to see what inputs reached computeBinanceNativeProtectionPrices
+  // and what it produced. The previous log layout showed only refresh_ok/
+  // refresh_reason at the call site, which was blind to the actual computed
+  // trigger. Emit a structured line here so Cloud Logging can reconcile
+  // (tp_p1_done=true, RUNNER_MIN_PROFIT_PCT set) vs (stopTriggerPx still at
+  // the pre-TP1 SL level).
+  try {
+    const posMetaObj = (posMeta && typeof posMeta === "object") ? posMeta : {};
+    console.log(JSON.stringify({
+      event: "native_protection_refresh_price_decision",
+      ts: new Date().toISOString(),
+      exchange: String(exchange || "").toUpperCase(),
+      symbol: String(symbol || "").toUpperCase(),
+      position_side: positionSide,
+      entry_price: Number.isFinite(entryPrice) ? entryPrice : null,
+      leverage: Number.isFinite(leverage) ? leverage : null,
+      pos_meta_tp_p1_done: posMetaObj.tp_p1_done === true,
+      pos_meta_trail_active: posMetaObj.trail_active === true,
+      pos_meta_current_stop: Number.isFinite(Number(posMetaObj.native_protection_stop_price))
+        ? Number(posMetaObj.native_protection_stop_price)
+        : null,
+      rules_runner_min_profit_pct: Number.isFinite(Number(rules && rules.RUNNER_MIN_PROFIT_PCT))
+        ? Number(rules.RUNNER_MIN_PROFIT_PCT)
+        : null,
+      rules_sl: Number.isFinite(Number(rules && rules.SL)) ? Number(rules.SL) : null,
+      rules_tp_p1: Number.isFinite(Number(rules && rules.TP_P1)) ? Number(rules.TP_P1) : null,
+      computed_stop_trigger_px: prices && Number.isFinite(Number(prices.stopTriggerPx))
+        ? Number(prices.stopTriggerPx)
+        : null,
+      computed_tp_trigger_px: prices && Number.isFinite(Number(prices.tpTriggerPx))
+        ? Number(prices.tpTriggerPx)
+        : null,
+      prices_null: prices == null,
+      stage_tp1_eligible: stageState && stageState.tp1Eligible === true,
+    }));
+  } catch (_) { /* non-critical diagnostic */ }
   if (!prices) {
     return { ok: false, skipped: true, reason: "NATIVE_PRICE_COMPUTE_FAIL", positionSide, entryPrice, leverage };
   }
