@@ -50,6 +50,16 @@ async function run() {
   assert.strictEqual(timeoutResult.chain_depth, 2);
   assert.strictEqual(timeoutResult.target_mode, true);
   assert.deepStrictEqual(timeoutResult.target_symbols, ["ETHUSDT"]);
+  // 2026-04-18 BTCUSDT-blackout regression guards: timeout must signal
+  // "ok with handoff" so tickExitWorker.js dispatches the next burst
+  // immediately instead of waiting up to 60s for the external scheduler.
+  assert.strictEqual(timeoutResult.ok, true,
+    "timeout result must set ok=true so self-dispatch branch in tickExitWorker runs");
+  assert.strictEqual(timeoutResult.timed_out, true,
+    "timeout result must carry timed_out=true so downstream readers can distinguish handoff from clean completion");
+  assert.strictEqual(timeoutResult.reschedule_recommended, true,
+    "timeout result must request reschedule so the chain continues");
+  assert.strictEqual(timeoutResult.reschedule_reason, "EXIT_WORKER_EXEC_TIMEOUT_HANDOFF");
 
   const state = {
     lastExecuteAt: null,
@@ -71,8 +81,18 @@ async function run() {
     })(),
     runBurst: () => new Promise((resolve) => setTimeout(() => resolve({ ok: true }), 1200)),
   });
-  assert.strictEqual(result.ok, false);
+  // 2026-04-18 BTCUSDT-blackout fix: timeout must propagate as ok=true
+  // with timed_out=true + reschedule_recommended=true so the chain
+  // re-enters promptly. Before the fix, ok=false here caused
+  // tickExitWorker.js to skip self-dispatch, leaving BE-raise stranded
+  // for up to one scheduler interval (~60s) per egress stall.
+  assert.strictEqual(result.ok, true, "timed-out run must propagate ok=true for handoff");
+  assert.strictEqual(result.timed_out, true);
   assert.strictEqual(result.error, "EXIT_WORKER_EXEC_TIMEOUT");
+  assert.strictEqual(result.reschedule_recommended, true,
+    "targetMode timeout must NOT be suppressed — blocked TP1 runner needs another shot immediately");
+  assert.strictEqual(result.target_reschedule_suppressed, undefined,
+    "timeout handoffs must bypass the target-mode reschedule suppression");
   assert.strictEqual(result.target_mode, true);
   assert.deepStrictEqual(result.target_symbols, ["BTCUSDT"]);
   assert.strictEqual(state.inFlight, null);

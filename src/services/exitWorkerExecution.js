@@ -71,8 +71,20 @@ function buildExitWorkerTimeoutResult({
   targetMode = false,
   targetSymbols = [],
 } = {}) {
+  // 2026-04-18 (BTCUSDT blackout fix): on timeout we set both `ok: true`
+  // (so the self-dispatch branch in tickExitWorker.js runs) AND
+  // `reschedule_recommended: true` (so the chain continues). Without
+  // this, a single 75s burst timeout broke the chain and we had to wait
+  // for the next external scheduler cron (up to 60s) to re-try — during
+  // that gap a TP1-done runner sat unprotected for 27 minutes. The
+  // `ok` field doesn't lie: we still expose `error: EXIT_WORKER_EXEC_TIMEOUT`
+  // and `timed_out: true` so downstream readers can distinguish a
+  // clean completion from a timeout-with-handoff. The subsequent burst
+  // gets a fresh timeout budget and a chance to make progress against
+  // whatever slow dep (egress proxy, Firestore) caused the timeout.
   return {
-    ok: false,
+    ok: true,
+    timed_out: true,
     error: "EXIT_WORKER_EXEC_TIMEOUT",
     reason: String(reason || "EXIT_WORKER_EXEC_TIMEOUT"),
     timeout_ms: Number.isFinite(Number(timeoutMs)) ? Number(timeoutMs) : null,
@@ -81,6 +93,8 @@ function buildExitWorkerTimeoutResult({
     chain_depth: Number.isFinite(Number(chainDepth)) ? Number(chainDepth) : null,
     target_mode: targetMode === true,
     target_symbols: normalizeExitWorkerTargetSymbols(targetSymbols),
+    reschedule_recommended: true,
+    reschedule_reason: "EXIT_WORKER_EXEC_TIMEOUT_HANDOFF",
   };
 }
 
@@ -138,7 +152,19 @@ async function runExitWorkerExecution({
       }),
     ]);
     const normalizedResult = result && typeof result === "object" ? { ...result } : null;
-    if (executionConfig.targetMode && normalizedResult && normalizedResult.reschedule_recommended === true) {
+    // Suppress the self-dispatch chain for targetMode bursts that
+    // completed normally — external scheduler handles the cadence so we
+    // don't need the chain to amplify load. EXCEPTION: a timeout handoff
+    // (2026-04-18 BTCUSDT blackout fix) must be allowed through so the
+    // NEXT burst gets a fresh 75s budget against the same symbol —
+    // otherwise a single slow egress call could lock a TP1-done runner
+    // out of BE-raise for up to one scheduler interval.
+    if (
+      executionConfig.targetMode
+      && normalizedResult
+      && normalizedResult.reschedule_recommended === true
+      && normalizedResult.timed_out !== true
+    ) {
       normalizedResult.reschedule_recommended = false;
       normalizedResult.target_reschedule_suppressed = true;
     }

@@ -2284,20 +2284,40 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
         // native_stop well below RUNNER_FLOOR even with tp_p1_done=true,
         // but no existing log revealed which guard short-circuited. The
         // `decision_stage` field locks this in: INPUT_INVALID →
-        // RAISE_NOT_NEEDED → COOLDOWN_HELD → REFRESH_DISPATCHED.
+        // RAISE_NOT_NEEDED → COOLDOWN_HELD → REFRESH_DISPATCHED → ERROR.
+        //
+        // 2026-04-18 follow-up (BTCUSDT 27-min blackout): the decision
+        // log was emitted INSIDE the try, so any throw from the refresh
+        // path (Firestore contention, egress timeout) ate the diagnostic
+        // trail. Now the decision log always emits — refactored to store
+        // state in outer-scope vars so the catch branch can still log a
+        // meaningful `decision_stage: ERROR` line with whatever inputs
+        // were captured before the throw.
+        let _beSide = null;
+        let _beAvg = null;
+        let _beLev = null;
+        let _beFloorPct = null;
+        let _currentStop = null;
+        let _inputsValid = false;
+        let _bePrice = null;
+        let _shouldRaiseStop = false;
+        let _cooldownPassed = false;
+        let _decisionStage = "INPUT_INVALID";
+        let _beRefreshRes = null;
+        let _beError = null;
         try {
-          const _beSide = resolvePositionSideFromPosition(pos, _tMeta, "LONG");
+          _beSide = resolvePositionSideFromPosition(pos, _tMeta, "LONG");
           const _beRules = resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: pos });
-          const _beAvg = Number(pos && pos.avg_price);
-          const _beLev = Number(_tMeta && (_tMeta.external_leverage || _tMeta.leverage || pos.leverage || 1));
-          const _beFloorPct = Number(_beRules && _beRules.RUNNER_MIN_PROFIT_PCT);
-          const _currentStop = Number(_tMeta && _tMeta.native_protection_stop_price);
-          const _inputsValid = (
+          _beAvg = Number(pos && pos.avg_price);
+          _beLev = Number(_tMeta && (_tMeta.external_leverage || _tMeta.leverage || pos.leverage || 1));
+          _beFloorPct = Number(_beRules && _beRules.RUNNER_MIN_PROFIT_PCT);
+          _currentStop = Number(_tMeta && _tMeta.native_protection_stop_price);
+          _inputsValid = (
             Number.isFinite(_beAvg) && _beAvg > 0
             && Number.isFinite(_beLev) && _beLev > 0
             && Number.isFinite(_beFloorPct) && _beFloorPct > 0
           );
-          const _bePrice = _inputsValid
+          _bePrice = _inputsValid
             ? (_beSide === "SHORT"
               ? _beAvg * (1 - (_beFloorPct / _beLev))
               : _beAvg * (1 + (_beFloorPct / _beLev)))
@@ -2305,20 +2325,17 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
           // Raise only — never lower. For LONG the new stop must be HIGHER
           // than the current stop (closer to entry). For SHORT the new
           // stop must be LOWER than the current stop.
-          const _shouldRaiseStop = _inputsValid && (
+          _shouldRaiseStop = _inputsValid && (
             !Number.isFinite(_currentStop)
             || (_beSide === "LONG" && _bePrice > _currentStop + 1e-9)
             || (_beSide === "SHORT" && _bePrice < _currentStop - 1e-9)
           );
-          let _cooldownPassed = false;
-          let _decisionStage = "INPUT_INVALID";
           if (_inputsValid && !_shouldRaiseStop) {
             _decisionStage = "RAISE_NOT_NEEDED";
           } else if (_inputsValid && _shouldRaiseStop) {
             _cooldownPassed = shouldRunNativeProtectionRefreshCooldown({ symbol, now: tickNow, cooldownMs: 5000 });
             _decisionStage = _cooldownPassed ? "REFRESH_DISPATCHED" : "COOLDOWN_HELD";
           }
-          let _beRefreshRes = null;
           if (_decisionStage === "REFRESH_DISPATCHED") {
             const _beLiveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol });
             _beRefreshRes = await refreshBinanceTickExitNativeProtection({
@@ -2341,9 +2358,23 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
               refresh_reason: _beRefreshRes && _beRefreshRes.reason ? String(_beRefreshRes.reason) : null,
             });
           }
-          // Always-on decision trace — bounded to TP1-done positions, so
-          // volume is O(active runners × tick interval). One line captures
-          // every branch, letting a post-mortem answer "which guard?".
+        } catch (_beErr) {
+          _beError = String(_beErr && _beErr.message || _beErr).slice(0, 200);
+          _decisionStage = "ERROR";
+          structuredLog("tick_exit_tp1_break_even_stop_error", {
+            exchange: "BINANCEFUT",
+            symbol: String(symbol).toUpperCase(),
+            error: _beError,
+          }, "warn");
+        }
+        // Always-on decision trace — bounded to TP1-done positions, so
+        // volume is O(active runners × tick interval). One line captures
+        // every branch, letting a post-mortem answer "which guard?".
+        // Runs on BOTH success and error paths (2026-04-18 fix): the
+        // error branch records `decision_stage: ERROR` + `error` so the
+        // diagnostic trail survives Firestore contention / egress timeouts
+        // that previously swallowed the log entirely.
+        try {
           structuredLog("tick_exit_tp1_break_even_stop_decision", {
             exchange: "BINANCEFUT",
             symbol: String(symbol).toUpperCase(),
@@ -2361,14 +2392,9 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
             decision_stage: _decisionStage,
             refresh_ok: _beRefreshRes ? _beRefreshRes.ok === true : null,
             refresh_reason: _beRefreshRes && _beRefreshRes.reason ? String(_beRefreshRes.reason) : null,
+            error: _beError,
           });
-        } catch (_beErr) {
-          structuredLog("tick_exit_tp1_break_even_stop_error", {
-            exchange: "BINANCEFUT",
-            symbol: String(symbol).toUpperCase(),
-            error: String(_beErr && _beErr.message || _beErr).slice(0, 200),
-          }, "warn");
-        }
+        } catch (_decisionErr) { /* never let diagnostic kill the tick */ }
       }
 
       if (_tpP1Done && _trailEnabled) {
