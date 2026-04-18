@@ -1,0 +1,408 @@
+<%- include('partials/app_start_unified', { title: 'AI 에이전트 · DONBEOLJA', pageTitle: 'AI 에이전트', active: 'openclaw' }) %>
+
+<%
+  // Route passes `payload` — the same object returned by /dashboard/openclaw JSON.
+  // Keep this view tolerant of missing fields so it renders in shadow/empty states.
+  const P = (typeof payload === 'object' && payload) ? payload : {};
+  const artifacts = (P.artifacts && typeof P.artifacts === 'object') ? P.artifacts : {};
+  const evidence = (P.evidence && typeof P.evidence === 'object') ? P.evidence : {};
+  const phase = (P.phase && typeof P.phase === 'object') ? P.phase : {};
+  const healthObj = (P.health && typeof P.health === 'object') ? P.health : { color: 'UNKNOWN', unhealthy: [] };
+
+  const healthColor = String(healthObj.color || 'UNKNOWN').toUpperCase();
+  const healthTone = healthColor === 'GREEN'
+    ? 'success'
+    : healthColor === 'AMBER'
+      ? 'warning'
+      : healthColor === 'RED'
+        ? 'error'
+        : 'filled';
+  const healthLabel = healthColor === 'GREEN'
+    ? '정상 — 모든 아티팩트 최신'
+    : healthColor === 'AMBER'
+      ? '부분 지연 — 일부 cron 만료'
+      : healthColor === 'RED'
+        ? '지연 — 2개 이상 cron 만료'
+        : '상태 확인 중';
+
+  const ARTIFACT_KO = {
+    evidence_linker: {
+      title: 'Evidence Linker',
+      desc: '15분마다 실현된 체결을 Evidence Ledger 에 연결합니다.',
+    },
+    calibration: {
+      title: 'Calibration',
+      desc: '4시간마다 소스별 적중률을 재계산해 trust_weights 를 갱신합니다.',
+    },
+    retrospect: {
+      title: 'Retrospect',
+      desc: '4시간마다 최근 24시간 거래를 서사 추론기에 넘겨 회고 제안을 생성합니다.',
+    },
+  };
+
+  function fmtAge(h) {
+    if (h == null || !Number.isFinite(Number(h))) return 'n/a';
+    const hv = Number(h);
+    if (hv < 1) return Math.round(hv * 60) + '분 전';
+    return hv.toFixed(1) + '시간 전';
+  }
+
+  function artifactTone(art) {
+    if (!art) return 'filled';
+    if (art.status === 'missing') return 'warning';
+    if (art.status !== 'ok') return 'error';
+    const stat = art.stat || {};
+    return stat.healthy === true ? 'success' : 'error';
+  }
+
+  function phasePillTone(v) {
+    return v === true ? 'success' : (v === false ? 'filled' : 'filled');
+  }
+  function phaseBoolLabel(v) {
+    return v === true ? 'ON' : 'OFF';
+  }
+
+  // Derive which flight-phase (Day-X) is active from the env flags so the
+  // operator sees a single "현재 Phase: Day-0" chip instead of 7 toggles.
+  function derivePhaseLabel(p) {
+    if (!p) return { day: 'unknown', note: '상태 미확인' };
+    if (p.autonomy_auto_degrade) return { day: 'Day-22', note: '자율성 auto-degrade 가동' };
+    if (p.conductor_enabled && p.conductor_shadow_only === false) return { day: 'Day-17', note: 'Conductor apply 가동' };
+    if (p.narrative_enabled && p.conductor_enabled && p.conductor_shadow_only === true) return { day: 'Day-10/14', note: 'Conductor shadow + narrative apply' };
+    if (p.narrative_enabled) return { day: 'Day-7', note: 'Narrative reasoner shadow 가동' };
+    return { day: 'Day-0/1', note: 'Evidence ledger 수집 중 (shadow)' };
+  }
+  const derivedPhase = derivePhaseLabel(phase);
+
+  // Evidence table ordering: most recent first. Keep the tail compact so the
+  // dashboard stays readable even when the buffer is full (200 rows).
+  const evidenceTail = Array.isArray(evidence.tail) ? evidence.tail : [];
+%>
+
+<style>
+  .ocw-page { display: flex; flex-direction: column; gap: 20px; }
+
+  .ocw-hero {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 20px 22px;
+    background: var(--md-surface, #fff);
+    border: 1px solid var(--md-outline-variant, #dde3ee);
+    border-radius: var(--md-shape-lg, 20px);
+    box-shadow: var(--md-elevation-1, 0 8px 22px rgba(60,64,67,.06));
+  }
+  .ocw-hero-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    flex: 1 1 260px;
+  }
+  .ocw-hero-title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .ocw-hero-hint {
+    color: var(--md-on-surface-variant, #5f6368);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .ocw-hero-chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .ocw-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+  @media (max-width: 920px) { .ocw-grid-3 { grid-template-columns: 1fr; } }
+
+  .ocw-artifact-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 18px;
+    border-radius: var(--md-shape-lg, 20px);
+    border: 1px solid var(--md-outline-variant, #dde3ee);
+    background: var(--md-surface, #fff);
+    box-shadow: var(--md-elevation-1, 0 8px 22px rgba(60,64,67,.06));
+    border-left-width: 4px;
+  }
+  .ocw-artifact-card.tone-success { border-left-color: #137333; }
+  .ocw-artifact-card.tone-warning { border-left-color: #b06000; }
+  .ocw-artifact-card.tone-error { border-left-color: #c5221f; }
+  .ocw-artifact-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .ocw-artifact-title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+  .ocw-artifact-desc { color: var(--md-on-surface-variant, #5f6368); font-size: 12px; line-height: 1.45; }
+  .ocw-artifact-kv {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 4px 12px;
+    font-size: 12px;
+    margin-top: 4px;
+    font-family: ui-monospace, Menlo, monospace;
+  }
+  .ocw-artifact-kv .k { color: var(--md-on-surface-variant, #5f6368); }
+  .ocw-artifact-filename {
+    color: #9aa0a6;
+    font-size: 10px;
+    font-family: ui-monospace, Menlo, monospace;
+    margin-top: 6px;
+    word-break: break-all;
+  }
+
+  .ocw-section {
+    padding: 18px 20px;
+    background: var(--md-surface, #fff);
+    border: 1px solid var(--md-outline-variant, #dde3ee);
+    border-radius: var(--md-shape-lg, 20px);
+    box-shadow: var(--md-elevation-1, 0 8px 22px rgba(60,64,67,.06));
+  }
+  .ocw-section h2 {
+    margin: 0 0 12px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .ocw-phase-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+  }
+  .ocw-phase-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--md-outline-variant, #dde3ee);
+    border-radius: 12px;
+    background: #fbfcfd;
+    font-size: 12px;
+  }
+  .ocw-phase-row .k { color: var(--md-on-surface-variant, #5f6368); }
+  .ocw-phase-row .v { font-weight: 600; font-family: ui-monospace, Menlo, monospace; }
+
+  .ocw-evidence-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .ocw-evidence-table th,
+  .ocw-evidence-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #edf1f7;
+    text-align: left;
+    vertical-align: middle;
+  }
+  .ocw-evidence-table th {
+    color: var(--md-on-surface-variant, #5f6368);
+    font-weight: 600;
+    background: #f8f9fa;
+  }
+  .ocw-evidence-table tr:hover td { background: #f7f9fc; }
+  .ocw-evidence-empty {
+    padding: 24px;
+    text-align: center;
+    color: var(--md-on-surface-variant, #5f6368);
+    font-size: 13px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    border: 1px dashed var(--md-outline-variant, #dde3ee);
+  }
+
+  .ocw-footer-note {
+    margin-top: 8px;
+    color: var(--md-on-surface-variant, #5f6368);
+    font-size: 11px;
+    text-align: center;
+  }
+  .ocw-footer-note code {
+    background: #f1f3f4;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+  }
+</style>
+
+<div class="ocw-page">
+
+  <!-- Hero -->
+  <div class="ocw-hero">
+    <div class="ocw-hero-copy">
+      <div class="ocw-hero-title">OpenClaw AI 에이전트</div>
+      <div class="ocw-hero-hint">
+        LLM 내러티브 추론기 + ML 캘리브레이션 + 신뢰도 가중 합의 투표로 신호·포지션·회고를
+        판단합니다. 현재 페이즈에 따라 shadow 수집 / 수량 조정 / SL 타이트닝 / 자율성 저하를 순차
+        활성화합니다.
+      </div>
+      <div class="ocw-hero-chips">
+        <span class="chip primary sm">현재 Phase · <%= derivedPhase.day %></span>
+        <span class="chip filled sm"><%= derivedPhase.note %></span>
+        <span class="chip filled sm">Provider · <%= phase.narrative_provider_mode || 'CLI' %></span>
+        <span class="chip filled sm">ML 임계값 · <%= phase.ml_min_tp1_prob != null ? Number(phase.ml_min_tp1_prob).toFixed(2) : '0.22' %></span>
+      </div>
+    </div>
+    <div class="ocw-hero-chips" style="align-self: flex-start;">
+      <span class="chip <%= healthTone %> sm"><%= healthLabel %></span>
+      <a class="btn-outlined sm" href="/dashboard/openclaw" target="_blank" rel="noopener">JSON 보기</a>
+      <a class="btn-outlined sm" href="#" onclick="location.reload();return false;">새로고침</a>
+    </div>
+  </div>
+
+  <!-- 3 Artifact cards -->
+  <div class="ocw-grid-3">
+    <% ['evidence_linker','calibration','retrospect'].forEach(function(key){
+      const art = artifacts[key] || {};
+      const meta = ARTIFACT_KO[key] || { title: key, desc: '' };
+      const tone = artifactTone(art);
+      const stat = art.stat || {};
+      const summary = art.summary || {};
+      const statusText = art.status === 'ok'
+        ? (stat.healthy ? '최신' : '만료됨')
+        : art.status === 'missing'
+          ? '파일 없음 — cron 아직 안 돎'
+          : ('오류 · ' + (art.error || ''));
+    %>
+    <div class="ocw-artifact-card tone-<%= tone %>">
+      <div class="ocw-artifact-head">
+        <span class="ocw-artifact-title"><%= meta.title %></span>
+        <span class="chip <%= tone %> sm"><%= statusText %></span>
+      </div>
+      <div class="ocw-artifact-desc"><%= meta.desc %></div>
+      <div class="ocw-artifact-kv">
+        <span class="k">age</span>
+        <span><%= fmtAge(stat.age_hours) %> <span style="color:#9aa0a6">(SLA <%= stat.sla_hours != null ? stat.sla_hours : '?' %>h)</span></span>
+        <% if (summary.counts && typeof summary.counts === 'object') { %>
+          <% Object.keys(summary.counts).forEach(function(ck){ %>
+            <span class="k"><%= ck %></span><span><%= summary.counts[ck] %></span>
+          <% }); %>
+        <% } %>
+        <% if (summary.trust_weights && typeof summary.trust_weights === 'object') { %>
+          <% Object.keys(summary.trust_weights).forEach(function(sk){
+               const ent = summary.trust_weights[sk] || {};
+               const w = ent.weight != null ? Number(ent.weight).toFixed(2) : (ent.trust_weight != null ? Number(ent.trust_weight).toFixed(2) : 'n/a');
+               const hit = ent.hit_rate != null ? (Number(ent.hit_rate)*100).toFixed(1)+'%' : (ent.tp1_hit_rate != null ? (Number(ent.tp1_hit_rate)*100).toFixed(1)+'%' : 'n/a');
+          %>
+            <span class="k"><%= sk %></span><span>w=<%= w %> · hit=<%= hit %></span>
+          <% }); %>
+        <% } %>
+        <% if (summary.proposals_count != null) { %>
+          <span class="k">proposals</span><span><%= summary.proposals_count %></span>
+        <% } %>
+        <% if (summary.dry_run === true) { %>
+          <span class="k">mode</span><span>DRY_RUN</span>
+        <% } %>
+      </div>
+      <div class="ocw-artifact-filename"><%= art.filename || '' %></div>
+    </div>
+    <% }) %>
+  </div>
+
+  <!-- Phase env block -->
+  <div class="ocw-section">
+    <h2>Phase 플래그 (live env)</h2>
+    <div class="ocw-phase-grid">
+      <% const phaseEntries = [
+        ['narrative_enabled', phase.narrative_enabled, 'Narrative 추론기 전원'],
+        ['narrative_provider_mode', phase.narrative_provider_mode, 'LLM 백엔드 (CLI/API)'],
+        ['conductor_enabled', phase.conductor_enabled, 'Position Conductor 전원'],
+        ['conductor_shadow_only', phase.conductor_shadow_only, 'Conductor 실제 SL 조정 여부 (shadow=true)'],
+        ['retrospect_apply_enabled', phase.retrospect_apply_enabled, '회고 제안 자동 적용'],
+        ['autonomy_auto_degrade', phase.autonomy_auto_degrade, '신뢰도 낮은 소스 자동 차단'],
+        ['ml_min_tp1_prob', phase.ml_min_tp1_prob, 'ML soft-gate 최소 TP1 확률'],
+      ]; %>
+      <% phaseEntries.forEach(function(row){
+        const key = row[0];
+        const val = row[1];
+        const desc = row[2];
+        const isBool = typeof val === 'boolean';
+        const label = isBool ? phaseBoolLabel(val) : String(val == null ? 'n/a' : val);
+        const tone = isBool ? phasePillTone(val) : 'filled';
+      %>
+      <div class="ocw-phase-row">
+        <span class="k" title="<%= desc %>"><%= key %></span>
+        <span class="v"><span class="chip <%= tone %> sm"><%= label %></span></span>
+      </div>
+      <% }) %>
+    </div>
+  </div>
+
+  <!-- Evidence Ledger tail -->
+  <div class="ocw-section">
+    <h2>Evidence Ledger 최근 기록
+      <span style="color:var(--md-on-surface-variant,#5f6368);font-weight:500;font-size:12px;margin-left:8px;">
+        <%= evidence.buffer_size || 0 %> / <%= evidence.buffer_capacity || 0 %>
+      </span>
+    </h2>
+    <% if (!evidenceTail.length) { %>
+      <div class="ocw-evidence-empty">
+        아직 기록이 없습니다. <code>OPENCLAW_AGENT_SHADOW_ENABLED=1</code> 이후 신호가 들어와야 쌓입니다.
+      </div>
+    <% } else { %>
+      <div style="overflow-x:auto">
+        <table class="ocw-evidence-table">
+          <thead>
+            <tr>
+              <th>시각 (UTC)</th>
+              <th>kind</th>
+              <th>symbol</th>
+              <th>tf</th>
+              <th>decision</th>
+              <th>conf</th>
+              <th>rule</th>
+              <th>narrative</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% evidenceTail.forEach(function(r){ %>
+            <tr>
+              <td style="color:#5f6368;font-family:ui-monospace,Menlo,monospace"><%= (r.recorded_at || '').slice(5,19).replace('T',' ') %></td>
+              <td><%= r.kind || '' %></td>
+              <td><%= r.symbol || '' %></td>
+              <td><%= r.tf_exec || '' %></td>
+              <td><%= r.decision || '' %></td>
+              <td><%= r.confidence != null ? Number(r.confidence).toFixed(2) : '' %></td>
+              <td><%= r.rule_verdict || '' %></td>
+              <td><%= r.narrative_verdict || '' %></td>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </div>
+
+  <div class="ocw-footer-note">
+    Phase 전환 · <code>./ops/deploy/apply_openclaw_phase.sh day{0,1,7,10,14,17,22} --restart</code>
+    · 30초마다 자동 새로고침
+  </div>
+</div>
+
+<script>
+  // 라이브 모니터링용 자동 새로고침. 사용자 interaction 있으면 타이머 리셋.
+  (function(){
+    var t = setTimeout(function(){ location.reload(); }, 30000);
+    ['click','keydown','scroll','touchstart'].forEach(function(ev){
+      document.addEventListener(ev, function(){
+        clearTimeout(t);
+        t = setTimeout(function(){ location.reload(); }, 30000);
+      }, { passive: true });
+    });
+  })();
+</script>
+
+<%- include('partials/app_end_unified') %>

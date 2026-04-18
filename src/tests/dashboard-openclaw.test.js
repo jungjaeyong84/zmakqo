@@ -19,7 +19,7 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const OPS_DAILY = path.join(REPO_ROOT, "ops", "daily");
 
 function fakeRes() {
-  const state = { statusCode: 200, body: null, headers: {} };
+  const state = { statusCode: 200, body: null, headers: {}, renderedView: null, renderedLocals: null };
   return {
     state,
     json(payload) {
@@ -36,6 +36,15 @@ function fakeRes() {
     status(code) {
       state.statusCode = code;
       return this;
+    },
+    // The HTML view now delegates to res.render('openclaw', locals) so the
+    // page can inherit the shared sidebar/topbar from app_start_unified.
+    // The test doesn't boot an EJS engine — we just capture the render call
+    // and assert the locals carry a valid payload to the template.
+    render(view, locals) {
+      state.renderedView = view;
+      state.renderedLocals = locals;
+      state.body = { view, locals };
     },
   };
 }
@@ -122,29 +131,47 @@ function callRoute(router, url = "/dashboard/openclaw") {
   assert.strictEqual(typeof body.phase.narrative_provider_mode, "string");
 
   // ── HTML view (/dashboard/openclaw/view) ──────────────────────────
-  // 같은 라우터에 HTML 핸들러가 걸려 있어야 하고, Content-Type 헤더를 text/html로
-  // 세팅하며, 주요 UI 엘리먼트(헬스 뱃지, 카드 섹션, phase 테이블)가 포함된
-  // 단일 자체완결 페이지를 반환해야 한다.
-  // linker 파일을 한 번 더 써서 HTML 케이스에서도 artifact가 ok로 뜨게 한다.
+  // View now delegates to res.render('openclaw', { payload }) so the page
+  // inherits the canonical sidebar + topbar + CSS tokens from
+  // src/views/partials/app_start_unified.ejs. We assert:
+  //   - the correct view name is rendered,
+  //   - the payload locals match the JSON-endpoint payload shape,
+  //   - Cache-Control is no-store (so each reload shows fresh artifact state).
   fs.writeFileSync(linkerPath, JSON.stringify({
     generated_at: "2026-04-18T00:00:00.000Z",
     counts: { linked: 5, tp1_first: 1, sl_first: 4 },
     dry_run: false,
   }), "utf8");
   const htmlRes = callRoute(router, "/dashboard/openclaw/view");
-  const html = htmlRes.state.body;
-  assert.ok(typeof html === "string" && html.length > 500, "HTML body must be returned");
-  assert.ok(
-    String(htmlRes.state.headers["content-type"] || "").toLowerCase().startsWith("text/html"),
-    "HTML view must set Content-Type: text/html"
+  assert.strictEqual(htmlRes.state.renderedView, "openclaw",
+    `expected view=openclaw, got ${htmlRes.state.renderedView}`);
+  const locals = htmlRes.state.renderedLocals || {};
+  assert.ok(locals.payload && typeof locals.payload === "object", "locals.payload missing");
+  assert.strictEqual(locals.payload.ok, true, "payload.ok must be true");
+  assert.ok(locals.payload.artifacts && locals.payload.artifacts.evidence_linker,
+    "payload.artifacts.evidence_linker missing");
+  assert.ok(locals.payload.phase, "payload.phase missing");
+  assert.ok(locals.payload.evidence && Array.isArray(locals.payload.evidence.tail),
+    "payload.evidence.tail must be an array");
+  assert.strictEqual(
+    String(htmlRes.state.headers["cache-control"] || "").toLowerCase(),
+    "no-store, max-age=0",
+    "HTML view must be uncached"
   );
-  assert.ok(html.includes("OpenClaw Agent"), "HTML must include dashboard heading");
-  assert.ok(html.includes("현재 Phase 상태"), "HTML must include phase section");
-  assert.ok(html.includes("Evidence Ledger"), "HTML must include evidence section");
-  assert.ok(html.includes("evidence_linker"), "HTML must include artifact cards");
-  // 링커 성공 상태에서는 GREEN/AMBER 뱃지가 떠야 한다 (RED가 아님). 카드 3개 중
-  // 2개가 missing이므로 전체 색은 RED/AMBER이지만, 뱃지 자체는 반드시 렌더링됨.
-  assert.ok(html.includes("badge"), "HTML must include health badge element");
+  // Sanity-render the EJS template itself (no express app required) so a
+  // compile error in src/views/openclaw.ejs fails this test — otherwise the
+  // template only breaks at runtime.
+  const ejs = require("ejs");
+  const ejsPath = path.resolve(__dirname, "..", "views", "openclaw.ejs");
+  const renderedHtml = await ejs.renderFile(
+    ejsPath,
+    Object.assign({}, locals, { cache: false }),
+    { async: true }
+  );
+  assert.ok(typeof renderedHtml === "string" && renderedHtml.length > 500, "EJS render must return non-empty HTML");
+  assert.ok(renderedHtml.includes("OpenClaw AI 에이전트"), "EJS must render hero title");
+  assert.ok(renderedHtml.includes("Phase 플래그"), "EJS must render phase section");
+  assert.ok(renderedHtml.includes("Evidence Ledger"), "EJS must render evidence section");
 
   // Clean up the fixture.
   try { fs.unlinkSync(linkerPath); } catch (_) {}
