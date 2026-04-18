@@ -144,24 +144,53 @@ const {
     assert.strictEqual(classifyStatus(issues), "GREEN");
   }
 
-  // buildIssues — refresh stale > 5min is AMBER.
+  // 2026-04-18 regression guard: refresh staleness should NOT trigger any
+  // issue. The refresh codepath is event-driven (entry/add/exit/trail),
+  // not a periodic heartbeat, so "10 minutes since last refresh" is normal
+  // for a quiet position.
   {
     const staleIso = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     const issues = buildIssues({
       meta: {
-        sl_order_id: "S1", tp_order_id: "T1", refresh_at_iso: staleIso,
+        sl_order_id: "S1", sl_price: 100, tp_order_id: "T1", tp_price: 120,
+        refresh_at_iso: staleIso,
         tp_p1_done: false, trail_active: false,
       },
       exchange: {
         sl_order: { orderId: "S1", stopPrice: 100 },
-        tp_order: { orderId: "T1", stopPrice: 120 },
+        tp_order: { orderId: "T1", stopPrice: 120, origQty: 1 },
       },
       match: { sl_present_on_exchange: true, tp_present_on_exchange: true, sl_id_matches: true, tp_id_matches: true, sl_price_matches: true, tp_price_matches: true },
-      position: {},
+      position: { qty_base: 1 },
     });
     const codes = issues.map((i) => i.code);
-    assert.ok(codes.includes("PROTECTION_REFRESH_STALE"), "must flag stale refresh");
-    assert.strictEqual(classifyStatus(issues), "AMBER");
+    assert.ok(!codes.includes("PROTECTION_REFRESH_STALE"),
+      "refresh staleness must NOT be flagged — it's event-driven");
+    assert.ok(!codes.includes("PROTECTION_REFRESH_NEVER_RAN"),
+      "refresh-never-ran must NOT be flagged when SL/TP exist on exchange");
+    assert.strictEqual(classifyStatus(issues), "GREEN",
+      "healthy position with stale refresh should be GREEN");
+  }
+
+  // buildIssues — TP quantity exceeds position size → RED.
+  {
+    const issues = buildIssues({
+      meta: {
+        sl_order_id: "S1", sl_price: 100, tp_order_id: "T1", tp_price: 120,
+        refresh_at_iso: new Date().toISOString(),
+        tp_p1_done: false, trail_active: false,
+      },
+      exchange: {
+        sl_order: { orderId: "S1", stopPrice: 100 },
+        tp_order: { orderId: "T1", stopPrice: 120, origQty: 5 },
+      },
+      match: { sl_present_on_exchange: true, tp_present_on_exchange: true, sl_id_matches: true, tp_id_matches: true, sl_price_matches: true, tp_price_matches: true },
+      position: { qty_base: 1 },
+    });
+    const codes = issues.map((i) => i.code);
+    assert.ok(codes.includes("TP_QTY_EXCEEDS_POSITION"),
+      "must flag over-sized TP order");
+    assert.strictEqual(classifyStatus(issues), "RED");
   }
 
   console.log("PROTECTION_AUDIT_TEST_OK");

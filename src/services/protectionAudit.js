@@ -127,6 +127,8 @@ function buildIssues({ meta, exchange, match, position }) {
   const issues = [];
   const push = (severity, code, message) => issues.push({ severity, code, message });
 
+  // ── 주문 누락 / 불일치 ─────────────────────────────────────────────
+  // 이게 진짜 "포지션 위험" 지표. 여기가 빨간불이면 즉시 대응.
   if (!exchange.sl_order) {
     push("RED", "SL_MISSING_ON_EXCHANGE",
       "Binance 에 STOP 주문이 없음 — 포지션이 무방비 상태입니다.");
@@ -155,29 +157,37 @@ function buildIssues({ meta, exchange, match, position }) {
       `SL 가격이 DB(${meta.sl_price}) 와 거래소(${exchange.sl_order.stopPrice || exchange.sl_order.triggerPrice}) 사이에 ${diffPct.toFixed(2)}% 차이 — trailing 이 움직인 거면 정상.`);
   }
 
-  // Trailing invariant: trail_active=true 는 반드시 tp_p1_done=true 와 짝.
+  // ── 트레일링 불변식 ───────────────────────────────────────────────
+  // trail_active=true 는 반드시 tp_p1_done=true 와 짝 (reconciler invariant).
   if (meta.trail_active === true && meta.tp_p1_done !== true) {
     push("RED", "TRAIL_WITHOUT_TP1",
       "trail_active=true 인데 tp_p1_done=false — 트레일링은 TP1 부분체결 이후에만 켜져야 함.");
   }
-  // tp_p1_done=true 인데 trail_active=false 면 트레일링이 비활성화 된 것
-  // (정상일 수도 있지만 operator 가 인지하도록 info).
+  // tp_p1_done=true 인데 trail_active=false 면 러너 이익 보호가 꺼져 있을 수 있음.
   if (meta.tp_p1_done === true && meta.trail_active !== true) {
     push("AMBER", "TRAIL_DISARMED_AFTER_TP1",
       "TP1 부분체결 후 트레일링이 활성화되지 않음 — 러너 이익 보호가 꺼져 있을 수 있음.");
   }
 
-  // Refresh 신선도: 5분 이상 refresh 가 없으면 AMBER.
-  if (meta.refresh_at_iso) {
-    const ageMs = Date.now() - Date.parse(meta.refresh_at_iso);
-    if (Number.isFinite(ageMs) && ageMs > 5 * 60 * 1000) {
-      push("AMBER", "PROTECTION_REFRESH_STALE",
-        `protection refresh 가 ${Math.round(ageMs / 60000)}분째 안 돌고 있음.`);
+  // ── TP1 수량 sanity ───────────────────────────────────────────────
+  // TP1 reduceOnly 주문의 수량이 포지션 크기보다 크면 구조 깨진 것.
+  if (exchange.tp_order && exchange.tp_order.origQty != null
+      && position && Number.isFinite(Number(position.qty_base))) {
+    const posQty = Math.abs(Number(position.qty_base));
+    const tpQty = Math.abs(Number(exchange.tp_order.origQty));
+    if (posQty > 0 && tpQty > posQty * 1.02) {
+      push("RED", "TP_QTY_EXCEEDS_POSITION",
+        `TP 주문 수량(${tpQty})이 포지션 수량(${posQty})보다 큼 — 잔여 포지션 없이 과다 매도 가능.`);
     }
-  } else if (meta.sl_order_id || meta.tp_order_id) {
-    push("AMBER", "PROTECTION_REFRESH_NEVER_RAN",
-      "protection refresh 기록이 없음 (진입 시 refresh 누락 가능).");
   }
+
+  // Refresh 신선도 경고는 의도적으로 제거했음 (2026-04-18).
+  // refreshBinanceNativeProtectionWithRetry 는 event-driven (entry/add/exit/
+  // trail-trigger) 이지 주기적 heartbeat 가 아니어서, "5분 넘게 안 돌았음 = 문제"
+  // 라는 발상이 잘못됐었음. 오히려 자주 돌면 그게 오류 상황. shouldEagerRefresh
+  // NativeProtection 의 needed 플래그가 true 가 되는 조건이 곧 "SL/TP 가
+  // 거래소에 없음" 인데 여기서 이미 SL_MISSING_ON_EXCHANGE / TP_MISSING_ON_
+  // EXCHANGE 로 독립적으로 잡히므로 staleness 지표는 중복·혼란만 유발.
 
   return issues;
 }
