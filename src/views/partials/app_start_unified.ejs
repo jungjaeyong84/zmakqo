@@ -20,6 +20,7 @@
     audit:            { eyebrow: '전략상태',     hint: '운영 기록, 드리프트, 증거 체인을 점검합니다.' },
     settings:         { eyebrow: '설정',         hint: '거래소, 리스크, 실행 설정을 조정합니다.' },
     openclaw:         { eyebrow: 'AI 에이전트',  hint: 'OpenClaw AI 에이전트의 페이즈, 크론 상태, 최근 판단 기록을 모니터링합니다.' },
+    protection:       { eyebrow: '보호주문',     hint: '모든 활성 포지션의 SL/TP/트레일링 상태를 DB ↔ 거래소 실제 주문과 실시간 대조합니다.' },
   };
   const __pageMeta = __pageMetaMap[__active] || { eyebrow: 'DONBEOLJA', hint: '' };
   const __compactTopbar = ['home', 'mission'].includes(__active);
@@ -31,6 +32,7 @@
   const __tradingActive = ['execution', 'trading', 'server-primary', 'journal', 'ai', 'state'].includes(__active);
   const __automationActive = ['recovery', 'deployment', 'audit', 'analysis', 'report', 'eval', 'briefing', 'risk'].includes(__active);
   const __openclawActive = __active === 'openclaw';
+  const __protectionActive = __active === 'protection';
 %>
 <!doctype html>
 <html lang="ko">
@@ -87,6 +89,9 @@
         </a>
         <a href="/dashboard/recovery" class="<%= __automationActive ? 'active' : '' %>">
           <span class="nav-icon">&#x2699;</span> 전략상태
+        </a>
+        <a href="/dashboard/protection/view" class="<%= __protectionActive ? 'active' : '' %>">
+          <span class="nav-icon">&#x1f6e1;</span> 보호주문
         </a>
         <a href="/dashboard/openclaw/view" class="<%= __openclawActive ? 'active' : '' %>">
           <span class="nav-icon">&#x1f9e0;</span> AI 에이전트

@@ -1,0 +1,356 @@
+<%- include('partials/app_start_unified', { title: '보호주문 감사 · DONBEOLJA', pageTitle: '보호주문', active: 'protection' }) %>
+
+<%
+  const P = (typeof payload === 'object' && payload) ? payload : {};
+  const positions = Array.isArray(P.positions) ? P.positions : [];
+  const overall = String(P.overall_status || 'UNKNOWN').toUpperCase();
+
+  const overallTone = overall === 'GREEN'
+    ? 'success'
+    : overall === 'AMBER'
+      ? 'warning'
+      : overall === 'RED'
+        ? 'error'
+        : 'filled';
+  const overallLabel = overall === 'GREEN'
+    ? '정상 — 모든 포지션 보호됨'
+    : overall === 'AMBER'
+      ? '주의 — 경고 있음 (위험 아님)'
+      : overall === 'RED'
+        ? '🚨 위험 — 무방비 포지션 또는 불일치 발견'
+        : P.error
+          ? '확인 실패 — ' + P.error
+          : '상태 확인 중';
+
+  function fmtPrice(v) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return '-';
+    if (n >= 1000) return n.toFixed(2);
+    if (n >= 100)  return n.toFixed(2);
+    if (n >= 10)   return n.toFixed(3);
+    if (n >= 1)    return n.toFixed(4);
+    return n.toFixed(6);
+  }
+  function fmtIso(s) {
+    if (!s) return '-';
+    try { return String(s).replace('T',' ').slice(0,19); } catch (_) { return String(s); }
+  }
+  function statusTone(s) {
+    return s === 'GREEN' ? 'success' : s === 'AMBER' ? 'warning' : 'error';
+  }
+  function statusKo(s) {
+    return s === 'GREEN' ? '🟢 정상' : s === 'AMBER' ? '🟠 주의' : '🔴 위험';
+  }
+  function boolMark(v) {
+    return v === true ? '🟢' : v === false ? '🔴' : '—';
+  }
+%>
+
+<style>
+  .pa-page { display: flex; flex-direction: column; gap: 20px; }
+
+  .pa-hero {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 20px 22px;
+    background: var(--md-surface, #fff);
+    border: 1px solid var(--md-outline-variant, #dde3ee);
+    border-radius: var(--md-shape-lg, 20px);
+    box-shadow: var(--md-elevation-1, 0 8px 22px rgba(60,64,67,.06));
+    border-left-width: 4px;
+    border-left-color: <%= overall === 'GREEN' ? '#137333' : overall === 'AMBER' ? '#b06000' : '#c5221f' %>;
+  }
+  .pa-hero-copy { display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1 1 260px; }
+  .pa-hero-title { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+  .pa-hero-hint { color: var(--md-on-surface-variant, #5f6368); font-size: 13px; line-height: 1.5; }
+  .pa-hero-chips { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  .pa-position-card {
+    background: var(--md-surface, #fff);
+    border: 1px solid var(--md-outline-variant, #dde3ee);
+    border-radius: var(--md-shape-lg, 20px);
+    box-shadow: var(--md-elevation-1, 0 8px 22px rgba(60,64,67,.06));
+    overflow: hidden;
+    border-left-width: 4px;
+  }
+  .pa-position-card.s-GREEN { border-left-color: #137333; }
+  .pa-position-card.s-AMBER { border-left-color: #b06000; }
+  .pa-position-card.s-RED   { border-left-color: #c5221f; }
+
+  .pa-position-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 14px 20px;
+    background: #f8fbff;
+    border-bottom: 1px solid var(--md-outline-variant, #dde3ee);
+  }
+  .pa-position-title {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+  .pa-position-title .sym { color: var(--md-on-surface, #1f1f1f); }
+  .pa-position-title .side { font-size: 12px; color: var(--md-on-surface-variant, #5f6368); font-weight: 500; }
+
+  .pa-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+  }
+  @media (max-width: 720px) { .pa-grid-2 { grid-template-columns: 1fr; } }
+
+  .pa-col {
+    padding: 16px 20px;
+  }
+  .pa-col + .pa-col {
+    border-left: 1px solid var(--md-outline-variant, #dde3ee);
+  }
+  @media (max-width: 720px) {
+    .pa-col + .pa-col { border-left: none; border-top: 1px solid var(--md-outline-variant, #dde3ee); }
+  }
+  .pa-col h3 {
+    margin: 0 0 10px;
+    font-size: 12px;
+    color: var(--md-on-surface-variant, #5f6368);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+  }
+
+  .pa-kv {
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    gap: 4px 10px;
+    font-size: 12px;
+    font-family: ui-monospace, Menlo, monospace;
+  }
+  .pa-kv .k { color: var(--md-on-surface-variant, #5f6368); }
+
+  .pa-match-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--md-outline-variant, #dde3ee);
+    font-size: 13px;
+  }
+  .pa-match-row:last-child { border-bottom: none; }
+  .pa-match-row .label { color: var(--md-on-surface-variant, #5f6368); }
+  .pa-match-row .val { font-weight: 600; }
+
+  .pa-issues {
+    padding: 12px 20px;
+    background: #fbfcfd;
+    border-top: 1px solid var(--md-outline-variant, #dde3ee);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .pa-issue {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .pa-issue.sev-RED    { background: #fce8e6; border: 1px solid #f3b8b3; color: #b3261e; }
+  .pa-issue.sev-AMBER  { background: #fef7e0; border: 1px solid #f0d28b; color: #8d5f00; }
+  .pa-issue-code {
+    font-weight: 700;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 11px;
+    opacity: 0.8;
+    min-width: 180px;
+  }
+
+  .pa-footer-note {
+    margin-top: 8px;
+    color: var(--md-on-surface-variant, #5f6368);
+    font-size: 11px;
+    text-align: center;
+  }
+  .pa-footer-note code {
+    background: #f1f3f4;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+  }
+
+  .pa-empty {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--md-on-surface-variant, #5f6368);
+    background: #f8f9fa;
+    border: 1px dashed var(--md-outline-variant, #dde3ee);
+    border-radius: 16px;
+  }
+</style>
+
+<div class="pa-page">
+
+  <!-- Hero -->
+  <div class="pa-hero">
+    <div class="pa-hero-copy">
+      <div class="pa-hero-title">보호주문 실시간 감사</div>
+      <div class="pa-hero-hint">
+        모든 활성 Binance 포지션의 SL/TP 주문을 <strong>DB meta ↔ 거래소 실제 주문</strong>과 매 호출마다 직접 비교합니다.
+        진입 시 보호주문이 누락됐거나 id/가격이 어긋났거나 트레일링이 정상 상태가 아니면 즉시 여기 표시됩니다.
+      </div>
+      <div class="pa-hero-chips">
+        <span class="chip filled sm">활성 포지션 <%= positions.length %>개</span>
+        <% if (P.cached) { %>
+          <span class="chip filled sm">캐시 <%= Math.round((P.cache_age_ms||0)/1000) %>초 전</span>
+        <% } else { %>
+          <span class="chip primary sm">방금 갱신</span>
+        <% } %>
+        <span class="chip filled sm">생성 <%= fmtIso(P.generated_at) %></span>
+      </div>
+    </div>
+    <div class="pa-hero-chips" style="align-self: flex-start;">
+      <span class="chip <%= overallTone %> sm"><%= overallLabel %></span>
+      <a class="btn-outlined sm" href="/dashboard/protection?fresh=1" target="_blank" rel="noopener">JSON (fresh)</a>
+      <a class="btn-outlined sm" href="/dashboard/protection/view?fresh=1">즉시 갱신</a>
+    </div>
+  </div>
+
+  <% if (!P.ok) { %>
+    <div class="pa-empty">
+      <strong>감사 실행 실패</strong><br>
+      <code><%= P.error || '확인 중' %></code><br>
+      BINANCEFUT API 키가 설정되지 않았거나 네트워크 접근이 불가능할 때 발생합니다.
+    </div>
+  <% } else if (!positions.length) { %>
+    <div class="pa-empty">
+      활성 Binance 선물 포지션이 없습니다. 신규 진입이 발생하면 여기에 즉시 표시됩니다.
+    </div>
+  <% } else { %>
+
+    <% positions.forEach(function(p){ %>
+      <div class="pa-position-card s-<%= p.status %>">
+        <div class="pa-position-head">
+          <div class="pa-position-title">
+            <span class="sym"><%= p.symbol %></span>
+            <span class="side">
+              <%= p.position_side === 'LONG' ? '매수(롱)' : p.position_side === 'SHORT' ? '매도(숏)' : p.position_side %>
+              · qty <%= p.qty_base %>
+              <% if (p.age_minutes_since_entry != null) { %>
+                · 진입 <%= p.age_minutes_since_entry %>분 전
+              <% } %>
+            </span>
+          </div>
+          <span class="chip <%= statusTone(p.status) %> sm"><%= statusKo(p.status) %></span>
+        </div>
+
+        <div class="pa-grid-2">
+          <!-- DB meta -->
+          <div class="pa-col">
+            <h3>📋 DB 메타 (Firestore)</h3>
+            <div class="pa-kv">
+              <span class="k">SL id</span><span><%= p.meta.sl_order_id || '없음' %></span>
+              <span class="k">SL price</span><span><%= fmtPrice(p.meta.sl_price) %></span>
+              <span class="k">TP1 id</span><span><%= p.meta.tp_order_id || '없음' %></span>
+              <span class="k">TP1 price</span><span><%= fmtPrice(p.meta.tp_price) %></span>
+              <span class="k">TP1 qty</span><span><%= p.meta.tp_qty_base ?? '—' %></span>
+              <span class="k">trail</span><span><%= p.meta.trail_active ? '🟢 active' : '⚪ off' %> <% if (p.meta.trail_stop) { %>@ <%= fmtPrice(p.meta.trail_stop) %><% } %></span>
+              <span class="k">tp1_done</span><span><%= boolMark(p.meta.tp_p1_done) %></span>
+              <span class="k">refresh</span><span><%= p.meta.refresh_status || '—' %> <% if (p.meta.refresh_at_iso) { %>@ <%= fmtIso(p.meta.refresh_at_iso) %><% } %></span>
+            </div>
+          </div>
+
+          <!-- Exchange actual -->
+          <div class="pa-col">
+            <h3>🏦 거래소 실제 (Binance)</h3>
+            <div class="pa-kv">
+              <span class="k">open 수</span><span><%= p.exchange.all_orders_n %>개</span>
+              <% if (p.exchange.sl_order) { %>
+                <span class="k">SL id</span><span><%= p.exchange.sl_order.orderId %></span>
+                <span class="k">SL price</span><span><%= fmtPrice(p.exchange.sl_order.stopPrice) %></span>
+                <span class="k">SL type</span><span><%= p.exchange.sl_order.type %></span>
+              <% } else { %>
+                <span class="k">SL</span><span style="color:#c5221f">🔴 없음</span>
+              <% } %>
+              <% if (p.exchange.tp_order) { %>
+                <span class="k">TP id</span><span><%= p.exchange.tp_order.orderId %></span>
+                <span class="k">TP price</span><span><%= fmtPrice(p.exchange.tp_order.stopPrice) %></span>
+                <span class="k">TP qty</span><span><%= p.exchange.tp_order.origQty ?? '—' %></span>
+              <% } else { %>
+                <span class="k">TP</span><span style="color:#c5221f">🔴 없음</span>
+              <% } %>
+            </div>
+          </div>
+        </div>
+
+        <!-- Match summary -->
+        <div class="pa-col" style="padding-top:0">
+          <h3 style="margin-top:12px">🔍 DB ↔ 거래소 매칭</h3>
+          <div class="pa-match-row">
+            <span class="label">SL 거래소에 존재</span>
+            <span class="val"><%= boolMark(p.match.sl_present_on_exchange) %></span>
+          </div>
+          <div class="pa-match-row">
+            <span class="label">SL order_id 일치</span>
+            <span class="val"><%= boolMark(p.match.sl_id_matches) %></span>
+          </div>
+          <div class="pa-match-row">
+            <span class="label">SL price 일치 (±0.5%)</span>
+            <span class="val"><%= boolMark(p.match.sl_price_matches) %></span>
+          </div>
+          <div class="pa-match-row">
+            <span class="label">TP 거래소에 존재</span>
+            <span class="val"><%= boolMark(p.match.tp_present_on_exchange) %></span>
+          </div>
+          <div class="pa-match-row">
+            <span class="label">TP order_id 일치</span>
+            <span class="val"><%= boolMark(p.match.tp_id_matches) %></span>
+          </div>
+          <div class="pa-match-row">
+            <span class="label">TP price 일치 (±0.5%)</span>
+            <span class="val"><%= boolMark(p.match.tp_price_matches) %></span>
+          </div>
+        </div>
+
+        <% if (p.issues && p.issues.length) { %>
+          <div class="pa-issues">
+            <% p.issues.forEach(function(iss){ %>
+              <div class="pa-issue sev-<%= iss.severity %>">
+                <span class="pa-issue-code"><%= iss.code %></span>
+                <span><%= iss.message %></span>
+              </div>
+            <% }) %>
+          </div>
+        <% } %>
+      </div>
+    <% }) %>
+
+  <% } %>
+
+  <div class="pa-footer-note">
+    20초 캐시 · 30초마다 자동 새로고침 · <code>?fresh=1</code> 로 즉시 갱신
+  </div>
+</div>
+
+<script>
+  // 30초마다 자동 새로고침. 유저가 뭔가 하면 타이머 리셋.
+  (function(){
+    var t = setTimeout(function(){ location.reload(); }, 30000);
+    ['click','keydown','scroll','touchstart'].forEach(function(ev){
+      document.addEventListener(ev, function(){
+        clearTimeout(t);
+        t = setTimeout(function(){ location.reload(); }, 30000);
+      }, { passive: true });
+    });
+  })();
+</script>
+
+<%- include('partials/app_end_unified') %>
