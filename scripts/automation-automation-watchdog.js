@@ -302,7 +302,16 @@ function resolveSchedulerBaseUrl() {
     || process.env.SCHEDULER_BASE_URL
     || ""
   ).trim();
-  const base = fromEnv || `http://127.0.0.1:${Number(process.env.PORT || 3000) || 3000}`;
+  // Default changed 2026-04-18: production runtime now lives on Cloud Run
+  // (donbeolja service), not on localhost:3000. Previously this fell
+  // back to 127.0.0.1:3000 which caused SCHEDULER_STATUS_UNREACHABLE
+  // every time the watchdog was spawned from a context that didn't
+  // source run_automation_watchdog.sh (e.g. openclaw-hourly-cycle
+  // invoking the script directly via `node scripts/...`). Setting the
+  // explicit env var still wins; local dev can still override via
+  // AUTOMATION_WATCHDOG_SCHEDULER_BASE_URL=http://127.0.0.1:3000.
+  const cloudRunDefault = "https://donbeolja-350958953672.asia-northeast3.run.app";
+  const base = fromEnv || cloudRunDefault;
   return base.replace(/\/+$/, "");
 }
 
