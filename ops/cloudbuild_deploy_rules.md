@@ -235,12 +235,38 @@ done
    - DOGEUSDT SHORT(entry 0.0984): unrealized +1.68% raw / +3.35% lev — **PnL 양호**, 다만 native stop(0.09825)은 +0.15% raw 보장선.
    - 두 포지션 모두 현재 수익 상태이나, 정책상 1.65% 레버리지 보장을 만족하는 수준까지 stop을 끌어당기지 못한 상태. egress timeout 해결 후 exit-worker가 자동으로 stop을 floor(BTC 76519.76 / DOGE 0.0975882) 수준으로 이동해야 함.
 
-### 다음 단계 (operator 확인 필요)
+### 해결 (2026-04-18 ~09:45 UTC)
 
-배포를 완결시키려면 다음 중 하나가 필요:
+CEO가 **(B)** 경로 선택: BTCUSDT + DOGEUSDT 포지션 수동 청산.
 
-- **(A)** `donbeolja-egress` 타임아웃 원인 조사 + 복구 → exit-worker가 stop 재배치 → gate 자동 clear
-- **(B)** operator가 BTCUSDT + DOGEUSDT 포지션을 수동 청산 → 활성 포지션 없어져 gate 자동 clear
-- **(C)** gate 정책 완화: `AUTHORITY_ACTIONABLE_LIVE_ISSUE_POSITION` 블록을 "stop이 실제 loss territory일 때만" 발동하도록 수정 (현재는 floor 미달만으로도 차단) — 코드 변경 + 테스트 + 별도 PR 필요
+- 청산 직후 gate 재실행 결과:
+  ```
+  {"ok":true,"reason":"EXIT_INTEGRITY_DEPLOY_GATE_PASS",
+   "summary":{"status":"OK","live_gate_blocked":false,
+              "live_issue_count":0,"actionable_live_issue_count":0, ... }}
+  ```
+- 검증 빌드: `87d8902d-78f2-4533-a06b-2ec477928146` (`--branch=master`) 실행.
+  - 주의: master는 아직 구버전 `cloudbuild.yaml` (74줄). 빌드가 통과해도 구버전 config로 배포됨.
+  - master 동기화는 PR #6 (`sync/master-cloudbuild-20260418` → `master`)에서 처리.
 
-현재 재용(CEO) 판단 대기 중.
+### 잔존 follow-up (별도 조사)
+
+**egress write-path 타임아웃은 미해결** — 포지션이 flat이라 당장 배포는 막지 않으나, 다음 live 트레이딩 재개 전 반드시 해소 필요:
+
+- 현상: `donbeolja-exit-worker` → `donbeolja-egress-private` (public *.run.app URL) 호출이 20초 타임아웃.
+  - 새 revision `00763-tgz` (2026-04-18 09:19:13 start) 에서도 4분 만에 동일 타임아웃 재발 → **stale DNS/connection pool 가설 기각**.
+  - 타임아웃된 request_id (`EGR__1776504889696__89a913af` 등)가 `donbeolja-egress-private` 인바운드 로그에 **전혀 없음** → exit-worker 컨테이너 레벨에서 요청이 drop됨.
+  - `donbeolja-egress-private` 자체는 다른 호출자에게 SUMMARY 로그 생산 중 (정상 서빙).
+  - 직접 curl (public URL → `x-egress-token` 헤더) 은 167ms 정상 200 응답.
+- 확인된 정상 항목:
+  - `ingress: all`, IAM `allUsers → run.invoker` (public) ✓
+  - `EGRESS_PROXY_BINANCE_PRIVATE_URL`, `EGRESS_PROXY_TOKEN`, `BINANCEFUT_API_KEY/SECRET` 모두 exit-worker에 주입 확인 ✓
+  - VPC connector — 필요 없음 (public URL 호출).
+  - 컨테이너 CPU/memory 1/1Gi (부족 경고 없음).
+- 가설 (미검증):
+  - Node.js `undici` fetch 에서 특정 TLS/HTTP 에이전트 설정이 Cloud Run 내부 routing과 충돌.
+  - Cloud Run 내부 service-to-service mesh에서 특정 경로만 비정상.
+  - exit-worker 컨테이너 내부에서 `fetchBinanceFuturesAccount` 호출 경로에 알 수 없는 블로킹 코드.
+
+- 재현 중단 조건: 현재 exit-worker의 reconciler 루프가 계속 호출 → 매 ~20-25초 타임아웃 로그. 포지션이 flat이라 실제 손실은 없음.
+- 다음 세션에서 착수: 코드 레벨 디버그 로그 추가 (`fetch()` 앞뒤에 DNS lookup / TLS 시작 log) → 재배포 → 로그 분석.
