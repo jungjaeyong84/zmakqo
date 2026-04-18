@@ -8357,8 +8357,54 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     leverage,
     openOrders: exchangeOpenOrders,
     algoOrders: exchangeAlgoOrders,
+    // Supply mark price so the qty-reduction-recovery path can seed the
+    // trail watermark from a real waterline instead of leaving it null.
+    markPrice: Number.isFinite(markPrice) ? markPrice : (Number.isFinite(priceRef) ? priceRef : null),
   });
   meta = reconciledProjection.meta;
+
+  // ── Recovery-path trade alert (Fix #1, 2026-04-18) ────────────────
+  // When the reconciler flips tp_p1_done=false → true via the qty-reduction
+  // recovery path (Binance filled the TP but our fill-sync missed the
+  // event), the operator used to receive NO Telegram alert because the
+  // normal sendTradeExecutionAlert path only fires on verified fills.
+  // Detect the transition here and dispatch a late alert so the operator
+  // always hears about TP1 hits.
+  try {
+    const prevTpP1Done = prevMeta && prevMeta.tp_p1_done === true;
+    const newTpP1Done = meta && meta.tp_p1_done === true;
+    const recoveryTrigger = meta && meta.tp_p1_recovery_trigger;
+    const alreadyAlerted = meta && meta.tp_p1_recovery_alert_sent_at;
+    if (newTpP1Done && !prevTpP1Done && recoveryTrigger && !alreadyAlerted) {
+      const alertQty = Number.isFinite(prevQtyBase) && Number.isFinite(qtyBase)
+        ? Math.max(0, prevQtyBase - qtyBase)
+        : null;
+      const alertPrice = Number.isFinite(meta.tp_p1_recovery_seeded_price)
+        ? meta.tp_p1_recovery_seeded_price
+        : (Number.isFinite(markPrice) ? markPrice : priceRef);
+      dispatchTradeExecutionAlert({
+        exchange,
+        symbol,
+        event: "EXIT_TP_P1_RECOVERY",
+        intent: "EXIT",
+        side: active ? side : null,
+        execPrice: alertPrice,
+        execQty: alertQty,
+        executionMode: liveCfg.executionMode || "LIVE",
+        reason: recoveryTrigger,
+        note: "TP1 fill detected via qty-reduction recovery (fill_sync missed the primary event).",
+      }).catch((e) => {
+        console.warn("[TP1_RECOVERY_ALERT_FAIL]", e && e.message ? e.message : String(e));
+      });
+      // Idempotency marker so the alert is not re-sent on every subsequent sync.
+      meta = mergeMeta(meta, {
+        tp_p1_recovery_alert_sent_at: new Date().toISOString(),
+      });
+    }
+  } catch (recoveryAlertErr) {
+    console.warn("[TP1_RECOVERY_ALERT_GUARD]",
+      recoveryAlertErr && recoveryAlertErr.message ? recoveryAlertErr.message : recoveryAlertErr);
+  }
   if (Array.isArray(reconciledProjection.invariants) && reconciledProjection.invariants.length) {
     meta = mergeMeta(meta, {
       exchange_projection_invariants: reconciledProjection.invariants,

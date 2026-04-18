@@ -227,6 +227,17 @@ function recoverSimplifiedExitV2RunnerMetaFromQtyReduction({
   stopOrder = null,
   tpOrder = null,
   observedAtIso = new Date().toISOString(),
+  // 2026-04-18 regression fix:
+  //   Before: trail_active was flipped to true on recovery, but trail_high
+  //   (LONG) / trail_low (SHORT) stayed null, so the next tick's trail
+  //   watermark compare (price > prevHigh) couldn't fire an update until
+  //   price moved far enough — and in the meantime the native stop stayed
+  //   at the original SL (often below BE). The practical effect was that
+  //   a recovered-TP1 runner was unprotected.
+  //   Fix: seed the watermark from whichever price signal the sync call
+  //   has available (markPrice → entryPrice as fallback) so the trailing
+  //   loop starts from a real waterline on its very first tick.
+  currentMarkPrice = null,
 } = {}) {
   const baseMeta = meta && typeof meta === "object" ? meta : {};
   if (!isSimplifiedExitV2Enabled(baseMeta)) return null;
@@ -273,6 +284,32 @@ function recoverSimplifiedExitV2RunnerMetaFromQtyReduction({
     return null;
   }
 
+  // Seed trail watermark so the next tick can start trailing from a real
+  // waterline. Priority: current mark price → entry price. If both are
+  // null / zero / non-finite we leave the watermark null and accept one
+  // more tick of unprotected-ness — better than seeding with a stale
+  // guess.
+  //
+  // Note on toNum(): Number(null) === 0 in JS, so the raw `??` chain
+  // doesn't work here (it treats 0 as valid). Explicit positivity check.
+  const sideUpper = String(positionSide || "").toUpperCase();
+  const markNum = currentMarkPrice == null ? null : toNum(currentMarkPrice);
+  const entryNum = entryPrice == null ? null : toNum(entryPrice);
+  const seedPrice = (Number.isFinite(markNum) && markNum > 0)
+    ? markNum
+    : ((Number.isFinite(entryNum) && entryNum > 0) ? entryNum : null);
+  const seededTrailHigh = sideUpper === "LONG" && Number.isFinite(seedPrice) && seedPrice > 0
+    ? Math.max(toNum(baseMeta.trail_high) ?? 0, seedPrice)
+    : (baseMeta.trail_high ?? null);
+  const seededTrailLow = sideUpper === "SHORT" && Number.isFinite(seedPrice) && seedPrice > 0
+    ? (Number.isFinite(toNum(baseMeta.trail_low))
+      ? Math.min(toNum(baseMeta.trail_low), seedPrice)
+      : seedPrice)
+    : (baseMeta.trail_low ?? null);
+  const seededTrailAtMs = (Number.isFinite(seedPrice) && seedPrice > 0)
+    ? Date.now()
+    : (baseMeta.trail_high_at_ms || baseMeta.trail_low_at_ms || null);
+
   const nextMeta = {
     ...baseMeta,
     tp_p0_done: false,
@@ -292,6 +329,18 @@ function recoverSimplifiedExitV2RunnerMetaFromQtyReduction({
       ?? finiteOrNull(baseMeta.origin_entry_exec_bar_ms),
     entry_qty_base: inferredEntryQty,
     entry_qty_abs: inferredEntryQty,
+    // trail watermark seed (Fix #2, 2026-04-18)
+    trail_high: seededTrailHigh,
+    trail_low: seededTrailLow,
+    trail_high_at_ms: sideUpper === "LONG" ? seededTrailAtMs : (baseMeta.trail_high_at_ms ?? null),
+    trail_low_at_ms: sideUpper === "SHORT" ? seededTrailAtMs : (baseMeta.trail_low_at_ms ?? null),
+    // Recovery marker — downstream callers (paperBinanceRunner sync) use
+    // this to detect the transition and dispatch a late trade-exec alert
+    // so operators are never blind to a TP1 fill again.
+    tp_p1_recovery_trigger: baseMeta.tp_p1_recovery_trigger
+      || "EXCHANGE_QTY_REDUCTION_RECOVERY",
+    tp_p1_recovery_seeded_price: Number.isFinite(seedPrice) && seedPrice > 0 ? seedPrice : null,
+    tp_p1_recovery_observed_at: observedAtIso,
   };
   const ledger = buildExitQuantityContractLedger({
     positionSnapshot: {
@@ -547,6 +596,11 @@ function reconcileBinancePositionMetaWithExchange({
   leverage,
   openOrders = [],
   algoOrders = [],
+  // Optional: current mark price from the Binance /fapi/v2/account snapshot.
+  // When provided the qty-reduction-recovery path uses it to seed the
+  // trail watermark (trail_high / trail_low) so the next tick can start
+  // trailing from a real waterline instead of sitting at null.
+  markPrice = null,
 } = {}) {
   const baseMeta = meta && typeof meta === "object" ? meta : {};
   if (!active) {
@@ -639,6 +693,10 @@ function reconcileBinancePositionMetaWithExchange({
     entryPrice,
     stopOrder: stop,
     tpOrder: tp1,
+    // markPrice flows through from reconcileBinancePositionMetaWithExchange's
+    // opts so the recovery helper can seed trail_high / trail_low with a
+    // real waterline instead of null.
+    currentMarkPrice: Number.isFinite(Number(markPrice)) ? Number(markPrice) : null,
   });
   if (qtyReductionRecovery && qtyReductionRecovery.meta) {
     Object.assign(nextMeta, qtyReductionRecovery.meta);

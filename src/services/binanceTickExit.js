@@ -2251,18 +2251,24 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
         })();
       }
 
-      // ─ Break-Even floor after TP1 (before full trailing arms) ─────────
-      // Data audit 2026-04-18: the TP1→trail gap swept the runner's 75%
-      // back to the original SL in ~33% of trades, dragging the TP1 avg
-      // down to +0.70% despite a 1.65% target. This block pushes a
-      // native STOP update to the runner floor price (entry +
-      // RUNNER_MIN_PROFIT_PCT) the moment TP1 is done, without waiting
-      // for trail_high/trail_low to move or trail_delay to expire.
-      // Safety: no trail_high/low mutation here (that stays trail-armed
-      // path only); we just propose a native protection refresh with the
-      // floor-derived stop. The existing refresh pipeline picks it up
-      // on the next tick.
-      if (_tpP1Done && !_trailEnabled) {
+      // ─ Break-Even floor after TP1 (trail-agnostic) ──────────────────
+      // 2026-04-18 Fix #3: Previously gated on `!_trailEnabled`, but the
+      // recovery path flips trail_active=true without updating the
+      // native stop — which left the runner's SL sitting at the original
+      // pre-TP1 level (e.g. -1.65%) even though logically trail was on.
+      // The practical effect was that BE floor protection never fired on
+      // recovered positions. Relaxed condition: the block runs whenever
+      // TP1 is done AND the current native stop is below the BE floor,
+      // regardless of trail state. If trail is armed and has already
+      // pushed the stop above BE, `_shouldRaiseStop` short-circuits and
+      // nothing happens. If trail is armed but stop is still at the
+      // original SL (classic recovery case), we raise to BE here.
+      //
+      // Safety: this block never lowers a stop — it only moves stops up
+      // (LONG) or down (SHORT) toward BE. The trail watermark update
+      // path below handles later tightening above BE when the watermark
+      // moves.
+      if (_tpP1Done) {
         try {
           const _beSide = resolvePositionSideFromPosition(pos, _tMeta, "LONG");
           const _beRules = resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: pos });
@@ -2278,6 +2284,9 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
             const _bePrice = _beSide === "SHORT"
               ? _beAvg * (1 - (_beFloorPct / _beLev))
               : _beAvg * (1 + (_beFloorPct / _beLev));
+            // Raise only — never lower. For LONG the new stop must be
+            // HIGHER than the current stop (closer to entry). For SHORT
+            // the new stop must be LOWER than the current stop.
             const _shouldRaiseStop = !Number.isFinite(_currentStop)
               || (_beSide === "LONG" && _bePrice > _currentStop + 1e-9)
               || (_beSide === "SHORT" && _bePrice < _currentStop - 1e-9);
@@ -2298,6 +2307,7 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
                 prev_stop: Number.isFinite(_currentStop) ? _currentStop : null,
                 be_price: _bePrice,
                 floor_pct: _beFloorPct,
+                trail_enabled: _trailEnabled === true,
                 refresh_ok: !!(_beRefreshRes && _beRefreshRes.ok === true),
                 refresh_reason: _beRefreshRes && _beRefreshRes.reason ? String(_beRefreshRes.reason) : null,
               });
