@@ -125,7 +125,12 @@ async function main() {
   try {
     fs.mkdirSync(OPS_DAILY, { recursive: true });
     fs.writeFileSync(OUTPUT_PATH, JSON.stringify(payload, null, 2));
-  } catch (_) { /* silent */ }
+  } catch (err) {
+    // Surface on stderr so launchd's StandardErrorPath captures it. Silent
+    // catch previously hid disk/permission errors and made the dashboard
+    // falsely drop to "missing" status while stdout still said ok:true.
+    console.error("[openclaw_retrospect] FAILED to write artifact", OUTPUT_PATH, err && err.message ? err.message : err);
+  }
 
   await evidenceLedger.writeEvidenceRecord({
     kind: evidenceLedger.KINDS.RETROSPECT,

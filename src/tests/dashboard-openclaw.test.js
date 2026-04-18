@@ -14,9 +14,17 @@
 const assert = require("assert");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 
-const REPO_ROOT = path.resolve(__dirname, "..", "..");
-const OPS_DAILY = path.join(REPO_ROOT, "ops", "daily");
+// Isolate this test from the production ops/daily/ path. Before this
+// isolation the test fixtures (openclaw_{evidence_linker,calibration,
+// retrospect}_latest.json) were written into the real repo path and then
+// unlinked on cleanup — which silently WIPED the live cron artifacts and
+// made the dashboard flip to RED until the next cron fired. Now the test
+// writes fixtures under a unique tmp dir and points the dashboard route at
+// it via OPENCLAW_DASHBOARD_OPS_DAILY_DIR.
+const OPS_DAILY = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-dashboard-test-"));
+process.env.OPENCLAW_DASHBOARD_OPS_DAILY_DIR = OPS_DAILY;
 
 function fakeRes() {
   const state = { statusCode: 200, body: null, headers: {}, renderedView: null, renderedLocals: null };
@@ -80,20 +88,16 @@ function callRoute(router, url = "/dashboard/openclaw") {
     narrative_verdict: null,
   });
 
-  // Fixture: write an evidence_linker artifact with a known generated_at
-  // so we can confirm the summary picks it up, but leave calibration and
-  // retrospect missing so we exercise the graceful-degradation path.
-  fs.mkdirSync(OPS_DAILY, { recursive: true });
+  // Fixture: write an evidence_linker artifact into the isolated tmp dir
+  // so the dashboard picks it up as status=ok. Calibration and retrospect
+  // are intentionally not created so we exercise the graceful-degradation
+  // path. No cleanup needed — the whole tmp dir is removed at the end.
   const linkerPath = path.join(OPS_DAILY, "openclaw_evidence_linker_latest.json");
   fs.writeFileSync(linkerPath, JSON.stringify({
     generated_at: "2026-04-18T00:00:00.000Z",
     counts: { linked: 5, tp1_first: 1, sl_first: 4 },
     dry_run: false,
   }), "utf8");
-  // Delete the other two to guarantee they are missing.
-  for (const name of ["openclaw_calibration_latest.json", "openclaw_retrospect_latest.json"]) {
-    try { fs.unlinkSync(path.join(OPS_DAILY, name)); } catch (_) {}
-  }
 
   const router = require("../routes/dashboard.openclaw.routes");
   const jsonRes = callRoute(router, "/dashboard/openclaw");
@@ -173,12 +177,14 @@ function callRoute(router, url = "/dashboard/openclaw") {
   assert.ok(renderedHtml.includes("Phase 플래그"), "EJS must render phase section");
   assert.ok(renderedHtml.includes("Evidence Ledger"), "EJS must render evidence section");
 
-  // Clean up the fixture.
-  try { fs.unlinkSync(linkerPath); } catch (_) {}
+  // Clean up: remove the entire isolated tmp dir in one shot.
   ledger.__test.resetLedgerForTest();
+  try { fs.rmSync(OPS_DAILY, { recursive: true, force: true }); } catch (_) {}
 
   console.log("DASHBOARD_OPENCLAW_ROUTE_TEST_OK");
 })().catch((err) => {
+  // Best-effort cleanup even on failure so tmp dirs don't accumulate.
+  try { fs.rmSync(OPS_DAILY, { recursive: true, force: true }); } catch (_) {}
   console.error("DASHBOARD_OPENCLAW_ROUTE_TEST_FAIL", err && err.stack ? err.stack : err);
   process.exit(1);
 });

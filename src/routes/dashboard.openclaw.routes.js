@@ -25,7 +25,12 @@ const { getRecentEvidence, KINDS, MAX_BUFFER } = require("../services/openclawEv
 const { OPENCLAW_CRON_JOBS } = require("../../scripts/lib/openclaw-cron-manifest");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
-const OPS_DAILY = path.join(REPO_ROOT, "ops", "daily");
+// The test suite sets OPENCLAW_DASHBOARD_OPS_DAILY_DIR to a temp directory so
+// the test fixtures don't clobber the live ops/daily artifacts. In prod this
+// env var is unset and we fall back to the real repo path.
+const OPS_DAILY = (process.env.OPENCLAW_DASHBOARD_OPS_DAILY_DIR && String(process.env.OPENCLAW_DASHBOARD_OPS_DAILY_DIR).trim())
+  ? String(process.env.OPENCLAW_DASHBOARD_OPS_DAILY_DIR).trim()
+  : path.join(REPO_ROOT, "ops", "daily");
 
 // Map agent-cycle artifacts to their manifest job_id so SLA and filename
 // stay single-sourced from scripts/lib/openclaw-cron-manifest.js. Before

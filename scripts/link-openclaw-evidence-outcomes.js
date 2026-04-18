@@ -143,7 +143,16 @@ async function main() {
     lookback_days: LOOKBACK_DAYS,
     samples,
   };
-  try { fs.mkdirSync(OPS_DAILY, { recursive: true }); fs.writeFileSync(OUTPUT_PATH, JSON.stringify(payload, null, 2)); } catch (_) {}
+  try {
+    fs.mkdirSync(OPS_DAILY, { recursive: true });
+    fs.writeFileSync(OUTPUT_PATH, JSON.stringify(payload, null, 2));
+  } catch (err) {
+    // Surface on stderr so launchd's StandardErrorPath captures it. The
+    // prior silent catch hid real permission / ENOSPC / EROFS issues so the
+    // stdout log said ok:true while the dashboard flipped to RED because no
+    // file landed on disk.
+    console.error("[openclaw_linker] FAILED to write artifact", OUTPUT_PATH, err && err.message ? err.message : err);
+  }
   console.log(JSON.stringify(payload));
   return payload;
 }

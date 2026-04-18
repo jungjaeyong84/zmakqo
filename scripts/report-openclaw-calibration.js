@@ -167,7 +167,15 @@ async function main() {
     trust_weights,
     recommendations,
   };
-  try { fs.mkdirSync(OPS_DAILY, { recursive: true }); fs.writeFileSync(OUTPUT_PATH, JSON.stringify(payload, null, 2)); } catch (_) {}
+  try {
+    fs.mkdirSync(OPS_DAILY, { recursive: true });
+    fs.writeFileSync(OUTPUT_PATH, JSON.stringify(payload, null, 2));
+  } catch (err) {
+    // Surface on stderr so launchd's StandardErrorPath captures it. Silent
+    // catch previously hid disk/permission errors and made the dashboard
+    // falsely GREEN-then-RED as a result.
+    console.error("[openclaw_calibration] FAILED to write artifact", OUTPUT_PATH, err && err.message ? err.message : err);
+  }
   console.log(JSON.stringify(payload, null, 2));
   return payload;
 }
