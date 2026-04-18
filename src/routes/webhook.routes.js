@@ -1054,48 +1054,62 @@ function createWebhookRoutes() {
         if (rawMode) executionMode = String(rawMode || "").toUpperCase();
       } catch (_) {}
 
-      // ── OpenClaw shadow-mode signal observer ─────────────────────────
-      // Fire-and-forget evidence write so every webhook signal lands in
-      // openclaw_evidence_ledger as a SIGNAL_DECIDER record. The full
-      // decideOnSignal agent pipeline requires a richer input payload and
-      // will be wired separately; this minimal hook is enough to start
-      // accumulating training/calibration samples from Day 0.
-      // Guards: only when OPENCLAW_AGENT_SHADOW_ENABLED=1 and only when
-      // the request has at least an exchange + symbol (parseable signal).
+      // ── OpenClaw shadow-mode decision agent ─────────────────────────
+      // When OPENCLAW_AGENT_SHADOW_ENABLED=1, call the full decideOnSignal
+      // agent pipeline (rule vote + ML gate + narrative reasoner + composite
+      // veto-and-scale) and record the decision to openclaw_evidence_ledger
+      // for calibration. Always runs fire-and-forget with a 6s timeout so
+      // the webhook response latency is unaffected by agent work.
+      //
+      // In shadow mode the returned decision is ignored by the webhook:
+      // the real rule-based execution path below continues unchanged. Only
+      // when OPENCLAW_AGENT_APPLY_ENABLED=1 (Day 14+) does decideOnSignal
+      // actually mutate qty_pct — and even then only via the safety-clamped
+      // scale (0..1), never widening SL or increasing qty.
       if (
         String(process.env.OPENCLAW_AGENT_SHADOW_ENABLED || "") === "1"
         && exchange
         && symbol
       ) {
-        try {
-          const { writeEvidenceRecord, KINDS } = require("../services/openclawEvidenceLedger");
-          writeEvidenceRecord({
-            kind: KINDS.SIGNAL_DECIDER,
-            symbol,
-            market: exchange,
-            tf_exec: tfRaw || null,
-            decision: "OBSERVE",
-            confidence: null,
-            rule_verdict: null,
-            narrative_verdict: null,
-            inputs: {
-              event: String(p.event || p.signal_event || "").toUpperCase() || null,
-              side: String(p.side || p.direction || "").toUpperCase() || null,
-              signal_id: p.signal_id || p.signalId || null,
-              bar_close_time_utc: p.bar_close_time_utc || p.barCloseTimeUtc || null,
-              source: "WEBHOOK",
-              request_id: requestId,
-            },
-            predictions: null,
-            composite: null,
-          }).catch((e) => {
-            // Shadow write must never break the webhook response.
-            console.warn("[OPENCLAW_EVIDENCE_OBSERVER_FAIL]", e && e.message ? e.message : e);
-          });
-        } catch (observerErr) {
-          console.warn("[OPENCLAW_EVIDENCE_OBSERVER_REQUIRE_FAIL]",
-            observerErr && observerErr.message ? observerErr.message : observerErr);
-        }
+        const agentInput = {
+          exchange,
+          symbol,
+          tf: tfRaw || null,
+          signalTf: tfRaw || null,
+          intent: String(p.intent || p.event || "").toUpperCase() || null,
+          event: String(p.event || p.signal_event || "").toUpperCase() || null,
+          side: String(p.side || p.direction || "").toUpperCase() || null,
+          qtyPct: Number(p.qty_pct != null ? p.qty_pct : p.qtyPct) || null,
+          requestedQtyPct: Number(p.qty_pct != null ? p.qty_pct : p.qtyPct) || null,
+          features: (p.features && typeof p.features === "object") ? p.features : null,
+          nowMs: Date.now(),
+        };
+        // Fire-and-forget agent evaluation. Timeout ensures webhook
+        // responsiveness when narrative reasoner (Claude CLI subprocess)
+        // takes longer than expected.
+        const agentTimeoutMs = 6000;
+        const agentPromise = new Promise(async (resolve) => {
+          const timer = setTimeout(() => resolve({ ok: false, error: "AGENT_TIMEOUT" }), agentTimeoutMs);
+          try {
+            const agent = require("../services/openclawDecisionAgent");
+            const decision = await agent.decideOnSignal(agentInput);
+            clearTimeout(timer);
+            resolve({ ok: true, decision });
+          } catch (agentErr) {
+            clearTimeout(timer);
+            resolve({ ok: false, error: (agentErr && agentErr.message) || String(agentErr) });
+          }
+        });
+        // Detach so webhook doesn't wait. Errors are logged, never thrown.
+        agentPromise.then((out) => {
+          if (!out.ok) {
+            console.warn("[OPENCLAW_AGENT_SHADOW_FAIL]",
+              out.error, "request_id=" + requestId);
+          }
+        }).catch((tailErr) => {
+          console.warn("[OPENCLAW_AGENT_SHADOW_TAIL_FAIL]",
+            tailErr && tailErr.message ? tailErr.message : tailErr);
+        });
       }
 
       let barCloseUtcStr = p.bar_close_time_utc || p.barCloseTimeUtc || null;

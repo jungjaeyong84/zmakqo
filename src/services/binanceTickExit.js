@@ -2196,6 +2196,61 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
       const _trailStage = _runnerStage.trailStage;
       const _trailEnabled = _trailStage;
 
+      // ── OpenClaw Position Conductor shadow hook ────────────────────
+      // Runs the conductor's proposeAdjustment() in SHADOW-ONLY mode so
+      // per-position SL/TP tighten proposals land in the evidence ledger
+      // as POSITION_CONDUCTOR records. The tick loop's real stop logic
+      // below is NOT affected — the conductor's proposals are recorded
+      // for later review only, until OPENCLAW_CONDUCTOR_ENABLED=1
+      // AND OPENCLAW_CONDUCTOR_SHADOW_ONLY=0 (Day 17 per the flip
+      // sequence), at which point a separate PR can wire the proposal
+      // into the actual tick-exit stop update path.
+      //
+      // Fire-and-forget with 3s inner timeout so conductor never blocks
+      // a tick. Error logging is structured so ops/watchdog can sample.
+      if (String(process.env.OPENCLAW_AGENT_SHADOW_ENABLED || "") === "1") {
+        const _conductorTickNow = nowMs();
+        const _conductorInput = {
+          exchange: "BINANCEFUT",
+          symbol: String(symbol).toUpperCase(),
+          positionSnapshot: {
+            side: resolvePositionSideFromPosition(pos, _tMeta, "LONG"),
+            qty_base: Number(pos && pos.qty_base) || null,
+            avg_price: Number(pos && pos.avg_price) || null,
+            leverage: Number(_tMeta.external_leverage || _tMeta.leverage || pos.leverage || 1),
+            tp_p1_done: _tpP1Done === true,
+            trail_active: _trailEnabled === true,
+            sl_price: Number(_tMeta.native_protection_stop_price) || null,
+            tp_price: Number(_tMeta.native_protection_tp_price) || null,
+            tp_p1_target_price: Number(_tMeta.tp_p1_target_price) || null,
+            current_price: price,
+          },
+          ticks: [{ ts: _conductorTickNow, price }],
+        };
+        (async () => {
+          const conductorTimer = setTimeout(() => {}, 3000);
+          try {
+            const conductor = require("./openclawPositionConductor");
+            await Promise.race([
+              conductor.proposeAdjustment(_conductorInput),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("CONDUCTOR_TIMEOUT")), 3000)),
+            ]);
+          } catch (condErr) {
+            const emsg = String(condErr && condErr.message || condErr).slice(0, 200);
+            if (emsg !== "CONDUCTOR_TIMEOUT") {
+              structuredLog("tick_exit_conductor_shadow_error", {
+                exchange: "BINANCEFUT",
+                symbol: String(symbol).toUpperCase(),
+                error: emsg,
+              }, "warn");
+            }
+          } finally {
+            clearTimeout(conductorTimer);
+          }
+        })();
+      }
+
       // ─ Break-Even floor after TP1 (before full trailing arms) ─────────
       // Data audit 2026-04-18: the TP1→trail gap swept the runner's 75%
       // back to the original SL in ~33% of trades, dragging the TP1 avg
