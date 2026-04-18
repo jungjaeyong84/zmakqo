@@ -1054,6 +1054,50 @@ function createWebhookRoutes() {
         if (rawMode) executionMode = String(rawMode || "").toUpperCase();
       } catch (_) {}
 
+      // ── OpenClaw shadow-mode signal observer ─────────────────────────
+      // Fire-and-forget evidence write so every webhook signal lands in
+      // openclaw_evidence_ledger as a SIGNAL_DECIDER record. The full
+      // decideOnSignal agent pipeline requires a richer input payload and
+      // will be wired separately; this minimal hook is enough to start
+      // accumulating training/calibration samples from Day 0.
+      // Guards: only when OPENCLAW_AGENT_SHADOW_ENABLED=1 and only when
+      // the request has at least an exchange + symbol (parseable signal).
+      if (
+        String(process.env.OPENCLAW_AGENT_SHADOW_ENABLED || "") === "1"
+        && exchange
+        && symbol
+      ) {
+        try {
+          const { writeEvidenceRecord, KINDS } = require("../services/openclawEvidenceLedger");
+          writeEvidenceRecord({
+            kind: KINDS.SIGNAL_DECIDER,
+            symbol,
+            market: exchange,
+            tf_exec: tfRaw || null,
+            decision: "OBSERVE",
+            confidence: null,
+            rule_verdict: null,
+            narrative_verdict: null,
+            inputs: {
+              event: String(p.event || p.signal_event || "").toUpperCase() || null,
+              side: String(p.side || p.direction || "").toUpperCase() || null,
+              signal_id: p.signal_id || p.signalId || null,
+              bar_close_time_utc: p.bar_close_time_utc || p.barCloseTimeUtc || null,
+              source: "WEBHOOK",
+              request_id: requestId,
+            },
+            predictions: null,
+            composite: null,
+          }).catch((e) => {
+            // Shadow write must never break the webhook response.
+            console.warn("[OPENCLAW_EVIDENCE_OBSERVER_FAIL]", e && e.message ? e.message : e);
+          });
+        } catch (observerErr) {
+          console.warn("[OPENCLAW_EVIDENCE_OBSERVER_REQUIRE_FAIL]",
+            observerErr && observerErr.message ? observerErr.message : observerErr);
+        }
+      }
+
       let barCloseUtcStr = p.bar_close_time_utc || p.barCloseTimeUtc || null;
       let barCloseMs = parseBarCloseMs(
         p.bar_close_time_utc_ms ?? p.barCloseTimeUtcMs ?? p.bar_close_ms,
