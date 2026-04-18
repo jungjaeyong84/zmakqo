@@ -785,7 +785,17 @@ function resolveEntryRDistance({ avg, leverageEff, side, meta, rules } = {}) {
 }
 
 function computeRunnerMinProfitStopPrice({ avg, leverageEff, side, runnerMinProfitPct, tpP1Done, trailActive } = {}) {
-  if (tpP1Done !== true || trailActive !== true) return null;
+  // Historical behavior required BOTH tpP1Done AND trailActive, which meant
+  // the runner had no floor during the ~1-bar window between TP1 fill and
+  // trailing arming (TRAIL_DELAY_BARS / TRAIL_DELAY_MFE_PCT). The data
+  // audit on 2026-04-18 showed TP1 hits capped at +0.70% average despite
+  // the 1.65% target — the leftover 75% runner kept getting swept to SL
+  // in that gap. Relaxed to fire the floor the moment TP1 is filled so
+  // the worst case becomes "scratch at BE" instead of "SL at -1.65%".
+  // trailActive remains relevant downstream (trail stop is picked in
+  // computeRunnerExitStopPrice with max/min against this floor).
+  if (tpP1Done !== true) return null;
+  void trailActive;
   const floorPct = toNum(runnerMinProfitPct);
   const lev = toNum(leverageEff);
   if (floorPct === null || floorPct <= 0 || lev === null || lev <= 0) return null;

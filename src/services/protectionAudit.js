@@ -76,6 +76,7 @@ function extractMetaView(v) {
   return {
     sl_order_id: toStr(m.native_protection_stop_order_id || null),
     sl_price: num(m.native_protection_stop_price || m.final_effective_stop || m.initial_stop_price),
+    entry_price: num(v && v.avg_price),
     tp_order_id: toStr(m.native_protection_tp_order_id || null),
     tp_price: num(m.native_protection_tp_price || m.tp_p1_target_price),
     tp_qty_base: num(m.native_protection_tp_qty_base),
@@ -87,6 +88,34 @@ function extractMetaView(v) {
     trail_stop: num(m.trail_stop || m.r_based_trail_stop),
     tp_p1_done: m.tp_p1_done === true,
     entry_exec_bar_ms: num(m.entry_exec_bar_ms || m.last_entry_bar_ms),
+  };
+}
+
+// Break-Even floor after TP1 (2026-04-18 fix): once TP1 is filled, the
+// runner's native stop must sit at-or-above entry + RUNNER_MIN_PROFIT_PCT
+// (default 0.003). Below that threshold the runner's 75% can still be
+// dragged to the original SL in the trail-delay window. We check this
+// invariant directly against the DB meta + position side.
+function evaluateBreakEvenFloor({ meta, position }) {
+  if (!meta.tp_p1_done) return { applicable: false, status: null };
+  if (!Number.isFinite(meta.entry_price) || !Number.isFinite(meta.sl_price)) {
+    return { applicable: true, status: "UNKNOWN", reason: "entry or sl price missing" };
+  }
+  const side = String(position && (position.position_side || position.side) || "").toUpperCase();
+  // Minimum floor = entry × (1 ± 0.3%). We accept anything at-or-above
+  // (LONG) or at-or-below (SHORT) this threshold.
+  const FLOOR_PCT = 0.003;
+  const floorPrice = side === "SHORT"
+    ? meta.entry_price * (1 - FLOOR_PCT)
+    : meta.entry_price * (1 + FLOOR_PCT);
+  const stopMeetsFloor = side === "SHORT"
+    ? meta.sl_price <= floorPrice + meta.sl_price * 1e-6
+    : meta.sl_price >= floorPrice - meta.sl_price * 1e-6;
+  return {
+    applicable: true,
+    status: stopMeetsFloor ? "OK" : "STOP_BELOW_FLOOR",
+    floor_price: floorPrice,
+    current_stop: meta.sl_price,
   };
 }
 
@@ -167,6 +196,15 @@ function buildIssues({ meta, exchange, match, position }) {
   if (meta.tp_p1_done === true && meta.trail_active !== true) {
     push("AMBER", "TRAIL_DISARMED_AFTER_TP1",
       "TP1 부분체결 후 트레일링이 활성화되지 않음 — 러너 이익 보호가 꺼져 있을 수 있음.");
+  }
+
+  // ── Break-Even floor after TP1 ───────────────────────────────────
+  // TP1 찍혔는데 stop 이 아직 진입가+BE 위로 올라오지 않았으면 AMBER.
+  // (다음 tick 에 refresh 되면 올라갈 예정이지만, 지금 이 순간은 노출됨.)
+  const beFloor = evaluateBreakEvenFloor({ meta, position });
+  if (beFloor.applicable && beFloor.status === "STOP_BELOW_FLOOR") {
+    push("AMBER", "BE_STOP_NOT_RAISED_AFTER_TP1",
+      `TP1 완료됐지만 SL(${beFloor.current_stop && beFloor.current_stop.toFixed(2)})이 BE 하한(${beFloor.floor_price && beFloor.floor_price.toFixed(2)}) 아래. 다음 tick refresh 에 BE 위로 올라갈 예정.`);
   }
 
   // ── TP1 수량 sanity ───────────────────────────────────────────────
@@ -305,5 +343,6 @@ module.exports = {
     classifyStatus,
     pickSlOrder,
     pickTpOrder,
+    evaluateBreakEvenFloor,
   },
 };

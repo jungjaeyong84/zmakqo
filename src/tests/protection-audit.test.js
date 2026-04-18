@@ -172,6 +172,71 @@ const {
       "healthy position with stale refresh should be GREEN");
   }
 
+  // evaluateBreakEvenFloor — TP1 done + stop below floor → STOP_BELOW_FLOOR.
+  {
+    const { evaluateBreakEvenFloor } = __test;
+    // LONG entry 100, stop at 99 (0.99 of entry), tp1 done → floor should be 100.3
+    const bf = evaluateBreakEvenFloor({
+      meta: { tp_p1_done: true, entry_price: 100, sl_price: 99 },
+      position: { position_side: "LONG" },
+    });
+    assert.strictEqual(bf.applicable, true);
+    assert.strictEqual(bf.status, "STOP_BELOW_FLOOR",
+      "LONG stop at 99 with entry 100 must violate BE floor");
+  }
+  {
+    const { evaluateBreakEvenFloor } = __test;
+    // LONG entry 100, stop at 100.3 (exactly at floor) → OK
+    const bf = evaluateBreakEvenFloor({
+      meta: { tp_p1_done: true, entry_price: 100, sl_price: 100.3 },
+      position: { position_side: "LONG" },
+    });
+    assert.strictEqual(bf.status, "OK");
+  }
+  {
+    const { evaluateBreakEvenFloor } = __test;
+    // Not yet TP1 done — not applicable
+    const bf = evaluateBreakEvenFloor({
+      meta: { tp_p1_done: false, entry_price: 100, sl_price: 99 },
+      position: { position_side: "LONG" },
+    });
+    assert.strictEqual(bf.applicable, false);
+  }
+  {
+    const { evaluateBreakEvenFloor } = __test;
+    // SHORT entry 100, stop at 101 (above floor 99.7, breach) → STOP_BELOW_FLOOR
+    const bf = evaluateBreakEvenFloor({
+      meta: { tp_p1_done: true, entry_price: 100, sl_price: 101 },
+      position: { position_side: "SHORT" },
+    });
+    assert.strictEqual(bf.status, "STOP_BELOW_FLOOR");
+  }
+
+  // buildIssues integration: BE_STOP_NOT_RAISED_AFTER_TP1 appears as AMBER.
+  {
+    const issues = buildIssues({
+      meta: {
+        sl_order_id: "S1", sl_price: 99, entry_price: 100,
+        tp_order_id: "T1", tp_price: 103,
+        refresh_at_iso: new Date().toISOString(),
+        tp_p1_done: true, trail_active: false,
+      },
+      exchange: {
+        sl_order: { orderId: "S1", stopPrice: 99 },
+        tp_order: { orderId: "T1", stopPrice: 103, origQty: 1 },
+      },
+      match: { sl_present_on_exchange: true, tp_present_on_exchange: true, sl_id_matches: true, tp_id_matches: true, sl_price_matches: true, tp_price_matches: true },
+      position: { qty_base: 1, position_side: "LONG" },
+    });
+    const codes = issues.map((i) => i.code);
+    assert.ok(codes.includes("BE_STOP_NOT_RAISED_AFTER_TP1"),
+      "TP1 done + stop below BE floor must flag BE_STOP_NOT_RAISED_AFTER_TP1");
+    assert.ok(codes.includes("TRAIL_DISARMED_AFTER_TP1"),
+      "(sanity) trail disarmed after tp1 also fires here");
+    // 둘 다 AMBER 니까 overall AMBER.
+    assert.strictEqual(classifyStatus(issues), "AMBER");
+  }
+
   // buildIssues — TP quantity exceeds position size → RED.
   {
     const issues = buildIssues({

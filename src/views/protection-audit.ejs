@@ -260,13 +260,23 @@
           <div class="pa-col">
             <h3>📋 DB 메타 (Firestore)</h3>
             <div class="pa-kv">
+              <span class="k">entry</span><span><%= fmtPrice(p.meta.entry_price) %></span>
               <span class="k">SL id</span><span><%= p.meta.sl_order_id || '없음' %></span>
               <span class="k">SL price</span><span><%= fmtPrice(p.meta.sl_price) %></span>
               <span class="k">TP1 id</span><span><%= p.meta.tp_order_id || '없음' %></span>
               <span class="k">TP1 price</span><span><%= fmtPrice(p.meta.tp_price) %></span>
               <span class="k">TP1 qty</span><span><%= p.meta.tp_qty_base ?? '—' %></span>
               <span class="k">trail</span><span><%= p.meta.trail_active ? '🟢 active' : '⚪ off' %> <% if (p.meta.trail_stop) { %>@ <%= fmtPrice(p.meta.trail_stop) %><% } %></span>
-              <span class="k">tp1_done</span><span><%= boolMark(p.meta.tp_p1_done) %></span>
+              <span class="k">tp1_done</span><span><%= boolMark(p.meta.tp_p1_done) %>
+                <% if (p.meta.tp_p1_done && Number.isFinite(p.meta.entry_price)) {
+                     const side = p.position_side;
+                     const floor = side === 'SHORT' ? p.meta.entry_price * 0.997 : p.meta.entry_price * 1.003;
+                     const ok = side === 'SHORT' ? (p.meta.sl_price <= floor + 1e-6) : (p.meta.sl_price >= floor - 1e-6); %>
+                  <span style="font-size:11px;color:<%= ok ? '#137333' : '#b06000' %>">
+                    · BE floor <%= ok ? '🟢 활성' : '🟠 미적용' %>
+                  </span>
+                <% } %>
+              </span>
               <span class="k">last refresh</span><span title="event-driven: 진입/증감/청산/트레일 트리거 때만 돌음. 오래돼도 정상."><%= p.meta.refresh_status || '—' %> <% if (p.meta.refresh_at_iso) { %>@ <%= fmtIso(p.meta.refresh_at_iso) %><% } %></span>
             </div>
           </div>

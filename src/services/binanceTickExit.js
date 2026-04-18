@@ -2195,6 +2195,68 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
       const _tpP1Done = _runnerStage.tpP1Done;
       const _trailStage = _runnerStage.trailStage;
       const _trailEnabled = _trailStage;
+
+      // ─ Break-Even floor after TP1 (before full trailing arms) ─────────
+      // Data audit 2026-04-18: the TP1→trail gap swept the runner's 75%
+      // back to the original SL in ~33% of trades, dragging the TP1 avg
+      // down to +0.70% despite a 1.65% target. This block pushes a
+      // native STOP update to the runner floor price (entry +
+      // RUNNER_MIN_PROFIT_PCT) the moment TP1 is done, without waiting
+      // for trail_high/trail_low to move or trail_delay to expire.
+      // Safety: no trail_high/low mutation here (that stays trail-armed
+      // path only); we just propose a native protection refresh with the
+      // floor-derived stop. The existing refresh pipeline picks it up
+      // on the next tick.
+      if (_tpP1Done && !_trailEnabled) {
+        try {
+          const _beSide = resolvePositionSideFromPosition(pos, _tMeta, "LONG");
+          const _beRules = resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: pos });
+          const _beAvg = Number(pos && pos.avg_price);
+          const _beLev = Number(_tMeta && (_tMeta.external_leverage || _tMeta.leverage || pos.leverage || 1));
+          const _beFloorPct = Number(_beRules && _beRules.RUNNER_MIN_PROFIT_PCT);
+          const _currentStop = Number(_tMeta && _tMeta.native_protection_stop_price);
+          if (
+            Number.isFinite(_beAvg) && _beAvg > 0
+            && Number.isFinite(_beLev) && _beLev > 0
+            && Number.isFinite(_beFloorPct) && _beFloorPct > 0
+          ) {
+            const _bePrice = _beSide === "SHORT"
+              ? _beAvg * (1 - (_beFloorPct / _beLev))
+              : _beAvg * (1 + (_beFloorPct / _beLev));
+            const _shouldRaiseStop = !Number.isFinite(_currentStop)
+              || (_beSide === "LONG" && _bePrice > _currentStop + 1e-9)
+              || (_beSide === "SHORT" && _bePrice < _currentStop - 1e-9);
+            if (_shouldRaiseStop && shouldRunNativeProtectionRefreshCooldown({ symbol, now: tickNow, cooldownMs: 5000 })) {
+              const _beLiveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol });
+              const _beRefreshRes = await refreshBinanceTickExitNativeProtection({
+                liveCfg: _beLiveCfg,
+                exchange: "BINANCEFUT",
+                symbol,
+                position: pos,
+                fallbackSide: _beSide === "SHORT" ? "SELL" : "BUY",
+              });
+              structuredLog("tick_exit_tp1_break_even_stop_raised", {
+                exchange: "BINANCEFUT",
+                symbol: String(symbol).toUpperCase(),
+                side: _beSide,
+                entry: _beAvg,
+                prev_stop: Number.isFinite(_currentStop) ? _currentStop : null,
+                be_price: _bePrice,
+                floor_pct: _beFloorPct,
+                refresh_ok: !!(_beRefreshRes && _beRefreshRes.ok === true),
+                refresh_reason: _beRefreshRes && _beRefreshRes.reason ? String(_beRefreshRes.reason) : null,
+              });
+            }
+          }
+        } catch (_beErr) {
+          structuredLog("tick_exit_tp1_break_even_stop_error", {
+            exchange: "BINANCEFUT",
+            symbol: String(symbol).toUpperCase(),
+            error: String(_beErr && _beErr.message || _beErr).slice(0, 200),
+          }, "warn");
+        }
+      }
+
       if (_tpP1Done && _trailEnabled) {
         const _tSide = resolvePositionSideFromPosition(pos, _tMeta, "LONG");
         let _trailPatch = null;
