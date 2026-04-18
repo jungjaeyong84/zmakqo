@@ -55,15 +55,28 @@ const {
     }
   }
 
-  // Phase B..E agent jobs must be registered.
+  // 2026-04-18: the four Phase B..E agent crons moved from launchd to
+  // Cloud Scheduler (see OPENCLAW_CLOUD_SCHEDULER_JOBS). They must be
+  // present there, and MUST NOT appear in OPENCLAW_CRON_JOBS anymore —
+  // if they do, the local automation-watchdog will flag them as MISSING.
+  const { OPENCLAW_CLOUD_SCHEDULER_JOBS } = require("../../scripts/lib/openclaw-cron-manifest");
+  const cloudJobIds = new Set((OPENCLAW_CLOUD_SCHEDULER_JOBS || []).map((j) => j.job_id));
   for (const required of [
     "openclaw_agent_evidence_linker",
     "openclaw_agent_calibration",
     "openclaw_agent_retrospect",
-    "openclaw_agent_weekly_summary",
   ]) {
-    assert.ok(jobIds.has(required), `required job missing from manifest: ${required}`);
+    assert.ok(cloudJobIds.has(required),
+      `required Cloud Scheduler job missing: ${required}`);
+    assert.ok(!jobIds.has(required),
+      `cron ${required} must be in OPENCLAW_CLOUD_SCHEDULER_JOBS only, not OPENCLAW_CRON_JOBS`);
   }
+  // weekly_summary intentionally not on Cloud Scheduler yet — dashboard
+  // content is too sparse pre-Day 14 to warrant a weekly digest.
+  assert.ok(!cloudJobIds.has("openclaw_agent_weekly_summary"),
+    "weekly_summary should stay off the scheduler until Day 14+");
+  assert.ok(!jobIds.has("openclaw_agent_weekly_summary"),
+    "weekly_summary should not be in launchd manifest either");
 
   const msg = buildOpenClawCronMessage(OPENCLAW_CRON_JOBS[0]);
   assert.ok(msg.includes("exactly once"), "message must force exact single run");
