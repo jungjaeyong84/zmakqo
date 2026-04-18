@@ -310,10 +310,11 @@ function createApp() {
   app.use("/", ensureAuthMaybe, dashboardAiRoutes);
   app.use("/", ensureAuthMaybe, dashboardOpenClawRoutes);
   app.use("/", ensureAuthMaybe, dashboardProtectionRoutes);
-  // openclawCronRoutes intentionally NOT wrapped in ensureAuthMaybe —
-  // it self-enforces x-scheduler-token inside the handler so Cloud
-  // Scheduler (which can't carry OAuth session cookies) can invoke it.
-  app.use("/", openclawCronRoutes);
+  // openclawCronRoutes uses ensureAuthMaybe too — ensureAuthMaybe already
+  // honors x-scheduler-token (matches SCHEDULER_TOKEN env) so Cloud
+  // Scheduler calls pass through without an OAuth session. Inside the
+  // router we also double-check the token for defense in depth.
+  app.use("/", ensureAuthMaybe, openclawCronRoutes);
   app.use("/", ensureAuthMaybe, dashboardSettingsRoutes);
   app.use("/", ensureAuthMaybe, dashboardRiskRoutes);
 
