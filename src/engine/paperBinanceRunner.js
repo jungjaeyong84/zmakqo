@@ -8397,6 +8397,16 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
         executionMode: liveCfg.executionMode || "LIVE",
         reason: recoveryTrigger,
         note: "TP1 fill detected via qty-reduction recovery (fill_sync missed the primary event).",
+        // The recovery path fires *because* TP1 actually filled on Binance but
+        // our fill-sync missed the bookkeeping event. Supplying the canonical
+        // transition here lets the alert pass the canonical-exit gate instead
+        // of being silenced as MISSING_CANONICAL_EXIT_TRANSITION — the exact
+        // failure mode captured by the 2026-04-17 audit (BTCUSDT / DOGEUSDT).
+        rawEvidenceEvent: "EXIT_TP_P1_RECOVERY",
+        canonicalExitEvent: "EXIT_TP_P1_RECOVERY",
+        canonicalExitStage: "TP1",
+        canonicalTransitionEvent: "TP1_REACHED",
+        canonicalTransitionEvents: ["TP1_REACHED"],
       }).catch((e) => {
         console.warn("[TP1_RECOVERY_ALERT_FAIL]", e && e.message ? e.message : String(e));
       });

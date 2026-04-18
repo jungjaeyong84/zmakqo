@@ -502,6 +502,40 @@ async function run() {
   assert.ok(forcedExitMessage.body.includes("종류: 강제 전량 청산"));
   assert.ok(forcedExitMessage.body.includes("이벤트: FORCE_EXIT_ALL"));
 
+  // Regression: the qty-reduction recovery path (paperBinanceRunner.js
+  // dispatchTradeExecutionAlert call for "EXIT_TP_P1_RECOVERY") was being
+  // silenced ~every 30s with reason=MISSING_CANONICAL_EXIT_TRANSITION because
+  // the dispatch did not supply canonical transition evidence — even though
+  // the event only fires when Binance actually filled TP1 (our fill_sync just
+  // missed the primary event). Lock in that (a) a bare recovery payload is
+  // correctly gated, and (b) supplying the canonical transition satisfies
+  // the gate so the operator gets the alert.
+  const bareRecoveryRequirement = __test.resolveCanonicalExitAlertRequirement({
+    exchange: "BINANCEFUT",
+    symbol: "DOGEUSDT",
+    event: "EXIT_TP_P1_RECOVERY",
+    intent: "EXIT",
+  });
+  assert.strictEqual(bareRecoveryRequirement.required, true);
+  assert.strictEqual(bareRecoveryRequirement.satisfied, false);
+  assert.strictEqual(bareRecoveryRequirement.reason, "MISSING_CANONICAL_EXIT_TRANSITION");
+
+  const augmentedRecoveryRequirement = __test.resolveCanonicalExitAlertRequirement({
+    exchange: "BINANCEFUT",
+    symbol: "DOGEUSDT",
+    event: "EXIT_TP_P1_RECOVERY",
+    intent: "EXIT",
+    rawEvidenceEvent: "EXIT_TP_P1_RECOVERY",
+    canonicalExitEvent: "EXIT_TP_P1_RECOVERY",
+    canonicalExitStage: "TP1",
+    canonicalTransitionEvent: "TP1_REACHED",
+    canonicalTransitionEvents: ["TP1_REACHED"],
+  });
+  assert.strictEqual(augmentedRecoveryRequirement.required, true);
+  assert.strictEqual(augmentedRecoveryRequirement.satisfied, true);
+  assert.strictEqual(augmentedRecoveryRequirement.reason, null);
+  assert.deepStrictEqual(augmentedRecoveryRequirement.canonicalTransitionEvents, ["TP1_REACHED"]);
+
   console.log("TRADE_EXECUTION_ALERT_TEST_OK");
 }
 
