@@ -81,6 +81,14 @@ function extractExitIntegritySummary(doc = null) {
     : [];
   const canonicalExitStageFailN = toNum(summary && summary.canonical_exit_stage_fail_n, 0);
   const exitQtyLiveIssueChainN = toNum(summary && summary.exit_qty_live_issue_chain_n, 0);
+  // Newer report versions expose an "actionable" split for EXIT_QTY_CONTRACT.
+  // When the field is absent we fall back to the raw counter so older reports
+  // continue to strike conservatively.
+  const hasActionableExitQtyField = summary
+    && Object.prototype.hasOwnProperty.call(summary, "actionable_exit_qty_live_issue_chain_n");
+  const actionableExitQtyLiveIssueChainN = hasActionableExitQtyField
+    ? toNum(summary.actionable_exit_qty_live_issue_chain_n, 0)
+    : exitQtyLiveIssueChainN;
   const trailFloorLiveViolationN = toNum(summary && summary.trail_floor_live_violation_n, 0);
   const fillSyncDuplicateGroupN = toNum(summary && summary.fill_sync_duplicate_group_n, 0);
   const duplicationLiveGroupN = toNum(summary && summary.duplication_live_group_n, 0);
@@ -91,9 +99,23 @@ function extractExitIntegritySummary(doc = null) {
       ? summary.canonical_transition_backfill_ok === true
       : true)
     : true;
+  // "actionable_live_issue_count" aggregates across all families and only
+  // counts issues that require live remediation (artifact-only chatter is
+  // filtered out by the report generator). When absent, leave the field as
+  // null/"unknown" so the downstream guard fails closed to the legacy
+  // block-on-triple-strike behaviour (never demotes based on an inferred 0).
+  const hasActionableLiveIssueCountField = summary
+    && Object.prototype.hasOwnProperty.call(summary, "actionable_live_issue_count");
+  const rawLiveIssueCount = toNum(summary && summary.live_issue_count, 0);
+  const actionableLiveIssueCount = hasActionableLiveIssueCountField
+    ? toNum(summary.actionable_live_issue_count, 0)
+    : null;
   const issueStrikeFamilies = [];
   if (canonicalExitStageFailN > 0) issueStrikeFamilies.push("CANONICAL_EXIT_STAGE");
-  if (exitQtyLiveIssueChainN > 0) issueStrikeFamilies.push("EXIT_QTY_CONTRACT");
+  // EXIT_QTY_CONTRACT strikes only when the actionable chain count is > 0.
+  // This prevents artifact-only telemetry drift (authority artifact_only
+  // issues, etc.) from pushing the strike count into TRIPLE_STRIKE_BLOCK.
+  if (actionableExitQtyLiveIssueChainN > 0) issueStrikeFamilies.push("EXIT_QTY_CONTRACT");
   if (trailFloorLiveViolationN > 0) issueStrikeFamilies.push("MIN_GUARANTEE");
   if (stopDivergenceSymbolN > 0) issueStrikeFamilies.push("STOP_DIVERGENCE");
   if ((fillSyncDuplicateGroupN + duplicationLiveGroupN + fillSyncAlertEventIssueN) > 0) issueStrikeFamilies.push("DUPLICATE_ALERT");
@@ -106,6 +128,7 @@ function extractExitIntegritySummary(doc = null) {
     stopDivergenceSymbolN,
     canonicalExitStageFailN,
     exitQtyLiveIssueChainN,
+    actionableExitQtyLiveIssueChainN,
     trailFloorLiveViolationN,
     fillSyncDuplicateGroupN,
     duplicationLiveGroupN,
@@ -113,6 +136,8 @@ function extractExitIntegritySummary(doc = null) {
     canonicalTransitionBackfillOk,
     issueStrikeFamilies,
     issueStrikeCount: issueStrikeFamilies.length,
+    liveIssueCount: rawLiveIssueCount,
+    actionableLiveIssueCount,
     reasons,
   };
 }
@@ -262,7 +287,20 @@ function deriveExitIntegrityExposureGuard(input = null, {
   let scale = 1;
   let reason = null;
   let blockNewEntries = false;
-  if (summary.issueStrikeCount >= 3) {
+  // Artifact-only degradation: when the full-suite strike count reaches 3+
+  // but the report says zero issues are actionable, demote the block to a
+  // soft SINGLE_STRIKE_SCALE warning. This prevents telemetry-only chatter
+  // (e.g. authority artifact_only rows, transient exit_qty_chain scans)
+  // from blocking real entries. Safety invariant: if actionableLiveIssueCount
+  // is absent from the summary we treat it as "unknown" → block as before.
+  const tripleStrikeArtifactOnly = summary.issueStrikeCount >= 3
+    && Number.isFinite(summary.actionableLiveIssueCount)
+    && summary.actionableLiveIssueCount === 0;
+  if (tripleStrikeArtifactOnly) {
+    scale = clamp(singleStrikeScale, 0, 1);
+    reason = "LIVE_POLICY_EXIT_INTEGRITY_TRIPLE_STRIKE_ARTIFACT_ONLY";
+    blockNewEntries = false;
+  } else if (summary.issueStrikeCount >= 3) {
     scale = clamp(tripleStrikeScale, 0, 1);
     reason = "LIVE_POLICY_EXIT_INTEGRITY_TRIPLE_STRIKE_BLOCK";
     blockNewEntries = scale <= 0;

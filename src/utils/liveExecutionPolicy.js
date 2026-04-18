@@ -1873,6 +1873,9 @@ function evaluateLiveEntryPolicy({
     _live_exec_policy_exit_integrity_stop_divergence_symbol_n: exitIntegrityGuard.stopDivergenceSymbolN,
     _live_exec_policy_exit_integrity_strike_count: exitIntegrityGuard.issueStrikeCount,
     _live_exec_policy_exit_integrity_strike_families: exitIntegrityGuard.issueStrikeFamilies,
+    _live_exec_policy_exit_integrity_live_issue_count: exitIntegrityGuard.liveIssueCount,
+    _live_exec_policy_exit_integrity_actionable_live_issue_count: exitIntegrityGuard.actionableLiveIssueCount,
+    _live_exec_policy_exit_integrity_actionable_exit_qty_chain_n: exitIntegrityGuard.actionableExitQtyLiveIssueChainN,
     _live_exec_policy_exit_integrity_block_new_entries: exitIntegrityGuard.blockNewEntries === true,
     _live_exec_policy_exit_integrity_active: exitIntegrityGuard.active,
     _live_exec_policy_exit_integrity_reason: exitIntegrityGuard.reason,
@@ -2181,6 +2184,8 @@ function evaluateLiveEntryPolicy({
         exit_integrity_stop_divergence_gate: exitIntegrityGuard.stopDivergenceGate,
         exit_integrity_strike_count: exitIntegrityGuard.issueStrikeCount,
         exit_integrity_strike_families: exitIntegrityGuard.issueStrikeFamilies,
+        exit_integrity_live_issue_count: exitIntegrityGuard.liveIssueCount,
+        exit_integrity_actionable_live_issue_count: exitIntegrityGuard.actionableLiveIssueCount,
       },
     };
   }
@@ -2327,6 +2332,9 @@ function evaluateLiveEntryPolicy({
       exit_integrity_stop_divergence_symbol_n: exitIntegrityGuard.stopDivergenceSymbolN,
       exit_integrity_strike_count: exitIntegrityGuard.issueStrikeCount,
       exit_integrity_strike_families: exitIntegrityGuard.issueStrikeFamilies,
+      exit_integrity_live_issue_count: exitIntegrityGuard.liveIssueCount,
+      exit_integrity_actionable_live_issue_count: exitIntegrityGuard.actionableLiveIssueCount,
+      exit_integrity_actionable_exit_qty_chain_n: exitIntegrityGuard.actionableExitQtyLiveIssueChainN,
       exit_integrity_block_new_entries: exitIntegrityGuard.blockNewEntries === true,
       exit_integrity_scale: featureExitIntegrityScale,
       exit_integrity_active: featureExitIntegrityScale < 1,

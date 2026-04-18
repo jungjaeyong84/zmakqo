@@ -51,11 +51,27 @@ const {
     stop_divergence_symbol_n: 1,
     canonical_exit_stage_fail_n: 1,
     trail_floor_live_violation_n: 1,
+    live_issue_count: 3,
+    actionable_live_issue_count: 3,
     live_gate_blocked: true,
   }, { blockedScale: 0.5 });
   assert.strictEqual(tripleStrike.scale, 0);
   assert.strictEqual(tripleStrike.reason, "LIVE_POLICY_EXIT_INTEGRITY_TRIPLE_STRIKE_BLOCK");
   assert.strictEqual(tripleStrike.blockNewEntries, true);
+
+  // Legacy reports without `actionable_live_issue_count` still BLOCK at 3
+  // strikes — we only demote when the field is explicitly present and zero.
+  const tripleStrikeLegacy = deriveExitIntegrityExposureGuard({
+    status: "WARN",
+    stop_divergence_gate: "BLOCK",
+    stop_divergence_symbol_n: 1,
+    canonical_exit_stage_fail_n: 1,
+    trail_floor_live_violation_n: 1,
+    live_gate_blocked: true,
+  }, { blockedScale: 0.5 });
+  assert.strictEqual(tripleStrikeLegacy.scale, 0);
+  assert.strictEqual(tripleStrikeLegacy.reason, "LIVE_POLICY_EXIT_INTEGRITY_TRIPLE_STRIKE_BLOCK");
+  assert.strictEqual(tripleStrikeLegacy.blockNewEntries, true);
 
   const pass = deriveExitIntegrityExposureGuard({
     status: "OK",
@@ -65,6 +81,73 @@ const {
   }, { blockedScale: 0.5 });
   assert.strictEqual(pass.active, false);
   assert.strictEqual(pass.scale, 1);
+})();
+
+// Triple-strike with all issues artifact-only → soft scale, not a block.
+// This is the tuning we want: prevents telemetry chatter (authority
+// artifact-only rows, transient exit_qty chains that remediate themselves)
+// from dropping live entries.
+(() => {
+  const artifactOnlyTriple = deriveExitIntegrityExposureGuard({
+    status: "OK",
+    stop_divergence_gate: "PASS",
+    canonical_exit_stage_fail_n: 1,
+    trail_floor_live_violation_n: 1,
+    fill_sync_duplicate_group_n: 1,
+    live_issue_count: 3,
+    actionable_live_issue_count: 0,
+    live_gate_blocked: false,
+  }, { blockedScale: 0.5 });
+  assert.strictEqual(artifactOnlyTriple.issueStrikeCount, 3);
+  assert.strictEqual(artifactOnlyTriple.scale, 0.75);
+  assert.strictEqual(
+    artifactOnlyTriple.reason,
+    "LIVE_POLICY_EXIT_INTEGRITY_TRIPLE_STRIKE_ARTIFACT_ONLY"
+  );
+  assert.strictEqual(artifactOnlyTriple.blockNewEntries, false);
+  assert.strictEqual(artifactOnlyTriple.actionableLiveIssueCount, 0);
+  assert.strictEqual(artifactOnlyTriple.active, true);
+})();
+
+// EXIT_QTY_CONTRACT family now requires the actionable chain count to be > 0.
+// A raw exit_qty chain count with actionable=0 should NOT strike.
+(() => {
+  const exitQtyArtifactOnly = deriveExitIntegrityExposureGuard({
+    status: "OK",
+    stop_divergence_gate: "PASS",
+    exit_qty_live_issue_chain_n: 2,
+    actionable_exit_qty_live_issue_chain_n: 0,
+    live_issue_count: 2,
+    actionable_live_issue_count: 0,
+  }, { blockedScale: 0.5 });
+  assert.strictEqual(exitQtyArtifactOnly.issueStrikeCount, 0);
+  assert.deepStrictEqual(exitQtyArtifactOnly.issueStrikeFamilies, []);
+  assert.strictEqual(exitQtyArtifactOnly.scale, 1);
+  assert.strictEqual(exitQtyArtifactOnly.reason, null);
+  assert.strictEqual(exitQtyArtifactOnly.actionableExitQtyLiveIssueChainN, 0);
+
+  const exitQtyActionable = deriveExitIntegrityExposureGuard({
+    status: "WARN",
+    stop_divergence_gate: "PASS",
+    exit_qty_live_issue_chain_n: 2,
+    actionable_exit_qty_live_issue_chain_n: 2,
+    live_issue_count: 2,
+    actionable_live_issue_count: 2,
+  }, { blockedScale: 0.5 });
+  assert.strictEqual(exitQtyActionable.issueStrikeCount, 1);
+  assert.deepStrictEqual(exitQtyActionable.issueStrikeFamilies, ["EXIT_QTY_CONTRACT"]);
+  assert.strictEqual(exitQtyActionable.scale, 0.75);
+  assert.strictEqual(exitQtyActionable.reason, "LIVE_POLICY_EXIT_INTEGRITY_SINGLE_STRIKE_SCALE");
+
+  // Legacy report without the actionable field falls back to raw counter so
+  // it still strikes (fail-closed for stale report shapes).
+  const exitQtyLegacy = deriveExitIntegrityExposureGuard({
+    status: "WARN",
+    stop_divergence_gate: "PASS",
+    exit_qty_live_issue_chain_n: 2,
+  }, { blockedScale: 0.5 });
+  assert.strictEqual(exitQtyLegacy.issueStrikeCount, 1);
+  assert.deepStrictEqual(exitQtyLegacy.issueStrikeFamilies, ["EXIT_QTY_CONTRACT"]);
 })();
 
 (() => {
