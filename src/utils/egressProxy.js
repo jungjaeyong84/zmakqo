@@ -9,6 +9,8 @@ const BINANCE_PRIVATE_ACTIONS = new Set([
   "fetchBinanceWalletWithdrawals",
   "fetchBinanceWalletTransfers",
   "placeFuturesMarketOrder",
+  "placeFuturesLimitOrder",
+  "cancelFuturesOrder",
   "fetchFuturesAlgoOrder",
   "placeFuturesStopMarketOrder",
   "placeFuturesTakeProfitMarketOrder",

@@ -268,6 +268,35 @@ function isAlgoOrderRequiredError(err) {
     || (body.includes("order type not supported") && body.includes("algo order"));
 }
 
+// Binance rejects a GTX (post-only) limit order that would immediately cross
+// the book with -5022 "Post Only order will not be executed immediately"
+// (and some historical variants). We detect it so the maker-first entry
+// helper can fall back to a taker market order instantly instead of retrying.
+function isPostOnlyRejectError(err) {
+  const code = Number(err && err.code);
+  const msg = String(err && err.message ? err.message : "").toLowerCase();
+  const body = String(err && err.body ? err.body : "").toLowerCase();
+  if (code === -5022) return true;
+  if (msg.includes("post only") && (msg.includes("immediately") || msg.includes("taker"))) return true;
+  if (body.includes("post only") && (body.includes("immediately") || body.includes("taker"))) return true;
+  if (msg.includes("would immediately match") || body.includes("would immediately match")) return true;
+  return false;
+}
+
+// DELETE /fapi/v1/order may legitimately fail with -2011 "Unknown order sent"
+// if the order has already been filled or cancelled between our fetch and
+// cancel. That's a no-op from our perspective — caller should treat it as
+// "order not cancellable, go check its final state".
+function isUnknownOrderError(err) {
+  const code = Number(err && err.code);
+  const msg = String(err && err.message ? err.message : "").toLowerCase();
+  const body = String(err && err.body ? err.body : "").toLowerCase();
+  if (code === -2011) return true;
+  if (msg.includes("unknown order sent") || body.includes("unknown order sent")) return true;
+  if (msg.includes("order does not exist") || body.includes("order does not exist")) return true;
+  return false;
+}
+
 function isAlgoEndpointUnavailableError(err) {
   const status = Number(err && err.status);
   const msg = String(err && err.message ? err.message : "").toLowerCase();
@@ -781,6 +810,181 @@ async function placeFuturesMarketOrder({
       recvWindow,
     });
   }
+}
+
+// GTX = "Good-Till-Crossing" (post-only) — if the price would immediately
+// cross the book (i.e. act as a taker), Binance rejects with -5022 instead
+// of filling. That rejection is the guard the maker-first entry relies on:
+// we place LIMIT @ best-bid (BUY) / best-ask (SELL); if the book moved we
+// bail out cleanly and fall back to MARKET.
+// For ENTRY orders reduceOnly must stay false.
+async function placeFuturesLimitOrder({
+  apiKey,
+  apiSecret,
+  symbol,
+  side,
+  quantity,
+  price,
+  timeInForce = "GTX",
+  reduceOnly = false,
+  recvWindow = 5000,
+  clientOrderId,
+  idempotencyKey,
+} = {}) {
+  const resolvedClientOrderId = resolveClientOrderId({ clientOrderId, idempotencyKey });
+  if (shouldUseEgressProxy()) {
+    return callEgressProxy({
+      provider: "binancefut",
+      action: "placeFuturesLimitOrder",
+      payload: {
+        apiKey,
+        apiSecret,
+        symbol,
+        side,
+        quantity,
+        price,
+        timeInForce,
+        reduceOnly,
+        recvWindow,
+        clientOrderId: resolvedClientOrderId,
+        idempotencyKey,
+      },
+    });
+  }
+  const sym = String(symbol || "").trim().toUpperCase();
+  const s = String(side || "").toUpperCase();
+  const qty = String(quantity || "");
+  const tif = String(timeInForce || "GTX").toUpperCase();
+  if (!sym || !qty || (s !== "BUY" && s !== "SELL")) {
+    throw new Error("BINANCEFUT_ORDER_PARAMS_INVALID");
+  }
+  // Price must be normalized to the symbol's tickSize. We use the same
+  // helper as stop orders; rounding direction matches maker semantics:
+  //   BUY  limit → floor to tick (never above the bid → never a taker)
+  //   SELL limit → ceil  to tick (never below the ask → never a taker)
+  const pxStr = await normalizeFuturesTriggerPrice(sym, price, {
+    roundingMode: s === "BUY" ? "floor" : "ceil",
+  });
+  if (!pxStr) throw new Error("BINANCEFUT_LIMIT_PRICE_INVALID");
+  const ts = getSignedTimestamp();
+  try {
+    return await binanceRequest({
+      method: "POST",
+      path: "/fapi/v1/order",
+      params: {
+        symbol: sym,
+        side: s,
+        type: "LIMIT",
+        quantity: qty,
+        price: pxStr,
+        timeInForce: tif,
+        reduceOnly: reduceOnly ? "true" : "false",
+        timestamp: ts,
+        recvWindow: normalizeRecvWindow(recvWindow),
+        newClientOrderId: resolvedClientOrderId || undefined,
+      },
+      apiKey,
+      apiSecret,
+    });
+  } catch (e) {
+    if (!resolvedClientOrderId || !isDuplicateClientOrderError(e)) throw e;
+    return fetchFuturesOrder({
+      apiKey,
+      apiSecret,
+      symbol: sym,
+      origClientOrderId: resolvedClientOrderId,
+      recvWindow,
+    });
+  }
+}
+
+async function cancelFuturesOrder({
+  apiKey,
+  apiSecret,
+  symbol,
+  orderId,
+  origClientOrderId,
+  recvWindow = 5000,
+} = {}) {
+  if (shouldUseEgressProxy()) {
+    return callEgressProxy({
+      provider: "binancefut",
+      action: "cancelFuturesOrder",
+      payload: {
+        apiKey,
+        apiSecret,
+        symbol,
+        orderId,
+        origClientOrderId,
+        recvWindow,
+      },
+    });
+  }
+  const sym = String(symbol || "").trim().toUpperCase();
+  const id = Number(orderId);
+  const clientOrderId = sanitizeClientOrderId(origClientOrderId);
+  if (!sym || (!Number.isFinite(id) && !clientOrderId)) {
+    throw new Error("BINANCEFUT_ORDER_ID_REQUIRED");
+  }
+  const ts = getSignedTimestamp();
+  return binanceRequest({
+    method: "DELETE",
+    path: "/fapi/v1/order",
+    params: {
+      symbol: sym,
+      orderId: Number.isFinite(id) ? id : undefined,
+      origClientOrderId: clientOrderId || undefined,
+      timestamp: ts,
+      recvWindow: normalizeRecvWindow(recvWindow),
+    },
+    apiKey,
+    apiSecret,
+  });
+}
+
+// Public endpoint — best bid / best ask snapshot. Used by the maker-first
+// entry helper to pick a limit price that is guaranteed to rest on the book
+// (i.e. act as a maker). No auth / signing required, but we still honour
+// the egress proxy when configured so the caller's IP whitelisting stays
+// consistent with the private Binance calls made alongside it.
+async function fetchFuturesBookTicker({ symbol } = {}) {
+  const sym = String(symbol || "").trim().toUpperCase();
+  if (!sym) throw new Error("BINANCEFUT_SYMBOL_REQUIRED");
+  if (shouldUseEgressProxy()) {
+    try {
+      return await callEgressProxy({
+        provider: "binancefut",
+        action: "fetchFuturesBookTicker",
+        payload: { symbol: sym },
+      });
+    } catch (e) {
+      // If the egress proxy does not know this action yet (older deploy),
+      // silently fall through to the direct public fetch. The direct fetch
+      // will only fail if the host is also IP-blocked, in which case the
+      // caller's market-fallback path will pick up the slack.
+      const msg = String(e && e.message ? e.message : "").toLowerCase();
+      if (!msg.includes("action_not_supported") && !msg.includes("unknown action")) throw e;
+    }
+  }
+  const url = `${getFuturesBaseUrl()}/fapi/v1/ticker/bookTicker?symbol=` + encodeURIComponent(sym);
+  const res = await fetch(url);
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`BINANCEFUT_HTTP_${res.status}: ${text.slice(0, 400)}`);
+  }
+  const json = text ? JSON.parse(text) : {};
+  const bid = Number(json && json.bidPrice);
+  const ask = Number(json && json.askPrice);
+  const bidQty = Number(json && json.bidQty);
+  const askQty = Number(json && json.askQty);
+  return {
+    symbol: sym,
+    bidPrice: Number.isFinite(bid) && bid > 0 ? bid : null,
+    askPrice: Number.isFinite(ask) && ask > 0 ? ask : null,
+    bidQty: Number.isFinite(bidQty) && bidQty >= 0 ? bidQty : null,
+    askQty: Number.isFinite(askQty) && askQty >= 0 ? askQty : null,
+    at: Date.now(),
+  };
 }
 
 async function fetchFuturesAlgoOrder({
@@ -1422,6 +1626,9 @@ module.exports = {
   fetchFuturesPositionMode,
   fetchFuturesExchangeInfo,
   placeFuturesMarketOrder,
+  placeFuturesLimitOrder,
+  cancelFuturesOrder,
+  fetchFuturesBookTicker,
   fetchFuturesOrder,
   fetchFuturesUserTrades,
   createFuturesListenKey,
@@ -1443,6 +1650,8 @@ module.exports = {
   __test: {
     isDuplicateClientOrderError,
     isAlgoEndpointUnavailableError,
+    isPostOnlyRejectError,
+    isUnknownOrderError,
     normalizeAlgoOpenOrdersResponse,
     normalizeAlgoOrderResponse,
     sanitizeClientOrderId,

@@ -103,6 +103,9 @@ const handlers = {
         { useProxy: false }
       ),
     placeFuturesMarketOrder: (payload) => binance.placeFuturesMarketOrder(payload || {}),
+    placeFuturesLimitOrder: (payload) => binance.placeFuturesLimitOrder(payload || {}),
+    cancelFuturesOrder: (payload) => binance.cancelFuturesOrder(payload || {}),
+    fetchFuturesBookTicker: (payload) => binance.fetchFuturesBookTicker(payload || {}),
     fetchFuturesOrder: (payload) => binance.fetchFuturesOrder(payload || {}),
     fetchFuturesOpenOrders: (payload) => binance.fetchFuturesOpenOrders(payload || {}),
     fetchFuturesAlgoOpenOrders: (payload) => binance.fetchFuturesAlgoOpenOrders(payload || {}),
