@@ -96,6 +96,10 @@ const {
 } = require("../exchanges/binanceFuturesPrivate");
 const { triggerExitWorkerRun } = require("../services/exitWorkerClient");
 const { reconcileBinancePositionMetaWithExchange } = require("../services/binancePositionReconciler");
+const {
+  placeFuturesEntryMakerFirst,
+  isMakerFirstEnabled: isEntryMakerFirstEnabled,
+} = require("../services/binanceMakerFirstEntry");
 
 const POS_SIZE_EPSILON = (() => {
   const raw = Number(process.env.POS_SIZE_EPSILON);
@@ -10902,15 +10906,36 @@ async function executeLiveFuturesOrder({
     reduceOnly,
     tag: reduceOnly ? "exit" : "entry",
   });
-  const order = await placeFuturesMarketOrder({
-    apiKey: liveCfg.apiKey,
-    apiSecret: liveCfg.apiSecret,
-    symbol,
-    side,
-    quantity: qtyInfo.qty,
-    reduceOnly,
-    idempotencyKey: mainOrderIdempotencyKey,
-  });
+  // Entry orders (reduceOnly=false) go through the maker-first helper when
+  // ENTRY_MAKER_FIRST_ENABLED=1: it tries a GTX limit at best-bid/ask with
+  // a short timeout, and falls back to a market order if the limit doesn't
+  // fill in time. Exit orders stay market-only — speed of exit matters more
+  // than shaving a few bps of fees, and the BE floor / SL logic assumes
+  // near-immediate fills.
+  let order = null;
+  if (!reduceOnly && isEntryMakerFirstEnabled()) {
+    const limitIdempotencyKey = `${mainOrderIdempotencyKey}_mk`;
+    order = await placeFuturesEntryMakerFirst({
+      apiKey: liveCfg.apiKey,
+      apiSecret: liveCfg.apiSecret,
+      symbol,
+      side,
+      quantity: qtyInfo.qty,
+      refPrice: priceRef,
+      idempotencyKey: mainOrderIdempotencyKey,
+      limitIdempotencyKey,
+    });
+  } else {
+    order = await placeFuturesMarketOrder({
+      apiKey: liveCfg.apiKey,
+      apiSecret: liveCfg.apiSecret,
+      symbol,
+      side,
+      quantity: qtyInfo.qty,
+      reduceOnly,
+      idempotencyKey: mainOrderIdempotencyKey,
+    });
+  }
 
   let detail = order;
   let execPrice = calcBinanceAveragePrice(detail);
@@ -11060,6 +11085,35 @@ async function executeLiveFuturesOrder({
 
   const exitProfileRollbackUntilMsRaw = Number(exitProfileRollback.rollbackUntilMs);
 
+  // If the maker-first helper ran, the returned order carries a `makerFirst`
+  // block with per-order telemetry (mode, limit/market fill breakdown,
+  // savingsBps). We emit a structured log line — easy to grep in the Cloud
+  // Run logs to answer "did maker-first actually earn its keep this week?"
+  // and forward it through the return shape so the caller can persist it
+  // on the position doc.
+  const makerFirstTelemetry = (order && order.makerFirst && typeof order.makerFirst === "object")
+    ? order.makerFirst
+    : null;
+  if (makerFirstTelemetry) {
+    try {
+      console.log("[MAKER_FIRST]", JSON.stringify({
+        symbol,
+        side,
+        mode: makerFirstTelemetry.mode,
+        ref_price: makerFirstTelemetry.refPrice,
+        book_bid: makerFirstTelemetry.bookBid,
+        book_ask: makerFirstTelemetry.bookAsk,
+        limit_price: makerFirstTelemetry.limitPrice,
+        limit_exec_qty: makerFirstTelemetry.limitExecutedQty,
+        market_exec_qty: makerFirstTelemetry.marketExecutedQty,
+        exec_price: Number.isFinite(execPrice) ? execPrice : null,
+        savings_bps: makerFirstTelemetry.savingsBps,
+        elapsed_ms: makerFirstTelemetry.elapsedMs,
+        error: makerFirstTelemetry.error,
+      }));
+    } catch (_) { /* log only */ }
+  }
+
   return {
     ok: true,
     mode: "LIVE",
@@ -11082,6 +11136,7 @@ async function executeLiveFuturesOrder({
       : null,
     exitProfileRollbackReason: exitProfileRollback.rollbackReason,
     nativeProtection,
+    makerFirst: makerFirstTelemetry,
   };
 }
 
@@ -15000,6 +15055,7 @@ async function runPaperFuturesForBar({
         continue;
       }
       var nativeProtectionMetaPatch = null;
+      var makerFirstMetaPatch = null;
       let liveQtyFraction = qtyFraction;
       let liveMaxFractionAllowed = maxFractionAllowed;
       const liveExitCurrentQtyPct = resolveLiveExitCurrentQtyPct({
@@ -15236,6 +15292,30 @@ async function runPaperFuturesForBar({
         execBarCloseMs,
         posMeta: nextMeta,
       });
+      // Maker-first telemetry from the entry helper (null if the flag is
+      // off or this was an EXIT — exits still use a plain market order).
+      // Persisted on the position meta below so the dashboards + audit
+      // scripts can answer "how much did maker-first save us this month"
+      // without re-parsing logs.
+      if (liveResult && liveResult.makerFirst && typeof liveResult.makerFirst === "object") {
+        makerFirstMetaPatch = {
+          entry_maker_first_mode: liveResult.makerFirst.mode || null,
+          entry_maker_first_ref_price: Number.isFinite(Number(liveResult.makerFirst.refPrice))
+            ? Number(liveResult.makerFirst.refPrice) : null,
+          entry_maker_first_limit_price: Number.isFinite(Number(liveResult.makerFirst.limitPrice))
+            ? Number(liveResult.makerFirst.limitPrice) : null,
+          entry_maker_first_limit_exec_qty: Number.isFinite(Number(liveResult.makerFirst.limitExecutedQty))
+            ? Number(liveResult.makerFirst.limitExecutedQty) : null,
+          entry_maker_first_market_exec_qty: Number.isFinite(Number(liveResult.makerFirst.marketExecutedQty))
+            ? Number(liveResult.makerFirst.marketExecutedQty) : null,
+          entry_maker_first_savings_bps: Number.isFinite(Number(liveResult.makerFirst.savingsBps))
+            ? Number(liveResult.makerFirst.savingsBps) : null,
+          entry_maker_first_elapsed_ms: Number.isFinite(Number(liveResult.makerFirst.elapsedMs))
+            ? Number(liveResult.makerFirst.elapsedMs) : null,
+          entry_maker_first_error: liveResult.makerFirst.error || null,
+          entry_maker_first_at_ms: Date.now(),
+        };
+      }
     }
 
     if (!Number.isFinite(fillPrice)) {
@@ -15623,6 +15703,9 @@ async function runPaperFuturesForBar({
         qtyBaseOverride: Number.isFinite(newQtyBase) ? newQtyBase : (pos.qty_base ?? null),
         entryQtyBaseOverride: Number.isFinite(newQtyBase) ? newQtyBase : (pos.qty_base ?? null),
       }));
+      if (makerFirstMetaPatch) {
+        nextMeta = mergeMeta(nextMeta, makerFirstMetaPatch);
+      }
     }
     let profitableTrailCooldownMeta = null;
     if (closing) {
