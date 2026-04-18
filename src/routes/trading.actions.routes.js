@@ -12,6 +12,7 @@ const { toKstStringFromMs } = require("../utils/timeKst");
 const { fetchFuturesUserTrades } = require("../exchanges/binanceFuturesPrivate");
 const { syncBinanceFuturesFills } = require("../services/binanceFuturesFillsSync");
 const { healBinanceLivePosition } = require("../services/binanceLiveStateSelfHeal");
+const { syncNativeProtectionMetaFromBinance } = require("../services/nativeProtectionMetaSync");
 const { getPositionReadView } = require("../services/positionReadModel");
 const { loadMlServingRuntime } = require("../services/mlServingRuntime");
 const { loadOperationalGuardRuntime } = require("../services/operationalGuardRuntime");
@@ -598,6 +599,47 @@ function createTradingActionsRoutes() {
       return res.status(500).json({
         ok: false,
         error: "REPAIR_NATIVE_PROTECTION_FAILED",
+        message: String(err && err.message ? err.message : err),
+      });
+    }
+  });
+
+  // Sync native protection meta from Binance snapshot.
+  //
+  // Reads current open + algo open orders on Binance for the symbol and writes
+  // the STOP_MARKET/TAKE_PROFIT_MARKET order ids + trigger prices back into
+  // `meta.native_protection_*`. Useful when manual intervention (operator
+  // cancel/replace) or a partial recovery leaves meta drifted from reality.
+  // Does NOT place, cancel, or modify orders on Binance.
+  router.post("/api/trading/sync-native-protection-meta", ensureAuthOrSchedulerToken, async (req, res) => {
+    try {
+      const body = req.body || {};
+      const providerRaw = body.provider || body.exchange || req.query.provider || req.query.exchange || "BINANCEFUT";
+      const exchange = normalizeProviderId(providerRaw || "BINANCEFUT");
+      if (exchange !== "BINANCEFUT") {
+        return res.status(400).json({ ok: false, error: "BINANCE_ONLY" });
+      }
+
+      const rawMarket = String(body.market || body.symbol || req.query.market || req.query.symbol || "").trim();
+      if (!rawMarket) {
+        return res.status(400).json({ ok: false, error: "MARKET_REQUIRED" });
+      }
+      const exCfg = await getExchangeSettingsForProvider(exchange, 2000);
+      const market = normalizeMarketSymbolForProvider(rawMarket, exchange);
+      const markets = Array.isArray(exCfg && exCfg.markets) ? exCfg.markets : [];
+      if (!market || (markets.length && !markets.includes(market))) {
+        return res.status(400).json({ ok: false, error: "MARKET_NOT_ALLOWED" });
+      }
+
+      const result = await syncNativeProtectionMetaFromBinance({ exchange, symbol: market });
+      if (!result || result.ok !== true) {
+        return res.status(400).json(result || { ok: false, error: "SYNC_FAILED" });
+      }
+      return res.json(result);
+    } catch (err) {
+      return res.status(500).json({
+        ok: false,
+        error: "SYNC_NATIVE_PROTECTION_META_FAILED",
         message: String(err && err.message ? err.message : err),
       });
     }
