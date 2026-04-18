@@ -101,6 +101,9 @@ function run() {
           tp_p0_done: false,
           tp_p1_done: false,
           trail_active: false,
+          native_protection_tp_order_id: "tp-order-1",
+          native_protection_tp_qty_ratio: 0.5,
+          native_protection_tp_qty_base: 0.014,
           native_protection_refresh_status: "OK",
         },
       },
@@ -110,10 +113,10 @@ function run() {
     },
   });
   assert.strictEqual(artifactOnly.live_issue_position_n, 1);
-  assert.strictEqual(artifactOnly.actionable_live_issue_position_n, 1);
-  assert.strictEqual(artifactOnly.artifact_only_live_issue_position_n, 0);
-  assert.strictEqual(artifactOnly.live_issue_rows[0].actionable_issue, true);
-  assert.ok(artifactOnly.live_issue_rows[0].issues.some((issue) => issue.code === "FILL_SYNC_DUPLICATION_LIVE_ISSUE"));
+  assert.strictEqual(artifactOnly.actionable_live_issue_position_n, 0);
+  assert.strictEqual(artifactOnly.artifact_only_live_issue_position_n, 1);
+  assert.strictEqual(artifactOnly.live_issue_rows[0].actionable_issue, false);
+  assert.ok(artifactOnly.live_issue_rows[0].issues.some((issue) => issue.code === "FILL_SYNC_DUPLICATION_LIVE_ISSUE_ARTIFACT"));
 
   const observationPreferred = buildLiveAuthorityBoard({
     positions: [

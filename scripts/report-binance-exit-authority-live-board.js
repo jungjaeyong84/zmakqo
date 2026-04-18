@@ -54,6 +54,13 @@ function isArtifactIssueCode(code) {
   return /_ARTIFACT$/.test(String(code || "").trim().toUpperCase());
 }
 
+function asArtifactIssue(issue = {}) {
+  const code = String(issue && issue.code || "").trim().toUpperCase();
+  if (!code) return issue;
+  if (isArtifactIssueCode(code)) return { ...issue, code };
+  return { ...issue, code: `${code}_ARTIFACT` };
+}
+
 function isSimplifiedExitV2Position(row = {}) {
   const meta = row && typeof row.meta === "object" ? row.meta : {};
   return meta.simplified_exit_v2_enabled === true
@@ -186,16 +193,16 @@ function summarizeLivePosition(row = {}, context = {}) {
     }
   }
   if (context.nativeGapSymbols.has(symbol)) {
-    issues.push({ code: "NATIVE_TRAIL_GAP_LIVE", detail: "native trail protection gap live issue 존재" });
+    issues.push(asArtifactIssue({ code: "NATIVE_TRAIL_GAP_LIVE", detail: "native trail protection gap live issue 존재" }));
   }
   if (context.exitQtyLiveSymbols.has(symbol)) {
-    issues.push({ code: "EXIT_QTY_LIVE_ISSUE", detail: "exit qty live separation issue 존재" });
+    issues.push(asArtifactIssue({ code: "EXIT_QTY_LIVE_ISSUE", detail: "exit qty live separation issue 존재" }));
   }
   if (context.trailFloorLiveSymbols.has(symbol)) {
-    issues.push({ code: "TRAIL_FLOOR_LIVE_ISSUE", detail: "trail runner floor live separation issue 존재" });
+    issues.push(asArtifactIssue({ code: "TRAIL_FLOOR_LIVE_ISSUE", detail: "trail runner floor live separation issue 존재" }));
   }
   if (context.duplicationLiveSymbols.has(symbol)) {
-    issues.push({ code: "FILL_SYNC_DUPLICATION_LIVE_ISSUE", detail: "fill sync duplication live separation issue 존재" });
+    issues.push(asArtifactIssue({ code: "FILL_SYNC_DUPLICATION_LIVE_ISSUE", detail: "fill sync duplication live separation issue 존재" }));
   }
   const directIssues = issues.filter((issue) => !isArtifactIssueCode(issue && issue.code));
   const artifactIssues = issues.filter((issue) => isArtifactIssueCode(issue && issue.code));
