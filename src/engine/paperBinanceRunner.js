@@ -8951,6 +8951,13 @@ function computeBinanceNativeProtectionPrices({ positionSide, entryPrice, levera
   const meta = (posMeta && typeof posMeta === "object") ? posMeta : {};
   const tpP1Done = meta.tp_p1_done === true;
   const trailActive = meta.trail_active === true;
+  // 2026-04-18 (BTC incident): we need to surface whether the runner-floor
+  // override actually executed and what it returned. The prior log captured
+  // only the final stopTriggerPx, which was indistinguishable between
+  // "RUNNER_FLOOR override ran and picked initial-SL" (impossible) and
+  // "runnerExit returned stopPrice=null so override was skipped" (actual).
+  // Stash the decision so the caller can log it without re-running the math.
+  let runnerExitDebug = null;
   if (tpP1Done || trailActive) {
     const runnerExit = computeRunnerExitStopPrice({
       avg: px,
@@ -8963,6 +8970,34 @@ function computeBinanceNativeProtectionPrices({ positionSide, entryPrice, levera
       trailLow: Number(meta.trail_low),
       entryRDistance: Number(meta.entry_r_distance),
     });
+    runnerExitDebug = {
+      called: true,
+      stopPrice: runnerExit && Number.isFinite(Number(runnerExit.stopPrice)) ? Number(runnerExit.stopPrice) : null,
+      stopSource: runnerExit && runnerExit.stopSource ? String(runnerExit.stopSource) : null,
+      trailStop: runnerExit && Number.isFinite(Number(runnerExit.trailStop)) ? Number(runnerExit.trailStop) : null,
+      trailStopByR: runnerExit && Number.isFinite(Number(runnerExit.trailStopByR)) ? Number(runnerExit.trailStopByR) : null,
+      trailStopByPct: runnerExit && Number.isFinite(Number(runnerExit.trailStopByPct)) ? Number(runnerExit.trailStopByPct) : null,
+      runnerFloorStop: runnerExit && Number.isFinite(Number(runnerExit.runnerFloorStop)) ? Number(runnerExit.runnerFloorStop) : null,
+      inputs: {
+        avg: Number.isFinite(px) ? px : null,
+        leverageEff: Number.isFinite(lev) ? lev : null,
+        side,
+        runner_min_profit_pct: Number.isFinite(Number(rules && rules.RUNNER_MIN_PROFIT_PCT))
+          ? Number(rules.RUNNER_MIN_PROFIT_PCT)
+          : null,
+        trail_r_multiple: Number.isFinite(Number(rules && rules.TRAIL_R_MULTIPLE))
+          ? Number(rules.TRAIL_R_MULTIPLE)
+          : null,
+        trail_pct: Number.isFinite(Number(rules && rules.TRAIL_PCT))
+          ? Number(rules.TRAIL_PCT)
+          : null,
+        trail_high: Number.isFinite(Number(meta.trail_high)) ? Number(meta.trail_high) : null,
+        trail_low: Number.isFinite(Number(meta.trail_low)) ? Number(meta.trail_low) : null,
+        entry_r_distance: Number.isFinite(Number(meta.entry_r_distance)) ? Number(meta.entry_r_distance) : null,
+        tp_p1_done: tpP1Done,
+        trail_active: trailActive,
+      },
+    };
     if (runnerExit && Number.isFinite(Number(runnerExit.stopPrice)) && Number(runnerExit.stopPrice) > 0) {
       stopTriggerPx = Number(runnerExit.stopPrice);
     }
@@ -8977,6 +9012,7 @@ function computeBinanceNativeProtectionPrices({ positionSide, entryPrice, levera
     tpQtyRatio,
     tp0OrderQtyRatio,
     tpOrderQtyRatio,
+    runnerExitDebug,
   };
 }
 
@@ -10121,6 +10157,7 @@ async function refreshBinanceNativeProtection({
         : null,
       prices_null: prices == null,
       stage_tp1_eligible: stageState && stageState.tp1Eligible === true,
+      runner_exit_debug: prices && prices.runnerExitDebug ? prices.runnerExitDebug : null,
     }));
   } catch (_) { /* non-critical diagnostic */ }
   if (!prices) {
