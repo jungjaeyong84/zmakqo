@@ -270,3 +270,73 @@ CEO가 **(B)** 경로 선택: BTCUSDT + DOGEUSDT 포지션 수동 청산.
 
 - 재현 중단 조건: 현재 exit-worker의 reconciler 루프가 계속 호출 → 매 ~20-25초 타임아웃 로그. 포지션이 flat이라 실제 손실은 없음.
 - 다음 세션에서 착수: 코드 레벨 디버그 로그 추가 (`fetch()` 앞뒤에 DNS lookup / TLS 시작 log) → 재배포 → 로그 분석.
+
+---
+
+## 2026-04-18 ~10:45 UTC — master sync + 즉시 revert 기록
+
+### 전개
+
+1. **10:05 UTC**: PR #6 머지로 master `cloudbuild.yaml` 74 → 120줄 동기화, auto-trigger 발동 (build `9c4c5f8c`).
+2. **10:07 UTC**: build `9c4c5f8c` **FAILURE** (step 1, ~2분 만에).
+   ```
+   npm error Missing script: "check:simplified-exit-v2-gate"
+   ```
+3. **원인 진단**:
+   - master의 `package.json` 에는 3개 check 스크립트만 존재 (`check:binance-exec-safety`, `check:scheduler-env`, `check:dup-helpers`).
+   - 120줄 `cloudbuild.yaml` 이 추가로 요구하는 스크립트 — `check:binance-exit-integrity-gate`, `check:simplified-exit-v2-gate` — 는 통합 브랜치 `codex/google-grade-ml-cutover-20260411` 에만 존재.
+   - 이 스크립트들을 master로 개별 cherry-pick 하려면 src/ 하위 수백 파일을 함께 가져와야 함 (PR #3, 855 files / +136k / -75k, 현재 `CONFLICTING`).
+4. **10:43 UTC**: PR #7 생성 (PR #6 revert).
+5. **10:44 UTC**: PR #7 머지, auto-trigger 발동 (build `6e9f3942`).
+6. **10:46 UTC**: build `6e9f3942` 도 **FAILURE** (step 3, Cloud Run deploy).
+   ```
+   ERROR: (gcloud.run.deploy) Cannot update environment variable [WEBHOOK_TOKEN]
+   to string literal because it has already been set with a different type.
+   ```
+7. **2차 진단**:
+   - 74줄 구 config 는 `WEBHOOK_TOKEN` 을 `--set-env-vars` literal 로 지정.
+   - 그러나 live `donbeolja` 서비스의 `WEBHOOK_TOKEN` 은 secret (`DONBEOLJA_WEBHOOK_TOKEN:latest`) 으로 설정돼 있음 (과거 수동 `--update-secrets` 결과).
+   - Cloud Run은 동일 env var 를 literal ↔ secret 으로 전환하는 것을 거부.
+   - → **revert 후에도 master auto-trigger 는 deploy 단계에서 실패**.
+
+### 결론
+
+트리거 flip 자체는 올바른 방향이지만, master 브랜치가 통합 브랜치와 구조적으로 drift 돼 있어 **어느 방향으로도 master 의 자동 배포는 작동하지 않음**.
+
+| 상태                              | master push → 자동 빌드 결과                       |
+| --------------------------------- | -------------------------------------------------- |
+| 트리거 auto-gen (flip 이전)       | ✅ 성공 (env 무시, 1개 서비스만 deploy)            |
+| 트리거 filename + master 74줄     | ❌ WEBHOOK_TOKEN literal/secret 충돌                |
+| 트리거 filename + master 120줄    | ❌ 누락 npm script (check:simplified-exit-v2-gate)  |
+
+### 운영 정책 (PR #3 머지 전까지)
+
+1. **master 에 직접 push 금지**. 어떤 커밋이든 auto-trigger 가 실패함.
+2. **모든 배포는 통합 브랜치 수동 트리거 경유**:
+   ```bash
+   gcloud beta builds triggers run db7cd873-8927-419d-a232-855648b727f5 \
+     --project=donbeolja-dev \
+     --branch=codex/google-grade-ml-cutover-20260411
+   ```
+3. **긴급 env 변경**은 `gcloud run services update --update-secrets=...` / `--update-env-vars=...` 로 수동 반영 (반드시 cloudbuild.yaml commit 동반).
+4. **근본 해결**: PR #3 (`codex/google-grade-ml-cutover-20260411` → `master`) conflict 해소 + 머지. 이때 비로소:
+   - master `package.json` 이 모든 check 스크립트 보유
+   - master `cloudbuild.yaml` 의 `WEBHOOK_TOKEN` secret 전환 반영
+   - 4 개 서비스 자동 deploy + gate 체크 완비
+
+### 참고 commit / PR
+
+- PR #6 (머지됨, reverted): `sync/master-cloudbuild-20260418` → master (merge commit `572c5151`)
+- PR #7 (머지됨): revert of PR #6 (merge commit `6641e677`)
+- PR #3 (open, CONFLICTING): `codex/google-grade-ml-cutover-20260411` → master — **이 PR 이 실제 unblocker**
+
+### 트리거 자체는 유지
+
+`gcloud beta builds triggers describe db7cd873-8927-419d-a232-855648b727f5` 확인 시 `filename: cloudbuild.yaml` 모드 **그대로 유지**. 이 flip 은 revert 하지 않음 — PR #3 머지 후 즉시 그 혜택을 가져가기 위함.
+
+롤백이 필요하면:
+```bash
+gcloud beta builds triggers import \
+  --project=donbeolja-dev \
+  --source=/tmp/dbj-trigger-backup/trigger-original-20260418-175332.yaml
+```
