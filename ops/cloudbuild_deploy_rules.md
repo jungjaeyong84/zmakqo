@@ -207,3 +207,40 @@ done
 - `donbeolja-egress-private` gen=202, revision=`donbeolja-egress-private-00202-8vb` (변동 없음)
 - `donbeolja-exit-worker` gen=881, revision=`donbeolja-exit-worker-00762-hj5` (변동 없음)
 - `ENTRY_MAKER_FIRST_ENABLED=1` 등 2026-04-18 수동 복구 env 값 보존됨
+
+### 2026-04-18 후속 자동 복구 시도 + 잔존 인시던트
+
+트리거 전환 후 gate 차단을 해소하기 위해 **가능한 자동 복구는 수행 완료**.
+
+1. **히스토리컬 체인 backfill 완료** (BTCUSDT 2체인 → `extra.exit_qty_contract_issue_backfilled_at=2026-04-18T09:21:43.731Z`)
+   - 실행: `EXIT_QTY_CONTRACT_BACKFILL_LOOKBACK_DAYS=7 node scripts/backfill-binance-exit-qty-contract-issues.js`
+   - 결과: `EXIT_QTY_LIVE_ISSUE_CHAIN` gate reason 해제됨.
+
+2. **live trailing stage 재동기화 요청 발행** (BTCUSDT + DOGEUSDT)
+   - 실행: `node scripts/repair-live-trailing-stage.js --symbols=BTCUSDT,DOGEUSDT`
+     (Secret Manager에서 BINANCEFUT API 키, EXIT_WORKER_TRIGGER_TOKEN 주입)
+   - Firestore `position_meta` + `trail_observation` 정규화 기록 완료.
+   - `EXIT_REPAIR_REQUEST__BINANCEFUT__{BTCUSDT,DOGEUSDT}__NATIVE_STOP_REFRESH` enqueued, exit-worker HTTP dispatch OK.
+
+3. **잔존 원인**: egress-proxy의 Binance write-path 타임아웃
+   - 2026-04-18 09:20+ 동안 `donbeolja-exit-worker` 로그에 지속적 `EGRESS_PROXY_TIMEOUT provider=binancefut action=cancelFuturesOpenOrders timeout_ms=20000` / `fetchBinanceFuturesAccount` 오류 발생.
+   - 즉 native stop 재배치 요청은 접수됐으나, exit-worker가 Binance 쪽으로 실제 cancel+place를 보낼 수 없는 상태.
+   - 로컬에서 직접 Binance 호출한 repair 스크립트는 정상 작동 (`fetchOpenOrderSnapshot` 성공).
+   - `donbeolja-egress-private`는 read path 정상 (`fetchFuturesAlgoOpenOrders` 성공).
+   - 현상은 `donbeolja-egress` (write path) 쪽 infra 이슈로 보이며, 별도 조사 필요.
+
+4. **현재 포지션 실제 상태 (참고, 2026-04-18 09:25 UTC)**
+   - mark: BTCUSDT 76501.55, DOGEUSDT 0.09675
+   - BTCUSDT SHORT(entry 77156.3): unrealized +0.85% raw / +1.70% lev — **PnL 양호**, 다만 native stop(77798.1)은 -0.83% raw 손절선.
+   - DOGEUSDT SHORT(entry 0.0984): unrealized +1.68% raw / +3.35% lev — **PnL 양호**, 다만 native stop(0.09825)은 +0.15% raw 보장선.
+   - 두 포지션 모두 현재 수익 상태이나, 정책상 1.65% 레버리지 보장을 만족하는 수준까지 stop을 끌어당기지 못한 상태. egress timeout 해결 후 exit-worker가 자동으로 stop을 floor(BTC 76519.76 / DOGE 0.0975882) 수준으로 이동해야 함.
+
+### 다음 단계 (operator 확인 필요)
+
+배포를 완결시키려면 다음 중 하나가 필요:
+
+- **(A)** `donbeolja-egress` 타임아웃 원인 조사 + 복구 → exit-worker가 stop 재배치 → gate 자동 clear
+- **(B)** operator가 BTCUSDT + DOGEUSDT 포지션을 수동 청산 → 활성 포지션 없어져 gate 자동 clear
+- **(C)** gate 정책 완화: `AUTHORITY_ACTIONABLE_LIVE_ISSUE_POSITION` 블록을 "stop이 실제 loss territory일 때만" 발동하도록 수정 (현재는 floor 미달만으로도 차단) — 코드 변경 + 테스트 + 별도 PR 필요
+
+현재 재용(CEO) 판단 대기 중.
