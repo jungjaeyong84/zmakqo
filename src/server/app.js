@@ -41,6 +41,7 @@ const dashboardJournalRoutes = require("../routes/dashboard.journal.routes");
 const dashboardAiRoutes = require("../routes/dashboard.ai.routes");
 const dashboardOpenClawRoutes = require("../routes/dashboard.openclaw.routes");
 const dashboardProtectionRoutes = require("../routes/dashboard.protection.routes");
+const openclawCronRoutes = require("../routes/openclaw.cron.routes");
 const dashboardSettingsRoutes = require("../routes/dashboard.settings.routes");
 const dashboardRiskRoutes = require("../routes/dashboard.risk.routes");
 const dashboardProfitRoutes = require("../routes/dashboard.profit.routes");
@@ -309,6 +310,10 @@ function createApp() {
   app.use("/", ensureAuthMaybe, dashboardAiRoutes);
   app.use("/", ensureAuthMaybe, dashboardOpenClawRoutes);
   app.use("/", ensureAuthMaybe, dashboardProtectionRoutes);
+  // openclawCronRoutes intentionally NOT wrapped in ensureAuthMaybe —
+  // it self-enforces x-scheduler-token inside the handler so Cloud
+  // Scheduler (which can't carry OAuth session cookies) can invoke it.
+  app.use("/", openclawCronRoutes);
   app.use("/", ensureAuthMaybe, dashboardSettingsRoutes);
   app.use("/", ensureAuthMaybe, dashboardRiskRoutes);
 
