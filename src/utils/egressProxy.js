@@ -3,34 +3,51 @@ const crypto = require("crypto");
 // ─────────────────────────────────────────────────────────────────────────────
 // Dedicated undici Agent for the egress-proxy client.
 //
-// 2026-04-19 RCA: exit-worker (minScale=1 long-running container) accumulated
-// half-open TCP connections in Node's global undici keep-alive pool.  Cloud
-// Run's ingress LB kills idle connections without sending a TCP FIN, so the
-// client-side pool keeps reusing dead sockets — new writes succeed-looking
-// but the response never arrives, and fetch() just aborts at the per-request
-// 20s AbortController timeout.  Symptom: only one action (the most frequently
-// called — `fetchBinanceFuturesAccount`) would visibly fail because it was
-// the one drawing from the most-corrupted slot, while the egress-private
-// server logs showed no record of the request.  Restart "fixed" it for ~3h
-// until the pool decayed again.
+// 2026-04-19 RCA (revised): exit-worker (minScale=1 long-running container)
+// accumulated half-open TCP connections in Node's undici keep-alive pool.
+// Cloud Run's ingress LB kills idle connections without sending a TCP FIN,
+// so the client-side pool keeps reusing dead sockets — new writes
+// succeed-looking but the response never arrives, and fetch() just aborts
+// at the per-request 20s AbortController timeout.  Symptom: only one action
+// (the most frequently called — `fetchBinanceFuturesAccount`) would
+// visibly fail, while the egress-private server logs showed no record of
+// the request.  Restart "fixed" it for ~3h until the pool decayed again.
+//
+// 2026-04-19 root-cause-of-root-cause: the prior fix (PR#18) attempted
+// to install a custom undici `Agent`, but **`undici` was never declared
+// as a direct dependency** in `package.json`.  Node 20+ bundles undici
+// for `globalThis.fetch` but does NOT expose `require("undici")` — the
+// module is only reachable if installed explicitly.  Thus on the
+// deployed `exit-worker` the `require("undici")` throws
+// `MODULE_NOT_FOUND`, the code silently falls back to `globalThis.fetch`,
+// and **none** of the keep-alive / header-timeout / retry-pool-reset
+// logic takes effect.  The symptom continued unabated — the fix only
+// looked applied in code review.
 //
 // Mitigation (this module, layered):
-//   1. Dedicated `Agent` with short `keepAliveTimeout` (1s) so connections
+//   1. `undici` is now a first-class dependency (package.json). A failed
+//      `require("undici")` is treated as a fatal configuration error and
+//      logged at ERROR level so CI log-sweeps / monitoring catch the
+//      regression instead of it silently degrading to the global pool.
+//   2. Dedicated `Agent` with short `keepAliveTimeout` (1s) so connections
 //      rarely get reused across the 30s+ idle gap between calls.
-//   2. Explicit `headersTimeout` / `bodyTimeout` inside undici so a dead
+//   3. Explicit `headersTimeout` / `bodyTimeout` inside undici so a dead
 //      socket fails within ~5s (well under the 20s AbortController budget)
 //      and surfaces as a real fetch error, not as silent hang.
-//   3. Single retry on transient transport failures (TIMEOUT /
-//      ECONNRESET / "fetch failed") — the retry consumes a fresh socket
-//      because the dead one has already been ejected by undici.
+//   4. **Dispatcher reset on transient failure**: before each retry we
+//      `close()` the current Agent and lazily rebuild it on the next
+//      request.  This is the only way to guarantee the retry doesn't draw
+//      from the same half-open pool — undici cannot detect FIN-less dead
+//      sockets until first write, so reusing the pool means the retry
+//      rolls the dice again.
 //
-// We load undici lazily so this module remains importable in environments
-// where undici isn't available (tests with mocked fetch, etc.) — if the
-// require fails we fall back to the global fetch without a custom
-// dispatcher, which matches pre-fix behavior.
+// The `EGRESS_PROXY_DISABLE_CUSTOM_DISPATCHER=1` escape hatch remains for
+// test harnesses only.  In production it should be unset (or "0").
 // ─────────────────────────────────────────────────────────────────────────────
 let _undiciDispatcherCache = null;
 let _undiciDispatcherTried = false;
+let _undiciRequireFatalLogged = false;
+
 function getEgressDispatcher() {
   if (_undiciDispatcherTried) return _undiciDispatcherCache;
   _undiciDispatcherTried = true;
@@ -64,16 +81,54 @@ function getEgressDispatcher() {
     });
     return _undiciDispatcherCache;
   } catch (err) {
-    // undici not resolvable — fall back to default fetch. Not an error; this
-    // is expected under some test harnesses. Operators see a one-time
-    // warn-level log so the diagnostic trail isn't silent.
-    try {
-      console.warn("[egress][DISPATCHER_UNAVAILABLE]", {
-        message: err && err.message ? err.message : String(err),
-      });
-    } catch (_) {}
+    // undici not resolvable.  In production this means the half-open
+    // mitigation is NOT active and every fetch() uses the default global
+    // pool — the exact failure mode the mitigation was built to prevent.
+    // Surface at ERROR level with a distinctive marker so CI/alerting can
+    // catch the regression.  We log only once per process to avoid
+    // flooding logs, and still return null (preserving the test-harness
+    // fallback) — but operators should treat this log as a blocker.
+    if (!_undiciRequireFatalLogged) {
+      _undiciRequireFatalLogged = true;
+      try {
+        console.error("[egress][DISPATCHER_UNAVAILABLE_FATAL]", {
+          message: err && err.message ? err.message : String(err),
+          code: err && err.code ? err.code : null,
+          hint: "undici must be declared in package.json dependencies; "
+              + "Node's built-in fetch does NOT expose require(\"undici\"). "
+              + "Without this dispatcher, half-open TCP sockets in the "
+              + "keep-alive pool cause silent 20s timeouts on exit-worker.",
+        });
+      } catch (_) {}
+    }
     _undiciDispatcherCache = null;
     return null;
+  }
+}
+
+// Reset the dispatcher so the next getEgressDispatcher() call rebuilds a
+// fresh Agent with an empty connection pool.  Called between retry
+// attempts when the previous attempt hit a transient transport failure —
+// undici cannot detect a half-open TCP socket until first write, so the
+// only way to guarantee the retry doesn't reuse the same dead socket is
+// to tear down the pool entirely.  We `close()` gracefully (finishes
+// in-flight requests, then ends idle sockets) with a short fallback to
+// `destroy()` if close isn't available.  Best-effort — a failure here
+// must not block the retry itself.
+async function closeEgressDispatcher() {
+  const current = _undiciDispatcherCache;
+  _undiciDispatcherCache = null;
+  _undiciDispatcherTried = false;
+  if (!current) return;
+  try {
+    if (typeof current.close === "function") {
+      await current.close();
+    } else if (typeof current.destroy === "function") {
+      await current.destroy();
+    }
+  } catch (_) {
+    // Swallow — the dispatcher is already replaced in the cache slot;
+    // leaking a zombie Agent is preferable to throwing on the retry path.
   }
 }
 
@@ -389,8 +444,15 @@ async function callEgressProxy({ provider, action, payload, timeoutMs, maxAttemp
         });
       }
       if (!transient || attempt >= totalAttempts) break;
-      // Fall through to next attempt. No sleep — undici has already ejected
-      // the dead socket, so the retry gets a fresh connection immediately.
+      // Before the next attempt, tear down the dispatcher so the retry
+      // draws from a fresh connection pool.  undici cannot detect
+      // half-open TCP sockets (Cloud Run LB kills idle connections
+      // without FIN) until first write, so reusing the same pool means
+      // the retry can roll the dice against the same dead socket that
+      // just failed.  Closing here guarantees a clean slate.
+      try {
+        await closeEgressDispatcher();
+      } catch (_) { /* best-effort */ }
     }
   }
   throw lastError;
@@ -405,5 +467,6 @@ module.exports = {
   __test: {
     isTransientEgressFetchError,
     getEgressDispatcher,
+    closeEgressDispatcher,
   },
 };
