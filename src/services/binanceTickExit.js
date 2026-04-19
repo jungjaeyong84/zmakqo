@@ -3558,8 +3558,23 @@ async function runBinanceTickExitBurst({
     await releaseTickExitLease();
   }
 
+  // ── Target-mode self-heal scoping (2026-04-19 burst-timeout fix) ──
+  // When the burst was fired for specific target symbols (from the
+  // runner's exit-worker client), the shotgun self-heal that scans up
+  // to BINANCE_LIVE_STATE_SELF_HEAL_MAX_POSITIONS=12 active positions
+  // turns a focused 1-symbol repair into 12 × (2-4 Binance REST calls)
+  // per burst.  On slow egress windows this is what pushes the burst
+  // past its 75s timeout — the SOLUSDT 2026-04-19 observation (TP1 at
+  // 07:23:09Z, first BE-raise at 07:42:10Z — a 19-minute gap) came
+  // from exactly this pattern: repeated target-burst timeouts caused
+  // by unrelated positions in the self-heal sweep.
+  //
+  // Narrow the self-heal to the burst's target symbols so the burst
+  // budget is spent healing the thing we were actually asked about.
+  // Wide (non-target) bursts still scan all positions.
   selfHealResult = await runTickExitSelfHealPhase({
     reason: "TICK_EXIT_BURST",
+    targetSymbols: normalizedTargetSymbols,
   });
 
   const activeCount = Number(lastResult && lastResult.active_count) || 0;
@@ -3582,6 +3597,7 @@ async function runTickExitSelfHealPhase({
   maxPositions = Math.max(1, Number(process.env.BINANCE_LIVE_STATE_SELF_HEAL_MAX_POSITIONS || 12)),
   cooldownMs = BINANCE_LIVE_STATE_SELF_HEAL_COOLDOWN_MS,
   runSelfHeal = runBinanceLiveStateSelfHeal,
+  targetSymbols = null,
 } = {}) {
   if (enabled !== true) {
     return { ok: false, skipped: true, reason: "DISABLED" };
@@ -3589,29 +3605,50 @@ async function runTickExitSelfHealPhase({
   if (leaseHeartbeatOk !== true) {
     return { ok: false, skipped: true, reason: "LEASE_LOST" };
   }
+  const scopedSymbols = Array.isArray(targetSymbols)
+    ? targetSymbols.map((s) => String(s || "").trim().toUpperCase()).filter(Boolean)
+    : [];
+  const scoped = scopedSymbols.length > 0;
+  // Target-scoped self-heals have their own cadence: the operator-facing
+  // operation that triggered the burst just happened (e.g. TP1 fill
+  // detection), so the last-wide-self-heal cooldown is not the right
+  // throttle here.  Bypass it and let target mode heal its 1 symbol
+  // every burst; wide self-heals still share one cooldown window.
   const now = nowMs();
-  const resolvedCooldownMs = Math.max(0, Number(cooldownMs) || 0);
-  if (resolvedCooldownMs > 0 && Number.isFinite(lastTickExitSelfHealAt) && (now - lastTickExitSelfHealAt) < resolvedCooldownMs) {
-    return {
-      ok: true,
-      skipped: true,
-      reason: "COOLDOWN",
-      cooldown_ms: resolvedCooldownMs,
-      cooldown_remaining_ms: Math.max(0, resolvedCooldownMs - (now - lastTickExitSelfHealAt)),
-    };
+  if (!scoped) {
+    const resolvedCooldownMs = Math.max(0, Number(cooldownMs) || 0);
+    if (resolvedCooldownMs > 0 && Number.isFinite(lastTickExitSelfHealAt) && (now - lastTickExitSelfHealAt) < resolvedCooldownMs) {
+      return {
+        ok: true,
+        skipped: true,
+        reason: "COOLDOWN",
+        cooldown_ms: resolvedCooldownMs,
+        cooldown_remaining_ms: Math.max(0, resolvedCooldownMs - (now - lastTickExitSelfHealAt)),
+      };
+    }
   }
   try {
     const result = await runSelfHeal({
       exchange: "BINANCEFUT",
-      maxPositions,
-      reason,
+      maxPositions: scoped ? Math.min(maxPositions, scopedSymbols.length) : maxPositions,
+      symbols: scoped ? scopedSymbols : null,
+      reason: scoped ? `${reason}_TARGET_SCOPED` : reason,
     });
-    lastTickExitSelfHealAt = now;
-    return result;
+    // Only the wide sweep advances the module-level cooldown clock —
+    // target scans are cheap (1 symbol) and must not starve the next
+    // wide sweep.
+    if (!scoped) lastTickExitSelfHealAt = now;
+    return {
+      ...(result || {}),
+      target_scoped: scoped,
+      target_symbols: scoped ? scopedSymbols : null,
+    };
   } catch (e) {
     return {
       ok: false,
       error: e && e.message ? e.message : String(e),
+      target_scoped: scoped,
+      target_symbols: scoped ? scopedSymbols : null,
     };
   }
 }
