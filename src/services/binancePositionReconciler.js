@@ -553,6 +553,17 @@ const FLAT_META_NULL_FIELDS = [
   "contract_trail_consumed_abs",
   "contract_observed_qty_abs",
   "contract_latest",
+  // Recovery-path markers (2026-04-19 quality-audit follow-up to PR #15).
+  // These were set-once-never-cleared and would persist across the
+  // FLAT → re-OPEN lifecycle. PR #15's timestamp-guard makes the alert
+  // dispatch robust to that staleness, but clearing the markers on FLAT
+  // is the closer-to-the-root fix that also protects any other reader of
+  // `tp_p1_recovery_trigger` from false-positive "this was a recovery
+  // fill" signals on subsequent lifecycles.
+  "tp_p1_recovery_trigger",
+  "tp_p1_recovery_observed_at",
+  "tp_p1_recovery_seeded_price",
+  "tp_p1_recovery_alert_sent_at",
 ];
 
 function classifyTakeProfitOrders({ orders = [], positionSide, qtyBase, meta = {} } = {}) {

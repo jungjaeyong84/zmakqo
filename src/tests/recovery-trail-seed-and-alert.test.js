@@ -19,6 +19,8 @@ const recoverSimplifiedExitV2RunnerMetaFromQtyReduction =
 const shouldDispatchTp1RecoveryAlert =
   reconciler.shouldDispatchTp1RecoveryAlert
   || (reconciler.__test && reconciler.__test.shouldDispatchTp1RecoveryAlert);
+const buildFlatMetaProjection =
+  reconciler.__test && reconciler.__test.buildFlatMetaProjection;
 
 function baseInput(overrides = {}) {
   // Qty numbers chosen so the shadow plan agrees with the observed
@@ -295,6 +297,51 @@ function baseInput(overrides = {}) {
     });
     assert.strictEqual(result, true,
       "numeric-epoch timestamps must compare correctly (stale < fresh)");
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // Fix #1 follow-up (2026-04-19 quality audit): lifecycle cleanup.
+  //
+  // The quality audit on PR #15 surfaced a narrower second-order edge:
+  // if the PRIOR lifecycle had a recovery-path TP1 but the alert never
+  // fired (alert_sent_at null, e.g. runner crashed between guard and
+  // dispatch), and the NEXT lifecycle hits TP1 via the normal fills-sync
+  // path (tp_p1_recovery_trigger therefore not re-set this time), the
+  // guard would still see the stale trigger from yesterday and could
+  // double-fire (fills-sync primary + recovery late alert).
+  //
+  // Root-cause fix: clear the whole tp_p1_recovery_* marker family on
+  // FLAT so no stale state bleeds across position lifecycles.  This
+  // aligns the recovery markers with the same-class family PR #8/#10/
+  // #11/#12 (set-once markers surviving lifecycles).
+  // ════════════════════════════════════════════════════════════════════
+  assert.strictEqual(typeof buildFlatMetaProjection, "function",
+    "buildFlatMetaProjection must be exported in __test");
+
+  {
+    const dirty = {
+      tp_p1_done: true,
+      tp_p1_recovery_trigger: "EXCHANGE_QTY_REDUCTION_RECOVERY",
+      tp_p1_recovery_observed_at: "2026-04-18T11:40:48.000Z",
+      tp_p1_recovery_seeded_price: 102.34,
+      tp_p1_recovery_alert_sent_at: "2026-04-18T11:40:48.567Z",
+      // belt-and-suspenders: also confirm neighboring fields still clear
+      trail_high: 648.28,
+      trail_active: true,
+    };
+    const flat = buildFlatMetaProjection(dirty);
+    assert.strictEqual(flat.tp_p1_done, false,
+      "existing FLAT cleanup still flips tp_p1_done to false");
+    assert.strictEqual(flat.trail_active, false,
+      "existing FLAT cleanup still flips trail_active to false");
+    assert.strictEqual(flat.tp_p1_recovery_trigger, null,
+      "recovery_trigger must be cleared on FLAT (PR #15 audit follow-up)");
+    assert.strictEqual(flat.tp_p1_recovery_observed_at, null,
+      "recovery_observed_at must be cleared on FLAT");
+    assert.strictEqual(flat.tp_p1_recovery_seeded_price, null,
+      "recovery_seeded_price must be cleared on FLAT");
+    assert.strictEqual(flat.tp_p1_recovery_alert_sent_at, null,
+      "recovery_alert_sent_at must be cleared on FLAT");
   }
 
   console.log("RECOVERY_TRAIL_SEED_AND_ALERT_TEST_OK");
