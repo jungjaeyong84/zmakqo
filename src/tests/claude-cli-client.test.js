@@ -100,6 +100,11 @@ const cli = require("../services/claudeCliClient");
     delete process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE;
     assert.strictEqual(narrative.providerMode ? narrative.providerMode() : "CLI", "CLI",
       "narrative reasoner defaults to CLI provider");
+    process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "CODEX_FIRST";
+    assert.strictEqual(narrative.providerMode(), "CODEX_FIRST");
+    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["OPENAI_CODEX", "CLI"]);
+    process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "AUTO";
+    assert.strictEqual(narrative.providerMode(), "CODEX_FIRST");
   } catch (_) {
     // providerMode may not be exported; fall back to env probe
   } finally {

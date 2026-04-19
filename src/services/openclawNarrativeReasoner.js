@@ -29,6 +29,7 @@ const crypto = require("crypto");
 // are lazy-required so the test suite stays offline.
 let cachedApiClient = null;
 let cachedCliClient = null;
+let cachedOpenAiClient = null;
 function resolveApiClient() {
   if (cachedApiClient !== null) return cachedApiClient;
   try {
@@ -49,6 +50,16 @@ function resolveCliClient() {
   }
   return cachedCliClient;
 }
+function resolveOpenAiClient() {
+  if (cachedOpenAiClient !== null) return cachedOpenAiClient;
+  try {
+    // eslint-disable-next-line global-require
+    cachedOpenAiClient = require("./openaiClient").callOpenAI || null;
+  } catch (_) {
+    cachedOpenAiClient = null;
+  }
+  return cachedOpenAiClient;
+}
 
 function liveCallEnabled() {
   return String(process.env.OPENCLAW_NARRATIVE_LIVE_CALL_ENABLED || "").trim() === "1";
@@ -56,6 +67,8 @@ function liveCallEnabled() {
 
 function providerMode() {
   const mode = String(process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE || "CLI").trim().toUpperCase();
+  if (mode === "AUTO") return "CODEX_FIRST";
+  if (mode === "OPENAI" || mode === "CODEX" || mode === "CODEX_FIRST") return "CODEX_FIRST";
   if (mode === "API" || mode === "HTTP") return "API";
   return "CLI";
 }
@@ -64,6 +77,22 @@ function narrativeModel() {
   const explicit = String(process.env.OPENCLAW_NARRATIVE_MODEL || "").trim();
   if (explicit) return explicit;
   return providerMode() === "CLI" ? "sonnet" : "claude-opus-4-7";
+}
+
+function narrativeCodexModel() {
+  return String(
+    process.env.OPENCLAW_NARRATIVE_CODEX_MODEL
+    || process.env.OPENAI_CODEX_FALLBACK_MODEL
+    || "gpt-5.2-codex"
+  ).trim();
+}
+
+function narrativeCodexReasoningEffort() {
+  return String(
+    process.env.OPENCLAW_NARRATIVE_OPENAI_REASONING_EFFORT
+    || process.env.OPENAI_CODEX_FALLBACK_REASONING_EFFORT
+    || "high"
+  ).trim().toLowerCase();
 }
 
 function narrativeApiKey() {
@@ -207,14 +236,28 @@ function tryParseJsonFromText(text) {
   return null;
 }
 
+function resolveProviderSequence(mode = providerMode()) {
+  switch (String(mode || "").trim().toUpperCase()) {
+    case "CODEX_FIRST":
+      return ["OPENAI_CODEX", "CLI"];
+    case "API":
+      return ["API"];
+    case "CLI":
+      return ["CLI"];
+    default:
+      return ["CLI"];
+  }
+}
+
 async function runLiveLlm(body, { timeoutMs } = {}) {
   const effectiveTimeout = resolveTimeoutMs(timeoutMs);
-  const mode = providerMode();
   const system = "You are the OpenClaw risk-first narrative reasoner. Always return strict JSON only.";
+  const providers = resolveProviderSequence(providerMode());
+  const failures = [];
 
-  if (mode === "CLI") {
+  async function runCliProvider() {
     const callCli = resolveCliClient();
-    if (!callCli) return { ok: false, reason: "CLI_CLIENT_UNAVAILABLE" };
+    if (!callCli) return { ok: false, reason: "CLI_CLIENT_UNAVAILABLE", provider: "CLI" };
     try {
       const completed = await callCli({
         prompt: body,
@@ -242,35 +285,103 @@ async function runLiveLlm(body, { timeoutMs } = {}) {
     }
   }
 
-  // API mode (fallback)
-  const callClaude = resolveApiClient();
-  const apiKey = narrativeApiKey();
-  if (!callClaude || !apiKey) {
-    return { ok: false, reason: "API_CLIENT_UNAVAILABLE", provider: "API" };
-  }
-  try {
-    const completed = await Promise.race([
-      callClaude({
-        apiKey,
-        model: narrativeModel(),
-        system,
-        prompt: body,
-        temperature: 0.2,
-        maxTokens: 512,
-        jsonMode: true,
-      }),
-      new Promise((resolve) => setTimeout(() => resolve({ ok: false, reason: "TIMEOUT" }), effectiveTimeout)),
-    ]);
-    if (!completed || completed.ok === false) {
-      return { ok: false, reason: (completed && completed.reason) || "API_FAIL", provider: "API" };
+  async function runApiProvider() {
+    const callClaude = resolveApiClient();
+    const apiKey = narrativeApiKey();
+    if (!callClaude || !apiKey) {
+      return { ok: false, reason: "API_CLIENT_UNAVAILABLE", provider: "API" };
     }
-    const text = completed.text || completed.content || completed.body || "";
-    const parsed = tryParseJsonFromText(text);
-    if (!parsed) return { ok: false, reason: "API_NON_JSON", text, provider: "API" };
-    return { ok: true, provider: "API", parsed, raw_text: text, latency_ms: completed.latency_ms || null };
-  } catch (err) {
-    return { ok: false, reason: err && err.message ? err.message : String(err), provider: "API" };
+    try {
+      const completed = await Promise.race([
+        callClaude({
+          apiKey,
+          model: narrativeModel(),
+          system,
+          prompt: body,
+          temperature: 0.2,
+          maxTokens: 512,
+          jsonMode: true,
+        }),
+        new Promise((resolve) => setTimeout(() => resolve({ ok: false, reason: "TIMEOUT" }), effectiveTimeout)),
+      ]);
+      if (!completed || completed.ok === false) {
+        return { ok: false, reason: (completed && completed.reason) || "API_FAIL", provider: "API" };
+      }
+      const text = completed.text || completed.content || completed.body || "";
+      const parsed = tryParseJsonFromText(text);
+      if (!parsed) return { ok: false, reason: "API_NON_JSON", text, provider: "API" };
+      return { ok: true, provider: "API", parsed, raw_text: text, latency_ms: completed.latency_ms || null };
+    } catch (err) {
+      return { ok: false, reason: err && err.message ? err.message : String(err), provider: "API" };
+    }
   }
+
+  async function runOpenAiCodexProvider() {
+    const callOpenAI = resolveOpenAiClient();
+    const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
+    if (!callOpenAI || !apiKey) {
+      return { ok: false, reason: "OPENAI_CODEX_CLIENT_UNAVAILABLE", provider: "OPENAI_CODEX" };
+    }
+    try {
+      const completed = await Promise.race([
+        callOpenAI({
+          apiKey,
+          model: narrativeCodexModel(),
+          prompt: body,
+          system,
+          temperature: 0.2,
+          maxTokens: 512,
+          jsonMode: true,
+          reasoningEffort: narrativeCodexReasoningEffort(),
+        }),
+        new Promise((resolve) => setTimeout(() => resolve({ ok: false, reason: "TIMEOUT" }), effectiveTimeout)),
+      ]);
+      if (!completed || completed.ok === false) {
+        return {
+          ok: false,
+          reason: (completed && completed.reason) || "OPENAI_CODEX_FAIL",
+          provider: "OPENAI_CODEX",
+        };
+      }
+      const text = completed.text || "";
+      const parsed = tryParseJsonFromText(text);
+      if (!parsed) return { ok: false, reason: "OPENAI_CODEX_NON_JSON", text, provider: "OPENAI_CODEX" };
+      return {
+        ok: true,
+        provider: "OPENAI_CODEX",
+        parsed,
+        raw_text: text,
+      };
+    } catch (err) {
+      return { ok: false, reason: err && err.message ? err.message : String(err), provider: "OPENAI_CODEX" };
+    }
+  }
+
+  for (const provider of providers) {
+    let result = null;
+    if (provider === "OPENAI_CODEX") result = await runOpenAiCodexProvider();
+    else if (provider === "CLI") result = await runCliProvider();
+    else if (provider === "API") result = await runApiProvider();
+    if (result && result.ok === true) {
+      return {
+        ...result,
+        attempted_providers: providers,
+        failures,
+      };
+    }
+    failures.push({
+      provider,
+      reason: result && result.reason ? result.reason : "UNKNOWN_PROVIDER_FAILURE",
+    });
+  }
+
+  return {
+    ok: false,
+    provider: failures.length ? failures[failures.length - 1].provider : providers[0],
+    reason: failures.map((row) => `${row.provider}:${row.reason}`).join("|") || "NO_PROVIDER_ATTEMPTED",
+    failures,
+    attempted_providers: providers,
+  };
 }
 
 async function reasonAboutSignal(input = {}, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
@@ -399,8 +510,11 @@ module.exports = {
   narrativeEnabled,
   shadowOnly,
   providerMode,
+  resolveProviderSequence,
   liveCallEnabled,
   narrativeModel,
+  narrativeCodexModel,
+  narrativeCodexReasoningEffort,
   narrativeApiKey,
   resolveTimeoutMs,
   promptHash,

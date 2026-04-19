@@ -11,7 +11,11 @@ const {
   writeJson,
   writeText,
 } = require("./lib/automation-utils");
-const { openPineFileForReview } = require("./lib/pine-file-ops");
+const {
+  openPineFileForReview,
+  buildPineOpenContext,
+  notifyPineOpenContext,
+} = require("./lib/pine-file-ops");
 const {
   resolveCurrentVersionPineSource,
   syncCurrentVersionPineAlias,
@@ -22,6 +26,10 @@ loadLocalEnv();
 const REPORT_LATEST_JSON = path.join(OPS_DAILY_DIR, "current_version_pine_sync_latest.json");
 const REPORT_LATEST_MD = path.join(OPS_DAILY_DIR, "current_version_pine_sync_latest.md");
 const LATEST_GENERATED_PATH = path.join(REPO_ROOT, "code", "donbeolja_latest_generated.pine.txt");
+
+function shouldOpenSyncedPine(sync = {}) {
+  return sync && sync.ok === true && sync.synced === true;
+}
 
 function renderMarkdown(report = {}) {
   const lines = [
@@ -35,7 +43,11 @@ function renderMarkdown(report = {}) {
     `- synced: ${report.synced ? "YES" : "NO"}`,
     `- opened: ${report.opened ? "YES" : "NO"}`,
   ];
+  if (report.open_skipped_reason) lines.push(`- open_skipped_reason: ${report.open_skipped_reason}`);
   if (report.open_method) lines.push(`- open_method: ${report.open_method}`);
+  if (report.open_context && report.open_context.message) {
+    lines.push(`- open_context: ${report.open_context.message}`);
+  }
   if (Array.isArray(report.tried_candidates) && report.tried_candidates.length) {
     lines.push("", "## Candidates");
     for (const row of report.tried_candidates) lines.push(`- ${row}`);
@@ -57,8 +69,24 @@ function main() {
     latestFilePath: LATEST_GENERATED_PATH,
   });
   let openResult = { ok: false, method: null, error: null };
-  if (sync.ok && (sync.synced || String(process.env.OPEN_CURRENT_VERSION_PINE_FORCE || "0") === "1")) {
+  let openContext = buildPineOpenContext({
+    sourceFilePath: resolved.source_file_path,
+    latestFilePath: LATEST_GENERATED_PATH,
+  });
+  let notifyResult = { ok: false, error: null };
+  let openSkippedReason = null;
+  if (shouldOpenSyncedPine(sync)) {
     openResult = openPineFileForReview(LATEST_GENERATED_PATH);
+    if (openResult.ok === true) {
+      notifyResult = notifyPineOpenContext({
+        sourceFilePath: resolved.source_file_path,
+        latestFilePath: LATEST_GENERATED_PATH,
+      });
+    }
+  } else if (sync.ok !== true) {
+    openSkippedReason = sync.reason || "SYNC_NOT_OK";
+  } else if (sync.synced !== true) {
+    openSkippedReason = "UNCHANGED";
   }
 
   const report = {
@@ -72,6 +100,10 @@ function main() {
     opened: openResult.ok === true,
     open_method: openResult.method || null,
     open_error: openResult.error || null,
+    open_skipped_reason: openResult.ok === true ? null : openSkippedReason,
+    open_context: openContext,
+    open_notified: notifyResult.ok === true,
+    open_notify_error: notifyResult.ok === true ? null : notifyResult.error,
     source_sha256: sync.source_sha256 || null,
     latest_sha256: sync.latest_sha256 || null,
     tried_candidates: resolved.tried_candidates || [],
@@ -93,6 +125,7 @@ function main() {
     latest_generated_file_path: report.latest_generated_file_path,
     synced: report.synced,
     opened: report.opened,
+    open_context: report.open_context,
     jsonPath,
     mdPath,
   }, null, 2));
@@ -108,3 +141,9 @@ if (require.main === module) {
     process.exit(1);
   }
 }
+
+module.exports = {
+  __test: {
+    shouldOpenSyncedPine,
+  },
+};

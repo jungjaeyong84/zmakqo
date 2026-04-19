@@ -44,6 +44,7 @@ const FLAG_KEYS = [
   "OPENCLAW_NARRATIVE_ENABLED",
   "OPENCLAW_NARRATIVE_LIVE_CALL_ENABLED",
   "OPENCLAW_NARRATIVE_PROVIDER_MODE",
+  "OPENCLAW_CLAUDE_CLI_BIN",
   "OPENCLAW_ML_GATE_ENABLED",
   "OPENCLAW_ML_MIN_TP1_PROB",
   "OPENCLAW_ML_CALIBRATION_PATH",
@@ -161,6 +162,29 @@ async function run() {
       assert.strictEqual(out.live_failed, true);
       assert.ok(String(out.live_reason || "").includes("LLM_CLIENT_UNAVAILABLE") || out.live_reason);
       // Clamp must still enforce safety rails.
+      assert.ok(out.response.scale == null || out.response.scale <= 1);
+    } finally { envRestore(prev); }
+  }
+
+  // ================ Phase C — codex first then Claude CLI ==
+  {
+    const prev = envSnapshot();
+    try {
+      process.env.OPENCLAW_NARRATIVE_ENABLED = "1";
+      process.env.OPENCLAW_NARRATIVE_LIVE_CALL_ENABLED = "1";
+      process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "CODEX_FIRST";
+      process.env.OPENCLAW_CLAUDE_CLI_BIN = "/this/binary/does/not/exist";
+      delete process.env.OPENAI_API_KEY;
+      delete process.env.CLAUDE_API_KEY;
+      delete process.env.ANTHROPIC_API_KEY;
+      delete process.env.OPENCLAW_NARRATIVE_CLAUDE_API_KEY;
+      const out = await narrativeReasoner.reasonAboutSignal({
+        exchange: "BINANCEFUT", symbol: "ETHUSDT", side: "SHORT", qtyPct: 0.5,
+      });
+      assert.strictEqual(out.disabled, false);
+      assert.strictEqual(out.live_failed, true);
+      assert.ok(String(out.live_reason || "").includes("OPENAI_CODEX_CLIENT_UNAVAILABLE"));
+      assert.ok(String(out.live_reason || "").includes("CLI"));
       assert.ok(out.response.scale == null || out.response.scale <= 1);
     } finally { envRestore(prev); }
   }

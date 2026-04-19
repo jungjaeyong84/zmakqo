@@ -9,6 +9,8 @@ const {
   resolveCurrentVersionPineSource,
   syncCurrentVersionPineAlias,
 } = require("../../scripts/lib/current-version-pine");
+const automationSyncCurrentVersionPine = require("../../scripts/automation-sync-current-version-pine");
+const { buildPineOpenContext } = require("../../scripts/lib/pine-file-ops");
 
 function run() {
   assert.strictEqual(normalizeStrategyId("donbeolja_v6.1.1.0", ""), "donbeolja_v6.1.1.0");
@@ -43,6 +45,13 @@ function run() {
   });
   assert.strictEqual(sync.ok, true);
   assert.strictEqual(sync.synced, false);
+  assert.strictEqual(automationSyncCurrentVersionPine.__test.shouldOpenSyncedPine(sync), false);
+  const unchangedContext = buildPineOpenContext({
+    sourceFilePath: sourcePath,
+    latestFilePath: latestPath,
+  });
+  assert.ok(String(unchangedContext.message).includes("donbeolja_latest_generated.pine.txt"));
+  assert.ok(String(unchangedContext.message).includes("donbeolja_v6.1.1.0_TV_IMPORT_FINAL.pine.txt"));
 
   fs.writeFileSync(sourcePath, "// changed tv import\n", "utf8");
   sync = syncCurrentVersionPineAlias({
@@ -51,6 +60,7 @@ function run() {
   });
   assert.strictEqual(sync.ok, true);
   assert.strictEqual(sync.synced, true);
+  assert.strictEqual(automationSyncCurrentVersionPine.__test.shouldOpenSyncedPine(sync), true);
   assert.strictEqual(fs.readFileSync(latestPath, "utf8"), "// changed tv import\n");
 
   console.log("CURRENT_VERSION_PINE_SYNC_TEST_OK");

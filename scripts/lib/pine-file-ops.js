@@ -44,7 +44,47 @@ function openPineFileForReview(filePath) {
   return { ok: false, method: null, error: "OPEN_FAILED" };
 }
 
+function buildPineOpenContext({ sourceFilePath, latestFilePath } = {}) {
+  const source = String(sourceFilePath || "").trim();
+  const latest = String(latestFilePath || "").trim();
+  return {
+    title: "DONBEOLJA Pine Sync",
+    subtitle: source ? path.basename(source) : "source unknown",
+    message: latest
+      ? `opened ${path.basename(latest)} from ${source ? path.basename(source) : "unknown source"}`
+      : `opened from ${source ? path.basename(source) : "unknown source"}`,
+  };
+}
+
+function notifyPineOpenContext({ sourceFilePath, latestFilePath } = {}) {
+  const context = buildPineOpenContext({ sourceFilePath, latestFilePath });
+  const script = [
+    "display notification ",
+    JSON.stringify(context.message),
+    " with title ",
+    JSON.stringify(context.title),
+    " subtitle ",
+    JSON.stringify(context.subtitle),
+  ].join("");
+  const res = spawnSync("osascript", ["-e", script], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 10_000,
+  });
+  if (!res.error && Number(res.status) === 0) {
+    return { ok: true, context, error: null };
+  }
+  return {
+    ok: false,
+    context,
+    error: res.error ? String(res.error.message || res.error) : "NOTIFY_FAILED",
+  };
+}
+
 module.exports = {
   updateLatestGeneratedPine,
   openPineFileForReview,
+  buildPineOpenContext,
+  notifyPineOpenContext,
 };
