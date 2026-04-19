@@ -1,23 +1,24 @@
 "use strict";
 
 // 2026-04-18 regression guard for the three TP1-recovery fixes:
-//   Fix #1: recovery path emits a late trade-execution alert (dispatched
-//           from paperBinanceRunner; not covered here — integration-level).
+//   Fix #1: recovery path emits a late trade-execution alert (guard
+//           refined 2026-04-19 — see shouldDispatchTp1RecoveryAlert tests
+//           at the bottom of this file).
 //   Fix #2: recovery seeds trail_high (LONG) / trail_low (SHORT) from the
 //           current mark price so the next tick starts trailing from a
 //           real waterline instead of null.
 //   Fix #3: BE floor condition in tick-exit dropped the `!_trailEnabled`
 //           gate — verified indirectly via buildSimplifiedExitShadowView
 //           behaviour and the runner-floor signalEngine tests.
-//
-// This file focuses on Fix #2 because it's pure and can be tested without
-// standing up Binance / Firestore.
 
 const assert = require("assert");
 const reconciler = require("../services/binancePositionReconciler");
 const recoverSimplifiedExitV2RunnerMetaFromQtyReduction =
   (reconciler.__test && reconciler.__test.recoverSimplifiedExitV2RunnerMetaFromQtyReduction)
   || reconciler.recoverSimplifiedExitV2RunnerMetaFromQtyReduction;
+const shouldDispatchTp1RecoveryAlert =
+  reconciler.shouldDispatchTp1RecoveryAlert
+  || (reconciler.__test && reconciler.__test.shouldDispatchTp1RecoveryAlert);
 
 function baseInput(overrides = {}) {
   // Qty numbers chosen so the shadow plan agrees with the observed
@@ -125,6 +126,175 @@ function baseInput(overrides = {}) {
     assert.ok(out && out.meta);
     assert.strictEqual(out.meta.trail_high, 650.0,
       "trail_high must not regress below a previously recorded watermark");
+  }
+
+  // ════════════════════════════════════════════════════════════════════
+  // Fix #1 (guard refined 2026-04-19): shouldDispatchTp1RecoveryAlert
+  //
+  // Context: 2026-04-19 SOLUSDT TP1 (07:23:09Z) fired the recovery path
+  // on a fresh lifecycle, but stale `tp_p1_recovery_alert_sent_at` from
+  // yesterday's (2026-04-18T11:40:48Z) position was still persisted on
+  // the Firestore meta document. The original `!alreadyAlerted` truthy
+  // check suppressed the Telegram dispatch — operator received zero
+  // notification that TP1 had hit.
+  //
+  // The guard now compares the alert timestamp against the per-event
+  // `tp_p1_recovery_observed_at` marker: a stale alert from before the
+  // current observation must NOT suppress a fresh dispatch.
+  // ════════════════════════════════════════════════════════════════════
+  assert.strictEqual(typeof shouldDispatchTp1RecoveryAlert, "function",
+    "shouldDispatchTp1RecoveryAlert must be exported (named or via __test)");
+
+  // Fix #1a: first-time recovery transition with no prior marker → fire
+  {
+    const result = shouldDispatchTp1RecoveryAlert({
+      prevMeta: { tp_p1_done: false },
+      meta: {
+        tp_p1_done: true,
+        tp_p1_recovery_trigger: "EXCHANGE_QTY_REDUCTION_RECOVERY",
+        tp_p1_recovery_observed_at: "2026-04-19T07:23:09.000Z",
+        // tp_p1_recovery_alert_sent_at absent — never alerted
+      },
+    });
+    assert.strictEqual(result, true,
+      "first-time recovery with no alert marker must dispatch");
+  }
+
+  // Fix #1b: stale marker from a previous lifecycle + fresh observation → fire
+  //          (this is the exact SOLUSDT 2026-04-19 regression)
+  {
+    const result = shouldDispatchTp1RecoveryAlert({
+      prevMeta: { tp_p1_done: false },
+      meta: {
+        tp_p1_done: true,
+        tp_p1_recovery_trigger: "EXCHANGE_QTY_REDUCTION_RECOVERY",
+        tp_p1_recovery_observed_at:  "2026-04-19T07:23:09.000Z",
+        tp_p1_recovery_alert_sent_at: "2026-04-18T11:40:48.567Z",
+      },
+    });
+    assert.strictEqual(result, true,
+      "stale alert marker (prior lifecycle) must NOT suppress fresh dispatch");
+  }
+
+  // Fix #1c: fresh marker after observation → skip (per-event idempotency)
+  {
+    const result = shouldDispatchTp1RecoveryAlert({
+      prevMeta: { tp_p1_done: false },
+      meta: {
+        tp_p1_done: true,
+        tp_p1_recovery_trigger: "EXCHANGE_QTY_REDUCTION_RECOVERY",
+        tp_p1_recovery_observed_at:  "2026-04-19T07:23:09.000Z",
+        tp_p1_recovery_alert_sent_at: "2026-04-19T07:23:10.123Z",
+      },
+    });
+    assert.strictEqual(result, false,
+      "alert timestamp after observation means we already fired for this event");
+  }
+
+  // Fix #1d: marker equals observation → skip (same event, no re-fire)
+  {
+    const ts = "2026-04-19T07:23:09.000Z";
+    const result = shouldDispatchTp1RecoveryAlert({
+      prevMeta: { tp_p1_done: false },
+      meta: {
+        tp_p1_done: true,
+        tp_p1_recovery_trigger: "EXCHANGE_QTY_REDUCTION_RECOVERY",
+        tp_p1_recovery_observed_at: ts,
+        tp_p1_recovery_alert_sent_at: ts,
+      },
+    });
+    assert.strictEqual(result, false,
+      "equal timestamps count as already-alerted for the current event");
+  }
+
+  // Fix #1e: observation missing but marker present → conservative skip
+  //          (can't prove staleness, avoid double-firing on crash loops)
+  {
+    const result = shouldDispatchTp1RecoveryAlert({
+      prevMeta: { tp_p1_done: false },
+      meta: {
+        tp_p1_done: true,
+        tp_p1_recovery_trigger: "EXCHANGE_QTY_REDUCTION_RECOVERY",
+        tp_p1_recovery_alert_sent_at: "2026-04-18T11:40:48.567Z",
+        // tp_p1_recovery_observed_at absent
+      },
+    });
+    assert.strictEqual(result, false,
+      "missing observed_at + present marker: conservative skip to avoid double-fire");
+  }
+
+  // Fix #1f: prev already done → not a transition, never fire
+  {
+    const result = shouldDispatchTp1RecoveryAlert({
+      prevMeta: { tp_p1_done: true },
+      meta: {
+        tp_p1_done: true,
+        tp_p1_recovery_trigger: "EXCHANGE_QTY_REDUCTION_RECOVERY",
+        tp_p1_recovery_observed_at: "2026-04-19T07:23:09.000Z",
+      },
+    });
+    assert.strictEqual(result, false,
+      "already-done prev meta means this tick did not cross the TP1 boundary");
+  }
+
+  // Fix #1g: no recovery trigger → not the recovery path, skip
+  //          (normal TP1 fills use the userTrade alert path, not this one)
+  {
+    const result = shouldDispatchTp1RecoveryAlert({
+      prevMeta: { tp_p1_done: false },
+      meta: {
+        tp_p1_done: true,
+        // tp_p1_recovery_trigger absent — this was a normal userTrade fill
+        tp_p1_recovery_observed_at: "2026-04-19T07:23:09.000Z",
+      },
+    });
+    assert.strictEqual(result, false,
+      "without recovery_trigger this is not the recovery alert path");
+  }
+
+  // Fix #1h: cur.tp_p1_done false → nothing happened, skip
+  {
+    const result = shouldDispatchTp1RecoveryAlert({
+      prevMeta: { tp_p1_done: false },
+      meta: {
+        tp_p1_done: false,
+        tp_p1_recovery_trigger: "EXCHANGE_QTY_REDUCTION_RECOVERY",
+        tp_p1_recovery_observed_at: "2026-04-19T07:23:09.000Z",
+      },
+    });
+    assert.strictEqual(result, false,
+      "tp_p1_done=false on current meta means no transition to alert on");
+  }
+
+  // Fix #1i: null prevMeta (brand-new position document) + fresh recovery → fire
+  {
+    const result = shouldDispatchTp1RecoveryAlert({
+      prevMeta: null,
+      meta: {
+        tp_p1_done: true,
+        tp_p1_recovery_trigger: "EXCHANGE_QTY_REDUCTION_RECOVERY",
+        tp_p1_recovery_observed_at: "2026-04-19T07:23:09.000Z",
+      },
+    });
+    assert.strictEqual(result, true,
+      "null prevMeta is treated as tp_p1_done=false — first-time fire");
+  }
+
+  // Fix #1j: numeric-epoch timestamps are accepted (engine occasionally writes ms)
+  {
+    const observedMs = Date.parse("2026-04-19T07:23:09.000Z");
+    const staleAlertMs = Date.parse("2026-04-18T11:40:48.567Z");
+    const result = shouldDispatchTp1RecoveryAlert({
+      prevMeta: { tp_p1_done: false },
+      meta: {
+        tp_p1_done: true,
+        tp_p1_recovery_trigger: "EXCHANGE_QTY_REDUCTION_RECOVERY",
+        tp_p1_recovery_observed_at: observedMs,
+        tp_p1_recovery_alert_sent_at: staleAlertMs,
+      },
+    });
+    assert.strictEqual(result, true,
+      "numeric-epoch timestamps must compare correctly (stale < fresh)");
   }
 
   console.log("RECOVERY_TRAIL_SEED_AND_ALERT_TEST_OK");

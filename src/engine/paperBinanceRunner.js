@@ -99,7 +99,10 @@ const {
   calcAveragePrice: calcBinanceAveragePrice
 } = require("../exchanges/binanceFuturesPrivate");
 const { triggerExitWorkerRun } = require("../services/exitWorkerClient");
-const { reconcileBinancePositionMetaWithExchange } = require("../services/binancePositionReconciler");
+const {
+  reconcileBinancePositionMetaWithExchange,
+  shouldDispatchTp1RecoveryAlert,
+} = require("../services/binancePositionReconciler");
 const {
   placeFuturesEntryMakerFirst,
   isMakerFirstEnabled: isEntryMakerFirstEnabled,
@@ -8389,19 +8392,25 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
   });
   meta = reconciledProjection.meta;
 
-  // ── Recovery-path trade alert (Fix #1, 2026-04-18) ────────────────
+  // ── Recovery-path trade alert (Fix #1, 2026-04-18; guard refined 2026-04-19) ─
   // When the reconciler flips tp_p1_done=false → true via the qty-reduction
   // recovery path (Binance filled the TP but our fill-sync missed the
   // event), the operator used to receive NO Telegram alert because the
   // normal sendTradeExecutionAlert path only fires on verified fills.
   // Detect the transition here and dispatch a late alert so the operator
   // always hears about TP1 hits.
+  //
+  // 2026-04-19 SOLUSDT regression: the original guard used a truthy check
+  // on `tp_p1_recovery_alert_sent_at`.  That field persists across the
+  // FLAT → re-OPEN lifecycle, so yesterday's marker silenced today's
+  // alert.  `shouldDispatchTp1RecoveryAlert` now compares the persisted
+  // alert timestamp against `tp_p1_recovery_observed_at` — a NEW recovery
+  // event (later observed_at) is always allowed through.  Same-class
+  // family with PR #8 / #10 / #11 / #12 (set-once markers surviving
+  // lifecycles and creating false-positive "already done" signals).
   try {
-    const prevTpP1Done = prevMeta && prevMeta.tp_p1_done === true;
-    const newTpP1Done = meta && meta.tp_p1_done === true;
-    const recoveryTrigger = meta && meta.tp_p1_recovery_trigger;
-    const alreadyAlerted = meta && meta.tp_p1_recovery_alert_sent_at;
-    if (newTpP1Done && !prevTpP1Done && recoveryTrigger && !alreadyAlerted) {
+    if (shouldDispatchTp1RecoveryAlert({ prevMeta, meta })) {
+      const recoveryTrigger = meta.tp_p1_recovery_trigger;
       const alertQty = Number.isFinite(prevQtyBase) && Number.isFinite(qtyBase)
         ? Math.max(0, prevQtyBase - qtyBase)
         : null;
