@@ -238,7 +238,26 @@ function computeTrailWatermarkPatch({ side, meta, price, tickNow } = {}) {
 //   • inputs_valid 불변식 (네 수치 입력 모두 finite && > 0, side ∈ LONG/SHORT)
 //   • LONG/SHORT 대칭 bePrice 공식
 //   • currentStop 이 NaN(=미보호 상태) 이면 무조건 raise
+//   • `currentStop <= 0` (Number(null)===0 포함) 은 NaN 과 동치로 "미보호"
+//     취급 — PR #9 pin 해소, PR #11
 //   • `±1e-9` 허용오차 한계 (동일 가격 재-raise 금지)
+//
+// 2026-04-19 PR #11 ROOT-CAUSE FIX (null-stop unprotected-equivalence):
+//
+// 이전 구현은 `Number(null) === 0` 이 `Number.isFinite(0) === true` 로
+// 평가되는 탓에 `meta.native_protection_stop_price === null` 이
+// downstream 에서 `stop = 0` 으로 전락했다. 그러면 SHORT 에서
+// `bePrice < 0 - 1e-9` 가 영영 false 라 raise 가 skip 된다.
+//
+// 의미론적으로 `stop <= 0` 은 "보호 stop 이 없다" 와 등가이므로
+// `Number.isFinite(stop) && stop > 0` 이 아닌 값은 일괄 NaN 으로
+// coerce 해 기존의 `!Number.isFinite(stop) → 무조건 raise` 가드로
+// 자연스럽게 빠지게 한다. 한 줄 변경이지만 PR #9 가 pin 했던 경계값
+// 버그를 root 에서 제거한다. PR #10 의 writer-side schema 는 `0` 이
+// meta 에 쓰이는 경로를 warn-only 로 막고 있지만, 이 read-side 보정은
+// (a) schema 가 dev/CI throw 로 cutover 되기 전까지의 과도기, (b) 과거
+// Firestore 잔류값 (`meta.native_protection_stop_price: 0`) 에 대한
+// 방어까지 함께 처리한다.
 function computeBreakEvenRaiseDecision({
   side,
   avgPrice,
@@ -250,7 +269,12 @@ function computeBreakEvenRaiseDecision({
   const avg = Number(avgPrice);
   const lev = Number(leverage);
   const floor = Number(floorPct);
-  const stop = Number(currentStop);
+  const stopRaw = Number(currentStop);
+  // "미보호" semantic: finite 하고 양수일 때만 실제 stop 으로 취급한다.
+  // 그 외 (NaN / Infinity / 0 / 음수 / null→0 / undefined→NaN) 은 NaN
+  // 으로 정규화해 downstream `!Number.isFinite` 가드가 무조건 raise 로
+  // 결정하도록 만든다.
+  const stop = Number.isFinite(stopRaw) && stopRaw > 0 ? stopRaw : NaN;
   const avgFinite = Number.isFinite(avg) && avg > 0;
   const levFinite = Number.isFinite(lev) && lev > 0;
   const floorFinite = Number.isFinite(floor) && floor > 0;
