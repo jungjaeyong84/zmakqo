@@ -2835,12 +2835,36 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
             refresh_result_reason: refreshed && refreshed.reason ? String(refreshed.reason) : null,
           });
         } catch (nativeRefreshErr) {
-          structuredLog("tick_exit_native_protection_refresh_error", {
-            exchange: "BINANCEFUT",
-            symbol: String(symbol).toUpperCase(),
-            refresh_reason: eagerProtectionRefresh.reason,
-            error: String(nativeRefreshErr && nativeRefreshErr.message || nativeRefreshErr).slice(0, 200),
-          }, "warn");
+          // ── 에러 원인 분류.
+          //   2026-04-19 ETHUSDT 사고 이후: 이 catch 에 걸리는 예외가 실은
+          //   Binance 가 아니라 Firestore gRPC transport 실패 (`14 UNAVAILABLE`)
+          //   인 경우가 있었다.  `getSettingsDocCached` 는 이제 stale cache /
+          //   fallback 으로 degrade 하므로 신규 blip 은 여기까지 안 오지만,
+          //   캐시/폴백 둘 다 없는 cold-start 순간에는 여전히 throw 될 수 있다.
+          //   그 경우 최소한 원인을 정확히 라벨링해서 대시보드 오진을 막는다.
+          const errMsg = String((nativeRefreshErr && nativeRefreshErr.message) || nativeRefreshErr);
+          const isFirestoreTransport = /\b14\s+UNAVAILABLE\b/i.test(errMsg)
+            || /secure TLS connection was established/i.test(errMsg)
+            || /gRPC.*UNAVAILABLE/i.test(errMsg);
+          if (isFirestoreTransport) {
+            structuredLog("tick_exit_native_protection_refresh_error_firestore_transport", {
+              exchange: "BINANCEFUT",
+              symbol: String(symbol).toUpperCase(),
+              refresh_reason: eagerProtectionRefresh.reason,
+              upstream_cause: "FIRESTORE_GRPC_UNAVAILABLE",
+              hint: "이 에러는 Binance 문제가 아니라 Firestore 커넥션 순단. "
+                + "getSettingsDocCached 의 graceful-degrade 가 적용된 이후에는 "
+                + "cold-start 초기에만 관측되어야 함.",
+              error: errMsg.slice(0, 200),
+            }, "warn");
+          } else {
+            structuredLog("tick_exit_native_protection_refresh_error", {
+              exchange: "BINANCEFUT",
+              symbol: String(symbol).toUpperCase(),
+              refresh_reason: eagerProtectionRefresh.reason,
+              error: errMsg.slice(0, 200),
+            }, "warn");
+          }
         } finally {
           try {
             clearNativeProtectionStateCache(symbol);
