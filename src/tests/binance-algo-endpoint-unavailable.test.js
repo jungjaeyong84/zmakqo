@@ -58,6 +58,26 @@ const exitAudit = require("../services/exitIntegrityAudit");
     native_protection_stop_order_id: "123",
   }), true);
   assert.strictEqual(auditTest.hasTrackedNativeProtectionMeta({}), false);
+
+  // ── PR #12: `isValidTrailReference` same-class boundary-value contract.
+  //   양수 finite 만 valid.  null/undefined/0/음수/NaN/Infinity/문자열은
+  //   전부 invalid 로 분류되어 TP1_TRAIL_REF_MISSING 경보가 누락되지
+  //   않도록 잠근다.
+  assert.strictEqual(typeof auditTest.isValidTrailReference, "function",
+    "isValidTrailReference export missing");
+  // valid cases
+  for (const v of [1, 0.0001, 100, 1e12]) {
+    assert.strictEqual(auditTest.isValidTrailReference(v), true,
+      `positive finite ${v} must be valid`);
+  }
+  // invalid cases — 이 helper 의 목적은 same-class 경계값 버그 (null/0/
+  // 음수/비-finite) 를 걸러내는 것.  문자열 "5.0" 같은 것은 `Number()` 로
+  // 양수 finite 가 되므로 valid 로 통과한다 (audit 호출부가 원래
+  // `Number(trailSnapshot.trail_low)` 를 하던 계약을 보존).
+  for (const v of [null, undefined, 0, -0, -1, -1e-9, NaN, Infinity, -Infinity, "not-a-number", {}, [1, 2]]) {
+    assert.strictEqual(auditTest.isValidTrailReference(v), false,
+      `${JSON.stringify(v)} must be invalid trail reference (same-class guard)`);
+  }
 })();
 
 console.log("BINANCE_ALGO_ENDPOINT_UNAVAILABLE_TEST_OK");

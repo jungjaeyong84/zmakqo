@@ -336,6 +336,113 @@ async function run() {
   assert.strictEqual(flatProjection.meta.contract_tp1_consumed_abs, null);
   assert.strictEqual(flatProjection.meta.tp_p1_bar_ms, null);
 
+  // ── PR #12 same-class boundary-value regression for the
+  // `recoverSimplifiedExitV2RunnerMetaFromQtyReduction` trail seed path.
+  //
+  // Bug:   `baseMeta.trail_low === null` → `Number(null) === 0` →
+  //        `Number.isFinite(0) === true` → `Math.min(0, seedPrice) === 0`
+  //        → SHORT trail_low gets seeded to 0 → PR #8's trail jam
+  //        condition reproduced post-recovery.
+  // Fix:   양수 finite 기존값만 valid 로 인정. 그 외 (null/0/NaN) 은
+  //        seedPrice 로 새로 출발.
+  //
+  // NOTE: recoverSimplifiedExitV2RunnerMetaFromQtyReduction requires
+  // simplified-exit-v2 enabled + tp_p1 not yet flagged + tp order absent
+  // + stop order present + qty reduction pattern match. We stub the
+  // minimum inputs here and only verify the trail watermark outputs.
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
+
+  // SHORT recovery with `trail_low=null` (Firestore null field):
+  //   previous behavior: trail_low seeded to 0 (bug)
+  //   fixed behavior:    trail_low seeded to seedPrice (markPrice=200)
+  const shortRecoveryNullTrail = __test.recoverSimplifiedExitV2RunnerMetaFromQtyReduction({
+    meta: {
+      simplified_exit_v2_enabled: true,
+      trail_low: null,
+      exit_rules_override: {
+        SL: 0.02, RUNNER_MIN_PROFIT_PCT: 0.01, TRAIL_PCT: 0.005,
+        TP_P1: 0.01, TP_P0_QTY: 0.25, TP_P1_QTY: 0.5,
+      },
+      entry_qty_abs: 10,
+    },
+    positionSide: "SHORT",
+    qtyBase: 5,
+    previousQtyBase: 10,
+    entryPrice: 200,
+    currentMarkPrice: 198,
+    stopOrder: { orderId: "stop-1", stopPrice: "204" },
+    tpOrder: null,
+    observedAtIso: new Date().toISOString(),
+  });
+  assert.ok(shortRecoveryNullTrail, "SHORT recovery should return a patch when all qty invariants match");
+  assert.notStrictEqual(
+    shortRecoveryNullTrail.meta.trail_low,
+    0,
+    "PR #12: trail_low=null must NOT seed as 0 (that was the SHORT trail-jam bug)"
+  );
+  assert.ok(
+    Number.isFinite(shortRecoveryNullTrail.meta.trail_low) && shortRecoveryNullTrail.meta.trail_low > 0,
+    `PR #12: trail_low must be positive finite (got ${shortRecoveryNullTrail.meta.trail_low})`
+  );
+
+  // SHORT recovery with stale `trail_low=0` (residual from pre-PR#10 writes):
+  //   must also seed fresh from seedPrice, not preserve the stale 0.
+  const shortRecoveryZeroTrail = __test.recoverSimplifiedExitV2RunnerMetaFromQtyReduction({
+    meta: {
+      simplified_exit_v2_enabled: true,
+      trail_low: 0,
+      exit_rules_override: {
+        SL: 0.02, RUNNER_MIN_PROFIT_PCT: 0.01, TRAIL_PCT: 0.005,
+        TP_P1: 0.01, TP_P0_QTY: 0.25, TP_P1_QTY: 0.5,
+      },
+      entry_qty_abs: 10,
+    },
+    positionSide: "SHORT",
+    qtyBase: 5,
+    previousQtyBase: 10,
+    entryPrice: 200,
+    currentMarkPrice: 198,
+    stopOrder: { orderId: "stop-1", stopPrice: "204" },
+    tpOrder: null,
+    observedAtIso: new Date().toISOString(),
+  });
+  assert.ok(shortRecoveryZeroTrail, "SHORT recovery with residual trail_low=0 must still return a patch");
+  assert.ok(
+    Number.isFinite(shortRecoveryZeroTrail.meta.trail_low) && shortRecoveryZeroTrail.meta.trail_low > 0,
+    `PR #12: stale trail_low=0 must be replaced by seedPrice, not preserved (got ${shortRecoveryZeroTrail.meta.trail_low})`
+  );
+
+  // SHORT recovery with valid existing `trail_low` below seedPrice:
+  //   must preserve Math.min semantic — pick the lower (tighter) of the
+  //   two since SHORT watermark is trail_low.
+  const shortRecoveryValidTightTrail = __test.recoverSimplifiedExitV2RunnerMetaFromQtyReduction({
+    meta: {
+      simplified_exit_v2_enabled: true,
+      trail_low: 150,
+      exit_rules_override: {
+        SL: 0.02, RUNNER_MIN_PROFIT_PCT: 0.01, TRAIL_PCT: 0.005,
+        TP_P1: 0.01, TP_P0_QTY: 0.25, TP_P1_QTY: 0.5,
+      },
+      entry_qty_abs: 10,
+    },
+    positionSide: "SHORT",
+    qtyBase: 5,
+    previousQtyBase: 10,
+    entryPrice: 200,
+    currentMarkPrice: 198,
+    stopOrder: { orderId: "stop-1", stopPrice: "204" },
+    tpOrder: null,
+    observedAtIso: new Date().toISOString(),
+  });
+  assert.ok(shortRecoveryValidTightTrail);
+  assert.strictEqual(
+    shortRecoveryValidTightTrail.meta.trail_low,
+    150,
+    "valid existing trail_low must be kept when it is tighter (lower) than seedPrice"
+  );
+
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
+
   console.log("BINANCE_POSITION_RECONCILER_TEST_OK");
 }
 

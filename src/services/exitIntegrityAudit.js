@@ -117,6 +117,16 @@ function resolveExpectedNativeTrigger({ meta, fallbackExpected } = {}) {
   return Number.isFinite(Number(fallbackExpected)) ? Number(fallbackExpected) : null;
 }
 
+// 2026-04-19 PR #12: same-class boundary-value guard.  trail watermark
+// 은 양수 finite 일 때만 "유효 기준값" 으로 인정한다.  `Number(null)===0`
+// 과 `Number.isFinite(0)===true` 조합이 trailRef=0 을 valid 로 오인해
+// TP1_TRAIL_REF_MISSING 발화를 silently skip 하던 blind spot 을 이 이름
+// 붙은 guard 로 잠근다.  PR #8/#10/#11 과 동일한 계약.
+function isValidTrailReference(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0;
+}
+
 function hasTrackedNativeProtectionMeta(meta) {
   const ctx = meta && typeof meta === "object" ? meta : {};
   const stopOrderId = String(ctx.native_protection_stop_order_id || "").trim();
@@ -226,9 +236,15 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
       }
 
       if (meta.tp_p1_done === true) {
-        const trailRef = internalSide === "SHORT"
-          ? Number(trailSnapshot.trail_low)
-          : Number(trailSnapshot.trail_high);
+        // 2026-04-19 PR #12: `isValidTrailReference` 는 `Number(null)===0`
+        // 과 `Number.isFinite(0)===true` 조합이 trailRef=0 을 valid 로
+        // 오인해 TP1_TRAIL_REF_MISSING 발화를 silently skip 하던 blind
+        // spot 을 막는다.  writer schema (PR #10) 가 0 을 차단하지만 (a)
+        // warn-only 과도기, (b) 과거 Firestore 잔류값까지 여기서 다시
+        // 방어.
+        const trailRefRaw = internalSide === "SHORT"
+          ? trailSnapshot.trail_low
+          : trailSnapshot.trail_high;
         if (meta.trail_active !== true) {
           marketIssues.push(makeIssue({
             symbol: sym,
@@ -237,12 +253,12 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
             detail: "TP1 완료인데 trail_active=false",
           }));
         }
-        if (!Number.isFinite(trailRef)) {
+        if (!isValidTrailReference(trailRefRaw)) {
           marketIssues.push(makeIssue({
             symbol: sym,
             code: "TP1_TRAIL_REF_MISSING",
             severity: "CRIT",
-            detail: "TP1 완료인데 trail 기준값이 없음",
+            detail: "TP1 완료인데 trail 기준값이 없음 (null/0/비양수 포함)",
           }));
         }
       }
@@ -420,5 +436,6 @@ module.exports = {
     normalizeOrderType,
     normalizeOrderTriggerPrice,
     resolveExpectedNativeTrigger,
+    isValidTrailReference,
   },
 };
