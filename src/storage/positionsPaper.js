@@ -5,11 +5,78 @@ const { __test: positionEventTest } = require("./positionEvents");
 const { __test: latestReadModelTest } = require("./positionReadModelLatest");
 const { recordPositionWriterAuthorityEvent } = require("./positionWriterAuthorityEvents");
 const { validatePositionSnapshotTransition } = require("../services/positionStateMachine");
+const {
+  validatePositionMetaPrices,
+  describeViolations: describeMetaPriceViolations,
+} = require("../services/positionMetaSchema");
 const { normalizeTraceContext } = require("../utils/traceContext");
 const { sendAlert } = require("../utils/alerts");
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+// 2026-04-19 PR #10: position meta price schema warn-only observation.
+//
+// 이 validator 는 아직 write 를 막지 않는다 — Cloud Logging 의
+// `position_meta_price_schema_violation` warn 카운트가 0 에 수렴하는
+// 것을 확인한 뒤에야 dev/CI 에서 throw 로 격상한다. 경로는:
+//
+//   1. warn-only (현재)   — 여기서 잡는 모든 위반을 관찰
+//   2. dev/CI throw       — 카운트 0 수렴 후 POSITION_META_PRICE_SCHEMA_STRICT
+//                           로 dev 경로에서 실패로 바꿈
+//   3. prod optional      — prod 런타임에도 optional throw 로 확장
+//
+// 지금 이 지점에서 warn 을 발화해두면 PR #8 (trail_low=0) / PR #9
+// (native_protection_stop_price=null → downstream 에서 0 으로 전락)
+// 같은 class 의 버그가 어느 write path 에서 유입되는지를
+// `mutation_kind + source + reason` 로 근본 위치까지 추적 가능.
+function structuredLog(event, payload = {}, level = "log") {
+  const rec = {
+    event,
+    ts: new Date().toISOString(),
+    ...payload,
+  };
+  const fn = level === "warn" ? "warn" : "log";
+  try {
+    console[fn](JSON.stringify(rec));
+  } catch (_) {
+    console[fn](`[${event}] ${event}`);
+  }
+}
+
+function observeMetaPriceSchema({
+  meta,
+  mutationKind,
+  writerScope,
+  exchange,
+  symbol,
+  source,
+  reason,
+  requestId,
+  traceId,
+  runId,
+} = {}) {
+  // meta 가 object 가 아니면 validator 가 즉시 ok=true 를 돌려주므로
+  // 호출측에서 따로 guard 할 필요 없음. validator 자체가 비싸지 않고
+  // (필드 8개 × hasOwnProperty) write 는 이미 Firestore RTT 를 동반하는
+  // 훨씬 무거운 연산이므로 여기서 분기 타이밍을 아낄 이유도 없다.
+  const res = validatePositionMetaPrices(meta);
+  if (res.ok) return;
+  structuredLog("position_meta_price_schema_violation", {
+    exchange: exchange || null,
+    symbol: symbol || null,
+    mutation_kind: mutationKind || null,
+    writer_scope: writerScope || null,
+    source: source || null,
+    reason: reason || null,
+    request_id: requestId || null,
+    trace_id: traceId || null,
+    run_id: runId || null,
+    violation_n: res.violations.length,
+    violations: res.violations.slice(0, 8), // 8개 필드가 최대이므로 cap
+    summary: describeMetaPriceViolations(res.violations),
+  }, "warn");
 }
 
 function boolEnv(name, fallback = false) {
@@ -746,6 +813,22 @@ async function upsertPosition({
   suppressAuthorityRuntimeFamilyReason = null,
 } = {}) {
   const expectedWriteTokenProvided = Object.prototype.hasOwnProperty.call(arguments[0] || {}, "expectedWriteToken");
+  // PR #10: meta 가격 필드 schema 관찰 (warn-only, throw X).  트랜잭션
+  // 밖에서 한 번만 발화 — 커밋 성공 여부와 무관하게 "writer 가 시도한
+  // intent" 를 관찰하기 위함. 트랜잭션 retry 루프 안에 넣으면 같은
+  // 논리적 intent 가 중복 warn 으로 튀어나와 카운트가 왜곡된다.
+  observeMetaPriceSchema({
+    meta,
+    mutationKind,
+    writerScope: "CORE",
+    exchange,
+    symbol,
+    source,
+    reason,
+    requestId,
+    traceId,
+    runId,
+  });
   return serializePositionMutation({
     exchange,
     symbol,
@@ -891,6 +974,21 @@ async function upsertPositionMetaOnly({
   suppressAuthorityRuntimeFamilyReason = null,
 } = {}) {
   const expectedWriteTokenProvided = Object.prototype.hasOwnProperty.call(arguments[0] || {}, "expectedWriteToken");
+  // PR #10: meta-only 경로는 trail_low / native_protection_stop_price
+  // 등 가격 필드 업데이트가 가장 자주 들어오는 path.  bug class 검출
+  // 밀도가 여기서 가장 높을 것으로 기대됨.  scope = "META".
+  observeMetaPriceSchema({
+    meta,
+    mutationKind,
+    writerScope: "META",
+    exchange,
+    symbol,
+    source,
+    reason,
+    requestId,
+    traceId,
+    runId,
+  });
   return serializePositionMutation({
     exchange,
     symbol,
@@ -1037,5 +1135,7 @@ module.exports = {
     inspectPositionWriterLease,
     forceReleaseStalePositionWriterLease,
     heartbeatPositionWriterLease,
+    observeMetaPriceSchema,
+    structuredLog,
   },
 };
