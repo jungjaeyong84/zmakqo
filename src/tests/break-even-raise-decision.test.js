@@ -1,6 +1,6 @@
 "use strict";
 
-// 2026-04-19 REFACTOR (pure-helper extraction, PR #9):
+// 2026-04-19 REFACTOR (pure-helper extraction, PR #9) + PR #11 ROOT-CAUSE FIX.
 //
 // `computeBreakEvenRaiseDecision` 은 `runTickExitBurst` 의 BE-raise 블록에서
 // "순수 계산" 만 뽑아낸 helper 다. 이 테스트는 추출 전후로 변하면 안 되는
@@ -9,7 +9,11 @@
 //   1) LONG/SHORT 대칭 bePrice 공식 (RUNNER_MIN_PROFIT_PCT 기반)
 //   2) inputs_valid 불변식 — avg/lev/floor 가 모두 finite && > 0 이어야 하고
 //      side 는 LONG/SHORT 중 하나여야 한다
-//   3) currentStop === NaN (=미보호) → 무조건 `shouldRaiseStop === true`
+//   3a) currentStop === NaN/undefined/string → 무조건 `shouldRaiseStop === true`
+//   3b) PR #11: currentStop === null → currentStop=null (미보호) → 무조건 raise
+//       (과거 Number(null)===0 finite 로 전락해 SHORT 가 skip 되던 버그 해소)
+//   3c) PR #11: currentStop <= 0 (모든 형태) → null 정규화 + 무조건 raise
+//   3d) PR #11: positive finite stop 은 그대로 통과 — 과도한 정규화 금지
 //   4) ±1e-9 허용오차 한계 (동일 가격 재-raise 금지)
 //   5) raise 방향 불변식 (LONG: bePrice > currentStop, SHORT: 반대)
 //
@@ -116,28 +120,93 @@ function almostEqual(a, b, eps = 1e-9) {
   }
 }
 
-// ── 3b) 원본 동작 보존: `currentStop = null` 은 `Number(null) === 0` 이 되어
-//   finite 로 평가된다. 이 PR 의 리팩터링은 **동작 보존** 이 목표이므로 0 으로
-//   그대로 통과시킨다. (이 경계값 자체의 의미론적 버그 — SHORT 에서
-//   `bePrice < 0 - 1e-9` 가 영영 false 가 되어 raise 가 skip 됨 — 은 PR #8
-//   의 trail watermark zero-bootstrap 과 같은 클래스이며 후속 PR 에서 별도로
-//   schema 단계에서 차단될 예정이다. 이 테스트는 그 버그가 아직 존재한다는
-//   사실을 명시적으로 "pin" 해서 리팩터링이 동작을 바꾸지 않았음을 입증한다.)
+// ── 3b) PR #11 UNPIN: `currentStop === null` 은 `Number(null) === 0` 으로
+//   전락하던 과거 동작이 SHORT 에서 `bePrice < 0 - 1e-9` 거짓 → raise skip
+//   버그를 냈다.  PR #11 은 `stop<=0` 을 "미보호" (NaN 등가) 로 coerce 해
+//   LONG/SHORT 모두 `shouldRaiseStop === true` 가 되도록 근본을 바꾼다.
+//   `currentStop` 결과 필드도 null (=미보호) 로 돌려준다.
 {
   const resLong = compute({ side: "LONG", avgPrice: 100, leverage: 2, floorPct: 0.01, currentStop: null });
-  assert.strictEqual(resLong.currentStop, 0, "Number(null) === 0 은 finite 로 취급 — 원본 동작 보존");
+  assert.strictEqual(
+    resLong.currentStop,
+    null,
+    "PR #11: currentStop=null 은 '미보호' 로 정규화되어 결과도 null"
+  );
   assert.strictEqual(
     resLong.shouldRaiseStop,
     true,
-    "LONG 은 bePrice(>0) > 0 + 1e-9 이라 raise 가 fire — 원본 동작과 동일"
+    "LONG unprotected → 무조건 raise (PR #11 이전부터 맞게 동작하던 케이스)"
   );
   const resShort = compute({ side: "SHORT", avgPrice: 100, leverage: 2, floorPct: 0.01, currentStop: null });
-  assert.strictEqual(resShort.currentStop, 0);
+  assert.strictEqual(
+    resShort.currentStop,
+    null,
+    "PR #11: SHORT 도 null-stop → currentStop=null (미보호)"
+  );
   assert.strictEqual(
     resShort.shouldRaiseStop,
-    false,
-    "SHORT 경계값 버그(pin): bePrice(>0) < 0 - 1e-9 는 거짓이라 raise 가 skip — 원본 동작과 동일. 후속 PR 에서 schema 단계에서 차단될 예정."
+    true,
+    "PR #11 ROOT-CAUSE FIX: SHORT null-stop 은 이제 무조건 raise (과거 skip 이 정상화)"
   );
+}
+
+// ── 3c) PR #11 신규 pin: `currentStop <= 0` 의 모든 형태가 "미보호" 로
+//   정규화되어야 한다.  역사적으로 Firestore 잔류값 / `Number(null)===0`
+//   / 잘못된 write 경로에서 0 이나 음수가 흘러들어온 전례가 있다.
+//   이 테스트는 그 모든 경로가 동일하게 raise 로 결정되는지를 잠근다.
+{
+  for (const stopCandidate of [0, -0, -1, -1e-9, Number.NEGATIVE_INFINITY]) {
+    const resLong = compute({
+      side: "LONG",
+      avgPrice: 100,
+      leverage: 2,
+      floorPct: 0.01,
+      currentStop: stopCandidate,
+    });
+    assert.strictEqual(
+      resLong.currentStop,
+      null,
+      `LONG stopCandidate=${String(stopCandidate)} → currentStop null (미보호 정규화)`
+    );
+    assert.strictEqual(
+      resLong.shouldRaiseStop,
+      true,
+      `LONG stopCandidate=${String(stopCandidate)} → 무조건 raise`
+    );
+    const resShort = compute({
+      side: "SHORT",
+      avgPrice: 100,
+      leverage: 2,
+      floorPct: 0.01,
+      currentStop: stopCandidate,
+    });
+    assert.strictEqual(
+      resShort.currentStop,
+      null,
+      `SHORT stopCandidate=${String(stopCandidate)} → currentStop null`
+    );
+    assert.strictEqual(
+      resShort.shouldRaiseStop,
+      true,
+      `SHORT stopCandidate=${String(stopCandidate)} → 무조건 raise (PR #11 이 잠근 root-cause 수정)`
+    );
+  }
+}
+
+// ── 3d) PR #11 회귀 방지: 양수 finite stop 은 여전히 있는 그대로 통과해야
+//   한다.  "모든 것을 미보호 로 취급" 하면 안 되므로 명시적으로 pin.
+{
+  const res = compute({
+    side: "SHORT",
+    avgPrice: 100,
+    leverage: 2,
+    floorPct: 0.01,
+    currentStop: 105,
+  });
+  assert.strictEqual(res.currentStop, 105,
+    "positive finite stop 은 그대로 통과 — '미보호 정규화' 가 과도하게 작동하지 않음");
+  assert.strictEqual(res.shouldRaiseStop, true,
+    "105 > bePrice(99.5) + 1e-9 → SHORT raise");
 }
 
 // ── 4a) ±1e-9 허용오차: 같은 가격 재-raise 금지 (LONG) ──────────────────
