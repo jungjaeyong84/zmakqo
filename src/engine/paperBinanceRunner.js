@@ -2416,6 +2416,43 @@ async function repairActivePositionExitRuntimeState({
 
   const fallbackSide = String(positionSide || "").toUpperCase() === "SHORT" ? "SELL" : "BUY";
   if (liveCfg && liveCfg.apiKey && liveCfg.apiSecret && Number.isFinite(Number(entryPrice)) && Number(entryPrice) > 0) {
+    // 2026-04-19 ETHUSDT 20-minute blackout fix: when the current meta
+    // already indicates the native stop is MISSING (either by
+    // `native_protection_refresh_status === "MISSING"` or by the
+    // projection invariant list containing "NATIVE_STOP_MISSING"),
+    // escalate the dispatch to `executeImmediately: true` so the exit
+    // worker hits `/run-execute` (synchronous; worker holds the HTTP
+    // connection, so Cloud Run keeps the container's CPU allocated for
+    // the full burst) instead of `/run` (fire-and-forget; the outer
+    // response returns immediately and the inner self-fetch can be
+    // starved of CPU under Cloud Run's throttling once the outer
+    // response closes).
+    //
+    // Observed failure: ETHUSDT entered LONG at 11:15:23Z with only a
+    // partial fill (qty=0.864 of 1.0 requested) because the
+    // market-fallback leg hit `code=-2019 "Margin is insufficient"`.
+    // The resulting position had no native STOP on the exchange. The
+    // 2-minute periodic repair triggers all dispatched via `/run`, but
+    // the refresh step never appeared in logs — 20 minutes elapsed
+    // before a manual `/run-execute` synchronously placed the stop
+    // (stop_id=4000001120399692, refresh_status=OK). Escalating the
+    // repair path to `executeImmediately: true` closes that gap:
+    // whenever we know the stop is already missing, we cannot afford
+    // the fire-and-forget path.
+    //
+    // Non-missing refreshes (e.g. routine BE-raise during TP1) still
+    // use the cheaper `/run` path — they're re-triggered every tick,
+    // so occasional fire-and-forget loss is benign.
+    const refreshStatusRaw = String(metaSafe.native_protection_refresh_status || "")
+      .trim()
+      .toUpperCase();
+    const invariants = Array.isArray(metaSafe.exchange_projection_invariants)
+      ? metaSafe.exchange_projection_invariants
+      : [];
+    const stopMissing =
+      refreshStatusRaw === "MISSING"
+      || refreshStatusRaw === "FAILED"
+      || invariants.includes("NATIVE_STOP_MISSING");
     try {
       await requestBinanceNativeProtectionRefresh({
         exchange,
@@ -2430,6 +2467,7 @@ async function repairActivePositionExitRuntimeState({
           ? "NON_AUTHORITY_LAYER_WRITE_DOWNGRADED_TO_REPAIR_REQUEST"
           : "NON_AUTHORITY_LAYER_REQUEST",
         dispatchReason: `ACTIVE_POSITION_EXIT_RUNTIME_REPAIR_NATIVE_STOP_REFRESH_${String(exchange || "").toUpperCase()}_${String(symbol || "").toUpperCase()}`,
+        executeImmediately: stopMissing,
       });
       nextMeta = mergeMeta(nextMeta, {
         native_protection_refresh_status: "REPAIR_REQUESTED_NON_AUTHORITY_LAYER",
@@ -2439,6 +2477,18 @@ async function repairActivePositionExitRuntimeState({
         native_protection_refresh_at_ms: Date.now(),
         native_protection_refresh_requested_at_ms: Date.now(),
       });
+      try {
+        console.log(JSON.stringify({
+          event: "active_position_exit_runtime_repair_dispatched",
+          ts: new Date().toISOString(),
+          exchange: String(exchange || "").toUpperCase(),
+          symbol: String(symbol || "").toUpperCase(),
+          execute_immediately: stopMissing === true,
+          stop_missing: stopMissing === true,
+          prior_refresh_status: refreshStatusRaw || null,
+          prior_invariants: invariants,
+        }));
+      } catch (_) {}
     } catch (_) {}
   }
   return nextMeta;
