@@ -298,15 +298,35 @@ function recoverSimplifiedExitV2RunnerMetaFromQtyReduction({
   const seedPrice = (Number.isFinite(markNum) && markNum > 0)
     ? markNum
     : ((Number.isFinite(entryNum) && entryNum > 0) ? entryNum : null);
-  const seededTrailHigh = sideUpper === "LONG" && Number.isFinite(seedPrice) && seedPrice > 0
-    ? Math.max(toNum(baseMeta.trail_high) ?? 0, seedPrice)
+  // 2026-04-19 PR #12 same-class boundary fix (SHORT trail_low=0 seeding):
+  //
+  // 과거 구현은 `Number.isFinite(toNum(baseMeta.trail_low))` 로 기존
+  // watermark 유효성을 판단했는데, `baseMeta.trail_low === null` 이면
+  // `toNum(null) === 0` 이 되어 finite 로 통과하고, 이어지는
+  // `Math.min(0, seedPrice) === 0` 이 SHORT 포지션의 trail_low 를 영
+  // 으로 seed 해버린다.  이는 정확히 PR #8 이 막았던 "SHORT trail_low=0
+  // 상태에서 price < prevLow 가드가 영영 false" 재-도입 경로.
+  //
+  // writer-side (PR #10 schema) + read-side (PR #11 BE-raise) 와 같은
+  // 패턴으로, **양수 finite 만 기존 watermark 로 인정** 하도록 수정.
+  // 0/null/NaN 이면 seedPrice 로 새로 출발 — PR #8 의 helper 와 동일한
+  // "prev<=0 은 uninitialized 취급" 원칙.
+  const existingTrailHigh = toNum(baseMeta.trail_high);
+  const existingTrailLow = toNum(baseMeta.trail_low);
+  const existingTrailHighValid = Number.isFinite(existingTrailHigh) && existingTrailHigh > 0;
+  const existingTrailLowValid = Number.isFinite(existingTrailLow) && existingTrailLow > 0;
+  const seedPriceValid = Number.isFinite(seedPrice) && seedPrice > 0;
+  // "내 side" 분기는 same-class 버그 수정 대상 — 양수 finite 기존값만
+  // 유효로 인정.  "반대 side" 분기는 기존값을 그대로 보존 (blast radius
+  // 최소화 — 이 리코실 호출은 주로 post-TP1 recovery 경로라 반대 side
+  // watermark 는 원래 쓰이지 않는다).
+  const seededTrailHigh = sideUpper === "LONG" && seedPriceValid
+    ? (existingTrailHighValid ? Math.max(existingTrailHigh, seedPrice) : seedPrice)
     : (baseMeta.trail_high ?? null);
-  const seededTrailLow = sideUpper === "SHORT" && Number.isFinite(seedPrice) && seedPrice > 0
-    ? (Number.isFinite(toNum(baseMeta.trail_low))
-      ? Math.min(toNum(baseMeta.trail_low), seedPrice)
-      : seedPrice)
+  const seededTrailLow = sideUpper === "SHORT" && seedPriceValid
+    ? (existingTrailLowValid ? Math.min(existingTrailLow, seedPrice) : seedPrice)
     : (baseMeta.trail_low ?? null);
-  const seededTrailAtMs = (Number.isFinite(seedPrice) && seedPrice > 0)
+  const seededTrailAtMs = seedPriceValid
     ? Date.now()
     : (baseMeta.trail_high_at_ms || baseMeta.trail_low_at_ms || null);
 
