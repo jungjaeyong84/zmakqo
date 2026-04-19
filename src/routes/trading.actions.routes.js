@@ -4,7 +4,13 @@ const { normalizeMarketSymbolForProvider, tfToMs, defaultExecTfFromEnv } = requi
 const { normalizeProviderId } = require("../utils/providerUtils");
 const { fetchCandles } = require("../exchanges");
 const { getPosition } = require("../storage/positions");
-const { getPosition: getPaperPosition, upsertPosition: upsertPaperPosition, runWithPositionWriterLease } = require("../storage/positionsPaper");
+const {
+  getPosition: getPaperPosition,
+  upsertPosition: upsertPaperPosition,
+  runWithPositionWriterLease,
+  inspectPositionWriterLease,
+  forceReleaseStalePositionWriterLease,
+} = require("../storage/positionsPaper");
 const { upsertIntent, cancelPendingIntentsByMarket } = require("../storage/orderIntentsPaper");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { getPositionRuntimeObservation, resolveTrailObservationSnapshot } = require("../storage/positionRuntimeObservations");
@@ -714,6 +720,89 @@ function createTradingActionsRoutes() {
       return res.status(500).json({
         ok: false,
         error: "SYNC_FUTURES_LIVE_STATE_FAILED",
+        message: String(err && err.message ? err.message : err),
+      });
+    }
+  });
+
+  // 2026-04-18 P0-3: position-writer lease inspect + force-release admin surface.
+  //
+  // When a Cloud Run instance dies mid-mutation, the Firestore lease doc
+  // retains `owner` set until `lease_until_ms` (15s TTL) elapses. 99% of
+  // the time the TTL is sufficient. These endpoints give operators an
+  // explicit surface for the 1% — inspect the current lease, and (for
+  // stuck leases) force-release so a fresh writer can proceed.
+  //
+  //   GET  /api/trading/admin/position-writer-lease?exchange=&market=
+  //   POST /api/trading/admin/position-writer-lease/force-release
+  //     body: { exchange, market, force?: bool, min_stale_ms?: number }
+  //
+  // `force: true` bypasses the "only-if-stale" guard and should be used
+  // with care — it will cut an actively-heartbeating lease if invoked
+  // during a real writer run. Without `force`, the endpoint only clears
+  // a lease that is already past `lease_until_ms + min_stale_ms`
+  // (default: 1×TTL beyond expiry, i.e. ~15s of confirmed staleness).
+  router.get("/api/trading/admin/position-writer-lease", ensureAuthOrSchedulerToken, async (req, res) => {
+    try {
+      const providerRaw = req.query.provider || req.query.exchange || "BINANCEFUT";
+      const exchange = normalizeProviderId(providerRaw || "BINANCEFUT");
+      const rawMarket = String(req.query.market || req.query.symbol || "").trim();
+      if (!rawMarket) {
+        return res.status(400).json({ ok: false, error: "MARKET_REQUIRED" });
+      }
+      const exCfg = await getExchangeSettingsForProvider(exchange, 2000);
+      const market = normalizeMarketSymbolForProvider(rawMarket, exchange);
+      const markets = Array.isArray(exCfg && exCfg.markets) ? exCfg.markets : [];
+      if (!market || (markets.length && !markets.includes(market))) {
+        return res.status(400).json({ ok: false, error: "MARKET_NOT_ALLOWED" });
+      }
+      const lease = await inspectPositionWriterLease({ exchange, symbol: market });
+      return res.json({ ok: true, lease });
+    } catch (err) {
+      return res.status(500).json({
+        ok: false,
+        error: "POSITION_WRITER_LEASE_INSPECT_FAILED",
+        message: String(err && err.message ? err.message : err),
+      });
+    }
+  });
+
+  router.post("/api/trading/admin/position-writer-lease/force-release", ensureAuthOrSchedulerToken, async (req, res) => {
+    try {
+      const body = req.body || {};
+      const providerRaw = body.provider || body.exchange || req.query.provider || req.query.exchange || "BINANCEFUT";
+      const exchange = normalizeProviderId(providerRaw || "BINANCEFUT");
+      const rawMarket = String(body.market || body.symbol || req.query.market || req.query.symbol || "").trim();
+      if (!rawMarket) {
+        return res.status(400).json({ ok: false, error: "MARKET_REQUIRED" });
+      }
+      const exCfg = await getExchangeSettingsForProvider(exchange, 2000);
+      const market = normalizeMarketSymbolForProvider(rawMarket, exchange);
+      const markets = Array.isArray(exCfg && exCfg.markets) ? exCfg.markets : [];
+      if (!market || (markets.length && !markets.includes(market))) {
+        return res.status(400).json({ ok: false, error: "MARKET_NOT_ALLOWED" });
+      }
+      const force = body.force === true || String(body.force || "").toLowerCase() === "true";
+      const minStaleMsRaw = body.min_stale_ms ?? body.minStaleMs;
+      const minStaleMs = Number.isFinite(Number(minStaleMsRaw)) && Number(minStaleMsRaw) >= 0
+        ? Number(minStaleMsRaw)
+        : undefined; // fall through to helper default
+      const actor = (req.user && (req.user.email || req.user.id))
+        || req.get("x-actor")
+        || "scheduler";
+      const result = await forceReleaseStalePositionWriterLease({
+        exchange,
+        symbol: market,
+        force,
+        minStaleMs,
+        actor,
+      });
+      const status = result && result.released === false && result.reason === "LEASE_NOT_STALE" ? 409 : 200;
+      return res.status(status).json(result);
+    } catch (err) {
+      return res.status(500).json({
+        ok: false,
+        error: "POSITION_WRITER_LEASE_FORCE_RELEASE_FAILED",
         message: String(err && err.message ? err.message : err),
       });
     }

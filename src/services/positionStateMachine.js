@@ -117,10 +117,85 @@ function ratioToPctToken(rawRatio) {
   return trimPctToken(Math.abs(n) * 100);
 }
 
+// 2026-04-18 P2-2 (audit re-verified): legacy TP0 events flowing into
+// `classifyExitEventStage` are silently remapped to the TP1 stage. That
+// made "TP0 event was observed" impossible to see at the live namespace
+// layer — callers downstream receive only "stage=TP1". The legacy
+// canonical transition / backfill scripts depend on this remap so we
+// keep `classifyExitEventStage` untouched (regression guard: the exact
+// mapping was in place before the 2026-02 simplified-exit v2 cutover and
+// still anchors historical records). `classifyExitEventStageLiveNamespace`
+// preserves TP0 as "TP0" so live-flow code can classify, log, or reject
+// it explicitly. A per-run counter + recent-set surfaces occurrences.
+const legacyTp0LiveNamespaceObservations = {
+  count: 0,
+  recentEvents: [],
+  recentSymbols: [],
+};
+function recordLegacyTp0LiveNamespaceObservation({ event = null, symbol = null } = {}) {
+  legacyTp0LiveNamespaceObservations.count += 1;
+  const ev = toUpper(event, null);
+  if (ev && legacyTp0LiveNamespaceObservations.recentEvents.indexOf(ev) === -1) {
+    legacyTp0LiveNamespaceObservations.recentEvents.push(ev);
+    if (legacyTp0LiveNamespaceObservations.recentEvents.length > 16) {
+      legacyTp0LiveNamespaceObservations.recentEvents.shift();
+    }
+  }
+  const sym = toUpper(symbol, null);
+  if (sym && legacyTp0LiveNamespaceObservations.recentSymbols.indexOf(sym) === -1) {
+    legacyTp0LiveNamespaceObservations.recentSymbols.push(sym);
+    if (legacyTp0LiveNamespaceObservations.recentSymbols.length > 16) {
+      legacyTp0LiveNamespaceObservations.recentSymbols.shift();
+    }
+  }
+  try {
+    console.warn("[LEGACY_TP0_LIVE_NAMESPACE]", JSON.stringify({
+      event: "legacy_tp0_event_observed_in_live_namespace",
+      exit_event: ev,
+      symbol: sym,
+    }));
+  } catch (_) { /* never let diagnostic kill the caller */ }
+}
+function getLegacyTp0LiveNamespaceObservations() {
+  return {
+    count: legacyTp0LiveNamespaceObservations.count,
+    recentEvents: legacyTp0LiveNamespaceObservations.recentEvents.slice(),
+    recentSymbols: legacyTp0LiveNamespaceObservations.recentSymbols.slice(),
+  };
+}
+function resetLegacyTp0LiveNamespaceObservationsForTest() {
+  legacyTp0LiveNamespaceObservations.count = 0;
+  legacyTp0LiveNamespaceObservations.recentEvents.length = 0;
+  legacyTp0LiveNamespaceObservations.recentSymbols.length = 0;
+}
+
 function classifyExitEventStage(event) {
   const ev = toUpper(event, null);
   if (!ev) return null;
   if (ev.startsWith("EXIT_TP_P0")) return "TP1";
+  if (ev.startsWith("EXIT_TP_P1") || ev.startsWith("EXIT_TP_C")) return "TP1";
+  if (ev.startsWith("EXIT_TRAIL")) return "TRAIL";
+  if (ev.startsWith("EXIT_SL")) return "SL";
+  if (ev === "FORCE_EXIT_ALL" || ev === "EXIT_ALL" || ev === "EXIT_FORCE_ALL") return "FORCE_EXIT_ALL";
+  if (ev === "FORCE_EXIT_HALF") return "FORCE_EXIT_HALF";
+  if (ev.startsWith("EXIT_")) return "OTHER_EXIT";
+  return null;
+}
+
+// 2026-04-18 P2-2 (audit re-verified): live-namespace-aware variant of
+// `classifyExitEventStage` that preserves TP0 so the live flow can tell
+// a true TP0 event apart from a TP1 event. When `observe` is true
+// (default), every time a legacy TP0 event is seen we bump a counter
+// and emit a structured warn — this lets ops quantify how often the
+// legacy TP0 path still fires in production without flipping the
+// behavior of backfill scripts that depend on the old remap.
+function classifyExitEventStageLiveNamespace(event, { observe = true, symbol = null } = {}) {
+  const ev = toUpper(event, null);
+  if (!ev) return null;
+  if (ev.startsWith("EXIT_TP_P0")) {
+    if (observe) recordLegacyTp0LiveNamespaceObservation({ event: ev, symbol });
+    return "TP0";
+  }
   if (ev.startsWith("EXIT_TP_P1") || ev.startsWith("EXIT_TP_C")) return "TP1";
   if (ev.startsWith("EXIT_TRAIL")) return "TRAIL";
   if (ev.startsWith("EXIT_SL")) return "SL";
@@ -1035,6 +1110,9 @@ module.exports = {
   CANONICAL_CHAIN_KEY_CONFIDENCE,
   buildCanonicalExitEvent,
   classifyExitEventStage,
+  classifyExitEventStageLiveNamespace,
+  getLegacyTp0LiveNamespaceObservations,
+  resetLegacyTp0LiveNamespaceObservationsForTest,
   resolveStoredCanonicalExitStage,
   __test: {
     normalizeSnapshot,

@@ -38,6 +38,11 @@ const { sendAlert } = require("../utils/alerts");
 const { runActionPreHooks, runActionPostHooks, emitActionEvent } = require("../utils/actionExecutionHooks");
 const { auditBinanceExitIntegrity } = require("./exitIntegrityAudit");
 const { runBinanceLiveStateSelfHeal } = require("./binanceLiveStateSelfHeal");
+const { BINANCE_NATIVE_STOP_WRITER_SOURCE } = require("../utils/binanceNativeProtectionWriter");
+const {
+  withTransientFirestoreRetry,
+  isTransientFirestoreError,
+} = require("../utils/firestoreRetry");
 const { recordExitRepairRequest } = require("../storage/exitRepairRequests");
 const { triggerExitWorkerRun } = require("./exitWorkerClient");
 const { getPositionReadView, getPositionReadViewsBySymbols } = require("./positionReadModel");
@@ -160,6 +165,42 @@ function resolveRunnerStageState(position = null) {
     canonicalStage,
     tpP1Done: hasCanonicalTpP1Reached(canonicalStage),
     trailStage: isCanonicalTrailStage(canonicalStage),
+  };
+}
+
+// 2026-04-18 P0-1 (audit re-verified): build observability fields for
+// `tick_exit_tp1_break_even_stop_{raised,decision}` from a refresh result.
+// The historical `refresh_ok` flag flipped to true on Binance order
+// placement alone, even when the subsequent
+// `syncFuturesPositionOnly`/`syncNativeProtectionMetaAfterRefresh` steps
+// failed — so a log line claiming `refresh_ok: true` could coexist with
+// `refresh_status: MISSING` on the reconciler and actually-unprotected
+// exchange state. `refresh_synced_ok` is the composite dashboards should
+// read: it ANDs placement + post-refresh Firestore sync + meta sync. The
+// individual `*_ok`/`*_error` fields let operators localize which step
+// failed when the composite flips false.
+function buildBreakEvenStopRefreshObservability(refreshResult = null) {
+  const hasResult = refreshResult && typeof refreshResult === "object";
+  const placementOk = !!(hasResult && refreshResult.ok === true);
+  const syncOk = hasResult ? refreshResult.sync_after_refresh_ok === true : null;
+  const metaOk = hasResult ? refreshResult.meta_after_refresh_ok === true : null;
+  const syncedOk = hasResult ? (placementOk && syncOk === true && metaOk === true) : null;
+  const asTrimmedStringOrNull = (v) => {
+    if (v == null) return null;
+    const s = String(v);
+    return s ? s.slice(0, 200) : null;
+  };
+  return {
+    refresh_ok: hasResult ? placementOk : null,
+    refresh_reason: hasResult && refreshResult.reason ? String(refreshResult.reason) : null,
+    refresh_synced_ok: syncedOk,
+    sync_after_refresh_ok: syncOk,
+    sync_after_refresh_error: asTrimmedStringOrNull(hasResult ? refreshResult.sync_after_refresh_error : null),
+    meta_after_refresh_ok: metaOk,
+    meta_after_refresh_error: asTrimmedStringOrNull(hasResult ? refreshResult.meta_after_refresh_error : null),
+    observed_stop_order_id: hasResult && refreshResult.stop_order_id
+      ? String(refreshResult.stop_order_id)
+      : null,
   };
 }
 
@@ -358,7 +399,12 @@ const TICK_EXIT_NATIVE_PROTECTION_VERIFY_TTL_MS = normalizeIntervalMs(process.en
 const TICK_EXIT_NATIVE_PROTECTION_REFRESH_COOLDOWN_MS = normalizeIntervalMs(process.env.TICK_EXIT_NATIVE_PROTECTION_REFRESH_COOLDOWN_MS, 3000);
 const TICK_EXIT_HARD_EXIT_COOLDOWN_MS = normalizeIntervalMs(process.env.TICK_EXIT_HARD_EXIT_COOLDOWN_MS, 60000);
 const BINANCE_LIVE_STATE_SELF_HEAL_COOLDOWN_MS = normalizeIntervalMs(process.env.BINANCE_LIVE_STATE_SELF_HEAL_COOLDOWN_MS, 5 * 60 * 1000);
-const BINANCE_TICK_EXIT_STOP_WRITER = "BINANCE_TICK_EXIT";
+// 2026-04-18 P1-1: single-source-of-truth for the native-stop writer
+// identifier. See `src/utils/binanceNativeProtectionWriter.js`. The
+// previous local const `BINANCE_TICK_EXIT_STOP_WRITER = "BINANCE_TICK_EXIT"`
+// was a string literal duplicated with `paperBinanceRunner.js` — one
+// rename on either side would silently break the authority gate.
+const BINANCE_TICK_EXIT_STOP_WRITER = BINANCE_NATIVE_STOP_WRITER_SOURCE;
 let lastTickExitSelfHealAt = 0;
 
 function resolveTfFromMsLocal(ms) {
@@ -2305,6 +2351,20 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
         let _decisionStage = "INPUT_INVALID";
         let _beRefreshRes = null;
         let _beError = null;
+        let _beErrorStack = null;
+        // 2026-04-19: transient-Firestore retry context for the BE-raise path.
+        // Production surfaced two consecutive BE-raise failures on the same
+        // BTCUSDT SHORT position (19:20 `10 ABORTED` contention; 20:17
+        // `14 UNAVAILABLE` TLS drop), both before `refreshBinanceNative
+        // ProtectionWithRetry` could return a structured result — so the
+        // P0-1 observability logged `refresh_ok: null`. Both failure classes
+        // are standard transient Firestore infra errors that the client
+        // SDK expects callers to retry. Context object below captures the
+        // retry stats from `withTransientFirestoreRetry` so the decision
+        // log can report `firestore_retry_attempts` / `firestore_retry_
+        // terminal_code` — operators can now tell "retry worked" from
+        // "retry exhausted" from "non-transient failure" at a glance.
+        const _beRetryCtx = { attempts: 0, terminalCode: null, exhausted: false, transient: false };
         try {
           _beSide = resolvePositionSideFromPosition(pos, _tMeta, "LONG");
           const _beRules = resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: pos });
@@ -2337,14 +2397,51 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
             _decisionStage = _cooldownPassed ? "REFRESH_DISPATCHED" : "COOLDOWN_HELD";
           }
           if (_decisionStage === "REFRESH_DISPATCHED") {
-            const _beLiveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol });
-            _beRefreshRes = await refreshBinanceTickExitNativeProtection({
-              liveCfg: _beLiveCfg,
-              exchange: "BINANCEFUT",
-              symbol,
-              position: pos,
-              fallbackSide: _beSide === "SHORT" ? "SELL" : "BUY",
-            });
+            // `resolveLiveFuturesConfig` is a pure Firestore read — safe to
+            // retry unconditionally.
+            const _beLiveCfg = await withTransientFirestoreRetry(
+              () => resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol }),
+              { context: _beRetryCtx }
+            );
+            // `refreshBinanceTickExitNativeProtection` is safe to retry on
+            // transient-Firestore throws because:
+            //   (1) order placement only happens AFTER lease acquisition
+            //       and BEFORE any return — if this function throws, no
+            //       exchange side-effect has been committed;
+            //   (2) exchange-level failures return a structured result
+            //       (`{ ok: false, reason: ... }`) rather than throw, so
+            //       they never enter the retry branch;
+            //   (3) the lease itself is idempotent under the same holderId.
+            // If any of those invariants change, revisit this wrapping
+            // before trusting retries here.
+            const _beRefreshRetryCtx = { attempts: 0, terminalCode: null, exhausted: false, transient: false };
+            _beRefreshRes = await withTransientFirestoreRetry(
+              () => refreshBinanceTickExitNativeProtection({
+                liveCfg: _beLiveCfg,
+                exchange: "BINANCEFUT",
+                symbol,
+                position: pos,
+                fallbackSide: _beSide === "SHORT" ? "SELL" : "BUY",
+              }),
+              { context: _beRefreshRetryCtx }
+            );
+            // Roll up into a single retry context for the decision log —
+            // pick the "worse" outcome (higher attempt count wins; exhausted
+            // beats not-exhausted) so one log line captures the full cost.
+            if (_beRefreshRetryCtx.attempts > _beRetryCtx.attempts) {
+              _beRetryCtx.attempts = _beRefreshRetryCtx.attempts;
+              _beRetryCtx.terminalCode = _beRefreshRetryCtx.terminalCode;
+              _beRetryCtx.transient = _beRefreshRetryCtx.transient;
+            }
+            if (_beRefreshRetryCtx.exhausted) _beRetryCtx.exhausted = true;
+            // 2026-04-18 P0-1 (audit re-verified): the original log emitted
+            // only `refresh_ok` + `refresh_reason`, both of which flipped to
+            // true as soon as Binance accepted the stop order — even when
+            // `syncFuturesPositionOnly`/`syncNativeProtectionMetaAfterRefresh`
+            // subsequently failed and the reconciler later re-marked the
+            // position as MISSING. Dashboards should read `refresh_synced_ok`
+            // (composite: placement + sync + meta) instead of `refresh_ok`
+            // (placement only). See `buildBreakEvenStopRefreshObservability`.
             structuredLog("tick_exit_tp1_break_even_stop_raised", {
               exchange: "BINANCEFUT",
               symbol: String(symbol).toUpperCase(),
@@ -2354,17 +2451,41 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
               be_price: _bePrice,
               floor_pct: _beFloorPct,
               trail_enabled: _trailEnabled === true,
-              refresh_ok: !!(_beRefreshRes && _beRefreshRes.ok === true),
-              refresh_reason: _beRefreshRes && _beRefreshRes.reason ? String(_beRefreshRes.reason) : null,
+              ...buildBreakEvenStopRefreshObservability(_beRefreshRes),
             });
           }
         } catch (_beErr) {
           _beError = String(_beErr && _beErr.message || _beErr).slice(0, 200);
+          _beErrorStack = String(_beErr && _beErr.stack || "").slice(0, 500);
           _decisionStage = "ERROR";
+          // 2026-04-19: if the thrown error carries retry-augmented metadata,
+          // roll it into `_beRetryCtx`. This covers the case where the throw
+          // originated *inside* `withTransientFirestoreRetry` — the helper
+          // stamps `firestore_retry_*` fields on the error. Be defensive:
+          // take the max attempts across call sites so we report the worst
+          // outcome seen during this BE-raise cycle.
+          if (_beErr && typeof _beErr === "object") {
+            const _rAttempts = Number(_beErr.firestore_retry_attempts);
+            if (Number.isFinite(_rAttempts) && _rAttempts > _beRetryCtx.attempts) {
+              _beRetryCtx.attempts = _rAttempts;
+              _beRetryCtx.terminalCode = _beErr.firestore_retry_terminal_code != null
+                ? _beErr.firestore_retry_terminal_code
+                : _beRetryCtx.terminalCode;
+              _beRetryCtx.transient = _beErr.firestore_retry_transient === true
+                ? true
+                : _beRetryCtx.transient;
+            }
+            if (_beErr.firestore_retry_exhausted === true) _beRetryCtx.exhausted = true;
+          }
           structuredLog("tick_exit_tp1_break_even_stop_error", {
             exchange: "BINANCEFUT",
             symbol: String(symbol).toUpperCase(),
             error: _beError,
+            error_stack: _beErrorStack,
+            firestore_retry_attempts: _beRetryCtx.attempts,
+            firestore_retry_terminal_code: _beRetryCtx.terminalCode,
+            firestore_retry_exhausted: _beRetryCtx.exhausted,
+            firestore_retry_transient: _beRetryCtx.transient,
           }, "warn");
         }
         // Always-on decision trace — bounded to TP1-done positions, so
@@ -2375,6 +2496,11 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
         // diagnostic trail survives Firestore contention / egress timeouts
         // that previously swallowed the log entirely.
         try {
+          // 2026-04-18 P0-1 (audit re-verified): mirror enriched observability
+          // fields so the always-on decision trace answers "did protection
+          // actually become consistent?" without needing to join across
+          // streams. `refresh_synced_ok` is the composite; `refresh_ok`
+          // remains the placement-only field for backwards compatibility.
           structuredLog("tick_exit_tp1_break_even_stop_decision", {
             exchange: "BINANCEFUT",
             symbol: String(symbol).toUpperCase(),
@@ -2390,9 +2516,20 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
             should_raise_stop: _shouldRaiseStop === true,
             cooldown_passed: _cooldownPassed,
             decision_stage: _decisionStage,
-            refresh_ok: _beRefreshRes ? _beRefreshRes.ok === true : null,
-            refresh_reason: _beRefreshRes && _beRefreshRes.reason ? String(_beRefreshRes.reason) : null,
+            ...buildBreakEvenStopRefreshObservability(_beRefreshRes),
             error: _beError,
+            // 2026-04-19: surface transient-Firestore retry stats so a
+            // single decision-trace line answers "did a retry save us?" /
+            // "did we give up?" / "was this a non-transient business error?".
+            // `attempts === 1` + `decision_stage: REFRESH_DISPATCHED` is the
+            // healthy path. `attempts > 1` means we recovered a transient.
+            // `exhausted: true` + `ERROR` means we burned the retry budget
+            // and the position is still at the original SL.
+            error_stack: _beErrorStack,
+            firestore_retry_attempts: _beRetryCtx.attempts,
+            firestore_retry_terminal_code: _beRetryCtx.terminalCode,
+            firestore_retry_exhausted: _beRetryCtx.exhausted,
+            firestore_retry_transient: _beRetryCtx.transient,
           });
         } catch (_decisionErr) { /* never let diagnostic kill the tick */ }
       }
@@ -3558,6 +3695,7 @@ module.exports = {
     buildTickTrailObservationDocUpdate,
     buildTickTrailReconcileRunId,
     buildBinanceTickExitNativeProtectionRefreshArgs,
+    buildBreakEvenStopRefreshObservability,
     refreshBinanceTickExitNativeProtection,
     syncTickExitTrailObservation,
     runTickExitSelfHealPhase,

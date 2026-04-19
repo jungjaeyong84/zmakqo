@@ -46,6 +46,10 @@ const {
 } = require("../services/simplifiedExitV2");
 const { getPositionReadView, listExchangePositionReadViews } = require("../services/positionReadModel");
 const { resolveBinanceFuturesKeys } = require("../utils/binanceKeyResolver");
+const {
+  BINANCE_NATIVE_STOP_WRITER_SOURCE,
+  isBinanceNativeStopWriterSource,
+} = require("../utils/binanceNativeProtectionWriter");
 const { normalizePositionSide } = require("../utils/positionSide");
 const {
   resolveEntryTimingTier,
@@ -1559,6 +1563,28 @@ async function acquireBinanceNativeRefreshLease({
   return { acquired, holder, leaseUntil, holderId };
 }
 
+// 2026-04-19 ROOT-CAUSE FIX: heartbeat was a `db.runTransaction` on the
+// SAME lease doc that the enclosing `refreshBinanceNativeProtectionWithRetry`
+// was also transacting against (acquire at start, release at end) AND
+// firing additional heartbeats against via `setInterval`. Two concurrent
+// transactions on one doc → the SDK's built-in 5-attempt ABORTED retry
+// exhausts under any network pressure, surfacing `10 ABORTED:
+// cross-transaction contention` to the caller — which is exactly what
+// production saw on the BTCUSDT BE-raise path.
+//
+// The transaction was semantically unnecessary: heartbeat only needs to
+// extend TTL iff we still own the lease. Atomic snapshot read+write is
+// overkill — a read-then-conditional-update is sufficient. The tiny race
+// window (owner changes between read and update) is self-healing:
+//   * if owner was stolen because OUR TTL expired, we've already lost
+//     anyway — our next heartbeat check reports ok:false and the caller
+//     aborts;
+//   * the new owner's next heartbeat overwrites the TTL within ~2s;
+//   * the fields we update (lease_until_ms, heartbeat_ms) only move
+//     forward in time, never cause corruption.
+// Non-transactional writes cannot abort, so concurrent heartbeats on
+// the SAME doc are serialized cleanly by Firestore (last write wins per
+// field, all values are monotonic).
 async function heartbeatBinanceNativeRefreshLease({
   exchange,
   symbol,
@@ -1569,25 +1595,21 @@ async function heartbeatBinanceNativeRefreshLease({
   const now = Date.now();
   const leaseUntil = now + Math.max(2000, Math.floor(Number(ttlMs) || BINANCE_NATIVE_REFRESH_LEASE_TTL_MS));
   const ref = db.doc(buildBinanceNativeRefreshLeaseDocPath(exchange, symbol));
-  let ok = false;
-  let holder = null;
-  await db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists) return;
-    const data = snap.data() || {};
-    const owner = String(data.owner || "");
-    if (owner !== String(holderId || "")) {
-      holder = owner || null;
-      return;
-    }
-    ok = true;
-    tx.set(ref, {
-      lease_until_ms: leaseUntil,
-      heartbeat_ms: now,
-      heartbeat_at: new Date(now).toISOString(),
-    }, { merge: true });
+  const snap = await ref.get();
+  if (!snap.exists) {
+    return { ok: false, holder: null, leaseUntil, holderId };
+  }
+  const data = snap.data() || {};
+  const owner = String(data.owner || "");
+  if (owner !== String(holderId || "")) {
+    return { ok: false, holder: owner || null, leaseUntil, holderId };
+  }
+  await ref.update({
+    lease_until_ms: leaseUntil,
+    heartbeat_ms: now,
+    heartbeat_at: new Date(now).toISOString(),
   });
-  return { ok, holder, leaseUntil, holderId };
+  return { ok: true, holder: null, leaseUntil, holderId };
 }
 
 async function releaseBinanceNativeRefreshLease({
@@ -9028,6 +9050,10 @@ function isRetryableNativeProtectionReason(reason) {
   return code === "POSITION_CONTEXT_FETCH_FAIL"
     || code === "NATIVE_CANCEL_FAIL"
     || code === "NATIVE_PLACE_FAIL"
+    // 2026-04-18 P1-2: UNPROTECTED_ACTIVE_POSITION is the cancel-succeeded
+    // + place-failed case — position is naked right now and retry is the
+    // most time-critical repair available. Must be retryable.
+    || code === "UNPROTECTED_ACTIVE_POSITION"
     || code === "NATIVE_PRICE_COMPUTE_FAIL"
     || code === "TP1_NATIVE_PROTECTION_INCOMPLETE";
 }
@@ -9644,7 +9670,7 @@ async function syncNativeProtectionMetaAfterRefresh({
 }
 
 function isAuthorizedBinanceNativeStopWriter(writerSource = null) {
-  return String(writerSource || "").trim().toUpperCase() === "BINANCE_TICK_EXIT";
+  return isBinanceNativeStopWriterSource(writerSource);
 }
 
 function resolveNativeProtectionStageState(posMeta = null) {
@@ -9750,7 +9776,7 @@ async function ensureLiveImmediateNativeProtection({
     fallbackLeverage: requestArgs && requestArgs.fallbackLeverage,
     exitRulesOverride: requestArgs && requestArgs.exitRulesOverride,
     posMeta: requestArgs && requestArgs.posMeta,
-    writerSource: "BINANCE_TICK_EXIT",
+    writerSource: BINANCE_NATIVE_STOP_WRITER_SOURCE,
   });
   if (directResult && typeof directResult === "object") {
     return {
@@ -10076,6 +10102,19 @@ async function refreshBinanceNativeProtection({
   exitRulesOverride,
   posMeta,
 } = {}) {
+  // 2026-04-18 P1-2 (audit re-verified): native protection refresh is
+  // cancel-first — we cancel existing open orders BEFORE placing the new
+  // stop. Between `cancelFuturesOpenOrders` and a successful
+  // `placeFuturesStopMarketOrder`, the position is literally unprotected
+  // on the exchange. The outer catch previously collapsed that window
+  // into `{ ok: false, reason: "NATIVE_PLACE_FAIL" }`, which looked
+  // identical to "cancel failed, protection still intact" from the
+  // caller's perspective. This flag lets the outer catch emit an
+  // explicit UNPROTECTED_ACTIVE_POSITION diagnostic + return payload so
+  // operators and downstream alerting can distinguish the naked window
+  // (needs immediate repair or flatten) from a no-op failure (original
+  // orders still on exchange).
+  let cancelSucceeded = false;
   const ex = String(exchange || "").toUpperCase();
   if (!ex.includes("BINANCE")) return { ok: false, skipped: true, reason: "NOT_BINANCE" };
   if (!BINANCE_NATIVE_PROTECTION_ENABLED) return { ok: false, skipped: true, reason: "NATIVE_PROTECTION_DISABLED" };
@@ -10170,6 +10209,7 @@ async function refreshBinanceNativeProtection({
       apiSecret: liveCfg.apiSecret,
       symbol,
     });
+    cancelSucceeded = true;
   } catch (e) {
     return { ok: false, reason: "NATIVE_CANCEL_FAIL", error: e && e.message ? e.message : String(e) };
   }
@@ -10424,7 +10464,40 @@ async function refreshBinanceNativeProtection({
       tp_order_id: tpOrder && tpOrder.orderId ? String(tpOrder.orderId) : null,
     };
   } catch (e) {
-    return { ok: false, reason: "NATIVE_PLACE_FAIL", error: e && e.message ? e.message : String(e) };
+    const errorMessage = e && e.message ? e.message : String(e);
+    // 2026-04-18 P1-2 (audit re-verified): if we reach this catch AFTER
+    // the cancel phase succeeded, the position on Binance is actually
+    // unprotected right now — the existing stop/TP orders were cancelled
+    // and the replacement orders never landed. Promote that specific
+    // state to an explicit UNPROTECTED_ACTIVE_POSITION return so callers
+    // and downstream alerting can trigger the protection-gap path
+    // (immediate repair dispatch, force-flatten decision, operator page)
+    // instead of treating it as an equivalent of "cancel failed, old
+    // orders still intact". The structured log gives Cloud Logging /
+    // alert rules a canonical event name to match on.
+    if (cancelSucceeded) {
+      try {
+        console.warn(JSON.stringify({
+          event: "native_protection_unprotected_position_detected",
+          ts: new Date().toISOString(),
+          exchange: String(exchange || "").toUpperCase(),
+          symbol: String(symbol || "").toUpperCase(),
+          reason: "NATIVE_PLACE_FAIL_AFTER_CANCEL",
+          error: errorMessage.slice(0, 200),
+        }));
+      } catch (_) { /* never let diagnostic kill the refresh */ }
+      return {
+        ok: false,
+        reason: "UNPROTECTED_ACTIVE_POSITION",
+        inner_reason: "NATIVE_PLACE_FAIL",
+        cancel_succeeded: true,
+        stop_place_failed: true,
+        unprotected_active_position: true,
+        repair_required: true,
+        error: errorMessage,
+      };
+    }
+    return { ok: false, reason: "NATIVE_PLACE_FAIL", error: errorMessage };
   }
 }
 
@@ -17789,6 +17862,7 @@ module.exports = {
     placeNativeStopImmediateTriggerFailClosed,
     fetchFuturesExchangeInfoWithCache,
     ensureLiveFuturesLeverage,
+    heartbeatBinanceNativeRefreshLease,
   },
 };
 

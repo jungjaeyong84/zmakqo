@@ -2486,6 +2486,52 @@ const fillSyncChainKeyLowConfidenceCounts = { ENTRY: 0, SIGNAL: 0, ORDER: 0, CLI
 const fillSyncChainKeyLowConfidenceRecentKeys = new Set();
 const FILL_SYNC_LOW_CONFIDENCE_RECENT_LIMIT = 32;
 
+// 2026-04-18 P2-1 (audit re-verified): STAGE-only chainKey confidence
+// groups fills by `${exchange}__${symbol}__STAGE__${stage}` — two
+// different entry cycles on the same symbol and stage therefore share
+// the same authority bucket and exit qty percentages can leak across
+// cycles. When `EXIT_AUTHORITY_STAGE_CONFIDENCE_LIVE_BLOCK=1` is set,
+// the authority path fail-closes on STAGE-confidence keys (accepted qty
+// = 0, reason `STAGE_CONFIDENCE_LIVE_BLOCKED`) and emits a structured
+// warn log so operators can react. Default is OBSERVE so deploying this
+// fix doesn't silently drop fills in production until ops explicitly
+// opts in by flipping the env var.
+function isStageConfidenceLiveBlockEnabled(env = process.env) {
+  const raw = env && env.EXIT_AUTHORITY_STAGE_CONFIDENCE_LIVE_BLOCK;
+  return String(raw || "").trim() === "1";
+}
+
+function isExitAuthorityChainKeyConfidenceLiveEligible(confidence, { env = process.env } = {}) {
+  const upper = String(confidence || "").trim().toUpperCase();
+  if (upper !== "STAGE") return true;
+  return !isStageConfidenceLiveBlockEnabled(env);
+}
+
+const fillSyncChainKeyLiveBlockedCounts = { STAGE: 0 };
+function getFillSyncChainKeyLiveBlockedCounts() {
+  return { ...fillSyncChainKeyLiveBlockedCounts };
+}
+function resetFillSyncChainKeyLiveBlockedForTest() {
+  for (const key of Object.keys(fillSyncChainKeyLiveBlockedCounts)) {
+    fillSyncChainKeyLiveBlockedCounts[key] = 0;
+  }
+}
+function recordExitAuthorityChainKeyLiveBlocked({ symbol, event, chainKey, confidence }) {
+  const upper = String(confidence || "STAGE").trim().toUpperCase();
+  if (Object.prototype.hasOwnProperty.call(fillSyncChainKeyLiveBlockedCounts, upper)) {
+    fillSyncChainKeyLiveBlockedCounts[upper] += 1;
+  }
+  try {
+    console.warn("[FILL_SYNC_CHAIN_KEY_LIVE_BLOCKED]", JSON.stringify({
+      chain_key: chainKey,
+      symbol: String(symbol || "").toUpperCase() || null,
+      event: String(event || "").toUpperCase() || null,
+      confidence: upper,
+      reason: "STAGE_CONFIDENCE_LIVE_BLOCKED",
+    }));
+  } catch (_) { /* never let diagnostic kill the sync */ }
+}
+
 function observeExitAuthorityChainKeyConfidence({
   symbol = null,
   event = null,
@@ -2665,6 +2711,25 @@ function applyExternalExitQtyAuthority({
     confidence: chainKeyConfidence,
     chainKey,
   });
+  // 2026-04-18 P2-1: fail-closed on STAGE-confidence keys when the
+  // live-block env flag is active. Two different cycles on the same
+  // (symbol, stage) share this chainKey, so applying qty authority could
+  // leak cap consumption across cycles. Dropping to 0 qty with a distinct
+  // reason forces the caller to either skip or request a lineage repair.
+  if (!isExitAuthorityChainKeyConfidenceLiveEligible(chainKeyConfidence)) {
+    recordExitAuthorityChainKeyLiveBlocked({ symbol, event, chainKey, confidence: chainKeyConfidence });
+    return {
+      chainKey,
+      stage,
+      rawQtyPct: Number.isFinite(rawQty) ? rawQty : null,
+      acceptedQtyPct: 0,
+      droppedQtyPct: Number.isFinite(rawQty) && rawQty > 0 ? rawQty : null,
+      capped: false,
+      duplicateSuspected: false,
+      reason: "STAGE_CONFIDENCE_LIVE_BLOCKED",
+      chain_key_confidence: chainKeyConfidence,
+    };
+  }
   if (!Number.isFinite(rawQty) || rawQty <= 0 || !authorityMap || stage === "OTHER") {
     return {
       chainKey,
@@ -4175,6 +4240,10 @@ module.exports = {
     observeExitAuthorityChainKeyConfidence,
     getFillSyncChainKeyConfidenceCounts,
     resetFillSyncChainKeyConfidenceForTest,
+    isExitAuthorityChainKeyConfidenceLiveEligible,
+    isStageConfidenceLiveBlockEnabled,
+    getFillSyncChainKeyLiveBlockedCounts,
+    resetFillSyncChainKeyLiveBlockedForTest,
     applyExternalExitQtyAuthority,
     resolveCanonicalExternalExitEvent,
     shouldPromoteCanonicalExternalExit,

@@ -44,6 +44,10 @@ function isProviderRejectedReason(value) {
   if (reason === "CANCEL_OPEN_ORDERS_FAIL") return true;
   if (reason === "NATIVE_CANCEL_FAIL") return true;
   if (reason === "NATIVE_PLACE_FAIL") return true;
+  // 2026-04-18 P1-2: cancel-succeeded + place-failed leaves the position
+  // naked on the exchange. Treat as provider-rejected so the alert/retry
+  // paths fire — this is strictly more urgent than NATIVE_PLACE_FAIL.
+  if (reason === "UNPROTECTED_ACTIVE_POSITION") return true;
   return false;
 }
 

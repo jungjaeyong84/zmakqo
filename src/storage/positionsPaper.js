@@ -177,6 +177,19 @@ async function acquirePositionWriterLease({
   return { acquired, holder, leaseUntil, holderId };
 }
 
+// 2026-04-19 ROOT-CAUSE FIX: heartbeat used `db.runTransaction` on the
+// same lease doc that `runWithPositionWriterLease` was also transacting
+// against — the enclosing function ran a `setInterval` heartbeat loop
+// concurrent with the initial synchronous heartbeat AND the eventual
+// release. Two concurrent transactions on one doc exhaust the SDK's
+// internal 5-attempt ABORTED retry budget under any network pressure,
+// causing `10 ABORTED: cross-transaction contention` to leak to callers
+// (including the BTCUSDT BE-raise path, which is how this was found).
+//
+// The transaction was unnecessary: heartbeat only needs to extend TTL
+// if we still own the lease. Switching to read+conditional update
+// removes the self-contention entirely. See companion note in
+// `heartbeatBinanceNativeRefreshLease` in paperBinanceRunner.js.
 async function heartbeatPositionWriterLease({
   exchange,
   symbol,
@@ -187,25 +200,21 @@ async function heartbeatPositionWriterLease({
   const now = Date.now();
   const leaseUntil = now + Math.max(3000, Math.floor(Number(ttlMs) || POSITION_WRITER_LEASE_TTL_MS));
   const ref = db.doc(buildPositionWriterLeaseDocPath(exchange, symbol));
-  let ok = false;
-  let holder = null;
-  await db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists) return;
-    const data = snap.data() || {};
-    const owner = String(data.owner || "");
-    if (owner !== String(holderId || "")) {
-      holder = owner || null;
-      return;
-    }
-    ok = true;
-    tx.set(ref, {
-      lease_until_ms: leaseUntil,
-      heartbeat_ms: now,
-      heartbeat_at: new Date(now).toISOString(),
-    }, { merge: true });
+  const snap = await ref.get();
+  if (!snap.exists) {
+    return { ok: false, holder: null, leaseUntil, holderId };
+  }
+  const data = snap.data() || {};
+  const owner = String(data.owner || "");
+  if (owner !== String(holderId || "")) {
+    return { ok: false, holder: owner || null, leaseUntil, holderId };
+  }
+  await ref.update({
+    lease_until_ms: leaseUntil,
+    heartbeat_ms: now,
+    heartbeat_at: new Date(now).toISOString(),
   });
-  return { ok, holder, leaseUntil, holderId };
+  return { ok: true, holder: null, leaseUntil, holderId };
 }
 
 async function releasePositionWriterLease({
@@ -225,6 +234,151 @@ async function releasePositionWriterLease({
       released_at: new Date().toISOString(),
     }, { merge: true });
   });
+}
+
+// 2026-04-18 P0-3: operator-facing inspect + force-release.
+//
+// `runWithPositionWriterLease` is robust when holders exit cleanly — the
+// finally block always calls `releasePositionWriterLease`. But if a Cloud
+// Run instance dies mid-mutation (OOM kill, SIGTERM with pending I/O,
+// crash loop), the Firestore doc keeps `owner` set until `lease_until_ms`
+// (TTL default 15s) elapses. That is the *design* — so new holders pick
+// up once the lease expires. The operational gap is that we had no
+// explicit admin surface to (a) see who holds the lease and (b) force a
+// release in the emergency case where the TTL is misbehaving or an
+// operator needs to intervene before 15s. Below fills that gap.
+
+function summarizeLeaseDoc(data = {}, nowMs = Date.now()) {
+  const owner = String(data.owner || "") || null;
+  const leaseUntilMs = Number(data.lease_until_ms);
+  const heartbeatMs = Number(data.heartbeat_ms);
+  const releasedAt = String(data.released_at || "") || null;
+  const leaseUntilValid = Number.isFinite(leaseUntilMs);
+  const heartbeatValid = Number.isFinite(heartbeatMs);
+  const expired = leaseUntilValid ? leaseUntilMs <= nowMs : true;
+  const ageMs = leaseUntilValid ? (nowMs - leaseUntilMs) : null;
+  const heartbeatAgeMs = heartbeatValid ? (nowMs - heartbeatMs) : null;
+  return {
+    owner,
+    lease_until_ms: leaseUntilValid ? leaseUntilMs : null,
+    heartbeat_ms: heartbeatValid ? heartbeatMs : null,
+    released_at: releasedAt,
+    expired,
+    // Positive when lease has ALREADY expired. Negative means still
+    // holding. Use this to decide "is this stale enough to reclaim?"
+    expired_age_ms: ageMs,
+    heartbeat_age_ms: heartbeatAgeMs,
+  };
+}
+
+async function inspectPositionWriterLease({ exchange, symbol, db: dbOverride = null } = {}) {
+  const db = dbOverride || getFirestore();
+  const ref = db.doc(buildPositionWriterLeaseDocPath(exchange, symbol));
+  const snap = await ref.get();
+  const nowMs = Date.now();
+  if (!snap.exists) {
+    return {
+      exchange: upper(exchange),
+      symbol: upper(symbol),
+      exists: false,
+      owner: null,
+      expired: true,
+      expired_age_ms: null,
+      heartbeat_age_ms: null,
+      lease_until_ms: null,
+      heartbeat_ms: null,
+      released_at: null,
+      now_ms: nowMs,
+    };
+  }
+  const summary = summarizeLeaseDoc(snap.data() || {}, nowMs);
+  return {
+    exchange: upper(exchange),
+    symbol: upper(symbol),
+    exists: true,
+    now_ms: nowMs,
+    ...summary,
+  };
+}
+
+// Force-releases a position-writer lease iff it is stale, OR if
+// `force: true` is passed by an explicit operator call.
+//
+// Return contract:
+//   { ok: true, released: true,  reason: "STALE_RELEASED"        , lease: ... }
+//   { ok: true, released: true,  reason: "FORCE_RELEASED"        , lease: ... }
+//   { ok: true, released: false, reason: "NO_LEASE_DOC"          , lease: ... }
+//   { ok: true, released: false, reason: "LEASE_NOT_STALE"       , lease: ... }
+//
+// `minStaleMs` is an extra guard rail — by default we require the lease
+// to be stale for at least 1×TTL beyond its expiry before reclaiming,
+// because the heartbeat loop could be momentarily slow. Setting
+// `force: true` bypasses this.
+async function forceReleaseStalePositionWriterLease({
+  exchange,
+  symbol,
+  minStaleMs = POSITION_WRITER_LEASE_TTL_MS,
+  force = false,
+  actor = null,
+  db: dbOverride = null,
+} = {}) {
+  const db = dbOverride || getFirestore();
+  const ref = db.doc(buildPositionWriterLeaseDocPath(exchange, symbol));
+  const releasedAtIso = new Date().toISOString();
+  let outcome = { ok: true, released: false, reason: "NO_LEASE_DOC", lease: null };
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) {
+      outcome = {
+        ok: true,
+        released: false,
+        reason: "NO_LEASE_DOC",
+        lease: {
+          exchange: upper(exchange),
+          symbol: upper(symbol),
+          exists: false,
+          owner: null,
+          expired: true,
+          expired_age_ms: null,
+          heartbeat_age_ms: null,
+          lease_until_ms: null,
+          heartbeat_ms: null,
+          released_at: null,
+        },
+      };
+      return;
+    }
+    const nowMs = Date.now();
+    const summary = summarizeLeaseDoc(snap.data() || {}, nowMs);
+    const staleEnough = summary.expired === true
+      && Number.isFinite(summary.expired_age_ms)
+      && summary.expired_age_ms >= Math.max(0, Math.floor(Number(minStaleMs) || 0));
+    if (!staleEnough && force !== true) {
+      outcome = {
+        ok: true,
+        released: false,
+        reason: "LEASE_NOT_STALE",
+        lease: { exchange: upper(exchange), symbol: upper(symbol), exists: true, ...summary },
+      };
+      return;
+    }
+    tx.set(ref, {
+      lease_until_ms: nowMs - 1,
+      released_at: releasedAtIso,
+      // Audit fields — deliberately NOT merged into the snap view above
+      // so operators querying inspectPositionWriterLease next tick see
+      // the trail.
+      force_released_by: actor ? String(actor).slice(0, 120) : null,
+      force_released_reason: force === true ? "FORCE_RELEASED" : "STALE_RELEASED",
+    }, { merge: true });
+    outcome = {
+      ok: true,
+      released: true,
+      reason: force === true ? "FORCE_RELEASED" : "STALE_RELEASED",
+      lease: { exchange: upper(exchange), symbol: upper(symbol), exists: true, ...summary },
+    };
+  });
+  return outcome;
 }
 
 async function runWithPositionWriterLease({
@@ -860,6 +1014,8 @@ module.exports = {
   upsertPositionMetaOnly,
   clearTpP1PendingIfUnchanged,
   runWithPositionWriterLease,
+  inspectPositionWriterLease,
+  forceReleaseStalePositionWriterLease,
   __test: {
     posId,
     derivePositionState,
@@ -877,5 +1033,9 @@ module.exports = {
     notifyPositionWriterAuthorityFailure,
     serializePositionMutation,
     runWithPositionWriterLease,
+    summarizeLeaseDoc,
+    inspectPositionWriterLease,
+    forceReleaseStalePositionWriterLease,
+    heartbeatPositionWriterLease,
   },
 };
