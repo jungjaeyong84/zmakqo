@@ -2,6 +2,16 @@ const { getFirestore } = require("./firestore");
 const { defaultMarketsFromEnv, defaultTfAllowlistFromEnv, defaultExecTfFromEnv } = require("../utils/marketConfig");
 const { normalizeProviderId, pickProviderEntry } = require("../utils/providerUtils");
 
+// ── Settings cache.
+//   `fetchedAtMs`   : 성공적으로 Firestore 에서 읽은 시각.  happy-path TTL 계산
+//                      의 근거.
+//   `failedAtMs`    : 가장 최근 Firestore 읽기가 실패한 시각.  circuit-breaker
+//                      의 근거.  transport blip 동안 Firestore 를 호출마다
+//                      두드리지 않도록 잠시 (SETTINGS_FIRESTORE_FAILURE_BACKOFF_MS)
+//                      stale cache / fallback 으로 넘어간다.
+//   이렇게 분리한 이유:  `fetchedAtMs` 를 실패 시각으로 덮어쓰면 TTL=30s 콜러
+//   입장에서 "방금 성공한 것처럼" 보여서 정상 복구 후에도 오래된 값을 오래 쥐고
+//   있게 된다.  실패는 실패대로 별도 트랙.
 let cache = {
   riskBudget: null,
   system: null,
@@ -17,7 +27,16 @@ let cache = {
     exchanges: 0,
     aiGuard: 0,
   },
+  failedAtMs: {},
 };
+
+// Circuit-breaker backoff 시간.  Firestore 가 gRPC 14 UNAVAILABLE 로
+// 튕기는 동안 (TLS blip, 네트워크 순단 등) 모든 호출이 Firestore 를 다시
+// 두드리면 로그 스팸 + 상위 콜러 (tick-exit refresh 등) 의 오진 에러가
+// 증폭된다.  실패 후 이 시간 동안은 즉시 stale cache / fallback 으로
+// 응답해서 서비스가 계속 굴러가게 한다.  TTL (5~30s) 보다 짧게 잡아서
+// 복구 시점에 빠르게 다시 시도할 수 있도록 한다.
+const SETTINGS_FIRESTORE_FAILURE_BACKOFF_MS = 3000;
 
 function nowMs() {
   return Date.now();
@@ -352,6 +371,22 @@ function applyExecutionDefaults(provider, data = {}) {
   return out;
 }
 
+// ── Firestore transport 실패 시 stale cache / fallback 으로 graceful degrade.
+//   배경:  Cloud Run egress 에서 Firestore 로 가는 gRPC 커넥션이 TLS 레벨
+//          에서 순단하면 (`14 UNAVAILABLE: ... TLS connection ...`) 이 함수가
+//          throw 하고, 상위 콜러 (tick-exit native protection refresh, entry
+//          guard, audit gate 등) 는 그걸 전부 자기 책임 에러로 오진 라벨링
+//          한다.  예: 2026-04-19 ETHUSDT `tick_exit_native_protection_refresh_error`
+//          가 실은 Binance 가 아니라 Firestore settings 읽기 실패였음.
+//   설계:  (1) 성공적으로 한 번이라도 읽은 적이 있으면 stale cache 로 응답.
+//          (2) cache 가 없으면 호출자가 준 fallback 으로 응답.
+//          (3) 둘 다 없을 때만 throw — 이건 시스템 처음 기동 시점 뿐이다.
+//          (4) 실패 시각을 별도 트랙에 기록해서 backoff 동안 Firestore 에
+//              재시도 폭주하지 않게 한다.
+//   텔레메트리:  `settings_doc_firestore_unavailable` 이벤트를 발행해서 진짜
+//                원인이 Cloud Logging 에서 바로 보이게 한다.  이 이벤트 수가
+//                0 이 아닌데 서비스는 계속 굴러가는 상태가 정상적인 degrade
+//                모드이다.
 async function getSettingsDocCached(key, ttlMs, fallback) {
   const t = nowMs();
   const cached = cache[key];
@@ -360,11 +395,55 @@ async function getSettingsDocCached(key, ttlMs, fallback) {
     return { ok: true, source: "cache", data: cached };
   }
 
+  // Circuit-breaker: 최근에 Firestore 가 실패했다면 backoff 동안은 즉시
+  // stale cache / fallback 으로 응답해서 네트워크 blip 을 증폭시키지 않는다.
+  const lastFailed = (cache.failedAtMs && cache.failedAtMs[key]) || 0;
+  if (lastFailed && (t - lastFailed) <= SETTINGS_FIRESTORE_FAILURE_BACKOFF_MS) {
+    if (cached) {
+      return { ok: true, source: "stale_cache_firestore_backoff", data: cached };
+    }
+    if (fallback !== undefined && fallback !== null) {
+      return { ok: true, source: "fallback_firestore_backoff", data: fallback };
+    }
+    // backoff 중이지만 캐시/폴백 둘 다 없으면 아래에서 한 번 더 시도 —
+    // 시스템 최초 기동 시점의 복구 루프를 위해서.
+  }
+
   const db = getFirestore();
-  const snap = await db.collection("settings").doc(key).get();
+  let snap = null;
+  try {
+    snap = await db.collection("settings").doc(key).get();
+  } catch (err) {
+    cache.failedAtMs[key] = t;
+    try {
+      console.warn(JSON.stringify({
+        event: "settings_doc_firestore_unavailable",
+        ts: new Date().toISOString(),
+        key,
+        ttl_ms: Number(ttlMs) || 0,
+        have_stale_cache: Boolean(cached),
+        have_fallback: fallback !== undefined && fallback !== null,
+        backoff_ms: SETTINGS_FIRESTORE_FAILURE_BACKOFF_MS,
+        error: String((err && err.message) || err).slice(0, 240),
+      }));
+    } catch (_) {}
+
+    if (cached) {
+      return { ok: true, source: "stale_cache_firestore_unavailable", data: cached };
+    }
+    if (fallback !== undefined && fallback !== null) {
+      return { ok: true, source: "fallback_firestore_unavailable", data: fallback };
+    }
+    // 스테일 캐시도, 폴백도 없으면 상위로 throw.  이 상태는 프로세스가 막
+    // 올라온 직후 한 번 뿐이어야 한다 — 이후에는 캐시가 있으므로 degrade.
+    throw err;
+  }
+
   const d = snap.exists ? (snap.data() || {}) : (fallback || null);
   cache[key] = d;
   cache.fetchedAtMs[key] = t;
+  // 성공 시 failure 마커 제거해서 circuit-breaker 바로 풀어준다.
+  if (cache.failedAtMs[key]) cache.failedAtMs[key] = 0;
 
   return { ok: true, source: "firestore", data: d };
 }
@@ -655,12 +734,14 @@ async function getExchangesSettingsCached(ttlMs = 30_000) {
 function invalidateRiskBudgetCache() {
   cache.riskBudget = null;
   cache.fetchedAtMs.riskBudget = 0;
+  if (cache.failedAtMs) cache.failedAtMs.riskBudget = 0;
 }
 
 function invalidateSettingsCache(key) {
   if (!key) return;
   if (cache[key] !== undefined) cache[key] = null;
   if (cache.fetchedAtMs[key] !== undefined) cache.fetchedAtMs[key] = 0;
+  if (cache.failedAtMs && cache.failedAtMs[key] !== undefined) cache.failedAtMs[key] = 0;
 }
 
 module.exports = {
@@ -677,5 +758,20 @@ module.exports = {
   invalidateSettingsCache,
   __test: {
     applyEvGateDefaultsForProvider,
+    // Firestore graceful-degrade 테스트용 훅.  Jest/Node-assert 테스트에서
+    // 캐시/실패 타임스탬프를 직접 조작할 필요가 있음.  배경은 `getSettingsDocCached`
+    // 상단 주석 참조.
+    getSettingsDocCached,
+    SETTINGS_FIRESTORE_FAILURE_BACKOFF_MS,
+    _cacheRef: () => cache,
+    _resetCacheForTest: () => {
+      for (const k of Object.keys(cache)) {
+        if (k === "fetchedAtMs" || k === "failedAtMs") {
+          cache[k] = {};
+        } else {
+          cache[k] = null;
+        }
+      }
+    },
   },
 };
