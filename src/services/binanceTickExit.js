@@ -168,6 +168,66 @@ function resolveRunnerStageState(position = null) {
   };
 }
 
+// 2026-04-19 REFACTOR (progressive pure-helper extraction):
+//
+// BE-raise 결정의 "순수 계산" 부분을 호출부 (`runTickExitBurst` 내
+// `if (_tpP1Done)` 블록)에서 분리한다. 이 함수는 I/O 를 하지 않으며
+// Firestore / Binance / cooldown global state 를 건드리지 않는다.
+// 책임 범위:
+//   • side / avgPrice / leverage / floorPct / currentStop 입력의 유효성 판정
+//   • BE 목표가 `bePrice` 계산 (RUNNER_MIN_PROFIT_PCT 기반)
+//   • `shouldRaiseStop` 판정 (LONG: bePrice > currentStop, SHORT: 반대)
+//
+// 책임 외:
+//   • cooldown (`shouldRunNativeProtectionRefreshCooldown`) — symbolCooldown 전역
+//     state 에 의존하므로 호출부 유지
+//   • `refreshBinanceTickExitNativeProtection` 호출 (Firestore + Binance)
+//   • 로그 출력
+//
+// 단위 테스트 포인트:
+//   • inputs_valid 불변식 (네 수치 입력 모두 finite && > 0, side ∈ LONG/SHORT)
+//   • LONG/SHORT 대칭 bePrice 공식
+//   • currentStop 이 NaN(=미보호 상태) 이면 무조건 raise
+//   • `±1e-9` 허용오차 한계 (동일 가격 재-raise 금지)
+function computeBreakEvenRaiseDecision({
+  side,
+  avgPrice,
+  leverage,
+  floorPct,
+  currentStop,
+} = {}) {
+  const s = String(side || "").trim().toUpperCase();
+  const avg = Number(avgPrice);
+  const lev = Number(leverage);
+  const floor = Number(floorPct);
+  const stop = Number(currentStop);
+  const avgFinite = Number.isFinite(avg) && avg > 0;
+  const levFinite = Number.isFinite(lev) && lev > 0;
+  const floorFinite = Number.isFinite(floor) && floor > 0;
+  const sideValid = (s === "LONG" || s === "SHORT");
+  const inputsValid = avgFinite && levFinite && floorFinite && sideValid;
+  const bePrice = inputsValid
+    ? (s === "SHORT"
+      ? avg * (1 - (floor / lev))
+      : avg * (1 + (floor / lev)))
+    : null;
+  const shouldRaiseStop = inputsValid && (
+    !Number.isFinite(stop)
+    || (s === "LONG" && bePrice > stop + 1e-9)
+    || (s === "SHORT" && bePrice < stop - 1e-9)
+  );
+  return {
+    side: sideValid ? s : null,
+    avg: avgFinite ? avg : null,
+    leverage: levFinite ? lev : null,
+    floorPct: floorFinite ? floor : null,
+    currentStop: Number.isFinite(stop) ? stop : null,
+    inputsValid,
+    bePrice,
+    shouldRaiseStop,
+  };
+}
+
 // 2026-04-18 P0-1 (audit re-verified): build observability fields for
 // `tick_exit_tp1_break_even_stop_{raised,decision}` from a refresh result.
 // The historical `refresh_ok` flag flipped to true on Binance order
@@ -2368,28 +2428,30 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
         try {
           _beSide = resolvePositionSideFromPosition(pos, _tMeta, "LONG");
           const _beRules = resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: pos });
-          _beAvg = Number(pos && pos.avg_price);
-          _beLev = Number(_tMeta && (_tMeta.external_leverage || _tMeta.leverage || pos.leverage || 1));
-          _beFloorPct = Number(_beRules && _beRules.RUNNER_MIN_PROFIT_PCT);
-          _currentStop = Number(_tMeta && _tMeta.native_protection_stop_price);
-          _inputsValid = (
-            Number.isFinite(_beAvg) && _beAvg > 0
-            && Number.isFinite(_beLev) && _beLev > 0
-            && Number.isFinite(_beFloorPct) && _beFloorPct > 0
-          );
-          _bePrice = _inputsValid
-            ? (_beSide === "SHORT"
-              ? _beAvg * (1 - (_beFloorPct / _beLev))
-              : _beAvg * (1 + (_beFloorPct / _beLev)))
-            : null;
-          // Raise only — never lower. For LONG the new stop must be HIGHER
-          // than the current stop (closer to entry). For SHORT the new
-          // stop must be LOWER than the current stop.
-          _shouldRaiseStop = _inputsValid && (
-            !Number.isFinite(_currentStop)
-            || (_beSide === "LONG" && _bePrice > _currentStop + 1e-9)
-            || (_beSide === "SHORT" && _bePrice < _currentStop - 1e-9)
-          );
+          // 2026-04-19 REFACTOR: pure 계산은 `computeBreakEvenRaiseDecision`
+          // 으로 이관. 호출부는 decision 결과를 기존 outer-scope 로컬 변수에
+          // 그대로 할당해 이후 cooldown/refresh dispatch 와 decision 로그
+          // emit 경로의 이름 규약을 유지 (BE-raise 로직의 어떤 관측 필드도
+          // 이름이 바뀌지 않음 — Cloud Logging 쿼리 호환).
+          //
+          // Raise 방향 불변식은 helper 내부에 박혀있다:
+          //   - LONG  : bePrice > currentStop + 1e-9  (stop 을 위로)
+          //   - SHORT : bePrice < currentStop - 1e-9  (stop 을 아래로)
+          //   - currentStop 이 NaN(=미보호)이면 무조건 raise
+          const _beDecision = computeBreakEvenRaiseDecision({
+            side: _beSide,
+            avgPrice: pos && pos.avg_price,
+            leverage: _tMeta && (_tMeta.external_leverage || _tMeta.leverage || pos.leverage || 1),
+            floorPct: _beRules && _beRules.RUNNER_MIN_PROFIT_PCT,
+            currentStop: _tMeta && _tMeta.native_protection_stop_price,
+          });
+          _beAvg = _beDecision.avg;
+          _beLev = _beDecision.leverage;
+          _beFloorPct = _beDecision.floorPct;
+          _currentStop = _beDecision.currentStop;
+          _inputsValid = _beDecision.inputsValid;
+          _bePrice = _beDecision.bePrice;
+          _shouldRaiseStop = _beDecision.shouldRaiseStop;
           if (_inputsValid && !_shouldRaiseStop) {
             _decisionStage = "RAISE_NOT_NEEDED";
           } else if (_inputsValid && _shouldRaiseStop) {
@@ -3694,6 +3756,7 @@ module.exports = {
   __test: {
     buildTickTrailObservationDocUpdate,
     buildTickTrailReconcileRunId,
+    computeBreakEvenRaiseDecision,
     buildBinanceTickExitNativeProtectionRefreshArgs,
     buildBreakEvenStopRefreshObservability,
     refreshBinanceTickExitNativeProtection,
