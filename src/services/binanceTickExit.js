@@ -168,6 +168,56 @@ function resolveRunnerStageState(position = null) {
   };
 }
 
+// 2026-04-19 ROOT-CAUSE (trail bootstrap jam):
+// SHORT 포지션의 `meta.trail_low` 가 `0` 으로 저장된 실사례(BTCUSDT)에서
+// `Number(0) === 0` + `Number.isFinite(0) === true` 가 겹쳐, 과거의
+// `!Number.isFinite(prevLow) || price < prevLow` 가드가 `price < 0` 로
+// 축약되었다. 거래 가격은 항상 양수이므로 한 번 `0` 이 박히면 영영
+// `_trailPatch` 가 만들어지지 않고, 아래 `refreshBinanceTickExitNativeProtection`
+// 호출 경로에 진입조차 하지 못한다 (Cloud Logging 6h 창에서
+// `tick_exit_trail_updated` 이벤트 0건이 smoking gun). LONG 쪽도
+// `trail_high === 0` 이 저장되면 대칭적으로 잠길 위험이 있어 양쪽 모두
+// "유효 watermark = finite AND > 0" 으로 정규화한다. 가격은 양수라는
+// 도메인 가정과 정렬된다.
+//
+// Returns `null` 이면 이번 tick 에서 watermark 개선이 없거나 side 가
+// 유효하지 않음 → 호출부는 refresh 경로를 건너뛴다. 반대로 patch 객체를
+// 돌려주면 호출부는 Firestore patch + in-memory meta 갱신 + native stop
+// refresh 를 순서대로 수행한다.
+function computeTrailWatermarkPatch({ side, meta, price, tickNow } = {}) {
+  const tickSide = String(side || "").trim().toUpperCase();
+  const mm = (meta && typeof meta === "object") ? meta : {};
+  if (!Number.isFinite(price) || price <= 0) return null;
+  if (!Number.isFinite(tickNow)) return null;
+  if (tickSide === "LONG") {
+    const prevHigh = Number(mm.trail_high);
+    const hasValidPrev = Number.isFinite(prevHigh) && prevHigh > 0;
+    if (!hasValidPrev || price > prevHigh) {
+      return {
+        patch: { "meta.trail_high": price, "meta.trail_high_at_ms": tickNow },
+        field: "trail_high",
+        next: price,
+        prev: hasValidPrev ? prevHigh : null,
+      };
+    }
+    return null;
+  }
+  if (tickSide === "SHORT") {
+    const prevLow = Number(mm.trail_low);
+    const hasValidPrev = Number.isFinite(prevLow) && prevLow > 0;
+    if (!hasValidPrev || price < prevLow) {
+      return {
+        patch: { "meta.trail_low": price, "meta.trail_low_at_ms": tickNow },
+        field: "trail_low",
+        next: price,
+        prev: hasValidPrev ? prevLow : null,
+      };
+    }
+    return null;
+  }
+  return null;
+}
+
 // 2026-04-18 P0-1 (audit re-verified): build observability fields for
 // `tick_exit_tp1_break_even_stop_{raised,decision}` from a refresh result.
 // The historical `refresh_ok` flag flipped to true on Binance order
@@ -2536,27 +2586,19 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
 
       if (_tpP1Done && _trailEnabled) {
         const _tSide = resolvePositionSideFromPosition(pos, _tMeta, "LONG");
-        let _trailPatch = null;
-        let _trailField = null;
-        let _trailNext = null;
-        let _trailPrev = null;
-        if (_tSide === "LONG") {
-          const prevHigh = Number(_tMeta.trail_high);
-          if (!Number.isFinite(prevHigh) || price > prevHigh) {
-            _trailPatch = { "meta.trail_high": price, "meta.trail_high_at_ms": tickNow };
-            _trailField = "trail_high";
-            _trailNext = price;
-            _trailPrev = prevHigh;
-          }
-        } else if (_tSide === "SHORT") {
-          const prevLow = Number(_tMeta.trail_low);
-          if (!Number.isFinite(prevLow) || price < prevLow) {
-            _trailPatch = { "meta.trail_low": price, "meta.trail_low_at_ms": tickNow };
-            _trailField = "trail_low";
-            _trailNext = price;
-            _trailPrev = prevLow;
-          }
-        }
+        // `computeTrailWatermarkPatch` — helper 상단 주석 참조 (2026-04-19
+        // zero-bootstrap jam 루트 픽스). helper 가 patch 객체를 돌려주면 이번
+        // tick 이 watermark 개선 tick 이라는 뜻, null 이면 skip.
+        const _watermark = computeTrailWatermarkPatch({
+          side: _tSide,
+          meta: _tMeta,
+          price,
+          tickNow,
+        });
+        let _trailPatch = _watermark ? _watermark.patch : null;
+        let _trailField = _watermark ? _watermark.field : null;
+        let _trailNext = _watermark ? _watermark.next : null;
+        let _trailPrev = _watermark ? _watermark.prev : null;
         if (_trailPatch) {
           const _trailEvalMs = nowMs();
           const _exitRules = resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: pos });
@@ -3718,6 +3760,7 @@ module.exports = {
   __test: {
     buildTickTrailObservationDocUpdate,
     buildTickTrailReconcileRunId,
+    computeTrailWatermarkPatch,
     buildBinanceTickExitNativeProtectionRefreshArgs,
     buildBreakEvenStopRefreshObservability,
     refreshBinanceTickExitNativeProtection,
