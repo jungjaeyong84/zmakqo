@@ -212,6 +212,54 @@ const { __test } = require("../../scripts/check-binance-exit-integrity-gate");
     "leading/trailing whitespace must be stripped"
   );
 
+  // 2026-04-20 senior-audit M1: the unprotected-window sub-gate must
+  // also block on `available: false` (listPositions threw), not just
+  // on a numeric `breach_count > 0`. A Firestore outage that empties
+  // the rows must not collapse to a clean pass — that would silently
+  // ship on a blind fleet.
+  const unprotectedUnavailable = __test.buildFailureReasons(
+    {
+      status: "OK",
+      live_gate_blocked: false,
+      canonical_exit_stage_gate: "PASS",
+      stop_divergence_gate: "PASS",
+      canonical_transition_backfill_ok: true,
+      unprotected_window_available: false,
+      unprotected_window_unavailable_reason: "LIST_POSITIONS_FAILED",
+      unprotected_window_breach_n: 0,
+      unprotected_window_gate: "BLOCK",
+    },
+    { env: {} }
+  );
+  assert.ok(
+    unprotectedUnavailable.some((r) => r.startsWith("NATIVE_PROTECTION_UNPROTECTED_WINDOW_UNAVAILABLE")),
+    "unavailable-window must block with a distinct reason string (not re-using BREACH)"
+  );
+  assert.ok(
+    !unprotectedUnavailable.includes("NATIVE_PROTECTION_UNPROTECTED_WINDOW_BREACH"),
+    "when unavailable, the BREACH reason must NOT also be emitted — the two are mutually exclusive signals"
+  );
+
+  // Belt-and-suspenders: if the runtime forgot to set `available:false`
+  // but set `unprotected_window_gate: BLOCK` explicitly, the gate still
+  // emits a BREACH reason so on-call sees something.
+  const unprotectedGateOnly = __test.buildFailureReasons(
+    {
+      status: "OK",
+      live_gate_blocked: false,
+      canonical_exit_stage_gate: "PASS",
+      stop_divergence_gate: "PASS",
+      canonical_transition_backfill_ok: true,
+      unprotected_window_breach_n: 0,
+      unprotected_window_gate: "BLOCK",
+    },
+    { env: {} }
+  );
+  assert.ok(
+    unprotectedGateOnly.some((r) => r.startsWith("NATIVE_PROTECTION_UNPROTECTED_WINDOW_")),
+    "unprotected_window_gate=BLOCK with no other signal must still surface SOME reason"
+  );
+
   console.log("CHECK_BINANCE_EXIT_INTEGRITY_GATE_TEST_OK");
 })().catch((err) => {
   console.error("CHECK_BINANCE_EXIT_INTEGRITY_GATE_TEST_FAIL", err && err.stack ? err.stack : err);

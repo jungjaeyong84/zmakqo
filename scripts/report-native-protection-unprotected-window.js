@@ -69,14 +69,38 @@ function buildMarkdown(summary = {}) {
 // buildCliResult intentionally sets `ok: true` even on breach — the deploy
 // gate wrapper inspects breach_count / gate_status. A non-zero exit here
 // would hide the breach details from the cycle aggregator.
+//
+// 2026-04-20 senior-audit M1: when `available === false` (listPositions
+// threw — typically Firestore UNAVAILABLE), we cannot prove the
+// unprotected-window invariant either way. Treat it as BLOCK — the
+// deploy gate would otherwise pass on fleet-blindness.
 function buildCliResult(summary = {}, jsonPath, mdPath) {
+  const available = summary && summary.available !== false;
   const breachCount = Number(summary.breach_count || 0);
-  const gateStatus = breachCount > 0 ? "BLOCK" : "PASS";
+  let gateStatus;
+  let status;
+  let reason;
+  if (!available) {
+    gateStatus = "BLOCK";
+    status = "WARN";
+    reason = "NATIVE_PROTECTION_UNPROTECTED_WINDOW_UNAVAILABLE";
+  } else if (breachCount > 0) {
+    gateStatus = "BLOCK";
+    status = "WARN";
+    reason = "NATIVE_PROTECTION_UNPROTECTED_WINDOW_BREACH";
+  } else {
+    gateStatus = "PASS";
+    status = "OK";
+    reason = null;
+  }
   return {
     ok: true,
-    status: breachCount > 0 ? "WARN" : "OK",
+    status,
     gate_status: gateStatus,
-    reason: breachCount > 0 ? "NATIVE_PROTECTION_UNPROTECTED_WINDOW_BREACH" : null,
+    reason,
+    available,
+    unavailable_reason: summary && summary.unavailable_reason ? summary.unavailable_reason : null,
+    unavailable_detail: summary && summary.unavailable_detail ? summary.unavailable_detail : null,
     breach_count: breachCount,
     breach_window_count: Number(summary.breach_window_count || 0),
     breach_cancel_without_ack_count: Number(summary.breach_cancel_without_ack_count || 0),

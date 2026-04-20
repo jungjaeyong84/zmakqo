@@ -39,7 +39,6 @@ const assert = require("assert");
 const {
   __test: {
     requiresCanonicalExitEntryLineage,
-    classifyExitEventStage,
   },
 } = require("../services/positionStateMachine");
 

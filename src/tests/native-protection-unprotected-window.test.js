@@ -344,4 +344,39 @@ function posFixture(meta = {}, overrides = {}) {
   assert.strictEqual(cli.status, "OK");
 })();
 
+// ─────────────────────────────────────────────────────────────────────────────
+// M1: listPositions throwing must surface as available:false + BLOCK, NOT
+// silently pass with breach_count: 0. Prior behaviour swallowed the error
+// with `.catch(() => [])`, which collapsed a Firestore outage into a clean
+// gate pass — the inverse of what a fail-closed invariant needs.
+// ─────────────────────────────────────────────────────────────────────────────
+(async function runtimeListPositionsFailureBlocks() {
+  const summary = await loadUnprotectedWindowRuntime({
+    exchange: "BINANCEFUT",
+    thresholdMs: 3000,
+    listPositions: async () => {
+      const err = new Error("RPC error: UNAVAILABLE");
+      err.code = "UNAVAILABLE";
+      throw err;
+    },
+    nowMs: 1_700_000_000_000,
+  });
+  assert.strictEqual(summary.available, false,
+    "listPositions throw must mark the snapshot unavailable — not silently empty");
+  assert.strictEqual(summary.unavailable_reason, "LIST_POSITIONS_FAILED");
+  assert.ok(String(summary.unavailable_detail || "").includes("UNAVAILABLE"),
+    "unavailable_detail must include the underlying error code/message for ops triage");
+  assert.strictEqual(summary.breach_count, 0,
+    "breach_count stays 0 — the 'block' signal is available:false, not a synthetic breach");
+  const cli = reportTest.buildCliResult(summary, "/tmp/x.json", "/tmp/x.md");
+  assert.strictEqual(cli.gate_status, "BLOCK",
+    "CLI must BLOCK on unavailable — fleet-blindness is not a pass");
+  assert.strictEqual(cli.reason, "NATIVE_PROTECTION_UNPROTECTED_WINDOW_UNAVAILABLE",
+    "distinct reason from UNPROTECTED_WINDOW_BREACH so on-call can tell 'outage' from 'real breach'");
+  assert.strictEqual(cli.available, false);
+})().catch((err) => {
+  console.error("TEST_FAIL:", err && err.stack ? err.stack : err);
+  process.exit(1);
+});
+
 console.log("NATIVE_PROTECTION_UNPROTECTED_WINDOW_TEST_OK");

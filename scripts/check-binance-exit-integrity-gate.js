@@ -23,7 +23,7 @@ function shouldAllowSkippedValidationFamilies(summary = {}) {
   return families.every((family) => family === "EXCHANGE_IO");
 }
 
-// 2026-04-20 senior-audit LOW: custom undici dispatcher runtime guard.
+// 2026-04-20 senior-audit LOW / H2: custom undici dispatcher runtime guard.
 //
 // `EGRESS_PROXY_DISABLE_CUSTOM_DISPATCHER=1` is an explicit escape hatch for
 // test harnesses — in production it must be unset (or "0") so the
@@ -33,12 +33,17 @@ function shouldAllowSkippedValidationFamilies(summary = {}) {
 // revert to the global fetch() pool and resurrect the 20s silent-hang
 // pattern that caused the 2026-04-19 ETHUSDT blackout. The gate blocks on
 // this invariant so regressions surface in CI rather than during an
-// incident. Accept `env` as a parameter so the invariant is unit-testable
-// without mutating process.env across assertions.
-function egressDispatcherDisabledInEnv(env = process.env) {
-  const raw = env && env.EGRESS_PROXY_DISABLE_CUSTOM_DISPATCHER;
-  return String(raw == null ? "" : raw).trim() === "1";
-}
+// incident.
+//
+// H2: we import the *same* predicate from `src/utils/egressProxy` so the
+// gate decision is byte-for-byte identical to the runtime decision.
+// Previously the gate had a local copy with slightly different trim
+// semantics, which could flag values that the runtime would in fact
+// accept (false positive) or, worse, miss values that the runtime
+// would actually disable on.
+const {
+  isEgressDispatcherDisabledByEnv: egressDispatcherDisabledInEnv,
+} = require("../src/utils/egressProxy");
 
 function buildFailureReasons(summary = {}, { cycleResult = null, env = process.env } = {}) {
   const reasons = [];
@@ -91,8 +96,20 @@ function buildFailureReasons(summary = {}, { cycleResult = null, env = process.e
   // window" — fails the deploy. We also block on the explicit gate string
   // for belt-and-suspenders in case the raw count migrates.
   if (toCount(summary.unprotected_window_breach_n) > 0) reasons.push("NATIVE_PROTECTION_UNPROTECTED_WINDOW_BREACH");
+  // 2026-04-20 senior-audit M1: distinguish "we saw a breach" from "we
+  // could not observe the invariant at all" (Firestore listPositions
+  // threw). Both BLOCK, but the reason string differs so on-call can
+  // tell a real breach apart from an observability outage.
+  if (summary.unprotected_window_available === false) {
+    const detailPart = summary.unprotected_window_unavailable_reason
+      ? `:${String(summary.unprotected_window_unavailable_reason).trim().toUpperCase()}`
+      : "";
+    const marker = `NATIVE_PROTECTION_UNPROTECTED_WINDOW_UNAVAILABLE${detailPart}`;
+    if (!reasons.includes(marker)) reasons.push(marker);
+  }
   if (String(summary.unprotected_window_gate || "").trim().toUpperCase() === "BLOCK") {
-    if (!reasons.includes("NATIVE_PROTECTION_UNPROTECTED_WINDOW_BREACH")) {
+    const alreadyCovered = reasons.some((r) => r.startsWith("NATIVE_PROTECTION_UNPROTECTED_WINDOW_"));
+    if (!alreadyCovered) {
       reasons.push("NATIVE_PROTECTION_UNPROTECTED_WINDOW_BREACH");
     }
   }

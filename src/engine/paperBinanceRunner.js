@@ -37,6 +37,10 @@ const {
 } = require("../utils/entryBudgetGuard");
 const { getFirestore } = require("../storage/firestore");
 const { tfToMs, normalizeTf, defaultExecTfFromEnv } = require("../utils/marketConfig");
+const {
+  toPositiveMs: nativeProtectionWindowToPositiveMs,
+  computeWindowMs: computeNativeProtectionWindowMs,
+} = require("../utils/nativeProtectionWindowMath");
 const { normalizeEvalExchange, evalLatestId, matchesEvalTf } = require("../utils/evalDoc");
 const { deriveSignalDocId } = require("../utils/signalDocId");
 const { buildExitStageView } = require("../utils/exitStageView");
@@ -5132,6 +5136,15 @@ function buildClosingFillMetaPatch({
 // (SYN| prefix never collides with real ids produced by buildEntryEventId
 // which start with the exchange name), and preserves the 7-field pipe
 // layout expected by any parser that looks for structure.
+//
+// NOTE on field count: the layout is `SYN|EX|SYM|TF|EXEC|EV|EV` — fields
+// 6 and 7 are *intentionally* duplicated. `buildEntryEventId` emits the
+// same `{event}|{event}` suffix (signal event + dedupe-resistant trailing
+// event), so we mirror that shape exactly. Any parser that splits on `|`
+// and indexes by position continues to work without special-casing SYN
+// ids. If you are tempted to collapse the two, first audit every consumer
+// of entry_event_id (canonical_exit_transition, intent_fill_events, the
+// ML feature-label dataset) — several of them index by field position.
 const SYNTHETIC_OPENING_ENTRY_EVENT_ID_PREFIX = "SYN";
 const SYNTHETIC_OPENING_ENTRY_SIGNAL_TYPE = "SYN_OPENING";
 
@@ -10116,21 +10129,16 @@ async function placeNativeStopImmediateTriggerFailClosed({
 //     from "cancel acked (window opened)".
 function resolveNativeProtectionUnprotectedWindowFields(nativeProtection) {
   const result = nativeProtection && typeof nativeProtection === "object" ? nativeProtection : {};
-  const cancelMsRaw = Number(result.cancel_ms);
-  const stopAckMsRaw = Number(result.stop_ack_ms);
-  const tpAckMsRaw = Number(result.tp_ack_ms);
-  const cancelMs = Number.isFinite(cancelMsRaw) && cancelMsRaw > 0 ? cancelMsRaw : null;
-  const stopAckMs = Number.isFinite(stopAckMsRaw) && stopAckMsRaw > 0 ? stopAckMsRaw : null;
-  const tpAckMs = Number.isFinite(tpAckMsRaw) && tpAckMsRaw > 0 ? tpAckMsRaw : null;
-  const latestAckMs = (() => {
-    if (stopAckMs == null && tpAckMs == null) return null;
-    if (stopAckMs == null) return tpAckMs;
-    if (tpAckMs == null) return stopAckMs;
-    return Math.max(stopAckMs, tpAckMs);
-  })();
-  const windowMs = (cancelMs != null && latestAckMs != null && latestAckMs >= cancelMs)
-    ? latestAckMs - cancelMs
-    : null;
+  // 2026-04-20 senior-audit L1: arithmetic lives in
+  // `src/utils/nativeProtectionWindowMath.js` so the read side
+  // (`nativeProtectionUnprotectedWindowRuntime.classifyUnprotectedWindowRecord`)
+  // computes window_ms identically. Any future refinement to the
+  // cancel→ack contract — clamp policy, min-of-acks, clock-skew
+  // handling — is made in one place and both sides inherit it.
+  const cancelMs = nativeProtectionWindowToPositiveMs(result.cancel_ms);
+  const stopAckMs = nativeProtectionWindowToPositiveMs(result.stop_ack_ms);
+  const tpAckMs = nativeProtectionWindowToPositiveMs(result.tp_ack_ms);
+  const windowMs = computeNativeProtectionWindowMs({ cancelMs, stopAckMs, tpAckMs });
   const cancelSucceeded = result.cancel_succeeded === true
     ? true
     : (result.cancel_succeeded === false ? false : null);

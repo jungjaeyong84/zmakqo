@@ -30,6 +30,14 @@
 // PASS/BLOCK.
 
 const { listExchangePositionReadViews } = require("./positionReadModel");
+// 2026-04-20 senior-audit L1: shared with
+// `paperBinanceRunner.resolveNativeProtectionUnprotectedWindowFields` so
+// the write side (meta-stamp at refresh time) and the read side
+// (classification at gate time) use identical arithmetic.
+const {
+  toPositiveMs: toPositiveMsShared,
+  computeWindowMs: computeWindowMsShared,
+} = require("../utils/nativeProtectionWindowMath");
 
 function upper(value) {
   return String(value || "").trim().toUpperCase();
@@ -44,9 +52,11 @@ function toNum(value) {
 // Like toNum but additionally requires > 0. Used for timestamp/ms fields
 // where 0 is never a valid value — Number(null) evaluates to 0, which
 // without this guard would mask a null stop_ack_ms as "acked at epoch".
+//
+// 2026-04-20 senior-audit L1: delegates to the shared helper so the
+// "positive-ms" contract is identical between read and write sides.
 function toPosMs(value) {
-  const n = toNum(value);
-  return n != null && n > 0 ? n : null;
+  return toPositiveMsShared(value);
 }
 
 // Default threshold: 3 seconds. Healthy refresh timings observed in
@@ -118,6 +128,10 @@ function classifyUnprotectedWindowRecord(row = null, {
   // live before the position is fully protected again. For paths that
   // don't place a TP (fail-closed, TP disabled/ineligible), tp_ack_ms is
   // null and we fall back to stop_ack_ms alone.
+  //
+  // L1: latestAckMs and the recomputed window_ms both delegate to
+  // `nativeProtectionWindowMath.computeWindowMs` so the read side is
+  // byte-for-byte identical to the write side in paperBinanceRunner.
   const latestAckMs = (() => {
     if (stopAckMs == null && tpAckMs == null) return null;
     if (stopAckMs == null) return tpAckMs;
@@ -131,9 +145,7 @@ function classifyUnprotectedWindowRecord(row = null, {
   const computedWindowMsRaw = toNum(meta.native_protection_unprotected_window_ms);
   const windowMs = computedWindowMsRaw != null
     ? computedWindowMsRaw
-    : (cancelMs != null && latestAckMs != null && latestAckMs >= cancelMs
-      ? latestAckMs - cancelMs
-      : null);
+    : computeWindowMsShared({ cancelMs, stopAckMs, tpAckMs });
   const clock = Number.isFinite(Number(nowMs)) && Number(nowMs) > 0 ? Number(nowMs) : Date.now();
   const stale = cancelMs != null && (clock - cancelMs) > Math.max(0, Number(staleMaxAgeMs) || 0);
   // Classification.
@@ -197,10 +209,53 @@ async function loadUnprotectedWindowRuntime({
   nowMs = null,
 } = {}) {
   const ex = upper(exchange || "BINANCEFUT") || "BINANCEFUT";
-  const rows = await listPositions({
-    exchange: ex,
-    limit: Math.max(20, Number(limit) || 200),
-  }).catch(() => []);
+  // 2026-04-20 senior-audit M1: do NOT swallow listPositions errors with
+  // `.catch(() => [])`. Empty rows are indistinguishable from "Firestore
+  // is up and there are no active positions", which silently collapses
+  // an outage into `breach_count: 0` and PASSes the deploy gate on a
+  // fleet-blind system. Instead we capture the error, mark the snapshot
+  // `available: false`, and let the gate treat it as a breach of the
+  // unprotected-window invariant (since we cannot prove the invariant
+  // holds).
+  let rows = [];
+  let loadError = null;
+  try {
+    rows = await listPositions({
+      exchange: ex,
+      limit: Math.max(20, Number(limit) || 200),
+    });
+  } catch (err) {
+    loadError = err;
+  }
+  if (loadError != null) {
+    const genAtMs = Number.isFinite(Number(nowMs)) && Number(nowMs) > 0
+      ? Number(nowMs)
+      : Date.now();
+    return {
+      exchange: ex,
+      available: false,
+      unavailable_reason: "LIST_POSITIONS_FAILED",
+      unavailable_detail: String(
+        (loadError && loadError.code) || (loadError && loadError.message) || loadError || "UNKNOWN"
+      ),
+      generated_at_ms: genAtMs,
+      threshold_ms: Number(thresholdMs),
+      stale_max_age_ms: Number(staleMaxAgeMs),
+      active_position_count: 0,
+      breach_count: 0,
+      breach_window_count: 0,
+      breach_cancel_without_ack_count: 0,
+      partial_ack_count: 0,
+      not_measured_count: 0,
+      stale_count: 0,
+      window_ok_count: 0,
+      max_window_ms: null,
+      avg_window_ms: null,
+      class_counts: {},
+      rows: [],
+      breach_rows: [],
+    };
+  }
   const activeRows = (Array.isArray(rows) ? rows : []).filter((row) => isActivePosition(row));
   const records = activeRows.map((row) => classifyUnprotectedWindowRecord(row, {
     thresholdMs,

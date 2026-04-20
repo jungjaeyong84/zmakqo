@@ -469,6 +469,20 @@ function buildSummary(report = {}) {
   const unprotectedWindowSkipped = !!(report.native_protection_unprotected_window
     && report.native_protection_unprotected_window.parsed
     && report.native_protection_unprotected_window.parsed.skipped === true);
+  // 2026-04-20 senior-audit M1: distinguish "no breaches observed" from
+  // "we could not observe anything because listPositions threw". The
+  // runtime now sets available: false / gate_status: BLOCK when the
+  // read side (Firestore) is down, and we must propagate that up or
+  // the deploy gate silently passes on fleet-blindness.
+  const unprotectedWindowAvailable = unprotectedWindowParsed.available !== false;
+  const unprotectedWindowUnavailableReason = unprotectedWindowParsed.unavailable_reason
+    || (!unprotectedWindowAvailable ? "UNKNOWN" : null);
+  const unprotectedWindowUnavailableDetail = unprotectedWindowParsed.unavailable_detail || null;
+  const unprotectedWindowReportedGateStatus = String(unprotectedWindowParsed.gate_status || "").trim().toUpperCase();
+  const unprotectedWindowGate = (unprotectedWindowBreachN > 0 || !unprotectedWindowAvailable
+      || unprotectedWindowReportedGateStatus === "BLOCK")
+    ? "BLOCK"
+    : "PASS";
   const duplicationIssueN = duplicationLiveGroupN > 0 ? duplicationLiveGroupN : fillSyncDuplicateGroupN;
   const scriptFailures = collectScriptFailures(report);
   const scriptFailureN = scriptFailures.length;
@@ -499,10 +513,13 @@ function buildSummary(report = {}) {
   if (unprotectedWindowBreachN > 0) {
     reasons.push(`native protection unprotected window breach ${unprotectedWindowBreachN}건 (window=${unprotectedWindowBreachWindowN}, cancel_without_ack=${unprotectedWindowCancelWithoutAckN}, max_ms=${unprotectedWindowMaxMs ?? "N/A"}, threshold_ms=${unprotectedWindowThresholdMs ?? "N/A"})`);
   }
+  if (!unprotectedWindowAvailable) {
+    reasons.push(`native protection unprotected window unavailable (reason=${unprotectedWindowUnavailableReason || "UNKNOWN"}${unprotectedWindowUnavailableDetail ? `, detail=${unprotectedWindowUnavailableDetail}` : ""})`);
+  }
   if (skippedValidationFamilyN > 0) {
     reasons.push(`skipped validation families ${skippedValidationFamilyN}개 (${skippedValidationFamilies.map((f) => f.family || "UNKNOWN").join(", ")})`);
   }
-  const liveGateBlocked = scriptFailureN > 0 || actionableLiveIssueCount > 0 || !canonicalTransitionBackfillOk || unprotectedWindowBreachN > 0;
+  const liveGateBlocked = scriptFailureN > 0 || actionableLiveIssueCount > 0 || !canonicalTransitionBackfillOk || unprotectedWindowBreachN > 0 || !unprotectedWindowAvailable;
   return {
     status: liveGateBlocked ? "WARN" : "OK",
     live_gate_blocked: liveGateBlocked,
@@ -551,7 +568,10 @@ function buildSummary(report = {}) {
     unprotected_window_max_ms: unprotectedWindowMaxMs,
     unprotected_window_threshold_ms: unprotectedWindowThresholdMs,
     unprotected_window_skipped: unprotectedWindowSkipped,
-    unprotected_window_gate: unprotectedWindowBreachN > 0 ? "BLOCK" : "PASS",
+    unprotected_window_available: unprotectedWindowAvailable,
+    unprotected_window_unavailable_reason: unprotectedWindowUnavailableReason,
+    unprotected_window_unavailable_detail: unprotectedWindowUnavailableDetail,
+    unprotected_window_gate: unprotectedWindowGate,
     reasons,
   };
 }
@@ -646,6 +666,13 @@ function buildSkippedSummary(reason, extra = {}) {
     unprotected_window_max_ms: null,
     unprotected_window_threshold_ms: null,
     unprotected_window_skipped: true,
+    // M1: the cycle-skip path is treated as "we didn't check" — surface
+    // the sub-report as available: true to avoid double-counting the
+    // skip as an unavailable signal (the cycle-level skip is already
+    // a gate block via CYCLE_SKIPPED).
+    unprotected_window_available: true,
+    unprotected_window_unavailable_reason: null,
+    unprotected_window_unavailable_detail: null,
     unprotected_window_gate: "PASS",
     reasons: [reason],
     skip_reason: reason,

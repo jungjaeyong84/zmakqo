@@ -309,7 +309,22 @@ async function repairLiveTrailingStageForSymbol({
     source: "LIVE_STAGE_REPAIR",
   });
   const orders = await fetchOpenOrderSnapshot(resolvedKeys, sym);
-  return {
+  // 2026-04-20 senior-audit M2: when `sanitizeNativeProtectionResultForNonAuthority`
+  // kicks in (single-stop-writer mode), the request was dispatched but the
+  // actual REST side-effect is deferred to the authority layer. Previously
+  // the outer return was unconditionally `{ ok: true }` regardless, so
+  // `binanceLiveStateSelfHeal` would flip `repaired = true` and ops would
+  // mark the symbol as "fixed" when in fact only an intent was written.
+  //
+  // We surface the request-only shape via `skipped: true` + a distinctive
+  // skip_reason. `binanceLiveStateSelfHeal.js` already gates its
+  // `repaired = true` assignment on `ok === true && skipped !== true`, so
+  // this single-line change converts a silently-misleading success into a
+  // correctly-flagged "request dispatched, awaiting authority actuation".
+  const requestedOnly = nativeProtection
+    && nativeProtection.requested === true
+    && nativeProtection.ok !== true;
+  const outer = {
     ok: true,
     symbol: sym,
     stage: repairStage.stage,
@@ -321,6 +336,11 @@ async function repairLiveTrailingStageForSymbol({
     open_orders: orders.openOrders,
     algo_orders: orders.algoOrders,
   };
+  if (requestedOnly) {
+    outer.skipped = true;
+    outer.skip_reason = "NATIVE_PROTECTION_REPAIR_REQUESTED_NON_AUTHORITY_LAYER";
+  }
+  return outer;
 }
 
 module.exports = {
