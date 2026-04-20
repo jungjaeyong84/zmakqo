@@ -1136,7 +1136,61 @@ async function sendTradeExecutionAlert(payload = {}) {
       reason: canonicalRequirement.reason,
       source: "tradeExecutionAlert.sendTradeExecutionAlert",
     });
-    return { ok: false, skipped: true, reason: canonicalRequirement.reason };
+    // 2026-04-20 senior-audit P3: persist a durable BLOCKED row in
+    // trade_alert_outbox so that canonical-exit gate rejections are
+    // query-indexable by (symbol, event, time) in Firestore. Prior to this,
+    // the skip returned here before prepareTradeAlertOutbox, leaving no
+    // symbol-keyed evidence — ops had to scan audit logs to discover a
+    // Telegram miss. The write is best-effort: if outbox prep fails we
+    // fall through to the original return so the trading path is never
+    // blocked by alert-observability storage.
+    let blockedOutboxId = null;
+    try {
+      const blockedOutboxState = await prepareTradeAlertOutbox({
+        type: "TRADE_EXECUTION_ALERT",
+        exchange,
+        symbol: payload.symbol,
+        event: payload.event,
+        // No title/body yet — buildMessage hasn't run. Use a canonical
+        // placeholder so downstream dashboards can still display the row.
+        title: `[BLOCKED:${canonicalRequirement.reason}] ${String(payload.symbol || "").toUpperCase() || "?"} ${String(payload.event || "").toUpperCase() || "?"}`,
+        body: null,
+        payload,
+        sourceFillId: resolveTradeAlertSourceFillId(payload),
+        dedupeKey: resolveTradeAlertDedupeKey(payload),
+        allowResend: false,
+        source: "tradeExecutionAlert.sendTradeExecutionAlert.blocked",
+      });
+      if (blockedOutboxState && blockedOutboxState.outboxId) {
+        blockedOutboxId = blockedOutboxState.outboxId;
+        // Only downgrade to BLOCKED when the prior state was not already
+        // SENT — skipSend=true means the outbox already reflects a
+        // successful prior dispatch and we must not clobber it. In that
+        // case the skip here is a duplicate request, not a silent drop.
+        if (blockedOutboxState.skipSend !== true) {
+          await markTradeAlertOutboxResult({
+            outboxId: blockedOutboxId,
+            blocked: true,
+            reason: canonicalRequirement.reason,
+            source: "tradeExecutionAlert.sendTradeExecutionAlert.blocked",
+          }).catch((err) => {
+            console.warn("[TRADE_EXEC_ALERT_OUTBOX_BLOCKED_MARK_FAIL]",
+              err && err.message ? err.message : String(err));
+            return null;
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("[TRADE_EXEC_ALERT_OUTBOX_BLOCKED_PREP_FAIL]",
+        err && err.message ? err.message : String(err));
+    }
+    return {
+      ok: false,
+      skipped: true,
+      reason: canonicalRequirement.reason,
+      blocked: true,
+      outboxId: blockedOutboxId,
+    };
   }
 
   const msg = buildMessage(payload);

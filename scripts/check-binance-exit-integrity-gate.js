@@ -23,12 +23,34 @@ function shouldAllowSkippedValidationFamilies(summary = {}) {
   return families.every((family) => family === "EXCHANGE_IO");
 }
 
-function buildFailureReasons(summary = {}, { cycleResult = null } = {}) {
+// 2026-04-20 senior-audit LOW: custom undici dispatcher runtime guard.
+//
+// `EGRESS_PROXY_DISABLE_CUSTOM_DISPATCHER=1` is an explicit escape hatch for
+// test harnesses — in production it must be unset (or "0") so the
+// half-open-TCP mitigation in `src/utils/egressProxy.js` is active. If a
+// deploy inadvertently ships with this flag set (via Cloud Run service env
+// or a Cloud Build substitution leaking into prod), the exit-worker would
+// revert to the global fetch() pool and resurrect the 20s silent-hang
+// pattern that caused the 2026-04-19 ETHUSDT blackout. The gate blocks on
+// this invariant so regressions surface in CI rather than during an
+// incident. Accept `env` as a parameter so the invariant is unit-testable
+// without mutating process.env across assertions.
+function egressDispatcherDisabledInEnv(env = process.env) {
+  const raw = env && env.EGRESS_PROXY_DISABLE_CUSTOM_DISPATCHER;
+  return String(raw == null ? "" : raw).trim() === "1";
+}
+
+function buildFailureReasons(summary = {}, { cycleResult = null, env = process.env } = {}) {
   const reasons = [];
   if (cycleResult && cycleResult.skipped === true) {
     reasons.push(`CYCLE_SKIPPED:${String(summary.skip_reason || "UNKNOWN").toUpperCase()}`);
   }
   const statusUpper = String(summary.status || "").trim().toUpperCase();
+  if (egressDispatcherDisabledInEnv(env)) {
+    // Block early — this is a configuration smell that invalidates the
+    // entire deploy, regardless of the per-family summary counts.
+    reasons.push("EGRESS_PROXY_CUSTOM_DISPATCHER_DISABLED");
+  }
   if (toCount(summary.script_failure_n) > 0) reasons.push("SCRIPT_FAILURE");
   if (toCount(summary.skipped_validation_family_n) > 0 && !shouldAllowSkippedValidationFamilies(summary)) {
     // P3-09: when the cycle runs with EXIT_INTEGRITY_CI_NO_EXCHANGE_IO=1 a
@@ -63,6 +85,17 @@ function buildFailureReasons(summary = {}, { cycleResult = null } = {}) {
   if (toCount(summary.simplified_exit_v2_live_flow_actionable_symbol_n) > 0) reasons.push("SIMPLIFIED_EXIT_V2_LIVE_FLOW_ACTIONABLE_SYMBOL");
   if (toCount(summary.tp1_meta_sync_gap_n) > 0) reasons.push("TP1_META_SYNC_GAP");
   if (toCount(summary.stop_divergence_symbol_n) > 0) reasons.push("STOP_DIVERGENCE_SYMBOL");
+  // 2026-04-20 senior-audit P2: unprotected-window sub-gate. Block on the
+  // aggregate breach count (both WINDOW_BREACH and CANCEL_WITHOUT_ACK) so
+  // either mode — "refresh is too slow" or "refresh never closed the
+  // window" — fails the deploy. We also block on the explicit gate string
+  // for belt-and-suspenders in case the raw count migrates.
+  if (toCount(summary.unprotected_window_breach_n) > 0) reasons.push("NATIVE_PROTECTION_UNPROTECTED_WINDOW_BREACH");
+  if (String(summary.unprotected_window_gate || "").trim().toUpperCase() === "BLOCK") {
+    if (!reasons.includes("NATIVE_PROTECTION_UNPROTECTED_WINDOW_BREACH")) {
+      reasons.push("NATIVE_PROTECTION_UNPROTECTED_WINDOW_BREACH");
+    }
+  }
   if (statusUpper && !ALLOWED_GATE_STATUSES.has(statusUpper)) {
     const shouldBlockWarnStatus = statusUpper !== "WARN" || reasons.length > 0;
     if (shouldBlockWarnStatus) {
@@ -121,6 +154,7 @@ if (require.main === module) {
       toCount,
       shouldAllowSkippedValidationFamilies,
       buildFailureReasons,
+      egressDispatcherDisabledInEnv,
     },
   };
 }

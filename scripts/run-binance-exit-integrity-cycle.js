@@ -171,6 +171,8 @@ function collectScriptFailures(report = {}) {
     ["binance_canonical_exit_stage_qa", report.binance_canonical_exit_stage_qa],
     ["simplified_exit_v2_live_flow", report.simplified_exit_v2_live_flow],
     ["simplified_exit_v2_tp1_drilldown", report.simplified_exit_v2_tp1_drilldown],
+    // 2026-04-20 senior-audit P2
+    ["native_protection_unprotected_window", report.native_protection_unprotected_window],
   ];
   const failures = [];
   for (const [name, step] of checks) {
@@ -452,6 +454,21 @@ function buildSummary(report = {}) {
   const simplifiedExitV2LiveFlowActionableSymbolN = Number(report.simplified_exit_v2_live_flow && report.simplified_exit_v2_live_flow.parsed && report.simplified_exit_v2_live_flow.parsed.actionable_symbol_n || 0);
   const tp1MetaSyncGapN = countTp1MetaSyncGapIssues(report.simplified_exit_v2_tp1_drilldown || {});
   const stopDivergenceSymbolN = countStopDivergenceSymbols(report.active_exit_watchdog || {});
+  // 2026-04-20 senior-audit P2: unprotected-window sub-gate.
+  const unprotectedWindowParsed = (report.native_protection_unprotected_window
+    && report.native_protection_unprotected_window.parsed) || {};
+  const unprotectedWindowBreachN = Number(unprotectedWindowParsed.breach_count || 0);
+  const unprotectedWindowBreachWindowN = Number(unprotectedWindowParsed.breach_window_count || 0);
+  const unprotectedWindowCancelWithoutAckN = Number(unprotectedWindowParsed.breach_cancel_without_ack_count || 0);
+  const unprotectedWindowMaxMs = Number.isFinite(Number(unprotectedWindowParsed.max_window_ms))
+    ? Number(unprotectedWindowParsed.max_window_ms)
+    : null;
+  const unprotectedWindowThresholdMs = Number.isFinite(Number(unprotectedWindowParsed.threshold_ms))
+    ? Number(unprotectedWindowParsed.threshold_ms)
+    : null;
+  const unprotectedWindowSkipped = !!(report.native_protection_unprotected_window
+    && report.native_protection_unprotected_window.parsed
+    && report.native_protection_unprotected_window.parsed.skipped === true);
   const duplicationIssueN = duplicationLiveGroupN > 0 ? duplicationLiveGroupN : fillSyncDuplicateGroupN;
   const scriptFailures = collectScriptFailures(report);
   const scriptFailureN = scriptFailures.length;
@@ -479,10 +496,13 @@ function buildSummary(report = {}) {
   if (!canonicalTransitionBackfillOk) reasons.push("canonical exit transition backfill failed");
   if (tp1MetaSyncGapN > 0) reasons.push(`tp1 meta sync gap ${tp1MetaSyncGapN}건`);
   if (stopDivergenceSymbolN > 0) reasons.push(`stop divergence symbol ${stopDivergenceSymbolN}건`);
+  if (unprotectedWindowBreachN > 0) {
+    reasons.push(`native protection unprotected window breach ${unprotectedWindowBreachN}건 (window=${unprotectedWindowBreachWindowN}, cancel_without_ack=${unprotectedWindowCancelWithoutAckN}, max_ms=${unprotectedWindowMaxMs ?? "N/A"}, threshold_ms=${unprotectedWindowThresholdMs ?? "N/A"})`);
+  }
   if (skippedValidationFamilyN > 0) {
     reasons.push(`skipped validation families ${skippedValidationFamilyN}개 (${skippedValidationFamilies.map((f) => f.family || "UNKNOWN").join(", ")})`);
   }
-  const liveGateBlocked = scriptFailureN > 0 || actionableLiveIssueCount > 0 || !canonicalTransitionBackfillOk;
+  const liveGateBlocked = scriptFailureN > 0 || actionableLiveIssueCount > 0 || !canonicalTransitionBackfillOk || unprotectedWindowBreachN > 0;
   return {
     status: liveGateBlocked ? "WARN" : "OK",
     live_gate_blocked: liveGateBlocked,
@@ -521,6 +541,17 @@ function buildSummary(report = {}) {
     tp1_meta_sync_gate: tp1MetaSyncGapN > 0 ? "BLOCK" : "PASS",
     stop_divergence_symbol_n: stopDivergenceSymbolN,
     stop_divergence_gate: stopDivergenceSymbolN > 0 ? "BLOCK" : "PASS",
+    // 2026-04-20 senior-audit P2: unprotected-window sub-gate surfaced up
+    // to the deploy gate via these four summary keys. Gate wrapper reads
+    // `unprotected_window_gate` for the block decision and the other three
+    // for the human-readable reason line.
+    unprotected_window_breach_n: unprotectedWindowBreachN,
+    unprotected_window_breach_window_n: unprotectedWindowBreachWindowN,
+    unprotected_window_cancel_without_ack_n: unprotectedWindowCancelWithoutAckN,
+    unprotected_window_max_ms: unprotectedWindowMaxMs,
+    unprotected_window_threshold_ms: unprotectedWindowThresholdMs,
+    unprotected_window_skipped: unprotectedWindowSkipped,
+    unprotected_window_gate: unprotectedWindowBreachN > 0 ? "BLOCK" : "PASS",
     reasons,
   };
 }
@@ -608,6 +639,14 @@ function buildSkippedSummary(reason, extra = {}) {
     tp1_meta_sync_gate: "PASS",
     stop_divergence_symbol_n: 0,
     stop_divergence_gate: "PASS",
+    // 2026-04-20 senior-audit P2 defaults for cycle-skip path.
+    unprotected_window_breach_n: 0,
+    unprotected_window_breach_window_n: 0,
+    unprotected_window_cancel_without_ack_n: 0,
+    unprotected_window_max_ms: null,
+    unprotected_window_threshold_ms: null,
+    unprotected_window_skipped: true,
+    unprotected_window_gate: "PASS",
     reasons: [reason],
     skip_reason: reason,
     ...extra,
@@ -847,6 +886,17 @@ async function runBinanceExitIntegrityCycle({
     runScriptStep("report-trail-runner-floor-live-separation.js"),
   ]);
   const authorityLiveBoard = await runScriptStep("report-binance-exit-authority-live-board.js");
+  // 2026-04-20 senior-audit P2: unprotected-window sub-report runs in the
+  // final serial step because it depends on meta that may have been written
+  // by the self-heal phase earlier in this cycle. Running it after the
+  // authority board also keeps it next to the other "live board" reports
+  // for log readability. It's gated off when exchange-IO is disabled (the
+  // meta is still readable from Firestore, but there's no semantic signal
+  // to block on when we've explicitly told the cycle to skip exchange-IO
+  // validation families).
+  const nativeProtectionUnprotectedWindow = disableExchangeIo
+    ? buildSkippedScriptStep({ breach_count: 0, gate_status: "PASS", max_window_ms: null })
+    : await runScriptStep("report-native-protection-unprotected-window.js");
 
   // P3-09: enumerate which validation families were skipped under the current
   // CI knob so ops (and the deploy gate) can refuse to treat a skip as pass.
@@ -865,6 +915,8 @@ async function runBinanceExitIntegrityCycle({
           "binance_canonical_exit_stage_qa",
           "simplified_exit_v2_live_flow",
           "simplified_exit_v2_tp1_drilldown",
+          // 2026-04-20 senior-audit P2
+          "native_protection_unprotected_window",
         ],
       });
     }
@@ -898,6 +950,8 @@ async function runBinanceExitIntegrityCycle({
     binance_canonical_exit_stage_qa: canonicalExitStageQa,
     simplified_exit_v2_live_flow: simplifiedExitV2LiveFlow,
     simplified_exit_v2_tp1_drilldown: simplifiedExitV2Tp1Drilldown,
+    // 2026-04-20 senior-audit P2
+    native_protection_unprotected_window: nativeProtectionUnprotectedWindow,
   };
   report.summary = buildSummary(report);
   Object.assign(report, report.summary);
