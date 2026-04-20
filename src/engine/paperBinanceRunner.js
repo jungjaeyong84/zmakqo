@@ -37,6 +37,10 @@ const {
 } = require("../utils/entryBudgetGuard");
 const { getFirestore } = require("../storage/firestore");
 const { tfToMs, normalizeTf, defaultExecTfFromEnv } = require("../utils/marketConfig");
+const {
+  toPositiveMs: nativeProtectionWindowToPositiveMs,
+  computeWindowMs: computeNativeProtectionWindowMs,
+} = require("../utils/nativeProtectionWindowMath");
 const { normalizeEvalExchange, evalLatestId, matchesEvalTf } = require("../utils/evalDoc");
 const { deriveSignalDocId } = require("../utils/signalDocId");
 const { buildExitStageView } = require("../utils/exitStageView");
@@ -5115,6 +5119,58 @@ function buildClosingFillMetaPatch({
   };
 }
 
+// 2026-04-20 senior audit fix (P0 BLOCKER) — synthetic opening entry_event_id.
+// Background: positions_paper.meta.entry_event_id was nullable at opening-fill
+// write because buildEntryEventId() returns null when any of
+// (exchange, symbol, tf, signalBarCloseMs, event) is missing. Downstream,
+// requiresCanonicalExitEntryLineage() gates TP0/TP1/TRAIL alerts on a
+// non-empty lineage id. A missing id causes resolveCanonicalExitWritePayload()
+// to emit an empty transitionEvents array, which silently trips
+// MISSING_CANONICAL_EXIT_TRANSITION in tradeExecutionAlert and the Telegram
+// message never goes out. The EXIT_TP_P1_RECOVERY band-aid hardcodes
+// transitionEvents to patch over this post-hoc; the real fix is to guarantee
+// a non-null, deterministic id at the entry write boundary.
+// The synthetic id is derived from observable facts available at opening
+// (exchange, symbol, tfMs, side, execBarMs). It is deterministic (same
+// inputs → same id so resyncs are idempotent), obviously distinguishable
+// (SYN| prefix never collides with real ids produced by buildEntryEventId
+// which start with the exchange name), and preserves the 7-field pipe
+// layout expected by any parser that looks for structure.
+//
+// NOTE on field count: the layout is `SYN|EX|SYM|TF|EXEC|EV|EV` — fields
+// 6 and 7 are *intentionally* duplicated. `buildEntryEventId` emits the
+// same `{event}|{event}` suffix (signal event + dedupe-resistant trailing
+// event), so we mirror that shape exactly. Any parser that splits on `|`
+// and indexes by position continues to work without special-casing SYN
+// ids. If you are tempted to collapse the two, first audit every consumer
+// of entry_event_id (canonical_exit_transition, intent_fill_events, the
+// ML feature-label dataset) — several of them index by field position.
+const SYNTHETIC_OPENING_ENTRY_EVENT_ID_PREFIX = "SYN";
+const SYNTHETIC_OPENING_ENTRY_SIGNAL_TYPE = "SYN_OPENING";
+
+function buildSyntheticOpeningEntryEventId({
+  exchange = null,
+  symbol = null,
+  signalTfMs = null,
+  side = null,
+  execBarCloseMs = null,
+} = {}) {
+  const ex = String(exchange || "").trim().toUpperCase();
+  const sym = String(symbol || "").trim().toUpperCase();
+  const execMs = Number(execBarCloseMs);
+  // Minimum required material. Without exchange+symbol+execMs we cannot
+  // produce a deterministic id — fall through to null and let the caller
+  // mark origin=MISSING. Note: Number(null)/Number("")/Number(undefined)
+  // all coerce to 0 which IS finite, so guard explicitly on positivity —
+  // a zero bar-close epoch is never a real trading timestamp.
+  if (!ex || !sym || !Number.isFinite(execMs) || execMs <= 0) return null;
+  const tfMs = Number(signalTfMs);
+  const tfToken = Number.isFinite(tfMs) && tfMs > 0 ? `${tfMs}ms` : "NA";
+  const sideToken = String(side || "").trim().toUpperCase() || "NA";
+  const evToken = `OPENING_${sideToken}`;
+  return `${SYNTHETIC_OPENING_ENTRY_EVENT_ID_PREFIX}|${ex}|${sym}|${tfToken}|${execMs}|${evToken}|${evToken}`;
+}
+
 function buildOpeningFillMetaPatch({
   leverageValue = null,
   leverageReason = null,
@@ -5135,7 +5191,29 @@ function buildOpeningFillMetaPatch({
   trailRMultiple = undefined,
   includeLeverageReason = false,
   includeEntryRiskFields = false,
+  // Raw material for synthetic fallback (see comment above).
+  exchange = null,
+  symbol = null,
+  metaSide = null,
 } = {}) {
+  const rawEntryEventId = String(entryEventIdFromIntent || "").trim() || null;
+  let resolvedEntryEventId = rawEntryEventId;
+  let entryLineageOrigin = rawEntryEventId ? "INTENT" : "MISSING";
+  if (!resolvedEntryEventId) {
+    const synthetic = buildSyntheticOpeningEntryEventId({
+      exchange,
+      symbol,
+      signalTfMs,
+      side: metaSide,
+      execBarCloseMs,
+    });
+    if (synthetic) {
+      resolvedEntryEventId = synthetic;
+      entryLineageOrigin = "SYNTHETIC";
+    }
+  }
+  const resolvedEntrySignalType = String(entrySignalTypeFromIntent || "").trim().toUpperCase()
+    || (entryLineageOrigin === "SYNTHETIC" ? SYNTHETIC_OPENING_ENTRY_SIGNAL_TYPE : null);
   return {
     leverage: Number.isFinite(Number(leverageValue)) ? Number(leverageValue) : null,
     leverage_reason: includeLeverageReason ? (leverageReason || null) : undefined,
@@ -5162,10 +5240,11 @@ function buildOpeningFillMetaPatch({
       ? Number(marketRegimeRow.objective_score)
       : null,
     openclaw_market_regime_drop_verdict: marketRegimeRow ? String(marketRegimeRow.drop_verdict || "").trim().toUpperCase() || null : null,
+    entry_lineage_origin: entryLineageOrigin,
     ...buildSameDirectionTrailProfitLegacyResetMetaPatch(),
     ...buildEntryLineageMetaPatch({
-      entry_event_id: entryEventIdFromIntent || null,
-      entry_signal_type: entrySignalTypeFromIntent || null,
+      entry_event_id: resolvedEntryEventId,
+      entry_signal_type: resolvedEntrySignalType,
       entry_grade: entryGradeFromIntent || null,
       entry_qty_profile: entryQtyProfileFromIntent || null,
       entry_signal_bar_ms: Number(signalBarCloseTimeUtcMs) || null,
@@ -10032,6 +10111,46 @@ async function placeNativeStopImmediateTriggerFailClosed({
   };
 }
 
+// 2026-04-20 senior-audit P2: pure helper that extracts unprotected-window
+// timing fields from a refresh result. Exported via __test block for direct
+// unit coverage. Contract:
+//   - cancel_ms / stop_ack_ms / tp_ack_ms are each null unless the refresh
+//     returned a positive finite millisecond timestamp.
+//   - native_protection_unprotected_window_ms is the max of (stop_ack_ms,
+//     tp_ack_ms) minus cancel_ms — i.e. when BOTH legs needed to ack, we
+//     wait for the later ack; when only the SL leg acked (TP disabled or
+//     TP1 not eligible), the SL ack closes the window.
+//   - native_protection_unprotected_window_ms is null when cancel_ms OR
+//     every ack timestamp is null — the gate treats null-with-cancel as a
+//     distinct "cancel-emitted but no ack recorded" breach (stronger than
+//     a numeric-window breach).
+//   - native_protection_cancel_succeeded is carried through so the gate
+//     can tell "cancel itself failed (old orders intact, no window opened)"
+//     from "cancel acked (window opened)".
+function resolveNativeProtectionUnprotectedWindowFields(nativeProtection) {
+  const result = nativeProtection && typeof nativeProtection === "object" ? nativeProtection : {};
+  // 2026-04-20 senior-audit L1: arithmetic lives in
+  // `src/utils/nativeProtectionWindowMath.js` so the read side
+  // (`nativeProtectionUnprotectedWindowRuntime.classifyUnprotectedWindowRecord`)
+  // computes window_ms identically. Any future refinement to the
+  // cancel→ack contract — clamp policy, min-of-acks, clock-skew
+  // handling — is made in one place and both sides inherit it.
+  const cancelMs = nativeProtectionWindowToPositiveMs(result.cancel_ms);
+  const stopAckMs = nativeProtectionWindowToPositiveMs(result.stop_ack_ms);
+  const tpAckMs = nativeProtectionWindowToPositiveMs(result.tp_ack_ms);
+  const windowMs = computeNativeProtectionWindowMs({ cancelMs, stopAckMs, tpAckMs });
+  const cancelSucceeded = result.cancel_succeeded === true
+    ? true
+    : (result.cancel_succeeded === false ? false : null);
+  return {
+    native_protection_cancel_ms: cancelMs,
+    native_protection_cancel_succeeded: cancelSucceeded,
+    native_protection_stop_ack_ms: stopAckMs,
+    native_protection_tp_ack_ms: tpAckMs,
+    native_protection_unprotected_window_ms: windowMs,
+  };
+}
+
 function buildNativeProtectionMetaPatch({
   nativeProtection,
   intent,
@@ -10051,6 +10170,7 @@ function buildNativeProtectionMetaPatch({
   const reason = nativeProtection.ok === true
     ? null
     : resolvedReason;
+  const windowFields = resolveNativeProtectionUnprotectedWindowFields(nativeProtection);
   const basePatch = {
     native_protection_refresh_status: status,
     native_protection_refresh_reason: reason,
@@ -10060,6 +10180,7 @@ function buildNativeProtectionMetaPatch({
     native_protection_stale: nativeProtection.ok === true ? false : true,
     native_protection_attempts: Number.isFinite(Number(nativeProtection.attempts)) ? Number(nativeProtection.attempts) : null,
     native_protection_max_attempts: Number.isFinite(Number(nativeProtection.max_attempts)) ? Number(nativeProtection.max_attempts) : null,
+    ...windowFields,
   };
   if (nativeProtection.ok === true) {
     return {
@@ -10164,7 +10285,23 @@ async function refreshBinanceNativeProtection({
   // operators and downstream alerting can distinguish the naked window
   // (needs immediate repair or flatten) from a no-op failure (original
   // orders still on exchange).
+  //
+  // 2026-04-20 senior-audit P2: timing is captured at each step so the
+  // duration of the naked window is measurable. These get bubbled up into
+  // `positions_paper.meta.native_protection_{cancel,stop_ack,tp_ack}_ms`
+  // via buildNativeProtectionMetaPatch, and the exit-integrity deploy gate
+  // fails the build when any active position's cancel→ack delta breaches
+  // a threshold. The previous behaviour was blind: the unprotected window
+  // was architecturally unavoidable (Binance has no atomic "replace order"
+  // primitive for closePosition STOP_MARKET), but with no timestamps ops
+  // had no way to detect regressions that blew the window out from a few
+  // hundred ms (typical healthy refresh) to tens of seconds (the kind of
+  // window that makes the "unprotected" in UNPROTECTED_ACTIVE_POSITION an
+  // actual liquidation risk).
   let cancelSucceeded = false;
+  let cancelMs = null;
+  let stopAckMs = null;
+  let tpAckMs = null;
   const ex = String(exchange || "").toUpperCase();
   if (!ex.includes("BINANCE")) return { ok: false, skipped: true, reason: "NOT_BINANCE" };
   if (!BINANCE_NATIVE_PROTECTION_ENABLED) return { ok: false, skipped: true, reason: "NATIVE_PROTECTION_DISABLED" };
@@ -10254,6 +10391,14 @@ async function refreshBinanceNativeProtection({
   }
 
   try {
+    // 2026-04-20 senior-audit P2: stamp cancel initiation timestamp BEFORE
+    // awaiting cancelFuturesOpenOrders. Using Date.now() (not the cancel
+    // response echo) because the window's start is when the existing orders
+    // logically stop protecting — that's when we sent the DELETE, not when
+    // the exchange acknowledged it. Under a retry/timeout scenario the
+    // exchange may or may not have processed the cancel, but either way we
+    // treat the period from this instant forward as potentially unprotected.
+    cancelMs = Date.now();
     await cancelFuturesOpenOrders({
       apiKey: liveCfg.apiKey,
       apiSecret: liveCfg.apiSecret,
@@ -10261,7 +10406,18 @@ async function refreshBinanceNativeProtection({
     });
     cancelSucceeded = true;
   } catch (e) {
-    return { ok: false, reason: "NATIVE_CANCEL_FAIL", error: e && e.message ? e.message : String(e) };
+    return {
+      ok: false,
+      reason: "NATIVE_CANCEL_FAIL",
+      error: e && e.message ? e.message : String(e),
+      // Even though cancel failed, stamp the attempt time so downstream
+      // observability still has a lower-bound window start. `cancel_succeeded`
+      // remains false → gate will NOT count this as a protected refresh.
+      cancel_ms: cancelMs,
+      cancel_succeeded: false,
+      stop_ack_ms: null,
+      tp_ack_ms: null,
+    };
   }
 
   try {
@@ -10288,6 +10444,10 @@ async function refreshBinanceNativeProtection({
         priceProtect: BINANCE_NATIVE_PRICE_PROTECT,
         idempotencyKey: stopIdempotencyKey,
       });
+      // Stop order acknowledged — the SL half of native protection is now
+      // live again. This closes the SL-only unprotected window. TP gap (if
+      // any) is tracked separately via tpAckMs below.
+      stopAckMs = Date.now();
     } catch (stopErr) {
       if (isBinanceImmediateTriggerError(stopErr) && Number.isFinite(Number(context.qtyBase)) && Number(context.qtyBase) > 0) {
         const failClosed = await placeNativeStopImmediateTriggerFailClosed({
@@ -10301,6 +10461,12 @@ async function refreshBinanceNativeProtection({
           triggerPrice: prices.stopTriggerPx,
           quantity: Number(context.qtyBase),
         });
+        // 2026-04-20 senior-audit P2: fail-closed path places a reduceOnly
+        // MARKET order to flatten immediately — position is no longer
+        // exposed once that order acks, so stamp stopAckMs here too. The
+        // downstream gate uses the SL-ack timestamp as the window end when
+        // no TP leg was placed (which is the case on the fail-closed path).
+        stopAckMs = Date.now();
         return {
           ok: true,
           state: "EXITED_FAIL_CLOSED",
@@ -10323,6 +10489,10 @@ async function refreshBinanceNativeProtection({
           tp_status: null,
           tp0_reason: null,
           tp_reason: null,
+          cancel_ms: cancelMs,
+          cancel_succeeded: cancelSucceeded,
+          stop_ack_ms: stopAckMs,
+          tp_ack_ms: null,
         };
       }
       throw stopErr;
@@ -10378,6 +10548,12 @@ async function refreshBinanceNativeProtection({
             priceProtect: BINANCE_NATIVE_PRICE_PROTECT,
             idempotencyKey: tpIdempotencyKey,
           });
+          // 2026-04-20 senior-audit P2: TP1 native order acked. When both
+          // legs are required (stageState.tp1Eligible === true), the
+          // unprotected window does not fully close until BOTH SL and TP
+          // are live — we record tpAckMs here so the gate can compute
+          // `max(stop_ack_ms, tp_ack_ms) - cancel_ms`.
+          tpAckMs = Date.now();
           tpQtyBase = tpQtyInfo.qty;
           tpQtyRatio = Number(context.qtyBase) > 0 ? Math.min(1, tpQtyInfo.qty / Number(context.qtyBase)) : null;
           tpStatus = "OK";
@@ -10398,6 +10574,12 @@ async function refreshBinanceNativeProtection({
               quantity: desiredTpQtyPlaced,
             });
             tpOrder = fallback.order;
+            // Market-fallback path: the reduceOnly MARKET order acked, so
+            // the TP leg is settled (qty is realized instead of parked as
+            // a resting TAKE_PROFIT_MARKET). Treat this as TP ack for the
+            // purpose of closing the unprotected window — the TP1 qty is
+            // no longer dependent on a future trigger.
+            tpAckMs = Date.now();
             tpQtyBase = desiredTpQtyPlaced;
             tpQtyRatio = Number(context.qtyBase) > 0 ? Math.min(1, desiredTpQtyPlaced / Number(context.qtyBase)) : null;
             tpStatus = "OK";
@@ -10489,6 +10671,15 @@ async function refreshBinanceNativeProtection({
         stop_order_id: stopOrder && stopOrder.orderId ? String(stopOrder.orderId) : null,
         tp0_order_id: null,
         tp_order_id: tpOrder && tpOrder.orderId ? String(tpOrder.orderId) : null,
+        // 2026-04-20 senior-audit P2: even on the partial-protection fail
+        // path, the SL leg was acked — stamp timings so the gate sees this
+        // as a half-closed window (stop acked, TP missing). Meta persistence
+        // preserves the SL-only ack time to keep the breach-detection math
+        // honest. `tp_ack_ms` stays null because the TP leg never acked.
+        cancel_ms: cancelMs,
+        cancel_succeeded: cancelSucceeded,
+        stop_ack_ms: stopAckMs,
+        tp_ack_ms: null,
       };
     }
     return {
@@ -10512,6 +10703,13 @@ async function refreshBinanceNativeProtection({
       stop_order_id: stopOrder && stopOrder.orderId ? String(stopOrder.orderId) : null,
       tp0_order_id: null,
       tp_order_id: tpOrder && tpOrder.orderId ? String(tpOrder.orderId) : null,
+      // 2026-04-20 senior-audit P2: healthy-path timings. Exit-integrity
+      // gate subtracts max(stop_ack_ms, tp_ack_ms) − cancel_ms per position
+      // and fails the deploy if the worst window exceeds threshold.
+      cancel_ms: cancelMs,
+      cancel_succeeded: cancelSucceeded,
+      stop_ack_ms: stopAckMs,
+      tp_ack_ms: tpAckMs,
     };
   } catch (e) {
     const errorMessage = e && e.message ? e.message : String(e);
@@ -10545,9 +10743,31 @@ async function refreshBinanceNativeProtection({
         unprotected_active_position: true,
         repair_required: true,
         error: errorMessage,
+        // 2026-04-20 senior-audit P2: this is the "position genuinely naked
+        // right now" path. cancel_ms is set (we got past the cancel); ack
+        // timestamps are whatever partial progress we made — stopAckMs can
+        // be non-null if SL acked but TP threw, or null if SL itself threw
+        // after cancel. The gate treats an active position with cancel_ms
+        // set but NO successful ack ms as an unbounded-window breach (no
+        // matter how short the elapsed time, the window never closed from
+        // the exchange's POV until either a repair or a flatten completes).
+        cancel_ms: cancelMs,
+        stop_ack_ms: stopAckMs,
+        tp_ack_ms: tpAckMs,
       };
     }
-    return { ok: false, reason: "NATIVE_PLACE_FAIL", error: errorMessage };
+    return {
+      ok: false,
+      reason: "NATIVE_PLACE_FAIL",
+      error: errorMessage,
+      // cancel_ms null ⇒ cancel itself failed BEFORE we stamped (unlikely —
+      // cancelMs is stamped pre-await). cancelSucceeded false ⇒ old orders
+      // still on exchange, no unprotected window opened.
+      cancel_ms: cancelMs,
+      cancel_succeeded: cancelSucceeded,
+      stop_ack_ms: stopAckMs,
+      tp_ack_ms: tpAckMs,
+    };
   }
 }
 
@@ -12913,6 +13133,11 @@ async function runPaperBinanceForBar({
         entryQtyProfileFromIntent,
         signalBarCloseTimeUtcMs: it.signal_bar_close_time_utc_ms,
         execBarCloseMs,
+        // Raw material for P0 synthetic entry_event_id fallback — see
+        // buildOpeningFillMetaPatch comment.
+        exchange,
+        symbol,
+        metaSide,
         includeLeverageReason: false,
         includeEntryRiskFields: false,
       }));
@@ -15901,6 +16126,10 @@ async function runPaperFuturesForBar({
         initialStopSource,
         entryRDistance,
         trailRMultiple: appliedExitRules && appliedExitRules.TRAIL_R_MULTIPLE,
+        // Raw material for P0 synthetic entry_event_id fallback.
+        exchange,
+        symbol,
+        metaSide: nextPosSide,
         includeLeverageReason: true,
         includeEntryRiskFields: true,
       }));
@@ -17749,6 +17978,8 @@ module.exports = {
     applyAddRiskMetaOnFill,
     buildTimeStopExitSignal,
     buildNativeProtectionMetaPatch,
+    // 2026-04-20 senior-audit P2
+    resolveNativeProtectionUnprotectedWindowFields,
     shouldFailClosedForIncompleteTp1Protection,
     inferEntryMetaDirection,
     canEvaluateInternalExitSignalsForBar,
@@ -17830,6 +18061,9 @@ module.exports = {
     buildOpenCloseTransitionMetaPatch,
     buildClosingFillMetaPatch,
     buildOpeningFillMetaPatch,
+    buildSyntheticOpeningEntryEventId,
+    SYNTHETIC_OPENING_ENTRY_EVENT_ID_PREFIX,
+    SYNTHETIC_OPENING_ENTRY_SIGNAL_TYPE,
     resolvePineStage1BundleMeta,
     resolveSignalTier,
     computeTrailingMetaUpdate,

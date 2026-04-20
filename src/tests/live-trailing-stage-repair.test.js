@@ -88,6 +88,24 @@ function run() {
   assert.strictEqual(sanitized.requested, true);
   assert.deepStrictEqual(sanitized.source_result, { ok: true, stop_order_id: "123" });
 
+  // 2026-04-20 senior-audit M2: the sanitized shape MUST be detectable
+  // as "request-only" by the outer return's gating predicate. If this
+  // invariant drifts, `repairLiveTrailingStageForSymbol` would silently
+  // return `{ ok: true }` without `skipped: true`, and
+  // `binanceLiveStateSelfHeal` would flip `repaired = true` on a
+  // symbol whose stop is still missing from the exchange.
+  //
+  // Mirror of the predicate in liveTrailingStageRepair.js outer return.
+  const isRequestOnly = (np) => !!np && np.requested === true && np.ok !== true;
+  assert.strictEqual(isRequestOnly(sanitized), true,
+    "sanitized result must be detectable as request-only so the outer return can flag skipped:true");
+  assert.strictEqual(isRequestOnly({ ok: true, requested: true }), false,
+    "a result that is both ok AND requested is NOT request-only — the actual refresh succeeded");
+  assert.strictEqual(isRequestOnly({ ok: false, requested: false }), false,
+    "a plain failure (not a request) must NOT be flagged request-only");
+  assert.strictEqual(isRequestOnly(null), false,
+    "null must NOT be flagged request-only — defensive against missing nativeProtection");
+
   console.log("LIVE_TRAILING_STAGE_REPAIR_TEST_OK");
 }
 

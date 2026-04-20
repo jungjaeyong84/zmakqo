@@ -22,6 +22,26 @@ try {
   console.log("[WARN] Scheduler env check failed:", e && e.message ? e.message : String(e));
 }
 
+// 2026-04-20 senior-audit H1: fail-closed production startup guard for
+// the custom undici dispatcher.  In production the
+// `EGRESS_PROXY_DISABLE_CUSTOM_DISPATCHER=1` escape hatch must never be
+// honoured — leaving it set reverts egress to the global fetch() pool,
+// which is the exact pattern that caused the 2026-04-19 ETHUSDT
+// silent-hang blackout.  The deploy gate catches this env when it
+// leaks through Cloud Build, but cannot see a Cloud Run service env
+// that was set AFTER the build passed gate.  This guard runs on every
+// boot and crash-loops the container with a distinctive error marker
+// so the revision fails its Cloud Run health check and auto-rolls-
+// back.  Non-prod processes (unit tests, local dev) are unaffected.
+try {
+  const { assertEgressProductionStartupGuard } = require("./src/utils/egressProxy");
+  assertEgressProductionStartupGuard();
+} catch (e) {
+  console.error("[FATAL] Egress production startup guard tripped:",
+    e && e.message ? e.message : String(e));
+  process.exit(1);
+}
+
 const { createApp } = require("./src/server/app");
 
 const app = createApp();

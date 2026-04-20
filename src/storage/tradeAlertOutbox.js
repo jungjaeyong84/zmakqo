@@ -145,6 +145,18 @@ async function markTradeAlertOutboxResult({
   outboxId,
   ok = false,
   skipped = false,
+  // 2026-04-20 senior-audit P3: explicit BLOCKED status for the canonical-
+  // exit gate skip path. Previously, resolveCanonicalExitAlertRequirement
+  // failures caused tradeExecutionAlert.sendTradeExecutionAlert to return
+  // { skipped: true, reason: "MISSING_CANONICAL_EXIT_TRANSITION" } BEFORE
+  // the outbox prep, so there was no durable Firestore evidence. Ops could
+  // only find these via audit log scan — no symbol/event-indexable trail.
+  // The BLOCKED status is distinct from SKIPPED (which covers legitimate
+  // no-op paths like OUTBOX_ALREADY_SENT / NON_LIVE_MODE) and from FAILED
+  // (which implies the send was attempted and errored). BLOCKED means the
+  // alert was intentionally withheld despite the underlying event being
+  // real — the most ops-important case to make queryable.
+  blocked = false,
   reason = null,
   error = null,
   result = null,
@@ -160,27 +172,35 @@ async function markTradeAlertOutboxResult({
   const now = nowIso();
   const normalizedReason = trimOrNull(reason);
   const normalizedError = trimOrNull(error);
-  const status = skipped === true ? "SKIPPED" : (ok === true ? "SENT" : "FAILED");
+  let status;
+  if (blocked === true) status = "BLOCKED";
+  else if (skipped === true) status = "SKIPPED";
+  else if (ok === true) status = "SENT";
+  else status = "FAILED";
   const patch = {
     status,
     updated_at: now,
     last_reason: normalizedReason,
-    last_error: ok === true ? null : (normalizedError || normalizedReason),
+    last_error: status === "SENT" ? null : (normalizedError || normalizedReason),
     last_result: cloneJson(result),
     last_channel: trimOrNull(channel),
     last_title: trimOrNull(title),
     last_body: trimOrNull(body),
     source: trimOrNull(source),
   };
-  if (ok === true) patch.sent_at = now;
-  if (skipped === true) patch.skipped_at = now;
-  if (ok !== true && skipped !== true) patch.failed_at = now;
+  if (status === "SENT") patch.sent_at = now;
+  else if (status === "SKIPPED") patch.skipped_at = now;
+  else if (status === "BLOCKED") patch.blocked_at = now;
+  else patch.failed_at = now;
   await ref.set(patch, { merge: true });
   return { outboxId: id, status };
 }
 
 async function fetchTradeAlertOutboxItems({
-  statuses = ["FAILED", "SKIPPED", "PENDING"],
+  // BLOCKED included by default so ops dashboards surface canonical-exit
+  // gate rejections alongside FAILED/SKIPPED — otherwise BLOCKED rows are
+  // invisible to existing tooling.
+  statuses = ["FAILED", "SKIPPED", "BLOCKED", "PENDING"],
   limit = 50,
 } = {}) {
   const db = getFirestore();

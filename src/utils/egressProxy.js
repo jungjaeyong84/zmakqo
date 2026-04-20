@@ -47,11 +47,79 @@ const crypto = require("crypto");
 let _undiciDispatcherCache = null;
 let _undiciDispatcherTried = false;
 let _undiciRequireFatalLogged = false;
+let _productionStartupGuardChecked = false;
+
+// 2026-04-20 senior-audit H2: single source of truth for
+// "is the custom dispatcher disabled via env?".  The deploy-gate check
+// (`scripts/check-binance-exit-integrity-gate.js::egressDispatcherDisabledInEnv`)
+// MUST match this function's semantics exactly — otherwise the gate
+// could BLOCK a value that the runtime would actually accept, or PASS
+// a value that the runtime would actually disable.  We treat
+// whitespace-trimmed "1" (and only that) as "disabled" — an operator
+// who types `" 1 "` into a Cloud Run env var almost certainly meant
+// to disable the dispatcher, so the runtime honours it the same way
+// the gate flags it.  Literals like `"true"` are NOT accepted; we
+// keep the 1/0 convention used elsewhere in this codebase.
+function isEgressDispatcherDisabledByEnv(env = process.env) {
+  const raw = env && env.EGRESS_PROXY_DISABLE_CUSTOM_DISPATCHER;
+  return String(raw == null ? "" : raw).trim() === "1";
+}
+
+// 2026-04-20 senior-audit H1: crash-loop guard for prod.
+//
+// `EGRESS_PROXY_DISABLE_CUSTOM_DISPATCHER=1` is an explicit escape
+// hatch for test harnesses — in production, leaving it on reverts the
+// exit-worker to the default global fetch() pool, which is EXACTLY
+// the pattern that caused the 2026-04-19 ETHUSDT silent-hang blackout.
+// The deploy gate (PR #21) catches this env leaking through Cloud
+// Build, but cannot see a Cloud Run service env set AFTER the gate
+// runs.  This guard closes that gap: on every process start under
+// `NODE_ENV=production` (or `DONBEOLJA_PROD=1`), if the flag is set we
+// throw a fatal startup error so Cloud Run's health check fails and
+// the deploy rolls back automatically.  Non-prod processes (tests,
+// local dev) are unaffected.
+//
+// We invoke this lazily from `getEgressDispatcher` rather than at
+// module load so that test files that explicitly unset the env before
+// requiring modules are not affected.  Once checked, the result is
+// memoised (`_productionStartupGuardChecked = true`) so the check is
+// O(1) on the hot path.
+function assertEgressProductionStartupGuard(env = process.env) {
+  if (_productionStartupGuardChecked) return;
+  _productionStartupGuardChecked = true;
+  const nodeEnv = String(env.NODE_ENV || "").trim().toLowerCase();
+  const explicitProd = String(env.DONBEOLJA_PROD || "").trim() === "1";
+  const inProduction = nodeEnv === "production" || explicitProd;
+  if (!inProduction) return;
+  if (!isEgressDispatcherDisabledByEnv(env)) return;
+  const err = new Error(
+    "EGRESS_PROXY_CUSTOM_DISPATCHER_DISABLED_IN_PRODUCTION: the "
+    + "EGRESS_PROXY_DISABLE_CUSTOM_DISPATCHER=1 escape hatch is only "
+    + "legal for test harnesses. In production it reverts exit-worker "
+    + "egress to the global fetch() pool, which resurrects the "
+    + "half-open-TCP silent-hang pattern responsible for the "
+    + "2026-04-19 ETHUSDT blackout. Remove the env var from the "
+    + "Cloud Run service before redeploying."
+  );
+  err.code = "EGRESS_PROXY_CUSTOM_DISPATCHER_DISABLED_IN_PRODUCTION";
+  // Surface at ERROR level so Cloud Logging captures the crash-loop
+  // cause with a distinctive marker that alerting can match on.
+  try {
+    console.error("[egress][PRODUCTION_STARTUP_GUARD_FAIL]", {
+      code: err.code,
+      message: err.message,
+      node_env: nodeEnv || null,
+      donbeolja_prod: env.DONBEOLJA_PROD || null,
+    });
+  } catch (_) {}
+  throw err;
+}
 
 function getEgressDispatcher() {
+  assertEgressProductionStartupGuard();
   if (_undiciDispatcherTried) return _undiciDispatcherCache;
   _undiciDispatcherTried = true;
-  if (String(process.env.EGRESS_PROXY_DISABLE_CUSTOM_DISPATCHER || "0") === "1") {
+  if (isEgressDispatcherDisabledByEnv()) {
     return null;
   }
   try {
@@ -464,9 +532,19 @@ module.exports = {
   buildEgressRequestId,
   shouldUsePrivateBinanceEgress,
   resolveEgressBaseUrlFor,
+  // 2026-04-20 senior-audit H1/H2: exported so the deploy-gate wrapper
+  // and runtime startup guard can share a single implementation of the
+  // env→disabled predicate.
+  isEgressDispatcherDisabledByEnv,
+  assertEgressProductionStartupGuard,
   __test: {
     isTransientEgressFetchError,
     getEgressDispatcher,
     closeEgressDispatcher,
+    isEgressDispatcherDisabledByEnv,
+    assertEgressProductionStartupGuard,
+    _resetProductionStartupGuardCheckedForTest: () => {
+      _productionStartupGuardChecked = false;
+    },
   },
 };
