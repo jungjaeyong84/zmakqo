@@ -36,6 +36,16 @@ function parseBool(value, fallback = false) {
   return fallback;
 }
 
+function parseBoolStrict(value) {
+  if (value === true) return true;
+  if (value === false) return false;
+  const raw = String(value == null ? "" : value).trim().toLowerCase();
+  if (!raw) return null;
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
+  return null;
+}
+
 function resolveObservedAtIso(observedAtMs = null) {
   return Number.isFinite(Number(observedAtMs))
     ? new Date(Number(observedAtMs)).toISOString()
@@ -217,6 +227,115 @@ function hasPlacedRuntimeOrder(runtime, orderKey, statusKey) {
   if (!orderId) return false;
   if (status && status !== "PLACED") return false;
   return true;
+}
+
+function pickEvidenceValue(evidence, keys) {
+  const row = evidence && typeof evidence === "object" ? evidence : {};
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(row, key)) return row[key];
+  }
+  return null;
+}
+
+function resolveStopExitFullExit({ fullExit = null, exchangeEvidence = null } = {}) {
+  const direct = parseBoolStrict(fullExit);
+  if (direct === true) return { ok: true, reason: "FULL_EXIT_FLAG" };
+  if (direct === false) return { ok: false, reason: "STOP_FULL_EXIT_NOT_CONFIRMED" };
+
+  const evidenceFlag = parseBoolStrict(pickEvidenceValue(exchangeEvidence, [
+    "full_exit",
+    "fullExit",
+    "is_full_exit",
+    "isFullExit",
+    "is_final_exit",
+    "isFinalExit",
+    "position_closed",
+    "positionClosed",
+  ]));
+  if (evidenceFlag === true) return { ok: true, reason: "EVIDENCE_FULL_EXIT_FLAG" };
+  if (evidenceFlag === false) return { ok: false, reason: "STOP_FULL_EXIT_NOT_CONFIRMED" };
+
+  const remainingQty = toNumberOrNull(pickEvidenceValue(exchangeEvidence, [
+    "position_amt_after",
+    "positionAmtAfter",
+    "position_qty_after",
+    "positionQtyAfter",
+    "remaining_position_qty_abs",
+    "remainingPositionQtyAbs",
+  ]));
+  if (Number.isFinite(remainingQty) && Math.abs(remainingQty) <= EPSILON) {
+    return { ok: true, reason: "EVIDENCE_ZERO_POSITION_AFTER" };
+  }
+
+  return { ok: false, reason: "STOP_FULL_EXIT_NOT_CONFIRMED" };
+}
+
+function resolveStopFillEvidence({ event = null, exchangeEvidence = null } = {}) {
+  const normalizedEvent = upper(event);
+  const executionType = upper(pickEvidenceValue(exchangeEvidence, [
+    "execution_type",
+    "executionType",
+    "x",
+  ]));
+  const orderType = upper(pickEvidenceValue(exchangeEvidence, [
+    "order_type",
+    "orderType",
+    "type",
+    "o",
+  ]));
+  const stopPrice = toNumberOrNull(pickEvidenceValue(exchangeEvidence, [
+    "stop_price",
+    "stopPrice",
+    "sp",
+  ]));
+  const stopEvent = [
+    "EXIT_SL",
+    "EXIT_STOP",
+    "EXIT_TRAIL",
+    "SL_HIT",
+    "STOP_EXIT",
+    "TRAIL_HIT",
+  ].includes(normalizedEvent);
+  const stopOrderType = [
+    "STOP",
+    "STOP_MARKET",
+    "TRAILING_STOP_MARKET",
+  ].includes(orderType);
+
+  if (executionType === "TRADE" && (stopEvent || stopOrderType || stopPrice > 0)) {
+    return { ok: true, reason: "EXCHANGE_STOP_TRADE" };
+  }
+  return { ok: false, reason: "STOP_FILL_EVIDENCE_MISSING" };
+}
+
+function evaluateStopExitFillEvidenceGate({
+  event = null,
+  fullExit = null,
+  exchangeEvidence = null,
+} = {}) {
+  const fullExitGate = resolveStopExitFullExit({ fullExit, exchangeEvidence });
+  if (fullExitGate.ok !== true) {
+    return Object.freeze({
+      ok: false,
+      reason: fullExitGate.reason,
+      issue_codes: Object.freeze([fullExitGate.reason]),
+    });
+  }
+
+  const stopFillGate = resolveStopFillEvidence({ event, exchangeEvidence });
+  if (stopFillGate.ok !== true) {
+    return Object.freeze({
+      ok: false,
+      reason: stopFillGate.reason,
+      issue_codes: Object.freeze([stopFillGate.reason]),
+    });
+  }
+
+  return Object.freeze({
+    ok: true,
+    reason: "V2_SHADOW_STOP_EXIT_FILL_EVIDENCE_READY",
+    issue_codes: Object.freeze([]),
+  });
 }
 
 function evaluateStopExitRuntimeGate({
@@ -700,6 +819,7 @@ async function writeOpenClawShadowStopExit({
   sourceOrderId,
   fillPrice,
   event = null,
+  fullExit = null,
   observedAtMs = null,
   exchangeEvidence = null,
   sendSummary = null,
@@ -796,6 +916,22 @@ async function writeOpenClawShadowStopExit({
       skipped: true,
       reason: `V2_SHADOW_STOP_EXIT_${runtimeGate.reason}`,
       issue_codes: runtimeGate.issue_codes,
+      position_cycle_id: positionCycleId,
+    };
+  }
+
+  const fillEvidenceGate = evaluateStopExitFillEvidenceGate({
+    event,
+    fullExit,
+    exchangeEvidence,
+  });
+  if (fillEvidenceGate.ok !== true) {
+    return {
+      ok: true,
+      written: false,
+      skipped: true,
+      reason: `V2_SHADOW_STOP_EXIT_${fillEvidenceGate.reason}`,
+      issue_codes: fillEvidenceGate.issue_codes,
       position_cycle_id: positionCycleId,
     };
   }
@@ -987,6 +1123,7 @@ module.exports = {
     evaluateTrailActivationProtectionGate,
     evaluateTp1TransitionRuntimeGate,
     evaluateStopExitRuntimeGate,
+    evaluateStopExitFillEvidenceGate,
     prepareCanonicalExitAlertArtifacts,
     resolveObservedAtIso,
     buildExchangeEvidenceSnapshot,

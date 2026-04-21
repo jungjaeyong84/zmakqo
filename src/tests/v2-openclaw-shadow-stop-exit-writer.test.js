@@ -208,6 +208,7 @@ function seedTrailActive(store) {
     sourceOrderId: "STOP__SOL__1",
     fillPrice: 147.52,
     event: "EXIT_SL",
+    fullExit: true,
     observedAtMs: 1713571234567,
     exchangeEvidence: {
       event_type: "ORDER_TRADE_UPDATE",
@@ -251,6 +252,7 @@ function seedTrailActive(store) {
     sourceOrderId: "STOP__ETH__TRAIL",
     fillPrice: 2015.25,
     event: "EXIT_TRAIL",
+    fullExit: true,
     observedAtMs: 1713572234567,
     exchangeEvidence: {
       event_type: "ORDER_TRADE_UPDATE",
@@ -285,6 +287,12 @@ function seedTrailActive(store) {
     sourceFillId: "FILL__SL__1",
     sourceOrderId: "STOP__SOL__1",
     fillPrice: 147.52,
+    event: "EXIT_SL",
+    fullExit: true,
+    exchangeEvidence: {
+      execution_type: "TRADE",
+      order_type: "STOP_MARKET",
+    },
   });
   assert.strictEqual(first.written, true);
   const second = await writer.writeOpenClawShadowStopExit({
@@ -296,6 +304,12 @@ function seedTrailActive(store) {
     sourceFillId: "FILL__SL__2",
     sourceOrderId: "STOP__SOL__2",
     fillPrice: 147.1,
+    event: "EXIT_SL",
+    fullExit: true,
+    exchangeEvidence: {
+      execution_type: "TRADE",
+      order_type: "STOP_MARKET",
+    },
   });
   assert.strictEqual(second.ok, true);
   assert.strictEqual(second.written, false);
@@ -303,6 +317,61 @@ function seedTrailActive(store) {
   assert.strictEqual(second.reason, "V2_SHADOW_STOP_EXIT_ALREADY_TERMINAL");
   const projection = store["dbjv2__exit_runtime_projection_v2"][`ERPv2__${base.positionCycle.position_cycle_id}`];
   assert.strictEqual(projection.stage, "EXITED_SL");
+})();
+
+(async function stopExitRejectsPartialStopFill() {
+  const store = {};
+  const calls = [];
+  seedPreTp1(store);
+  const result = await writer.writeOpenClawShadowStopExit({
+    db: buildFakeDb(store, calls),
+    env: buildEnv(),
+    symbol: "SOLUSDT",
+    entryEventId: "ENTRY__SOL__SL",
+    positionSide: "LONG",
+    sourceFillId: "FILL__SL__PARTIAL",
+    sourceOrderId: "STOP__SOL__1",
+    fillPrice: 147.52,
+    event: "EXIT_SL",
+    fullExit: false,
+    exchangeEvidence: {
+      event_type: "ORDER_TRADE_UPDATE",
+      execution_type: "TRADE",
+      order_type: "STOP_MARKET",
+    },
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.written, false);
+  assert.strictEqual(result.skipped, true);
+  assert.strictEqual(result.reason, "V2_SHADOW_STOP_EXIT_STOP_FULL_EXIT_NOT_CONFIRMED");
+  assert.deepStrictEqual(result.issue_codes, ["STOP_FULL_EXIT_NOT_CONFIRMED"]);
+})();
+
+(async function stopExitRejectsWeakStopFillEvidence() {
+  const store = {};
+  const calls = [];
+  seedPreTp1(store);
+  const result = await writer.writeOpenClawShadowStopExit({
+    db: buildFakeDb(store, calls),
+    env: buildEnv(),
+    symbol: "SOLUSDT",
+    entryEventId: "ENTRY__SOL__SL",
+    positionSide: "LONG",
+    sourceFillId: "FILL__SL__WEAK",
+    sourceOrderId: "STOP__SOL__1",
+    fillPrice: 147.52,
+    event: "UNKNOWN",
+    fullExit: true,
+    exchangeEvidence: {
+      event_type: "ORDER_TRADE_UPDATE",
+      execution_type: "TRADE",
+    },
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.written, false);
+  assert.strictEqual(result.skipped, true);
+  assert.strictEqual(result.reason, "V2_SHADOW_STOP_EXIT_STOP_FILL_EVIDENCE_MISSING");
+  assert.deepStrictEqual(result.issue_codes, ["STOP_FILL_EVIDENCE_MISSING"]);
 })();
 
 (async function stopExitRequiresProtectionRuntimeContext() {

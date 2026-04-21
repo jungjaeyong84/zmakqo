@@ -1409,3 +1409,23 @@ V1 약점 재발 방지:
 1. V1에서는 stop event 문자열만 보고 SL/TRAIL terminal을 쓰는 경로가 남아 native stop 실제 근거와 projection이 어긋날 수 있었다
 2. 이번 단계는 terminal stop transition을 “활성 보호 포지션 + native stop evidence” 뒤에만 허용한다
 3. 따라서 보호주문 없이 들어간 포지션이 뒤늦게 stop/terminal 성공처럼 보이는 V1식 착시를 줄인다
+
+## 2026-04-22 Stop Exit Full Fill Evidence Gate
+
+추가 증거:
+
+1. `src/v2/openclawShadowExitWriter.js`
+2. `src/tests/v2-openclaw-shadow-stop-exit-writer.test.js`
+
+판정:
+
+1. V2 `SL_HIT` / `TRAIL_HIT` shadow writer는 이제 stop fill을 terminal로 쓰기 전에 `fullExit=true` 또는 거래소 evidence의 position-after zero 근거를 요구한다
+2. `execution_type=TRADE` 와 stop event/order/stop price 근거가 없으면 terminal transition을 쓰지 않고 `V2_SHADOW_STOP_EXIT_STOP_FILL_EVIDENCE_MISSING` 으로 skip한다
+3. partial stop fill은 `V2_SHADOW_STOP_EXIT_STOP_FULL_EXIT_NOT_CONFIRMED` 으로 skip되어 `SL_HIT` / `TRAIL_HIT` 가 조기 확정되지 않는다
+4. runtime/native stop evidence gate와 fill evidence gate가 모두 통과해야만 protection runtime을 `TERMINAL_EXITED` 로 바꾼다
+
+V1 약점 재발 방지:
+
+1. V1에서는 stop 계열 이벤트가 들어오면 실제 전체 종료인지와 stop 체결인지가 분리 검증되지 않아 partial/ambiguous fill이 terminal처럼 보일 수 있었다
+2. 이번 단계는 final stop fill 완료 기준인 `fullExit=true` + 실제 stop fill 근거를 코드 레벨에서 강제한다
+3. 따라서 `ACTIVE_PROTECTED` 이더라도 단순 이벤트 문자열이나 약한 fill payload만으로 종료 상태가 확정되는 V1식 silent corruption을 줄인다
