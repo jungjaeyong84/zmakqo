@@ -1324,14 +1324,6 @@ function resolveFillSyncAlertFullExit({ event, orderMeta, closeRatio } = {}) {
   if (isTpP1Event(ev)) return false;
   if (orderMeta && orderMeta.closePosition === true) return true;
   if (Number.isFinite(closeRatio) && closeRatio >= 0.999) return true;
-  if (
-    ev.startsWith("EXIT_TIME_STOP")
-    || ev === "EXIT_EXTERNAL_SYNC"
-    || ev === "EXIT_OPPOSITE_SIGNAL"
-    || ev === "EXIT_LIQUIDATION_RISK"
-  ) {
-    return true;
-  }
   return false;
 }
 

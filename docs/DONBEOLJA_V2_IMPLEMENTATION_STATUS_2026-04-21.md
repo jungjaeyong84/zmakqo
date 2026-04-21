@@ -1471,3 +1471,25 @@ V1 약점 재발 방지:
 1. V1에서는 이벤트 라벨이 상태 사실처럼 쓰여 partial stop이나 애매한 sync fill이 terminal alert/status로 승격될 수 있었다
 2. 이번 단계는 `SL` 라벨과 “포지션 전량 종료” 사실을 분리했다
 3. 따라서 V2 terminal 상태는 라벨이 아니라 closePosition/수량 근거로만 확정되는 방향으로 더 단순하고 검증 가능해졌다
+
+## 2026-04-22 Full Exit Label Fallback Removal
+
+추가 증거:
+
+1. `src/services/binanceFuturesFillsSync.js`
+2. `src/tests/fills-sync-alert-aggregation.test.js`
+3. `src/tests/binance-fills-canonical-lineage-guard.test.js`
+4. `src/tests/trade-execution-alert.test.js`
+
+판정:
+
+1. `resolveFillSyncAlertFullExit` 는 이제 어떤 exit event label도 단독으로 `fullExit=true` 를 만들지 않는다
+2. `EXIT_TIME_STOP_*`, `EXIT_EXTERNAL_SYNC`, `EXIT_OPPOSITE_SIGNAL`, `EXIT_LIQUIDATION_RISK` 도 native `closePosition=true` 또는 close ratio `>= 0.999` 가 없으면 partial/unknown 상태로 남는다
+3. TP1은 기존처럼 항상 full exit classifier에서 제외된다
+4. user-facing alert payload는 기존 fullExit 값을 렌더링할 수 있지만, fill sync classifier는 라벨 기반 전량 종료 추론을 하지 않는다
+
+V1 약점 재발 방지:
+
+1. V1에서는 이벤트명이 “전량 종료 사실”과 섞여 상태/알림/쿨다운이 조용히 틀어질 수 있었다
+2. 이번 단계는 full exit classifier의 입력을 `closePosition` 과 수량 비율로 축소해, 이벤트 라벨이 사실처럼 전파되는 경로를 제거했다
+3. 따라서 V2는 terminal 판단을 더 늦게 하더라도, 증거 없는 전량 종료 확정보다 복구/감사 가능한 partial 상태를 우선한다

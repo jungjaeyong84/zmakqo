@@ -85,6 +85,26 @@ async function run() {
     true,
     "native closePosition stop evidence may prove full exit"
   );
+  for (const event of ["EXIT_TIME_STOP_18B", "EXIT_EXTERNAL_SYNC", "EXIT_OPPOSITE_SIGNAL", "EXIT_LIQUIDATION_RISK"]) {
+    assert.strictEqual(
+      fillsSyncTest.resolveFillSyncAlertFullExit({
+        event,
+        orderMeta: { closePosition: false },
+        closeRatio: 0.5,
+      }),
+      false,
+      `${event} labels alone must not prove full exit`
+    );
+  }
+  assert.strictEqual(
+    fillsSyncTest.resolveFillSyncAlertFullExit({
+      event: "EXIT_OPPOSITE_SIGNAL",
+      orderMeta: { closePosition: false },
+      closeRatio: 1,
+    }),
+    true,
+    "non-TP1 exits may prove full exit through close ratio"
+  );
 
   const batches = new Map();
   fillsSyncTest.queueFillSyncAlertBatch(batches, {
