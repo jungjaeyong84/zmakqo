@@ -72,10 +72,12 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
     fs.writeFileSync(path.join(dir, "v2_production_entry_route_canary_streak_latest.json"), JSON.stringify({
       ok: true,
       reason: "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS",
-      history_file: "/tmp/v2_production_entry_route_canary_history.jsonl",
+      history_source: "FIRESTORE",
+      history_file: "dbjv2__production_entry_route_canaries_v2",
       lookback_hours: 24,
       min_run_count: 12,
       max_gap_minutes: 180,
+      firestore_read_limit: 200,
       row_n: 13,
       healthy_run_n: 13,
       unhealthy_run_n: 0,
@@ -224,6 +226,7 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
     assert.strictEqual(stored.bounded_runtime_summary.repair_firestore_canary_streak.reason, "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS");
     assert.strictEqual(stored.bounded_runtime_summary.repair_firestore_canary_streak.healthy_run_n, 13);
     assert.strictEqual(stored.bounded_runtime_summary.production_entry_route_canary_streak.reason, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS");
+    assert.strictEqual(stored.bounded_runtime_summary.production_entry_route_canary_streak.history_source, "FIRESTORE");
     assert.strictEqual(stored.bounded_runtime_summary.production_entry_route_canary_streak.healthy_run_n, 13);
     assert.strictEqual(stored.bounded_runtime_summary.alert_retry_summary.failed_n, 1);
     assert.strictEqual(stored.alert_retry_summary.latest_failed.last_reason_family, "TRANSPORT");

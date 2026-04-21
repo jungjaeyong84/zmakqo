@@ -1204,4 +1204,39 @@ V1 약점 재발 방지:
 1. V1에서는 scheduler 연결 증거와 실제 주문 성공 증거가 운영상 섞일 수 있었다
 2. 이번 단계는 route 도달 증거를 거래소 write와 분리해 검증하므로, live entry transport를 붙이기 전에 scheduler/control-plane 경로가 충분히 안정적인지 먼저 본다
 3. LIVE 승격은 이제 repair Firestore canary streak뿐 아니라 production entry route canary streak도 통과해야 하므로, route가 한 번 성공한 착시로 live cutover를 진행하는 위험을 줄인다
-4. 남은 한계는 Cloud Run 로컬 파일시스템이 24시간 영속 증거로 충분하지 않다는 점이다. 따라서 실제 운영 수집은 Firestore-backed history 또는 외부 artifact collector로 승격해야 한다
+4. 이 단계의 한계는 Cloud Run 로컬 파일시스템이 24시간 영속 증거로 충분하지 않다는 점이었다. 바로 다음 단계에서 Firestore-backed history로 보강한다
+
+## 2026-04-21 Production Entry Route Canary Firestore History
+
+추가 증거:
+
+1. `src/v2/productionEntryRouteCanaryHistory.js`
+2. `src/v2/constants.js`
+3. `src/v2/storage.js`
+4. `scripts/run-v2-production-entry-route-canary.js`
+5. `scripts/check-v2-production-entry-route-canary-streak.js`
+6. `src/tests/v2-production-entry-route-canary-history.test.js`
+7. `src/tests/run-v2-production-entry-route-canary.test.js`
+8. `src/tests/check-v2-production-entry-route-canary-streak.test.js`
+9. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+
+판정:
+
+1. production entry route canary history는 `PRODUCTION_ENTRY_ROUTE_CANARIES` collection key로 V2 storage 계층에 등록됐다
+2. 실제 collection suffix는 `production_entry_route_canaries_v2` 이고, runtime prefix는 `DONBEOLJA_V2_COLLECTION_PREFIX` 를 따른다
+3. canary runner는 `DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED=1` 일 때만 Firestore history를 쓴다
+4. 기본값은 `PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_DISABLED` 이며, 이 경우 로컬 artifact/JSONL만 남기는 개발 fallback이다
+5. Firestore history doc은 `ok`, `reason`, `exchange_write_performed`, route/kernel/persist 호출 여부, fail list, route summary, sanitized artifact snapshot을 저장한다
+6. artifact snapshot에 `apiKey`, `apiSecret`, `BINANCE_SECRET`, `BINANCE_API`, `SECRET_KEY`, `PRIVATE_KEY` 문자열이 포함되면 `PRODUCTION_ENTRY_ROUTE_CANARY_SECRET_LEAK_GUARD` 로 저장을 차단한다
+7. streak checker는 `DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE=firestore` 또는 `DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED=1` 일 때 Firestore history를 읽는다
+8. Firestore source의 `history_file` 필드는 파일 경로가 아니라 실제 V2 collection name으로 기록되어, submit 차단 시 어떤 durable evidence를 봤는지 역추적할 수 있다
+9. LIVE deploy/submit 판단은 `history_source=FIRESTORE` 와 non-empty `history_file` 을 요구하므로, JSONL streak는 개발 fallback으로만 통과한다
+10. `cloudbuild.yaml` 과 `productionRuntimeConfigAudit` 는 canary Firestore write/read/source env 전달을 검사하므로, 코드가 Firestore evidence를 요구하면서 Cloud Run env가 빠지는 단절을 막는다
+
+V1 약점 재발 방지:
+
+1. V1에서는 latest artifact 또는 임시 로컬 상태만 보고 운영 판단을 내리면 Cloud Run 재시작/인스턴스 교체로 증거가 사라질 수 있었다
+2. 이번 단계는 production entry route canary의 24시간 coverage를 Firestore durable evidence로도 남기므로, LIVE 승격 판단이 ephemeral filesystem에만 의존하지 않는다
+3. Firestore write/read는 명시 env opt-in이 필요하므로, V1의 exit-integrity cycle처럼 감시 기능이 갑자기 full-scan 비용 폭발로 바뀌지 않는다
+4. 쿼리는 `generated_at_ms >= sinceMs` 와 bounded limit만 사용하므로, 긴 collection full-scan을 promotion gate 안에 넣지 않는다
+5. 이 증거는 여전히 `NO_EXCHANGE_ROUTE_PROOF` 이다. 실거래소 write 증거와 scheduler route 증거를 섞지 않아, V1식 성공 조건 혼선을 줄인다

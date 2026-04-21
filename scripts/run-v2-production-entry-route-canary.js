@@ -4,6 +4,7 @@
 const path = require("path");
 const { OPS_DAILY_DIR, writeJson } = require("./lib/automation-utils");
 const { runV2ProductionEntryRouteCanary } = require("../src/v2/productionEntryRouteCanary");
+const { persistProductionEntryRouteCanaryHistory } = require("../src/v2/productionEntryRouteCanaryHistory");
 
 function resolveOutputFile(env = process.env) {
   const explicit = String(env.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FILE || "").trim();
@@ -21,14 +22,51 @@ function appendJsonl(filePath, payload) {
   fs.appendFileSync(filePath, `${JSON.stringify(payload)}\n`, "utf8");
 }
 
-async function main({ env = process.env, setProcessExitCode = require.main === module } = {}) {
+function summarizeFirestoreHistoryResult(result) {
+  return Object.freeze({
+    ok: result && result.ok === true,
+    skipped: result && result.skipped === true,
+    reason: result && result.reason ? String(result.reason) : null,
+    collectionName: result && result.persisted ? result.persisted.collectionName : null,
+    docId: result && result.persisted ? result.persisted.docId : null,
+  });
+}
+
+async function main({ env = process.env, db = null, setProcessExitCode = require.main === module } = {}) {
   const result = await runV2ProductionEntryRouteCanary({ env });
   const outputFile = resolveOutputFile(env);
   const historyFile = resolveHistoryFile(env);
-  const artifact = Object.freeze({
+  const baseArtifact = Object.freeze({
     ...result,
     output_file: outputFile,
     history_file: historyFile,
+  });
+  let firestoreHistoryResult;
+  try {
+    firestoreHistoryResult = await persistProductionEntryRouteCanaryHistory({
+      artifact: baseArtifact,
+      db,
+      env,
+      recordedAt: baseArtifact.generated_at,
+    });
+  } catch (error) {
+    firestoreHistoryResult = Object.freeze({
+      ok: false,
+      skipped: false,
+      reason: "PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_FAILED",
+      error: Object.freeze({
+        message: error && error.message ? error.message : String(error),
+      }),
+    });
+  }
+  const firestoreSummary = summarizeFirestoreHistoryResult(firestoreHistoryResult);
+  const artifact = Object.freeze({
+    ...baseArtifact,
+    ok: baseArtifact.ok === true && firestoreSummary.ok === true,
+    reason: baseArtifact.ok === true && firestoreSummary.ok !== true
+      ? "V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_HISTORY_BLOCKED"
+      : baseArtifact.reason,
+    firestore_history_result: firestoreSummary,
   });
   writeJson(outputFile, artifact);
   appendJsonl(historyFile, artifact);
@@ -38,6 +76,8 @@ async function main({ env = process.env, setProcessExitCode = require.main === m
     reason: artifact.reason,
     output_file: artifact.output_file,
     history_file: artifact.history_file,
+    firestore_history_reason: firestoreSummary.reason,
+    firestore_history_skipped: firestoreSummary.skipped,
     exchange_write_performed: artifact.exchange_write_performed,
     route_reason: artifact.route_result_summary && artifact.route_result_summary.reason,
   }));
@@ -58,5 +98,6 @@ module.exports = {
     resolveOutputFile,
     resolveHistoryFile,
     appendJsonl,
+    summarizeFirestoreHistoryResult,
   },
 };

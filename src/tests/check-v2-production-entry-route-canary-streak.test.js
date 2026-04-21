@@ -41,6 +41,36 @@ function buildHistory(rows) {
   };
 }
 
+function buildFakeDb(rows) {
+  return {
+    collection(name) {
+      return {
+        where(field, op, value) {
+          return {
+            limit(limit) {
+              return {
+                async get() {
+                  return {
+                    docs: rows
+                      .map((payload) => ({
+                        production_entry_route_canary_id: `PERCHV2__${payload.generated_at}`,
+                        generated_at_ms: Date.parse(payload.generated_at),
+                        artifact_snapshot: payload,
+                      }))
+                      .filter((doc) => op === ">=" && Number(doc[field]) >= Number(value))
+                      .slice(0, limit)
+                      .map((doc) => ({ data: () => ({ ...doc }) })),
+                  };
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
 (function streakPassesWithContinuousHealthyCoverage() {
   const nowMs = Date.parse("2026-04-21T12:00:00.000Z");
   const rows = [];
@@ -124,6 +154,37 @@ function buildHistory(rows) {
   assert.ok(checker.__test.resolveHistoryFile({}).endsWith("v2_production_entry_route_canary_history.jsonl"));
   assert.ok(checker.__test.resolveOutputFile({}).endsWith("v2_production_entry_route_canary_streak_latest.json"));
   assert.strictEqual(checker.__test.resolveStreakConfig({}).lookbackHours, 24);
+  assert.strictEqual(checker.__test.resolveHistorySource({}), "JSONL");
+  assert.strictEqual(checker.__test.resolveHistorySource({ DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED: "1" }), "FIRESTORE");
 })();
 
-console.log("CHECK_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_TEST_OK");
+async function streakCanReadFirestoreHistorySource() {
+  const nowMs = Date.parse("2026-04-21T12:00:00.000Z");
+  const rows = [];
+  for (let hour = 24; hour >= 0; hour -= 2) {
+    rows.push(buildHealthyPayload(new Date(nowMs - hour * 60 * 60000).toISOString()));
+  }
+  const report = await checker.runCheck({
+    DONBEOLJA_V2_COLLECTION_PREFIX: "dbjv2__",
+    DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE: "firestore",
+    DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_LOOKBACK_HOURS: "24",
+    DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_MIN_RUNS: "12",
+    DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_MAX_GAP_MINUTES: "180",
+  }, {
+    nowMs,
+    db: buildFakeDb(rows),
+  });
+  assert.strictEqual(report.ok, true);
+  assert.strictEqual(report.history_source, "FIRESTORE");
+  assert.strictEqual(report.history_file, "dbjv2__production_entry_route_canaries_v2");
+  assert.strictEqual(report.healthy_run_n, 13);
+}
+
+streakCanReadFirestoreHistorySource()
+  .then(() => {
+    console.log("CHECK_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_TEST_OK");
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

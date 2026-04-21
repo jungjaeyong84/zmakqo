@@ -139,6 +139,8 @@ function seedBoundedSubmitArtifacts(
       production_entry_route_canary_streak: {
         ok: true,
         reason: "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS",
+        history_source: "FIRESTORE",
+        history_file: "dbjv2__production_entry_route_canaries_v2",
         healthy_run_n: 13,
         min_run_count: 12,
         unhealthy_run_n: 0,
@@ -387,6 +389,9 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.substitutions._V2_PROMOTION_CANARY_FLOW_ENABLED, "1");
   assert.strictEqual(request.substitutions._V2_PROMOTION_SELECT_POSITION_CYCLE_ID, "PCY__CANARY__01");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE, "JSONL");
   assert.ok(request.command.includes("--substitutions"));
 })();
 
@@ -444,6 +449,9 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.production_cutover_readiness_summary_required, true);
   assert.strictEqual(request.approval_contract.scheduler_traffic_cutover_readiness_summary_required, true);
   assert.strictEqual(request.approval_contract.live_cutover_readiness_summary_required, true);
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE, "FIRESTORE");
   assert.strictEqual(
     request.approval_evidence_sources.repair_firestore_canary_streak.field,
     "bounded_runtime_summary.repair_firestore_canary_streak"

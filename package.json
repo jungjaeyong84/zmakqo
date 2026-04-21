@@ -88,6 +88,7 @@
     "collect:v2-scheduler-traffic-state": "node scripts/collect-v2-scheduler-traffic-state.js",
     "run:v2-production-entry-route-canary": "node scripts/run-v2-production-entry-route-canary.js",
     "test:v2-production-entry-route-canary": "node src/tests/v2-production-entry-route-canary.test.js",
+    "test:v2-production-entry-route-canary-history": "node src/tests/v2-production-entry-route-canary-history.test.js",
     "check:v2-production-entry-route-canary-streak": "node scripts/check-v2-production-entry-route-canary-streak.js"
   },
   "author": "Jaeyong Jung",

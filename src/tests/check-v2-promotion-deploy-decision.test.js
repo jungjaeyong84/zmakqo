@@ -82,6 +82,8 @@ function buildBoundedRuntimeSummaryFixture() {
     production_entry_route_canary_streak: {
       ok: true,
       reason: "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS",
+      history_source: "FIRESTORE",
+      history_file: "dbjv2__production_entry_route_canaries_v2",
       healthy_run_n: 13,
       min_run_count: 12,
       unhealthy_run_n: 0,
@@ -387,6 +389,8 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
   bounded.production_entry_route_canary_streak = {
     ok: false,
     reason: "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_BLOCKED",
+    history_source: "FIRESTORE",
+    history_file: "dbjv2__production_entry_route_canaries_v2",
     healthy_run_n: 3,
     min_run_count: 12,
     unhealthy_run_n: 0,
@@ -403,6 +407,44 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
       selected_preflight: {
         ok: true,
         position_cycle_id: "PCY__LIVE__NO_ROUTE_STREAK",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRED"));
+})();
+
+(function liveWithJsonlProductionEntryRouteStreakStillFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.production_entry_route_canary_streak = {
+    ok: true,
+    reason: "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS",
+    history_source: "JSONL",
+    history_file: "/tmp/v2_production_entry_route_canary_history.jsonl",
+    healthy_run_n: 13,
+    min_run_count: 12,
+    unhealthy_run_n: 0,
+    invalid_line_n: 0,
+    blockers: [],
+  };
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__JSONL_ROUTE_STREAK",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__JSONL_ROUTE_STREAK",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__JSONL_ROUTE_STREAK",
         snapshot_counts: {
           episode_n: 1,
           shadow_live_pair_n: 1,

@@ -3,6 +3,10 @@
 
 const fs = require("fs");
 const path = require("path");
+const {
+  isProductionEntryRouteCanaryFirestoreReadEnabled,
+  loadProductionEntryRouteCanaryHistoryRows,
+} = require("../src/v2/productionEntryRouteCanaryHistory");
 
 const OUTPUT_FILENAME = "v2_production_entry_route_canary_streak_latest.json";
 const HISTORY_FILENAME = "v2_production_entry_route_canary_history.jsonl";
@@ -49,7 +53,17 @@ function resolveStreakConfig(env = process.env) {
     lookbackHours: parsePositiveNumber(env.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_LOOKBACK_HOURS, 24),
     minRunCount: Math.floor(parsePositiveNumber(env.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_MIN_RUNS, 12)),
     maxGapMinutes: parsePositiveNumber(env.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_MAX_GAP_MINUTES, 180),
+    firestoreReadLimit: Math.floor(parsePositiveNumber(env.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_READ_LIMIT, 200)),
   });
+}
+
+function resolveHistorySource(env = process.env) {
+  const explicit = trimOrNull(env.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE);
+  if (explicit) {
+    const upper = explicit.toUpperCase();
+    if (upper === "FIRESTORE" || upper === "JSONL") return upper;
+  }
+  return isProductionEntryRouteCanaryFirestoreReadEnabled(env) ? "FIRESTORE" : "JSONL";
 }
 
 function parseHistoryFile(filePath) {
@@ -118,6 +132,7 @@ function evaluateProductionEntryRouteCanaryStreak({
   config = resolveStreakConfig({}),
   nowMs = Date.now(),
   historyFile = null,
+  historySource = "JSONL",
 } = {}) {
   const parsed = history && typeof history === "object" ? history : { rows: [], invalid_lines: [] };
   const lookbackMs = Number(config.lookbackHours) * 60 * 60 * 1000;
@@ -155,10 +170,12 @@ function evaluateProductionEntryRouteCanaryStreak({
     reason: blockers.length === 0
       ? "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS"
       : "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_BLOCKED",
+    history_source: trimOrNull(historySource) || "JSONL",
     history_file: trimOrNull(historyFile),
     lookback_hours: Number(config.lookbackHours),
     min_run_count: Number(config.minRunCount),
     max_gap_minutes: Number(config.maxGapMinutes),
+    firestore_read_limit: Number(config.firestoreReadLimit) || null,
     row_n: rowsInWindow.length,
     healthy_run_n: healthyRows.length,
     unhealthy_run_n: unhealthyRows.length,
@@ -169,15 +186,43 @@ function evaluateProductionEntryRouteCanaryStreak({
     blockers: Object.freeze(blockers),
   });
 }
-
-function runCheck(env = process.env, { nowMs = Date.now() } = {}) {
+async function loadHistory(env = process.env, { nowMs = Date.now(), db = null, config = resolveStreakConfig(env) } = {}) {
+  const source = resolveHistorySource(env);
+  if (source === "FIRESTORE") {
+    const lookbackMs = Number(config.lookbackHours) * 60 * 60 * 1000;
+    const sinceMs = Number(nowMs) - lookbackMs;
+    const loaded = await loadProductionEntryRouteCanaryHistoryRows({
+      db,
+      env,
+      sinceMs,
+      limit: config.firestoreReadLimit,
+    });
+    return Object.freeze({
+      source,
+      historyFile: loaded.collectionName,
+      history: Object.freeze({
+        rows: loaded.rows,
+        invalid_lines: loaded.invalid_lines || Object.freeze([]),
+      }),
+    });
+  }
   const historyFile = resolveHistoryFile(env);
-  const history = parseHistoryFile(historyFile);
-  return evaluateProductionEntryRouteCanaryStreak({
-    history,
-    config: resolveStreakConfig(env),
-    nowMs,
+  return Object.freeze({
+    source,
     historyFile,
+    history: parseHistoryFile(historyFile),
+  });
+}
+
+async function runCheck(env = process.env, { nowMs = Date.now(), db = null } = {}) {
+  const config = resolveStreakConfig(env);
+  const loaded = await loadHistory(env, { nowMs, db, config });
+  return evaluateProductionEntryRouteCanaryStreak({
+    history: loaded.history,
+    config,
+    nowMs,
+    historyFile: loaded.historyFile,
+    historySource: loaded.source,
   });
 }
 
@@ -185,12 +230,13 @@ async function main(env = process.env) {
   const outputFile = resolveOutputFile(env);
   let report;
   try {
-    report = runCheck(env);
+    report = await runCheck(env);
   } catch (error) {
     report = Object.freeze({
       ok: false,
       reason: "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_THROWN",
-      history_file: resolveHistoryFile(env),
+      history_source: resolveHistorySource(env),
+      history_file: resolveHistorySource(env) === "FIRESTORE" ? null : resolveHistoryFile(env),
       blockers: Object.freeze(["PRODUCTION_ENTRY_ROUTE_CANARY_STREAK:HISTORY_READ_FAILED"]),
       error: Object.freeze({
         message: error && error.message ? error.message : String(error),
@@ -204,6 +250,7 @@ async function main(env = process.env) {
     ok: report.ok,
     reason: report.reason,
     output_file: outputFile,
+    history_source: report.history_source,
     history_file: report.history_file,
     blockers: report.blockers,
   }));
@@ -219,6 +266,7 @@ if (require.main === module) {
   module.exports = {
     main,
     runCheck,
+    loadHistory,
     evaluateProductionEntryRouteCanaryStreak,
     parseHistoryFile,
     __test: {
@@ -230,6 +278,7 @@ if (require.main === module) {
       resolveHistoryFile,
       resolveOutputFile,
       resolveStreakConfig,
+      resolveHistorySource,
       toMs,
       isHealthyProductionEntryRouteCanaryRow,
     },

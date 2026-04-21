@@ -19,6 +19,7 @@ const V2_COLLECTIONS = Object.freeze({
   OPENCLAW_DECISIONS: "openclaw_decisions_v2",
   OPENCLAW_EXECUTION_AUDITS: "openclaw_execution_audits_v2",
   TRAIL_OBSERVATIONS: "trail_observations_v2",
+  PRODUCTION_ENTRY_ROUTE_CANARIES: "production_entry_route_canaries_v2",
 });
 
 const V2_SERVICES = Object.freeze({

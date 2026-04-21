@@ -351,6 +351,8 @@ function hasProductionEntryRouteCanaryStreak(summary) {
   return (
     streak.ok === true &&
     trimOrNull(streak.reason) === "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS" &&
+    trimOrNull(streak.history_source) === "FIRESTORE" &&
+    !!trimOrNull(streak.history_file) &&
     Number(streak.healthy_run_n) >= Number(streak.min_run_count) &&
     Number(streak.unhealthy_run_n) === 0 &&
     Number(streak.invalid_line_n) === 0 &&
