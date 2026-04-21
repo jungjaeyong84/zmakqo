@@ -848,14 +848,16 @@ function evaluateSubmitContract() {
       label: "runbook verifier checks resolved artifact dir coherence before submit",
       ok: runbookCheckerText.includes("CHK_01A")
         && runbookCheckerText.includes("hasContextArtifactDirCoherence")
+        && runbookCheckerText.includes("artifact_dir_coherence")
         && runbookText.includes("| 1A | `SUBMIT_CHK_01A`")
         && runbookText.includes("automated verifier `CHK_01A`"),
       reason: runbookCheckerText.includes("CHK_01A")
         && runbookCheckerText.includes("hasContextArtifactDirCoherence")
+        && runbookCheckerText.includes("artifact_dir_coherence")
         && runbookText.includes("| 1A | `SUBMIT_CHK_01A`")
         && runbookText.includes("automated verifier `CHK_01A`")
-        ? "runbook verifier enforces resolved artifact dir coherence before submit"
-        : "runbook verifier must enforce resolved artifact dir coherence with CHK_01A",
+        ? "runbook verifier enforces resolved artifact dir and context self-check coherence before submit"
+        : "runbook verifier must enforce resolved artifact dir and artifact_dir_coherence with CHK_01A",
       file: FILES.runbookChecker,
     }),
     buildCheck({

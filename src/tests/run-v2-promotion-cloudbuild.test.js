@@ -17,6 +17,23 @@ function writeJson(filePath, payload) {
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
 }
 
+function buildArtifactDirCoherenceFixture(dir, cycleId) {
+  return {
+    ok: true,
+    reason: "ARTIFACT_DIR_COHERENT",
+    requested_artifact_dir: dir,
+    resolved_artifact_dir: dir,
+    artifact_dir: dir,
+    position_cycle_id: cycleId,
+    deploy_decision_position_cycle_id: cycleId,
+    position_cycle_required: true,
+    artifact_dir_matches_resolved_artifact_dir: true,
+    artifact_dir_contains_position_cycle_id: true,
+    resolved_artifact_dir_contains_position_cycle_id: true,
+    context_cycle_matches_deploy_decision: true,
+  };
+}
+
 function buildBoundedRuntimeSummaryFixture() {
   return {
     selector_query_budget: {
@@ -251,6 +268,7 @@ function seedRunbookArtifacts(dir, cycleId) {
     position_cycle_id: cycleId,
     artifact_dir: dir,
     resolved_artifact_dir: dir,
+    artifact_dir_coherence: buildArtifactDirCoherenceFixture(dir, cycleId),
     lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
     final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
     recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",

@@ -167,6 +167,11 @@ function hasContextArtifactDirCoherence({
   const artifactPath = resolvePathOrNull(artifactDir);
   const contextArtifactPath = resolvePathOrNull(cloudbuildContext && cloudbuildContext.artifact_dir);
   const contextResolvedPath = resolvePathOrNull(cloudbuildContext && cloudbuildContext.resolved_artifact_dir);
+  const selfCheck = cloudbuildContext && typeof cloudbuildContext.artifact_dir_coherence === "object"
+    ? cloudbuildContext.artifact_dir_coherence
+    : null;
+  const selfCheckArtifactPath = resolvePathOrNull(selfCheck && selfCheck.artifact_dir);
+  const selfCheckResolvedPath = resolvePathOrNull(selfCheck && selfCheck.resolved_artifact_dir);
   const expectedCycleId = trimOrNull(expectedPositionCycleId);
   const preflightCycleId = trimOrNull(preflight && preflight.position_cycle_id);
   const manifestCycleId = trimOrNull(
@@ -177,10 +182,16 @@ function hasContextArtifactDirCoherence({
   );
   const deployCycleId = trimOrNull(deployDecision && deployDecision.position_cycle_id);
   const contextCycleId = trimOrNull(cloudbuildContext && cloudbuildContext.position_cycle_id);
+  const selfCheckCycleId = trimOrNull(selfCheck && selfCheck.position_cycle_id);
+  const selfCheckDeployCycleId = trimOrNull(selfCheck && selfCheck.deploy_decision_position_cycle_id);
   return !!(
     artifactPath &&
     contextArtifactPath &&
     contextResolvedPath &&
+    selfCheck &&
+    selfCheck.ok === true &&
+    selfCheckArtifactPath &&
+    selfCheckResolvedPath &&
     expectedCycleId &&
     preflightCycleId &&
     manifestCycleId &&
@@ -188,11 +199,19 @@ function hasContextArtifactDirCoherence({
     contextCycleId &&
     artifactPath === contextArtifactPath &&
     artifactPath === contextResolvedPath &&
+    artifactPath === selfCheckArtifactPath &&
+    artifactPath === selfCheckResolvedPath &&
     artifactPath.includes(expectedCycleId) &&
     preflightCycleId === expectedCycleId &&
     manifestCycleId === expectedCycleId &&
     deployCycleId === expectedCycleId &&
-    contextCycleId === expectedCycleId
+    contextCycleId === expectedCycleId &&
+    selfCheckCycleId === expectedCycleId &&
+    selfCheckDeployCycleId === expectedCycleId &&
+    selfCheck.artifact_dir_matches_resolved_artifact_dir === true &&
+    selfCheck.artifact_dir_contains_position_cycle_id === true &&
+    selfCheck.resolved_artifact_dir_contains_position_cycle_id === true &&
+    selfCheck.context_cycle_matches_deploy_decision === true
   );
 }
 
@@ -453,10 +472,10 @@ function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts
       deployDecision,
       cloudbuildContext,
     })
-      ? "context artifact dir and selected cycle are coherent"
-      : "context artifact dir, resolved dir, or selected cycle is inconsistent",
+      ? "context artifact dir, self-check, and selected cycle are coherent"
+      : "context artifact dir, self-check, resolved dir, or selected cycle is inconsistent",
     file: artifacts.cloudbuildContext.filePath,
-    field: "artifact_dir,resolved_artifact_dir,position_cycle_id",
+    field: "artifact_dir,resolved_artifact_dir,artifact_dir_coherence,position_cycle_id",
   }));
 
   checks.push(buildCheck({

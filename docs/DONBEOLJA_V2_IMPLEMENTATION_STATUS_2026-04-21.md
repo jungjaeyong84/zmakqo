@@ -1779,3 +1779,24 @@ V1 약점 재발 방지:
 1. V1에서는 잘못된 산출물 축이 뒤쪽 gate에서만 드러나거나 운영자가 로그를 여러 파일에서 역추적해야 했다
 2. 이번 단계는 context를 쓰는 순간부터 self-check 결과를 같이 저장해, runbook/submit 이전에도 provenance drift를 단일 JSON에서 확인할 수 있게 한다
 3. 따라서 V2에서는 “생성은 됐지만 어느 cycle의 산출물인지 불명확한 context”가 조용히 다음 단계로 넘어가는 위험을 줄인다
+
+## 2026-04-22 Runbook Enforces Context Artifact Dir Self-Check
+
+추가 증거:
+
+1. `scripts/check-v2-canary-runbook.js`
+2. `scripts/check-v2-promotion-submit-contract.js`
+3. `src/tests/check-v2-canary-runbook.test.js`
+
+판정:
+
+1. runbook verifier `CHK_01A` 는 이제 `promotion-cloudbuild-context.json.artifact_dir_coherence.ok=true` 를 직접 요구한다
+2. self-check의 `artifact_dir`, `resolved_artifact_dir`, `position_cycle_id`, `deploy_decision_position_cycle_id` 가 runbook expected cycle과 다르면 `CHK_01A=FAIL` 이다
+3. self-check boolean flag 중 `artifact_dir_matches_resolved_artifact_dir`, `artifact_dir_contains_position_cycle_id`, `resolved_artifact_dir_contains_position_cycle_id`, `context_cycle_matches_deploy_decision` 중 하나라도 false면 runbook이 실패한다
+4. submit contract는 runbook verifier가 `artifact_dir_coherence` 를 실제로 참조하지 않으면 실패한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 “진단 필드가 존재하지만 gate가 읽지 않는” 장식성 관측값이 운영 판단을 흐릴 수 있었다
+2. 이번 단계는 context self-check를 runbook fail-closed 조건에 연결해, 관측값과 게이트 판단이 분리되는 문제를 줄인다
+3. 따라서 V2에서는 final artifact dir drift가 context에 기록만 되고 승격 검토를 통과하는 경로를 차단한다

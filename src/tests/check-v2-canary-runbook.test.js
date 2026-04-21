@@ -265,6 +265,7 @@ function seedMinimalRunbookArtifacts(dir, cycleId, { deployDecisionPatch = {}, c
     position_cycle_id: cycleId,
     artifact_dir: dir,
     resolved_artifact_dir: dir,
+    artifact_dir_coherence: buildArtifactDirCoherenceFixture(dir, cycleId),
     lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
     final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
     recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -285,6 +286,24 @@ function seedMinimalRunbookArtifacts(dir, cycleId, { deployDecisionPatch = {}, c
     },
     ...contextPatch,
   });
+}
+
+function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
+  return {
+    ok: true,
+    reason: "ARTIFACT_DIR_COHERENT",
+    requested_artifact_dir: dir,
+    resolved_artifact_dir: dir,
+    artifact_dir: dir,
+    position_cycle_id: cycleId,
+    deploy_decision_position_cycle_id: cycleId,
+    position_cycle_required: true,
+    artifact_dir_matches_resolved_artifact_dir: true,
+    artifact_dir_contains_position_cycle_id: true,
+    resolved_artifact_dir_contains_position_cycle_id: true,
+    context_cycle_matches_deploy_decision: true,
+    ...overrides,
+  };
 }
 
 (async function runbookCheckPassesForCoherentArtifactSet() {
@@ -341,6 +360,7 @@ function seedMinimalRunbookArtifacts(dir, cycleId, { deployDecisionPatch = {}, c
       position_cycle_id: cycleId,
       artifact_dir: dir,
       resolved_artifact_dir: dir,
+      artifact_dir_coherence: buildArtifactDirCoherenceFixture(dir, cycleId),
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -396,7 +416,36 @@ function seedMinimalRunbookArtifacts(dir, cycleId, { deployDecisionPatch = {}, c
     const artifactDirCheck = result.review.checks.find((row) => row.id === "CHK_01A");
     assert.ok(artifactDirCheck);
     assert.strictEqual(artifactDirCheck.status, "FAIL");
-    assert.strictEqual(artifactDirCheck.field, "artifact_dir,resolved_artifact_dir,position_cycle_id");
+    assert.strictEqual(artifactDirCheck.field, "artifact_dir,resolved_artifact_dir,artifact_dir_coherence,position_cycle_id");
+  } finally {
+    try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(async function runbookCheckFailsWhenContextSelfCheckIsFalse() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-runbook-self-check-false-"));
+  try {
+    const cycleId = "PCY__RUNBOOK__SELF_CHECK_FALSE";
+    const dir = path.join(root, cycleId);
+    fs.mkdirSync(dir, { recursive: true });
+    seedMinimalRunbookArtifacts(dir, cycleId, {
+      contextPatch: {
+        artifact_dir_coherence: buildArtifactDirCoherenceFixture(dir, cycleId, {
+          ok: false,
+          reason: "ARTIFACT_DIR_RESOLVED_DIR_MISMATCH",
+          artifact_dir_matches_resolved_artifact_dir: false,
+        }),
+      },
+    });
+    const result = runbookCheck.runCanaryRunbookCheck({
+      V2_PROMOTION_ARTIFACT_DIR: dir,
+      V2_PROMOTION_EXPECT_POSITION_CYCLE_ID: cycleId,
+    });
+    assert.strictEqual(result.review.ok, false);
+    const artifactDirCheck = result.review.checks.find((row) => row.id === "CHK_01A");
+    assert.ok(artifactDirCheck);
+    assert.strictEqual(artifactDirCheck.status, "FAIL");
+    assert.strictEqual(artifactDirCheck.reason, "context artifact dir, self-check, resolved dir, or selected cycle is inconsistent");
   } finally {
     try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
   }
@@ -443,6 +492,7 @@ function seedMinimalRunbookArtifacts(dir, cycleId, { deployDecisionPatch = {}, c
       position_cycle_id: cycleId,
       artifact_dir: dir,
       resolved_artifact_dir: dir,
+      artifact_dir_coherence: buildArtifactDirCoherenceFixture(dir, cycleId),
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=1`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -514,6 +564,7 @@ function seedMinimalRunbookArtifacts(dir, cycleId, { deployDecisionPatch = {}, c
       position_cycle_id: cycleId,
       artifact_dir: dir,
       resolved_artifact_dir: dir,
+      artifact_dir_coherence: buildArtifactDirCoherenceFixture(dir, cycleId),
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -610,6 +661,7 @@ function seedMinimalRunbookArtifacts(dir, cycleId, { deployDecisionPatch = {}, c
       position_cycle_id: cycleId,
       artifact_dir: dir,
       resolved_artifact_dir: dir,
+      artifact_dir_coherence: buildArtifactDirCoherenceFixture(dir, cycleId),
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -883,6 +935,7 @@ function seedMinimalRunbookArtifacts(dir, cycleId, { deployDecisionPatch = {}, c
       position_cycle_id: cycleId,
       artifact_dir: dir,
       resolved_artifact_dir: dir,
+      artifact_dir_coherence: buildArtifactDirCoherenceFixture(dir, cycleId),
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -970,6 +1023,7 @@ function seedMinimalRunbookArtifacts(dir, cycleId, { deployDecisionPatch = {}, c
       position_cycle_id: cycleId,
       artifact_dir: dir,
       resolved_artifact_dir: dir,
+      artifact_dir_coherence: buildArtifactDirCoherenceFixture(dir, cycleId),
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -1043,6 +1097,7 @@ function seedMinimalRunbookArtifacts(dir, cycleId, { deployDecisionPatch = {}, c
       position_cycle_id: cycleId,
       artifact_dir: dir,
       resolved_artifact_dir: dir,
+      artifact_dir_coherence: buildArtifactDirCoherenceFixture(dir, cycleId),
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -1128,6 +1183,7 @@ function seedMinimalRunbookArtifacts(dir, cycleId, { deployDecisionPatch = {}, c
       position_cycle_id: cycleId,
       artifact_dir: dir,
       resolved_artifact_dir: dir,
+      artifact_dir_coherence: buildArtifactDirCoherenceFixture(dir, cycleId),
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -1209,6 +1265,7 @@ function seedMinimalRunbookArtifacts(dir, cycleId, { deployDecisionPatch = {}, c
       position_cycle_id: cycleId,
       artifact_dir: dir,
       resolved_artifact_dir: dir,
+      artifact_dir_coherence: buildArtifactDirCoherenceFixture(dir, cycleId),
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -1282,6 +1339,7 @@ function seedMinimalRunbookArtifacts(dir, cycleId, { deployDecisionPatch = {}, c
       position_cycle_id: cycleId,
       artifact_dir: dir,
       resolved_artifact_dir: dir,
+      artifact_dir_coherence: buildArtifactDirCoherenceFixture(dir, cycleId),
       lineage_contract_hash: "lineage-hash-mismatch",
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
