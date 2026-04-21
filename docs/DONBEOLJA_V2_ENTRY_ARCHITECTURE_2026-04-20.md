@@ -178,6 +178,33 @@ V2 production entry submit은 `runV2EntryExecutionKernel` 하나로만 시작해
 
 이 계약의 목적은 V1의 "하위 서비스가 성공처럼 반환했지만 실제 보호주문 증거가 빠진 상태"를 상위 runner에서 다시 한 번 차단하는 것이다.
 
+## production entry route contract
+
+V2 production route / scheduler / OpenClaw cron은 `runV2ProductionEntryRoute` 를 통해서만 entry 실행을 시작해야 한다.
+
+순서:
+
+1. runtime config를 확인한다
+2. `DONBEOLJA_V2_ENABLED=0` 이면 커널을 호출하지 않는다
+3. `DONBEOLJA_V2_DRY_RUN=1` 이면 커널을 호출하지 않는다
+4. OpenClaw bundle을 deterministic router로 변환한다
+5. router가 blocked이면 커널을 호출하지 않는다
+6. `DONBEOLJA_V2_CANARY_ONLY=1` 에서 `LIVE` decision이면 커널을 호출하지 않는다
+7. `runV2EntryExecutionKernel` 을 호출한다
+8. kernel이 반환한 executed entry와 OpenClaw/router lineage를 `openclawExecutionSeparationAudit` 로 다시 비교한다
+9. audit ledger write를 시도한다
+10. kernel, separation audit, ledger result가 모두 정상일 때만 route success를 반환한다
+
+필수 정책:
+
+1. production route는 submitter를 직접 호출하지 않는다
+2. production route 외 모듈은 entry execution kernel을 직접 호출하지 않는다
+3. kernel이 blocked면 route도 blocked다
+4. kernel이 다른 `signal_intent_id` / `openclaw_decision_id` / `entry_intent_id` 를 실행한 흔적이 있으면 route success가 아니다
+5. audit ledger write가 throw되면 entry가 이미 보호됐더라도 route success로 포장하지 않는다
+
+이 계약의 목적은 V1의 "scheduler / native signal / repair / watchdog가 각자 성공 의미를 다르게 해석한 문제"를 production entry 최상단에서 끊는 것이다.
+
 ## entry submitter contract
 
 V2 entry submitter는 production route가 직접 호출하지 않고 `runV2EntryExecutionKernel` 을 통해서만 호출한다.
@@ -258,8 +285,10 @@ V2 entry 경로는 코드 레벨에서도 우회 금지를 검사해야 한다.
 2. `runV2EntryProtectionActivation` 은 `src/v2/entrySubmitter.js` 밖에서 호출 금지
 3. `src/v2/entryProtectionRunner.js` 는 함수 정의 파일로만 허용
 4. `runV2EntrySubmitter` 는 `src/v2/entryExecutionKernel.js` 밖에서 호출 금지
-5. `src/v2/entrySubmitter.js` 는 함수 정의 파일로만 허용
-6. `src/v2/entryBoundaryAudit.js` 는 rule 정의 파일로만 허용
+5. `runV2EntryExecutionKernel` 은 `src/v2/productionEntryRoute.js` 밖에서 호출 금지
+6. `src/v2/entrySubmitter.js` 는 함수 정의 파일로만 허용
+7. `src/v2/entryExecutionKernel.js` 는 함수 정의 파일로만 허용
+8. `src/v2/entryBoundaryAudit.js` 는 rule 정의 파일로만 허용
 
 이 검사는 V1의 "새 기능을 추가하면서 운영자가 모르는 두 번째 entry writer가 생기는" 문제를 V2 namespace 안에서 차단하기 위한 것이다.
 

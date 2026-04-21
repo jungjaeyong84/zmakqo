@@ -1110,3 +1110,37 @@ V1 약점 재발 방지:
 2. 이번 단계부터 V2 상위 runner는 submitter를 직접 신뢰하지 않고, 실행 커널의 증거 감사 결과만 신뢰해야 한다
 3. 보호주문이 실제로 없거나 runtime chain이 다른 position cycle에 붙으면 entry success가 아니라 차단 이벤트가 된다
 4. 남은 한계는 production scheduler/native signal runner를 실제로 `runV2EntryExecutionKernel` 로 연결하고, 배포 gate가 이 경로 외 submit을 차단하는 단계다
+
+## 2026-04-21 Production Entry Route Kernel Wiring
+
+추가 증거:
+
+1. `src/v2/productionEntryRoute.js`
+2. `src/v2/entryBoundaryAudit.js`
+3. `src/v2/productionCutoverAudit.js`
+4. `src/tests/v2-production-entry-route.test.js`
+5. `src/tests/v2-entry-boundary-audit.test.js`
+6. `src/tests/v2-production-cutover-audit.test.js`
+7. `docs/DONBEOLJA_V2_ENTRY_ARCHITECTURE_2026-04-20.md`
+
+판정:
+
+1. V2 production entry 최상단 route가 `runV2ProductionEntryRoute` 로 추가됐다
+2. route는 `DONBEOLJA_V2_ENABLED=0` 또는 `DONBEOLJA_V2_DRY_RUN=1` 이면 execution kernel을 호출하지 않는다
+3. OpenClaw/router가 blocked이면 execution kernel을 호출하지 않는다
+4. `DONBEOLJA_V2_CANARY_ONLY=1` 에서 `LIVE` decision이 들어오면 execution kernel을 호출하지 않는다
+5. 실행은 `runV2EntryExecutionKernel` 을 통해서만 진행된다
+6. kernel 결과의 executed entry는 다시 `openclawExecutionSeparationAudit` 로 OpenClaw/router lineage와 비교된다
+7. kernel이 blocked면 route도 `V2_PRODUCTION_ENTRY_KERNEL_BLOCKED` 로 blocked다
+8. kernel이 다른 `signal_intent_id` / `openclaw_decision_id` / `entry_intent_id` 를 실행한 흔적이 있으면 `V2_PRODUCTION_ENTRY_OPENCLAW_EXECUTION_SEPARATION_BLOCKED` 로 blocked다
+9. audit ledger write가 throw되면 `V2_PRODUCTION_ENTRY_AUDIT_LEDGER_FAILED` 로 반환되어 성공처럼 보이지 않는다
+10. entry boundary audit는 `runV2EntryExecutionKernel` 직접 호출을 `src/v2/productionEntryRoute.js` 밖에서 금지한다
+11. production cutover audit는 route module 존재, execution kernel 호출, disabled/dry-run block, OpenClaw separation audit, kernel bypass boundary rule을 같이 검사한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 scheduler/native signal/runner가 서로 다른 성공 조건을 가질 수 있었다
+2. 이번 단계부터 V2 production entry의 최상단 성공 조건은 runtime guard, deterministic router, execution kernel, OpenClaw separation audit, audit ledger result를 모두 통과해야 한다
+3. 따라서 OpenClaw 승인만 있거나, kernel이 fake success를 내거나, 실행 lineage가 다른 경우가 entry success로 포장되지 않는다
+4. cutover audit가 route/kernel wiring 계약을 검사하므로, route를 만들고도 deploy gate가 모르는 V1식 문서-코드 단절을 줄였다
+5. 남은 한계는 실제 Cloud Run scheduler/OpenClaw cron handler가 `runV2ProductionEntryRoute` 를 호출하도록 연결하고, 그 호출 증거를 24시간 canary에서 수집하는 단계다

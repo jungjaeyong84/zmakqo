@@ -26,7 +26,12 @@ function readTextSafe(filePath) {
   }
 }
 
-function auditV2ProductionCutoverContract({ routeSource = "", guardSource = "" } = {}) {
+function auditV2ProductionCutoverContract({
+  routeSource = "",
+  guardSource = "",
+  productionEntryRouteSource = "",
+  entryBoundaryAuditSource = "",
+} = {}) {
   const checks = [
     buildCheck(
       "V2_CUTOVER_GUARD_MODULE_EXISTS",
@@ -47,6 +52,31 @@ function auditV2ProductionCutoverContract({ routeSource = "", guardSource = "" }
       "V2_WEBHOOK_SIGNAL_ROUTE_RECORDS_CUTOVER_OUTCOME",
       routeSource.includes("decision: \"DROP\"") && routeSource.includes("reason: cutoverGuard.reason"),
       "cutover block must be recorded through the normal webhook outcome path"
+    ),
+    buildCheck(
+      "V2_PRODUCTION_ENTRY_ROUTE_MODULE_EXISTS",
+      productionEntryRouteSource.includes("runV2ProductionEntryRoute") && productionEntryRouteSource.includes("V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED"),
+      "production entry route module must expose the single V2 entry route success contract"
+    ),
+    buildCheck(
+      "V2_PRODUCTION_ENTRY_ROUTE_CALLS_EXECUTION_KERNEL",
+      productionEntryRouteSource.includes("runV2Entry" + "ExecutionKernel") && productionEntryRouteSource.includes("runEntryKernel"),
+      "production entry route must call the entry execution kernel instead of submitter/protection directly"
+    ),
+    buildCheck(
+      "V2_PRODUCTION_ENTRY_ROUTE_BLOCKS_DRY_RUN_AND_DISABLED",
+      productionEntryRouteSource.includes("V2_PRODUCTION_ENTRY_DISABLED") && productionEntryRouteSource.includes("V2_PRODUCTION_ENTRY_DRY_RUN_BLOCKED"),
+      "production entry route must block when V2 is disabled or dry-run is active"
+    ),
+    buildCheck(
+      "V2_PRODUCTION_ENTRY_ROUTE_AUDITS_OPENCLAW_SEPARATION",
+      productionEntryRouteSource.includes("evaluateOpenClawExecutionSeparation") && productionEntryRouteSource.includes("V2_PRODUCTION_ENTRY_OPENCLAW_EXECUTION_SEPARATION_BLOCKED"),
+      "production entry route must compare kernel executed entry against OpenClaw/router lineage"
+    ),
+    buildCheck(
+      "V2_ENTRY_BOUNDARY_FORBIDS_KERNEL_BYPASS",
+      entryBoundaryAuditSource.includes("V2_ENTRY_EXECUTION_KERNEL_DIRECT_CALL_FORBIDDEN") && entryBoundaryAuditSource.includes("src/v2/productionEntryRoute.js"),
+      "entry boundary audit must forbid direct entry execution kernel calls outside productionEntryRoute"
     ),
   ];
   const failed = checks.filter((row) => row.ok !== true);
@@ -87,6 +117,8 @@ function auditWorkspaceV2ProductionCutoverContract({ rootDir = path.resolve(__di
   return auditV2ProductionCutoverContract({
     routeSource: readTextSafe(path.join(rootDir, "src", "routes", "webhook.routes.js")),
     guardSource: readTextSafe(path.join(rootDir, "src", "v2", "productionCutoverGuard.js")),
+    productionEntryRouteSource: readTextSafe(path.join(rootDir, "src", "v2", "productionEntryRoute.js")),
+    entryBoundaryAuditSource: readTextSafe(path.join(rootDir, "src", "v2", "entryBoundaryAudit.js")),
   });
 }
 

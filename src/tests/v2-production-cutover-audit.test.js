@@ -11,7 +11,9 @@ const {
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.reason, "V2_PRODUCTION_CUTOVER_CONTRACT_PASS");
   assert.strictEqual(result.fail_n, 0);
-  assert.ok(result.check_n >= 4);
+  assert.ok(result.check_n >= 9);
+  assert.ok(result.checks.some((row) => row.id === "V2_PRODUCTION_ENTRY_ROUTE_CALLS_EXECUTION_KERNEL"));
+  assert.ok(result.checks.some((row) => row.id === "V2_ENTRY_BOUNDARY_FORBIDS_KERNEL_BYPASS"));
 })();
 
 (function fullCutoverReadinessPassesWhenLegacyWouldBeBlocked() {
