@@ -1450,3 +1450,24 @@ V1 약점 재발 방지:
 1. V1에서는 하위 gate는 엄격해졌지만 upstream payload가 비어 있어 정상 이벤트가 skip되거나, 반대로 legacy 경로가 이를 우회할 위험이 있었다
 2. 이번 단계는 fill sync wrapper와 V2 writer 사이의 계약을 테스트로 고정해, `fullExit` 와 Binance native order evidence가 중간에서 유실되면 회귀 테스트가 실패한다
 3. 따라서 “writer는 안전하지만 ingress가 증거를 전달하지 않는” V1식 계층 간 계약 불일치를 줄인다
+
+## 2026-04-22 Stop Full Exit Classifier Tightening
+
+추가 증거:
+
+1. `src/services/binanceFuturesFillsSync.js`
+2. `src/tests/fills-sync-alert-aggregation.test.js`
+3. `src/tests/binance-fills-canonical-lineage-guard.test.js`
+
+판정:
+
+1. `resolveFillSyncAlertFullExit` 는 더 이상 `EXIT_SL_*` 이벤트명만으로 `fullExit=true` 를 만들지 않는다
+2. SL/stop 계열 full exit는 native `closePosition=true` 또는 close ratio `>= 0.999` 근거가 있어야 한다
+3. `EXIT_SL_*` + `closePosition=false` + partial ratio는 partial로 남아 V2 stop writer의 terminal 승격 조건을 통과하지 못한다
+4. native `STOP_MARKET closePosition=true` 는 계속 full exit로 인정되어 정상 SL 종료는 막지 않는다
+
+V1 약점 재발 방지:
+
+1. V1에서는 이벤트 라벨이 상태 사실처럼 쓰여 partial stop이나 애매한 sync fill이 terminal alert/status로 승격될 수 있었다
+2. 이번 단계는 `SL` 라벨과 “포지션 전량 종료” 사실을 분리했다
+3. 따라서 V2 terminal 상태는 라벨이 아니라 closePosition/수량 근거로만 확정되는 방향으로 더 단순하고 검증 가능해졌다

@@ -67,6 +67,24 @@ async function run() {
     true,
     "trailing fills may be classified as full exit only when the close ratio proves it"
   );
+  assert.strictEqual(
+    fillsSyncTest.resolveFillSyncAlertFullExit({
+      event: "EXIT_SL_1.65P",
+      orderMeta: { closePosition: false },
+      closeRatio: 0.5,
+    }),
+    false,
+    "SL labels alone must not prove full exit"
+  );
+  assert.strictEqual(
+    fillsSyncTest.resolveFillSyncAlertFullExit({
+      event: "EXIT_SL_1.65P",
+      orderMeta: { closePosition: true },
+      closeRatio: 0.5,
+    }),
+    true,
+    "native closePosition stop evidence may prove full exit"
+  );
 
   const batches = new Map();
   fillsSyncTest.queueFillSyncAlertBatch(batches, {
