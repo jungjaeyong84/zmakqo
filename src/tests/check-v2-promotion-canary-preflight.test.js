@@ -9,6 +9,7 @@ const { buildReferencePassEpisode, buildReferenceNativeMlEvidencePack } = requir
 const { buildWebhookBundle } = require("../v2/comparisonFixtureFactory");
 
 const PREFIX = "donbeolja_v2__";
+const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = preflight.__test.REQUIRED_PREFLIGHT_RUNTIME_CHAIN_CHECK_IDS;
 
 function buildFakeDb(store) {
   return {
@@ -85,10 +86,9 @@ function buildStore() {
       },
       [`${PREFIX}protection_runtime_v2`]: {
         [`PRTV2__${episode.positionCycle.position_cycle_id}`]: {
+          ...episode.protectionRuntime,
           protection_runtime_id: `PRTV2__${episode.positionCycle.position_cycle_id}`,
           position_cycle_id: episode.positionCycle.position_cycle_id,
-          sl_order_id: "STOP__1",
-          tp1_order_id: "TP1__1",
         },
       },
       [`${PREFIX}canonical_exit_transitions_v2`]: Object.fromEntries(
@@ -151,9 +151,78 @@ function buildStore() {
   });
   assert.strictEqual(report.ok, true);
   assert.strictEqual(report.snapshot_counts.episode_n, 1);
+  assert.strictEqual(report.runtime_chain_audit.ok, true);
   assert.strictEqual(report.selector_meta.position_cycle_id, fixture.episode.positionCycle.position_cycle_id);
   assert.ok(report.lineage_contract);
   assert.strictEqual(report.selector_meta.lineage_contract.hash, report.lineage_contract.hash);
+})();
+
+(async function preflightFailsClosedOnMissingRuntimeChainAudit() {
+  const evaluation = preflight.__test.evaluateSnapshot({
+    snapshotMeta: {
+      selector_meta: {
+        position_cycle_id: "PCY__OK",
+        alignment_checks: {
+          symbol_match: true,
+          side_match: true,
+          timeframe_match: true,
+          policy_scope_match: true,
+        },
+      },
+    },
+    episodes: [{
+      positionCycle: { position_cycle_id: "PCY__OK" },
+      projection: { position_cycle_id: "PCY__OK" },
+      protectionRuntime: { position_cycle_id: "PCY__OK" },
+      watchdog: { issueCodes: [] },
+    }],
+    shadowLivePairs: [{}],
+    sourceModePairs: [{}],
+  });
+  assert.strictEqual(evaluation.ready, false);
+  assert.ok(evaluation.blockers.includes("PREFLIGHT:RUNTIME_CHAIN_AUDIT_REQUIRED"));
+  assert.ok(evaluation.blockers.some((row) => row.includes("PREFLIGHT:RUNTIME_CHAIN_CHECKS_MISSING")));
+})();
+
+(async function preflightFailsClosedOnTerminalEvidenceRuntimeChainFailure() {
+  const evaluation = preflight.__test.evaluateSnapshot({
+    snapshotMeta: {
+      selector_meta: {
+        position_cycle_id: "PCY__OK",
+        alignment_checks: {
+          symbol_match: true,
+          side_match: true,
+          timeframe_match: true,
+          policy_scope_match: true,
+        },
+      },
+      runtime_chain_audits: [{
+        ok: false,
+        fail_n: 2,
+        check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
+        passed_check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.filter((id) => ![
+          "COLLECTED_TERMINAL_FULL_EXIT_EVIDENCE_PRESENT",
+          "COLLECTED_STOP_TERMINAL_FILL_EVIDENCE_PRESENT",
+        ].includes(id)),
+        failed_check_ids: [
+          "COLLECTED_TERMINAL_FULL_EXIT_EVIDENCE_PRESENT",
+          "COLLECTED_STOP_TERMINAL_FILL_EVIDENCE_PRESENT",
+        ],
+      }],
+    },
+    episodes: [{
+      positionCycle: { position_cycle_id: "PCY__OK" },
+      projection: { position_cycle_id: "PCY__OK" },
+      protectionRuntime: { position_cycle_id: "PCY__OK" },
+      watchdog: { issueCodes: [] },
+    }],
+    shadowLivePairs: [{}],
+    sourceModePairs: [{}],
+  });
+  assert.strictEqual(evaluation.ready, false);
+  assert.ok(evaluation.blockers.includes(
+    "PREFLIGHT:RUNTIME_CHAIN_AUDIT_FAILED:COLLECTED_TERMINAL_FULL_EXIT_EVIDENCE_PRESENT|COLLECTED_STOP_TERMINAL_FILL_EVIDENCE_PRESENT"
+  ));
 })();
 
 (async function preflightFailsClosedOnAlignmentMismatch() {

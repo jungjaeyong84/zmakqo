@@ -1610,3 +1610,30 @@ V1 약점 재발 방지:
 1. V1에서는 생산 코드, replay, 운영 snapshot, 통합 보고서 사이에서 evidence schema가 조금씩 달라져 게이트가 실제 운영 결함을 놓칠 수 있었다
 2. 이번 단계는 terminal evidence 계약을 collector -> exporter -> unified report -> deploy decision 전체 체인에 관통시켰다
 3. 따라서 V2는 “운영 증거가 실제로 수집되고 보고서/배포판정까지 보존되는가”를 배포 전 품질 조건으로 본다
+
+## 2026-04-22 Canary Preflight Runtime Chain Contract
+
+추가 증거:
+
+1. `scripts/check-v2-promotion-canary-preflight.js`
+2. `scripts/select-v2-promotion-canary-candidate.js`
+3. `scripts/generate-v2-unified-promotion-report.js`
+4. `scripts/check-v2-promotion-deploy-decision.js`
+5. `src/tests/check-v2-promotion-canary-preflight.test.js`
+6. `src/tests/select-v2-promotion-canary-candidate.test.js`
+7. `src/tests/check-v2-promotion-deploy-decision.test.js`
+
+판정:
+
+1. canary preflight는 collector의 `runtime_chain_audits`가 없으면 `PREFLIGHT:RUNTIME_CHAIN_AUDIT_REQUIRED` 로 ready가 아니다
+2. collector가 요구하는 runtime chain check id 중 누락된 항목은 `PREFLIGHT:RUNTIME_CHAIN_CHECKS_MISSING:*` 로 fail-closed 된다
+3. terminal full-exit evidence 또는 stop terminal fill evidence가 약하면 `PREFLIGHT:RUNTIME_CHAIN_AUDIT_FAILED:*` 로 후보 선택 전에 탈락한다
+4. candidate selection contract는 이제 `selected_runtime_chain_ok=true` 를 요구한다
+5. unified promotion report와 deploy decision도 `selected_runtime_chain_ok` 를 보존하고 필수 조건으로 본다
+
+V1 약점 재발 방지:
+
+1. V1에서는 약한 증거가 selector/preflight를 통과하고 deploy gate나 운영 알림에서 뒤늦게 깨질 수 있었다
+2. 이번 단계는 terminal evidence 결함을 candidate selection 이전에 제거해서 late-fail을 줄인다
+3. preflight, selector, unified report, deploy decision이 같은 runtime chain 계약을 보게 되어 계층별 schema drift를 줄인다
+4. 따라서 V2 canary 승격 후보는 “최근 cycle이고 snapshot 수가 맞다”만으로는 부족하며, 실제 terminal evidence chain까지 통과해야 한다

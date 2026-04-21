@@ -80,6 +80,9 @@ function summarizePreflight(report) {
     ok: row.ok === true,
     position_cycle_id: trimOrNull(row.position_cycle_id),
     snapshot_counts: row.snapshot_counts || {},
+    runtime_chain_audit: row.runtime_chain_audit && typeof row.runtime_chain_audit === "object"
+      ? row.runtime_chain_audit
+      : null,
     blockers: Array.isArray(row.blockers) ? row.blockers.slice() : [],
   });
 }
@@ -105,6 +108,9 @@ function buildSelectionContract({ cfg, queriedCycles, recentCycles, selected, co
   const collectorCycleId = trimOrNull(collectorEnv && collectorEnv.V2_PROMOTION_SELECT_POSITION_CYCLE_ID);
   const snapshotCountsExact = hasExactSnapshotCounts(preflightSummary);
   const selectedPreflightOk = preflightSummary ? preflightSummary.ok === true : false;
+  const selectedRuntimeChainOk = preflightSummary && preflightSummary.runtime_chain_audit
+    ? preflightSummary.runtime_chain_audit.ok === true
+    : false;
   const selectedCycleMatchesPreflight = !!(
     selectedCycleId &&
     trimOrNull(preflightSummary && preflightSummary.position_cycle_id) === selectedCycleId
@@ -122,11 +128,12 @@ function buildSelectionContract({ cfg, queriedCycles, recentCycles, selected, co
     : false;
 
   return Object.freeze({
-    ok: scanLimitRespected && recentWindowEnforced && selectedPreflightOk && selectedCycleMatchesPreflight && selectedCycleMatchesCollectorEnv && snapshotCountsExact,
+    ok: scanLimitRespected && recentWindowEnforced && selectedPreflightOk && selectedRuntimeChainOk && selectedCycleMatchesPreflight && selectedCycleMatchesCollectorEnv && snapshotCountsExact,
     scan_limit_respected: scanLimitRespected,
     recent_window_enforced: recentWindowEnforced,
     selected_candidate_present: !!selectedCycleId,
     selected_preflight_ok: selectedPreflightOk,
+    selected_runtime_chain_ok: selectedRuntimeChainOk,
     selected_cycle_matches_preflight: selectedCycleMatchesPreflight,
     selected_cycle_matches_collector_env: selectedCycleMatchesCollectorEnv,
     selected_snapshot_counts_exact: snapshotCountsExact,

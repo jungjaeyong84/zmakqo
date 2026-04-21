@@ -81,12 +81,11 @@ function buildReadyCycleStore({ createdAt = "2026-04-20T00:00:00.000Z", suffix =
     position_cycle_id: cycleId,
   };
   const protectionRuntime = {
+    ...episode.protectionRuntime,
     protection_runtime_id: `PRTV2__${cycleId}`,
     position_cycle_id: cycleId,
     sl_order_id: "STOP__1",
     tp1_order_id: "TP1__1",
-    last_exchange_evidence: episode.protectionRuntime.last_exchange_evidence,
-    last_evidence_observed_at: episode.protectionRuntime.last_evidence_observed_at,
   };
   const transitions = Object.fromEntries(
     episode.transitions.map((row, index) => [`t${suffix}${index}`, { ...row, position_cycle_id: cycleId }])
@@ -119,6 +118,7 @@ function buildReadyCycleStore({ createdAt = "2026-04-20T00:00:00.000Z", suffix =
     ...nativeBundle.openclawDecision,
     openclaw_decision_id: nativeDecisionId,
     signal_intent_id: nativeSignalIntentId,
+    ml_ai_evidence_decision_id: mlEvidenceId,
   };
   const shadowProposal = {
     ...nativeProposal,
@@ -223,6 +223,7 @@ function mergeStores(...stores) {
   assert.strictEqual(result.collector_env.V2_PROMOTION_SELECT_POSITION_CYCLE_ID, newer.cycleId);
   assert.strictEqual(result.selection_contract.ok, true);
   assert.strictEqual(result.selection_contract.selected_preflight_ok, true);
+  assert.strictEqual(result.selection_contract.selected_runtime_chain_ok, true);
   assert.strictEqual(result.selection_contract.selected_cycle_matches_collector_env, true);
 })();
 
@@ -244,6 +245,7 @@ function mergeStores(...stores) {
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.collector_env.V2_PROMOTION_SELECT_EXCHANGE_STATE_JSON, exchangeStateJson);
   assert.strictEqual(result.selection_contract.ok, true);
+  assert.strictEqual(result.selection_contract.selected_runtime_chain_ok, true);
 })();
 
 (async function failsClosedWhenNoCandidatePassesPreflight() {
@@ -304,6 +306,46 @@ function mergeStores(...stores) {
   assert.strictEqual(result.selection_status, "NO_PREFLIGHT_READY_CANDIDATES");
   assert.strictEqual(result.selection_contract.ok, false);
   assert.ok(result.evaluated_candidates[0].preflight.blockers.includes("PREFLIGHT:TERMINAL_WATCHDOG_MISMATCH:TERMINAL_TRANSITION_MISSING"));
+})();
+
+(async function weakTerminalEvidenceCandidateIsExcludedBeforeSelection() {
+  const blocked = buildReadyCycleStore({
+    createdAt: "2026-04-20T00:00:00.000Z",
+    suffix: "WEAK_TERMINAL_EVIDENCE",
+  });
+  const transitionBucket = blocked.store[`${PREFIX}canonical_exit_transitions_v2`];
+  const transitionKeys = Object.keys(transitionBucket).sort();
+  const terminalKey = transitionKeys[transitionKeys.length - 1];
+  const terminal = transitionBucket[terminalKey];
+  const raw = { ...terminal.source_exchange_evidence.raw_payload };
+  delete raw.full_exit;
+  delete raw.position_amt_after;
+  delete raw.order_type;
+  delete raw.stop_price;
+  transitionBucket[terminalKey] = {
+    ...terminal,
+    source_exchange_evidence: {
+      ...terminal.source_exchange_evidence,
+      evidence_kind: "AMBIGUOUS_EXIT",
+      raw_payload: raw,
+    },
+  };
+
+  const result = await selector.selectCanaryCandidate({
+    db: buildFakeDb(blocked.store),
+    env: {
+      V2_PROMOTION_MODE: "CANARY",
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.selection_status, "NO_PREFLIGHT_READY_CANDIDATES");
+  assert.strictEqual(result.selection_contract.ok, false);
+  assert.strictEqual(result.selection_contract.selected_runtime_chain_ok, false);
+  assert.ok(result.evaluated_candidates[0].preflight.blockers.some((row) => (
+    row.includes("PREFLIGHT:RUNTIME_CHAIN_AUDIT_FAILED")
+    && row.includes("COLLECTED_TERMINAL_FULL_EXIT_EVIDENCE_PRESENT")
+    && row.includes("COLLECTED_STOP_TERMINAL_FILL_EVIDENCE_PRESENT")
+  )));
 })();
 
 (async function reportsEmptyActiveUniverseExplicitly() {

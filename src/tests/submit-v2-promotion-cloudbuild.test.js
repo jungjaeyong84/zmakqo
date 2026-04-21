@@ -164,6 +164,7 @@ function seedBoundedSubmitArtifacts(
           recent_window_enforced: true,
           selected_candidate_present: true,
           selected_preflight_ok: true,
+          selected_runtime_chain_ok: true,
           selected_cycle_matches_preflight: true,
           selected_cycle_matches_collector_env: true,
           selected_snapshot_counts_exact: true,

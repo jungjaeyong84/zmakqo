@@ -8,6 +8,7 @@ const collector = require("./collect-v2-promotion-runtime-snapshot");
 const { buildLineageContract } = require("./lib/v2-promotion-lineage-contract");
 
 const OUTPUT_FILENAME = "promotion-preflight.json";
+const REQUIRED_PREFLIGHT_RUNTIME_CHAIN_CHECK_IDS = collector.__test.REQUIRED_COLLECTED_RUNTIME_CHAIN_CHECK_IDS;
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -55,6 +56,47 @@ function buildAlignmentBlockers(selectorMeta) {
   return blockers;
 }
 
+function buildRuntimeChainAuditSummary(snapshotMeta) {
+  const audits = Array.isArray(snapshotMeta && snapshotMeta.runtime_chain_audits)
+    ? snapshotMeta.runtime_chain_audits
+    : [];
+  const audit = audits[0] && typeof audits[0] === "object" ? audits[0] : null;
+  if (!audit) {
+    return Object.freeze({
+      ok: false,
+      missing: true,
+      failed_check_ids: Object.freeze([]),
+      missing_check_ids: Object.freeze(REQUIRED_PREFLIGHT_RUNTIME_CHAIN_CHECK_IDS.slice()),
+      replay_blockers: Object.freeze([]),
+    });
+  }
+  const passed = new Set(Array.isArray(audit.passed_check_ids) ? audit.passed_check_ids.map(String).filter(Boolean) : []);
+  const failedCheckIds = Array.isArray(audit.failed_check_ids) ? audit.failed_check_ids.map(String).filter(Boolean) : [];
+  const missingCheckIds = REQUIRED_PREFLIGHT_RUNTIME_CHAIN_CHECK_IDS.filter((id) => !passed.has(id));
+  return Object.freeze({
+    ok: audit.ok === true && Number(audit.fail_n) === 0 && failedCheckIds.length === 0 && missingCheckIds.length === 0,
+    missing: false,
+    failed_check_ids: Object.freeze(failedCheckIds),
+    missing_check_ids: Object.freeze(missingCheckIds),
+    replay_blockers: Object.freeze(Array.isArray(audit.replay_blockers) ? audit.replay_blockers.slice() : []),
+  });
+}
+
+function buildRuntimeChainAuditBlockers(snapshotMeta) {
+  const summary = buildRuntimeChainAuditSummary(snapshotMeta);
+  const blockers = [];
+  if (summary.missing === true) {
+    blockers.push("PREFLIGHT:RUNTIME_CHAIN_AUDIT_REQUIRED");
+  }
+  if (summary.failed_check_ids.length > 0) {
+    blockers.push(`PREFLIGHT:RUNTIME_CHAIN_AUDIT_FAILED:${summary.failed_check_ids.join("|")}`);
+  }
+  if (summary.missing_check_ids.length > 0) {
+    blockers.push(`PREFLIGHT:RUNTIME_CHAIN_CHECKS_MISSING:${summary.missing_check_ids.join("|")}`);
+  }
+  return { summary, blockers };
+}
+
 function evaluateSnapshot(snapshot) {
   const row = snapshot && typeof snapshot === "object" ? snapshot : null;
   if (!row) throw new Error("V2_PROMOTION_PREFLIGHT_SNAPSHOT_REQUIRED");
@@ -82,6 +124,8 @@ function evaluateSnapshot(snapshot) {
 
   const selectorMeta = row.snapshotMeta && row.snapshotMeta.selector_meta;
   blockers.push(...buildAlignmentBlockers(selectorMeta));
+  const runtimeChainAudit = buildRuntimeChainAuditBlockers(row.snapshotMeta);
+  blockers.push(...runtimeChainAudit.blockers);
   const watchdogIssueCodes = Array.isArray(watchdog && watchdog.issueCodes)
     ? watchdog.issueCodes.map((code) => upper(code)).filter(Boolean)
     : [];
@@ -97,6 +141,7 @@ function evaluateSnapshot(snapshot) {
   return Object.freeze({
     ready: blockers.length === 0,
     blockers,
+    runtimeChainAudit: runtimeChainAudit.summary,
     counts: Object.freeze({
       episode_n: episodes.length,
       shadow_live_pair_n: shadowLivePairs.length,
@@ -125,6 +170,7 @@ async function runPreflight(env = process.env, { db = null } = {}) {
     lineage_contract: lineageContract,
     collector_env: selected.collectorEnv,
     snapshot_counts: evaluation.counts,
+    runtime_chain_audit: evaluation.runtimeChainAudit,
     blockers: evaluation.blockers,
   });
 }
@@ -173,7 +219,10 @@ if (require.main === module) {
       resolveArtifactDir,
       resolvePreflightConfig,
       buildAlignmentBlockers,
+      buildRuntimeChainAuditSummary,
+      buildRuntimeChainAuditBlockers,
       evaluateSnapshot,
+      REQUIRED_PREFLIGHT_RUNTIME_CHAIN_CHECK_IDS,
     },
   };
 }

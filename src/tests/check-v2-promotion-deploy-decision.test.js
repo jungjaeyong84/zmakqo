@@ -139,6 +139,7 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
       recent_window_enforced: true,
       selected_candidate_present: true,
       selected_preflight_ok: true,
+      selected_runtime_chain_ok: true,
       selected_cycle_matches_preflight: true,
       selected_cycle_matches_collector_env: true,
       selected_snapshot_counts_exact: true,
@@ -787,6 +788,7 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
         recent_window_enforced: true,
         selected_candidate_present: true,
         selected_preflight_ok: true,
+        selected_runtime_chain_ok: true,
         selected_cycle_matches_preflight: true,
         selected_cycle_matches_collector_env: true,
         selected_snapshot_counts_exact: false,
@@ -797,6 +799,43 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
   });
   assert.strictEqual(decision.approved, false);
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:CANDIDATE_SELECTION_PREFLIGHT_COUNTS_REQUIRED"));
+})();
+
+(function canaryWithoutCandidateRuntimeChainFailsClosed() {
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "CANARY",
+    position_cycle_id: "PCY__CANARY__BAD_RUNTIME_CHAIN",
+    bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__CANARY__BAD_RUNTIME_CHAIN",
+      selected_preflight: {
+        ok: false,
+        position_cycle_id: "PCY__CANARY__BAD_RUNTIME_CHAIN",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 1,
+      },
+      selection_contract: {
+        ok: false,
+        scan_limit_respected: true,
+        recent_window_enforced: true,
+        selected_candidate_present: true,
+        selected_preflight_ok: true,
+        selected_runtime_chain_ok: false,
+        selected_cycle_matches_preflight: true,
+        selected_cycle_matches_collector_env: true,
+        selected_snapshot_counts_exact: true,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:CANDIDATE_SELECTION_CONTRACT_REQUIRED"));
 })();
 
 (function criticalTerminalWatchdogIssuesAlwaysBlockDeploy() {
