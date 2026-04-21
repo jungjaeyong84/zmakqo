@@ -1084,3 +1084,29 @@ V1 약점 재발 방지:
 2. 이번 단계에서는 submitter 최상단 성공 조건이 실제 activation batch와 runtime chain audit 증거에 의존한다
 3. 따라서 보호 주문이 없는데도 상위 entry path가 성공으로 끝나는 half-active 상태를 줄인다
 4. 남은 한계는 이 submitter가 production scheduler/native signal runner에 본선으로 연결되는 단계가 아직 남아 있다는 점이다
+
+## 2026-04-21 Entry Execution Kernel Evidence Gate
+
+추가 증거:
+
+1. `src/v2/entryExecutionKernel.js`
+2. `src/v2/entryBoundaryAudit.js`
+3. `src/tests/v2-entry-execution-kernel.test.js`
+4. `src/tests/v2-entry-boundary-audit.test.js`
+5. `docs/DONBEOLJA_V2_ENTRY_ARCHITECTURE_2026-04-20.md`
+
+판정:
+
+1. V2 production entry route의 최상단 계약을 `runV2EntrySubmitter` 직접 호출에서 `runV2EntryExecutionKernel` 호출로 승격했다
+2. execution kernel은 submitter 결과를 다시 감사해서 `ENTRY_SUBMITTED_AND_PROTECTED` 문자열만으로 성공 처리하지 않는다
+3. kernel은 `FILLED` entry receipt, `entry_event_id`, `position_cycle_id`, `PROTECTION_PENDING` bootstrap, `ACTIVE_PROTECTED` activation commit, chain audit, write decision, `HEALTHY` protection runtime, SL/TP1 order id를 모두 요구한다
+4. fake `{ ok: true }`, dry-run fill, protection runtime의 `position_cycle_id` drift는 `V2_ENTRY_EXECUTION_KERNEL_BLOCKED` 로 차단된다
+5. submitter throw는 `V2_ENTRY_EXECUTION_KERNEL_THROWN` 으로 구조화되어, 상위 runner가 예외를 성공처럼 삼키지 못한다
+6. entry boundary audit는 `runV2EntrySubmitter` 직접 호출을 `src/v2/entryExecutionKernel.js` 밖에서 금지한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 entry/protection/tick/watchdog 계층이 “성공처럼 보이는 값”을 서로 다른 의미로 해석했다
+2. 이번 단계부터 V2 상위 runner는 submitter를 직접 신뢰하지 않고, 실행 커널의 증거 감사 결과만 신뢰해야 한다
+3. 보호주문이 실제로 없거나 runtime chain이 다른 position cycle에 붙으면 entry success가 아니라 차단 이벤트가 된다
+4. 남은 한계는 production scheduler/native signal runner를 실제로 `runV2EntryExecutionKernel` 로 연결하고, 배포 gate가 이 경로 외 submit을 차단하는 단계다

@@ -155,9 +155,32 @@ flowchart TD
 6. bootstrap이 cycle/projection/protection plan을 같은 입력으로 생성
 7. protection writer는 bootstrap 이후에만 동작
 
+## entry execution kernel contract
+
+V2 production entry submit은 `runV2EntryExecutionKernel` 하나로만 시작해야 한다.
+
+순서:
+
+1. execution kernel이 submitter를 호출한다
+2. submitter가 entry fill과 protection activation을 반환한다
+3. kernel이 submitter 성공값을 다시 검문한다
+4. `FILLED` entry receipt와 `PROTECTION_PENDING` bootstrap lineage가 맞는지 확인한다
+5. `ACTIVE_PROTECTED` activation commit과 chain audit가 맞는지 확인한다
+6. protection runtime이 같은 `position_cycle_id` 로 `HEALTHY` 이고 SL/TP1 order id를 모두 갖는지 확인한다
+7. 위 조건 중 하나라도 깨지면 `V2_ENTRY_EXECUTION_KERNEL_BLOCKED` 로 차단한다
+
+필수 정책:
+
+1. scheduler/native runner/openclaw route는 submitter를 직접 호출하지 않는다
+2. submitter 직접 호출은 `entryExecutionKernel.js` 에만 허용한다
+3. dry-run, fake `{ ok: true }`, 부분 protection evidence는 executable success가 아니다
+4. kernel audit의 `failed_check_ids` 는 운영자가 어떤 증거가 빠졌는지 즉시 볼 수 있어야 한다
+
+이 계약의 목적은 V1의 "하위 서비스가 성공처럼 반환했지만 실제 보호주문 증거가 빠진 상태"를 상위 runner에서 다시 한 번 차단하는 것이다.
+
 ## entry submitter contract
 
-V2 production entry submit은 `runV2EntrySubmitter` 하나로만 시작해야 한다.
+V2 entry submitter는 production route가 직접 호출하지 않고 `runV2EntryExecutionKernel` 을 통해서만 호출한다.
 
 순서:
 
@@ -234,7 +257,9 @@ V2 entry 경로는 코드 레벨에서도 우회 금지를 검사해야 한다.
 1. `placeFuturesMarketOrder` 는 `src/v2/binanceEntryOrderTransport.js` 밖에서 참조 금지
 2. `runV2EntryProtectionActivation` 은 `src/v2/entrySubmitter.js` 밖에서 호출 금지
 3. `src/v2/entryProtectionRunner.js` 는 함수 정의 파일로만 허용
-4. `src/v2/entryBoundaryAudit.js` 는 rule 정의 파일로만 허용
+4. `runV2EntrySubmitter` 는 `src/v2/entryExecutionKernel.js` 밖에서 호출 금지
+5. `src/v2/entrySubmitter.js` 는 함수 정의 파일로만 허용
+6. `src/v2/entryBoundaryAudit.js` 는 rule 정의 파일로만 허용
 
 이 검사는 V1의 "새 기능을 추가하면서 운영자가 모르는 두 번째 entry writer가 생기는" 문제를 V2 namespace 안에서 차단하기 위한 것이다.
 

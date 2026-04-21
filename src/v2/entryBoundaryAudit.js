@@ -34,6 +34,16 @@ const DEFAULT_RULES = Object.freeze([
       "src/v2/entryBoundaryAudit.js",
     ]),
   }),
+  Object.freeze({
+    code: "V2_ENTRY_SUBMITTER_DIRECT_CALL_FORBIDDEN",
+    description: "Only entryExecutionKernel may call runV2EntrySubmitter outside its implementation file.",
+    pattern: /\brunV2EntrySubmitter\b/,
+    allowedFiles: Object.freeze([
+      "src/v2/entrySubmitter.js",
+      "src/v2/entryExecutionKernel.js",
+      "src/v2/entryBoundaryAudit.js",
+    ]),
+  }),
 ]);
 
 function relativeToRoot(filePath, rootDir = process.cwd()) {
